@@ -31,18 +31,18 @@ printf '{"type":"user","message":{"role":"user","content":[{"type":"image","sour
 
 ## Codex (`codex`)
 
-2026-10-01 첫 실행은 사용 한도 초과로 중단됐다. 아래는 한도가 넉넉할 때 다시 돌린다.
+2026-10-01 19시 첫 실행은 사용 한도 초과로 중단됐고, 같은 날 20:35에 다시 돌려 모두 통과했다.
 
 | ID | 확인할 것 | 명령 | 통과 기준 | 결과 |
 | --- | --- | --- | --- | --- |
 | X1 | 로그인 상태 확인 | `codex login status` | "Logged in" 문구, 종료 코드 0 | 통과 (2026-10-01) |
-| X2 | 이미지 질문 | `codex exec "이 그림의 제목 글자만 한 줄로 답해" --json --skip-git-repo-check --ephemeral -s read-only -i t.png < /dev/null` | `item.completed` 의 agent_message 에 제목이 나온다 | **대기**. 한도 초과로 실패 |
+| X2 | 이미지 질문 | `codex exec "이 그림의 제목 글자만 한 줄로 답해" --json --skip-git-repo-check --ephemeral -s read-only -i t.png < /dev/null` | `item.completed` 의 agent_message 에 제목이 나온다 | 통과. 9.4초. 입력 25,073 토큰 (사용자 스킬과 설정이 같이 실림) |
 | X3 | 사용 한도 초과 문구 | X2 를 한도 초과 상태에서 실행 | `turn.failed` 의 `error.message` 에 재시도 가능 시각이 들어 있다 | 통과. "try again at 7:48 PM" 형식 확인 |
-| X4 | 대화 이어가기 | 1차 X2 에서 `--ephemeral` 빼고 `thread.started` 의 `thread_id` 저장, 2차 `codex exec resume <thread_id> "아까 답 다시 말해"` | 2차가 1차 맥락을 안다 | **대기** |
-| X5 | 성격 지시 | 프롬프트 앞에 성격 지시를 붙이거나 `-c` 로 지시문 설정 | 반말로 짧게 답한다 | **대기**. 적절한 설정 키부터 확인 |
-| X6 | 사용자 설정 격리 | 빈 `CODEX_HOME` 이나 `--profile` 로 실행 | 사용자 스킬, MCP 경고가 나오지 않는다 | **대기** |
-| X7 | 중단 | 답변 도중 SIGTERM | 2초 안에 끝난다 | **대기** |
-| X8 | 응답 시간 | X2 를 3번 | 중앙값을 기록한다 (목표: 첫 글자 10초 안) | **대기** |
+| X4 | 대화 이어가기 | 1차 X2 에서 `--ephemeral` 빼고 `thread.started` 의 `thread_id` 저장, 2차 `codex exec resume <thread_id> "아까 답 다시 말해"` | 2차가 1차 맥락을 안다 | 통과. 2차 4.7초. 이어 갈수록 입력이 쌓인다 (1차 25,608, 2차 54,099 토큰) |
+| X5 | 성격 지시 | `-c developer_instructions="<성격 지시>"` | 반말로 짧게 답한다 | 통과. "네가 말 걸어줘서 반가워" (이모지를 붙이는 버릇이 있어 지시에 넣을지 정한다) |
+| X6 | 사용자 설정 격리 | 임시 폴더를 `CODEX_HOME` 으로 두고 `auth.json` 만 심볼릭 링크 | 사용자 스킬, MCP 경고가 나오지 않는다 | 통과. 스킬 경고가 사라지고 입력 25,073 에서 19,063 토큰으로 줄었다 |
+| X7 | 중단 | 답변 도중 SIGTERM | 2초 안에 끝난다 | 통과. 0.03초, 하위 프로세스도 남지 않음 |
+| X8 | 응답 시간 | X2 를 격리 상태로 3번 | 중앙값을 기록한다 (목표: 답 10초 안) | 통과. 8.3, 8.6, 10.1초, 중앙값 8.6초. 3번 중 1번은 제목 한 단어를 잘못 읽음 (320px 작은 그림) |
 
 ## 알아낸 함정
 
@@ -51,6 +51,9 @@ printf '{"type":"user","message":{"role":"user","content":[{"type":"image","sour
 - **codex 는 경고도 `item.completed` 의 `error` 항목으로 보낸다.** 예: 스킬 설명이 줄었다는 경고. 오류 판정은 `turn.failed` 로만 한다.
 - **claude 는 사용자 훅과 설정을 그대로 탄다.** 격리하지 않으면 사용자의 훅 6개가 펫 채팅마다 실행됐다. 기본은 `--setting-sources ""` 로 격리하고, 설정에서 "내 Claude 설정 그대로 쓰기"를 고를 수 있게 한다.
 - **앱을 Finder 에서 열면 PATH 가 짧다.** `/usr/bin:/bin:/usr/sbin:/sbin` 만으로는 `~/.local/bin/claude` 를 못 찾는다. 로그인 셸(`$SHELL -lic "command -v claude"`)로 찾으면 되고 약 2초 걸리므로, 찾은 경로를 설정에 저장해 둔다. 2026-10-01 실험 앱에서 확인.
+- **codex 는 답을 조각으로 흘려보내지 않는다.** `exec --json` 은 답이 다 만들어진 뒤 `agent_message` 하나로 온다. 그동안 펫은 "생각 중" 동작으로 기다린다. claude 는 조각으로 온다.
+- **codex 설정 폴더가 기본 위치가 아닐 수 있다.** 이 컴퓨터에서는 Orca 앱이 `CODEX_HOME` 을 자기 폴더로 바꿔 두었다. 짝꿍은 사용자 설정 위치를 추측하지 말고, 격리 실행 때는 자기 임시 폴더를 쓴다. 로그인 파일 `auth.json` 위치는 `~/.codex` 와 `CODEX_HOME` 둘 다 찾아본다.
+- **`--strict-config` 는 쓰지 않는다.** 다른 앱이 넣어 둔 설정 항목 때문에 바로 실패한다.
 - **로그 줄이 섞인다.** codex 는 MCP 연결 오류 같은 로그를 표준 출력에 섞어 낸다. JSON 으로 읽히지 않는 줄은 버린다.
 
 ## 실행 기록
@@ -59,4 +62,5 @@ printf '{"type":"user","message":{"role":"user","content":[{"type":"image","sour
 | --- | --- | --- | --- |
 | 2026-10-01 | Claude Code 2.1.286 | C1~C5 | 모두 통과 |
 | 2026-10-01 | codex-cli 0.155.1 | X1, X3 (X2 시도) | 사용 한도 초과. 19:48 이후 재시도 가능 |
+| 2026-10-01 20:35 | codex-cli 0.155.1 | X2, X4~X8 | 모두 통과. 격리, 성격 지시, 이어가기, 중단 확인 |
 | 2026-10-01 | Electron 44.5.1 실험 앱 | C2, C3, C4, C6 | 앱 프로세스에서 이미지 질문 성공. 첫 글자 5.0초, 조각 27개 (C6 통과) |

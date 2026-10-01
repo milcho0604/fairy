@@ -314,12 +314,13 @@ AI는 사용자가 설치하고 로그인한 CLI를 하위 프로세스로 불�
 | 설치 확인 | 실행 파일 경로 탐색 | 실행 파일 경로 탐색 |
 | 로그인 확인 | `claude auth status` (JSON, `loggedIn`) 확인됨 | `codex login status` (문구) 확인됨 |
 | 질문 보내기 | `claude -p --input-format stream-json --output-format stream-json --verbose` | `codex exec "<질문>" --json --skip-git-repo-check -s read-only` |
-| 이미지 첨부 | stream-json 입력에 이미지 블록(base64). 확인됨 | `-i <파일>`. 질문을 `-i` 앞에 둔다. 한도 때문에 미확인 |
-| 대화 이어가기 | 첫 질문 `--session-id <uuid>`, 다음부터 `--resume <uuid>`. 확인됨 | `thread.started` 의 `thread_id` 저장 후 `codex exec resume <id>`. 미확인 |
-| 펫 성격 | `--append-system-prompt "<성격 지시>"`. 확인됨 | 질문 앞에 성격 지시를 붙인다. 미확인 |
-| 사용자 설정 격리 | `--setting-sources ""`, `--tools ""`. 훅 6개가 0개로 줄어든 것 확인 | 별도 프로필이나 빈 설정 폴더. 미확인 |
+| 이미지 첨부 | stream-json 입력에 이미지 블록(base64). 확인됨 | `-i <파일>`. 질문을 `-i` 앞에 둔다. 확인됨 |
+| 대화 이어가기 | 첫 질문 `--session-id <uuid>`, 다음부터 `--resume <uuid>`. 확인됨 | `thread.started` 의 `thread_id` 저장 후 `codex exec resume <id>`. 확인됨 |
+| 펫 성격 | `--append-system-prompt "<성격 지시>"`. 확인됨 | `-c developer_instructions="<성격 지시>"`. 확인됨 |
+| 사용자 설정 격리 | `--setting-sources ""`, `--tools ""`. 훅 6개가 0개로 줄어든 것 확인 | 임시 `CODEX_HOME` 에 `auth.json` 만 링크. 스킬 경고가 사라지고 입력이 25,073 에서 19,063 토큰으로 줄어든 것 확인 |
 | 끝 판정 | `type: result` 이벤트 | `turn.completed` 또는 `turn.failed` 이벤트 |
-| 첫 답 시간 (실측) | 간단한 질문 3.4~4.2초, 이미지 질문 4.0초 (프로세스 시작 포함 7초) | 미측정 |
+| 답 실시간 표시 | 조각으로 온다 (실험 앱에서 27조각) | 답이 다 만들어진 뒤 한 번에 온다. 그동안 펫은 "생각 중" |
+| 첫 답 시간 (실측) | 간단한 질문 3.4~4.2초, 이미지 질문 첫 글자 5.0초 | 이미지 질문 답 완성까지 중앙값 8.6초 (3회) |
 
 **동작 규칙**
 
@@ -328,7 +329,7 @@ AI는 사용자가 설치하고 로그인한 CLI를 하위 프로세스로 불�
 3. **시간 제한**: 첫 답이 60초 안에 오지 않으면 중단하고 펫이 "AI가 대답이 없어"라고 알린다.
 4. **사용 한도**: 오류 문구에 한도 초과가 있으면 펫이 "오늘은 Codex가 지쳤대. 19:48 이후에 다시 해 보자"처럼 알리고, 다른 AI가 있으면 바꾸자고 제안한다 (v1). 실제 codex 문구: "You've hit your usage limit ... try again at 7:48 PM".
 5. **출력 해석**: JSON으로 읽히지 않는 줄은 버린다. codex는 경고도 `error` 항목으로 보내므로 실패 판정은 `turn.failed` 로만 한다.
-6. **어댑터 분리**: AI마다 어댑터를 따로 두고, 앱 시작 때 CLI 버전을 기록한다. 버전이 바뀌면 검증 시나리오 C1~C5, X1~X4를 다시 돌린다.
+6. **어댑터 분리**: AI마다 어댑터를 따로 두고, 앱 시작 때 CLI 버전을 기록한다. codex 설정 폴더는 다른 앱이 바꿔 둘 수 있으므로(실측: Orca) 위치를 추측하지 않는다. 버전이 바뀌면 검증 시나리오 C1~C5, X1~X4를 다시 돌린다.
 7. **비용 안내**: AI 사용량은 사용자의 구독 한도에서 빠진다는 것을 첫 채팅 때 한 번 알린다.
 
 ## 비기능 목표
