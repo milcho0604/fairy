@@ -9,7 +9,7 @@ body {
 
 #pet {
   display: block;
-  width: 160px;
-  height: 160px;
+  width: 100vw;
+  height: 100vh;
   cursor: grab;
 }

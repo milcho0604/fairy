@@ -7,6 +7,7 @@ const bridge: PetBridge = {
   hover: (overPet: boolean) => ipcRenderer.send(IPC.hover, overPet),
   gesture: (event: GestureEvent) => ipcRenderer.send(IPC.gesture, event),
   contextMenu: () => ipcRenderer.send(IPC.contextMenu),
+  wheel: (deltaY: number, zoom: boolean) => ipcRenderer.send(IPC.wheel, deltaY, zoom),
   onEnv: (listener: (env: PetEnv) => void) => {
     ipcRenderer.on(IPC.env, (_e, env: PetEnv) => listener(env));
   },

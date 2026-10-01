@@ -8,6 +8,8 @@ export const IPC = {
   gesture: 'pet:gesture',
   /** 펫 화면 → 메인: 우클릭. */
   contextMenu: 'pet:context-menu',
+  /** 펫 화면 → 메인: 펫 위 휠. zoom 이면 크기 조절, 아니면 아래 창으로 넘긴다. */
+  wheel: 'pet:wheel',
   /** 메인 → 펫 화면: 컴퓨터가 바쁜지, 사용자가 자리를 비웠는지. 바뀔 때만 보낸다. */
   env: 'pet:env',
 } as const;
@@ -26,5 +28,6 @@ export interface PetBridge {
   hover(overPet: boolean): void;
   gesture(event: GestureEvent): void;
   contextMenu(): void;
+  wheel(deltaY: number, zoom: boolean): void;
   onEnv(listener: (env: PetEnv) => void): void;
 }

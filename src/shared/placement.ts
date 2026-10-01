@@ -1,5 +1,6 @@
 // 펫을 켤 때 어디에 둘지 정한다. 저장된 자리가 있으면 거기, 없으면 기본 자리.
 import { clampIntoAreas, type Point, type Rect } from './geometry.ts';
+import { clampScale } from './size.ts';
 
 export interface DisplayInfo {
   workArea: Rect;
@@ -43,4 +44,11 @@ export function restorePetBounds(saved: unknown, displays: readonly DisplayInfo[
     { ...position, width: size, height: size },
     displays.map((d) => d.workArea),
   );
+}
+
+/** 저장된 크기 배율. 없거나 깨졌으면 100%. */
+export function parseSavedScale(saved: unknown): number {
+  if (typeof saved !== 'object' || saved === null) return 1;
+  const { scale } = saved as Record<string, unknown>;
+  return typeof scale === 'number' ? clampScale(scale) : 1;
 }

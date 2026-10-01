@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { defaultPetBounds, parseSavedPosition, restorePetBounds } from './placement.ts';
+import { defaultPetBounds, parseSavedPosition, parseSavedScale, restorePetBounds } from './placement.ts';
 
 // 개발 맥의 실제 배치(2026-10-02). 주 모니터는 외장, 내장 화면은 왼쪽 음수 좌표.
 const builtIn = { workArea: { x: -1512, y: 33, width: 1512, height: 949 }, internal: true, primary: false };
@@ -64,4 +64,12 @@ test('저장 파일이 깨졌으면 기본 자리', () => {
 
 test('소수 좌표는 반올림한다', () => {
   assert.deepEqual(parseSavedPosition({ x: 10.6, y: -3.2 }), { x: 11, y: -3 });
+});
+
+test('저장된 크기: 없거나 깨졌으면 100%, 범위 밖이면 안으로', () => {
+  assert.equal(parseSavedScale({ x: 1, y: 2 }), 1);
+  assert.equal(parseSavedScale({ scale: 'big' }), 1);
+  assert.equal(parseSavedScale(undefined), 1);
+  assert.equal(parseSavedScale({ scale: 2 }), 2);
+  assert.equal(parseSavedScale({ scale: 10 }), 3);
 });

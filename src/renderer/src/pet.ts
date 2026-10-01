@@ -91,16 +91,33 @@ function scheduleBlink() {
   );
 }
 
-// ---- 화면 배율 ----
-// 모니터를 옮기면 배율(1, 2)이 바뀐다. 그때 캔버스 해상도를 맞춰 다시 그린다.
+// ---- 화면 배율과 펫 크기 ----
+// 모니터를 옮기면 화면 배율(1, 2)이, 크기를 조절하면 창 크기가 바뀐다. 둘 다 캔버스 해상도를 맞춰 다시 그린다.
+// 그리기는 늘 160 기준 좌표로 하고 변환으로 키운다.
+let viewSize = CANVAS_SIZE;
+
 function fitToScreen() {
   const dpr = window.devicePixelRatio || 1;
-  canvas.width = CANVAS_SIZE * dpr;
-  canvas.height = CANVAS_SIZE * dpr;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  viewSize = window.innerWidth || CANVAS_SIZE;
+  canvas.width = Math.round(viewSize * dpr);
+  canvas.height = Math.round(viewSize * dpr);
+  const k = (dpr * viewSize) / CANVAS_SIZE;
+  ctx.setTransform(k, 0, 0, k, 0, 0);
   requestFrame();
-  matchMedia(`(resolution: ${dpr}dppx)`).addEventListener('change', fitToScreen, { once: true });
 }
+
+function watchPixelRatio() {
+  matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`).addEventListener(
+    'change',
+    () => {
+      fitToScreen();
+      watchPixelRatio();
+    },
+    { once: true },
+  );
+}
+window.addEventListener('resize', fitToScreen);
+watchPixelRatio();
 fitToScreen();
 scheduleBlink();
 
@@ -111,8 +128,8 @@ let overPet = false;
 
 /** 커서 아래 픽셀이 비어 있지 않으면 펫 위다. 투명한 곳은 클릭을 아래 앱으로 넘긴다. */
 function hitTest(x: number, y: number): boolean {
-  if (x < 0 || y < 0 || x >= CANVAS_SIZE || y >= CANVAS_SIZE) return false;
-  const dpr = canvas.width / CANVAS_SIZE;
+  if (x < 0 || y < 0 || x >= viewSize || y >= viewSize) return false;
+  const dpr = canvas.width / viewSize;
   const alpha = ctx.getImageData(Math.floor(x * dpr), Math.floor(y * dpr), 1, 1).data[3] ?? 0;
   return alpha > 16;
 }
@@ -164,6 +181,28 @@ canvas.addEventListener('contextmenu', (e) => {
   e.preventDefault();
   if (hitTest(e.clientX, e.clientY)) bridge.contextMenu();
 });
+
+// 펫 위 휠: Cmd(Ctrl) + 휠이나 트랙패드 핀치(ctrlKey 로 온다)는 크기 조절, 그냥 휠은 아래 창으로.
+// 트랙패드는 이벤트가 잘게 많이 오므로 한 프레임(16ms) 동안 모아서 보낸다.
+let wheelDelta = 0;
+let wheelZoom = false;
+let wheelTimer: ReturnType<typeof setTimeout> | undefined;
+canvas.addEventListener(
+  'wheel',
+  (e) => {
+    const zoom = e.ctrlKey || e.metaKey;
+    if (zoom) e.preventDefault();
+    if (wheelTimer && zoom !== wheelZoom) return;
+    wheelZoom = zoom;
+    wheelDelta += e.deltaY;
+    wheelTimer ??= setTimeout(() => {
+      bridge.wheel(wheelDelta, wheelZoom);
+      wheelDelta = 0;
+      wheelTimer = undefined;
+    }, 16);
+  },
+  { passive: false },
+);
 
 // ---- 메인이 알려 주는 환경 ----
 bridge.onEnv((env) => setInputs({ systemBusy: env.systemBusy, userIdleMs: env.userIdleMs }));
