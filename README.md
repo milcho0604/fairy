@@ -10,6 +10,8 @@
 | --- | --- |
 | [docs/plan.md](docs/plan.md) | 기획서 원본 |
 | [docs/plan.html](docs/plan.html) | 기획서 html 판. 목차, 테마 전환, 기능 표 필터 포함 |
+| [docs/tests/ai-cli.md](docs/tests/ai-cli.md) | claude, codex 연동 검증 시나리오와 실행 기록 |
+| [docs/assets/](docs/assets/) | 시스템 구조도, 화면 설계 그림 (svg) |
 | [CHANGELOG.md](CHANGELOG.md) | 변경 이력 |
 
 ## 기획서 고치는 법

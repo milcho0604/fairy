@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 410" role="img" aria-label="펫은 화면 위에서 말풍선과 우클릭 메뉴로만 말을 건다" font-family="-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif" font-size="13">
+  <style>
+    .ink { fill: #1f2328; } .quiet { fill: #59636e; }
+    .line { stroke: #8c959f; fill: none; stroke-width: 1.25; }
+    .soft { fill: #f6f8fa; stroke: #d1d9e0; stroke-width: 1; }
+    .bar { fill: #d1d9e0; }
+    .accent { fill: rgba(9, 105, 218, 0.12); stroke: #0969da; stroke-width: 1.5; }
+    .pet { fill: #ffd8a8; stroke: #c4854a; stroke-width: 1.5; }
+    .eye { fill: #1f2328; }
+    .num { fill: #0969da; } .numt { fill: #ffffff; }
+    @media (prefers-color-scheme: dark) {
+      .ink { fill: #e6edf3; } .quiet { fill: #9198a1; }
+      .line { stroke: #6e7681; } .soft { fill: #151b23; stroke: #3d444d; } .bar { fill: #3d444d; }
+      .accent { fill: rgba(56, 139, 253, 0.15); stroke: #388bfd; }
+      .pet { fill: #c98a52; stroke: #f0b27a; } .eye { fill: #0d1117; } .num { fill: #388bfd; }
+    }
+  </style>
+  <text class="ink" x="24" y="30" font-size="15" font-weight="600">펫은 화면 위에서 말풍선과 우클릭 메뉴로만 말을 건다</text>
+
+  <!-- 바탕화면 -->
+  <rect class="soft" x="24" y="48" width="712" height="300" rx="10"/>
+  <!-- 작업 중인 다른 앱 -->
+  <rect class="line" x="56" y="72" width="360" height="200" rx="8"/>
+  <rect class="bar" x="56" y="72" width="360" height="24" rx="8"/>
+  <rect class="bar" x="76" y="116" width="220" height="10" rx="5"/>
+  <rect class="bar" x="76" y="138" width="300" height="10" rx="5"/>
+  <rect class="bar" x="76" y="160" width="260" height="10" rx="5"/>
+  <rect class="bar" x="76" y="182" width="180" height="10" rx="5"/>
+  <text class="quiet" x="236" y="252" text-anchor="middle" font-size="11.5">작업 중인 다른 앱 (클릭은 펫 밖에서 그대로 통과)</text>
+  <!-- 독/작업 표시줄 -->
+  <rect class="bar" x="220" y="326" width="320" height="12" rx="6"/>
+
+  <!-- 말풍선 -->
+  <rect class="accent" x="416" y="150" width="196" height="64" rx="12"/>
+  <path class="accent" d="M560 213 L574 230 L578 213 Z"/>
+  <text class="ink" x="514" y="174" text-anchor="middle" font-size="12.5">오늘 마감 할 일 3개 남았어!</text>
+  <rect class="line" x="440" y="186" width="68" height="20" rx="10"/>
+  <text class="ink" x="474" y="200" text-anchor="middle" font-size="11.5">보기</text>
+  <rect class="line" x="520" y="186" width="68" height="20" rx="10"/>
+  <text class="quiet" x="554" y="200" text-anchor="middle" font-size="11.5">나중에</text>
+
+  <!-- 펫 -->
+  <ellipse class="bar" cx="584" cy="318" rx="34" ry="6"/>
+  <ellipse class="pet" cx="584" cy="282" rx="36" ry="32"/>
+  <circle class="eye" cx="572" cy="276" r="3.5"/>
+  <circle class="eye" cx="596" cy="276" r="3.5"/>
+  <path d="M578 290 Q584 296 590 290" fill="none" stroke="#c4854a" stroke-width="1.5"/>
+
+  <!-- 우클릭 메뉴 -->
+  <rect class="soft" x="624" y="196" width="112" height="132" rx="10"/>
+  <text class="ink" x="680" y="218" text-anchor="middle" font-size="11.5" font-weight="600">콩이랑 같이 보기</text>
+  <text class="ink" x="680" y="242" text-anchor="middle" font-size="11.5">콩이와 대화</text>
+  <text class="ink" x="680" y="266" text-anchor="middle" font-size="11.5">할 일 추가</text>
+  <text class="ink" x="680" y="290" text-anchor="middle" font-size="11.5">밥 주기</text>
+  <text class="quiet" x="680" y="314" text-anchor="middle" font-size="11.5">잠깐 숨기기</text>
+
+  <!-- 번호 -->
+  <circle class="num" cx="420" cy="146" r="10"/><text class="numt" x="420" y="150" text-anchor="middle" font-size="11.5" font-weight="600">1</text>
+  <circle class="num" cx="548" cy="250" r="10"/><text class="numt" x="548" y="254" text-anchor="middle" font-size="11.5" font-weight="600">2</text>
+  <circle class="num" cx="628" cy="192" r="10"/><text class="numt" x="628" y="196" text-anchor="middle" font-size="11.5" font-weight="600">3</text>
+
+  <text class="quiet" x="24" y="372" font-size="11.5">1 말풍선: 수다 빈도 설정을 따른다. 버튼은 두 개까지.   2 펫(이름 "콩이"): 클릭하면 패널, 드래그로 옮기기, Ctrl(Cmd) + 휠로 크기.</text>
+  <text class="quiet" x="24" y="392" font-size="11.5">3 우클릭 메뉴: 메뉴 글자는 내가 지은 펫 이름과 받침에 맞는 조사를 따른다.</text>
+</svg>

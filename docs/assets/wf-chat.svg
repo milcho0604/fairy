@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 560" role="img" aria-label="같이 보기는 우클릭 한 번으로 시작하고 캡처는 입력칸에 첨부만 된다" font-family="-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif" font-size="13">
+  <style>
+    .ink { fill: #1f2328; } .quiet { fill: #59636e; }
+    .line { stroke: #8c959f; fill: none; stroke-width: 1.25; }
+    .dash { stroke: #0969da; fill: rgba(9, 105, 218, 0.06); stroke-width: 1.5; stroke-dasharray: 5 4; }
+    .soft { fill: #f6f8fa; stroke: #d1d9e0; stroke-width: 1; }
+    .bar { fill: #d1d9e0; }
+    .accent { fill: rgba(9, 105, 218, 0.12); stroke: #0969da; stroke-width: 1.5; }
+    .arrow { fill: #8c959f; }
+    .pet { fill: #ffd8a8; stroke: #c4854a; stroke-width: 1.5; }
+    .eye { fill: #1f2328; }
+    @media (prefers-color-scheme: dark) {
+      .ink { fill: #e6edf3; } .quiet { fill: #9198a1; }
+      .line { stroke: #6e7681; } .soft { fill: #151b23; stroke: #3d444d; } .bar { fill: #3d444d; }
+      .dash { stroke: #388bfd; fill: rgba(56, 139, 253, 0.08); }
+      .accent { fill: rgba(56, 139, 253, 0.15); stroke: #388bfd; } .arrow { fill: #6e7681; }
+      .pet { fill: #c98a52; stroke: #f0b27a; } .eye { fill: #0d1117; }
+    }
+  </style>
+  <defs>
+    <marker id="wf-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="arrow" d="M0 0L10 5L0 10z"/></marker>
+  </defs>
+  <text class="ink" x="24" y="30" font-size="15" font-weight="600">같이 보기는 우클릭 한 번으로 시작하고, 캡처는 입력칸에 첨부만 된다</text>
+
+  <!-- 1단계: 우클릭 메뉴 -->
+  <rect class="soft" x="24" y="48" width="216" height="160" rx="10"/>
+  <text class="ink" x="40" y="72" font-weight="600">1 펫 우클릭</text>
+  <ellipse class="pet" cx="70" cy="128" rx="26" ry="23"/>
+  <circle class="eye" cx="62" cy="124" r="2.5"/>
+  <circle class="eye" cx="78" cy="124" r="2.5"/>
+  <rect class="line" x="108" y="86" width="116" height="98" rx="8"/>
+  <rect class="accent" x="112" y="92" width="108" height="22" rx="6"/>
+  <text class="ink" x="166" y="107" text-anchor="middle" font-size="11.5" font-weight="600">콩이랑 같이 보기</text>
+  <text class="ink" x="166" y="132" text-anchor="middle" font-size="11.5">콩이와 대화</text>
+  <text class="ink" x="166" y="154" text-anchor="middle" font-size="11.5">할 일 추가</text>
+  <text class="quiet" x="166" y="176" text-anchor="middle" font-size="11.5">...</text>
+  <text class="quiet" x="40" y="198" font-size="11">메뉴 글자는 펫 이름을 따른다</text>
+
+  <!-- 2단계: 영역 드래그 -->
+  <rect class="soft" x="272" y="48" width="216" height="160" rx="10"/>
+  <text class="ink" x="288" y="72" font-weight="600">2 영역 드래그</text>
+  <rect class="bar" x="292" y="88" width="176" height="8" rx="4"/>
+  <rect class="bar" x="292" y="104" width="140" height="8" rx="4"/>
+  <rect class="dash" x="308" y="120" width="140" height="56" rx="2"/>
+  <text class="quiet" x="378" y="152" text-anchor="middle" font-size="11.5">드래그한 영역</text>
+  <text class="quiet" x="288" y="198" font-size="11">Esc 취소, 화면 밖은 어둡게</text>
+
+  <!-- 3단계: 자동 첨부 -->
+  <rect class="soft" x="520" y="48" width="216" height="160" rx="10"/>
+  <text class="ink" x="536" y="72" font-weight="600">3 입력칸에 자동 첨부</text>
+  <text class="quiet" x="536" y="98" font-size="11.5">채팅창이 열리고 캡처가</text>
+  <text class="quiet" x="536" y="116" font-size="11.5">입력칸에 붙는다.</text>
+  <text class="quiet" x="536" y="140" font-size="11.5">아직 AI로 나가지 않았다.</text>
+  <text class="quiet" x="536" y="158" font-size="11.5">질문을 적고 전송을 눌러야</text>
+  <text class="quiet" x="536" y="176" font-size="11.5">나간다. X로 뺄 수 있다.</text>
+
+  <path class="line" d="M240 128H272" marker-end="url(#wf-arrow)"/>
+  <path class="line" d="M488 128H520" marker-end="url(#wf-arrow)"/>
+
+  <!-- 채팅창 -->
+  <rect class="soft" x="24" y="232" width="440" height="312" rx="12"/>
+  <text class="ink" x="44" y="260" font-weight="600">콩이와 대화</text>
+  <rect class="line" x="300" y="244" width="148" height="24" rx="12"/>
+  <text class="ink" x="374" y="260" text-anchor="middle" font-size="11.5">Claude 사용 중  ▾</text>
+  <line class="line" x1="24" y1="278" x2="464" y2="278"/>
+
+  <!-- 이전 대화 -->
+  <rect class="accent" x="264" y="292" width="180" height="34" rx="10"/>
+  <text class="ink" x="354" y="314" text-anchor="middle" font-size="12">이거 어떻게 고쳐?</text>
+  <rect class="line" x="44" y="336" width="300" height="56" rx="10"/>
+  <text class="ink" x="58" y="358" font-size="12">환경 변수가 빠졌어. .env 에</text>
+  <text class="ink" x="58" y="376" font-size="12">API_URL 을 넣으면 돼.</text>
+  <rect class="line" x="44" y="400" width="96" height="22" rx="11"/>
+  <text class="ink" x="92" y="415" text-anchor="middle" font-size="11">메모로 저장</text>
+  <rect class="line" x="148" y="400" width="104" height="22" rx="11"/>
+  <text class="ink" x="200" y="415" text-anchor="middle" font-size="11">할 일로 만들기</text>
+
+  <!-- 입력칸 + 첨부 -->
+  <rect class="line" x="44" y="436" width="400" height="96" rx="10"/>
+  <rect class="dash" x="56" y="446" width="72" height="44" rx="4"/>
+  <text class="quiet" x="92" y="472" text-anchor="middle" font-size="10.5">캡처</text>
+  <circle class="soft" cx="126" cy="448" r="8"/>
+  <text class="ink" x="126" y="452" text-anchor="middle" font-size="11">x</text>
+  <text class="quiet" x="140" y="472" font-size="11.5">방금 캡처한 화면이 붙었어요</text>
+  <text class="quiet" x="58" y="518" font-size="12">질문 입력 (비워 두면 "이 화면 같이 봐 줘")</text>
+  <rect class="accent" x="384" y="502" width="52" height="24" rx="8"/>
+  <text class="ink" x="410" y="518" text-anchor="middle" font-size="11.5">전송</text>
+
+  <!-- 설명 -->
+  <text class="ink" x="492" y="260" font-weight="600">설명</text>
+  <text class="ink" x="492" y="288" font-size="12">채팅 제목과 메뉴는 펫 이름으로</text>
+  <text class="ink" x="492" y="306" font-size="12">나온다 (이 그림은 "콩이").</text>
+  <text class="ink" x="492" y="338" font-size="12">보내는 곳(Claude, Codex)이</text>
+  <text class="ink" x="492" y="356" font-size="12">항상 위에 보인다.</text>
+  <text class="ink" x="492" y="388" font-size="12">캡처는 자동으로 첨부되지만</text>
+  <text class="ink" x="492" y="406" font-size="12">자동으로 전송되지는 않는다.</text>
+  <text class="ink" x="492" y="438" font-size="12">답변은 메모나 할 일로 한 번에</text>
+  <text class="ink" x="492" y="456" font-size="12">바꿀 수 있다.</text>
+  <text class="ink" x="492" y="488" font-size="12">사용 한도에 걸리면 펫이 알리고</text>
+  <text class="ink" x="492" y="506" font-size="12">다른 AI로 바꾸자고 제안한다.</text>
+</svg>

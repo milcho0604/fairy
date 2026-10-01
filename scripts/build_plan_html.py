@@ -32,7 +32,10 @@ def inline_svg(body: str) -> str:
         if not svg_path.exists():
             return m[0]
         svg = svg_path.read_text(encoding="utf-8")
-        return f'<figure class="diagram">{svg}<figcaption>{m["alt"]}</figcaption></figure>'
+        # svg 안 <style> 은 OS 테마만 따른다. 페이지 테마 전환을 따르도록 빼고 템플릿 CSS 로 칠한다.
+        svg = re.sub(r"<style>.*?</style>", "", svg, flags=re.S)
+        # 그림 제목이 svg 첫 줄에 이미 있으므로 캡션은 달지 않는다. alt 는 aria-label 이 대신한다.
+        return f'<figure class="diagram">{svg}</figure>'
 
     pattern = r'<p><img alt="(?P<alt>[^"]*)" src="assets/(?P<src>[^"]+\.svg)" ?/?></p>'
     return re.sub(pattern, repl, body)
@@ -131,6 +134,7 @@ TEMPLATE = """<!doctype html>
   --mvp: #1a7f37; --mvp-soft: rgba(26, 127, 55, 0.12);
   --v1: #9a6700; --v1-soft: rgba(154, 103, 0, 0.12);
   --v2: #8250df; --v2-soft: rgba(130, 80, 223, 0.12);
+  --warn: #cf222e;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -138,7 +142,7 @@ TEMPLATE = """<!doctype html>
     --accent: #4493f8; --accent-soft: rgba(68, 147, 248, 0.15);
     --mvp: #3fb950; --mvp-soft: rgba(63, 185, 80, 0.15);
     --v1: #d29922; --v1-soft: rgba(210, 153, 34, 0.15);
-    --v2: #ab7df8; --v2-soft: rgba(171, 125, 248, 0.15);
+    --v2: #ab7df8; --v2-soft: rgba(171, 125, 248, 0.15); --warn: #f85149;
   }
 }
 :root[data-theme="dark"] {
@@ -146,7 +150,7 @@ TEMPLATE = """<!doctype html>
   --accent: #4493f8; --accent-soft: rgba(68, 147, 248, 0.15);
   --mvp: #3fb950; --mvp-soft: rgba(63, 185, 80, 0.15);
   --v1: #d29922; --v1-soft: rgba(210, 153, 34, 0.15);
-  --v2: #ab7df8; --v2-soft: rgba(171, 125, 248, 0.15);
+  --v2: #ab7df8; --v2-soft: rgba(171, 125, 248, 0.15); --warn: #f85149;
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -201,16 +205,21 @@ tr:last-child td { border-bottom: 0; }
 figure.diagram { margin: 16px 0; padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
 figure.diagram svg { display: block; width: 100%; height: auto; }
 figure.diagram figcaption { color: var(--muted); font-size: 13px; margin-top: 8px; text-align: center; }
-:root[data-theme="dark"] figure.diagram svg .ink { fill: #e6edf3; }
-:root[data-theme="dark"] figure.diagram svg .quiet { fill: #9198a1; }
-:root[data-theme="dark"] figure.diagram svg .edge, :root[data-theme="dark"] figure.diagram svg .box { stroke: #6e7681; }
-:root[data-theme="dark"] figure.diagram svg .arrow { fill: #6e7681; }
-:root[data-theme="dark"] figure.diagram svg .main { fill: rgba(56, 139, 253, 0.15); stroke: #388bfd; }
-:root[data-theme="light"] figure.diagram svg .ink { fill: #1f2328; }
-:root[data-theme="light"] figure.diagram svg .quiet { fill: #59636e; }
-:root[data-theme="light"] figure.diagram svg .edge, :root[data-theme="light"] figure.diagram svg .box { stroke: #8c959f; }
-:root[data-theme="light"] figure.diagram svg .arrow { fill: #8c959f; }
-:root[data-theme="light"] figure.diagram svg .main { fill: rgba(9, 105, 218, 0.12); stroke: #0969da; }
+figure.diagram svg .ink { fill: var(--text); }
+figure.diagram svg .quiet { fill: var(--muted); }
+figure.diagram svg .numt { fill: var(--bg); }
+figure.diagram svg .edge, figure.diagram svg .box, figure.diagram svg .line { stroke: var(--muted); fill: none; }
+figure.diagram svg .arrow { fill: var(--muted); }
+figure.diagram svg .soft { fill: var(--surface); stroke: var(--border); }
+figure.diagram svg .bar { fill: var(--border); }
+figure.diagram svg .accent, figure.diagram svg .main { fill: var(--accent-soft); stroke: var(--accent); }
+figure.diagram svg .main { stroke-width: 2; }
+figure.diagram svg .dash { fill: var(--accent-soft); stroke: var(--accent); stroke-dasharray: 5 4; }
+figure.diagram svg .num { fill: var(--accent); }
+figure.diagram svg .good { fill: var(--mvp); }
+figure.diagram svg .warn { fill: var(--warn); }
+figure.diagram svg .pet { fill: #ffd8a8; stroke: #c4854a; }
+figure.diagram svg .eye { fill: #1f2328; }
 @media print {
   nav.toc, .theme-toggle, .filters { display: none !important; }
   .layout { display: block; }

@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 452" role="img" aria-label="패널은 오늘 화면에서 시작하고 할 일을 끝내면 코인이 쌓인다" font-family="-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif" font-size="13">
+  <style>
+    .ink { fill: #1f2328; } .quiet { fill: #59636e; }
+    .line { stroke: #8c959f; fill: none; stroke-width: 1.25; }
+    .soft { fill: #f6f8fa; stroke: #d1d9e0; stroke-width: 1; }
+    .bar { fill: #d1d9e0; }
+    .accent { fill: rgba(9, 105, 218, 0.12); stroke: #0969da; stroke-width: 1.5; }
+    .good { fill: #1a7f37; } .warn { fill: #cf222e; }
+    .num { fill: #0969da; } .numt { fill: #ffffff; }
+    @media (prefers-color-scheme: dark) {
+      .ink { fill: #e6edf3; } .quiet { fill: #9198a1; }
+      .line { stroke: #6e7681; } .soft { fill: #151b23; stroke: #3d444d; } .bar { fill: #3d444d; }
+      .accent { fill: rgba(56, 139, 253, 0.15); stroke: #388bfd; }
+      .good { fill: #3fb950; } .warn { fill: #f85149; } .num { fill: #388bfd; }
+    }
+  </style>
+  <text class="ink" x="24" y="30" font-size="15" font-weight="600">패널은 "오늘" 화면에서 시작하고, 할 일을 끝내면 코인이 쌓인다</text>
+
+  <!-- 패널 창 -->
+  <rect class="soft" x="24" y="48" width="440" height="388" rx="12"/>
+  <text class="ink" x="44" y="78" font-weight="600">짝꿍</text>
+  <rect class="accent" x="356" y="62" width="92" height="24" rx="12"/>
+  <text class="ink" x="402" y="78" text-anchor="middle" font-size="12">코인 120</text>
+
+  <!-- 탭 -->
+  <text class="ink" x="44" y="116" font-weight="600">오늘</text>
+  <rect class="num" x="44" y="122" width="28" height="2"/>
+  <text class="quiet" x="96" y="116">할 일</text>
+  <text class="quiet" x="148" y="116">메모</text>
+  <text class="quiet" x="200" y="116">일정</text>
+  <text class="quiet" x="252" y="116">상점</text>
+  <text class="quiet" x="304" y="116">펫 방</text>
+  <line class="line" x1="24" y1="130" x2="464" y2="130"/>
+
+  <!-- 빠른 입력 -->
+  <rect class="line" x="44" y="146" width="400" height="34" rx="8"/>
+  <text class="quiet" x="60" y="168" font-size="12.5">+ 할 일 한 줄 입력 (Enter로 추가)</text>
+
+  <!-- 일정 한 줄 -->
+  <text class="quiet" x="44" y="206" font-size="11.5">오늘 일정</text>
+  <text class="ink" x="44" y="226" font-size="12.5">14:00  주간 회의</text>
+  <text class="ink" x="44" y="246" font-size="12.5">17:30  디자인 리뷰</text>
+
+  <!-- 할 일 -->
+  <text class="quiet" x="44" y="278" font-size="11.5">할 일 (3개 남음)</text>
+  <rect class="line" x="44" y="290" width="14" height="14" rx="3"/>
+  <text class="ink" x="68" y="302" font-size="12.5">회의록 정리</text>
+  <circle class="warn" cx="352" cy="297" r="4"/>
+  <text class="quiet" x="362" y="302" font-size="11.5">오늘 마감</text>
+
+  <rect class="line" x="44" y="318" width="14" height="14" rx="3"/>
+  <text class="ink" x="68" y="330" font-size="12.5">배포 체크리스트 확인</text>
+  <text class="quiet" x="362" y="330" font-size="11.5">내일</text>
+
+  <rect class="line" x="44" y="346" width="14" height="14" rx="3"/>
+  <text class="ink" x="68" y="358" font-size="12.5">견적서 회신</text>
+  <text class="quiet" x="362" y="358" font-size="11.5">금요일</text>
+
+  <rect class="good" x="44" y="374" width="14" height="14" rx="3"/>
+  <path d="M47 381 l3 3 l6 -6" fill="none" stroke="#ffffff" stroke-width="1.75"/>
+  <text class="quiet" x="68" y="386" font-size="12.5" text-decoration="line-through">메일 답장</text>
+  <text class="good" x="362" y="386" font-size="11.5">+10</text>
+
+  <line class="line" x1="24" y1="404" x2="464" y2="404"/>
+  <text class="quiet" x="44" y="424" font-size="11.5">오늘 1개 완료, +10코인. 펫 기분 좋음</text>
+
+  <!-- 번호 -->
+  <circle class="num" cx="30" cy="112" r="8"/><text class="numt" x="30" y="116" text-anchor="middle" font-size="11" font-weight="600">1</text>
+  <circle class="num" cx="452" cy="163" r="9"/><text class="numt" x="452" y="167" text-anchor="middle" font-size="11" font-weight="600">2</text>
+  <circle class="num" cx="30" cy="381" r="8"/><text class="numt" x="30" y="385" text-anchor="middle" font-size="11" font-weight="600">3</text>
+  <circle class="num" cx="330" cy="297" r="9"/><text class="numt" x="330" y="301" text-anchor="middle" font-size="11" font-weight="600">4</text>
+
+  <!-- 설명 -->
+  <text class="ink" x="492" y="84" font-weight="600">설명</text>
+  <text class="ink" x="492" y="112" font-size="12">1 탭: 오늘(기본), 할 일, 메모,</text>
+  <text class="ink" x="508" y="130" font-size="12">일정, 상점, 펫 방</text>
+  <text class="ink" x="492" y="162" font-size="12">2 한 줄 입력. 전역 단축키로도</text>
+  <text class="ink" x="508" y="180" font-size="12">어디서든 같은 입력창이 뜬다</text>
+  <text class="ink" x="492" y="212" font-size="12">3 완료하면 코인이 펫 쪽으로</text>
+  <text class="ink" x="508" y="230" font-size="12">날아가는 효과, 되돌리기 5초</text>
+  <text class="ink" x="492" y="262" font-size="12">4 마감 지난 일은 빨간 점만.</text>
+  <text class="ink" x="508" y="280" font-size="12">벌점이나 펫 상태 악화는 없다</text>
+  <text class="quiet" x="492" y="320" font-size="11.5">패널 크기: 폭 360~480px,</text>
+  <text class="quiet" x="492" y="338" font-size="11.5">펫 옆에 붙어서 열린다.</text>
+  <text class="quiet" x="492" y="356" font-size="11.5">Esc나 바깥 클릭으로 닫힌다.</text>
+</svg>
