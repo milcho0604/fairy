@@ -121,7 +121,7 @@ figure.diagram svg .eye { fill: #1f2328; }
   </header>
   <nav class="toc" aria-label="목차"><ol><li><a href="#개요">개요</a></li><li><a href="#성공-기준">성공 기준</a></li><li><a href="#참고-제품">참고 제품</a></li><li><a href="#하루-사용-흐름">하루 사용 흐름</a></li><li><a href="#기능-리스트">기능 리스트</a></li><li><a href="#펫-동작-규칙">펫 동작 규칙</a></li><li><a href="#게임-규칙">게임 규칙</a></li><li><a href="#화면-설계">화면 설계</a></li><li><a href="#시스템-구조">시스템 구조</a></li><li><a href="#데이터-모델">데이터 모델</a></li><li><a href="#데이터와-개인정보">데이터와 개인정보</a></li><li><a href="#ai-연동-규격">AI 연동 규격</a></li><li><a href="#비기능-목표">비기능 목표</a></li><li><a href="#기술-스택">기술 스택</a></li><li><a href="#설치와-배포">설치와 배포</a></li><li><a href="#개발-단계">개발 단계</a></li><li><a href="#리스크와-정할-것">리스크와 정할 것</a></li><li><a href="#출처">출처</a></li></ol></nav>
   <main>
-<p>문서 버전 0.2.1 (2026-10-01). 변경 이력은 <a href="../CHANGELOG.md">CHANGELOG</a>에 남긴다. AI 연동 검증 절차는 <a href="tests/ai-cli.md">AI CLI 검증 시나리오</a>에 있다.</p>
+<p>문서 버전 0.2.2 (2026-10-01). 변경 이력은 <a href="../CHANGELOG.md">CHANGELOG</a>에 남긴다. AI 연동 검증 절차는 <a href="tests/ai-cli.md">AI CLI 검증 시나리오</a>에 있다.</p>
 <p>옆자리 짝꿍처럼 화면 위를 돌아다니는 펫이 할 일, 일정, 메모를 같이 챙기고, 내 컴퓨터에 설치된 AI(Claude, Codex)와 연결돼 "같이 보기"로 화면을 보며 대화하는 데스크톱 앱이다. 맥과 윈도우를 동시에 낸다.</p>
 <h2 id="개요">개요</h2>
 <p>일하는 시간을 덜 외롭고 더 재미있게 만드는 것이 목표다. 펫은 귀여운 놀이 상대이면서, 할 일과 일정을 챙기고 AI와 이어 주는 비서 역할을 한다.</p>
@@ -141,7 +141,7 @@ figure.diagram svg .eye { fill: #1f2328; }
 <p>모든 기능은 이 다섯 가지를 어기지 않는다. 기능 리스트에 따로 적지 않고, 개발 단계마다 지켰는지 확인한다.</p>
 <ol>
 <li><strong>방해하지 않는다</strong>: 펫은 사용자가 부르거나 정해 둔 때만 말을 건다. 커서를 뺏거나 창을 가리는 장난은 하지 않는다.</li>
-<li><strong>벌주지 않는다</strong>: 며칠 안 켜도, 할 일을 못 끝내도 펫이 아프거나 떠나지 않고 코인도 줄지 않는다.</li>
+<li><strong>벌주지 않는다</strong>: 며칠 안 켜도, 할 일을 못 끝내도 펫이 아프거나 떠나지 않고 코인도 줄지 않는다. 삐지거나 화내는 연기는 괜찮다. 잃는 것이 없고, 할 일 하나로 바로 풀리면 된다.</li>
 <li><strong>AI 없이도 쓸 수 있다</strong>: AI가 없거나 한도에 걸려도 펫, 할 일, 메모, 게임은 모두 동작한다.</li>
 <li><strong>내 컴퓨터에만 둔다</strong>: 계정과 서버가 없다. 데이터는 로컬에 저장하고, 밖으로 나가는 것은 사용자가 AI에 직접 보낸 것뿐이다.</li>
 <li><strong>가볍다</strong>: 하루 종일 켜 두어도 노트북 배터리와 다른 작업에 티가 나지 않아야 한다 (비기능 목표 참고).</li>
@@ -256,11 +256,18 @@ figure.diagram svg .eye { fill: #1f2328; }
 <td>못 한 날에도 벌이 없다는 점이 칭찬받음</td>
 <td>석 달쯤 지나면 돌보기가 일처럼 느껴짐 (<a href="https://habitbox.app/blog/finch-app-review">리뷰</a>)</td>
 </tr>
+<tr>
+<td><a href="https://blog.duolingo.com/improving-the-streak">Duolingo</a></td>
+<td>연속 학습(스트릭)과 마스코트 Duo의 죄책감 알림으로 유명한 언어 앱</td>
+<td>스트릭을 지켜 주는 장치가 실제로 효과를 냈다. 하루 빠져도 스트릭이 유지되는 "주말 부적"이 14일 유지율 +4%, 스트릭을 잃을 확률 -5% (<a href="https://econsultancy.com/six-a-b-tests-used-by-duolingo-to-tap-into-habit-forming-behaviour/">실험 정리</a>). 5일 쉬면 "알림이 소용없는 것 같네..."라는 메시지를 보낸다</td>
+<td>점점 세지는 죄책감 알림. "불안하다", "공황이 왔다"는 반응이 있다 (<a href="https://nnhsnorthstar.com/22332/opinions/dastardly-duolingo-addressing-the-birds-reign-of-terror/">학생 신문</a>)</td>
+</tr>
 </tbody>
 </table></div>
 <p><strong>정리하면</strong></p>
 <ul>
 <li>보상은 Habitica처럼 주되, 벌은 Finch처럼 없앤다.</li>
+<li>화내는 재미는 Duolingo에서 가져오되, 효과가 확인된 쪽(쉬는 날 보호, 낮은 진입 장벽)을 따르고 알림 폭탄은 따르지 않는다.</li>
 <li>펫은 Bongo Cat처럼 "일하는 동안 곁에 있는 친구"이고, Desktop Goose처럼 방해하지 않는다.</li>
 <li>AI 상태는 Clawd처럼 펫 동작으로 보여 주되, 코드는 직접 짠다.</li>
 <li>돌보기가 일이 되지 않게, 배부름이 낮아도 표정만 바뀌고 할 일은 늘지 않는다.</li>
@@ -278,7 +285,7 @@ figure.diagram svg .eye { fill: #1f2328; }
 <li><strong>퇴근</strong>: 오늘 끝낸 일과 받은 코인을 보여 주고, 내일로 넘길 할 일을 물어본다. 펫은 집으로 들어가 잔다.</li>
 </ol>
 <h2 id="기능-리스트">기능 리스트</h2>
-<p>52개 기능 중 MVP는 14개, v1은 28개, v2는 10개다. MVP는 "내가 일주일 동안 실제로 쓸 수 있는 최소"로 잘랐다. 출처가 "요청"이면 처음 아이디어에 있던 것, "제안"이면 사용자 입장에서 필요하다고 보고 덧붙인 것이다.</p>
+<p>53개 기능 중 MVP는 14개, v1은 29개, v2는 10개다. MVP는 "내가 일주일 동안 실제로 쓸 수 있는 최소"로 잘랐다. 출처가 "요청"이면 처음 아이디어에 있던 것, "제안"이면 사용자 입장에서 필요하다고 보고 덧붙인 것이다.</p>
 <div class="filters" role="group" aria-label="우선순위 필터"><button type="button" data-filter="all" aria-pressed="true">전체</button><button type="button" data-filter="mvp" aria-pressed="false">MVP</button><button type="button" data-filter="v1" aria-pressed="false">v1</button><button type="button" data-filter="v2" aria-pressed="false">v2</button><span class="count" aria-live="polite"></span></div><div class="table-wrap"><table id="features">
 <thead>
 <tr>
@@ -345,6 +352,13 @@ figure.diagram svg .eye { fill: #1f2328; }
 <td>조용히, 보통, 수다쟁이 세 단계 (펫 동작 규칙 참고)</td>
 <td><span class="src suggested">제안</span></td>
 <td data-priority="mvp"><span class="tag mvp">MVP</span></td>
+</tr>
+<tr>
+<td>펫</td>
+<td>삐짐 게이지</td>
+<td>오래 안 쓰면 삐지고, 매운맛을 켜면 극대노까지 간다. 잃는 것은 없고 할 일 하나로 바로 화해 (펫 동작 규칙 참고)</td>
+<td><span class="src asked">요청</span></td>
+<td data-priority="v1"><span class="tag v1">v1</span></td>
 </tr>
 <tr>
 <td>펫</td>
@@ -733,6 +747,12 @@ figure.diagram svg .eye { fill: #1f2328; }
 <td>눈 감고 숨 쉬는 동작</td>
 </tr>
 <tr>
+<td>삐짐 (v1)</td>
+<td>삐짐 게이지 1단계 이상</td>
+<td>할 일 하나 완료, 또는 쓰다듬기와 밥 주기 둘 다</td>
+<td>단계별 모습 (아래 표)</td>
+</tr>
+<tr>
 <td>기본</td>
 <td>위에 해당 없음</td>
 <td></td>
@@ -790,6 +810,58 @@ figure.diagram svg .eye { fill: #1f2328; }
 </tbody>
 </table></div>
 <p>사용자가 말풍선을 "나중에"로 세 번 연속 닫으면, 펫이 "좀 조용히 할까?"라고 한 번 묻고 빈도를 한 단계 낮출지 고르게 한다.</p>
+<p><strong>삐짐 게이지 (v1)</strong></p>
+<p>오래 안 쓰면 펫이 삐진다. Duolingo의 화내는 재미는 가져오되, 잃는 것은 없게 만든다.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>단계</th>
+<th>쌓이는 때</th>
+<th>모습과 대사</th>
+<th>매운맛</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0 평온</td>
+<td>마지막 활동 뒤 1일 미만</td>
+<td>평소대로</td>
+<td></td>
+</tr>
+<tr>
+<td>1 삐짐</td>
+<td>1일</td>
+<td>등 돌리고 앉아 곁눈질. "...왔어?"</td>
+<td></td>
+</tr>
+<tr>
+<td>2 투정</td>
+<td>3일</td>
+<td>팔짱, 볼 부풀리기. "흥, 나 없어도 잘 지냈나 보네"</td>
+<td></td>
+</tr>
+<tr>
+<td>3 대노</td>
+<td>7일</td>
+<td>얼굴이 빨개지고 화면 구석에서 발을 구른다. "7일. 7일이야. 내가 세고 있었어"</td>
+<td>켜야 열림</td>
+</tr>
+<tr>
+<td>4 체념</td>
+<td>14일 이상</td>
+<td>짐 싸는 연기. "이제 안 기다릴 거야... 아마도"</td>
+<td>켜야 열림</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li><strong>활동</strong>: 할 일 완료, 펫 클릭, 채팅, 밥 주기 중 하나라도 하면 활동으로 센다.</li>
+<li><strong>쉬는 날은 세지 않는다</strong>: 설정의 쉬는 날(기본 토, 일)은 날짜 계산에서 뺀다. 월요일 아침에 펫이 삐져 있지 않게 한다. Duolingo에서 효과가 확인된 "주말 부적"과 같은 생각이다.</li>
+<li><strong>매운맛은 고른 사람만</strong>: 기본(순한맛)은 2단계 투정까지다. 3, 4단계는 설정에서 "매운맛"을 켠 사람에게만 열린다.</li>
+<li><strong>알림으로 조르지 않는다</strong>: 앱이 꺼져 있는 동안 OS 알림을 보내지 않는다. 앱을 켰을 때 화면 안에서만 반응한다 ("왜 이제 왔어!"). 켜 둔 채 안 쓰는 경우도 말풍선은 단계가 오를 때 한 번뿐이고, 수다 빈도와 방해 금지를 따른다.</li>
+<li><strong>바로 풀린다</strong>: 할 일 하나를 끝내면(또는 쓰다듬기와 밥 주기를 둘 다 하면) 0으로 돌아가고 화해 장면이 나온다. 오래 떨어져 있을수록 화해 보너스 코인이 크다 (게임 규칙 참고).</li>
+<li><strong>잃는 것은 없다</strong>: 코인, 배부름 외 수치, 친밀도, 아이템은 줄지 않는다. 삐짐은 표정과 대사뿐이다.</li>
+</ul>
 <h2 id="게임-규칙">게임 규칙</h2>
 <p>코인은 일을 끝낼 때만 생기고, 펫을 돌보는 데만 쓴다. 코인은 줄어들지 않고 거래할 수 없다.</p>
 <div class="table-wrap"><table>
@@ -822,6 +894,11 @@ figure.diagram svg .eye { fill: #1f2328; }
 <td>3코인</td>
 </tr>
 <tr>
+<td>획득</td>
+<td>화해 보너스 (v1)</td>
+<td>삐짐 1단계 5, 2단계 10, 3단계 20, 4단계 30코인. 7일에 한 번까지</td>
+</tr>
+<tr>
 <td>소비</td>
 <td>기본 먹이</td>
 <td>5코인</td>
@@ -852,6 +929,7 @@ figure.diagram svg .eye { fill: #1f2328; }
 <p><strong>지켜야 할 규칙</strong></p>
 <ul>
 <li>할 일을 잘게 쪼개 코인을 버는 것을 막으려고 하루 상한을 둔다.</li>
+<li>화해 보너스는 일부러 안 들어오는 것보다 할 일을 하는 편이 늘 이득이 되도록 작게 둔다 (14일 쉬고 받는 30코인 &lt; 할 일 4개의 40코인).</li>
 <li>완료를 되돌리면 받은 코인도 되돌린다. 이미 써 버렸으면 잔액이 음수가 되지 않게 0에서 멈춘다.</li>
 <li>값은 초안이다. 베타에서 일주일 평균 획득량과 소비량을 보고 조정한다.</li>
 </ul>
@@ -1202,7 +1280,7 @@ figure.diagram svg .eye { fill: #1f2328; }
 <tbody>
 <tr>
 <td>pet</td>
-<td>id, 이름, 이미지 경로, 크기, 위치, 성격, 배부름, 기분, 친밀도</td>
+<td>id, 이름, 이미지 경로, 크기, 위치, 성격, 배부름, 기분, 친밀도, 마지막 활동 시각, 삐짐 단계</td>
 <td>MVP는 한 마리</td>
 </tr>
 <tr>
@@ -1253,7 +1331,7 @@ figure.diagram svg .eye { fill: #1f2328; }
 <tr>
 <td>setting</td>
 <td>키, 값</td>
-<td>수다 빈도, 단축키, AI 설정</td>
+<td>수다 빈도, 쉬는 날, 매운맛, 단축키, AI 설정</td>
 </tr>
 </tbody>
 </table></div>
@@ -1697,6 +1775,11 @@ figure.diagram svg .eye { fill: #1f2328; }
 <td>펫 돌보기가 일이 됨</td>
 <td>몇 달 뒤 의무감에 지운다 (Finch 리뷰에서 관찰)</td>
 <td>배부름이 낮아도 표정만 바뀌고, 놓친 것에 대한 알림을 보내지 않는다</td>
+</tr>
+<tr>
+<td>삐짐 연출이 불쾌함</td>
+<td>죄책감이나 불안을 느낀다 (Duolingo에서 관찰된 반응)</td>
+<td>기본은 순한맛 2단계까지, 매운맛은 직접 켠 사람만. 설정에서 삐짐 게이지 자체를 끌 수 있다</td>
 </tr>
 <tr>
 <td>맥에서만 개발</td>
