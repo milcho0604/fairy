@@ -23,7 +23,7 @@ printf '{"type":"user","message":{"role":"user","content":[{"type":"image","sour
 | C3 | 사용자 설정 격리 | C2 에 `--setting-sources ""` 추가 | `system/hook_started` 이벤트가 0개 | 통과. 격리 전 6개, 격리 후 0개 |
 | C4 | 성격 지시 | `--append-system-prompt "너는 데스크톱 펫 짝꿍이다. 반말로 짧게 답한다."` | 반말로 짧게 답한다 | 통과 |
 | C5 | 대화 이어가기 | 1차 `--session-id <uuid>`, 2차 `--resume <uuid>` | 2차에서 1차 내용을 기억한다 | 통과. 1차 3.4초, 2차 4.2초 |
-| C6 | 답변 실시간 표시 | C2 에 `--include-partial-messages` 추가 | 답이 여러 조각 이벤트로 나뉘어 온다 | 미실행 |
+| C6 | 답변 실시간 표시 | C2 에 `--include-partial-messages` 추가 | 답이 여러 조각 이벤트로 나뉘어 온다 | 통과. 조각 27개, 첫 글자 5.0초 |
 | C7 | 로그아웃 상태 | 로그아웃한 계정이나 다른 HOME 으로 C1, C2 실행 | C1 이 false 또는 0 이 아닌 종료 코드. C2 는 오류 이벤트 | 미실행 |
 | C8 | 사용 한도 초과 | 한도에 걸린 상태에서 C2 | 오류 문구를 받아 펫 말풍선으로 바꿀 수 있다 | 미실행 (한도에 걸렸을 때 기회 실행) |
 | C9 | 중단 | 답변 도중 프로세스 종료 (SIGTERM) | 2초 안에 끝나고 고아 프로세스가 남지 않는다 | 미실행 |
@@ -50,6 +50,7 @@ printf '{"type":"user","message":{"role":"user","content":[{"type":"image","sour
 - **codex 는 표준 입력을 기다린다.** 앱에서 부를 때 표준 입력을 바로 닫는다 (`< /dev/null` 과 같은 효과).
 - **codex 는 경고도 `item.completed` 의 `error` 항목으로 보낸다.** 예: 스킬 설명이 줄었다는 경고. 오류 판정은 `turn.failed` 로만 한다.
 - **claude 는 사용자 훅과 설정을 그대로 탄다.** 격리하지 않으면 사용자의 훅 6개가 펫 채팅마다 실행됐다. 기본은 `--setting-sources ""` 로 격리하고, 설정에서 "내 Claude 설정 그대로 쓰기"를 고를 수 있게 한다.
+- **앱을 Finder 에서 열면 PATH 가 짧다.** `/usr/bin:/bin:/usr/sbin:/sbin` 만으로는 `~/.local/bin/claude` 를 못 찾는다. 로그인 셸(`$SHELL -lic "command -v claude"`)로 찾으면 되고 약 2초 걸리므로, 찾은 경로를 설정에 저장해 둔다. 2026-10-01 실험 앱에서 확인.
 - **로그 줄이 섞인다.** codex 는 MCP 연결 오류 같은 로그를 표준 출력에 섞어 낸다. JSON 으로 읽히지 않는 줄은 버린다.
 
 ## 실행 기록
@@ -58,3 +59,4 @@ printf '{"type":"user","message":{"role":"user","content":[{"type":"image","sour
 | --- | --- | --- | --- |
 | 2026-10-01 | Claude Code 2.1.286 | C1~C5 | 모두 통과 |
 | 2026-10-01 | codex-cli 0.155.1 | X1, X3 (X2 시도) | 사용 한도 초과. 19:48 이후 재시도 가능 |
+| 2026-10-01 | Electron 44.5.1 실험 앱 | C2, C3, C4, C6 | 앱 프로세스에서 이미지 질문 성공. 첫 글자 5.0초, 조각 27개 (C6 통과) |

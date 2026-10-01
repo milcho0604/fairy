@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>짝꿍 실험</title>
+<style>
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none; }
+  #pet {
+    position: absolute; left: 70%; top: 70%; width: 120px; height: 104px;
+    border-radius: 50% 50% 46% 46%; background: #ffd8a8; border: 2px solid #c4854a;
+    cursor: grab; animation: bob 2.4s ease-in-out infinite;
+  }
+  #pet.dragging { cursor: grabbing; animation: none; }
+  #pet::before, #pet::after {
+    content: ""; position: absolute; top: 40px; width: 9px; height: 9px; border-radius: 50%; background: #1f2328;
+  }
+  #pet::before { left: 38px; } #pet::after { right: 38px; }
+  #bubble {
+    position: absolute; padding: 8px 12px; border-radius: 12px; background: #fff; border: 1.5px solid #0969da;
+    font: 13px -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; color: #1f2328; display: none;
+  }
+  @keyframes bob { 0%, 100% { transform: translateY(0) scale(1, 1); } 50% { transform: translateY(-6px) scale(1.03, 0.97); } }
+</style>
+</head>
+<body>
+<div id="pet" title="짝꿍"></div>
+<div id="bubble"></div>
+<script>
+  const pet = document.getElementById('pet');
+  const bubble = document.getElementById('bubble');
+  let over = false;
+  let forwarded = 0;
+  let drag = null;
+
+  // 창이 클릭을 통과시키는 동안에도 forward 옵션 덕분에 mousemove 는 들어온다.
+  window.addEventListener('mousemove', (e) => {
+    forwarded++;
+    if (drag) return;
+    const hit = document.elementFromPoint(e.clientX, e.clientY) === pet;
+    if (hit !== over) { over = hit; window.spike.hover(hit); }
+  });
+  setInterval(() => { if (forwarded) { window.spike.event('forwarded-mousemove/s', forwarded); forwarded = 0; } }, 1000);
+
+  function say(text) {
+    const r = pet.getBoundingClientRect();
+    bubble.textContent = text;
+    bubble.style.display = 'block';
+    bubble.style.left = `${r.left - 20}px`;
+    bubble.style.top = `${r.top - 48}px`;
+    clearTimeout(say.t);
+    say.t = setTimeout(() => (bubble.style.display = 'none'), 1800);
+  }
+
+  pet.addEventListener('pointerdown', (e) => {
+    pet.setPointerCapture(e.pointerId);
+    const r = pet.getBoundingClientRect();
+    drag = { dx: e.clientX - r.left, dy: e.clientY - r.top, moved: 0 };
+    pet.classList.add('dragging');
+    window.spike.event('pointerdown', `${e.button}`);
+  });
+  pet.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    drag.moved++;
+    pet.style.left = `${e.clientX - drag.dx}px`;
+    pet.style.top = `${e.clientY - drag.dy}px`;
+  });
+  pet.addEventListener('pointerup', () => {
+    if (!drag) return;
+    window.spike.event(drag.moved > 3 ? 'drag-end' : 'click', `moves=${drag.moved}`);
+    if (drag.moved <= 3) say('안녕! 클릭 잘 받았어');
+    drag = null;
+    pet.classList.remove('dragging');
+  });
+  pet.addEventListener('contextmenu', (e) => { e.preventDefault(); window.spike.event('right-click'); say('우클릭 메뉴 자리'); });
+</script>
+</body>
+</html>

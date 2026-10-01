@@ -1,0 +1,18 @@
+{
+  "name": "jjakkung-spike",
+  "private": true,
+  "version": "0.0.0",
+  "description": "0단계 기술 검증용 실험 앱. 결과 확인 뒤 버린다.",
+  "type": "module",
+  "main": "main.mjs",
+  "scripts": {
+    "pet": "electron . --pet",
+    "idle": "electron . --idle-test",
+    "capture": "electron . --capture-test",
+    "cli": "electron . --cli-test",
+    "cli-gui-path": "electron . --cli-test --gui-path"
+  },
+  "devDependencies": {
+    "electron": "44.5.1"
+  }
+}
