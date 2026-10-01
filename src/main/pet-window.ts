@@ -1,0 +1,145 @@
+import { join } from 'node:path';
+import { BrowserWindow, type IpcMainEvent, ipcMain, Menu, screen } from 'electron';
+import { clampIntoAreas } from '../shared/geometry.ts';
+import type { GestureEvent } from '../shared/gesture.ts';
+import { IPC } from '../shared/ipc.ts';
+import { withParticle } from '../shared/josa.ts';
+import { type DisplayInfo, restorePetBounds } from '../shared/placement.ts';
+import { readJson, writeJson } from './store.ts';
+import { watchSystem } from './system-watch.ts';
+
+/** 펫 창 크기. 펫보다 조금 크게 잡아 통통 튀는 동작이 잘리지 않게 한다. */
+const WINDOW_SIZE = 160;
+/** 드래그 중 창을 옮기는 간격. 60fps. */
+const DRAG_INTERVAL_MS = 16;
+/** 펫 위치를 저장하는 파일 이름 (사용자 데이터 폴더의 pet-position.json). */
+const POSITION_FILE = 'pet-position';
+
+export interface PetWindowOptions {
+  petName: string;
+  log: (tag: string, ...rest: unknown[]) => void;
+}
+
+/**
+ * 펫 하나를 담는 작은 투명 창. 펫이 움직이면 창이 같이 움직인다.
+ * 모니터마다 큰 창을 두는 대신 이렇게 하면 렌더러가 하나라 가볍고(L6),
+ * 모니터를 건너가거나 뽑아도 창 위치만 고치면 된다(L7).
+ */
+export function createPetWindow({ petName, log }: PetWindowOptions): BrowserWindow {
+  const start = restorePetBounds(readJson(POSITION_FILE), currentDisplays(), WINDOW_SIZE);
+  const win = new BrowserWindow({
+    ...start,
+    transparent: true,
+    frame: false,
+    hasShadow: false,
+    resizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    focusable: false,
+    alwaysOnTop: true,
+    show: false,
+    webPreferences: {
+      preload: join(import.meta.dirname, '../preload/index.cjs'),
+      sandbox: true,
+      contextIsolation: true,
+    },
+  });
+  win.setAlwaysOnTop(true, 'floating');
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  // 처음에는 모두 통과시킨다. 커서가 펫 위에 오면 화면이 알려 준다.
+  win.setIgnoreMouseEvents(true, { forward: true });
+  win.once('ready-to-show', () => win.showInactive());
+
+  const devUrl = process.env.ELECTRON_RENDERER_URL;
+  if (devUrl) win.loadURL(`${devUrl}/pet.html`);
+  else win.loadFile(join(import.meta.dirname, '../renderer/pet.html'));
+
+  let dragTimer: NodeJS.Timeout | undefined;
+  let overPet = false;
+
+  const fromThisWindow = (e: IpcMainEvent) => e.sender === win.webContents;
+
+  const onHover = (e: IpcMainEvent, over: boolean) => {
+    if (!fromThisWindow(e) || dragTimer) return;
+    overPet = over;
+    win.setIgnoreMouseEvents(!over, { forward: true });
+  };
+
+  const onGesture = (e: IpcMainEvent, event: GestureEvent) => {
+    if (!fromThisWindow(e)) return;
+    log('pet', event.type);
+    if (event.type === 'drag-start') {
+      clearInterval(dragTimer);
+      dragTimer = setInterval(() => {
+        const cursor = screen.getCursorScreenPoint();
+        win.setPosition(Math.round(cursor.x - event.offset.x), Math.round(cursor.y - event.offset.y));
+      }, DRAG_INTERVAL_MS);
+    } else if (event.type === 'drag-end') {
+      clearInterval(dragTimer);
+      dragTimer = undefined;
+      keepOnScreen();
+      win.setIgnoreMouseEvents(!overPet, { forward: true });
+      const { x, y } = win.getBounds();
+      writeJson(POSITION_FILE, { x, y });
+      log('pet', 'position', JSON.stringify({ x, y }));
+    }
+  };
+
+  const onContextMenu = (e: IpcMainEvent) => {
+    if (!fromThisWindow(e)) return;
+    log('pet', 'context-menu');
+    // 메뉴 항목 연결은 P1-12, 3단계에서 한다. 지금은 이름과 조사가 맞는지 보이는 자리만.
+    Menu.buildFromTemplate([
+      { label: `${withParticle(petName, '이랑')} 같이 보기`, enabled: false },
+      { label: `${withParticle(petName, '과')} 대화`, enabled: false },
+      { type: 'separator' },
+      { label: '끝내기', role: 'quit' },
+    ]).popup({ window: win });
+  };
+
+  function keepOnScreen() {
+    const areas = screen.getAllDisplays().map((d) => d.workArea);
+    const now = win.getBounds();
+    const next = clampIntoAreas(now, areas);
+    if (next.x !== now.x || next.y !== now.y) win.setPosition(next.x, next.y);
+  }
+
+  const onDisplaysChanged = () => {
+    keepOnScreen();
+    log('display', 'changed', JSON.stringify(win.getBounds()));
+  };
+
+  ipcMain.on(IPC.hover, onHover);
+  ipcMain.on(IPC.gesture, onGesture);
+  ipcMain.on(IPC.contextMenu, onContextMenu);
+  screen.on('display-added', onDisplaysChanged);
+  screen.on('display-removed', onDisplaysChanged);
+  screen.on('display-metrics-changed', onDisplaysChanged);
+
+  const stopWatching = watchSystem((env) => {
+    if (!win.isDestroyed()) win.webContents.send(IPC.env, env);
+  }, log);
+
+  win.on('closed', () => {
+    stopWatching();
+    clearInterval(dragTimer);
+    ipcMain.off(IPC.hover, onHover);
+    ipcMain.off(IPC.gesture, onGesture);
+    ipcMain.off(IPC.contextMenu, onContextMenu);
+    screen.off('display-added', onDisplaysChanged);
+    screen.off('display-removed', onDisplaysChanged);
+    screen.off('display-metrics-changed', onDisplaysChanged);
+  });
+
+  return win;
+}
+
+function currentDisplays(): DisplayInfo[] {
+  const primaryId = screen.getPrimaryDisplay().id;
+  return screen.getAllDisplays().map((d) => ({
+    workArea: d.workArea,
+    internal: d.internal,
+    primary: d.id === primaryId,
+  }));
+}

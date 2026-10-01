@@ -121,7 +121,7 @@ figure.diagram svg .eye { fill: #1f2328; }
   </header>
   <nav class="toc" aria-label="목차"><ol><li><a href="#개요">개요</a></li><li><a href="#성공-기준">성공 기준</a></li><li><a href="#참고-제품">참고 제품</a></li><li><a href="#하루-사용-흐름">하루 사용 흐름</a></li><li><a href="#기능-리스트">기능 리스트</a></li><li><a href="#펫-동작-규칙">펫 동작 규칙</a></li><li><a href="#게임-규칙">게임 규칙</a></li><li><a href="#화면-설계">화면 설계</a></li><li><a href="#시스템-구조">시스템 구조</a></li><li><a href="#데이터-모델">데이터 모델</a></li><li><a href="#데이터와-개인정보">데이터와 개인정보</a></li><li><a href="#ai-연동-규격">AI 연동 규격</a></li><li><a href="#비기능-목표">비기능 목표</a></li><li><a href="#기술-스택">기술 스택</a></li><li><a href="#설치와-배포">설치와 배포</a></li><li><a href="#개발-단계">개발 단계</a></li><li><a href="#리스크와-정할-것">리스크와 정할 것</a></li><li><a href="#출처">출처</a></li></ol></nav>
   <main>
-<p>문서 버전 0.2.4 (2026-10-01). 변경 이력은 <a href="../CHANGELOG.md">CHANGELOG</a>에 남긴다. AI 연동 검증 절차는 <a href="tests/ai-cli.md">AI CLI 검증 시나리오</a>에 있다.</p>
+<p>문서 버전 0.2.5 (2026-10-02). 변경 이력은 <a href="../CHANGELOG.md">CHANGELOG</a>에 남긴다. AI 연동 검증 절차는 <a href="tests/ai-cli.md">AI CLI 검증 시나리오</a>에 있다.</p>
 <p>옆자리 짝꿍처럼 화면 위를 돌아다니는 펫이 할 일, 일정, 메모를 같이 챙기고, 내 컴퓨터에 설치된 AI(Claude, Codex)와 연결돼 "같이 보기"로 화면을 보며 대화하는 데스크톱 앱이다. 맥과 윈도우를 동시에 낸다.</p>
 <h2 id="개요">개요</h2>
 <p>일하는 시간을 덜 외롭고 더 재미있게 만드는 것이 목표다. 펫은 귀여운 놀이 상대이면서, 할 일과 일정을 챙기고 AI와 이어 주는 비서 역할을 한다.</p>
@@ -285,7 +285,7 @@ figure.diagram svg .eye { fill: #1f2328; }
 <li><strong>퇴근</strong>: 오늘 끝낸 일과 받은 코인을 보여 주고, 내일로 넘길 할 일을 물어본다. 펫은 집으로 들어가 잔다.</li>
 </ol>
 <h2 id="기능-리스트">기능 리스트</h2>
-<p>53개 기능 중 MVP는 14개, v1은 29개, v2는 10개다. MVP는 "내가 일주일 동안 실제로 쓸 수 있는 최소"로 잘랐다. 출처가 "요청"이면 처음 아이디어에 있던 것, "제안"이면 사용자 입장에서 필요하다고 보고 덧붙인 것이다.</p>
+<p>54개 기능 중 MVP는 15개, v1은 29개, v2는 10개다. MVP는 "내가 일주일 동안 실제로 쓸 수 있는 최소"로 잘랐다. 출처가 "요청"이면 처음 아이디어에 있던 것, "제안"이면 사용자 입장에서 필요하다고 보고 덧붙인 것이다.</p>
 <div class="filters" role="group" aria-label="우선순위 필터"><button type="button" data-filter="all" aria-pressed="true">전체</button><button type="button" data-filter="mvp" aria-pressed="false">MVP</button><button type="button" data-filter="v1" aria-pressed="false">v1</button><button type="button" data-filter="v2" aria-pressed="false">v2</button><span class="count" aria-live="polite"></span></div><div class="table-wrap"><table id="features">
 <thead>
 <tr>
@@ -337,6 +337,13 @@ figure.diagram svg .eye { fill: #1f2328; }
 <td>방해 금지</td>
 <td>전체 화면 앱과 발표 모드에서 자동으로 숨고, 단축키로 바로 숨긴다</td>
 <td><span class="src suggested">제안</span></td>
+<td data-priority="mvp"><span class="tag mvp">MVP</span></td>
+</tr>
+<tr>
+<td>펫</td>
+<td>바쁨 모드</td>
+<td>컴퓨터 CPU 가 10초 넘게 85% 이상이거나 메모리가 빠듯하면 펫이 움직임을 멈추고 "바빠서 쉬는 중"을 띄운다. 15초 넘게 한가하면 다시 움직인다</td>
+<td><span class="src asked">요청</span></td>
 <td data-priority="mvp"><span class="tag mvp">MVP</span></td>
 </tr>
 <tr>
@@ -733,6 +740,12 @@ figure.diagram svg .eye { fill: #1f2328; }
 <td>말풍선을 띄울 일이 생겼다 (아래 표)</td>
 <td>사용자가 누르거나 8초가 지남</td>
 <td>말풍선, 버튼 최대 두 개</td>
+</tr>
+<tr>
+<td>바쁨</td>
+<td>컴퓨터 CPU 사용률 85% 이상이 10초 이어지거나, 메모리 압박 경고</td>
+<td>CPU 70% 미만이 15초 이어지고 메모리 정상</td>
+<td>그리기를 멈춘다. 작게 뜬 눈, 땀방울, "바빠서 쉬는 중" 표시. 깜빡임도 없다</td>
 </tr>
 <tr>
 <td>신남</td>
@@ -1506,7 +1519,11 @@ figure.diagram svg .eye { fill: #1f2328; }
 </tr>
 <tr>
 <td>애니메이션</td>
-<td>최대 30fps. 배터리 사용 중이거나 절전 모드면 15fps, 잠 상태에서는 멈춤</td>
+<td>최대 30fps. 배터리 사용 중이거나 절전 모드면 15fps, 잠 상태에서는 멈춤. 움직이는 동안은 fps 를 낮춰도 CPU 가 비슷하게 들므로(0단계 실측), 기본 상태는 가만히 있다가 가끔 깜빡이고 계속 도는 동작은 짧게만 쓴다</td>
+</tr>
+<tr>
+<td>컴퓨터가 바쁠 때</td>
+<td>펫이 그리기를 멈춰 사용자 작업에 자원을 양보한다 (바쁨 모드)</td>
 </tr>
 <tr>
 <td>같이 보기</td>
@@ -1718,7 +1735,7 @@ figure.diagram svg .eye { fill: #1f2328; }
 <li>완료 기준: 맥과 윈도우 10, 11에서 세 가지가 동작한다. 검증 시나리오 C1~C5, X1~X4 통과.</li>
 </ul>
 </li>
-<li><strong>1단계, 펫</strong>: 화면 표시, 드래그, 크기 조절, 기본 행동, 사진으로 펫 만들기, 방해 금지, 수다 빈도.<ul>
+<li><strong>1단계, 펫</strong>: 화면 표시, 드래그, 크기 조절, 기본 행동, 사진으로 펫 만들기, 방해 금지, 바쁨 모드, 수다 빈도.<ul>
 <li>완료 기준: 아무 사진 10장을 넣어 보고 8장 이상이 자연스럽게 나온다. 하루 켜 둬도 일을 방해하지 않는다. 가만히 있을 때 CPU 1% 이하.</li>
 </ul>
 </li>

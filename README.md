@@ -2,7 +2,25 @@
 
 옆자리 짝꿍처럼 화면 위를 돌아다니는 펫이 할 일, 일정, 메모를 같이 챙기고, 내 컴퓨터에 설치된 AI(Claude, Codex)와 연결돼 "같이 보기"로 화면을 보며 대화하는 데스크톱 앱. 맥과 윈도우를 동시에 지원한다.
 
-지금은 0단계 기술 검증 중이다. 진짜 앱 코드는 아직 없고, `spike/` 는 확인이 끝나면 버리는 실험 코드다. 진행 상황은 [docs/roadmap.md](docs/roadmap.md)에 있다.
+지금은 1단계(펫)를 만드는 중이다. 앱 코드는 `src/`, `spike/` 는 0단계 실험 코드라 0단계가 끝나면 지운다. 진행 상황은 [docs/roadmap.md](docs/roadmap.md)에 있다.
+
+## 개발
+
+Node 22.18 이상이 필요하다 (테스트가 TypeScript 파일을 그대로 돌린다).
+
+```bash
+npm install
+npm run dev     # 앱을 띄우고 화면 코드를 고치면 바로 반영
+npm run check   # 타입 검사, 린트, 테스트
+npm run build   # out/ 에 빌드
+```
+
+| 폴더 | 내용 |
+| --- | --- |
+| `src/main/` | Electron 메인 프로세스 (창, OS 기능) |
+| `src/preload/` | 화면에 열어 줄 기능만 모아 둔 다리 |
+| `src/renderer/` | 화면. 펫 창은 가볍게 두려고 React 없이, 패널과 채팅 창은 React 로 (2단계부터) |
+| `src/shared/` | 화면과 메인이 같이 쓰는 순수 로직과 테스트 |
 
 ## 문서
 
