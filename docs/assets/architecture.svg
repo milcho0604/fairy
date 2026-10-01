@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 400" role="img" aria-label="앱 본체 하나가 화면 창, 로컬 AI, 외부 도구를 잇는다" font-family="-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif" font-size="13">
+  <style>
+    .ink { fill: #1f2328; }
+    .quiet { fill: #59636e; }
+    .edge { stroke: #8c959f; }
+    .arrow { fill: #8c959f; }
+    .box { fill: none; stroke: #8c959f; stroke-width: 1.25; }
+    .main { fill: rgba(9, 105, 218, 0.12); stroke: #0969da; stroke-width: 2; }
+    @media (prefers-color-scheme: dark) {
+      .ink { fill: #e6edf3; }
+      .quiet { fill: #9198a1; }
+      .edge { stroke: #6e7681; }
+      .arrow { fill: #6e7681; }
+      .box { stroke: #6e7681; }
+      .main { fill: rgba(56, 139, 253, 0.15); stroke: #388bfd; }
+    }
+  </style>
+  <defs>
+    <marker id="arch-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path class="arrow" d="M0 0L10 5L0 10z"/>
+    </marker>
+  </defs>
+
+  <text class="ink" x="36" y="34" font-size="15" font-weight="600">앱 본체 하나가 화면 창, 로컬 AI, 외부 도구를 잇는다</text>
+
+  <g class="edge" fill="none" stroke-width="1.25">
+    <path d="M144 136V184" marker-start="url(#arch-arrow)" marker-end="url(#arch-arrow)"/>
+    <path d="M380 136V184" marker-start="url(#arch-arrow)" marker-end="url(#arch-arrow)"/>
+    <path d="M616 136V184" marker-start="url(#arch-arrow)" marker-end="url(#arch-arrow)"/>
+    <path d="M144 256V304" marker-start="url(#arch-arrow)" marker-end="url(#arch-arrow)"/>
+    <path d="M380 304V256" marker-end="url(#arch-arrow)"/>
+    <path d="M616 256V304" marker-start="url(#arch-arrow)" marker-end="url(#arch-arrow)"/>
+  </g>
+
+  <!-- 화면 계층 -->
+  <rect class="box" x="36" y="64" width="216" height="72" rx="8"/>
+  <text class="ink" x="144" y="88" text-anchor="middle" font-weight="600">펫 창</text>
+  <text class="quiet" x="144" y="108" text-anchor="middle" font-size="11.5">모니터마다 투명 창 하나</text>
+  <text class="quiet" x="144" y="124" text-anchor="middle" font-size="11.5">클릭 통과, 펫 그리기</text>
+
+  <rect class="box" x="272" y="64" width="216" height="72" rx="8"/>
+  <text class="ink" x="380" y="88" text-anchor="middle" font-weight="600">패널 창</text>
+  <text class="quiet" x="380" y="108" text-anchor="middle" font-size="11.5">채팅, 할 일, 메모, 설정</text>
+  <text class="quiet" x="380" y="124" text-anchor="middle" font-size="11.5">React 화면</text>
+
+  <rect class="box" x="508" y="64" width="216" height="72" rx="8"/>
+  <text class="ink" x="616" y="88" text-anchor="middle" font-weight="600">캡처 오버레이</text>
+  <text class="quiet" x="616" y="108" text-anchor="middle" font-size="11.5">같이 보기 영역 선택</text>
+  <text class="quiet" x="616" y="124" text-anchor="middle" font-size="11.5">보내기 전 미리보기</text>
+
+  <text class="quiet" x="388" y="164" font-size="11.5">IPC</text>
+
+  <!-- 앱 본체 -->
+  <rect class="main" x="36" y="184" width="688" height="72" rx="8"/>
+  <text class="ink" x="380" y="208" text-anchor="middle" font-weight="600">앱 본체 (Electron main 프로세스)</text>
+  <text class="ink" x="380" y="228" text-anchor="middle" font-size="11.5">상태와 게임 규칙, SQLite 저장, 화면 캡처, 알림, 트레이</text>
+  <text class="ink" x="380" y="244" text-anchor="middle" font-size="11.5">AI 어댑터(CLI 실행), 펫 MCP 서버, 캘린더 동기화</text>
+
+  <text class="quiet" x="152" y="284" font-size="11.5">실행, 답변 스트림</text>
+  <text class="quiet" x="388" y="284" font-size="11.5">MCP 요청</text>
+  <text class="quiet" x="624" y="284" font-size="11.5">일정 동기화</text>
+
+  <!-- 바깥 -->
+  <rect class="box" x="36" y="304" width="216" height="72" rx="8"/>
+  <text class="ink" x="144" y="328" text-anchor="middle" font-weight="600">로컬 AI CLI</text>
+  <text class="quiet" x="144" y="348" text-anchor="middle" font-size="11.5">claude, codex</text>
+  <text class="quiet" x="144" y="364" text-anchor="middle" font-size="11.5">사용자 계정 그대로</text>
+
+  <rect class="box" x="272" y="304" width="216" height="72" rx="8"/>
+  <text class="ink" x="380" y="328" text-anchor="middle" font-weight="600">외부 AI 도구</text>
+  <text class="quiet" x="380" y="348" text-anchor="middle" font-size="11.5">Claude Code, Codex 등</text>
+  <text class="quiet" x="380" y="364" text-anchor="middle" font-size="11.5">펫에 할 일 넣기</text>
+
+  <rect class="box" x="508" y="304" width="216" height="72" rx="8"/>
+  <text class="ink" x="616" y="328" text-anchor="middle" font-weight="600">구글 캘린더</text>
+  <text class="quiet" x="616" y="348" text-anchor="middle" font-size="11.5">OAuth 로그인</text>
+  <text class="quiet" x="616" y="364" text-anchor="middle" font-size="11.5">v2에서 연결</text>
+</svg>

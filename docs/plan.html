@@ -1,0 +1,974 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>짝꿍 (Jjakkung) 기획서</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --surface: #f6f8fa;
+  --text: #1f2328;
+  --muted: #59636e;
+  --border: #d1d9e0;
+  --accent: #0969da;
+  --accent-soft: rgba(9, 105, 218, 0.10);
+  --mvp: #1a7f37; --mvp-soft: rgba(26, 127, 55, 0.12);
+  --v1: #9a6700; --v1-soft: rgba(154, 103, 0, 0.12);
+  --v2: #8250df; --v2-soft: rgba(130, 80, 223, 0.12);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1117; --surface: #151b23; --text: #e6edf3; --muted: #9198a1; --border: #3d444d;
+    --accent: #4493f8; --accent-soft: rgba(68, 147, 248, 0.15);
+    --mvp: #3fb950; --mvp-soft: rgba(63, 185, 80, 0.15);
+    --v1: #d29922; --v1-soft: rgba(210, 153, 34, 0.15);
+    --v2: #ab7df8; --v2-soft: rgba(171, 125, 248, 0.15);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1117; --surface: #151b23; --text: #e6edf3; --muted: #9198a1; --border: #3d444d;
+  --accent: #4493f8; --accent-soft: rgba(68, 147, 248, 0.15);
+  --mvp: #3fb950; --mvp-soft: rgba(63, 185, 80, 0.15);
+  --v1: #d29922; --v1-soft: rgba(210, 153, 34, 0.15);
+  --v2: #ab7df8; --v2-soft: rgba(171, 125, 248, 0.15);
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 16px/1.7 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+  word-break: keep-all; overflow-wrap: break-word;
+}
+.layout { max-width: 1120px; margin: 0 auto; padding: 0 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 40px; }
+@media (min-width: 960px) { .layout { grid-template-columns: 220px minmax(0, 1fr); padding: 0 32px; } }
+header.top { grid-column: 1 / -1; padding: 48px 0 8px; border-bottom: 1px solid var(--border); }
+header.top h1 { margin: 0 0 8px; font-size: 32px; line-height: 1.3; }
+header.top .meta { color: var(--muted); font-size: 14px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.theme-toggle {
+  margin-left: auto; font: inherit; font-size: 13px; color: var(--text); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px; cursor: pointer;
+}
+nav.toc { display: none; }
+@media (min-width: 960px) {
+  nav.toc { display: block; position: sticky; top: 24px; align-self: start; font-size: 14px; }
+  nav.toc ol { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--border); }
+  nav.toc a { display: block; padding: 4px 0 4px 14px; color: var(--muted); text-decoration: none; margin-left: -1px; border-left: 2px solid transparent; }
+  nav.toc a:hover, nav.toc a.active { color: var(--text); border-left-color: var(--accent); }
+}
+main { min-width: 0; padding-bottom: 80px; }
+main > p:first-child { font-size: 18px; }
+h2 { font-size: 24px; margin: 56px 0 16px; padding-top: 8px; scroll-margin-top: 16px; }
+a { color: var(--accent); }
+code { font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 1px 5px; word-break: break-all; }
+li { margin: 4px 0; }
+li.task { list-style: none; margin-left: -22px; }
+li.task input { margin-right: 6px; }
+.table-wrap { overflow-x: auto; margin: 16px 0; border: 1px solid var(--border); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; line-height: 1.55; }
+th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+th { background: var(--surface); font-weight: 600; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+#features td:first-child, #features td:nth-child(2) { white-space: nowrap; }
+.tag { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; }
+.tag.mvp { color: var(--mvp); background: var(--mvp-soft); }
+.tag.v1 { color: var(--v1); background: var(--v1-soft); }
+.tag.v2 { color: var(--v2); background: var(--v2-soft); }
+.src { font-size: 13px; color: var(--muted); }
+.src.suggested { color: var(--accent); }
+.filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 16px; }
+.filters button {
+  font: inherit; font-size: 13px; color: var(--text); background: var(--bg); border: 1px solid var(--border);
+  border-radius: 999px; padding: 4px 14px; cursor: pointer;
+}
+.filters button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.filters .count { color: var(--muted); font-size: 13px; margin-left: 4px; }
+figure.diagram { margin: 16px 0; padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
+figure.diagram svg { display: block; width: 100%; height: auto; }
+figure.diagram figcaption { color: var(--muted); font-size: 13px; margin-top: 8px; text-align: center; }
+:root[data-theme="dark"] figure.diagram svg .ink { fill: #e6edf3; }
+:root[data-theme="dark"] figure.diagram svg .quiet { fill: #9198a1; }
+:root[data-theme="dark"] figure.diagram svg .edge, :root[data-theme="dark"] figure.diagram svg .box { stroke: #6e7681; }
+:root[data-theme="dark"] figure.diagram svg .arrow { fill: #6e7681; }
+:root[data-theme="dark"] figure.diagram svg .main { fill: rgba(56, 139, 253, 0.15); stroke: #388bfd; }
+:root[data-theme="light"] figure.diagram svg .ink { fill: #1f2328; }
+:root[data-theme="light"] figure.diagram svg .quiet { fill: #59636e; }
+:root[data-theme="light"] figure.diagram svg .edge, :root[data-theme="light"] figure.diagram svg .box { stroke: #8c959f; }
+:root[data-theme="light"] figure.diagram svg .arrow { fill: #8c959f; }
+:root[data-theme="light"] figure.diagram svg .main { fill: rgba(9, 105, 218, 0.12); stroke: #0969da; }
+@media print {
+  nav.toc, .theme-toggle, .filters { display: none !important; }
+  .layout { display: block; }
+  h2 { break-after: avoid; }
+  tr, figure { break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+  <header class="top">
+    <h1>짝꿍 (Jjakkung) 기획서</h1>
+    <div class="meta">
+      <span>docs/plan.md 에서 생성</span>
+      <button type="button" class="theme-toggle" aria-label="밝은 테마와 어두운 테마 전환">테마 전환</button>
+    </div>
+  </header>
+  <nav class="toc" aria-label="목차"><ol><li><a href="#개요">개요</a></li><li><a href="#하루-사용-흐름">하루 사용 흐름</a></li><li><a href="#기능-리스트">기능 리스트</a></li><li><a href="#게임-규칙">게임 규칙</a></li><li><a href="#시스템-구조">시스템 구조</a></li><li><a href="#기술-스택">기술 스택</a></li><li><a href="#설치와-배포">설치와 배포</a></li><li><a href="#개발-단계">개발 단계</a></li><li><a href="#리스크와-정할-것">리스크와 정할 것</a></li><li><a href="#출처">출처</a></li></ol></nav>
+  <main>
+<p>문서 버전 0.1.1 (2026-10-01). 변경 이력은 <a href="../CHANGELOG.md">CHANGELOG</a>에 남긴다.</p>
+<p>화면 위를 돌아다니는 펫이 할 일, 일정, 메모를 같이 챙기고, 내 컴퓨터에 설치된 AI(Claude, Codex)와 연결돼 "같이 보기"로 화면을 보며 대화하는 데스크톱 앱이다. 맥과 윈도우를 동시에 낸다.</p>
+<h2 id="개요">개요</h2>
+<p>일하는 시간을 덜 외롭고 더 재미있게 만드는 것이 목표다. 펫은 귀여운 놀이 상대이면서, 할 일과 일정을 챙기고 AI와 이어 주는 비서 역할을 한다.</p>
+<p><strong>대상 사용자</strong></p>
+<ul>
+<li>하루 대부분을 컴퓨터 앞에서 보내는 직장인과 학생</li>
+<li>Claude Code, Codex 같은 로컬 AI를 이미 쓰는 개발자와 기획자</li>
+<li>할 일 앱을 깔아도 금방 안 보게 되는 사람</li>
+</ul>
+<p><strong>핵심 가치 세 가지</strong></p>
+<ol>
+<li><strong>눈에 보이는 동기</strong>: 할 일을 끝내면 코인이 생기고, 펫이 밥을 먹고 집이 커진다. 해야 할 일이 펫을 돌보는 일로 바뀐다.</li>
+<li><strong>AI가 화면 옆에 산다</strong>: 창을 바꾸지 않고 펫에게 말을 걸거나, 화면 일부를 잘라 "같이 보기"로 물어본다. 내가 이미 쓰는 Claude, Codex를 그대로 쓰므로 따로 API 키가 필요 없다.</li>
+<li><strong>내 펫</strong>: 사진 한 장으로 내 반려동물이나 좋아하는 캐릭터가 펫이 된다. 먹이와 집도 꾸밀 수 있다.</li>
+</ol>
+<p><strong>만들지 않을 것 (처음 범위 밖)</strong></p>
+<ul>
+<li>펫끼리 만나는 온라인 기능, 계정과 서버. 모든 데이터는 내 컴퓨터에 저장한다.</li>
+<li>자체 AI 모델. 이미 설치된 AI를 연결만 한다.</li>
+</ul>
+<h2 id="하루-사용-흐름">하루 사용 흐름</h2>
+<p>펫은 하루 내내 화면 구석에 있고, 필요할 때만 다가온다.</p>
+<ol>
+<li><strong>출근</strong>: 컴퓨터를 켜면 펫이 화면 아래로 걸어 나온다. 말풍선으로 오늘 일정 2건과 마감이 오늘인 할 일 3개를 알려준다.</li>
+<li><strong>오전 작업</strong>: 펫을 클릭해 "회의록 정리"를 할 일로 넣는다. 집중 타이머를 켜면 펫은 옆에서 조용히 잠든다.</li>
+<li><strong>막혔을 때</strong>: 에러 화면을 "같이 보기"로 드래그해서 자른다. 채팅창이 열리고 캡처가 첨부된 채 Claude가 답한다. 답을 메모로 저장하거나 할 일로 바꾼다.</li>
+<li><strong>점심</strong>: 오전에 끝낸 할 일로 받은 코인으로 먹이를 사서 준다. 공을 던지면 펫이 화면을 뛰어다닌다.</li>
+<li><strong>오후 회의</strong>: 화면 공유가 시작되면 펫이 알아서 숨는다. 회의가 끝나면 다시 나온다.</li>
+<li><strong>지칠 때</strong>: 2시간 넘게 쉬지 않았으면 펫이 산책을 조른다. 산책을 누르면 펫이 화면 바닥을 따라 걸으며 스트레칭을 권한다.</li>
+<li><strong>퇴근</strong>: 오늘 끝낸 일과 받은 코인을 보여 주고, 내일로 넘길 할 일을 물어본다. 펫은 집으로 들어가 잔다.</li>
+</ol>
+<h2 id="기능-리스트">기능 리스트</h2>
+<p>50개 기능 중 MVP는 24개다. 출처가 "요청"이면 처음 아이디어에 있던 것, "제안"이면 사용자 입장에서 필요하다고 보고 덧붙인 것이다.</p>
+<div class="filters" role="group" aria-label="우선순위 필터"><button type="button" data-filter="all" aria-pressed="true">전체</button><button type="button" data-filter="mvp" aria-pressed="false">MVP</button><button type="button" data-filter="v1" aria-pressed="false">v1</button><button type="button" data-filter="v2" aria-pressed="false">v2</button><span class="count" aria-live="polite"></span></div><div class="table-wrap"><table id="features">
+<thead>
+<tr>
+<th>영역</th>
+<th>기능</th>
+<th>설명</th>
+<th>출처</th>
+<th>우선순위</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>펫</td>
+<td>화면 위 펫 표시</td>
+<td>투명 창, 항상 위. 펫이 아닌 곳은 클릭이 아래 앱으로 그대로 통과</td>
+<td><span class="src asked">요청</span></td>
+<td data-priority="mvp"><span class="tag mvp">MVP</span></td>
+</tr>
+<tr>
+<td>펫</td>
+<td>드래그와 던지기</td>
+<td>집어서 옮기고, 던지면 떨어지며 튕긴다</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="mvp"><span class="tag mvp">MVP</span></td>
+</tr>
+<tr>
+<td>펫</td>
+<td>크기 조절</td>
+<td>설정 슬라이더와 단축키로 50%~300%</td>
+<td><span class="src asked">요청</span></td>
+<td data-priority="mvp"><span class="tag mvp">MVP</span></td>
+</tr>
+<tr>
+<td>펫</td>
+<td>자율 행동</td>
+<td>걷기, 앉기, 졸기, 하품, 창 위에 올라앉기</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="mvp"><span class="tag mvp">MVP</span></td>
+</tr>
+<tr>
+<td>펫</td>
+<td>사진으로 펫 만들기</td>
+<td>사진 업로드, 로컬에서 배경 제거, 테두리 다듬기</td>
+<td><span class="src asked">요청</span></td>
+<td data-priority="mvp"><span class="tag mvp">MVP</span></td>
+</tr>
+<tr>
+<td>펫</td>
+<td>코드 애니메이션</td>
+<td>통통 튀기, 찌그러짐, 기울기, 그림자로 사진 한 장을 살아 보이게</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="mvp"><span class="tag mvp">MVP</span></td>
+</tr>
+<tr>
+<td>펫</td>
+<td>쓰다듬기 반응</td>
+<td>마우스로 문지르면 하트가 뜨고 기분이 오른다</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="mvp"><span class="tag mvp">MVP</span></td>
+</tr>
+<tr>
+<td>펫</td>
+<td>상태별 포즈 사진</td>
+<td>기쁨, 졸림, 배고픔 사진을 따로 올리면 상태에 맞춰 바뀐다</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="v1"><span class="tag v1">v1</span></td>
+</tr>
+<tr>
+<td>펫</td>
+<td>기본 펫 3종</td>
+<td>사진이 없어도 바로 쓸 수 있는 기본 캐릭터</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="mvp"><span class="tag mvp">MVP</span></td>
+</tr>
+<tr>
+<td>펫</td>
+<td>멀티 모니터</td>
+<td>모니터 사이를 걸어서 넘어간다</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="v1"><span class="tag v1">v1</span></td>
+</tr>
+<tr>
+<td>펫</td>
+<td>방해 금지</td>
+<td>전체 화면, 화면 공유, 발표 중에는 알아서 숨는다</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="mvp"><span class="tag mvp">MVP</span></td>
+</tr>
+<tr>
+<td>펫</td>
+<td>여러 마리</td>
+<td>펫 두 마리 이상을 동시에 띄운다</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="v2"><span class="tag v2">v2</span></td>
+</tr>
+<tr>
+<td>펫</td>
+<td>펫 공유</td>
+<td>내가 만든 펫을 파일 하나로 친구에게 준다</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="v2"><span class="tag v2">v2</span></td>
+</tr>
+<tr>
+<td>놀이</td>
+<td>공놀이</td>
+<td>공을 던지면 쫓아가서 물어온다</td>
+<td><span class="src asked">요청</span></td>
+<td data-priority="v1"><span class="tag v1">v1</span></td>
+</tr>
+<tr>
+<td>놀이</td>
+<td>산책</td>
+<td>화면 바닥을 따라 걷고 산책 시간을 기록</td>
+<td><span class="src asked">요청</span></td>
+<td data-priority="v1"><span class="tag v1">v1</span></td>
+</tr>
+<tr>
+<td>놀이</td>
+<td>휴식 권유</td>
+<td>오래 쉬지 않으면 산책, 물 마시기, 스트레칭을 권한다</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="v1"><span class="tag v1">v1</span></td>
+</tr>
+<tr>
+<td>놀이</td>
+<td>미니 게임</td>
+<td>숨바꼭질 같은 짧은 놀이</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="v2"><span class="tag v2">v2</span></td>
+</tr>
+<tr>
+<td>생산성</td>
+<td>할 일 목록</td>
+<td>추가, 완료, 마감일, 중요 표시</td>
+<td><span class="src asked">요청</span></td>
+<td data-priority="mvp"><span class="tag mvp">MVP</span></td>
+</tr>
+<tr>
+<td>생산성</td>
+<td>빠른 입력</td>
+<td>전역 단축키로 어디서든 한 줄 입력해 할 일이나 메모로 저장</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="mvp"><span class="tag mvp">MVP</span></td>
+</tr>
+<tr>
+<td>생산성</td>
+<td>메모와 노트</td>
+<td>마크다운 메모, 펫을 눌러 바로 연다</td>
+<td><span class="src asked">요청</span></td>
+<td data-priority="mvp"><span class="tag mvp">MVP</span></td>
+</tr>
+<tr>
+<td>생산성</td>
+<td>일정 입력과 알림</td>
+<td>시간이 되면 펫이 말풍선으로 알린다</td>
+<td><span class="src asked">요청</span></td>
+<td data-priority="v1"><span class="tag v1">v1</span></td>
+</tr>
+<tr>
+<td>생산성</td>
+<td>오늘 브리핑</td>
+<td>출근 시 오늘 일정과 마감 할 일을 요약</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="v1"><span class="tag v1">v1</span></td>
+</tr>
+<tr>
+<td>생산성</td>
+<td>집중 타이머</td>
+<td>25분 집중, 5분 휴식. 집중 중엔 펫이 조용히 자고, 끝내면 코인</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="v1"><span class="tag v1">v1</span></td>
+</tr>
+<tr>
+<td>생산성</td>
+<td>반복 할 일</td>
+<td>매일, 매주 반복되는 할 일</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="v1"><span class="tag v1">v1</span></td>
+</tr>
+<tr>
+<td>생산성</td>
+<td>구글 캘린더 연동</td>
+<td>일정 읽기부터, 이후 쓰기까지</td>
+<td><span class="src asked">요청</span></td>
+<td data-priority="v2"><span class="tag v2">v2</span></td>
+</tr>
+<tr>
+<td>생산성</td>
+<td>하루 회고</td>
+<td>퇴근 때 끝낸 일 요약, 못 끝낸 일은 내일로 넘기기</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="v2"><span class="tag v2">v2</span></td>
+</tr>
+<tr>
+<td>AI</td>
+<td>로컬 AI 감지</td>
+<td>claude, codex 설치 여부와 로그인 상태를 확인하고 고른다</td>
+<td><span class="src asked">요청</span></td>
+<td data-priority="mvp"><span class="tag mvp">MVP</span></td>
+</tr>
+<tr>
+<td>AI</td>
+<td>채팅</td>
+<td>펫 옆 채팅창, 답변이 실시간으로 흘러나온다</td>
+<td><span class="src asked">요청</span></td>
+<td data-priority="mvp"><span class="tag mvp">MVP</span></td>
+</tr>
+<tr>
+<td>AI</td>
+<td>같이 보기</td>
+<td>화면 영역을 드래그로 캡처해 채팅에 첨부</td>
+<td><span class="src asked">요청</span></td>
+<td data-priority="mvp"><span class="tag mvp">MVP</span></td>
+</tr>
+<tr>
+<td>AI</td>
+<td>AI로 정리</td>
+<td>메모를 할 일로 쪼개기, 회의 메모 요약</td>
+<td><span class="src asked">요청</span></td>
+<td data-priority="v1"><span class="tag v1">v1</span></td>
+</tr>
+<tr>
+<td>AI</td>
+<td>펫 MCP 서버</td>
+<td>Claude Code나 Codex에서 "펫 할 일에 넣어줘"가 된다</td>
+<td><span class="src asked">요청</span></td>
+<td data-priority="v1"><span class="tag v1">v1</span></td>
+</tr>
+<tr>
+<td>AI</td>
+<td>외부 MCP 활용</td>
+<td>CLI에 이미 설정된 MCP(노션, 슬랙 등)를 그대로 쓴다</td>
+<td><span class="src asked">요청</span></td>
+<td data-priority="v2"><span class="tag v2">v2</span></td>
+</tr>
+<tr>
+<td>AI</td>
+<td>펫 성격과 말투</td>
+<td>존댓말, 반말, 성격 프리셋</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="v1"><span class="tag v1">v1</span></td>
+</tr>
+<tr>
+<td>AI</td>
+<td>대화 기록</td>
+<td>대화를 저장하고 검색</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="v1"><span class="tag v1">v1</span></td>
+</tr>
+<tr>
+<td>AI</td>
+<td>보내기 전 확인</td>
+<td>캡처를 AI에 보내기 전 미리보기와 확인. 민감한 화면 실수 방지</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="mvp"><span class="tag mvp">MVP</span></td>
+</tr>
+<tr>
+<td>AI</td>
+<td>AI 없이도 동작</td>
+<td>AI가 설치되지 않아도 나머지 기능은 모두 쓸 수 있다</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="mvp"><span class="tag mvp">MVP</span></td>
+</tr>
+<tr>
+<td>게임</td>
+<td>코인</td>
+<td>할 일 완료, 집중 타이머 완료로 받는다</td>
+<td><span class="src asked">요청</span></td>
+<td data-priority="mvp"><span class="tag mvp">MVP</span></td>
+</tr>
+<tr>
+<td>게임</td>
+<td>밥 주기</td>
+<td>배고픔 수치, 코인으로 산 먹이를 준다</td>
+<td><span class="src asked">요청</span></td>
+<td data-priority="mvp"><span class="tag mvp">MVP</span></td>
+</tr>
+<tr>
+<td>게임</td>
+<td>커스텀 먹이</td>
+<td>사진을 올려 나만의 먹이 아이템을 만든다</td>
+<td><span class="src asked">요청</span></td>
+<td data-priority="v1"><span class="tag v1">v1</span></td>
+</tr>
+<tr>
+<td>게임</td>
+<td>집 업그레이드</td>
+<td>단계별 집, 화면 구석에 놓인다</td>
+<td><span class="src asked">요청</span></td>
+<td data-priority="v1"><span class="tag v1">v1</span></td>
+</tr>
+<tr>
+<td>게임</td>
+<td>상점</td>
+<td>먹이, 장난감, 집 꾸미기 아이템</td>
+<td><span class="src asked">요청</span></td>
+<td data-priority="v1"><span class="tag v1">v1</span></td>
+</tr>
+<tr>
+<td>게임</td>
+<td>연속 기록과 업적</td>
+<td>7일 연속 달성 같은 기록</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="v2"><span class="tag v2">v2</span></td>
+</tr>
+<tr>
+<td>게임</td>
+<td>벌주지 않기</td>
+<td>며칠 안 켜도 펫이 아프거나 떠나지 않는다</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="mvp"><span class="tag mvp">MVP</span></td>
+</tr>
+<tr>
+<td>앱</td>
+<td>트레이 아이콘</td>
+<td>숨기기, 다시 보이기, 설정 열기</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="mvp"><span class="tag mvp">MVP</span></td>
+</tr>
+<tr>
+<td>앱</td>
+<td>로그인 시 자동 실행</td>
+<td>컴퓨터를 켜면 펫도 같이 켜진다</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="mvp"><span class="tag mvp">MVP</span></td>
+</tr>
+<tr>
+<td>앱</td>
+<td>자동 업데이트</td>
+<td>새 버전을 알아서 받는다</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="v1"><span class="tag v1">v1</span></td>
+</tr>
+<tr>
+<td>앱</td>
+<td>백업과 옮기기</td>
+<td>데이터를 파일로 내보내 다른 PC로 옮긴다</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="v2"><span class="tag v2">v2</span></td>
+</tr>
+<tr>
+<td>앱</td>
+<td>다국어</td>
+<td>한국어, 영어</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="v2"><span class="tag v2">v2</span></td>
+</tr>
+<tr>
+<td>앱</td>
+<td>첫 실행 안내</td>
+<td>권한(화면 기록) 안내와 펫 만들기 튜토리얼</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="mvp"><span class="tag mvp">MVP</span></td>
+</tr>
+<tr>
+<td>앱</td>
+<td>가벼운 실행</td>
+<td>가만히 있을 때 CPU 1% 이하를 목표로 한다</td>
+<td><span class="src suggested">제안</span></td>
+<td data-priority="mvp"><span class="tag mvp">MVP</span></td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="게임-규칙">게임 규칙</h2>
+<p>코인은 일을 끝낼 때만 생기고, 펫을 돌보는 데만 쓴다. 펫은 방치해도 아프거나 떠나지 않는다. 죄책감이 아니라 보상으로 움직이게 하려는 것이다.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>구분</th>
+<th>항목</th>
+<th>초안 값</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>획득</td>
+<td>할 일 1개 완료</td>
+<td>10코인 (하루 최대 20개까지)</td>
+</tr>
+<tr>
+<td>획득</td>
+<td>집중 타이머 1회</td>
+<td>5코인</td>
+</tr>
+<tr>
+<td>획득</td>
+<td>마감 전 완료</td>
+<td>+5코인</td>
+</tr>
+<tr>
+<td>획득</td>
+<td>산책, 휴식 권유 따르기</td>
+<td>3코인</td>
+</tr>
+<tr>
+<td>소비</td>
+<td>기본 먹이</td>
+<td>5코인</td>
+</tr>
+<tr>
+<td>소비</td>
+<td>커스텀 먹이 만들기</td>
+<td>50코인 (한 번)</td>
+</tr>
+<tr>
+<td>소비</td>
+<td>장난감</td>
+<td>30~100코인</td>
+</tr>
+<tr>
+<td>소비</td>
+<td>집 업그레이드</td>
+<td>단계별 200, 500, 1,000코인</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>펫 상태 수치</strong> (0~100)</p>
+<ul>
+<li><strong>배부름</strong>: 시간이 지나면 천천히 줄고, 먹이로 채운다. 낮아도 배고픈 표정만 짓는다.</li>
+<li><strong>기분</strong>: 쓰다듬기, 놀이, 할 일 완료로 오른다.</li>
+<li><strong>친밀도</strong>: 계속 쌓이기만 하고 줄지 않는다. 단계마다 새 동작이나 대사가 열린다.</li>
+</ul>
+<p>코인 값은 초안이다. 할 일을 잘게 쪼개 코인을 버는 것을 막으려고 하루 상한을 두었다.</p>
+<h2 id="시스템-구조">시스템 구조</h2>
+<figure class="diagram"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 400" role="img" aria-label="앱 본체 하나가 화면 창, 로컬 AI, 외부 도구를 잇는다" font-family="-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif" font-size="13">
+  <style>
+    .ink { fill: #1f2328; }
+    .quiet { fill: #59636e; }
+    .edge { stroke: #8c959f; }
+    .arrow { fill: #8c959f; }
+    .box { fill: none; stroke: #8c959f; stroke-width: 1.25; }
+    .main { fill: rgba(9, 105, 218, 0.12); stroke: #0969da; stroke-width: 2; }
+    @media (prefers-color-scheme: dark) {
+      .ink { fill: #e6edf3; }
+      .quiet { fill: #9198a1; }
+      .edge { stroke: #6e7681; }
+      .arrow { fill: #6e7681; }
+      .box { stroke: #6e7681; }
+      .main { fill: rgba(56, 139, 253, 0.15); stroke: #388bfd; }
+    }
+  </style>
+  <defs>
+    <marker id="arch-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path class="arrow" d="M0 0L10 5L0 10z"/>
+    </marker>
+  </defs>
+
+  <text class="ink" x="36" y="34" font-size="15" font-weight="600">앱 본체 하나가 화면 창, 로컬 AI, 외부 도구를 잇는다</text>
+
+  <g class="edge" fill="none" stroke-width="1.25">
+    <path d="M144 136V184" marker-start="url(#arch-arrow)" marker-end="url(#arch-arrow)"/>
+    <path d="M380 136V184" marker-start="url(#arch-arrow)" marker-end="url(#arch-arrow)"/>
+    <path d="M616 136V184" marker-start="url(#arch-arrow)" marker-end="url(#arch-arrow)"/>
+    <path d="M144 256V304" marker-start="url(#arch-arrow)" marker-end="url(#arch-arrow)"/>
+    <path d="M380 304V256" marker-end="url(#arch-arrow)"/>
+    <path d="M616 256V304" marker-start="url(#arch-arrow)" marker-end="url(#arch-arrow)"/>
+  </g>
+
+  <!-- 화면 계층 -->
+  <rect class="box" x="36" y="64" width="216" height="72" rx="8"/>
+  <text class="ink" x="144" y="88" text-anchor="middle" font-weight="600">펫 창</text>
+  <text class="quiet" x="144" y="108" text-anchor="middle" font-size="11.5">모니터마다 투명 창 하나</text>
+  <text class="quiet" x="144" y="124" text-anchor="middle" font-size="11.5">클릭 통과, 펫 그리기</text>
+
+  <rect class="box" x="272" y="64" width="216" height="72" rx="8"/>
+  <text class="ink" x="380" y="88" text-anchor="middle" font-weight="600">패널 창</text>
+  <text class="quiet" x="380" y="108" text-anchor="middle" font-size="11.5">채팅, 할 일, 메모, 설정</text>
+  <text class="quiet" x="380" y="124" text-anchor="middle" font-size="11.5">React 화면</text>
+
+  <rect class="box" x="508" y="64" width="216" height="72" rx="8"/>
+  <text class="ink" x="616" y="88" text-anchor="middle" font-weight="600">캡처 오버레이</text>
+  <text class="quiet" x="616" y="108" text-anchor="middle" font-size="11.5">같이 보기 영역 선택</text>
+  <text class="quiet" x="616" y="124" text-anchor="middle" font-size="11.5">보내기 전 미리보기</text>
+
+  <text class="quiet" x="388" y="164" font-size="11.5">IPC</text>
+
+  <!-- 앱 본체 -->
+  <rect class="main" x="36" y="184" width="688" height="72" rx="8"/>
+  <text class="ink" x="380" y="208" text-anchor="middle" font-weight="600">앱 본체 (Electron main 프로세스)</text>
+  <text class="ink" x="380" y="228" text-anchor="middle" font-size="11.5">상태와 게임 규칙, SQLite 저장, 화면 캡처, 알림, 트레이</text>
+  <text class="ink" x="380" y="244" text-anchor="middle" font-size="11.5">AI 어댑터(CLI 실행), 펫 MCP 서버, 캘린더 동기화</text>
+
+  <text class="quiet" x="152" y="284" font-size="11.5">실행, 답변 스트림</text>
+  <text class="quiet" x="388" y="284" font-size="11.5">MCP 요청</text>
+  <text class="quiet" x="624" y="284" font-size="11.5">일정 동기화</text>
+
+  <!-- 바깥 -->
+  <rect class="box" x="36" y="304" width="216" height="72" rx="8"/>
+  <text class="ink" x="144" y="328" text-anchor="middle" font-weight="600">로컬 AI CLI</text>
+  <text class="quiet" x="144" y="348" text-anchor="middle" font-size="11.5">claude, codex</text>
+  <text class="quiet" x="144" y="364" text-anchor="middle" font-size="11.5">사용자 계정 그대로</text>
+
+  <rect class="box" x="272" y="304" width="216" height="72" rx="8"/>
+  <text class="ink" x="380" y="328" text-anchor="middle" font-weight="600">외부 AI 도구</text>
+  <text class="quiet" x="380" y="348" text-anchor="middle" font-size="11.5">Claude Code, Codex 등</text>
+  <text class="quiet" x="380" y="364" text-anchor="middle" font-size="11.5">펫에 할 일 넣기</text>
+
+  <rect class="box" x="508" y="304" width="216" height="72" rx="8"/>
+  <text class="ink" x="616" y="328" text-anchor="middle" font-weight="600">구글 캘린더</text>
+  <text class="quiet" x="616" y="348" text-anchor="middle" font-size="11.5">OAuth 로그인</text>
+  <text class="quiet" x="616" y="364" text-anchor="middle" font-size="11.5">v2에서 연결</text>
+</svg>
+<figcaption>시스템 구조, 3개 층</figcaption></figure>
+<p>앱 본체 하나가 모든 연결을 맡는다. 화면 창들은 본체와만 이야기하고, 펫 MCP 서버가 있어서 Claude Code 같은 외부 도구도 펫에 할 일을 넣을 수 있다.</p>
+<h2 id="기술-스택">기술 스택</h2>
+<p><strong>Electron + TypeScript로 간다.</strong> 펫 앱의 핵심인 "펫이 아닌 투명한 곳만 클릭 통과"를 맥과 윈도우 모두에서 공식 API로 지원하는 후보는 Electron 하나뿐이었다. 대가는 설치 파일 80MB 이상과 더 큰 메모리다. 2순위는 Tauri v2다.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>후보</th>
+<th>최신 버전 (2026-10-01 확인)</th>
+<th>투명 영역 클릭 통과</th>
+<th>MCP SDK 언어</th>
+<th>판단</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="https://releases.electronjs.org/">Electron</a></td>
+<td>44.5.1</td>
+<td><code>setIgnoreMouseEvents(true, {forward: true})</code>를 맥, 윈도우에서 공식 지원</td>
+<td>TypeScript (Tier 1)</td>
+<td><strong>채택</strong></td>
+</tr>
+<tr>
+<td><a href="https://v2.tauri.app/release/tauri/">Tauri v2</a></td>
+<td>2.12.0</td>
+<td>창 전체 단위만. 투명 영역만 통과하려면 커서 위치를 계속 검사하는 우회 코드 필요</td>
+<td>Rust (Tier 1)</td>
+<td>2순위</td>
+</tr>
+<tr>
+<td><a href="https://github.com/wailsapp/wails/releases">Wails</a></td>
+<td>v2.14.0, v3는 베타</td>
+<td>v3에 있으나 이벤트 전달은 확인 못 함</td>
+<td>Go (Tier 1)</td>
+<td>베타라 제외</td>
+</tr>
+<tr>
+<td><a href="https://github.com/blackboardsh/electrobun">Electrobun</a></td>
+<td>v2.0.2</td>
+<td>웹뷰 단위 통과만 확인</td>
+<td>TypeScript</td>
+<td>제외</td>
+</tr>
+<tr>
+<td>Flutter</td>
+<td>3.x</td>
+<td>플러그인(window_manager)에 의존</td>
+<td>공식 Dart SDK 없음</td>
+<td>제외</td>
+</tr>
+<tr>
+<td><a href="https://docs.avaloniaui.net/docs/how-to/window-how-to">Avalonia</a></td>
+<td>11~12</td>
+<td>문서에 미지원으로 명시</td>
+<td>C# (Tier 1)</td>
+<td>제외</td>
+</tr>
+<tr>
+<td>Qt</td>
+<td>6.10</td>
+<td>창 전체만 통과</td>
+<td>공식 C++ SDK 없음</td>
+<td>제외</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Electron을 고른 근거</strong></p>
+<ol>
+<li><strong>클릭 통과가 공식 기능이다.</strong> Tauri는 같은 기능 요청(<a href="https://github.com/tauri-apps/tauri/issues/2090">#2090</a>)에 16ms마다 픽셀을 검사하는 우회책만 있다. 2026-08에는 데스크톱 펫 개발사가 클릭 통과를 켜고 끌 때 윈도우 10 화면이 검게 변하는 버그(<a href="https://github.com/tauri-apps/tauri/issues/15947">#15947</a>)를 올렸고 아직 열려 있다.</li>
+<li><strong>두 OS가 같은 브라우저 엔진을 쓴다.</strong> Electron은 Chromium을 함께 묶는다. 배경 제거 모델(ONNX, WASM), 캡처, 애니메이션을 한 번만 검증하면 된다. Tauri는 맥 WKWebView와 윈도우 WebView2를 따로 확인해야 하고, 맥에서 DMG로 묶으면 투명 창이 흰 창이 되는 버그(<a href="https://github.com/tauri-apps/tauri/issues/13415">#13415</a>)도 있다.</li>
+<li><strong>필요한 것이 다 들어 있다.</strong> 영역 캡처(desktopCapturer), 맥 화면 기록 권한 확인, CLI 실행(Node child_process), 트레이, 전역 단축키가 모두 기본 기능이다.</li>
+<li><strong>MCP 서버를 같은 언어로 넣는다.</strong> MCP 공식 TypeScript SDK를 앱 본체에 그대로 올린다.</li>
+<li><strong>실제 펫 앱이 있다.</strong> Electron으로 만든 데스크톱 펫(Zpet, Clawd 등)이 같은 구조(투명, 항상 위, 펫 밖 클릭 통과)로 돌아간다.</li>
+</ol>
+<p><strong>대가와 대응</strong></p>
+<ul>
+<li>크기: 비교 글 기준 Hello World 앱이 Electron 85MB, Tauri 3.2MB다(<a href="https://tech-insider.org/tauri-vs-electron-2026/">출처</a>). 펫 앱 용도에서는 감수한다.</li>
+<li>윈도우 이벤트 전달 버그(<a href="https://github.com/electron/electron/issues/30808">#30808</a>, <a href="https://github.com/electron/electron/issues/48035">#48035</a>)가 열려 있다. 0단계에서 윈도우 10과 11 실기기로 확인하고, 안 되면 커서 위치 검사 방식으로 바꾼다.</li>
+<li>맥 여러 모니터: "디스플레이마다 별도 Spaces" 설정에서는 창이 한 화면에 묶인다. 모니터마다 투명 창을 하나씩 두는 구조로 설계한다.</li>
+</ul>
+<p><strong>초안 구성</strong></p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>역할</th>
+<th>선택</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>앱 껍데기</td>
+<td>Electron</td>
+</tr>
+<tr>
+<td>언어</td>
+<td>TypeScript</td>
+</tr>
+<tr>
+<td>화면 (채팅, 할 일, 설정)</td>
+<td>React + Vite</td>
+</tr>
+<tr>
+<td>펫 그리기</td>
+<td>Canvas 2D로 시작, 무거워지면 PixiJS</td>
+</tr>
+<tr>
+<td>저장</td>
+<td>SQLite (로컬 파일 하나)</td>
+</tr>
+<tr>
+<td>배경 제거</td>
+<td>ONNX Runtime Web 기반 모델 (라이선스 확인 후 확정)</td>
+</tr>
+<tr>
+<td>MCP</td>
+<td>공식 TypeScript SDK</td>
+</tr>
+<tr>
+<td>패키징과 업데이트</td>
+<td>electron-builder, GitHub Releases</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="설치와-배포">설치와 배포</h2>
+<p>맥은 dmg, 윈도우는 exe 설치 파일로 내고, GitHub Releases에 올려 자동 업데이트한다. npm은 개발자가 아닌 사용자가 쓰지 않으므로 제외한다.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>항목</th>
+<th>맥</th>
+<th>윈도우</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>설치 파일</td>
+<td>dmg (애플 실리콘, 인텔 둘 다)</td>
+<td>exe (NSIS 설치기)</td>
+</tr>
+<tr>
+<td>빌드 위치</td>
+<td>GitHub Actions 맥 러너</td>
+<td>GitHub Actions 윈도우 러너</td>
+</tr>
+<tr>
+<td>서명</td>
+<td>Apple Developer ID 서명과 공증(유료 개발자 계정 필요)</td>
+<td>코드 서명 인증서(유료)</td>
+</tr>
+<tr>
+<td>서명 없을 때</td>
+<td>"확인되지 않은 개발자" 차단, 우클릭 열기 안내 필요</td>
+<td>SmartScreen 경고, "추가 정보, 실행" 안내 필요</td>
+</tr>
+<tr>
+<td>권한</td>
+<td>화면 기록(같이 보기), 알림</td>
+<td>특별한 권한 없음</td>
+</tr>
+<tr>
+<td>자동 실행</td>
+<td>로그인 항목</td>
+<td>시작 프로그램</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>배포 순서</strong></p>
+<ol>
+<li>베타는 서명 없이 지인에게 나눈다. 설치 안내문에 경고 창 넘기는 법을 그림으로 넣는다.</li>
+<li>공개 전에 맥 공증부터 붙인다. 맥은 경고를 넘기는 과정이 더 길어 이탈이 크다.</li>
+<li>개발자 사용자를 위해 Homebrew cask, winget 등록은 이후에 검토한다.</li>
+</ol>
+<p>맥 App Store와 Microsoft Store는 처음 범위에서 뺀다. 항상 위 투명 창, 화면 캡처, 외부 CLI 실행이 스토어 샌드박스 제약에 걸릴 가능성이 커서 따로 확인이 필요하다.</p>
+<h2 id="개발-단계">개발 단계</h2>
+<p>기능보다 먼저 "두 OS에서 어려운 세 가지가 되는가"를 확인한다. 여기서 막히면 기술 스택을 바꾼다.</p>
+<ol>
+<li><strong>0단계, 기술 검증</strong>: 투명 창 클릭 통과, 영역 캡처, claude/codex 실행과 답변 받기.<ul>
+<li>완료 기준: 맥과 윈도우 둘 다에서 세 가지가 동작한다.</li>
+</ul>
+</li>
+<li><strong>1단계, 펫</strong>: 화면 표시, 드래그, 크기 조절, 자율 행동, 사진으로 펫 만들기, 방해 금지.<ul>
+<li>완료 기준: 아무 사진 10장을 넣어 보고 8장 이상이 자연스럽게 나온다. 하루 켜 둬도 일을 방해하지 않는다.</li>
+</ul>
+</li>
+<li><strong>2단계, 할 일과 코인</strong>: 할 일, 메모, 빠른 입력, 코인, 밥 주기.<ul>
+<li>완료 기준: 내가 일주일 동안 실제 할 일 앱으로 쓴다.</li>
+</ul>
+</li>
+<li><strong>3단계, AI</strong>: 로컬 AI 감지, 채팅, 같이 보기, 보내기 전 확인.<ul>
+<li>완료 기준: 캡처부터 답변 첫 글자까지 기다리는 시간을 재서 남긴다.</li>
+</ul>
+</li>
+<li><strong>4단계, MVP 베타</strong>: 설치 파일, 첫 실행 안내, 트레이, 자동 실행. 지인 5~10명에게 배포한다.<ul>
+<li>완료 기준: 두 OS에서 설치 파일만으로 설치하고 실행된다.</li>
+</ul>
+</li>
+<li><strong>5단계, v1</strong>: 공놀이, 산책, 일정과 알림, 집중 타이머, 상점, 집, 커스텀 먹이, 펫 MCP 서버, 자동 업데이트.</li>
+<li><strong>6단계, v2</strong>: 구글 캘린더, 외부 MCP, 여러 마리, 펫 공유, 업적, 백업, 다국어.</li>
+</ol>
+<h2 id="리스크와-정할-것">리스크와 정할 것</h2>
+<p>가장 큰 위험은 투명 창 클릭 통과가 맥과 윈도우에서 다르게 동작하는 것이다. 0단계에서 가장 먼저 확인한다.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>위험</th>
+<th>영향</th>
+<th>대응</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>클릭 통과 동작이 OS마다 다름</td>
+<td>펫 뒤 앱을 눌러도 안 눌리거나 펫을 못 잡는다</td>
+<td>0단계에서 두 OS 실측. 안 되면 스택 교체</td>
+</tr>
+<tr>
+<td>맥 화면 기록 권한</td>
+<td>권한이 없으면 같이 보기가 빈 화면을 찍는다</td>
+<td>첫 실행 안내에서 설정 화면으로 바로 보내기</td>
+</tr>
+<tr>
+<td>회사 보안 프로그램</td>
+<td>캡처나 항상 위 창을 막을 수 있다</td>
+<td>기능별로 꺼도 나머지가 돌게 만든다</td>
+</tr>
+<tr>
+<td>CLI 출력 형식 변경</td>
+<td>claude, codex 업데이트로 연동이 깨진다</td>
+<td>AI마다 어댑터를 따로 두고 버전을 기록</td>
+</tr>
+<tr>
+<td>민감한 화면 전송</td>
+<td>회사 자료가 AI로 나간다</td>
+<td>보내기 전 미리보기와 확인을 기본값으로</td>
+</tr>
+<tr>
+<td>서명 없는 설치 파일</td>
+<td>두 OS 모두 경고 창이 떠서 설치를 포기한다</td>
+<td>베타는 설치 안내문으로, 공개 전 서명</td>
+</tr>
+<tr>
+<td>배경 제거 품질</td>
+<td>털이나 어두운 배경에서 지저분해진다</td>
+<td>수동 다듬기 도구(지우개, 복원) 제공</td>
+</tr>
+<tr>
+<td>맥에서만 개발</td>
+<td>윈도우 문제를 늦게 발견한다</td>
+<td>윈도우 테스트 환경을 0단계 전에 마련</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>정할 것</strong></p>
+<ul>
+<li class="task"><input type="checkbox" checked disabled> 앱 이름과 레포 이름: <strong>짝꿍 (Jjakkung)</strong>, 레포 <code>jjakkung</code>. 학교 옆자리 친구처럼 옆에서 같이 일하는 펫이라는 뜻이다.</li>
+<li class="task"><input type="checkbox" disabled> 윈도우 테스트 환경: 맥에 가상 머신, 별도 윈도우 PC, CI 빌드 중 무엇으로 할지</li>
+<li class="task"><input type="checkbox" disabled> 기술 스택 최종 결정 (위 비교 참고)</li>
+<li class="task"><input type="checkbox" disabled> 오픈소스로 공개할지, 라이선스</li>
+<li class="task"><input type="checkbox" disabled> 코드 서명 비용을 언제부터 낼지</li>
+<li class="task"><input type="checkbox" disabled> 기본 펫 3종 그림을 누가 어떻게 만들지</li>
+</ul>
+<h2 id="출처">출처</h2>
+<ul>
+<li><a href="https://releases.electronjs.org/">Electron 릴리스</a>, <a href="https://www.electronjs.org/docs/latest/api/browser-window">BrowserWindow API</a>, <a href="https://electronjs.org/docs/api/desktop-capturer">desktopCapturer</a></li>
+<li><a href="https://v2.tauri.app/release/tauri/">Tauri 릴리스</a>, <a href="https://v2.tauri.app/reference/config/">Tauri 설정 참조</a>, <a href="https://github.com/tauri-apps/tauri/issues/10564">Tauri #10564</a></li>
+<li><a href="https://modelcontextprotocol.io/docs/sdk">MCP SDK 목록</a></li>
+<li><a href="https://img.ly/blog/browser-background-removal-using-onnx-runtime-webgpu/">브라우저 배경 제거 (ONNX Runtime Web)</a></li>
+<li><a href="https://macmost.com/macs-with-two-displays-choose-windows-across-displays-or-separate-spaces.html">맥 디스플레이별 Spaces 설정</a></li>
+<li>펫 앱 사례: <a href="https://github.com/SeakMengs/WindowPet">WindowPet (Tauri)</a>, <a href="https://github.com/carus10/Zpet">Zpet (Electron)</a>, <a href="https://github.com/KebeliSamet0/clawd">Clawd (Electron)</a></li>
+</ul>
+  </main>
+</div>
+<script>
+(() => {
+  const root = document.documentElement;
+  const key = "plan-theme";
+  try { const saved = localStorage.getItem(key); if (saved) root.dataset.theme = saved; } catch (e) {}
+  document.querySelector(".theme-toggle").addEventListener("click", () => {
+    const current = root.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    const next = current === "dark" ? "light" : "dark";
+    root.dataset.theme = next;
+    try { localStorage.setItem(key, next); } catch (e) {}
+  });
+
+  const table = document.getElementById("features");
+  const bar = document.querySelector(".filters");
+  if (table && bar) {
+    const rows = [...table.tBodies[0].rows];
+    const count = bar.querySelector(".count");
+    const apply = (f) => {
+      let shown = 0;
+      rows.forEach((r) => {
+        const p = r.querySelector("[data-priority]")?.dataset.priority;
+        const on = f === "all" || p === f;
+        r.hidden = !on;
+        if (on) shown++;
+      });
+      count.textContent = shown + "개";
+      bar.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.filter === f)));
+    };
+    bar.addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) apply(b.dataset.filter); });
+    apply("all");
+  }
+
+  const links = [...document.querySelectorAll("nav.toc a")];
+  if (links.length && "IntersectionObserver" in window) {
+    const byId = new Map(links.map((a) => [decodeURIComponent(a.hash.slice(1)), a]));
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((en) => {
+        if (en.isIntersecting) {
+          links.forEach((a) => a.classList.remove("active"));
+          byId.get(en.target.id)?.classList.add("active");
+        }
+      });
+    }, { rootMargin: "0px 0px -70% 0px" });
+    document.querySelectorAll("main h2[id]").forEach((h) => io.observe(h));
+  }
+})();
+</script>
+</body>
+</html>
