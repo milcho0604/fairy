@@ -7,10 +7,11 @@ import { settings } from './settings.ts';
 export interface SettingsWindowOptions {
   scale: () => number;
   setScale: (scale: number) => void;
+  openMaker: () => void;
 }
 
 /** 설정 창 (P1-12). 열 때 만들고 닫으면 없앤다 (L6). */
-export function createSettingsWindow({ scale, setScale }: SettingsWindowOptions) {
+export function createSettingsWindow({ scale, setScale, openMaker }: SettingsWindowOptions) {
   let win: BrowserWindow | undefined;
   const fromSettings = (e: IpcMainEvent | IpcMainInvokeEvent) => !!win && e.sender === win.webContents;
 
@@ -30,6 +31,9 @@ export function createSettingsWindow({ scale, setScale }: SettingsWindowOptions)
   );
   ipcMain.on(SETTINGS.setScale, (e, next: number) => {
     if (fromSettings(e) && typeof next === 'number') setScale(next);
+  });
+  ipcMain.on(SETTINGS.openMaker, (e) => {
+    if (fromSettings(e)) openMaker();
   });
   settings.onChange((next) => {
     if (win && !win.isDestroyed()) win.webContents.send(SETTINGS.changed, next);

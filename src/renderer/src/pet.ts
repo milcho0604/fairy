@@ -80,6 +80,7 @@ function frame() {
     viewSize,
     activity: activityPose(now),
     hungry: inputs.hungry,
+    photo,
   });
 
   const walking = activity?.type === 'walk';
@@ -125,6 +126,22 @@ function activityPose(now: number) {
   if (activity.type === 'look') return { type: 'look' as const, dir: activity.dir };
   return { type: 'sit' as const };
 }
+
+// 사진 펫 그림 (P1-08). 없으면 기본 펫.
+let photo: HTMLImageElement | undefined;
+bridge.onImage((dataUrl) => {
+  if (!dataUrl) {
+    photo = undefined;
+    requestFrame();
+    return;
+  }
+  const img = new Image();
+  img.onload = () => {
+    photo = img;
+    requestFrame();
+  };
+  img.src = dataUrl;
+});
 
 bridge.onStatus((status) => setInputs({ hungry: status.hungry }));
 // 할 일을 끝내거나 밥을 먹으면 신나서 통통 튄다.

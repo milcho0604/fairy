@@ -81,6 +81,20 @@ export function SettingsApp() {
             </small>
           </label>
 
+          <div className="field">
+            <span>모습</span>
+            <div className="row">
+              <button type="button" className="ghost" onClick={() => bridge.openMaker()}>
+                {s.petImage ? '사진 펫 바꾸기' : '사진으로 펫 만들기'}
+              </button>
+            </div>
+            <small>
+              {s.petImage
+                ? '지금은 사진으로 만든 펫이야. 기본 펫으로 돌아가기도 거기서 해.'
+                : '반려동물이나 인형 사진 한 장으로 펫을 바꿀 수 있어.'}
+            </small>
+          </div>
+
           <label className="field">
             <span>
               크기 <b>{Math.round(scale * 100)}%</b>

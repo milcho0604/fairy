@@ -35,3 +35,12 @@ test('바꾸기는 준 값만, 틀린 값은 지금 값을 지킨다', () => {
   assert.deepEqual(applyPatch(now, { petName: '', chatter: 'nope' }), now);
   assert.deepEqual(applyPatch(now, { petName: ' 콩 ' }), { ...now, petName: '콩' });
 });
+
+test('사진 펫 파일 이름은 pets 폴더 안 이름만, 비우면 기본 펫', () => {
+  assert.equal(parseSettings({ petImage: 'pet-123.png' }).petImage, 'pet-123.png');
+  assert.equal(parseSettings({ petImage: '../../etc/passwd' }).petImage, undefined);
+  assert.equal(parseSettings({ petImage: '/tmp/pet-1.png' }).petImage, undefined);
+  const withPet = { ...DEFAULT_SETTINGS, petImage: 'pet-1.png' };
+  assert.equal(applyPatch(withPet, { petImage: null }).petImage, undefined);
+  assert.equal(applyPatch(withPet, { petImage: 'x.png' }).petImage, 'pet-1.png');
+});

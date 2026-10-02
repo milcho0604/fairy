@@ -10,6 +10,8 @@ import {
   type GestureEvent,
   IPC,
   LOOK,
+  MAKER,
+  type MakerBridge,
   type OutgoingImage,
   type OverlayBridge,
   PANEL,
@@ -61,6 +63,9 @@ if (kind === 'pet') {
     onReact: (listener) => {
       ipcRenderer.on(IPC.react, (_e, kind: 'happy') => listener(kind));
     },
+    onImage: (listener) => {
+      ipcRenderer.on(IPC.image, (_e, dataUrl: string | null) => listener(dataUrl));
+    },
   };
   contextBridge.exposeInMainWorld('jjakkung', pet);
 }
@@ -105,6 +110,7 @@ if (kind === 'settings') {
     get: () => ipcRenderer.invoke(SETTINGS.get),
     set: (patch) => ipcRenderer.invoke(SETTINGS.set, patch),
     setScale: (scale: number) => ipcRenderer.send(SETTINGS.setScale, scale),
+    openMaker: () => ipcRenderer.send(SETTINGS.openMaker),
     onChanged: (listener) => {
       ipcRenderer.on(SETTINGS.changed, (_e, next: Settings) => listener(next));
     },
@@ -131,4 +137,20 @@ if (kind === 'panel' || kind === 'quick') {
     },
   };
   contextBridge.exposeInMainWorld('jjakkungPanel', panel);
+}
+
+if (kind === 'maker') {
+  const maker: MakerBridge = {
+    platform: process.platform,
+    info: () => ipcRenderer.invoke(MAKER.modelReady),
+    ensureModel: () => ipcRenderer.invoke(MAKER.ensureModel),
+    modelBytes: () => ipcRenderer.invoke(MAKER.modelBytes),
+    save: (png: string, name: string) => ipcRenderer.invoke(MAKER.save, png, name),
+    resetToDefault: () => ipcRenderer.invoke(MAKER.save, null, ''),
+    close: () => ipcRenderer.send(MAKER.close),
+    onProgress: (listener) => {
+      ipcRenderer.on(MAKER.progress, (_e, ratio: number) => listener(ratio));
+    },
+  };
+  contextBridge.exposeInMainWorld('jjakkungMaker', maker);
 }

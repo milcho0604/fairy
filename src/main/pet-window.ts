@@ -42,6 +42,7 @@ export interface PetActions {
   openSettings(): void;
   quickAdd(): void;
   feed(): void;
+  makePet(): void;
 }
 
 export interface SayOptions {
@@ -246,6 +247,7 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Pe
         accelerator: HIDE_SHORTCUT,
         click: () => setHidden('user', true),
       },
+      { label: '사진으로 펫 만들기', click: () => actions.makePet() },
       { label: '설정', click: () => actions.openSettings() },
       { type: 'separator' },
       { label: '끝내기', role: 'quit' },

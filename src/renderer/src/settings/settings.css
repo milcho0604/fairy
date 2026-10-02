@@ -246,3 +246,20 @@ kbd {
     transition: none;
   }
 }
+
+.row {
+  display: flex;
+  gap: 8px;
+}
+
+.ghost {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  cursor: pointer;
+}
+
+.ghost:hover {
+  border-color: var(--accent);
+}

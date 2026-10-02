@@ -4,6 +4,7 @@ import { FULLNESS } from '../shared/todo-store.ts';
 import { createChat } from './chat.ts';
 import { openStore } from './db.ts';
 import { createLookTogether } from './look-together.ts';
+import { createMaker, petImageDataUrl } from './maker.ts';
 import { createPanel } from './panel.ts';
 import { createPetWindow } from './pet-window.ts';
 import { watchPresentation } from './presence-watch.ts';
@@ -56,6 +57,7 @@ app.whenReady().then(() => {
       openSettings: () => settingsWindow.open(),
       quickAdd: () => panel.openQuick(),
       feed: () => feedPet(),
+      makePet: () => maker.open(),
     },
     log,
   });
@@ -142,8 +144,19 @@ app.whenReady().then(() => {
     );
   }
 
+  // ---- 사진 펫 (P1-08) ----
+  const maker = createMaker(log);
+  const sendPetImage = () => {
+    if (!pet.win.isDestroyed()) pet.win.webContents.send(IPC.image, petImageDataUrl());
+  };
+  pet.win.webContents.on('did-finish-load', sendPetImage);
+
   // ---- 설정 (P1-12) ----
-  const settingsWindow = createSettingsWindow({ scale: () => pet.scale(), setScale: (n) => pet.setScale(n) });
+  const settingsWindow = createSettingsWindow({
+    scale: () => pet.scale(),
+    setScale: (n) => pet.setScale(n),
+    openMaker: () => maker.open(),
+  });
   settings.onChange((next, prev) => {
     if (next.petName !== prev.petName) {
       chat.petNameChanged();
@@ -152,6 +165,10 @@ app.whenReady().then(() => {
     }
     // 격리 폴더와 사용자 폴더는 대화 기록이 따로라 이어 갈 수 없다. 새 대화로 시작한다.
     if (next.aiIsolation !== prev.aiIsolation) chat.resetSessions();
+    if (next.petImage !== prev.petImage) {
+      sendPetImage();
+      pet.react();
+    }
     if (next.launchAtLogin !== prev.launchAtLogin && app.isPackaged) {
       app.setLoginItemSettings({ openAtLogin: next.launchAtLogin });
     }
@@ -170,7 +187,7 @@ app.whenReady().then(() => {
   // 개발용: 메인 프로세스 디버거(--inspect)에서 같이 보기, 채팅을 불러 시험할 손잡이. 배포본에는 없다.
   if (!app.isPackaged)
     Object.assign(globalThis, {
-      __jj: { look, chat, pet, globalShortcut, tray, settings, settingsWindow, panel, store },
+      __jj: { look, chat, pet, globalShortcut, tray, settings, settingsWindow, panel, store, maker },
     });
   if (process.env.JJ_METRICS) logMetrics(Number(process.env.JJ_METRICS));
 });

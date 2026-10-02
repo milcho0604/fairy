@@ -18,6 +18,8 @@ export interface DrawState {
   viewSize?: number;
   /** 배고프면 기본 상태에서 입 모양만 바뀐다 */
   hungry?: boolean;
+  /** 사진 펫 그림 (P1-08). 있으면 기본 몸통, 얼굴, 발 대신 그린다 */
+  photo?: CanvasImageSource & { width: number; height: number };
   /** 기본 상태에서 하는 행동 (P1-06). phase 는 걷기 걸음 진행 0~1 */
   activity?: { type: 'walk'; dir: -1 | 1; phase: number } | { type: 'sit' } | { type: 'look'; dir: -1 | 1 };
 }
@@ -55,6 +57,12 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): void {
   if (act?.type === 'sit') {
     sx = 1.06;
     sy = 0.9;
+  }
+
+  if (s.photo) {
+    const top = drawPhoto(ctx, s, s.photo, lift, sx, sy, act);
+    drawExtras(ctx, s, top);
+    return;
   }
 
   // 발: 몸통보다 먼저 그려서 몸 아래로 조금 나오게. 걸을 때는 번갈아 든다. 매달리면 늘어진다.
@@ -107,6 +115,37 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): void {
   ctx.restore();
 
   drawExtras(ctx, s, GROUND - lift - RY * 2 * sy);
+}
+
+/** 사진 펫을 그리고 머리 꼭대기 y 를 돌려준다. 사진은 얼굴을 바꿀 수 없어 몸짓(튀기, 늘이기, 기울이기)으로 기분을 보인다. */
+function drawPhoto(
+  ctx: CanvasRenderingContext2D,
+  s: DrawState,
+  photo: CanvasImageSource & { width: number; height: number },
+  lift: number,
+  sx: number,
+  sy: number,
+  act: DrawState['activity'],
+): number {
+  // 캔버스 안 바닥에 서도록, 신남으로 튀어도 위가 안 잘리게 여유를 둔다.
+  const maxW = 140;
+  const maxH = 124;
+  const k = Math.min(maxW / photo.width, maxH / photo.height);
+  const w = photo.width * k;
+  const h = photo.height * k;
+  let tilt = 0;
+  if (act?.type === 'walk') tilt = Math.sin(act.phase * Math.PI * 2) * 0.06;
+  if (act?.type === 'look') tilt = act.dir * 0.08;
+  if (s.mood === 'dozing') tilt = 0.1;
+  ctx.save();
+  ctx.translate(CX, GROUND - lift);
+  ctx.rotate(tilt);
+  // 삐지면 등을 돌린 듯 좌우를 뒤집는다.
+  ctx.scale(s.mood === 'sulky' ? -sx : sx, sy);
+  if (s.mood === 'sleeping' || s.mood === 'dozing') ctx.globalAlpha = 0.85;
+  ctx.drawImage(photo, -w / 2, -h, w, h);
+  ctx.restore();
+  return GROUND - lift - h * sy;
 }
 
 function drawEyes(ctx: CanvasRenderingContext2D, s: DrawState, look: number) {

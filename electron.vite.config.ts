@@ -26,6 +26,7 @@ export default defineConfig({
           settings: resolve('src/renderer/settings.html'),
           panel: resolve('src/renderer/panel.html'),
           quick: resolve('src/renderer/quick.html'),
+          maker: resolve('src/renderer/maker.html'),
         },
       },
       minify: true,

@@ -13,7 +13,12 @@ export interface Settings {
   launchAtLogin: boolean;
   /** 숨기기 전 안내를 보여 준 횟수 (P1-10) */
   hideHints: number;
+  /** 사진 펫 그림 파일 이름 (사용자 데이터 폴더의 pets/ 안). 없으면 기본 펫 */
+  petImage?: string;
 }
+
+/** 바꿀 값만. 사진 펫은 null 이면 지운다 (기본 펫으로). */
+export type SettingsPatch = Partial<Omit<Settings, 'petImage'>> & { petImage?: string | null };
 
 export const DEFAULT_SETTINGS: Settings = {
   petName: '콩이',
@@ -54,7 +59,15 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
       typeof r.hideHints === 'number' && Number.isFinite(r.hideHints)
         ? Math.max(0, Math.floor(r.hideHints))
         : base.hideHints,
+    ...petImageOf(r.petImage, base.petImage),
   };
+}
+
+/** 사진 펫 파일 이름. 파일 이름만 받는다 (경로를 넣어 다른 폴더를 가리키지 못하게). 비우면 기본 펫. */
+function petImageOf(v: unknown, current: string | undefined): { petImage?: string } {
+  if (v === null || v === '') return {};
+  if (typeof v === 'string' && /^pet-[\w-]+\.png$/.test(v)) return { petImage: v };
+  return current ? { petImage: current } : {};
 }
 
 /** 바꾸기: 지금 설정에 바꿀 값만 덮는다. 틀린 값은 무시하고 지금 값을 둔다. */

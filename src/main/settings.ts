@@ -1,4 +1,4 @@
-import { applyPatch, parseSettings, type Settings } from '../shared/settings.ts';
+import { applyPatch, parseSettings, type Settings, type SettingsPatch } from '../shared/settings.ts';
 import { readJson, writeJson } from './store.ts';
 
 // 설정 저장소. 바뀌면 듣는 쪽(펫, 채팅, 메뉴 막대, 설정 창)에 알린다.
@@ -25,7 +25,7 @@ export const settings = {
     return load();
   },
   /** 바꿀 값만 준다. 틀린 값은 무시된다. 바뀐 뒤 설정을 돌려준다. */
-  set(patch: Partial<Settings>): Settings {
+  set(patch: SettingsPatch): Settings {
     const prev = load();
     const next = applyPatch(prev, patch);
     if (JSON.stringify(next) === JSON.stringify(prev)) return prev;

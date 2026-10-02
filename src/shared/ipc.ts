@@ -39,6 +39,8 @@ export const IPC = {
   status: 'pet:status',
   /** 메인 → 펫 화면: 반응 (할 일 끝냄, 밥 먹음) */
   react: 'pet:react',
+  /** 메인 → 펫 화면: 사진 펫 그림 */
+  image: 'pet:image',
 } as const;
 
 export interface BubbleButton {
@@ -90,6 +92,7 @@ export const SETTINGS = {
   get: 'settings:get',
   set: 'settings:set',
   setScale: 'settings:set-scale',
+  openMaker: 'settings:open-maker',
   /** 메인 → 설정 창: 설정이 바뀌었다 */
   changed: 'settings:changed',
 } as const;
@@ -107,6 +110,7 @@ export interface SettingsBridge {
   get(): Promise<SettingsSnapshot>;
   set(patch: Partial<Settings>): Promise<Settings>;
   setScale(scale: number): void;
+  openMaker(): void;
   onChanged(listener: (settings: Settings) => void): void;
 }
 
@@ -181,10 +185,46 @@ export interface PetBridge {
   onActivity(listener: (activity: Activity) => void): void;
   onStatus(listener: (status: PetStatus) => void): void;
   onReact(listener: (kind: 'happy') => void): void;
+  /** 사진 펫 그림 (PNG data URL). null 이면 기본 펫 */
+  onImage(listener: (dataUrl: string | null) => void): void;
 }
 
 export interface PetStatus {
   hungry: boolean;
+}
+
+export const MAKER = {
+  modelReady: 'maker:model-ready',
+  /** 모델 준비 (없으면 받음). 진행률은 progress 로 */
+  ensureModel: 'maker:ensure-model',
+  modelBytes: 'maker:model-bytes',
+  /** 메인 → 펫 만들기 창: 모델 받기 진행률 0~1 */
+  progress: 'maker:progress',
+  save: 'maker:save',
+  close: 'maker:close',
+} as const;
+
+export interface MakerInfo {
+  petName: string;
+  hasPhotoPet: boolean;
+  modelReady: boolean;
+  modelMB: number;
+  size: number;
+  mean: readonly number[];
+  std: readonly number[];
+}
+
+export interface MakerBridge {
+  platform: NodeJS.Platform;
+  info(): Promise<MakerInfo>;
+  ensureModel(): Promise<{ ok: true } | { ok: false; error: string }>;
+  modelBytes(): Promise<ArrayBuffer>;
+  /** 다듬은 그림(PNG data URL)과 이름을 저장하고 펫을 바꾼다 */
+  save(png: string, name: string): Promise<{ ok: boolean; error?: string }>;
+  /** 기본 펫으로 돌아가기 */
+  resetToDefault(): Promise<void>;
+  close(): void;
+  onProgress(listener: (ratio: number) => void): void;
 }
 
 export const PANEL = {
