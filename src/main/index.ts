@@ -1,4 +1,4 @@
-import { app } from 'electron';
+import { app, globalShortcut } from 'electron';
 import { IPC } from '../shared/ipc.ts';
 import { createChat } from './chat.ts';
 import { createLookTogether } from './look-together.ts';
@@ -50,7 +50,7 @@ app.whenReady().then(() => {
     log,
   });
   // 개발용: 메인 프로세스 디버거(--inspect)에서 같이 보기, 채팅을 불러 시험할 손잡이. 배포본에는 없다.
-  if (!app.isPackaged) Object.assign(globalThis, { __jj: { look, chat, pet } });
+  if (!app.isPackaged) Object.assign(globalThis, { __jj: { look, chat, pet, globalShortcut } });
   if (process.env.JJ_METRICS) logMetrics(Number(process.env.JJ_METRICS));
 });
 

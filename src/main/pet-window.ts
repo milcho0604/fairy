@@ -68,7 +68,9 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Br
     },
   });
   win.setAlwaysOnTop(true, 'floating');
-  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  // 모든 데스크톱(Space)에 보이되, 다른 앱의 전체 화면 위에는 올라가지 않는다.
+  // (전체 화면 위에도 띄우면 다른 앱을 크게 쓰는 중에 펫이 가린다. 2026-10-02 사용자 지적)
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
   // 처음에는 모두 통과시킨다. 커서가 펫 위에 오면 화면이 알려 준다.
   win.setIgnoreMouseEvents(true, { forward: true });
   win.once('ready-to-show', () => win.showInactive());
@@ -82,14 +84,34 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Br
   let overPet = false;
   let passWheelUntil = 0;
 
+  const shortcuts: [string, () => void][] = [
+    [SIZE_SHORTCUTS.bigger, () => resize(scaleByStep(scale, 1))],
+    [SIZE_SHORTCUTS.smaller, () => resize(scaleByStep(scale, -1))],
+    [SIZE_SHORTCUTS.reset, () => resize(1)],
+  ];
+
   const fromThisWindow = (e: IpcMainEvent) => e.sender === win.webContents;
 
   const onHover = (e: IpcMainEvent, over: boolean) => {
     if (!fromThisWindow(e)) return;
     overPet = over;
+    setShortcuts(over);
     if (dragTimer || Date.now() < passWheelUntil) return;
     win.setIgnoreMouseEvents(!over, { forward: true });
   };
+
+  // 크기 단축키는 컴퓨터 전체에 걸리는 전역 단축키라, 늘 걸어 두면 다른 앱의 같은 키를 빼앗는다
+  // (예: Notion 의 Cmd+Option+0). 마우스가 펫 위에 있을 때만 건다.
+  let shortcutsOn = false;
+  function setShortcuts(on: boolean) {
+    if (on === shortcutsOn) return;
+    shortcutsOn = on;
+    for (const [accelerator, run] of shortcuts) {
+      if (!on) globalShortcut.unregister(accelerator);
+      else if (!globalShortcut.register(accelerator, run))
+        log('shortcut', '등록 실패 (다른 앱이 사용 중)', accelerator);
+    }
+  }
 
   const onGesture = (e: IpcMainEvent, event: GestureEvent) => {
     if (!fromThisWindow(e)) return;
@@ -169,15 +191,6 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Br
   ipcMain.on(IPC.gesture, onGesture);
   ipcMain.on(IPC.contextMenu, onContextMenu);
   ipcMain.on(IPC.wheel, onWheel);
-  const shortcuts: [string, () => void][] = [
-    [SIZE_SHORTCUTS.bigger, () => resize(scaleByStep(scale, 1))],
-    [SIZE_SHORTCUTS.smaller, () => resize(scaleByStep(scale, -1))],
-    [SIZE_SHORTCUTS.reset, () => resize(1)],
-  ];
-  for (const [accelerator, run] of shortcuts) {
-    if (!globalShortcut.register(accelerator, run))
-      log('shortcut', '등록 실패 (다른 앱이 사용 중)', accelerator);
-  }
   screen.on('display-added', onDisplaysChanged);
   screen.on('display-removed', onDisplaysChanged);
   screen.on('display-metrics-changed', onDisplaysChanged);
@@ -190,7 +203,7 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Br
     stopWatching();
     clearInterval(dragTimer);
     clearTimeout(saveTimer);
-    for (const [accelerator] of shortcuts) globalShortcut.unregister(accelerator);
+    setShortcuts(false);
     ipcMain.off(IPC.wheel, onWheel);
     ipcMain.off(IPC.hover, onHover);
     ipcMain.off(IPC.gesture, onGesture);
