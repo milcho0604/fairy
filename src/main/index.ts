@@ -22,7 +22,20 @@ app.whenReady().then(() => {
   const petName = '콩이';
   const chat = createChat({
     petName,
-    onPetAi: (state) => pet.webContents.send(IPC.ai, state),
+    onPetAi: (state) => pet.win.webContents.send(IPC.ai, state),
+    // 채팅 창을 닫았거나 다른 앱을 보는 중이면 펫이 답이 왔다고 알린다.
+    onAnswer: async (text, chatInFront) => {
+      if (chatInFront) return;
+      const action = await pet.say({
+        kind: 'answer',
+        text: `답 왔어: ${preview(text)}`,
+        buttons: [
+          { id: 'open', label: '보기' },
+          { id: 'later', label: '나중에' },
+        ],
+      });
+      if (action === 'open' || action === 'dismiss') chat.open(pet.bounds());
+    },
     log,
   });
   const pet = createPetWindow({
@@ -39,20 +52,29 @@ app.whenReady().then(() => {
     hideOwnWindows: () => {
       const chatWin = chat.window;
       const chatWasVisible = !!chatWin && !chatWin.isDestroyed() && chatWin.isVisible();
-      pet.hide();
+      pet.win.hide();
       if (chatWasVisible) chatWin?.hide();
       return () => {
-        if (!pet.isDestroyed()) pet.showInactive();
+        if (!pet.win.isDestroyed()) pet.win.showInactive();
         if (chatWasVisible && chatWin && !chatWin.isDestroyed()) chatWin.show();
       };
     },
-    onImage: (image) => chat.attach(image, pet.getBounds()),
+    onImage: (image) => chat.attach(image, pet.bounds()),
     log,
   });
   // 개발용: 메인 프로세스 디버거(--inspect)에서 같이 보기, 채팅을 불러 시험할 손잡이. 배포본에는 없다.
   if (!app.isPackaged) Object.assign(globalThis, { __jj: { look, chat, pet, globalShortcut } });
   if (process.env.JJ_METRICS) logMetrics(Number(process.env.JJ_METRICS));
 });
+
+/** 말풍선에 넣을 답 앞부분. 마크다운 기호와 줄바꿈을 빼고 30자까지. */
+export function preview(text: string): string {
+  const plain = text
+    .replace(/[`*#>_]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return plain.length > 30 ? `${plain.slice(0, 30)}...` : plain;
+}
 
 /**
  * 개발용: N초마다 모든 프로세스의 CPU, 메모리 합을 찍는다. `JJ_METRICS=10 npm run dev`

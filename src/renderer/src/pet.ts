@@ -95,11 +95,19 @@ function scheduleBlink() {
 // ---- 화면 배율과 펫 크기 ----
 // 모니터를 옮기면 화면 배율(1, 2)이, 크기를 조절하면 창 크기가 바뀐다. 둘 다 캔버스 해상도를 맞춰 다시 그린다.
 // 그리기는 늘 160 기준 좌표로 하고 변환으로 키운다.
-let viewSize = CANVAS_SIZE;
+// 말풍선이 뜨면 창이 펫보다 커진다. 메인이 창 안 펫 자리(petBox)를 알려 준다.
+let petBox = { x: 0, y: 0, size: window.innerWidth || CANVAS_SIZE };
+let viewSize = petBox.size;
 
 function fitToScreen() {
   const dpr = window.devicePixelRatio || 1;
-  viewSize = window.innerWidth || CANVAS_SIZE;
+  viewSize = petBox.size;
+  Object.assign(canvas.style, {
+    left: `${petBox.x}px`,
+    top: `${petBox.y}px`,
+    width: `${viewSize}px`,
+    height: `${viewSize}px`,
+  });
   canvas.width = Math.round(viewSize * dpr);
   canvas.height = Math.round(viewSize * dpr);
   const k = (dpr * viewSize) / CANVAS_SIZE;
@@ -117,7 +125,11 @@ function watchPixelRatio() {
     { once: true },
   );
 }
-window.addEventListener('resize', fitToScreen);
+// 메인이 알려 주기 전(처음 켤 때)에는 창 = 펫이다.
+window.addEventListener('resize', () => {
+  if (!bubbleShown) petBox = { x: 0, y: 0, size: window.innerWidth || CANVAS_SIZE };
+  fitToScreen();
+});
 watchPixelRatio();
 fitToScreen();
 scheduleBlink();
@@ -128,7 +140,9 @@ const gesture = new GestureTracker();
 let overPet = false;
 
 /** 커서 아래 픽셀이 비어 있지 않으면 펫 위다. 투명한 곳은 클릭을 아래 앱으로 넘긴다. */
-function hitTest(x: number, y: number): boolean {
+function hitTest(wx: number, wy: number): boolean {
+  const x = wx - petBox.x;
+  const y = wy - petBox.y;
   if (x < 0 || y < 0 || x >= viewSize || y >= viewSize) return false;
   const dpr = canvas.width / viewSize;
   const alpha = ctx.getImageData(Math.floor(x * dpr), Math.floor(y * dpr), 1, 1).data[3] ?? 0;
@@ -143,7 +157,11 @@ function setOverPet(hit: boolean) {
 
 // 창이 클릭을 통과시키는 동안에도 forward 옵션 덕분에 마우스 이동은 들어온다.
 window.addEventListener('mousemove', (e) => {
-  if (!gesture.dragging) setOverPet(hitTest(e.clientX, e.clientY));
+  if (gesture.dragging) return;
+  // 말풍선 위도 클릭을 받아야 버튼을 누를 수 있다.
+  const overBubble = bubbleShown && bubbleEl.contains(document.elementFromPoint(e.clientX, e.clientY));
+  setOverPet(overBubble || hitTest(e.clientX, e.clientY));
+  setBubbleHover(overBubble);
 });
 document.addEventListener('mouseleave', () => {
   if (!gesture.dragging) setOverPet(false);
@@ -204,6 +222,98 @@ canvas.addEventListener(
   },
   { passive: false },
 );
+
+// ---- 말풍선 ----
+// 메인이 띄우라고 하면: 그려서 크기를 재 메인에 알리고, 메인이 창을 키운 뒤 자리를 알려 주면 보인다.
+// 8초(마우스를 올리면 멈춤) 뒤나 누르면 닫힌다.
+
+const bubbleEl = document.getElementById('bubble') as HTMLDivElement;
+const bubbleText = bubbleEl.querySelector('p') as HTMLParagraphElement;
+const bubbleActions = bubbleEl.querySelector('.actions') as HTMLDivElement;
+let bubbleShown = false;
+let bubbleId = '';
+let bubbleTimer: ReturnType<typeof setTimeout> | undefined;
+let bubbleLeft = 0;
+let bubbleHover = false;
+/** 그림자가 창 끝에서 잘리지 않게 말풍선 둘레에 남길 여백 */
+const BUBBLE_MARGIN = 6;
+
+function closeBubble(action: string) {
+  if (!bubbleId) return;
+  const id = bubbleId;
+  hideBubble();
+  bridge.bubbleClosed(id, action);
+}
+
+function hideBubble() {
+  clearTimeout(bubbleTimer);
+  bubbleId = '';
+  bubbleShown = false;
+  bubbleHover = false;
+  bubbleEl.hidden = true;
+  bubbleEl.classList.remove('shown');
+  setInputs({ talkingUntil: 0 });
+}
+
+function startBubbleTimer() {
+  clearTimeout(bubbleTimer);
+  if (bubbleLeft > 0) bubbleTimer = setTimeout(() => closeBubble('timeout'), bubbleLeft);
+}
+
+function setBubbleHover(on: boolean) {
+  if (!bubbleId || on === bubbleHover) return;
+  bubbleHover = on;
+  if (on) clearTimeout(bubbleTimer);
+  else startBubbleTimer();
+}
+
+bridge.onBubble((b) => {
+  if (!b) {
+    hideBubble();
+    return;
+  }
+  bubbleId = b.id;
+  bubbleLeft = b.ttlMs;
+  bubbleText.textContent = b.text;
+  bubbleActions.replaceChildren(
+    ...b.buttons.map((btn) => {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.textContent = btn.label;
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeBubble(btn.id);
+      });
+      return el;
+    }),
+  );
+  bubbleActions.hidden = b.buttons.length === 0;
+  // 보이지 않게 그려서 잰다. 자리는 메인이 창을 키운 뒤 정한다.
+  bubbleEl.hidden = false;
+  bubbleEl.classList.remove('shown');
+  const r = bubbleEl.getBoundingClientRect();
+  bridge.bubbleSize(b.id, r.width + BUBBLE_MARGIN * 2, r.height + BUBBLE_MARGIN * 2);
+  setInputs({ talkingUntil: performance.now() + b.ttlMs + 60_000 });
+});
+
+bridge.onLayout((layout) => {
+  petBox = { x: layout.pet.x, y: layout.pet.y, size: layout.pet.size };
+  bubbleShown = !!layout.bubble && !!bubbleId;
+  if (layout.bubble && bubbleId) {
+    Object.assign(bubbleEl.style, {
+      left: `${layout.bubble.x + BUBBLE_MARGIN}px`,
+      top: `${layout.bubble.y + BUBBLE_MARGIN}px`,
+    });
+    bubbleEl.style.setProperty('--tail-x', `${layout.bubble.tailX - BUBBLE_MARGIN}px`);
+    bubbleEl.dataset.side = layout.bubble.side;
+    bubbleEl.classList.add('shown');
+    startBubbleTimer();
+  }
+  fitToScreen();
+});
+
+// 말풍선 몸통을 누르면 닫는다(버튼은 위에서 따로 처리).
+bubbleEl.addEventListener('click', () => closeBubble('dismiss'));
 
 // ---- 메인이 알려 주는 환경 ----
 bridge.onEnv((env) => setInputs({ systemBusy: env.systemBusy, userIdleMs: env.userIdleMs }));

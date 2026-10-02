@@ -1,6 +1,7 @@
 // 메인과 화면(펫, 채팅) 사이 IPC 채널 이름과 실어 보내는 값.
 import type { CustomProviderInput } from './ai/providers.ts';
 import type { AiProvider, AiStatus, ImageAttachment } from './ai/types.ts';
+import type { BubbleLayout } from './bubble-layout.ts';
 import type { ChatImage, ChatState } from './chat-state.ts';
 import type { GestureEvent } from './gesture.ts';
 
@@ -17,7 +18,28 @@ export const IPC = {
   env: 'pet:env',
   /** 메인 → 펫 화면: AI 답을 기다리는 중인지, 방금 답했는지. */
   ai: 'pet:ai',
+  /** 메인 → 펫 화면: 말풍선을 띄워라 */
+  bubble: 'pet:bubble',
+  /** 펫 화면 → 메인: 말풍선을 재 보니 이 크기다 (창을 키워 달라) */
+  bubbleSize: 'pet:bubble-size',
+  /** 펫 화면 → 메인: 말풍선이 닫혔다 (버튼 id, 'timeout', 'dismiss') */
+  bubbleClosed: 'pet:bubble-closed',
+  /** 메인 → 펫 화면: 창 안에서 펫과 말풍선 자리 */
+  layout: 'pet:layout',
 } as const;
+
+export interface BubbleButton {
+  id: string;
+  label: string;
+}
+
+export interface BubbleMessage {
+  id: string;
+  text: string;
+  buttons: BubbleButton[];
+  /** 이 시간이 지나면 저절로 닫힌다 (마우스를 올리면 멈춤) */
+  ttlMs: number;
+}
 
 export interface PetAiState {
   thinking: boolean;
@@ -110,4 +132,9 @@ export interface PetBridge {
   wheel(deltaY: number, zoom: boolean): void;
   onEnv(listener: (env: PetEnv) => void): void;
   onAi(listener: (state: PetAiState) => void): void;
+  /** null 이면 닫아라 */
+  onBubble(listener: (bubble: BubbleMessage | null) => void): void;
+  onLayout(listener: (layout: BubbleLayout) => void): void;
+  bubbleSize(id: string, width: number, height: number): void;
+  bubbleClosed(id: string, action: string): void;
 }

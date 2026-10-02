@@ -1,8 +1,10 @@
 import { join } from 'node:path';
 import { BrowserWindow, globalShortcut, type IpcMainEvent, ipcMain, Menu, screen } from 'electron';
-import { clampIntoAreas } from '../shared/geometry.ts';
+import { layoutBubble } from '../shared/bubble-layout.ts';
+import { type BubbleKind, ChatterGate, type ChatterLevel, LEVEL_LABEL, quieter } from '../shared/chatter.ts';
+import { clampIntoAreas, type Rect } from '../shared/geometry.ts';
 import type { GestureEvent } from '../shared/gesture.ts';
-import { IPC } from '../shared/ipc.ts';
+import { type BubbleButton, IPC } from '../shared/ipc.ts';
 import { withParticle } from '../shared/josa.ts';
 import { type DisplayInfo, parseSavedScale, restorePetBounds } from '../shared/placement.ts';
 import { resizeFromBottomCenter, scaleByStep, scaleByWheel } from '../shared/size.ts';
@@ -20,6 +22,10 @@ const SAVE_DELAY_MS = 500;
 /** 펫 위에서 그냥 휠을 굴리면 이 시간 동안 마우스를 아래 창으로 넘긴다. */
 const WHEEL_PASS_MS = 400;
 /** 크기 단축키. 다른 앱과 덜 겹치도록 Option(Alt)을 같이 누른다. */
+/** 펫 설정 파일 (수다 빈도 등). 설정 화면(P1-12)이 생기면 거기서 바꾼다. */
+const SETTINGS_FILE = 'pet-settings';
+/** 말풍선이 저절로 닫히는 시간 (기획서: 8초) */
+const BUBBLE_TTL_MS = 8000;
 const SIZE_SHORTCUTS = {
   bigger: 'CommandOrControl+Alt+=',
   smaller: 'CommandOrControl+Alt+-',
@@ -33,6 +39,23 @@ export interface PetActions {
   lookTogether(): void;
 }
 
+export interface SayOptions {
+  kind: BubbleKind;
+  text: string;
+  buttons?: BubbleButton[];
+  ttlMs?: number;
+}
+
+export interface PetWindow {
+  win: BrowserWindow;
+  /** 화면 좌표의 펫 사각형 (말풍선 자리를 뺀 것) */
+  bounds(): Rect;
+  /**
+   * 말풍선을 띄운다. 수다 빈도에 막히면 undefined, 아니면 닫힌 방법(버튼 id, 'timeout', 'dismiss', 'replaced').
+   */
+  say(options: SayOptions): Promise<string | undefined>;
+}
+
 export interface PetWindowOptions {
   petName: string;
   actions: PetActions;
@@ -44,12 +67,15 @@ export interface PetWindowOptions {
  * 모니터마다 큰 창을 두는 대신 이렇게 하면 렌더러가 하나라 가볍고(L6),
  * 모니터를 건너가거나 뽑아도 창 위치만 고치면 된다(L7).
  */
-export function createPetWindow({ petName, actions, log }: PetWindowOptions): BrowserWindow {
+export function createPetWindow({ petName, actions, log }: PetWindowOptions): PetWindow {
   const saved = readJson(POSITION_FILE);
   let scale = parseSavedScale(saved);
-  const start = restorePetBounds(saved, currentDisplays(), Math.round(BASE_SIZE * scale));
+  // 펫 사각형. 말풍선이 뜨면 창은 이보다 커지지만 펫은 화면에서 제자리에 있다.
+  let pet: Rect = restorePetBounds(saved, currentDisplays(), Math.round(BASE_SIZE * scale));
+  const settings = (readJson(SETTINGS_FILE) ?? {}) as { chatter?: ChatterLevel };
+  const gate = new ChatterGate(settings.chatter ?? 'normal');
   const win = new BrowserWindow({
-    ...start,
+    ...pet,
     transparent: true,
     frame: false,
     hasShadow: false,
@@ -83,6 +109,10 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Br
   let saveTimer: NodeJS.Timeout | undefined;
   let overPet = false;
   let passWheelUntil = 0;
+  /** 지금 떠 있는 말풍선. size 는 화면이 재서 알려 준 크기 */
+  let bubble:
+    | { id: string; size?: { width: number; height: number }; done: (action: string) => void }
+    | undefined;
 
   const shortcuts: [string, () => void][] = [
     [SIZE_SHORTCUTS.bigger, () => resize(scaleByStep(scale, 1))],
@@ -117,12 +147,17 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Br
     if (!fromThisWindow(e)) return;
     log('pet', event.type);
     if (event.type === 'click') {
-      actions.click(win.getBounds());
+      actions.click(pet);
     } else if (event.type === 'drag-start') {
+      // 들어 옮기는 동안은 말풍선을 치운다. 창 안 펫 자리가 바뀌므로 오프셋은 펫 기준으로 바꿔 둔다.
+      const inWindow = win.getBounds();
+      const offset = { x: event.offset.x - (pet.x - inWindow.x), y: event.offset.y - (pet.y - inWindow.y) };
+      closeBubble('dismiss');
       clearInterval(dragTimer);
       dragTimer = setInterval(() => {
         const cursor = screen.getCursorScreenPoint();
-        win.setPosition(Math.round(cursor.x - event.offset.x), Math.round(cursor.y - event.offset.y));
+        pet = { ...pet, x: Math.round(cursor.x - offset.x), y: Math.round(cursor.y - offset.y) };
+        win.setPosition(pet.x, pet.y);
       }, DRAG_INTERVAL_MS);
     } else if (event.type === 'drag-end') {
       clearInterval(dragTimer);
@@ -151,14 +186,15 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Br
     if (next === scale) return;
     scale = next;
     const areas = screen.getAllDisplays().map((d) => d.workArea);
-    win.setBounds(clampIntoAreas(resizeFromBottomCenter(win.getBounds(), BASE_SIZE * scale), areas));
+    pet = clampIntoAreas(resizeFromBottomCenter(pet, BASE_SIZE * scale), areas);
+    applyLayout();
     clearTimeout(saveTimer);
     saveTimer = setTimeout(save, SAVE_DELAY_MS);
   }
 
   function save() {
     clearTimeout(saveTimer);
-    const { x, y } = win.getBounds();
+    const { x, y } = pet;
     writeJson(POSITION_FILE, { x, y, scale });
     log('pet', 'saved', JSON.stringify({ x, y, scale }));
   }
@@ -169,7 +205,17 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Br
     // 할 일 추가, 밥 주기, 설정은 2단계와 P1-12 에서 더한다.
     Menu.buildFromTemplate([
       { label: `${withParticle(petName, '이랑')} 같이 보기`, click: () => actions.lookTogether() },
-      { label: `${withParticle(petName, '과')} 대화`, click: () => actions.openChat(win.getBounds()) },
+      { label: `${withParticle(petName, '과')} 대화`, click: () => actions.openChat(pet) },
+      { type: 'separator' },
+      {
+        label: '말풍선',
+        submenu: (['quiet', 'normal', 'chatty'] as const).map((level) => ({
+          label: LEVEL_LABEL[level],
+          type: 'radio' as const,
+          checked: gate.level === level,
+          click: () => setChatter(level),
+        })),
+      },
       { type: 'separator' },
       { label: '끝내기', role: 'quit' },
     ]).popup({ window: win });
@@ -177,10 +223,80 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Br
 
   function keepOnScreen() {
     const areas = screen.getAllDisplays().map((d) => d.workArea);
-    const now = win.getBounds();
-    const next = clampIntoAreas(now, areas);
-    if (next.x !== now.x || next.y !== now.y) win.setPosition(next.x, next.y);
+    pet = clampIntoAreas(pet, areas);
+    applyLayout();
   }
+
+  /** 펫 사각형과 말풍선 크기로 창 크기와 창 안 배치를 정해 적용한다. */
+  function applyLayout() {
+    if (win.isDestroyed()) return;
+    const area = screen.getDisplayMatching(pet).workArea;
+    const layout = layoutBubble(pet, bubble?.size, area);
+    const now = win.getBounds();
+    const w = layout.window;
+    if (now.x !== w.x || now.y !== w.y || now.width !== w.width || now.height !== w.height) win.setBounds(w);
+    win.webContents.send(IPC.layout, layout);
+  }
+
+  function setChatter(level: ChatterLevel) {
+    gate.level = level;
+    writeJson(SETTINGS_FILE, { ...settings, chatter: level });
+    log('pet', 'chatter', level);
+  }
+
+  function closeBubble(action: string) {
+    const current = bubble;
+    if (!current) return;
+    bubble = undefined;
+    win.webContents.send(IPC.bubble, null);
+    applyLayout();
+    current.done(action);
+  }
+
+  function say({ kind, text, buttons = [], ttlMs = BUBBLE_TTL_MS }: SayOptions): Promise<string | undefined> {
+    if (win.isDestroyed() || !win.isVisible() || dragTimer || !gate.take(kind, Date.now())) {
+      return Promise.resolve(undefined);
+    }
+    // 하나만 띄운다. 새 말이 오면 앞 말풍선은 닫는다.
+    closeBubble('replaced');
+    const id = `b${Date.now().toString(36)}`;
+    return new Promise((resolve) => {
+      bubble = {
+        id,
+        done: (action) => {
+          log('bubble', id, action);
+          // "나중에"가 쌓이면 조용히 할지 한 번 묻는다 (기획서: 세 번 연속).
+          if (kind !== 'answer' && gate.closed(action === 'later' ? 'later' : 'other')) askQuieter();
+          resolve(action);
+        },
+      };
+      win.webContents.send(IPC.bubble, { id, text, buttons, ttlMs });
+    });
+  }
+
+  async function askQuieter() {
+    const answer = await say({
+      kind: 'answer',
+      text: '내가 좀 시끄러웠지? 말을 줄일까?',
+      buttons: [
+        { id: 'yes', label: '응, 줄여 줘' },
+        { id: 'no', label: '아니, 괜찮아' },
+      ],
+      ttlMs: 15_000,
+    });
+    if (answer === 'yes') setChatter(quieter(gate.level));
+  }
+
+  const onBubbleSize = (e: IpcMainEvent, id: string, width: number, height: number) => {
+    if (!fromThisWindow(e) || bubble?.id !== id) return;
+    bubble.size = { width, height };
+    applyLayout();
+  };
+
+  const onBubbleClosed = (e: IpcMainEvent, id: string, action: string) => {
+    if (!fromThisWindow(e) || bubble?.id !== id) return;
+    closeBubble(action);
+  };
 
   const onDisplaysChanged = () => {
     keepOnScreen();
@@ -191,13 +307,22 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Br
   ipcMain.on(IPC.gesture, onGesture);
   ipcMain.on(IPC.contextMenu, onContextMenu);
   ipcMain.on(IPC.wheel, onWheel);
+  ipcMain.on(IPC.bubbleSize, onBubbleSize);
+  ipcMain.on(IPC.bubbleClosed, onBubbleClosed);
   screen.on('display-added', onDisplaysChanged);
   screen.on('display-removed', onDisplaysChanged);
   screen.on('display-metrics-changed', onDisplaysChanged);
 
+  let wasBusy = false;
   const stopWatching = watchSystem((env) => {
-    if (!win.isDestroyed()) win.webContents.send(IPC.env, env);
+    if (win.isDestroyed()) return;
+    win.webContents.send(IPC.env, env);
+    // 바빠지는 순간에 한 번만 말한다.
+    if (env.systemBusy && !wasBusy)
+      void say({ kind: 'system', text: '컴퓨터가 바빠 보여서 잠깐 가만히 있을게.' });
+    wasBusy = env.systemBusy;
   }, log);
+  win.webContents.on('did-finish-load', () => applyLayout());
 
   win.on('closed', () => {
     stopWatching();
@@ -205,6 +330,8 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Br
     clearTimeout(saveTimer);
     setShortcuts(false);
     ipcMain.off(IPC.wheel, onWheel);
+    ipcMain.off(IPC.bubbleSize, onBubbleSize);
+    ipcMain.off(IPC.bubbleClosed, onBubbleClosed);
     ipcMain.off(IPC.hover, onHover);
     ipcMain.off(IPC.gesture, onGesture);
     ipcMain.off(IPC.contextMenu, onContextMenu);
@@ -213,7 +340,7 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Br
     screen.off('display-metrics-changed', onDisplaysChanged);
   });
 
-  return win;
+  return { win, bounds: () => ({ ...pet }), say };
 }
 
 function currentDisplays(): DisplayInfo[] {

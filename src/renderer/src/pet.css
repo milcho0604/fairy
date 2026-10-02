@@ -8,8 +8,111 @@ body {
 }
 
 #pet {
+  position: absolute;
+  left: 0;
+  top: 0;
   display: block;
   width: 100vw;
   height: 100vh;
   cursor: grab;
+}
+
+/* 말풍선. 크기를 잰 뒤 자리를 받으면(.shown) 보인다. 꼬리는 펫 가운데(--tail-x)를 가리킨다. */
+#bubble {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  /* 잴 때 창이 아직 펫 크기라도 글 길이만큼(최대 240px) 넓어지게 */
+  width: max-content;
+  max-width: 240px;
+  padding: 9px 12px;
+  border: 1.5px solid #c4854a;
+  border-radius: 14px;
+  background: #fffaf3;
+  color: #1f2328;
+  font:
+    13px / 1.45 -apple-system,
+    BlinkMacSystemFont,
+    "Apple SD Gothic Neo",
+    "Malgun Gothic",
+    sans-serif;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.14);
+  visibility: hidden;
+  cursor: default;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+#bubble.shown {
+  visibility: visible;
+}
+
+#bubble p {
+  margin: 0;
+}
+
+#bubble::after {
+  content: "";
+  position: absolute;
+  left: calc(var(--tail-x, 50%) - 7px);
+  width: 12px;
+  height: 12px;
+  background: #fffaf3;
+  border: 1.5px solid #c4854a;
+  transform: rotate(45deg);
+}
+
+#bubble[data-side="above"]::after {
+  bottom: -7.5px;
+  border-top: 0;
+  border-left: 0;
+}
+
+#bubble[data-side="below"]::after {
+  top: -7.5px;
+  border-bottom: 0;
+  border-right: 0;
+}
+
+#bubble .actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 7px;
+}
+
+#bubble button {
+  padding: 3px 10px;
+  border: 1px solid #c4854a;
+  border-radius: 999px;
+  background: #fff;
+  color: #1f2328;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+#bubble button:first-child {
+  background: #c4854a;
+  color: #fff;
+}
+
+@media (prefers-color-scheme: dark) {
+  #bubble,
+  #bubble::after {
+    background: #2d2a27;
+    color: #ece7e1;
+    border-color: #e0a46c;
+  }
+
+  #bubble button {
+    background: #2d2a27;
+    color: #ece7e1;
+    border-color: #e0a46c;
+  }
+
+  #bubble button:first-child {
+    background: #e0a46c;
+    color: #1d1b19;
+  }
 }

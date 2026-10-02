@@ -42,6 +42,8 @@ export interface ChatOptions {
   petName: string;
   /** 펫에게 AI 상태를 알린다 (생각 중, 답함). */
   onPetAi: (state: PetAiState) => void;
+  /** 답이 다 왔다. 채팅 창이 앞에 없으면 펫이 말풍선으로 알린다. */
+  onAnswer?: (text: string, chatInFront: boolean) => void;
   log: (tag: string, ...rest: unknown[]) => void;
 }
 
@@ -59,7 +61,7 @@ export function persona(petName: string): string {
  * 채팅 상태와 채팅 창. 상태는 메인에 두어 창을 닫아도 대화가 남는다.
  * 창은 열 때 만들고 닫으면 없앤다 (L6: 메모리).
  */
-export function createChat({ petName, onPetAi, log }: ChatOptions) {
+export function createChat({ petName, onPetAi, onAnswer, log }: ChatOptions) {
   // 사용자가 추가한 AI 는 입력값만 저장하고 켤 때마다 정의를 다시 만든다 (검사 규칙이 바뀌어도 맞게).
   let customInputs = (
     (readJson(CUSTOM_FILE) as { id: string; input: CustomProviderInput }[] | undefined) ?? []
@@ -173,6 +175,10 @@ export function createChat({ petName, onPetAi, log }: ChatOptions) {
         if (event.type === 'done' || event.type === 'error') {
           run = undefined;
           onPetAi({ thinking: false, answered: event.type === 'done' });
+          if (event.type === 'done') {
+            const inFront = !!win && !win.isDestroyed() && win.isVisible() && win.isFocused();
+            onAnswer?.(event.text, inFront);
+          }
           log(
             'chat',
             event.type,
