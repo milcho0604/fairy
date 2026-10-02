@@ -8,9 +8,11 @@ import type { GestureEvent } from '../shared/gesture.ts';
 import { type BubbleButton, IPC } from '../shared/ipc.ts';
 import { withParticle } from '../shared/josa.ts';
 import { type DisplayInfo, parseSavedScale, restorePetBounds } from '../shared/placement.ts';
+import { type HideReason, HideReasons } from '../shared/presence.ts';
 import { resizeFromBottomCenter, scaleByStep, scaleByWheel } from '../shared/size.ts';
 import { readJson, writeJson } from './store.ts';
 import { watchSystem } from './system-watch.ts';
+import { HIDE_SHORTCUT } from './tray.ts';
 
 /** 배율 100% 일 때 펫 창 크기. 펫보다 조금 크게 잡아 통통 튀는 동작이 잘리지 않게 한다. */
 const BASE_SIZE = 160;
@@ -55,6 +57,9 @@ export interface PetWindow {
    * 말풍선을 띄운다. 수다 빈도에 막히면 undefined, 아니면 닫힌 방법(버튼 id, 'timeout', 'dismiss', 'replaced').
    */
   say(options: SayOptions): Promise<string | undefined>;
+  /** 숨길 까닭을 켜고 끈다. 까닭이 하나라도 있으면 숨는다 (P1-10). */
+  setHidden(reason: HideReason, on: boolean, hint?: boolean): void;
+  isHidden(reason?: HideReason): boolean;
   debugMoveTo(x: number, y: number): void;
   debugScale(scale: number): void;
 }
@@ -75,7 +80,10 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Pe
   let scale = parseSavedScale(saved);
   // 펫 사각형. 말풍선이 뜨면 창은 이보다 커지지만 펫은 화면에서 제자리에 있다.
   let pet: Rect = restorePetBounds(saved, currentDisplays(), Math.round(BASE_SIZE * scale));
-  const settings = (readJson(SETTINGS_FILE) ?? {}) as { chatter?: ChatterLevel };
+  const settings = (readJson(SETTINGS_FILE) ?? {}) as { chatter?: ChatterLevel; hideHints?: number };
+  const hideReasons = new HideReasons();
+  /** 숨어 있는 동안 온 답 알림. 다시 나올 때 한 번 말한다 (기획서: 알림은 쌓아 두었다가 나올 때 한 번에). */
+  let heldAnswer: { options: SayOptions; resolve: (action: string | undefined) => void } | undefined;
   const gate = new ChatterGate(settings.chatter ?? 'normal');
   const win = new BrowserWindow({
     ...pet,
@@ -221,6 +229,11 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Pe
           click: () => setChatter(level),
         })),
       },
+      {
+        label: `${withParticle(petName, '을')} 잠깐 숨기기`,
+        accelerator: HIDE_SHORTCUT,
+        click: () => setHidden('user', true),
+      },
       { type: 'separator' },
       { label: '끝내기', role: 'quit' },
     ]).popup({ window: win });
@@ -290,7 +303,54 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Pe
     current.done(action);
   }
 
-  function say({ kind, text, buttons = [], ttlMs = BUBBLE_TTL_MS }: SayOptions): Promise<string | undefined> {
+  /** 숨기기 전에 다시 부르는 법을 알려 준다. 메뉴 막대가 붐비면 아이콘이 안 보일 수 있어서다. 처음 3번만. */
+  const HIDE_HINT_TIMES = 3;
+  let hinting = false;
+
+  async function hideWithHint() {
+    const shown = settings.hideHints ?? 0;
+    if (shown >= HIDE_HINT_TIMES || hinting) {
+      setHidden('user', true, false);
+      return;
+    }
+    hinting = true;
+    settings.hideHints = shown + 1;
+    writeJson(SETTINGS_FILE, settings);
+    const keys = process.platform === 'darwin' ? 'Cmd+Option+Shift+H' : 'Ctrl+Alt+Shift+H';
+    await say({ kind: 'answer', text: `잠깐 숨을게. ${keys} 누르면 다시 나올게.`, ttlMs: 2500 });
+    hinting = false;
+    setHidden('user', true, false);
+  }
+
+  function setHidden(reason: HideReason, on: boolean, hint = true) {
+    if (reason === 'user' && on && hint && !hideReasons.has('user')) {
+      void hideWithHint();
+      return;
+    }
+    if (win.isDestroyed() || !hideReasons.set(reason, on)) return;
+    log('pet', hideReasons.hidden ? 'hidden' : 'shown', reason);
+    if (hideReasons.hidden) {
+      closeBubble('dismiss');
+      stopWalk();
+      win.hide();
+      return;
+    }
+    win.showInactive();
+    applyLayout();
+    const held = heldAnswer;
+    heldAnswer = undefined;
+    if (held) setTimeout(() => say(held.options).then(held.resolve), 600);
+  }
+
+  function say(options: SayOptions): Promise<string | undefined> {
+    const { kind, text, buttons = [], ttlMs = BUBBLE_TTL_MS } = options;
+    if (hideReasons.hidden && kind === 'answer') {
+      // 앞에 기다리던 알림은 새 것으로 바꾼다 (가장 최근 답 하나만).
+      heldAnswer?.resolve(undefined);
+      return new Promise((resolve) => {
+        heldAnswer = { options, resolve };
+      });
+    }
     if (win.isDestroyed() || !win.isVisible() || dragTimer || !gate.take(kind, Date.now())) {
       return Promise.resolve(undefined);
     }
@@ -387,6 +447,8 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Pe
     win,
     bounds: () => ({ ...pet }),
     say,
+    setHidden: (reason: HideReason, on: boolean, hint?: boolean) => setHidden(reason, on, hint),
+    isHidden: (reason?: HideReason) => (reason ? hideReasons.has(reason) : hideReasons.hidden),
     // 개발용: 디자인 점검 때 위치와 크기를 바로 바꾼다 (메인 디버거의 __jj 에서만 부른다).
     debugMoveTo(x: number, y: number) {
       pet = { ...pet, x, y };

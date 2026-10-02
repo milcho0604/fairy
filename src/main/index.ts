@@ -3,6 +3,8 @@ import { IPC } from '../shared/ipc.ts';
 import { createChat } from './chat.ts';
 import { createLookTogether } from './look-together.ts';
 import { createPetWindow } from './pet-window.ts';
+import { watchPresentation } from './presence-watch.ts';
+import { createTray, HIDE_SHORTCUT } from './tray.ts';
 
 const log = (tag: string, ...rest: unknown[]) => {
   if (!app.isPackaged) console.log(`[${tag}]`, ...rest);
@@ -62,8 +64,27 @@ app.whenReady().then(() => {
     onImage: (image) => chat.attach(image, pet.bounds()),
     log,
   });
+  // ---- 방해 금지 (P1-10) ----
+  const toggleHidden = () => pet.setHidden('user', !pet.isHidden('user'));
+  // 숨기기 단축키는 숨은 펫을 다시 부르는 길이라 늘 걸어 둔다. 다른 앱과 겹치지 않게 네 키 조합.
+  if (!globalShortcut.register(HIDE_SHORTCUT, toggleHidden))
+    log('shortcut', '숨기기 단축키 등록 실패', HIDE_SHORTCUT);
+  const tray = createTray(petName, {
+    toggleHidden,
+    isHidden: () => pet.isHidden('user'),
+    openChat: () => chat.open(pet.bounds()),
+  });
+  // 짝꿍을 한 번 더 실행하면(앱 아이콘을 다시 누르는 등) 숨은 펫을 다시 부른다. 메뉴 막대 아이콘이 가려져도 돌아올 길.
+  app.on('second-instance', () => pet.setHidden('user', false));
+  const stopPresence = watchPresentation((hide) => pet.setHidden('presentation', hide), log);
+  app.on('will-quit', () => {
+    globalShortcut.unregister(HIDE_SHORTCUT);
+    stopPresence();
+    tray.destroy();
+  });
+
   // 개발용: 메인 프로세스 디버거(--inspect)에서 같이 보기, 채팅을 불러 시험할 손잡이. 배포본에는 없다.
-  if (!app.isPackaged) Object.assign(globalThis, { __jj: { look, chat, pet, globalShortcut } });
+  if (!app.isPackaged) Object.assign(globalThis, { __jj: { look, chat, pet, globalShortcut, tray } });
   if (process.env.JJ_METRICS) logMetrics(Number(process.env.JJ_METRICS));
 });
 
