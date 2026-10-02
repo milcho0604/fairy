@@ -61,7 +61,8 @@ export function AiManager({ providers, status, checking, onRefresh, onAdd, onRem
                   {p.images && <span className="tag">그림</span>}
                   {p.usage && <span className="tag">사용량</span>}
                 </span>
-                <span className="detail">{p.command ?? statusText(p, s)}</span>
+                {p.command && <code className="detail command">{p.command}</code>}
+                <span className="detail">{statusText(p, s)}</span>
               </div>
               {p.custom && (
                 <button type="button" className="ghost small" onClick={() => onRemove(p.id)}>

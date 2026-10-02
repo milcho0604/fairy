@@ -83,6 +83,17 @@ header {
   -webkit-app-region: drag;
 }
 
+header button {
+  white-space: nowrap;
+}
+
+/* 좁은 창에서는 펫 이름을 빼고 얼굴만 둔다 */
+@media (max-width: 360px) {
+  .title strong {
+    display: none;
+  }
+}
+
 header button,
 header .picker {
   -webkit-app-region: no-drag;
@@ -206,8 +217,7 @@ header .picker {
 }
 
 .age {
-  grid-column: 1 / -1;
-  justify-self: end;
+  color: var(--muted);
 }
 
 .banner {
@@ -340,7 +350,8 @@ header .picker {
   padding: 8px 12px;
   border-radius: 14px;
   white-space: pre-wrap;
-  word-break: break-word;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
   user-select: text;
 }
 
@@ -453,6 +464,13 @@ header .picker {
   }
 }
 
+.shots {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .shot {
   padding: 0;
   border: 0;
@@ -466,6 +484,13 @@ header .picker {
   max-height: 160px;
   border-radius: 10px;
   border: 1px solid var(--line);
+}
+
+/* 여러 장이면 작은 정사각형으로 나란히 */
+.shots.many img {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
 }
 
 .system {
@@ -504,7 +529,7 @@ footer {
   flex: none;
 }
 
-.attachment img {
+.attachments .attachment img {
   display: block;
   height: 64px;
   border-radius: 8px;
@@ -604,7 +629,8 @@ header .picker {
 }
 
 .caret {
-  font-size: 10px;
+  width: 10px;
+  height: 6px;
   color: var(--muted);
 }
 
@@ -736,6 +762,16 @@ header .picker {
   font-size: 12.5px;
   color: var(--muted);
   overflow-wrap: anywhere;
+}
+
+.ai-info .command {
+  font:
+    12px ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+  color: var(--ink);
 }
 
 .small {

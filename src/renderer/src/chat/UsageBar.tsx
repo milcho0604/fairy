@@ -4,13 +4,22 @@ import type { ProviderView } from '../../../shared/ipc.ts';
 import { withParticle } from '../../../shared/josa.ts';
 
 /** 고른 AI 의 남은 사용량. 마지막 답에서 읽은 값이라 오래됐으면 언제 기준인지 같이 쓴다. */
-export function UsageBar({ usage, spec }: { usage?: AiUsage; spec?: ProviderView }) {
+/** hidden: 설치 안 된 AI 처럼 위에 더 중요한 안내가 있을 때 */
+export function UsageBar({
+  usage,
+  spec,
+  hidden,
+}: {
+  usage?: AiUsage;
+  spec?: ProviderView;
+  hidden?: boolean;
+}) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(t);
   }, []);
-  if (!spec) return null;
+  if (!spec || hidden) return null;
   if (!spec.usage) {
     return (
       <p className="usage empty-usage">
@@ -25,8 +34,9 @@ export function UsageBar({ usage, spec }: { usage?: AiUsage; spec?: ProviderView
   const ageMin = Math.round((now - usage.checkedAt) / 60_000);
   return (
     <div className="usage" title={usage.plan ? `요금제 ${usage.plan}` : undefined}>
-      {usage.windows.map((w) => {
+      {usage.windows.map((w, i) => {
         const level = usageLevel(w.usedPercent);
+        const last = i === usage.windows.length - 1;
         return (
           <div key={w.label} className={`meter ${level}`}>
             <span className="label">{w.label}</span>
@@ -34,11 +44,15 @@ export function UsageBar({ usage, spec }: { usage?: AiUsage; spec?: ProviderView
               <span className="fill" style={{ width: `${Math.min(100, w.usedPercent)}%` }} />
             </span>
             <span className="pct">{Math.round(w.usedPercent)}%</span>
-            <span className="reset">{resetText(w.resetsAt, now)}</span>
+            <span className="reset">
+              {resetText(w.resetsAt, now)}
+              {last && ageMin >= 2 && (
+                <span className="age"> ({ageMin < 60 ? `${ageMin}분 전 기준` : '한참 전 기준'})</span>
+              )}
+            </span>
           </div>
         );
       })}
-      {ageMin >= 2 && <span className="age">{ageMin < 60 ? `${ageMin}분 전 기준` : '한참 전 기준'}</span>}
     </div>
   );
 }

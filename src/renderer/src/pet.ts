@@ -70,7 +70,7 @@ function frame() {
       blinkStart = -1;
     }
   }
-  drawPet(ctx, { mood, elapsed: now - moodSince, blink });
+  drawPet(ctx, { mood, elapsed: now - moodSince, blink, viewSize });
 
   const fps = isAnimated(mood) ? (ANIMATED_FPS[mood] ?? 30) : blinkStart >= 0 ? 30 : 0;
   if (fps > 0) frameTimer = setTimeout(frame, 1000 / fps);

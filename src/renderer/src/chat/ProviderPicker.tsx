@@ -49,9 +49,9 @@ export function ProviderPicker({ providers, status, current, disabled, onPick, o
       >
         <span className={`dot ${dotOf(status[current])}`} aria-hidden="true" />
         {selected?.label ?? current}
-        <span className="caret" aria-hidden="true">
-          ▾
-        </span>
+        <svg className="caret" viewBox="0 0 10 6" aria-hidden="true">
+          <path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
       </button>
       {open && (
         <div className="picker-menu" role="menu">

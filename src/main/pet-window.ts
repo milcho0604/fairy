@@ -54,6 +54,8 @@ export interface PetWindow {
    * 말풍선을 띄운다. 수다 빈도에 막히면 undefined, 아니면 닫힌 방법(버튼 id, 'timeout', 'dismiss', 'replaced').
    */
   say(options: SayOptions): Promise<string | undefined>;
+  debugMoveTo(x: number, y: number): void;
+  debugScale(scale: number): void;
 }
 
 export interface PetWindowOptions {
@@ -340,7 +342,17 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Pe
     screen.off('display-metrics-changed', onDisplaysChanged);
   });
 
-  return { win, bounds: () => ({ ...pet }), say };
+  return {
+    win,
+    bounds: () => ({ ...pet }),
+    say,
+    // 개발용: 디자인 점검 때 위치와 크기를 바로 바꾼다 (메인 디버거의 __jj 에서만 부른다).
+    debugMoveTo(x: number, y: number) {
+      pet = { ...pet, x, y };
+      keepOnScreen();
+    },
+    debugScale: (next: number) => resize(next),
+  };
 }
 
 function currentDisplays(): DisplayInfo[] {

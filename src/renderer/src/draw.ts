@@ -14,7 +14,12 @@ export interface DrawState {
   elapsed: number;
   /** 깜빡임 진행 0~1. 깜빡이지 않으면 -1. */
   blink: number;
+  /** 화면에 그려지는 펫 크기(px). 작으면 글씨를 빼서 뭉개지지 않게 한다. */
+  viewSize?: number;
 }
+
+/** 이보다 작게 그려지면 글씨표(바쁨)를 그리지 않는다. 12px 글씨가 9px 아래로 줄어드는 크기 */
+const MIN_SIZE_FOR_TEXT = 120;
 
 const CX = 80;
 const GROUND = 154;
@@ -157,7 +162,7 @@ function drawExtras(ctx: CanvasRenderingContext2D, s: DrawState, top: number) {
     ctx.quadraticCurveTo(CX + 52, top + 26, CX + 44, top + 30);
     ctx.quadraticCurveTo(CX + 36, top + 26, CX + 44, top + 14);
     ctx.fill();
-    drawTag(ctx, '바빠서 쉬는 중', top - 22);
+    if ((s.viewSize ?? CANVAS_SIZE) >= MIN_SIZE_FOR_TEXT) drawTag(ctx, '바빠서 쉬는 중', top - 22);
   }
 }
 

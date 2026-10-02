@@ -169,7 +169,7 @@ export function App() {
           새 대화
         </button>
       </header>
-      <UsageBar usage={state.usage[state.provider]} spec={spec} />
+      <UsageBar usage={state.usage[state.provider]} spec={spec} hidden={!!current && !current.installed} />
       {managing && (
         <AiManager
           providers={providers}
@@ -313,11 +313,15 @@ function Message({ message: m, petName, label, onZoom }: MessageProps) {
   if (m.role === 'user') {
     return (
       <div className="msg user">
-        {m.images?.map((img, i) => (
-          <button key={String(i)} type="button" className="shot" onClick={() => onZoom(img.thumb)}>
-            <img src={img.thumb} alt={`보낸 그림 ${i + 1}`} />
-          </button>
-        ))}
+        {m.images && (
+          <div className={`shots ${m.images.length > 1 ? 'many' : ''}`}>
+            {m.images.map((img, i) => (
+              <button key={String(i)} type="button" className="shot" onClick={() => onZoom(img.thumb)}>
+                <img src={img.thumb} alt={`보낸 그림 ${i + 1}`} />
+              </button>
+            ))}
+          </div>
+        )}
         {m.text && <div className="bubble">{m.text}</div>}
       </div>
     );

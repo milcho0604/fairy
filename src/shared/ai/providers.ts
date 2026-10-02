@@ -24,6 +24,8 @@ export interface ProviderSpec {
   /** 사용량을 알려 주는지 */
   usage: boolean;
   custom?: boolean;
+  /** 사용자가 적은 그대로의 명령 한 줄 (보여 주기용, 따옴표 포함) */
+  command?: string;
 }
 
 export const BUILTIN_PROVIDERS: readonly ProviderSpec[] = [
@@ -100,9 +102,10 @@ export function customProvider(input: CustomProviderInput, id: string): Provider
     args,
     images: false,
     verified: false,
-    installHint: `${bin} 를 이 컴퓨터에서 못 찾았어. 터미널에서 ${bin} 가 실행되는지 확인해 줘.`,
+    installHint: `터미널에서 ${bin} 명령이 실행되는지 확인해 줘.`,
     usage: false,
     custom: true,
+    command: `${bin} ${input.args.trim()}`.trim(),
   };
 }
 

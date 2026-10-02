@@ -266,6 +266,14 @@ export function createChat({ petName, onPetAi, onAnswer, log }: ChatOptions) {
     get window() {
       return win;
     },
+    /** 개발용: 디자인 점검 때 상태를 직접 넣는다. 메인 디버거에서만 부른다(index.ts 의 __jj). */
+    debugSetState(next: (s: ChatState) => ChatState) {
+      state = next(state);
+      push();
+    },
+    get debugState() {
+      return state;
+    },
   };
 }
 
@@ -279,7 +287,7 @@ function view(p: ProviderSpec): ProviderView {
     custom: !!p.custom,
     installHint: p.installHint,
     loginHint: p.loginHint,
-    command: p.custom ? [p.bin, ...(p.args ?? [])].join(' ') : undefined,
+    command: p.command,
   };
 }
 
