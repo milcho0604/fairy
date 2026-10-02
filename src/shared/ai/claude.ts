@@ -13,6 +13,8 @@ export interface ClaudeTurn {
   /** 이어서 묻는 질문인지. 아니면 --session-id 로 새 세션을 연다. */
   resume: boolean;
   persona: string;
+  /** 사용자 설정(훅, MCP, 스킬) 없이 부를지. 기본 true. 설정에서 "내 AI 설정 그대로"를 고르면 false */
+  isolate?: boolean;
 }
 
 /**
@@ -29,14 +31,19 @@ export function claudeArgs(turn: ClaudeTurn): string[] {
     'stream-json',
     '--verbose',
     '--include-partial-messages',
+    // 도구는 격리 여부와 상관없이 끈다 (기획서 AI 연동 규칙 2: 펫 채팅의 AI 는 파일을 고치거나 명령을 실행하지 않는다)
     '--tools',
     '',
-    '--setting-sources',
-    '',
-    '--strict-mcp-config',
-    '--mcp-config',
-    '{"mcpServers":{}}',
-    '--disable-slash-commands',
+    ...(turn.isolate === false
+      ? []
+      : [
+          '--setting-sources',
+          '',
+          '--strict-mcp-config',
+          '--mcp-config',
+          '{"mcpServers":{}}',
+          '--disable-slash-commands',
+        ]),
     '--append-system-prompt',
     turn.persona,
     ...(turn.resume ? ['--resume', turn.sessionId] : ['--session-id', turn.sessionId]),

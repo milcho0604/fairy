@@ -23,6 +23,7 @@ export default defineConfig({
           pet: resolve('src/renderer/pet.html'),
           chat: resolve('src/renderer/chat.html'),
           overlay: resolve('src/renderer/overlay.html'),
+          settings: resolve('src/renderer/settings.html'),
         },
       },
       minify: true,

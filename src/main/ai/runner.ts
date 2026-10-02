@@ -29,6 +29,8 @@ export interface AiRequest {
   /** 이어갈 세션(claude 세션 id, codex thread_id). 없으면 새 대화. */
   sessionId?: string;
   persona: string;
+  /** 사용자 설정 없이 격리해서 부를지 (설정, 기본 true) */
+  isolate: boolean;
 }
 
 export interface AiRun {
@@ -102,7 +104,8 @@ export function runAi(req: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
         threadId: req.sessionId,
         persona: req.persona,
       });
-      codexHome = prepareCodexHome(env.codexHome);
+      // 격리하면 짝꿍 전용 폴더(auth.json 만 연결), 아니면 사용자의 codex 설정 폴더 그대로.
+      codexHome = req.isolate ? prepareCodexHome(env.codexHome) : env.codexHome;
       if (codexHome) childEnv.CODEX_HOME = codexHome;
       parse = parseCodexLine;
     }

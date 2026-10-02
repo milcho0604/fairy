@@ -65,6 +65,10 @@ export function App() {
       ),
     );
     bridge.onAttach((image) => addImages([image]));
+    bridge.onPetName((name) => {
+      setPetName(name);
+      document.title = `${withParticle(name, '과')} 대화`;
+    });
     if (bridge.platform === 'darwin') document.body.classList.add('mac');
     refreshStatus(false);
     inputRef.current?.focus();

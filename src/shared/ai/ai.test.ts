@@ -114,3 +114,13 @@ test('오류 문구 분류', () => {
   assert.ok(other.message.includes('stream disconnected'));
   assert.ok(!other.message.includes('more'));
 });
+
+test('claude 명령: "내 AI 설정 그대로"면 격리 옵션은 빼되 도구는 계속 끈다', () => {
+  const args = claudeArgs({ text: 'q', images: [], sessionId: 's', persona: 'p', resume: false, isolate: false });
+  for (const flag of ['--setting-sources', '--strict-mcp-config', '--mcp-config', '--disable-slash-commands']) {
+    assert.ok(!args.includes(flag), flag);
+  }
+  assert.equal(args[args.indexOf('--tools') + 1], '');
+  const isolated = claudeArgs({ text: 'q', images: [], sessionId: 's', persona: 'p', resume: false });
+  assert.ok(isolated.includes('--strict-mcp-config'));
+});

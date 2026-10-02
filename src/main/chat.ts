@@ -39,7 +39,10 @@ const USAGE_FILE = 'ai-usage';
 const CUSTOM_FILE = 'ai-custom';
 
 export interface ChatOptions {
-  petName: string;
+  /** 지금 펫 이름 (설정에서 바뀔 수 있어 쓸 때마다 읽는다) */
+  petName: () => string;
+  /** AI 를 사용자 설정 없이 격리해서 부를지 (설정) */
+  aiIsolation: () => boolean;
   /** 펫에게 AI 상태를 알린다 (생각 중, 답함). */
   onPetAi: (state: PetAiState) => void;
   /** 답이 다 왔다. 채팅 창이 앞에 없으면 펫이 말풍선으로 알린다. */
@@ -61,7 +64,7 @@ export function persona(petName: string): string {
  * 채팅 상태와 채팅 창. 상태는 메인에 두어 창을 닫아도 대화가 남는다.
  * 창은 열 때 만들고 닫으면 없앤다 (L6: 메모리).
  */
-export function createChat({ petName, onPetAi, onAnswer, log }: ChatOptions) {
+export function createChat({ petName, aiIsolation, onPetAi, onAnswer, log }: ChatOptions) {
   // 사용자가 추가한 AI 는 입력값만 저장하고 켤 때마다 정의를 다시 만든다 (검사 규칙이 바뀌어도 맞게).
   let customInputs = (
     (readJson(CUSTOM_FILE) as { id: string; input: CustomProviderInput }[] | undefined) ?? []
@@ -89,7 +92,7 @@ export function createChat({ petName, onPetAi, onAnswer, log }: ChatOptions) {
 
   ipcMain.handle(CHAT.snapshot, (e): ChatSnapshot | undefined => {
     if (!fromChat(e)) return undefined;
-    const snapshot = { petName, state, draft };
+    const snapshot = { petName: petName(), state, draft };
     draft = [];
     return snapshot;
   });
@@ -162,7 +165,8 @@ export function createChat({ petName, onPetAi, onAnswer, log }: ChatOptions) {
         // 그림을 못 받는 AI 에는 글만 보낸다. 화면이 미리 알려 준다.
         images: spec.images ? images.map((i) => i.full) : [],
         sessionId: state.sessions[provider]?.id,
-        persona: persona(petName),
+        persona: persona(petName()),
+        isolate: aiIsolation(),
       },
       (event) => {
         state = applyEvent(state, ids.pet, event, randomUUID());
@@ -217,7 +221,7 @@ export function createChat({ petName, onPetAi, onAnswer, log }: ChatOptions) {
     }
     win = new BrowserWindow({
       ...placeNear(near),
-      title: `${withParticle(petName, '과')} 대화`,
+      title: `${withParticle(petName(), '과')} 대화`,
       minWidth: 320,
       minHeight: 360,
       show: false,
@@ -265,6 +269,17 @@ export function createChat({ petName, onPetAi, onAnswer, log }: ChatOptions) {
     attach,
     get window() {
       return win;
+    },
+    /** 설정에서 펫 이름이 바뀌었다. 열린 채팅 창에 알린다. */
+    petNameChanged() {
+      if (!win || win.isDestroyed()) return;
+      win.setTitle(`${withParticle(petName(), '과')} 대화`);
+      win.webContents.send(CHAT.petName, petName());
+    },
+    /** AI 격리 설정이 바뀌면 대화 세션을 끊는다 (격리 폴더와 사용자 폴더의 기록이 달라 이어 갈 수 없다). */
+    resetSessions() {
+      state = { ...state, sessions: {} };
+      push();
     },
     /** 개발용: 디자인 점검 때 상태를 직접 넣는다. 메인 디버거에서만 부른다(index.ts 의 __jj). */
     debugSetState(next: (s: ChatState) => ChatState) {

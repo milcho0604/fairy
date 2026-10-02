@@ -9,7 +9,8 @@ import { type BubbleButton, IPC } from '../shared/ipc.ts';
 import { withParticle } from '../shared/josa.ts';
 import { type DisplayInfo, parseSavedScale, restorePetBounds } from '../shared/placement.ts';
 import { type HideReason, HideReasons } from '../shared/presence.ts';
-import { resizeFromBottomCenter, scaleByStep, scaleByWheel } from '../shared/size.ts';
+import { clampScale, resizeFromBottomCenter, scaleByStep, scaleByWheel } from '../shared/size.ts';
+import { settings } from './settings.ts';
 import { readJson, writeJson } from './store.ts';
 import { watchSystem } from './system-watch.ts';
 import { HIDE_SHORTCUT } from './tray.ts';
@@ -25,8 +26,6 @@ const SAVE_DELAY_MS = 500;
 /** 펫 위에서 그냥 휠을 굴리면 이 시간 동안 마우스를 아래 창으로 넘긴다. */
 const WHEEL_PASS_MS = 400;
 /** 크기 단축키. 다른 앱과 덜 겹치도록 Option(Alt)을 같이 누른다. */
-/** 펫 설정 파일 (수다 빈도 등). 설정 화면(P1-12)이 생기면 거기서 바꾼다. */
-const SETTINGS_FILE = 'pet-settings';
 /** 말풍선이 저절로 닫히는 시간 (기획서: 8초) */
 const BUBBLE_TTL_MS = 8000;
 const SIZE_SHORTCUTS = {
@@ -40,6 +39,7 @@ export interface PetActions {
   click(petBounds: Electron.Rectangle): void;
   openChat(petBounds: Electron.Rectangle): void;
   lookTogether(): void;
+  openSettings(): void;
 }
 
 export interface SayOptions {
@@ -60,12 +60,15 @@ export interface PetWindow {
   /** 숨길 까닭을 켜고 끈다. 까닭이 하나라도 있으면 숨는다 (P1-10). */
   setHidden(reason: HideReason, on: boolean, hint?: boolean): void;
   isHidden(reason?: HideReason): boolean;
+  scale(): number;
+  setScale(scale: number): void;
   debugMoveTo(x: number, y: number): void;
   debugScale(scale: number): void;
 }
 
 export interface PetWindowOptions {
-  petName: string;
+  /** 지금 펫 이름 (설정에서 바뀔 수 있어 쓸 때마다 읽는다) */
+  petName: () => string;
   actions: PetActions;
   log: (tag: string, ...rest: unknown[]) => void;
 }
@@ -80,11 +83,14 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Pe
   let scale = parseSavedScale(saved);
   // 펫 사각형. 말풍선이 뜨면 창은 이보다 커지지만 펫은 화면에서 제자리에 있다.
   let pet: Rect = restorePetBounds(saved, currentDisplays(), Math.round(BASE_SIZE * scale));
-  const settings = (readJson(SETTINGS_FILE) ?? {}) as { chatter?: ChatterLevel; hideHints?: number };
+
   const hideReasons = new HideReasons();
   /** 숨어 있는 동안 온 답 알림. 다시 나올 때 한 번 말한다 (기획서: 알림은 쌓아 두었다가 나올 때 한 번에). */
   let heldAnswer: { options: SayOptions; resolve: (action: string | undefined) => void } | undefined;
-  const gate = new ChatterGate(settings.chatter ?? 'normal');
+  const gate = new ChatterGate(settings.get().chatter);
+  const stopSettings = settings.onChange((next) => {
+    gate.level = next.chatter;
+  });
   const win = new BrowserWindow({
     ...pet,
     transparent: true,
@@ -217,8 +223,8 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Pe
     log('pet', 'context-menu');
     // 할 일 추가, 밥 주기, 설정은 2단계와 P1-12 에서 더한다.
     Menu.buildFromTemplate([
-      { label: `${withParticle(petName, '이랑')} 같이 보기`, click: () => actions.lookTogether() },
-      { label: `${withParticle(petName, '과')} 대화`, click: () => actions.openChat(pet) },
+      { label: `${withParticle(petName(), '이랑')} 같이 보기`, click: () => actions.lookTogether() },
+      { label: `${withParticle(petName(), '과')} 대화`, click: () => actions.openChat(pet) },
       { type: 'separator' },
       {
         label: '말풍선',
@@ -230,10 +236,11 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Pe
         })),
       },
       {
-        label: `${withParticle(petName, '을')} 잠깐 숨기기`,
+        label: `${withParticle(petName(), '을')} 잠깐 숨기기`,
         accelerator: HIDE_SHORTCUT,
         click: () => setHidden('user', true),
       },
+      { label: '설정', click: () => actions.openSettings() },
       { type: 'separator' },
       { label: '끝내기', role: 'quit' },
     ]).popup({ window: win });
@@ -257,15 +264,15 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Pe
   }
 
   function setChatter(level: ChatterLevel) {
-    gate.level = level;
-    writeJson(SETTINGS_FILE, { ...settings, chatter: level });
+    settings.set({ chatter: level });
     log('pet', 'chatter', level);
   }
 
   // ---- 기본 행동 (P1-06) ----
   // 화면이 한가하다고 알리면 행동을 고른다. 걷기는 창을 30fps 로 옮기고 끝나면 자리를 저장한다.
   const onActivityRequest = (e: IpcMainEvent) => {
-    if (!fromThisWindow(e) || dragTimer || bubble || walkTimer || !win.isVisible()) return;
+    if (!fromThisWindow(e) || dragTimer || bubble || walkTimer || !win.isVisible() || !settings.get().wander)
+      return;
     const activity: Activity = pickActivity(pet, screen.getDisplayMatching(pet).workArea, Math.random);
     if (activity.type === 'walk') startWalk(activity);
     win.webContents.send(IPC.activity, activity);
@@ -308,14 +315,13 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Pe
   let hinting = false;
 
   async function hideWithHint() {
-    const shown = settings.hideHints ?? 0;
+    const shown = settings.get().hideHints;
     if (shown >= HIDE_HINT_TIMES || hinting) {
       setHidden('user', true, false);
       return;
     }
     hinting = true;
-    settings.hideHints = shown + 1;
-    writeJson(SETTINGS_FILE, settings);
+    settings.set({ hideHints: shown + 1 });
     const keys = process.platform === 'darwin' ? 'Cmd+Option+Shift+H' : 'Ctrl+Alt+Shift+H';
     await say({ kind: 'answer', text: `잠깐 숨을게. ${keys} 누르면 다시 나올게.`, ttlMs: 2500 });
     hinting = false;
@@ -425,6 +431,7 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Pe
   win.webContents.on('did-finish-load', () => applyLayout());
 
   win.on('closed', () => {
+    stopSettings();
     stopWatching();
     clearInterval(dragTimer);
     clearTimeout(saveTimer);
@@ -448,6 +455,8 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Pe
     bounds: () => ({ ...pet }),
     say,
     setHidden: (reason: HideReason, on: boolean, hint?: boolean) => setHidden(reason, on, hint),
+    scale: () => scale,
+    setScale: (next: number) => resize(clampScale(next)),
     isHidden: (reason?: HideReason) => (reason ? hideReasons.has(reason) : hideReasons.hidden),
     // 개발용: 디자인 점검 때 위치와 크기를 바로 바꾼다 (메인 디버거의 __jj 에서만 부른다).
     debugMoveTo(x: number, y: number) {

@@ -24,7 +24,7 @@ const HIDE_SETTLE_MS = 150;
 const MAC_SCREEN_SETTINGS = 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture';
 
 export interface LookOptions {
-  petName: string;
+  petName: () => string;
   /** 찍는 동안 펫과 채팅 창을 숨기고, 끝나면 다시 보인다. */
   hideOwnWindows: () => () => void;
   /** 찍은 그림을 채팅 입력칸에 붙인다. 보내지는 않는다. */
@@ -89,7 +89,7 @@ export function createLookTogether({ petName, hideOwnWindows, onImage, log }: Lo
       win.setAlwaysOnTop(true, 'screen-saver');
       win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
       win.setBounds(display.bounds); // 맥이 메뉴 막대 아래로 밀어낸 경우를 되돌린다
-      const query = { name: withParticle(petName, '이랑') };
+      const query = { name: withParticle(petName(), '이랑') };
       const devUrl = process.env.ELECTRON_RENDERER_URL;
       if (devUrl) win.loadURL(`${devUrl}/overlay.html?${new URLSearchParams(query)}`);
       else win.loadFile(join(import.meta.dirname, '../renderer/overlay.html'), { query });
@@ -164,7 +164,7 @@ export function createLookTogether({ petName, hideOwnWindows, onImage, log }: Lo
     const isMac = process.platform === 'darwin';
     const { response } = await dialog.showMessageBox({
       type: 'info',
-      message: `${withParticle(petName, '이')} 화면을 보려면 화면 기록 권한이 필요해`,
+      message: `${withParticle(petName(), '이')} 화면을 보려면 화면 기록 권한이 필요해`,
       detail: isMac
         ? '시스템 설정 > 개인정보 보호 및 보안 > 화면 및 시스템 오디오 녹화에서 짝꿍을 켜 줘. 켠 다음에는 짝꿍을 껐다 켜야 해.'
         : '화면을 찍지 못했어. 다른 프로그램이 화면 캡처를 막고 있지 않은지 확인해 줘.',

@@ -4,6 +4,8 @@ import { createChat } from './chat.ts';
 import { createLookTogether } from './look-together.ts';
 import { createPetWindow } from './pet-window.ts';
 import { watchPresentation } from './presence-watch.ts';
+import { settings } from './settings.ts';
+import { createSettingsWindow } from './settings-window.ts';
 import { createTray, HIDE_SHORTCUT } from './tray.ts';
 
 const log = (tag: string, ...rest: unknown[]) => {
@@ -18,12 +20,13 @@ if (!process.env.JJ_GPU_PROCESS) app.commandLine.appendSwitch('in-process-gpu');
 if (!app.requestSingleInstanceLock()) app.quit();
 
 app.whenReady().then(() => {
-  // 펫 앱은 Dock 아이콘 없이 뜬다. 끝내기는 펫 우클릭 메뉴에서 한다 (트레이는 나중에).
+  // 펫 앱은 Dock 아이콘 없이 뜬다. 끝내기는 펫 우클릭 메뉴나 메뉴 막대 아이콘에서 한다.
   if (process.platform === 'darwin') app.dock?.hide();
-  // 이름 짓기 화면(P1-08) 전까지는 기본 이름을 쓴다.
-  const petName = '콩이';
+  // 펫 이름은 설정에서 바꿀 수 있어 쓰는 곳마다 지금 값을 읽는다.
+  const petName = () => settings.get().petName;
   const chat = createChat({
     petName,
+    aiIsolation: () => settings.get().aiIsolation,
     onPetAi: (state) => pet.win.webContents.send(IPC.ai, state),
     // 채팅 창을 닫았거나 다른 앱을 보는 중이면 펫이 답이 왔다고 알린다.
     onAnswer: async (text, chatInFront) => {
@@ -46,6 +49,7 @@ app.whenReady().then(() => {
       click: (bounds) => chat.toggle(bounds),
       openChat: (bounds) => chat.open(bounds),
       lookTogether: () => look.start(),
+      openSettings: () => settingsWindow.open(),
     },
     log,
   });
@@ -73,7 +77,22 @@ app.whenReady().then(() => {
     toggleHidden,
     isHidden: () => pet.isHidden('user'),
     openChat: () => chat.open(pet.bounds()),
+    openSettings: () => settingsWindow.open(),
   });
+  // ---- 설정 (P1-12) ----
+  const settingsWindow = createSettingsWindow({ scale: () => pet.scale(), setScale: (n) => pet.setScale(n) });
+  settings.onChange((next, prev) => {
+    if (next.petName !== prev.petName) {
+      chat.petNameChanged();
+      tray.setToolTip(`짝꿍 (${next.petName})`);
+    }
+    // 격리 폴더와 사용자 폴더는 대화 기록이 따로라 이어 갈 수 없다. 새 대화로 시작한다.
+    if (next.aiIsolation !== prev.aiIsolation) chat.resetSessions();
+    if (next.launchAtLogin !== prev.launchAtLogin && app.isPackaged) {
+      app.setLoginItemSettings({ openAtLogin: next.launchAtLogin });
+    }
+  });
+
   // 짝꿍을 한 번 더 실행하면(앱 아이콘을 다시 누르는 등) 숨은 펫을 다시 부른다. 메뉴 막대 아이콘이 가려져도 돌아올 길.
   app.on('second-instance', () => pet.setHidden('user', false));
   const stopPresence = watchPresentation((hide) => pet.setHidden('presentation', hide), log);
@@ -84,7 +103,8 @@ app.whenReady().then(() => {
   });
 
   // 개발용: 메인 프로세스 디버거(--inspect)에서 같이 보기, 채팅을 불러 시험할 손잡이. 배포본에는 없다.
-  if (!app.isPackaged) Object.assign(globalThis, { __jj: { look, chat, pet, globalShortcut, tray } });
+  if (!app.isPackaged)
+    Object.assign(globalThis, { __jj: { look, chat, pet, globalShortcut, tray, settings, settingsWindow } });
   if (process.env.JJ_METRICS) logMetrics(Number(process.env.JJ_METRICS));
 });
 

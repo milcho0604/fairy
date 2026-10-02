@@ -5,6 +5,7 @@ import type { Activity } from './behavior.ts';
 import type { BubbleLayout } from './bubble-layout.ts';
 import type { ChatImage, ChatState } from './chat-state.ts';
 import type { GestureEvent } from './gesture.ts';
+import type { Settings } from './settings.ts';
 
 export const IPC = {
   /** 펫 화면 → 메인: 커서가 펫 위에 있는지 (클릭 통과를 켜고 끈다). */
@@ -77,7 +78,32 @@ export const CHAT = {
   state: 'chat:state',
   delta: 'chat:delta',
   attach: 'chat:attach',
+  petName: 'chat:pet-name',
 } as const;
+
+export const SETTINGS = {
+  get: 'settings:get',
+  set: 'settings:set',
+  setScale: 'settings:set-scale',
+  /** 메인 → 설정 창: 설정이 바뀌었다 */
+  changed: 'settings:changed',
+} as const;
+
+export interface SettingsSnapshot {
+  settings: Settings;
+  scale: number;
+  /** 설치한 앱인지 (개발 중에는 로그인 때 켜기를 못 쓴다) */
+  packaged: boolean;
+  platform: NodeJS.Platform;
+  version: string;
+}
+
+export interface SettingsBridge {
+  get(): Promise<SettingsSnapshot>;
+  set(patch: Partial<Settings>): Promise<Settings>;
+  setScale(scale: number): void;
+  onChanged(listener: (settings: Settings) => void): void;
+}
 
 /** 보낼 그림: 원본은 AI 로, 작은 그림은 대화 기록으로. */
 export interface OutgoingImage {
@@ -120,6 +146,7 @@ export interface ChatBridge {
   onState(listener: (state: ChatState) => void): void;
   onDelta(listener: (id: string, text: string) => void): void;
   onAttach(listener: (image: OutgoingImage) => void): void;
+  onPetName(listener: (name: string) => void): void;
 }
 
 export interface PetEnv {

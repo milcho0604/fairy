@@ -15,7 +15,10 @@ import {
   type PetAiState,
   type PetBridge,
   type PetEnv,
+  SETTINGS,
+  type SettingsBridge,
 } from '../shared/ipc.ts';
+import type { Settings } from '../shared/settings.ts';
 
 // 샌드박스 preload 는 다른 파일을 require 할 수 없어 한 파일로 묶는다.
 // 창마다 자기 기능만 열어 준다: 메인이 창을 만들 때 `--jj-window=<이름>` 을 넘긴다.
@@ -73,6 +76,9 @@ if (kind === 'chat') {
     onAttach: (listener) => {
       ipcRenderer.on(CHAT.attach, (_e, image: OutgoingImage) => listener(image));
     },
+    onPetName: (listener) => {
+      ipcRenderer.on(CHAT.petName, (_e, name: string) => listener(name));
+    },
   };
   contextBridge.exposeInMainWorld('jjakkungChat', chat);
 }
@@ -82,4 +88,16 @@ if (kind === 'overlay') {
     select: (rect) => ipcRenderer.send(LOOK.select, rect),
   };
   contextBridge.exposeInMainWorld('jjakkungOverlay', overlay);
+}
+
+if (kind === 'settings') {
+  const bridge: SettingsBridge = {
+    get: () => ipcRenderer.invoke(SETTINGS.get),
+    set: (patch) => ipcRenderer.invoke(SETTINGS.set, patch),
+    setScale: (scale: number) => ipcRenderer.send(SETTINGS.setScale, scale),
+    onChanged: (listener) => {
+      ipcRenderer.on(SETTINGS.changed, (_e, next: Settings) => listener(next));
+    },
+  };
+  contextBridge.exposeInMainWorld('jjakkungSettings', bridge);
 }
