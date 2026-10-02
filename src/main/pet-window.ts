@@ -26,8 +26,16 @@ const SIZE_SHORTCUTS = {
   reset: 'CommandOrControl+Alt+0',
 };
 
+export interface PetActions {
+  /** 왼쪽 클릭. 패널(2단계) 전까지는 채팅 창을 열고 닫는다. */
+  click(petBounds: Electron.Rectangle): void;
+  openChat(petBounds: Electron.Rectangle): void;
+  lookTogether(): void;
+}
+
 export interface PetWindowOptions {
   petName: string;
+  actions: PetActions;
   log: (tag: string, ...rest: unknown[]) => void;
 }
 
@@ -36,7 +44,7 @@ export interface PetWindowOptions {
  * 모니터마다 큰 창을 두는 대신 이렇게 하면 렌더러가 하나라 가볍고(L6),
  * 모니터를 건너가거나 뽑아도 창 위치만 고치면 된다(L7).
  */
-export function createPetWindow({ petName, log }: PetWindowOptions): BrowserWindow {
+export function createPetWindow({ petName, actions, log }: PetWindowOptions): BrowserWindow {
   const saved = readJson(POSITION_FILE);
   let scale = parseSavedScale(saved);
   const start = restorePetBounds(saved, currentDisplays(), Math.round(BASE_SIZE * scale));
@@ -54,6 +62,7 @@ export function createPetWindow({ petName, log }: PetWindowOptions): BrowserWind
     show: false,
     webPreferences: {
       preload: join(import.meta.dirname, '../preload/index.cjs'),
+      additionalArguments: ['--jj-window=pet'],
       sandbox: true,
       contextIsolation: true,
     },
@@ -85,7 +94,9 @@ export function createPetWindow({ petName, log }: PetWindowOptions): BrowserWind
   const onGesture = (e: IpcMainEvent, event: GestureEvent) => {
     if (!fromThisWindow(e)) return;
     log('pet', event.type);
-    if (event.type === 'drag-start') {
+    if (event.type === 'click') {
+      actions.click(win.getBounds());
+    } else if (event.type === 'drag-start') {
       clearInterval(dragTimer);
       dragTimer = setInterval(() => {
         const cursor = screen.getCursorScreenPoint();
@@ -133,10 +144,10 @@ export function createPetWindow({ petName, log }: PetWindowOptions): BrowserWind
   const onContextMenu = (e: IpcMainEvent) => {
     if (!fromThisWindow(e)) return;
     log('pet', 'context-menu');
-    // 메뉴 항목 연결은 P1-12, 3단계에서 한다. 지금은 이름과 조사가 맞는지 보이는 자리만.
+    // 할 일 추가, 밥 주기, 설정은 2단계와 P1-12 에서 더한다.
     Menu.buildFromTemplate([
-      { label: `${withParticle(petName, '이랑')} 같이 보기`, enabled: false },
-      { label: `${withParticle(petName, '과')} 대화`, enabled: false },
+      { label: `${withParticle(petName, '이랑')} 같이 보기`, click: () => actions.lookTogether() },
+      { label: `${withParticle(petName, '과')} 대화`, click: () => actions.openChat(win.getBounds()) },
       { type: 'separator' },
       { label: '끝내기', role: 'quit' },
     ]).popup({ window: win });

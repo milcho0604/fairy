@@ -1,4 +1,7 @@
 import { app } from 'electron';
+import { IPC } from '../shared/ipc.ts';
+import { createChat } from './chat.ts';
+import { createLookTogether } from './look-together.ts';
 import { createPetWindow } from './pet-window.ts';
 
 const log = (tag: string, ...rest: unknown[]) => {
@@ -16,7 +19,38 @@ app.whenReady().then(() => {
   // 펫 앱은 Dock 아이콘 없이 뜬다. 끝내기는 펫 우클릭 메뉴에서 한다 (트레이는 나중에).
   if (process.platform === 'darwin') app.dock?.hide();
   // 이름 짓기 화면(P1-08) 전까지는 기본 이름을 쓴다.
-  createPetWindow({ petName: '콩이', log });
+  const petName = '콩이';
+  const chat = createChat({
+    petName,
+    onPetAi: (state) => pet.webContents.send(IPC.ai, state),
+    log,
+  });
+  const pet = createPetWindow({
+    petName,
+    actions: {
+      click: (bounds) => chat.toggle(bounds),
+      openChat: (bounds) => chat.open(bounds),
+      lookTogether: () => look.start(),
+    },
+    log,
+  });
+  const look = createLookTogether({
+    petName,
+    hideOwnWindows: () => {
+      const chatWin = chat.window;
+      const chatWasVisible = !!chatWin && !chatWin.isDestroyed() && chatWin.isVisible();
+      pet.hide();
+      if (chatWasVisible) chatWin?.hide();
+      return () => {
+        if (!pet.isDestroyed()) pet.showInactive();
+        if (chatWasVisible && chatWin && !chatWin.isDestroyed()) chatWin.show();
+      };
+    },
+    onImage: (image) => chat.attach(image, pet.getBounds()),
+    log,
+  });
+  // 개발용: 메인 프로세스 디버거(--inspect)에서 같이 보기, 채팅을 불러 시험할 손잡이. 배포본에는 없다.
+  if (!app.isPackaged) Object.assign(globalThis, { __jj: { look, chat, pet } });
   if (process.env.JJ_METRICS) logMetrics(Number(process.env.JJ_METRICS));
 });
 

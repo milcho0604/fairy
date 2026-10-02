@@ -1,15 +1,65 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { type GestureEvent, IPC, type PetBridge, type PetEnv } from '../shared/ipc.ts';
+import type { AiProvider } from '../shared/ai/types.ts';
+import type { ChatState } from '../shared/chat-state.ts';
+import {
+  CHAT,
+  type ChatBridge,
+  type GestureEvent,
+  IPC,
+  LOOK,
+  type OutgoingImage,
+  type OverlayBridge,
+  type PetAiState,
+  type PetBridge,
+  type PetEnv,
+} from '../shared/ipc.ts';
 
-// 렌더러에 열어 줄 기능은 여기에만 둔다.
-const bridge: PetBridge = {
-  platform: process.platform,
-  hover: (overPet: boolean) => ipcRenderer.send(IPC.hover, overPet),
-  gesture: (event: GestureEvent) => ipcRenderer.send(IPC.gesture, event),
-  contextMenu: () => ipcRenderer.send(IPC.contextMenu),
-  wheel: (deltaY: number, zoom: boolean) => ipcRenderer.send(IPC.wheel, deltaY, zoom),
-  onEnv: (listener: (env: PetEnv) => void) => {
-    ipcRenderer.on(IPC.env, (_e, env: PetEnv) => listener(env));
-  },
-};
-contextBridge.exposeInMainWorld('jjakkung', bridge);
+// 샌드박스 preload 는 다른 파일을 require 할 수 없어 한 파일로 묶는다.
+// 창마다 자기 기능만 열어 준다: 메인이 창을 만들 때 `--jj-window=<이름>` 을 넘긴다.
+const kind = process.argv.find((a) => a.startsWith('--jj-window='))?.split('=')[1];
+
+if (kind === 'pet') {
+  const pet: PetBridge = {
+    platform: process.platform,
+    hover: (overPet: boolean) => ipcRenderer.send(IPC.hover, overPet),
+    gesture: (event: GestureEvent) => ipcRenderer.send(IPC.gesture, event),
+    contextMenu: () => ipcRenderer.send(IPC.contextMenu),
+    wheel: (deltaY: number, zoom: boolean) => ipcRenderer.send(IPC.wheel, deltaY, zoom),
+    onEnv: (listener: (env: PetEnv) => void) => {
+      ipcRenderer.on(IPC.env, (_e, env: PetEnv) => listener(env));
+    },
+    onAi: (listener: (state: PetAiState) => void) => {
+      ipcRenderer.on(IPC.ai, (_e, state: PetAiState) => listener(state));
+    },
+  };
+  contextBridge.exposeInMainWorld('jjakkung', pet);
+}
+
+if (kind === 'chat') {
+  const chat: ChatBridge = {
+    platform: process.platform,
+    snapshot: () => ipcRenderer.invoke(CHAT.snapshot),
+    status: (refresh: boolean) => ipcRenderer.invoke(CHAT.status, refresh),
+    send: (text: string, images: OutgoingImage[]) => ipcRenderer.send(CHAT.send, text, images),
+    cancel: () => ipcRenderer.send(CHAT.cancel),
+    reset: () => ipcRenderer.send(CHAT.reset),
+    setProvider: (provider: AiProvider) => ipcRenderer.send(CHAT.provider, provider),
+    onState: (listener) => {
+      ipcRenderer.on(CHAT.state, (_e, state: ChatState) => listener(state));
+    },
+    onDelta: (listener) => {
+      ipcRenderer.on(CHAT.delta, (_e, id: string, text: string) => listener(id, text));
+    },
+    onAttach: (listener) => {
+      ipcRenderer.on(CHAT.attach, (_e, image: OutgoingImage) => listener(image));
+    },
+  };
+  contextBridge.exposeInMainWorld('jjakkungChat', chat);
+}
+
+if (kind === 'overlay') {
+  const overlay: OverlayBridge = {
+    select: (rect) => ipcRenderer.send(LOOK.select, rect),
+  };
+  contextBridge.exposeInMainWorld('jjakkungOverlay', overlay);
+}

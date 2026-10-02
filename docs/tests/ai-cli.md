@@ -27,6 +27,8 @@ printf '{"type":"user","message":{"role":"user","content":[{"type":"image","sour
 | C7 | 로그아웃 상태 | 로그아웃한 계정이나 다른 HOME 으로 C1, C2 실행 | C1 이 false 또는 0 이 아닌 종료 코드. C2 는 오류 이벤트 | 미실행 |
 | C8 | 사용 한도 초과 | 한도에 걸린 상태에서 C2 | 오류 문구를 받아 펫 말풍선으로 바꿀 수 있다 | 미실행 (한도에 걸렸을 때 기회 실행) |
 | C9 | 중단 | 답변 도중 프로세스 종료 (SIGTERM) | 2초 안에 끝나고 고아 프로세스가 남지 않는다 | 미실행 |
+| C11 | MCP 도구 새는지 | C2 를 여러 번, `system/init` 의 `tools` 개수와 `result.usage` 입력 토큰 | 늘 도구 0개, 입력 약 10K 토큰 | 통과 (2026-10-02). 빈 MCP 설정 없이는 한 번 106개, 104,171 토큰이 실렸다. `--strict-mcp-config --mcp-config '{"mcpServers":{}}' --disable-slash-commands` 로 고정 |
+| C12 | 사용량 | 출력의 `rate_limit_event` | `unifiedWindows` 에 5시간, 7일 `utilization` 과 `resetsAt` | 통과 (2026-10-02). 앱 표시 5시간 58%, 7일 63% |
 | C10 | 펫 MCP 연결 | `--mcp-config pet-mcp.json --strict-mcp-config` | 채팅에서 "오늘 할 일 알려줘"가 펫 할 일을 읽는다 | 미실행 (펫 MCP 서버 구현 후) |
 
 ## Codex (`codex`)
@@ -42,6 +44,8 @@ printf '{"type":"user","message":{"role":"user","content":[{"type":"image","sour
 | X5 | 성격 지시 | `-c developer_instructions="<성격 지시>"` | 반말로 짧게 답한다 | 통과. "네가 말 걸어줘서 반가워" (이모지를 붙이는 버릇이 있어 지시에 넣을지 정한다) |
 | X6 | 사용자 설정 격리 | 임시 폴더를 `CODEX_HOME` 으로 두고 `auth.json` 만 심볼릭 링크 | 사용자 스킬, MCP 경고가 나오지 않는다 | 통과. 스킬 경고가 사라지고 입력 25,073 에서 19,063 토큰으로 줄었다 |
 | X7 | 중단 | 답변 도중 SIGTERM | 2초 안에 끝난다 | 통과. 0.03초, 하위 프로세스도 남지 않음 |
+| X9 | 이어가기와 그림 같이 | `codex exec resume <id> "<질문>" --json --skip-git-repo-check -c sandbox_mode="read-only" -i <파일>` | 앞 대화를 기억하고 그림도 읽는다 | 통과 (2026-10-02). resume 에는 `-s` 가 없다 |
+| X10 | 사용량 | `CODEX_HOME/sessions/연/월/일/rollout-*-<thread_id>.jsonl` 의 마지막 `rate_limits` | `primary`(300분), `secondary`(10080분) 의 `used_percent`, `resets_at`, `plan_type` | 통과 (2026-10-02). 5시간 27%, 7일 58%, plus |
 | X8 | 응답 시간 | X2 를 격리 상태로 3번 | 중앙값을 기록한다 (목표: 답 10초 안) | 통과. 8.3, 8.6, 10.1초, 중앙값 8.6초. 3번 중 1번은 제목 한 단어를 잘못 읽음 (320px 작은 그림) |
 
 ## 알아낸 함정
@@ -63,4 +67,5 @@ printf '{"type":"user","message":{"role":"user","content":[{"type":"image","sour
 | 2026-10-01 | Claude Code 2.1.286 | C1~C5 | 모두 통과 |
 | 2026-10-01 | codex-cli 0.155.1 | X1, X3 (X2 시도) | 사용 한도 초과. 19:48 이후 재시도 가능 |
 | 2026-10-01 20:35 | codex-cli 0.155.1 | X2, X4~X8 | 모두 통과. 격리, 성격 지시, 이어가기, 중단 확인 |
+| 2026-10-02 | Claude Code 2.1.287, codex-cli 0.155.1, 앱 채팅 창 | C2, C5, C11, C12, X2, X9, X10 | 모두 통과. claude 에 빈 MCP 설정 필요(C11) |
 | 2026-10-01 | Electron 44.5.1 실험 앱 | C2, C3, C4, C6 | 앱 프로세스에서 이미지 질문 성공. 첫 글자 5.0초, 조각 27개 (C6 통과) |

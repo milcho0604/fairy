@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"01a0f9e7-fac9-7b63-a305-d0d5fb56a404"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"알겠어, 밀초. 기억할게."}}
+{"type":"turn.completed","usage":{"input_tokens":19755,"cached_input_tokens":12160,"cache_write_input_tokens":0,"output_tokens":15,"reasoning_output_tokens":0}}

@@ -1,0 +1,112 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { test } from 'node:test';
+import { claudeArgs, claudeInput, parseClaudeLine } from './claude.ts';
+import { codexArgs, parseCodexLine } from './codex.ts';
+import { classifyError } from './errors.ts';
+import type { AiEvent } from './types.ts';
+
+const fixture = (name: string) =>
+  readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
+    .trim()
+    .split('\n');
+
+test('claude 실제 출력(2026-10-02, 2.1.287): 세션, 조각, 완료', () => {
+  const events = fixture('claude-hello.jsonl').flatMap(parseClaudeLine);
+  assert.deepEqual(events[0], { type: 'session', id: 'd57445f3-1e01-4bcf-88ce-3ddf4254b96f' });
+  const text = events
+    .filter((e): e is Extract<AiEvent, { type: 'delta' }> => e.type === 'delta')
+    .map((e) => e.text);
+  assert.deepEqual(text, ['안녕, 반', '가', '워!']);
+  assert.deepEqual(events.at(-1), { type: 'done', text: '안녕, 반가워!' });
+});
+
+test('claude: JSON 이 아닌 줄과 생각 조각은 버린다', () => {
+  assert.deepEqual(parseClaudeLine('Warning: something'), []);
+  assert.deepEqual(
+    parseClaudeLine(
+      JSON.stringify({
+        type: 'stream_event',
+        event: { type: 'content_block_delta', delta: { type: 'thinking_delta' } },
+      }),
+    ),
+    [],
+  );
+});
+
+test('claude: 오류 결과는 오류 사건', () => {
+  const [e] = parseClaudeLine(
+    JSON.stringify({ type: 'result', subtype: 'success', is_error: true, result: 'Not logged in' }),
+  );
+  assert.equal(e?.type, 'error');
+  assert.equal(e?.type === 'error' && e.error.kind, 'not-logged-in');
+});
+
+test('claude 명령: 격리(L5, L13)와 새 세션, 이어가기', () => {
+  const base = { text: 'q', images: [], sessionId: 'abc', persona: 'p' };
+  const first = claudeArgs({ ...base, resume: false });
+  for (const flag of [
+    '--setting-sources',
+    '--strict-mcp-config',
+    '--disable-slash-commands',
+    '--include-partial-messages',
+  ]) {
+    assert.ok(first.includes(flag), flag);
+  }
+  assert.equal(first[first.indexOf('--tools') + 1], '');
+  assert.equal(first[first.indexOf('--mcp-config') + 1], '{"mcpServers":{}}');
+  assert.deepEqual(first.slice(-2), ['--session-id', 'abc']);
+  assert.deepEqual(claudeArgs({ ...base, resume: true }).slice(-2), ['--resume', 'abc']);
+});
+
+test('claude 입력: 이미지 다음 글, 한 줄', () => {
+  const line = claudeInput({ text: '이거 뭐야', images: [{ mediaType: 'image/png', data: 'AAA' }] });
+  assert.ok(line.endsWith('\n'));
+  const msg = JSON.parse(line);
+  assert.equal(msg.message.content[0].source.data, 'AAA');
+  assert.equal(msg.message.content[1].text, '이거 뭐야');
+});
+
+test('codex 실제 출력(0.155.1): thread_id, 답 한 번에, 완료', () => {
+  const events = fixture('codex-hello.jsonl').flatMap(parseCodexLine);
+  assert.deepEqual(events, [
+    { type: 'session', id: '01a0f9e7-fac9-7b63-a305-d0d5fb56a404' },
+    { type: 'delta', text: '알겠어, 밀초. 기억할게.' },
+    { type: 'done', text: '' },
+  ]);
+});
+
+test('codex: 경고 항목과 로그 줄은 무시, turn.failed 는 오류', () => {
+  assert.deepEqual(
+    parseCodexLine(JSON.stringify({ type: 'item.completed', item: { type: 'error', message: '스킬 경고' } })),
+    [],
+  );
+  assert.deepEqual(parseCodexLine('2026-10-02 ERROR mcp: connection refused'), []);
+  const [e] = parseCodexLine(
+    JSON.stringify({
+      type: 'turn.failed',
+      error: { message: "You've hit your usage limit. Try again at 7:48 PM." },
+    }),
+  );
+  assert.deepEqual(e?.type === 'error' && [e.error.kind, e.error.retryAt], ['rate-limit', '7:48 PM']);
+});
+
+test('codex 명령: 질문은 -i 앞, 이어가기는 resume, 샌드박스는 -c', () => {
+  const first = codexArgs({ text: '질문', imagePaths: ['/a.png', '/b.png'], persona: '반말' });
+  assert.deepEqual(first.slice(0, 2), ['exec', '질문']);
+  assert.ok(first.indexOf('질문') < first.indexOf('-i'));
+  assert.deepEqual(first.slice(-4), ['-i', '/a.png', '-i', '/b.png']);
+  assert.ok(first.includes('sandbox_mode="read-only"'));
+  assert.ok(first.includes('developer_instructions="반말"'));
+  const next = codexArgs({ text: '또', imagePaths: [], persona: 'p', threadId: 't1' });
+  assert.deepEqual(next.slice(0, 4), ['exec', 'resume', 't1', '또']);
+});
+
+test('오류 문구 분류', () => {
+  assert.equal(classifyError('claude', 'Claude AI usage limit reached|1790900400').kind, 'rate-limit');
+  assert.equal(classifyError('codex', 'Not logged in. Please run codex login').kind, 'not-logged-in');
+  const other = classifyError('codex', 'stream disconnected\nmore');
+  assert.equal(other.kind, 'failed');
+  assert.ok(other.message.includes('stream disconnected'));
+  assert.ok(!other.message.includes('more'));
+});

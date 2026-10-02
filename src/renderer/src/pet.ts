@@ -8,6 +8,7 @@ import {
   nextChangeAt,
   type PetInputs,
   type PetMood,
+  TALK_MS,
 } from '../../shared/pet-mood.ts';
 import { CANVAS_SIZE, drawPet } from './draw.ts';
 
@@ -166,7 +167,7 @@ canvas.addEventListener('pointerup', (e) => {
   if (!event) return;
   bridge.gesture(event);
   if (event.type === 'drag-end') setInputs({ grabbed: false });
-  // 패널(2단계)이 생기기 전까지 클릭하면 신난다.
+  // 클릭하면 메인이 채팅 창을 연다(패널은 2단계). 펫은 반가워서 잠깐 신난다.
   else setInputs({ excitedUntil: performance.now() + EXCITED_MS });
 });
 
@@ -206,6 +207,10 @@ canvas.addEventListener(
 
 // ---- 메인이 알려 주는 환경 ----
 bridge.onEnv((env) => setInputs({ systemBusy: env.systemBusy, userIdleMs: env.userIdleMs }));
+// AI 답을 기다리는 동안 생각 중, 답이 오면 잠깐 말하기 동작.
+bridge.onAi((ai) =>
+  setInputs({ thinking: ai.thinking, ...(ai.answered ? { talkingUntil: performance.now() + TALK_MS } : {}) }),
+);
 
 // 개발용: DevTools 에서 상태를 바꿔 보는 손잡이. 빌드에도 남지만 외부에서 부를 길은 없다.
 Object.assign(window, {

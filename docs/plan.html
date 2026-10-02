@@ -121,7 +121,7 @@ figure.diagram svg .eye { fill: #1f2328; }
   </header>
   <nav class="toc" aria-label="목차"><ol><li><a href="#개요">개요</a></li><li><a href="#성공-기준">성공 기준</a></li><li><a href="#참고-제품">참고 제품</a></li><li><a href="#하루-사용-흐름">하루 사용 흐름</a></li><li><a href="#기능-리스트">기능 리스트</a></li><li><a href="#펫-동작-규칙">펫 동작 규칙</a></li><li><a href="#게임-규칙">게임 규칙</a></li><li><a href="#화면-설계">화면 설계</a></li><li><a href="#시스템-구조">시스템 구조</a></li><li><a href="#데이터-모델">데이터 모델</a></li><li><a href="#데이터와-개인정보">데이터와 개인정보</a></li><li><a href="#ai-연동-규격">AI 연동 규격</a></li><li><a href="#비기능-목표">비기능 목표</a></li><li><a href="#기술-스택">기술 스택</a></li><li><a href="#설치와-배포">설치와 배포</a></li><li><a href="#개발-단계">개발 단계</a></li><li><a href="#리스크와-정할-것">리스크와 정할 것</a></li><li><a href="#출처">출처</a></li></ol></nav>
   <main>
-<p>문서 버전 0.2.5 (2026-10-02). 변경 이력은 <a href="../CHANGELOG.md">CHANGELOG</a>에 남긴다. AI 연동 검증 절차는 <a href="tests/ai-cli.md">AI CLI 검증 시나리오</a>에 있다.</p>
+<p>문서 버전 0.2.6 (2026-10-02). 변경 이력은 <a href="../CHANGELOG.md">CHANGELOG</a>에 남긴다. AI 연동 검증 절차는 <a href="tests/ai-cli.md">AI CLI 검증 시나리오</a>에 있다.</p>
 <p>옆자리 짝꿍처럼 화면 위를 돌아다니는 펫이 할 일, 일정, 메모를 같이 챙기고, 내 컴퓨터에 설치된 AI(Claude, Codex)와 연결돼 "같이 보기"로 화면을 보며 대화하는 데스크톱 앱이다. 맥과 윈도우를 동시에 낸다.</p>
 <h2 id="개요">개요</h2>
 <p>일하는 시간을 덜 외롭고 더 재미있게 만드는 것이 목표다. 펫은 귀여운 놀이 상대이면서, 할 일과 일정을 챙기고 AI와 이어 주는 비서 역할을 한다.</p>
@@ -285,7 +285,7 @@ figure.diagram svg .eye { fill: #1f2328; }
 <li><strong>퇴근</strong>: 오늘 끝낸 일과 받은 코인을 보여 주고, 내일로 넘길 할 일을 물어본다. 펫은 집으로 들어가 잔다.</li>
 </ol>
 <h2 id="기능-리스트">기능 리스트</h2>
-<p>54개 기능 중 MVP는 15개, v1은 29개, v2는 10개다. MVP는 "내가 일주일 동안 실제로 쓸 수 있는 최소"로 잘랐다. 출처가 "요청"이면 처음 아이디어에 있던 것, "제안"이면 사용자 입장에서 필요하다고 보고 덧붙인 것이다.</p>
+<p>55개 기능 중 MVP는 16개, v1은 29개, v2는 10개다. MVP는 "내가 일주일 동안 실제로 쓸 수 있는 최소"로 잘랐다. 출처가 "요청"이면 처음 아이디어에 있던 것, "제안"이면 사용자 입장에서 필요하다고 보고 덧붙인 것이다.</p>
 <div class="filters" role="group" aria-label="우선순위 필터"><button type="button" data-filter="all" aria-pressed="true">전체</button><button type="button" data-filter="mvp" aria-pressed="false">MVP</button><button type="button" data-filter="v1" aria-pressed="false">v1</button><button type="button" data-filter="v2" aria-pressed="false">v2</button><span class="count" aria-live="polite"></span></div><div class="table-wrap"><table id="features">
 <thead>
 <tr>
@@ -532,6 +532,13 @@ figure.diagram svg .eye { fill: #1f2328; }
 <td>AI</td>
 <td>같이 보기</td>
 <td>펫 우클릭 메뉴 "(이름)랑 같이 보기"로 시작. 영역을 드래그하면 캡처가 채팅 입력칸에 자동 첨부되고, 전송을 눌러야 AI로 나간다. 맥 화면 기록 권한 안내 포함</td>
+<td><span class="src asked">요청</span></td>
+<td data-priority="mvp"><span class="tag mvp">MVP</span></td>
+</tr>
+<tr>
+<td>AI</td>
+<td>사용량 보기</td>
+<td>채팅 창에 고른 AI 의 5시간, 7일 사용률과 초기화까지 남은 때를 막대로 보인다. 80% 넘으면 주황, 95% 넘으면 빨강</td>
 <td><span class="src asked">요청</span></td>
 <td data-priority="mvp"><span class="tag mvp">MVP</span></td>
 </tr>
@@ -1465,8 +1472,18 @@ figure.diagram svg .eye { fill: #1f2328; }
 </tr>
 <tr>
 <td>사용자 설정 격리</td>
-<td><code>--setting-sources ""</code>, <code>--tools ""</code>. 훅 6개가 0개로 줄어든 것 확인</td>
-<td>임시 <code>CODEX_HOME</code> 에 <code>auth.json</code> 만 링크. 스킬 경고가 사라지고 입력이 25,073 에서 19,063 토큰으로 줄어든 것 확인</td>
+<td><code>--setting-sources ""</code>, <code>--tools ""</code>, <code>--strict-mcp-config --mcp-config '{"mcpServers":{}}'</code>, <code>--disable-slash-commands</code>. 훅 6개가 0개로 줄어든 것 확인. 빈 MCP 설정이 없으면 claude.ai 커넥터 도구가 실릴 때가 있어 입력이 10,292 에서 104,171 토큰으로 뛰었다</td>
+<td>짝꿍 전용 <code>CODEX_HOME</code>(사용자 데이터 폴더)에 <code>auth.json</code> 만 링크. 스킬 경고가 사라지고 입력이 25,073 에서 19,063 토큰으로 줄어든 것 확인</td>
+</tr>
+<tr>
+<td>작업 폴더</td>
+<td>짝꿍 전용 빈 폴더. claude 는 작업 폴더마다 세션을 저장해서 이어가기도 같은 폴더여야 한다</td>
+<td>같음. <code>codex exec resume</code> 에는 <code>-s</code> 가 없어 <code>-c sandbox_mode="read-only"</code> 로 준다</td>
+</tr>
+<tr>
+<td>사용량</td>
+<td>답마다 오는 <code>rate_limit_event</code> 의 5시간, 7일 사용률과 초기화 시각</td>
+<td>대화 기록 파일(<code>sessions/.../rollout-*.jsonl</code>)의 <code>rate_limits</code> (5시간, 7일, 요금제)</td>
 </tr>
 <tr>
 <td>끝 판정</td>
@@ -1480,8 +1497,8 @@ figure.diagram svg .eye { fill: #1f2328; }
 </tr>
 <tr>
 <td>첫 답 시간 (실측)</td>
-<td>간단한 질문 3.4~4.2초, 이미지 질문 첫 글자 5.0초</td>
-<td>이미지 질문 답 완성까지 중앙값 8.6초 (3회)</td>
+<td>간단한 질문 3.4~4.2초, 이미지 질문 첫 글자 5.0초. 앱 채팅 창에서 첫 글자 2.3초 (2026-10-02)</td>
+<td>이미지 질문 답 완성까지 중앙값 8.6초 (3회). 앱 채팅 창에서 글 질문 5.8초, 그림 질문 5.3~14.7초</td>
 </tr>
 </tbody>
 </table></div>

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+    />
+    <title>같이 보기</title>
+    <link rel="stylesheet" href="./src/overlay/overlay.css" />
+  </head>
+  <body>
+    <div id="dim"></div>
+    <div id="sel" hidden><span id="size"></span></div>
+    <p id="hint" role="status"></p>
+    <script type="module" src="./src/overlay/overlay.ts"></script>
+  </body>
+</html>
