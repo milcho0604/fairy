@@ -7,6 +7,7 @@ export interface TrayActions {
   isHidden(): boolean;
   openChat(): void;
   openSettings(): void;
+  quickAdd(): void;
 }
 
 /**
@@ -33,6 +34,7 @@ export function createTray(petName: () => string, actions: TrayActions): Tray {
         click: () => actions.toggleHidden(),
       },
       { label: `${withParticle(petName(), '과')} 대화`, click: () => actions.openChat() },
+      { label: '할 일 추가', accelerator: QUICK_ADD_SHORTCUT, click: () => actions.quickAdd() },
       { label: '설정', click: () => actions.openSettings() },
       { type: 'separator' },
       { label: '끝내기', role: 'quit' },
@@ -45,3 +47,5 @@ export function createTray(petName: () => string, actions: TrayActions): Tray {
 
 /** 펫 숨기기와 보이기. 다른 앱과 겹치지 않게 네 키를 쓴다 (설정에서 바꾸기는 P1-12). */
 export const HIDE_SHORTCUT = 'CommandOrControl+Alt+Shift+H';
+/** 어디서든 할 일 한 줄 넣기 (P2-04). 숨기기와 같은 네 키 조합 */
+export const QUICK_ADD_SHORTCUT = 'CommandOrControl+Alt+Shift+N';

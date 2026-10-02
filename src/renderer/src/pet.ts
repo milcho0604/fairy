@@ -73,7 +73,14 @@ function frame() {
       blinkStart = -1;
     }
   }
-  drawPet(ctx, { mood, elapsed: now - moodSince, blink, viewSize, activity: activityPose(now) });
+  drawPet(ctx, {
+    mood,
+    elapsed: now - moodSince,
+    blink,
+    viewSize,
+    activity: activityPose(now),
+    hungry: inputs.hungry,
+  });
 
   const walking = activity?.type === 'walk';
   const fps = isAnimated(mood) ? (ANIMATED_FPS[mood] ?? 30) : blinkStart >= 0 ? 30 : walking ? WALK_FPS : 0;
@@ -118,6 +125,10 @@ function activityPose(now: number) {
   if (activity.type === 'look') return { type: 'look' as const, dir: activity.dir };
   return { type: 'sit' as const };
 }
+
+bridge.onStatus((status) => setInputs({ hungry: status.hungry }));
+// 할 일을 끝내거나 밥을 먹으면 신나서 통통 튄다.
+bridge.onReact(() => setInputs({ excitedUntil: performance.now() + EXCITED_MS }));
 
 bridge.onActivity((a) => {
   if (mood !== 'idle') {

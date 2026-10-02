@@ -24,6 +24,8 @@ export default defineConfig({
           chat: resolve('src/renderer/chat.html'),
           overlay: resolve('src/renderer/overlay.html'),
           settings: resolve('src/renderer/settings.html'),
+          panel: resolve('src/renderer/panel.html'),
+          quick: resolve('src/renderer/quick.html'),
         },
       },
       minify: true,

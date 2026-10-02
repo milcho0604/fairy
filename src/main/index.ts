@@ -1,12 +1,15 @@
 import { app, globalShortcut } from 'electron';
 import { IPC } from '../shared/ipc.ts';
+import { FULLNESS } from '../shared/todo-store.ts';
 import { createChat } from './chat.ts';
+import { openStore } from './db.ts';
 import { createLookTogether } from './look-together.ts';
+import { createPanel } from './panel.ts';
 import { createPetWindow } from './pet-window.ts';
 import { watchPresentation } from './presence-watch.ts';
 import { settings } from './settings.ts';
 import { createSettingsWindow } from './settings-window.ts';
-import { createTray, HIDE_SHORTCUT } from './tray.ts';
+import { createTray, HIDE_SHORTCUT, QUICK_ADD_SHORTCUT } from './tray.ts';
 
 const log = (tag: string, ...rest: unknown[]) => {
   if (!app.isPackaged) console.log(`[${tag}]`, ...rest);
@@ -46,10 +49,13 @@ app.whenReady().then(() => {
   const pet = createPetWindow({
     petName,
     actions: {
-      click: (bounds) => chat.toggle(bounds),
+      // 왼쪽 클릭은 패널(할 일, 코인, 밥). 대화는 패널 안과 우클릭 메뉴에서.
+      click: () => panel.togglePanel(),
       openChat: (bounds) => chat.open(bounds),
       lookTogether: () => look.start(),
       openSettings: () => settingsWindow.open(),
+      quickAdd: () => panel.openQuick(),
+      feed: () => feedPet(),
     },
     log,
   });
@@ -71,19 +77,77 @@ app.whenReady().then(() => {
   // ---- 방해 금지 (P1-10) ----
   const toggleHidden = () => pet.setHidden('user', !pet.isHidden('user'));
   // 숨기기 단축키는 숨은 펫을 다시 부르는 길이라 늘 걸어 둔다. 다른 앱과 겹치지 않게 네 키 조합.
-  if (!globalShortcut.register(HIDE_SHORTCUT, toggleHidden))
-    log('shortcut', '숨기기 단축키 등록 실패', HIDE_SHORTCUT);
+  // 다른 앱이 이미 쓰고 있으면 등록이 안 된다. 켜진 뒤 펫이 말풍선으로 알린다 (P2-04 확인 항목).
+  const takenShortcuts: string[] = [];
+  if (!globalShortcut.register(HIDE_SHORTCUT, toggleHidden)) takenShortcuts.push('숨기기');
   const tray = createTray(petName, {
     toggleHidden,
     isHidden: () => pet.isHidden('user'),
     openChat: () => chat.open(pet.bounds()),
     openSettings: () => settingsWindow.open(),
+    quickAdd: () => panel.openQuick(),
   });
+  // ---- 할 일과 코인 (2단계) ----
+  const store = openStore(log);
+  const panel = createPanel({
+    store,
+    petName,
+    petBounds: () => pet.bounds(),
+    onCompleted: () => pet.react(),
+    onFed: () => {
+      pet.react();
+      void pet.say({ kind: 'answer', text: '냠냠, 고마워!', ttlMs: 3000 });
+    },
+    onChanged: () => sendHunger(),
+    openChat: () => chat.open(pet.bounds()),
+    lookTogether: () => look.start(),
+    log,
+  });
+  /** 패널 밖(펫 우클릭)에서 밥 주기 */
+  function feedPet() {
+    const r = store.feed(Date.now());
+    if (r.ok) {
+      pet.react();
+      void pet.say({ kind: 'answer', text: '냠냠, 고마워!', ttlMs: 3000 });
+    } else {
+      void pet.say({ kind: 'answer', text: '코인이 모자라. 할 일을 하나 끝내면 생겨.', ttlMs: 4000 });
+    }
+    panel.refresh();
+  }
+  // 배부름은 시간이 흐르면 준다. 5분마다 보고 배고픈지 펫에게 알린다.
+  let wasHungry: boolean | undefined;
+  function sendHunger() {
+    const hungry = store.fullness(Date.now()) < FULLNESS.hungry;
+    if (hungry === wasHungry || pet.win.isDestroyed()) return;
+    wasHungry = hungry;
+    pet.win.webContents.send(IPC.status, { hungry });
+  }
+  pet.win.webContents.on('did-finish-load', () => {
+    wasHungry = undefined;
+    sendHunger();
+  });
+  setInterval(sendHunger, 5 * 60 * 1000);
+  if (!globalShortcut.register(QUICK_ADD_SHORTCUT, () => panel.openQuick()))
+    takenShortcuts.push('할 일 한 줄 넣기');
+  if (takenShortcuts.length > 0) {
+    log('shortcut', '등록 실패 (다른 앱이 사용 중)', takenShortcuts.join(', '));
+    setTimeout(
+      () =>
+        void pet.say({
+          kind: 'answer',
+          text: `${takenShortcuts.join(', ')} 단축키를 다른 앱이 쓰고 있어. 내 우클릭 메뉴로 해 줘.`,
+          ttlMs: 10_000,
+        }),
+      3000,
+    );
+  }
+
   // ---- 설정 (P1-12) ----
   const settingsWindow = createSettingsWindow({ scale: () => pet.scale(), setScale: (n) => pet.setScale(n) });
   settings.onChange((next, prev) => {
     if (next.petName !== prev.petName) {
       chat.petNameChanged();
+      panel.refresh();
       tray.setToolTip(`짝꿍 (${next.petName})`);
     }
     // 격리 폴더와 사용자 폴더는 대화 기록이 따로라 이어 갈 수 없다. 새 대화로 시작한다.
@@ -98,13 +162,16 @@ app.whenReady().then(() => {
   const stopPresence = watchPresentation((hide) => pet.setHidden('presentation', hide), log);
   app.on('will-quit', () => {
     globalShortcut.unregister(HIDE_SHORTCUT);
+    globalShortcut.unregister(QUICK_ADD_SHORTCUT);
     stopPresence();
     tray.destroy();
   });
 
   // 개발용: 메인 프로세스 디버거(--inspect)에서 같이 보기, 채팅을 불러 시험할 손잡이. 배포본에는 없다.
   if (!app.isPackaged)
-    Object.assign(globalThis, { __jj: { look, chat, pet, globalShortcut, tray, settings, settingsWindow } });
+    Object.assign(globalThis, {
+      __jj: { look, chat, pet, globalShortcut, tray, settings, settingsWindow, panel, store },
+    });
   if (process.env.JJ_METRICS) logMetrics(Number(process.env.JJ_METRICS));
 });
 

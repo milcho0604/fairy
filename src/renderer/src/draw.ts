@@ -16,6 +16,8 @@ export interface DrawState {
   blink: number;
   /** 화면에 그려지는 펫 크기(px). 작으면 글씨를 빼서 뭉개지지 않게 한다. */
   viewSize?: number;
+  /** 배고프면 기본 상태에서 입 모양만 바뀐다 */
+  hungry?: boolean;
   /** 기본 상태에서 하는 행동 (P1-06). phase 는 걷기 걸음 진행 0~1 */
   activity?: { type: 'walk'; dir: -1 | 1; phase: number } | { type: 'sit' } | { type: 'look'; dir: -1 | 1 };
 }
@@ -100,7 +102,8 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): void {
   }
 
   drawEyes(ctx, s, look);
-  drawMouth(ctx, s.mood, look);
+  if (s.hungry && s.mood === 'idle') drawHungryMouth(ctx, look);
+  else drawMouth(ctx, s.mood, look);
   ctx.restore();
 
   drawExtras(ctx, s, GROUND - lift - RY * 2 * sy);
@@ -141,6 +144,18 @@ function drawEyes(ctx: CanvasRenderingContext2D, s: DrawState, look: number) {
       ctx.fill();
     }
   }
+}
+
+/** 배고픈 입: 물결처럼 꼬불 */
+function drawHungryMouth(ctx: CanvasRenderingContext2D, x: number) {
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x - 8, 13);
+  ctx.quadraticCurveTo(x - 4, 9, x, 13);
+  ctx.quadraticCurveTo(x + 4, 17, x + 8, 13);
+  ctx.stroke();
 }
 
 function drawMouth(ctx: CanvasRenderingContext2D, mood: PetMood, look: number) {

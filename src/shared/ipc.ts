@@ -6,6 +6,7 @@ import type { BubbleLayout } from './bubble-layout.ts';
 import type { ChatImage, ChatState } from './chat-state.ts';
 import type { GestureEvent } from './gesture.ts';
 import type { Settings } from './settings.ts';
+import type { Todo } from './todo-store.ts';
 
 export const IPC = {
   /** 펫 화면 → 메인: 커서가 펫 위에 있는지 (클릭 통과를 켜고 끈다). */
@@ -34,6 +35,10 @@ export const IPC = {
   activityStop: 'pet:activity-stop',
   /** 메인 → 펫 화면: 이 행동을 해라 */
   activity: 'pet:activity',
+  /** 메인 → 펫 화면: 배고픔 같은 펫 상태 (2단계) */
+  status: 'pet:status',
+  /** 메인 → 펫 화면: 반응 (할 일 끝냄, 밥 먹음) */
+  react: 'pet:react',
 } as const;
 
 export interface BubbleButton {
@@ -174,4 +179,53 @@ export interface PetBridge {
   activityRequest(): void;
   activityStop(): void;
   onActivity(listener: (activity: Activity) => void): void;
+  onStatus(listener: (status: PetStatus) => void): void;
+  onReact(listener: (kind: 'happy') => void): void;
+}
+
+export interface PetStatus {
+  hungry: boolean;
+}
+
+export const PANEL = {
+  snapshot: 'panel:snapshot',
+  add: 'panel:add',
+  complete: 'panel:complete',
+  undo: 'panel:undo',
+  update: 'panel:update',
+  remove: 'panel:remove',
+  feed: 'panel:feed',
+  openChat: 'panel:open-chat',
+  lookTogether: 'panel:look-together',
+  close: 'panel:close',
+  /** 메인 → 패널, 빠른 입력: 바뀐 상태 */
+  state: 'panel:state',
+} as const;
+
+export interface PanelState {
+  petName: string;
+  /** 현지 날짜 YYYY-MM-DD */
+  today: string;
+  open: Todo[];
+  doneToday: Todo[];
+  balance: number;
+  fullness: number;
+  hungryBelow: number;
+  foodCost: number;
+}
+
+export interface PanelBridge {
+  platform: NodeJS.Platform;
+  snapshot(): Promise<PanelState>;
+  /** 한 줄 입력(빠른 입력과 같은 규칙)으로 할 일을 더한다 */
+  add(text: string): Promise<{ ok: boolean; error?: string }>;
+  complete(id: number): Promise<number>;
+  undo(id: number): Promise<number>;
+  update(id: number, patch: { title?: string; due?: string | null; important?: boolean }): void;
+  remove(id: number): void;
+  feed(): Promise<{ ok: boolean }>;
+  openChat(): void;
+  lookTogether(): void;
+  close(): void;
+  onState(listener: (state: PanelState) => void): void;
 }

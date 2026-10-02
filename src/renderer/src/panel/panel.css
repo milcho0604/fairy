@@ -1,0 +1,417 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: transparent;
+}
+
+body {
+  color: var(--ink);
+  font:
+    13.5px / 1.5 -apple-system,
+    BlinkMacSystemFont,
+    "Apple SD Gothic Neo",
+    "Malgun Gothic",
+    sans-serif;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  user-select: none;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+/* 투명 창 안의 카드. 창 가장자리 여백에 그림자가 들어간다. */
+.card-window {
+  position: absolute;
+  inset: 6px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+
+.face {
+  flex: none;
+  width: 24px;
+  height: 22px;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.panel header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px 8px;
+}
+
+.panel header strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.coins {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--code);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.coin {
+  width: 14px;
+  height: 14px;
+  fill: #e8b54a;
+  stroke: #b8862a;
+}
+
+.coin .inner {
+  fill: none;
+  stroke: #b8862a;
+}
+
+.fullness {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 14px 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.fullness .track {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--code);
+  overflow: hidden;
+}
+
+.fullness .fill {
+  display: block;
+  height: 100%;
+  background: var(--ok);
+}
+
+.fullness .track.low .fill {
+  background: var(--warn);
+}
+
+.fullness .value {
+  min-width: 22px;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.ghost {
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.ghost:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.small {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.hint {
+  margin: 0 14px 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.hint.hungry,
+.hint.error {
+  color: var(--warn);
+}
+
+.add {
+  padding: 4px 14px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.add input,
+.title-edit {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg);
+  user-select: text;
+}
+
+.add input:focus,
+.title-edit:focus,
+.quick input:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: -1px;
+}
+
+.todos {
+  margin: 0;
+  padding: 4px 8px;
+  list-style: none;
+}
+
+.panel > .todos {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.todo {
+  display: flex;
+  /* 제목이 여러 줄이어도 동그라미와 버튼은 첫 줄에 맞춘다 */
+  align-items: flex-start;
+  gap: 6px;
+  padding: 5px 6px;
+  border-radius: 8px;
+}
+
+.todo:hover {
+  background: var(--bg);
+}
+
+.empty {
+  padding: 18px 10px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.check {
+  flex: none;
+  margin-top: 2px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1.5px solid var(--muted);
+  border-radius: 50%;
+  background: transparent;
+  color: transparent;
+  cursor: pointer;
+}
+
+.check svg {
+  width: 11px;
+  height: 11px;
+}
+
+.check:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.check.on {
+  border-color: var(--ok);
+  background: var(--ok);
+  color: #fff;
+}
+
+.todo .title {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: text;
+}
+
+.done-item .title {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.due {
+  position: relative;
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: var(--code);
+  font-size: 11.5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.due.none {
+  opacity: 0;
+}
+
+.todo:hover .due.none,
+.due.none:focus-within {
+  opacity: 0.8;
+}
+
+.due.overdue {
+  color: var(--error);
+  background: color-mix(in srgb, var(--error) 12%, transparent);
+}
+
+/* 날짜 고르기는 칩을 누르면 운영체제 달력이 열리게, 입력칸은 칩 위에 투명하게 겹친다. */
+.due input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.star {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--line);
+  cursor: pointer;
+}
+
+.star svg {
+  width: 15px;
+  height: 15px;
+  fill: currentColor;
+}
+
+.star.on {
+  color: #e8b54a;
+}
+
+.remove {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--muted);
+  opacity: 0;
+  cursor: pointer;
+}
+
+.todo:hover .remove,
+.remove:focus-visible {
+  opacity: 1;
+}
+
+.done {
+  border-top: 1px solid var(--line);
+  max-height: 34%;
+  overflow-y: auto;
+}
+
+.done-toggle {
+  width: 100%;
+  padding: 7px 14px;
+  border: 0;
+  background: none;
+  text-align: left;
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.done-toggle::before {
+  content: "▸ ";
+}
+
+.done-toggle[aria-expanded="true"]::before {
+  content: "▾ ";
+}
+
+.panel footer {
+  display: flex;
+  gap: 6px;
+  padding: 8px 14px 12px;
+  border-top: 1px solid var(--line);
+}
+
+.panel footer button {
+  flex: 1;
+}
+
+.toast {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 56px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 12.5px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.toast span {
+  flex: 1;
+}
+
+.toast .undo {
+  padding: 2px 8px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+}
+
+/* 빠른 입력 */
+.quick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+}
+
+.quick input {
+  flex: 1;
+  height: 34px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  font-size: 15px;
+  user-select: text;
+}
+
+.quick input:focus {
+  outline: none;
+}
+
+.quick-msg {
+  font-size: 12.5px;
+  color: var(--ok);
+}

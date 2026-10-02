@@ -12,9 +12,13 @@ import {
   LOOK,
   type OutgoingImage,
   type OverlayBridge,
+  PANEL,
+  type PanelBridge,
+  type PanelState,
   type PetAiState,
   type PetBridge,
   type PetEnv,
+  type PetStatus,
   SETTINGS,
   type SettingsBridge,
 } from '../shared/ipc.ts';
@@ -50,6 +54,12 @@ if (kind === 'pet') {
     activityStop: () => ipcRenderer.send(IPC.activityStop),
     onActivity: (listener) => {
       ipcRenderer.on(IPC.activity, (_e, activity: Activity) => listener(activity));
+    },
+    onStatus: (listener) => {
+      ipcRenderer.on(IPC.status, (_e, status: PetStatus) => listener(status));
+    },
+    onReact: (listener) => {
+      ipcRenderer.on(IPC.react, (_e, kind: 'happy') => listener(kind));
     },
   };
   contextBridge.exposeInMainWorld('jjakkung', pet);
@@ -100,4 +110,25 @@ if (kind === 'settings') {
     },
   };
   contextBridge.exposeInMainWorld('jjakkungSettings', bridge);
+}
+
+// 패널과 빠른 입력 창은 같은 기능을 쓴다.
+if (kind === 'panel' || kind === 'quick') {
+  const panel: PanelBridge = {
+    platform: process.platform,
+    snapshot: () => ipcRenderer.invoke(PANEL.snapshot),
+    add: (text: string) => ipcRenderer.invoke(PANEL.add, text),
+    complete: (id: number) => ipcRenderer.invoke(PANEL.complete, id),
+    undo: (id: number) => ipcRenderer.invoke(PANEL.undo, id),
+    update: (id, patch) => ipcRenderer.send(PANEL.update, id, patch),
+    remove: (id: number) => ipcRenderer.send(PANEL.remove, id),
+    feed: () => ipcRenderer.invoke(PANEL.feed),
+    openChat: () => ipcRenderer.send(PANEL.openChat),
+    lookTogether: () => ipcRenderer.send(PANEL.lookTogether),
+    close: () => ipcRenderer.send(PANEL.close),
+    onState: (listener) => {
+      ipcRenderer.on(PANEL.state, (_e, state: PanelState) => listener(state));
+    },
+  };
+  contextBridge.exposeInMainWorld('jjakkungPanel', panel);
 }

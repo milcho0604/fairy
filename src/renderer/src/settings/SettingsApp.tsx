@@ -154,6 +154,10 @@ export function SettingsApp() {
             <dd>
               <kbd>{mod}</kbd> <kbd>{alt}</kbd> <kbd>Shift</kbd> <kbd>H</kbd>
             </dd>
+            <dt>할 일 한 줄 넣기 (어디서든)</dt>
+            <dd>
+              <kbd>{mod}</kbd> <kbd>{alt}</kbd> <kbd>Shift</kbd> <kbd>N</kbd>
+            </dd>
             <dt>크게, 작게, 원래대로 (마우스가 펫 위에 있을 때)</dt>
             <dd>
               <kbd>{mod}</kbd> <kbd>{alt}</kbd> <kbd>=</kbd> / <kbd>-</kbd> / <kbd>0</kbd>

@@ -30,6 +30,8 @@ export interface PetInputs {
   focusTimer: boolean;
   /** 삐짐 게이지 칸 수 (v1). */
   sulkLevel: number;
+  /** 배부름이 낮다 (2단계). 상태는 바꾸지 않고 기본 상태에 배고픈 표정만 더한다 */
+  hungry: boolean;
 }
 
 export const SLEEP_AFTER_MS = 10 * 60 * 1000;
@@ -48,6 +50,7 @@ export const INITIAL_INPUTS: PetInputs = {
   userIdleMs: 0,
   focusTimer: false,
   sulkLevel: 0,
+  hungry: false,
 };
 
 export function moodOf(i: PetInputs, now: number): PetMood {

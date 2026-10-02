@@ -13,7 +13,7 @@ import { clampScale, resizeFromBottomCenter, scaleByStep, scaleByWheel } from '.
 import { settings } from './settings.ts';
 import { readJson, writeJson } from './store.ts';
 import { watchSystem } from './system-watch.ts';
-import { HIDE_SHORTCUT } from './tray.ts';
+import { HIDE_SHORTCUT, QUICK_ADD_SHORTCUT } from './tray.ts';
 
 /** 배율 100% 일 때 펫 창 크기. 펫보다 조금 크게 잡아 통통 튀는 동작이 잘리지 않게 한다. */
 const BASE_SIZE = 160;
@@ -40,6 +40,8 @@ export interface PetActions {
   openChat(petBounds: Electron.Rectangle): void;
   lookTogether(): void;
   openSettings(): void;
+  quickAdd(): void;
+  feed(): void;
 }
 
 export interface SayOptions {
@@ -62,6 +64,8 @@ export interface PetWindow {
   isHidden(reason?: HideReason): boolean;
   scale(): number;
   setScale(scale: number): void;
+  /** 반응 동작 (할 일 끝냄, 밥 먹음) */
+  react(): void;
   debugMoveTo(x: number, y: number): void;
   debugScale(scale: number): void;
 }
@@ -225,6 +229,8 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Pe
     Menu.buildFromTemplate([
       { label: `${withParticle(petName(), '이랑')} 같이 보기`, click: () => actions.lookTogether() },
       { label: `${withParticle(petName(), '과')} 대화`, click: () => actions.openChat(pet) },
+      { label: '할 일 추가', accelerator: QUICK_ADD_SHORTCUT, click: () => actions.quickAdd() },
+      { label: '밥 주기', click: () => actions.feed() },
       { type: 'separator' },
       {
         label: '말풍선',
@@ -456,6 +462,9 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Pe
     say,
     setHidden: (reason: HideReason, on: boolean, hint?: boolean) => setHidden(reason, on, hint),
     scale: () => scale,
+    react: () => {
+      if (!win.isDestroyed()) win.webContents.send(IPC.react, 'happy');
+    },
     setScale: (next: number) => resize(clampScale(next)),
     isHidden: (reason?: HideReason) => (reason ? hideReasons.has(reason) : hideReasons.hidden),
     // 개발용: 디자인 점검 때 위치와 크기를 바로 바꾼다 (메인 디버거의 __jj 에서만 부른다).
