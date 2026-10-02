@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   canBlink,
+  DOZE_AFTER_MS,
   INITIAL_INPUTS,
   isAnimated,
   moodOf,
@@ -58,8 +59,10 @@ test('신남과 말하기는 시간이 지나면 끝난다', () => {
   assert.equal(nextChangeAt(INITIAL_INPUTS, NOW), undefined);
 });
 
-test('10분 입력이 없거나 집중 타이머면 잔다', () => {
-  assert.equal(at({ userIdleMs: SLEEP_AFTER_MS - 1 }), 'idle');
+test('5분 입력이 없으면 졸고, 10분이거나 집중 타이머면 잔다', () => {
+  assert.equal(at({ userIdleMs: DOZE_AFTER_MS - 1 }), 'idle');
+  assert.equal(at({ userIdleMs: DOZE_AFTER_MS }), 'dozing');
+  assert.equal(at({ userIdleMs: SLEEP_AFTER_MS - 1 }), 'dozing');
   assert.equal(at({ userIdleMs: SLEEP_AFTER_MS }), 'sleeping');
   assert.equal(at({ focusTimer: true }), 'sleeping');
 });
@@ -79,6 +82,7 @@ test('계속 그리는 상태는 신남과 생각 중뿐, 잠은 깜빡임도 �
     'busy',
     'excited',
     'sleeping',
+    'dozing',
     'sulky',
     'idle',
   ];

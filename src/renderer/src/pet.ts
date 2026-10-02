@@ -1,3 +1,4 @@
+import { type Activity, nextDelay } from '../../shared/behavior.ts';
 import { GestureTracker } from '../../shared/gesture.ts';
 import {
   canBlink,
@@ -61,6 +62,8 @@ function frame() {
     moodSince = now;
     blinkStart = -1;
     scheduleBlink();
+    // 기본 상태가 아니게 되면(잡힘, 생각 중, 말하기 등) 하던 행동을 그만둔다.
+    if (activity) stopActivity(true);
   }
   let blink = -1;
   if (blinkStart >= 0) {
@@ -70,11 +73,62 @@ function frame() {
       blinkStart = -1;
     }
   }
-  drawPet(ctx, { mood, elapsed: now - moodSince, blink, viewSize });
+  drawPet(ctx, { mood, elapsed: now - moodSince, blink, viewSize, activity: activityPose(now) });
 
-  const fps = isAnimated(mood) ? (ANIMATED_FPS[mood] ?? 30) : blinkStart >= 0 ? 30 : 0;
+  const walking = activity?.type === 'walk';
+  const fps = isAnimated(mood) ? (ANIMATED_FPS[mood] ?? 30) : blinkStart >= 0 ? 30 : walking ? WALK_FPS : 0;
   if (fps > 0) frameTimer = setTimeout(frame, 1000 / fps);
 }
+
+// ---- 기본 행동 (P1-06) ----
+// 25~70초에 한 번, 한가하면 메인에 행동을 골라 달라고 한다. 걷기만 계속 그리고(12fps) 앉기, 두리번은 한 번 그린다.
+
+const WALK_FPS = 12;
+/** 한 걸음(발 한 번씩) 시간 */
+const STEP_MS = 520;
+let activity: (Activity & { start: number }) | undefined;
+let activityTimer: ReturnType<typeof setTimeout> | undefined;
+let activityEnd: ReturnType<typeof setTimeout> | undefined;
+
+function scheduleActivity() {
+  clearTimeout(activityTimer);
+  activityTimer = setTimeout(() => {
+    if (mood === 'idle' && !activity && !bubbleId && !overPet && !gesture.dragging) bridge.activityRequest();
+    scheduleActivity();
+  }, nextDelay(Math.random));
+}
+
+function stopActivity(tellMain: boolean) {
+  const wasWalking = activity?.type === 'walk';
+  activity = undefined;
+  clearTimeout(activityEnd);
+  if (tellMain && wasWalking) bridge.activityStop();
+  requestFrame();
+}
+
+function activityPose(now: number) {
+  if (!activity) return undefined;
+  if (activity.type === 'walk') {
+    return {
+      type: 'walk' as const,
+      dir: (activity.dx < 0 ? -1 : 1) as -1 | 1,
+      phase: ((now - activity.start) / STEP_MS) % 1,
+    };
+  }
+  if (activity.type === 'look') return { type: 'look' as const, dir: activity.dir };
+  return { type: 'sit' as const };
+}
+
+bridge.onActivity((a) => {
+  if (mood !== 'idle') {
+    if (a.type === 'walk') bridge.activityStop();
+    return;
+  }
+  activity = { ...a, start: performance.now() };
+  clearTimeout(activityEnd);
+  activityEnd = setTimeout(() => stopActivity(false), a.ms);
+  requestFrame();
+});
 
 /** 3~7초에 한 번 깜빡인다. 깜빡일 수 없는 상태(잠, 바쁨)에서는 타이머도 걸지 않는다. */
 function scheduleBlink() {
@@ -133,6 +187,7 @@ window.addEventListener('resize', () => {
 watchPixelRatio();
 fitToScreen();
 scheduleBlink();
+scheduleActivity();
 
 // ---- 마우스 ----
 
@@ -326,6 +381,7 @@ bridge.onAi((ai) =>
 Object.assign(window, {
   __pet: {
     setInputs,
+    requestActivity: () => bridge.activityRequest(),
     get mood() {
       return mood;
     },

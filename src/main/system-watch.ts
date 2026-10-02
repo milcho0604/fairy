@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { cpus, freemem, totalmem } from 'node:os';
 import { powerMonitor } from 'electron';
 import type { PetEnv } from '../shared/ipc.ts';
-import { SLEEP_AFTER_MS } from '../shared/pet-mood.ts';
+import { DOZE_AFTER_MS, SLEEP_AFTER_MS } from '../shared/pet-mood.ts';
 import {
   BusyTracker,
   type CpuTimes,
@@ -34,10 +34,11 @@ export function watchSystem(
     const systemBusy = tracker.feed({ cpu, memory });
 
     const userIdleMs = powerMonitor.getSystemIdleTime() * 1000;
-    const asleep = userIdleMs >= SLEEP_AFTER_MS;
-    const wasAsleep = last.userIdleMs >= SLEEP_AFTER_MS;
+    // 졸기(5분), 잠(10분) 경계를 넘을 때만 알린다.
+    const stage = (ms: number) => (ms >= SLEEP_AFTER_MS ? 2 : ms >= DOZE_AFTER_MS ? 1 : 0);
+    const asleep = stage(userIdleMs) === 2;
 
-    if (systemBusy !== last.systemBusy || asleep !== wasAsleep) {
+    if (systemBusy !== last.systemBusy || stage(userIdleMs) !== stage(last.userIdleMs)) {
       last = { systemBusy, userIdleMs };
       log('system', JSON.stringify({ cpu: Math.round(cpu), memory, systemBusy, asleep }));
       onChange(last);

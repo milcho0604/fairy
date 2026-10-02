@@ -9,6 +9,7 @@ export type PetMood =
   | 'busy'
   | 'excited'
   | 'sleeping'
+  | 'dozing'
   | 'sulky'
   | 'idle';
 
@@ -32,6 +33,8 @@ export interface PetInputs {
 }
 
 export const SLEEP_AFTER_MS = 10 * 60 * 1000;
+/** 이만큼 입력이 없으면 꾸벅꾸벅 존다 (P1-06). 잠보다 먼저 온다. */
+export const DOZE_AFTER_MS = 5 * 60 * 1000;
 export const EXCITED_MS = 3000;
 export const TALK_MS = 8000;
 
@@ -55,6 +58,7 @@ export function moodOf(i: PetInputs, now: number): PetMood {
   if (i.systemBusy) return 'busy';
   if (i.excitedUntil > now) return 'excited';
   if (i.focusTimer || i.userIdleMs >= SLEEP_AFTER_MS) return 'sleeping';
+  if (i.userIdleMs >= DOZE_AFTER_MS) return 'dozing';
   if (i.sulkLevel > 0) return 'sulky';
   return 'idle';
 }

@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { BrowserWindow, globalShortcut, type IpcMainEvent, ipcMain, Menu, screen } from 'electron';
+import { type Activity, pickActivity, walkOffset } from '../shared/behavior.ts';
 import { layoutBubble } from '../shared/bubble-layout.ts';
 import { type BubbleKind, ChatterGate, type ChatterLevel, LEVEL_LABEL, quieter } from '../shared/chatter.ts';
 import { clampIntoAreas, type Rect } from '../shared/geometry.ts';
@@ -111,6 +112,7 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Pe
   let saveTimer: NodeJS.Timeout | undefined;
   let overPet = false;
   let passWheelUntil = 0;
+  let walkTimer: NodeJS.Timeout | undefined;
   /** 지금 떠 있는 말풍선. size 는 화면이 재서 알려 준 크기 */
   let bubble:
     | { id: string; size?: { width: number; height: number }; done: (action: string) => void }
@@ -155,6 +157,7 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Pe
       const inWindow = win.getBounds();
       const offset = { x: event.offset.x - (pet.x - inWindow.x), y: event.offset.y - (pet.y - inWindow.y) };
       closeBubble('dismiss');
+      stopWalk();
       clearInterval(dragTimer);
       dragTimer = setInterval(() => {
         const cursor = screen.getCursorScreenPoint();
@@ -246,6 +249,38 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Pe
     log('pet', 'chatter', level);
   }
 
+  // ---- 기본 행동 (P1-06) ----
+  // 화면이 한가하다고 알리면 행동을 고른다. 걷기는 창을 30fps 로 옮기고 끝나면 자리를 저장한다.
+  const onActivityRequest = (e: IpcMainEvent) => {
+    if (!fromThisWindow(e) || dragTimer || bubble || walkTimer || !win.isVisible()) return;
+    const activity: Activity = pickActivity(pet, screen.getDisplayMatching(pet).workArea, Math.random);
+    if (activity.type === 'walk') startWalk(activity);
+    win.webContents.send(IPC.activity, activity);
+  };
+
+  const onActivityStop = (e: IpcMainEvent) => {
+    if (fromThisWindow(e)) stopWalk();
+  };
+
+  function startWalk(walk: Extract<Activity, { type: 'walk' }>) {
+    const fromX = pet.x;
+    const started = Date.now();
+    walkTimer = setInterval(() => {
+      const t = (Date.now() - started) / walk.ms;
+      pet = { ...pet, x: fromX + walkOffset(walk.dx, t) };
+      if (!win.isDestroyed()) win.setPosition(pet.x, pet.y);
+      if (t >= 1) stopWalk();
+    }, 33);
+  }
+
+  function stopWalk() {
+    if (!walkTimer) return;
+    clearInterval(walkTimer);
+    walkTimer = undefined;
+    keepOnScreen();
+    save();
+  }
+
   function closeBubble(action: string) {
     const current = bubble;
     if (!current) return;
@@ -259,8 +294,9 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Pe
     if (win.isDestroyed() || !win.isVisible() || dragTimer || !gate.take(kind, Date.now())) {
       return Promise.resolve(undefined);
     }
-    // 하나만 띄운다. 새 말이 오면 앞 말풍선은 닫는다.
+    // 하나만 띄운다. 새 말이 오면 앞 말풍선은 닫는다. 걷던 중이면 멈춰 서서 말한다.
     closeBubble('replaced');
+    stopWalk();
     const id = `b${Date.now().toString(36)}`;
     return new Promise((resolve) => {
       bubble = {
@@ -310,6 +346,8 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Pe
   ipcMain.on(IPC.contextMenu, onContextMenu);
   ipcMain.on(IPC.wheel, onWheel);
   ipcMain.on(IPC.bubbleSize, onBubbleSize);
+  ipcMain.on(IPC.activityRequest, onActivityRequest);
+  ipcMain.on(IPC.activityStop, onActivityStop);
   ipcMain.on(IPC.bubbleClosed, onBubbleClosed);
   screen.on('display-added', onDisplaysChanged);
   screen.on('display-removed', onDisplaysChanged);
@@ -333,6 +371,9 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Pe
     setShortcuts(false);
     ipcMain.off(IPC.wheel, onWheel);
     ipcMain.off(IPC.bubbleSize, onBubbleSize);
+    ipcMain.off(IPC.activityRequest, onActivityRequest);
+    ipcMain.off(IPC.activityStop, onActivityStop);
+    clearInterval(walkTimer);
     ipcMain.off(IPC.bubbleClosed, onBubbleClosed);
     ipcMain.off(IPC.hover, onHover);
     ipcMain.off(IPC.gesture, onGesture);

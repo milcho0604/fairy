@@ -1,6 +1,7 @@
 // 메인과 화면(펫, 채팅) 사이 IPC 채널 이름과 실어 보내는 값.
 import type { CustomProviderInput } from './ai/providers.ts';
 import type { AiProvider, AiStatus, ImageAttachment } from './ai/types.ts';
+import type { Activity } from './behavior.ts';
 import type { BubbleLayout } from './bubble-layout.ts';
 import type { ChatImage, ChatState } from './chat-state.ts';
 import type { GestureEvent } from './gesture.ts';
@@ -26,6 +27,12 @@ export const IPC = {
   bubbleClosed: 'pet:bubble-closed',
   /** 메인 → 펫 화면: 창 안에서 펫과 말풍선 자리 */
   layout: 'pet:layout',
+  /** 펫 화면 → 메인: 한가하니 행동을 하나 골라 달라 (P1-06) */
+  activityRequest: 'pet:activity-request',
+  /** 펫 화면 → 메인: 행동을 멈춘다 (잡힘, 상태 바뀜) */
+  activityStop: 'pet:activity-stop',
+  /** 메인 → 펫 화면: 이 행동을 해라 */
+  activity: 'pet:activity',
 } as const;
 
 export interface BubbleButton {
@@ -137,4 +144,7 @@ export interface PetBridge {
   onLayout(listener: (layout: BubbleLayout) => void): void;
   bubbleSize(id: string, width: number, height: number): void;
   bubbleClosed(id: string, action: string): void;
+  activityRequest(): void;
+  activityStop(): void;
+  onActivity(listener: (activity: Activity) => void): void;
 }

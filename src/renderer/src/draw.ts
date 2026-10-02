@@ -16,6 +16,8 @@ export interface DrawState {
   blink: number;
   /** 화면에 그려지는 펫 크기(px). 작으면 글씨를 빼서 뭉개지지 않게 한다. */
   viewSize?: number;
+  /** 기본 상태에서 하는 행동 (P1-06). phase 는 걷기 걸음 진행 0~1 */
+  activity?: { type: 'walk'; dir: -1 | 1; phase: number } | { type: 'sit' } | { type: 'look'; dir: -1 | 1 };
 }
 
 /** 이보다 작게 그려지면 글씨표(바쁨)를 그리지 않는다. 12px 글씨가 9px 아래로 줄어드는 크기 */
@@ -41,8 +43,35 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): void {
     sx = 1 + squash;
     sy = 1 - squash;
   } else if (s.mood === 'grabbed') {
+    // 들려 있으니 몸을 조금 올려 늘어진 발이 캔버스 아래로 잘리지 않게 한다.
+    lift = 6;
     sx = 0.94;
     sy = 1.08;
+  }
+  const act = s.mood === 'idle' ? s.activity : undefined;
+  if (act?.type === 'walk') lift = Math.abs(Math.sin(act.phase * Math.PI * 2)) * 3;
+  if (act?.type === 'sit') {
+    sx = 1.06;
+    sy = 0.9;
+  }
+
+  // 발: 몸통보다 먼저 그려서 몸 아래로 조금 나오게. 걸을 때는 번갈아 든다. 매달리면 늘어진다.
+  {
+    const spread = act?.type === 'sit' ? 32 : 24;
+    const step = act?.type === 'walk' ? Math.sin(act.phase * Math.PI * 2) * 4 : 0;
+    const dangle = s.mood === 'grabbed' ? 6 : 0;
+    ctx.fillStyle = BODY;
+    ctx.strokeStyle = LINE;
+    ctx.lineWidth = 2;
+    for (const [side, up] of [
+      [-1, Math.max(0, step)],
+      [1, Math.max(0, -step)],
+    ] as const) {
+      ctx.beginPath();
+      ctx.ellipse(CX + side * spread, GROUND - 2 - lift - up + dangle, 10, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
   }
 
   ctx.save();
@@ -60,7 +89,9 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): void {
   ctx.stroke();
 
   // 볼
-  const look = s.mood === 'sulky' ? 12 : 0; // 삐지면 고개를 돌린 듯 얼굴을 옆으로
+  // 얼굴을 옆으로: 삐지면 고개를 돌리고, 걷거나 두리번거리면 그쪽을 본다.
+  const look =
+    s.mood === 'sulky' ? 12 : act?.type === 'walk' ? act.dir * 6 : act?.type === 'look' ? act.dir * 8 : 0;
   ctx.fillStyle = BLUSH;
   for (const x of [-32, 32]) {
     ctx.beginPath();
@@ -87,6 +118,13 @@ function drawEyes(ctx: CanvasRenderingContext2D, s: DrawState, look: number) {
     if (s.mood === 'sleeping') {
       ctx.arc(x, y - 2, 5, 0.15 * Math.PI, 0.85 * Math.PI); // 감은 눈
       ctx.stroke();
+    } else if (s.mood === 'dozing') {
+      ctx.moveTo(x - 5.5, y - 1); // 반쯤 감긴 눈꺼풀
+      ctx.lineTo(x + 5.5, y - 1);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.ellipse(x, y + 0.5, 3.5, 2.2, 0, 0, Math.PI);
+      ctx.fill();
     } else if (s.mood === 'grabbed') {
       ctx.moveTo(x - side * 5, y - 4); // > <
       ctx.lineTo(x + side * 2, y);
@@ -118,6 +156,7 @@ function drawMouth(ctx: CanvasRenderingContext2D, mood: PetMood, look: number) {
       ctx.fill();
       break;
     case 'sleeping':
+    case 'dozing':
       ctx.ellipse(x, 13, 3, 3, 0, 0, Math.PI * 2);
       ctx.stroke();
       break;

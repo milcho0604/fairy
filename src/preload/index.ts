@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { AiProvider } from '../shared/ai/types.ts';
+import type { Activity } from '../shared/behavior.ts';
 import type { BubbleLayout } from '../shared/bubble-layout.ts';
 import type { ChatState } from '../shared/chat-state.ts';
 import {
@@ -42,6 +43,11 @@ if (kind === 'pet') {
     bubbleSize: (id: string, width: number, height: number) =>
       ipcRenderer.send(IPC.bubbleSize, id, width, height),
     bubbleClosed: (id: string, action: string) => ipcRenderer.send(IPC.bubbleClosed, id, action),
+    activityRequest: () => ipcRenderer.send(IPC.activityRequest),
+    activityStop: () => ipcRenderer.send(IPC.activityStop),
+    onActivity: (listener) => {
+      ipcRenderer.on(IPC.activity, (_e, activity: Activity) => listener(activity));
+    },
   };
   contextBridge.exposeInMainWorld('jjakkung', pet);
 }
