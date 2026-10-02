@@ -1,19 +1,18 @@
 import { execFile } from 'node:child_process';
 import { accessSync, constants } from 'node:fs';
-import { delimiter, join } from 'node:path';
-import type { AiProvider } from '../../shared/ai/types.ts';
+import { delimiter, isAbsolute, join } from 'node:path';
 import { readJson, writeJson } from '../store.ts';
 
 // Finder 로 연 앱은 PATH 가 /usr/bin:/bin:/usr/sbin:/sbin 뿐이다(L1). claude 는 ~/.local/bin 에 있고,
 // codex 는 `#!/usr/bin/env node` 스크립트라 node 도 찾아야 한다(L14).
 // 그래서 로그인 셸의 PATH 와 CODEX_HOME 을 한 번 읽어(약 2초) 저장해 두고 CLI 를 부를 때 쓴다.
+// 실행 파일은 부를 때마다 이 PATH 에서 찾는다 (파일 몇 개 확인이라 빠르다). 새로 깔았으면 "다시 확인"이 PATH 를 다시 읽는다.
 
 const CACHE_FILE = 'ai-env';
 
 export interface ShellEnv {
   path: string;
   codexHome?: string;
-  cli: Partial<Record<AiProvider, string>>;
 }
 
 let cached: ShellEnv | undefined;
@@ -70,18 +69,19 @@ export function findOnPath(name: string, path: string): string | undefined {
 export async function getShellEnv(refresh = false): Promise<ShellEnv> {
   if (cached && !refresh) return cached;
   const saved = readJson(CACHE_FILE) as ShellEnv | undefined;
-  if (!refresh && saved?.path && Object.values(saved.cli ?? {}).every(isExecutable)) {
-    cached = saved;
-    return saved;
+  if (!refresh && saved?.path) {
+    cached = { path: saved.path, codexHome: saved.codexHome };
+    return cached;
   }
   const login = await readLoginShell();
   const path = [login.path, process.env.PATH].filter(Boolean).join(delimiter);
-  const cli: ShellEnv['cli'] = {};
-  for (const name of ['claude', 'codex'] as const) {
-    const found = findOnPath(name, path);
-    if (found) cli[name] = found;
-  }
-  cached = { path, codexHome: login.codexHome, cli };
+  cached = { path, codexHome: login.codexHome };
   writeJson(CACHE_FILE, cached);
   return cached;
+}
+
+/** AI 실행 파일 위치. 절대 경로면 그대로, 아니면 PATH 에서 찾는다. 못 찾으면 undefined. */
+export function resolveBin(bin: string, env: ShellEnv): string | undefined {
+  if (isAbsolute(bin)) return isExecutable(bin) ? bin : undefined;
+  return findOnPath(bin, env.path);
 }

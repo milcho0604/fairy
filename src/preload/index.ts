@@ -44,6 +44,9 @@ if (kind === 'chat') {
     cancel: () => ipcRenderer.send(CHAT.cancel),
     reset: () => ipcRenderer.send(CHAT.reset),
     setProvider: (provider: AiProvider) => ipcRenderer.send(CHAT.provider, provider),
+    providers: () => ipcRenderer.invoke(CHAT.providers),
+    addProvider: (input) => ipcRenderer.invoke(CHAT.addProvider, input),
+    removeProvider: (id: AiProvider) => ipcRenderer.invoke(CHAT.removeProvider, id),
     onState: (listener) => {
       ipcRenderer.on(CHAT.state, (_e, state: ChatState) => listener(state));
     },

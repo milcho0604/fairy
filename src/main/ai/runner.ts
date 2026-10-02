@@ -6,11 +6,14 @@ import { join } from 'node:path';
 import { app } from 'electron';
 import { claudeArgs, claudeInput, parseClaudeLine } from '../../shared/ai/claude.ts';
 import { codexArgs, parseCodexLine } from '../../shared/ai/codex.ts';
+import { cursorArgs, cursorParser } from '../../shared/ai/cursor.ts';
 import { classifyError, notInstalled, timedOut } from '../../shared/ai/errors.ts';
-import type { AiEvent, AiProvider, AiStatus, ImageAttachment } from '../../shared/ai/types.ts';
+import { fillArgs, type ProviderSpec } from '../../shared/ai/providers.ts';
+import { type Exchange, stripAnsi, textPrompt } from '../../shared/ai/text.ts';
+import type { AiEvent, AiStatus, ImageAttachment } from '../../shared/ai/types.ts';
 import { codexUsage, lastCodexLimits } from '../../shared/ai/usage.ts';
 import { prepareCodexHome } from './codex-home.ts';
-import { getShellEnv } from './shell-env.ts';
+import { getShellEnv, resolveBin } from './shell-env.ts';
 
 /** 이 시간 동안 출력이 하나도 없으면 멈춘 것으로 본다. */
 export const IDLE_TIMEOUT_S = 60;
@@ -18,7 +21,9 @@ export const IDLE_TIMEOUT_S = 60;
 const KILL_GRACE_MS = 2000;
 
 export interface AiRequest {
-  provider: AiProvider;
+  spec: ProviderSpec;
+  /** 이어가기가 없는 AI 에 붙여 보낼 최근 대화 */
+  history: readonly Exchange[];
   text: string;
   images: readonly ImageAttachment[];
   /** 이어갈 세션(claude 세션 id, codex thread_id). 없으면 새 대화. */
@@ -56,9 +61,10 @@ export function runAi(req: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
 
   const finished = (async () => {
     const env = await getShellEnv();
-    const cli = env.cli[req.provider];
+    const { spec } = req;
+    const cli = resolveBin(spec.bin, env);
     if (!cli) {
-      emit({ type: 'error', error: notInstalled(req.provider) });
+      emit({ type: 'error', error: notInstalled(spec) });
       return;
     }
     if (cancelled) return;
@@ -66,15 +72,22 @@ export function runAi(req: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
     let args: string[];
     let stdin: string | undefined;
     const childEnv: NodeJS.ProcessEnv = { ...process.env, PATH: env.path };
-    let parse: (line: string) => AiEvent[];
+    /** 줄 단위 JSON 해석기. 없으면 표준 출력을 그대로 답으로 본다 (text 어댑터). */
+    let parse: ((line: string) => AiEvent[]) | undefined;
     let codexHome: string | undefined;
     let sessionId = req.sessionId;
 
-    if (req.provider === 'claude') {
+    if (spec.adapter === 'claude') {
       const sessionId = req.sessionId ?? randomUUID();
       args = claudeArgs({ ...req, sessionId, resume: !!req.sessionId });
       stdin = claudeInput(req);
       parse = parseClaudeLine;
+    } else if (spec.adapter === 'cursor') {
+      args = cursorArgs({ text: req.text, sessionId: req.sessionId, persona: req.persona });
+      parse = cursorParser();
+    } else if (spec.adapter === 'text') {
+      args = fillArgs(spec.args ?? ['{prompt}'], textPrompt(req.persona, req.history, req.text));
+      childEnv.NO_COLOR = '1';
     } else {
       // codex 는 이미지를 파일로만 받는다. 끝나면 바로 지운다 (P3-07: 캡처를 디스크에 남기지 않는다).
       for (const img of req.images) {
@@ -100,7 +113,7 @@ export function runAi(req: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
 
     let idleTimer = setTimeout(onIdle, IDLE_TIMEOUT_S * 1000);
     function onIdle() {
-      emit({ type: 'error', error: timedOut(req.provider, IDLE_TIMEOUT_S) });
+      emit({ type: 'error', error: timedOut(spec, IDLE_TIMEOUT_S) });
       stop();
     }
 
@@ -111,6 +124,12 @@ export function runAi(req: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
     child.stdout?.on('data', (chunk: string) => {
       clearTimeout(idleTimer);
       idleTimer = setTimeout(onIdle, IDLE_TIMEOUT_S * 1000);
+      if (!parse) {
+        const text = stripAnsi(chunk);
+        answer += text;
+        if (text) emit({ type: 'delta', text });
+        return;
+      }
       buffer += chunk;
       for (let nl = buffer.indexOf('\n'); nl >= 0; nl = buffer.indexOf('\n')) {
         const line = buffer.slice(0, nl);
@@ -130,15 +149,15 @@ export function runAi(req: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
 
     await new Promise<void>((resolve) => {
       child?.on('error', (err) => {
-        emit({ type: 'error', error: classifyError(req.provider, err.message) });
+        emit({ type: 'error', error: classifyError(spec, err.message) });
         resolve();
       });
       child?.on('close', (code) => {
         clearTimeout(idleTimer);
         if (cancelled) emit({ type: 'error', error: { kind: 'cancelled', message: '질문을 멈췄어.' } });
         else if (code !== 0)
-          emit({ type: 'error', error: classifyError(req.provider, stderr || `종료 코드 ${code}`) });
-        else emit({ type: 'done', text: answer });
+          emit({ type: 'error', error: classifyError(spec, stripAnsi(stderr) || `종료 코드 ${code}`) });
+        else emit({ type: 'done', text: answer.trim() });
         // codex 사용량은 대화 기록 파일에 남는다. 끝난 뒤 읽는다.
         if (codexHome && sessionId) {
           const usage = readCodexUsage(codexHome, sessionId);
@@ -205,13 +224,18 @@ export function readCodexUsage(codexHome: string, threadId?: string) {
   return undefined;
 }
 
-/** 설치, 로그인, 버전 확인 (P3-01). claude auth status 는 JSON, codex login status 는 종료 코드로 본다. */
-export async function checkStatus(provider: AiProvider, refresh = false): Promise<AiStatus> {
+/**
+ * 설치, 로그인, 버전 확인 (P3-01). claude auth status 는 JSON, codex 는 종료 코드,
+ * cursor-agent status 는 종료 코드가 늘 0 이라 출력 글로 본다. 로그인 확인 방법이 없는 AI 는 모름(undefined).
+ */
+export async function checkStatus(spec: ProviderSpec, refresh = false): Promise<AiStatus> {
+  const provider = spec.id;
   const env = await getShellEnv(refresh);
-  const cli = env.cli[provider];
-  if (!cli) return { provider, installed: false, loggedIn: false };
-  const childEnv: NodeJS.ProcessEnv = { ...process.env, PATH: env.path };
-  if (provider === 'codex') {
+  const cli = resolveBin(spec.bin, env);
+  if (!cli) return { provider, installed: false };
+  // cursor-agent status 는 로그인 안 됐으면 브라우저를 열려고 한다. 막는다.
+  const childEnv: NodeJS.ProcessEnv = { ...process.env, PATH: env.path, NO_OPEN_BROWSER: '1', NO_COLOR: '1' };
+  if (spec.adapter === 'codex') {
     const home = prepareCodexHome(env.codexHome);
     if (home) childEnv.CODEX_HOME = home;
   }
@@ -219,21 +243,25 @@ export async function checkStatus(provider: AiProvider, refresh = false): Promis
     new Promise<{ code: number; out: string }>((resolve) => {
       execFile(cli, args, { env: childEnv, timeout: 15_000, encoding: 'utf8' }, (err, stdout, stderr) => {
         const code = err ? (typeof err.code === 'number' ? err.code : 1) : 0;
-        resolve({ code, out: `${stdout}\n${stderr}` });
+        resolve({ code, out: stripAnsi(`${stdout}\n${stderr}`) });
       });
     });
   const [version, login] = await Promise.all([
-    run(['--version']),
-    run(provider === 'claude' ? ['auth', 'status'] : ['login', 'status']),
+    spec.custom ? Promise.resolve({ code: 0, out: '' }) : run(['--version']),
+    spec.statusArgs ? run(spec.statusArgs) : Promise.resolve(undefined),
   ]);
-  let loggedIn = login.code === 0;
-  if (provider === 'claude') {
-    const json = login.out.slice(login.out.indexOf('{'), login.out.lastIndexOf('}') + 1);
-    try {
-      loggedIn = JSON.parse(json).loggedIn === true;
-    } catch {
-      // JSON 이 아니면 종료 코드로 판단한다
+  let loggedIn: boolean | undefined;
+  if (login) {
+    loggedIn = login.code === 0 && !spec.notLoggedInPattern?.test(login.out);
+    if (spec.adapter === 'claude') {
+      const json = login.out.slice(login.out.indexOf('{'), login.out.lastIndexOf('}') + 1);
+      try {
+        loggedIn = JSON.parse(json).loggedIn === true;
+      } catch {
+        // JSON 이 아니면 종료 코드로 판단한다
+      }
     }
   }
-  return { provider, installed: true, loggedIn, version: version.out.trim().split('\n')[0], path: cli };
+  const firstLine = version.out.trim().split('\n')[0] || undefined;
+  return { provider, installed: true, loggedIn, version: firstLine, path: cli };
 }

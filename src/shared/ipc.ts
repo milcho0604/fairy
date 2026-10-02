@@ -1,4 +1,5 @@
 // 메인과 화면(펫, 채팅) 사이 IPC 채널 이름과 실어 보내는 값.
+import type { CustomProviderInput } from './ai/providers.ts';
 import type { AiProvider, AiStatus, ImageAttachment } from './ai/types.ts';
 import type { ChatImage, ChatState } from './chat-state.ts';
 import type { GestureEvent } from './gesture.ts';
@@ -40,6 +41,9 @@ export const CHAT = {
   cancel: 'chat:cancel',
   reset: 'chat:reset',
   provider: 'chat:provider',
+  providers: 'chat:providers',
+  addProvider: 'chat:add-provider',
+  removeProvider: 'chat:remove-provider',
   /** 메인 → 채팅 창 */
   state: 'chat:state',
   delta: 'chat:delta',
@@ -50,6 +54,20 @@ export const CHAT = {
 export interface OutgoingImage {
   full: ImageAttachment;
   thumb: ChatImage;
+}
+
+/** 화면에 보일 AI 정보 (실행 방법은 메인만 안다). */
+export interface ProviderView {
+  id: AiProvider;
+  label: string;
+  images: boolean;
+  verified: boolean;
+  usage: boolean;
+  custom: boolean;
+  installHint: string;
+  loginHint?: string;
+  /** 사용자 추가 AI 의 명령 한 줄 (보여 주기용) */
+  command?: string;
 }
 
 export interface ChatSnapshot {
@@ -67,6 +85,9 @@ export interface ChatBridge {
   cancel(): void;
   reset(): void;
   setProvider(provider: AiProvider): void;
+  providers(): Promise<ProviderView[]>;
+  addProvider(input: CustomProviderInput): Promise<{ ok: true; id: string } | { ok: false; error: string }>;
+  removeProvider(id: AiProvider): Promise<void>;
   onState(listener: (state: ChatState) => void): void;
   onDelta(listener: (id: string, text: string) => void): void;
   onAttach(listener: (image: OutgoingImage) => void): void;

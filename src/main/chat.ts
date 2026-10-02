@@ -1,18 +1,31 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { app, BrowserWindow, type IpcMainEvent, ipcMain, type Rectangle, screen } from 'electron';
+import {
+  BUILTIN_PROVIDERS,
+  type CustomProviderInput,
+  customProvider,
+  type ProviderSpec,
+} from '../shared/ai/providers.ts';
 import type { AiProvider } from '../shared/ai/types.ts';
 import {
   addQuestion,
   applyEvent,
   applyUsage,
   type ChatState,
+  historyFor,
   initialChat,
   resetChat,
   switchProvider,
 } from '../shared/chat-state.ts';
 import { clampIntoAreas } from '../shared/geometry.ts';
-import { CHAT, type ChatSnapshot, type OutgoingImage, type PetAiState } from '../shared/ipc.ts';
+import {
+  CHAT,
+  type ChatSnapshot,
+  type OutgoingImage,
+  type PetAiState,
+  type ProviderView,
+} from '../shared/ipc.ts';
 import { withParticle } from '../shared/josa.ts';
 import { prepareCodexHome } from './ai/codex-home.ts';
 import { type AiRun, checkStatus, readCodexUsage, runAi } from './ai/runner.ts';
@@ -22,6 +35,8 @@ import { readJson, writeJson } from './store.ts';
 const CHAT_SIZE = { width: 400, height: 600 };
 const SETTINGS_FILE = 'chat-settings';
 const USAGE_FILE = 'ai-usage';
+/** 사용자가 추가한 AI (이름, 명령, 인자). */
+const CUSTOM_FILE = 'ai-custom';
 
 export interface ChatOptions {
   petName: string;
@@ -45,10 +60,24 @@ export function persona(petName: string): string {
  * 창은 열 때 만들고 닫으면 없앤다 (L6: 메모리).
  */
 export function createChat({ petName, onPetAi, log }: ChatOptions) {
+  // 사용자가 추가한 AI 는 입력값만 저장하고 켤 때마다 정의를 다시 만든다 (검사 규칙이 바뀌어도 맞게).
+  let customInputs = (
+    (readJson(CUSTOM_FILE) as { id: string; input: CustomProviderInput }[] | undefined) ?? []
+  ).filter((c) => c?.id?.startsWith('custom-') && c.input);
+  const providers = (): ProviderSpec[] => [
+    ...BUILTIN_PROVIDERS,
+    ...customInputs.flatMap((c) => {
+      const spec = customProvider(c.input, c.id);
+      return typeof spec === 'string' ? [] : [spec];
+    }),
+  ];
+  const specOf = (id: AiProvider) => providers().find((p) => p.id === id);
+
   const saved = readJson(SETTINGS_FILE) as { provider?: AiProvider } | undefined;
   // 사용량은 마지막으로 본 값을 남겨 두었다가 창을 열자마자 보여 준다 (몇 분 전 값인지 같이 표시).
   const savedUsage = (readJson(USAGE_FILE) ?? {}) as ChatState['usage'];
-  let state: ChatState = initialChat(saved?.provider === 'codex' ? 'codex' : 'claude', savedUsage);
+  const startProvider = saved?.provider && specOf(saved.provider) ? saved.provider : 'claude';
+  let state: ChatState = initialChat(startProvider, savedUsage);
   let run: AiRun | undefined;
   let win: BrowserWindow | undefined;
   let draft: OutgoingImage[] = [];
@@ -76,7 +105,31 @@ export function createChat({ petName, onPetAi, log }: ChatOptions) {
         push();
       }
     }
-    return Promise.all((['claude', 'codex'] as const).map((p) => checkStatus(p, refresh)));
+    return Promise.all(providers().map((p) => checkStatus(p, refresh)));
+  });
+
+  ipcMain.handle(CHAT.providers, (e): ProviderView[] => (fromChat(e) ? providers().map(view) : []));
+
+  ipcMain.handle(CHAT.addProvider, (e, input: CustomProviderInput) => {
+    if (!fromChat(e)) return { ok: false, error: '창을 다시 열어 줘.' };
+    const id = `custom-${randomUUID().slice(0, 8)}`;
+    const spec = customProvider(input, id);
+    if (typeof spec === 'string') return { ok: false, error: spec };
+    customInputs = [...customInputs, { id, input }];
+    writeJson(CUSTOM_FILE, customInputs);
+    log('chat', 'provider added', spec.label);
+    return { ok: true, id };
+  });
+
+  ipcMain.handle(CHAT.removeProvider, (e, id: AiProvider) => {
+    if (!fromChat(e) || !id.startsWith('custom-') || state.pendingId) return;
+    customInputs = customInputs.filter((c) => c.id !== id);
+    writeJson(CUSTOM_FILE, customInputs);
+    if (state.provider === id) {
+      state = switchProvider(state, 'claude');
+      writeJson(SETTINGS_FILE, { provider: state.provider });
+    }
+    push();
   });
 
   ipcMain.on(CHAT.send, (e, text: string, images: OutgoingImage[]) => {
@@ -85,6 +138,9 @@ export function createChat({ petName, onPetAi, log }: ChatOptions) {
     if (!question && images.length === 0) return;
     const ids = { user: randomUUID(), pet: randomUUID() };
     const provider = state.provider;
+    const spec = specOf(provider);
+    if (!spec) return;
+    const history = historyFor(state, provider);
     state = addQuestion(
       state,
       ids,
@@ -98,9 +154,11 @@ export function createChat({ petName, onPetAi, log }: ChatOptions) {
 
     run = runAi(
       {
-        provider,
+        spec,
+        history,
         text: question || '이 화면 같이 봐 줘.',
-        images: images.map((i) => i.full),
+        // 그림을 못 받는 AI 에는 글만 보낸다. 화면이 미리 알려 준다.
+        images: spec.images ? images.map((i) => i.full) : [],
         sessionId: state.sessions[provider]?.id,
         persona: persona(petName),
       },
@@ -137,7 +195,7 @@ export function createChat({ petName, onPetAi, log }: ChatOptions) {
     push();
   });
   ipcMain.on(CHAT.provider, (e, provider: AiProvider) => {
-    if (!fromChat(e) || (provider !== 'claude' && provider !== 'codex')) return;
+    if (!fromChat(e) || !specOf(provider)) return;
     state = switchProvider(state, provider);
     writeJson(SETTINGS_FILE, { provider: state.provider });
     push();
@@ -202,6 +260,20 @@ export function createChat({ petName, onPetAi, log }: ChatOptions) {
     get window() {
       return win;
     },
+  };
+}
+
+function view(p: ProviderSpec): ProviderView {
+  return {
+    id: p.id,
+    label: p.label,
+    images: p.images,
+    verified: p.verified,
+    usage: p.usage,
+    custom: !!p.custom,
+    installHint: p.installHint,
+    loginHint: p.loginHint,
+    command: p.custom ? [p.bin, ...(p.args ?? [])].join(' ') : undefined,
   };
 }
 

@@ -3,6 +3,8 @@ import { classifyError } from './errors.ts';
 import type { AiEvent, ImageAttachment } from './types.ts';
 import { claudeUsage } from './usage.ts';
 
+const LABEL = { label: 'Claude', loginHint: '터미널에서 claude 로 로그인해 줘.' };
+
 export interface ClaudeTurn {
   text: string;
   images: readonly ImageAttachment[];
@@ -78,7 +80,7 @@ export function parseClaudeLine(line: string): AiEvent[] {
   if (e.type === 'result') {
     const text = typeof e.result === 'string' ? e.result : '';
     if (e.is_error || e.subtype !== 'success') {
-      return [{ type: 'error', error: classifyError('claude', text || String(e.subtype ?? '')) }];
+      return [{ type: 'error', error: classifyError(LABEL, text || String(e.subtype ?? '')) }];
     }
     return [{ type: 'done', text }];
   }

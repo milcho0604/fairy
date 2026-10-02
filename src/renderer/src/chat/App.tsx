@@ -1,14 +1,16 @@
 import { type ClipboardEvent, type KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
-import { type AiProvider, type AiStatus, PROVIDER_LABEL } from '../../../shared/ai/types.ts';
-import { type AiUsage, resetText, usageLevel } from '../../../shared/ai/usage.ts';
+import type { AiProvider, AiStatus } from '../../../shared/ai/types.ts';
 import type { ChatMessage, ChatState } from '../../../shared/chat-state.ts';
-import type { OutgoingImage } from '../../../shared/ipc.ts';
+import type { OutgoingImage, ProviderView } from '../../../shared/ipc.ts';
 import { withParticle } from '../../../shared/josa.ts';
+import { AiManager } from './AiManager.tsx';
 import { toOutgoing } from './images.ts';
 import { Markdown } from './Markdown.tsx';
+import { ProviderPicker } from './ProviderPicker.tsx';
+import { isReady, statusText } from './providerStatus.ts';
+import { UsageBar } from './UsageBar.tsx';
 
 const bridge = window.jjakkungChat;
-const PROVIDERS: AiProvider[] = ['claude', 'codex'];
 const MAX_IMAGES = 4;
 
 export function App() {
@@ -20,6 +22,8 @@ export function App() {
   const [images, setImages] = useState<OutgoingImage[]>([]);
   const [notice, setNotice] = useState('');
   const [zoom, setZoom] = useState<string>();
+  const [providers, setProviders] = useState<ProviderView[]>([]);
+  const [managing, setManaging] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const stickToBottom = useRef(true);
@@ -27,6 +31,7 @@ export function App() {
 
   const refreshStatus = useCallback(async (refresh: boolean) => {
     setChecking(true);
+    setProviders(await bridge.providers());
     const list = await bridge.status(refresh);
     setStatus(Object.fromEntries(list.map((s) => [s.provider, s])));
     setChecking(false);
@@ -99,7 +104,9 @@ export function App() {
 
   const pending = !!state.pendingId;
   const current = status[state.provider];
-  const ready = current?.installed && current.loggedIn;
+  const spec = providers.find((p) => p.id === state.provider);
+  const labelOf = (id?: AiProvider) => providers.find((p) => p.id === id)?.label ?? id ?? '';
+  const imagesBlocked = !!spec && !spec.images && images.length > 0;
 
   const send = () => {
     if (pending || (!text.trim() && images.length === 0)) return;
@@ -145,22 +152,14 @@ export function App() {
           <PetFace />
           <strong>{petName}</strong>
         </div>
-        <fieldset className="providers" aria-label="대화할 AI">
-          {PROVIDERS.map((p) => (
-            <button
-              key={p}
-              type="button"
-              aria-pressed={state.provider === p}
-              className={state.provider === p ? 'on' : ''}
-              disabled={pending}
-              onClick={() => bridge.setProvider(p)}
-              title={statusText(status[p])}
-            >
-              <span className={`dot ${dotClass(status[p])}`} aria-hidden="true" />
-              {PROVIDER_LABEL[p]}
-            </button>
-          ))}
-        </fieldset>
+        <ProviderPicker
+          providers={providers}
+          status={status}
+          current={state.provider}
+          disabled={pending}
+          onPick={(id) => bridge.setProvider(id)}
+          onManage={() => setManaging(true)}
+        />
         <button
           type="button"
           className="ghost"
@@ -170,7 +169,27 @@ export function App() {
           새 대화
         </button>
       </header>
-      <UsageBar usage={state.usage[state.provider]} provider={state.provider} />
+      <UsageBar usage={state.usage[state.provider]} spec={spec} />
+      {managing && (
+        <AiManager
+          providers={providers}
+          status={status}
+          checking={checking}
+          onRefresh={() => refreshStatus(true)}
+          onAdd={async (input) => {
+            const result = await bridge.addProvider(input);
+            if (!result.ok) return result.error;
+            await refreshStatus(false);
+            bridge.setProvider(result.id);
+            return undefined;
+          }}
+          onRemove={async (id) => {
+            await bridge.removeProvider(id);
+            refreshStatus(false);
+          }}
+          onClose={() => setManaging(false)}
+        />
+      )}
       {zoom && (
         <button
           type="button"
@@ -182,9 +201,9 @@ export function App() {
         </button>
       )}
 
-      {current && !ready && (
+      {spec && current && !isReady(current) && (
         <div className="banner" role="status">
-          <span>{statusText(current)}</span>
+          <span>{statusText(spec, current)}</span>
           <button type="button" className="ghost" disabled={checking} onClick={() => refreshStatus(true)}>
             {checking ? '확인 중' : '다시 확인'}
           </button>
@@ -209,12 +228,18 @@ export function App() {
           </div>
         )}
         {state.messages.map((m) => (
-          <Message key={m.id} message={m} petName={petName} onZoom={setZoom} />
+          <Message key={m.id} message={m} petName={petName} label={labelOf(m.provider)} onZoom={setZoom} />
         ))}
       </div>
 
       <footer>
         {notice && <p className="notice">{notice}</p>}
+        {imagesBlocked && (
+          <p className="notice">
+            {withParticle(spec.label, '은')} 그림을 받지 않아서 글만 보낼게. 그림을 같이 보려면 그림을 받는 AI
+            로 바꿔 줘.
+          </p>
+        )}
         {images.length > 0 && (
           <div className="attachments">
             {images.map((img, i) => (
@@ -279,10 +304,11 @@ export function App() {
 interface MessageProps {
   message: ChatMessage;
   petName: string;
+  label: string;
   onZoom: (src: string) => void;
 }
 
-function Message({ message: m, petName, onZoom }: MessageProps) {
+function Message({ message: m, petName, label, onZoom }: MessageProps) {
   if (m.role === 'notice') return <p className="system">{m.text}</p>;
   if (m.role === 'user') {
     return (
@@ -302,9 +328,11 @@ function Message({ message: m, petName, onZoom }: MessageProps) {
       <div className="body">
         <span className="who">
           {petName}
-          {m.provider && <span className="tag">{PROVIDER_LABEL[m.provider]}</span>}
+          {m.provider && <span className="tag">{label}</span>}
         </span>
-        {m.status === 'waiting' && <Thinking provider={m.provider} petName={petName} />}
+        {m.status === 'waiting' && (
+          <Thinking streams={m.provider === 'claude'} label={label} petName={petName} />
+        )}
         {m.text && (
           <div className="bubble">
             <Markdown text={m.text} />
@@ -315,37 +343,6 @@ function Message({ message: m, petName, onZoom }: MessageProps) {
           <div className={`bubble error ${m.error.kind}`}>{m.error.message}</div>
         )}
       </div>
-    </div>
-  );
-}
-
-/** 고른 AI 의 남은 사용량. 마지막 답에서 읽은 값이라 오래됐으면 언제 기준인지 같이 쓴다. */
-function UsageBar({ usage, provider }: { usage?: AiUsage; provider: AiProvider }) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 60_000);
-    return () => clearInterval(t);
-  }, []);
-  if (!usage) {
-    return <p className="usage empty-usage">{PROVIDER_LABEL[provider]} 사용량은 첫 답을 받으면 보여 줄게.</p>;
-  }
-  const ageMin = Math.round((now - usage.checkedAt) / 60_000);
-  return (
-    <div className="usage" title={usage.plan ? `요금제 ${usage.plan}` : undefined}>
-      {usage.windows.map((w) => {
-        const level = usageLevel(w.usedPercent);
-        return (
-          <div key={w.label} className={`meter ${level}`}>
-            <span className="label">{w.label}</span>
-            <span className="track" aria-hidden="true">
-              <span className="fill" style={{ width: `${Math.min(100, w.usedPercent)}%` }} />
-            </span>
-            <span className="pct">{Math.round(w.usedPercent)}%</span>
-            <span className="reset">{resetText(w.resetsAt, now)}</span>
-          </div>
-        );
-      })}
-      {ageMin >= 2 && <span className="age">{ageMin < 60 ? `${ageMin}분 전 기준` : '한참 전 기준'}</span>}
     </div>
   );
 }
@@ -381,7 +378,7 @@ function PetFace() {
   );
 }
 
-function Thinking({ provider, petName }: { provider?: AiProvider; petName: string }) {
+function Thinking({ streams, label, petName }: { streams: boolean; label: string; petName: string }) {
   const [slow, setSlow] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => setSlow(true), 5000);
@@ -395,26 +392,9 @@ function Thinking({ provider, petName }: { provider?: AiProvider; petName: strin
         <i />
       </span>
       {withParticle(petName, '이')} 생각 중
-      {slow && provider === 'codex' && <span className="hint">Codex 는 답을 다 만든 뒤 한 번에 보여 줘</span>}
+      {slow && !streams && (
+        <span className="hint">{withParticle(label, '은')} 답을 다 만든 뒤 한 번에 보여 줘</span>
+      )}
     </div>
   );
-}
-
-function dotClass(s?: AiStatus) {
-  if (!s) return 'unknown';
-  if (!s.installed) return 'off';
-  return s.loggedIn ? 'ok' : 'warn';
-}
-
-function statusText(s?: AiStatus): string {
-  if (!s) return '확인 중';
-  const name = PROVIDER_LABEL[s.provider];
-  if (!s.installed) {
-    return s.provider === 'claude'
-      ? `${name}를 이 컴퓨터에서 못 찾았어. Claude Code 를 설치하고 터미널에서 claude 로 로그인해 줘.`
-      : `${name}를 이 컴퓨터에서 못 찾았어. Codex CLI 를 설치하고 터미널에서 codex login 으로 로그인해 줘.`;
-  }
-  if (!s.loggedIn)
-    return `${name} 로그인이 필요해. 터미널에서 ${s.provider === 'claude' ? 'claude' : 'codex login'} 으로 로그인해 줘.`;
-  return `${name} 준비됨 (${s.version ?? ''})`;
 }

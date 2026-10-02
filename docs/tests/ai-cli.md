@@ -48,6 +48,18 @@ printf '{"type":"user","message":{"role":"user","content":[{"type":"image","sour
 | X10 | 사용량 | `CODEX_HOME/sessions/연/월/일/rollout-*-<thread_id>.jsonl` 의 마지막 `rate_limits` | `primary`(300분), `secondary`(10080분) 의 `used_percent`, `resets_at`, `plan_type` | 통과 (2026-10-02). 5시간 27%, 7일 58%, plus |
 | X8 | 응답 시간 | X2 를 격리 상태로 3번 | 중앙값을 기록한다 (목표: 답 10초 안) | 통과. 8.3, 8.6, 10.1초, 중앙값 8.6초. 3번 중 1번은 제목 한 단어를 잘못 읽음 (320px 작은 그림) |
 
+## 그 밖의 AI (확인 전)
+
+2026-10-02 이 맥에는 cursor-agent 2026.01.23 이 깔려 있지만 로그인 전이고, gemini 는 없다. 로그인하거나 설치한 뒤 아래를 돌린다.
+
+| ID | 확인할 것 | 명령 | 통과 기준 | 결과 |
+| --- | --- | --- | --- | --- |
+| R1 | Cursor 로그인 확인 | `NO_OPEN_BROWSER=1 cursor-agent status` | 로그인 전에는 "Not logged in", 뒤에는 다른 글 | 로그인 전 글 확인 (종료 코드는 0) |
+| R2 | Cursor 질문 | `cursor-agent -p --output-format stream-json --stream-partial-output --mode ask "안녕"` | `system` 에 session_id, 답 조각, `result` | 미실행 (로그인 전) |
+| R3 | Cursor 이어가기 | R2 의 session_id 로 `--resume` | 앞 대화를 기억 | 미실행 |
+| G1 | Gemini 질문 | `gemini -p "안녕"` | 표준 출력에 답 | 미실행 (미설치) |
+| T1 | 직접 추가(글 어댑터) | 채팅 창에서 `claude -p {prompt}` 를 추가해 두 번 묻기 | 두 번째 질문에서 앞 대화를 기억 | 통과 (2026-10-02). 15.9초, 5.6초 |
+
 ## 알아낸 함정
 
 - **codex `-i` 는 파일을 여러 개 받는다.** `-i t.png "질문"` 순서로 쓰면 질문까지 이미지 파일로 먹고 "No prompt provided" 로 끝난다. 질문을 앞에 두거나 `--` 로 끊는다.

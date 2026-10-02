@@ -1,8 +1,8 @@
-// 로컬 AI CLI(claude, codex) 연동에서 메인, 화면이 같이 쓰는 타입.
+// 로컬 AI CLI 연동에서 메인, 화면이 같이 쓰는 타입.
+import type { AiUsage } from './usage.ts';
 
-export type AiProvider = 'claude' | 'codex';
-
-export const PROVIDER_LABEL: Record<AiProvider, string> = { claude: 'Claude', codex: 'Codex' };
+/** AI 를 가리키는 id. 기본 제공('claude', 'codex', 'cursor', 'gemini')이거나 사용자가 추가한 'custom-...' */
+export type AiProvider = string;
 
 export interface ImageAttachment {
   /** 'image/png' 등 */
@@ -10,8 +10,6 @@ export interface ImageAttachment {
   /** base64 (data: 접두사 없이) */
   data: string;
 }
-
-import type { AiUsage } from './usage.ts';
 
 /** 어댑터가 내보내는 사건. 화면은 이것만 안다. */
 export type AiEvent =
@@ -40,7 +38,8 @@ export interface AiError {
 export interface AiStatus {
   provider: AiProvider;
   installed: boolean;
-  loggedIn: boolean;
+  /** 로그인 여부. 확인할 방법이 없는 AI 는 undefined */
+  loggedIn?: boolean;
   version?: string;
   path?: string;
 }

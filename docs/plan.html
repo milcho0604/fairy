@@ -121,7 +121,7 @@ figure.diagram svg .eye { fill: #1f2328; }
   </header>
   <nav class="toc" aria-label="목차"><ol><li><a href="#개요">개요</a></li><li><a href="#성공-기준">성공 기준</a></li><li><a href="#참고-제품">참고 제품</a></li><li><a href="#하루-사용-흐름">하루 사용 흐름</a></li><li><a href="#기능-리스트">기능 리스트</a></li><li><a href="#펫-동작-규칙">펫 동작 규칙</a></li><li><a href="#게임-규칙">게임 규칙</a></li><li><a href="#화면-설계">화면 설계</a></li><li><a href="#시스템-구조">시스템 구조</a></li><li><a href="#데이터-모델">데이터 모델</a></li><li><a href="#데이터와-개인정보">데이터와 개인정보</a></li><li><a href="#ai-연동-규격">AI 연동 규격</a></li><li><a href="#비기능-목표">비기능 목표</a></li><li><a href="#기술-스택">기술 스택</a></li><li><a href="#설치와-배포">설치와 배포</a></li><li><a href="#개발-단계">개발 단계</a></li><li><a href="#리스크와-정할-것">리스크와 정할 것</a></li><li><a href="#출처">출처</a></li></ol></nav>
   <main>
-<p>문서 버전 0.2.6 (2026-10-02). 변경 이력은 <a href="../CHANGELOG.md">CHANGELOG</a>에 남긴다. AI 연동 검증 절차는 <a href="tests/ai-cli.md">AI CLI 검증 시나리오</a>에 있다.</p>
+<p>문서 버전 0.2.7 (2026-10-02). 변경 이력은 <a href="../CHANGELOG.md">CHANGELOG</a>에 남긴다. AI 연동 검증 절차는 <a href="tests/ai-cli.md">AI CLI 검증 시나리오</a>에 있다.</p>
 <p>옆자리 짝꿍처럼 화면 위를 돌아다니는 펫이 할 일, 일정, 메모를 같이 챙기고, 내 컴퓨터에 설치된 AI(Claude, Codex)와 연결돼 "같이 보기"로 화면을 보며 대화하는 데스크톱 앱이다. 맥과 윈도우를 동시에 낸다.</p>
 <h2 id="개요">개요</h2>
 <p>일하는 시간을 덜 외롭고 더 재미있게 만드는 것이 목표다. 펫은 귀여운 놀이 상대이면서, 할 일과 일정을 챙기고 AI와 이어 주는 비서 역할을 한다.</p>
@@ -524,7 +524,7 @@ figure.diagram svg .eye { fill: #1f2328; }
 <tr>
 <td>AI</td>
 <td>채팅</td>
-<td>설치된 AI(claude, codex)를 찾아 고르고, 답변이 실시간으로 흘러나온다</td>
+<td>설치된 AI CLI 를 찾아 고르고, 답변이 실시간으로 흘러나온다. 기본 제공은 Claude, Codex, Cursor, Gemini. 목록에 없는 CLI 도 명령을 적어 추가한다</td>
 <td><span class="src asked">요청</span></td>
 <td data-priority="mvp"><span class="tag mvp">MVP</span></td>
 </tr>
@@ -1430,7 +1430,7 @@ figure.diagram svg .eye { fill: #1f2328; }
 <li>설정의 "개인정보" 탭에서 저장된 캡처 수와 용량을 보고 한 번에 지울 수 있다.</li>
 </ul>
 <h2 id="ai-연동-규격">AI 연동 규격</h2>
-<p>AI는 사용자가 설치하고 로그인한 CLI를 하위 프로세스로 불러 쓴다. 아래 명령은 2026-10-01 이 컴퓨터에서 실제로 돌려 확인했다 (Claude Code 2.1.286, codex-cli 0.155.1). 자세한 절차와 결과는 <a href="tests/ai-cli.md">AI CLI 검증 시나리오</a>에 있다.</p>
+<p>AI는 사용자가 설치하고 로그인한 CLI를 하위 프로세스로 불러 쓴다. 특정 AI 로 한정하지 않는다: 아래 둘은 전용 어댑터로 깊게 붙이고(그림, 이어가기, 사용량), Cursor 는 전용 어댑터, Gemini 와 사용자가 추가한 CLI 는 "질문을 인자로 주고 출력을 답으로 받는" 공통 어댑터로 붙인다. 아래 명령은 2026-10-01 이 컴퓨터에서 실제로 돌려 확인했다 (Claude Code 2.1.286, codex-cli 0.155.1). 자세한 절차와 결과는 <a href="tests/ai-cli.md">AI CLI 검증 시나리오</a>에 있다.</p>
 <div class="table-wrap"><table>
 <thead>
 <tr>
@@ -1499,6 +1499,41 @@ figure.diagram svg .eye { fill: #1f2328; }
 <td>첫 답 시간 (실측)</td>
 <td>간단한 질문 3.4~4.2초, 이미지 질문 첫 글자 5.0초. 앱 채팅 창에서 첫 글자 2.3초 (2026-10-02)</td>
 <td>이미지 질문 답 완성까지 중앙값 8.6초 (3회). 앱 채팅 창에서 글 질문 5.8초, 그림 질문 5.3~14.7초</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>그 밖의 AI</strong> (2026-10-02 기준, 실제 출력 확인 전)</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>AI</th>
+<th>부르는 법</th>
+<th>그림</th>
+<th>이어가기</th>
+<th>로그인 확인</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cursor Agent</td>
+<td><code>cursor-agent -p --output-format stream-json --stream-partial-output --mode ask "&lt;질문&gt;"</code></td>
+<td>안 보냄</td>
+<td><code>--resume &lt;chatId&gt;</code></td>
+<td><code>cursor-agent status</code> 의 글 ("Not logged in"). 종료 코드는 늘 0</td>
+</tr>
+<tr>
+<td>Gemini CLI</td>
+<td><code>gemini -p "&lt;질문&gt;"</code>, 출력 글 그대로</td>
+<td>안 보냄</td>
+<td>최근 대화 4개를 질문 앞에 붙임</td>
+<td>없음 (써 봐야 앎)</td>
+</tr>
+<tr>
+<td>직접 추가</td>
+<td>사용자가 적은 명령과 인자, <code>{prompt}</code> 자리에 질문</td>
+<td>안 보냄</td>
+<td>최근 대화 4개를 질문 앞에 붙임</td>
+<td>없음</td>
 </tr>
 </tbody>
 </table></div>

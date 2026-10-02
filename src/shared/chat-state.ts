@@ -1,4 +1,6 @@
 // 채팅 상태. 메인이 들고 있고 채팅 창은 그림만 그린다. 창을 닫았다 열어도 대화가 남는다.
+
+import type { Exchange } from './ai/text.ts';
 import type { AiError, AiEvent, AiProvider } from './ai/types.ts';
 import type { AiUsage } from './ai/usage.ts';
 
@@ -112,4 +114,18 @@ export function switchProvider(s: ChatState, provider: AiProvider): ChatState {
 /** 새 대화: 화면과 세션을 비운다. */
 export function resetChat(s: ChatState): ChatState {
   return s.pendingId ? s : initialChat(s.provider, s.usage);
+}
+
+/** 이어가기 기능이 없는 AI 에 붙여 보낼 최근 대화: 같은 AI 와 끝까지 주고받은 것만. */
+export function historyFor(state: ChatState, provider: AiProvider): Exchange[] {
+  const out: Exchange[] = [];
+  const msgs = state.messages;
+  for (let i = 1; i < msgs.length; i++) {
+    const a = msgs[i];
+    const q = msgs[i - 1];
+    if (a?.role === 'pet' && a.provider === provider && a.status === 'done' && q?.role === 'user') {
+      out.push({ question: q.text, answer: a.text });
+    }
+  }
+  return out;
 }

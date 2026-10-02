@@ -84,7 +84,7 @@ header {
 }
 
 header button,
-header fieldset {
+header .picker {
   -webkit-app-region: no-drag;
 }
 
@@ -115,35 +115,6 @@ header fieldset {
   height: 24px;
 }
 
-.providers {
-  display: inline-flex;
-  margin: 0;
-  min-width: 0;
-  padding: 2px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-}
-
-.providers button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  cursor: pointer;
-}
-
-.providers button.on {
-  background: var(--accent);
-  color: var(--accent-ink);
-}
-
-.providers button:disabled {
-  cursor: default;
-}
-
 .dot {
   width: 7px;
   height: 7px;
@@ -161,10 +132,6 @@ header fieldset {
 
 .dot.off {
   background: var(--error);
-}
-
-.on .dot {
-  box-shadow: 0 0 0 1.5px var(--accent-ink);
 }
 
 .ghost {
@@ -613,4 +580,209 @@ footer {
   height: 1px;
   overflow: hidden;
   clip: rect(0 0 0 0);
+}
+
+/* AI 고르기 */
+header .picker {
+  position: relative;
+}
+
+.picker-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg);
+  cursor: pointer;
+}
+
+.picker-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.caret {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.picker-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 5;
+  min-width: 200px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+}
+
+.picker-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.picker-menu button:hover,
+.picker-menu button:focus-visible {
+  background: var(--code);
+}
+
+.picker-menu button.on {
+  font-weight: 600;
+}
+
+.picker-menu button.missing {
+  color: var(--muted);
+}
+
+.picker-menu .name {
+  flex: 1;
+}
+
+.picker-menu hr {
+  margin: 4px 6px;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.dot.maybe {
+  background: color-mix(in srgb, var(--ok) 55%, var(--muted));
+}
+
+/* AI 관리 */
+.sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  overflow-y: auto;
+  padding: 0 14px 16px;
+  background: var(--bg);
+}
+
+.mac .sheet {
+  padding-top: 0;
+}
+
+.sheet-head {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 -14px 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  -webkit-app-region: drag;
+}
+
+.mac .sheet-head {
+  padding-left: 80px;
+  min-height: 44px;
+}
+
+.sheet-head strong {
+  margin-right: auto;
+}
+
+.sheet-head button {
+  -webkit-app-region: no-drag;
+}
+
+.ai-list {
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.ai-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 2px;
+  border-bottom: 1px solid var(--line);
+}
+
+.ai-list .dot {
+  margin-top: 7px;
+  flex: none;
+}
+
+.ai-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ai-info .name {
+  font-weight: 600;
+}
+
+.ai-info .detail {
+  font-size: 12.5px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.small {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.add-ai {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.add-ai label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.add-ai input {
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+}
+
+.add-ai input:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: -1px;
+}
+
+.add-ai .primary {
+  align-self: flex-start;
+}
+
+.add-ai .hint code {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--code);
+  font:
+    12px ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
 }

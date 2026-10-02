@@ -2,6 +2,8 @@
 import { classifyError } from './errors.ts';
 import type { AiEvent } from './types.ts';
 
+const LABEL = { label: 'Codex', loginHint: '터미널에서 codex login 으로 로그인해 줘.' };
+
 export interface CodexTurn {
   text: string;
   /** 이미지 파일 경로. codex 는 파일로만 받는다. */
@@ -50,7 +52,7 @@ export function parseCodexLine(line: string): AiEvent[] {
   if (e.type === 'turn.failed' || e.type === 'error') {
     const err =
       (e.error as { message?: string } | undefined)?.message ?? (e.message as string | undefined) ?? '';
-    return [{ type: 'error', error: classifyError('codex', err) }];
+    return [{ type: 'error', error: classifyError(LABEL, err) }];
   }
   return [];
 }

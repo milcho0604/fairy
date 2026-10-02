@@ -103,9 +103,13 @@ test('codex 명령: 질문은 -i 앞, 이어가기는 resume, 샌드박스는 -c
 });
 
 test('오류 문구 분류', () => {
-  assert.equal(classifyError('claude', 'Claude AI usage limit reached|1790900400').kind, 'rate-limit');
-  assert.equal(classifyError('codex', 'Not logged in. Please run codex login').kind, 'not-logged-in');
-  const other = classifyError('codex', 'stream disconnected\nmore');
+  const claude = { label: 'Claude' };
+  const codex = { label: 'Codex', loginHint: '터미널에서 codex login 으로 로그인해 줘.' };
+  assert.equal(classifyError(claude, 'Claude AI usage limit reached|1790900400').kind, 'rate-limit');
+  const login = classifyError(codex, 'Not logged in. Please run codex login');
+  assert.equal(login.kind, 'not-logged-in');
+  assert.ok(login.message.includes('codex login'));
+  const other = classifyError(codex, 'stream disconnected\nmore');
   assert.equal(other.kind, 'failed');
   assert.ok(other.message.includes('stream disconnected'));
   assert.ok(!other.message.includes('more'));
