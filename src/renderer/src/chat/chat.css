@@ -312,8 +312,28 @@ header .picker {
 .retry {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
   margin-top: 6px;
+}
+
+/* 무료 AI 모델 받기 진행 (v2) */
+.download {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.download progress {
+  width: 120px;
+  height: 6px;
+  accent-color: var(--accent);
+}
+
+.download.failed {
+  color: var(--error);
 }
 
 .options {

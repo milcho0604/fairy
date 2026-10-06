@@ -6,12 +6,12 @@ import { notInstalled } from './errors.ts';
 import { BUILTIN_PROVIDERS, customProvider, fillArgs, splitArgs } from './providers.ts';
 import { stripAnsi, textPrompt } from './text.ts';
 
-test('기본 제공 AI: 확인한 것은 claude, codex 뿐이고 id 가 겹치지 않는다', () => {
+test('기본 제공 AI: 확인한 것은 claude, codex 와 앱 안의 무료 AI 이고 id 가 겹치지 않는다', () => {
   const ids = BUILTIN_PROVIDERS.map((p) => p.id);
   assert.equal(new Set(ids).size, ids.length);
   assert.deepEqual(
     BUILTIN_PROVIDERS.filter((p) => p.verified).map((p) => p.id),
-    ['claude', 'codex'],
+    ['claude', 'codex', 'local'],
   );
 });
 

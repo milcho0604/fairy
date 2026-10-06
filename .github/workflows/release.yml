@@ -34,7 +34,8 @@ jobs:
         if: runner.os == 'macOS'
       # 인텔 맥 dmg 도 같이 만든다. koffi 네이티브 파일은 운영체제와 칩마다 다른 패키지라 x64 것을 더 받는다
       # (창 위에 올라앉기가 쓴다. 없으면 그 기능만 꺼진다).
-      - run: npm install --no-save --force @koromix/koffi-darwin-x64@3.3.2
+      # 무료 AI 엔진(node-llama-cpp)도 칩마다 다른 패키지라 인텔 것을 더 받는다 (없으면 인텔 맥에서 무료 AI 만 안 된다)
+      - run: npm install --no-save --force @koromix/koffi-darwin-x64@3.3.2 @node-llama-cpp/mac-x64@3.22.1
         if: runner.os == 'macOS'
       - run: npm run ${{ matrix.script }}
       - uses: actions/upload-artifact@v7

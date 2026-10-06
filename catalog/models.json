@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "local": [
+    {
+      "id": "qwen3-1.7b",
+      "label": "Qwen3 1.7B",
+      "file": "Qwen3-1.7B-Q3_K_M.gguf",
+      "url": "https://huggingface.co/unsloth/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q3_K_M.gguf",
+      "sha256": "8070f21b9763ef653289e20252592d0aab6680948f36eb5b4362d403fef09170",
+      "bytes": 939539008,
+      "license": "Apache-2.0",
+      "noThink": true
+    },
+    {
+      "id": "qwen3-0.6b",
+      "label": "Qwen3 0.6B",
+      "file": "Qwen3-0.6B-Q4_K_M.gguf",
+      "url": "https://huggingface.co/unsloth/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q4_K_M.gguf",
+      "sha256": "ac2d97712095a558e31573f62f466a3f9d93990898b0ec79d7c974c1780d524a",
+      "bytes": 396705472,
+      "license": "Apache-2.0",
+      "noThink": true
+    }
+  ],
+  "localDefault": "qwen3-1.7b",
+  "cli": {
+    "claude": [
+      {
+        "id": "opus",
+        "label": "Opus"
+      },
+      {
+        "id": "sonnet",
+        "label": "Sonnet"
+      },
+      {
+        "id": "haiku",
+        "label": "Haiku"
+      },
+      {
+        "id": "claude-opus-5-5",
+        "label": "Opus 5.5",
+        "pinned": true
+      },
+      {
+        "id": "claude-sonnet-5-5",
+        "label": "Sonnet 5.5",
+        "pinned": true
+      },
+      {
+        "id": "claude-haiku-4-5-20251001",
+        "label": "Haiku 4.5",
+        "pinned": true
+      }
+    ]
+  }
+}

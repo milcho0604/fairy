@@ -21,10 +21,11 @@ export function Markdown({ text }: { text: string }) {
   let i = 0;
   while (i < lines.length) {
     const line = lines[i] ?? '';
-    if (line.startsWith('```')) {
+    // 작은 모델은 코드 블록을 들여 써서 낸다 ("  ```python"). 앞 공백은 봐준다
+    if (line.trimStart().startsWith('```')) {
       const body: string[] = [];
       i++;
-      while (i < lines.length && !(lines[i] ?? '').startsWith('```')) body.push(lines[i++] ?? '');
+      while (i < lines.length && !(lines[i] ?? '').trimStart().startsWith('```')) body.push(lines[i++] ?? '');
       i++;
       blocks.push(
         <pre key={`b${i}`}>
@@ -68,7 +69,7 @@ export function Markdown({ text }: { text: string }) {
     while (
       i < lines.length &&
       (lines[i] ?? '').trim() !== '' &&
-      !(lines[i] ?? '').startsWith('```') &&
+      !(lines[i] ?? '').trimStart().startsWith('```') &&
       !/^\s*([-*]|\d+\.)\s+/.test(lines[i] ?? '') &&
       !/^#{1,4}\s/.test(lines[i] ?? '')
     ) {

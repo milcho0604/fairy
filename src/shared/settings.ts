@@ -47,6 +47,8 @@ export interface Settings {
   /** 친구 펫 (v2 여러 마리). 할 일, 채팅은 기본 펫이 맡고 친구는 같이 돌아다닌다 */
   friends: Friend[];
   /** 화면 말 (v2 다국어). auto 는 운영체제 말. 창이 열릴 때 읽어서 바꾸면 다시 켠다 */
+  /** AI 마다 고른 모델 (v2). 키는 AI id('claude', 'codex', 'local'), 값은 모델 목록의 id. 없으면 그 AI 의 기본 */
+  aiModels: Record<string, string>;
   lang: LangPref;
 }
 
@@ -131,6 +133,7 @@ export const DEFAULT_SETTINGS: Settings = {
   myMcp: false,
   friends: [],
   lang: 'auto',
+  aiModels: {},
 };
 
 export const PET_NAME_MAX = 12;
@@ -186,12 +189,23 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     myMcp: bool(r.myMcp, base.myMcp),
     friends: Array.isArray(r.friends) ? friendsOf(r.friends) : base.friends,
     lang: r.lang === 'auto' || r.lang === 'ko' || r.lang === 'en' ? r.lang : base.lang,
+    aiModels: aiModelsOf(r.aiModels, base.aiModels),
     ...(typeof r.skipVersion === 'string' && /^\d+\.\d+\.\d+/.test(r.skipVersion)
       ? { skipVersion: r.skipVersion.slice(0, 32) }
       : base.skipVersion
         ? { skipVersion: base.skipVersion }
         : {}),
   };
+}
+
+/** 고른 모델: 모양만 본다(목록에 있는지는 부를 때 본다). 빈 값이면 그 AI 의 기본으로 되돌린다 */
+function aiModelsOf(v: unknown, current: Settings['aiModels']): Settings['aiModels'] {
+  if (typeof v !== 'object' || v === null) return { ...current };
+  const out: Settings['aiModels'] = {};
+  for (const [k, m] of Object.entries(v as Record<string, unknown>).slice(0, 20)) {
+    if (/^[a-z][\w-]{0,40}$/.test(k) && typeof m === 'string' && /^\w[\w.:/-]{0,63}$/.test(m)) out[k] = m;
+  }
+  return out;
 }
 
 /** 사진 펫 파일 이름. 파일 이름만 받는다 (경로를 넣어 다른 폴더를 가리키지 못하게). 비우면 기본 펫. */

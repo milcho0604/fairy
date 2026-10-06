@@ -1,9 +1,11 @@
 import { join, sep } from 'node:path';
 import { app, BrowserWindow, clipboard, type IpcMainEvent, type IpcMainInvokeEvent, ipcMain } from 'electron';
+import type { Catalog } from '../shared/ai/catalog.ts';
 import { type BetaReport, reportText, type StatStore } from '../shared/beta-stats.ts';
 import { t } from '../shared/i18n/index.ts';
 import { type MakerTarget, SETTINGS, type SettingsSection, type SettingsSnapshot } from '../shared/ipc.ts';
 import type { Settings } from '../shared/settings.ts';
+import { localModelReady } from './ai/local.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
 import { langArg } from './lang.ts';
 import { settings } from './settings.ts';
@@ -25,6 +27,7 @@ export interface SettingsWindowOptions {
     calendarLast: () => string;
     mcpServers: () => string[];
     refreshMcp: () => Promise<string[]>;
+    catalog: () => Catalog;
   };
 }
 
@@ -59,6 +62,10 @@ export function createSettingsWindow({
           },
           myMcpServers: v2.mcpServers(),
           calendarLast: v2.calendarLast(),
+          models: {
+            catalog: v2.catalog(),
+            localReady: Object.fromEntries(v2.catalog().local.map((m) => [m.id, localModelReady(m)])),
+          },
         }
       : undefined,
   );

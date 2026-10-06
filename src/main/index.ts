@@ -7,6 +7,8 @@ import { HIDE_SEEK, pickHideSpot } from '../shared/hide-seek.ts';
 import { locale, t } from '../shared/i18n/index.ts';
 import { IPC, type PetStatus, type PlayKind } from '../shared/ipc.ts';
 import { FULLNESS, localDay } from '../shared/todo-store.ts';
+import { watchCatalog } from './ai/catalog.ts';
+import { stopLocal } from './ai/local.ts';
 import { mcpServers, refreshMcpServers } from './ai/mcp-list.ts';
 import { applyPendingImport, createBackup, exportPet, importPet } from './backup.ts';
 import { watchBetaStats } from './beta.ts';
@@ -63,7 +65,11 @@ app.whenReady().then(() => {
   if (process.platform === 'darwin') app.dock?.hide();
   // 펫 이름은 설정에서 바꿀 수 있어 쓰는 곳마다 지금 값을 읽는다.
   const petName = () => settings.get().petName;
+  // 모델 목록 (v2): 앱 기본값, 하루 한 번 레포에서 받은 것으로 바꾼다
+  const catalog = watchCatalog(log);
   const chat = createChat({
+    catalog: catalog.get,
+    aiModels: () => settings.get().aiModels,
     petName,
     aiIsolation: () => settings.get().aiIsolation,
     personaId: () => settings.get().persona,
@@ -492,6 +498,7 @@ app.whenReady().then(() => {
       importFriend: (w) => importPet(w, true),
       syncCalendar: () => calendar.sync(),
       calendarLast: () => calendar.last,
+      catalog: catalog.get,
       mcpServers: () => mcpServers(log),
       refreshMcp: () => refreshMcpServers(log),
     },
@@ -568,6 +575,7 @@ app.whenReady().then(() => {
     friends.setHidden('presentation', hide);
   }, log);
   app.on('will-quit', () => {
+    stopLocal();
     for (const acc of registered) globalShortcut.unregister(acc);
     stopPresence();
     tray.destroy();

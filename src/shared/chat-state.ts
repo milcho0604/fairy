@@ -32,6 +32,8 @@ export interface ChatState {
   ephemeral?: boolean;
   /** 내 할 일 같이 보내기 (설정 aiKnowsTodos 를 비춘다) */
   knowsTodos?: boolean;
+  /** 무료 AI 모델 받기 (v2): 받는 중이면 진행률(0~100), 실패하면 failed */
+  modelDownload?: { pct: number; failed?: boolean };
 }
 
 /** 대화가 이만큼 길어지면 새 대화를 권한다. 이어갈수록 입력 토큰이 쌓인다(L8: codex 2번째에 54K). */

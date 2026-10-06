@@ -2,7 +2,7 @@
 // 기본 제공 AI 는 어댑터가 따로 있고, 그 밖의 CLI 는 사용자가 명령을 적어 추가한다(custom).
 import { t } from '../i18n/index.ts';
 
-export type AdapterKind = 'claude' | 'codex' | 'cursor' | 'text';
+export type AdapterKind = 'claude' | 'codex' | 'cursor' | 'text' | 'local';
 
 export interface ProviderSpec {
   id: string;
@@ -77,6 +77,21 @@ export const BUILTIN_PROVIDERS: readonly ProviderSpec[] = [
     },
     get loginHint() {
       return t('ai.login.cursor');
+    },
+    usage: false,
+  },
+  {
+    // 무료 AI (v2): 앱 안의 작은 모델. 설치, 로그인이 없고 처음 쓸 때 모델만 받는다
+    id: 'local',
+    get label() {
+      return t('ai.local.label');
+    },
+    bin: '',
+    adapter: 'local',
+    images: false,
+    verified: true,
+    get installHint() {
+      return t('ai.local.install');
     },
     usage: false,
   },

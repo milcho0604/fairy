@@ -19,6 +19,8 @@ export interface CodexTurn {
   persona: string;
   /** 기록 남기지 않기 (v1): 대화 기록 파일(rollout)을 남기지 않는다. 이어가기와 사용량 읽기를 못 한다 */
   ephemeral?: boolean;
+  /** 고른 모델 (v2). 없으면 codex 기본 */
+  model?: string;
 }
 
 /**
@@ -33,6 +35,7 @@ export function codexArgs(turn: CodexTurn): string[] {
     'sandbox_mode="read-only"',
     '-c',
     `developer_instructions=${JSON.stringify(turn.persona)}`,
+    ...(turn.model ? ['-m', turn.model] : []),
     ...turn.imagePaths.flatMap((p) => ['-i', p]),
   ];
   if (turn.ephemeral) return ['exec', turn.text, '--ephemeral', ...common];

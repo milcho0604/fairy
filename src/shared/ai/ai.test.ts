@@ -173,3 +173,13 @@ test('내 MCP 도구: 격리를 껐을 때만 서버를 허락하고, 기본 도
     ['claude.ai Notion', 'local'],
   );
 });
+
+test('고른 모델은 --model, -m 으로 넘기고, 없으면 붙이지 않는다', () => {
+  const turn = { text: '질문', images: [], sessionId: 'abc', resume: false, persona: '반말' };
+  const withModel = claudeArgs({ ...turn, model: 'sonnet' });
+  assert.equal(withModel[withModel.indexOf('--model') + 1], 'sonnet');
+  assert.ok(!claudeArgs(turn).includes('--model'));
+  const codex = codexArgs({ text: '질문', imagePaths: [], persona: '반말', model: 'gpt-x' });
+  assert.equal(codex[codex.indexOf('-m') + 1], 'gpt-x');
+  assert.ok(!codexArgs({ text: '질문', imagePaths: [], persona: '반말' }).includes('-m'));
+});

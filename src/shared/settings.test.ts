@@ -140,3 +140,11 @@ test('펫 모양 이름은 지금 말로 읽는다', () => {
   }
   assert.equal(PET_KINDS[0]?.label, '콩');
 });
+
+test('AI 모델 고르기: 모양이 맞는 것만, 옵션처럼 보이는 값은 버린다', () => {
+  const s = parseSettings({
+    aiModels: { claude: 'sonnet', codex: '--x', local: 'qwen3-0.6b', 'Bad Key': 'a' },
+  });
+  assert.deepEqual(s.aiModels, { claude: 'sonnet', local: 'qwen3-0.6b' });
+  assert.deepEqual(parseSettings({ aiModels: 'x' }).aiModels, {});
+});

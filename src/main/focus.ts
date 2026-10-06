@@ -28,7 +28,7 @@ export function focusWindow(win: BrowserWindow | undefined): void {
 }
 
 /**
- * 시험 인스턴스(JJ_NO_FOCUS=1)는 맥북 내장 화면만 있는 것처럼 본다. 창을 연 뒤 옮기면 그 사이 쓰는 사람의
+ * 시험 인스턴스(JJ_NO_FOCUS=1)는 창을 숨기고(투명, 마우스 통과), 맥북 내장 화면만 있는 것처럼 본다. 창을 연 뒤 옮기면 그 사이 쓰는 사람의
  * 작업 모니터에 잠깐 떠서, 처음부터 내장 화면에 열리게 화면 목록, 주 화면, 커서 위치를 내장 화면으로 바꾼다.
  * 걷기, 숨바꼭질, 던지기도 내장 화면 안에서만 움직인다. 내장 화면이 없으면 그대로 둔다.
  */
@@ -37,19 +37,32 @@ export function confineTestDisplay(): void {
   const internal = screen.getAllDisplays().find((d) => d.internal);
   if (!internal) return;
   const allDisplays = screen.getAllDisplays.bind(screen);
+  const realCursor = screen.getCursorScreenPoint.bind(screen);
   const only = (): Display => allDisplays().find((d) => d.id === internal.id) ?? internal;
   Object.assign(screen, {
     getAllDisplays: () => allDisplays().filter((d) => d.id === internal.id),
     getPrimaryDisplay: only,
     getDisplayNearestPoint: only,
     getDisplayMatching: only,
+    // 진짜 커서가 내장 화면 위면 그대로 준다(맥북 화면에서 펫을 끌 수 있게). 다른 화면에 있으면 내장 화면 가운데로
     getCursorScreenPoint: () => {
+      const p = realCursor();
+      const b = only().bounds;
+      if (p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height) return p;
       const a = only().workArea;
       return { x: Math.round(a.x + a.width / 2), y: Math.round(a.y + a.height / 2) };
     },
   });
   // 위치를 주지 않은 창(설정, 만들기, 시작 안내)은 운영체제가 주 화면 가운데에 놓는다. 만들어지는 순간 옮긴다
   app.on('browser-window-created', (_e, win) => {
+    // 숨김 (사용자 요청 2026-10-06): 시험 창은 보이지도 않고 마우스도 가져가지 않는다. 화면은 CDP 로 찍고
+    // 입력도 CDP 로 넣으니 시험에는 지장이 없다. 눈으로 봐야 하면 JJ_SHOW=1
+    if (!process.env.JJ_SHOW) {
+      win.setOpacity(0);
+      win.setIgnoreMouseEvents(true);
+      // 펫 창은 펫 위에서 마우스를 받으려고 이 값을 바꾼다. 시험 중에는 늘 통과시킨다
+      win.setIgnoreMouseEvents = () => {};
+    }
     const a = only().workArea;
     const b = win.getBounds();
     const inside =

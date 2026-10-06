@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { BrowserWindow, type IpcMainEvent, ipcMain, type Rectangle, screen } from 'electron';
+import { type Catalog, pickCli, pickLocal } from '../shared/ai/catalog.ts';
 import { extractTodos, noteTitleFromQuestion, type PersonaId, persona } from '../shared/ai/persona.ts';
 import {
   BUILTIN_PROVIDERS,
@@ -9,7 +10,7 @@ import {
   type ProviderSpec,
 } from '../shared/ai/providers.ts';
 import { withHistory } from '../shared/ai/text.ts';
-import type { AiProvider } from '../shared/ai/types.ts';
+import type { AiEvent, AiProvider } from '../shared/ai/types.ts';
 import {
   addQuestion,
   applyEvent,
@@ -21,7 +22,7 @@ import {
   switchProvider,
 } from '../shared/chat-state.ts';
 import { clampIntoAreas } from '../shared/geometry.ts';
-import { t } from '../shared/i18n/index.ts';
+import { getLang, t } from '../shared/i18n/index.ts';
 import {
   CHAT,
   type ChatSnapshot,
@@ -30,6 +31,7 @@ import {
   type ProviderView,
 } from '../shared/ipc.ts';
 import { prepareCodexHome } from './ai/codex-home.ts';
+import { downloadLocalModel, runLocal } from './ai/local.ts';
 import { type AiRun, checkStatus, readCodexUsage, runAi } from './ai/runner.ts';
 import { getShellEnv } from './ai/shell-env.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
@@ -43,6 +45,10 @@ const USAGE_FILE = 'ai-usage';
 const CUSTOM_FILE = 'ai-custom';
 
 export interface ChatOptions {
+  /** 모델 목록 (v2, 하루 한 번 받아 바뀐다) */
+  catalog: () => Catalog;
+  /** AI 마다 고른 모델 (설정) */
+  aiModels: () => Record<string, string>;
   /** 지금 펫 이름 (설정에서 바뀔 수 있어 쓸 때마다 읽는다) */
   petName: () => string;
   /** AI 를 사용자 설정 없이 격리해서 부를지 (설정) */
@@ -99,6 +105,29 @@ export function createChat(o: ChatOptions) {
     win?.webContents.send(CHAT.state, state);
   };
   const fromChat = (e: IpcMainEvent | Electron.IpcMainInvokeEvent) => !!win && e.sender === win.webContents;
+
+  // 처음(고른 적 없음)이면 자동으로: 설치되고 로그인된 AI 가 있으면 그것, 없으면 무료 AI (v2).
+  // 확인하는 몇 초 사이에 사용자가 직접 고르면 그 선택을 따른다
+  let userPicked = false;
+  if (!saved?.provider) {
+    void (async () => {
+      for (const id of ['claude', 'codex', 'cursor', 'gemini']) {
+        const spec = specOf(id);
+        const st = spec ? await checkStatus(spec) : undefined;
+        if (st?.installed && st.loggedIn !== false) {
+          if (userPicked) return;
+          if (id !== state.provider && !state.pendingId) state = switchProvider(state, id);
+          log('chat', 'auto provider', id);
+          push();
+          return;
+        }
+      }
+      if (userPicked) return;
+      if (!state.pendingId) state = switchProvider(state, 'local');
+      log('chat', 'auto provider', 'local');
+      push();
+    })();
+  }
 
   ipcMain.handle(CHAT.snapshot, (e): ChatSnapshot | undefined => {
     if (!fromChat(e)) return undefined;
@@ -185,50 +214,99 @@ export function createChat(o: ChatOptions) {
       context ? 'todos' : '',
     );
 
-    run = runAi(
-      {
-        spec,
-        history,
-        text: prompt,
-        // 그림을 못 받는 AI 에는 글만 보낸다. 화면이 미리 알려 준다.
-        images: spec.images ? images.map((i) => i.full) : [],
-        sessionId: ephemeral ? undefined : state.sessions[provider]?.id,
-        persona: persona(petName(), o.personaId()),
-        isolate: aiIsolation(),
-        ephemeral,
-        mcpServers: aiIsolation() ? [] : o.mcpServers(),
-      },
-      (event) => {
-        state = applyEvent(state, ids.pet, event, randomUUID());
-        if (event.type === 'usage') writeJson(USAGE_FILE, state.usage);
-        // 기록을 안 남긴 세션은 이어 갈 수 없다. 받아 두지 않는다.
-        if (ephemeral && event.type === 'session')
-          state = { ...state, sessions: { ...state.sessions, [provider]: undefined } };
-        if (event.type === 'delta') {
-          const msg = state.messages.find((m) => m.id === ids.pet);
-          win?.webContents.send(CHAT.delta, ids.pet, msg?.text ?? '');
-          return;
+    const req = {
+      spec,
+      history,
+      text: prompt,
+      // 그림을 못 받는 AI 에는 글만 보낸다. 화면이 미리 알려 준다.
+      images: spec.images ? images.map((i) => i.full) : [],
+      sessionId: ephemeral ? undefined : state.sessions[provider]?.id,
+      persona: persona(petName(), o.personaId()),
+      isolate: aiIsolation(),
+      ephemeral,
+      mcpServers: aiIsolation() ? [] : o.mcpServers(),
+      // 고른 모델 (v2). 목록에 없으면 그 AI 의 기본
+      model: pickCli(o.catalog(), provider, o.aiModels()[provider]),
+    };
+    const onEvent = (event: AiEvent) => {
+      state = applyEvent(state, ids.pet, event, randomUUID());
+      if (event.type === 'usage') writeJson(USAGE_FILE, state.usage);
+      // 기록을 안 남긴 세션은 이어 갈 수 없다. 받아 두지 않는다.
+      if (ephemeral && event.type === 'session')
+        state = { ...state, sessions: { ...state.sessions, [provider]: undefined } };
+      if (event.type === 'delta') {
+        const msg = state.messages.find((m) => m.id === ids.pet);
+        win?.webContents.send(CHAT.delta, ids.pet, msg?.text ?? '');
+        return;
+      }
+      if (event.type === 'done' || event.type === 'error') {
+        run = undefined;
+        onPetAi({ thinking: false, answered: event.type === 'done' });
+        if (event.type === 'done') {
+          const inFront = !!win && !win.isDestroyed() && win.isVisible() && win.isFocused();
+          onAnswer?.(event.text, inFront);
         }
-        if (event.type === 'done' || event.type === 'error') {
-          run = undefined;
-          onPetAi({ thinking: false, answered: event.type === 'done' });
-          if (event.type === 'done') {
-            const inFront = !!win && !win.isDestroyed() && win.isVisible() && win.isFocused();
-            onAnswer?.(event.text, inFront);
-          }
-          log(
-            'chat',
-            event.type,
-            provider,
-            `${Date.now() - started}ms`,
-            event.type === 'error' ? event.error.kind : '',
-          );
-        }
-        push();
-      },
-    );
+        log(
+          'chat',
+          event.type,
+          provider,
+          `${Date.now() - started}ms`,
+          event.type === 'error' ? event.error.kind : '',
+        );
+      }
+      push();
+    };
+    run =
+      spec.adapter === 'local'
+        ? runLocal(req, pickLocal(o.catalog(), o.aiModels().local), onEvent, log, {
+            // 한국어이고 존댓말 성격이 아니면 반말 예시와 어미 고치기
+            banmal: getLang() === 'ko' && o.personaId() !== 'polite',
+            petName: petName(),
+          })
+        : runAi(req, onEvent);
     return true;
   }
+
+  // 무료 AI 모델 받기 (v2). 사용자가 받기를 눌렀을 때만 받는다. 다 받으면 마지막 질문을 다시 묻는다
+  let downloading: AbortController | undefined;
+  ipcMain.on(CHAT.downloadModel, (e) => {
+    if (!fromChat(e) || downloading) return;
+    const model = pickLocal(o.catalog(), o.aiModels().local);
+    downloading = new AbortController();
+    state = { ...state, modelDownload: { pct: 0 } };
+    push();
+    log('chat', 'model download', model.id);
+    downloadLocalModel(
+      model,
+      (r) => {
+        state = { ...state, modelDownload: { pct: Math.round(r * 100) } };
+        push();
+      },
+      downloading.signal,
+    )
+      .then(() => {
+        state = { ...state, modelDownload: undefined };
+        push();
+        // 받는 사이 다른 AI 로 바꿨으면 그대로 둔다. 무료 AI 그대로면 마지막 질문을 다시 묻는다
+        if (state.provider !== 'local' || state.pendingId) return;
+        const lastUser = [...state.messages].reverse().find((m) => m.role === 'user');
+        if (lastUser?.text) ask(lastUser.text);
+      })
+      .catch((err) => {
+        const aborted = downloading?.signal.aborted;
+        log(
+          'chat',
+          'model download',
+          aborted ? 'cancelled' : 'failed',
+          err instanceof Error ? err.message : String(err),
+        );
+        state = { ...state, modelDownload: aborted ? undefined : { pct: 0, failed: true } };
+        push();
+      })
+      .finally(() => {
+        downloading = undefined;
+      });
+  });
 
   ipcMain.on(CHAT.setEphemeral, (e, on: boolean) => {
     if (!fromChat(e) || state.pendingId) return;
@@ -265,6 +343,7 @@ export function createChat(o: ChatOptions) {
   });
   ipcMain.on(CHAT.retryWith, (e, provider: AiProvider) => {
     if (!fromChat(e) || state.pendingId || !specOf(provider)) return;
+    userPicked = true;
     // 마지막 질문을 찾아 그 AI 로 다시 묻는다 (그림은 다시 보내지 않는다: 원본을 상태에 두지 않는다).
     const lastUser = [...state.messages].reverse().find((m) => m.role === 'user');
     state = switchProvider(state, provider);
@@ -274,7 +353,9 @@ export function createChat(o: ChatOptions) {
   });
 
   ipcMain.on(CHAT.cancel, (e) => {
-    if (fromChat(e)) run?.cancel();
+    if (!fromChat(e)) return;
+    run?.cancel();
+    downloading?.abort(); // 모델 받기도 멈춘다 (받기 진행 옆 취소 단추)
   });
   ipcMain.on(CHAT.reset, (e) => {
     if (!fromChat(e)) return;
@@ -283,6 +364,7 @@ export function createChat(o: ChatOptions) {
   });
   ipcMain.on(CHAT.provider, (e, provider: AiProvider) => {
     if (!fromChat(e) || !specOf(provider)) return;
+    userPicked = true;
     state = switchProvider(state, provider);
     writeJson(SETTINGS_FILE, { provider: state.provider });
     push();

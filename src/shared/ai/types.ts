@@ -25,7 +25,9 @@ export type AiErrorKind =
   | 'rate-limit'
   | 'timeout'
   | 'cancelled'
-  | 'failed';
+  | 'failed'
+  /** 무료 AI 모델을 아직 안 받음 (v2). 화면이 받기 단추를 보여 준다 */
+  | 'needs-model';
 
 export interface AiError {
   kind: AiErrorKind;

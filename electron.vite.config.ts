@@ -7,7 +7,12 @@ export default defineConfig({
     // 펫 MCP 서버(v1)를 따로 낸다. AI 도구가 짝꿍 실행 파일을 Node 로 돌려 이 파일을 연다.
     build: {
       rollupOptions: {
-        input: { index: resolve('src/main/index.ts'), 'mcp-server': resolve('src/main/mcp-server.ts') },
+        input: {
+          index: resolve('src/main/index.ts'),
+          'mcp-server': resolve('src/main/mcp-server.ts'),
+          // 무료 AI 일꾼 (v2). utilityProcess 로 따로 띄운다
+          'llm-worker': resolve('src/main/llm-worker.ts'),
+        },
       },
     },
   },

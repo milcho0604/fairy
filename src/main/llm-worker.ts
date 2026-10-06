@@ -1,0 +1,96 @@
+// 무료 AI(로컬 모델) 일꾼 (v2). 메인과 따로 도는 utilityProcess 라 오래 안 쓰면 통째로 끝내서
+// 모델 메모리(약 1GB)를 다 돌려준다. 메인과는 메시지로만 이야기한다.
+import { getLlama, type Llama, LlamaChatSession, type LlamaContext, type LlamaModel } from 'node-llama-cpp';
+
+export type WorkerIn =
+  | {
+      type: 'ask';
+      id: string;
+      modelPath: string;
+      system: string;
+      history: { role: 'user' | 'assistant'; text: string }[];
+      text: string;
+      noThink: boolean;
+      maxTokens: number;
+    }
+  | { type: 'cancel'; id: string };
+
+export type WorkerOut =
+  | { type: 'delta'; id: string; text: string }
+  | { type: 'done'; id: string; text: string }
+  | { type: 'error'; id: string; message: string };
+
+const port = process.parentPort;
+
+let llama: Llama | undefined;
+let loaded: { path: string; model: LlamaModel; context: LlamaContext } | undefined;
+const running = new Map<string, AbortController>();
+/** 질문은 한 번에 하나씩 줄을 세운다. 멈춘 질문이 문맥(시퀀스 1개)을 놓기 전에 다음 질문이 오면 실패해서 */
+let queue: Promise<void> = Promise.resolve();
+/** 줄에서 기다리다 멈춘 질문 */
+const cancelledEarly = new Set<string>();
+
+async function load(path: string) {
+  if (loaded?.path === path) return loaded;
+  await loaded?.context.dispose();
+  await loaded?.model.dispose();
+  // 미리 빌드된 엔진만 쓴다. 안 맞으면 소스 빌드로 넘어가는데, 사용자 컴퓨터엔 컴파일러가 없다
+  llama ??= await getLlama({ build: 'never' });
+  const model = await llama.loadModel({ modelPath: path });
+  const context = await model.createContext({ contextSize: 2048 });
+  loaded = { path, model, context };
+  return loaded;
+}
+
+async function ask(m: Extract<WorkerIn, { type: 'ask' }>) {
+  const post = (o: WorkerOut) => port.postMessage(o);
+  if (cancelledEarly.delete(m.id)) return; // 메인은 이미 멈춤으로 처리했다
+  const abort = new AbortController();
+  running.set(m.id, abort);
+  try {
+    const { context } = await load(m.modelPath);
+    const sequence = context.getSequence();
+    const session = new LlamaChatSession({ contextSequence: sequence });
+    session.setChatHistory([
+      { type: 'system', text: m.system },
+      ...m.history.map((h) =>
+        h.role === 'user'
+          ? { type: 'user' as const, text: h.text }
+          : { type: 'model' as const, response: [h.text] },
+      ),
+    ]);
+    let text = '';
+    try {
+      text = await session.prompt(m.text, {
+        maxTokens: m.maxTokens,
+        // 작은 모델 비교 시험(2026-10-06). presencePenalty 1.5 는 짧은 반말 답을 엉뚱하게 만들어 0.5
+        temperature: 0.7,
+        topP: 0.8,
+        topK: 20,
+        repeatPenalty: { penalty: 1.05, presencePenalty: 0.5 },
+        ...(m.noThink ? { budgets: { thoughtTokens: 0 } } : {}),
+        signal: abort.signal,
+        stopOnAbortSignal: true,
+        onTextChunk: (chunk) => post({ type: 'delta', id: m.id, text: chunk }),
+      });
+    } finally {
+      session.dispose({ disposeSequence: true });
+    }
+    post({ type: 'done', id: m.id, text });
+  } catch (err) {
+    post({ type: 'error', id: m.id, message: err instanceof Error ? err.message : String(err) });
+  } finally {
+    running.delete(m.id);
+  }
+}
+
+port.on('message', (e: { data: WorkerIn }) => {
+  const m = e.data;
+  if (m.type === 'cancel') {
+    const r = running.get(m.id);
+    if (r) r.abort();
+    else cancelledEarly.add(m.id);
+    return;
+  }
+  queue = queue.then(() => ask(m));
+});

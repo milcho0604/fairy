@@ -419,6 +419,26 @@ section.focus .card {
   margin-left: auto;
 }
 
+.model-row {
+  display: flex;
+  /* .field 의 세로 배치를 되돌린다 */
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.model-row select {
+  min-width: 0;
+  max-width: 62%;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: inherit;
+  font: inherit;
+}
+
 .friend-add {
   display: flex;
   gap: 6px;

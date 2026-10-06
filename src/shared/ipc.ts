@@ -1,4 +1,5 @@
 // 메인과 화면(펫, 채팅) 사이 IPC 채널 이름과 실어 보내는 값.
+import type { Catalog } from './ai/catalog.ts';
 import type { CustomProviderInput } from './ai/providers.ts';
 import type { AiProvider, AiStatus, ImageAttachment } from './ai/types.ts';
 import type { Activity } from './behavior.ts';
@@ -103,6 +104,8 @@ export const CHAT = {
   toNote: 'chat:to-note',
   toTodos: 'chat:to-todos',
   retryWith: 'chat:retry-with',
+  // v2 무료 AI
+  downloadModel: 'chat:download-model',
 } as const;
 
 export const ONBOARD = {
@@ -168,6 +171,8 @@ export interface SettingsSnapshot {
   myMcpServers: string[];
   /** 마지막 캘린더 가져오기 결과 */
   calendarLast: string;
+  /** 모델 목록 (v2)과 무료 AI 모델을 받았는지 (id 별) */
+  models: { catalog: Catalog; localReady: Record<string, boolean> };
 }
 
 /** 설정 창에서 바로 보여 줄 칸 */
@@ -250,6 +255,8 @@ export interface ChatBridge {
   toTodos(messageId: string): Promise<number>;
   /** 마지막 질문을 다른 AI 로 다시 (한도에 걸렸을 때) */
   retryWith(provider: AiProvider): void;
+  /** 무료 AI 모델 받기 (v2). 다 받으면 마지막 질문을 무료 AI 로 다시 묻는다 */
+  downloadModel(): void;
 }
 
 export interface PetEnv {

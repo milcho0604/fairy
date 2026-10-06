@@ -241,6 +241,9 @@ export function App() {
             label={labelOf(m.provider)}
             onZoom={setZoom}
             alternatives={m.id === state.messages.at(-1)?.id && !pending ? alternatives : []}
+            download={m.id === state.messages.at(-1)?.id ? state.modelDownload : undefined}
+            isLast={m.id === state.messages.at(-1)?.id}
+            freeModelMb={freeModelMb(m)}
           />
         ))}
       </div>
@@ -342,9 +345,26 @@ interface MessageProps {
   onZoom: (src: string) => void;
   /** 한도 오류일 때 다시 물어볼 다른 AI */
   alternatives: ProviderView[];
+  /** 무료 AI 모델 받기 진행 (v2, 마지막 메시지에만) */
+  download?: ChatState['modelDownload'];
+  /** 받을 모델 크기 (오류 문구에서 읽는다) */
+  freeModelMb?: string;
+  isLast: boolean;
 }
 
-function Message({ message: m, petName, label, onZoom, alternatives }: MessageProps) {
+/** 무료 AI 오류 문구의 "(397MB)" 에서 크기를 읽는다. 단추에 같이 적는다 */
+const freeModelMb = (m: ChatMessage) => /(\d+)\s?MB/.exec(m.error?.message ?? '')?.[1];
+
+function Message({
+  message: m,
+  petName,
+  label,
+  onZoom,
+  alternatives,
+  download,
+  freeModelMb: mb,
+  isLast,
+}: MessageProps) {
   if (m.role === 'notice') return <p className="system">{m.text}</p>;
   if (m.role === 'user') {
     return (
@@ -382,15 +402,41 @@ function Message({ message: m, petName, label, onZoom, alternatives }: MessagePr
         {m.status === 'error' && m.error && (
           <div className={`bubble error ${m.error.kind}`}>{m.error.message}</div>
         )}
-        {m.status === 'error' && m.error?.kind === 'rate-limit' && alternatives.length > 0 && (
+        {/* 받기 단추는 마지막 안내에만 (받은 뒤 위쪽 옛 안내에 단추가 남지 않게) */}
+        {m.status === 'error' && m.error?.kind === 'needs-model' && mb && isLast && (
           <div className="retry">
-            {alternatives.slice(0, 3).map((p) => (
-              <button key={p.id} type="button" className="ghost" onClick={() => bridge.retryWith(p.id)}>
-                {t('chat.retryWith', { label: p.label })}
-              </button>
-            ))}
+            {download && !download.failed ? (
+              <span className="download">
+                <progress max={100} value={download.pct} />
+                {t('ai.local.downloading', { pct: download.pct })}
+                <button type="button" className="ghost" onClick={() => bridge.cancel()}>
+                  {t('common.cancel')}
+                </button>
+              </span>
+            ) : (
+              <>
+                <button type="button" className="ghost" onClick={() => bridge.downloadModel()}>
+                  {t('ai.local.download', { mb: mb ?? '' })}
+                </button>
+                {download?.failed && <span className="download failed">{t('ai.local.downloadFailed')}</span>}
+              </>
+            )}
           </div>
         )}
+        {/* 한도, 설치 안 됨, 로그인 안 됨: 바로 물어볼 수 있는 다른 AI (무료 AI 포함) */}
+        {m.status === 'error' &&
+          (m.error?.kind === 'rate-limit' ||
+            m.error?.kind === 'not-installed' ||
+            m.error?.kind === 'not-logged-in') &&
+          alternatives.length > 0 && (
+            <div className="retry">
+              {alternatives.slice(0, 3).map((p) => (
+                <button key={p.id} type="button" className="ghost" onClick={() => bridge.retryWith(p.id)}>
+                  {t('chat.retryWith', { label: p.label })}
+                </button>
+              ))}
+            </div>
+          )}
       </div>
     </div>
   );

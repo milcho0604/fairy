@@ -25,6 +25,8 @@ export interface ClaudeTurn {
   ephemeral?: boolean;
   /** 내 MCP 도구 쓰기 (v2): 허락할 MCP 서버 이름들. 격리를 껐을 때만 쓴다. 기본 도구(파일, 명령)는 여전히 끈다 */
   mcpServers?: readonly string[];
+  /** 고른 모델 (v2). 별칭(sonnet 등)이면 그 계열의 최신. 없으면 CLI 기본 */
+  model?: string;
 }
 
 /**
@@ -57,6 +59,7 @@ export function claudeArgs(turn: ClaudeTurn): string[] {
     ...(turn.isolate === false && turn.mcpServers?.length
       ? ['--allowedTools', turn.mcpServers.map(mcpToolPrefix).join(',')]
       : []),
+    ...(turn.model ? ['--model', turn.model] : []),
     '--append-system-prompt',
     turn.persona,
     ...(turn.ephemeral

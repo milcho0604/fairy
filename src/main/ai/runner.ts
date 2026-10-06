@@ -36,6 +36,8 @@ export interface AiRequest {
   ephemeral?: boolean;
   /** 내 MCP 도구 (v2). 격리를 끈 claude 만 */
   mcpServers?: readonly string[];
+  /** 고른 모델 (v2, 목록에서 검사한 이름). claude, codex 만 */
+  model?: string;
 }
 
 export interface AiRun {
@@ -109,6 +111,7 @@ export function runAi(req: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
         threadId: req.sessionId,
         persona: req.persona,
         ephemeral: req.ephemeral,
+        model: req.model,
       });
       // 격리하면 짝꿍 전용 폴더(auth.json 만 연결), 아니면 사용자의 codex 설정 폴더 그대로.
       codexHome = req.isolate ? prepareCodexHome(env.codexHome) : env.codexHome;
@@ -243,6 +246,8 @@ export function readCodexUsage(codexHome: string, threadId?: string) {
  */
 export async function checkStatus(spec: ProviderSpec, refresh = false): Promise<AiStatus> {
   const provider = spec.id;
+  // 무료 AI 는 앱 안에 있다. 설치, 로그인 확인이 없다
+  if (spec.adapter === 'local') return { provider, installed: true };
   const env = await getShellEnv(refresh);
   const cli = resolveBin(spec.bin, env);
   if (!cli) return { provider, installed: false };

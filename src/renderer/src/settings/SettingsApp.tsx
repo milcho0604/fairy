@@ -276,6 +276,18 @@ export function SettingsApp() {
           />
         </Section>
 
+        <Section title={t('settings.models')}>
+          <ModelPicker
+            snap={snap}
+            onChange={(provider, id) => {
+              const next = { ...s.aiModels };
+              if (id) next[provider] = id;
+              else delete next[provider];
+              update({ aiModels: next });
+            }}
+          />
+        </Section>
+
         <Section title={t('settings.mcpSection')}>
           <McpSetup
             exec={snap.mcp.exec}
@@ -792,6 +804,65 @@ function McpSetup({ exec, script, onCopied }: { exec: string; script: string; on
         </div>
       </div>
       <small>{t('settings.mcp.moved')}</small>
+    </>
+  );
+}
+
+/**
+ * AI 마다 모델 고르기 (v2). 목록(catalog)에 있는 것만. 별칭은 최신 자동, 정확한 이름은 버전 고정.
+ * 무료 AI 는 받아 둔 모델인지와 크기, 라이선스를 같이 보여 준다.
+ */
+function ModelPicker({
+  snap,
+  onChange,
+}: {
+  snap: SettingsSnapshot;
+  onChange: (provider: string, id: string) => void;
+}) {
+  const { catalog, localReady } = snap.models;
+  const chosen = snap.settings.aiModels;
+  const local =
+    catalog.local.find((m) => m.id === chosen.local) ??
+    catalog.local.find((m) => m.id === catalog.localDefault);
+  const cliRows = Object.entries(catalog.cli).filter(([, list]) => list.length > 0);
+  return (
+    <>
+      {cliRows.map(([provider, list]) => (
+        <label key={provider} className="field model-row">
+          <span>{provider === 'claude' ? 'Claude' : provider === 'codex' ? 'Codex' : provider}</span>
+          <select
+            value={list.some((m) => m.id === chosen[provider]) ? chosen[provider] : ''}
+            onChange={(e) => onChange(provider, e.target.value)}
+          >
+            <option value="">{t('settings.models.default')}</option>
+            {list.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.pinned
+                  ? t('settings.models.pinned', { label: m.label })
+                  : t('settings.models.latest', { label: m.label })}
+              </option>
+            ))}
+          </select>
+        </label>
+      ))}
+      <label className="field model-row">
+        <span>{t('settings.models.free')}</span>
+        <select value={local?.id ?? ''} onChange={(e) => onChange('local', e.target.value)}>
+          {catalog.local.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label} ({Math.round(m.bytes / 1e6)}MB)
+            </option>
+          ))}
+        </select>
+      </label>
+      {local && (
+        <small className="below">
+          {localReady[local.id]
+            ? t('settings.models.freeReady', { mb: Math.round(local.bytes / 1e6), license: local.license })
+            : t('settings.models.freeLater', { mb: Math.round(local.bytes / 1e6), license: local.license })}
+        </small>
+      )}
+      <small className="below">{t('settings.models.hint')}</small>
     </>
   );
 }

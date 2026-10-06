@@ -13,12 +13,22 @@ files:
   - out/**
   - resources/**
   - package.json
+  # 무료 AI 엔진(node-llama-cpp, v2)은 미리 빌드된 것만 쓴다. 소스 빌드용 파일은 뺀다 (41MB 중 약 34MB).
+  # 실행에 필요한 건 dist, llama 의 정보 파일(binariesGithubRelease.json, llama.cpp.info.json, package.json), grammars
+  - "!node_modules/node-llama-cpp/llama/{gitRelease.bundle,addon,cmake,CMakeLists.txt,patches,toolchains,xpack,profiles}{,/**}"
+  - "!node_modules/node-llama-cpp/{templates,bins}{,/**}"
+  - "!node_modules/node-llama-cpp/**/*.{map,d.ts,md}"
+  # 윈도우 x64 에는 CUDA, Vulkan 판(합쳐 약 620MB)까지 깔린다. CPU 판만 넣는다
+  - "!node_modules/@node-llama-cpp/*-{cuda,cuda-ext,vulkan}{,/**}"
 # koffi 는 Node-API 라 Electron 용으로 다시 빌드할 필요가 없다. 다시 빌드하면 윈도우 러너에서 컴파일러를 찾는다.
 npmRebuild: false
 # 네이티브 파일은 운영체제별 패키지(@koromix/koffi-win32-x64 등)에 들어 있다.
 asarUnpack:
   - node_modules/koffi/**
   - node_modules/@koromix/**
+  # 무료 AI 엔진의 네이티브 파일 (운영체제별 패키지 @node-llama-cpp/mac-arm64-metal 등)
+  - node_modules/node-llama-cpp/**
+  - node_modules/@node-llama-cpp/**
   # 펫 MCP 서버는 AI 도구가 실행 파일을 Node 로 돌려 연다. asar 밖에 둔다 (나눠진 조각까지 out/main 통째로).
   - out/main/**
 mac:

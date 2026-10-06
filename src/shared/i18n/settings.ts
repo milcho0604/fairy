@@ -72,6 +72,18 @@ export const ko = {
   'settings.aiIsolationHint':
     'Claude Code 와 Codex 를 부를 때 내 훅, MCP, 스킬을 싣지 않아. 끄면 내 설정을 그대로 쓰는데 답이 느려지고 한도를 더 쓸 수 있어. 바꾸면 새 대화로 시작해.',
 
+  // 모델 고르기 (v2)
+  'settings.models': 'AI 모델',
+  'settings.models.hint':
+    '고르지 않으면 그 AI 의 기본 모델을 써. Claude 는 요금제 기본(Pro, Max 는 Opus)이야. 가벼운 모델을 고르면 한도를 아낄 수 있어.',
+  'settings.models.default': '기본',
+  'settings.models.latest': (v: { label: string }) => `${v.label} (최신 자동)`,
+  'settings.models.pinned': (v: { label: string }) => `${v.label} (이 버전 고정)`,
+  'settings.models.free': '무료 AI',
+  'settings.models.freeReady': (v: { mb: number; license: string }) => `받아 둠 (${v.mb}MB, ${v.license})`,
+  'settings.models.freeLater': (v: { mb: number; license: string }) =>
+    `처음 쓸 때 받아 (${v.mb}MB, ${v.license})`,
+
   // 다른 AI 에서 쓰기 (MCP)
   'settings.mcpSection': '다른 AI 에서 짝꿍 쓰기 (MCP)',
   'settings.mcp.intro':
@@ -251,6 +263,18 @@ export const en: Translation<typeof ko> = {
   'settings.aiIsolation': 'Call without my AI setup (recommended)',
   'settings.aiIsolationHint':
     'Calls Claude Code and Codex without your hooks, MCP and skills. Turn off to use your own setup, but answers get slower and may use more of your limit. Changing this starts a new chat.',
+
+  'settings.models': 'AI models',
+  'settings.models.hint':
+    "If you don't pick one, each AI uses its default. Claude uses your plan's default (Opus on Pro and Max). A lighter model saves your limit.",
+  'settings.models.default': 'Default',
+  'settings.models.latest': (v: { label: string }) => `${v.label} (always latest)`,
+  'settings.models.pinned': (v: { label: string }) => `${v.label} (pinned)`,
+  'settings.models.free': 'Free AI',
+  'settings.models.freeReady': (v: { mb: number; license: string }) =>
+    `Downloaded (${v.mb} MB, ${v.license})`,
+  'settings.models.freeLater': (v: { mb: number; license: string }) =>
+    `Downloads on first use (${v.mb} MB, ${v.license})`,
 
   'settings.mcpSection': 'Use Jjakkung from other AIs (MCP)',
   'settings.mcp.intro':
