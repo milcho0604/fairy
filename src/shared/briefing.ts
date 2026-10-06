@@ -1,6 +1,7 @@
 // 오늘 브리핑 (v1). 그날 처음 컴퓨터 앞에 앉았을 때(아침 5시 이후) 한 번, 펫이 말풍선으로 알려 준다.
 // 수다 빈도 "조용히"면 하지 않는다 (기획서 "수다 빈도" 표).
 import { timeLabel } from './event-store.ts';
+import { t } from './i18n/index.ts';
 
 /** 이 시각(현지, 분) 전에는 브리핑하지 않는다. 새벽에 켠 컴퓨터에 "좋은 아침"을 하지 않게. */
 export const BRIEFING_FROM_MINUTE = 5 * 60;
@@ -17,9 +18,9 @@ export interface BriefingInput {
 }
 
 function greeting(minute: number): string {
-  if (minute < 11 * 60) return '좋은 아침!';
-  if (minute < 17 * 60) return '안녕!';
-  return '왔구나!';
+  if (minute < 11 * 60) return t('briefing.hi.morning');
+  if (minute < 17 * 60) return t('briefing.hi.day');
+  return t('briefing.hi.evening');
 }
 
 export function briefingText(b: BriefingInput): string {
@@ -28,16 +29,16 @@ export function briefingText(b: BriefingInput): string {
   if (first) {
     parts.push(
       b.events.length === 1
-        ? `오늘 일정은 ${timeLabel(first.minute)} ${first.title} 하나야.`
-        : `오늘 일정 ${b.events.length}개, 첫 일정은 ${timeLabel(first.minute)} ${first.title}.`,
+        ? t('briefing.oneEvent', { time: timeLabel(first.minute), title: first.title })
+        : t('briefing.events', { n: b.events.length, time: timeLabel(first.minute), title: first.title }),
     );
   }
   if (b.dueToday > 0 || b.overdue > 0) {
-    const due = b.dueToday > 0 ? `오늘 마감 ${b.dueToday}개` : '';
-    const late = b.overdue > 0 ? `지난 마감 ${b.overdue}개` : '';
-    parts.push(`할 일은 ${[due, late].filter(Boolean).join(', ')} 있어.`);
+    const due = b.dueToday > 0 ? t('briefing.dueToday', { n: b.dueToday }) : '';
+    const late = b.overdue > 0 ? t('briefing.overdue', { n: b.overdue }) : '';
+    parts.push(t('briefing.todos', { list: [due, late].filter(Boolean).join(', ') }));
   }
-  if (parts.length === 0) parts.push('오늘은 일정도 마감도 없어. 하고 싶은 걸 적어 봐.');
+  if (parts.length === 0) parts.push(t('briefing.nothing'));
   return `${greeting(b.nowMinute)} ${parts.join(' ')}`;
 }
 
@@ -57,9 +58,9 @@ export function reviewText(r: ReviewInput): string {
   const n = r.doneTitles.length;
   const done =
     n === 0
-      ? '오늘은 끝낸 할 일이 없네. 그래도 수고했어.'
+      ? t('briefing.review.none')
       : n === 1
-        ? `오늘 "${r.doneTitles[0]}" 끝냈어. 수고했어!`
-        : `오늘 할 일 ${n}개 끝냈어. 수고했어!`;
-  return r.leftToday > 0 ? `${done} 오늘 마감 ${r.leftToday}개가 남았는데 내일로 넘길까?` : done;
+        ? t('briefing.review.one', { title: r.doneTitles[0] ?? '' })
+        : t('briefing.review.many', { n });
+  return r.leftToday > 0 ? `${done} ${t('briefing.review.left', { n: r.leftToday })}` : done;
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
+import { t } from '../../../shared/i18n/index.ts';
 import type { OnboardSnapshot } from '../../../shared/ipc.ts';
-import { withParticle } from '../../../shared/josa.ts';
 import { PET_KINDS, PET_NAME_MAX } from '../../../shared/settings.ts';
 import { PetFace } from '../PetFace.tsx';
 
@@ -45,7 +45,7 @@ export function OnboardingApp() {
   return (
     <div className="onboard">
       <header>
-        <ol className="dots" aria-label={`${PAGES}쪽 중 ${page + 1}쪽`}>
+        <ol className="dots" aria-label={t('onboarding.pages', { page: page + 1, total: PAGES })}>
           {Array.from({ length: PAGES }, (_, i) => (
             <li key={String(i)} className={i === page ? 'on' : i < page ? 'done' : ''} />
           ))}
@@ -58,10 +58,10 @@ export function OnboardingApp() {
             <div className="hero">
               <PetFace />
             </div>
-            <h1>반가워! 화면 위에서 같이 일할 짝꿍이야.</h1>
-            <p className="lead">할 일을 끝내면 코인이 쌓이고, 코인으로 밥과 장난감을 사 줄 수 있어.</p>
+            <h1>{t('onboarding.hello.title')}</h1>
+            <p className="lead">{t('onboarding.hello.lead')}</p>
             <label className="field">
-              <span>이름</span>
+              <span>{t('onboarding.hello.name')}</span>
               <input
                 value={name}
                 maxLength={PET_NAME_MAX * 2}
@@ -73,8 +73,8 @@ export function OnboardingApp() {
               />
             </label>
             <div className="field">
-              <span>모습</span>
-              <fieldset className="choice" aria-label="기본 펫 모양">
+              <span>{t('onboarding.hello.look')}</span>
+              <fieldset className="choice" aria-label={t('onboarding.hello.kinds')}>
                 {PET_KINDS.map((k) => (
                   <button
                     key={k.id}
@@ -90,68 +90,59 @@ export function OnboardingApp() {
                   </button>
                 ))}
                 <button type="button" className={s.petImage ? 'on' : ''} onClick={() => bridge.openMaker()}>
-                  사진으로
+                  {t('onboarding.hello.photo')}
                 </button>
               </fieldset>
-              <small>반려동물이나 인형 사진 한 장으로 만들 수도 있어. 나중에 설정에서 바꿔도 돼.</small>
+              <small>{t('onboarding.hello.photoHint')}</small>
             </div>
           </section>
         )}
 
         {page === 1 && (
           <section>
-            <h1>같이 보기</h1>
-            <p className="lead">
-              {withParticle(petName, '을')} 우클릭하고 "{withParticle(petName, '이랑')} 같이 보기"를 고르면,
-              화면 일부를 찍어 AI 에게 물어볼 수 있어. 찍은 화면은 저장하지 않고 고른 AI 에게만 보내.
-            </p>
+            <h1>{t('onboarding.look.title')}</h1>
+            <p className="lead">{t('onboarding.look.lead', { name: petName })}</p>
             {mac ? (
               <div className={`perm ${snap.screen === 'granted' ? 'ok' : ''}`}>
                 <strong>
-                  {snap.screen === 'granted' ? '화면 기록 권한이 있어' : '화면 기록 권한이 필요해'}
+                  {snap.screen === 'granted' ? t('onboarding.look.granted') : t('onboarding.look.needed')}
                 </strong>
-                <small>
-                  시스템 설정 → 개인정보 보호 및 보안 → 화면 및 시스템 오디오 녹음에서 Jjakkung 을 켜 줘. 켠
-                  다음에는 짝꿍을 껐다 켜야 해. 같이 보기를 안 쓸 거면 넘어가도 돼.
-                </small>
+                <small>{t('onboarding.look.howTo')}</small>
                 {snap.screen !== 'granted' && (
                   <button type="button" className="ghost" onClick={() => bridge.openScreenSettings()}>
-                    설정 열기
+                    {t('onboarding.look.openSettings')}
                   </button>
                 )}
               </div>
             ) : (
               <div className="perm ok">
-                <strong>윈도우는 따로 권한이 필요 없어</strong>
+                <strong>{t('onboarding.look.windows')}</strong>
               </div>
             )}
-            <p className="hint">
-              AI 는 이 컴퓨터에 설치해 로그인해 둔 Claude Code, Codex, Cursor, Gemini 중 하나를 써. 채팅
-              창에서 고를 수 있어.
-            </p>
+            <p className="hint">{t('onboarding.look.ai')}</p>
           </section>
         )}
 
         {page === 2 && (
           <section>
-            <h1>알아 두면 좋은 것</h1>
+            <h1>{t('onboarding.tips.title')}</h1>
             <dl className="tips">
-              <dt>{withParticle(petName, '을')} 누르면</dt>
-              <dd>할 일, 메모, 일정, 상점 패널</dd>
-              <dt>우클릭</dt>
-              <dd>대화, 같이 보기, 밥, 놀기, 숨기기</dd>
-              <dt>좌우로 문지르기</dt>
-              <dd>쓰다듬기. 하트가 떠</dd>
-              <dt>잡아서 휙 놓기</dt>
-              <dd>던지기. 떨어져서 통통 튀어</dd>
+              <dt>{t('onboarding.tips.click', { name: petName })}</dt>
+              <dd>{t('onboarding.tips.clickDesc')}</dd>
+              <dt>{t('onboarding.tips.right')}</dt>
+              <dd>{t('onboarding.tips.rightDesc')}</dd>
+              <dt>{t('onboarding.tips.rub')}</dt>
+              <dd>{t('onboarding.tips.rubDesc')}</dd>
+              <dt>{t('onboarding.tips.throw')}</dt>
+              <dd>{t('onboarding.tips.throwDesc')}</dd>
               <dt>
                 <kbd>{mod}</kbd> <kbd>{alt}</kbd> <kbd>Shift</kbd> <kbd>N</kbd>
               </dt>
-              <dd>어디서든 할 일이나 일정 한 줄 ("내일 3시 회의")</dd>
+              <dd>{t('onboarding.tips.quickDesc')}</dd>
               <dt>
                 <kbd>{mod}</kbd> <kbd>{alt}</kbd> <kbd>Shift</kbd> <kbd>H</kbd>
               </dt>
-              <dd>잠깐 숨기기, 다시 보이기</dd>
+              <dd>{t('onboarding.tips.hideDesc')}</dd>
             </dl>
           </section>
         )}
@@ -160,20 +151,20 @@ export function OnboardingApp() {
       <footer>
         {page > 0 ? (
           <button type="button" className="ghost" onClick={() => setPage(page - 1)}>
-            이전
+            {t('onboarding.prev')}
           </button>
         ) : (
           <button type="button" className="link" onClick={() => bridge.finish()}>
-            건너뛰기
+            {t('onboarding.skip')}
           </button>
         )}
         {page < PAGES - 1 ? (
           <button type="button" className="primary" onClick={() => setPage(page + 1)}>
-            다음
+            {t('onboarding.next')}
           </button>
         ) : (
           <button type="button" className="primary" onClick={() => bridge.finish()}>
-            시작하기
+            {t('onboarding.start')}
           </button>
         )}
       </footer>

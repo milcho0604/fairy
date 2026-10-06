@@ -1,5 +1,6 @@
 import { type Activity, nextDelay } from '../../shared/behavior.ts';
 import { GestureTracker, RubTracker } from '../../shared/gesture.ts';
+import { t } from '../../shared/i18n/index.ts';
 import type { PetImages } from '../../shared/ipc.ts';
 import {
   canBlink,
@@ -15,11 +16,14 @@ import {
 import type { PetKind, PoseKind } from '../../shared/settings.ts';
 import { AnimatedImage, loadPetImage } from './animated.ts';
 import { CANVAS_SIZE, drawPet, HEARTS_MS } from './draw.ts';
+import { initLang } from './lang.ts';
 
+initLang('common.title.pet');
 const bridge = window.jjakkung;
 function setupCanvas(): [HTMLCanvasElement, CanvasRenderingContext2D] {
   const el = document.getElementById('pet');
   if (!(el instanceof HTMLCanvasElement)) throw new Error('#pet canvas 가 없다');
+  el.setAttribute('aria-label', t('common.appName'));
   // 마우스가 펫 위인지 픽셀로 판정하려고 자주 읽는다. 작은 캔버스라 CPU 쪽에 두는 편이 낫다.
   const context = el.getContext('2d', { willReadFrequently: true });
   if (!context) throw new Error('2d 컨텍스트를 못 얻었다');

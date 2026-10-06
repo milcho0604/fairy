@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { app, Menu, nativeImage, Tray } from 'electron';
-import { withParticle } from '../shared/josa.ts';
+import { t } from '../shared/i18n/index.ts';
 import { settings } from './settings.ts';
 
 export interface TrayActions {
@@ -25,23 +25,21 @@ export function createTray(petName: () => string, actions: TrayActions): Tray {
       : nativeImage.createFromPath(join(dir, 'tray.png'));
   if (process.platform === 'darwin') icon.setTemplateImage(true);
   const tray = new Tray(icon);
-  tray.setToolTip(`짝꿍 (${petName()})`);
+  tray.setToolTip(t('tray.tooltip', { name: petName() }));
 
   const build = () =>
     Menu.buildFromTemplate([
       {
-        label: actions.isHidden()
-          ? `${withParticle(petName(), '을')} 다시 보이기`
-          : `${withParticle(petName(), '을')} 잠깐 숨기기`,
+        label: actions.isHidden() ? t('tray.show', { name: petName() }) : t('tray.hide', { name: petName() }),
         accelerator: hideShortcut(),
         click: () => actions.toggleHidden(),
       },
-      { label: `${withParticle(petName(), '과')} 대화`, click: () => actions.openChat() },
-      { label: '할 일 추가', accelerator: quickAddShortcut(), click: () => actions.quickAdd() },
-      { label: '설정', click: () => actions.openSettings() },
-      { label: '의견 보내기', click: () => actions.sendFeedback() },
+      { label: t('tray.chat', { name: petName() }), click: () => actions.openChat() },
+      { label: t('tray.addTodo'), accelerator: quickAddShortcut(), click: () => actions.quickAdd() },
+      { label: t('tray.settings'), click: () => actions.openSettings() },
+      { label: t('tray.feedback'), click: () => actions.sendFeedback() },
       { type: 'separator' },
-      { label: '끝내기', role: 'quit' },
+      { label: t('tray.quit'), role: 'quit' },
     ]);
   // 메뉴를 열 때마다 글자(숨기기/보이기)를 새로 만든다.
   tray.on('click', () => tray.popUpContextMenu(build()));

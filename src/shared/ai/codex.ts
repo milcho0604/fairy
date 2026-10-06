@@ -1,8 +1,14 @@
 // codex CLI 의 exec --json 명령을 만들고 출력을 읽는다. 0단계 검증 X1~X8, L4, L5.
+import { t } from '../i18n/index.ts';
 import { classifyError } from './errors.ts';
 import type { AiEvent } from './types.ts';
 
-const LABEL = { label: 'Codex', loginHint: '터미널에서 codex login 으로 로그인해 줘.' };
+const LABEL = {
+  label: 'Codex',
+  get loginHint() {
+    return t('ai.login.codex');
+  },
+};
 
 export interface CodexTurn {
   text: string;

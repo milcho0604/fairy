@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { type CalEvent, REMIND_CHOICES } from '../../../shared/event-store.ts';
+import { t } from '../../../shared/i18n/index.ts';
 import type { PanelState } from '../../../shared/ipc.ts';
 import { localDay } from '../../../shared/todo-store.ts';
 import { dayHeading, timeOf, toInputValue } from './format.ts';
@@ -7,7 +8,12 @@ import { BellIcon } from './icons.tsx';
 
 const bridge = window.jjakkungPanel;
 
-const remindText = (m: number) => (m === 0 ? '시작할 때' : m >= 60 ? `${m / 60}시간 전` : `${m}분 전`);
+const remindText = (m: number) =>
+  m === 0
+    ? t('panel.event.atStart')
+    : m >= 60
+      ? t('panel.remind.hour', { n: m / 60 })
+      : t('panel.remind.min', { n: m });
 
 /** 일정 (v1): 한 줄로 넣고, 날짜별로 본다. 시간이 되면 펫이 알린다. */
 export function EventTab({
@@ -26,7 +32,7 @@ export function EventTab({
   const add = async () => {
     const r = await bridge.eventAdd(text);
     if (!r.ok) {
-      setError(r.error ?? '못 넣었어');
+      setError(r.error ?? t('panel.add.failed'));
       return;
     }
     setText('');
@@ -47,8 +53,8 @@ export function EventTab({
         <input
           ref={inputRef}
           value={text}
-          aria-label="일정 추가"
-          placeholder="일정 추가 (예: 내일 3시 회의)"
+          aria-label={t('panel.event.add')}
+          placeholder={t('panel.event.placeholder')}
           onChange={(e) => {
             setText(e.target.value);
             setError('');
@@ -60,7 +66,7 @@ export function EventTab({
       </div>
       {error && <p className="hint error">{error}</p>}
       <div className="scroll events-list">
-        {days.size === 0 && <p className="empty">2주 안에 일정이 없어. 위에 시각과 같이 적어 봐.</p>}
+        {days.size === 0 && <p className="empty">{t('panel.event.empty')}</p>}
         {[...days].map(([day, list]) => (
           <section key={day}>
             <h3>{dayHeading(day, s.today)}</h3>
@@ -82,17 +88,17 @@ function EventRow({ e, now, onRemoved }: { e: CalEvent; now: number; onRemoved: 
   const started = e.startAt <= now;
   return (
     <li className={`event ${started ? 'now' : ''}`}>
-      <label className="time" title="시각 바꾸기">
-        {started ? '지금' : timeOf(e.startAt)}
+      <label className="time" title={t('panel.event.changeTime')}>
+        {started ? t('panel.today.now') : timeOf(e.startAt)}
         <input
           type="datetime-local"
           value={toInputValue(e.startAt)}
-          aria-label="시작 시각"
+          aria-label={t('panel.event.startTime')}
           onChange={(ev) => {
-            const t = new Date(ev.target.value).getTime();
-            if (Number.isFinite(t)) {
+            const at = new Date(ev.target.value).getTime();
+            if (Number.isFinite(at)) {
               const len = e.endAt ? e.endAt - e.startAt : null;
-              bridge.eventUpdate(e.id, { startAt: t, endAt: len ? t + len : null });
+              bridge.eventUpdate(e.id, { startAt: at, endAt: len ? at + len : null });
             }
           }}
         />
@@ -101,7 +107,7 @@ function EventRow({ e, now, onRemoved }: { e: CalEvent; now: number; onRemoved: 
         <input
           className="title-edit"
           value={title}
-          aria-label="일정 제목 고치기"
+          aria-label={t('panel.event.editTitle')}
           // biome-ignore lint/a11y/noAutofocus: 고치기를 누른 바로 그 칸이라 커서가 가야 한다
           autoFocus
           onChange={(ev) => setTitle(ev.target.value)}
@@ -120,36 +126,45 @@ function EventRow({ e, now, onRemoved }: { e: CalEvent; now: number; onRemoved: 
           }}
         />
       ) : (
-        <button type="button" className="title" title="눌러서 고치기" onClick={() => setEditing(true)}>
+        <button
+          type="button"
+          className="title"
+          title={t('panel.todo.clickToEdit')}
+          onClick={() => setEditing(true)}
+        >
           {e.title}
           {e.endAt && <small> ~{timeOf(e.endAt)}</small>}
         </button>
       )}
-      <label className="remind" title={`알림: ${remindText(e.remindMin)}`}>
-        <BellIcon />
-        <select
-          value={e.remindMin}
-          aria-label="알림"
-          onChange={(ev) => bridge.eventUpdate(e.id, { remindMin: Number(ev.target.value) })}
-        >
-          {REMIND_CHOICES.map((m) => (
-            <option key={m} value={m}>
-              {remindText(m)}
-            </option>
-          ))}
-        </select>
-      </label>
-      <button
-        type="button"
-        className="remove"
-        aria-label={`${e.title} 지우기`}
-        onClick={() => {
-          bridge.eventRemove(e.id);
-          onRemoved(e.id);
-        }}
-      >
-        ×
-      </button>
+      <span className="tools">
+        <span className="extra">
+          <button
+            type="button"
+            className="remove"
+            aria-label={t('panel.todo.remove', { title: e.title })}
+            onClick={() => {
+              bridge.eventRemove(e.id);
+              onRemoved(e.id);
+            }}
+          >
+            ×
+          </button>
+        </span>
+        <label className="remind" title={t('panel.event.remindTitle', { when: remindText(e.remindMin) })}>
+          <BellIcon />
+          <select
+            value={e.remindMin}
+            aria-label={t('panel.event.remind')}
+            onChange={(ev) => bridge.eventUpdate(e.id, { remindMin: Number(ev.target.value) })}
+          >
+            {REMIND_CHOICES.map((m) => (
+              <option key={m} value={m}>
+                {remindText(m)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </span>
     </li>
   );
 }

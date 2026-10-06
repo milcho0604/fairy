@@ -1,6 +1,8 @@
 // Cursor Agent CLI(cursor-agent). 2026-10-02 이 맥에는 깔려 있지만 로그인이 안 돼 실제 출력은 확인 전이다.
 // 도움말 기준: -p --output-format stream-json --stream-partial-output, --mode ask(읽기 전용 질문 답변), --resume <chatId>.
 // 출력 형식을 확인하지 못했으므로 claude 식(stream_event)과 assistant 메시지 둘 다 읽는다.
+
+import { t } from '../i18n/index.ts';
 import { parseClaudeLine } from './claude.ts';
 import { classifyError } from './errors.ts';
 import type { AiEvent } from './types.ts';
@@ -26,7 +28,12 @@ export function cursorArgs(turn: CursorTurn): string[] {
   ];
 }
 
-const LABEL = { label: 'Cursor', loginHint: '터미널에서 cursor-agent login 으로 로그인해 줘.' };
+const LABEL = {
+  label: 'Cursor',
+  get loginHint() {
+    return t('ai.login.cursor');
+  },
+};
 
 /**
  * 한 번 실행 동안의 상태를 갖는 해석기. assistant 메시지가 지금까지의 전체 글로 오든 조각으로 오든

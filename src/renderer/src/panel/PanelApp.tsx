@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { type I18nKey, t } from '../../../shared/i18n/index.ts';
 import type { PanelState, PanelTab } from '../../../shared/ipc.ts';
-import { withParticle } from '../../../shared/josa.ts';
 import type { Todo } from '../../../shared/todo-store.ts';
 import { PetFace } from '../PetFace.tsx';
 import { EventTab } from './EventTab.tsx';
@@ -12,12 +12,12 @@ import { TodoTab } from './TodoTab.tsx';
 
 const bridge = window.jjakkungPanel;
 const UNDO_MS = 5000;
-const TABS: { id: PanelTab; label: string }[] = [
-  { id: 'today', label: '오늘' },
-  { id: 'todo', label: '할 일' },
-  { id: 'note', label: '메모' },
-  { id: 'event', label: '일정' },
-  { id: 'shop', label: '상점' },
+const TABS: { id: PanelTab; label: I18nKey }[] = [
+  { id: 'today', label: 'panel.tab.today' },
+  { id: 'todo', label: 'panel.tab.todo' },
+  { id: 'note', label: 'panel.tab.note' },
+  { id: 'event', label: 'panel.tab.event' },
+  { id: 'shop', label: 'panel.tab.shop' },
 ];
 const TAB_KEY = 'jj.panel.tab';
 
@@ -25,10 +25,10 @@ const TAB_KEY = 'jj.panel.tab';
 function savedTab(): PanelTab {
   // 펫 메뉴 "상점"처럼 탭을 정해서 열면 주소 뒤에 붙어 온다
   const asked = location.hash.slice(1);
-  if (TABS.some((t) => t.id === asked)) return asked as PanelTab;
+  if (TABS.some((tb) => tb.id === asked)) return asked as PanelTab;
   try {
     const v = localStorage.getItem(TAB_KEY);
-    return TABS.some((t) => t.id === v) ? (v as PanelTab) : 'today';
+    return TABS.some((tb) => tb.id === v) ? (v as PanelTab) : 'today';
   } catch {
     return 'today';
   }
@@ -48,10 +48,10 @@ export function PanelApp() {
   const inputRef = useRef<HTMLInputElement>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  const setTab = (t: PanelTab) => {
-    setTabState(t);
+  const setTab = (next: PanelTab) => {
+    setTabState(next);
     try {
-      localStorage.setItem(TAB_KEY, t);
+      localStorage.setItem(TAB_KEY, next);
     } catch {
       // 저장 못 해도 이번에는 바뀐다
     }
@@ -60,7 +60,7 @@ export function PanelApp() {
   useEffect(() => {
     bridge.snapshot().then(setS);
     bridge.onState(setS);
-    bridge.onTab((t) => setTabState(t));
+    bridge.onTab((next) => setTabState(next));
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') bridge.close();
     };
@@ -76,20 +76,20 @@ export function PanelApp() {
 
   if (!s) return <div className="card-window panel" />;
 
-  const showToast = (t: Toast) => {
+  const showToast = (next: Toast) => {
     clearTimeout(toastTimer.current);
-    setToast(t);
+    setToast(next);
     toastTimer.current = setTimeout(() => setToast(undefined), UNDO_MS);
   };
 
-  const complete = async (t: Todo) => {
-    const coins = await bridge.complete(t.id);
-    showToast({ kind: 'done', id: t.id, coins });
+  const complete = async (todo: Todo) => {
+    const coins = await bridge.complete(todo.id);
+    showToast({ kind: 'done', id: todo.id, coins });
   };
 
   const feed = async () => {
     const r = await bridge.feed();
-    setFed(r.ok ? '냠냠' : '코인이 모자라');
+    setFed(r.ok ? t('panel.fed') : t('panel.noCoins'));
     setTimeout(() => setFed(''), 1500);
   };
 
@@ -100,14 +100,14 @@ export function PanelApp() {
       <header>
         <PetFace />
         <strong>{s.petName}</strong>
-        <span className="coins" title="코인: 할 일과 집중을 끝내면 생기고 밥을 줄 때 써">
+        <span className="coins" title={t('panel.coinsHint')}>
           <CoinIcon />
           {s.balance}
         </span>
       </header>
 
       <div className="fullness">
-        <span className="label">배부름</span>
+        <span className="label">{t('panel.fullness')}</span>
         <span className={`track ${hungry ? 'low' : ''}`} aria-hidden="true">
           <span className="fill" style={{ width: `${s.fullness}%` }} />
         </span>
@@ -116,37 +116,32 @@ export function PanelApp() {
           type="button"
           className="ghost small"
           disabled={s.balance < s.foodCost}
-          title={
-            s.balance < s.foodCost ? `코인이 ${s.foodCost}개 있어야 해. 할 일을 끝내면 생겨.` : undefined
-          }
+          title={s.balance < s.foodCost ? t('panel.feedNeed', { n: s.foodCost }) : undefined}
           onClick={feed}
         >
-          {fed || `밥 주기 ${s.foodCost}`}
+          {fed || t('panel.feed', { n: s.foodCost })}
         </button>
       </div>
       <div className="life">
-        <span title="기분: 쓰다듬기, 놀이, 할 일로 오르고 날이 바뀌면 50">기분 {s.life.mood}</span>
-        <span title="친밀도: 쌓이기만 하고 줄지 않아">친밀도 {s.life.affection}</span>
+        <span title={t('panel.moodHint')}>{t('panel.mood', { n: s.life.mood })}</span>
+        <span title={t('panel.affectionHint')}>{t('panel.affection', { n: s.life.affection })}</span>
       </div>
-      {s.life.sulk > 0 && (
-        <p className="hint sulk">
-          {withParticle(s.petName, '이')} {s.life.sulk}일째 삐져 있어. 할 일 하나를 끝내거나, 쓰다듬고 밥을
-          주면 풀려.
-        </p>
-      )}
-      {hungry && <p className="hint hungry">{withParticle(s.petName, '이')} 배고파 보여.</p>}
+      {s.life.sulk > 0 && <p className="hint sulk">{t('panel.sulk', { name: s.petName, n: s.life.sulk })}</p>}
+      {hungry && <p className="hint hungry">{t('panel.hungry', { name: s.petName })}</p>}
 
-      <nav className="tabs" aria-label="패널">
-        {TABS.map((t) => (
+      <nav className="tabs" aria-label={t('panel.nav')}>
+        {TABS.map((tb) => (
           <button
-            key={t.id}
+            key={tb.id}
             type="button"
-            className={tab === t.id ? 'on' : ''}
-            aria-current={tab === t.id ? 'page' : undefined}
-            onClick={() => setTab(t.id)}
+            className={tab === tb.id ? 'on' : ''}
+            aria-current={tab === tb.id ? 'page' : undefined}
+            onClick={() => setTab(tb.id)}
           >
-            {t.label}
-            {t.id === 'today' && s.focus.phase === 'focus' && <i className="dot" title="집중하는 중" />}
+            {t(tb.label)}
+            {tb.id === 'today' && s.focus.phase === 'focus' && (
+              <i className="dot" title={t('panel.today.focusing')} />
+            )}
           </button>
         ))}
       </nav>
@@ -158,7 +153,7 @@ export function PanelApp() {
           onComplete={complete}
           inputRef={inputRef}
           onAdded={(kind) => {
-            if (kind === 'event') showToast({ kind: 'added', text: '시각이 있어서 일정에 넣었어' });
+            if (kind === 'event') showToast({ kind: 'added', text: t('panel.toast.toEvent') });
           }}
         />
       )}
@@ -170,10 +165,10 @@ export function PanelApp() {
 
       <footer>
         <button type="button" className="ghost" onClick={() => bridge.openChat()}>
-          {withParticle(s.petName, '과')} 대화
+          {t('panel.chatWith', { name: s.petName })}
         </button>
         <button type="button" className="ghost" onClick={() => bridge.lookTogether()}>
-          같이 보기
+          {t('panel.lookTogether')}
         </button>
       </footer>
 
@@ -191,7 +186,7 @@ export function PanelApp() {
                 setToast(undefined);
               }}
             >
-              되돌리기
+              {t('panel.undo')}
             </button>
           )}
         </div>
@@ -200,9 +195,10 @@ export function PanelApp() {
   );
 }
 
-function toastText(t: Toast): string {
-  if (t.kind === 'done') return t.coins > 0 ? `끝! 코인 ${t.coins}개` : '끝! (오늘 코인은 다 받았어)';
-  if (t.kind === 'note-removed') return '메모를 지웠어';
-  if (t.kind === 'event-removed') return '일정을 지웠어';
-  return t.text;
+function toastText(toast: Toast): string {
+  if (toast.kind === 'done')
+    return toast.coins > 0 ? t('panel.toast.done', { n: toast.coins }) : t('panel.toast.doneNoCoin');
+  if (toast.kind === 'note-removed') return t('panel.toast.noteRemoved');
+  if (toast.kind === 'event-removed') return t('panel.toast.eventRemoved');
+  return toast.text;
 }

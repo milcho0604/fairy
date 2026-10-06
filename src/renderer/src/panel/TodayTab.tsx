@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { FOCUS, remainLabel } from '../../../shared/focus.ts';
+import { t } from '../../../shared/i18n/index.ts';
 import type { PanelState } from '../../../shared/ipc.ts';
-import { withParticle } from '../../../shared/josa.ts';
 import type { Todo } from '../../../shared/todo-store.ts';
 import { timeOf } from './format.ts';
 import { TodoRow } from './TodoTab.tsx';
@@ -18,21 +18,23 @@ export function TodayTab({
   goTo,
 }: {
   s: PanelState;
-  onComplete: (t: Todo) => void;
+  onComplete: (todo: Todo) => void;
   goTo: (tab: 'todo' | 'event') => void;
 }) {
   const [now, setNow] = useState(Date.now());
   const running = s.focus.phase !== 'idle';
   useEffect(() => {
     if (!running) return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
   }, [running]);
 
   const endOfDay = new Date(now).setHours(24, 0, 0, 0);
   const events = s.events.filter((e) => (e.endAt ?? e.startAt) >= now && e.startAt < endOfDay);
-  const due = s.open.filter((t) => t.due !== null && t.due <= s.today);
-  const important = s.open.filter((t) => t.important && (t.due === null || t.due > s.today)).slice(0, 3);
+  const due = s.open.filter((todo) => todo.due !== null && todo.due <= s.today);
+  const important = s.open
+    .filter((todo) => todo.important && (todo.due === null || todo.due > s.today))
+    .slice(0, 3);
 
   return (
     <div className="scroll today">
@@ -40,24 +42,29 @@ export function TodayTab({
         {s.focus.phase === 'idle' ? (
           <>
             <div className="focus-text">
-              <strong>집중 {FOCUS.focusMin}분</strong>
+              <strong>{t('panel.today.focusTitle', { n: FOCUS.focusMin })}</strong>
               <small>
-                {withParticle(s.petName, '이')} 옆에서 자. 끝나면 코인 {s.focusCoins}개, 그다음{' '}
-                {FOCUS.breakMin}분 쉬기.
+                {t('panel.today.focusHint', {
+                  name: s.petName,
+                  coins: s.focusCoins,
+                  breakMin: FOCUS.breakMin,
+                })}
               </small>
             </div>
             <button type="button" className="primary" onClick={() => bridge.focusStart()}>
-              시작
+              {t('panel.today.start')}
             </button>
           </>
         ) : (
           <>
             <div className="focus-text">
               <strong className="clock">{remainLabel(s.focus, now)}</strong>
-              <small>{s.focus.phase === 'focus' ? '집중하는 중' : '쉬는 중'}</small>
+              <small>
+                {s.focus.phase === 'focus' ? t('panel.today.focusing') : t('panel.today.resting')}
+              </small>
             </div>
             <button type="button" className="ghost" onClick={() => bridge.focusStop()}>
-              그만
+              {t('panel.today.stop')}
             </button>
           </>
         )}
@@ -65,18 +72,18 @@ export function TodayTab({
 
       <section>
         <h3>
-          오늘 일정
+          {t('panel.today.events')}
           <button type="button" className="link" onClick={() => goTo('event')}>
-            일정 넣기
+            {t('panel.today.addEvent')}
           </button>
         </h3>
         {events.length === 0 ? (
-          <p className="empty-line">남은 일정이 없어.</p>
+          <p className="empty-line">{t('panel.today.noEvents')}</p>
         ) : (
           <ul className="events">
             {events.map((e) => (
               <li key={e.id} className={e.startAt <= now ? 'now' : ''}>
-                <span className="time">{e.startAt <= now ? '지금' : timeOf(e.startAt)}</span>
+                <span className="time">{e.startAt <= now ? t('panel.today.now') : timeOf(e.startAt)}</span>
                 <span className="title">{e.title}</span>
               </li>
             ))}
@@ -86,17 +93,23 @@ export function TodayTab({
 
       <section>
         <h3>
-          마감
+          {t('panel.todo.due')}
           <button type="button" className="link" onClick={() => goTo('todo')}>
-            할 일 전체
+            {t('panel.today.allTodos')}
           </button>
         </h3>
         {due.length === 0 ? (
-          <p className="empty-line">오늘까지인 할 일이 없어.</p>
+          <p className="empty-line">{t('panel.today.noDue')}</p>
         ) : (
           <ul className="todos">
-            {due.map((t) => (
-              <TodoRow key={t.id} todo={t} today={s.today} onComplete={() => onComplete(t)} compact />
+            {due.map((todo) => (
+              <TodoRow
+                key={todo.id}
+                todo={todo}
+                today={s.today}
+                onComplete={() => onComplete(todo)}
+                compact
+              />
             ))}
           </ul>
         )}
@@ -104,10 +117,16 @@ export function TodayTab({
 
       {important.length > 0 && (
         <section>
-          <h3>중요</h3>
+          <h3>{t('panel.todo.important')}</h3>
           <ul className="todos">
-            {important.map((t) => (
-              <TodoRow key={t.id} todo={t} today={s.today} onComplete={() => onComplete(t)} compact />
+            {important.map((todo) => (
+              <TodoRow
+                key={todo.id}
+                todo={todo}
+                today={s.today}
+                onComplete={() => onComplete(todo)}
+                compact
+              />
             ))}
           </ul>
         </section>
@@ -115,23 +134,21 @@ export function TodayTab({
 
       <p className="done-count">
         <span>
-          오늘 끝낸 일 <b>{s.doneToday.length}</b>
+          {t('panel.today.doneLabel')} <b>{s.doneToday.length}</b>
         </span>
-        <span
-          className="streak"
-          title="할 일을 하나 이상 끝낸 날이 이어진 날 수. 쉬는 날은 건너뛰어도 안 끊겨"
-        >
-          연속 <b>{s.achieve.streak}</b>일
+        <span className="streak" title={t('panel.today.streakHint')}>
+          {t('panel.today.streakBefore')} <b>{s.achieve.streak}</b>
+          {t(s.achieve.streak === 1 ? 'panel.today.streakAfterOne' : 'panel.today.streakAfter')}
         </span>
       </p>
 
       <details className="achieve">
         <summary>
-          업적 {s.achieve.got.length}/{s.achieve.total}
-          {s.achieve.next && <small>다음: {s.achieve.next.hint}</small>}
+          {t('panel.today.achieve', { got: s.achieve.got.length, total: s.achieve.total })}
+          {s.achieve.next && <small>{t('panel.today.achieveNext', { hint: s.achieve.next.hint })}</small>}
         </summary>
         <ul>
-          {s.achieve.got.length === 0 && <li className="empty-line">아직 없어. 할 일 하나를 끝내 봐.</li>}
+          {s.achieve.got.length === 0 && <li className="empty-line">{t('panel.today.noAchieve')}</li>}
           {s.achieve.got.map((a) => (
             <li key={a.key}>
               <b>{a.name}</b>

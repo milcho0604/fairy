@@ -1,13 +1,20 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { app } from 'electron';
+import { t } from '../shared/i18n/index.ts';
 import { IPC, type PetImages, type PetStatus } from '../shared/ipc.ts';
-import { withParticle } from '../shared/josa.ts';
 import type { Friend } from '../shared/settings.ts';
 import { createPetWindow, type PetWindow } from './pet-window.ts';
 import { settings } from './settings.ts';
 
-const HELLO = ['안녕!', '같이 놀자!', '오늘도 힘내!', '쉬엄쉬엄 해.', '나 여기 있어!'];
+/** 인사 (지금 말로) */
+const hello = () => [
+  t('pet.hello.1'),
+  t('pet.hello.2'),
+  t('pet.hello.3'),
+  t('pet.hello.4'),
+  t('pet.hello.5'),
+];
 
 function imageOf(f: Friend): PetImages {
   if (!f.image) return { main: null, poses: {} };
@@ -45,7 +52,8 @@ export function createFriends(o: {
       actions: {
         click: () => {
           pet.react();
-          const line = HELLO[Math.floor(Math.random() * HELLO.length)] ?? HELLO[0];
+          const lines = hello();
+          const line = lines[Math.floor(Math.random() * lines.length)] ?? lines[0];
           void pet.say({
             kind: 'answer',
             text: `${live.get(f.id)?.friend.name ?? f.name}: ${line}`,
@@ -70,12 +78,12 @@ export function createFriends(o: {
         const name = live.get(f.id)?.friend.name ?? f.name;
         return [
           {
-            label: `${withParticle(name, '을')} 잠깐 숨기기`,
+            label: t('pet.friend.hide', { name }),
             click: () => pet.setHidden('user', true, false),
           },
           { type: 'separator' },
           {
-            label: `${withParticle(name, '을')} 집에 보내기`,
+            label: t('pet.friend.sendHome', { name }),
             click: () => settings.set({ friends: settings.get().friends.filter((x) => x.id !== f.id) }),
           },
         ];

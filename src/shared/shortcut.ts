@@ -1,4 +1,5 @@
 // 단축키 바꾸기 (v2). 설정 창에서 키를 눌러 기록하면 Electron 단축키 글자(Accelerator)로 바꾼다.
+import { t } from './i18n/index.ts';
 
 export type ShortcutId = 'hide' | 'quickAdd';
 
@@ -7,9 +8,14 @@ export const SHORTCUT_DEFAULTS: Record<ShortcutId, string> = {
   quickAdd: 'CommandOrControl+Alt+Shift+N',
 };
 
-export const SHORTCUT_LABEL: Record<ShortcutId, string> = {
-  hide: '숨기기, 다시 보이기',
-  quickAdd: '할 일 한 줄 넣기 (어디서든)',
+// 이름은 지금 말로 읽는다 (getter)
+export const SHORTCUT_LABEL: Readonly<Record<ShortcutId, string>> = {
+  get hide() {
+    return t('settings.shortcut.hide');
+  },
+  get quickAdd() {
+    return t('settings.shortcut.quickAdd');
+  },
 };
 
 /** 키보드 사건에서 필요한 것만 (시험에서 흉내 내기 쉽게) */
@@ -67,7 +73,7 @@ export function toAccelerator(
 ): { accelerator: string } | { error: string } | undefined {
   if (MODIFIER_KEYS.has(e.key)) return undefined; // 수식키만 누른 중
   const key = keyName(e.code);
-  if (!key) return { error: '이 키는 단축키로 못 써. 글자, 숫자, F1~F24 같은 키를 눌러 줘.' };
+  if (!key) return { error: t('settings.shortcut.badKey') };
   const primary = mac ? e.metaKey : e.ctrlKey;
   const parts: string[] = [];
   if (primary) parts.push('CommandOrControl');
@@ -78,7 +84,7 @@ export function toAccelerator(
   const strong = primary || e.altKey || (mac && e.ctrlKey);
   if (!strong && !/^F\d+$/.test(key))
     return {
-      error: `${mac ? 'Cmd' : 'Ctrl'} 나 ${mac ? 'Option' : 'Alt'} 를 같이 눌러 줘. 다른 앱 입력을 빼앗지 않게.`,
+      error: t('settings.shortcut.needMod', { mod: mac ? 'Cmd' : 'Ctrl', alt: mac ? 'Option' : 'Alt' }),
     };
   parts.push(key);
   return { accelerator: parts.join('+') };

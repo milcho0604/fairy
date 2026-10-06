@@ -1,5 +1,9 @@
 import { dragRect, isClick } from '../../../shared/capture.ts';
 import type { Point } from '../../../shared/geometry.ts';
+import { t } from '../../../shared/i18n/index.ts';
+import { initLang } from '../lang.ts';
+
+initLang('common.title.overlay');
 
 // 같이 보기 오버레이. 드래그로 영역을 고르고, 그냥 누르면 이 모니터 전체, Esc 는 취소.
 const bridge = window.jjakkungOverlay;
@@ -7,8 +11,8 @@ const sel = document.getElementById('sel') as HTMLDivElement;
 const size = document.getElementById('size') as HTMLSpanElement;
 const hint = document.getElementById('hint') as HTMLParagraphElement;
 
-const name = new URLSearchParams(location.search).get('name') ?? '짝꿍이랑';
-hint.textContent = `${name} 같이 볼 곳을 끌어서 골라 줘. 그냥 누르면 이 화면 전체, Esc 는 취소`;
+const name = new URLSearchParams(location.search).get('name') ?? t('common.appName');
+hint.textContent = t('chat.look.hint', { name });
 
 let start: Point | undefined;
 let done = false;

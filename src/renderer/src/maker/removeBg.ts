@@ -1,6 +1,7 @@
 // 배경 제거 (P1-07 에서 고른 IS-Net). 사진은 이 창 안에서만 다루고 밖으로 보내지 않는다.
 
 import * as ort from 'onnxruntime-web/webgpu';
+import { t } from '../../../shared/i18n/index.ts';
 import type { MakerInfo } from '../../../shared/ipc.ts';
 import { outputToMask } from '../../../shared/mask.ts';
 
@@ -24,13 +25,13 @@ export async function openModel(bytes: ArrayBuffer): Promise<void> {
 
 /** 사진(작업 크기 w x h 캔버스)에서 마스크(w x h, 0~255)를 만든다. rembg 와 같은 전처리. */
 export async function predictMask(photo: HTMLCanvasElement, info: MakerInfo): Promise<Uint8ClampedArray> {
-  if (!session) throw new Error('모델이 아직 안 열렸어');
+  if (!session) throw new Error(t('maker.err.modelNotOpen'));
   const size = info.size;
   const c = document.createElement('canvas');
   c.width = size;
   c.height = size;
   const g = c.getContext('2d', { willReadFrequently: true });
-  if (!g) throw new Error('캔버스를 못 만들었어');
+  if (!g) throw new Error(t('maker.err.canvas'));
   g.imageSmoothingQuality = 'high';
   g.drawImage(photo, 0, 0, size, size);
   const d = g.getImageData(0, 0, size, size).data;
@@ -54,7 +55,7 @@ export async function predictMask(photo: HTMLCanvasElement, info: MakerInfo): Pr
   m.height = size;
   const mg = m.getContext('2d');
   const md = mg?.createImageData(size, size);
-  if (!mg || !md) throw new Error('캔버스를 못 만들었어');
+  if (!mg || !md) throw new Error(t('maker.err.canvas'));
   for (let i = 0; i < n; i++) {
     md.data[i * 4 + 3] = small[i] ?? 0;
   }
@@ -63,7 +64,7 @@ export async function predictMask(photo: HTMLCanvasElement, info: MakerInfo): Pr
   r.width = photo.width;
   r.height = photo.height;
   const rg = r.getContext('2d', { willReadFrequently: true });
-  if (!rg) throw new Error('캔버스를 못 만들었어');
+  if (!rg) throw new Error(t('maker.err.canvas'));
   rg.imageSmoothingQuality = 'high';
   rg.drawImage(m, 0, 0, photo.width, photo.height);
   const rd = rg.getImageData(0, 0, photo.width, photo.height).data;

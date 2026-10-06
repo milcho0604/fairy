@@ -1,6 +1,7 @@
 // 베타 기록 (P4-04). 기획서 "성공 기준" 다섯 가지를 앱 안에서 세어 보여 준다.
 // 서버로 보내지 않는다. 사용자가 설정 창에서 복사해 의견과 같이 보낸다. 할 일 제목, 대화는 넣지 않는다.
 import type { Db } from './db-schema.ts';
+import { t } from './i18n/index.ts';
 import { localDay } from './todo-store.ts';
 
 export interface DayStat {
@@ -160,21 +161,22 @@ export class StatStore {
   }
 }
 
-const hours = (min: number) => (min < 60 ? `${min}분` : `${(min / 60).toFixed(1)}시간`);
+const hours = (min: number) =>
+  min < 60 ? t('settings.report.min', { n: min }) : t('settings.report.hours', { n: (min / 60).toFixed(1) });
 
 /** 복사해서 보낼 글. 숫자와 날짜만 담는다. */
 export function reportText(r: BetaReport, meta: { version: string; os: string }): string {
   const lines = [
-    `짝꿍 베타 기록 (${meta.version}, ${meta.os})`,
+    t('settings.report.title', { version: meta.version, os: meta.os }),
     r.firstDay
-      ? `처음 켠 날 ${r.firstDay}, 오늘 ${r.dayNumber}일째, 켠 날 ${r.daysUsed}일`
-      : '아직 기록 없음',
-    `하루 완료 할 일 중앙값 ${r.doneMedian}개 (목표 ${TARGET.doneMedian}개 이상)`,
-    `펫 숨긴 시간 ${Math.round(r.hiddenRatio * 100)}% (목표 ${TARGET.hiddenRatio * 100}% 미만)`,
-    `같이 보기 최근 7일 ${r.look7}번 (목표 주 ${TARGET.look7}번 이상)`,
-    `비정상 종료와 멈춤 최근 7일 ${r.crash7}번 (목표 ${TARGET.crash7}번)`,
+      ? t('settings.report.first', { first: r.firstDay, day: r.dayNumber, used: r.daysUsed })
+      : t('settings.report.none'),
+    t('settings.report.done', { n: r.doneMedian, goal: TARGET.doneMedian }),
+    t('settings.report.hidden', { n: Math.round(r.hiddenRatio * 100), goal: TARGET.hiddenRatio * 100 }),
+    t('settings.report.look', { n: r.look7, goal: TARGET.look7 }),
+    t('settings.report.crash', { n: r.crash7, goal: TARGET.crash7 }),
     '',
-    '날짜, 켠 시간, 숨김, 완료, 같이 보기, 종료, 집중',
+    t('settings.report.header'),
     ...r.days
       .filter((d) => d.onMin > 0 || d.done > 0 || d.crashCount > 0)
       .map(

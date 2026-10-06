@@ -4,6 +4,7 @@ import { BRIEFING_FROM_MINUTE, briefingText, reviewText } from '../shared/briefi
 import type { EventStore } from '../shared/event-store.ts';
 import { timeLabel } from '../shared/event-store.ts';
 import { type FocusState, focusedMinutes, IDLE, startFocus, tickFocus } from '../shared/focus.ts';
+import { t } from '../shared/i18n/index.ts';
 import { localDay, type TodoStore } from '../shared/todo-store.ts';
 import type { SayOptions } from './pet-window.ts';
 import { settings } from './settings.ts';
@@ -57,12 +58,12 @@ export function createPlanner(o: PlannerOptions) {
     for (const e of o.events.dueReminders(now)) {
       o.events.markNotified(e.id, now);
       const left = Math.round((e.startAt - now) / 60_000);
-      const when = left <= 0 ? '지금' : `${left}분 뒤`;
+      const when = left <= 0 ? t('panel.remind.now') : t('panel.remind.inMin', { n: left });
       o.log('planner', '일정 알림', e.id, when);
       void o.say({
         kind: 'schedule',
         text: `${when} ${e.title} (${timeLabel(minuteOfDay(e.startAt))})`,
-        buttons: [{ id: 'ok', label: '알았어' }],
+        buttons: [{ id: 'ok', label: t('panel.remind.ok') }],
         ttlMs: 30_000,
       });
     }
@@ -109,8 +110,8 @@ export function createPlanner(o: PlannerOptions) {
         buttons:
           left.length > 0
             ? [
-                { id: 'move', label: '내일로 넘기기' },
-                { id: 'keep', label: '그대로' },
+                { id: 'move', label: t('panel.review.move') },
+                { id: 'keep', label: t('panel.review.keep') },
               ]
             : [],
         ttlMs: 30_000,
@@ -137,8 +138,8 @@ export function createPlanner(o: PlannerOptions) {
       void o
         .say({
           kind: 'answer',
-          text: `${minutes}분 집중 끝!${coins > 0 ? ` 코인 ${coins}개.` : ''} 5분 쉬자.`,
-          buttons: [{ id: 'stop', label: '그만할래' }],
+          text: t('panel.focus.done', { minutes, coins }),
+          buttons: [{ id: 'stop', label: t('panel.focus.stop') }],
           ttlMs: 20_000,
         })
         .then((a) => {
@@ -148,10 +149,10 @@ export function createPlanner(o: PlannerOptions) {
       void o
         .say({
           kind: 'answer',
-          text: '쉬는 시간 끝. 한 번 더 집중할까?',
+          text: t('panel.focus.breakDone'),
           buttons: [
-            { id: 'again', label: '한 번 더' },
-            { id: 'no', label: '이제 됐어' },
+            { id: 'again', label: t('panel.focus.again') },
+            { id: 'no', label: t('panel.focus.enough') },
           ],
           ttlMs: 30_000,
         })

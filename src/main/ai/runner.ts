@@ -12,6 +12,7 @@ import { fillArgs, type ProviderSpec } from '../../shared/ai/providers.ts';
 import { type Exchange, stripAnsi, textPrompt } from '../../shared/ai/text.ts';
 import type { AiEvent, AiStatus, ImageAttachment } from '../../shared/ai/types.ts';
 import { codexUsage, lastCodexLimits } from '../../shared/ai/usage.ts';
+import { t } from '../../shared/i18n/index.ts';
 import { prepareCodexHome } from './codex-home.ts';
 import { getShellEnv, resolveBin } from './shell-env.ts';
 
@@ -162,9 +163,13 @@ export function runAi(req: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
       });
       child?.on('close', (code) => {
         clearTimeout(idleTimer);
-        if (cancelled) emit({ type: 'error', error: { kind: 'cancelled', message: '질문을 멈췄어.' } });
+        if (cancelled)
+          emit({ type: 'error', error: { kind: 'cancelled', message: t('ai.error.cancelled') } });
         else if (code !== 0)
-          emit({ type: 'error', error: classifyError(spec, stripAnsi(stderr) || `종료 코드 ${code}`) });
+          emit({
+            type: 'error',
+            error: classifyError(spec, stripAnsi(stderr) || t('ai.error.exitCode', { code: String(code) })),
+          });
         else emit({ type: 'done', text: answer.trim() });
         // codex 사용량은 대화 기록 파일에 남는다. 끝난 뒤 읽는다. 기록을 안 남겼으면 읽을 것도 없다.
         if (codexHome && sessionId && !req.ephemeral) {

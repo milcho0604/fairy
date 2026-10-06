@@ -1,4 +1,5 @@
 import { app, net, shell } from 'electron';
+import { t } from '../shared/i18n/index.ts';
 import { isNewer, readRelease } from '../shared/version.ts';
 import type { SayOptions } from './pet-window.ts';
 import { settings } from './settings.ts';
@@ -17,34 +18,36 @@ export function watchUpdates(o: {
   log: (tag: string, ...rest: unknown[]) => void;
 }) {
   async function check(manual = false): Promise<string> {
-    if (!manual && !settings.get().updateCheck) return '꺼져 있어';
+    if (!manual && !settings.get().updateCheck) return t('main.update.off');
     try {
       const res = await net.fetch(RELEASES_API, {
         headers: { accept: 'application/vnd.github+json', 'user-agent': `jjakkung/${app.getVersion()}` },
       });
       if (!res.ok) {
         o.log('update', '확인 못 함', res.status);
-        return res.status === 404 ? '아직 받을 수 있는 버전이 없어' : `확인하지 못했어 (${res.status})`;
+        return res.status === 404
+          ? t('main.update.none')
+          : t('main.update.failedStatus', { status: res.status });
       }
       const latest = readRelease(await res.json());
-      if (!latest || !isNewer(latest.version, app.getVersion())) return '최신 버전이야';
-      if (!manual && settings.get().skipVersion === latest.version) return '건너뛴 버전이야';
+      if (!latest || !isNewer(latest.version, app.getVersion())) return t('main.update.latest');
+      if (!manual && settings.get().skipVersion === latest.version) return t('main.update.skipped');
       o.log('update', '새 버전', latest.version);
       const answer = await o.say({
         kind: 'answer',
-        text: `새 버전 ${latest.version} 이 나왔어.`,
+        text: t('main.update.bubble', { version: latest.version }),
         buttons: [
-          { id: 'get', label: '받으러 가기' },
-          { id: 'skip', label: '이 버전은 건너뛰기' },
+          { id: 'get', label: t('main.update.get') },
+          { id: 'skip', label: t('main.update.skip') },
         ],
         ttlMs: 30_000,
       });
       if (answer === 'get') await shell.openExternal(latest.url);
       if (answer === 'skip') settings.set({ skipVersion: latest.version });
-      return `새 버전 ${latest.version}`;
+      return t('main.update.found', { version: latest.version });
     } catch (err) {
       o.log('update', '확인 실패', err instanceof Error ? err.message : String(err));
-      return '확인하지 못했어 (인터넷 연결을 봐 줘)';
+      return t('main.update.offline');
     }
   }
 

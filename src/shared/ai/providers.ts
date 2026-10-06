@@ -1,5 +1,6 @@
 // 짝꿍이 부를 수 있는 AI 목록. 사용자 요청(2026-10-02): claude, codex 로 한정하지 않는다.
 // 기본 제공 AI 는 어댑터가 따로 있고, 그 밖의 CLI 는 사용자가 명령을 적어 추가한다(custom).
+import { t } from '../i18n/index.ts';
 
 export type AdapterKind = 'claude' | 'codex' | 'cursor' | 'text';
 
@@ -28,6 +29,7 @@ export interface ProviderSpec {
   command?: string;
 }
 
+// 안내 글은 지금 말로 읽는다 (getter)
 export const BUILTIN_PROVIDERS: readonly ProviderSpec[] = [
   {
     id: 'claude',
@@ -37,8 +39,12 @@ export const BUILTIN_PROVIDERS: readonly ProviderSpec[] = [
     images: true,
     verified: true,
     statusArgs: ['auth', 'status'],
-    installHint: 'Claude Code 를 설치하고 터미널에서 claude 로 한 번 로그인해 줘.',
-    loginHint: '터미널에서 claude 로 로그인해 줘.',
+    get installHint() {
+      return t('ai.install.claude');
+    },
+    get loginHint() {
+      return t('ai.login.claude');
+    },
     usage: true,
   },
   {
@@ -49,8 +55,12 @@ export const BUILTIN_PROVIDERS: readonly ProviderSpec[] = [
     images: true,
     verified: true,
     statusArgs: ['login', 'status'],
-    installHint: 'Codex CLI 를 설치하고 터미널에서 codex login 으로 로그인해 줘.',
-    loginHint: '터미널에서 codex login 으로 로그인해 줘.',
+    get installHint() {
+      return t('ai.install.codex');
+    },
+    get loginHint() {
+      return t('ai.login.codex');
+    },
     usage: true,
   },
   {
@@ -62,8 +72,12 @@ export const BUILTIN_PROVIDERS: readonly ProviderSpec[] = [
     verified: false,
     statusArgs: ['status'],
     notLoggedInPattern: /not logged in/i,
-    installHint: 'Cursor Agent CLI 를 설치하고 터미널에서 cursor-agent login 으로 로그인해 줘.',
-    loginHint: '터미널에서 cursor-agent login 으로 로그인해 줘.',
+    get installHint() {
+      return t('ai.install.cursor');
+    },
+    get loginHint() {
+      return t('ai.login.cursor');
+    },
     usage: false,
   },
   {
@@ -74,7 +88,9 @@ export const BUILTIN_PROVIDERS: readonly ProviderSpec[] = [
     args: ['-p', '{prompt}'],
     images: false,
     verified: false,
-    installHint: 'Gemini CLI 를 설치하고 터미널에서 gemini 를 한 번 실행해 로그인해 줘.',
+    get installHint() {
+      return t('ai.install.gemini');
+    },
     usage: false,
   },
 ];
@@ -90,8 +106,8 @@ export interface CustomProviderInput {
 export function customProvider(input: CustomProviderInput, id: string): ProviderSpec | string {
   const label = input.label.trim();
   const bin = input.bin.trim();
-  if (!label) return '이름을 적어 줘.';
-  if (!bin || /\s/.test(bin)) return '명령은 실행 파일 이름 하나만 적어 줘. 나머지는 인자 칸에.';
+  if (!label) return t('ai.custom.noName');
+  if (!bin || /\s/.test(bin)) return t('ai.custom.badBin');
   const args = splitArgs(input.args);
   if (!args.some((a) => a.includes('{prompt}'))) args.push('{prompt}');
   return {
@@ -102,7 +118,7 @@ export function customProvider(input: CustomProviderInput, id: string): Provider
     args,
     images: false,
     verified: false,
-    installHint: `터미널에서 ${bin} 명령이 실행되는지 확인해 줘.`,
+    installHint: t('ai.install.custom', { bin }),
     usage: false,
     custom: true,
     command: `${bin} ${input.args.trim()}`.trim(),

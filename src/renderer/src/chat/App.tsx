@@ -1,8 +1,8 @@
 import { type ClipboardEvent, type KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
 import type { AiProvider, AiStatus } from '../../../shared/ai/types.ts';
 import type { ChatMessage, ChatState } from '../../../shared/chat-state.ts';
+import { t } from '../../../shared/i18n/index.ts';
 import type { OutgoingImage, ProviderView } from '../../../shared/ipc.ts';
-import { withParticle } from '../../../shared/josa.ts';
 import { PetFace } from '../PetFace.tsx';
 import { AiManager } from './AiManager.tsx';
 import { toOutgoing } from './images.ts';
@@ -15,7 +15,7 @@ const bridge = window.jjakkungChat;
 const MAX_IMAGES = 4;
 
 export function App() {
-  const [petName, setPetName] = useState('짝꿍');
+  const [petName, setPetName] = useState(t('chat.defaultPetName'));
   const [state, setState] = useState<ChatState>();
   const [status, setStatus] = useState<Partial<Record<AiProvider, AiStatus>>>({});
   const [checking, setChecking] = useState(false);
@@ -41,8 +41,7 @@ export function App() {
   const addImages = useCallback(async (incoming: OutgoingImage[]) => {
     setImages((prev) => {
       const next = [...prev, ...incoming].slice(0, MAX_IMAGES);
-      if (prev.length + incoming.length > MAX_IMAGES)
-        setNotice(`그림은 한 번에 ${MAX_IMAGES}장까지 붙일 수 있어.`);
+      if (prev.length + incoming.length > MAX_IMAGES) setNotice(t('chat.tooManyImages', { max: MAX_IMAGES }));
       return next;
     });
     inputRef.current?.focus();
@@ -53,7 +52,7 @@ export function App() {
       setPetName(snap.petName);
       setState(snap.state);
       if (snap.draft.length) addImages(snap.draft);
-      document.title = `${withParticle(snap.petName, '과')} 대화`;
+      document.title = t('chat.title', { name: snap.petName });
     });
     bridge.onState(setState);
     bridge.onDelta((id, full) =>
@@ -68,7 +67,7 @@ export function App() {
     bridge.onAttach((image) => addImages([image]));
     bridge.onPetName((name) => {
       setPetName(name);
-      document.title = `${withParticle(name, '과')} 대화`;
+      document.title = t('chat.title', { name });
     });
     if (bridge.platform === 'darwin') document.body.classList.add('mac');
     refreshStatus(false);
@@ -105,7 +104,7 @@ export function App() {
     if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
   });
 
-  if (!state) return <div className="loading">불러오는 중</div>;
+  if (!state) return <div className="loading">{t('chat.loading')}</div>;
 
   const pending = !!state.pendingId;
   const current = status[state.provider];
@@ -176,7 +175,7 @@ export function App() {
           disabled={pending || state.messages.length === 0}
           onClick={() => bridge.reset()}
         >
-          새 대화
+          {t('chat.newChat')}
         </button>
       </header>
       <UsageBar usage={state.usage[state.provider]} spec={spec} hidden={!!current && !current.installed} />
@@ -205,9 +204,9 @@ export function App() {
           type="button"
           className="lightbox"
           onClick={() => setZoom(undefined)}
-          aria-label="크게 보기 닫기"
+          aria-label={t('chat.zoomClose')}
         >
-          <img src={zoom} alt="크게 본 그림" />
+          <img src={zoom} alt={t('chat.zoomAlt')} />
         </button>
       )}
 
@@ -215,7 +214,7 @@ export function App() {
         <div className="banner" role="status">
           <span>{statusText(spec, current)}</span>
           <button type="button" className="ghost" disabled={checking} onClick={() => refreshStatus(true)}>
-            {checking ? '확인 중' : '다시 확인'}
+            {checking ? t('chat.checking') : t('chat.recheck')}
           </button>
         </div>
       )}
@@ -230,11 +229,8 @@ export function App() {
       >
         {state.messages.length === 0 && (
           <div className="empty">
-            <p>뭐든 물어봐. 같이 볼 화면이 있으면 보여 줘.</p>
-            <p className="hint">
-              {withParticle(petName, '을')} 우클릭하고 "{withParticle(petName, '이랑')} 같이 보기"를 고르면
-              화면 일부를 찍어 여기 붙여. 그림을 붙여 넣거나 끌어다 놓아도 돼.
-            </p>
+            <p>{t('chat.emptyLead')}</p>
+            <p className="hint">{t('chat.emptyHint', { name: petName })}</p>
           </div>
         )}
         {state.messages.map((m) => (
@@ -251,20 +247,15 @@ export function App() {
 
       <footer>
         {notice && <p className="notice">{notice}</p>}
-        {imagesBlocked && (
-          <p className="notice">
-            {withParticle(spec.label, '은')} 그림을 받지 않아서 글만 보낼게. 그림을 같이 보려면 그림을 받는 AI
-            로 바꿔 줘.
-          </p>
-        )}
+        {imagesBlocked && <p className="notice">{t('chat.imagesBlocked', { label: spec.label })}</p>}
         {images.length > 0 && (
           <div className="attachments">
             {images.map((img, i) => (
               <div className="attachment" key={img.thumb.thumb.slice(-24) + String(i)}>
-                <img src={img.thumb.thumb} alt={`붙인 그림 ${i + 1}`} />
+                <img src={img.thumb.thumb} alt={t('chat.attachedAlt', { n: i + 1 })} />
                 <button
                   type="button"
-                  aria-label="그림 빼기"
+                  aria-label={t('chat.removeImage')}
                   onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
                 >
                   ×
@@ -274,23 +265,20 @@ export function App() {
           </div>
         )}
         <div className="options">
-          <label
-            className="opt"
-            title="질문할 때 안 끝낸 할 일 제목과 마감, 오늘 남은 일정 제목을 같이 보내. 그래서 '오늘 뭐부터 할까?'에 답할 수 있어."
-          >
+          <label className="opt" title={t('chat.knowsTodosTitle')}>
             <input
               type="checkbox"
               checked={!!state.knowsTodos}
               onChange={(e) => bridge.setKnowsTodos(e.target.checked)}
             />
-            내 할 일 같이 보내기
+            {t('chat.knowsTodos')}
           </label>
           <label
-            className={`opt ${spec && !spec.ephemeral ? 'disabled' : ''}`}
+            className={`opt ${pending || (spec && !spec.ephemeral) ? 'disabled' : ''}`}
             title={
               spec && !spec.ephemeral
-                ? `${withParticle(spec.label, '은')} 기록 안 남기기를 지원하지 않아. Claude 나 Codex 에서 돼.`
-                : 'AI 쪽에도 이 대화를 저장하지 않아. 켜고 끄면 새 대화로 시작해.'
+                ? t('chat.ephemeralUnsupported', { label: spec.label })
+                : t('chat.ephemeralTitle')
             }
           >
             <input
@@ -299,11 +287,11 @@ export function App() {
               disabled={pending || (!!spec && !spec.ephemeral)}
               onChange={(e) => bridge.setEphemeral(e.target.checked)}
             />
-            기록 안 남김
+            {t('chat.ephemeral')}
           </label>
         </div>
         <div className="composer">
-          <label className="ghost icon" title="그림 붙이기">
+          <label className="ghost icon" title={t('chat.attach')}>
             <input
               type="file"
               accept="image/*"
@@ -315,21 +303,21 @@ export function App() {
               }}
             />
             <span aria-hidden="true">＋</span>
-            <span className="sr-only">그림 붙이기</span>
+            <span className="sr-only">{t('chat.attach')}</span>
           </label>
           <textarea
             ref={inputRef}
             value={text}
             rows={1}
-            placeholder={`${petName}에게 물어보기`}
-            title="Enter 로 보내고, Shift+Enter 로 줄을 바꿔요"
+            placeholder={t('chat.placeholder', { name: petName })}
+            title={t('chat.inputTitle')}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
           />
           {pending ? (
             <button type="button" className="primary" onClick={() => bridge.cancel()}>
-              멈춤
+              {t('chat.stop')}
             </button>
           ) : (
             <button
@@ -338,7 +326,7 @@ export function App() {
               disabled={!text.trim() && images.length === 0}
               onClick={send}
             >
-              보내기
+              {t('chat.send')}
             </button>
           )}
         </div>
@@ -365,7 +353,7 @@ function Message({ message: m, petName, label, onZoom, alternatives }: MessagePr
           <div className={`shots ${m.images.length > 1 ? 'many' : ''}`}>
             {m.images.map((img, i) => (
               <button key={String(i)} type="button" className="shot" onClick={() => onZoom(img.thumb)}>
-                <img src={img.thumb} alt={`보낸 그림 ${i + 1}`} />
+                <img src={img.thumb} alt={t('chat.sentAlt', { n: i + 1 })} />
               </button>
             ))}
           </div>
@@ -398,7 +386,7 @@ function Message({ message: m, petName, label, onZoom, alternatives }: MessagePr
           <div className="retry">
             {alternatives.slice(0, 3).map((p) => (
               <button key={p.id} type="button" className="ghost" onClick={() => bridge.retryWith(p.id)}>
-                {withParticle(p.label, '으로')} 다시 묻기
+                {t('chat.retryWith', { label: p.label })}
               </button>
             ))}
           </div>
@@ -422,26 +410,26 @@ function AnswerActions({ id, text }: { id: string; text: string }) {
         type="button"
         onClick={async () => {
           await navigator.clipboard.writeText(text);
-          flash('복사함');
+          flash(t('chat.copied'));
         }}
       >
-        복사
+        {t('chat.copy')}
       </button>
       <button
         type="button"
-        onClick={async () => flash((await bridge.toNote(id)) ? '메모에 남김' : '못 남겼어')}
+        onClick={async () => flash((await bridge.toNote(id)) ? t('chat.savedNote') : t('chat.saveFailed'))}
       >
-        메모로
+        {t('chat.toNote')}
       </button>
       <button
         type="button"
-        title="목록이 있으면 줄마다, 없으면 첫 문장을 할 일로"
+        title={t('chat.toTodosTitle')}
         onClick={async () => {
           const n = await bridge.toTodos(id);
-          flash(n > 0 ? `할 일 ${n}개 넣음` : '넣을 게 없어');
+          flash(n > 0 ? t('chat.todosAdded', { n }) : t('chat.nothingToAdd'));
         }}
       >
-        할 일로
+        {t('chat.toTodos')}
       </button>
     </span>
   );
@@ -460,10 +448,8 @@ function Thinking({ streams, label, petName }: { streams: boolean; label: string
         <i />
         <i />
       </span>
-      {withParticle(petName, '이')} 생각 중
-      {slow && !streams && (
-        <span className="hint">{withParticle(label, '은')} 답을 다 만든 뒤 한 번에 보여 줘</span>
-      )}
+      {t('chat.thinking', { name: petName })}
+      {slow && !streams && <span className="hint">{t('chat.thinkingSlow', { label })}</span>}
     </div>
   );
 }

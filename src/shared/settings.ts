@@ -1,6 +1,7 @@
 // 사용자 설정 (P1-12). 2단계에서 SQLite 로 옮기기 전까지 JSON 파일 하나에 둔다.
 import { isPersona, type PersonaId } from './ai/persona.ts';
 import type { ChatterLevel } from './chatter.ts';
+import { type LangPref, t } from './i18n/index.ts';
 import { isAccelerator, SHORTCUT_DEFAULTS, type ShortcutId } from './shortcut.ts';
 
 export interface Settings {
@@ -45,6 +46,8 @@ export interface Settings {
   myMcp: boolean;
   /** 친구 펫 (v2 여러 마리). 할 일, 채팅은 기본 펫이 맡고 친구는 같이 돌아다닌다 */
   friends: Friend[];
+  /** 화면 말 (v2 다국어). auto 는 운영체제 말. 창이 열릴 때 읽어서 바꾸면 다시 켠다 */
+  lang: LangPref;
 }
 
 export interface Friend {
@@ -58,16 +61,47 @@ export interface Friend {
 export const FRIENDS_MAX = 3;
 
 export type PetKind = 'kong' | 'cat' | 'chick';
-export const PET_KINDS: readonly { id: PetKind; label: string }[] = [
-  { id: 'kong', label: '콩' },
-  { id: 'cat', label: '냥이' },
-  { id: 'chick', label: '삐약이' },
+// 이름은 지금 말로 읽는다 (getter). 화면은 setLang 뒤에 읽는다.
+export const PET_KINDS: readonly { id: PetKind; readonly label: string }[] = [
+  {
+    id: 'kong',
+    get label() {
+      return t('common.petKind.kong');
+    },
+  },
+  {
+    id: 'cat',
+    get label() {
+      return t('common.petKind.cat');
+    },
+  },
+  {
+    id: 'chick',
+    get label() {
+      return t('common.petKind.chick');
+    },
+  },
 ];
 export type PoseKind = 'happy' | 'sleepy' | 'hungry';
-export const POSE_KINDS: readonly { id: PoseKind; label: string }[] = [
-  { id: 'happy', label: '기쁠 때' },
-  { id: 'sleepy', label: '졸릴 때' },
-  { id: 'hungry', label: '배고플 때' },
+export const POSE_KINDS: readonly { id: PoseKind; readonly label: string }[] = [
+  {
+    id: 'happy',
+    get label() {
+      return t('common.pose.happy');
+    },
+  },
+  {
+    id: 'sleepy',
+    get label() {
+      return t('common.pose.sleepy');
+    },
+  },
+  {
+    id: 'hungry',
+    get label() {
+      return t('common.pose.hungry');
+    },
+  },
 ];
 const PET_FILE = /^(pet|pose)-[\w-]+\.(png|gif|webp)$/;
 
@@ -96,6 +130,7 @@ export const DEFAULT_SETTINGS: Settings = {
   shortcuts: { ...SHORTCUT_DEFAULTS },
   myMcp: false,
   friends: [],
+  lang: 'auto',
 };
 
 export const PET_NAME_MAX = 12;
@@ -150,6 +185,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     ...icsOf(r.icsUrl, base.icsUrl),
     myMcp: bool(r.myMcp, base.myMcp),
     friends: Array.isArray(r.friends) ? friendsOf(r.friends) : base.friends,
+    lang: r.lang === 'auto' || r.lang === 'ko' || r.lang === 'en' ? r.lang : base.lang,
     ...(typeof r.skipVersion === 'string' && /^\d+\.\d+\.\d+/.test(r.skipVersion)
       ? { skipVersion: r.skipVersion.slice(0, 32) }
       : base.skipVersion

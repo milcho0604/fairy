@@ -10,12 +10,14 @@ import {
 import { type EventStore, parseQuickEvent } from '../shared/event-store.ts';
 import type { FocusState } from '../shared/focus.ts';
 import { clampIntoAreas } from '../shared/geometry.ts';
+import { t } from '../shared/i18n/index.ts';
 import { type NoteAiKind, PANEL, type PanelState, type PanelTab, type PlayKind } from '../shared/ipc.ts';
 import { type NoteStore, notePreview, noteTitle } from '../shared/note-store.ts';
 import { parseQuickTodo } from '../shared/quick-add.ts';
 import { CUSTOM_FOOD_COST, CUSTOM_FOOD_MAX, type Food, type ItemStore } from '../shared/shop.ts';
 import { COIN, FULLNESS, localDay, type TodoStore } from '../shared/todo-store.ts';
 import { focusWindow, stealFocus } from './focus.ts';
+import { langArg } from './lang.ts';
 import { localTime, minuteOfDay, startOfDay } from './planner.ts';
 
 const PANEL_SIZE = { width: 360, height: 540 };
@@ -124,7 +126,7 @@ export function createPanel(o: PanelOptions) {
       return { ok: true, kind: 'event' as const };
     }
     const parsed = parseQuickTodo(text, localDay(now));
-    if (!parsed.title) return { ok: false, error: '할 일을 적어 줘.' };
+    if (!parsed.title) return { ok: false, error: t('panel.add.empty') };
     o.store.add(parsed, now);
     push();
     return { ok: true, kind: 'todo' as const };
@@ -158,11 +160,8 @@ export function createPanel(o: PanelOptions) {
   ipcMain.handle(PANEL.noteAi, (e, id: number, kind: NoteAiKind) => {
     const n = ours(e) ? o.notes.get(id) : undefined;
     if (!n?.body.trim()) return false;
-    const ask =
-      kind === 'summary'
-        ? '아래 메모를 세 줄 안으로 요약해 줘.'
-        : "아래 메모를 바로 할 수 있는 할 일 목록으로 쪼개 줘. 한 줄에 하나씩 '- '로 시작하고 설명은 붙이지 마.";
-    const title = n.title.trim() ? `제목: ${n.title.trim()}\n` : '';
+    const ask = kind === 'summary' ? t('panel.noteAi.summary') : t('panel.noteAi.todos');
+    const title = n.title.trim() ? `${t('panel.noteAi.title', { title: n.title.trim() })}\n` : '';
     if (!o.askAi(`${ask}\n\n${title}${n.body}`)) return false;
     closePanel();
     return true;
@@ -177,7 +176,7 @@ export function createPanel(o: PanelOptions) {
     if (!ours(e) || typeof text !== 'string') return { ok: false };
     const now = Date.now();
     const ev = parseQuickEvent(text, localDay(now), minuteOfDay(now));
-    if (!ev) return { ok: false, error: '시각을 같이 적어 줘. 예: 내일 3시 회의, 금요일 오전 10시 반 면접' };
+    if (!ev) return { ok: false, error: t('panel.event.needTime') };
     const startAt = localTime(ev.day, ev.minute);
     const event = o.events.add(
       { title: ev.title, startAt, endAt: ev.durationMin ? startAt + ev.durationMin * 60_000 : null },
@@ -214,13 +213,13 @@ export function createPanel(o: PanelOptions) {
   });
   // ---- 상점과 놀이 (v1) ----
   ipcMain.handle(PANEL.buyToy, (e, key: string) => {
-    if (!ours(e) || typeof key !== 'string') return { ok: false, error: '다시 해 줘.' };
+    if (!ours(e) || typeof key !== 'string') return { ok: false, error: t('panel.retry') };
     const r = o.shop.buyToy(key, Date.now());
     push();
     return r;
   });
   ipcMain.handle(PANEL.buyHouse, (e) => {
-    if (!ours(e)) return { ok: false, error: '다시 해 줘.' };
+    if (!ours(e)) return { ok: false, error: t('panel.retry') };
     const r = o.shop.buyHouse(Date.now());
     push();
     if (r.ok) o.onHouseChanged();
@@ -229,19 +228,19 @@ export function createPanel(o: PanelOptions) {
   ipcMain.handle(PANEL.feedWith, (e, key: string) => {
     if (!ours(e) || typeof key !== 'string') return { ok: false };
     const food = o.shop.food(key);
-    if (!food) return { ok: false, error: '없는 먹이야.' };
+    if (!food) return { ok: false, error: t('shop.err.noFood') };
     const r = o.store.feed(Date.now(), food);
     push();
-    if (!r.ok) return { ok: false, error: `코인이 ${food.cost}개 있어야 해.` };
+    if (!r.ok) return { ok: false, error: t('shop.err.needCoins', { n: food.cost }) };
     o.onFedWith(food);
     return { ok: true };
   });
   ipcMain.handle(PANEL.makeFood, (e) => {
-    if (!ours(e)) return { ok: false, error: '다시 해 줘.' };
+    if (!ours(e)) return { ok: false, error: t('panel.retry') };
     if (o.store.balance() < CUSTOM_FOOD_COST)
-      return { ok: false, error: `코인이 ${CUSTOM_FOOD_COST}개 있어야 해.` };
+      return { ok: false, error: t('shop.err.needCoins', { n: CUSTOM_FOOD_COST }) };
     if (o.shop.state().customFoods.length >= CUSTOM_FOOD_MAX)
-      return { ok: false, error: `커스텀 먹이는 ${CUSTOM_FOOD_MAX}개까지야.` };
+      return { ok: false, error: t('shop.err.foodMaxShort', { n: CUSTOM_FOOD_MAX }) };
     closePanel();
     o.openFoodMaker();
     return { ok: true };
@@ -329,7 +328,7 @@ export function createPanel(o: PanelOptions) {
       show: false,
       webPreferences: {
         preload: join(import.meta.dirname, '../preload/index.cjs'),
-        additionalArguments: [`--jj-window=${kind}`],
+        additionalArguments: [`--jj-window=${kind}`, langArg()],
         sandbox: true,
         contextIsolation: true,
       },

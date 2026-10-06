@@ -1,5 +1,6 @@
 // 메모 (v1). 마크다운 글. 펫 패널 메모 탭과 AI 답 저장(답을 메모로)에서 쓴다.
 import type { Db } from './db-schema.ts';
+import { t } from './i18n/index.ts';
 
 export type NoteSource = 'me' | 'ai';
 
@@ -37,7 +38,7 @@ export const NOTE_BODY_MAX = 50_000;
 export function noteTitle(n: Pick<Note, 'title' | 'body'>): string {
   if (n.title.trim()) return n.title.trim();
   const first = n.body.split('\n').find((l) => l.trim()) ?? '';
-  return first.replace(/^\s*(#+|[-*]|\d+\.)\s*/, '').slice(0, NOTE_TITLE_MAX) || '빈 메모';
+  return first.replace(/^\s*(#+|[-*]|\d+\.)\s*/, '').slice(0, NOTE_TITLE_MAX) || t('panel.note.empty');
 }
 
 /** 목록에 보일 본문 한 줄. 제목으로 쓴 첫 줄과 마크다운 기호는 뺀다. */

@@ -36,7 +36,10 @@ export function Markdown({ text }: { text: string }) {
     if (/^\s*([-*]|\d+\.)\s+/.test(line)) {
       const items: string[] = [];
       const ordered = /^\s*\d+\./.test(line);
-      while (i < lines.length && /^\s*([-*]|\d+\.)\s+/.test(lines[i] ?? '')) {
+      // 같은 종류만 묶는다. 번호 목록 바로 뒤의 "-" 목록이 번호로 이어지지 않게. 들여 쓴 줄은 하위 항목이라 같이 둔다
+      const sameKind = (l: string) =>
+        /^\s+([-*]|\d+\.)\s+/.test(l) || (ordered ? /^\d+\.\s+/ : /^[-*]\s+/).test(l);
+      while (i < lines.length && sameKind(lines[i] ?? '')) {
         items.push((lines[i] ?? '').replace(/^\s*([-*]|\d+\.)\s+/, ''));
         i++;
       }

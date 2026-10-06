@@ -5,8 +5,8 @@ import { layoutBubble } from '../shared/bubble-layout.ts';
 import { type BubbleKind, ChatterGate, type ChatterLevel, LEVEL_LABEL, quieter } from '../shared/chatter.ts';
 import { clampIntoAreas, type Rect } from '../shared/geometry.ts';
 import type { GestureEvent } from '../shared/gesture.ts';
+import { t } from '../shared/i18n/index.ts';
 import { type BubbleButton, IPC, type PlayKind } from '../shared/ipc.ts';
-import { withParticle } from '../shared/josa.ts';
 import { hopAt, perchHolds, pickPerch } from '../shared/perch.ts';
 import { type DisplayInfo, parseSavedScale, restorePetBounds } from '../shared/placement.ts';
 import { type HideReason, HideReasons } from '../shared/presence.ts';
@@ -20,6 +20,7 @@ import {
   THROW_MAX_SPEED,
   THROW_MIN_SPEED,
 } from '../shared/throw.ts';
+import { langArg } from './lang.ts';
 import { settings } from './settings.ts';
 import { readJson, writeJson } from './store.ts';
 import { watchSystem } from './system-watch.ts';
@@ -152,7 +153,7 @@ export function createPetWindow({ petName, actions, log, id, initial, menu }: Pe
     show: false,
     webPreferences: {
       preload: join(import.meta.dirname, '../preload/index.cjs'),
-      additionalArguments: ['--jj-window=pet'],
+      additionalArguments: ['--jj-window=pet', langArg()],
       sandbox: true,
       contextIsolation: true,
     },
@@ -283,31 +284,31 @@ export function createPetWindow({ petName, actions, log, id, initial, menu }: Pe
       return;
     }
     Menu.buildFromTemplate([
-      { label: `${withParticle(petName(), '이랑')} 같이 보기`, click: () => actions.lookTogether() },
-      { label: `${withParticle(petName(), '과')} 대화`, click: () => actions.openChat(pet) },
-      { label: '할 일 추가', accelerator: quickAddShortcut(), click: () => actions.quickAdd() },
-      { label: '밥 주기', click: () => actions.feed() },
+      { label: t('pet.menu.look', { name: petName() }), click: () => actions.lookTogether() },
+      { label: t('pet.menu.chat', { name: petName() }), click: () => actions.openChat(pet) },
+      { label: t('pet.menu.addTodo'), accelerator: quickAddShortcut(), click: () => actions.quickAdd() },
+      { label: t('pet.menu.feed'), click: () => actions.feed() },
       {
-        label: '놀기',
+        label: t('pet.menu.play'),
         submenu: [
-          { label: '산책 가자 (5분)', click: () => actions.play('walk') },
-          { label: '숨바꼭질', click: () => actions.play('seek') },
+          { label: t('pet.menu.walk'), click: () => actions.play('walk') },
+          { label: t('pet.menu.seek'), click: () => actions.play('seek') },
           actions.toy()
             ? {
-                label: `${withParticle(actions.toy() ?? '', '을')} 던져 주기`,
+                label: t('pet.menu.throwToy', { toy: actions.toy() ?? '' }),
                 click: () => actions.play('ball'),
               }
-            : { label: '공 던져 주기 (상점에서 공 사기)', click: () => actions.openShop() },
-          { label: '상점', click: () => actions.openShop() },
+            : { label: t('pet.menu.throwNoBall'), click: () => actions.openShop() },
+          { label: t('pet.menu.shop'), click: () => actions.openShop() },
         ],
       },
       {
-        label: actions.focusRunning() ? '집중 그만' : '집중 25분 시작',
+        label: actions.focusRunning() ? t('pet.menu.focusStop') : t('pet.menu.focusStart'),
         click: () => actions.toggleFocus(),
       },
       { type: 'separator' },
       {
-        label: '말풍선',
+        label: t('pet.menu.bubbles'),
         submenu: (['quiet', 'normal', 'chatty'] as const).map((level) => ({
           label: LEVEL_LABEL[level],
           type: 'radio' as const,
@@ -316,14 +317,14 @@ export function createPetWindow({ petName, actions, log, id, initial, menu }: Pe
         })),
       },
       {
-        label: `${withParticle(petName(), '을')} 잠깐 숨기기`,
+        label: t('pet.menu.hide', { name: petName() }),
         accelerator: hideShortcut(),
         click: () => setHidden('user', true),
       },
-      { label: '사진으로 펫 만들기', click: () => actions.makePet() },
-      { label: '설정', click: () => actions.openSettings() },
+      { label: t('pet.menu.makePet'), click: () => actions.makePet() },
+      { label: t('pet.menu.settings'), click: () => actions.openSettings() },
       { type: 'separator' },
-      { label: '끝내기', role: 'quit' },
+      { label: t('pet.menu.quit'), role: 'quit' },
     ]).popup({ window: win });
   };
 
@@ -561,7 +562,7 @@ export function createPetWindow({ petName, actions, log, id, initial, menu }: Pe
     hinting = true;
     settings.set({ hideHints: shown + 1 });
     const keys = acceleratorLabel(hideShortcut(), process.platform === 'darwin').join('+');
-    await say({ kind: 'answer', text: `잠깐 숨을게. ${keys} 누르면 다시 나올게.`, ttlMs: 2500 });
+    await say({ kind: 'answer', text: t('pet.hideHint', { keys }), ttlMs: 2500 });
     hinting = false;
     setHidden('user', true, false);
   }
@@ -620,10 +621,10 @@ export function createPetWindow({ petName, actions, log, id, initial, menu }: Pe
   async function askQuieter() {
     const answer = await say({
       kind: 'answer',
-      text: '내가 좀 시끄러웠지? 말을 줄일까?',
+      text: t('pet.tooChatty'),
       buttons: [
-        { id: 'yes', label: '응, 줄여 줘' },
-        { id: 'no', label: '아니, 괜찮아' },
+        { id: 'yes', label: t('pet.tooChattyYes') },
+        { id: 'no', label: t('pet.tooChattyNo') },
       ],
       ttlMs: 15_000,
     });
@@ -664,8 +665,7 @@ export function createPetWindow({ petName, actions, log, id, initial, menu }: Pe
     if (win.isDestroyed()) return;
     win.webContents.send(IPC.env, env);
     // 바빠지는 순간에 한 번만 말한다.
-    if (env.systemBusy && !wasBusy)
-      void say({ kind: 'system', text: '컴퓨터가 바빠 보여서 잠깐 가만히 있을게.' });
+    if (env.systemBusy && !wasBusy) void say({ kind: 'system', text: t('pet.busyCpu') });
     wasBusy = env.systemBusy;
   }, log);
   win.webContents.on('did-finish-load', () => applyLayout());

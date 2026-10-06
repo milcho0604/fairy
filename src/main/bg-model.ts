@@ -5,6 +5,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { pathToFileURL } from 'node:url';
 import { app } from 'electron';
+import { t } from '../shared/i18n/index.ts';
 
 /**
  * 배경 제거 모델 IS-Net 일반 (P1-07 에서 고름, `docs/tests/bg-removal.md`).
@@ -54,7 +55,7 @@ export async function ensureModel(
   mkdirSync(join(app.getPath('userData'), 'models'), { recursive: true });
   const part = `${file}.part`;
   const res = await fetch(BG_MODEL.url, { signal });
-  if (!res.ok || !res.body) throw new Error(`모델을 받지 못했어 (${res.status})`);
+  if (!res.ok || !res.body) throw new Error(t('main.model.downloadFailed', { status: res.status }));
   const total = Number(res.headers.get('content-length')) || BG_MODEL.bytes;
   let got = 0;
   let last = 0;
@@ -72,7 +73,7 @@ export async function ensureModel(
   await pipeline(counted, createWriteStream(part));
   if ((await sha256(part)) !== BG_MODEL.sha256) {
     rmSync(part, { force: true });
-    throw new Error('받은 모델 파일이 맞지 않아 (SHA-256 다름). 다시 시도해 줘.');
+    throw new Error(t('main.model.badHash'));
   }
   renameSync(part, file);
   verified = true;

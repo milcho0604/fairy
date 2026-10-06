@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { t } from '../../../shared/i18n/index.ts';
 import type { NoteAiKind, PanelState } from '../../../shared/ipc.ts';
 import { NOTE_BODY_MAX, NOTE_TITLE_MAX, type Note } from '../../../shared/note-store.ts';
 import { ago } from './format.ts';
@@ -21,8 +22,10 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
       <div className="add row">
         <input
           value={query}
-          aria-label="메모 찾기"
-          placeholder={s.notes.length > 0 ? `메모 ${s.notes.length}개에서 찾기` : '메모 찾기'}
+          aria-label={t('panel.note.search')}
+          placeholder={
+            s.notes.length > 0 ? t('panel.note.searchIn', { n: s.notes.length }) : t('panel.note.search')
+          }
           onChange={(e) => setQuery(e.target.value)}
         />
         <button
@@ -33,14 +36,12 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
             setOpen(n);
           }}
         >
-          새 메모
+          {t('panel.note.new')}
         </button>
       </div>
       <ul className="notes scroll">
         {list.length === 0 && (
-          <li className="empty">
-            {q ? '찾는 메모가 없어.' : '메모가 없어. "새 메모"를 눌러 적어 봐. AI 답도 메모로 남길 수 있어.'}
-          </li>
+          <li className="empty">{q ? t('panel.note.notFound') : t('panel.note.empty.list')}</li>
         )}
         {list.map((n) => (
           <li key={n.id}>
@@ -87,7 +88,7 @@ function NoteEditor({
   const askAi = async (kind: NoteAiKind) => {
     flush();
     if (!(await bridge.noteAi(note.id, kind))) {
-      setAiNote('AI 가 다른 답을 하는 중이야. 끝나면 다시 눌러 줘.');
+      setAiNote(t('panel.note.aiBusy'));
       setTimeout(() => setAiNote(''), 3000);
     }
   };
@@ -124,14 +125,14 @@ function NoteEditor({
             onBack();
           }}
         >
-          ‹ 메모
+          ‹ {t('panel.note.back')}
         </button>
         <span className="note-ai">
           <button type="button" className="link" disabled={!body.trim()} onClick={() => askAi('todos')}>
-            할 일로 쪼개기
+            {t('panel.note.toTodos')}
           </button>
           <button type="button" className="link" disabled={!body.trim()} onClick={() => askAi('summary')}>
-            요약
+            {t('panel.note.summary')}
           </button>
         </span>
         <button
@@ -144,7 +145,7 @@ function NoteEditor({
             onBack();
           }}
         >
-          지우기
+          {t('panel.note.delete')}
         </button>
       </div>
       {aiNote && <p className="hint error">{aiNote}</p>}
@@ -152,8 +153,8 @@ function NoteEditor({
         className="note-title-input"
         value={title}
         maxLength={NOTE_TITLE_MAX}
-        aria-label="메모 제목"
-        placeholder="제목 (비우면 첫 줄)"
+        aria-label={t('panel.note.titleLabel')}
+        placeholder={t('panel.note.titlePlaceholder')}
         onChange={(e) => {
           setTitle(e.target.value);
           save({ title: e.target.value });
@@ -166,8 +167,8 @@ function NoteEditor({
         ref={bodyRef}
         value={body}
         maxLength={NOTE_BODY_MAX}
-        aria-label="메모 내용"
-        placeholder="적어 봐. # 제목, - 목록 같은 마크다운도 돼."
+        aria-label={t('panel.note.bodyLabel')}
+        placeholder={t('panel.note.bodyPlaceholder')}
         onChange={(e) => {
           setBody(e.target.value);
           save({ body: e.target.value });

@@ -1,7 +1,7 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { app, type BrowserWindow, dialog } from 'electron';
-import { withParticle } from '../shared/josa.ts';
+import { t } from '../shared/i18n/index.ts';
 import { decodePet, encodePet, type SharedPet, shareFileName } from '../shared/pet-share.ts';
 import { FRIENDS_MAX, POSE_KINDS } from '../shared/settings.ts';
 import { petImages } from './maker.ts';
@@ -29,10 +29,13 @@ export function createBackup(o: {
   async function exportTo(parent?: BrowserWindow): Promise<string> {
     const pick = await (parent
       ? dialog.showOpenDialog(parent, {
-          title: '백업을 둘 폴더',
+          title: t('main.backup.exportTitle'),
           properties: ['openDirectory', 'createDirectory'],
         })
-      : dialog.showOpenDialog({ title: '백업을 둘 폴더', properties: ['openDirectory', 'createDirectory'] }));
+      : dialog.showOpenDialog({
+          title: t('main.backup.exportTitle'),
+          properties: ['openDirectory', 'createDirectory'],
+        }));
     const base = pick.filePaths[0];
     if (pick.canceled || !base) return '';
     const out = join(base, `jjakkung-backup-${stamp()}`);
@@ -51,17 +54,17 @@ export function createBackup(o: {
   /** 백업 폴더를 골라 지금 데이터를 바꾼다. 바꾸기 전 지금 것을 한 벌 남기고, 끝나면 다시 켠다 */
   async function importFrom(parent?: BrowserWindow): Promise<string> {
     const pick = await (parent
-      ? dialog.showOpenDialog(parent, { title: '가져올 백업 폴더', properties: ['openDirectory'] })
-      : dialog.showOpenDialog({ title: '가져올 백업 폴더', properties: ['openDirectory'] }));
+      ? dialog.showOpenDialog(parent, { title: t('main.backup.importTitle'), properties: ['openDirectory'] })
+      : dialog.showOpenDialog({ title: t('main.backup.importTitle'), properties: ['openDirectory'] }));
     const from = pick.filePaths[0];
     if (pick.canceled || !from) return '';
     if (!existsSync(join(from, 'jjakkung-backup.json')) || !existsSync(join(from, 'jjakkung.db')))
-      return '짝꿍 백업 폴더가 아니야';
+      return t('main.backup.notBackup');
     const ok = await dialog.showMessageBox({
       type: 'warning',
-      message: '지금 할 일, 메모, 펫을 이 백업으로 바꿀까?',
-      detail: '지금 데이터는 사용자 데이터 폴더의 before-import 폴더에 남겨 둬. 바꾼 뒤 짝꿍을 다시 켜.',
-      buttons: ['바꾸기', '그만두기'],
+      message: t('main.backup.confirm'),
+      detail: t('main.backup.confirmDetail'),
+      buttons: [t('main.backup.replace'), t('main.backup.cancel')],
       defaultId: 1,
       cancelId: 1,
     });
@@ -77,7 +80,7 @@ export function createBackup(o: {
     o.log('backup', '가져옴, 다시 켠다');
     app.relaunch();
     app.exit(0);
-    return '다시 켜는 중';
+    return t('main.backup.restarting');
   }
 
   return { exportTo, importFrom };
@@ -114,9 +117,9 @@ export async function exportPet(parent?: BrowserWindow): Promise<string> {
     poses: imgs.poses,
   };
   const opts = {
-    title: '펫 내보내기',
+    title: t('main.pet.exportTitle'),
     defaultPath: shareFileName(s.petName),
-    filters: [{ name: '짝꿍 펫', extensions: ['jjpet'] }],
+    filters: [{ name: t('main.pet.fileType'), extensions: ['jjpet'] }],
   };
   const r = await (parent ? dialog.showSaveDialog(parent, opts) : dialog.showSaveDialog(opts));
   if (r.canceled || !r.filePath) return '';
@@ -131,9 +134,9 @@ export async function importPet(
   asFriend = false,
 ): Promise<{ ok: boolean; message: string }> {
   const opts = {
-    title: '펫 가져오기',
+    title: t('main.pet.importTitle'),
     properties: ['openFile' as const],
-    filters: [{ name: '짝꿍 펫', extensions: ['jjpet'] }],
+    filters: [{ name: t('main.pet.fileType'), extensions: ['jjpet'] }],
   };
   const r = await (parent ? dialog.showOpenDialog(parent, opts) : dialog.showOpenDialog(opts));
   const file = r.filePaths[0];
@@ -142,7 +145,8 @@ export async function importPet(
   if ('error' in pet) return { ok: false, message: pet.error };
   if (asFriend) {
     const list = settings.get().friends;
-    if (list.length >= FRIENDS_MAX) return { ok: false, message: `친구 펫은 ${FRIENDS_MAX}마리까지야.` };
+    if (list.length >= FRIENDS_MAX)
+      return { ok: false, message: t('main.pet.friendsMax', { max: FRIENDS_MAX }) };
     const friend = {
       id: `f-${Date.now().toString(36)}`,
       name: pet.name,
@@ -150,13 +154,13 @@ export async function importPet(
       ...(pet.image ? { image: dataUrlToFile(pet.image, 'pet') } : {}),
     };
     settings.set({ friends: [...list, friend] });
-    return { ok: true, message: `${withParticle(pet.name, '이')} 친구로 왔어` };
+    return { ok: true, message: t('main.pet.friendCame', { name: pet.name }) };
   }
   const ask = await dialog.showMessageBox({
     type: 'question',
-    message: `${withParticle(pet.name, '으로')} 바꿀까?`,
-    detail: '지금 펫의 이름과 모습이 바뀌어. 할 일, 코인, 친밀도는 그대로야.',
-    buttons: ['바꾸기', '그만두기'],
+    message: t('main.pet.replaceAsk', { name: pet.name }),
+    detail: t('main.pet.replaceDetail'),
+    buttons: [t('main.backup.replace'), t('main.backup.cancel')],
     defaultId: 0,
     cancelId: 1,
   });
@@ -170,5 +174,5 @@ export async function importPet(
     petImage: pet.image ? dataUrlToFile(pet.image, 'pet') : null,
     petPoses: poses,
   });
-  return { ok: true, message: `${withParticle(pet.name, '이')} 왔어` };
+  return { ok: true, message: t('main.pet.came', { name: pet.name }) };
 }

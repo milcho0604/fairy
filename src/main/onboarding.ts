@@ -7,9 +7,11 @@ import {
   shell,
   systemPreferences,
 } from 'electron';
+import { t } from '../shared/i18n/index.ts';
 import { ONBOARD, type OnboardSnapshot } from '../shared/ipc.ts';
 import type { Settings } from '../shared/settings.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
+import { langArg } from './lang.ts';
 import { settings } from './settings.ts';
 
 const MAC_SCREEN_SETTINGS = 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture';
@@ -64,12 +66,12 @@ export function createOnboarding(o: {
       width: 480,
       height: 560,
       resizable: false,
-      title: '짝꿍 시작하기',
+      title: t('main.onboardingTitle'),
       show: false,
       ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
       webPreferences: {
         preload: join(import.meta.dirname, '../preload/index.cjs'),
-        additionalArguments: ['--jj-window=onboarding'],
+        additionalArguments: ['--jj-window=onboarding', langArg()],
         sandbox: true,
         contextIsolation: true,
       },

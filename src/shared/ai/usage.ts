@@ -1,5 +1,6 @@
 // AI 사용량. 사용자 요청(2026-10-02): claude 와 codex 를 같이 쓰니 남은 양이 보이면 좋겠다.
 // claude 는 답할 때마다 rate_limit_event 를, codex 는 대화 기록(rollout) 파일에 rate_limits 를 남긴다.
+import { getLang, locale, t } from '../i18n/index.ts';
 import type { AiProvider } from './types.ts';
 
 export interface UsageWindow {
@@ -20,12 +21,12 @@ export interface AiUsage {
 }
 
 function windowLabel(minutes: number): string {
-  if (minutes % 1440 === 0) return `${minutes / 1440}일`;
-  if (minutes % 60 === 0) return `${minutes / 60}시간`;
-  return `${minutes}분`;
+  if (minutes % 1440 === 0) return t('ai.usage.days', { n: minutes / 1440 });
+  if (minutes % 60 === 0) return t('ai.usage.hours', { n: minutes / 60 });
+  return t('ai.usage.minutes', { n: minutes });
 }
 
-const CLAUDE_WINDOWS: Record<string, string> = { five_hour: '5시간', seven_day: '7일' };
+const CLAUDE_WINDOWS: Record<string, number> = { five_hour: 300, seven_day: 10080 };
 
 /** claude stream-json 의 rate_limit_event.rate_limit_info 를 읽는다. */
 export function claudeUsage(info: unknown, now: number): AiUsage | undefined {
@@ -36,7 +37,7 @@ export function claudeUsage(info: unknown, now: number): AiUsage | undefined {
   for (const [key, w] of Object.entries(windows)) {
     if (typeof w?.utilization !== 'number') continue;
     list.push({
-      label: CLAUDE_WINDOWS[key] ?? key,
+      label: CLAUDE_WINDOWS[key] ? windowLabel(CLAUDE_WINDOWS[key]) : key,
       usedPercent: Math.round(w.utilization * 1000) / 10,
       resetsAt: typeof w.resetsAt === 'number' ? w.resetsAt : undefined,
     });
@@ -94,14 +95,19 @@ function findKey(value: unknown, key: string): unknown {
 export function resetText(resetsAt: number | undefined, now: number): string {
   if (!resetsAt) return '';
   const ms = resetsAt * 1000 - now;
-  if (ms <= 0) return '곧 초기화';
+  if (ms <= 0) return t('ai.usage.resetSoon');
   const minutes = Math.round(ms / 60000);
-  if (minutes < 60) return `${minutes}분 뒤 초기화`;
+  if (minutes < 60) return t('ai.usage.resetMinutes', { n: minutes });
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}시간 뒤 초기화`;
+  if (hours < 24) return t('ai.usage.resetHours', { n: hours });
   const d = new Date(resetsAt * 1000);
-  const day = '일월화수목금토'[d.getDay()];
-  return `${day} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} 초기화`;
+  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  // 한국어는 "목 15:00", 영어는 Intl 요일 ("Thu 15:00")
+  const day =
+    getLang() === 'ko'
+      ? '일월화수목금토'[d.getDay()]
+      : new Intl.DateTimeFormat(locale(), { weekday: 'short' }).format(d);
+  return t('ai.usage.resetAt', { when: `${day} ${hm}` });
 }
 
 export type UsageLevel = 'ok' | 'warn' | 'full';

@@ -1,8 +1,7 @@
 // 패널에서 쓰는 날짜, 시각 글.
 import { timeLabel } from '../../../shared/event-store.ts';
+import { t } from '../../../shared/i18n/index.ts';
 import { localDay } from '../../../shared/todo-store.ts';
-
-const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 
 export const minuteOf = (ms: number) => {
   const d = new Date(ms);
@@ -17,12 +16,12 @@ export function plusDays(day: string, n: number): string {
   return new Date(Date.UTC(y ?? 2000, (m ?? 1) - 1, (d ?? 1) + n)).toISOString().slice(0, 10);
 }
 
-/** "오늘", "내일", "10월 9일 (금)" */
+/** "오늘", "내일", "10월 9일 (금)" (영어는 "Fri, Oct 9") */
 export function dayHeading(day: string, today: string): string {
-  if (day === today) return '오늘';
-  if (day === plusDays(today, 1)) return '내일';
-  const [, m, d] = day.split('-').map(Number);
-  return `${m}월 ${d}일 (${WEEK[new Date(`${day}T00:00:00Z`).getUTCDay()]})`;
+  if (day === today) return t('panel.due.today');
+  if (day === plusDays(today, 1)) return t('panel.due.tomorrow');
+  const [y = 2000, m = 1, d = 1] = day.split('-').map(Number);
+  return t('panel.day.heading', { y, m, d });
 }
 
 /** datetime-local 입력칸 값 "2026-10-07T15:00" */
@@ -35,10 +34,10 @@ export function toInputValue(ms: number): string {
 /** "3분 전", "어제", "10월 2일" */
 export function ago(ms: number, now: number): string {
   const min = Math.floor((now - ms) / 60_000);
-  if (min < 1) return '방금';
-  if (min < 60) return `${min}분 전`;
-  if (localDay(ms) === localDay(now)) return `${Math.floor(min / 60)}시간 전`;
-  if (localDay(ms + 86_400_000) === localDay(now)) return '어제';
+  if (min < 1) return t('panel.ago.now');
+  if (min < 60) return t('panel.ago.min', { n: min });
+  if (localDay(ms) === localDay(now)) return t('panel.ago.hour', { n: Math.floor(min / 60) });
+  if (localDay(ms + 86_400_000) === localDay(now)) return t('panel.ago.yesterday');
   const d = new Date(ms);
-  return `${d.getMonth() + 1}월 ${d.getDate()}일`;
+  return t('panel.due.date', { m: d.getMonth() + 1, d: d.getDate() });
 }

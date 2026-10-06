@@ -9,6 +9,7 @@ import {
   net,
   protocol,
 } from 'electron';
+import { t } from '../shared/i18n/index.ts';
 import {
   MAKER,
   type MakerInfo,
@@ -21,6 +22,7 @@ import { cleanPetName, POSE_KINDS } from '../shared/settings.ts';
 import { CUSTOM_FOOD_COST } from '../shared/shop.ts';
 import { BG_MODEL, ensureModel, modelReady, verifiedModelUrl } from './bg-model.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
+import { langArg } from './lang.ts';
 import { settings } from './settings.ts';
 
 /** 다듬은 펫 그림 크기 상한. 화면에서 512px 로 줄여 보내므로 이보다 크면 이상한 값이다. */
@@ -110,7 +112,7 @@ export function createMaker(
   );
 
   ipcMain.handle(MAKER.ensureModel, async (e) => {
-    if (!fromMaker(e)) return { ok: false, error: '창을 다시 열어 줘.' };
+    if (!fromMaker(e)) return { ok: false, error: t('main.maker.reopen') };
     download = new AbortController();
     try {
       await ensureModel((ratio) => {
@@ -149,13 +151,12 @@ export function createMaker(
       return { ok: true };
     }
     const m = typeof dataUrl === 'string' ? /^data:image\/(png|gif|webp);base64,/.exec(dataUrl) : null;
-    if (!m) return { ok: false, error: '그림 형식이 이상해.' };
+    if (!m) return { ok: false, error: t('main.maker.badFormat') };
     const bytes = Buffer.from(dataUrl.slice(m[0].length), 'base64');
     // 머리말로 형식을 확인하고 크기를 본다 (data URL 의 형식 글자는 믿지 않는다).
     const kind = kindOf(bytes);
     const max = kind === 'png' ? MAX_PNG_BYTES : MAX_ANIMATED_BYTES;
-    if (!kind || bytes.length > max)
-      return { ok: false, error: '그림이 너무 크거나 PNG, GIF, WebP 가 아니야.' };
+    if (!kind || bytes.length > max) return { ok: false, error: t('main.maker.tooBigAny') };
     mkdirSync(petsDir(), { recursive: true });
     const file = target === 'main' ? `pet-${Date.now()}.${kind}` : `pose-${target}-${Date.now()}.${kind}`;
     writeFileSync(join(petsDir(), file), bytes);
@@ -171,10 +172,10 @@ export function createMaker(
   function saveFood(dataUrl: string | null, name: string) {
     const prefix = 'data:image/png;base64,';
     if (!makeFood || typeof dataUrl !== 'string' || !dataUrl.startsWith(prefix))
-      return { ok: false, error: '그림 형식이 이상해.' };
+      return { ok: false, error: t('main.maker.badFormat') };
     const bytes = Buffer.from(dataUrl.slice(prefix.length), 'base64');
     if (kindOf(bytes) !== 'png' || bytes.length > MAX_PNG_BYTES)
-      return { ok: false, error: '그림이 너무 크거나 PNG 가 아니야.' };
+      return { ok: false, error: t('main.maker.tooBigPng') };
     mkdirSync(petsDir(), { recursive: true });
     const file = `food-${Date.now()}.png`;
     writeFileSync(join(petsDir(), file), bytes);
@@ -207,12 +208,12 @@ export function createMaker(
       height: 660,
       minWidth: 460,
       minHeight: 560,
-      title: '사진으로 펫 만들기',
+      title: t('main.maker.title'),
       show: false,
       ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
       webPreferences: {
         preload: join(import.meta.dirname, '../preload/index.cjs'),
-        additionalArguments: ['--jj-window=maker'],
+        additionalArguments: ['--jj-window=maker', langArg()],
         sandbox: true,
         contextIsolation: true,
       },

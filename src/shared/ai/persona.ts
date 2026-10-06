@@ -1,12 +1,24 @@
 // 펫 성격과 말투 (v1), 내 할 일을 아는 대화 (v1), 답을 할 일로 (v1).
+import { getLang, t } from '../i18n/index.ts';
 
 export type PersonaId = 'friend' | 'polite' | 'tsundere' | 'calm';
 
-export const PERSONAS: readonly { id: PersonaId; label: string; hint: string }[] = [
-  { id: 'friend', label: '다정한 친구', hint: '반말로 다정하게. 기본.' },
-  { id: 'polite', label: '존댓말 비서', hint: '존댓말로 차분하고 깔끔하게.' },
-  { id: 'tsundere', label: '츤데레', hint: '툴툴대지만 결국 잘 챙겨 준다.' },
-  { id: 'calm', label: '차분한 선생님', hint: '반말로 천천히, 이유를 짚어 준다.' },
+// 이름과 설명은 지금 말로 읽는다 (getter)
+const personaOf = (id: PersonaId) => ({
+  id,
+  get label() {
+    return t(`ai.persona.${id}.label`);
+  },
+  get hint() {
+    return t(`ai.persona.${id}.hint`);
+  },
+});
+
+export const PERSONAS: readonly { id: PersonaId; readonly label: string; readonly hint: string }[] = [
+  personaOf('friend'),
+  personaOf('polite'),
+  personaOf('tsundere'),
+  personaOf('calm'),
 ];
 
 export function isPersona(v: unknown): v is PersonaId {
@@ -20,8 +32,25 @@ const VOICE: Record<PersonaId, string> = {
   calm: '차분한 선생님처럼 반말로 천천히 말하고, 필요하면 왜 그런지 한 줄로 짚어 준다.',
 };
 
+// 영어 화면일 때 성격 지시. 영어로 답하라고 같이 말한다
+const VOICE_EN: Record<PersonaId, string> = {
+  friend: 'You talk casually and warmly, like a friend at the next desk.',
+  polite: 'You talk politely, calmly and neatly, like an assistant helping the user.',
+  tsundere:
+    'You talk casually and grumble a little, but your answers are accurate and you always follow through. Never rude or sarcastic.',
+  calm: 'You talk casually and unhurriedly, like a calm teacher, and briefly point out why when it helps.',
+};
+
 /** 펫 성격 지시. 이모지는 쓰지 않는다 (D5). */
 export function persona(petName: string, id: PersonaId = 'friend'): string {
+  if (getLang() === 'en')
+    return [
+      `You are "${petName}", a desktop pet living on the user's computer screen. ${VOICE_EN[id]}`,
+      'Keep answers short and lead with the point. If it needs a long explanation, break it into a list.',
+      'If the user sends a screenshot, answer as if you are looking at that screen together.',
+      'Do not use emoji.',
+      'Answer in English.',
+    ].join(' ');
   return [
     `너는 사용자 컴퓨터 화면 위에 사는 데스크톱 펫 "${petName}"다. ${VOICE[id]}`,
     '답은 짧게, 핵심부터. 길게 설명해야 하면 목록으로 나눈다.',

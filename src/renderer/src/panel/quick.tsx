@@ -2,6 +2,8 @@ import { StrictMode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import '../theme.css';
 import './panel.css';
+import { t } from '../../../shared/i18n/index.ts';
+import { initLang } from '../lang.ts';
 import { PetFace } from '../PetFace.tsx';
 
 const bridge = window.jjakkungPanel;
@@ -10,6 +12,7 @@ const bridge = window.jjakkungPanel;
 function QuickAdd() {
   const [text, setText] = useState('');
   const [msg, setMsg] = useState('');
+  const [failed, setFailed] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => {
     ref.current?.focus();
@@ -26,8 +29,8 @@ function QuickAdd() {
       <input
         ref={ref}
         value={text}
-        aria-label="할 일 한 줄"
-        placeholder="할 일이나 일정 한 줄 (예: 내일 보고서 쓰기!, 금요일 3시 회의)"
+        aria-label={t('panel.quick.label')}
+        placeholder={t('panel.quick.placeholder')}
         onChange={(e) => {
           setText(e.target.value);
           setMsg('');
@@ -36,19 +39,22 @@ function QuickAdd() {
           if (e.key !== 'Enter' || e.nativeEvent.isComposing || e.keyCode === 229) return;
           const r = await bridge.add(text);
           if (!r.ok) {
-            setMsg(r.error ?? '못 넣었어');
+            setMsg(r.error ?? t('panel.add.failed'));
+            setFailed(true);
             return;
           }
           setText('');
-          setMsg(r.kind === 'event' ? '일정에 넣었어' : '할 일에 넣었어');
+          setFailed(false);
+          setMsg(r.kind === 'event' ? t('panel.quick.event') : t('panel.quick.todo'));
           setTimeout(() => bridge.close(), 500);
         }}
       />
-      {msg && <span className="quick-msg">{msg}</span>}
+      {msg && <span className={`quick-msg ${failed ? 'error' : ''}`}>{msg}</span>}
     </div>
   );
 }
 
+initLang('common.title.quick');
 const root = document.getElementById('root');
 if (!root) throw new Error('#root 가 없다');
 createRoot(root).render(

@@ -1,6 +1,6 @@
 import type { AiStatus } from '../../../shared/ai/types.ts';
+import { t } from '../../../shared/i18n/index.ts';
 import type { ProviderView } from '../../../shared/ipc.ts';
-import { withParticle } from '../../../shared/josa.ts';
 
 export type Dot = 'unknown' | 'off' | 'warn' | 'ok' | 'maybe';
 
@@ -16,10 +16,11 @@ export function isReady(s?: AiStatus): boolean {
 }
 
 export function statusText(p: ProviderView, s?: AiStatus): string {
-  if (!s) return '확인 중';
-  if (!s.installed) return `${withParticle(p.label, '을')} 이 컴퓨터에서 못 찾았어. ${p.installHint}`;
-  if (s.loggedIn === false) return `${p.label} 로그인이 필요해. ${p.loginHint ?? ''}`.trim();
-  if (s.loggedIn === undefined)
-    return `${p.label} 찾음${s.version ? ` (${s.version})` : ''}. 로그인은 써 봐야 알 수 있어.`;
-  return `${p.label} 준비됨${s.version ? ` (${s.version})` : ''}`;
+  if (!s) return t('chat.checking');
+  if (!s.installed) return t('chat.status.notFound', { label: p.label, hint: p.installHint });
+  if (s.loggedIn === false)
+    return t('chat.status.needLogin', { label: p.label, hint: p.loginHint ?? '' }).trim();
+  const version = s.version ? ` (${s.version})` : '';
+  if (s.loggedIn === undefined) return t('chat.status.found', { label: p.label, version });
+  return t('chat.status.ready', { label: p.label, version });
 }

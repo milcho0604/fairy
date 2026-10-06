@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AiProvider, AiStatus } from '../../../shared/ai/types.ts';
+import { t } from '../../../shared/i18n/index.ts';
 import type { ProviderView } from '../../../shared/ipc.ts';
 import { dotOf, statusText } from './providerStatus.ts';
 
@@ -72,8 +73,8 @@ export function ProviderPicker({ providers, status, current, disabled, onPick, o
               >
                 <span className={`dot ${dotOf(s)}`} aria-hidden="true" />
                 <span className="name">{p.label}</span>
-                {!p.verified && <span className="tag">확인 전</span>}
-                {s && !s.installed && <span className="tag">없음</span>}
+                {!p.verified && <span className="tag">{t('chat.notVerified')}</span>}
+                {s && !s.installed && <span className="tag">{t('chat.missing')}</span>}
               </button>
             );
           })}
@@ -86,7 +87,7 @@ export function ProviderPicker({ providers, status, current, disabled, onPick, o
               onManage();
             }}
           >
-            <span className="name">AI 추가, 관리</span>
+            <span className="name">{t('chat.manageMenu')}</span>
           </button>
         </div>
       )}

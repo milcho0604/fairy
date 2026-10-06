@@ -1,4 +1,5 @@
 // 말풍선 수다 빈도. 기획서 "펫 동작 규칙"의 수다 빈도 표.
+import { t } from './i18n/index.ts';
 
 export type ChatterLevel = 'quiet' | 'normal' | 'chatty';
 
@@ -11,10 +12,17 @@ export type ChatterLevel = 'quiet' | 'normal' | 'chatty';
  */
 export type BubbleKind = 'answer' | 'schedule' | 'system' | 'idle-talk';
 
-export const LEVEL_LABEL: Record<ChatterLevel, string> = {
-  quiet: '조용히',
-  normal: '보통',
-  chatty: '수다쟁이',
+// 이름은 지금 말로 읽는다 (getter)
+export const LEVEL_LABEL: Readonly<Record<ChatterLevel, string>> = {
+  get quiet() {
+    return t('pet.chatter.quiet');
+  },
+  get normal() {
+    return t('pet.chatter.normal');
+  },
+  get chatty() {
+    return t('pet.chatter.chatty');
+  },
 };
 
 const ENABLED: Record<ChatterLevel, readonly BubbleKind[]> = {

@@ -46,8 +46,9 @@ export async function loadPetImage(dataUrl: string): Promise<HTMLImageElement | 
     try {
       const anim = await decodeFrames(dataUrl, type);
       if (anim) return anim;
-    } catch {
-      // 못 풀면 한 장짜리로 보여 준다
+    } catch (err) {
+      // 못 풀면 한 장짜리로 보여 준다. 조용히 넘기면 움직이지 않는 이유가 안 보여 남긴다
+      console.warn('[jj] 움직이는 그림을 못 풀었어', err);
     }
   }
   return new Promise((resolve) => {
@@ -59,7 +60,9 @@ export async function loadPetImage(dataUrl: string): Promise<HTMLImageElement | 
 }
 
 async function decodeFrames(dataUrl: string, type: string): Promise<AnimatedImage | undefined> {
-  const data = await (await fetch(dataUrl)).arrayBuffer();
+  // fetch(dataUrl) 은 펫 창 CSP(connect-src 없음)에 막힌다. base64 를 직접 푼다
+  const b64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+  const data = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
   const decoder = new ImageDecoder({ data, type });
   await decoder.tracks.ready;
   const track = decoder.tracks.selectedTrack;

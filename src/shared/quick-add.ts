@@ -1,5 +1,6 @@
 // 빠른 입력 한 줄을 할 일로 (P2-04). "내일 보고서 쓰기!" → 제목 "보고서 쓰기", 마감 내일, 중요.
 // 반복(v1): "매일 운동", "평일 스탠드업", "매주 주간 보고" → 반복 할 일, 마감 오늘(평일은 다음 평일).
+import { t } from './i18n/index.ts';
 import type { Repeat } from './todo-store.ts';
 
 export interface QuickTodo {
@@ -11,7 +12,8 @@ export interface QuickTodo {
 
 const REPEAT_WORDS: Record<string, Repeat> = { 매일: 'daily', 평일: 'weekdays', 매주: 'weekly' };
 
-const DAY_WORDS: Record<string, number> = { 오늘: 0, 내일: 1, 모레: 2 };
+// 영어는 today, tomorrow 만 (v2 다국어). 날짜, 시각 같은 나머지 말은 한국어로만 읽는다
+const DAY_WORDS: Record<string, number> = { 오늘: 0, 내일: 1, 모레: 2, today: 0, tomorrow: 1 };
 
 function addDays(day: string, n: number): string {
   const [y, m, d] = day.split('-').map(Number);
@@ -58,9 +60,9 @@ export function parseQuickTodo(text: string, today: string): QuickTodo {
 
 /** 마감일을 사람 말로: 오늘, 내일, 어제까지, 10월 5일. */
 export function dueLabel(due: string, today: string): { text: string; overdue: boolean } {
-  if (due === today) return { text: '오늘', overdue: false };
-  if (due === addDays(today, 1)) return { text: '내일', overdue: false };
-  if (due < today)
-    return { text: `${Number(due.slice(5, 7))}월 ${Number(due.slice(8, 10))}일 지남`, overdue: true };
-  return { text: `${Number(due.slice(5, 7))}월 ${Number(due.slice(8, 10))}일`, overdue: false };
+  if (due === today) return { text: t('panel.due.today'), overdue: false };
+  if (due === addDays(today, 1)) return { text: t('panel.due.tomorrow'), overdue: false };
+  const date = { m: Number(due.slice(5, 7)), d: Number(due.slice(8, 10)) };
+  if (due < today) return { text: t('panel.due.past', date), overdue: true };
+  return { text: t('panel.due.date', date), overdue: false };
 }

@@ -1,9 +1,15 @@
 // claude CLI 의 stream-json 입력을 만들고 출력을 읽는다. 0단계 검증 C1~C6, L5, L13.
+import { t } from '../i18n/index.ts';
 import { classifyError } from './errors.ts';
 import type { AiEvent, ImageAttachment } from './types.ts';
 import { claudeUsage } from './usage.ts';
 
-const LABEL = { label: 'Claude', loginHint: '터미널에서 claude 로 로그인해 줘.' };
+const LABEL = {
+  label: 'Claude',
+  get loginHint() {
+    return t('ai.login.claude');
+  },
+};
 
 export interface ClaudeTurn {
   text: string;

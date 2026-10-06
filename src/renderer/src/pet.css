@@ -1,3 +1,8 @@
+[hidden] {
+  /* biome-ignore lint/complexity/noImportantStyles: hidden 속성은 어떤 display 규칙보다 이겨야 한다 */
+  display: none !important;
+}
+
 html,
 body {
   margin: 0;
@@ -90,6 +95,7 @@ body {
 
 #bubble .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   margin-top: 7px;
 }
@@ -102,6 +108,7 @@ body {
   color: #1f2328;
   font: inherit;
   font-size: 12px;
+  white-space: nowrap;
   cursor: pointer;
 }
 

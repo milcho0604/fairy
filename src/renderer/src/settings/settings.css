@@ -119,7 +119,6 @@ small {
 
 input[type="range"] {
   width: 100%;
-  accent-color: var(--accent);
 }
 
 .toggle {
@@ -146,7 +145,8 @@ input[type="range"] {
   padding: 0;
   border: 0;
   border-radius: 999px;
-  background: var(--line);
+  /* var(--line) 은 흰 손잡이와 대비가 1.3 이라 묻힌다 */
+  background: color-mix(in srgb, var(--muted) 45%, var(--line));
   cursor: pointer;
   transition: background 0.15s;
 }
@@ -172,7 +172,7 @@ input[type="range"] {
 }
 
 [role="switch"]:disabled {
-  opacity: 0.45;
+  opacity: 0.6;
   cursor: default;
 }
 
@@ -352,6 +352,10 @@ section.focus .card {
   border-radius: 8px;
   background: var(--bg);
   cursor: pointer;
+}
+
+.field .days button:not(.on):hover {
+  border-color: var(--accent);
 }
 
 .field .days button.on {

@@ -1,5 +1,5 @@
 // CLI 오류 문구를 사용자에게 보여 줄 오류로 바꾼다.
-import { withParticle } from '../josa.ts';
+import { t } from '../i18n/index.ts';
 import type { AiError } from './types.ts';
 
 /** 오류 문장에 필요한 AI 정보. */
@@ -22,34 +22,34 @@ export function classifyError(ai: ErrorSubject, raw: string): AiError {
     return {
       kind: 'rate-limit',
       message: retryAt
-        ? `${ai.label} 사용 한도에 걸렸어. ${retryAt} 이후에 다시 물어봐 줘.`
-        : `${ai.label} 사용 한도에 걸렸어. 조금 뒤에 다시 물어봐 줘.`,
+        ? t('ai.error.rateLimitAt', { label: ai.label, at: retryAt })
+        : t('ai.error.rateLimit', { label: ai.label }),
       retryAt,
     };
   }
   if (NOT_LOGGED_IN.test(text)) {
     return {
       kind: 'not-logged-in',
-      message: `${ai.label}에 로그인이 안 돼 있어. ${ai.loginHint ?? '터미널에서 로그인해 줘.'}`,
+      message: t('ai.error.notLoggedIn', { label: ai.label, hint: ai.loginHint ?? t('ai.error.loginHint') }),
     };
   }
   const short = text.split('\n').find((l) => l.trim()) ?? '';
   return {
     kind: 'failed',
-    message: `${withParticle(ai.label, '이')} 답하다 멈췄어.${short ? ` (${short.slice(0, 160)})` : ''}`,
+    message: t('ai.error.failed', { label: ai.label, detail: short ? ` (${short.slice(0, 160)})` : '' }),
   };
 }
 
 export function notInstalled(ai: ErrorSubject): AiError {
   return {
     kind: 'not-installed',
-    message: `${withParticle(ai.label, '을')} 이 컴퓨터에서 못 찾았어. ${ai.installHint ?? ''}`.trim(),
+    message: t('ai.error.notInstalled', { label: ai.label, hint: ai.installHint ?? '' }).trim(),
   };
 }
 
 export function timedOut(ai: ErrorSubject, seconds: number): AiError {
   return {
     kind: 'timeout',
-    message: `${withParticle(ai.label, '이')} ${seconds}초 동안 답이 없어서 멈췄어. 다시 물어봐 줘.`,
+    message: t('ai.error.timeout', { label: ai.label, seconds }),
   };
 }

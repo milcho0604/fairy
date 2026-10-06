@@ -1,9 +1,11 @@
 import { join, sep } from 'node:path';
 import { app, BrowserWindow, clipboard, type IpcMainEvent, type IpcMainInvokeEvent, ipcMain } from 'electron';
 import { type BetaReport, reportText, type StatStore } from '../shared/beta-stats.ts';
+import { t } from '../shared/i18n/index.ts';
 import { type MakerTarget, SETTINGS, type SettingsSection, type SettingsSnapshot } from '../shared/ipc.ts';
 import type { Settings } from '../shared/settings.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
+import { langArg } from './lang.ts';
 import { settings } from './settings.ts';
 
 export interface SettingsWindowOptions {
@@ -90,6 +92,11 @@ export function createSettingsWindow({
   );
   ipcMain.handle(SETTINGS.syncCalendar, (e) => (fromSettings(e) ? v2.syncCalendar() : ''));
   ipcMain.handle(SETTINGS.refreshMcp, (e) => (fromSettings(e) ? v2.refreshMcp() : []));
+  ipcMain.on(SETTINGS.relaunch, (e) => {
+    if (!fromSettings(e)) return;
+    app.relaunch();
+    app.exit(0);
+  });
   ipcMain.on(SETTINGS.openOnboarding, (e) => {
     if (fromSettings(e)) openOnboarding();
   });
@@ -110,12 +117,12 @@ export function createSettingsWindow({
       height: 620,
       minWidth: 360,
       minHeight: 420,
-      title: '짝꿍 설정',
+      title: t('common.title.settings'),
       show: false,
       ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
       webPreferences: {
         preload: join(import.meta.dirname, '../preload/index.cjs'),
-        additionalArguments: ['--jj-window=settings'],
+        additionalArguments: ['--jj-window=settings', langArg()],
         sandbox: true,
         contextIsolation: true,
       },
@@ -142,6 +149,10 @@ export function createSettingsWindow({
 /** 복사 글에 넣을 운영체제 (판과 칩까지만) */
 function osLabel(): string {
   const name =
-    process.platform === 'darwin' ? '맥' : process.platform === 'win32' ? '윈도우' : process.platform;
+    process.platform === 'darwin'
+      ? t('settings.os.mac')
+      : process.platform === 'win32'
+        ? t('settings.os.win')
+        : process.platform;
   return `${name} ${process.getSystemVersion()} ${process.arch}`;
 }

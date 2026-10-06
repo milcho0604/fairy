@@ -1,5 +1,6 @@
 // 일정 (v1). 시간이 되면 펫이 말풍선으로 알린다. 구글 캘린더는 v2.
 import type { Db } from './db-schema.ts';
+import { t } from './i18n/index.ts';
 
 export interface CalEvent {
   id: number;
@@ -294,10 +295,11 @@ export function parseQuickEvent(text: string, today: string, nowMinute: number):
   return { title, day, minute, durationMin };
 }
 
-/** 14:05 → "오후 2:05" */
+/** 14:05 → "오후 2:05" (영어는 "2:05 PM") */
 export function timeLabel(minute: number): string {
   const h = Math.floor(minute / 60);
   const m = minute % 60;
   const h12 = h % 12 === 0 ? 12 : h % 12;
-  return `${h < 12 ? '오전' : '오후'} ${h12}:${String(m).padStart(2, '0')}`;
+  const vars = { h: h12, m: String(m).padStart(2, '0') };
+  return h < 12 ? t('panel.time.am', vars) : t('panel.time.pm', vars);
 }

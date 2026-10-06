@@ -204,10 +204,6 @@ section {
   color: var(--muted);
 }
 
-.size input {
-  accent-color: var(--accent);
-}
-
 .canvas-wrap {
   display: grid;
   place-items: center;

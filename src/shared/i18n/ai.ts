@@ -1,0 +1,86 @@
+import { withParticle } from '../josa.ts';
+import type { Translation } from './types.ts';
+
+// AI 연결, 성격, 오류, 사용량 글
+export const ko = {
+  // 성격 (설정 화면에 보인다)
+  'ai.persona.friend.label': '다정한 친구',
+  'ai.persona.friend.hint': '반말로 다정하게. 기본.',
+  'ai.persona.polite.label': '존댓말 비서',
+  'ai.persona.polite.hint': '존댓말로 차분하고 깔끔하게.',
+  'ai.persona.tsundere.label': '츤데레',
+  'ai.persona.tsundere.hint': '툴툴대지만 결국 잘 챙겨 준다.',
+  'ai.persona.calm.label': '차분한 선생님',
+  'ai.persona.calm.hint': '반말로 천천히, 이유를 짚어 준다.',
+  // 설치, 로그인 안내
+  'ai.install.claude': 'Claude Code 를 설치하고 터미널에서 claude 로 한 번 로그인해 줘.',
+  'ai.login.claude': '터미널에서 claude 로 로그인해 줘.',
+  'ai.install.codex': 'Codex CLI 를 설치하고 터미널에서 codex login 으로 로그인해 줘.',
+  'ai.login.codex': '터미널에서 codex login 으로 로그인해 줘.',
+  'ai.install.cursor': 'Cursor Agent CLI 를 설치하고 터미널에서 cursor-agent login 으로 로그인해 줘.',
+  'ai.login.cursor': '터미널에서 cursor-agent login 으로 로그인해 줘.',
+  'ai.install.gemini': 'Gemini CLI 를 설치하고 터미널에서 gemini 를 한 번 실행해 로그인해 줘.',
+  'ai.install.custom': (v: { bin: string }) => `터미널에서 ${v.bin} 명령이 실행되는지 확인해 줘.`,
+  'ai.custom.noName': '이름을 적어 줘.',
+  'ai.custom.badBin': '명령은 실행 파일 이름 하나만 적어 줘. 나머지는 인자 칸에.',
+  // 오류
+  'ai.error.rateLimitAt': (v: { label: string; at: string }) =>
+    `${v.label} 사용 한도에 걸렸어. ${v.at} 이후에 다시 물어봐 줘.`,
+  'ai.error.rateLimit': (v: { label: string }) => `${v.label} 사용 한도에 걸렸어. 조금 뒤에 다시 물어봐 줘.`,
+  'ai.error.notLoggedIn': (v: { label: string; hint: string }) =>
+    `${v.label}에 로그인이 안 돼 있어. ${v.hint}`,
+  'ai.error.loginHint': '터미널에서 로그인해 줘.',
+  'ai.error.failed': (v: { label: string; detail: string }) =>
+    `${withParticle(v.label, '이')} 답하다 멈췄어.${v.detail}`,
+  'ai.error.notInstalled': (v: { label: string; hint: string }) =>
+    `${withParticle(v.label, '을')} 이 컴퓨터에서 못 찾았어. ${v.hint}`,
+  'ai.error.timeout': (v: { label: string; seconds: number }) =>
+    `${withParticle(v.label, '이')} ${v.seconds}초 동안 답이 없어서 멈췄어. 다시 물어봐 줘.`,
+  'ai.error.cancelled': '질문을 멈췄어.',
+  'ai.error.exitCode': (v: { code: string }) => `종료 코드 ${v.code}`,
+  // 사용량
+  'ai.usage.days': (v: { n: number }) => `${v.n}일`,
+  'ai.usage.hours': (v: { n: number }) => `${v.n}시간`,
+  'ai.usage.minutes': (v: { n: number }) => `${v.n}분`,
+  'ai.usage.resetSoon': '곧 초기화',
+  'ai.usage.resetMinutes': (v: { n: number }) => `${v.n}분 뒤 초기화`,
+  'ai.usage.resetHours': (v: { n: number }) => `${v.n}시간 뒤 초기화`,
+  'ai.usage.resetAt': (v: { when: string }) => `${v.when} 초기화`,
+};
+
+export const en: Translation<typeof ko> = {
+  'ai.persona.friend.label': 'Warm friend',
+  'ai.persona.friend.hint': 'Casual and kind. The default.',
+  'ai.persona.polite.label': 'Polite assistant',
+  'ai.persona.polite.hint': 'Polite, calm and tidy.',
+  'ai.persona.tsundere.label': 'Tsundere',
+  'ai.persona.tsundere.hint': 'Grumbles a bit, but always looks out for you.',
+  'ai.persona.calm.label': 'Calm teacher',
+  'ai.persona.calm.hint': 'Casual and unhurried, explains the why.',
+  'ai.install.claude': 'Install Claude Code and log in once by running claude in a terminal.',
+  'ai.login.claude': 'Log in by running claude in a terminal.',
+  'ai.install.codex': 'Install the Codex CLI and log in with codex login in a terminal.',
+  'ai.login.codex': 'Log in with codex login in a terminal.',
+  'ai.install.cursor': 'Install the Cursor Agent CLI and log in with cursor-agent login in a terminal.',
+  'ai.login.cursor': 'Log in with cursor-agent login in a terminal.',
+  'ai.install.gemini': 'Install the Gemini CLI and run gemini once in a terminal to log in.',
+  'ai.install.custom': (v) => `Check that the ${v.bin} command runs in a terminal.`,
+  'ai.custom.noName': 'Give it a name.',
+  'ai.custom.badBin': 'Put just the program name in Command. The rest goes in Arguments.',
+  'ai.error.rateLimitAt': (v) => `${v.label} hit its usage limit. Ask again after ${v.at}.`,
+  'ai.error.rateLimit': (v) => `${v.label} hit its usage limit. Ask again in a bit.`,
+  'ai.error.notLoggedIn': (v) => `You're not logged in to ${v.label}. ${v.hint}`,
+  'ai.error.loginHint': 'Log in from a terminal.',
+  'ai.error.failed': (v) => `${v.label} stopped while answering.${v.detail}`,
+  'ai.error.notInstalled': (v) => `Couldn't find ${v.label} on this computer. ${v.hint}`,
+  'ai.error.timeout': (v) => `${v.label} didn't answer for ${v.seconds} seconds, so I stopped. Ask again.`,
+  'ai.error.cancelled': 'Stopped the question.',
+  'ai.error.exitCode': (v) => `Exit code ${v.code}`,
+  'ai.usage.days': (v) => `${v.n}d`,
+  'ai.usage.hours': (v) => `${v.n}h`,
+  'ai.usage.minutes': (v) => `${v.n}m`,
+  'ai.usage.resetSoon': 'Resets soon',
+  'ai.usage.resetMinutes': (v) => `Resets in ${v.n} min`,
+  'ai.usage.resetHours': (v) => (Number(v.n) === 1 ? 'Resets in 1 hour' : `Resets in ${v.n} hours`),
+  'ai.usage.resetAt': (v) => `Resets ${v.when}`,
+};

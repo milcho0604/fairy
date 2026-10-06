@@ -13,9 +13,10 @@ import {
 } from 'electron';
 import { fitWithin, isClick, toPixels } from '../shared/capture.ts';
 import type { Rect } from '../shared/geometry.ts';
+import { t } from '../shared/i18n/index.ts';
 import { LOOK, type OutgoingImage } from '../shared/ipc.ts';
-import { withParticle } from '../shared/josa.ts';
 import { focusWindow, showWindow } from './focus.ts';
+import { langArg } from './lang.ts';
 
 /** AI 에 보낼 그림의 긴 변 최대값 (채팅 창 붙이기와 같은 기준). */
 const MAX_SIDE = 2000;
@@ -82,7 +83,7 @@ export function createLookTogether({ petName, hideOwnWindows, onImage, log }: Lo
         show: false,
         webPreferences: {
           preload: join(import.meta.dirname, '../preload/index.cjs'),
-          additionalArguments: ['--jj-window=overlay'],
+          additionalArguments: ['--jj-window=overlay', langArg()],
           sandbox: true,
           contextIsolation: true,
         },
@@ -90,7 +91,7 @@ export function createLookTogether({ petName, hideOwnWindows, onImage, log }: Lo
       win.setAlwaysOnTop(true, 'screen-saver');
       win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
       win.setBounds(display.bounds); // 맥이 메뉴 막대 아래로 밀어낸 경우를 되돌린다
-      const query = { name: withParticle(petName(), '이랑') };
+      const query = { name: petName() };
       const devUrl = process.env.ELECTRON_RENDERER_URL;
       if (devUrl) win.loadURL(`${devUrl}/overlay.html?${new URLSearchParams(query)}`);
       else win.loadFile(join(import.meta.dirname, '../renderer/overlay.html'), { query });
@@ -165,11 +166,9 @@ export function createLookTogether({ petName, hideOwnWindows, onImage, log }: Lo
     const isMac = process.platform === 'darwin';
     const { response } = await dialog.showMessageBox({
       type: 'info',
-      message: `${withParticle(petName(), '이')} 화면을 보려면 화면 기록 권한이 필요해`,
-      detail: isMac
-        ? '시스템 설정 > 개인정보 보호 및 보안 > 화면 및 시스템 오디오 녹음에서 Jjakkung 을 켜 줘. 켠 다음에는 짝꿍을 껐다 켜야 해.'
-        : '화면을 찍지 못했어. 다른 프로그램이 화면 캡처를 막고 있지 않은지 확인해 줘.',
-      buttons: isMac ? ['설정 열기', '닫기'] : ['닫기'],
+      message: t('chat.look.permission', { name: petName() }),
+      detail: isMac ? t('chat.look.permissionMac') : t('chat.look.permissionOther'),
+      buttons: isMac ? [t('chat.look.openSettings'), t('chat.close')] : [t('chat.close')],
       defaultId: 0,
     });
     if (isMac && response === 0) await shell.openExternal(MAC_SCREEN_SETTINGS);

@@ -4,6 +4,7 @@ import { ACHIEVEMENTS } from '../shared/achieve.ts';
 import { todoContext } from '../shared/ai/persona.ts';
 import { timeLabel } from '../shared/event-store.ts';
 import { HIDE_SEEK, pickHideSpot } from '../shared/hide-seek.ts';
+import { locale, t } from '../shared/i18n/index.ts';
 import { IPC, type PetStatus, type PlayKind } from '../shared/ipc.ts';
 import { FULLNESS, localDay } from '../shared/todo-store.ts';
 import { mcpServers, refreshMcpServers } from './ai/mcp-list.ts';
@@ -12,7 +13,9 @@ import { watchBetaStats } from './beta.ts';
 import { watchCalendar } from './calendar.ts';
 import { createChat } from './chat.ts';
 import { openStore } from './db.ts';
+import { confineTestDisplay } from './focus.ts';
 import { createFriends } from './friends.ts';
+import { initLang } from './lang.ts';
 import { createLookTogether } from './look-together.ts';
 import { createMaker, foodImageDataUrl, petImages, registerModelScheme, removeFoodImage } from './maker.ts';
 import { createOnboarding } from './onboarding.ts';
@@ -43,10 +46,17 @@ if (!process.env.JJ_GPU_PROCESS) app.commandLine.appendSwitch('in-process-gpu');
 
 registerModelScheme();
 
+// 화면 말은 메뉴와 창을 만들기 전에 정한다 (v2 다국어). 시각 입력칸 같은 기본 칸은 Chromium 말을 따라서
+// 준비 전에 같은 말로 맞춘다
+initLang();
+app.commandLine.appendSwitch('lang', locale());
+
 // 펫은 하나만 띄운다. 두 번째로 실행하면 그냥 끝난다.
 if (!app.requestSingleInstanceLock()) app.quit();
 
 app.whenReady().then(() => {
+  // 시험 인스턴스는 처음부터 맥북 화면에만 뜬다 (쓰는 사람의 작업 모니터에 잠깐이라도 뜨지 않게)
+  confineTestDisplay();
   // 가져온 백업 저장 파일이 기다리면 저장 파일을 열기 전에 바꿔 끼운다 (v2)
   applyPendingImport();
   // 펫 앱은 Dock 아이콘 없이 뜬다. 끝내기는 펫 우클릭 메뉴나 메뉴 막대 아이콘에서 한다.
@@ -90,10 +100,10 @@ app.whenReady().then(() => {
       if (chatInFront) return;
       const action = await pet.say({
         kind: 'answer',
-        text: `답 왔어: ${preview(text)}`,
+        text: t('pet.answer', { text: preview(text) }),
         buttons: [
-          { id: 'open', label: '보기' },
-          { id: 'later', label: '나중에' },
+          { id: 'open', label: t('pet.answerOpen') },
+          { id: 'later', label: t('pet.life.later') },
         ],
       });
       if (action === 'open' || action === 'dismiss') chat.open(pet.bounds());
@@ -121,7 +131,7 @@ app.whenReady().then(() => {
       makePet: () => maker.open(),
       petted: () => petLife.activity('pet'),
       play: (kind) => void play(kind),
-      toy: () => (shop.owns('yarn') ? '털실' : shop.owns('ball') ? '공' : undefined),
+      toy: () => (shop.owns('yarn') ? t('pet.toy.yarn') : shop.owns('ball') ? t('pet.toy.ball') : undefined),
       openShop: () => panel.openTab('shop'),
       focusRunning: () => planner.focus.phase !== 'idle',
       toggleFocus: () => (planner.focus.phase === 'idle' ? planner.startFocus() : planner.stopFocus()),
@@ -190,7 +200,7 @@ app.whenReady().then(() => {
     const toy = shop.owns('yarn') ? 'yarn' : shop.owns('ball') ? 'ball' : undefined;
     if (kind === 'seek') return seek();
     if (kind === 'ball' && !toy) {
-      void pet.say({ kind: 'answer', text: '공이 없어. 상점에서 공을 사 주면 같이 놀자!', ttlMs: 5000 });
+      void pet.say({ kind: 'answer', text: t('pet.play.noBall'), ttlMs: 5000 });
       return false;
     }
     playing = true;
@@ -204,14 +214,14 @@ app.whenReady().then(() => {
         }
         return ok;
       }
-      void pet.say({ kind: 'answer', text: '산책 가자!', ttlMs: 2000 });
+      void pet.say({ kind: 'answer', text: t('pet.play.walkStart'), ttlMs: 2000 });
       await new Promise((r) => setTimeout(r, 2200));
       const started = Date.now();
       const ok = await pet.stroll(walkMin);
       const minutes = Math.round((Date.now() - started) / 60_000);
       stats.addWalk(Date.now(), minutes);
       if (minutes > 0) petLife.activity('play');
-      if (ok) void pet.say({ kind: 'answer', text: '산책 즐거웠어!', ttlMs: 4000 });
+      if (ok) void pet.say({ kind: 'answer', text: t('pet.play.walkEnd'), ttlMs: 4000 });
       return ok;
     } finally {
       playing = false;
@@ -224,7 +234,7 @@ app.whenReady().then(() => {
   async function seek(): Promise<boolean> {
     void pet.say({
       kind: 'answer',
-      text: `숨바꼭질 하자! ${HIDE_SEEK.seconds}초 안에 나를 찾아 눌러 줘.`,
+      text: t('pet.seek.start', { seconds: HIDE_SEEK.seconds }),
       ttlMs: 2500,
     });
     await new Promise((r) => setTimeout(r, 2800));
@@ -256,11 +266,11 @@ app.whenReady().then(() => {
       pet.react();
       void pet.say({
         kind: 'answer',
-        text: coins ? `찾았다! 코인 ${coins}개.` : '찾았다! 재밌었어.',
+        text: coins ? t('pet.seek.foundCoins', { coins }) : t('pet.seek.found'),
         ttlMs: 4000,
       });
     } else {
-      void pet.say({ kind: 'answer', text: '못 찾았지! 다음엔 찾아 봐.', ttlMs: 4000 });
+      void pet.say({ kind: 'answer', text: t('pet.seek.lost'), ttlMs: 4000 });
     }
     panel.refresh();
     return found;
@@ -275,7 +285,7 @@ app.whenReady().then(() => {
     });
     for (const a of achievements.check(facts, Date.now())) {
       log('achieve', a.key);
-      void pet.say({ kind: 'system', text: `업적 달성: ${a.name} (${a.hint})`, ttlMs: 6000 });
+      void pet.say({ kind: 'system', text: t('pet.achieved', { name: a.name, hint: a.hint }), ttlMs: 6000 });
     }
   }
   setInterval(checkAchievements, 60_000).unref();
@@ -335,14 +345,14 @@ app.whenReady().then(() => {
       pet.react();
       petLife.activity('feed');
       const image = food.image ? foodImageDataUrl(food.image) : undefined;
-      void pet.say({ kind: 'answer', text: `${food.name} 냠냠, 고마워!`, ttlMs: 3500, image });
+      void pet.say({ kind: 'answer', text: t('pet.fedWith', { food: food.name }), ttlMs: 3500, image });
       sendStatus();
     },
     openFoodMaker: () => maker.open('food'),
     removeFoodImage,
     onHouseChanged: () => {
       house.show(shop.state().houseLevel, pet.bounds());
-      void pet.say({ kind: 'answer', text: '새 집이다! 고마워.', ttlMs: 4000 });
+      void pet.say({ kind: 'answer', text: t('pet.newHouse'), ttlMs: 4000 });
     },
     play: (kind) => void play(kind),
     achieve: () => {
@@ -374,7 +384,7 @@ app.whenReady().then(() => {
     onFed: () => {
       pet.react();
       petLife.activity('feed');
-      void pet.say({ kind: 'answer', text: '냠냠, 고마워!', ttlMs: 3000 });
+      void pet.say({ kind: 'answer', text: t('pet.fed'), ttlMs: 3000 });
     },
     onChanged: () => sendStatus(),
     openChat: () => chat.open(pet.bounds()),
@@ -387,9 +397,9 @@ app.whenReady().then(() => {
     if (r.ok) {
       pet.react();
       petLife.activity('feed');
-      void pet.say({ kind: 'answer', text: '냠냠, 고마워!', ttlMs: 3000 });
+      void pet.say({ kind: 'answer', text: t('pet.fed'), ttlMs: 3000 });
     } else {
-      void pet.say({ kind: 'answer', text: '코인이 모자라. 할 일을 하나 끝내면 생겨.', ttlMs: 4000 });
+      void pet.say({ kind: 'answer', text: t('pet.noCoins'), ttlMs: 4000 });
     }
     panel.refresh();
   }
@@ -422,8 +432,8 @@ app.whenReady().then(() => {
     const taken: string[] = [];
     const { hide, quickAdd } = settings.get().shortcuts;
     for (const [acc, run, name] of [
-      [hide, toggleHidden, '숨기기'],
-      [quickAdd, () => panel.openQuick(), '할 일 한 줄 넣기'],
+      [hide, toggleHidden, t('pet.shortcut.hide')],
+      [quickAdd, () => panel.openQuick(), t('pet.shortcut.quickAdd')],
     ] as const) {
       try {
         if (globalShortcut.register(acc, run)) registered.push(acc);
@@ -441,7 +451,7 @@ app.whenReady().then(() => {
       () =>
         void pet.say({
           kind: 'answer',
-          text: `${takenShortcuts.join(', ')} 단축키를 다른 앱이 쓰고 있어. 설정에서 다른 키로 바꿔 줘.`,
+          text: t('pet.shortcut.takenStart', { keys: takenShortcuts.join(', ') }),
           ttlMs: 10_000,
         }),
       3000,
@@ -455,7 +465,7 @@ app.whenReady().then(() => {
     if (r.ok)
       void pet.say({
         kind: 'answer',
-        text: `${name.trim()} 먹어 보고 싶다!`,
+        text: t('pet.foodMade', { food: name.trim() }),
         ttlMs: 4000,
         image: foodImageDataUrl(file),
       });
@@ -492,7 +502,7 @@ app.whenReady().then(() => {
       if (taken.length > 0)
         void pet.say({
           kind: 'answer',
-          text: `${taken.join(', ')} 단축키는 다른 앱이 쓰고 있어. 다른 키로 해 줘.`,
+          text: t('pet.shortcut.taken', { keys: taken.join(', ') }),
           ttlMs: 8000,
         });
     }
@@ -502,7 +512,7 @@ app.whenReady().then(() => {
     if (next.petName !== prev.petName) {
       chat.petNameChanged();
       panel.refresh();
-      tray.setToolTip(`짝꿍 (${next.petName})`);
+      tray.setToolTip(t('tray.tooltip', { name: next.petName }));
     }
     // 격리 폴더와 사용자 폴더는 대화 기록이 따로라 이어 갈 수 없다. 새 대화로 시작한다.
     if (next.aiIsolation !== prev.aiIsolation) chat.resetSessions();

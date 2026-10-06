@@ -1,3 +1,4 @@
+import { t } from '../../../shared/i18n/index.ts';
 import type { OutgoingImage } from '../../../shared/ipc.ts';
 
 /** AI 에 보낼 그림의 긴 변 최대값. 이보다 크면 줄인다 (글자는 읽히고 토큰은 덜 쓰는 크기). */
@@ -11,7 +12,7 @@ function load(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('그림을 읽지 못했어'));
+    img.onerror = () => reject(new Error(t('chat.imageReadFailed')));
     img.src = src;
   });
 }

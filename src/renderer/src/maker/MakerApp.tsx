@@ -1,6 +1,6 @@
 import { type ClipboardEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { t } from '../../../shared/i18n/index.ts';
 import { type MakerInfo, MODEL_URL } from '../../../shared/ipc.ts';
-import { withParticle } from '../../../shared/josa.ts';
 import { contentBox, keptRatio, stroke } from '../../../shared/mask.ts';
 import { PET_NAME_MAX, POSE_KINDS } from '../../../shared/settings.ts';
 import { backend, openModel, predictMask } from './removeBg.ts';
@@ -53,7 +53,7 @@ export function MakerApp() {
       try {
         // 움직이는 그림(gif, webp 여러 장)은 배경을 지우지 않고 그대로 쓴다 (v1).
         if (await isAnimated(file)) {
-          if (file.size > ANIMATED_MAX) throw new Error('움직이는 그림은 8MB 까지 돼.');
+          if (file.size > ANIMATED_MAX) throw new Error(t('maker.err.animatedTooBig'));
           setAnimated(true);
           setPreview(await toDataUrl(file));
           setStep('name');
@@ -67,7 +67,7 @@ export function MakerApp() {
         setInfo((v) => v && { ...v, modelReady: true });
         setStep('working');
         const res = await fetch(MODEL_URL);
-        if (!res.ok) throw new Error('모델 파일을 못 읽었어. 창을 닫았다가 다시 열어 줘.');
+        if (!res.ok) throw new Error(t('maker.err.modelRead'));
         await openModel(await res.arrayBuffer());
         const t0 = performance.now();
         const mask = await predictMask(photo, info);
@@ -107,7 +107,7 @@ export function MakerApp() {
     if (!work) return;
     const url = cutout(work);
     if (!url) {
-      setError('다 지워졌어. 복원 붓으로 펫을 조금 되살려 줘.');
+      setError(t('maker.err.allErased'));
       return;
     }
     setError('');
@@ -119,7 +119,7 @@ export function MakerApp() {
     setStep('saving');
     const r = await bridge.save(preview, name);
     if (!r.ok) {
-      setError(r.error ?? '저장하지 못했어');
+      setError(r.error ?? t('maker.err.saveFailed'));
       setStep('name');
       return;
     }
@@ -128,11 +128,15 @@ export function MakerApp() {
   };
 
   const steps: [Step[], string][] = [
-    [['pick', 'model', 'working'], '사진'],
-    [['edit'], '다듬기'],
-    [['name', 'saving', 'done'], isPose ? '확인' : '이름'],
+    [['pick', 'model', 'working'], t('maker.step.photo')],
+    [['edit'], t('maker.step.edit')],
+    [['name', 'saving', 'done'], isPose ? t('maker.step.confirm') : t('maker.step.name')],
   ];
-  const title = isFood ? '커스텀 먹이 만들기' : isPose ? `${poseLabel} 포즈 만들기` : '사진으로 펫 만들기';
+  const title = isFood
+    ? t('maker.title.food')
+    : isPose
+      ? t('maker.title.pose', { pose: poseLabel })
+      : t('maker.title.pet');
 
   return (
     <div className="maker" onPaste={onPaste}>
@@ -158,18 +162,16 @@ export function MakerApp() {
         {step === 'pick' && (
           <section className="pick">
             <button type="button" className="drop" onClick={() => fileRef.current?.click()}>
-              <span className="big">사진을 골라 줘</span>
-              <span>여기를 누르거나, 사진을 끌어다 놓거나, 붙여 넣어도 돼.</span>
+              <span className="big">{t('maker.pick.title')}</span>
+              <span>{t('maker.pick.how')}</span>
               <span className="hint">
                 {isFood
-                  ? `과일, 과자처럼 먹이가 될 사진이야. 만들면 코인 ${info?.foodCost ?? 50}개를 써.`
+                  ? t('maker.pick.food', { cost: info?.foodCost ?? 50 })
                   : isPose
-                    ? `${poseLabel} 보일 사진이야. 같은 펫의 다른 표정 사진이면 좋아.`
-                    : '반려동물, 좋아하는 인형이나 캐릭터처럼 하나가 또렷한 사진이 잘 돼.'}
+                    ? t('maker.pick.pose', { pose: poseLabel })
+                    : t('maker.pick.pet')}
               </span>
-              <span className="hint">
-                움직이는 GIF, WebP 는 배경을 지우지 않고 그대로 써. 배경이 투명한 것이 좋아.
-              </span>
+              <span className="hint">{t('maker.pick.animated')}</span>
             </button>
             <input
               ref={fileRef}
@@ -182,9 +184,7 @@ export function MakerApp() {
                 e.target.value = '';
               }}
             />
-            <p className="privacy">
-              사진은 이 컴퓨터 안에서만 다뤄. 배경 지우기도 여기서 해서 밖으로 보내지 않아.
-            </p>
+            <p className="privacy">{t('maker.pick.privacy')}</p>
             {!isFood && (isPose ? info?.hasPose : info?.hasPhotoPet) && (
               <button
                 type="button"
@@ -194,7 +194,7 @@ export function MakerApp() {
                   setInfo((v) => v && { ...v, hasPhotoPet: isPose ? v.hasPhotoPet : false, hasPose: false });
                 }}
               >
-                {isPose ? '이 포즈 지우기' : '기본 펫으로 돌아가기'}
+                {isPose ? t('maker.pick.removePose') : t('maker.pick.resetPet')}
               </button>
             )}
           </section>
@@ -202,7 +202,7 @@ export function MakerApp() {
 
         {step === 'model' && (
           <section className="busy">
-            <p>처음 한 번만 배경 지우는 도구를 받고 있어 ({info?.modelMB}MB).</p>
+            <p>{t('maker.model.downloading', { mb: info?.modelMB ?? 0 })}</p>
             <div
               className="bar"
               role="progressbar"
@@ -218,15 +218,15 @@ export function MakerApp() {
 
         {step === 'working' && (
           <section className="busy">
-            <p>배경을 지우는 중이야.</p>
-            <p className="hint">그래픽 카드가 없으면 10초쯤 걸릴 수 있어.</p>
+            <p>{t('maker.working.title')}</p>
+            <p className="hint">{t('maker.working.hint')}</p>
           </section>
         )}
 
         {step === 'edit' && work && (
           <Editor
             work={work}
-            note={`${backend}로 ${(elapsed / 1000).toFixed(1)}초 걸렸어.`}
+            note={t('maker.edit.took', { backend, sec: (elapsed / 1000).toFixed(1) })}
             onBack={() => setStep('pick')}
             onNext={toName}
           />
@@ -235,21 +235,21 @@ export function MakerApp() {
         {(step === 'name' || step === 'saving' || step === 'done') && (
           <section className="name">
             <div className="stage">
-              <img className="bounce" src={preview} alt="새 펫" />
+              <img className="bounce" src={preview} alt={t('maker.name.alt')} />
             </div>
-            {animated && step === 'name' && <p className="hint">움직이는 그림이라 배경은 그대로야.</p>}
+            {animated && step === 'name' && <p className="hint">{t('maker.name.animatedNote')}</p>}
             {step === 'done' ? (
               <p className="done">
                 {isFood
-                  ? `${withParticle(name.trim(), '을')} 상점 먹이에 넣었어!`
+                  ? t('maker.done.food', { name: name.trim() })
                   : isPose
-                    ? `${poseLabel} 이 모습으로 보일게!`
-                    : `${withParticle(name.trim() || info?.petName || '짝꿍', '이')} 화면에 나타났어!`}
+                    ? t('maker.done.pose', { pose: poseLabel })
+                    : t('maker.done.pet', { name: name.trim() || info?.petName || t('common.appName') })}
               </p>
             ) : (
               <>
                 <label hidden={isPose}>
-                  {isFood ? '먹이 이름' : '이름'}
+                  {isFood ? t('maker.name.foodLabel') : t('maker.name.label')}
                   <input
                     value={name}
                     maxLength={PET_NAME_MAX * 2}
@@ -261,16 +261,16 @@ export function MakerApp() {
                 </label>
                 <div className="actions">
                   <button type="button" className="ghost" onClick={() => setStep(animated ? 'pick' : 'edit')}>
-                    {animated ? '다른 그림' : '다시 다듬기'}
+                    {animated ? t('maker.name.otherImage') : t('maker.name.reedit')}
                   </button>
                   <button type="button" className="primary" disabled={step === 'saving'} onClick={save}>
                     {step === 'saving'
-                      ? '저장 중'
+                      ? t('maker.name.saving')
                       : isFood
-                        ? `코인 ${info?.foodCost ?? 50}개로 만들기`
+                        ? t('maker.name.makeFood', { cost: info?.foodCost ?? 50 })
                         : isPose
-                          ? '이 포즈로 할게'
-                          : '이 펫으로 할게'}
+                          ? t('maker.name.usePose')
+                          : t('maker.name.usePet')}
                   </button>
                 </div>
               </>
@@ -354,14 +354,14 @@ function Editor({
   return (
     <section className="edit">
       <div className="tools">
-        <fieldset className="segmented" aria-label="붓">
+        <fieldset className="segmented" aria-label={t('maker.edit.brush')}>
           <button
             type="button"
             aria-pressed={mode === 'erase'}
             className={mode === 'erase' ? 'on' : ''}
             onClick={() => setMode('erase')}
           >
-            지우개
+            {t('maker.edit.eraser')}
           </button>
           <button
             type="button"
@@ -369,11 +369,11 @@ function Editor({
             className={mode === 'restore' ? 'on' : ''}
             onClick={() => setMode('restore')}
           >
-            복원 붓
+            {t('maker.edit.restore')}
           </button>
         </fieldset>
         <label className="size">
-          굵기
+          {t('maker.edit.size')}
           <input
             type="range"
             min={6}
@@ -393,7 +393,7 @@ function Editor({
             setVersion((v) => v + 1);
           }}
         >
-          되돌리기
+          {t('maker.edit.undo')}
         </button>
       </div>
       <div className="canvas-wrap">
@@ -403,7 +403,7 @@ function Editor({
           height={work.h}
           className={mode}
           style={{ '--brush': `${size}px` } as React.CSSProperties}
-          aria-label="펫 다듬기. 지운 곳은 흐린 붉은빛으로 보여."
+          aria-label={t('maker.edit.canvas')}
           onPointerDown={(e) => {
             e.currentTarget.setPointerCapture(e.pointerId);
             undo.current.push(work.mask.slice());
@@ -421,19 +421,20 @@ function Editor({
         />
       </div>
       <p className="hint">
-        흐린 붉은빛이 지워질 곳이야. 남길 곳이 지워졌으면 복원 붓으로, 배경이 남았으면 지우개로 칠해. {note}
+        {t('maker.edit.hint')} {note}
       </p>
       {(kept < 0.02 || kept > 0.97) && (
         <p className="warn">
-          {kept < 0.02 ? '거의 다 지워졌어.' : '배경이 거의 안 지워졌어.'} 다듬거나 다른 사진을 골라 봐.
+          {kept < 0.02 ? t('maker.edit.almostAllErased') : t('maker.edit.barelyErased')}{' '}
+          {t('maker.edit.tryAgain')}
         </p>
       )}
       <div className="actions">
         <button type="button" className="ghost" onClick={onBack}>
-          다른 사진
+          {t('maker.edit.otherPhoto')}
         </button>
         <button type="button" className="primary" onClick={onNext}>
-          다 됐어
+          {t('maker.edit.next')}
         </button>
       </div>
     </section>
@@ -460,7 +461,7 @@ function toDataUrl(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
     r.onload = () => resolve(String(r.result));
-    r.onerror = () => reject(new Error('그림을 읽지 못했어'));
+    r.onerror = () => reject(new Error(t('maker.err.imageRead')));
     r.readAsDataURL(file);
   });
 }
@@ -473,7 +474,7 @@ async function loadPhoto(file: Blob): Promise<HTMLCanvasElement> {
   c.width = Math.max(1, Math.round(bitmap.width * k));
   c.height = Math.max(1, Math.round(bitmap.height * k));
   const g = c.getContext('2d', { willReadFrequently: true });
-  if (!g) throw new Error('사진을 읽지 못했어');
+  if (!g) throw new Error(t('maker.err.photoRead'));
   g.imageSmoothingQuality = 'high';
   g.drawImage(bitmap, 0, 0, c.width, c.height);
   bitmap.close();

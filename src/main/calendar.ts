@@ -1,5 +1,6 @@
 import { net } from 'electron';
 import type { EventStore } from '../shared/event-store.ts';
+import { t } from '../shared/i18n/index.ts';
 import { cleanIcsUrl, parseIcs } from '../shared/ics.ts';
 import { settings } from './settings.ts';
 
@@ -26,25 +27,32 @@ export function watchCalendar(o: {
 
   async function sync(): Promise<string> {
     const raw = settings.get().icsUrl;
-    if (!raw) return '캘린더 주소가 없어';
+    if (!raw) return t('panel.calendar.noUrl');
     const url = cleanIcsUrl(raw);
-    if (!url) return '주소가 https 가 아니야';
+    if (!url) return t('panel.calendar.notHttps');
     try {
       const res = await net.fetch(url, { headers: { accept: 'text/calendar' } });
-      if (!res.ok) return done(`가져오지 못했어 (${res.status})`);
+      if (!res.ok) return done(t('panel.calendar.failedStatus', { status: res.status }));
       const text = await res.text();
-      if (text.length > MAX_BYTES) return done('캘린더가 너무 커');
-      if (!text.includes('BEGIN:VCALENDAR')) return done('캘린더 파일이 아니야. 주소를 확인해 줘');
+      if (text.length > MAX_BYTES) return done(t('panel.calendar.tooBig'));
+      if (!text.includes('BEGIN:VCALENDAR')) return done(t('panel.calendar.notIcs'));
       const now = Date.now();
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const list = parseIcs(text, tz, now - BACK_MS, now + AHEAD_MS);
       const r = o.events.syncExternal('ics', list, now - BACK_MS, now + AHEAD_MS, now);
       o.log('calendar', '맞춤', JSON.stringify(r));
       if (r.added || r.updated || r.removed) o.onChanged();
-      return done(`일정 ${list.length}개 (새로 ${r.added}, 바뀜 ${r.updated}, 지움 ${r.removed})`);
+      return done(
+        t('panel.calendar.synced', {
+          n: list.length,
+          added: r.added,
+          updated: r.updated,
+          removed: r.removed,
+        }),
+      );
     } catch (err) {
       o.log('calendar', '실패', err instanceof Error ? err.name : 'error');
-      return done('가져오지 못했어 (인터넷 연결을 봐 줘)');
+      return done(t('panel.calendar.offline'));
     }
   }
 

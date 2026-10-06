@@ -21,6 +21,7 @@ import {
   switchProvider,
 } from '../shared/chat-state.ts';
 import { clampIntoAreas } from '../shared/geometry.ts';
+import { t } from '../shared/i18n/index.ts';
 import {
   CHAT,
   type ChatSnapshot,
@@ -28,11 +29,11 @@ import {
   type PetAiState,
   type ProviderView,
 } from '../shared/ipc.ts';
-import { withParticle } from '../shared/josa.ts';
 import { prepareCodexHome } from './ai/codex-home.ts';
 import { type AiRun, checkStatus, readCodexUsage, runAi } from './ai/runner.ts';
 import { getShellEnv } from './ai/shell-env.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
+import { langArg } from './lang.ts';
 import { readJson, writeJson } from './store.ts';
 
 const CHAT_SIZE = { width: 400, height: 600 };
@@ -126,7 +127,7 @@ export function createChat(o: ChatOptions) {
   ipcMain.handle(CHAT.providers, (e): ProviderView[] => (fromChat(e) ? providers().map(view) : []));
 
   ipcMain.handle(CHAT.addProvider, (e, input: CustomProviderInput) => {
-    if (!fromChat(e)) return { ok: false, error: '창을 다시 열어 줘.' };
+    if (!fromChat(e)) return { ok: false, error: t('chat.reopenWindow') };
     const id = `custom-${randomUUID().slice(0, 8)}`;
     const spec = customProvider(input, id);
     if (typeof spec === 'string') return { ok: false, error: spec };
@@ -163,7 +164,7 @@ export function createChat(o: ChatOptions) {
     const history = historyFor(state, provider);
     // 기록 남기지 않기: 이어가기 대신 최근 대화를 붙여 보낸다 (claude, codex 만 켤 수 있다).
     const ephemeral = !!state.ephemeral && (spec.adapter === 'claude' || spec.adapter === 'codex');
-    const base = question || '이 화면 같이 봐 줘.';
+    const base = question || t('chat.lookQuestion');
     const context = o.knowsTodos() ? o.todoContext() : '';
     const prompt = context + (ephemeral ? withHistory(history, base) : base);
     state = addQuestion(
@@ -296,7 +297,7 @@ export function createChat(o: ChatOptions) {
     }
     win = new BrowserWindow({
       ...placeNear(near),
-      title: `${withParticle(petName(), '과')} 대화`,
+      title: t('chat.title', { name: petName() }),
       minWidth: 320,
       minHeight: 360,
       show: false,
@@ -304,7 +305,7 @@ export function createChat(o: ChatOptions) {
       ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
       webPreferences: {
         preload: join(import.meta.dirname, '../preload/index.cjs'),
-        additionalArguments: ['--jj-window=chat'],
+        additionalArguments: ['--jj-window=chat', langArg()],
         sandbox: true,
         contextIsolation: true,
       },
@@ -353,7 +354,7 @@ export function createChat(o: ChatOptions) {
     /** 설정에서 펫 이름이 바뀌었다. 열린 채팅 창에 알린다. */
     petNameChanged() {
       if (!win || win.isDestroyed()) return;
-      win.setTitle(`${withParticle(petName(), '과')} 대화`);
+      win.setTitle(t('chat.title', { name: petName() }));
       win.webContents.send(CHAT.petName, petName());
     },
     /** AI 격리 설정이 바뀌면 대화 세션을 끊는다 (격리 폴더와 사용자 폴더의 기록이 달라 이어 갈 수 없다). */

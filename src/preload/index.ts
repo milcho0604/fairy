@@ -34,6 +34,9 @@ import type { Settings } from '../shared/settings.ts';
 // 샌드박스 preload 는 다른 파일을 require 할 수 없어 한 파일로 묶는다.
 // 창마다 자기 기능만 열어 준다: 메인이 창을 만들 때 `--jj-window=<이름>` 을 넘긴다.
 const kind = process.argv.find((a) => a.startsWith('--jj-window='))?.split('=')[1];
+// 화면 말 (v2 다국어). 모든 창이 같은 이름으로 읽는다. 모르는 값이면 한국어
+const lang = process.argv.find((a) => a.startsWith('--jj-lang='))?.split('=')[1] === 'en' ? 'en' : 'ko';
+contextBridge.exposeInMainWorld('jjakkungLang', lang);
 
 if (kind === 'pet') {
   const pet: PetBridge = {
@@ -147,6 +150,7 @@ if (kind === 'settings') {
     importFriend: () => ipcRenderer.invoke(SETTINGS.importFriend),
     syncCalendar: () => ipcRenderer.invoke(SETTINGS.syncCalendar),
     refreshMcp: () => ipcRenderer.invoke(SETTINGS.refreshMcp),
+    relaunch: () => ipcRenderer.send(SETTINGS.relaunch),
     onChanged: (listener) => {
       ipcRenderer.on(SETTINGS.changed, (_e, next: Settings) => listener(next));
     },

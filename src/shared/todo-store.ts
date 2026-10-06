@@ -1,5 +1,6 @@
 // 할 일, 코인 장부, 배부름 (P2-03, P2-05, P2-06). 기획서 "게임 규칙".
 import type { Db } from './db-schema.ts';
+import { t } from './i18n/index.ts';
 
 export const COIN = {
   /** 할 일 하나 */
@@ -19,7 +20,18 @@ export const COIN = {
 /** 반복: 매일, 평일(월~금), 매주 같은 요일 */
 export type Repeat = 'daily' | 'weekdays' | 'weekly';
 export const REPEATS: readonly Repeat[] = ['daily', 'weekdays', 'weekly'];
-export const REPEAT_LABEL: Record<Repeat, string> = { daily: '매일', weekdays: '평일', weekly: '매주' };
+/** 지금 말로 읽는다 (getter) */
+export const REPEAT_LABEL: Readonly<Record<Repeat, string>> = {
+  get daily() {
+    return t('panel.repeat.daily');
+  },
+  get weekdays() {
+    return t('panel.repeat.weekdays');
+  },
+  get weekly() {
+    return t('panel.repeat.weekly');
+  },
+};
 
 export function isRepeat(v: unknown): v is Repeat {
   return v === 'daily' || v === 'weekdays' || v === 'weekly';

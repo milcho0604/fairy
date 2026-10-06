@@ -1,4 +1,5 @@
 // 코드로 그린 기본 펫. 콩, 냥이, 삐약이 세 가지 (v1, D6 그림 대신). 사진 펫(P1-08)이면 몸통 대신 사진.
+import { t } from '../../shared/i18n/index.ts';
 import type { PetMood } from '../../shared/pet-mood.ts';
 import type { PetKind } from '../../shared/settings.ts';
 
@@ -408,7 +409,7 @@ function drawExtras(ctx: CanvasRenderingContext2D, s: DrawState, top: number) {
     ctx.quadraticCurveTo(CX + 52, top + 26, CX + 44, top + 30);
     ctx.quadraticCurveTo(CX + 36, top + 26, CX + 44, top + 14);
     ctx.fill();
-    if ((s.viewSize ?? CANVAS_SIZE) >= MIN_SIZE_FOR_TEXT) drawTag(ctx, '바빠서 쉬는 중', top - 22);
+    if ((s.viewSize ?? CANVAS_SIZE) >= MIN_SIZE_FOR_TEXT) drawTag(ctx, t('pet.busyTag'), top - 22);
   }
 }
 

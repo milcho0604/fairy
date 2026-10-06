@@ -269,7 +269,8 @@ header .picker {
 
 .answer-actions {
   position: absolute;
-  right: 6px;
+  /* 짧은 답이면 말풍선보다 넓어진다. 왼쪽에 붙여 빈 오른쪽으로 펼친다 */
+  left: 6px;
   bottom: -11px;
   display: flex;
   gap: 2px;
@@ -279,6 +280,7 @@ header .picker {
   background: var(--panel);
   color: var(--muted);
   font-size: 11.5px;
+  white-space: nowrap;
   opacity: 0;
 }
 
@@ -695,6 +697,23 @@ header .picker {
   flex: 1;
 }
 
+/* 좁은 창에선 고르기 단추 오른쪽 끝에 붙이면 메뉴가 왼쪽 밖으로 나간다(영어). 머리줄 오른쪽 끝에 붙인다.
+   위의 header .picker 보다 뒤에 둬야 이긴다 */
+@media (max-width: 360px) {
+  header {
+    position: relative;
+  }
+
+  header .picker {
+    position: static;
+  }
+
+  header .picker-menu {
+    top: calc(100% - 4px);
+    right: 12px;
+  }
+}
+
 .picker-menu hr {
   margin: 4px 6px;
   border: 0;
@@ -739,10 +758,29 @@ header .picker {
 
 .sheet-head strong {
   margin-right: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sheet-head button {
+  flex: none;
   -webkit-app-region: no-drag;
+  white-space: nowrap;
+}
+
+/* 좁은 창(320)에서 머리줄 단추 둘과 제목이 같이 들어가게 */
+@media (max-width: 360px) {
+  .mac .sheet-head {
+    padding-left: 76px;
+    gap: 6px;
+  }
+
+  .sheet-head button {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
 }
 
 .ai-list {

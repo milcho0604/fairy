@@ -1,4 +1,11 @@
 /* 채팅 창과 설정 창이 같이 쓰는 색. 밝은 모드와 어두운 모드. */
+
+/* hidden 속성이 display:flex 같은 규칙에 지지 않게 */
+[hidden] {
+  /* biome-ignore lint/complexity/noImportantStyles: hidden 속성은 어떤 display 규칙보다 이겨야 한다 */
+  display: none !important;
+}
+
 :root {
   color-scheme: light dark;
   --bg: #fbf8f4;
@@ -14,6 +21,32 @@
   --warn: #b26a00;
   --error: #c0392b;
   --ok: #2e9d5b;
+}
+
+/* 슬라이더: 기본 모양은 밝은 모드에서 빈 구간이 검게 나와 직접 그린다. margin 0 은 기본 바깥 여백으로 칸이 넘치는 것을 막는다 */
+input[type="range"] {
+  appearance: none;
+  height: 20px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 35%, transparent);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border: 2px solid var(--panel);
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 @media (prefers-color-scheme: dark) {

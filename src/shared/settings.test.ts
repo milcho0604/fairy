@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { applyPatch, cleanPetName, DEFAULT_SETTINGS, isAnimatedFile, parseSettings } from './settings.ts';
+import { setLang } from './i18n/index.ts';
+import {
+  applyPatch,
+  cleanPetName,
+  DEFAULT_SETTINGS,
+  isAnimatedFile,
+  PET_KINDS,
+  parseSettings,
+} from './settings.ts';
 
 test('저장 파일이 없거나 깨졌으면 기본값', () => {
   assert.deepEqual(parseSettings(undefined), DEFAULT_SETTINGS);
@@ -111,4 +119,24 @@ test('친구 펫: 규칙에 맞는 것만, 같은 id 는 한 번, 3마리까지'
     { id: 'f-3', name: '삐', kind: 'kong' },
     { id: 'f-4', name: '넷', kind: 'chick', image: 'pet-a.png' },
   ]);
+});
+
+test('화면 말: 자동, 한국어, 영어만. 기본은 자동', () => {
+  assert.equal(DEFAULT_SETTINGS.lang, 'auto');
+  assert.equal(parseSettings({ lang: 'en' }).lang, 'en');
+  assert.equal(parseSettings({ lang: 'ko' }).lang, 'ko');
+  assert.equal(parseSettings({ lang: 'fr' }).lang, 'auto');
+  const en = { ...DEFAULT_SETTINGS, lang: 'en' as const };
+  assert.equal(applyPatch(en, { lang: 'ja' }).lang, 'en');
+  assert.equal(applyPatch(en, { lang: 'auto' }).lang, 'auto');
+});
+
+test('펫 모양 이름은 지금 말로 읽는다', () => {
+  setLang('en');
+  try {
+    assert.equal(PET_KINDS[0]?.label, 'Bean');
+  } finally {
+    setLang('ko');
+  }
+  assert.equal(PET_KINDS[0]?.label, '콩');
 });

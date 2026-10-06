@@ -1,6 +1,7 @@
 // 펫의 하루 (v1): 삐짐 게이지, 기분, 친밀도. 기획서 "삐짐 게이지", "게임 규칙 > 펫 상태 수치".
 // 잃는 것은 없다: 코인, 친밀도는 줄지 않고 삐짐은 모습과 대사뿐이다.
 import type { Db } from './db-schema.ts';
+import { t } from './i18n/index.ts';
 import { FULLNESS, localDay } from './todo-store.ts';
 
 /** 순한맛은 4칸에서 멈추고, 매운맛은 7칸까지 */
@@ -12,14 +13,29 @@ export const MAKEUP_COOLDOWN_MS = 7 * 86_400_000;
 /** 친밀도 단계: 넘을 때마다 새 대사가 열린다 */
 export const AFFECTION_STEPS = [100, 300, 600] as const;
 
-export const SULK_LINES: Record<number, string> = {
-  1: '...왔어?',
-  2: '어제도 안 왔더라. 흥',
-  3: '나 혼자 밥 먹었어',
-  4: '할 일 목록에 먼지 쌓이는 중',
-  5: '5일. 내가 세고 있었어',
-  6: '옛날 사진 정리 중. 너랑 찍은 거',
-  7: '이제 안 기다릴 거야... 아마도',
+// 대사는 지금 말로 읽는다 (getter)
+export const SULK_LINES: Readonly<Record<number, string>> = {
+  get 1() {
+    return t('pet.sulk.1');
+  },
+  get 2() {
+    return t('pet.sulk.2');
+  },
+  get 3() {
+    return t('pet.sulk.3');
+  },
+  get 4() {
+    return t('pet.sulk.4');
+  },
+  get 5() {
+    return t('pet.sulk.5');
+  },
+  get 6() {
+    return t('pet.sulk.6');
+  },
+  get 7() {
+    return t('pet.sulk.7');
+  },
 };
 
 export type Activity = 'todo' | 'click' | 'chat' | 'feed' | 'pet' | 'play';

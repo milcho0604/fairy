@@ -1,13 +1,13 @@
 import { useRef, useState } from 'react';
+import { t } from '../../../shared/i18n/index.ts';
 import type { PanelState } from '../../../shared/ipc.ts';
-import { withParticle } from '../../../shared/josa.ts';
 import {
   CUSTOM_FOOD_COST,
   CUSTOM_FOOD_MAX,
   FOODS,
   type Food,
   HOUSE_COSTS,
-  HOUSE_NAMES,
+  houseName,
   TOYS,
 } from '../../../shared/shop.ts';
 import { CoinIcon } from './icons.tsx';
@@ -27,9 +27,9 @@ export function ShopTab({ s }: { s: PanelState }) {
   };
   const run = async (p: Promise<{ ok: boolean; error?: string }>, ok: string) => {
     const r = await p;
-    flash(r.ok ? ok : (r.error ?? '못 했어'), !r.ok);
+    flash(r.ok ? ok : (r.error ?? t('shop.failed')), !r.ok);
   };
-  const feed = (f: Food) => run(bridge.feedWith(f.key), `${f.name} 줬어`);
+  const feed = (f: Food) => run(bridge.feedWith(f.key), t('shop.fed', { name: f.name }));
   const level = shop.houseLevel;
   const nextHouse = HOUSE_COSTS[level];
 
@@ -42,13 +42,13 @@ export function ShopTab({ s }: { s: PanelState }) {
       )}
 
       <section>
-        <h3>먹이</h3>
+        <h3>{t('shop.foods')}</h3>
         <ul className="goods">
           {FOODS.map((f) => (
             <li key={f.key}>
               <span className="g-name">
                 {f.name}
-                <small>배부름 +{f.gain}</small>
+                <small>{t('shop.fullness', { n: f.gain })}</small>
               </span>
               <Price n={f.cost} />
               <button
@@ -57,7 +57,7 @@ export function ShopTab({ s }: { s: PanelState }) {
                 disabled={shop.balance < f.cost}
                 onClick={() => feed(f)}
               >
-                주기
+                {t('shop.give')}
               </button>
             </li>
           ))}
@@ -66,6 +66,15 @@ export function ShopTab({ s }: { s: PanelState }) {
               <span className="g-name custom">
                 {shop.foodImages[f.key] && <img src={shop.foodImages[f.key]} alt="" />}
                 {f.name}
+                {/* 지우기는 이름 옆에 둔다. 줄 끝에 두면 이 줄만 가격과 주기 단추가 밀린다 */}
+                <button
+                  type="button"
+                  className="remove"
+                  aria-label={t('panel.todo.remove', { title: f.name })}
+                  onClick={() => bridge.removeFood(f.key)}
+                >
+                  ×
+                </button>
               </span>
               <Price n={f.cost} />
               <button
@@ -74,55 +83,47 @@ export function ShopTab({ s }: { s: PanelState }) {
                 disabled={shop.balance < f.cost}
                 onClick={() => feed(f)}
               >
-                주기
-              </button>
-              <button
-                type="button"
-                className="remove"
-                aria-label={`${f.name} 지우기`}
-                onClick={() => bridge.removeFood(f.key)}
-              >
-                ×
+                {t('shop.give')}
               </button>
             </li>
           ))}
         </ul>
         <div className="row-line">
           <span>
-            커스텀 먹이 만들기 <small>사진 한 장으로, {CUSTOM_FOOD_MAX}개까지</small>
+            {t('shop.custom')} <small>{t('shop.customHint', { n: CUSTOM_FOOD_MAX })}</small>
           </span>
           <Price n={CUSTOM_FOOD_COST} />
           <button
             type="button"
             className="ghost small"
             disabled={shop.balance < CUSTOM_FOOD_COST || shop.customFoods.length >= CUSTOM_FOOD_MAX}
-            onClick={() => run(bridge.makeFood(), '먹이 만들기 창을 열었어')}
+            onClick={() => run(bridge.makeFood(), t('shop.makerOpened'))}
           >
-            만들기
+            {t('shop.make')}
           </button>
         </div>
       </section>
 
       <section>
-        <h3>장난감</h3>
+        <h3>{t('shop.toys')}</h3>
         <ul className="goods">
-          {TOYS.map((t) => {
-            const owned = shop.toys[t.key];
+          {TOYS.map((toy) => {
+            const owned = shop.toys[toy.key];
             return (
-              <li key={t.key}>
+              <li key={toy.key}>
                 <span className="g-name">
-                  {t.name}
-                  <small>{t.hint}</small>
+                  {toy.name}
+                  <small>{toy.hint}</small>
                 </span>
-                {owned ? <span className="owned">있음</span> : <Price n={t.cost} />}
+                {owned ? <span className="owned">{t('shop.owned')}</span> : <Price n={toy.cost} />}
                 {!owned && (
                   <button
                     type="button"
                     className="ghost small"
-                    disabled={shop.balance < t.cost}
-                    onClick={() => run(bridge.buyToy(t.key), `${withParticle(t.name, '을')} 샀어`)}
+                    disabled={shop.balance < toy.cost}
+                    onClick={() => run(bridge.buyToy(toy.key), t('shop.bought', { name: toy.name }))}
                   >
-                    사기
+                    {t('shop.buy')}
                   </button>
                 )}
               </li>
@@ -134,26 +135,26 @@ export function ShopTab({ s }: { s: PanelState }) {
             type="button"
             className="ghost"
             disabled={!shop.toys.ball && !shop.toys.yarn}
-            title={shop.toys.ball || shop.toys.yarn ? undefined : '공이나 털실이 있어야 해'}
+            title={shop.toys.ball || shop.toys.yarn ? undefined : t('shop.needBall')}
             onClick={() => bridge.play('ball')}
           >
-            {shop.toys.yarn ? '털실' : '공'} 던져 주기
+            {shop.toys.yarn ? t('shop.throwYarn') : t('shop.throwBall')}
           </button>
           <button type="button" className="ghost" onClick={() => bridge.play('walk')}>
-            산책 가자
+            {t('shop.walk')}
           </button>
         </div>
       </section>
 
       <section>
-        <h3>집</h3>
+        <h3>{t('shop.house')}</h3>
         <div className="row-line">
           <span>
-            {level === 0 ? '아직 집이 없어' : `지금: ${HOUSE_NAMES[level - 1]}`}
+            {level === 0 ? t('shop.noHouse') : t('shop.houseNow', { name: houseName(level - 1) ?? '' })}
             <small>
               {nextHouse === undefined
-                ? '가장 좋은 집이야.'
-                : `다음: ${HOUSE_NAMES[level]} (화면 왼쪽 아래 구석에 놓여)`}
+                ? t('shop.bestHouse')
+                : t('shop.houseNext', { name: houseName(level) ?? '' })}
             </small>
           </span>
           {nextHouse !== undefined && (
@@ -163,9 +164,9 @@ export function ShopTab({ s }: { s: PanelState }) {
                 type="button"
                 className="ghost small"
                 disabled={shop.balance < nextHouse}
-                onClick={() => run(bridge.buyHouse(), '새 집이야!')}
+                onClick={() => run(bridge.buyHouse(), t('shop.newHouse'))}
               >
-                {level === 0 ? '짓기' : '늘리기'}
+                {level === 0 ? t('shop.build') : t('shop.upgrade')}
               </button>
             </>
           )}

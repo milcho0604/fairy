@@ -147,6 +147,8 @@ export const SETTINGS = {
   importFriend: 'settings:import-friend',
   syncCalendar: 'settings:sync-calendar',
   refreshMcp: 'settings:refresh-mcp',
+  /** 앱을 다시 켠다 (말을 바꾼 뒤) */
+  relaunch: 'settings:relaunch',
   /** 메인 → 설정 창: 설정이 바뀌었다 */
   changed: 'settings:changed',
   /** 메인 → 설정 창: 이 칸을 보여 줘 (메뉴 막대 "의견 보내기") */
@@ -190,6 +192,8 @@ export interface SettingsBridge {
   importFriend(): Promise<{ ok: boolean; message: string }>;
   syncCalendar(): Promise<string>;
   refreshMcp(): Promise<string[]>;
+  /** 앱을 다시 켠다. 창은 열릴 때 말을 읽어서 말을 바꾸면 다시 켜야 한다 */
+  relaunch(): void;
   onChanged(listener: (settings: Settings) => void): void;
   onFocus(listener: (section: SettingsSection) => void): void;
 }

@@ -1,6 +1,7 @@
 import { powerMonitor } from 'electron';
+import { t } from '../shared/i18n/index.ts';
 import { type Activity, type LifeState, type PetLife, SULK_LINES } from '../shared/pet-life.ts';
-import { REST, REST_LINES, RestCoach } from '../shared/rest.ts';
+import { REST, RestCoach, restLines } from '../shared/rest.ts';
 import type { TodoStore } from '../shared/todo-store.ts';
 import type { SayOptions } from './pet-window.ts';
 import { settings } from './settings.ts';
@@ -59,18 +60,19 @@ export function createPetLife(o: PetLifeOptions) {
       o.todos.reward(REST.coins, 'rest', now);
       o.log('life', '휴식 보상');
       o.react();
-      void o.say({ kind: 'answer', text: `잘 쉬었어? 코인 ${REST.coins}개.`, ttlMs: 5000 });
+      void o.say({ kind: 'answer', text: t('pet.life.rested', { coins: REST.coins }), ttlMs: 5000 });
       o.onChange();
     } else if (event === 'suggest' && !o.petHidden()) {
-      const line = REST_LINES[Math.floor(Math.random() * REST_LINES.length)] ?? REST_LINES[0];
+      const lines = restLines();
+      const line = lines[Math.floor(Math.random() * lines.length)] ?? lines[0];
       void o
         .say({
           kind: 'system',
           text: line ?? '',
           buttons: [
-            { id: 'go', label: '다녀올게' },
-            { id: 'walk', label: '같이 산책' },
-            { id: 'later', label: '나중에' },
+            { id: 'go', label: t('pet.life.restGo') },
+            { id: 'walk', label: t('pet.life.restWalk') },
+            { id: 'later', label: t('pet.life.later') },
           ],
           ttlMs: 20_000,
         })
@@ -90,14 +92,14 @@ export function createPetLife(o: PetLifeOptions) {
       o.react();
       void o.say({
         kind: 'answer',
-        text: coins > 0 ? `화해! 이제 안 삐졌어. 보너스 코인 ${coins}개.` : '화해! 이제 안 삐졌어.',
+        text: coins > 0 ? t('pet.life.madeUpCoins', { coins }) : t('pet.life.madeUp'),
         ttlMs: 6000,
       });
     } else if (r.affectionStep) {
       o.log('life', '친밀도', r.affectionStep);
       void o.say({
         kind: 'system',
-        text: `친밀도 ${r.affectionStep} 넘었어. 우리 꽤 친해졌다!`,
+        text: t('pet.life.affection', { step: r.affectionStep }),
         ttlMs: 6000,
       });
     }

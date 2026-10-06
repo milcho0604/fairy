@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { type AiUsage, resetText, usageLevel } from '../../../shared/ai/usage.ts';
+import { t } from '../../../shared/i18n/index.ts';
 import type { ProviderView } from '../../../shared/ipc.ts';
-import { withParticle } from '../../../shared/josa.ts';
 
 /** 고른 AI 의 남은 사용량. 마지막 답에서 읽은 값이라 오래됐으면 언제 기준인지 같이 쓴다. */
 /** hidden: 설치 안 된 AI 처럼 위에 더 중요한 안내가 있을 때 */
@@ -23,17 +23,17 @@ export function UsageBar({
   if (!spec.usage) {
     return (
       <p className="usage empty-usage">
-        {withParticle(spec.label, '은')} 사용량을 알려 주지 않아.
-        {!spec.verified && ' 아직 실제로 써 보지 않은 연결이라 안 되면 알려 줘.'}
+        {t('chat.usage.none', { label: spec.label })}
+        {!spec.verified && t('chat.usage.unverified')}
       </p>
     );
   }
   if (!usage) {
-    return <p className="usage empty-usage">{spec.label} 사용량은 첫 답을 받으면 보여 줄게.</p>;
+    return <p className="usage empty-usage">{t('chat.usage.afterFirst', { label: spec.label })}</p>;
   }
   const ageMin = Math.round((now - usage.checkedAt) / 60_000);
   return (
-    <div className="usage" title={usage.plan ? `요금제 ${usage.plan}` : undefined}>
+    <div className="usage" title={usage.plan ? t('chat.usage.plan', { plan: usage.plan }) : undefined}>
       {usage.windows.map((w, i) => {
         const level = usageLevel(w.usedPercent);
         const last = i === usage.windows.length - 1;
@@ -47,7 +47,10 @@ export function UsageBar({
             <span className="reset">
               {resetText(w.resetsAt, now)}
               {last && ageMin >= 2 && (
-                <span className="age"> ({ageMin < 60 ? `${ageMin}분 전 기준` : '한참 전 기준'})</span>
+                <span className="age">
+                  {' '}
+                  ({ageMin < 60 ? t('chat.usage.minutesAgo', { n: ageMin }) : t('chat.usage.longAgo')})
+                </span>
               )}
             </span>
           </div>

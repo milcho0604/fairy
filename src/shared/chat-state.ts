@@ -3,6 +3,7 @@
 import type { Exchange } from './ai/text.ts';
 import type { AiError, AiEvent, AiProvider } from './ai/types.ts';
 import type { AiUsage } from './ai/usage.ts';
+import { t } from './i18n/index.ts';
 
 export interface ChatImage {
   /** 화면에 보일 작은 그림 (data URL). 원본은 보낼 때만 쓰고 상태에 두지 않는다. */
@@ -35,9 +36,6 @@ export interface ChatState {
 
 /** 대화가 이만큼 길어지면 새 대화를 권한다. 이어갈수록 입력 토큰이 쌓인다(L8: codex 2번째에 54K). */
 export const LONG_CHAT_TURNS = 12;
-
-export const LONG_CHAT_NOTICE =
-  '대화가 길어졌어. 이어 갈수록 답이 느려지고 한도도 빨리 써. 새 대화로 시작하면 가벼워져.';
 
 export function initialChat(provider: AiProvider = 'claude', usage: ChatState['usage'] = {}): ChatState {
   return { provider, messages: [], sessions: {}, usage };
@@ -100,7 +98,7 @@ export function applyEvent(s: ChatState, petId: string, e: AiEvent, noticeId: st
       if (turns === LONG_CHAT_TURNS) {
         next = {
           ...next,
-          messages: [...next.messages, { id: noticeId, role: 'notice', text: LONG_CHAT_NOTICE }],
+          messages: [...next.messages, { id: noticeId, role: 'notice', text: t('chat.longChat') }],
         };
       }
       return next;
