@@ -30,6 +30,7 @@ npm run dist:mac  # dist/ 에 맥 설치 파일(dmg). 윈도우는 GitHub Action
 | [docs/plan.md](docs/plan.md) | 기획서 원본 |
 | [docs/plan.html](docs/plan.html) | 기획서 html 판. 목차, 테마 전환, 기능 표 필터 포함 |
 | [docs/tests/ai-cli.md](docs/tests/ai-cli.md) | claude, codex 연동 검증 시나리오와 실행 기록 |
+| [docs/install.md](docs/install.md) | 베타 사용자용 설치 안내 (맥, 윈도우, AI 연결, 지우기) |
 | [docs/tests/windows.md](docs/tests/windows.md) | 윈도우 확인 체크리스트 (설치, 펫 창, 방해 금지, AI, 자원) |
 | [docs/assets/](docs/assets/) | 시스템 구조도, 화면 설계 그림 (svg) |
 | [docs/roadmap.md](docs/roadmap.md) | 진행표. 단계별 체크리스트, 다음에 이어서 할 일 |

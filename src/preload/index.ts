@@ -23,6 +23,7 @@ import {
   type PetStatus,
   SETTINGS,
   type SettingsBridge,
+  type SettingsSection,
 } from '../shared/ipc.ts';
 import type { Settings } from '../shared/settings.ts';
 
@@ -111,8 +112,13 @@ if (kind === 'settings') {
     set: (patch) => ipcRenderer.invoke(SETTINGS.set, patch),
     setScale: (scale: number) => ipcRenderer.send(SETTINGS.setScale, scale),
     openMaker: () => ipcRenderer.send(SETTINGS.openMaker),
+    stats: () => ipcRenderer.invoke(SETTINGS.stats),
+    copyStats: () => ipcRenderer.invoke(SETTINGS.copyStats),
     onChanged: (listener) => {
       ipcRenderer.on(SETTINGS.changed, (_e, next: Settings) => listener(next));
+    },
+    onFocus: (listener) => {
+      ipcRenderer.on(SETTINGS.focus, (_e, section: SettingsSection) => listener(section));
     },
   };
   contextBridge.exposeInMainWorld('jjakkungSettings', bridge);

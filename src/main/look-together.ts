@@ -166,7 +166,7 @@ export function createLookTogether({ petName, hideOwnWindows, onImage, log }: Lo
       type: 'info',
       message: `${withParticle(petName(), '이')} 화면을 보려면 화면 기록 권한이 필요해`,
       detail: isMac
-        ? '시스템 설정 > 개인정보 보호 및 보안 > 화면 및 시스템 오디오 녹화에서 짝꿍을 켜 줘. 켠 다음에는 짝꿍을 껐다 켜야 해.'
+        ? '시스템 설정 > 개인정보 보호 및 보안 > 화면 및 시스템 오디오 녹음에서 Jjakkung 을 켜 줘. 켠 다음에는 짝꿍을 껐다 켜야 해.'
         : '화면을 찍지 못했어. 다른 프로그램이 화면 캡처를 막고 있지 않은지 확인해 줘.',
       buttons: isMac ? ['설정 열기', '닫기'] : ['닫기'],
       defaultId: 0,

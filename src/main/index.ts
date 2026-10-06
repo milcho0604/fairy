@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { app, globalShortcut } from 'electron';
 import { IPC } from '../shared/ipc.ts';
 import { FULLNESS } from '../shared/todo-store.ts';
+import { watchBetaStats } from './beta.ts';
 import { createChat } from './chat.ts';
 import { openStore } from './db.ts';
 import { createLookTogether } from './look-together.ts';
@@ -80,7 +81,10 @@ app.whenReady().then(() => {
         if (chatWasVisible && chatWin && !chatWin.isDestroyed()) chatWin.show();
       };
     },
-    onImage: (image) => chat.attach(image, pet.bounds()),
+    onImage: (image) => {
+      stats.countLook(Date.now());
+      chat.attach(image, pet.bounds());
+    },
     log,
   });
   // ---- 방해 금지 (P1-10) ----
@@ -94,10 +98,12 @@ app.whenReady().then(() => {
     isHidden: () => pet.isHidden('user'),
     openChat: () => chat.open(pet.bounds()),
     openSettings: () => settingsWindow.open(),
+    sendFeedback: () => settingsWindow.open('stats'),
     quickAdd: () => panel.openQuick(),
   });
   // ---- 할 일과 코인 (2단계) ----
-  const store = openStore(log);
+  const { store, stats } = openStore(log);
+  watchBetaStats(stats, () => pet.isHidden('user'), log);
   const panel = createPanel({
     store,
     petName,
@@ -163,6 +169,7 @@ app.whenReady().then(() => {
     scale: () => pet.scale(),
     setScale: (n) => pet.setScale(n),
     openMaker: () => maker.open(),
+    stats,
   });
   settings.onChange((next, prev) => {
     if (next.petName !== prev.petName) {
@@ -194,7 +201,7 @@ app.whenReady().then(() => {
   // 개발용: 메인 프로세스 디버거(--inspect)에서 같이 보기, 채팅을 불러 시험할 손잡이. 배포본에는 없다.
   if (!app.isPackaged)
     Object.assign(globalThis, {
-      __jj: { look, chat, pet, globalShortcut, tray, settings, settingsWindow, panel, store, maker },
+      __jj: { look, chat, pet, globalShortcut, tray, settings, settingsWindow, panel, store, stats, maker },
     });
   if (process.env.JJ_METRICS) logMetrics(Number(process.env.JJ_METRICS));
 });

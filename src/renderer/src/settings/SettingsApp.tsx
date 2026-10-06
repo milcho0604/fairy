@@ -1,4 +1,5 @@
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type BetaReport, TARGET } from '../../../shared/beta-stats.ts';
 import { type ChatterLevel, LEVEL_LABEL, MAX_PER_HOUR } from '../../../shared/chatter.ts';
 import type { SettingsSnapshot } from '../../../shared/ipc.ts';
 import { withParticle } from '../../../shared/josa.ts';
@@ -35,11 +36,15 @@ export function SettingsApp() {
   const mod = mac ? 'Cmd' : 'Ctrl';
   const alt = mac ? 'Option' : 'Alt';
 
+  const flash = (message: string) => {
+    setSaved(message);
+    setTimeout(() => setSaved(''), 2400);
+  };
+
   const update = async (patch: Partial<Settings>, message = '저장했어') => {
     const next = await bridge.set(patch);
     setSnap((v) => v && { ...v, settings: next });
-    setSaved(message);
-    setTimeout(() => setSaved(''), 1600);
+    flash(message);
     return next;
   };
 
@@ -179,9 +184,117 @@ export function SettingsApp() {
           </dl>
         </Section>
 
+        <Stats onCopied={() => flash('복사했어. 의견과 같이 붙여 넣어 줘')} />
+
         <p className="version">짝꿍 {snap.version}</p>
       </main>
     </div>
+  );
+}
+
+/**
+ * 베타 기록 (P4-04). 기획서 성공 기준 다섯 가지를 지금 값과 목표로 보여 준다.
+ * 메뉴 막대 "의견 보내기"로 열리면 이 칸으로 바로 내려온다.
+ */
+function Stats({ onCopied }: { onCopied: () => void }) {
+  const [report, setReport] = useState<BetaReport>();
+  const [focus, setFocus] = useState(false);
+  const ref = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const load = () => bridge.stats().then(setReport);
+    const show = () => {
+      load();
+      setFocus(true);
+      setTimeout(() => setFocus(false), 1600);
+    };
+    load();
+    bridge.onFocus(show);
+    if (location.hash === '#stats') show();
+    // 창을 다시 볼 때 숫자를 새로 읽는다 (1분마다 쌓인다).
+    const onVisible = () => document.visibilityState === 'visible' && load();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
+
+  useEffect(() => {
+    // 숫자를 읽기 전에는 칸이 없어서, 읽은 뒤에 내려간다.
+    if (focus && report) ref.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, [focus, report]);
+
+  if (!report) return null;
+  const started = report.dayNumber > 0;
+  const rows: { label: string; value: string; goal: string; ok: boolean | undefined }[] = [
+    {
+      label: '쓴 날',
+      value: started ? `${report.dayNumber}일째 (켠 날 ${report.daysUsed}일)` : '오늘부터',
+      goal: '14일째에도 켜 두기',
+      ok: started ? report.dayNumber >= 14 || undefined : undefined,
+    },
+    {
+      label: '하루 끝낸 할 일 (중앙값)',
+      value: `${report.doneMedian}개`,
+      goal: `${TARGET.doneMedian}개 이상`,
+      ok: started ? report.doneMedian >= TARGET.doneMedian : undefined,
+    },
+    {
+      label: '펫을 숨긴 시간',
+      value: `${Math.round(report.hiddenRatio * 100)}%`,
+      goal: `${TARGET.hiddenRatio * 100}% 미만`,
+      ok: started ? report.hiddenRatio < TARGET.hiddenRatio : undefined,
+    },
+    {
+      label: '같이 보기 (최근 7일)',
+      value: `${report.look7}번`,
+      goal: `${TARGET.look7}번 이상`,
+      ok: started ? report.look7 >= TARGET.look7 : undefined,
+    },
+    {
+      label: '멈춤과 갑자기 꺼짐 (최근 7일)',
+      value: `${report.crash7}번`,
+      goal: `${TARGET.crash7}번`,
+      ok: started ? report.crash7 <= TARGET.crash7 : undefined,
+    },
+  ];
+
+  return (
+    <section ref={ref} id="stats" className={focus ? 'focus' : ''}>
+      <h2>내 기록 (베타)</h2>
+      <div className="card">
+        <small>
+          짝꿍이 쓸 만한지 보는 숫자야. 이 컴퓨터에만 있고 어디로도 보내지 않아. 의견을 보낼 때 복사해서 같이
+          붙여 주면 큰 도움이 돼.
+        </small>
+        <table className="stats">
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.label}>
+                <th scope="row">{r.label}</th>
+                <td>
+                  <b>{r.value}</b>
+                  <small>
+                    목표 {r.goal}
+                    {r.ok === true && <i className="met"> 달성</i>}
+                  </small>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="row">
+          <button
+            type="button"
+            className="ghost"
+            onClick={async () => {
+              if (await bridge.copyStats()) onCopied();
+            }}
+          >
+            기록 복사
+          </button>
+        </div>
+        <small>복사한 글에는 날짜와 숫자만 들어가. 할 일 제목이나 대화 내용은 없어.</small>
+      </div>
+    </section>
   );
 }
 

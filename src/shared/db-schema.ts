@@ -33,6 +33,16 @@ export const MIGRATIONS: readonly string[] = [
     fullness_at integer not null
   );
   `,
+  // 2판: 베타 기록 (P4-04). 성공 기준 화면용. 완료한 할 일 수는 todo 에서 세어 따로 적지 않는다.
+  `
+  create table daily_stat (
+    day text primary key,     -- 현지 날짜 YYYY-MM-DD
+    on_min integer not null default 0,     -- 켜 두고 화면이 잠기지 않은 분
+    hidden_min integer not null default 0, -- 그중 사용자가 펫을 숨긴 분 (발표 자동 숨김은 빼고)
+    look_count integer not null default 0, -- 같이 보기로 화면을 찍은 횟수
+    crash_count integer not null default 0 -- 비정상 종료와 창 멈춤
+  );
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

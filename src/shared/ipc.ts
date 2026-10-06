@@ -2,6 +2,7 @@
 import type { CustomProviderInput } from './ai/providers.ts';
 import type { AiProvider, AiStatus, ImageAttachment } from './ai/types.ts';
 import type { Activity } from './behavior.ts';
+import type { BetaReport } from './beta-stats.ts';
 import type { BubbleLayout } from './bubble-layout.ts';
 import type { ChatImage, ChatState } from './chat-state.ts';
 import type { GestureEvent } from './gesture.ts';
@@ -93,8 +94,13 @@ export const SETTINGS = {
   set: 'settings:set',
   setScale: 'settings:set-scale',
   openMaker: 'settings:open-maker',
+  /** 베타 기록 (P4-04) */
+  stats: 'settings:stats',
+  copyStats: 'settings:copy-stats',
   /** 메인 → 설정 창: 설정이 바뀌었다 */
   changed: 'settings:changed',
+  /** 메인 → 설정 창: 이 칸을 보여 줘 (메뉴 막대 "의견 보내기") */
+  focus: 'settings:focus',
 } as const;
 
 export interface SettingsSnapshot {
@@ -106,12 +112,19 @@ export interface SettingsSnapshot {
   version: string;
 }
 
+/** 설정 창에서 바로 보여 줄 칸 */
+export type SettingsSection = 'stats';
+
 export interface SettingsBridge {
   get(): Promise<SettingsSnapshot>;
   set(patch: Partial<Settings>): Promise<Settings>;
   setScale(scale: number): void;
   openMaker(): void;
+  stats(): Promise<BetaReport>;
+  /** 베타 기록 글을 클립보드에 복사한다 */
+  copyStats(): Promise<boolean>;
   onChanged(listener: (settings: Settings) => void): void;
+  onFocus(listener: (section: SettingsSection) => void): void;
 }
 
 /** 보낼 그림: 원본은 AI 로, 작은 그림은 대화 기록으로. */

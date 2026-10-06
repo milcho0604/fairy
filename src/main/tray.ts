@@ -7,6 +7,8 @@ export interface TrayActions {
   isHidden(): boolean;
   openChat(): void;
   openSettings(): void;
+  /** 베타 기록 칸을 연 설정 창 (P4-01 의견 보내기) */
+  sendFeedback(): void;
   quickAdd(): void;
 }
 
@@ -36,6 +38,7 @@ export function createTray(petName: () => string, actions: TrayActions): Tray {
       { label: `${withParticle(petName(), '과')} 대화`, click: () => actions.openChat() },
       { label: '할 일 추가', accelerator: QUICK_ADD_SHORTCUT, click: () => actions.quickAdd() },
       { label: '설정', click: () => actions.openSettings() },
+      { label: '의견 보내기', click: () => actions.sendFeedback() },
       { type: 'separator' },
       { label: '끝내기', role: 'quit' },
     ]);

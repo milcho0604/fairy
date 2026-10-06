@@ -263,3 +263,44 @@ kbd {
 .ghost:hover {
   border-color: var(--accent);
 }
+
+.stats {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.stats th,
+.stats td {
+  padding: 7px 0;
+  border-top: 1px solid var(--line);
+  vertical-align: top;
+  text-align: left;
+}
+
+.stats th {
+  width: 48%;
+  padding-right: 10px;
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.stats tr:first-child th,
+.stats tr:first-child td {
+  border-top: 0;
+}
+
+.stats td b {
+  font-variant-numeric: tabular-nums;
+}
+
+.stats .met {
+  font-style: normal;
+  color: var(--ok);
+}
+
+section.focus .card {
+  outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 2px;
+  transition: outline-color 0.6s;
+}
