@@ -1,0 +1,25 @@
+# 올릴 때마다 타입 검사, 린트, 테스트 (`npm run check`). 리눅스 러너라 싸고 빠르다.
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      # Electron 본체는 검사에 필요 없어 받지 않는다.
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      - run: npm run check

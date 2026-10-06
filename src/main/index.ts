@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { app, globalShortcut } from 'electron';
 import { IPC } from '../shared/ipc.ts';
 import { FULLNESS } from '../shared/todo-store.ts';
@@ -11,6 +12,12 @@ import { watchPresentation } from './presence-watch.ts';
 import { settings } from './settings.ts';
 import { createSettingsWindow } from './settings-window.ts';
 import { createTray, HIDE_SHORTCUT, QUICK_ADD_SHORTCUT } from './tray.ts';
+
+// 데이터 폴더를 이름으로 고정한다. 기본값은 앱 이름을 따라가서 설치판(Jjakkung)과 개발판(jjakkung)이
+// 운영체제에 따라 다른 폴더가 되고, 나중에 앱 이름을 바꿔도 데이터를 잃는다.
+// 하나만 띄우기 잠금도 이 폴더에 있어 다른 무엇보다 먼저 정한다.
+// JJ_USER_DATA 는 시험용: 설치판을 실제 데이터와 잠금을 건드리지 않고 따로 띄울 때 쓴다.
+app.setPath('userData', process.env.JJ_USER_DATA || join(app.getPath('appData'), 'jjakkung'));
 
 const log = (tag: string, ...rest: unknown[]) => {
   if (!app.isPackaged) console.log(`[${tag}]`, ...rest);

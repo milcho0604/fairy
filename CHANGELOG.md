@@ -8,6 +8,21 @@
 
 ## [Unreleased]
 
+### Added (설치 파일)
+
+- 맥 설치 파일(P4-02): `npm run dist:mac` 로 dmg(애플 실리콘, 인텔)를 만든다. 앱 ID `io.github.milcho0604.jjakkung`, 개발자 서명 전이라 임시 서명만 한다
+- GitHub Actions: 올릴 때마다 검사(`check.yml`), 손으로 또는 `v*` 태그로 맥과 윈도우 설치 파일 빌드(`release.yml`, 태그면 Releases 초안)
+- 윈도우 확인 체크리스트 `docs/tests/windows.md` (D1: 맥미니 가상 머신에 윈도우 11 ARM)
+
+### Changed
+
+- 데이터 폴더를 앱 이름과 상관없이 `jjakkung` 으로 고정했다. `JJ_USER_DATA` 로 시험용 폴더를 줄 수 있다
+- react, react-dom, onnxruntime-web 을 devDependencies 로 옮겼다. 화면 묶음에 이미 들어가서 설치판에 따로 넣을 필요가 없다 (앱 466MB → 315MB)
+
+### Fixed
+
+- 앱 이름을 한글로 두면 설치판이 켜지자마자 죽던 문제. 실행 파일 이름은 Jjakkung, 보이는 이름만 짝꿍으로 (L20)
+
 ### Added (사진으로 펫 만들기)
 
 - 사진 펫(P1-08): 사진 한 장을 고르면 이 컴퓨터 안에서 배경을 지우고(처음 한 번 모델 170MB 받기), 지우개와 복원 붓으로 다듬고, 이름을 지어 펫으로 삼는다. 펫은 사진 그대로 통통 튀고, 걷고, 삐지면 등을 돌린다. 설정에서 바꾸거나 기본 펫으로 돌아간다

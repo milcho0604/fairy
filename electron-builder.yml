@@ -1,0 +1,47 @@
+# 설치 파일 만들기 (P4-02). `npm run dist` 로 지금 컴퓨터용을 만든다. 맥과 윈도우는 GitHub Actions 에서.
+# 앱 고유 ID 를 붙여야 화면 기록 권한, 로그인 시 실행이 개발용 Electron 과 섞이지 않는다.
+appId: io.github.milcho0604.jjakkung
+# 실행 파일과 앱 묶음 이름은 영문이어야 한다. "짝꿍"으로 두면 Electron 44 가 켜지자마자 죽는다 (L20).
+# 사람 눈에 보이는 이름만 한글로: 맥은 CFBundleDisplayName, 윈도우는 바로 가기와 프로그램 목록 이름.
+productName: Jjakkung
+# 설치 파일 이름은 영문으로 둔다. 한글 파일 이름은 내려받기와 명령줄에서 깨지기 쉽다.
+artifactName: jjakkung-${version}-${os}-${arch}.${ext}
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**
+  - resources/**
+  - package.json
+# koffi 는 Node-API 라 Electron 용으로 다시 빌드할 필요가 없다. 다시 빌드하면 윈도우 러너에서 컴파일러를 찾는다.
+npmRebuild: false
+asarUnpack:
+  - node_modules/koffi/**
+mac:
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+  # 개발자 서명 전(D4)이라 임시 서명(-)만 한다. 애플 실리콘은 서명이 깨진 앱을 아예 안 연다.
+  # 처음 열 때 뜨는 확인되지 않은 개발자 경고를 넘기는 법은 설치 안내(P4-03)에.
+  identity: "-"
+  # 강화 런타임은 공증(D4) 때 켠다. 임시 서명과 같이 켜면 라이브러리 검사에 걸려 안 열린다.
+  hardenedRuntime: false
+  extendInfo:
+    CFBundleDisplayName: 짝꿍
+    # 펫 앱이라 Dock 에 안 뜬다 (코드에서 app.dock.hide 도 한다. 이건 켜질 때 잠깐 뜨는 것까지 막는다).
+    LSUIElement: true
+    NSScreenCaptureUsageDescription: 같이 보기에서 고른 화면 영역을 AI 에게 보여 줄 때 씁니다.
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+nsis:
+  shortcutName: 짝꿍
+  uninstallDisplayName: 짝꿍
+  oneClick: true
+  perMachine: false
+  deleteAppDataOnUninstall: false
+dmg:
+  title: 짝꿍 ${version}
+publish: null
