@@ -9,7 +9,8 @@ import type { CalEvent } from './event-store.ts';
 import type { FocusState } from './focus.ts';
 import type { GestureEvent } from './gesture.ts';
 import type { Note, NoteSource } from './note-store.ts';
-import type { Settings } from './settings.ts';
+import type { PetKind, PoseKind, Settings } from './settings.ts';
+import type { BuyResult, ShopState } from './shop.ts';
 import type { Repeat, Todo } from './todo-store.ts';
 
 export const IPC = {
@@ -43,6 +44,10 @@ export const IPC = {
   status: 'pet:status',
   /** 메인 → 펫 화면: 반응 (할 일 끝냄, 밥 먹음) */
   react: 'pet:react',
+  /** 펫 화면 → 메인: 쓰다듬었다 (v1) */
+  petted: 'pet:petted',
+  /** 메인 → 펫 화면: 던져져 날아가는 중 (v1) */
+  flight: 'pet:flight',
   /** 메인 → 펫 화면: 사진 펫 그림 */
   image: 'pet:image',
 } as const;
@@ -55,6 +60,8 @@ export interface BubbleButton {
 export interface BubbleMessage {
   id: string;
   text: string;
+  /** 글 옆 작은 그림 (커스텀 먹이 등, data URL) */
+  image?: string;
   buttons: BubbleButton[];
   /** 이 시간이 지나면 저절로 닫힌다 (마우스를 올리면 멈춤) */
   ttlMs: number;
@@ -98,6 +105,29 @@ export const CHAT = {
   retryWith: 'chat:retry-with',
 } as const;
 
+export const ONBOARD = {
+  get: 'onboard:get',
+  set: 'onboard:set',
+  openMaker: 'onboard:open-maker',
+  openScreenSettings: 'onboard:open-screen-settings',
+  finish: 'onboard:finish',
+} as const;
+
+export interface OnboardSnapshot {
+  settings: Settings;
+  platform: NodeJS.Platform;
+  /** 화면 기록 권한 (맥). 윈도우는 늘 granted */
+  screen: 'granted' | 'denied' | 'not-determined' | 'restricted' | 'unknown';
+}
+
+export interface OnboardBridge {
+  get(): Promise<OnboardSnapshot>;
+  set(patch: Partial<Settings>): Promise<Settings>;
+  openMaker(): void;
+  openScreenSettings(): void;
+  finish(): void;
+}
+
 export const SETTINGS = {
   get: 'settings:get',
   set: 'settings:set',
@@ -106,6 +136,17 @@ export const SETTINGS = {
   /** 베타 기록 (P4-04) */
   stats: 'settings:stats',
   copyStats: 'settings:copy-stats',
+  /** 새 버전 확인 (v1). 결과 글 */
+  checkUpdate: 'settings:check-update',
+  openOnboarding: 'settings:open-onboarding',
+  // v2
+  exportData: 'settings:export-data',
+  importData: 'settings:import-data',
+  exportPet: 'settings:export-pet',
+  importPet: 'settings:import-pet',
+  importFriend: 'settings:import-friend',
+  syncCalendar: 'settings:sync-calendar',
+  refreshMcp: 'settings:refresh-mcp',
   /** 메인 → 설정 창: 설정이 바뀌었다 */
   changed: 'settings:changed',
   /** 메인 → 설정 창: 이 칸을 보여 줘 (메뉴 막대 "의견 보내기") */
@@ -121,6 +162,10 @@ export interface SettingsSnapshot {
   version: string;
   /** 펫 MCP 서버를 AI 도구에 등록할 때 쓸 실행 파일과 스크립트 경로 (v1) */
   mcp: { exec: string; script: string };
+  /** 내 claude 에 연결된 MCP 서버 (v2, 하루 한 번 읽어 둔 것) */
+  myMcpServers: string[];
+  /** 마지막 캘린더 가져오기 결과 */
+  calendarLast: string;
 }
 
 /** 설정 창에서 바로 보여 줄 칸 */
@@ -130,10 +175,21 @@ export interface SettingsBridge {
   get(): Promise<SettingsSnapshot>;
   set(patch: Partial<Settings>): Promise<Settings>;
   setScale(scale: number): void;
-  openMaker(): void;
+  /** 사진 펫 만들기 (target 을 주면 상태별 포즈) */
+  openMaker(target?: MakerTarget): void;
   stats(): Promise<BetaReport>;
   /** 베타 기록 글을 클립보드에 복사한다 */
   copyStats(): Promise<boolean>;
+  checkUpdate(): Promise<string>;
+  openOnboarding(): void;
+  /** 백업 폴더 만들기. 만든 경로 (그만두면 빈 글) */
+  exportData(): Promise<string>;
+  importData(): Promise<string>;
+  exportPet(): Promise<string>;
+  importPet(): Promise<{ ok: boolean; message: string }>;
+  importFriend(): Promise<{ ok: boolean; message: string }>;
+  syncCalendar(): Promise<string>;
+  refreshMcp(): Promise<string[]>;
   onChanged(listener: (settings: Settings) => void): void;
   onFocus(listener: (section: SettingsSection) => void): void;
 }
@@ -219,14 +275,28 @@ export interface PetBridge {
   onActivity(listener: (activity: Activity) => void): void;
   onStatus(listener: (status: PetStatus) => void): void;
   onReact(listener: (kind: 'happy') => void): void;
+  petted(): void;
+  onFlight(listener: (flying: boolean) => void): void;
   /** 사진 펫 그림 (PNG data URL). null 이면 기본 펫 */
-  onImage(listener: (dataUrl: string | null) => void): void;
+  onImage(listener: (images: PetImages) => void): void;
 }
 
 export interface PetStatus {
   hungry: boolean;
   /** 집중 타이머 중 (펫이 잔다) */
   focus: boolean;
+  /** 삐짐 칸 수 (v1) */
+  sulk: number;
+  /** 쿠션이 있으면 앉을 때 쿠션 위에 (v1 장난감) */
+  cushion: boolean;
+  /** 기본 펫 모양 (v1) */
+  kind: PetKind;
+}
+
+/** 펫 그림들 (data URL). 없으면 기본 펫. 포즈는 상태별 그림 (v1) */
+export interface PetImages {
+  main: string | null;
+  poses: Partial<Record<PoseKind, string>>;
 }
 
 export const MAKER = {
@@ -246,9 +316,17 @@ export const MAKER = {
 export const MODEL_SCHEME = 'jj-model';
 export const MODEL_URL = `${MODEL_SCHEME}://bg/model.onnx`;
 
+/** 펫 만들기 창이 만드는 것: 펫 본 그림, 또는 상태별 포즈 (v1) */
+export type MakerTarget = 'main' | PoseKind | 'food';
+
 export interface MakerInfo {
+  target: MakerTarget;
   petName: string;
   hasPhotoPet: boolean;
+  /** 이 포즈 그림이 이미 있는지 (포즈를 만들 때) */
+  hasPose: boolean;
+  /** 커스텀 먹이 만들기 값 (먹이를 만들 때) */
+  foodCost: number;
   modelReady: boolean;
   modelMB: number;
   size: number;
@@ -260,7 +338,7 @@ export interface MakerBridge {
   platform: NodeJS.Platform;
   info(): Promise<MakerInfo>;
   ensureModel(): Promise<{ ok: true } | { ok: false; error: string }>;
-  /** 다듬은 그림(PNG data URL)과 이름을 저장하고 펫을 바꾼다 */
+  /** 다듬은 그림(PNG data URL, 움직이는 그림은 gif, webp 그대로)과 이름을 저장하고 펫을 바꾼다 */
   save(png: string, name: string): Promise<{ ok: boolean; error?: string }>;
   /** 기본 펫으로 돌아가기 */
   resetToDefault(): Promise<void>;
@@ -295,8 +373,17 @@ export const PANEL = {
   // 집중 타이머 (v1)
   focusStart: 'panel:focus-start',
   focusStop: 'panel:focus-stop',
+  // 상점과 놀이 (v1)
+  buyToy: 'panel:buy-toy',
+  buyHouse: 'panel:buy-house',
+  feedWith: 'panel:feed-with',
+  makeFood: 'panel:make-food',
+  removeFood: 'panel:remove-food',
+  play: 'panel:play',
   /** 메인 → 패널, 빠른 입력: 바뀐 상태 */
   state: 'panel:state',
+  /** 메인 → 패널: 이 탭을 보여 줘 (펫 메뉴 "상점") */
+  tab: 'panel:tab',
 } as const;
 
 export interface PanelState {
@@ -316,6 +403,17 @@ export interface PanelState {
   focus: FocusState;
   /** 집중 코인과 오늘 받은 집중 횟수 */
   focusCoins: number;
+  /** 펫의 하루 (v1): 삐짐 칸, 기분, 친밀도 */
+  life: { sulk: number; mood: number; affection: number };
+  /** 연속 기록과 업적 (v2) */
+  achieve: {
+    streak: number;
+    got: { key: string; name: string; hint: string }[];
+    total: number;
+    next?: { name: string; hint: string };
+  };
+  /** 상점 (v1). 커스텀 먹이 그림은 data URL 로 */
+  shop: ShopState & { foodImages: Record<string, string> };
 }
 
 export interface NoteSummary {
@@ -326,7 +424,9 @@ export interface NoteSummary {
   updatedAt: number;
 }
 
-export type PanelTab = 'today' | 'todo' | 'note' | 'event';
+export type PanelTab = 'today' | 'todo' | 'note' | 'event' | 'shop';
+
+export type PlayKind = 'ball' | 'walk' | 'seek';
 
 export type NoteAiKind = 'todos' | 'summary';
 
@@ -364,4 +464,13 @@ export interface PanelBridge {
   eventRestore(id: number): void;
   focusStart(): void;
   focusStop(): void;
+  buyToy(key: string): Promise<BuyResult>;
+  buyHouse(): Promise<BuyResult>;
+  /** 이 먹이를 준다 (기본, 간식, 케이크, 커스텀) */
+  feedWith(key: string): Promise<{ ok: boolean; error?: string }>;
+  /** 커스텀 먹이 만들기 창을 연다. 코인이 모자라면 오류 */
+  makeFood(): Promise<BuyResult>;
+  removeFood(key: string): void;
+  play(kind: PlayKind): void;
+  onTab(listener: (tab: PanelTab) => void): void;
 }

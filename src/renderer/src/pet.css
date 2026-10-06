@@ -52,6 +52,19 @@ body {
   margin: 0;
 }
 
+#bubble .bubble-body {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#bubble .bubble-body img {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+}
+
 #bubble::after {
   content: "";
   position: absolute;

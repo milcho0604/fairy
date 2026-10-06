@@ -6,6 +6,7 @@ import { PetFace } from '../PetFace.tsx';
 import { EventTab } from './EventTab.tsx';
 import { CoinIcon } from './icons.tsx';
 import { NoteTab } from './NoteTab.tsx';
+import { ShopTab } from './ShopTab.tsx';
 import { TodayTab } from './TodayTab.tsx';
 import { TodoTab } from './TodoTab.tsx';
 
@@ -16,11 +17,15 @@ const TABS: { id: PanelTab; label: string }[] = [
   { id: 'todo', label: '할 일' },
   { id: 'note', label: '메모' },
   { id: 'event', label: '일정' },
+  { id: 'shop', label: '상점' },
 ];
 const TAB_KEY = 'jj.panel.tab';
 
 /** 마지막에 본 탭 (창은 열 때마다 새로 만들어서 브라우저 저장소에 둔다). 못 읽으면 오늘. */
 function savedTab(): PanelTab {
+  // 펫 메뉴 "상점"처럼 탭을 정해서 열면 주소 뒤에 붙어 온다
+  const asked = location.hash.slice(1);
+  if (TABS.some((t) => t.id === asked)) return asked as PanelTab;
   try {
     const v = localStorage.getItem(TAB_KEY);
     return TABS.some((t) => t.id === v) ? (v as PanelTab) : 'today';
@@ -55,6 +60,7 @@ export function PanelApp() {
   useEffect(() => {
     bridge.snapshot().then(setS);
     bridge.onState(setS);
+    bridge.onTab((t) => setTabState(t));
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') bridge.close();
     };
@@ -118,6 +124,16 @@ export function PanelApp() {
           {fed || `밥 주기 ${s.foodCost}`}
         </button>
       </div>
+      <div className="life">
+        <span title="기분: 쓰다듬기, 놀이, 할 일로 오르고 날이 바뀌면 50">기분 {s.life.mood}</span>
+        <span title="친밀도: 쌓이기만 하고 줄지 않아">친밀도 {s.life.affection}</span>
+      </div>
+      {s.life.sulk > 0 && (
+        <p className="hint sulk">
+          {withParticle(s.petName, '이')} {s.life.sulk}일째 삐져 있어. 할 일 하나를 끝내거나, 쓰다듬고 밥을
+          주면 풀려.
+        </p>
+      )}
       {hungry && <p className="hint hungry">{withParticle(s.petName, '이')} 배고파 보여.</p>}
 
       <nav className="tabs" aria-label="패널">
@@ -147,6 +163,7 @@ export function PanelApp() {
         />
       )}
       {tab === 'note' && <NoteTab s={s} onRemoved={(id) => showToast({ kind: 'note-removed', id })} />}
+      {tab === 'shop' && <ShopTab s={s} />}
       {tab === 'event' && (
         <EventTab s={s} inputRef={inputRef} onRemoved={(id) => showToast({ kind: 'event-removed', id })} />
       )}

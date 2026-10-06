@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { app, Menu, nativeImage, Tray } from 'electron';
 import { withParticle } from '../shared/josa.ts';
+import { settings } from './settings.ts';
 
 export interface TrayActions {
   toggleHidden(): void;
@@ -32,11 +33,11 @@ export function createTray(petName: () => string, actions: TrayActions): Tray {
         label: actions.isHidden()
           ? `${withParticle(petName(), '을')} 다시 보이기`
           : `${withParticle(petName(), '을')} 잠깐 숨기기`,
-        accelerator: HIDE_SHORTCUT,
+        accelerator: hideShortcut(),
         click: () => actions.toggleHidden(),
       },
       { label: `${withParticle(petName(), '과')} 대화`, click: () => actions.openChat() },
-      { label: '할 일 추가', accelerator: QUICK_ADD_SHORTCUT, click: () => actions.quickAdd() },
+      { label: '할 일 추가', accelerator: quickAddShortcut(), click: () => actions.quickAdd() },
       { label: '설정', click: () => actions.openSettings() },
       { label: '의견 보내기', click: () => actions.sendFeedback() },
       { type: 'separator' },
@@ -48,7 +49,7 @@ export function createTray(petName: () => string, actions: TrayActions): Tray {
   return tray;
 }
 
-/** 펫 숨기기와 보이기. 다른 앱과 겹치지 않게 네 키를 쓴다 (설정에서 바꾸기는 P1-12). */
-export const HIDE_SHORTCUT = 'CommandOrControl+Alt+Shift+H';
-/** 어디서든 할 일 한 줄 넣기 (P2-04). 숨기기와 같은 네 키 조합 */
-export const QUICK_ADD_SHORTCUT = 'CommandOrControl+Alt+Shift+N';
+/** 펫 숨기기와 보이기. 기본은 다른 앱과 겹치지 않게 네 키 조합. 설정에서 바꾼다 (v2) */
+export const hideShortcut = () => settings.get().shortcuts.hide;
+/** 어디서든 할 일 한 줄 넣기 (P2-04). 설정에서 바꾼다 (v2) */
+export const quickAddShortcut = () => settings.get().shortcuts.quickAdd;

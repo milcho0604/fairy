@@ -131,3 +131,38 @@ test('메모: 최근에 고친 것부터, 그대로면 시각을 안 바꾼다, 
   assert.equal(notes.list().length, 2);
   assert.equal(notes.add({ body: 'x', source: 'ai' }, T0).source, 'ai');
 });
+
+test('캘린더 가져오기: 새것 넣고, 바뀐 것 고치고, 없어진 것 지운다. 종일은 알리지 않는다', () => {
+  const { events } = fresh();
+  const a = { uid: 'a', title: '회의', startAt: T0 + 60 * MIN, endAt: null, allDay: false };
+  const b = { uid: 'b', title: '휴가', startAt: T0 + 24 * 60 * MIN, endAt: null, allDay: true };
+  assert.deepEqual(events.syncExternal('ics', [a, b], T0, T0 + 30 * 24 * 60 * MIN, T0), {
+    added: 2,
+    updated: 0,
+    removed: 0,
+  });
+  assert.deepEqual(events.syncExternal('ics', [a, b], T0, T0 + 30 * 24 * 60 * MIN, T0), {
+    added: 0,
+    updated: 0,
+    removed: 0,
+  });
+  assert.deepEqual(
+    events.syncExternal('ics', [{ ...a, title: '회의 (장소 바뀜)' }], T0, T0 + 30 * 24 * 60 * MIN, T0),
+    { added: 0, updated: 1, removed: 1 },
+  );
+  const list = events.between(T0, T0 + 30 * 24 * 60 * MIN);
+  assert.deepEqual(
+    list.map((e) => [e.title, e.source]),
+    [['회의 (장소 바뀜)', 'ics']],
+  );
+  // 직접 넣은 일정은 건드리지 않는다
+  events.add({ title: '내 일정', startAt: T0 + 120 * MIN }, T0);
+  events.syncExternal('ics', [], T0, T0 + 30 * 24 * 60 * MIN, T0);
+  assert.deepEqual(
+    events.between(T0, T0 + 30 * 24 * 60 * MIN).map((e) => e.title),
+    ['내 일정'],
+  );
+  // 종일 일정은 알림이 없다
+  events.syncExternal('ics', [b], T0, T0 + 30 * 24 * 60 * MIN, T0);
+  assert.deepEqual(events.dueReminders(b.startAt + 1000), []);
+});

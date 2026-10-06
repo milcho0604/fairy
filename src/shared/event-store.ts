@@ -8,6 +8,8 @@ export interface CalEvent {
   endAt: number | null;
   remindMin: number;
   notifiedAt: number | null;
+  /** local(직접 넣음), ics(캘린더에서 가져옴, v2) */
+  source: 'local' | 'ics';
 }
 
 interface Row {
@@ -17,6 +19,7 @@ interface Row {
   end_at: number | null;
   remind_min: number;
   notified_at: number | null;
+  source?: string;
 }
 
 const toEvent = (r: Row): CalEvent => ({
@@ -26,6 +29,7 @@ const toEvent = (r: Row): CalEvent => ({
   endAt: r.end_at === null ? null : Number(r.end_at),
   remindMin: Number(r.remind_min),
   notifiedAt: r.notified_at === null ? null : Number(r.notified_at),
+  source: r.source === 'ics' ? 'ics' : 'local',
 });
 
 export const REMIND_CHOICES = [0, 5, 10, 30, 60] as const;
@@ -115,6 +119,80 @@ export class EventStore {
         )
         .all(now, now - STALE_MS) as Row[]
     ).map(toEvent);
+  }
+
+  /**
+   * 캘린더에서 가져온 일정 맞추기 (v2). 같은 UID 는 고치고, 새것은 넣고, 범위 안에서 캘린더에 없어진 것은 지운다.
+   * 종일 일정은 알리지 않는다(알림 시각을 이미 지난 것으로 둔다). 고친 수를 돌려준다.
+   */
+  syncExternal(
+    source: 'ics',
+    list: readonly { uid: string; title: string; startAt: number; endAt: number | null; allDay: boolean }[],
+    from: number,
+    to: number,
+    now: number,
+  ): { added: number; updated: number; removed: number } {
+    let added = 0;
+    let updated = 0;
+    this.#db.exec('begin');
+    try {
+      const seen = new Set<string>();
+      for (const e of list) {
+        seen.add(e.uid);
+        const old = this.#db
+          .prepare(
+            'select id, title, start_at, end_at, deleted_at from event where source = ? and external_id = ?',
+          )
+          .get(source, e.uid) as
+          | { id: number; title: string; start_at: number; end_at: number | null; deleted_at: number | null }
+          | undefined;
+        const notified = e.allDay ? e.startAt : null;
+        if (!old) {
+          this.#db
+            .prepare(
+              `insert into event (title, start_at, end_at, remind_min, notified_at, created_at, source, external_id)
+               values (?, ?, ?, ?, ?, ?, ?, ?)`,
+            )
+            .run(
+              e.title,
+              e.startAt,
+              e.endAt,
+              e.allDay ? 0 : DEFAULT_REMIND_MIN,
+              notified,
+              now,
+              source,
+              e.uid,
+            );
+          added++;
+        } else if (
+          old.title !== e.title ||
+          Number(old.start_at) !== e.startAt ||
+          (old.end_at === null ? null : Number(old.end_at)) !== e.endAt ||
+          old.deleted_at !== null
+        ) {
+          const moved = Number(old.start_at) !== e.startAt;
+          this.#db
+            .prepare(
+              `update event set title = ?, start_at = ?, end_at = ?, deleted_at = null,
+               notified_at = case when ? then ? else notified_at end where id = ?`,
+            )
+            .run(e.title, e.startAt, e.endAt, moved ? 1 : 0, notified, old.id);
+          updated++;
+        }
+      }
+      const inRange = this.#db
+        .prepare(
+          'select id, external_id from event where source = ? and deleted_at is null and start_at >= ? and start_at < ?',
+        )
+        .all(source, from, to) as { id: number; external_id: string }[];
+      const gone = inRange.filter((r) => !seen.has(r.external_id));
+      for (const r of gone) this.#db.prepare('update event set deleted_at = ? where id = ?').run(now, r.id);
+      this.#db.exec('commit');
+      return { added, updated, removed: gone.length };
+    } catch (err) {
+      this.#db.exec('rollback');
+      throw err;
+    }
   }
 
   markNotified(id: number, now: number): void {

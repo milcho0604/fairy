@@ -257,14 +257,17 @@ export class TodoStore {
     return Math.max(0, Math.min(100, r.fullness - hours * FULLNESS.perHour));
   }
 
-  /** 밥 주기. 코인이 모자라면 false. */
-  feed(now: number): { ok: boolean; fullness: number; balance: number } {
+  /** 밥 주기. 코인이 모자라면 false. 먹이를 고르면(v1 상점) 그 값과 배부름. */
+  feed(
+    now: number,
+    food: { cost: number; gain: number } = { cost: COIN.food, gain: FULLNESS.perFood },
+  ): { ok: boolean; fullness: number; balance: number } {
     const current = this.fullness(now);
-    if (this.balance() < COIN.food) return { ok: false, fullness: current, balance: this.balance() };
-    const next = Math.min(100, current + FULLNESS.perFood);
+    if (this.balance() < food.cost) return { ok: false, fullness: current, balance: this.balance() };
+    const next = Math.min(100, current + food.gain);
     this.#db.exec('begin');
     try {
-      this.#log(-COIN.food, 'food', null, now);
+      if (food.cost > 0) this.#log(-food.cost, 'food', null, now);
       this.#db.prepare('update pet_state set fullness = ?, fullness_at = ? where id = 1').run(next, now);
       this.#db.exec('commit');
     } catch (err) {
@@ -272,6 +275,30 @@ export class TodoStore {
       throw err;
     }
     return { ok: true, fullness: next, balance: this.balance() };
+  }
+
+  /** 그날 이 이유로 받은 코인 횟수 (하루 상한 셈) */
+  coinCount(reason: string, day: string): number {
+    return Number(
+      (
+        this.#db
+          .prepare('select count(*) as n from coin_log where day = ? and reason = ?')
+          .get(day, reason) as { n: number }
+      ).n,
+    );
+  }
+
+  /** 코인 쓰기 (상점). 모자라면 false 이고 아무것도 안 한다. 잔액은 음수가 되지 않는다 */
+  spend(amount: number, reason: string, now: number): boolean {
+    if (amount <= 0) return true;
+    if (this.balance() < amount) return false;
+    this.#log(-amount, reason, null, now);
+    return true;
+  }
+
+  /** 그 밖의 보상 (화해 보너스, 휴식 권유 따르기). 상한은 부르는 쪽이 본다 */
+  reward(amount: number, reason: string, now: number): void {
+    if (amount > 0) this.#log(amount, reason, null, now);
   }
 
   /** 집중 타이머 한 번 끝. 받은 코인 수 (하루 상한을 넘으면 0). */

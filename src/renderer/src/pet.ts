@@ -1,5 +1,6 @@
 import { type Activity, nextDelay } from '../../shared/behavior.ts';
-import { GestureTracker } from '../../shared/gesture.ts';
+import { GestureTracker, RubTracker } from '../../shared/gesture.ts';
+import type { PetImages } from '../../shared/ipc.ts';
 import {
   canBlink,
   EXCITED_MS,
@@ -11,7 +12,9 @@ import {
   type PetMood,
   TALK_MS,
 } from '../../shared/pet-mood.ts';
-import { CANVAS_SIZE, drawPet } from './draw.ts';
+import type { PetKind, PoseKind } from '../../shared/settings.ts';
+import { AnimatedImage, loadPetImage } from './animated.ts';
+import { CANVAS_SIZE, drawPet, HEARTS_MS } from './draw.ts';
 
 const bridge = window.jjakkung;
 function setupCanvas(): [HTMLCanvasElement, CanvasRenderingContext2D] {
@@ -73,6 +76,9 @@ function frame() {
       blinkStart = -1;
     }
   }
+  const hearts = heartsStart >= 0 ? now - heartsStart : -1;
+  if (hearts >= HEARTS_MS) heartsStart = -1;
+  const img = pickImage(mood, inputs.hungry);
   drawPet(ctx, {
     mood,
     elapsed: now - moodSince,
@@ -80,11 +86,26 @@ function frame() {
     viewSize,
     activity: activityPose(now),
     hungry: inputs.hungry,
-    photo,
+    photo: img instanceof AnimatedImage ? img.frameAt(now) : img,
+    kind: petKind,
+    sulk: inputs.sulkLevel,
+    hearts: heartsStart >= 0 ? hearts : -1,
+    cushion,
   });
 
   const walking = activity?.type === 'walk';
-  const fps = isAnimated(mood) ? (ANIMATED_FPS[mood] ?? 30) : blinkStart >= 0 ? 30 : walking ? WALK_FPS : 0;
+  const moving = activity?.type === 'yawn' || activity?.type === 'stretch';
+  // 움직이는 그림은 잠, 바쁨일 때 멈춘다 (L10: 계속 그리면 CPU 를 먹는다). 12fps 까지만.
+  const animatedPhoto = img instanceof AnimatedImage && canBlink(mood) ? Math.min(12, img.fps) : 0;
+  const fps = isAnimated(mood)
+    ? (ANIMATED_FPS[mood] ?? 30)
+    : blinkStart >= 0 || heartsStart >= 0
+      ? 30
+      : walking
+        ? WALK_FPS
+        : moving
+          ? 20
+          : animatedPhoto;
   if (fps > 0) frameTimer = setTimeout(frame, 1000 / fps);
 }
 
@@ -124,31 +145,54 @@ function activityPose(now: number) {
     };
   }
   if (activity.type === 'look') return { type: 'look' as const, dir: activity.dir };
+  if (activity.type === 'yawn' || activity.type === 'stretch')
+    return { type: activity.type, t: (now - activity.start) / activity.ms };
   return { type: 'sit' as const };
 }
 
-// 사진 펫 그림 (P1-08). 없으면 기본 펫.
-let photo: HTMLImageElement | undefined;
-bridge.onImage((dataUrl) => {
-  if (!dataUrl) {
-    photo = undefined;
-    requestFrame();
-    return;
-  }
-  const img = new Image();
-  img.onload = () => {
-    photo = img;
-    requestFrame();
-  };
-  img.src = dataUrl;
+// 사진 펫 그림 (P1-08). 없으면 기본 펫. gif, webp 는 움직이는 그림 (v1). 상태별 포즈 그림 (v1).
+type PetImage = HTMLImageElement | AnimatedImage;
+let photo: PetImage | undefined;
+let poses: Partial<Record<PoseKind, PetImage>> = {};
+let petKind: PetKind = 'kong';
+let cushion = false;
+let imageLoad = 0;
+bridge.onImage(async (images: PetImages) => {
+  const mine = ++imageLoad;
+  const [main, ...rest] = await Promise.all([
+    images.main ? loadPetImage(images.main) : Promise.resolve(undefined),
+    ...(['happy', 'sleepy', 'hungry'] as const).map((k) =>
+      images.poses[k] ? loadPetImage(images.poses[k] as string) : Promise.resolve(undefined),
+    ),
+  ]);
+  if (mine !== imageLoad) return; // 그사이 또 바뀌었다
+  photo = main;
+  poses = { happy: rest[0], sleepy: rest[1], hungry: rest[2] };
+  requestFrame();
 });
 
-bridge.onStatus((status) => setInputs({ hungry: status.hungry, focusTimer: status.focus }));
+/** 지금 상태에 맞는 그림: 신남 → 기쁨 포즈, 잠과 졸음 → 졸림 포즈, 배고픈 기본 상태 → 배고픔 포즈 */
+function pickImage(m: PetMood, hungry: boolean): PetImage | undefined {
+  if (!photo) return undefined;
+  if (m === 'excited' && poses.happy) return poses.happy;
+  if ((m === 'sleeping' || m === 'dozing') && poses.sleepy) return poses.sleepy;
+  if (m === 'idle' && hungry && poses.hungry) return poses.hungry;
+  return photo;
+}
+
+bridge.onStatus((status) => {
+  petKind = status.kind;
+  cushion = status.cushion;
+  setInputs({ hungry: status.hungry, focusTimer: status.focus, sulkLevel: status.sulk });
+});
+// 던져져 날아가는 동안은 잡힌 얼굴 (> <)
+bridge.onFlight((flying) => setInputs({ grabbed: flying }));
 // 할 일을 끝내거나 밥을 먹으면 신나서 통통 튄다.
 bridge.onReact(() => setInputs({ excitedUntil: performance.now() + EXCITED_MS }));
 
 bridge.onActivity((a) => {
-  if (mood !== 'idle') {
+  // 삐져 있어도 걷고 논다 (모습만 삐진 얼굴)
+  if (mood !== 'idle' && mood !== 'sulky') {
     if (a.type === 'walk') bridge.activityStop();
     return;
   }
@@ -239,14 +283,26 @@ function setOverPet(hit: boolean) {
 }
 
 // 창이 클릭을 통과시키는 동안에도 forward 옵션 덕분에 마우스 이동은 들어온다.
+// 쓰다듬기 (v1): 버튼 없이 펫 위에서 좌우로 문지르면 하트가 뜨고 메인에 알린다.
+const rub = new RubTracker();
+let heartsStart = -1;
+
 window.addEventListener('mousemove', (e) => {
   if (gesture.dragging) return;
   // 말풍선 위도 클릭을 받아야 버튼을 누를 수 있다.
   const overBubble = bubbleShown && bubbleEl.contains(document.elementFromPoint(e.clientX, e.clientY));
-  setOverPet(overBubble || hitTest(e.clientX, e.clientY));
+  const onPet = !overBubble && hitTest(e.clientX, e.clientY);
+  setOverPet(overBubble || onPet);
   setBubbleHover(overBubble);
+  if (!onPet || e.buttons !== 0) rub.reset();
+  else if (rub.move(e.screenX, performance.now())) {
+    heartsStart = performance.now();
+    bridge.petted();
+    requestFrame();
+  }
 });
 document.addEventListener('mouseleave', () => {
+  rub.reset();
   if (!gesture.dragging) setOverPet(false);
 });
 
@@ -312,6 +368,7 @@ canvas.addEventListener(
 
 const bubbleEl = document.getElementById('bubble') as HTMLDivElement;
 const bubbleText = bubbleEl.querySelector('p') as HTMLParagraphElement;
+const bubbleImage = bubbleEl.querySelector('img') as HTMLImageElement;
 const bubbleActions = bubbleEl.querySelector('.actions') as HTMLDivElement;
 let bubbleShown = false;
 let bubbleId = '';
@@ -358,6 +415,9 @@ bridge.onBubble((b) => {
   bubbleId = b.id;
   bubbleLeft = b.ttlMs;
   bubbleText.textContent = b.text;
+  bubbleImage.hidden = !b.image;
+  if (b.image) bubbleImage.src = b.image;
+  else bubbleImage.removeAttribute('src');
   bubbleActions.replaceChildren(
     ...b.buttons.map((btn) => {
       const el = document.createElement('button');
@@ -412,6 +472,9 @@ Object.assign(window, {
     requestActivity: () => bridge.activityRequest(),
     get mood() {
       return mood;
+    },
+    get inputs() {
+      return inputs;
     },
   },
 });

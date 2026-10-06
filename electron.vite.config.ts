@@ -34,6 +34,7 @@ export default defineConfig({
           panel: resolve('src/renderer/panel.html'),
           quick: resolve('src/renderer/quick.html'),
           maker: resolve('src/renderer/maker.html'),
+          onboarding: resolve('src/renderer/onboarding.html'),
         },
       },
       minify: true,

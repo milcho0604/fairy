@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { claudeArgs, claudeInput, parseClaudeLine } from './claude.ts';
+import { claudeArgs, claudeInput, parseClaudeLine, parseMcpList } from './claude.ts';
 import { codexArgs, parseCodexLine } from './codex.ts';
 import { classifyError } from './errors.ts';
 import { withHistory } from './text.ts';
@@ -157,4 +157,19 @@ test('claude 명령: "내 AI 설정 그대로"면 격리 옵션은 빼되 도구
   assert.ok(!quiet.includes('--resume') && !quiet.includes('--session-id'));
   const isolated = claudeArgs({ text: 'q', images: [], sessionId: 's', persona: 'p', resume: false });
   assert.ok(isolated.includes('--strict-mcp-config'));
+});
+
+test('내 MCP 도구: 격리를 껐을 때만 서버를 허락하고, 기본 도구는 여전히 끈다', () => {
+  const base = { text: 'q', images: [], sessionId: 's', persona: 'p', resume: false };
+  const on = claudeArgs({ ...base, isolate: false, mcpServers: ['claude.ai Notion', 'my-server'] });
+  const i = on.indexOf('--allowedTools');
+  assert.equal(on[i + 1], 'mcp__claude_ai_Notion,mcp__my-server');
+  assert.equal(on[on.indexOf('--tools') + 1], '');
+  assert.equal(claudeArgs({ ...base, isolate: true, mcpServers: ['x'] }).includes('--allowedTools'), false);
+  assert.deepEqual(
+    parseMcpList(
+      'Checking MCP server health…\n\nclaude.ai Notion: https://mcp.notion.com/mcp - ✔ Connected\nbroken: npx x - ✗ Failed to connect\nlocal: node a.js - ✓ Connected',
+    ),
+    ['claude.ai Notion', 'local'],
+  );
 });

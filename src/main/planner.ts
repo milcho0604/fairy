@@ -1,11 +1,12 @@
 import { powerMonitor } from 'electron';
 import type { StatStore } from '../shared/beta-stats.ts';
-import { BRIEFING_FROM_MINUTE, briefingText } from '../shared/briefing.ts';
+import { BRIEFING_FROM_MINUTE, briefingText, reviewText } from '../shared/briefing.ts';
 import type { EventStore } from '../shared/event-store.ts';
 import { timeLabel } from '../shared/event-store.ts';
 import { type FocusState, focusedMinutes, IDLE, startFocus, tickFocus } from '../shared/focus.ts';
 import { localDay, type TodoStore } from '../shared/todo-store.ts';
 import type { SayOptions } from './pet-window.ts';
+import { settings } from './settings.ts';
 import { readJson, writeJson } from './store.ts';
 
 const TICK_MS = 15_000;
@@ -47,8 +48,10 @@ export const startOfDay = (ms: number) => localTime(localDay(ms), 0);
  */
 export function createPlanner(o: PlannerOptions) {
   let focus: FocusState = IDLE;
-  const saved = readJson(STORE) as { briefedDay?: string } | undefined;
+  const saved = readJson(STORE) as { briefedDay?: string; reviewedDay?: string } | undefined;
   let briefedDay = typeof saved?.briefedDay === 'string' ? saved.briefedDay : '';
+  let reviewedDay = typeof saved?.reviewedDay === 'string' ? saved.reviewedDay : '';
+  const store = () => writeJson(STORE, { briefedDay, reviewedDay });
 
   function remind(now: number) {
     for (const e of o.events.dueReminders(now)) {
@@ -72,7 +75,7 @@ export function createPlanner(o: PlannerOptions) {
     if (o.petHidden() || powerMonitor.getSystemIdleTime() > 60) return;
     if (powerMonitor.getSystemIdleState(60) === 'locked') return;
     briefedDay = day;
-    writeJson(STORE, { briefedDay });
+    store();
     const from = now;
     const to = startOfDay(now) + 24 * 3_600_000;
     const events = o.events
@@ -89,10 +92,42 @@ export function createPlanner(o: PlannerOptions) {
     });
   }
 
+  /** 하루 회고 (v2): 회고 시각 뒤 처음 자리에 있을 때 한 번. 오늘 마감 남은 것은 내일로 넘길지 묻는다 */
+  function review(now: number) {
+    const day = localDay(now);
+    if (reviewedDay === day || minuteOfDay(now) < settings.get().reviewMinute) return;
+    if (settings.get().chatter === 'quiet' || o.petHidden() || powerMonitor.getSystemIdleTime() > 60) return;
+    reviewedDay = day;
+    store();
+    const { open, doneToday } = o.todos.list(now);
+    const left = open.filter((t) => t.due !== null && t.due <= day);
+    o.log('planner', '회고');
+    void o
+      .say({
+        kind: 'system',
+        text: reviewText({ doneTitles: doneToday.map((t) => t.title), leftToday: left.length }),
+        buttons:
+          left.length > 0
+            ? [
+                { id: 'move', label: '내일로 넘기기' },
+                { id: 'keep', label: '그대로' },
+              ]
+            : [],
+        ttlMs: 30_000,
+      })
+      .then((a) => {
+        if (a !== 'move') return;
+        const tomorrow = localDay(startOfDay(now) + 36 * 3_600_000);
+        for (const t of left) o.todos.update(t.id, { due: tomorrow });
+        o.onChange();
+      });
+  }
+
   function tick() {
     const now = Date.now();
     remind(now);
     brief(now);
+    review(now);
     const r = tickFocus(focus, now);
     if (r.event === 'focus-done') {
       const minutes = focusedMinutes(focus, now);

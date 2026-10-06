@@ -17,6 +17,8 @@ export interface ClaudeTurn {
   isolate?: boolean;
   /** 기록 남기지 않기 (v1): claude 가 세션을 디스크에 저장하지 않는다. 이어가기를 못 한다 */
   ephemeral?: boolean;
+  /** 내 MCP 도구 쓰기 (v2): 허락할 MCP 서버 이름들. 격리를 껐을 때만 쓴다. 기본 도구(파일, 명령)는 여전히 끈다 */
+  mcpServers?: readonly string[];
 }
 
 /**
@@ -46,6 +48,9 @@ export function claudeArgs(turn: ClaudeTurn): string[] {
           '{"mcpServers":{}}',
           '--disable-slash-commands',
         ]),
+    ...(turn.isolate === false && turn.mcpServers?.length
+      ? ['--allowedTools', turn.mcpServers.map(mcpToolPrefix).join(',')]
+      : []),
     '--append-system-prompt',
     turn.persona,
     ...(turn.ephemeral
@@ -54,6 +59,19 @@ export function claudeArgs(turn: ClaudeTurn): string[] {
         ? ['--resume', turn.sessionId]
         : ['--session-id', turn.sessionId]),
   ];
+}
+
+/** `claude mcp list` 의 서버 이름 → 도구 이름 앞부분. "claude.ai Notion" → mcp__claude_ai_Notion (서버의 모든 도구) */
+export function mcpToolPrefix(server: string): string {
+  return `mcp__${server.replace(/[^A-Za-z0-9_-]/g, '_')}`;
+}
+
+/** `claude mcp list` 출력에서 연결된 서버 이름만 */
+export function parseMcpList(out: string): string[] {
+  return out
+    .split('\n')
+    .map((l) => /^(.+?): .+ - (?:✔|✓) Connected/.exec(l.trim())?.[1])
+    .filter((n): n is string => !!n);
 }
 
 /** 표준 입력으로 보낼 한 줄. 이미지가 먼저, 글이 나중. */

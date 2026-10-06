@@ -12,14 +12,18 @@ import {
   LOOK,
   MAKER,
   type MakerBridge,
+  ONBOARD,
+  type OnboardBridge,
   type OutgoingImage,
   type OverlayBridge,
   PANEL,
   type PanelBridge,
   type PanelState,
+  type PanelTab,
   type PetAiState,
   type PetBridge,
   type PetEnv,
+  type PetImages,
   type PetStatus,
   SETTINGS,
   type SettingsBridge,
@@ -65,7 +69,11 @@ if (kind === 'pet') {
       ipcRenderer.on(IPC.react, (_e, kind: 'happy') => listener(kind));
     },
     onImage: (listener) => {
-      ipcRenderer.on(IPC.image, (_e, dataUrl: string | null) => listener(dataUrl));
+      ipcRenderer.on(IPC.image, (_e, images: PetImages) => listener(images));
+    },
+    petted: () => ipcRenderer.send(IPC.petted),
+    onFlight: (listener) => {
+      ipcRenderer.on(IPC.flight, (_e, flying: boolean) => listener(flying));
     },
   };
   contextBridge.exposeInMainWorld('jjakkung', pet);
@@ -111,14 +119,34 @@ if (kind === 'overlay') {
   contextBridge.exposeInMainWorld('jjakkungOverlay', overlay);
 }
 
+if (kind === 'onboarding') {
+  const onboard: OnboardBridge = {
+    get: () => ipcRenderer.invoke(ONBOARD.get),
+    set: (patch) => ipcRenderer.invoke(ONBOARD.set, patch),
+    openMaker: () => ipcRenderer.send(ONBOARD.openMaker),
+    openScreenSettings: () => ipcRenderer.send(ONBOARD.openScreenSettings),
+    finish: () => ipcRenderer.send(ONBOARD.finish),
+  };
+  contextBridge.exposeInMainWorld('jjakkungOnboard', onboard);
+}
+
 if (kind === 'settings') {
   const bridge: SettingsBridge = {
     get: () => ipcRenderer.invoke(SETTINGS.get),
     set: (patch) => ipcRenderer.invoke(SETTINGS.set, patch),
     setScale: (scale: number) => ipcRenderer.send(SETTINGS.setScale, scale),
-    openMaker: () => ipcRenderer.send(SETTINGS.openMaker),
+    openMaker: (target) => ipcRenderer.send(SETTINGS.openMaker, target),
     stats: () => ipcRenderer.invoke(SETTINGS.stats),
     copyStats: () => ipcRenderer.invoke(SETTINGS.copyStats),
+    checkUpdate: () => ipcRenderer.invoke(SETTINGS.checkUpdate),
+    openOnboarding: () => ipcRenderer.send(SETTINGS.openOnboarding),
+    exportData: () => ipcRenderer.invoke(SETTINGS.exportData),
+    importData: () => ipcRenderer.invoke(SETTINGS.importData),
+    exportPet: () => ipcRenderer.invoke(SETTINGS.exportPet),
+    importPet: () => ipcRenderer.invoke(SETTINGS.importPet),
+    importFriend: () => ipcRenderer.invoke(SETTINGS.importFriend),
+    syncCalendar: () => ipcRenderer.invoke(SETTINGS.syncCalendar),
+    refreshMcp: () => ipcRenderer.invoke(SETTINGS.refreshMcp),
     onChanged: (listener) => {
       ipcRenderer.on(SETTINGS.changed, (_e, next: Settings) => listener(next));
     },
@@ -158,6 +186,15 @@ if (kind === 'panel' || kind === 'quick') {
     eventRestore: (id: number) => ipcRenderer.send(PANEL.eventRestore, id),
     focusStart: () => ipcRenderer.send(PANEL.focusStart),
     focusStop: () => ipcRenderer.send(PANEL.focusStop),
+    buyToy: (key: string) => ipcRenderer.invoke(PANEL.buyToy, key),
+    buyHouse: () => ipcRenderer.invoke(PANEL.buyHouse),
+    feedWith: (key: string) => ipcRenderer.invoke(PANEL.feedWith, key),
+    makeFood: () => ipcRenderer.invoke(PANEL.makeFood),
+    removeFood: (key: string) => ipcRenderer.send(PANEL.removeFood, key),
+    play: (kind) => ipcRenderer.send(PANEL.play, kind),
+    onTab: (listener) => {
+      ipcRenderer.on(PANEL.tab, (_e, tab: PanelTab) => listener(tab));
+    },
   };
   contextBridge.exposeInMainWorld('jjakkungPanel', panel);
 }

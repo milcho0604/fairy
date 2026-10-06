@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { briefingText } from './briefing.ts';
+import { briefingText, reviewText } from './briefing.ts';
 import { focusedMinutes, IDLE, remainLabel, startFocus, tickFocus } from './focus.ts';
 
 const MIN = 60_000;
@@ -52,4 +52,13 @@ test('집중한 분과 남은 시간 표시', () => {
   assert.equal(focusedMinutes(IDLE, 5 * MIN), 0);
   assert.equal(remainLabel(s, 0), '25:00');
   assert.equal(remainLabel(s, 24 * MIN + 1000), '0:59');
+});
+
+test('하루 회고: 끝낸 수, 하나면 제목, 남은 오늘 마감이 있으면 묻는다', () => {
+  assert.equal(reviewText({ doneTitles: [], leftToday: 0 }), '오늘은 끝낸 할 일이 없네. 그래도 수고했어.');
+  assert.equal(reviewText({ doneTitles: ['보고서'], leftToday: 0 }), '오늘 "보고서" 끝냈어. 수고했어!');
+  assert.equal(
+    reviewText({ doneTitles: ['a', 'b', 'c'], leftToday: 2 }),
+    '오늘 할 일 3개 끝냈어. 수고했어! 오늘 마감 2개가 남았는데 내일로 넘길까?',
+  );
 });

@@ -40,3 +40,26 @@ export function briefingText(b: BriefingInput): string {
   if (parts.length === 0) parts.push('오늘은 일정도 마감도 없어. 하고 싶은 걸 적어 봐.');
   return `${greeting(b.nowMinute)} ${parts.join(' ')}`;
 }
+
+// ---- 하루 회고 (v2) ----
+
+/** 이 시각(현지, 분) 뒤 처음 자리에 있을 때 한 번. 설정에서 바꾼다 */
+export const REVIEW_DEFAULT_MINUTE = 18 * 60;
+
+export interface ReviewInput {
+  doneTitles: readonly string[];
+  /** 오늘 마감인데 안 끝낸 할 일 수 */
+  leftToday: number;
+}
+
+/** 퇴근 때 말풍선. 끝낸 일을 칭찬하고, 남은 오늘 마감이 있으면 내일로 넘길지 묻는다 */
+export function reviewText(r: ReviewInput): string {
+  const n = r.doneTitles.length;
+  const done =
+    n === 0
+      ? '오늘은 끝낸 할 일이 없네. 그래도 수고했어.'
+      : n === 1
+        ? `오늘 "${r.doneTitles[0]}" 끝냈어. 수고했어!`
+        : `오늘 할 일 ${n}개 끝냈어. 수고했어!`;
+  return r.leftToday > 0 ? `${done} 오늘 마감 ${r.leftToday}개가 남았는데 내일로 넘길까?` : done;
+}

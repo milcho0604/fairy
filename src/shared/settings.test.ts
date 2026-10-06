@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { applyPatch, cleanPetName, DEFAULT_SETTINGS, parseSettings } from './settings.ts';
+import { applyPatch, cleanPetName, DEFAULT_SETTINGS, isAnimatedFile, parseSettings } from './settings.ts';
 
 test('저장 파일이 없거나 깨졌으면 기본값', () => {
   assert.deepEqual(parseSettings(undefined), DEFAULT_SETTINGS);
@@ -39,6 +39,13 @@ test('바꾸기는 준 값만, 틀린 값은 지금 값을 지킨다', () => {
     aiKnowsTodos: true,
   });
   assert.deepEqual(applyPatch(now, { persona: 'evil', aiKnowsTodos: 'yes' }), now);
+  assert.deepEqual(applyPatch(now, { restDays: [6, 0, 0, 9, 'x'], petKind: 'cat', spicy: true }), {
+    ...now,
+    restDays: [0, 6],
+    petKind: 'cat',
+    spicy: true,
+  });
+  assert.equal(applyPatch(now, { petKind: 'dragon' }).petKind, 'kong');
   assert.deepEqual(applyPatch(now, { petName: ' 콩 ' }), { ...now, petName: '콩' });
 });
 
@@ -49,4 +56,59 @@ test('사진 펫 파일 이름은 pets 폴더 안 이름만, 비우면 기본 �
   const withPet = { ...DEFAULT_SETTINGS, petImage: 'pet-1.png' };
   assert.equal(applyPatch(withPet, { petImage: null }).petImage, undefined);
   assert.equal(applyPatch(withPet, { petImage: 'x.png' }).petImage, 'pet-1.png');
+});
+
+test('사진 펫과 포즈 파일 이름: 규칙에 맞는 것만, null 은 지우기, 빠진 포즈는 그대로', () => {
+  const now = { ...DEFAULT_SETTINGS, petImage: 'pet-a.png', petPoses: { happy: 'pose-h.png' } };
+  assert.equal(applyPatch(now, { petImage: 'pet-b.gif' }).petImage, 'pet-b.gif');
+  assert.equal(applyPatch(now, { petImage: '../etc/passwd' }).petImage, 'pet-a.png');
+  assert.equal(applyPatch(now, { petImage: null }).petImage, undefined);
+  assert.deepEqual(applyPatch(now, { petPoses: { sleepy: 'pose-s.webp' } }).petPoses, {
+    happy: 'pose-h.png',
+    sleepy: 'pose-s.webp',
+  });
+  assert.deepEqual(applyPatch(now, { petPoses: { happy: null } }).petPoses, {});
+  assert.deepEqual(applyPatch(now, { petPoses: { happy: '/tmp/x.png' } }).petPoses, {});
+  assert.equal(isAnimatedFile('pet-a.GIF'), true);
+  assert.equal(isAnimatedFile('pet-a.png'), false);
+});
+
+test('v2 설정: 회고 시각, 단축키(겹치면 거절), 캘린더 주소(https 만), 내 MCP', () => {
+  const now = { ...DEFAULT_SETTINGS };
+  assert.equal(applyPatch(now, { reviewMinute: 17 * 60 }).reviewMinute, 1020);
+  assert.equal(applyPatch(now, { reviewMinute: 2000 }).reviewMinute, now.reviewMinute);
+  assert.equal(
+    applyPatch(now, { shortcuts: { hide: 'CommandOrControl+Alt+J' } }).shortcuts.hide,
+    'CommandOrControl+Alt+J',
+  );
+  assert.deepEqual(applyPatch(now, { shortcuts: { hide: now.shortcuts.quickAdd } }).shortcuts, now.shortcuts);
+  assert.deepEqual(applyPatch(now, { shortcuts: { hide: 'rm -rf' } }).shortcuts, now.shortcuts);
+  assert.equal(
+    applyPatch(now, { icsUrl: ' https://calendar.google.com/x.ics ' }).icsUrl,
+    'https://calendar.google.com/x.ics',
+  );
+  assert.equal(applyPatch(now, { icsUrl: 'http://x/a.ics' }).icsUrl, undefined);
+  const withIcs = applyPatch(now, { icsUrl: 'https://a/b.ics' });
+  assert.equal(applyPatch(withIcs, { icsUrl: null }).icsUrl, undefined);
+  assert.equal(applyPatch(now, { myMcp: true }).myMcp, true);
+});
+
+test('친구 펫: 규칙에 맞는 것만, 같은 id 는 한 번, 3마리까지', () => {
+  const now = { ...DEFAULT_SETTINGS };
+  const r = applyPatch(now, {
+    friends: [
+      { id: 'f-1', name: '  밤 ', kind: 'cat' },
+      { id: 'f-1', name: '중복', kind: 'cat' },
+      { id: '../x', name: '나쁨', kind: 'cat' },
+      { id: 'f-2', name: '', kind: 'cat' },
+      { id: 'f-3', name: '삐', kind: 'dragon', image: '/etc/x.png' },
+      { id: 'f-4', name: '넷', kind: 'chick', image: 'pet-a.png' },
+      { id: 'f-5', name: '다섯', kind: 'kong' },
+    ],
+  });
+  assert.deepEqual(r.friends, [
+    { id: 'f-1', name: '밤', kind: 'cat' },
+    { id: 'f-3', name: '삐', kind: 'kong' },
+    { id: 'f-4', name: '넷', kind: 'chick', image: 'pet-a.png' },
+  ]);
 });

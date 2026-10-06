@@ -114,8 +114,32 @@ export function TodayTab({
       )}
 
       <p className="done-count">
-        오늘 끝낸 일 <b>{s.doneToday.length}</b>
+        <span>
+          오늘 끝낸 일 <b>{s.doneToday.length}</b>
+        </span>
+        <span
+          className="streak"
+          title="할 일을 하나 이상 끝낸 날이 이어진 날 수. 쉬는 날은 건너뛰어도 안 끊겨"
+        >
+          연속 <b>{s.achieve.streak}</b>일
+        </span>
       </p>
+
+      <details className="achieve">
+        <summary>
+          업적 {s.achieve.got.length}/{s.achieve.total}
+          {s.achieve.next && <small>다음: {s.achieve.next.hint}</small>}
+        </summary>
+        <ul>
+          {s.achieve.got.length === 0 && <li className="empty-line">아직 없어. 할 일 하나를 끝내 봐.</li>}
+          {s.achieve.got.map((a) => (
+            <li key={a.key}>
+              <b>{a.name}</b>
+              <small>{a.hint}</small>
+            </li>
+          ))}
+        </ul>
+      </details>
     </div>
   );
 }

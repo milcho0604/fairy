@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { GestureTracker } from './gesture.ts';
+import { GestureTracker, RubTracker } from './gesture.ts';
 
 const LEFT = 0;
 const RIGHT = 2;
@@ -43,4 +43,36 @@ test('드래그 중 포인터를 놓치면 드래그를 끝낸다', () => {
   g.move(10, 0);
   assert.deepEqual(g.cancel(), { type: 'drag-end' });
   assert.equal(g.up(LEFT), undefined);
+});
+
+test('쓰다듬기: 1.2초 안에 좌우로 네 번 문지르면 한 번, 2초 쉬고 다시', () => {
+  const rub = new RubTracker();
+  const strokes = (start: number, n: number, gap = 100) => {
+    let hit = false;
+    for (let i = 0; i <= n; i++) {
+      const x = i % 2 === 0 ? 0 : 20;
+      if (rub.move(x, start + i * gap)) hit = true;
+    }
+    return hit;
+  };
+  assert.equal(strokes(0, 5), true);
+  assert.equal(strokes(600, 5), false); // 쉬는 중
+  assert.equal(strokes(3000, 5), true);
+});
+
+test('쓰다듬기: 너무 느리거나 너무 작게 움직이면 아니다', () => {
+  const slow = new RubTracker();
+  let hit = false;
+  for (let i = 0; i <= 8; i++) hit ||= slow.move(i % 2 ? 20 : 0, i * 500);
+  assert.equal(hit, false);
+  const tiny = new RubTracker();
+  hit = false;
+  for (let i = 0; i <= 8; i++) hit ||= tiny.move(i % 2 ? 3 : 0, i * 50);
+  assert.equal(hit, false);
+  const away = new RubTracker();
+  for (let i = 0; i <= 3; i++) away.move(i % 2 ? 20 : 0, i * 100);
+  away.reset();
+  hit = false;
+  for (let i = 0; i <= 2; i++) hit ||= away.move(i % 2 ? 20 : 0, 400 + i * 100);
+  assert.equal(hit, false);
 });

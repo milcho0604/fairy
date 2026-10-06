@@ -2,10 +2,13 @@ import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { app } from 'electron';
+import { AchievementStore } from '../shared/achieve.ts';
 import { StatStore } from '../shared/beta-stats.ts';
 import { type Db, migrate, SCHEMA_VERSION, schemaVersion } from '../shared/db-schema.ts';
 import { EventStore } from '../shared/event-store.ts';
 import { NoteStore } from '../shared/note-store.ts';
+import { PetLife } from '../shared/pet-life.ts';
+import { ItemStore } from '../shared/shop.ts';
 import { TodoStore } from '../shared/todo-store.ts';
 
 /**
@@ -17,6 +20,11 @@ export function openStore(log: (tag: string, ...rest: unknown[]) => void): {
   stats: StatStore;
   notes: NoteStore;
   events: EventStore;
+  life: PetLife;
+  shop: ItemStore;
+  achievements: AchievementStore;
+  /** 한 시점 그대로 다른 파일로 복사 (백업, v2) */
+  vacuumInto: (file: string) => void;
   /** 다른 연결(펫 MCP 서버)이 쓰면 바뀌는 수. 바뀌었으면 화면을 다시 그린다 */
   dataVersion: () => number;
 } {
@@ -36,11 +44,16 @@ export function openStore(log: (tag: string, ...rest: unknown[]) => void): {
   if (result.from !== result.to) log('db', `저장 파일 ${result.from}판 → ${result.to}판`);
   app.on('will-quit', () => db.close());
   const d = db as unknown as Db;
+  const store = new TodoStore(d);
   return {
-    store: new TodoStore(d),
+    store,
     stats: new StatStore(d),
     notes: new NoteStore(d),
     events: new EventStore(d),
+    life: new PetLife(d),
+    vacuumInto: (target: string) => d.exec(`vacuum into '${target.replace(/'/g, "''")}'`),
+    shop: new ItemStore(d, store),
+    achievements: new AchievementStore(d),
     dataVersion: () =>
       Number((d.prepare('pragma data_version').get() as { data_version: number }).data_version),
   };

@@ -49,6 +49,7 @@ interface Row {
   look_count: number;
   crash_count: number;
   focus_min: number;
+  walk_min: number;
 }
 
 export function median(values: readonly number[]): number {
@@ -103,6 +104,11 @@ export class StatStore {
 
   countCrash(now: number): void {
     this.#add(now, 'crash_count');
+  }
+
+  /** 산책한 분 (v1) */
+  addWalk(now: number, minutes: number): void {
+    if (minutes > 0) this.#add(now, 'walk_min', Math.round(minutes));
   }
 
   /** 집중 타이머로 집중한 분 (v1) */

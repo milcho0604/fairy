@@ -33,6 +33,8 @@ export interface AiRequest {
   isolate: boolean;
   /** 기록 남기지 않기 (v1). claude, codex 만 */
   ephemeral?: boolean;
+  /** 내 MCP 도구 (v2). 격리를 끈 claude 만 */
+  mcpServers?: readonly string[];
 }
 
 export interface AiRun {

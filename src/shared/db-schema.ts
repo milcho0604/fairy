@@ -73,6 +73,40 @@ export const MIGRATIONS: readonly string[] = [
 
   alter table daily_stat add column focus_min integer not null default 0;
   `,
+  // 4판: v1 펫과 놀이, 게임. 삐짐, 기분, 친밀도, 아이템(먹이, 장난감, 집), 산책 분
+  `
+  alter table pet_state add column affection integer not null default 0; -- 친밀도. 줄지 않는다
+  alter table pet_state add column mood real not null default 50;       -- 기분 0~100. 날이 바뀌면 50
+  alter table pet_state add column mood_day text;
+  alter table pet_state add column last_active_day text;  -- 마지막 활동 날 (할 일 끝냄, 클릭, 채팅, 밥)
+  alter table pet_state add column sulk integer not null default 0;     -- 삐짐 칸 수
+  alter table pet_state add column sulk_said_day text;     -- 삐짐 대사를 한 날 (하루 한 번)
+  alter table pet_state add column petted_day text;        -- 쓰다듬은 날 (쓰다듬기 + 밥 = 화해)
+  alter table pet_state add column fed_day text;
+  alter table pet_state add column makeup_at integer;      -- 화해 보너스를 받은 때 (7일에 한 번)
+
+  create table item (
+    id integer primary key,
+    kind text not null,          -- food, toy, house
+    key text not null unique,    -- 기본 아이템 이름표 또는 custom-...
+    name text not null,
+    image text,                  -- 사용자 데이터 폴더의 그림 파일 이름 (커스텀 먹이)
+    count integer not null default 0,
+    created_at integer not null
+  );
+
+  alter table daily_stat add column walk_min integer not null default 0;
+  `,
+  // 5판: v2 업적, 캘린더 가져오기
+  `
+  create table achievement (
+    key text primary key,
+    at integer not null           -- 받은 때
+  );
+  alter table event add column source text not null default 'local'; -- local, ics
+  alter table event add column external_id text;                     -- ics UID (다시 가져올 때 겹치지 않게)
+  create unique index event_external on event(source, external_id) where external_id is not null;
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

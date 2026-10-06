@@ -15,6 +15,7 @@ import { fitWithin, isClick, toPixels } from '../shared/capture.ts';
 import type { Rect } from '../shared/geometry.ts';
 import { LOOK, type OutgoingImage } from '../shared/ipc.ts';
 import { withParticle } from '../shared/josa.ts';
+import { focusWindow, showWindow } from './focus.ts';
 
 /** AI 에 보낼 그림의 긴 변 최대값 (채팅 창 붙이기와 같은 기준). */
 const MAX_SIDE = 2000;
@@ -94,8 +95,8 @@ export function createLookTogether({ petName, hideOwnWindows, onImage, log }: Lo
       if (devUrl) win.loadURL(`${devUrl}/overlay.html?${new URLSearchParams(query)}`);
       else win.loadFile(join(import.meta.dirname, '../renderer/overlay.html'), { query });
       win.once('ready-to-show', () => {
-        win.show();
-        if (display.id === under.id) win.focus();
+        if (display.id === under.id) focusWindow(win);
+        else showWindow(win);
       });
       overlays.push({ win, display });
     }

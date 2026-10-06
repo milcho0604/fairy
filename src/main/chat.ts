@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
-import { app, BrowserWindow, type IpcMainEvent, ipcMain, type Rectangle, screen } from 'electron';
+import { BrowserWindow, type IpcMainEvent, ipcMain, type Rectangle, screen } from 'electron';
 import { extractTodos, noteTitleFromQuestion, type PersonaId, persona } from '../shared/ai/persona.ts';
 import {
   BUILTIN_PROVIDERS,
@@ -32,6 +32,7 @@ import { withParticle } from '../shared/josa.ts';
 import { prepareCodexHome } from './ai/codex-home.ts';
 import { type AiRun, checkStatus, readCodexUsage, runAi } from './ai/runner.ts';
 import { getShellEnv } from './ai/shell-env.ts';
+import { focusWindow, showWindow, stealFocus } from './focus.ts';
 import { readJson, writeJson } from './store.ts';
 
 const CHAT_SIZE = { width: 400, height: 600 };
@@ -55,6 +56,8 @@ export interface ChatOptions {
   saveNote: (title: string, body: string) => void;
   /** 답을 할 일로. 넣은 개수 */
   addTodos: (titles: string[]) => number;
+  /** 내 MCP 도구를 쓸 서버 이름 (v2). 안 쓰면 빈 목록 */
+  mcpServers: () => readonly string[];
   /** 펫에게 AI 상태를 알린다 (생각 중, 답함). */
   onPetAi: (state: PetAiState) => void;
   /** 답이 다 왔다. 채팅 창이 앞에 없으면 펫이 말풍선으로 알린다. */
@@ -192,6 +195,7 @@ export function createChat(o: ChatOptions) {
         persona: persona(petName(), o.personaId()),
         isolate: aiIsolation(),
         ephemeral,
+        mcpServers: aiIsolation() ? [] : o.mcpServers(),
       },
       (event) => {
         state = applyEvent(state, ids.pet, event, randomUUID());
@@ -285,10 +289,9 @@ export function createChat(o: ChatOptions) {
 
   function open(near?: Rectangle) {
     // 펫 앱은 Dock 없이 떠 있어서 창만 앞으로 부르면 키보드가 다른 앱에 남는다. 사용자가 부른 것이니 앱을 앞으로.
-    if (process.platform === 'darwin') app.focus({ steal: true });
+    stealFocus();
     if (win && !win.isDestroyed()) {
-      win.show();
-      win.focus();
+      focusWindow(win);
       return;
     }
     win = new BrowserWindow({
@@ -306,7 +309,7 @@ export function createChat(o: ChatOptions) {
         contextIsolation: true,
       },
     });
-    win.once('ready-to-show', () => win?.show());
+    win.once('ready-to-show', () => showWindow(win));
     win.on('closed', () => {
       win = undefined;
     });

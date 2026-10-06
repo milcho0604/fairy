@@ -1,6 +1,5 @@
 import { join } from 'node:path';
 import {
-  app,
   BrowserWindow,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
@@ -11,10 +10,12 @@ import {
 import { type EventStore, parseQuickEvent } from '../shared/event-store.ts';
 import type { FocusState } from '../shared/focus.ts';
 import { clampIntoAreas } from '../shared/geometry.ts';
-import { type NoteAiKind, PANEL, type PanelState } from '../shared/ipc.ts';
+import { type NoteAiKind, PANEL, type PanelState, type PanelTab, type PlayKind } from '../shared/ipc.ts';
 import { type NoteStore, notePreview, noteTitle } from '../shared/note-store.ts';
 import { parseQuickTodo } from '../shared/quick-add.ts';
+import { CUSTOM_FOOD_COST, CUSTOM_FOOD_MAX, type Food, type ItemStore } from '../shared/shop.ts';
 import { COIN, FULLNESS, localDay, type TodoStore } from '../shared/todo-store.ts';
+import { focusWindow, stealFocus } from './focus.ts';
 import { localTime, minuteOfDay, startOfDay } from './planner.ts';
 
 const PANEL_SIZE = { width: 360, height: 540 };
@@ -31,6 +32,20 @@ export interface PanelOptions {
   onEventsChanged: () => void;
   /** 채팅 창을 열고 묻는다. 답을 기다리는 중이면 false */
   askAi: (prompt: string) => boolean;
+  life: () => { sulk: number; mood: number; affection: number };
+  /** 상점 (v1) */
+  shop: ItemStore;
+  foodImage: (file: string | undefined) => string;
+  /** 먹이를 줬다 (펫 반응, 기분) */
+  onFedWith: (food: Food) => void;
+  /** 커스텀 먹이 만들기 창 열기 */
+  openFoodMaker: () => void;
+  removeFoodImage: (file: string | undefined) => void;
+  /** 집 단계가 바뀌었다 */
+  onHouseChanged: () => void;
+  /** 놀이 시작 (공놀이, 산책) */
+  play: (kind: PlayKind) => void;
+  achieve: () => PanelState['achieve'];
   petName: () => string;
   /** 펫 자리 (패널을 그 옆에 연다) */
   petBounds: () => Rectangle;
@@ -77,6 +92,12 @@ export function createPanel(o: PanelOptions) {
       events: o.events.between(startOfDay(now), startOfDay(now) + 14 * 86_400_000),
       focus: o.focus(),
       focusCoins: COIN.focus,
+      life: o.life(),
+      achieve: o.achieve(),
+      shop: {
+        ...o.shop.state(),
+        foodImages: Object.fromEntries(o.shop.state().customFoods.map((f) => [f.key, o.foodImage(f.image)])),
+      },
     };
   }
 
@@ -191,6 +212,50 @@ export function createPanel(o: PanelOptions) {
     o.events.restore(id);
     push();
   });
+  // ---- 상점과 놀이 (v1) ----
+  ipcMain.handle(PANEL.buyToy, (e, key: string) => {
+    if (!ours(e) || typeof key !== 'string') return { ok: false, error: '다시 해 줘.' };
+    const r = o.shop.buyToy(key, Date.now());
+    push();
+    return r;
+  });
+  ipcMain.handle(PANEL.buyHouse, (e) => {
+    if (!ours(e)) return { ok: false, error: '다시 해 줘.' };
+    const r = o.shop.buyHouse(Date.now());
+    push();
+    if (r.ok) o.onHouseChanged();
+    return r;
+  });
+  ipcMain.handle(PANEL.feedWith, (e, key: string) => {
+    if (!ours(e) || typeof key !== 'string') return { ok: false };
+    const food = o.shop.food(key);
+    if (!food) return { ok: false, error: '없는 먹이야.' };
+    const r = o.store.feed(Date.now(), food);
+    push();
+    if (!r.ok) return { ok: false, error: `코인이 ${food.cost}개 있어야 해.` };
+    o.onFedWith(food);
+    return { ok: true };
+  });
+  ipcMain.handle(PANEL.makeFood, (e) => {
+    if (!ours(e)) return { ok: false, error: '다시 해 줘.' };
+    if (o.store.balance() < CUSTOM_FOOD_COST)
+      return { ok: false, error: `코인이 ${CUSTOM_FOOD_COST}개 있어야 해.` };
+    if (o.shop.state().customFoods.length >= CUSTOM_FOOD_MAX)
+      return { ok: false, error: `커스텀 먹이는 ${CUSTOM_FOOD_MAX}개까지야.` };
+    closePanel();
+    o.openFoodMaker();
+    return { ok: true };
+  });
+  ipcMain.on(PANEL.removeFood, (e, key: string) => {
+    if (!ours(e) || typeof key !== 'string') return;
+    o.removeFoodImage(o.shop.removeCustomFood(key));
+    push();
+  });
+  ipcMain.on(PANEL.play, (e, kind: PlayKind) => {
+    if (!ours(e) || (kind !== 'ball' && kind !== 'walk' && kind !== 'seek')) return;
+    closePanel();
+    o.play(kind);
+  });
   // ---- 집중 타이머 ----
   ipcMain.on(PANEL.focusStart, (e) => {
     if (ours(e)) o.startFocus();
@@ -249,7 +314,7 @@ export function createPanel(o: PanelOptions) {
     o.log(...(rest as [string, ...unknown[]]));
   }
 
-  function makeWindow(kind: 'panel' | 'quick', bounds: Rectangle) {
+  function makeWindow(kind: 'panel' | 'quick', bounds: Rectangle, tab?: PanelTab) {
     const win = new BrowserWindow({
       ...bounds,
       frame: false,
@@ -273,12 +338,11 @@ export function createPanel(o: PanelOptions) {
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (ev) => ev.preventDefault());
     const devUrl = process.env.ELECTRON_RENDERER_URL;
-    if (devUrl) win.loadURL(`${devUrl}/${kind}.html`);
-    else win.loadFile(join(import.meta.dirname, `../renderer/${kind}.html`));
+    if (devUrl) win.loadURL(`${devUrl}/${kind}.html${tab ? `#${tab}` : ''}`);
+    else win.loadFile(join(import.meta.dirname, `../renderer/${kind}.html`), { hash: tab });
     win.once('ready-to-show', () => {
-      if (process.platform === 'darwin') app.focus({ steal: true });
-      win.show();
-      win.focus();
+      stealFocus();
+      focusWindow(win);
     });
     // 다른 곳을 누르면 닫힌다 (팝오버처럼).
     win.on('blur', () => {
@@ -290,6 +354,19 @@ export function createPanel(o: PanelOptions) {
   function closePanel() {
     if (panel && !panel.isDestroyed()) panel.close();
     panel = undefined;
+  }
+
+  /** 패널을 열고 이 탭을 보여 준다 (이미 열려 있으면 탭만) */
+  function openTab(tab: PanelTab) {
+    if (panel && !panel.isDestroyed()) {
+      panel.webContents.send(PANEL.tab, tab);
+      focusWindow(panel);
+      return;
+    }
+    panel = makeWindow('panel', placeNear(o.petBounds(), PANEL_SIZE), tab);
+    panel.on('closed', () => {
+      panel = undefined;
+    });
   }
 
   function togglePanel() {
@@ -305,7 +382,7 @@ export function createPanel(o: PanelOptions) {
 
   function openQuick() {
     if (quick && !quick.isDestroyed()) {
-      quick.focus();
+      focusWindow(quick);
       return;
     }
     const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
@@ -321,6 +398,7 @@ export function createPanel(o: PanelOptions) {
 
   return {
     togglePanel,
+    openTab,
     closePanel,
     openQuick,
     /** 펫 이름이나 배부름 등이 밖에서 바뀌었을 때 */
