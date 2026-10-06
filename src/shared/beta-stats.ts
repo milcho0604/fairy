@@ -9,6 +9,8 @@ export interface DayStat {
   hiddenMin: number;
   lookCount: number;
   crashCount: number;
+  /** 집중 타이머로 집중한 분 (v1) */
+  focusMin: number;
   /** 그날 끝낸 할 일 수 (todo 에서 센다) */
   done: number;
 }
@@ -46,6 +48,7 @@ interface Row {
   hidden_min: number;
   look_count: number;
   crash_count: number;
+  focus_min: number;
 }
 
 export function median(values: readonly number[]): number {
@@ -102,6 +105,11 @@ export class StatStore {
     this.#add(now, 'crash_count');
   }
 
+  /** 집중 타이머로 집중한 분 (v1) */
+  addFocus(now: number, minutes: number): void {
+    if (minutes > 0) this.#add(now, 'focus_min', Math.round(minutes));
+  }
+
   report(now: number): BetaReport {
     const today = this.#day(now);
     const rows = this.#db.prepare('select * from daily_stat order by day').all() as Row[];
@@ -123,6 +131,7 @@ export class StatStore {
         hiddenMin: Number(r?.hidden_min ?? 0),
         lookCount: Number(r?.look_count ?? 0),
         crashCount: Number(r?.crash_count ?? 0),
+        focusMin: Number(r?.focus_min ?? 0),
         done: doneByDay.get(day) ?? 0,
       };
     };
@@ -159,12 +168,12 @@ export function reportText(r: BetaReport, meta: { version: string; os: string })
     `같이 보기 최근 7일 ${r.look7}번 (목표 주 ${TARGET.look7}번 이상)`,
     `비정상 종료와 멈춤 최근 7일 ${r.crash7}번 (목표 ${TARGET.crash7}번)`,
     '',
-    '날짜, 켠 시간, 숨김, 완료, 같이 보기, 종료',
+    '날짜, 켠 시간, 숨김, 완료, 같이 보기, 종료, 집중',
     ...r.days
       .filter((d) => d.onMin > 0 || d.done > 0 || d.crashCount > 0)
       .map(
         (d) =>
-          `${d.day}, ${hours(d.onMin)}, ${hours(d.hiddenMin)}, ${d.done}, ${d.lookCount}, ${d.crashCount}`,
+          `${d.day}, ${hours(d.onMin)}, ${hours(d.hiddenMin)}, ${d.done}, ${d.lookCount}, ${d.crashCount}, ${hours(d.focusMin)}`,
       ),
   ];
   return lines.join('\n');

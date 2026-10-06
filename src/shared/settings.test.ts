@@ -33,6 +33,12 @@ test('바꾸기는 준 값만, 틀린 값은 지금 값을 지킨다', () => {
   const now = { ...DEFAULT_SETTINGS, petName: '밤', chatter: 'chatty' as const };
   assert.deepEqual(applyPatch(now, { wander: false }), { ...now, wander: false });
   assert.deepEqual(applyPatch(now, { petName: '', chatter: 'nope' }), now);
+  assert.deepEqual(applyPatch(now, { persona: 'polite', aiKnowsTodos: true }), {
+    ...now,
+    persona: 'polite',
+    aiKnowsTodos: true,
+  });
+  assert.deepEqual(applyPatch(now, { persona: 'evil', aiKnowsTodos: 'yes' }), now);
   assert.deepEqual(applyPatch(now, { petName: ' 콩 ' }), { ...now, petName: '콩' });
 });
 

@@ -61,6 +61,7 @@ test('켠 분, 숨긴 분, 같이 보기, 비정상 종료를 날짜별로 센�
     hiddenMin: 0,
     lookCount: 1,
     crashCount: 1,
+    focusMin: 0,
     done: 0,
   });
 });
@@ -86,6 +87,14 @@ test('완료 할 일 중앙값은 켠 날만 본다. 지운 할 일과 되돌린
   assert.equal(r.daysUsed, 2);
 });
 
+test('집중 분은 날짜별로 더한다', () => {
+  const { stats } = fresh();
+  stats.addFocus(T0, 25);
+  stats.addFocus(T0, 10);
+  stats.addFocus(T0, 0);
+  assert.equal(stats.report(T0).days.at(-1)?.focusMin, 35);
+});
+
 test('최근 7일 합계는 8일 전 기록을 넣지 않는다', () => {
   const { stats } = fresh();
   stats.countLook(T0 - 7 * DAY);
@@ -102,6 +111,6 @@ test('복사 글에는 숫자와 날짜만, 할 일 제목은 없다', () => {
   todos.complete(todos.add({ title: '비밀 프로젝트 보고서' }, T0).id, T0);
   const text = reportText(stats.report(T0), { version: '0.1.0', os: 'mac' });
   assert.doesNotMatch(text, /비밀/);
-  assert.match(text, /2026-10-06, 1분, 0분, 1, 0, 0/);
+  assert.match(text, /2026-10-06, 1분, 0분, 1, 0, 0, 0분/);
   assert.match(text, /중앙값 1개/);
 });

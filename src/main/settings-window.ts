@@ -1,4 +1,4 @@
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { app, BrowserWindow, clipboard, type IpcMainEvent, type IpcMainInvokeEvent, ipcMain } from 'electron';
 import { type BetaReport, reportText, type StatStore } from '../shared/beta-stats.ts';
 import { SETTINGS, type SettingsSection, type SettingsSnapshot } from '../shared/ipc.ts';
@@ -25,6 +25,14 @@ export function createSettingsWindow({ scale, setScale, openMaker, stats }: Sett
           packaged: app.isPackaged,
           platform: process.platform,
           version: app.getVersion(),
+          mcp: {
+            exec: process.execPath,
+            // 설치판에서는 asar 밖에 풀어 둔 사본을 쓴다 (electron-builder asarUnpack)
+            script: join(app.getAppPath(), 'out', 'main', 'mcp-server.js').replace(
+              `app.asar${sep}`,
+              `app.asar.unpacked${sep}`,
+            ),
+          },
         }
       : undefined,
   );

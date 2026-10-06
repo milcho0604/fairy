@@ -1,10 +1,15 @@
 // 빠른 입력 한 줄을 할 일로 (P2-04). "내일 보고서 쓰기!" → 제목 "보고서 쓰기", 마감 내일, 중요.
+// 반복(v1): "매일 운동", "평일 스탠드업", "매주 주간 보고" → 반복 할 일, 마감 오늘(평일은 다음 평일).
+import type { Repeat } from './todo-store.ts';
 
 export interface QuickTodo {
   title: string;
   due: string | null;
   important: boolean;
+  repeat: Repeat | null;
 }
+
+const REPEAT_WORDS: Record<string, Repeat> = { 매일: 'daily', 평일: 'weekdays', 매주: 'weekly' };
 
 const DAY_WORDS: Record<string, number> = { 오늘: 0, 내일: 1, 모레: 2 };
 
@@ -22,6 +27,14 @@ export function parseQuickTodo(text: string, today: string): QuickTodo {
     important = true;
     rest = rest.replace(/^!+|!+$/g, '').trim();
   }
+  let repeat: Repeat | null = null;
+  for (const [word, r] of Object.entries(REPEAT_WORDS)) {
+    if (rest.startsWith(`${word} `)) {
+      repeat = r;
+      rest = rest.slice(word.length + 1);
+      break;
+    }
+  }
   let due: string | null = null;
   for (const [word, n] of Object.entries(DAY_WORDS)) {
     if (rest.startsWith(`${word} `) || rest.startsWith(`${word}까지 `)) {
@@ -35,7 +48,12 @@ export function parseQuickTodo(text: string, today: string): QuickTodo {
       break;
     }
   }
-  return { title: rest.trim(), due, important };
+  if (repeat && !due) {
+    due = today;
+    if (repeat === 'weekdays')
+      while ([0, 6].includes(new Date(`${due}T00:00:00Z`).getUTCDay())) due = addDays(due, 1);
+  }
+  return { title: rest.trim(), due, important, repeat };
 }
 
 /** 마감일을 사람 말로: 오늘, 내일, 어제까지, 10월 5일. */

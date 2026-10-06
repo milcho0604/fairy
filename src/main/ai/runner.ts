@@ -31,6 +31,8 @@ export interface AiRequest {
   persona: string;
   /** 사용자 설정 없이 격리해서 부를지 (설정, 기본 true) */
   isolate: boolean;
+  /** 기록 남기지 않기 (v1). claude, codex 만 */
+  ephemeral?: boolean;
 }
 
 export interface AiRun {
@@ -103,6 +105,7 @@ export function runAi(req: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
         imagePaths: tempFiles,
         threadId: req.sessionId,
         persona: req.persona,
+        ephemeral: req.ephemeral,
       });
       // 격리하면 짝꿍 전용 폴더(auth.json 만 연결), 아니면 사용자의 codex 설정 폴더 그대로.
       codexHome = req.isolate ? prepareCodexHome(env.codexHome) : env.codexHome;
@@ -161,8 +164,8 @@ export function runAi(req: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
         else if (code !== 0)
           emit({ type: 'error', error: classifyError(spec, stripAnsi(stderr) || `종료 코드 ${code}`) });
         else emit({ type: 'done', text: answer.trim() });
-        // codex 사용량은 대화 기록 파일에 남는다. 끝난 뒤 읽는다.
-        if (codexHome && sessionId) {
+        // codex 사용량은 대화 기록 파일에 남는다. 끝난 뒤 읽는다. 기록을 안 남겼으면 읽을 것도 없다.
+        if (codexHome && sessionId && !req.ephemeral) {
           const usage = readCodexUsage(codexHome, sessionId);
           if (usage) emit({ type: 'usage', usage });
         }

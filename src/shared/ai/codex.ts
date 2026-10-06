@@ -11,6 +11,8 @@ export interface CodexTurn {
   /** 이어서 물을 때 앞 대화의 thread_id. */
   threadId?: string;
   persona: string;
+  /** 기록 남기지 않기 (v1): 대화 기록 파일(rollout)을 남기지 않는다. 이어가기와 사용량 읽기를 못 한다 */
+  ephemeral?: boolean;
 }
 
 /**
@@ -27,6 +29,7 @@ export function codexArgs(turn: CodexTurn): string[] {
     `developer_instructions=${JSON.stringify(turn.persona)}`,
     ...turn.imagePaths.flatMap((p) => ['-i', p]),
   ];
+  if (turn.ephemeral) return ['exec', turn.text, '--ephemeral', ...common];
   return turn.threadId
     ? ['exec', 'resume', turn.threadId, turn.text, ...common]
     : ['exec', turn.text, ...common];

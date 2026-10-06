@@ -112,6 +112,11 @@ export function App() {
   const spec = providers.find((p) => p.id === state.provider);
   const labelOf = (id?: AiProvider) => providers.find((p) => p.id === id)?.label ?? id ?? '';
   const imagesBlocked = !!spec && !spec.images && images.length > 0;
+  // 한도에 걸리면 바로 물어볼 수 있는 다른 AI (설치, 로그인 확인된 것)
+  const alternatives = providers.filter((p) => {
+    const st = status[p.id];
+    return p.id !== state.provider && !!st && isReady(st);
+  });
 
   const send = () => {
     if (pending || (!text.trim() && images.length === 0)) return;
@@ -233,7 +238,14 @@ export function App() {
           </div>
         )}
         {state.messages.map((m) => (
-          <Message key={m.id} message={m} petName={petName} label={labelOf(m.provider)} onZoom={setZoom} />
+          <Message
+            key={m.id}
+            message={m}
+            petName={petName}
+            label={labelOf(m.provider)}
+            onZoom={setZoom}
+            alternatives={m.id === state.messages.at(-1)?.id && !pending ? alternatives : []}
+          />
         ))}
       </div>
 
@@ -261,6 +273,35 @@ export function App() {
             ))}
           </div>
         )}
+        <div className="options">
+          <label
+            className="opt"
+            title="질문할 때 안 끝낸 할 일 제목과 마감, 오늘 남은 일정 제목을 같이 보내. 그래서 '오늘 뭐부터 할까?'에 답할 수 있어."
+          >
+            <input
+              type="checkbox"
+              checked={!!state.knowsTodos}
+              onChange={(e) => bridge.setKnowsTodos(e.target.checked)}
+            />
+            내 할 일 같이 보내기
+          </label>
+          <label
+            className={`opt ${spec && !spec.ephemeral ? 'disabled' : ''}`}
+            title={
+              spec && !spec.ephemeral
+                ? `${withParticle(spec.label, '은')} 기록 안 남기기를 지원하지 않아. Claude 나 Codex 에서 돼.`
+                : 'AI 쪽에도 이 대화를 저장하지 않아. 켜고 끄면 새 대화로 시작해.'
+            }
+          >
+            <input
+              type="checkbox"
+              checked={!!state.ephemeral}
+              disabled={pending || (!!spec && !spec.ephemeral)}
+              onChange={(e) => bridge.setEphemeral(e.target.checked)}
+            />
+            기록 안 남김
+          </label>
+        </div>
         <div className="composer">
           <label className="ghost icon" title="그림 붙이기">
             <input
@@ -311,9 +352,11 @@ interface MessageProps {
   petName: string;
   label: string;
   onZoom: (src: string) => void;
+  /** 한도 오류일 때 다시 물어볼 다른 AI */
+  alternatives: ProviderView[];
 }
 
-function Message({ message: m, petName, label, onZoom }: MessageProps) {
+function Message({ message: m, petName, label, onZoom, alternatives }: MessageProps) {
   if (m.role === 'notice') return <p className="system">{m.text}</p>;
   if (m.role === 'user') {
     return (
@@ -345,31 +388,62 @@ function Message({ message: m, petName, label, onZoom }: MessageProps) {
         {m.text && (
           <div className="bubble">
             <Markdown text={m.text} />
-            {m.status === 'done' && <CopyButton text={m.text} />}
+            {m.status === 'done' && <AnswerActions id={m.id} text={m.text} />}
           </div>
         )}
         {m.status === 'error' && m.error && (
           <div className={`bubble error ${m.error.kind}`}>{m.error.message}</div>
+        )}
+        {m.status === 'error' && m.error?.kind === 'rate-limit' && alternatives.length > 0 && (
+          <div className="retry">
+            {alternatives.slice(0, 3).map((p) => (
+              <button key={p.id} type="button" className="ghost" onClick={() => bridge.retryWith(p.id)}>
+                {withParticle(p.label, '으로')} 다시 묻기
+              </button>
+            ))}
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
+/** 답 아래 작은 단추: 복사, 메모로, 할 일로 (v1 "답변을 메모, 할 일로") */
+function AnswerActions({ id, text }: { id: string; text: string }) {
+  const [done, setDone] = useState('');
+  const flash = (msg: string) => {
+    setDone(msg);
+    setTimeout(() => setDone(''), 1800);
+  };
+  if (done) return <span className="answer-actions shown">{done}</span>;
   return (
-    <button
-      type="button"
-      className="copy"
-      onClick={async () => {
-        await navigator.clipboard.writeText(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      }}
-    >
-      {copied ? '복사함' : '복사'}
-    </button>
+    <span className="answer-actions">
+      <button
+        type="button"
+        onClick={async () => {
+          await navigator.clipboard.writeText(text);
+          flash('복사함');
+        }}
+      >
+        복사
+      </button>
+      <button
+        type="button"
+        onClick={async () => flash((await bridge.toNote(id)) ? '메모에 남김' : '못 남겼어')}
+      >
+        메모로
+      </button>
+      <button
+        type="button"
+        title="목록이 있으면 줄마다, 없으면 첫 문장을 할 일로"
+        onClick={async () => {
+          const n = await bridge.toTodos(id);
+          flash(n > 0 ? `할 일 ${n}개 넣음` : '넣을 게 없어');
+        }}
+      >
+        할 일로
+      </button>
+    </span>
   );
 }
 

@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { PERSONAS } from '../../../shared/ai/persona.ts';
 import { type BetaReport, TARGET } from '../../../shared/beta-stats.ts';
 import { type ChatterLevel, LEVEL_LABEL, MAX_PER_HOUR } from '../../../shared/chatter.ts';
 import type { SettingsSnapshot } from '../../../shared/ipc.ts';
@@ -145,12 +146,39 @@ export function SettingsApp() {
         </Section>
 
         <Section title="AI">
+          <div className="field">
+            <span>성격과 말투</span>
+            <fieldset className="segmented wrap" aria-label="성격과 말투">
+              {PERSONAS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  aria-pressed={s.persona === p.id}
+                  className={s.persona === p.id ? 'on' : ''}
+                  onClick={() => update({ persona: p.id })}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </fieldset>
+            <small>{PERSONAS.find((p) => p.id === s.persona)?.hint} 다음 질문부터 바뀌어.</small>
+          </div>
+          <Toggle
+            label="내 할 일 같이 보내기"
+            hint="질문할 때 안 끝낸 할 일 제목과 마감, 오늘 남은 일정 제목을 AI 에 같이 보내. '오늘 뭐부터 할까?'에 답할 수 있어. 채팅 창 아래에서도 켜고 끌 수 있어."
+            on={s.aiKnowsTodos}
+            onChange={(v) => update({ aiKnowsTodos: v })}
+          />
           <Toggle
             label="내 AI 설정 없이 부르기 (권장)"
             hint="Claude Code 와 Codex 를 부를 때 내 훅, MCP, 스킬을 싣지 않아. 끄면 내 설정을 그대로 쓰는데 답이 느려지고 한도를 더 쓸 수 있어. 바꾸면 새 대화로 시작해."
             on={s.aiIsolation}
             onChange={(v) => update({ aiIsolation: v })}
           />
+        </Section>
+
+        <Section title="다른 AI 에서 짝꿍 쓰기 (MCP)">
+          <McpSetup exec={snap.mcp.exec} script={snap.mcp.script} onCopied={() => flash('복사했어')} />
         </Section>
 
         <Section title="시작">
@@ -295,6 +323,52 @@ function Stats({ onCopied }: { onCopied: () => void }) {
         <small>복사한 글에는 날짜와 숫자만 들어가. 할 일 제목이나 대화 내용은 없어.</small>
       </div>
     </section>
+  );
+}
+
+/**
+ * 펫 MCP 서버 등록 안내 (v1). Claude Code 나 Codex 에서 "짝꿍 할 일에 넣어 줘"가 되게 한다.
+ * 짝꿍 실행 파일을 Node 로 돌리므로 따로 설치할 것이 없다.
+ */
+function McpSetup({ exec, script, onCopied }: { exec: string; script: string; onCopied: () => void }) {
+  const q = (p: string) => `"${p.replace(/"/g, '\\"')}"`;
+  const claude = `claude mcp add jjakkung -s user -e ELECTRON_RUN_AS_NODE=1 -- ${q(exec)} ${q(script)}`;
+  const codex = [
+    '[mcp_servers.jjakkung]',
+    `command = ${JSON.stringify(exec)}`,
+    `args = [${JSON.stringify(script)}]`,
+    'env = { ELECTRON_RUN_AS_NODE = "1" }',
+  ].join('\n');
+  const copy = async (text: string) => {
+    await navigator.clipboard.writeText(text);
+    onCopied();
+  };
+  return (
+    <>
+      <small>
+        Claude Code, Codex 에 짝꿍을 연결하면 그 안에서 "이거 짝꿍 할 일에 넣어 줘", "내일 3시 회의 일정 잡아
+        줘"가 돼. 할 일, 메모, 일정을 넣고 볼 수 있어. 넣은 것은 몇 초 안에 패널에 보여.
+      </small>
+      <div className="field">
+        <span>Claude Code: 터미널에서 한 번 실행</span>
+        <pre className="cmd">{claude}</pre>
+        <div className="row">
+          <button type="button" className="ghost" onClick={() => copy(claude)}>
+            명령 복사
+          </button>
+        </div>
+      </div>
+      <div className="field">
+        <span>Codex: ~/.codex/config.toml 에 붙여 넣기</span>
+        <pre className="cmd">{codex}</pre>
+        <div className="row">
+          <button type="button" className="ghost" onClick={() => copy(codex)}>
+            설정 복사
+          </button>
+        </div>
+      </div>
+      <small>짝꿍을 다른 폴더로 옮기거나 다시 설치하면 경로가 바뀌니 다시 등록해 줘.</small>
+    </>
   );
 }
 

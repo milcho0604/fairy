@@ -27,7 +27,7 @@ function QuickAdd() {
         ref={ref}
         value={text}
         aria-label="할 일 한 줄"
-        placeholder="할 일 한 줄 (예: 내일 보고서 쓰기!)"
+        placeholder="할 일이나 일정 한 줄 (예: 내일 보고서 쓰기!, 금요일 3시 회의)"
         onChange={(e) => {
           setText(e.target.value);
           setMsg('');
@@ -40,7 +40,7 @@ function QuickAdd() {
             return;
           }
           setText('');
-          setMsg('넣었어');
+          setMsg(r.kind === 'event' ? '일정에 넣었어' : '할 일에 넣었어');
           setTimeout(() => bridge.close(), 500);
         }}
       />

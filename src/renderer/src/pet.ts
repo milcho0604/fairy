@@ -143,7 +143,7 @@ bridge.onImage((dataUrl) => {
   img.src = dataUrl;
 });
 
-bridge.onStatus((status) => setInputs({ hungry: status.hungry }));
+bridge.onStatus((status) => setInputs({ hungry: status.hungry, focusTimer: status.focus }));
 // 할 일을 끝내거나 밥을 먹으면 신나서 통통 튄다.
 bridge.onReact(() => setInputs({ excitedUntil: performance.now() + EXCITED_MS }));
 

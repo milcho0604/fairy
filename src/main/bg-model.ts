@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { pathToFileURL } from 'node:url';
 import { app } from 'electron';
 
 /**
@@ -80,7 +80,7 @@ export async function ensureModel(
   return file;
 }
 
-export async function readModel(): Promise<ArrayBuffer> {
-  const buf = await readFile(modelPath());
-  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+/** 해시를 맞춘 모델 파일의 file:// 주소. 아직 안 맞췄으면 undefined (깨진 파일을 열지 않게). */
+export function verifiedModelUrl(): string | undefined {
+  return verified ? pathToFileURL(modelPath()).href : undefined;
 }

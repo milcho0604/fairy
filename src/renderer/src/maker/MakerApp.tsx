@@ -1,5 +1,5 @@
 import { type ClipboardEvent, useCallback, useEffect, useRef, useState } from 'react';
-import type { MakerInfo } from '../../../shared/ipc.ts';
+import { type MakerInfo, MODEL_URL } from '../../../shared/ipc.ts';
 import { withParticle } from '../../../shared/josa.ts';
 import { contentBox, keptRatio, stroke } from '../../../shared/mask.ts';
 import { PET_NAME_MAX } from '../../../shared/settings.ts';
@@ -52,7 +52,9 @@ export function MakerApp() {
         if (!r.ok) throw new Error(r.error);
         setInfo((v) => v && { ...v, modelReady: true });
         setStep('working');
-        await openModel(await bridge.modelBytes());
+        const res = await fetch(MODEL_URL);
+        if (!res.ok) throw new Error('모델 파일을 못 읽었어. 창을 닫았다가 다시 열어 줘.');
+        await openModel(await res.arrayBuffer());
         const t0 = performance.now();
         const mask = await predictMask(photo, info);
         setElapsed(Math.round(performance.now() - t0));

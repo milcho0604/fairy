@@ -5,9 +5,12 @@ import type { Activity } from './behavior.ts';
 import type { BetaReport } from './beta-stats.ts';
 import type { BubbleLayout } from './bubble-layout.ts';
 import type { ChatImage, ChatState } from './chat-state.ts';
+import type { CalEvent } from './event-store.ts';
+import type { FocusState } from './focus.ts';
 import type { GestureEvent } from './gesture.ts';
+import type { Note, NoteSource } from './note-store.ts';
 import type { Settings } from './settings.ts';
-import type { Todo } from './todo-store.ts';
+import type { Repeat, Todo } from './todo-store.ts';
 
 export const IPC = {
   /** 펫 화면 → 메인: 커서가 펫 위에 있는지 (클릭 통과를 켜고 끈다). */
@@ -87,6 +90,12 @@ export const CHAT = {
   delta: 'chat:delta',
   attach: 'chat:attach',
   petName: 'chat:pet-name',
+  // v1
+  setEphemeral: 'chat:set-ephemeral',
+  setKnowsTodos: 'chat:set-knows-todos',
+  toNote: 'chat:to-note',
+  toTodos: 'chat:to-todos',
+  retryWith: 'chat:retry-with',
 } as const;
 
 export const SETTINGS = {
@@ -110,6 +119,8 @@ export interface SettingsSnapshot {
   packaged: boolean;
   platform: NodeJS.Platform;
   version: string;
+  /** 펫 MCP 서버를 AI 도구에 등록할 때 쓸 실행 파일과 스크립트 경로 (v1) */
+  mcp: { exec: string; script: string };
 }
 
 /** 설정 창에서 바로 보여 줄 칸 */
@@ -145,6 +156,8 @@ export interface ProviderView {
   loginHint?: string;
   /** 사용자 추가 AI 의 명령 한 줄 (보여 주기용) */
   command?: string;
+  /** 기록 남기지 않기를 할 수 있는지 (claude, codex) */
+  ephemeral: boolean;
 }
 
 export interface ChatSnapshot {
@@ -169,6 +182,14 @@ export interface ChatBridge {
   onDelta(listener: (id: string, text: string) => void): void;
   onAttach(listener: (image: OutgoingImage) => void): void;
   onPetName(listener: (name: string) => void): void;
+  setEphemeral(on: boolean): void;
+  setKnowsTodos(on: boolean): void;
+  /** 답을 메모로. 성공하면 true */
+  toNote(messageId: string): Promise<boolean>;
+  /** 답을 할 일로. 넣은 개수 */
+  toTodos(messageId: string): Promise<number>;
+  /** 마지막 질문을 다른 AI 로 다시 (한도에 걸렸을 때) */
+  retryWith(provider: AiProvider): void;
 }
 
 export interface PetEnv {
@@ -204,18 +225,26 @@ export interface PetBridge {
 
 export interface PetStatus {
   hungry: boolean;
+  /** 집중 타이머 중 (펫이 잔다) */
+  focus: boolean;
 }
 
 export const MAKER = {
   modelReady: 'maker:model-ready',
   /** 모델 준비 (없으면 받음). 진행률은 progress 로 */
   ensureModel: 'maker:ensure-model',
-  modelBytes: 'maker:model-bytes',
   /** 메인 → 펫 만들기 창: 모델 받기 진행률 0~1 */
   progress: 'maker:progress',
   save: 'maker:save',
   close: 'maker:close',
 } as const;
+
+/**
+ * 배경 제거 모델 파일 주소. 메인이 디스크 파일을 그대로 흘려 보낸다(protocol.handle).
+ * 예전처럼 IPC 로 넘기면 메인이 170MB 를 두 벌 들고 있다가 GC 때까지 안 놓았다 (2026-10-06 측정, 343MB).
+ */
+export const MODEL_SCHEME = 'jj-model';
+export const MODEL_URL = `${MODEL_SCHEME}://bg/model.onnx`;
 
 export interface MakerInfo {
   petName: string;
@@ -231,7 +260,6 @@ export interface MakerBridge {
   platform: NodeJS.Platform;
   info(): Promise<MakerInfo>;
   ensureModel(): Promise<{ ok: true } | { ok: false; error: string }>;
-  modelBytes(): Promise<ArrayBuffer>;
   /** 다듬은 그림(PNG data URL)과 이름을 저장하고 펫을 바꾼다 */
   save(png: string, name: string): Promise<{ ok: boolean; error?: string }>;
   /** 기본 펫으로 돌아가기 */
@@ -251,6 +279,22 @@ export const PANEL = {
   openChat: 'panel:open-chat',
   lookTogether: 'panel:look-together',
   close: 'panel:close',
+  // 메모 (v1)
+  noteGet: 'panel:note-get',
+  noteAdd: 'panel:note-add',
+  noteUpdate: 'panel:note-update',
+  noteRemove: 'panel:note-remove',
+  noteRestore: 'panel:note-restore',
+  /** 메모를 AI 로 정리 (할 일로 쪼개기, 요약). 채팅 창에서 묻는다 */
+  noteAi: 'panel:note-ai',
+  // 일정 (v1)
+  eventAdd: 'panel:event-add',
+  eventUpdate: 'panel:event-update',
+  eventRemove: 'panel:event-remove',
+  eventRestore: 'panel:event-restore',
+  // 집중 타이머 (v1)
+  focusStart: 'panel:focus-start',
+  focusStop: 'panel:focus-stop',
   /** 메인 → 패널, 빠른 입력: 바뀐 상태 */
   state: 'panel:state',
 } as const;
@@ -265,20 +309,59 @@ export interface PanelState {
   fullness: number;
   hungryBelow: number;
   foodCost: number;
+  /** 메모 목록 (본문은 열 때 따로 읽는다) */
+  notes: NoteSummary[];
+  /** 오늘 0시부터 14일 안의 일정 */
+  events: CalEvent[];
+  focus: FocusState;
+  /** 집중 코인과 오늘 받은 집중 횟수 */
+  focusCoins: number;
 }
+
+export interface NoteSummary {
+  id: number;
+  title: string;
+  preview: string;
+  source: NoteSource;
+  updatedAt: number;
+}
+
+export type PanelTab = 'today' | 'todo' | 'note' | 'event';
+
+export type NoteAiKind = 'todos' | 'summary';
 
 export interface PanelBridge {
   platform: NodeJS.Platform;
   snapshot(): Promise<PanelState>;
   /** 한 줄 입력(빠른 입력과 같은 규칙)으로 할 일을 더한다 */
-  add(text: string): Promise<{ ok: boolean; error?: string }>;
+  add(text: string): Promise<{ ok: boolean; error?: string; kind?: 'todo' | 'event' }>;
   complete(id: number): Promise<number>;
   undo(id: number): Promise<number>;
-  update(id: number, patch: { title?: string; due?: string | null; important?: boolean }): void;
+  update(
+    id: number,
+    patch: { title?: string; due?: string | null; important?: boolean; repeat?: Repeat | null },
+  ): void;
   remove(id: number): void;
   feed(): Promise<{ ok: boolean }>;
   openChat(): void;
   lookTogether(): void;
   close(): void;
   onState(listener: (state: PanelState) => void): void;
+  noteGet(id: number): Promise<Note | undefined>;
+  /** 새 메모. 만든 메모를 돌려준다 */
+  noteAdd(): Promise<Note>;
+  noteUpdate(id: number, patch: { title?: string; body?: string }): void;
+  noteRemove(id: number): void;
+  noteRestore(id: number): void;
+  noteAi(id: number, kind: NoteAiKind): Promise<boolean>;
+  /** 한 줄("내일 3시 회의")로 일정 넣기 */
+  eventAdd(text: string): Promise<{ ok: boolean; error?: string; event?: CalEvent }>;
+  eventUpdate(
+    id: number,
+    patch: { title?: string; startAt?: number; endAt?: number | null; remindMin?: number },
+  ): void;
+  eventRemove(id: number): void;
+  eventRestore(id: number): void;
+  focusStart(): void;
+  focusStop(): void;
 }

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { type Db, migrate, SCHEMA_VERSION, schemaVersion } from './db-schema.ts';
-import { COIN, FULLNESS, TodoStore } from './todo-store.ts';
+import { COIN, FULLNESS, nextDue, TodoStore } from './todo-store.ts';
 
 const HOUR = 3_600_000;
 // 시험은 시간대와 상관없게 날짜를 UTC 로 자른다.
@@ -127,4 +127,39 @@ test('밥 주기: 5코인에 20, 100 을 안 넘고, 코인이 모자라면 안 
   assert.deepEqual(store.feed(T0), { ok: true, fullness: 100, balance: 5 });
   assert.equal(store.feed(T0 + 5 * HOUR).fullness, 100); // 90 + 20 → 100
   assert.equal(store.balance(), 0);
+});
+
+test('다음 회차 마감: 매일은 내일, 평일은 주말을 건너뛰고, 매주는 같은 요일. 밀린 것은 한 번만', () => {
+  // 2026-10-02 금요일
+  assert.equal(nextDue('2026-10-02', 'daily', '2026-10-02'), '2026-10-03');
+  assert.equal(nextDue('2026-09-28', 'daily', '2026-10-02'), '2026-10-03');
+  assert.equal(nextDue('2026-10-02', 'weekdays', '2026-10-02'), '2026-10-05');
+  assert.equal(nextDue('2026-10-02', 'weekly', '2026-10-02'), '2026-10-09');
+  assert.equal(nextDue('2026-09-18', 'weekly', '2026-10-02'), '2026-10-09');
+  assert.equal(nextDue('2026-10-05', 'daily', '2026-10-02'), '2026-10-06');
+  assert.equal(nextDue(null, 'daily', '2026-10-02'), '2026-10-03');
+});
+
+test('반복 할 일을 끝내면 다음 회차가 생기고, 되돌리면 그 회차가 사라진다', () => {
+  const { store } = fresh();
+  const t = store.add({ title: '운동', repeat: 'daily' }, T0);
+  assert.equal(t.due, '2026-10-02');
+  store.complete(t.id, T0);
+  let open = store.list(T0).open;
+  assert.equal(open.length, 1);
+  assert.deepEqual([open[0]?.title, open[0]?.due, open[0]?.repeat], ['운동', '2026-10-03', 'daily']);
+  store.undo(t.id, T0);
+  open = store.list(T0).open;
+  assert.deepEqual(
+    open.map((x) => x.id),
+    [t.id],
+  );
+});
+
+test('집중 보상은 한 번에 5코인, 하루 8번까지', () => {
+  const { store } = fresh();
+  let total = 0;
+  for (let i = 0; i < 10; i++) total += store.rewardFocus(T0 + i);
+  assert.equal(total, COIN.focus * COIN.dailyFocusLimit);
+  assert.equal(store.rewardFocus(T0 + 24 * HOUR), COIN.focus);
 });

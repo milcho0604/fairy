@@ -9,6 +9,8 @@ const PARTICLES = {
   은: ['은', '는', '은(는)'],
   을: ['을', '를', '을(를)'],
   아: ['아', '야', '아(야)'],
+  // ㄹ 받침은 "로"를 쓴다 (서울로). 아래 withParticle 에서 따로 본다.
+  으로: ['으로', '로', '(으)로'],
 } as const;
 
 export type Particle = keyof typeof PARTICLES;
@@ -44,10 +46,21 @@ function englishHasFinal(word: string): boolean {
   return /[aeiou](ck|[kptb])$/.test(word);
 }
 
+/** 끝 소리 받침이 ㄹ 인지 (으로/로 고르기). 한글, 숫자(1 일, 7 칠, 8 팔), 영어 l 로 끝나는 말 */
+function finalIsRieul(name: string): boolean {
+  const last = name.match(/[가-힣]|[a-z]+|\d+/gi)?.at(-1);
+  if (!last) return false;
+  const code = last.codePointAt(last.length - 1) ?? 0;
+  if (code >= HANGUL_FIRST && code <= HANGUL_LAST) return (code - HANGUL_FIRST) % 28 === 8;
+  if (/^\d+$/.test(last)) return /[178]$/.test(last);
+  return /l$/i.test(last);
+}
+
 /** 이름에 조사를 붙인다. withParticle('밤', '이랑') === '밤이랑' */
 export function withParticle(name: string, particle: Particle): string {
   const [withFinal, withoutFinal, unknown] = PARTICLES[particle];
   const final = hasFinalConsonant(name);
   if (final === undefined) return name + unknown;
+  if (particle === '으로' && final && finalIsRieul(name)) return `${name}로`;
   return name + (final ? withFinal : withoutFinal);
 }

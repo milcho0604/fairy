@@ -15,6 +15,8 @@ export interface ClaudeTurn {
   persona: string;
   /** 사용자 설정(훅, MCP, 스킬) 없이 부를지. 기본 true. 설정에서 "내 AI 설정 그대로"를 고르면 false */
   isolate?: boolean;
+  /** 기록 남기지 않기 (v1): claude 가 세션을 디스크에 저장하지 않는다. 이어가기를 못 한다 */
+  ephemeral?: boolean;
 }
 
 /**
@@ -46,7 +48,11 @@ export function claudeArgs(turn: ClaudeTurn): string[] {
         ]),
     '--append-system-prompt',
     turn.persona,
-    ...(turn.resume ? ['--resume', turn.sessionId] : ['--session-id', turn.sessionId]),
+    ...(turn.ephemeral
+      ? ['--no-session-persistence']
+      : turn.resume
+        ? ['--resume', turn.sessionId]
+        : ['--session-id', turn.sessionId]),
   ];
 }
 

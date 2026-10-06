@@ -19,6 +19,20 @@ export function textPrompt(persona: string, history: readonly Exchange[], questi
   return parts.join('\n\n');
 }
 
+/**
+ * 기록 남기지 않기(v1)일 때 claude, codex 는 이어가기를 못 쓴다. 최근 대화를 질문 앞에 붙인다.
+ * 성격 지시는 따로 주므로 넣지 않는다. 앞 대화가 없으면 질문 그대로.
+ */
+export function withHistory(history: readonly Exchange[], question: string): string {
+  const recent = history.slice(-HISTORY_TURNS);
+  if (recent.length === 0) return question;
+  return [
+    '지금까지 대화:',
+    ...recent.map((h) => `사용자: ${h.question}\n너: ${h.answer}`),
+    `사용자 질문: ${question}`,
+  ].join('\n\n');
+}
+
 /** 터미널 색 코드와 커서 이동 같은 제어 문자를 지운다. */
 export function stripAnsi(text: string): string {
   // biome-ignore lint/suspicious/noControlCharactersInRegex: 터미널 제어 문자를 지우는 게 목적이다

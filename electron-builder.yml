@@ -19,6 +19,8 @@ npmRebuild: false
 asarUnpack:
   - node_modules/koffi/**
   - node_modules/@koromix/**
+  # 펫 MCP 서버는 AI 도구가 실행 파일을 Node 로 돌려 연다. asar 밖에 둔다 (나눠진 조각까지 out/main 통째로).
+  - out/main/**
 mac:
   category: public.app-category.productivity
   target:

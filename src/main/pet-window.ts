@@ -43,6 +43,9 @@ export interface PetActions {
   quickAdd(): void;
   feed(): void;
   makePet(): void;
+  /** 집중 타이머가 도는지 (메뉴 글자를 바꾼다) */
+  focusRunning(): boolean;
+  toggleFocus(): void;
 }
 
 export interface SayOptions {
@@ -226,12 +229,15 @@ export function createPetWindow({ petName, actions, log }: PetWindowOptions): Pe
   const onContextMenu = (e: IpcMainEvent) => {
     if (!fromThisWindow(e)) return;
     log('pet', 'context-menu');
-    // 할 일 추가, 밥 주기, 설정은 2단계와 P1-12 에서 더한다.
     Menu.buildFromTemplate([
       { label: `${withParticle(petName(), '이랑')} 같이 보기`, click: () => actions.lookTogether() },
       { label: `${withParticle(petName(), '과')} 대화`, click: () => actions.openChat(pet) },
       { label: '할 일 추가', accelerator: QUICK_ADD_SHORTCUT, click: () => actions.quickAdd() },
       { label: '밥 주기', click: () => actions.feed() },
+      {
+        label: actions.focusRunning() ? '집중 그만' : '집중 25분 시작',
+        click: () => actions.toggleFocus(),
+      },
       { type: 'separator' },
       {
         label: '말풍선',

@@ -49,3 +49,18 @@ test('판단할 글자가 없으면 두 형태를 같이 쓴다', () => {
   assert.equal(withParticle('🐶', '이랑'), '🐶(이)랑');
   assert.equal(withParticle('', '과'), '와(과)');
 });
+
+test('으로/로: 받침 있으면 으로, 없거나 ㄹ 받침이면 로', () => {
+  assert.equal(withParticle('콩', '으로'), '콩으로');
+  assert.equal(withParticle('콩이', '으로'), '콩이로');
+  assert.equal(withParticle('서울', '으로'), '서울로');
+  assert.equal(withParticle('Claude', '으로'), 'Claude로');
+  assert.equal(withParticle('Codex', '으로'), 'Codex로');
+  assert.equal(withParticle('Gemini', '으로'), 'Gemini로');
+  assert.equal(withParticle('Cursor', '으로'), 'Cursor로');
+  assert.equal(withParticle('Bill', '으로'), 'Bill로');
+  assert.equal(withParticle('Sam', '으로'), 'Sam으로');
+  assert.equal(withParticle('GPT 7', '으로'), 'GPT 7로');
+  assert.equal(withParticle('GPT 3', '으로'), 'GPT 3으로');
+  assert.equal(withParticle('???', '으로'), '???(으)로');
+});

@@ -8,16 +8,29 @@ import {
   type Rectangle,
   screen,
 } from 'electron';
+import { type EventStore, parseQuickEvent } from '../shared/event-store.ts';
+import type { FocusState } from '../shared/focus.ts';
 import { clampIntoAreas } from '../shared/geometry.ts';
-import { PANEL, type PanelState } from '../shared/ipc.ts';
+import { type NoteAiKind, PANEL, type PanelState } from '../shared/ipc.ts';
+import { type NoteStore, notePreview, noteTitle } from '../shared/note-store.ts';
 import { parseQuickTodo } from '../shared/quick-add.ts';
 import { COIN, FULLNESS, localDay, type TodoStore } from '../shared/todo-store.ts';
+import { localTime, minuteOfDay, startOfDay } from './planner.ts';
 
-const PANEL_SIZE = { width: 340, height: 500 };
+const PANEL_SIZE = { width: 360, height: 540 };
 const QUICK_SIZE = { width: 480, height: 64 };
 
 export interface PanelOptions {
   store: TodoStore;
+  notes: NoteStore;
+  events: EventStore;
+  focus: () => FocusState;
+  startFocus: () => void;
+  stopFocus: () => void;
+  /** 일정이 바뀌었다 (곧 시작하는 일정이면 바로 알림) */
+  onEventsChanged: () => void;
+  /** 채팅 창을 열고 묻는다. 답을 기다리는 중이면 false */
+  askAi: (prompt: string) => boolean;
   petName: () => string;
   /** 펫 자리 (패널을 그 옆에 연다) */
   petBounds: () => Rectangle;
@@ -54,6 +67,16 @@ export function createPanel(o: PanelOptions) {
       fullness: Math.round(o.store.fullness(now)),
       hungryBelow: FULLNESS.hungry,
       foodCost: COIN.food,
+      notes: o.notes.list().map((n) => ({
+        id: n.id,
+        title: noteTitle(n),
+        preview: notePreview(n),
+        source: n.source,
+        updatedAt: n.updatedAt,
+      })),
+      events: o.events.between(startOfDay(now), startOfDay(now) + 14 * 86_400_000),
+      focus: o.focus(),
+      focusCoins: COIN.focus,
     };
   }
 
@@ -66,11 +89,114 @@ export function createPanel(o: PanelOptions) {
   ipcMain.handle(PANEL.snapshot, (e) => (ours(e) ? state() : undefined));
   ipcMain.handle(PANEL.add, (e, text: string) => {
     if (!ours(e) || typeof text !== 'string') return { ok: false };
-    const parsed = parseQuickTodo(text, localDay(Date.now()));
+    const now = Date.now();
+    // 시각이 들어 있으면("내일 3시 회의") 일정으로 넣는다. "3시까지"는 마감이라 할 일로 둔다.
+    const ev = text.includes('까지') ? null : parseQuickEvent(text, localDay(now), minuteOfDay(now));
+    if (ev) {
+      const startAt = localTime(ev.day, ev.minute);
+      o.events.add(
+        { title: ev.title, startAt, endAt: ev.durationMin ? startAt + ev.durationMin * 60_000 : null },
+        now,
+      );
+      push();
+      o.onEventsChanged();
+      return { ok: true, kind: 'event' as const };
+    }
+    const parsed = parseQuickTodo(text, localDay(now));
     if (!parsed.title) return { ok: false, error: '할 일을 적어 줘.' };
-    o.store.add(parsed, Date.now());
+    o.store.add(parsed, now);
     push();
-    return { ok: true };
+    return { ok: true, kind: 'todo' as const };
+  });
+  // ---- 메모 ----
+  ipcMain.handle(PANEL.noteGet, (e, id: number) => (ours(e) ? o.notes.get(id) : undefined));
+  ipcMain.handle(PANEL.noteAdd, (e) => {
+    if (!ours(e)) return undefined;
+    const n = o.notes.add({}, Date.now());
+    push();
+    return n;
+  });
+  ipcMain.on(PANEL.noteUpdate, (e, id: number, patch) => {
+    if (!ours(e) || typeof patch !== 'object' || patch === null) return;
+    const { title, body } = patch as { title?: unknown; body?: unknown };
+    o.notes.update(
+      id,
+      {
+        ...(typeof title === 'string' ? { title } : {}),
+        ...(typeof body === 'string' ? { body } : {}),
+      },
+      Date.now(),
+    );
+    push();
+  });
+  ipcMain.on(PANEL.noteRemove, (e, id: number) => {
+    if (!ours(e)) return;
+    o.notes.remove(id, Date.now());
+    push();
+  });
+  ipcMain.handle(PANEL.noteAi, (e, id: number, kind: NoteAiKind) => {
+    const n = ours(e) ? o.notes.get(id) : undefined;
+    if (!n?.body.trim()) return false;
+    const ask =
+      kind === 'summary'
+        ? '아래 메모를 세 줄 안으로 요약해 줘.'
+        : "아래 메모를 바로 할 수 있는 할 일 목록으로 쪼개 줘. 한 줄에 하나씩 '- '로 시작하고 설명은 붙이지 마.";
+    const title = n.title.trim() ? `제목: ${n.title.trim()}\n` : '';
+    if (!o.askAi(`${ask}\n\n${title}${n.body}`)) return false;
+    closePanel();
+    return true;
+  });
+  ipcMain.on(PANEL.noteRestore, (e, id: number) => {
+    if (!ours(e)) return;
+    o.notes.restore(id);
+    push();
+  });
+  // ---- 일정 ----
+  ipcMain.handle(PANEL.eventAdd, (e, text: string) => {
+    if (!ours(e) || typeof text !== 'string') return { ok: false };
+    const now = Date.now();
+    const ev = parseQuickEvent(text, localDay(now), minuteOfDay(now));
+    if (!ev) return { ok: false, error: '시각을 같이 적어 줘. 예: 내일 3시 회의, 금요일 오전 10시 반 면접' };
+    const startAt = localTime(ev.day, ev.minute);
+    const event = o.events.add(
+      { title: ev.title, startAt, endAt: ev.durationMin ? startAt + ev.durationMin * 60_000 : null },
+      now,
+    );
+    push();
+    o.onEventsChanged();
+    return { ok: true, event };
+  });
+  ipcMain.on(PANEL.eventUpdate, (e, id: number, patch) => {
+    if (!ours(e) || typeof patch !== 'object' || patch === null) return;
+    const p = patch as Record<string, unknown>;
+    const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+    o.events.update(id, {
+      ...(typeof p.title === 'string' ? { title: p.title } : {}),
+      ...(num(p.startAt) !== undefined ? { startAt: num(p.startAt) } : {}),
+      ...(p.endAt === null || num(p.endAt) !== undefined
+        ? { endAt: (p.endAt as number | null) ?? null }
+        : {}),
+      ...(num(p.remindMin) !== undefined ? { remindMin: num(p.remindMin) } : {}),
+    });
+    push();
+    o.onEventsChanged();
+  });
+  ipcMain.on(PANEL.eventRemove, (e, id: number) => {
+    if (!ours(e)) return;
+    o.events.remove(id, Date.now());
+    push();
+  });
+  ipcMain.on(PANEL.eventRestore, (e, id: number) => {
+    if (!ours(e)) return;
+    o.events.restore(id);
+    push();
+  });
+  // ---- 집중 타이머 ----
+  ipcMain.on(PANEL.focusStart, (e) => {
+    if (ours(e)) o.startFocus();
+  });
+  ipcMain.on(PANEL.focusStop, (e) => {
+    if (ours(e)) o.stopFocus();
   });
   ipcMain.handle(PANEL.complete, (e, id: number) => {
     if (!ours(e)) return 0;

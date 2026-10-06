@@ -1,14 +1,17 @@
 import { join } from 'node:path';
 import { app, globalShortcut } from 'electron';
-import { IPC } from '../shared/ipc.ts';
-import { FULLNESS } from '../shared/todo-store.ts';
+import { todoContext } from '../shared/ai/persona.ts';
+import { timeLabel } from '../shared/event-store.ts';
+import { IPC, type PetStatus } from '../shared/ipc.ts';
+import { FULLNESS, localDay } from '../shared/todo-store.ts';
 import { watchBetaStats } from './beta.ts';
 import { createChat } from './chat.ts';
 import { openStore } from './db.ts';
 import { createLookTogether } from './look-together.ts';
-import { createMaker, petImageDataUrl } from './maker.ts';
+import { createMaker, petImageDataUrl, registerModelScheme } from './maker.ts';
 import { createPanel } from './panel.ts';
 import { createPetWindow } from './pet-window.ts';
+import { createPlanner, minuteOfDay, startOfDay } from './planner.ts';
 import { watchPresentation } from './presence-watch.ts';
 import { settings } from './settings.ts';
 import { createSettingsWindow } from './settings-window.ts';
@@ -28,6 +31,8 @@ const log = (tag: string, ...rest: unknown[]) => {
 // 줄었고 CPU 는 같았다 (2026-10-02 맥 측정, L12). 문제가 생기면 JJ_GPU_PROCESS=1 로 끈다.
 if (!process.env.JJ_GPU_PROCESS) app.commandLine.appendSwitch('in-process-gpu');
 
+registerModelScheme();
+
 // 펫은 하나만 띄운다. 두 번째로 실행하면 그냥 끝난다.
 if (!app.requestSingleInstanceLock()) app.quit();
 
@@ -39,6 +44,30 @@ app.whenReady().then(() => {
   const chat = createChat({
     petName,
     aiIsolation: () => settings.get().aiIsolation,
+    personaId: () => settings.get().persona,
+    knowsTodos: () => settings.get().aiKnowsTodos,
+    setKnowsTodos: (on) => settings.set({ aiKnowsTodos: on }),
+    // 질문 앞에 붙일 내 오늘 상황: 안 끝낸 할 일 제목과 마감, 오늘 남은 일정 (기획서 개인정보 표)
+    todoContext: () => {
+      const now = Date.now();
+      return todoContext({
+        today: localDay(now),
+        todos: store.list(now).open,
+        events: events
+          .between(now, startOfDay(now) + 86_400_000)
+          .map((e) => ({ time: timeLabel(minuteOfDay(e.startAt)), title: e.title })),
+      });
+    },
+    saveNote: (title, body) => {
+      notes.add({ title, body, source: 'ai' }, Date.now());
+      panel.refresh();
+    },
+    addTodos: (titles) => {
+      const now = Date.now();
+      for (const title of titles) store.add({ title }, now);
+      panel.refresh();
+      return titles.length;
+    },
     onPetAi: (state) => pet.win.webContents.send(IPC.ai, state),
     // 채팅 창을 닫았거나 다른 앱을 보는 중이면 펫이 답이 왔다고 알린다.
     onAnswer: async (text, chatInFront) => {
@@ -66,6 +95,8 @@ app.whenReady().then(() => {
       quickAdd: () => panel.openQuick(),
       feed: () => feedPet(),
       makePet: () => maker.open(),
+      focusRunning: () => planner.focus.phase !== 'idle',
+      toggleFocus: () => (planner.focus.phase === 'idle' ? planner.startFocus() : planner.stopFocus()),
     },
     log,
   });
@@ -102,10 +133,41 @@ app.whenReady().then(() => {
     quickAdd: () => panel.openQuick(),
   });
   // ---- 할 일과 코인 (2단계) ----
-  const { store, stats } = openStore(log);
+  const { store, stats, notes, events, dataVersion } = openStore(log);
+  // 펫 MCP 서버(다른 프로세스)가 할 일, 메모, 일정을 넣으면 저장 파일 판 번호가 바뀐다. 3초마다 보고 다시 그린다.
+  let seenVersion = dataVersion();
+  setInterval(() => {
+    const v = dataVersion();
+    if (v === seenVersion) return;
+    seenVersion = v;
+    log('db', '다른 곳에서 바뀜 (MCP)');
+    panel.refresh();
+    planner.check();
+  }, 3000).unref();
   watchBetaStats(stats, () => pet.isHidden('user'), log);
+  // ---- 일정 알림, 오늘 브리핑, 집중 타이머 (v1) ----
+  const planner = createPlanner({
+    todos: store,
+    events,
+    stats,
+    say: (o) => pet.say(o),
+    petHidden: () => pet.isHidden(),
+    onReward: () => pet.react(),
+    onChange: () => {
+      panel.refresh();
+      sendStatus();
+    },
+    log,
+  });
   const panel = createPanel({
     store,
+    notes,
+    events,
+    focus: () => planner.focus,
+    startFocus: () => planner.startFocus(),
+    stopFocus: () => planner.stopFocus(),
+    onEventsChanged: () => planner.check(),
+    askAi: (prompt) => chat.askInWindow(prompt, pet.bounds()),
     petName,
     petBounds: () => pet.bounds(),
     onCompleted: () => pet.react(),
@@ -113,7 +175,7 @@ app.whenReady().then(() => {
       pet.react();
       void pet.say({ kind: 'answer', text: '냠냠, 고마워!', ttlMs: 3000 });
     },
-    onChanged: () => sendHunger(),
+    onChanged: () => sendStatus(),
     openChat: () => chat.open(pet.bounds()),
     lookTogether: () => look.start(),
     log,
@@ -129,19 +191,23 @@ app.whenReady().then(() => {
     }
     panel.refresh();
   }
-  // 배부름은 시간이 흐르면 준다. 5분마다 보고 배고픈지 펫에게 알린다.
-  let wasHungry: boolean | undefined;
-  function sendHunger() {
-    const hungry = store.fullness(Date.now()) < FULLNESS.hungry;
-    if (hungry === wasHungry || pet.win.isDestroyed()) return;
-    wasHungry = hungry;
-    pet.win.webContents.send(IPC.status, { hungry });
+  // 펫 표정에 쓰는 상태: 배고픔(배부름은 시간이 흐르면 준다, 5분마다 본다), 집중 중(잠).
+  let lastStatus = '';
+  function sendStatus() {
+    const status: PetStatus = {
+      hungry: store.fullness(Date.now()) < FULLNESS.hungry,
+      focus: planner.focus.phase === 'focus',
+    };
+    const key = JSON.stringify(status);
+    if (key === lastStatus || pet.win.isDestroyed()) return;
+    lastStatus = key;
+    pet.win.webContents.send(IPC.status, status);
   }
   pet.win.webContents.on('did-finish-load', () => {
-    wasHungry = undefined;
-    sendHunger();
+    lastStatus = '';
+    sendStatus();
   });
-  setInterval(sendHunger, 5 * 60 * 1000);
+  setInterval(sendStatus, 5 * 60 * 1000);
   if (!globalShortcut.register(QUICK_ADD_SHORTCUT, () => panel.openQuick()))
     takenShortcuts.push('할 일 한 줄 넣기');
   if (takenShortcuts.length > 0) {
@@ -201,7 +267,22 @@ app.whenReady().then(() => {
   // 개발용: 메인 프로세스 디버거(--inspect)에서 같이 보기, 채팅을 불러 시험할 손잡이. 배포본에는 없다.
   if (!app.isPackaged)
     Object.assign(globalThis, {
-      __jj: { look, chat, pet, globalShortcut, tray, settings, settingsWindow, panel, store, stats, maker },
+      __jj: {
+        look,
+        chat,
+        pet,
+        globalShortcut,
+        tray,
+        settings,
+        settingsWindow,
+        panel,
+        store,
+        stats,
+        notes,
+        events,
+        planner,
+        maker,
+      },
     });
   if (process.env.JJ_METRICS) logMetrics(Number(process.env.JJ_METRICS));
 });

@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { claudeArgs, claudeInput, parseClaudeLine } from './claude.ts';
 import { codexArgs, parseCodexLine } from './codex.ts';
 import { classifyError } from './errors.ts';
+import { withHistory } from './text.ts';
 import type { AiEvent } from './types.ts';
 
 const fixture = (name: string) =>
@@ -100,6 +101,17 @@ test('codex 명령: 질문은 -i 앞, 이어가기는 resume, 샌드박스는 -c
   assert.ok(first.includes('developer_instructions="반말"'));
   const next = codexArgs({ text: '또', imagePaths: [], persona: 'p', threadId: 't1' });
   assert.deepEqual(next.slice(0, 4), ['exec', 'resume', 't1', '또']);
+  const quiet = codexArgs({ text: '비밀', imagePaths: [], persona: 'p', threadId: 't1', ephemeral: true });
+  assert.deepEqual(quiet.slice(0, 3), ['exec', '비밀', '--ephemeral']);
+  assert.ok(!quiet.includes('resume'));
+});
+
+test('기록 안 남김: 최근 대화를 질문 앞에 붙인다', () => {
+  assert.equal(withHistory([], '안녕'), '안녕');
+  const h = Array.from({ length: 6 }, (_, i) => ({ question: `q${i}`, answer: `a${i}` }));
+  const text = withHistory(h, '다음');
+  assert.ok(!text.includes('q1') && text.includes('q2') && text.includes('q5'));
+  assert.ok(text.endsWith('사용자 질문: 다음'));
 });
 
 test('오류 문구 분류', () => {
@@ -133,6 +145,16 @@ test('claude 명령: "내 AI 설정 그대로"면 격리 옵션은 빼되 도구
     assert.ok(!args.includes(flag), flag);
   }
   assert.equal(args[args.indexOf('--tools') + 1], '');
+  const quiet = claudeArgs({
+    text: 'q',
+    images: [],
+    sessionId: 's',
+    persona: 'p',
+    resume: true,
+    ephemeral: true,
+  });
+  assert.ok(quiet.includes('--no-session-persistence'));
+  assert.ok(!quiet.includes('--resume') && !quiet.includes('--session-id'));
   const isolated = claudeArgs({ text: 'q', images: [], sessionId: 's', persona: 'p', resume: false });
   assert.ok(isolated.includes('--strict-mcp-config'));
 });

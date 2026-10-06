@@ -3,7 +3,14 @@ import react from '@vitejs/plugin-react';
 import { defineConfig } from 'electron-vite';
 
 export default defineConfig({
-  main: {},
+  main: {
+    // 펫 MCP 서버(v1)를 따로 낸다. AI 도구가 짝꿍 실행 파일을 Node 로 돌려 이 파일을 연다.
+    build: {
+      rollupOptions: {
+        input: { index: resolve('src/main/index.ts'), 'mcp-server': resolve('src/main/mcp-server.ts') },
+      },
+    },
+  },
   preload: {
     // 샌드박스 렌더러는 ESM preload 를 못 읽고 다른 파일을 require 하지도 못한다.
     // CommonJS 한 파일로 낸다. 입구를 여러 개 두면 공유 조각이 생겨서 창 종류는 실행 인자로 나눈다.

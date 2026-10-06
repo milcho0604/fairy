@@ -43,6 +43,36 @@ export const MIGRATIONS: readonly string[] = [
     crash_count integer not null default 0 -- 비정상 종료와 창 멈춤
   );
   `,
+  // 3판: v1 생산성. 반복 할 일, 메모, 일정, 집중 시간
+  `
+  alter table todo add column repeat text;          -- daily, weekdays, weekly. 없으면 null
+  alter table todo add column repeat_of integer;    -- 반복 할 일을 끝내서 생긴 다음 회차면 앞 회차 id
+
+  create table note (
+    id integer primary key,
+    title text not null default '',
+    body text not null default '',    -- 마크다운
+    source text not null default 'me', -- me, ai
+    created_at integer not null,
+    updated_at integer not null,
+    deleted_at integer
+  );
+  create index note_live on note(deleted_at, updated_at);
+
+  create table event (
+    id integer primary key,
+    title text not null,
+    start_at integer not null,        -- ms
+    end_at integer,
+    remind_min integer not null default 10, -- 시작 몇 분 전에 알릴지 (0 이면 시작할 때)
+    notified_at integer,              -- 알림을 띄운 시각. 시작 시각을 바꾸면 비운다
+    created_at integer not null,
+    deleted_at integer
+  );
+  create index event_start on event(deleted_at, start_at);
+
+  alter table daily_stat add column focus_min integer not null default 0;
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

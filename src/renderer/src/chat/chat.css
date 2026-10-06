@@ -267,24 +267,77 @@ header .picker {
   color: var(--muted);
 }
 
-.copy {
+.answer-actions {
   position: absolute;
   right: 6px;
   bottom: -11px;
-  padding: 1px 8px;
+  display: flex;
+  gap: 2px;
+  padding: 1px 3px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--panel);
   color: var(--muted);
-  font-size: 11px;
+  font-size: 11.5px;
   opacity: 0;
-  cursor: pointer;
-  transition: opacity 0.12s;
 }
 
-.msg.pet:hover .copy,
-.copy:focus-visible {
+.answer-actions.shown {
+  padding: 1px 9px;
+  color: var(--ok);
   opacity: 1;
+}
+
+.answer-actions button {
+  padding: 0 6px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+
+.answer-actions button:hover {
+  color: var(--accent);
+}
+
+.msg.pet:hover .answer-actions,
+.answer-actions:focus-within {
+  opacity: 1;
+}
+
+.retry {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0 2px 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.opt input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.opt.disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .lightbox {

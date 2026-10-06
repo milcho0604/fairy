@@ -10,7 +10,43 @@ export const COIN = {
   dailyTodoLimit: 20,
   /** 기본 먹이 */
   food: 5,
+  /** 집중 타이머 한 번 (v1) */
+  focus: 5,
+  /** 하루에 코인을 받는 집중 횟수 */
+  dailyFocusLimit: 8,
 } as const;
+
+/** 반복: 매일, 평일(월~금), 매주 같은 요일 */
+export type Repeat = 'daily' | 'weekdays' | 'weekly';
+export const REPEATS: readonly Repeat[] = ['daily', 'weekdays', 'weekly'];
+export const REPEAT_LABEL: Record<Repeat, string> = { daily: '매일', weekdays: '평일', weekly: '매주' };
+
+export function isRepeat(v: unknown): v is Repeat {
+  return v === 'daily' || v === 'weekdays' || v === 'weekly';
+}
+
+function plusDays(day: string, n: number): string {
+  const [y, m, d] = day.split('-').map(Number);
+  return new Date(Date.UTC(y ?? 2000, (m ?? 1) - 1, (d ?? 1) + n)).toISOString().slice(0, 10);
+}
+
+const weekday = (day: string) => new Date(`${day}T00:00:00Z`).getUTCDay(); // 0 일 ~ 6 토
+
+/**
+ * 반복 할 일을 끝냈을 때 다음 회차 마감일. 오늘보다 뒤인 가장 가까운 날로 간다.
+ * 밀린 회차를 한꺼번에 만들지 않는다 (사흘 밀린 매일 할 일을 끝내면 다음은 내일).
+ */
+export function nextDue(due: string | null, repeat: Repeat, today: string): string {
+  const base = due && due > today ? due : today;
+  if (repeat === 'weekly') {
+    let next = plusDays(due ?? today, 7);
+    while (next <= today) next = plusDays(next, 7);
+    return next > base ? next : plusDays(base, 7);
+  }
+  let next = plusDays(base, 1);
+  if (repeat === 'weekdays') while (weekday(next) === 0 || weekday(next) === 6) next = plusDays(next, 1);
+  return next;
+}
 
 export const FULLNESS = {
   start: 80,
@@ -29,6 +65,7 @@ export interface Todo {
   createdAt: number;
   doneAt: number | null;
   coins: number;
+  repeat: Repeat | null;
 }
 
 /** ms 시각의 현지 날짜 YYYY-MM-DD. 하루 상한, 마감 판단에 쓴다. */
@@ -45,6 +82,7 @@ interface Row {
   created_at: number;
   done_at: number | null;
   coins: number;
+  repeat: string | null;
 }
 
 const toTodo = (r: Row): Todo => ({
@@ -55,6 +93,7 @@ const toTodo = (r: Row): Todo => ({
   createdAt: Number(r.created_at),
   doneAt: r.done_at === null ? null : Number(r.done_at),
   coins: Number(r.coins),
+  repeat: isRepeat(r.repeat) ? r.repeat : null,
 });
 
 export class TodoStore {
@@ -66,12 +105,21 @@ export class TodoStore {
     this.#day = day;
   }
 
-  add(input: { title: string; due?: string | null; important?: boolean }, now: number): Todo {
+  add(
+    input: { title: string; due?: string | null; important?: boolean; repeat?: Repeat | null },
+    now: number,
+    repeatOf: number | null = null,
+  ): Todo {
     const title = input.title.trim();
     if (!title) throw new Error('할 일 제목이 비었다');
+    const repeat = isRepeat(input.repeat) ? input.repeat : null;
+    // 반복 할 일은 마감이 있어야 다음 회차를 셀 수 있다. 없으면 오늘.
+    const due = input.due ?? (repeat ? this.#day(now) : null);
     const r = this.#db
-      .prepare('insert into todo (title, due, important, created_at) values (?, ?, ?, ?)')
-      .run(title.slice(0, 200), input.due ?? null, input.important ? 1 : 0, now);
+      .prepare(
+        'insert into todo (title, due, important, created_at, repeat, repeat_of) values (?, ?, ?, ?, ?, ?)',
+      )
+      .run(title.slice(0, 200), due, input.important ? 1 : 0, now, repeat, repeatOf);
     return this.get(Number(r.lastInsertRowid)) as Todo;
   }
 
@@ -105,15 +153,19 @@ export class TodoStore {
     return { open, doneToday: done };
   }
 
-  update(id: number, patch: { title?: string; due?: string | null; important?: boolean }): Todo | undefined {
+  update(
+    id: number,
+    patch: { title?: string; due?: string | null; important?: boolean; repeat?: Repeat | null },
+  ): Todo | undefined {
     const t = this.get(id);
     if (!t) return undefined;
     const title = patch.title === undefined ? t.title : patch.title.trim().slice(0, 200) || t.title;
     const due = patch.due === undefined ? t.due : patch.due;
     const important = patch.important === undefined ? t.important : patch.important;
+    const repeat = patch.repeat === undefined ? t.repeat : isRepeat(patch.repeat) ? patch.repeat : null;
     this.#db
-      .prepare('update todo set title = ?, due = ?, important = ? where id = ?')
-      .run(title, due, important ? 1 : 0, id);
+      .prepare('update todo set title = ?, due = ?, important = ?, repeat = ? where id = ?')
+      .run(title, repeat && !due ? t.due : due, important ? 1 : 0, repeat, id);
     return this.get(id);
   }
 
@@ -146,6 +198,12 @@ export class TodoStore {
         }
       }
       this.#db.prepare('update todo set done_at = ?, coins = ? where id = ?').run(now, coins, id);
+      if (t.repeat)
+        this.add(
+          { title: t.title, important: t.important, repeat: t.repeat, due: nextDue(t.due, t.repeat, day) },
+          now,
+          id,
+        );
       this.#db.exec('commit');
     } catch (err) {
       this.#db.exec('rollback');
@@ -163,6 +221,12 @@ export class TodoStore {
     try {
       if (back > 0) this.#log(-back, 'undo', id, now);
       this.#db.prepare('update todo set done_at = null, coins = 0 where id = ?').run(id);
+      // 끝내서 생긴 다음 회차는 걷어 낸다 (아직 손대지 않은 것만).
+      this.#db
+        .prepare(
+          'update todo set deleted_at = ? where repeat_of = ? and done_at is null and deleted_at is null',
+        )
+        .run(now, id);
       this.#db.exec('commit');
     } catch (err) {
       this.#db.exec('rollback');
@@ -208,6 +272,20 @@ export class TodoStore {
       throw err;
     }
     return { ok: true, fullness: next, balance: this.balance() };
+  }
+
+  /** 집중 타이머 한 번 끝. 받은 코인 수 (하루 상한을 넘으면 0). */
+  rewardFocus(now: number): number {
+    const n = Number(
+      (
+        this.#db
+          .prepare(`select count(*) as n from coin_log where day = ? and reason = 'focus'`)
+          .get(this.#day(now)) as { n: number }
+      ).n,
+    );
+    if (n >= COIN.dailyFocusLimit) return 0;
+    this.#log(COIN.focus, 'focus', null, now);
+    return COIN.focus;
   }
 
   #log(amount: number, reason: string, refId: number | null, now: number) {

@@ -95,6 +95,11 @@ if (kind === 'chat') {
     onPetName: (listener) => {
       ipcRenderer.on(CHAT.petName, (_e, name: string) => listener(name));
     },
+    setEphemeral: (on: boolean) => ipcRenderer.send(CHAT.setEphemeral, on),
+    setKnowsTodos: (on: boolean) => ipcRenderer.send(CHAT.setKnowsTodos, on),
+    toNote: (id: string) => ipcRenderer.invoke(CHAT.toNote, id),
+    toTodos: (id: string) => ipcRenderer.invoke(CHAT.toTodos, id),
+    retryWith: (provider) => ipcRenderer.send(CHAT.retryWith, provider),
   };
   contextBridge.exposeInMainWorld('jjakkungChat', chat);
 }
@@ -141,6 +146,18 @@ if (kind === 'panel' || kind === 'quick') {
     onState: (listener) => {
       ipcRenderer.on(PANEL.state, (_e, state: PanelState) => listener(state));
     },
+    noteGet: (id: number) => ipcRenderer.invoke(PANEL.noteGet, id),
+    noteAdd: () => ipcRenderer.invoke(PANEL.noteAdd),
+    noteUpdate: (id, patch) => ipcRenderer.send(PANEL.noteUpdate, id, patch),
+    noteRemove: (id: number) => ipcRenderer.send(PANEL.noteRemove, id),
+    noteRestore: (id: number) => ipcRenderer.send(PANEL.noteRestore, id),
+    noteAi: (id, kind) => ipcRenderer.invoke(PANEL.noteAi, id, kind),
+    eventAdd: (text: string) => ipcRenderer.invoke(PANEL.eventAdd, text),
+    eventUpdate: (id, patch) => ipcRenderer.send(PANEL.eventUpdate, id, patch),
+    eventRemove: (id: number) => ipcRenderer.send(PANEL.eventRemove, id),
+    eventRestore: (id: number) => ipcRenderer.send(PANEL.eventRestore, id),
+    focusStart: () => ipcRenderer.send(PANEL.focusStart),
+    focusStop: () => ipcRenderer.send(PANEL.focusStop),
   };
   contextBridge.exposeInMainWorld('jjakkungPanel', panel);
 }
@@ -150,7 +167,6 @@ if (kind === 'maker') {
     platform: process.platform,
     info: () => ipcRenderer.invoke(MAKER.modelReady),
     ensureModel: () => ipcRenderer.invoke(MAKER.ensureModel),
-    modelBytes: () => ipcRenderer.invoke(MAKER.modelBytes),
     save: (png: string, name: string) => ipcRenderer.invoke(MAKER.save, png, name),
     resetToDefault: () => ipcRenderer.invoke(MAKER.save, null, ''),
     close: () => ipcRenderer.send(MAKER.close),

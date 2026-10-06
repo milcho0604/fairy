@@ -1,13 +1,31 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { app, BrowserWindow, type IpcMainEvent, type IpcMainInvokeEvent, ipcMain } from 'electron';
-import { MAKER, type MakerInfo } from '../shared/ipc.ts';
+import {
+  app,
+  BrowserWindow,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
+  ipcMain,
+  net,
+  protocol,
+} from 'electron';
+import { MAKER, type MakerInfo, MODEL_SCHEME, MODEL_URL } from '../shared/ipc.ts';
 import { cleanPetName } from '../shared/settings.ts';
-import { BG_MODEL, ensureModel, modelReady, readModel } from './bg-model.ts';
+import { BG_MODEL, ensureModel, modelReady, verifiedModelUrl } from './bg-model.ts';
 import { settings } from './settings.ts';
 
 /** 다듬은 펫 그림 크기 상한. 화면에서 512px 로 줄여 보내므로 이보다 크면 이상한 값이다. */
 const MAX_PNG_BYTES = 4 * 1024 * 1024;
+
+/** 모델 주소(jj-model://)에서 fetch 를 쓸 수 있게 한다. 앱이 준비되기 전에 불러야 한다. */
+export function registerModelScheme() {
+  protocol.registerSchemesAsPrivileged([
+    {
+      scheme: MODEL_SCHEME,
+      privileges: { supportFetchAPI: true, stream: true, secure: true, corsEnabled: true },
+    },
+  ]);
+}
 
 function petsDir(): string {
   return join(app.getPath('userData'), 'pets');
@@ -64,7 +82,17 @@ export function createMaker(log: (tag: string, ...rest: unknown[]) => void) {
     }
   });
 
-  ipcMain.handle(MAKER.modelBytes, (e) => (fromMaker(e) ? readModel() : new ArrayBuffer(0)));
+  // 모델 파일을 디스크에서 그대로 흘려 보낸다. 해시를 맞춘 뒤에만, 정해진 주소 하나만.
+  // 창은 file:// (개발 중에는 localhost)에서 열려 다른 출처라 CORS 허용 머리를 붙인다.
+  protocol.handle(MODEL_SCHEME, async (req) => {
+    const file = verifiedModelUrl();
+    if (!file || req.url !== MODEL_URL) return new Response(null, { status: 404 });
+    const res = await net.fetch(file);
+    return new Response(res.body, {
+      status: res.status,
+      headers: { 'content-type': 'application/octet-stream', 'access-control-allow-origin': '*' },
+    });
+  });
 
   ipcMain.handle(MAKER.save, (e, png: string | null, name: string) => {
     if (!fromMaker(e)) return { ok: false };

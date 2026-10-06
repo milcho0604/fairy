@@ -1,4 +1,5 @@
 // 사용자 설정 (P1-12). 2단계에서 SQLite 로 옮기기 전까지 JSON 파일 하나에 둔다.
+import { isPersona, type PersonaId } from './ai/persona.ts';
 import type { ChatterLevel } from './chatter.ts';
 
 export interface Settings {
@@ -9,6 +10,10 @@ export interface Settings {
   wander: boolean;
   /** AI 를 사용자 설정(훅, MCP, 스킬) 없이 부르기. 끄면 "내 AI 설정 그대로" */
   aiIsolation: boolean;
+  /** 펫 성격과 말투 (v1) */
+  persona: PersonaId;
+  /** 질문할 때 오늘 할 일과 일정 제목을 같이 보낸다 (v1, 기본 끔: 밖으로 나가는 정보라 사용자가 켠다) */
+  aiKnowsTodos: boolean;
   /** 컴퓨터를 켜면 같이 켜기 (설치한 앱에서만 동작) */
   launchAtLogin: boolean;
   /** 숨기기 전 안내를 보여 준 횟수 (P1-10) */
@@ -25,6 +30,8 @@ export const DEFAULT_SETTINGS: Settings = {
   chatter: 'normal',
   wander: true,
   aiIsolation: true,
+  persona: 'friend',
+  aiKnowsTodos: false,
   launchAtLogin: false,
   hideHints: 0,
 };
@@ -54,6 +61,8 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
       r.chatter === 'quiet' || r.chatter === 'normal' || r.chatter === 'chatty' ? r.chatter : base.chatter,
     wander: bool(r.wander, base.wander),
     aiIsolation: bool(r.aiIsolation, base.aiIsolation),
+    persona: isPersona(r.persona) ? r.persona : base.persona,
+    aiKnowsTodos: bool(r.aiKnowsTodos, base.aiKnowsTodos),
     launchAtLogin: bool(r.launchAtLogin, base.launchAtLogin),
     hideHints:
       typeof r.hideHints === 'number' && Number.isFinite(r.hideHints)

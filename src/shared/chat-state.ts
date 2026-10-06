@@ -27,6 +27,10 @@ export interface ChatState {
   sessions: Partial<Record<AiProvider, { id: string; turns: number }>>;
   /** 마지막으로 알게 된 사용량. 새 대화를 열어도 남긴다. */
   usage: Partial<Record<AiProvider, AiUsage>>;
+  /** 기록 남기지 않기 (v1): AI 쪽에도 대화를 저장하지 않는다. 켜는 동안은 이어가기 대신 최근 대화를 붙여 보낸다 */
+  ephemeral?: boolean;
+  /** 내 할 일 같이 보내기 (설정 aiKnowsTodos 를 비춘다) */
+  knowsTodos?: boolean;
 }
 
 /** 대화가 이만큼 길어지면 새 대화를 권한다. 이어갈수록 입력 토큰이 쌓인다(L8: codex 2번째에 54K). */

@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { app, BrowserWindow, type IpcMainEvent, ipcMain, type Rectangle, screen } from 'electron';
+import { extractTodos, noteTitleFromQuestion, type PersonaId, persona } from '../shared/ai/persona.ts';
 import {
   BUILTIN_PROVIDERS,
   type CustomProviderInput,
   customProvider,
   type ProviderSpec,
 } from '../shared/ai/providers.ts';
+import { withHistory } from '../shared/ai/text.ts';
 import type { AiProvider } from '../shared/ai/types.ts';
 import {
   addQuestion,
@@ -43,6 +45,16 @@ export interface ChatOptions {
   petName: () => string;
   /** AI 를 사용자 설정 없이 격리해서 부를지 (설정) */
   aiIsolation: () => boolean;
+  /** 펫 성격 (설정) */
+  personaId: () => PersonaId;
+  /** 내 할 일 같이 보내기 (설정). 켜면 todoContext() 를 질문 앞에 붙인다 */
+  knowsTodos: () => boolean;
+  setKnowsTodos: (on: boolean) => void;
+  todoContext: () => string;
+  /** 답을 메모로 */
+  saveNote: (title: string, body: string) => void;
+  /** 답을 할 일로. 넣은 개수 */
+  addTodos: (titles: string[]) => number;
   /** 펫에게 AI 상태를 알린다 (생각 중, 답함). */
   onPetAi: (state: PetAiState) => void;
   /** 답이 다 왔다. 채팅 창이 앞에 없으면 펫이 말풍선으로 알린다. */
@@ -50,21 +62,12 @@ export interface ChatOptions {
   log: (tag: string, ...rest: unknown[]) => void;
 }
 
-/** 펫 성격 지시. 이모지는 기본으로 쓰지 않는다 (D5, 설정으로 바꿀 수 있게 할 자리). */
-export function persona(petName: string): string {
-  return [
-    `너는 사용자 컴퓨터 화면 위에 사는 데스크톱 펫 "${petName}"다. 옆자리 짝꿍처럼 반말로 다정하게 말한다.`,
-    '답은 짧게, 핵심부터. 길게 설명해야 하면 목록으로 나눈다.',
-    '사용자가 화면 캡처를 보내면 그 화면을 같이 보고 있다고 생각하고 답한다.',
-    '이모지는 쓰지 않는다.',
-  ].join(' ');
-}
-
 /**
  * 채팅 상태와 채팅 창. 상태는 메인에 두어 창을 닫아도 대화가 남는다.
  * 창은 열 때 만들고 닫으면 없앤다 (L6: 메모리).
  */
-export function createChat({ petName, aiIsolation, onPetAi, onAnswer, log }: ChatOptions) {
+export function createChat(o: ChatOptions) {
+  const { petName, aiIsolation, onPetAi, onAnswer, log } = o;
   // 사용자가 추가한 AI 는 입력값만 저장하고 켤 때마다 정의를 다시 만든다 (검사 규칙이 바뀌어도 맞게).
   let customInputs = (
     (readJson(CUSTOM_FILE) as { id: string; input: CustomProviderInput }[] | undefined) ?? []
@@ -87,11 +90,15 @@ export function createChat({ petName, aiIsolation, onPetAi, onAnswer, log }: Cha
   let win: BrowserWindow | undefined;
   let draft: OutgoingImage[] = [];
 
-  const push = () => win?.webContents.send(CHAT.state, state);
+  const push = () => {
+    state = { ...state, knowsTodos: o.knowsTodos() };
+    win?.webContents.send(CHAT.state, state);
+  };
   const fromChat = (e: IpcMainEvent | Electron.IpcMainInvokeEvent) => !!win && e.sender === win.webContents;
 
   ipcMain.handle(CHAT.snapshot, (e): ChatSnapshot | undefined => {
     if (!fromChat(e)) return undefined;
+    state = { ...state, knowsTodos: o.knowsTodos() };
     const snapshot = { petName: petName(), state, draft };
     draft = [];
     return snapshot;
@@ -138,14 +145,24 @@ export function createChat({ petName, aiIsolation, onPetAi, onAnswer, log }: Cha
   });
 
   ipcMain.on(CHAT.send, (e, text: string, images: OutgoingImage[]) => {
-    if (!fromChat(e) || state.pendingId) return;
+    if (fromChat(e)) ask(text, images);
+  });
+
+  /** 질문을 보낸다. 채팅 창의 보내기와 메모 "AI로 정리"가 같이 쓴다. 답을 기다리는 중이면 false */
+  function ask(text: string, images: OutgoingImage[] = []): boolean {
+    if (state.pendingId) return false;
     const question = text.trim();
-    if (!question && images.length === 0) return;
+    if (!question && images.length === 0) return false;
     const ids = { user: randomUUID(), pet: randomUUID() };
     const provider = state.provider;
     const spec = specOf(provider);
-    if (!spec) return;
+    if (!spec) return false;
     const history = historyFor(state, provider);
+    // 기록 남기지 않기: 이어가기 대신 최근 대화를 붙여 보낸다 (claude, codex 만 켤 수 있다).
+    const ephemeral = !!state.ephemeral && (spec.adapter === 'claude' || spec.adapter === 'codex');
+    const base = question || '이 화면 같이 봐 줘.';
+    const context = o.knowsTodos() ? o.todoContext() : '';
+    const prompt = context + (ephemeral ? withHistory(history, base) : base);
     state = addQuestion(
       state,
       ids,
@@ -155,22 +172,33 @@ export function createChat({ petName, aiIsolation, onPetAi, onAnswer, log }: Cha
     push();
     onPetAi({ thinking: true, answered: false });
     const started = Date.now();
-    log('chat', 'send', provider, `images=${images.length}`);
+    log(
+      'chat',
+      'send',
+      provider,
+      `images=${images.length}`,
+      ephemeral ? 'ephemeral' : '',
+      context ? 'todos' : '',
+    );
 
     run = runAi(
       {
         spec,
         history,
-        text: question || '이 화면 같이 봐 줘.',
+        text: prompt,
         // 그림을 못 받는 AI 에는 글만 보낸다. 화면이 미리 알려 준다.
         images: spec.images ? images.map((i) => i.full) : [],
-        sessionId: state.sessions[provider]?.id,
-        persona: persona(petName()),
+        sessionId: ephemeral ? undefined : state.sessions[provider]?.id,
+        persona: persona(petName(), o.personaId()),
         isolate: aiIsolation(),
+        ephemeral,
       },
       (event) => {
         state = applyEvent(state, ids.pet, event, randomUUID());
         if (event.type === 'usage') writeJson(USAGE_FILE, state.usage);
+        // 기록을 안 남긴 세션은 이어 갈 수 없다. 받아 두지 않는다.
+        if (ephemeral && event.type === 'session')
+          state = { ...state, sessions: { ...state.sessions, [provider]: undefined } };
         if (event.type === 'delta') {
           const msg = state.messages.find((m) => m.id === ids.pet);
           win?.webContents.send(CHAT.delta, ids.pet, msg?.text ?? '');
@@ -194,6 +222,50 @@ export function createChat({ petName, aiIsolation, onPetAi, onAnswer, log }: Cha
         push();
       },
     );
+    return true;
+  }
+
+  ipcMain.on(CHAT.setEphemeral, (e, on: boolean) => {
+    if (!fromChat(e) || state.pendingId) return;
+    // 켜고 끌 때 새 대화로: 안 남긴 대화는 이어 갈 수 없고, 남긴 대화를 안 남긴 채 이어 갈 수도 없다.
+    state = { ...resetChat(state), ephemeral: !!on };
+    push();
+  });
+  ipcMain.on(CHAT.setKnowsTodos, (e, on: boolean) => {
+    if (!fromChat(e)) return;
+    o.setKnowsTodos(!!on);
+    push();
+  });
+  /** 답 메시지와 그 앞 질문 */
+  const answerOf = (id: string) => {
+    const i = state.messages.findIndex((m) => m.id === id);
+    const a = state.messages[i];
+    if (a?.role !== 'pet' || a.status !== 'done' || !a.text.trim()) return undefined;
+    const q = state.messages[i - 1];
+    return { answer: a.text, question: q?.role === 'user' ? q.text : '' };
+  };
+  ipcMain.handle(CHAT.toNote, (e, id: string) => {
+    const r = fromChat(e) ? answerOf(id) : undefined;
+    if (!r) return false;
+    o.saveNote(noteTitleFromQuestion(r.question), r.answer);
+    log('chat', 'to-note');
+    return true;
+  });
+  ipcMain.handle(CHAT.toTodos, (e, id: string) => {
+    const r = fromChat(e) ? answerOf(id) : undefined;
+    if (!r) return 0;
+    const n = o.addTodos(extractTodos(r.answer));
+    log('chat', 'to-todos', n);
+    return n;
+  });
+  ipcMain.on(CHAT.retryWith, (e, provider: AiProvider) => {
+    if (!fromChat(e) || state.pendingId || !specOf(provider)) return;
+    // 마지막 질문을 찾아 그 AI 로 다시 묻는다 (그림은 다시 보내지 않는다: 원본을 상태에 두지 않는다).
+    const lastUser = [...state.messages].reverse().find((m) => m.role === 'user');
+    state = switchProvider(state, provider);
+    writeJson(SETTINGS_FILE, { provider: state.provider });
+    push();
+    if (lastUser?.text) ask(lastUser.text);
   });
 
   ipcMain.on(CHAT.cancel, (e) => {
@@ -267,6 +339,11 @@ export function createChat({ petName, aiIsolation, onPetAi, onAnswer, log }: Cha
     open,
     toggle,
     attach,
+    /** 창을 열고 질문을 보낸다 (메모 "AI로 정리"). 답을 기다리는 중이면 false */
+    askInWindow(text: string, near?: Rectangle): boolean {
+      open(near);
+      return ask(text);
+    },
     get window() {
       return win;
     },
@@ -303,6 +380,7 @@ function view(p: ProviderSpec): ProviderView {
     installHint: p.installHint,
     loginHint: p.loginHint,
     command: p.command,
+    ephemeral: p.adapter === 'claude' || p.adapter === 'codex',
   };
 }
 
