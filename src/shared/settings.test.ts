@@ -211,3 +211,9 @@ test('집중 길이와 커서 바라보기: 옛 설정 파일엔 없어서 기�
   assert.equal(applyPatch(DEFAULT_SETTINGS, { lookAtCursor: false }).lookAtCursor, false);
   assert.equal(applyPatch(DEFAULT_SETTINGS, { lookAtCursor: 'no' }).lookAtCursor, true);
 });
+
+test('부스트 모드: 옛 설정 파일엔 없어서 끔, 틀린 값은 지금 값', () => {
+  assert.equal(parseSettings({ petName: '밤' }).boost, false);
+  assert.equal(applyPatch(DEFAULT_SETTINGS, { boost: true }).boost, true);
+  assert.equal(applyPatch({ ...DEFAULT_SETTINGS, boost: true }, { boost: 'yes' }).boost, true);
+});

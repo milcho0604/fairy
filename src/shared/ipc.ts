@@ -352,6 +352,8 @@ export interface PetStatus {
   flower: boolean;
   /** 효과음 (설정). 친구 펫은 늘 끔 */
   sounds: boolean;
+  /** 부스트 모드가 지금 켜져 있는지 (설정에서 켰고 배터리가 아닐 때). 켜지면 움직임을 더 촘촘히 그린다 */
+  boost: boolean;
 }
 
 /** 펫 그림들 (data URL). 없으면 기본 펫. 포즈는 상태별 그림 (v1) */

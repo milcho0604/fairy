@@ -8,12 +8,15 @@ import { withRules } from '../../shared/ai/persona.ts';
 import { HISTORY_TURNS } from '../../shared/ai/text.ts';
 import type { AiEvent } from '../../shared/ai/types.ts';
 import { t } from '../../shared/i18n/index.ts';
+import { boostOn } from '../boost.ts';
 import { ensureVerified, verifyExisting } from '../download.ts';
 import type { WorkerIn, WorkerOut } from '../llm-worker.ts';
 import type { AiRequest, AiRun } from './runner.ts';
 
 /** 안 쓰고 이만큼 지나면 일꾼을 끝내 메모리를 돌려준다 */
 const IDLE_MS = 5 * 60_000;
+/** 부스트 모드면 30분 데워 둔다 (다음 답에 모델 읽기가 없어 빠르다. 그동안 모델 크기만큼 메모리를 더 쓴다) */
+const BOOST_IDLE_MS = 30 * 60_000;
 /** 펫 대화는 짧다. 작은 모델이 같은 말을 되풀이해도 여기서 멈춘다 */
 const MAX_TOKENS = 220;
 /** 첫 글자까지 기다리는 한도 (모델 읽기 포함) */
@@ -71,13 +74,16 @@ function getWorker(log: (tag: string, ...rest: unknown[]) => void): UtilityProce
 
 function touch() {
   clearTimeout(idleTimer);
-  idleTimer = setTimeout(() => {
-    if (localBusy() || !worker) return;
-    // 끝나는 중인 일꾼에 새 질문이 가지 않게 바로 놓는다
-    const w = worker;
-    worker = undefined;
-    w.kill();
-  }, IDLE_MS);
+  idleTimer = setTimeout(
+    () => {
+      if (localBusy() || !worker) return;
+      // 끝나는 중인 일꾼에 새 질문이 가지 않게 바로 놓는다
+      const w = worker;
+      worker = undefined;
+      w.kill();
+    },
+    boostOn() ? BOOST_IDLE_MS : IDLE_MS,
+  );
   idleTimer.unref();
 }
 

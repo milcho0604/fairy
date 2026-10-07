@@ -31,6 +31,10 @@ export const ko = {
   'settings.sounds': '효과음',
   'settings.soundsHint':
     '할 일 끝낼 때, 밥 먹을 때, 일정 알림에 작은 소리를 내. 집중하거나 잘 때는 조용히 있어.',
+  // 이름은 이 키 하나만 바꾸면 된다
+  'settings.boost': '부스트 모드',
+  'settings.boostHint':
+    '사양이 좋은 컴퓨터용. 펫이 더 부드럽게 움직이고 마우스를 더 촘촘히 따라 봐. 무료 AI 는 30분 동안 데워 둬서 답이 빨라. CPU와 메모리를 조금 더 써. 노트북이 배터리로 돌 때는 쉬어.',
 
   // 친구 펫
   'settings.friends': '친구 펫',
@@ -258,6 +262,9 @@ export const en: Translation<typeof ko> = {
   'settings.sounds': 'Sound effects',
   'settings.soundsHint':
     'Soft little sounds for finished to-dos, meals, and event reminders. Stays quiet while you focus or while it sleeps.',
+  'settings.boost': 'Boost mode',
+  'settings.boostHint':
+    'For powerful computers. Your pet moves more smoothly and follows the mouse more closely, and the free AI stays warm for 30 minutes so answers come faster. Uses a bit more CPU and memory. Takes a break while a laptop runs on battery.',
 
   'settings.friends': 'Pet friends',
   'settings.friendsChanged': 'Pet friends updated',

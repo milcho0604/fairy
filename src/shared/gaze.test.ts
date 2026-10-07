@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { gazeAt, sameGaze } from './gaze.ts';
+import { GAZE_BOOST_POLL_MS, GAZE_FAR_POLL_MS, GAZE_POLL_MS, gazeAt, gazePollMs, sameGaze } from './gaze.ts';
 
 const pet = { x: 1000, y: 700, width: 160, height: 160 };
 // 머리 자리 (1080, 772)
@@ -31,4 +31,23 @@ test('칸이 같으면 같다고 본다 (보내지 않는다)', () => {
   assert.ok(!sameGaze({ x: 1, y: 0 }, { x: 0.5, y: 0 }));
   // -0 이 남지 않는다
   assert.ok(Object.is(gazeAt(pet, { x: head.x, y: head.y - 120 })?.x, 0));
+});
+
+test('커서가 어느 펫이든 반경 두 배 안이면 촘촘히, 다 멀면 느슨히 본다', () => {
+  // 160px 펫의 반경은 480(크기의 3배), 두 배는 960
+  assert.equal(gazePollMs([pet], { x: head.x + 900, y: head.y }), GAZE_POLL_MS);
+  assert.equal(gazePollMs([pet], { x: head.x + 1000, y: head.y }), GAZE_FAR_POLL_MS);
+  const friend = { x: 2000, y: 700, width: 160, height: 160 };
+  assert.equal(gazePollMs([pet, friend], { x: 2080 + 100, y: 772 }), GAZE_POLL_MS);
+  assert.equal(gazePollMs([], { x: 0, y: 0 }), GAZE_FAR_POLL_MS);
+});
+
+test('부스트 모드: 가까우면 더 자주 보고, 칸을 잘게 나눈다', () => {
+  assert.equal(gazePollMs([pet], { x: head.x + 100, y: head.y }, true), GAZE_BOOST_POLL_MS);
+  assert.equal(gazePollMs([pet], { x: head.x + 1000, y: head.y }, true), GAZE_FAR_POLL_MS);
+  // 보통은 0.5 칸 (100 / 80 = 1.25 -> 1 -> 0.5), 잘게는 0.25 칸 (2.5 -> 3 -> 0.75)
+  assert.deepEqual(gazeAt(pet, { x: head.x + 100, y: head.y }), { x: 0.5, y: 0 });
+  assert.deepEqual(gazeAt(pet, { x: head.x + 100, y: head.y }, true), { x: 0.75, y: 0 });
+  assert.deepEqual(gazeAt(pet, { x: head.x + 200, y: head.y + 60 }, true), { x: 1, y: 0.5 });
+  assert.deepEqual(gazeAt(pet, { x: head.x - 300, y: head.y - 300 }, true), { x: -1, y: -1 });
 });

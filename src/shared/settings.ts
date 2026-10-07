@@ -70,6 +70,8 @@ export interface Settings {
   diaryAi: boolean;
   /** 효과음 (기본 끔). 집중, 잠, 숨김 중에는 안 낸다 */
   sounds: boolean;
+  /** 부스트 모드 (기본 끔): 사양 좋은 컴퓨터용. CPU, 메모리를 조금 더 써서 더 부드럽고 빠르게. 배터리일 때는 쉰다 */
+  boost: boolean;
 }
 
 /** 보관한 사진 펫. 파일은 pets/ 안 */
@@ -194,6 +196,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lookAtCursor: true,
   diaryAi: false,
   sounds: false,
+  boost: false,
 };
 
 export const PET_NAME_MAX = 12;
@@ -260,6 +263,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     lookAtCursor: bool(r.lookAtCursor, base.lookAtCursor),
     diaryAi: bool(r.diaryAi, base.diaryAi),
     sounds: bool(r.sounds, base.sounds),
+    boost: bool(r.boost, base.boost),
     ...(typeof r.skipVersion === 'string' && /^\d+\.\d+\.\d+/.test(r.skipVersion)
       ? { skipVersion: r.skipVersion.slice(0, 32) }
       : base.skipVersion

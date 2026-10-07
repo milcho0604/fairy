@@ -223,6 +223,12 @@ export function SettingsApp() {
             on={s.sounds}
             onChange={(v) => update({ sounds: v })}
           />
+          <Toggle
+            label={t('settings.boost')}
+            hint={t('settings.boostHint')}
+            on={s.boost}
+            onChange={(v) => update({ boost: v })}
+          />
         </Section>
 
         <Section title={t('settings.friends')}>

@@ -21,7 +21,7 @@ import { canPlay, type SoundKind } from '../../shared/sound.ts';
 import { AnimatedImage, loadPetImage } from './animated.ts';
 import { CANVAS_SIZE, drawPet, HEARTS_MS } from './draw.ts';
 import { initLang } from './lang.ts';
-import { Pet3D } from './pet3d.ts';
+import type { Pet3D } from './pet3d.ts';
 import { playSound } from './sound.ts';
 
 initLang('common.title.pet');
@@ -73,6 +73,9 @@ function requestFrame() {
 
 function frame() {
   frameTimer = undefined;
+  // 메인이 첫 상태(입체로 보기인지)를 알려 주기 전에는 그리지 않는다. 먼저 그리면 2D 로 쓰는 사람도
+  // 입체 렌더러를 만들어 GPU 메모리 약 47MB 를 계속 쥐고 있었다 (2026-10-07 측정)
+  if (!statusKnown) return;
   const now = performance.now();
   const next = moodOf(inputs, now);
   if (next !== mood) {
@@ -97,6 +100,8 @@ function frame() {
   if (hearts >= HEARTS_MS) heartsStart = -1;
   // 입체가 되면 사진 대신 입체로 (AI 가 만든 설계도가 있는 사진 펫, 또는 기본 펫)
   const m3d = current3d();
+  // 입체 그리기 모듈을 불러오는 중이면 기다린다 (불러오면 다시 그린다). 2D 를 먼저 그리면 깜빡인다
+  if (m3d === 'loading') return;
   const img = m3d ? undefined : pickImage(mood, inputs.hungry);
   drawPet(ctx, {
     mood,
@@ -120,18 +125,20 @@ function frame() {
   const moving = activity?.type === 'yawn' || activity?.type === 'stretch';
   // 움직이는 그림은 잠, 바쁨일 때 멈춘다 (L10: 계속 그리면 CPU 를 먹는다). 12fps 까지만.
   const animatedPhoto = img instanceof AnimatedImage && canBlink(mood) ? Math.min(12, img.fps) : 0;
+  // 부스트 모드면 움직임(신남, 몸짓, 하트, 걷기, 하품)을 두 배로 촘촘히 그린다. 깜빡임과 움직이는 그림은 그대로
+  const k = boost ? 2 : 1;
   const fps = trick
-    ? 30
+    ? 30 * k
     : isAnimated(mood)
-      ? (ANIMATED_FPS[mood] ?? 30)
+      ? (ANIMATED_FPS[mood] ?? 30) * k
       : heartsStart >= 0
-        ? 30
+        ? 30 * k
         : blinkStart >= 0
           ? BLINK_FPS
           : walking
-            ? WALK_FPS
+            ? WALK_FPS * k
             : moving
-              ? 20
+              ? 20 * k
               : animatedPhoto;
   // 이 틀 안에서 requestFrame 이 불렸으면(행동 멈춤 등) 그 타이머를 지운다. 안 지우면 루프가 두 겹이 돈다
   // (2026-10-07 점검: 신남이 30fps 가 아니라 57fps)
@@ -190,6 +197,8 @@ let cushion = false;
 let flower = false;
 /** 효과음 (설정) */
 let sounds = false;
+/** 부스트 모드 (설정, 배터리면 메인이 끈다) */
+let boost = false;
 /** 친밀도로 열린 몸짓. 끝나면 지운다 */
 let trick: { type: 'wave' | 'dance'; start: number } | undefined;
 const TRICK_MS = { wave: 1800, dance: 1400 } as const;
@@ -221,7 +230,11 @@ function pickImage(m: PetMood, hungry: boolean): PetImage | undefined {
 }
 
 // 입체 펫 (6단계). 처음 그릴 때 만들고, WebGL 을 못 쓰거나 잃으면 2D 그림으로 돌아간다.
-let use3d = true;
+// three.js 가 든 모듈은 입체를 쓸 때만 불러온다 (2D 로 쓰는 사람은 펫 화면 JS 힙 2.4MB 를 아낀다)
+let statusKnown = false;
+let use3d = false;
+let pet3dModule: typeof import('./pet3d.ts') | undefined;
+let pet3dLoading = false;
 let model3d: Pet3D | undefined;
 /** 지금 조립해 둔 것 (설계도, 또는 2.5D 깊이 그림) */
 let model3dOf: Blueprint | HTMLImageElement | undefined;
@@ -230,7 +243,7 @@ let photoModel: Blueprint | undefined;
 /** 사진 펫의 2.5D 깊이 그림 (6단계) */
 let photoDepth: HTMLImageElement | undefined;
 let broken3d = false;
-function current3d(): Pet3D | undefined {
+function current3d(): Pet3D | 'loading' | undefined {
   // 사진 펫은 설계도나 깊이 그림이 있을 때만 입체로. 움직이는 그림은 입체 판으로 만들지 않는다
   const still = photo instanceof HTMLImageElement;
   const bp = (still ? photoModel : undefined) ?? (photo ? undefined : DEFAULT_BLUEPRINTS[petKind]);
@@ -241,7 +254,23 @@ function current3d(): Pet3D | undefined {
     model3dOf = undefined;
     return undefined;
   }
-  model3d ??= Pet3D.create(() => {
+  if (!pet3dModule) {
+    if (!pet3dLoading) {
+      pet3dLoading = true;
+      import('./pet3d.ts').then(
+        (m) => {
+          pet3dModule = m;
+          requestFrame();
+        },
+        () => {
+          broken3d = true;
+          requestFrame();
+        },
+      );
+    }
+    return 'loading';
+  }
+  model3d ??= pet3dModule.Pet3D.create(() => {
     broken3d = true;
     requestFrame();
   });
@@ -269,9 +298,11 @@ bridge.onStatus((status) => {
     model3dOf = undefined;
   }
   use3d = status.pet3d;
+  statusKnown = true;
   cushion = status.cushion;
   flower = status.flower;
   sounds = status.sounds;
+  boost = status.boost;
   setInputs({ hungry: status.hungry, focusTimer: status.focus, sulkLevel: status.sulk });
 });
 // 커서 바라보기: 방향 칸이 바뀔 때만 온다. 한가한 모습(기본, 앉기)일 때만 한 번 다시 그린다

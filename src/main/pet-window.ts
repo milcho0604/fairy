@@ -20,7 +20,7 @@ import {
   MissedLog,
 } from '../shared/bubble-queue.ts';
 import { type BubbleKind, ChatterGate, type ChatterLevel, LEVEL_LABEL, quieter } from '../shared/chatter.ts';
-import { GAZE_POLL_MS, type Gaze, gazeAt, sameGaze } from '../shared/gaze.ts';
+import { type Gaze, gazeAt, sameGaze } from '../shared/gaze.ts';
 import { clampIntoAreas, type Rect } from '../shared/geometry.ts';
 import type { GestureEvent } from '../shared/gesture.ts';
 import { t } from '../shared/i18n/index.ts';
@@ -38,6 +38,8 @@ import {
   THROW_MAX_SPEED,
   THROW_MIN_SPEED,
 } from '../shared/throw.ts';
+import { boostOn } from './boost.ts';
+import { watchCursor } from './cursor-watch.ts';
 import { langArg } from './lang.ts';
 import { settings } from './settings.ts';
 import { readJson, writeJson } from './store.ts';
@@ -457,15 +459,19 @@ export function createPetWindow({
   function startWalk(walk: Extract<Activity, { type: 'walk' }>) {
     const fromX = pet.x;
     const started = Date.now();
-    walkTimer = setInterval(() => {
-      const t = (Date.now() - started) / walk.ms;
-      const x = fromX + walkOffset(walk.dx, t);
-      // 걷기 CPU 의 절반이 창 옮기기다. 픽셀이 그대로인 틱(출발, 멈춤 감속)은 옮기지 않는다
-      const moved = Math.round(x) !== Math.round(pet.x);
-      pet = { ...pet, x };
-      if (moved && !win.isDestroyed()) win.setPosition(Math.round(pet.x), pet.y);
-      if (t >= 1) stopWalk(true);
-    }, 33);
+    walkTimer = setInterval(
+      () => {
+        const t = (Date.now() - started) / walk.ms;
+        const x = fromX + walkOffset(walk.dx, t);
+        // 걷기 CPU 의 절반이 창 옮기기다. 픽셀이 그대로인 틱(출발, 멈춤 감속)은 옮기지 않는다
+        const moved = Math.round(x) !== Math.round(pet.x);
+        pet = { ...pet, x };
+        if (moved && !win.isDestroyed()) win.setPosition(Math.round(pet.x), pet.y);
+        if (t >= 1) stopWalk(true);
+        // 부스트 모드면 60Hz 로 옮긴다 (빨리 걸을 때 한 번에 2~4px 씩 뛰던 것이 1~2px 로)
+      },
+      boostOn() ? 16 : 33,
+    );
   }
 
   /** 가로로 x 까지 걷는다 (v1 놀이). speed 는 px/초. 끊기면(잡기, 숨기, 말풍선) false */
@@ -808,23 +814,27 @@ export function createPetWindow({
 
   // ---- 커서 바라보기 ----
   // 한가하고 보일 때만 커서를 본다. 방향 칸이 바뀔 때만 화면에 알린다 (화면도 그때만 다시 그린다).
+  // 커서는 펫 창들이 같이 한 번만 읽는다 (cursor-watch.ts)
   let gaze: Gaze | null = null;
-  const gazeTimer = setInterval(() => {
-    if (win.isDestroyed()) return;
-    const idle =
-      settings.get().lookAtCursor &&
-      win.isVisible() &&
-      !hideReasons.hidden &&
-      !wasBusy &&
-      !dragTimer &&
-      !flightTimer &&
-      !walkTimer &&
-      !hopTimer;
-    const next = idle ? gazeAt(pet, screen.getCursorScreenPoint()) : null;
-    if (sameGaze(next, gaze)) return;
-    gaze = next;
-    win.webContents.send(IPC.gaze, gaze);
-  }, GAZE_POLL_MS);
+  const stopGaze = watchCursor({
+    rect: () => pet,
+    onCursor: (cursor) => {
+      if (win.isDestroyed()) return;
+      const idle =
+        settings.get().lookAtCursor &&
+        win.isVisible() &&
+        !hideReasons.hidden &&
+        !wasBusy &&
+        !dragTimer &&
+        !flightTimer &&
+        !walkTimer &&
+        !hopTimer;
+      const next = idle ? gazeAt(pet, cursor, boostOn()) : null;
+      if (sameGaze(next, gaze)) return;
+      gaze = next;
+      win.webContents.send(IPC.gaze, gaze);
+    },
+  });
 
   let wasBusy = false;
   const stopWatching = watchSystem((env) => {
@@ -837,7 +847,7 @@ export function createPetWindow({
   win.webContents.on('did-finish-load', () => applyLayout());
 
   win.on('closed', () => {
-    clearInterval(gazeTimer);
+    stopGaze();
     clearInterval(releaseTimer);
     powerMonitor.off('lock-screen', onLock);
     powerMonitor.off('unlock-screen', onUnlock);

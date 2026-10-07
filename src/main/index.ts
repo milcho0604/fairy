@@ -15,6 +15,7 @@ import { cachedMcpServers, mcpServers, refreshMcpServers } from './ai/mcp-list.t
 import { stopAllAi } from './ai/runner.ts';
 import { applyPendingImport, createBackup, exportPet, importPet } from './backup.ts';
 import { watchBetaStats } from './beta.ts';
+import { boostOn, onBoostChange } from './boost.ts';
 import { watchCalendar } from './calendar.ts';
 import { createChat } from './chat.ts';
 import { announceStoreTrouble, openStore } from './db.ts';
@@ -56,6 +57,10 @@ process.on('unhandledRejection', (err) =>
 // GPU 를 별도 프로세스 대신 본체 안에서 돌린다. 프로세스가 하나 줄어 메모리가 363MB 에서 306MB 로
 // 줄었고 CPU 는 같았다 (2026-10-02 맥 측정, L12). 문제가 생기면 JJ_GPU_PROCESS=1 로 끈다.
 if (!process.env.JJ_GPU_PROCESS) app.commandLine.appendSwitch('in-process-gpu');
+// 네트워크 서비스도 본체 안에서 돌린다 (Chromium 기능 NetworkServiceInProcess2). 짝꿍은 네트워크를 가끔만 쓰는데
+// (캘린더, 업데이트 확인, 모델 받기) 따로 띄우면 프로세스 하나가 늘 떠 있다. footprint 132MB 에서 122MB, 프로세스 3개에서 2개
+// (2026-10-07 맥 측정, net.fetch 확인). 문제가 생기면 JJ_NET_PROCESS=1 로 끈다. enable-features 를 더 쓰면 한 줄에 쉼표로 모은다
+if (!process.env.JJ_NET_PROCESS) app.commandLine.appendSwitch('enable-features', 'NetworkServiceInProcess2');
 
 registerModelScheme();
 
@@ -484,6 +489,7 @@ app.whenReady().then(() => {
       cushion: shop.owns('cushion'),
       flower: unlocked(petLife.state.affection).has('flower'),
       sounds: settings.get().sounds,
+      boost: boostOn(),
     };
     const key = JSON.stringify(status);
     if (key === lastStatus || pet.win.isDestroyed()) return;
@@ -495,6 +501,11 @@ app.whenReady().then(() => {
     sendStatus();
   });
   setInterval(sendStatus, 5 * 60 * 1000);
+  // 부스트 모드가 켜지고 꺼지면(설정, 전원 꽂고 빼기) 펫과 친구에게 다시 알린다
+  onBoostChange(() => {
+    sendStatus();
+    friends.resendStatus();
+  });
   // ---- 전역 단축키 (설정에서 바꾼다, v2) ----
   let registered: string[] = [];
   /** 지금 설정의 단축키를 건다. 다른 앱이 쓰고 있어 못 건 것의 이름을 돌려준다 */
