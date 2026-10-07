@@ -582,6 +582,34 @@ p.empty {
   color: var(--muted);
 }
 
+.focus-len {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  margin: 6px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.len-chip {
+  padding: 2px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11.5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.len-chip.on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--ink);
+  font-weight: 600;
+}
+
 .clock {
   font-size: 22px;
   font-variant-numeric: tabular-nums;
@@ -635,6 +663,11 @@ p.empty {
   border: 0;
   background: none;
   text-align: left;
+}
+
+.missed .title {
+  /* 묶인 알림은 줄마다 하나 */
+  white-space: pre-line;
 }
 
 .events .title small {
@@ -872,6 +905,23 @@ p.empty {
   font-variant-numeric: tabular-nums;
 }
 
+/* 기분, 친밀도는 줄바꿈하지 않는다 (좁으면 다음 단계 안내가 줄어든다) */
+.life > span {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* 다음 친밀도 단계에 열리는 것. 좁으면 줄여서 말줄임 */
+.life .unlock-next {
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  font-size: 11.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .hint.sulk {
   color: var(--error);
 }
@@ -967,6 +1017,16 @@ p.empty {
   opacity: 1;
 }
 
+/* 커스텀 먹이 지우기 확인: 한 번 누르면 글로 바뀌고 빨갛게 (두 번째에 지운다) */
+.shop .goods .remove.sure {
+  width: auto;
+  padding: 0 6px;
+  border-radius: 10px;
+  color: var(--error);
+  font-size: 11px;
+  opacity: 1;
+}
+
 .play-row {
   display: flex;
   gap: 6px;
@@ -1049,6 +1109,32 @@ p.empty {
 
 .today .achieve li small {
   color: var(--muted);
+}
+
+/* 짝꿍 일기: 날짜 아래 일기 글 */
+.today .diary li {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1px;
+  padding: 5px 0;
+}
+
+.today .diary li + li {
+  border-top: 1px dashed var(--line);
+}
+
+.diary-text {
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+.diary-ai {
+  margin-left: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 10px;
 }
 
 /* 겹쳐 뜬 단추는 묶음이 보일 때 바로 보인다 (.repeat, .remove, .due.none 의 기본 투명보다 뒤에) */

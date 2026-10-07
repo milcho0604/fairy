@@ -1,17 +1,22 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { app, type BrowserWindow, dialog } from 'electron';
-import { SCHEMA_VERSION } from '../shared/db-schema.ts';
+import { customAiCount, IMPORT_FILES, importedChatSettings } from '../shared/backup-import.ts';
+import { type Db, looksLikeOurs, SCHEMA_VERSION, schemaVersion } from '../shared/db-schema.ts';
 import { t } from '../shared/i18n/index.ts';
-import { decodePet, encodePet, type SharedPet, shareFileName } from '../shared/pet-share.ts';
+import { decodePet, encodePet, SHARE_MAX_BYTES, type SharedPet, shareFileName } from '../shared/pet-share.ts';
 import type { Blueprint } from '../shared/pet3d/blueprint.ts';
 import { FRIENDS_MAX, POSE_KINDS } from '../shared/settings.ts';
 import { petImages } from './maker.ts';
 import { library } from './pet-library.ts';
+import { plainEntry } from './safe-file.ts';
 import { settings } from './settings.ts';
 
-/** 백업에 넣는 작은 설정 파일들 (로그인 셸 PATH, codex 폴더처럼 컴퓨터마다 다른 것은 뺀다) */
+/**
+ * 백업에 넣는 작은 설정 파일들 (로그인 셸 PATH, codex 폴더처럼 컴퓨터마다 다른 것은 뺀다).
+ * 가져올 때는 IMPORT_FILES 만 쓴다 (사용자 AI 는 옮기지 않는다)
+ */
 const FILES = ['settings', 'chat-settings', 'ai-custom', 'pet-position', 'planner'].map((n) => `${n}.json`);
 
 const stamp = () => {
@@ -48,7 +53,9 @@ export function createBackup(o: {
     mkdirSync(out, { recursive: true });
     o.vacuumInto(join(out, 'jjakkung.db'));
     for (const f of FILES) if (existsSync(join(dir(), f))) cpSync(join(dir(), f), join(out, f));
-    if (existsSync(join(dir(), 'pets'))) cpSync(join(dir(), 'pets'), join(out, 'pets'), { recursive: true });
+    // 링크는 따라가지 않고 일반 파일만 (버그잡이 7차)
+    if (existsSync(join(dir(), 'pets')))
+      cpSync(join(dir(), 'pets'), join(out, 'pets'), { recursive: true, filter: plainEntry });
     writeFileSync(
       join(out, 'jjakkung-backup.json'),
       JSON.stringify({ app: 'jjakkung', version: app.getVersion(), at: Date.now() }),
@@ -85,15 +92,42 @@ export function createBackup(o: {
     for (const f of FILES) if (existsSync(join(dir(), f))) cpSync(join(dir(), f), join(keep, f));
     // 저장 파일은 앱이 연 채라 다음에 켤 때 바꾼다: 자리만 마련하고 다시 켠다
     cpSync(join(from, 'jjakkung.db'), join(dir(), 'jjakkung.db.import'));
-    for (const f of FILES) if (existsSync(join(from, f))) cpSync(join(from, f), join(dir(), f));
-    if (existsSync(join(from, 'pets'))) cpSync(join(from, 'pets'), join(dir(), 'pets'), { recursive: true });
-    o.log('backup', '가져옴, 다시 켠다');
+    // 사용자 AI(ai-custom.json)는 옮기지 않는다: 실행할 명령이라 그 컴퓨터 것이 아니다. 채팅 설정은 고른 AI 만,
+    // 사용자 AI 를 골랐으면 기본으로 (버그잡이 7차)
+    for (const f of IMPORT_FILES) {
+      if (!existsSync(join(from, f))) continue;
+      if (f === 'chat-settings.json')
+        writeFileSync(join(dir(), f), JSON.stringify(importedChatSettings(readJsonFile(join(from, f)))));
+      else cpSync(join(from, f), join(dir(), f));
+    }
+    // pets/ 는 링크를 빼고 일반 파일만 (링크로 사용자 데이터 폴더 밖 파일을 읽게 하지 못하게)
+    if (existsSync(join(from, 'pets')))
+      cpSync(join(from, 'pets'), join(dir(), 'pets'), { recursive: true, filter: plainEntry });
+    const skipped = customAiCount(readJsonFile(join(from, 'ai-custom.json')));
+    o.log('backup', '가져옴, 다시 켠다', skipped ? `사용자 AI ${skipped}개 뺌` : '');
+    if (skipped > 0)
+      await dialog.showMessageBox({
+        type: 'info',
+        message: t('main.backup.customAiSkipped', { n: skipped }),
+        detail: t('main.backup.customAiSkippedDetail'),
+        buttons: [t('common.ok')],
+      });
+    // exit 대신 quit: will-quit 정리(실행 표시 지우기, AI 끝내기, 저장 파일 닫기, 단축키 풀기)가 돌게 한다
     app.relaunch();
-    app.exit(0);
+    app.quit();
     return t('main.backup.restarting');
   }
 
   return { exportTo, importFrom };
+}
+
+/** 백업 폴더의 JSON. 없거나 깨졌으면 undefined */
+function readJsonFile(path: string): unknown {
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return undefined;
+  }
 }
 
 /** 켤 때: 가져온 저장 파일이 기다리고 있으면 바꿔 끼운다 (저장 파일을 열기 전에 부른다) */
@@ -112,12 +146,16 @@ export function applyPendingImport(): void {
   rmSync(pending, { force: true });
 }
 
-/** 저장 파일의 판(user_version). 열 수 없으면 undefined */
+/**
+ * 저장 파일의 판(user_version). 열 수 없거나 짝꿍 저장 파일이 아니면(0바이트, 판 0, 할 일 표가 없는 다른 SQLite) undefined.
+ * 예전에는 판만 봐서 빈 파일도 통과해 지금 데이터를 빈 것으로 바꿀 수 있었다 (버그잡이 6차)
+ */
 function dbVersion(file: string): number | undefined {
   try {
     const db = new DatabaseSync(file, { readOnly: true });
     try {
-      return Number((db.prepare('pragma user_version').get() as { user_version: number }).user_version);
+      const d = db as unknown as Db;
+      return looksLikeOurs(d) ? schemaVersion(d) : undefined;
     } finally {
       db.close();
     }
@@ -181,6 +219,8 @@ export async function importPet(
   const r = await (parent ? dialog.showOpenDialog(parent, opts) : dialog.showOpenDialog(opts));
   const file = r.filePaths[0];
   if (r.canceled || !file) return { ok: false, message: '' };
+  // 읽기 전에 크기를 본다: 큰 파일을 통째로 메모리에 올리지 않게 (버그잡이 7차)
+  if (statSync(file).size > SHARE_MAX_BYTES) return { ok: false, message: t('pet.share.tooBig') };
   const pet = decodePet(readFileSync(file, 'utf8'));
   if ('error' in pet) return { ok: false, message: pet.error };
   if (asFriend) {
@@ -210,8 +250,9 @@ export async function importPet(
   // 지금 사진 펫은 보관함으로 (6단계)
   library.beforeNewPhoto();
   const poses: Record<string, string | null> = {};
+  // 포즈는 사진 펫에만 붙는다 (그림 없는 기본 펫에 남으면 다음 사진 펫으로 넘어간다)
   for (const { id } of POSE_KINDS)
-    poses[id] = pet.poses[id] ? dataUrlToFile(pet.poses[id] as string, 'pose') : null;
+    poses[id] = pet.image && pet.poses[id] ? dataUrlToFile(pet.poses[id] as string, 'pose') : null;
   settings.set({
     petName: pet.name,
     petKind: pet.kind,

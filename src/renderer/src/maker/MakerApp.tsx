@@ -440,7 +440,12 @@ function Spin3D({ model, photo, depth }: { model?: Blueprint; photo?: string; de
     const k = (side * dpr) / CANVAS_SIZE;
     const t0 = performance.now();
     let raf = 0;
+    let last = -Infinity;
     const tick = (now: number) => {
+      raf = requestAnimationFrame(tick);
+      // 화면 주사율(120Hz)대로 그리지 않고 30fps 로 묶는다. 미리보기는 천천히 돌아서 차이가 안 보인다
+      if (now - last < 1000 / 30 - 1) return;
+      last = now;
       const ms = now - t0;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -449,7 +454,6 @@ function Spin3D({ model, photo, depth }: { model?: Blueprint; photo?: string; de
       pet.spin = Math.sin(ms / 2600) * 1.1;
       const blink = ms % 3800 < 180 ? (ms % 3800) / 180 : -1;
       pet.draw(ctx, { mood: 'idle', elapsed: ms, blink }, 0, 1, 1, undefined);
-      raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => {

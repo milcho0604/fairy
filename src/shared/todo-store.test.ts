@@ -164,6 +164,18 @@ test('집중 보상은 한 번에 5코인, 하루 8번까지', () => {
   assert.equal(store.rewardFocus(T0 + 24 * HOUR), COIN.focus);
 });
 
+test('집중 길이를 고르면 코인은 분에 비례하고, 하루 집중 코인 상한(40)은 그대로', () => {
+  const { store } = fresh();
+  assert.equal(store.rewardFocus(T0, 15), 3);
+  assert.equal(store.rewardFocus(T0 + 1, 50), 10);
+  assert.equal(store.rewardFocus(T0 + 2, 50), 10);
+  assert.equal(store.rewardFocus(T0 + 3, 50), 10);
+  // 지금 33. 남은 7 만 준다
+  assert.equal(store.rewardFocus(T0 + 4, 50), 7);
+  assert.equal(store.rewardFocus(T0 + 5, 15), 0);
+  assert.equal(store.balance(), COIN.focus * COIN.dailyFocusLimit);
+});
+
 test('배가 꽉 차면 밥을 주지 않고 코인도 안 가져간다', () => {
   const { store } = fresh();
   const a = store.add({ title: '일' }, T0);

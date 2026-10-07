@@ -12,6 +12,7 @@ import {
 import { withHistory } from '../shared/ai/text.ts';
 import type { AiEvent, AiProvider, ImageAttachment } from '../shared/ai/types.ts';
 import type { AiUsage } from '../shared/ai/usage.ts';
+import { cleanSendImages } from '../shared/capture.ts';
 import {
   addQuestion,
   applyEvent,
@@ -72,6 +73,10 @@ export interface ChatOptions {
   onPetAi: (state: PetAiState) => void;
   /** 답이 다 왔다. 채팅 창이 앞에 없으면 펫이 말풍선으로 알린다. */
   onAnswer?: (text: string, chatInFront: boolean) => void;
+  /** 강제 업데이트 전이라 AI 대화를 잠갔는지. 잠겼으면 창을 열지도 묻지도 않고 onLocked 를 부른다 */
+  locked?: () => boolean;
+  /** 잠긴 대화를 쓰려 했다 (펫이 까닭을 말한다) */
+  onLocked?: () => void;
   log: (tag: string, ...rest: unknown[]) => void;
 }
 
@@ -190,12 +195,19 @@ export function createChat(o: ChatOptions) {
     push();
   });
 
-  ipcMain.on(CHAT.send, (e, text: string, images: OutgoingImage[]) => {
-    if (fromChat(e)) ask(text, images);
+  ipcMain.on(CHAT.send, (e, text: unknown, images: unknown) => {
+    if (!fromChat(e) || typeof text !== 'string') return;
+    // 그림 형식은 codex 임시 파일 확장자가 되므로 메인에서 다시 본다
+    const clean = cleanSendImages(images);
+    if (clean) ask(text, clean);
   });
 
   /** 질문을 보낸다. 채팅 창의 보내기와 메모 "AI로 정리"가 같이 쓴다. 답을 기다리는 중이면 false */
   function ask(text: string, images: OutgoingImage[] = []): boolean {
+    if (o.locked?.()) {
+      o.onLocked?.();
+      return false;
+    }
     if (state.pendingId) return false;
     const question = text.trim();
     if (!question && images.length === 0) return false;
@@ -385,6 +397,10 @@ export function createChat(o: ChatOptions) {
   });
 
   function open(near?: Rectangle) {
+    if (o.locked?.()) {
+      o.onLocked?.();
+      return;
+    }
     // 펫 앱은 Dock 없이 떠 있어서 창만 앞으로 부르면 키보드가 다른 앱에 남는다. 사용자가 부른 것이니 앱을 앞으로.
     stealFocus();
     if (win && !win.isDestroyed()) {
@@ -471,6 +487,7 @@ export function createChat(o: ChatOptions) {
       system: string,
       signal?: AbortSignal,
     ): Promise<{ ok: true; text: string; provider: string } | { ok: false; error: string; noAi?: true }> {
+      if (o.locked?.()) return { ok: false, error: t('main.update.lockedShort') };
       const spec = await visionSpec();
       if (!spec) return { ok: false, noAi: true, error: t('main.maker.noVisionAi') };
       if (signal?.aborted) return { ok: false, error: t('main.maker.shapeCancelled') };
@@ -496,6 +513,43 @@ export function createChat(o: ChatOptions) {
         signal?.addEventListener('abort', () => run.cancel());
         // 답도 오류도 없이 끝나면(취소) 실패로. 먼저 정해졌으면 이 값은 무시된다
         const ended = () => resolve({ ok: false, error: t('main.maker.shapeCancelled') });
+        void run.finished.then(ended, ended);
+      });
+    },
+    /**
+     * 글만 한 번 묻는다 (짝꿍 일기 다듬기). 지금 고른 AI 로, 격리하고 기록을 남기지 않는다.
+     * 채팅 창에는 보이지 않는다. 무료 AI 모델이 없으면 받지 않고 실패로. 실패면 undefined
+     */
+    textOnce(text: string, system: string): Promise<string | undefined> {
+      if (o.locked?.()) return Promise.resolve(undefined);
+      const provider = state.provider;
+      const spec = specOf(provider);
+      if (!spec) return Promise.resolve(undefined);
+      log('chat', 'text-once', provider);
+      return new Promise((resolve) => {
+        const req = {
+          spec,
+          history: [],
+          text,
+          images: [],
+          persona: system,
+          isolate: true,
+          ephemeral: true,
+          model: pickCli(o.catalog(), provider, o.aiModels()[provider]),
+        };
+        const onEvent = (e: AiEvent) => {
+          if (e.type === 'done') resolve(e.text);
+          else if (e.type === 'error') resolve(undefined);
+        };
+        const run =
+          spec.adapter === 'local'
+            ? runLocal(req, pickLocal(o.catalog(), o.aiModels().local), onEvent, log, {
+                banmal: getLang() === 'ko' && o.personaId() !== 'polite',
+                petName: petName(),
+                rules: '',
+              })
+            : runAi(req, onEvent);
+        const ended = () => resolve(undefined);
         void run.finished.then(ended, ended);
       });
     },

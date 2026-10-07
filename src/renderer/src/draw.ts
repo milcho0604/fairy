@@ -1,4 +1,6 @@
 // 코드로 그린 기본 펫. 콩, 냥이, 삐약이 세 가지 (v1, D6 그림 대신). 사진 펫(P1-08)이면 몸통 대신 사진.
+
+import type { Gaze } from '../../shared/gaze.ts';
 import { t } from '../../shared/i18n/index.ts';
 import type { PetMood } from '../../shared/pet-mood.ts';
 import type { PetKind } from '../../shared/settings.ts';
@@ -50,6 +52,40 @@ export interface DrawState {
   cushion?: boolean;
   /** 입체 펫 (6단계). 있으면 기본 몸 대신 이것이 그린다. 사진 펫이 먼저다 */
   model3d?: Model3D;
+  /** 커서 쪽 방향 (x -1~1, y -1~1). 한가한 모습(기본, 앉기)일 때만 쓴다 */
+  gaze?: Gaze;
+  /** 친밀도로 열린 몸짓 (손 흔들기, 빙글 춤). t 는 진행 0~1 */
+  trick?: Trick;
+  /** 머리에 꽃 (친밀도 600) */
+  flower?: boolean;
+}
+
+export interface Trick {
+  type: 'wave' | 'dance';
+  t: number;
+}
+
+/** 몸짓을 보일지: 잠, 졸음, 바쁨, 잡힘, 숨김에서는 안 한다. 삐져 있으면 손은 안 흔든다 */
+export function trickOf(s: DrawState): Trick | undefined {
+  if (!s.trick || ['sleeping', 'dozing', 'busy', 'grabbed', 'hidden'].includes(s.mood)) return undefined;
+  if (s.trick.type === 'wave' && s.mood === 'sulky') return undefined;
+  return s.trick;
+}
+
+/** 빙글 춤의 몸 기울기 (좌우로 두 번 흔든다) */
+export function danceTilt(t: number): number {
+  return Math.sin(t * Math.PI * 4) * 0.24 * (1 - t * 0.4);
+}
+
+/** 손 흔들기의 손 각도 (네 번 흔든다) */
+export function waveSwing(t: number): number {
+  return Math.sin(t * Math.PI * 8) * Math.min(1, t * 6, (1 - t) * 6);
+}
+
+/** 지금 커서를 볼지: 기본 상태에서 아무것도 안 하거나 앉아 있을 때만 */
+export function gazeOf(s: DrawState, act: DrawState['activity']): Gaze | undefined {
+  if (s.mood !== 'idle' || !s.gaze || (act && act.type !== 'sit')) return undefined;
+  return s.gaze;
 }
 
 /** 입체 펫 그리기 (pet3d.ts). 2D 와 같은 몸짓 값(lift, sx, sy)을 받아 그리고 머리 꼭대기 y 를 돌려준다 */
@@ -149,8 +185,10 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): void {
     }
   }
 
+  const trick = trickOf(s);
   ctx.save();
   ctx.translate(CX, GROUND - lift);
+  if (trick?.type === 'dance') ctx.rotate(danceTilt(trick.t));
   ctx.scale(sx, sy);
   ctx.translate(0, -RY);
 
@@ -166,11 +204,25 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): void {
   ctx.strokeStyle = LINE;
   ctx.stroke();
   if (kind === 'dog') drawDogEars(ctx);
+  // 손 흔들기 팔은 몸과 귀 다음, 얼굴 전에 (얼굴을 가리지 않게)
+  if (trick?.type === 'wave') drawWavingHand(ctx, trick.t);
 
   // 볼
   // 얼굴을 옆으로: 삐지면 고개를 돌리고, 걷거나 두리번거리면 그쪽을 본다.
+  const g = gazeOf(s, act);
   const look =
-    s.mood === 'sulky' ? 12 : act?.type === 'walk' ? act.dir * 6 : act?.type === 'look' ? act.dir * 8 : 0;
+    s.mood === 'sulky'
+      ? 12
+      : act?.type === 'walk'
+        ? act.dir * 6
+        : act?.type === 'look'
+          ? act.dir * 8
+          : g
+            ? g.x * 8
+            : 0;
+  // 위아래를 보면 얼굴 전체(볼, 눈, 입)가 그쪽으로 조금
+  ctx.save();
+  ctx.translate(0, g ? g.y * 2.5 : 0);
   ctx.fillStyle = BLUSH;
   for (const x of [-32, 32]) {
     ctx.beginPath();
@@ -184,16 +236,120 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): void {
   const yawning = act?.type === 'yawn' && act.t > 0.15 && act.t < 0.85;
   drawEyes(
     ctx,
-    yawning ? { ...s, mood: 'sleeping' } : act?.type === 'stretch' ? { ...s, mood: 'excited' } : s,
+    yawning ? { ...s, mood: 'sleeping' } : act?.type === 'stretch' || trick ? { ...s, mood: 'excited' } : s,
     look,
+    g,
   );
   if (kind === 'chick') drawBeak(ctx, s.mood, look, yawning);
   else if (yawning) drawYawn(ctx, look);
   else if (s.hungry && s.mood === 'idle') drawHungryMouth(ctx, look);
   else drawMouth(ctx, s.mood, look);
   ctx.restore();
+  ctx.restore();
 
   drawExtras(ctx, s, GROUND - lift - RY * 2 * sy);
+}
+
+/**
+ * 손 흔들기: 몸 오른쪽 안쪽에서 시작한 짧은 팔이 몸 테두리 밖으로 나와 좌우로 흔든다 (몸 좌표, 가운데가 0).
+ * 몸 안쪽 부분은 몸과 같은 색으로만 칠해 몸에서 자라난 듯 이어지고, 테두리 선은 밖으로 나온 부분에만 있다.
+ * 얼굴(볼, 눈, 수염)보다 먼저 그려 얼굴을 가리지 않는다
+ */
+function drawWavingHand(ctx: CanvasRenderingContext2D, t: number) {
+  const up = Math.min(1, t * 5, (1 - t) * 5);
+  const swing = waveSwing(t);
+  const len = 27 + up * 7;
+  const arm = () => {
+    ctx.beginPath();
+    ctx.roundRect(-8, -len, 16, len + 8, 8);
+  };
+  const body = () => {
+    ctx.beginPath();
+    ctx.ellipse(0, 0, RX, RY, 0, 0, Math.PI * 2);
+  };
+  ctx.save();
+  ctx.translate(RX - 12, 8);
+  ctx.rotate(0.45 + (1 - up) * 0.8 + swing * 0.28);
+  const local = ctx.getTransform();
+  ctx.restore();
+  // 몸 안: 몸 색으로만 (몸 테두리 안쪽 반을 덮어 이음매가 없다)
+  ctx.save();
+  body();
+  ctx.clip();
+  ctx.setTransform(local);
+  arm();
+  ctx.fillStyle = BODY;
+  ctx.fill();
+  ctx.restore();
+  // 몸 밖: 테두리까지
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(-CANVAS_SIZE, -CANVAS_SIZE, CANVAS_SIZE * 2, CANVAS_SIZE * 2);
+  ctx.ellipse(0, 0, RX, RY, 0, 0, Math.PI * 2);
+  ctx.clip('evenodd');
+  ctx.setTransform(local);
+  arm();
+  ctx.fillStyle = BODY;
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = LINE;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.ellipse(0, -len + 6, 3.2, 2.6, 0, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255, 150, 170, 0.6)';
+  ctx.fill();
+  ctx.restore();
+  if (up > 0.6) {
+    ctx.save();
+    ctx.setTransform(local);
+    ctx.strokeStyle = LINE;
+    ctx.lineWidth = 1.2;
+    ctx.lineCap = 'round';
+    ctx.globalAlpha = 0.55;
+    for (const r of [12, 16]) {
+      ctx.beginPath();
+      ctx.arc(0, -len + 4, r, -0.9, -0.35);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+/** 흔드는 표시: (x, y) 를 가운데로 한 짧은 곡선 두 줄 */
+function drawWaveMarks(ctx: CanvasRenderingContext2D, x: number, y: number, swing: number) {
+  ctx.save();
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 1.3;
+  ctx.lineCap = 'round';
+  ctx.globalAlpha = 0.6;
+  for (const r of [6, 10]) {
+    ctx.beginPath();
+    ctx.arc(x, y, r, -0.9 + swing * 0.2, -0.2 + swing * 0.2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/** 머리 꽃 (친밀도 600): 분홍 꽃잎 다섯 장과 노란 가운데 */
+function drawFlower(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(0.3);
+  ctx.fillStyle = '#ff9fb8';
+  ctx.strokeStyle = '#e0708f';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.ellipse(Math.cos(a) * 4.6, Math.sin(a) * 4.6, 3.6, 3.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.arc(0, 0, 2.8, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffd34d';
+  ctx.fill();
+  ctx.restore();
 }
 
 function drawCushion(ctx: CanvasRenderingContext2D) {
@@ -343,6 +499,13 @@ function drawPhoto(
   let tilt = 0;
   if (act?.type === 'walk') tilt = Math.sin(act.phase * Math.PI * 2) * 0.06;
   if (act?.type === 'look') tilt = act.dir * 0.08;
+  const g = gazeOf(s, act);
+  // 커서 쪽으로 살짝 기운다 (사진은 얼굴을 바꿀 수 없어서)
+  if (g) tilt = g.x * 0.06;
+  // 몸짓도 기울기로: 손 흔들기는 좌우로 까딱, 빙글 춤은 크게 흔들기
+  const trick = trickOf(s);
+  if (trick?.type === 'wave') tilt = waveSwing(trick.t) * 0.1;
+  if (trick?.type === 'dance') tilt = danceTilt(trick.t);
   if (s.mood === 'dozing') tilt = 0.1;
   ctx.save();
   ctx.translate(CX, GROUND - lift);
@@ -352,17 +515,23 @@ function drawPhoto(
   if (s.mood === 'sleeping' || s.mood === 'dozing') ctx.globalAlpha = 0.85;
   ctx.drawImage(photo, -w / 2, -h, w, h);
   ctx.restore();
-  return GROUND - lift - h * sy;
+  const top = GROUND - lift - h * sy;
+  // 사진은 손을 들 수 없어 기울기에 더해 흔드는 표시만 머리 옆에
+  if (trick?.type === 'wave' && Math.min(1, trick.t * 5, (1 - trick.t) * 5) > 0.6)
+    drawWaveMarks(ctx, CX + w / 2 - 6, top + 22, waveSwing(trick.t));
+  return top;
 }
 
-function drawEyes(ctx: CanvasRenderingContext2D, s: DrawState, look: number) {
+function drawEyes(ctx: CanvasRenderingContext2D, s: DrawState, look: number, gaze?: Gaze) {
   ctx.fillStyle = INK;
   ctx.strokeStyle = INK;
   ctx.lineWidth = 2.5;
   ctx.lineCap = 'round';
   for (const side of [-1, 1]) {
-    const x = side * 20 + look;
-    const y = -6;
+    // 커서를 보면 눈동자가 얼굴보다 조금 더 그쪽으로 (위아래도)
+    // 얼굴(look)보다 눈이 조금 더 그쪽으로. 위아래는 눈만 (입과 볼은 그대로)
+    const x = side * 20 + look + (gaze ? gaze.x * 3 : 0);
+    const y = -6 + (gaze ? gaze.y * 2.5 : 0);
     ctx.beginPath();
     if (s.mood === 'sleeping') {
       ctx.arc(x, y - 2, 5, 0.15 * Math.PI, 0.85 * Math.PI); // 감은 눈
@@ -439,6 +608,8 @@ function drawMouth(ctx: CanvasRenderingContext2D, mood: PetMood, look: number) {
 
 /** 몸 밖에 붙는 것들: 생각 중 점, 잠 Zz, 바쁨 땀과 이름표, 삐짐 막대, 하트. top 은 머리 꼭대기 y. */
 function drawExtras(ctx: CanvasRenderingContext2D, s: DrawState, top: number) {
+  // 머리 오른쪽 위에 꽂은 꽃. 사진은 머리가 가운데 쪽이라 조금 안으로
+  if (s.flower) drawFlower(ctx, CX + (s.photo ? 14 : 24), top + 8);
   if ((s.sulk ?? 0) > 0 && s.mood === 'sulky') drawSulkGauge(ctx, s.sulk ?? 0, top);
   if ((s.hearts ?? -1) >= 0 && (s.hearts ?? 0) < HEARTS_MS) drawHearts(ctx, s.hearts ?? 0, top);
   ctx.fillStyle = INK;

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { type I18nKey, t } from '../../../shared/i18n/index.ts';
 import type { PanelState, PanelTab } from '../../../shared/ipc.ts';
+import { nextUnlock } from '../../../shared/pet-life.ts';
 import type { Todo } from '../../../shared/todo-store.ts';
 import { PetFace } from '../PetFace.tsx';
 import { EventTab } from './EventTab.tsx';
@@ -39,6 +40,19 @@ type Toast =
   | { kind: 'note-removed'; id: number }
   | { kind: 'event-removed'; id: number }
   | { kind: 'added'; text: string };
+
+const UNLOCK_KEYS = {
+  wave: 'panel.unlock.wave',
+  dance: 'panel.unlock.dance',
+  flower: 'panel.unlock.flower',
+} as const;
+
+/** 다음 친밀도 단계에 열리는 것 */
+function unlockHint(affection: number): string {
+  const next = nextUnlock(affection);
+  if (!next) return t('panel.unlockAll');
+  return t('panel.unlockNext', { step: next.step, what: t(UNLOCK_KEYS[next.unlock]) });
+}
 
 export function PanelApp() {
   const [s, setS] = useState<PanelState>();
@@ -131,6 +145,9 @@ export function PanelApp() {
       <div className="life">
         <span title={t('panel.moodHint')}>{t('panel.mood', { n: s.life.mood })}</span>
         <span title={t('panel.affectionHint')}>{t('panel.affection', { n: s.life.affection })}</span>
+        <small className="unlock-next" title={unlockHint(s.life.affection)}>
+          {unlockHint(s.life.affection)}
+        </small>
       </div>
       {s.life.sulk > 0 && <p className="hint sulk">{t('panel.sulk', { name: s.petName, n: s.life.sulk })}</p>}
       {hungry && <p className="hint hungry">{t('panel.hungry', { name: s.petName })}</p>}

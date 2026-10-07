@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
-import { accessSync, constants } from 'node:fs';
-import { delimiter, isAbsolute, join } from 'node:path';
+import { accessSync, constants, readFileSync } from 'node:fs';
+import { delimiter, dirname, isAbsolute, join } from 'node:path';
+import { cmdShimScript } from '../../shared/ai/cmd-shim.ts';
 import { readJson, writeJson } from '../store.ts';
 
 // Finder 로 연 앱은 PATH 가 /usr/bin:/bin:/usr/sbin:/sbin 뿐이다(L1). claude 는 ~/.local/bin 에 있고,
@@ -51,7 +52,8 @@ function readLoginShell(): Promise<{ path: string; codexHome?: string }> {
 
 /** PATH 에서 실행 파일을 찾는다. */
 export function findOnPath(name: string, path: string): string | undefined {
-  const exts = process.platform === 'win32' ? ['.cmd', '.exe', '.bat', ''] : [''];
+  // 윈도우는 진짜 실행 파일(.exe)을 먼저 본다. .cmd 는 launchOf 가 node 로 바꿔 띄운다
+  const exts = process.platform === 'win32' ? ['.exe', '.cmd', '.bat', ''] : [''];
   for (const dir of path.split(delimiter)) {
     if (!dir) continue;
     for (const ext of exts) {
@@ -84,4 +86,32 @@ export async function getShellEnv(refresh = false): Promise<ShellEnv> {
 export function resolveBin(bin: string, env: ShellEnv): string | undefined {
   if (isAbsolute(bin)) return isExecutable(bin) ? bin : undefined;
   return findOnPath(bin, env.path);
+}
+
+/** 띄울 방법: 실행 파일, 앞에 붙일 인자, 더할 환경 */
+export interface Launch {
+  file: string;
+  pre: string[];
+  env: Record<string, string>;
+}
+
+/**
+ * CLI 를 shell 없이 띄우는 방법. 윈도우의 .cmd, .bat 는 shell 없이 못 띄우고(Node 24 EINVAL), shell 을 켜면
+ * 질문 글이 명령 줄에 섞인다. npm 이 만든 배치 파일이면 안의 JS 를 node 로 직접 띄운다. 모르는 배치 파일은 undefined.
+ */
+export function launchOf(cli: string, env: ShellEnv): Launch | undefined {
+  if (process.platform !== 'win32' || !/\.(cmd|bat)$/i.test(cli)) return { file: cli, pre: [], env: {} };
+  let rel: string | undefined;
+  try {
+    rel = cmdShimScript(readFileSync(cli, 'utf8'));
+  } catch {
+    return undefined;
+  }
+  if (!rel) return undefined;
+  const script = join(dirname(cli), rel);
+  // 배치 파일 옆 node.exe, PATH 의 node, 없으면 Electron 을 node 로
+  const beside = join(dirname(cli), 'node.exe');
+  const node = isExecutable(beside) ? beside : findOnPath('node', env.path);
+  if (node) return { file: node, pre: [script], env: {} };
+  return { file: process.execPath, pre: [script], env: { ELECTRON_RUN_AS_NODE: '1' } };
 }

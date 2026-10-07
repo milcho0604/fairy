@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { type Db, migrate } from './db-schema.ts';
-import { makeupCoins, PetLife, SULK_LINES, sulkLevel } from './pet-life.ts';
+import { dicts } from './i18n/index.ts';
+import { makeupCoins, nextUnlock, PetLife, SULK_LINES, sulkLevel, UNLOCKS, unlocked } from './pet-life.ts';
 
 const DAY = 86_400_000;
 const utcDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
@@ -82,4 +83,29 @@ test('매운맛을 끄면 4칸으로 내리고, 대사는 하루 한 번', () =>
   life.markSulkSaid(back);
   assert.equal(life.state(back, [], false).sulkSaidToday, true);
   assert.equal(life.state(back + DAY, [], false).sulkSaidToday, false);
+});
+
+test('친밀도 단계마다 하나씩 열리고(100 손 흔들기, 300 빙글 춤, 600 꽃), 다음 것을 알려 준다', () => {
+  assert.deepEqual([...unlocked(0)], []);
+  assert.deepEqual([...unlocked(99)], []);
+  assert.deepEqual([...unlocked(100)], ['wave']);
+  assert.deepEqual([...unlocked(599)].sort(), ['dance', 'wave']);
+  assert.deepEqual([...unlocked(9999)].sort(), ['dance', 'flower', 'wave']);
+  assert.deepEqual(nextUnlock(0), { step: 100, unlock: 'wave' });
+  assert.deepEqual(nextUnlock(100), { step: 300, unlock: 'dance' });
+  assert.deepEqual(nextUnlock(599), { step: 600, unlock: 'flower' });
+  assert.equal(nextUnlock(600), undefined);
+  // 단계 표와 열리는 것 표가 같은 단계를 쓴다
+  assert.deepEqual(
+    UNLOCKS.map((u) => u.step),
+    [100, 300, 600],
+  );
+});
+
+test('열린 것마다 펫 말과 패널 글이 ko, en 둘 다 있다', () => {
+  for (const u of UNLOCKS)
+    for (const d of [dicts.ko, dicts.en] as Record<string, unknown>[]) {
+      assert.ok(d[`pet.unlock.${u.unlock}`], `pet.unlock.${u.unlock}`);
+      assert.ok(d[`panel.unlock.${u.unlock}`], `panel.unlock.${u.unlock}`);
+    }
 });

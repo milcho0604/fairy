@@ -1,5 +1,5 @@
 import { app } from 'electron';
-import { getLang, resolveLang, setLang } from '../shared/i18n/index.ts';
+import { getLang, resolveLang, setLang, t } from '../shared/i18n/index.ts';
 import { settings } from './settings.ts';
 
 // 화면 말 (v2 다국어). 시작할 때 한 번 정하고, 창은 열릴 때 실행 인자로 받는다.
@@ -8,6 +8,8 @@ import { settings } from './settings.ts';
 /** 설정과 운영체제 말로 정한다. 메뉴, 메뉴 막대를 만들기 전에 부른다 */
 export function initLang(): void {
   setLang(resolveLang(settings.get().lang, app.getPreferredSystemLanguages()));
+  // 처음 켰으면 기본 펫 이름도 이 말로 (저장된 이름은 그대로)
+  settings.nameIfNew(t('common.defaultPetName'));
 }
 
 /** 창에 넘길 실행 인자. preload 가 읽어 화면에 알린다 */

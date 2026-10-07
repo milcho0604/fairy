@@ -1,12 +1,30 @@
 import { join } from 'node:path';
-import { BrowserWindow, globalShortcut, type IpcMainEvent, ipcMain, Menu, screen } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  globalShortcut,
+  type IpcMainEvent,
+  ipcMain,
+  Menu,
+  powerMonitor,
+  screen,
+} from 'electron';
 import { type Activity, pickActivity, WALK_SPEED, walkOffset } from '../shared/behavior.ts';
 import { layoutBubble } from '../shared/bubble-layout.ts';
+import {
+  bundleText,
+  fateOf,
+  type HeldBubble,
+  HeldBubbles,
+  type MissedItem,
+  MissedLog,
+} from '../shared/bubble-queue.ts';
 import { type BubbleKind, ChatterGate, type ChatterLevel, LEVEL_LABEL, quieter } from '../shared/chatter.ts';
+import { GAZE_POLL_MS, type Gaze, gazeAt, sameGaze } from '../shared/gaze.ts';
 import { clampIntoAreas, type Rect } from '../shared/geometry.ts';
 import type { GestureEvent } from '../shared/gesture.ts';
 import { t } from '../shared/i18n/index.ts';
-import { type BubbleButton, IPC, type PlayKind } from '../shared/ipc.ts';
+import { type BubbleButton, IPC, type PlayKind, type ReactKind } from '../shared/ipc.ts';
 import { hopAt, perchHolds, pickPerch } from '../shared/perch.ts';
 import { type DisplayInfo, parseSavedScale, restorePetBounds } from '../shared/placement.ts';
 import { type HideReason, HideReasons } from '../shared/presence.ts';
@@ -37,6 +55,8 @@ const BASE_SIZE = 160;
 const DRAG_INTERVAL_MS = 16;
 /** 펫 위치와 크기를 저장하는 파일 이름 (사용자 데이터 폴더의 pet-position.json). */
 const POSITION_FILE = 'pet-position';
+/** 오늘 놓친 알림 (missed.json) */
+const MISSED_FILE = 'missed';
 /** 크기를 바꾼 뒤 이만큼 조용하면 저장한다. 휠을 굴리는 동안 파일을 계속 쓰지 않으려고. */
 const SAVE_DELAY_MS = 500;
 /** 펫 위에서 그냥 휠을 굴리면 이 시간 동안 마우스를 아래 창으로 넘긴다. */
@@ -78,9 +98,17 @@ export interface SayOptions {
   image?: string;
   buttons?: BubbleButton[];
   ttlMs?: number;
+  /**
+   * 놓치면 안 되는 말 (일정 알림, 업적 등). 숨어 있으면 모아 두었다가 나올 때 묶어서 말하고,
+   * 보지 못하고 지나가면(시간 끝, 밀려남, 못 띄움) 패널 오늘 탭의 놓친 알림에 남긴다.
+   * staleAt 이 지나서 나오면 말풍선 없이 놓친 알림에만 둔다.
+   */
+  hold?: Pick<HeldBubble, 'staleAt' | 'lines' | 'render' | 'missedLines'>;
 }
 
 export interface PetWindow {
+  /** 펫 화면만 다시 불러온다 (우클릭 새로고침) */
+  reload: () => void;
   win: BrowserWindow;
   /** 화면 좌표의 펫 사각형 (말풍선 자리를 뺀 것) */
   bounds(): Rect;
@@ -94,7 +122,7 @@ export interface PetWindow {
   scale(): number;
   setScale(scale: number): void;
   /** 반응 동작 (할 일 끝냄, 밥 먹음) */
-  react(): void;
+  react(kind?: ReactKind): void;
   debugMoveTo(x: number, y: number): void;
   debugScale(scale: number): void;
   debugThrow(vx: number, vy: number): void;
@@ -105,6 +133,13 @@ export interface PetWindow {
   stroll(minutes: number): Promise<boolean>;
   peekAt(x: number, y: number): void;
   comeBack(to: { x: number; y: number }): void;
+  /** 한가한지: 보이고, 들리거나 날거나 걷거나 앉으러 뛰거나 창 위에 앉아 있지 않고, 말풍선이 없다 (친구 놀이) */
+  isIdle(): boolean;
+  /** 친구와 만났다: 그쪽을 보고 하트 (친구 놀이) */
+  greet(dir: -1 | 1): void;
+  /** 오늘 놓친 알림 (최근 것이 위로) */
+  missed(): MissedItem[];
+  clearMissed(): void;
 }
 
 export interface PetWindowOptions {
@@ -118,6 +153,8 @@ export interface PetWindowOptions {
   initial?: { x: number; y: number };
   /** 친구 펫의 우클릭 메뉴 (없으면 기본 펫 메뉴) */
   menu?: () => Electron.MenuItemConstructorOptions[];
+  /** 놓친 알림이 바뀌었다 (패널 다시 그리기) */
+  onMissed?: () => void;
 }
 
 /**
@@ -125,7 +162,15 @@ export interface PetWindowOptions {
  * 모니터마다 큰 창을 두는 대신 이렇게 하면 렌더러가 하나라 가볍고(L6),
  * 모니터를 건너가거나 뽑아도 창 위치만 고치면 된다(L7).
  */
-export function createPetWindow({ petName, actions, log, id, initial, menu }: PetWindowOptions): PetWindow {
+export function createPetWindow({
+  petName,
+  actions,
+  log,
+  id,
+  initial,
+  menu,
+  onMissed,
+}: PetWindowOptions): PetWindow {
   const positionFile = id ? `${POSITION_FILE}-${id}` : POSITION_FILE;
   const saved = readJson(positionFile) ?? (initial ? { ...initial, scale: 1 } : undefined);
   let scale = parseSavedScale(saved);
@@ -135,6 +180,10 @@ export function createPetWindow({ petName, actions, log, id, initial, menu }: Pe
   const hideReasons = new HideReasons();
   /** 숨어 있는 동안 온 답 알림. 다시 나올 때 한 번 말한다 (기획서: 알림은 쌓아 두었다가 나올 때 한 번에). */
   let heldAnswer: { options: SayOptions; resolve: (action: string | undefined) => void } | undefined;
+  /** 숨어 있는 동안 온 놓치면 안 되는 말 (SayOptions.hold) */
+  const held = new HeldBubbles();
+  // 오늘 놓친 알림은 기본 펫만 저장한다 (앱을 다시 켜도 남게)
+  const missed = id ? new MissedLog() : MissedLog.from(readJson(MISSED_FILE), Date.now());
   const gate = new ChatterGate(settings.get().chatter);
   const stopSettings = settings.onChange((next) => {
     gate.level = next.chatter;
@@ -304,7 +353,9 @@ export function createPetWindow({ petName, actions, log, id, initial, menu }: Pe
         ],
       },
       {
-        label: actions.focusRunning() ? t('pet.menu.focusStop') : t('pet.menu.focusStart'),
+        label: actions.focusRunning()
+          ? t('pet.menu.focusStop')
+          : t('pet.menu.focusStart', { n: settings.get().focusMin }),
         click: () => actions.toggleFocus(),
       },
       { type: 'separator' },
@@ -325,9 +376,26 @@ export function createPetWindow({ petName, actions, log, id, initial, menu }: Pe
       { label: t('pet.menu.makePet'), click: () => actions.makePet() },
       { label: t('pet.menu.settings'), click: () => actions.openSettings() },
       { type: 'separator' },
+      { label: t('pet.menu.reload'), click: () => reload() },
+      {
+        label: t('pet.menu.relaunch', { name: petName() }),
+        click: () => {
+          // will-quit 정리(기록, AI 끝내기, 저장 닫기)를 거쳐 다시 켠다
+          app.relaunch();
+          app.quit();
+        },
+      },
       { label: t('pet.menu.quit'), role: 'quit' },
     ]).popup({ window: win });
   };
+
+  /** 펫 화면만 다시 불러온다 (그림이 이상하거나 멈췄을 때). 떠 있던 말풍선은 닫고, 상태와 그림은 불러온 뒤 다시 보낸다 */
+  function reload() {
+    if (win.isDestroyed()) return;
+    log('pet', 'reload');
+    closeBubble('cleared');
+    win.webContents.reload();
+  }
 
   function keepOnScreen() {
     const areas = screen.getAllDisplays().map((d) => d.workArea);
@@ -391,8 +459,11 @@ export function createPetWindow({ petName, actions, log, id, initial, menu }: Pe
     const started = Date.now();
     walkTimer = setInterval(() => {
       const t = (Date.now() - started) / walk.ms;
-      pet = { ...pet, x: fromX + walkOffset(walk.dx, t) };
-      if (!win.isDestroyed()) win.setPosition(pet.x, pet.y);
+      const x = fromX + walkOffset(walk.dx, t);
+      // 걷기 CPU 의 절반이 창 옮기기다. 픽셀이 그대로인 틱(출발, 멈춤 감속)은 옮기지 않는다
+      const moved = Math.round(x) !== Math.round(pet.x);
+      pet = { ...pet, x };
+      if (moved && !win.isDestroyed()) win.setPosition(Math.round(pet.x), pet.y);
       if (t >= 1) stopWalk(true);
     }, 33);
   }
@@ -587,13 +658,71 @@ export function createPetWindow({ petName, actions, log, id, initial, menu }: Pe
     }
     win.showInactive();
     applyLayout();
-    const held = heldAnswer;
+    const answer = heldAnswer;
     heldAnswer = undefined;
-    if (held) setTimeout(() => say(held.options).then(held.resolve), 600);
+    // 답 알림은 예전처럼 먼저, 모아 둔 놓치면 안 되는 말은 그 뒤에 (releaseHeld)
+    setTimeout(async () => {
+      if (answer) answer.resolve(await say(answer.options));
+      releaseHeld();
+    }, 600);
   }
 
+  // ---- 놓치면 안 되는 말 (SayOptions.hold) ----
+  // 숨음, 끄는 중, 화면 잠금이면 모아 두고, 다시 띄울 수 있고 사용자가 자리에 있으면 하나로 묶어 말한다.
+  let screenLocked = false;
+  const onLock = () => {
+    screenLocked = true;
+  };
+  const onUnlock = () => {
+    screenLocked = false;
+  };
+  powerMonitor.on('lock-screen', onLock);
+  powerMonitor.on('unlock-screen', onUnlock);
+  /** 지금 띄울 수 없다 */
+  const blocked = () =>
+    win.isDestroyed() || hideReasons.hidden || !!dragTimer || screenLocked || !win.isVisible();
+  /** 사용자가 자리를 비웠다 (20초 넘게 입력이 없음) */
+  const away = () => powerMonitor.getSystemIdleTime() >= 20;
+
+  function addMissed(h: HeldBubble) {
+    for (const text of h.missedLines ?? h.lines ?? [h.text]) missed.add({ text, at: h.at });
+    if (!id) writeJson(MISSED_FILE, missed.items);
+    onMissed?.();
+  }
+
+  function keep(items: readonly HeldBubble[]) {
+    for (const h of items) for (const out of held.hold(h)) addMissed(out);
+  }
+
+  /** 놓치면 안 되는 말이 닫혔거나 못 떴다: 봤으면 끝, 아니면 다시 모으거나 놓친 알림으로 (fateOf) */
+  function unseen(items: readonly HeldBubble[], action: string | undefined) {
+    for (const h of items) {
+      const fate = fateOf(action, { blocked: blocked(), away: away(), shown: h.shown ?? 0 });
+      if (fate === 'hold') keep([h]);
+      else if (fate === 'missed') addMissed(h);
+    }
+  }
+
+  /** 모아 둔 것을 꺼낸다: 시작이 한참 지난 일정은 놓친 알림에만, 나머지는 말풍선 하나로 */
+  function releaseHeld() {
+    if (held.size === 0 || blocked() || away() || bubble) return;
+    const { fresh, stale } = held.flush(Date.now());
+    for (const h of stale) addMissed(h);
+    if (fresh.length === 0) return;
+    const now = Date.now();
+    const shown = fresh.map((h) => ({ ...h, lines: h.render?.(now) ?? h.lines, shown: (h.shown ?? 0) + 1 }));
+    void say({
+      kind: 'schedule',
+      text: bundleText(shown),
+      buttons: [{ id: 'ok', label: t('panel.remind.ok') }],
+      ttlMs: 30_000,
+    }).then((action) => unseen(shown, action));
+  }
+  // 끌기가 끝나거나 화면 잠금이 풀리거나 자리로 돌아오면 2초 안에 꺼낸다
+  const releaseTimer = setInterval(releaseHeld, 2000);
+
   function say(options: SayOptions): Promise<string | undefined> {
-    const { kind, text, buttons = [], ttlMs = BUBBLE_TTL_MS, image } = options;
+    const { kind, text, buttons = [], ttlMs = BUBBLE_TTL_MS, image, hold } = options;
     if (hideReasons.hidden && kind === 'answer') {
       // 앞에 기다리던 알림은 새 것으로 바꾼다 (가장 최근 답 하나만).
       heldAnswer?.resolve(undefined);
@@ -601,7 +730,19 @@ export function createPetWindow({ petName, actions, log, id, initial, menu }: Pe
         heldAnswer = { options, resolve };
       });
     }
+    const item: HeldBubble | undefined = hold ? { ...hold, text, at: Date.now(), shown: 1 } : undefined;
+    if (item && !win.isDestroyed()) {
+      // 이 수다 빈도에서 안 하는 말은 모으지도 않는다
+      if (!gate.allows(kind)) return Promise.resolve(undefined);
+      if (blocked()) {
+        keep([{ ...item, shown: 0 }]);
+        return Promise.resolve(undefined);
+      }
+    }
+    // 혼잣말은 떠 있는 다른 말을 밀어내지 않는다
+    if (kind === 'idle-talk' && bubble) return Promise.resolve(undefined);
     if (win.isDestroyed() || !win.isVisible() || dragTimer || !gate.take(kind, Date.now())) {
+      if (item && !win.isDestroyed()) unseen([item], undefined);
       return Promise.resolve(undefined);
     }
     // 하나만 띄운다. 새 말이 오면 앞 말풍선은 닫는다. 걷던 중이면 멈춰 서서 말한다.
@@ -615,10 +756,11 @@ export function createPetWindow({ petName, actions, log, id, initial, menu }: Pe
           log('bubble', id, action);
           // "나중에"가 쌓이면 조용히 할지 한 번 묻는다 (기획서: 세 번 연속).
           if (kind !== 'answer' && gate.closed(action === 'later' ? 'later' : 'other')) askQuieter();
+          if (item) unseen([item], action);
           resolve(action);
         },
       };
-      win.webContents.send(IPC.bubble, { id, text, buttons, ttlMs, image });
+      win.webContents.send(IPC.bubble, { id, text, buttons, ttlMs, image, kind });
     });
   }
 
@@ -664,6 +806,26 @@ export function createPetWindow({ petName, actions, log, id, initial, menu }: Pe
   screen.on('display-removed', onDisplaysChanged);
   screen.on('display-metrics-changed', onDisplaysChanged);
 
+  // ---- 커서 바라보기 ----
+  // 한가하고 보일 때만 커서를 본다. 방향 칸이 바뀔 때만 화면에 알린다 (화면도 그때만 다시 그린다).
+  let gaze: Gaze | null = null;
+  const gazeTimer = setInterval(() => {
+    if (win.isDestroyed()) return;
+    const idle =
+      settings.get().lookAtCursor &&
+      win.isVisible() &&
+      !hideReasons.hidden &&
+      !wasBusy &&
+      !dragTimer &&
+      !flightTimer &&
+      !walkTimer &&
+      !hopTimer;
+    const next = idle ? gazeAt(pet, screen.getCursorScreenPoint()) : null;
+    if (sameGaze(next, gaze)) return;
+    gaze = next;
+    win.webContents.send(IPC.gaze, gaze);
+  }, GAZE_POLL_MS);
+
   let wasBusy = false;
   const stopWatching = watchSystem((env) => {
     if (win.isDestroyed()) return;
@@ -675,6 +837,15 @@ export function createPetWindow({ petName, actions, log, id, initial, menu }: Pe
   win.webContents.on('did-finish-load', () => applyLayout());
 
   win.on('closed', () => {
+    clearInterval(gazeTimer);
+    clearInterval(releaseTimer);
+    powerMonitor.off('lock-screen', onLock);
+    powerMonitor.off('unlock-screen', onUnlock);
+    // 끄는 동안 모아 둔 것은 놓친 알림으로 남긴다 (다시 켜면 패널 오늘 탭에)
+    const { fresh, stale } = held.flush(Date.now());
+    for (const h of [...stale, ...fresh])
+      for (const text of h.missedLines ?? h.lines ?? [h.text]) missed.add({ text, at: h.at });
+    if (!id && fresh.length + stale.length > 0) writeJson(MISSED_FILE, missed.items);
     stopSettings();
     stopWatching();
     clearInterval(dragTimer);
@@ -700,12 +871,13 @@ export function createPetWindow({ petName, actions, log, id, initial, menu }: Pe
 
   return {
     win,
+    reload,
     bounds: () => ({ ...pet }),
     say,
     setHidden: (reason: HideReason, on: boolean, hint?: boolean) => setHidden(reason, on, hint),
     scale: () => scale,
-    react: () => {
-      if (!win.isDestroyed()) win.webContents.send(IPC.react, 'happy');
+    react: (kind: ReactKind = 'happy') => {
+      if (!win.isDestroyed()) win.webContents.send(IPC.react, kind);
     },
     setScale: (next: number) => resize(clampScale(next)),
     isHidden: (reason?: HideReason) => (reason ? hideReasons.has(reason) : hideReasons.hidden),
@@ -740,6 +912,27 @@ export function createPetWindow({ petName, actions, log, id, initial, menu }: Pe
       pet = { ...pet, x: to.x, y: to.y };
       keepOnScreen();
       save();
+    },
+    isIdle: () =>
+      !win.isDestroyed() &&
+      win.isVisible() &&
+      !hideReasons.hidden &&
+      !dragTimer &&
+      !flightTimer &&
+      !walkTimer &&
+      !hopTimer &&
+      !perch &&
+      !bubble,
+    greet(dir: -1 | 1) {
+      if (win.isDestroyed()) return;
+      win.webContents.send(IPC.activity, { type: 'look', dir, ms: 2600 });
+      win.webContents.send(IPC.react, 'love');
+    },
+    missed: () => missed.list(Date.now()),
+    clearMissed: () => {
+      missed.clear();
+      if (!id) writeJson(MISSED_FILE, []);
+      onMissed?.();
     },
   };
 }

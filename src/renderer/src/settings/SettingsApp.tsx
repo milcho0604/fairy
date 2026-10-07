@@ -20,6 +20,7 @@ import {
   SHORTCUT_DEFAULTS,
   SHORTCUT_LABEL,
   type ShortcutId,
+  shortcutClash,
   toAccelerator,
 } from '../../../shared/shortcut.ts';
 import { MAX_SCALE, MIN_SCALE } from '../../../shared/size.ts';
@@ -43,6 +44,18 @@ export function SettingsApp() {
   // 언어를 바꾸면 다시 켜야 보인다. 바꾼 뒤에만 다시 켜기 버튼을 보여 준다
   const [langChanged, setLangChanged] = useState(false);
   const libraryKey = useRef('');
+  // 이름 칸에서 나가지 않고 창을 닫아도 고친 이름을 잃지 않게 (닫을 때 저장).
+  // 사용자가 칸을 고쳤을 때만 저장한다. 다른 곳(펫 만들기, 가져오기)에서 바뀐 이름은 칸에 받아 온다
+  const nameEdited = useRef(false);
+  const nameDraft = useRef(name);
+  nameDraft.current = name;
+  useEffect(() => {
+    const flush = () => {
+      if (nameEdited.current) void bridge.set({ petName: nameDraft.current });
+    };
+    window.addEventListener('beforeunload', flush);
+    return () => window.removeEventListener('beforeunload', flush);
+  }, []);
 
   useEffect(() => {
     bridge.get().then((s) => {
@@ -52,6 +65,7 @@ export function SettingsApp() {
     });
     bridge.onChanged((settings) => {
       setSnap((s) => s && { ...s, settings });
+      if (!nameEdited.current) setName(settings.petName);
       // 펫 만들기 창에서 새 펫을 저장하면 보관함과 지금 그림이 바뀐다. 그때만 다시 받는다
       const key = JSON.stringify([settings.petImage, settings.petLibrary.map((p) => p.id)]);
       if (key !== libraryKey.current) {
@@ -85,6 +99,7 @@ export function SettingsApp() {
   };
 
   const saveName = async () => {
+    nameEdited.current = false;
     const next = await update({ petName: name }, t('settings.nameChanged'));
     setName(next.petName);
   };
@@ -108,7 +123,10 @@ export function SettingsApp() {
               <input
                 value={name}
                 maxLength={PET_NAME_MAX * 2}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  nameEdited.current = true;
+                  setName(e.target.value);
+                }}
                 onBlur={saveName}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.nativeEvent.isComposing) (e.target as HTMLInputElement).blur();
@@ -192,6 +210,18 @@ export function SettingsApp() {
             hint={t('settings.wanderHint')}
             on={s.wander}
             onChange={(v) => update({ wander: v })}
+          />
+          <Toggle
+            label={t('settings.lookAtCursor')}
+            hint={t('settings.lookAtCursorHint')}
+            on={s.lookAtCursor}
+            onChange={(v) => update({ lookAtCursor: v })}
+          />
+          <Toggle
+            label={t('settings.sounds')}
+            hint={t('settings.soundsHint')}
+            on={s.sounds}
+            onChange={(v) => update({ sounds: v })}
           />
         </Section>
 
@@ -282,6 +312,12 @@ export function SettingsApp() {
             onChange={(v) => update({ aiKnowsTodos: v })}
           />
           <Toggle
+            label={t('settings.diaryAi')}
+            hint={t('settings.diaryAiHint')}
+            on={s.diaryAi}
+            onChange={(v) => update({ diaryAi: v })}
+          />
+          <Toggle
             label={t('settings.myMcp')}
             hint={
               s.aiIsolation ? t('settings.myMcpOff') : t('settings.myMcpOn', { n: snap.myMcpServers.length })
@@ -321,11 +357,15 @@ export function SettingsApp() {
           <Storage
             list={snap.storage}
             onDelete={async (id) => {
-              const r = await bridge.deleteModel(id);
-              setSnap(
-                (v) => v && { ...v, storage: r.storage, models: { ...v.models, localReady: r.localReady } },
-              );
-              flash(t('settings.storage.deleted'));
+              try {
+                const r = await bridge.deleteModel(id);
+                setSnap(
+                  (v) => v && { ...v, storage: r.storage, models: { ...v.models, localReady: r.localReady } },
+                );
+                flash(t(r.ok ? 'settings.storage.deleted' : 'settings.storage.busy'));
+              } catch {
+                flash(t('settings.storage.busy'));
+              }
             }}
           />
         </Section>
@@ -477,9 +517,17 @@ export function SettingsApp() {
                 id={id}
                 value={s.shortcuts[id]}
                 mac={mac}
-                onSave={(acc) =>
-                  update({ shortcuts: { ...s.shortcuts, [id]: acc } }, t('settings.shortcutChanged'))
-                }
+                onSave={(acc) => {
+                  // 다른 단축키와 같으면 저장하지 않고 알린다 (설정 검사가 조용히 버려 "바꿨어"만 떴다)
+                  const next = { ...s.shortcuts, [id]: acc };
+                  const clash = shortcutClash(next);
+                  if (clash) {
+                    const other = clash[0] === id ? clash[1] : clash[0];
+                    flash(t('settings.shortcut.taken', { name: SHORTCUT_LABEL[other] }));
+                    return;
+                  }
+                  void update({ shortcuts: next }, t('settings.shortcutChanged'));
+                }}
                 onError={(m) => flash(m)}
               />
             ))}
@@ -1015,7 +1063,28 @@ function kindThumbs(use3d: boolean): Partial<Record<PetKind, string>> {
 /** 짝꿍 규칙: 한 줄에 하나. 칸을 떠나면 저장 */
 function RulesEditor({ value, onSave }: { value: string; onSave: (v: string) => void }) {
   const [text, setText] = useState(value);
-  useEffect(() => setText(value), [value]);
+  // 칸에서 나가지 않고 창을 닫아도 쓴 규칙을 잃지 않게: 쓰다 멈추면 저장하고, 닫을 때도 저장한다.
+  // 고치는 중에는 저장 응답(value)으로 칸을 덮지 않는다 (왕복 사이에 친 글자가 지워진다)
+  const edited = useRef(false);
+  const draft = useRef({ text, value, onSave });
+  draft.current = { text, value, onSave };
+  useEffect(() => {
+    if (!edited.current) setText(value);
+    else if (value === draft.current.text) edited.current = false;
+  }, [value]);
+  useEffect(() => {
+    if (text === value) return;
+    const timer = setTimeout(() => draft.current.onSave(draft.current.text), 1500);
+    return () => clearTimeout(timer);
+  }, [text, value]);
+  useEffect(() => {
+    const flush = () => {
+      const d = draft.current;
+      if (edited.current && d.text !== d.value) d.onSave(d.text);
+    };
+    window.addEventListener('beforeunload', flush);
+    return () => window.removeEventListener('beforeunload', flush);
+  }, []);
   return (
     <label className="field">
       <span>{t('settings.rules.label')}</span>
@@ -1025,7 +1094,10 @@ function RulesEditor({ value, onSave }: { value: string; onSave: (v: string) => 
         maxLength={RULES_MAX}
         placeholder={t('settings.rules.placeholder')}
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => {
+          edited.current = true;
+          setText(e.target.value);
+        }}
         onBlur={() => text !== value && onSave(text)}
       />
       <small>

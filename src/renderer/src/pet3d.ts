@@ -44,7 +44,7 @@ import {
   SLOTS,
   type Slot,
 } from '../../shared/pet3d/blueprint.ts';
-import type { DrawState, Model3D } from './draw.ts';
+import { type DrawState, danceTilt, gazeOf, type Model3D, trickOf, waveSwing } from './draw.ts';
 
 const CX = 80;
 const GROUND = 154;
@@ -63,6 +63,10 @@ interface FaceRig {
   mouth: Partial<Record<MouthState, Object3D>>;
   beakLower?: Object3D;
   style: Face['mouth'];
+  /** 얼굴에 붙인 것들 (눈, 입, 볼, 수염). 옆으로 돌아 얼굴이 안 보일 때 숨긴다 */
+  groups: Group[];
+  /** 입 자리 (부리는 옆에서도 보여서 숨기지 않는다) */
+  mouthAt: Group;
 }
 
 export class Pet3D implements Model3D {
@@ -73,6 +77,10 @@ export class Pet3D implements Model3D {
   private root = new Group();
   private joints = {} as Record<Slot, Group>;
   private hasHead = false;
+  /** 손 흔들기에 들 팔이나 날개가 있는지 (없으면 wavePaw 를 들어 흔든다) */
+  private hasHand = false;
+  /** 팔이 없는 펫의 손 흔들기 앞발 (평소엔 숨김) */
+  private wavePaw: Group | undefined;
   private face: FaceRig | undefined;
   /** 그릴 것이 있는지 (설계도나 입체 판을 넣었는지) */
   private ready = false;
@@ -220,6 +228,7 @@ export class Pet3D implements Model3D {
     this.root.add(new Mesh(geo, mat));
     this.relief = { texture };
     this.hasHead = false;
+    this.hasHand = false;
     this.ready = true;
     this.frameCamera();
   }
@@ -237,6 +246,13 @@ export class Pet3D implements Model3D {
       boxes.set(part.slot, boxes.get(part.slot)?.union(b) ?? b);
     }
     this.hasHead = boxes.has('head');
+    // 손 흔들기에 쓸 팔: 몸 옆으로 나온 팔이나 날개만 (토순이처럼 가슴 앞 작은 앞발은 들어도 안 보인다)
+    const bodyBox = boxes.get('body');
+    const handBox = boxes.get('armR') ?? boxes.get('wingR');
+    this.hasHand =
+      !!handBox &&
+      !!bodyBox &&
+      handBox.max.x - bodyBox.getCenter(new Vector3()).x >= ((bodyBox.max.x - bodyBox.min.x) / 2) * 0.8;
     const pivots = {} as Record<Slot, Vector3>;
     const parentOf = (slot: Slot): Slot | undefined => {
       if (slot === 'body') return undefined;
@@ -282,6 +298,28 @@ export class Pet3D implements Model3D {
     );
     this.ready = true;
     this.frameCamera();
+    // 옆으로 나온 팔이 없으면 손 흔들 때만 보이는 앞발을 몸 오른쪽 어깨에 붙인다 (카메라 맞춘 뒤라 화면 크기는 그대로)
+    this.wavePaw = undefined;
+    const bodyMesh = meshes.find((m) => m.part.slot === 'body')?.mesh;
+    if (!this.hasHand && bodyBox && bodyMesh) {
+      const c = bodyBox.getCenter(new Vector3());
+      const size = bodyBox.getSize(new Vector3());
+      const pivot = new Group();
+      this.root.updateMatrixWorld(true);
+      pivot.position.copy(
+        this.joints.body.worldToLocal(
+          new Vector3(c.x + size.x * 0.44, c.y + size.y * 0.24, c.z + size.z * 0.12),
+        ),
+      );
+      const r = Math.max(0.045, size.x * 0.12);
+      const paw = new Mesh(new SphereGeometry(1, 24, 16), bodyMesh.material);
+      paw.scale.set(r, r * 1.35, r);
+      paw.position.set(0, r * 1.1, 0);
+      pivot.add(paw);
+      pivot.visible = false;
+      this.joints.body.add(pivot);
+      this.wavePaw = pivot;
+    }
   }
 
   /** 펫을 ctx 에 그리고 머리 꼭대기 y 를 돌려준다. 그릴 수 없으면 undefined (2D 로) */
@@ -389,6 +427,7 @@ export class Pet3D implements Model3D {
       ray.set(new Vector3(x, y, 5), front);
       return ray.intersectObjects(targets, false)[0];
     };
+    const groups: Group[] = [];
     const place = (x0: number, y0: number, out = 0.002): Group => {
       let x = x0;
       let y = y0;
@@ -411,6 +450,7 @@ export class Pet3D implements Model3D {
       p.addScaledVector(n, out);
       const g = new Group();
       joint.add(g);
+      groups.push(g);
       g.position.copy(joint.worldToLocal(p.clone()));
       g.updateMatrixWorld(true);
       g.lookAt(p.clone().add(n));
@@ -562,7 +602,7 @@ export class Pet3D implements Model3D {
         }
       }
     }
-    return { eyes, mouth, beakLower, style: f.mouth };
+    return { eyes, mouth, beakLower, style: f.mouth, groups, mouthAt };
   }
 
   /** 쉬는 자세가 2D 캔버스 안 바닥에 서도록 카메라와 옮길 자리를 정한다 */
@@ -626,6 +666,15 @@ export class Pet3D implements Model3D {
       y = act.dir * 0.35;
       z = Math.sin(act.phase * Math.PI * 2) * 0.05;
     } else if (act?.type === 'look') y = act.dir * 0.4;
+    const g = gazeOf(s, act);
+    if (g) {
+      y = g.x * 0.3;
+      x = -g.y * 0.08;
+    }
+    // 입체 판은 옆이 안 보이게 돌기만: 손 흔들기는 까딱, 빙글 춤은 크게 좌우로
+    const trick = trickOf(s);
+    if (trick?.type === 'wave') z = waveSwing(trick.t) * 0.08;
+    if (trick?.type === 'dance') y = danceTilt(trick.t) * 1.7;
     const max = 0.44;
     this.root.rotation.set(x, Math.max(-max, Math.min(max, y + this.spin * 0.4)), z);
   }
@@ -637,6 +686,7 @@ export class Pet3D implements Model3D {
     }
     const j = this.joints;
     for (const slot of SLOTS) j[slot].rotation.set(0, 0, 0);
+    if (this.wavePaw) this.wavePaw.visible = false;
     this.root.rotation.set(0, 0, 0);
     this.root.scale.set(sx, sy, sx);
     const { mood, elapsed: e } = s;
@@ -733,7 +783,48 @@ export class Pet3D implements Model3D {
       wings(1.3 * k);
       eye = 'up';
     }
+    // 친밀도로 열린 몸짓: 손 흔들기는 오른팔(날개)을 들고 흔든다, 빙글 춤은 한 바퀴 돈다
+    const trick = trickOf(s);
+    if (trick?.type === 'wave') {
+      const sw = waveSwing(trick.t);
+      const up = Math.min(1, trick.t * 5, (1 - trick.t) * 5);
+      if (this.hasHand) {
+        j.armR.rotation.set(0, 0, 2.8 + sw * 0.35);
+        // 날개는 몸에 붙은 채 위로 작게 파닥 (크게 펼치면 납작한 노처럼 보였다)
+        j.wingR.rotation.z = 0.1 + up * (0.1 + (0.5 + 0.5 * sw) * 0.22);
+      } else if (this.wavePaw) {
+        // 어깨에서 앞발을 들어 바깥 위로 흔든다 (음수 z 가 바깥쪽)
+        this.wavePaw.visible = true;
+        this.wavePaw.rotation.set(0, 0, -(0.55 + (1 - up) * 1.9) + sw * 0.35);
+      }
+      // 고개와 귀도 같이 까딱
+      head(0, 0, sw * 0.1);
+      j.earL.rotation.z = sw * 0.3;
+      j.earR.rotation.z = -sw * 0.3;
+      j.tail.rotation.y = sw * 0.6;
+      eye = 'up';
+    } else if (trick?.type === 'dance') {
+      // 한 바퀴: 앞을 오래 보고 등은 빨리 지나가게 (가운데서 가장 빠르게)
+      const e = trick.t < 0.5 ? 4 * trick.t ** 3 : 1 - (-2 * trick.t + 2) ** 3 / 2;
+      this.root.rotation.y += e * Math.PI * 2;
+      this.root.rotation.z = danceTilt(trick.t) * 0.5;
+      arms(1.8);
+      // 날개는 몸에 붙은 채 빠르게 파닥
+      wings(0.12 + 0.2 * (0.5 + 0.5 * Math.sin(trick.t * Math.PI * 10)));
+      eye = 'up';
+    }
+    // 커서 바라보기: 고개를 그쪽으로 (위를 보면 고개를 든다)
+    const g = gazeOf(s, act);
+    // 양수 x 가 고개를 숙이는 쪽 (잘 때 0.28). 아래는 조금만 숙인다 (많이 숙이면 눈이 찡그린 듯 납작해 보였다)
+    if (g) head(g.y > 0 ? g.y * 0.12 : g.y * 0.22, g.x * 0.5, 0);
     this.setFace(eye, mouth, s);
+    // 옆이나 뒤로 돌아 얼굴이 안 보이면 얼굴 부품을 숨긴다 (가장자리에 조각처럼 떠 보였다). 부리는 옆에서도 보인다
+    if (this.face) {
+      const yaw = this.root.rotation.y + (this.hasHead ? j.head.rotation.y : 0);
+      const front = Math.cos(yaw) > 0.3;
+      for (const g2 of this.face.groups)
+        g2.visible = front || (g2 === this.face.mouthAt && this.face.style === 'beak');
+    }
   }
 
   private setFace(eye: EyeState, mouth: MouthState, s: DrawState) {

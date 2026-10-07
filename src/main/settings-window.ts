@@ -85,8 +85,8 @@ export function createSettingsWindow({
     return library.view();
   });
   ipcMain.handle(SETTINGS.deleteModel, (e, id: unknown) => {
-    if (fromSettings(e) && typeof id === 'string') removeModel(v2.catalog(), id);
-    return { storage: storedModels(v2.catalog()), localReady: localReady() };
+    const ok = fromSettings(e) && typeof id === 'string' && removeModel(v2.catalog(), id);
+    return { ok, storage: storedModels(v2.catalog()), localReady: localReady() };
   });
   ipcMain.handle(SETTINGS.set, (e, patch: Partial<Settings>) =>
     fromSettings(e) ? settings.set(patch) : settings.get(),
@@ -120,8 +120,9 @@ export function createSettingsWindow({
   ipcMain.handle(SETTINGS.refreshMcp, (e) => (fromSettings(e) ? v2.refreshMcp() : []));
   ipcMain.on(SETTINGS.relaunch, (e) => {
     if (!fromSettings(e)) return;
+    // exit 대신 quit: will-quit 정리(실행 표시 지우기, AI 끝내기, 저장 파일 닫기, 단축키 풀기)가 돌게 한다 (버그잡이 7차)
     app.relaunch();
-    app.exit(0);
+    app.quit();
   });
   ipcMain.on(SETTINGS.openOnboarding, (e) => {
     if (fromSettings(e)) openOnboarding();

@@ -3,6 +3,7 @@ import type { AiProvider } from '../shared/ai/types.ts';
 import type { Activity } from '../shared/behavior.ts';
 import type { BubbleLayout } from '../shared/bubble-layout.ts';
 import type { ChatState } from '../shared/chat-state.ts';
+import type { Gaze } from '../shared/gaze.ts';
 import {
   type BubbleMessage,
   CHAT,
@@ -25,6 +26,7 @@ import {
   type PetEnv,
   type PetImages,
   type PetStatus,
+  type ReactKind,
   SETTINGS,
   type SettingsBridge,
   type SettingsSection,
@@ -69,7 +71,7 @@ if (kind === 'pet') {
       ipcRenderer.on(IPC.status, (_e, status: PetStatus) => listener(status));
     },
     onReact: (listener) => {
-      ipcRenderer.on(IPC.react, (_e, kind: 'happy') => listener(kind));
+      ipcRenderer.on(IPC.react, (_e, kind: ReactKind) => listener(kind));
     },
     onImage: (listener) => {
       ipcRenderer.on(IPC.image, (_e, images: PetImages) => listener(images));
@@ -77,6 +79,9 @@ if (kind === 'pet') {
     petted: () => ipcRenderer.send(IPC.petted),
     onFlight: (listener) => {
       ipcRenderer.on(IPC.flight, (_e, flying: boolean) => listener(flying));
+    },
+    onGaze: (listener) => {
+      ipcRenderer.on(IPC.gaze, (_e, gaze: Gaze | null) => listener(gaze));
     },
   };
   contextBridge.exposeInMainWorld('jjakkung', pet);
@@ -192,10 +197,11 @@ if (kind === 'panel' || kind === 'quick') {
     eventUpdate: (id, patch) => ipcRenderer.send(PANEL.eventUpdate, id, patch),
     eventRemove: (id: number) => ipcRenderer.send(PANEL.eventRemove, id),
     eventRestore: (id: number) => ipcRenderer.send(PANEL.eventRestore, id),
-    focusStart: () => ipcRenderer.send(PANEL.focusStart),
+    focusStart: (minutes?: number) => ipcRenderer.send(PANEL.focusStart, minutes),
     focusStop: () => ipcRenderer.send(PANEL.focusStop),
+    missedClear: () => ipcRenderer.send(PANEL.missedClear),
     buyToy: (key: string) => ipcRenderer.invoke(PANEL.buyToy, key),
-    buyHouse: () => ipcRenderer.invoke(PANEL.buyHouse),
+    buyHouse: (level: number) => ipcRenderer.invoke(PANEL.buyHouse, level),
     feedWith: (key: string) => ipcRenderer.invoke(PANEL.feedWith, key),
     makeFood: () => ipcRenderer.invoke(PANEL.makeFood),
     removeFood: (key: string) => ipcRenderer.send(PANEL.removeFood, key),

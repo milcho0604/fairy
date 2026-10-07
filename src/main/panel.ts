@@ -8,7 +8,7 @@ import {
   screen,
 } from 'electron';
 import { type EventStore, parseQuickEvent } from '../shared/event-store.ts';
-import type { FocusState } from '../shared/focus.ts';
+import { type FocusState, focusCoins, isFocusLength } from '../shared/focus.ts';
 import { clampIntoAreas } from '../shared/geometry.ts';
 import { t } from '../shared/i18n/index.ts';
 import { type NoteAiKind, PANEL, type PanelState, type PanelTab, type PlayKind } from '../shared/ipc.ts';
@@ -28,7 +28,10 @@ export interface PanelOptions {
   notes: NoteStore;
   events: EventStore;
   focus: () => FocusState;
-  startFocus: () => void;
+  /** 집중 시작. 길이(15, 25, 50분)를 주면 그 길이로 */
+  startFocus: (minutes?: number) => void;
+  /** 고른 집중 길이 */
+  focusMin: () => number;
   stopFocus: () => void;
   /** 일정이 바뀌었다 (곧 시작하는 일정이면 바로 알림) */
   onEventsChanged: () => void;
@@ -57,6 +60,10 @@ export interface PanelOptions {
   onChanged: () => void;
   openChat: () => void;
   lookTogether: () => void;
+  /** 오늘 놓친 알림 (펫이 숨어 있거나 자리에 없어 못 본 것) */
+  missed: () => PanelState['missed'];
+  diary: () => PanelState['diary'];
+  clearMissed: () => void;
   log: (tag: string, ...rest: unknown[]) => void;
 }
 
@@ -93,9 +100,12 @@ export function createPanel(o: PanelOptions) {
       })),
       events: o.events.between(startOfDay(now), startOfDay(now) + 14 * 86_400_000),
       focus: o.focus(),
-      focusCoins: COIN.focus,
+      focusMin: o.focusMin(),
+      focusCoins: focusCoins(o.focusMin()),
       life: o.life(),
       achieve: o.achieve(),
+      missed: o.missed(),
+      diary: o.diary(),
       shop: {
         ...o.shop.state(),
         foodImages: Object.fromEntries(o.shop.state().customFoods.map((f) => [f.key, o.foodImage(f.image)])),
@@ -218,9 +228,9 @@ export function createPanel(o: PanelOptions) {
     push();
     return r;
   });
-  ipcMain.handle(PANEL.buyHouse, (e) => {
-    if (!ours(e)) return { ok: false, error: t('panel.retry') };
-    const r = o.shop.buyHouse(Date.now());
+  ipcMain.handle(PANEL.buyHouse, (e, level: unknown) => {
+    if (!ours(e) || typeof level !== 'number') return { ok: false, error: t('panel.retry') };
+    const r = o.shop.buyHouse(Date.now(), level);
     push();
     if (r.ok) o.onHouseChanged();
     return r;
@@ -257,11 +267,14 @@ export function createPanel(o: PanelOptions) {
     o.play(kind);
   });
   // ---- 집중 타이머 ----
-  ipcMain.on(PANEL.focusStart, (e) => {
-    if (ours(e)) o.startFocus();
+  ipcMain.on(PANEL.focusStart, (e, minutes: unknown) => {
+    if (ours(e)) o.startFocus(isFocusLength(minutes) ? minutes : undefined);
   });
   ipcMain.on(PANEL.focusStop, (e) => {
     if (ours(e)) o.stopFocus();
+  });
+  ipcMain.on(PANEL.missedClear, (e) => {
+    if (ours(e)) o.clearMissed();
   });
   ipcMain.handle(PANEL.complete, (e, id: number) => {
     if (!ours(e)) return 0;

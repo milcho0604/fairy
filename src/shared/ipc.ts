@@ -1,4 +1,5 @@
 // 메인과 화면(펫, 채팅) 사이 IPC 채널 이름과 실어 보내는 값.
+
 import type { Catalog } from './ai/catalog.ts';
 import type { CustomProviderInput } from './ai/providers.ts';
 import type { AiProvider, AiStatus, ImageAttachment } from './ai/types.ts';
@@ -6,8 +7,10 @@ import type { Activity } from './behavior.ts';
 import type { BetaReport } from './beta-stats.ts';
 import type { BubbleLayout } from './bubble-layout.ts';
 import type { ChatImage, ChatState } from './chat-state.ts';
+import type { BubbleKind } from './chatter.ts';
 import type { CalEvent } from './event-store.ts';
 import type { FocusState } from './focus.ts';
+import type { Gaze } from './gaze.ts';
 import type { GestureEvent } from './gesture.ts';
 import type { Note, NoteSource } from './note-store.ts';
 import type { Blueprint } from './pet3d/blueprint.ts';
@@ -52,6 +55,8 @@ export const IPC = {
   flight: 'pet:flight',
   /** 메인 → 펫 화면: 사진 펫 그림 */
   image: 'pet:image',
+  /** 메인 → 펫 화면: 커서 쪽 방향 칸 (null 이면 앞). 칸이 바뀔 때만 */
+  gaze: 'pet:gaze',
 } as const;
 
 export interface BubbleButton {
@@ -67,6 +72,8 @@ export interface BubbleMessage {
   buttons: BubbleButton[];
   /** 이 시간이 지나면 저절로 닫힌다 (마우스를 올리면 멈춤) */
   ttlMs: number;
+  /** 말풍선 종류 (일정 알림이면 효과음을 켰을 때 종소리) */
+  kind?: BubbleKind;
 }
 
 export interface PetAiState {
@@ -228,7 +235,9 @@ export interface SettingsBridge {
   relaunch(): void;
   choosePet(choice: { kind: PetKind } | { id: string }): Promise<SavedPetView[]>;
   removeSavedPet(id: string): Promise<SavedPetView[]>;
-  deleteModel(id: string): Promise<{ storage: StoredModel[]; localReady: Record<string, boolean> }>;
+  deleteModel(
+    id: string,
+  ): Promise<{ ok: boolean; storage: StoredModel[]; localReady: Record<string, boolean> }>;
   onChanged(listener: (settings: Settings) => void): void;
   onFocus(listener: (section: SettingsSection) => void): void;
 }
@@ -315,12 +324,17 @@ export interface PetBridge {
   activityStop(): void;
   onActivity(listener: (activity: Activity) => void): void;
   onStatus(listener: (status: PetStatus) => void): void;
-  onReact(listener: (kind: 'happy') => void): void;
+  onReact(listener: (kind: ReactKind) => void): void;
   petted(): void;
   onFlight(listener: (flying: boolean) => void): void;
+  /** 커서 바라보기: 방향 칸 (null 이면 앞을 본다) */
+  onGaze(listener: (gaze: Gaze | null) => void): void;
   /** 사진 펫 그림 (PNG data URL). null 이면 기본 펫 */
   onImage(listener: (images: PetImages) => void): void;
 }
+
+/** 펫 반응: 신남(통통), 밥 먹음(신남과 같은 모습, 소리만 다름), 손 흔들기(친밀도 100), 빙글 춤(친밀도 300), 친구와 만남(하트) */
+export type ReactKind = 'happy' | 'fed' | 'wave' | 'dance' | 'love';
 
 export interface PetStatus {
   hungry: boolean;
@@ -334,6 +348,10 @@ export interface PetStatus {
   kind: PetKind;
   /** 입체로 그리기 (6단계) */
   pet3d: boolean;
+  /** 머리에 꽃 (친밀도 600) */
+  flower: boolean;
+  /** 효과음 (설정). 친구 펫은 늘 끔 */
+  sounds: boolean;
 }
 
 /** 펫 그림들 (data URL). 없으면 기본 펫. 포즈는 상태별 그림 (v1) */
@@ -443,6 +461,8 @@ export const PANEL = {
   // 집중 타이머 (v1)
   focusStart: 'panel:focus-start',
   focusStop: 'panel:focus-stop',
+  /** 놓친 알림 지우기 */
+  missedClear: 'panel:missed-clear',
   // 상점과 놀이 (v1)
   buyToy: 'panel:buy-toy',
   buyHouse: 'panel:buy-house',
@@ -473,6 +493,8 @@ export interface PanelState {
   focus: FocusState;
   /** 집중 코인과 오늘 받은 집중 횟수 */
   focusCoins: number;
+  /** 고른 집중 길이 (15, 25, 50분) */
+  focusMin: number;
   /** 펫의 하루 (v1): 삐짐 칸, 기분, 친밀도 */
   life: { sulk: number; mood: number; affection: number };
   /** 연속 기록과 업적 (v2) */
@@ -482,8 +504,22 @@ export interface PanelState {
     total: number;
     next?: { name: string; hint: string };
   };
+  /** 오늘 놓친 알림 (최근 것이 위로) */
+  missed: { text: string; at: number }[];
+  /** 짝꿍 일기 (최근 것부터, 기록 있는 날만) */
+  diary: DiaryEntry[];
   /** 상점 (v1). 커스텀 먹이 그림은 data URL 로 */
   shop: ShopState & { foodImages: Record<string, string> };
+}
+
+/** 짝꿍 일기 한 날 */
+export interface DiaryEntry {
+  day: string;
+  text: string;
+  /** 오늘 (아직 쓰는 중) */
+  today: boolean;
+  /** AI 로 다듬은 글 */
+  ai: boolean;
 }
 
 export interface NoteSummary {
@@ -532,10 +568,13 @@ export interface PanelBridge {
   ): void;
   eventRemove(id: number): void;
   eventRestore(id: number): void;
-  focusStart(): void;
+  /** 길이(15, 25, 50분)를 주면 그 길이로, 아니면 마지막에 고른 길이로 */
+  focusStart(minutes?: number): void;
   focusStop(): void;
+  missedClear(): void;
   buyToy(key: string): Promise<BuyResult>;
-  buyHouse(): Promise<BuyResult>;
+  /** 지금 보고 있는 단계(level)에서 다음 단계를 산다. 그새 바뀌었으면 사지 않는다 */
+  buyHouse(level: number): Promise<BuyResult>;
   /** 이 먹이를 준다 (기본, 간식, 케이크, 커스텀) */
   feedWith(key: string): Promise<{ ok: boolean; error?: string }>;
   /** 커스텀 먹이 만들기 창을 연다. 코인이 모자라면 오류 */

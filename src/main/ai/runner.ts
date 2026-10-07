@@ -14,7 +14,7 @@ import type { AiEvent, AiStatus, ImageAttachment } from '../../shared/ai/types.t
 import { codexUsage, lastCodexLimits } from '../../shared/ai/usage.ts';
 import { t } from '../../shared/i18n/index.ts';
 import { prepareCodexHome } from './codex-home.ts';
-import { getShellEnv, resolveBin } from './shell-env.ts';
+import { getShellEnv, launchOf, resolveBin } from './shell-env.ts';
 
 /** 이 시간 동안 출력이 하나도 없으면 멈춘 것으로 본다. */
 export const IDLE_TIMEOUT_S = 60;
@@ -104,7 +104,9 @@ export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
     const env = await getShellEnv();
     const { spec } = req;
     const cli = resolveBin(spec.bin, env);
-    if (!cli) {
+    // 윈도우 .cmd 는 안의 JS 를 node 로 띄운다 (shell 없이)
+    const launch = cli ? launchOf(cli, env) : undefined;
+    if (!launch) {
       emit({ type: 'error', error: notInstalled(spec) });
       return;
     }
@@ -152,9 +154,9 @@ export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
     }
 
     // 맥, 리눅스는 새 프로세스 묶음으로 띄운다. 감싼 스크립트가 띄운 손자 프로세스까지 한 번에 끝내려고
-    child = spawn(cli, args, {
+    child = spawn(launch.file, [...launch.pre, ...args], {
       cwd: workDir(),
-      env: childEnv,
+      env: { ...childEnv, ...launch.env },
       stdio: ['pipe', 'pipe', 'pipe'],
       detached: process.platform !== 'win32',
     });
@@ -302,13 +304,32 @@ export function readCodexUsage(codexHome: string, threadId?: string) {
  * 설치, 로그인, 버전 확인 (P3-01). claude auth status 는 JSON, codex 는 종료 코드,
  * cursor-agent status 는 종료 코드가 늘 0 이라 출력 글로 본다. 로그인 확인 방법이 없는 AI 는 모름(undefined).
  */
-export async function checkStatus(spec: ProviderSpec, refresh = false): Promise<AiStatus> {
+export function checkStatus(spec: ProviderSpec, refresh = false): Promise<AiStatus> {
+  // 채팅 창을 열 때마다 AI 마다 명령 두 개(버전, 로그인)를 띄우지 않게 잠깐 기억한다. 새로고침이면 다시 본다
+  const key = JSON.stringify([spec.id, spec.bin, spec.statusArgs]);
+  const hit = statusCache.get(key);
+  if (!refresh && hit && Date.now() - hit.at < STATUS_TTL_MS) return hit.status;
+  const status = checkStatusNow(spec, refresh);
+  statusCache.set(key, { at: Date.now(), status });
+  // 실패하거나 설치 안 됨은 기억하지 않는다 (설치하고 바로 다시 열면 보이게)
+  void status.then(
+    (s) => !s.installed && statusCache.delete(key),
+    () => statusCache.delete(key),
+  );
+  return status;
+}
+
+const STATUS_TTL_MS = 3 * 60_000;
+const statusCache = new Map<string, { at: number; status: Promise<AiStatus> }>();
+
+async function checkStatusNow(spec: ProviderSpec, refresh: boolean): Promise<AiStatus> {
   const provider = spec.id;
   // 무료 AI 는 앱 안에 있다. 설치, 로그인 확인이 없다
   if (spec.adapter === 'local') return { provider, installed: true };
   const env = await getShellEnv(refresh);
   const cli = resolveBin(spec.bin, env);
-  if (!cli) return { provider, installed: false };
+  const launch = cli ? launchOf(cli, env) : undefined;
+  if (!launch) return { provider, installed: false };
   // cursor-agent status 는 로그인 안 됐으면 브라우저를 열려고 한다. 막는다.
   const childEnv: NodeJS.ProcessEnv = { ...process.env, PATH: env.path, NO_OPEN_BROWSER: '1', NO_COLOR: '1' };
   if (spec.adapter === 'codex') {
@@ -317,7 +338,8 @@ export async function checkStatus(spec: ProviderSpec, refresh = false): Promise<
   }
   const run = (args: string[]) =>
     new Promise<{ code: number; out: string }>((resolve) => {
-      execFile(cli, args, { env: childEnv, timeout: 15_000, encoding: 'utf8' }, (err, stdout, stderr) => {
+      const opts = { env: { ...childEnv, ...launch.env }, timeout: 15_000, encoding: 'utf8' as const };
+      execFile(launch.file, [...launch.pre, ...args], opts, (err, stdout, stderr) => {
         const code = err ? (typeof err.code === 'number' ? err.code : 1) : 0;
         resolve({ code, out: stripAnsi(`${stdout}\n${stderr}`) });
       });

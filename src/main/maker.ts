@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   app,
@@ -29,6 +29,7 @@ import { DEPTH_MODEL, depthReady, ensureDepthModel, verifiedDepthUrl } from './d
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
 import { langArg } from './lang.ts';
 import { library } from './pet-library.ts';
+import { readFileIn } from './safe-file.ts';
 import { settings } from './settings.ts';
 
 /** 다듬은 펫 그림 크기 상한. 화면에서 512px 로 줄여 보내므로 이보다 크면 이상한 값이다. */
@@ -64,14 +65,12 @@ function petsDir(): string {
   return join(app.getPath('userData'), 'pets');
 }
 
+/** pets/ 안 일반 파일만 읽는다 (링크를 따라 폴더 밖을 읽지 않게, safe-file.ts) */
 function dataUrlOf(file: string | undefined): string | null {
-  if (!file) return null;
-  try {
-    const mime = MIME[file.split('.').pop() ?? ''] ?? 'image/png';
-    return `data:${mime};base64,${readFileSync(join(petsDir(), file)).toString('base64')}`;
-  } catch {
-    return null;
-  }
+  const bytes = readFileIn(petsDir(), file);
+  if (!bytes || !file) return null;
+  const mime = MIME[file.split('.').pop() ?? ''] ?? 'image/png';
+  return `data:${mime};base64,${bytes.toString('base64')}`;
 }
 
 /** 지금 펫 그림들 (data URL). 사진 펫이 없으면 main 이 null 이고 포즈도 쓰지 않는다. */
@@ -109,9 +108,10 @@ function lookOf(raw: unknown): { model?: Blueprint; depth?: Buffer } {
 
 /** 저장한 입체 설계도. 없거나 깨졌으면 null (사진으로 보인다) */
 function modelOf(file: string | undefined): Blueprint | null {
-  if (!file) return null;
+  const bytes = readFileIn(petsDir(), file);
+  if (!bytes) return null;
   try {
-    return parseBlueprint(JSON.parse(readFileSync(join(petsDir(), file), 'utf8'))) ?? null;
+    return parseBlueprint(JSON.parse(bytes.toString('utf8'))) ?? null;
   } catch {
     return null;
   }

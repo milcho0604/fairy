@@ -5,6 +5,7 @@ import {
   isAccelerator,
   type KeyPress,
   SHORTCUT_DEFAULTS,
+  shortcutClash,
   toAccelerator,
 } from './shortcut.ts';
 
@@ -48,4 +49,16 @@ test('표시와 검사', () => {
   assert.equal(isAccelerator('CommandOrControl+Alt+='), true);
   assert.equal(isAccelerator('rm -rf'), false);
   assert.equal(isAccelerator('CommandOrControl+Alt+Shift+HH'), false);
+});
+
+test('단축키 겹침: 같은 키 조합(대소문자 무시)이면 두 이름을, 아니면 undefined (버그잡이 6차)', () => {
+  assert.equal(shortcutClash(SHORTCUT_DEFAULTS), undefined);
+  assert.deepEqual(shortcutClash({ hide: 'CommandOrControl+Alt+J', quickAdd: 'CommandOrControl+Alt+J' }), [
+    'hide',
+    'quickAdd',
+  ]);
+  assert.deepEqual(shortcutClash({ hide: 'CommandOrControl+Alt+j', quickAdd: 'CommandOrControl+Alt+J' }), [
+    'hide',
+    'quickAdd',
+  ]);
 });

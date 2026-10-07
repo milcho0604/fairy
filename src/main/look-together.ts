@@ -11,16 +11,22 @@ import {
   shell,
   systemPreferences,
 } from 'electron';
-import { fitWithin, isClick, toPixels } from '../shared/capture.ts';
+import {
+  fitWithin,
+  IMAGE_JPEG_QUALITY,
+  IMAGE_MAX_SIDE,
+  IMAGE_THUMB_SIDE,
+  isClick,
+  needsJpeg,
+  THUMB_JPEG_QUALITY,
+  toPixels,
+} from '../shared/capture.ts';
 import type { Rect } from '../shared/geometry.ts';
 import { t } from '../shared/i18n/index.ts';
 import { LOOK, type OutgoingImage } from '../shared/ipc.ts';
 import { focusWindow, showWindow } from './focus.ts';
 import { langArg } from './lang.ts';
 
-/** AI 에 보낼 그림의 긴 변 최대값 (채팅 창 붙이기와 같은 기준). */
-const MAX_SIDE = 2000;
-const THUMB_SIDE = 480;
 /** 오버레이와 펫이 화면에서 사라질 때까지 기다리는 시간. 짧으면 반투명한 오버레이가 같이 찍힌다. */
 const HIDE_SETTLE_MS = 150;
 const MAC_SCREEN_SETTINGS = 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture';
@@ -43,8 +49,10 @@ export function createLookTogether({ petName, hideOwnWindows, onImage, log }: Lo
   let restore: (() => void) | undefined;
 
   function closeOverlays() {
-    for (const { win } of overlays) if (!win.isDestroyed()) win.destroy();
+    // 목록을 먼저 비운다: destroy 가 부르는 closed 처리기가 "고르지 않고 닫힘"으로 보지 않게
+    const list = overlays;
     overlays = [];
+    for (const { win } of list) if (!win.isDestroyed()) win.destroy();
   }
 
   function finish() {
@@ -99,10 +107,24 @@ export function createLookTogether({ petName, hideOwnWindows, onImage, log }: Lo
         if (display.id === under.id) focusWindow(win);
         else showWindow(win);
       });
+      // 고르지 않았는데 오버레이가 사라지면(모니터를 뽑음, 운영체제가 닫음) 같이 보기를 그만두고 펫을 되돌린다.
+      // 그냥 두면 overlays 가 안 비워져 다음 같이 보기가 막히고 펫이 숨은 채 남았다 (버그잡이 6차)
+      win.once('closed', () => {
+        if (!overlays.some((o) => o.win === win)) return;
+        log('look', 'overlay closed');
+        finish();
+      });
       overlays.push({ win, display });
     }
     log('look', 'start', overlays.length);
   }
+
+  // 같이 보기 중에 모니터가 빠지면 그 모니터의 오버레이가 다른 화면으로 밀려 겹친다. 그만두고 펫을 되돌린다
+  screen.on('display-removed', () => {
+    if (overlays.length === 0) return;
+    log('look', 'display removed');
+    finish();
+  });
 
   ipcMain.on(LOOK.select, async (e: IpcMainEvent, rect: Rect | null) => {
     const entry = overlays.find((o) => o.win.webContents === e.sender);
@@ -148,16 +170,24 @@ export function createLookTogether({ petName, hideOwnWindows, onImage, log }: Lo
     let cropped = shot.crop(toPixels(area, display.size, shot.getSize()));
     if (looksBlank(cropped)) throw new Error('빈 화면 (권한 없음 의심)');
 
-    const fit = fitWithin(cropped.getSize(), MAX_SIDE);
+    // 크기 규칙은 채팅 붙이기와 같다: 긴 변 2000, PNG 가 3.5MB 를 넘으면 JPEG (shared/capture.ts)
+    const fit = fitWithin(cropped.getSize(), IMAGE_MAX_SIDE);
     if (fit) cropped = cropped.resize({ ...fit, quality: 'best' });
-    const thumbSize = fitWithin(cropped.getSize(), THUMB_SIDE) ?? cropped.getSize();
+    const thumbSize = fitWithin(cropped.getSize(), IMAGE_THUMB_SIDE) ?? cropped.getSize();
     const thumb = cropped
       .resize({ ...thumbSize, quality: 'good' })
-      .toJPEG(80)
+      .toJPEG(THUMB_JPEG_QUALITY)
       .toString('base64');
-    log('look', 'captured', JSON.stringify({ ...cropped.getSize(), ms: Date.now() - started }));
+    const png = cropped.toPNG();
+    const jpeg = needsJpeg(png.length);
+    const full = jpeg ? cropped.toJPEG(IMAGE_JPEG_QUALITY) : png;
+    log(
+      'look',
+      'captured',
+      JSON.stringify({ ...cropped.getSize(), bytes: full.length, jpeg, ms: Date.now() - started }),
+    );
     return {
-      full: { mediaType: 'image/png', data: cropped.toPNG().toString('base64') },
+      full: { mediaType: jpeg ? 'image/jpeg' : 'image/png', data: full.toString('base64') },
       thumb: { thumb: `data:image/jpeg;base64,${thumb}` },
     };
   }

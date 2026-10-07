@@ -1,6 +1,7 @@
 // 베타 기록 (P4-04). 기획서 "성공 기준" 다섯 가지를 앱 안에서 세어 보여 준다.
 // 서버로 보내지 않는다. 사용자가 설정 창에서 복사해 의견과 같이 보낸다. 할 일 제목, 대화는 넣지 않는다.
 import type { Db } from './db-schema.ts';
+import type { DiaryFacts } from './diary.ts';
 import { t } from './i18n/index.ts';
 import { localDay } from './todo-store.ts';
 
@@ -115,6 +116,45 @@ export class StatStore {
   /** 집중 타이머로 집중한 분 (v1) */
   addFocus(now: number, minutes: number): void {
     if (minutes > 0) this.#add(now, 'focus_min', Math.round(minutes));
+  }
+
+  /**
+   * 짝꿍 일기에 쓸 그날 기록 (from 부터 DIARY_DAYS 일, 오래된 날부터). 숫자만 담는다(할 일 제목은 없다).
+   * 끝낸 할 일은 todo 에서, 밥은 코인 장부의 food 에서 센다.
+   */
+  diaryFacts(days: readonly string[]): DiaryFacts[] {
+    if (days.length === 0) return [];
+    const want = new Set(days);
+    const rows = this.#db
+      .prepare(`select * from daily_stat where day in (${days.map(() => '?').join(',')})`)
+      .all(...days) as Row[];
+    const byDay = new Map(rows.map((r) => [r.day, r]));
+    const done = new Map<string, number>();
+    const doneRows = this.#db
+      .prepare('select done_at from todo where done_at is not null and deleted_at is null')
+      .all() as { done_at: number }[];
+    for (const r of doneRows) {
+      const d = this.#day(Number(r.done_at));
+      if (want.has(d)) done.set(d, (done.get(d) ?? 0) + 1);
+    }
+    const fedRows = this.#db
+      .prepare(
+        `select day, count(*) as n from coin_log where reason = 'food' and day in (${days.map(() => '?').join(',')}) group by day`,
+      )
+      .all(...days) as { day: string; n: number }[];
+    const fed = new Map(fedRows.map((r) => [r.day, Number(r.n)]));
+    return days.map((day) => {
+      const r = byDay.get(day);
+      return {
+        day,
+        onMin: Number(r?.on_min ?? 0),
+        done: done.get(day) ?? 0,
+        focusMin: Number(r?.focus_min ?? 0),
+        walkMin: Number(r?.walk_min ?? 0),
+        lookCount: Number(r?.look_count ?? 0),
+        fed: fed.get(day) ?? 0,
+      };
+    });
   }
 
   report(now: number): BetaReport {

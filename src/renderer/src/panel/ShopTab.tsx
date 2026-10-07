@@ -17,6 +17,8 @@ const bridge = window.jjakkungPanel;
 /** 상점 (v1): 먹이(바로 주기), 커스텀 먹이, 장난감, 집. 코인은 할 일과 집중으로만 모인다. */
 export function ShopTab({ s }: { s: PanelState }) {
   const [msg, setMsg] = useState<{ text: string; bad?: boolean }>();
+  // 커스텀 먹이 지우기는 두 번 눌러야 한다 (설정의 저장 공간 지우기와 같은 방식). 처음 누르면 이 키
+  const [sure, setSure] = useState('');
   const shop = s.shop;
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const flash = (text: string, bad = false) => {
@@ -25,11 +27,22 @@ export function ShopTab({ s }: { s: PanelState }) {
     setMsg({ text, bad });
     timer.current = setTimeout(() => setMsg(undefined), 2400);
   };
-  const run = async (p: Promise<{ ok: boolean; error?: string }>, ok: string) => {
-    const r = await p;
-    flash(r.ok ? ok : (r.error ?? t('shop.failed')), !r.ok);
+  // 사는 중에는 다른 사기를 막는다. 두 번 누르면 바뀐 단추(짓기에서 늘리기)로 한 번 더 사진다
+  const busy = useRef(false);
+  const [pending, setPending] = useState(false);
+  const run = async (start: () => Promise<{ ok: boolean; error?: string }>, ok: string) => {
+    if (busy.current) return;
+    busy.current = true;
+    setPending(true);
+    try {
+      const r = await start();
+      flash(r.ok ? ok : (r.error ?? t('shop.failed')), !r.ok);
+    } finally {
+      busy.current = false;
+      setPending(false);
+    }
   };
-  const feed = (f: Food) => run(bridge.feedWith(f.key), t('shop.fed', { name: f.name }));
+  const feed = (f: Food) => run(() => bridge.feedWith(f.key), t('shop.fed', { name: f.name }));
   const level = shop.houseLevel;
   const nextHouse = HOUSE_COSTS[level];
 
@@ -69,11 +82,21 @@ export function ShopTab({ s }: { s: PanelState }) {
                 {/* 지우기는 이름 옆에 둔다. 줄 끝에 두면 이 줄만 가격과 주기 단추가 밀린다 */}
                 <button
                   type="button"
-                  className="remove"
-                  aria-label={t('panel.todo.remove', { title: f.name })}
-                  onClick={() => bridge.removeFood(f.key)}
+                  className={`remove${sure === f.key ? ' sure' : ''}`}
+                  aria-label={
+                    sure === f.key ? t('shop.removeSure') : t('panel.todo.remove', { title: f.name })
+                  }
+                  onClick={() => {
+                    if (sure !== f.key) {
+                      setSure(f.key);
+                      return;
+                    }
+                    setSure('');
+                    bridge.removeFood(f.key);
+                  }}
+                  onBlur={() => setSure((k) => (k === f.key ? '' : k))}
                 >
-                  ×
+                  {sure === f.key ? t('shop.removeSure') : '×'}
                 </button>
               </span>
               <Price n={f.cost} />
@@ -97,7 +120,7 @@ export function ShopTab({ s }: { s: PanelState }) {
             type="button"
             className="ghost small"
             disabled={shop.balance < CUSTOM_FOOD_COST || shop.customFoods.length >= CUSTOM_FOOD_MAX}
-            onClick={() => run(bridge.makeFood(), t('shop.makerOpened'))}
+            onClick={() => run(() => bridge.makeFood(), t('shop.makerOpened'))}
           >
             {t('shop.make')}
           </button>
@@ -121,7 +144,7 @@ export function ShopTab({ s }: { s: PanelState }) {
                     type="button"
                     className="ghost small"
                     disabled={shop.balance < toy.cost}
-                    onClick={() => run(bridge.buyToy(toy.key), t('shop.bought', { name: toy.name }))}
+                    onClick={() => run(() => bridge.buyToy(toy.key), t('shop.bought', { name: toy.name }))}
                   >
                     {t('shop.buy')}
                   </button>
@@ -163,8 +186,8 @@ export function ShopTab({ s }: { s: PanelState }) {
               <button
                 type="button"
                 className="ghost small"
-                disabled={shop.balance < nextHouse}
-                onClick={() => run(bridge.buyHouse(), t('shop.newHouse'))}
+                disabled={pending || shop.balance < nextHouse}
+                onClick={() => run(() => bridge.buyHouse(level), t('shop.newHouse'))}
               >
                 {level === 0 ? t('shop.build') : t('shop.upgrade')}
               </button>

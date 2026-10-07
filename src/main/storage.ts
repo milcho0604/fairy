@@ -6,9 +6,10 @@ import { app } from 'electron';
 import type { Catalog } from '../shared/ai/catalog.ts';
 import { t } from '../shared/i18n/index.ts';
 import type { StoredModel } from '../shared/ipc.ts';
-import { localModelPath, stopLocal } from './ai/local.ts';
+import { localBusy, localModelPath, stopLocal } from './ai/local.ts';
 import { BG_MODEL } from './bg-model.ts';
 import { DEPTH_MODEL } from './depth-model.ts';
+import { forgetVerified, isReceiving } from './download.ts';
 
 const modelsDir = () => join(app.getPath('userData'), 'models');
 
@@ -55,12 +56,14 @@ export function storedModels(catalog: Catalog): StoredModel[] {
   const llmDir = join(modelsDir(), 'llm');
   if (existsSync(llmDir)) {
     const listed = new Set(known(catalog).map((k) => k.path));
-    for (const f of readdirSync(llmDir)) {
-      const path = join(llmDir, f);
+    for (const f of readdirSync(llmDir, { withFileTypes: true })) {
+      // 숨김 파일(.DS_Store)과 폴더는 모델이 아니다
+      if (!f.isFile() || f.name.startsWith('.')) continue;
+      const path = join(llmDir, f.name);
       if (listed.has(path) || listed.has(path.replace(/\.part$/, ''))) continue;
       out.push({
-        id: `file:${f}`,
-        label: t('settings.storage.oldFile', { name: f }),
+        id: `file:${f.name}`,
+        label: t('settings.storage.oldFile', { name: f.name }),
         kind: 'llm',
         bytes: sizeOf(path),
       });
@@ -69,19 +72,32 @@ export function storedModels(catalog: Catalog): StoredModel[] {
   return out;
 }
 
-/** 모델 하나를 지운다. 무료 AI 는 먼저 일꾼을 끝낸다 (파일을 연 채라서) */
+/**
+ * 모델 하나를 지운다. 받는 중이거나 무료 AI 가 답하는 중이면 지우지 않는다(false).
+ * 무료 AI 는 먼저 일꾼을 끝낸다 (파일을 연 채라서, 윈도우는 열린 파일을 못 지운다)
+ */
 export function removeModel(catalog: Catalog, id: string): boolean {
+  let path: string;
+  let llm: boolean;
   if (id.startsWith('file:')) {
     const f = id.slice(5);
-    if (!/^[\w.-]+$/.test(f)) return false;
-    stopLocal();
-    rmSync(join(modelsDir(), 'llm', f), { force: true });
-    return true;
+    if (!/^[\w-][\w.-]*$/.test(f)) return false;
+    path = join(modelsDir(), 'llm', f);
+    llm = true;
+  } else {
+    const k = known(catalog).find((x) => x.id === id);
+    if (!k) return false;
+    path = k.path;
+    llm = k.kind === 'llm';
   }
-  const k = known(catalog).find((x) => x.id === id);
-  if (!k) return false;
-  if (k.kind === 'llm') stopLocal();
-  rmSync(k.path, { force: true });
-  rmSync(`${k.path}.part`, { force: true });
+  if (isReceiving(path) || (llm && localBusy())) return false;
+  if (llm) stopLocal();
+  try {
+    rmSync(path, { force: true });
+    rmSync(`${path}.part`, { force: true });
+  } catch {
+    return false;
+  }
+  forgetVerified(path);
   return true;
 }

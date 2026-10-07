@@ -46,3 +46,52 @@ export function fitWithin(size: { width: number; height: number }, max: number) 
   if (k >= 1) return undefined;
   return { width: Math.max(1, Math.round(size.width * k)), height: Math.max(1, Math.round(size.height * k)) };
 }
+
+// ---- AI 에 보낼 그림 규칙: 채팅 붙이기(images.ts)와 같이 보기(look-together.ts)가 같이 쓴다 ----
+
+/** 긴 변 최대값. 이보다 크면 줄인다 (글자는 읽히고 토큰은 덜 쓰는 크기) */
+export const IMAGE_MAX_SIDE = 2000;
+/** 이보다 큰 PNG 는 JPEG 로 바꾼다 (claude 이미지 한 장 5MB 제한보다 여유 있게) */
+export const IMAGE_MAX_BYTES = 3_500_000;
+/** 대화 기록에 남길 작은 그림. 배율 2 화면에서 220px 로 보여도 선명하도록 두 배로 만든다 */
+export const IMAGE_THUMB_SIDE = 480;
+/** JPEG 로 바꿀 때 품질 (0~100) */
+export const IMAGE_JPEG_QUALITY = 90;
+export const THUMB_JPEG_QUALITY = 80;
+
+/** PNG 바이트 수로 JPEG 로 바꿔야 하는지 */
+export const needsJpeg = (pngBytes: number) => pngBytes > IMAGE_MAX_BYTES;
+
+/** 채팅에 한 번에 붙일 수 있는 그림 수 (채팅 창과 같다) */
+export const SEND_IMAGES_MAX = 4;
+const SEND_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+/** base64 글자 수 상한 (약 9MB 그림). 화면은 3.5MB 를 넘으면 JPEG 로 줄여 보낸다 */
+const SEND_DATA_MAX = 12_000_000;
+const THUMB_DATA_MAX = 2_000_000;
+
+/**
+ * 채팅 창이 보낸 그림을 메인이 다시 본다. 형식은 허용 목록만(임시 파일 확장자로 쓰인다), 크기와 개수에 상한.
+ * 하나라도 이상하면 빈 목록 대신 undefined (보내지 않는다).
+ */
+export function cleanSendImages(
+  v: unknown,
+): { full: { mediaType: string; data: string }; thumb: { thumb: string } }[] | undefined {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v) || v.length > SEND_IMAGES_MAX) return undefined;
+  const out = [];
+  for (const i of v) {
+    const full = (i as { full?: { mediaType?: unknown; data?: unknown } } | null)?.full;
+    const thumb = (i as { thumb?: { thumb?: unknown } } | null)?.thumb?.thumb;
+    if (typeof full?.mediaType !== 'string' || !SEND_TYPES.has(full.mediaType)) return undefined;
+    if (
+      typeof full.data !== 'string' ||
+      full.data.length > SEND_DATA_MAX ||
+      !/^[A-Za-z0-9+/=]*$/.test(full.data)
+    )
+      return undefined;
+    if (typeof thumb !== 'string' || thumb.length > THUMB_DATA_MAX || !thumb.startsWith('data:image/'))
+      return undefined;
+    out.push({ full: { mediaType: full.mediaType, data: full.data }, thumb: { thumb } });
+  }
+  return out;
+}

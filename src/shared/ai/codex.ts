@@ -1,6 +1,7 @@
 // codex CLI 의 exec --json 명령을 만들고 출력을 읽는다. 0단계 검증 X1~X8, L4, L5.
 import { t } from '../i18n/index.ts';
 import { classifyError } from './errors.ts';
+import { argText } from './text.ts';
 import type { AiEvent } from './types.ts';
 
 const LABEL = {
@@ -38,10 +39,9 @@ export function codexArgs(turn: CodexTurn): string[] {
     ...(turn.model ? ['-m', turn.model] : []),
     ...turn.imagePaths.flatMap((p) => ['-i', p]),
   ];
-  if (turn.ephemeral) return ['exec', turn.text, '--ephemeral', ...common];
-  return turn.threadId
-    ? ['exec', 'resume', turn.threadId, turn.text, ...common]
-    : ['exec', turn.text, ...common];
+  const text = argText(turn.text);
+  if (turn.ephemeral) return ['exec', text, '--ephemeral', ...common];
+  return turn.threadId ? ['exec', 'resume', turn.threadId, text, ...common] : ['exec', text, ...common];
 }
 
 /** 출력 한 줄을 사건으로 바꾼다. codex 는 답을 조각 없이 한 번에 준다(L4). 로그 줄이 섞이면 버린다. */

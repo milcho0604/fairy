@@ -6,6 +6,12 @@ export interface Exchange {
   answer: string;
 }
 
+/**
+ * 질문을 CLI 인자로 넘길 때 "-" 로 시작하면 옵션으로 읽힌다 (codex: "unexpected argument").
+ * 앞에 빈칸 하나를 붙이면 값으로 읽히고 답에는 영향이 없다.
+ */
+export const argText = (text: string) => (text.startsWith('-') ? ` ${text}` : text);
+
 /** 붙여 보낼 최근 대화 수. 길수록 정확하지만 느리고 비싸다. */
 export const HISTORY_TURNS = 4;
 

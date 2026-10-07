@@ -27,6 +27,36 @@ const verified = new Set<string>();
 /** 이미 받아서 해시까지 맞춘 파일인지 (이번 실행에서) */
 export const isVerified = (path: string) => verified.has(path);
 export const markVerified = (path: string) => void verified.add(path);
+/** 지운 파일은 다음에 다시 맞춰 본다 */
+export const forgetVerified = (path: string) => void verified.delete(path);
+
+/** 지금 받는 중인 파일 (저장 공간에서 지우지 못하게) */
+const receiving = new Set<string>();
+/** 지금 해시를 맞춰 보는 파일과 그 수 (몇 GB 라 수십 초 걸린다. 그동안도 지우지 못하게) */
+const checking = new Map<string, number>();
+export const isReceiving = (path: string) => receiving.has(path) || (checking.get(path) ?? 0) > 0;
+
+/**
+ * 있는 파일의 해시를 맞춰 본다(실행마다 한 번). 맞추는 동안은 받는 중처럼 표시해 저장 공간에서 지우지 못하게 한다.
+ * 안 맞으면 지우고 false (버그잡이 6차: 맞추는 중에 지울 수 있었다)
+ */
+export async function verifyExisting(path: string, sha256: string): Promise<boolean> {
+  if (!existsSync(path)) return false;
+  if (verified.has(path)) return true;
+  checking.set(path, (checking.get(path) ?? 0) + 1);
+  try {
+    if ((await sha256Of(path)) === sha256) {
+      verified.add(path);
+      return true;
+    }
+  } finally {
+    const n = (checking.get(path) ?? 1) - 1;
+    if (n > 0) checking.set(path, n);
+    else checking.delete(path);
+  }
+  rmSync(path, { force: true }); // 깨진 파일은 지운다 (다시 받게)
+  return false;
+}
 
 /**
  * 파일을 준비한다. 있으면 해시를 맞춰 보고(실행마다 한 번), 없거나 깨졌으면 받는다.
@@ -37,14 +67,18 @@ export async function ensureVerified(
   onProgress: (ratio: number) => void,
   signal?: AbortSignal,
 ): Promise<string> {
-  if (existsSync(f.path)) {
-    if (verified.has(f.path)) return f.path;
-    if ((await sha256Of(f.path)) === f.sha256) {
-      verified.add(f.path);
-      return f.path;
-    }
-    rmSync(f.path, { force: true }); // 깨진 파일은 지우고 다시 받는다
+  // 있으면 해시를 맞춰 본다. 깨졌으면 verifyExisting 이 지우고 아래에서 다시 받는다
+  if (await verifyExisting(f.path, f.sha256)) return f.path;
+  if (receiving.has(f.path)) throw new Error(t('main.model.busy'));
+  receiving.add(f.path);
+  try {
+    return await receive(f, onProgress, signal);
+  } finally {
+    receiving.delete(f.path);
   }
+}
+
+async function receive(f: VerifiedFile, onProgress: (ratio: number) => void, signal?: AbortSignal) {
   mkdirSync(dirname(f.path), { recursive: true });
   const part = `${f.path}.part`;
   // 앱의 다른 곳(일정, 목록, 업데이트)처럼 Electron net 으로 받는다. Node fetch 는 연결 시간 초과가 잦았다

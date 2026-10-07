@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { dragRect, fitWithin, isClick, toPixels } from './capture.ts';
+import {
+  cleanSendImages,
+  dragRect,
+  fitWithin,
+  IMAGE_MAX_BYTES,
+  isClick,
+  needsJpeg,
+  SEND_IMAGES_MAX,
+  toPixels,
+} from './capture.ts';
 
 const screen = { width: 1512, height: 982 };
 
@@ -47,4 +56,25 @@ test('캡처 그림 밖으로는 안 나간다', () => {
 test('긴 변 기준으로 줄인다', () => {
   assert.deepEqual(fitWithin({ width: 4000, height: 1000 }, 2000), { width: 2000, height: 500 });
   assert.equal(fitWithin({ width: 800, height: 600 }, 2000), undefined);
+});
+
+test('AI 에 보낼 그림: 3.5MB 를 넘는 PNG 만 JPEG 로 (채팅 붙이기와 같이 보기가 같은 규칙)', () => {
+  assert.equal(IMAGE_MAX_BYTES, 3_500_000);
+  assert.equal(needsJpeg(IMAGE_MAX_BYTES), false);
+  assert.equal(needsJpeg(IMAGE_MAX_BYTES + 1), true);
+  assert.equal(needsJpeg(200_000), false);
+});
+
+test('채팅 그림 검사: 허용 형식, 개수, base64 만 통과', () => {
+  const ok = {
+    full: { mediaType: 'image/png', data: 'iVBORw0KGgo=' },
+    thumb: { thumb: 'data:image/jpeg;base64,AA==' },
+  };
+  assert.deepEqual(cleanSendImages([ok]), [ok]);
+  assert.deepEqual(cleanSendImages(undefined), []);
+  assert.equal(cleanSendImages([{ ...ok, full: { mediaType: 'image/..\\..\\x', data: 'AA==' } }]), undefined);
+  assert.equal(cleanSendImages([{ ...ok, full: { mediaType: 'image/png', data: '../etc' } }]), undefined);
+  assert.equal(cleanSendImages([{ ...ok, thumb: { thumb: 'javascript:1' } }]), undefined);
+  assert.equal(cleanSendImages(Array(SEND_IMAGES_MAX + 1).fill(ok)), undefined);
+  assert.equal(cleanSendImages('x'), undefined);
 });

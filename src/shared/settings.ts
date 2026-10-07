@@ -1,8 +1,10 @@
 // 사용자 설정 (P1-12). 2단계에서 SQLite 로 옮기기 전까지 JSON 파일 하나에 둔다.
 import { isPersona, type PersonaId } from './ai/persona.ts';
 import type { ChatterLevel } from './chatter.ts';
+import { type FocusLength, isFocusLength } from './focus.ts';
 import { type LangPref, t } from './i18n/index.ts';
-import { isAccelerator, SHORTCUT_DEFAULTS, type ShortcutId } from './shortcut.ts';
+import { cleanIcsUrl } from './ics.ts';
+import { isAccelerator, SHORTCUT_DEFAULTS, type ShortcutId, shortcutClash } from './shortcut.ts';
 
 export interface Settings {
   /** 펫 이름. 메뉴, 채팅, 말풍선, AI 성격 지시에 쓰인다 */
@@ -60,6 +62,14 @@ export interface Settings {
   petLibrary: SavedPet[];
   /** 짝꿍 규칙 (6단계). AI 에게 늘 같이 보내는 사용자의 지시 (CLAUDE.md, AGENTS.md 처럼) */
   petRules: string;
+  /** 집중 타이머 길이 (15, 25, 50분). 마지막에 고른 것 */
+  focusMin: FocusLength;
+  /** 한가할 때 커서 쪽을 바라본다 */
+  lookAtCursor: boolean;
+  /** 짝꿍 일기를 지금 고른 AI 로 다듬기 (기본 끔. 켜도 숫자와 펫 문장만 보낸다) */
+  diaryAi: boolean;
+  /** 효과음 (기본 끔). 집중, 잠, 숨김 중에는 안 낸다 */
+  sounds: boolean;
 }
 
 /** 보관한 사진 펫. 파일은 pets/ 안 */
@@ -180,6 +190,10 @@ export const DEFAULT_SETTINGS: Settings = {
   aiModels: {},
   petLibrary: [],
   petRules: '',
+  focusMin: 25,
+  lookAtCursor: true,
+  diaryAi: false,
+  sounds: false,
 };
 
 export const PET_NAME_MAX = 12;
@@ -242,6 +256,10 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     petLibrary: Array.isArray(r.petLibrary) ? libraryOf(r.petLibrary) : base.petLibrary,
     petRules:
       typeof r.petRules === 'string' ? r.petRules.replace(/\r\n/g, '\n').slice(0, RULES_MAX) : base.petRules,
+    focusMin: isFocusLength(r.focusMin) ? r.focusMin : base.focusMin,
+    lookAtCursor: bool(r.lookAtCursor, base.lookAtCursor),
+    diaryAi: bool(r.diaryAi, base.diaryAi),
+    sounds: bool(r.sounds, base.sounds),
     ...(typeof r.skipVersion === 'string' && /^\d+\.\d+\.\d+/.test(r.skipVersion)
       ? { skipVersion: r.skipVersion.slice(0, 32) }
       : base.skipVersion
@@ -347,16 +365,16 @@ function shortcutsOf(v: unknown, current: Record<ShortcutId, string>): Record<Sh
   const r = (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>;
   const out = { ...current };
   for (const id of Object.keys(SHORTCUT_DEFAULTS) as ShortcutId[]) if (isAccelerator(r[id])) out[id] = r[id];
-  // 두 단축키가 같으면 바꾼 쪽을 버린다
-  if (out.hide === out.quickAdd) return { ...current };
+  // 두 단축키가 같으면 바꾼 쪽을 버린다 (화면은 shortcutClash 로 먼저 알리고 보내지 않는다)
+  if (shortcutClash(out)) return { ...current };
   return out;
 }
 
-/** 캘린더 주소: https 만. 빈 글이나 null 이면 지운다 */
+/** 캘린더 주소: https 만, webcal:// 은 https 로 바꿔 받는다 (가져오기와 같은 cleanIcsUrl). 빈 글이나 null 이면 지운다 */
 function icsOf(v: unknown, current: string | undefined): { icsUrl?: string } {
   if (v === null || v === '') return {};
-  if (typeof v === 'string' && /^https:\/\/\S+$/.test(v.trim()) && v.length < 2000)
-    return { icsUrl: v.trim() };
+  const url = typeof v === 'string' && v.length < 2000 ? cleanIcsUrl(v) : undefined;
+  if (url) return { icsUrl: url };
   return current ? { icsUrl: current } : {};
 }
 

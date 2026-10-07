@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { parseMcpList } from '../../shared/ai/claude.ts';
 import { readJson, writeJson } from '../store.ts';
-import { getShellEnv, resolveBin } from './shell-env.ts';
+import { getShellEnv, launchOf, resolveBin } from './shell-env.ts';
 
 const FILE = 'ai-mcp';
 const FRESH_MS = 24 * 3_600_000;
@@ -19,17 +19,24 @@ export function mcpServers(log: (tag: string, ...rest: unknown[]) => void): stri
   return cache?.servers ?? [];
 }
 
+/** 저장해 둔 목록만 (새로 읽지 않는다). 내 MCP 쓰기를 끈 사람의 claude 는 건드리지 않는다 */
+export function cachedMcpServers(): string[] {
+  cache ??= readJson(FILE) as typeof cache;
+  return cache?.servers ?? [];
+}
+
 export function refreshMcpServers(log: (tag: string, ...rest: unknown[]) => void): Promise<string[]> {
   running ??= (async () => {
     try {
       const env = await getShellEnv();
       const cli = resolveBin('claude', env);
-      if (!cli) return [];
+      const launch = cli ? launchOf(cli, env) : undefined;
+      if (!launch) return [];
       const out = await new Promise<string>((resolve) => {
         execFile(
-          cli,
-          ['mcp', 'list'],
-          { env: { ...process.env, PATH: env.path }, timeout: 60_000, encoding: 'utf8' },
+          launch.file,
+          [...launch.pre, 'mcp', 'list'],
+          { env: { ...process.env, PATH: env.path, ...launch.env }, timeout: 60_000, encoding: 'utf8' },
           (_e, stdout) => resolve(stdout ?? ''),
         );
       });

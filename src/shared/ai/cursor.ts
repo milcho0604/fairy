@@ -5,6 +5,7 @@
 import { t } from '../i18n/index.ts';
 import { parseClaudeLine } from './claude.ts';
 import { classifyError } from './errors.ts';
+import { argText } from './text.ts';
 import type { AiEvent } from './types.ts';
 
 export interface CursorTurn {
@@ -24,7 +25,7 @@ export function cursorArgs(turn: CursorTurn): string[] {
     '--mode',
     'ask',
     ...(turn.sessionId ? ['--resume', turn.sessionId] : []),
-    prompt,
+    argText(prompt),
   ];
 }
 

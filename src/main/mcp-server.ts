@@ -205,6 +205,9 @@ type Json = Record<string, unknown>;
 
 /** 요청 하나를 처리해 응답(알림이면 undefined)을 돌려준다. 시험에서도 부른다. */
 export function handle(msg: Json): Json | undefined {
+  // null, 숫자, 배열(일괄 요청) 한 줄에 서버가 죽지 않게. 일괄 요청은 지원하지 않는다
+  if (typeof msg !== 'object' || msg === null || Array.isArray(msg))
+    return { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Invalid Request' } };
   const id = msg.id;
   const reply = (result: unknown) => ({ jsonrpc: '2.0', id, result });
   const fail = (code: number, message: string) => ({ jsonrpc: '2.0', id, error: { code, message } });
@@ -257,7 +260,18 @@ function main() {
       );
       return;
     }
-    const out = handle(msg);
+    let out: Json | undefined;
+    try {
+      out = handle(msg);
+    } catch (err) {
+      // 도구 하나가 던져도 서버는 살아 있게
+      const id = typeof msg === 'object' && msg !== null && !Array.isArray(msg) ? (msg.id ?? null) : null;
+      out = {
+        jsonrpc: '2.0',
+        id,
+        error: { code: -32603, message: err instanceof Error ? err.message : String(err) },
+      };
+    }
     if (out) process.stdout.write(`${JSON.stringify(out)}\n`);
   });
 }

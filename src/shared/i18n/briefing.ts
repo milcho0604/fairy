@@ -15,6 +15,9 @@ export const ko = {
   'briefing.review.one': '오늘 "{title}" 끝냈어. 수고했어!',
   'briefing.review.many': '오늘 할 일 {n}개 끝냈어. 수고했어!',
   'briefing.review.left': (v: { n: number }) => `오늘 마감 ${v.n}개가 남았는데 내일로 넘길까?`,
+  'briefing.due.left': (v: { n: number; list: string }) => `오늘 마감인 할 일이 ${v.n}개 남았어. ${v.list}`,
+  'briefing.due.more': (v: { n: number }) => ` 외 ${v.n}개`,
+  'briefing.due.open': '볼게',
 };
 
 export const en: Translation<typeof ko> = {
@@ -34,4 +37,8 @@ export const en: Translation<typeof ko> = {
     v.n === 1
       ? 'One to-do due today is still open. Move it to tomorrow?'
       : `${v.n} to-dos due today are still open. Move them to tomorrow?`,
+  'briefing.due.left': (v: { n: number; list: string }) =>
+    v.n === 1 ? `One to-do is due today: ${v.list}` : `${v.n} to-dos are due today: ${v.list}`,
+  'briefing.due.more': (v: { n: number }) => ` and ${v.n} more`,
+  'briefing.due.open': 'Show me',
 };

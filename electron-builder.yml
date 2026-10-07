@@ -58,4 +58,10 @@ nsis:
   deleteAppDataOnUninstall: false
 dmg:
   title: 짝꿍 ${version}
-publish: null
+# 윈도우 자동 설치(electron-updater)가 읽을 latest.yml 과 차이 받기용 .blockmap 을 같이 만든다.
+# 레포는 src/shared/update-policy.ts 의 RELEASE_REPO 와 같아야 한다 (다르면 시험이 깨진다. D8 때 같이 바꾼다).
+# 올리기는 하지 않는다: 스크립트가 --publish never 로 돌고, 릴리스 초안은 release.yml 의 gh 가 만든다.
+publish:
+  provider: github
+  owner: milcho0604
+  repo: jjakkung

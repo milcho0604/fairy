@@ -50,6 +50,11 @@ export class ChatterGate {
     this.level = level;
   }
 
+  /** 이 수다 빈도에서 이 종류를 말하는지 (세지 않는다. 숨어 있을 때 모아 둘지 정할 때) */
+  allows(kind: BubbleKind): boolean {
+    return ENABLED[this.level].includes(kind);
+  }
+
   /** 지금 이 종류의 말풍선을 띄워도 되는지. 된다면 띄운 것으로 센다. */
   take(kind: BubbleKind, now: number): boolean {
     if (!ENABLED[this.level].includes(kind)) return false;

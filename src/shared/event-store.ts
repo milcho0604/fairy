@@ -93,21 +93,25 @@ export class EventStore {
     const remindMin = patch.remindMin === undefined ? e.remindMin : clampRemind(patch.remindMin);
     // 시각이나 알림 시점을 바꾸면 다시 알린다.
     const renotify = startAt !== e.startAt || remindMin !== e.remindMin;
+    // 제목이나 시각을 고치면 사용자 것으로 둔다: 가져온 일정이면 다음 가져오기가 덮지 않는다
+    const edited = title !== e.title || startAt !== e.startAt || endAt !== e.endAt;
     this.#db
       .prepare(
         `update event set title = ?, start_at = ?, end_at = ?, remind_min = ?,
-         notified_at = case when ? then null else notified_at end where id = ?`,
+         notified_at = case when ? then null else notified_at end,
+         user_edited = case when ? then 1 else user_edited end where id = ?`,
       )
-      .run(title, startAt, endAt, remindMin, renotify ? 1 : 0, id);
+      .run(title, startAt, endAt, remindMin, renotify ? 1 : 0, edited ? 1 : 0, id);
     return this.get(id);
   }
 
+  /** 사용자가 지운다. 가져온 일정이면 지운 채로 기억해(묘비) 다음 가져오기가 되살리지 않는다 */
   remove(id: number, now: number): void {
-    this.#db.prepare('update event set deleted_at = ? where id = ?').run(now, id);
+    this.#db.prepare("update event set deleted_at = ?, removed_by = 'user' where id = ?").run(now, id);
   }
 
   restore(id: number): void {
-    this.#db.prepare('update event set deleted_at = null where id = ?').run(id);
+    this.#db.prepare('update event set deleted_at = null, removed_by = null where id = ?').run(id);
   }
 
   /** 지금 알릴 일정: 알림 시점이 됐고 아직 안 알렸으며, 시작한 지 5분이 안 지난 것 */
@@ -123,12 +127,21 @@ export class EventStore {
   }
 
   /**
-   * 캘린더에서 가져온 일정 맞추기 (v2). 같은 UID 는 고치고, 새것은 넣고, 범위 안에서 캘린더에 없어진 것은 지운다.
+   * 캘린더에서 가져온 일정 맞추기 (v2). 키는 UID 와 회차(recurrenceId)라 반복 일정의 회차마다 한 행이다.
+   * 같은 키는 바뀐 것만 고치고(안 바뀐 행은 알림 표시를 그대로 둔다), 새것은 넣고, 범위 안에서 캘린더에 없어진 것은 지운다.
+   * 사용자가 지운 것은 지운 채로 두고(묘비), 사용자가 고친 것은 덮지 않는다.
    * 종일 일정은 알리지 않는다(알림 시각을 이미 지난 것으로 둔다). 고친 수를 돌려준다.
    */
   syncExternal(
     source: 'ics',
-    list: readonly { uid: string; title: string; startAt: number; endAt: number | null; allDay: boolean }[],
+    list: readonly {
+      uid: string;
+      recurrenceId?: string | null;
+      title: string;
+      startAt: number;
+      endAt: number | null;
+      allDay: boolean;
+    }[],
     from: number,
     to: number,
     now: number,
@@ -139,13 +152,25 @@ export class EventStore {
     try {
       const seen = new Set<string>();
       for (const e of list) {
-        seen.add(e.uid);
+        const key = externalKey(e);
+        // 같은 키가 두 번 오면 앞의 것만 (둘이 한 행을 서로 덮어 매번 "고침"이 되지 않게)
+        if (seen.has(key)) continue;
+        seen.add(key);
         const old = this.#db
           .prepare(
-            'select id, title, start_at, end_at, deleted_at from event where source = ? and external_id = ?',
+            `select id, title, start_at, end_at, deleted_at, removed_by, user_edited
+             from event where source = ? and external_id = ?`,
           )
-          .get(source, e.uid) as
-          | { id: number; title: string; start_at: number; end_at: number | null; deleted_at: number | null }
+          .get(source, key) as
+          | {
+              id: number;
+              title: string;
+              start_at: number;
+              end_at: number | null;
+              deleted_at: number | null;
+              removed_by: string | null;
+              user_edited: number;
+            }
           | undefined;
         const notified = e.allDay ? e.startAt : null;
         if (!old) {
@@ -154,27 +179,33 @@ export class EventStore {
               `insert into event (title, start_at, end_at, remind_min, notified_at, created_at, source, external_id)
                values (?, ?, ?, ?, ?, ?, ?, ?)`,
             )
-            .run(
-              e.title,
-              e.startAt,
-              e.endAt,
-              e.allDay ? 0 : DEFAULT_REMIND_MIN,
-              notified,
-              now,
-              source,
-              e.uid,
-            );
+            .run(e.title, e.startAt, e.endAt, e.allDay ? 0 : DEFAULT_REMIND_MIN, notified, now, source, key);
           added++;
-        } else if (
+          continue;
+        }
+        // 사용자가 지운 것: 캘린더에 있어도 되살리지 않는다
+        if (old.deleted_at !== null && old.removed_by === 'user') continue;
+        const revive = old.deleted_at !== null;
+        // 사용자가 고친 것: 제목과 시각은 사용자 것. 캘린더에서 없어졌다 돌아온 경우만 되살린다
+        if (Number(old.user_edited)) {
+          if (revive) {
+            this.#db
+              .prepare('update event set deleted_at = null, removed_by = null where id = ?')
+              .run(old.id);
+            updated++;
+          }
+          continue;
+        }
+        const moved = Number(old.start_at) !== e.startAt;
+        if (
+          revive ||
+          moved ||
           old.title !== e.title ||
-          Number(old.start_at) !== e.startAt ||
-          (old.end_at === null ? null : Number(old.end_at)) !== e.endAt ||
-          old.deleted_at !== null
+          (old.end_at === null ? null : Number(old.end_at)) !== e.endAt
         ) {
-          const moved = Number(old.start_at) !== e.startAt;
           this.#db
             .prepare(
-              `update event set title = ?, start_at = ?, end_at = ?, deleted_at = null,
+              `update event set title = ?, start_at = ?, end_at = ?, deleted_at = null, removed_by = null,
                notified_at = case when ? then ? else notified_at end where id = ?`,
             )
             .run(e.title, e.startAt, e.endAt, moved ? 1 : 0, notified, old.id);
@@ -187,7 +218,8 @@ export class EventStore {
         )
         .all(source, from, to) as { id: number; external_id: string }[];
       const gone = inRange.filter((r) => !seen.has(r.external_id));
-      for (const r of gone) this.#db.prepare('update event set deleted_at = ? where id = ?').run(now, r.id);
+      for (const r of gone)
+        this.#db.prepare("update event set deleted_at = ?, removed_by = 'sync' where id = ?").run(now, r.id);
       this.#db.exec('commit');
       return { added, updated, removed: gone.length };
     } catch (err) {
@@ -199,6 +231,11 @@ export class EventStore {
   markNotified(id: number, now: number): void {
     this.#db.prepare('update event set notified_at = ? where id = ?').run(now, id);
   }
+}
+
+/** 가져온 일정의 저장 키: 한 번뿐인 일정은 UID, 반복 일정의 회차는 "UID#회차" */
+export function externalKey(e: { uid: string; recurrenceId?: string | null }): string {
+  return e.recurrenceId ? `${e.uid}#${e.recurrenceId}` : e.uid;
 }
 
 function clampRemind(n: number): number {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
-import { type Db, migrate } from './db-schema.ts';
+import { type Db, MIGRATIONS, migrate, SCHEMA_VERSION } from './db-schema.ts';
 import { EventStore, parseQuickEvent, timeLabel } from './event-store.ts';
 import { NoteStore, notePreview, noteTitle } from './note-store.ts';
 
@@ -172,4 +172,106 @@ test('없는 날짜와 시각은 일정으로 받지 않는다 (버그잡이 점
     assert.equal(parseQuickEvent(bad, today, nine), null, bad);
   }
   assert.equal(parseQuickEvent('2/28 3시 회의', today, nine)?.day, '2027-02-28');
+});
+
+// ---- 버그잡이 6차: 가져온 일정 ----
+
+const RANGE = [T0, T0 + 30 * 24 * 60 * MIN] as const;
+const occ = (rid: string, startAt: number, title = '스탠드업') => ({
+  uid: 'series',
+  recurrenceId: rid,
+  title,
+  startAt,
+  endAt: null,
+  allDay: false,
+});
+
+test('반복 일정의 회차는 UID 가 같아도 회차마다 한 행. 다시 맞춰도 고침이 없고 알림 표시가 남는다', () => {
+  const { events } = fresh();
+  const list = [occ('A', T0 + 30 * MIN), occ('B', T0 + 24 * 60 * MIN), occ('C', T0 + 48 * 60 * MIN)];
+  assert.deepEqual(events.syncExternal('ics', list, ...RANGE, T0), { added: 3, updated: 0, removed: 0 });
+  const first = events.dueReminders(T0 + 25 * MIN);
+  assert.equal(first.length, 1);
+  events.markNotified(first[0]?.id ?? 0, T0 + 25 * MIN);
+  for (let i = 0; i < 3; i++)
+    assert.deepEqual(events.syncExternal('ics', list, ...RANGE, T0 + 26 * MIN), {
+      added: 0,
+      updated: 0,
+      removed: 0,
+    });
+  // 알림이 다시 울리지 않는다
+  assert.deepEqual(events.dueReminders(T0 + 27 * MIN), []);
+  assert.equal(events.between(...RANGE).length, 3);
+  // 같은 키가 목록에 두 번 와도 서로 덮지 않는다
+  assert.deepEqual(events.syncExternal('ics', [...list, occ('A', T0 + 90 * MIN, '다른 값')], ...RANGE, T0), {
+    added: 0,
+    updated: 0,
+    removed: 0,
+  });
+});
+
+test('사용자가 지운 가져온 일정은 다시 가져와도 되살리지 않는다. 캘린더에서 없어졌다 돌아온 것은 되살린다', () => {
+  const { events } = fresh();
+  const a = occ('A', T0 + 60 * MIN);
+  const b = occ('B', T0 + 120 * MIN);
+  events.syncExternal('ics', [a, b], ...RANGE, T0);
+  const [ea] = events.between(...RANGE);
+  events.remove(ea?.id ?? 0, T0);
+  assert.deepEqual(events.syncExternal('ics', [a, b], ...RANGE, T0), { added: 0, updated: 0, removed: 0 });
+  assert.deepEqual(
+    events.between(...RANGE).map((e) => e.startAt),
+    [b.startAt],
+  );
+  // 되돌리기(restore)는 묘비를 지운다
+  events.restore(ea?.id ?? 0);
+  assert.equal(events.between(...RANGE).length, 2);
+  // 캘린더에서 빠졌다가(지움) 다시 생기면 되살린다
+  assert.deepEqual(events.syncExternal('ics', [a], ...RANGE, T0).removed, 1);
+  assert.deepEqual(events.syncExternal('ics', [a, b], ...RANGE, T0), { added: 0, updated: 1, removed: 0 });
+  assert.equal(events.between(...RANGE).length, 2);
+});
+
+test('사용자가 고친 가져온 일정은 다음 가져오기가 덮지 않는다. 알림 시점만 바꾼 것은 고친 것이 아니다', () => {
+  const { events } = fresh();
+  const a = occ('A', T0 + 60 * MIN, '원래 제목');
+  const b = occ('B', T0 + 120 * MIN, '원래 제목');
+  events.syncExternal('ics', [a, b], ...RANGE, T0);
+  const [ea, eb] = events.between(...RANGE);
+  events.update(ea?.id ?? 0, { title: '내가 고친 제목', startAt: T0 + 90 * MIN });
+  events.update(eb?.id ?? 0, { remindMin: 30 });
+  const r = events.syncExternal(
+    'ics',
+    [
+      { ...a, title: '캘린더에서 바뀜' },
+      { ...b, title: '캘린더에서 바뀜' },
+    ],
+    ...RANGE,
+    T0,
+  );
+  assert.deepEqual(r, { added: 0, updated: 1, removed: 0 });
+  assert.deepEqual(
+    events.between(...RANGE).map((e) => [e.title, e.startAt]),
+    [
+      ['내가 고친 제목', T0 + 90 * MIN],
+      ['캘린더에서 바뀜', T0 + 120 * MIN],
+    ],
+  );
+});
+
+test('6판 올리기: 5판에서 지워져 있던 가져온 일정은 사용자가 지운 것으로 본다', () => {
+  const db = new DatabaseSync(':memory:') as unknown as Db;
+  db.exec('begin');
+  for (const sql of MIGRATIONS.slice(0, 5)) db.exec(sql);
+  db.exec('pragma user_version = 5; commit');
+  db.exec(`insert into event (title, start_at, remind_min, created_at, source, external_id, deleted_at)
+           values ('지운 것', ${T0 + 60 * MIN}, 10, ${T0}, 'ics', 'gone', ${T0})`);
+  assert.deepEqual(migrate(db), { from: 5, to: SCHEMA_VERSION });
+  const events = new EventStore(db);
+  events.syncExternal(
+    'ics',
+    [{ uid: 'gone', title: '지운 것', startAt: T0 + 60 * MIN, endAt: null, allDay: false }],
+    ...RANGE,
+    T0,
+  );
+  assert.deepEqual(events.between(...RANGE), []);
 });

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { FOCUS, remainLabel } from '../../../shared/focus.ts';
+import { breakFor, FOCUS_LENGTHS, focusCoins, remainLabel } from '../../../shared/focus.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PanelState } from '../../../shared/ipc.ts';
 import type { Todo } from '../../../shared/todo-store.ts';
-import { timeOf } from './format.ts';
+import { dayHeading, timeOf } from './format.ts';
 import { TodoRow } from './TodoTab.tsx';
 
 const bridge = window.jjakkungPanel;
@@ -22,6 +22,10 @@ export function TodayTab({
   goTo: (tab: 'todo' | 'event') => void;
 }) {
   const [now, setNow] = useState(Date.now());
+  // 고른 집중 길이. 시작하면 다음에도 이 길이 (설정 focusMin)
+  const [len, setLen] = useState(s.focusMin);
+  // 펫 메뉴에서 다른 길이로 시작했으면 따라간다
+  useEffect(() => setLen(s.focusMin), [s.focusMin]);
   const running = s.focus.phase !== 'idle';
   useEffect(() => {
     if (!running) return;
@@ -42,16 +46,29 @@ export function TodayTab({
         {s.focus.phase === 'idle' ? (
           <>
             <div className="focus-text">
-              <strong>{t('panel.today.focusTitle', { n: FOCUS.focusMin })}</strong>
+              <strong>{t('panel.today.focusTitle', { n: len })}</strong>
               <small>
                 {t('panel.today.focusHint', {
                   name: s.petName,
-                  coins: s.focusCoins,
-                  breakMin: FOCUS.breakMin,
+                  coins: focusCoins(len),
+                  breakMin: breakFor(len),
                 })}
               </small>
+              <fieldset className="focus-len" aria-label={t('panel.today.focusLength')}>
+                {FOCUS_LENGTHS.map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    aria-pressed={n === len}
+                    className={n === len ? 'len-chip on' : 'len-chip'}
+                    onClick={() => setLen(n)}
+                  >
+                    {t('panel.today.focusMin', { n })}
+                  </button>
+                ))}
+              </fieldset>
             </div>
-            <button type="button" className="primary" onClick={() => bridge.focusStart()}>
+            <button type="button" className="primary" onClick={() => bridge.focusStart(len)}>
               {t('panel.today.start')}
             </button>
           </>
@@ -69,6 +86,25 @@ export function TodayTab({
           </>
         )}
       </section>
+
+      {s.missed.length > 0 && (
+        <section className="missed">
+          <h3>
+            {t('panel.today.missed')}
+            <button type="button" className="link" onClick={() => bridge.missedClear()}>
+              {t('panel.today.missedClear')}
+            </button>
+          </h3>
+          <ul className="events">
+            {s.missed.map((m) => (
+              <li key={`${m.at}-${m.text}`}>
+                <span className="time">{timeOf(m.at)}</span>
+                <span className="title">{m.text}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section>
         <h3>
@@ -156,6 +192,25 @@ export function TodayTab({
             </li>
           ))}
         </ul>
+      </details>
+
+      <details className="achieve diary">
+        <summary>{t('diary.title', { name: s.petName })}</summary>
+        {s.diary.length === 0 ? (
+          <p className="empty-line">{t('diary.empty')}</p>
+        ) : (
+          <ul>
+            {s.diary.map((d) => (
+              <li key={d.day}>
+                <small className="diary-day">
+                  {d.today ? t('diary.today') : dayHeading(d.day, s.today)}
+                  {d.ai && <span className="diary-ai">AI</span>}
+                </small>
+                <span className="diary-text">{d.text}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </details>
     </div>
   );

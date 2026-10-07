@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { briefingText, reviewText } from './briefing.ts';
-import { focusedMinutes, IDLE, remainLabel, startFocus, tickFocus } from './focus.ts';
+import { briefingText, deadlineText, dueSlot, reviewText } from './briefing.ts';
+import { breakFor, focusCoins, focusedMinutes, IDLE, remainLabel, startFocus, tickFocus } from './focus.ts';
+import { setLang } from './i18n/index.ts';
 
 const MIN = 60_000;
 
@@ -61,4 +62,42 @@ test('하루 회고: 끝낸 수, 하나면 제목, 남은 오늘 마감이 있�
     reviewText({ doneTitles: ['a', 'b', 'c'], leftToday: 2 }),
     '오늘 할 일 3개 끝냈어. 수고했어! 오늘 마감 2개가 남았는데 내일로 넘길까?',
   );
+});
+
+test('오늘 마감 알림 칸: 조용히는 없음, 보통은 14시부터 한 번, 수다쟁이는 10시와 15시, 회고 시각 뒤는 없음', () => {
+  const review = 18 * 60;
+  assert.equal(dueSlot(15 * 60, 'quiet', review), undefined);
+  assert.equal(dueSlot(10 * 60, 'normal', review), undefined);
+  assert.equal(dueSlot(13 * 60 + 59, 'normal', review), undefined);
+  assert.equal(dueSlot(14 * 60, 'normal', review), 'pm');
+  assert.equal(dueSlot(9 * 60 + 59, 'chatty', review), undefined);
+  assert.equal(dueSlot(10 * 60, 'chatty', review), 'am');
+  assert.equal(dueSlot(14 * 60 + 30, 'chatty', review), 'am');
+  assert.equal(dueSlot(15 * 60, 'chatty', review), 'pm');
+  assert.equal(dueSlot(18 * 60, 'chatty', review), undefined);
+  assert.equal(dueSlot(18 * 60, 'normal', 20 * 60), 'pm');
+});
+
+test('오늘 마감 알림 글: 제목은 셋까지, 나머지는 개수로', () => {
+  setLang('ko');
+  assert.equal(deadlineText(['보고서']), '오늘 마감인 할 일이 1개 남았어. "보고서"');
+  assert.equal(
+    deadlineText(['a', 'b', 'c', 'd', 'e']),
+    '오늘 마감인 할 일이 5개 남았어. "a", "b", "c" 외 2개',
+  );
+  setLang('en');
+  assert.equal(deadlineText(['report']), 'One to-do is due today: "report"');
+  setLang('ko');
+});
+
+test('집중 길이: 코인은 5분에 1개, 50분이면 쉬기 10분', () => {
+  assert.deepEqual([15, 25, 50].map(focusCoins), [3, 5, 10]);
+  assert.deepEqual([15, 25, 50].map(breakFor), [5, 5, 10]);
+  const s = startFocus(0, 50);
+  const r = tickFocus(s, 50 * MIN);
+  assert.equal(r.event, 'focus-done');
+  assert.equal(r.state.endsAt - r.state.startedAt, 10 * MIN);
+  assert.equal(focusedMinutes(s, 50 * MIN), 50);
+  const r15 = tickFocus(startFocus(0, 15), 15 * MIN);
+  assert.equal(r15.state.endsAt - r15.state.startedAt, 5 * MIN);
 });

@@ -55,6 +55,8 @@ body {
 
 #bubble p {
   margin: 0;
+  /* 묶인 알림(숨어 있다 나온 뒤)은 줄마다 하나 */
+  white-space: pre-line;
   /* 아주 긴 말은 8줄까지만 (창이 화면 밖으로 길어졌다). 긴 답은 채팅 창에서 본다 */
   display: -webkit-box;
   overflow: hidden;

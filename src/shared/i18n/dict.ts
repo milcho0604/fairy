@@ -5,6 +5,8 @@ import * as ai from './ai.ts';
 import * as briefing from './briefing.ts';
 import * as chat from './chat.ts';
 import * as common from './common.ts';
+import * as diary from './diary.ts';
+import * as idle from './idle.ts';
 import * as main from './main.ts';
 import * as maker from './maker.ts';
 import * as onboarding from './onboarding.ts';
@@ -29,6 +31,8 @@ export const ko = {
   ...settings.ko,
   ...maker.ko,
   ...onboarding.ko,
+  ...idle.ko,
+  ...diary.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -45,4 +49,6 @@ export const en: Translation<typeof ko> = {
   ...settings.en,
   ...maker.en,
   ...onboarding.en,
+  ...idle.en,
+  ...diary.en,
 };

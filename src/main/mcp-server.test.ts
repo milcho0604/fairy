@@ -34,6 +34,13 @@ test('시작 인사: 요청한 판을 맞추고, 모르는 판이면 최신, 알
   assert.equal(call('nope').error?.code, -32601);
 });
 
+test('객체가 아닌 요청(null, 배열)은 죽지 않고 -32600 으로 답한다', () => {
+  for (const bad of [null, [], 3]) {
+    const r = handle(bad as unknown as Record<string, unknown>) as { error?: { code: number } };
+    assert.equal(r.error?.code, -32600);
+  }
+});
+
 test('도구 목록', () => {
   assert.deepEqual(
     call('tools/list').result?.tools?.map((t) => t.name),

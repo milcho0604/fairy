@@ -147,8 +147,10 @@ export class ItemStore {
   }
 
   /** 다음 단계 집 */
-  buyHouse(now: number): BuyResult {
+  /** expect: 사는 쪽이 본 단계. 그새 바뀌었으면(두 번 누름) 사지 않는다 */
+  buyHouse(now: number, expect?: number): BuyResult {
     const level = this.state().houseLevel;
+    if (expect !== undefined && expect !== level) return { ok: false, error: t('panel.retry') };
     const cost = HOUSE_COSTS[level];
     if (cost === undefined) return { ok: false, error: t('shop.err.bestHouse') };
     if (!this.#todos.spend(cost, `house:${level + 1}`, now))

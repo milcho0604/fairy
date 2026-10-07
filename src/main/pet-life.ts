@@ -1,6 +1,6 @@
 import { powerMonitor } from 'electron';
 import { t } from '../shared/i18n/index.ts';
-import { type Activity, type LifeState, type PetLife, SULK_LINES } from '../shared/pet-life.ts';
+import { type Activity, type LifeState, type PetLife, SULK_LINES, UNLOCKS } from '../shared/pet-life.ts';
 import { REST, RestCoach, restLines } from '../shared/rest.ts';
 import type { TodoStore } from '../shared/todo-store.ts';
 import type { SayOptions } from './pet-window.ts';
@@ -26,6 +26,14 @@ export interface PetLifeOptions {
  * 펫의 하루 (v1): 삐짐 대사(하루 한 번), 화해 장면과 보너스, 친밀도 단계 축하.
  * 날이 바뀌는 것은 1분마다 본다.
  */
+function unlockLine(step: number): string {
+  const u = UNLOCKS.find((x) => x.step === step)?.unlock;
+  if (u === 'wave') return t('pet.unlock.wave');
+  if (u === 'dance') return t('pet.unlock.dance');
+  if (u === 'flower') return t('pet.unlock.flower');
+  return t('pet.life.affection', { step });
+}
+
 export function createPetLife(o: PetLifeOptions) {
   let current: LifeState = read();
 
@@ -99,8 +107,10 @@ export function createPetLife(o: PetLifeOptions) {
       o.log('life', '친밀도', r.affectionStep);
       void o.say({
         kind: 'system',
-        text: t('pet.life.affection', { step: r.affectionStep }),
+        // 단계마다 열린 행동을 알려 준다 (단계 표에 없으면 그냥 축하)
+        text: unlockLine(r.affectionStep),
         ttlMs: 6000,
+        hold: {},
       });
     }
     current = read();

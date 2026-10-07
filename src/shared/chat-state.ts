@@ -115,9 +115,18 @@ export function switchProvider(s: ChatState, provider: AiProvider): ChatState {
   return s.pendingId ? s : { ...s, provider };
 }
 
-/** 새 대화: 화면과 세션을 비운다. */
+/**
+ * 새 대화: 화면과 세션을 비운다. 사용자가 고른 것(기록 남기지 않기, 할 일 같이 보내기)과
+ * 받는 중인 모델 진행은 그대로 둔다 (예전엔 새 대화가 "기록 남기지 않기"를 몰래 껐다, 버그잡이 6차)
+ */
 export function resetChat(s: ChatState): ChatState {
-  return s.pendingId ? s : initialChat(s.provider, s.usage);
+  if (s.pendingId) return s;
+  return {
+    ...initialChat(s.provider, s.usage),
+    ...(s.ephemeral ? { ephemeral: true } : {}),
+    ...(s.knowsTodos !== undefined ? { knowsTodos: s.knowsTodos } : {}),
+    ...(s.modelDownload ? { modelDownload: s.modelDownload } : {}),
+  };
 }
 
 /** 이어가기 기능이 없는 AI 에 붙여 보낼 최근 대화: 같은 AI 와 끝까지 주고받은 것만. */

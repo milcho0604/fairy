@@ -1,4 +1,10 @@
-import { applyPatch, parseSettings, type Settings, type SettingsPatch } from '../shared/settings.ts';
+import {
+  applyPatch,
+  cleanPetName,
+  parseSettings,
+  type Settings,
+  type SettingsPatch,
+} from '../shared/settings.ts';
 import { readJson, writeJson } from './store.ts';
 
 // 설정 저장소. 바뀌면 듣는 쪽(펫, 채팅, 메뉴 막대, 설정 창)에 알린다.
@@ -12,11 +18,18 @@ type Listener = (next: Settings, prev: Settings) => void;
 let current: Settings | undefined;
 const listeners = new Set<Listener>();
 
+/** 저장 파일에 펫 이름이 있었는지 (없으면 처음 켠 것이라 말에 맞는 기본 이름을 줄 수 있다) */
+let namedOnDisk = false;
+
 function load(): Settings {
-  current ??= parseSettings({
-    ...((readJson(LEGACY_FILE) as object) ?? {}),
-    ...((readJson(FILE) as object) ?? {}),
-  });
+  if (!current) {
+    const raw = {
+      ...((readJson(LEGACY_FILE) as object) ?? {}),
+      ...((readJson(FILE) as object) ?? {}),
+    } as Record<string, unknown>;
+    namedOnDisk = cleanPetName(raw.petName) !== undefined;
+    current = parseSettings(raw);
+  }
   return current;
 }
 
@@ -33,6 +46,17 @@ export const settings = {
     writeJson(FILE, next);
     for (const l of listeners) l(next, prev);
     return next;
+  },
+  /**
+   * 처음 켤 때 펫 이름을 화면 말에 맞춘다 (영어면 '콩이' 대신 영어 이름). 저장된 이름이 있으면 건드리지 않고,
+   * 정한 이름은 바로 저장해 나중에 말을 바꿔도 이름이 따라 바뀌지 않는다 (버그잡이 6차)
+   */
+  nameIfNew(name: string): void {
+    const now = load();
+    if (namedOnDisk) return;
+    namedOnDisk = true;
+    current = { ...now, petName: cleanPetName(name) ?? now.petName };
+    writeJson(FILE, current);
   },
   onChange(listener: Listener): () => void {
     listeners.add(listener);

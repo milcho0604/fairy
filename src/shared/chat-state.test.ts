@@ -85,3 +85,22 @@ test('AI 를 바꾸면 각자 세션을 따로 이어간다', () => {
   s = applyEvent(s, 'p2', { type: 'done', text: 'b' }, 'n');
   assert.deepEqual(s.sessions, { claude: { id: 'C', turns: 1 }, codex: { id: 'X', turns: 1 } });
 });
+
+test('새 대화는 "기록 남기지 않기"와 할 일 같이 보내기, 받는 중인 모델 진행을 끄지 않는다 (버그잡이 6차)', () => {
+  let s: ChatState = {
+    ...initialChat('claude'),
+    ephemeral: true,
+    knowsTodos: true,
+    modelDownload: { pct: 40 },
+  };
+  s = ask(s, 1);
+  s = applyEvent(s, 'p1', { type: 'done', text: '답' }, 'n');
+  const fresh = resetChat(s);
+  assert.equal(fresh.messages.length, 0);
+  assert.deepEqual(fresh.sessions, {});
+  assert.equal(fresh.ephemeral, true);
+  assert.equal(fresh.knowsTodos, true);
+  assert.deepEqual(fresh.modelDownload, { pct: 40 });
+  // 끈 상태도 그대로
+  assert.equal(resetChat(initialChat('claude')).ephemeral, undefined);
+});

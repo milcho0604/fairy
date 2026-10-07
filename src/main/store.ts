@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { app } from 'electron';
 
@@ -23,4 +23,9 @@ export function writeJson(name: string, value: unknown): void {
   mkdirSync(app.getPath('userData'), { recursive: true });
   writeFileSync(`${file}.tmp`, JSON.stringify(value, null, 2));
   renameSync(`${file}.tmp`, file);
+}
+
+/** 지운다. 없으면 그냥 넘어간다 (떠난 친구 펫의 위치 파일 등) */
+export function removeJson(name: string): void {
+  rmSync(pathOf(name), { force: true });
 }

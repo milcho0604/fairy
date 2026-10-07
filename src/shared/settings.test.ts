@@ -96,6 +96,12 @@ test('v2 설정: 회고 시각, 단축키(겹치면 거절), 캘린더 주소(ht
     'https://calendar.google.com/x.ics',
   );
   assert.equal(applyPatch(now, { icsUrl: 'http://x/a.ics' }).icsUrl, undefined);
+  // webcal:// 은 버리지 않고 https 로 받는다 (버그잡이 6차)
+  assert.equal(
+    applyPatch(now, { icsUrl: ' webcal://p01-calendars.icloud.com/published/2/abc ' }).icsUrl,
+    'https://p01-calendars.icloud.com/published/2/abc',
+  );
+  assert.equal(applyPatch(now, { icsUrl: 'webcal://' }).icsUrl, undefined);
   const withIcs = applyPatch(now, { icsUrl: 'https://a/b.ics' });
   assert.equal(applyPatch(withIcs, { icsUrl: null }).icsUrl, undefined);
   assert.equal(applyPatch(now, { myMcp: true }).myMcp, true);
@@ -193,4 +199,15 @@ test('보관함과 규칙: 규칙에 맞는 것만, 상한까지 (6단계)', () 
   assert.equal(s.petRules.length, 4000);
   assert.equal(s.petKind, 'bunny');
   assert.equal(parseSettings({ petKind: 'dragon' }).petKind, 'kong');
+});
+
+test('집중 길이와 커서 바라보기: 옛 설정 파일엔 없어서 기본값(25분, 켬), 틀린 값은 지금 값', () => {
+  const old = parseSettings({ petName: '밤', chatter: 'chatty' });
+  assert.equal(old.focusMin, 25);
+  assert.equal(old.lookAtCursor, true);
+  assert.equal(parseSettings({ focusMin: 50 }).focusMin, 50);
+  assert.equal(applyPatch({ ...DEFAULT_SETTINGS, focusMin: 15 }, { focusMin: 40 }).focusMin, 15);
+  assert.equal(applyPatch(DEFAULT_SETTINGS, { focusMin: '50' }).focusMin, 25);
+  assert.equal(applyPatch(DEFAULT_SETTINGS, { lookAtCursor: false }).lookAtCursor, false);
+  assert.equal(applyPatch(DEFAULT_SETTINGS, { lookAtCursor: 'no' }).lookAtCursor, true);
 });

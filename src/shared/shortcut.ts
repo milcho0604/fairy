@@ -8,6 +8,21 @@ export const SHORTCUT_DEFAULTS: Record<ShortcutId, string> = {
   quickAdd: 'CommandOrControl+Alt+Shift+N',
 };
 
+/**
+ * 같은 키 조합을 쓰는 단축키 둘. 없으면 undefined. 설정 창은 저장하기 전에 이것으로 겹침을 알리고,
+ * 설정 검사도 같은 것으로 겹친 값을 버린다 (버그잡이 6차: 조용히 버리면서 "바꿨어"가 떴다)
+ */
+export function shortcutClash(keys: Record<ShortcutId, string>): [ShortcutId, ShortcutId] | undefined {
+  const ids = Object.keys(SHORTCUT_DEFAULTS) as ShortcutId[];
+  for (let i = 0; i < ids.length; i++)
+    for (let j = i + 1; j < ids.length; j++) {
+      const a = ids[i] as ShortcutId;
+      const b = ids[j] as ShortcutId;
+      if (keys[a].toLowerCase() === keys[b].toLowerCase()) return [a, b];
+    }
+  return undefined;
+}
+
 // 이름은 지금 말로 읽는다 (getter)
 export const SHORTCUT_LABEL: Readonly<Record<ShortcutId, string>> = {
   get hide() {

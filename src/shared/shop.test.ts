@@ -37,6 +37,14 @@ test('집: 한 단계씩, 마지막 단계 뒤에는 못 산다', () => {
   assert.equal(shop.buyHouse(T0).ok, false);
 });
 
+test('집: 두 번 눌러 옛 단계로 다시 사면 거절하고 코인도 안 가져간다', () => {
+  const { todos, shop } = fresh(HOUSE_COSTS[0] + HOUSE_COSTS[1]);
+  assert.equal(shop.buyHouse(T0, 0).ok, true);
+  assert.equal(shop.buyHouse(T0, 0).ok, false);
+  assert.equal(shop.state().houseLevel, 1);
+  assert.equal(todos.balance(), HOUSE_COSTS[1]);
+});
+
 test('커스텀 먹이: 50코인, 6개까지, 지우면 그림 이름을 돌려준다', () => {
   const { todos, shop } = fresh(CUSTOM_FOOD_COST * 7);
   const made = shop.makeCustomFood('  귤  ', 'food-a.png', T0);

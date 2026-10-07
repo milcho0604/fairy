@@ -1,5 +1,6 @@
 // 할 일, 코인 장부, 배부름 (P2-03, P2-05, P2-06). 기획서 "게임 규칙".
 import type { Db } from './db-schema.ts';
+import { FOCUS, focusCoins } from './focus.ts';
 import { t } from './i18n/index.ts';
 
 export const COIN = {
@@ -11,9 +12,9 @@ export const COIN = {
   dailyTodoLimit: 20,
   /** 기본 먹이 */
   food: 5,
-  /** 집중 타이머 한 번 (v1) */
+  /** 집중 타이머 한 번 (v1, 25분 기준. 길이를 고르면 분에 비례: focusCoins) */
   focus: 5,
-  /** 하루에 코인을 받는 집중 횟수 */
+  /** 하루에 코인을 받는 집중 횟수 (25분 기준). 하루 집중 코인 상한 = focus x 이 값 = 40 */
   dailyFocusLimit: 8,
 } as const;
 
@@ -316,17 +317,19 @@ export class TodoStore {
   }
 
   /** 집중 타이머 한 번 끝. 받은 코인 수 (하루 상한을 넘으면 0). */
-  rewardFocus(now: number): number {
-    const n = Number(
+  /** 집중을 끝냈다. 분에 비례한 코인, 하루 집중 코인 상한(40)을 넘지 않게 */
+  rewardFocus(now: number, minutes: number = FOCUS.focusMin): number {
+    const got = Number(
       (
         this.#db
-          .prepare(`select count(*) as n from coin_log where day = ? and reason = 'focus'`)
+          .prepare(`select coalesce(sum(amount), 0) as n from coin_log where day = ? and reason = 'focus'`)
           .get(this.#day(now)) as { n: number }
       ).n,
     );
-    if (n >= COIN.dailyFocusLimit) return 0;
-    this.#log(COIN.focus, 'focus', null, now);
-    return COIN.focus;
+    const coins = Math.min(focusCoins(minutes), COIN.focus * COIN.dailyFocusLimit - got);
+    if (coins <= 0) return 0;
+    this.#log(coins, 'focus', null, now);
+    return coins;
   }
 
   #log(amount: number, reason: string, refId: number | null, now: number) {

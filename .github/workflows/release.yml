@@ -41,9 +41,12 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: jjakkung-${{ runner.os }}
+          # latest.yml 과 .blockmap 은 윈도우 자동 설치(electron-updater)가 릴리스에서 읽는다
           path: |
             dist/*.dmg
             dist/*.exe
+            dist/*.exe.blockmap
+            dist/latest.yml
           if-no-files-found: error
 
   release:

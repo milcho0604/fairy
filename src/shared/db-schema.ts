@@ -107,6 +107,14 @@ export const MIGRATIONS: readonly string[] = [
   alter table event add column external_id text;                     -- ics UID (다시 가져올 때 겹치지 않게)
   create unique index event_external on event(source, external_id) where external_id is not null;
   `,
+  // 6판: 캘린더 가져오기 고침 (버그잡이 6차). external_id 는 반복 일정이면 "UID#회차" 라 회차마다 한 행이다.
+  // 지금 지워져 있는 행은 사용자가 지운 것으로 본다: 예전 판은 지운 가져온 일정을 다음 맞춤에서 되살려서,
+  // 지금 지워진 채인 것은 대개 사용자가 막 지운 것이다
+  `
+  alter table event add column user_edited integer not null default 0; -- 패널에서 제목이나 시각을 고침. 가져오기가 덮지 않는다
+  alter table event add column removed_by text;                         -- user(사용자가 지움, 다시 가져와도 그대로), sync(캘린더에서 없어짐)
+  update event set removed_by = 'user' where deleted_at is not null;
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
@@ -123,6 +131,23 @@ export interface Db {
 
 export function schemaVersion(db: Db): number {
   return Number((db.prepare('pragma user_version').get() as { user_version: number }).user_version);
+}
+
+/** 1판부터 있는 표. 이것들이 있어야 짝꿍 저장 파일로 본다 */
+export const REQUIRED_TABLES = ['todo', 'coin_log', 'pet_state'] as const;
+
+/**
+ * 짝꿍 저장 파일로 보이는지: 판이 1 이상이고 1판 표가 다 있다. 0바이트 파일, 판 0 인 빈 파일,
+ * 다른 앱의 SQLite 파일을 백업이나 복구 후보로 받지 않게 한다 (버그잡이 6차)
+ */
+export function looksLikeOurs(db: Db): boolean {
+  if (schemaVersion(db) < 1) return false;
+  const names = new Set(
+    (db.prepare("select name from sqlite_master where type = 'table'").all() as { name: string }[]).map(
+      (r) => r.name,
+    ),
+  );
+  return REQUIRED_TABLES.every((n) => names.has(n));
 }
 
 /** 지금 판에서 최신 판까지 한 판씩 올린다. 판마다 묶음(transaction)으로, 중간에 실패하면 그 판은 통째로 되돌린다. */

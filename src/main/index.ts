@@ -1,21 +1,24 @@
+import { cpus } from 'node:os';
 import { join } from 'node:path';
 import { app, globalShortcut, powerMonitor, screen } from 'electron';
 import { ACHIEVEMENTS } from '../shared/achieve.ts';
-import { todoContext } from '../shared/ai/persona.ts';
+import { persona, todoContext } from '../shared/ai/persona.ts';
 import { timeLabel } from '../shared/event-store.ts';
 import { HIDE_SEEK, pickHideSpot } from '../shared/hide-seek.ts';
 import { locale, t } from '../shared/i18n/index.ts';
 import { IPC, type PetStatus, type PlayKind } from '../shared/ipc.ts';
+import { unlocked, WAVE_AWAY_SEC } from '../shared/pet-life.ts';
 import { FULLNESS, localDay } from '../shared/todo-store.ts';
 import { watchCatalog } from './ai/catalog.ts';
 import { stopLocal } from './ai/local.ts';
-import { mcpServers, refreshMcpServers } from './ai/mcp-list.ts';
+import { cachedMcpServers, mcpServers, refreshMcpServers } from './ai/mcp-list.ts';
 import { stopAllAi } from './ai/runner.ts';
 import { applyPendingImport, createBackup, exportPet, importPet } from './backup.ts';
 import { watchBetaStats } from './beta.ts';
 import { watchCalendar } from './calendar.ts';
 import { createChat } from './chat.ts';
-import { openStore } from './db.ts';
+import { announceStoreTrouble, openStore } from './db.ts';
+import { createDiary } from './diary.ts';
 import { confineTestDisplay } from './focus.ts';
 import { createFriends } from './friends.ts';
 import { initLang } from './lang.ts';
@@ -63,6 +66,12 @@ app.commandLine.appendSwitch('lang', locale());
 
 // 펫은 하나만 띄운다. 두 번째로 실행하면 그냥 끝난다.
 if (!app.requestSingleInstanceLock()) app.quit();
+
+// 모든 창(펫, 같이 보기, 놀이 창 포함): 새 창을 열거나 다른 주소로 옮겨 가지 못하게 한다. 링크는 메인이 따로 연다
+app.on('web-contents-created', (_e, wc) => {
+  wc.setWindowOpenHandler(() => ({ action: 'deny' }));
+  wc.on('will-navigate', (ev) => ev.preventDefault());
+});
 
 app.whenReady().then(() => {
   // 시험 인스턴스는 처음부터 맥북 화면에만 뜬다 (쓰는 사람의 작업 모니터에 잠깐이라도 뜨지 않게)
@@ -123,6 +132,9 @@ app.whenReady().then(() => {
       });
       if (action === 'open' || action === 'dismiss') chat.open(pet.bounds());
     },
+    // 강제 업데이트 전이면 AI 대화를 잠그고 펫이 까닭을 말한다 (updates 는 아래에서 만든다. 부를 때는 있다)
+    locked: () => updates.locked(),
+    onLocked: () => updates.remind(),
     log,
   });
   const pet = createPetWindow({
@@ -152,6 +164,7 @@ app.whenReady().then(() => {
       toggleFocus: () => (planner.focus.phase === 'idle' ? planner.startFocus() : planner.stopFocus()),
     },
     log,
+    onMissed: () => panel.refresh(),
   });
   const look = createLookTogether({
     petName,
@@ -173,7 +186,13 @@ app.whenReady().then(() => {
   });
   // ---- 방해 금지 (P1-10) ----
   // 친구 펫(v2)도 기본 펫과 같이 숨고 나온다
-  const friends = createFriends({ mainPet: () => pet, log });
+  const friends = createFriends({
+    mainPet: () => pet,
+    // 집중(펫이 잠), 공놀이와 산책, 숨바꼭질 중이 아니고 사용자가 자리에 있을 때만
+    canMeet: () =>
+      planner.focus.phase !== 'focus' && !playing && !seeking && powerMonitor.getSystemIdleTime() < 60,
+    log,
+  });
   const toggleHidden = () => {
     const on = !pet.isHidden('user');
     pet.setHidden('user', on);
@@ -189,7 +208,21 @@ app.whenReady().then(() => {
     quickAdd: () => panel.openQuick(),
   });
   // ---- 할 일과 코인 (2단계) ----
-  const { store, stats, notes, events, life, shop, achievements, vacuumInto, dataVersion } = openStore(log);
+  const { store, stats, notes, events, life, shop, achievements, vacuumInto, dataVersion, trouble } =
+    openStore(log);
+  // 저장 파일이 깨졌거나 새 판이었으면 펫이 화면에 뜬 뒤 알린다 (버그잡이 6차)
+  if (trouble)
+    pet.win.webContents.once('did-finish-load', () =>
+      setTimeout(() => void announceStoreTrouble(trouble, (o) => pet.say(o)), 3000),
+    );
+  // ---- 짝꿍 일기 ----
+  const diary = createDiary({
+    stats,
+    ask: (text, system) => chat.textOnce(text, system),
+    persona: () => persona(petName(), settings.get().persona, ''),
+    onChange: () => panel.refresh(),
+    log,
+  });
   // ---- 펫의 하루: 삐짐, 기분, 친밀도 (v1) ----
   const petLife = createPetLife({
     life,
@@ -308,7 +341,12 @@ app.whenReady().then(() => {
     });
     for (const a of achievements.check(facts, Date.now())) {
       log('achieve', a.key);
-      void pet.say({ kind: 'system', text: t('pet.achieved', { name: a.name, hint: a.hint }), ttlMs: 6000 });
+      void pet.say({
+        kind: 'system',
+        text: t('pet.achieved', { name: a.name, hint: a.hint }),
+        ttlMs: 6000,
+        hold: {},
+      });
     }
   }
   setInterval(checkAchievements, 60_000).unref();
@@ -343,6 +381,8 @@ app.whenReady().then(() => {
     stats,
     say: (o) => pet.say(o),
     petHidden: () => pet.isHidden(),
+    petName,
+    openToday: () => panel.openTab('today'),
     onReward: () => pet.react(),
     onChange: () => {
       panel.refresh();
@@ -355,7 +395,8 @@ app.whenReady().then(() => {
     notes,
     events,
     focus: () => planner.focus,
-    startFocus: () => planner.startFocus(),
+    startFocus: (minutes) => planner.startFocus(minutes),
+    focusMin: () => settings.get().focusMin,
     stopFocus: () => planner.stopFocus(),
     onEventsChanged: () => planner.check(),
     askAi: (prompt) => chat.askInWindow(prompt, pet.bounds()),
@@ -366,7 +407,7 @@ app.whenReady().then(() => {
     shop,
     foodImage: (file) => foodImageDataUrl(file),
     onFedWith: (food) => {
-      pet.react();
+      pet.react('fed');
       petLife.activity('feed');
       const image = food.image ? foodImageDataUrl(food.image) : undefined;
       void pet.say({ kind: 'answer', text: t('pet.fedWith', { food: food.name }), ttlMs: 3500, image });
@@ -402,24 +443,28 @@ app.whenReady().then(() => {
     petName,
     petBounds: () => pet.bounds(),
     onCompleted: () => {
-      pet.react();
+      // 친밀도 300 이 넘으면 신나서 빙글 춤
+      pet.react(unlocked(petLife.state.affection).has('dance') ? 'dance' : 'happy');
       petLife.activity('todo');
     },
     onFed: () => {
-      pet.react();
+      pet.react('fed');
       petLife.activity('feed');
       void pet.say({ kind: 'answer', text: t('pet.fed'), ttlMs: 3000 });
     },
     onChanged: () => sendStatus(),
     openChat: () => chat.open(pet.bounds()),
     lookTogether: () => look.start(),
+    missed: () => pet.missed(),
+    diary: () => diary.entries(Date.now()),
+    clearMissed: () => pet.clearMissed(),
     log,
   });
   /** 패널 밖(펫 우클릭)에서 밥 주기 */
   function feedPet() {
     const r = store.feed(Date.now());
     if (r.ok) {
-      pet.react();
+      pet.react('fed');
       petLife.activity('feed');
       void pet.say({ kind: 'answer', text: t('pet.fed'), ttlMs: 3000 });
     } else {
@@ -437,6 +482,8 @@ app.whenReady().then(() => {
       kind: settings.get().petKind,
       pet3d: settings.get().pet3d,
       cushion: shop.owns('cushion'),
+      flower: unlocked(petLife.state.affection).has('flower'),
+      sounds: settings.get().sounds,
     };
     const key = JSON.stringify(status);
     if (key === lastStatus || pet.win.isDestroyed()) return;
@@ -525,7 +572,8 @@ app.whenReady().then(() => {
       syncCalendar: () => calendar.sync(),
       calendarLast: () => calendar.last,
       catalog: catalog.get,
-      mcpServers: () => mcpServers(log),
+      // 설정 창을 연다고 사용자 MCP 서버를 다 띄워 보지 않는다. 내 MCP 쓰기를 켠 사람만 새로 읽는다
+      mcpServers: () => (settings.get().myMcp ? mcpServers(log) : cachedMcpServers()),
       refreshMcp: () => refreshMcpServers(log),
     },
   });
@@ -563,6 +611,7 @@ app.whenReady().then(() => {
       next.petKind !== prev.petKind ||
       next.pet3d !== prev.pet3d ||
       next.spicy !== prev.spicy ||
+      next.sounds !== prev.sounds ||
       next.restDays.join() !== prev.restDays.join()
     )
       sendStatus();
@@ -570,6 +619,11 @@ app.whenReady().then(() => {
       app.setLoginItemSettings({ openAtLogin: next.launchAtLogin });
     }
   });
+  // 켤 때 자동 실행 설정을 운영체제 것에 맞춘다: 사용자가 시스템 설정에서 끈 것을 다시 켜지 않고, 설정 창도 맞게 보인다 (버그잡이 7차)
+  if (app.isPackaged) {
+    const atLogin = app.getLoginItemSettings().openAtLogin;
+    if (atLogin !== settings.get().launchAtLogin) settings.set({ launchAtLogin: atLogin });
+  }
 
   // 짝꿍을 한 번 더 실행하면(앱 아이콘을 다시 누르는 등) 숨은 펫을 다시 부른다. 메뉴 막대 아이콘이 가려져도 돌아올 길.
   // ---- 새 버전 알림, 첫 실행 안내 (v1) ----
@@ -602,6 +656,16 @@ app.whenReady().then(() => {
     houseHidden = hidden;
     if (hidden) house.hide();
     else house.unhide();
+  }, 2000).unref();
+  // 친밀도 100 (손 흔들기): 5분 넘게 자리를 비웠다 돌아오면 손을 흔든다
+  let away = false;
+  setInterval(() => {
+    const idle = powerMonitor.getSystemIdleTime();
+    if (idle >= WAVE_AWAY_SEC) away = true;
+    else if (away && idle < 5) {
+      away = false;
+      if (unlocked(petLife.state.affection).has('wave') && !pet.isHidden() && !playing) pet.react('wave');
+    }
   }, 2000).unref();
   const stopPresence = watchPresentation((hide) => {
     pet.setHidden('presentation', hide);
@@ -645,6 +709,8 @@ app.whenReady().then(() => {
         achievements,
         seek,
         maker,
+        friends,
+        diary,
       },
     });
   if (process.env.JJ_METRICS) logMetrics(Number(process.env.JJ_METRICS));
@@ -667,7 +733,8 @@ function logMetrics(seconds: number) {
   app.getAppMetrics(); // 첫 CPU 값은 기준점이라 버린다.
   setInterval(() => {
     const metrics = app.getAppMetrics();
-    const cpu = metrics.reduce((sum, m) => sum + m.cpu.percentCPUUsage, 0);
+    // percentCPUUsage 는 모든 코어를 합친 100% 기준이라, 코어 하나 기준(ps, 활성 상태 보기)으로 맞춘다
+    const cpu = metrics.reduce((sum, m) => sum + m.cpu.percentCPUUsage, 0) * cpus().length;
     const memMB = metrics.reduce((sum, m) => sum + m.memory.workingSetSize, 0) / 1024;
     const detail = metrics.map((m) => `${m.type}:${Math.round(m.memory.workingSetSize / 1024)}`).join(' ');
     log('metrics', `cpu=${cpu.toFixed(2)}% mem=${memMB.toFixed(0)}MB procs=${metrics.length} (${detail})`);

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { claudeArgs, claudeInput, parseClaudeLine, parseMcpList } from './claude.ts';
 import { codexArgs, parseCodexLine } from './codex.ts';
+import { cursorArgs } from './cursor.ts';
 import { classifyError } from './errors.ts';
 import { withHistory } from './text.ts';
 import type { AiEvent } from './types.ts';
@@ -104,6 +105,13 @@ test('codex 명령: 질문은 -i 앞, 이어가기는 resume, 샌드박스는 -c
   const quiet = codexArgs({ text: '비밀', imagePaths: [], persona: 'p', threadId: 't1', ephemeral: true });
   assert.deepEqual(quiet.slice(0, 3), ['exec', '비밀', '--ephemeral']);
   assert.ok(!quiet.includes('resume'));
+});
+
+test('codex, cursor 명령: "-" 로 시작하는 질문은 옵션으로 읽히지 않게 빈칸을 붙인다', () => {
+  assert.equal(codexArgs({ text: '- 목록 정리', imagePaths: [], persona: 'p' })[1], ' - 목록 정리');
+  assert.equal(codexArgs({ text: '-v', imagePaths: [], persona: 'p', threadId: 't' })[3], ' -v');
+  assert.equal(codexArgs({ text: 'a-b', imagePaths: [], persona: 'p' })[1], 'a-b');
+  assert.equal(cursorArgs({ text: '--help', persona: 'p', sessionId: 's' }).at(-1), ' --help');
 });
 
 test('기록 안 남김: 최근 대화를 질문 앞에 붙인다', () => {

@@ -26,6 +26,11 @@ export const ko = {
   'settings.pet3dHint': '기본 펫을 피규어처럼 입체로 그려. 끄면 예전 납작한 그림이야.',
   'settings.wander': '가끔 돌아다니기',
   'settings.wanderHint': '가만히 있다가 가끔 걷고 앉아. 끄면 늘 그 자리에 있어.',
+  'settings.lookAtCursor': '마우스 쳐다보기',
+  'settings.lookAtCursorHint': '한가할 때 마우스가 가까이 오면 그쪽을 봐.',
+  'settings.sounds': '효과음',
+  'settings.soundsHint':
+    '할 일 끝낼 때, 밥 먹을 때, 일정 알림에 작은 소리를 내. 집중하거나 잘 때는 조용히 있어.',
 
   // 친구 펫
   'settings.friends': '친구 펫',
@@ -59,6 +64,9 @@ export const ko = {
   'settings.persona': '성격과 말투',
   'settings.personaNext': '다음 질문부터 바뀌어.',
   'settings.aiKnowsTodos': '내 할 일 같이 보내기',
+  'settings.diaryAi': '일기를 AI 로 다듬기',
+  'settings.diaryAiHint':
+    '지난 날 짝꿍 일기를 고른 AI 가 펫 말투로 다듬어. 숫자와 일기 문장만 보내고 할 일 제목은 안 보내.',
   'settings.aiKnowsTodosHint':
     "질문할 때 안 끝낸 할 일 제목과 마감, 오늘 남은 일정 제목을 AI 에 같이 보내. '오늘 뭐부터 할까?'에 답할 수 있어. 채팅 창 아래에서도 켜고 끌 수 있어.",
   'settings.myMcp': '내 MCP 도구 쓰기',
@@ -93,6 +101,7 @@ export const ko = {
   'settings.storage.delete': '지우기',
   'settings.storage.sure': '정말 지울까?',
   'settings.storage.deleted': '모델을 지웠어',
+  'settings.storage.busy': '받는 중이거나 답하는 중이라 지금은 못 지워. 끝나면 다시 해 줘.',
   'settings.storage.empty': '받아 둔 모델이 없어.',
   'settings.storage.hint': (v: { total: string }) =>
     `모두 ${v.total}. 지워도 그 기능을 다시 쓰면 그때 다시 받아.`,
@@ -161,7 +170,7 @@ export const ko = {
   'settings.update': '업데이트',
   'settings.updateCheck': '새 버전 알림',
   'settings.updateHint':
-    '하루에 한 번 새 버전이 나왔는지 보고, 나왔으면 펫이 알려 줘. 앱 이름과 버전 말고는 보내지 않아.',
+    '하루에 한 번 새 버전이 나왔는지 보고, 나왔으면 펫이 알려 줘. 윈도우는 미리 받아 두고 끝낼 때 설치해. 꼭 필요한 업데이트가 나오면 업데이트 전까지 AI 대화가 잠겨 (확인을 못 하면 잠그지 않아). 앱 이름과 버전 말고는 보내지 않아.',
   'settings.checkNow': '지금 확인',
   'settings.onboardingAgain': '시작 안내 다시 보기',
 
@@ -176,6 +185,7 @@ export const ko = {
   'settings.shortcut.change': '바꾸기',
   'settings.shortcut.default': '기본으로',
   'settings.shortcut.badKey': '이 키는 단축키로 못 써. 글자, 숫자, F1~F24 같은 키를 눌러 줘.',
+  'settings.shortcut.taken': "이미 '{name}' 단축키야. 다른 키를 눌러 줘.",
   'settings.shortcut.needMod': '{mod} 나 {alt} 를 같이 눌러 줘. 다른 앱 입력을 빼앗지 않게.',
 
   // 베타 기록
@@ -243,6 +253,11 @@ export const en: Translation<typeof ko> = {
   'settings.pet3dHint': 'Draws the default pet in 3D like a little figure. Turn off for the flat drawing.',
   'settings.wander': 'Wander around',
   'settings.wanderHint': 'Sits still, then walks and sits now and then. Turn off to stay put.',
+  'settings.lookAtCursor': 'Watch the mouse',
+  'settings.lookAtCursorHint': 'When idle, looks toward the mouse pointer if it comes close.',
+  'settings.sounds': 'Sound effects',
+  'settings.soundsHint':
+    'Soft little sounds for finished to-dos, meals, and event reminders. Stays quiet while you focus or while it sleeps.',
 
   'settings.friends': 'Pet friends',
   'settings.friendsChanged': 'Pet friends updated',
@@ -273,6 +288,9 @@ export const en: Translation<typeof ko> = {
   'settings.persona': 'Personality and tone',
   'settings.personaNext': 'Applies from your next question.',
   'settings.aiKnowsTodos': 'Share my to-dos',
+  'settings.diaryAi': 'Polish the diary with AI',
+  'settings.diaryAiHint':
+    "Your chosen AI rewrites past diary entries in your pet's voice. Only the numbers and diary lines are sent, never to-do titles.",
   'settings.aiKnowsTodosHint':
     'Sends your open to-do titles and due dates, plus the titles of today\'s remaining events, with each question. Then it can answer "What should I do first?". You can also switch this under the chat box.',
   'settings.myMcp': 'Use my MCP tools',
@@ -308,6 +326,7 @@ export const en: Translation<typeof ko> = {
   'settings.storage.delete': 'Delete',
   'settings.storage.sure': 'Really delete?',
   'settings.storage.deleted': 'Model deleted',
+  'settings.storage.busy': "It's downloading or answering right now. Try again when it's done.",
   'settings.storage.empty': 'No downloaded models.',
   'settings.storage.hint': (v) =>
     `${v.total} in total. Deleted models download again when you use that feature.`,
@@ -371,7 +390,7 @@ export const en: Translation<typeof ko> = {
   'settings.update': 'Updates',
   'settings.updateCheck': 'New version alerts',
   'settings.updateHint':
-    'Checks once a day for a new version, and your pet lets you know. Only the app name and version are sent.',
+    'Checks once a day for a new version, and your pet lets you know. On Windows it downloads ahead and installs when you quit. If a required update comes out, AI chat is locked until you update (never when the check fails). Only the app name and version are sent.',
   'settings.checkNow': 'Check now',
   'settings.onboardingAgain': 'Show the intro again',
 
@@ -385,6 +404,7 @@ export const en: Translation<typeof ko> = {
   'settings.shortcut.change': 'Change',
   'settings.shortcut.default': 'Reset',
   'settings.shortcut.badKey': "That key can't be a shortcut. Try a letter, a number or F1 to F24.",
+  'settings.shortcut.taken': 'That\'s already the "{name}" shortcut. Try other keys.',
   'settings.shortcut.needMod': 'Hold {mod} or {alt} too, so other apps keep their keys.',
 
   'settings.statsCopied': 'Copied. Paste it along with your feedback',

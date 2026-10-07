@@ -1,5 +1,7 @@
 // 오늘 브리핑 (v1). 그날 처음 컴퓨터 앞에 앉았을 때(아침 5시 이후) 한 번, 펫이 말풍선으로 알려 준다.
 // 수다 빈도 "조용히"면 하지 않는다 (기획서 "수다 빈도" 표).
+
+import type { ChatterLevel } from './chatter.ts';
 import { timeLabel } from './event-store.ts';
 import { t } from './i18n/index.ts';
 
@@ -63,4 +65,31 @@ export function reviewText(r: ReviewInput): string {
         ? t('briefing.review.one', { title: r.doneTitles[0] ?? '' })
         : t('briefing.review.many', { n });
   return r.leftToday > 0 ? `${done} ${t('briefing.review.left', { n: r.leftToday })}` : done;
+}
+
+// ---- 오늘 마감 알림 (기획서 "수다 빈도" 마감 알림: 보통은 마감 당일 한 번, 수다쟁이는 오전과 오후) ----
+
+export type DueSlot = 'am' | 'pm';
+
+/** 오전 알림은 이 시각부터 오후 알림 전까지 (수다쟁이만) */
+export const DUE_AM_FROM = 10 * 60;
+/** 오후 알림. 보통은 14시, 수다쟁이는 15시부터. 하루 회고 시각 전까지만 (회고가 남은 마감을 묻는다) */
+export const DUE_PM_FROM: Record<'normal' | 'chatty', number> = { normal: 14 * 60, chatty: 15 * 60 };
+
+/** 지금 분에 해당하는 마감 알림 칸. 조용히거나 칸 밖이면 undefined */
+export function dueSlot(minute: number, level: ChatterLevel, reviewMinute: number): DueSlot | undefined {
+  if (level === 'quiet' || minute >= reviewMinute) return undefined;
+  if (minute >= DUE_PM_FROM[level]) return 'pm';
+  if (level === 'chatty' && minute >= DUE_AM_FROM) return 'am';
+  return undefined;
+}
+
+/** 오늘 마감 남은 할 일 말풍선. 제목은 셋까지 */
+export function deadlineText(titles: readonly string[]): string {
+  const shown = titles.slice(0, 3).map((title) => `"${title}"`);
+  const more = titles.length - shown.length;
+  return t('briefing.due.left', {
+    n: titles.length,
+    list: shown.join(', ') + (more > 0 ? t('briefing.due.more', { n: more }) : ''),
+  });
 }

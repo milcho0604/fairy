@@ -10,8 +10,34 @@ export const SULK_MAX = 7;
 /** 화해 보너스: 한 칸에 4코인, 최대 28. 7일에 한 번 */
 export const MAKEUP_PER_LEVEL = 4;
 export const MAKEUP_COOLDOWN_MS = 7 * 86_400_000;
-/** 친밀도 단계: 넘을 때마다 새 대사가 열린다 */
+/** 친밀도 단계: 넘을 때마다 새 행동이 열린다 (기획서: 100, 300, 600마다 새 동작이나 대사) */
 export const AFFECTION_STEPS = [100, 300, 600] as const;
+
+/**
+ * 단계마다 열리는 것. 잃는 것은 없다 (친밀도는 줄지 않는다).
+ * - wave: 자리를 비웠다 돌아오면 손을 흔든다
+ * - dance: 할 일을 끝내면 빙글 춤을 춘다
+ * - flower: 머리에 꽃을 꽂는다 (늘)
+ */
+export type Unlock = 'wave' | 'dance' | 'flower';
+export const UNLOCKS: readonly { step: (typeof AFFECTION_STEPS)[number]; unlock: Unlock }[] = [
+  { step: 100, unlock: 'wave' },
+  { step: 300, unlock: 'dance' },
+  { step: 600, unlock: 'flower' },
+];
+
+/** 손 흔들기: 이만큼(초) 자리를 비웠다 돌아오면 */
+export const WAVE_AWAY_SEC = 300;
+
+/** 이 친밀도에서 열린 것 */
+export function unlocked(affection: number): Set<Unlock> {
+  return new Set(UNLOCKS.filter((u) => affection >= u.step).map((u) => u.unlock));
+}
+
+/** 다음에 열릴 것. 다 열었으면 undefined */
+export function nextUnlock(affection: number): { step: number; unlock: Unlock } | undefined {
+  return UNLOCKS.find((u) => affection < u.step);
+}
 
 // 대사는 지금 말로 읽는다 (getter)
 export const SULK_LINES: Readonly<Record<number, string>> = {

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { app, type UtilityProcess, utilityProcess } from 'electron';
 import type { LocalModel } from '../../shared/ai/catalog.ts';
@@ -8,7 +8,7 @@ import { withRules } from '../../shared/ai/persona.ts';
 import { HISTORY_TURNS } from '../../shared/ai/text.ts';
 import type { AiEvent } from '../../shared/ai/types.ts';
 import { t } from '../../shared/i18n/index.ts';
-import { ensureVerified, isVerified, markVerified, sha256Of } from '../download.ts';
+import { ensureVerified, verifyExisting } from '../download.ts';
 import type { WorkerIn, WorkerOut } from '../llm-worker.ts';
 import type { AiRequest, AiRun } from './runner.ts';
 
@@ -26,16 +26,8 @@ export const localModelReady = (m: LocalModel) => existsSync(localModelPath(m));
  * 모델 파일을 쓸 수 있는지: 있고, 해시가 목록과 맞는지(실행마다 한 번 확인). 깨졌거나 목록의 해시가 바뀌었으면
  * 지우고 false 라서 받기 단추가 다시 뜬다.
  */
-async function localModelUsable(m: LocalModel): Promise<boolean> {
-  const path = localModelPath(m);
-  if (!existsSync(path)) return false;
-  if (isVerified(path)) return true;
-  if ((await sha256Of(path)) === m.sha256) {
-    markVerified(path);
-    return true;
-  }
-  rmSync(path, { force: true });
-  return false;
+function localModelUsable(m: LocalModel): Promise<boolean> {
+  return verifyExisting(localModelPath(m), m.sha256);
 }
 
 /** 일꾼이 죽었을 때 받는 쪽에 알리는 표시 */
@@ -52,19 +44,25 @@ export function downloadLocalModel(m: LocalModel, onProgress: (r: number) => voi
 
 let worker: UtilityProcess | undefined;
 let idleTimer: NodeJS.Timeout | undefined;
-const listeners = new Map<string, (o: WorkerOut) => void>();
+/** 답을 기다리는 질문. 어느 일꾼에 물었는지도 둔다: 끝낸 옛 일꾼의 exit 가 새 일꾼에 물은 질문을 죽이지 않게 */
+const listeners = new Map<string, { worker: UtilityProcess; on: (o: WorkerOut) => void }>();
+/** 시작했지만 아직 일꾼에 묻지 않은 질문 (모델 해시를 맞추는 중). 이때도 바쁘다 */
+const starting = new Set<string>();
 
 function getWorker(log: (tag: string, ...rest: unknown[]) => void): UtilityProcess {
   if (worker) return worker;
   const w = utilityProcess.fork(join(import.meta.dirname, 'llm-worker.js'), [], {
     serviceName: 'jjakkung-llm',
   });
-  w.on('message', (o: WorkerOut) => listeners.get(o.id)?.(o));
+  w.on('message', (o: WorkerOut) => {
+    const l = listeners.get(o.id);
+    if (l?.worker === w) l.on(o);
+  });
   w.on('exit', (code) => {
     log('local-ai', '일꾼 끝남', code);
     if (worker === w) worker = undefined;
-    // 답을 기다리던 쪽에 알린다 (죽었으면)
-    for (const [id, l] of listeners) l({ type: 'error', id, message: CRASHED });
+    // 이 일꾼에 물은 질문에만 알린다 (죽었으면)
+    for (const [id, l] of listeners) if (l.worker === w) l.on({ type: 'error', id, message: CRASHED });
   });
   worker = w;
   log('local-ai', '일꾼 시작');
@@ -74,7 +72,7 @@ function getWorker(log: (tag: string, ...rest: unknown[]) => void): UtilityProce
 function touch() {
   clearTimeout(idleTimer);
   idleTimer = setTimeout(() => {
-    if (listeners.size > 0 || !worker) return;
+    if (localBusy() || !worker) return;
     // 끝나는 중인 일꾼에 새 질문이 가지 않게 바로 놓는다
     const w = worker;
     worker = undefined;
@@ -120,7 +118,17 @@ export function runLocal(
     onEvent(e);
   };
 
-  const finished = new Promise<void>((resolve) => void start(resolve));
+  // 질문을 시작한 때부터 바쁘다: 모델 해시를 맞추는 사이 저장 공간에서 모델을 지우지 못하게 (버그잡이 6차)
+  starting.add(id);
+  let mine: UtilityProcess | undefined;
+  const finished = new Promise<void>((resolve) => {
+    // 해시를 읽다 실패해도(파일을 못 읽음) 기다리는 쪽이 멈추지 않게 실패로 끝낸다
+    start(resolve).catch((err) => {
+      log('local-ai', '시작 실패', err instanceof Error ? err.message : String(err));
+      emit({ type: 'error', error: { kind: 'failed', message: t('ai.local.failed') } });
+      resolve();
+    });
+  }).finally(() => starting.delete(id));
 
   async function start(resolve: () => void) {
     if (!(await localModelUsable(model))) {
@@ -136,7 +144,7 @@ export function runLocal(
       return;
     }
     const firstTimer = setTimeout(() => {
-      worker?.postMessage({ type: 'cancel', id } satisfies WorkerIn);
+      mine?.postMessage({ type: 'cancel', id } satisfies WorkerIn);
       emit({ type: 'error', error: { kind: 'timeout', message: t('ai.local.slow') } });
       end();
     }, FIRST_TOKEN_MS);
@@ -146,35 +154,42 @@ export function runLocal(
       touch();
       resolve();
     };
-    listeners.set(id, (o) => {
-      if (o.type === 'delta') {
-        clearTimeout(firstTimer);
-        raw += o.text;
-        // 다듬은 글에서 새로 늘어난 만큼만 내보낸다 (다듬기가 앞 글을 바꾸면 끝에서 한 번에 맞춘다)
-        const clean = cleanLocalAnswer(raw, { partial: true });
-        if (clean.startsWith(shown) && clean.length > shown.length) {
-          emit({ type: 'delta', text: clean.slice(shown.length) });
-          shown = clean;
+    const w = getWorker(log);
+    mine = w;
+    listeners.set(id, {
+      worker: w,
+      on: (o) => {
+        if (o.type === 'delta') {
+          clearTimeout(firstTimer);
+          raw += o.text;
+          // 다듬은 글에서 새로 늘어난 만큼만 내보낸다 (다듬기가 앞 글을 바꾸면 끝에서 한 번에 맞춘다)
+          const clean = cleanLocalAnswer(raw, { partial: true });
+          if (clean.startsWith(shown) && clean.length > shown.length) {
+            emit({ type: 'delta', text: clean.slice(shown.length) });
+            shown = clean;
+          }
+          return;
         }
-        return;
-      }
-      if (o.type === 'done')
-        emit({ type: 'done', text: cleanLocalAnswer(o.text || raw, { banmal: opts.banmal }) });
-      else {
-        log('local-ai', '실패', o.message);
-        const message = o.message === CRASHED ? t('ai.local.crashed') : t('ai.local.failed');
-        emit({ type: 'error', error: { kind: 'failed', message } });
-      }
-      end();
+        if (o.type === 'done')
+          emit({ type: 'done', text: cleanLocalAnswer(o.text || raw, { banmal: opts.banmal }) });
+        else {
+          log('local-ai', '실패', o.message);
+          const message = o.message === CRASHED ? t('ai.local.crashed') : t('ai.local.failed');
+          emit({ type: 'error', error: { kind: 'failed', message } });
+        }
+        end();
+      },
     });
+    starting.delete(id);
+    // 작은 모델은 문맥이 짧아(2048) 규칙은 앞 RULES_LOCAL_MAX 자만
+    const shortRules = (opts.rules ?? '').slice(0, RULES_LOCAL_MAX);
     const msg: WorkerIn = {
       type: 'ask',
       id,
       modelPath: localModelPath(model),
-      // 작은 모델은 문맥이 짧아(2048) 규칙은 앞 1000자만
       system: opts.banmal
-        ? banmalSystem(opts.petName ?? '콩이') + withRules((opts.rules ?? '').slice(0, 1000))
-        : req.persona,
+        ? banmalSystem(opts.petName ?? '콩이') + withRules(shortRules)
+        : shortPersona(req.persona, opts.rules ?? '', shortRules),
       history: [...(opts.banmal ? BANMAL_EXAMPLES : []), ...req.history.slice(-HISTORY_TURNS)].flatMap(
         (h) => [
           { role: 'user' as const, text: h.question },
@@ -185,22 +200,36 @@ export function runLocal(
       noThink: !!model.noThink,
       maxTokens: MAX_TOKENS,
     };
-    getWorker(log).postMessage(msg);
+    w.postMessage(msg);
   }
 
   return {
     cancel() {
       if (settled) return;
-      worker?.postMessage({ type: 'cancel', id } satisfies WorkerIn);
+      mine?.postMessage({ type: 'cancel', id } satisfies WorkerIn);
       emit({ type: 'error', error: { kind: 'cancelled', message: t('ai.error.cancelled') } });
     },
     finished,
   };
 }
 
+const RULES_LOCAL_MAX = 1000;
+
+/** 성격 끝에 붙은 규칙을 짧은 것으로 바꾼다 (존댓말, 영어처럼 반말 예시를 안 쓸 때) */
+export function shortPersona(persona: string, rules: string, short: string): string {
+  const full = withRules(rules);
+  if (!full || full === withRules(short) || !persona.endsWith(full)) return persona;
+  return persona.slice(0, -full.length) + withRules(short);
+}
+
 export const mb = (m: LocalModel) => Math.round(m.bytes / 1_000_000);
 
-/** 앱을 끝낼 때 */
+/** 답하는 중인지 (모델 파일을 지우기 전에 본다) */
+export const localBusy = () => listeners.size > 0 || starting.size > 0;
+
+/** 일꾼을 끝낸다 (앱을 끝낼 때, 모델 파일을 지울 때). 끝나는 중인 일꾼에 새 질문이 가지 않게 바로 놓는다 */
 export function stopLocal() {
-  worker?.kill();
+  const w = worker;
+  worker = undefined;
+  w?.kill();
 }

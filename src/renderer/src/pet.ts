@@ -1,4 +1,5 @@
 import { type Activity, nextDelay } from '../../shared/behavior.ts';
+import type { Gaze } from '../../shared/gaze.ts';
 import { GestureTracker, RubTracker } from '../../shared/gesture.ts';
 import { t } from '../../shared/i18n/index.ts';
 import type { PetImages } from '../../shared/ipc.ts';
@@ -16,10 +17,12 @@ import {
 import type { Blueprint } from '../../shared/pet3d/blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from '../../shared/pet3d/defaults.ts';
 import type { PetKind, PoseKind } from '../../shared/settings.ts';
+import { canPlay, type SoundKind } from '../../shared/sound.ts';
 import { AnimatedImage, loadPetImage } from './animated.ts';
 import { CANVAS_SIZE, drawPet, HEARTS_MS } from './draw.ts';
 import { initLang } from './lang.ts';
 import { Pet3D } from './pet3d.ts';
+import { playSound } from './sound.ts';
 
 initLang('common.title.pet');
 const bridge = window.jjakkung;
@@ -38,6 +41,11 @@ const [canvas, ctx] = setupCanvas();
 // 정지 상태는 한 번 그리고 멈춘다. 계속 그리면 fps 와 무관하게 CPU 를 먹는다 (L10).
 
 const BLINK_MS = 180;
+/**
+ * 깜빡임은 네 틀(반쯤 감음, 감음, 반쯤 뜸, 뜸)로 그린다. 30fps 로는 일곱 틀이었고 첫 틀은 뜬 눈 그대로였다.
+ * 쉬는 동안 그리는 틀 대부분이 깜빡임이라 대기 CPU 가 이만큼 준다 (2026-10-07 측정, docs/roadmap.md)
+ */
+const BLINK_FPS = 4000 / BLINK_MS;
 const ANIMATED_FPS: Partial<Record<PetMood, number>> = { excited: 30, thinking: 8 };
 
 let inputs: PetInputs = { ...INITIAL_INPUTS };
@@ -83,6 +91,8 @@ function frame() {
       blinkStart = -1;
     }
   }
+  const trickT = trick ? (now - trick.start) / TRICK_MS[trick.type] : -1;
+  if (trickT >= 1) trick = undefined;
   const hearts = heartsStart >= 0 ? now - heartsStart : -1;
   if (hearts >= HEARTS_MS) heartsStart = -1;
   // 입체가 되면 사진 대신 입체로 (AI 가 만든 설계도가 있는 사진 펫, 또는 기본 펫)
@@ -101,21 +111,28 @@ function frame() {
     hearts: heartsStart >= 0 ? hearts : -1,
     cushion,
     model3d: m3d,
+    gaze: gaze ?? undefined,
+    trick: trick ? { type: trick.type, t: trickT } : undefined,
+    flower,
   });
 
   const walking = activity?.type === 'walk';
   const moving = activity?.type === 'yawn' || activity?.type === 'stretch';
   // 움직이는 그림은 잠, 바쁨일 때 멈춘다 (L10: 계속 그리면 CPU 를 먹는다). 12fps 까지만.
   const animatedPhoto = img instanceof AnimatedImage && canBlink(mood) ? Math.min(12, img.fps) : 0;
-  const fps = isAnimated(mood)
-    ? (ANIMATED_FPS[mood] ?? 30)
-    : blinkStart >= 0 || heartsStart >= 0
-      ? 30
-      : walking
-        ? WALK_FPS
-        : moving
-          ? 20
-          : animatedPhoto;
+  const fps = trick
+    ? 30
+    : isAnimated(mood)
+      ? (ANIMATED_FPS[mood] ?? 30)
+      : heartsStart >= 0
+        ? 30
+        : blinkStart >= 0
+          ? BLINK_FPS
+          : walking
+            ? WALK_FPS
+            : moving
+              ? 20
+              : animatedPhoto;
   // 이 틀 안에서 requestFrame 이 불렸으면(행동 멈춤 등) 그 타이머를 지운다. 안 지우면 루프가 두 겹이 돈다
   // (2026-10-07 점검: 신남이 30fps 가 아니라 57fps)
   clearTimeout(frameTimer);
@@ -169,6 +186,13 @@ let photo: PetImage | undefined;
 let poses: Partial<Record<PoseKind, PetImage>> = {};
 let petKind: PetKind = 'kong';
 let cushion = false;
+/** 머리에 꽃 (친밀도 600) */
+let flower = false;
+/** 효과음 (설정) */
+let sounds = false;
+/** 친밀도로 열린 몸짓. 끝나면 지운다 */
+let trick: { type: 'wave' | 'dance'; start: number } | undefined;
+const TRICK_MS = { wave: 1800, dance: 1400 } as const;
 let imageLoad = 0;
 bridge.onImage(async (images: PetImages) => {
   const mine = ++imageLoad;
@@ -239,17 +263,52 @@ bridge.onStatus((status) => {
   // 입체를 다시 켜면 한 번 더 해 본다 (그래픽 오류로 2D 가 됐어도)
   if (status.pet3d && !use3d && broken3d) {
     broken3d = false;
+    // 잃은 렌더러도 놓는다 (안 놓으면 다시 만들 때마다 컨텍스트가 쌓인다)
+    model3d?.dispose();
     model3d = undefined;
     model3dOf = undefined;
   }
   use3d = status.pet3d;
   cushion = status.cushion;
+  flower = status.flower;
+  sounds = status.sounds;
   setInputs({ hungry: status.hungry, focusTimer: status.focus, sulkLevel: status.sulk });
+});
+// 커서 바라보기: 방향 칸이 바뀔 때만 온다. 한가한 모습(기본, 앉기)일 때만 한 번 다시 그린다
+let gaze: Gaze | null = null;
+bridge.onGaze((g) => {
+  gaze = g;
+  if (mood === 'idle' && (!activity || activity.type === 'sit')) requestFrame();
 });
 // 던져져 날아가는 동안은 잡힌 얼굴 (> <)
 bridge.onFlight((flying) => setInputs({ grabbed: flying }));
 // 할 일을 끝내거나 밥을 먹으면 신나서 통통 튄다.
-bridge.onReact(() => setInputs({ excitedUntil: performance.now() + EXCITED_MS }));
+// 친밀도로 열린 몸짓: 돌아오면 손 흔들기(100), 할 일을 끝내면 빙글 춤(300)
+bridge.onReact((kind) => {
+  const now = performance.now();
+  if (kind === 'love') {
+    // 친구 펫과 만났다: 하트만 (통통 튀면 마주 본 모습이 깨진다)
+    heartsStart = now;
+    sound('purr');
+    requestFrame();
+    return;
+  }
+  if (kind === 'wave') {
+    trick = { type: 'wave', start: now };
+    // 돌아왔으니 잠에서 깬다 (메인의 다음 알림을 기다리지 않고)
+    setInputs({ userIdleMs: 0 });
+    sound('wave');
+    return;
+  }
+  if (kind === 'dance') trick = { type: 'dance', start: now };
+  setInputs({ excitedUntil: now + EXCITED_MS });
+  sound(kind === 'fed' ? 'fed' : kind === 'dance' ? 'dance' : 'happy');
+});
+
+/** 효과음 (설정, 기본 끔). 집중, 잠, 바쁨 중에는 안 낸다 */
+function sound(kind: SoundKind) {
+  if (canPlay({ enabled: sounds, focus: inputs.focusTimer, mood })) playSound(kind);
+}
 
 bridge.onActivity((a) => {
   // 삐져 있어도 걷고 논다 (모습만 삐진 얼굴)
@@ -271,7 +330,8 @@ function scheduleBlink() {
     () => {
       if (canBlink(mood)) {
         blinkStart = performance.now();
-        requestFrame();
+        // 첫 틀(t=0)은 뜬 눈 그대로라 건너뛴다. 이미 그리는 중이면(걷기 등) 그 흐름이 깜빡임도 그린다
+        frameTimer ??= setTimeout(frame, BLINK_MS / 4);
       }
       scheduleBlink();
     },
@@ -359,6 +419,7 @@ window.addEventListener('mousemove', (e) => {
   else if (rub.move(e.screenX, performance.now())) {
     heartsStart = performance.now();
     bridge.petted();
+    sound('purr');
     requestFrame();
   }
 });
@@ -475,6 +536,7 @@ bridge.onBubble((b) => {
   }
   bubbleId = b.id;
   bubbleLeft = b.ttlMs;
+  if (b.kind === 'schedule') sound('bell');
   bubbleText.textContent = b.text;
   bubbleImage.hidden = !b.image;
   if (b.image) bubbleImage.src = b.image;
@@ -539,6 +601,11 @@ Object.assign(window, {
     /** 행동을 바로 넣는다. at 은 진행 정도 0~1 (하품, 기지개 가운데를 찍을 때). 없으면 그만 */
     debugActivity: (a?: Activity, at = 0) => {
       activity = a ? { ...a, start: performance.now() - a.ms * at } : undefined;
+      requestFrame();
+    },
+    /** 몸짓을 바로 넣는다. at 은 진행 정도 0~1 (디자인 점검 때 가운데를 찍으려고) */
+    debugTrick: (type: 'wave' | 'dance', at = 0.3) => {
+      trick = { type, start: performance.now() - TRICK_MS[type] * at };
       requestFrame();
     },
     get mood() {

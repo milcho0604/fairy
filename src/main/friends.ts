@@ -1,12 +1,15 @@
-import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { app } from 'electron';
+import { app, screen } from 'electron';
 import { t } from '../shared/i18n/index.ts';
 import { IPC, type PetImages, type PetStatus } from '../shared/ipc.ts';
+import { MEET_CHANCE, MEET_COOLDOWN_MS, MEET_EVERY_MS, meetPlan } from '../shared/meet.ts';
 import { type Blueprint, parseBlueprint } from '../shared/pet3d/blueprint.ts';
 import type { Friend } from '../shared/settings.ts';
+import { library } from './pet-library.ts';
 import { createPetWindow, type PetWindow } from './pet-window.ts';
+import { readFileIn } from './safe-file.ts';
 import { settings } from './settings.ts';
+import { removeJson } from './store.ts';
 
 /** 인사 (지금 말로) */
 const hello = () => [
@@ -17,13 +20,15 @@ const hello = () => [
   t('pet.hello.5'),
 ];
 
+/** pets/ 안 일반 파일만 읽는다 (링크를 따라 폴더 밖을 읽지 않게, safe-file.ts) */
+const petFile = (file: string | undefined) => readFileIn(join(app.getPath('userData'), 'pets'), file);
+
 /** 친구의 입체 설계도. 없거나 깨졌으면 null (사진으로) */
 function modelOf(file: string | undefined): Blueprint | null {
-  if (!file) return null;
+  const bytes = petFile(file);
+  if (!bytes) return null;
   try {
-    return (
-      parseBlueprint(JSON.parse(readFileSync(join(app.getPath('userData'), 'pets', file), 'utf8'))) ?? null
-    );
+    return parseBlueprint(JSON.parse(bytes.toString('utf8'))) ?? null;
   } catch {
     return null;
   }
@@ -31,12 +36,8 @@ function modelOf(file: string | undefined): Blueprint | null {
 
 /** 친구의 2.5D 깊이 그림 (data URL). 없으면 null */
 function depthOf(file: string | undefined): string | null {
-  if (!file) return null;
-  try {
-    return `data:image/png;base64,${readFileSync(join(app.getPath('userData'), 'pets', file)).toString('base64')}`;
-  } catch {
-    return null;
-  }
+  const bytes = petFile(file);
+  return bytes ? `data:image/png;base64,${bytes.toString('base64')}` : null;
 }
 
 function imageOf(f: Friend): PetImages {
@@ -45,7 +46,9 @@ function imageOf(f: Friend): PetImages {
   try {
     const ext = f.image.split('.').pop() ?? 'png';
     const mime = ext === 'gif' ? 'image/gif' : ext === 'webp' ? 'image/webp' : 'image/png';
-    const b64 = readFileSync(join(app.getPath('userData'), 'pets', f.image)).toString('base64');
+    const bytes = petFile(f.image);
+    if (!bytes) return none;
+    const b64 = bytes.toString('base64');
     return {
       main: `data:${mime};base64,${b64}`,
       model: modelOf(f.model),
@@ -63,9 +66,46 @@ function imageOf(f: Friend): PetImages {
  */
 export function createFriends(o: {
   mainPet: () => PetWindow;
+  /** 지금 친구 놀이를 해도 되는지 (집중, 놀이, 숨바꼭질 중이 아니고 사용자가 자리에 있다) */
+  canMeet: () => boolean;
   log: (tag: string, ...rest: unknown[]) => void;
 }) {
   const live = new Map<string, { pet: PetWindow; friend: Friend }>();
+
+  // ---- 친구 펫끼리 놀기 ----
+  // 가끔 친구 하나가 기본 펫 옆으로 걸어가 서로 마주 보고 하트를 띄운다. 둘 다 한가할 때만.
+  let lastMeet = 0;
+  let meeting = false;
+  async function meetTick(force = false) {
+    const now = Date.now();
+    if (meeting || live.size === 0) return;
+    if (!force && (now - lastMeet < MEET_COOLDOWN_MS || Math.random() > MEET_CHANCE)) return;
+    const main = o.mainPet();
+    if (!o.canMeet() || !main.isIdle()) return;
+    const idle = [...live.values()].filter((l) => l.pet.isIdle());
+    const l = idle[Math.floor(Math.random() * idle.length)];
+    if (!l) return;
+    const a = main.bounds();
+    const b = l.pet.bounds();
+    const display = screen.getDisplayMatching(a);
+    const same = display.id === screen.getDisplayMatching(b).id;
+    const plan = meetPlan(a, b, same, display.workArea);
+    if (!plan) return;
+    meeting = true;
+    lastMeet = now;
+    o.log('friends', '만나러 감', l.friend.id);
+    try {
+      if (!(await l.pet.walkTo(plan.x))) return;
+      // 걷는 사이 기본 펫이 움직였거나 바빠졌으면 그만
+      if (!main.isIdle() || !l.pet.isIdle() || Math.abs(main.bounds().x - a.x) > 8) return;
+      main.greet(plan.mainDir);
+      l.pet.greet(plan.friendDir);
+    } finally {
+      meeting = false;
+    }
+  }
+  const meetTimer = setInterval(() => void meetTick(), MEET_EVERY_MS);
+  meetTimer.unref();
 
   function status(f: Friend): PetStatus {
     return {
@@ -75,6 +115,8 @@ export function createFriends(o: {
       kind: f.kind,
       pet3d: settings.get().pet3d,
       cushion: false,
+      flower: false,
+      sounds: false,
     };
   }
 
@@ -117,6 +159,7 @@ export function createFriends(o: {
             label: t('pet.friend.hide', { name }),
             click: () => pet.setHidden('user', true, false),
           },
+          { label: t('pet.menu.reload'), click: () => pet.reload() },
           { type: 'separator' },
           {
             label: t('pet.friend.sendHome', { name }),
@@ -141,6 +184,9 @@ export function createFriends(o: {
       if (!want.some((f) => f.id === id)) {
         l.pet.win.destroy();
         live.delete(id);
+        library.cleanup([l.friend.image, l.friend.model, l.friend.depth]);
+        // 그 친구의 위치 파일도 지운다 (pet-window 의 pet-position-<id>). 남으면 쌓이기만 한다
+        removeJson(`pet-position-${id}`);
         o.log('friends', '갔어', id);
       }
     }
@@ -173,6 +219,9 @@ export function createFriends(o: {
     sync,
     setHidden,
     resendStatus,
+    /** 개발용: 바로 만나 보기 (확률, 쉬는 시간 무시) */
+    debugMeet: () => meetTick(true),
+    stop: () => clearInterval(meetTimer),
     get count() {
       return live.size;
     },
