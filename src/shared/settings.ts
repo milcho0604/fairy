@@ -24,6 +24,12 @@ export interface Settings {
   petImage?: string;
   /** 기본 펫 모양 (v1, D6 대신 코드로 그린 세 가지) */
   petKind: PetKind;
+  /** 기본 펫을 입체(three.js)로 그린다 (6단계). 끄면 예전 2D 그림 */
+  pet3d: boolean;
+  /** 사진 펫을 AI 가 입체로 만든 설계도 (6단계). pets/ 안 model-*.json. 있으면 입체로 보기일 때 사진 대신 이것 */
+  petModel?: string;
+  /** 사진 펫의 2.5D 깊이 그림 (6단계). pets/ 안 depth-*.png. 있으면 입체로 보기일 때 사진을 입체 판으로 */
+  petDepth?: string;
   /** 상태별 포즈 그림 (v1). 기쁨, 졸림, 배고픔. pets/ 안 파일 이름 */
   petPoses: Partial<Record<PoseKind, string>>;
   /** 삐짐 게이지를 세지 않는 요일 (0 일 ~ 6 토). 기본 토, 일 */
@@ -46,11 +52,28 @@ export interface Settings {
   myMcp: boolean;
   /** 친구 펫 (v2 여러 마리). 할 일, 채팅은 기본 펫이 맡고 친구는 같이 돌아다닌다 */
   friends: Friend[];
-  /** 화면 말 (v2 다국어). auto 는 운영체제 말. 창이 열릴 때 읽어서 바꾸면 다시 켠다 */
   /** AI 마다 고른 모델 (v2). 키는 AI id('claude', 'codex', 'local'), 값은 모델 목록의 id. 없으면 그 AI 의 기본 */
   aiModels: Record<string, string>;
+  /** 화면 말 (v2 다국어). auto 는 운영체제 말. 창이 열릴 때 읽어서 바꾸면 다시 켠다 */
   lang: LangPref;
+  /** 전에 만든 사진 펫 보관함 (6단계). 새로 만들거나 기본 펫으로 바꿔도 지우지 않고 여기 둔다 */
+  petLibrary: SavedPet[];
+  /** 짝꿍 규칙 (6단계). AI 에게 늘 같이 보내는 사용자의 지시 (CLAUDE.md, AGENTS.md 처럼) */
+  petRules: string;
 }
+
+/** 보관한 사진 펫. 파일은 pets/ 안 */
+export interface SavedPet {
+  id: string;
+  name: string;
+  image: string;
+  model?: string;
+  depth?: string;
+  poses: Partial<Record<PoseKind, string>>;
+}
+
+export const LIBRARY_MAX = 12;
+export const RULES_MAX = 4000;
 
 export interface Friend {
   id: string;
@@ -58,11 +81,17 @@ export interface Friend {
   kind: PetKind;
   /** 사진 그림 (pets/ 안, 펫 공유 파일에서 데려왔을 때) */
   image?: string;
+  /** 입체 설계도 (pets/ 안 model-*.json, 6단계) */
+  model?: string;
+  /** 2.5D 깊이 그림 (pets/ 안 depth-*.png, 6단계) */
+  depth?: string;
 }
 
 export const FRIENDS_MAX = 3;
 
-export type PetKind = 'kong' | 'cat' | 'chick';
+export const PET_KIND_IDS = ['kong', 'cat', 'chick', 'dog', 'bunny'] as const;
+export type PetKind = (typeof PET_KIND_IDS)[number];
+export const isPetKind = (v: unknown): v is PetKind => PET_KIND_IDS.includes(v as PetKind);
 // 이름은 지금 말로 읽는다 (getter). 화면은 setLang 뒤에 읽는다.
 export const PET_KINDS: readonly { id: PetKind; readonly label: string }[] = [
   {
@@ -81,6 +110,18 @@ export const PET_KINDS: readonly { id: PetKind; readonly label: string }[] = [
     id: 'chick',
     get label() {
       return t('common.petKind.chick');
+    },
+  },
+  {
+    id: 'dog',
+    get label() {
+      return t('common.petKind.dog');
+    },
+  },
+  {
+    id: 'bunny',
+    get label() {
+      return t('common.petKind.bunny');
     },
   },
 ];
@@ -108,8 +149,10 @@ export const POSE_KINDS: readonly { id: PoseKind; readonly label: string }[] = [
 const PET_FILE = /^(pet|pose)-[\w-]+\.(png|gif|webp)$/;
 
 /** 바꿀 값만. 사진 펫은 null 이면 지운다 (기본 펫으로). */
-export type SettingsPatch = Partial<Omit<Settings, 'petImage' | 'petPoses'>> & {
+export type SettingsPatch = Partial<Omit<Settings, 'petImage' | 'petPoses' | 'petModel' | 'petDepth'>> & {
   petImage?: string | null;
+  petModel?: string | null;
+  petDepth?: string | null;
   petPoses?: Partial<Record<PoseKind, string | null>>;
 };
 
@@ -123,6 +166,7 @@ export const DEFAULT_SETTINGS: Settings = {
   launchAtLogin: false,
   hideHints: 0,
   petKind: 'kong',
+  pet3d: true,
   petPoses: {},
   restDays: [0, 6],
   spicy: false,
@@ -134,6 +178,8 @@ export const DEFAULT_SETTINGS: Settings = {
   friends: [],
   lang: 'auto',
   aiModels: {},
+  petLibrary: [],
+  petRules: '',
 };
 
 export const PET_NAME_MAX = 12;
@@ -169,7 +215,10 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
         ? Math.max(0, Math.floor(r.hideHints))
         : base.hideHints,
     ...petImageOf(r.petImage, base.petImage),
-    petKind: r.petKind === 'kong' || r.petKind === 'cat' || r.petKind === 'chick' ? r.petKind : base.petKind,
+    petKind: isPetKind(r.petKind) ? r.petKind : base.petKind,
+    pet3d: bool(r.pet3d, base.pet3d),
+    ...petModelOf(r.petModel, base.petModel),
+    ...petDepthOf(r.petDepth, base.petDepth),
     petPoses: posesOf(r.petPoses, base.petPoses),
     restDays: Array.isArray(r.restDays)
       ? [...new Set(r.restDays.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 6))].sort()
@@ -190,6 +239,9 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     friends: Array.isArray(r.friends) ? friendsOf(r.friends) : base.friends,
     lang: r.lang === 'auto' || r.lang === 'ko' || r.lang === 'en' ? r.lang : base.lang,
     aiModels: aiModelsOf(r.aiModels, base.aiModels),
+    petLibrary: Array.isArray(r.petLibrary) ? libraryOf(r.petLibrary) : base.petLibrary,
+    petRules:
+      typeof r.petRules === 'string' ? r.petRules.replace(/\r\n/g, '\n').slice(0, RULES_MAX) : base.petRules,
     ...(typeof r.skipVersion === 'string' && /^\d+\.\d+\.\d+/.test(r.skipVersion)
       ? { skipVersion: r.skipVersion.slice(0, 32) }
       : base.skipVersion
@@ -215,7 +267,45 @@ function petImageOf(v: unknown, current: string | undefined): { petImage?: strin
   return current ? { petImage: current } : {};
 }
 
+const MODEL_FILE = /^model-[\w-]+\.json$/;
+const DEPTH_FILE = /^depth-[\w-]+\.png$/;
+function petDepthOf(v: unknown, current: string | undefined): { petDepth?: string } {
+  if (v === null || v === '') return {};
+  if (typeof v === 'string' && DEPTH_FILE.test(v)) return { petDepth: v };
+  return current ? { petDepth: current } : {};
+}
+function petModelOf(v: unknown, current: string | undefined): { petModel?: string } {
+  if (v === null || v === '') return {};
+  if (typeof v === 'string' && MODEL_FILE.test(v)) return { petModel: v };
+  return current ? { petModel: current } : {};
+}
+
 /** 포즈 그림: 아는 포즈와 파일 이름 규칙에 맞는 것만. null 이면 그 포즈를 지운다. */
+/** 보관함 검사: id 는 p- 로 시작, 파일 이름은 규칙에 맞는 것만, 12개까지 */
+function libraryOf(list: unknown[]): SavedPet[] {
+  const out: SavedPet[] = [];
+  for (const v of list) {
+    if (typeof v !== 'object' || v === null) continue;
+    const f = v as Record<string, unknown>;
+    const id = typeof f.id === 'string' && /^p-[\w-]{1,24}$/.test(f.id) ? f.id : undefined;
+    const name = cleanPetName(f.name);
+    const image = typeof f.image === 'string' && PET_FILE.test(f.image) ? f.image : undefined;
+    if (!id || !name || !image || out.some((o) => o.id === id)) continue;
+    const model = typeof f.model === 'string' && MODEL_FILE.test(f.model) ? f.model : undefined;
+    const depth = typeof f.depth === 'string' && DEPTH_FILE.test(f.depth) ? f.depth : undefined;
+    out.push({
+      id,
+      name,
+      image,
+      ...(model ? { model } : {}),
+      ...(depth ? { depth } : {}),
+      poses: posesOf(f.poses, {}),
+    });
+    if (out.length >= LIBRARY_MAX) break;
+  }
+  return out;
+}
+
 function posesOf(v: unknown, current: Settings['petPoses']): Settings['petPoses'] {
   if (typeof v !== 'object' || v === null) return { ...current };
   const out: Settings['petPoses'] = {};
@@ -236,9 +326,18 @@ function friendsOf(list: unknown[]): Friend[] {
     const id = typeof f.id === 'string' && /^f-[\w-]{1,20}$/.test(f.id) ? f.id : undefined;
     const name = cleanPetName(f.name);
     if (!id || !name || out.some((o) => o.id === id)) continue;
-    const kind: PetKind = f.kind === 'cat' || f.kind === 'chick' ? f.kind : 'kong';
+    const kind: PetKind = isPetKind(f.kind) ? f.kind : 'kong';
     const image = typeof f.image === 'string' && PET_FILE.test(f.image) ? f.image : undefined;
-    out.push({ id, name, kind, ...(image ? { image } : {}) });
+    const model = image && typeof f.model === 'string' && MODEL_FILE.test(f.model) ? f.model : undefined;
+    const depth = image && typeof f.depth === 'string' && DEPTH_FILE.test(f.depth) ? f.depth : undefined;
+    out.push({
+      id,
+      name,
+      kind,
+      ...(image ? { image } : {}),
+      ...(model ? { model } : {}),
+      ...(depth ? { depth } : {}),
+    });
     if (out.length >= FRIENDS_MAX) break;
   }
   return out;

@@ -273,8 +273,10 @@ export class TodoStore {
   feed(
     now: number,
     food: { cost: number; gain: number } = { cost: COIN.food, gain: FULLNESS.perFood },
-  ): { ok: boolean; fullness: number; balance: number } {
+  ): { ok: boolean; fullness: number; balance: number; full?: boolean } {
     const current = this.fullness(now);
+    // 배가 꽉 찼으면 코인만 받고 아무것도 안 되니 주지 않는다
+    if (current >= 99.5) return { ok: false, full: true, fullness: current, balance: this.balance() };
     if (this.balance() < food.cost) return { ok: false, fullness: current, balance: this.balance() };
     const next = Math.min(100, current + food.gain);
     this.#db.exec('begin');

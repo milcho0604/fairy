@@ -19,6 +19,7 @@ export const ko = {
   'main.backup.exportTitle': '백업을 둘 폴더',
   'main.backup.importTitle': '가져올 백업 폴더',
   'main.backup.notBackup': '짝꿍 백업 폴더가 아니야',
+  'main.backup.newer': '더 새 판 짝꿍이 만든 백업이야. 짝꿍을 새 버전으로 올린 뒤 가져와 줘.',
   'main.backup.confirm': '지금 할 일, 메모, 펫을 이 백업으로 바꿀까?',
   'main.backup.confirmDetail':
     '지금 데이터는 사용자 데이터 폴더의 before-import 폴더에 남겨 둬. 바꾼 뒤 짝꿍을 다시 켜.',
@@ -38,6 +39,10 @@ export const ko = {
   'main.maker.tooBigAny': '그림이 너무 크거나 PNG, GIF, WebP 가 아니야.',
   'main.maker.tooBigPng': '그림이 너무 크거나 PNG 가 아니야.',
   'main.maker.title': '사진으로 펫 만들기',
+  'main.maker.noVisionAi':
+    '사진을 볼 수 있는 AI(Claude, Codex)가 없어. 채팅에서 하나를 설치하고 로그인하면 쓸 수 있어.',
+  'main.maker.shapeCancelled': '입체 만들기를 멈췄어.',
+  'main.maker.shapeBad': 'AI 답에서 설계도를 못 읽었어. 한 번 더 해 볼래?',
 };
 
 export const en: Translation<typeof ko> = {
@@ -57,6 +62,7 @@ export const en: Translation<typeof ko> = {
   'main.backup.exportTitle': 'Folder for the backup',
   'main.backup.importTitle': 'Backup folder to import',
   'main.backup.notBackup': "That's not a Jjakkung backup folder",
+  'main.backup.newer': 'This backup was made by a newer Jjakkung. Update Jjakkung first, then import it.',
   'main.backup.confirm': 'Replace your current to-dos, notes and pet with this backup?',
   'main.backup.confirmDetail':
     'Your current data stays in the before-import folder inside the user data folder. Jjakkung restarts after the switch.',
@@ -76,4 +82,8 @@ export const en: Translation<typeof ko> = {
   'main.maker.tooBigAny': 'The picture is too big or not a PNG, GIF or WebP.',
   'main.maker.tooBigPng': 'The picture is too big or not a PNG.',
   'main.maker.title': 'Make a pet from a photo',
+  'main.maker.noVisionAi':
+    'No AI that can see photos (Claude, Codex). Install and sign in to one from the chat to use this.',
+  'main.maker.shapeCancelled': 'Stopped making the 3D pet.',
+  'main.maker.shapeBad': "Couldn't read a blueprint from the AI's answer. Try again?",
 };

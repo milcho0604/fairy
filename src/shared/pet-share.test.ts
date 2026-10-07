@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { decodePet, encodePet, SHARE_FORMAT, shareFileName } from './pet-share.ts';
+import { DEFAULT_BLUEPRINTS } from './pet3d/defaults.ts';
 
 // 1x1 투명 PNG
 const PNG =
@@ -42,4 +43,25 @@ test('남이 준 파일은 엄격하게: 형식, 판, 이름, 그림 머리말',
 test('공유 파일 이름', () => {
   assert.equal(shareFileName('까망 이/2'), '까망-이-2.jjpet');
   assert.equal(shareFileName('***'), 'pet.jjpet');
+});
+
+test('입체 설계도도 같이 주고받는다 (사진이 있을 때만, 깨졌으면 뺀다)', () => {
+  const image = `data:image/png;base64,${Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]).toString('base64')}`;
+  const model = DEFAULT_BLUEPRINTS.cat;
+  assert.deepEqual(decodePet(encodePet({ name: '치즈', kind: 'cat', image, poses: {}, model })), {
+    name: '치즈',
+    kind: 'cat',
+    image,
+    poses: {},
+    model,
+  });
+  const broken = JSON.parse(encodePet({ name: '치즈', kind: 'cat', image, poses: {} }));
+  assert.deepEqual(decodePet(JSON.stringify({ ...broken, model: { parts: 'x' } })), {
+    name: '치즈',
+    kind: 'cat',
+    image,
+    poses: {},
+  });
+  const noImage = decodePet(encodePet({ name: '콩', kind: 'kong', poses: {}, model }));
+  assert.ok(!('error' in noImage) && !('model' in noImage));
 });

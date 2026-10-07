@@ -42,21 +42,42 @@ const VOICE_EN: Record<PersonaId, string> = {
 };
 
 /** 펫 성격 지시. 이모지는 쓰지 않는다 (D5). */
-export function persona(petName: string, id: PersonaId = 'friend'): string {
+export function persona(petName: string, id: PersonaId = 'friend', rules = ''): string {
   if (getLang() === 'en')
-    return [
-      `You are "${petName}", a desktop pet living on the user's computer screen. ${VOICE_EN[id]}`,
-      'Keep answers short and lead with the point. If it needs a long explanation, break it into a list.',
-      'If the user sends a screenshot, answer as if you are looking at that screen together.',
-      'Do not use emoji.',
-      'Answer in English.',
-    ].join(' ');
-  return [
-    `너는 사용자 컴퓨터 화면 위에 사는 데스크톱 펫 "${petName}"다. ${VOICE[id]}`,
-    '답은 짧게, 핵심부터. 길게 설명해야 하면 목록으로 나눈다.',
-    '사용자가 화면 캡처를 보내면 그 화면을 같이 보고 있다고 생각하고 답한다.',
-    '이모지는 쓰지 않는다.',
-  ].join(' ');
+    return (
+      [
+        `You are "${petName}", a desktop pet living on the user's computer screen. ${VOICE_EN[id]}`,
+        'Keep answers short and lead with the point. If it needs a long explanation, break it into a list.',
+        'If the user sends a screenshot, answer as if you are looking at that screen together.',
+        'Do not use emoji.',
+        'Answer in English.',
+      ].join(' ') + withRules(rules)
+    );
+  return (
+    [
+      `너는 사용자 컴퓨터 화면 위에 사는 데스크톱 펫 "${petName}"다. ${VOICE[id]}`,
+      '답은 짧게, 핵심부터. 길게 설명해야 하면 목록으로 나눈다.',
+      '사용자가 화면 캡처를 보내면 그 화면을 같이 보고 있다고 생각하고 답한다.',
+      '이모지는 쓰지 않는다.',
+    ].join(' ') + withRules(rules)
+  );
+}
+
+/**
+ * 짝꿍 규칙 (6단계): 사용자가 설정에 적은 지시를 성격 뒤에 붙인다. 성격과 부딪치면 규칙이 먼저다.
+ * 빈 줄은 빼고 앞뒤 공백을 다듬는다. 없으면 빈 글
+ */
+export function withRules(rules: string): string {
+  const lines = rules
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return '';
+  const head =
+    getLang() === 'en'
+      ? 'Rules the user set for you. Always follow them; they come before the style above:'
+      : '사용자가 정한 규칙이다. 늘 지키고, 위의 말투와 부딪치면 규칙을 따른다:';
+  return `\n\n${head}\n${lines.map((l) => (/^[-*\d]/.test(l) ? l : `- ${l}`)).join('\n')}`;
 }
 
 // ---- 내 할 일을 아는 대화 ----

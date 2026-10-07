@@ -38,15 +38,18 @@ export function parseQuickTodo(text: string, today: string): QuickTodo {
     }
   }
   let due: string | null = null;
+  // 영어는 대소문자를 가리지 않는다 ("Tomorrow buy milk")
   for (const [word, n] of Object.entries(DAY_WORDS)) {
-    if (rest.startsWith(`${word} `) || rest.startsWith(`${word}까지 `)) {
+    const head = new RegExp(`^${word}(까지)? `, 'i');
+    const tail = new RegExp(` ${word}(까지)?$`, 'i');
+    if (head.test(rest)) {
       due = addDays(today, n);
-      rest = rest.replace(new RegExp(`^${word}(까지)? `), '');
+      rest = rest.replace(head, '');
       break;
     }
-    if (rest.endsWith(` ${word}`) || rest.endsWith(` ${word}까지`)) {
+    if (tail.test(rest)) {
       due = addDays(today, n);
-      rest = rest.replace(new RegExp(` ${word}(까지)?$`), '');
+      rest = rest.replace(tail, '');
       break;
     }
   }

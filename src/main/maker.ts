@@ -9,8 +9,10 @@ import {
   net,
   protocol,
 } from 'electron';
+import type { ImageAttachment } from '../shared/ai/types.ts';
 import { t } from '../shared/i18n/index.ts';
 import {
+  DEPTH_URL,
   MAKER,
   type MakerInfo,
   type MakerTarget,
@@ -18,11 +20,15 @@ import {
   MODEL_URL,
   type PetImages,
 } from '../shared/ipc.ts';
+import { type Blueprint, parseBlueprint } from '../shared/pet3d/blueprint.ts';
+import { BLUEPRINT_SYSTEM, blueprintPrompt, extractBlueprint } from '../shared/pet3d/prompt.ts';
 import { cleanPetName, POSE_KINDS } from '../shared/settings.ts';
 import { CUSTOM_FOOD_COST } from '../shared/shop.ts';
 import { BG_MODEL, ensureModel, modelReady, verifiedModelUrl } from './bg-model.ts';
+import { DEPTH_MODEL, depthReady, ensureDepthModel, verifiedDepthUrl } from './depth-model.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
 import { langArg } from './lang.ts';
+import { library } from './pet-library.ts';
 import { settings } from './settings.ts';
 
 /** 다듬은 펫 그림 크기 상한. 화면에서 512px 로 줄여 보내므로 이보다 크면 이상한 값이다. */
@@ -76,8 +82,48 @@ export function petImages(): PetImages {
     const url = dataUrlOf(s.petPoses[id]);
     if (url) poses[id] = url;
   }
-  return { main: dataUrlOf(s.petImage), poses };
+  return {
+    main: dataUrlOf(s.petImage),
+    model: s.petImage ? modelOf(s.petModel) : null,
+    depth: s.petImage ? dataUrlOf(s.petDepth) : null,
+    poses,
+  };
 }
+
+/** 깊이 그림 상한. 화면에서 256px 회색 PNG 로 보낸다 */
+const MAX_DEPTH_BYTES = 1024 * 1024;
+
+/** 저장할 입체 모습을 고른다. 설계도는 다시 검사하고, 깊이 그림은 PNG 인지와 크기를 본다 */
+function lookOf(raw: unknown): { model?: Blueprint; depth?: Buffer } {
+  if (typeof raw !== 'object' || raw === null) return {};
+  const r = raw as Record<string, unknown>;
+  const model = parseBlueprint(r.model);
+  if (model) return { model };
+  const prefix = 'data:image/png;base64,';
+  if (typeof r.depth === 'string' && r.depth.startsWith(prefix)) {
+    const bytes = Buffer.from(r.depth.slice(prefix.length), 'base64');
+    if (kindOf(bytes) === 'png' && bytes.length <= MAX_DEPTH_BYTES) return { depth: bytes };
+  }
+  return {};
+}
+
+/** 저장한 입체 설계도. 없거나 깨졌으면 null (사진으로 보인다) */
+function modelOf(file: string | undefined): Blueprint | null {
+  if (!file) return null;
+  try {
+    return parseBlueprint(JSON.parse(readFileSync(join(petsDir(), file), 'utf8'))) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** AI 한 번 묻기 (chat.oneShot) */
+export type AskWithImage = (
+  text: string,
+  image: ImageAttachment,
+  system: string,
+  signal?: AbortSignal,
+) => Promise<{ ok: true; text: string; provider: string } | { ok: false; error: string; noAi?: true }>;
 
 /**
  * 사진으로 펫 만들기 창 (P1-08). 배경 제거는 창(렌더러)에서 onnxruntime-web 으로 하고,
@@ -87,29 +133,61 @@ export function createMaker(
   log: (tag: string, ...rest: unknown[]) => void,
   /** 커스텀 먹이 (v1 상점): 그림 파일을 저장한 뒤 상점에 넣는다. 코인이 모자라면 실패 */
   makeFood?: (name: string, file: string) => { ok: boolean; error?: string },
+  /** 사진을 AI 에 보내 입체 설계도를 받는다 (6단계) */
+  ai?: { ask: AskWithImage; hasVision: () => Promise<boolean> },
 ) {
+  const askWithImage = ai?.ask;
   let win: BrowserWindow | undefined;
   let download: AbortController | undefined;
+  let shaping: AbortController | undefined;
   let target: MakerTarget = 'main';
   const fromMaker = (e: IpcMainEvent | IpcMainInvokeEvent) =>
     !!win && !win.isDestroyed() && e.sender === win.webContents;
 
-  ipcMain.handle(MAKER.modelReady, (e): MakerInfo | undefined =>
-    fromMaker(e)
-      ? {
-          target,
-          petName: settings.get().petName,
-          hasPhotoPet: !!settings.get().petImage,
-          hasPose: target !== 'main' && target !== 'food' && !!settings.get().petPoses[target],
-          foodCost: CUSTOM_FOOD_COST,
-          modelReady: modelReady(),
-          modelMB: Math.round(BG_MODEL.bytes / 1_000_000),
-          size: BG_MODEL.size,
-          mean: BG_MODEL.mean,
-          std: BG_MODEL.std,
-        }
-      : undefined,
+  ipcMain.handle(
+    MAKER.modelReady,
+    async (e): Promise<MakerInfo | undefined> =>
+      fromMaker(e)
+        ? {
+            target,
+            petName: settings.get().petName,
+            hasPhotoPet: !!settings.get().petImage,
+            hasPose: target !== 'main' && target !== 'food' && !!settings.get().petPoses[target],
+            foodCost: CUSTOM_FOOD_COST,
+            modelReady: modelReady(),
+            modelMB: Math.round(BG_MODEL.bytes / 1_000_000),
+            size: BG_MODEL.size,
+            mean: BG_MODEL.mean,
+            std: BG_MODEL.std,
+            visionAi: false,
+            depth: {
+              ready: depthReady(),
+              mb: Math.round(DEPTH_MODEL.bytes / 1_000_000),
+              size: DEPTH_MODEL.size,
+              mean: DEPTH_MODEL.mean,
+              std: DEPTH_MODEL.std,
+            },
+          }
+        : undefined,
   );
+
+  ipcMain.handle(MAKER.visionAi, async (e) => fromMaker(e) && target === 'main' && !!(await ai?.hasVision()));
+
+  ipcMain.handle(MAKER.ensureDepth, async (e) => {
+    if (!fromMaker(e)) return { ok: false, error: t('main.maker.reopen') };
+    download = new AbortController();
+    try {
+      await ensureDepthModel((ratio) => {
+        if (win && !win.isDestroyed()) win.webContents.send(MAKER.progress, ratio);
+      }, download.signal);
+      return { ok: true };
+    } catch (err) {
+      log('maker', 'depth model', err instanceof Error ? err.message : String(err));
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    } finally {
+      download = undefined;
+    }
+  });
 
   ipcMain.handle(MAKER.ensureModel, async (e) => {
     if (!fromMaker(e)) return { ok: false, error: t('main.maker.reopen') };
@@ -130,8 +208,9 @@ export function createMaker(
   // 모델 파일을 디스크에서 그대로 흘려 보낸다. 해시를 맞춘 뒤에만, 정해진 주소 하나만.
   // 창은 file:// (개발 중에는 localhost)에서 열려 다른 출처라 CORS 허용 머리를 붙인다.
   protocol.handle(MODEL_SCHEME, async (req) => {
-    const file = verifiedModelUrl();
-    if (!file || req.url !== MODEL_URL) return new Response(null, { status: 404 });
+    const file =
+      req.url === MODEL_URL ? verifiedModelUrl() : req.url === DEPTH_URL ? verifiedDepthUrl() : undefined;
+    if (!file) return new Response(null, { status: 404 });
     const res = await net.fetch(file);
     return new Response(res.body, {
       status: res.status,
@@ -139,15 +218,52 @@ export function createMaker(
     });
   });
 
-  ipcMain.handle(MAKER.save, (e, dataUrl: string | null, name: string) => {
+  // 다듬은 사진(PNG)만 AI 에 보낸다. 기록은 남기지 않는다(chat.oneShot)
+  ipcMain.handle(MAKER.shape3d, async (e, dataUrl: string) => {
+    if (!fromMaker(e) || !askWithImage) return { ok: false, error: t('main.maker.reopen') };
+    const prefix = 'data:image/png;base64,';
+    if (typeof dataUrl !== 'string' || !dataUrl.startsWith(prefix))
+      return { ok: false, error: t('main.maker.badFormat') };
+    const data = dataUrl.slice(prefix.length);
+    const bytes = Buffer.from(data, 'base64');
+    if (kindOf(bytes) !== 'png' || bytes.length > MAX_PNG_BYTES)
+      return { ok: false, error: t('main.maker.tooBigPng') };
+    shaping?.abort();
+    const abort = new AbortController();
+    shaping = abort;
+    const started = Date.now();
+    const r = await askWithImage(
+      blueprintPrompt(settings.get().petName),
+      { mediaType: 'image/png', data },
+      BLUEPRINT_SYSTEM,
+      abort.signal,
+    );
+    if (shaping === abort) shaping = undefined;
+    if (!r.ok) {
+      log('maker', 'shape3d', r.noAi ? 'no ai' : r.error);
+      return r;
+    }
+    const model = extractBlueprint(r.text);
+    log(
+      'maker',
+      'shape3d',
+      r.provider,
+      `${Math.round((Date.now() - started) / 1000)}s`,
+      model ? `${model.parts.length} parts` : 'bad',
+    );
+    return model ? { ok: true, model } : { ok: false, error: t('main.maker.shapeBad') };
+  });
+
+  ipcMain.handle(MAKER.save, (e, dataUrl: string | null, name: string, lookRaw?: unknown) => {
     if (!fromMaker(e)) return { ok: false };
     if (target === 'food') return saveFood(dataUrl, name);
-    const old = target === 'main' ? settings.get().petImage : settings.get().petPoses[target];
+    // 펫 본 그림은 지우지 않고 보관함에 넣는다(6단계). 포즈 그림만 바꿀 때 옛 것을 지운다
+    const old = target === 'main' ? undefined : settings.get().petPoses[target];
     if (dataUrl === null) {
-      if (target === 'main') settings.set({ petImage: null });
+      if (target === 'main') library.toDefault(settings.get().petKind);
       else settings.set({ petPoses: { [target]: null } });
       if (old) rmSync(join(petsDir(), old), { force: true });
-      log('maker', target === 'main' ? '기본 펫으로' : `포즈 지움 ${target}`);
+      log('maker', target === 'main' ? '기본 펫으로 (보관함에 둠)' : `포즈 지움 ${target}`);
       return { ok: true };
     }
     const m = typeof dataUrl === 'string' ? /^data:image\/(png|gif|webp);base64,/.exec(dataUrl) : null;
@@ -160,9 +276,21 @@ export function createMaker(
     mkdirSync(petsDir(), { recursive: true });
     const file = target === 'main' ? `pet-${Date.now()}.${kind}` : `pose-${target}-${Date.now()}.${kind}`;
     writeFileSync(join(petsDir(), file), bytes);
-    if (target === 'main')
-      settings.set({ petImage: file, ...(cleanPetName(name) ? { petName: cleanPetName(name) } : {}) });
-    else settings.set({ petPoses: { [target]: file } });
+    // 입체 모습은 펫 본 그림에만: AI 설계도(다시 고르기를 거쳐) 또는 2.5D 깊이 그림(PNG 머리말과 크기 확인)
+    const look = target === 'main' && kind === 'png' ? lookOf(lookRaw) : {};
+    const modelFile = look.model ? `model-${Date.now()}.json` : undefined;
+    if (look.model && modelFile) writeFileSync(join(petsDir(), modelFile), JSON.stringify(look.model));
+    const depthFile = look.depth ? `depth-${Date.now()}.png` : undefined;
+    if (look.depth && depthFile) writeFileSync(join(petsDir(), depthFile), look.depth);
+    if (target === 'main') {
+      library.beforeNewPhoto();
+      settings.set({
+        petImage: file,
+        petModel: modelFile ?? null,
+        petDepth: depthFile ?? null,
+        ...(cleanPetName(name) ? { petName: cleanPetName(name) } : {}),
+      });
+    } else settings.set({ petPoses: { [target]: file } });
     if (old && old !== file) rmSync(join(petsDir(), old), { force: true });
     log('maker', 'saved', file, `${Math.round(bytes.length / 1024)}KB`);
     return { ok: true };
@@ -221,6 +349,7 @@ export function createMaker(
     win.once('ready-to-show', () => showWindow(win));
     win.on('closed', () => {
       download?.abort();
+      shaping?.abort();
       win = undefined;
     });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));

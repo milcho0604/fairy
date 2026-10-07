@@ -60,7 +60,7 @@ test('되돌리면 받은 코인을 회수하고, 이미 썼으면 0 에서 멈�
 
   store.complete(a.id, T0); // +15
   store.feed(T0);
-  store.feed(T0); // -10 → 잔액 5
+  store.feed(T0 + 24 * HOUR); // 배가 꺼진 뒤 한 번 더. -10 → 잔액 5
   assert.equal(store.undo(a.id, T0), 5);
   assert.equal(store.balance(), 0);
 });
@@ -162,4 +162,17 @@ test('집중 보상은 한 번에 5코인, 하루 8번까지', () => {
   for (let i = 0; i < 10; i++) total += store.rewardFocus(T0 + i);
   assert.equal(total, COIN.focus * COIN.dailyFocusLimit);
   assert.equal(store.rewardFocus(T0 + 24 * HOUR), COIN.focus);
+});
+
+test('배가 꽉 차면 밥을 주지 않고 코인도 안 가져간다', () => {
+  const { store } = fresh();
+  const a = store.add({ title: '일' }, T0);
+  for (let i = 0; i < 6; i++) store.complete(store.add({ title: `일${i}` }, T0).id, T0);
+  store.complete(a.id, T0);
+  let r = store.feed(T0);
+  while (r.ok) r = store.feed(T0);
+  const before = store.balance();
+  assert.equal(r.full, true);
+  assert.equal(store.feed(T0).ok, false);
+  assert.equal(store.balance(), before);
 });

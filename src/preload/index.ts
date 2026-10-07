@@ -152,6 +152,9 @@ if (kind === 'settings') {
     syncCalendar: () => ipcRenderer.invoke(SETTINGS.syncCalendar),
     refreshMcp: () => ipcRenderer.invoke(SETTINGS.refreshMcp),
     relaunch: () => ipcRenderer.send(SETTINGS.relaunch),
+    choosePet: (choice) => ipcRenderer.invoke(SETTINGS.choosePet, choice),
+    removeSavedPet: (id: string) => ipcRenderer.invoke(SETTINGS.removeSavedPet, id),
+    deleteModel: (id: string) => ipcRenderer.invoke(SETTINGS.deleteModel, id),
     onChanged: (listener) => {
       ipcRenderer.on(SETTINGS.changed, (_e, next: Settings) => listener(next));
     },
@@ -208,8 +211,11 @@ if (kind === 'maker') {
   const maker: MakerBridge = {
     platform: process.platform,
     info: () => ipcRenderer.invoke(MAKER.modelReady),
+    visionAi: () => ipcRenderer.invoke(MAKER.visionAi),
     ensureModel: () => ipcRenderer.invoke(MAKER.ensureModel),
-    save: (png: string, name: string) => ipcRenderer.invoke(MAKER.save, png, name),
+    save: (png: string, name: string, look?: unknown) => ipcRenderer.invoke(MAKER.save, png, name, look),
+    ensureDepth: () => ipcRenderer.invoke(MAKER.ensureDepth),
+    shape3d: (png: string) => ipcRenderer.invoke(MAKER.shape3d, png),
     resetToDefault: () => ipcRenderer.invoke(MAKER.save, null, ''),
     close: () => ipcRenderer.send(MAKER.close),
     onProgress: (listener) => {

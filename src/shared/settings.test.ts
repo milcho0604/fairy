@@ -148,3 +148,49 @@ test('AI 모델 고르기: 모양이 맞는 것만, 옵션처럼 보이는 값�
   assert.deepEqual(s.aiModels, { claude: 'sonnet', local: 'qwen3-0.6b' });
   assert.deepEqual(parseSettings({ aiModels: 'x' }).aiModels, {});
 });
+
+test('입체 모습 파일 이름: 규칙에 맞는 것만, null 이면 지운다 (6단계)', () => {
+  const now = parseSettings({});
+  const s = applyPatch(now, { petModel: 'model-1791-ab12.json', petDepth: 'depth-1791.png' });
+  assert.equal(s.petModel, 'model-1791-ab12.json');
+  assert.equal(s.petDepth, 'depth-1791.png');
+  assert.equal(
+    applyPatch(s, { petModel: '../x.json', petDepth: 'depth-1.jpg' }).petModel,
+    'model-1791-ab12.json',
+  );
+  const cleared = applyPatch(s, { petModel: null, petDepth: null });
+  assert.equal(cleared.petModel, undefined);
+  assert.equal(cleared.petDepth, undefined);
+  assert.equal(now.pet3d, true);
+});
+
+test('보관함과 규칙: 규칙에 맞는 것만, 상한까지 (6단계)', () => {
+  const s = parseSettings({
+    petLibrary: [
+      {
+        id: 'p-a1',
+        name: '치즈',
+        image: 'pet-1.png',
+        model: 'model-1.json',
+        poses: { happy: 'pose-happy-1.png' },
+      },
+      { id: 'p-a2', name: '바둑', image: '../etc/passwd' },
+      { id: 'bad', name: '이름', image: 'pet-2.png' },
+      { id: 'p-a3', name: '', image: 'pet-3.png' },
+    ],
+    petRules: `${'가'.repeat(5000)}\r\n`,
+    petKind: 'bunny',
+  });
+  assert.deepEqual(s.petLibrary, [
+    {
+      id: 'p-a1',
+      name: '치즈',
+      image: 'pet-1.png',
+      model: 'model-1.json',
+      poses: { happy: 'pose-happy-1.png' },
+    },
+  ]);
+  assert.equal(s.petRules.length, 4000);
+  assert.equal(s.petKind, 'bunny');
+  assert.equal(parseSettings({ petKind: 'dragon' }).petKind, 'kong');
+});

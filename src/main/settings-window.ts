@@ -4,11 +4,14 @@ import type { Catalog } from '../shared/ai/catalog.ts';
 import { type BetaReport, reportText, type StatStore } from '../shared/beta-stats.ts';
 import { t } from '../shared/i18n/index.ts';
 import { type MakerTarget, SETTINGS, type SettingsSection, type SettingsSnapshot } from '../shared/ipc.ts';
-import type { Settings } from '../shared/settings.ts';
+import { isPetKind, type Settings } from '../shared/settings.ts';
 import { localModelReady } from './ai/local.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
 import { langArg } from './lang.ts';
+import { petImages } from './maker.ts';
+import { library } from './pet-library.ts';
 import { settings } from './settings.ts';
+import { removeModel, storedModels } from './storage.ts';
 
 export interface SettingsWindowOptions {
   scale: () => number;
@@ -62,13 +65,29 @@ export function createSettingsWindow({
           },
           myMcpServers: v2.mcpServers(),
           calendarLast: v2.calendarLast(),
-          models: {
-            catalog: v2.catalog(),
-            localReady: Object.fromEntries(v2.catalog().local.map((m) => [m.id, localModelReady(m)])),
-          },
+          models: { catalog: v2.catalog(), localReady: localReady() },
+          library: library.view(),
+          currentThumb: petImages().main,
+          storage: storedModels(v2.catalog()),
         }
       : undefined,
   );
+  const localReady = () => Object.fromEntries(v2.catalog().local.map((m) => [m.id, localModelReady(m)]));
+  ipcMain.handle(SETTINGS.choosePet, (e, choice: unknown) => {
+    if (!fromSettings(e) || typeof choice !== 'object' || choice === null) return library.view();
+    const c = choice as Record<string, unknown>;
+    if (isPetKind(c.kind)) library.toDefault(c.kind);
+    else if (typeof c.id === 'string') library.restore(c.id);
+    return library.view();
+  });
+  ipcMain.handle(SETTINGS.removeSavedPet, (e, id: unknown) => {
+    if (fromSettings(e) && typeof id === 'string') library.remove(id);
+    return library.view();
+  });
+  ipcMain.handle(SETTINGS.deleteModel, (e, id: unknown) => {
+    if (fromSettings(e) && typeof id === 'string') removeModel(v2.catalog(), id);
+    return { storage: storedModels(v2.catalog()), localReady: localReady() };
+  });
   ipcMain.handle(SETTINGS.set, (e, patch: Partial<Settings>) =>
     fromSettings(e) ? settings.set(patch) : settings.get(),
   );

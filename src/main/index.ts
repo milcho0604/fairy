@@ -10,6 +10,7 @@ import { FULLNESS, localDay } from '../shared/todo-store.ts';
 import { watchCatalog } from './ai/catalog.ts';
 import { stopLocal } from './ai/local.ts';
 import { mcpServers, refreshMcpServers } from './ai/mcp-list.ts';
+import { stopAllAi } from './ai/runner.ts';
 import { applyPendingImport, createBackup, exportPet, importPet } from './backup.ts';
 import { watchBetaStats } from './beta.ts';
 import { watchCalendar } from './calendar.ts';
@@ -42,6 +43,13 @@ const log = (tag: string, ...rest: unknown[]) => {
   if (!app.isPackaged) console.log(`[${tag}]`, ...rest);
 };
 
+// 메인에서 잡지 못한 오류는 기록만 남긴다. 처리기가 없으면 Electron 이 "Uncaught Exception" 창을 띄워
+// 사용자 화면을 막는다 (2026-10-07 사용자 지적: 끄는 중 타이머가 닫힌 저장 파일을 읽었다)
+process.on('uncaughtException', (err) => log('error', 'uncaught', err?.stack ?? String(err)));
+process.on('unhandledRejection', (err) =>
+  log('error', 'unhandled', err instanceof Error ? (err.stack ?? err.message) : String(err)),
+);
+
 // GPU 를 별도 프로세스 대신 본체 안에서 돌린다. 프로세스가 하나 줄어 메모리가 363MB 에서 306MB 로
 // 줄었고 CPU 는 같았다 (2026-10-02 맥 측정, L12). 문제가 생기면 JJ_GPU_PROCESS=1 로 끈다.
 if (!process.env.JJ_GPU_PROCESS) app.commandLine.appendSwitch('in-process-gpu');
@@ -73,6 +81,7 @@ app.whenReady().then(() => {
     petName,
     aiIsolation: () => settings.get().aiIsolation,
     personaId: () => settings.get().persona,
+    rules: () => settings.get().petRules,
     knowsTodos: () => settings.get().aiKnowsTodos,
     setKnowsTodos: (on) => settings.set({ aiKnowsTodos: on }),
     // 질문 앞에 붙일 내 오늘 상황: 안 끝낸 할 일 제목과 마감, 오늘 남은 일정 (기획서 개인정보 표)
@@ -204,7 +213,15 @@ app.whenReady().then(() => {
   async function play(kind: PlayKind, walkMin = 5): Promise<boolean> {
     if (playing || pet.isHidden()) return false;
     const toy = shop.owns('yarn') ? 'yarn' : shop.owns('ball') ? 'ball' : undefined;
-    if (kind === 'seek') return seek();
+    if (kind === 'seek') {
+      // 숨바꼭질도 노는 중으로 친다 (두 번 시작하면 두 번째 판이 끝나지 않았다)
+      playing = true;
+      try {
+        return await seek();
+      } finally {
+        playing = false;
+      }
+    }
     if (kind === 'ball' && !toy) {
       void pet.say({ kind: 'answer', text: t('pet.play.noBall'), ttlMs: 5000 });
       return false;
@@ -311,7 +328,8 @@ app.whenReady().then(() => {
   let seenVersion = dataVersion();
   setInterval(() => {
     const v = dataVersion();
-    if (v === seenVersion) return;
+    // -1 은 끄는 중 (저장 파일을 닫았다)
+    if (v < 0 || v === seenVersion) return;
     seenVersion = v;
     log('db', '다른 곳에서 바뀜 (MCP)');
     panel.refresh();
@@ -405,7 +423,7 @@ app.whenReady().then(() => {
       petLife.activity('feed');
       void pet.say({ kind: 'answer', text: t('pet.fed'), ttlMs: 3000 });
     } else {
-      void pet.say({ kind: 'answer', text: t('pet.noCoins'), ttlMs: 4000 });
+      void pet.say({ kind: 'answer', text: r.full ? t('pet.full') : t('pet.noCoins'), ttlMs: 4000 });
     }
     panel.refresh();
   }
@@ -417,6 +435,7 @@ app.whenReady().then(() => {
       focus: planner.focus.phase === 'focus',
       sulk: petLife.state.sulk,
       kind: settings.get().petKind,
+      pet3d: settings.get().pet3d,
       cushion: shop.owns('cushion'),
     };
     const key = JSON.stringify(status);
@@ -465,18 +484,25 @@ app.whenReady().then(() => {
   }
 
   // ---- 사진 펫 (P1-08) ----
-  const maker = createMaker(log, (name, file) => {
-    const r = shop.makeCustomFood(name, file, Date.now());
-    panel.refresh();
-    if (r.ok)
-      void pet.say({
-        kind: 'answer',
-        text: t('pet.foodMade', { food: name.trim() }),
-        ttlMs: 4000,
-        image: foodImageDataUrl(file),
-      });
-    return r;
-  });
+  const maker = createMaker(
+    log,
+    (name, file) => {
+      const r = shop.makeCustomFood(name, file, Date.now());
+      panel.refresh();
+      if (r.ok)
+        void pet.say({
+          kind: 'answer',
+          text: t('pet.foodMade', { food: name.trim() }),
+          ttlMs: 4000,
+          image: foodImageDataUrl(file),
+        });
+      return r;
+    },
+    {
+      ask: (text, image, system, signal) => chat.oneShot(text, image, system, signal),
+      hasVision: chat.hasVisionAi,
+    },
+  );
   const sendPetImage = () => {
     if (!pet.win.isDestroyed()) pet.win.webContents.send(IPC.image, petImages());
   };
@@ -516,6 +542,7 @@ app.whenReady().then(() => {
     if (next.icsUrl !== prev.icsUrl && next.icsUrl) void calendar.sync();
     if (next.myMcp && !prev.myMcp) void refreshMcpServers(log);
     if (JSON.stringify(next.friends) !== JSON.stringify(prev.friends)) friends.sync();
+    if (next.pet3d !== prev.pet3d) friends.resendStatus();
     if (next.petName !== prev.petName) {
       chat.petNameChanged();
       panel.refresh();
@@ -523,12 +550,18 @@ app.whenReady().then(() => {
     }
     // 격리 폴더와 사용자 폴더는 대화 기록이 따로라 이어 갈 수 없다. 새 대화로 시작한다.
     if (next.aiIsolation !== prev.aiIsolation) chat.resetSessions();
-    if (next.petImage !== prev.petImage || JSON.stringify(next.petPoses) !== JSON.stringify(prev.petPoses)) {
+    if (
+      next.petImage !== prev.petImage ||
+      next.petModel !== prev.petModel ||
+      next.petDepth !== prev.petDepth ||
+      JSON.stringify(next.petPoses) !== JSON.stringify(prev.petPoses)
+    ) {
       sendPetImage();
       pet.react();
     }
     if (
       next.petKind !== prev.petKind ||
+      next.pet3d !== prev.pet3d ||
       next.spicy !== prev.spicy ||
       next.restDays.join() !== prev.restDays.join()
     )
@@ -576,6 +609,8 @@ app.whenReady().then(() => {
   }, log);
   app.on('will-quit', () => {
     stopLocal();
+    // 답을 기다리던 AI CLI 를 프로세스 묶음째 끝낸다 (생각만 하는 중이면 끄고 나서도 남았다)
+    stopAllAi();
     for (const acc of registered) globalShortcut.unregister(acc);
     stopPresence();
     tray.destroy();

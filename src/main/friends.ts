@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { app } from 'electron';
 import { t } from '../shared/i18n/index.ts';
 import { IPC, type PetImages, type PetStatus } from '../shared/ipc.ts';
+import { type Blueprint, parseBlueprint } from '../shared/pet3d/blueprint.ts';
 import type { Friend } from '../shared/settings.ts';
 import { createPetWindow, type PetWindow } from './pet-window.ts';
 import { settings } from './settings.ts';
@@ -16,15 +17,43 @@ const hello = () => [
   t('pet.hello.5'),
 ];
 
+/** 친구의 입체 설계도. 없거나 깨졌으면 null (사진으로) */
+function modelOf(file: string | undefined): Blueprint | null {
+  if (!file) return null;
+  try {
+    return (
+      parseBlueprint(JSON.parse(readFileSync(join(app.getPath('userData'), 'pets', file), 'utf8'))) ?? null
+    );
+  } catch {
+    return null;
+  }
+}
+
+/** 친구의 2.5D 깊이 그림 (data URL). 없으면 null */
+function depthOf(file: string | undefined): string | null {
+  if (!file) return null;
+  try {
+    return `data:image/png;base64,${readFileSync(join(app.getPath('userData'), 'pets', file)).toString('base64')}`;
+  } catch {
+    return null;
+  }
+}
+
 function imageOf(f: Friend): PetImages {
-  if (!f.image) return { main: null, poses: {} };
+  const none: PetImages = { main: null, model: null, depth: null, poses: {} };
+  if (!f.image) return none;
   try {
     const ext = f.image.split('.').pop() ?? 'png';
     const mime = ext === 'gif' ? 'image/gif' : ext === 'webp' ? 'image/webp' : 'image/png';
     const b64 = readFileSync(join(app.getPath('userData'), 'pets', f.image)).toString('base64');
-    return { main: `data:${mime};base64,${b64}`, poses: {} };
+    return {
+      main: `data:${mime};base64,${b64}`,
+      model: modelOf(f.model),
+      depth: depthOf(f.depth),
+      poses: {},
+    };
   } catch {
-    return { main: null, poses: {} };
+    return none;
   }
 }
 
@@ -39,7 +68,14 @@ export function createFriends(o: {
   const live = new Map<string, { pet: PetWindow; friend: Friend }>();
 
   function status(f: Friend): PetStatus {
-    return { hungry: false, focus: false, sulk: 0, kind: f.kind, cushion: false };
+    return {
+      hungry: false,
+      focus: false,
+      sulk: 0,
+      kind: f.kind,
+      pet3d: settings.get().pet3d,
+      cushion: false,
+    };
   }
 
   function open(f: Friend, index: number) {
@@ -126,9 +162,17 @@ export function createFriends(o: {
     for (const { pet } of live.values()) pet.setHidden(reason, on, false);
   }
 
+  /** 모든 친구에게 상태를 다시 보낸다 (입체로 보기 설정이 바뀌었을 때) */
+  function resendStatus() {
+    for (const { pet, friend } of live.values()) {
+      if (!pet.win.isDestroyed()) pet.win.webContents.send(IPC.status, status(friend));
+    }
+  }
+
   return {
     sync,
     setHidden,
+    resendStatus,
     get count() {
       return live.size;
     },

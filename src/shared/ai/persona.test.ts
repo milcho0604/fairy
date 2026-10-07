@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { setLang } from '../i18n/index.ts';
 import {
   CONTEXT_TODO_MAX,
   EXTRACT_MAX,
@@ -8,6 +9,7 @@ import {
   noteTitleFromQuestion,
   persona,
   todoContext,
+  withRules,
 } from './persona.ts';
 
 test('성격: 이름과 말투가 들어가고, 모르는 성격은 거른다', () => {
@@ -89,4 +91,12 @@ test('답에서 할 일: 앞의 [중요] 표시는 뺀다', () => {
 test('답을 메모로: 제목은 질문 첫 줄', () => {
   assert.equal(noteTitleFromQuestion('\n  정렬 알고리즘 뭐 써?\n자세히'), '정렬 알고리즘 뭐 써?');
   assert.equal(noteTitleFromQuestion(''), '');
+});
+
+test('짝꿍 규칙은 성격 뒤에 목록으로 붙고, 비면 붙지 않는다', () => {
+  setLang('ko');
+  assert.equal(withRules('  \n \n'), '');
+  const p = persona('콩이', 'friend', '답은 세 줄 안으로\n\n- 코드는 TypeScript 로');
+  assert.ok(p.endsWith('규칙을 따른다:\n- 답은 세 줄 안으로\n- 코드는 TypeScript 로'));
+  assert.ok(!persona('콩이', 'friend').includes('규칙'));
 });

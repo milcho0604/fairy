@@ -42,7 +42,12 @@ export function openStore(log: (tag: string, ...rest: unknown[]) => void): {
   }
   const result = migrate(db as unknown as Db);
   if (result.from !== result.to) log('db', `저장 파일 ${result.from}판 → ${result.to}판`);
-  app.on('will-quit', () => db.close());
+  // 끄는 중에도 도는 타이머(MCP 변경 보기 등)가 닫힌 파일을 읽지 않게 연 상태를 기억한다
+  let open = true;
+  app.on('will-quit', () => {
+    open = false;
+    db.close();
+  });
   const d = db as unknown as Db;
   const store = new TodoStore(d);
   return {
@@ -55,6 +60,6 @@ export function openStore(log: (tag: string, ...rest: unknown[]) => void): {
     shop: new ItemStore(d, store),
     achievements: new AchievementStore(d),
     dataVersion: () =>
-      Number((d.prepare('pragma data_version').get() as { data_version: number }).data_version),
+      open ? Number((d.prepare('pragma data_version').get() as { data_version: number }).data_version) : -1,
   };
 }

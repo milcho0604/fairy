@@ -248,8 +248,14 @@ export function parseQuickEvent(text: string, today: string, nowMinute: number):
   const md = take(/ (\d{1,2})[/.월] ?(\d{1,2})일? /);
   if (md) {
     const y = Number(today.slice(0, 4));
+    const mo = Number(md[1]);
+    const dd = Number(md[2]);
+    // 없는 날짜(13월, 2월 30일)는 넘기지 않고 일정으로 받지 않는다
+    if (mo < 1 || mo > 12 || dd < 1 || dd > new Date(Date.UTC(2024, mo, 0)).getUTCDate()) return null;
     let cand = `${y}-${md[1]?.padStart(2, '0')}-${md[2]?.padStart(2, '0')}`;
     if (cand < today) cand = `${y + 1}${cand.slice(4)}`; // 지난 날짜면 내년
+    // 2월 29일은 그해가 윤년일 때만
+    if (new Date(`${cand}T00:00:00Z`).getUTCDate() !== dd) return null;
     day = cand;
   }
   const wd = take(/ (다음 ?주 )?([일월화수목금토])요일 /);
@@ -261,10 +267,14 @@ export function parseQuickEvent(text: string, today: string, nowMinute: number):
 
   let minute: number | null = null;
   const hm = take(/ (\d{1,2}):(\d{2}) /);
-  if (hm) minute = Number(hm[1]) * 60 + Number(hm[2]);
+  if (hm) {
+    if (Number(hm[2]) > 59) return null;
+    minute = Number(hm[1]) * 60 + Number(hm[2]);
+  }
   if (minute === null) {
     const ko = take(/ (오전|오후|아침|저녁|밤)? ?(\d{1,2})시 ?(?:(\d{1,2})분|(반))? /);
     if (ko) {
+      if (Number(ko[3] ?? 0) > 59) return null;
       let h = Number(ko[2]);
       const mer = ko[1];
       if ((mer === '오후' || mer === '저녁' || mer === '밤') && h < 12) h += 12;

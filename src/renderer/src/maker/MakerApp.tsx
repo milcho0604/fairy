@@ -1,8 +1,12 @@
 import { type ClipboardEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { t } from '../../../shared/i18n/index.ts';
-import { type MakerInfo, MODEL_URL } from '../../../shared/ipc.ts';
+import { DEPTH_URL, type MakerInfo, MODEL_URL, type PetLook } from '../../../shared/ipc.ts';
 import { contentBox, keptRatio, stroke } from '../../../shared/mask.ts';
+import type { Blueprint } from '../../../shared/pet3d/blueprint.ts';
 import { PET_NAME_MAX, POSE_KINDS } from '../../../shared/settings.ts';
+import { CANVAS_SIZE } from '../draw.ts';
+import { Pet3D } from '../pet3d.ts';
+import { openDepth, predictDepth } from './depth.ts';
 import { backend, openModel, predictMask } from './removeBg.ts';
 
 const bridge = window.jjakkungMaker;
@@ -31,11 +35,19 @@ export function MakerApp() {
   const [preview, setPreview] = useState('');
   const [elapsed, setElapsed] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
+  // 입체로 만들기 (6단계): AI 가 사진을 보고 설계도를 만든다
+  // 2.5D (6단계): 사진을 볼 AI 가 없어도 이 창 안에서 깊이를 재서 사진을 입체 판으로
+  const [look, setLook] = useState<'photo' | 'figure' | 'relief'>('photo');
+  const [model, setModel] = useState<Blueprint>();
+  const [depth, setDepth] = useState('');
+  const [shaping, setShaping] = useState(false);
 
   useEffect(() => {
     bridge.info().then((i) => {
       setInfo(i);
       setName(i.target === 'food' ? '' : i.petName);
+      // AI 확인(CLI 상태)은 몇 초 걸릴 수 있어 따로 받는다. 그동안 사진 고르기는 막지 않는다
+      void bridge.visionAi().then((visionAi) => setInfo((v) => v && { ...v, visionAi }));
     });
     bridge.onProgress(setProgress);
     if (navigator.userAgent.includes('Mac')) document.body.classList.add('mac');
@@ -45,6 +57,8 @@ export function MakerApp() {
   const isPose = !!info && info.target !== 'main' && !isFood;
   const poseLabel = POSE_KINDS.find((p) => p.id === info?.target)?.label ?? '';
   const [animated, setAnimated] = useState(false);
+  /** 입체로 만들기는 펫 본 그림(움직이지 않는 사진)에만 */
+  const can3d = info?.target === 'main' && !animated;
 
   const start = useCallback(
     async (file: Blob) => {
@@ -55,6 +69,10 @@ export function MakerApp() {
         if (await isAnimated(file)) {
           if (file.size > ANIMATED_MAX) throw new Error(t('maker.err.animatedTooBig'));
           setAnimated(true);
+          // 앞 사진으로 만든 입체 모습은 버린다 (움직이는 그림은 입체로 만들지 않는다)
+          setLook('photo');
+          setModel(undefined);
+          setDepth('');
           setPreview(await toDataUrl(file));
           setStep('name');
           return;
@@ -112,12 +130,58 @@ export function MakerApp() {
     }
     setError('');
     setPreview(url);
+    setModel(undefined);
+    setDepth('');
     setStep('name');
   };
 
+  // 만드는 사이 사진을 다시 다듬었으면 옛 결과는 버린다
+  const previewRef = useRef(preview);
+  previewRef.current = preview;
+
+  const shape = async () => {
+    const from = preview;
+    setShaping(true);
+    setError('');
+    const r = await bridge.shape3d(from);
+    setShaping(false);
+    if (previewRef.current !== from) return;
+    if (r.ok) setModel(r.model);
+    else setError(r.error);
+  };
+
+  const makeRelief = async () => {
+    if (!info) return;
+    const from = preview;
+    setShaping(true);
+    setError('');
+    setProgress(0);
+    try {
+      const r = await bridge.ensureDepth();
+      if (!r.ok) throw new Error(r.error);
+      setInfo((v) => v && { ...v, depth: { ...v.depth, ready: true } });
+      const res = await fetch(DEPTH_URL);
+      if (!res.ok) throw new Error(t('maker.err.modelRead'));
+      await openDepth(await res.arrayBuffer());
+      const d = await predictDepth(await loadImage(from), info.depth);
+      if (previewRef.current === from) setDepth(d);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setShaping(false);
+    }
+  };
+
+  const chosen: PetLook | undefined =
+    look === 'figure' && model ? { model } : look === 'relief' && depth ? { depth } : undefined;
+
+  const canSave = step === 'name' && !shaping && (look === 'photo' || !!chosen);
+
   const save = async () => {
+    // Enter 로도 오니 단추와 같은 조건을 본다 (만드는 중 Enter 가 평면으로 저장했다)
+    if (!canSave) return;
     setStep('saving');
-    const r = await bridge.save(preview, name);
+    const r = await bridge.save(preview, name, chosen);
     if (!r.ok) {
       setError(r.error ?? t('maker.err.saveFailed'));
       setStep('name');
@@ -235,9 +299,73 @@ export function MakerApp() {
         {(step === 'name' || step === 'saving' || step === 'done') && (
           <section className="name">
             <div className="stage">
-              <img className="bounce" src={preview} alt={t('maker.name.alt')} />
+              {look === 'figure' && model ? (
+                <Spin3D model={model} />
+              ) : look === 'relief' && depth ? (
+                <Spin3D photo={preview} depth={depth} />
+              ) : (
+                <img className={shaping ? 'shaping' : 'bounce'} src={preview} alt={t('maker.name.alt')} />
+              )}
             </div>
             {animated && step === 'name' && <p className="hint">{t('maker.name.animatedNote')}</p>}
+            {can3d && step === 'name' && (
+              <div className="look3d">
+                <fieldset className="segmented" aria-label={t('maker.3d.look')}>
+                  {(info?.visionAi
+                    ? (['photo', 'figure', 'relief'] as const)
+                    : (['photo', 'relief'] as const)
+                  ).map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      aria-pressed={look === k}
+                      className={look === k ? 'on' : ''}
+                      disabled={shaping}
+                      onClick={() => setLook(k)}
+                    >
+                      {k === 'photo'
+                        ? t('maker.3d.photo')
+                        : k === 'figure'
+                          ? t('maker.3d.figure')
+                          : t('maker.3d.relief')}
+                    </button>
+                  ))}
+                </fieldset>
+                {look === 'relief' && (
+                  <>
+                    <p className="hint">
+                      {shaping
+                        ? info?.depth.ready
+                          ? t('maker.relief.working')
+                          : t('maker.relief.downloading', {
+                              mb: info?.depth.mb ?? 27,
+                              pct: Math.round(progress * 100),
+                            })
+                        : depth
+                          ? t('maker.relief.ready')
+                          : t('maker.relief.hint', { mb: info?.depth.mb ?? 27 })}
+                    </p>
+                    {!shaping && !depth && (
+                      <button type="button" className="ghost" onClick={makeRelief}>
+                        {t('maker.relief.make')}
+                      </button>
+                    )}
+                  </>
+                )}
+                {look === 'figure' && (
+                  <>
+                    <p className="hint">
+                      {shaping ? t('maker.3d.working') : model ? t('maker.3d.ready') : t('maker.3d.hint')}
+                    </p>
+                    {!shaping && (
+                      <button type="button" className="ghost" onClick={shape}>
+                        {model ? t('maker.3d.again') : t('maker.3d.make')}
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
             {step === 'done' ? (
               <p className="done">
                 {isFood
@@ -260,17 +388,22 @@ export function MakerApp() {
                   />
                 </label>
                 <div className="actions">
-                  <button type="button" className="ghost" onClick={() => setStep(animated ? 'pick' : 'edit')}>
+                  <button
+                    type="button"
+                    className="ghost"
+                    disabled={shaping}
+                    onClick={() => setStep(animated ? 'pick' : 'edit')}
+                  >
                     {animated ? t('maker.name.otherImage') : t('maker.name.reedit')}
                   </button>
-                  <button type="button" className="primary" disabled={step === 'saving'} onClick={save}>
+                  <button type="button" className="primary" disabled={!canSave} onClick={save}>
                     {step === 'saving'
                       ? t('maker.name.saving')
                       : isFood
                         ? t('maker.name.makeFood', { cost: info?.foodCost ?? 50 })
                         : isPose
                           ? t('maker.name.usePose')
-                          : t('maker.name.usePet')}
+                          : t('maker.name.choosePet')}
                   </button>
                 </div>
               </>
@@ -279,6 +412,59 @@ export function MakerApp() {
         )}
       </main>
     </div>
+  );
+}
+
+let previewPet: Pet3D | undefined;
+
+/** 입체 펫을 빙글 돌려 보여 준다. AI 설계도(model) 또는 사진과 깊이 그림(2.5D) */
+function Spin3D({ model, photo, depth }: { model?: Blueprint; photo?: string; depth?: string }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    const ctx = canvas?.getContext('2d');
+    // 미리보기마다 새로 만들면 컨텍스트가 새서 창에 하나만 두고 다시 쓴다
+    previewPet ??= Pet3D.create(() => {});
+    const pet = previewPet;
+    if (!canvas || !ctx || !pet) return;
+    let alive = true;
+    if (model) pet.setBlueprint(model);
+    else if (photo && depth)
+      void Promise.all([loadImage(photo), loadImage(depth)]).then(([p, d]) => {
+        if (alive) pet.setRelief(p, d);
+      });
+    const side = 220;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = side * dpr;
+    canvas.height = side * dpr;
+    const k = (side * dpr) / CANVAS_SIZE;
+    const t0 = performance.now();
+    let raf = 0;
+    const tick = (now: number) => {
+      const ms = now - t0;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.setTransform(k, 0, 0, k, 0, 0);
+      // 천천히 한 바퀴, 가끔 눈 깜빡
+      pet.spin = Math.sin(ms / 2600) * 1.1;
+      const blink = ms % 3800 < 180 ? (ms % 3800) / 180 : -1;
+      pet.draw(ctx, { mood: 'idle', elapsed: ms, blink }, 0, 1, 1, undefined);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      alive = false;
+      cancelAnimationFrame(raf);
+      pet.clear();
+    };
+  }, [model, photo, depth]);
+  return (
+    <canvas
+      ref={ref}
+      className="spin3d"
+      style={{ width: 220, height: 220 }}
+      aria-label={t('maker.name.alt')}
+    />
   );
 }
 
@@ -506,4 +692,12 @@ function cutout(work: Work): string {
   og.imageSmoothingQuality = 'high';
   og.drawImage(full, box.x, box.y, box.width, box.height, 0, 0, out.width, out.height);
   return out.toDataURL('image/png');
+}
+
+/** data URL 그림을 연다 */
+async function loadImage(src: string): Promise<HTMLImageElement> {
+  const img = new Image();
+  img.src = src;
+  await img.decode();
+  return img;
 }

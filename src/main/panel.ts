@@ -231,7 +231,8 @@ export function createPanel(o: PanelOptions) {
     if (!food) return { ok: false, error: t('shop.err.noFood') };
     const r = o.store.feed(Date.now(), food);
     push();
-    if (!r.ok) return { ok: false, error: t('shop.err.needCoins', { n: food.cost }) };
+    if (!r.ok)
+      return { ok: false, error: r.full ? t('pet.full') : t('shop.err.needCoins', { n: food.cost }) };
     o.onFedWith(food);
     return { ok: true };
   });
@@ -362,9 +363,11 @@ export function createPanel(o: PanelOptions) {
       focusWindow(panel);
       return;
     }
-    panel = makeWindow('panel', placeNear(o.petBounds(), PANEL_SIZE), tab);
-    panel.on('closed', () => {
-      panel = undefined;
+    const win = makeWindow('panel', placeNear(o.petBounds(), PANEL_SIZE), tab);
+    panel = win;
+    // 옛 창이 늦게 닫혀도 새 창 참조를 지우지 않게 (빨리 닫았다 열면 빈 패널이 남았다)
+    win.on('closed', () => {
+      if (panel === win) panel = undefined;
     });
   }
 
@@ -373,9 +376,10 @@ export function createPanel(o: PanelOptions) {
       closePanel();
       return;
     }
-    panel = makeWindow('panel', placeNear(o.petBounds(), PANEL_SIZE));
-    panel.on('closed', () => {
-      panel = undefined;
+    const win = makeWindow('panel', placeNear(o.petBounds(), PANEL_SIZE));
+    panel = win;
+    win.on('closed', () => {
+      if (panel === win) panel = undefined;
     });
   }
 
@@ -390,8 +394,9 @@ export function createPanel(o: PanelOptions) {
       x: Math.round(area.x + (area.width - QUICK_SIZE.width) / 2),
       y: Math.round(area.y + area.height * 0.22),
     });
-    quick.on('closed', () => {
-      quick = undefined;
+    const win = quick;
+    win.on('closed', () => {
+      if (quick === win) quick = undefined;
     });
   }
 

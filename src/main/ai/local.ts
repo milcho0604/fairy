@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { app, type UtilityProcess, utilityProcess } from 'electron';
 import type { LocalModel } from '../../shared/ai/catalog.ts';
 import { cleanLocalAnswer } from '../../shared/ai/local-text.ts';
+import { withRules } from '../../shared/ai/persona.ts';
 import { HISTORY_TURNS } from '../../shared/ai/text.ts';
 import type { AiEvent } from '../../shared/ai/types.ts';
 import { t } from '../../shared/i18n/index.ts';
@@ -107,7 +108,7 @@ export function runLocal(
   model: LocalModel,
   onEvent: (e: AiEvent) => void,
   log: (tag: string, ...rest: unknown[]) => void,
-  opts: { banmal: boolean; petName?: string } = { banmal: false },
+  opts: { banmal: boolean; petName?: string; rules?: string } = { banmal: false },
 ): AiRun {
   const id = randomUUID();
   let settled = false;
@@ -170,7 +171,10 @@ export function runLocal(
       type: 'ask',
       id,
       modelPath: localModelPath(model),
-      system: opts.banmal ? banmalSystem(opts.petName ?? '콩이') : req.persona,
+      // 작은 모델은 문맥이 짧아(2048) 규칙은 앞 1000자만
+      system: opts.banmal
+        ? banmalSystem(opts.petName ?? '콩이') + withRules((opts.rules ?? '').slice(0, 1000))
+        : req.persona,
       history: [...(opts.banmal ? BANMAL_EXAMPLES : []), ...req.history.slice(-HISTORY_TURNS)].flatMap(
         (h) => [
           { role: 'user' as const, text: h.question },

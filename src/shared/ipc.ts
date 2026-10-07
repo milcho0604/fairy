@@ -10,6 +10,7 @@ import type { CalEvent } from './event-store.ts';
 import type { FocusState } from './focus.ts';
 import type { GestureEvent } from './gesture.ts';
 import type { Note, NoteSource } from './note-store.ts';
+import type { Blueprint } from './pet3d/blueprint.ts';
 import type { PetKind, PoseKind, Settings } from './settings.ts';
 import type { BuyResult, ShopState } from './shop.ts';
 import type { Repeat, Todo } from './todo-store.ts';
@@ -152,6 +153,12 @@ export const SETTINGS = {
   refreshMcp: 'settings:refresh-mcp',
   /** 앱을 다시 켠다 (말을 바꾼 뒤) */
   relaunch: 'settings:relaunch',
+  // 6단계
+  /** 펫 고르기: 기본 펫(kind) 또는 보관한 펫(id). 지금 사진 펫은 보관함으로 */
+  choosePet: 'settings:use-pet',
+  removeSavedPet: 'settings:remove-saved-pet',
+  /** 받은 모델 지우기. 새 목록을 돌려준다 */
+  deleteModel: 'settings:delete-model',
   /** 메인 → 설정 창: 설정이 바뀌었다 */
   changed: 'settings:changed',
   /** 메인 → 설정 창: 이 칸을 보여 줘 (메뉴 막대 "의견 보내기") */
@@ -173,6 +180,26 @@ export interface SettingsSnapshot {
   calendarLast: string;
   /** 모델 목록 (v2)과 무료 AI 모델을 받았는지 (id 별) */
   models: { catalog: Catalog; localReady: Record<string, boolean> };
+  /** 만든 펫 보관함 (6단계). thumb 는 그림 data URL */
+  library: SavedPetView[];
+  /** 지금 사진 펫 그림 (data URL). 기본 펫이면 null */
+  currentThumb: string | null;
+  /** 받은 모델과 크기 (6단계) */
+  storage: StoredModel[];
+}
+
+export interface SavedPetView {
+  id: string;
+  name: string;
+  thumb: string;
+  look: 'photo' | 'figure' | 'relief';
+}
+
+export interface StoredModel {
+  id: string;
+  label: string;
+  kind: 'llm' | 'bg' | 'depth';
+  bytes: number;
 }
 
 /** 설정 창에서 바로 보여 줄 칸 */
@@ -199,6 +226,9 @@ export interface SettingsBridge {
   refreshMcp(): Promise<string[]>;
   /** 앱을 다시 켠다. 창은 열릴 때 말을 읽어서 말을 바꾸면 다시 켜야 한다 */
   relaunch(): void;
+  choosePet(choice: { kind: PetKind } | { id: string }): Promise<SavedPetView[]>;
+  removeSavedPet(id: string): Promise<SavedPetView[]>;
+  deleteModel(id: string): Promise<{ storage: StoredModel[]; localReady: Record<string, boolean> }>;
   onChanged(listener: (settings: Settings) => void): void;
   onFocus(listener: (section: SettingsSection) => void): void;
 }
@@ -302,11 +332,17 @@ export interface PetStatus {
   cushion: boolean;
   /** 기본 펫 모양 (v1) */
   kind: PetKind;
+  /** 입체로 그리기 (6단계) */
+  pet3d: boolean;
 }
 
 /** 펫 그림들 (data URL). 없으면 기본 펫. 포즈는 상태별 그림 (v1) */
 export interface PetImages {
   main: string | null;
+  /** AI 가 만든 입체 설계도 (6단계). 있으면 입체로 보기일 때 사진 대신 */
+  model: Blueprint | null;
+  /** 2.5D 깊이 그림 (6단계, 회색 PNG data URL). 있으면 사진을 입체 판으로 */
+  depth: string | null;
   poses: Partial<Record<PoseKind, string>>;
 }
 
@@ -317,6 +353,12 @@ export const MAKER = {
   /** 메인 → 펫 만들기 창: 모델 받기 진행률 0~1 */
   progress: 'maker:progress',
   save: 'maker:save',
+  /** 다듬은 사진을 AI 에 보내 입체 설계도를 받는다 (6단계) */
+  shape3d: 'maker:shape3d',
+  /** 깊이 모델 준비 (없으면 받음, 2.5D). 진행률은 progress 로 */
+  ensureDepth: 'maker:ensure-depth',
+  /** 사진을 볼 AI 가 있는지 (CLI 확인이 느릴 수 있어 info 와 따로) */
+  visionAi: 'maker:vision-ai',
   close: 'maker:close',
 } as const;
 
@@ -326,6 +368,14 @@ export const MAKER = {
  */
 export const MODEL_SCHEME = 'jj-model';
 export const MODEL_URL = `${MODEL_SCHEME}://bg/model.onnx`;
+/** 깊이 모델 파일 주소 (2.5D) */
+export const DEPTH_URL = `${MODEL_SCHEME}://depth/model.onnx`;
+
+/** 사진 펫의 입체 모습: AI 설계도(model), 또는 2.5D 깊이 그림(depth, 회색 PNG data URL) */
+export interface PetLook {
+  model?: Blueprint;
+  depth?: string;
+}
 
 /** 펫 만들기 창이 만드는 것: 펫 본 그림, 또는 상태별 포즈 (v1) */
 export type MakerTarget = 'main' | PoseKind | 'food';
@@ -343,14 +393,23 @@ export interface MakerInfo {
   size: number;
   mean: readonly number[];
   std: readonly number[];
+  /** 사진을 볼 수 있는 AI(claude, codex)가 있는지. 처음엔 false, visionAi() 로 따로 받는다 */
+  visionAi: boolean;
+  depth: { ready: boolean; mb: number; size: number; mean: readonly number[]; std: readonly number[] };
 }
 
 export interface MakerBridge {
   platform: NodeJS.Platform;
   info(): Promise<MakerInfo>;
+  visionAi(): Promise<boolean>;
   ensureModel(): Promise<{ ok: true } | { ok: false; error: string }>;
-  /** 다듬은 그림(PNG data URL, 움직이는 그림은 gif, webp 그대로)과 이름을 저장하고 펫을 바꾼다 */
-  save(png: string, name: string): Promise<{ ok: boolean; error?: string }>;
+  /** 다듬은 그림(PNG data URL, 움직이는 그림은 gif, webp 그대로)과 이름을 저장하고 펫을 바꾼다. 입체 설계도가 있으면 같이 */
+  save(png: string, name: string, look?: PetLook): Promise<{ ok: boolean; error?: string }>;
+  ensureDepth(): Promise<{ ok: true } | { ok: false; error: string }>;
+  /** AI 가 사진을 보고 입체 설계도를 만든다. 쓸 AI 가 없으면 noAi. 창을 닫으면 멈춘다 */
+  shape3d(
+    png: string,
+  ): Promise<{ ok: true; model: Blueprint } | { ok: false; error: string; noAi?: boolean }>;
   /** 기본 펫으로 돌아가기 */
   resetToDefault(): Promise<void>;
   close(): void;

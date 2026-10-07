@@ -75,3 +75,8 @@ test('마감 표시', () => {
   assert.deepEqual(dueLabel('2026-10-29', today), { text: '10월 29일 지남', overdue: true });
   assert.deepEqual(dueLabel('2026-12-05', today), { text: '12월 5일', overdue: false });
 });
+
+test('영어 날짜 낱말은 대소문자를 가리지 않는다', () => {
+  assert.equal(parseQuickTodo('Tomorrow buy milk', today).due, '2026-11-01');
+  assert.equal(parseQuickTodo('buy milk TODAY', today).title, 'buy milk');
+});

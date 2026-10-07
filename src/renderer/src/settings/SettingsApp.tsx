@@ -4,6 +4,7 @@ import { type BetaReport, TARGET } from '../../../shared/beta-stats.ts';
 import { type ChatterLevel, LEVEL_LABEL, MAX_PER_HOUR } from '../../../shared/chatter.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { SettingsSnapshot } from '../../../shared/ipc.ts';
+import { DEFAULT_BLUEPRINTS } from '../../../shared/pet3d/defaults.ts';
 import {
   FRIENDS_MAX,
   type Friend,
@@ -11,6 +12,7 @@ import {
   PET_NAME_MAX,
   type PetKind,
   POSE_KINDS,
+  RULES_MAX,
   type Settings,
 } from '../../../shared/settings.ts';
 import {
@@ -21,6 +23,8 @@ import {
   toAccelerator,
 } from '../../../shared/shortcut.ts';
 import { MAX_SCALE, MIN_SCALE } from '../../../shared/size.ts';
+import { CANVAS_SIZE, drawPet } from '../draw.ts';
+import { Pet3D } from '../pet3d.ts';
 
 const bridge = window.jjakkungSettings;
 
@@ -38,6 +42,7 @@ export function SettingsApp() {
   const [saved, setSaved] = useState('');
   // 언어를 바꾸면 다시 켜야 보인다. 바꾼 뒤에만 다시 켜기 버튼을 보여 준다
   const [langChanged, setLangChanged] = useState(false);
+  const libraryKey = useRef('');
 
   useEffect(() => {
     bridge.get().then((s) => {
@@ -45,7 +50,19 @@ export function SettingsApp() {
       setName(s.settings.petName);
       setScale(s.scale);
     });
-    bridge.onChanged((settings) => setSnap((s) => s && { ...s, settings }));
+    bridge.onChanged((settings) => {
+      setSnap((s) => s && { ...s, settings });
+      // 펫 만들기 창에서 새 펫을 저장하면 보관함과 지금 그림이 바뀐다. 그때만 다시 받는다
+      const key = JSON.stringify([settings.petImage, settings.petLibrary.map((p) => p.id)]);
+      if (key !== libraryKey.current) {
+        libraryKey.current = key;
+        void bridge
+          .get()
+          .then((next) =>
+            setSnap((s) => s && { ...s, library: next.library, currentThumb: next.currentThumb }),
+          );
+      }
+    });
     if (navigator.userAgent.includes('Mac')) document.body.classList.add('mac');
   }, []);
 
@@ -103,32 +120,28 @@ export function SettingsApp() {
 
           <div className="field">
             <span>{t('settings.look')}</span>
+            <PetPicker
+              snap={snap}
+              onPick={async (choice) => {
+                const library = await bridge.choosePet(choice);
+                const next = await bridge.get();
+                setSnap({ ...next, library });
+                setName(next.settings.petName);
+                flash(t('settings.saved'));
+              }}
+              onRemove={async (id) => {
+                const library = await bridge.removeSavedPet(id);
+                setSnap((v) => v && { ...v, library });
+                flash(t('settings.pets.removed'));
+              }}
+            />
             <div className="row">
               <button type="button" className="ghost" onClick={() => bridge.openMaker()}>
-                {s.petImage ? t('settings.changePhotoPet') : t('settings.makePhotoPet')}
+                {t('settings.makePhotoPet')}
               </button>
             </div>
-            <small>{s.petImage ? t('settings.photoPetNow') : t('settings.photoPetHint')}</small>
+            <small>{t('settings.pets.hint')}</small>
           </div>
-
-          {!s.petImage && (
-            <div className="field">
-              <span>{t('settings.petKind')}</span>
-              <fieldset className="segmented" aria-label={t('settings.petKind')}>
-                {PET_KINDS.map((k) => (
-                  <button
-                    key={k.id}
-                    type="button"
-                    aria-pressed={s.petKind === k.id}
-                    className={s.petKind === k.id ? 'on' : ''}
-                    onClick={() => update({ petKind: k.id })}
-                  >
-                    {k.label}
-                  </button>
-                ))}
-              </fieldset>
-            </div>
-          )}
 
           {s.petImage && (
             <div className="field">
@@ -164,6 +177,15 @@ export function SettingsApp() {
             />
             <small>{t('settings.sizeHint', { mod })}</small>
           </label>
+
+          {(!s.petImage || s.petModel || s.petDepth) && (
+            <Toggle
+              label={t('settings.pet3d')}
+              hint={t('settings.pet3dHint')}
+              on={s.pet3d}
+              onChange={(v) => update({ pet3d: v })}
+            />
+          )}
 
           <Toggle
             label={t('settings.wander')}
@@ -276,6 +298,13 @@ export function SettingsApp() {
           />
         </Section>
 
+        <Section title={t('settings.rules')}>
+          <RulesEditor
+            value={s.petRules}
+            onSave={(petRules) => update({ petRules }, t('settings.rules.saved'))}
+          />
+        </Section>
+
         <Section title={t('settings.models')}>
           <ModelPicker
             snap={snap}
@@ -284,6 +313,19 @@ export function SettingsApp() {
               if (id) next[provider] = id;
               else delete next[provider];
               update({ aiModels: next });
+            }}
+          />
+        </Section>
+
+        <Section title={t('settings.storage')}>
+          <Storage
+            list={snap.storage}
+            onDelete={async (id) => {
+              const r = await bridge.deleteModel(id);
+              setSnap(
+                (v) => v && { ...v, storage: r.storage, models: { ...v.models, localReady: r.localReady } },
+              );
+              flash(t('settings.storage.deleted'));
             }}
           />
         </Section>
@@ -866,6 +908,166 @@ function ModelPicker({
     </>
   );
 }
+
+/**
+ * 펫 고르기 (6단계): 기본 펫 다섯 마리(입체로 보기면 실제 3D 그림)와 보관한 사진 펫.
+ * 고르면 지금 사진 펫은 보관함으로 간다. 보관한 펫은 두 번 눌러 지운다
+ */
+function PetPicker({
+  snap,
+  onPick,
+  onRemove,
+}: {
+  snap: SettingsSnapshot;
+  onPick: (choice: { kind: PetKind } | { id: string }) => void;
+  onRemove: (id: string) => void;
+}) {
+  const s = snap.settings;
+  const [thumbs, setThumbs] = useState<Partial<Record<PetKind, string>>>({});
+  const [confirm, setConfirm] = useState('');
+  useEffect(() => {
+    setThumbs(kindThumbs(s.pet3d));
+  }, [s.pet3d]);
+  return (
+    <div className="pet-grid">
+      {s.petImage && snap.currentThumb && (
+        <div className="pet-card on" aria-current="true">
+          <img src={snap.currentThumb} alt="" />
+          <span className="pet-name">{s.petName}</span>
+          <small>{t('settings.pets.now')}</small>
+        </div>
+      )}
+      {PET_KINDS.map((k) => {
+        const on = !s.petImage && s.petKind === k.id;
+        return (
+          <button
+            key={k.id}
+            type="button"
+            className={`pet-card${on ? ' on' : ''}`}
+            aria-pressed={on}
+            onClick={() => !on && onPick({ kind: k.id })}
+          >
+            {thumbs[k.id] ? <img src={thumbs[k.id]} alt="" /> : <i />}
+            <span className="pet-name">{k.label}</span>
+          </button>
+        );
+      })}
+      {snap.library.map((p) => (
+        <div key={p.id} className="pet-card saved">
+          <button type="button" className="pick" onClick={() => onPick({ id: p.id })}>
+            {p.thumb ? <img src={p.thumb} alt="" /> : <i />}
+            <span className="pet-name">{p.name}</span>
+            {p.look !== 'photo' && (
+              <small>{p.look === 'figure' ? t('settings.pets.figure') : t('settings.pets.relief')}</small>
+            )}
+          </button>
+          <button
+            type="button"
+            className={`remove${confirm === p.id ? ' sure' : ''}`}
+            aria-label={t('settings.pets.remove', { name: p.name })}
+            title={t('settings.pets.remove', { name: p.name })}
+            onClick={() => {
+              if (confirm === p.id) onRemove(p.id);
+              else setConfirm(p.id);
+            }}
+            onBlur={() => setConfirm('')}
+          >
+            {confirm === p.id ? t('settings.pets.removeSure') : '×'}
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 기본 펫 미리보기 그림. 입체로 보기면 3D 를 한 번씩 그려 사진으로 만든다 (렌더러는 하나만) */
+let thumbPet: Pet3D | undefined;
+function kindThumbs(use3d: boolean): Partial<Record<PetKind, string>> {
+  const side = 96;
+  const c = document.createElement('canvas');
+  const dpr = window.devicePixelRatio || 1;
+  c.width = side * dpr;
+  c.height = side * dpr;
+  const ctx = c.getContext('2d');
+  if (!ctx) return {};
+  if (use3d) thumbPet ??= Pet3D.create(() => {});
+  const out: Partial<Record<PetKind, string>> = {};
+  for (const k of PET_KINDS) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, c.width, c.height);
+    const scale = (side * dpr) / CANVAS_SIZE;
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    if (use3d && thumbPet) thumbPet.setBlueprint(DEFAULT_BLUEPRINTS[k.id]);
+    drawPet(ctx, {
+      mood: 'idle',
+      elapsed: 0,
+      blink: -1,
+      kind: k.id,
+      viewSize: side,
+      model3d: use3d ? thumbPet : undefined,
+    });
+    out[k.id] = c.toDataURL('image/png');
+  }
+  thumbPet?.clear();
+  return out;
+}
+
+/** 짝꿍 규칙: 한 줄에 하나. 칸을 떠나면 저장 */
+function RulesEditor({ value, onSave }: { value: string; onSave: (v: string) => void }) {
+  const [text, setText] = useState(value);
+  useEffect(() => setText(value), [value]);
+  return (
+    <label className="field">
+      <span>{t('settings.rules.label')}</span>
+      <textarea
+        className="rules"
+        rows={6}
+        maxLength={RULES_MAX}
+        placeholder={t('settings.rules.placeholder')}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => text !== value && onSave(text)}
+      />
+      <small>
+        {t('settings.rules.hint')} ({text.length}/{RULES_MAX})
+      </small>
+    </label>
+  );
+}
+
+/** 받은 모델과 크기, 지우기 */
+function Storage({ list, onDelete }: { list: SettingsSnapshot['storage']; onDelete: (id: string) => void }) {
+  const [confirm, setConfirm] = useState('');
+  const total = list.reduce((a, m) => a + m.bytes, 0);
+  if (list.length === 0) return <small className="below">{t('settings.storage.empty')}</small>;
+  return (
+    <>
+      <ul className="storage">
+        {list.map((m) => (
+          <li key={m.id}>
+            <span className="model-name">{m.label}</span>
+            <b>{formatBytes(m.bytes)}</b>
+            <button
+              type="button"
+              className={`ghost small${confirm === m.id ? ' danger' : ''}`}
+              onClick={() => {
+                if (confirm === m.id) onDelete(m.id);
+                else setConfirm(m.id);
+              }}
+              onBlur={() => setConfirm('')}
+            >
+              {confirm === m.id ? t('settings.storage.sure') : t('settings.storage.delete')}
+            </button>
+          </li>
+        ))}
+      </ul>
+      <small className="below">{t('settings.storage.hint', { total: formatBytes(total) })}</small>
+    </>
+  );
+}
+
+const formatBytes = (n: number) =>
+  n >= 1e9 ? `${(n / 1e9).toFixed(2)}GB` : `${Math.max(1, Math.round(n / 1e6))}MB`;
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (

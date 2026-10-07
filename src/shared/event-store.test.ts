@@ -166,3 +166,10 @@ test('캘린더 가져오기: 새것 넣고, 바뀐 것 고치고, 없어진 것
   events.syncExternal('ics', [b], T0, T0 + 30 * 24 * 60 * MIN, T0);
   assert.deepEqual(events.dueReminders(b.startAt + 1000), []);
 });
+
+test('없는 날짜와 시각은 일정으로 받지 않는다 (버그잡이 점검 2026-10-07)', () => {
+  for (const bad of ['13/45 3시 회의', '2/30 오후 2시 치과', '3시 75분 미팅', '3:99 콜', '2/29 3시 회의']) {
+    assert.equal(parseQuickEvent(bad, today, nine), null, bad);
+  }
+  assert.equal(parseQuickEvent('2/28 3시 회의', today, nine)?.day, '2027-02-28');
+});

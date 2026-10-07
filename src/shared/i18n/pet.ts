@@ -73,6 +73,7 @@ export const ko = {
   'pet.newHouse': '새 집이다! 고마워.',
   'pet.fed': '냠냠, 고마워!',
   'pet.noCoins': '코인이 모자라. 할 일을 하나 끝내면 생겨.',
+  'pet.full': '배불러서 더는 못 먹어. 나중에 줘.',
   'pet.shortcut.hide': '숨기기',
   'pet.shortcut.quickAdd': '할 일 한 줄 넣기',
   'pet.shortcut.takenStart': (v: { keys: string }) =>
@@ -155,6 +156,7 @@ export const en: Translation<typeof ko> = {
   'pet.newHouse': 'A new house! Thank you.',
   'pet.fed': 'Yum, thanks!',
   'pet.noCoins': 'Not enough coins. Finish a to-do to earn some.',
+  'pet.full': "I'm full! Maybe later.",
   'pet.shortcut.hide': 'Hide',
   'pet.shortcut.quickAdd': 'Quick add to-do',
   'pet.shortcut.takenStart': (v: { keys: string }) =>

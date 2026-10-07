@@ -10,7 +10,8 @@ import {
   type ProviderSpec,
 } from '../shared/ai/providers.ts';
 import { withHistory } from '../shared/ai/text.ts';
-import type { AiEvent, AiProvider } from '../shared/ai/types.ts';
+import type { AiEvent, AiProvider, ImageAttachment } from '../shared/ai/types.ts';
+import type { AiUsage } from '../shared/ai/usage.ts';
 import {
   addQuestion,
   applyEvent,
@@ -55,6 +56,8 @@ export interface ChatOptions {
   aiIsolation: () => boolean;
   /** 펫 성격 (설정) */
   personaId: () => PersonaId;
+  /** 짝꿍 규칙 (6단계, 설정) */
+  rules: () => string;
   /** 내 할 일 같이 보내기 (설정). 켜면 todoContext() 를 질문 앞에 붙인다 */
   knowsTodos: () => boolean;
   setKnowsTodos: (on: boolean) => void;
@@ -79,21 +82,31 @@ export interface ChatOptions {
 export function createChat(o: ChatOptions) {
   const { petName, aiIsolation, onPetAi, onAnswer, log } = o;
   // 사용자가 추가한 AI 는 입력값만 저장하고 켤 때마다 정의를 다시 만든다 (검사 규칙이 바뀌어도 맞게).
-  let customInputs = (
-    (readJson(CUSTOM_FILE) as { id: string; input: CustomProviderInput }[] | undefined) ?? []
-  ).filter((c) => c?.id?.startsWith('custom-') && c.input);
+  // 파일이 깨졌거나 모양이 다르면(손으로 고침, 옛 판) 그 줄만 버린다. 여기서 던지면 앱이 반쯤 켜진 채 멈췄다
+  const rawCustom = readJson(CUSTOM_FILE);
+  let customInputs = (Array.isArray(rawCustom) ? rawCustom : []).filter(
+    (c): c is { id: string; input: CustomProviderInput } =>
+      typeof c?.id === 'string' &&
+      c.id.startsWith('custom-') &&
+      typeof c.input === 'object' &&
+      c.input !== null,
+  );
   const providers = (): ProviderSpec[] => [
     ...BUILTIN_PROVIDERS,
     ...customInputs.flatMap((c) => {
-      const spec = customProvider(c.input, c.id);
-      return typeof spec === 'string' ? [] : [spec];
+      try {
+        const spec = customProvider(c.input, c.id);
+        return typeof spec === 'string' ? [] : [spec];
+      } catch {
+        return [];
+      }
     }),
   ];
   const specOf = (id: AiProvider) => providers().find((p) => p.id === id);
 
   const saved = readJson(SETTINGS_FILE) as { provider?: AiProvider } | undefined;
   // 사용량은 마지막으로 본 값을 남겨 두었다가 창을 열자마자 보여 준다 (몇 분 전 값인지 같이 표시).
-  const savedUsage = (readJson(USAGE_FILE) ?? {}) as ChatState['usage'];
+  const savedUsage = usageOf(readJson(USAGE_FILE));
   const startProvider = saved?.provider && specOf(saved.provider) ? saved.provider : 'claude';
   let state: ChatState = initialChat(startProvider, savedUsage);
   let run: AiRun | undefined;
@@ -221,7 +234,7 @@ export function createChat(o: ChatOptions) {
       // 그림을 못 받는 AI 에는 글만 보낸다. 화면이 미리 알려 준다.
       images: spec.images ? images.map((i) => i.full) : [],
       sessionId: ephemeral ? undefined : state.sessions[provider]?.id,
-      persona: persona(petName(), o.personaId()),
+      persona: persona(petName(), o.personaId(), o.rules()),
       isolate: aiIsolation(),
       ephemeral,
       mcpServers: aiIsolation() ? [] : o.mcpServers(),
@@ -262,6 +275,7 @@ export function createChat(o: ChatOptions) {
             // 한국어이고 존댓말 성격이 아니면 반말 예시와 어미 고치기
             banmal: getLang() === 'ko' && o.personaId() !== 'polite',
             petName: petName(),
+            rules: o.rules(),
           })
         : runAi(req, onEvent);
     return true;
@@ -421,6 +435,17 @@ export function createChat(o: ChatOptions) {
     }
   }
 
+  /** 그림을 보는 claude, codex 중 지금 고른 것, 아니면 설치되고 로그인된 첫 번째 */
+  async function visionSpec(): Promise<ProviderSpec | undefined> {
+    for (const id of [state.provider, 'claude', 'codex']) {
+      const s = specOf(id);
+      if (!s?.images || (s.adapter !== 'claude' && s.adapter !== 'codex')) continue;
+      const st = await checkStatus(s);
+      if (st.installed && st.loggedIn !== false) return s;
+    }
+    return undefined;
+  }
+
   return {
     open,
     toggle,
@@ -432,6 +457,47 @@ export function createChat(o: ChatOptions) {
     },
     get window() {
       return win;
+    },
+    /** 사진을 볼 수 있는 AI 가 있는지 (펫 만들기 창이 입체 피규어와 2.5D 중 무엇을 권할지) */
+    hasVisionAi: async () => !!(await visionSpec()),
+    /**
+     * 대화 밖에서 그림 한 장과 함께 한 번 묻는다 (입체 펫 설계도, 6단계). 그림을 보는 claude, codex 중
+     * 지금 채팅에서 고른 것, 아니면 설치되고 로그인된 첫 번째. 기록은 남기지 않고 사용자 설정 없이 격리해 부른다.
+     * 쓸 AI 가 없으면 noAi
+     */
+    async oneShot(
+      text: string,
+      image: ImageAttachment,
+      system: string,
+      signal?: AbortSignal,
+    ): Promise<{ ok: true; text: string; provider: string } | { ok: false; error: string; noAi?: true }> {
+      const spec = await visionSpec();
+      if (!spec) return { ok: false, noAi: true, error: t('main.maker.noVisionAi') };
+      if (signal?.aborted) return { ok: false, error: t('main.maker.shapeCancelled') };
+      const use = spec;
+      log('chat', 'one-shot', use.id);
+      return new Promise((resolve) => {
+        const run = runAi(
+          {
+            spec: use,
+            history: [],
+            text,
+            images: [image],
+            persona: system,
+            isolate: true,
+            ephemeral: true,
+            model: pickCli(o.catalog(), use.id, o.aiModels()[use.id]),
+          },
+          (e) => {
+            if (e.type === 'done') resolve({ ok: true, text: e.text, provider: use.id });
+            else if (e.type === 'error') resolve({ ok: false, error: e.error.message });
+          },
+        );
+        signal?.addEventListener('abort', () => run.cancel());
+        // 답도 오류도 없이 끝나면(취소) 실패로. 먼저 정해졌으면 이 값은 무시된다
+        const ended = () => resolve({ ok: false, error: t('main.maker.shapeCancelled') });
+        void run.finished.then(ended, ended);
+      });
     },
     /** 설정에서 펫 이름이 바뀌었다. 열린 채팅 창에 알린다. */
     petNameChanged() {
@@ -479,4 +545,22 @@ function placeNear(near?: Rectangle) {
   const x = leftX >= area.x ? leftX : near.x + near.width + gap;
   const y = near.y + near.height - CHAT_SIZE.height;
   return clampIntoAreas({ x, y, ...CHAT_SIZE }, [area]);
+}
+
+/** 저장해 둔 사용량을 고른다. 모양이 틀린 것은 버린다 (틀린 값이 채팅 창을 빈 화면으로 만들었다) */
+function usageOf(raw: unknown): ChatState['usage'] {
+  if (typeof raw !== 'object' || raw === null) return {};
+  const out: ChatState['usage'] = {};
+  for (const [id, u] of Object.entries(raw as Record<string, unknown>)) {
+    const v = u as Partial<AiUsage> | null;
+    if (
+      typeof v === 'object' &&
+      v !== null &&
+      typeof v.checkedAt === 'number' &&
+      Array.isArray(v.windows) &&
+      v.windows.every((w) => typeof w?.label === 'string' && typeof w.usedPercent === 'number')
+    )
+      out[id] = v as AiUsage;
+  }
+  return out;
 }

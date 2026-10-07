@@ -55,7 +55,24 @@ function workDir(): string {
   return dir;
 }
 
-export function runAi(req: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
+/** 돌고 있는 AI 실행 (앱을 끌 때 모두 멈춘다) */
+const live = new Set<AiRun>();
+
+/** 앱을 끌 때: 생각만 하고 출력이 없는 CLI 도 프로세스 묶음째 끝낸다 */
+export function stopAllAi(): void {
+  for (const r of live) r.cancel();
+}
+
+/** NUL 글자는 프로세스 인자에 못 넣는다(spawn 이 던진다). 미리 뺀다 */
+const noNul = (s: string) => s.replace(/\0/g, '');
+
+export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
+  const req: AiRequest = {
+    ...reqIn,
+    text: noNul(reqIn.text),
+    persona: noNul(reqIn.persona),
+    history: reqIn.history.map((h) => ({ question: noNul(h.question), answer: noNul(h.answer) })),
+  };
   let child: ChildProcess | undefined;
   let cancelled = false;
   let settled = false;
@@ -69,6 +86,21 @@ export function runAi(req: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
   };
 
   const finished = (async () => {
+    try {
+      await runChild();
+    } catch (err) {
+      // spawn 이 바로 던지는 경우(잘못된 인자 등). 이벤트 없이 끝나면 채팅이 "답 기다림"에 멈춘다
+      emit({
+        type: 'error',
+        error: classifyError(req.spec, err instanceof Error ? err.message : String(err)),
+      });
+    }
+  })().finally(() => {
+    for (const f of tempFiles) rmSync(f, { force: true });
+    live.delete(run);
+  });
+
+  async function runChild() {
     const env = await getShellEnv();
     const { spec } = req;
     const cli = resolveBin(spec.bin, env);
@@ -119,7 +151,13 @@ export function runAi(req: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
       parse = parseCodexLine;
     }
 
-    child = spawn(cli, args, { cwd: workDir(), env: childEnv, stdio: ['pipe', 'pipe', 'pipe'] });
+    // 맥, 리눅스는 새 프로세스 묶음으로 띄운다. 감싼 스크립트가 띄운 손자 프로세스까지 한 번에 끝내려고
+    child = spawn(cli, args, {
+      cwd: workDir(),
+      env: childEnv,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      detached: process.platform !== 'win32',
+    });
     if (stdin) child.stdin?.end(stdin);
     else child.stdin?.end(); // codex 는 표준 입력을 기다리므로 바로 닫는다
 
@@ -133,11 +171,18 @@ export function runAi(req: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
     let stderr = '';
     let answer = '';
     child.stdout?.setEncoding('utf8');
+    let ansiTail = '';
     child.stdout?.on('data', (chunk: string) => {
+      if (cancelled) return;
       clearTimeout(idleTimer);
       idleTimer = setTimeout(onIdle, IDLE_TIMEOUT_S * 1000);
       if (!parse) {
-        const text = stripAnsi(chunk);
+        // 색 코드가 조각 경계에서 잘리면 다음 조각과 붙여서 지운다
+        let raw = ansiTail + chunk;
+        const esc = raw.lastIndexOf('\u001b');
+        ansiTail = esc >= 0 && !/[A-Za-z]/.test(raw.slice(esc + 2)) ? raw.slice(esc) : '';
+        if (ansiTail) raw = raw.slice(0, esc);
+        const text = stripAnsi(raw);
         answer += text;
         if (text) emit({ type: 'delta', text });
         return;
@@ -182,26 +227,39 @@ export function runAi(req: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
         resolve();
       });
     });
-  })().finally(() => {
-    for (const f of tempFiles) rmSync(f, { force: true });
-  });
-
-  function stop() {
-    if (!child || child.exitCode !== null) return;
-    child.kill('SIGTERM');
-    const c = child;
-    setTimeout(() => {
-      if (c.exitCode === null && c.signalCode === null) c.kill('SIGKILL');
-    }, KILL_GRACE_MS).unref();
   }
 
-  return {
+  /** 프로세스 묶음째 신호를 보낸다 (스크립트가 띄운 손자까지). 윈도우는 그 프로세스만 */
+  function signal(sig: NodeJS.Signals) {
+    const pid = child?.pid;
+    if (!pid) return;
+    try {
+      if (process.platform === 'win32') child?.kill(sig);
+      else process.kill(-pid, sig);
+    } catch {
+      // 이미 끝났다
+    }
+  }
+
+  function stop() {
+    if (!child) return;
+    // 감싼 스크립트가 먼저 끝나도 손자가 남을 수 있어 exitCode 와 상관없이 묶음에 보낸다
+    signal('SIGTERM');
+    setTimeout(() => signal('SIGKILL'), KILL_GRACE_MS).unref();
+  }
+
+  const run: AiRun = {
     cancel() {
+      if (cancelled) return;
       cancelled = true;
       stop();
+      // 손자가 파이프를 쥐고 있으면 close 가 늦다. 멈춤은 바로 알린다
+      emit({ type: 'error', error: { kind: 'cancelled', message: t('ai.error.cancelled') } });
     },
     finished,
   };
+  live.add(run);
+  return run;
 }
 
 /**

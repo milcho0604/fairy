@@ -13,10 +13,13 @@ import {
   type PetMood,
   TALK_MS,
 } from '../../shared/pet-mood.ts';
+import type { Blueprint } from '../../shared/pet3d/blueprint.ts';
+import { DEFAULT_BLUEPRINTS } from '../../shared/pet3d/defaults.ts';
 import type { PetKind, PoseKind } from '../../shared/settings.ts';
 import { AnimatedImage, loadPetImage } from './animated.ts';
 import { CANVAS_SIZE, drawPet, HEARTS_MS } from './draw.ts';
 import { initLang } from './lang.ts';
+import { Pet3D } from './pet3d.ts';
 
 initLang('common.title.pet');
 const bridge = window.jjakkung;
@@ -82,7 +85,9 @@ function frame() {
   }
   const hearts = heartsStart >= 0 ? now - heartsStart : -1;
   if (hearts >= HEARTS_MS) heartsStart = -1;
-  const img = pickImage(mood, inputs.hungry);
+  // 입체가 되면 사진 대신 입체로 (AI 가 만든 설계도가 있는 사진 펫, 또는 기본 펫)
+  const m3d = current3d();
+  const img = m3d ? undefined : pickImage(mood, inputs.hungry);
   drawPet(ctx, {
     mood,
     elapsed: now - moodSince,
@@ -95,6 +100,7 @@ function frame() {
     sulk: inputs.sulkLevel,
     hearts: heartsStart >= 0 ? hearts : -1,
     cushion,
+    model3d: m3d,
   });
 
   const walking = activity?.type === 'walk';
@@ -110,7 +116,10 @@ function frame() {
         : moving
           ? 20
           : animatedPhoto;
-  if (fps > 0) frameTimer = setTimeout(frame, 1000 / fps);
+  // 이 틀 안에서 requestFrame 이 불렸으면(행동 멈춤 등) 그 타이머를 지운다. 안 지우면 루프가 두 겹이 돈다
+  // (2026-10-07 점검: 신남이 30fps 가 아니라 57fps)
+  clearTimeout(frameTimer);
+  frameTimer = fps > 0 ? setTimeout(frame, 1000 / fps) : undefined;
 }
 
 // ---- 기본 행동 (P1-06) ----
@@ -163,14 +172,17 @@ let cushion = false;
 let imageLoad = 0;
 bridge.onImage(async (images: PetImages) => {
   const mine = ++imageLoad;
-  const [main, ...rest] = await Promise.all([
+  const [main, depthImg, ...rest] = await Promise.all([
     images.main ? loadPetImage(images.main) : Promise.resolve(undefined),
+    images.depth ? loadPetImage(images.depth) : Promise.resolve(undefined),
     ...(['happy', 'sleepy', 'hungry'] as const).map((k) =>
       images.poses[k] ? loadPetImage(images.poses[k] as string) : Promise.resolve(undefined),
     ),
   ]);
   if (mine !== imageLoad) return; // 그사이 또 바뀌었다
   photo = main;
+  photoModel = images.model ?? undefined;
+  photoDepth = depthImg instanceof HTMLImageElement ? depthImg : undefined;
   poses = { happy: rest[0], sleepy: rest[1], hungry: rest[2] };
   requestFrame();
 });
@@ -184,8 +196,53 @@ function pickImage(m: PetMood, hungry: boolean): PetImage | undefined {
   return photo;
 }
 
+// 입체 펫 (6단계). 처음 그릴 때 만들고, WebGL 을 못 쓰거나 잃으면 2D 그림으로 돌아간다.
+let use3d = true;
+let model3d: Pet3D | undefined;
+/** 지금 조립해 둔 것 (설계도, 또는 2.5D 깊이 그림) */
+let model3dOf: Blueprint | HTMLImageElement | undefined;
+/** 사진 펫을 AI 가 입체로 만든 설계도 (6단계) */
+let photoModel: Blueprint | undefined;
+/** 사진 펫의 2.5D 깊이 그림 (6단계) */
+let photoDepth: HTMLImageElement | undefined;
+let broken3d = false;
+function current3d(): Pet3D | undefined {
+  // 사진 펫은 설계도나 깊이 그림이 있을 때만 입체로. 움직이는 그림은 입체 판으로 만들지 않는다
+  const still = photo instanceof HTMLImageElement;
+  const bp = (still ? photoModel : undefined) ?? (photo ? undefined : DEFAULT_BLUEPRINTS[petKind]);
+  const relief = !bp && still ? photoDepth : undefined;
+  if (!use3d || broken3d || (!bp && !relief)) {
+    // 입체를 안 쓰면 모양만 내린다. 렌더러는 버리지 않고 다시 쓴다(버리고 새로 만들면 컨텍스트가 샌다)
+    if (model3dOf) model3d?.clear();
+    model3dOf = undefined;
+    return undefined;
+  }
+  model3d ??= Pet3D.create(() => {
+    broken3d = true;
+    requestFrame();
+  });
+  if (!model3d) {
+    broken3d = true;
+    return undefined;
+  }
+  const want = bp ?? relief;
+  if (model3dOf !== want) {
+    if (bp) model3d.setBlueprint(bp);
+    else if (relief && photo instanceof HTMLImageElement) model3d.setRelief(photo, relief);
+    model3dOf = want;
+  }
+  return model3d;
+}
+
 bridge.onStatus((status) => {
   petKind = status.kind;
+  // 입체를 다시 켜면 한 번 더 해 본다 (그래픽 오류로 2D 가 됐어도)
+  if (status.pet3d && !use3d && broken3d) {
+    broken3d = false;
+    model3d = undefined;
+    model3dOf = undefined;
+  }
+  use3d = status.pet3d;
   cushion = status.cushion;
   setInputs({ hungry: status.hungry, focusTimer: status.focus, sulkLevel: status.sulk });
 });
@@ -463,7 +520,12 @@ bridge.onLayout((layout) => {
 bubbleEl.addEventListener('click', () => closeBubble('dismiss'));
 
 // ---- 메인이 알려 주는 환경 ----
-bridge.onEnv((env) => setInputs({ systemBusy: env.systemBusy, userIdleMs: env.userIdleMs }));
+// 5초마다 온다. 기분이 그대로면 값만 바꾸고 다시 그리지 않는다 (잠, 바쁨에서 쓸데없이 그렸다)
+bridge.onEnv((env) => {
+  const next = { ...inputs, systemBusy: env.systemBusy, userIdleMs: env.userIdleMs };
+  if (moodOf(next, performance.now()) === mood) inputs = next;
+  else setInputs({ systemBusy: env.systemBusy, userIdleMs: env.userIdleMs });
+});
 // AI 답을 기다리는 동안 생각 중, 답이 오면 잠깐 말하기 동작.
 bridge.onAi((ai) =>
   setInputs({ thinking: ai.thinking, ...(ai.answered ? { talkingUntil: performance.now() + TALK_MS } : {}) }),
@@ -474,6 +536,11 @@ Object.assign(window, {
   __pet: {
     setInputs,
     requestActivity: () => bridge.activityRequest(),
+    /** 행동을 바로 넣는다. at 은 진행 정도 0~1 (하품, 기지개 가운데를 찍을 때). 없으면 그만 */
+    debugActivity: (a?: Activity, at = 0) => {
+      activity = a ? { ...a, start: performance.now() - a.ms * at } : undefined;
+      requestFrame();
+    },
     get mood() {
       return mood;
     },

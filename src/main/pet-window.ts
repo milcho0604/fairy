@@ -85,7 +85,7 @@ export interface PetWindow {
   /** 화면 좌표의 펫 사각형 (말풍선 자리를 뺀 것) */
   bounds(): Rect;
   /**
-   * 말풍선을 띄운다. 수다 빈도에 막히면 undefined, 아니면 닫힌 방법(버튼 id, 'timeout', 'dismiss', 'replaced').
+   * 말풍선을 띄운다. 수다 빈도에 막히면 undefined, 아니면 닫힌 방법(버튼 id, 'timeout', 'dismiss' 누름, 'cleared' 숨기기나 끌기로 치움, 'replaced').
    */
   say(options: SayOptions): Promise<string | undefined>;
   /** 숨길 까닭을 켜고 끈다. 까닭이 하나라도 있으면 숨는다 (P1-10). */
@@ -218,7 +218,8 @@ export function createPetWindow({ petName, actions, log, id, initial, menu }: Pe
       // 들어 옮기는 동안은 말풍선을 치운다. 창 안 펫 자리가 바뀌므로 오프셋은 펫 기준으로 바꿔 둔다.
       const inWindow = win.getBounds();
       const offset = { x: event.offset.x - (pet.x - inWindow.x), y: event.offset.y - (pet.y - inWindow.y) };
-      closeBubble('dismiss');
+      // 사용자가 말풍선을 누른 것(dismiss)과 구별한다. dismiss 는 "답 왔어"를 연다
+      closeBubble('cleared');
       stopWalk();
       clearInterval(dragTimer);
       stopFlight();
@@ -540,6 +541,9 @@ export function createPetWindow({ petName, actions, log, id, initial, menu }: Pe
     done?.(finished);
   }
 
+  /** 같은 밀리초에 두 번 띄워도 id 가 겹치지 않게 */
+  let bubbleSeq = 0;
+
   function closeBubble(action: string) {
     const current = bubble;
     if (!current) return;
@@ -575,7 +579,7 @@ export function createPetWindow({ petName, actions, log, id, initial, menu }: Pe
     if (win.isDestroyed() || !hideReasons.set(reason, on)) return;
     log('pet', hideReasons.hidden ? 'hidden' : 'shown', reason);
     if (hideReasons.hidden) {
-      closeBubble('dismiss');
+      closeBubble('cleared');
       stopWalk();
       leavePerch();
       win.hide();
@@ -603,7 +607,7 @@ export function createPetWindow({ petName, actions, log, id, initial, menu }: Pe
     // 하나만 띄운다. 새 말이 오면 앞 말풍선은 닫는다. 걷던 중이면 멈춰 서서 말한다.
     closeBubble('replaced');
     stopWalk();
-    const id = `b${Date.now().toString(36)}`;
+    const id = `b${Date.now().toString(36)}${(++bubbleSeq).toString(36)}`;
     return new Promise((resolve) => {
       bubble = {
         id,

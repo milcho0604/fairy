@@ -458,3 +458,135 @@ section.focus .card {
 .friend-add input {
   flex: 1;
 }
+
+/* 펫 고르기 (6단계): 기본 펫과 보관한 펫 카드 */
+.pet-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 8px;
+}
+
+.pet-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  cursor: pointer;
+  text-align: center;
+}
+
+.pet-card.on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
+  cursor: default;
+}
+
+.pet-grid .pet-card img,
+.pet-grid .pet-card i {
+  display: block;
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+}
+
+.pet-name {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pet-card small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.pet-card.saved {
+  padding: 0;
+  cursor: default;
+}
+
+.pet-card.saved .pick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 6px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.pet-card .remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pet-card .remove.sure {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+/* 짝꿍 규칙 */
+textarea.rules {
+  width: 100%;
+  min-height: 110px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: inherit;
+  font: inherit;
+  resize: vertical;
+}
+
+/* 저장 공간 */
+.storage {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.storage li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.model-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.storage li b {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.storage .danger {
+  border-color: var(--error);
+  color: var(--error);
+}

@@ -1,10 +1,14 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { app, type BrowserWindow, dialog } from 'electron';
+import { SCHEMA_VERSION } from '../shared/db-schema.ts';
 import { t } from '../shared/i18n/index.ts';
 import { decodePet, encodePet, type SharedPet, shareFileName } from '../shared/pet-share.ts';
+import type { Blueprint } from '../shared/pet3d/blueprint.ts';
 import { FRIENDS_MAX, POSE_KINDS } from '../shared/settings.ts';
 import { petImages } from './maker.ts';
+import { library } from './pet-library.ts';
 import { settings } from './settings.ts';
 
 /** 백업에 넣는 작은 설정 파일들 (로그인 셸 PATH, codex 폴더처럼 컴퓨터마다 다른 것은 뺀다) */
@@ -38,7 +42,9 @@ export function createBackup(o: {
         }));
     const base = pick.filePaths[0];
     if (pick.canceled || !base) return '';
-    const out = join(base, `jjakkung-backup-${stamp()}`);
+    // 같은 분에 두 번 내보내도 겹치지 않게 (VACUUM INTO 는 있는 파일에 못 쓴다)
+    let out = join(base, `jjakkung-backup-${stamp()}`);
+    for (let i = 2; existsSync(out); i++) out = join(base, `jjakkung-backup-${stamp()}-${i}`);
     mkdirSync(out, { recursive: true });
     o.vacuumInto(join(out, 'jjakkung.db'));
     for (const f of FILES) if (existsSync(join(dir(), f))) cpSync(join(dir(), f), join(out, f));
@@ -60,6 +66,10 @@ export function createBackup(o: {
     if (pick.canceled || !from) return '';
     if (!existsSync(join(from, 'jjakkung-backup.json')) || !existsSync(join(from, 'jjakkung.db')))
       return t('main.backup.notBackup');
+    // 새 판 짝꿍이 만든 백업은 이 판이 못 연다. 지금 데이터를 덮어쓰기 전에 거른다
+    const version = dbVersion(join(from, 'jjakkung.db'));
+    if (version === undefined) return t('main.backup.notBackup');
+    if (version > SCHEMA_VERSION) return t('main.backup.newer');
     const ok = await dialog.showMessageBox({
       type: 'warning',
       message: t('main.backup.confirm'),
@@ -91,9 +101,29 @@ export function applyPendingImport(): void {
   const dir = app.getPath('userData');
   const pending = join(dir, 'jjakkung.db.import');
   if (!existsSync(pending)) return;
+  // 못 여는 판이면 지금 저장 파일을 그대로 둔다 (가져오기에서 걸렀지만 한 번 더)
+  const version = dbVersion(pending);
+  if (version === undefined || version > SCHEMA_VERSION) {
+    rmSync(pending, { force: true });
+    return;
+  }
   for (const f of ['jjakkung.db-wal', 'jjakkung.db-shm']) rmSync(join(dir, f), { force: true });
   cpSync(pending, join(dir, 'jjakkung.db'));
   rmSync(pending, { force: true });
+}
+
+/** 저장 파일의 판(user_version). 열 수 없으면 undefined */
+function dbVersion(file: string): number | undefined {
+  try {
+    const db = new DatabaseSync(file, { readOnly: true });
+    try {
+      return Number((db.prepare('pragma user_version').get() as { user_version: number }).user_version);
+    } finally {
+      db.close();
+    }
+  } catch {
+    return undefined;
+  }
 }
 
 // ---- 펫 공유 (v2) ----
@@ -107,6 +137,14 @@ function dataUrlToFile(dataUrl: string, prefix: string): string {
   return file;
 }
 
+/** 입체 설계도를 pets/ 에 저장하고 파일 이름을 돌려준다 */
+function modelToFile(model: Blueprint): string {
+  const file = `model-${Date.now()}${Math.floor(Math.random() * 1000)}.json`;
+  mkdirSync(join(app.getPath('userData'), 'pets'), { recursive: true });
+  writeFileSync(join(app.getPath('userData'), 'pets', file), JSON.stringify(model));
+  return file;
+}
+
 export async function exportPet(parent?: BrowserWindow): Promise<string> {
   const s = settings.get();
   const imgs = petImages();
@@ -115,6 +153,8 @@ export async function exportPet(parent?: BrowserWindow): Promise<string> {
     kind: s.petKind,
     ...(imgs.main ? { image: imgs.main } : {}),
     poses: imgs.poses,
+    ...(imgs.model ? { model: imgs.model } : {}),
+    ...(imgs.depth ? { depth: imgs.depth } : {}),
   };
   const opts = {
     title: t('main.pet.exportTitle'),
@@ -152,6 +192,8 @@ export async function importPet(
       name: pet.name,
       kind: pet.kind,
       ...(pet.image ? { image: dataUrlToFile(pet.image, 'pet') } : {}),
+      ...(pet.model ? { model: modelToFile(pet.model) } : {}),
+      ...(pet.depth ? { depth: dataUrlToFile(pet.depth, 'depth') } : {}),
     };
     settings.set({ friends: [...list, friend] });
     return { ok: true, message: t('main.pet.friendCame', { name: pet.name }) };
@@ -165,6 +207,8 @@ export async function importPet(
     cancelId: 1,
   });
   if (ask.response !== 0) return { ok: false, message: '' };
+  // 지금 사진 펫은 보관함으로 (6단계)
+  library.beforeNewPhoto();
   const poses: Record<string, string | null> = {};
   for (const { id } of POSE_KINDS)
     poses[id] = pet.poses[id] ? dataUrlToFile(pet.poses[id] as string, 'pose') : null;
@@ -172,6 +216,8 @@ export async function importPet(
     petName: pet.name,
     petKind: pet.kind,
     petImage: pet.image ? dataUrlToFile(pet.image, 'pet') : null,
+    petModel: pet.model ? modelToFile(pet.model) : null,
+    petDepth: pet.depth ? dataUrlToFile(pet.depth, 'depth') : null,
     petPoses: poses,
   });
   return { ok: true, message: t('main.pet.came', { name: pet.name }) };

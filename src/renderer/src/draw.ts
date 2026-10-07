@@ -15,6 +15,8 @@ const COLORS: Record<PetKind, { body: string; line: string }> = {
   kong: { body: '#ffd8a8', line: '#c4854a' },
   cat: { body: '#ece6df', line: '#8d8178' },
   chick: { body: '#ffe27a', line: '#d29d00' },
+  dog: { body: '#f0cfa0', line: '#a8743f' },
+  bunny: { body: '#f6f0f2', line: '#a3949a' },
 };
 let BODY = COLORS.kong.body;
 let LINE = COLORS.kong.line;
@@ -46,6 +48,20 @@ export interface DrawState {
   hearts?: number;
   /** 쿠션이 있으면 앉을 때 깔고 앉는다 (v1 장난감) */
   cushion?: boolean;
+  /** 입체 펫 (6단계). 있으면 기본 몸 대신 이것이 그린다. 사진 펫이 먼저다 */
+  model3d?: Model3D;
+}
+
+/** 입체 펫 그리기 (pet3d.ts). 2D 와 같은 몸짓 값(lift, sx, sy)을 받아 그리고 머리 꼭대기 y 를 돌려준다 */
+export interface Model3D {
+  draw(
+    ctx: CanvasRenderingContext2D,
+    s: DrawState,
+    lift: number,
+    sx: number,
+    sy: number,
+    act: DrawState['activity'],
+  ): number | undefined;
 }
 
 /** 하트가 떠올라 사라지는 시간 */
@@ -106,6 +122,13 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): void {
     drawExtras(ctx, s, top);
     return;
   }
+  if (s.model3d) {
+    const top = s.model3d.draw(ctx, s, lift, sx, sy, act);
+    if (top !== undefined) {
+      drawExtras(ctx, s, top);
+      return;
+    }
+  }
 
   // 발: 몸통보다 먼저 그려서 몸 아래로 조금 나오게. 걸을 때는 번갈아 든다. 매달리면 늘어진다.
   {
@@ -132,6 +155,7 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): void {
   ctx.translate(0, -RY);
 
   if (kind === 'cat') drawCatEars(ctx);
+  if (kind === 'bunny') drawBunnyEars(ctx);
 
   // 몸통
   ctx.beginPath();
@@ -141,6 +165,7 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): void {
   ctx.lineWidth = 2;
   ctx.strokeStyle = LINE;
   ctx.stroke();
+  if (kind === 'dog') drawDogEars(ctx);
 
   // 볼
   // 얼굴을 옆으로: 삐지면 고개를 돌리고, 걷거나 두리번거리면 그쪽을 본다.
@@ -181,6 +206,36 @@ function drawCushion(ctx: CanvasRenderingContext2D) {
   ctx.fill();
   ctx.stroke();
   ctx.restore();
+}
+
+/** 멍멍이: 옆으로 처진 갈색 귀 (몸 위에 겹쳐 그린다) */
+function drawDogEars(ctx: CanvasRenderingContext2D) {
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.ellipse(side * 50, -RY + 34, 13, 24, side * 0.35, 0, Math.PI * 2);
+    ctx.fillStyle = '#b9824c';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = LINE;
+    ctx.stroke();
+  }
+}
+
+/** 토순이: 위로 긴 귀, 안쪽 분홍 (몸 뒤에 그린다) */
+function drawBunnyEars(ctx: CanvasRenderingContext2D) {
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.ellipse(side * 18, -RY - 14, 10, 30, side * 0.12, 0, Math.PI * 2);
+    ctx.fillStyle = BODY;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = LINE;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(side * 18, -RY - 12, 5, 21, side * 0.12, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 150, 170, 0.55)';
+    ctx.fill();
+  }
 }
 
 function drawCatEars(ctx: CanvasRenderingContext2D) {

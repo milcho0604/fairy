@@ -324,3 +324,33 @@ section {
   font-size: 16px;
   font-weight: 600;
 }
+
+/* 입체로 만들기 (6단계) */
+.look3d {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.look3d .hint {
+  flex: 1 1 100%;
+}
+
+.stage img.shaping {
+  animation: shaping 1.6s ease-in-out infinite;
+}
+
+@keyframes shaping {
+  50% {
+    opacity: 0.55;
+    transform: scale(0.97);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage img.shaping {
+    animation: none;
+    opacity: 0.7;
+  }
+}

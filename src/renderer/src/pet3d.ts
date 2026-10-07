@@ -1,0 +1,793 @@
+// 입체 펫 (6단계). 설계도(blueprint)를 three.js 로 조립해 따로 둔 WebGL 캔버스에 그리고, 그 그림을 펫 2D 캔버스에 옮긴다.
+// 그래서 픽셀로 하는 마우스 판정, 말풍선, 하트, Zz 는 2D 펫과 똑같이 돈다.
+// 그리기는 2D 와 같은 때만 한다(정지 상태는 한 번). 계속 돌리지 않는다 (L10).
+import {
+  Box3,
+  type BufferGeometry,
+  CanvasTexture,
+  CapsuleGeometry,
+  CatmullRomCurve3,
+  ConeGeometry,
+  CylinderGeometry,
+  DirectionalLight,
+  DoubleSide,
+  Group,
+  HemisphereLight,
+  type Material,
+  Matrix3,
+  Mesh,
+  MeshBasicMaterial,
+  MeshPhysicalMaterial,
+  MeshStandardMaterial,
+  NeutralToneMapping,
+  type Object3D,
+  PerspectiveCamera,
+  PlaneGeometry,
+  PMREMGenerator,
+  Raycaster,
+  Scene,
+  SphereGeometry,
+  SRGBColorSpace,
+  TorusGeometry,
+  TubeGeometry,
+  Vector3,
+  WebGLRenderer,
+} from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import {
+  type Blueprint,
+  expandMirrors,
+  type Face,
+  type Finish,
+  type Part,
+  SLOTS,
+  type Slot,
+} from '../../shared/pet3d/blueprint.ts';
+import type { DrawState, Model3D } from './draw.ts';
+
+const CX = 80;
+const GROUND = 154;
+/** 쉬는 자세의 펫이 2D 캔버스(160)에서 차지할 최대 키와 너비 */
+const FIT_H = 118;
+const FIT_W = 140;
+const DEG = Math.PI / 180;
+const INK = '#1f2328';
+
+type Act = DrawState['activity'];
+type EyeState = 'open' | 'down' | 'up' | 'chevron' | 'half';
+type MouthState = 'smile' | 'open' | 'yawn' | 'o' | 'flat' | 'frown' | 'wavy';
+
+interface FaceRig {
+  eyes: { side: -1 | 1; states: Record<EyeState, Object3D>; open: Object3D }[];
+  mouth: Partial<Record<MouthState, Object3D>>;
+  beakLower?: Object3D;
+  style: Face['mouth'];
+}
+
+export class Pet3D implements Model3D {
+  private readonly canvas = document.createElement('canvas');
+  private readonly renderer: WebGLRenderer;
+  private readonly scene = new Scene();
+  private readonly camera = new PerspectiveCamera(20, 1, 0.1, 50);
+  private root = new Group();
+  private joints = {} as Record<Slot, Group>;
+  private hasHead = false;
+  private face: FaceRig | undefined;
+  /** 그릴 것이 있는지 (설계도나 입체 판을 넣었는지) */
+  private ready = false;
+  /** 2.5D 입체 판 (사진 + 깊이). 있으면 관절 대신 몸 전체만 기울인다 */
+  private relief: { texture: CanvasTexture } | undefined;
+  /** 쉬는 자세가 화면(NDC)에서 차지하는 자리로 정한 2D 그림 크기와 위치 */
+  private fit = { d: 160, cx: 0, bottom: -1, halfW: 0.5 };
+  private px = 0;
+  private lost = false;
+  private readonly materials = new Map<string, Material>();
+  private readonly box = new Box3();
+  private readonly tmp = new Vector3();
+
+  /** WebGL 을 못 쓰는 컴퓨터면 undefined (2D 펫으로) */
+  static create(onLost: () => void): Pet3D | undefined {
+    try {
+      return new Pet3D(onLost);
+    } catch {
+      return undefined;
+    }
+  }
+
+  private constructor(onLost: () => void) {
+    this.renderer = new WebGLRenderer({
+      canvas: this.canvas,
+      alpha: true,
+      antialias: true,
+      preserveDrawingBuffer: true,
+      powerPreference: 'low-power',
+    });
+    this.renderer.setClearColor(0x000000, 0);
+    this.renderer.setPixelRatio(1);
+    this.renderer.toneMapping = NeutralToneMapping;
+    this.renderer.outputColorSpace = SRGBColorSpace;
+    // 피규어 느낌: 방 조명을 비춰 비닐 광택이 나게 하고, 위 앞에서 주 조명, 뒤에서 테두리 빛
+    const pmrem = new PMREMGenerator(this.renderer);
+    const room = new RoomEnvironment();
+    this.scene.environment = pmrem.fromScene(room, 0.04).texture;
+    this.scene.environmentIntensity = 0.55;
+    room.dispose();
+    pmrem.dispose();
+    this.scene.add(new HemisphereLight(0xffffff, 0xd9c7b5, 1.1));
+    const key = new DirectionalLight(0xffffff, 1.7);
+    key.position.set(-1.2, 2.2, 2.4);
+    const rim = new DirectionalLight(0xfff4e0, 1.3);
+    rim.position.set(1.5, 1.4, -2.2);
+    this.scene.add(key, rim);
+    this.canvas.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      // 직접 내린 것(dispose)은 잃은 것이 아니다. 알리면 펫이 2D 로 굳는다
+      if (this.lost) return;
+      this.lost = true;
+      onLost();
+    });
+  }
+
+  /** 빙글 도는 미리보기(펫 만들기 창)에서 더하는 몸 돌림(라디안) */
+  spin = 0;
+  /** 그리는 해상도 상한(px). 펫 화면은 768 이면 충분하고, 앱 아이콘은 더 크게 그린다 */
+  maxPx = 768;
+
+  get ok(): boolean {
+    return !this.lost;
+  }
+
+  /** 그리던 모양을 내린다. 입체를 잠깐 안 쓸 때 (렌더러는 다시 쓴다) */
+  clear(): void {
+    this.resetRoot();
+  }
+
+  /**
+   * GPU 를 돌려준다. 주의: three 의 공용 빈 텍스처가 렌더러를 붙잡아 컨텍스트가 다 풀리지 않는다
+   * (버그잡이 점검 2026-10-07, 300번 만들고 버리면 컨텍스트 192개가 남았다). 그래서 창마다 하나만 만들어 다시 쓴다
+   */
+  dispose(): void {
+    this.lost = true;
+    this.disposeTree(this.root);
+    for (const m of this.materials.values()) m.dispose();
+    this.scene.environment?.dispose();
+    this.renderer.dispose();
+    this.renderer.forceContextLoss();
+  }
+
+  /** 옛 모양을 내리고 빈 몸을 준비한다 */
+  private resetRoot() {
+    this.scene.remove(this.root);
+    this.disposeTree(this.root);
+    this.relief?.texture.dispose();
+    this.relief = undefined;
+    this.face = undefined;
+    this.ready = false;
+    // 색별 재질도 비운다 (펫을 갈아끼울 때마다 쌓이지 않게)
+    for (const m of this.materials.values()) m.dispose();
+    this.materials.clear();
+    this.root = new Group();
+    this.scene.add(this.root);
+  }
+
+  /**
+   * 2.5D 입체 판 (6단계). 사진을 촘촘한 그물에 붙이고 깊이 그림만큼 앞으로 밀어 낸다.
+   * 가장자리는 둥글게 부풀려(베개처럼) 옆에서 봐도 종이처럼 얇지 않게 한다. 돌기는 좌우 25도까지
+   */
+  setRelief(photo: CanvasImageSource & { width: number; height: number }, depth: CanvasImageSource): void {
+    this.resetRoot();
+    const aspect = photo.width / Math.max(1, photo.height);
+    // 키 1 기준, 너무 넓으면 너비 1.3 에 맞춘다
+    const h = aspect > 1.3 ? 1.3 / aspect : 1;
+    const w = h * aspect;
+    const segX = Math.round(Math.min(128, Math.max(32, 96 * Math.min(1, aspect))));
+    const segY = Math.round(Math.min(128, Math.max(32, 96 * Math.min(1, 1 / aspect))));
+    const cols = segX + 1;
+    const rows = segY + 1;
+    const sample = (src: CanvasImageSource) => {
+      const c = document.createElement('canvas');
+      c.width = cols;
+      c.height = rows;
+      const g = c.getContext('2d', { willReadFrequently: true });
+      if (!g) return new Uint8ClampedArray(cols * rows * 4);
+      g.imageSmoothingQuality = 'high';
+      g.drawImage(src, 0, 0, cols, rows);
+      return g.getImageData(0, 0, cols, rows).data;
+    };
+    const dep = sample(depth);
+    const alpha = blurAlpha(sample(photo), cols, rows, 5);
+    const geo = new PlaneGeometry(w, h, segX, segY);
+    const pos = geo.attributes.position;
+    if (pos) {
+      for (let i = 0; i < pos.count; i++) {
+        const d = (dep[i * 4] ?? 0) / 255;
+        const a = alpha[i] ?? 0;
+        // 깊이(앞뒤 굴곡) + 베개(가장자리에서 안으로 갈수록 부푼다)
+        const pillow = a * a * (3 - 2 * a);
+        pos.setZ(i, (d * 0.16 + 0.1) * pillow);
+      }
+    }
+    geo.translate(0, h / 2, 0);
+    geo.computeVertexNormals();
+    const c = document.createElement('canvas');
+    c.width = photo.width;
+    c.height = photo.height;
+    c.getContext('2d')?.drawImage(photo, 0, 0);
+    const texture = new CanvasTexture(c);
+    texture.colorSpace = SRGBColorSpace;
+    const mat = new MeshStandardMaterial({ map: texture, alphaTest: 0.5, roughness: 0.7, side: DoubleSide });
+    this.root.add(new Mesh(geo, mat));
+    this.relief = { texture };
+    this.hasHead = false;
+    this.ready = true;
+    this.frameCamera();
+  }
+
+  setBlueprint(bp: Blueprint): void {
+    this.resetRoot();
+    const parts = expandMirrors(bp.parts);
+    const meshes = parts.map((p) => ({ part: p, mesh: this.partMesh(p) }));
+
+    // 슬롯마다 부품이 차지하는 상자로 관절 자리를 정한다
+    const boxes = new Map<Slot, Box3>();
+    for (const { part, mesh } of meshes) {
+      mesh.updateMatrixWorld(true);
+      const b = new Box3().setFromObject(mesh);
+      boxes.set(part.slot, boxes.get(part.slot)?.union(b) ?? b);
+    }
+    this.hasHead = boxes.has('head');
+    const pivots = {} as Record<Slot, Vector3>;
+    const parentOf = (slot: Slot): Slot | undefined => {
+      if (slot === 'body') return undefined;
+      if ((slot === 'earL' || slot === 'earR' || slot === 'top') && this.hasHead) return 'head';
+      return 'body';
+    };
+    for (const slot of SLOTS) {
+      const b = boxes.get(slot);
+      const parent = parentOf(slot);
+      if (!b) {
+        pivots[slot] = parent ? pivots[parent].clone() : new Vector3();
+        continue;
+      }
+      const c = b.getCenter(new Vector3());
+      if (slot === 'body') pivots[slot] = new Vector3(c.x, b.min.y, c.z);
+      else if (slot === 'head') pivots[slot] = new Vector3(c.x, b.min.y + (b.max.y - b.min.y) * 0.15, c.z);
+      else if (slot.startsWith('leg')) pivots[slot] = new Vector3(c.x, b.max.y, c.z);
+      else if (slot.startsWith('arm') || slot.startsWith('wing'))
+        // 어깨는 부품 위쪽 가운데. 몸 쪽 끝에 두면 팔을 들 때 몸 안으로 파묻힌다
+        pivots[slot] = new Vector3(c.x, b.max.y - (b.max.y - b.min.y) * 0.2, c.z);
+      else if (slot === 'tail') pivots[slot] = new Vector3(c.x, b.min.y, b.max.z);
+      else pivots[slot] = new Vector3(c.x, b.min.y, c.z); // 귀, 머리 위
+    }
+    // body 를 먼저, head 를 다음에 만들어야 자식이 부모를 찾는다 (SLOTS 순서)
+    for (const slot of SLOTS) {
+      const g = new Group();
+      g.name = slot;
+      const parent = parentOf(slot);
+      g.position.copy(pivots[slot]).sub(parent ? pivots[parent] : new Vector3());
+      (parent ? this.joints[parent] : this.root).add(g);
+      this.joints[slot] = g;
+    }
+    for (const { part, mesh } of meshes) {
+      mesh.position.sub(pivots[part.slot]);
+      this.joints[part.slot].add(mesh);
+    }
+    this.root.updateMatrixWorld(true);
+    const faceSlot = bp.face.slot === 'head' && this.hasHead ? 'head' : 'body';
+    this.face = this.buildFace(
+      bp.face,
+      this.joints[faceSlot],
+      meshes.filter((m) => m.part.slot === faceSlot).map((m) => m.mesh),
+    );
+    this.ready = true;
+    this.frameCamera();
+  }
+
+  /** 펫을 ctx 에 그리고 머리 꼭대기 y 를 돌려준다. 그릴 수 없으면 undefined (2D 로) */
+  draw(
+    ctx: CanvasRenderingContext2D,
+    s: DrawState,
+    lift: number,
+    sx: number,
+    sy: number,
+    act: Act,
+  ): number | undefined {
+    if (this.lost || !this.ready) return undefined;
+    this.pose(s, sx, sy, act);
+    const { d, cx, bottom } = this.fit;
+    // 2D 캔버스 변환(화면 배율 × 펫 크기)에 맞춰 선명하게
+    const scale = ctx.getTransform().a || 1;
+    const px = Math.max(64, Math.min(this.maxPx, Math.round(d * scale)));
+    if (px !== this.px) {
+      this.px = px;
+      this.renderer.setSize(px, px, false);
+    }
+    this.renderer.render(this.scene, this.camera);
+    const x0 = CX - d / 2 - (cx * d) / 2;
+    const y0 = GROUND - d / 2 + (bottom * d) / 2 - lift;
+    // 바닥 그림자: 떠오를수록 옅고 작게
+    const away = Math.min(1, lift / 30);
+    const rx = this.fit.halfW * d * 0.42 * sx * (1 - 0.3 * away);
+    ctx.save();
+    ctx.globalAlpha = 0.16 * (1 - 0.6 * away);
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.ellipse(CX, GROUND - 1, rx, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ctx.drawImage(this.canvas, x0, y0, d, d);
+    // 머리 꼭대기 (말풍선 대신 머리 위에 뜨는 것들 자리)
+    this.box.setFromObject(this.root);
+    this.box.getCenter(this.tmp);
+    this.tmp.y = this.box.max.y;
+    this.tmp.project(this.camera);
+    return y0 + d / 2 - (this.tmp.y * d) / 2;
+  }
+
+  // ---- 조립 ----
+
+  private material(color: string, finish: Finish = 'soft'): Material {
+    const key = `${color}/${finish}`;
+    let m = this.materials.get(key);
+    if (!m) {
+      m = new MeshPhysicalMaterial(
+        finish === 'shiny'
+          ? { color, roughness: 0.28, clearcoat: 1, clearcoatRoughness: 0.15 }
+          : finish === 'fuzzy'
+            ? { color, roughness: 0.85, sheen: 1, sheenRoughness: 0.45, sheenColor: '#ffffff' }
+            : { color, roughness: 0.55, clearcoat: 0.35, clearcoatRoughness: 0.45 },
+      );
+      this.materials.set(key, m);
+    }
+    return m;
+  }
+
+  private partMesh(p: Part): Mesh {
+    const [x, y, z] = p.size;
+    let geo: BufferGeometry;
+    const scale = new Vector3(x, y, z);
+    switch (p.shape) {
+      case 'capsule': {
+        // 캡슐은 반지름 그대로 만들고 길이로 늘린다 (늘려서 만들면 둥근 끝이 찌그러진다)
+        const r = Math.max(x, z);
+        geo = new CapsuleGeometry(r, Math.max(0, 2 * y - 2 * r), 10, 24);
+        scale.set(x / r, 1, z / r);
+        break;
+      }
+      case 'cone':
+        geo = new ConeGeometry(1, 2, 32);
+        break;
+      case 'cylinder':
+        geo = new CylinderGeometry(1, 1, 2, 32);
+        break;
+      case 'box':
+        geo = new RoundedBoxGeometry(2, 2, 2, 4, 0.35);
+        break;
+      case 'torus':
+        geo = new TorusGeometry(1, 0.32, 16, 48);
+        break;
+      default:
+        geo = new SphereGeometry(1, 40, 28);
+    }
+    const mesh = new Mesh(geo, this.material(p.color, p.finish));
+    mesh.position.set(...p.at);
+    mesh.scale.copy(scale);
+    if (p.rot) mesh.rotation.set(p.rot[0] * DEG, p.rot[1] * DEG, p.rot[2] * DEG);
+    return mesh;
+  }
+
+  /** 앞에서 쏜 선이 얼굴 겉면에 닿는 자리에 눈, 입, 볼, 수염을 붙인다 */
+  private buildFace(f: Face, joint: Group, targets: Mesh[]): FaceRig {
+    const ray = new Raycaster();
+    const front = new Vector3(0, 0, -1);
+    const s = f.eyeSize;
+    // 얼굴 슬롯 상자. 설계도의 눈, 입 높이가 몸 밖이면 상자 안쪽으로 당겨 다시 쏜다 (허공에 뜨지 않게)
+    const faceBox = new Box3();
+    for (const t of targets) faceBox.union(new Box3().setFromObject(t));
+    const shoot = (x: number, y: number) => {
+      ray.set(new Vector3(x, y, 5), front);
+      return ray.intersectObjects(targets, false)[0];
+    };
+    const place = (x0: number, y0: number, out = 0.002): Group => {
+      let x = x0;
+      let y = y0;
+      let hit = shoot(x, y);
+      if (!hit && !faceBox.isEmpty()) {
+        const c = faceBox.getCenter(new Vector3());
+        const half = faceBox.getSize(new Vector3()).multiplyScalar(0.4);
+        x = Math.min(c.x + half.x, Math.max(c.x - half.x, x));
+        y = Math.min(c.y + half.y, Math.max(c.y - half.y, y));
+        hit = shoot(x, y);
+      }
+      const faceZ = new Box3().setFromObject(joint).max.z;
+      const p = hit?.point.clone() ?? new Vector3(x, y, Number.isFinite(faceZ) ? faceZ : 0);
+      const n = new Vector3(0, 0, 1);
+      if (hit?.face) {
+        n.copy(hit.face.normal)
+          .applyMatrix3(new Matrix3().getNormalMatrix(hit.object.matrixWorld))
+          .normalize();
+      }
+      p.addScaledVector(n, out);
+      const g = new Group();
+      joint.add(g);
+      g.position.copy(joint.worldToLocal(p.clone()));
+      g.updateMatrixWorld(true);
+      g.lookAt(p.clone().add(n));
+      return g;
+    };
+    // 눈 색(eyeColor)은 홍채에만. 감은 눈, 입 같은 선은 늘 먹색이다 (노란 눈 고양이의 선이 흐려 보였다)
+    const eyeMat = new MeshPhysicalMaterial({
+      color: INK,
+      roughness: 0.15,
+      clearcoat: 1,
+      clearcoatRoughness: 0.05,
+    });
+    const white = new MeshBasicMaterial({ color: '#ffffff' });
+    const ink = new MeshBasicMaterial({ color: INK });
+    const irisMat = f.eyeColor
+      ? new MeshPhysicalMaterial({
+          color: f.eyeColor,
+          roughness: 0.2,
+          clearcoat: 1,
+          clearcoatRoughness: 0.05,
+        })
+      : undefined;
+    const sphere = new SphereGeometry(1, 24, 16);
+
+    const eyes: FaceRig['eyes'] = [];
+    for (const side of [-1, 1] as const) {
+      const g = place(side * f.eyeGap, f.eyeY);
+      const open = new Group();
+      const shine = new Mesh(sphere, white);
+      shine.scale.setScalar(s * 0.26);
+      shine.position.set(s * 0.24, s * 0.38, s * 0.36);
+      if (irisMat) {
+        // 색 홍채 위에 세로로 긴 검은 눈동자
+        const iris = new Mesh(sphere, irisMat);
+        iris.scale.set(s * 0.85, s * 1.02, s * 0.4);
+        const pupil = new Mesh(sphere, eyeMat);
+        pupil.scale.set(s * 0.42, s * 0.78, s * 0.3);
+        pupil.position.z = s * 0.14;
+        shine.position.z = s * 0.42;
+        open.add(iris, pupil, shine);
+      } else {
+        const ball = new Mesh(sphere, eyeMat);
+        ball.scale.set(s * 0.78, s, s * 0.42);
+        open.add(ball, shine);
+      }
+      const down = arc(s * 0.75, s * 0.17, ink, true);
+      const up = arc(s * 0.75, s * 0.17, ink, false);
+      up.position.y = -s * 0.3;
+      const chevron = new Group();
+      // 왼눈 > 오른눈 <
+      const dir = -side;
+      for (const v of [-1, 1])
+        chevron.add(stroke([dir * s * 0.55, 0], [-dir * s * 0.5, v * s * 0.6], s * 0.15, ink));
+      const half = new Group();
+      const lower = new Mesh(sphere, eyeMat);
+      lower.scale.set(s * 0.78, s * 0.42, s * 0.4);
+      lower.position.y = -s * 0.25;
+      half.add(lower, stroke([-s * 0.85, s * 0.05], [s * 0.85, s * 0.05], s * 0.13, ink));
+      const states = { open, down, up, chevron, half };
+      for (const o of Object.values(states)) g.add(o);
+      eyes.push({ side, states, open });
+    }
+
+    const m = s;
+    const mouthAt = place(0, f.mouthY);
+    const mouth: FaceRig['mouth'] = {};
+    let beakLower: Object3D | undefined;
+    if (f.mouth === 'beak') {
+      const beakMat = this.material(f.mouthColor ?? '#ff9f43', 'shiny');
+      const cone = new ConeGeometry(1, 2, 24);
+      const upper = new Mesh(cone, beakMat);
+      upper.rotation.x = Math.PI / 2;
+      upper.scale.set(m * 1.5, m * 1.1, m * 0.8);
+      upper.position.set(0, m * 0.35, m * 0.9);
+      const lowerPivot = new Group();
+      lowerPivot.position.set(0, -m * 0.1, 0);
+      const lower = new Mesh(cone, beakMat);
+      lower.rotation.x = Math.PI / 2;
+      lower.scale.set(m * 1.15, m * 0.8, m * 0.55);
+      lower.position.set(0, -m * 0.25, m * 0.6);
+      lowerPivot.add(lower);
+      mouthAt.add(upper, lowerPivot);
+      beakLower = lowerPivot;
+    } else {
+      const dark = new MeshBasicMaterial({ color: '#3a2326' });
+      const tongue = new MeshBasicMaterial({ color: '#e66a7a' });
+      if (f.mouth === 'cat') {
+        const w = new Group();
+        for (const side of [-1, 1]) {
+          const a = arc(m * 0.62, m * 0.14, ink, true);
+          a.position.set(side * m * 0.6, m * 0.3, 0);
+          w.add(a);
+        }
+        mouth.smile = w;
+        const nose = new Mesh(sphere, this.material(f.blush ?? '#ff8fa0', 'shiny'));
+        nose.scale.set(m * 0.5, m * 0.32, m * 0.3);
+        nose.position.set(0, m * 1.05, m * 0.05);
+        mouthAt.add(nose);
+      } else {
+        const smile = arc(m * 1.25, m * 0.17, ink, true);
+        smile.position.y = m * 0.6;
+        mouth.smile = smile;
+      }
+      const open = new Group();
+      const hole = new Mesh(sphere, dark);
+      hole.scale.set(m * 0.85, m * 1.05, m * 0.3);
+      const tip = new Mesh(sphere, tongue);
+      tip.scale.set(m * 0.55, m * 0.35, m * 0.2);
+      tip.position.set(0, -m * 0.55, m * 0.12);
+      open.add(hole, tip);
+      mouth.open = open;
+      const yawn = open.clone();
+      yawn.scale.setScalar(1.45);
+      mouth.yawn = yawn;
+      const o = new Mesh(new TorusGeometry(m * 0.5, m * 0.13, 8, 24), ink);
+      mouth.o = o;
+      mouth.flat = stroke([-m * 0.9, 0], [m * 0.9, 0], m * 0.14, ink);
+      const frown = arc(m * 1.0, m * 0.16, ink, false);
+      frown.position.y = -m * 0.7;
+      mouth.frown = frown;
+      const pts = Array.from({ length: 9 }, (_, i) => {
+        const t = i / 8;
+        return new Vector3((t - 0.5) * m * 2.2, Math.sin(t * Math.PI * 2) * m * 0.35, 0);
+      });
+      mouth.wavy = new Mesh(new TubeGeometry(new CatmullRomCurve3(pts), 24, m * 0.13, 6), ink);
+      for (const o3 of Object.values(mouth)) mouthAt.add(o3);
+    }
+
+    if (f.blush) {
+      const blush = new MeshBasicMaterial({
+        color: f.blush,
+        transparent: true,
+        opacity: 0.45,
+        depthWrite: false,
+      });
+      for (const side of [-1, 1]) {
+        const g = place(side * (f.eyeGap + s * 1.5), f.eyeY - s * 2.3, 0.004);
+        const disc = new Mesh(sphere, blush);
+        disc.scale.set(s * 1.55, s * 0.85, s * 0.12);
+        g.add(disc);
+      }
+    }
+    if (f.whiskers) {
+      const mat = new MeshBasicMaterial({ color: f.whiskers });
+      for (const side of [-1, 1]) {
+        const g = place(side * (f.eyeGap + s * 1.4), f.mouthY + s * 0.4);
+        for (const tilt of [-0.18, 0.12]) {
+          g.add(stroke([side * s * 0.4, 0], [side * s * 4.2, s * 4 * tilt], s * 0.05, mat, -s * 0.6));
+        }
+      }
+    }
+    return { eyes, mouth, beakLower, style: f.mouth };
+  }
+
+  /** 쉬는 자세가 2D 캔버스 안 바닥에 서도록 카메라와 옮길 자리를 정한다 */
+  private frameCamera() {
+    this.root.rotation.set(0, 0, 0);
+    this.root.scale.set(1, 1, 1);
+    this.root.updateMatrixWorld(true);
+    const b = new Box3().setFromObject(this.root);
+    const c = b.getCenter(new Vector3());
+    const radius = b.getSize(new Vector3()).length() / 2;
+    // 쉬는 몸이 화면의 절반쯤: 뛰고 팔을 들어도 잘리지 않는 여유
+    const fov = (this.camera.fov * DEG) / 2;
+    const dist = radius / (0.5 * Math.tan(fov));
+    const el = 9 * DEG;
+    this.camera.position.set(c.x, c.y + dist * Math.sin(el), c.z + dist * Math.cos(el));
+    this.camera.lookAt(c);
+    this.camera.updateMatrixWorld(true);
+    this.camera.updateProjectionMatrix();
+    let minX = 1;
+    let maxX = -1;
+    let minY = 1;
+    let maxY = -1;
+    for (const x of [b.min.x, b.max.x])
+      for (const y of [b.min.y, b.max.y])
+        for (const z of [b.min.z, b.max.z]) {
+          const p = new Vector3(x, y, z).project(this.camera);
+          minX = Math.min(minX, p.x);
+          maxX = Math.max(maxX, p.x);
+          minY = Math.min(minY, p.y);
+          maxY = Math.max(maxY, p.y);
+        }
+    const d = Math.min(FIT_H / ((maxY - minY) / 2), FIT_W / ((maxX - minX) / 2));
+    this.fit = { d, cx: (minX + maxX) / 2, bottom: minY, halfW: (maxX - minX) / 2 };
+    // 숫자가 깨지면(빈 몸 등) 그리지 않고 2D 로 돌아간다
+    if (!Object.values(this.fit).every(Number.isFinite) || d <= 0) this.ready = false;
+  }
+
+  /** 펫을 바꿀 때 옛 모양을 GPU 에서 내린다. 색별 재질은 다음 펫이 다시 쓴다 */
+  private disposeTree(o: Object3D) {
+    const kept = new Set(this.materials.values());
+    o.traverse((c) => {
+      if (!(c instanceof Mesh)) return;
+      c.geometry.dispose();
+      for (const m of [c.material].flat() as Material[]) if (!kept.has(m)) m.dispose();
+    });
+  }
+
+  // ---- 자세 ----
+
+  /** 입체 판은 관절이 없어 몸 전체를 살짝 돌리고 기울인다. 옆이 보이지 않게 25도까지 */
+  private poseRelief(s: DrawState, sx: number, sy: number, act: Act) {
+    this.root.scale.set(sx, sy, sx);
+    let y = 0;
+    let z = 0;
+    let x = 0;
+    if (s.mood === 'sulky') y = 0.42;
+    if (s.mood === 'sleeping' || s.mood === 'dozing') x = 0.12;
+    if (s.mood === 'grabbed') z = 0.08;
+    if (s.mood === 'thinking') z = 0.06;
+    if (act?.type === 'walk') {
+      y = act.dir * 0.35;
+      z = Math.sin(act.phase * Math.PI * 2) * 0.05;
+    } else if (act?.type === 'look') y = act.dir * 0.4;
+    const max = 0.44;
+    this.root.rotation.set(x, Math.max(-max, Math.min(max, y + this.spin * 0.4)), z);
+  }
+
+  private pose(s: DrawState, sx: number, sy: number, act: Act) {
+    if (this.relief) {
+      this.poseRelief(s, sx, sy, act);
+      return;
+    }
+    const j = this.joints;
+    for (const slot of SLOTS) j[slot].rotation.set(0, 0, 0);
+    this.root.rotation.set(0, 0, 0);
+    this.root.scale.set(sx, sy, sx);
+    const { mood, elapsed: e } = s;
+    const head = (x: number, y: number, z: number) => {
+      if (this.hasHead) j.head.rotation.set(x, y, z);
+      else this.root.rotation.set(x * 0.4, this.root.rotation.y + y * 0.6, z * 0.5);
+    };
+    const arms = (z: number, x = 0) => {
+      j.armL.rotation.set(x, 0, -z);
+      j.armR.rotation.set(x, 0, z);
+    };
+    const wings = (z: number) => {
+      j.wingL.rotation.z = -z;
+      j.wingR.rotation.z = z;
+    };
+    // 삐지면 고개를 돌린다 (얼굴이 보이게 옆으로만)
+    if (mood === 'sulky') this.root.rotation.y = 0.8;
+    this.root.rotation.y += this.spin;
+    let eye: EyeState = 'open';
+    let mouth: MouthState = s.hungry && mood === 'idle' ? 'wavy' : 'smile';
+    switch (mood) {
+      case 'excited': {
+        const w = Math.sin(e / 90);
+        arms(2.2 - w * 0.35);
+        wings(0.9 + w * 0.3);
+        j.earL.rotation.z = w * 0.15;
+        j.earR.rotation.z = -w * 0.15;
+        j.tail.rotation.y = w * 0.5;
+        j.top.rotation.z = w * 0.2;
+        eye = 'up';
+        break;
+      }
+      case 'grabbed':
+        arms(1.0);
+        wings(0.8);
+        j.legL.rotation.x = 0.3;
+        j.legR.rotation.x = 0.3;
+        j.tail.rotation.x = 0.4;
+        eye = 'chevron';
+        mouth = 'open';
+        break;
+      case 'sleeping':
+      case 'dozing':
+        head(0.28, 0, 0);
+        j.earL.rotation.z = 0.25;
+        j.earR.rotation.z = -0.25;
+        j.top.rotation.z = 0.3;
+        eye = mood === 'sleeping' ? 'down' : 'half';
+        mouth = 'o';
+        break;
+      case 'thinking':
+        head(0, 0, 0.2);
+        j.armR.rotation.set(-0.9, 0, 0.9);
+        j.top.rotation.z = Math.sin(e / 400) * 0.15;
+        mouth = 'flat';
+        break;
+      case 'busy':
+        mouth = 'flat';
+        break;
+      case 'talking':
+        mouth = 'open';
+        break;
+      case 'sulky':
+        mouth = 'frown';
+        break;
+    }
+    if (act?.type === 'walk') {
+      const w = Math.sin(act.phase * Math.PI * 2);
+      this.root.rotation.y = act.dir * 0.75;
+      j.legL.rotation.x = w * 0.7;
+      j.legR.rotation.x = -w * 0.7;
+      j.armL.rotation.x = -w * 0.6;
+      j.armR.rotation.x = w * 0.6;
+      j.tail.rotation.y = w * 0.35;
+      j.top.rotation.z = w * 0.12;
+    } else if (act?.type === 'look') {
+      head(0, act.dir * 0.55, 0);
+    } else if (act?.type === 'sit') {
+      j.legL.rotation.x = -1.2;
+      j.legR.rotation.x = -1.2;
+      j.tail.rotation.y = 0.6;
+    } else if (act?.type === 'yawn') {
+      const k = Math.sin(Math.min(1, act.t) * Math.PI);
+      head(-0.3 * k, 0, 0);
+      arms(1.3 * k);
+      wings(0.6 * k);
+      if (act.t > 0.15 && act.t < 0.85) {
+        eye = 'down';
+        mouth = 'yawn';
+      }
+    } else if (act?.type === 'stretch') {
+      const k = Math.sin(Math.min(1, act.t) * Math.PI);
+      arms(2.6 * k);
+      wings(1.3 * k);
+      eye = 'up';
+    }
+    this.setFace(eye, mouth, s);
+  }
+
+  private setFace(eye: EyeState, mouth: MouthState, s: DrawState) {
+    const f = this.face;
+    if (!f) return;
+    const open = s.blink >= 0 ? Math.abs(1 - 2 * s.blink) : 1;
+    for (const e of f.eyes) {
+      for (const [k, o] of Object.entries(e.states)) o.visible = k === eye;
+      const small = s.mood === 'busy' ? 0.8 : 1;
+      e.open.scale.set(small, small * Math.max(0.08, open), small);
+    }
+    if (f.style === 'beak') {
+      if (f.beakLower) f.beakLower.rotation.x = mouth === 'open' || mouth === 'yawn' ? 0.55 : 0;
+      return;
+    }
+    for (const [k, o] of Object.entries(f.mouth)) o.visible = k === mouth;
+  }
+}
+
+/** 반원 고리: down 이면 ∪ (웃는 입, 감은 눈), 아니면 ∩ */
+function arc(radius: number, tube: number, mat: Material, down: boolean): Mesh {
+  const m = new Mesh(new TorusGeometry(radius, tube, 8, 24, Math.PI), mat);
+  if (down) m.rotation.z = Math.PI;
+  return m;
+}
+
+/** 얼굴 평면(xy) 위의 짧은 막대. z 로 조금 앞뒤 */
+function stroke(a: [number, number], b: [number, number], r: number, mat: Material, z = 0): Mesh {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const len = Math.hypot(dx, dy);
+  const m = new Mesh(new CapsuleGeometry(r, Math.max(0.0001, len), 4, 8), mat);
+  m.position.set((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, z);
+  m.rotation.z = Math.atan2(dy, dx) - Math.PI / 2;
+  return m;
+}
+
+/** 알파(0~255 RGBA 의 A)를 0~1 로 읽어 상자 흐림을 r 칸 준다. 입체 판 가장자리를 둥글게 부풀릴 때 쓴다 */
+function blurAlpha(rgba: Uint8ClampedArray, cols: number, rows: number, r: number): Float32Array {
+  const a = new Float32Array(cols * rows);
+  for (let i = 0; i < a.length; i++) a[i] = (rgba[i * 4 + 3] ?? 0) / 255;
+  const tmp = new Float32Array(a.length);
+  // 가로, 세로 두 번 (분리 가능한 상자 흐림)
+  for (let y = 0; y < rows; y++)
+    for (let x = 0; x < cols; x++) {
+      let sum = 0;
+      for (let k = -r; k <= r; k++) sum += a[y * cols + Math.min(cols - 1, Math.max(0, x + k))] ?? 0;
+      tmp[y * cols + x] = sum / (2 * r + 1);
+    }
+  for (let y = 0; y < rows; y++)
+    for (let x = 0; x < cols; x++) {
+      let sum = 0;
+      for (let k = -r; k <= r; k++) sum += tmp[Math.min(rows - 1, Math.max(0, y + k)) * cols + x] ?? 0;
+      a[y * cols + x] = sum / (2 * r + 1);
+    }
+  return a;
+}

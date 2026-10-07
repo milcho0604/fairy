@@ -115,8 +115,14 @@ export function PanelApp() {
         <button
           type="button"
           className="ghost small"
-          disabled={s.balance < s.foodCost}
-          title={s.balance < s.foodCost ? t('panel.feedNeed', { n: s.foodCost }) : undefined}
+          disabled={s.balance < s.foodCost || s.fullness >= 100}
+          title={
+            s.fullness >= 100
+              ? t('pet.full')
+              : s.balance < s.foodCost
+                ? t('panel.feedNeed', { n: s.foodCost })
+                : undefined
+          }
           onClick={feed}
         >
           {fed || t('panel.feed', { n: s.foodCost })}

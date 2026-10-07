@@ -2,7 +2,8 @@
 // 남이 준 파일이라 엄격하게 읽는다: 형식, 크기, 그림 머리말.
 
 import { t } from './i18n/index.ts';
-import { cleanPetName, type PetKind, type PoseKind } from './settings.ts';
+import { type Blueprint, parseBlueprint } from './pet3d/blueprint.ts';
+import { cleanPetName, isPetKind, type PetKind, type PoseKind } from './settings.ts';
 
 export const SHARE_FORMAT = 'jjakkung-pet';
 export const SHARE_VERSION = 1;
@@ -16,6 +17,10 @@ export interface SharedPet {
   /** data URL (png, gif, webp). 없으면 기본 펫 */
   image?: string;
   poses: Partial<Record<PoseKind, string>>;
+  /** AI 가 만든 입체 설계도 (6단계). 옛 앱은 이 칸을 모르고 사진으로 보인다 */
+  model?: Blueprint;
+  /** 2.5D 깊이 그림 (6단계, 회색 PNG data URL) */
+  depth?: string;
 }
 
 export function encodePet(p: SharedPet): string {
@@ -28,7 +33,8 @@ function cleanImage(v: unknown): string | undefined {
   const m = /^data:image\/(png|gif|webp);base64,([A-Za-z0-9+/=]+)$/.exec(v);
   if (!m) return undefined;
   const bytes = Buffer.from(m[2] ?? '', 'base64');
-  if (bytes.length === 0 || bytes.length > IMAGE_MAX_BYTES) return undefined;
+  // 머리말(12바이트)도 안 되는 것은 그림이 아니다 (짧으면 머리말 읽기가 예외를 던졌다)
+  if (bytes.length < 12 || bytes.length > IMAGE_MAX_BYTES) return undefined;
   const head = bytes.subarray(0, 12).toString('latin1');
   const ok =
     (m[1] === 'png' && bytes.readUInt32BE(0) === 0x89504e47) ||
@@ -50,7 +56,7 @@ export function decodePet(text: string): SharedPet | { error: string } {
   if (typeof raw.version !== 'number' || raw.version > SHARE_VERSION) return { error: t('pet.share.newer') };
   const name = cleanPetName(raw.name);
   if (!name) return { error: t('pet.share.noName') };
-  const kind: PetKind = raw.kind === 'cat' || raw.kind === 'chick' ? raw.kind : 'kong';
+  const kind: PetKind = isPetKind(raw.kind) ? raw.kind : 'kong';
   const image = raw.image === undefined ? undefined : cleanImage(raw.image);
   if (raw.image !== undefined && !image) return { error: t('pet.share.badImage') };
   const poses: SharedPet['poses'] = {};
@@ -60,7 +66,18 @@ export function decodePet(text: string): SharedPet | { error: string } {
     const img = cleanImage(rawPoses[k]);
     if (img) poses[k] = img;
   }
-  return { name, kind, ...(image ? { image } : {}), poses };
+  // 설계도는 사진이 있을 때만. 깨졌으면 사진으로만 데려온다
+  const model = image && raw.model !== undefined ? parseBlueprint(raw.model) : undefined;
+  const depthImg = image && !model ? cleanImage(raw.depth) : undefined;
+  const depth = depthImg?.startsWith('data:image/png') ? depthImg : undefined;
+  return {
+    name,
+    kind,
+    ...(image ? { image } : {}),
+    poses,
+    ...(model ? { model } : {}),
+    ...(depth ? { depth } : {}),
+  };
 }
 
 /** 파일 이름으로 쓸 수 있게 (공유 파일 이름 기본값) */
