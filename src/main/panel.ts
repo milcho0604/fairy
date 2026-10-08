@@ -25,7 +25,8 @@ import {
   type PanelTab,
   type PlayKind,
 } from '../shared/ipc.ts';
-import { type NoteStore, notePreview, noteTitle, searchNotes } from '../shared/note-store.ts';
+import { cleanPolished, polishRequest } from '../shared/note-polish.ts';
+import { NOTE_BODY_MAX, type NoteStore, notePreview, noteTitle, searchNotes } from '../shared/note-store.ts';
 import {
   defaultPanelBounds,
   panelOffsetAfterMove,
@@ -63,6 +64,8 @@ export interface PanelOptions {
   onEventsChanged: () => void;
   /** 채팅 창을 열고 묻는다. 답을 기다리는 중이면 false */
   askAi: (prompt: string) => boolean;
+  /** 채팅 창 없이 글만 한 번 묻는다 (메모 다듬기). 실패면 undefined */
+  askOnce: (text: string, system: string) => Promise<string | undefined>;
   life: () => { sulk: number; mood: number; affection: number };
   /** 상점 (v1) */
   shop: ItemStore;
@@ -269,6 +272,15 @@ export function createPanel(o: PanelOptions) {
     if (!o.askAi(`${ask}\n\n${title}${n.body}`)) return false;
     closePanel();
     return true;
+  });
+  ipcMain.handle(PANEL.notePolish, async (e, text: unknown) => {
+    if (!ours(e) || typeof text !== 'string' || !text.trim()) return undefined;
+    const src = text.slice(0, NOTE_BODY_MAX);
+    const answer = await o.askOnce(
+      polishRequest(t('panel.noteAi.polishAsk'), src),
+      t('panel.noteAi.polishSystem'),
+    );
+    return cleanPolished(answer, src);
   });
   ipcMain.on(PANEL.noteRestore, (e, id: number) => {
     if (!ours(e)) return;

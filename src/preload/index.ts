@@ -227,6 +227,7 @@ if (kind === 'panel' || kind === 'quick') {
     noteRestore: (id: number) => ipcRenderer.send(PANEL.noteRestore, id),
     noteSearch: (query: string, composing: boolean) => ipcRenderer.invoke(PANEL.noteSearch, query, composing),
     noteAi: (id, kind) => ipcRenderer.invoke(PANEL.noteAi, id, kind),
+    notePolish: (text) => ipcRenderer.invoke(PANEL.notePolish, text),
     eventAdd: (text: string) => ipcRenderer.invoke(PANEL.eventAdd, text),
     eventUpdate: (id, patch) => ipcRenderer.send(PANEL.eventUpdate, id, patch),
     eventRemove: (id: number) => ipcRenderer.send(PANEL.eventRemove, id),

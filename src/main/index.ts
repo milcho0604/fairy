@@ -511,6 +511,7 @@ app.whenReady().then(() => {
     stopFocus: () => planner.stopFocus(),
     onEventsChanged: () => planner.check(),
     askAi: (prompt) => chat.askInWindow(prompt, pet.bounds()),
+    askOnce: (text, system) => chat.textOnce(text, system),
     life: () => {
       const l = petLife.state;
       return { sulk: l.sulk, mood: Math.round(l.mood), affection: l.affection };

@@ -551,6 +551,7 @@ export const PANEL = {
   noteSearch: 'panel:note-search',
   /** 메모를 AI 로 정리 (할 일로 쪼개기, 요약). 채팅 창에서 묻는다 */
   noteAi: 'panel:note-ai',
+  notePolish: 'panel:note-polish',
   // 일정 (v1)
   eventAdd: 'panel:event-add',
   eventUpdate: 'panel:event-update',
@@ -680,6 +681,8 @@ export interface PanelBridge {
   /** 메모 찾기: 제목과 본문 전체. composing 이면 마지막 글자는 아직 조합 중이라 넓게 찾는다 */
   noteSearch(query: string, composing: boolean): Promise<NoteHit[]>;
   noteAi(id: number, kind: NoteAiKind): Promise<boolean>;
+  /** 글을 AI 로 다듬는다 (메모 전체나 고른 부분). 채팅 창 없이 답만 받는다. 실패면 undefined */
+  notePolish(text: string): Promise<string | undefined>;
   /** 한 줄("내일 3시 회의")로 일정 넣기 */
   eventAdd(text: string): Promise<{ ok: boolean; error?: string; event?: CalEvent }>;
   eventUpdate(

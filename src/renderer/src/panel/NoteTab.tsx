@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { t } from '../../../shared/i18n/index.ts';
 import type { NoteAiKind, NoteHit, PanelState } from '../../../shared/ipc.ts';
+import { splicePolished } from '../../../shared/note-polish.ts';
 import { NOTE_BODY_MAX, NOTE_TITLE_MAX, type Note } from '../../../shared/note-store.ts';
 import { ago } from './format.ts';
 import { isEsc, takeEsc } from './keys.ts';
@@ -8,6 +9,11 @@ import { type NoteResume, parseResume, RESUME_KEY } from './note-resume.ts';
 
 const bridge = window.jjakkungPanel;
 const SAVE_MS = 400;
+/** 다듬은 글로 바꾼 뒤 되돌리기를 보여 주는 시간 */
+const UNDO_MS = 10_000;
+
+/** 다듬기 상태: 기다리는 중, 또는 받은 글 (어느 자리를 다듬었는지와 함께) */
+type Polish = { phase: 'busy' } | { phase: 'ready'; text: string; start: number; end: number };
 
 function readResume(): NoteResume | undefined {
   try {
@@ -195,6 +201,56 @@ function NoteEditor({
       setTimeout(() => setAiNote(''), 3000);
     }
   };
+  // ---- 다듬기: 받은 글을 원래 글 위에 보여 주고, 바꾸기를 눌러야 바꾼다. 기다리는 동안과 견주는 동안은 글을 잠근다
+  const [polish, setPolish] = useState<Polish>();
+  const [undo, setUndo] = useState<string>();
+  const undoTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const alive = useRef(true);
+  useEffect(
+    () => () => {
+      alive.current = false;
+      clearTimeout(undoTimer.current);
+    },
+    [],
+  );
+  const askPolish = async () => {
+    flush();
+    // 글 칸에 커서가 있을 때만 고른 부분을 본다 (예전에 골라 둔 자리가 남아 있어도 전체를 다듬게)
+    const el = document.activeElement === bodyRef.current ? bodyRef.current : null;
+    const start = el?.selectionStart ?? 0;
+    const end = el?.selectionEnd ?? 0;
+    // 고른 것이 공백뿐이면 전체를 다듬는다
+    const part = start < end && body.slice(start, end).trim() ? { start, end } : { start: 0, end: 0 };
+    const src = part.start < part.end ? body.slice(part.start, part.end) : body;
+    setUndo(undefined);
+    setPolish({ phase: 'busy' });
+    const text = await bridge.notePolish(src);
+    if (!alive.current) return;
+    if (!text) {
+      setPolish(undefined);
+      setAiNote(t('panel.note.polishFail'));
+      setTimeout(() => setAiNote(''), 4000);
+      return;
+    }
+    setPolish({ phase: 'ready', text, ...part });
+  };
+  const applyPolish = () => {
+    if (polish?.phase !== 'ready') return;
+    const next = splicePolished(body, polish.start, polish.end, polish.text);
+    setUndo(body);
+    setBody(next);
+    save({ body: next });
+    setPolish(undefined);
+    clearTimeout(undoTimer.current);
+    undoTimer.current = setTimeout(() => setUndo(undefined), UNDO_MS);
+  };
+  const undoPolish = () => {
+    if (undo === undefined) return;
+    setBody(undo);
+    save({ body: undo });
+    setUndo(undefined);
+    clearTimeout(undoTimer.current);
+  };
   const flush = () => {
     clearTimeout(timer.current);
     if (Object.keys(pending.current).length > 0) bridge.noteUpdate(note.id, pending.current);
@@ -285,6 +341,17 @@ function NoteEditor({
           <button type="button" className="link" disabled={!body.trim()} onClick={() => askAi('summary')}>
             {t('panel.note.summary')}
           </button>
+          <button
+            type="button"
+            className="link"
+            title={t('panel.note.polishHint')}
+            disabled={!body.trim() || !!polish}
+            // 누를 때 글 칸의 고른 부분이 풀리지 않게
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => void askPolish()}
+          >
+            {t('panel.note.polish')}
+          </button>
         </span>
         <button
           type="button"
@@ -303,6 +370,36 @@ function NoteEditor({
         </button>
       </div>
       {aiNote && <p className="hint error">{aiNote}</p>}
+      {polish?.phase === 'busy' && (
+        <p className="note-polish-busy" role="status">
+          {t('panel.note.polishing')}
+        </p>
+      )}
+      {polish?.phase === 'ready' && (
+        <section className="note-polish" aria-label={t('panel.note.polishTitle')}>
+          <div className="note-polish-head">
+            <strong>{t('panel.note.polishTitle')}</strong>
+            {polish.start < polish.end && <span>{t('panel.note.polishPart')}</span>}
+          </div>
+          <div className="note-polish-text">{polish.text}</div>
+          <div className="note-polish-actions">
+            <button type="button" className="ghost small" onClick={() => setPolish(undefined)}>
+              {t('panel.note.polishKeep')}
+            </button>
+            <button type="button" className="primary small" onClick={applyPolish}>
+              {t('panel.note.polishApply')}
+            </button>
+          </div>
+        </section>
+      )}
+      {undo !== undefined && (
+        <p className="hint note-polish-undo" role="status">
+          {t('panel.note.polishDone')}{' '}
+          <button type="button" className="link" onClick={undoPolish}>
+            {t('panel.note.polishUndo')}
+          </button>
+        </p>
+      )}
       <input
         ref={titleRef}
         className="note-title-input"
@@ -324,7 +421,10 @@ function NoteEditor({
         maxLength={NOTE_BODY_MAX}
         aria-label={t('panel.note.bodyLabel')}
         placeholder={t('panel.note.bodyPlaceholder')}
+        // 다듬는 동안 글이 바뀌면 받은 글을 끼울 자리가 어긋난다
+        readOnly={!!polish}
         onChange={(e) => {
+          setUndo(undefined);
           setBody(e.target.value);
           save({ body: e.target.value });
         }}
