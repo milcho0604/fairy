@@ -33,7 +33,10 @@ import {
   type SettingsBridge,
   type SettingsSection,
 } from '../shared/ipc.ts';
+import type { LookMotion } from '../shared/look-motion.ts';
+import type { MoveAsk } from '../shared/moves.ts';
 import type { Settings } from '../shared/settings.ts';
+import type { SoundKind } from '../shared/sound.ts';
 
 // 샌드박스 preload 는 다른 파일을 require 할 수 없어 한 파일로 묶는다.
 // 창마다 자기 기능만 열어 준다: 메인이 창을 만들 때 `--jj-window=<이름>` 을 넘긴다.
@@ -64,7 +67,7 @@ if (kind === 'pet') {
     bubbleSize: (id: string, width: number, height: number) =>
       ipcRenderer.send(IPC.bubbleSize, id, width, height),
     bubbleClosed: (id: string, action: string) => ipcRenderer.send(IPC.bubbleClosed, id, action),
-    activityRequest: () => ipcRenderer.send(IPC.activityRequest),
+    activityRequest: (ask?: MoveAsk) => ipcRenderer.send(IPC.activityRequest, ask),
     activityStop: () => ipcRenderer.send(IPC.activityStop),
     onActivity: (listener) => {
       ipcRenderer.on(IPC.activity, (_e, activity: Activity) => listener(activity));
@@ -84,6 +87,12 @@ if (kind === 'pet') {
     },
     onGaze: (listener) => {
       ipcRenderer.on(IPC.gaze, (_e, gaze: Gaze | null) => listener(gaze));
+    },
+    onLook: (listener) => {
+      ipcRenderer.on(IPC.look, (_e, motion: LookMotion | null) => listener(motion));
+    },
+    onSound: (listener) => {
+      ipcRenderer.on(IPC.sound, (_e, kind: SoundKind) => listener(kind));
     },
     face: (url: string) => ipcRenderer.send(FACE.set, url),
   };

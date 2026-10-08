@@ -237,6 +237,10 @@ export function createFriends(o: {
   return {
     sync,
     setHidden,
+    /** 지금 떠 있는 친구 펫 창들 (같이 보기: 같은 쪽을 보고, 찍는 순간 같이 가린다) */
+    pets: () => [...live.values()].map((l) => l.pet),
+    /** 친구 펫 창과 이름 (술래잡기) */
+    mates: () => [...live.values()].map((l) => ({ pet: l.pet, name: l.friend.name })),
     resendStatus,
     reloadAll,
     /** 개발용: 바로 만나 보기 (확률, 쉬는 시간 무시) */

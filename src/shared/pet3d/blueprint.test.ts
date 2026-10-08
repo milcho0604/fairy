@@ -188,3 +188,24 @@ test('얼굴 그림에는 머리 쪽만: 팔, 날개, 다리, 꼬리는 빼고 �
   assert.deepEqual(head, ['head', 'earL', 'earR', 'top']);
   assert.deepEqual(body, ['body', 'head', 'earL', 'earR', 'top']);
 });
+
+test('걸음새: 네 발, 두 발만 받고 모르는 값은 버린다. 요청문에도 있다', () => {
+  const base = JSON.parse(JSON.stringify(DEFAULT_BLUEPRINTS.kong));
+  assert.equal(parseBlueprint({ ...base, gait: 'quadruped' })?.gait, 'quadruped');
+  assert.equal(parseBlueprint({ ...base, gait: 'biped' })?.gait, 'biped');
+  assert.equal(parseBlueprint({ ...base, gait: 'hexapod' })?.gait, undefined);
+  assert.equal(parseBlueprint({ ...base, gait: 4 })?.gait, undefined);
+  // 기본 펫: 냥이, 멍멍이, 토순이는 네 발, 콩이와 삐약이는 적지 않는다(두 발)
+  assert.deepEqual(
+    Object.entries(DEFAULT_BLUEPRINTS).map(([k, bp]) => [k, bp.gait]),
+    [
+      ['kong', undefined],
+      ['cat', 'quadruped'],
+      ['chick', undefined],
+      ['dog', 'quadruped'],
+      ['bunny', 'quadruped'],
+    ],
+  );
+  const p = blueprintPrompt('밀크');
+  assert.ok(p.includes('"gait"') && p.includes('"quadruped"') && p.includes('"biped"'));
+});

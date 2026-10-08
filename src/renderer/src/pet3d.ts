@@ -47,7 +47,18 @@ import {
   SLOTS,
   type Slot,
 } from '../../shared/pet3d/blueprint.ts';
-import { type DrawState, danceTilt, gazeOf, type Model3D, trickOf, waveSwing } from './draw.ts';
+import { type DrawState, danceTilt, gazeOf, type Model3D, movePoseOf, trickOf, waveSwing } from './draw.ts';
+import type { MoveEyes } from './move-pose.ts';
+import {
+  gaitOf,
+  hindFrom,
+  hipRise,
+  type LegId,
+  legCut,
+  legGap,
+  trotLeg,
+  walkEnvelope,
+} from './pet3d-gait.ts';
 import { bounced, type EyeState, restingEye } from './pet3d-motion.ts';
 
 const CX = 80;
@@ -60,6 +71,8 @@ const INK = '#1f2328';
 
 type Act = DrawState['activity'];
 type MouthState = 'smile' | 'open' | 'yawn' | 'o' | 'flat' | 'frown' | 'wavy';
+/** 몸짓 눈 (move-pose.ts) → 입체 눈. 동그랗게(wide)는 뜬 눈을 조금 키운다 */
+const MOVE_EYE: Record<MoveEyes, EyeState> = { closed: 'down', happy: 'up', half: 'half', wide: 'open' };
 
 interface FaceRig {
   eyes: { side: -1 | 1; states: Record<EyeState, Object3D>; open: Object3D }[];
@@ -72,6 +85,44 @@ interface FaceRig {
   groups: Group[];
   /** 입 자리 (부리는 옆에서도 보여서 숨기지 않는다) */
   mouthAt: Group;
+}
+
+/** 네 발 걷기의 다리 하나 (pet3d-gait.ts) */
+interface QuadLeg {
+  id: LegId;
+  /** 이 다리 부품을 묶은 관절. 다리 슬롯 관절(뒷발을 본떠 만든 것은 몸 관절) 아래에 있다 */
+  g: Group;
+  /** 쉬는 자리 (부모 기준) */
+  base: Vector3;
+  /** 몸 관절에서 다리 관절까지 (쉬는 자세, 세상 기준) */
+  hip: Vector3;
+  /** 다리 관절에서 발바닥까지 높이. 길면 다리를 돌려서, 짧은 발(꼬마 피규어)은 옮겨서 딛는다 */
+  drop: number;
+  /** 앞발을 본떠 만든 뒷발 */
+  synth: boolean;
+}
+
+interface QuadRig {
+  legs: QuadLeg[];
+  /** 걸을 때 몸을 앞으로 숙이는 각(라디안). 앉은 피규어는 크게, 원래 네 발로 선 모양은 조금만 */
+  lean: number;
+  /** 보폭(앞뒤로 나가는 거리)과 발을 드는 높이 */
+  stride: number;
+  lift: number;
+  /**
+   * 앉은 피규어(동그란 몸 위에 큰 머리)를 네 발 자세로 바꾸는 것: 몸통을 앞뒤로 늘여 뒤로 빼고,
+   * 머리는 앞으로 조금 내리고, 꼬리는 뒤로 눕힌다. 원래 네 발로 선 모양이면 없다
+   */
+  morph?: {
+    /** 몸 부품만 묶은 것 (몸 관절 아래). 늘이고 옮긴다 */
+    torso: Group;
+    torsoBase: Vector3;
+    headBase: Vector3;
+    tailBase: Vector3;
+    /** 몸 앞뒤 두께, 키 */
+    depth: number;
+    height: number;
+  };
 }
 
 export class Pet3D implements Model3D {
@@ -88,7 +139,11 @@ export class Pet3D implements Model3D {
   private hasHand = false;
   /** 팔이 없는 펫의 손 흔들기 앞발 (평소엔 숨김) */
   private wavePaw: Group | undefined;
+  /** 네 발 걷기 (설계도 gait, pet3d-gait.ts). 두 발 펫이면 undefined */
+  private quad: QuadRig | undefined;
   private face: FaceRig | undefined;
+  /** 마지막으로 그린 자리 (2D 캔버스 좌표). 같이 보기 돋보기가 눈 자리를 찾을 때 쓴다 */
+  private drawn: { x0: number; y0: number; d: number } | undefined;
   /** 몸짓 세기 (설계도 motion). 1 이 기본 동작 */
   private motion = { bounce: 1, sway: 1, tail: 1, ear: 1 };
   /** 그릴 것이 있는지 (설계도나 입체 판을 넣었는지) */
@@ -101,7 +156,11 @@ export class Pet3D implements Model3D {
   private lost = false;
   private readonly materials = new Map<string, Material>();
   private readonly box = new Box3();
+  /** 쉬는 자세의 가운데 x (뒹굴 때 제자리를 지키려고) */
+  private restX = 0;
   private readonly tmp = new Vector3();
+  /** 얼굴 부품이 카메라 쪽을 보는지 잴 때 쓰는 벡터 (그릴 때마다 만들지 않게) */
+  private readonly faceTmp = { at: new Vector3(), n: new Vector3(), eye: new Vector3() };
 
   /** WebGL 을 못 쓰는 컴퓨터면 undefined (2D 펫으로) */
   static create(onLost: () => void): Pet3D | undefined {
@@ -148,6 +207,10 @@ export class Pet3D implements Model3D {
 
   /** 빙글 도는 미리보기(펫 만들기 창)에서 더하는 몸 돌림(라디안) */
   spin = 0;
+  /** 같은 미리보기에서 위(+) 아래(-)로 기울여 보는 각(라디안). 카메라가 몸 가운데를 축으로 돈다 */
+  tilt = 0;
+  /** 카메라가 도는 중심과 거리, 지금 카메라에 들어간 기울기 (frameCamera 가 정한다) */
+  private orbit = { c: new Vector3(), dist: 1, tilt: 0 };
   /** 그리는 해상도 상한(px). 펫 화면은 768 이면 충분하고, 앱 아이콘은 더 크게 그린다 */
   maxPx = 768;
 
@@ -180,6 +243,7 @@ export class Pet3D implements Model3D {
     this.relief?.texture.dispose();
     this.relief = undefined;
     this.face = undefined;
+    this.quad = undefined;
     this.motion = { bounce: 1, sway: 1, tail: 1, ear: 1 };
     this.ready = false;
     // 색별 재질도 비운다 (펫을 갈아끼울 때마다 쌓이지 않게)
@@ -338,6 +402,103 @@ export class Pet3D implements Model3D {
       this.joints.body.add(pivot);
       this.wavePaw = pivot;
     }
+    // 네 발 동물이면 다리를 앞발, 뒷발 네 개로 나눈다 (카메라 맞춘 뒤라 화면 크기는 그대로)
+    this.quad = bodyBox ? this.buildQuad(bp, parts, meshes, bodyBox) : undefined;
+  }
+
+  /**
+   * 네 발 걷기 준비. 다리 슬롯마다 부품을 앞뒤 무리로 나눠 각각 관절을 만든다.
+   * 뒷발이 없으면(앉은 피규어) 앞발을 본떠 몸 뒤쪽에 만든다. 앞에서는 몸에 가려 쉬는 모습은 그대로다
+   */
+  private buildQuad(
+    bp: Blueprint,
+    parts: Part[],
+    meshes: { part: Part; mesh: Mesh }[],
+    bodyBox: Box3,
+  ): QuadRig | undefined {
+    const depth = bodyBox.max.z - bodyBox.min.z;
+    if (gaitOf(bp, parts, depth) !== 'quadruped') return undefined;
+    this.root.updateMatrixWorld(true);
+    const cz = bodyBox.getCenter(new Vector3()).z;
+    const bodyAt = this.joints.body.getWorldPosition(new Vector3());
+    const group = (parent: Group, list: Mesh[], id: LegId, synth: boolean): QuadLeg => {
+      const box = new Box3();
+      for (const m of list) {
+        m.updateMatrixWorld(true);
+        box.union(new Box3().setFromObject(m));
+      }
+      const c = box.getCenter(new Vector3());
+      const hip = new Vector3(c.x, box.max.y, c.z);
+      const g = new Group();
+      g.position.copy(parent.worldToLocal(hip.clone()));
+      parent.add(g);
+      g.updateMatrixWorld(true);
+      for (const m of list) g.attach(m);
+      return { id, g, base: g.position.clone(), hip: hip.sub(bodyAt), drop: box.max.y - box.min.y, synth };
+    };
+    const legs: QuadLeg[] = [];
+    const meshOf = (m: { mesh: Mesh }) => m.mesh;
+    for (const [slot, side] of [
+      ['legL', 'l'],
+      ['legR', 'r'],
+    ] as const) {
+      const mine = meshes.filter((m) => m.part.slot === slot);
+      if (!mine.length) return undefined;
+      const cut = legCut(
+        mine.map((m) => m.part.at[2]),
+        legGap(depth),
+      );
+      const front = cut === undefined ? mine : mine.filter((m) => m.part.at[2] > cut);
+      const hind = cut === undefined ? [] : mine.filter((m) => m.part.at[2] <= cut);
+      const own = this.joints[slot];
+      legs.push(group(own, front.map(meshOf), `f${side}`, false));
+      if (hind.length) {
+        legs.push(group(own, hind.map(meshOf), `h${side}`, false));
+        continue;
+      }
+      // 뒷발을 앞발에서 본뜬다: 몸 가운데를 기준으로 뒤로, 엉덩이처럼 조금 바깥으로, 조금 크게
+      const copies = front.map(({ mesh }) => {
+        const m = new Mesh(mesh.geometry, mesh.material);
+        mesh.matrixWorld.decompose(m.position, m.quaternion, m.scale);
+        const at = hindFrom(m.position.x, m.position.z, cz);
+        m.position.x = at.x;
+        m.position.z = at.z;
+        m.scale.multiplyScalar(1.08);
+        m.userData.hind = true;
+        return m;
+      });
+      legs.push(group(this.joints.body, copies, `h${side}`, true));
+    }
+    const synth = legs.some((l) => l.synth);
+    // 앉은 피규어는 몸통을 늘여 네 발 자세로 바꾼다. 얼굴이 머리에 있을 때만 (몸에 그린 얼굴은 몸과 같이 늘어나지 않는다)
+    let morph: QuadRig['morph'];
+    if (synth && this.hasHead && this.faceOnHead) {
+      const torso = new Group();
+      const c = bodyBox.getCenter(new Vector3());
+      torso.position.copy(this.joints.body.worldToLocal(c.clone()));
+      this.joints.body.add(torso);
+      torso.updateMatrixWorld(true);
+      for (const { part, mesh } of meshes) if (part.slot === 'body') torso.attach(mesh);
+      morph = {
+        torso,
+        torsoBase: torso.position.clone(),
+        headBase: this.joints.head.position.clone(),
+        tailBase: this.joints.tail.position.clone(),
+        depth,
+        height: bodyBox.max.y - bodyBox.min.y,
+      };
+    }
+    const z = (id: LegId) => legs.find((l) => l.id === id)?.hip.z ?? 0;
+    const span = Math.max(0.1, (z('fl') + z('fr') - z('hl') - z('hr')) / 2);
+    const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+    return {
+      legs,
+      // 늘이지 못하는 몸(얼굴이 몸에 있는 공 모양)은 많이 숙이면 얼굴이 바닥을 본다. 조금만
+      lean: morph ? 0.12 : synth ? 0.1 : 0.06,
+      morph,
+      stride: clamp(span * 0.25, 0.03, 0.12),
+      lift: clamp(span * 0.2, 0.03, 0.08),
+    };
   }
 
   /** 펫을 ctx 에 그리고 머리 꼭대기 y 를 돌려준다. 그릴 수 없으면 undefined (2D 로) */
@@ -351,9 +512,13 @@ export class Pet3D implements Model3D {
   ): number | undefined {
     if (this.lost || !this.ready) return undefined;
     // 통통 튀는 세기 (설계도 motion.bounce, pet3d-motion.ts)
-    const { lift, sx, sy } = bounced(s, act, this.motion.bounce, lift0, sx0, sy0);
+    // 네 발 걷기는 걸음 들썩임도 출발과 멈춤에 맞춰 줄인다 (pet3d-gait.ts walkEnvelope)
+    const bob = this.quad && act?.type === 'walk' ? walkEnvelope(act.along, act.ms).stride : 1;
+    const { lift: up, sx, sy } = bounced(s, act, this.motion.bounce, lift0 * bob, sx0, sy0);
     this.pose(s, sx, sy, act);
     const { d, cx, bottom } = this.fit;
+    // 몸짓으로 폴짝 뛰어도 귀 끝이 캔버스 위로 잘리지 않게 (토순이처럼 키가 큰 펫)
+    const lift = movePoseOf(act, s.calm) ? Math.min(up, this.headTop(0) - 2) : up;
     // 2D 캔버스 변환(화면 배율 × 펫 크기)에 맞춰 선명하게
     const scale = ctx.getTransform().a || 1;
     const px = Math.max(64, Math.min(this.maxPx, Math.round(d * scale)));
@@ -361,6 +526,7 @@ export class Pet3D implements Model3D {
       this.px = px;
       this.renderer.setSize(px, px, false);
     }
+    if (this.tilt !== this.orbit.tilt) this.aim(this.tilt);
     this.renderer.render(this.scene, this.camera);
     const x0 = CX - d / 2 - (cx * d) / 2;
     const y0 = GROUND - d / 2 + (bottom * d) / 2 - lift;
@@ -375,12 +541,29 @@ export class Pet3D implements Model3D {
     ctx.fill();
     ctx.restore();
     ctx.drawImage(this.canvas, x0, y0, d, d);
+    this.drawn = { x0, y0, d };
     // 머리 꼭대기 (말풍선 대신 머리 위에 뜨는 것들 자리)
+    return this.headTop(lift);
+  }
+
+  /** 지금 자세의 머리 꼭대기 y (2D 캔버스). lift 만큼 띄웠을 때 */
+  private headTop(lift: number): number {
+    const { d, bottom } = this.fit;
+    const y0 = GROUND - d / 2 + (bottom * d) / 2 - lift;
     this.box.setFromObject(this.root);
     this.box.getCenter(this.tmp);
     this.tmp.y = this.box.max.y;
     this.tmp.project(this.camera);
     return y0 + d / 2 - (this.tmp.y * d) / 2;
+  }
+
+  /** 방금 그린 그림에서 side 쪽 눈 가운데 (2D 캔버스 좌표). 눈이 없으면 undefined (같이 보기 돋보기) */
+  eye(side: -1 | 1): { x: number; y: number } | undefined {
+    const e = this.face?.eyes.find((v) => v.side === side);
+    if (!e || !this.drawn) return undefined;
+    const { x0, y0, d } = this.drawn;
+    const p = e.open.getWorldPosition(new Vector3()).project(this.camera);
+    return { x: x0 + d / 2 + (p.x * d) / 2, y: y0 + d / 2 - (p.y * d) / 2 };
   }
 
   /**
@@ -398,7 +581,8 @@ export class Pet3D implements Model3D {
       let p: Object3D | null = o.parent;
       while (p && !slotOf.has(p)) p = p.parent;
       const slot = p ? slotOf.get(p) : undefined;
-      if (slot && inFace(slot, this.faceOnHead)) return;
+      // 본떠 만든 뒷발은 몸 관절에 붙어 있어도 다리다
+      if (slot && inFace(slot, this.faceOnHead) && !o.userData.hind) return;
       o.visible = false;
       hidden.push(o);
     });
@@ -687,13 +871,13 @@ export class Pet3D implements Model3D {
     const b = new Box3().setFromObject(this.root);
     const c = b.getCenter(new Vector3());
     const radius = b.getSize(new Vector3()).length() / 2;
+    this.restX = c.x;
     // 쉬는 몸이 화면의 절반쯤: 뛰고 팔을 들어도 잘리지 않는 여유
     const fov = (this.camera.fov * DEG) / 2;
     const dist = radius / (0.5 * Math.tan(fov));
-    const el = 9 * DEG;
-    this.camera.position.set(c.x, c.y + dist * Math.sin(el), c.z + dist * Math.cos(el));
-    this.camera.lookAt(c);
-    this.camera.updateMatrixWorld(true);
+    // 맞추기는 늘 기울이지 않은 자리에서 (기울기는 다음 draw 에서 다시 넣는다)
+    this.orbit = { c, dist, tilt: 0 };
+    this.aim(0);
     this.camera.updateProjectionMatrix();
     let minX = 1;
     let maxX = -1;
@@ -714,6 +898,16 @@ export class Pet3D implements Model3D {
     if (!Object.values(this.fit).every(Number.isFinite) || d <= 0) this.ready = false;
   }
 
+  /** 카메라를 몸 가운데에서 dist 만큼, 살짝 위(9도)에 tilt 를 더한 높이에 둔다 */
+  private aim(tilt: number) {
+    const { c, dist } = this.orbit;
+    const el = 9 * DEG + tilt;
+    this.camera.position.set(c.x, c.y + dist * Math.sin(el), c.z + dist * Math.cos(el));
+    this.camera.lookAt(c);
+    this.camera.updateMatrixWorld(true);
+    this.orbit.tilt = tilt;
+  }
+
   /** 펫을 바꿀 때 옛 모양을 GPU 에서 내린다. 색별 재질은 다음 펫이 다시 쓴다 */
   private disposeTree(o: Object3D) {
     const kept = new Set(this.materials.values());
@@ -732,7 +926,8 @@ export class Pet3D implements Model3D {
     let y = 0;
     let z = 0;
     let x = 0;
-    if (s.mood === 'sulky') y = 0.42;
+    // 같이 보기 중(peer)에는 삐져도 그쪽을 본다
+    if (s.mood === 'sulky' && !s.peer) y = 0.42;
     if (s.mood === 'sleeping' || s.mood === 'dozing') x = 0.12;
     if (s.mood === 'grabbed') z = 0.08;
     if (s.mood === 'thinking') z = 0.06;
@@ -749,6 +944,13 @@ export class Pet3D implements Model3D {
     const trick = trickOf(s);
     if (trick?.type === 'wave') z = waveSwing(trick.t) * 0.08;
     if (trick?.type === 'dance') y = danceTilt(trick.t) * 1.7;
+    // 제자리 몸짓: 입체 판도 몸 전체만 (돌기, 기울이기, 숙이기)
+    const mv = movePoseOf(act, s.calm);
+    if (mv) {
+      y += mv.look * 0.3 + mv.twist * 0.6;
+      z -= mv.turn + mv.tilt * 0.5;
+      x += mv.pitch * 0.5;
+    }
     const max = 0.44;
     this.root.rotation.set(x, Math.max(-max, Math.min(max, y + this.spin * 0.4)), z);
   }
@@ -761,7 +963,21 @@ export class Pet3D implements Model3D {
     const j = this.joints;
     for (const slot of SLOTS) j[slot].rotation.set(0, 0, 0);
     if (this.wavePaw) this.wavePaw.visible = false;
+    for (const leg of this.quad?.legs ?? []) {
+      leg.g.position.copy(leg.base);
+      leg.g.scale.set(1, 1, 1);
+      // 들려 있으면 본뜬 뒷발도 앞발처럼 늘어진다
+      leg.g.rotation.set(leg.synth && s.mood === 'grabbed' ? 0.3 : 0, 0, 0);
+    }
+    const mo = this.quad?.morph;
+    if (mo) {
+      mo.torso.position.copy(mo.torsoBase);
+      mo.torso.scale.set(1, 1, 1);
+      this.joints.head.position.copy(mo.headBase);
+      this.joints.tail.position.copy(mo.tailBase);
+    }
     this.root.rotation.set(0, 0, 0);
+    this.root.position.set(0, 0, 0);
     this.root.scale.set(sx, sy, sx);
     const { mood, elapsed: e } = s;
     // 몸짓 세기 (설계도 motion): 흔들기(sway), 꼬리(tail), 귀(ear). 1 이면 기본 동작 그대로
@@ -779,7 +995,7 @@ export class Pet3D implements Model3D {
       j.wingR.rotation.z = z;
     };
     // 삐지면 고개를 돌린다 (얼굴이 보이게 옆으로만)
-    if (mood === 'sulky') this.root.rotation.y = 0.8;
+    if (mood === 'sulky' && !s.peer) this.root.rotation.y = 0.8;
     this.root.rotation.y += this.spin;
     let eye: EyeState = 'open';
     let mouth: MouthState = s.hungry && mood === 'idle' ? 'wavy' : 'smile';
@@ -829,7 +1045,9 @@ export class Pet3D implements Model3D {
         mouth = 'frown';
         break;
     }
-    if (act?.type === 'walk') {
+    if (act?.type === 'walk' && this.quad) {
+      this.walkQuad(this.quad, act);
+    } else if (act?.type === 'walk') {
       const w = Math.sin(act.phase * Math.PI * 2);
       this.root.rotation.y = act.dir * 0.75;
       j.legL.rotation.x = w * 0.7;
@@ -841,9 +1059,11 @@ export class Pet3D implements Model3D {
     } else if (act?.type === 'look') {
       head(0, act.dir * 0.55, 0);
     } else if (act?.type === 'sit') {
-      j.legL.rotation.x = -1.2;
-      j.legR.rotation.x = -1.2;
-      j.tail.rotation.y = 0.6;
+      // 앉는 정도 (처음에 앉고 끝에 일어난다)
+      const down = act.down ?? 1;
+      j.legL.rotation.x = -1.2 * down;
+      j.legR.rotation.x = -1.2 * down;
+      j.tail.rotation.y = 0.6 * down;
     } else if (act?.type === 'yawn') {
       const k = Math.sin(Math.min(1, act.t) * Math.PI);
       head(-0.3 * k, 0, 0);
@@ -858,6 +1078,32 @@ export class Pet3D implements Model3D {
       arms(2.6 * k);
       wings(1.3 * k);
       eye = 'up';
+    }
+    // 제자리 몸짓 (꼬리 흔들기, 귀 쫑긋, 몸 털기, 점프, 뒹굴기 등. move-pose.ts).
+    // 꼬리, 귀, 다리, 팔은 설계도에 그 부위가 있을 때만 보인다 (없는 관절은 빈 묶음이라 돌려도 아무것도 없다)
+    const mv = movePoseOf(act, s.calm);
+    let wide = false;
+    if (mv) {
+      head(mv.pitch, mv.look * 0.6, -mv.tilt);
+      // 몸 털기는 세로축으로 비틀고, 꼬리를 흔들 땐 꼬리 쪽이 보이게 살짝 돈다 (꼬리는 몸 뒤에 있다)
+      this.root.rotation.y += mv.look * 0.15 + mv.twist + (act?.type === 'wag' ? -0.6 * mv.tailOut : 0);
+      // 발을 구를 때는 든 발 반대쪽으로 몸무게를 옮긴다
+      this.root.rotation.z -= mv.turn + (mv.legs[1] - mv.legs[0]) * 0.12;
+      j.earL.rotation.z = mv.ears[0] * ear;
+      j.earR.rotation.z = -mv.ears[1] * ear;
+      // 꼬리는 위로 선 채 좌우로 (몸 뒤에서 옆으로 끝이 보이게)
+      j.tail.rotation.set(0, mv.tail * 0.6 * tail, -mv.tail * 1.3 * tail);
+      j.legL.rotation.x = -mv.legs[0] * 0.9;
+      j.legR.rotation.x = -mv.legs[1] * 0.9;
+      if (mv.arms > 0) {
+        arms(mv.arms * 2.2);
+        wings(mv.arms * 0.9);
+      }
+      if (mv.eyes) eye = MOVE_EYE[mv.eyes];
+      if (mv.mouth) mouth = mv.mouth;
+      wide = mv.eyes === 'wide';
+      // 뒹굴면 몸이 옆으로 눕는다: 바닥에 닿고 제자리(가운데)에 있게 옮긴다
+      if (Math.abs(mv.turn) > 0.01) this.groundRoot();
     }
     // 친밀도로 열린 몸짓: 손 흔들기는 오른팔(날개)을 들고 흔든다, 빙글 춤은 한 바퀴 돈다
     const trick = trickOf(s);
@@ -893,17 +1139,98 @@ export class Pet3D implements Model3D {
     const g = gazeOf(s, act);
     // 양수 x 가 고개를 숙이는 쪽 (잘 때 0.28). 아래는 조금만 숙인다 (많이 숙이면 눈이 찡그린 듯 납작해 보였다)
     if (g) head(g.y > 0 ? g.y * 0.12 : g.y * 0.22, g.x * 0.5, 0);
-    this.setFace(eye, mouth, s);
-    // 옆이나 뒤로 돌아 얼굴이 안 보이면 얼굴 부품을 숨긴다 (가장자리에 조각처럼 떠 보였다). 부리는 옆에서도 보인다
+    this.setFace(eye, mouth, s, wide);
+    // 옆이나 뒤로 돌아 안 보이는 얼굴 부품은 숨긴다 (가장자리에 조각처럼 떠 보였다). 부리는 옆에서도 보인다.
+    // 얼굴 전체가 아니라 부품마다 겉면이 향한 쪽으로 본다: 옆모습에서 가까운 눈과 볼은 보이고 먼 쪽만 숨는다
+    // (펫 만들기 미리보기에서 360도 돌릴 때 옆얼굴이 밋밋한 공처럼 보였다)
     if (this.face) {
-      const yaw = this.root.rotation.y + (this.hasHead ? j.head.rotation.y : 0);
-      const front = Math.cos(yaw) > 0.3;
-      for (const g2 of this.face.groups)
-        g2.visible = front || (g2 === this.face.mouthAt && this.face.style === 'beak');
+      this.root.updateMatrixWorld(true);
+      const { at, n, eye } = this.faceTmp;
+      for (const g2 of this.face.groups) {
+        g2.getWorldPosition(at);
+        n.setFromMatrixColumn(g2.matrixWorld, 2).normalize();
+        const facing = n.dot(eye.copy(this.camera.position).sub(at).normalize());
+        g2.visible = facing > 0.25 || (g2 === this.face.mouthAt && this.face.style === 'beak');
+      }
     }
   }
 
-  private setFace(eye: EyeState, mouth: MouthState, s: DrawState) {
+  /** 누운 몸을 바닥(y=0)에 붙이고 쉬는 자세의 가운데로 옮긴다 (뒹굴기) */
+  private groundRoot() {
+    this.root.updateMatrixWorld(true);
+    this.box.setFromObject(this.root);
+    this.box.getCenter(this.tmp);
+    this.root.position.set(this.restX - this.tmp.x, -this.box.min.y, 0);
+  }
+
+  /**
+   * 네 발 걷기: 가는 쪽으로 돌아서 몸을 앞으로 숙이고(고개는 들어 앞을 본다), 대각선 쌍으로 번갈아 딛는다.
+   * 출발할 때 돌고 숙이며, 멈출 때 다시 앞을 보고 일어난다 (pet3d-gait.ts walkEnvelope).
+   * 숙인 만큼 앞발 관절은 내려가고 뒷발 관절은 올라가니 다리마다 높이를 되돌려 발이 바닥에 붙어 있게 한다
+   */
+  private walkQuad(q: QuadRig, act: Extract<Act, { type: 'walk' }>) {
+    const j = this.joints;
+    const { sway, tail, ear } = this.motion;
+    const env = walkEnvelope(act.along, act.ms);
+    const lean = q.lean * env.lean;
+    const a = act.phase * Math.PI * 2;
+    const go = env.stride;
+    this.root.rotation.y = act.dir * 1.1 * env.turn + this.spin;
+    j.body.rotation.x = lean;
+    // 걸음마다 엉덩이를 살짝 좌우로
+    j.body.rotation.z = Math.sin(a) * 0.05 * sway * go;
+    // 네 발 자세로 바꾸기 (숙이는 정도를 따라 들어가고 풀린다)
+    const m = q.morph;
+    const k = env.lean;
+    let front = 0;
+    let hind = 0;
+    if (m) {
+      const { depth: d, height: h } = m;
+      m.torso.scale.set(1, 1 - 0.14 * k, 1 + 0.45 * k);
+      m.torso.position.set(m.torsoBase.x, m.torsoBase.y - 0.05 * h * k, m.torsoBase.z - 0.16 * d * k);
+      j.head.position.set(m.headBase.x, m.headBase.y - 0.16 * h * k, m.headBase.z + 0.16 * d * k);
+      j.tail.position.set(m.tailBase.x, m.tailBase.y - 0.03 * h * k, m.tailBase.z - 0.3 * d * k);
+      front = 0.08 * d * k;
+      hind = -0.3 * d * k;
+    }
+    // 고개는 숙인 만큼 들고, 보는 사람 쪽으로 돌린다 (옆으로 걸어도 얼굴이 보이게)
+    if (this.hasHead)
+      j.head.rotation.set(
+        -lean * 0.9 + Math.sin(a * 2) * 0.035 * go,
+        -act.dir * 0.42 * env.turn,
+        -Math.sin(a) * 0.04 * sway * go,
+      );
+    const c = Math.cos(lean);
+    const sn = Math.sin(lean);
+    for (const leg of q.legs) {
+      const step = trotLeg(leg.id, act.phase);
+      const z = step.dz * q.stride * go;
+      const hz = leg.hip.z + (leg.id[0] === 'f' ? front : hind);
+      // 숙여서 관절이 올라간 다리(뒷발)는 내리지 않고 늘여 바닥에 닿게 한다 (내리면 몸과 발 사이가 뜬다)
+      const back = -hipRise(leg.hip.y, hz, lean);
+      const reach = Math.max(0, -back);
+      leg.g.scale.set(1, (leg.drop + reach) / Math.max(0.01, leg.drop), 1);
+      const rise = Math.max(0, back) + step.lift * q.lift * go;
+      // 긴 다리는 관절에서 돌려 딛고, 짧은 발은 앞뒤로 옮긴다
+      const long = leg.drop >= 0.18;
+      const fz = long ? 0 : z;
+      // 몸이 숙어 있으니 세상 기준 위(rise)와 앞(fz)을 부모(몸) 좌표로 돌려 넣는다
+      leg.g.position.set(
+        leg.base.x,
+        leg.base.y + rise * c + fz * sn,
+        leg.base.z + hz - leg.hip.z - rise * sn + fz * c,
+      );
+      leg.g.rotation.x =
+        -lean - (long ? Math.asin(Math.max(-1, Math.min(1, z / leg.drop))) : step.lift * 0.35 * go);
+    }
+    // 꼬리는 뒤로 조금 눕혀 살랑 (곧게 세우면 옆에서 볼 때 든 팔처럼 보였다)
+    j.tail.rotation.set(-lean * 0.5 - 0.2 * k, Math.sin(a) * 0.45 * tail * (0.4 + 0.6 * go), 0);
+    j.earL.rotation.z = Math.sin(a * 2) * 0.06 * ear * go;
+    j.earR.rotation.z = -Math.sin(a * 2) * 0.06 * ear * go;
+    j.top.rotation.z = Math.sin(a) * 0.1 * sway * go;
+  }
+
+  private setFace(eye: EyeState, mouth: MouthState, s: DrawState, wide = false) {
     const f = this.face;
     if (!f) return;
     const open = s.blink >= 0 ? Math.abs(1 - 2 * s.blink) : 1;
@@ -911,7 +1238,7 @@ export class Pet3D implements Model3D {
     const shown = restingEye(eye, f.eyeLook);
     for (const e of f.eyes) {
       for (const [k, o] of Object.entries(e.states)) o.visible = k === shown;
-      const small = s.mood === 'busy' ? 0.8 : 1;
+      const small = s.mood === 'busy' ? 0.8 : wide ? 1.15 : 1;
       e.open.scale.set(small, small * Math.max(0.08, open), small);
     }
     if (f.style === 'beak') {

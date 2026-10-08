@@ -7,6 +7,8 @@ export interface TrayActions {
   toggleHidden(): void;
   isHidden(): boolean;
   openChat(): void;
+  /** 같이 보기. 펫 우클릭 메뉴 맨 위와 같은 것 */
+  lookTogether(): void;
   openSettings(): void;
   /** 베타 기록 칸을 연 설정 창 (P4-01 의견 보내기) */
   sendFeedback(): void;
@@ -39,6 +41,7 @@ export function createTray(petName: () => string, actions: TrayActions): Tray {
         click: () => actions.toggleHidden(),
       },
       { label: t('tray.chat', { name: petName() }), click: () => actions.openChat() },
+      { label: t('tray.look', { name: petName() }), click: () => actions.lookTogether() },
       { label: t('tray.todos'), click: () => actions.openTodos() },
       { label: t('tray.addTodo'), accelerator: quickAddShortcut(), click: () => actions.quickAdd() },
       { label: t('tray.settings'), click: () => actions.openSettings() },

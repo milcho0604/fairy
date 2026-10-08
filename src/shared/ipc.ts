@@ -12,10 +12,14 @@ import type { CalEvent } from './event-store.ts';
 import type { FocusState } from './focus.ts';
 import type { Gaze } from './gaze.ts';
 import type { GestureEvent } from './gesture.ts';
+import type { LookMotion } from './look-motion.ts';
+import type { MiniGame } from './minigames.ts';
+import type { MoveAsk } from './moves.ts';
 import type { Note, NoteSource } from './note-store.ts';
 import type { Blueprint } from './pet3d/blueprint.ts';
 import type { PetKind, PoseKind, Settings } from './settings.ts';
 import type { BuyResult, ShopState } from './shop.ts';
+import type { SoundKind } from './sound.ts';
 import type { Repeat, Todo } from './todo-store.ts';
 
 export const IPC = {
@@ -57,6 +61,10 @@ export const IPC = {
   image: 'pet:image',
   /** 메인 → 펫 화면: 커서 쪽 방향 칸 (null 이면 앞). 칸이 바뀔 때만 */
   gaze: 'pet:gaze',
+  /** 메인 → 펫 화면: 같이 보기 돋보기 모션 (shared/look-motion.ts). null 이면 끝 */
+  look: 'pet:look',
+  /** 메인 → 펫 화면: 효과음 하나 (놀이). 설정과 상태는 화면이 본다 */
+  sound: 'pet:sound',
 } as const;
 
 /** 펫 얼굴 그림 (shared/face.ts). 펫 화면이 그려 메인에 주고, 메인이 얼굴을 쓰는 창에 나눠 준다 */
@@ -96,6 +104,8 @@ export interface PetAiState {
   thinking: boolean;
   /** 답이 막 끝났다 (말하기 동작을 잠깐 보인다). */
   answered: boolean;
+  /** 그림이 붙은 질문이다 (생각하는 동안 돋보기로 그림을 훑는다) */
+  withImage?: boolean;
 }
 
 export const LOOK = {
@@ -371,7 +381,8 @@ export interface PetBridge {
   onLayout(listener: (layout: BubbleLayout) => void): void;
   bubbleSize(id: string, width: number, height: number): void;
   bubbleClosed(id: string, action: string): void;
-  activityRequest(): void;
+  /** 한가하니 행동을 골라 달라. ask 는 펫 몸과 상태 (제자리 몸짓 고르기, shared/moves.ts) */
+  activityRequest(ask?: MoveAsk): void;
   activityStop(): void;
   onActivity(listener: (activity: Activity) => void): void;
   onStatus(listener: (status: PetStatus) => void): void;
@@ -380,6 +391,10 @@ export interface PetBridge {
   onFlight(listener: (flying: boolean) => void): void;
   /** 커서 바라보기: 방향 칸 (null 이면 앞을 본다) */
   onGaze(listener: (gaze: Gaze | null) => void): void;
+  /** 같이 보기 돋보기 모션. null 이면 끝 */
+  onLook(listener: (motion: LookMotion | null) => void): void;
+  /** 효과음 (놀이: 방울 터짐, 간식) */
+  onSound(listener: (kind: SoundKind) => void): void;
   /** 사진 펫 그림 (PNG data URL). null 이면 기본 펫 */
   onImage(listener: (images: PetImages) => void): void;
   /** 지금 모습의 얼굴 그림을 메인에 준다 (PetStatus.face 일 때만) */
@@ -616,7 +631,8 @@ export interface NoteHit {
 
 export type PanelTab = 'today' | 'todo' | 'note' | 'event' | 'shop';
 
-export type PlayKind = 'ball' | 'walk' | 'seek';
+/** 놀이: 공, 산책, 숨바꼭질과 짧은 놀이 (shared/minigames.ts) */
+export type PlayKind = 'ball' | 'walk' | 'seek' | MiniGame;
 
 export type NoteAiKind = 'todos' | 'summary';
 

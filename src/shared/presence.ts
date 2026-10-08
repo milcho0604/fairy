@@ -1,6 +1,7 @@
 // 방해 금지(P1-10): 펫을 숨길 까닭들. 까닭이 하나라도 있으면 숨는다.
 
-export type HideReason = 'user' | 'presentation';
+/** user 숨기기, presentation 발표나 전체 화면, house 집 안에서 쉬는 중 (집은 보인다) */
+export type HideReason = 'user' | 'presentation' | 'house';
 
 /**
  * 윈도우 SHQueryUserNotificationState 결과 중 숨길 상태.

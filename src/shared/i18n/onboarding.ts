@@ -19,7 +19,9 @@ export const ko = {
   'onboarding.look.granted': '화면 기록 권한이 있어',
   'onboarding.look.needed': '화면 기록 권한이 필요해',
   'onboarding.look.howTo':
-    '시스템 설정 > 개인정보 보호 및 보안 > 화면 및 시스템 오디오 녹음에서 Jjakkung 을 켜 줘. 켠 다음에는 짝꿍을 껐다 켜야 해. 같이 보기를 안 쓸 거면 넘어가도 돼.',
+    '시스템 설정 > 개인정보 보호 및 보안 > 화면 및 시스템 오디오 녹음에서 Jjakkung 을 켜 줘. 켠 다음에는 짝꿍을 껐다 켜야 해. ' +
+    '이미 켜져 있는데도 이렇게 나오면 목록에서 Jjakkung 을 골라 − 버튼으로 지우고, 짝꿍을 다시 켠 뒤 같이 보기에서 맥이 물을 때 허용해 줘. ' +
+    '같이 보기를 안 쓸 거면 넘어가도 돼.',
   'onboarding.look.openSettings': '시스템 설정 열기',
   'onboarding.look.windows': '윈도우는 따로 권한이 필요 없어',
   'onboarding.look.ai':
@@ -61,7 +63,9 @@ export const en: Translation<typeof ko> = {
   'onboarding.look.granted': 'Screen recording is allowed',
   'onboarding.look.needed': 'Screen recording permission needed',
   'onboarding.look.howTo':
-    "Turn on Jjakkung in System Settings > Privacy & Security > Screen & System Audio Recording. After that, restart Jjakkung. If you won't use Look together, you can skip this.",
+    'Turn on Jjakkung in System Settings > Privacy & Security > Screen & System Audio Recording, then restart Jjakkung. ' +
+    'Already on and still seeing this? Select Jjakkung in the list, remove it with the − button, restart Jjakkung and allow it when macOS asks again. ' +
+    "If you won't use Look together, you can skip this.",
   'onboarding.look.openSettings': 'Open System Settings',
   'onboarding.look.windows': 'No extra permission needed on Windows',
   'onboarding.look.ai':

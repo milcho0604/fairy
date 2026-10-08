@@ -1,7 +1,7 @@
 // 효과음 (기본 끔). 파일 없이 펫 화면이 Web Audio 로 그 자리에서 만든다. 작고 짧게.
 // 여기에는 음표만 적는다 (시험할 수 있게). 소리 내기는 renderer/src/sound.ts.
 
-export type SoundKind = 'happy' | 'fed' | 'purr' | 'bell' | 'wave' | 'dance';
+export type SoundKind = 'happy' | 'fed' | 'purr' | 'bell' | 'wave' | 'dance' | 'pop' | 'crunch';
 
 export interface Note {
   /** 시작 (ms, 소리 처음부터) */
@@ -59,6 +59,13 @@ export const SOUNDS: Record<SoundKind, readonly Note[]> = {
     type: 'triangle' as const,
     gain: 0.04,
   })),
+  // 비눗방울 터짐 (놀이): 짧고 높게 "퐁"
+  pop: [{ at: 0, dur: 70, freq: 1500, freqEnd: 900, type: 'sine', gain: 0.05 }],
+  // 간식 받아먹기, 레이저 잡기 (놀이): 바삭 두 번 (짧은 세모파 둘)
+  crunch: [
+    { at: 0, dur: 45, freq: 520, freqEnd: 380, type: 'triangle', gain: 0.05 },
+    { at: 70, dur: 45, freq: 600, freqEnd: 420, type: 'triangle', gain: 0.05 },
+  ],
 };
 
 /** 소리 길이 (ms) */

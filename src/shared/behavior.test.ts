@@ -9,6 +9,7 @@ import {
   walkOffset,
   walkSpan,
 } from './behavior.ts';
+import { MOVE_SPECS, MOVES, PLAIN_ASK } from './moves.ts';
 
 const area = { x: -1512, y: 33, width: 1512, height: 949 };
 const seq = (...values: number[]) => {
@@ -16,7 +17,7 @@ const seq = (...values: number[]) => {
   return () => values[i++ % values.length] ?? 0;
 };
 
-test('다음 행동까지 25~70초', () => {
+test('다음 행동까지 20~55초', () => {
   assert.equal(
     nextDelay(() => 0),
     NEXT_MIN_MS,
@@ -48,12 +49,40 @@ test('걸을 자리가 없으면(모니터가 펫만 하면) 앉는다', () => {
   assert.equal(a.type, 'sit');
 });
 
-test('앉기, 두리번, 하품, 기지개', () => {
+test('앉기는 8~18초, 나머지는 제자리 몸짓', () => {
   const pet = { x: -800, y: 800, width: 160, height: 160 };
-  assert.equal(pickActivity(pet, area, seq(0.6, 0.5)).type, 'sit');
-  assert.equal(pickActivity(pet, area, seq(0.8, 0.2)).type, 'look');
-  assert.equal(pickActivity(pet, area, seq(0.9)).type, 'yawn');
-  assert.equal(pickActivity(pet, area, seq(0.97)).type, 'stretch');
+  const sit = pickActivity(pet, area, seq(0.4, 0.5));
+  assert.deepEqual(sit, { type: 'sit', ms: 13_000 });
+  // 첫 난수가 걷기, 앉기 몫을 넘으면 몸짓. 몸짓 고르기 난수 0 이면 맨 앞(하품)
+  const yawn = pickActivity(pet, area, seq(0.6, 0, 0.9));
+  assert.deepEqual(yawn, { type: 'yawn', ms: MOVE_SPECS.yawn.ms });
+  // 좌우가 있는 몸짓은 방향을 붙인다 (마지막 난수 0.2 → 왼쪽)
+  const recent = { last: 'yawn' as const, at: {} };
+  const scan = pickActivity(pet, area, seq(0.6, 0.2, 0.2), [], { recent });
+  assert.equal(scan.type, 'scan');
+  if (scan.type === 'scan') assert.equal(scan.dir, -1);
+});
+
+test('할 몸짓이 없으면(모두 쉬는 중) 두리번', () => {
+  const pet = { x: -800, y: 800, width: 160, height: 160 };
+  const at = Object.fromEntries(MOVES.map((m) => [m, 1000]));
+  const a = pickActivity(pet, area, seq(0.6, 0.5, 0.9), [], { recent: { at }, now: 2000 });
+  assert.equal(a.type, 'look');
+});
+
+test('몸짓은 펫 몸과 최근 기록을 넘겨받아 고른다 (꼬리 있는 펫만 꼬리 흔들기)', () => {
+  const pet = { x: -800, y: 800, width: 160, height: 160 };
+  const tail = { ...PLAIN_ASK, tail: true };
+  const seen = new Set<string>();
+  for (let i = 0; i < 200; i++) {
+    const r = (i + 0.5) / 200;
+    seen.add(pickActivity(pet, area, seq(0.9, r, 0.5), [], { ask: tail }).type);
+  }
+  assert.ok(seen.has('wag'));
+  assert.ok(!seen.has('ears'));
+  const plain = new Set<string>();
+  for (let i = 0; i < 200; i++) plain.add(pickActivity(pet, area, seq(0.9, (i + 0.5) / 200, 0.5)).type);
+  assert.ok(!plain.has('wag'));
 });
 
 test('맞붙은 옆 모니터로 걸어 넘어간다. 높이가 안 맞으면 못 넘는다', () => {

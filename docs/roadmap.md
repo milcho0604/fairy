@@ -104,6 +104,7 @@
 - [x] L20 **앱 이름(productName)을 한글 "짝꿍"으로 두면 설치판이 켜지자마자 죽는다.** Electron 44.5.1 맥에서 `Trace/BPT trap: 5`, 로그 한 줄 없이 끝났다. 같은 asar 를 개발용 Electron 으로 띄우면 돌고, 이름만 Jjakkung 으로 바꾸면 돈다. 실행 파일과 앱 묶음 이름은 영문, 보이는 이름만 한글(맥 `CFBundleDisplayName`, 윈도우 바로 가기 이름)로 둔다 → P4-02 반영. 윈도우 한글 바로 가기 이름은 체크리스트 I3 에서 확인
 - [x] L21 **큰 파일을 IPC 로 넘기면 메인이 GC 때까지 두 벌을 들고 있다.** 배경 제거 모델 170MB 를 `readFile` 뒤 `buffer.slice` 로 넘겼더니 메인 external 메모리가 343MB 로 남았다(강제 GC 하면 3MB). `protocol.handle` 로 만든 주소에서 `net.fetch(file://)` 로 흘려 보내면 메인에 안 남는다. 화면이 file:// 나 localhost 라 다른 출처여서 스킴에 `corsEnabled` 와 응답에 `access-control-allow-origin` 이 있어야 fetch 가 된다(없으면 "Failed to fetch") → P1-08 고침
 - [x] L22 **CDP `Runtime.evaluate` 의 맨 위 `const` 는 다음 호출까지 남는다.** 같은 식을 두 번 보내면 두 번째가 문법 오류로 통째로 안 돌고, 앞에서 만든 값을 그대로 쓴다. 입체 펫 점검에서 펫마다 새 판을 만든다고 생각했는데 첫 판에 겹쳐 그려 "옛 펫이 남는 버그"처럼 보였다. 점검 식은 `(() => { ... })()` 로 감싼다. 또 상태를 바꾸는 바로 그 틀에 행동을 넣으면 상태 전환이 행동을 지운다(앱 동작). 상태를 넣고 한 틀 기다린 뒤 행동을 넣는다
+- [x] L23 **임시 서명 앱은 업데이트하면 화면 기록 권한이 풀린다.** 맥은 애플 서명 없는 앱의 권한을 빌드 지문(cdhash)으로 기억한다. 2026-10-08 설치본을 덮은 뒤 설정에는 Jjakkung 이 켜짐인데 같이 보기가 계속 권한 안내를 띄웠다(TCC 기록의 조건 `cdhash 2fd0a06f…`, 새 앱 `fbc77dd8…`). 껐다 켜도 안 풀리고 목록에서 지워야 한다. 자체 인증서로 늘 같게 서명하면 조건이 `identifier + certificate root` 라 빌드가 바뀌어도 같다 → `scripts/mac-sign.mjs`, docs/release.md "맥 서명 인증서". 자체 인증서는 `find-identity -v` 에 안 잡혀 electron-builder identity 로는 못 쓰고, codesign 은 검색 목록에 있는 키체인에서만 찾는다
 
 ## 0단계: 기술 검증
 

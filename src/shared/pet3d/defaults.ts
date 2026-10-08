@@ -127,6 +127,8 @@ export const DEFAULT_BLUEPRINTS: Record<PetKind, Blueprint> = {
       blush: '#ffa0a8',
       whiskers: '#8d8178',
     },
+    // 네 발 동물: 걸을 때 앞으로 숙여 네 발로 걷는다 (뒷발은 앞발을 본떠 그린다, pet3d.ts)
+    gait: 'quadruped',
   },
   // 삐약이: 동그란 병아리, 날개, 주황 부리와 발, 머리 깃털
   chick: {
@@ -286,6 +288,8 @@ export const DEFAULT_BLUEPRINTS: Record<PetKind, Blueprint> = {
       mouthY: 0.585,
       blush: '#ff9e8f',
     },
+    // 네 발 동물: 걸을 때 앞으로 숙여 네 발로 걷는다 (뒷발은 앞발을 본떠 그린다, pet3d.ts)
+    gait: 'quadruped',
   },
   // 토순이: 긴 귀(안쪽 분홍), 큰 발, 배 앞에 모은 앞발, 솜뭉치 꼬리
   bunny: {
@@ -371,5 +375,7 @@ export const DEFAULT_BLUEPRINTS: Record<PetKind, Blueprint> = {
       blush: '#ffa3b5',
       whiskers: '#c9b9bf',
     },
+    // 네 발 동물: 걸을 때 앞으로 숙여 네 발로 걷는다 (뒷발은 앞발을 본떠 그린다, pet3d.ts)
+    gait: 'quadruped',
   },
 };

@@ -89,3 +89,20 @@ test('새 버전 글은 버전 번호 끝 소리에 맞는 조사를 붙인다',
   assert.match(t('main.update.forced', { version: '1.0.1', min: '1.0.0' }), /1\.0\.1로 업데이트/);
   assert.match(t('main.update.forced', { version: '1.0.3', min: '1.0.0' }), /1\.0\.3으로 업데이트/);
 });
+
+test('맥 화면 기록 안내는 메뉴 위치와, 켜져 있는데도 막힐 때 지우고 다시 허용하는 길을 함께 알려 준다', () => {
+  // 서명 없는 앱은 업데이트하면 설정에 켜짐으로 보여도 거절된다. 껐다 켜기로는 안 풀린다
+  const keys = ['chat.look.permissionMac', 'onboarding.look.howTo'] as const;
+  const path = {
+    ko: '시스템 설정 > 개인정보 보호 및 보안 > 화면 및 시스템 오디오 녹음',
+    en: 'System Settings > Privacy & Security > Screen & System Audio Recording',
+  };
+  for (const lang of ['ko', 'en'] as const)
+    for (const key of keys) {
+      const out = String(render((dicts[lang] as Record<string, unknown>)[key]));
+      assert.ok(out.includes(path[lang]), `${lang} ${key}: 메뉴 위치`);
+      assert.ok(out.includes('−'), `${lang} ${key}: 빼기 버튼`);
+      // 대화상자 detail 과 첫 실행 카드(480px 창, 12px)에 넘치지 않을 만큼
+      assert.ok(out.length <= (lang === 'ko' ? 200 : 320), `${lang} ${key}: ${out.length}자, 너무 길다`);
+    }
+});

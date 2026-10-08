@@ -241,7 +241,8 @@ export function createChat(o: ChatOptions) {
       images.map((i) => i.thumb),
     );
     push();
-    onPetAi({ thinking: true, answered: false });
+    // 그림을 받는 AI 에 그림을 보낼 때만 펫이 돋보기로 훑는다
+    onPetAi({ thinking: true, answered: false, withImage: images.length > 0 && !!spec.images });
     const started = Date.now();
     log(
       'chat',

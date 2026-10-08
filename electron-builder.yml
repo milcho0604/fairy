@@ -22,6 +22,8 @@ files:
   - "!node_modules/@node-llama-cpp/*-{cuda,cuda-ext,vulkan}{,/**}"
 # koffi 는 Node-API 라 Electron 용으로 다시 빌드할 필요가 없다. 다시 빌드하면 윈도우 러너에서 컴파일러를 찾는다.
 npmRebuild: false
+# 맥 앱 고정 서명 (mac 아래 identity 설명 참고). dmg 를 만들기 전에 돈다
+afterSign: ./scripts/mac-sign.mjs
 # 네이티브 파일은 운영체제별 패키지(@koromix/koffi-win32-x64 등)에 들어 있다.
 asarUnpack:
   - node_modules/koffi/**
@@ -36,7 +38,8 @@ mac:
   target:
     - target: dmg
       arch: [arm64, x64]
-  # 개발자 서명 전(D4)이라 임시 서명(-)만 한다. 애플 실리콘은 서명이 깨진 앱을 아예 안 연다.
+  # 개발자 서명 전(D4)이라 electron-builder 는 임시 서명(-)만 하고, afterSign 의 scripts/mac-sign.mjs 가
+  # 늘 같은 자체 인증서로 다시 서명한다. 임시 서명만 두면 업데이트마다 화면 기록 권한이 풀린다 (L23).
   # 처음 열 때 뜨는 확인되지 않은 개발자 경고를 넘기는 법은 설치 안내(P4-03)에.
   identity: "-"
   # 강화 런타임은 공증(D4) 때 켠다. 임시 서명과 같이 켜면 라이브러리 검사에 걸려 안 열린다.

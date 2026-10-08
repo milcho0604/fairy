@@ -101,7 +101,8 @@ export const ko = {
   'chat.look.permission': (v: { name: string }) =>
     `${withParticle(v.name, '이')} 화면을 보려면 화면 기록 권한이 필요해`,
   'chat.look.permissionMac':
-    '시스템 설정 > 개인정보 보호 및 보안 > 화면 및 시스템 오디오 녹음에서 Jjakkung 을 켜 줘. 켠 다음에는 짝꿍을 껐다 켜야 해.',
+    '시스템 설정 > 개인정보 보호 및 보안 > 화면 및 시스템 오디오 녹음에서 Jjakkung 을 켜 줘. 켠 다음에는 짝꿍을 껐다 켜야 해.\n\n' +
+    '이미 켜져 있는데도 이 안내가 또 나오면 목록에서 Jjakkung 을 골라 − 버튼으로 지워 줘. 그다음 짝꿍을 다시 켜고 같이 보기를 누르면 맥이 다시 물어. 그때 허용하면 돼.',
   'chat.look.permissionOther': '화면을 찍지 못했어. 다른 프로그램이 화면 캡처를 막고 있지 않은지 확인해 줘.',
   'chat.look.openSettings': '설정 열기',
 };
@@ -197,7 +198,8 @@ export const en: Translation<typeof ko> = {
     `Drag to pick what to look at with ${v.name}. Click to use the whole screen, Esc to cancel`,
   'chat.look.permission': (v) => `${v.name} needs screen recording permission to see your screen`,
   'chat.look.permissionMac':
-    'Turn on Jjakkung in System Settings > Privacy & Security > Screen & System Audio Recording. After that, quit and reopen Jjakkung.',
+    'Turn on Jjakkung in System Settings > Privacy & Security > Screen & System Audio Recording, then quit and reopen Jjakkung.\n\n' +
+    'Already on and still seeing this? Select Jjakkung in the list, remove it with the − button, reopen Jjakkung and allow it when macOS asks again.',
   'chat.look.permissionOther':
     "Couldn't capture the screen. Check that no other app is blocking screen capture.",
   'chat.look.openSettings': 'Open Settings',

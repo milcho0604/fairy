@@ -124,7 +124,18 @@ function houseSvg(level: number): string {
     level >= 3
       ? '<path d="M2 116h116" stroke="#6bbf59" stroke-width="6" stroke-linecap="round"/><circle cx="104" cy="104" r="7" fill="#6bbf59"/><circle cx="14" cy="106" r="5" fill="#ff8fab"/>'
       : '';
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">${yard}<rect x="22" y="52" width="76" height="58" rx="4" fill="${wall}" stroke="#8a6a4a" stroke-width="2.5"/><path d="M12 56 60 18 108 56Z" fill="${roof}" stroke="#8a6a4a" stroke-width="2.5" stroke-linejoin="round"/><path d="M40 110V80a12 12 0 0 1 24 0v30" fill="#8a6a4a"/>${window}</svg>`;
+  // 집에서 쉬는 중(body.home)에만 보이는 것: 불 켜진 문과 창(1단계는 지붕 밑 동그란 창), 지붕 위로 오르는 Zzz.
+  // 편지(body.mail)는 쉬는 동안 놓치면 안 되는 말이 왔다는 표시 (나오면 말한다)
+  const lamp =
+    level >= 2
+      ? '<rect class="rest" x="72" y="64" width="14" height="12" rx="1" fill="#ffd27a"/>'
+      : '<circle class="rest" cx="60" cy="40" r="6" fill="#ffd27a" stroke="#8a6a4a" stroke-width="2"/>';
+  const glow = '<path class="rest" d="M44 110V81a8 8 0 0 1 16 0v29Z" fill="#ffc861"/>';
+  const zzz =
+    '<g class="rest zzz" fill="#7d8fd0" stroke="#fff" stroke-width="2.4" paint-order="stroke" font-family="sans-serif" font-weight="800"><text x="84" y="36" font-size="12">z</text><text x="93" y="25" font-size="15">z</text><text x="102" y="13" font-size="18">Z</text></g>';
+  const mail =
+    '<g class="letter"><rect x="4" y="10" width="24" height="17" rx="3" fill="#fff" stroke="#e87a90" stroke-width="2.2"/><path d="M5 12l11 8 11-8" fill="none" stroke="#e87a90" stroke-width="2.2" stroke-linejoin="round"/><circle cx="27" cy="10" r="4.5" fill="#ef476f"/></g>';
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">${yard}<g class="hb"><rect x="22" y="52" width="76" height="58" rx="4" fill="${wall}" stroke="#8a6a4a" stroke-width="2.5"/><path d="M12 56 60 18 108 56Z" fill="${roof}" stroke="#8a6a4a" stroke-width="2.5" stroke-linejoin="round"/><path d="M40 110V80a12 12 0 0 1 24 0v30" fill="#8a6a4a"/>${glow}${window}${lamp}</g>${zzz}${mail}</svg>`;
 }
 
 /**
@@ -137,7 +148,19 @@ body.lift{cursor:grabbing}
 body.lift svg{transform:rotate(-5deg) scale(.94)}
 body.land svg{animation:land .45s ease-out}
 @keyframes land{0%{transform:scale(1.1,.86)}35%{transform:scale(.95,1.06)}65%{transform:scale(1.03,.97)}100%{transform:none}}
-@media (prefers-reduced-motion:reduce){svg{transition:none}body.lift svg{transform:none}body.land svg{animation:none}}`;
+.rest,.letter{display:none}
+body.home .rest,body.mail .letter{display:inline}
+.hb,.letter{transform-box:fill-box;transform-origin:50% 100%}
+.zzz text{opacity:0}
+body.z1 .zzz text:nth-child(1),body.z2 .zzz text:nth-child(-n+2),body.z3 .zzz text{opacity:1}
+body.home.b .hb{transform:scale(1.016,.984)}
+body.mail.b .letter{transform:translateY(-3px) rotate(-6deg)}
+@media (prefers-reduced-motion:reduce){svg{transition:none}body.lift svg{transform:none}body.land svg{animation:none}.zzz text{opacity:1}body.b .hb,body.b .letter{transform:none}}`;
+/**
+ * 쉬는 중 움직임은 메인이 0.7초마다 칸을 바꿔 그린다 (z 하나, 둘, 셋, 비움 / 숨쉬기 들썩).
+ * CSS 무한 애니메이션으로 돌리면 투명 창이 쉬지 않고 다시 그려 CPU 가 20% 가까이 늘었다 (2026-10-08 측정)
+ */
+const REST_TICK_MS = 700;
 
 /** 옮긴 집 자리 (사용자 데이터 폴더). 집 아래 가운데 점 */
 const HOUSE_FILE = 'house-position';
@@ -150,6 +173,10 @@ const FRAME_MS = 16;
 export interface HouseOptions {
   /** 사용자가 집을 끌어 옮겼거나 원래 자리로 돌렸다 (펫이 보러 간다) */
   onMoved?: () => void;
+  /** 집을 눌렀다 (끌지 않고). 쉬는 중이면 펫을 부른다 */
+  onClick?: () => void;
+  /** 우클릭 메뉴 맨 위에 붙일 집에서 쉬기 항목 (house-rest.ts) */
+  restItem?: () => Electron.MenuItemConstructorOptions;
   log?: (tag: string, ...rest: unknown[]) => void;
 }
 
@@ -161,7 +188,7 @@ export type House = ReturnType<typeof createHouse>;
  * 모니터가 빠지거나 바뀌면 보이는 모니터 바닥으로 옮겨 두되, 저장한 자리는 그대로 둔다(다시 꽂으면 돌아간다).
  * 단계가 오르면 모습과 크기가 바뀌고 아래 가운데를 지킨다. 0 단계면 없다.
  */
-export function createHouse({ onMoved, log }: HouseOptions = {}) {
+export function createHouse({ onMoved, onClick, restItem, log }: HouseOptions = {}) {
   let win: BrowserWindow | undefined;
   let shownLevel = 0;
   let spot: HouseSpot | undefined = parseHouseSpot(readJson(HOUSE_FILE));
@@ -173,6 +200,13 @@ export function createHouse({ onMoved, log }: HouseOptions = {}) {
     | { timer: NodeJS.Timeout; offset: { x: number; y: number }; from: Rect; started: number }
     | undefined;
   let glideTimer: NodeJS.Timeout | undefined;
+  /** 펫이 집 안에서 쉬는 중 (불빛, Zzz), 쉬는 동안 놓치면 안 되는 말이 왔다 (편지) */
+  let home = false;
+  let mail = false;
+  /** 들기, 착지 같은 잠깐 모양. 쉬는 중 칸을 바꿀 때도 지킨다 */
+  let transient = '';
+  let restTick = 0;
+  let restTimer: NodeJS.Timeout | undefined;
 
   const alive = () => !!win && !win.isDestroyed();
   const areas = () => screen.getAllDisplays().map((d) => d.workArea);
@@ -186,9 +220,21 @@ export function createHouse({ onMoved, log }: HouseOptions = {}) {
     return defaultHouseRect(area, size);
   }
 
+  /** 들기, 착지 같은 잠깐 모양(name)에 쉬는 중, 편지 표시를 늘 같이 붙인다 */
   function setClass(name: string) {
+    transient = name;
+    const step = restTick % 4;
+    const names = [
+      name,
+      home ? 'home' : '',
+      mail ? 'mail' : '',
+      home && step < 3 ? `z${step + 1}` : '',
+      (home || mail) && step % 2 === 1 ? 'b' : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
     if (alive())
-      void win?.webContents.executeJavaScript(`document.body.className=${JSON.stringify(name)}`, true);
+      void win?.webContents.executeJavaScript(`document.body.className=${JSON.stringify(names)}`, true);
   }
 
   function land() {
@@ -279,6 +325,7 @@ export function createHouse({ onMoved, log }: HouseOptions = {}) {
     if (Math.hypot(now.x - from.x, now.y - from.y) < HOUSE_CLICK_PX) {
       win.setBounds(from);
       land();
+      onClick?.();
       return;
     }
     const to = settleHouse(now, areas());
@@ -295,6 +342,7 @@ export function createHouse({ onMoved, log }: HouseOptions = {}) {
   function menu() {
     if (!alive() || !win) return;
     Menu.buildFromTemplate([
+      ...(restItem ? [restItem(), { type: 'separator' as const }] : []),
       { label: t('pet.house.dragHint'), enabled: false },
       { type: 'separator' },
       { label: t('pet.house.reset'), enabled: !!spot, click: () => reset() },
@@ -379,9 +427,31 @@ export function createHouse({ onMoved, log }: HouseOptions = {}) {
     },
     /** 우클릭 "집 원래 자리로" 와 같다 */
     reset,
+    /** 펫이 집 안에서 쉬는 중 표시 (불빛, Zzz). 끄면 편지 표시도 지운다 */
+    setResting(on: boolean) {
+      if (home === on) return;
+      home = on;
+      if (!on) mail = false;
+      clearInterval(restTimer);
+      restTimer = undefined;
+      restTick = 0;
+      if (on)
+        restTimer = setInterval(() => {
+          restTick++;
+          setClass(transient);
+        }, REST_TICK_MS);
+      setClass('');
+    },
+    /** 쉬는 동안 놓치면 안 되는 말이 왔다 (편지) */
+    setMail(on: boolean) {
+      if (mail === on) return;
+      mail = on;
+      setClass('');
+    },
     destroy: () => {
       endDrag();
       stopGlide();
+      clearInterval(restTimer);
       stopDisplayWatch();
       win?.destroy();
     },

@@ -2,8 +2,13 @@
 
 import type { Gaze } from '../../shared/gaze.ts';
 import { t } from '../../shared/i18n/index.ts';
+import { lensSide, type MagnifierPose } from '../../shared/look-motion.ts';
+import type { MoveType } from '../../shared/moves.ts';
 import type { PetMood } from '../../shared/pet-mood.ts';
 import type { PetKind } from '../../shared/settings.ts';
+import { drawMagnifier } from './magnifier.ts';
+import { type MovePose, movePose } from './move-pose.ts';
+import { isQuadKind } from './pet3d-gait.ts';
 
 export const CANVAS_SIZE = 160;
 
@@ -35,13 +40,19 @@ export interface DrawState {
   hungry?: boolean;
   /** 사진 펫 그림 (P1-08). 있으면 기본 몸통, 얼굴, 발 대신 그린다 */
   photo?: CanvasImageSource & { width: number; height: number };
-  /** 기본 상태에서 하는 행동 (P1-06). phase 는 걷기 걸음 진행 0~1 */
+  /**
+   * 기본 상태에서 하는 행동 (P1-06). phase 는 걷기 걸음 진행 0~1.
+   * 걷기의 along 은 걷기 전체 진행 0~1, ms 는 걷기 전체 시간 (네 발 펫의 출발과 멈춤, pet3d-gait.ts).
+   * t 라고 쓰지 않는다: 제자리 몸짓은 't' in act 로 가린다 (movePoseOf)
+   */
   activity?:
-    | { type: 'walk'; dir: -1 | 1; phase: number }
-    | { type: 'sit' }
+    | { type: 'walk'; dir: -1 | 1; phase: number; along?: number; ms?: number }
+    | { type: 'sit'; down?: number }
     | { type: 'look'; dir: -1 | 1 }
     | { type: 'yawn'; t: number }
-    | { type: 'stretch'; t: number };
+    | { type: 'stretch'; t: number }
+    // 제자리 몸짓 (꼬리 흔들기, 몸 털기, 점프 등. move-pose.ts). sit 의 down 은 앉은 정도 0~1 (없으면 다 앉음)
+    | { type: Exclude<MoveType, 'yawn' | 'stretch'>; t: number; dir: -1 | 1 };
   /** 기본 펫 모양 (v1) */
   kind?: PetKind;
   /** 삐짐 칸 수 (v1). 1 이상이면 머리 위에 칸 막대 */
@@ -62,6 +73,8 @@ export interface DrawState {
   calm?: boolean;
   /** 이름 옆 얼굴 그림용 (pet-face.ts). 발은 그리지 않는다: 얼굴 아이콘은 얼굴만 */
   face?: boolean;
+  /** 같이 보기 (shared/look-motion.ts): 그쪽을 보고, pose 가 있으면 돋보기를 든다 */
+  peer?: { dir: Gaze; pose?: MagnifierPose };
 }
 
 export interface Trick {
@@ -97,8 +110,15 @@ export function waveSwing(t: number): number {
   return Math.sin(t * Math.PI * 8) * Math.min(1, t * 6, (1 - t) * 6);
 }
 
+/** 제자리 몸짓의 지금 자세 (move-pose.ts). 걷기, 앉기, 두리번, 하품, 기지개면 undefined */
+export function movePoseOf(act: DrawState['activity'], calm?: boolean): MovePose | undefined {
+  if (!act || !('t' in act) || act.type === 'yawn' || act.type === 'stretch') return undefined;
+  return movePose(act.type, act.t, act.dir, calm);
+}
+
 /** 지금 커서를 볼지: 기본 상태에서 아무것도 안 하거나 앉아 있을 때만 */
 export function gazeOf(s: DrawState, act: DrawState['activity']): Gaze | undefined {
+  if (s.peer) return s.peer.dir;
   if (s.mood !== 'idle' || !s.gaze || (act && act.type !== 'sit')) return undefined;
   return s.gaze;
 }
@@ -113,6 +133,8 @@ export interface Model3D {
     sy: number,
     act: DrawState['activity'],
   ): number | undefined;
+  /** 방금 그린 그림에서 side 쪽 눈 가운데 (같이 보기 돋보기 자리). 모르면 undefined */
+  eye?(side: -1 | 1): { x: number; y: number } | undefined;
 }
 
 /** 하트가 떠올라 사라지는 시간 */
@@ -122,6 +144,8 @@ export const HEARTS_MS = 1500;
 const MIN_SIZE_FOR_TEXT = 120;
 
 const CX = 80;
+/** 몸 꼭대기 위로 귀나 깃털이 나온 높이 (2D) */
+const EAR_TOP: Record<PetKind, number> = { kong: 0, cat: 14, chick: 14, dog: 0, bunny: 44 };
 const GROUND = 154;
 const RX = 58;
 const RY = 50;
@@ -151,9 +175,12 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): void {
   }
   const act = s.mood === 'idle' || s.mood === 'sulky' ? s.activity : undefined;
   if (act?.type === 'walk') lift = Math.abs(Math.sin(act.phase * Math.PI * 2)) * 3;
+  if (s.peer?.pose) lift += s.peer.pose.hop;
+  // 앉기: 처음에 천천히 앉고 끝에 일어난다 (down 0 서 있음 ~ 1 앉음)
+  const sitK = act?.type === 'sit' ? (act.down ?? 1) : 0;
   if (act?.type === 'sit') {
-    sx = 1.06;
-    sy = 0.9;
+    sx = 1 + 0.06 * sitK;
+    sy = 1 - 0.1 * sitK;
   }
   // 하품은 몸을 살짝 늘이고, 기지개는 위로 쭉 (가운데에서 가장 길게)
   if (act?.type === 'yawn') {
@@ -165,17 +192,26 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): void {
     sx = 1 - 0.08 * k;
     sy = 1 + 0.12 * k;
   }
+  // 제자리 몸짓 (꼬리 흔들기, 몸 털기, 점프 등): 뛰기와 찌그러짐은 2D, 사진, 입체 모두 같이
+  const mv = movePoseOf(act, s.calm);
+  if (mv) {
+    lift += mv.lift;
+    sx *= mv.sx;
+    sy *= mv.sy;
+  }
 
   if (s.cushion && (act?.type === 'sit' || s.mood === 'sleeping' || s.mood === 'dozing')) drawCushion(ctx);
 
   if (s.photo) {
     const top = drawPhoto(ctx, s, s.photo, lift, sx, sy, act);
+    drawPeer(ctx, s, top, GROUND - lift, PHOTO_EYE_AT);
     drawExtras(ctx, s, top);
     return;
   }
   if (s.model3d) {
     const top = s.model3d.draw(ctx, s, lift, sx, sy, act);
     if (top !== undefined) {
+      drawPeer(ctx, s, top, GROUND - lift, MODEL_EYE_AT, s.model3d);
       drawExtras(ctx, s, top);
       return;
     }
@@ -183,16 +219,34 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): void {
 
   // 발: 몸통보다 먼저 그려서 몸 아래로 조금 나오게. 걸을 때는 번갈아 든다. 매달리면 늘어진다.
   // 얼굴 그림에서는 빼고 둥근 몸만 (몸통이 닫힌 타원이라 발 자리에 틈이 생기지 않는다)
+  // 폴짝 뛰어도 귀 끝이 캔버스 위로 잘리지 않게 (토순이 귀는 몸 위로 44 나온다)
+  if (mv) lift = Math.min(lift, GROUND - (RY * 2 + EAR_TOP[kind]) * sy - 4);
+  // 기지개로 몸을 늘여도 귀 끝이 잘리지 않게 (토순이)
+  if (act) sy = Math.min(sy, (GROUND - 4 - lift) / (RY * 2 + EAR_TOP[kind]));
+  // 옆으로 누우면(뒹굴기) 귀, 발, 꼬리까지 바닥 위에 오게 띄운다
+  if (mv) lift += 10 * Math.abs(Math.sin(mv.turn * 0.7));
+  // 뒹굴기, 몸 털기는 발까지 같이 몸 가운데 둘레로 돌린다
+  ctx.save();
+  if (mv) {
+    const py = GROUND - lift - RY * sy;
+    ctx.translate(CX + mv.dx, py);
+    // 2D 는 얼굴이 몸에 그려져 다 누우면 얼굴이 옆으로 누워 알아보기 어렵다. 반쯤 누워 발을 버둥거린다.
+    // 토순이는 귀가 길어 더 덜 눕는다 (귀가 캔버스 밖으로 잘리지 않게)
+    ctx.rotate(mv.turn * (kind === 'bunny' ? 0.55 : 0.7) + mv.twist * 0.35);
+    ctx.translate(-CX, -py);
+  }
   if (!s.face) {
-    const spread = act?.type === 'sit' ? 32 : 24;
+    const spread = 24 + 8 * sitK;
     const step = act?.type === 'walk' ? Math.sin(act.phase * Math.PI * 2) * 4 : 0;
     const dangle = s.mood === 'grabbed' ? 6 : 0;
+    // 네 발 동물(냥이, 멍멍이, 토순이)은 걸을 때 뒷발 둘이 가는 반대쪽 뒤에 보인다 (pet3d-gait.ts)
+    if (act?.type === 'walk' && isQuadKind(kind)) drawHindFeet(ctx, act.dir, step, lift);
     ctx.fillStyle = BODY;
     ctx.strokeStyle = LINE;
     ctx.lineWidth = 2;
     for (const [side, up] of [
-      [-1, Math.max(0, step)],
-      [1, Math.max(0, -step)],
+      [-1, Math.max(0, step) + (mv ? mv.legs[0] * 10 : 0)],
+      [1, Math.max(0, -step) + (mv ? mv.legs[1] * 10 : 0)],
     ] as const) {
       ctx.beginPath();
       ctx.ellipse(CX + side * spread, GROUND - 2 - lift - up + dangle, 10, 5, 0, 0, Math.PI * 2);
@@ -205,11 +259,15 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): void {
   ctx.save();
   ctx.translate(CX, GROUND - lift);
   if (trick?.type === 'dance') ctx.rotate(danceTilt(trick.t));
+  // 고개 갸웃: 2D 는 몸이 곧 머리라 몸을 반만큼 기울인다
+  if (mv) ctx.rotate(mv.tilt * 0.5);
   ctx.scale(sx, sy);
   ctx.translate(0, -RY);
 
-  if (kind === 'cat') drawCatEars(ctx);
-  if (kind === 'bunny') drawBunnyEars(ctx);
+  // 꼬리는 평소 몸 뒤에 숨어 있다가 흔들 때 옆으로 나온다 (냥이, 멍멍이)
+  if (mv && mv.tailOut > 0 && (kind === 'cat' || kind === 'dog')) drawTail(ctx, kind, mv.tail, mv.tailOut);
+  if (kind === 'cat') drawCatEars(ctx, mv?.ears);
+  if (kind === 'bunny') drawBunnyEars(ctx, mv?.ears);
 
   // 몸통
   ctx.beginPath();
@@ -219,7 +277,7 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): void {
   ctx.lineWidth = 2;
   ctx.strokeStyle = LINE;
   ctx.stroke();
-  if (kind === 'dog') drawDogEars(ctx);
+  if (kind === 'dog') drawDogEars(ctx, mv?.ears);
   // 손 흔들기 팔은 몸과 귀 다음, 얼굴 전에 (얼굴을 가리지 않게)
   if (trick?.type === 'wave') drawWavingHand(ctx, trick.t);
 
@@ -227,18 +285,20 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): void {
   // 얼굴을 옆으로: 삐지면 고개를 돌리고, 걷거나 두리번거리면 그쪽을 본다.
   const g = gazeOf(s, act);
   const look =
-    s.mood === 'sulky'
+    s.mood === 'sulky' && !s.peer
       ? 12
       : act?.type === 'walk'
         ? act.dir * 6
         : act?.type === 'look'
           ? act.dir * 8
-          : g
-            ? g.x * 8
-            : 0;
-  // 위아래를 보면 얼굴 전체(볼, 눈, 입)가 그쪽으로 조금
+          : mv
+            ? mv.look * 8
+            : g
+              ? g.x * 8
+              : 0;
+  // 위아래를 보면 얼굴 전체(볼, 눈, 입)가 그쪽으로 조금. 고개를 숙이면(킁킁, 꾸벅) 더 아래로
   ctx.save();
-  ctx.translate(0, g ? g.y * 2.5 : 0);
+  ctx.translate(0, (g ? g.y * 2.5 : 0) + (mv ? mv.pitch * 22 : 0));
   ctx.fillStyle = BLUSH;
   for (const x of [-32, 32]) {
     ctx.beginPath();
@@ -250,20 +310,90 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): void {
   if (kind === 'cat') drawWhiskers(ctx, look);
 
   const yawning = act?.type === 'yawn' && act.t > 0.15 && act.t < 0.85;
+  // 몸짓 눈: 질끈(잠든 눈), 웃는 눈(신남), 반쯤(졸음), 동그랗게(조금 크게)
+  const moveEyes: PetMood | undefined =
+    mv?.eyes === 'closed'
+      ? 'sleeping'
+      : mv?.eyes === 'happy'
+        ? 'excited'
+        : mv?.eyes === 'half'
+          ? 'dozing'
+          : undefined;
   drawEyes(
     ctx,
-    yawning ? { ...s, mood: 'sleeping' } : act?.type === 'stretch' || trick ? { ...s, mood: 'excited' } : s,
+    yawning
+      ? { ...s, mood: 'sleeping' }
+      : act?.type === 'stretch' || trick
+        ? { ...s, mood: 'excited' }
+        : moveEyes
+          ? { ...s, mood: moveEyes }
+          : s,
     look,
     g,
+    mv?.eyes === 'wide',
   );
-  if (kind === 'chick') drawBeak(ctx, s.mood, look, yawning);
+  if (kind === 'chick') drawBeak(ctx, s.mood, look, yawning || mv?.mouth === 'open' || mv?.mouth === 'o');
   else if (yawning) drawYawn(ctx, look);
+  else if (mv?.mouth) drawMouth(ctx, mv.mouth === 'o' ? 'sleeping' : 'talking', look);
   else if (s.hungry && s.mood === 'idle') drawHungryMouth(ctx, look);
   else drawMouth(ctx, s.mood, look);
   ctx.restore();
   ctx.restore();
+  ctx.restore();
 
+  // 돋보기는 보는 쪽 눈 앞에 (눈 자리는 위 얼굴 그리기와 같은 계산)
+  if (s.peer?.pose) {
+    const side = lensSide(s.peer.dir);
+    const gy = g ? g.y * 2.5 : 0;
+    drawMagnifier(ctx, {
+      pose: s.peer.pose,
+      x: CX + (side * 20 + look + (g ? g.x * 3 : 0)) * sx,
+      y: GROUND - lift + (-RY + gy - 6 + gy) * sy,
+      paw: { body: BODY, line: LINE },
+    });
+  }
   drawExtras(ctx, s, GROUND - lift - RY * 2 * sy);
+}
+
+/** 입체 펫 눈 자리를 모를 때(눈 없는 설계도) 눈 높이 (머리 꼭대기 0, 바닥 1) */
+const MODEL_EYE_AT = 0.5;
+/** 사진 펫은 눈 자리를 몰라 얼굴이 흔히 있는 위쪽 1/3 남짓에 */
+const PHOTO_EYE_AT = 0.38;
+
+/** 사진과 입체 펫의 돋보기: 보는 쪽 눈 앞으로. 입체는 그린 눈 자리, 모르면 눈 높이(at) 어림 */
+function drawPeer(
+  ctx: CanvasRenderingContext2D,
+  s: DrawState,
+  top: number,
+  bottom: number,
+  at: number,
+  model?: Model3D,
+) {
+  if (!s.peer?.pose) return;
+  const side = lensSide(s.peer.dir);
+  const eye = model?.eye?.(side) ?? { x: CX + side * 18, y: top + (bottom - top) * at };
+  drawMagnifier(ctx, { pose: s.peer.pose, ...eye });
+}
+
+/**
+ * 걷는 네 발 동물의 뒷발. 앞발(몸 아래 둘)보다 먼저, 가는 반대쪽으로 비켜 조금 위(뒤)에 작게 그린다.
+ * 대각선 쌍으로 딛는다: 왼앞발과 오른뒷발이 같이 들린다 (step 은 앞발 그리기와 같은 값)
+ */
+function drawHindFeet(ctx: CanvasRenderingContext2D, dir: -1 | 1, step: number, lift: number) {
+  ctx.save();
+  ctx.fillStyle = BODY;
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 2;
+  for (const [side, up] of [
+    [-1, Math.max(0, -step)],
+    [1, Math.max(0, step)],
+  ] as const) {
+    ctx.beginPath();
+    ctx.ellipse(CX - dir * 36 + side * 10, GROUND - 5 - lift - up, 8.5, 4.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 /**
@@ -381,8 +511,14 @@ function drawCushion(ctx: CanvasRenderingContext2D) {
 }
 
 /** 멍멍이: 옆으로 처진 갈색 귀 (몸 위에 겹쳐 그린다) */
-function drawDogEars(ctx: CanvasRenderingContext2D) {
-  for (const side of [-1, 1]) {
+function drawDogEars(ctx: CanvasRenderingContext2D, flick: readonly [number, number] = [0, 0]) {
+  for (const side of [-1, 1] as const) {
+    // 처진 귀는 윗부분을 축으로 바깥쪽으로 펄럭
+    const a = earAngle(flick, side) * -side;
+    ctx.save();
+    ctx.translate(side * 44, -RY + 14);
+    ctx.rotate(a);
+    ctx.translate(-side * 44, RY - 14);
     ctx.beginPath();
     ctx.ellipse(side * 50, -RY + 34, 13, 24, side * 0.35, 0, Math.PI * 2);
     ctx.fillStyle = '#b9824c';
@@ -390,12 +526,61 @@ function drawDogEars(ctx: CanvasRenderingContext2D) {
     ctx.lineWidth = 2;
     ctx.strokeStyle = LINE;
     ctx.stroke();
+    ctx.restore();
   }
 }
 
+/** 귀 젖히는 각 (몸짓 ears, 바깥쪽이 +) */
+function earAngle(flick: readonly [number, number], side: -1 | 1): number {
+  return (side < 0 ? flick[0] : flick[1]) ?? 0;
+}
+
+/** 귀를 밑동(x, y) 둘레로 바깥쪽으로 돌린다 (왼쪽 귀는 반시계, 오른쪽 귀는 시계 방향) */
+function earTurn(ctx: CanvasRenderingContext2D, x: number, y: number, side: -1 | 1, a: number) {
+  ctx.translate(x, y);
+  ctx.rotate(side * a);
+  ctx.translate(-x, -y);
+}
+
+/**
+ * 2D 꼬리 (냥이는 길고 가는 S 자, 멍멍이는 짧고 통통하게 말린 꼬리). 몸 오른쪽 아래 뒤에서 나와 흔든다.
+ * out 이 0 이면 몸 뒤로 접혀 안 보이고, 1 이면 몸 옆으로 다 나온다. swing 은 흔드는 각 (라디안). 몸통보다 먼저 그린다
+ */
+function drawTail(ctx: CanvasRenderingContext2D, kind: 'cat' | 'dog', swing: number, out: number) {
+  const cat = kind === 'cat';
+  const base = { x: 34, y: 30 };
+  ctx.save();
+  ctx.translate(base.x, base.y);
+  // 접힌 자리(몸 뒤 안쪽 아래)에서 위로 세운 자리까지. 바깥으로는 덜 흔들어 캔버스 밖으로 안 나가게
+  ctx.rotate((1 - out) * -1.4 + (swing > 0 ? swing * 0.4 : swing));
+  const tip = cat ? { x: 22, y: -56 } : { x: 22, y: -30 };
+  const ctrl = cat ? { x: 38, y: -8 } : { x: 34, y: 2 };
+  const width = cat ? 8 : 12;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.quadraticCurveTo(ctrl.x, ctrl.y, tip.x, tip.y);
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = width + 4;
+  ctx.stroke();
+  ctx.strokeStyle = cat ? BODY : '#b9824c';
+  ctx.lineWidth = width;
+  ctx.stroke();
+  if (cat) {
+    // 꼬리 끝은 조금 진하게
+    ctx.beginPath();
+    ctx.arc(tip.x, tip.y, width / 2, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(141, 129, 120, 0.55)';
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 /** 토순이: 위로 긴 귀, 안쪽 분홍 (몸 뒤에 그린다) */
-function drawBunnyEars(ctx: CanvasRenderingContext2D) {
-  for (const side of [-1, 1]) {
+function drawBunnyEars(ctx: CanvasRenderingContext2D, flick: readonly [number, number] = [0, 0]) {
+  for (const side of [-1, 1] as const) {
+    ctx.save();
+    earTurn(ctx, side * 18, -RY + 12, side, earAngle(flick, side) * 0.8);
     ctx.beginPath();
     ctx.ellipse(side * 18, -RY - 14, 10, 30, side * 0.12, 0, Math.PI * 2);
     ctx.fillStyle = BODY;
@@ -407,11 +592,14 @@ function drawBunnyEars(ctx: CanvasRenderingContext2D) {
     ctx.ellipse(side * 18, -RY - 12, 5, 21, side * 0.12, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(255, 150, 170, 0.55)';
     ctx.fill();
+    ctx.restore();
   }
 }
 
-function drawCatEars(ctx: CanvasRenderingContext2D) {
-  for (const side of [-1, 1]) {
+function drawCatEars(ctx: CanvasRenderingContext2D, flick: readonly [number, number] = [0, 0]) {
+  for (const side of [-1, 1] as const) {
+    ctx.save();
+    earTurn(ctx, side * 36, -RY + 18, side, earAngle(flick, side));
     ctx.beginPath();
     ctx.moveTo(side * 22, -RY + 14);
     ctx.lineTo(side * 40, -RY - 14);
@@ -429,6 +617,7 @@ function drawCatEars(ctx: CanvasRenderingContext2D) {
     ctx.closePath();
     ctx.fillStyle = 'rgba(255, 150, 160, 0.55)';
     ctx.fill();
+    ctx.restore();
   }
 }
 
@@ -522,9 +711,18 @@ function drawPhoto(
   const trick = trickOf(s);
   if (trick?.type === 'wave') tilt = waveSwing(trick.t) * 0.1;
   if (trick?.type === 'dance') tilt = danceTilt(trick.t);
+  // 제자리 몸짓: 사진은 관절이 없어 몸 전체를 기울이고 옮긴다 (뒹굴기는 사진 펫이 고르지 않는다)
+  const mv = movePoseOf(act, s.calm);
+  let shift = 0;
+  if (mv) {
+    // 누운 사진은 깨진 그림처럼 보여서 몸 돌리기는 조금만 (뒹굴기는 사진 펫이 고르지 않지만 혹시 와도)
+    const turn = Math.max(-0.3, Math.min(0.3, mv.turn));
+    tilt = turn + mv.twist * 0.3 + mv.tilt * 0.5 + mv.look * 0.08 + mv.pitch * 0.25;
+    shift = mv.dx + mv.look * 4;
+  }
   if (s.mood === 'dozing') tilt = 0.1;
   ctx.save();
-  ctx.translate(CX, GROUND - lift);
+  ctx.translate(CX + shift, GROUND - lift);
   ctx.rotate(tilt);
   // 삐지면 등을 돌린 듯 좌우를 뒤집는다.
   ctx.scale(s.mood === 'sulky' ? -sx : sx, sy);
@@ -538,7 +736,7 @@ function drawPhoto(
   return top;
 }
 
-function drawEyes(ctx: CanvasRenderingContext2D, s: DrawState, look: number, gaze?: Gaze) {
+function drawEyes(ctx: CanvasRenderingContext2D, s: DrawState, look: number, gaze?: Gaze, wide = false) {
   ctx.fillStyle = INK;
   ctx.strokeStyle = INK;
   ctx.lineWidth = 2.5;
@@ -570,7 +768,7 @@ function drawEyes(ctx: CanvasRenderingContext2D, s: DrawState, look: number, gaz
     } else {
       // 깜빡일 때 위아래로 접힌다. 바쁠 때는 작게 뜬다.
       const open = s.blink >= 0 ? Math.abs(1 - 2 * s.blink) : 1;
-      const r = s.mood === 'busy' ? 3.5 : 4.5;
+      const r = s.mood === 'busy' ? 3.5 : wide ? 5.3 : 4.5;
       ctx.ellipse(x, y, r, Math.max(0.6, r * 1.15 * open), 0, 0, Math.PI * 2);
       ctx.fill();
     }
@@ -628,6 +826,7 @@ function drawExtras(ctx: CanvasRenderingContext2D, s: DrawState, top: number) {
   if (s.flower) drawFlower(ctx, CX + (s.photo ? 14 : 24), top + 8);
   if ((s.sulk ?? 0) > 0 && s.mood === 'sulky') drawSulkGauge(ctx, s.sulk ?? 0, top);
   if ((s.hearts ?? -1) >= 0 && (s.hearts ?? 0) < HEARTS_MS) drawHearts(ctx, s.hearts ?? 0, top);
+  drawMoveMark(ctx, s, top);
   ctx.fillStyle = INK;
   if (s.mood === 'thinking') {
     const step = Math.floor(s.elapsed / 400) % 4; // 점이 하나씩 늘어난다
@@ -715,4 +914,87 @@ function drawTag(ctx: CanvasRenderingContext2D, text: string, y: number) {
   ctx.textBaseline = 'middle';
   ctx.fillText(text, x + 7, y + 0.5);
   ctx.textBaseline = 'alphabetic';
+}
+
+/**
+ * 몸짓 표시: 갸웃 물음표, 깰 때 느낌표, 꾸벅 작은 z, 킁킁 콧김, 몸 털기 물방울과 흔들림 선, 발 구르기와 착지 먼지,
+ * 꼬리 흔들기 흔들림 선. top 은 머리 꼭대기 y
+ */
+function drawMoveMark(ctx: CanvasRenderingContext2D, s: DrawState, top: number) {
+  const act = s.mood === 'idle' || s.mood === 'sulky' ? s.activity : undefined;
+  const mv = movePoseOf(act, s.calm);
+  if (!mv?.mark || mv.mark.k < 0.03) return;
+  const { kind, k } = mv.mark;
+  const side = act && 'dir' in act ? act.dir : 1;
+  const font = (px: number) =>
+    `bold ${px}px -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif`;
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, k);
+  ctx.fillStyle = INK;
+  ctx.strokeStyle = LINE;
+  ctx.lineCap = 'round';
+  const y = Math.max(16, top + 14);
+  if (kind === '?' || kind === '!') {
+    // 머리 옆에서 톡 튀어나온다
+    ctx.font = font(kind === '?' ? 20 : 22);
+    ctx.textAlign = 'center';
+    ctx.fillText(kind, CX + side * 50, y - (1 - k) * 6);
+  } else if (kind === 'z') {
+    ctx.font = font(13);
+    ctx.fillText('z', CX + 42, y - k * 5);
+  } else if (kind === 'sniff') {
+    // 코끝 아래 바닥에서 킁킁 콧김이 짧게 퍼진다
+    ctx.lineWidth = 1.5;
+    const x = CX + mv.look * 10;
+    const y = GROUND - 8;
+    for (const a of [-2.3, -1.57, -0.84]) {
+      const r0 = 3 + k * 2;
+      const r1 = r0 + 3 + k * 3;
+      ctx.beginPath();
+      ctx.moveTo(x + Math.cos(a) * r0, y + Math.sin(a) * r0 + 6);
+      ctx.lineTo(x + Math.cos(a) * r1, y + Math.sin(a) * r1 + 6);
+      ctx.stroke();
+    }
+  } else if (kind === 'shake') {
+    // 양옆 흔들림 선과 튀는 물방울
+    ctx.lineWidth = 1.6;
+    for (const sd of [-1, 1]) {
+      for (const r of [9, 14]) {
+        ctx.beginPath();
+        ctx.arc(CX + sd * 58, GROUND - 52, r, sd > 0 ? -0.6 : Math.PI - 0.6, sd > 0 ? 0.6 : Math.PI + 0.6);
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#7cc4ff';
+      for (const [dx, dy] of [
+        [62, -78],
+        [58, -30],
+      ] as const) {
+        ctx.beginPath();
+        ctx.arc(CX + sd * (dx + (1 - k) * 6), GROUND + dy - (1 - k) * 4, 2.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  } else if (kind === 'dust') {
+    ctx.fillStyle = 'rgba(160, 150, 140, 0.55)';
+    for (const sd of [-1, 1]) {
+      for (const [dx, r] of [
+        [36, 3.2],
+        [44, 2.2],
+      ] as const) {
+        ctx.beginPath();
+        ctx.arc(CX + sd * (dx + (1 - k) * 4), GROUND - 3 - (1 - k) * 2, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  } else if (kind === 'wag') {
+    // 꼬리 쪽(오른쪽 아래) 흔들림 선
+    ctx.globalAlpha = Math.min(1, k) * 0.6;
+    ctx.lineWidth = 1.4;
+    for (const r of [7, 12]) {
+      ctx.beginPath();
+      ctx.arc(CX + 60, GROUND - 46, r, -1.0, -0.2);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
 }

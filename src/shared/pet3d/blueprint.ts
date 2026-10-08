@@ -97,12 +97,21 @@ export interface Face {
   eyes?: EyeLook;
 }
 
+/**
+ * 걸음새. quadruped 는 네 발 동물(고양이, 개, 토끼 등): 걸을 때 몸을 앞으로 숙이고 네 다리를 대각선 쌍으로 딛는다.
+ * biped 는 두 발(사람, 새, 인형 캐릭터). 없으면 다리 모양으로 짐작한다 (renderer pet3d-gait.ts gaitOf)
+ */
+export const GAITS = ['biped', 'quadruped'] as const;
+export type Gait = (typeof GAITS)[number];
+
 export interface Blueprint {
   v: 1;
   parts: Part[];
   face: Face;
   /** 몸짓 세기. 없으면 기본 동작 그대로 */
   motion?: Motion;
+  /** 걸음새. 없으면 다리 모양으로 짐작 */
+  gait?: Gait;
 }
 
 export const MAX_PARTS = 40;
@@ -169,6 +178,8 @@ export function parseBlueprint(raw: unknown): Blueprint | undefined {
   const bp: Blueprint = { v: 1, parts, face };
   const motion = motionOf(r.motion);
   if (motion) bp.motion = motion;
+  const gait = oneOf(GAITS, r.gait);
+  if (gait) bp.gait = gait;
   return bp;
 }
 

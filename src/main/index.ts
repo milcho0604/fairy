@@ -8,6 +8,7 @@ import { timeLabel } from '../shared/event-store.ts';
 import { HIDE_SEEK, pickHideSpot } from '../shared/hide-seek.ts';
 import { locale, t } from '../shared/i18n/index.ts';
 import { IPC, type PetStatus, type PlayKind } from '../shared/ipc.ts';
+import { isMiniGame, PLAY_COIN } from '../shared/minigames.ts';
 import { unlocked, WAVE_AWAY_SEC } from '../shared/pet-life.ts';
 import { FULLNESS, localDay } from '../shared/todo-store.ts';
 import { watchCatalog } from './ai/catalog.ts';
@@ -23,10 +24,12 @@ import { announceStoreTrouble, openStore } from './db.ts';
 import { createDiary } from './diary.ts';
 import { confineTestDisplay } from './focus.ts';
 import { createFriends } from './friends.ts';
+import { createHouseRest } from './house-rest.ts';
 import { initLang } from './lang.ts';
 import { createLogFile } from './log-file.ts';
 import { createLookTogether } from './look-together.ts';
 import { createMaker, foodImageDataUrl, petImages, registerModelScheme, removeFoodImage } from './maker.ts';
+import { createMiniGames } from './minigames.ts';
 import { createOnboarding } from './onboarding.ts';
 import { openLink } from './open-link.ts';
 import { createPanel } from './panel.ts';
@@ -160,6 +163,11 @@ app.whenReady().then(() => {
           seeking.done(true);
           return;
         }
+        // 짧은 놀이 중이면 그만 (비눗방울, 레이저 쫓기 등)
+        if (games.running()) {
+          games.stop();
+          return;
+        }
         petLife.activity('click');
         panel.togglePanel();
       },
@@ -173,23 +181,41 @@ app.whenReady().then(() => {
       play: (kind) => void play(kind),
       toy: () => (shop.owns('yarn') ? t('pet.toy.yarn') : shop.owns('ball') ? t('pet.toy.ball') : undefined),
       openShop: () => panel.openTab('shop'),
+      playing: () => playing,
+      stopPlay: () => stopPlay(),
+      playmate: () => games.mateName(),
       focusRunning: () => planner.focus.phase !== 'idle',
       toggleFocus: () => (planner.focus.phase === 'idle' ? planner.startFocus() : planner.stopFocus()),
     },
     log,
     onMissed: () => panel.refresh(),
+    onRestHeld: (kind, important) => rest.held(kind, important),
   });
   const look = createLookTogether({
     petName,
-    hideOwnWindows: () => {
+    hideChat: () => {
       const chatWin = chat.window;
       const chatWasVisible = !!chatWin && !chatWin.isDestroyed() && chatWin.isVisible();
-      pet.win.hide();
       if (chatWasVisible) chatWin?.hide();
       return () => {
-        if (!pet.win.isDestroyed()) pet.win.showInactive();
         if (chatWasVisible && chatWin && !chatWin.isDestroyed()) chatWin.show();
       };
+    },
+    // 펫은 숨기지 않고 돋보기를 들고 같이 본다. 친구 펫은 같은 쪽만 본다. 찍는 순간에만 다 같이 가린다
+    // (예전에는 같이 보기 내내 펫을 숨겼고, 사용자가 숨겨 둔 펫도 끝나면 다시 보였다)
+    pets: {
+      aim: () => {
+        for (const p of [pet, ...friends.pets()]) p.look('aim');
+      },
+      veil: async (on) => {
+        await Promise.all([pet, ...friends.pets()].map((p) => p.veil(on)));
+      },
+      found: (target) => {
+        for (const p of [pet, ...friends.pets()]) p.look({ found: target });
+      },
+      end: () => {
+        for (const p of [pet, ...friends.pets()]) p.look(null);
+      },
     },
     onImage: (image) => {
       stats.countLook(Date.now());
@@ -207,15 +233,22 @@ app.whenReady().then(() => {
     log,
   });
   const toggleHidden = () => {
+    // 집에서 쉬는 중이면 보이기(숨기기 단축키, 메뉴 막대)는 집에서 부르는 것
+    if (rest.inside() && !pet.isHidden('user')) {
+      void rest.call();
+      return;
+    }
     const on = !pet.isHidden('user');
     pet.setHidden('user', on);
     friends.setHidden('user', on);
+    if (!on) void rest.call(false);
   };
   // 숨기기 단축키는 숨은 펫을 다시 부르는 길이라 늘 걸어 둔다. 다른 앱과 겹치지 않게 네 키 조합.
   const tray = createTray(petName, {
     toggleHidden,
-    isHidden: () => pet.isHidden('user'),
+    isHidden: () => pet.isHidden('user') || rest.inside(),
     openChat: () => chat.open(pet.bounds()),
+    lookTogether: () => look.start(),
     openSettings: () => settingsWindow.open(),
     sendFeedback: () => settingsWindow.open('stats'),
     quickAdd: () => panel.openQuick(),
@@ -263,12 +296,35 @@ app.whenReady().then(() => {
     onMoved: () => {
       if (!playing) void visitHouse(pet, house);
     },
+    // 집에서 쉬기: 집 우클릭 맨 위 항목, 쉬는 중에 집을 누르면 나온다
+    onClick: () => {
+      if (rest.inside()) void rest.call();
+    },
+    restItem: () => rest.menuItem(),
     log,
   });
   let playing = false;
+  const rest = createHouseRest({ pet, house, petName, playing: () => playing, log });
   /** 공놀이(공이나 털실이 있어야), 산책. 노는 중이면 무시 */
   async function play(kind: PlayKind, walkMin = 5): Promise<boolean> {
-    if (playing || pet.isHidden()) return false;
+    if (playing) return false;
+    // 집중 중에는 펫이 잔다. 놀지 않고 까닭만 말한다
+    if (planner.focus.phase === 'focus') {
+      if (!pet.isHidden()) void pet.say({ kind: 'answer', text: t('play.block.focus'), ttlMs: 4000 });
+      return false;
+    }
+    // 집에서 쉬는 중이면 나와서 논다
+    if (rest.phase() !== 'out') await rest.call(false);
+    if (pet.isHidden()) return false;
+    if (isMiniGame(kind)) {
+      playing = true;
+      try {
+        return await games.start(kind);
+      } finally {
+        playing = false;
+        panel.refresh();
+      }
+    }
     const toy = shop.owns('yarn') ? 'yarn' : shop.owns('ball') ? 'ball' : undefined;
     if (kind === 'seek') {
       // 숨바꼭질도 노는 중으로 친다 (두 번 시작하면 두 번째 판이 끝나지 않았다)
@@ -307,6 +363,28 @@ app.whenReady().then(() => {
       playing = false;
     }
   }
+  /** 그만 놀기 (펫 우클릭 놀기 메뉴): 짧은 놀이, 숨바꼭질, 공놀이, 산책 모두 */
+  function stopPlay() {
+    games.stop();
+    seeking?.done(false);
+    pet.halt();
+  }
+  // ---- 짧은 놀이: 비눗방울, 레이저 쫓기, 간식 받아먹기, 가위바위보, 친구와 술래잡기 ----
+  const games = createMiniGames({
+    pet: () => pet,
+    mates: () => friends.mates(),
+    focus: () => planner.focus.phase === 'focus',
+    hungry: () => store.fullness(Date.now()) < FULLNESS.hungry,
+    coinsToday: () => store.coinCount(PLAY_COIN.reason, localDay(Date.now())),
+    giveCoins: (coins) => {
+      const now = Date.now();
+      // 한 행에 1코인 (하루 상한을 행 수로 센다)
+      for (let i = 0; i < coins; i++) store.reward(1, PLAY_COIN.reason, now);
+      panel.refresh();
+    },
+    played: () => petLife.activity('play'),
+    log,
+  });
   // ---- 숨바꼭질 (v2 미니 게임) ----
   let seeking:
     | { home: { x: number; y: number }; timer: NodeJS.Timeout; done: (found: boolean) => void }
@@ -432,6 +510,7 @@ app.whenReady().then(() => {
     shop,
     foodImage: (file) => foodImageDataUrl(file),
     onFedWith: (food) => {
+      void rest.call(false);
       pet.react('fed');
       petLife.activity('feed');
       const image = food.image ? foodImageDataUrl(food.image) : undefined;
@@ -442,6 +521,7 @@ app.whenReady().then(() => {
     removeFoodImage,
     onHouseChanged: () => {
       house.show(shop.state().houseLevel, pet.bounds());
+      if (!house.bounds()) rest.houseGone();
       void pet.say({ kind: 'answer', text: t('pet.newHouse'), ttlMs: 4000 });
     },
     play: (kind) => void play(kind),
@@ -473,6 +553,7 @@ app.whenReady().then(() => {
       petLife.activity('todo');
     },
     onFed: () => {
+      void rest.call(false);
       pet.react('fed');
       petLife.activity('feed');
       void pet.say({ kind: 'answer', text: t('pet.fed'), ttlMs: 3000 });
@@ -489,6 +570,8 @@ app.whenReady().then(() => {
   function feedPet() {
     const r = store.feed(Date.now());
     if (r.ok) {
+      // 집에서 쉬는 중이면 밥 냄새 맡고 나온다 (먹는 말은 나온 뒤에)
+      void rest.call(false);
       pet.react('fed');
       petLife.activity('feed');
       void pet.say({ kind: 'answer', text: t('pet.fed'), ttlMs: 3000 });
@@ -690,9 +773,10 @@ app.whenReady().then(() => {
   app.on('second-instance', () => {
     pet.setHidden('user', false);
     friends.setHidden('user', false);
+    void rest.call();
   });
   pet.win.webContents.once('did-finish-load', () => friends.sync());
-  // 집은 펫과 같이 숨고 나온다 (발표, 숨기기). 2초마다 맞춘다.
+  // 집은 펫과 같이 숨고 나온다 (발표, 숨기기). 2초마다 맞춘다. 펫이 집 안에서 쉬는 동안은 집이 보인다
   pet.win.webContents.once('did-finish-load', () => house.show(shop.state().houseLevel, pet.bounds()));
   // 자리를 4분쯤 비우면 펫이 집 앞으로 가서 존다 (5분부터 졸고 10분부터 잔다). 자리 비울 때마다 한 번.
   let wentHome = false;
@@ -706,7 +790,7 @@ app.whenReady().then(() => {
   }, 20_000).unref();
   let houseHidden = false;
   setInterval(() => {
-    const hidden = pet.isHidden();
+    const hidden = pet.isHidden('user') || pet.isHidden('presentation');
     if (hidden === houseHidden) return;
     houseHidden = hidden;
     if (hidden) house.hide();
@@ -758,6 +842,8 @@ app.whenReady().then(() => {
         petLife,
         shop,
         house,
+        rest,
+        toggleHidden,
         play,
         updates,
         onboarding,
@@ -765,6 +851,7 @@ app.whenReady().then(() => {
         backup,
         achievements,
         seek,
+        games,
         maker,
         friends,
         diary,

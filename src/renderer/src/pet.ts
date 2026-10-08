@@ -4,6 +4,14 @@ import { GestureTracker, RubTracker } from '../../shared/gesture.ts';
 import { t } from '../../shared/i18n/index.ts';
 import type { PetImages } from '../../shared/ipc.ts';
 import {
+  canMagnify,
+  FOUND_MS,
+  type LookMotion,
+  magnifierFps,
+  magnifierPose,
+} from '../../shared/look-motion.ts';
+import { bodyOfParts, isMove, type MoveAsk } from '../../shared/moves.ts';
+import {
   canBlink,
   EXCITED_MS,
   INITIAL_INPUTS,
@@ -21,6 +29,7 @@ import { canPlay, type SoundKind } from '../../shared/sound.ts';
 import { AnimatedImage, loadPetImage } from './animated.ts';
 import { CANVAS_SIZE, drawPet, HEARTS_MS } from './draw.ts';
 import { initLang } from './lang.ts';
+import { moveFps, SIT_MS, sitDown } from './move-pose.ts';
 import { renderFace } from './pet-face.ts';
 import type { Pet3D } from './pet3d.ts';
 import { playSound } from './sound.ts';
@@ -104,6 +113,7 @@ function frame() {
   // 입체 그리기 모듈을 불러오는 중이면 기다린다 (불러오면 다시 그린다). 2D 를 먼저 그리면 깜빡인다
   if (m3d === 'loading') return;
   const img = m3d ? undefined : pickImage(mood, inputs.hungry);
+  const looking = peerAt(now);
   drawPet(ctx, {
     mood,
     elapsed: now - moodSince,
@@ -121,11 +131,16 @@ function frame() {
     trick: trick ? { type: trick.type, t: trickT } : undefined,
     flower,
     calm: reducedMotion.matches,
+    peer: looking?.peer,
   });
   syncFace(m3d);
 
   const walking = activity?.type === 'walk';
-  const moving = activity?.type === 'yawn' || activity?.type === 'stretch';
+  // 제자리 몸짓(하품, 기지개, 꼬리 흔들기 등)은 하는 동안 20~30fps (moveFps), 앉기는 앉고 일어나는 동안만 20fps
+  const sitting = activity?.type === 'sit' ? now - activity.start : -1;
+  const moving =
+    (!!activity && isMove(activity.type)) ||
+    (sitting >= 0 && activity !== undefined && (sitting < SIT_MS || sitting > activity.ms - SIT_MS));
   // 움직이는 그림은 잠, 바쁨일 때 멈춘다 (L10: 계속 그리면 CPU 를 먹는다). 12fps 까지만.
   const animatedPhoto = img instanceof AnimatedImage && canBlink(mood) ? Math.min(12, img.fps) : 0;
   // 부스트 모드면 움직임(신남, 몸짓, 하트, 걷기, 하품)을 두 배로 촘촘히 그린다. 깜빡임과 움직이는 그림은 그대로
@@ -141,12 +156,63 @@ function frame() {
           : walking
             ? WALK_FPS * k
             : moving
-              ? 20 * k
+              ? (activity && isMove(activity.type) ? moveFps(activity.type) : 20) * k
               : animatedPhoto;
   // 이 틀 안에서 requestFrame 이 불렸으면(행동 멈춤 등) 그 타이머를 지운다. 안 지우면 루프가 두 겹이 돈다
   // (2026-10-07 점검: 신남이 30fps 가 아니라 57fps)
   clearTimeout(frameTimer);
-  frameTimer = fps > 0 ? setTimeout(frame, 1000 / fps) : undefined;
+  // 돋보기를 든 동안은 그 빠르기로 (부스트면 두 배)
+  const all = Math.max(fps, (looking?.fps ?? 0) * k);
+  frameTimer = all > 0 ? setTimeout(frame, 1000 / all) : undefined;
+}
+
+// ---- 같이 보기 돋보기 (shared/look-motion.ts) ----
+// 메인이 단계(고르는 중, 찾았다)를 알려 준다. 그림이 붙은 질문에 AI 가 답하는 동안은 스스로 돋보기로 훑는다.
+// 잠, 바쁨, 잡힘에서는 들지 않는다 (canMagnify). 끝나면 모션이 남지 않게 지운다.
+let look: (LookMotion & { start: number }) | undefined;
+let lookEnd: ReturnType<typeof setTimeout> | undefined;
+/** 생각 중인 질문에 그림이 붙었는지 */
+let aiWithImage = false;
+
+bridge.onLook((m) => {
+  const now = performance.now();
+  clearTimeout(lookEnd);
+  if (!m) {
+    look = undefined;
+    requestFrame();
+    return;
+  }
+  const fresh = !look || look.phase !== m.phase;
+  look = { ...m, start: fresh ? now : (look?.start ?? now) };
+  if (fresh && m.phase === 'aim') {
+    // 하던 행동과 몸짓을 멈추고, 끌던 중이면 놓는다 (메인이 끌기를 이미 끝냈다. 메인에 다시 알리지 않는다)
+    if (activity) stopActivity(true);
+    trick = undefined;
+    gesture.cancel();
+    // 사용자가 방금 불렀으니 졸던 펫은 깬다. 집중 중이면 그대로 잔다
+    setInputs({ grabbed: false, ...(inputs.focusTimer ? {} : { userIdleMs: 0 }) });
+  }
+  // 메인의 끝 알림이 늦거나 오지 않아도 찾았다는 시간이 지나면 지운다
+  if (m.phase === 'found')
+    lookEnd = setTimeout(() => {
+      if (look?.phase === 'found') look = undefined;
+      requestFrame();
+    }, FOUND_MS + 50);
+  requestFrame();
+});
+
+/** 지금 그릴 같이 보기 자세와 그리는 빠르기. 없으면 undefined */
+function peerAt(now: number) {
+  const calm = reducedMotion.matches;
+  const study = mood === 'thinking' && aiWithImage;
+  if (!canMagnify(mood) || (!look && !study)) return undefined;
+  const kind = look ? look.phase : 'study';
+  const ms = look ? now - look.start : now - moodSince;
+  const dir = look ? look.dir : { x: 0, y: 0.5 };
+  const tool = look ? look.tool : true;
+  if (kind === 'found' && ms >= FOUND_MS) return undefined;
+  const pose = tool ? magnifierPose(kind, ms, dir, calm) : undefined;
+  return { peer: { dir, pose }, fps: tool ? magnifierFps(kind, ms, calm) : 0 };
 }
 
 // ---- 기본 행동 (P1-06) ----
@@ -162,7 +228,8 @@ let activityEnd: ReturnType<typeof setTimeout> | undefined;
 function scheduleActivity() {
   clearTimeout(activityTimer);
   activityTimer = setTimeout(() => {
-    if (mood === 'idle' && !activity && !bubbleId && !overPet && !gesture.dragging) bridge.activityRequest();
+    if (mood === 'idle' && !activity && !look && !bubbleId && !overPet && !gesture.dragging)
+      bridge.activityRequest(moveAsk());
     scheduleActivity();
   }, nextDelay(Math.random));
 }
@@ -171,6 +238,7 @@ function stopActivity(tellMain: boolean) {
   const wasWalking = activity?.type === 'walk';
   activity = undefined;
   clearTimeout(activityEnd);
+  clearTimeout(activityWake);
   if (tellMain && wasWalking) bridge.activityStop();
   requestFrame();
 }
@@ -182,12 +250,41 @@ function activityPose(now: number) {
       type: 'walk' as const,
       dir: (activity.dx < 0 ? -1 : 1) as -1 | 1,
       phase: ((now - activity.start) / STEP_MS) % 1,
+      along: (now - activity.start) / activity.ms,
+      ms: activity.ms,
     };
   }
   if (activity.type === 'look') return { type: 'look' as const, dir: activity.dir };
+  if (activity.type === 'sit')
+    return { type: 'sit' as const, down: sitDown(now - activity.start, activity.ms) };
   if (activity.type === 'yawn' || activity.type === 'stretch')
     return { type: activity.type, t: (now - activity.start) / activity.ms };
-  return { type: 'sit' as const };
+  return { type: activity.type, t: (now - activity.start) / activity.ms, dir: activity.dir ?? 1 };
+}
+
+/** 앉아 있다가 일어나기 시작할 때 다시 그리기를 깨우는 타이머 (앉아 있는 동안은 그리지 않는다) */
+let activityWake: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * 메인이 제자리 몸짓을 고를 때 쓸 펫 몸과 상태 (shared/moves.ts). 꼬리와 귀는 그려지는 몸에 있을 때만:
+ * 입체는 설계도에 그 부위가 있을 때, 2D 는 냥이와 멍멍이 꼬리, 냥이, 토순이, 멍멍이 귀. 사진 펫은 몸 전체만
+ */
+function moveAsk(): MoveAsk {
+  const calm = reducedMotion.matches;
+  const hungry = inputs.hungry;
+  const still = photo instanceof HTMLImageElement;
+  const bp = (still ? photoModel : undefined) ?? (photo ? undefined : DEFAULT_BLUEPRINTS[petKind]);
+  if (use3d && !broken3d && bp) {
+    return { ...bodyOfParts(bp.parts), photo: false, calm, hungry };
+  }
+  if (photo) return { tail: false, ears: false, photo: true, calm, hungry };
+  return {
+    tail: petKind === 'cat' || petKind === 'dog',
+    ears: petKind === 'cat' || petKind === 'bunny' || petKind === 'dog',
+    photo: false,
+    calm,
+    hungry,
+  };
 }
 
 // 사진 펫 그림 (P1-08). 없으면 기본 펫. gif, webp 는 움직이는 그림 (v1). 상태별 포즈 그림 (v1).
@@ -366,8 +463,15 @@ bridge.onReact((kind) => {
 function sound(kind: SoundKind) {
   if (canPlay({ enabled: sounds, focus: inputs.focusTimer, mood })) playSound(kind);
 }
+// 놀이 효과음 (방울 터짐, 간식): 메인이 알려 주면 같은 규칙으로 낸다
+bridge.onSound((kind) => sound(kind));
 
 bridge.onActivity((a) => {
+  // 같이 보기 중에는 그쪽만 본다
+  if (look) {
+    if (a.type === 'walk') bridge.activityStop();
+    return;
+  }
   // 삐져 있어도 걷고 논다 (모습만 삐진 얼굴)
   if (mood !== 'idle' && mood !== 'sulky') {
     if (a.type === 'walk') bridge.activityStop();
@@ -375,7 +479,10 @@ bridge.onActivity((a) => {
   }
   activity = { ...a, start: performance.now() };
   clearTimeout(activityEnd);
+  clearTimeout(activityWake);
   activityEnd = setTimeout(() => stopActivity(false), a.ms);
+  // 앉기는 앉은 뒤 그리기를 멈췄다가 일어날 때 다시 깨운다
+  if (a.type === 'sit' && a.ms > SIT_MS * 2) activityWake = setTimeout(requestFrame, a.ms - SIT_MS);
   requestFrame();
 });
 
@@ -646,15 +753,17 @@ bridge.onEnv((env) => {
   else setInputs({ systemBusy: env.systemBusy, userIdleMs: env.userIdleMs });
 });
 // AI 답을 기다리는 동안 생각 중, 답이 오면 잠깐 말하기 동작.
-bridge.onAi((ai) =>
-  setInputs({ thinking: ai.thinking, ...(ai.answered ? { talkingUntil: performance.now() + TALK_MS } : {}) }),
-);
+bridge.onAi((ai) => {
+  aiWithImage = ai.thinking && ai.withImage === true;
+  setInputs({ thinking: ai.thinking, ...(ai.answered ? { talkingUntil: performance.now() + TALK_MS } : {}) });
+});
 
 // 개발용: DevTools 에서 상태를 바꿔 보는 손잡이. 빌드에도 남지만 외부에서 부를 길은 없다.
 Object.assign(window, {
   __pet: {
     setInputs,
-    requestActivity: () => bridge.activityRequest(),
+    requestActivity: () => bridge.activityRequest(moveAsk()),
+    moveAsk,
     /** 행동을 바로 넣는다. at 은 진행 정도 0~1 (하품, 기지개 가운데를 찍을 때). 없으면 그만 */
     debugActivity: (a?: Activity, at = 0) => {
       activity = a ? { ...a, start: performance.now() - a.ms * at } : undefined;
@@ -664,6 +773,19 @@ Object.assign(window, {
     debugTrick: (type: 'wave' | 'dance', at = 0.3) => {
       trick = { type, start: performance.now() - TRICK_MS[type] * at };
       requestFrame();
+    },
+    /** 같이 보기 자세를 바로 넣는다. at 은 단계에 들어온 뒤 흐른 시간(ms). null 이면 그만 (메인을 거치지 않는 그림 점검용) */
+    debugLook: (m: LookMotion | null, at = 0) => {
+      clearTimeout(lookEnd);
+      look = m ? { ...m, start: performance.now() - at } : undefined;
+      requestFrame();
+    },
+    get look() {
+      return look;
+    },
+    /** 다음 그리기가 걸려 있는지 (끝난 뒤 타이머가 남지 않았는지 볼 때) */
+    get framePending() {
+      return frameTimer !== undefined;
     },
     get mood() {
       return mood;

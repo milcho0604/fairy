@@ -11,6 +11,7 @@ import { Pet3D } from '../pet3d.ts';
 import { openDepth, predictDepth } from './depth.ts';
 import { backend, openModel, predictMask } from './removeBg.ts';
 import { ShownError, shownErrorText } from './shown-error.ts';
+import { FIGURE_LIMITS, RELIEF_LIMITS, Spinner } from './spin.ts';
 
 const bridge = window.jjakkungMaker;
 /** 다듬는 동안의 사진 크기 (긴 변). 모델 입력(1024)과 같게. */
@@ -332,9 +333,9 @@ export function MakerApp() {
           <section className="name">
             <div className="stage">
               {look === 'figure' && model ? (
-                <Spin3D model={model} />
+                <Spin3D model={model} interactive={step === 'name'} />
               ) : look === 'relief' && depth ? (
-                <Spin3D photo={preview} depth={depth} />
+                <Spin3D photo={preview} depth={depth} interactive={step === 'name'} />
               ) : (
                 <img className={shaping ? 'shaping' : 'bounce'} src={preview} alt={t('maker.name.alt')} />
               )}
@@ -363,6 +364,11 @@ export function MakerApp() {
                     </button>
                   ))}
                 </fieldset>
+                {look === 'photo' && (
+                  <p className="hint">
+                    {info?.visionAi ? t('maker.3d.photoNote') : t('maker.3d.photoNoteRelief')}
+                  </p>
+                )}
                 {look === 'relief' && (
                   <>
                     <p className="hint">
@@ -525,9 +531,38 @@ export function MakerApp() {
 
 let previewPet: Pet3D | undefined;
 
-/** 입체 펫을 빙글 돌려 보여 준다. AI 설계도(model) 또는 사진과 깊이 그림(2.5D) */
-function Spin3D({ model, photo, depth }: { model?: Blueprint; photo?: string; depth?: string }) {
+/** 미리보기 판(220px)에 펫 캔버스(160)를 이만큼 줄여 그린다. 옆으로 돌면 긴 몸이 판 밖으로 잘려서 */
+const SPIN_ZOOM = 0.88;
+/** 움직일 때와 멈춰 있을 때(눈 깜빡임만)의 그리기 간격 */
+const MOVING_MS = 1000 / 30;
+const STILL_MS = 1000 / 12;
+
+/**
+ * 입체 펫을 돌려 보여 준다. AI 설계도(model)는 끌어서 360도, 2.5D(사진과 깊이 그림)는 좌우 25도까지.
+ * 놓으면 조금 더 돌다 멈추고, 자동 회전과 정면 단추, 화살표 키도 된다 (spin.ts)
+ */
+function Spin3D({
+  model,
+  photo,
+  depth,
+  interactive,
+}: {
+  model?: Blueprint;
+  photo?: string;
+  depth?: string;
+  /** 단추와 키보드를 보일지 (저장 중, 다 됐을 때는 보여 주기만) */
+  interactive: boolean;
+}) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const limits = model ? FIGURE_LIMITS : RELIEF_LIMITS;
+  const spinRef = useRef<Spinner>(undefined);
+  // 다시 만들기로 설계도만 바뀌면 보던 각도 그대로. 피규어와 2.5D 를 오가면 새로
+  if (spinRef.current?.limits !== limits)
+    spinRef.current = new Spinner(limits, !matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const spin = spinRef.current;
+  const [auto, setAuto] = useState(spin.auto);
+  const [view, setView] = useState({ deg: 0, side: 'front' as ReturnType<Spinner['side']> });
+
   useEffect(() => {
     const canvas = ref.current;
     const ctx = canvas?.getContext('2d');
@@ -545,21 +580,41 @@ function Spin3D({ model, photo, depth }: { model?: Blueprint; photo?: string; de
     const dpr = window.devicePixelRatio || 1;
     canvas.width = side * dpr;
     canvas.height = side * dpr;
-    const k = (side * dpr) / CANVAS_SIZE;
+    const k = ((side * dpr) / CANVAS_SIZE) * SPIN_ZOOM;
+    const off = (side * dpr * (1 - SPIN_ZOOM)) / 2;
     const t0 = performance.now();
     let raf = 0;
     let last = -Infinity;
+    let stepped = t0;
+    // 피규어와 2.5D 를 오가면 이 컴포넌트를 다시 쓰고 Spinner 만 바뀌니 단추와 읽어 주는 각도도 새로
+    let shownAuto = spin.auto;
+    let shownDeg = spin.degrees();
+    setAuto(spin.auto);
+    setView({ deg: shownDeg, side: spin.side() });
+    let moving = true;
     const tick = (now: number) => {
       raf = requestAnimationFrame(tick);
-      // 화면 주사율(120Hz)대로 그리지 않고 30fps 로 묶는다. 미리보기는 천천히 돌아서 차이가 안 보인다
-      if (now - last < 1000 / 30 - 1) return;
+      // 화면 주사율(120Hz)대로 그리지 않고 움직일 때 30fps, 멈춰 있으면 12fps 로 묶는다
+      if (now - last < (moving ? MOVING_MS : STILL_MS) - 1) return;
       last = now;
+      moving = spin.step(now - stepped);
+      stepped = now;
+      if (spin.auto !== shownAuto) {
+        shownAuto = spin.auto;
+        setAuto(spin.auto);
+      }
+      // 읽어 주는 각도는 손으로 돌릴 때만 바꾼다 (자동 회전 중에 계속 읽으면 시끄럽다)
+      if (!spin.auto && spin.degrees() !== shownDeg) {
+        shownDeg = spin.degrees();
+        setView({ deg: shownDeg, side: spin.side() });
+      }
       const ms = now - t0;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.setTransform(k, 0, 0, k, 0, 0);
-      // 천천히 한 바퀴, 가끔 눈 깜빡
-      pet.spin = Math.sin(ms / 2600) * 1.1;
+      ctx.setTransform(k, 0, 0, k, off, off);
+      pet.spin = spin.yaw;
+      pet.tilt = spin.pitch;
+      // 가끔 눈 깜빡
       const blink = ms % 3800 < 180 ? (ms % 3800) / 180 : -1;
       pet.draw(ctx, { mood: 'idle', elapsed: ms, blink }, 0, 1, 1, undefined);
     };
@@ -567,16 +622,89 @@ function Spin3D({ model, photo, depth }: { model?: Blueprint; photo?: string; de
     return () => {
       alive = false;
       cancelAnimationFrame(raf);
+      // 같은 Pet3D 를 다음 미리보기가 다시 쓰니 각도를 되돌려 둔다
+      pet.spin = 0;
+      pet.tilt = 0;
       pet.clear();
     };
-  }, [model, photo, depth]);
+  }, [model, photo, depth, spin]);
+
+  const toggleAuto = () => {
+    spin.setAuto(!spin.auto);
+    setAuto(spin.auto);
+  };
+  const front = () => {
+    spin.front();
+    setAuto(false);
+  };
+  const onKey = (e: React.KeyboardEvent) => {
+    const keys: Record<string, () => void> = {
+      ArrowLeft: () => spin.nudge('yaw', -1),
+      ArrowRight: () => spin.nudge('yaw', 1),
+      ArrowUp: () => spin.nudge('pitch', 1),
+      ArrowDown: () => spin.nudge('pitch', -1),
+      Home: front,
+    };
+    const run = keys[e.key];
+    if (!run) return;
+    e.preventDefault();
+    run();
+    setAuto(false);
+  };
+  const release = (e: React.PointerEvent) => spin.release(e.timeStamp);
+  const sideText = t(`maker.spin.side.${view.side}`);
   return (
-    <canvas
-      ref={ref}
-      className="spin3d"
-      style={{ width: 220, height: 220 }}
-      aria-label={t('maker.name.alt')}
-    />
+    <>
+      <canvas
+        ref={ref}
+        className={`spin3d${interactive ? ' grab' : ''}`}
+        style={{ width: 220, height: 220 }}
+        aria-label={interactive ? t('maker.spin.label') : t('maker.name.alt')}
+        {...(interactive
+          ? {
+              role: 'slider',
+              tabIndex: 0,
+              'aria-valuemin': model ? 0 : -25,
+              'aria-valuemax': model ? 359 : 25,
+              'aria-valuenow': view.deg,
+              'aria-valuetext': t('maker.spin.value', { deg: view.deg, side: sideText }),
+              'aria-describedby': 'maker-spin-how',
+              onKeyDown: onKey,
+              onPointerDown: (e: React.PointerEvent<HTMLCanvasElement>) => {
+                if (e.button !== 0) return;
+                e.currentTarget.setPointerCapture(e.pointerId);
+                spin.grab(e.clientX, e.clientY, e.timeStamp);
+                setAuto(false);
+              },
+              onPointerMove: (e: React.PointerEvent) => spin.move(e.clientX, e.clientY, e.timeStamp),
+              onPointerUp: release,
+              onPointerCancel: release,
+              onLostPointerCapture: release,
+            }
+          : {})}
+      />
+      {interactive && (
+        <div className="spin-tools">
+          <button
+            type="button"
+            className={`spin-btn${auto ? ' on' : ''}`}
+            aria-pressed={auto}
+            onClick={toggleAuto}
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v2.4h-2.4" />
+            </svg>
+            {t('maker.spin.auto')}
+          </button>
+          <button type="button" className="spin-btn" onClick={front}>
+            {t('maker.spin.front')}
+          </button>
+          <span id="maker-spin-how" hidden>
+            {model ? t('maker.spin.how') : t('maker.spin.howRelief')}
+          </span>
+        </div>
+      )}
+    </>
   );
 }
 

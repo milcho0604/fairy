@@ -21,20 +21,38 @@ import {
   THUMB_JPEG_QUALITY,
   toPixels,
 } from '../shared/capture.ts';
-import type { Rect } from '../shared/geometry.ts';
+import type { Point, Rect } from '../shared/geometry.ts';
 import { t } from '../shared/i18n/index.ts';
 import { LOOK, type OutgoingImage } from '../shared/ipc.ts';
+import { targetOf } from '../shared/look-motion.ts';
 import { focusWindow, showWindow } from './focus.ts';
 import { langArg } from './lang.ts';
 
 /** 오버레이와 펫이 화면에서 사라질 때까지 기다리는 시간. 짧으면 반투명한 오버레이가 같이 찍힌다. */
 const HIDE_SETTLE_MS = 150;
+/** 찾았다 첫 장면을 그릴 틈. 펫 창이 다시 보이기 시작할 때 고르던 모습이 비치지 않게 */
+const FOUND_DRAW_MS = 34;
 const MAC_SCREEN_SETTINGS = 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture';
+
+/**
+ * 같이 보는 펫들 (기본 펫과 친구). 영역을 고르는 동안 돋보기를 들고 고르는 쪽을 들여다보고(aim),
+ * 화면을 찍는 순간에는 창째 가렸다가(veil) 찍은 쪽을 보며 찾았다(found). 취소나 실패는 바로 그만(end).
+ */
+export interface LookPets {
+  /** 영역 고르기 시작. 오버레이가 뜰 때마다 다시 불러 펫을 오버레이 위로 올린다 */
+  aim(): void;
+  /** 찍는 순간 가린다(true, 다 가린 뒤 끝난다), 다시 보인다(false) */
+  veil(on: boolean): Promise<void>;
+  /** 찍은 뒤 target(화면 좌표) 쪽을 보며 찾았다. 잠시 뒤 저절로 끝난다 */
+  found(target: Point): void;
+  end(): void;
+}
 
 export interface LookOptions {
   petName: () => string;
-  /** 찍는 동안 펫과 채팅 창을 숨기고, 끝나면 다시 보인다. */
-  hideOwnWindows: () => () => void;
+  /** 같이 보는 동안 채팅 창을 숨기고, 끝나면 다시 보인다 (돌려준 함수가 되돌린다) */
+  hideChat: () => () => void;
+  pets: LookPets;
   /** 찍은 그림을 채팅 입력칸에 붙인다. 보내지는 않는다. */
   onImage: (image: OutgoingImage) => void;
   log: (tag: string, ...rest: unknown[]) => void;
@@ -44,9 +62,11 @@ export interface LookOptions {
  * "(이름)랑 같이 보기". 모니터마다 반투명 오버레이를 띄워 영역을 고르게 하고,
  * 오버레이를 치운 뒤 그 순간 화면을 찍어 채팅 입력칸에 붙인다.
  */
-export function createLookTogether({ petName, hideOwnWindows, onImage, log }: LookOptions) {
+export function createLookTogether({ petName, hideChat, pets, onImage, log }: LookOptions) {
   let overlays: { win: BrowserWindow; display: Display }[] = [];
   let restore: (() => void) | undefined;
+  /** 같이 보기 중 (오버레이가 떠 있거나 찍는 중). 찍는 사이에 또 부르면 펫이 가려진 채 겹쳤다 */
+  let active = false;
 
   function closeOverlays() {
     // 목록을 먼저 비운다: destroy 가 부르는 closed 처리기가 "고르지 않고 닫힘"으로 보지 않게
@@ -55,14 +75,23 @@ export function createLookTogether({ petName, hideOwnWindows, onImage, log }: Lo
     for (const { win } of list) if (!win.isDestroyed()) win.destroy();
   }
 
-  function finish() {
+  /** 끝낸다. found 가 있으면 펫이 그쪽을 보며 찾았다, 없으면(취소, 실패) 바로 평소 모습. 어느 쪽이든 가린 펫은 다시 보인다 */
+  function finish(found?: Point) {
     closeOverlays();
     restore?.();
     restore = undefined;
+    active = false;
+    if (found) {
+      pets.found(found);
+      setTimeout(() => void pets.veil(false), FOUND_DRAW_MS);
+    } else {
+      pets.end();
+      void pets.veil(false);
+    }
   }
 
   async function start() {
-    if (overlays.length > 0) return;
+    if (active || overlays.length > 0) return;
     // 맥에서 권한을 거절한 상태면 바로 안내한다. 아직 묻지 않은 상태면 첫 캡처 때 맥이 묻는다.
     if (process.platform === 'darwin') {
       const status = systemPreferences.getMediaAccessStatus('screen');
@@ -71,7 +100,9 @@ export function createLookTogether({ petName, hideOwnWindows, onImage, log }: Lo
         return;
       }
     }
-    restore = hideOwnWindows();
+    active = true;
+    restore = hideChat();
+    pets.aim();
     const cursor = screen.getCursorScreenPoint();
     const under = screen.getDisplayNearestPoint(cursor);
     for (const display of screen.getAllDisplays()) {
@@ -106,6 +137,8 @@ export function createLookTogether({ petName, hideOwnWindows, onImage, log }: Lo
       win.once('ready-to-show', () => {
         if (display.id === under.id) focusWindow(win);
         else showWindow(win);
+        // 펫이 오버레이 아래로 깔리지 않게 다시 올린다
+        if (overlays.some((o) => o.win === win)) pets.aim();
       });
       // 고르지 않았는데 오버레이가 사라지면(모니터를 뽑음, 운영체제가 닫음) 같이 보기를 그만두고 펫을 되돌린다.
       // 그냥 두면 overlays 가 안 비워져 다음 같이 보기가 막히고 펫이 숨은 채 남았다 (버그잡이 6차)
@@ -135,10 +168,12 @@ export function createLookTogether({ petName, hideOwnWindows, onImage, log }: Lo
       finish();
       return;
     }
+    // 펫(말풍선, 돋보기 포함)과 친구를 창째 가리고, 오버레이와 함께 화면에서 사라질 때까지 기다린 뒤 찍는다
+    await pets.veil(true);
     await new Promise((r) => setTimeout(r, HIDE_SETTLE_MS));
     try {
       const image = await capture(entry.display, rect);
-      finish();
+      finish(targetOf(entry.display.bounds, rect, isClick(rect)));
       if (image) onImage(image);
     } catch (err) {
       log('look', 'error', err instanceof Error ? err.message : String(err));

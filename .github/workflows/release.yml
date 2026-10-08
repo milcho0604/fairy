@@ -38,6 +38,10 @@ jobs:
       - run: npm install --no-save --force @koromix/koffi-darwin-x64@3.3.2 @node-llama-cpp/mac-x64@3.22.1
         if: runner.os == 'macOS'
       - run: npm run ${{ matrix.script }}
+        # 맥 고정 서명 인증서 (scripts/mac-sign.mjs). 없으면 맥 빌드가 멈춘다. 윈도우는 안 쓴다
+        env:
+          JJ_MAC_SIGN_P12: ${{ secrets.JJ_MAC_SIGN_P12 }}
+          JJ_MAC_SIGN_PASSWORD: ${{ secrets.JJ_MAC_SIGN_PASSWORD }}
       - uses: actions/upload-artifact@v7
         with:
           name: jjakkung-${{ runner.os }}

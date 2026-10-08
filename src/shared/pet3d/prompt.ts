@@ -4,6 +4,7 @@ import {
   type Blueprint,
   EYES,
   FINISHES,
+  GAITS,
   MAX_PARTS,
   MOTION_RANGE,
   MOUTHS,
@@ -71,7 +72,8 @@ Schema:
             "blush" optional color, "whiskers" optional color,
             "eyes" optional resting eye look, one of ${JSON.stringify(EYES)} (round is the default) },
   "motion": optional { "bounce": ${MOTION_RANGE.bounce.join(' to ')}, "sway": ${MOTION_RANGE.sway.join(' to ')}, "tailWag": ${MOTION_RANGE.tailWag.join(' to ')}, "earWiggle": ${MOTION_RANGE.earWiggle.join(' to ')} }
-            (how strongly the app animates it; 1 is normal, 0 is still. Leave it out unless asked)
+            (how strongly the app animates it; 1 is normal, 0 is still. Leave it out unless asked),
+  "gait": one of ${JSON.stringify(GAITS)} (how it walks: "quadruped" for four-legged animals such as cats, dogs, rabbits, hamsters, foxes; "biped" for birds, people, plush characters and anything that stands on two feet)
 }
 
 Rules:
@@ -79,6 +81,7 @@ Rules:
 - Big head and small body (cute figure proportions). Keep everything within x and z of -0.7..0.7 and y of 0..1.3.
 - Parts must overlap so the figure is one solid piece. Put markings and patches as thin flattened spheres slightly in front of the surface.
 - The eyes and mouth are drawn by the app on the front surface of the face slot at eyeY and mouthY, so do not model eyes or mouth. Use "beak" only for birds.
+- For a quadruped, put the front paws in legL/legR (z > 0) and, when visible, the hind paws in legL/legR too, further back (z < 0). The app leans it forward onto all four paws when it walks.
 - Use the photo's real colors. Avoid pure white (#ffffff) and pure black (#000000) for big parts.
 
 Example (a default pet, a round bean with feet, arms and a sprout):
