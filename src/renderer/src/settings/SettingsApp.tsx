@@ -245,6 +245,14 @@ export function SettingsApp() {
               onChange={(v) => update({ pet3d: v })}
             />
           )}
+          {(!s.petImage || s.petModel) && s.pet3d && (
+            <Toggle
+              label={t('settings.petReal')}
+              hint={t('settings.petRealHint')}
+              on={s.petReal}
+              onChange={(v) => update({ petReal: v })}
+            />
+          )}
 
           <GaitPicker snap={snap} update={update} flash={flash} />
 
@@ -272,6 +280,12 @@ export function SettingsApp() {
             on={s.boost}
             note={s.boost && snap.onBattery ? t('settings.boostResting') : undefined}
             onChange={(v) => update({ boost: v })}
+          />
+          <Toggle
+            label={t('settings.sysMonitor')}
+            hint={t('settings.sysMonitorHint')}
+            on={s.sysMonitor}
+            onChange={(v) => update({ sysMonitor: v })}
           />
         </Section>
 

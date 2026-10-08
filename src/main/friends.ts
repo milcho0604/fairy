@@ -118,6 +118,7 @@ export function createFriends(o: {
       sulk: 0,
       kind: f.kind,
       pet3d: settings.get().pet3d,
+      real: settings.get().petReal,
       cushion: false,
       flower: false,
       sounds: false,

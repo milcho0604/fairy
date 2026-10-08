@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { app, Menu, nativeImage, Tray } from 'electron';
+import { app, Menu, type MenuItemConstructorOptions, nativeImage, Tray } from 'electron';
 import { t } from '../shared/i18n/index.ts';
 import { settings } from './settings.ts';
 
@@ -17,6 +17,20 @@ export interface TrayActions {
   openTodos(): void;
   /** 펫(과 친구) 화면을 다시 불러온다. 펫이 안 보이거나 멈췄을 때 우클릭을 못 하니 여기에도 둔다 */
   reloadPet(): void;
+  /** 컴퓨터 상태 줄들 (system-monitor.ts) */
+  stats(): MenuItemConstructorOptions[];
+  /** 메뉴 막대에 CPU 와 달리는 콩이 보이기 (설정 sysMonitor) */
+  sysMonitorOn(): boolean;
+  setSysMonitor(on: boolean): void;
+}
+
+/** 기본 아이콘. 맥은 흑백 템플릿, 윈도우는 콩이 그림 (펫 얼굴이 오면 index.ts 가 바꾼다) */
+export function baseTrayIcon(): Electron.NativeImage {
+  const dir = join(app.getAppPath(), 'resources');
+  if (process.platform !== 'darwin') return nativeImage.createFromPath(join(dir, 'tray.png'));
+  const icon = nativeImage.createFromPath(join(dir, 'trayTemplate.png'));
+  icon.setTemplateImage(true);
+  return icon;
 }
 
 /**
@@ -24,13 +38,7 @@ export interface TrayActions {
  * 끝내는 길이 여기에 있어야 한다 (P4-01 일부를 P1-10 으로 당겨 왔다).
  */
 export function createTray(petName: () => string, actions: TrayActions): Tray {
-  const dir = join(app.getAppPath(), 'resources');
-  const icon =
-    process.platform === 'darwin'
-      ? nativeImage.createFromPath(join(dir, 'trayTemplate.png'))
-      : nativeImage.createFromPath(join(dir, 'tray.png'));
-  if (process.platform === 'darwin') icon.setTemplateImage(true);
-  const tray = new Tray(icon);
+  const tray = new Tray(baseTrayIcon());
   tray.setToolTip(t('tray.tooltip', { name: petName() }));
 
   const build = () =>
@@ -46,6 +54,20 @@ export function createTray(petName: () => string, actions: TrayActions): Tray {
       { label: t('tray.addTodo'), accelerator: quickAddShortcut(), click: () => actions.quickAdd() },
       { label: t('tray.settings'), click: () => actions.openSettings() },
       { label: t('tray.feedback'), click: () => actions.sendFeedback() },
+      { type: 'separator' },
+      {
+        label: t('tray.stats'),
+        submenu: [
+          ...actions.stats(),
+          { type: 'separator' },
+          {
+            label: t('tray.stats.show'),
+            type: 'checkbox',
+            checked: actions.sysMonitorOn(),
+            click: (item) => actions.setSysMonitor(item.checked),
+          },
+        ],
+      },
       { type: 'separator' },
       { label: t('tray.reload', { name: petName() }), click: () => actions.reloadPet() },
       { label: t('tray.quit'), role: 'quit' },

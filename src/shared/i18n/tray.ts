@@ -14,6 +14,18 @@ export const ko = {
   'tray.feedback': '의견 보내기',
   'tray.reload': (v: { name: string }) => `${v.name} 새로고침`,
   'tray.quit': '끝내기',
+  'tray.stats': '컴퓨터 상태',
+  'tray.stats.show': '메뉴 막대에 CPU 보이기',
+  'tray.stats.cpu': (v: { pct: number; bar: string }) => `CPU ${v.bar} ${v.pct}%`,
+  'tray.stats.cpuModel': (v: { model: string; cores: number }) => `${v.model} (${v.cores}코어)`,
+  'tray.stats.memory': (v: { used: string; total: string; bar: string }) =>
+    `메모리 ${v.bar} ${v.used} / ${v.total}`,
+  'tray.stats.memoryTotal': (v: { total: string }) => `메모리 ${v.total}`,
+  'tray.stats.disk': (v: { free: string; total: string; bar: string }) =>
+    `디스크 ${v.bar} ${v.free} 남음 / ${v.total}`,
+  'tray.stats.gpu': (v: { name: string }) => `그래픽 ${v.name}`,
+  'tray.stats.uptime': (v: { d: number; h: number; m: number }) =>
+    `켜진 지 ${v.d > 0 ? `${v.d}일 ` : ''}${v.h}시간 ${v.m}분`,
 };
 
 export const en: Translation<typeof ko> = {
@@ -28,4 +40,16 @@ export const en: Translation<typeof ko> = {
   'tray.feedback': 'Send feedback',
   'tray.reload': (v: { name: string }) => `Refresh ${v.name}`,
   'tray.quit': 'Quit',
+  'tray.stats': 'Computer status',
+  'tray.stats.show': 'Show CPU in the menu bar',
+  'tray.stats.cpu': (v: { pct: number; bar: string }) => `CPU ${v.bar} ${v.pct}%`,
+  'tray.stats.cpuModel': (v: { model: string; cores: number }) => `${v.model} (${v.cores} cores)`,
+  'tray.stats.memory': (v: { used: string; total: string; bar: string }) =>
+    `Memory ${v.bar} ${v.used} / ${v.total}`,
+  'tray.stats.memoryTotal': (v: { total: string }) => `Memory ${v.total}`,
+  'tray.stats.disk': (v: { free: string; total: string; bar: string }) =>
+    `Disk ${v.bar} ${v.free} free / ${v.total}`,
+  'tray.stats.gpu': (v: { name: string }) => `Graphics ${v.name}`,
+  'tray.stats.uptime': (v: { d: number; h: number; m: number }) =>
+    `Up ${v.d > 0 ? `${v.d}d ` : ''}${v.h}h ${v.m}m`,
 };

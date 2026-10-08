@@ -348,6 +348,8 @@ let photoModel: Blueprint | undefined;
 /** 사진 펫의 2.5D 깊이 그림 (6단계) */
 let photoDepth: HTMLImageElement | undefined;
 let broken3d = false;
+/** 실사처럼 그리기 (설정, PetStatus.real) */
+let real3d = false;
 /** 사용자가 고른 걸음새 (설정, PetStatus.gait). 없으면 자동 */
 let gaitPick: Gait | undefined;
 /** 고른 걸음새를 덮은 설계도. 같은 설계도와 같은 값이면 같은 것을 돌려줘 다시 조립하지 않는다 */
@@ -396,6 +398,8 @@ function current3d(): Pet3D | 'loading' | undefined {
     return undefined;
   }
   const want = bp ?? relief;
+  // 실사를 켜고 끄면 털과 눈을 다시 붙여야 해서 다시 조립한다
+  if (model3d.setReal(real3d)) model3dOf = undefined;
   if (model3dOf !== want) {
     if (bp) model3d.setBlueprint(bp);
     else if (relief && photo instanceof HTMLImageElement) model3d.setRelief(photo, relief);
@@ -435,6 +439,10 @@ bridge.onStatus((status) => {
     model3dOf = undefined;
   }
   use3d = status.pet3d;
+  if ((status.real === true) !== real3d) {
+    real3d = status.real === true;
+    requestFrame();
+  }
   // 걸음새를 바꾸면 펫 창을 다시 켜지 않고 다음 그림부터 (설계도를 덮어 다시 조립한다)
   if (status.gait !== gaitPick) {
     gaitPick = status.gait;

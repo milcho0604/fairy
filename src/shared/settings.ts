@@ -35,6 +35,13 @@ export interface Settings {
   petKind: PetKind;
   /** 기본 펫을 입체(three.js)로 그린다 (6단계). 끄면 예전 2D 그림 */
   pet3d: boolean;
+  /**
+   * 입체 펫을 실사처럼 그린다 (사용자 요청 2026-10-08). 털(겹 껍질), 유리 같은 눈, 부드러운 조명.
+   * 끄면 피규어(비닐) 느낌. 입체로 보기일 때만 쓴다
+   */
+  petReal: boolean;
+  /** 메뉴 막대에 CPU 사용률과 달리는 콩이 (사용자 요청 2026-10-08, RunCat 처럼) */
+  sysMonitor: boolean;
   /** 사진 펫을 AI 가 입체로 만든 설계도 (6단계). pets/ 안 model-*.json. 있으면 입체로 보기일 때 사진 대신 이것 */
   petModel?: string;
   /** 사진 펫의 2.5D 깊이 그림 (6단계). pets/ 안 depth-*.png. 있으면 입체로 보기일 때 사진을 입체 판으로 */
@@ -235,6 +242,8 @@ export const DEFAULT_SETTINGS: Settings = {
   hideHints: 0,
   petKind: 'kong',
   pet3d: true,
+  petReal: false,
+  sysMonitor: true,
   petPoses: {},
   restDays: [0, 6],
   spicy: false,
@@ -356,6 +365,8 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     ...petImageOf(r.petImage, base.petImage),
     petKind: isPetKind(r.petKind) ? r.petKind : base.petKind,
     pet3d: bool(r.pet3d, base.pet3d),
+    petReal: bool(r.petReal, base.petReal),
+    sysMonitor: bool(r.sysMonitor, base.sysMonitor),
     ...petModelOf(r.petModel, base.petModel),
     ...petDepthOf(r.petDepth, base.petDepth),
     petPoses: posesOf(r.petPoses, base.petPoses),

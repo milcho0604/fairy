@@ -422,6 +422,8 @@ export interface PetStatus {
   kind: PetKind;
   /** 입체로 그리기 (6단계) */
   pet3d: boolean;
+  /** 입체를 실사처럼 (털, 유리 눈). pet3d 일 때만 */
+  real?: boolean;
   /** 머리에 꽃 (친밀도 600) */
   flower: boolean;
   /** 효과음 (설정). 친구 펫은 늘 끔 */

@@ -42,7 +42,8 @@ import { createHouse, playBall, visitHouse } from './play.ts';
 import { watchPresentation } from './presence-watch.ts';
 import { settings } from './settings.ts';
 import { createSettingsWindow } from './settings-window.ts';
-import { createTray } from './tray.ts';
+import { createSystemMonitor } from './system-monitor.ts';
+import { baseTrayIcon, createTray } from './tray.ts';
 import { watchUpdates } from './update.ts';
 
 // 데이터 폴더를 이름으로 고정한다. 기본값은 앱 이름을 따라가서 설치판(Jjakkung)과 개발판(jjakkung)이
@@ -258,7 +259,13 @@ app.whenReady().then(() => {
       pet.reload();
       friends.reloadAll();
     },
+    stats: () => sysMonitor.menuItems(),
+    sysMonitorOn: () => settings.get().sysMonitor,
+    setSysMonitor: (on) => settings.set({ sysMonitor: on }),
   });
+  // 메뉴 막대 컴퓨터 상태 (RunCat 처럼): CPU 사용률과 그만큼 빨리 달리는 콩이
+  const sysMonitor = createSystemMonitor(tray, baseTrayIcon(), log);
+  sysMonitor.setEnabled(settings.get().sysMonitor);
   // ---- 할 일과 코인 (2단계) ----
   const { store, stats, notes, events, life, shop, achievements, vacuumInto, dataVersion, trouble } =
     openStore(log);
@@ -590,6 +597,7 @@ app.whenReady().then(() => {
       sulk: petLife.state.sulk,
       kind: settings.get().petKind,
       pet3d: settings.get().pet3d,
+      real: settings.get().petReal,
       cushion: shop.owns('cushion'),
       flower: unlocked(petLife.state.affection).has('flower'),
       sounds: settings.get().sounds,
@@ -613,7 +621,8 @@ app.whenReady().then(() => {
     (url) => {
       if (process.platform === 'darwin') return;
       const icon = trayImageOf(url);
-      if (icon) tray.setImage(icon);
+      // 컴퓨터 상태가 켜져 있으면 달리는 콩이가 자리를 쓰고, 끌 때 이 얼굴로 돌아온다
+      if (icon) sysMonitor.setBaseIcon(icon);
     },
   );
   setInterval(sendStatus, 5 * 60 * 1000);
@@ -719,7 +728,8 @@ app.whenReady().then(() => {
     if (next.icsUrl !== prev.icsUrl && next.icsUrl) void calendar.sync();
     if (next.myMcp && !prev.myMcp) void refreshMcpServers(log);
     if (JSON.stringify(next.friends) !== JSON.stringify(prev.friends)) friends.sync();
-    if (next.pet3d !== prev.pet3d) friends.resendStatus();
+    if (next.pet3d !== prev.pet3d || next.petReal !== prev.petReal) friends.resendStatus();
+    if (next.sysMonitor !== prev.sysMonitor) sysMonitor.setEnabled(next.sysMonitor);
     if (next.petName !== prev.petName) {
       chat.petNameChanged();
       panel.refresh();
@@ -739,6 +749,7 @@ app.whenReady().then(() => {
     if (
       next.petKind !== prev.petKind ||
       next.pet3d !== prev.pet3d ||
+      next.petReal !== prev.petReal ||
       next.spicy !== prev.spicy ||
       next.sounds !== prev.sounds ||
       next.restDays.join() !== prev.restDays.join() ||
@@ -822,6 +833,7 @@ app.whenReady().then(() => {
     stopAllAi();
     for (const acc of registered) globalShortcut.unregister(acc);
     stopPresence();
+    sysMonitor.dispose();
     tray.destroy();
   });
 

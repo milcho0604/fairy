@@ -7,6 +7,7 @@ import {
   CanvasTexture,
   CapsuleGeometry,
   CatmullRomCurve3,
+  Color,
   ConeGeometry,
   CylinderGeometry,
   DirectionalLight,
@@ -26,9 +27,11 @@ import {
   PMREMGenerator,
   Quaternion,
   Raycaster,
+  RepeatWrapping,
   Scene,
   SphereGeometry,
   SRGBColorSpace,
+  type Texture,
   TorusGeometry,
   TubeGeometry,
   Vector3,
@@ -155,6 +158,13 @@ export class Pet3D implements Model3D {
   private px = 0;
   private lost = false;
   private readonly materials = new Map<string, Material>();
+  /** 실사처럼 그리기 (setReal). 털 껍질, 유리 눈, 부드러운 빛 */
+  private real = false;
+  /** 털 무늬(가닥 높이)와 얼룩 그림. 실사로 처음 그릴 때 한 번 만든다 */
+  private furTex: { strands: Texture; mottle: Texture } | undefined;
+  /** 얼굴 부품을 털 끝 위로 띄울 거리 (실사일 때 얼굴 슬롯 털 길이) */
+  private faceLift = 0;
+  private readonly lights: { hemi: HemisphereLight; key: DirectionalLight; rim: DirectionalLight };
   private readonly box = new Box3();
   /** 쉬는 자세의 가운데 x (뒹굴 때 제자리를 지키려고) */
   private restX = 0;
@@ -190,12 +200,13 @@ export class Pet3D implements Model3D {
     this.scene.environmentIntensity = 0.55;
     room.dispose();
     pmrem.dispose();
-    this.scene.add(new HemisphereLight(0xffffff, 0xd9c7b5, 1.1));
+    const hemi = new HemisphereLight(0xffffff, 0xd9c7b5, 1.1);
     const key = new DirectionalLight(0xffffff, 1.7);
     key.position.set(-1.2, 2.2, 2.4);
     const rim = new DirectionalLight(0xfff4e0, 1.3);
     rim.position.set(1.5, 1.4, -2.2);
-    this.scene.add(key, rim);
+    this.scene.add(hemi, key, rim);
+    this.lights = { hemi, key, rim };
     this.canvas.addEventListener('webglcontextlost', (e) => {
       e.preventDefault();
       // 직접 내린 것(dispose)은 잃은 것이 아니다. 알리면 펫이 2D 로 굳는다
@@ -218,6 +229,41 @@ export class Pet3D implements Model3D {
     return !this.lost;
   }
 
+  /**
+   * 실사처럼 그리기를 켜고 끈다 (사용자 요청 2026-10-08). 조명은 바로 바뀌고, 털과 눈은 다음 조립(setBlueprint)부터.
+   * 바뀌었으면 true (부르는 쪽이 다시 조립한다)
+   */
+  setReal(on: boolean): boolean {
+    if (on === this.real) return false;
+    this.real = on;
+    const { hemi, key, rim } = this.lights;
+    if (on) {
+      // 실사: 색이 바래지 않게 중립 톤에 노출만 조금. 주 조명은 따뜻하게, 뒤 테두리 빛을 세게 해 털 끝이 빛나게
+      this.renderer.toneMapping = NeutralToneMapping;
+      this.renderer.toneMappingExposure = 1.05;
+      this.scene.environmentIntensity = 0.4;
+      hemi.color.set(0xfff6ea);
+      hemi.groundColor.set(0x8c7a68);
+      hemi.intensity = 0.9;
+      key.color.set(0xfff3e4);
+      key.intensity = 2.3;
+      rim.color.set(0xfff8ee);
+      rim.intensity = 2.2;
+    } else {
+      this.renderer.toneMapping = NeutralToneMapping;
+      this.renderer.toneMappingExposure = 1;
+      this.scene.environmentIntensity = 0.55;
+      hemi.color.set(0xffffff);
+      hemi.groundColor.set(0xd9c7b5);
+      hemi.intensity = 1.1;
+      key.color.set(0xffffff);
+      key.intensity = 1.7;
+      rim.color.set(0xfff4e0);
+      rim.intensity = 1.3;
+    }
+    return true;
+  }
+
   /** 그리던 모양을 내린다. 입체를 잠깐 안 쓸 때 (렌더러는 다시 쓴다) */
   clear(): void {
     this.resetRoot();
@@ -231,6 +277,8 @@ export class Pet3D implements Model3D {
     this.lost = true;
     this.disposeTree(this.root);
     for (const m of this.materials.values()) m.dispose();
+    this.furTex?.strands.dispose();
+    this.furTex?.mottle.dispose();
     this.scene.environment?.dispose();
     this.renderer.dispose();
     this.renderer.forceContextLoss();
@@ -373,6 +421,10 @@ export class Pet3D implements Model3D {
     this.root.updateMatrixWorld(true);
     const faceSlot = bp.face.slot === 'head' && this.hasHead ? 'head' : 'body';
     this.faceOnHead = faceSlot === 'head';
+    // 실사면 눈, 입을 털 끝에 얹는다 (살갗에 붙이면 털에 묻힌다)
+    this.faceLift = this.real
+      ? Math.max(0, ...meshes.filter((m) => m.part.slot === faceSlot).map((m) => furLength(m.part) * 0.8))
+      : 0;
     this.face = this.buildFace(
       bp.face,
       this.joints[faceSlot],
@@ -596,8 +648,23 @@ export class Pet3D implements Model3D {
   // ---- 조립 ----
 
   private material(color: string, finish: Finish = 'soft'): Material {
-    const key = `${color}/${finish}`;
+    const key = `${color}/${finish}${this.real ? '/real' : ''}`;
     let m = this.materials.get(key);
+    if (!m && this.real) {
+      // 실사: 털 아래 살갗과 속털. 겉색보다 조금 어둡고 얼룩이 있다. 반짝(코, 부리, 잎)은 촉촉하게
+      m =
+        finish === 'shiny'
+          ? new MeshPhysicalMaterial({ color, roughness: 0.38, clearcoat: 0.6, clearcoatRoughness: 0.3 })
+          : new MeshPhysicalMaterial({
+              color: new Color(color).multiplyScalar(0.9),
+              map: this.fur().mottle,
+              roughness: 0.95,
+              sheen: 1,
+              sheenRoughness: 0.4,
+              sheenColor: new Color(color).lerp(new Color('#ffffff'), 0.35),
+            });
+      this.materials.set(key, m);
+    }
     if (!m) {
       m = new MeshPhysicalMaterial(
         finish === 'shiny'
@@ -642,7 +709,131 @@ export class Pet3D implements Model3D {
     mesh.position.set(...p.at);
     mesh.scale.copy(scale);
     if (p.rot) mesh.rotation.set(p.rot[0] * DEG, p.rot[1] * DEG, p.rot[2] * DEG);
+    if (this.real) this.addFur(mesh, p);
     return mesh;
+  }
+
+  /** 털 가닥 그림과 얼룩 그림 (실사). 한 번 만들어 모든 털 재질이 같이 쓴다 */
+  private fur(): { strands: Texture; mottle: Texture } {
+    if (this.furTex) return this.furTex;
+    const make = (paint: (g: CanvasRenderingContext2D, n: number) => void, color: boolean) => {
+      const n = 256;
+      const c = document.createElement('canvas');
+      c.width = n;
+      c.height = n;
+      const g = c.getContext('2d');
+      if (g) paint(g, n);
+      const tex = new CanvasTexture(c);
+      tex.wrapS = RepeatWrapping;
+      tex.wrapT = RepeatWrapping;
+      if (color) tex.colorSpace = SRGBColorSpace;
+      return tex;
+    };
+    // 가닥: 검은 바탕에 가닥마다 높이(밝기)가 다른 점. 가운데가 가장 밝아 껍질이 높을수록 가늘어진다
+    // 같은 그림이 이어지도록 가장자리를 넘는 점은 반대쪽에도 찍는다
+    const rand = mulberry32(7);
+    const strands = make((g, n) => {
+      g.fillStyle = '#000';
+      g.fillRect(0, 0, n, n);
+      for (let i = 0; i < 7000; i++) {
+        const x = rand() * n;
+        const y = rand() * n;
+        const r = 1 + rand() * 0.9;
+        const h = Math.round((0.45 + rand() * 0.55) * 255);
+        for (const ox of [-n, 0, n])
+          for (const oy of [-n, 0, n]) {
+            const grad = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r);
+            grad.addColorStop(0, `rgb(${h},${h},${h})`);
+            grad.addColorStop(1, 'rgba(0,0,0,0)');
+            g.fillStyle = grad;
+            g.fillRect(x + ox - r, y + oy - r, r * 2, r * 2);
+          }
+      }
+    }, false);
+    // 얼룩: 아주 옅은 밝고 어두운 무늬 (진짜 털은 한 색이 아니다)
+    const mottle = make((g, n) => {
+      g.fillStyle = 'rgb(235,235,235)';
+      g.fillRect(0, 0, n, n);
+      for (let i = 0; i < 260; i++) {
+        const x = rand() * n;
+        const y = rand() * n;
+        const r = 6 + rand() * 22;
+        const v = Math.round(200 + rand() * 55);
+        for (const ox of [-n, 0, n])
+          for (const oy of [-n, 0, n]) {
+            const grad = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r);
+            grad.addColorStop(0, `rgba(${v},${v},${v},0.5)`);
+            grad.addColorStop(1, `rgba(${v},${v},${v},0)`);
+            g.fillStyle = grad;
+            g.fillRect(x + ox - r, y + oy - r, r * 2, r * 2);
+          }
+      }
+    }, true);
+    this.furTex = { strands, mottle };
+    return this.furTex;
+  }
+
+  /**
+   * 털 (실사). 같은 모양을 조금씩 크게 겹쳐(껍질) 가닥 그림으로 구멍을 뚫는다. 바깥 껍질일수록 가닥이 가늘고
+   * 밝아서 끝이 빛을 받는다. 반투명 섞기가 아니라 자르기(alphaTest)라 그리는 순서와 상관없다.
+   * 털 크기가 부품 크기와 상관없이 같도록 UV 를 부품 크기만큼 늘린다
+   */
+  private addFur(mesh: Mesh, p: Part) {
+    const len0 = furLength(p);
+    if (len0 <= 0 || p.shape === 'torus') return;
+    const geo = mesh.geometry;
+    geo.computeBoundingBox();
+    const half = geo.boundingBox?.getSize(new Vector3()).multiplyScalar(0.5);
+    if (!half) return;
+    const ext = half.multiply(mesh.scale);
+    // 아주 작은 부품은 털에 파묻히지 않게 짧게
+    const len = Math.min(len0, Math.min(ext.x, ext.y, ext.z) * 0.35);
+    if (len < 0.004) return;
+    // 가닥 간격이 세상 기준 같도록 UV 를 늘린다 (그림 한 장이 TILE 만큼)
+    const TILE = 0.28;
+    const around = Math.PI * (ext.x + ext.z);
+    const tall = p.shape === 'box' ? 2 * ext.y : Math.PI * ext.y;
+    const ru = Math.max(
+      1,
+      Math.round(p.shape === 'box' ? (2 * Math.max(ext.x, ext.z)) / TILE : around / TILE),
+    );
+    const rv = Math.max(1, Math.round(tall / TILE));
+    const uv = geo.attributes.uv;
+    if (uv) {
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * ru, uv.getY(i) * rv);
+      uv.needsUpdate = true;
+    }
+    const layers = p.finish === 'fuzzy' ? 12 : 6;
+    for (let i = 1; i <= layers; i++) {
+      const t = i / layers;
+      const shell = new Mesh(geo, this.furShell(p.color, p.finish ?? 'soft', i, layers));
+      const grow = len * t;
+      shell.scale.set(1 + grow / ext.x, 1 + grow / ext.y, 1 + grow / ext.z);
+      // 끝으로 갈수록 살짝 아래로 눕는다 (무게)
+      shell.position.y = -(0.25 * len * t * t) / Math.max(1e-3, mesh.scale.y);
+      shell.renderOrder = i;
+      mesh.add(shell);
+    }
+  }
+
+  /** 털 껍질 재질. 색과 겉 느낌, 층마다 하나 (같은 색 부품끼리 같이 쓴다) */
+  private furShell(color: string, finish: Finish, i: number, layers: number): Material {
+    const key = `${color}/${finish}/shell${i}of${layers}`;
+    let m = this.materials.get(key);
+    if (!m) {
+      const t = i / layers;
+      // 뿌리는 그늘져 어둡고 끝은 빛을 받아 밝다
+      const shade = new Color(color).multiplyScalar(0.8 + 0.2 * t);
+      if (t > 0.6) shade.lerp(new Color('#ffffff'), (t - 0.6) * 0.25);
+      m = new MeshStandardMaterial({
+        color: shade,
+        alphaMap: this.fur().strands,
+        alphaTest: 0.38 + 0.55 * t,
+        roughness: 0.9,
+      });
+      this.materials.set(key, m);
+    }
+    return m;
   }
 
   /** 앞에서 쏜 선이 얼굴 겉면에 닿는 자리에 눈, 입, 볼, 수염을 붙인다 */
@@ -658,7 +849,9 @@ export class Pet3D implements Model3D {
       return ray.intersectObjects(targets, false)[0];
     };
     const groups: Group[] = [];
-    const place = (x0: number, y0: number, out = 0.002): Group => {
+    const lift = this.faceLift;
+    const place = (x0: number, y0: number, out0 = 0.002): Group => {
+      const out = out0 + lift;
       let x = x0;
       let y = y0;
       let hit = shoot(x, y);
@@ -695,9 +888,22 @@ export class Pet3D implements Model3D {
     });
     const white = new MeshBasicMaterial({ color: '#ffffff' });
     const ink = new MeshBasicMaterial({ color: INK });
-    const irisMat = f.eyeColor
+    // 실사면 눈 색이 없어도 갈색 홍채를 넣고, 위에 투명한 각막을 씌워 유리알처럼
+    const irisColor = f.eyeColor ?? (this.real ? '#5b3a1e' : undefined);
+    const cornea = this.real
       ? new MeshPhysicalMaterial({
-          color: f.eyeColor,
+          color: '#ffffff',
+          roughness: 0.03,
+          transparent: true,
+          opacity: 0.16,
+          clearcoat: 1,
+          clearcoatRoughness: 0.02,
+          depthWrite: false,
+        })
+      : undefined;
+    const irisMat = irisColor
+      ? new MeshPhysicalMaterial({
+          color: irisColor,
           roughness: 0.2,
           clearcoat: 1,
           clearcoatRoughness: 0.05,
@@ -721,6 +927,12 @@ export class Pet3D implements Model3D {
         pupil.position.z = s * 0.14;
         shine.position.z = s * 0.42;
         open.add(iris, pupil, shine);
+        if (cornea) {
+          const dome = new Mesh(sphere, cornea);
+          dome.scale.set(s * 0.95, s * 1.1, s * 0.5);
+          dome.position.z = s * 0.06;
+          open.add(dome);
+        }
       } else {
         const ball = new Mesh(sphere, eyeMat);
         ball.scale.set(s * 0.78, s, s * 0.42);
@@ -837,7 +1049,8 @@ export class Pet3D implements Model3D {
       for (const o3 of Object.values(mouth)) mouthAt.add(o3);
     }
 
-    if (f.blush) {
+    // 볼 터치는 만화 표현이라 실사에서는 뺀다
+    if (f.blush && !this.real) {
       const blush = new MeshBasicMaterial({
         color: f.blush,
         transparent: true,
@@ -1292,4 +1505,22 @@ function blurAlpha(rgba: Uint8ClampedArray, cols: number, rows: number, r: numbe
       a[y * cols + x] = sum / (2 * r + 1);
     }
   return a;
+}
+
+/** 부품의 털 길이 (실사). fuzzy 는 복슬복슬, soft 는 짧은 솜털, shiny 는 없음 */
+function furLength(p: Part): number {
+  if (p.finish === 'shiny') return 0;
+  return p.finish === 'fuzzy' ? 0.05 : 0.018;
+}
+
+/** 늘 같은 털 무늬가 나오게 씨앗 있는 난수 */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }

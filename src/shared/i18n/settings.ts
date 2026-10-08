@@ -27,6 +27,9 @@ export const ko = {
   'settings.sizeHint': '펫 위에서 {mod} + 휠, 트랙패드 핀치로도 바꿀 수 있어.',
   'settings.pet3d': '입체로 보기',
   'settings.pet3dHint': '기본 펫을 피규어처럼 입체로 그려. 끄면 예전 납작한 그림이야.',
+  'settings.petReal': '실사처럼 보기',
+  'settings.petRealHint':
+    '털 한 올 한 올, 유리알 같은 눈, 부드러운 빛으로 진짜 동물처럼 그려. 그래픽을 조금 더 써.',
   'settings.gait': '걸음새',
   'settings.gait.auto': '자동',
   'settings.gait.biped': '두 발',
@@ -65,6 +68,9 @@ export const ko = {
   'settings.boostHint':
     '사양이 좋은 컴퓨터용. 펫이 더 부드럽게 움직이고 마우스를 더 촘촘히 따라 봐. 무료 AI 는 30분 동안 데워 둬서 답이 빨라. CPU와 메모리를 조금 더 써. 노트북이 배터리로 돌 때는 쉬어.',
   'settings.boostResting': '지금은 배터리라 쉬는 중이야. 전원을 꽂으면 켜져.',
+  'settings.sysMonitor': '메뉴 막대에 컴퓨터 상태',
+  'settings.sysMonitorHint':
+    'CPU 사용률을 메뉴 막대에 띄우고, 컴퓨터가 바쁠수록 작은 펫이 빨리 달려. 메뉴를 열면 메모리, 디스크, 그래픽도 보여.',
 
   // 친구 펫
   'settings.friends': '친구 펫',
@@ -340,6 +346,9 @@ export const en: Translation<typeof ko> = {
   'settings.sizeHint': 'You can also use {mod} + scroll or a trackpad pinch over the pet.',
   'settings.pet3d': 'Show in 3D',
   'settings.pet3dHint': 'Draws the default pet in 3D like a little figure. Turn off for the flat drawing.',
+  'settings.petReal': 'Realistic look',
+  'settings.petRealHint':
+    'Draws the pet like a real animal: fine fur, glassy eyes and soft light. Uses a little more graphics power.',
   'settings.gait': 'Walks on',
   'settings.gait.auto': 'Auto',
   'settings.gait.biped': 'Two legs',
@@ -377,6 +386,9 @@ export const en: Translation<typeof ko> = {
   'settings.boostHint':
     'For powerful computers. Your pet moves more smoothly and follows the mouse more closely, and the free AI stays warm for 30 minutes so answers come faster. Uses a bit more CPU and memory. Takes a break while a laptop runs on battery.',
   'settings.boostResting': 'Resting now: on battery. It turns on when you plug in.',
+  'settings.sysMonitor': 'Computer status in the menu bar',
+  'settings.sysMonitorHint':
+    'Shows CPU use in the menu bar, and a tiny pet runs faster the busier your computer is. Open the menu for memory, disk and graphics.',
 
   'settings.friends': 'Pet friends',
   'settings.friendsChanged': 'Pet friends updated',
