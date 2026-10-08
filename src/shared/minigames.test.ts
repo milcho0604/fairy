@@ -8,15 +8,26 @@ import {
   bubbleCoins,
   bubbleField,
   bubbleHit,
+  burrowFrame,
   chaseRunnerX,
   chaseX,
+  decoyHole,
   fleeX,
   grantCoins,
   HANDS,
   isMiniGame,
   LASER,
   laserCaught,
+  MOLE,
   makeBubble,
+  moleCoins,
+  moleField,
+  moleFoot,
+  moleHit,
+  molePace,
+  moleScore,
+  nearestHole,
+  nextHole,
   PLAY_AFFECTION_DAILY,
   PLAY_COIN,
   type PlayGate,
@@ -39,7 +50,7 @@ const seq = (...xs: number[]) => {
 };
 
 test('놀이 이름', () => {
-  for (const g of ['bubbles', 'laser', 'treats', 'rps', 'tag']) assert.ok(isMiniGame(g), g);
+  for (const g of ['bubbles', 'laser', 'treats', 'rps', 'tag', 'mole']) assert.ok(isMiniGame(g), g);
   for (const g of ['ball', 'walk', 'seek', '', undefined, 3]) assert.equal(isMiniGame(g), false, String(g));
 });
 
@@ -232,4 +243,95 @@ test('같이 뛸 수 있는 친구: 같은 화면, 같은 바닥', () => {
   assert.ok(samePlayground(pet, { ...pet, x: 100 }, true));
   assert.equal(samePlayground(pet, { ...pet, x: 100 }, false), false);
   assert.equal(samePlayground(pet, { ...pet, y: 300 }, true), false, '창 위에 앉은 친구');
+});
+
+test('두더지 구멍: 3x2, 화면 안, 펫 발밑이 아래 줄 가운데 구멍', () => {
+  const f = moleField(pet, area);
+  assert.equal(f.holes.length, MOLE.cols * MOLE.rows);
+  const inside = (r: { x: number; y: number; width: number; height: number }, a: typeof area) =>
+    r.x >= a.x && r.y >= a.y && r.x + r.width <= a.x + a.width && r.y + r.height <= a.y + a.height;
+  assert.ok(inside(f.rect, area));
+  // 펫 발밑에서 가장 가까운 구멍은 아래 줄 가운데, 그 구멍에 선 펫은 화면 안
+  const home = nearestHole(f, { x: pet.x + pet.width / 2, y: pet.y + pet.height });
+  assert.equal(home, 4);
+  for (let i = 0; i < f.holes.length; i++) {
+    const foot = moleFoot(f, i);
+    const stand = { x: foot.x - pet.width / 2, y: foot.y - pet.height, width: pet.width, height: pet.height };
+    assert.ok(inside(stand, f.rect), `구멍 ${i} 의 펫이 놀이 창 밖`);
+  }
+  // 위 줄과 아래 줄, 왼쪽에서 오른쪽
+  const [h0, h1, h2, h3] = f.holes.map((h) => h);
+  assert.ok(h0 && h1 && h2 && h3);
+  assert.ok(h0.y < h3.y);
+  assert.ok(h0.x < h1.x && h1.x < h2.x);
+  // 구석에 있으면 화면 안으로 민다
+  for (const p of [
+    { ...pet, x: 0 },
+    { ...pet, x: area.width - pet.width },
+    { ...pet, y: 0 },
+  ]) {
+    const g = moleField(p, area);
+    assert.ok(inside(g.rect, area), JSON.stringify(g.rect));
+  }
+  // 좁은 화면이면 칸을 줄여 들어간다
+  const narrow = { x: 100, y: 0, width: 300, height: 900 };
+  assert.ok(inside(moleField({ ...pet, x: 120 }, narrow).rect, narrow));
+});
+
+test('두더지: 같은 구멍에 연달아 안 나오고, 갈수록 빨라진다', () => {
+  for (let prev = 0; prev < 6; prev++)
+    for (const r of [0, 0.2, 0.5, 0.8, 0.9999]) {
+      const i = nextHole(prev, 6, () => r);
+      assert.ok(i >= 0 && i < 6 && i !== prev, `${prev} ${r} ${i}`);
+    }
+  const early = molePace(0, () => 0.5);
+  const late = molePace(MOLE.ms, () => 0.5);
+  assert.equal(early.upMs, MOLE.upMs[0]);
+  assert.equal(late.upMs, MOLE.upMs[1]);
+  assert.ok(late.gapMs < early.gapMs);
+  assert.equal(molePace(MOLE.ms * 3, () => 0.5).upMs, MOLE.upMs[1]);
+});
+
+test('두더지 가짜: 처음 몇 번은 안 나오고, 펫과 다른 세로 칸에', () => {
+  assert.equal(
+    decoyHole(1, 0, () => 0),
+    undefined,
+  );
+  assert.equal(
+    decoyHole(1, MOLE.decoyAfter, () => 0.99),
+    undefined,
+  );
+  for (let p = 0; p < 6; p++)
+    for (const r of [0, 0.1, 0.2]) {
+      const d = decoyHole(p, MOLE.decoyAfter, seq(0, r));
+      assert.ok(d !== undefined && d % MOLE.cols !== p % MOLE.cols, `${p} ${d}`);
+    }
+});
+
+test('두더지 잡기 판정, 점수, 코인', () => {
+  assert.equal(moleHit({ state: 'up', downAt: 0, hit: false }, 5000), true);
+  assert.equal(moleHit({ state: 'up', downAt: 0, hit: true }, 5000), false);
+  assert.equal(moleHit({ state: 'down', downAt: 1000, hit: false }, 1000 + MOLE.graceMs), true);
+  assert.equal(moleHit({ state: 'down', downAt: 1000, hit: false }, 1001 + MOLE.graceMs), false);
+  assert.equal(moleHit(undefined, 0), false);
+  assert.equal(moleScore(4, 1), 3);
+  assert.equal(moleScore(1, 3), 0);
+  assert.equal(moleCoins(4), 0);
+  assert.equal(moleCoins(5), 1);
+  assert.equal(moleCoins(9), 1);
+  assert.equal(moleCoins(10), 2);
+  assert.equal(moleCoins(30), 2);
+});
+
+test('구멍에서 솟기: 발밑은 그대로, 작게 시작해 다 솟으면 원래 크기', () => {
+  const stand = { x: 100, y: 200, width: 160, height: 160 };
+  for (const u of [0, 0.3, 0.7, 0.95, 1]) {
+    const r = burrowFrame(stand, u);
+    assert.equal(r.y + r.height, 360, `발밑 ${u}`);
+    assert.ok(Math.abs(r.x + r.width / 2 - 180) <= 1, `가운데 ${u}`);
+    assert.ok(r.width <= 160 * 1.07, `넘침 ${u}`);
+  }
+  assert.ok(burrowFrame(stand, 0).width < 30);
+  assert.deepEqual(burrowFrame(stand, 1), stand);
+  assert.ok(burrowFrame(stand, 0.3).width < burrowFrame(stand, 0.7).width);
 });

@@ -1,7 +1,7 @@
-// 짧은 놀이 (미니 게임) 실행: 비눗방울, 레이저 쫓기, 간식 받아먹기, 가위바위보, 친구와 술래잡기.
-// 규칙과 계산은 shared/minigames.ts. 여기는 작은 투명 창(방울, 점, 간식)과 타이머만 다룬다.
+// 짧은 놀이 (미니 게임) 실행: 비눗방울, 레이저 쫓기, 간식 받아먹기, 가위바위보, 친구와 술래잡기, 두더지 잡기.
+// 규칙과 계산은 shared/minigames.ts. 여기는 작은 투명 창(방울, 점, 간식, 구멍)과 타이머만 다룬다.
 // 한 번에 하나만 하고, 끝나면(다 함, 그만 놀기, 숨음, 화면 잠금, 모니터 바뀜, 끌기) 창과 타이머를 다 치운다.
-import { BrowserWindow, powerMonitor, screen } from 'electron';
+import { BrowserWindow, powerMonitor, screen, systemPreferences } from 'electron';
 import type { Rect } from '../shared/geometry.ts';
 import { type I18nKey, t } from '../shared/i18n/index.ts';
 import {
@@ -15,6 +15,7 @@ import {
   bubbleHit,
   chaseRunnerX,
   chaseX,
+  decoyHole,
   fleeX,
   grantCoins,
   HANDS,
@@ -22,8 +23,18 @@ import {
   LASER,
   laserCaught,
   type MiniGame,
+  MOLE,
   makeBubble,
+  moleCoins,
+  moleField,
+  moleFoot,
+  moleHit,
+  molePace,
+  moleScore,
+  nearestHole,
+  nextHole,
   type PlayBlock,
+  pickDecoy,
   pickHand,
   playBlock,
   playsOn,
@@ -39,12 +50,22 @@ import {
 } from '../shared/minigames.ts';
 import { localDay } from '../shared/todo-store.ts';
 import { onDisplaysChanged } from './display-watch.ts';
+import { decoyBox, MOLE_CSS, moleBody } from './mole-art.ts';
 import type { PetWindow } from './pet-window.ts';
 import { readJson, writeJson } from './store.ts';
 
 /** 하루 판 수 (친밀도 상한) 저장 파일 */
 const PLAYS_FILE = 'play-day';
 const FRAME_MS = 16;
+
+/** 운영체제 "동작 줄이기". 켜져 있으면 펫이 솟고 들어가는 움직임 없이 바로 나타나고 사라진다 */
+function reducedMotion(): boolean {
+  try {
+    return systemPreferences.getAnimationSettings().prefersReducedMotion;
+  } catch {
+    return false;
+  }
+}
 
 export interface MiniGameOptions {
   pet: () => PetWindow;
@@ -144,7 +165,14 @@ export type MiniGames = ReturnType<typeof createMiniGames>;
 export function createMiniGames(o: MiniGameOptions) {
   /** 지금 하는 놀이 */
   let current:
-    | { game: MiniGame; abort: AbortController; wins: Set<BrowserWindow>; poke?: () => void }
+    | {
+        game: MiniGame;
+        abort: AbortController;
+        wins: Set<BrowserWindow>;
+        poke?: () => void;
+        /** 펫 누르기를 놀이가 받는다 (두더지 잡기). 없으면 펫 누르기는 그만 놀기 */
+        tap?: () => void;
+      }
     | undefined;
 
   const say = (key: I18nKey, vars?: Record<string, string | number>, ttlMs = 3500) =>
@@ -625,12 +653,159 @@ export function createMiniGames(o: MiniGameOptions) {
     return !signal.aborted;
   }
 
-  const PLAYS: Record<MiniGame, (run: Run) => Promise<boolean>> = { bubbles, laser, treats, rps, tag };
+  // ---- 두더지 잡기 ----
+  // 펫 자리 둘레에 구멍 여섯 개를 그린 창을 펫 창 아래에 깔고, 펫 창이 구멍을 옮겨 다니며 솟았다 쏙 들어간다.
+  // 솟아 있을 때 펫을 누르면 잡기(뿅). 가끔 다른 구멍에 돌멩이나 나뭇잎이 솟는데 누르면 1점 깎인다. 갈수록 빨라진다.
+  // 펫 누르기가 잡기라 그만두기는 우클릭 "그만 놀기" (구멍 창 우클릭도).
+  async function mole(run: Run): Promise<boolean> {
+    const pet = o.pet();
+    const signal = run.abort.signal;
+    await pet.land();
+    await sayFor('play.mole.start', undefined, 2600, signal);
+    if (signal.aborted || pet.held()) return false;
+    const start = pet.bounds();
+    const home = { x: start.x, y: start.y };
+    const homeFoot = { x: start.x + start.width / 2, y: start.y + start.height };
+    const f = moleField(start, screen.getDisplayMatching(start).workArea);
+    const calm = reducedMotion();
+    const rise = calm ? 0 : MOLE.riseMs;
+    const duck = calm ? 0 : MOLE.duckMs;
+    const w = sprite(run, f.rect, moleBody(f), MOLE_CSS);
+    w.setIgnoreMouseEvents(true, { forward: true });
+    // 구멍 창이 펫 창 위에 뜨면 펫이 구멍 뒤에 가린다. 펫을 같은 층 맨 위로 (숨은 창에 부르면 맥에서 나타난다)
+    w.once('show', () => {
+      if (!pet.win.isDestroyed() && pet.win.isVisible()) pet.win.moveTop();
+    });
+    const js = (code: string) => {
+      if (!w.isDestroyed()) void w.webContents.executeJavaScript(code, true).catch(() => {});
+    };
+    let hits = 0;
+    let oops = 0;
+    let shown = 0;
+    let pop:
+      | { hole: number; state: 'up' | 'down'; downAt: number; hit: boolean; whack: AbortController }
+      | undefined;
+    let decoy: { hole: number; hit: boolean } | undefined;
+    const showScore = () => js(`document.getElementById('n').textContent='${moleScore(hits, oops)}'`);
+    /** 구멍 위 효과 (hit: 별과 +1, oops: -1). 같은 class 를 다시 붙여도 처음부터 */
+    const flash = (hole: number, cls: 'hit' | 'oops') =>
+      js(
+        `(()=>{const e=document.getElementById('x${hole}');if(!e)return;e.className='fx';void e.offsetWidth;e.className='fx ${cls}'})()`,
+      );
+    const setDecoy = (hole?: number) =>
+      js(
+        `(()=>{for(const e of document.querySelectorAll('.h.on'))e.classList.remove('on','oops');${hole === undefined ? '' : `const h=document.getElementById('h${hole}');if(h){h.dataset.k='${pickDecoy(Math.random)}';h.classList.add('on')}`}})()`,
+      );
+    run.tap = () => {
+      if (!pop || !moleHit(pop, Date.now())) return;
+      pop.hit = true;
+      hits++;
+      pet.sound('pop');
+      pet.react('happy');
+      flash(pop.hole, 'hit');
+      showScore();
+      pop.whack.abort();
+    };
+    // 개발용: 솟은 펫을 누른 것처럼
+    run.poke = run.tap;
+    // 가짜 위에서만 마우스를 받는다 (비눗방울과 같은 방법)
+    const box = decoyBox(f);
+    let catching = false;
+    const catchMouse = (on: boolean) => {
+      if (on === catching || w.isDestroyed()) return;
+      catching = on;
+      w.setIgnoreMouseEvents(!on, { forward: true });
+    };
+    const overDecoy = (p: { x: number; y: number }) => {
+      const h = decoy && !decoy.hit ? f.holes[decoy.hole] : undefined;
+      if (!h) return false;
+      const x = h.x - f.rect.x;
+      const y = h.y - f.rect.y;
+      return Math.abs(p.x - x) <= box.w / 2 && p.y >= y - box.h - 4 && p.y <= y + 4;
+    };
+    w.webContents.on('before-mouse-event', (_e, m) => {
+      if (m.type === 'mouseLeave') return catchMouse(false);
+      const over = overDecoy({ x: m.x, y: m.y });
+      if (m.type === 'mouseMove' || m.type === 'mouseEnter') catchMouse(over);
+      else if (m.type === 'mouseDown' && m.button === 'left' && over && decoy) {
+        decoy.hit = true;
+        oops++;
+        js(`document.getElementById('h${decoy.hole}')?.classList.add('oops')`);
+        flash(decoy.hole, 'oops');
+        showScore();
+        catchMouse(false);
+      }
+    });
+    w.webContents.on('context-menu', () => run.abort.abort('menu'));
+    await new Promise<void>((resolve) => w.webContents.once('did-finish-load', () => resolve()));
+    let ok = false;
+    try {
+      // 먼저 발밑 구멍으로 쏙 숨는다
+      if (signal.aborted || !(await pet.burrow(homeFoot, false, duck))) return false;
+      js(`document.body.classList.add('go')`);
+      const started = Date.now();
+      const end = started + MOLE.ms;
+      let prev = nearestHole(f, homeFoot);
+      while (!signal.aborted && Date.now() < end) {
+        const pace = molePace(Date.now() - started, Math.random);
+        await wait(pace.gapMs, signal);
+        if (signal.aborted || Date.now() >= end) break;
+        const hole = nextHole(prev, f.holes.length, Math.random);
+        prev = hole;
+        const d = decoyHole(hole, shown, Math.random);
+        decoy = d === undefined ? undefined : { hole: d, hit: false };
+        if (d !== undefined) setDecoy(d);
+        shown++;
+        const whack = new AbortController();
+        pop = { hole, state: 'up', downAt: 0, hit: false, whack };
+        const foot = moleFoot(f, hole);
+        if (!(await pet.burrow(foot, true, rise))) break;
+        await wait(pace.upMs, AbortSignal.any([signal, whack.signal]));
+        pop.state = 'down';
+        pop.downAt = Date.now();
+        if (decoy) setDecoy();
+        decoy = undefined;
+        catchMouse(false);
+        // 잡히면 더 빨리 쏙
+        if (!(await pet.burrow(foot, false, pop.hit ? Math.round(duck * 0.6) : duck))) break;
+      }
+      if (pet.held()) run.abort.abort('held');
+      ok = !signal.aborted;
+    } finally {
+      run.tap = undefined;
+      run.poke = undefined;
+      if (!w.isDestroyed()) w.destroy();
+      // 그만두면 바로 원래 자리에 (들려 있으면 끌기가 자리를 맡는다)
+      if (!ok) pet.unburrow(pet.held() ? undefined : home);
+    }
+    // 다 놀았으면 원래 자리 구멍에서 솟아 나온다
+    if (ok) {
+      await pet.burrow(homeFoot, true, rise);
+      pet.unburrow(home);
+    }
+    if (signal.aborted && hits === 0) return false;
+    countPlay();
+    const score = moleScore(hits, oops);
+    const coins = pay(moleCoins(score));
+    if (score === 0) void say('play.mole.none');
+    else if (coins > 0) void say('play.mole.endCoins', { n: score, coins });
+    else void say('play.mole.end', { n: score });
+    pet.react();
+    return !signal.aborted;
+  }
+
+  const PLAYS: Record<MiniGame, (run: Run) => Promise<boolean>> = { bubbles, laser, treats, rps, tag, mole };
 
   return {
     start,
     /** 그만 놀기 (펫 누르기, 우클릭 메뉴) */
     stop: () => current?.abort.abort('user'),
+    /** 펫을 눌렀다: 놀이가 받으면(두더지 잡기) true. 아니면 부른 쪽이 그만 놀기로 */
+    tap: (): boolean => {
+      if (!current?.tap) return false;
+      current.tap();
+      return true;
+    },
     /** 지금 하는 놀이 */
     running: (): MiniGame | undefined => current?.game,
     /** 술래잡기 할 친구 이름 (메뉴). 없으면 undefined */

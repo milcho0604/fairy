@@ -165,9 +165,9 @@ app.whenReady().then(() => {
           seeking.done(true);
           return;
         }
-        // 짧은 놀이 중이면 그만 (비눗방울, 레이저 쫓기 등)
+        // 짧은 놀이 중이면 그만 (비눗방울, 레이저 쫓기 등). 두더지 잡기는 누르기가 잡기
         if (games.running()) {
-          games.stop();
+          if (!games.tap()) games.stop();
           return;
         }
         petLife.activity('click');
@@ -377,7 +377,7 @@ app.whenReady().then(() => {
     seeking?.done(false);
     pet.halt();
   }
-  // ---- 짧은 놀이: 비눗방울, 레이저 쫓기, 간식 받아먹기, 가위바위보, 친구와 술래잡기 ----
+  // ---- 짧은 놀이: 비눗방울, 레이저 쫓기, 간식 받아먹기, 가위바위보, 친구와 술래잡기, 두더지 잡기 ----
   const games = createMiniGames({
     pet: () => pet,
     mates: () => friends.mates(),
