@@ -239,3 +239,14 @@ test('걸음새: 네 발, 두 발만 받고 모르는 값은 버린다. 요청�
   const p = blueprintPrompt('밀크');
   assert.ok(p.includes('"gait"') && p.includes('"quadruped"') && p.includes('"biped"'));
 });
+
+test('요청문은 사진 특징을 먼저 적게 하고, 그 칸은 설계도에 남지 않는다', () => {
+  const p = blueprintPrompt('보리');
+  assert.match(p, /"likeness"/);
+  assert.match(p, /must not use mirror/);
+  const bp = extractBlueprint(
+    `{"likeness":["왼쪽 눈 갈색 무늬"],${JSON.stringify(DEFAULT_BLUEPRINTS.kong).slice(1)}`,
+  );
+  assert.ok(bp);
+  assert.equal('likeness' in bp, false);
+});

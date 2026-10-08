@@ -75,11 +75,18 @@ Walking style (chosen by the owner): two legs.
 export function blueprintPrompt(petName: string, wish = '', gait?: Gait): string {
   const w = cleanWish(wish);
   return `Make a chibi figure of this pet (name: ${JSON.stringify(petName)}) that clearly resembles the photo: same main colors, markings, ear and tail shapes, body proportions.
+The owner must recognize THEIR pet at a glance, so likeness beats generic cuteness.
+
+Step 1, study the photo (write the result into "likeness", the first key of the JSON):
+- List the 3 to 6 features that make this pet look like itself, most distinctive first. Look at: breed or species silhouette; ear shape and position (pointy, floppy, folded, rounded, tall, wide-set); coat pattern and exactly where each patch is (around one or both eyes, muzzle, forehead blaze, chest bib, belly, socks or paws, tail tip, back saddle); fur length and volume (fluffy breeds look rounder and bigger); muzzle length and color; tail shape (curled, plume, short, long); accessories (collar, ribbon, clothes) and their colors; eye color only if striking.
+- Note each color as a hex value sampled from the photo, not a generic guess.
+Step 2, build the figure so every listed feature is visible from the front view.
 
 Coordinate system: ground is y=0, the figure is about 1.0 tall, +z faces the viewer, +x is the figure's right side as seen by the viewer. Angles are degrees.
 
 Schema:
 {
+  "likeness": [ "short notes, one per feature, e.g. "brown patch over the left eye only"" ],
   "v": 1,
   "parts": [ { "slot": one of ${JSON.stringify(SLOTS)},
                "shape": one of ${JSON.stringify(SHAPES)},
@@ -105,6 +112,11 @@ Rules:
 - The eyes and mouth are drawn by the app on the front surface of the face slot at eyeY and mouthY, so do not model eyes or mouth. Use "beak" only for birds.
 - For a quadruped, put the front paws in legL/legR (z > 0) and, when visible, the hind paws in legL/legR too, further back (z < 0). The app leans it forward onto all four paws when it walks.
 - Use the photo's real colors. Avoid pure white (#ffffff) and pure black (#000000) for big parts.
+- Spend parts on the "likeness" features first; skip generic details before dropping a distinctive one.
+- Model each marking as its own part with its own color in the right place: a patch over one eye, a white muzzle, a chest bib, colored socks, a tail tip. Patches on only one side must not use mirror (place them at their real x, left or right as seen in the photo).
+- Exaggerate characteristic shapes a little so they read at a small size: a Pomeranian is a fluffy ball, a corgi has big upright ears and short legs, a dachshund is long, a poodle or bichon has round puffy curls (several overlapping fuzzy spheres), a shih tzu has long ear fur and maybe a top-knot ribbon.
+- Fluffy or long fur uses "finish": "fuzzy" and rounder, slightly larger shapes; short smooth coats use "soft".
+- Ears and muzzle carry most of the likeness: match their size, angle, color and inner color (pink or darker inner ear) closely.
 
 Example (a default pet, a round bean with feet, arms and a sprout):
 ${JSON.stringify(DEFAULT_BLUEPRINTS.kong)}${gait ? gaitBlock(gait) : ''}${w ? wishBlock(w) : ''}`;
