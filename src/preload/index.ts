@@ -4,8 +4,10 @@ import type { Activity } from '../shared/behavior.ts';
 import type { BubbleLayout } from '../shared/bubble-layout.ts';
 import type { ChatState } from '../shared/chat-state.ts';
 import type { Gaze } from '../shared/gaze.ts';
+import type { Point } from '../shared/geometry.ts';
 import {
   type BubbleMessage,
+  type CarryMessage,
   CHAT,
   type ChatBridge,
   FACE,
@@ -24,6 +26,7 @@ import {
   type PanelState,
   type PanelTab,
   type PetAiState,
+  type PetBody,
   type PetBridge,
   type PetEnv,
   type PetImages,
@@ -95,6 +98,11 @@ if (kind === 'pet') {
       ipcRenderer.on(IPC.sound, (_e, kind: SoundKind) => listener(kind));
     },
     face: (url: string) => ipcRenderer.send(FACE.set, url),
+    body: (body: PetBody) => ipcRenderer.send(IPC.body, body),
+    onCarry: (listener) => {
+      ipcRenderer.on(IPC.carry, (_e, message: CarryMessage) => listener(message));
+    },
+    carried: (at: Point | null) => ipcRenderer.send(IPC.carried, at),
   };
   contextBridge.exposeInMainWorld('jjakkung', pet);
 }

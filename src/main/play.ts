@@ -1,5 +1,6 @@
 import { BrowserWindow, Menu, screen } from 'electron';
-import type { Rect } from '../shared/geometry.ts';
+import { BALL, BALL_SVG, canPick, dropVelocity, PICK_MS } from '../shared/fetch.ts';
+import type { Point, Rect } from '../shared/geometry.ts';
 import {
   defaultHouseRect,
   doorStandX,
@@ -12,16 +13,12 @@ import {
   spotOf,
 } from '../shared/house.ts';
 import { t } from '../shared/i18n/index.ts';
-import { bounce, GRAVITY } from '../shared/throw.ts';
+import { IPC } from '../shared/ipc.ts';
+import { MOVE_SPECS } from '../shared/moves.ts';
+import { type Body, bounce, GRAVITY } from '../shared/throw.ts';
 import { onDisplaysChanged as watchDisplays } from './display-watch.ts';
 import type { PetWindow } from './pet-window.ts';
 import { readJson, removeJson, writeJson } from './store.ts';
-
-const BALL = 30;
-const BALL_SVG = (yarn: boolean) =>
-  yarn
-    ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30"><circle cx="15" cy="15" r="13" fill="#e87a90" stroke="#b9506a" stroke-width="2"/><path d="M5 11c7 3 14 3 20 0M4 17c7 4 15 4 22 0M10 4c4 7 4 15 0 22M19 4c-3 8-3 15 1 22" fill="none" stroke="#b9506a" stroke-width="1.6"/><path d="M26 22c3 2 3 5 1 7" fill="none" stroke="#e87a90" stroke-width="2"/></svg>`
-    : `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30"><circle cx="15" cy="15" r="13" fill="#ffd166" stroke="#c99a2e" stroke-width="2"/><path d="M3 13c8 4 16 4 24 0" fill="none" stroke="#ef476f" stroke-width="3"/></svg>`;
 
 /** 투명 작은 창 하나에 그림 하나. 마우스는 다 통과한다 (집은 그림 위에서만 잡는다) */
 function makeSprite(svg: string, size: number, at: { x: number; y: number }, css = ''): BrowserWindow {
@@ -54,6 +51,7 @@ function makeSprite(svg: string, size: number, at: { x: number; y: number }, css
 
 /**
  * 공놀이 (v1): 펫 옆에서 공을 던지면 굴러가 멈추고, 펫이 쫓아가 물어 와서 제자리로 돌아온다.
+ * 네 발로 걷는 펫은 고개를 숙여 공을 입에 물고 와서 내려놓고 꼬리를 흔든다 (fetchBall).
  * 공은 상점에서 산 장난감(공, 털실)이다. 끝까지 하면 true.
  */
 export async function playBall(pet: PetWindow, yarn: boolean): Promise<boolean> {
@@ -62,34 +60,15 @@ export async function playBall(pet: PetWindow, yarn: boolean): Promise<boolean> 
   const floor = area.y + area.height - BALL;
   // 펫 머리 높이에서 화면 넓은 쪽으로 던진다
   const toRight = start.x + start.width / 2 < area.x + area.width / 2;
-  let b = {
+  const thrown = {
     x: start.x + start.width / 2 - BALL / 2,
     y: start.y + 20,
     vx: (toRight ? 1 : -1) * (600 + Math.random() * 500),
     vy: -700 - Math.random() * 300,
   };
-  const ball = makeSprite(BALL_SVG(yarn), BALL, b);
-  const areas = screen.getAllDisplays().map((d) => d.workArea);
+  const ball = makeSprite(BALL_SVG(yarn), BALL, thrown);
   // 공이 굴러가 멈출 때까지
-  await new Promise<void>((resolve) => {
-    let last = Date.now();
-    const started = last;
-    const timer = setInterval(() => {
-      const now = Date.now();
-      const dt = Math.min(0.05, (now - last) / 1000);
-      last = now;
-      b.vy += GRAVITY * dt;
-      b.x += b.vx * dt;
-      b.y += b.vy * dt;
-      const r = bounce(b, BALL, BALL, area, areas);
-      b = r;
-      if (!ball.isDestroyed()) ball.setPosition(Math.round(b.x), Math.round(b.y));
-      if (r.rest || now - started > 5000) {
-        clearInterval(timer);
-        resolve();
-      }
-    }, 16);
-  });
+  const b = await roll(ball, thrown, area, 5000);
   // 쫓아가기 (공 쪽 펫 가운데를 맞춘다)
   const p = pet.bounds();
   const reach = b.x + BALL / 2 - p.width / 2;
@@ -98,6 +77,8 @@ export async function playBall(pet: PetWindow, yarn: boolean): Promise<boolean> 
     ball.destroy();
     return false;
   }
+  const center = { x: b.x + BALL / 2, y: b.y + BALL / 2 };
+  if (pet.body().quad && canPick(center, pet.bounds())) return fetchBall(pet, ball, center, start, yarn);
   // 물고 돌아온다: 공이 펫 입 앞에 붙어 다닌다
   const carry = setInterval(() => {
     const q = pet.bounds();
@@ -111,6 +92,79 @@ export async function playBall(pet: PetWindow, yarn: boolean): Promise<boolean> 
   clearInterval(carry);
   ball.destroy();
   return back;
+}
+
+/** 공 창을 던진 속도로 튕기며 굴린다. 바닥에 멈추거나 maxMs 가 지나면 끝 자리 */
+function roll(ball: BrowserWindow, from: Body, area: Rect, maxMs: number): Promise<Body> {
+  const areas = screen.getAllDisplays().map((d) => d.workArea);
+  let b = from;
+  return new Promise((resolve) => {
+    let last = Date.now();
+    const started = last;
+    const timer = setInterval(() => {
+      const now = Date.now();
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      const r = bounce(
+        { x: b.x + b.vx * dt, y: b.y + (b.vy + GRAVITY * dt) * dt, vx: b.vx, vy: b.vy + GRAVITY * dt },
+        BALL,
+        BALL,
+        area,
+        areas,
+      );
+      b = r;
+      if (!ball.isDestroyed()) ball.setPosition(Math.round(b.x), Math.round(b.y));
+      if (r.rest || now - started > maxMs || ball.isDestroyed()) {
+        clearInterval(timer);
+        resolve(b);
+      }
+    }, 16);
+  });
+}
+
+/**
+ * 네 발 펫의 공 물어 오기: 공 앞에서 고개를 숙여 물고(공 창은 숨기고 펫 화면이 입에 그린다),
+ * 문 채로 제자리로 걸어와 입에서 떨어뜨려 통 튀게 하고, 꼬리가 있으면 흔든다.
+ * 잡히거나 숨거나 그만 놀기면 공을 치우고 false
+ */
+async function fetchBall(
+  pet: PetWindow,
+  ball: BrowserWindow,
+  center: Point,
+  start: Rect,
+  yarn: boolean,
+): Promise<boolean> {
+  try {
+    pet.carry(yarn ? 'yarn' : 'ball', center, BALL);
+    // 펫 화면이 같은 자리에 공을 그린 뒤 공 창을 숨긴다 (사이에 공이 깜빡 사라지지 않게)
+    setTimeout(() => {
+      if (!ball.isDestroyed()) ball.hide();
+    }, 80);
+    if (!(await pet.pause(PICK_MS))) return false;
+    // 걸어온 쪽으로 살짝 굴러 나가게 떨어뜨린다
+    const dir = start.x < pet.bounds().x ? -1 : 1;
+    if (!(await pet.walkTo(start.x, 110))) return false;
+    // 멈춰 앞을 본 뒤 (펫 화면의 걷기 끝 그림이 따라오게 잠깐)
+    if (!(await pet.pause(150))) return false;
+    // 입에서 떨어뜨린다: 공 창을 문 자리에 다시 띄운 뒤 펫 화면의 공을 지운다
+    const at = await pet.carriedAt();
+    if (ball.isDestroyed()) return false;
+    const q = pet.bounds();
+    const drop = at ?? { x: q.x + q.width / 2, y: q.y + q.height * 0.7 };
+    const from = { x: drop.x - BALL / 2, y: drop.y - BALL / 2 };
+    ball.setPosition(Math.round(from.x), Math.round(from.y));
+    ball.showInactive();
+    await new Promise((r) => setTimeout(r, 50));
+    pet.carry(null);
+    const area = screen.getDisplayMatching(q).workArea;
+    const wag = pet.body().tail ? MOVE_SPECS.wag.ms : 0;
+    if (wag && !pet.win.isDestroyed()) pet.win.webContents.send(IPC.activity, { type: 'wag', ms: wag });
+    await Promise.all([roll(ball, { ...from, ...dropVelocity(dir) }, area, 2000), pet.pause(wag)]);
+    return true;
+  } finally {
+    pet.carry(null);
+    if (!ball.isDestroyed()) ball.destroy();
+  }
 }
 
 function houseSvg(level: number): string {

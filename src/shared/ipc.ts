@@ -9,8 +9,10 @@ import type { BubbleLayout } from './bubble-layout.ts';
 import type { ChatImage, ChatState } from './chat-state.ts';
 import type { BubbleKind } from './chatter.ts';
 import type { CalEvent } from './event-store.ts';
+import type { CarryToy } from './fetch.ts';
 import type { FocusState } from './focus.ts';
 import type { Gaze } from './gaze.ts';
+import type { Point } from './geometry.ts';
 import type { GestureEvent } from './gesture.ts';
 import type { LookMotion } from './look-motion.ts';
 import type { MiniGame } from './minigames.ts';
@@ -65,6 +67,12 @@ export const IPC = {
   look: 'pet:look',
   /** 메인 → 펫 화면: 효과음 하나 (놀이). 설정과 상태는 화면이 본다 */
   sound: 'pet:sound',
+  /** 펫 화면 → 메인: 그리는 몸 (네 발로 걷는지, 흔들 꼬리가 있는지). 바뀔 때만 (공 물어 오기) */
+  body: 'pet:body',
+  /** 메인 → 펫 화면: 공을 입에 문다, 지금 문 자리를 알려 달라, 내려놓았다 (CarryMessage) */
+  carry: 'pet:carry',
+  /** 펫 화면 → 메인: 문 공 가운데 (펫 사각형 안 비율). 그리고 있지 않으면 null */
+  carried: 'pet:carried',
 } as const;
 
 /** 펫 얼굴 그림 (shared/face.ts). 펫 화면이 그려 메인에 주고, 메인이 얼굴을 쓰는 창에 나눠 준다 */
@@ -405,7 +413,28 @@ export interface PetBridge {
   onImage(listener: (images: PetImages) => void): void;
   /** 지금 모습의 얼굴 그림을 메인에 준다 (PetStatus.face 일 때만) */
   face(url: string): void;
+  /** 그리는 몸이 바뀌었다 (공 물어 오기) */
+  body(body: PetBody): void;
+  onCarry(listener: (message: CarryMessage) => void): void;
+  /** 문 공 가운데 (펫 사각형 안 비율). 안 물고 있으면 null */
+  carried(at: Point | null): void;
 }
+
+/** 펫 화면이 그리는 몸. 네 발로 걷는 펫은 공을 입에 물어 온다 */
+export interface PetBody {
+  quad: boolean;
+  /** 흔들 꼬리가 있다 (shared/moves.ts MoveAsk.tail 과 같다) */
+  tail: boolean;
+}
+
+/**
+ * 공 물어 오기 (shared/fetch.ts). pick 은 고개를 숙여 from(펫 사각형 안 비율)에 있는 공을 문다.
+ * size 는 공 지름 / 펫 너비. where 는 지금 문 공 자리를 carried 로 알려 달라 (그리기는 계속). null 은 내려놓았다
+ */
+export type CarryMessage =
+  | { kind: 'pick'; toy: CarryToy; from: Point; size: number }
+  | { kind: 'where' }
+  | null;
 
 /** 펫 반응: 신남(통통), 밥 먹음(신남과 같은 모습, 소리만 다름), 손 흔들기(친밀도 100), 빙글 춤(친밀도 300), 친구와 만남(하트) */
 export type ReactKind = 'happy' | 'fed' | 'wave' | 'dance' | 'love';
