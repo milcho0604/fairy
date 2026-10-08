@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { houseLayout } from './house-art.ts';
 import {
   DOOR_MIN,
   doorFrame,
@@ -66,8 +67,14 @@ test('쉬는 중 알림: 일정만 나와서, 놓치면 안 되는 말은 편지
 });
 
 test('문 자리: 집 그림 문 가운데, 문턱. 크기가 바뀌어도 같은 비율', () => {
-  assert.deepEqual(doorPoint({ x: 0, y: 0, width: 120, height: 120 }), { x: 52, y: 110 });
-  assert.deepEqual(doorPoint({ x: -1000, y: 500, width: 136, height: 136 }), { x: -941, y: 625 });
+  const door = houseLayout('wood', 1).door;
+  assert.deepEqual(doorPoint({ x: 0, y: 0, width: 120, height: 120 }, door), { x: 52, y: 110 });
+  assert.deepEqual(doorPoint({ x: -1000, y: 500, width: 136, height: 136 }, door), { x: -941, y: 625 });
+  // 저택은 문이 가운데쯤
+  assert.deepEqual(doorPoint({ x: 0, y: 0, width: 160, height: 160 }, houseLayout('wood', 5).door), {
+    x: 88,
+    y: 147,
+  });
 });
 
 test('문 드나들기: 처음은 문간 그대로, 끝은 문턱에 작게, 늘 정사각형', () => {

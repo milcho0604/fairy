@@ -1,5 +1,6 @@
 // 집에서 쉬기: 집 우클릭으로 펫을 집에 들여보내 쉬게 하고, 부르면 나온다. 상태 바뀜과 자리 계산만 (화면 없이 시험한다)
 import type { Rect } from './geometry.ts';
+import { ART } from './house-art.ts';
 
 /**
  * 밖(out) → 집으로 가는 중(going) → 집 안(inside) → 나오는 중(leaving) → 밖.
@@ -56,15 +57,14 @@ export function restWake(kind: string, important: boolean): 'come-out' | 'mail' 
   return important ? 'mail' : 'wait';
 }
 
-/** 집 그림(120 칸)에서 문 가운데 x 와 문턱 y */
-const DOOR_X = 52;
-const DOOR_BOTTOM = 110;
-
-/** 화면 좌표의 문 아래 가운데 점 (펫이 작아지며 들어가고 커지며 나오는 자리) */
-export function doorPoint(house: Rect): { x: number; y: number } {
+/**
+ * 화면 좌표의 문 아래 가운데 점 (펫이 작아지며 들어가고 커지며 나오는 자리).
+ * door 는 집 그림(120 칸)의 문 가운데 x 와 문턱 y. 모양과 단계마다 다르다 (house-art.ts houseLayout)
+ */
+export function doorPoint(house: Rect, door: { x: number; bottom: number }): { x: number; y: number } {
   return {
-    x: Math.round(house.x + (house.width * DOOR_X) / 120),
-    y: Math.round(house.y + (house.height * DOOR_BOTTOM) / 120),
+    x: Math.round(house.x + (house.width * door.x) / ART),
+    y: Math.round(house.y + (house.height * door.bottom) / ART),
   };
 }
 

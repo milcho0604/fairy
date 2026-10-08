@@ -1,5 +1,6 @@
 // 상점 (v1). 기획서 "게임 규칙": 먹이, 장난감, 집 업그레이드, 커스텀 먹이. 코인은 일을 끝낼 때만 생기고 펫을 돌보는 데만 쓴다.
 import type { Db } from './db-schema.ts';
+import { HOUSE_STYLES, type HouseStyle, isHouseStyle } from './house-art.ts';
 import { type I18nKey, t } from './i18n/index.ts';
 import { COIN, FULLNESS, type TodoStore } from './todo-store.ts';
 
@@ -54,14 +55,41 @@ export const TOYS: readonly Toy[] = [
   toy('cushion', 100, 'shop.toy.cushion', 'shop.toy.cushionHint'),
 ];
 
-/** 집 단계 값: 1단계 200, 2단계 500, 3단계 1,000 */
-export const HOUSE_COSTS = [200, 500, 1000] as const;
-const HOUSE_KEYS = ['shop.house.1', 'shop.house.2', 'shop.house.3'] as const;
-/** 집 이름 (단계 0, 1, 2). 지금 말로 읽는다 */
+/**
+ * 집 단계 값: 200, 500, 1,000, 1,800, 3,000. 하루 코인은 할 일 몇 개와 집중으로 50~100 쯤이라
+ * 3단계까지 2~3주, 5단계는 두어 달 걸린다
+ */
+export const HOUSE_COSTS = [200, 500, 1000, 1800, 3000] as const;
+const HOUSE_KEYS = ['shop.house.1', 'shop.house.2', 'shop.house.3', 'shop.house.4', 'shop.house.5'] as const;
+/** 집 이름 (단계 0 ~ 4). 지금 말로 읽는다 */
 export const houseName = (index: number): string | undefined => {
   const key = HOUSE_KEYS[index];
   return key ? t(key) : undefined;
 };
+
+/** 집 모양 값 (한 번 사면 언제든 공짜로 바꾼다. 단계는 그대로). 나무집은 처음부터 있다 */
+export const HOUSE_STYLE_COSTS: Readonly<Record<HouseStyle, number>> = {
+  wood: 0,
+  mushroom: 300,
+  igloo: 400,
+  castle: 600,
+};
+const STYLE_KEYS = {
+  wood: 'shop.style.wood',
+  mushroom: 'shop.style.mushroom',
+  igloo: 'shop.style.igloo',
+  castle: 'shop.style.castle',
+} as const satisfies Record<HouseStyle, I18nKey>;
+export const houseStyleName = (style: HouseStyle): string => t(STYLE_KEYS[style]);
+
+/** 고른 집 모양이 든 줄과 산 모양 줄의 이름표 */
+const STYLE_ROW = 'house-style';
+const styleRow = (style: HouseStyle) => `house-style:${style}`;
+
+/** 저장한 고른 모양 검사. 없거나 깨졌거나 안 산 모양이면 나무집 (3단계까지만 있던 옛 저장도 나무집) */
+export function parseHouseStyle(saved: unknown, owned: (style: HouseStyle) => boolean): HouseStyle {
+  return isHouseStyle(saved) && (saved === 'wood' || owned(saved)) ? saved : 'wood';
+}
 
 /** 커스텀 먹이 만들기 값 (한 번). 먹일 때는 기본 먹이 값 */
 export const CUSTOM_FOOD_COST = 50;
@@ -71,6 +99,10 @@ export interface ShopState {
   balance: number;
   toys: Record<string, boolean>;
   houseLevel: number;
+  /** 지금 집 모양 */
+  houseStyle: HouseStyle;
+  /** 가진 집 모양 (나무집은 늘 true) */
+  houseStyles: Record<HouseStyle, boolean>;
   customFoods: Food[];
 }
 
@@ -101,10 +133,15 @@ export class ItemStore {
     const rows = this.#rows();
     const toys: Record<string, boolean> = {};
     for (const t of TOYS) toys[t.key] = rows.some((r) => r.key === t.key && r.count > 0);
+    const houseStyles = {} as Record<HouseStyle, boolean>;
+    for (const s of HOUSE_STYLES)
+      houseStyles[s] = s === 'wood' || rows.some((r) => r.key === styleRow(s) && r.count > 0);
     return {
       balance: this.#todos.balance(),
       toys,
       houseLevel: Number(rows.find((r) => r.key === 'house')?.count ?? 0),
+      houseStyle: parseHouseStyle(rows.find((r) => r.key === STYLE_ROW)?.name, (s) => houseStyles[s]),
+      houseStyles,
       customFoods: rows
         .filter((r) => r.kind === 'food' && r.count > 0)
         .map((r) => ({
@@ -156,6 +193,27 @@ export class ItemStore {
     if (!this.#todos.spend(cost, `house:${level + 1}`, now))
       return { ok: false, error: t('shop.err.needCoins', { n: cost }) };
     this.#put('house', 'house', houseName(level) ?? t('shop.house.generic'), null, level + 1, now);
+    return { ok: true };
+  }
+
+  /** 집 모양 사기. 사면 바로 그 모양으로 바꾼다. 이미 있으면 바꾸기만 (코인 안 든다) */
+  buyHouseStyle(style: unknown, now: number): BuyResult {
+    if (!isHouseStyle(style)) return { ok: false, error: t('shop.err.noStyle') };
+    const st = this.state();
+    if (st.houseLevel <= 0) return { ok: false, error: t('shop.err.needHouse') };
+    if (st.houseStyles[style]) return this.setHouseStyle(style, now);
+    const cost = HOUSE_STYLE_COSTS[style];
+    if (!this.#todos.spend(cost, `house-style:${style}`, now))
+      return { ok: false, error: t('shop.err.needCoins', { n: cost }) };
+    this.#put('house-style', styleRow(style), houseStyleName(style), null, 1, now);
+    return this.setHouseStyle(style, now);
+  }
+
+  /** 가진 집 모양으로 바꾸기 (공짜) */
+  setHouseStyle(style: unknown, now: number): BuyResult {
+    if (!isHouseStyle(style)) return { ok: false, error: t('shop.err.noStyle') };
+    if (!this.state().houseStyles[style]) return { ok: false, error: t('shop.err.noStyle') };
+    this.#put('house-style', STYLE_ROW, style, null, 1, now);
     return { ok: true };
   }
 

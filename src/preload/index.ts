@@ -245,6 +245,7 @@ if (kind === 'panel' || kind === 'quick') {
     missedClear: () => ipcRenderer.send(PANEL.missedClear),
     buyToy: (key: string) => ipcRenderer.invoke(PANEL.buyToy, key),
     buyHouse: (level: number) => ipcRenderer.invoke(PANEL.buyHouse, level),
+    buyHouseStyle: (style: string) => ipcRenderer.invoke(PANEL.buyHouseStyle, style),
     feedWith: (key: string) => ipcRenderer.invoke(PANEL.feedWith, key),
     makeFood: () => ipcRenderer.invoke(PANEL.makeFood),
     removeFood: (key: string) => ipcRenderer.send(PANEL.removeFood, key),

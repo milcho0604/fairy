@@ -69,7 +69,7 @@ export function createHouseRest({ pet, house, petName, playing, log }: HouseRest
       move('cancel');
       return false;
     }
-    const entered = await pet.enterDoor(doorPoint(hb));
+    const entered = await pet.enterDoor(doorPoint(hb, house.doorArt()));
     // 들어가는 0.5초 사이에 부르면 들어갔다 바로 나온다
     if (!live()) {
       if (entered) await comeOut(false);
@@ -107,7 +107,9 @@ export function createHouseRest({ pet, house, petName, playing, log }: HouseRest
   async function comeOut(greet: boolean): Promise<void> {
     const hb = house.bounds();
     const p = pet.bounds();
-    const door = hb ? doorPoint(hb) : { x: Math.round(p.x + p.width / 2), y: p.y + p.height };
+    const door = hb
+      ? doorPoint(hb, house.doorArt())
+      : { x: Math.round(p.x + p.width / 2), y: p.y + p.height };
     const stand = house.door(p.width);
     const at = hb && stand ? { x: stand.x - p.width / 2, y: hb.y + hb.height - p.height } : p;
     await pet.leaveDoor(door, at);
