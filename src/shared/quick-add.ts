@@ -2,10 +2,19 @@
 // 반복(v1): "매일 운동", "평일 스탠드업", "매주 주간 보고" → 반복 할 일, 마감 오늘(평일은 다음 평일).
 // 반복 요일: "매주 월요일 회의", "월요일마다 회의", "gym every monday" → 매주, 마감은 오늘이 그 요일이면 오늘, 아니면 다음 그 요일.
 // 영어(F): "tomorrow buy milk", "call mom on friday", "gym every monday", "daily stretch".
+// 영어 상대 날짜: "write report in 2 days", "in a week", "by end of month", "next week", "this weekend" (quick-words.ts).
 import { plusDays } from './day.ts';
 import { normalizeQuick, takeKoDue } from './event-store.ts';
 import { t } from './i18n/index.ts';
-import { EN_WEEKDAY_ANY, EN_WEEKDAY_FULL, enWeekdayIndex, weekdayOffset } from './quick-words.ts';
+import {
+  EN_REL_DAY_GUARD,
+  EN_REL_DAY_WORD,
+  EN_WEEKDAY_ANY,
+  EN_WEEKDAY_FULL,
+  enRelDay,
+  enWeekdayIndex,
+  weekdayOffset,
+} from './quick-words.ts';
 import type { Repeat } from './todo-store.ts';
 
 export interface QuickTodo {
@@ -54,6 +63,10 @@ const EN_DAY_WORD = '(?:the )?day after tomorrow|today|tonight|tomorrow|tmrw';
 const EN_LEAD = '(?:by |on |due |until )?';
 const EN_DAY_HEAD = new RegExp(`^${EN_LEAD}(${EN_DAY_WORD}) `, 'i');
 const EN_DAY_TAIL = new RegExp(` ${EN_LEAD}(${EN_DAY_WORD})$`, 'i');
+// 상대 날짜: "in 2 days", "within a week", "by end of month", "next week", "this weekend". 일정과 같은 낱말, 같은 셈.
+// 다른 날짜 낱말처럼 맨 앞이나 맨 끝에 있을 때만 읽는다: "check in 2 days later" 의 가운데는 제목이다
+const EN_REL_HEAD = new RegExp(`^${EN_LEAD}(${EN_REL_DAY_WORD}),? ${EN_REL_DAY_GUARD}`, 'i');
+const EN_REL_TAIL = new RegExp(` ${EN_LEAD}(${EN_REL_DAY_WORD})$`, 'i');
 // 요일: 온 이름(friday)은 그대로, 줄임말(fri)은 by, on, due, next, this 같은 앞말이 있을 때만.
 // "sun cream", "sat exam" 처럼 줄임말이 제목 첫 낱말인 경우를 날짜로 오인하지 않게.
 const EN_WD = '(?:(by|on|due|until) )?(?:(next|this) )?';
@@ -63,7 +76,7 @@ const EN_WD_ABBR_HEAD = new RegExp(`^(?:(by|on|due|until) |(next|this) )+(${EN_W
 const EN_WD_ABBR_TAIL = new RegExp(` (?:(by|on|due|until) |(next|this) )+(${EN_WEEKDAY_ANY})$`, 'i');
 
 const EN_DEADLINE = new RegExp(
-  `\\b(?:by|until|due)\\s+(?:\\d|(?:noon|midnight|${EN_DAY_WORD}|next|this|${EN_WEEKDAY_ANY})\\b)`,
+  `\\b(?:by|until|due)\\s+(?:\\d|(?:noon|midnight|${EN_DAY_WORD}|next|this|${EN_WEEKDAY_ANY}|(?:the )?end of|the weekend)\\b|in \\S+ (?:days?|weeks?|months?)\\b)|\\bwithin \\S+ (?:days?|weeks?|months?)\\b`,
   'i',
 );
 
@@ -83,6 +96,11 @@ function takeEnglishDue(rest: string, today: string): [string, string] | null {
       const key = (m[1] ?? '').toLowerCase();
       return [plusDays(today, EN_DAY_OFFSET[key] ?? 0), rest.replace(re, '')];
     }
+  }
+  for (const re of [EN_REL_HEAD, EN_REL_TAIL]) {
+    const m = rest.match(re);
+    const day = m ? enRelDay(m[1] ?? '', today) : null;
+    if (day) return [day, rest.replace(re, ' ').trim()];
   }
   for (const [re, wdAt, nextAt] of [
     [EN_WD_FULL_HEAD, 3, 2],

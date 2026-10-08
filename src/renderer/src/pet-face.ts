@@ -1,8 +1,8 @@
 // 이름 옆 펫 얼굴 그리기 (shared/face.ts). 지금 모습 그대로 한 번 그려 머리 쪽을 가깝게 자른다.
 // - 입체(기본 펫 3D, 사진 펫 피규어): 펫 화면과 같은 렌더러로 머리 관절에 붙은 부품(머리, 귀, 얼굴)만 그린다.
-//   머리 관절이 없는 콩이, 삐약이는 몸이 곧 얼굴이라 전체
+//   머리 관절이 없는 콩이, 삐약이는 몸이 곧 얼굴이라 몸과 귀, 머리 위 장식만 (팔, 날개, 다리, 꼬리는 뺀다)
 // - 2.5D 판, 사진: 목(가장 좁아지는 줄)을 찾아 그 아래를 부드럽게 지운다
-// - 기본 펫 2D: draw.ts 그림 전체 (다섯 종류 모두 몸과 머리가 한 덩어리다)
+// - 기본 펫 2D: draw.ts 그림에서 발만 뺀 둥근 몸 (다섯 종류 모두 몸과 머리가 한 덩어리다)
 // 렌더러는 새로 만들지 않고 부르는 쪽 것을 빌린다 (창마다 하나만, pet3d.ts).
 // 설정 창 "모습" 카드도 같은 그림을 쓰려면 renderFace 에 그 창의 Pet3D 를 넘기면 된다.
 
@@ -170,6 +170,7 @@ export function renderFace(src: FaceSource, px = FACE_PX): string | undefined {
       blink: -1,
       viewSize: CANVAS_SIZE * SCALE,
       kind: src.kind,
+      face: true,
     };
     // 잘라서 크게 보이니 이번 한 번은 렌더러 해상도 상한을 올린다 (다음 펫 그리기에서 제 크기로 돌아간다)
     const keep = m?.maxPx;
@@ -191,7 +192,7 @@ export function renderFace(src: FaceSource, px = FACE_PX): string | undefined {
   let dirty = dropShadow(pixels);
   let body = solidRect(pixels, work.width, work.height);
   if (!body) return undefined;
-  // 머리 관절을 모르는 그림(사진, 2.5D 판)만 목을 찾는다. 기본 펫 2D 와 입체 머리는 그린 것이 곧 얼굴
+  // 머리 관절을 모르는 그림(사진, 2.5D 판)만 목을 찾는다. 기본 펫 2D(발 뺀 몸)와 입체 머리는 그린 것이 곧 얼굴
   const neck = src.photo || src.relief ? neckOf(pixels, work.width, body) : undefined;
   if (neck !== undefined) {
     // 목 줄에서 이미 다 투명하게: 경계 띠를 목 위(턱 밑)에 둔다. 목 줄에 두면 목 한 토막이 반투명하게 남았다

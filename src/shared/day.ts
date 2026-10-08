@@ -7,5 +7,18 @@ export function plusDays(day: string, n: number): string {
   return new Date(Date.UTC(y ?? 2000, (m ?? 1) - 1, (d ?? 1) + n)).toISOString().slice(0, 10);
 }
 
+/** YYYY-MM-DD 에 n 달. 그 달에 같은 날이 없으면 그 달 말일 (1월 31일 + 1달 = 2월 28일, 윤년이면 29일) */
+export function plusMonths(day: string, n: number): string {
+  const [y = 2000, m = 1, d = 1] = day.split('-').map(Number);
+  const last = new Date(Date.UTC(y, m + n, 0)).getUTCDate();
+  return new Date(Date.UTC(y, m - 1 + n, Math.min(d, last))).toISOString().slice(0, 10);
+}
+
+/** 그 달의 말일 (n 달 뒤의 말일도) */
+export function monthEnd(day: string, n = 0): string {
+  const [y = 2000, m = 1] = day.split('-').map(Number);
+  return new Date(Date.UTC(y, m + n, 0)).toISOString().slice(0, 10);
+}
+
 /** 요일: 0 일 ~ 6 토 */
 export const weekdayOf = (day: string): number => new Date(`${day}T00:00:00Z`).getUTCDay();

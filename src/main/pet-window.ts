@@ -42,6 +42,7 @@ import {
 } from '../shared/throw.ts';
 import { boostOn } from './boost.ts';
 import { watchCursor } from './cursor-watch.ts';
+import { onDisplaysChanged as watchDisplays } from './display-watch.ts';
 import { langArg } from './lang.ts';
 import { settings } from './settings.ts';
 import { readJson, writeJson } from './store.ts';
@@ -834,10 +835,12 @@ export function createPetWindow({
     closeBubble(action);
   };
 
-  const onDisplaysChanged = () => {
+  // 값이 실제로 바뀐 때만 온다. 맥이 변화 없이 몰아 보내는 알림은 display-watch.ts 가 거른다 (2026-10-08 로그 폭주)
+  const stopDisplayWatch = watchDisplays((displays) => {
     keepOnScreen();
-    log('display', 'changed', JSON.stringify(win.getBounds()));
-  };
+    const areas = displays.map((d) => d.workArea);
+    log('display', 'changed', JSON.stringify({ areas, pet: win.getBounds() }));
+  });
 
   ipcMain.on(IPC.hover, onHover);
   ipcMain.on(IPC.gesture, onGesture);
@@ -848,9 +851,6 @@ export function createPetWindow({
   ipcMain.on(IPC.activityStop, onActivityStop);
   ipcMain.on(IPC.petted, onPetted);
   ipcMain.on(IPC.bubbleClosed, onBubbleClosed);
-  screen.on('display-added', onDisplaysChanged);
-  screen.on('display-removed', onDisplaysChanged);
-  screen.on('display-metrics-changed', onDisplaysChanged);
 
   // ---- 커서 바라보기 ----
   // 한가하고 보일 때만 커서를 본다. 방향 칸이 바뀔 때만 화면에 알린다 (화면도 그때만 다시 그린다).
@@ -914,9 +914,7 @@ export function createPetWindow({
     ipcMain.off(IPC.hover, onHover);
     ipcMain.off(IPC.gesture, onGesture);
     ipcMain.off(IPC.contextMenu, onContextMenu);
-    screen.off('display-added', onDisplaysChanged);
-    screen.off('display-removed', onDisplaysChanged);
-    screen.off('display-metrics-changed', onDisplaysChanged);
+    stopDisplayWatch();
   });
 
   return {

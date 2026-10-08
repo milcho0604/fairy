@@ -2,7 +2,18 @@
 import { plusDays } from './day.ts';
 import type { Db } from './db-schema.ts';
 import { t } from './i18n/index.ts';
-import { EN_WEEKDAY_ANY, EN_WEEKDAY_FULL, enWeekdayIndex, weekdayOffset } from './quick-words.ts';
+import {
+  EN_COUNT,
+  EN_REL_DAY_GUARD,
+  EN_REL_DAY_WORD,
+  EN_WEEKDAY_ANY,
+  EN_WEEKDAY_FULL,
+  enRelDay,
+  enWeekdayIndex,
+  KO_REL_DAY_WORD,
+  koRelDay,
+  weekdayOffset,
+} from './quick-words.ts';
 import { localDay } from './todo-store.ts';
 
 export interface CalEvent {
@@ -393,8 +404,17 @@ export function normalizeQuick(text: string): string {
     )
     .replace(new RegExp(`(\\d{1,2}:\\d{2})(${KO_TIME_TAIL})(?=[가-힣])${GLUED_TAIL}`, 'g'), '$1$2 ')
     .replace(/\s+/g, ' ')
+    .replace(EN_WD_NEXT_WEEK, 'next $1')
+    .replace(EN_NEXT_WEEK_WD, 'next $1')
     .trim();
 }
+
+/**
+ * "friday next week", "next week friday", "next week on fri" → "next friday" (다음 주 그 요일).
+ * 그대로 두면 "next week"(다음 주 월요일)과 요일(이번 주)을 따로 읽어 이번 주 금요일이 된다
+ */
+const EN_WD_NEXT_WEEK = new RegExp(`\\b(${EN_WEEKDAY_ANY}) next week\\b`, 'gi');
+const EN_NEXT_WEEK_WD = new RegExp(`\\bnext week,? (?:on )?(${EN_WEEKDAY_ANY})\\b`, 'gi');
 
 interface ClockPart {
   h: number;
@@ -601,10 +621,7 @@ export function parseQuickEvent(text: string, today: string, nowMinute: number):
       tonight = key === 'tonight';
     }
   }
-  if (!day) {
-    const later = take(KO_DAYS_LATER) ?? take(EN_DAYS_LATER);
-    if (later) day = plusDays(today, Number(later[1]));
-  }
+  if (!day) day = takeLaterDay(rest, today, take);
   const md = take(KO_MD_RE);
   if (md && !setMonthDay(Number(md[1]), Number(md[2]))) return null;
   if (!md) {
@@ -622,12 +639,14 @@ export function parseQuickEvent(text: string, today: string, nowMinute: number):
     }
   }
   // 요일: { 요일 번호, 다음 주인가 }
-  let wd: { target: number; next: boolean } | null = null;
+  let wd: { target: number; next: boolean; weeks: number } | null = null;
   const koWd = take(KO_WD_RE);
-  if (koWd) wd = { target: WEEKDAYS.indexOf(koWd[2] ?? ''), next: koWd[1] === '다음' };
+  if (koWd)
+    wd = { target: WEEKDAYS.indexOf(koWd[2] ?? ''), next: koWeeks(koWd[1]) > 0, weeks: koWeeks(koWd[1]) };
   else {
     const enWd = take(EN_WEEKDAY);
-    if (enWd) wd = { target: enWeekdayIndex(enWd[2] ?? ''), next: (enWd[1] ?? '').toLowerCase() === 'next' };
+    const next = (enWd?.[1] ?? '').toLowerCase() === 'next';
+    if (enWd) wd = { target: enWeekdayIndex(enWd[2] ?? ''), next, weeks: next ? 1 : 0 };
   }
 
   let minute: number | null = null;
@@ -728,7 +747,7 @@ export function parseQuickEvent(text: string, today: string, nowMinute: number):
 
   const explicit = Boolean(day || wd);
   if (wd && wd.target >= 0) {
-    if (wd.next) day = plusDays(today, weekdayOffset(today, wd.target, true));
+    if (wd.next) day = plusDays(today, weekdayOffset(today, wd.target, true) + (wd.weeks - 1) * 7);
     else {
       let diff = weekdayOffset(today, wd.target, false);
       // 그 요일 밤 12시는 다음 날 0시라 지난 시각으로 보지 않는다
@@ -767,10 +786,36 @@ const KO_REL: Record<string, number> = { 오늘: 0, 내일: 1, 모레: 2, 글피
 const KO_REL_RE = / (오늘|내일|모레|글피) /;
 // 월/일 뒤 조사: "10월 20일에", 요일 뒤: "금요일에", "금요일날". "이번주 금요일" 의 이번주도 뗀다
 const KO_MD_RE = / (\d{1,2})[/.월] ?(\d{1,2})일?(?:에|엔)? /;
-const KO_WD_RE = / (?:(다음|이번) ?주 ?)?([일월화수목금토])요일(?:에|엔|날)? /;
-// "3일 뒤", "in 3 days"
+const KO_WD_RE = / (?:(다다음|다음|이번) ?주 ?)?([일월화수목금토])요일(?:에|엔|날)? /;
+/** "다음 주" 1, "다다음 주" 2, 나머지 0 */
+const koWeeks = (lead: string | undefined) => (lead === '다다음' ? 2 : lead === '다음' ? 1 : 0);
+// 상대 날짜: "3일 뒤", 영어 "in 3 days", "in a week", "next week", "end of month", "this weekend" (quick-words.ts EN_REL_DAY_WORD)
 const KO_DAYS_LATER = / (\d{1,2})일 ?(?:뒤|후)(?:에)? /;
-const EN_DAYS_LATER = / in (\d{1,2}) days? /i;
+const EN_REL_DAY = new RegExp(` (${EN_REL_DAY_WORD}) ${EN_REL_DAY_GUARD}`, 'i');
+// 한국어 상대 날짜: "2주 뒤", "한 달 뒤", "다음 주", "이번 주까지", "주말에", "월말", "다음 달" (quick-words.ts KO_REL_DAY_WORD)
+const KO_REL_DAY = new RegExp(` (${KO_REL_DAY_WORD})(?:까지|에|엔)? `);
+
+/**
+ * 글(앞뒤에 빈칸을 붙인 것)의 상대 날짜 → 날짜. 읽으면 take 로 글에서 뗀다(제목에 남지 않게).
+ * 없거나 "in 0 days" 면 null 이고 글은 그대로. 시각 일정과 종일 일정이 같이 쓴다
+ */
+function takeLaterDay(
+  rest: string,
+  today: string,
+  take: (re: RegExp) => RegExpMatchArray | null,
+): string | null {
+  if (KO_DAYS_LATER.test(rest)) return plusDays(today, Number(take(KO_DAYS_LATER)?.[1]));
+  const ko = rest.match(KO_REL_DAY);
+  const koDay = ko ? koRelDay(ko[1] ?? '', today) : null;
+  if (koDay) {
+    take(KO_REL_DAY);
+    return koDay;
+  }
+  const en = rest.match(EN_REL_DAY);
+  const day = en ? enRelDay(en[1] ?? '', today) : null;
+  if (day) take(EN_REL_DAY);
+  return day;
+}
 // "다음 달 5일", "이번 달 20일", 달 없이 "15일" (오늘보다 앞이면 다음 달). "3일간", "3일 동안" 은 날 수라 뺀다
 const KO_MONTH_DAY_REL = / (다음|이번) ?달 ?(\d{1,2})일(?:에|엔)? /;
 const KO_BARE_DAY = / ()(\d{1,2})일(?!간| ?동안| ?뒤| ?후|째|차)(?:에|엔)? /;
@@ -827,10 +872,7 @@ function takeDay(
     const en = take(EN_DAY);
     if (en) day = plusDays(today, EN_DAY_OFFSET[(en[1] ?? '').toLowerCase()] ?? 0);
   }
-  if (!day) {
-    const later = take(KO_DAYS_LATER) ?? take(EN_DAYS_LATER);
-    if (later) day = plusDays(today, Number(later[1]));
-  }
+  if (!day) day = takeLaterDay(rest, today, take);
   const md = take(KO_MD_RE);
   if (md) {
     const d = monthDayFrom(Number(md[1]), Number(md[2]), base);
@@ -856,19 +898,19 @@ function takeDay(
     }
   }
   // 요일은 base 부터 센다 ("금요일부터 일요일까지"의 일요일은 금요일 뒤). "다음 주 X요일", "next X" 는 늘 오늘 기준의 다음 주
-  const weekdayDay = (target: number, next: boolean) =>
-    next
-      ? plusDays(today, weekdayOffset(today, target, true))
+  const weekdayDay = (target: number, weeks: number) =>
+    weeks > 0
+      ? plusDays(today, weekdayOffset(today, target, true) + (weeks - 1) * 7)
       : plusDays(base, weekdayOffset(base, target, false));
   const koWd = take(KO_WD_RE);
   const enWd = koWd ? null : (take(EN_WD_FULL_RE) ?? take(looseWeekday ? EN_WD_LOOSE_RE : EN_WD_ABBR_RE));
   if (koWd) {
-    day = weekdayDay(WEEKDAYS.indexOf(koWd[2] ?? ''), koWd[1] === '다음');
+    day = weekdayDay(WEEKDAYS.indexOf(koWd[2] ?? ''), koWeeks(koWd[1]));
   } else if (enWd) {
     const word = enWd[enWd.length - 1] ?? '';
     const lead = (enWd[1] ?? enWd[2] ?? '').toLowerCase();
     const target = enWeekdayIndex(word);
-    if (target >= 0) day = weekdayDay(target, lead === 'next');
+    if (target >= 0) day = weekdayDay(target, lead === 'next' ? 1 : 0);
   }
   return day ? { day, rest } : null;
 }
@@ -881,33 +923,23 @@ function dayToken(token: string, today: string, base: string): string | null {
 
 // 기간에 쓰는 날짜 모양 (값은 dayToken 이 다시 읽는다)
 const KO_DATE =
-  '(?:오늘|내일|모레|글피|(?:(?:다음|이번) ?주 )?[일월화수목금토]요일|\\d{1,2}월 ?\\d{1,2}일|\\d{1,2}[/.]\\d{1,2})';
+  '(?:오늘|내일|모레|글피|(?:(?:다다음|다음|이번) ?주 )?[일월화수목금토]요일|\\d{1,2}월 ?\\d{1,2}일|\\d{1,2}[/.]\\d{1,2})';
 const EN_DATE = `(?:today|tomorrow|tmrw|(?:(?:next|this) )?(?:${EN_WEEKDAY_ANY})|(?:${EN_MONTH})\\.? \\d{1,2}(?:st|nd|rd|th)?|\\d{1,2}(?:st|nd|rd|th)? (?:of )?(?:${EN_MONTH}))`;
 const DATE = `(?:${KO_DATE}|${EN_DATE})`;
-const EN_COUNT: Record<string, number> = {
-  a: 1,
-  one: 1,
-  two: 2,
-  three: 3,
-  four: 4,
-  five: 5,
-  six: 6,
-  seven: 7,
-  eight: 8,
-  nine: 9,
-  ten: 10,
-};
 const EN_COUNT_WORD = `\\d{1,2}|${Object.keys(EN_COUNT).join('|')}`;
 // "내일부터 3일", "내일부터 2박 3일", "금요일부터 3일간", "10월 10일부터 3일 동안" (뒤에 까지가 오면 끝 날짜라 아래 SPAN 이 읽는다)
+// 첫날이 한국어 상대 날짜여도 된다: "다음 주부터 3일", "2주 뒤부터 2박 3일"
+const KO_START = `${DATE}|${KO_REL_DAY_WORD}`;
 const KO_FROM_COUNT = new RegExp(
-  ` (${DATE}) ?부터 (?:(\\d{1,2})박 ?(\\d{1,2})일|(\\d{1,2})일(간| ?동안)?)(?! ?까지)(?: 동안)? `,
+  ` (${KO_START}) ?부터 (?:(\\d{1,2})박 ?(\\d{1,2})일|(\\d{1,2})일(간| ?동안)?)(?! ?까지)(?: 동안)? `,
   'i',
 );
 // "내일 3일간", "금요일 3일 동안", "내일 2박 3일" (부터 없이는 간, 동안, 박이 있어야 날 수로 본다)
-const KO_COUNT = new RegExp(` (${DATE}) (?:(\\d{1,2})박 ?(\\d{1,2})일|(\\d{1,2})일(?:간| 동안)) `, 'i');
-// "from tomorrow for 3 days", "fri for two days", "oct 10 for a week", "for 3 days from tomorrow"
+const KO_COUNT = new RegExp(` (${KO_START}) (?:(\\d{1,2})박 ?(\\d{1,2})일|(\\d{1,2})일(?:간| 동안)) `, 'i');
+// "from tomorrow for 3 days", "fri for two days", "oct 10 for a week", "for 3 days from tomorrow".
+// 첫날이 상대 날짜여도 된다: "trip in 2 weeks for 3 days", "conference next week for 3 days" (끝 날짜 자리에는 받지 않는다)
 const EN_FOR = `for (${EN_COUNT_WORD}) (days?|weeks?)`;
-const EN_FROM_COUNT = new RegExp(` (?:from |starting |on )?(${DATE}),? ${EN_FOR} `, 'i');
+const EN_FROM_COUNT = new RegExp(` (?:from |starting |on )?(${DATE}|${EN_REL_DAY_WORD}),? ${EN_FOR} `, 'i');
 const EN_COUNT_FROM = new RegExp(` ${EN_FOR} (?:from|starting|on) (${DATE}) `, 'i');
 // "10월 10일~12일", "10/10-10/12", "금요일부터 일요일까지", "oct 10-12", "from fri to sun", "oct 10 through oct 12"
 const SPAN = new RegExp(
@@ -947,7 +979,7 @@ function rangeFrom(text: string, today: string, pastBase: string): QuickAllDay |
     if (!day) return null;
     let n = m[3] ? Number(m[3]) : Number(m[4]);
     // "10월 10일부터 12일": 첫날을 월/일로 적었고 뒤의 수가 그 날보다 크면 끝 날짜로 본다 ("내일부터 3일"은 3일 동안)
-    if (re === KO_FROM_COUNT && !m[3] && !m[5] && /\d/.test(m[1] ?? '')) {
+    if (re === KO_FROM_COUNT && !m[3] && !m[5] && /\d/.test(m[1] ?? '') && !/뒤|후/.test(m[1] ?? '')) {
       const end = Number(m[4]);
       if (end > Number(day.slice(8, 10))) n = end - Number(day.slice(8, 10)) + 1;
     }
@@ -1056,7 +1088,8 @@ export function timeLabel(minute: number): string {
 // ---- 할 일 마감 (빠른 입력, 할 일 탭). 날짜는 맨 앞이나 맨 끝에 있을 때만 읽는다 ("오늘의 메모"는 제목) ----
 
 const KO_DUE_TOKEN =
-  '(?:(?:다음|이번) ?주 ?)?[일월화수목금토]요일|\\d{1,2}월 ?\\d{1,2}일|\\d{1,2}/\\d{1,2}|(?:다음|이번) ?달 ?\\d{1,2}일|\\d{1,2}일 ?(?:뒤|후)|\\d{1,2}일|오늘|내일|모레|글피';
+  `(?:(?:다다음|다음|이번) ?주 ?)?[일월화수목금토]요일|${KO_REL_DAY_WORD}|` +
+  '\\d{1,2}월 ?\\d{1,2}일|\\d{1,2}/\\d{1,2}|(?:다음|이번) ?달 ?\\d{1,2}일|\\d{1,2}일 ?(?:뒤|후)|\\d{1,2}일|오늘|내일|모레|글피';
 const KO_DUE_PARTICLE = '(?:까지|에|엔|날)?';
 const KO_DUE_HEAD = new RegExp(`^(${KO_DUE_TOKEN})${KO_DUE_PARTICLE} (?!동안|간 )`);
 const KO_DUE_TAIL = new RegExp(` (${KO_DUE_TOKEN})${KO_DUE_PARTICLE}$`);
@@ -1073,6 +1106,8 @@ export function takeKoDue(rest: string, today: string): [string, string] | null 
   for (const re of [KO_DUE_HEAD, KO_DUE_TAIL]) {
     const m = text.match(re);
     if (!m) continue;
+    // 맨 앞의 그냥 "주말"(조사 없이)은 제목일 수 있다: "주말 여행 계획". "주말에 대청소", "이번 주말 대청소", "대청소 주말"은 날짜
+    if (re === KO_DUE_HEAD && m[0].trim() === '주말') continue;
     const day = dayToken(m[1] ?? '', today, today);
     if (day) return [day, text.replace(m[0], ' ').replace(/\s+/g, ' ').trim()];
   }

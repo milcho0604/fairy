@@ -13,6 +13,7 @@ import {
 } from '../shared/house.ts';
 import { t } from '../shared/i18n/index.ts';
 import { bounce, GRAVITY } from '../shared/throw.ts';
+import { onDisplaysChanged as watchDisplays } from './display-watch.ts';
 import type { PetWindow } from './pet-window.ts';
 import { readJson, removeJson, writeJson } from './store.ts';
 
@@ -335,9 +336,8 @@ export function createHouse({ onMoved, log }: HouseOptions = {}) {
     if (!alive() || drag || glideTimer || !win) return;
     win.setBounds(target(houseSize(shownLevel)));
   };
-  screen.on('display-removed', replace);
-  screen.on('display-added', replace);
-  screen.on('display-metrics-changed', replace);
+  // 값이 실제로 바뀐 때만 온다 (맥이 변화 없이 몰아 보내는 알림은 display-watch.ts 가 거른다)
+  const stopDisplayWatch = watchDisplays(replace);
 
   function show(level: number, near: Rect) {
     lastNear = near;
@@ -382,9 +382,7 @@ export function createHouse({ onMoved, log }: HouseOptions = {}) {
     destroy: () => {
       endDrag();
       stopGlide();
-      screen.off('display-removed', replace);
-      screen.off('display-added', replace);
-      screen.off('display-metrics-changed', replace);
+      stopDisplayWatch();
       win?.destroy();
     },
   };

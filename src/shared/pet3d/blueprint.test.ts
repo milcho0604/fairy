@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { expandMirrors, MAX_PARTS, parseBlueprint } from './blueprint.ts';
+import { expandMirrors, inFace, MAX_PARTS, parseBlueprint, SLOTS } from './blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from './defaults.ts';
 import { blueprintPrompt, cleanWish, extractBlueprint, WISH_MAX } from './prompt.ts';
 
@@ -180,4 +180,11 @@ test('몸이 아주 작으면 쓸 수 없다', () => {
     ],
   };
   assert.equal(parseBlueprint(tiny), undefined);
+});
+
+test('얼굴 그림에는 머리 쪽만: 팔, 날개, 다리, 꼬리는 빼고 몸은 얼굴이 몸에 있을 때만', () => {
+  const head = SLOTS.filter((slot) => inFace(slot, true));
+  const body = SLOTS.filter((slot) => inFace(slot, false));
+  assert.deepEqual(head, ['head', 'earL', 'earR', 'top']);
+  assert.deepEqual(body, ['body', 'head', 'earL', 'earR', 'top']);
 });

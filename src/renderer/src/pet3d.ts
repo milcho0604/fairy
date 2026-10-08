@@ -42,6 +42,7 @@ import {
   expandMirrors,
   type Face,
   type Finish,
+  inFace,
   type Part,
   SLOTS,
   type Slot,
@@ -81,6 +82,8 @@ export class Pet3D implements Model3D {
   private root = new Group();
   private joints = {} as Record<Slot, Group>;
   private hasHead = false;
+  /** 눈과 입을 머리 관절에 그렸는지 (아니면 몸이 곧 얼굴) */
+  private faceOnHead = false;
   /** 손 흔들기에 들 팔이나 날개가 있는지 (없으면 wavePaw 를 들어 흔든다) */
   private hasHand = false;
   /** 팔이 없는 펫의 손 흔들기 앞발 (평소엔 숨김) */
@@ -305,6 +308,7 @@ export class Pet3D implements Model3D {
     }
     this.root.updateMatrixWorld(true);
     const faceSlot = bp.face.slot === 'head' && this.hasHead ? 'head' : 'body';
+    this.faceOnHead = faceSlot === 'head';
     this.face = this.buildFace(
       bp.face,
       this.joints[faceSlot],
@@ -380,18 +384,21 @@ export class Pet3D implements Model3D {
   }
 
   /**
-   * 머리 관절에 붙은 것(머리, 귀, 얼굴, 머리 위 장식)만 그린다. 이름 옆 얼굴 그림용 (pet-face.ts).
-   * 몸, 팔, 다리, 꼬리는 잠깐 숨겼다가 되돌린다. 머리 관절이 없으면 몸 전체를 그린다(콩이처럼 몸이 곧 얼굴)
+   * 얼굴 부품만 그린다. 이름 옆 얼굴 그림용 (pet-face.ts). 머리, 귀, 얼굴, 머리 위 장식에 더해
+   * 얼굴이 몸에 있으면(콩이처럼 몸이 곧 얼굴) 몸도 (blueprint.ts inFace).
+   * 나머지(팔, 앞발, 다리, 꼬리, 목줄 같은 몸 장식)는 잠깐 숨겼다가 되돌린다
    */
   drawHead(ctx: CanvasRenderingContext2D, s: DrawState): number | undefined {
-    if (!this.hasHead || this.relief) return this.draw(ctx, s, 0, 1, 1, undefined);
-    const head = this.joints.head;
+    if (this.relief) return this.draw(ctx, s, 0, 1, 1, undefined);
+    const slotOf = new Map<Object3D, Slot>(SLOTS.map((slot) => [this.joints[slot], slot]));
     const hidden: Object3D[] = [];
     this.root.traverse((o) => {
       if (!(o instanceof Mesh) || !o.visible) return;
-      let p: Object3D | null = o;
-      while (p && p !== head) p = p.parent;
-      if (p) return;
+      // 부품이 매달린 가장 가까운 관절
+      let p: Object3D | null = o.parent;
+      while (p && !slotOf.has(p)) p = p.parent;
+      const slot = p ? slotOf.get(p) : undefined;
+      if (slot && inFace(slot, this.faceOnHead)) return;
       o.visible = false;
       hidden.push(o);
     });

@@ -20,6 +20,16 @@ export const SLOTS = [
 ] as const;
 export type Slot = (typeof SLOTS)[number];
 
+/**
+ * 이름 옆 얼굴 그림에 넣는 관절인지. 머리와 귀, 머리 위 장식은 늘 넣고, 몸은 얼굴(눈, 입)이 몸에 있을 때만
+ * (콩이, 삐약이처럼 몸이 곧 얼굴). 팔, 날개, 다리, 꼬리는 어느 쪽이든 뺀다
+ * (사진 피규어는 머리 없이 몸에 얼굴을 그리는 일이 많아 앞발이 얼굴 아래에 걸렸다)
+ */
+export function inFace(slot: Slot, faceOnHead: boolean): boolean {
+  if (slot === 'head' || slot === 'earL' || slot === 'earR' || slot === 'top') return true;
+  return slot === 'body' && !faceOnHead;
+}
+
 export const SHAPES = ['sphere', 'capsule', 'cone', 'cylinder', 'box', 'torus'] as const;
 export type Shape = (typeof SHAPES)[number];
 

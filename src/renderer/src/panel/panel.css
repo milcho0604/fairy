@@ -250,7 +250,7 @@ p.empty {
 .check.on {
   border-color: var(--ok);
   background: var(--ok);
-  color: #fff;
+  color: var(--ok-ink);
 }
 
 .todo .title {

@@ -15,9 +15,16 @@
   --user: #ffe7cc;
   --pet: #ffffff;
   --code: #f3eee8;
-  --warn: #b26a00;
-  --error: #c0392b;
-  --ok: #2e9d5b;
+  /* 상태색(성공, 경고, 위험). 작은 글자로도 쓰여 바탕마다 4.5:1 이상이어야 한다.
+     가장 어려운 바탕은 자기 색을 옅게 깐 띠(상점 안내 14%, 만들기 오류 12%, 채팅 띠 10%, 마감 지남 12%)다.
+     성공 흰 바탕 5.61, 옅은 초록 띠 4.62 / 경고 흰 바탕 5.77, 옅은 띠 4.64 이상 / 위험 흰 바탕 5.92, 마감 지남 칩 4.68.
+     예전 #2e9d5b(3.45, 띠 2.95), #b26a00(4.24, 띠 3.47), #c0392b(칩 4.31)는 모자랐다(2026-10-08).
+     색상(색 바퀴 각도)과 채도는 그대로 두고 밝기만 낮췄다. 시험: tokens.test.ts */
+  --warn: #935800;
+  --error: #b63629;
+  --ok: #227644;
+  /* 성공색을 바탕으로 깐 곳의 글자, 그림(끝낸 할 일 동그라미의 V) */
+  --ok-ink: #ffffff;
   /* 선택 상자의 둥근 V 화살표. 그림 주소 안에서는 변수를 못 써서 색마다 하나씩 둔다(--muted, --accent 와 같은 색) */
   --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1.6 1.8 6 6.2l4.4-4.4' fill='none' stroke='%236b6f76' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --chevron-hover: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1.6 1.8 6 6.2l4.4-4.4' fill='none' stroke='%239f632c' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
@@ -37,9 +44,11 @@
     --user: #4a3726;
     --pet: #2d2a27;
     --code: #34302c;
+    /* 어두운 모드 상태색은 그대로(가장 낮은 곳이 마감 지남 칩 5.06). 성공 바탕 위 V 만 흰색이 2.21 이라 어두운 글자로 */
     --warn: #e6a23c;
     --error: #ff7b6b;
     --ok: #5cc285;
+    --ok-ink: #1d1b19;
     --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1.6 1.8 6 6.2l4.4-4.4' fill='none' stroke='%23a39d96' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
     --chevron-hover: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1.6 1.8 6 6.2l4.4-4.4' fill='none' stroke='%23e0a46c' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   }

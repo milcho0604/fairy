@@ -60,6 +60,8 @@ export interface DrawState {
   flower?: boolean;
   /** 움직임 줄이기 (운영체제 설정 prefers-reduced-motion). 신나서 크게 튀지 않고 살짝만 들썩인다 */
   calm?: boolean;
+  /** 이름 옆 얼굴 그림용 (pet-face.ts). 발은 그리지 않는다: 얼굴 아이콘은 얼굴만 */
+  face?: boolean;
 }
 
 export interface Trick {
@@ -180,7 +182,8 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): void {
   }
 
   // 발: 몸통보다 먼저 그려서 몸 아래로 조금 나오게. 걸을 때는 번갈아 든다. 매달리면 늘어진다.
-  {
+  // 얼굴 그림에서는 빼고 둥근 몸만 (몸통이 닫힌 타원이라 발 자리에 틈이 생기지 않는다)
+  if (!s.face) {
     const spread = act?.type === 'sit' ? 32 : 24;
     const step = act?.type === 'walk' ? Math.sin(act.phase * Math.PI * 2) * 4 : 0;
     const dangle = s.mood === 'grabbed' ? 6 : 0;
