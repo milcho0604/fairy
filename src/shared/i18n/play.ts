@@ -1,13 +1,14 @@
 import { withParticle } from '../josa.ts';
 import type { Translation } from './types.ts';
 
-// play 영역 글: 짧은 놀이 (비눗방울, 레이저 쫓기, 간식 받아먹기, 가위바위보, 친구와 술래잡기)
+// play 영역 글: 짧은 놀이 (비눗방울, 레이저 쫓기, 간식 받아먹기, 가위바위보, 친구와 술래잡기, 두더지 잡기)
 export const ko = {
   'play.menu.stop': '그만 놀기',
   'play.menu.bubbles': '비눗방울 불기',
   'play.menu.laser': '레이저 쫓기',
   'play.menu.treats': '간식 던져 주기',
   'play.menu.rps': '가위바위보',
+  'play.menu.mole': '두더지 잡기',
   'play.menu.tag': (v: { name: string }) => `${withParticle(v.name, '과')} 술래잡기`,
   'play.block.focus': '지금은 집중 시간이라 자는 중이야. 끝나면 같이 놀자!',
   'play.block.resting': '집에서 쉬는 중이야. 나오면 놀자!',
@@ -44,6 +45,10 @@ export const ko = {
   'play.tag.start': (v: { name: string }) => `${withParticle(v.name, '아')}, 술래잡기 하자! 내가 술래!`,
   'play.tag.swap': (v: { name: string }) => `잡았다! 이번엔 ${withParticle(v.name, '이')} 술래!`,
   'play.tag.end': (v: { name: string }) => `${withParticle(v.name, '이랑')} 뛰어노니까 재밌다!`,
+  'play.mole.start': '숨었다 쏙 나올게! 나오면 눌러 줘. 돌멩이랑 나뭇잎은 누르지 말고!',
+  'play.mole.end': (v: { n: number }) => `${v.n}번 잡혔다! 뿅뿅.`,
+  'play.mole.endCoins': (v: { n: number; coins: number }) => `${v.n}번 잡혔다! 뿅뿅. 코인 ${v.coins}개.`,
+  'play.mole.none': '한 번도 안 잡혔지롱! 내가 숨기 선수야.',
 };
 
 export const en: Translation<typeof ko> = {
@@ -52,6 +57,7 @@ export const en: Translation<typeof ko> = {
   'play.menu.laser': 'Chase the laser',
   'play.menu.treats': 'Toss treats',
   'play.menu.rps': 'Rock paper scissors',
+  'play.menu.mole': 'Whack-a-pet',
   'play.menu.tag': (v: { name: string }) => `Play tag with ${v.name}`,
   'play.block.focus': "It's focus time, so I'm napping. Let's play after!",
   'play.block.resting': "I'm resting at home. Let's play when I'm out!",
@@ -91,4 +97,9 @@ export const en: Translation<typeof ko> = {
   'play.tag.start': (v: { name: string }) => `${v.name}, let's play tag! I'm it!`,
   'play.tag.swap': (v: { name: string }) => `Got you! Now ${v.name} is it!`,
   'play.tag.end': (v: { name: string }) => `Running around with ${v.name} is so fun!`,
+  'play.mole.start': "I'll hide and pop out! Click me when I do. Not the pebbles or leaves!",
+  'play.mole.end': (v: { n: number }) => `You got me ${v.n} ${Number(v.n) === 1 ? 'time' : 'times'}! Boop.`,
+  'play.mole.endCoins': (v: { n: number; coins: number }) =>
+    `You got me ${v.n} ${Number(v.n) === 1 ? 'time' : 'times'}! Boop. ${v.coins} ${Number(v.coins) === 1 ? 'coin' : 'coins'}.`,
+  'play.mole.none': "You didn't catch me once! I'm a hiding pro.",
 };

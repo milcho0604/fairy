@@ -36,6 +36,7 @@ import {
   REVEAL_MS,
   sameDir,
 } from '../shared/look-motion.ts';
+import { burrowFrame } from '../shared/minigames.ts';
 import { isMove, type MoveHistory, moveAskOf, rememberMove } from '../shared/moves.ts';
 import { hopAt, perchHolds, pickPerch } from '../shared/perch.ts';
 import { type DisplayInfo, parseSavedScale, restorePetBounds } from '../shared/placement.ts';
@@ -179,6 +180,13 @@ export interface PetWindow {
   held(): boolean;
   /** 효과음 하나 (설정과 펫 상태를 따른다) */
   sound(kind: SoundKind): void;
+  /**
+   * 두더지 잡기: 발밑(foot)을 붙잡고 구멍에서 ms 동안 솟는다(up) 또는 쏙 들어가 안 보인다. ms 가 0 이면 바로.
+   * 처음 부르면 두더지 모드가 켜져 혼자 걷거나 몸짓하지 않는다 (unburrow 까지). 끌리면 false
+   */
+  burrow(foot: Point, up: boolean, ms: number): Promise<boolean>;
+  /** 두더지 모드를 끝낸다: 원래 크기로 at(펫 왼쪽 위, 없으면 지금 발밑)에 보이게 */
+  unburrow(at?: Point): void;
   /** 한가한지: 보이고, 들리거나 날거나 걷거나 앉으러 뛰거나 창 위에 앉아 있지 않고, 말풍선이 없다 (친구 놀이) */
   isIdle(): boolean;
   /** 친구와 만났다: 그쪽을 보고 하트 (친구 놀이) */
@@ -333,7 +341,12 @@ export function createPetWindow({
       if (looking) return;
       // 들어 옮기는 동안은 말풍선을 치운다. 창 안 펫 자리가 바뀌므로 오프셋은 펫 기준으로 바꿔 둔다.
       const inWindow = win.getBounds();
-      const offset = { x: event.offset.x - (pet.x - inWindow.x), y: event.offset.y - (pet.y - inWindow.y) };
+      let offset = { x: event.offset.x - (pet.x - inWindow.x), y: event.offset.y - (pet.y - inWindow.y) };
+      // 두더지 잡기 중 구멍 속 작은 펫을 끌면 원래 크기로 돌려 가운데를 잡는다 (놀이는 들림을 보고 끝난다)
+      if (moleSize !== undefined) {
+        unburrow();
+        offset = { x: pet.width / 2, y: pet.height / 2 };
+      }
       // 사용자가 말풍선을 누른 것(dismiss)과 구별한다. dismiss 는 "답 왔어"를 연다
       closeBubble('cleared');
       stopWalk();
@@ -470,6 +483,7 @@ export function createPetWindow({
       item(t('play.menu.laser'), 'laser'),
       item(t('play.menu.treats'), 'treats'),
       item(t('play.menu.rps'), 'rps'),
+      item(t('play.menu.mole'), 'mole'),
       ...(mate ? [item(t('play.menu.tag', { name: mate }), 'tag')] : []),
       { type: 'separator' },
       { label: t('pet.menu.shop'), click: () => actions.openShop() },
@@ -521,6 +535,7 @@ export function createPetWindow({
       flightTimer ||
       hopTimer ||
       doorTimer ||
+      moleSize !== undefined ||
       bubble ||
       walkTimer ||
       !win.isVisible() ||
@@ -1056,6 +1071,84 @@ export function createPetWindow({
     if (done && !win.isDestroyed()) win.webContents.send(IPC.react, 'happy');
   }
 
+  // ---- 두더지 잡기: 구멍에서 솟고 들어가기 ----
+  /** 두더지 놀이 중 원래 펫 크기 (아니면 undefined). 그동안 혼자 걷거나 몸짓하지 않는다 */
+  let moleSize: number | undefined;
+  /** 구멍 속이라 안 보이게 해 둔 원래 불투명도. 리눅스는 불투명도가 없어 창을 숨긴다 */
+  let moleOpacity: number | undefined;
+
+  function moleConceal(on: boolean) {
+    if (win.isDestroyed()) return;
+    const linux = process.platform === 'linux';
+    if (on) {
+      if (moleOpacity !== undefined) return;
+      moleOpacity = linux ? 1 : win.getOpacity();
+      if (linux) win.hide();
+      else win.setOpacity(0);
+      return;
+    }
+    const to = moleOpacity;
+    if (to === undefined) return;
+    moleOpacity = undefined;
+    if (!linux) win.setOpacity(to);
+    else if (!hideReasons.hidden) win.showInactive();
+  }
+
+  async function burrow(foot: Point, up: boolean, ms: number): Promise<boolean> {
+    if (win.isDestroyed() || dragTimer || flightTimer) return false;
+    if (moleSize === undefined) {
+      moleSize = pet.width;
+      stopWalk();
+      leavePerch();
+    }
+    stopDoor();
+    const size = moleSize;
+    const stand = {
+      x: Math.round(foot.x - size / 2),
+      y: Math.round(foot.y - size),
+      width: size,
+      height: size,
+    };
+    if (up) {
+      // 구멍 크기로 줄여 두고 보이게 한 뒤 솟는다 (큰 펫이 번쩍하지 않게)
+      pet = burrowFrame(stand, 0);
+      applyLayout();
+      moleConceal(false);
+    }
+    if (ms <= 0) {
+      pet = up ? stand : burrowFrame(stand, 0);
+      applyLayout();
+      if (!up) moleConceal(true);
+      return true;
+    }
+    const started = Date.now();
+    const done = await new Promise<boolean>((resolve) => {
+      doorDone = resolve;
+      doorTimer = setInterval(() => {
+        if (win.isDestroyed()) return stopDoor();
+        const u = Math.min(1, (Date.now() - started) / ms);
+        pet = burrowFrame(stand, up ? u : 1 - u);
+        applyLayout();
+        if (u >= 1) stopDoor(true);
+      }, 16);
+    });
+    if (done && !up) moleConceal(true);
+    return done;
+  }
+
+  function unburrow(at?: Point) {
+    if (moleSize === undefined) return;
+    stopDoor();
+    const size = moleSize;
+    moleSize = undefined;
+    pet = at
+      ? { x: Math.round(at.x), y: Math.round(at.y), width: size, height: size }
+      : resizeFromBottomCenter(pet, size);
+    keepOnScreen();
+    moleConceal(false);
+    save();
+  }
+
   async function askQuieter() {
     const answer = await say({
       kind: 'answer',
@@ -1327,6 +1420,8 @@ export function createPetWindow({
     },
     enterDoor,
     leaveDoor,
+    burrow,
+    unburrow,
     /** 숨바꼭질 (v2): 화면 가장자리 밖으로 반쯤 나간 자리로 순간이동 (안 보이게 숨겼다가 나타난다) */
     peekAt(x: number, y: number) {
       stopWalk();
@@ -1353,6 +1448,7 @@ export function createPetWindow({
       !hideReasons.hidden &&
       !dragTimer &&
       !doorTimer &&
+      moleSize === undefined &&
       !flightTimer &&
       !walkTimer &&
       !hopTimer &&
