@@ -8,6 +8,7 @@ import {
   LONG_CHAT_TURNS,
   resetChat,
   switchProvider,
+  undoReset,
 } from './chat-state.ts';
 
 function ask(s: ChatState, n: number) {
@@ -103,4 +104,27 @@ test('새 대화는 "기록 남기지 않기"와 할 일 같이 보내기, 받�
   assert.deepEqual(fresh.modelDownload, { pct: 40 });
   // 끈 상태도 그대로
   assert.equal(resetChat(initialChat('claude')).ephemeral, undefined);
+});
+
+test('새 대화 되돌리기는 지운 대화와 세션을 다시 놓고, 그 뒤 고른 AI 는 지금 것을 둔다', () => {
+  let s = ask(initialChat('claude'), 1);
+  s = applyEvent(s, 'p1', { type: 'session', id: 'S' }, 'n');
+  s = applyEvent(s, 'p1', { type: 'done', text: '답' }, 'n');
+  const before = s;
+  const cleared = switchProvider(resetChat(s), 'codex');
+  const back = undoReset(cleared, before);
+  assert.equal(back?.messages.length, 2);
+  assert.deepEqual(back?.sessions.claude, { id: 'S', turns: 1 });
+  assert.equal(back?.provider, 'codex');
+});
+
+test('새 대화에서 이미 새로 물었거나 지운 것이 없으면 되돌리지 않는다', () => {
+  const before = ask(initialChat('claude'), 1);
+  const done = applyEvent(before, 'p1', { type: 'done', text: '답' }, 'n');
+  // 새 대화에서 새로 묻고 답까지 받았다 (기다리는 중이 아니어도 되돌리면 새 대화가 지워진다)
+  const asked = applyEvent(ask(resetChat(done), 2), 'p2', { type: 'done', text: '새 답' }, 'n');
+  assert.equal(undoReset(asked, done), undefined);
+  assert.equal(undoReset(resetChat(done), resetChat(done)), undefined);
+  // 답을 기다리는 중 (다시 물은 직후)
+  assert.equal(undoReset({ ...resetChat(done), pendingId: 'x' }, done), undefined);
 });

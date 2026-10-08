@@ -1,6 +1,8 @@
 // 그 밖의 CLI(Gemini, 사용자가 추가한 AI)는 질문을 인자로 주고 표준 출력을 그대로 답으로 본다.
 // 대화를 이어 가는 기능이 없다고 보고, 최근 대화를 질문 앞에 붙여 보낸다.
 
+import { t } from '../i18n/index.ts';
+
 export interface Exchange {
   question: string;
   answer: string;
@@ -15,13 +17,14 @@ export const argText = (text: string) => (text.startsWith('-') ? ` ${text}` : te
 /** 붙여 보낼 최근 대화 수. 길수록 정확하지만 느리고 비싸다. */
 export const HISTORY_TURNS = 4;
 
+/** 지난 대화 한 차례 (틀 글은 화면 말을 따른다) */
+const turn = (h: Exchange) => `${t('ai.history.user')}: ${h.question}\n${t('ai.history.you')}: ${h.answer}`;
+
 export function textPrompt(persona: string, history: readonly Exchange[], question: string): string {
   const recent = history.slice(-HISTORY_TURNS);
   const parts = [persona];
-  if (recent.length) {
-    parts.push('지금까지 대화:', ...recent.map((h) => `사용자: ${h.question}\n너: ${h.answer}`));
-  }
-  parts.push(`사용자 질문: ${question}`);
+  if (recent.length) parts.push(t('ai.history.head'), ...recent.map(turn));
+  parts.push(`${t('ai.history.question')}: ${question}`);
   return parts.join('\n\n');
 }
 
@@ -32,11 +35,7 @@ export function textPrompt(persona: string, history: readonly Exchange[], questi
 export function withHistory(history: readonly Exchange[], question: string): string {
   const recent = history.slice(-HISTORY_TURNS);
   if (recent.length === 0) return question;
-  return [
-    '지금까지 대화:',
-    ...recent.map((h) => `사용자: ${h.question}\n너: ${h.answer}`),
-    `사용자 질문: ${question}`,
-  ].join('\n\n');
+  return [t('ai.history.head'), ...recent.map(turn), `${t('ai.history.question')}: ${question}`].join('\n\n');
 }
 
 /** 터미널 색 코드와 커서 이동 같은 제어 문자를 지운다. */

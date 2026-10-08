@@ -32,8 +32,8 @@ export interface ChatState {
   ephemeral?: boolean;
   /** 내 할 일 같이 보내기 (설정 aiKnowsTodos 를 비춘다) */
   knowsTodos?: boolean;
-  /** 무료 AI 모델 받기 (v2): 받는 중이면 진행률(0~100), 실패하면 failed */
-  modelDownload?: { pct: number; failed?: boolean };
+  /** 무료 AI 모델 받기 (v2): 받는 중이면 진행률(0~100), 실패하면 failed 와 안내 글(오류 원문이 아니다) */
+  modelDownload?: { pct: number; failed?: boolean; message?: string };
 }
 
 /** 대화가 이만큼 길어지면 새 대화를 권한다. 이어갈수록 입력 토큰이 쌓인다(L8: codex 2번째에 54K). */
@@ -127,6 +127,18 @@ export function resetChat(s: ChatState): ChatState {
     ...(s.knowsTodos !== undefined ? { knowsTodos: s.knowsTodos } : {}),
     ...(s.modelDownload ? { modelDownload: s.modelDownload } : {}),
   };
+}
+
+/** 새 대화를 누른 뒤 이만큼 안에는 되돌릴 수 있다 (채팅 창의 되돌리기 알림이 이보다 먼저 사라진다) */
+export const UNDO_RESET_MS = 10_000;
+
+/**
+ * 새 대화 되돌리기: 지운 대화와 세션을 다시 놓는다. 그 사이 새 질문을 했거나 답을 기다리는 중이면 되돌리지 않는다(undefined).
+ * 지운 뒤 바꾼 것(고른 AI, 사용량, 할 일 같이 보내기, 모델 받기)은 지금 것을 둔다
+ */
+export function undoReset(current: ChatState, before: ChatState): ChatState | undefined {
+  if (current.pendingId || current.messages.length > 0 || before.messages.length === 0) return undefined;
+  return { ...current, messages: before.messages, sessions: before.sessions };
 }
 
 /** 이어가기 기능이 없는 AI 에 붙여 보낼 최근 대화: 같은 AI 와 끝까지 주고받은 것만. */

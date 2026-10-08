@@ -1,17 +1,20 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { PERSONAS } from '../../../shared/ai/persona.ts';
-import { type BetaReport, TARGET } from '../../../shared/beta-stats.ts';
+import { type BetaReport, goalsMet, TARGET } from '../../../shared/beta-stats.ts';
+import { formatBytes } from '../../../shared/bytes.ts';
 import { type ChatterLevel, LEVEL_LABEL, MAX_PER_HOUR } from '../../../shared/chatter.ts';
 import { t } from '../../../shared/i18n/index.ts';
-import type { SettingsSnapshot } from '../../../shared/ipc.ts';
+import type { PetLookView, SettingsSnapshot } from '../../../shared/ipc.ts';
 import { DEFAULT_BLUEPRINTS } from '../../../shared/pet3d/defaults.ts';
 import {
+  cleanPetName,
   FRIENDS_MAX,
   type Friend,
   PET_KINDS,
   PET_NAME_MAX,
   type PetKind,
   POSE_KINDS,
+  petNameLength,
   RULES_MAX,
   type Settings,
 } from '../../../shared/settings.ts';
@@ -25,6 +28,7 @@ import {
 } from '../../../shared/shortcut.ts';
 import { MAX_SCALE, MIN_SCALE } from '../../../shared/size.ts';
 import { CANVAS_SIZE, drawPet } from '../draw.ts';
+import { PetNameInput } from '../PetNameInput.tsx';
 import { Pet3D } from '../pet3d.ts';
 
 const bridge = window.jjakkungSettings;
@@ -41,17 +45,25 @@ export function SettingsApp() {
   const [name, setName] = useState('');
   const [scale, setScale] = useState(1);
   const [saved, setSaved] = useState('');
+  // 실패나 막힘 안내는 빨간 글씨 (성공 안내와 같은 초록이면 된 것처럼 읽힌다)
+  const [savedError, setSavedError] = useState(false);
   // 언어를 바꾸면 다시 켜야 보인다. 바꾼 뒤에만 다시 켜기 버튼을 보여 준다
   const [langChanged, setLangChanged] = useState(false);
   const libraryKey = useRef('');
+  const flashTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   // 이름 칸에서 나가지 않고 창을 닫아도 고친 이름을 잃지 않게 (닫을 때 저장).
   // 사용자가 칸을 고쳤을 때만 저장한다. 다른 곳(펫 만들기, 가져오기)에서 바뀐 이름은 칸에 받아 온다
   const nameEdited = useRef(false);
   const nameDraft = useRef(name);
   nameDraft.current = name;
+  const savedName = useRef('');
+  savedName.current = snap?.settings.petName ?? '';
   useEffect(() => {
     const flush = () => {
-      if (nameEdited.current) void bridge.set({ petName: nameDraft.current });
+      // 비었거나 그대로면 저장하지 않는다 (saveName 과 같은 기준)
+      const next = cleanPetName(nameDraft.current);
+      if (nameEdited.current && next && next !== savedName.current)
+        void bridge.set({ petName: next, petNameEdited: true });
     };
     window.addEventListener('beforeunload', flush);
     return () => window.removeEventListener('beforeunload', flush);
@@ -72,11 +84,10 @@ export function SettingsApp() {
         libraryKey.current = key;
         void bridge
           .get()
-          .then((next) =>
-            setSnap((s) => s && { ...s, library: next.library, currentThumb: next.currentThumb }),
-          );
+          .then((next) => setSnap((s) => s && { ...s, library: next.library, current: next.current }));
       }
     });
+    bridge.onPower((onBattery) => setSnap((s) => s && { ...s, onBattery }));
     if (navigator.userAgent.includes('Mac')) document.body.classList.add('mac');
   }, []);
 
@@ -86,9 +97,12 @@ export function SettingsApp() {
   const mod = mac ? 'Cmd' : 'Ctrl';
   const alt = mac ? 'Option' : 'Alt';
 
-  const flash = (message: string) => {
+  // 앞 안내의 지우기 타이머가 새 안내를 일찍 지우지 않게 하나만 둔다 (빈 이름 안내 뒤 "이름을 바꿨어"가 바로 사라졌다)
+  const flash = (message: string, error = false) => {
     setSaved(message);
-    setTimeout(() => setSaved(''), 2400);
+    setSavedError(error);
+    clearTimeout(flashTimer.current);
+    flashTimer.current = setTimeout(() => setSaved(''), 2400);
   };
 
   const update = async (patch: Partial<Settings>, message = t('settings.saved')) => {
@@ -98,19 +112,32 @@ export function SettingsApp() {
     return next;
   };
 
+  // 비우면 저장하지 않고 원래 이름으로 돌린다 ("이름을 바꿨어"가 떴지만 실제로는 그대로였다).
+  // 그대로면 아무 말 없이 넘어간다. 바꾸면 손댄 이름이라 모습을 바꿔도 따라가지 않는다
   const saveName = async () => {
+    if (!nameEdited.current) return;
     nameEdited.current = false;
-    const next = await update({ petName: name }, t('settings.nameChanged'));
+    const clean = cleanPetName(name);
+    if (!clean) {
+      setName(s.petName);
+      flash(t('settings.nameEmpty'), true);
+      return;
+    }
+    if (clean === s.petName) {
+      setName(clean);
+      return;
+    }
+    const next = await update({ petName: clean, petNameEdited: true }, t('settings.nameChanged'));
     setName(next.petName);
   };
 
-  const preview = name.trim() || s.petName;
+  const preview = cleanPetName(name) ?? s.petName;
 
   return (
     <div className="settings">
       <header>
         <strong>{t('settings.title')}</strong>
-        <span className="saved" role="status" aria-live="polite">
+        <span className={`saved${savedError ? ' error' : ''}`} role="status" aria-live="polite">
           {saved}
         </span>
       </header>
@@ -120,20 +147,22 @@ export function SettingsApp() {
           <label className="field">
             <span>{t('settings.name')}</span>
             <div className="row">
-              <input
+              <PetNameInput
                 value={name}
-                maxLength={PET_NAME_MAX * 2}
-                onChange={(e) => {
+                onValue={(v) => {
                   nameEdited.current = true;
-                  setName(e.target.value);
+                  setName(v);
                 }}
+                onLimit={() => flash(t('settings.nameMax', { max: PET_NAME_MAX }), true)}
                 onBlur={saveName}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.nativeEvent.isComposing) (e.target as HTMLInputElement).blur();
                 }}
               />
             </div>
-            <small>{t('settings.nameHint', { name: preview, max: PET_NAME_MAX })}</small>
+            <small>
+              {t('settings.nameHint', { name: preview, n: petNameLength(name.trim()), max: PET_NAME_MAX })}
+            </small>
           </label>
 
           <div className="field">
@@ -153,7 +182,7 @@ export function SettingsApp() {
                 flash(t('settings.pets.removed'));
               }}
             />
-            <div className="row">
+            <div className="action-row">
               <button type="button" className="ghost" onClick={() => bridge.openMaker()}>
                 {t('settings.makePhotoPet')}
               </button>
@@ -164,7 +193,7 @@ export function SettingsApp() {
           {s.petImage && (
             <div className="field">
               <span>{t('settings.poses')}</span>
-              <div className="row wrap">
+              <div className="action-row">
                 {POSE_KINDS.map((p) => (
                   <button key={p.id} type="button" className="ghost" onClick={() => bridge.openMaker(p.id)}>
                     {s.petPoses[p.id]
@@ -227,6 +256,7 @@ export function SettingsApp() {
             label={t('settings.boost')}
             hint={t('settings.boostHint')}
             on={s.boost}
+            note={s.boost && snap.onBattery ? t('settings.boostResting') : undefined}
             onChange={(v) => update({ boost: v })}
           />
         </Section>
@@ -234,6 +264,8 @@ export function SettingsApp() {
         <Section title={t('settings.friends')}>
           <Friends
             list={s.friends}
+            petName={s.petName}
+            onMsg={flash}
             onChange={(friends) => update({ friends }, t('settings.friendsChanged'))}
             onImport={async () => {
               const r = await bridge.importFriend();
@@ -323,6 +355,13 @@ export function SettingsApp() {
             on={s.diaryAi}
             onChange={(v) => update({ diaryAi: v })}
           />
+          {/* 격리를 꺼야 내 MCP 도구를 쓸 수 있어 켜는 조건(격리)을 먼저 둔다 */}
+          <Toggle
+            label={t('settings.aiIsolation')}
+            hint={t('settings.aiIsolationHint')}
+            on={s.aiIsolation}
+            onChange={(v) => update({ aiIsolation: v })}
+          />
           <Toggle
             label={t('settings.myMcp')}
             hint={
@@ -331,12 +370,6 @@ export function SettingsApp() {
             on={s.myMcp}
             disabled={s.aiIsolation}
             onChange={(v) => update({ myMcp: v })}
-          />
-          <Toggle
-            label={t('settings.aiIsolation')}
-            hint={t('settings.aiIsolationHint')}
-            on={s.aiIsolation}
-            onChange={(v) => update({ aiIsolation: v })}
           />
         </Section>
 
@@ -380,7 +413,7 @@ export function SettingsApp() {
           <McpSetup
             exec={snap.mcp.exec}
             script={snap.mcp.script}
-            onCopied={() => flash(t('settings.copied'))}
+            onCopied={(ok) => flash(ok ? t('settings.copied') : t('settings.copyFailed'), !ok)}
           />
         </Section>
 
@@ -403,9 +436,9 @@ export function SettingsApp() {
             ))}
           </fieldset>
           {langChanged ? (
-            <div className="row">
-              <small>{t('settings.langRestart')}</small>
-              <button type="button" className="ghost" onClick={() => bridge.relaunch()}>
+            <div className="action-row notice" role="status">
+              <small className="grow">{t('settings.langRestart')}</small>
+              <button type="button" className="primary" onClick={() => bridge.relaunch()}>
                 {t('settings.restart')}
               </button>
             </div>
@@ -422,13 +455,26 @@ export function SettingsApp() {
             disabled={!snap.packaged}
             onChange={(v) => update({ launchAtLogin: v })}
           />
+          {/* 시작 안내는 업데이트가 아니라 시작 칸에 (예전엔 업데이트 칸 안에 있었다) */}
+          <div className="action-row">
+            <button type="button" className="ghost" onClick={() => bridge.openOnboarding()}>
+              {t('settings.onboardingAgain')}
+            </button>
+          </div>
         </Section>
 
         <Section title={t('settings.review')}>
+          <Toggle
+            label={t('settings.reviewOn')}
+            hint={t('settings.reviewOnHint')}
+            on={s.review}
+            onChange={(v) => update({ review: v })}
+          />
           <label className="field">
             <span>{t('settings.reviewTime')}</span>
             <input
               type="time"
+              disabled={!s.review}
               value={`${String(Math.floor(s.reviewMinute / 60)).padStart(2, '0')}:${String(s.reviewMinute % 60).padStart(2, '0')}`}
               onChange={(e) => {
                 const [h, m] = e.target.value.split(':').map(Number);
@@ -451,13 +497,15 @@ export function SettingsApp() {
 
         <Section title={t('settings.backup')}>
           <small>{t('settings.backupHint')}</small>
-          <div className="row wrap">
+          <div className="action-row">
             <button
               type="button"
               className="ghost"
               onClick={async () => {
-                const r = await bridge.exportData();
-                if (r) flash(t('settings.exported'));
+                // 실패하면(쓰기 권한, 디스크 등) 아무 표시 없이 끝나지 않게 상태줄에 알린다
+                const r = await bridge.exportData().catch(() => undefined);
+                if (r === undefined) flash(t('settings.exportFailed'));
+                else if (r) flash(t('settings.exported'));
               }}
             >
               {t('settings.export')}
@@ -466,21 +514,24 @@ export function SettingsApp() {
               type="button"
               className="ghost"
               onClick={async () => {
-                const r = await bridge.importData();
-                if (r) flash(r);
+                const r = await bridge.importData().catch(() => undefined);
+                if (r === undefined) flash(t('settings.importFailed'));
+                else if (r) flash(r);
               }}
             >
               {t('settings.import')}
             </button>
           </div>
           <small>{t('settings.petOnlyHint')}</small>
-          <div className="row wrap">
+          <div className="action-row">
             <button
               type="button"
               className="ghost"
               onClick={async () => {
-                const r = await bridge.exportPet();
-                if (r) flash(t('settings.petExported'));
+                // 쓰기 실패(권한, 디스크, 그림 파일 읽기)도 말 없이 끝나지 않게 알린다
+                const r = await bridge.exportPet().catch(() => undefined);
+                if (r === undefined) flash(t('settings.petExportFailed'), true);
+                else if (r) flash(t('settings.petExported'));
               }}
             >
               {t('settings.exportPet')}
@@ -505,12 +556,9 @@ export function SettingsApp() {
             on={s.updateCheck}
             onChange={(v) => update({ updateCheck: v })}
           />
-          <div className="row">
+          <div className="action-row">
             <button type="button" className="ghost" onClick={async () => flash(await bridge.checkUpdate())}>
               {t('settings.checkNow')}
-            </button>
-            <button type="button" className="ghost" onClick={() => bridge.openOnboarding()}>
-              {t('settings.onboardingAgain')}
             </button>
           </div>
         </Section>
@@ -529,12 +577,12 @@ export function SettingsApp() {
                   const clash = shortcutClash(next);
                   if (clash) {
                     const other = clash[0] === id ? clash[1] : clash[0];
-                    flash(t('settings.shortcut.taken', { name: SHORTCUT_LABEL[other] }));
+                    flash(t('settings.shortcut.taken', { name: SHORTCUT_LABEL[other] }), true);
                     return;
                   }
                   void update({ shortcuts: next }, t('settings.shortcutChanged'));
                 }}
-                onError={(m) => flash(m)}
+                onError={(m) => flash(m, true)}
               />
             ))}
             <dt>{t('settings.zoomKeys')}</dt>
@@ -544,7 +592,7 @@ export function SettingsApp() {
           </dl>
         </Section>
 
-        <Stats onCopied={() => flash(t('settings.statsCopied'))} />
+        <Stats onCopied={(ok) => flash(ok ? t('settings.statsCopied') : t('settings.copyFailed'), !ok)} />
 
         <p className="version">{t('settings.version', { v: snap.version })}</p>
       </main>
@@ -556,7 +604,7 @@ export function SettingsApp() {
  * 베타 기록 (P4-04). 기획서 성공 기준 다섯 가지를 지금 값과 목표로 보여 준다.
  * 메뉴 막대 "의견 보내기"로 열리면 이 칸으로 바로 내려온다.
  */
-function Stats({ onCopied }: { onCopied: () => void }) {
+function Stats({ onCopied }: { onCopied: (ok: boolean) => void }) {
   const [report, setReport] = useState<BetaReport>();
   const [focus, setFocus] = useState(false);
   const ref = useRef<HTMLElement>(null);
@@ -584,6 +632,8 @@ function Stats({ onCopied }: { onCopied: () => void }) {
 
   if (!report) return null;
   const started = report.dayNumber > 0;
+  // 기록이 없으면 달성 표시를 하지 않는다 (켜 둔 시간 0 인데 숨김 0%, 멈춤 0회가 달성으로 떴다)
+  const met = goalsMet(report);
   const rows: { label: string; value: string; goal: string; ok: boolean | undefined }[] = [
     {
       label: t('settings.stats.daysUsed'),
@@ -600,25 +650,25 @@ function Stats({ onCopied }: { onCopied: () => void }) {
       label: t('settings.stats.doneMedian'),
       value: t('settings.stats.count', { n: report.doneMedian }),
       goal: t('settings.stats.countAtLeast', { n: TARGET.doneMedian }),
-      ok: started ? report.doneMedian >= TARGET.doneMedian : undefined,
+      ok: met.done,
     },
     {
       label: t('settings.stats.hidden'),
       value: `${Math.round(report.hiddenRatio * 100)}%`,
       goal: t('settings.stats.under', { n: TARGET.hiddenRatio * 100 }),
-      ok: started ? report.hiddenRatio < TARGET.hiddenRatio : undefined,
+      ok: met.hidden,
     },
     {
       label: t('settings.stats.look'),
       value: t('settings.stats.times', { n: report.look7 }),
       goal: t('settings.stats.timesAtLeast', { n: TARGET.look7 }),
-      ok: started ? report.look7 >= TARGET.look7 : undefined,
+      ok: met.look,
     },
     {
       label: t('settings.stats.crash'),
       value: t('settings.stats.times', { n: report.crash7 }),
       goal: t('settings.stats.times', { n: TARGET.crash7 }),
-      ok: started ? report.crash7 <= TARGET.crash7 : undefined,
+      ok: met.crash,
     },
   ];
 
@@ -643,12 +693,12 @@ function Stats({ onCopied }: { onCopied: () => void }) {
             ))}
           </tbody>
         </table>
-        <div className="row">
+        <div className="action-row">
           <button
             type="button"
             className="ghost"
             onClick={async () => {
-              if (await bridge.copyStats()) onCopied();
+              onCopied(await bridge.copyStats().catch(() => false));
             }}
           >
             {t('settings.stats.copy')}
@@ -663,16 +713,39 @@ function Stats({ onCopied }: { onCopied: () => void }) {
 /** 친구 펫 (v2 여러 마리): 이름과 모양을 정해 데려오고, 집에 보낸다. 3마리까지 */
 function Friends({
   list,
+  petName,
   onChange,
   onImport,
+  onMsg,
 }: {
   list: Friend[];
+  /** 기본 펫 이름 (같은 이름 경고에 쓴다) */
+  petName: string;
   onChange: (next: Friend[]) => void;
   onImport: () => void;
+  onMsg: (m: string, error?: boolean) => void;
 }) {
   const [name, setName] = useState('');
   const [kind, setKind] = useState<PetKind>('cat');
+  // 같은 이름이면 한 번 알리고, 그래도 데려오기를 다시 누르면 데려온다 (막지는 않는다)
+  const [dupe, setDupe] = useState('');
+  // 집에 보내기는 두 번 눌러 확인 (보관한 펫 지우기와 같은 방식)
+  const [sure, setSure] = useState('');
   const full = list.length >= FRIENDS_MAX;
+  const clean = cleanPetName(name);
+  const same = (a: string, b: string) => a.toLocaleLowerCase() === b.toLocaleLowerCase();
+  const taken = !!clean && [petName, ...list.map((f) => f.name)].some((n) => same(n, clean));
+  const add = () => {
+    if (!clean || full) return;
+    if (taken && dupe !== clean) {
+      setDupe(clean);
+      return;
+    }
+    onChange([...list, { id: `f-${Date.now().toString(36)}`, name: clean, kind }]);
+    setName('');
+    setDupe('');
+  };
+  const leaving = list.find((f) => f.id === sure);
   return (
     <>
       <small>{t('settings.friends.hint', { max: FRIENDS_MAX })}</small>
@@ -688,23 +761,47 @@ function Friends({
               </small>
               <button
                 type="button"
-                className="link"
-                onClick={() => onChange(list.filter((x) => x.id !== f.id))}
+                className={`link${sure === f.id ? ' sure' : ''}`}
+                aria-label={
+                  sure === f.id
+                    ? t('settings.friends.sendHomeSureAria', { name: f.name })
+                    : t('settings.friends.sendHomeAria', { name: f.name })
+                }
+                onClick={() => {
+                  if (sure !== f.id) {
+                    setSure(f.id);
+                    return;
+                  }
+                  setSure('');
+                  onChange(list.filter((x) => x.id !== f.id));
+                }}
+                onBlur={() => setSure('')}
               >
-                {t('settings.friends.sendHome')}
+                {sure === f.id ? t('settings.friends.sendHomeSure') : t('settings.friends.sendHome')}
               </button>
             </li>
           ))}
         </ul>
       )}
+      {leaving?.image && (
+        <small className="below warn" role="status">
+          {t('settings.friends.photoGone', { name: leaving.name })}
+        </small>
+      )}
       {!full && (
         <div className="friend-add">
-          <input
+          <PetNameInput
             value={name}
-            maxLength={PET_NAME_MAX * 2}
             placeholder={t('settings.friends.name')}
             aria-label={t('settings.friends.name')}
-            onChange={(e) => setName(e.target.value)}
+            onValue={(v) => {
+              setName(v);
+              setDupe('');
+            }}
+            onLimit={() => onMsg(t('settings.nameMax', { max: PET_NAME_MAX }), true)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing) add();
+            }}
           />
           <select
             value={kind}
@@ -717,21 +814,18 @@ function Friends({
               </option>
             ))}
           </select>
-          <button
-            type="button"
-            className="ghost"
-            disabled={!name.trim()}
-            onClick={() => {
-              onChange([...list, { id: `f-${Date.now().toString(36)}`, name: name.trim(), kind }]);
-              setName('');
-            }}
-          >
-            {t('settings.friends.add')}
+          <button type="button" className="ghost" disabled={!clean} onClick={add}>
+            {dupe && dupe === clean ? t('settings.friends.addAnyway') : t('settings.friends.add')}
           </button>
         </div>
       )}
+      {!full && dupe && dupe === clean && (
+        <small className="below warn" role="status">
+          {t('settings.friends.dupe', { name: clean })}
+        </small>
+      )}
       {!full && (
-        <div className="row">
+        <div className="action-row">
           <button type="button" className="link" onClick={onImport}>
             {t('settings.friends.import')}
           </button>
@@ -829,7 +923,7 @@ function CalendarSetup({
         />
         <small>{t('settings.cal.hint')}</small>
       </label>
-      <div className="row">
+      <div className="action-row">
         <button
           type="button"
           className="ghost"
@@ -865,7 +959,15 @@ function CalendarSetup({
  * 펫 MCP 서버 등록 안내 (v1). Claude Code 나 Codex 에서 "짝꿍 할 일에 넣어 줘"가 되게 한다.
  * 짝꿍 실행 파일을 Node 로 돌리므로 따로 설치할 것이 없다.
  */
-function McpSetup({ exec, script, onCopied }: { exec: string; script: string; onCopied: () => void }) {
+function McpSetup({
+  exec,
+  script,
+  onCopied,
+}: {
+  exec: string;
+  script: string;
+  onCopied: (ok: boolean) => void;
+}) {
   const q = (p: string) => `"${p.replace(/"/g, '\\"')}"`;
   const claude = `claude mcp add jjakkung -s user -e ELECTRON_RUN_AS_NODE=1 -- ${q(exec)} ${q(script)}`;
   const codex = [
@@ -874,9 +976,15 @@ function McpSetup({ exec, script, onCopied }: { exec: string; script: string; on
     `args = [${JSON.stringify(script)}]`,
     'env = { ELECTRON_RUN_AS_NODE = "1" }',
   ].join('\n');
+  // 클립보드 권한이 없거나 창이 앞에 있지 않으면 쓰기가 실패한다. 그때도 말 없이 끝나지 않게
   const copy = async (text: string) => {
-    await navigator.clipboard.writeText(text);
-    onCopied();
+    try {
+      await navigator.clipboard.writeText(text);
+      onCopied(true);
+    } catch (err) {
+      console.warn('copy failed', err);
+      onCopied(false);
+    }
   };
   return (
     <>
@@ -884,7 +992,7 @@ function McpSetup({ exec, script, onCopied }: { exec: string; script: string; on
       <div className="field">
         <span>{t('settings.mcp.claude')}</span>
         <pre className="cmd">{claude}</pre>
-        <div className="row">
+        <div className="action-row">
           <button type="button" className="ghost" onClick={() => copy(claude)}>
             {t('settings.mcp.copyCmd')}
           </button>
@@ -893,7 +1001,7 @@ function McpSetup({ exec, script, onCopied }: { exec: string; script: string; on
       <div className="field">
         <span>{t('settings.mcp.codex')}</span>
         <pre className="cmd">{codex}</pre>
-        <div className="row">
+        <div className="action-row">
           <button type="button" className="ghost" onClick={() => copy(codex)}>
             {t('settings.mcp.copyConfig')}
           </button>
@@ -982,11 +1090,24 @@ function PetPicker({
   useEffect(() => {
     setThumbs(kindThumbs(s.pet3d));
   }, [s.pet3d]);
+  // 만든 펫도 펫 화면과 같은 모습으로: 입체로 보기면 figure 는 3D, relief 는 2.5D, 아니면 사진
+  const [, setDrawn] = useState(0);
+  useEffect(() => {
+    if (!s.pet3d) return;
+    let alive = true;
+    void drawLooks([...(snap.current ? [snap.current] : []), ...snap.library], () => alive).then(
+      (n) => alive && n > 0 && setDrawn((v) => v + 1),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [s.pet3d, snap.current, snap.library]);
+  const look = (v: PetLookView) => (s.pet3d && lookThumbs.get(v.key)) || v.thumb;
   return (
     <div className="pet-grid">
-      {s.petImage && snap.currentThumb && (
+      {s.petImage && snap.current && (
         <div className="pet-card on" aria-current="true">
-          <img src={snap.currentThumb} alt="" />
+          <img src={look(snap.current)} alt="" />
           <span className="pet-name">{s.petName}</span>
           <small>{t('settings.pets.now')}</small>
         </div>
@@ -1009,7 +1130,7 @@ function PetPicker({
       {snap.library.map((p) => (
         <div key={p.id} className="pet-card saved">
           <button type="button" className="pick" onClick={() => onPick({ id: p.id })}>
-            {p.thumb ? <img src={p.thumb} alt="" /> : <i />}
+            {p.thumb ? <img src={look(p)} alt="" /> : <i />}
             <span className="pet-name">{p.name}</span>
             {p.look !== 'photo' && (
               <small>{p.look === 'figure' ? t('settings.pets.figure') : t('settings.pets.relief')}</small>
@@ -1036,34 +1157,92 @@ function PetPicker({
 
 /** 기본 펫 미리보기 그림. 입체로 보기면 3D 를 한 번씩 그려 사진으로 만든다 (렌더러는 하나만) */
 let thumbPet: Pet3D | undefined;
-function kindThumbs(use3d: boolean): Partial<Record<PetKind, string>> {
-  const side = 96;
+const THUMB_SIDE = 96;
+function thumbCanvas(): { c: HTMLCanvasElement; ctx: CanvasRenderingContext2D } | undefined {
   const c = document.createElement('canvas');
   const dpr = window.devicePixelRatio || 1;
-  c.width = side * dpr;
-  c.height = side * dpr;
+  c.width = THUMB_SIDE * dpr;
+  c.height = THUMB_SIDE * dpr;
   const ctx = c.getContext('2d');
-  if (!ctx) return {};
+  return ctx ? { c, ctx } : undefined;
+}
+/** 펫 하나를 쉬는 모습으로 그려 PNG data URL 로 */
+function shot(c: HTMLCanvasElement, ctx: CanvasRenderingContext2D, kind: PetKind, model3d?: Pet3D): string {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, c.width, c.height);
+  const scale = c.width / CANVAS_SIZE;
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  drawPet(ctx, { mood: 'idle', elapsed: 0, blink: -1, kind, viewSize: THUMB_SIDE, model3d });
+  return c.toDataURL('image/png');
+}
+function kindThumbs(use3d: boolean): Partial<Record<PetKind, string>> {
+  const tc = thumbCanvas();
+  if (!tc) return {};
   if (use3d) thumbPet ??= Pet3D.create(() => {});
   const out: Partial<Record<PetKind, string>> = {};
   for (const k of PET_KINDS) {
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, c.width, c.height);
-    const scale = (side * dpr) / CANVAS_SIZE;
-    ctx.setTransform(scale, 0, 0, scale, 0, 0);
     if (use3d && thumbPet) thumbPet.setBlueprint(DEFAULT_BLUEPRINTS[k.id]);
-    drawPet(ctx, {
-      mood: 'idle',
-      elapsed: 0,
-      blink: -1,
-      kind: k.id,
-      viewSize: side,
-      model3d: use3d ? thumbPet : undefined,
-    });
-    out[k.id] = c.toDataURL('image/png');
+    out[k.id] = shot(tc.c, tc.ctx, k.id, use3d ? thumbPet : undefined);
   }
   thumbPet?.clear();
   return out;
+}
+
+/**
+ * 만든 펫 입체 썸네일 (key 마다 한 번, 창이 열려 있는 동안 기억). 그리지 못하면 빈 글이라 사진이 보인다.
+ * 보관함이 12마리여도 창이 멈추지 않게 한 마리 그릴 때마다 한 번 쉰다. 렌더러는 기본 펫과 같은 thumbPet 하나
+ */
+const lookThumbs = new Map<string, string>();
+async function drawLooks(views: PetLookView[], alive: () => boolean): Promise<number> {
+  const todo = views.filter((v) => v.look !== 'photo' && !lookThumbs.has(v.key));
+  if (!todo.length) return 0;
+  const tc = thumbCanvas();
+  thumbPet ??= Pet3D.create(() => {});
+  let n = 0;
+  for (const v of todo) {
+    await new Promise((r) => setTimeout(r, 0));
+    if (!alive()) break;
+    if (lookThumbs.has(v.key)) continue;
+    let url = '';
+    try {
+      if (tc && thumbPet?.ok) {
+        if (v.look === 'figure' && v.model) thumbPet.setBlueprint(v.model);
+        else if (v.look === 'relief' && v.depth && v.thumb) {
+          const [photo, depth] = await Promise.all([loadImage(v.thumb), loadImage(v.depth)]);
+          if (!alive()) break;
+          thumbPet.setRelief(photo, depth);
+        } else throw new Error('no look');
+        // drawPet 을 거치지 않는다: 입체를 못 그리면 drawPet 은 기본 펫(콩이)을 그려 다른 펫처럼 보인다
+        const { c, ctx } = tc;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, c.width, c.height);
+        const scale = c.width / CANVAS_SIZE;
+        ctx.setTransform(scale, 0, 0, scale, 0, 0);
+        const top = thumbPet.draw(
+          ctx,
+          { mood: 'idle', elapsed: 0, blink: -1, viewSize: THUMB_SIDE },
+          0,
+          1,
+          1,
+          undefined,
+        );
+        url = top === undefined ? '' : c.toDataURL('image/png');
+      }
+    } catch {
+      url = '';
+    }
+    lookThumbs.set(v.key, url);
+    n++;
+  }
+  thumbPet?.clear();
+  return n;
+}
+
+async function loadImage(src: string): Promise<HTMLImageElement> {
+  const img = new Image();
+  img.src = src;
+  await img.decode();
+  return img;
 }
 
 /** 짝꿍 규칙: 한 줄에 하나. 칸을 떠나면 저장 */
@@ -1144,9 +1323,6 @@ function Storage({ list, onDelete }: { list: SettingsSnapshot['storage']; onDele
   );
 }
 
-const formatBytes = (n: number) =>
-  n >= 1e9 ? `${(n / 1e9).toFixed(2)}GB` : `${Math.max(1, Math.round(n / 1e6))}MB`;
-
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section>
@@ -1161,14 +1337,17 @@ interface ToggleProps {
   hint: string;
   on: boolean;
   disabled?: boolean;
+  /** 지금 상태 한 줄 (부스트가 배터리라 쉬는 중 등) */
+  note?: string | undefined;
   onChange: (on: boolean) => void;
 }
 
-function Toggle({ label, hint, on, disabled, onChange }: ToggleProps) {
+function Toggle({ label, hint, on, disabled, note, onChange }: ToggleProps) {
   return (
     <div className={`toggle ${disabled ? 'disabled' : ''}`}>
       <div className="text">
         <span>{label}</span>
+        {note && <small className="toggle-note">{note}</small>}
         <small>{hint}</small>
       </div>
       <button

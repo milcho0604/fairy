@@ -1,5 +1,13 @@
 import { join, sep } from 'node:path';
-import { app, BrowserWindow, clipboard, type IpcMainEvent, type IpcMainInvokeEvent, ipcMain } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
+  ipcMain,
+  powerMonitor,
+} from 'electron';
 import type { Catalog } from '../shared/ai/catalog.ts';
 import { type BetaReport, reportText, type StatStore } from '../shared/beta-stats.ts';
 import { t } from '../shared/i18n/index.ts';
@@ -8,10 +16,10 @@ import { isPetKind, type Settings } from '../shared/settings.ts';
 import { localModelReady } from './ai/local.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
 import { langArg } from './lang.ts';
-import { petImages } from './maker.ts';
 import { library } from './pet-library.ts';
 import { settings } from './settings.ts';
 import { removeModel, storedModels } from './storage.ts';
+import { rememberBounds, savedBounds } from './window-bounds.ts';
 
 export interface SettingsWindowOptions {
   scale: () => number;
@@ -67,8 +75,9 @@ export function createSettingsWindow({
           calendarLast: v2.calendarLast(),
           models: { catalog: v2.catalog(), localReady: localReady() },
           library: library.view(),
-          currentThumb: petImages().main,
+          current: library.current(),
           storage: storedModels(v2.catalog()),
+          onBattery: powerMonitor.isOnBatteryPower(),
         }
       : undefined,
   );
@@ -103,8 +112,13 @@ export function createSettingsWindow({
   );
   ipcMain.handle(SETTINGS.copyStats, (e) => {
     if (!fromSettings(e)) return false;
-    clipboard.writeText(reportText(stats.report(Date.now()), { version: app.getVersion(), os: osLabel() }));
-    return true;
+    // 기록 읽기나 클립보드 쓰기가 실패하면 false: 화면이 "복사하지 못했어"를 띄운다
+    try {
+      clipboard.writeText(reportText(stats.report(Date.now()), { version: app.getVersion(), os: osLabel() }));
+      return true;
+    } catch {
+      return false;
+    }
   });
   ipcMain.handle(SETTINGS.checkUpdate, (e) => (fromSettings(e) ? checkUpdate() : ''));
   ipcMain.handle(SETTINGS.exportData, (e) => (fromSettings(e) ? v2.exportData(win) : ''));
@@ -130,6 +144,12 @@ export function createSettingsWindow({
   settings.onChange((next) => {
     if (win && !win.isDestroyed()) win.webContents.send(SETTINGS.changed, next);
   });
+  // 전원을 꽂고 빼면 부스트가 쉬는지 표시를 바꾼다
+  const sendPower = () => {
+    if (win && !win.isDestroyed()) win.webContents.send(SETTINGS.power, powerMonitor.isOnBatteryPower());
+  };
+  powerMonitor.on('on-ac', sendPower);
+  powerMonitor.on('on-battery', sendPower);
 
   /** section 을 주면 그 칸을 바로 보여 준다 (메뉴 막대 "의견 보내기" → 베타 기록). */
   function open(section?: SettingsSection) {
@@ -139,11 +159,15 @@ export function createSettingsWindow({
       focusWindow(win);
       return;
     }
+    // 닫을 때 크기와 자리를 기억해 다음에 그대로 연다. 처음이면 화면 가운데 (window-bounds.ts)
+    const min = { width: 360, height: 420 };
+    const saved = savedBounds('settings', min);
     win = new BrowserWindow({
       width: 440,
       height: 620,
-      minWidth: 360,
-      minHeight: 420,
+      ...saved,
+      minWidth: min.width,
+      minHeight: min.height,
       title: t('common.title.settings'),
       show: false,
       ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
@@ -154,6 +178,7 @@ export function createSettingsWindow({
         contextIsolation: true,
       },
     });
+    rememberBounds(win, 'settings', true);
     win.once('ready-to-show', () => showWindow(win));
     win.on('closed', () => {
       win = undefined;

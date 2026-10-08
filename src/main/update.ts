@@ -26,6 +26,8 @@ function releasesApi(): string {
 }
 /** 강제 업데이트로 잠그기 전에 한 번 더 받아 보는 간격 */
 const CONFIRM_MS = 10_000;
+/** 릴리스 확인 응답을 기다리는 한도 (캘린더와 같다) */
+const FETCH_TIMEOUT_MS = 20_000;
 /** 잠긴 동안 말풍선이 다른 말에 밀렸으면 다시 띄우는 간격 */
 const NAG_AGAIN_MS = 60_000;
 
@@ -53,16 +55,29 @@ export function watchUpdates(o: { say: Say; log: Log }) {
   /** 받기에 실패한 때. 한 시간 안에는 다시 받지 않는다 (잠긴 동안 1분마다 받으러 가지 않게) */
   let downloadFailedAt = 0;
 
-  async function fetchDecision(): Promise<UpdateDecision | { kind: 'failed'; status?: number }> {
+  async function fetchDecision(): Promise<UpdateDecision | { kind: 'failed'; status?: number; bad?: true }> {
     try {
       const res = await net.fetch(releasesApi(), {
         headers: { accept: 'application/vnd.github+json', 'user-agent': `jjakkung/${app.getVersion()}` },
+        // GitHub 은 max-age=60 을 붙여 보낸다. 캐시를 쓰면 10초 뒤 두 번째 확인이 첫 응답을 그대로 받아 이중 확인이 무의미해진다
+        cache: 'no-store',
+        // 걸린 연결에 매달리지 않는다. 매달리면 같은 주소의 다음 확인도 HTTP 캐시 잠금에 20초씩 묶였다 (2026-10-07 실제 앱 점검)
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
       if (!res.ok) {
         o.log('update', '확인 못 함', res.status);
         return { kind: 'failed', status: res.status };
       }
-      return decideUpdate(await res.json(), app.getVersion());
+      let json: unknown;
+      try {
+        json = await res.json();
+      } catch (err) {
+        // 시간 초과로 끊긴 것은 아래에서 연결 문제로. 받은 글이 JSON 이 아니면 연결 문제가 아니다
+        if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) throw err;
+        o.log('update', '응답을 읽지 못함');
+        return { kind: 'failed', bad: true };
+      }
+      return decideUpdate(json, app.getVersion());
     } catch (err) {
       o.log('update', '확인 실패', err instanceof Error ? err.message : String(err));
       return { kind: 'failed' };
@@ -124,11 +139,19 @@ export function watchUpdates(o: { say: Say; log: Log }) {
     updater?.quitAndInstall(true, true);
   }
 
+  /** 떠 있는 강제 안내를 거둘 때 끊는다 */
+  let nagAbort: AbortController | undefined;
+
   function setLock(next: Lock | undefined) {
     const was = lock;
     lock = next;
     if (!was && next) o.log('update', '강제 업데이트로 잠금', next.minVersion);
-    if (was && !next) o.log('update', '잠금 풂');
+    if (was && !next) {
+      o.log('update', '잠금 풂');
+      // 시간 끝 없는 안내가 남지 않게 닫고, 다시 띄우려 기다리던 것도 깨운다
+      nagAbort?.abort();
+      wake?.();
+    }
     if (next) void nag();
   }
 
@@ -141,8 +164,10 @@ export function watchUpdates(o: { say: Say; log: Log }) {
         const ready = await download();
         // 전에 이 버전을 건너뛰었어도 강제면 끝낼 때 설치한다
         if (ready && updater) updater.autoInstallOnAppQuit = true;
+        nagAbort = new AbortController();
         const answer = await o.say({
           kind: 'answer',
+          signal: nagAbort.signal,
           text: t('main.update.forced', { version: lock.version, min: lock.minVersion }),
           buttons: ready
             ? [{ id: 'restart', label: t('main.update.restart') }]
@@ -208,6 +233,7 @@ export function watchUpdates(o: { say: Say; log: Log }) {
       // 확인을 못 하면 잠그지 않는다 (잠겨 있었으면 푼다)
       setLock(undefined);
       if (first.status === 404) return t('main.update.none');
+      if (first.bad) return t('main.update.badResponse');
       return first.status
         ? t('main.update.failedStatus', { status: first.status })
         : t('main.update.offline');

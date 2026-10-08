@@ -5,7 +5,9 @@ import { nextUnlock } from '../../../shared/pet-life.ts';
 import type { Todo } from '../../../shared/todo-store.ts';
 import { PetFace } from '../PetFace.tsx';
 import { EventTab } from './EventTab.tsx';
+import { addedText, whenLabel } from './format.ts';
 import { CoinIcon } from './icons.tsx';
+import { escClosesWindow } from './keys.ts';
 import { NoteTab } from './NoteTab.tsx';
 import { ShopTab } from './ShopTab.tsx';
 import { TodayTab } from './TodayTab.tsx';
@@ -13,6 +15,10 @@ import { TodoTab } from './TodoTab.tsx';
 
 const bridge = window.jjakkungPanel;
 const UNDO_MS = 5000;
+/** 일정으로 넣은 알림은 고를 것이 둘이라(되돌리기, 할 일로) 조금 더 둔다 */
+const CHOICE_MS = 8000;
+/** 알림에 마우스를 올렸다 떼면 이만큼 더 둔다 */
+const LINGER_MS = 2500;
 const TABS: { id: PanelTab; label: I18nKey }[] = [
   { id: 'today', label: 'panel.tab.today' },
   { id: 'todo', label: 'panel.tab.todo' },
@@ -39,6 +45,9 @@ type Toast =
   | { kind: 'done'; id: number; coins: number }
   | { kind: 'note-removed'; id: number }
   | { kind: 'event-removed'; id: number }
+  | { kind: 'todo-removed'; id: number }
+  /** 할 일 칸에 적은 한 줄이 시각이 있어 일정으로 들어갔다. text 는 적은 글 그대로 (할 일로 옮길 때) */
+  | { kind: 'to-event'; id: number; startAt: number; text: string }
   | { kind: 'added'; text: string };
 
 const UNLOCK_KEYS = {
@@ -75,8 +84,9 @@ export function PanelApp() {
     bridge.snapshot().then(setS);
     bridge.onState(setS);
     bridge.onTab((next) => setTabState(next));
+    // 입력칸이 먼저 Esc 를 처리한다(비우기, 메모 목록으로). 한글 조합 중 Esc 는 조합만 끝낸다
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') bridge.close();
+      if (escClosesWindow(e)) bridge.close();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -90,10 +100,18 @@ export function PanelApp() {
 
   if (!s) return <div className="card-window panel" />;
 
-  const showToast = (next: Toast) => {
+  const hideToastIn = (ms: number) => {
     clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(undefined), ms);
+  };
+  const showToast = (next: Toast) => {
     setToast(next);
-    toastTimer.current = setTimeout(() => setToast(undefined), UNDO_MS);
+    hideToastIn(next.kind === 'to-event' ? CHOICE_MS : UNDO_MS);
+  };
+  /** 일정으로 들어간 한 줄을 할 일로 옮긴다 */
+  const toTodo = async (toast: Extract<Toast, { kind: 'to-event' }>) => {
+    const r = await bridge.eventToTodo(toast.id, toast.text);
+    showToast({ kind: 'added', text: r.ok ? addedText(r, s.today) : (r.error ?? t('panel.retry')) });
   };
 
   const complete = async (todo: Todo) => {
@@ -175,9 +193,13 @@ export function PanelApp() {
           s={s}
           onComplete={complete}
           inputRef={inputRef}
-          onAdded={(kind) => {
-            if (kind === 'event') showToast({ kind: 'added', text: t('panel.toast.toEvent') });
+          onAdded={(r, text) => {
+            // 시각이 있어 일정으로 들어갔다: 언제로 넣었는지, 되돌리기, 할 일로
+            if (r.kind === 'event') showToast({ kind: 'to-event', id: r.id, startAt: r.startAt, text });
+            // 여러 줄 붙여 넣기: "할 일 3개 넣었어"
+            if (r.kind === 'many') showToast({ kind: 'added', text: addedText(r, s.today) });
           }}
+          onRemoved={(todo) => showToast({ kind: 'todo-removed', id: todo.id })}
         />
       )}
       {tab === 'note' && <NoteTab s={s} onRemoved={(id) => showToast({ kind: 'note-removed', id })} />}
@@ -187,7 +209,13 @@ export function PanelApp() {
       )}
 
       <footer>
-        <button type="button" className="ghost" onClick={() => bridge.openChat()}>
+        {/* 이름이 길어도 한 줄 (넘치면 말줄임, 전체는 풀이에) */}
+        <button
+          type="button"
+          className="ghost"
+          title={t('panel.chatWith', { name: s.petName })}
+          onClick={() => bridge.openChat()}
+        >
           {t('panel.chatWith', { name: s.petName })}
         </button>
         <button type="button" className="ghost" onClick={() => bridge.lookTogether()}>
@@ -196,21 +224,45 @@ export function PanelApp() {
       </footer>
 
       {toast && (
-        <div className="toast" role="status">
-          <span>{toastText(toast)}</span>
+        // 읽는 동안(마우스를 올린 동안)은 사라지지 않는다
+        <div
+          className="toast"
+          role="status"
+          onMouseEnter={() => clearTimeout(toastTimer.current)}
+          onMouseLeave={() => hideToastIn(LINGER_MS)}
+        >
+          {toast.kind === 'to-event' ? (
+            // 언제로 넣었는지는 따로 한 줄 (좁아도 시각이 쪼개지지 않게)
+            <span>
+              {t('panel.toast.toEvent')}
+              <strong className="toast-when">{whenLabel(toast.startAt, s.today)}</strong>
+            </span>
+          ) : (
+            <span>{toastText(toast)}</span>
+          )}
           {toast.kind !== 'added' && (
-            <button
-              type="button"
-              className="undo"
-              onClick={() => {
-                if (toast.kind === 'done') bridge.undo(toast.id);
-                if (toast.kind === 'note-removed') bridge.noteRestore(toast.id);
-                if (toast.kind === 'event-removed') bridge.eventRestore(toast.id);
-                setToast(undefined);
-              }}
-            >
-              {t('panel.undo')}
-            </button>
+            // 단추는 한 묶음: 좁으면 둘이 같이 글 아래로 내려간다
+            <div className="toast-actions">
+              <button
+                type="button"
+                className="undo"
+                onClick={() => {
+                  if (toast.kind === 'done') bridge.undo(toast.id);
+                  if (toast.kind === 'note-removed') bridge.noteRestore(toast.id);
+                  if (toast.kind === 'event-removed') bridge.eventRestore(toast.id);
+                  if (toast.kind === 'todo-removed') bridge.restore(toast.id);
+                  if (toast.kind === 'to-event') bridge.eventRemove(toast.id);
+                  setToast(undefined);
+                }}
+              >
+                {t('panel.undo')}
+              </button>
+              {toast.kind === 'to-event' && (
+                <button type="button" className="undo" onClick={() => toTodo(toast)}>
+                  {t('panel.toast.asTodo')}
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -223,5 +275,7 @@ function toastText(toast: Toast): string {
     return toast.coins > 0 ? t('panel.toast.done', { n: toast.coins }) : t('panel.toast.doneNoCoin');
   if (toast.kind === 'note-removed') return t('panel.toast.noteRemoved');
   if (toast.kind === 'event-removed') return t('panel.toast.eventRemoved');
+  if (toast.kind === 'todo-removed') return t('panel.toast.todoRemoved');
+  if (toast.kind === 'to-event') return t('panel.toast.toEvent');
   return toast.text;
 }

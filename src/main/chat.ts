@@ -22,7 +22,10 @@ import {
   initialChat,
   resetChat,
   switchProvider,
+  UNDO_RESET_MS,
+  undoReset,
 } from '../shared/chat-state.ts';
+import { downloadErrorText } from '../shared/download-error.ts';
 import { clampIntoAreas } from '../shared/geometry.ts';
 import { getLang, t } from '../shared/i18n/index.ts';
 import {
@@ -33,14 +36,17 @@ import {
   type ProviderView,
 } from '../shared/ipc.ts';
 import { prepareCodexHome } from './ai/codex-home.ts';
-import { downloadLocalModel, runLocal } from './ai/local.ts';
+import { downloadLocalModel, localModelReady, mb, runLocal } from './ai/local.ts';
 import { type AiRun, checkStatus, readCodexUsage, runAi } from './ai/runner.ts';
 import { getShellEnv } from './ai/shell-env.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
 import { langArg } from './lang.ts';
+import { openLink } from './open-link.ts';
 import { readJson, writeJson } from './store.ts';
+import { rememberBounds, savedBounds } from './window-bounds.ts';
 
 const CHAT_SIZE = { width: 400, height: 600 };
+const CHAT_MIN = { width: 320, height: 360 };
 const SETTINGS_FILE = 'chat-settings';
 const USAGE_FILE = 'ai-usage';
 /** 사용자가 추가한 AI (이름, 명령, 인자). */
@@ -168,7 +174,14 @@ export function createChat(o: ChatOptions) {
         push();
       }
     }
-    return Promise.all(providers().map((p) => checkStatus(p, refresh)));
+    return Promise.all(
+      providers().map(async (p) => {
+        const st = await checkStatus(p, refresh);
+        // 무료 AI 는 앱 안에 있지만 고른 모델을 받기 전에는 답하지 못한다 (노란 점, "받기 전")
+        if (p.adapter !== 'local') return st;
+        return { ...st, needsModel: !localModelReady(pickLocal(o.catalog(), o.aiModels().local)) };
+      }),
+    );
   });
 
   ipcMain.handle(CHAT.providers, (e): ProviderView[] => (fromChat(e) ? providers().map(view) : []));
@@ -326,7 +339,9 @@ export function createChat(o: ChatOptions) {
           aborted ? 'cancelled' : 'failed',
           err instanceof Error ? err.message : String(err),
         );
-        state = { ...state, modelDownload: aborted ? undefined : { pct: 0, failed: true } };
+        // 원문은 기록에만. 화면에는 갈래(연결, 공간, 해시 등)에 맞춘 안내를 보낸다
+        const message = downloadErrorText(err, { mb: mb(model) });
+        state = { ...state, modelDownload: aborted ? undefined : { pct: 0, failed: true, message } };
         push();
       })
       .finally(() => {
@@ -383,10 +398,27 @@ export function createChat(o: ChatOptions) {
     run?.cancel();
     downloading?.abort(); // 모델 받기도 멈춘다 (받기 진행 옆 취소 단추)
   });
+  /** 새 대화로 지운 대화. 잠깐 동안 되돌릴 수 있다 (UNDO_RESET_MS) */
+  let cleared: { state: ChatState; at: number } | undefined;
   ipcMain.on(CHAT.reset, (e) => {
-    if (!fromChat(e)) return;
+    if (!fromChat(e) || state.pendingId) return;
+    if (state.messages.length > 0) cleared = { state, at: Date.now() };
     state = resetChat(state);
     push();
+  });
+  ipcMain.handle(CHAT.undoReset, (e) => {
+    if (!fromChat(e) || !cleared || Date.now() - cleared.at > UNDO_RESET_MS) return false;
+    const back = undoReset(state, cleared.state);
+    cleared = undefined;
+    if (!back) return false;
+    state = back;
+    log('chat', 'undo reset');
+    push();
+    return true;
+  });
+  // 답 속 주소는 기본 브라우저로. http, https 만 (safeExternalUrl), 창 안에서는 열지 않는다
+  ipcMain.on(CHAT.openLink, (e, raw: unknown) => {
+    if (fromChat(e)) openLink(raw, log);
   });
   ipcMain.on(CHAT.provider, (e, provider: AiProvider) => {
     if (!fromChat(e) || !specOf(provider)) return;
@@ -407,11 +439,15 @@ export function createChat(o: ChatOptions) {
       focusWindow(win);
       return;
     }
+    // 닫을 때 크기는 늘 기억한다. 자리는 사용자가 옮긴 적이 있을 때만 그 자리, 아니면 펫 옆 (window-bounds.ts)
+    const saved = savedBounds('chat', CHAT_MIN);
+    const size = saved ? { width: saved.width, height: saved.height } : CHAT_SIZE;
+    const placed = saved?.x !== undefined && saved.y !== undefined;
     win = new BrowserWindow({
-      ...placeNear(near),
+      ...(placed ? saved : placeNear(near, size)),
       title: t('chat.title', { name: petName() }),
-      minWidth: 320,
-      minHeight: 360,
+      minWidth: CHAT_MIN.width,
+      minHeight: CHAT_MIN.height,
       show: false,
       // 맥은 제목 표시줄을 내용과 합쳐 한 장처럼 보이게 한다. 창 이동은 머리줄을 잡고 한다.
       ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
@@ -422,11 +458,12 @@ export function createChat(o: ChatOptions) {
         contextIsolation: true,
       },
     });
+    rememberBounds(win, 'chat', placed);
     win.once('ready-to-show', () => showWindow(win));
     win.on('closed', () => {
       win = undefined;
     });
-    // 채팅 창 안의 링크는 앱 안에서 열지 않는다.
+    // 채팅 창 안의 링크는 앱 안에서 열지 않는다 (답 속 주소는 위 CHAT.openLink 로 기본 브라우저에서).
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (ev) => ev.preventDefault());
 
@@ -470,6 +507,17 @@ export function createChat(o: ChatOptions) {
     askInWindow(text: string, near?: Rectangle): boolean {
       open(near);
       return ask(text);
+    },
+    /** 설치되고 로그인된 AI 프로그램이 하나라도 있는지 (첫 안내의 AI 한 줄). 확인 결과는 잠깐 기억된다 */
+    async hasCliAi(): Promise<boolean> {
+      const found = await Promise.all(
+        ['claude', 'codex', 'cursor', 'gemini'].map(async (id) => {
+          const spec = specOf(id);
+          const st = spec ? await checkStatus(spec) : undefined;
+          return !!st?.installed && st.loggedIn !== false;
+        }),
+      );
+      return found.some(Boolean);
     },
     get window() {
       return win;
@@ -590,15 +638,16 @@ function view(p: ProviderSpec): ProviderView {
   };
 }
 
-/** 펫 옆(왼쪽, 자리가 없으면 오른쪽)에 펫 아래쪽에 맞춰 둔다. */
-function placeNear(near?: Rectangle) {
+/** 펫 옆(왼쪽, 자리가 없으면 오른쪽)에 펫 아래쪽에 맞춰 둔다. 크기는 기억한 크기, 없으면 기본 */
+function placeNear(near: Rectangle | undefined, size: { width: number; height: number }) {
   const area = near ? screen.getDisplayMatching(near).workArea : screen.getPrimaryDisplay().workArea;
-  if (!near) return { ...CHAT_SIZE, x: area.x + area.width - CHAT_SIZE.width - 40, y: area.y + 40 };
+  const fit = { width: Math.min(size.width, area.width), height: Math.min(size.height, area.height) };
+  if (!near) return { ...fit, x: area.x + area.width - fit.width - 40, y: area.y + 40 };
   const gap = 8;
-  const leftX = near.x - CHAT_SIZE.width - gap;
+  const leftX = near.x - fit.width - gap;
   const x = leftX >= area.x ? leftX : near.x + near.width + gap;
-  const y = near.y + near.height - CHAT_SIZE.height;
-  return clampIntoAreas({ x, y, ...CHAT_SIZE }, [area]);
+  const y = near.y + near.height - fit.height;
+  return clampIntoAreas({ x, y, ...fit }, [area]);
 }
 
 /** 저장해 둔 사용량을 고른다. 모양이 틀린 것은 버린다 (틀린 값이 채팅 창을 빈 화면으로 만들었다) */

@@ -271,3 +271,34 @@ test('한 번뿐인 일정은 recurrenceId 가 없고, 같은 UID 가 두 번이
     [['d', null, '새 판']],
   );
 });
+
+test('종일 일정의 끝: 하루는 null, 여러 날은 끝 날 다음 날 0시 (짝꿍 종일 일정과 같은 모양)', () => {
+  const list = parseIcs(
+    [
+      'BEGIN:VCALENDAR',
+      'BEGIN:VEVENT',
+      'UID:one',
+      'DTSTART;VALUE=DATE:20261012',
+      'DTEND;VALUE=DATE:20261013',
+      'SUMMARY:하루',
+      'END:VEVENT',
+      'BEGIN:VEVENT',
+      'UID:three',
+      'DTSTART;VALUE=DATE:20261010',
+      'DTEND;VALUE=DATE:20261013',
+      'SUMMARY:사흘',
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].join('\r\n'),
+    SEOUL,
+    from,
+    to,
+  );
+  assert.deepEqual(
+    list.map((e) => [e.uid, e.startAt, e.endAt]),
+    [
+      ['three', Date.UTC(2026, 9, 9, 15), Date.UTC(2026, 9, 12, 15)],
+      ['one', Date.UTC(2026, 9, 11, 15), null],
+    ],
+  );
+});

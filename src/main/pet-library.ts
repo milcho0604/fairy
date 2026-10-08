@@ -3,14 +3,20 @@
 import { readFileSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { app, nativeImage } from 'electron';
+import type { PetLookView, SavedPetView } from '../shared/ipc.ts';
+import { type Blueprint, parseBlueprint } from '../shared/pet3d/blueprint.ts';
 import { LIBRARY_MAX, type PetKind, type SavedPet, type Settings } from '../shared/settings.ts';
-import { safeFileIn } from './safe-file.ts';
+import { readFileIn, safeFileIn } from './safe-file.ts';
 import { settings } from './settings.ts';
 
 const petsDir = () => join(app.getPath('userData'), 'pets');
 const THUMB_PX = 160;
 /** 줄이지 못한 그림은 이보다 작을 때만 그대로 보낸다 (설정 창에 수백 MB 를 넘기지 않게) */
 const RAW_THUMB_MAX = 512 * 1024;
+/** 깊이 그림 상한. 펫 만들기가 저장할 때와 같다 (maker.ts lookOf) */
+const MAX_DEPTH_BYTES = 1024 * 1024;
+/** 설계도 파일 상한. 부품 40개면 10KB 안팎이라 넉넉하다 */
+const MAX_MODEL_BYTES = 256 * 1024;
 
 type PetFiles = Pick<SavedPet, 'image' | 'model' | 'depth' | 'poses'>;
 
@@ -109,6 +115,8 @@ export const library = {
     settings.set({ petLibrary: s.petLibrary.filter((p) => p.id !== id) });
     removeUnused(files(pick));
     thumbs.delete(pick.image);
+    if (pick.model) models.delete(pick.model);
+    if (pick.depth) depths.delete(pick.depth);
   },
 
   /** 떠난 친구 펫의 파일처럼 설정에서 빠진 파일을 지운다 (아직 다른 곳에서 쓰면 남긴다) */
@@ -116,16 +124,79 @@ export const library = {
     removeUnused(list.filter((f): f is string => !!f));
   },
 
-  /** 설정 창에 보일 목록 (그림은 작게 줄인 data URL) */
-  view(): { id: string; name: string; thumb: string; look: 'photo' | 'figure' | 'relief' }[] {
-    return settings.get().petLibrary.map((p) => ({
-      id: p.id,
-      name: p.name,
-      thumb: thumbOf(p.image),
-      look: p.model ? 'figure' : p.depth ? 'relief' : 'photo',
-    }));
+  /** 설정 창에 보일 목록 (그림은 작게 줄인 data URL, 입체면 설계도나 깊이 그림도) */
+  view(): SavedPetView[] {
+    return settings.get().petLibrary.map((p) => ({ id: p.id, name: p.name, ...lookView(p) }));
+  },
+
+  /** 설정 창 지금 펫 카드. 기본 펫이면 null */
+  current(): PetLookView | null {
+    const s = settings.get();
+    if (!s.petImage) return null;
+    return lookView({ image: s.petImage, model: s.petModel ?? undefined, depth: s.petDepth ?? undefined });
   },
 };
+
+/**
+ * 카드 그림 재료. 펫 화면과 같은 순서로 고른다: 읽을 수 있는 설계도면 figure, 아니면 깊이 그림이면 relief,
+ * 둘 다 없거나 깨졌으면 photo (petImages 와 current3d)
+ */
+function lookView(p: Pick<SavedPet, 'image' | 'model' | 'depth'>): PetLookView {
+  const key = [p.image, p.model ?? '', p.depth ?? ''].join('|');
+  const thumb = thumbOf(p.image);
+  const model = modelOf(p.model);
+  if (model) return { key, thumb, look: 'figure', model };
+  const depth = depthOf(p.depth);
+  if (depth) return { key, thumb, look: 'relief', depth };
+  return { key, thumb, look: 'photo' };
+}
+
+/** 설계도도 깊이 그림도 파일 이름마다 한 번만 읽는다 (이름은 만들 때마다 새로 붙고 내용은 안 바뀐다) */
+const models = new Map<string, Blueprint | null>();
+const depths = new Map<string, string>();
+
+function modelOf(file: string | undefined): Blueprint | undefined {
+  if (!file) return undefined;
+  if (models.has(file)) return models.get(file) ?? undefined;
+  let model: Blueprint | null = null;
+  // pets/ 안 일반 파일만, 상한보다 크면 읽지 않는다 (safe-file.ts)
+  const bytes = readFileIn(petsDir(), file, MAX_MODEL_BYTES);
+  try {
+    model = bytes ? (parseBlueprint(JSON.parse(bytes.toString('utf8'))) ?? null) : null;
+  } catch {
+    model = null;
+  }
+  models.set(file, model);
+  return model ?? undefined;
+}
+
+/** 깊이 그림을 썸네일 크기로 줄인 data URL. PNG 가 아니거나 크면 빈 글 (사진으로 보인다) */
+function depthOf(file: string | undefined): string | undefined {
+  if (!file) return undefined;
+  const hit = depths.get(file);
+  if (hit !== undefined) return hit || undefined;
+  let out = '';
+  const bytes = readFileIn(petsDir(), file, MAX_DEPTH_BYTES);
+  try {
+    if (bytes && bytes.length > 12 && bytes.readUInt32BE(0) === 0x89504e47) {
+      const img = nativeImage.createFromBuffer(bytes);
+      if (!img.isEmpty()) {
+        const { width, height } = img.getSize();
+        const big = Math.max(width, height) > THUMB_PX;
+        const small = !big
+          ? img
+          : width >= height
+            ? img.resize({ width: THUMB_PX })
+            : img.resize({ height: THUMB_PX });
+        out = small.toDataURL();
+      }
+    }
+  } catch {
+    out = '';
+  }
+  depths.set(file, out);
+  return out || undefined;
+}
 
 /** 썸네일은 파일 이름마다 한 번만 만든다 (파일 이름은 만들 때마다 새로 붙는다) */
 const thumbs = new Map<string, string>();

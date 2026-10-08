@@ -45,7 +45,15 @@ export function noteTitle(n: Pick<Note, 'title' | 'body'>): string {
 export function notePreview(n: Pick<Note, 'title' | 'body'>): string {
   const lines = n.body
     .split('\n')
-    .map((l) => l.replace(/^\s*(#+|[-*]|\d+\.)\s*/, '').trim())
+    .map((l) =>
+      l
+        .replace(/^\s*(#+|>|[-*](?=\s)|\d+\.(?=\s))\s*/, '')
+        // 줄 안의 굵게, 기울임, 코드, 지움, 링크 기호도 뺀다 ("**굵게**" 가 "*굵게**" 로 보이던 것)
+        .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+        .replace(/(\*\*|__|~~|`)/g, '')
+        .replace(/(^|\s)[*_]([^*_\s][^*_]*)[*_](?=\s|$)/g, '$1$2')
+        .trim(),
+    )
     .filter(Boolean);
   if (!n.title.trim()) lines.shift();
   return lines.join(' ').slice(0, 80);
@@ -107,4 +115,80 @@ export class NoteStore {
   restore(id: number): void {
     this.#db.prepare('update note set deleted_at = null where id = ?').run(id);
   }
+}
+
+// ---- 메모 찾기 ----
+
+/** 찾기 비교용: 자모가 풀린 한글(맥 파일 이름, 붙여 넣은 글)을 합치고(NFC) 대소문자를 무시한다 */
+const fold = (s: string) => s.normalize('NFC').toLowerCase();
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const HANGUL = 0xac00;
+const HANGUL_LAST = 0xd7a3;
+/** 첫소리 자음 (호환 자모). 순서가 한글 음절 배열 순서다 */
+const CHOSEONG = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
+const u = (code: number) => `\\u{${code.toString(16)}}`;
+
+/**
+ * 아직 조합 중인 마지막 글자를 넓게 본다. "가" 는 받침이 붙을 수 있어 "가~갛", 홀로 선 자음 "ㅇ" 은 "아~잏".
+ * 받침 있는 글자("강")는 다음 글자로 넘어갈 수도 있지만 드물어 그대로 둔다.
+ */
+function composingChar(c: string): string {
+  const cho = CHOSEONG.indexOf(c);
+  if (cho >= 0) {
+    const from = HANGUL + cho * 21 * 28;
+    return `(?:${escapeRe(c)}|[${u(from)}-${u(from + 21 * 28 - 1)}])`;
+  }
+  const code = c.codePointAt(0) ?? 0;
+  if (code >= HANGUL && code <= HANGUL_LAST && (code - HANGUL) % 28 === 0)
+    return `[${u(code)}-${u(code + 27)}]`;
+  return escapeRe(c);
+}
+
+/** 찾는 말을 정규식으로. 사이 띄어쓰기는 줄바꿈까지 아무 빈칸이나. 빈 말이면 null */
+export function noteQuery(query: string, composing = false): RegExp | null {
+  const chars = [...fold(query).replace(/\s+/g, ' ').trim()];
+  if (chars.length === 0) return null;
+  const last = composing ? composingChar(chars.pop() as string) : '';
+  const head = chars.map((c) => (c === ' ' ? '\\s+' : escapeRe(c))).join('');
+  return new RegExp(head + last, 'u');
+}
+
+/** 찾은 곳 앞에 보일 글자 수 (목록 한 줄에 찾은 부분이 보이게 짧게) */
+const SNIPPET_BEFORE = 10;
+const SNIPPET_AFTER = 60;
+
+/**
+ * 메모 찾기: 보이는 제목(noteTitle)과 본문 전체. 제목에서 찾으면 그대로, 본문에서만 찾으면 찾은 곳 둘레 글을 돌려준다.
+ * 순서는 받은 목록 순서 그대로 (최근에 고친 것부터).
+ */
+export function searchNotes(
+  notes: Pick<Note, 'id' | 'title' | 'body'>[],
+  query: string,
+  composing = false,
+): { id: number; snippet?: string; mark?: [number, number] }[] {
+  const re = noteQuery(query, composing);
+  if (!re) return notes.map((n) => ({ id: n.id }));
+  const hits: { id: number; snippet?: string; mark?: [number, number] }[] = [];
+  for (const n of notes) {
+    if (re.test(fold(noteTitle(n)))) {
+      hits.push({ id: n.id });
+      continue;
+    }
+    const body = n.body.normalize('NFC');
+    const folded = fold(body);
+    const m = re.exec(folded);
+    if (!m) continue;
+    // 소문자로 바꿔 길이가 달라지는 글자(드묾)가 있으면 바꾼 글에서 자른다 (자리가 어긋나지 않게)
+    const src = folded.length === body.length ? body : folded;
+    const at = m.index;
+    const end = at + m[0].length;
+    const from = Math.max(0, at - SNIPPET_BEFORE);
+    const to = Math.min(src.length, end + SNIPPET_AFTER);
+    const flat = (s: string) => s.replace(/\s+/g, ' ');
+    const before = `${from > 0 ? '…' : ''}${flat(src.slice(from, at)).trimStart()}`;
+    const hit = flat(src.slice(at, end));
+    const after = `${flat(src.slice(end, to)).trimEnd()}${to < src.length ? '…' : ''}`;
+    hits.push({ id: n.id, snippet: before + hit + after, mark: [before.length, before.length + hit.length] });
+  }
+  return hits;
 }

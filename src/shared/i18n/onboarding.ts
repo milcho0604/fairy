@@ -7,6 +7,8 @@ export const ko = {
   'onboarding.hello.title': '반가워! 화면 위에서 같이 일할 짝꿍이야.',
   'onboarding.hello.lead': '할 일을 끝내면 코인이 쌓이고, 코인으로 밥과 장난감을 사 줄 수 있어.',
   'onboarding.hello.name': '이름',
+  'onboarding.hello.nameEmpty': '이름은 비울 수 없어. 원래 이름으로 둘게.',
+  'onboarding.hello.nameMax': '이름은 {max}자까지야.',
   'onboarding.hello.look': '모습',
   'onboarding.hello.kinds': '기본 펫 모양',
   'onboarding.hello.photo': '사진으로',
@@ -17,11 +19,13 @@ export const ko = {
   'onboarding.look.granted': '화면 기록 권한이 있어',
   'onboarding.look.needed': '화면 기록 권한이 필요해',
   'onboarding.look.howTo':
-    '시스템 설정 → 개인정보 보호 및 보안 → 화면 및 시스템 오디오 녹음에서 Jjakkung 을 켜 줘. 켠 다음에는 짝꿍을 껐다 켜야 해. 같이 보기를 안 쓸 거면 넘어가도 돼.',
-  'onboarding.look.openSettings': '설정 열기',
+    '시스템 설정 > 개인정보 보호 및 보안 > 화면 및 시스템 오디오 녹음에서 Jjakkung 을 켜 줘. 켠 다음에는 짝꿍을 껐다 켜야 해. 같이 보기를 안 쓸 거면 넘어가도 돼.',
+  'onboarding.look.openSettings': '시스템 설정 열기',
   'onboarding.look.windows': '윈도우는 따로 권한이 필요 없어',
   'onboarding.look.ai':
     'AI 는 이 컴퓨터에 설치해 로그인해 둔 Claude Code, Codex, Cursor, Gemini 중 하나를 써. 채팅 창에서 고를 수 있어.',
+  'onboarding.look.aiFree': (v: { size: string }) =>
+    `AI 프로그램이 없어도 무료 AI 로 대화할 수 있어. 처음 한 번 모델(${v.size})을 받고, 그 뒤로는 이 컴퓨터 안에서만 돌아.`,
   'onboarding.tips.title': '알아 두면 좋은 것',
   'onboarding.tips.click': (v: { name: string }) => `${withParticle(v.name, '을')} 누르면`,
   'onboarding.tips.clickDesc': '할 일, 메모, 일정, 상점 패널',
@@ -41,9 +45,11 @@ export const ko = {
 
 export const en: Translation<typeof ko> = {
   'onboarding.pages': (v) => `Page ${v.page} of ${v.total}`,
-  'onboarding.hello.title': "Hi! I'm Jjakkung, your buddy who works with you on screen.",
+  'onboarding.hello.title': "Hi! I'm your new buddy, here on your screen to work alongside you.",
   'onboarding.hello.lead': 'Finish to-dos to earn coins, then spend them on food and toys for me.',
   'onboarding.hello.name': 'Name',
+  'onboarding.hello.nameEmpty': "A name can't be empty. Keeping the old one.",
+  'onboarding.hello.nameMax': 'Names can be up to {max} characters.',
   'onboarding.hello.look': 'Look',
   'onboarding.hello.kinds': 'Default pet look',
   'onboarding.hello.photo': 'From a photo',
@@ -55,11 +61,13 @@ export const en: Translation<typeof ko> = {
   'onboarding.look.granted': 'Screen recording is allowed',
   'onboarding.look.needed': 'Screen recording permission needed',
   'onboarding.look.howTo':
-    "Turn on Jjakkung in System Settings → Privacy & Security → Screen & System Audio Recording. After that, restart Jjakkung. If you won't use Look together, you can skip this.",
-  'onboarding.look.openSettings': 'Open settings',
+    "Turn on Jjakkung in System Settings > Privacy & Security > Screen & System Audio Recording. After that, restart Jjakkung. If you won't use Look together, you can skip this.",
+  'onboarding.look.openSettings': 'Open System Settings',
   'onboarding.look.windows': 'No extra permission needed on Windows',
   'onboarding.look.ai':
     'AI uses Claude Code, Codex, Cursor or Gemini, whichever you installed and signed in to on this computer. You can pick one in the chat window.',
+  'onboarding.look.aiFree': (v) =>
+    `No AI app? You can still chat with the free AI. It downloads a model (${v.size}) once, then runs only on this computer.`,
   'onboarding.tips.title': 'Good to know',
   'onboarding.tips.click': (v) => `Click ${v.name}`,
   'onboarding.tips.clickDesc': 'To-dos, notes, events and shop panel',
@@ -69,7 +77,7 @@ export const en: Translation<typeof ko> = {
   'onboarding.tips.rubDesc': 'Petting. Hearts pop up',
   'onboarding.tips.throw': 'Grab and fling',
   'onboarding.tips.throwDesc': 'Throwing. I fall and bounce',
-  'onboarding.tips.quickDesc': 'Add a to-do or event in one line, from anywhere',
+  'onboarding.tips.quickDesc': 'Add a to-do or event in one line, from anywhere ("meeting tomorrow 3pm")',
   'onboarding.tips.hideDesc': 'Hide for a bit, show again',
   'onboarding.prev': 'Back',
   'onboarding.skip': 'Skip',

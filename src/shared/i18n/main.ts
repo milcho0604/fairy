@@ -4,25 +4,40 @@ import type { Translation } from './types.ts';
 // main 영역 글
 export const ko = {
   'main.onboardingTitle': '짝꿍 시작하기',
-  'main.model.downloadFailed': (v: { status: number }) => `모델을 받지 못했어 (${v.status})`,
-  'main.model.badHash': '받은 모델 파일이 맞지 않아 (SHA-256 다름). 다시 시도해 줘.',
+  'main.model.offline': '인터넷에 연결되어 있지 않아 받지 못했어. 연결을 확인하고 다시 해 줘.',
+  'main.model.network': '연결이 불안정해서 받지 못했어. 인터넷 연결을 확인하고 잠시 뒤 다시 해 줘.',
+  'main.model.server': (v: { status: number }) =>
+    `받을 곳의 서버가 지금 답하지 않아 (${v.status}). 잠시 뒤 다시 해 줘.`,
+  'main.model.gone': (v: { status: number }) =>
+    `받을 파일이 서버에 없어 (${v.status}). 짝꿍을 최신 버전으로 업데이트한 뒤 다시 해 줘.`,
+  'main.model.badHash':
+    '받은 파일이 원래 파일과 달라서 버렸어. 다시 해 줘. 계속 그러면 회사 망이나 프록시가 파일을 바꾸는지 확인해 줘.',
+  'main.model.diskFull': (v: { mb: number }) =>
+    `저장 공간이 모자라 받지 못했어. ${v.mb}MB 넘게 비운 뒤 다시 해 줘.`,
   'main.model.busy': '이 모델은 이미 받는 중이야. 끝나면 다시 해 줘.',
+  'main.model.cancelled': '받기를 멈췄어.',
+  'main.model.failed': '받지 못했어. 잠시 뒤 다시 해 줘.',
+  'main.file.diskFull': '저장 공간이 모자라 저장하지 못했어. 공간을 비운 뒤 다시 해 줘.',
+  'main.file.noPermission': '짝꿍 폴더에 쓸 수 없어 저장하지 못했어. 짝꿍을 다시 켜고 해 줘.',
+  'main.file.saveFailed': '저장하지 못했어. 다시 해 줘.',
   'main.update.off': '꺼져 있어',
   'main.update.none': '아직 받을 수 있는 버전이 없어',
   'main.update.failedStatus': (v: { status: number }) => `확인하지 못했어 (${v.status})`,
   'main.update.latest': '최신 버전이야',
   'main.update.skipped': '건너뛴 버전이야',
-  'main.update.bubble': (v: { version: string }) => `새 버전 ${v.version} 이 나왔어.`,
+  'main.update.bubble': (v: { version: string }) => `새 버전 ${withParticle(v.version, '이')} 나왔어.`,
   'main.update.get': '받으러 가기',
   'main.update.skip': '이 버전은 건너뛰기',
   'main.update.found': (v: { version: string }) => `새 버전 ${v.version}`,
   'main.update.offline': '확인하지 못했어 (인터넷 연결을 봐 줘)',
+  'main.update.badResponse': '확인하지 못했어 (받은 응답을 읽을 수 없어)',
   'main.update.forced': (v: { version: string; min: string }) =>
-    `이 버전은 이제 쓸 수 없어. ${v.min} 이상이 필요해서 새 버전 ${v.version} 으로 업데이트해 줘. 그때까지 AI 대화는 쉴게.`,
+    `이 버전은 이제 쓸 수 없어. ${v.min} 이상이 필요해서 새 버전 ${withParticle(v.version, '으로')} 업데이트해 줘. 그때까지 AI 대화는 쉴게.`,
   'main.update.forcedFound': (v: { min: string }) =>
     `업데이트가 필요해 (${v.min} 이상). 그때까지 AI 대화는 잠겨`,
   'main.update.lockedShort': 'AI 대화는 업데이트한 뒤에 쓸 수 있어',
-  'main.update.ready': (v: { version: string }) => `새 버전 ${v.version} 을 받아 뒀어. 끝낼 때 설치할게.`,
+  'main.update.ready': (v: { version: string }) =>
+    `새 버전 ${withParticle(v.version, '을')} 받아 뒀어. 끝낼 때 설치할게.`,
   'main.update.restart': '다시 켜서 업데이트',
   'main.backup.exportTitle': '백업을 둘 폴더',
   'main.backup.importTitle': '가져올 백업 폴더',
@@ -45,6 +60,7 @@ export const ko = {
   'main.pet.replaceAsk': (v: { name: string }) => `${withParticle(v.name, '으로')} 바꿀까?`,
   'main.pet.replaceDetail': '지금 펫의 이름과 모습이 바뀌어. 할 일, 코인, 친밀도는 그대로야.',
   'main.pet.came': (v: { name: string }) => `${withParticle(v.name, '이')} 왔어`,
+  'main.pet.unreadable': '펫 파일을 읽지 못했어. 파일이 그 자리에 있는지 보고 다시 골라 줘.',
   'main.maker.reopen': '창을 다시 열어 줘.',
   'main.maker.badFormat': '그림 형식이 이상해.',
   'main.maker.tooBigAny': '그림이 너무 크거나 PNG, GIF, WebP 가 아니야.',
@@ -66,9 +82,24 @@ export const ko = {
 
 export const en: Translation<typeof ko> = {
   'main.onboardingTitle': 'Getting started',
-  'main.model.downloadFailed': (v: { status: number }) => `Couldn't download the model (${v.status})`,
-  'main.model.badHash': "The downloaded model file doesn't match (SHA-256 differs). Please try again.",
+  'main.model.offline': "You're not connected to the internet. Check your connection and try again.",
+  'main.model.network':
+    "The connection wasn't stable enough to download. Check your internet connection and try again in a moment.",
+  'main.model.server': (v: { status: number }) =>
+    `The download server isn't responding right now (${v.status}). Try again in a moment.`,
+  'main.model.gone': (v: { status: number }) =>
+    `The file is no longer on the server (${v.status}). Update Jjakkung to the latest version, then try again.`,
+  'main.model.badHash':
+    "The downloaded file didn't match the original, so I threw it away. Try again. If it keeps happening, check whether a work network or proxy is changing files.",
+  'main.model.diskFull': (v: { mb: number }) =>
+    `Not enough disk space to download. Free up more than ${v.mb} MB and try again.`,
   'main.model.busy': 'This model is already downloading. Try again when it finishes.',
+  'main.model.cancelled': 'Download stopped.',
+  'main.model.failed': "Couldn't download it. Try again in a moment.",
+  'main.file.diskFull': 'Not enough disk space to save. Free up some space and try again.',
+  'main.file.noPermission':
+    "Couldn't write to the Jjakkung folder, so nothing was saved. Restart Jjakkung and try again.",
+  'main.file.saveFailed': "Couldn't save. Please try again.",
   'main.update.off': "It's turned off",
   'main.update.none': 'No version to download yet',
   'main.update.failedStatus': (v: { status: number }) => `Couldn't check (${v.status})`,
@@ -79,6 +110,7 @@ export const en: Translation<typeof ko> = {
   'main.update.skip': 'Skip this version',
   'main.update.found': (v: { version: string }) => `New version ${v.version}`,
   'main.update.offline': "Couldn't check (check your internet connection)",
+  'main.update.badResponse': "Couldn't check (the response couldn't be read)",
   'main.update.forced': (v: { version: string; min: string }) =>
     `This version can't be used anymore. Version ${v.min} or later is required, so please update to ${v.version}. AI chat is paused until then.`,
   'main.update.forcedFound': (v: { min: string }) =>
@@ -108,6 +140,7 @@ export const en: Translation<typeof ko> = {
   'main.pet.replaceAsk': (v: { name: string }) => `Switch to ${v.name}?`,
   'main.pet.replaceDetail': "Your pet's name and look will change. To-dos, coins and bond stay the same.",
   'main.pet.came': (v: { name: string }) => `${v.name} is here`,
+  'main.pet.unreadable': "Couldn't read the pet file. Check that it's still there and pick it again.",
   'main.maker.reopen': 'Please reopen the window.',
   'main.maker.badFormat': 'The picture format looks off.',
   'main.maker.tooBigAny': 'The picture is too big or not a PNG, GIF or WebP.',

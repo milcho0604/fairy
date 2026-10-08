@@ -112,18 +112,22 @@ export function todoContext(o: {
     )
     .slice(0, CONTEXT_TODO_MAX);
   if (todos.length === 0 && o.events.length === 0) return '';
-  const due = (t: ContextTodo) => {
-    if (!t.due) return '';
-    if (t.due < o.today) return ' (마감 지남)';
-    if (t.due === o.today) return ' (오늘 마감)';
-    return ` (마감 ${t.due})`;
+  // 틀 글은 화면 말을 따른다 (영어 화면에서 한국어 틀이 붙으면 AI 가 한국어로 답하기도 했다)
+  const due = (todo: ContextTodo) => {
+    if (!todo.due) return '';
+    if (todo.due < o.today) return t('ai.ctx.overdue');
+    if (todo.due === o.today) return t('ai.ctx.dueToday');
+    return t('ai.ctx.due', { day: todo.due });
   };
-  const lines = [`[내 오늘 상황, ${o.today}]`];
-  if (o.events.length > 0) lines.push('남은 일정:', ...o.events.map((e) => `- ${e.time} ${e.title}`));
+  const lines = [t('ai.ctx.head', { day: o.today })];
+  if (o.events.length > 0) lines.push(t('ai.ctx.events'), ...o.events.map((e) => `- ${e.time} ${e.title}`));
   if (todos.length > 0)
-    lines.push('안 끝낸 할 일:', ...todos.map((t) => `- ${t.important ? '[중요] ' : ''}${t.title}${due(t)}`));
-  if (o.todos.length > todos.length) lines.push(`(그 밖에 ${o.todos.length - todos.length}개 더)`);
-  lines.push('[질문]');
+    lines.push(
+      t('ai.ctx.todos'),
+      ...todos.map((todo) => `- ${todo.important ? t('ai.ctx.important') : ''}${todo.title}${due(todo)}`),
+    );
+  if (o.todos.length > todos.length) lines.push(t('ai.ctx.more', { n: o.todos.length - todos.length }));
+  lines.push(t('ai.ctx.question'));
   return `${lines.join('\n')}\n`;
 }
 

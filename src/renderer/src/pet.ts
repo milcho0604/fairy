@@ -21,6 +21,7 @@ import { canPlay, type SoundKind } from '../../shared/sound.ts';
 import { AnimatedImage, loadPetImage } from './animated.ts';
 import { CANVAS_SIZE, drawPet, HEARTS_MS } from './draw.ts';
 import { initLang } from './lang.ts';
+import { renderFace } from './pet-face.ts';
 import type { Pet3D } from './pet3d.ts';
 import { playSound } from './sound.ts';
 
@@ -119,7 +120,9 @@ function frame() {
     gaze: gaze ?? undefined,
     trick: trick ? { type: trick.type, t: trickT } : undefined,
     flower,
+    calm: reducedMotion.matches,
   });
+  syncFace(m3d);
 
   const walking = activity?.type === 'walk';
   const moving = activity?.type === 'yawn' || activity?.type === 'stretch';
@@ -202,6 +205,9 @@ let boost = false;
 /** 친밀도로 열린 몸짓. 끝나면 지운다 */
 let trick: { type: 'wave' | 'dance'; start: number } | undefined;
 const TRICK_MS = { wave: 1800, dance: 1400 } as const;
+/** 움직임 줄이기 (운영체제 설정). 빙글 춤은 건너뛰고 신남은 살짝만 들썩인다. 걷기와 창 옮기기는 그대로 */
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+reducedMotion.addEventListener('change', () => requestFrame());
 let imageLoad = 0;
 bridge.onImage(async (images: PetImages) => {
   const mine = ++imageLoad;
@@ -287,8 +293,28 @@ function current3d(): Pet3D | 'loading' | undefined {
   return model3d;
 }
 
+// 이름 옆 얼굴 (shared/face.ts). 모습(종류, 입체 여부, 사진, 설계도)이 바뀐 뒤 처음 그릴 때 한 번 그려 메인에 준다.
+// 펫이 지금 무엇을 하든 얼굴은 쉬는 모습, 뜬 눈으로. 쓰는 렌더러는 펫 화면 것 하나 그대로다
+let wantFace = false;
+let faceKey: unknown[] = [];
+function syncFace(m3d: Pet3D | undefined) {
+  if (!wantFace) return;
+  const key = [m3d, m3d ? model3dOf : undefined, photo, petKind];
+  if (key.length === faceKey.length && key.every((v, i) => v === faceKey[i])) return;
+  faceKey = key;
+  const still = photo instanceof AnimatedImage ? photo.frameAt(0) : photo;
+  const url = renderFace({
+    kind: petKind,
+    photo: m3d ? undefined : still,
+    model3d: m3d,
+    relief: !!m3d && model3dOf instanceof HTMLImageElement,
+  });
+  if (url) bridge.face(url);
+}
+
 bridge.onStatus((status) => {
   petKind = status.kind;
+  wantFace = status.face === true;
   // 입체를 다시 켜면 한 번 더 해 본다 (그래픽 오류로 2D 가 됐어도)
   if (status.pet3d && !use3d && broken3d) {
     broken3d = false;
@@ -331,7 +357,7 @@ bridge.onReact((kind) => {
     sound('wave');
     return;
   }
-  if (kind === 'dance') trick = { type: 'dance', start: now };
+  if (kind === 'dance' && !reducedMotion.matches) trick = { type: 'dance', start: now };
   setInputs({ excitedUntil: now + EXCITED_MS });
   sound(kind === 'fed' ? 'fed' : kind === 'dance' ? 'dance' : 'happy');
 });

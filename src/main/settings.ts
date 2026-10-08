@@ -1,6 +1,7 @@
 import {
   applyPatch,
   cleanPetName,
+  followKindName,
   parseSettings,
   type Settings,
   type SettingsPatch,
@@ -28,6 +29,8 @@ function load(): Settings {
       ...((readJson(FILE) as object) ?? {}),
     } as Record<string, unknown>;
     namedOnDisk = cleanPetName(raw.petName) !== undefined;
+    // 이름을 손댔는지 기억하는 칸이 생기기 전부터 쓰던 사람은 손댄 것으로 본다 (모습을 바꿔도 이름이 그대로)
+    if (namedOnDisk && typeof raw.petNameEdited !== 'boolean') raw.petNameEdited = true;
     current = parseSettings(raw);
   }
   return current;
@@ -40,7 +43,7 @@ export const settings = {
   /** 바꿀 값만 준다. 틀린 값은 무시된다. 바뀐 뒤 설정을 돌려준다. */
   set(patch: SettingsPatch): Settings {
     const prev = load();
-    const next = applyPatch(prev, patch);
+    const next = followKindName(prev, applyPatch(prev, patch), patch);
     if (JSON.stringify(next) === JSON.stringify(prev)) return prev;
     current = next;
     writeJson(FILE, next);

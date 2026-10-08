@@ -9,8 +9,8 @@ import { t } from './i18n/index.ts';
 export const BRIEFING_FROM_MINUTE = 5 * 60;
 
 export interface BriefingInput {
-  /** 오늘 남은 일정 (시작 분, 제목), 이른 것부터 */
-  events: { minute: number; title: string }[];
+  /** 오늘 남은 일정 (시작 분, 제목), 이른 것부터. 종일 일정(allDay)은 시각 없이 "오늘 종일: ..." 로 먼저 말한다 */
+  events: { minute: number; title: string; allDay?: boolean }[];
   /** 마감이 오늘인 안 끝낸 할 일 수 */
   dueToday: number;
   /** 마감이 지난 안 끝낸 할 일 수 */
@@ -27,12 +27,24 @@ function greeting(minute: number): string {
 
 export function briefingText(b: BriefingInput): string {
   const parts: string[] = [];
-  const first = b.events[0];
+  const allDay = b.events.filter((e) => e.allDay);
+  if (allDay.length > 0) {
+    // 둘까지 이름을 말하고 나머지는 수로 ("오늘 종일: 제주도 여행, 엄마 생일 외 1개.")
+    const more = allDay.length - 2;
+    const list =
+      allDay
+        .slice(0, 2)
+        .map((e) => e.title)
+        .join(', ') + (more > 0 ? t('briefing.due.more', { n: more }) : '');
+    parts.push(t('briefing.allDay', { list }));
+  }
+  const timed = b.events.filter((e) => !e.allDay);
+  const first = timed[0];
   if (first) {
     parts.push(
-      b.events.length === 1
+      timed.length === 1
         ? t('briefing.oneEvent', { time: timeLabel(first.minute), title: first.title })
-        : t('briefing.events', { n: b.events.length, time: timeLabel(first.minute), title: first.title }),
+        : t('briefing.events', { n: timed.length, time: timeLabel(first.minute), title: first.title }),
     );
   }
   if (b.dueToday > 0 || b.overdue > 0) {
@@ -45,9 +57,6 @@ export function briefingText(b: BriefingInput): string {
 }
 
 // ---- 하루 회고 (v2) ----
-
-/** 이 시각(현지, 분) 뒤 처음 자리에 있을 때 한 번. 설정에서 바꾼다 */
-export const REVIEW_DEFAULT_MINUTE = 18 * 60;
 
 export interface ReviewInput {
   doneTitles: readonly string[];
@@ -65,6 +74,19 @@ export function reviewText(r: ReviewInput): string {
         ? t('briefing.review.one', { title: r.doneTitles[0] ?? '' })
         : t('briefing.review.many', { n });
   return r.leftToday > 0 ? `${done} ${t('briefing.review.left', { n: r.leftToday })}` : done;
+}
+
+/**
+ * 회고 "내일로 넘기기" 되돌리기: 넘긴 할 일 중 아직 열려 있고 마감이 그대로 내일인 것만 원래 마감으로.
+ * 그사이 끝냈거나, 지웠거나, 손으로 마감을 바꾼 것은 둔다
+ */
+export function undoMoved(
+  moved: readonly { id: number; due: string | null }[],
+  open: readonly { id: number; due: string | null }[],
+  tomorrow: string,
+): { id: number; due: string | null }[] {
+  const now = new Map(open.map((t) => [t.id, t.due]));
+  return moved.filter((m) => now.get(m.id) === tomorrow);
 }
 
 // ---- 오늘 마감 알림 (기획서 "수다 빈도" 마감 알림: 보통은 마감 당일 한 번, 수다쟁이는 오전과 오후) ----

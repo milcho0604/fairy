@@ -1,16 +1,17 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { app, type BrowserWindow, dialog } from 'electron';
 import { customAiCount, IMPORT_FILES, importedChatSettings } from '../shared/backup-import.ts';
 import { type Db, looksLikeOurs, SCHEMA_VERSION, schemaVersion } from '../shared/db-schema.ts';
+import { saveErrorText } from '../shared/download-error.ts';
 import { t } from '../shared/i18n/index.ts';
 import { decodePet, encodePet, SHARE_MAX_BYTES, type SharedPet, shareFileName } from '../shared/pet-share.ts';
 import type { Blueprint } from '../shared/pet3d/blueprint.ts';
 import { FRIENDS_MAX, POSE_KINDS } from '../shared/settings.ts';
 import { petImages } from './maker.ts';
 import { library } from './pet-library.ts';
-import { plainEntry } from './safe-file.ts';
+import { freePath, plainEntry, writeFileAtomic } from './safe-file.ts';
 import { settings } from './settings.ts';
 
 /**
@@ -56,7 +57,7 @@ export function createBackup(o: {
     // 링크는 따라가지 않고 일반 파일만 (버그잡이 7차)
     if (existsSync(join(dir(), 'pets')))
       cpSync(join(dir(), 'pets'), join(out, 'pets'), { recursive: true, filter: plainEntry });
-    writeFileSync(
+    writeFileAtomic(
       join(out, 'jjakkung-backup.json'),
       JSON.stringify({ app: 'jjakkung', version: app.getVersion(), at: Date.now() }),
     );
@@ -86,7 +87,8 @@ export function createBackup(o: {
       cancelId: 1,
     });
     if (ok.response !== 0) return '';
-    const keep = join(dir(), `before-import-${stamp()}`);
+    // 같은 분에 두 번 가져와도 겹치지 않게 (freePath)
+    const keep = freePath(join(dir(), `before-import-${stamp()}`));
     mkdirSync(keep, { recursive: true });
     o.vacuumInto(join(keep, 'jjakkung.db'));
     for (const f of FILES) if (existsSync(join(dir(), f))) cpSync(join(dir(), f), join(keep, f));
@@ -97,7 +99,7 @@ export function createBackup(o: {
     for (const f of IMPORT_FILES) {
       if (!existsSync(join(from, f))) continue;
       if (f === 'chat-settings.json')
-        writeFileSync(join(dir(), f), JSON.stringify(importedChatSettings(readJsonFile(join(from, f)))));
+        writeFileAtomic(join(dir(), f), JSON.stringify(importedChatSettings(readJsonFile(join(from, f)))));
       else cpSync(join(from, f), join(dir(), f));
     }
     // pets/ 는 링크를 빼고 일반 파일만 (링크로 사용자 데이터 폴더 밖 파일을 읽게 하지 못하게)
@@ -171,7 +173,7 @@ function dataUrlToFile(dataUrl: string, prefix: string): string {
   if (!m) throw new Error('그림 형식');
   const file = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.${m[1]}`;
   mkdirSync(join(app.getPath('userData'), 'pets'), { recursive: true });
-  writeFileSync(join(app.getPath('userData'), 'pets', file), Buffer.from(m[2] ?? '', 'base64'));
+  writeFileAtomic(join(app.getPath('userData'), 'pets', file), Buffer.from(m[2] ?? '', 'base64'));
   return file;
 }
 
@@ -179,7 +181,7 @@ function dataUrlToFile(dataUrl: string, prefix: string): string {
 function modelToFile(model: Blueprint): string {
   const file = `model-${Date.now()}${Math.floor(Math.random() * 1000)}.json`;
   mkdirSync(join(app.getPath('userData'), 'pets'), { recursive: true });
-  writeFileSync(join(app.getPath('userData'), 'pets', file), JSON.stringify(model));
+  writeFileAtomic(join(app.getPath('userData'), 'pets', file), JSON.stringify(model));
   return file;
 }
 
@@ -201,7 +203,7 @@ export async function exportPet(parent?: BrowserWindow): Promise<string> {
   };
   const r = await (parent ? dialog.showSaveDialog(parent, opts) : dialog.showSaveDialog(opts));
   if (r.canceled || !r.filePath) return '';
-  writeFileSync(r.filePath, encodePet(pet));
+  writeFileAtomic(r.filePath, encodePet(pet));
   return r.filePath;
 }
 
@@ -210,6 +212,7 @@ export async function exportPet(parent?: BrowserWindow): Promise<string> {
 export async function importPet(
   parent?: BrowserWindow,
   asFriend = false,
+  log?: (tag: string, ...rest: unknown[]) => void,
 ): Promise<{ ok: boolean; message: string }> {
   const opts = {
     title: t('main.pet.importTitle'),
@@ -220,46 +223,66 @@ export async function importPet(
   const file = r.filePaths[0];
   if (r.canceled || !file) return { ok: false, message: '' };
   // 읽기 전에 크기를 본다: 큰 파일을 통째로 메모리에 올리지 않게 (버그잡이 7차)
-  if (statSync(file).size > SHARE_MAX_BYTES) return { ok: false, message: t('pet.share.tooBig') };
-  const pet = decodePet(readFileSync(file, 'utf8'));
-  if ('error' in pet) return { ok: false, message: pet.error };
-  if (asFriend) {
-    const list = settings.get().friends;
-    if (list.length >= FRIENDS_MAX)
-      return { ok: false, message: t('main.pet.friendsMax', { max: FRIENDS_MAX }) };
-    const friend = {
-      id: `f-${Date.now().toString(36)}`,
-      name: pet.name,
-      kind: pet.kind,
-      ...(pet.image ? { image: dataUrlToFile(pet.image, 'pet') } : {}),
-      ...(pet.model ? { model: modelToFile(pet.model) } : {}),
-      ...(pet.depth ? { depth: dataUrlToFile(pet.depth, 'depth') } : {}),
-    };
-    settings.set({ friends: [...list, friend] });
-    return { ok: true, message: t('main.pet.friendCame', { name: pet.name }) };
+  // 고른 뒤 지워졌거나 읽을 권한이 없으면 읽기가 던진다. 던진 채 두면 설정 창에 아무 말도 안 뜬다
+  let text: string;
+  try {
+    if (statSync(file).size > SHARE_MAX_BYTES) return { ok: false, message: t('pet.share.tooBig') };
+    text = readFileSync(file, 'utf8');
+  } catch {
+    return { ok: false, message: t('main.pet.unreadable') };
   }
-  const ask = await dialog.showMessageBox({
-    type: 'question',
-    message: t('main.pet.replaceAsk', { name: pet.name }),
-    detail: t('main.pet.replaceDetail'),
-    buttons: [t('main.backup.replace'), t('main.backup.cancel')],
-    defaultId: 0,
-    cancelId: 1,
-  });
-  if (ask.response !== 0) return { ok: false, message: '' };
-  // 지금 사진 펫은 보관함으로 (6단계)
-  library.beforeNewPhoto();
-  const poses: Record<string, string | null> = {};
-  // 포즈는 사진 펫에만 붙는다 (그림 없는 기본 펫에 남으면 다음 사진 펫으로 넘어간다)
-  for (const { id } of POSE_KINDS)
-    poses[id] = pet.image && pet.poses[id] ? dataUrlToFile(pet.poses[id] as string, 'pose') : null;
-  settings.set({
-    petName: pet.name,
-    petKind: pet.kind,
-    petImage: pet.image ? dataUrlToFile(pet.image, 'pet') : null,
-    petModel: pet.model ? modelToFile(pet.model) : null,
-    petDepth: pet.depth ? dataUrlToFile(pet.depth, 'depth') : null,
-    petPoses: poses,
-  });
-  return { ok: true, message: t('main.pet.came', { name: pet.name }) };
+  const pet = decodePet(text);
+  if ('error' in pet) return { ok: false, message: pet.error };
+  if (!asFriend) {
+    const ask = await dialog.showMessageBox({
+      type: 'question',
+      message: t('main.pet.replaceAsk', { name: pet.name }),
+      detail: t('main.pet.replaceDetail'),
+      buttons: [t('main.backup.replace'), t('main.backup.cancel')],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (ask.response !== 0) return { ok: false, message: '' };
+  } else if (settings.get().friends.length >= FRIENDS_MAX)
+    return { ok: false, message: t('main.pet.friendsMax', { max: FRIENDS_MAX }) };
+  // 그림 파일을 다 쓴 뒤에만 설정을 바꾼다. 쓰다가 실패하면(디스크 가득 등) 쓴 것을 지우고 지금 펫은 그대로 둔다
+  const made: string[] = [];
+  const keep = (f: string) => {
+    made.push(f);
+    return f;
+  };
+  try {
+    if (asFriend) {
+      const friend = {
+        id: `f-${Date.now().toString(36)}`,
+        name: pet.name,
+        kind: pet.kind,
+        ...(pet.image ? { image: keep(dataUrlToFile(pet.image, 'pet')) } : {}),
+        ...(pet.model ? { model: keep(modelToFile(pet.model)) } : {}),
+        ...(pet.depth ? { depth: keep(dataUrlToFile(pet.depth, 'depth')) } : {}),
+      };
+      settings.set({ friends: [...settings.get().friends, friend] });
+      return { ok: true, message: t('main.pet.friendCame', { name: pet.name }) };
+    }
+    const poses: Record<string, string | null> = {};
+    // 포즈는 사진 펫에만 붙는다 (그림 없는 기본 펫에 남으면 다음 사진 펫으로 넘어간다)
+    for (const { id } of POSE_KINDS)
+      poses[id] = pet.image && pet.poses[id] ? keep(dataUrlToFile(pet.poses[id] as string, 'pose')) : null;
+    const next = {
+      petName: pet.name,
+      petKind: pet.kind,
+      petImage: pet.image ? keep(dataUrlToFile(pet.image, 'pet')) : null,
+      petModel: pet.model ? keep(modelToFile(pet.model)) : null,
+      petDepth: pet.depth ? keep(dataUrlToFile(pet.depth, 'depth')) : null,
+      petPoses: poses,
+    };
+    // 지금 사진 펫은 보관함으로 (6단계)
+    library.beforeNewPhoto();
+    settings.set(next);
+    return { ok: true, message: t('main.pet.came', { name: pet.name }) };
+  } catch (err) {
+    for (const f of made) rmSync(join(app.getPath('userData'), 'pets', f), { force: true });
+    log?.('backup', '펫 가져오기 실패', err instanceof Error ? err.message : String(err));
+    return { ok: false, message: saveErrorText(err) };
+  }
 }

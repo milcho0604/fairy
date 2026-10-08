@@ -6,6 +6,7 @@ import {
   fateOf,
   HELD_MAX,
   HeldBubbles,
+  heldButtons,
   MAX_SHOWS,
   MISSED_MAX,
   MissedLog,
@@ -144,4 +145,24 @@ test('이미 묶인 알림을 다시 묶어도 머리말이 겹치지 않는다'
     { text: '업적 달성', at: T0 },
   ]);
   assert.equal(text, '숨어 있는 동안 알림이 3개 왔어\n- 5분 뒤 회의\n- 6분 뒤 치과\n- 업적 달성');
+});
+
+test('혼자 다시 꺼내는 말은 제 단추를 그대로 단다 (저장 파일 알림의 "파일 보기"), 여럿을 묶으면 기본 단추', () => {
+  const ok = [{ id: 'ok', label: '알았어' }];
+  const own = [
+    { id: 'show', label: '파일 보기' },
+    { id: 'ok', label: '확인' },
+  ];
+  assert.deepEqual(heldButtons([{ text: '저장 파일', at: 0, buttons: own }], ok), own);
+  assert.deepEqual(heldButtons([{ text: '일정', at: 0 }], ok), ok);
+  assert.deepEqual(
+    heldButtons(
+      [
+        { text: '저장 파일', at: 0, buttons: own },
+        { text: '일정', at: 0 },
+      ],
+      ok,
+    ),
+    ok,
+  );
 });

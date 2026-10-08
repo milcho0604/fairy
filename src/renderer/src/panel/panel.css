@@ -2,6 +2,12 @@
   box-sizing: border-box;
 }
 
+/* 켬 칩(종일, 반복) 색. 대비 수치는 .all-day-toggle.on 풀이에 */
+:root {
+  --chip-on-ink: color-mix(in srgb, var(--accent) 80%, var(--ink));
+  --chip-on-bg: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
 html,
 body,
 #root {
@@ -40,10 +46,16 @@ input {
   overflow: hidden;
 }
 
+/* 펫 얼굴 (PetFace.tsx, 지금 모습 그림) */
 .face {
   flex: none;
-  width: 24px;
-  height: 22px;
+  display: block;
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  -webkit-user-drag: none;
+  /* 흰 펫도 밝은 바탕에서 테두리가 보이게 아주 옅은 그림자 */
+  filter: drop-shadow(0 0.5px 1px rgba(0, 0, 0, 0.28));
 }
 
 .panel {
@@ -392,6 +404,11 @@ p.empty {
 
 .panel footer button {
   flex: 1;
+  /* 펫 이름이 길어도 한 줄. 두 단추 높이가 같게 (넘치면 말줄임, 전체는 풀이에) */
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .toast {
@@ -408,13 +425,32 @@ p.empty {
   color: var(--bg);
   font-size: 12.5px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  /* 단추가 둘이라 좁으면 단추 줄이 글 아래로 내려간다 (잘리지 않게) */
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .toast span {
-  flex: 1;
+  flex: 1 1 150px;
+}
+
+.toast-actions {
+  display: flex;
+  flex: none;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* 일정으로 넣은 시각 ("내일 오후 3:00"). 설명 아래 한 줄로 */
+.toast .toast-when {
+  display: block;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .toast .undo {
+  flex: none;
+  white-space: nowrap;
   padding: 2px 8px;
   border: 1px solid currentColor;
   border-radius: 6px;
@@ -440,11 +476,25 @@ p.empty {
   user-select: text;
 }
 
+/* 창 전체가 입력칸이라 칸 안이 아니라 카드 테두리로 포커스를 보인다 (키보드로 다시 들어와도 어디 쓰는지 보이게) */
 .quick input:focus {
   outline: none;
 }
 
+.quick.card-window:focus-within {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent),
+    0 6px 20px rgba(0, 0, 0, 0.18);
+}
+
 .quick-msg {
+  /* 어디에 언제로 넣었는지. 길면 줄여서 입력칸 자리를 남긴다 (전체는 풀이에) */
+  flex: none;
+  max-width: 55%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-size: 12.5px;
   color: var(--ok);
 }
@@ -737,6 +787,46 @@ p.empty {
   opacity: 1;
 }
 
+/* 종일 일정: 시각 자리에 "종일" 이나 "10/10~10/12". 종일 바꾸기 단추는 마우스를 올리면 나온다 */
+.events li.all-day .time {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.all-day-toggle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 20px;
+  padding: 0 6px 0 4px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.all-day-toggle input[type="checkbox"] {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* 켬 칩(종일, 반복): 옅은 강조 바탕 위 작은 강조 글자. 강조색 그대로는 4.5:1 이 안 나와(밝은 모드 흰 바탕 4.19, 줄 hover 바탕 3.97)
+   글자를 본문색 쪽으로 20% 당기고 바탕을 8% 로 낮췄다. 밝은 모드 흰 바탕 5.62, hover 바탕 5.32, 어두운 모드 6.99, 7.75 */
+.all-day-toggle.on {
+  color: var(--chip-on-ink);
+  background: var(--chip-on-bg);
+}
+
+/* 알림 없는 종일 일정은 종이 흐리다 (아침 브리핑에만 나온다) */
+.remind.off {
+  opacity: 0.3;
+}
+
 /* 반복 표시 */
 .repeat {
   flex: none;
@@ -761,8 +851,8 @@ p.empty {
 
 .repeat.on {
   opacity: 1;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--chip-on-ink);
+  background: var(--chip-on-bg);
 }
 
 .todo:hover .repeat,
@@ -810,6 +900,12 @@ p.empty {
 
 .note-meta .when {
   flex: none;
+}
+
+.note-meta .preview mark {
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--ink);
 }
 
 .note-meta .preview {
@@ -1142,4 +1238,39 @@ li:is(.todo, .event) .tools .extra .remove,
 li:is(.todo, .event) .tools .extra .repeat,
 li:is(.todo, .event) .tools .extra .due.none {
   opacity: 1;
+}
+
+/* 움직임 줄이기(운영체제 설정): 지금 패널에는 움직이는 효과가 없지만, 나중에 더해도 이 설정에서는 바로 끝나게 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+    scroll-behavior: auto;
+  }
+}
+
+/*
+ * 창 옮기기: 패널은 제목 표시줄 없는 창이라 위쪽 머리(이름과 코인, 배부름, 기분 줄, 탭 줄 빈 곳)와 아래 단추 줄 빈 곳을 잡고 끈다.
+ * 끄는 자리 위 요소는 마우스를 못 받으니 누르는 것(단추, 입력칸, 링크)과 풀이가 뜨는 것(title)은 뺀다.
+ * 사이에 뜨는 알림(.toast)도 단추 줄 위에 겹칠 수 있어 뺀다.
+ */
+.panel > header,
+.panel > .fullness,
+.panel > .life,
+.panel > .hint,
+.panel > .tabs,
+.panel > footer,
+.quick.card-window {
+  -webkit-app-region: drag;
+}
+
+.panel
+  > :is(header, .fullness, .life, .hint, .tabs, footer)
+  :is(button, input, select, textarea, a, [title], [tabindex]),
+.panel > .toast,
+.quick.card-window input {
+  -webkit-app-region: no-drag;
 }

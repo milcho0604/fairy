@@ -115,6 +115,14 @@ export const MIGRATIONS: readonly string[] = [
   alter table event add column removed_by text;                         -- user(사용자가 지움, 다시 가져와도 그대로), sync(캘린더에서 없어짐)
   update event set removed_by = 'user' where deleted_at is not null;
   `,
+  // 7판: 종일 일정. 일정 탭에 "내일 제주도 여행"처럼 시각 없이 적은 것과 캘린더에서 가져온 종일 일정.
+  // start_at 은 첫날 현지 0시. end_at 은 여러 날이면 마지막 날 다음 날 현지 0시(ics DTEND 처럼 끝 날은 들지 않는다), 하루면 null.
+  // 종일 일정의 remind_min 은 첫날 0시보다 몇 분 앞에 알릴지이고 0 이면 알리지 않는다 (아침 브리핑에 나온다).
+  // 예전 판은 가져온 종일 일정을 알림 0, 알린 시각 = 시작 시각으로 넣었다. 그 모양을 종일로 표시한다
+  `
+  alter table event add column all_day integer not null default 0; -- 1 이면 종일
+  update event set all_day = 1 where source = 'ics' and remind_min = 0 and notified_at = start_at;
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

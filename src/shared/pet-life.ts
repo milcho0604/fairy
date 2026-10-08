@@ -1,5 +1,6 @@
 // 펫의 하루 (v1): 삐짐 게이지, 기분, 친밀도. 기획서 "삐짐 게이지", "게임 규칙 > 펫 상태 수치".
 // 잃는 것은 없다: 코인, 친밀도는 줄지 않고 삐짐은 모습과 대사뿐이다.
+import { plusDays, weekdayOf as weekday } from './day.ts';
 import type { Db } from './db-schema.ts';
 import { t } from './i18n/index.ts';
 import { FULLNESS, localDay } from './todo-store.ts';
@@ -75,12 +76,6 @@ const GAIN: Record<Activity, { mood: number; affection: number }> = {
   pet: { mood: 8, affection: 1 },
   play: { mood: 10, affection: 2 },
 };
-
-function plusDays(day: string, n: number): string {
-  const [y, m, d] = day.split('-').map(Number);
-  return new Date(Date.UTC(y ?? 2000, (m ?? 1) - 1, (d ?? 1) + n)).toISOString().slice(0, 10);
-}
-const weekday = (day: string) => new Date(`${day}T00:00:00Z`).getUTCDay();
 
 /**
  * 마지막 활동 날 다음 날부터 어제까지, 쉬는 날을 뺀 날 수 = 찰 칸 수. 오늘은 아직 세지 않는다.

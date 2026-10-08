@@ -55,3 +55,29 @@ export function clampIntoAreas(rect: Rect, areas: readonly Rect[]): Rect {
     y: clamp(rect.y, area.y, area.y + area.height - rect.height),
   };
 }
+
+/**
+ * 저장해 둔 창 크기와 자리를 지금 화면에 맞춘다 (채팅, 설정, 펫 만들기 창이 닫을 때 모습을 기억).
+ * 크기는 최소 크기 이상, 들어갈 화면보다 크지 않게. 자리는 있으면 화면 안으로 옮기고(모니터를 뺐을 때), 없으면 크기만 준다.
+ * 모양이 틀리면 undefined (처음처럼 연다)
+ */
+export function fitSavedBounds(
+  saved: unknown,
+  areas: readonly Rect[],
+  min: { width: number; height: number },
+): { width: number; height: number; x?: number; y?: number } | undefined {
+  if (typeof saved !== 'object' || saved === null) return undefined;
+  const s = saved as Record<string, unknown>;
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : undefined);
+  const w = num(s.width);
+  const h = num(s.height);
+  if (w === undefined || h === undefined || w <= 0 || h <= 0) return undefined;
+  const x = num(s.x);
+  const y = num(s.y);
+  const probe = { x: x ?? 0, y: y ?? 0, width: w, height: h };
+  const area = x !== undefined && y !== undefined ? nearestArea(probe, areas) : areas[0];
+  const width = Math.max(min.width, area ? Math.min(w, area.width) : w);
+  const height = Math.max(min.height, area ? Math.min(h, area.height) : h);
+  if (x === undefined || y === undefined) return { width, height };
+  return clampIntoAreas({ x, y, width, height }, areas);
+}

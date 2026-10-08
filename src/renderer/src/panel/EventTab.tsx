@@ -1,5 +1,14 @@
 import { useState } from 'react';
-import { type CalEvent, REMIND_CHOICES } from '../../../shared/event-store.ts';
+import { plusDays } from '../../../shared/day.ts';
+import {
+  ALL_DAY_EVE_MIN,
+  ALL_DAY_REMIND_CHOICES,
+  allDayLabel,
+  allDaySpan,
+  type CalEvent,
+  dayStartMs,
+  REMIND_CHOICES,
+} from '../../../shared/event-store.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PanelState } from '../../../shared/ipc.ts';
 import { localDay } from '../../../shared/todo-store.ts';
@@ -8,12 +17,19 @@ import { BellIcon } from './icons.tsx';
 
 const bridge = window.jjakkungPanel;
 
-const remindText = (m: number) =>
-  m === 0
-    ? t('panel.event.atStart')
-    : m >= 60
-      ? t('panel.remind.hour', { n: m / 60 })
-      : t('panel.remind.min', { n: m });
+const remindText = (m: number, allDay = false) =>
+  allDay && m === 0
+    ? t('panel.remind.none')
+    : allDay && m === ALL_DAY_EVE_MIN
+      ? t('panel.remind.eve')
+      : m === 0
+        ? t('panel.event.atStart')
+        : m >= 60
+          ? t('panel.remind.hour', { n: m / 60 })
+          : t('panel.remind.min', { n: m });
+
+/** 날짜 사이 날 수 (b - a) */
+const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000);
 
 /** 일정 (v1): 한 줄로 넣고, 날짜별로 본다. 시간이 되면 펫이 알린다. */
 export function EventTab({
@@ -39,11 +55,15 @@ export function EventTab({
     setError('');
   };
 
-  // 끝난 일정은 빼고 날짜별로 묶는다.
-  const upcoming = s.events.filter((e) => (e.endAt ?? e.startAt + 30 * 60_000) >= now);
+  // 끝난 일정은 빼고 날짜별로 묶는다. 종일 일정은 마지막 날이 지나야 끝나고,
+  // 어제 시작한 여러 날 일정은 오늘 칸에 둔다 (지난 날 제목 아래 숨지 않게)
+  const upcoming = s.events.filter((e) =>
+    e.allDay ? allDaySpan(e).last >= s.today : (e.endAt ?? e.startAt + 30 * 60_000) >= now,
+  );
   const days = new Map<string, CalEvent[]>();
   for (const e of upcoming) {
-    const d = localDay(e.startAt);
+    const first = localDay(e.startAt);
+    const d = e.allDay && first < s.today ? s.today : first;
     days.set(d, [...(days.get(d) ?? []), e]);
   }
 
@@ -72,7 +92,7 @@ export function EventTab({
             <h3>{dayHeading(day, s.today)}</h3>
             <ul className="events">
               {list.map((e) => (
-                <EventRow key={e.id} e={e} now={now} onRemoved={onRemoved} />
+                <EventRow key={e.id} e={e} now={now} today={s.today} onRemoved={onRemoved} />
               ))}
             </ul>
           </section>
@@ -82,27 +102,77 @@ export function EventTab({
   );
 }
 
-function EventRow({ e, now, onRemoved }: { e: CalEvent; now: number; onRemoved: (id: number) => void }) {
+function EventRow({
+  e,
+  now,
+  today,
+  onRemoved,
+}: {
+  e: CalEvent;
+  now: number;
+  today: string;
+  onRemoved: (id: number) => void;
+}) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(e.title);
-  const started = e.startAt <= now;
+  const span = e.allDay ? allDaySpan(e) : null;
+  const started = span ? span.first <= today : e.startAt <= now;
+  const remindChoices: readonly number[] = e.allDay ? ALL_DAY_REMIND_CHOICES : REMIND_CHOICES;
+  // MCP 로 넣은 값처럼 고르기 칸에 없는 알림이면 그 값도 보여 준다 (칸이 엉뚱한 값을 가리키지 않게)
+  const choices = remindChoices.includes(e.remindMin) ? remindChoices : [...remindChoices, e.remindMin];
+
+  /** 종일과 시각 일정 사이를 바꾼다. 시각으로 바꾸면 첫날 오전 9시 (오늘이면 다음 정시) */
+  const toggleAllDay = () => {
+    if (span) {
+      const hour = span.first === today ? Math.min(23, new Date(now).getHours() + 1) : 9;
+      bridge.eventUpdate(e.id, {
+        startAt: dayStartMs(span.first) + hour * 3_600_000,
+        endAt: null,
+        allDay: false,
+      });
+    } else {
+      bridge.eventUpdate(e.id, { startAt: dayStartMs(localDay(e.startAt)), endAt: null, allDay: true });
+    }
+  };
+
   return (
-    <li className={`event ${started ? 'now' : ''}`}>
-      <label className="time" title={t('panel.event.changeTime')}>
-        {started ? t('panel.today.now') : timeOf(e.startAt)}
-        <input
-          type="datetime-local"
-          value={toInputValue(e.startAt)}
-          aria-label={t('panel.event.startTime')}
-          onChange={(ev) => {
-            const at = new Date(ev.target.value).getTime();
-            if (Number.isFinite(at)) {
-              const len = e.endAt ? e.endAt - e.startAt : null;
-              bridge.eventUpdate(e.id, { startAt: at, endAt: len ? at + len : null });
-            }
-          }}
-        />
-      </label>
+    <li className={`event ${started ? 'now' : ''} ${span ? 'all-day' : ''}`}>
+      {span ? (
+        <label className="time" title={t('panel.event.changeDay')}>
+          {t('panel.event.allDay')}
+          <input
+            type="date"
+            value={span.first}
+            aria-label={t('panel.event.startDay')}
+            onChange={(ev) => {
+              const first = ev.target.value;
+              if (!/^\d{4}-\d{2}-\d{2}$/.test(first)) return;
+              // 날 수는 그대로 두고 옮긴다
+              const extra = daysBetween(span.first, span.last);
+              bridge.eventUpdate(e.id, {
+                startAt: dayStartMs(first),
+                endAt: extra > 0 ? dayStartMs(plusDays(first, extra + 1)) : null,
+              });
+            }}
+          />
+        </label>
+      ) : (
+        <label className="time" title={t('panel.event.changeTime')}>
+          {started ? t('panel.today.now') : timeOf(e.startAt)}
+          <input
+            type="datetime-local"
+            value={toInputValue(e.startAt)}
+            aria-label={t('panel.event.startTime')}
+            onChange={(ev) => {
+              const at = new Date(ev.target.value).getTime();
+              if (Number.isFinite(at)) {
+                const len = e.endAt ? e.endAt - e.startAt : null;
+                bridge.eventUpdate(e.id, { startAt: at, endAt: len ? at + len : null });
+              }
+            }}
+          />
+        </label>
+      )}
       {editing ? (
         <input
           className="title-edit"
@@ -133,11 +203,17 @@ function EventRow({ e, now, onRemoved }: { e: CalEvent; now: number; onRemoved: 
           onClick={() => setEditing(true)}
         >
           {e.title}
-          {e.endAt && <small> ~{timeOf(e.endAt)}</small>}
+          {e.endAt && !e.allDay && <small> ~{timeOf(e.endAt)}</small>}
+          {/* 여러 날이면 기간을 제목 옆에 ("종일 | 워크숍 10/7~10/10"). 시각 칸에 넣으면 칸이 넓어져 제목 줄이 어긋난다 */}
+          {span && span.last > span.first && <small> {allDayLabel(e)}</small>}
         </button>
       )}
       <span className="tools">
         <span className="extra">
+          <label className={`all-day-toggle ${e.allDay ? 'on' : ''}`} title={t('panel.event.allDayToggle')}>
+            <input type="checkbox" checked={e.allDay} onChange={toggleAllDay} />
+            {t('panel.event.allDay')}
+          </label>
           <button
             type="button"
             className="remove"
@@ -150,16 +226,19 @@ function EventRow({ e, now, onRemoved }: { e: CalEvent; now: number; onRemoved: 
             ×
           </button>
         </span>
-        <label className="remind" title={t('panel.event.remindTitle', { when: remindText(e.remindMin) })}>
+        <label
+          className={`remind ${e.allDay && e.remindMin === 0 ? 'off' : ''}`}
+          title={t('panel.event.remindTitle', { when: remindText(e.remindMin, e.allDay) })}
+        >
           <BellIcon />
           <select
             value={e.remindMin}
             aria-label={t('panel.event.remind')}
             onChange={(ev) => bridge.eventUpdate(e.id, { remindMin: Number(ev.target.value) })}
           >
-            {REMIND_CHOICES.map((m) => (
+            {choices.map((m) => (
               <option key={m} value={m}>
-                {remindText(m)}
+                {remindText(m, e.allDay)}
               </option>
             ))}
           </select>

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
-import { addDays, daysBetween, median, reportText, StatStore } from './beta-stats.ts';
+import { daysBetween, goalsMet, median, reportText, StatStore } from './beta-stats.ts';
+import { plusDays } from './day.ts';
 import { type Db, migrate } from './db-schema.ts';
 import { TodoStore } from './todo-store.ts';
 
@@ -23,8 +24,8 @@ test('중앙값: 홀수, 짝수, 빈 목록', () => {
 });
 
 test('날짜 더하기와 사이 날 수는 달과 해를 넘어도 맞다', () => {
-  assert.equal(addDays('2026-10-31', 1), '2026-11-01');
-  assert.equal(addDays('2026-01-01', -1), '2025-12-31');
+  assert.equal(plusDays('2026-10-31', 1), '2026-11-01');
+  assert.equal(plusDays('2026-01-01', -1), '2025-12-31');
   assert.equal(daysBetween('2026-09-28', '2026-10-06'), 8);
 });
 
@@ -113,4 +114,31 @@ test('복사 글에는 숫자와 날짜만, 할 일 제목은 없다', () => {
   assert.doesNotMatch(text, /비밀/);
   assert.match(text, /2026-10-06, 1분, 0분, 1, 0, 0, 0분/);
   assert.match(text, /중앙값 1개/);
+});
+
+test('달성 표시: 기록이 없거나 켜 둔 시간이 없으면 달성도 미달도 아니다', () => {
+  const none = { done: undefined, hidden: undefined, look: undefined, crash: undefined };
+  // 아무 기록 없음
+  assert.deepEqual(goalsMet(fresh().stats.report(T0)), none);
+  // 같이 보기만 세고(기록 줄은 생김) 켜 둔 시간은 0: 숨김 0%, 멈춤 0회가 달성으로 뜨면 안 된다
+  const { stats } = fresh();
+  stats.countLook(T0);
+  const r = stats.report(T0);
+  assert.equal(r.dayNumber, 1);
+  assert.deepEqual(goalsMet(r), none);
+});
+
+test('달성 표시: 켜 둔 날이 있으면 목표와 견준다, 최근 7일에 안 켰으면 같이 보기와 멈춤은 모름', () => {
+  const { stats, todos } = fresh();
+  for (let i = 0; i < 60; i++) stats.tick(T0 + i * 60_000, i < 30);
+  stats.countLook(T0);
+  for (let i = 0; i < 3; i++) todos.complete(todos.add({ title: `t${i}` }, T0).id, T0);
+  assert.deepEqual(goalsMet(stats.report(T0)), { done: true, hidden: false, look: true, crash: true });
+  stats.countCrash(T0);
+  assert.equal(goalsMet(stats.report(T0)).crash, false);
+  // 열흘 뒤: 켠 날은 있지만 최근 7일에는 없다
+  const later = goalsMet(stats.report(T0 + 10 * DAY));
+  assert.equal(later.done, true);
+  assert.equal(later.look, undefined);
+  assert.equal(later.crash, undefined);
 });

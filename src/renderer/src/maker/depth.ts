@@ -4,6 +4,7 @@
 import * as ort from 'onnxruntime-web/webgpu';
 import { t } from '../../../shared/i18n/index.ts';
 import type { MakerInfo } from '../../../shared/ipc.ts';
+import { ShownError } from './shown-error.ts';
 
 /** 저장할 깊이 그림 긴 변. 펫 화면의 그물 칸(96)보다 넉넉하게 */
 const OUT_SIDE = 256;
@@ -24,11 +25,11 @@ export async function openDepth(bytes: ArrayBuffer): Promise<void> {
  * 가까울수록 밝고 투명한 곳은 검다. 값은 펫 안에서만 펼친다(배경이 범위를 먹지 않게).
  */
 export async function predictDepth(img: HTMLImageElement, cfg: MakerInfo['depth']): Promise<string> {
-  if (!session) throw new Error(t('maker.err.modelNotOpen'));
+  if (!session) throw new ShownError(t('maker.err.modelNotOpen'));
   const size = cfg.size;
   const c = canvas(size, size);
   const g = c.getContext('2d', { willReadFrequently: true });
-  if (!g) throw new Error(t('maker.err.canvas'));
+  if (!g) throw new ShownError(t('maker.err.canvas'));
   // 투명한 곳은 회색 벽으로 둔다 (모델이 먼 배경으로 본다)
   g.fillStyle = '#808080';
   g.fillRect(0, 0, size, size);
@@ -52,7 +53,7 @@ export async function predictDepth(img: HTMLImageElement, cfg: MakerInfo['depth'
   const alpha = g.getImageData(0, 0, size, size).data;
   const inside: number[] = [];
   for (let p = 0; p < n; p++) if ((alpha[p * 4 + 3] ?? 0) > 128) inside.push(raw[p] ?? 0);
-  if (inside.length < 16) throw new Error(t('maker.err.allErased'));
+  if (inside.length < 16) throw new ShownError(t('maker.err.allErased'));
   inside.sort((a, b) => a - b);
   const lo = inside[Math.floor(inside.length * 0.02)] ?? 0;
   const hi = inside[Math.floor(inside.length * 0.98)] ?? 1;
@@ -74,7 +75,7 @@ export async function predictDepth(img: HTMLImageElement, cfg: MakerInfo['depth'
     Math.max(1, Math.round(img.naturalHeight * k)),
   );
   const og = o.getContext('2d');
-  if (!og) throw new Error(t('maker.err.canvas'));
+  if (!og) throw new ShownError(t('maker.err.canvas'));
   og.imageSmoothingQuality = 'high';
   og.drawImage(c, 0, 0, o.width, o.height);
   return o.toDataURL('image/png');

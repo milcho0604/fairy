@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   app,
@@ -10,6 +10,7 @@ import {
   protocol,
 } from 'electron';
 import type { ImageAttachment } from '../shared/ai/types.ts';
+import { downloadErrorText, saveErrorText } from '../shared/download-error.ts';
 import { t } from '../shared/i18n/index.ts';
 import {
   DEPTH_URL,
@@ -21,16 +22,23 @@ import {
   type PetImages,
 } from '../shared/ipc.ts';
 import { type Blueprint, parseBlueprint } from '../shared/pet3d/blueprint.ts';
-import { BLUEPRINT_SYSTEM, blueprintPrompt, extractBlueprint } from '../shared/pet3d/prompt.ts';
-import { cleanPetName, POSE_KINDS } from '../shared/settings.ts';
+import {
+  BLUEPRINT_SYSTEM,
+  blueprintPrompt,
+  cleanWish,
+  extractBlueprint,
+  WISH_MAX,
+} from '../shared/pet3d/prompt.ts';
+import { cleanPetName, POSE_KINDS, photoPetName } from '../shared/settings.ts';
 import { CUSTOM_FOOD_COST } from '../shared/shop.ts';
 import { BG_MODEL, ensureModel, modelReady, verifiedModelUrl } from './bg-model.ts';
 import { DEPTH_MODEL, depthReady, ensureDepthModel, verifiedDepthUrl } from './depth-model.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
 import { langArg } from './lang.ts';
 import { library } from './pet-library.ts';
-import { readFileIn } from './safe-file.ts';
+import { readFileIn, writeFileAtomic } from './safe-file.ts';
 import { settings } from './settings.ts';
+import { rememberBounds, savedBounds } from './window-bounds.ts';
 
 /** 다듬은 펫 그림 크기 상한. 화면에서 512px 로 줄여 보내므로 이보다 크면 이상한 값이다. */
 const MAX_PNG_BYTES = 4 * 1024 * 1024;
@@ -106,9 +114,12 @@ function lookOf(raw: unknown): { model?: Blueprint; depth?: Buffer } {
   return {};
 }
 
-/** 저장한 입체 설계도. 없거나 깨졌으면 null (사진으로 보인다) */
+/** 설계도 파일 상한. 부품 40개면 10KB 안팎이라 넉넉하다 (pet-library.ts 와 같다). 넘으면 읽지 않고 사진으로 */
+const MAX_MODEL_BYTES = 256 * 1024;
+
+/** 저장한 입체 설계도. 없거나 깨졌거나 너무 크면 null (사진으로 보인다) */
 function modelOf(file: string | undefined): Blueprint | null {
-  const bytes = readFileIn(petsDir(), file);
+  const bytes = readFileIn(petsDir(), file, MAX_MODEL_BYTES);
   if (!bytes) return null;
   try {
     return parseBlueprint(JSON.parse(bytes.toString('utf8'))) ?? null;
@@ -151,6 +162,7 @@ export function createMaker(
         ? {
             target,
             petName: settings.get().petName,
+            newPetName: newPhotoName(),
             hasPhotoPet: !!settings.get().petImage,
             hasPose: target !== 'main' && target !== 'food' && !!settings.get().petPoses[target],
             foodCost: CUSTOM_FOOD_COST,
@@ -175,15 +187,18 @@ export function createMaker(
 
   ipcMain.handle(MAKER.ensureDepth, async (e) => {
     if (!fromMaker(e)) return { ok: false, error: t('main.maker.reopen') };
-    download = new AbortController();
+    const ac = new AbortController();
+    download = ac;
     try {
       await ensureDepthModel((ratio) => {
         if (win && !win.isDestroyed()) win.webContents.send(MAKER.progress, ratio);
-      }, download.signal);
+      }, ac.signal);
       return { ok: true };
     } catch (err) {
+      // 원문(net::ERR_..., ENOSPC ...)은 기록에만. 화면에는 할 일을 알려 주는 글
       log('maker', 'depth model', err instanceof Error ? err.message : String(err));
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      const mb = Math.round(DEPTH_MODEL.bytes / 1_000_000);
+      return { ok: false, error: downloadErrorText(err, { aborted: ac.signal.aborted, mb }) };
     } finally {
       download = undefined;
     }
@@ -191,15 +206,18 @@ export function createMaker(
 
   ipcMain.handle(MAKER.ensureModel, async (e) => {
     if (!fromMaker(e)) return { ok: false, error: t('main.maker.reopen') };
-    download = new AbortController();
+    const ac = new AbortController();
+    download = ac;
     try {
       await ensureModel((ratio) => {
         if (win && !win.isDestroyed()) win.webContents.send(MAKER.progress, ratio);
-      }, download.signal);
+      }, ac.signal);
       return { ok: true };
     } catch (err) {
+      // 원문(net::ERR_..., ENOSPC ...)은 기록에만. 화면에는 할 일을 알려 주는 글
       log('maker', 'model', err instanceof Error ? err.message : String(err));
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      const mb = Math.round(BG_MODEL.bytes / 1_000_000);
+      return { ok: false, error: downloadErrorText(err, { aborted: ac.signal.aborted, mb }) };
     } finally {
       download = undefined;
     }
@@ -218,9 +236,13 @@ export function createMaker(
     });
   });
 
-  // 다듬은 사진(PNG)만 AI 에 보낸다. 기록은 남기지 않는다(chat.oneShot)
-  ipcMain.handle(MAKER.shape3d, async (e, dataUrl: string) => {
+  // 다듬은 사진(PNG)과 사용자 요청사항(글, 선택)만 AI 에 보낸다. 기록은 남기지 않는다(chat.oneShot)
+  ipcMain.handle(MAKER.shape3d, async (e, dataUrl: string, wishRaw?: unknown) => {
     if (!fromMaker(e) || !askWithImage) return { ok: false, error: t('main.maker.reopen') };
+    // 요청사항은 글이거나 없음만. 칸 상한(WISH_MAX)보다 한참 긴 글은 창이 보낸 값이 아니다
+    if (wishRaw != null && (typeof wishRaw !== 'string' || wishRaw.length > WISH_MAX * 4))
+      return { ok: false, error: t('main.maker.badFormat') };
+    const wish = cleanWish(wishRaw);
     const prefix = 'data:image/png;base64,';
     if (typeof dataUrl !== 'string' || !dataUrl.startsWith(prefix))
       return { ok: false, error: t('main.maker.badFormat') };
@@ -233,7 +255,7 @@ export function createMaker(
     shaping = abort;
     const started = Date.now();
     const r = await askWithImage(
-      blueprintPrompt(settings.get().petName),
+      blueprintPrompt(settings.get().petName, wish),
       { mediaType: 'image/png', data },
       BLUEPRINT_SYSTEM,
       abort.signal,
@@ -250,20 +272,42 @@ export function createMaker(
       r.provider,
       `${Math.round((Date.now() - started) / 1000)}s`,
       model ? `${model.parts.length} parts` : 'bad',
+      // 요청 글은 기록에 남기지 않고 길이만
+      wish ? `wish ${[...wish].length}` : 'no wish',
     );
     return model ? { ok: true, model } : { ok: false, error: t('main.maker.shapeBad') };
   });
 
   ipcMain.handle(MAKER.save, (e, dataUrl: string | null, name: string, lookRaw?: unknown) => {
     if (!fromMaker(e)) return { ok: false };
-    if (target === 'food') return saveFood(dataUrl, name);
+    // 디스크가 차거나 폴더에 쓸 수 없으면 쓰기가 던진다. 던진 채 두면 창이 "저장하는 중"에서 멈춰서 안내 글로 돌려준다
+    try {
+      return target === 'food' ? saveFood(dataUrl, name) : savePet(target, dataUrl, name, lookRaw);
+    } catch (err) {
+      log('maker', 'save failed', err instanceof Error ? err.message : String(err));
+      return { ok: false, error: saveErrorText(err) };
+    }
+  });
+
+  /** 이름 없이 만든 사진 펫의 이름: 지금 펫, 보관한 펫과 겹치지 않는 "찰칵이" */
+  function newPhotoName(): string {
+    const s = settings.get();
+    return photoPetName([s.petName, ...s.petLibrary.map((p) => p.name)]);
+  }
+
+  function savePet(
+    to: Exclude<MakerTarget, 'food'>,
+    dataUrl: string | null,
+    name: string,
+    lookRaw?: unknown,
+  ) {
     // 펫 본 그림은 지우지 않고 보관함에 넣는다(6단계). 포즈 그림만 바꿀 때 옛 것을 지운다
-    const old = target === 'main' ? undefined : settings.get().petPoses[target];
+    const old = to === 'main' ? undefined : settings.get().petPoses[to];
     if (dataUrl === null) {
-      if (target === 'main') library.toDefault(settings.get().petKind);
-      else settings.set({ petPoses: { [target]: null } });
+      if (to === 'main') library.toDefault(settings.get().petKind);
+      else settings.set({ petPoses: { [to]: null } });
       if (old) rmSync(join(petsDir(), old), { force: true });
-      log('maker', target === 'main' ? '기본 펫으로 (보관함에 둠)' : `포즈 지움 ${target}`);
+      log('maker', to === 'main' ? '기본 펫으로 (보관함에 둠)' : `포즈 지움 ${to}`);
       return { ok: true };
     }
     const m = typeof dataUrl === 'string' ? /^data:image\/(png|gif|webp);base64,/.exec(dataUrl) : null;
@@ -274,27 +318,29 @@ export function createMaker(
     const max = kind === 'png' ? MAX_PNG_BYTES : MAX_ANIMATED_BYTES;
     if (!kind || bytes.length > max) return { ok: false, error: t('main.maker.tooBigAny') };
     mkdirSync(petsDir(), { recursive: true });
-    const file = target === 'main' ? `pet-${Date.now()}.${kind}` : `pose-${target}-${Date.now()}.${kind}`;
-    writeFileSync(join(petsDir(), file), bytes);
+    const file = to === 'main' ? `pet-${Date.now()}.${kind}` : `pose-${to}-${Date.now()}.${kind}`;
+    writeFileAtomic(join(petsDir(), file), bytes);
     // 입체 모습은 펫 본 그림에만: AI 설계도(다시 고르기를 거쳐) 또는 2.5D 깊이 그림(PNG 머리말과 크기 확인)
-    const look = target === 'main' && kind === 'png' ? lookOf(lookRaw) : {};
+    const look = to === 'main' && kind === 'png' ? lookOf(lookRaw) : {};
     const modelFile = look.model ? `model-${Date.now()}.json` : undefined;
-    if (look.model && modelFile) writeFileSync(join(petsDir(), modelFile), JSON.stringify(look.model));
+    if (look.model && modelFile) writeFileAtomic(join(petsDir(), modelFile), JSON.stringify(look.model));
     const depthFile = look.depth ? `depth-${Date.now()}.png` : undefined;
-    if (look.depth && depthFile) writeFileSync(join(petsDir(), depthFile), look.depth);
-    if (target === 'main') {
+    if (look.depth && depthFile) writeFileAtomic(join(petsDir(), depthFile), look.depth);
+    if (to === 'main') {
+      // 이름 칸을 비우면 지금 펫 이름이 아니라 새 이름 (보관함에 같은 이름이 쌓이지 않게). 보관하기 전에 정한다
+      const petName = cleanPetName(name) ?? newPhotoName();
       library.beforeNewPhoto();
       settings.set({
         petImage: file,
         petModel: modelFile ?? null,
         petDepth: depthFile ?? null,
-        ...(cleanPetName(name) ? { petName: cleanPetName(name) } : {}),
+        petName,
       });
-    } else settings.set({ petPoses: { [target]: file } });
+    } else settings.set({ petPoses: { [to]: file } });
     if (old && old !== file) rmSync(join(petsDir(), old), { force: true });
     log('maker', 'saved', file, `${Math.round(bytes.length / 1024)}KB`);
     return { ok: true };
-  });
+  }
 
   /** 커스텀 먹이: PNG 만(배경 지운 사진), 상점이 코인을 받은 뒤에만 남긴다 */
   function saveFood(dataUrl: string | null, name: string) {
@@ -306,7 +352,7 @@ export function createMaker(
       return { ok: false, error: t('main.maker.tooBigPng') };
     mkdirSync(petsDir(), { recursive: true });
     const file = `food-${Date.now()}.png`;
-    writeFileSync(join(petsDir(), file), bytes);
+    writeFileAtomic(join(petsDir(), file), bytes);
     const r = makeFood(name, file);
     if (!r.ok) rmSync(join(petsDir(), file), { force: true });
     log('maker', 'food', r.ok ? file : r.error);
@@ -331,11 +377,14 @@ export function createMaker(
       return;
     }
     target = next;
+    // 닫을 때 크기와 자리를 기억해 다음에 그대로 연다. 처음이면 화면 가운데 (window-bounds.ts)
+    const min = { width: 460, height: 560 };
     win = new BrowserWindow({
       width: 560,
       height: 660,
-      minWidth: 460,
-      minHeight: 560,
+      ...savedBounds('maker', min),
+      minWidth: min.width,
+      minHeight: min.height,
       title: t('main.maker.title'),
       show: false,
       ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
@@ -346,6 +395,7 @@ export function createMaker(
         contextIsolation: true,
       },
     });
+    rememberBounds(win, 'maker', true);
     win.once('ready-to-show', () => showWindow(win));
     win.on('closed', () => {
       download?.abort();

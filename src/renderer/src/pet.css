@@ -1,3 +1,6 @@
+/* 강조색은 tokens.css 한 곳에서 (밝은 모드에서 흰 글자 4.89:1, 어두운 모드 7.93:1) */
+@import "./tokens.css";
+
 [hidden] {
   /* biome-ignore lint/complexity/noImportantStyles: hidden 속성은 어떤 display 규칙보다 이겨야 한다 */
   display: none !important;
@@ -32,7 +35,7 @@ body {
   width: max-content;
   max-width: 240px;
   padding: 9px 12px;
-  border: 1.5px solid #c4854a;
+  border: 1.5px solid var(--accent);
   border-radius: 14px;
   background: #fffaf3;
   color: #1f2328;
@@ -85,7 +88,7 @@ body {
   width: 12px;
   height: 12px;
   background: #fffaf3;
-  border: 1.5px solid #c4854a;
+  border: 1.5px solid var(--accent);
   transform: rotate(45deg);
 }
 
@@ -110,7 +113,7 @@ body {
 
 #bubble button {
   padding: 3px 10px;
-  border: 1px solid #c4854a;
+  border: 1px solid var(--accent);
   border-radius: 999px;
   background: #fff;
   color: #1f2328;
@@ -121,8 +124,8 @@ body {
 }
 
 #bubble button:first-child {
-  background: #c4854a;
-  color: #fff;
+  background: var(--accent);
+  color: var(--accent-ink);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -130,17 +133,17 @@ body {
   #bubble::after {
     background: #2d2a27;
     color: #ece7e1;
-    border-color: #e0a46c;
+    border-color: var(--accent);
   }
 
   #bubble button {
     background: #2d2a27;
     color: #ece7e1;
-    border-color: #e0a46c;
+    border-color: var(--accent);
   }
 
   #bubble button:first-child {
-    background: #e0a46c;
-    color: #1d1b19;
+    background: var(--accent);
+    color: var(--accent-ink);
   }
 }

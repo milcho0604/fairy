@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { setLang } from '../i18n/index.ts';
 import { claudeArgs, claudeInput, parseClaudeLine, parseMcpList } from './claude.ts';
 import { codexArgs, parseCodexLine } from './codex.ts';
 import { cursorArgs } from './cursor.ts';
 import { classifyError } from './errors.ts';
-import { withHistory } from './text.ts';
+import { textPrompt, withHistory } from './text.ts';
 import type { AiEvent } from './types.ts';
 
 const fixture = (name: string) =>
@@ -120,6 +121,17 @@ test('기록 안 남김: 최근 대화를 질문 앞에 붙인다', () => {
   const text = withHistory(h, '다음');
   assert.ok(!text.includes('q1') && text.includes('q2') && text.includes('q5'));
   assert.ok(text.endsWith('사용자 질문: 다음'));
+});
+
+test('기록 안 남김: 영어 화면이면 대화 틀도 영어', () => {
+  setLang('en');
+  try {
+    const text = withHistory([{ question: 'hi', answer: 'hello' }], 'next');
+    assert.equal(text, 'Conversation so far:\n\nUser: hi\nYou: hello\n\nUser question: next');
+    assert.equal(textPrompt('persona', [], 'q'), 'persona\n\nUser question: q');
+  } finally {
+    setLang('ko');
+  }
 });
 
 test('오류 문구 분류', () => {

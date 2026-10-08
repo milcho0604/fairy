@@ -12,6 +12,7 @@ export interface IcsEvent {
   title: string;
   /** ms. 종일 일정은 현지 0시 */
   startAt: number;
+  /** 종일 일정은 여러 날일 때만 마지막 날 다음 날 0시, 하루면 null */
   endAt: number | null;
   allDay: boolean;
 }
@@ -627,7 +628,7 @@ export function parseIcs(text: string, localTz: string, from: number, to: number
     }
     return t('panel.event.untitled');
   };
-  /** 시작과 길이(DTEND 또는 DURATION). 종일 일정은 끝을 두지 않는다 (예전과 같이) */
+  /** 시작과 길이(DTEND 또는 DURATION). 하루짜리 종일 일정은 끝을 두지 않는다 (예전과 같이). 여러 날이면 끝 날 다음 날 0시 */
   const timesOf = (c: Comp, fallbackLength: number | null) => {
     const s = one(c, 'DTSTART');
     const start = s && readWhen(s.params, s.value, localTz);
@@ -653,7 +654,8 @@ export function parseIcs(text: string, localTz: string, from: number, to: number
       recurrenceId,
       title,
       startAt: at,
-      endAt: allDay || len === null ? null : at + len,
+      // 종일은 이틀 이상일 때만 끝을 둔다 (하루는 23~25시간이라 26시간으로 가른다). 짝꿍 종일 일정과 같은 모양
+      endAt: len === null || (allDay && len <= 26 * 3_600_000) ? null : at + len,
       allDay,
     });
   };

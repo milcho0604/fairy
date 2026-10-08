@@ -59,6 +59,22 @@ export const IPC = {
   gaze: 'pet:gaze',
 } as const;
 
+/** 펫 얼굴 그림 (shared/face.ts). 펫 화면이 그려 메인에 주고, 메인이 얼굴을 쓰는 창에 나눠 준다 */
+export const FACE = {
+  /** 펫 화면 → 메인: 지금 모습의 얼굴 (PNG data URL) */
+  set: 'face:set',
+  /** 창 → 메인: 지금 얼굴 (아직 없으면 null) */
+  get: 'face:get',
+  /** 메인 → 창: 얼굴이 바뀌었다 */
+  changed: 'face:changed',
+} as const;
+
+/** 얼굴을 쓰는 창(채팅, 패널, 빠른 입력, 시작 안내, 설정)에 preload 가 열어 주는 기능 */
+export interface FaceBridge {
+  get(): Promise<string | null>;
+  onChange(listener: (face: string) => void): void;
+}
+
 export interface BubbleButton {
   id: string;
   label: string;
@@ -97,6 +113,10 @@ export const CHAT = {
   send: 'chat:send',
   cancel: 'chat:cancel',
   reset: 'chat:reset',
+  /** 새 대화 되돌리기 (잠깐 동안). 되돌렸으면 true */
+  undoReset: 'chat:undo-reset',
+  /** 답 속 주소를 기본 브라우저로 (http, https 만) */
+  openLink: 'chat:open-link',
   provider: 'chat:provider',
   providers: 'chat:providers',
   addProvider: 'chat:add-provider',
@@ -122,7 +142,16 @@ export const ONBOARD = {
   openMaker: 'onboard:open-maker',
   openScreenSettings: 'onboard:open-screen-settings',
   finish: 'onboard:finish',
+  /** AI 준비 상태. 설치된 AI 를 확인하는 데 몇 초 걸릴 수 있어 화면을 먼저 그리고 따로 묻는다 */
+  ai: 'onboard:ai',
 } as const;
+
+export interface OnboardAi {
+  /** 설치되고 로그인된 AI 프로그램(Claude Code, Codex 등)이 있다 */
+  hasCli: boolean;
+  /** 무료 AI 가 처음 한 번 받는 모델 크기 (모델 목록의 기본 모델) */
+  freeModelBytes: number;
+}
 
 export interface OnboardSnapshot {
   settings: Settings;
@@ -137,6 +166,7 @@ export interface OnboardBridge {
   openMaker(): void;
   openScreenSettings(): void;
   finish(): void;
+  ai(): Promise<OnboardAi>;
 }
 
 export const SETTINGS = {
@@ -170,6 +200,8 @@ export const SETTINGS = {
   changed: 'settings:changed',
   /** 메인 → 설정 창: 이 칸을 보여 줘 (메뉴 막대 "의견 보내기") */
   focus: 'settings:focus',
+  /** 메인 → 설정 창: 배터리로 도는지 바뀌었다 (부스트가 쉬는지 보여 준다) */
+  power: 'settings:power',
 } as const;
 
 export interface SettingsSnapshot {
@@ -189,17 +221,31 @@ export interface SettingsSnapshot {
   models: { catalog: Catalog; localReady: Record<string, boolean> };
   /** 만든 펫 보관함 (6단계). thumb 는 그림 data URL */
   library: SavedPetView[];
-  /** 지금 사진 펫 그림 (data URL). 기본 펫이면 null */
-  currentThumb: string | null;
+  /** 지금 사진 펫 (작게 줄인 그림과 입체 모습). 기본 펫이면 null */
+  current: PetLookView | null;
   /** 받은 모델과 크기 (6단계) */
   storage: StoredModel[];
+  /** 배터리로 도는지 (부스트 모드는 이때 쉰다) */
+  onBattery: boolean;
 }
 
-export interface SavedPetView {
-  id: string;
-  name: string;
+/**
+ * 설정 창 펫 카드 그림 재료. 입체로 보기면 펫 화면처럼 figure 는 설계도로, relief 는 사진과 깊이 그림으로
+ * 3D 썸네일을 그린다. key 는 파일 이름을 이은 것이라 내용이 바뀌면 같이 바뀐다 (그린 썸네일을 기억하는 열쇠)
+ */
+export interface PetLookView {
+  key: string;
+  /** 사진 그림 (긴 변 160px data URL) */
   thumb: string;
   look: 'photo' | 'figure' | 'relief';
+  model?: Blueprint;
+  /** 깊이 그림 (작게 줄인 회색 PNG data URL) */
+  depth?: string;
+}
+
+export interface SavedPetView extends PetLookView {
+  id: string;
+  name: string;
 }
 
 export interface StoredModel {
@@ -240,6 +286,7 @@ export interface SettingsBridge {
   ): Promise<{ ok: boolean; storage: StoredModel[]; localReady: Record<string, boolean> }>;
   onChanged(listener: (settings: Settings) => void): void;
   onFocus(listener: (section: SettingsSection) => void): void;
+  onPower(listener: (onBattery: boolean) => void): void;
 }
 
 /** 보낼 그림: 원본은 AI 로, 작은 그림은 대화 기록으로. */
@@ -278,6 +325,10 @@ export interface ChatBridge {
   send(text: string, images: OutgoingImage[]): void;
   cancel(): void;
   reset(): void;
+  /** 방금 새 대화로 지운 대화를 되살린다. 그 사이 새로 물었거나 시간이 지났으면 false */
+  undoReset(): Promise<boolean>;
+  /** 답 속 주소를 기본 브라우저로 연다 (메인이 http, https 인지 다시 본다) */
+  openLink(url: string): void;
   setProvider(provider: AiProvider): void;
   providers(): Promise<ProviderView[]>;
   addProvider(input: CustomProviderInput): Promise<{ ok: true; id: string } | { ok: false; error: string }>;
@@ -331,6 +382,8 @@ export interface PetBridge {
   onGaze(listener: (gaze: Gaze | null) => void): void;
   /** 사진 펫 그림 (PNG data URL). null 이면 기본 펫 */
   onImage(listener: (images: PetImages) => void): void;
+  /** 지금 모습의 얼굴 그림을 메인에 준다 (PetStatus.face 일 때만) */
+  face(url: string): void;
 }
 
 /** 펫 반응: 신남(통통), 밥 먹음(신남과 같은 모습, 소리만 다름), 손 흔들기(친밀도 100), 빙글 춤(친밀도 300), 친구와 만남(하트) */
@@ -354,6 +407,8 @@ export interface PetStatus {
   sounds: boolean;
   /** 부스트 모드가 지금 켜져 있는지 (설정에서 켰고 배터리가 아닐 때). 켜지면 움직임을 더 촘촘히 그린다 */
   boost: boolean;
+  /** 얼굴 그림을 그려 보낼지. 내 펫 화면만 (친구 펫은 안 그린다) */
+  face?: boolean;
 }
 
 /** 펫 그림들 (data URL). 없으면 기본 펫. 포즈는 상태별 그림 (v1) */
@@ -403,6 +458,8 @@ export type MakerTarget = 'main' | PoseKind | 'food';
 export interface MakerInfo {
   target: MakerTarget;
   petName: string;
+  /** 사진 펫을 이름 없이 만들면 붙는 이름 (이름 칸의 예시로도 보인다) */
+  newPetName: string;
   hasPhotoPet: boolean;
   /** 이 포즈 그림이 이미 있는지 (포즈를 만들 때) */
   hasPose: boolean;
@@ -426,9 +483,13 @@ export interface MakerBridge {
   /** 다듬은 그림(PNG data URL, 움직이는 그림은 gif, webp 그대로)과 이름을 저장하고 펫을 바꾼다. 입체 설계도가 있으면 같이 */
   save(png: string, name: string, look?: PetLook): Promise<{ ok: boolean; error?: string }>;
   ensureDepth(): Promise<{ ok: true } | { ok: false; error: string }>;
-  /** AI 가 사진을 보고 입체 설계도를 만든다. 쓸 AI 가 없으면 noAi. 창을 닫으면 멈춘다 */
+  /**
+   * AI 가 사진을 보고 입체 설계도를 만든다. wish 는 사용자 요청사항(선택, 200자, 메인이 다시 자른다).
+   * 쓸 AI 가 없으면 noAi. 창을 닫으면 멈춘다
+   */
   shape3d(
     png: string,
+    wish?: string,
   ): Promise<{ ok: true; model: Blueprint } | { ok: false; error: string; noAi?: boolean }>;
   /** 기본 펫으로 돌아가기 */
   resetToDefault(): Promise<void>;
@@ -443,6 +504,10 @@ export const PANEL = {
   undo: 'panel:undo',
   update: 'panel:update',
   remove: 'panel:remove',
+  /** 지운 할 일 되살리기 (되돌리기) */
+  restore: 'panel:restore',
+  /** 한 줄 입력이 일정으로 들어간 것을 할 일로 옮기기 */
+  eventToTodo: 'panel:event-to-todo',
   feed: 'panel:feed',
   openChat: 'panel:open-chat',
   lookTogether: 'panel:look-together',
@@ -453,6 +518,8 @@ export const PANEL = {
   noteUpdate: 'panel:note-update',
   noteRemove: 'panel:note-remove',
   noteRestore: 'panel:note-restore',
+  /** 메모 찾기 (본문 전체) */
+  noteSearch: 'panel:note-search',
   /** 메모를 AI 로 정리 (할 일로 쪼개기, 요약). 채팅 창에서 묻는다 */
   noteAi: 'panel:note-ai',
   // 일정 (v1)
@@ -532,6 +599,21 @@ export interface NoteSummary {
   updatedAt: number;
 }
 
+/** 한 줄 입력(PANEL.add) 결과. 어디에 언제로 넣었는지 알려 준다 */
+export type PanelAddResult =
+  | { ok: false; error?: string }
+  | { ok: true; kind: 'event'; id: number; startAt: number }
+  | { ok: true; kind: 'todo'; id: number; due: string | null }
+  /** 여러 줄을 붙여 넣어 줄마다 넣었다 */
+  | { ok: true; kind: 'many'; todos: number; events: number };
+
+/** 메모 찾기 결과 한 줄. 본문에서 찾았으면 찾은 곳 둘레 글(snippet)과 그 안에서 찾은 부분(mark) */
+export interface NoteHit {
+  id: number;
+  snippet?: string;
+  mark?: [number, number];
+}
+
 export type PanelTab = 'today' | 'todo' | 'note' | 'event' | 'shop';
 
 export type PlayKind = 'ball' | 'walk' | 'seek';
@@ -542,7 +624,7 @@ export interface PanelBridge {
   platform: NodeJS.Platform;
   snapshot(): Promise<PanelState>;
   /** 한 줄 입력(빠른 입력과 같은 규칙)으로 할 일을 더한다 */
-  add(text: string): Promise<{ ok: boolean; error?: string; kind?: 'todo' | 'event' }>;
+  add(text: string): Promise<PanelAddResult>;
   complete(id: number): Promise<number>;
   undo(id: number): Promise<number>;
   update(
@@ -550,6 +632,10 @@ export interface PanelBridge {
     patch: { title?: string; due?: string | null; important?: boolean; repeat?: Repeat | null },
   ): void;
   remove(id: number): void;
+  /** 지운 할 일 되살리기 */
+  restore(id: number): void;
+  /** 한 줄 입력이 일정(id)으로 들어간 것을 지우고 같은 글(text)을 할 일로 넣는다 */
+  eventToTodo(id: number, text: string): Promise<PanelAddResult>;
   feed(): Promise<{ ok: boolean }>;
   openChat(): void;
   lookTogether(): void;
@@ -561,12 +647,14 @@ export interface PanelBridge {
   noteUpdate(id: number, patch: { title?: string; body?: string }): void;
   noteRemove(id: number): void;
   noteRestore(id: number): void;
+  /** 메모 찾기: 제목과 본문 전체. composing 이면 마지막 글자는 아직 조합 중이라 넓게 찾는다 */
+  noteSearch(query: string, composing: boolean): Promise<NoteHit[]>;
   noteAi(id: number, kind: NoteAiKind): Promise<boolean>;
   /** 한 줄("내일 3시 회의")로 일정 넣기 */
   eventAdd(text: string): Promise<{ ok: boolean; error?: string; event?: CalEvent }>;
   eventUpdate(
     id: number,
-    patch: { title?: string; startAt?: number; endAt?: number | null; remindMin?: number },
+    patch: { title?: string; startAt?: number; endAt?: number | null; remindMin?: number; allDay?: boolean },
   ): void;
   eventRemove(id: number): void;
   eventRestore(id: number): void;

@@ -16,10 +16,12 @@ import {
   fateOf,
   type HeldBubble,
   HeldBubbles,
+  heldButtons,
   type MissedItem,
   MissedLog,
 } from '../shared/bubble-queue.ts';
 import { type BubbleKind, ChatterGate, type ChatterLevel, LEVEL_LABEL, quieter } from '../shared/chatter.ts';
+import { CrashGuard } from '../shared/crash-guard.ts';
 import { type Gaze, gazeAt, sameGaze } from '../shared/gaze.ts';
 import { clampIntoAreas, type Rect } from '../shared/geometry.ts';
 import type { GestureEvent } from '../shared/gesture.ts';
@@ -105,7 +107,9 @@ export interface SayOptions {
    * 보지 못하고 지나가면(시간 끝, 밀려남, 못 띄움) 패널 오늘 탭의 놓친 알림에 남긴다.
    * staleAt 이 지나서 나오면 말풍선 없이 놓친 알림에만 둔다.
    */
-  hold?: Pick<HeldBubble, 'staleAt' | 'lines' | 'render' | 'missedLines'>;
+  hold?: Pick<HeldBubble, 'staleAt' | 'lines' | 'render' | 'missedLines' | 'onAction'>;
+  /** 끊으면 이 말풍선을 닫는다(떠 있을 때) 또는 기다리던 것을 버린다. 시간 끝 없는 안내를 거둘 때 (강제 업데이트가 풀림) */
+  signal?: AbortSignal;
 }
 
 export interface PetWindow {
@@ -220,6 +224,16 @@ export function createPetWindow({
   const devUrl = process.env.ELECTRON_RENDERER_URL;
   if (devUrl) win.loadURL(`${devUrl}/pet.html`);
   else win.loadFile(join(import.meta.dirname, '../renderer/pet.html'));
+
+  // 펫 화면(렌더러)이 죽으면 창은 남고 펫만 사라진다. 저절로 다시 불러온다. 1분 안에 네 번째로 죽으면
+  // 원인이 그대로라 보고 멈춘다(기록만). 메뉴 막대나 우클릭의 새로고침이 세던 것을 지우고 다시 부른다
+  const crashes = new CrashGuard();
+  win.webContents.on('render-process-gone', (_e, d) => {
+    if (win.isDestroyed() || d.reason === 'clean-exit') return;
+    const next = crashes.crashed(Date.now());
+    log('pet', 'render-process-gone', id ?? 'main', d.reason, d.exitCode, next);
+    if (next === 'reload') reload(false);
+  });
 
   let dragTimer: NodeJS.Timeout | undefined;
   let saveTimer: NodeJS.Timeout | undefined;
@@ -392,9 +406,11 @@ export function createPetWindow({
   };
 
   /** 펫 화면만 다시 불러온다 (그림이 이상하거나 멈췄을 때). 떠 있던 말풍선은 닫고, 상태와 그림은 불러온 뒤 다시 보낸다 */
-  function reload() {
+  function reload(byUser = true) {
     if (win.isDestroyed()) return;
     log('pet', 'reload');
+    // 사용자가 직접 부르면 화면이 죽은 횟수를 다시 센다 (자동으로 멈춘 뒤 살리는 길)
+    if (byUser) crashes.reset();
     closeBubble('cleared');
     win.webContents.reload();
   }
@@ -717,26 +733,43 @@ export function createPetWindow({
     if (fresh.length === 0) return;
     const now = Date.now();
     const shown = fresh.map((h) => ({ ...h, lines: h.render?.(now) ?? h.lines, shown: (h.shown ?? 0) + 1 }));
+    const only = shown.length === 1 ? shown[0] : undefined;
     void say({
       kind: 'schedule',
       text: bundleText(shown),
-      buttons: [{ id: 'ok', label: t('panel.remind.ok') }],
+      buttons: heldButtons(shown, [{ id: 'ok', label: t('panel.remind.ok') }]),
       ttlMs: 30_000,
-    }).then((action) => unseen(shown, action));
+    }).then((action) => {
+      if (only?.buttons?.length && action) only.onAction?.(action);
+      unseen(shown, action);
+    });
   }
   // 끌기가 끝나거나 화면 잠금이 풀리거나 자리로 돌아오면 2초 안에 꺼낸다
   const releaseTimer = setInterval(releaseHeld, 2000);
 
   function say(options: SayOptions): Promise<string | undefined> {
-    const { kind, text, buttons = [], ttlMs = BUBBLE_TTL_MS, image, hold } = options;
+    const { kind, text, buttons = [], ttlMs = BUBBLE_TTL_MS, image, hold, signal } = options;
+    if (signal?.aborted) return Promise.resolve(undefined);
     if (hideReasons.hidden && kind === 'answer') {
       // 앞에 기다리던 알림은 새 것으로 바꾼다 (가장 최근 답 하나만).
       heldAnswer?.resolve(undefined);
       return new Promise((resolve) => {
-        heldAnswer = { options, resolve };
+        const held = { options, resolve };
+        heldAnswer = held;
+        signal?.addEventListener(
+          'abort',
+          () => {
+            if (heldAnswer !== held) return;
+            heldAnswer = undefined;
+            resolve(undefined);
+          },
+          { once: true },
+        );
       });
     }
-    const item: HeldBubble | undefined = hold ? { ...hold, text, at: Date.now(), shown: 1 } : undefined;
+    const item: HeldBubble | undefined = hold
+      ? { ...hold, text, at: Date.now(), shown: 1, ...(buttons.length ? { buttons } : {}) }
+      : undefined;
     if (item && !win.isDestroyed()) {
       // 이 수다 빈도에서 안 하는 말은 모으지도 않는다
       if (!gate.allows(kind)) return Promise.resolve(undefined);
@@ -767,6 +800,13 @@ export function createPetWindow({
         },
       };
       win.webContents.send(IPC.bubble, { id, text, buttons, ttlMs, image, kind });
+      signal?.addEventListener(
+        'abort',
+        () => {
+          if (bubble?.id === id && !win.isDestroyed()) closeBubble('cleared');
+        },
+        { once: true },
+      );
     });
   }
 

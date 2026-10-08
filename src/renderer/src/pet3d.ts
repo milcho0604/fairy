@@ -24,6 +24,7 @@ import {
   PerspectiveCamera,
   PlaneGeometry,
   PMREMGenerator,
+  Quaternion,
   Raycaster,
   Scene,
   SphereGeometry,
@@ -37,6 +38,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import {
   type Blueprint,
+  type EyeLook,
   expandMirrors,
   type Face,
   type Finish,
@@ -45,6 +47,7 @@ import {
   type Slot,
 } from '../../shared/pet3d/blueprint.ts';
 import { type DrawState, danceTilt, gazeOf, type Model3D, trickOf, waveSwing } from './draw.ts';
+import { bounced, type EyeState, restingEye } from './pet3d-motion.ts';
 
 const CX = 80;
 const GROUND = 154;
@@ -55,7 +58,6 @@ const DEG = Math.PI / 180;
 const INK = '#1f2328';
 
 type Act = DrawState['activity'];
-type EyeState = 'open' | 'down' | 'up' | 'chevron' | 'half';
 type MouthState = 'smile' | 'open' | 'yawn' | 'o' | 'flat' | 'frown' | 'wavy';
 
 interface FaceRig {
@@ -63,6 +65,8 @@ interface FaceRig {
   mouth: Partial<Record<MouthState, Object3D>>;
   beakLower?: Object3D;
   style: Face['mouth'];
+  /** 쉬는 눈 모양 (설계도 face.eyes) */
+  eyeLook: EyeLook;
   /** 얼굴에 붙인 것들 (눈, 입, 볼, 수염). 옆으로 돌아 얼굴이 안 보일 때 숨긴다 */
   groups: Group[];
   /** 입 자리 (부리는 옆에서도 보여서 숨기지 않는다) */
@@ -82,6 +86,8 @@ export class Pet3D implements Model3D {
   /** 팔이 없는 펫의 손 흔들기 앞발 (평소엔 숨김) */
   private wavePaw: Group | undefined;
   private face: FaceRig | undefined;
+  /** 몸짓 세기 (설계도 motion). 1 이 기본 동작 */
+  private motion = { bounce: 1, sway: 1, tail: 1, ear: 1 };
   /** 그릴 것이 있는지 (설계도나 입체 판을 넣었는지) */
   private ready = false;
   /** 2.5D 입체 판 (사진 + 깊이). 있으면 관절 대신 몸 전체만 기울인다 */
@@ -171,6 +177,7 @@ export class Pet3D implements Model3D {
     this.relief?.texture.dispose();
     this.relief = undefined;
     this.face = undefined;
+    this.motion = { bounce: 1, sway: 1, tail: 1, ear: 1 };
     this.ready = false;
     // 색별 재질도 비운다 (펫을 갈아끼울 때마다 쌓이지 않게)
     for (const m of this.materials.values()) m.dispose();
@@ -235,6 +242,13 @@ export class Pet3D implements Model3D {
 
   setBlueprint(bp: Blueprint): void {
     this.resetRoot();
+    const m = bp.motion;
+    this.motion = {
+      bounce: m?.bounce ?? 1,
+      sway: m?.sway ?? 1,
+      tail: m?.tailWag ?? 1,
+      ear: m?.earWiggle ?? 1,
+    };
     const parts = expandMirrors(bp.parts);
     const meshes = parts.map((p) => ({ part: p, mesh: this.partMesh(p) }));
 
@@ -326,12 +340,14 @@ export class Pet3D implements Model3D {
   draw(
     ctx: CanvasRenderingContext2D,
     s: DrawState,
-    lift: number,
-    sx: number,
-    sy: number,
+    lift0: number,
+    sx0: number,
+    sy0: number,
     act: Act,
   ): number | undefined {
     if (this.lost || !this.ready) return undefined;
+    // 통통 튀는 세기 (설계도 motion.bounce, pet3d-motion.ts)
+    const { lift, sx, sy } = bounced(s, act, this.motion.bounce, lift0, sx0, sy0);
     this.pose(s, sx, sy, act);
     const { d, cx, bottom } = this.fit;
     // 2D 캔버스 변환(화면 배율 × 펫 크기)에 맞춰 선명하게
@@ -361,6 +377,29 @@ export class Pet3D implements Model3D {
     this.tmp.y = this.box.max.y;
     this.tmp.project(this.camera);
     return y0 + d / 2 - (this.tmp.y * d) / 2;
+  }
+
+  /**
+   * 머리 관절에 붙은 것(머리, 귀, 얼굴, 머리 위 장식)만 그린다. 이름 옆 얼굴 그림용 (pet-face.ts).
+   * 몸, 팔, 다리, 꼬리는 잠깐 숨겼다가 되돌린다. 머리 관절이 없으면 몸 전체를 그린다(콩이처럼 몸이 곧 얼굴)
+   */
+  drawHead(ctx: CanvasRenderingContext2D, s: DrawState): number | undefined {
+    if (!this.hasHead || this.relief) return this.draw(ctx, s, 0, 1, 1, undefined);
+    const head = this.joints.head;
+    const hidden: Object3D[] = [];
+    this.root.traverse((o) => {
+      if (!(o instanceof Mesh) || !o.visible) return;
+      let p: Object3D | null = o;
+      while (p && p !== head) p = p.parent;
+      if (p) return;
+      o.visible = false;
+      hidden.push(o);
+    });
+    try {
+      return this.draw(ctx, s, 0, 1, 1, undefined);
+    } finally {
+      for (const o of hidden) o.visible = true;
+    }
   }
 
   // ---- 조립 ----
@@ -509,7 +548,35 @@ export class Pet3D implements Model3D {
       lower.scale.set(s * 0.78, s * 0.42, s * 0.4);
       lower.position.y = -s * 0.25;
       half.add(lower, stroke([-s * 0.85, s * 0.05], [s * 0.85, s * 0.05], s * 0.13, ink));
-      const states = { open, down, up, chevron, half };
+      if (f.eyes === 'sparkle') {
+        // 반짝이는 눈: 큰 반짝이 하나 더, 아래에 작은 별빛
+        shine.scale.setScalar(s * 0.34);
+        const dot = new Mesh(sphere, white);
+        dot.scale.setScalar(s * 0.14);
+        dot.position.set(-s * 0.26, -s * 0.34, shine.position.z);
+        open.add(dot);
+      }
+      // 졸린 눈 (설계도 face.eyes sleepy): 감기 직전의 얕은 ‿. 평평한 눈꺼풀(반달)은 시큰둥하거나 화난 눈으로 읽혀서
+      // 선으로 그린다. 굵기는 다른 감은 눈(호)과 같고 끝은 둥글게. 잠든 눈(∪)보다 넓고 얕다
+      const drowsy = new Group();
+      const lash = Array.from({ length: 11 }, (_, i) => {
+        const t = i / 10;
+        return new Vector3((t - 0.5) * s * 1.7, -Math.sin(t * Math.PI) * s * 0.34, 0);
+      });
+      drowsy.add(new Mesh(new TubeGeometry(new CatmullRomCurve3(lash), 24, s * 0.17, 8), ink));
+      for (const end of [lash[0], lash[10]]) {
+        const cap = new Mesh(sphere, ink);
+        cap.scale.setScalar(s * 0.17);
+        if (end) cap.position.copy(end);
+        drowsy.add(cap);
+      }
+      drowsy.position.y = -s * 0.05;
+      // 얼굴 겉면을 따라 붙은 눈은 둥근 머리에서 안쪽이 내려가게 기운다. 평평한 눈꺼풀은 그러면 화난 눈썹처럼 보여서
+      // 화면에서 수평으로 되돌리고 바깥쪽을 살짝 처지게 한다 (꾸벅 조는 눈 half 의 선도 수평으로)
+      const level = levelRoll(g);
+      drowsy.rotation.z = level - side * 0.1;
+      half.rotation.z = level;
+      const states = { open, down, up, chevron, half, drowsy };
       for (const o of Object.values(states)) g.add(o);
       eyes.push({ side, states, open });
     }
@@ -602,7 +669,7 @@ export class Pet3D implements Model3D {
         }
       }
     }
-    return { eyes, mouth, beakLower, style: f.mouth, groups, mouthAt };
+    return { eyes, mouth, beakLower, style: f.mouth, eyeLook: f.eyes ?? 'round', groups, mouthAt };
   }
 
   /** 쉬는 자세가 2D 캔버스 안 바닥에 서도록 카메라와 옮길 자리를 정한다 */
@@ -690,6 +757,8 @@ export class Pet3D implements Model3D {
     this.root.rotation.set(0, 0, 0);
     this.root.scale.set(sx, sy, sx);
     const { mood, elapsed: e } = s;
+    // 몸짓 세기 (설계도 motion): 흔들기(sway), 꼬리(tail), 귀(ear). 1 이면 기본 동작 그대로
+    const { sway, tail, ear } = this.motion;
     const head = (x: number, y: number, z: number) => {
       if (this.hasHead) j.head.rotation.set(x, y, z);
       else this.root.rotation.set(x * 0.4, this.root.rotation.y + y * 0.6, z * 0.5);
@@ -710,12 +779,12 @@ export class Pet3D implements Model3D {
     switch (mood) {
       case 'excited': {
         const w = Math.sin(e / 90);
-        arms(2.2 - w * 0.35);
-        wings(0.9 + w * 0.3);
-        j.earL.rotation.z = w * 0.15;
-        j.earR.rotation.z = -w * 0.15;
-        j.tail.rotation.y = w * 0.5;
-        j.top.rotation.z = w * 0.2;
+        arms(2.2 - w * 0.35 * sway);
+        wings(0.9 + w * 0.3 * sway);
+        j.earL.rotation.z = w * 0.15 * ear;
+        j.earR.rotation.z = -w * 0.15 * ear;
+        j.tail.rotation.y = w * 0.5 * tail;
+        j.top.rotation.z = w * 0.2 * sway;
         eye = 'up';
         break;
       }
@@ -758,10 +827,10 @@ export class Pet3D implements Model3D {
       this.root.rotation.y = act.dir * 0.75;
       j.legL.rotation.x = w * 0.7;
       j.legR.rotation.x = -w * 0.7;
-      j.armL.rotation.x = -w * 0.6;
-      j.armR.rotation.x = w * 0.6;
-      j.tail.rotation.y = w * 0.35;
-      j.top.rotation.z = w * 0.12;
+      j.armL.rotation.x = -w * 0.6 * sway;
+      j.armR.rotation.x = w * 0.6 * sway;
+      j.tail.rotation.y = w * 0.35 * tail;
+      j.top.rotation.z = w * 0.12 * sway;
     } else if (act?.type === 'look') {
       head(0, act.dir * 0.55, 0);
     } else if (act?.type === 'sit') {
@@ -798,16 +867,16 @@ export class Pet3D implements Model3D {
         this.wavePaw.rotation.set(0, 0, -(0.55 + (1 - up) * 1.9) + sw * 0.35);
       }
       // 고개와 귀도 같이 까딱
-      head(0, 0, sw * 0.1);
-      j.earL.rotation.z = sw * 0.3;
-      j.earR.rotation.z = -sw * 0.3;
-      j.tail.rotation.y = sw * 0.6;
+      head(0, 0, sw * 0.1 * sway);
+      j.earL.rotation.z = sw * 0.3 * ear;
+      j.earR.rotation.z = -sw * 0.3 * ear;
+      j.tail.rotation.y = sw * 0.6 * tail;
       eye = 'up';
     } else if (trick?.type === 'dance') {
       // 한 바퀴: 앞을 오래 보고 등은 빨리 지나가게 (가운데서 가장 빠르게)
       const e = trick.t < 0.5 ? 4 * trick.t ** 3 : 1 - (-2 * trick.t + 2) ** 3 / 2;
       this.root.rotation.y += e * Math.PI * 2;
-      this.root.rotation.z = danceTilt(trick.t) * 0.5;
+      this.root.rotation.z = danceTilt(trick.t) * 0.5 * sway;
       arms(1.8);
       // 날개는 몸에 붙은 채 빠르게 파닥
       wings(0.12 + 0.2 * (0.5 + 0.5 * Math.sin(trick.t * Math.PI * 10)));
@@ -831,8 +900,10 @@ export class Pet3D implements Model3D {
     const f = this.face;
     if (!f) return;
     const open = s.blink >= 0 ? Math.abs(1 - 2 * s.blink) : 1;
+    // 쉬는 눈 모양 (설계도 face.eyes, pet3d-motion.ts)
+    const shown = restingEye(eye, f.eyeLook);
     for (const e of f.eyes) {
-      for (const [k, o] of Object.entries(e.states)) o.visible = k === eye;
+      for (const [k, o] of Object.entries(e.states)) o.visible = k === shown;
       const small = s.mood === 'busy' ? 0.8 : 1;
       e.open.scale.set(small, small * Math.max(0.08, open), small);
     }
@@ -842,6 +913,12 @@ export class Pet3D implements Model3D {
     }
     for (const [k, o] of Object.entries(f.mouth)) o.visible = k === mouth;
   }
+}
+
+/** 얼굴에 붙인 무리 g 안에서 화면 위쪽(세계 +y)이 향하는 각도. 자식을 이만큼 z 로 돌리면 수평이 된다 */
+function levelRoll(g: Object3D): number {
+  const up = new Vector3(0, 1, 0).applyQuaternion(g.getWorldQuaternion(new Quaternion()).invert());
+  return Math.atan2(-up.x, up.y);
 }
 
 /** 반원 고리: down 이면 ∪ (웃는 입, 감은 눈), 아니면 ∩ */

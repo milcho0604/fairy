@@ -1,21 +1,51 @@
-import { Fragment, type ReactNode } from 'react';
+import { Fragment, type MouseEvent, type ReactNode } from 'react';
+import { t } from '../../../shared/i18n/index.ts';
+import { safeExternalUrl, splitLinks } from '../../../shared/links.ts';
 
-// AI 답에 흔한 마크다운만 가볍게 보여 준다: 코드 블록, 인라인 코드, 굵게, 목록, 제목.
+// AI 답에 흔한 마크다운만 가볍게 보여 준다: 코드 블록, 인라인 코드, 굵게, 목록, 제목, 링크.
 // HTML 로 넣지 않고 React 요소로 만들어 답에 섞인 태그가 실행될 일이 없다.
+// 링크는 http, https 만 누를 수 있고 앱 안에서 열지 않는다 (onLink 가 메인에 넘겨 기본 브라우저로)
 
-function inline(text: string, key: string): ReactNode[] {
-  const parts = text.split(/(`[^`\n]+`|\*\*[^*\n]+\*\*)/g);
+type OnLink = (url: string) => void;
+
+function Link({ url, label, onLink }: { url: string; label: ReactNode; onLink: OnLink }) {
+  const open = (e: MouseEvent) => {
+    e.preventDefault();
+    onLink(url);
+  };
+  return (
+    <a href={url} title={t('chat.linkTitle', { url })} onClick={open} onAuxClick={open} rel="noreferrer">
+      {label}
+    </a>
+  );
+}
+
+/** 맨 주소를 링크로 */
+function linked(text: string, key: string, onLink: OnLink): ReactNode[] {
+  return splitLinks(text).map((p, i) => {
+    const k = `${key}-u${i}`;
+    if ('url' in p) return <Link key={k} url={p.url} label={p.text} onLink={onLink} />;
+    return <Fragment key={k}>{p.text}</Fragment>;
+  });
+}
+
+function inline(text: string, key: string, onLink: OnLink): ReactNode[] {
+  const parts = text.split(/(`[^`\n]+`|\*\*[^*\n]+\*\*|\[[^\]\n]+\]\(https?:\/\/[^)\s]+\))/g);
   return parts.map((part, i) => {
     const k = `${key}-${i}`;
     if (part.startsWith('`') && part.endsWith('`') && part.length > 2)
       return <code key={k}>{part.slice(1, -1)}</code>;
     if (part.startsWith('**') && part.endsWith('**') && part.length > 4)
-      return <strong key={k}>{part.slice(2, -2)}</strong>;
-    return <Fragment key={k}>{part}</Fragment>;
+      return <strong key={k}>{linked(part.slice(2, -2), k, onLink)}</strong>;
+    // [글](주소): 주소가 열 수 없는 것이면 글 그대로 둔다
+    const md = /^\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)$/.exec(part);
+    const url = md ? safeExternalUrl(md[2]) : undefined;
+    if (md && url) return <Link key={k} url={url} label={md[1]} onLink={onLink} />;
+    return <Fragment key={k}>{linked(part, k, onLink)}</Fragment>;
   });
 }
 
-export function Markdown({ text }: { text: string }) {
+export function Markdown({ text, onLink }: { text: string; onLink: OnLink }) {
   const blocks: ReactNode[] = [];
   const lines = text.split('\n');
   let i = 0;
@@ -49,7 +79,7 @@ export function Markdown({ text }: { text: string }) {
         <List key={`l${i}`}>
           {items.map((it, j) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: 답 글은 한 번 그리면 순서가 바뀌지 않는다
-            <li key={`${i}-${j}`}>{inline(it, `${i}-${j}`)}</li>
+            <li key={`${i}-${j}`}>{inline(it, `${i}-${j}`, onLink)}</li>
           ))}
         </List>,
       );
@@ -59,7 +89,7 @@ export function Markdown({ text }: { text: string }) {
     if (heading) {
       blocks.push(
         <p key={`h${i}`} className="md-heading">
-          {inline(heading[1] ?? '', `h${i}`)}
+          {inline(heading[1] ?? '', `h${i}`, onLink)}
         </p>,
       );
       i++;
@@ -75,7 +105,7 @@ export function Markdown({ text }: { text: string }) {
     ) {
       para.push(lines[i++] ?? '');
     }
-    if (para.length) blocks.push(<p key={`p${i}`}>{inline(para.join('\n'), `p${i}`)}</p>);
+    if (para.length) blocks.push(<p key={`p${i}`}>{inline(para.join('\n'), `p${i}`, onLink)}</p>);
     else i++;
   }
   return <>{blocks}</>;

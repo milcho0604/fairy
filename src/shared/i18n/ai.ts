@@ -39,7 +39,8 @@ export const ko = {
   'ai.error.cancelled': '질문을 멈췄어.',
   'ai.local.label': '무료 AI',
   'ai.local.install': '앱 안에 들어 있어. 처음 쓸 때 모델을 한 번 받아.',
-  'ai.local.needsModel': '무료 AI 를 쓰려면 모델을 한 번 받아야 해 ({mb}MB). 받을까?',
+  'ai.local.needsModel':
+    '무료 AI 는 처음 한 번 모델을 받아야 답할 수 있어 ({mb}MB). 아래 단추로 받으면 이 질문에 바로 이어서 답할게.',
   'ai.local.download': '받기 ({mb}MB)',
   'ai.local.downloading': '받는 중 {pct}%',
   'ai.local.downloadFailed': '모델을 못 받았어. 인터넷 연결을 보고 다시 눌러 줘.',
@@ -55,6 +56,20 @@ export const ko = {
   'ai.usage.resetMinutes': (v: { n: number }) => `${v.n}분 뒤 초기화`,
   'ai.usage.resetHours': (v: { n: number }) => `${v.n}시간 뒤 초기화`,
   'ai.usage.resetAt': (v: { when: string }) => `${v.when} 초기화`,
+  // AI 에게 보내는 질문에 붙이는 틀 (화면에는 안 보이고 AI 가 읽는다. 화면 말과 같은 말로 보낸다)
+  'ai.ctx.head': (v: { day: string }) => `[내 오늘 상황, ${v.day}]`,
+  'ai.ctx.events': '남은 일정:',
+  'ai.ctx.todos': '안 끝낸 할 일:',
+  'ai.ctx.important': '[중요] ',
+  'ai.ctx.overdue': ' (마감 지남)',
+  'ai.ctx.dueToday': ' (오늘 마감)',
+  'ai.ctx.due': (v: { day: string }) => ` (마감 ${v.day})`,
+  'ai.ctx.more': (v: { n: number }) => `(그 밖에 ${v.n}개 더)`,
+  'ai.ctx.question': '[질문]',
+  'ai.history.head': '지금까지 대화:',
+  'ai.history.user': '사용자',
+  'ai.history.you': '너',
+  'ai.history.question': '사용자 질문',
 };
 
 export const en: Translation<typeof ko> = {
@@ -86,7 +101,8 @@ export const en: Translation<typeof ko> = {
   'ai.error.cancelled': 'Stopped the question.',
   'ai.local.label': 'Free AI',
   'ai.local.install': 'Built into the app. The model downloads once on first use.',
-  'ai.local.needsModel': 'The free AI needs a one-time model download ({mb} MB). Download it?',
+  'ai.local.needsModel':
+    "The free AI needs a one-time model download before it can answer ({mb} MB). Download it below and I'll answer this question right after.",
   'ai.local.download': 'Download ({mb} MB)',
   'ai.local.downloading': 'Downloading {pct}%',
   'ai.local.downloadFailed': "Couldn't download the model. Check your connection and try again.",
@@ -101,4 +117,17 @@ export const en: Translation<typeof ko> = {
   'ai.usage.resetMinutes': (v) => `Resets in ${v.n} min`,
   'ai.usage.resetHours': (v) => (Number(v.n) === 1 ? 'Resets in 1 hour' : `Resets in ${v.n} hours`),
   'ai.usage.resetAt': (v) => `Resets ${v.when}`,
+  'ai.ctx.head': (v) => `[My day so far, ${v.day}]`,
+  'ai.ctx.events': 'Events left today:',
+  'ai.ctx.todos': 'Open to-dos:',
+  'ai.ctx.important': '[important] ',
+  'ai.ctx.overdue': ' (overdue)',
+  'ai.ctx.dueToday': ' (due today)',
+  'ai.ctx.due': (v) => ` (due ${v.day})`,
+  'ai.ctx.more': (v) => `(${v.n} more)`,
+  'ai.ctx.question': '[Question]',
+  'ai.history.head': 'Conversation so far:',
+  'ai.history.user': 'User',
+  'ai.history.you': 'You',
+  'ai.history.question': 'User question',
 };

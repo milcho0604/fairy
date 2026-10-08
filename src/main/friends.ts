@@ -24,9 +24,12 @@ const hello = () => [
 /** pets/ 안 일반 파일만 읽는다 (링크를 따라 폴더 밖을 읽지 않게, safe-file.ts) */
 const petFile = (file: string | undefined) => readFileIn(join(app.getPath('userData'), 'pets'), file);
 
-/** 친구의 입체 설계도. 없거나 깨졌으면 null (사진으로) */
+/** 설계도 파일 상한 (maker.ts 와 같다). 넘으면 읽지 않고 사진으로 */
+const MAX_MODEL_BYTES = 256 * 1024;
+
+/** 친구의 입체 설계도. 없거나 깨졌거나 너무 크면 null (사진으로) */
 function modelOf(file: string | undefined): Blueprint | null {
-  const bytes = petFile(file);
+  const bytes = readFileIn(join(app.getPath('userData'), 'pets'), file, MAX_MODEL_BYTES);
   if (!bytes) return null;
   try {
     return parseBlueprint(JSON.parse(bytes.toString('utf8'))) ?? null;
@@ -163,9 +166,18 @@ export function createFriends(o: {
           },
           { label: t('pet.menu.reload'), click: () => pet.reload() },
           { type: 'separator' },
+          // 잘못 눌러 보내지 않게 한 번 더 고른다 (하위 메뉴). 사진 친구는 그림도 지워져 되살릴 수 없다고 알린다
           {
             label: t('pet.friend.sendHome', { name }),
-            click: () => settings.set({ friends: settings.get().friends.filter((x) => x.id !== f.id) }),
+            submenu: [
+              ...((live.get(f.id)?.friend ?? f).image
+                ? [{ label: t('pet.friend.sendHomePhoto'), enabled: false }]
+                : []),
+              {
+                label: t('pet.friend.sendHomeSure'),
+                click: () => settings.set({ friends: settings.get().friends.filter((x) => x.id !== f.id) }),
+              },
+            ],
           },
         ];
       },
@@ -217,10 +229,16 @@ export function createFriends(o: {
     }
   }
 
+  /** 모든 친구 화면을 다시 불러온다 (메뉴 막대의 펫 새로고침) */
+  function reloadAll() {
+    for (const { pet } of live.values()) pet.reload();
+  }
+
   return {
     sync,
     setHidden,
     resendStatus,
+    reloadAll,
     /** 개발용: 바로 만나 보기 (확률, 쉬는 시간 무시) */
     debugMeet: () => meetTick(true),
     stop: () => clearInterval(meetTimer),

@@ -8,8 +8,9 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { DatabaseSync } from 'node:sqlite';
+import { plusDays } from '../shared/day.ts';
 import { type Db, SCHEMA_VERSION, schemaVersion } from '../shared/db-schema.ts';
-import { EventStore } from '../shared/event-store.ts';
+import { ALL_DAY_MAX_DAYS, allDaySpan, allDayTimes, EventStore } from '../shared/event-store.ts';
 import { NoteStore } from '../shared/note-store.ts';
 import { isRepeat, localDay, TodoStore } from '../shared/todo-store.ts';
 
@@ -43,6 +44,11 @@ function open() {
 }
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** 2026-02-30 같은 없는 날짜를 거른다 */
+const validDay = (day: string) => {
+  const d = new Date(`${day}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === day;
+};
 const LOCAL_RE = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})$/;
 
 interface Tool {
@@ -141,22 +147,53 @@ const TOOLS: Tool[] = [
   },
   {
     name: 'add_event',
-    description: '짝꿍 일정에 넣는다. 시작 전에 펫이 말풍선으로 알린다.',
+    description:
+      '짝꿍 일정에 넣는다. 시작 전에 펫이 말풍선으로 알린다. start 를 날짜(YYYY-MM-DD)만 주면 종일 일정이고 아침 브리핑에 나온다. 여러 날이면 end_date 도 준다.',
     inputSchema: {
       type: 'object',
       properties: {
         title: { type: 'string' },
-        start: { type: 'string', description: '시작 시각, 현지 시간 YYYY-MM-DDTHH:mm' },
-        duration_min: { type: 'number', description: '길이(분)' },
-        remind_min: { type: 'number', description: '몇 분 전에 알릴지 (기본 10)' },
+        start: {
+          type: 'string',
+          description: '시작 시각, 현지 시간 YYYY-MM-DDTHH:mm. 종일 일정이면 날짜만 YYYY-MM-DD',
+        },
+        end_date: {
+          type: 'string',
+          description: '종일 일정의 마지막 날 YYYY-MM-DD (그날도 든다). 하루면 비운다',
+        },
+        duration_min: { type: 'number', description: '길이(분). 시각 일정만' },
+        remind_min: {
+          type: 'number',
+          description:
+            '몇 분 전에 알릴지 (기본 10). 종일 일정은 첫날 0시 기준이고 기본 0(알리지 않음), 240 이면 전날 저녁 8시',
+        },
       },
       required: ['title', 'start'],
     },
     run: (a) => {
       const title = str(a.title);
-      const m = LOCAL_RE.exec(str(a.start));
       if (!title) throw new Error('title 이 비었어');
-      if (!m) throw new Error('start 는 YYYY-MM-DDTHH:mm (현지 시간) 로 줘');
+      if (DAY_RE.test(str(a.start))) {
+        const day = str(a.start);
+        const end = str(a.end_date);
+        if (!validDay(day)) throw new Error('start 날짜가 없는 날이야');
+        if (end && (!DAY_RE.test(end) || !validDay(end))) throw new Error('end_date 는 YYYY-MM-DD 로 줘');
+        if (end && end < day) throw new Error('end_date 가 start 보다 앞이야');
+        if (end && end > plusDays(day, ALL_DAY_MAX_DAYS - 1))
+          throw new Error(`종일 일정은 ${ALL_DAY_MAX_DAYS}일까지야`);
+        const e = open().events.add(
+          {
+            title,
+            ...allDayTimes(day, end || null),
+            allDay: true,
+            remindMin: Number.isFinite(Number(a.remind_min)) ? Number(a.remind_min) : undefined,
+          },
+          Date.now(),
+        );
+        return `종일 일정을 넣었어 (id ${e.id}): ${end && end !== day ? `${day}~${end}` : day} ${e.title}`;
+      }
+      const m = LOCAL_RE.exec(str(a.start));
+      if (!m) throw new Error('start 는 YYYY-MM-DDTHH:mm (현지 시간) 로, 종일이면 YYYY-MM-DD 로 줘');
       const startAt = new Date(
         Number(m[1]),
         Number(m[2]) - 1,
@@ -193,6 +230,10 @@ const TOOLS: Tool[] = [
       const p = (n: number) => String(n).padStart(2, '0');
       return list
         .map((e) => {
+          if (e.allDay) {
+            const { first, last } = allDaySpan(e);
+            return `- [${e.id}] ${first === last ? first : `${first}~${last}`} 종일 ${e.title}`;
+          }
           const d = new Date(e.startAt);
           return `- [${e.id}] ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())} ${e.title}`;
         })

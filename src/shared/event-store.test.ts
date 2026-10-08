@@ -125,6 +125,14 @@ test('메모: 최근에 고친 것부터, 그대로면 시각을 안 바꾼다, 
   assert.equal(noteTitle({ title: '', body: '\n\n' }), '빈 메모');
   assert.equal(notePreview({ title: '', body: '# 회의 메모\n- 결정 1\n- 결정 2' }), '결정 1 결정 2');
   assert.equal(notePreview({ title: '장보기', body: '- 우유\n- 귤' }), '우유 귤');
+  assert.equal(
+    notePreview({ title: '메모', body: '**굵게** 와 `코드`, [링크](https://x.y) 그리고 *기울임*' }),
+    '굵게 와 코드, 링크 그리고 기울임',
+  );
+  assert.equal(
+    notePreview({ title: '식', body: '2*3*4 = 24, snake_case_name' }),
+    '2*3*4 = 24, snake_case_name',
+  );
   notes.remove(a.id, T0 + 4);
   assert.equal(notes.list().length, 1);
   notes.restore(a.id);
@@ -274,4 +282,79 @@ test('6판 올리기: 5판에서 지워져 있던 가져온 일정은 사용자�
     T0,
   );
   assert.deepEqual(events.between(...RANGE), []);
+});
+
+// ---- 영어 일정 한 줄 (F). 2026-10-06 화요일, 지금 오전 9시 ----
+
+const ev = (s: string) => parseQuickEvent(s, today, nine);
+const at = (h: number, m = 0) => h * 60 + m;
+
+test('영어 시각: 3pm, 2:30 PM, 3 p.m., noon, midnight, 15:30, at 3 은 오후', () => {
+  assert.deepEqual(ev('meeting tomorrow at 3pm'), {
+    title: 'meeting',
+    day: '2026-10-07',
+    minute: at(15),
+    durationMin: null,
+  });
+  assert.equal(ev('Dentist 2:30 PM')?.minute, at(14, 30));
+  assert.equal(ev('call 3 p.m.')?.minute, at(15));
+  assert.equal(ev('Standup at 9:30am')?.minute, at(9, 30));
+  assert.equal(ev('lunch at noon')?.minute, at(12));
+  assert.equal(ev('lunch at noon')?.title, 'lunch');
+  assert.equal(ev('deploy at midnight')?.minute, 0);
+  assert.equal(ev('deploy at midnight')?.day, '2026-10-07'); // 이미 지난 시각이라 내일
+  assert.equal(ev('sync at 15:30')?.minute, at(15, 30));
+  assert.equal(ev('sync at 15:30')?.title, 'sync');
+  assert.equal(ev('gym at 6')?.minute, at(18)); // 오전, 오후 없이 1~7시는 오후
+  assert.equal(ev("meeting at 3 o'clock")?.minute, at(15));
+  assert.equal(ev('12am check')?.minute, 0);
+  assert.equal(ev('12pm check')?.minute, at(12));
+  assert.equal(ev('sync @2pm')?.title, 'sync');
+});
+
+test('영어 날짜: today, tonight, tomorrow, 요일, next, this, 달 이름', () => {
+  assert.equal(ev('dinner tonight at 8')?.minute, at(20)); // tonight 이면 저녁
+  assert.equal(ev('dinner tonight at 8')?.day, today);
+  assert.equal(ev('call tomorrow 10am')?.day, '2026-10-07');
+  assert.equal(ev('dentist the day after tomorrow 2pm')?.day, '2026-10-08');
+  assert.equal(ev('retro friday 4pm')?.day, '2026-10-09');
+  assert.equal(ev('Dentist fri 2:30 PM')?.day, '2026-10-09');
+  assert.equal(ev('weekly sync next monday 10am')?.day, '2026-10-12');
+  assert.equal(ev('1on1 next tuesday 10am')?.day, '2026-10-13'); // 한국어 "다음 주 화요일" 과 같은 날
+  assert.equal(ev('retro this tuesday 5pm')?.day, today);
+  assert.equal(ev('jog tuesday 8am')?.day, '2026-10-13'); // 오늘 요일인데 지났으면 다음 주
+  assert.equal(ev('review on Wednesday at 4pm')?.title, 'review');
+  assert.equal(ev('interview oct 7 14:00')?.day, '2026-10-07');
+  assert.equal(ev('party December 25th, 7pm')?.day, '2026-12-25');
+  assert.equal(ev('review on the 3rd of november at 4pm')?.day, '2026-11-03');
+  assert.equal(ev('kickoff jan 3 10am')?.day, '2027-01-03'); // 지난 날짜는 내년
+});
+
+test('영어 길이: for 1 hour, 1h, 1.5 hours, 1h 30m, 45 min, half an hour', () => {
+  assert.deepEqual(ev('call next monday 10am for 30 min'), {
+    title: 'call',
+    day: '2026-10-12',
+    minute: at(10),
+    durationMin: 30,
+  });
+  assert.equal(ev('interview oct 7 14:00 1h')?.durationMin, 60);
+  assert.equal(ev('workshop 3pm for 1.5 hours')?.durationMin, 90);
+  assert.equal(ev('workshop 3pm for 1.5 hours')?.day, today); // 1.5 를 1월 5일로 읽지 않는다
+  assert.equal(ev('focus 2h 30m tomorrow 1pm')?.durationMin, 150);
+  assert.equal(ev('sync @2pm 45m')?.durationMin, 45);
+  assert.equal(ev('plan half an hour 4pm')?.durationMin, 30);
+  assert.equal(ev('lunch for an hour at noon')?.durationMin, 60);
+});
+
+test('영어: 제목 속 낱말을 날짜로 읽지 않고, 시각이 없거나 틀리면 일정이 아니다', () => {
+  assert.equal(ev('sundays brunch 3pm')?.day, today);
+  assert.equal(ev('sundays brunch 3pm')?.title, 'sundays brunch');
+  assert.equal(ev('Monica 3pm')?.title, 'Monica');
+  assert.equal(ev('marathon 10 3pm')?.title, 'marathon 10'); // mar 10 이 아니다
+  assert.equal(ev('tomorrow buy milk'), null);
+  assert.equal(ev('3pm'), null);
+  assert.equal(ev('13pm sync'), null);
+  assert.equal(ev('3:75pm sync'), null);
+  assert.equal(ev('feb 30 3pm party'), null);
+  assert.equal(ev('1:1 thursday 3pm')?.title, '1:1');
 });

@@ -3,11 +3,14 @@ import { t } from '../../../shared/i18n/index.ts';
 import { DEPTH_URL, type MakerInfo, MODEL_URL, type PetLook } from '../../../shared/ipc.ts';
 import { contentBox, keptRatio, stroke } from '../../../shared/mask.ts';
 import type { Blueprint } from '../../../shared/pet3d/blueprint.ts';
-import { PET_NAME_MAX, POSE_KINDS } from '../../../shared/settings.ts';
+import { cleanWish, WISH_MAX } from '../../../shared/pet3d/prompt.ts';
+import { cleanPetName, PET_NAME_MAX, POSE_KINDS } from '../../../shared/settings.ts';
 import { CANVAS_SIZE } from '../draw.ts';
+import { PetNameInput } from '../PetNameInput.tsx';
 import { Pet3D } from '../pet3d.ts';
 import { openDepth, predictDepth } from './depth.ts';
 import { backend, openModel, predictMask } from './removeBg.ts';
+import { ShownError, shownErrorText } from './shown-error.ts';
 
 const bridge = window.jjakkungMaker;
 /** 다듬는 동안의 사진 크기 (긴 변). 모델 입력(1024)과 같게. */
@@ -15,6 +18,8 @@ const WORK_SIDE = 1024;
 /** 펫으로 저장할 그림 크기 (긴 변) */
 const OUT_SIDE = 512;
 const UNDO_LIMIT = 20;
+/** 요청사항 칸 아래 예시 (눌러서 더한다) */
+const WISH_CHIPS = ['sleepy', 'sparkle', 'chubby', 'tail', 'ribbon', 'calm'] as const;
 
 type Step = 'pick' | 'model' | 'working' | 'edit' | 'name' | 'saving' | 'done';
 
@@ -32,6 +37,8 @@ export function MakerApp() {
   const [error, setError] = useState('');
   const [work, setWork] = useState<Work>();
   const [name, setName] = useState('');
+  /** 이름이 12자를 넘어 뒤를 뗐을 때 한 줄 */
+  const [nameNote, setNameNote] = useState('');
   const [preview, setPreview] = useState('');
   const [elapsed, setElapsed] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -41,11 +48,15 @@ export function MakerApp() {
   const [model, setModel] = useState<Blueprint>();
   const [depth, setDepth] = useState('');
   const [shaping, setShaping] = useState(false);
+  // 입체 피규어 요청사항 (선택). 만든 뒤 고쳐서 다시 만들 수 있게 마지막으로 보낸 요청을 기억한다
+  const [wish, setWish] = useState('');
+  const [madeWith, setMadeWith] = useState<string>();
 
   useEffect(() => {
     bridge.info().then((i) => {
       setInfo(i);
-      setName(i.target === 'food' ? '' : i.petName);
+      // 이름 칸은 비워 둔다: 지금 펫 이름을 미리 채우면 보관함에 같은 이름이 쌓였다. 비우면 newPetName 이 붙는다
+      setName('');
       // AI 확인(CLI 상태)은 몇 초 걸릴 수 있어 따로 받는다. 그동안 사진 고르기는 막지 않는다
       void bridge.visionAi().then((visionAi) => setInfo((v) => v && { ...v, visionAi }));
     });
@@ -67,7 +78,7 @@ export function MakerApp() {
       try {
         // 움직이는 그림(gif, webp 여러 장)은 배경을 지우지 않고 그대로 쓴다 (v1).
         if (await isAnimated(file)) {
-          if (file.size > ANIMATED_MAX) throw new Error(t('maker.err.animatedTooBig'));
+          if (file.size > ANIMATED_MAX) throw new ShownError(t('maker.err.animatedTooBig'));
           setAnimated(true);
           // 앞 사진으로 만든 입체 모습은 버린다 (움직이는 그림은 입체로 만들지 않는다)
           setLook('photo');
@@ -81,11 +92,11 @@ export function MakerApp() {
         const photo = await loadPhoto(file);
         if (!info.modelReady) setStep('model');
         const r = await bridge.ensureModel();
-        if (!r.ok) throw new Error(r.error);
+        if (!r.ok) throw new ShownError(r.error);
         setInfo((v) => v && { ...v, modelReady: true });
         setStep('working');
         const res = await fetch(MODEL_URL);
-        if (!res.ok) throw new Error(t('maker.err.modelRead'));
+        if (!res.ok) throw new ShownError(t('maker.err.modelRead'));
         await openModel(await res.arrayBuffer());
         const t0 = performance.now();
         const mask = await predictMask(photo, info);
@@ -93,7 +104,7 @@ export function MakerApp() {
         setWork({ photo, mask, w: photo.width, h: photo.height });
         setStep('edit');
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(shownErrorText(err, t('maker.err.bgFailed')));
         setStep('pick');
       }
     },
@@ -140,14 +151,35 @@ export function MakerApp() {
   previewRef.current = preview;
 
   const shape = async () => {
+    if (shaping) return;
     const from = preview;
+    const asked = cleanWish(wish);
     setShaping(true);
     setError('');
-    const r = await bridge.shape3d(from);
+    const r = await bridge.shape3d(from, asked);
     setShaping(false);
     if (previewRef.current !== from) return;
-    if (r.ok) setModel(r.model);
-    else setError(r.error);
+    if (r.ok) {
+      setModel(r.model);
+      setMadeWith(asked);
+    } else setError(r.error);
+  };
+
+  /** 예시를 눌러 칸 끝에 더한다. 이미 있으면 뺀다. 칸 상한을 넘으면 더하지 않는다 */
+  const toggleChip = (chip: string) => {
+    const now = wish.trim();
+    if (now.includes(chip)) {
+      setWish(
+        now
+          .split(chip)
+          .join('')
+          .replace(/\s*,(\s*,)+/g, ',')
+          .replace(/^[,\s]+|[,\s]+$/g, ''),
+      );
+      return;
+    }
+    const next = now ? `${now.replace(/[,.\s]+$/, '')}, ${chip}` : chip;
+    if (next.length <= WISH_MAX) setWish(next);
   };
 
   const makeRelief = async () => {
@@ -158,15 +190,15 @@ export function MakerApp() {
     setProgress(0);
     try {
       const r = await bridge.ensureDepth();
-      if (!r.ok) throw new Error(r.error);
+      if (!r.ok) throw new ShownError(r.error);
       setInfo((v) => v && { ...v, depth: { ...v.depth, ready: true } });
       const res = await fetch(DEPTH_URL);
-      if (!res.ok) throw new Error(t('maker.err.modelRead'));
+      if (!res.ok) throw new ShownError(t('maker.err.modelRead'));
       await openDepth(await res.arrayBuffer());
       const d = await predictDepth(await loadImage(from), info.depth);
       if (previewRef.current === from) setDepth(d);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(shownErrorText(err, t('maker.err.depthFailed')));
     } finally {
       setShaping(false);
     }
@@ -357,9 +389,60 @@ export function MakerApp() {
                     <p className="hint">
                       {shaping ? t('maker.3d.working') : model ? t('maker.3d.ready') : t('maker.3d.hint')}
                     </p>
+                    <div className="wish">
+                      <label className="wish-label" htmlFor="maker-wish">
+                        {t('maker.wish.label')} <small>{t('maker.wish.optional')}</small>
+                      </label>
+                      <div className="wish-box">
+                        <input
+                          id="maker-wish"
+                          value={wish}
+                          maxLength={WISH_MAX}
+                          placeholder={t('maker.wish.placeholder')}
+                          disabled={shaping}
+                          aria-describedby="maker-wish-note"
+                          onChange={(e) => setWish(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                              e.preventDefault();
+                              void shape();
+                            }
+                          }}
+                        />
+                        <span className="wish-count" aria-hidden="true">
+                          {t('maker.wish.count', { n: wish.length, max: WISH_MAX })}
+                        </span>
+                      </div>
+                      <fieldset className="chips" aria-label={t('maker.wish.chips')}>
+                        {WISH_CHIPS.map((id) => {
+                          const chip = t(`maker.wish.chip.${id}`);
+                          const on = wish.includes(chip);
+                          return (
+                            <button
+                              key={id}
+                              type="button"
+                              className={`chip${on ? ' on' : ''}`}
+                              aria-pressed={on}
+                              disabled={shaping}
+                              onClick={() => toggleChip(chip)}
+                            >
+                              {on ? '✓ ' : '+ '}
+                              {chip}
+                            </button>
+                          );
+                        })}
+                      </fieldset>
+                      <small id="maker-wish-note" className="hint">
+                        {t('maker.wish.note')}
+                      </small>
+                    </div>
                     {!shaping && (
                       <button type="button" className="ghost" onClick={shape}>
-                        {model ? t('maker.3d.again') : t('maker.3d.make')}
+                        {!model
+                          ? t('maker.3d.make')
+                          : cleanWish(wish) !== madeWith
+                            ? t('maker.wish.remake')
+                            : t('maker.3d.again')}
                       </button>
                     )}
                   </>
@@ -372,21 +455,46 @@ export function MakerApp() {
                   ? t('maker.done.food', { name: name.trim() })
                   : isPose
                     ? t('maker.done.pose', { pose: poseLabel })
-                    : t('maker.done.pet', { name: name.trim() || info?.petName || t('common.appName') })}
+                    : t('maker.done.pet', {
+                        name: cleanPetName(name) || info?.newPetName || t('common.appName'),
+                      })}
               </p>
             ) : (
               <>
-                <label hidden={isPose}>
-                  {isFood ? t('maker.name.foodLabel') : t('maker.name.label')}
-                  <input
-                    value={name}
-                    maxLength={PET_NAME_MAX * 2}
-                    onChange={(e) => setName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.nativeEvent.isComposing) save();
-                    }}
-                  />
-                </label>
+                {isFood ? (
+                  <label>
+                    {t('maker.name.foodLabel')}
+                    <input
+                      value={name}
+                      maxLength={PET_NAME_MAX * 2}
+                      onChange={(e) => setName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.nativeEvent.isComposing) save();
+                      }}
+                    />
+                  </label>
+                ) : (
+                  <label hidden={isPose}>
+                    {t('maker.name.label')}
+                    <PetNameInput
+                      value={name}
+                      placeholder={info?.newPetName}
+                      onValue={(v) => {
+                        setName(v);
+                        setNameNote('');
+                      }}
+                      onLimit={() => setNameNote(t('maker.name.max', { max: PET_NAME_MAX }))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.nativeEvent.isComposing) save();
+                      }}
+                    />
+                  </label>
+                )}
+                {!isPose && !isFood && (
+                  <p className="hint" role="status">
+                    {nameNote || t('maker.name.blankHint', { name: info?.newPetName ?? '' })}
+                  </p>
+                )}
                 <div className="actions">
                   <button
                     type="button"
@@ -651,20 +759,24 @@ function toDataUrl(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
     r.onload = () => resolve(String(r.result));
-    r.onerror = () => reject(new Error(t('maker.err.imageRead')));
+    r.onerror = () => reject(new ShownError(t('maker.err.imageRead')));
     r.readAsDataURL(file);
   });
 }
 
 /** 파일을 작업 크기(긴 변 1024 이하) 캔버스로 */
 async function loadPhoto(file: Blob): Promise<HTMLCanvasElement> {
-  const bitmap = await createImageBitmap(file);
+  // 그림이 아닌 파일, 깨진 파일은 "could not be decoded" 같은 원문 대신 사진을 못 읽었다고
+  const bitmap = await createImageBitmap(file).catch((err: unknown) => {
+    console.warn('maker', err);
+    throw new ShownError(t('maker.err.photoRead'));
+  });
   const k = Math.min(1, WORK_SIDE / Math.max(bitmap.width, bitmap.height));
   const c = document.createElement('canvas');
   c.width = Math.max(1, Math.round(bitmap.width * k));
   c.height = Math.max(1, Math.round(bitmap.height * k));
   const g = c.getContext('2d', { willReadFrequently: true });
-  if (!g) throw new Error(t('maker.err.photoRead'));
+  if (!g) throw new ShownError(t('maker.err.photoRead'));
   g.imageSmoothingQuality = 'high';
   g.drawImage(bitmap, 0, 0, c.width, c.height);
   bitmap.close();

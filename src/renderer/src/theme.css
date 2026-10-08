@@ -1,4 +1,5 @@
-/* 채팅 창과 설정 창이 같이 쓰는 색. 밝은 모드와 어두운 모드. */
+/* 채팅 창과 설정 창이 같이 쓰는 모양. 색 값은 tokens.css 한 곳에 둔다. */
+@import "./tokens.css";
 
 /* hidden 속성이 display:flex 같은 규칙에 지지 않게 */
 [hidden] {
@@ -8,19 +9,105 @@
 
 :root {
   color-scheme: light dark;
-  --bg: #fbf8f4;
-  --panel: #ffffff;
-  --ink: #1f2328;
-  --muted: #6b6f76;
-  --line: #e6dfd6;
-  --accent: #c4854a;
-  --accent-ink: #ffffff;
-  --user: #ffe7cc;
-  --pet: #ffffff;
-  --code: #f3eee8;
-  --warn: #b26a00;
-  --error: #c0392b;
-  --ok: #2e9d5b;
+}
+
+/* 선택 상자: 맥 기본 화살표는 얇고 오른쪽 끝에 붙어 상자와 어긋나서 직접 그린다.
+   높이는 옆 입력칸, 단추(.ghost)와 같게 위아래 6px. 펼친 목록은 운영체제 그대로.
+   :where 로 우선순위를 0 으로 두어 창마다 겹쳐 숨기는 규칙(.remind select 등)이 늘 이긴다. */
+:where(select) {
+  appearance: none;
+  min-width: 0;
+  padding: 6px 30px 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background-color: var(--bg);
+  background-image: var(--chevron);
+  background-repeat: no-repeat;
+  background-position: right 11px center;
+  background-size: 11px 7px;
+  color: inherit;
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s;
+}
+
+:where(select):hover:not(:disabled) {
+  border-color: var(--accent);
+  background-image: var(--chevron-hover);
+}
+
+:where(select):focus {
+  outline: none;
+}
+
+:where(select):focus-visible {
+  border-color: var(--accent);
+  background-image: var(--chevron-hover);
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -1px;
+}
+
+:where(select):disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 시각, 날짜 칸: 시계와 달력 아이콘을 글자 색(흐린 색)으로, 고른 칸 강조는 파란색 대신 테마 색 */
+:where(
+  input[type="time"],
+  input[type="date"],
+  input[type="datetime-local"]
+)::-webkit-calendar-picker-indicator {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--muted);
+  mask:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6.2' fill='none' stroke='black' stroke-width='1.6'/%3E%3Cpath d='M8 4.6V8l2.3 1.6' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    center / 15px 15px no-repeat;
+  cursor: pointer;
+}
+
+:where(input[type="date"], input[type="datetime-local"])::-webkit-calendar-picker-indicator {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='2' y='3' width='12' height='11' rx='3' fill='none' stroke='black' stroke-width='1.6'/%3E%3Cpath d='M2.8 6.6h10.4M5.5 1.8v2.4M10.5 1.8v2.4' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+:where(
+  input[type="time"],
+  input[type="date"],
+  input[type="datetime-local"]
+):hover::-webkit-calendar-picker-indicator {
+  background: var(--accent);
+}
+
+:where(input[type="time"], input[type="date"], input[type="datetime-local"])::-webkit-datetime-edit {
+  padding: 0;
+}
+
+:where(
+  input[type="time"],
+  input[type="date"],
+  input[type="datetime-local"]
+)::-webkit-datetime-edit-fields-wrapper {
+  padding: 0;
+}
+
+:where(input)::-webkit-datetime-edit-ampm-field:focus,
+:where(input)::-webkit-datetime-edit-hour-field:focus,
+:where(input)::-webkit-datetime-edit-minute-field:focus,
+:where(input)::-webkit-datetime-edit-year-field:focus,
+:where(input)::-webkit-datetime-edit-month-field:focus,
+:where(input)::-webkit-datetime-edit-day-field:focus {
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  color: inherit;
 }
 
 /* 슬라이더: 기본 모양은 밝은 모드에서 빈 구간이 검게 나와 직접 그린다. margin 0 은 기본 바깥 여백으로 칸이 넘치는 것을 막는다 */
@@ -47,22 +134,25 @@ input[type="range"]::-webkit-slider-thumb {
   border-radius: 50%;
   background: var(--accent);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 0.12s;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #1d1b19;
-    --panel: #262320;
-    --ink: #ece7e1;
-    --muted: #a39d96;
-    --line: #3a3530;
-    --accent: #e0a46c;
-    --accent-ink: #1d1b19;
-    --user: #4a3726;
-    --pet: #2d2a27;
-    --code: #34302c;
-    --warn: #e6a23c;
-    --error: #ff7b6b;
-    --ok: #5cc285;
-  }
+input[type="range"]:hover::-webkit-slider-thumb {
+  transform: scale(1.12);
+}
+
+/* 키보드로 왔을 때는 상자 전체 대신 동그라미에 테두리를 두른다 */
+input[type="range"]:focus-visible {
+  outline: none;
+}
+
+input[type="range"]:focus-visible::-webkit-slider-thumb {
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.3),
+    0 0 0 3px var(--focus-ring);
+}
+
+input[type="range"]:disabled {
+  opacity: 0.5;
+  cursor: default;
 }

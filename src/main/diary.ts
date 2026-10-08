@@ -1,4 +1,5 @@
-import { addDays, type StatStore } from '../shared/beta-stats.ts';
+import type { StatStore } from '../shared/beta-stats.ts';
+import { plusDays } from '../shared/day.ts';
 import { acceptPolished, DIARY_DAYS, diaryText, hasDiary } from '../shared/diary.ts';
 import { t } from '../shared/i18n/index.ts';
 import type { DiaryEntry } from '../shared/ipc.ts';
@@ -41,7 +42,7 @@ export function createDiary(o: {
   const tries = new Map<string, number>();
 
   function save(now: number) {
-    const oldest = addDays(localDay(now), -KEEP_DAYS);
+    const oldest = plusDays(localDay(now), -KEEP_DAYS);
     for (const day of cache.keys()) if (day < oldest) cache.delete(day);
     writeJson(FILE, Object.fromEntries(cache));
   }
@@ -49,7 +50,7 @@ export function createDiary(o: {
   /** 최근 것부터. 기록이 없는 날은 뺀다 */
   function entries(now: number): DiaryEntry[] {
     const today = localDay(now);
-    const days = Array.from({ length: DIARY_DAYS }, (_, i) => addDays(today, -i));
+    const days = Array.from({ length: DIARY_DAYS }, (_, i) => plusDays(today, -i));
     const ai = settings.get().diaryAi;
     return o.stats
       .diaryFacts(days)
@@ -67,7 +68,7 @@ export function createDiary(o: {
   async function polishOne(now: number): Promise<boolean> {
     if (!settings.get().diaryAi || busy) return false;
     const today = localDay(now);
-    const days = Array.from({ length: DIARY_DAYS - 1 }, (_, i) => addDays(today, -1 - i));
+    const days = Array.from({ length: DIARY_DAYS - 1 }, (_, i) => plusDays(today, -1 - i));
     const todo = o.stats
       .diaryFacts(days)
       .filter(hasDiary)

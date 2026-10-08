@@ -1,5 +1,6 @@
 // 베타 기록 (P4-04). 기획서 "성공 기준" 다섯 가지를 앱 안에서 세어 보여 준다.
 // 서버로 보내지 않는다. 사용자가 설정 창에서 복사해 의견과 같이 보낸다. 할 일 제목, 대화는 넣지 않는다.
+import { plusDays } from './day.ts';
 import type { Db } from './db-schema.ts';
 import type { DiaryFacts } from './diary.ts';
 import { t } from './i18n/index.ts';
@@ -59,12 +60,6 @@ export function median(values: readonly number[]): number {
   const s = [...values].sort((a, b) => a - b);
   const mid = Math.floor(s.length / 2);
   return s.length % 2 ? (s[mid] ?? 0) : ((s[mid - 1] ?? 0) + (s[mid] ?? 0)) / 2;
-}
-
-/** YYYY-MM-DD 에 n 일을 더한다 (날짜만 다루어 시간대와 서머타임에 흔들리지 않게 UTC 로 센다). */
-export function addDays(day: string, n: number): string {
-  const [y, m, d] = day.split('-').map(Number);
-  return new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, (d ?? 1) + n)).toISOString().slice(0, 10);
 }
 
 /** 두 날짜 사이 날 수 (b - a) */
@@ -186,7 +181,7 @@ export class StatStore {
     const used = all.filter((d) => d.onMin > 0);
     const onMin = used.reduce((a, d) => a + d.onMin, 0);
     const hiddenMin = used.reduce((a, d) => a + d.hiddenMin, 0);
-    const days = Array.from({ length: 14 }, (_, i) => stat(addDays(today, i - 13)));
+    const days = Array.from({ length: 14 }, (_, i) => stat(plusDays(today, i - 13)));
     const last7 = days.slice(-7);
     return {
       firstDay,
@@ -199,6 +194,27 @@ export class StatStore {
       days,
     };
   }
+}
+
+/**
+ * 목표마다 달성했는지. 판단할 기록이 없으면 undefined(달성도 미달도 아님).
+ * 예전에는 첫날 기록 줄만 있으면 켜 둔 시간이 0 이어도 숨김 0%, 멈춤 0회가 "달성"으로 떴다 (2026-10-07 점검).
+ * 숨김과 완료는 켜 둔 날이 있어야, 같이 보기와 멈춤(최근 7일)은 최근 7일 안에 켜 둔 시간이 있어야 본다.
+ */
+export function goalsMet(r: BetaReport): {
+  done: boolean | undefined;
+  hidden: boolean | undefined;
+  look: boolean | undefined;
+  crash: boolean | undefined;
+} {
+  const used = r.daysUsed > 0;
+  const recent = r.days.slice(-7).some((d) => d.onMin > 0);
+  return {
+    done: used ? r.doneMedian >= TARGET.doneMedian : undefined,
+    hidden: used ? r.hiddenRatio < TARGET.hiddenRatio : undefined,
+    look: recent ? r.look7 >= TARGET.look7 : undefined,
+    crash: recent ? r.crash7 <= TARGET.crash7 : undefined,
+  };
 }
 
 const hours = (min: number) =>

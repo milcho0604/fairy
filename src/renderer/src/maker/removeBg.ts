@@ -4,6 +4,7 @@ import * as ort from 'onnxruntime-web/webgpu';
 import { t } from '../../../shared/i18n/index.ts';
 import type { MakerInfo } from '../../../shared/ipc.ts';
 import { outputToMask } from '../../../shared/mask.ts';
+import { ShownError } from './shown-error.ts';
 
 // 엔진 파일(.wasm) 위치는 지정하지 않는다. 1.30 의 GPU 묶음은 asyncify 판을 쓰는데, 다른 판(jsep)을 가리키면
 // 'reading Xe' 오류로 멈췄다 (2026-10-02). 빌드 도구가 묶음 옆에 맞는 파일을 내보내고 묶음이 스스로 찾는다.
@@ -25,13 +26,13 @@ export async function openModel(bytes: ArrayBuffer): Promise<void> {
 
 /** 사진(작업 크기 w x h 캔버스)에서 마스크(w x h, 0~255)를 만든다. rembg 와 같은 전처리. */
 export async function predictMask(photo: HTMLCanvasElement, info: MakerInfo): Promise<Uint8ClampedArray> {
-  if (!session) throw new Error(t('maker.err.modelNotOpen'));
+  if (!session) throw new ShownError(t('maker.err.modelNotOpen'));
   const size = info.size;
   const c = document.createElement('canvas');
   c.width = size;
   c.height = size;
   const g = c.getContext('2d', { willReadFrequently: true });
-  if (!g) throw new Error(t('maker.err.canvas'));
+  if (!g) throw new ShownError(t('maker.err.canvas'));
   g.imageSmoothingQuality = 'high';
   g.drawImage(photo, 0, 0, size, size);
   const d = g.getImageData(0, 0, size, size).data;
@@ -55,7 +56,7 @@ export async function predictMask(photo: HTMLCanvasElement, info: MakerInfo): Pr
   m.height = size;
   const mg = m.getContext('2d');
   const md = mg?.createImageData(size, size);
-  if (!mg || !md) throw new Error(t('maker.err.canvas'));
+  if (!mg || !md) throw new ShownError(t('maker.err.canvas'));
   for (let i = 0; i < n; i++) {
     md.data[i * 4 + 3] = small[i] ?? 0;
   }
@@ -64,7 +65,7 @@ export async function predictMask(photo: HTMLCanvasElement, info: MakerInfo): Pr
   r.width = photo.width;
   r.height = photo.height;
   const rg = r.getContext('2d', { willReadFrequently: true });
-  if (!rg) throw new Error(t('maker.err.canvas'));
+  if (!rg) throw new ShownError(t('maker.err.canvas'));
   rg.imageSmoothingQuality = 'high';
   rg.drawImage(m, 0, 0, photo.width, photo.height);
   const rd = rg.getImageData(0, 0, photo.width, photo.height).data;

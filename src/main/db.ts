@@ -5,7 +5,7 @@ import { AchievementStore } from '../shared/achieve.ts';
 import { StatStore } from '../shared/beta-stats.ts';
 import type { Db } from '../shared/db-schema.ts';
 import { EventStore } from '../shared/event-store.ts';
-import { t } from '../shared/i18n/index.ts';
+import { locale, t } from '../shared/i18n/index.ts';
 import { NoteStore } from '../shared/note-store.ts';
 import { PetLife } from '../shared/pet-life.ts';
 import { ItemStore } from '../shared/shop.ts';
@@ -73,7 +73,7 @@ export function storeTroubleText(trouble: StoreTrouble): string {
     case 'recovered':
       return t('main.db.recovered', {
         moved: basename(trouble.moved),
-        when: new Date(trouble.at).toLocaleString(),
+        when: new Date(trouble.at).toLocaleString(locale()),
       });
     case 'fresh':
       return t('main.db.fresh', { moved: basename(trouble.moved) });
@@ -90,11 +90,16 @@ export async function announceStoreTrouble(
   say: (o: SayOptions) => Promise<string | undefined>,
 ): Promise<void> {
   const moved = 'moved' in trouble ? trouble.moved : undefined;
+  const showFile = (action: string | undefined) => {
+    if (action === 'show' && moved) shell.showItemInFolder(moved);
+  };
   const action = await say({
     kind: 'answer',
     text: storeTroubleText(trouble),
     ttlMs: 30_000,
-    hold: {}, // 숨어 있거나 못 띄우면 나올 때 말하고, 그래도 못 보면 패널의 놓친 알림에 남긴다
+    // 숨어 있거나 못 띄우면 나올 때 말하고, 그래도 못 보면 패널의 놓친 알림에 남긴다.
+    // 다른 말에 밀렸다 다시 나와도 "파일 보기"는 그대로 달리고 누르면 폴더를 연다
+    hold: { onAction: showFile },
     buttons: moved
       ? [
           { id: 'show', label: t('main.db.showFile') },
@@ -102,5 +107,5 @@ export async function announceStoreTrouble(
         ]
       : [{ id: 'ok', label: t('common.ok') }],
   });
-  if (action === 'show' && moved) shell.showItemInFolder(moved);
+  showFile(action);
 }

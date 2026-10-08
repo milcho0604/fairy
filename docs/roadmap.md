@@ -14,7 +14,7 @@
 
 ## 지금 위치
 
-**2026-10-07 기준. MVP 와 v1 기능, v2 대부분(입체 캐릭터 포함)이 맥에서 돈다.** 남은 것은 v2(6단계), 윈도우 확인, 베타(D8 보류). 화면 위 펫(걷기, 말풍선, 바쁨 모드, 방해 금지), 패널(할 일, 코인, 밥), 채팅(claude, codex, cursor, gemini, 직접 추가), 같이 보기, 사용량 보기, 설정, 사진으로 펫 만들기. 사용자 요청으로 3단계(AI)를 2단계보다 먼저 했다.
+**2026-10-07 기준, 마지막 커밋 2061cf7(성능, 부스트 모드) 뒤. MVP 와 v1 기능, v2 대부분(입체 캐릭터 포함)이 맥에서 돈다.** 2061cf7 뒤 커밋 전 작업: 개선 점검 묶음(펫 화면 저절로 다시 불러오기, 메뉴 막대 할 일 보기와 펫 새로고침, 메모리 압박을 프로세스 없이 읽기, 첫 안내 다듬기와 첫 할 일 유도, AI 틀 글 다국어, 영어 빠른 입력, 설치판 진단 기록 `logs/main.log`, 원자적 쓰기, 날짜 셈 하나로, 움직임 줄이기, 베타 기록 달성 표시)과 같은 날 회귀 점검 수정. 남은 것은 v2(6단계), 윈도우 확인, 베타(D8 보류). 화면 위 펫(걷기, 말풍선, 바쁨 모드, 방해 금지), 패널(할 일, 코인, 밥), 채팅(claude, codex, cursor, gemini, 직접 추가), 같이 보기, 사용량 보기, 설정, 사진으로 펫 만들기. 사용자 요청으로 3단계(AI)를 2단계보다 먼저 했다.
 
 | 단계 | 상태 |
 | --- | --- |
@@ -26,10 +26,11 @@
 
 **다음 세션은 여기서 시작** (순서대로)
 
-0. 2026-10-07 작업 마무리: 입체 캐릭터, 보관함, 짝꿍 규칙, 저장 공간은 59a14f9 로 커밋함. 남은 것은 새 캐릭터(멍멍이, 토순이)와 설정 화면(펫 카드, 보관함, 저장 공간, 짝꿍 규칙)을 빌드해 찍어 보기, 가짜 느린 CLI 로 AI 취소와 앱 끄기 실측. 성능 남은 것: 3D 프레임마다 GPU 읽기(2D 보다 약 40% 비쌈), 친구 펫 하나에 렌더러 약 120MB, JJ_METRICS CPU 가 코어 수로 나뉨. 아이콘은 사용자가 그림을 주기로 함(투명 배경 1024px PNG), 지금은 `scripts/icon-pets.json` 판
-1. 구글 캘린더 쓰기(OAuth 등록 필요, 사용자 결정)
-2. 윈도우 확인: 사용자가 맥미니 가상 머신을 준비하면 `docs/tests/windows.md` 를 위에서부터 (v1 펫 항목 V1~V6 포함)
-3. 베타(P4-05): D8 이 정해지면. P0-10 0단계 결과를 기획서에 반영
+0. 2061cf7 뒤 커밋 전 작업 확인 후 커밋(`git status`, CHANGELOG `[Unreleased]`). 사용자 결정 대기: 설정 창 재구성, 큰 파일 쪼개기, 업데이트 레포 변경, dmg 칩별 빌드, electronFuses, 설정 "의견 보내기"에 최근 진단 기록 붙이기
+1. 2026-10-07 작업 마무리: 입체 캐릭터, 보관함, 짝꿍 규칙, 저장 공간은 59a14f9 로 커밋함. 남은 것은 새 캐릭터(멍멍이, 토순이)와 설정 화면(펫 카드, 보관함, 저장 공간, 짝꿍 규칙)을 빌드해 찍어 보기, 가짜 느린 CLI 로 AI 취소와 앱 끄기 실측. 성능 남은 것: 3D 프레임마다 GPU 읽기(2D 보다 약 40% 비쌈), 친구 펫 하나에 렌더러 약 120MB, JJ_METRICS CPU 가 코어 수로 나뉨. 아이콘은 사용자가 그림을 주기로 함(투명 배경 1024px PNG), 지금은 `scripts/icon-pets.json` 판
+2. 구글 캘린더 쓰기(OAuth 등록 필요, 사용자 결정)
+3. 윈도우 확인: 사용자가 맥미니 가상 머신을 준비하면 `docs/tests/windows.md` 를 위에서부터 (v1 펫 항목 V1~V6 포함)
+4. 베타(P4-05): D8 이 정해지면. P0-10 0단계 결과를 기획서에 반영
 
 사용자 손이 필요한 것
 
@@ -43,10 +44,10 @@
 
 **다시 켜는 법**
 
-- 개발: `npm install` 뒤 `npm run dev`. 확인은 `npm run check` (타입 검사, 린트, 테스트 119개). 커밋은 `npm run check` 가 통과할 때만
+- 개발: `npm install` 뒤 `npm run dev`. 확인은 `npm run check` (타입 검사, 린트, 테스트 360여 개). 커밋은 `npm run check` 가 통과할 때만
 - 설치 파일: `npm run dist:mac`(dmg 애플 실리콘과 인텔, `dist/`), 윈도우는 GitHub Actions release. 설치판을 실제 데이터와 따로 띄워 점검하려면 `JJ_USER_DATA=<빈 폴더> dist/mac-arm64/Jjakkung.app/Contents/MacOS/Jjakkung --inspect=9239 --remote-debugging-port=9354` (설치판에는 `__jj` 가 없어 메인 디버거에서 `require('electron')` 으로 다룬다)
 - 실제 앱으로 점검: `scripts/dev/README.md` (DevTools 포트와 메인 디버거로 상태를 넣고 화면을 찍는다). 화면을 바꾼 작업은 밝은, 어두운, 좁은 화면을 찍어 본다(쓰는 규칙 "디자인 점검")
-- 사용자 데이터(맥): `~/Library/Application Support/jjakkung/` 에 `settings.json`, `jjakkung.db`(할 일, 코인), `pet-position.json`, `chat-settings.json`, `ai-usage.json`, `ai-custom.json`, `ai-env.json`(로그인 셸 PATH), `codex-home/`(codex 격리), `ai-workdir/`, `models/`(배경 제거 모델 170MB, 깊이 모델 27MB, 무료 AI 모델), `pets/`(사진 펫 그림)
+- 사용자 데이터(맥): `~/Library/Application Support/jjakkung/` 에 `settings.json`, `jjakkung.db`(할 일, 코인), `pet-position.json`, `chat-settings.json`, `ai-usage.json`, `ai-custom.json`, `ai-env.json`(로그인 셸 PATH), `codex-home/`(codex 격리), `ai-workdir/`, `models/`(배경 제거 모델 170MB, 깊이 모델 27MB, 무료 AI 모델), `pets/`(사진 펫 그림), `logs/`(진단 기록 `main.log`, `main.old.log`. 질문, 답, 할 일과 일정 제목은 남기지 않는다)
 - 코드 지도: 메인 `src/main/` (index 가 모두 잇는다: pet-window, chat, panel, look-together, maker, settings-window, tray, db, ai/runner), 화면 `src/renderer/` (pet 은 React 없이, 나머지는 React), 순수 로직과 시험 `src/shared/`
 
 ## 요약

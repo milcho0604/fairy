@@ -7,13 +7,16 @@ export const ko = {
   'settings.saved': '저장했어',
   'settings.title': '설정',
   'settings.copied': '복사했어',
+  'settings.copyFailed': '복사하지 못했어. 글을 직접 골라 복사해 줘',
 
   // 펫
   'settings.pet': '펫',
   'settings.name': '이름',
   'settings.nameChanged': '이름을 바꿨어',
-  'settings.nameHint': (v: { name: string; max: number }) =>
-    `메뉴에는 "${withParticle(v.name, '이랑')} 같이 보기", "${withParticle(v.name, '과')} 대화"처럼 보여. ${v.max}자까지.`,
+  'settings.nameHint': (v: { name: string; n: number; max: number }) =>
+    `메뉴에는 "${withParticle(v.name, '이랑')} 같이 보기", "${withParticle(v.name, '과')} 대화"처럼 보여. ${v.max}자까지 (${v.n}/${v.max}).`,
+  'settings.nameEmpty': '이름은 비울 수 없어. 원래 이름으로 둘게',
+  'settings.nameMax': '이름은 {max}자까지야',
   'settings.look': '모습',
   'settings.makePhotoPet': '사진으로 펫 만들기',
   'settings.poses': '상태별 포즈',
@@ -35,6 +38,7 @@ export const ko = {
   'settings.boost': '부스트 모드',
   'settings.boostHint':
     '사양이 좋은 컴퓨터용. 펫이 더 부드럽게 움직이고 마우스를 더 촘촘히 따라 봐. 무료 AI 는 30분 동안 데워 둬서 답이 빨라. CPU와 메모리를 조금 더 써. 노트북이 배터리로 돌 때는 쉬어.',
+  'settings.boostResting': '지금은 배터리라 쉬는 중이야. 전원을 꽂으면 켜져.',
 
   // 친구 펫
   'settings.friends': '친구 펫',
@@ -46,6 +50,15 @@ export const ko = {
   'settings.friends.kind': '친구 모양',
   'settings.friends.add': '데려오기',
   'settings.friends.import': '.jjpet 파일로 데려오기',
+  'settings.friends.addAnyway': '그래도 데려오기',
+  'settings.friends.dupe': (v: { name: string }) =>
+    `${withParticle(v.name, '은')} 이미 있는 이름이야. 그래도 데려올까? 한 번 더 누르면 데려와.`,
+  'settings.friends.sendHomeSure': '정말 보낼까?',
+  'settings.friends.sendHomeAria': (v: { name: string }) => `${withParticle(v.name, '을')} 집에 보내기`,
+  'settings.friends.sendHomeSureAria': (v: { name: string }) =>
+    `${withParticle(v.name, '을')} 정말 집에 보내기 (한 번 더 누르면 보내)`,
+  'settings.friends.photoGone': (v: { name: string }) =>
+    `${withParticle(v.name, '은')} 사진 친구라 보내면 그림도 지워져. 다시 보려면 .jjpet 파일로 데려와야 해.`,
 
   // 삐짐
   'settings.sulk': '삐짐',
@@ -75,7 +88,7 @@ export const ko = {
     "질문할 때 안 끝낸 할 일 제목과 마감, 오늘 남은 일정 제목을 AI 에 같이 보내. '오늘 뭐부터 할까?'에 답할 수 있어. 채팅 창 아래에서도 켜고 끌 수 있어.",
   'settings.myMcp': '내 MCP 도구 쓰기',
   'settings.myMcpOff':
-    '아래 "내 AI 설정 없이 부르기"를 끄면 쓸 수 있어. Claude Code 에 연결해 둔 노션, 슬랙 같은 MCP 도구를 채팅에서 써.',
+    '위의 "내 AI 설정 없이 부르기"를 끄면 쓸 수 있어. Claude Code 에 연결해 둔 노션, 슬랙 같은 MCP 도구를 채팅에서 써.',
   'settings.myMcpOn': (v: { n: number }) =>
     `Claude Code 에 연결해 둔 MCP 도구(${v.n}개 서버)를 채팅에서 묻지 않고 써. 파일, 명령 도구는 여전히 꺼 둬. 글쓰기 같은 도구도 쓸 수 있으니 켤 때 주의해 줘.`,
   'settings.aiIsolation': '내 AI 설정 없이 부르기 (권장)',
@@ -147,6 +160,9 @@ export const ko = {
 
   // 하루 회고
   'settings.review': '하루 회고',
+  'settings.reviewOn': '하루 회고 받기',
+  'settings.reviewOnHint':
+    '수다 빈도와 따로야. 조용히여도 켜 두면 하루 한 번 와. 못 보고 지나가면 패널의 놓친 알림에 남아.',
   'settings.reviewTime': '회고 시각',
   'settings.reviewHint':
     '이 시각이 지나고 처음 자리에 있을 때 오늘 끝낸 일을 알려 주고, 남은 오늘 마감을 내일로 넘길지 물어봐.',
@@ -155,7 +171,7 @@ export const ko = {
   'settings.calendar': '캘린더 가져오기',
   'settings.cal.url': '캘린더 주소 (.ics)',
   'settings.cal.hint':
-    '구글 캘린더: 설정 → 내 캘린더 → 캘린더 통합 → "iCal 형식의 비공개 주소"를 붙여 넣어. 30분마다 앞으로 60일 일정을 가져와서 펫이 알려 줘. 이 주소는 이 컴퓨터에만 둬. (읽기만 하고, 짝꿍에서 넣은 일정은 구글로 가지 않아.)',
+    '구글 캘린더: 설정 > 내 캘린더 > 캘린더 통합 > "iCal 형식의 비공개 주소"를 붙여 넣어. 30분마다 앞으로 60일 일정을 가져와서 펫이 알려 줘. 이 주소는 이 컴퓨터에만 둬. (읽기만 하고, 짝꿍에서 넣은 일정은 구글로 가지 않아.)',
   'settings.cal.fetch': '지금 가져오기',
   'settings.cal.clear': '지우기',
 
@@ -164,10 +180,13 @@ export const ko = {
   'settings.backupHint': '할 일, 메모, 일정, 코인, 펫, 설정을 폴더 하나로 내보내고, 다른 컴퓨터에서 가져와.',
   'settings.export': '내보내기',
   'settings.exported': '내보냈어',
+  'settings.exportFailed': '내보내지 못했어',
+  'settings.importFailed': '가져오지 못했어',
   'settings.import': '가져오기',
   'settings.petOnlyHint': '펫만 친구에게 주려면 .jjpet 파일로.',
   'settings.exportPet': '펫 내보내기',
   'settings.petExported': '펫 파일을 만들었어',
+  'settings.petExportFailed': '펫 파일을 만들지 못했어. 다른 폴더에 저장해 봐',
   'settings.importPet': '펫 가져오기',
 
   // 업데이트
@@ -190,7 +209,43 @@ export const ko = {
   'settings.shortcut.default': '기본으로',
   'settings.shortcut.badKey': '이 키는 단축키로 못 써. 글자, 숫자, F1~F24 같은 키를 눌러 줘.',
   'settings.shortcut.taken': "이미 '{name}' 단축키야. 다른 키를 눌러 줘.",
-  'settings.shortcut.needMod': '{mod} 나 {alt} 를 같이 눌러 줘. 다른 앱 입력을 빼앗지 않게.',
+  'settings.shortcut.needMod': '{mod} 키에 {alt} 키나 Shift 키를 더해 눌러 줘. 다른 앱 입력을 빼앗지 않게.',
+  'settings.shortcut.needMore':
+    '{one} 키 하나만으로는 다른 앱 단축키와 겹쳐. {more} 중 하나를 더 같이 눌러 줘.',
+  'settings.shortcut.optionOnly': 'Option 조합은 특수 문자를 칠 때 써. Cmd 키나 Ctrl 키를 같이 눌러 줘.',
+  'settings.shortcut.fKey': 'F1~F12 는 다른 앱이 많이 써. 수식키를 하나 같이 누르거나 F13~F24 를 써 줘.',
+  'settings.shortcut.windowsKey': 'Windows 키 조합은 Windows 가 써. Ctrl 키나 Alt 키로 골라 줘.',
+  'settings.shortcut.reserved': '{what}에 쓰는 조합이라 못 써 ({keys}). 다른 키를 눌러 줘.',
+  'settings.shortcut.what.copy': '복사',
+  'settings.shortcut.what.paste': '붙여넣기',
+  'settings.shortcut.what.pastePlain': '서식 없이 붙여넣기',
+  'settings.shortcut.what.cut': '잘라내기',
+  'settings.shortcut.what.selectAll': '전체 선택',
+  'settings.shortcut.what.undo': '실행 취소',
+  'settings.shortcut.what.redo': '다시 실행',
+  'settings.shortcut.what.save': '저장',
+  'settings.shortcut.what.saveAs': '다른 이름으로 저장',
+  'settings.shortcut.what.quit': '앱 종료',
+  'settings.shortcut.what.logout': '로그아웃',
+  'settings.shortcut.what.lock': '화면 잠금',
+  'settings.shortcut.what.closeWindow': '창 닫기',
+  'settings.shortcut.what.minimize': '창 내리기',
+  'settings.shortcut.what.hideApp': '앱 가리기',
+  'settings.shortcut.what.switchApp': '앱 전환',
+  'settings.shortcut.what.switchWindow': '창 전환',
+  'settings.shortcut.what.switchTab': '탭 전환',
+  'settings.shortcut.what.spotlight': '검색(Spotlight)',
+  'settings.shortcut.what.inputSource': '입력 언어 전환',
+  'settings.shortcut.what.emoji': '이모지 입력',
+  'settings.shortcut.what.screenshot': '화면 캡처',
+  'settings.shortcut.what.fullScreen': '전체 화면',
+  'settings.shortcut.what.dock': 'Dock 가리기',
+  'settings.shortcut.what.missionControl': 'Mission Control',
+  'settings.shortcut.what.help': '도움말 검색',
+  'settings.shortcut.what.voiceOver': 'VoiceOver',
+  'settings.shortcut.what.windowMenu': '창 메뉴',
+  'settings.shortcut.what.contextMenu': '오른쪽 클릭 메뉴',
+  'settings.shortcut.what.rotate': '화면 회전',
 
   // 베타 기록
   'settings.statsCopied': '복사했어. 의견과 같이 붙여 넣어 줘',
@@ -239,11 +294,15 @@ export const en: Translation<typeof ko> = {
   'settings.saved': 'Saved',
   'settings.title': 'Settings',
   'settings.copied': 'Copied',
+  'settings.copyFailed': "Couldn't copy. Select the text and copy it yourself",
 
   'settings.pet': 'Pet',
   'settings.name': 'Name',
   'settings.nameChanged': 'Name changed',
-  'settings.nameHint': (v) => `Menus will say things like "Chat with ${v.name}". Up to ${v.max} characters.`,
+  'settings.nameHint': (v) =>
+    `Menus will say things like "Chat with ${v.name}". Up to ${v.max} characters (${v.n}/${v.max}).`,
+  'settings.nameEmpty': "A name can't be empty. Keeping the old one",
+  'settings.nameMax': 'Names can be up to {max} characters',
   'settings.look': 'Look',
   'settings.makePhotoPet': 'Make a pet from a photo',
   'settings.poses': 'Poses by mood',
@@ -265,6 +324,7 @@ export const en: Translation<typeof ko> = {
   'settings.boost': 'Boost mode',
   'settings.boostHint':
     'For powerful computers. Your pet moves more smoothly and follows the mouse more closely, and the free AI stays warm for 30 minutes so answers come faster. Uses a bit more CPU and memory. Takes a break while a laptop runs on battery.',
+  'settings.boostResting': 'Resting now: on battery. It turns on when you plug in.',
 
   'settings.friends': 'Pet friends',
   'settings.friendsChanged': 'Pet friends updated',
@@ -276,6 +336,14 @@ export const en: Translation<typeof ko> = {
   'settings.friends.kind': 'Friend look',
   'settings.friends.add': 'Bring over',
   'settings.friends.import': 'Bring one from a .jjpet file',
+  'settings.friends.addAnyway': 'Bring anyway',
+  'settings.friends.dupe': (v) =>
+    `"${v.name}" is already taken. Bring them anyway? Press again to bring them.`,
+  'settings.friends.sendHomeSure': 'Really?',
+  'settings.friends.sendHomeAria': (v) => `Send ${v.name} home`,
+  'settings.friends.sendHomeSureAria': (v) => `Really send ${v.name} home (press again to send)`,
+  'settings.friends.photoGone': (v) =>
+    `${v.name} is a photo friend, so their picture goes too. To see them again, bring back the .jjpet file.`,
 
   'settings.sulk': 'Sulking',
   'settings.restDays': 'Days off (no sulking if you skip these)',
@@ -302,7 +370,7 @@ export const en: Translation<typeof ko> = {
     'Sends your open to-do titles and due dates, plus the titles of today\'s remaining events, with each question. Then it can answer "What should I do first?". You can also switch this under the chat box.',
   'settings.myMcp': 'Use my MCP tools',
   'settings.myMcpOff':
-    'Turn off "Call without my AI setup" below to use this. Lets chat use MCP tools you connected to Claude Code, like Notion or Slack.',
+    'Turn off "Call without my AI setup" above to use this. Lets chat use MCP tools you connected to Claude Code, like Notion or Slack.',
   'settings.myMcpOn': (v) =>
     `Chat uses the MCP tools you connected to Claude Code (${v.n} ${v.n === 1 ? 'server' : 'servers'}) without asking. File and command tools stay off. Some tools can write things, so be careful.`,
   'settings.aiIsolation': 'Call without my AI setup (recommended)',
@@ -372,6 +440,9 @@ export const en: Translation<typeof ko> = {
   'settings.launchDev': 'Only works in the installed app. This is a dev build.',
 
   'settings.review': 'Daily review',
+  'settings.reviewOn': 'Get a daily review',
+  'settings.reviewOnHint':
+    "Separate from how chatty I am. Even on Quiet, it comes once a day if this is on. If you miss it, it stays in the panel's missed alerts.",
   'settings.reviewTime': 'Review time',
   'settings.reviewHint':
     "The first time you're around after this time, it shows what you finished today and asks whether to move today's leftover due dates to tomorrow.",
@@ -379,7 +450,7 @@ export const en: Translation<typeof ko> = {
   'settings.calendar': 'Import calendar',
   'settings.cal.url': 'Calendar address (.ics)',
   'settings.cal.hint':
-    'Google Calendar: Settings → My calendars → Integrate calendar → paste the "Secret address in iCal format". Every 30 minutes it fetches the next 60 days and your pet reminds you. The address stays on this computer. (Read only. Events you add in Jjakkung are not sent to Google.)',
+    'Google Calendar: Settings > My calendars > Integrate calendar > paste the "Secret address in iCal format". Every 30 minutes it fetches the next 60 days and your pet reminds you. The address stays on this computer. (Read only. Events you add in Jjakkung are not sent to Google.)',
   'settings.cal.fetch': 'Fetch now',
   'settings.cal.clear': 'Clear',
 
@@ -388,10 +459,13 @@ export const en: Translation<typeof ko> = {
     'Export to-dos, notes, events, coins, pets and settings into one folder, then import them on another computer.',
   'settings.export': 'Export',
   'settings.exported': 'Exported',
+  'settings.exportFailed': "Couldn't export",
+  'settings.importFailed': "Couldn't import",
   'settings.import': 'Import',
   'settings.petOnlyHint': 'To give just your pet to a friend, use a .jjpet file.',
   'settings.exportPet': 'Export pet',
   'settings.petExported': 'Pet file created',
+  'settings.petExportFailed': "Couldn't create the pet file. Try saving to another folder",
   'settings.importPet': 'Import pet',
 
   'settings.update': 'Updates',
@@ -412,7 +486,42 @@ export const en: Translation<typeof ko> = {
   'settings.shortcut.default': 'Reset',
   'settings.shortcut.badKey': "That key can't be a shortcut. Try a letter, a number or F1 to F24.",
   'settings.shortcut.taken': 'That\'s already the "{name}" shortcut. Try other keys.',
-  'settings.shortcut.needMod': 'Hold {mod} or {alt} too, so other apps keep their keys.',
+  'settings.shortcut.needMod': 'Hold {mod} plus {alt} or Shift, so other apps keep their keys.',
+  'settings.shortcut.needMore': '{one} alone clashes with other apps. Add one of {more}.',
+  'settings.shortcut.optionOnly': 'Option combos type special characters. Add Cmd or Ctrl.',
+  'settings.shortcut.fKey': 'Other apps use F1 to F12. Add a modifier key, or use F13 to F24.',
+  'settings.shortcut.windowsKey': 'Windows keeps the Windows key combos. Use Ctrl or Alt instead.',
+  'settings.shortcut.reserved': 'That combo is for {what} ({keys}). Try other keys.',
+  'settings.shortcut.what.copy': 'copy',
+  'settings.shortcut.what.paste': 'paste',
+  'settings.shortcut.what.pastePlain': 'paste without formatting',
+  'settings.shortcut.what.cut': 'cut',
+  'settings.shortcut.what.selectAll': 'select all',
+  'settings.shortcut.what.undo': 'undo',
+  'settings.shortcut.what.redo': 'redo',
+  'settings.shortcut.what.save': 'save',
+  'settings.shortcut.what.saveAs': 'save as',
+  'settings.shortcut.what.quit': 'quitting apps',
+  'settings.shortcut.what.logout': 'logging out',
+  'settings.shortcut.what.lock': 'locking the screen',
+  'settings.shortcut.what.closeWindow': 'closing windows',
+  'settings.shortcut.what.minimize': 'minimizing windows',
+  'settings.shortcut.what.hideApp': 'hiding apps',
+  'settings.shortcut.what.switchApp': 'switching apps',
+  'settings.shortcut.what.switchWindow': 'switching windows',
+  'settings.shortcut.what.switchTab': 'switching tabs',
+  'settings.shortcut.what.spotlight': 'Spotlight search',
+  'settings.shortcut.what.inputSource': 'switching input languages',
+  'settings.shortcut.what.emoji': 'the emoji picker',
+  'settings.shortcut.what.screenshot': 'screenshots',
+  'settings.shortcut.what.fullScreen': 'full screen',
+  'settings.shortcut.what.dock': 'hiding the Dock',
+  'settings.shortcut.what.missionControl': 'Mission Control',
+  'settings.shortcut.what.help': 'help search',
+  'settings.shortcut.what.voiceOver': 'VoiceOver',
+  'settings.shortcut.what.windowMenu': 'the window menu',
+  'settings.shortcut.what.contextMenu': 'the right-click menu',
+  'settings.shortcut.what.rotate': 'rotating the screen',
 
   'settings.statsCopied': 'Copied. Paste it along with your feedback',
   'settings.version': 'Jjakkung {v}',

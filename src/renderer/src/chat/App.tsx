@@ -25,6 +25,9 @@ export function App() {
   const [zoom, setZoom] = useState<string>();
   const [providers, setProviders] = useState<ProviderView[]>([]);
   const [managing, setManaging] = useState(false);
+  /** 새 대화를 누른 직후 잠깐 보이는 되돌리기 알림 */
+  const [undoShown, setUndoShown] = useState(false);
+  const undoTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const stickToBottom = useRef(true);
@@ -98,6 +101,21 @@ export function App() {
     };
   }, []);
 
+  // 무료 AI 모델을 다 받으면(받기 진행이 사라지면) 고르기 단추의 "받기 전" 점을 다시 본다
+  const downloading = !!state?.modelDownload && !state.modelDownload.failed;
+  const wasDownloading = useRef(false);
+  useEffect(() => {
+    if (wasDownloading.current && !downloading) void refreshStatus(false);
+    wasDownloading.current = downloading;
+  }, [downloading, refreshStatus]);
+
+  // 새 대화 뒤 새로 물었으면 되돌리기 알림을 거둔다 (되돌릴 수 없다)
+  const hasMessages = (state?.messages.length ?? 0) > 0;
+  useEffect(() => {
+    if (hasMessages) setUndoShown(false);
+  }, [hasMessages]);
+  useEffect(() => () => clearTimeout(undoTimer.current), []);
+
   // 새 메시지가 오면 맨 아래로. 사용자가 위로 올려 읽는 중이면 두지 않는다.
   useEffect(() => {
     const el = listRef.current;
@@ -116,6 +134,20 @@ export function App() {
     const st = status[p.id];
     return p.id !== state.provider && !!st && isReady(st);
   });
+
+  // 새 대화: 바로 지우되 몇 초 동안 되돌릴 수 있다 (메인이 지운 대화를 잠깐 들고 있다, UNDO_RESET_MS)
+  const newChat = () => {
+    bridge.reset();
+    setUndoShown(true);
+    clearTimeout(undoTimer.current);
+    undoTimer.current = setTimeout(() => setUndoShown(false), 6000);
+    inputRef.current?.focus();
+  };
+  const undoNewChat = async () => {
+    clearTimeout(undoTimer.current);
+    setUndoShown(false);
+    if (await bridge.undoReset()) stickToBottom.current = true;
+  };
 
   const send = () => {
     if (pending || (!text.trim() && images.length === 0)) return;
@@ -173,7 +205,7 @@ export function App() {
           type="button"
           className="ghost"
           disabled={pending || state.messages.length === 0}
-          onClick={() => bridge.reset()}
+          onClick={newChat}
         >
           {t('chat.newChat')}
         </button>
@@ -211,8 +243,8 @@ export function App() {
       )}
 
       {spec && current && !isReady(current) && (
-        <div className="banner" role="status">
-          <span>{statusText(spec, current)}</span>
+        <div className="banner action-row" role="status">
+          <span className="grow">{statusText(spec, current)}</span>
           <button type="button" className="ghost" disabled={checking} onClick={() => refreshStatus(true)}>
             {checking ? t('chat.checking') : t('chat.recheck')}
           </button>
@@ -249,6 +281,14 @@ export function App() {
       </div>
 
       <footer>
+        {undoShown && (
+          <div className="undo-toast action-row" role="status">
+            <span className="grow">{t('chat.resetDone')}</span>
+            <button type="button" className="ghost" onClick={undoNewChat}>
+              {t('chat.undo')}
+            </button>
+          </div>
+        )}
         {notice && <p className="notice">{notice}</p>}
         {imagesBlocked && <p className="notice">{t('chat.imagesBlocked', { label: spec.label })}</p>}
         {images.length > 0 && (
@@ -395,16 +435,19 @@ function Message({
         )}
         {m.text && (
           <div className="bubble">
-            <Markdown text={m.text} />
+            <Markdown text={m.text} onLink={bridge.openLink} />
             {m.status === 'done' && <AnswerActions id={m.id} text={m.text} />}
           </div>
         )}
+        {/* 무료 AI 모델 받기 안내는 오류가 아니라 다음 할 일이라 오류색을 쓰지 않는다 */}
         {m.status === 'error' && m.error && (
-          <div className={`bubble error ${m.error.kind}`}>{m.error.message}</div>
+          <div className={`bubble ${m.error.kind === 'needs-model' ? 'guide' : `error ${m.error.kind}`}`}>
+            {m.error.message}
+          </div>
         )}
         {/* 받기 단추는 마지막 안내에만 (받은 뒤 위쪽 옛 안내에 단추가 남지 않게) */}
         {m.status === 'error' && m.error?.kind === 'needs-model' && mb && isLast && (
-          <div className="retry">
+          <div className="retry action-row">
             {download && !download.failed ? (
               <span className="download">
                 <progress max={100} value={download.pct} />
@@ -418,7 +461,9 @@ function Message({
                 <button type="button" className="ghost" onClick={() => bridge.downloadModel()}>
                   {t('ai.local.download', { mb: mb ?? '' })}
                 </button>
-                {download?.failed && <span className="download failed">{t('ai.local.downloadFailed')}</span>}
+                {download?.failed && (
+                  <span className="download failed">{download.message ?? t('ai.local.downloadFailed')}</span>
+                )}
               </>
             )}
           </div>
@@ -429,7 +474,7 @@ function Message({
             m.error?.kind === 'not-installed' ||
             m.error?.kind === 'not-logged-in') &&
           alternatives.length > 0 && (
-            <div className="retry">
+            <div className="retry action-row">
               {alternatives.slice(0, 3).map((p) => (
                 <button key={p.id} type="button" className="ghost" onClick={() => bridge.retryWith(p.id)}>
                   {t('chat.retryWith', { label: p.label })}
@@ -444,26 +489,34 @@ function Message({
 
 /** 답 아래 작은 단추: 복사, 메모로, 할 일로 (v1 "답변을 메모, 할 일로") */
 function AnswerActions({ id, text }: { id: string; text: string }) {
-  const [done, setDone] = useState('');
-  const flash = (msg: string) => {
-    setDone(msg);
-    setTimeout(() => setDone(''), 1800);
+  const [done, setDone] = useState<{ msg: string; failed?: boolean }>();
+  const flash = (msg: string, failed = false) => {
+    setDone({ msg, failed });
+    setTimeout(() => setDone(undefined), failed ? 2600 : 1800);
   };
-  if (done) return <span className="answer-actions shown">{done}</span>;
+  if (done) return <span className={`answer-actions shown ${done.failed ? 'failed' : ''}`}>{done.msg}</span>;
   return (
     <span className="answer-actions">
       <button
         type="button"
         onClick={async () => {
-          await navigator.clipboard.writeText(text);
-          flash(t('chat.copied'));
+          // 창이 앞에 없거나 권한이 막히면 복사가 실패한다. 됐다고 하지 않고 못 했다고 알린다
+          try {
+            await navigator.clipboard.writeText(text);
+            flash(t('chat.copied'));
+          } catch {
+            flash(t('chat.copyFailed'), true);
+          }
         }}
       >
         {t('chat.copy')}
       </button>
       <button
         type="button"
-        onClick={async () => flash((await bridge.toNote(id)) ? t('chat.savedNote') : t('chat.saveFailed'))}
+        onClick={async () => {
+          const ok = await bridge.toNote(id);
+          flash(ok ? t('chat.savedNote') : t('chat.saveFailed'), !ok);
+        }}
       >
         {t('chat.toNote')}
       </button>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { allDaySpan } from '../../../shared/event-store.ts';
 import { breakFor, FOCUS_LENGTHS, focusCoins, remainLabel } from '../../../shared/focus.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PanelState } from '../../../shared/ipc.ts';
@@ -34,7 +35,12 @@ export function TodayTab({
   }, [running]);
 
   const endOfDay = new Date(now).setHours(24, 0, 0, 0);
-  const events = s.events.filter((e) => (e.endAt ?? e.startAt) >= now && e.startAt < endOfDay);
+  // 종일 일정은 오늘이 그 기간 안이면 (0시에 시작해 이미 지났어도) 오늘 일정이다
+  const events = s.events.filter((e) => {
+    if (!e.allDay) return (e.endAt ?? e.startAt) >= now && e.startAt < endOfDay;
+    const { first, last } = allDaySpan(e);
+    return first <= s.today && last >= s.today;
+  });
   const due = s.open.filter((todo) => todo.due !== null && todo.due <= s.today);
   const important = s.open
     .filter((todo) => todo.important && (todo.due === null || todo.due > s.today))
@@ -117,12 +123,35 @@ export function TodayTab({
           <p className="empty-line">{t('panel.today.noEvents')}</p>
         ) : (
           <ul className="events">
-            {events.map((e) => (
-              <li key={e.id} className={e.startAt <= now ? 'now' : ''}>
-                <span className="time">{e.startAt <= now ? t('panel.today.now') : timeOf(e.startAt)}</span>
-                <span className="title">{e.title}</span>
-              </li>
-            ))}
+            {events.map((e) => {
+              if (e.allDay) {
+                // "종일 제주도 여행 ~10/12": 여러 날이면 언제까지인지 붙인다
+                const { last } = allDaySpan(e);
+                return (
+                  <li key={e.id} className="all-day">
+                    <span className="time">{t('panel.event.allDay')}</span>
+                    <span className="title">
+                      {e.title}
+                      {last > s.today && (
+                        <small>
+                          {' '}
+                          {t('panel.event.until', {
+                            m: Number(last.slice(5, 7)),
+                            d: Number(last.slice(8, 10)),
+                          })}
+                        </small>
+                      )}
+                    </span>
+                  </li>
+                );
+              }
+              return (
+                <li key={e.id} className={e.startAt <= now ? 'now' : ''}>
+                  <span className="time">{e.startAt <= now ? t('panel.today.now') : timeOf(e.startAt)}</span>
+                  <span className="title">{e.title}</span>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

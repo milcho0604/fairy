@@ -44,6 +44,31 @@ export interface Part {
 export const MOUTHS = ['smile', 'cat', 'beak'] as const;
 export type MouthStyle = (typeof MOUTHS)[number];
 
+/**
+ * 쉬는 눈 모양 (요청사항으로 표정 고르기). round 동그란 눈(없을 때와 같다), happy 웃는 눈(^^),
+ * sleepy 반쯤 감은 졸린 눈, sparkle 반짝이가 큰 눈. 신남, 잠 같은 상태 표정은 그대로 바뀐다
+ */
+export const EYES = ['round', 'happy', 'sleepy', 'sparkle'] as const;
+export type EyeLook = (typeof EYES)[number];
+
+/**
+ * 몸짓 세기 (요청사항으로 얌전하게, 통통 튀게). 1 이 기본 동작 그대로, 0 이면 그 움직임을 거의 안 한다.
+ * bounce 신나서 뛰는 높이와 걸음 들썩임, sway 팔과 몸 흔들기, tailWag 꼬리, earWiggle 귀
+ */
+export interface Motion {
+  bounce?: number;
+  sway?: number;
+  tailWag?: number;
+  earWiggle?: number;
+}
+/** 몸짓 칸마다 범위. bounce 는 더 높이 뛰면 펫 화면(160) 위로 잘려서 1.5 까지 */
+export const MOTION_RANGE: Record<keyof Motion, readonly [number, number]> = {
+  bounce: [0, 1.5],
+  sway: [0, 2],
+  tailWag: [0, 2],
+  earWiggle: [0, 2],
+};
+
 /** 얼굴. 눈과 입은 앞에서 쏜 선이 얼굴 슬롯 겉면에 닿는 자리에 붙는다(그래서 z 는 안 적는다) */
 export interface Face {
   slot: 'head' | 'body';
@@ -58,12 +83,16 @@ export interface Face {
   mouthColor?: string;
   blush?: string;
   whiskers?: string;
+  /** 쉬는 눈 모양. 없으면 round */
+  eyes?: EyeLook;
 }
 
 export interface Blueprint {
   v: 1;
   parts: Part[];
   face: Face;
+  /** 몸짓 세기. 없으면 기본 동작 그대로 */
+  motion?: Motion;
 }
 
 export const MAX_PARTS = 40;
@@ -125,7 +154,26 @@ export function parseBlueprint(raw: unknown): Blueprint | undefined {
     const c = color(f[k]);
     if (c) face[k] = c;
   }
-  return { v: 1, parts, face };
+  const eyes = oneOf(EYES, f.eyes);
+  if (eyes && eyes !== 'round') face.eyes = eyes;
+  const bp: Blueprint = { v: 1, parts, face };
+  const motion = motionOf(r.motion);
+  if (motion) bp.motion = motion;
+  return bp;
+}
+
+/** 몸짓 칸은 숫자만, 범위 안으로 자른다. 쓸 칸이 없으면 undefined (기본 동작) */
+function motionOf(raw: unknown): Motion | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const r = raw as Record<string, unknown>;
+  const out: Motion = {};
+  for (const k of Object.keys(MOTION_RANGE) as (keyof Motion)[]) {
+    const v = r[k];
+    if (typeof v !== 'number' || !Number.isFinite(v)) continue;
+    const [lo, hi] = MOTION_RANGE[k];
+    out[k] = Math.round(clamp(v, lo, hi) * 100) / 100;
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 /** 거울 부품을 펼친다: x 와 y, z 축 회전을 뒤집고 L 슬롯은 R 로 (R 은 L 로) */

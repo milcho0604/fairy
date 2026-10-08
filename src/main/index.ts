@@ -1,7 +1,8 @@
-import { cpus } from 'node:os';
+import { cpus, homedir } from 'node:os';
 import { join } from 'node:path';
 import { app, globalShortcut, powerMonitor, screen } from 'electron';
 import { ACHIEVEMENTS } from '../shared/achieve.ts';
+import { pickLocal } from '../shared/ai/catalog.ts';
 import { persona, todoContext } from '../shared/ai/persona.ts';
 import { timeLabel } from '../shared/event-store.ts';
 import { HIDE_SEEK, pickHideSpot } from '../shared/hide-seek.ts';
@@ -23,14 +24,17 @@ import { createDiary } from './diary.ts';
 import { confineTestDisplay } from './focus.ts';
 import { createFriends } from './friends.ts';
 import { initLang } from './lang.ts';
+import { createLogFile } from './log-file.ts';
 import { createLookTogether } from './look-together.ts';
 import { createMaker, foodImageDataUrl, petImages, registerModelScheme, removeFoodImage } from './maker.ts';
 import { createOnboarding } from './onboarding.ts';
+import { openLink } from './open-link.ts';
 import { createPanel } from './panel.ts';
+import { createPetFace, trayImageOf } from './pet-face.ts';
 import { createPetLife } from './pet-life.ts';
 import { createPetWindow } from './pet-window.ts';
 import { createPlanner, minuteOfDay, startOfDay } from './planner.ts';
-import { createHouse, playBall } from './play.ts';
+import { createHouse, playBall, visitHouse } from './play.ts';
 import { watchPresentation } from './presence-watch.ts';
 import { settings } from './settings.ts';
 import { createSettingsWindow } from './settings-window.ts';
@@ -43,8 +47,12 @@ import { watchUpdates } from './update.ts';
 // JJ_USER_DATA 는 시험용: 설치판을 실제 데이터와 잠금을 건드리지 않고 따로 띄울 때 쓴다.
 app.setPath('userData', process.env.JJ_USER_DATA || join(app.getPath('appData'), 'jjakkung'));
 
+// 진단 기록: 설치판도 userData/logs/main.log 에 남긴다(1MB 넘으면 main.old.log 로 돌려 두 개만). 개발 실행은 콘솔에도.
+// 질문, 답, 할 일과 일정 제목은 넘기지 않고, 경로 속 사용자 이름은 log-file.ts 가 가린다
+const writeLog = createLogFile(join(app.getPath('userData'), 'logs'), homedir());
 const log = (tag: string, ...rest: unknown[]) => {
   if (!app.isPackaged) console.log(`[${tag}]`, ...rest);
+  writeLog(tag, rest);
 };
 
 // 메인에서 잡지 못한 오류는 기록만 남긴다. 처리기가 없으면 Electron 이 "Uncaught Exception" 창을 띄워
@@ -211,6 +219,11 @@ app.whenReady().then(() => {
     openSettings: () => settingsWindow.open(),
     sendFeedback: () => settingsWindow.open('stats'),
     quickAdd: () => panel.openQuick(),
+    openTodos: () => panel.openTab('todo'),
+    reloadPet: () => {
+      pet.reload();
+      friends.reloadAll();
+    },
   });
   // ---- 할 일과 코인 (2단계) ----
   const { store, stats, notes, events, life, shop, achievements, vacuumInto, dataVersion, trouble } =
@@ -245,7 +258,13 @@ app.whenReady().then(() => {
   });
 
   // ---- 놀이와 집 (v1) ----
-  const house = createHouse();
+  // 집을 끌어 옮기면 (v2) 한가한 펫이 새 자리에 가 본다
+  const house = createHouse({
+    onMoved: () => {
+      if (!playing) void visitHouse(pet, house);
+    },
+    log,
+  });
   let playing = false;
   /** 공놀이(공이나 털실이 있어야), 산책. 노는 중이면 무시 */
   async function play(kind: PlayKind, walkMin = 5): Promise<boolean> {
@@ -388,6 +407,7 @@ app.whenReady().then(() => {
     petHidden: () => pet.isHidden(),
     petName,
     openToday: () => panel.openTab('today'),
+    openUrl: (url) => openLink(url, log),
     onReward: () => pet.react(),
     onChange: () => {
       panel.refresh();
@@ -490,6 +510,7 @@ app.whenReady().then(() => {
       flower: unlocked(petLife.state.affection).has('flower'),
       sounds: settings.get().sounds,
       boost: boostOn(),
+      face: true,
     };
     const key = JSON.stringify(status);
     if (key === lastStatus || pet.win.isDestroyed()) return;
@@ -500,6 +521,16 @@ app.whenReady().then(() => {
     lastStatus = '';
     sendStatus();
   });
+  // 이름 옆 얼굴: 내 펫 화면이 지금 모습으로 그려 보낸 것을 창들에 나눠 준다 (shared/face.ts)
+  // 윈도우 알림 영역 아이콘도 지금 펫 얼굴로 (원래는 콩이 그림 tray.png). 맥 메뉴 막대는 흑백 템플릿이라 그대로
+  const petFace = createPetFace(
+    () => (pet.win.isDestroyed() ? undefined : pet.win.webContents),
+    (url) => {
+      if (process.platform === 'darwin') return;
+      const icon = trayImageOf(url);
+      if (icon) tray.setImage(icon);
+    },
+  );
   setInterval(sendStatus, 5 * 60 * 1000);
   // 부스트 모드가 켜지고 꺼지면(설정, 전원 꽂고 빼기) 펫과 친구에게 다시 알린다
   onBoostChange(() => {
@@ -578,8 +609,8 @@ app.whenReady().then(() => {
       exportData: (w) => backup.exportTo(w),
       importData: (w) => backup.importFrom(w),
       exportPet: (w) => exportPet(w),
-      importPet: (w) => importPet(w),
-      importFriend: (w) => importPet(w, true),
+      importPet: (w) => importPet(w, false, log),
+      importFriend: (w) => importPet(w, true, log),
       syncCalendar: () => calendar.sync(),
       calendarLast: () => calendar.last,
       catalog: catalog.get,
@@ -639,7 +670,20 @@ app.whenReady().then(() => {
   // 짝꿍을 한 번 더 실행하면(앱 아이콘을 다시 누르는 등) 숨은 펫을 다시 부른다. 메뉴 막대 아이콘이 가려져도 돌아올 길.
   // ---- 새 버전 알림, 첫 실행 안내 (v1) ----
   const updates = watchUpdates({ say: (o) => pet.say(o), log });
-  const onboarding = createOnboarding({ openMaker: () => maker.open(), log });
+  const onboarding = createOnboarding({
+    openMaker: () => maker.open(),
+    ai: async () => ({
+      hasCli: await chat.hasCliAi(),
+      freeModelBytes: pickLocal(catalog.get(), settings.get().aiModels.local).bytes,
+    }),
+    // 첫 할 일 유도: 안내를 마친 뒤 처음 펫을 누르면 오늘 탭 대신 할 일 탭(입력칸에 커서)으로 연다. 할 일이 하나도 없을 때만, 한 번만.
+    // 오늘 탭에 빠른 입력칸을 더하는 것보다 덜 끼어든다: 새 칸 없이 한 번 탭만 바꾸고, 다음부터는 원래대로 마지막 탭이다
+    onFirstDone: () => {
+      const { open, doneToday } = store.list(Date.now());
+      if (open.length === 0 && doneToday.length === 0) panel.openNextAt('todo');
+    },
+    log,
+  });
   if (!settings.get().onboarded)
     pet.win.webContents.once('did-finish-load', () => setTimeout(() => onboarding.open(), 1500));
 
@@ -655,7 +699,7 @@ app.whenReady().then(() => {
   setInterval(() => {
     const idle = powerMonitor.getSystemIdleTime();
     if (idle < 60) wentHome = false;
-    const door = house.door();
+    const door = house.door(pet.bounds().width);
     if (wentHome || !door || idle < 230 || idle > 290 || playing || pet.isHidden()) return;
     wentHome = true;
     void pet.walkTo(door.x - pet.bounds().width / 2, 60);
@@ -700,6 +744,8 @@ app.whenReady().then(() => {
         pet,
         globalShortcut,
         tray,
+        petFace,
+        trayImageOf,
         settings,
         settingsWindow,
         panel,

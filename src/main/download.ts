@@ -4,7 +4,7 @@ import { dirname } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { net } from 'electron';
-import { t } from '../shared/i18n/index.ts';
+import { DownloadError, statusReason } from '../shared/download-error.ts';
 
 /** 받을 파일. 받은 뒤 SHA-256 을 맞춰 보고, 안 맞으면 버린다 */
 export interface VerifiedFile {
@@ -26,7 +26,6 @@ const verified = new Set<string>();
 
 /** 이미 받아서 해시까지 맞춘 파일인지 (이번 실행에서) */
 export const isVerified = (path: string) => verified.has(path);
-export const markVerified = (path: string) => void verified.add(path);
 /** 지운 파일은 다음에 다시 맞춰 본다 */
 export const forgetVerified = (path: string) => void verified.delete(path);
 
@@ -69,7 +68,7 @@ export async function ensureVerified(
 ): Promise<string> {
   // 있으면 해시를 맞춰 본다. 깨졌으면 verifyExisting 이 지우고 아래에서 다시 받는다
   if (await verifyExisting(f.path, f.sha256)) return f.path;
-  if (receiving.has(f.path)) throw new Error(t('main.model.busy'));
+  if (receiving.has(f.path)) throw new DownloadError('busy');
   receiving.add(f.path);
   try {
     return await receive(f, onProgress, signal);
@@ -83,7 +82,7 @@ async function receive(f: VerifiedFile, onProgress: (ratio: number) => void, sig
   const part = `${f.path}.part`;
   // 앱의 다른 곳(일정, 목록, 업데이트)처럼 Electron net 으로 받는다. Node fetch 는 연결 시간 초과가 잦았다
   const res = await net.fetch(f.url, { signal });
-  if (!res.ok || !res.body) throw new Error(t('main.model.downloadFailed', { status: res.status }));
+  if (!res.ok || !res.body) throw new DownloadError(res.ok ? 'server' : statusReason(res.status), res.status);
   const total = Number(res.headers.get('content-length')) || f.bytes;
   let got = 0;
   let last = 0;
@@ -93,7 +92,7 @@ async function receive(f: VerifiedFile, onProgress: (ratio: number) => void, sig
     'data',
     (chunk: Buffer) => {
       got += chunk.length;
-      if (got > limit) counted.destroy(new Error(t('main.model.badHash')));
+      if (got > limit) counted.destroy(new DownloadError('hash'));
       const ratio = got / total;
       if (ratio - last >= 0.01) {
         last = ratio;
@@ -109,7 +108,7 @@ async function receive(f: VerifiedFile, onProgress: (ratio: number) => void, sig
   }
   if ((await sha256Of(part)) !== f.sha256) {
     rmSync(part, { force: true });
-    throw new Error(t('main.model.badHash'));
+    throw new DownloadError('hash');
   }
   renameSync(part, f.path);
   verified.add(f.path);

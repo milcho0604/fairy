@@ -58,7 +58,11 @@ export function AiManager({ providers, status, checking, onRefresh, onAdd, onRem
               <div className="ai-info">
                 <span className="name">
                   {p.label}
-                  {!p.verified && <span className="tag">{t('chat.notVerified')}</span>}
+                  {!p.verified && (
+                    <span className="tag" title={t('chat.notVerifiedTitle')}>
+                      {t('chat.notVerified')}
+                    </span>
+                  )}
                   {p.images && <span className="tag">{t('chat.tagImages')}</span>}
                   {p.usage && <span className="tag">{t('chat.tagUsage')}</span>}
                 </span>

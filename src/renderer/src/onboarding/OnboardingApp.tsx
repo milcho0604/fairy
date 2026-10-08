@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { formatBytes } from '../../../shared/bytes.ts';
 import { t } from '../../../shared/i18n/index.ts';
-import type { OnboardSnapshot } from '../../../shared/ipc.ts';
-import { PET_KINDS, PET_NAME_MAX } from '../../../shared/settings.ts';
+import type { OnboardAi, OnboardSnapshot } from '../../../shared/ipc.ts';
+import { cleanPetName, PET_KINDS, PET_NAME_MAX } from '../../../shared/settings.ts';
+import { acceleratorLabel } from '../../../shared/shortcut.ts';
 import { PetFace } from '../PetFace.tsx';
+import { PetNameInput } from '../PetNameInput.tsx';
 
 const bridge = window.jjakkungOnboard;
 const PAGES = 3;
@@ -12,16 +15,27 @@ export function OnboardingApp() {
   const [snap, setSnap] = useState<OnboardSnapshot>();
   const [page, setPage] = useState(0);
   const [name, setName] = useState('');
+  // 이름 칸을 고쳤는지 (고치지 않았으면 모습을 고를 때 이름이 그 모습의 기본 이름을 따라간다)
+  const typed = useRef(false);
+  /** 이름 칸 아래 한 줄 (비었을 때, 글자 수가 넘쳤을 때) */
+  const [nameNote, setNameNote] = useState('');
+  /** 설치된 AI 확인은 몇 초 걸릴 수 있어 따로 받는다. 오기 전에는 원래 안내를 보인다 */
+  const [ai, setAi] = useState<OnboardAi>();
 
   const refresh = () =>
     bridge.get().then((s) => {
       setSnap(s);
-      setName((n) => n || s.settings.petName);
+      // 펫 만들기에서 돌아오면 사진 펫 이름을 받는다. 고치던 이름은 그대로 둔다
+      if (!typed.current) setName(s.settings.petName);
     });
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: 처음 한 번만 건다
   useEffect(() => {
     refresh();
+    bridge
+      .ai()
+      .then(setAi)
+      .catch(() => {});
     if (navigator.userAgent.includes('Mac')) document.body.classList.add('mac');
     // 시스템 설정에서 권한을 주고 돌아오면 다시 읽는다
     const onFocus = () => refresh();
@@ -32,12 +46,29 @@ export function OnboardingApp() {
   if (!snap) return <div className="onboard" />;
   const s = snap.settings;
   const mac = snap.platform === 'darwin';
-  const mod = mac ? 'Cmd' : 'Ctrl';
-  const alt = mac ? 'Option' : 'Alt';
-  const petName = name.trim() || s.petName;
+  // 단축키는 설정에서 바꿀 수 있어 지금 값을 보인다
+  const keys = (acc: string) =>
+    acceleratorLabel(acc, mac).map((k, i) => (
+      <span key={k}>
+        {i > 0 && ' '}
+        <kbd>{k}</kbd>
+      </span>
+    ));
+  const petName = cleanPetName(name) ?? s.petName;
 
+  // 비우면 저장하지 않고 원래 이름으로 돌린다. 바꾼 이름만 "손댄 이름"으로 저장한다
   const saveName = async () => {
-    const next = await bridge.set({ petName: name });
+    if (!typed.current) return;
+    typed.current = false;
+    const clean = cleanPetName(name);
+    if (!clean) {
+      setName(s.petName);
+      setNameNote(t('onboarding.hello.nameEmpty'));
+      return;
+    }
+    setName(clean);
+    if (clean === s.petName) return;
+    const next = await bridge.set({ petName: clean, petNameEdited: true });
     setName(next.petName);
     setSnap((v) => v && { ...v, settings: next });
   };
@@ -62,15 +93,24 @@ export function OnboardingApp() {
             <p className="lead">{t('onboarding.hello.lead')}</p>
             <label className="field">
               <span>{t('onboarding.hello.name')}</span>
-              <input
+              <PetNameInput
                 value={name}
-                maxLength={PET_NAME_MAX * 2}
-                onChange={(e) => setName(e.target.value)}
+                onValue={(v) => {
+                  typed.current = true;
+                  setName(v);
+                  setNameNote('');
+                }}
+                onLimit={() => setNameNote(t('onboarding.hello.nameMax', { max: PET_NAME_MAX }))}
                 onBlur={saveName}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.nativeEvent.isComposing) (e.target as HTMLInputElement).blur();
                 }}
               />
+              {nameNote && (
+                <small className="name-note" role="status">
+                  {nameNote}
+                </small>
+              )}
             </label>
             <div className="field">
               <span>{t('onboarding.hello.look')}</span>
@@ -84,6 +124,8 @@ export function OnboardingApp() {
                     onClick={async () => {
                       const next = await bridge.set({ petKind: k.id, petImage: null } as never);
                       setSnap((v) => v && { ...v, settings: next });
+                      // 이름을 손대지 않았으면 메인이 고른 모습의 기본 이름(냥이 등)으로 바꿔 둔다
+                      if (!typed.current) setName(next.petName);
                     }}
                   >
                     {k.label}
@@ -107,11 +149,14 @@ export function OnboardingApp() {
                 <strong>
                   {snap.screen === 'granted' ? t('onboarding.look.granted') : t('onboarding.look.needed')}
                 </strong>
-                <small>{t('onboarding.look.howTo')}</small>
+                {/* 권한이 이미 있으면 켜는 방법은 필요 없다 */}
                 {snap.screen !== 'granted' && (
-                  <button type="button" className="ghost" onClick={() => bridge.openScreenSettings()}>
-                    {t('onboarding.look.openSettings')}
-                  </button>
+                  <>
+                    <small>{t('onboarding.look.howTo')}</small>
+                    <button type="button" className="ghost" onClick={() => bridge.openScreenSettings()}>
+                      {t('onboarding.look.openSettings')}
+                    </button>
+                  </>
                 )}
               </div>
             ) : (
@@ -119,7 +164,11 @@ export function OnboardingApp() {
                 <strong>{t('onboarding.look.windows')}</strong>
               </div>
             )}
-            <p className="hint">{t('onboarding.look.ai')}</p>
+            <p className="hint">
+              {ai && !ai.hasCli
+                ? t('onboarding.look.aiFree', { size: formatBytes(ai.freeModelBytes) })
+                : t('onboarding.look.ai')}
+            </p>
           </section>
         )}
 
@@ -135,13 +184,9 @@ export function OnboardingApp() {
               <dd>{t('onboarding.tips.rubDesc')}</dd>
               <dt>{t('onboarding.tips.throw')}</dt>
               <dd>{t('onboarding.tips.throwDesc')}</dd>
-              <dt>
-                <kbd>{mod}</kbd> <kbd>{alt}</kbd> <kbd>Shift</kbd> <kbd>N</kbd>
-              </dt>
+              <dt>{keys(s.shortcuts.quickAdd)}</dt>
               <dd>{t('onboarding.tips.quickDesc')}</dd>
-              <dt>
-                <kbd>{mod}</kbd> <kbd>{alt}</kbd> <kbd>Shift</kbd> <kbd>H</kbd>
-              </dt>
+              <dt>{keys(s.shortcuts.hide)}</dt>
               <dd>{t('onboarding.tips.hideDesc')}</dd>
             </dl>
           </section>

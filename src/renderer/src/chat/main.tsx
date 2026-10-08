@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { initLang } from '../lang.ts';
 import { App } from './App.tsx';
 import '../theme.css';
+import '../rows.css';
 import './chat.css';
 
 initLang('common.title.chat');

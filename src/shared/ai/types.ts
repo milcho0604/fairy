@@ -44,4 +44,6 @@ export interface AiStatus {
   loggedIn?: boolean;
   version?: string;
   path?: string;
+  /** 무료 AI: 고른 모델을 아직 받지 않았다 (받기 전이라 답을 못 한다) */
+  needsModel?: boolean;
 }

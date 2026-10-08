@@ -1,0 +1,46 @@
+/* 색 토큰. 창마다 쓰는 색 값은 여기 한 곳에서만 정한다.
+   theme.css(채팅, 설정, 패널, 만들기, 처음 안내)가 불러오고, 펫 창(pet.css)도 강조색을 여기서 가져간다.
+   밝은 모드와 어두운 모드. */
+
+:root {
+  --bg: #fbf8f4;
+  --panel: #ffffff;
+  --ink: #1f2328;
+  --muted: #6b6f76;
+  --line: #e6dfd6;
+  /* 강조색. 흰 글자를 얹는 단추와 강조 글자(링크) 둘 다 쓴다. 흰 바탕 4.89:1, --bg 4.62:1 (WCAG AA 작은 글자 4.5:1).
+     예전 #c4854a 는 3.09:1 이었다(2026-10-08 회귀 시험). 색상(주황 갈색)은 그대로 두고 밝기만 낮췄다 */
+  --accent: #9f632c;
+  --accent-ink: #ffffff;
+  --user: #ffe7cc;
+  --pet: #ffffff;
+  --code: #f3eee8;
+  --warn: #b26a00;
+  --error: #c0392b;
+  --ok: #2e9d5b;
+  /* 선택 상자의 둥근 V 화살표. 그림 주소 안에서는 변수를 못 써서 색마다 하나씩 둔다(--muted, --accent 와 같은 색) */
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1.6 1.8 6 6.2l4.4-4.4' fill='none' stroke='%236b6f76' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --chevron-hover: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1.6 1.8 6 6.2l4.4-4.4' fill='none' stroke='%239f632c' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --focus-ring: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1d1b19;
+    --panel: #262320;
+    --ink: #ece7e1;
+    --muted: #a39d96;
+    --line: #3a3530;
+    /* 어두운 모드 강조색은 그대로: 글자(--accent-ink) 7.93:1, --panel 위 강조 글자 7.22:1 */
+    --accent: #e0a46c;
+    --accent-ink: #1d1b19;
+    --user: #4a3726;
+    --pet: #2d2a27;
+    --code: #34302c;
+    --warn: #e6a23c;
+    --error: #ff7b6b;
+    --ok: #5cc285;
+    --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1.6 1.8 6 6.2l4.4-4.4' fill='none' stroke='%23a39d96' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    --chevron-hover: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1.6 1.8 6 6.2l4.4-4.4' fill='none' stroke='%23e0a46c' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+}

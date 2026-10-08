@@ -11,6 +11,10 @@ export interface TrayActions {
   /** 베타 기록 칸을 연 설정 창 (P4-01 의견 보내기) */
   sendFeedback(): void;
   quickAdd(): void;
+  /** 패널을 할 일 탭으로 연다 */
+  openTodos(): void;
+  /** 펫(과 친구) 화면을 다시 불러온다. 펫이 안 보이거나 멈췄을 때 우클릭을 못 하니 여기에도 둔다 */
+  reloadPet(): void;
 }
 
 /**
@@ -35,10 +39,12 @@ export function createTray(petName: () => string, actions: TrayActions): Tray {
         click: () => actions.toggleHidden(),
       },
       { label: t('tray.chat', { name: petName() }), click: () => actions.openChat() },
+      { label: t('tray.todos'), click: () => actions.openTodos() },
       { label: t('tray.addTodo'), accelerator: quickAddShortcut(), click: () => actions.quickAdd() },
       { label: t('tray.settings'), click: () => actions.openSettings() },
       { label: t('tray.feedback'), click: () => actions.sendFeedback() },
       { type: 'separator' },
+      { label: t('tray.reload', { name: petName() }), click: () => actions.reloadPet() },
       { label: t('tray.quit'), role: 'quit' },
     ]);
   // 메뉴를 열 때마다 글자(숨기기/보이기)를 새로 만든다.

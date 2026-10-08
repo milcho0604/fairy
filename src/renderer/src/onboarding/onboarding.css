@@ -93,8 +93,13 @@ h1 {
 }
 
 .hero .face {
-  width: 88px;
-  height: 80px;
+  display: block;
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  -webkit-user-drag: none;
+  /* 흰 펫도 밝은 바탕에서 테두리가 보이게 옅은 그림자 */
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.18));
 }
 
 .field {
@@ -178,7 +183,8 @@ small {
 
 .tips {
   display: grid;
-  grid-template-columns: auto 1fr;
+  /* 왼쪽 칸(동작, 단축키)은 절반 남짓까지만. 좁거나 단축키가 길면 줄을 바꿔 설명 칸이 한 단어씩 접히지 않게 */
+  grid-template-columns: fit-content(55%) 1fr;
   gap: 10px 14px;
   align-items: baseline;
   margin: 8px 0 0;
@@ -186,7 +192,7 @@ small {
 
 .tips dt {
   font-weight: 600;
-  white-space: nowrap;
+  line-height: 1.9;
 }
 
 .tips dd {

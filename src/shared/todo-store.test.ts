@@ -103,6 +103,20 @@ test('지우면 목록에서 빠지지만 받은 코인은 그대로', () => {
   assert.equal(store.balance(), COIN.todo);
 });
 
+test('지운 할 일을 되살리면 마감, 중요, 반복까지 그대로 목록에 돌아온다', () => {
+  const { store } = fresh();
+  const a = store.add({ title: '보고서', due: '2026-10-03', important: true, repeat: 'weekly' }, T0);
+  store.add({ title: '다른 일' }, T0);
+  store.remove(a.id, T0);
+  assert.deepEqual(
+    store.list(T0).open.map((t) => t.title),
+    ['다른 일'],
+  );
+  store.restore(a.id);
+  assert.deepEqual(store.get(a.id), a);
+  assert.equal(store.list(T0).open.length, 2);
+});
+
 test('제목: 빈 제목은 안 받고, 앞뒤 공백을 지운다', () => {
   const { store } = fresh();
   assert.throws(() => store.add({ title: '   ' }, T0));
@@ -138,6 +152,9 @@ test('다음 회차 마감: 매일은 내일, 평일은 주말을 건너뛰고, 
   assert.equal(nextDue('2026-09-18', 'weekly', '2026-10-02'), '2026-10-09');
   assert.equal(nextDue('2026-10-05', 'daily', '2026-10-02'), '2026-10-06');
   assert.equal(nextDue(null, 'daily', '2026-10-02'), '2026-10-03');
+  // "매주 월요일 회의" 를 금요일에 넣으면 첫 마감은 10-05(월). 미리 끝내도 다음은 그 다음 월요일 (요일이 밀리지 않는다)
+  assert.equal(nextDue('2026-10-05', 'weekly', '2026-10-02'), '2026-10-12');
+  assert.equal(nextDue('2026-10-05', 'weekly', '2026-10-05'), '2026-10-12');
 });
 
 test('반복 할 일을 끝내면 다음 회차가 생기고, 되돌리면 그 회차가 사라진다', () => {

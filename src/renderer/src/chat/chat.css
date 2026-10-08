@@ -52,10 +52,46 @@ header button {
   white-space: nowrap;
 }
 
-/* 좁은 창에서는 펫 이름을 빼고 얼굴만 둔다 */
+/* 좁은 창(320 까지)에서도 펫 이름은 남긴다(말줄임). 예전엔 360 이하에서 이름을 뺐는데 누구와 이야기하는지가 머리줄의 첫 정보라
+   대신 AI 고르기 단추의 글자를 줄인다(점과 화살표는 남아 고르기는 그대로, 전체 이름은 펼친 목록과 title 에).
+   넓은 창에서도 이름과 AI 이름이 둘 다 길면 AI 이름이 먼저 줄어든다(아래 header .picker 의 flex-shrink) */
 @media (max-width: 360px) {
-  .title strong {
-    display: none;
+  header {
+    gap: 4px;
+  }
+
+  .picker-button {
+    gap: 5px;
+    padding: 5px 5px 5px 8px;
+  }
+
+  .picker-label {
+    max-width: 5.5em;
+  }
+
+  header > .ghost {
+    padding-inline: 4px;
+  }
+
+  /* 단추 글자를 한 단계 작게: 영어 "New chat" 과 "Free AI" 가 있어도 펫 이름이 네 글자쯤 남는다 (2026-10-08 실측 320 창에서 "B...").
+     고르기 최소 폭도 13px 기준으로 다시 잡는다 (아래 header .picker 보다 앞이라 body 를 붙여 이긴다) */
+  header > .ghost,
+  body header .picker {
+    font-size: 13px;
+  }
+
+  body header .picker {
+    min-width: 7.35em;
+  }
+
+  /* 맥 창 버튼 자리는 68px 에서 끝난다. 여유를 조금 줄여 이름에 준다 (아래 .mac header 보다 앞이라 body 를 붙여 이긴다) */
+  body.mac header {
+    padding-left: 72px;
+  }
+
+  /* 얼굴과 이름 사이를 좁혀 이름 글자를 한 자라도 더 남긴다 (아래 .title 보다 앞에 있어 header 를 붙여 이긴다) */
+  header .title {
+    gap: 2px;
   }
 }
 
@@ -85,13 +121,21 @@ header .picker {
   text-overflow: ellipsis;
 }
 
+/* 펫 얼굴 (PetFace.tsx, 지금 모습 그림) */
 .face {
   flex: none;
-  width: 26px;
-  height: 24px;
+  display: block;
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  -webkit-user-drag: none;
+  /* 흰 펫도 밝은 바탕에서 테두리가 보이게 아주 옅은 그림자 */
+  filter: drop-shadow(0 0.5px 1px rgba(0, 0, 0, 0.28));
 }
 
 .dot {
+  /* 좁아져 AI 고르기 단추가 줄어도 점은 동그랗게 */
+  flex: none;
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -185,19 +229,13 @@ header .picker {
   color: var(--muted);
 }
 
+/* 줄 맞춤은 rows.css 의 .action-row */
 .banner {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   padding: 8px 12px;
   font-size: 13px;
   color: var(--warn);
   background: color-mix(in srgb, var(--warn) 10%, transparent);
   border-bottom: 1px solid var(--line);
-}
-
-.banner span {
-  flex: 1;
 }
 
 .messages {
@@ -290,6 +328,10 @@ header .picker {
   opacity: 1;
 }
 
+.answer-actions.shown.failed {
+  color: var(--warn);
+}
+
 .answer-actions button {
   padding: 0 6px;
   border: 0;
@@ -309,11 +351,8 @@ header .picker {
   opacity: 1;
 }
 
+/* 줄 맞춤은 rows.css 의 .action-row */
 .retry {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
   margin-top: 6px;
 }
 
@@ -460,8 +499,34 @@ header .picker {
   color: var(--muted);
 }
 
+/* 무료 AI 모델 받기 안내: 오류가 아니라 다음 할 일. 보통 말풍선에 강조색 테두리만 */
+.bubble.guide {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+
+/* 답 속 주소. 누르면 기본 브라우저로 (Markdown.tsx) */
+.bubble a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.bubble a:hover {
+  text-decoration-thickness: 2px;
+}
+
 .thinking {
   color: var(--muted);
+}
+
+/* 오래 기다릴 때 붙는 안내 (한 번에 보여 주는 AI). "생각 중" 뒤에 붙지 않게 작은 둘째 줄로 */
+.thinking .hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .dots {
@@ -557,6 +622,20 @@ footer {
   color: var(--warn);
 }
 
+/* 새 대화 뒤 몇 초 보이는 되돌리기 (줄 맞춤은 rows.css 의 .action-row) */
+.undo-toast {
+  margin: 0 0 8px;
+  padding: 6px 6px 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  font-size: 12.5px;
+}
+
+.undo-toast .ghost {
+  padding-block: 2px;
+}
+
 .attachments {
   display: flex;
   gap: 6px;
@@ -647,14 +726,21 @@ footer {
   clip: rect(0 0 0 0);
 }
 
-/* AI 고르기 */
+/* AI 고르기. 머리줄이 모자라면 이것이 줄어든다(글자는 .picker-label 에서 말줄임) */
 header .picker {
   position: relative;
+  /* 펫 이름보다 여덟 배 먼저 줄어든다. 그래도 기본 AI 이름(무료 AI, Claude, Codex, Gemini, Free AI)은 다 보이는 폭까지만.
+     예전 4.5em 은 320 창에서 글자가 한 자도 안 남아 점 하나로 보였다(2026-10-08 실측: 이름 칸 10px).
+     7.1em = 단추의 여백, 테두리, 점, 화살표 53px + 가장 긴 기본 이름 46px (14px 글자 실측). 좁은 창은 위 규칙에서 13px 로 다시 잡는다.
+     사용자가 추가한 긴 이름은 말줄임 */
+  flex-shrink: 8;
+  min-width: 7.1em;
 }
 
 .picker-button {
   display: inline-flex;
   align-items: center;
+  max-width: 100%;
   gap: 6px;
   padding: 5px 10px 5px 12px;
   border: 1px solid var(--line);
@@ -668,7 +754,16 @@ header .picker {
   cursor: default;
 }
 
+/* 고른 AI 이름. 좁으면 말줄임 (위 좁은 창 규칙) */
+.picker-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .caret {
+  flex: none;
   width: 10px;
   height: 6px;
   color: var(--muted);

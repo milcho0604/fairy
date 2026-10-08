@@ -50,6 +50,41 @@ test('내 상황: 일정과 할 일, 중요와 마감 순, 아무것도 없으�
   assert.equal(todoContext({ today: '2026-10-06', todos: [], events: [] }), '');
 });
 
+test('내 상황: 영어 화면이면 틀 글도 영어 (한국어 틀이 섞이지 않게)', () => {
+  setLang('en');
+  try {
+    const text = todoContext({
+      today: '2026-10-06',
+      todos: [
+        { title: 'Report', due: '2026-10-06', important: true },
+        { title: 'Taxes', due: '2026-10-01', important: false },
+        { title: 'Slides', due: '2026-10-09', important: false },
+        ...Array.from({ length: CONTEXT_TODO_MAX }, (_, i) => ({
+          title: `t${i}`,
+          due: null,
+          important: false,
+        })),
+      ],
+      events: [{ time: '3:00 PM', title: 'Meeting' }],
+    });
+    const lines = text.split('\n');
+    assert.deepEqual(lines.slice(0, 7), [
+      '[My day so far, 2026-10-06]',
+      'Events left today:',
+      '- 3:00 PM Meeting',
+      'Open to-dos:',
+      '- [important] Report (due today)',
+      '- Taxes (overdue)',
+      '- Slides (due 2026-10-09)',
+    ]);
+    assert.ok(text.includes('(3 more)'));
+    assert.ok(text.endsWith('[Question]\n'));
+    assert.doesNotMatch(text, /[가-힣]/);
+  } finally {
+    setLang('ko');
+  }
+});
+
 test('내 상황: 할 일이 많으면 상한까지만, 나머지는 개수로', () => {
   const todos = Array.from({ length: CONTEXT_TODO_MAX + 5 }, (_, i) => ({
     title: `일 ${i}`,

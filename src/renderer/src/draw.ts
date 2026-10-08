@@ -58,6 +58,8 @@ export interface DrawState {
   trick?: Trick;
   /** 머리에 꽃 (친밀도 600) */
   flower?: boolean;
+  /** 움직임 줄이기 (운영체제 설정 prefers-reduced-motion). 신나서 크게 튀지 않고 살짝만 들썩인다 */
+  calm?: boolean;
 }
 
 export interface Trick {
@@ -69,7 +71,18 @@ export interface Trick {
 export function trickOf(s: DrawState): Trick | undefined {
   if (!s.trick || ['sleeping', 'dozing', 'busy', 'grabbed', 'hidden'].includes(s.mood)) return undefined;
   if (s.trick.type === 'wave' && s.mood === 'sulky') return undefined;
+  // 움직임 줄이기면 빙글 춤(몸 전체를 크게 흔든다)은 안 한다. 손 흔들기는 작아서 둔다
+  if (s.trick.type === 'dance' && s.calm) return undefined;
   return s.trick;
+}
+
+/** 신나서 통통 튀기: 600ms 마다 한 번. 움직임 줄이기면 18px 대신 3px, 착지 찌그러짐 없이 */
+export function excitedBounce(elapsed: number, calm = false): { lift: number; squash: number } {
+  const phase = (elapsed % 600) / 600;
+  return {
+    lift: Math.sin(phase * Math.PI) * (calm ? 3 : 18),
+    squash: !calm && (phase < 0.12 || phase > 0.88) ? 0.08 : 0,
+  };
 }
 
 /** 빙글 춤의 몸 기울기 (좌우로 두 번 흔든다) */
@@ -123,9 +136,9 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): void {
   let sx = 1;
   let sy = 1;
   if (s.mood === 'excited') {
-    const phase = (s.elapsed % 600) / 600;
-    lift = Math.sin(phase * Math.PI) * 18;
-    const squash = phase < 0.12 || phase > 0.88 ? 0.08 : 0;
+    const bounce = excitedBounce(s.elapsed, s.calm);
+    lift = bounce.lift;
+    const squash = bounce.squash;
     sx = 1 + squash;
     sy = 1 - squash;
   } else if (s.mood === 'grabbed') {

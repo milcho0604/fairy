@@ -1,9 +1,19 @@
 import assert from 'node:assert/strict';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
-import { plainEntry, readFileIn, safeFileIn } from './safe-file.ts';
+import { freePath, plainEntry, readFileIn, safeFileIn, writeFileAtomic } from './safe-file.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'jj-safe-'));
 after(() => rmSync(root, { recursive: true, force: true }));
@@ -42,4 +52,36 @@ test('폴더 복사 거르개: 링크는 빼고 일반 파일과 폴더만 복�
   assert.equal(existsSync(join(dest, 'pet-1.png')), true);
   assert.equal(existsSync(join(dest, 'pet-link.png')), false);
   assert.equal(existsSync(join(dest, 'sub')), false);
+});
+
+test('같은 이름 폴더가 있으면 -2, -3 을 붙인 새 경로 (같은 분에 두 번 가져오기)', () => {
+  const base = join(root, 'before-import-20261007-1637');
+  assert.equal(freePath(base), base);
+  mkdirSync(base);
+  assert.equal(freePath(base), `${base}-2`);
+  mkdirSync(`${base}-2`);
+  assert.equal(freePath(base), `${base}-3`);
+});
+
+test('원자적 쓰기: 다 쓰면 바뀌고, 실패하면 원래 파일과 임시 파일 없음이 남는다', () => {
+  const dir = join(root, 'atomic');
+  mkdirSync(dir);
+  const file = join(dir, 'model-1.json');
+  writeFileAtomic(file, '{"v":1}');
+  assert.equal(readFileSync(file, 'utf8'), '{"v":1}');
+  writeFileAtomic(file, Buffer.from('{"v":2}'));
+  assert.equal(readFileSync(file, 'utf8'), '{"v":2}');
+  // 바꿀 자리가 폴더라 rename 이 실패한다: 오류를 던지고 임시 파일은 치운다
+  const blocked = join(dir, 'blocked.png');
+  mkdirSync(blocked);
+  assert.throws(() => writeFileAtomic(blocked, 'PNG'));
+  assert.deepEqual(readdirSync(dir).sort(), ['blocked.png', 'model-1.json']);
+});
+
+test('크기 상한을 주면 그보다 큰 파일은 읽지 않는다 (설계도를 화면에 보낼 때)', () => {
+  writeFileSync(join(pets, 'model-big.json'), 'x'.repeat(2048));
+  assert.equal(readFileIn(pets, 'model-big.json', 1024), undefined);
+  assert.equal(readFileIn(pets, 'model-big.json', 4096)?.length, 2048);
+  assert.equal(readFileIn(pets, 'model-big.json')?.length, 2048);
+  assert.equal(readFileIn(pets, 'pet-link.png', 4096), undefined);
 });

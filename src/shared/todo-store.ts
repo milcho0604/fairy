@@ -1,4 +1,5 @@
 // 할 일, 코인 장부, 배부름 (P2-03, P2-05, P2-06). 기획서 "게임 규칙".
+import { plusDays, weekdayOf as weekday } from './day.ts';
 import type { Db } from './db-schema.ts';
 import { FOCUS, focusCoins } from './focus.ts';
 import { t } from './i18n/index.ts';
@@ -37,13 +38,6 @@ export const REPEAT_LABEL: Readonly<Record<Repeat, string>> = {
 export function isRepeat(v: unknown): v is Repeat {
   return v === 'daily' || v === 'weekdays' || v === 'weekly';
 }
-
-function plusDays(day: string, n: number): string {
-  const [y, m, d] = day.split('-').map(Number);
-  return new Date(Date.UTC(y ?? 2000, (m ?? 1) - 1, (d ?? 1) + n)).toISOString().slice(0, 10);
-}
-
-const weekday = (day: string) => new Date(`${day}T00:00:00Z`).getUTCDay(); // 0 일 ~ 6 토
 
 /**
  * 반복 할 일을 끝냈을 때 다음 회차 마감일. 오늘보다 뒤인 가장 가까운 날로 간다.
@@ -185,6 +179,11 @@ export class TodoStore {
   /** 지운 할 일은 목록에서만 빠진다. 받은 코인은 그대로 둔다 (지우기는 되돌리기가 아니다). */
   remove(id: number, now: number): void {
     this.#db.prepare('update todo set deleted_at = ? where id = ?').run(now, id);
+  }
+
+  /** 지운 것 되살리기 (지우고 몇 초 안에 되돌리기) */
+  restore(id: number): void {
+    this.#db.prepare('update todo set deleted_at = null where id = ?').run(id);
   }
 
   /** 끝내기. 받은 코인 수를 돌려준다 (이미 끝났으면 0). */

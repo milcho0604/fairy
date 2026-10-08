@@ -72,3 +72,22 @@ test('메모와 일정', () => {
   assert.match(text(tool('add_event', { title: '면접', start, duration_min: 60 })), /일정을 넣었어/);
   assert.match(text(tool('list_events', { days: 7 })), new RegExp(`${start.replace('T', ' ')} 면접`));
 });
+
+test('종일 일정: start 가 날짜만이면 종일, end_date 로 여러 날, 목록에 종일로', () => {
+  const d = new Date(Date.now() + 3 * 86_400_000);
+  const p = (n: number) => String(n).padStart(2, '0');
+  const day = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  const e = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 2);
+  const last = `${e.getFullYear()}-${p(e.getMonth() + 1)}-${p(e.getDate())}`;
+  assert.match(text(tool('add_event', { title: '휴가', start: day })), /종일 일정을 넣었어/);
+  assert.match(
+    text(tool('add_event', { title: '제주도', start: day, end_date: last })),
+    new RegExp(`${day}~${last} 제주도`),
+  );
+  const list = text(tool('list_events', { days: 7 }));
+  assert.match(list, new RegExp(`${day} 종일 휴가`));
+  assert.match(list, new RegExp(`${day}~${last} 종일 제주도`));
+  assert.equal(tool('add_event', { title: 'x', start: '2026-02-30' }).result?.isError, true);
+  assert.equal(tool('add_event', { title: 'x', start: day, end_date: '2000-01-01' }).result?.isError, true);
+  assert.equal(tool('add_event', { title: 'x', start: day, end_date: '내일' }).result?.isError, true);
+});

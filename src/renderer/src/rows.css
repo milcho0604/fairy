@@ -1,0 +1,21 @@
+/* 한 줄 행동 (설정, 채팅이 같이 쓴다): 안내글 + 단추, 단추 여러 개.
+   - 세로 가운데로 맞춘다. 글이 두 줄이 되어도 단추가 위에 붙거나 늘어나지 않는다
+   - 안내글(.grow)은 남는 폭을 다 쓰고, 그 뒤 단추는 줄 오른쪽 끝에 선다
+   - 좁아서 줄이 바뀌면 단추는 다음 줄 오른쪽으로 내려간다
+   - 안내글 없이 단추만 있으면 왼쪽부터 차례로 놓는다 */
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  min-width: 0;
+}
+
+.action-row > .grow {
+  flex: 1 1 12em;
+  min-width: 0;
+}
+
+.action-row > .grow + * {
+  margin-left: auto;
+}

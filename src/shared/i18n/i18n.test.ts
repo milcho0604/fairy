@@ -80,3 +80,12 @@ test('자동이면 운영체제 첫 말이 한국어일 때만 한국어', () =>
   assert.equal(resolveLang('ko', ['en-US']), 'ko');
   assert.equal(resolveLang('en', ['ko-KR']), 'en');
 });
+
+test('새 버전 글은 버전 번호 끝 소리에 맞는 조사를 붙인다', () => {
+  setLang('ko');
+  assert.equal(t('main.update.bubble', { version: '1.0.2' }), '새 버전 1.0.2가 나왔어.');
+  assert.equal(t('main.update.bubble', { version: '1.0.0' }), '새 버전 1.0.0이 나왔어.');
+  assert.match(t('main.update.ready', { version: '1.0.2' }), /1\.0\.2를 받아/);
+  assert.match(t('main.update.forced', { version: '1.0.1', min: '1.0.0' }), /1\.0\.1로 업데이트/);
+  assert.match(t('main.update.forced', { version: '1.0.3', min: '1.0.0' }), /1\.0\.3으로 업데이트/);
+});

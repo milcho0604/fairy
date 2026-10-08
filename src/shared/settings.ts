@@ -4,11 +4,16 @@ import type { ChatterLevel } from './chatter.ts';
 import { type FocusLength, isFocusLength } from './focus.ts';
 import { type LangPref, t } from './i18n/index.ts';
 import { cleanIcsUrl } from './ics.ts';
-import { isAccelerator, SHORTCUT_DEFAULTS, type ShortcutId, shortcutClash } from './shortcut.ts';
+import { isAccelerator, reservedUse, SHORTCUT_DEFAULTS, type ShortcutId, shortcutClash } from './shortcut.ts';
 
 export interface Settings {
   /** 펫 이름. 메뉴, 채팅, 말풍선, AI 성격 지시에 쓰인다 */
   petName: string;
+  /**
+   * 사용자가 이름 칸에서 이름을 직접 바꿨는지. 안 바꿨으면 기본 펫 모습을 고를 때 이름이 그 모습의 기본 이름(콩이, 냥이 등)을 따라간다.
+   * 이 칸이 생기기 전부터 쓰던 사람은 바꾼 것으로 본다 (이름이 갑자기 바뀌지 않게, main/settings.ts load)
+   */
+  petNameEdited: boolean;
   chatter: ChatterLevel;
   /** 가만히 있다가 가끔 걷고 앉기 (P1-06) */
   wander: boolean;
@@ -46,6 +51,11 @@ export interface Settings {
   skipVersion?: string;
   /** 하루 회고 시각 (현지, 분). 그 뒤 처음 자리에 있을 때 (v2) */
   reviewMinute: number;
+  /**
+   * 하루 회고 받기. 수다 빈도와 따로 켜고 끈다. 예전엔 수다 "조용히"면 말없이 안 왔다.
+   * 저장 파일에 없으면(예전 판) 그때 동작대로: 조용히면 끔, 아니면 켬
+   */
+  review: boolean;
   /** 전역 단축키 (v2 단축키 바꾸기) */
   shortcuts: Record<ShortcutId, string>;
   /** 가져올 캘린더 주소 (.ics, 구글 캘린더 비공개 주소). 비밀 주소라 이 컴퓨터에만 둔다 (v2) */
@@ -170,6 +180,7 @@ export type SettingsPatch = Partial<Omit<Settings, 'petImage' | 'petPoses' | 'pe
 
 export const DEFAULT_SETTINGS: Settings = {
   petName: '콩이',
+  petNameEdited: false,
   chatter: 'normal',
   wander: true,
   aiIsolation: true,
@@ -185,6 +196,7 @@ export const DEFAULT_SETTINGS: Settings = {
   onboarded: false,
   updateCheck: true,
   reviewMinute: 18 * 60,
+  review: true,
   shortcuts: { ...SHORTCUT_DEFAULTS },
   myMcp: false,
   friends: [],
@@ -200,18 +212,80 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 export const PET_NAME_MAX = 12;
+/** 글자 하나가 지나치게 긴 조합(결합 문자를 수십 개 붙인 것)으로 이름이 커지지 않게 코드 포인트도 센다 */
+const PET_NAME_MAX_CODE_POINTS = PET_NAME_MAX * 8;
 
-/** 펫 이름을 다듬는다. 앞뒤 공백, 줄바꿈, 제어 문자를 빼고 12자까지. 비면 undefined. */
+/** 사람이 보는 글자 단위로 나눈다. 이모지 가족(👨‍👩‍👧), 국기, 피부색, 풀어 쓴 한글(ㅎ+ㅏ+ㄴ)도 한 글자 */
+const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+const graphemes = (text: string): string[] => Array.from(segmenter.segment(text), (g) => g.segment);
+
+/** 이름 글자 수. 화면의 n/12 와 저장할 때 자르는 기준이 같다 */
+export const petNameLength = (text: string): number => graphemes(text.normalize('NFC')).length;
+
+/**
+ * 입력 칸에서 상한을 넘은 글자를 뗀다 (앞뒤 공백은 그대로 둔다. 다듬기는 저장할 때 cleanPetName).
+ * HTML maxLength 는 UTF-16 단위로 세어 이모지는 두세 칸, 한글은 한 칸이라 저장 기준과 달라 쓰지 않는다
+ */
+export function clipPetName(text: string): string {
+  const g = graphemes(text.normalize('NFC'));
+  return g.length <= PET_NAME_MAX ? text : g.slice(0, PET_NAME_MAX).join('');
+}
+
+/** 펫 이름을 다듬는다. 앞뒤 공백, 줄바꿈, 제어 문자를 빼고 12글자까지(사람이 보는 글자). 비면 undefined. */
 export function cleanPetName(raw: unknown): string | undefined {
   if (typeof raw !== 'string') return undefined;
   // 제어 문자(줄바꿈 포함)는 지운다. 정규식 대신 글자 번호로 걸러 린트 예외를 두지 않는다.
-  const printable = [...raw].filter((ch) => {
+  const printable = [...raw.normalize('NFC')].filter((ch) => {
     const code = ch.codePointAt(0) ?? 0;
     return code >= 0x20 && code !== 0x7f;
   });
   const name = printable.join('').replace(/\s+/g, ' ').trim();
   if (!name) return undefined;
-  return [...name].slice(0, PET_NAME_MAX).join('');
+  const cut = graphemes(name).slice(0, PET_NAME_MAX).join('');
+  return [...cut].slice(0, PET_NAME_MAX_CODE_POINTS).join('').trim() || undefined;
+}
+
+/** 기본 펫 모습마다의 기본 이름 (지금 화면 말로) */
+export function defaultPetName(kind: PetKind): string {
+  switch (kind) {
+    case 'cat':
+      return t('common.petName.cat');
+    case 'chick':
+      return t('common.petName.chick');
+    case 'dog':
+      return t('common.petName.dog');
+    case 'bunny':
+      return t('common.petName.bunny');
+    default:
+      return t('common.defaultPetName');
+  }
+}
+
+/**
+ * 이름을 손대지 않았으면 기본 펫 모습을 바꿀 때 이름도 그 모습의 기본 이름으로 (첫 안내, 설정의 모습 카드).
+ * 이름을 같이 바꾸는 변경(보관한 사진 펫 꺼내기, 펫 만들기)과 사진 펫으로 바꾸는 변경은 건드리지 않는다
+ */
+export function followKindName(prev: Settings, next: Settings, patch: unknown): Settings {
+  if (next.petNameEdited || next.petImage) return next;
+  if (typeof patch === 'object' && patch !== null && 'petName' in patch) return next;
+  if (!prev.petImage && prev.petKind === next.petKind) return next;
+  const name = defaultPetName(next.petKind);
+  return name === next.petName ? next : { ...next, petName: name };
+}
+
+/**
+ * 사진 펫을 이름 없이 만들 때 이름: "찰칵이", 이미 있으면 "찰칵이 2", "찰칵이 3".
+ * 지금 펫 이름을 그대로 쓰면 보관함에 같은 이름이 쌓였다
+ */
+export function photoPetName(taken: readonly string[]): string {
+  const base = t('common.petName.photo');
+  const used = new Set(taken.map((n) => n.normalize('NFC')));
+  if (!used.has(base)) return base;
+  for (let i = 2; i < 100; i++) {
+    const name = cleanPetName(`${base} ${i}`) ?? base;
+    if (!used.has(name)) return name;
+  }
+  return base;
 }
 
 /** 저장 파일이나 화면에서 온 값을 설정으로 만든다. 모르는 값, 틀린 값은 기본값으로. */
@@ -220,6 +294,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
   const bool = (v: unknown, d: boolean) => (typeof v === 'boolean' ? v : d);
   return {
     petName: cleanPetName(r.petName) ?? base.petName,
+    petNameEdited: bool(r.petNameEdited, base.petNameEdited),
     chatter:
       r.chatter === 'quiet' || r.chatter === 'normal' || r.chatter === 'chatty' ? r.chatter : base.chatter,
     wander: bool(r.wander, base.wander),
@@ -250,6 +325,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
       r.reviewMinute < 1440
         ? r.reviewMinute
         : base.reviewMinute,
+    review: typeof r.review === 'boolean' ? r.review : r.chatter === 'quiet' ? false : base.review,
     shortcuts: shortcutsOf(r.shortcuts, base.shortcuts),
     ...icsOf(r.icsUrl, base.icsUrl),
     myMcp: bool(r.myMcp, base.myMcp),
@@ -365,10 +441,20 @@ function friendsOf(list: unknown[]): Friend[] {
   return out;
 }
 
+/** 지금 운영체제가 맥인지. 화면(샌드박스)에는 process 가 없어 모른다(undefined) */
+const HOST_MAC: boolean | undefined =
+  typeof process === 'object' && typeof process?.platform === 'string'
+    ? process.platform === 'darwin'
+    : undefined;
+
 function shortcutsOf(v: unknown, current: Record<ShortcutId, string>): Record<ShortcutId, string> {
   const r = (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>;
   const out = { ...current };
-  for (const id of Object.keys(SHORTCUT_DEFAULTS) as ShortcutId[]) if (isAccelerator(r[id])) out[id] = r[id];
+  for (const id of Object.keys(SHORTCUT_DEFAULTS) as ShortcutId[]) {
+    const v = r[id];
+    // 손으로 고친 설정 파일의 복사, 종료 같은 조합은 등록하지 않는다. 운영체제는 이 컴퓨터 것 (파일은 두 운영체제가 같이 쓴다)
+    if (isAccelerator(v) && !(HOST_MAC !== undefined && reservedUse(v, HOST_MAC))) out[id] = v;
+  }
   // 두 단축키가 같으면 바꾼 쪽을 버린다 (화면은 shortcutClash 로 먼저 알리고 보내지 않는다)
   if (shortcutClash(out)) return { ...current };
   return out;
@@ -381,9 +467,6 @@ function icsOf(v: unknown, current: string | undefined): { icsUrl?: string } {
   if (url) return { icsUrl: url };
   return current ? { icsUrl: current } : {};
 }
-
-/** 움직이는 그림 파일인지 (gif, webp) */
-export const isAnimatedFile = (f: string) => /\.(gif|webp)$/i.test(f);
 
 /** 바꾸기: 지금 설정에 바꿀 값만 덮는다. 틀린 값은 무시하고 지금 값을 둔다. */
 export function applyPatch(current: Settings, patch: unknown): Settings {

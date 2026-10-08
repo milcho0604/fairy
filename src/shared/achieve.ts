@@ -1,13 +1,8 @@
 // 연속 기록과 업적 (v2). 끊겨도 잃는 것은 없다 (기획서 게임 규칙). 업적은 한 번 받으면 끝.
+import { plusDays, weekdayOf as weekday } from './day.ts';
 import type { Db } from './db-schema.ts';
 import { type I18nKey, t } from './i18n/index.ts';
 import { localDay } from './todo-store.ts';
-
-function plusDays(day: string, n: number): string {
-  const [y, m, d] = day.split('-').map(Number);
-  return new Date(Date.UTC(y ?? 2000, (m ?? 1) - 1, (d ?? 1) + n)).toISOString().slice(0, 10);
-}
-const weekday = (day: string) => new Date(`${day}T00:00:00Z`).getUTCDay();
 
 /**
  * 연속 기록: 할 일을 하나 이상 끝낸 날이 이어진 날 수. 쉬는 날은 건너뛰어도 끊기지 않는다.

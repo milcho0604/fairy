@@ -8,6 +8,8 @@ import {
   type BubbleMessage,
   CHAT,
   type ChatBridge,
+  FACE,
+  type FaceBridge,
   type GestureEvent,
   IPC,
   LOOK,
@@ -83,8 +85,20 @@ if (kind === 'pet') {
     onGaze: (listener) => {
       ipcRenderer.on(IPC.gaze, (_e, gaze: Gaze | null) => listener(gaze));
     },
+    face: (url: string) => ipcRenderer.send(FACE.set, url),
   };
   contextBridge.exposeInMainWorld('jjakkung', pet);
+}
+
+// 이름 옆 펫 얼굴 (shared/face.ts). 펫 화면이 그린 지금 모습을 받는다
+if (kind === 'chat' || kind === 'panel' || kind === 'quick' || kind === 'onboarding' || kind === 'settings') {
+  const face: FaceBridge = {
+    get: () => ipcRenderer.invoke(FACE.get),
+    onChange: (listener) => {
+      ipcRenderer.on(FACE.changed, (_e, url: string) => listener(url));
+    },
+  };
+  contextBridge.exposeInMainWorld('jjakkungFace', face);
 }
 
 if (kind === 'chat') {
@@ -95,6 +109,8 @@ if (kind === 'chat') {
     send: (text: string, images: OutgoingImage[]) => ipcRenderer.send(CHAT.send, text, images),
     cancel: () => ipcRenderer.send(CHAT.cancel),
     reset: () => ipcRenderer.send(CHAT.reset),
+    undoReset: () => ipcRenderer.invoke(CHAT.undoReset),
+    openLink: (url: string) => ipcRenderer.send(CHAT.openLink, url),
     setProvider: (provider: AiProvider) => ipcRenderer.send(CHAT.provider, provider),
     providers: () => ipcRenderer.invoke(CHAT.providers),
     addProvider: (input) => ipcRenderer.invoke(CHAT.addProvider, input),
@@ -135,6 +151,7 @@ if (kind === 'onboarding') {
     openMaker: () => ipcRenderer.send(ONBOARD.openMaker),
     openScreenSettings: () => ipcRenderer.send(ONBOARD.openScreenSettings),
     finish: () => ipcRenderer.send(ONBOARD.finish),
+    ai: () => ipcRenderer.invoke(ONBOARD.ai),
   };
   contextBridge.exposeInMainWorld('jjakkungOnboard', onboard);
 }
@@ -166,6 +183,9 @@ if (kind === 'settings') {
     onFocus: (listener) => {
       ipcRenderer.on(SETTINGS.focus, (_e, section: SettingsSection) => listener(section));
     },
+    onPower: (listener) => {
+      ipcRenderer.on(SETTINGS.power, (_e, onBattery: boolean) => listener(onBattery === true));
+    },
   };
   contextBridge.exposeInMainWorld('jjakkungSettings', bridge);
 }
@@ -180,6 +200,8 @@ if (kind === 'panel' || kind === 'quick') {
     undo: (id: number) => ipcRenderer.invoke(PANEL.undo, id),
     update: (id, patch) => ipcRenderer.send(PANEL.update, id, patch),
     remove: (id: number) => ipcRenderer.send(PANEL.remove, id),
+    restore: (id: number) => ipcRenderer.send(PANEL.restore, id),
+    eventToTodo: (id: number, text: string) => ipcRenderer.invoke(PANEL.eventToTodo, id, text),
     feed: () => ipcRenderer.invoke(PANEL.feed),
     openChat: () => ipcRenderer.send(PANEL.openChat),
     lookTogether: () => ipcRenderer.send(PANEL.lookTogether),
@@ -192,6 +214,7 @@ if (kind === 'panel' || kind === 'quick') {
     noteUpdate: (id, patch) => ipcRenderer.send(PANEL.noteUpdate, id, patch),
     noteRemove: (id: number) => ipcRenderer.send(PANEL.noteRemove, id),
     noteRestore: (id: number) => ipcRenderer.send(PANEL.noteRestore, id),
+    noteSearch: (query: string, composing: boolean) => ipcRenderer.invoke(PANEL.noteSearch, query, composing),
     noteAi: (id, kind) => ipcRenderer.invoke(PANEL.noteAi, id, kind),
     eventAdd: (text: string) => ipcRenderer.invoke(PANEL.eventAdd, text),
     eventUpdate: (id, patch) => ipcRenderer.send(PANEL.eventUpdate, id, patch),
@@ -221,7 +244,7 @@ if (kind === 'maker') {
     ensureModel: () => ipcRenderer.invoke(MAKER.ensureModel),
     save: (png: string, name: string, look?: unknown) => ipcRenderer.invoke(MAKER.save, png, name, look),
     ensureDepth: () => ipcRenderer.invoke(MAKER.ensureDepth),
-    shape3d: (png: string) => ipcRenderer.invoke(MAKER.shape3d, png),
+    shape3d: (png: string, wish?: string) => ipcRenderer.invoke(MAKER.shape3d, png, wish),
     resetToDefault: () => ipcRenderer.invoke(MAKER.save, null, ''),
     close: () => ipcRenderer.send(MAKER.close),
     onProgress: (listener) => {

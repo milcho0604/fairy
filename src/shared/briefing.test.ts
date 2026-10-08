@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { briefingText, deadlineText, dueSlot, reviewText } from './briefing.ts';
+import { briefingText, deadlineText, dueSlot, reviewText, undoMoved } from './briefing.ts';
 import { breakFor, focusCoins, focusedMinutes, IDLE, remainLabel, startFocus, tickFocus } from './focus.ts';
 import { setLang } from './i18n/index.ts';
 
@@ -100,4 +100,23 @@ test('집중 길이: 코인은 5분에 1개, 50분이면 쉬기 10분', () => {
   assert.equal(focusedMinutes(s, 50 * MIN), 50);
   const r15 = tickFocus(startFocus(0, 15), 15 * MIN);
   assert.equal(r15.state.endsAt - r15.state.startedAt, 5 * MIN);
+});
+
+test('회고 내일로 넘기기 되돌리기: 아직 내일 마감인 것만 원래 마감으로', () => {
+  const moved = [
+    { id: 1, due: '2026-10-08' },
+    { id: 2, due: '2026-10-07' },
+    { id: 3, due: '2026-10-08' },
+    { id: 4, due: '2026-10-08' },
+  ];
+  // 1 은 그대로 내일, 2 도 그대로(지난 마감이었다), 3 은 손으로 모레로 바꿈, 4 는 끝냄(열린 목록에 없음)
+  const open = [
+    { id: 1, due: '2026-10-09' },
+    { id: 2, due: '2026-10-09' },
+    { id: 3, due: '2026-10-10' },
+  ];
+  assert.deepEqual(undoMoved(moved, open, '2026-10-09'), [
+    { id: 1, due: '2026-10-08' },
+    { id: 2, due: '2026-10-07' },
+  ]);
 });

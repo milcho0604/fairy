@@ -1,6 +1,9 @@
 // 패널에서 쓰는 날짜, 시각 글.
+import { plusDays } from '../../../shared/day.ts';
 import { timeLabel } from '../../../shared/event-store.ts';
 import { t } from '../../../shared/i18n/index.ts';
+import type { PanelAddResult } from '../../../shared/ipc.ts';
+import { dueLabel } from '../../../shared/quick-add.ts';
 import { localDay } from '../../../shared/todo-store.ts';
 
 export const minuteOf = (ms: number) => {
@@ -9,12 +12,6 @@ export const minuteOf = (ms: number) => {
 };
 
 export const timeOf = (ms: number) => timeLabel(minuteOf(ms));
-
-/** YYYY-MM-DD 에 n 일 */
-export function plusDays(day: string, n: number): string {
-  const [y, m, d] = day.split('-').map(Number);
-  return new Date(Date.UTC(y ?? 2000, (m ?? 1) - 1, (d ?? 1) + n)).toISOString().slice(0, 10);
-}
 
 /** "오늘", "내일", "10월 9일 (금)" (영어는 "Fri, Oct 9") */
 export function dayHeading(day: string, today: string): string {
@@ -40,4 +37,16 @@ export function ago(ms: number, now: number): string {
   if (localDay(ms + 86_400_000) === localDay(now)) return t('panel.ago.yesterday');
   const d = new Date(ms);
   return t('panel.due.date', { m: d.getMonth() + 1, d: d.getDate() });
+}
+
+/** 일정 시작: "내일 오후 3:00", "10월 9일 (금) 오전 9:30" */
+export function whenLabel(startAt: number, today: string): string {
+  return `${dayHeading(localDay(startAt), today)} ${timeOf(startAt)}`;
+}
+
+/** 한 줄 입력이 어디에 언제로 들어갔는지: "내일 오후 3:00 일정에 넣었어", "할 일에 넣었어 (내일까지)" */
+export function addedText(r: Extract<PanelAddResult, { ok: true }>, today: string): string {
+  if (r.kind === 'many') return t('panel.add.many', { todos: r.todos, events: r.events });
+  if (r.kind === 'event') return t('panel.quick.event', { when: whenLabel(r.startAt, today) });
+  return r.due ? t('panel.quick.todoDue', { due: dueLabel(r.due, today).text }) : t('panel.quick.todo');
 }

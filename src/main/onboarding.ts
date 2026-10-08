@@ -8,7 +8,7 @@ import {
   systemPreferences,
 } from 'electron';
 import { t } from '../shared/i18n/index.ts';
-import { ONBOARD, type OnboardSnapshot } from '../shared/ipc.ts';
+import { ONBOARD, type OnboardAi, type OnboardSnapshot } from '../shared/ipc.ts';
 import type { Settings } from '../shared/settings.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
 import { langArg } from './lang.ts';
@@ -22,6 +22,10 @@ const MAC_SCREEN_SETTINGS = 'x-apple.systempreferences:com.apple.preference.secu
  */
 export function createOnboarding(o: {
   openMaker: () => void;
+  /** AI 안내 한 줄에 쓴다: 설치된 AI 가 없으면 무료 AI 와 받을 모델 크기를 알린다 */
+  ai: () => Promise<OnboardAi>;
+  /** 처음 안내를 마쳤다(끝까지 보거나 건너뛰거나 닫음). 설정에서 다시 본 것은 부르지 않는다 */
+  onFirstDone: () => void;
   log: (tag: string, ...rest: unknown[]) => void;
 }) {
   let win: BrowserWindow | undefined;
@@ -43,15 +47,22 @@ export function createOnboarding(o: {
   ipcMain.handle(ONBOARD.set, (e, patch: Partial<Settings>) =>
     ours(e) ? settings.set(patch) : settings.get(),
   );
+  ipcMain.handle(ONBOARD.ai, (e) => (ours(e) ? o.ai() : undefined));
   ipcMain.on(ONBOARD.openMaker, (e) => {
     if (ours(e)) o.openMaker();
   });
   ipcMain.on(ONBOARD.openScreenSettings, (e) => {
     if (ours(e) && process.platform === 'darwin') void shell.openExternal(MAC_SCREEN_SETTINGS);
   });
+  /** 처음 마칠 때만 onFirstDone 을 부른다 */
+  function markDone() {
+    if (settings.get().onboarded) return;
+    settings.set({ onboarded: true });
+    o.onFirstDone();
+  }
   ipcMain.on(ONBOARD.finish, (e) => {
     if (!ours(e)) return;
-    settings.set({ onboarded: true });
+    markDone();
     o.log('onboard', '끝');
     win?.close();
   });
@@ -79,7 +90,7 @@ export function createOnboarding(o: {
     win.once('ready-to-show', () => showWindow(win));
     // 닫기 단추로 닫아도 다시 띄우지 않는다 (설정에서 다시 볼 수 있다).
     win.on('closed', () => {
-      if (!settings.get().onboarded) settings.set({ onboarded: true });
+      markDone();
       win = undefined;
     });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));

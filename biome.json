@@ -3,7 +3,15 @@
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": { "includes": ["src/**", "*.ts", "*.json", "!package-lock.json"] },
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 110 },
-  "linter": { "enabled": true, "rules": { "preset": "recommended" } },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "a11y": {
+        "noLabelWithoutControl": { "level": "error", "options": { "inputComponents": ["PetNameInput"] } }
+      }
+    }
+  },
   "javascript": { "formatter": { "quoteStyle": "single" } },
   "assist": { "enabled": true, "actions": { "source": { "organizeImports": "on" } } }
 }

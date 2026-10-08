@@ -2,6 +2,7 @@
 // 펫이 숨은 동안(방해 금지, 발표, 숨기기) 일정 알림이나 업적 같은 말을 버리지 않고 모아 둔다.
 // 다시 나오면 아직 쓸모 있는 것은 말풍선 하나로 묶고, 시작이 한참 지난 일정은 패널 오늘 탭의 "놓친 알림"에만 둔다.
 import { t } from './i18n/index.ts';
+import type { BubbleButton } from './ipc.ts';
 import { localDay } from './todo-store.ts';
 
 export interface HeldBubble {
@@ -18,6 +19,10 @@ export interface HeldBubble {
   staleAt?: number;
   /** 말풍선으로 보인 횟수 */
   shown?: number;
+  /** 처음 띄울 때 단 단추. 혼자 다시 꺼낼 때 그대로 단다 ("파일 보기"가 밀렸다 다시 나와도 빠지지 않게) */
+  buttons?: BubbleButton[];
+  /** 다시 꺼낸 말풍선이 닫힌 방법을 받는다 (처음 띄운 쪽은 이미 끝났다). 저장하지 않는다 */
+  onAction?: (action: string) => void;
 }
 
 /** 보였는데 아무도 못 보고 지나가면 다시 보이는 횟수 상한. 넘으면 놓친 알림으로 */
@@ -87,6 +92,12 @@ export class HeldBubbles {
       stale: items.filter((h) => h.staleAt !== undefined && now > h.staleAt),
     };
   }
+}
+
+/** 꺼낼 말풍선의 단추: 하나만 꺼내고 그 말이 제 단추를 가졌으면 그것, 여럿을 묶으면 fallback ("알았어" 하나) */
+export function heldButtons(items: readonly HeldBubble[], fallback: BubbleButton[]): BubbleButton[] {
+  const only = items.length === 1 ? items[0] : undefined;
+  return only?.buttons?.length ? only.buttons : fallback;
 }
 
 /** 묶은 말풍선 글. 하나면 그대로, 여럿이면 머리말 아래 줄마다 하나 */

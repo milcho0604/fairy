@@ -1,9 +1,16 @@
 import { powerMonitor } from 'electron';
 import type { StatStore } from '../shared/beta-stats.ts';
-import { BRIEFING_FROM_MINUTE, briefingText, deadlineText, dueSlot, reviewText } from '../shared/briefing.ts';
+import {
+  BRIEFING_FROM_MINUTE,
+  briefingText,
+  deadlineText,
+  dueSlot,
+  reviewText,
+  undoMoved,
+} from '../shared/briefing.ts';
 import { bundleText, canSnooze, SCHEDULE_STALE_MS, SNOOZE_MS } from '../shared/bubble-queue.ts';
-import type { EventStore } from '../shared/event-store.ts';
-import { timeLabel } from '../shared/event-store.ts';
+import type { CalEvent, EventStore } from '../shared/event-store.ts';
+import { allDayLabel, timeLabel } from '../shared/event-store.ts';
 import {
   type FocusState,
   focusedMinutes,
@@ -15,6 +22,7 @@ import {
 } from '../shared/focus.ts';
 import { t } from '../shared/i18n/index.ts';
 import { IDLE_TALK_MS, IdleTalk } from '../shared/idle-talk.ts';
+import { eventLink, shortLinks } from '../shared/links.ts';
 import { localDay, type TodoStore } from '../shared/todo-store.ts';
 import type { SayOptions } from './pet-window.ts';
 import { settings } from './settings.ts';
@@ -36,6 +44,8 @@ export interface PlannerOptions {
   onChange: () => void;
   /** 패널 오늘 탭 열기 (마감 알림 "볼게") */
   openToday: () => void;
+  /** 일정 제목 속 회의 주소를 기본 브라우저로 (http, https 만. 메인이 다시 본다) */
+  openUrl: (url: string) => void;
   /** 지금 펫 이름 (혼잣말에 넣는다) */
   petName: () => string;
   log: (tag: string, ...rest: unknown[]) => void;
@@ -46,11 +56,19 @@ export const minuteOfDay = (ms: number) => {
   return d.getHours() * 60 + d.getMinutes();
 };
 
-/** 일정 알림 한 줄: "5분 뒤 회의 (오후 3:00)" */
-function remindLine(e: { title: string; startAt: number }, now: number): string {
+/** 일정 알림 한 줄: "5분 뒤 회의 (오후 3:00)". 종일 일정은 전날 저녁에 "내일 종일: 제주도 여행" */
+function remindLine(e: Pick<CalEvent, 'title' | 'startAt' | 'endAt' | 'allDay'>, now: number): string {
+  // 제목 속 긴 회의 주소는 호스트만 보인다. 여는 것은 "회의 열기" 단추로
+  const title = shortLinks(e.title);
+  if (e.allDay) {
+    const key =
+      localDay(now) < localDay(e.startAt) ? 'panel.remind.allDayTomorrow' : 'panel.remind.allDayToday';
+    const range = e.endAt === null ? '' : ` (${allDayLabel(e)})`;
+    return t(key, { title }) + range;
+  }
   const left = Math.round((e.startAt - now) / 60_000);
   const when = left <= 0 ? t('panel.remind.now') : t('panel.remind.inMin', { n: left });
-  return `${when} ${e.title} (${timeLabel(minuteOfDay(e.startAt))})`;
+  return `${when} ${title} (${timeLabel(minuteOfDay(e.startAt))})`;
 }
 
 /** 현지 날짜와 하루 안의 분으로 ms 시각 */
@@ -105,6 +123,23 @@ export function createPlanner(o: PlannerOptions) {
     const lines = list.map((e) => remindLine(e, now));
     const buttons = [{ id: 'ok', label: t('panel.remind.ok') }];
     if (canSnooze(now, earliest)) buttons.push({ id: 'snooze', label: t('panel.remind.snooze') });
+    // 제목에 회의 주소(Zoom, Meet, Teams 등)가 있으면 여는 단추. 여럿이면 가장 이른 일정 것
+    const link = [...list]
+      .sort((a, b) => a.startAt - b.startAt)
+      .map((e) => eventLink(e.title))
+      .find((l) => l !== undefined);
+    // 회의면 들어가는 것이 할 일이라 맨 앞(강조 단추)에, 다른 주소는 맨 뒤에
+    if (link?.meeting) buttons.unshift({ id: 'link', label: t('panel.remind.openMeeting') });
+    else if (link) buttons.push({ id: 'link', label: t('panel.remind.openLink') });
+    const act = (a: string | undefined) => {
+      if (a === 'link' && link) {
+        o.log('planner', '일정 링크 열기', link.meeting ? 'meeting' : 'link');
+        o.openUrl(link.url);
+      }
+      if (a !== 'snooze') return;
+      o.log('planner', '일정 알림 미룸', list.length);
+      snoozed.push({ at: Date.now() + SNOOZE_MS, ids: list.map((e) => e.id) });
+    };
     void o
       .say({
         kind: 'schedule',
@@ -116,17 +151,19 @@ export function createPlanner(o: PlannerOptions) {
           lines,
           // 숨어 있다 늦게 꺼내도 "몇 분 뒤"가 맞게, 놓친 알림에는 제목과 시각만
           render: (at) => list.map((e) => remindLine(e, at)),
-          missedLines: list.map((e) => `${e.title} (${timeLabel(minuteOfDay(e.startAt))})`),
+          missedLines: list.map((e) => {
+            const when = e.allDay ? allDayLabel(e) : timeLabel(minuteOfDay(e.startAt));
+            return `${shortLinks(e.title)} (${when})`;
+          }),
+          // 숨어 있다 다시 꺼낸 말풍선에서 누른 단추 (미루기, 회의 열기)
+          onAction: act,
         },
       })
-      .then((a) => {
-        if (a !== 'snooze') return;
-        o.log('planner', '일정 알림 미룸', list.length);
-        snoozed.push({ at: Date.now() + SNOOZE_MS, ids: list.map((e) => e.id) });
-      });
+      .then(act);
   }
 
   /** 오늘 마감 알림: 보통은 오후 한 번, 수다쟁이는 오전과 오후. 자리에 있고 펫이 보일 때만 */
+  let dueAsking = false;
   function dueAlert(now: number) {
     const day = localDay(now);
     const s = settings.get();
@@ -136,9 +173,9 @@ export function createPlanner(o: PlannerOptions) {
     if (powerMonitor.getSystemIdleState(60) === 'locked') return;
     // 남은 게 없으면 칸을 쓰지 않는다 (나중에 오늘 마감을 넣으면 그 칸에 알리게)
     const left = o.todos.list(now).open.filter((todo) => todo.due !== null && todo.due === day);
-    if (left.length === 0) return;
-    dueSaid = [...dueSaid.filter((k) => k.startsWith(day)), `${day}:${slot}`];
-    store();
+    if (left.length === 0 || dueAsking) return;
+    // 말풍선이 실제로 떴을 때만 그 칸을 한 것으로 적는다 (시간당 상한에 막히면 다음 틱에 다시)
+    dueAsking = true;
     o.log('planner', '마감 알림', slot, left.length);
     void o
       .say({
@@ -151,10 +188,15 @@ export function createPlanner(o: PlannerOptions) {
         ttlMs: 20_000,
       })
       .then((a) => {
+        dueAsking = false;
+        if (a === undefined) return;
+        dueSaid = [...dueSaid.filter((k) => k.startsWith(day)), `${day}:${slot}`];
+        store();
         if (a === 'open') o.openToday();
       });
   }
 
+  let briefing = false;
   function brief(now: number) {
     const day = localDay(now);
     if (briefedDay === day || minuteOfDay(now) < BRIEFING_FROM_MINUTE) return;
@@ -163,35 +205,50 @@ export function createPlanner(o: PlannerOptions) {
     if (powerMonitor.getSystemIdleState(60) === 'locked') return;
     briefedDay = day;
     store();
-    const from = now;
+    // 오늘 0시부터 본다: 종일 일정은 0시에 시작해 이미 지났지만 오늘 일정이다. 시각 일정은 남은 것만
     const to = startOfDay(now) + 24 * 3_600_000;
     const events = o.events
-      .between(from, to)
-      .map((e) => ({ minute: minuteOfDay(e.startAt), title: e.title }));
+      .between(startOfDay(now), to)
+      .filter((e) => e.allDay || e.startAt >= now)
+      .map((e) => ({ minute: minuteOfDay(e.startAt), title: e.title, allDay: e.allDay }));
     const { open } = o.todos.list(now);
     const dueToday = open.filter((t) => t.due === day).length;
     const overdue = open.filter((t) => t.due !== null && t.due < day).length;
     o.log('planner', '브리핑');
-    void o.say({
-      kind: 'system',
-      text: briefingText({ events, dueToday, overdue, nowMinute: minuteOfDay(now) }),
-      ttlMs: 15_000,
-    });
+    // 브리핑이 떠 있는 동안은 회고, 마감 알림, 혼잣말이 덮지 않게 기다린다
+    briefing = true;
+    void o
+      .say({
+        kind: 'system',
+        text: briefingText({ events, dueToday, overdue, nowMinute: minuteOfDay(now) }),
+        ttlMs: 15_000,
+      })
+      .then(() => {
+        briefing = false;
+      });
   }
 
-  /** 하루 회고 (v2): 회고 시각 뒤 처음 자리에 있을 때 한 번. 오늘 마감 남은 것은 내일로 넘길지 묻는다 */
+  /**
+   * 하루 회고 (v2): 회고 시각 뒤 처음 자리에 있을 때 한 번. 오늘 마감 남은 것은 내일로 넘길지 묻는다.
+   * 수다 빈도와 따로 켜고 끈다(설정 review). 켜 두었으면 조용히에서도 온다 (그래서 'schedule' 종류: 조용히에서도 말하고 시간당 상한에 안 센다).
+   * 숨어 있으면 모아 두었다가 나올 때, 못 보고 지나가면 놓친 알림에 남긴다 (hold). 그날이 지나면 꺼내지 않는다
+   */
   function review(now: number) {
     const day = localDay(now);
-    if (reviewedDay === day || minuteOfDay(now) < settings.get().reviewMinute) return;
-    if (settings.get().chatter === 'quiet' || o.petHidden() || powerMonitor.getSystemIdleTime() > 60) return;
+    const s = settings.get();
+    if (!s.review || reviewedDay === day || minuteOfDay(now) < s.reviewMinute) return;
+    if (powerMonitor.getSystemIdleTime() > 60) return;
     reviewedDay = day;
     store();
     const { open, doneToday } = o.todos.list(now);
     const left = open.filter((t) => t.due !== null && t.due <= day);
     o.log('planner', '회고');
+    const act = (a: string | undefined) => {
+      if (a === 'move') moveToTomorrow(day);
+    };
     void o
       .say({
-        kind: 'system',
+        kind: 'schedule',
         text: reviewText({ doneTitles: doneToday.map((t) => t.title), leftToday: left.length }),
         buttons:
           left.length > 0
@@ -201,12 +258,37 @@ export function createPlanner(o: PlannerOptions) {
               ]
             : [],
         ttlMs: 30_000,
+        hold: {
+          staleAt: startOfDay(now) + 24 * 3_600_000 - 1,
+          missedLines: [t('briefing.review.missed', { done: doneToday.length, left: left.length })],
+          onAction: act,
+        },
+      })
+      .then(act);
+  }
+
+  /** 회고 "내일로 넘기기". 누른 때 남은 것을 다시 읽어 넘기고, 잠깐 되돌리기 단추를 보인다 */
+  function moveToTomorrow(day: string) {
+    const tomorrow = localDay(localTime(day, 0) + 36 * 3_600_000);
+    const left = o.todos.list(Date.now()).open.filter((t) => t.due !== null && t.due <= day);
+    if (left.length === 0) return;
+    const moved = left.map((t) => ({ id: t.id, due: t.due }));
+    for (const t of left) o.todos.update(t.id, { due: tomorrow });
+    o.onChange();
+    o.log('planner', '회고 내일로', moved.length);
+    void o
+      .say({
+        kind: 'answer',
+        text: t('panel.review.moved', { n: moved.length }),
+        buttons: [{ id: 'undo', label: t('panel.review.undo') }],
+        ttlMs: 10_000,
       })
       .then((a) => {
-        if (a !== 'move') return;
-        const tomorrow = localDay(startOfDay(now) + 36 * 3_600_000);
-        for (const t of left) o.todos.update(t.id, { due: tomorrow });
+        if (a !== 'undo') return;
+        const back = undoMoved(moved, o.todos.list(Date.now()).open, tomorrow);
+        for (const b of back) o.todos.update(b.id, { due: b.due });
         o.onChange();
+        o.log('planner', '회고 내일로 되돌림', back.length);
       });
   }
 
@@ -232,9 +314,11 @@ export function createPlanner(o: PlannerOptions) {
     lastTick = now;
     remind(now);
     brief(now);
-    review(now);
-    dueAlert(now);
-    talk(now);
+    if (!briefing) {
+      review(now);
+      dueAlert(now);
+      talk(now);
+    }
     const r = tickFocus(focus, now);
     if (r.event === 'focus-done') {
       const minutes = focusedMinutes(focus, now);
@@ -244,7 +328,11 @@ export function createPlanner(o: PlannerOptions) {
       void o
         .say({
           kind: 'answer',
-          text: t('panel.focus.done', { minutes, coins }),
+          text: t('panel.focus.done', {
+            minutes,
+            coins,
+            breakMin: Math.round((r.state.endsAt - r.state.startedAt) / 60_000),
+          }),
           buttons: [{ id: 'stop', label: t('panel.focus.stop') }],
           ttlMs: 20_000,
         })

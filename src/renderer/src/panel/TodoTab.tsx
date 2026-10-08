@@ -1,11 +1,31 @@
 import { useState } from 'react';
 import { t } from '../../../shared/i18n/index.ts';
-import type { PanelState } from '../../../shared/ipc.ts';
+import type { PanelAddResult, PanelState } from '../../../shared/ipc.ts';
 import { dueLabel } from '../../../shared/quick-add.ts';
 import { REPEAT_LABEL, REPEATS, type Repeat, type Todo } from '../../../shared/todo-store.ts';
 import { CheckIcon, RepeatIcon, StarIcon } from './icons.tsx';
+import { isEsc, takeEsc } from './keys.ts';
 
 const bridge = window.jjakkungPanel;
+/** 쓰다 만 한 줄. 다른 곳을 눌러 패널이 닫혀도 다음에 열면 그대로 있다 */
+const DRAFT_KEY = 'jj.panel.todoDraft';
+
+function readDraft(): string {
+  try {
+    return localStorage.getItem(DRAFT_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function writeDraft(text: string) {
+  try {
+    if (text) localStorage.setItem(DRAFT_KEY, text);
+    else localStorage.removeItem(DRAFT_KEY);
+  } catch {
+    // 못 적으면 이번 창에서만 남는다
+  }
+}
 
 /** 없음 → 매일 → 평일 → 매주 → 없음 */
 function nextRepeat(r: Repeat | null): Repeat | null {
@@ -19,25 +39,34 @@ export function TodoTab({
   onComplete,
   inputRef,
   onAdded,
+  onRemoved,
 }: {
   s: PanelState;
   onComplete: (todo: Todo) => void;
   inputRef: React.RefObject<HTMLInputElement | null>;
-  onAdded: (kind: 'todo' | 'event') => void;
+  /** 넣었다. 넣은 글(text)도 같이 (일정으로 들어간 것을 알림에서 할 일로 옮길 때 쓴다) */
+  onAdded: (r: Extract<PanelAddResult, { ok: true }>, text: string) => void;
+  /** 지웠다 (되돌리기 알림) */
+  onRemoved: (todo: Todo) => void;
 }) {
-  const [text, setText] = useState('');
+  const [text, setTextState] = useState(readDraft);
+  const setText = (next: string) => {
+    setTextState(next);
+    writeDraft(next);
+  };
   const [error, setError] = useState('');
   const [showDone, setShowDone] = useState(false);
 
-  const add = async () => {
-    const r = await bridge.add(text);
+  /** value 를 넣는다. 여러 줄 붙여 넣기면 칸에 적던 글은 그대로 둔다 */
+  const add = async (value = text) => {
+    const r = await bridge.add(value);
     if (!r.ok) {
       setError(r.error ?? t('panel.add.failed'));
       return;
     }
-    setText('');
+    if (value === text) setText('');
     setError('');
-    onAdded(r.kind ?? 'todo');
+    onAdded(r, value);
   };
 
   return (
@@ -54,6 +83,19 @@ export function TodoTab({
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) add();
+            // 쓰던 줄이 있으면 Esc 는 먼저 그것만 지운다 (한 번 더 누르면 패널이 닫힌다)
+            if (isEsc(e) && text) {
+              takeEsc(e);
+              setText('');
+              setError('');
+            }
+          }}
+          onPaste={(e) => {
+            // 여러 줄을 붙여 넣으면 줄마다 할 일 하나 (한 줄 칸이 줄바꿈을 지워 한 줄로 붙이지 않게)
+            const pasted = e.clipboardData.getData('text');
+            if (pasted.split(/\r?\n/).filter((l) => l.trim()).length < 2) return;
+            e.preventDefault();
+            void add(pasted);
           }}
         />
       </div>
@@ -62,7 +104,13 @@ export function TodoTab({
       <ul className="todos scroll">
         {s.open.length === 0 && <li className="empty">{t('panel.todo.empty')}</li>}
         {s.open.map((todo) => (
-          <TodoRow key={todo.id} todo={todo} today={s.today} onComplete={() => onComplete(todo)} />
+          <TodoRow
+            key={todo.id}
+            todo={todo}
+            today={s.today}
+            onComplete={() => onComplete(todo)}
+            onRemoved={() => onRemoved(todo)}
+          />
         ))}
       </ul>
 
@@ -103,11 +151,14 @@ export function TodoRow({
   todo,
   today,
   onComplete,
+  onRemoved,
   compact,
 }: {
   todo: Todo;
   today: string;
   onComplete: () => void;
+  /** 지웠다 (되돌리기 알림) */
+  onRemoved?: () => void;
   /** 오늘 탭: 고치기 단추 없이 */
   compact?: boolean;
 }) {
@@ -173,8 +224,8 @@ export function TodoRow({
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.nativeEvent.isComposing) (e.target as HTMLInputElement).blur();
-            if (e.key === 'Escape') {
-              e.stopPropagation();
+            if (isEsc(e)) {
+              takeEsc(e);
               setTitle(todo.title);
               setEditing(false);
             }
@@ -201,7 +252,10 @@ export function TodoRow({
                 type="button"
                 className="remove"
                 aria-label={t('panel.todo.remove', { title: todo.title })}
-                onClick={() => bridge.remove(todo.id)}
+                onClick={() => {
+                  bridge.remove(todo.id);
+                  onRemoved?.();
+                }}
               >
                 ×
               </button>

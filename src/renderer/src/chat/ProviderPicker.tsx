@@ -49,7 +49,7 @@ export function ProviderPicker({ providers, status, current, disabled, onPick, o
         onClick={() => setOpen((v) => !v)}
       >
         <span className={`dot ${dotOf(status[current])}`} aria-hidden="true" />
-        {selected?.label ?? current}
+        <span className="picker-label">{selected?.label ?? current}</span>
         <svg className="caret" viewBox="0 0 10 6" aria-hidden="true">
           <path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
         </svg>
@@ -73,8 +73,13 @@ export function ProviderPicker({ providers, status, current, disabled, onPick, o
               >
                 <span className={`dot ${dotOf(s)}`} aria-hidden="true" />
                 <span className="name">{p.label}</span>
-                {!p.verified && <span className="tag">{t('chat.notVerified')}</span>}
+                {!p.verified && (
+                  <span className="tag" title={t('chat.notVerifiedTitle')}>
+                    {t('chat.notVerified')}
+                  </span>
+                )}
                 {s && !s.installed && <span className="tag">{t('chat.missing')}</span>}
+                {s?.needsModel && <span className="tag">{t('chat.notDownloaded')}</span>}
               </button>
             );
           })}
