@@ -1,6 +1,8 @@
 // 코드로 그린 기본 펫. 콩, 냥이, 삐약이 세 가지 (v1, D6 그림 대신). 사진 펫(P1-08)이면 몸통 대신 사진.
 
+import { heldAt } from '../../shared/fetch.ts';
 import type { Gaze } from '../../shared/gaze.ts';
+import type { Point } from '../../shared/geometry.ts';
 import { t } from '../../shared/i18n/index.ts';
 import { lensSide, type MagnifierPose } from '../../shared/look-motion.ts';
 import type { MoveType } from '../../shared/moves.ts';
@@ -78,6 +80,19 @@ export interface DrawState {
   peer?: { dir: Gaze; pose?: MagnifierPose };
   /** 사용자가 고른 걸음새 (설정). 없으면 자동: 2D 는 냥이, 멍멍이, 토순이만 네 발 */
   gait?: Gait;
+  /** 입에 문 공 (네 발 펫 공놀이, shared/fetch.ts) */
+  carry?: CarryDraw;
+}
+
+/** 입에 문 공. r 은 반지름(160 기준), from 은 물기 전 바닥 공 가운데 */
+export interface CarryDraw {
+  image: CanvasImageSource;
+  r: number;
+  from: Point;
+  /** 고개 숙인 정도 0~1 (물 때) */
+  dip: number;
+  /** from 에서 입으로 옮겨 간 정도 0~1 */
+  grab: number;
 }
 
 export interface Trick {
@@ -138,6 +153,8 @@ export interface Model3D {
   ): number | undefined;
   /** 방금 그린 그림에서 side 쪽 눈 가운데 (같이 보기 돋보기 자리). 모르면 undefined */
   eye?(side: -1 | 1): { x: number; y: number } | undefined;
+  /** 방금 그린 그림에서 입 가운데 (문 공 자리). 입이 없으면 undefined */
+  mouth?(): { x: number; y: number } | undefined;
 }
 
 /** 하트가 떠올라 사라지는 시간 */
@@ -153,9 +170,10 @@ const GROUND = 154;
 const RX = 58;
 const RY = 50;
 
-export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): void {
+/** 펫을 그린다. 공을 물고 있으면 그 공 가운데를 돌려준다 (메인이 내려놓을 자리를 물을 때) */
+export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | undefined {
   ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-  if (s.mood === 'hidden') return;
+  if (s.mood === 'hidden') return undefined;
   const kind = s.kind ?? 'kong';
   BODY = COLORS[kind].body;
   LINE = COLORS[kind].line;
@@ -207,18 +225,25 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): void {
 
   if (s.photo) {
     const top = drawPhoto(ctx, s, s.photo, lift, sx, sy, act);
+    const ball = drawCarry(ctx, s.carry, guessMouth(top, GROUND - lift));
     drawPeer(ctx, s, top, GROUND - lift, PHOTO_EYE_AT);
     drawExtras(ctx, s, top);
-    return;
+    return ball;
   }
   if (s.model3d) {
     const top = s.model3d.draw(ctx, s, lift, sx, sy, act);
     if (top !== undefined) {
+      const ball = s.carry
+        ? drawCarry(ctx, s.carry, s.model3d.mouth?.() ?? guessMouth(top, GROUND - lift))
+        : undefined;
       drawPeer(ctx, s, top, GROUND - lift, MODEL_EYE_AT, s.model3d);
       drawExtras(ctx, s, top);
-      return;
+      return ball;
     }
   }
+  // 공을 물 때 고개를 숙인다: 2D 는 몸이 곧 머리라 몸을 조금 눌러 얼굴을 내린다
+  const dip = s.carry?.dip ?? 0;
+  sy *= 1 - 0.06 * dip;
 
   // 발: 몸통보다 먼저 그려서 몸 아래로 조금 나오게. 걸을 때는 번갈아 든다. 매달리면 늘어진다.
   // 얼굴 그림에서는 빼고 둥근 몸만 (몸통이 닫힌 타원이라 발 자리에 틈이 생기지 않는다)
@@ -300,8 +325,9 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): void {
               ? g.x * 8
               : 0;
   // 위아래를 보면 얼굴 전체(볼, 눈, 입)가 그쪽으로 조금. 고개를 숙이면(킁킁, 꾸벅) 더 아래로
+  const faceDy = (g ? g.y * 2.5 : 0) + (mv ? mv.pitch * 22 : 0) + dip * 14;
   ctx.save();
-  ctx.translate(0, (g ? g.y * 2.5 : 0) + (mv ? mv.pitch * 22 : 0));
+  ctx.translate(0, faceDy);
   ctx.fillStyle = BLUSH;
   for (const x of [-32, 32]) {
     ctx.beginPath();
@@ -343,6 +369,11 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): void {
   ctx.restore();
   ctx.restore();
   ctx.restore();
+  // 문 공은 얼굴 앞에. 입 자리는 위 입 그리기와 같은 계산 (입은 얼굴 가운데에서 look 만큼 옆, 12 아래)
+  const ball = drawCarry(ctx, s.carry, {
+    x: CX + (mv?.dx ?? 0) + look * sx,
+    y: GROUND - lift + (-RY + faceDy + MOUTH_Y) * sy,
+  });
 
   // 돋보기는 보는 쪽 눈 앞에 (눈 자리는 위 얼굴 그리기와 같은 계산)
   if (s.peer?.pose) {
@@ -356,6 +387,28 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): void {
     });
   }
   drawExtras(ctx, s, GROUND - lift - RY * 2 * sy);
+  return ball;
+}
+
+/** 2D 입 높이 (얼굴 가운데 기준, drawMouth 의 웃는 입과 벌린 입 사이) */
+const MOUTH_Y = 12;
+
+/** 입 자리를 모를 때(사진, 입 없는 설계도) 입 어림: 머리 꼭대기에서 바닥까지의 60% 쯤 가운데 */
+function guessMouth(top: number, bottom: number): Point {
+  return { x: CX, y: top + (bottom - top) * 0.6 };
+}
+
+/**
+ * 입에 문 공 (shared/fetch.ts). 물 때는 바닥 자리(from)에서 입으로 옮겨 가고, 그 뒤로는 입 바로 아래에 붙는다.
+ * 몸 다음에 그려 늘 얼굴 앞에 보인다. 그린 공 가운데를 돌려준다
+ */
+function drawCarry(ctx: CanvasRenderingContext2D, c: CarryDraw | undefined, mouth: Point): Point | undefined {
+  if (!c) return undefined;
+  const held = heldAt(mouth, c.r);
+  const k = Math.min(1, Math.max(0, c.grab));
+  const at = { x: c.from.x + (held.x - c.from.x) * k, y: c.from.y + (held.y - c.from.y) * k };
+  ctx.drawImage(c.image, at.x - c.r, at.y - c.r, c.r * 2, c.r * 2);
+  return at;
 }
 
 /** 입체 펫 눈 자리를 모를 때(눈 없는 설계도) 눈 높이 (머리 꼭대기 0, 바닥 1) */

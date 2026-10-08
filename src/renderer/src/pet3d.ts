@@ -644,6 +644,19 @@ export class Pet3D implements Model3D {
     return { x: x0 + d / 2 + (p.x * d) / 2, y: y0 + d / 2 - (p.y * d) / 2 };
   }
 
+  /** 방금 그린 그림에서 입 가운데 (2D 캔버스 좌표). 얼굴이 없으면 undefined (문 공 자리, draw.ts) */
+  mouth(): { x: number; y: number } | undefined {
+    if (!this.face || !this.drawn) return undefined;
+    const { x0, y0, d } = this.drawn;
+    const p = this.face.mouthAt.getWorldPosition(this.tmp).project(this.camera);
+    return { x: x0 + d / 2 + (p.x * d) / 2, y: y0 + d / 2 - (p.y * d) / 2 };
+  }
+
+  /** 네 발로 걷는 몸인지 (설계도 gait, 없으면 다리 모양 짐작). 입체 판은 두 발로 본다 */
+  get fourLegged(): boolean {
+    return !!this.quad && !this.relief;
+  }
+
   /**
    * 얼굴 부품만 그린다. 이름 옆 얼굴 그림용 (pet-face.ts). 머리, 귀, 얼굴, 머리 위 장식에 더해
    * 얼굴이 몸에 있으면(콩이처럼 몸이 곧 얼굴) 몸도 (blueprint.ts inFace).
@@ -1446,6 +1459,12 @@ export class Pet3D implements Model3D {
       // 날개는 몸에 붙은 채 빠르게 파닥
       wings(0.12 + 0.2 * (0.5 + 0.5 * Math.sin(trick.t * Math.PI * 10)));
       eye = 'up';
+    }
+    // 공을 물 때 고개를 숙이고 몸도 조금 앞으로 (shared/fetch.ts pickPose)
+    const dip = s.carry?.dip ?? 0;
+    if (dip > 0) {
+      head(0.7 * dip, 0, 0);
+      j.body.rotation.x += 0.3 * dip;
     }
     // 커서 바라보기: 고개를 그쪽으로 (위를 보면 고개를 든다)
     const g = gazeOf(s, act);

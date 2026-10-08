@@ -22,12 +22,13 @@ import {
 } from '../shared/bubble-queue.ts';
 import { type BubbleKind, ChatterGate, type ChatterLevel, LEVEL_LABEL, quieter } from '../shared/chatter.ts';
 import { CrashGuard } from '../shared/crash-guard.ts';
+import { type CarryToy, fromBox, toBox } from '../shared/fetch.ts';
 import { type Gaze, gazeAt, sameGaze } from '../shared/gaze.ts';
 import { clampIntoAreas, type Point, type Rect } from '../shared/geometry.ts';
 import type { GestureEvent } from '../shared/gesture.ts';
 import { DOOR_MS, doorFrame } from '../shared/house-rest.ts';
 import { t } from '../shared/i18n/index.ts';
-import { type BubbleButton, IPC, type PlayKind, type ReactKind } from '../shared/ipc.ts';
+import { type BubbleButton, IPC, type PetBody, type PlayKind, type ReactKind } from '../shared/ipc.ts';
 import {
   FOUND_MS,
   LOOK_POLL_MS,
@@ -193,6 +194,17 @@ export interface PetWindow {
   look(state: 'aim' | { found: Point } | null): void;
   /** 화면을 찍는 동안 펫 창(말풍선 포함)을 안 보이게 한다. true 는 다 가린 뒤 끝난다. false 는 원래 불투명도로 다시 나타난다 */
   veil(on: boolean): Promise<void>;
+  /** 화면이 알려 준 그리는 몸: 네 발로 걷는지, 흔들 꼬리가 있는지 (공 물어 오기). 알려 주기 전엔 둘 다 false */
+  body(): PetBody;
+  /**
+   * 공을 입에 문다 (네 발 펫 공놀이, shared/fetch.ts): 고개를 숙여 at(공 가운데, 화면 좌표)에 있는 공을 물고,
+   * 그 뒤로는 펫 화면이 입 자리에 공을 그린다. null 이면 내려놓았다 (그리기 끝)
+   */
+  carry(toy: CarryToy | null, at?: Point, size?: number): void;
+  /** 지금 문 공 가운데 (화면 좌표). 화면이 답하지 않거나 안 물고 있으면 undefined */
+  carriedAt(): Promise<Point | undefined>;
+  /** ms 동안 기다린다. 그사이 잡히거나 던져지거나 숨거나 그만 놀기를 누르면 false */
+  pause(ms: number): Promise<boolean>;
 }
 
 export interface PetWindowOptions {
@@ -523,6 +535,7 @@ export function createPetWindow({
       doorTimer ||
       bubble ||
       walkTimer ||
+      carrying ||
       !win.isVisible() ||
       !settings.get().wander
     )
@@ -552,6 +565,60 @@ export function createPetWindow({
   const onPetted = (e: IpcMainEvent) => {
     if (fromThisWindow(e)) actions.petted();
   };
+
+  // ---- 공 물어 오기 (shared/fetch.ts) ----
+  let body: PetBody = { quad: false, tail: false };
+  /** 공을 물고 있다 (그사이 한가한 행동을 고르지 않는다) */
+  let carrying = false;
+  /** 문 공 자리를 물어보고 기다리는 중 */
+  let carriedWait: ((at: Point | null) => void) | undefined;
+  const onBody = (e: IpcMainEvent, raw: unknown) => {
+    if (!fromThisWindow(e) || typeof raw !== 'object' || raw === null) return;
+    const r = raw as Record<string, unknown>;
+    body = { quad: r.quad === true, tail: r.tail === true };
+  };
+  const onCarried = (e: IpcMainEvent, raw: unknown) => {
+    if (!fromThisWindow(e)) return;
+    const r = raw as Partial<Point> | null;
+    const ok = !!r && Number.isFinite(r.x) && Number.isFinite(r.y);
+    carriedWait?.(ok ? { x: r.x as number, y: r.y as number } : null);
+  };
+
+  function carry(toy: CarryToy | null, at?: Point, size = 0) {
+    carrying = toy !== null && !!at;
+    if (win.isDestroyed()) return;
+    win.webContents.send(
+      IPC.carry,
+      toy && at ? { kind: 'pick', toy, from: toBox(at, pet), size: size / pet.width } : null,
+    );
+  }
+
+  function carriedAt(): Promise<Point | undefined> {
+    if (!carrying || win.isDestroyed()) return Promise.resolve(undefined);
+    carriedWait?.(null);
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => done(null), 400);
+      const done = (at: Point | null) => {
+        clearTimeout(timer);
+        carriedWait = undefined;
+        resolve(at ? fromBox(at, pet) : undefined);
+      };
+      carriedWait = done;
+      win.webContents.send(IPC.carry, { kind: 'where' });
+    });
+  }
+
+  function pause(ms: number): Promise<boolean> {
+    const from = Date.now();
+    return new Promise((resolve) => {
+      const timer = setInterval(() => {
+        const cut = haltedAt >= from || !!dragTimer || !!flightTimer || win.isDestroyed() || !win.isVisible();
+        if (!cut && Date.now() - from < ms) return;
+        clearInterval(timer);
+        resolve(!cut);
+      }, 30);
+    });
+  }
 
   /** 걷기가 끝나거나 끊기면 알린다 (walkTo). 끝까지 걸었으면 true */
   let walkDone: ((finished: boolean) => void) | undefined;
@@ -1096,6 +1163,8 @@ export function createPetWindow({
   ipcMain.on(IPC.activityStop, onActivityStop);
   ipcMain.on(IPC.petted, onPetted);
   ipcMain.on(IPC.bubbleClosed, onBubbleClosed);
+  ipcMain.on(IPC.body, onBody);
+  ipcMain.on(IPC.carried, onCarried);
 
   // ---- 커서 바라보기 ----
   // 한가하고 보일 때만 커서를 본다. 방향 칸이 바뀔 때만 화면에 알린다 (화면도 그때만 다시 그린다).
@@ -1270,6 +1339,9 @@ export function createPetWindow({
     ipcMain.off(IPC.activityRequest, onActivityRequest);
     ipcMain.off(IPC.activityStop, onActivityStop);
     ipcMain.off(IPC.petted, onPetted);
+    ipcMain.off(IPC.body, onBody);
+    ipcMain.off(IPC.carried, onCarried);
+    carriedWait?.(null);
     clearInterval(walkTimer);
     clearInterval(flightTimer);
     clearInterval(perchTimer);
@@ -1308,6 +1380,10 @@ export function createPetWindow({
     stroll,
     follow,
     land,
+    body: () => body,
+    carry,
+    carriedAt,
+    pause,
     halt() {
       haltedAt = Date.now();
       stopWalk();

@@ -1,5 +1,7 @@
 import { type Activity, nextDelay } from '../../shared/behavior.ts';
+import { BALL_SVG, type CarryToy, PICK_MS, pickPose } from '../../shared/fetch.ts';
 import type { Gaze } from '../../shared/gaze.ts';
+import type { Point } from '../../shared/geometry.ts';
 import { GestureTracker, RubTracker } from '../../shared/gesture.ts';
 import { t } from '../../shared/i18n/index.ts';
 import type { PetImages } from '../../shared/ipc.ts';
@@ -27,12 +29,12 @@ import { DEFAULT_BLUEPRINTS } from '../../shared/pet3d/defaults.ts';
 import type { PetKind, PetStyle, PoseKind } from '../../shared/settings.ts';
 import { canPlay, type SoundKind } from '../../shared/sound.ts';
 import { AnimatedImage, loadPetImage } from './animated.ts';
-import { CANVAS_SIZE, drawPet, HEARTS_MS } from './draw.ts';
+import { CANVAS_SIZE, type CarryDraw, drawPet, HEARTS_MS } from './draw.ts';
 import { initLang } from './lang.ts';
 import { moveFps, SIT_MS, sitDown } from './move-pose.ts';
 import { renderFace } from './pet-face.ts';
 import type { Pet3D } from './pet3d.ts';
-import { withGait } from './pet3d-gait.ts';
+import { quadKind, withGait } from './pet3d-gait.ts';
 import { playSound } from './sound.ts';
 
 initLang('common.title.pet');
@@ -115,7 +117,8 @@ function frame() {
   if (m3d === 'loading') return;
   const img = m3d ? undefined : pickImage(mood, inputs.hungry);
   const looking = peerAt(now);
-  drawPet(ctx, {
+  const picking = !!carry && now - carry.start < PICK_MS;
+  const ball = drawPet(ctx, {
     mood,
     elapsed: now - moodSince,
     blink,
@@ -134,8 +137,11 @@ function frame() {
     calm: reducedMotion.matches,
     peer: looking?.peer,
     gait: gaitPick,
+    carry: carryDraw(now),
   });
+  carriedAt = ball;
   syncFace(m3d);
+  syncBody(m3d, img);
 
   const walking = activity?.type === 'walk';
   // 제자리 몸짓(하품, 기지개, 꼬리 흔들기 등)은 하는 동안 20~30fps (moveFps), 앉기는 앉고 일어나는 동안만 20fps
@@ -147,19 +153,20 @@ function frame() {
   const animatedPhoto = img instanceof AnimatedImage && canBlink(mood) ? Math.min(12, img.fps) : 0;
   // 부스트 모드면 움직임(신남, 몸짓, 하트, 걷기, 하품)을 두 배로 촘촘히 그린다. 깜빡임과 움직이는 그림은 그대로
   const k = boost ? 2 : 1;
-  const fps = trick
-    ? 30 * k
-    : isAnimated(mood)
-      ? (ANIMATED_FPS[mood] ?? 30) * k
-      : heartsStart >= 0
-        ? 30 * k
-        : blinkStart >= 0
-          ? BLINK_FPS
-          : walking
-            ? WALK_FPS * k
-            : moving
-              ? (activity && isMove(activity.type) ? moveFps(activity.type) : 20) * k
-              : animatedPhoto;
+  const fps =
+    trick || picking
+      ? 30 * k
+      : isAnimated(mood)
+        ? (ANIMATED_FPS[mood] ?? 30) * k
+        : heartsStart >= 0
+          ? 30 * k
+          : blinkStart >= 0
+            ? BLINK_FPS
+            : walking
+              ? WALK_FPS * k
+              : moving
+                ? (activity && isMove(activity.type) ? moveFps(activity.type) : 20) * k
+                : animatedPhoto;
   // 이 틀 안에서 requestFrame 이 불렸으면(행동 멈춤 등) 그 타이머를 지운다. 안 지우면 루프가 두 겹이 돈다
   // (2026-10-07 점검: 신남이 30fps 가 아니라 57fps)
   clearTimeout(frameTimer);
@@ -217,6 +224,66 @@ function peerAt(now: number) {
   return { peer: { dir, pose }, fps: tool ? magnifierFps(kind, ms, calm) : 0 };
 }
 
+// ---- 공 물어 오기 (shared/fetch.ts) ----
+// 네 발 펫은 공놀이에서 공을 입에 물어 온다. 메인이 물라고 하면 고개를 숙여 바닥 공을 물고, 그 뒤로는 입 자리에 공을 그린다.
+// 메인은 화면이 그리는 몸(네 발인지, 꼬리)을 보고 물어 올지 정한다 (바뀔 때만 알린다)
+let carry: { toy: CarryToy; from: Point; r: number; start: number } | undefined;
+/** 마지막으로 그린 문 공 가운데 (160 기준) */
+let carriedAt: Point | undefined;
+const toyImages: Partial<Record<CarryToy, HTMLImageElement>> = {};
+function toyImage(toy: CarryToy): HTMLImageElement {
+  let img = toyImages[toy];
+  if (!img) {
+    img = new Image();
+    img.onload = () => requestFrame();
+    img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(BALL_SVG(toy === 'yarn'))}`;
+    toyImages[toy] = img;
+  }
+  return img;
+}
+
+function carryDraw(now: number): CarryDraw | undefined {
+  if (!carry) return undefined;
+  const { dip, grab } = pickPose((now - carry.start) / PICK_MS);
+  return { image: toyImage(carry.toy), r: carry.r, from: carry.from, dip, grab };
+}
+
+bridge.onCarry((m) => {
+  if (m?.kind === 'where') {
+    bridge.carried(
+      carry && carriedAt ? { x: carriedAt.x / CANVAS_SIZE, y: carriedAt.y / CANVAS_SIZE } : null,
+    );
+    return;
+  }
+  if (m?.kind === 'pick') {
+    const size = Number.isFinite(m.size) ? Math.min(0.6, Math.max(0.05, m.size)) : 0.2;
+    // 하던 몸짓은 그만두고 공 앞에 선다 (걷기는 메인이 이미 끝냈다)
+    if (activity) stopActivity(false);
+    carry = {
+      toy: m.toy === 'yarn' ? 'yarn' : 'ball',
+      from: { x: m.from.x * CANVAS_SIZE, y: m.from.y * CANVAS_SIZE },
+      r: (size * CANVAS_SIZE) / 2,
+      start: performance.now(),
+    };
+    toyImage(carry.toy);
+    // 고개를 다 든 마지막 모습을 한 번 더 그린다 (물기 동안만 30fps 로 그린다)
+    setTimeout(requestFrame, PICK_MS + 20);
+  } else carry = undefined;
+  carriedAt = undefined;
+  requestFrame();
+});
+
+let sentBody = '';
+/** 그리는 몸이 바뀌면 메인에 알린다: 입체는 조립한 몸, 2D 기본 펫은 모양과 고른 걸음새, 사진은 두 발 */
+function syncBody(m3d: Pet3D | undefined, img: PetImage | undefined) {
+  const quad = m3d ? m3d.fourLegged : !img && quadKind(petKind, gaitPick);
+  const body = { quad, tail: moveAsk().tail };
+  const key = `${body.quad}/${body.tail}`;
+  if (key === sentBody) return;
+  sentBody = key;
+  bridge.body(body);
+}
+
 // ---- 기본 행동 (P1-06) ----
 // 25~70초에 한 번, 한가하면 메인에 행동을 골라 달라고 한다. 걷기만 계속 그리고(12fps) 앉기, 두리번은 한 번 그린다.
 
@@ -230,7 +297,7 @@ let activityEnd: ReturnType<typeof setTimeout> | undefined;
 function scheduleActivity() {
   clearTimeout(activityTimer);
   activityTimer = setTimeout(() => {
-    if (mood === 'idle' && !activity && !look && !bubbleId && !overPet && !gesture.dragging)
+    if (mood === 'idle' && !activity && !look && !carry && !bubbleId && !overPet && !gesture.dragging)
       bridge.activityRequest(moveAsk());
     scheduleActivity();
   }, nextDelay(Math.random));
