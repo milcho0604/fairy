@@ -4,7 +4,13 @@ import { DEPTH_URL, type MakerInfo, MODEL_URL, type PetLook } from '../../../sha
 import { contentBox, keptRatio, stroke } from '../../../shared/mask.ts';
 import type { Blueprint } from '../../../shared/pet3d/blueprint.ts';
 import { cleanWish, WISH_MAX } from '../../../shared/pet3d/prompt.ts';
-import { cleanPetName, PET_NAME_MAX, POSE_KINDS } from '../../../shared/settings.ts';
+import {
+  cleanPetName,
+  GAIT_PICKS,
+  type GaitPick,
+  PET_NAME_MAX,
+  POSE_KINDS,
+} from '../../../shared/settings.ts';
 import { CANVAS_SIZE } from '../draw.ts';
 import { PetNameInput } from '../PetNameInput.tsx';
 import { Pet3D } from '../pet3d.ts';
@@ -51,7 +57,10 @@ export function MakerApp() {
   const [shaping, setShaping] = useState(false);
   // 입체 피규어 요청사항 (선택). 만든 뒤 고쳐서 다시 만들 수 있게 마지막으로 보낸 요청을 기억한다
   const [wish, setWish] = useState('');
-  const [madeWith, setMadeWith] = useState<string>();
+  // 걸음새: 자동이면 AI 가 사진을 보고, 두 발이나 네 발이면 처음부터 그 몸으로 만든다
+  const [gait, setGait] = useState<GaitPick>('auto');
+  // 지금 설계도를 만든 요청사항과 걸음새 (바꾸면 단추가 "요청대로 다시 만들기", 저장하면 요청사항을 같이 둔다)
+  const [madeWith, setMadeWith] = useState<{ wish: string; gait: GaitPick }>();
 
   useEffect(() => {
     bridge.info().then((i) => {
@@ -155,14 +164,15 @@ export function MakerApp() {
     if (shaping) return;
     const from = preview;
     const asked = cleanWish(wish);
+    const walk = gait;
     setShaping(true);
     setError('');
-    const r = await bridge.shape3d(from, asked);
+    const r = await bridge.shape3d(from, asked, walk === 'auto' ? undefined : walk);
     setShaping(false);
     if (previewRef.current !== from) return;
     if (r.ok) {
       setModel(r.model);
-      setMadeWith(asked);
+      setMadeWith({ wish: asked, gait: walk });
     } else setError(r.error);
   };
 
@@ -206,7 +216,11 @@ export function MakerApp() {
   };
 
   const chosen: PetLook | undefined =
-    look === 'figure' && model ? { model } : look === 'relief' && depth ? { depth } : undefined;
+    look === 'figure' && model
+      ? { model, ...(madeWith?.wish ? { wish: madeWith.wish } : {}) }
+      : look === 'relief' && depth
+        ? { depth }
+        : undefined;
 
   const canSave = step === 'name' && !shaping && (look === 'photo' || !!chosen);
 
@@ -396,6 +410,26 @@ export function MakerApp() {
                       {shaping ? t('maker.3d.working') : model ? t('maker.3d.ready') : t('maker.3d.hint')}
                     </p>
                     <div className="wish">
+                      <div className="gait-row">
+                        <span className="wish-label" id="maker-gait">
+                          {t('maker.gait.label')}
+                        </span>
+                        <fieldset className="segmented" aria-labelledby="maker-gait">
+                          {GAIT_PICKS.map((g) => (
+                            <button
+                              key={g}
+                              type="button"
+                              aria-pressed={gait === g}
+                              className={gait === g ? 'on' : ''}
+                              disabled={shaping}
+                              onClick={() => setGait(g)}
+                            >
+                              {t(`maker.gait.${g}`)}
+                            </button>
+                          ))}
+                        </fieldset>
+                      </div>
+                      <small className="hint">{t(`maker.gait.${gait}Hint`)}</small>
                       <label className="wish-label" htmlFor="maker-wish">
                         {t('maker.wish.label')} <small>{t('maker.wish.optional')}</small>
                       </label>
@@ -446,7 +480,7 @@ export function MakerApp() {
                       <button type="button" className="ghost" onClick={shape}>
                         {!model
                           ? t('maker.3d.make')
-                          : cleanWish(wish) !== madeWith
+                          : cleanWish(wish) !== madeWith?.wish || gait !== madeWith.gait
                             ? t('maker.wish.remake')
                             : t('maker.3d.again')}
                       </button>

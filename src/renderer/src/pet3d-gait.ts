@@ -1,6 +1,6 @@
 // 네 발 걷기 계산 (pet3d.ts). 동물 펫이 걸을 때 몸을 앞으로 숙이고 네 다리를 대각선 쌍으로 번갈아 딛는다.
 // three 없이 숫자만 다뤄 WebGL 없이 시험한다 (pet3d-gait.test.ts).
-import type { Blueprint, Gait, Part } from '../../shared/pet3d/blueprint.ts';
+import { type Blueprint, expandMirrors, type Gait, type Part } from '../../shared/pet3d/blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from '../../shared/pet3d/defaults.ts';
 import type { PetKind } from '../../shared/settings.ts';
 
@@ -35,7 +35,9 @@ export function legGap(bodyDepth: number): number {
 
 /**
  * 걸음새. 설계도에 적혀 있으면 그대로, 없으면(이전에 만든 펫) 다리 모양으로 짐작한다:
- * 왼다리와 오른다리가 둘 다 앞뒤 두 무리로 나뉘면(다리 넷) 네 발, 아니면 두 발
+ * 왼다리와 오른다리가 둘 다 앞뒤 두 무리로 나뉘면(다리 넷) 네 발, 아니면 두 발.
+ * 앞발만 있는 앉은 피규어(gait 칸이 생기기 전에 만든 사진 펫 "밀크")는 몸이 두 발 모양이라 두 발로 본다.
+ * 귀와 꼬리로 네 발을 짐작하면 두 발로 만든 몸이 네 발로 걸어 어색했다 (2026-10-08 사용자 보고)
  */
 export function gaitOf(bp: Pick<Blueprint, 'gait'>, parts: readonly Part[], bodyDepth: number): Gait {
   if (bp.gait) return bp.gait;
@@ -45,6 +47,42 @@ export function gaitOf(bp: Pick<Blueprint, 'gait'>, parts: readonly Part[], body
     return legCut(zs, gap) !== undefined;
   };
   return split('legL') && split('legR') ? 'quadruped' : 'biped';
+}
+
+/**
+ * 몸 앞뒤 두께 어림값: 몸 슬롯 부품들의 z 범위(가운데 ± 반지름). 돌림은 보지 않는다.
+ * 설정 창처럼 three 없이 몸 모양을 볼 때 쓴다 (펫 화면은 실제 상자로 잰다)
+ */
+export function bodyDepthOf(parts: readonly Part[]): number {
+  let lo = Number.POSITIVE_INFINITY;
+  let hi = Number.NEGATIVE_INFINITY;
+  for (const p of parts) {
+    if (p.slot !== 'body') continue;
+    lo = Math.min(lo, p.at[2] - p.size[2]);
+    hi = Math.max(hi, p.at[2] + p.size[2]);
+  }
+  return hi > lo ? hi - lo : 0;
+}
+
+/** 설계도가 만든 몸 모양의 걸음새 (사용자가 고른 값을 덮기 전). 자동을 고르면 이대로 걷는다 */
+export function shapeOf(bp: Pick<Blueprint, 'gait' | 'parts'>): Gait {
+  const parts = expandMirrors(bp.parts);
+  return gaitOf(bp, parts, bodyDepthOf(parts));
+}
+
+/** 사용자가 고른 걸음새를 설계도에 덮는다. 고른 값이 설계도 gait 보다 먼저다. 안 골랐거나 같으면 그대로 (새로 조립하지 않게) */
+export function withGait<T extends Pick<Blueprint, 'gait'>>(bp: T, pick: Gait | undefined): T {
+  return !pick || bp.gait === pick ? bp : { ...bp, gait: pick };
+}
+
+/** 고른 걸음새가 몸 모양과 다른지 (설정 창이 "이 걸음새에 맞게 다시 만들기"를 권한다). 자동은 늘 같다 */
+export function gaitMismatch(pick: Gait | undefined, shape: Gait): boolean {
+  return !!pick && pick !== shape;
+}
+
+/** 2D 기본 펫이 네 발로 걷는지: 고른 값이 있으면 그것, 없으면 기본 설계도(냥이, 멍멍이, 토순이) */
+export function quadKind(kind: PetKind | undefined, pick: Gait | undefined): boolean {
+  return pick ? pick === 'quadruped' : isQuadKind(kind);
 }
 
 /**

@@ -5,16 +5,21 @@ import { formatBytes } from '../../../shared/bytes.ts';
 import { type ChatterLevel, LEVEL_LABEL, MAX_PER_HOUR } from '../../../shared/chatter.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PetLookView, SettingsSnapshot } from '../../../shared/ipc.ts';
+import type { Gait } from '../../../shared/pet3d/blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from '../../../shared/pet3d/defaults.ts';
 import {
   cleanPetName,
   FRIENDS_MAX,
   type Friend,
+  GAIT_PICKS,
+  type GaitPick,
+  gaitPatch,
   PET_KINDS,
   PET_NAME_MAX,
   type PetKind,
   POSE_KINDS,
   petNameLength,
+  pickedGait,
   RULES_MAX,
   type Settings,
 } from '../../../shared/settings.ts';
@@ -30,6 +35,7 @@ import { MAX_SCALE, MIN_SCALE } from '../../../shared/size.ts';
 import { CANVAS_SIZE, drawPet } from '../draw.ts';
 import { PetNameInput } from '../PetNameInput.tsx';
 import { Pet3D } from '../pet3d.ts';
+import { gaitMismatch, shapeOf } from '../pet3d-gait.ts';
 
 const bridge = window.jjakkungSettings;
 
@@ -79,7 +85,13 @@ export function SettingsApp() {
       setSnap((s) => s && { ...s, settings });
       if (!nameEdited.current) setName(settings.petName);
       // 펫 만들기 창에서 새 펫을 저장하면 보관함과 지금 그림이 바뀐다. 그때만 다시 받는다
-      const key = JSON.stringify([settings.petImage, settings.petLibrary.map((p) => p.id)]);
+      // 몸을 다시 만들면(걸음새) 설계도 파일만 바뀐다. 그때도 지금 펫 카드와 몸 모양을 다시 받는다
+      const key = JSON.stringify([
+        settings.petImage,
+        settings.petModel,
+        settings.petDepth,
+        settings.petLibrary.map((p) => p.id),
+      ]);
       if (key !== libraryKey.current) {
         libraryKey.current = key;
         void bridge
@@ -233,6 +245,8 @@ export function SettingsApp() {
               onChange={(v) => update({ pet3d: v })}
             />
           )}
+
+          <GaitPicker snap={snap} update={update} flash={flash} />
 
           <Toggle
             label={t('settings.wander')}
@@ -711,6 +725,144 @@ function Stats({ onCopied }: { onCopied: (ok: boolean) => void }) {
 }
 
 /** 친구 펫 (v2 여러 마리): 이름과 모양을 정해 데려오고, 집에 보낸다. 3마리까지 */
+/**
+ * 걸음새 고르기 (자동, 두 발, 네 발). 지금 펫에만 적용하고 펫(몸)마다 따로 기억한다 (settings.petGaits).
+ * 기본 펫은 2D 와 입체 모두 바로 바꾼다. 입체 피규어 사진 펫은 몸 모양과 다른 걸음새를 고르면 바로 바꾸지 않고
+ * "이 걸음새에 맞게 다시 만들기"(같은 사진, 같은 요청사항)와 "그냥 바꾸기"를 같이 보여 준다.
+ * 다리가 없는 사진 펫(평면, 2.5D, 입체로 보기 꺼짐)은 흐리게 두고 이유를 적는다
+ */
+function GaitPicker({
+  snap,
+  update,
+  flash,
+}: {
+  snap: SettingsSnapshot;
+  update: (patch: Partial<Settings>, message?: string) => Promise<Settings>;
+  flash: (message: string, error?: boolean) => void;
+}) {
+  const s = snap.settings;
+  // 고르는 중인 걸음새 (몸과 달라 물어보는 중), 다시 만드는 중인 걸음새, 다시 만들기 실패 글
+  const [ask, setAsk] = useState<Gait>();
+  const [busy, setBusy] = useState<Gait>();
+  const [error, setError] = useState('');
+  const figure = s.petImage && snap.current?.look === 'figure' ? snap.current.model : undefined;
+  // 몸 모양: 기본 펫은 기본 설계도, 사진 펫은 그 설계도 (고른 값을 덮기 전)
+  const shape: Gait | undefined = !s.petImage
+    ? shapeOf(DEFAULT_BLUEPRINTS[s.petKind])
+    : figure && s.pet3d
+      ? shapeOf(figure)
+      : undefined;
+  const why = shape ? '' : figure ? t('settings.gait.off3d') : t('settings.gait.flat');
+  const picked = shape ? pickedGait(s) : undefined;
+  const now: GaitPick = picked ?? 'auto';
+  const canRemake = !!figure;
+  // 펫을 바꾸면 묻던 것을 접는다
+  const petKey = `${s.petImage ?? s.petKind}|${s.petModel ?? ''}`;
+  const lastPet = useRef(petKey);
+  useEffect(() => {
+    if (lastPet.current === petKey) return;
+    lastPet.current = petKey;
+    setAsk(undefined);
+    setError('');
+  }, [petKey]);
+
+  const apply = async (pick: GaitPick) => {
+    const patch = gaitPatch(s, pick);
+    setAsk(undefined);
+    setError('');
+    if (patch) await update(patch);
+  };
+  const choose = (pick: GaitPick) => {
+    if (!shape || busy) return;
+    if (pick === now) {
+      setAsk(undefined);
+      return;
+    }
+    if (pick !== 'auto' && canRemake && gaitMismatch(pick, shape)) {
+      setAsk(pick);
+      setError('');
+      return;
+    }
+    void apply(pick);
+  };
+  const remake = async (pick: Gait) => {
+    setBusy(pick);
+    setError('');
+    const r = await bridge.remakeBody(pick);
+    setBusy(undefined);
+    if (r.ok) {
+      setAsk(undefined);
+      flash(t('settings.gait.remade', { name: s.petName }));
+    } else setError(r.error);
+  };
+  const walk = (g: Gait) => t(`settings.gait.${g}`);
+  const body = (g: Gait) => t(`settings.gait.body.${g}`);
+  const odd = !!shape && !!picked && gaitMismatch(picked, shape);
+
+  return (
+    <div className="field">
+      <span id="gait-label">{t('settings.gait')}</span>
+      <fieldset className="segmented" aria-labelledby="gait-label" disabled={!shape || !!busy}>
+        {GAIT_PICKS.map((g) => (
+          <button
+            key={g}
+            type="button"
+            aria-pressed={now === g}
+            className={now === g && shape ? 'on' : ''}
+            onClick={() => choose(g)}
+          >
+            {t(`settings.gait.${g}`)}
+          </button>
+        ))}
+      </fieldset>
+      {!shape ? (
+        <small>{why}</small>
+      ) : busy ? (
+        <div className="action-row notice" role="status">
+          <small className="grow">{t('settings.gait.remaking', { pick: walk(busy) })}</small>
+          <button type="button" className="ghost" onClick={() => bridge.cancelRemake()}>
+            {t('settings.gait.stop')}
+          </button>
+        </div>
+      ) : ask ? (
+        <div className="notice gait-ask" role="status">
+          <small>
+            {t('settings.gait.mismatch', { name: s.petName, body: body(shape), pick: walk(ask) })}
+          </small>
+          <div className="action-row">
+            <button type="button" className="primary" onClick={() => void remake(ask)}>
+              {t('settings.gait.remake', { pick: walk(ask) })}
+            </button>
+            <button type="button" className="ghost" onClick={() => void apply(ask)}>
+              {t('settings.gait.justSwitch', { pick: walk(ask) })}
+            </button>
+            <button type="button" className="link" onClick={() => setAsk(undefined)}>
+              {t('settings.gait.keep')}
+            </button>
+          </div>
+          <small className="muted">{t('settings.gait.remakeHint')}</small>
+          {error && (
+            <small className="warn" role="alert">
+              {error}
+            </small>
+          )}
+        </div>
+      ) : odd && picked ? (
+        <div className="action-row">
+          <small className="grow">{t('settings.gait.odd', { name: s.petName, body: body(shape) })}</small>
+          {canRemake && (
+            <button type="button" className="link" onClick={() => setAsk(picked)}>
+              {t('settings.gait.remake', { pick: walk(picked) })}
+            </button>
+          )}
+        </div>
+      ) : (
+        <small>{picked ? t('settings.gait.kept') : t('settings.gait.autoNow', { gait: walk(shape) })}</small>
+      )}
+    </div>
+  );
+}
+
 function Friends({
   list,
   petName,
@@ -759,6 +911,30 @@ function Friends({
                   ? t('settings.friends.photo')
                   : (PET_KINDS.find((k) => k.id === f.kind)?.label ?? '')}
               </small>
+              {/* 걸음새는 다리가 있는 몸(기본 펫, 입체 설계도가 있는 사진 친구)만. 친구마다 따로 */}
+              {(!f.image || f.model) && (
+                <select
+                  className="friend-gait"
+                  value={f.gait ?? 'auto'}
+                  aria-label={t('settings.gait.friendAria', { name: f.name })}
+                  onChange={(e) => {
+                    const pick = e.target.value as GaitPick;
+                    onChange(
+                      list.map((x) => {
+                        if (x.id !== f.id) return x;
+                        const { gait: _, ...rest } = x;
+                        return pick === 'auto' ? rest : { ...rest, gait: pick };
+                      }),
+                    );
+                  }}
+                >
+                  {GAIT_PICKS.map((g) => (
+                    <option key={g} value={g}>
+                      {t(`settings.gait.${g}`)}
+                    </option>
+                  ))}
+                </select>
+              )}
               <button
                 type="button"
                 className={`link${sure === f.id ? ' sure' : ''}`}

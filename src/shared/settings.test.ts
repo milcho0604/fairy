@@ -3,16 +3,19 @@ import { test } from 'node:test';
 import { setLang } from './i18n/index.ts';
 import {
   applyPatch,
+  bodyKey,
   cleanPetName,
   clipPetName,
   DEFAULT_SETTINGS,
   defaultPetName,
   followKindName,
+  gaitPatch,
   PET_KINDS,
   PET_NAME_MAX,
   parseSettings,
   petNameLength,
   photoPetName,
+  pickedGait,
   type Settings,
 } from './settings.ts';
 
@@ -332,4 +335,65 @@ test('설정 파일의 시스템 단축키(복사, 종료)는 등록하지 않�
     applyPatch(now, { shortcuts: { hide: 'CommandOrControl+Alt+Shift+J' } }).shortcuts.hide,
     'CommandOrControl+Alt+Shift+J',
   );
+});
+
+test('걸음새 고르기: 옛 설정 파일엔 없어서 자동, 몸마다 따로, 틀린 값과 안 쓰는 몸은 버린다', () => {
+  // 옛 설정 파일 (칸 없음) → 자동
+  const old = parseSettings({ petKind: 'cat' });
+  assert.deepEqual(old.petGaits, {});
+  assert.deepEqual(old.petWishes, {});
+  assert.equal(pickedGait(old), undefined);
+  // 기본 펫은 kind:<모양>, 2D 와 입체가 같은 값
+  assert.equal(bodyKey(old), 'kind:cat');
+  const two = applyPatch(old, gaitPatch(old, 'biped'));
+  assert.deepEqual(two.petGaits, { 'kind:cat': 'biped' });
+  assert.equal(pickedGait(two), 'biped');
+  // 다른 모양으로 바꾸면 그 모양 값(자동), 돌아오면 다시 고른 값
+  assert.equal(pickedGait({ ...two, petKind: 'dog' }), undefined);
+  // 자동을 고르면 키를 지운다
+  assert.deepEqual(applyPatch(two, gaitPatch(two, 'auto')).petGaits, {});
+  // 입체 사진 펫은 설계도 파일 이름이 열쇠, 보관한 펫은 자기 설계도 열쇠로 따로
+  const photo = parseSettings({
+    petImage: 'pet-1.png',
+    petModel: 'model-1.json',
+    petLibrary: [{ id: 'p-a', name: '초코', image: 'pet-2.png', model: 'model-2.json', poses: {} }],
+    petGaits: {
+      'model-1.json': 'quadruped',
+      'model-2.json': 'biped',
+      // 아무도 안 쓰는 설계도, 모르는 모양, 틀린 값은 버린다
+      'model-9.json': 'biped',
+      'kind:dragon': 'biped',
+      'kind:dog': 'flying',
+      '../x.json': 'biped',
+    },
+    petWishes: { 'model-1.json': '  졸린 눈\n', 'model-9.json': '없는 펫', 'kind:cat': '사진 없음' },
+  });
+  assert.equal(bodyKey(photo), 'model-1.json');
+  assert.deepEqual(photo.petGaits, { 'model-1.json': 'quadruped', 'model-2.json': 'biped' });
+  assert.deepEqual(photo.petWishes, { 'model-1.json': '졸린 눈' });
+  assert.equal(pickedGait(photo), 'quadruped');
+  // 평면 사진(설계도 없음)은 다리가 없어 고를 수 없다
+  const flat = parseSettings({ petImage: 'pet-1.png', petGaits: { 'kind:cat': 'biped' } });
+  assert.equal(bodyKey(flat), undefined);
+  assert.equal(pickedGait(flat), undefined);
+  assert.equal(gaitPatch(flat, 'quadruped'), undefined);
+  // 몸을 다시 만들어 설계도 파일이 바뀌면 옛 열쇠는 빠진다
+  const remade = applyPatch(photo, { petModel: 'model-3.json' });
+  assert.deepEqual(remade.petGaits, { 'model-2.json': 'biped' });
+  assert.deepEqual(remade.petWishes, {});
+  // 객체가 아닌 값은 지금 값을 지킨다
+  assert.deepEqual(applyPatch(photo, { petGaits: 'quadruped' }).petGaits, photo.petGaits);
+});
+
+test('친구 펫 걸음새: 친구마다 따로, 틀린 값은 자동', () => {
+  const s = parseSettings({
+    friends: [
+      { id: 'f-a', name: '보리', kind: 'cat', gait: 'biped' },
+      { id: 'f-b', name: '두부', kind: 'kong', gait: 'hop' },
+      { id: 'f-c', name: '콩떡', kind: 'kong' },
+    ],
+  });
+  assert.equal(s.friends[0]?.gait, 'biped');
+  assert.equal(s.friends[1]?.gait, undefined);
+  assert.equal('gait' in (s.friends[2] ?? {}), false);
 });

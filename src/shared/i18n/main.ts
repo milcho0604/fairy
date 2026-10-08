@@ -70,6 +70,8 @@ export const ko = {
     '사진을 볼 수 있는 AI(Claude, Codex)가 없어. 채팅에서 하나를 설치하고 로그인하면 쓸 수 있어.',
   'main.maker.shapeCancelled': '입체 만들기를 멈췄어.',
   'main.maker.shapeBad': 'AI 답에서 설계도를 못 읽었어. 한 번 더 해 볼래?',
+  'main.remake.notFigure': '입체 피규어로 만든 사진 펫만 몸을 다시 만들 수 있어.',
+  'main.remake.changed': '그사이 펫이 바뀌어서 새 몸은 버렸어.',
   'main.db.recovered':
     '저장 파일이 깨져 있었어. 지우지 않고 {moved} 로 옮겨 두고, {when} 에 남겨 둔 복사본으로 되살렸어. 그 뒤에 한 것은 빠졌을 수 있어.',
   'main.db.fresh':
@@ -150,6 +152,8 @@ export const en: Translation<typeof ko> = {
     'No AI that can see photos (Claude, Codex). Install and sign in to one from the chat to use this.',
   'main.maker.shapeCancelled': 'Stopped making the 3D pet.',
   'main.maker.shapeBad': "Couldn't read a blueprint from the AI's answer. Try again?",
+  'main.remake.notFigure': 'Only photo pets made as a 3D figure can get a new body.',
+  'main.remake.changed': 'The pet changed in the meantime, so the new body was dropped.',
   'main.db.recovered':
     'Your save file was damaged. I kept it as {moved} and brought back the copy saved on {when}. Anything after that may be missing.',
   'main.db.fresh':

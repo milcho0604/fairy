@@ -5,6 +5,7 @@ import {
   EYES,
   FINISHES,
   GAITS,
+  type Gait,
   MAX_PARTS,
   MOTION_RANGE,
   MOUTHS,
@@ -49,8 +50,29 @@ ${JSON.stringify(wish)}
 - Accessories (ribbon, hat, scarf, glasses) are extra parts in a fitting slot (a ribbon on the head goes in "top" or "head") that overlap the surface.`;
 }
 
-/** 사진 펫 이름(과 사용자 요청사항)을 넣은 요청 본문 */
-export function blueprintPrompt(petName: string, wish = ''): string {
+/**
+ * 사용자가 고른 걸음새 블록. 몸을 처음부터 그 걸음새로 만든다:
+ * 네 발이면 네 다리로 선 몸(앞발과 뒷발이 앞뒤로 떨어진), 두 발이면 서 있는 몸(다리 둘, 뒷발 없음)
+ */
+function gaitBlock(gait: Gait): string {
+  return gait === 'quadruped'
+    ? `
+
+Walking style (chosen by the owner): four legs.
+- Set "gait": "quadruped".
+- Build the figure standing on all four paws, not sitting: the body is a bit longer front to back (z) than it is tall, the head sits at the front (+z side) still facing the viewer, and the tail is at the back.
+- Put two front paws in legL/legR at z > 0 and two hind paws in legL/legR at z < 0, at least 0.3 apart front to back, all touching y=0. Use mirror for each pair.
+- Do not add armL/armR; the front legs are the arms.`
+    : `
+
+Walking style (chosen by the owner): two legs.
+- Set "gait": "biped".
+- Build the figure standing upright on two feet: legL/legR under the body near z=0, touching y=0, and no hind legs further back.
+- Front paws or arms go in armL/armR at the sides of the body, even for an animal.`;
+}
+
+/** 사진 펫 이름(과 사용자 요청사항, 고른 걸음새)을 넣은 요청 본문. 걸음새를 안 고르면(자동) AI 가 사진을 보고 정한다 */
+export function blueprintPrompt(petName: string, wish = '', gait?: Gait): string {
   const w = cleanWish(wish);
   return `Make a chibi figure of this pet (name: ${JSON.stringify(petName)}) that clearly resembles the photo: same main colors, markings, ear and tail shapes, body proportions.
 
@@ -85,18 +107,21 @@ Rules:
 - Use the photo's real colors. Avoid pure white (#ffffff) and pure black (#000000) for big parts.
 
 Example (a default pet, a round bean with feet, arms and a sprout):
-${JSON.stringify(DEFAULT_BLUEPRINTS.kong)}${w ? wishBlock(w) : ''}`;
+${JSON.stringify(DEFAULT_BLUEPRINTS.kong)}${gait ? gaitBlock(gait) : ''}${w ? wishBlock(w) : ''}`;
 }
 
-/** AI 답에서 설계도를 꺼낸다. ```json 블록이 있으면 그것, 없으면 처음 { 부터 마지막 } 까지 */
-export function extractBlueprint(answer: string): Blueprint | undefined {
+/**
+ * AI 답에서 설계도를 꺼낸다. ```json 블록이 있으면 그것, 없으면 처음 { 부터 마지막 } 까지.
+ * 사용자가 걸음새를 골랐으면 AI 가 다르게 적었어도 고른 값으로 적는다
+ */
+export function extractBlueprint(answer: string, gait?: Gait): Blueprint | undefined {
   const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(answer)?.[1];
   const candidates = [fenced, answer.slice(answer.indexOf('{'), answer.lastIndexOf('}') + 1)];
   for (const c of candidates) {
     if (!c?.trim()) continue;
     try {
       const bp = parseBlueprint(JSON.parse(c));
-      if (bp) return bp;
+      if (bp) return gait ? { ...bp, gait } : bp;
     } catch {
       // 다음 후보
     }

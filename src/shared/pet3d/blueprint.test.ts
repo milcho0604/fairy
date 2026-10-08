@@ -120,6 +120,36 @@ test('요청사항은 사진 규칙 뒤에 따옴표 글로 들어가고, 형식
   assert.ok(p.includes('40 parts at most'));
 });
 
+test('고른 걸음새: 요청문에 몸 만들기 블록이 요청사항보다 앞에, 꺼낸 설계도 gait 는 고른 값', () => {
+  const plain = blueprintPrompt('밀크');
+  // 자동이면 블록 없이 AI 가 사진을 보고 정한다
+  assert.ok(!plain.includes('Walking style'));
+  assert.equal(blueprintPrompt('밀크', '', undefined), plain);
+  const four = blueprintPrompt('밀크', '졸린 눈', 'quadruped');
+  assert.match(four, /four legs/);
+  assert.match(four, /"gait": "quadruped"/);
+  assert.match(four, /standing on all four paws, not sitting/);
+  assert.match(four, /z < 0/);
+  assert.ok(four.indexOf('Walking style') > four.indexOf('Example ('), '예시 뒤');
+  assert.ok(
+    four.indexOf('Walking style') < four.indexOf('User wish'),
+    '요청사항 앞 (요청사항이 걸음새를 못 바꾼다)',
+  );
+  const two = blueprintPrompt('밀크', '', 'biped');
+  assert.match(two, /two legs/);
+  assert.match(two, /"gait": "biped"/);
+  assert.match(two, /no hind legs/);
+  assert.ok(!two.includes('User wish'));
+  // AI 가 다르게 적어도(또는 안 적어도) 고른 값으로
+  const cat = JSON.stringify(DEFAULT_BLUEPRINTS.cat);
+  assert.equal(extractBlueprint(cat, 'biped')?.gait, 'biped');
+  assert.equal(extractBlueprint(cat)?.gait, 'quadruped');
+  const kong = JSON.stringify(DEFAULT_BLUEPRINTS.kong);
+  assert.equal(extractBlueprint(kong)?.gait, undefined);
+  assert.equal(extractBlueprint(kong, 'quadruped')?.gait, 'quadruped');
+  assert.equal(extractBlueprint('사진이 안 보여요', 'quadruped'), undefined);
+});
+
 test('요청사항 다듬기: 줄바꿈과 제어 문자는 띄어쓰기, 길이는 코드 포인트로 자른다', () => {
   assert.equal(cleanWish(undefined), '');
   assert.equal(cleanWish(null), '');

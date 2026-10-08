@@ -16,7 +16,7 @@ import type { LookMotion } from './look-motion.ts';
 import type { MiniGame } from './minigames.ts';
 import type { MoveAsk } from './moves.ts';
 import type { Note, NoteSource } from './note-store.ts';
-import type { Blueprint } from './pet3d/blueprint.ts';
+import type { Blueprint, Gait } from './pet3d/blueprint.ts';
 import type { PetKind, PoseKind, Settings } from './settings.ts';
 import type { BuyResult, ShopState } from './shop.ts';
 import type { SoundKind } from './sound.ts';
@@ -206,6 +206,9 @@ export const SETTINGS = {
   removeSavedPet: 'settings:remove-saved-pet',
   /** 받은 모델 지우기. 새 목록을 돌려준다 */
   deleteModel: 'settings:delete-model',
+  /** 지금 사진 펫의 몸을 고른 걸음새에 맞게 다시 만든다 (같은 사진, 같은 요청사항). 그만두기는 cancelRemake */
+  remakeBody: 'settings:remake-body',
+  cancelRemake: 'settings:cancel-remake',
   /** 메인 → 설정 창: 설정이 바뀌었다 */
   changed: 'settings:changed',
   /** 메인 → 설정 창: 이 칸을 보여 줘 (메뉴 막대 "의견 보내기") */
@@ -294,6 +297,9 @@ export interface SettingsBridge {
   deleteModel(
     id: string,
   ): Promise<{ ok: boolean; storage: StoredModel[]; localReady: Record<string, boolean> }>;
+  /** 몸 다시 만들기. 끝나면(성공이면 설정이 바뀐 뒤) 결과. AI 가 없으면 noAi */
+  remakeBody(gait: Gait): Promise<{ ok: true } | { ok: false; error: string; noAi?: boolean }>;
+  cancelRemake(): void;
   onChanged(listener: (settings: Settings) => void): void;
   onFocus(listener: (section: SettingsSection) => void): void;
   onPower(listener: (onBattery: boolean) => void): void;
@@ -424,6 +430,8 @@ export interface PetStatus {
   boost: boolean;
   /** 얼굴 그림을 그려 보낼지. 내 펫 화면만 (친구 펫은 안 그린다) */
   face?: boolean;
+  /** 사용자가 고른 걸음새 (설정). 없으면 자동: 설계도 gait, 없으면 다리 모양으로 짐작 */
+  gait?: Gait;
 }
 
 /** 펫 그림들 (data URL). 없으면 기본 펫. 포즈는 상태별 그림 (v1) */
@@ -465,6 +473,8 @@ export const DEPTH_URL = `${MODEL_SCHEME}://depth/model.onnx`;
 export interface PetLook {
   model?: Blueprint;
   depth?: string;
+  /** 설계도를 만든 요청사항 (걸음새에 맞게 다시 만들 때 같은 글로) */
+  wish?: string;
 }
 
 /** 펫 만들기 창이 만드는 것: 펫 본 그림, 또는 상태별 포즈 (v1) */
@@ -505,6 +515,8 @@ export interface MakerBridge {
   shape3d(
     png: string,
     wish?: string,
+    /** 고른 걸음새. 없으면 자동(AI 가 사진을 보고 정한다) */
+    gait?: Gait,
   ): Promise<{ ok: true; model: Blueprint } | { ok: false; error: string; noAi?: boolean }>;
   /** 기본 펫으로 돌아가기 */
   resetToDefault(): Promise<void>;

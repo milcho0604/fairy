@@ -21,7 +21,7 @@ import {
   MODEL_URL,
   type PetImages,
 } from '../shared/ipc.ts';
-import { type Blueprint, parseBlueprint } from '../shared/pet3d/blueprint.ts';
+import { type Blueprint, type Gait, parseBlueprint } from '../shared/pet3d/blueprint.ts';
 import {
   BLUEPRINT_SYSTEM,
   blueprintPrompt,
@@ -29,7 +29,7 @@ import {
   extractBlueprint,
   WISH_MAX,
 } from '../shared/pet3d/prompt.ts';
-import { cleanPetName, POSE_KINDS, photoPetName } from '../shared/settings.ts';
+import { cleanPetName, isGait, POSE_KINDS, photoPetName } from '../shared/settings.ts';
 import { CUSTOM_FOOD_COST } from '../shared/shop.ts';
 import { BG_MODEL, ensureModel, modelReady, verifiedModelUrl } from './bg-model.ts';
 import { DEPTH_MODEL, depthReady, ensureDepthModel, verifiedDepthUrl } from './depth-model.ts';
@@ -100,12 +100,18 @@ export function petImages(): PetImages {
 /** 깊이 그림 상한. 화면에서 256px 회색 PNG 로 보낸다 */
 const MAX_DEPTH_BYTES = 1024 * 1024;
 
-/** 저장할 입체 모습을 고른다. 설계도는 다시 검사하고, 깊이 그림은 PNG 인지와 크기를 본다 */
-function lookOf(raw: unknown): { model?: Blueprint; depth?: Buffer } {
+/**
+ * 저장할 입체 모습을 고른다. 설계도는 다시 검사하고, 깊이 그림은 PNG 인지와 크기를 본다.
+ * 설계도와 같이 온 요청사항(그 설계도를 만든 글)은 다듬어 둔다 (걸음새에 맞게 다시 만들 때 쓴다)
+ */
+function lookOf(raw: unknown): { model?: Blueprint; depth?: Buffer; wish?: string } {
   if (typeof raw !== 'object' || raw === null) return {};
   const r = raw as Record<string, unknown>;
   const model = parseBlueprint(r.model);
-  if (model) return { model };
+  if (model) {
+    const wish = typeof r.wish === 'string' && r.wish.length <= WISH_MAX * 4 ? cleanWish(r.wish) : '';
+    return wish ? { model, wish } : { model };
+  }
   const prefix = 'data:image/png;base64,';
   if (typeof r.depth === 'string' && r.depth.startsWith(prefix)) {
     const bytes = Buffer.from(r.depth.slice(prefix.length), 'base64');
@@ -237,11 +243,14 @@ export function createMaker(
   });
 
   // 다듬은 사진(PNG)과 사용자 요청사항(글, 선택)만 AI 에 보낸다. 기록은 남기지 않는다(chat.oneShot)
-  ipcMain.handle(MAKER.shape3d, async (e, dataUrl: string, wishRaw?: unknown) => {
+  ipcMain.handle(MAKER.shape3d, async (e, dataUrl: string, wishRaw?: unknown, gaitRaw?: unknown) => {
     if (!fromMaker(e) || !askWithImage) return { ok: false, error: t('main.maker.reopen') };
     // 요청사항은 글이거나 없음만. 칸 상한(WISH_MAX)보다 한참 긴 글은 창이 보낸 값이 아니다
     if (wishRaw != null && (typeof wishRaw !== 'string' || wishRaw.length > WISH_MAX * 4))
       return { ok: false, error: t('main.maker.badFormat') };
+    // 걸음새는 두 발, 네 발, 또는 없음(자동: AI 가 사진을 보고 정한다)
+    if (gaitRaw != null && !isGait(gaitRaw)) return { ok: false, error: t('main.maker.badFormat') };
+    const gait = gaitRaw ?? undefined;
     const wish = cleanWish(wishRaw);
     const prefix = 'data:image/png;base64,';
     if (typeof dataUrl !== 'string' || !dataUrl.startsWith(prefix))
@@ -255,7 +264,7 @@ export function createMaker(
     shaping = abort;
     const started = Date.now();
     const r = await askWithImage(
-      blueprintPrompt(settings.get().petName, wish),
+      blueprintPrompt(settings.get().petName, wish, gait),
       { mediaType: 'image/png', data },
       BLUEPRINT_SYSTEM,
       abort.signal,
@@ -265,7 +274,7 @@ export function createMaker(
       log('maker', 'shape3d', r.noAi ? 'no ai' : r.error);
       return r;
     }
-    const model = extractBlueprint(r.text);
+    const model = extractBlueprint(r.text, gait);
     log(
       'maker',
       'shape3d',
@@ -274,6 +283,7 @@ export function createMaker(
       model ? `${model.parts.length} parts` : 'bad',
       // 요청 글은 기록에 남기지 않고 길이만
       wish ? `wish ${[...wish].length}` : 'no wish',
+      gait ?? 'gait auto',
     );
     return model ? { ok: true, model } : { ok: false, error: t('main.maker.shapeBad') };
   });
@@ -335,6 +345,10 @@ export function createMaker(
         petModel: modelFile ?? null,
         petDepth: depthFile ?? null,
         petName,
+        // 설계도를 만든 요청사항은 그 설계도 이름으로 (걸음새에 맞게 다시 만들 때 같은 글로)
+        ...(modelFile && look.wish
+          ? { petWishes: { ...settings.get().petWishes, [modelFile]: look.wish } }
+          : {}),
       });
     } else settings.set({ petPoses: { [to]: file } });
     if (old && old !== file) rmSync(join(petsDir(), old), { force: true });
@@ -357,6 +371,68 @@ export function createMaker(
     if (!r.ok) rmSync(join(petsDir(), file), { force: true });
     log('maker', 'food', r.ok ? file : r.error);
     return r;
+  }
+
+  /** 몸 다시 만들기 (설정 창). 하나만 돈다: 새로 부르면 앞의 것을 멈춘다 */
+  let remaking: AbortController | undefined;
+
+  /**
+   * 지금 사진 펫의 몸을 고른 걸음새에 맞게 다시 만든다 (설정 짝꿍 걸음새). 같은 사진, 같은 요청사항으로 AI 에 한 번 묻고
+   * 새 설계도 파일로 바꾼다. 이름, 포즈, 보관함은 그대로. 옛 설계도는 아무도 안 쓰면 지운다.
+   * 기다리는 사이 펫이 바뀌면(보관함에서 다른 펫, 새 펫) 결과를 버린다
+   */
+  async function remake(gait: Gait): Promise<{ ok: true } | { ok: false; error: string; noAi?: boolean }> {
+    const s = settings.get();
+    const oldModel = s.petModel;
+    if (!askWithImage || !s.petImage || !oldModel || !s.petImage.endsWith('.png'))
+      return { ok: false, error: t('main.remake.notFigure') };
+    const bytes = readFileIn(petsDir(), s.petImage, MAX_PNG_BYTES);
+    if (!bytes || kindOf(bytes) !== 'png') return { ok: false, error: t('main.remake.notFigure') };
+    const wish = s.petWishes[oldModel] ?? '';
+    remaking?.abort();
+    const abort = new AbortController();
+    remaking = abort;
+    const started = Date.now();
+    const r = await askWithImage(
+      blueprintPrompt(s.petName, wish, gait),
+      { mediaType: 'image/png', data: bytes.toString('base64') },
+      BLUEPRINT_SYSTEM,
+      abort.signal,
+    );
+    if (remaking === abort) remaking = undefined;
+    if (abort.signal.aborted) return { ok: false, error: t('main.maker.shapeCancelled') };
+    if (!r.ok) {
+      log('maker', 'remake', r.noAi ? 'no ai' : r.error);
+      return r;
+    }
+    const model = extractBlueprint(r.text, gait);
+    log(
+      'maker',
+      'remake',
+      r.provider,
+      `${Math.round((Date.now() - started) / 1000)}s`,
+      model ? `${model.parts.length} parts` : 'bad',
+      gait,
+      wish ? `wish ${[...wish].length}` : 'no wish',
+    );
+    if (!model) return { ok: false, error: t('main.maker.shapeBad') };
+    const now = settings.get();
+    if (now.petImage !== s.petImage || now.petModel !== oldModel)
+      return { ok: false, error: t('main.remake.changed') };
+    const file = `model-${Date.now()}.json`;
+    try {
+      writeFileAtomic(join(petsDir(), file), JSON.stringify(model));
+    } catch (err) {
+      log('maker', 'remake save failed', err instanceof Error ? err.message : String(err));
+      return { ok: false, error: saveErrorText(err) };
+    }
+    // 새 몸은 고른 걸음새로 만들었으니 자동으로 둔다 (설계도 gait 가 고른 값). 옛 열쇠는 설정 검사가 뺀다
+    settings.set({
+      petModel: file,
+      ...(wish ? { petWishes: { ...now.petWishes, [file]: wish } } : {}),
+    });
+    library.cleanup([oldModel]);
+    return { ok: true };
   }
 
   ipcMain.on(MAKER.close, (e) => {
@@ -411,6 +487,9 @@ export function createMaker(
 
   return {
     open,
+    remake,
+    /** 다시 만들기를 멈춘다 (설정 창의 그만두기, 창 닫기) */
+    cancelRemake: () => remaking?.abort(),
     get window() {
       return win;
     },

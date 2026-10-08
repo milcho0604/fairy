@@ -186,6 +186,8 @@ if (kind === 'settings') {
     choosePet: (choice) => ipcRenderer.invoke(SETTINGS.choosePet, choice),
     removeSavedPet: (id: string) => ipcRenderer.invoke(SETTINGS.removeSavedPet, id),
     deleteModel: (id: string) => ipcRenderer.invoke(SETTINGS.deleteModel, id),
+    remakeBody: (gait) => ipcRenderer.invoke(SETTINGS.remakeBody, gait),
+    cancelRemake: () => ipcRenderer.send(SETTINGS.cancelRemake),
     onChanged: (listener) => {
       ipcRenderer.on(SETTINGS.changed, (_e, next: Settings) => listener(next));
     },
@@ -253,7 +255,8 @@ if (kind === 'maker') {
     ensureModel: () => ipcRenderer.invoke(MAKER.ensureModel),
     save: (png: string, name: string, look?: unknown) => ipcRenderer.invoke(MAKER.save, png, name, look),
     ensureDepth: () => ipcRenderer.invoke(MAKER.ensureDepth),
-    shape3d: (png: string, wish?: string) => ipcRenderer.invoke(MAKER.shape3d, png, wish),
+    shape3d: (png: string, wish?: string, gait?: string) =>
+      ipcRenderer.invoke(MAKER.shape3d, png, wish, gait),
     resetToDefault: () => ipcRenderer.invoke(MAKER.save, null, ''),
     close: () => ipcRenderer.send(MAKER.close),
     onProgress: (listener) => {

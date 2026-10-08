@@ -122,6 +122,7 @@ export function createFriends(o: {
       flower: false,
       sounds: false,
       boost: boostOn(),
+      ...(f.gait ? { gait: f.gait } : {}),
     };
   }
 

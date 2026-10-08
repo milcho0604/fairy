@@ -5,10 +5,11 @@ import { t } from '../../shared/i18n/index.ts';
 import { lensSide, type MagnifierPose } from '../../shared/look-motion.ts';
 import type { MoveType } from '../../shared/moves.ts';
 import type { PetMood } from '../../shared/pet-mood.ts';
+import type { Gait } from '../../shared/pet3d/blueprint.ts';
 import type { PetKind } from '../../shared/settings.ts';
 import { drawMagnifier } from './magnifier.ts';
 import { type MovePose, movePose } from './move-pose.ts';
-import { isQuadKind } from './pet3d-gait.ts';
+import { quadKind } from './pet3d-gait.ts';
 
 export const CANVAS_SIZE = 160;
 
@@ -75,6 +76,8 @@ export interface DrawState {
   face?: boolean;
   /** 같이 보기 (shared/look-motion.ts): 그쪽을 보고, pose 가 있으면 돋보기를 든다 */
   peer?: { dir: Gaze; pose?: MagnifierPose };
+  /** 사용자가 고른 걸음새 (설정). 없으면 자동: 2D 는 냥이, 멍멍이, 토순이만 네 발 */
+  gait?: Gait;
 }
 
 export interface Trick {
@@ -239,8 +242,8 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): void {
     const spread = 24 + 8 * sitK;
     const step = act?.type === 'walk' ? Math.sin(act.phase * Math.PI * 2) * 4 : 0;
     const dangle = s.mood === 'grabbed' ? 6 : 0;
-    // 네 발 동물(냥이, 멍멍이, 토순이)은 걸을 때 뒷발 둘이 가는 반대쪽 뒤에 보인다 (pet3d-gait.ts)
-    if (act?.type === 'walk' && isQuadKind(kind)) drawHindFeet(ctx, act.dir, step, lift);
+    // 네 발 동물(냥이, 멍멍이, 토순이, 또는 네 발을 고른 펫)은 걸을 때 뒷발 둘이 가는 반대쪽 뒤에 보인다 (pet3d-gait.ts)
+    if (act?.type === 'walk' && quadKind(kind, s.gait)) drawHindFeet(ctx, act.dir, step, lift);
     ctx.fillStyle = BODY;
     ctx.strokeStyle = LINE;
     ctx.lineWidth = 2;

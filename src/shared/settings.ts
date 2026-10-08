@@ -4,6 +4,8 @@ import type { ChatterLevel } from './chatter.ts';
 import { type FocusLength, isFocusLength } from './focus.ts';
 import { type LangPref, t } from './i18n/index.ts';
 import { cleanIcsUrl } from './ics.ts';
+import { GAITS, type Gait } from './pet3d/blueprint.ts';
+import { cleanWish } from './pet3d/prompt.ts';
 import { isAccelerator, reservedUse, SHORTCUT_DEFAULTS, type ShortcutId, shortcutClash } from './shortcut.ts';
 
 export interface Settings {
@@ -82,6 +84,17 @@ export interface Settings {
   sounds: boolean;
   /** 부스트 모드 (기본 끔): 사양 좋은 컴퓨터용. CPU, 메모리를 조금 더 써서 더 부드럽고 빠르게. 배터리일 때는 쉰다 */
   boost: boolean;
+  /**
+   * 사용자가 고른 걸음새 (설정 짝꿍). 키는 몸(bodyKey): 입체 사진 펫은 설계도 파일 이름, 기본 펫은 kind:<모양>.
+   * 없으면 자동(설계도 gait, 없으면 다리 모양으로 짐작). 고른 값이 설계도 gait 보다 먼저다.
+   * 몸마다 따로라 보관함의 펫을 바꿔 꺼내도 각자 값이 남는다
+   */
+  petGaits: Record<string, Gait>;
+  /**
+   * 입체 사진 펫을 만들 때 적은 요청사항. 키는 설계도 파일 이름. 걸음새에 맞게 몸을 다시 만들 때 같은 요청사항을 쓴다.
+   * 이 칸이 생기기 전에 만든 펫은 없다(요청사항 없이 다시 만든다). 펫 파일로 내보내지 않는다
+   */
+  petWishes: Record<string, string>;
 }
 
 /** 보관한 사진 펫. 파일은 pets/ 안 */
@@ -107,9 +120,41 @@ export interface Friend {
   model?: string;
   /** 2.5D 깊이 그림 (pets/ 안 depth-*.png, 6단계) */
   depth?: string;
+  /** 고른 걸음새. 없으면 자동 (친구마다 따로) */
+  gait?: Gait;
 }
 
 export const FRIENDS_MAX = 3;
+
+/** 걸음새 고르기: 자동(몸 모양을 보고), 두 발, 네 발 */
+export const GAIT_PICKS = ['auto', ...GAITS] as const;
+export type GaitPick = (typeof GAIT_PICKS)[number];
+export const isGait = (v: unknown): v is Gait => GAITS.includes(v as Gait);
+
+/**
+ * 지금 펫의 몸 열쇠 (petGaits 의 키). 기본 펫은 kind:<모양>(2D 와 입체가 같은 값), 입체 설계도가 있는 사진 펫은
+ * 설계도 파일 이름. 설계도가 없는 사진 펫(평면 사진, 2.5D)은 다리가 따로 없어 고를 수 없다(undefined)
+ */
+export function bodyKey(s: Pick<Settings, 'petImage' | 'petModel' | 'petKind'>): string | undefined {
+  if (!s.petImage) return `kind:${s.petKind}`;
+  return s.petModel;
+}
+
+/** 지금 펫에 고른 걸음새. 자동이면 undefined */
+export function pickedGait(
+  s: Pick<Settings, 'petImage' | 'petModel' | 'petKind' | 'petGaits'>,
+): Gait | undefined {
+  const key = bodyKey(s);
+  return key ? s.petGaits[key] : undefined;
+}
+
+/** 지금 펫의 걸음새를 바꾸는 값 (설정 바꾸기에 그대로 넣는다). 자동이면 키를 지운다. 고를 수 없는 펫이면 undefined */
+export function gaitPatch(s: Settings, pick: GaitPick): Pick<Settings, 'petGaits'> | undefined {
+  const key = bodyKey(s);
+  if (!key) return undefined;
+  const { [key]: _, ...rest } = s.petGaits;
+  return { petGaits: pick === 'auto' ? rest : { ...rest, [key]: pick } };
+}
 
 export const PET_KIND_IDS = ['kong', 'cat', 'chick', 'dog', 'bunny'] as const;
 export type PetKind = (typeof PET_KIND_IDS)[number];
@@ -209,6 +254,8 @@ export const DEFAULT_SETTINGS: Settings = {
   diaryAi: false,
   sounds: false,
   boost: false,
+  petGaits: {},
+  petWishes: {},
 };
 
 export const PET_NAME_MAX = 12;
@@ -340,11 +387,59 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     diaryAi: bool(r.diaryAi, base.diaryAi),
     sounds: bool(r.sounds, base.sounds),
     boost: bool(r.boost, base.boost),
+    ...bodiesOf(r, base),
     ...(typeof r.skipVersion === 'string' && /^\d+\.\d+\.\d+/.test(r.skipVersion)
       ? { skipVersion: r.skipVersion.slice(0, 32) }
       : base.skipVersion
         ? { skipVersion: base.skipVersion }
         : {}),
+  };
+}
+
+/** 몸 열쇠 모양: 설계도 파일 이름이나 kind:<기본 펫 모양> */
+const KIND_KEY = /^kind:(\w+)$/;
+
+/**
+ * 걸음새와 요청사항 칸 검사. 설계도 파일 키는 지금 펫이나 보관함이 아직 쓰는 것만 남긴다
+ * (펫을 지우거나 몸을 다시 만들면 옛 키가 빠진다). 기본 펫 키는 아는 모양만
+ */
+function bodiesOf(r: Record<string, unknown>, base: Settings): Pick<Settings, 'petGaits' | 'petWishes'> {
+  const models = new Set<string>();
+  const image = petImageOf(r.petImage, base.petImage).petImage;
+  const current = petModelOf(r.petModel, base.petModel).petModel;
+  if (image && current) models.add(current);
+  const lib = Array.isArray(r.petLibrary) ? libraryOf(r.petLibrary) : base.petLibrary;
+  for (const p of lib) if (p.model) models.add(p.model);
+  const kindKey = (k: string) => isPetKind(KIND_KEY.exec(k)?.[1]);
+  const pick = <T>(
+    v: unknown,
+    fallback: Record<string, T>,
+    keep: (k: string) => boolean,
+    ok: (x: unknown) => T | undefined,
+  ) => {
+    const src =
+      typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : fallback;
+    const out: Record<string, T> = {};
+    for (const [k, x] of Object.entries(src).slice(0, 64)) {
+      const val = ok(x);
+      if (val !== undefined && keep(k)) out[k] = val;
+    }
+    return out;
+  };
+  return {
+    petGaits: pick(
+      r.petGaits,
+      base.petGaits,
+      (k) => models.has(k) || kindKey(k),
+      (x) => (isGait(x) ? x : undefined),
+    ),
+    // 요청사항은 입체 사진 펫에만 (기본 펫은 사진이 없어 다시 만들지 않는다)
+    petWishes: pick(
+      r.petWishes,
+      base.petWishes,
+      (k) => models.has(k),
+      (x) => cleanWish(x) || undefined,
+    ),
   };
 }
 
@@ -435,6 +530,7 @@ function friendsOf(list: unknown[]): Friend[] {
       ...(image ? { image } : {}),
       ...(model ? { model } : {}),
       ...(depth ? { depth } : {}),
+      ...(isGait(f.gait) ? { gait: f.gait } : {}),
     });
     if (out.length >= FRIENDS_MAX) break;
   }

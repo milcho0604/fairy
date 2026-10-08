@@ -12,7 +12,8 @@ import type { Catalog } from '../shared/ai/catalog.ts';
 import { type BetaReport, reportText, type StatStore } from '../shared/beta-stats.ts';
 import { t } from '../shared/i18n/index.ts';
 import { type MakerTarget, SETTINGS, type SettingsSection, type SettingsSnapshot } from '../shared/ipc.ts';
-import { isPetKind, type Settings } from '../shared/settings.ts';
+import type { Gait } from '../shared/pet3d/blueprint.ts';
+import { isGait, isPetKind, type Settings } from '../shared/settings.ts';
 import { localModelReady } from './ai/local.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
 import { langArg } from './lang.ts';
@@ -25,6 +26,9 @@ export interface SettingsWindowOptions {
   scale: () => number;
   setScale: (scale: number) => void;
   openMaker: (target: MakerTarget) => void;
+  /** 지금 사진 펫의 몸을 고른 걸음새에 맞게 다시 만든다 (maker.ts remake) */
+  remakeBody: (gait: Gait) => Promise<{ ok: true } | { ok: false; error: string; noAi?: boolean }>;
+  cancelRemake: () => void;
   stats: StatStore;
   checkUpdate: () => Promise<string>;
   openOnboarding: () => void;
@@ -47,6 +51,8 @@ export function createSettingsWindow({
   scale,
   setScale,
   openMaker,
+  remakeBody,
+  cancelRemake,
   stats,
   checkUpdate,
   openOnboarding,
@@ -96,6 +102,12 @@ export function createSettingsWindow({
   ipcMain.handle(SETTINGS.deleteModel, (e, id: unknown) => {
     const ok = fromSettings(e) && typeof id === 'string' && removeModel(v2.catalog(), id);
     return { ok, storage: storedModels(v2.catalog()), localReady: localReady() };
+  });
+  ipcMain.handle(SETTINGS.remakeBody, (e, gait: unknown) =>
+    fromSettings(e) && isGait(gait) ? remakeBody(gait) : { ok: false, error: t('main.maker.reopen') },
+  );
+  ipcMain.on(SETTINGS.cancelRemake, (e) => {
+    if (fromSettings(e)) cancelRemake();
   });
   ipcMain.handle(SETTINGS.set, (e, patch: Partial<Settings>) =>
     fromSettings(e) ? settings.set(patch) : settings.get(),
@@ -182,6 +194,8 @@ export function createSettingsWindow({
     win.once('ready-to-show', () => showWindow(win));
     win.on('closed', () => {
       win = undefined;
+      // 몸 다시 만들기는 결과를 볼 창이 없으면 멈춘다 (펫 만들기 창과 같다)
+      cancelRemake();
     });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (ev) => ev.preventDefault());

@@ -494,6 +494,32 @@ small.warn {
   color: var(--error);
 }
 
+/* 고를 것이 없을 때(다리 없는 사진 펫, 다시 만드는 중) 고르기를 흐리게 */
+.segmented:disabled button {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 걸음새가 몸과 다를 때 묻는 칸: 물음, 단추 줄, 설명을 세로로 */
+.gait-ask {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.notice > small.muted {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* 친구 줄의 걸음새: 글자 크기만 줄여 줄 높이를 맞춘다 (모양은 theme.css 공용 선택 상자) */
+.friends li .friend-gait {
+  align-self: center;
+  padding-top: 3px;
+  padding-bottom: 3px;
+  font-size: 12.5px;
+}
+
 .model-row {
   display: flex;
   /* .field 의 세로 배치를 되돌린다 */

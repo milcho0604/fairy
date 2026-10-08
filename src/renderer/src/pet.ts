@@ -22,7 +22,7 @@ import {
   type PetMood,
   TALK_MS,
 } from '../../shared/pet-mood.ts';
-import type { Blueprint } from '../../shared/pet3d/blueprint.ts';
+import type { Blueprint, Gait } from '../../shared/pet3d/blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from '../../shared/pet3d/defaults.ts';
 import type { PetKind, PoseKind } from '../../shared/settings.ts';
 import { canPlay, type SoundKind } from '../../shared/sound.ts';
@@ -32,6 +32,7 @@ import { initLang } from './lang.ts';
 import { moveFps, SIT_MS, sitDown } from './move-pose.ts';
 import { renderFace } from './pet-face.ts';
 import type { Pet3D } from './pet3d.ts';
+import { withGait } from './pet3d-gait.ts';
 import { playSound } from './sound.ts';
 
 initLang('common.title.pet');
@@ -132,6 +133,7 @@ function frame() {
     flower,
     calm: reducedMotion.matches,
     peer: looking?.peer,
+    gait: gaitPick,
   });
   syncFace(m3d);
 
@@ -346,10 +348,22 @@ let photoModel: Blueprint | undefined;
 /** 사진 펫의 2.5D 깊이 그림 (6단계) */
 let photoDepth: HTMLImageElement | undefined;
 let broken3d = false;
+/** 사용자가 고른 걸음새 (설정, PetStatus.gait). 없으면 자동 */
+let gaitPick: Gait | undefined;
+/** 고른 걸음새를 덮은 설계도. 같은 설계도와 같은 값이면 같은 것을 돌려줘 다시 조립하지 않는다 */
+let picked: { from: Blueprint; gait: Gait | undefined; bp: Blueprint } | undefined;
+function pickedBlueprint(bp: Blueprint | undefined): Blueprint | undefined {
+  if (!bp) return undefined;
+  if (picked?.from !== bp || picked.gait !== gaitPick)
+    picked = { from: bp, gait: gaitPick, bp: withGait(bp, gaitPick) };
+  return picked.bp;
+}
 function current3d(): Pet3D | 'loading' | undefined {
   // 사진 펫은 설계도나 깊이 그림이 있을 때만 입체로. 움직이는 그림은 입체 판으로 만들지 않는다
   const still = photo instanceof HTMLImageElement;
-  const bp = (still ? photoModel : undefined) ?? (photo ? undefined : DEFAULT_BLUEPRINTS[petKind]);
+  const bp = pickedBlueprint(
+    (still ? photoModel : undefined) ?? (photo ? undefined : DEFAULT_BLUEPRINTS[petKind]),
+  );
   const relief = !bp && still ? photoDepth : undefined;
   if (!use3d || broken3d || (!bp && !relief)) {
     // 입체를 안 쓰면 모양만 내린다. 렌더러는 버리지 않고 다시 쓴다(버리고 새로 만들면 컨텍스트가 샌다)
@@ -421,6 +435,11 @@ bridge.onStatus((status) => {
     model3dOf = undefined;
   }
   use3d = status.pet3d;
+  // 걸음새를 바꾸면 펫 창을 다시 켜지 않고 다음 그림부터 (설계도를 덮어 다시 조립한다)
+  if (status.gait !== gaitPick) {
+    gaitPick = status.gait;
+    requestFrame();
+  }
   statusKnown = true;
   cushion = status.cushion;
   flower = status.flower;

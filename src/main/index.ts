@@ -10,6 +10,7 @@ import { locale, t } from '../shared/i18n/index.ts';
 import { IPC, type PetStatus, type PlayKind } from '../shared/ipc.ts';
 import { isMiniGame, PLAY_COIN } from '../shared/minigames.ts';
 import { unlocked, WAVE_AWAY_SEC } from '../shared/pet-life.ts';
+import { pickedGait } from '../shared/settings.ts';
 import { FULLNESS, localDay } from '../shared/todo-store.ts';
 import { watchCatalog } from './ai/catalog.ts';
 import { stopLocal } from './ai/local.ts';
@@ -594,6 +595,7 @@ app.whenReady().then(() => {
       sounds: settings.get().sounds,
       boost: boostOn(),
       face: true,
+      gait: pickedGait(settings.get()),
     };
     const key = JSON.stringify(status);
     if (key === lastStatus || pet.win.isDestroyed()) return;
@@ -685,6 +687,8 @@ app.whenReady().then(() => {
     scale: () => pet.scale(),
     setScale: (n) => pet.setScale(n),
     openMaker: (target) => maker.open(target),
+    remakeBody: (gait) => maker.remake(gait),
+    cancelRemake: () => maker.cancelRemake(),
     stats,
     checkUpdate: () => updates.check(true),
     openOnboarding: () => onboarding.open(),
@@ -737,7 +741,9 @@ app.whenReady().then(() => {
       next.pet3d !== prev.pet3d ||
       next.spicy !== prev.spicy ||
       next.sounds !== prev.sounds ||
-      next.restDays.join() !== prev.restDays.join()
+      next.restDays.join() !== prev.restDays.join() ||
+      // 걸음새는 몸마다 따로라 고른 값이 그대로여도 펫(몸)이 바뀌면 다시 본다. 같은 값이면 sendStatus 가 거른다
+      pickedGait(next) !== pickedGait(prev)
     )
       sendStatus();
     if (next.launchAtLogin !== prev.launchAtLogin && app.isPackaged) {

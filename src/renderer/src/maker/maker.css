@@ -503,6 +503,34 @@ section {
   font-size: 12px;
 }
 
+/* 걸음새 고르기: 요청사항 상자 맨 위 한 줄. 좁으면 고르기가 아래 줄로 */
+.gait-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+}
+
+.gait-row .segmented {
+  background: var(--panel);
+}
+
+.gait-row .segmented button {
+  padding: 3px 12px;
+  font-size: 12.5px;
+}
+
+.gait-row .segmented button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 고르기 아래 설명과 요청사항 이름 사이를 조금 띄운다 */
+.gait-row + .hint {
+  margin-bottom: 4px;
+}
+
 .stage img.shaping {
   animation: shaping 1.6s ease-in-out infinite;
 }

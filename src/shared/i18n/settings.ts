@@ -27,6 +27,32 @@ export const ko = {
   'settings.sizeHint': '펫 위에서 {mod} + 휠, 트랙패드 핀치로도 바꿀 수 있어.',
   'settings.pet3d': '입체로 보기',
   'settings.pet3dHint': '기본 펫을 피규어처럼 입체로 그려. 끄면 예전 납작한 그림이야.',
+  'settings.gait': '걸음새',
+  'settings.gait.auto': '자동',
+  'settings.gait.biped': '두 발',
+  'settings.gait.quadruped': '네 발',
+  'settings.gait.body.biped': '두 발',
+  'settings.gait.body.quadruped': '네 발',
+  'settings.gait.autoNow': (v: { gait: string }) =>
+    `몸 모양을 보고 정해. 지금은 ${withParticle(v.gait, '으로')} 걸어. 펫마다 따로 기억해.`,
+  'settings.gait.kept': '펫마다 따로 기억해. 보관함에서 다른 펫을 꺼내도 각자 값이야.',
+  'settings.gait.odd': (v: { name: string; body: string }) =>
+    `${withParticle(v.name, '은')} ${v.body} 몸이라 조금 어색해 보일 수 있어.`,
+  'settings.gait.flat':
+    '사진(평면, 2.5D) 펫은 다리가 따로 없어서 고를 수 없어. 펫 만들기에서 입체 피규어로 만들면 고를 수 있어.',
+  'settings.gait.off3d': '입체로 보기를 켜면 고를 수 있어. 지금은 사진으로 보여서 다리가 없어.',
+  'settings.gait.mismatch': (v: { name: string; body: string; pick: string }) =>
+    `${withParticle(v.name, '은')} ${v.body} 몸으로 만들어졌어. 그대로 ${withParticle(v.pick, '으로')} 걸으면 어색해 보일 수 있어.`,
+  'settings.gait.remake': (v: { pick: string }) => `${v.pick} 몸으로 다시 만들기`,
+  'settings.gait.remakeHint':
+    '같은 사진과 요청사항으로 AI가 몸만 다시 만들어. 이름과 포즈는 그대로야. 30초에서 1분쯤 걸려.',
+  'settings.gait.justSwitch': (v: { pick: string }) => `그냥 ${withParticle(v.pick, '으로')} 걷기`,
+  'settings.gait.keep': '그대로 두기',
+  'settings.gait.remaking': (v: { pick: string }) =>
+    `${v.pick} 몸으로 다시 만드는 중이야. 30초에서 1분쯤 걸려.`,
+  'settings.gait.stop': '그만두기',
+  'settings.gait.remade': (v: { name: string }) => `${v.name} 몸을 새로 만들었어`,
+  'settings.gait.friendAria': (v: { name: string }) => `${v.name} 걸음새`,
   'settings.wander': '가끔 돌아다니기',
   'settings.wanderHint': '가만히 있다가 가끔 걷고 앉아. 끄면 늘 그 자리에 있어.',
   'settings.lookAtCursor': '마우스 쳐다보기',
@@ -314,6 +340,32 @@ export const en: Translation<typeof ko> = {
   'settings.sizeHint': 'You can also use {mod} + scroll or a trackpad pinch over the pet.',
   'settings.pet3d': 'Show in 3D',
   'settings.pet3dHint': 'Draws the default pet in 3D like a little figure. Turn off for the flat drawing.',
+  'settings.gait': 'Walks on',
+  'settings.gait.auto': 'Auto',
+  'settings.gait.biped': 'Two legs',
+  'settings.gait.quadruped': 'Four legs',
+  'settings.gait.body.biped': 'two-legged',
+  'settings.gait.body.quadruped': 'four-legged',
+  'settings.gait.autoNow': (v) =>
+    `Decided from the body shape. Right now it walks on ${v.gait.toLowerCase()}. Remembered for each pet.`,
+  'settings.gait.kept':
+    'Remembered for each pet, so a pet you bring back from your collection keeps its own choice.',
+  'settings.gait.odd': (v) => `${v.name} has a ${v.body} body, so this may look a little odd.`,
+  'settings.gait.flat':
+    "Photo pets (flat or 2.5D) don't have separate legs, so there's nothing to choose. Make a 3D figure in Make a pet to choose.",
+  'settings.gait.off3d': 'Turn on Show in 3D to choose. Right now it shows as a photo with no legs.',
+  'settings.gait.mismatch': (v) =>
+    `${v.name} was made with a ${v.body} body. Walking on ${v.pick.toLowerCase()} as is may look odd.`,
+  'settings.gait.remake': (v) => `Rebuild for ${v.pick.toLowerCase()}`,
+  'settings.gait.remakeHint':
+    'Your AI rebuilds only the body from the same photo and wish. Name and poses stay. Takes 30 seconds to a minute.',
+  'settings.gait.justSwitch': (v) => `Just walk on ${v.pick.toLowerCase()}`,
+  'settings.gait.keep': 'Keep as is',
+  'settings.gait.remaking': (v) =>
+    `Rebuilding the body for ${v.pick.toLowerCase()}. This takes 30 seconds to a minute.`,
+  'settings.gait.stop': 'Stop',
+  'settings.gait.remade': (v) => `${v.name} has a new body`,
+  'settings.gait.friendAria': (v) => `How ${v.name} walks`,
   'settings.wander': 'Wander around',
   'settings.wanderHint': 'Sits still, then walks and sits now and then. Turn off to stay put.',
   'settings.lookAtCursor': 'Watch the mouse',
