@@ -8,6 +8,10 @@ import { GAITS, type Gait } from './pet3d/blueprint.ts';
 import { cleanWish } from './pet3d/prompt.ts';
 import { isAccelerator, reservedUse, SHORTCUT_DEFAULTS, type ShortcutId, shortcutClash } from './shortcut.ts';
 
+/** 입체 펫 모습: 피규어, 게임 캐릭터, 실사처럼 */
+export const PET_STYLES = ['figure', 'game', 'real'] as const;
+export type PetStyle = (typeof PET_STYLES)[number];
+
 export interface Settings {
   /** 펫 이름. 메뉴, 채팅, 말풍선, AI 성격 지시에 쓰인다 */
   petName: string;
@@ -36,10 +40,10 @@ export interface Settings {
   /** 기본 펫을 입체(three.js)로 그린다 (6단계). 끄면 예전 2D 그림 */
   pet3d: boolean;
   /**
-   * 입체 펫을 실사처럼 그린다 (사용자 요청 2026-10-08). 털(겹 껍질), 유리 같은 눈, 부드러운 조명.
-   * 끄면 피규어(비닐) 느낌. 입체로 보기일 때만 쓴다
+   * 입체 펫 모습 (사용자 요청 2026-10-08). figure 비닐 피규어, game 게임 캐릭터(셀 셰이딩과 테두리 선),
+   * real 실사처럼(털, 유리 눈). 입체로 보기일 때만 쓴다
    */
-  petReal: boolean;
+  petStyle: PetStyle;
   /** 메뉴 막대에 CPU 사용률과 달리는 콩이 (사용자 요청 2026-10-08, RunCat 처럼) */
   sysMonitor: boolean;
   /** 사진 펫을 AI 가 입체로 만든 설계도 (6단계). pets/ 안 model-*.json. 있으면 입체로 보기일 때 사진 대신 이것 */
@@ -242,7 +246,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hideHints: 0,
   petKind: 'kong',
   pet3d: true,
-  petReal: false,
+  petStyle: 'figure',
   sysMonitor: true,
   petPoses: {},
   restDays: [0, 6],
@@ -365,7 +369,9 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     ...petImageOf(r.petImage, base.petImage),
     petKind: isPetKind(r.petKind) ? r.petKind : base.petKind,
     pet3d: bool(r.pet3d, base.pet3d),
-    petReal: bool(r.petReal, base.petReal),
+    petStyle: (PET_STYLES as readonly unknown[]).includes(r.petStyle)
+      ? (r.petStyle as PetStyle)
+      : base.petStyle,
     sysMonitor: bool(r.sysMonitor, base.sysMonitor),
     ...petModelOf(r.petModel, base.petModel),
     ...petDepthOf(r.petDepth, base.petDepth),

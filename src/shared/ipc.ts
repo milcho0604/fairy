@@ -17,7 +17,7 @@ import type { MiniGame } from './minigames.ts';
 import type { MoveAsk } from './moves.ts';
 import type { Note, NoteSource } from './note-store.ts';
 import type { Blueprint, Gait } from './pet3d/blueprint.ts';
-import type { PetKind, PoseKind, Settings } from './settings.ts';
+import type { PetKind, PetStyle, PoseKind, Settings } from './settings.ts';
 import type { BuyResult, ShopState } from './shop.ts';
 import type { SoundKind } from './sound.ts';
 import type { Repeat, Todo } from './todo-store.ts';
@@ -422,8 +422,8 @@ export interface PetStatus {
   kind: PetKind;
   /** 입체로 그리기 (6단계) */
   pet3d: boolean;
-  /** 입체를 실사처럼 (털, 유리 눈). pet3d 일 때만 */
-  real?: boolean;
+  /** 입체 모습 (피규어, 게임, 실사). pet3d 일 때만. 없으면 피규어 */
+  style?: PetStyle;
   /** 머리에 꽃 (친밀도 600) */
   flower: boolean;
   /** 효과음 (설정). 친구 펫은 늘 끔 */

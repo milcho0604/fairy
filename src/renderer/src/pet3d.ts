@@ -2,6 +2,7 @@
 // 그래서 픽셀로 하는 마우스 판정, 말풍선, 하트, Zz 는 2D 펫과 똑같이 돈다.
 // 그리기는 2D 와 같은 때만 한다(정지 상태는 한 번). 계속 돌리지 않는다 (L10).
 import {
+  BackSide,
   Box3,
   type BufferGeometry,
   CanvasTexture,
@@ -10,6 +11,7 @@ import {
   Color,
   ConeGeometry,
   CylinderGeometry,
+  DataTexture,
   DirectionalLight,
   DoubleSide,
   Group,
@@ -20,6 +22,8 @@ import {
   MeshBasicMaterial,
   MeshPhysicalMaterial,
   MeshStandardMaterial,
+  MeshToonMaterial,
+  NearestFilter,
   NeutralToneMapping,
   type Object3D,
   PerspectiveCamera,
@@ -50,6 +54,7 @@ import {
   SLOTS,
   type Slot,
 } from '../../shared/pet3d/blueprint.ts';
+import type { PetStyle } from '../../shared/settings.ts';
 import { type DrawState, danceTilt, gazeOf, type Model3D, movePoseOf, trickOf, waveSwing } from './draw.ts';
 import type { MoveEyes } from './move-pose.ts';
 import {
@@ -158,8 +163,16 @@ export class Pet3D implements Model3D {
   private px = 0;
   private lost = false;
   private readonly materials = new Map<string, Material>();
-  /** 실사처럼 그리기 (setReal). 털 껍질, 유리 눈, 부드러운 빛 */
-  private real = false;
+  /** 모습 (setStyle). figure 비닐 피규어, game 셀 셰이딩과 테두리, real 털 껍질과 유리 눈 */
+  private style: PetStyle = 'figure';
+  private get real(): boolean {
+    return this.style === 'real';
+  }
+  private get game(): boolean {
+    return this.style === 'game';
+  }
+  /** 게임 모습의 명암 단계 그림 (3단). 처음 쓸 때 만든다 */
+  private toonRamp: DataTexture | undefined;
   /** 털 무늬(가닥 높이)와 얼룩 그림. 실사로 처음 그릴 때 한 번 만든다 */
   private furTex: { strands: Texture; mottle: Texture } | undefined;
   /** 얼굴 부품을 털 끝 위로 띄울 거리 (실사일 때 얼굴 슬롯 털 길이) */
@@ -230,14 +243,26 @@ export class Pet3D implements Model3D {
   }
 
   /**
-   * 실사처럼 그리기를 켜고 끈다 (사용자 요청 2026-10-08). 조명은 바로 바뀌고, 털과 눈은 다음 조립(setBlueprint)부터.
+   * 모습을 바꾼다 (사용자 요청 2026-10-08). 조명은 바로 바뀌고, 털, 테두리, 눈은 다음 조립(setBlueprint)부터.
    * 바뀌었으면 true (부르는 쪽이 다시 조립한다)
    */
-  setReal(on: boolean): boolean {
-    if (on === this.real) return false;
-    this.real = on;
+  setStyle(style: PetStyle): boolean {
+    if (style === this.style) return false;
+    this.style = style;
     const { hemi, key, rim } = this.lights;
-    if (on) {
+    if (style === 'game') {
+      // 게임: 명암이 단으로 또렷하게 나뉘도록 위 앞 주 조명을 세게, 고르게 밝히는 빛은 줄인다
+      this.renderer.toneMapping = NeutralToneMapping;
+      this.renderer.toneMappingExposure = 1;
+      this.scene.environmentIntensity = 0.5;
+      hemi.color.set(0xffffff);
+      hemi.groundColor.set(0xe8dcd0);
+      hemi.intensity = 0.75;
+      key.color.set(0xffffff);
+      key.intensity = 2.6;
+      rim.color.set(0xffffff);
+      rim.intensity = 0.4;
+    } else if (style === 'real') {
       // 실사: 색이 바래지 않게 중립 톤에 노출만 조금. 주 조명은 따뜻하게, 뒤 테두리 빛을 세게 해 털 끝이 빛나게
       this.renderer.toneMapping = NeutralToneMapping;
       this.renderer.toneMappingExposure = 1.05;
@@ -279,6 +304,7 @@ export class Pet3D implements Model3D {
     for (const m of this.materials.values()) m.dispose();
     this.furTex?.strands.dispose();
     this.furTex?.mottle.dispose();
+    this.toonRamp?.dispose();
     this.scene.environment?.dispose();
     this.renderer.dispose();
     this.renderer.forceContextLoss();
@@ -648,8 +674,12 @@ export class Pet3D implements Model3D {
   // ---- 조립 ----
 
   private material(color: string, finish: Finish = 'soft'): Material {
-    const key = `${color}/${finish}${this.real ? '/real' : ''}`;
+    const key = `${color}/${finish}/${this.style}`;
     let m = this.materials.get(key);
+    if (!m && this.game) {
+      m = this.toonMaterial(color, finish);
+      this.materials.set(key, m);
+    }
     if (!m && this.real) {
       // 실사: 털 아래 살갗과 속털. 겉색보다 조금 어둡고 얼룩이 있다. 반짝(코, 부리, 잎)은 촉촉하게
       m =
@@ -710,7 +740,68 @@ export class Pet3D implements Model3D {
     mesh.scale.copy(scale);
     if (p.rot) mesh.rotation.set(p.rot[0] * DEG, p.rot[1] * DEG, p.rot[2] * DEG);
     if (this.real) this.addFur(mesh, p);
+    if (this.game) this.addOutline(mesh, p);
     return mesh;
+  }
+
+  /**
+   * 게임 캐릭터 재질 (셀 셰이딩). 빛을 3단(그늘, 중간, 밝음)으로 끊어 칠하고, 가장자리에 또렷한 테두리 빛을 얹는다.
+   * 반짝(코, 부리, 잎)은 테두리 빛을 더 밝게
+   */
+  private toonMaterial(color: string, finish: Finish): Material {
+    if (!this.toonRamp) {
+      const steps = [115, 190, 255];
+      const data = new Uint8Array(steps.length * 4);
+      for (const [i, v] of steps.entries()) data.set([v, v, v, 255], i * 4);
+      this.toonRamp = new DataTexture(data, steps.length, 1);
+      this.toonRamp.minFilter = NearestFilter;
+      this.toonRamp.magFilter = NearestFilter;
+      this.toonRamp.needsUpdate = true;
+    }
+    const m = new MeshToonMaterial({ color, gradientMap: this.toonRamp });
+    const rim = finish === 'shiny' ? 0.45 : 0.28;
+    m.onBeforeCompile = (shader) => {
+      shader.uniforms.rimStrength = { value: rim };
+      shader.fragmentShader = `uniform float rimStrength;\n${shader.fragmentShader}`.replace(
+        '#include <opaque_fragment>',
+        `{
+          float facing = max(dot(normal, normalize(vViewPosition)), 0.0);
+          outgoingLight += vec3(rimStrength) * smoothstep(0.66, 0.72, 1.0 - facing);
+        }
+        #include <opaque_fragment>`,
+      );
+    };
+    m.customProgramCacheKey = () => 'jj-toon-rim';
+    return m;
+  }
+
+  /**
+   * 게임 캐릭터 테두리 선. 같은 모양을 조금 크게 뒤집어(뒷면만) 그려 몸 둘레에 선이 생긴다.
+   * 선 색은 검정이 아니라 부품 색을 어둡게 한 것 (요즘 게임 캐릭터처럼 부드럽게)
+   */
+  private addOutline(mesh: Mesh, p: Part) {
+    const geo = mesh.geometry;
+    geo.computeBoundingBox();
+    const half = geo.boundingBox?.getSize(new Vector3()).multiplyScalar(0.5);
+    if (!half) return;
+    const ext = half.multiply(mesh.scale);
+    const w = Math.min(0.013, Math.min(ext.x, ext.y, ext.z) * 0.3);
+    if (w < 0.002) return;
+    const key = `${p.color}/outline`;
+    let mat = this.materials.get(key);
+    if (!mat) {
+      const c = new Color(p.color);
+      const hsl = { h: 0, s: 0, l: 0 };
+      c.getHSL(hsl);
+      mat = new MeshBasicMaterial({
+        color: new Color().setHSL(hsl.h, Math.min(1, hsl.s * 0.9 + 0.1), Math.min(0.3, hsl.l * 0.35)),
+        side: BackSide,
+      });
+      this.materials.set(key, mat);
+    }
+    const line = new Mesh(geo, mat);
+    line.scale.set(1 + w / ext.x, 1 + w / ext.y, 1 + w / ext.z);
+    mesh.add(line);
   }
 
   /** 털 가닥 그림과 얼룩 그림 (실사). 한 번 만들어 모든 털 재질이 같이 쓴다 */
@@ -840,7 +931,8 @@ export class Pet3D implements Model3D {
   private buildFace(f: Face, joint: Group, targets: Mesh[]): FaceRig {
     const ray = new Raycaster();
     const front = new Vector3(0, 0, -1);
-    const s = f.eyeSize;
+    // 게임 캐릭터는 눈이 조금 크다
+    const s = f.eyeSize * (this.game ? 1.15 : 1);
     // 얼굴 슬롯 상자. 설계도의 눈, 입 높이가 몸 밖이면 상자 안쪽으로 당겨 다시 쏜다 (허공에 뜨지 않게)
     const faceBox = new Box3();
     for (const t of targets) faceBox.union(new Box3().setFromObject(t));
@@ -889,7 +981,7 @@ export class Pet3D implements Model3D {
     const white = new MeshBasicMaterial({ color: '#ffffff' });
     const ink = new MeshBasicMaterial({ color: INK });
     // 실사면 눈 색이 없어도 갈색 홍채를 넣고, 위에 투명한 각막을 씌워 유리알처럼
-    const irisColor = f.eyeColor ?? (this.real ? '#5b3a1e' : undefined);
+    const irisColor = f.eyeColor ?? (this.real ? '#5b3a1e' : this.game ? '#4a2e22' : undefined);
     const cornea = this.real
       ? new MeshPhysicalMaterial({
           color: '#ffffff',
@@ -951,6 +1043,13 @@ export class Pet3D implements Model3D {
       lower.scale.set(s * 0.78, s * 0.42, s * 0.4);
       lower.position.y = -s * 0.25;
       half.add(lower, stroke([-s * 0.85, s * 0.05], [s * 0.85, s * 0.05], s * 0.13, ink));
+      if (this.game && f.eyes !== 'sparkle') {
+        // 게임 캐릭터 눈: 큰 반짝이 아래에 작은 반짝이 하나 더
+        const dot = new Mesh(sphere, white);
+        dot.scale.setScalar(s * 0.12);
+        dot.position.set(-s * 0.24, -s * 0.36, shine.position.z);
+        open.add(dot);
+      }
       if (f.eyes === 'sparkle') {
         // 반짝이는 눈: 큰 반짝이 하나 더, 아래에 작은 별빛
         shine.scale.setScalar(s * 0.34);

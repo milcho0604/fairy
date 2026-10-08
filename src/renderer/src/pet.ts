@@ -24,7 +24,7 @@ import {
 } from '../../shared/pet-mood.ts';
 import type { Blueprint, Gait } from '../../shared/pet3d/blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from '../../shared/pet3d/defaults.ts';
-import type { PetKind, PoseKind } from '../../shared/settings.ts';
+import type { PetKind, PetStyle, PoseKind } from '../../shared/settings.ts';
 import { canPlay, type SoundKind } from '../../shared/sound.ts';
 import { AnimatedImage, loadPetImage } from './animated.ts';
 import { CANVAS_SIZE, drawPet, HEARTS_MS } from './draw.ts';
@@ -348,8 +348,8 @@ let photoModel: Blueprint | undefined;
 /** 사진 펫의 2.5D 깊이 그림 (6단계) */
 let photoDepth: HTMLImageElement | undefined;
 let broken3d = false;
-/** 실사처럼 그리기 (설정, PetStatus.real) */
-let real3d = false;
+/** 입체 모습 (설정, PetStatus.look) */
+let style3d: PetStyle = 'figure';
 /** 사용자가 고른 걸음새 (설정, PetStatus.gait). 없으면 자동 */
 let gaitPick: Gait | undefined;
 /** 고른 걸음새를 덮은 설계도. 같은 설계도와 같은 값이면 같은 것을 돌려줘 다시 조립하지 않는다 */
@@ -398,8 +398,8 @@ function current3d(): Pet3D | 'loading' | undefined {
     return undefined;
   }
   const want = bp ?? relief;
-  // 실사를 켜고 끄면 털과 눈을 다시 붙여야 해서 다시 조립한다
-  if (model3d.setReal(real3d)) model3dOf = undefined;
+  // 모습을 바꾸면 털, 테두리, 눈을 다시 붙여야 해서 다시 조립한다
+  if (model3d.setStyle(style3d)) model3dOf = undefined;
   if (model3dOf !== want) {
     if (bp) model3d.setBlueprint(bp);
     else if (relief && photo instanceof HTMLImageElement) model3d.setRelief(photo, relief);
@@ -439,8 +439,8 @@ bridge.onStatus((status) => {
     model3dOf = undefined;
   }
   use3d = status.pet3d;
-  if ((status.real === true) !== real3d) {
-    real3d = status.real === true;
+  if ((status.style ?? 'figure') !== style3d) {
+    style3d = status.style ?? 'figure';
     requestFrame();
   }
   // 걸음새를 바꾸면 펫 창을 다시 켜지 않고 다음 그림부터 (설계도를 덮어 다시 조립한다)

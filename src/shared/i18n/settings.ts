@@ -27,8 +27,13 @@ export const ko = {
   'settings.sizeHint': '펫 위에서 {mod} + 휠, 트랙패드 핀치로도 바꿀 수 있어.',
   'settings.pet3d': '입체로 보기',
   'settings.pet3dHint': '기본 펫을 피규어처럼 입체로 그려. 끄면 예전 납작한 그림이야.',
-  'settings.petReal': '실사처럼 보기',
-  'settings.petRealHint':
+  'settings.petStyle': '입체 모습',
+  'settings.petStyle.figure': '피규어',
+  'settings.petStyle.game': '게임 캐릭터',
+  'settings.petStyle.real': '실사',
+  'settings.petStyleHint.figure': '말랑한 비닐 피규어처럼 반짝여.',
+  'settings.petStyleHint.game': '게임 캐릭터처럼 명암을 또렷하게 나누고 테두리 선을 둘러. 눈도 조금 더 커.',
+  'settings.petStyleHint.real':
     '털 한 올 한 올, 유리알 같은 눈, 부드러운 빛으로 진짜 동물처럼 그려. 그래픽을 조금 더 써.',
   'settings.gait': '걸음새',
   'settings.gait.auto': '자동',
@@ -346,8 +351,14 @@ export const en: Translation<typeof ko> = {
   'settings.sizeHint': 'You can also use {mod} + scroll or a trackpad pinch over the pet.',
   'settings.pet3d': 'Show in 3D',
   'settings.pet3dHint': 'Draws the default pet in 3D like a little figure. Turn off for the flat drawing.',
-  'settings.petReal': 'Realistic look',
-  'settings.petRealHint':
+  'settings.petStyle': '3D look',
+  'settings.petStyle.figure': 'Figure',
+  'settings.petStyle.game': 'Game character',
+  'settings.petStyle.real': 'Realistic',
+  'settings.petStyleHint.figure': 'Glossy, like a soft vinyl figure.',
+  'settings.petStyleHint.game':
+    'Crisp cel shading with outlines, like a game character. Slightly bigger eyes too.',
+  'settings.petStyleHint.real':
     'Draws the pet like a real animal: fine fur, glassy eyes and soft light. Uses a little more graphics power.',
   'settings.gait': 'Walks on',
   'settings.gait.auto': 'Auto',

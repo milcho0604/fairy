@@ -16,6 +16,7 @@ import {
   gaitPatch,
   PET_KINDS,
   PET_NAME_MAX,
+  PET_STYLES,
   type PetKind,
   POSE_KINDS,
   petNameLength,
@@ -246,12 +247,23 @@ export function SettingsApp() {
             />
           )}
           {(!s.petImage || s.petModel) && s.pet3d && (
-            <Toggle
-              label={t('settings.petReal')}
-              hint={t('settings.petRealHint')}
-              on={s.petReal}
-              onChange={(v) => update({ petReal: v })}
-            />
+            <div className="field">
+              <span>{t('settings.petStyle')}</span>
+              <fieldset className="segmented" aria-label={t('settings.petStyle')}>
+                {PET_STYLES.map((style) => (
+                  <button
+                    key={style}
+                    type="button"
+                    aria-pressed={s.petStyle === style}
+                    className={s.petStyle === style ? 'on' : ''}
+                    onClick={() => update({ petStyle: style })}
+                  >
+                    {t(`settings.petStyle.${style}`)}
+                  </button>
+                ))}
+              </fieldset>
+              <small>{t(`settings.petStyleHint.${s.petStyle}`)}</small>
+            </div>
           )}
 
           <GaitPicker snap={snap} update={update} flash={flash} />

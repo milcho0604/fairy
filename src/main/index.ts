@@ -597,7 +597,7 @@ app.whenReady().then(() => {
       sulk: petLife.state.sulk,
       kind: settings.get().petKind,
       pet3d: settings.get().pet3d,
-      real: settings.get().petReal,
+      style: settings.get().petStyle,
       cushion: shop.owns('cushion'),
       flower: unlocked(petLife.state.affection).has('flower'),
       sounds: settings.get().sounds,
@@ -728,7 +728,7 @@ app.whenReady().then(() => {
     if (next.icsUrl !== prev.icsUrl && next.icsUrl) void calendar.sync();
     if (next.myMcp && !prev.myMcp) void refreshMcpServers(log);
     if (JSON.stringify(next.friends) !== JSON.stringify(prev.friends)) friends.sync();
-    if (next.pet3d !== prev.pet3d || next.petReal !== prev.petReal) friends.resendStatus();
+    if (next.pet3d !== prev.pet3d || next.petStyle !== prev.petStyle) friends.resendStatus();
     if (next.sysMonitor !== prev.sysMonitor) sysMonitor.setEnabled(next.sysMonitor);
     if (next.petName !== prev.petName) {
       chat.petNameChanged();
@@ -749,7 +749,7 @@ app.whenReady().then(() => {
     if (
       next.petKind !== prev.petKind ||
       next.pet3d !== prev.pet3d ||
-      next.petReal !== prev.petReal ||
+      next.petStyle !== prev.petStyle ||
       next.spicy !== prev.spicy ||
       next.sounds !== prev.sounds ||
       next.restDays.join() !== prev.restDays.join() ||
