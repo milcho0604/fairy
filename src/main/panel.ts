@@ -76,7 +76,8 @@ export interface PanelOptions {
   openFoodMaker: () => void;
   removeFoodImage: (file: string | undefined) => void;
   /** 집 단계가 바뀌었다 */
-  onHouseChanged: () => void;
+  /** 집 단계가 올랐거나(level) 모양을 바꿨다(style) */
+  onHouseChanged: (what: 'level' | 'style') => void;
   /** 놀이 시작 (공놀이, 산책) */
   play: (kind: PlayKind) => void;
   achieve: () => PanelState['achieve'];
@@ -353,7 +354,15 @@ export function createPanel(o: PanelOptions) {
     if (!ours(e) || typeof level !== 'number') return { ok: false, error: t('panel.retry') };
     const r = o.shop.buyHouse(Date.now(), level);
     push();
-    if (r.ok) o.onHouseChanged();
+    if (r.ok) o.onHouseChanged('level');
+    return r;
+  });
+  ipcMain.handle(PANEL.buyHouseStyle, (e, style: unknown) => {
+    if (!ours(e)) return { ok: false, error: t('panel.retry') };
+    const before = o.shop.state().houseStyle;
+    const r = o.shop.buyHouseStyle(style, Date.now());
+    push();
+    if (r.ok && o.shop.state().houseStyle !== before) o.onHouseChanged('style');
     return r;
   });
   ipcMain.handle(PANEL.feedWith, (e, key: string) => {

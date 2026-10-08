@@ -1,9 +1,9 @@
 // 펫 집 자리 계산 (v2 집 옮기기). 화면 좌표는 모니터 배치에 따라 음수일 수 있다 (L7).
 import { nearestArea, type Point, type Rect } from './geometry.ts';
+import { ART, type HouseStyle, hitsAt, houseLayout } from './house-art.ts';
 
-/** 단계별 집 크기 (px). 업그레이드하면 조금씩 커진다. 그림은 120 칸 기준으로 그려 늘린다 */
-const SIZES = [104, 120, 136] as const;
-const ART = 120;
+/** 단계별 집 크기 (px). 업그레이드하면 조금씩 커진다. 그림은 120 칸 기준으로 그려 늘린다 (house-art.ts) */
+const SIZES = [104, 120, 136, 148, 160] as const;
 /** 처음 자리: 모니터 왼쪽 아래 구석에서 이만큼 띄운다 */
 const EDGE_GAP = 12;
 
@@ -55,28 +55,12 @@ export function settleHouse(rect: Rect, areas: readonly Rect[]): Rect {
 }
 
 /**
- * 창 안 점 (x, y) 이 집 그림 위인지. 지붕 세모, 벽, 3단계 마당을 본다.
+ * 창 안 점 (x, y) 이 집 그림 위인지. 모양과 단계마다 그림과 같은 숫자로 적은 자리(지붕, 벽, 탑, 마당)를 본다.
  * 투명한 곳(지붕 옆 하늘, 벽 옆)은 아래 앱으로 마우스를 넘긴다.
  */
-export function houseHit(level: number, size: number, p: Point): boolean {
+export function houseHit(style: HouseStyle, level: number, size: number, p: Point): boolean {
   const k = ART / size;
-  const x = p.x * k;
-  const y = p.y * k;
-  const pad = 3;
-  // 벽
-  if (x >= 22 - pad && x <= 98 + pad && y >= 52 - pad && y <= 110 + pad) return true;
-  // 지붕: 꼭대기 (60, 18), 처마 (12, 56) ~ (108, 56)
-  if (y >= 18 - pad && y <= 56 + pad) {
-    const half = ((Math.min(y, 56) - 18) / (56 - 18)) * 48;
-    if (Math.abs(x - 60) <= half + pad) return true;
-  }
-  // 3단계 마당: 잔디 줄, 덤불, 꽃
-  if (level >= 3) {
-    if (y >= 110 && y <= 120 && x >= 0 && x <= 120) return true;
-    if (Math.hypot(x - 104, y - 104) <= 7 + pad) return true;
-    if (Math.hypot(x - 14, y - 106) <= 5 + pad) return true;
-  }
-  return false;
+  return hitsAt(houseLayout(style, level).hits, p.x * k, p.y * k);
 }
 
 /**

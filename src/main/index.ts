@@ -311,6 +311,10 @@ app.whenReady().then(() => {
     restItem: () => rest.menuItem(),
     log,
   });
+  const houseLook = () => {
+    const s = shop.state();
+    return { level: s.houseLevel, style: s.houseStyle };
+  };
   let playing = false;
   const rest = createHouseRest({ pet, house, petName, playing: () => playing, log });
   /** 공놀이(공이나 털실이 있어야), 산책. 노는 중이면 무시 */
@@ -528,10 +532,14 @@ app.whenReady().then(() => {
     },
     openFoodMaker: () => maker.open('food'),
     removeFoodImage,
-    onHouseChanged: () => {
-      house.show(shop.state().houseLevel, pet.bounds());
+    onHouseChanged: (what) => {
+      house.show(houseLook(), pet.bounds());
       if (!house.bounds()) rest.houseGone();
-      void pet.say({ kind: 'answer', text: t('pet.newHouse'), ttlMs: 4000 });
+      void pet.say({
+        kind: 'answer',
+        text: t(what === 'style' ? 'pet.houseStyle' : 'pet.newHouse'),
+        ttlMs: 4000,
+      });
     },
     play: (kind) => void play(kind),
     achieve: () => {
@@ -795,7 +803,7 @@ app.whenReady().then(() => {
   });
   pet.win.webContents.once('did-finish-load', () => friends.sync());
   // 집은 펫과 같이 숨고 나온다 (발표, 숨기기). 2초마다 맞춘다. 펫이 집 안에서 쉬는 동안은 집이 보인다
-  pet.win.webContents.once('did-finish-load', () => house.show(shop.state().houseLevel, pet.bounds()));
+  pet.win.webContents.once('did-finish-load', () => house.show(houseLook(), pet.bounds()));
   // 자리를 4분쯤 비우면 펫이 집 앞으로 가서 존다 (5분부터 졸고 10분부터 잔다). 자리 비울 때마다 한 번.
   let wentHome = false;
   setInterval(() => {

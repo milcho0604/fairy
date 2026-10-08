@@ -1208,6 +1208,52 @@ p.empty {
   flex: 1;
 }
 
+/* 집 모양 고르기: 지금 단계로 그린 작은 그림 넷 */
+.shop h3.sub {
+  margin-top: 10px;
+}
+
+.shop h3.sub small {
+  font-weight: 400;
+}
+
+.house-styles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.house-styles li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.house-styles li.using {
+  border-color: var(--ok);
+}
+
+.house-styles img {
+  width: 100%;
+  max-width: 64px;
+  aspect-ratio: 1;
+}
+
+.house-styles .s-name {
+  font-size: 12px;
+}
+
+.house-styles .price {
+  min-width: 0;
+}
+
 /* 상점 안내 */
 .shop-msg {
   /* 아래로 내려 집을 사도 보이게 위에 붙여 둔다 */

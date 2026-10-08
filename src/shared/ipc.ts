@@ -12,6 +12,7 @@ import type { CalEvent } from './event-store.ts';
 import type { FocusState } from './focus.ts';
 import type { Gaze } from './gaze.ts';
 import type { GestureEvent } from './gesture.ts';
+import type { HouseStyle } from './house-art.ts';
 import type { LookMotion } from './look-motion.ts';
 import type { MiniGame } from './minigames.ts';
 import type { MoveAsk } from './moves.ts';
@@ -565,6 +566,7 @@ export const PANEL = {
   // 상점과 놀이 (v1)
   buyToy: 'panel:buy-toy',
   buyHouse: 'panel:buy-house',
+  buyHouseStyle: 'panel:buy-house-style',
   feedWith: 'panel:feed-with',
   makeFood: 'panel:make-food',
   removeFood: 'panel:remove-food',
@@ -698,6 +700,8 @@ export interface PanelBridge {
   buyToy(key: string): Promise<BuyResult>;
   /** 지금 보고 있는 단계(level)에서 다음 단계를 산다. 그새 바뀌었으면 사지 않는다 */
   buyHouse(level: number): Promise<BuyResult>;
+  /** 집 모양: 없으면 사고, 있으면 공짜로 바꾼다 */
+  buyHouseStyle(style: HouseStyle): Promise<BuyResult>;
   /** 이 먹이를 준다 (기본, 간식, 케이크, 커스텀) */
   feedWith(key: string): Promise<{ ok: boolean; error?: string }>;
   /** 커스텀 먹이 만들기 창을 연다. 코인이 모자라면 오류 */

@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { HOUSE_LEVELS, HOUSE_STYLES, type HouseStyle, houseSvg } from '../../../shared/house-art.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PanelState } from '../../../shared/ipc.ts';
 import {
@@ -7,7 +8,9 @@ import {
   FOODS,
   type Food,
   HOUSE_COSTS,
+  HOUSE_STYLE_COSTS,
   houseName,
+  houseStyleName,
   TOYS,
 } from '../../../shared/shop.ts';
 import { CoinIcon } from './icons.tsx';
@@ -173,7 +176,9 @@ export function ShopTab({ s }: { s: PanelState }) {
         <h3>{t('shop.house')}</h3>
         <div className="row-line">
           <span>
-            {level === 0 ? t('shop.noHouse') : t('shop.houseNow', { name: houseName(level - 1) ?? '' })}
+            {level === 0
+              ? t('shop.noHouse')
+              : `${t('shop.houseNow', { name: houseName(level - 1) ?? '' })} (${t('shop.houseLevel', { n: level, max: HOUSE_LEVELS })})`}
             <small>
               {nextHouse === undefined
                 ? t('shop.bestHouse')
@@ -194,8 +199,62 @@ export function ShopTab({ s }: { s: PanelState }) {
             </>
           )}
         </div>
+        {level > 0 && (
+          <>
+            <h3 className="sub">
+              {t('shop.styles')} <small>{t('shop.stylesHint')}</small>
+            </h3>
+            <ul className="house-styles">
+              {HOUSE_STYLES.map((style) => (
+                <StyleCard
+                  key={style}
+                  style={style}
+                  level={level}
+                  owned={shop.houseStyles[style]}
+                  using={shop.houseStyle === style}
+                  canBuy={!pending && shop.balance >= HOUSE_STYLE_COSTS[style]}
+                  onPick={() =>
+                    run(
+                      () => bridge.buyHouseStyle(style),
+                      t('shop.styleChanged', { name: houseStyleName(style) }),
+                    )
+                  }
+                />
+              ))}
+            </ul>
+          </>
+        )}
       </section>
     </div>
+  );
+}
+
+/** 집 모양 하나: 지금 단계로 그린 미리 보기, 이름, 값 또는 바꾸기 */
+function StyleCard(o: {
+  style: HouseStyle;
+  level: number;
+  owned: boolean;
+  using: boolean;
+  canBuy: boolean;
+  onPick: () => void;
+}) {
+  const src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(houseSvg(o.style, o.level, { still: true }))}`;
+  return (
+    <li className={o.using ? 'using' : ''}>
+      <img src={src} alt="" />
+      <span className="s-name">{houseStyleName(o.style)}</span>
+      {o.using ? (
+        <span className="owned">{t('shop.styleNow')}</span>
+      ) : o.owned ? (
+        <button type="button" className="ghost small" onClick={o.onPick}>
+          {t('shop.styleUse')}
+        </button>
+      ) : (
+        <button type="button" className="ghost small" disabled={!o.canBuy} onClick={o.onPick}>
+          <Price n={HOUSE_STYLE_COSTS[o.style]} />
+        </button>
+      )}
+    </li>
   );
 }
 

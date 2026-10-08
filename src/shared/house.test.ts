@@ -18,9 +18,9 @@ const right = { x: 1920, y: 30, width: 1920, height: 1050 };
 const areas = [builtIn, main, right];
 
 test('단계가 오르면 집이 조금씩 커지고, 이상한 단계는 끝 값으로', () => {
-  assert.deepEqual([1, 2, 3].map(houseSize), [104, 120, 136]);
+  assert.deepEqual([1, 2, 3, 4, 5].map(houseSize), [104, 120, 136, 148, 160]);
   assert.equal(houseSize(0), 104);
-  assert.equal(houseSize(9), 136);
+  assert.equal(houseSize(9), 160);
 });
 
 test('저장 파일이 깨졌으면 처음 자리로', () => {
@@ -41,7 +41,7 @@ test('저장 파일이 깨졌으면 처음 자리로', () => {
 test('업그레이드로 커져도 아래 가운데는 그대로', () => {
   const small = settleHouse({ x: 500, y: 200, width: houseSize(1), height: houseSize(1) }, areas);
   const spot = spotOf(small);
-  for (const level of [2, 3]) {
+  for (const level of [2, 3, 4, 5]) {
     const big = rectAtSpot(spot, houseSize(level));
     assert.equal(big.x + big.width / 2, small.x + small.width / 2);
     assert.equal(big.y + big.height, small.y + small.height);
@@ -93,22 +93,31 @@ test('처음 자리는 왼쪽 아래 구석', () => {
 
 test('집 그림 위만 잡히고 투명한 하늘은 통과한다', () => {
   const s = 120;
-  assert.ok(houseHit(1, s, { x: 60, y: 80 }), '벽');
-  assert.ok(houseHit(1, s, { x: 60, y: 22 }), '지붕 꼭대기');
-  assert.ok(houseHit(1, s, { x: 15, y: 55 }), '처마 끝');
-  assert.ok(!houseHit(1, s, { x: 10, y: 10 }), '왼쪽 위 하늘');
-  assert.ok(!houseHit(1, s, { x: 110, y: 25 }), '오른쪽 위 하늘');
-  assert.ok(!houseHit(1, s, { x: 8, y: 90 }), '벽 왼쪽 옆');
-  assert.ok(!houseHit(1, s, { x: 60, y: 117 }), '1단계는 마당이 없다');
-  assert.ok(houseHit(3, s, { x: 60, y: 117 }), '3단계 잔디');
-  assert.ok(houseHit(3, s, { x: 104, y: 104 }), '3단계 덤불');
+  assert.ok(houseHit('wood', 1, s, { x: 60, y: 80 }), '벽');
+  assert.ok(houseHit('wood', 1, s, { x: 60, y: 22 }), '지붕 꼭대기');
+  assert.ok(houseHit('wood', 1, s, { x: 15, y: 55 }), '처마 끝');
+  assert.ok(!houseHit('wood', 1, s, { x: 10, y: 10 }), '왼쪽 위 하늘');
+  assert.ok(!houseHit('wood', 1, s, { x: 110, y: 25 }), '오른쪽 위 하늘');
+  assert.ok(!houseHit('wood', 1, s, { x: 8, y: 90 }), '벽 왼쪽 옆');
+  assert.ok(!houseHit('wood', 1, s, { x: 60, y: 117 }), '1단계는 마당이 없다');
+  assert.ok(houseHit('wood', 3, s, { x: 60, y: 117 }), '3단계 잔디');
+  assert.ok(houseHit('wood', 3, s, { x: 104, y: 104 }), '3단계 덤불');
+});
+
+test('모양마다 자기 그림을 본다: 버섯 갓 끝, 성 탑, 눈집 옆 하늘', () => {
+  assert.ok(houseHit('mushroom', 1, 120, { x: 16, y: 62 }), '버섯 갓 왼쪽 끝');
+  assert.ok(!houseHit('wood', 1, 120, { x: 16, y: 62 }), '나무집은 벽 옆 하늘');
+  assert.ok(houseHit('castle', 5, 120, { x: 10, y: 80 }), '성 왼쪽 탑');
+  assert.ok(houseHit('wood', 5, 120, { x: 10, y: 80 }), '저택 왼쪽 탑');
+  assert.ok(!houseHit('igloo', 1, 120, { x: 60, y: 40 }), '작은 눈집 위 하늘');
+  assert.ok(houseHit('igloo', 4, 120, { x: 60, y: 45 }), '이층 눈집 위 둥근 지붕');
 });
 
 test('집 크기가 달라도 같은 그림 자리를 본다', () => {
   // 136 px 집에서 벽 가운데는 (68, 91), 왼쪽 위 하늘은 (11, 11)
-  assert.ok(houseHit(3, 136, { x: 68, y: 91 }));
-  assert.ok(!houseHit(3, 136, { x: 11, y: 11 }));
-  assert.ok(!houseHit(1, 104, { x: 100, y: 10 }));
+  assert.ok(houseHit('wood', 3, 136, { x: 68, y: 91 }));
+  assert.ok(!houseHit('wood', 3, 136, { x: 11, y: 11 }));
+  assert.ok(!houseHit('wood', 1, 104, { x: 100, y: 10 }));
 });
 
 test('펫은 집 오른쪽 문간에, 오른쪽 끝이면 왼쪽에 선다', () => {

@@ -11,6 +11,7 @@ import {
   settleHouse,
   spotOf,
 } from '../shared/house.ts';
+import { type HouseStyle, houseLayout, houseSvg } from '../shared/house-art.ts';
 import { t } from '../shared/i18n/index.ts';
 import { bounce, GRAVITY } from '../shared/throw.ts';
 import { onDisplaysChanged as watchDisplays } from './display-watch.ts';
@@ -113,31 +114,6 @@ export async function playBall(pet: PetWindow, yarn: boolean): Promise<boolean> 
   return back;
 }
 
-function houseSvg(level: number): string {
-  const roof = ['#c4854a', '#d9603b', '#4f7cac'][level - 1] ?? '#c4854a';
-  const wall = ['#fff4e6', '#ffe8cc', '#f1f5fb'][level - 1] ?? '#fff4e6';
-  const window =
-    level >= 2
-      ? '<rect x="70" y="62" width="18" height="16" rx="2" fill="#bfe3ff" stroke="#8a6a4a" stroke-width="2"/>'
-      : '';
-  const yard =
-    level >= 3
-      ? '<path d="M2 116h116" stroke="#6bbf59" stroke-width="6" stroke-linecap="round"/><circle cx="104" cy="104" r="7" fill="#6bbf59"/><circle cx="14" cy="106" r="5" fill="#ff8fab"/>'
-      : '';
-  // 집에서 쉬는 중(body.home)에만 보이는 것: 불 켜진 문과 창(1단계는 지붕 밑 동그란 창), 지붕 위로 오르는 Zzz.
-  // 편지(body.mail)는 쉬는 동안 놓치면 안 되는 말이 왔다는 표시 (나오면 말한다)
-  const lamp =
-    level >= 2
-      ? '<rect class="rest" x="72" y="64" width="14" height="12" rx="1" fill="#ffd27a"/>'
-      : '<circle class="rest" cx="60" cy="40" r="6" fill="#ffd27a" stroke="#8a6a4a" stroke-width="2"/>';
-  const glow = '<path class="rest" d="M44 110V81a8 8 0 0 1 16 0v29Z" fill="#ffc861"/>';
-  const zzz =
-    '<g class="rest zzz" fill="#7d8fd0" stroke="#fff" stroke-width="2.4" paint-order="stroke" font-family="sans-serif" font-weight="800"><text x="84" y="36" font-size="12">z</text><text x="93" y="25" font-size="15">z</text><text x="102" y="13" font-size="18">Z</text></g>';
-  const mail =
-    '<g class="letter"><rect x="4" y="10" width="24" height="17" rx="3" fill="#fff" stroke="#e87a90" stroke-width="2.2"/><path d="M5 12l11 8 11-8" fill="none" stroke="#e87a90" stroke-width="2.2" stroke-linejoin="round"/><circle cx="27" cy="10" r="4.5" fill="#ef476f"/></g>';
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">${yard}<g class="hb"><rect x="22" y="52" width="76" height="58" rx="4" fill="${wall}" stroke="#8a6a4a" stroke-width="2.5"/><path d="M12 56 60 18 108 56Z" fill="${roof}" stroke="#8a6a4a" stroke-width="2.5" stroke-linejoin="round"/><path d="M40 110V80a12 12 0 0 1 24 0v30" fill="#8a6a4a"/>${glow}${window}${lamp}</g>${zzz}${mail}</svg>`;
-}
-
 /**
  * 집 창 모양. 그림 위에서만 마우스를 받아 손 모양(grab)이 되고, 들면 살짝 기울고 작아지며,
  * 바닥에 닿으면 납작했다 튀어 오른다. 처음 놓일 때(산 날, 업그레이드)도 한 번 튄다.
@@ -186,11 +162,12 @@ export type House = ReturnType<typeof createHouse>;
  * 펫 집 (v1 집 업그레이드, v2 집 옮기기). 처음엔 펫이 있는 모니터 왼쪽 아래 구석에 놓인다.
  * 그림 위를 끌면 옮겨지고 놓으면 그 모니터 바닥으로 떨어져 선다. 자리는 저장해 다음에 켜도 그 자리.
  * 모니터가 빠지거나 바뀌면 보이는 모니터 바닥으로 옮겨 두되, 저장한 자리는 그대로 둔다(다시 꽂으면 돌아간다).
- * 단계가 오르면 모습과 크기가 바뀌고 아래 가운데를 지킨다. 0 단계면 없다.
+ * 단계가 오르면 모습과 크기가 바뀌고 아래 가운데를 지킨다. 모양(나무집, 버섯집, 눈집, 성)을 바꾸면 크기는 그대로. 0 단계면 없다.
  */
 export function createHouse({ onMoved, onClick, restItem, log }: HouseOptions = {}) {
   let win: BrowserWindow | undefined;
   let shownLevel = 0;
+  let shownStyle: HouseStyle = 'wood';
   let spot: HouseSpot | undefined = parseHouseSpot(readJson(HOUSE_FILE));
   /** 처음 자리를 정할 펫 자리 (옮긴 적 없을 때만 쓴다) */
   let lastNear: Rect | undefined;
@@ -371,7 +348,7 @@ export function createHouse({ onMoved, onClick, restItem, log }: HouseOptions = 
       }
       if (m.type === 'mouseLeave') return catchMouse(false);
       const size = w.getBounds().width;
-      const over = houseHit(shownLevel, size, { x: m.x, y: m.y });
+      const over = houseHit(shownStyle, shownLevel, size, { x: m.x, y: m.y });
       if (m.type === 'mouseMove' || m.type === 'mouseEnter') catchMouse(over);
       else if (m.type === 'mouseDown' && m.button === 'left' && over) startDrag();
     });
@@ -387,7 +364,8 @@ export function createHouse({ onMoved, onClick, restItem, log }: HouseOptions = 
   // 값이 실제로 바뀐 때만 온다 (맥이 변화 없이 몰아 보내는 알림은 display-watch.ts 가 거른다)
   const stopDisplayWatch = watchDisplays(replace);
 
-  function show(level: number, near: Rect) {
+  /** 단계와 모양에 맞는 집을 보인다. 같은 모습이면 자리만 맞춘다 */
+  function show({ level, style }: { level: number; style: HouseStyle }, near: Rect) {
     lastNear = near;
     if (level <= 0) {
       win?.destroy();
@@ -395,7 +373,7 @@ export function createHouse({ onMoved, onClick, restItem, log }: HouseOptions = 
       shownLevel = 0;
       return;
     }
-    if (alive() && level === shownLevel) {
+    if (alive() && level === shownLevel && style === shownStyle) {
       if (!drag && !glideTimer) win?.setBounds(target(houseSize(level)));
       return;
     }
@@ -403,8 +381,9 @@ export function createHouse({ onMoved, onClick, restItem, log }: HouseOptions = 
     stopGlide();
     win?.destroy();
     shownLevel = level;
+    shownStyle = style;
     const size = houseSize(level);
-    win = makeSprite(houseSvg(level), size, target(size), HOUSE_CSS);
+    win = makeSprite(houseSvg(style, level), size, target(size), HOUSE_CSS);
     wire(win);
   }
 
@@ -425,6 +404,8 @@ export function createHouse({ onMoved, onClick, restItem, log }: HouseOptions = 
       const b = win.getBounds();
       return { x: doorStandX(b, screen.getDisplayMatching(b).workArea, petWidth) };
     },
+    /** 지금 집 그림(120 칸)의 문 가운데 x 와 문턱 y */
+    doorArt: () => houseLayout(shownStyle, shownLevel).door,
     /** 우클릭 "집 원래 자리로" 와 같다 */
     reset,
     /** 펫이 집 안에서 쉬는 중 표시 (불빛, Zzz). 끄면 편지 표시도 지운다 */
