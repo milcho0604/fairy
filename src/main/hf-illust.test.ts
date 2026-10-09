@@ -47,12 +47,17 @@ test('오류 종류: 실제 쿼터 글, 크기 제한, 토큰, 바쁨, 그 밖',
   );
   assert.equal(classify('You have exceeded your GPU quota (60s requested vs. 0s left).'), 'quota');
   assert.equal(classify('The requested GPU duration (240s) is larger than the maximum allowed'), 'limit');
-  assert.equal(classify('', 429), 'quota');
-  assert.equal(classify('nope', 401), 'auth');
+  assert.equal(classify('', 429), 'busy');
+  assert.equal(classify('nope', 401, true), 'auth');
+  // 토큰을 안 보냈으면 401, 403 은 토큰 탓이 아니다
+  assert.equal(classify('nope', 403), 'busy');
+  assert.equal(classify('Invalid token'), 'runtime');
   assert.equal(classify('', 503), 'busy');
   assert.equal(classify('This application is currently busy. Queue is full'), 'busy');
   assert.equal(classify('RuntimeError: CUDA error'), 'runtime');
-  assert.equal(worst(['runtime', 'limit', 'network']), 'limit');
+  // 첫 Space 가 잠깐 막히고 둘째가 크기 제한이면 "토큰이 있어야 해" 가 아니라 잠깐 안 됨
+  assert.equal(worst(['runtime', 'limit', 'network']), 'busy');
+  assert.equal(worst(['network', 'limit']), 'limit');
   assert.equal(worst(['network', 'network']), 'network');
   assert.equal(worst(['runtime', 'network']), 'busy');
   assert.equal(worst([]), 'busy');
@@ -110,6 +115,7 @@ interface Seen {
   url: string;
   headers: Record<string, string>;
   body?: Uint8Array | string;
+  redirect?: RequestRedirect;
 }
 
 /** SSE 몸통을 조각으로 흘린다. hang 이면 닫지 않는다 */
@@ -144,6 +150,7 @@ function fakeServer(opts: {
       url,
       headers,
       body: init.body as Uint8Array | string | undefined,
+      redirect: init.redirect,
     });
     const root = url.slice(0, url.indexOf('.hf.space') + '.hf.space'.length);
     const ev = opts.events?.[root];
@@ -188,6 +195,8 @@ test('그리기: 올리기, 부르기, 기다리기, 받기. 토큰은 그 Space
     assert.ok(s.url.startsWith(`${KONTEXT}/`));
     assert.equal(s.headers.authorization, `Bearer ${token}`);
     assert.ok(!s.url.includes('lambda'));
+    // 다른 주소로 넘겨주기를 따라가지 않는다
+    assert.equal(s.redirect, 'error');
   }
   // multipart 에 사진 바이트와 파일 이름
   const up = seen[0];

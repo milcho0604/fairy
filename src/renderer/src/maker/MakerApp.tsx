@@ -149,18 +149,21 @@ export function MakerApp() {
     setError('');
     setNote('');
     setIllustMs(loadExpected('illust', store()));
-    setIllust((v) => v && { ...v, image: '', age: a, busy: true, at });
+    // 앞 그림은 새 그림을 받을 때까지 둔다 (다시 그리다 쿼터에 걸려도 앞 그림을 고를 수 있게)
+    setIllust((v) => v && { ...v, busy: true, at });
     const r = await bridge.illustrate(photo, a, cleanWish(wishText).slice(0, ILLUST_WISH_MAX) || undefined);
     if (runRef.current !== run) return;
-    if (r.ok && !(await sameAsPhoto(photo, r.image))) {
-      if (runRef.current !== run) return;
-      saveDuration('illust', performance.now() - at, store());
-      setIllust((v) => v && { ...v, image: r.image, busy: false });
+    if (!r.ok) {
+      setError(r.error);
+      setIllust((v) => v && { ...v, busy: false });
       return;
     }
+    // 사진과 거의 같으면 알려 주되, 실제로 다시 그린 그림일 수도 있으니 고를 수는 있게 둔다
+    const same = await sameAsPhoto(photo, r.image);
     if (runRef.current !== run) return;
-    setError(r.ok ? t('maker.illust.same') : r.error);
-    setIllust((v) => v && { ...v, busy: false });
+    if (same) setError(t('maker.illust.same'));
+    else saveDuration('illust', performance.now() - at, store());
+    setIllust((v) => v && { ...v, image: r.image, age: a, busy: false });
   }, []);
 
   const start = useCallback(
@@ -191,7 +194,7 @@ export function MakerApp() {
         if (!alive()) return;
         // AI 일러스트: 사진을 JPEG 로 보내 그림을 받고, 사용자가 고르면 그 그림으로 다시 시작한다
         if (how === 'illust' && info.target === 'main' && !opts.plain && !opts.age) {
-          const jpeg = photo.toDataURL('image/jpeg', 0.92);
+          const jpeg = onWhite(photo).toDataURL('image/jpeg', 0.92);
           setIllust({ file, photo: jpeg, thumb: thumbOf(photo), image: '', age, busy: true, at: 0 });
           setStep('illust');
           await drawIllust(jpeg, age, illustWish);
@@ -1391,6 +1394,19 @@ async function loadPhoto(file: Blob): Promise<HTMLCanvasElement> {
   g.imageSmoothingQuality = 'high';
   g.drawImage(bitmap, 0, 0, c.width, c.height);
   bitmap.close();
+  return c;
+}
+
+/** 흰 바탕에 깐 사본 (투명한 PNG 를 JPEG 로 바꾸면 바탕이 검어진다. 그림 서버에는 밝은 바탕이 낫다) */
+function onWhite(photo: HTMLCanvasElement): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = photo.width;
+  c.height = photo.height;
+  const g = c.getContext('2d');
+  if (!g) return photo;
+  g.fillStyle = '#fff';
+  g.fillRect(0, 0, c.width, c.height);
+  g.drawImage(photo, 0, 0);
   return c;
 }
 

@@ -551,7 +551,15 @@ let spriteKey: unknown[] = [];
 function syncSprites(m3d: Pet3D | undefined) {
   if (!wantFace) return;
   // 입체 모습(피규어, 게임, 실사)을 바꿔도 다시 (같은 설계도라 입체와 설계도는 그대로다)
-  const key = [m3d, m3d ? model3dOf : undefined, m3d ? style3d : undefined, m3d?.version, photo, petKind];
+  const key = [
+    m3d,
+    m3d ? model3dOf : undefined,
+    m3d ? style3d : undefined,
+    m3d?.version,
+    photo,
+    petKind,
+    photoScale,
+  ];
   if (key.length === spriteKey.length && key.every((v, i) => v === spriteKey[i])) return;
   spriteKey = key;
   const still = photo instanceof AnimatedImage ? photo.frameAt(0) : photo;
@@ -560,6 +568,7 @@ function syncSprites(m3d: Pet3D | undefined) {
     photo: m3d ? undefined : still,
     model3d: m3d,
     relief: !!m3d && model3dOf instanceof HTMLImageElement,
+    photoScale,
   };
   const body = renderBody(src);
   const sleep = renderFace(src, 128, 'sleeping');

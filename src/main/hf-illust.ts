@@ -77,14 +77,17 @@ export class IllustError extends Error {
  * 오류 글과 HTTP 상태로 종류를 고른다. 실제 무료 사용량 끝 글: "...your ZeroGPU runs limit. Authenticate with a
  * Hugging Face token for more quota" (토큰 없이 하루 3번쯤, 2026-10-09). 쿼터 글은 다른 Space 에서도 같으니 바로 멈춘다
  */
-export function classify(message: string, status?: number): IllustErrorKind {
-  if (status === 401 || status === 403) return 'auth';
-  if (status === 429) return 'quota';
+export function classify(message: string, status?: number, withToken = false): IllustErrorKind {
   const m = message.toLowerCase();
+  // 토큰을 안 보냈는데 401, 403 이면 토큰 탓이 아니다 (Space 가 막혔거나 잠긴 것). 다음 Space 로
+  if (status === 401 || status === 403) return withToken ? 'auth' : 'busy';
   if (/larger than the maximum allowed/.test(m)) return 'limit';
-  if (/quota|runs limit|rate.?limit|too many requests|exceeded your|zerogpu.*limit/.test(m)) return 'quota';
-  if (/invalid (user )?token|unauthori[sz]ed|invalid credentials/.test(m)) return 'auth';
+  if (/quota|runs limit|exceeded your|zerogpu.*limit/.test(m)) return 'quota';
+  if (withToken && /invalid (user )?token|unauthori[sz]ed|invalid credentials/.test(m)) return 'auth';
+  // 글 없는 429 는 대개 잠깐의 속도 제한이다. 오늘 사용량 끝은 위 글로 안다
   if (
+    status === 429 ||
+    /rate.?limit|too many requests/.test(m) ||
     (status !== undefined && status >= 500) ||
     /queue is full|too busy|is sleeping|building|starting|paused|no gpu/.test(m)
   )
@@ -92,9 +95,14 @@ export function classify(message: string, status?: number): IllustErrorKind {
   return 'runtime';
 }
 
-/** 실패 여러 개를 화면에 보일 하나로: 쿼터, 토큰, 크기 제한이 먼저, 모두 연결 실패면 network, 아니면 busy(지금 안 됨) */
+/**
+ * 실패 여러 개를 화면에 보일 하나로: 쿼터, 토큰, 이상한 답이 먼저. 그다음 잠깐 안 됨(busy, runtime)이 크기 제한보다 먼저:
+ * 토큰 없이는 둘째 Space 가 늘 크기 제한이라, 첫 Space 가 잠깐 막혔는데 "토큰이 있어야 해" 로 보이면 안 된다
+ */
 export function worst(kinds: IllustErrorKind[]): IllustErrorKind {
-  for (const k of ['quota', 'auth', 'limit', 'same', 'bad'] as const) if (kinds.includes(k)) return k;
+  for (const k of ['quota', 'auth', 'same', 'bad'] as const) if (kinds.includes(k)) return k;
+  if (kinds.some((k) => k === 'busy' || k === 'runtime')) return 'busy';
+  if (kinds.includes('limit')) return 'limit';
   return kinds.length > 0 && kinds.every((k) => k === 'network') ? 'network' : 'busy';
 }
 
@@ -260,15 +268,26 @@ async function runSpace(
   const auth: Record<string, string> = opt.token ? { authorization: `Bearer ${opt.token}` } : {};
   const call = async (url: string, init: RequestInit = {}) => {
     try {
-      return await opt.fetch(url, { ...init, headers: { ...auth, ...(init.headers ?? {}) }, signal });
+      // 넘겨주기(redirect)는 따라가지 않는다: Space 가 다른 주소(내 컴퓨터, 집 안 망)로 보내지 못하게
+      return await opt.fetch(url, {
+        ...init,
+        headers: { ...auth, ...(init.headers ?? {}) },
+        redirect: 'error',
+        signal,
+      });
     } catch (err) {
       throw new IllustError('network', errText(err));
     }
   };
   const fail = async (res: Response) => {
-    const body = await res.text().catch(() => '');
-    return new IllustError(classify(body, res.status), `${res.status} ${body.slice(0, 200)}`);
+    const body = await smallText(res, signal).catch(() => '');
+    return new IllustError(classify(body, res.status, !!opt.token), `${res.status} ${body.slice(0, 200)}`);
   };
+  const json = (res: Response) =>
+    smallText(res, signal).then(
+      (s) => JSON.parse(s) as unknown,
+      () => null,
+    );
 
   // 1. 사진 올리기 (새 Gradio 는 /gradio_api 아래, 옛것은 바로 아래)
   const name = mime === 'image/png' ? 'pet.png' : 'pet.jpg';
@@ -287,7 +306,7 @@ async function runSpace(
     res = await upload();
   }
   if (!res.ok) throw await fail(res);
-  const paths = (await res.json().catch(() => null)) as unknown;
+  const paths = await json(res).catch(() => null);
   const path = Array.isArray(paths) && typeof paths[0] === 'string' ? paths[0] : undefined;
   if (!path) throw new IllustError('bad', 'upload answer');
   const image: FileRef = { path, orig_name: name, meta: { _type: 'gradio.FileData' } };
@@ -300,7 +319,7 @@ async function runSpace(
     body: JSON.stringify({ data: space.inputs(image, prompt) }),
   });
   if (!res.ok) throw await fail(res);
-  const joined = (await res.json().catch(() => null)) as { event_id?: unknown } | null;
+  const joined = (await json(res).catch(() => null)) as { event_id?: unknown } | null;
   const id = typeof joined?.event_id === 'string' ? joined.event_id : undefined;
   if (!id || !/^[\w-]{1,128}$/.test(id)) throw new IllustError('bad', 'no event id');
 
@@ -347,12 +366,17 @@ async function readAll(
   }
 }
 
+/** 그림 말고 짧은 답(오류 글, 올리기, 부르기)은 64KB 까지만 읽는다 */
+async function smallText(res: Response, signal: AbortSignal): Promise<string> {
+  return new TextDecoder().decode(await readCapped(res, 64 * 1024, signal));
+}
+
 async function readCapped(res: Response, max: number, signal: AbortSignal): Promise<Uint8Array> {
   const parts: Uint8Array[] = [];
   let size = 0;
   await readAll(res, signal, (c) => {
     size += c.length;
-    if (size > max) throw new IllustError('bad', 'image too big');
+    if (size > max) throw new IllustError('bad', 'answer too big');
     parts.push(c);
     return undefined;
   });

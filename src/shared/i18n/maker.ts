@@ -49,7 +49,7 @@ export const ko = {
   'maker.illust.wishPlaceholder': '예: 빨간 목도리, 웃는 얼굴',
   'maker.illust.token.summary': '무료 Hugging Face 토큰 (안 넣어도 돼)',
   'maker.illust.token.how':
-    '더 많이 그리고 싶으면 Hugging Face에 가입하고 huggingface.co/settings/tokens에서 무료 토큰을 만들어(권한은 Read면 돼) 여기 붙여 넣어 줘. 토큰은 이 컴퓨터에만 두고 그림 서버에만 보내.',
+    '더 많이 그리고 싶으면 Hugging Face에 가입하고 huggingface.co/settings/tokens에서 무료 토큰을 만들어 여기 붙여 넣어 줘. 토큰은 그림 서버(다른 사람이 운영해)에도 같이 가니, 권한을 가장 적게 준 Fine-grained 토큰을 추천해. 이 컴퓨터에만 저장해.',
   'maker.illust.token.label': '토큰',
   'maker.illust.token.placeholder': 'hf_로 시작하는 토큰',
   'maker.illust.token.save': '넣기',
@@ -70,7 +70,7 @@ export const ko = {
   'maker.illust.accept': '이걸로 할게',
   'maker.illust.otherPhoto': '다른 사진',
   'maker.illust.same':
-    '그림 서버가 사진을 다시 그리지 않고 그대로 돌려줬어. 다시 그려 보거나 사진 그대로 해 줘.',
+    '그림 서버가 사진을 거의 그대로 돌려준 것 같아. 다시 그려 봐도 되고, 괜찮으면 이걸로 해도 돼.',
   'maker.say.illust.start': '붓이랑 물감을 꺼내는 중',
   'maker.say.illust.middle': '털을 한 올씩 그리는 중',
   'maker.say.illust.almost': '눈에 반짝임을 넣는 중',
@@ -247,7 +247,7 @@ export const en: Translation<typeof ko> = {
   'maker.illust.wishPlaceholder': 'e.g. red scarf, smiling face',
   'maker.illust.token.summary': 'Free Hugging Face token (optional)',
   'maker.illust.token.how':
-    'To draw more, sign up at Hugging Face, make a free token at huggingface.co/settings/tokens (Read access is enough) and paste it here. It stays on this computer and only goes to the drawing server.',
+    'To draw more, sign up at Hugging Face, make a free token at huggingface.co/settings/tokens and paste it here. The token also goes to the drawing server, which someone else runs, so a Fine-grained token with as few permissions as possible is best. It is saved only on this computer.',
   'maker.illust.token.label': 'Token',
   'maker.illust.token.placeholder': 'Token starting with hf_',
   'maker.illust.token.save': 'Add',
@@ -268,7 +268,7 @@ export const en: Translation<typeof ko> = {
   'maker.illust.accept': 'Use this one',
   'maker.illust.otherPhoto': 'Another photo',
   'maker.illust.same':
-    'The drawing server sent the photo back without redrawing it. Draw again, or use the photo as is.',
+    'The drawing server seems to have sent the photo back almost unchanged. Draw again, or use it if you like it.',
   'maker.say.illust.start': 'Getting out my brushes',
   'maker.say.illust.middle': 'Painting every bit of fur',
   'maker.say.illust.almost': 'Adding sparkle to the eyes',

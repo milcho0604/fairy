@@ -138,6 +138,8 @@ export interface FaceSource {
   model3d?: Model3D & HeadAware;
   /** 2.5D 판(사진 + 깊이)이면 true. 관절이 없어 사진처럼 목을 찾는다 */
   relief?: boolean;
+  /** 나이 배율 (AI 일러스트 아기, 청소년). 2D 사진은 drawPet 이 줄이고, 입체는 모델에 이미 들어 있다 */
+  photoScale?: number;
 }
 
 /** 기본 펫과 입체는 160 캔버스를 이만큼 키워 그린 다음 자른다 (머리가 잘린 크기에서도 선명하게) */
@@ -246,6 +248,7 @@ export function renderBody(
     viewSize: full,
     kind: src.kind,
     photo: m ? undefined : src.photo,
+    photoScale: src.photoScale,
     model3d: m,
   });
   if (m && keep !== undefined) m.maxPx = keep;
