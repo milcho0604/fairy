@@ -1,0 +1,30 @@
+# 실험 브랜치 전용: 앱의 실제 HF 클라이언트를 진짜 Space 에 돌려 본다. main 에는 넣지 않는다.
+name: lab-app
+on:
+  push:
+    branches: [lab/illustrate]
+    paths: ['lab/app-run.ts', '.github/workflows/lab-app.yml']
+permissions:
+  contents: write
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: wip-illustrate
+          path: app
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node lab/app-run.ts
+        continue-on-error: true
+      - name: 결과 올리기
+        run: |
+          git config user.name "jjakkung-lab"
+          git config user.email "lab@users.noreply.github.com"
+          git add -f lab/out-app
+          git commit -m "lab: 앱 클라이언트 결과" || echo "결과 없음"
+          git push
