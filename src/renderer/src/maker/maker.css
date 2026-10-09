@@ -651,7 +651,9 @@ section {
 }
 
 .illust-pair .after img {
-  width: 220px;
+  /* 세로로 긴 그림이 많다. 상자를 그림에 맞춰 양옆 빈 띠가 생기지 않게 */
+  width: auto;
+  max-width: 220px;
   height: 260px;
   box-shadow: 0 6px 24px color-mix(in srgb, var(--ink) 14%, transparent);
 }

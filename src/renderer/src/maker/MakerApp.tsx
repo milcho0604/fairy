@@ -461,7 +461,7 @@ export function MakerApp() {
 
   // 무료 Hugging Face 토큰 칸 (고르기 화면, 쿼터에 걸린 뒤 그림 화면). 토큰 글은 메인에만 있고 창은 있는지만 안다
   const tokenBox = (
-    <details className="token">
+    <details className="token" open={step === 'illust' && !!error && !illust?.image}>
       <summary>
         {t('maker.illust.token.summary')}
         {info?.hfToken && <span className="token-on"> ✓</span>}
@@ -485,6 +485,9 @@ export function MakerApp() {
             value={tokenDraft}
             maxLength={200}
             onChange={(e) => setTokenDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && tokenDraft.trim()) saveToken(tokenDraft);
+            }}
           />
           <button
             type="button"
@@ -573,6 +576,8 @@ export function MakerApp() {
                 {how === 'illust' && (
                   <div className="wish illust-opts">
                     <small className="hint">{t('maker.illust.hint')}</small>
+                    {/* 사진을 고르기 전에 보이게: 이걸 고르면 사진이 밖으로 나간다 */}
+                    <p className="privacy out">{t('maker.illust.privacy')}</p>
                     <AgePicker age={age} onAge={setAge} />
                     <label className="wish-label" htmlFor="maker-illust-wish">
                       {t('maker.illust.wish')} <small>{t('maker.wish.optional')}</small>
@@ -621,10 +626,8 @@ export function MakerApp() {
                 e.target.value = '';
               }}
             />
-            {/* 일러스트를 고르면 사진이 밖으로 나간다고 분명히 (그 밖에는 사진이 이 컴퓨터를 떠나지 않는다) */}
-            <p className={`privacy${isMain && how === 'illust' ? ' out' : ''}`}>
-              {isMain && how === 'illust' ? t('maker.illust.privacy') : t('maker.pick.privacy')}
-            </p>
+            {/* 일러스트 안내는 위 옵션 칸에 있다. 그 밖에는 사진이 이 컴퓨터를 떠나지 않는다 */}
+            {!(isMain && how === 'illust') && <p className="privacy">{t('maker.pick.privacy')}</p>}
             {!isFood && (isPose ? info?.hasPose : info?.hasPhotoPet) && (
               <button
                 type="button"
@@ -680,12 +683,14 @@ export function MakerApp() {
                   </button>
                   <button
                     type="button"
-                    className={illust.image && illust.age === age ? 'ghost' : 'primary'}
+                    className={illust.image ? 'ghost' : 'primary'}
                     onClick={() => drawIllust(illust.photo, age, illustWish)}
                   >
-                    {t('maker.illust.again')}
+                    {illust.image && illust.age !== age
+                      ? t(`maker.illust.againAs.${age}`)
+                      : t('maker.illust.again')}
                   </button>
-                  {illust.image && illust.age === age && (
+                  {illust.image && (
                     <button type="button" className="primary" onClick={acceptIllust}>
                       {t('maker.illust.accept')}
                     </button>
