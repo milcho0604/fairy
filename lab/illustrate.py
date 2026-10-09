@@ -24,7 +24,6 @@ AGES = {
     "adult": "as a fully grown adult in its prime: full size, confident, well-groomed coat, standing",
 }
 PETS = [
-    ("poodle", "lab/in_poodle.png", "Redraw this curly brown poodle"),
     ("cat", "lab/in_cat.png", "Redraw this fluffy white long-haired cat with amber eyes"),
 ]
 JOBS = [(f"{pet}-{age}", path, f"{who} {AGES[age]}. {STYLE}") for pet, path, who in PETS for age in AGES]
@@ -82,7 +81,10 @@ for space in SPACES:
     for name, path, prompt in JOBS:
         if name in done:
             continue
+        # 실제 그리는 곳(/infer)만 부른다. /lambda 처럼 그림만 받는 곳은 넣은 그림을 그대로 돌려줘 성공으로 착각했다
         for ep, spec in api.get("named_endpoints", {}).items():
+            if ep != "/infer":
+                continue
             args = build_args(spec.get("parameters", []), path, prompt)
             if not args or not any(isinstance(v, (dict, list)) for v in args.values()):
                 continue
