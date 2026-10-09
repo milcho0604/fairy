@@ -93,6 +93,7 @@ import {
   walkEnvelope,
 } from './pet3d-gait.ts';
 import { bounced, type EyeState, restingEye } from './pet3d-motion.ts';
+import { neckRow } from './relief-warp.ts';
 
 const CX = 80;
 const GROUND = 154;
@@ -192,7 +193,13 @@ export class Pet3D implements Model3D {
   /** 그릴 것이 있는지 (설계도나 입체 판을 넣었는지) */
   private ready = false;
   /** 2.5D 입체 판 (사진 + 깊이). 있으면 관절 대신 몸 전체만 기울인다 */
-  private relief: { texture: CanvasTexture } | undefined;
+  private relief:
+    | {
+        texture: CanvasTexture;
+        /** 그림 휘기 값 (숨쉬기 -1~1, 머리 기울기 라디안). 셰이더가 읽는다 */
+        warp: { uBreath: { value: number }; uTilt: { value: number } };
+      }
+    | undefined;
   /** 쉬는 자세가 화면(NDC)에서 차지하는 자리로 정한 2D 그림 크기와 위치 */
   private fit = { d: 160, cx: 0, bottom: -1, halfW: 0.5 };
   private px = 0;
@@ -424,8 +431,37 @@ export class Pet3D implements Model3D {
     const texture = new CanvasTexture(c);
     texture.colorSpace = SRGBColorSpace;
     const mat = new MeshStandardMaterial({ map: texture, alphaTest: 0.5, roughness: 0.7, side: DoubleSide });
+    // 그림 휘기 (사용자 요청 2026-10-09, AI 로 만든 일러스트를 입체감 있게): 몸통은 숨쉬듯 부풀고,
+    // 목 위는 목을 축으로 기운다. 목은 그림에서 몸 너비가 가장 잘록한 줄로 짐작한다 (relief-warp.ts neckRow)
+    const neck = h * (1 - neckRow(alpha, cols, rows) / segY);
+    const warp = { uBreath: { value: 0 }, uTilt: { value: 0 } };
+    mat.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, warp, { uNeck: { value: neck }, uH: { value: h } });
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+uniform float uBreath;
+uniform float uTilt;
+uniform float uNeck;
+uniform float uH;`,
+        )
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+float jjBody = 1.0 - smoothstep(uNeck - 0.1 * uH, uNeck + 0.15 * uH, transformed.y);
+transformed.x *= 1.0 + uBreath * 0.022 * jjBody;
+transformed.z *= 1.0 + uBreath * 0.05 * jjBody;
+transformed.y *= 1.0 + uBreath * 0.012;
+float jjHead = smoothstep(uNeck - 0.05 * uH, uNeck + 0.12 * uH, transformed.y);
+vec2 jjQ = transformed.xy - vec2(0.0, uNeck);
+float jjA = uTilt * jjHead;
+transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jjQ.x * sin(jjA) + jjQ.y * cos(jjA));`,
+        );
+    };
+    mat.customProgramCacheKey = () => 'jj-relief-warp';
     this.root.add(new Mesh(geo, mat));
-    this.relief = { texture };
+    this.relief = { texture, warp };
     this.hasHead = false;
     this.hasHand = false;
     this.ready = true;
@@ -1616,6 +1652,20 @@ export class Pet3D implements Model3D {
       x += mv.pitch * 0.5;
     }
     const max = 0.44;
+    // 그림 휘기: 숨은 늘 (자면 느리고 깊게), 고개는 생각, 쳐다보기, 몸짓에 따라 기운다
+    const w = this.relief?.warp;
+    if (w) {
+      const t = s.elapsed / 1000;
+      const asleep = s.mood === 'sleeping' || s.mood === 'dozing';
+      w.uBreath.value = s.calm ? 0 : Math.sin(t * (asleep ? 1.1 : 2.2)) * (asleep ? 1.3 : 1);
+      let tilt = Math.sin(t * 1.3) * 0.03;
+      if (s.mood === 'thinking') tilt += 0.12;
+      if (g) tilt += -g.x * 0.08;
+      if (mv) tilt += mv.tilt * 0.6;
+      w.uTilt.value = Math.max(-0.22, Math.min(0.22, tilt));
+      // 머리를 기울이는 만큼 몸 전체 기울기는 덜
+      z *= 0.5;
+    }
     this.root.rotation.set(x, Math.max(-max, Math.min(max, y + this.spin * 0.4)), z);
   }
 
