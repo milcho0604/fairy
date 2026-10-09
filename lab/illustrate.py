@@ -8,21 +8,26 @@ import traceback
 from gradio_client import Client, handle_file
 
 SPACES = [
-    "multimodalart/Qwen-Image-Edit-Fast",
-    "linoyts/Qwen-Image-Edit-2509-Fast",
-    "Qwen/Qwen-Image-Edit",
     "black-forest-labs/FLUX.1-Kontext-Dev",
+    "multimodalart/Qwen-Image-Edit-Fast",
+    "Qwen/Qwen-Image-Edit",
 ]
 STYLE = (
-    "Redraw this exact pet as a cute, polished, realistic-cute 3D illustration like a premium app character. "
-    "Keep its identity: same breed, fur color, fur texture, face and eyes. Show the WHOLE body standing on four legs, "
+    "Keep its identity: same breed, fur color, fur texture, face markings and eye color. Show the WHOLE body, "
     "facing the viewer, all paws visible, centered, alone (no other animals, no box, no props), "
-    "plain light solid background, soft studio light, no text, no watermark."
+    "cute polished realistic 3D illustration like a premium app character, plain light solid background, "
+    "soft studio light, no text, no watermark."
 )
-JOBS = [
-    ("poodle", "lab/in_poodle.png", "The pet is the curly brown poodle. " + STYLE),
-    ("cat", "lab/in_cat.png", "The pet is the fluffy white long-haired cat with amber eyes. " + STYLE),
+AGES = {
+    "baby": "as a tiny baby (a few weeks old): very small and round, oversized head, big eyes, short stubby legs, extra soft fluffy baby coat, sitting",
+    "teen": "as a playful adolescent (about five months old): slimmer, slightly long legs and big paws, standing",
+    "adult": "as a fully grown adult in its prime: full size, confident, well-groomed coat, standing",
+}
+PETS = [
+    ("poodle", "lab/in_poodle.png", "Redraw this curly brown poodle"),
+    ("cat", "lab/in_cat.png", "Redraw this fluffy white long-haired cat with amber eyes"),
 ]
+JOBS = [(f"{pet}-{age}", path, f"{who} {AGES[age]}. {STYLE}") for pet, path, who in PETS for age in AGES]
 os.makedirs("lab/out", exist_ok=True)
 log = []
 
