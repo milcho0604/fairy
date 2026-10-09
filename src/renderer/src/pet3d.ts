@@ -81,7 +81,7 @@ import {
   fusedGeometry,
   paintGeometry,
 } from './pet3d-fluff.ts';
-import { type FusedMesh, type FusePart, type FuseShape, fuseSteps } from './pet3d-fuse.ts';
+import { type FuseClear, type FusedMesh, type FusePart, type FuseShape, fuseSteps } from './pet3d-fuse.ts';
 import {
   gaitOf,
   hindFrom,
@@ -589,17 +589,35 @@ export class Pet3D implements Model3D {
             ? { capsule: { r: prm?.radius ?? 1, half: (prm?.height ?? 0) / 2 } }
             : {}),
           color: [c.r, c.g, c.b],
-          fur: part.finish === 'fuzzy' ? 1 : 0.75,
+          // 귀는 짧은 털 (길면 부스스하다)
+          fur: (part.finish === 'fuzzy' ? 1 : 0.75) * (part.slot.startsWith('ear') ? 0.35 : 1),
         });
       }
       if (bounds.isEmpty()) continue;
+      // 얼굴 관절이면 눈, 입, 코(반짝 부품) 둘레 털을 짧게 깎아 얼굴이 털에 묻히지 않게
+      const clears: FuseClear[] = [];
+      if (this.face && this.face.groups[0]?.parent === group) {
+        const r = Math.max(0.03, (bp.face.eyeSize ?? 0.05) * 1.6);
+        for (const g of this.face.groups) clears.push({ at: g.position.toArray(), r });
+      }
+      for (const o of group.children)
+        if (o instanceof Mesh && (o.userData.part as Part | undefined)?.finish === 'shiny') {
+          const part = o.userData.part as Part;
+          clears.push({ at: o.position.toArray(), r: Math.max(...part.size) * 1.3 });
+        }
       const size = bounds.getSize(new Vector3());
       // 격자 간격: 한 관절을 48칸 남짓으로 (64칸이면 펫 하나 조립에 이 컴퓨터에서 0.9초까지 걸렸다)
       const cell = Math.min(0.018, Math.max(0.006, Math.max(size.x, size.y, size.z) / 48));
       jobs.push({
         group,
         list,
-        steps: fuseSteps(fparts, { min: bounds.min.toArray(), max: bounds.max.toArray() }, cell, 0.035),
+        steps: fuseSteps(
+          fparts,
+          { min: bounds.min.toArray(), max: bounds.max.toArray() },
+          cell,
+          0.035,
+          clears,
+        ),
       });
     }
     const token = ++this.fuseToken;

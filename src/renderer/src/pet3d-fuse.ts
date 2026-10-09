@@ -109,6 +109,22 @@ export function fieldAt(parts: readonly FusePart[], k: number, x: number, y: num
 }
 
 /** 겉면 한 점의 색과 털: 가까운 부품일수록 세게 (무늬처럼 겉에 얹은 얇은 부품이 이긴다) */
+/** 털을 짧게 깎을 자리 (눈, 코, 입 둘레). 관절 공간의 공: 가운데에서 r 안은 털이 거의 없고 2r 밖은 그대로 */
+export interface FuseClear {
+  at: [number, number, number];
+  r: number;
+}
+
+function clearAt(clears: readonly FuseClear[], x: number, y: number, z: number): number {
+  let k = 1;
+  for (const c of clears) {
+    const d = Math.hypot(x - c.at[0], y - c.at[1], z - c.at[2]) / c.r;
+    const t = Math.min(1, Math.max(0, d - 1));
+    k = Math.min(k, 0.15 + 0.85 * t * t * (3 - 2 * t));
+  }
+  return k;
+}
+
 function paintAt(parts: readonly FusePart[], x: number, y: number, z: number, out: Float32Array, at: number) {
   let r = 0;
   let g = 0;
@@ -162,6 +178,7 @@ export function* fuseSteps(
   bounds: Bounds,
   cell: number,
   k: number,
+  clears: readonly FuseClear[] = [],
 ): Generator<void, FusedMesh | undefined> {
   if (!parts.length) return undefined;
   const pad = cell * 2 + k;
@@ -277,6 +294,7 @@ export function* fuseSteps(
     normals[v * 3 + 1] = gy / len;
     normals[v * 3 + 2] = gz / len;
     paintAt(parts, x, y, z, paint, v);
+    if (clears.length) paint[v * 4 + 3] = (paint[v * 4 + 3] ?? 0) * clearAt(clears, x, y, z);
     if (v % 400 === 399) yield;
   }
   const colors = new Float32Array(count * 3);

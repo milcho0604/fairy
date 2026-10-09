@@ -67,10 +67,10 @@ export function fluffTexture(seed = 11): DataTexture {
       }
     return best;
   };
-  for (let i = 0; i < 14000; i++) {
+  for (let i = 0; i < 7000; i++) {
     const x = rand() * n;
     const y = rand() * n;
-    const r = 1 + rand() * 0.7;
+    const r = 1.6 + rand() * 1;
     const h = 0.45 + rand() * 0.55;
     const clumped = h * (0.2 + 0.8 * profile(x, y));
     for (let py = Math.floor(y - r); py < y + r; py++)
@@ -122,10 +122,8 @@ export function fluffShellMaterial(i: number, n: number, tex: DataTexture, fur: 
     color: new Color(shade, shade, shade),
     alphaMap: tex,
     // 안쪽 층은 거의 꽉 차 털 부피가 되고, 바깥 층만 성겨져 가장자리가 보송해진다
-    alphaTest: 0.06 + 0.8 * t ** 1.6,
+    alphaTest: 0.08 + 0.62 * t ** 1.8,
     roughness: 0.85,
-    // 계단처럼 깨지는 가닥 가장자리를 안티앨리어싱 표본으로 부드럽게 (렌더러가 antialias 라 공짜에 가깝다)
-    alphaToCoverage: true,
   });
   const values = {
     uShell: t,
@@ -178,11 +176,12 @@ varying vec3 vFurN;`,
   vec2 uv = an.x > an.y && an.x > an.z ? vec2(vFurP.z, vFurP.y * comb)
     : (an.y > an.z ? vFurP.xz : vec2(vFurP.x, vFurP.y * comb));
   float ang = uShell * 2.2 * 6.2832;
-  vec2 cu = vec2(cos(ang), sin(ang)) * 0.035 * uCurl;
+  // 층마다 가닥 자리를 아래로 조금씩 옮겨 가닥이 점이 아니라 아래로 눕는 이어진 털이 되게 (곱슬은 대신 돈다)
+  vec2 cu = vec2(cos(ang), sin(ang)) * 0.035 * uCurl + vec2(0.0, uShell * 0.018 * (1.0 - uCurl));
   vec2 st = texture2D(alphaMap, uv * uDen + cu).rg;
   diffuseColor.a *= mix(st.r, st.g, uClump);
   // 다발 사이 골은 그늘지고 다발 가운데는 밝다: 정면에서도 털 무늬가 읽힌다
-  diffuseColor.rgb *= mix(0.78, 1.08, mix(st.r, st.g, max(uClump, 0.5)));
+  diffuseColor.rgb *= mix(0.9, 1.04, mix(st.r, st.g, max(uClump, 0.5)));
 }`,
       )
       // 가장자리 털 끝이 빛을 머금어 보송하게 (바깥 층일수록)
