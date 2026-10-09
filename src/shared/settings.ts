@@ -10,7 +10,8 @@ import { DEFAULT_ROUTINE, parseRoutine, type Routine } from './routine.ts';
 import { isAccelerator, reservedUse, SHORTCUT_DEFAULTS, type ShortcutId, shortcutClash } from './shortcut.ts';
 
 /** 입체 펫 모습: 피규어, 게임 캐릭터, 실사처럼 */
-export const PET_STYLES = ['figure', 'game', 'real'] as const;
+// fluffy 복슬복슬: 부품을 녹여 붙인 한 덩어리 몸에 긴 털 (시험판, 2026-10-09)
+export const PET_STYLES = ['figure', 'game', 'real', 'fluffy'] as const;
 export type PetStyle = (typeof PET_STYLES)[number];
 
 export interface Settings {

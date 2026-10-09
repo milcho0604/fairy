@@ -102,6 +102,9 @@ Schema:
             "eyes" optional resting eye look, one of ${JSON.stringify(EYES)} (round is the default) },
   "motion": optional { "bounce": ${MOTION_RANGE.bounce.join(' to ')}, "sway": ${MOTION_RANGE.sway.join(' to ')}, "tailWag": ${MOTION_RANGE.tailWag.join(' to ')}, "earWiggle": ${MOTION_RANGE.earWiggle.join(' to ')} }
             (how strongly the app animates it; 1 is normal, 0 is still. Leave it out unless asked),
+  "fur": optional { "length": 0 to 1, "curl": 0 to 1, "clump": 0 to 1 } (the coat, used by the app's fluffy look:
+            length 0 = short velvet, 0.5 = medium, 1 = long flowing coat; curl 1 = tight curls like a poodle or bichon;
+            clump 1 = fur that parts into locks like a long-haired cat. Fill it from the photo for any furry animal),
   "gait": one of ${JSON.stringify(GAITS)} (how it walks: "quadruped" for four-legged animals such as cats, dogs, rabbits, hamsters, foxes; "biped" for birds, people, plush characters and anything that stands on two feet)
 }
 

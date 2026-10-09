@@ -112,6 +112,18 @@ export interface Blueprint {
   motion?: Motion;
   /** 걸음새. 없으면 다리 모양으로 짐작 */
   gait?: Gait;
+  /** 털 느낌 (복슬복슬 모습). 없으면 부품 겉 느낌(fuzzy, soft)으로 정한다 */
+  fur?: Fur;
+}
+
+/**
+ * 털 느낌. 모두 0~1. length 짧은 솜털(0)~긴 털(1), curl 곧은 털(0)~곱슬(1, 푸들),
+ * clump 고르게 흩어진 털(0)~뭉쳐 갈라진 털(1, 긴 털 고양이)
+ */
+export interface Fur {
+  length?: number;
+  curl?: number;
+  clump?: number;
 }
 
 export const MAX_PARTS = 40;
@@ -180,6 +192,8 @@ export function parseBlueprint(raw: unknown): Blueprint | undefined {
   if (motion) bp.motion = motion;
   const gait = oneOf(GAITS, r.gait);
   if (gait) bp.gait = gait;
+  const fur = furOf(r.fur);
+  if (fur) bp.fur = fur;
   return bp;
 }
 
@@ -211,4 +225,16 @@ export function expandMirrors(parts: readonly Part[]): Part[] {
     out.push({ ...base, slot, at: [-p.at[0], p.at[1], p.at[2]], ...(rot ? { rot } : {}) });
   }
   return out;
+}
+
+/** 털 느낌 칸 검사. 0~1 밖은 자르고 숫자가 아닌 칸은 뺀다. 남은 칸이 없으면 undefined */
+export function furOf(raw: unknown): Fur | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const r = raw as Record<string, unknown>;
+  const out: Fur = {};
+  for (const key of ['length', 'curl', 'clump'] as const) {
+    const v = r[key];
+    if (typeof v === 'number' && Number.isFinite(v)) out[key] = clamp(v, 0, 1);
+  }
+  return Object.keys(out).length ? out : undefined;
 }

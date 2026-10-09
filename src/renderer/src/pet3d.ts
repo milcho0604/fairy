@@ -51,6 +51,7 @@ import {
   expandMirrors,
   type Face,
   type Finish,
+  type Fur,
   inFace,
   type Part,
   SLOTS,
@@ -69,6 +70,18 @@ import {
   waveSwing,
 } from './draw.ts';
 import type { MoveEyes } from './move-pose.ts';
+import {
+  addShells,
+  bumpFur,
+  fluffBaseMaterial,
+  fluffLayers,
+  fluffLength,
+  fluffShellMaterial,
+  fluffTexture,
+  fusedGeometry,
+  paintGeometry,
+} from './pet3d-fluff.ts';
+import { type FusePart, type FuseShape, fuseParts } from './pet3d-fuse.ts';
 import {
   gaitOf,
   hindFrom,
@@ -193,6 +206,16 @@ export class Pet3D implements Model3D {
   private get game(): boolean {
     return this.style === 'game';
   }
+  /** 복슬복슬 (시험판): 부품을 녹여 붙인 한 덩어리 몸에 긴 털 (pet3d-fuse.ts, pet3d-fluff.ts) */
+  private get fluffy(): boolean {
+    return this.style === 'fluffy';
+  }
+  /** 털 있는 모습 (실사, 복슬복슬): 유리알 눈, 볼 터치 없음, 따뜻한 빛 */
+  private get furry(): boolean {
+    return this.real || this.fluffy;
+  }
+  /** 복슬복슬 가닥 그림. 처음 쓸 때 만든다 */
+  private fluffTex: DataTexture | undefined;
   /** 게임 모습의 명암 단계 그림 (3단). 처음 쓸 때 만든다 */
   private toonRamp: DataTexture | undefined;
   /** 털 무늬(가닥 높이)와 얼룩 그림. 실사로 처음 그릴 때 한 번 만든다 */
@@ -285,7 +308,7 @@ export class Pet3D implements Model3D {
       key.intensity = 0.9;
       rim.color.set(0xffffff);
       rim.intensity = 0;
-    } else if (style === 'real') {
+    } else if (style === 'real' || style === 'fluffy') {
       // 실사: 색이 바래지 않게 중립 톤에 노출만 조금. 주 조명은 따뜻하게, 뒤 테두리 빛을 세게 해 털 끝이 빛나게
       this.renderer.toneMapping = NeutralToneMapping;
       this.renderer.toneMappingExposure = 1.05;
@@ -328,6 +351,7 @@ export class Pet3D implements Model3D {
     this.furTex?.strands.dispose();
     this.furTex?.mottle.dispose();
     this.toonRamp?.dispose();
+    this.fluffTex?.dispose();
     this.scene.environment?.dispose();
     this.renderer.dispose();
     this.renderer.forceContextLoss();
@@ -473,7 +497,9 @@ export class Pet3D implements Model3D {
     // 실사면 눈, 입을 털 끝에 얹는다 (살갗에 붙이면 털에 묻힌다)
     this.faceLift = this.real
       ? Math.max(0, ...meshes.filter((m) => m.part.slot === faceSlot).map((m) => furLength(m.part) * 0.8))
-      : 0;
+      : this.fluffy
+        ? fluffLength(furOfBlueprint(bp)) * 0.8
+        : 0;
     this.face = this.buildFace(
       bp.face,
       this.joints[faceSlot],
@@ -501,6 +527,11 @@ export class Pet3D implements Model3D {
       paw.position.set(0, r * 1.1, 0);
       // 몸과 같은 겉: 실사는 털 껍질, 게임은 테두리 선 (몸 부품의 털 길이와 색을 따른다)
       if (this.real) this.addFur(paw, { ...bodyOf.part, shape: 'sphere', size: [r, r * 1.35, r] });
+      if (this.fluffy) {
+        paw.geometry = new SphereGeometry(r, 24, 16);
+        paw.scale.set(1, 1.35, 1);
+        this.fluffSkin(paw, new Color(bodyOf.part.color), bodyOf.part.finish === 'fuzzy' ? 1 : 0.75, bp);
+      }
       if (this.game) this.addOutline(paw);
       pivot.add(paw);
       pivot.visible = false;
@@ -509,6 +540,98 @@ export class Pet3D implements Model3D {
     }
     // 네 발 동물이면 다리를 앞발, 뒷발 네 개로 나눈다 (카메라 맞춘 뒤라 화면 크기는 그대로)
     this.quad = bodyBox ? this.buildQuad(bp, parts, meshes, bodyBox) : undefined;
+    // 복슬복슬: 관절마다 부품을 녹여 한 덩어리로 (관절과 다리 나누기가 끝난 뒤라 움직임은 그대로)
+    if (this.fluffy) this.fuseJoints(bp);
+  }
+
+  /**
+   * 복슬복슬: 관절(묶음)마다 그 아래 부품 모양들을 한 겉면으로 녹여 붙이고 털을 입힌다. 반짝(코, 부리, 잎)과
+   * 고리 모양은 또렷해야 해서 그대로 둔다. 얼굴은 녹이기 전 부품 겉면에 붙였고 녹인 겉면도 거의 같은 자리다
+   */
+  private fuseJoints(bp: Blueprint) {
+    const groups = new Map<Object3D, Mesh[]>();
+    this.root.traverse((o) => {
+      const part = o.userData.part as Part | undefined;
+      if (!(o instanceof Mesh) || !part || !o.parent) return;
+      if (part.finish === 'shiny' || part.shape === 'torus') return;
+      const list = groups.get(o.parent) ?? [];
+      list.push(o);
+      groups.set(o.parent, list);
+    });
+    for (const [group, list] of groups) {
+      const fparts: FusePart[] = [];
+      const bounds = new Box3();
+      for (const m of list) {
+        const part = m.userData.part as Part;
+        m.updateMatrix();
+        const geo = m.geometry;
+        geo.computeBoundingBox();
+        if (geo.boundingBox) bounds.union(geo.boundingBox.clone().applyMatrix4(m.matrix));
+        const prm = (geo as BufferGeometry & { parameters?: { radius?: number; height?: number } })
+          .parameters;
+        const c = new Color(part.color);
+        fparts.push({
+          shape: part.shape as FuseShape,
+          inv: m.matrix.clone().invert().elements,
+          scale: Math.min(m.scale.x, m.scale.y, m.scale.z),
+          ...(part.shape === 'capsule'
+            ? { capsule: { r: prm?.radius ?? 1, half: (prm?.height ?? 0) / 2 } }
+            : {}),
+          color: [c.r, c.g, c.b],
+          fur: part.finish === 'fuzzy' ? 1 : 0.75,
+        });
+      }
+      if (bounds.isEmpty()) continue;
+      const size = bounds.getSize(new Vector3());
+      // 격자 간격: 한 관절을 48칸 남짓으로 (64칸이면 펫 하나 조립에 이 컴퓨터에서 0.9초까지 걸렸다)
+      const cell = Math.min(0.018, Math.max(0.006, Math.max(size.x, size.y, size.z) / 48));
+      const fused = fuseParts(fparts, { min: bounds.min.toArray(), max: bounds.max.toArray() }, cell, 0.035);
+      if (!fused) continue;
+      const geo = fusedGeometry(fused);
+      bumpFur(geo, furOfBlueprint(bp));
+      const mesh = new Mesh(geo, this.fluffBase());
+      mesh.userData.fused = true;
+      this.addFluffShells(mesh, bp);
+      for (const m of list) {
+        group.remove(m);
+        this.disposeTree(m);
+      }
+      group.add(mesh);
+    }
+    this.root.updateMatrixWorld(true);
+  }
+
+  private fluffBase(): Material {
+    let m = this.materials.get('fluff/base');
+    if (!m) {
+      m = fluffBaseMaterial();
+      this.materials.set('fluff/base', m);
+    }
+    return m;
+  }
+
+  /** 겉면 모양 하나에 털 껍질을 붙인다 (재질은 층과 털 느낌마다 하나, 다른 관절과 같이 쓴다) */
+  private addFluffShells(mesh: Mesh, bp: Blueprint) {
+    const fur = furOfBlueprint(bp);
+    const n = fluffLayers(fur);
+    this.fluffTex ??= fluffTexture();
+    const tex = this.fluffTex;
+    addShells(mesh, n, (i) => {
+      const key = `fluff/${i}/${n}/${fur.length}/${fur.curl}/${fur.clump}`;
+      let m = this.materials.get(key);
+      if (!m) {
+        m = fluffShellMaterial(i, n, tex, fur);
+        this.materials.set(key, m);
+      }
+      return m;
+    });
+  }
+
+  /** 녹이지 않은 모양(손 흔드는 앞발)을 한 색 털로 */
+  private fluffSkin(mesh: Mesh, color: Color, fur: number, bp: Blueprint) {
+    paintGeometry(mesh.geometry, color, fur);
+    mesh.material = this.fluffBase();
+    this.addFluffShells(mesh, bp);
   }
 
   /**
@@ -721,7 +844,7 @@ export class Pet3D implements Model3D {
       m = this.toonMaterial(color, finish);
       this.materials.set(key, m);
     }
-    if (!m && this.real) {
+    if (!m && this.furry) {
       // 실사: 털 아래 살갗과 속털. 겉색보다 조금 어둡고 얼룩이 있다. 반짝(코, 부리, 잎)은 촉촉하게
       m =
         finish === 'shiny'
@@ -780,6 +903,7 @@ export class Pet3D implements Model3D {
     mesh.position.set(...p.at);
     mesh.scale.copy(scale);
     if (p.rot) mesh.rotation.set(p.rot[0] * DEG, p.rot[1] * DEG, p.rot[2] * DEG);
+    mesh.userData.part = p;
     if (this.real) this.addFur(mesh, p);
     if (this.game) this.addOutline(mesh);
     return mesh;
@@ -1036,8 +1160,8 @@ export class Pet3D implements Model3D {
     const ink = new MeshBasicMaterial({ color: INK });
     // 실사면 눈 색이 없어도 갈색 홍채를 넣고, 위에 투명한 각막을 씌워 유리알처럼
     // 게임은 일러스트처럼 까만 눈에 반짝이 둘 (눈 색을 정한 펫만 홍채)
-    const irisColor = f.eyeColor ?? (this.real ? '#3b2416' : undefined);
-    const cornea = this.real
+    const irisColor = f.eyeColor ?? (this.furry ? '#3b2416' : undefined);
+    const cornea = this.furry
       ? new MeshPhysicalMaterial({
           color: '#ffffff',
           roughness: 0.03,
@@ -1106,7 +1230,7 @@ export class Pet3D implements Model3D {
         iris.scale.set(s * 0.85, s * 1.02, s * 0.4);
         const pupil = new Mesh(sphere, eyeMat);
         // 실사에서 눈 색을 정하지 않은 펫(강아지 같은)은 둥근 큰 눈동자, 아니면 세로로 긴 고양이 눈
-        if (this.real && !f.eyeColor) pupil.scale.set(s * 0.58, s * 0.62, s * 0.3);
+        if (this.furry && !f.eyeColor) pupil.scale.set(s * 0.58, s * 0.62, s * 0.3);
         else pupil.scale.set(s * 0.42, s * 0.78, s * 0.3);
         pupil.position.z = s * 0.14;
         shine.position.z = s * 0.42;
@@ -1293,7 +1417,7 @@ export class Pet3D implements Model3D {
     }
 
     // 볼 터치는 만화 표현이라 실사에서는 뺀다
-    if (f.blush && !this.real) {
+    if (f.blush && !this.furry) {
       const blush = new MeshBasicMaterial({
         color: f.blush,
         transparent: true,
@@ -1787,4 +1911,12 @@ function mulberry32(seed: number): () => number {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/** 설계도의 털 느낌. 없으면 부품 겉 느낌으로: 복슬(fuzzy) 부품이 있으면 중간 길이, 없으면 짧은 솜털 */
+function furOfBlueprint(bp: Blueprint): Fur {
+  if (bp.fur) return bp.fur;
+  return bp.parts.some((p) => p.finish === 'fuzzy')
+    ? { length: 0.5, clump: 0.25 }
+    : { length: 0.2, clump: 0.1 };
 }

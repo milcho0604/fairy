@@ -31,6 +31,9 @@ export const ko = {
   'settings.petStyle.figure': '피규어',
   'settings.petStyle.game': '게임 캐릭터',
   'settings.petStyle.real': '실사',
+  'settings.petStyle.fluffy': '복슬복슬 (시험)',
+  'settings.petStyleHint.fluffy':
+    '이음새 없는 한 덩어리 몸에 길고 폭신한 털. 곱슬 털, 뭉친 털도 펫마다 달라. 시험판이라 계속 다듬는 중이고 그래픽을 더 써.',
   'settings.petStyleHint.figure': '말랑한 비닐 피규어처럼 반짝여.',
   'settings.petStyleHint.game': '게임 캐릭터처럼 명암을 또렷하게 나누고 테두리 선을 둘러. 눈도 조금 더 커.',
   'settings.petStyleHint.real':
@@ -364,6 +367,9 @@ export const en: Translation<typeof ko> = {
   'settings.petStyle.figure': 'Figure',
   'settings.petStyle.game': 'Game character',
   'settings.petStyle.real': 'Realistic',
+  'settings.petStyle.fluffy': 'Fluffy (beta)',
+  'settings.petStyleHint.fluffy':
+    'A seamless body with long, soft fur that can be curly or tufted per pet. Still a beta and uses more graphics power.',
   'settings.petStyleHint.figure': 'Glossy, like a soft vinyl figure.',
   'settings.petStyleHint.game':
     'Crisp cel shading with outlines, like a game character. Slightly bigger eyes too.',

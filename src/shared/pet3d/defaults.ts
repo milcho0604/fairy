@@ -15,6 +15,8 @@ export const DEFAULT_BLUEPRINTS: Record<PetKind, Blueprint> = {
   // 콩: 동그란 콩 몸에 짧은 팔다리, 머리에 새싹
   kong: {
     v: 1,
+    // 복슬복슬 모습의 털 (blueprint.ts Fur)
+    fur: { length: 0.1, clump: 0 },
     parts: [
       { slot: 'body', shape: 'sphere', at: [0, 0.46, 0], size: [0.56, 0.46, 0.48], color: KONG },
       {
@@ -59,6 +61,8 @@ export const DEFAULT_BLUEPRINTS: Record<PetKind, Blueprint> = {
   // 냥이: 큰 머리와 작은 몸(피규어 비율), 세모 귀, 꼬리
   cat: {
     v: 1,
+    // 복슬복슬 모습의 털 (blueprint.ts Fur)
+    fur: { length: 0.75, clump: 0.45 },
     parts: [
       { slot: 'body', shape: 'sphere', at: [0, 0.3, 0], size: [0.33, 0.3, 0.3], color: CAT, finish: 'fuzzy' },
       {
@@ -133,6 +137,8 @@ export const DEFAULT_BLUEPRINTS: Record<PetKind, Blueprint> = {
   // 삐약이: 동그란 병아리, 날개, 주황 부리와 발, 머리 깃털
   chick: {
     v: 1,
+    // 복슬복슬 모습의 털 (blueprint.ts Fur)
+    fur: { length: 0.45, clump: 0.15 },
     parts: [
       { slot: 'body', shape: 'sphere', at: [0, 0.44, 0], size: [0.48, 0.44, 0.45], color: CHICK },
       {
@@ -185,6 +191,8 @@ export const DEFAULT_BLUEPRINTS: Record<PetKind, Blueprint> = {
   // 멍멍이: 시바 느낌. 처진 귀, 흰 주둥이와 배, 빨간 목줄과 금색 이름표, 말린 꼬리
   dog: {
     v: 1,
+    // 복슬복슬 모습의 털 (blueprint.ts Fur)
+    fur: { length: 0.45, clump: 0.25 },
     parts: [
       {
         slot: 'body',
@@ -294,6 +302,8 @@ export const DEFAULT_BLUEPRINTS: Record<PetKind, Blueprint> = {
   // 토순이: 긴 귀(안쪽 분홍), 큰 발, 배 앞에 모은 앞발, 솜뭉치 꼬리
   bunny: {
     v: 1,
+    // 복슬복슬 모습의 털 (blueprint.ts Fur)
+    fur: { length: 0.55, clump: 0.2 },
     parts: [
       {
         slot: 'body',

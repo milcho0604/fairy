@@ -261,7 +261,7 @@ export function SettingsApp() {
           {(!s.petImage || s.petModel) && s.pet3d && (
             <div className="field">
               <span>{t('settings.petStyle')}</span>
-              <fieldset className="segmented" aria-label={t('settings.petStyle')}>
+              <fieldset className="segmented wrap" aria-label={t('settings.petStyle')}>
                 {PET_STYLES.map((style) => (
                   <button
                     key={style}
