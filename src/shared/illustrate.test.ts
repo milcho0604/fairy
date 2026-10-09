@@ -15,6 +15,10 @@ test('요청문: 생김새를 지키고, 나이마다 다른 말, 글자 없는 
   const texts = AGE_STAGES.map((a) => illustratePrompt(a));
   for (const p of texts) {
     assert.match(p, /same breed, fur color and texture, markings and eye color/);
+    // 털을 풍성하게, 깎은 듯한 말은 넣지 않는다
+    assert.match(p, /extra fluffy coat over the whole body, including legs/);
+    assert.match(p, /never shaved, trimmed, thin or patchy/);
+    assert.ok(!/groomed|slimmer/.test(p));
     assert.match(p, /whole body, facing the viewer, all paws visible, alone, centered/);
     assert.match(p, /plain light solid background, soft studio light/);
     assert.match(p, /No text, no watermark/);

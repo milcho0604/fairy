@@ -19,11 +19,14 @@ export const ageScale = (age: unknown): number => (isAgeStage(age) ? AGE_SCALE[a
 /** 그림 요청에 붙이는 사용자 바람 상한 (요청사항 칸보다 짧게: 그림 모델 요청문이 길면 규칙이 묻힌다) */
 export const ILLUST_WISH_MAX = 120;
 
-/** 나이 말. 실제로 돌려 보니 아기는 작고 둥글게, 청소년은 길쭉하게, 어른은 다 큰 몸으로 나왔다 (2026-10-09) */
+/**
+ * 나이 말. 실제로 돌려 보니 아기는 작고 둥글게, 청소년은 길쭉하게, 어른은 다 큰 몸으로 나왔다 (2026-10-09).
+ * "well-groomed", "slimmer" 는 털을 깎은 듯 다리와 몸이 매끈하게 나와 뺐다 (사용자: 털이 너무 빠져 있다)
+ */
 const AGE_PHRASE: Record<AgeStage, string> = {
   baby: 'as a tiny baby (a few weeks old): very small and round, oversized head, big eyes, short stubby legs, extra soft fluffy baby coat, sitting',
-  teen: 'as a playful adolescent (about five months old): slimmer, slightly long legs and big paws, standing',
-  adult: 'as a fully grown adult in its prime: full size, confident, well-groomed coat, standing',
+  teen: 'as a playful adolescent (about five months old): lanky with slightly long legs and big paws, standing',
+  adult: 'as a fully grown adult in its prime: full size, confident, magnificent full coat, standing',
 };
 
 /**
@@ -35,6 +38,9 @@ export function illustratePrompt(age: AgeStage, wish?: unknown): string {
   const base = [
     `Redraw this exact pet ${AGE_PHRASE[age]}.`,
     "Keep the pet's identity: same breed, fur color and texture, markings and eye color.",
+    // 털: 몸 전체(다리, 발, 가슴, 꼬리까지) 풍성하게. 깎은 듯 매끈한 다리가 자주 나와 분명히 적는다
+    'Give it a thick, voluminous, extra fluffy coat over the whole body, including legs, paws, chest and tail:',
+    'dense soft fur with visible strands and wispy fluffy edges, never shaved, trimmed, thin or patchy.',
     'Show the whole body, facing the viewer, all paws visible, alone, centered.',
     'Cute polished realistic 3D illustration, plain light solid background, soft studio light.',
     'No text, no watermark, no other animals or objects.',
