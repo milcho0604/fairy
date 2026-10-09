@@ -59,6 +59,7 @@ export type IllustErrorKind =
   | 'auth'
   | 'busy'
   | 'runtime'
+  | 'refused'
   | 'network'
   | 'bad'
   | 'same'
@@ -100,7 +101,7 @@ export function classify(message: string, status?: number, withToken = false): I
  * 토큰 없이는 둘째 Space 가 늘 크기 제한이라, 첫 Space 가 잠깐 막혔는데 "토큰이 있어야 해" 로 보이면 안 된다
  */
 export function worst(kinds: IllustErrorKind[]): IllustErrorKind {
-  for (const k of ['quota', 'auth', 'same', 'bad'] as const) if (kinds.includes(k)) return k;
+  for (const k of ['quota', 'auth', 'same', 'bad', 'refused'] as const) if (kinds.includes(k)) return k;
   if (kinds.some((k) => k === 'busy' || k === 'runtime')) return 'busy';
   if (kinds.includes('limit')) return 'limit';
   return kinds.length > 0 && kinds.every((k) => k === 'network') ? 'network' : 'busy';
@@ -416,7 +417,8 @@ async function waitComplete(res: Response, signal: AbortSignal): Promise<unknown
         } catch {
           // 글 그대로
         }
-        throw new IllustError(classify(msg), msg || 'error event');
+        // 이유 없는 거절(data: null): /call 길은 무료 횟수가 끝나도 글을 주지 않는다 (2026-10-09 실제로 넷째 요청이 이랬다)
+        throw msg ? new IllustError(classify(msg), msg) : new IllustError('refused', 'error event');
       }
     }
     return undefined;

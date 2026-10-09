@@ -19,7 +19,9 @@ test('요청문: 생김새를 지키고, 나이마다 다른 말, 글자 없는 
     assert.match(p, /extra fluffy coat over the whole body, including legs/);
     assert.match(p, /never shaved, trimmed, thin or patchy/);
     assert.ok(!/groomed|slimmer/.test(p));
-    assert.match(p, /whole body, facing the viewer, all paws visible, alone, centered/);
+    // 두 발로 서지 않게
+    assert.match(p, /never standing upright on hind legs/);
+    assert.match(p, /facing the viewer, all paws visible, alone, centered/);
     assert.match(p, /plain light solid background, soft studio light/);
     assert.match(p, /No text, no watermark/);
   }

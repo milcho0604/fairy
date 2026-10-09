@@ -593,6 +593,8 @@ function illustText(kind: IllustErrorKind): string {
       return t(hfToken.has() ? 'main.illust.down' : 'main.illust.limit');
     case 'auth':
       return t('main.illust.auth');
+    case 'refused':
+      return t(hfToken.has() ? 'main.illust.refusedToken' : 'main.illust.refused');
     case 'network':
       return t('main.illust.offline');
     case 'timeout':

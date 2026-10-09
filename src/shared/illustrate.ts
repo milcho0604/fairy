@@ -25,8 +25,9 @@ export const ILLUST_WISH_MAX = 120;
  */
 const AGE_PHRASE: Record<AgeStage, string> = {
   baby: 'as a tiny baby (a few weeks old): very small and round, oversized head, big eyes, short stubby legs, extra soft fluffy baby coat, sitting',
-  teen: 'as a playful adolescent (about five months old): lanky with slightly long legs and big paws, standing',
-  adult: 'as a fully grown adult in its prime: full size, confident, magnificent full coat, standing',
+  teen: 'as a playful adolescent (about five months old): lanky with slightly long legs and big paws, standing naturally on all four legs',
+  adult:
+    'as a fully grown adult in its prime: full size, confident, magnificent full coat, standing naturally on all four legs',
 };
 
 /**
@@ -41,7 +42,8 @@ export function illustratePrompt(age: AgeStage, wish?: unknown): string {
     // 털: 몸 전체(다리, 발, 가슴, 꼬리까지) 풍성하게. 깎은 듯 매끈한 다리가 자주 나와 분명히 적는다
     'Give it a thick, voluminous, extra fluffy coat over the whole body, including legs, paws, chest and tail:',
     'dense soft fur with visible strands and wispy fluffy edges, never shaved, trimmed, thin or patchy.',
-    'Show the whole body, facing the viewer, all paws visible, alone, centered.',
+    // 털 문장에 다리를 넣자 강아지가 사람처럼 두 발로 섰다 (2026-10-09). 네 발 짐승 자세를 분명히
+    'Show the whole body in a natural animal pose (never standing upright on hind legs like a human), facing the viewer, all paws visible, alone, centered.',
     'Cute polished realistic 3D illustration, plain light solid background, soft studio light.',
     'No text, no watermark, no other animals or objects.',
   ].join(' ');

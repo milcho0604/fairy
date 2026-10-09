@@ -78,6 +78,10 @@ export const ko = {
   'main.illust.quotaToken': '이 토큰의 오늘 무료 사용량을 다 썼어. 내일 다시 해 줘.',
   'main.illust.limit': '토큰 없이는 이 그림을 못 그린대. 아래에서 무료 Hugging Face 토큰을 넣고 다시 해 줘.',
   'main.illust.auth': 'Hugging Face 토큰이 맞지 않아. 토큰을 지우거나 새로 넣어 줘.',
+  'main.illust.refused':
+    '그림 서버가 이유 없이 거절했어. 대개 오늘 무료로 그릴 수 있는 만큼 다 그렸을 때 이래. 내일 다시 해 보거나, 아래에서 무료 Hugging Face 토큰을 넣어 줘.',
+  'main.illust.refusedToken':
+    '그림 서버가 이유 없이 거절했어. 대개 이 토큰의 오늘 무료 사용량을 다 썼을 때 이래. 조금 있다가 또는 내일 다시 해 줘.',
   'main.illust.offline': '그림 서버에 연결하지 못했어. 인터넷 연결을 보고 다시 해 줘.',
   'main.illust.timeout': '너무 오래 걸려서 멈췄어. 조금 있다가 다시 해 줘.',
   'main.illust.cancelled': '그리기를 멈췄어.',
@@ -173,6 +177,10 @@ export const en: Translation<typeof ko> = {
   'main.illust.quotaToken': "This token has used up today's free drawings. Try again tomorrow.",
   'main.illust.limit': 'This drawing needs a token. Add a free Hugging Face token below and try again.',
   'main.illust.auth': "The Hugging Face token didn't work. Remove it or add a new one.",
+  'main.illust.refused':
+    "The drawing server said no without a reason. That usually means today's free drawings are used up. Try again tomorrow, or add a free Hugging Face token below.",
+  'main.illust.refusedToken':
+    "The drawing server said no without a reason. That usually means this token's free use for today is used up. Try again later or tomorrow.",
   'main.illust.offline': "Couldn't reach the drawing server. Check your internet and try again.",
   'main.illust.timeout': 'It took too long, so I stopped. Try again in a bit.',
   'main.illust.cancelled': 'Stopped drawing.',

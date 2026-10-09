@@ -243,6 +243,20 @@ test('그 Space 오류(runtime)면 다음 Space 로', async () => {
   assert.deepEqual(logs[0]?.slice(0, 3), ['illust', 'black-forest-labs/FLUX.1-Kontext-Dev', 'runtime']);
 });
 
+test('이유 없는 거절(data: null)은 refused: 다음 Space 도 거절하면 refused 로 보인다', async () => {
+  // 2026-10-09 실제: 무료 세 번 뒤 넷째 요청이 두 Space 모두 data: null 로 거절됐다
+  const { fetch, seen } = fakeServer({
+    events: { [KONTEXT]: ['event: error\ndata: null\n\n'], [QWEN]: ['event: error\ndata: null\n\n'] },
+  });
+  await assert.rejects(
+    illustrate(JPEG, 'image/jpeg', 'p', { fetch }),
+    (e: unknown) => e instanceof IllustError && e.kind === 'refused',
+  );
+  assert.ok(seen.some((s) => s.url.startsWith(QWEN)));
+  assert.equal(worst(['refused', 'limit']), 'refused');
+  assert.equal(worst(['refused', 'busy']), 'refused');
+});
+
 test('무료 사용량 끝이면 다음 Space 를 부르지 않고 quota', async () => {
   const { fetch, seen } = fakeServer({
     events: {
