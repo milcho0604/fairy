@@ -586,6 +586,7 @@ export function createPetWindow({
       perched: !!perch,
     });
     if (perch && activity.type === 'walk') activity = { type: 'sit', ms: 12_000 };
+    if (activity.type === 'walk') activity = { ...activity, idle: true };
     if (isMove(activity.type)) moveHistory = rememberMove(moveHistory, activity.type, now);
     if (activity.type === 'walk') startWalk(activity);
     win.webContents.send(IPC.activity, activity);

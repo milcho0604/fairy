@@ -129,7 +129,7 @@ export const MIGRATIONS: readonly string[] = [
   // notified_at 은 null 이면 아직, 0 이면 말없이 넘김(넣을 때 이미 지났거나 늦어서 쓸모없음), 그 밖은 말한 시각.
   // 일정은 지금 알림(remind_min) 하나를 첫 알림으로 옮긴다. 알림 없는 종일 일정(remind_min 0)은 옮기지 않는다.
   // 시작이 이미 지났는데 안 알린 것은 넘긴 것으로 둔다. remind_min, notified_at 칸은 남겨 두지만 더 읽지 않는다.
-  // 할 일은 기본 알림(전날 저녁 8시)을 단다. 끝냈거나 지웠거나 마감이 오늘이거나 지난 것은 넘긴 것으로 둔다
+  // 할 일은 기본 알림(전날 저녁 8시)을 단다. 끝냈거나 지웠거나 마감이 오늘이거나 지난 것, 그 알림 시각이 이미 지난 것은 넘긴 것으로 둔다
   `
   create table reminder (
     kind text not null,          -- event, todo
@@ -148,7 +148,8 @@ export const MIGRATIONS: readonly string[] = [
     from event where not (all_day = 1 and remind_min = 0);
   insert into reminder (kind, ref_id, before_min, notified_at)
     select 'todo', id, 240,
-      case when done_at is not null or deleted_at is not null or due <= date('now', 'localtime') then 0
+      case when done_at is not null or deleted_at is not null or due <= date('now', 'localtime')
+                or datetime(due, '-1 day', '+20 hours') <= datetime('now', 'localtime') then 0
            else null end
     from todo;
   `,

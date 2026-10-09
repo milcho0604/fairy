@@ -520,7 +520,8 @@ let wantFace = false;
 let faceKey: unknown[] = [];
 function syncFace(m3d: Pet3D | undefined) {
   if (!wantFace) return;
-  const key = [m3d, m3d ? model3dOf : undefined, photo, petKind];
+  // 입체 모습(피규어, 게임, 실사)을 바꿔도 다시 (같은 설계도라 입체와 설계도는 그대로다)
+  const key = [m3d, m3d ? model3dOf : undefined, m3d ? style3d : undefined, photo, petKind];
   if (key.length === faceKey.length && key.every((v, i) => v === faceKey[i])) return;
   faceKey = key;
   const still = photo instanceof AnimatedImage ? photo.frameAt(0) : photo;
@@ -658,8 +659,10 @@ bridge.onActivity((a) => {
     if (a.type === 'walk') bridge.activityStop();
     return;
   }
-  // 삐져 있어도 걷고 논다 (모습만 삐진 얼굴). 매운맛 토라짐 3단계는 등 돌리고 앉아 따라다니지 않는다 (앉기만)
-  if ((mood !== 'idle' && mood !== 'sulky') || (backTurned() && a.type !== 'sit')) {
+  // 삐져 있어도 걷고 논다 (모습만 삐진 얼굴). 매운맛 토라짐 3단계는 등 돌리고 앉아 혼자 돌아다니지 않는다 (앉기만).
+  // 사용자가 부른 걸음(놀기, 산책, 집 드나들기)은 간다: 막으면 놀아서 달래기가 3단계에서 안 된다
+  const sulkBlocks = backTurned() && a.type !== 'sit' && !(a.type === 'walk' && !a.idle);
+  if ((mood !== 'idle' && mood !== 'sulky') || sulkBlocks) {
     if (a.type === 'walk') bridge.activityStop();
     return;
   }

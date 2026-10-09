@@ -400,7 +400,9 @@ export function createPlanner(o: PlannerOptions) {
       return;
     }
     const moved = left.map((t) => ({ id: t.id, due: t.due }));
-    for (const t of left) o.todos.update(t.id, { due: tomorrow });
+    // now 를 넘겨야 마감을 옮긴 뒤 이미 지난 알림(전날 저녁 8시 등)을 말없이 넘긴다 (안 넘기면 바로 다시 알렸다)
+    const at = Date.now();
+    for (const t of left) o.todos.update(t.id, { due: tomorrow }, at);
     o.onChange();
     o.log('planner', '회고 내일로', moved.length);
     void o
@@ -415,7 +417,8 @@ export function createPlanner(o: PlannerOptions) {
       .then((a) => {
         if (a !== 'undo') return;
         const back = undoMoved(moved, o.todos.list(Date.now()).open, tomorrow);
-        for (const b of back) o.todos.update(b.id, { due: b.due });
+        const at2 = Date.now();
+        for (const b of back) o.todos.update(b.id, { due: b.due }, at2);
         o.onChange();
         o.log('planner', '회고 내일로 되돌림', back.length);
       });

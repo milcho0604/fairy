@@ -76,3 +76,16 @@ test('시계를 뒤로 돌려도 일한 시간이 줄지 않는다', () => {
   c.tick(11 * MIN, 0, 'normal');
   assert.equal(c.streakMin, 60);
 });
+
+test('덮개를 닫고 잔 틈은 쉰 것이다 (깨고 나서 입력이 바로 있어도 아침부터 지치지 않는다)', () => {
+  const c = new RestCoach();
+  const t0 = 0;
+  run(c, t0, 110);
+  assert.ok(c.streakMin >= 100);
+  // 10시간 뒤 첫 표본 (깨자마자 키보드를 만져 입력 없던 시간은 짧다)
+  c.tick(t0 + 110 * MIN + 10 * 60 * MIN, 5, 'normal');
+  assert.equal(c.streakMin, 0);
+  // 1분짜리 보통 틈은 그대로 일한 시간
+  c.tick(t0 + 110 * MIN + 10 * 60 * MIN + MIN, 5, 'normal');
+  assert.equal(c.streakMin, 1);
+});
