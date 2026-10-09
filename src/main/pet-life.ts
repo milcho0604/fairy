@@ -4,7 +4,7 @@ import { type I18nKey, t } from '../shared/i18n/index.ts';
 import type { ReactKind } from '../shared/ipc.ts';
 import { type Activity, type LifeState, type PetLife, SULK_LINES, UNLOCKS } from '../shared/pet-life.ts';
 import { REST, RestCoach, restLines } from '../shared/rest.ts';
-import { bodyClock } from '../shared/routine.ts';
+import { bodyClock, restDaysOf } from '../shared/routine.ts';
 import { localDay, type TodoStore } from '../shared/todo-store.ts';
 import type { SayOptions } from './pet-window.ts';
 import { settings } from './settings.ts';
@@ -56,7 +56,7 @@ export function createPetLife(o: PetLifeOptions) {
 
   function read(): LifeState {
     const s = settings.get();
-    return o.life.state(Date.now(), s.restDays, s.spicy);
+    return o.life.state(Date.now(), restDaysOf(s), s.spicy);
   }
 
   function refresh() {

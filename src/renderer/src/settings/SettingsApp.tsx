@@ -7,6 +7,7 @@ import { t } from '../../../shared/i18n/index.ts';
 import type { PetLookView, SettingsSnapshot } from '../../../shared/ipc.ts';
 import type { Gait } from '../../../shared/pet3d/blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from '../../../shared/pet3d/defaults.ts';
+import { restDaysOf } from '../../../shared/routine.ts';
 import {
   cleanPetName,
   FRIENDS_MAX,
@@ -42,6 +43,14 @@ import { gaitMismatch, shapeOf } from '../pet3d-gait.ts';
 import { RoutinePicker } from '../RoutinePicker.tsx';
 
 const bridge = window.jjakkungSettings;
+
+/** 만나는 시간을 켰을 때 삐짐 칸의 안내: 만나지 않는 요일을 이름으로 (일, 토) */
+const restByRoutine = (days: readonly number[]): string => {
+  const names = t('settings.weekdays').split(',');
+  return days.length === 0
+    ? t('settings.restDaysByRoutineNone')
+    : t('settings.restDaysByRoutine', { days: days.map((d) => names[d] ?? '').join(', ') });
+};
 
 const chatterHint = (level: ChatterLevel): string =>
   level === 'quiet'
@@ -324,29 +333,37 @@ export function SettingsApp() {
         </Section>
 
         <Section title={t('settings.sulk')}>
-          <div className="field">
-            <span>{t('settings.restDays')}</span>
-            <fieldset className="days" aria-label={t('settings.restDaysAria')}>
-              {t('settings.weekdays')
-                .split(',')
-                .map((d, i) => {
-                  const on = s.restDays.includes(i);
-                  return (
-                    <button
-                      key={d}
-                      type="button"
-                      aria-pressed={on}
-                      className={on ? 'on' : ''}
-                      onClick={() =>
-                        update({ restDays: on ? s.restDays.filter((x) => x !== i) : [...s.restDays, i] })
-                      }
-                    >
-                      {d}
-                    </button>
-                  );
-                })}
-            </fieldset>
-          </div>
+          {/* 만나는 시간을 켜면 쉬는 날은 거기서 정한다 (만나지 않는 요일). restDays 는 지우지 않고 꺼지면 다시 쓴다 */}
+          {s.routine.on ? (
+            <div className="field">
+              <span>{t('settings.restDaysAria')}</span>
+              <small>{restByRoutine(restDaysOf(s))}</small>
+            </div>
+          ) : (
+            <div className="field">
+              <span>{t('settings.restDays')}</span>
+              <fieldset className="days" aria-label={t('settings.restDaysAria')}>
+                {t('settings.weekdays')
+                  .split(',')
+                  .map((d, i) => {
+                    const on = s.restDays.includes(i);
+                    return (
+                      <button
+                        key={d}
+                        type="button"
+                        aria-pressed={on}
+                        className={on ? 'on' : ''}
+                        onClick={() =>
+                          update({ restDays: on ? s.restDays.filter((x) => x !== i) : [...s.restDays, i] })
+                        }
+                      >
+                        {d}
+                      </button>
+                    );
+                  })}
+              </fieldset>
+            </div>
+          )}
           <Toggle
             label={t('settings.spicy')}
             hint={t('settings.spicyHint')}

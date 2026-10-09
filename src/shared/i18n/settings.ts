@@ -106,6 +106,9 @@ export const ko = {
   'settings.sulk': '삐짐',
   'settings.restDays': '쉬는 날 (이날은 안 와도 안 삐져)',
   'settings.restDaysAria': '쉬는 날',
+  'settings.restDaysByRoutine': (v: { days: string }) =>
+    `쉬는 날은 만나는 시간을 따라가. 만나지 않는 날(${v.days})엔 안 와도 안 삐져.`,
+  'settings.restDaysByRoutineNone': '쉬는 날은 만나는 시간을 따라가. 지금은 매일 만나서 쉬는 날이 없어.',
   /** 일요일부터 쉼표로 나눈 일곱 요일 */
   'settings.weekdays': '일,월,화,수,목,금,토',
   'settings.spicy': '매운맛',
@@ -434,6 +437,10 @@ export const en: Translation<typeof ko> = {
   'settings.sulk': 'Sulking',
   'settings.restDays': 'Days off (no sulking if you skip these)',
   'settings.restDaysAria': 'Days off',
+  'settings.restDaysByRoutine': (v: { days: string }) =>
+    `Days off follow your meeting time. No sulking on days we don't meet (${v.days}).`,
+  'settings.restDaysByRoutineNone':
+    'Days off follow your meeting time. We meet every day, so there are none right now.',
   'settings.weekdays': 'Su,Mo,Tu,We,Th,Fr,Sa',
   'settings.spicy': 'Spicy mode',
   'settings.spicyHint':

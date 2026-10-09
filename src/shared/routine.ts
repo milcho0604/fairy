@@ -77,6 +77,16 @@ export function meetOn(r: Routine, day: string): MeetTime | null {
 /** 쉬는 날인지 (켜 두었고 그 요일에 만나지 않는다) */
 export const isRestDay = (r: Routine, day: string): boolean => r.on && meetOn(r, day) === null;
 
+/**
+ * 삐짐 게이지와 연속 기록을 세지 않는 요일 (0 일 ~ 6 토). 만나는 시간을 켰으면 만나지 않는 요일이 쉬는 날이고,
+ * 끄면 설정의 쉬는 날(restDays) 그대로 (사용자 결정 2026-10-09: 쉬는 날을 두 군데서 정하지 않게).
+ * restDays 값은 지우지 않고 둔다: 만나는 시간을 끄면 예전에 고른 쉬는 날로 돌아간다
+ */
+export function restDaysOf(s: { routine: Routine; restDays: readonly number[] }): number[] {
+  if (!s.routine.on) return [...s.restDays];
+  return s.routine.week.flatMap((m, i) => (m ? [] : [i]));
+}
+
 /** 헤어지는 때를 시작한 날 시계로 (밤 근무면 1440 을 넘는다) */
 export const spanEnd = (m: MeetTime): number => (m.end > m.start ? m.end : m.end + DAY_MIN);
 /** 일과 길이 (분) */

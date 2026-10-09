@@ -22,9 +22,7 @@ export type PoutReason =
   /** 오래 숨겨 뒀다 꺼냈다 */
   | 'hiddenLong'
   /** 다른 펫(친구)을 꺼냈다 */
-  | 'friend'
-  /** 쓰다듬다 말고 갑자기 들어 옮겼다 */
-  | 'yanked';
+  | 'friend';
 
 export const POUT_REASONS: readonly PoutReason[] = [
   'lonely',
@@ -34,7 +32,6 @@ export const POUT_REASONS: readonly PoutReason[] = [
   'restIgnored',
   'hiddenLong',
   'friend',
-  'yanked',
 ];
 
 /** 달래는 길. chat 은 대화, click 은 눌러서 패널 열기, praise 는 대화에 칭찬이나 사과 한마디 */
@@ -57,8 +54,13 @@ export const POUT = {
   dailyMax: 6,
   /** 사용자가 자리에 있다고 보는 입력 없는 시간(초) 상한 */
   presentIdleSec: 120,
-  /** 쓰다듬은 뒤 이 안에 들어 옮기면 "갑자기 끌기" */
-  yankWindowMs: 4000,
+  /**
+   * 쓰다듬은 뒤 이 안에 들어 옮기면 "앗" 하고 놀란다 (삐지지 않는다). 쓰다듬기는 누르지 않고 문지르는 것이라
+   * 쓰다듬고 바로 눌러 옮기는 것과 갈라 볼 수 없어서다 (사용자 결정 2026-10-09: 옮기려다 자주 삐졌다)
+   */
+  startleWindowMs: 4000,
+  /** 놀라는 말은 이만큼에 한 번 */
+  startleGapMs: 10 * MIN,
   /** 자리에 있는 시간(분)으로 센 문턱 */
   lonelyMin: 75,
   unheardMin: 120,
@@ -76,7 +78,6 @@ export const POUT = {
     restIgnored: 2,
     hiddenLong: 2,
     friend: 3,
-    yanked: 1,
   } satisfies Record<PoutReason, number>,
   /** 같은 까닭으로 다시 삐지기까지 */
   cooldownMs: {
@@ -87,7 +88,6 @@ export const POUT = {
     restIgnored: 60 * MIN,
     hiddenLong: 60 * MIN,
     friend: 60 * MIN,
-    yanked: 20 * MIN,
   } satisfies Record<PoutReason, number>,
   /** 달래기마다 빼는 점수. 놀기는 다 풀린다 */
   soothe: {
@@ -125,6 +125,8 @@ export interface PoutState {
   presentMin: number;
   /** 마지막 쓰다듬기 시각. 없으면 0 */
   pettedAt: number;
+  /** 마지막으로 "앗" 하고 놀란 시각. 없으면 0 */
+  startledAt: number;
   /** 사용자가 숨긴 시각. 안 숨었으면 0 */
   hiddenSince: number;
 }
@@ -159,6 +161,7 @@ export function initPout(day: string, now = 0): PoutState {
     hungryMin: 0,
     presentMin: 0,
     pettedAt: 0,
+    startledAt: 0,
     hiddenSince: 0,
   };
 }
@@ -188,7 +191,13 @@ const change = (state: PoutState, from: number, pouted?: PoutReason): PoutChange
 
 /** 매운맛을 끄거나 날이 바뀌었을 때: 다 풀고 센 것도 지운다 (화해 시각과 숨긴 시각은 둔다) */
 function cleared(s: PoutState, day: string, now: number): PoutState {
-  return { ...initPout(day, now), madeUpAt: s.madeUpAt, hiddenSince: s.hiddenSince, pettedAt: s.pettedAt };
+  return {
+    ...initPout(day, now),
+    madeUpAt: s.madeUpAt,
+    hiddenSince: s.hiddenSince,
+    pettedAt: s.pettedAt,
+    startledAt: s.startledAt,
+  };
 }
 
 /** 이 까닭으로 지금 삐질 수 있는지 (방해 금지, 화해 뒤 여유, 간격, 하루 상한, 까닭별 쉬는 시간) */
@@ -281,10 +290,19 @@ export function tickPout(
   return change(s, from);
 }
 
-/** 들어 옮기기 시작했다. 쓰다듬은 직후면 삐진다 */
-export function grabbed(s: PoutState, ctx: PoutContext, now: number): PoutChange {
-  if (s.pettedAt === 0 || now - s.pettedAt > POUT.yankWindowMs) return change(s, poutStage(s.points));
-  return pout({ ...s, pettedAt: 0 }, 'yanked', ctx, now);
+/**
+ * 들어 옮기기 시작했다. 매운맛이고 쓰다듬은 직후면 "앗" 하고 놀란다(startled). 점수는 그대로라 삐지지 않는다.
+ * 같은 쓰다듬기로 두 번 놀라지 않고, startleGapMs 에 한 번만. 방해 금지 때는 놀라지 않는다
+ */
+export function grabbed(
+  s: PoutState,
+  ctx: PoutContext,
+  now: number,
+): { state: PoutState; startled: boolean } {
+  if (s.pettedAt === 0 || now - s.pettedAt > POUT.startleWindowMs) return { state: s, startled: false };
+  const state = { ...s, pettedAt: 0 };
+  const startled = ctx.spicy && !ctx.calm && (s.startledAt === 0 || now - s.startledAt >= POUT.startleGapMs);
+  return startled ? { state: { ...state, startledAt: now }, startled } : { state, startled };
 }
 
 export type SootheResult = 'none' | 'softer' | 'madeUp';

@@ -38,9 +38,7 @@ export const en: Translation<typeof ko> = {
   'briefing.review.one': 'You finished "{title}" today. Nice work!',
   'briefing.review.many': 'You finished {n} to-dos today. Nice work!',
   'briefing.review.left': (v: { n: number }) =>
-    v.n === 1
-      ? 'One to-do due today is still open. Move it to tomorrow?'
-      : `${v.n} to-dos due today are still open. Move them to tomorrow?`,
+    v.n === 1 ? "Push today's 1 open to-do to tomorrow?" : `Push today's ${v.n} open to-dos to tomorrow?`,
   'briefing.review.missed': (v: { done: number; left: number }) =>
     `Daily review: ${v.done} to-do${v.done === 1 ? '' : 's'} done${v.left > 0 ? `, ${v.left} still due` : ''}`,
   'briefing.due.left': (v: { n: number; list: string }) =>

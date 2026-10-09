@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { setLang, t } from './i18n/index.ts';
+import { sulkLevel } from './pet-life.ts';
 import {
   bodyClock,
   coversBriefing,
@@ -17,9 +18,18 @@ import {
   parseRoutine,
   type Routine,
   type RoutineMemo,
+  restDaysOf,
   routineDue,
 } from './routine.ts';
-import { farewellText, greetText, restText, variant, weekdayName } from './routine-text.ts';
+import {
+  type FarewellInput,
+  farewellNext,
+  farewellText,
+  greetText,
+  restText,
+  variant,
+  weekdayName,
+} from './routine-text.ts';
 import { applyPatch, DEFAULT_SETTINGS, parseSettings } from './settings.ts';
 
 // 2026-10-05 월요일 ~ 2026-10-11 일요일
@@ -278,9 +288,8 @@ test('말: 맞이, 헤어짐, 쉬는 날 (한국어, 영어)', () => {
     leftToday: 0,
     quiet: false,
   });
-  assert.match(fri, /"보고서" 끝낸 거 멋졌어\./);
-  assert.match(fri, /다음에 만나는 날은 월요일이야\. 푹 쉬어!/);
-  const mon = farewellText({
+  assert.equal(fri, '"보고서" 끝내느라 수고했어! 푹 쉬고 월요일에 만나!');
+  const monIn = {
     day: MON,
     doneTitles: ['a', 'b'],
     next: { inDays: 1, day: TUE, meet: { start: H(9), end: H(18) } },
@@ -290,10 +299,13 @@ test('말: 맞이, 헤어짐, 쉬는 날 (한국어, 영어)', () => {
     ],
     leftToday: 2,
     quiet: false,
-  });
-  assert.match(
-    mon,
-    /할 일 2개나 끝냈어\. 내일은 오전 10:00 스탠드업부터야\. 오늘 마감 2개가 남았는데 내일로 넘길까\?$/,
+  };
+  // 남은 마감을 물으면 미리 보기는 빼고(답을 누른 뒤 farewellNext 로), 두 문장
+  assert.equal(farewellText(monIn), '할 일 2개나 끝냈네, 수고했어! 오늘 마감 2개가 남았는데 내일로 넘길까?');
+  assert.equal(farewellNext(monIn), '내일은 오전 10:00 스탠드업부터야.');
+  assert.equal(
+    farewellText({ ...monIn, leftToday: 0 }),
+    '할 일 2개나 끝냈네, 수고했어! 내일은 오전 10:00 스탠드업부터야.',
   );
   assert.match(
     farewellText({
@@ -304,12 +316,21 @@ test('말: 맞이, 헤어짐, 쉬는 날 (한국어, 영어)', () => {
       leftToday: 0,
       quiet: false,
     }),
-    /내일 오전 9:00에 또 만나!$/,
+    /^오늘.+! 내일 오전 9:00에 또 만나!$/,
+  );
+  assert.equal(farewellNext({ tomorrow: [] }), '푹 쉬어!');
+  assert.equal(
+    farewellNext({ ...monIn, tomorrow: [{ minute: 0, title: '엄마 생일', allDay: true }] }),
+    '내일은 종일 엄마 생일.',
   );
   // 조용히: 끝낸 일과 미리 보기 없이, 남은 마감 질문은 남긴다
   const q = farewellText({ day: MON, doneTitles: ['a'], tomorrow: [], leftToday: 1, quiet: true });
-  assert.equal(q.includes('멋졌어'), false);
+  assert.equal(q.includes('"a"'), false);
   assert.match(q, /내일로 넘길까/);
+  assert.equal(
+    farewellText({ ...monIn, leftToday: 0, quiet: true }),
+    t('routine.bye.head', { i: variant(MON, 6) }),
+  );
   assert.match(restText(SAT, ''), /쉬는 날/);
   assert.equal(t('routine.set.on', { name: '콩이' }), '콩이와 만나는 시간 정하기');
   assert.equal(t('routine.onb.title', { name: '밤' }), '밤과 만나는 시간');
@@ -326,8 +347,78 @@ test('말: 맞이, 헤어짐, 쉬는 날 (한국어, 영어)', () => {
       leftToday: 0,
       quiet: false,
     }),
-    /See you on Monday\. Rest well!$/,
+    /! Rest well, see you on Monday!$/,
   );
   assert.equal(t('routine.set.on', { name: 'Milk' }), 'Set a meeting time with Milk');
   setLang('ko');
+});
+
+test('쉬는 날 하나로: 만나는 시간을 켜면 만나지 않는 요일이 삐짐 쉬는 날, 끄면 설정의 쉬는 날 그대로', () => {
+  // 예전 설정 파일 (만나는 시간 칸이 없고 쉬는 날은 월요일만): 꺼져 있으니 예전 그대로
+  const old = parseSettings({ restDays: [1], spicy: true });
+  assert.equal(old.routine.on, false);
+  assert.deepEqual(restDaysOf(old), [1]);
+  // 만나는 시간을 켜면(기본 평일) 토, 일이 쉬는 날. 저장된 restDays 는 지우지 않는다
+  const on = applyPatch(old, { routine: { ...old.routine, on: true } });
+  assert.deepEqual(restDaysOf(on), [0, 6]);
+  assert.deepEqual(on.restDays, [1]);
+  // 화~토 만나는 사람: 일, 월이 쉬는 날
+  const m = { start: H(10), end: H(19) };
+  const tueSat = applyPatch(on, { routine: { on: true, week: [null, null, m, m, m, m, m] } });
+  assert.deepEqual(restDaysOf(tueSat), [0, 1]);
+  // 끄면 예전에 고른 쉬는 날로 돌아간다
+  assert.deepEqual(restDaysOf(applyPatch(tueSat, { routine: { ...tueSat.routine, on: false } })), [1]);
+  // 매일 만나면 쉬는 날이 없고, 하루도 안 고르면 매일 쉬는 날
+  assert.deepEqual(restDaysOf({ restDays: [0, 6], routine: { on: true, week: Array(7).fill(m) } }), []);
+  assert.deepEqual(
+    restDaysOf({ restDays: [], routine: { on: true, week: Array(7).fill(null) } }),
+    [0, 1, 2, 3, 4, 5, 6],
+  );
+  // 삐짐 칸: 토요일에 쓰고 다음 화요일에 온 화~토 사람은 일, 월이 쉬는 날이라 0칸.
+  // 예전 쉬는 날(월요일만)을 그대로 썼으면 일요일 한 칸이 찼다
+  const NEXT_TUE = '2026-10-13';
+  assert.equal(sulkLevel(SAT, NEXT_TUE, restDaysOf(tueSat), true), 0);
+  assert.equal(sulkLevel(SAT, NEXT_TUE, tueSat.restDays, true), 1);
+  // 꺼져 있으면 예전처럼 restDays 로 센다
+  assert.equal(sulkLevel(SAT, NEXT_TUE, restDaysOf(old), true), 1);
+});
+
+test('헤어짐 말풍선 길이: 어떤 경우든 두 문장, 긴 제목도 줄여서 한국어 60자, 영어 100자 안', () => {
+  const sentences = (text: string) => text.split(/(?<=[.!?])\s+/).filter(Boolean).length;
+  const long = '분기 보고서 최종본 검토하고 팀장님께 메일로 보내기';
+  const meet = { start: H(9), end: H(18) };
+  const cases: FarewellInput[] = [];
+  for (const doneTitles of [[], [long], ['a', 'b', 'c']])
+    for (const next of [undefined, { inDays: 1, day: TUE, meet }, { inDays: 3, day: NEXT_MON, meet }])
+      for (const tomorrow of [
+        [],
+        [{ minute: H(10), title: long }],
+        [
+          { minute: 0, title: long, allDay: true },
+          { minute: 0, title: long, allDay: true },
+        ],
+      ])
+        for (const leftToday of [0, 3])
+          for (const quiet of [false, true])
+            cases.push({ day: FRI, doneTitles, ...(next ? { next } : {}), tomorrow, leftToday, quiet });
+  for (const lang of ['ko', 'en'] as const) {
+    setLang(lang);
+    const max = lang === 'ko' ? 60 : 100;
+    for (const c of cases) {
+      for (const text of [farewellText(c), farewellNext(c)]) {
+        assert.ok(sentences(text) <= 2, `${lang} 문장 ${sentences(text)}: ${text}`);
+        assert.ok(text.length <= max, `${lang} ${text.length}자: ${text}`);
+      }
+      // 질문이 있을 때 답 뒤 한마디(넘겼어 + 미리 보기)도 두 문장
+      if (c.leftToday > 0) {
+        const after = `${t('panel.review.moved', { n: 3 })} ${farewellNext(c)}`;
+        assert.ok(sentences(after) <= 2, after);
+      }
+    }
+  }
+  setLang('ko');
+  // 긴 제목은 줄임표로
+  const base = cases[0];
+  assert.ok(base);
+  assert.match(farewellText({ ...base, quiet: false, leftToday: 0, doneTitles: [long] }), /…" 끝내느라/);
 });

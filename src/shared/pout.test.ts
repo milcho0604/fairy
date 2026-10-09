@@ -55,7 +55,7 @@ test('순한맛(끔)은 예전 그대로: 오래 안 놀아 줘도, 이벤트가
   assert.equal(s.points, 0);
   for (const reason of POUT_REASONS) assert.equal(pout(s, reason, MILD, T0).pouted, undefined, reason);
   const petted = soothe(initPout(DAY, T0), 'pet', T0).state;
-  assert.equal(grabbed(petted, MILD, T0 + 1000).pouted, undefined);
+  assert.equal(grabbed(petted, MILD, T0 + 1000).startled, false);
 });
 
 test('매운맛을 끄면 토라짐이 바로 풀린다', () => {
@@ -122,34 +122,59 @@ test('오래 숨김: 90분 넘게 숨겨 뒀다 꺼내면 삐진다. 짧게 숨�
   assert.equal(tickPout(s, { ...SPICY, present: false }, T0 + 121 * MIN, DAY, 1).pouted, 'hiddenLong');
 });
 
-test('쓰다듬다 4초 안에 들면 삐지고, 그 뒤면 괜찮다', () => {
+test('쓰다듬다 4초 안에 들면 "앗" 하고 놀라기만 한다 (삐지지 않는다). 10분에 한 번, 방해 금지 때는 없다', () => {
   const s = soothe(initPout(DAY, T0), 'pet', T0).state;
-  assert.equal(grabbed(s, SPICY, T0 + 3000).pouted, 'yanked');
-  assert.equal(grabbed(s, SPICY, T0 + 5000).pouted, undefined);
-  assert.equal(grabbed(initPout(DAY, T0), SPICY, T0).pouted, undefined);
-  // 같은 쓰다듬기로 두 번 삐지지 않는다
-  const once = grabbed(s, SPICY, T0 + 1000).state;
-  assert.equal(grabbed(once, SPICY, T0 + 1500).pouted, undefined);
+  const g = grabbed(s, SPICY, T0 + 3000);
+  assert.equal(g.startled, true);
+  // 점수, 까닭, 오늘 삐진 횟수, 간격은 그대로 (옮기려고 든 것이 삐짐을 쓰지 않는다)
+  assert.equal(g.state.points, 0);
+  assert.equal(g.state.reason, undefined);
+  assert.equal(g.state.today, 0);
+  assert.equal(g.state.lastAt, 0);
+  assert.equal(canPout(g.state, 'friend', SPICY, T0 + 3001), true);
+  assert.equal(grabbed(s, SPICY, T0 + 5000).startled, false);
+  assert.equal(grabbed(initPout(DAY, T0), SPICY, T0).startled, false);
+  assert.equal(grabbed(s, { ...SPICY, calm: true }, T0 + 1000).startled, false);
+  // 같은 쓰다듬기로 두 번 놀라지 않는다 (방해 금지 때 든 쓰다듬기도 그걸로 끝)
+  assert.equal(grabbed(g.state, SPICY, T0 + 3500).startled, false);
+  const calmGrab = grabbed(s, { ...SPICY, calm: true }, T0 + 1000).state;
+  assert.equal(grabbed(calmGrab, SPICY, T0 + 2000).startled, false);
+  // 다시 쓰다듬고 들어도 10분 안이면 조용히, 지나면 다시
+  const again = (at: number) => grabbed(soothe(g.state, 'pet', at).state, SPICY, at + 1000).startled;
+  assert.equal(again(T0 + 3000 + 8 * MIN), false);
+  assert.equal(again(T0 + 3000 + 10 * MIN), true);
+  // 하루 내내 쓰다듬고 옮겨도(1분마다) 삐짐 점수는 0
+  let day = initPout(DAY, T0);
+  let startles = 0;
+  for (let m = 0; m < 600; m++) {
+    const now = T0 + m * MIN;
+    day = soothe(day, 'pet', now).state;
+    const r = grabbed(day, SPICY, now + 2000);
+    day = r.state;
+    if (r.startled) startles++;
+    assert.equal(day.points, 0);
+  }
+  assert.equal(startles, 60);
 });
 
 test('방해하지 않기: 방해 금지, 간격 15분, 하루 6번, 까닭별 쉬는 시간, 화해 뒤 45분', () => {
   const s0 = initPout(DAY, T0);
   assert.equal(canPout(s0, 'friend', { ...SPICY, calm: true }, T0), false);
   const a = pout(s0, 'friend', SPICY, T0).state;
-  assert.equal(canPout(a, 'yanked', SPICY, T0 + 14 * MIN), false);
-  assert.equal(canPout(a, 'yanked', SPICY, T0 + 15 * MIN), true);
+  assert.equal(canPout(a, 'hungry', SPICY, T0 + 14 * MIN), false);
+  assert.equal(canPout(a, 'hungry', SPICY, T0 + 15 * MIN), true);
   assert.equal(canPout(a, 'friend', SPICY, T0 + 30 * MIN), false);
   assert.equal(canPout(a, 'friend', SPICY, T0 + 60 * MIN), true);
   assert.equal(canPout({ ...a, today: POUT.dailyMax }, 'lonely', SPICY, T0 + 300 * MIN), false);
   const made = soothe(a, 'play', T0 + MIN).state;
-  assert.equal(canPout(made, 'yanked', SPICY, T0 + 44 * MIN), false);
-  assert.equal(canPout(made, 'yanked', SPICY, T0 + 46 * MIN), true);
+  assert.equal(canPout(made, 'hungry', SPICY, T0 + 44 * MIN), false);
+  assert.equal(canPout(made, 'hungry', SPICY, T0 + 46 * MIN), true);
 });
 
 test('상한과 자연 회복: 6점에서 멈추고 20분에 한 점, 두 시간이면 다 풀린다', () => {
   let s = initPout(DAY, T0);
   let now = T0;
-  for (const reason of ['friend', 'restIgnored', 'yanked', 'hungry'] as const) {
+  for (const reason of ['friend', 'restIgnored', 'hiddenLong', 'hungry'] as const) {
     s = pout(s, reason, SPICY, now).state;
     now += POUT.gapMs;
   }
@@ -186,7 +211,7 @@ test('달래기: 쓰다듬기 2, 칭찬 3, 밥 3, 놀기는 다, 다 풀리면 �
   assert.equal(forgive(at3, T0).points, 0);
 });
 
-test('맛별 비교: 같은 하루(3시간, 배고픔, 미룬 할 일, 쓰다듬다 끌기)에 순한맛은 0번, 매운맛은 여러 번', () => {
+test('맛별 비교: 같은 하루(3시간, 배고픔, 미룬 할 일, 쓰다듬다 들기)에 순한맛은 0번, 매운맛은 여러 번', () => {
   const day = (ctx: PoutContext) => {
     let s = initPout(DAY, T0);
     let count = 0;
@@ -199,9 +224,7 @@ test('맛별 비교: 같은 하루(3시간, 배고픔, 미룬 할 일, 쓰다듬
       if (r.pouted) count++;
       if (m === 100) {
         s = soothe(s, 'pet', now).state;
-        const g = grabbed(s, c, now + 1000);
-        s = g.state;
-        if (g.pouted) count++;
+        s = grabbed(s, c, now + 1000).state;
       }
       top = Math.max(top, poutStage(s.points));
     }
@@ -266,6 +289,7 @@ test('토라짐 말: 까닭마다 네 줄, 달래기와 화해는 여섯 줄, �
       ['pout.stage3', 4] as const,
       ['pout.softer', 6] as const,
       ['pout.madeUp', 6] as const,
+      ['pout.startled', 4] as const,
     ]) {
       const lines = Array.from({ length: n }, (_, i) => say(`${prefix}.${i + 1}`));
       for (const l of lines) assert.equal(typeof l, 'string', prefix);

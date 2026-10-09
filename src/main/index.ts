@@ -11,6 +11,7 @@ import { IPC, type PetStatus, type PlayKind } from '../shared/ipc.ts';
 import { runnerKindOf } from '../shared/menu-runner.ts';
 import { isMiniGame, PLAY_COIN } from '../shared/minigames.ts';
 import { unlocked, WAVE_AWAY_SEC } from '../shared/pet-life.ts';
+import { restDaysOf } from '../shared/routine.ts';
 import { pickedGait } from '../shared/settings.ts';
 import { FULLNESS, localDay } from '../shared/todo-store.ts';
 import { watchCatalog } from './ai/catalog.ts';
@@ -504,7 +505,7 @@ app.whenReady().then(() => {
   // ---- 업적 (v2) ----
   function checkAchievements() {
     const s = settings.get();
-    const facts = achievements.facts(Date.now(), s.restDays, {
+    const facts = achievements.facts(Date.now(), restDaysOf(s), {
       affection: petLife.state.affection,
       houseLevel: shop.state().houseLevel,
     });
@@ -624,7 +625,7 @@ app.whenReady().then(() => {
     achieve: () => {
       const now = Date.now();
       const got = achievements.got();
-      const streakDays = achievements.facts(now, settings.get().restDays, {
+      const streakDays = achievements.facts(now, restDaysOf(settings.get()), {
         affection: 0,
         houseLevel: 0,
       }).streak;
@@ -856,7 +857,7 @@ app.whenReady().then(() => {
       next.petStyle !== prev.petStyle ||
       next.spicy !== prev.spicy ||
       next.sounds !== prev.sounds ||
-      next.restDays.join() !== prev.restDays.join() ||
+      restDaysOf(next).join() !== restDaysOf(prev).join() ||
       next.dayRhythm !== prev.dayRhythm ||
       // 걸음새는 몸마다 따로라 고른 값이 그대로여도 펫(몸)이 바뀌면 다시 본다. 같은 값이면 sendStatus 가 거른다
       pickedGait(next) !== pickedGait(prev)

@@ -33,10 +33,11 @@ export const ko = {
   'pout.friend.2': '새 친구 왔네... 나도 있거든?',
   'pout.friend.3': '나만 봐 줬으면 좋겠는데',
   'pout.friend.4': (v: { friend: string }) => `${withParticle(v.friend, '은')} 몰라. 나 먼저야`,
-  'pout.yanked.1': '쓰다듬다 말고 휙! 깜짝이야. 흥',
-  'pout.yanked.2': '아직 덜 쓰다듬었는데!',
-  'pout.yanked.3': '기분 좋았는데 갑자기 들기야?',
-  'pout.yanked.4': '쓰다듬기 끝? 벌써? 흥',
+  // 쓰다듬다 바로 들었을 때 (삐짐 아님, 놀라기만)
+  'pout.startled.1': '앗, 깜짝이야!',
+  'pout.startled.2': '휴, 깜짝 놀랐네!',
+  'pout.startled.3': '앗! 쓰다듬다 말고?',
+  'pout.startled.4': '으앗, 붕 떴었어!',
   'pout.stage3.1': '이제 진짜 삐졌어. 등 돌릴 거야',
   'pout.stage3.2': '말 걸지 마. ...아니 걸어도 돼',
   'pout.stage3.3': '흥. 흥. 흥.',
@@ -63,7 +64,6 @@ export const ko = {
   'pout.why.restIgnored': '쉬자는 말을 넘겨서',
   'pout.why.hiddenLong': '오래 숨겨 둬서',
   'pout.why.friend': '다른 펫을 꺼내서',
-  'pout.why.yanked': '쓰다듬다 갑자기 들어서',
   'pout.panel': (v: { name: string; why: string }) =>
     `${withParticle(v.name, '이')} 토라졌어 (${v.why}). 쓰다듬기, 밥, 놀기, 칭찬 한마디로 달래 줘. 가만둬도 곧 풀려.`,
 };
@@ -97,10 +97,10 @@ export const en: Translation<typeof ko> = {
   'pout.friend.2': "A new friend, huh... I'm still here, you know",
   'pout.friend.3': "I wish you'd only look at me",
   'pout.friend.4': (v: { friend: string }) => `Forget ${v.friend}. I was here first`,
-  'pout.yanked.1': 'Mid-pet and then whoosh! Rude. Hmph',
-  'pout.yanked.2': "You weren't done petting me!",
-  'pout.yanked.3': 'That felt nice and then you just grabbed me?',
-  'pout.yanked.4': 'Petting over? Already? Hmph',
+  'pout.startled.1': 'Whoa, you startled me!',
+  'pout.startled.2': 'Phew, that was sudden!',
+  'pout.startled.3': 'Oh! Mid-pet?',
+  'pout.startled.4': 'Eep, I was flying!',
   'pout.stage3.1': "Now I'm really sulking. Turning my back",
   'pout.stage3.2': "Don't talk to me. ...okay, you can",
   'pout.stage3.3': 'Hmph. Hmph. Hmph.',
@@ -127,7 +127,6 @@ export const en: Translation<typeof ko> = {
   'pout.why.restIgnored': 'their break idea got brushed off',
   'pout.why.hiddenLong': 'they were hidden too long',
   'pout.why.friend': 'another pet came out',
-  'pout.why.yanked': 'they got grabbed mid-pet',
   'pout.panel': (v: { name: string; why: string }) =>
     `${v.name} is pouting because ${v.why}. Pet, feed, play, or say something nice to make up. It wears off soon anyway.`,
 };

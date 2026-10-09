@@ -51,6 +51,11 @@ export const FATIGUE_MIN = [90, 120] as const;
 const FATIGUE_COST = [0, 0.4, 0.55] as const;
 /** 단계 경계: 이 값 이상이면 그 단계 */
 export const STAGE_AT = { lively: 0.85, normal: 0.62, tired: 0.35 } as const;
+/**
+ * 몸 시계 낮(리듬이 보통 이상, 대략 8시~21시)에는 피로만으로 졸림까지 내려가지 않는다(지침과 녹초까지).
+ * 이만큼(분) 이상 쉬지 않고 일했을 때만 낮에도 졸리다 (사용자 결정 2026-10-09: 점심 뒤 2시간 일하면 한낮에 졸던 것)
+ */
+export const DAY_SLEEPY_WORK_MIN = 240;
 
 /** 하루 리듬 값. minuteOfDay 는 0~1439 (몸 시계: 사용자 컴퓨터 시각, 만나는 시간을 켰으면 그 시간이 9시가 되게 옮긴 것) */
 export function rhythmAt(minuteOfDay: number): number {
@@ -68,6 +73,9 @@ export function fatigueOf(workedMin: number): 0 | 1 | 2 {
   return workedMin >= FATIGUE_MIN[1] ? 2 : workedMin >= FATIGUE_MIN[0] ? 1 : 0;
 }
 
+/** 몸 시계 낮인지 (하루 리듬이 보통 단계 이상) */
+export const isBodyDay = (rhythm: number): boolean => rhythm >= STAGE_AT.normal;
+
 export function stageOf(level: number): EnergyStage {
   if (level >= STAGE_AT.lively) return 'lively';
   if (level >= STAGE_AT.normal) return 'normal';
@@ -77,12 +85,15 @@ export function stageOf(level: number): EnergyStage {
 
 /**
  * 지금 기운. at 은 사용자 컴퓨터 시각, workedMin 은 쉬지 않고 일한 분.
- * bodyMinute 는 몸 시계 (shared/routine.ts bodyClock: 만나는 시간이 9시가 되게 옮긴 분). 없으면 at 의 시각 그대로
+ * bodyMinute 는 몸 시계 (shared/routine.ts bodyClock: 만나는 시간이 9시가 되게 옮긴 분). 없으면 at 의 시각 그대로.
+ * 몸 시계 낮에는 피로만으로 졸림이 되지 않는다 (DAY_SLEEPY_WORK_MIN 이상 일했을 때만)
  */
 export function energyOf(at: Date, workedMin: number, bodyMinute?: number): Energy {
   const rhythm = rhythmAt(bodyMinute ?? at.getHours() * 60 + at.getMinutes());
-  const fatigue = fatigueOf(Math.max(0, workedMin));
-  const level = Math.max(0, Math.min(1, rhythm - FATIGUE_COST[fatigue]));
+  const worked = Math.max(0, workedMin);
+  const fatigue = fatigueOf(worked);
+  let level = Math.max(0, Math.min(1, rhythm - FATIGUE_COST[fatigue]));
+  if (isBodyDay(rhythm) && worked < DAY_SLEEPY_WORK_MIN) level = Math.max(level, STAGE_AT.tired);
   return { stage: stageOf(level), worn: fatigue >= 2, level, rhythm, fatigue };
 }
 

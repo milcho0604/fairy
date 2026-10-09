@@ -35,7 +35,7 @@ import {
   routineDue,
   spanEnd,
 } from '../shared/routine.ts';
-import { farewellText, greetText, restText } from '../shared/routine-text.ts';
+import { farewellNext, farewellText, greetText, restText } from '../shared/routine-text.ts';
 import { localDay, type TodoStore } from '../shared/todo-store.ts';
 import type { SayOptions } from './pet-window.ts';
 import { createReminders } from './reminders.ts';
@@ -329,7 +329,10 @@ export function createPlanner(o: PlannerOptions) {
       });
   }
 
-  /** 헤어지는 인사: 수고했어, 오늘 끝낸 일, 다음 만남 미리 보기. 회고가 켜져 있으면 남은 마감을 내일로 넘길지 묻는다 */
+  /**
+   * 헤어지는 인사 (두 문장까지): 수고했어(끝낸 일과 같이), 다음 만남 미리 보기. 회고가 켜져 있고 남은 마감이 있으면
+   * 미리 보기 대신 내일로 넘길지 묻고, 미리 보기는 답(넘기기, 그대로)을 누른 뒤 말한다
+   */
   function farewell(now: number, due: Extract<RoutineDue, { what: 'farewell' }>, quiet: boolean) {
     const s = settings.get();
     const asks = s.review && reviewedDay !== due.day;
@@ -347,8 +350,11 @@ export function createPlanner(o: PlannerOptions) {
             .between(from, from + 24 * 3_600_000)
             .map((e) => ({ minute: minuteOfDay(e.startAt), title: e.title, allDay: e.allDay }))
         : [];
+    // 묻느라 못 한 미리 보기 (조용히면 없다)
+    const after = left.length > 0 && !quiet ? farewellNext({ ...(next ? { next } : {}), tomorrow }) : '';
     const act = (a: string | undefined) => {
-      if (a === 'move') moveToTomorrow(due.day);
+      if (a === 'move') moveToTomorrow(due.day, after);
+      else if (a === 'keep' && after) void o.say({ kind: 'answer', text: after, ttlMs: 8000 });
     };
     o.log('planner', '헤어짐', doneToday.length, left.length);
     void o
@@ -384,11 +390,15 @@ export function createPlanner(o: PlannerOptions) {
       .then(act);
   }
 
-  /** 회고 "내일로 넘기기". 누른 때 남은 것을 다시 읽어 넘기고, 잠깐 되돌리기 단추를 보인다 */
-  function moveToTomorrow(day: string) {
+  /** 회고 "내일로 넘기기". 누른 때 남은 것을 다시 읽어 넘기고, 잠깐 되돌리기 단추를 보인다. tail 은 뒤에 붙일 한 문장 (헤어짐 미리 보기) */
+  function moveToTomorrow(day: string, tail = '') {
     const tomorrow = localDay(localTime(day, 0) + 36 * 3_600_000);
     const left = o.todos.list(Date.now()).open.filter((t) => t.due !== null && t.due <= day);
-    if (left.length === 0) return;
+    if (left.length === 0) {
+      // 그새 다 끝냈다: 넘길 것은 없고 미리 보기만
+      if (tail) void o.say({ kind: 'answer', text: tail, ttlMs: 8000 });
+      return;
+    }
     const moved = left.map((t) => ({ id: t.id, due: t.due }));
     for (const t of left) o.todos.update(t.id, { due: tomorrow });
     o.onChange();
@@ -396,9 +406,11 @@ export function createPlanner(o: PlannerOptions) {
     void o
       .say({
         kind: 'answer',
-        text: t('panel.review.moved', { n: moved.length }),
+        text: tail
+          ? `${t('panel.review.moved', { n: moved.length })} ${tail}`
+          : t('panel.review.moved', { n: moved.length }),
         buttons: [{ id: 'undo', label: t('panel.review.undo') }],
-        ttlMs: 10_000,
+        ttlMs: tail ? 12_000 : 10_000,
       })
       .then((a) => {
         if (a !== 'undo') return;

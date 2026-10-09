@@ -116,7 +116,7 @@ export interface PetActions {
   stopPlay?(): void;
   /** 술래잡기 할 친구 이름 (없으면 메뉴에 안 보인다) */
   playmate?(): string | undefined;
-  /** 들어 옮기기 시작 (매운맛: 쓰다듬다 갑자기 끌면 토라진다) */
+  /** 들어 옮기기 시작 (매운맛: 쓰다듬다 바로 들면 내려놓은 뒤 "앗" 하고 놀란다. 삐지지는 않는다) */
   grabbed?(): void;
   /** 우클릭 메뉴 맨 위에 흐리게 보일 한 줄 (토라지면 대답이 짧다). 없으면 안 보인다 */
   menuNote?(): string | undefined;

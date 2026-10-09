@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  DAY_SLEEPY_WORK_MIN,
   ENERGY_BLINK,
   ENERGY_PACE,
   type EnergyStage,
@@ -10,6 +11,7 @@ import {
   energyTalkKeys,
   FATIGUE_MIN,
   fatigueOf,
+  isBodyDay,
   rhythmAt,
   stageOf,
 } from './energy.ts';
@@ -59,6 +61,30 @@ test('연속 작업 피로: 90분이면 살짝, 2시간이면 확실히. 한낮�
   assert.equal(worn.stage, 'tired');
   assert.equal(worn.worn, true);
   assert.ok(worn.level < bit.level);
+});
+
+test('점심 뒤: 2시간 넘게 일해도 몸 시계 낮엔 지침과 녹초까지, 졸림은 4시간 이상이거나 몸 시계 밤일 때', () => {
+  // 13:20~15:00 은 리듬이 처지는 때라 예전엔 2시간 일하면 졸림이었다
+  for (let m = 13 * 60 + 20; m <= 15 * 60; m += 5) {
+    for (const worked of [FATIGUE_MIN[1], 180, 239]) {
+      const e = energyOf(at(Math.floor(m / 60), m % 60), worked);
+      assert.equal(e.stage, 'tired', `${m} ${worked}`);
+      assert.equal(e.worn, true);
+    }
+  }
+  // 아주 오래(4시간 이상) 쉬지 않으면 낮에도 졸린다
+  assert.equal(DAY_SLEEPY_WORK_MIN, 240);
+  assert.equal(energyOf(at(14), 240).stage, 'sleepy');
+  // 몸 시계 밤(만나는 시간을 늦게 정했다): 벽시계로 14시여도 몸은 23시면 2시간 피로로 졸림
+  assert.equal(energyOf(at(14), FATIGUE_MIN[1], 23 * 60).stage, 'sleepy');
+  // 몸 시계 낮이면 벽시계가 밤이어도 졸림까지 안 간다
+  assert.equal(energyOf(at(23), FATIGUE_MIN[1], 14 * 60).stage, 'tired');
+  // 피로 없는 하루 리듬은 그대로 (밤엔 졸림)
+  assert.equal(energyOf(at(23), 0).stage, 'sleepy');
+  // 낮과 밤 경계는 리듬 보통 문턱
+  assert.equal(isBodyDay(rhythmAt(14 * 60)), true);
+  assert.equal(isBodyDay(rhythmAt(22 * 60)), false);
+  assert.equal(isBodyDay(rhythmAt(7 * 60)), false);
 });
 
 test('밤샘: 밤 졸림에 피로가 겹치면 졸림과 녹초. 아침이 와도 쉬지 않았으면 지친 그대로', () => {

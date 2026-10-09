@@ -63,32 +63,42 @@ export interface FarewellInput {
   quiet: boolean;
 }
 
-/** 헤어지는 말: 수고했어, 오늘 끝낸 일 한 줄, 다음 만남 미리 보기, 남은 마감 묻기 */
+/** 말풍선에 넣는 제목은 이만큼(글자)까지. 넘으면 줄임표 (긴 할 일 제목이 말풍선을 늘리지 않게) */
+export const BYE_TITLE_MAX = 14;
+const clip = (title: string): string => {
+  const chars = [...title.trim()];
+  return chars.length > BYE_TITLE_MAX ? `${chars.slice(0, BYE_TITLE_MAX - 1).join('')}…` : title.trim();
+};
+
+/**
+ * 헤어지는 말: 두 문장까지 (사용자 결정 2026-10-09: 네 줄은 길었다).
+ * 첫 문장은 수고했어(끝낸 일이 있으면 그걸 담아 한 문장으로), 둘째는 남은 마감 묻기가 먼저, 없으면 다음 만남 미리 보기.
+ * 남은 마감을 물을 때 미리 보기는 답을 누른 뒤 말한다 (farewellNext, planner.ts). 조용히면 첫 문장과 묻기만
+ */
 export function farewellText(f: FarewellInput): string {
-  const parts = [t('routine.bye.head', { i: variant(f.day, 6) })];
-  if (!f.quiet) {
-    const n = f.doneTitles.length;
-    if (n === 1) parts.push(t('routine.bye.doneOne', { title: f.doneTitles[0] ?? '' }));
-    else if (n > 1) parts.push(t('routine.bye.doneMany', { n }));
-    parts.push(nextLine(f));
-  }
-  if (f.leftToday > 0) parts.push(t('briefing.review.left', { n: f.leftToday }));
-  return parts.join(' ');
+  const n = f.doneTitles.length;
+  const head =
+    f.quiet || n === 0
+      ? t('routine.bye.head', { i: variant(f.day, 6) })
+      : n === 1
+        ? t('routine.bye.doneOne', { title: clip(f.doneTitles[0] ?? '') })
+        : t('routine.bye.doneMany', { n });
+  if (f.leftToday > 0) return `${head} ${t('briefing.review.left', { n: f.leftToday })}`;
+  return f.quiet ? head : `${head} ${farewellNext(f)}`;
 }
 
-function nextLine(f: FarewellInput): string {
+/** 다음 만남 미리 보기 한 문장: 내일 첫 일정, 내일 종일 일정, 내일 만나는 시간, 다음에 만나는 요일, 없으면 푹 쉬어 */
+export function farewellNext(f: Pick<FarewellInput, 'next' | 'tomorrow'>): string {
   if (!f.next) return t('routine.bye.rest');
   if (f.next.inDays > 1) return t('routine.bye.nextMeet', { weekday: weekdayName(f.next.day) });
   const allDay = f.tomorrow.filter((e) => e.allDay);
   const first = f.tomorrow.find((e) => !e.allDay);
-  if (first) return t('routine.bye.tomorrowFirst', { time: timeLabel(first.minute), title: first.title });
-  if (allDay.length > 0)
-    return t('routine.bye.tomorrowAllDay', {
-      list: allDay
-        .slice(0, 2)
-        .map((e) => e.title)
-        .join(', '),
-    });
+  if (first)
+    return t('routine.bye.tomorrowFirst', { time: timeLabel(first.minute), title: clip(first.title) });
+  const [one] = allDay;
+  if (one && allDay.length > 1)
+    return t('routine.bye.tomorrowAllDayMore', { title: clip(one.title), n: allDay.length - 1 });
+  if (one) return t('routine.bye.tomorrowAllDay', { list: clip(one.title) });
   return t('routine.bye.tomorrowMeet', { time: timeLabel(f.next.meet.start) });
 }
 

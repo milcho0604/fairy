@@ -32,6 +32,9 @@ const PENDING_MS = 3 * 60_000;
 const SOFTER_GAP_MS = 45_000;
 /** 달랠 때 말은 반응 말("냠냠, 고마워!") 뒤에 */
 const SOOTHE_DELAY_MS = 2200;
+/** "앗" 은 내려놓은 뒤에 한다 (들린 동안은 말풍선을 치운다). 이만큼 넘게 들고 있으면 하지 않는다 */
+const STARTLE_UNTIL_MS = 10_000;
+const STARTLE_RETRY_MS = 300;
 
 const LOOSE = t as unknown as (key: string, vars?: Record<string, string | number>) => string;
 const lines = (prefix: string, n: number, vars?: Record<string, string | number>) =>
@@ -57,7 +60,8 @@ export interface PoutOptions {
 
 /**
  * 매운맛 토라짐 (shared/pout.ts 규칙). 30초마다 시간을 세고, 같이 한 일(pet-life 활동), 대화의 칭찬,
- * 쓰다듬다 끌기, 휴식 권유 넘기기, 친구 펫 꺼내기를 받아 삐지고 풀린다. 잃는 것은 없다 (모습과 말만).
+ * 휴식 권유 넘기기, 친구 펫 꺼내기를 받아 삐지고 풀린다. 쓰다듬다 바로 들면 삐지지 않고 "앗" 하고 놀라기만 한다.
+ * 잃는 것은 없다 (모습과 말만).
  */
 export function createPout(o: PoutOptions) {
   let state: PoutState = initPout(localDay(Date.now()), Date.now());
@@ -167,6 +171,16 @@ export function createPout(o: PoutOptions) {
     if (r.from !== r.to) o.onChange();
   }
 
+  /** 놀란 말: 한 짓에 바로 하는 반응이라 달랠 때 말처럼 answer. 내려놓아 말할 수 있을 때까지 잠깐 기다린다 */
+  function startle(text: string, until: number) {
+    if (Date.now() > until) return;
+    if (o.calm() || !o.canTalk()) {
+      setTimeout(() => startle(text, until), STARTLE_RETRY_MS).unref();
+      return;
+    }
+    void o.say({ kind: 'answer', text, ttlMs: 3000 });
+  }
+
   const timer = setInterval(tick, TICK_MS);
   timer.unref();
 
@@ -202,9 +216,14 @@ export function createPout(o: PoutOptions) {
     said(text: string) {
       if (isPraise(text)) soothed('praise');
     },
-    /** 들어 옮기기 시작 (쓰다듬은 직후면 삐진다) */
+    /** 들어 옮기기 시작 (쓰다듬은 직후면 내려놓은 뒤 "앗" 한마디. 삐지지는 않는다) */
     grabbed() {
-      apply(grabbed(state, ctx(), Date.now()));
+      const now = Date.now();
+      const r = grabbed(state, ctx(), now);
+      state = r.state;
+      if (!r.startled) return;
+      o.log('pout', '앗 (쓰다듬다 들기)');
+      startle(line(lines('pout.startled', 4)), now + STARTLE_UNTIL_MS);
     },
     /** 휴식 권유를 넘겼다 */
     restIgnored() {

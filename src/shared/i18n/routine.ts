@@ -18,12 +18,14 @@ export const ko = {
   'routine.cue': '시작할 시간이야! 오늘도 같이 힘내자.',
   'routine.bye.head': (v: { i: number }) =>
     one(['오늘 수고했어!', '오늘도 고생 많았어!', '오늘 하루 끝!'], v.i),
-  'routine.bye.doneOne': '"{title}" 끝낸 거 멋졌어.',
-  'routine.bye.doneMany': (v: { n: number }) => `할 일 ${v.n}개나 끝냈어.`,
+  'routine.bye.doneOne': '"{title}" 끝내느라 수고했어!',
+  'routine.bye.doneMany': (v: { n: number }) => `할 일 ${v.n}개나 끝냈네, 수고했어!`,
   'routine.bye.tomorrowFirst': '내일은 {time} {title}부터야.',
   'routine.bye.tomorrowAllDay': '내일은 종일 {list}.',
+  'routine.bye.tomorrowAllDayMore': (v: { title: string; n: number }) =>
+    `내일은 종일 ${v.title} 외 ${v.n}개.`,
   'routine.bye.tomorrowMeet': '내일 {time}에 또 만나!',
-  'routine.bye.nextMeet': '다음에 만나는 날은 {weekday}이야. 푹 쉬어!',
+  'routine.bye.nextMeet': '푹 쉬고 {weekday}에 만나!',
   'routine.bye.rest': '푹 쉬어!',
   'routine.rest': (v: { i: number }) =>
     one(
@@ -49,7 +51,7 @@ export const ko = {
   'routine.set.each': '요일마다',
   'routine.set.timesAria': '시간 정하는 방법',
   'routine.set.noDays': '요일을 하나도 안 고르면 매일 쉬는 날이야.',
-  'routine.set.restNote': '다른 요일은 쉬는 날이라 조용히 한마디만 해.',
+  'routine.set.restNote': '다른 요일은 쉬는 날이라 조용히 한마디만 하고, 안 와도 안 삐져.',
   'routine.set.reviewNote': '만난 날은 하루 회고를 헤어질 때 같이 해.',
   'routine.set.sameTime': '만나는 시간과 헤어지는 시간이 같으면 정할 수 없어.',
   // 첫 실행 안내
@@ -87,12 +89,14 @@ export const en: Translation<typeof ko> = {
   'routine.cue': "It's time to start! Let's do our best today.",
   'routine.bye.head': (v: { i: number }) =>
     one(['Great work today!', 'You did a lot today!', "That's a wrap!"], v.i),
-  'routine.bye.doneOne': 'Finishing "{title}" was awesome.',
-  'routine.bye.doneMany': (v: { n: number }) => `You finished ${v.n} to-dos!`,
+  'routine.bye.doneOne': 'Nice work finishing "{title}"!',
+  'routine.bye.doneMany': (v: { n: number }) => `Nice work, ${v.n} to-dos done today!`,
   'routine.bye.tomorrowFirst': 'Tomorrow starts with {title} at {time}.',
   'routine.bye.tomorrowAllDay': 'All day tomorrow: {list}.',
+  'routine.bye.tomorrowAllDayMore': (v: { title: string; n: number }) =>
+    `All day tomorrow: ${v.title} and ${v.n} more.`,
   'routine.bye.tomorrowMeet': 'See you tomorrow at {time}!',
-  'routine.bye.nextMeet': 'See you on {weekday}. Rest well!',
+  'routine.bye.nextMeet': 'Rest well, see you on {weekday}!',
   'routine.bye.rest': 'Rest well!',
   'routine.rest': (v: { i: number }) =>
     one(
@@ -117,7 +121,7 @@ export const en: Translation<typeof ko> = {
   'routine.set.each': 'Per day',
   'routine.set.timesAria': 'How to set times',
   'routine.set.noDays': 'With no days picked, every day is a day off.',
-  'routine.set.restNote': "Other days are days off. I'll just say a quiet hello.",
+  'routine.set.restNote': 'Other days are days off: just a quiet hello, and no sulking if you skip them.',
   'routine.set.reviewNote': 'On days we meet, the daily review comes with the goodbye.',
   'routine.set.sameTime': "Meet and part times can't be the same.",
   'routine.onb.title': (v: { name: string }) => `When to meet ${v.name}`,

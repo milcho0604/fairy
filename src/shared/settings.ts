@@ -53,7 +53,7 @@ export interface Settings {
   petDepth?: string;
   /** 상태별 포즈 그림 (v1). 기쁨, 졸림, 배고픔. pets/ 안 파일 이름 */
   petPoses: Partial<Record<PoseKind, string>>;
-  /** 삐짐 게이지를 세지 않는 요일 (0 일 ~ 6 토). 기본 토, 일 */
+  /** 삐짐 게이지를 세지 않는 요일 (0 일 ~ 6 토). 기본 토, 일. 만나는 시간을 켜면 쓰지 않는다 (restDaysOf) */
   restDays: number[];
   /** 매운맛: 삐짐이 4칸에서 멈추지 않고 7칸까지 (v1) */
   spicy: boolean;
@@ -114,7 +114,7 @@ export interface Settings {
   petWishes: Record<string, string>;
   /**
    * 만나는 시간 (shared/routine.ts, 사용자 요청 2026-10-08): 요일마다 일을 시작하고 끝내는 시간. 그때 맞이하고 헤어지는 인사.
-   * 기본 꺼짐(예전처럼 켤 때 브리핑). 쉬는 날(만나지 않는 요일)은 삐짐 쉬는 날(restDays)과 따로다
+   * 기본 꺼짐(예전처럼 켤 때 브리핑). 켜 두면 만나지 않는 요일이 삐짐 쉬는 날도 된다(restDays 대신, routine.ts restDaysOf)
    */
   routine: Routine;
 }
