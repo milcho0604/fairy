@@ -22,6 +22,6 @@ jobs:
         run: |
           git config user.name "jjakkung-lab"
           git config user.email "lab@users.noreply.github.com"
-          git add lab/out
+          git add -f lab/out
           git commit -m "lab: 일러스트 결과" || echo "결과 없음"
           git push
