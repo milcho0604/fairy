@@ -1,18 +1,18 @@
 [
   {
-    "job": "poodle-teen",
+    "job": "poodle-baby",
     "ok": true,
     "space": "black-forest-labs/FLUX.1-Kontext-Dev",
     "kind": "webp",
-    "bytes": 78638,
-    "ms": 34610
+    "bytes": 41912,
+    "ms": 29293
   },
   {
-    "job": "cat-baby",
+    "job": "cat-adult",
     "ok": true,
     "space": "black-forest-labs/FLUX.1-Kontext-Dev",
     "kind": "webp",
-    "bytes": 42074,
-    "ms": 30118
+    "bytes": 40612,
+    "ms": 29179
   }
 ]
