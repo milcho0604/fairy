@@ -1,18 +1,33 @@
 [
   {
-    "job": "poodle-baby",
+    "job": "poodle-teen",
     "ok": true,
     "space": "black-forest-labs/FLUX.1-Kontext-Dev",
     "kind": "webp",
-    "bytes": 41912,
-    "ms": 29293
+    "bytes": 84174,
+    "ms": 28759
+  },
+  {
+    "job": "poodle-adult",
+    "ok": true,
+    "space": "black-forest-labs/FLUX.1-Kontext-Dev",
+    "kind": "webp",
+    "bytes": 83772,
+    "ms": 28312
+  },
+  {
+    "job": "cat-baby",
+    "ok": true,
+    "space": "black-forest-labs/FLUX.1-Kontext-Dev",
+    "kind": "webp",
+    "bytes": 34402,
+    "ms": 28389
   },
   {
     "job": "cat-adult",
-    "ok": true,
-    "space": "black-forest-labs/FLUX.1-Kontext-Dev",
-    "kind": "webp",
-    "bytes": 40612,
-    "ms": 29179
+    "ok": false,
+    "kind": "busy",
+    "message": "busy",
+    "ms": 1637
   }
 ]
