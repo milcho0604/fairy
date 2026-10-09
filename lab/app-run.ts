@@ -5,7 +5,9 @@ import { illustrate } from '../app/src/main/hf-illust.ts';
 import { illustratePrompt } from '../app/src/shared/illustrate.ts';
 
 const jobs = [
-  { name: 'poodle-baby', file: 'lab/in_poodle.png', age: 'baby' as const },
+  { name: 'poodle-teen', file: 'lab/in_poodle.png', age: 'teen' as const },
+  { name: 'poodle-adult', file: 'lab/in_poodle.png', age: 'adult' as const },
+  { name: 'cat-baby', file: 'lab/in_cat.png', age: 'baby' as const },
   { name: 'cat-adult', file: 'lab/in_cat.png', age: 'adult' as const },
 ];
 mkdirSync('lab/out-app', { recursive: true });
