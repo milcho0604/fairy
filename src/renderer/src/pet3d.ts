@@ -72,7 +72,7 @@ import {
 import type { MoveEyes } from './move-pose.ts';
 import {
   addShells,
-  bumpFur,
+  bumpFurSteps,
   fluffBaseMaterial,
   fluffLayers,
   fluffLength,
@@ -81,7 +81,7 @@ import {
   fusedGeometry,
   paintGeometry,
 } from './pet3d-fluff.ts';
-import { type FusePart, type FuseShape, fuseParts } from './pet3d-fuse.ts';
+import { type FusedMesh, type FusePart, type FuseShape, fuseSteps } from './pet3d-fuse.ts';
 import {
   gaitOf,
   hindFrom,
@@ -359,6 +359,10 @@ export class Pet3D implements Model3D {
 
   /** 옛 모양을 내리고 빈 몸을 준비한다 */
   private resetRoot() {
+    // 하던 복슬복슬 몸 만들기를 버린다
+    this.fuseToken++;
+    this.finishFuse = () => {};
+    this.version++;
     this.scene.remove(this.root);
     this.disposeTree(this.root);
     this.relief?.texture.dispose();
@@ -558,6 +562,13 @@ export class Pet3D implements Model3D {
       list.push(o);
       groups.set(o.parent, list);
     });
+    const jobs: {
+      group: Object3D;
+      list: Mesh[];
+      steps: Generator<void, FusedMesh | undefined>;
+      /** 녹이기가 끝난 뒤 굴곡 내기 */
+      bump?: Generator<void, BufferGeometry | undefined>;
+    }[] = [];
     for (const [group, list] of groups) {
       const fparts: FusePart[] = [];
       const bounds = new Box3();
@@ -585,21 +596,76 @@ export class Pet3D implements Model3D {
       const size = bounds.getSize(new Vector3());
       // 격자 간격: 한 관절을 48칸 남짓으로 (64칸이면 펫 하나 조립에 이 컴퓨터에서 0.9초까지 걸렸다)
       const cell = Math.min(0.018, Math.max(0.006, Math.max(size.x, size.y, size.z) / 48));
-      const fused = fuseParts(fparts, { min: bounds.min.toArray(), max: bounds.max.toArray() }, cell, 0.035);
-      if (!fused) continue;
+      jobs.push({
+        group,
+        list,
+        steps: fuseSteps(fparts, { min: bounds.min.toArray(), max: bounds.max.toArray() }, cell, 0.035),
+      });
+    }
+    const token = ++this.fuseToken;
+    const fur = furOfBlueprint(bp);
+    /** 녹인 몸에 털 뭉치 굴곡을 낸다 (나눠서) */
+    function* finish(fused: FusedMesh | undefined): Generator<void, BufferGeometry | undefined> {
+      if (!fused) return undefined;
       const geo = fusedGeometry(fused);
-      bumpFur(geo, furOfBlueprint(bp));
+      yield* bumpFurSteps(geo, fur);
+      return geo;
+    }
+    const apply = (job: (typeof jobs)[number], geo: BufferGeometry | undefined) => {
+      if (!geo) return;
       const mesh = new Mesh(geo, this.fluffBase());
       mesh.userData.fused = true;
       this.addFluffShells(mesh, bp);
-      for (const m of list) {
-        group.remove(m);
+      for (const m of job.list) {
+        job.group.remove(m);
         this.disposeTree(m);
       }
-      group.add(mesh);
-    }
-    this.root.updateMatrixWorld(true);
+      job.group.add(mesh);
+      this.root.updateMatrixWorld(true);
+      this.version++;
+    };
+    /** 남은 일을 budget ms 만큼 한다. 다 했으면 true */
+    const work = (budget: number) => {
+      const until = performance.now() + budget;
+      while (jobs.length) {
+        if (token !== this.fuseToken) return true;
+        const job = jobs[0];
+        if (!job) break;
+        if (!job.bump) {
+          const r = job.steps.next();
+          if (r.done) job.bump = finish(r.value);
+        } else {
+          const r = job.bump.next();
+          if (r.done) {
+            jobs.shift();
+            apply(job, r.value);
+            this.onUpdate?.();
+          }
+        }
+        if (performance.now() >= until) return jobs.length === 0;
+      }
+      return true;
+    };
+    this.finishFuse = () => {
+      work(Number.POSITIVE_INFINITY);
+      this.finishFuse = () => {};
+    };
+    // 프레임 사이에 8ms 씩. 그동안 펫은 녹이기 전 몸(털 없는 매끈한 부품)으로 보인다
+    const tick = () => {
+      if (token !== this.fuseToken) return;
+      if (!work(8)) setTimeout(tick, 0);
+    };
+    setTimeout(tick, 0);
   }
+
+  /** 복슬복슬 몸을 다 만들 때까지 바로 한다 (썸네일, 시험 그림처럼 한 번에 그려야 할 때) */
+  finishFuse: () => void = () => {};
+  /** 몸이 바뀔 때마다(복슬복슬 털이 붙을 때) 늘어난다. 얼굴 그림을 다시 그릴지 볼 때 쓴다 */
+  version = 0;
+  /** 복슬복슬 털이 붙어 다시 그려야 할 때 부른다 (펫 화면이 requestFrame 을 넣는다) */
+  onUpdate: (() => void) | undefined;
+  /** 이 값이 바뀌면 하던 녹이기를 버린다 (펫을 바꿨다) */
+  private fuseToken = 0;
 
   private fluffBase(): Material {
     let m = this.materials.get('fluff/base');

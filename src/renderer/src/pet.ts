@@ -499,6 +499,8 @@ function current3d(): Pet3D | 'loading' | undefined {
     broken3d = true;
     requestFrame();
   });
+  // 복슬복슬 털이 다 붙으면 다시 그린다 (몸은 프레임 사이에 조금씩 만든다)
+  if (model3d) model3d.onUpdate = requestFrame;
   if (!model3d) {
     broken3d = true;
     return undefined;
@@ -521,7 +523,7 @@ let faceKey: unknown[] = [];
 function syncFace(m3d: Pet3D | undefined) {
   if (!wantFace) return;
   // 입체 모습(피규어, 게임, 실사)을 바꿔도 다시 (같은 설계도라 입체와 설계도는 그대로다)
-  const key = [m3d, m3d ? model3dOf : undefined, m3d ? style3d : undefined, photo, petKind];
+  const key = [m3d, m3d ? model3dOf : undefined, m3d ? style3d : undefined, m3d?.version, photo, petKind];
   if (key.length === faceKey.length && key.every((v, i) => v === faceKey[i])) return;
   faceKey = key;
   const still = photo instanceof AnimatedImage ? photo.frameAt(0) : photo;
@@ -540,7 +542,7 @@ let spriteKey: unknown[] = [];
 function syncSprites(m3d: Pet3D | undefined) {
   if (!wantFace) return;
   // 입체 모습(피규어, 게임, 실사)을 바꿔도 다시 (같은 설계도라 입체와 설계도는 그대로다)
-  const key = [m3d, m3d ? model3dOf : undefined, m3d ? style3d : undefined, photo, petKind];
+  const key = [m3d, m3d ? model3dOf : undefined, m3d ? style3d : undefined, m3d?.version, photo, petKind];
   if (key.length === spriteKey.length && key.every((v, i) => v === spriteKey[i])) return;
   spriteKey = key;
   const still = photo instanceof AnimatedImage ? photo.frameAt(0) : photo;

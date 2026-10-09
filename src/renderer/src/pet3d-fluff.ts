@@ -46,12 +46,25 @@ export function fluffTexture(seed = 11): DataTexture {
     const m = Math.abs(d) % n;
     return Math.min(m, n - m);
   };
+  // 다발을 16칸 격자에 넣어 둘레 아홉 칸만 본다 (모든 다발을 다 보면 처음 털을 붙일 때 150ms 남짓 멈췄다)
+  const G = 16;
+  const cellOf = (v: number) => ((Math.floor(v / G) % (n / G)) + n / G) % (n / G);
+  const grid = new Map<number, typeof clumps>();
+  for (const c of clumps) {
+    const key = cellOf(c.x) * 100 + cellOf(c.y);
+    grid.set(key, [...(grid.get(key) ?? []), c]);
+  }
   const profile = (x: number, y: number) => {
     let best = 0;
-    for (const c of clumps) {
-      const d = Math.hypot(wrap(x - c.x), wrap(y - c.y)) / c.r;
-      if (d < 1) best = Math.max(best, (1 - d) ** 1.3);
-    }
+    for (let a = -1; a <= 1; a++)
+      for (let b = -1; b <= 1; b++) {
+        const list = grid.get(cellOf(x + a * G) * 100 + cellOf(y + b * G));
+        if (!list) continue;
+        for (const c of list) {
+          const d = Math.hypot(wrap(x - c.x), wrap(y - c.y)) / c.r;
+          if (d < 1) best = Math.max(best, (1 - d) ** 1.3);
+        }
+      }
     return best;
   };
   for (let i = 0; i < 14000; i++) {
@@ -111,6 +124,8 @@ export function fluffShellMaterial(i: number, n: number, tex: DataTexture, fur: 
     // 안쪽 층은 거의 꽉 차 털 부피가 되고, 바깥 층만 성겨져 가장자리가 보송해진다
     alphaTest: 0.06 + 0.8 * t ** 1.6,
     roughness: 0.85,
+    // 계단처럼 깨지는 가닥 가장자리를 안티앨리어싱 표본으로 부드럽게 (렌더러가 antialias 라 공짜에 가깝다)
+    alphaToCoverage: true,
   });
   const values = {
     uShell: t,
@@ -158,12 +173,23 @@ varying vec3 vFurN;`,
         `{
   // 겉면이 가장 많이 보는 한 방향에서만 가닥 그림을 비춘다 (셋을 섞으면 가닥 끝이 뭉개져 다 잘려 나갔다)
   vec3 an = abs(vFurN);
-  vec2 uv = an.x > an.y && an.x > an.z ? vFurP.zy : (an.y > an.z ? vFurP.xz : vFurP.xy);
+  // 앞, 옆에서 보이는 면은 가닥 그림을 세로로 늘려 점이 아니라 아래로 빗은 결로 보이게 한다 (곱슬은 덜)
+  float comb = mix(0.4, 0.85, uCurl);
+  vec2 uv = an.x > an.y && an.x > an.z ? vec2(vFurP.z, vFurP.y * comb)
+    : (an.y > an.z ? vFurP.xz : vec2(vFurP.x, vFurP.y * comb));
   float ang = uShell * 2.2 * 6.2832;
   vec2 cu = vec2(cos(ang), sin(ang)) * 0.035 * uCurl;
   vec2 st = texture2D(alphaMap, uv * uDen + cu).rg;
   diffuseColor.a *= mix(st.r, st.g, uClump);
+  // 다발 사이 골은 그늘지고 다발 가운데는 밝다: 정면에서도 털 무늬가 읽힌다
+  diffuseColor.rgb *= mix(0.78, 1.08, mix(st.r, st.g, max(uClump, 0.5)));
 }`,
+      )
+      // 가장자리 털 끝이 빛을 머금어 보송하게 (바깥 층일수록)
+      .replace(
+        '#include <opaque_fragment>',
+        `outgoingLight += diffuseColor.rgb * 0.35 * uShell * pow(1.0 - abs(dot(normalize(vNormal), normalize(vViewPosition))), 2.0);
+#include <opaque_fragment>`,
       );
   };
   m.customProgramCacheKey = () => 'jj-fluff';
@@ -209,6 +235,12 @@ export function addShells(mesh: Mesh, layers: number, shell: (i: number) => Mate
  * 정점이 움직였으니 법선은 다시 계산한다
  */
 export function bumpFur(g: BufferGeometry, fur: Fur, seed = 5): void {
+  const steps = bumpFurSteps(g, fur, seed);
+  while (!steps.next().done);
+}
+
+/** bumpFur 를 정점 몇백 개마다 멈추며 한다 (펫 화면이 프레임 사이에 돌린다) */
+export function* bumpFurSteps(g: BufferGeometry, fur: Fur, seed = 5): Generator<void, void> {
   const curl = fur.curl ?? 0;
   const clump = fur.clump ?? 0;
   const amp = 0.022 * curl + 0.007 * clump * (fur.length ?? 0.4);
@@ -247,6 +279,7 @@ export function bumpFur(g: BufferGeometry, fur: Fur, seed = 5): void {
       pos.getY(i) + nor.getY(i) * bump,
       pos.getZ(i) + nor.getZ(i) * bump,
     );
+    if (i % 600 === 599) yield;
   }
   pos.needsUpdate = true;
   g.computeVertexNormals();

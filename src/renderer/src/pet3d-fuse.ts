@@ -146,6 +146,23 @@ export function fuseParts(
   cell: number,
   k: number,
 ): FusedMesh | undefined {
+  const steps = fuseSteps(parts, bounds, cell, k);
+  for (;;) {
+    const r = steps.next();
+    if (r.done) return r.value;
+  }
+}
+
+/**
+ * fuseParts 를 잘게 나눠 한다: 격자 한 층, 정점 몇백 개마다 멈춘다(yield). 펫 화면이 프레임 사이에 조금씩 돌려
+ * 몸을 만드는 동안 화면이 멈추지 않는다 (한 번에 하면 펫 하나에 0.2~0.7초 걸렸다)
+ */
+export function* fuseSteps(
+  parts: readonly FusePart[],
+  bounds: Bounds,
+  cell: number,
+  k: number,
+): Generator<void, FusedMesh | undefined> {
   if (!parts.length) return undefined;
   const pad = cell * 2 + k;
   const ox = bounds.min[0] - pad;
@@ -156,10 +173,12 @@ export function fuseParts(
   const nz = Math.ceil((bounds.max[2] - bounds.min[2] + 2 * pad) / cell) + 1;
   const idx = (i: number, j: number, l: number) => i + nx * (j + ny * l);
   const f = new Float32Array(nx * ny * nz);
-  for (let l = 0; l < nz; l++)
+  for (let l = 0; l < nz; l++) {
     for (let j = 0; j < ny; j++)
       for (let i = 0; i < nx; i++)
         f[idx(i, j, l)] = fieldAt(parts, k, ox + i * cell, oy + j * cell, oz + l * cell);
+    yield;
+  }
 
   // 칸마다 정점 하나: 부호가 바뀌는 모서리들의 가운데
   const cellVert = new Int32Array((nx - 1) * (ny - 1) * (nz - 1)).fill(-1);
@@ -181,7 +200,8 @@ export function fuseParts(
     [3, 7],
   ] as const;
   const cornerXYZ = (c: number) => [c & 1, (c >> 1) & 1, (c >> 2) & 1] as const;
-  for (let l = 0; l < nz - 1; l++)
+  for (let l = 0; l < nz - 1; l++) {
+    yield;
     for (let j = 0; j < ny - 1; j++)
       for (let i = 0; i < nx - 1; i++) {
         let mask = 0;
@@ -211,6 +231,7 @@ export function fuseParts(
         cellVert[cidx(i, j, l)] = verts.length / 3;
         verts.push(ox + (i + sx / n) * cell, oy + (j + sy / n) * cell, oz + (l + sz / n) * cell);
       }
+  }
   if (!verts.length) return undefined;
 
   // 부호가 바뀌는 격자 모서리마다 둘레 네 칸의 정점으로 네모 하나 (바깥을 보게 돈다)
@@ -224,7 +245,8 @@ export function fuseParts(
     i < 0 || j < 0 || l < 0 || i >= nx - 1 || j >= ny - 1 || l >= nz - 1
       ? -1
       : (cellVert[cidx(i, j, l)] ?? -1);
-  for (let l = 0; l < nz; l++)
+  for (let l = 0; l < nz; l++) {
+    yield;
     for (let j = 0; j < ny; j++)
       for (let i = 0; i < nx; i++) {
         const v0 = (f[idx(i, j, l)] ?? 1) < 0;
@@ -235,6 +257,7 @@ export function fuseParts(
         if (l < nz - 1 && v0 !== (f[idx(i, j, l + 1)] ?? 1) < 0)
           quad(cv(i - 1, j - 1, l), cv(i, j - 1, l), cv(i, j, l), cv(i - 1, j, l), !v0);
       }
+  }
 
   const count = verts.length / 3;
   const positions = new Float32Array(verts);
@@ -254,6 +277,7 @@ export function fuseParts(
     normals[v * 3 + 1] = gy / len;
     normals[v * 3 + 2] = gz / len;
     paintAt(parts, x, y, z, paint, v);
+    if (v % 400 === 399) yield;
   }
   const colors = new Float32Array(count * 3);
   const fur = new Float32Array(count);
