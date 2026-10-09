@@ -84,13 +84,13 @@ export async function playBall(pet: PetWindow, yarn: boolean): Promise<boolean> 
   }
   const center = { x: b.x + BALL / 2, y: b.y + BALL / 2 };
   if (pet.body().quad && canPick(center, pet.bounds())) return fetchBall(pet, ball, center, start, yarn);
-  // 물고 돌아온다: 공이 펫 입 앞에 붙어 다닌다
+  // 들고 돌아온다 (두 발 펫): 공을 얼굴이 아니라 가슴 앞에 안는다 (0.55 면 입과 눈 안쪽을 가렸다)
   const carry = setInterval(() => {
     const q = pet.bounds();
     if (!ball.isDestroyed())
       ball.setPosition(
         Math.round(q.x + q.width / 2 - BALL / 2),
-        Math.round(Math.min(floor, q.y + q.height * 0.55)),
+        Math.round(Math.min(floor, q.y + q.height * 0.68)),
       );
   }, 16);
   const back = await pet.walkTo(start.x, 110);

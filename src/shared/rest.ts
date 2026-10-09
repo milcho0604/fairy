@@ -38,8 +38,16 @@ export class RestCoach {
 
   tick(now: number, idleSec: number, level: ChatterLevel): RestEvent | undefined {
     // 시계를 뒤로 돌리면 음수가 된다 (일한 시간이 줄지 않게)
-    const dt = this.#last === undefined ? 0 : Math.max(0, Math.min(5 * 60_000, now - this.#last));
+    const gap = this.#last === undefined ? 0 : now - this.#last;
+    const dt = Math.max(0, Math.min(5 * 60_000, gap));
     this.#last = now;
+    // 덮개를 닫아 잠든 동안은 표본이 멈춘다. 깨고 나면 입력 없던 시간이 짧아도 그 틈은 쉰 것이다
+    // (안 그러면 밤새 잔 뒤 아침부터 지친 눈이었다)
+    if (gap >= REST.idleResetSec * 1000) {
+      this.#workedMs = 0;
+      this.#streakMs = 0;
+      return undefined;
+    }
     if (this.#accepted !== undefined) {
       if (now - this.#accepted > REST.acceptWindowMs) this.#accepted = undefined;
       else if (idleSec >= REST.breakSec) this.#away = true;

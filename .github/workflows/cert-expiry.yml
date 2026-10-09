@@ -1,0 +1,81 @@
+# 맥 서명 인증서 만료 확인 (docs/release.md "맥 서명 인증서").
+# 매주 월요일 아침(한국 9시쯤) 비밀값의 인증서를 열어 끝나는 날을 본다. 30일 안으로 남으면 관리 이슈(라벨 cert-expiry)에
+# 레포 주인을 불러 댓글을 단다 (GitHub 알림, 끝날 때까지 매주). 손으로 돌리면(Run workflow) 남은 날을 늘 이슈에 적는다.
+# 비밀값은 이 단계 env 에만 두고 로그에 찍지 않는다. 인증서는 임시 폴더(권한 700)에 풀었다가 끝나면 지운다.
+# 인증서 지문이 scripts/mac-sign.mjs 와 다르거나 비밀값이 없으면 실패한다 (실패 메일이 간다).
+name: cert-expiry
+
+on:
+  schedule:
+    - cron: '7 0 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 인증서 끝나는 날 읽기
+        id: cert
+        env:
+          P12: ${{ secrets.JJ_MAC_SIGN_P12 }}
+          PASS: ${{ secrets.JJ_MAC_SIGN_PASSWORD }}
+          # 공개 정보 (scripts/mac-sign.mjs CERT_SHA1 과 같아야 한다)
+          WANT_SHA1: 45DAB97976E727D42955956ED8DC2B5ED6D12714
+        run: |
+          set -euo pipefail
+          umask 077
+          if [ -z "$P12" ] || [ -z "$PASS" ]; then
+            echo "::error::비밀값 JJ_MAC_SIGN_P12, JJ_MAC_SIGN_PASSWORD 가 없다"
+            exit 1
+          fi
+          dir="$(mktemp -d)"
+          trap 'rm -rf "$dir"' EXIT
+          printf '%s' "$P12" | base64 -d > "$dir/c.p12"
+          # 비밀값 끝의 줄바꿈은 뗀다 (mac-sign.mjs 의 trim 과 같다). 암호는 명령 인자가 아니라 env 로 넘긴다
+          PASS_IN="$(printf '%s' "$PASS" | tr -d '\r\n')"
+          export PASS_IN
+          # 키체인에서 내보낸 p12 는 옛 암호화라 OpenSSL 3 에서는 -legacy 가 필요할 수 있다
+          if ! openssl pkcs12 -in "$dir/c.p12" -nokeys -clcerts -passin env:PASS_IN -out "$dir/c.pem" 2>/dev/null \
+            && ! openssl pkcs12 -legacy -in "$dir/c.p12" -nokeys -clcerts -passin env:PASS_IN -out "$dir/c.pem" 2>/dev/null; then
+            echo "::error::인증서를 열지 못했다 (p12 나 암호 비밀값 확인)"
+            exit 1
+          fi
+          sha1="$(openssl x509 -in "$dir/c.pem" -noout -fingerprint -sha1 | cut -d= -f2 | tr -d :)"
+          if [ "$sha1" != "$WANT_SHA1" ]; then
+            echo "::error::비밀값의 인증서 지문이 scripts/mac-sign.mjs 와 다르다"
+            exit 1
+          fi
+          end="$(openssl x509 -in "$dir/c.pem" -noout -enddate | cut -d= -f2)"
+          end_s="$(date -u -d "$end" +%s)"
+          days=$(( (end_s - $(date -u +%s)) / 86400 ))
+          day="$(date -u -d "$end" +%Y-%m-%d)"
+          echo "day=$day" >> "$GITHUB_OUTPUT"
+          echo "days=$days" >> "$GITHUB_OUTPUT"
+          echo "### 맥 서명 인증서: $day 까지 (${days}일 남음)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 관리 이슈에 알리기
+        if: github.event_name == 'workflow_dispatch' || fromJSON(steps.cert.outputs.days) <= 30
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DAY: ${{ steps.cert.outputs.day }}
+          DAYS: ${{ steps.cert.outputs.days }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          gh label create cert-expiry -R "$repo" --color B60205 --description "맥 서명 인증서 만료 관리" --force > /dev/null
+          num="$(gh issue list -R "$repo" --label cert-expiry --state open --json number --jq '.[0].number // empty')"
+          if [ "$DAYS" -le 30 ]; then
+            msg="@$OWNER 맥 서명 인증서가 **$DAY** 에 끝나요 (**${DAYS}일 남음**). 이슈 본문의 할 일을 시작해 주세요. 끝날 때까지 매주 알려요."
+          else
+            msg="확인: 맥 서명 인증서는 **$DAY** 까지예요 (${DAYS}일 남음). 30일 전부터 매주 월요일에 알려요."
+          fi
+          if [ -z "$num" ]; then
+            gh issue create -R "$repo" --title "맥 서명 인증서 만료 관리" --label cert-expiry --assignee "$OWNER" --body "$msg"
+          else
+            gh issue comment "$num" -R "$repo" --body "$msg"
+          fi

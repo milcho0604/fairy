@@ -5,7 +5,8 @@ import type { Rect } from './geometry.ts';
 import { MOVE_SPECS, type MoveContext, type MoveType, PLAIN_ASK, pickMove } from './moves.ts';
 
 export type Activity =
-  | { type: 'walk'; dx: number; ms: number }
+  // idle: 혼자 고른 걸음 (놀기, 산책, 집 드나들기처럼 불러서 가는 걸음이 아닌 것)
+  | { type: 'walk'; dx: number; ms: number; idle?: boolean }
   | { type: 'sit'; ms: number }
   | { type: 'look'; dir: -1 | 1; ms: number }
   // 제자리 몸짓 (하품, 기지개, 꼬리 흔들기, 몸 털기 등. moves.ts). dir 은 좌우가 있는 몸짓의 방향

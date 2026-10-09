@@ -257,7 +257,8 @@ export function createPanel(o: PanelOptions) {
     if (!r.ok || r.kind !== 'todo') return r;
     // 글에서 날짜를 못 읽었으면("dentist 3pm") 일정이던 날을 마감으로 (언제 할 일인지 잃지 않게)
     const due = r.due ?? localDay(ev.startAt);
-    if (!r.due) o.store.update(r.id, { due });
+    // now 를 넘겨 이미 지난 기본 알림(어제 저녁 8시)은 말없이 넘긴다
+    if (!r.due) o.store.update(r.id, { due }, now);
     o.events.remove(id, now);
     push();
     o.onEventsChanged();

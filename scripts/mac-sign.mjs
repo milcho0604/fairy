@@ -21,8 +21,19 @@ import { randomBytes } from 'node:crypto';
 /** 배포 인증서(CN=Jjakkung Self Signed)의 SHA1 지문. 바꾸면 사용자 권한이 모두 풀린다 */
 const CERT_SHA1 = '45DAB97976E727D42955956ED8DC2B5ED6D12714';
 
-function run(cmd, args) {
-  return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+/**
+ * 명령을 돌린다. 실패하면 Node 오류 글에 명령 줄 전체가 들어가 빌드 기록에 찍히므로, secrets 에 준 값(인증서 암호,
+ * 임시 키체인 암호)을 *** 로 가린 글로 다시 던진다. security import 는 암호를 인자(-P)로만 받는다
+ */
+function run(cmd, args, secrets = []) {
+  try {
+    return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (err) {
+    const hide = (text) => secrets.filter(Boolean).reduce((t, v) => t.split(v).join('***'), String(text ?? ''));
+    const shown = args.map((a) => hide(a)).join(' ');
+    const stderr = hide(err?.stderr).trim();
+    throw new Error(`mac-sign: ${cmd} ${shown} 실패 (코드 ${err?.status ?? '?'})${stderr ? `: ${stderr}` : ''}`);
+  }
 }
 
 function loadP12() {
@@ -67,10 +78,12 @@ export default async function macSign(context) {
   const before = searchList();
   try {
     writeFileSync(p12, cert.p12, { mode: 0o600 });
-    run('/usr/bin/security', ['create-keychain', '-p', kcPass, keychain]);
+    run('/usr/bin/security', ['create-keychain', '-p', kcPass, keychain], [kcPass]);
     run('/usr/bin/security', ['set-keychain-settings', keychain]);
-    run('/usr/bin/security', ['unlock-keychain', '-p', kcPass, keychain]);
-    run('/usr/bin/security', ['import', p12, '-k', keychain, '-P', cert.password, '-T', '/usr/bin/codesign']);
+    run('/usr/bin/security', ['unlock-keychain', '-p', kcPass, keychain], [kcPass]);
+    run('/usr/bin/security', ['import', p12, '-k', keychain, '-P', cert.password, '-T', '/usr/bin/codesign'], [
+      cert.password,
+    ]);
     run('/usr/bin/security', [
       'set-key-partition-list',
       '-S',
@@ -79,7 +92,7 @@ export default async function macSign(context) {
       '-k',
       kcPass,
       keychain,
-    ]);
+    ], [kcPass]);
     const found = run('/usr/bin/security', ['find-identity', '-p', 'codesigning', keychain]);
     if (!found.includes(CERT_SHA1)) {
       throw new Error(`mac-sign: 인증서 지문이 ${CERT_SHA1} 가 아니다. 다른 인증서로 서명하면 사용자 권한이 풀린다`);
