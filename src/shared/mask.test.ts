@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { brush, contentBox, keptRatio, outputToMask, stroke } from './mask.ts';
+import { brush, contentBox, defringe, keptRatio, outputToMask, stroke } from './mask.ts';
 
 test('모델 출력을 0~255 로 편다, 시그모이드 선택', () => {
   assert.deepEqual([...outputToMask([0.2, 0.6, 1.0])], [0, 128, 255]);
@@ -50,4 +50,30 @@ test('남긴 넓이 비율', () => {
   m[0] = 255;
   m[1] = 200;
   assert.equal(keptRatio(m), 0.5);
+});
+
+test('가장자리 바탕색 빼기: 흰 바탕이 섞인 반투명 털 끝을 털색으로, 속과 바탕은 그대로', () => {
+  // 가로 9칸: 왼쪽 3칸 흰 바탕(지움), 가운데 3칸 반투명 가장자리(갈색 50% + 흰색 50%), 오른쪽 3칸 갈색 몸
+  const w = 9;
+  const h = 3;
+  const brown = [110, 60, 30];
+  const rgba = new Uint8ClampedArray(w * h * 4);
+  const mask = new Uint8ClampedArray(w * h);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      const a = x < 3 ? 0 : x < 6 ? 0.5 : 1;
+      for (let k = 0; k < 3; k++) rgba[i * 4 + k] = Math.round(a * (brown[k] ?? 0) + (1 - a) * 255);
+      rgba[i * 4 + 3] = 255;
+      mask[i] = Math.round(a * 255);
+    }
+  defringe(rgba, mask, w, h, 4);
+  const at = (x: number, k: number) => rgba[(1 * w + x) * 4 + k] ?? 0;
+  for (let k = 0; k < 3; k++) {
+    // 가장자리는 털색으로 (반올림 몇 칸 오차)
+    assert.ok(Math.abs(at(4, k) - (brown[k] ?? 0)) <= 3, `가장자리 ${k}: ${at(4, k)}`);
+    // 몸과 바탕은 손대지 않는다
+    assert.equal(at(7, k), brown[k]);
+    assert.equal(at(1, k), 255);
+  }
 });

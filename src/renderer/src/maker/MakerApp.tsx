@@ -10,7 +10,7 @@ import {
   toGray,
 } from '../../../shared/illustrate.ts';
 import { DEPTH_URL, type MakerInfo, MODEL_URL, type PetLook } from '../../../shared/ipc.ts';
-import { contentBox, keptRatio, stroke } from '../../../shared/mask.ts';
+import { contentBox, defringe, keptRatio, stroke } from '../../../shared/mask.ts';
 import type { Blueprint } from '../../../shared/pet3d/blueprint.ts';
 import { cleanWish, WISH_MAX } from '../../../shared/pet3d/prompt.ts';
 import {
@@ -1437,6 +1437,8 @@ function cutout(work: Work): string {
   if (!fg) return '';
   const img = fg.createImageData(work.w, work.h);
   img.data.set(src.data);
+  // 털 끝에 섞인 바탕색을 뺀다 (어두운 화면에서 흰 테두리가 보이지 않게)
+  defringe(img.data, work.mask, work.w, work.h);
   for (let i = 0; i < work.mask.length; i++) img.data[i * 4 + 3] = work.mask[i] ?? 0;
   fg.putImageData(img, 0, 0);
   const k = Math.min(1, OUT_SIDE / Math.max(box.width, box.height));
