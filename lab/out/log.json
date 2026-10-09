@@ -1,0 +1,59 @@
+[
+  {
+    "space": "black-forest-labs/FLUX.1-Kontext-Dev",
+    "endpoints": {
+      "/infer": [
+        [
+          "input_image",
+          "Image"
+        ],
+        [
+          "prompt",
+          "Textbox"
+        ],
+        [
+          "seed",
+          "Slider"
+        ],
+        [
+          "randomize_seed",
+          "Checkbox"
+        ],
+        [
+          "guidance_scale",
+          "Slider"
+        ],
+        [
+          "steps",
+          "Slider"
+        ]
+      ],
+      "/lambda": [
+        [
+          "image",
+          "Image"
+        ]
+      ]
+    },
+    "runs": [
+      {
+        "job": "cat-baby",
+        "endpoint": "/infer",
+        "result": "('/tmp/gradio/d523646d90ab16bd52d172553c0989429a13972426ad245879d44bf1360668ca/image.webp', 556952841)",
+        "image": "/tmp/gradio/d523646d90ab16bd52d172553c0989429a13972426ad245879d44bf1360668ca/image.webp"
+      },
+      {
+        "job": "cat-teen",
+        "endpoint": "/infer",
+        "result": "('/tmp/gradio/77358f72211e8a748490ef2167a693bed59b1c774b67183139775e8d3da77834/image.webp', 1211205600)",
+        "image": "/tmp/gradio/77358f72211e8a748490ef2167a693bed59b1c774b67183139775e8d3da77834/image.webp"
+      },
+      {
+        "job": "cat-adult",
+        "endpoint": "/infer",
+        "result": "('/tmp/gradio/547d4f08b83250a1118d4d541dd16cdc5e05071e01fc59194e5638d75406599a/image.webp', 514556966)",
+        "image": "/tmp/gradio/547d4f08b83250a1118d4d541dd16cdc5e05071e01fc59194e5638d75406599a/image.webp"
+      }
+    ]
+  }
+]
