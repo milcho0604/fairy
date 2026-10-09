@@ -1,0 +1,27 @@
+# 실험 브랜치 전용: 펫 사진 → 일러스트 (무료 Hugging Face 모델). main 에는 넣지 않는다.
+name: lab-illustrate
+on:
+  push:
+    branches: [lab/illustrate]
+    paths: ['lab/illustrate.py', 'lab/in_*.png', '.github/workflows/lab-illustrate.yml']
+permissions:
+  contents: write
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -q gradio_client pillow
+      - run: python lab/illustrate.py
+        continue-on-error: true
+      - name: 결과 올리기
+        run: |
+          git config user.name "jjakkung-lab"
+          git config user.email "lab@users.noreply.github.com"
+          git add lab/out
+          git commit -m "lab: 일러스트 결과" || echo "결과 없음"
+          git push
