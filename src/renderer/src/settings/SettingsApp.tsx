@@ -1388,7 +1388,12 @@ function PetPicker({
         <div className="pet-card on" aria-current="true">
           <img src={look(snap.current)} alt="" />
           <span className="pet-name">{s.petName}</span>
-          <small>{t('settings.pets.now')}</small>
+          <small>
+            {t('settings.pets.now')}
+            {snap.current.age && (
+              <span className="pet-age">{t(`settings.pets.age.${snap.current.age}`)}</span>
+            )}
+          </small>
         </div>
       )}
       {PET_KINDS.map((k) => {
@@ -1411,8 +1416,13 @@ function PetPicker({
           <button type="button" className="pick" onClick={() => onPick({ id: p.id })}>
             {p.thumb ? <img src={look(p)} alt="" /> : <i />}
             <span className="pet-name">{p.name}</span>
-            {p.look !== 'photo' && (
-              <small>{p.look === 'figure' ? t('settings.pets.figure') : t('settings.pets.relief')}</small>
+            {(p.look !== 'photo' || p.age) && (
+              <small>
+                {p.look !== 'photo' &&
+                  (p.look === 'figure' ? t('settings.pets.figure') : t('settings.pets.relief'))}
+                {/* AI 일러스트 나이 단계 (아기, 청소년, 어른) */}
+                {p.age && <span className="pet-age">{t(`settings.pets.age.${p.age}`)}</span>}
+              </small>
             )}
           </button>
           <button

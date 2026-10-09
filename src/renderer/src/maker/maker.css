@@ -526,3 +526,141 @@ section {
 .gait-row + .hint {
   margin-bottom: 4px;
 }
+
+/* AI 일러스트로 다시 그리기 (2026-10-09): 만드는 방법 고르기, 나이, 바라는 점, 토큰 */
+.how {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.how > .segmented {
+  align-self: flex-start;
+}
+
+.how .wish-label,
+.illust .wish-label {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.how .wish-box input,
+.how .token-row input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.how .wish-box input {
+  padding-right: 64px;
+}
+
+.how .wish-box input:focus-visible,
+.how .token-row input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.token summary {
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.token[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.token-on {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.token-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.token-row .hint {
+  flex: 1;
+}
+
+.how .token-row button {
+  flex: none;
+  white-space: nowrap;
+}
+
+.drop.short {
+  min-height: 200px;
+}
+
+/* 사진이 밖으로 나간다는 안내는 눈에 띄게 */
+.privacy.out {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--ink);
+}
+
+.illust {
+  align-items: stretch;
+}
+
+.illust-title {
+  margin: 0;
+  font-weight: 600;
+  text-align: center;
+}
+
+.illust-pair {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 16px;
+}
+
+.illust-pair figure {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+}
+
+.illust-pair img {
+  display: block;
+  border-radius: 12px;
+  background: var(--panel);
+  object-fit: contain;
+}
+
+.illust-pair .before img {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  opacity: 0.85;
+}
+
+.illust-pair .after img {
+  width: 220px;
+  height: 260px;
+  box-shadow: 0 6px 24px color-mix(in srgb, var(--ink) 14%, transparent);
+}
+
+.illust-pair figcaption {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.actions.wrap {
+  flex-wrap: wrap;
+}

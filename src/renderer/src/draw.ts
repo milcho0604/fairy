@@ -44,6 +44,8 @@ export interface DrawState {
   hungry?: boolean;
   /** 사진 펫 그림 (P1-08). 있으면 기본 몸통, 얼굴, 발 대신 그린다 */
   photo?: CanvasImageSource & { width: number; height: number };
+  /** 사진 크기 배율 (AI 일러스트 아기, 청소년은 작게). 없으면 1. 발은 바닥에 그대로 */
+  photoScale?: number;
   /**
    * 기본 상태에서 하는 행동 (P1-06). phase 는 걷기 걸음 진행 0~1.
    * 걷기의 along 은 걷기 전체 진행 0~1, ms 는 걷기 전체 시간 (네 발 펫의 출발과 멈춤, pet3d-gait.ts).
@@ -815,7 +817,7 @@ function drawPhoto(
   // 캔버스 안 바닥에 서도록, 신남으로 튀어도 위가 안 잘리게 여유를 둔다.
   const maxW = 140;
   const maxH = 124;
-  const k = Math.min(maxW / photo.width, maxH / photo.height);
+  const k = Math.min(maxW / photo.width, maxH / photo.height) * (s.photoScale ?? 1);
   const w = photo.width * k;
   const h = photo.height * k;
   let tilt = 0;

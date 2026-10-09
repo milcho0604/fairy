@@ -12,6 +12,7 @@ import {
 import type { ImageAttachment } from '../shared/ai/types.ts';
 import { downloadErrorText, saveErrorText } from '../shared/download-error.ts';
 import { t } from '../shared/i18n/index.ts';
+import { ILLUST_WISH_MAX, illustratePrompt, isAgeStage } from '../shared/illustrate.ts';
 import {
   DEPTH_URL,
   MAKER,
@@ -34,6 +35,8 @@ import { CUSTOM_FOOD_COST } from '../shared/shop.ts';
 import { BG_MODEL, ensureModel, modelReady, verifiedModelUrl } from './bg-model.ts';
 import { DEPTH_MODEL, depthReady, ensureDepthModel, verifiedDepthUrl } from './depth-model.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
+import { IllustError, type IllustErrorKind, illustrate, imageKind } from './hf-illust.ts';
+import { hfToken } from './hf-token.ts';
 import { langArg } from './lang.ts';
 import { library } from './pet-library.ts';
 import { readFileIn, writeFileAtomic } from './safe-file.ts';
@@ -94,6 +97,7 @@ export function petImages(): PetImages {
     model: s.petImage ? modelOf(s.petModel) : null,
     depth: s.petImage ? dataUrlOf(s.petDepth) : null,
     poses,
+    ...(s.petImage && s.petAge ? { age: s.petAge } : {}),
   };
 }
 
@@ -144,7 +148,8 @@ export type AskWithImage = (
 
 /**
  * 사진으로 펫 만들기 창 (P1-08). 배경 제거는 창(렌더러)에서 onnxruntime-web 으로 하고,
- * 메인은 모델 파일 받기와 다듬은 그림 저장만 한다. 사진은 컴퓨터 밖으로 나가지 않는다.
+ * 메인은 모델 파일 받기와 다듬은 그림 저장만 한다. 사진은 컴퓨터 밖으로 나가지 않는다
+ * (사용자가 그때그때 AI 일러스트를 고를 때만 Hugging Face 로 간다, hf-illust.ts).
  */
 export function createMaker(
   log: (tag: string, ...rest: unknown[]) => void,
@@ -157,6 +162,7 @@ export function createMaker(
   let win: BrowserWindow | undefined;
   let download: AbortController | undefined;
   let shaping: AbortController | undefined;
+  let drawing: AbortController | undefined;
   let target: MakerTarget = 'main';
   const fromMaker = (e: IpcMainEvent | IpcMainInvokeEvent) =>
     !!win && !win.isDestroyed() && e.sender === win.webContents;
@@ -185,6 +191,7 @@ export function createMaker(
               mean: DEPTH_MODEL.mean,
               std: DEPTH_MODEL.std,
             },
+            hfToken: hfToken.has(),
           }
         : undefined,
   );
@@ -293,6 +300,67 @@ export function createMaker(
     return model ? { ok: true, model } : { ok: false, error: t('main.maker.shapeBad') };
   });
 
+  // AI 일러스트 (2026-10-09): 사용자가 고를 때만 사진을 Hugging Face 무료 Space 로 보낸다. 사진, 요청문, 토큰은 기록에 남기지 않는다
+  ipcMain.handle(MAKER.illustrate, async (e, photoRaw: unknown, ageRaw: unknown, wishRaw?: unknown) => {
+    const failed = (kind: IllustErrorKind | 'reopen' | 'format') => ({
+      ok: false as const,
+      kind,
+      error:
+        kind === 'reopen'
+          ? t('main.maker.reopen')
+          : kind === 'format'
+            ? t('main.maker.badFormat')
+            : illustText(kind),
+    });
+    if (!fromMaker(e) || target !== 'main') return failed('reopen');
+    if (!isAgeStage(ageRaw)) return failed('format');
+    if (wishRaw != null && (typeof wishRaw !== 'string' || wishRaw.length > ILLUST_WISH_MAX * 4))
+      return failed('format');
+    const m = typeof photoRaw === 'string' ? /^data:image\/(jpeg|png);base64,/.exec(photoRaw) : null;
+    if (!m || typeof photoRaw !== 'string') return failed('format');
+    const photo = Buffer.from(photoRaw.slice(m[0].length), 'base64');
+    const kind = imageKind(photo);
+    if ((kind !== 'jpeg' && kind !== 'png') || photo.length > MAX_PNG_BYTES) return failed('format');
+    drawing?.abort();
+    const abort = new AbortController();
+    drawing = abort;
+    try {
+      const r = await illustrate(
+        photo,
+        kind === 'png' ? 'image/png' : 'image/jpeg',
+        illustratePrompt(ageRaw, wishRaw),
+        {
+          // 운영체제 프록시를 따르는 Electron fetch
+          fetch: (url, init) => net.fetch(url, init),
+          token: hfToken.get(),
+          signal: abort.signal,
+          log,
+        },
+      );
+      const mime = r.kind === 'jpeg' ? 'image/jpeg' : `image/${r.kind}`;
+      log('maker', 'illust', r.space, ageRaw, `${Math.round(r.bytes.length / 1024)}KB`);
+      return { ok: true as const, image: `data:${mime};base64,${Buffer.from(r.bytes).toString('base64')}` };
+    } catch (err) {
+      const k = err instanceof IllustError ? err.kind : 'busy';
+      if (!(err instanceof IllustError))
+        log('maker', 'illust', err instanceof Error ? err.message : String(err));
+      return failed(k);
+    } finally {
+      if (drawing === abort) drawing = undefined;
+    }
+  });
+
+  ipcMain.handle(MAKER.setHfToken, (e, raw: unknown) => {
+    if (!fromMaker(e)) return { ok: false, has: hfToken.has() };
+    try {
+      const ok = hfToken.set(raw === null ? null : raw);
+      return ok ? { ok, has: hfToken.has() } : { ok, has: hfToken.has(), error: t('main.illust.tokenShape') };
+    } catch (err) {
+      log('maker', 'hf token save failed', err instanceof Error ? err.message : String(err));
+      return { ok: false, has: hfToken.has(), error: saveErrorText(err) };
+    }
+  });
+
   ipcMain.handle(MAKER.save, (e, dataUrl: string | null, name: string, lookRaw?: unknown) => {
     if (!fromMaker(e)) return { ok: false };
     // 디스크가 차거나 폴더에 쓸 수 없으면 쓰기가 던진다. 던진 채 두면 창이 "저장하는 중"에서 멈춰서 안내 글로 돌려준다
@@ -340,6 +408,11 @@ export function createMaker(
     const modelFile = look.model ? `model-${Date.now()}.json` : undefined;
     if (look.model && modelFile) writeFileAtomic(join(petsDir(), modelFile), JSON.stringify(look.model));
     const depthFile = look.depth ? `depth-${Date.now()}.png` : undefined;
+    // AI 일러스트 나이 단계 (펫 본 그림에만, 모르는 값이면 없음)
+    const age =
+      to === 'main' && typeof lookRaw === 'object' && lookRaw !== null
+        ? (lookRaw as Record<string, unknown>).age
+        : undefined;
     if (look.depth && depthFile) writeFileAtomic(join(petsDir(), depthFile), look.depth);
     if (to === 'main') {
       // 이름 칸을 비우면 지금 펫 이름이 아니라 새 이름 (보관함에 같은 이름이 쌓이지 않게). 보관하기 전에 정한다
@@ -349,6 +422,7 @@ export function createMaker(
         petImage: file,
         petModel: modelFile ?? null,
         petDepth: depthFile ?? null,
+        petAge: isAgeStage(age) ? age : null,
         petName,
         // 설계도를 만든 요청사항은 그 설계도 이름으로 (걸음새에 맞게 다시 만들 때 같은 글로)
         ...(modelFile && look.wish
@@ -449,6 +523,7 @@ export function createMaker(
     if (!fromMaker(e)) return;
     download?.abort();
     shaping?.abort();
+    drawing?.abort();
   });
 
   /** 펫 본 그림(main)이나 상태별 포즈를 만든다. 다른 것을 만드는 창이 열려 있으면 다시 연다 */
@@ -488,6 +563,7 @@ export function createMaker(
     win.on('closed', () => {
       download?.abort();
       shaping?.abort();
+      drawing?.abort();
       win = undefined;
     });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -506,6 +582,29 @@ export function createMaker(
       return win;
     },
   };
+}
+
+/** 일러스트 실패 종류마다 화면 글 */
+function illustText(kind: IllustErrorKind): string {
+  switch (kind) {
+    case 'quota':
+      return t(hfToken.has() ? 'main.illust.quotaToken' : 'main.illust.quota');
+    case 'limit':
+      return t(hfToken.has() ? 'main.illust.down' : 'main.illust.limit');
+    case 'auth':
+      return t('main.illust.auth');
+    case 'network':
+      return t('main.illust.offline');
+    case 'timeout':
+      return t('main.illust.timeout');
+    case 'cancelled':
+      return t('main.illust.cancelled');
+    case 'same':
+    case 'bad':
+      return t('main.illust.bad');
+    default:
+      return t('main.illust.down');
+  }
 }
 
 /** 커스텀 먹이 그림 (data URL). 없으면 빈 글 */

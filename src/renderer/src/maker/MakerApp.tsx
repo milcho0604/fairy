@@ -1,5 +1,14 @@
 import { type ClipboardEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { t } from '../../../shared/i18n/index.ts';
+import {
+  AGE_STAGES,
+  type AgeStage,
+  COMPARE_SIDE,
+  DEFAULT_AGE,
+  ILLUST_WISH_MAX,
+  nearlySame,
+  toGray,
+} from '../../../shared/illustrate.ts';
 import { DEPTH_URL, type MakerInfo, MODEL_URL, type PetLook } from '../../../shared/ipc.ts';
 import { contentBox, keptRatio, stroke } from '../../../shared/mask.ts';
 import type { Blueprint } from '../../../shared/pet3d/blueprint.ts';
@@ -38,7 +47,18 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** 지난번 걸린 시간을 두는 곳 (못 쓰면 기본 예상 시간) */
 const store = browserStore;
 
-type Step = 'pick' | 'model' | 'working' | 'edit' | 'name' | 'saving' | 'done';
+type Step = 'pick' | 'illust' | 'model' | 'working' | 'edit' | 'name' | 'saving' | 'done';
+
+/** AI 일러스트 한 번: 고른 사진(원본 파일, 보낼 JPEG, 진행 판 사진), 받은 그림, 그린 나이, 그리는 중인지 */
+interface Illust {
+  file: Blob;
+  photo: string;
+  thumb: string;
+  image: string;
+  age: AgeStage;
+  busy: boolean;
+  at: number;
+}
 
 interface Work {
   photo: HTMLCanvasElement;
@@ -89,6 +109,18 @@ export function MakerApp() {
   // 이번 2.5D 에서 깊이 모델을 받았는지 (받았으면 받기와 깊이 재기 두 단계 점)
   const [fetchedDepth, setFetchedDepth] = useState(false);
   const shapeRun = useRef(0);
+  // AI 일러스트로 다시 그리기 (2026-10-09): 고르면 사진을 Hugging Face 무료 서버로 보낸다 (펫 본 그림만)
+  const [how, setHow] = useState<'photo' | 'illust'>('photo');
+  const [age, setAge] = useState<AgeStage>(DEFAULT_AGE);
+  const [illustWish, setIllustWish] = useState('');
+  const [illust, setIllust] = useState<Illust>();
+  const [illustMs, setIllustMs] = useState(0);
+  // 이번 펫 그림이 일러스트에서 왔으면 그 나이 (저장할 때 같이 둔다)
+  const [madeAge, setMadeAge] = useState<AgeStage>();
+  // 일러스트를 받아들이면 다듬기 뒤 2.5D 를 저절로 만든다
+  const autoRelief = useRef(false);
+  const [tokenDraft, setTokenDraft] = useState('');
+  const [tokenNote, setTokenNote] = useState('');
 
   useEffect(() => {
     bridge.info().then((i) => {
@@ -108,9 +140,31 @@ export function MakerApp() {
   const [animated, setAnimated] = useState(false);
   /** 입체로 만들기는 펫 본 그림(움직이지 않는 사진)에만 */
   const can3d = info?.target === 'main' && !animated;
+  const isMain = info?.target === 'main';
+
+  /** 일러스트 그리기 (처음, 다시 그리기). 받은 그림이 보낸 사진과 거의 같으면 실패로 (그대로 돌려준 답) */
+  const drawIllust = useCallback(async (photo: string, a: AgeStage, wishText: string) => {
+    const run = ++runRef.current;
+    const at = performance.now();
+    setError('');
+    setNote('');
+    setIllustMs(loadExpected('illust', store()));
+    setIllust((v) => v && { ...v, image: '', age: a, busy: true, at });
+    const r = await bridge.illustrate(photo, a, cleanWish(wishText).slice(0, ILLUST_WISH_MAX) || undefined);
+    if (runRef.current !== run) return;
+    if (r.ok && !(await sameAsPhoto(photo, r.image))) {
+      if (runRef.current !== run) return;
+      saveDuration('illust', performance.now() - at, store());
+      setIllust((v) => v && { ...v, image: r.image, busy: false });
+      return;
+    }
+    if (runRef.current !== run) return;
+    setError(r.ok ? t('maker.illust.same') : r.error);
+    setIllust((v) => v && { ...v, busy: false });
+  }, []);
 
   const start = useCallback(
-    async (file: Blob) => {
+    async (file: Blob, opts: { age?: AgeStage; plain?: boolean } = {}) => {
       if (!info) return;
       setError('');
       setNote('');
@@ -122,6 +176,8 @@ export function MakerApp() {
           if (!alive()) return;
           if (file.size > ANIMATED_MAX) throw new ShownError(t('maker.err.animatedTooBig'));
           setAnimated(true);
+          setMadeAge(undefined);
+          autoRelief.current = false;
           // 앞 사진으로 만든 입체 모습은 버린다 (움직이는 그림은 입체로 만들지 않는다)
           setLook('photo');
           setModel(undefined);
@@ -133,6 +189,16 @@ export function MakerApp() {
         setAnimated(false);
         const photo = await loadPhoto(file);
         if (!alive()) return;
+        // AI 일러스트: 사진을 JPEG 로 보내 그림을 받고, 사용자가 고르면 그 그림으로 다시 시작한다
+        if (how === 'illust' && info.target === 'main' && !opts.plain && !opts.age) {
+          const jpeg = photo.toDataURL('image/jpeg', 0.92);
+          setIllust({ file, photo: jpeg, thumb: thumbOf(photo), image: '', age, busy: true, at: 0 });
+          setStep('illust');
+          await drawIllust(jpeg, age, illustWish);
+          return;
+        }
+        setMadeAge(opts.age);
+        autoRelief.current = !!opts.age;
         setThumb(thumbOf(photo));
         // 받을 모델이 있으면 받기부터 (진짜 진행률), 있으면 바로 배경 지우기 (해시 맞춰 보기도 여기에 넣는다)
         const download = !info.modelReady;
@@ -175,8 +241,33 @@ export function MakerApp() {
         setStep('pick');
       }
     },
-    [info],
+    [info, how, age, illustWish, drawIllust],
   );
+
+  /** 일러스트 그리기를 그만둔다 (메인이 멈춘다). 사진은 그대로 두고 다시 그리거나 사진 그대로 쓸 수 있다 */
+  const stopIllust = () => {
+    runRef.current++;
+    bridge.cancel();
+    setIllust((v) => v && { ...v, busy: false });
+    setError('');
+    setNote(t('maker.progress.stopped'));
+  };
+
+  /** 받은 일러스트로 배경 지우기부터 */
+  const acceptIllust = async () => {
+    if (!illust?.image) return;
+    const blob = await (await fetch(illust.image)).blob();
+    await start(blob, { age: illust.age });
+  };
+
+  const saveToken = async (token: string | null) => {
+    const r = await bridge.setHfToken(token);
+    setInfo((v) => v && { ...v, hfToken: r.has });
+    if (r.ok) setTokenDraft('');
+    setTokenNote(
+      r.ok ? (token ? t('maker.illust.token.saved') : t('maker.illust.token.removed')) : (r.error ?? ''),
+    );
+  };
 
   // 창 어디에 끌어다 놓거나 붙여 넣어도 시작한다.
   useEffect(() => {
@@ -220,6 +311,8 @@ export function MakerApp() {
     setPreview(url);
     setModel(undefined);
     setDepth('');
+    // 일러스트에서 왔으면 2.5D 를 골라 두고 저절로 만든다 (아래 효과)
+    if (autoRelief.current) setLook('relief');
     setStep('name');
   };
 
@@ -330,6 +423,14 @@ export function MakerApp() {
     }
   };
 
+  // 일러스트를 받아들인 뒤 처음 이름 단계에 오면 2.5D 를 한 번 만든다
+  // biome-ignore lint/correctness/useExhaustiveDependencies: makeRelief 는 렌더마다 새로 만들어져 넣지 않는다
+  useEffect(() => {
+    if (step !== 'name' || !autoRelief.current || look !== 'relief' || depth || shaping || !preview) return;
+    autoRelief.current = false;
+    void makeRelief();
+  }, [step, look, depth, shaping, preview]);
+
   const chosen: PetLook | undefined =
     look === 'figure' && model
       ? { model, ...(madeWith?.wish ? { wish: madeWith.wish } : {}) }
@@ -343,7 +444,12 @@ export function MakerApp() {
     // Enter 로도 오니 단추와 같은 조건을 본다 (만드는 중 Enter 가 평면으로 저장했다)
     if (!canSave) return;
     setStep('saving');
-    const r = await bridge.save(preview, name, chosen);
+    // 일러스트로 만든 펫은 나이 단계를 같이 (보관함 표시, 화면 크기)
+    const r = await bridge.save(
+      preview,
+      name,
+      madeAge && !animated ? { ...(chosen ?? {}), age: madeAge } : chosen,
+    );
     if (!r.ok) {
       setError(r.error ?? t('maker.err.saveFailed'));
       setStep('name');
@@ -352,6 +458,51 @@ export function MakerApp() {
     setStep('done');
     setTimeout(() => bridge.close(), 1400);
   };
+
+  // 무료 Hugging Face 토큰 칸 (고르기 화면, 쿼터에 걸린 뒤 그림 화면). 토큰 글은 메인에만 있고 창은 있는지만 안다
+  const tokenBox = (
+    <details className="token">
+      <summary>
+        {t('maker.illust.token.summary')}
+        {info?.hfToken && <span className="token-on"> ✓</span>}
+      </summary>
+      <small className="hint">{t('maker.illust.token.how')}</small>
+      {info?.hfToken ? (
+        <div className="token-row">
+          <span className="hint">{t('maker.illust.token.has')}</span>
+          <button type="button" className="ghost" onClick={() => saveToken(null)}>
+            {t('maker.illust.token.remove')}
+          </button>
+        </div>
+      ) : (
+        <div className="token-row">
+          <input
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            aria-label={t('maker.illust.token.label')}
+            placeholder={t('maker.illust.token.placeholder')}
+            value={tokenDraft}
+            maxLength={200}
+            onChange={(e) => setTokenDraft(e.target.value)}
+          />
+          <button
+            type="button"
+            className="ghost"
+            disabled={!tokenDraft.trim()}
+            onClick={() => saveToken(tokenDraft)}
+          >
+            {t('maker.illust.token.save')}
+          </button>
+        </div>
+      )}
+      {tokenNote && (
+        <small className="hint" role="status">
+          {tokenNote}
+        </small>
+      )}
+    </details>
+  );
 
   // 사진 단계 진행 점: (받았으면) 도구 받기, 배경 지우기, 다듬기
   const photoStages: ProgressStage[] = [
@@ -366,7 +517,7 @@ export function MakerApp() {
   ];
 
   const steps: [Step[], string][] = [
-    [['pick', 'model', 'working'], t('maker.step.photo')],
+    [['pick', 'illust', 'model', 'working'], t('maker.step.photo')],
     [['edit'], t('maker.step.edit')],
     [['name', 'saving', 'done'], isPose ? t('maker.step.confirm') : t('maker.step.name')],
   ];
@@ -404,7 +555,50 @@ export function MakerApp() {
 
         {step === 'pick' && (
           <section className="pick">
-            <button type="button" className="drop" onClick={() => fileRef.current?.click()}>
+            {isMain && (
+              <div className="how">
+                <fieldset className="segmented" aria-label={t('maker.how.label')}>
+                  {(['photo', 'illust'] as const).map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      aria-pressed={how === k}
+                      className={how === k ? 'on' : ''}
+                      onClick={() => setHow(k)}
+                    >
+                      {t(`maker.how.${k}`)}
+                    </button>
+                  ))}
+                </fieldset>
+                {how === 'illust' && (
+                  <div className="wish illust-opts">
+                    <small className="hint">{t('maker.illust.hint')}</small>
+                    <AgePicker age={age} onAge={setAge} />
+                    <label className="wish-label" htmlFor="maker-illust-wish">
+                      {t('maker.illust.wish')} <small>{t('maker.wish.optional')}</small>
+                    </label>
+                    <div className="wish-box">
+                      <input
+                        id="maker-illust-wish"
+                        value={illustWish}
+                        maxLength={ILLUST_WISH_MAX}
+                        placeholder={t('maker.illust.wishPlaceholder')}
+                        onChange={(e) => setIllustWish(e.target.value)}
+                      />
+                      <span className="wish-count" aria-hidden="true">
+                        {t('maker.wish.count', { n: illustWish.length, max: ILLUST_WISH_MAX })}
+                      </span>
+                    </div>
+                    {tokenBox}
+                  </div>
+                )}
+              </div>
+            )}
+            <button
+              type="button"
+              className={`drop${isMain ? ' short' : ''}`}
+              onClick={() => fileRef.current?.click()}
+            >
               <span className="big">{t('maker.pick.title')}</span>
               <span>{t('maker.pick.how')}</span>
               <span className="hint">
@@ -427,7 +621,10 @@ export function MakerApp() {
                 e.target.value = '';
               }}
             />
-            <p className="privacy">{t('maker.pick.privacy')}</p>
+            {/* 일러스트를 고르면 사진이 밖으로 나간다고 분명히 (그 밖에는 사진이 이 컴퓨터를 떠나지 않는다) */}
+            <p className={`privacy${isMain && how === 'illust' ? ' out' : ''}`}>
+              {isMain && how === 'illust' ? t('maker.illust.privacy') : t('maker.pick.privacy')}
+            </p>
             {!isFood && (isPose ? info?.hasPose : info?.hasPhotoPet) && (
               <button
                 type="button"
@@ -439,6 +636,62 @@ export function MakerApp() {
               >
                 {isPose ? t('maker.pick.removePose') : t('maker.pick.resetPet')}
               </button>
+            )}
+          </section>
+        )}
+
+        {step === 'illust' && illust && (
+          <section className="illust">
+            {illust.busy ? (
+              <MakeProgress
+                task="illust"
+                title={t('maker.illust.working')}
+                startedAt={illust.at}
+                expectedMs={illustMs}
+                image={illust.thumb}
+                onStop={stopIllust}
+              />
+            ) : (
+              <>
+                {illust.image && <p className="illust-title">{t('maker.illust.preview')}</p>}
+                <div className="illust-pair">
+                  <figure className="before">
+                    <img src={illust.thumb} alt="" />
+                    <figcaption>{t('maker.illust.before')}</figcaption>
+                  </figure>
+                  {illust.image && (
+                    <figure className="after">
+                      <img src={illust.image} alt={t('maker.illust.after')} />
+                      <figcaption>
+                        {t('maker.illust.after')}, {t(`maker.illust.age.${illust.age}`)}
+                      </figcaption>
+                    </figure>
+                  )}
+                </div>
+                <AgePicker age={age} onAge={setAge} />
+                {illust.image && <p className="hint">{t('maker.illust.next')}</p>}
+                {!illust.image && <div className="how">{tokenBox}</div>}
+                <div className="actions wrap">
+                  <button type="button" className="ghost" onClick={() => setStep('pick')}>
+                    {t('maker.illust.otherPhoto')}
+                  </button>
+                  <button type="button" className="ghost" onClick={() => start(illust.file, { plain: true })}>
+                    {t('maker.illust.usePhoto')}
+                  </button>
+                  <button
+                    type="button"
+                    className={illust.image && illust.age === age ? 'ghost' : 'primary'}
+                    onClick={() => drawIllust(illust.photo, age, illustWish)}
+                  >
+                    {t('maker.illust.again')}
+                  </button>
+                  {illust.image && illust.age === age && (
+                    <button type="button" className="primary" onClick={acceptIllust}>
+                      {t('maker.illust.accept')}
+                    </button>
+                  )}
+                </div>
+              </>
             )}
           </section>
         )}
@@ -724,6 +977,33 @@ export function MakerApp() {
         )}
       </main>
     </div>
+  );
+}
+
+/** 나이 고르기 (아기, 청소년, 어른) */
+function AgePicker({ age, onAge }: { age: AgeStage; onAge: (a: AgeStage) => void }) {
+  return (
+    <>
+      <div className="gait-row">
+        <span className="wish-label" id="maker-age">
+          {t('maker.illust.age')}
+        </span>
+        <fieldset className="segmented" aria-labelledby="maker-age">
+          {AGE_STAGES.map((a) => (
+            <button
+              key={a}
+              type="button"
+              aria-pressed={age === a}
+              className={age === a ? 'on' : ''}
+              onClick={() => onAge(a)}
+            >
+              {t(`maker.illust.age.${a}`)}
+            </button>
+          ))}
+        </fieldset>
+      </div>
+      <small className="hint">{t(`maker.illust.ageHint.${age}`)}</small>
+    </>
   );
 }
 
@@ -1147,6 +1427,33 @@ function cutout(work: Work): string {
   og.imageSmoothingQuality = 'high';
   og.drawImage(full, box.x, box.y, box.width, box.height, 0, 0, out.width, out.height);
   return out.toDataURL('image/png');
+}
+
+/** 두 그림(data URL)을 작게 줄인 회색으로 견준다. 받은 그림이 보낸 사진 그대로면 true (illustrate.ts nearlySame) */
+async function sameAsPhoto(sent: string, got: string): Promise<boolean> {
+  try {
+    const [a, b] = await Promise.all([loadImage(sent), loadImage(got)]);
+    const gray = (img: HTMLImageElement) => {
+      const c = document.createElement('canvas');
+      c.width = COMPARE_SIDE;
+      c.height = COMPARE_SIDE;
+      const g = c.getContext('2d', { willReadFrequently: true });
+      if (!g) return undefined;
+      g.drawImage(img, 0, 0, COMPARE_SIDE, COMPARE_SIDE);
+      return toGray(g.getImageData(0, 0, COMPARE_SIDE, COMPARE_SIDE).data, COMPARE_SIDE, COMPARE_SIDE);
+    };
+    const ga = gray(a);
+    const gb = gray(b);
+    if (!ga || !gb) return false;
+    return nearlySame(
+      ga,
+      gb,
+      { w: a.naturalWidth, h: a.naturalHeight },
+      { w: b.naturalWidth, h: b.naturalHeight },
+    );
+  } catch {
+    return false;
+  }
 }
 
 /** data URL 그림을 연다 */

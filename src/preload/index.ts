@@ -271,6 +271,9 @@ if (kind === 'maker') {
     ensureDepth: () => ipcRenderer.invoke(MAKER.ensureDepth),
     shape3d: (png: string, wish?: string, gait?: string) =>
       ipcRenderer.invoke(MAKER.shape3d, png, wish, gait),
+    illustrate: (photo: string, age: string, wish?: string) =>
+      ipcRenderer.invoke(MAKER.illustrate, photo, age, wish),
+    setHfToken: (token: string | null) => ipcRenderer.invoke(MAKER.setHfToken, token),
     resetToDefault: () => ipcRenderer.invoke(MAKER.save, null, ''),
     cancel: () => ipcRenderer.send(MAKER.cancel),
     close: () => ipcRenderer.send(MAKER.close),

@@ -404,3 +404,29 @@ test('친구 펫 걸음새: 친구마다 따로, 틀린 값은 자동', () => {
   assert.equal(s.friends[1]?.gait, undefined);
   assert.equal('gait' in (s.friends[2] ?? {}), false);
 });
+
+test('AI 일러스트 나이 단계: 사진 펫에만, 보관함에도. 옛 설정은 없이 읽는다', () => {
+  const old = parseSettings({
+    petImage: 'pet-1.png',
+    petLibrary: [{ id: 'p-a', name: '콩', image: 'pet-2.png' }],
+  });
+  assert.equal(old.petAge, undefined);
+  assert.equal(old.petLibrary[0]?.age, undefined);
+  const s = parseSettings({
+    petImage: 'pet-1.png',
+    petAge: 'baby',
+    petLibrary: [
+      { id: 'p-a', name: '콩', image: 'pet-2.png', age: 'teen' },
+      { id: 'p-b', name: '팥', image: 'pet-3.png', age: 'ancient' },
+    ],
+  });
+  assert.equal(s.petAge, 'baby');
+  assert.equal(s.petLibrary[0]?.age, 'teen');
+  assert.equal(s.petLibrary[1]?.age, undefined);
+  assert.equal(parseSettings({ petAge: 'baby' }).petAge, undefined, '사진 펫이 없으면 나이도 없다');
+  assert.equal(parseSettings({ petImage: 'pet-1.png', petAge: 'giant' }).petAge, undefined);
+  assert.equal(applyPatch(s, { petAge: null }).petAge, undefined);
+  assert.equal(applyPatch(s, { petAge: 'adult' }).petAge, 'adult');
+  assert.equal(applyPatch(s, { petName: '두부' }).petAge, 'baby');
+  assert.equal(applyPatch(s, { petImage: null }).petAge, undefined, '기본 펫으로 가면 나이도 지운다');
+});

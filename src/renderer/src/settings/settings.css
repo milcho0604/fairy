@@ -607,6 +607,19 @@ small.warn {
   font-size: 11px;
 }
 
+/* AI 일러스트 나이 단계 표시 (아기, 청소년, 어른) */
+.pet-card .pet-age {
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--ink);
+}
+
+.pet-card .pet-age:first-child {
+  margin-left: 0;
+}
+
 .pet-card.saved {
   /* 저장 알림 .saved(오른쪽 끝, 초록 글씨)와 이름이 겹쳐 카드가 줄고 밀리던 것을 되돌린다 */
   margin-left: 0;

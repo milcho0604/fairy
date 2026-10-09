@@ -5,6 +5,7 @@ import type { Gaze } from '../../shared/gaze.ts';
 import type { Point } from '../../shared/geometry.ts';
 import { GestureTracker, RubTracker } from '../../shared/gesture.ts';
 import { t } from '../../shared/i18n/index.ts';
+import { ageScale } from '../../shared/illustrate.ts';
 import type { PetImages } from '../../shared/ipc.ts';
 import {
   canMagnify,
@@ -137,6 +138,7 @@ function frame() {
     activity: activityPose(now) ?? (backTurned() ? { type: 'sit' as const } : undefined),
     hungry: inputs.hungry,
     photo: img instanceof AnimatedImage ? img.frameAt(now) : img,
+    photoScale,
     kind: petKind,
     sulk: inputs.sulkLevel,
     pout: inputs.pout,
@@ -412,6 +414,8 @@ const TRICK_MS = { wave: 1800, dance: 1400 } as const;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 reducedMotion.addEventListener('change', () => requestFrame());
 let imageLoad = 0;
+/** AI 일러스트 나이 배율 (아기, 청소년은 작게. 사용자 크기 설정 위에 곱한다, illustrate.ts) */
+let photoScale = 1;
 bridge.onImage(async (images: PetImages) => {
   const mine = ++imageLoad;
   const [main, depthImg, ...rest] = await Promise.all([
@@ -426,6 +430,7 @@ bridge.onImage(async (images: PetImages) => {
   photoModel = images.model ?? undefined;
   photoDepth = depthImg instanceof HTMLImageElement ? depthImg : undefined;
   poses = { happy: rest[0], sleepy: rest[1], hungry: rest[2] };
+  photoScale = ageScale(images.age);
   requestFrame();
 });
 
@@ -507,6 +512,8 @@ function current3d(): Pet3D | 'loading' | undefined {
     broken3d = true;
     return undefined;
   }
+  // 나이 배율은 사진 펫에만 (기본 펫 설계도는 그대로)
+  model3d.setSizeScale(photo ? photoScale : 1);
   const want = bp ?? relief;
   // 모습을 바꾸면 털, 테두리, 눈을 다시 붙여야 해서 다시 조립한다
   if (model3d.setStyle(style3d)) model3dOf = undefined;

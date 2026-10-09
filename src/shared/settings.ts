@@ -4,6 +4,7 @@ import type { ChatterLevel } from './chatter.ts';
 import { type FocusLength, isFocusLength } from './focus.ts';
 import { type LangPref, t } from './i18n/index.ts';
 import { cleanIcsUrl } from './ics.ts';
+import { type AgeStage, isAgeStage } from './illustrate.ts';
 import { GAITS, type Gait } from './pet3d/blueprint.ts';
 import { cleanWish } from './pet3d/prompt.ts';
 import { DEFAULT_ROUTINE, parseRoutine, type Routine } from './routine.ts';
@@ -52,6 +53,8 @@ export interface Settings {
   petModel?: string;
   /** 사진 펫의 2.5D 깊이 그림 (6단계). pets/ 안 depth-*.png. 있으면 입체로 보기일 때 사진을 입체 판으로 */
   petDepth?: string;
+  /** AI 일러스트로 다시 그린 사진 펫의 나이 단계 (2026-10-09). 화면 크기 배율과 보관함 표시에 쓴다. 사진 그대로면 없음 */
+  petAge?: AgeStage;
   /** 상태별 포즈 그림 (v1). 기쁨, 졸림, 배고픔. pets/ 안 파일 이름 */
   petPoses: Partial<Record<PoseKind, string>>;
   /** 삐짐 게이지를 세지 않는 요일 (0 일 ~ 6 토). 기본 토, 일. 만나는 시간을 켜면 쓰지 않는다 (restDaysOf) */
@@ -127,6 +130,8 @@ export interface SavedPet {
   image: string;
   model?: string;
   depth?: string;
+  /** AI 일러스트 나이 단계 (없으면 사진 그대로 만든 펫) */
+  age?: AgeStage;
   poses: Partial<Record<PoseKind, string>>;
 }
 
@@ -239,8 +244,11 @@ export const POSE_KINDS: readonly { id: PoseKind; readonly label: string }[] = [
 const PET_FILE = /^(pet|pose)-[\w-]+\.(png|gif|webp)$/;
 
 /** 바꿀 값만. 사진 펫은 null 이면 지운다 (기본 펫으로). */
-export type SettingsPatch = Partial<Omit<Settings, 'petImage' | 'petPoses' | 'petModel' | 'petDepth'>> & {
+export type SettingsPatch = Partial<
+  Omit<Settings, 'petImage' | 'petPoses' | 'petModel' | 'petDepth' | 'petAge'>
+> & {
   petImage?: string | null;
+  petAge?: AgeStage | null;
   petModel?: string | null;
   petDepth?: string | null;
   petPoses?: Partial<Record<PoseKind, string | null>>;
@@ -389,6 +397,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     sysMonitor: bool(r.sysMonitor, base.sysMonitor),
     ...petModelOf(r.petModel, base.petModel),
     ...petDepthOf(r.petDepth, base.petDepth),
+    ...petAgeOf(r, base),
     petPoses: posesOf(r.petPoses, base.petPoses),
     restDays: Array.isArray(r.restDays)
       ? [...new Set(r.restDays.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 6))].sort()
@@ -493,6 +502,14 @@ function petImageOf(v: unknown, current: string | undefined): { petImage?: strin
   return current ? { petImage: current } : {};
 }
 
+/** 나이 단계: 사진 펫이 있을 때만. null 이면 지운다 */
+function petAgeOf(r: Record<string, unknown>, base: Settings): { petAge?: AgeStage } {
+  if (!petImageOf(r.petImage, base.petImage).petImage) return {};
+  if (r.petAge === null) return {};
+  if (isAgeStage(r.petAge)) return { petAge: r.petAge };
+  return base.petAge ? { petAge: base.petAge } : {};
+}
+
 const MODEL_FILE = /^model-[\w-]+\.json$/;
 const DEPTH_FILE = /^depth-[\w-]+\.png$/;
 function petDepthOf(v: unknown, current: string | undefined): { petDepth?: string } {
@@ -525,6 +542,7 @@ function libraryOf(list: unknown[]): SavedPet[] {
       image,
       ...(model ? { model } : {}),
       ...(depth ? { depth } : {}),
+      ...(isAgeStage(f.age) ? { age: f.age } : {}),
       poses: posesOf(f.poses, {}),
     });
     if (out.length >= LIBRARY_MAX) break;

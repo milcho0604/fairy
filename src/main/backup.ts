@@ -275,6 +275,8 @@ export async function importPet(
       petModel: pet.model ? keep(modelToFile(pet.model)) : null,
       petDepth: pet.depth ? keep(dataUrlToFile(pet.depth, 'depth')) : null,
       petPoses: poses,
+      // 펫 파일에는 나이 단계가 없다 (옛 펫 나이가 남지 않게)
+      petAge: null,
     };
     // 지금 사진 펫은 보관함으로 (6단계)
     library.beforeNewPhoto();

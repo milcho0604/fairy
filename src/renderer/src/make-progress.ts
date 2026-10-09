@@ -106,7 +106,8 @@ export function expectedMs(list: readonly number[], fallbackMs: number): number 
 }
 
 /** 일마다 기본 예상 시간 (기록이 없을 때). AI 설계도는 실제 기록 19초, 33초, 37초(2026-10-08) */
-export const FALLBACK_MS = { figure: 35_000, cutout: 6_000, relief: 4_000 } as const;
+// AI 일러스트(Hugging Face 무료 Space)는 실제 1분쯤 (2026-10-09)
+export const FALLBACK_MS = { figure: 35_000, cutout: 6_000, relief: 4_000, illust: 70_000 } as const;
 export type TimedTask = keyof typeof FALLBACK_MS;
 
 /** 브라우저 저장소 열쇠 (펫 만들기 창과 설정 창이 같은 출처라 같이 쓴다) */

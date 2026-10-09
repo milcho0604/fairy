@@ -52,6 +52,7 @@ function archiveCurrent(skip?: string): { list: SavedPet[]; dropped: SavedPet[] 
     image: s.petImage,
     ...(s.petModel ? { model: s.petModel } : {}),
     ...(s.petDepth ? { depth: s.petDepth } : {}),
+    ...(s.petAge ? { age: s.petAge } : {}),
     poses: { ...s.petPoses },
   };
   const next = [saved, ...rest];
@@ -81,6 +82,7 @@ export const library = {
       petImage: null,
       petModel: null,
       petDepth: null,
+      petAge: null,
       petPoses: NO_POSES,
     });
     removeUnused([...dropped.flatMap(files), ...old, ...oldPoses]);
@@ -97,6 +99,7 @@ export const library = {
       petImage: pick.image,
       petModel: pick.model ?? null,
       petDepth: pick.depth ?? null,
+      petAge: pick.age ?? null,
       petPoses: {
         happy: pick.poses.happy ?? null,
         sleepy: pick.poses.sleepy ?? null,
@@ -126,14 +129,21 @@ export const library = {
 
   /** 설정 창에 보일 목록 (그림은 작게 줄인 data URL, 입체면 설계도나 깊이 그림도) */
   view(): SavedPetView[] {
-    return settings.get().petLibrary.map((p) => ({ id: p.id, name: p.name, ...lookView(p) }));
+    return settings
+      .get()
+      .petLibrary.map((p) => ({ id: p.id, name: p.name, ...lookView(p), ...(p.age ? { age: p.age } : {}) }));
   },
 
   /** 설정 창 지금 펫 카드. 기본 펫이면 null */
   current(): PetLookView | null {
     const s = settings.get();
     if (!s.petImage) return null;
-    return lookView({ image: s.petImage, model: s.petModel ?? undefined, depth: s.petDepth ?? undefined });
+    const view = lookView({
+      image: s.petImage,
+      model: s.petModel ?? undefined,
+      depth: s.petDepth ?? undefined,
+    });
+    return s.petAge ? { ...view, age: s.petAge } : view;
   },
 };
 

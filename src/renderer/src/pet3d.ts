@@ -202,6 +202,10 @@ export class Pet3D implements Model3D {
     | undefined;
   /** 쉬는 자세가 화면(NDC)에서 차지하는 자리로 정한 2D 그림 크기와 위치 */
   private fit = { d: 160, cx: 0, bottom: -1, halfW: 0.5 };
+  /** 맞춘 크기 (fit.d 는 여기에 나이 배율을 곱한 값) */
+  private fitD = 160;
+  /** 나이 배율 (AI 일러스트 펫, shared/illustrate.ts ageScale). 발은 바닥(GROUND)에 그대로 */
+  private sizeK = 1;
   private px = 0;
   private lost = false;
   private readonly materials = new Map<string, Material>();
@@ -1563,6 +1567,17 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     return { eyes, mouth, beakLower, style: f.mouth, eyeLook: f.eyes ?? 'round', groups, mouthAt };
   }
 
+  /**
+   * 크기 배율 (AI 일러스트 아기, 청소년 펫을 작게). 그리기, 머리 꼭대기, 눈 자리가 모두 fit.d 를 따라서
+   * 발은 바닥에 그대로 있고 말풍선과 누르기(불투명한 곳)도 맞는다. 같으면 아무것도 안 한다
+   */
+  setSizeScale(k: number): void {
+    const next = Number.isFinite(k) && k > 0 ? k : 1;
+    if (next === this.sizeK) return;
+    this.sizeK = next;
+    this.fit.d = this.fitD * next;
+  }
+
   /** 쉬는 자세가 2D 캔버스 안 바닥에 서도록 카메라와 옮길 자리를 정한다 */
   private frameCamera() {
     this.root.rotation.set(0, 0, 0);
@@ -1593,7 +1608,8 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
           maxY = Math.max(maxY, p.y);
         }
     const d = Math.min(FIT_H / ((maxY - minY) / 2), FIT_W / ((maxX - minX) / 2));
-    this.fit = { d, cx: (minX + maxX) / 2, bottom: minY, halfW: (maxX - minX) / 2 };
+    this.fitD = d;
+    this.fit = { d: d * this.sizeK, cx: (minX + maxX) / 2, bottom: minY, halfW: (maxX - minX) / 2 };
     // 숫자가 깨지면(빈 몸 등) 그리지 않고 2D 로 돌아간다
     if (!Object.values(this.fit).every(Number.isFinite) || d <= 0) this.ready = false;
   }

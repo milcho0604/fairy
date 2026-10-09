@@ -17,6 +17,7 @@ import type { Point } from './geometry.ts';
 import type { GestureEvent } from './gesture.ts';
 import type { HouseStyle } from './house-art.ts';
 import type { HouseSprites } from './house-room.ts';
+import type { AgeStage } from './illustrate.ts';
 import type { LookMotion } from './look-motion.ts';
 import type { MiniGame } from './minigames.ts';
 import type { MoveAsk } from './moves.ts';
@@ -268,6 +269,8 @@ export interface PetLookView {
   model?: Blueprint;
   /** 깊이 그림 (작게 줄인 회색 PNG data URL) */
   depth?: string;
+  /** AI 일러스트 나이 단계 (카드에 작은 표시) */
+  age?: AgeStage;
 }
 
 export interface SavedPetView extends PetLookView {
@@ -488,6 +491,8 @@ export interface PetImages {
   /** 2.5D 깊이 그림 (6단계, 회색 PNG data URL). 있으면 사진을 입체 판으로 */
   depth: string | null;
   poses: Partial<Record<PoseKind, string>>;
+  /** AI 일러스트 나이 단계 (아기, 청소년은 작게 그린다, illustrate.ts ageScale). 없으면 그대로 */
+  age?: AgeStage;
 }
 
 export const MAKER = {
@@ -503,7 +508,11 @@ export const MAKER = {
   ensureDepth: 'maker:ensure-depth',
   /** 사진을 볼 AI 가 있는지 (CLI 확인이 느릴 수 있어 info 와 따로) */
   visionAi: 'maker:vision-ai',
-  /** 받기(모델), 입체 만들기(AI)를 멈춘다 (진행 표시의 그만두기) */
+  /** 사진을 Hugging Face 무료 Space 에 보내 AI 일러스트로 다시 그린다 (사용자가 고를 때만) */
+  illustrate: 'maker:illustrate',
+  /** 무료 Hugging Face 토큰 넣기, 지우기 (메인에만 둔다. 창은 있는지만 안다) */
+  setHfToken: 'maker:set-hf-token',
+  /** 받기(모델), 입체 만들기(AI), 일러스트 그리기를 멈춘다 (진행 표시의 그만두기) */
   cancel: 'maker:cancel',
   close: 'maker:close',
 } as const;
@@ -523,6 +532,8 @@ export interface PetLook {
   depth?: string;
   /** 설계도를 만든 요청사항 (걸음새에 맞게 다시 만들 때 같은 글로) */
   wish?: string;
+  /** AI 일러스트로 다시 그린 펫의 나이 단계 */
+  age?: AgeStage;
 }
 
 /** 펫 만들기 창이 만드는 것: 펫 본 그림, 또는 상태별 포즈 (v1) */
@@ -546,6 +557,8 @@ export interface MakerInfo {
   /** 사진을 볼 수 있는 AI(claude, codex)가 있는지. 처음엔 false, visionAi() 로 따로 받는다 */
   visionAi: boolean;
   depth: { ready: boolean; mb: number; size: number; mean: readonly number[]; std: readonly number[] };
+  /** 무료 Hugging Face 토큰을 넣었는지 (토큰 글은 창에 주지 않는다) */
+  hfToken: boolean;
 }
 
 export interface MakerBridge {
@@ -566,6 +579,17 @@ export interface MakerBridge {
     /** 고른 걸음새. 없으면 자동(AI 가 사진을 보고 정한다) */
     gait?: Gait,
   ): Promise<{ ok: true; model: Blueprint } | { ok: false; error: string; noAi?: boolean }>;
+  /**
+   * 사진(JPEG data URL)을 Hugging Face 무료 Space 로 보내 고른 나이의 일러스트로 받는다 (1분쯤).
+   * 성공이면 그림 data URL (webp, png, jpeg). 그만두기와 창 닫기로 멈춘다
+   */
+  illustrate(
+    photo: string,
+    age: AgeStage,
+    wish?: string,
+  ): Promise<{ ok: true; image: string } | { ok: false; error: string; kind: string }>;
+  /** 토큰 넣기 (null 이면 지우기). 결과는 지금 토큰이 있는지 */
+  setHfToken(token: string | null): Promise<{ ok: boolean; has: boolean; error?: string }>;
   /** 기본 펫으로 돌아가기 */
   resetToDefault(): Promise<void>;
   /** 받는 중인 모델과 만드는 중인 입체를 멈춘다. 멈춘 일은 실패로 끝난다 */
