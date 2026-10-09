@@ -1,0 +1,92 @@
+[
+  {
+    "space": "black-forest-labs/FLUX.1-Kontext-Dev",
+    "endpoints": {
+      "/infer": [
+        [
+          "input_image",
+          "Image"
+        ],
+        [
+          "prompt",
+          "Textbox"
+        ],
+        [
+          "seed",
+          "Slider"
+        ],
+        [
+          "randomize_seed",
+          "Checkbox"
+        ],
+        [
+          "guidance_scale",
+          "Slider"
+        ],
+        [
+          "steps",
+          "Slider"
+        ]
+      ],
+      "/lambda": [
+        [
+          "image",
+          "Image"
+        ]
+      ]
+    },
+    "runs": [
+      {
+        "job": "poodle-baby",
+        "endpoint": "/infer",
+        "result": "('/tmp/gradio/4cbe8ae8638ee6d7b9d611aaa78777d16a8a4650998f10f368c1479a74596543/image.webp', 784675709)",
+        "image": "/tmp/gradio/4cbe8ae8638ee6d7b9d611aaa78777d16a8a4650998f10f368c1479a74596543/image.webp"
+      },
+      {
+        "job": "poodle-teen",
+        "endpoint": "/infer",
+        "result": "('/tmp/gradio/f38614fe4562dd5f65daaf2d23d4b3e32e9cda33e3409be18aa457c5c5a55978/image.webp', 708001963)",
+        "image": "/tmp/gradio/f38614fe4562dd5f65daaf2d23d4b3e32e9cda33e3409be18aa457c5c5a55978/image.webp"
+      },
+      {
+        "job": "poodle-adult",
+        "endpoint": "/infer",
+        "result": "('/tmp/gradio/f88359dd4a33d7e2acc3f39b5ef03d6331bde35f2031dcd39689007fb74f3cd6/image.webp', 1231513761)",
+        "image": "/tmp/gradio/f88359dd4a33d7e2acc3f39b5ef03d6331bde35f2031dcd39689007fb74f3cd6/image.webp"
+      },
+      {
+        "job": "cat-baby",
+        "endpoint": "/infer",
+        "error": "get_result\n    raise self._exception\n  File \"/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/concurrent/futures/thread.py\", line 59, in run\n    result = self.fn(*self.args, **self.kwargs)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/gradio_client/client.py\", line 1233, in _inner\n    predictions = _predict(*data, **kwargs)\n                  ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/gradio_client/client.py\", line 1356, in _predict\n    raise AppError(message=message, **result)\ngradio_client.exceptions.AppError: You have exceeded your ZeroGPU runs limit. Authenticate with a Hugging Face token for more quota - https://huggingface.co/settings/tokens\n"
+      },
+      {
+        "job": "cat-baby",
+        "endpoint": "/lambda",
+        "result": "/tmp/gradio/f29f36e1821cc816f42cc19552685eeb86a303e3b708439cbdef5ee0bc142313/image.webp",
+        "image": "/tmp/gradio/f29f36e1821cc816f42cc19552685eeb86a303e3b708439cbdef5ee0bc142313/image.webp"
+      },
+      {
+        "job": "cat-teen",
+        "endpoint": "/infer",
+        "error": "get_result\n    raise self._exception\n  File \"/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/concurrent/futures/thread.py\", line 59, in run\n    result = self.fn(*self.args, **self.kwargs)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/gradio_client/client.py\", line 1233, in _inner\n    predictions = _predict(*data, **kwargs)\n                  ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/gradio_client/client.py\", line 1356, in _predict\n    raise AppError(message=message, **result)\ngradio_client.exceptions.AppError: You have exceeded your ZeroGPU runs limit. Authenticate with a Hugging Face token for more quota - https://huggingface.co/settings/tokens\n"
+      },
+      {
+        "job": "cat-teen",
+        "endpoint": "/lambda",
+        "result": "/tmp/gradio/f29f36e1821cc816f42cc19552685eeb86a303e3b708439cbdef5ee0bc142313/image.webp",
+        "image": "/tmp/gradio/f29f36e1821cc816f42cc19552685eeb86a303e3b708439cbdef5ee0bc142313/image.webp"
+      },
+      {
+        "job": "cat-adult",
+        "endpoint": "/infer",
+        "error": "get_result\n    raise self._exception\n  File \"/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/concurrent/futures/thread.py\", line 59, in run\n    result = self.fn(*self.args, **self.kwargs)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/gradio_client/client.py\", line 1233, in _inner\n    predictions = _predict(*data, **kwargs)\n                  ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/gradio_client/client.py\", line 1356, in _predict\n    raise AppError(message=message, **result)\ngradio_client.exceptions.AppError: You have exceeded your ZeroGPU runs limit. Authenticate with a Hugging Face token for more quota - https://huggingface.co/settings/tokens\n"
+      },
+      {
+        "job": "cat-adult",
+        "endpoint": "/lambda",
+        "result": "/tmp/gradio/f29f36e1821cc816f42cc19552685eeb86a303e3b708439cbdef5ee0bc142313/image.webp",
+        "image": "/tmp/gradio/f29f36e1821cc816f42cc19552685eeb86a303e3b708439cbdef5ee0bc142313/image.webp"
+      }
+    ]
+  }
+]
