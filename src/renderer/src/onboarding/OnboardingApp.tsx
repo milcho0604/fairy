@@ -6,11 +6,13 @@ import { cleanPetName, PET_KINDS, PET_NAME_MAX } from '../../../shared/settings.
 import { acceleratorLabel } from '../../../shared/shortcut.ts';
 import { PetFace } from '../PetFace.tsx';
 import { PetNameInput } from '../PetNameInput.tsx';
+import { PetShot } from '../PetShot.tsx';
+import { RoutinePicker } from '../RoutinePicker.tsx';
 
 const bridge = window.jjakkungOnboard;
-const PAGES = 3;
+const PAGES = 4;
 
-/** 첫 실행 안내 (v1): 펫 정하기, 같이 보기 권한, 알아 두면 좋은 것 */
+/** 첫 실행 안내 (v1): 펫 정하기, 만나는 시간, 같이 보기 권한, 알아 두면 좋은 것 */
 export function OnboardingApp() {
   const [snap, setSnap] = useState<OnboardSnapshot>();
   const [page, setPage] = useState(0);
@@ -19,6 +21,8 @@ export function OnboardingApp() {
   const typed = useRef(false);
   /** 이름 칸 아래 한 줄 (비었을 때, 글자 수가 넘쳤을 때) */
   const [nameNote, setNameNote] = useState('');
+  /** 만나는 시간 칸 아래 한 줄 (시작과 끝이 같을 때) */
+  const [routineNote, setRoutineNote] = useState('');
   /** 설치된 AI 확인은 몇 초 걸릴 수 있어 따로 받는다. 오기 전에는 원래 안내를 보인다 */
   const [ai, setAi] = useState<OnboardAi>();
 
@@ -73,6 +77,12 @@ export function OnboardingApp() {
     setSnap((v) => v && { ...v, settings: next });
   };
 
+  const setRoutine = async (routine: typeof s.routine) => {
+    setRoutineNote('');
+    const next = await bridge.set({ routine });
+    setSnap((v) => v && { ...v, settings: next });
+  };
+
   return (
     <div className="onboard">
       <header>
@@ -87,7 +97,18 @@ export function OnboardingApp() {
         {page === 0 && (
           <section>
             <div className="hero">
-              <PetFace />
+              {/* 기본 펫은 화면 위 펫, 설정 썸네일과 같은 몸 전체 그림 (팔다리 포함). 사진 펫은 얼굴 그림 */}
+              {s.petImage ? (
+                <PetFace />
+              ) : (
+                <PetShot
+                  className="face body"
+                  kind={s.petKind}
+                  use3d={s.pet3d}
+                  style={s.petStyle}
+                  side={112}
+                />
+              )}
             </div>
             <h1>{t('onboarding.hello.title')}</h1>
             <p className="lead">{t('onboarding.hello.lead')}</p>
@@ -142,6 +163,36 @@ export function OnboardingApp() {
 
         {page === 1 && (
           <section>
+            <h1>{t('routine.onb.title', { name: petName })}</h1>
+            <p className="lead">{t('routine.onb.lead')}</p>
+            <fieldset className="pick-two" aria-label={t('routine.set.title')}>
+              {([true, false] as const).map((on) => (
+                <button
+                  key={String(on)}
+                  type="button"
+                  aria-pressed={s.routine.on === on}
+                  className={s.routine.on === on ? 'on' : ''}
+                  onClick={() => setRoutine({ ...s.routine, on })}
+                >
+                  <strong>{on ? t('routine.onb.set') : t('routine.onb.free')}</strong>
+                  <small>{on ? t('routine.onb.setHint') : t('routine.onb.freeHint')}</small>
+                </button>
+              ))}
+            </fieldset>
+            {s.routine.on && (
+              <RoutinePicker routine={s.routine} onChange={setRoutine} onError={setRoutineNote} />
+            )}
+            {routineNote && (
+              <small className="routine-note" role="status">
+                {routineNote}
+              </small>
+            )}
+            <p className="hint">{t('routine.onb.later')}</p>
+          </section>
+        )}
+
+        {page === 2 && (
+          <section>
             <h1>{t('onboarding.look.title')}</h1>
             <p className="lead">{t('onboarding.look.lead', { name: petName })}</p>
             {mac ? (
@@ -172,7 +223,7 @@ export function OnboardingApp() {
           </section>
         )}
 
-        {page === 2 && (
+        {page === 3 && (
           <section>
             <h1>{t('onboarding.tips.title')}</h1>
             <dl className="tips">

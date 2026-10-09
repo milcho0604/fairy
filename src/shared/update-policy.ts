@@ -2,7 +2,7 @@
 import { isNewer, parseVersion, readRelease } from './version.ts';
 
 /**
- * 릴리스를 올리는 레포. 앱의 새 버전 확인(GitHub API)과 윈도우 자동 설치(electron-updater)가 같이 쓴다.
+ * 릴리스를 올리는 레포. 앱의 새 버전 확인(GitHub API)과 자동 설치(electron-updater)가 같이 쓴다.
  * D8(공개 배포)에서 레포를 바꾸면 여기와 electron-builder.yml 의 publish 를 같이 바꾼다
  * (둘이 다르면 update-policy.test.ts 가 깨진다). 토큰은 넣지 않는다. 공개 레포만 읽을 수 있다.
  */
@@ -11,10 +11,12 @@ export const RELEASE_REPO = { owner: 'milcho0604', repo: 'jjakkung' } as const;
 export const RELEASES_API = `https://api.github.com/repos/${RELEASE_REPO.owner}/${RELEASE_REPO.repo}/releases/latest`;
 
 /**
- * 받아서 끝낼 때 스스로 설치하는 운영체제. 맥은 개발자 서명(D4) 전이라 넣지 않는다
- * (서명 안 된 앱은 맥 자동 업데이트가 거절한다). 서명한 뒤 'darwin' 을 더하고 맥 target 에 zip 을 더한다.
+ * 스스로 받아 설치하는 운영체제. 윈도우는 받아 두고 끝낼 때도 설치한다.
+ * 맥(Squirrel.Mac)은 새 앱의 서명이 지금 앱의 서명 조건(앱 ID + 자체 인증서, scripts/mac-sign.mjs)을
+ * 만족해야 받아들인다. 늘 같은 인증서로 서명하므로 된다(2026-10-09 실험: 같은 인증서는 설치, 임시 서명은 거절).
+ * 맥은 "다시 켜서 업데이트"를 누를 때만 설치한다 (main/update.ts).
  */
-export const AUTO_INSTALL_PLATFORMS: readonly string[] = ['win32'];
+export const AUTO_INSTALL_PLATFORMS: readonly string[] = ['win32', 'darwin'];
 
 export function canAutoInstall(platform: string, packaged: boolean): boolean {
   return packaged && AUTO_INSTALL_PLATFORMS.includes(platform);

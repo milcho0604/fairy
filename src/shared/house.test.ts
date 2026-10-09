@@ -3,6 +3,8 @@ import { test } from 'node:test';
 import {
   defaultHouseRect,
   doorStandX,
+  houseChange,
+  houseDoorSprite,
   houseHit,
   houseSize,
   parseHouseSpot,
@@ -120,12 +122,39 @@ test('집 크기가 달라도 같은 그림 자리를 본다', () => {
   assert.ok(!houseHit('wood', 1, 104, { x: 100, y: 10 }));
 });
 
-test('펫은 집 오른쪽 문간에, 오른쪽 끝이면 왼쪽에 선다', () => {
+test('펫은 집 오른쪽 옆에 서서 집을 가리지 않고, 오른쪽 끝이면 왼쪽 옆에 선다', () => {
   const house = { x: 100, y: 960, width: 120, height: 120 };
-  assert.equal(doorStandX(house, main, 160), 200);
+  assert.equal(doorStandX(house, main, 160), 268);
+  // 그려진 몸(펫 칸의 0.76)이 집에 겹치는 것은 펫 칸의 0.1 이하
+  for (const size of [104, 120, 136, 148, 160]) {
+    const h = { x: 100, y: 960, width: size, height: size };
+    for (const pet of [96, 160, 240]) {
+      const bodyLeft = doorStandX(h, main, pet) - pet * 0.38;
+      assert.ok(h.x + h.width - bodyLeft <= pet * 0.1, `${size} ${pet}`);
+    }
+  }
   const atEdge = { x: 1800, y: 960, width: 120, height: 120 };
-  assert.equal(doorStandX(atEdge, main, 160), 1820);
+  assert.equal(doorStandX(atEdge, main, 160), 1752);
   // 아주 좁은 화면이면 왼쪽 끝 안으로
   const narrow = { x: 0, y: 0, width: 150, height: 600 };
   assert.equal(doorStandX({ x: 20, y: 480, width: 120, height: 120 }, narrow, 160), 80);
+});
+
+test('집 창 맞추기: 0 단계면 없애고, 같은 그림이면 자리만, 단계나 모양이 바뀌면 새로', () => {
+  const shown = { alive: true, level: 2, style: 'wood' as const };
+  assert.equal(houseChange(shown, { level: 0, style: 'wood' }), 'remove');
+  assert.equal(houseChange(shown, { level: 2, style: 'wood' }), 'place');
+  assert.equal(houseChange(shown, { level: 3, style: 'wood' }), 'rebuild');
+  assert.equal(houseChange(shown, { level: 2, style: 'castle' }), 'rebuild');
+  assert.equal(houseChange({ ...shown, alive: false }, { level: 2, style: 'wood' }), 'rebuild');
+});
+
+test('문간 펫 그림 자리는 보이는 집의 모양과 단계를 따른다', () => {
+  const at = { x: 0, y: 0, width: 160, height: 160 };
+  const a = houseDoorSprite(at, 'wood', 1);
+  assert.notDeepEqual(houseDoorSprite(at, 'wood', 5), a);
+  assert.notDeepEqual(houseDoorSprite(at, 'igloo', 1), a);
+  // 집 창 크기에 맞춰 늘어난다
+  const big = houseDoorSprite({ x: 0, y: 0, width: 240, height: 240 }, 'wood', 1);
+  assert.ok(Math.abs(big.width - a.width * 1.5) <= 1);
 });

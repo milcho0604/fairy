@@ -51,3 +51,28 @@ test('받아들이고 30분 안에 안 쉬면 보상 없음', () => {
   assert.equal(c.tick(41 * MIN, REST.breakSec + 1, 'normal'), undefined);
   assert.equal(c.tick(42 * MIN, 1, 'normal'), undefined);
 });
+
+test('연속 작업 분(기운의 피로)은 권유를 띄워도 이어 세고, 5분 넘게 쉬거나 권유대로 쉬면 0', () => {
+  const c = new RestCoach();
+  run(c, 0, 130);
+  // 첫 틱은 기준만 잡아 130 틱이면 129분
+  assert.equal(c.workedMin, 9); // 권유(121번째 틱)에서 0 으로
+  assert.equal(c.streakMin, 129);
+  c.tick(131 * MIN, REST.idleResetSec, 'normal');
+  assert.equal(c.streakMin, 0);
+  const d = new RestCoach();
+  run(d, 0, 100);
+  d.accept(100 * MIN);
+  d.tick(104 * MIN, REST.breakSec + 5, 'normal');
+  assert.equal(d.tick(105 * MIN, 3, 'normal'), 'rested');
+  assert.equal(d.streakMin, 0);
+});
+
+test('시계를 뒤로 돌려도 일한 시간이 줄지 않는다', () => {
+  const c = new RestCoach();
+  run(c, 0, 60);
+  c.tick(10 * MIN, 0, 'normal');
+  assert.equal(c.streakMin, 59);
+  c.tick(11 * MIN, 0, 'normal');
+  assert.equal(c.streakMin, 60);
+});

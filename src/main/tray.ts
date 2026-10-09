@@ -19,7 +19,7 @@ export interface TrayActions {
   reloadPet(): void;
   /** 컴퓨터 상태 줄들 (system-monitor.ts) */
   stats(): MenuItemConstructorOptions[];
-  /** 메뉴 막대에 CPU 와 달리는 콩이 보이기 (설정 sysMonitor) */
+  /** 메뉴 막대(윈도우는 알림 영역)에 CPU 와 달리는 펫 보이기 (설정 sysMonitor) */
   sysMonitorOn(): boolean;
   setSysMonitor(on: boolean): void;
 }
@@ -61,7 +61,7 @@ export function createTray(petName: () => string, actions: TrayActions): Tray {
           ...actions.stats(),
           { type: 'separator' },
           {
-            label: t('tray.stats.show'),
+            label: t('tray.stats.show', { mac: process.platform === 'darwin' }),
             type: 'checkbox',
             checked: actions.sysMonitorOn(),
             click: (item) => actions.setSysMonitor(item.checked),

@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { houseLayout } from './house-art.ts';
 import {
-  DOOR_MIN,
   doorFrame,
   doorPoint,
   nextRest,
+  OUT_MS,
   type RestEvent,
   type RestPhase,
   restBackKey,
@@ -77,25 +77,31 @@ test('문 자리: 집 그림 문 가운데, 문턱. 크기가 바뀌어도 같�
   });
 });
 
-test('문 드나들기: 처음은 문간 그대로, 끝은 문턱에 작게, 늘 정사각형', () => {
+test('문 드나들기: 처음은 문간 그대로, 끝은 문 안 그림 자리, 늘 정사각형, 바닥을 따라 걷는다', () => {
   const from = { x: 200, y: 600, width: 160, height: 160 };
-  const door = { x: 150, y: 750 };
-  assert.deepEqual(doorFrame(from, door, 0), from);
-  const end = doorFrame(from, door, 1);
-  assert.equal(end.width, Math.round(160 * DOOR_MIN));
-  assert.equal(end.height, end.width);
-  assert.ok(Math.abs(end.x + end.width / 2 - door.x) <= 1, '가운데가 문');
-  assert.equal(end.y + end.height, door.y, '아래가 문턱');
+  const end = { x: 130, y: 714, width: 40, height: 40 };
+  assert.deepEqual(doorFrame(from, end, 0), from);
+  assert.deepEqual(doorFrame(from, end, 1), end);
   let last = Infinity;
+  let lastX = Infinity;
   for (let u = 0; u <= 1.0001; u += 0.05) {
-    const f = doorFrame(from, door, u);
+    const f = doorFrame(from, end, u);
     assert.equal(f.width, f.height);
     assert.ok(f.width <= last, '작아지기만 한다');
+    assert.ok(f.x + f.width / 2 <= lastX + 0.5, '문 쪽으로만 간다');
+    // 아래 끝은 문간 바닥(760)에서 문 안 그림 아래(754)로 곧게 (뛰지 않는다)
+    const bottom = f.y + f.height;
+    assert.ok(bottom <= 761 && bottom >= 753, `바닥 ${bottom}`);
     last = f.width;
+    lastX = f.x + f.width / 2;
   }
   // 범위 밖 u 는 끝으로 자른다 (타이머가 조금 늦게 와도)
-  assert.deepEqual(doorFrame(from, door, 1.4), end);
-  assert.deepEqual(doorFrame(from, door, -0.2), from);
+  assert.deepEqual(doorFrame(from, end, 1.4), end);
+  assert.deepEqual(doorFrame(from, end, -0.2), from);
+});
+
+test('나온 뒤 모아 둔 말(600ms)보다 걸어 나오기가 먼저 끝난다', () => {
+  assert.ok(OUT_MS < 600);
 });
 
 test('나왔을 때 한마디: 2분 안, 30분 안, 그 뒤', () => {

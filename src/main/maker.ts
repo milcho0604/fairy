@@ -124,7 +124,7 @@ function lookOf(raw: unknown): { model?: Blueprint; depth?: Buffer; wish?: strin
 const MAX_MODEL_BYTES = 256 * 1024;
 
 /** 저장한 입체 설계도. 없거나 깨졌거나 너무 크면 null (사진으로 보인다) */
-function modelOf(file: string | undefined): Blueprint | null {
+export function modelOf(file: string | undefined): Blueprint | null {
   const bytes = readFileIn(petsDir(), file, MAX_MODEL_BYTES);
   if (!bytes) return null;
   try {
@@ -270,6 +270,11 @@ export function createMaker(
       abort.signal,
     );
     if (shaping === abort) shaping = undefined;
+    // 그만두기(진행 표시)나 새로 만들기로 멈췄으면 AI 답이 와도 버린다
+    if (abort.signal.aborted) {
+      log('maker', 'shape3d', 'cancelled', `${Math.round((Date.now() - started) / 1000)}s`);
+      return { ok: false, error: t('main.maker.shapeCancelled') };
+    }
     if (!r.ok) {
       log('maker', 'shape3d', r.noAi ? 'no ai' : r.error);
       return r;
@@ -437,6 +442,13 @@ export function createMaker(
 
   ipcMain.on(MAKER.close, (e) => {
     if (fromMaker(e)) win?.close();
+  });
+
+  // 진행 표시의 그만두기: 받는 중인 모델과 AI 에 묻는 중인 입체를 멈춘다. 멈춘 일은 각자 실패로 끝난다
+  ipcMain.on(MAKER.cancel, (e) => {
+    if (!fromMaker(e)) return;
+    download?.abort();
+    shaping?.abort();
   });
 
   /** 펫 본 그림(main)이나 상태별 포즈를 만든다. 다른 것을 만드는 창이 열려 있으면 다시 연다 */

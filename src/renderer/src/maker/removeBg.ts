@@ -12,9 +12,22 @@ import { ShownError } from './shown-error.ts';
 let session: ort.InferenceSession | undefined;
 export let backend = '';
 
+/** 모델이 열려 있는지. 열려 있으면 178MB 파일을 다시 읽지 않는다 (사진마다 다시 읽었다) */
+export const modelOpen = () => !!session;
+
+/** 여는 중인 모델 (그만두고 곧바로 새 사진을 고르면 두 번 열지 않게 같은 것을 기다린다) */
+let opening: Promise<void> | undefined;
+
 /** 모델을 연다. GPU(WebGPU)가 되면 GPU, 아니면 CPU(wasm). */
-export async function openModel(bytes: ArrayBuffer): Promise<void> {
-  if (session) return;
+export function openModel(bytes: ArrayBuffer): Promise<void> {
+  if (session) return Promise.resolve();
+  opening ??= create(bytes).finally(() => {
+    opening = undefined;
+  });
+  return opening;
+}
+
+async function create(bytes: ArrayBuffer): Promise<void> {
   try {
     session = await ort.InferenceSession.create(new Uint8Array(bytes), { executionProviders: ['webgpu'] });
     backend = 'GPU';
@@ -24,8 +37,20 @@ export async function openModel(bytes: ArrayBuffer): Promise<void> {
   }
 }
 
+/** 앞서 돌던 지우기. 그만두기로 버린 지우기가 아직 돌 때 새 사진이 같은 모델을 겹쳐 돌리지 않게 줄 세운다 */
+let running: Promise<unknown> = Promise.resolve();
+
 /** 사진(작업 크기 w x h 캔버스)에서 마스크(w x h, 0~255)를 만든다. rembg 와 같은 전처리. */
-export async function predictMask(photo: HTMLCanvasElement, info: MakerInfo): Promise<Uint8ClampedArray> {
+export function predictMask(photo: HTMLCanvasElement, info: MakerInfo): Promise<Uint8ClampedArray> {
+  const next = running.then(
+    () => runMask(photo, info),
+    () => runMask(photo, info),
+  );
+  running = next.catch(() => undefined);
+  return next;
+}
+
+async function runMask(photo: HTMLCanvasElement, info: MakerInfo): Promise<Uint8ClampedArray> {
   if (!session) throw new ShownError(t('maker.err.modelNotOpen'));
   const size = info.size;
   const c = document.createElement('canvas');

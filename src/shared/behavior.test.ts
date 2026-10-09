@@ -103,3 +103,22 @@ test('걸음은 처음과 끝이 느리고 끝에서 정확히 도착', () => {
   assert.ok(walkOffset(100, 0.1) < 10);
   assert.equal(walkOffset(100, 2), 100);
 });
+
+test('기운대로 걷는다: 활발하면 자주 빨리, 졸리면 드물게 천천히. 보통은 예전 그대로', () => {
+  const pet = { x: -800, y: 800, width: 160, height: 160 };
+  // 첫 난수 0.25: 지침(28%)까지는 걷고 졸림(20%)은 걷지 않고 앉는다
+  const walkFor = (energy: 'lively' | 'normal' | 'tired' | 'sleepy' | undefined) =>
+    pickActivity(pet, area, seq(0.25, 0.9, 1), [], energy ? { ask: { ...PLAIN_ASK, energy } } : {});
+  const plain = walkFor(undefined);
+  const normal = walkFor('normal');
+  assert.deepEqual(normal, plain);
+  assert.equal(walkFor('sleepy').type, 'sit');
+  const lively = walkFor('lively');
+  const tired = walkFor('tired');
+  assert.equal(lively.type, 'walk');
+  assert.equal(tired.type, 'walk');
+  if (plain.type !== 'walk' || lively.type !== 'walk' || tired.type !== 'walk') return;
+  assert.equal(lively.dx, plain.dx);
+  assert.equal(lively.ms, Math.round((Math.abs(plain.dx) / (WALK_SPEED * 1.25)) * 1000));
+  assert.equal(tired.ms, Math.round((Math.abs(plain.dx) / (WALK_SPEED * 0.75)) * 1000));
+});

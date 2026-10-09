@@ -3,6 +3,7 @@
 // 다시 나오면 아직 쓸모 있는 것은 말풍선 하나로 묶고, 시작이 한참 지난 일정은 패널 오늘 탭의 "놓친 알림"에만 둔다.
 import { t } from './i18n/index.ts';
 import type { BubbleButton } from './ipc.ts';
+import { type MissedMsg, parseMissedMsg, renderMissed } from './missed-msg.ts';
 import { localDay } from './todo-store.ts';
 
 export interface HeldBubble {
@@ -13,6 +14,11 @@ export interface HeldBubble {
   render?: (now: number) => string[];
   /** 놓친 알림에 남길 줄 ("디자인 회의 (오전 11:56)"처럼 때가 지나도 맞는 글) */
   missedLines?: string[];
+  /**
+   * 놓친 알림 줄을 말 열쇠와 값으로 (missed-msg.ts). 있으면 보일 때 지금 언어로 다시 만든다.
+   * missedLines 가 있으면 그 줄마다, 없으면 lines 또는 text 자리에 하나씩 짝을 맞춘다
+   */
+  missedMsgs?: MissedMsg[];
   /** 온 때 */
   at: number;
   /** 이 때가 지나면 말풍선으로 꺼내지 않고 놓친 알림에만 둔다 (일정은 시작 뒤 조금) */
@@ -51,8 +57,20 @@ export function fateOf(
 }
 
 export interface MissedItem {
+  /** 만들 때 글 (msg 가 없거나 읽지 못하면 이것을 보인다) */
   text: string;
   at: number;
+  /** 말 열쇠와 값. 보일 때 지금 언어로 다시 만든다 (언어를 바꿔도 따라간다) */
+  msg?: MissedMsg;
+}
+
+/** 놓친 알림으로 남길 줄들 (글과 말 열쇠 짝) */
+export function missedEntries(h: HeldBubble): { text: string; msg?: MissedMsg }[] {
+  const lines = h.missedLines ?? h.lines ?? [h.text];
+  return lines.map((text, i) => {
+    const msg = h.missedMsgs?.[i];
+    return msg ? { text, msg } : { text };
+  });
 }
 
 /** 모아 두는 수. 넘치면 오래된 것부터 놓친 알림으로 */
@@ -117,8 +135,10 @@ export class MissedLog {
     if (!Array.isArray(raw)) return log;
     for (const v of raw.slice(-MISSED_MAX)) {
       const m = v as Partial<MissedItem> | null;
-      if (m && typeof m.text === 'string' && typeof m.at === 'number' && Number.isFinite(m.at))
-        log.add({ text: m.text.slice(0, 500), at: m.at });
+      if (m && typeof m.text === 'string' && typeof m.at === 'number' && Number.isFinite(m.at)) {
+        const msg = parseMissedMsg(m.msg);
+        log.add({ text: m.text.slice(0, 500), at: m.at, ...(msg ? { msg } : {}) });
+      }
     }
     log.list(now);
     return log;
@@ -135,11 +155,11 @@ export class MissedLog {
     if (this.#items.length > MISSED_MAX) this.#items.splice(0, this.#items.length - MISSED_MAX);
   }
 
-  /** 오늘 것만, 최근 것이 위로 */
+  /** 오늘 것만, 최근 것이 위로. 말 열쇠가 있으면 지금 언어로 다시 만든 글 */
   list(now: number): MissedItem[] {
     const today = localDay(now);
     this.#items = this.#items.filter((m) => localDay(m.at) === today);
-    return [...this.#items].reverse();
+    return [...this.#items].reverse().map((m) => ({ text: m.msg ? renderMissed(m.msg) : m.text, at: m.at }));
   }
 
   clear(): void {

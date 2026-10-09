@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { allDaySpan } from '../../../shared/event-store.ts';
 import { breakFor, FOCUS_LENGTHS, focusCoins, remainLabel } from '../../../shared/focus.ts';
 import { t } from '../../../shared/i18n/index.ts';
@@ -37,7 +37,8 @@ export function TodayTab({
   const endOfDay = new Date(now).setHours(24, 0, 0, 0);
   // 종일 일정은 오늘이 그 기간 안이면 (0시에 시작해 이미 지났어도) 오늘 일정이다
   const events = s.events.filter((e) => {
-    if (!e.allDay) return (e.endAt ?? e.startAt) >= now && e.startAt < endOfDay;
+    // 끝 시각이 없는 일정은 시작 뒤 30분까지 "지금"이다 (일정 탭과 같은 기준. 전에는 시작하자마자 오늘 탭에서만 사라졌다)
+    if (!e.allDay) return (e.endAt ?? e.startAt + 30 * 60_000) >= now && e.startAt < endOfDay;
     const { first, last } = allDaySpan(e);
     return first <= s.today && last >= s.today;
   });
@@ -46,8 +47,33 @@ export function TodayTab({
     .filter((todo) => todo.important && (todo.due === null || todo.due > s.today))
     .slice(0, 3);
 
+  // 아래에 더 있음 (업적과 일기가 첫 화면 아래에 있어 모르고 지나쳤다). 다 내려가면 사라진다
+  const scroller = useRef<HTMLDivElement>(null);
+  const [more, setMore] = useState(false);
+  const checkMore = () => {
+    const el = scroller.current;
+    if (el) setMore(el.scrollHeight - el.scrollTop - el.clientHeight > MORE_SLACK);
+  };
+  // 그릴 때마다 (일정, 할 일이 늘고 줄면 높이가 바뀐다). 글자 하나 바꾸지 않으면 같은 값이라 다시 그리지 않는다
+  useEffect(checkMore);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 처음 한 번만 건다
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    el.addEventListener('scroll', checkMore, { passive: true });
+    // 업적, 일기를 펼치고 접을 때와 창 크기가 바뀔 때
+    el.addEventListener('toggle', checkMore, true);
+    const ro = new ResizeObserver(checkMore);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', checkMore);
+      el.removeEventListener('toggle', checkMore, true);
+      ro.disconnect();
+    };
+  }, []);
+
   return (
-    <div className="scroll today">
+    <div className="scroll today" ref={scroller}>
       <section className={`focus-card ${s.focus.phase}`}>
         {s.focus.phase === 'idle' ? (
           <>
@@ -241,6 +267,33 @@ export function TodayTab({
           </ul>
         )}
       </details>
+      {more && (
+        <button
+          type="button"
+          className="more-below"
+          onClick={() => {
+            const el = scroller.current;
+            const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            el?.scrollBy({ top: el.clientHeight * 0.7, behavior: calm ? 'auto' : 'smooth' });
+          }}
+        >
+          <span>
+            {t('panel.today.more')}
+            <svg viewBox="0 0 10 6" width="10" height="6" aria-hidden="true">
+              <path
+                d="M1 1l4 4 4-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+              />
+            </svg>
+          </span>
+        </button>
+      )}
     </div>
   );
 }
+
+/** 이만큼(px) 안 남았으면 다 내려온 것으로 본다 */
+const MORE_SLACK = 12;

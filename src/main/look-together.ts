@@ -55,6 +55,8 @@ export interface LookOptions {
   pets: LookPets;
   /** 찍은 그림을 채팅 입력칸에 붙인다. 보내지는 않는다. */
   onImage: (image: OutgoingImage) => void;
+  /** 같이 보기를 시작한다 (하던 놀이를 그만둔다: 펫이 오버레이 위로 올라가 마우스를 다 통과시켜 놀 수 없다) */
+  onStart?: () => void;
   log: (tag: string, ...rest: unknown[]) => void;
 }
 
@@ -62,7 +64,7 @@ export interface LookOptions {
  * "(이름)랑 같이 보기". 모니터마다 반투명 오버레이를 띄워 영역을 고르게 하고,
  * 오버레이를 치운 뒤 그 순간 화면을 찍어 채팅 입력칸에 붙인다.
  */
-export function createLookTogether({ petName, hideChat, pets, onImage, log }: LookOptions) {
+export function createLookTogether({ petName, hideChat, pets, onImage, onStart, log }: LookOptions) {
   let overlays: { win: BrowserWindow; display: Display }[] = [];
   let restore: (() => void) | undefined;
   /** 같이 보기 중 (오버레이가 떠 있거나 찍는 중). 찍는 사이에 또 부르면 펫이 가려진 채 겹쳤다 */
@@ -101,6 +103,7 @@ export function createLookTogether({ petName, hideChat, pets, onImage, log }: Lo
       }
     }
     active = true;
+    onStart?.();
     restore = hideChat();
     pets.aim();
     const cursor = screen.getCursorScreenPoint();

@@ -77,6 +77,8 @@ export interface ChatOptions {
   mcpServers: () => readonly string[];
   /** 펫에게 AI 상태를 알린다 (생각 중, 답함). */
   onPetAi: (state: PetAiState) => void;
+  /** 사용자가 채팅 창에서 보낸 말 (매운맛: 칭찬이나 사과면 토라진 펫이 풀린다). 보내졌을 때만 */
+  onUserSaid?: (text: string) => void;
   /** 답이 다 왔다. 채팅 창이 앞에 없으면 펫이 말풍선으로 알린다. */
   onAnswer?: (text: string, chatInFront: boolean) => void;
   /** 강제 업데이트 전이라 AI 대화를 잠갔는지. 잠겼으면 창을 열지도 묻지도 않고 onLocked 를 부른다 */
@@ -212,7 +214,7 @@ export function createChat(o: ChatOptions) {
     if (!fromChat(e) || typeof text !== 'string') return;
     // 그림 형식은 codex 임시 파일 확장자가 되므로 메인에서 다시 본다
     const clean = cleanSendImages(images);
-    if (clean) ask(text, clean);
+    if (clean && ask(text, clean)) o.onUserSaid?.(text);
   });
 
   /** 질문을 보낸다. 채팅 창의 보내기와 메모 "AI로 정리"가 같이 쓴다. 답을 기다리는 중이면 false */
@@ -437,6 +439,8 @@ export function createChat(o: ChatOptions) {
     // 펫 앱은 Dock 없이 떠 있어서 창만 앞으로 부르면 키보드가 다른 앱에 남는다. 사용자가 부른 것이니 앱을 앞으로.
     stealFocus();
     if (win && !win.isDestroyed()) {
+      // 화면 프로세스가 죽었으면 빈 창만 남는다. 다시 부를 때 새로 읽는다 (대화 내용은 메인에 있다)
+      if (win.webContents.isCrashed()) win.webContents.reload();
       focusWindow(win);
       return;
     }
@@ -565,6 +569,8 @@ export function createChat(o: ChatOptions) {
         void run.finished.then(ended, ended);
       });
     },
+    /** 지금 고른 AI 이름 (메모 다듬기가 어느 AI 로 보내는지 보여 준다) */
+    aiLabel: (): string | undefined => specOf(state.provider)?.label,
     /**
      * 글만 한 번 묻는다 (짝꿍 일기 다듬기). 지금 고른 AI 로, 격리하고 기록을 남기지 않는다.
      * 채팅 창에는 보이지 않는다. 무료 AI 모델이 없으면 받지 않고 실패로. 실패면 undefined

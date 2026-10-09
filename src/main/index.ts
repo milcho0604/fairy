@@ -8,6 +8,7 @@ import { timeLabel } from '../shared/event-store.ts';
 import { HIDE_SEEK, pickHideSpot } from '../shared/hide-seek.ts';
 import { locale, t } from '../shared/i18n/index.ts';
 import { IPC, type PetStatus, type PlayKind } from '../shared/ipc.ts';
+import { runnerKindOf } from '../shared/menu-runner.ts';
 import { isMiniGame, PLAY_COIN } from '../shared/minigames.ts';
 import { unlocked, WAVE_AWAY_SEC } from '../shared/pet-life.ts';
 import { pickedGait } from '../shared/settings.ts';
@@ -29,7 +30,14 @@ import { createHouseRest } from './house-rest.ts';
 import { initLang } from './lang.ts';
 import { createLogFile } from './log-file.ts';
 import { createLookTogether } from './look-together.ts';
-import { createMaker, foodImageDataUrl, petImages, registerModelScheme, removeFoodImage } from './maker.ts';
+import {
+  createMaker,
+  foodImageDataUrl,
+  modelOf,
+  petImages,
+  registerModelScheme,
+  removeFoodImage,
+} from './maker.ts';
 import { createMiniGames } from './minigames.ts';
 import { createOnboarding } from './onboarding.ts';
 import { openLink } from './open-link.ts';
@@ -39,6 +47,7 @@ import { createPetLife } from './pet-life.ts';
 import { createPetWindow } from './pet-window.ts';
 import { createPlanner, minuteOfDay, startOfDay } from './planner.ts';
 import { createHouse, playBall, visitHouse } from './play.ts';
+import { createPout } from './pout.ts';
 import { watchPresentation } from './presence-watch.ts';
 import { settings } from './settings.ts';
 import { createSettingsWindow } from './settings-window.ts';
@@ -133,6 +142,7 @@ app.whenReady().then(() => {
       panel.refresh();
       return titles.length;
     },
+    onUserSaid: (text) => pout.said(text),
     onPetAi: (state) => {
       if (state.thinking) petLife.activity('chat');
       pet.win.webContents.send(IPC.ai, state);
@@ -186,6 +196,8 @@ app.whenReady().then(() => {
       playing: () => playing,
       stopPlay: () => stopPlay(),
       playmate: () => games.mateName(),
+      grabbed: () => pout.grabbed(),
+      menuNote: () => pout.menuNote(),
       focusRunning: () => planner.focus.phase !== 'idle',
       toggleFocus: () => (planner.focus.phase === 'idle' ? planner.startFocus() : planner.stopFocus()),
     },
@@ -222,6 +234,14 @@ app.whenReady().then(() => {
     onImage: (image) => {
       stats.countLook(Date.now());
       chat.attach(image, pet.bounds());
+    },
+    // 놀던 중이면 그만 논다: 같이 보는 동안 펫은 오버레이 위에서 마우스를 다 통과시켜 놀 수 없다.
+    // (두더지 구멍 속 가리기와 찍는 순간 가리기가 겹쳐도 펫은 pet-window setConcealed 가 한곳에서 되돌린다)
+    onStart: () => {
+      const game = games.running();
+      if (!game) return;
+      log('look', 'stop play', game);
+      games.stop();
     },
     log,
   });
@@ -263,8 +283,19 @@ app.whenReady().then(() => {
     sysMonitorOn: () => settings.get().sysMonitor,
     setSysMonitor: (on) => settings.set({ sysMonitor: on }),
   });
-  // 메뉴 막대 컴퓨터 상태 (RunCat 처럼): CPU 사용률과 그만큼 빨리 달리는 콩이
-  const sysMonitor = createSystemMonitor(tray, baseTrayIcon(), log);
+  // 메뉴 막대 컴퓨터 상태 (RunCat 처럼): CPU 사용률과 그만큼 바삐 움직이는 펫
+  const sysMonitor = createSystemMonitor(
+    tray,
+    baseTrayIcon(),
+    () => t('tray.tooltip', { name: petName() }),
+    log,
+  );
+  // 메뉴 막대에서 달릴 모습은 지금 펫 종류 (사진 펫은 걸음새와 설계도로 가장 가까운 종류). 켜기 전에 정해 한 번만 그린다
+  const runnerKindNow = () => {
+    const s = settings.get();
+    return runnerKindOf(s, s.petImage ? modelOf(s.petModel) : null);
+  };
+  sysMonitor.setKind(runnerKindNow());
   sysMonitor.setEnabled(settings.get().sysMonitor);
   // ---- 할 일과 코인 (2단계) ----
   const { store, stats, notes, events, life, shop, achievements, vacuumInto, dataVersion, trouble } =
@@ -289,12 +320,36 @@ app.whenReady().then(() => {
     petName,
     say: (o) => pet.say(o),
     petHidden: () => pet.isHidden(),
-    react: () => pet.react(),
+    react: (kind) => pet.react(kind),
+    focusing: () => planner.focus.phase === 'focus',
     onChange: () => {
       sendStatus();
       panel.refresh();
     },
     stroll: (min) => play('walk', min),
+    onActivity: (kind, dayMadeUp) => pout.activity(kind, dayMadeUp),
+    onRestIgnored: () => pout.restIgnored(),
+    log,
+  });
+  // ---- 매운맛 토라짐: 하루 중에도 잘 삐지고 달래면 풀린다 (shared/pout.ts). 매운맛을 끄면 아무것도 안 한다 ----
+  const pout = createPout({
+    say: (o) => pet.say(o),
+    react: (kind) => pet.react(kind),
+    petName,
+    // 집중, 숨김(발표, 집 안), 노는 중, 숨바꼭질 중에는 방해하지 않는다
+    calm: () =>
+      planner.focus.phase === 'focus' || pet.isHidden() || playing || !!seeking || !!games.running(),
+    userHidden: () => pet.isHidden('user'),
+    canTalk: () => pet.isIdle(),
+    hungry: () => store.fullness(Date.now()) < FULLNESS.hungry,
+    overdue: () => {
+      const today = localDay(Date.now());
+      return store.list(Date.now()).open.filter((x) => x.due !== null && x.due < today).length;
+    },
+    onChange: () => {
+      sendStatus();
+      panel.refresh();
+    },
     log,
   });
 
@@ -459,7 +514,9 @@ app.whenReady().then(() => {
         kind: 'system',
         text: t('pet.achieved', { name: a.name, hint: a.hint }),
         ttlMs: 6000,
-        hold: {},
+        hold: {
+          missedMsgs: [{ key: 'pet.achieved', vars: { name: { key: a.nameKey }, hint: { key: a.hintKey } } }],
+        },
       });
     }
   }
@@ -496,6 +553,20 @@ app.whenReady().then(() => {
     say: (o) => pet.say(o),
     petHidden: () => pet.isHidden(),
     petName,
+    // 수다쟁이 혼잣말이 보는 펫 상태 (기분, 친밀도, 배고픔, 삐짐, 노는 중)
+    talkFacts: () => {
+      const l = petLife.state;
+      return {
+        mood: l.mood,
+        affection: l.affection,
+        hungry: store.fullness(Date.now()) < FULLNESS.hungry,
+        // 매운맛으로 토라진 동안도 신난 혼잣말은 안 한다 (토라짐 대사만)
+        sulk: Math.max(l.sulk, pout.stage),
+        busy: playing || !!seeking || games.running() !== undefined,
+        // 기운 (shared/energy.ts): 활발, 나른함, 졸림, 녹초일 때 펫 자신의 몸 상태 대사
+        more: petLife.talkKeys(),
+      };
+    },
     openToday: () => panel.openTab('today'),
     openUrl: (url) => openLink(url, log),
     onReward: () => pet.react(),
@@ -516,9 +587,17 @@ app.whenReady().then(() => {
     onEventsChanged: () => planner.check(),
     askAi: (prompt) => chat.askInWindow(prompt, pet.bounds()),
     askOnce: (text, system) => chat.textOnce(text, system),
+    aiLocked: () => updates.locked(),
+    aiLabel: () => chat.aiLabel(),
     life: () => {
       const l = petLife.state;
-      return { sulk: l.sulk, mood: Math.round(l.mood), affection: l.affection };
+      const poutWhy = pout.why;
+      return {
+        sulk: l.sulk,
+        mood: Math.round(l.mood),
+        affection: l.affection,
+        ...(poutWhy ? { poutWhy } : {}),
+      };
     },
     shop,
     foodImage: (file) => foodImageDataUrl(file),
@@ -604,6 +683,7 @@ app.whenReady().then(() => {
       hungry: store.fullness(Date.now()) < FULLNESS.hungry,
       focus: planner.focus.phase === 'focus',
       sulk: petLife.state.sulk,
+      pout: pout.stage,
       kind: settings.get().petKind,
       pet3d: settings.get().pet3d,
       style: settings.get().petStyle,
@@ -613,6 +693,7 @@ app.whenReady().then(() => {
       boost: boostOn(),
       face: true,
       gait: pickedGait(settings.get()),
+      energy: petLife.energy,
     };
     const key = JSON.stringify(status);
     if (key === lastStatus || pet.win.isDestroyed()) return;
@@ -736,8 +817,22 @@ app.whenReady().then(() => {
     }
     if (next.icsUrl !== prev.icsUrl && next.icsUrl) void calendar.sync();
     if (next.myMcp && !prev.myMcp) void refreshMcpServers(log);
-    if (JSON.stringify(next.friends) !== JSON.stringify(prev.friends)) friends.sync();
+    if (JSON.stringify(next.friends) !== JSON.stringify(prev.friends)) {
+      friends.sync();
+      // 매운맛: 새 친구 펫을 꺼내면 샘이 나서 토라진다
+      const added = next.friends.find((f) => !prev.friends.some((p) => p.id === f.id));
+      if (added) pout.friendAdded(added.name);
+    }
+    // 매운맛을 끄면 토라짐도 바로 푼다
+    if (next.spicy !== prev.spicy) pout.tick();
     if (next.pet3d !== prev.pet3d || next.petStyle !== prev.petStyle) friends.resendStatus();
+    if (
+      next.petKind !== prev.petKind ||
+      next.petImage !== prev.petImage ||
+      next.petModel !== prev.petModel ||
+      JSON.stringify(next.petGaits) !== JSON.stringify(prev.petGaits)
+    )
+      sysMonitor.setKind(runnerKindNow());
     if (next.sysMonitor !== prev.sysMonitor) sysMonitor.setEnabled(next.sysMonitor);
     if (next.petName !== prev.petName) {
       chat.petNameChanged();
@@ -762,6 +857,7 @@ app.whenReady().then(() => {
       next.spicy !== prev.spicy ||
       next.sounds !== prev.sounds ||
       next.restDays.join() !== prev.restDays.join() ||
+      next.dayRhythm !== prev.dayRhythm ||
       // 걸음새는 몸마다 따로라 고른 값이 그대로여도 펫(몸)이 바뀌면 다시 본다. 같은 값이면 sendStatus 가 거른다
       pickedGait(next) !== pickedGait(prev)
     )
@@ -835,6 +931,7 @@ app.whenReady().then(() => {
   const stopPresence = watchPresentation((hide) => {
     pet.setHidden('presentation', hide);
     friends.setHidden('presentation', hide);
+    sysMonitor.setPaused('presentation', hide);
   }, log);
   app.on('will-quit', () => {
     stopLocal();
@@ -867,6 +964,7 @@ app.whenReady().then(() => {
         planner,
         life,
         petLife,
+        pout,
         shop,
         house,
         rest,

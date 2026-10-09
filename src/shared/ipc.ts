@@ -8,6 +8,7 @@ import type { BetaReport } from './beta-stats.ts';
 import type { BubbleLayout } from './bubble-layout.ts';
 import type { ChatImage, ChatState } from './chat-state.ts';
 import type { BubbleKind } from './chatter.ts';
+import type { EnergyLook } from './energy.ts';
 import type { CalEvent } from './event-store.ts';
 import type { CarryToy } from './fetch.ts';
 import type { FocusState } from './focus.ts';
@@ -15,9 +16,11 @@ import type { Gaze } from './gaze.ts';
 import type { Point } from './geometry.ts';
 import type { GestureEvent } from './gesture.ts';
 import type { HouseStyle } from './house-art.ts';
+import type { HouseSprites } from './house-room.ts';
 import type { LookMotion } from './look-motion.ts';
 import type { MiniGame } from './minigames.ts';
 import type { MoveAsk } from './moves.ts';
+import type { PolishReply } from './note-polish.ts';
 import type { Note, NoteSource } from './note-store.ts';
 import type { Blueprint, Gait } from './pet3d/blueprint.ts';
 import type { PetKind, PetStyle, PoseKind, Settings } from './settings.ts';
@@ -74,6 +77,8 @@ export const IPC = {
   carry: 'pet:carry',
   /** 펫 화면 → 메인: 문 공 가운데 (펫 사각형 안 비율). 그리고 있지 않으면 null */
   carried: 'pet:carried',
+  /** 펫 화면 → 메인: 집 안 그림 (깬 몸, 자는 얼굴, shared/house-room.ts HouseSprites). 모습이 바뀔 때만 */
+  sprites: 'pet:sprites',
 } as const;
 
 /** 펫 얼굴 그림 (shared/face.ts). 펫 화면이 그려 메인에 주고, 메인이 얼굴을 쓰는 창에 나눠 준다 */
@@ -419,6 +424,8 @@ export interface PetBridge {
   onCarry(listener: (message: CarryMessage) => void): void;
   /** 문 공 가운데 (펫 사각형 안 비율). 안 물고 있으면 null */
   carried(at: Point | null): void;
+  /** 집 안 그림 (집에서 쉬기: 문 드나드는 깬 몸, 침대의 자는 얼굴). PetStatus.face 일 때만 */
+  sprites(sprites: HouseSprites): void;
 }
 
 /** 펫 화면이 그리는 몸. 네 발로 걷는 펫은 공을 입에 물어 온다 */
@@ -437,8 +444,11 @@ export type CarryMessage =
   | { kind: 'where' }
   | null;
 
-/** 펫 반응: 신남(통통), 밥 먹음(신남과 같은 모습, 소리만 다름), 손 흔들기(친밀도 100), 빙글 춤(친밀도 300), 친구와 만남(하트) */
-export type ReactKind = 'happy' | 'fed' | 'wave' | 'dance' | 'love';
+/**
+ * 펫 반응: 신남(통통), 밥 먹음(신남과 같은 모습, 소리만 다름), 손 흔들기(친밀도 100), 빙글 춤(친밀도 300), 친구와 만남(하트),
+ * 개운함(지쳤다가 쉬고 왔다, 휴식 권유대로 쉬고 왔다: 반짝이며 기지개. shared/energy.ts)
+ */
+export type ReactKind = 'happy' | 'fed' | 'wave' | 'dance' | 'love' | 'fresh';
 
 export interface PetStatus {
   hungry: boolean;
@@ -446,6 +456,8 @@ export interface PetStatus {
   focus: boolean;
   /** 삐짐 칸 수 (v1) */
   sulk: number;
+  /** 매운맛 토라짐 단계 0~3 (shared/pout.ts). 1 고개 돌리기, 2 흥, 3 등 돌리고 앉기. 없으면 0 */
+  pout?: number;
   /** 쿠션이 있으면 앉을 때 쿠션 위에 (v1 장난감) */
   cushion: boolean;
   /** 기본 펫 모양 (v1) */
@@ -464,6 +476,8 @@ export interface PetStatus {
   face?: boolean;
   /** 사용자가 고른 걸음새 (설정). 없으면 자동: 설계도 gait, 없으면 다리 모양으로 짐작 */
   gait?: Gait;
+  /** 기운 (하루 리듬과 연속 작업 피로, shared/energy.ts). 설정 "하루 리듬"이 꺼졌거나 친구 펫이면 없다 (예전 모습) */
+  energy?: EnergyLook;
 }
 
 /** 펫 그림들 (data URL). 없으면 기본 펫. 포즈는 상태별 그림 (v1) */
@@ -489,6 +503,8 @@ export const MAKER = {
   ensureDepth: 'maker:ensure-depth',
   /** 사진을 볼 AI 가 있는지 (CLI 확인이 느릴 수 있어 info 와 따로) */
   visionAi: 'maker:vision-ai',
+  /** 받기(모델), 입체 만들기(AI)를 멈춘다 (진행 표시의 그만두기) */
+  cancel: 'maker:cancel',
   close: 'maker:close',
 } as const;
 
@@ -552,6 +568,8 @@ export interface MakerBridge {
   ): Promise<{ ok: true; model: Blueprint } | { ok: false; error: string; noAi?: boolean }>;
   /** 기본 펫으로 돌아가기 */
   resetToDefault(): Promise<void>;
+  /** 받는 중인 모델과 만드는 중인 입체를 멈춘다. 멈춘 일은 실패로 끝난다 */
+  cancel(): void;
   close(): void;
   onProgress(listener: (ratio: number) => void): void;
 }
@@ -582,6 +600,8 @@ export const PANEL = {
   /** 메모를 AI 로 정리 (할 일로 쪼개기, 요약). 채팅 창에서 묻는다 */
   noteAi: 'panel:note-ai',
   notePolish: 'panel:note-polish',
+  notePolishInfo: 'panel:note-polish-info',
+  notePolishTaken: 'panel:note-polish-taken',
   // 일정 (v1)
   eventAdd: 'panel:event-add',
   eventUpdate: 'panel:event-update',
@@ -626,7 +646,8 @@ export interface PanelState {
   /** 고른 집중 길이 (15, 25, 50분) */
   focusMin: number;
   /** 펫의 하루 (v1): 삐짐 칸, 기분, 친밀도 */
-  life: { sulk: number; mood: number; affection: number };
+  /** poutWhy: 매운맛으로 토라진 까닭 (토라졌을 때만) */
+  life: { sulk: number; mood: number; affection: number; poutWhy?: string };
   /** 연속 기록과 업적 (v2) */
   achieve: {
     streak: number;
@@ -691,7 +712,16 @@ export interface PanelBridge {
   undo(id: number): Promise<number>;
   update(
     id: number,
-    patch: { title?: string; due?: string | null; important?: boolean; repeat?: Repeat | null },
+    patch: {
+      title?: string;
+      due?: string | null;
+      important?: boolean;
+      repeat?: Repeat | null;
+      /** 마감 시각 (하루 안의 분, 8판) */
+      dueMin?: number | null;
+      /** 미리 알림 (8판, shared/remind.ts) */
+      reminds?: number[];
+    },
   ): void;
   remove(id: number): void;
   /** 지운 할 일 되살리기 */
@@ -712,13 +742,28 @@ export interface PanelBridge {
   /** 메모 찾기: 제목과 본문 전체. composing 이면 마지막 글자는 아직 조합 중이라 넓게 찾는다 */
   noteSearch(query: string, composing: boolean): Promise<NoteHit[]>;
   noteAi(id: number, kind: NoteAiKind): Promise<boolean>;
-  /** 글을 AI 로 다듬는다 (메모 전체나 고른 부분). 채팅 창 없이 답만 받는다. 실패면 undefined */
-  notePolish(text: string): Promise<string | undefined>;
+  /**
+   * 메모를 AI 로 다듬는다 (전체나 고른 start~end). 채팅 창 없이 답만 받는다. 메모마다 하나만 돌고,
+   * 이미 돌고 있거나 받아 둔 답이 있으면 req 없이 불러 그것을 받는다
+   */
+  notePolish(id: number, req?: { body: string; start: number; end: number }): Promise<PolishReply>;
+  /** 지금 AI 이름과 이 메모의 다듬기 상태 (돌고 있음, 받아 둔 답 있음) */
+  notePolishInfo(id: number): Promise<{ ai?: string; job: 'none' | 'busy' | 'ready' }>;
+  /** 다듬은 글을 받아 띄웠다 (메인이 들고 있던 답을 지운다) */
+  notePolishTaken(id: number): void;
   /** 한 줄("내일 3시 회의")로 일정 넣기 */
   eventAdd(text: string): Promise<{ ok: boolean; error?: string; event?: CalEvent }>;
   eventUpdate(
     id: number,
-    patch: { title?: string; startAt?: number; endAt?: number | null; remindMin?: number; allDay?: boolean },
+    patch: {
+      title?: string;
+      startAt?: number;
+      endAt?: number | null;
+      remindMin?: number;
+      /** 미리 알림 (8판, shared/remind.ts) */
+      reminds?: number[];
+      allDay?: boolean;
+    },
   ): void;
   eventRemove(id: number): void;
   eventRestore(id: number): void;

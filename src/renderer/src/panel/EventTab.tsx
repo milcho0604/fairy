@@ -1,32 +1,13 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { plusDays } from '../../../shared/day.ts';
-import {
-  ALL_DAY_EVE_MIN,
-  ALL_DAY_REMIND_CHOICES,
-  allDayLabel,
-  allDaySpan,
-  type CalEvent,
-  dayStartMs,
-  REMIND_CHOICES,
-} from '../../../shared/event-store.ts';
+import { allDayLabel, allDaySpan, type CalEvent, dayStartMs } from '../../../shared/event-store.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PanelState } from '../../../shared/ipc.ts';
 import { localDay } from '../../../shared/todo-store.ts';
 import { dayHeading, timeOf, toInputValue } from './format.ts';
-import { BellIcon } from './icons.tsx';
+import { RemindButton, RemindSheet } from './RemindPicker.tsx';
 
 const bridge = window.jjakkungPanel;
-
-const remindText = (m: number, allDay = false) =>
-  allDay && m === 0
-    ? t('panel.remind.none')
-    : allDay && m === ALL_DAY_EVE_MIN
-      ? t('panel.remind.eve')
-      : m === 0
-        ? t('panel.event.atStart')
-        : m >= 60
-          ? t('panel.remind.hour', { n: m / 60 })
-          : t('panel.remind.min', { n: m });
 
 /** 날짜 사이 날 수 (b - a) */
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000);
@@ -115,11 +96,11 @@ function EventRow({
 }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(e.title);
+  // 미리 알림 고르기 (8판): 종 단추를 누르면 줄 아래에 펼친다
+  const [reminding, setReminding] = useState(false);
+  const sheetId = useId();
   const span = e.allDay ? allDaySpan(e) : null;
   const started = span ? span.first <= today : e.startAt <= now;
-  const remindChoices: readonly number[] = e.allDay ? ALL_DAY_REMIND_CHOICES : REMIND_CHOICES;
-  // MCP 로 넣은 값처럼 고르기 칸에 없는 알림이면 그 값도 보여 준다 (칸이 엉뚱한 값을 가리키지 않게)
-  const choices = remindChoices.includes(e.remindMin) ? remindChoices : [...remindChoices, e.remindMin];
 
   /** 종일과 시각 일정 사이를 바꾼다. 시각으로 바꾸면 첫날 오전 9시 (오늘이면 다음 정시) */
   const toggleAllDay = () => {
@@ -136,114 +117,119 @@ function EventRow({
   };
 
   return (
-    <li className={`event ${started ? 'now' : ''} ${span ? 'all-day' : ''}`}>
-      {span ? (
-        <label className="time" title={t('panel.event.changeDay')}>
-          {t('panel.event.allDay')}
+    <>
+      <li className={`event ${started ? 'now' : ''} ${span ? 'all-day' : ''}`}>
+        {span ? (
+          <label className="time" title={t('panel.event.changeDay')}>
+            {t('panel.event.allDay')}
+            <input
+              type="date"
+              value={span.first}
+              aria-label={t('panel.event.startDay')}
+              onChange={(ev) => {
+                const first = ev.target.value;
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(first)) return;
+                // 날 수는 그대로 두고 옮긴다
+                const extra = daysBetween(span.first, span.last);
+                bridge.eventUpdate(e.id, {
+                  startAt: dayStartMs(first),
+                  endAt: extra > 0 ? dayStartMs(plusDays(first, extra + 1)) : null,
+                });
+              }}
+            />
+          </label>
+        ) : (
+          <label className="time" title={t('panel.event.changeTime')}>
+            {started ? t('panel.today.now') : timeOf(e.startAt)}
+            <input
+              type="datetime-local"
+              value={toInputValue(e.startAt)}
+              aria-label={t('panel.event.startTime')}
+              onChange={(ev) => {
+                const at = new Date(ev.target.value).getTime();
+                if (Number.isFinite(at)) {
+                  const len = e.endAt ? e.endAt - e.startAt : null;
+                  bridge.eventUpdate(e.id, { startAt: at, endAt: len ? at + len : null });
+                }
+              }}
+            />
+          </label>
+        )}
+        {editing ? (
           <input
-            type="date"
-            value={span.first}
-            aria-label={t('panel.event.startDay')}
-            onChange={(ev) => {
-              const first = ev.target.value;
-              if (!/^\d{4}-\d{2}-\d{2}$/.test(first)) return;
-              // 날 수는 그대로 두고 옮긴다
-              const extra = daysBetween(span.first, span.last);
-              bridge.eventUpdate(e.id, {
-                startAt: dayStartMs(first),
-                endAt: extra > 0 ? dayStartMs(plusDays(first, extra + 1)) : null,
-              });
+            className="title-edit"
+            value={title}
+            aria-label={t('panel.event.editTitle')}
+            // biome-ignore lint/a11y/noAutofocus: 고치기를 누른 바로 그 칸이라 커서가 가야 한다
+            autoFocus
+            onChange={(ev) => setTitle(ev.target.value)}
+            onBlur={() => {
+              setEditing(false);
+              if (title.trim() && title !== e.title) bridge.eventUpdate(e.id, { title });
+              else setTitle(e.title);
             }}
-          />
-        </label>
-      ) : (
-        <label className="time" title={t('panel.event.changeTime')}>
-          {started ? t('panel.today.now') : timeOf(e.startAt)}
-          <input
-            type="datetime-local"
-            value={toInputValue(e.startAt)}
-            aria-label={t('panel.event.startTime')}
-            onChange={(ev) => {
-              const at = new Date(ev.target.value).getTime();
-              if (Number.isFinite(at)) {
-                const len = e.endAt ? e.endAt - e.startAt : null;
-                bridge.eventUpdate(e.id, { startAt: at, endAt: len ? at + len : null });
+            onKeyDown={(ev) => {
+              if (ev.key === 'Enter' && !ev.nativeEvent.isComposing) (ev.target as HTMLInputElement).blur();
+              if (ev.key === 'Escape') {
+                ev.stopPropagation();
+                setTitle(e.title);
+                setEditing(false);
               }
             }}
           />
-        </label>
-      )}
-      {editing ? (
-        <input
-          className="title-edit"
-          value={title}
-          aria-label={t('panel.event.editTitle')}
-          // biome-ignore lint/a11y/noAutofocus: 고치기를 누른 바로 그 칸이라 커서가 가야 한다
-          autoFocus
-          onChange={(ev) => setTitle(ev.target.value)}
-          onBlur={() => {
-            setEditing(false);
-            if (title.trim() && title !== e.title) bridge.eventUpdate(e.id, { title });
-            else setTitle(e.title);
-          }}
-          onKeyDown={(ev) => {
-            if (ev.key === 'Enter' && !ev.nativeEvent.isComposing) (ev.target as HTMLInputElement).blur();
-            if (ev.key === 'Escape') {
-              ev.stopPropagation();
-              setTitle(e.title);
-              setEditing(false);
-            }
-          }}
-        />
-      ) : (
-        <button
-          type="button"
-          className="title"
-          title={t('panel.todo.clickToEdit')}
-          onClick={() => setEditing(true)}
-        >
-          {e.title}
-          {e.endAt && !e.allDay && <small> ~{timeOf(e.endAt)}</small>}
-          {/* 여러 날이면 기간을 제목 옆에 ("종일 | 워크숍 10/7~10/10"). 시각 칸에 넣으면 칸이 넓어져 제목 줄이 어긋난다 */}
-          {span && span.last > span.first && <small> {allDayLabel(e)}</small>}
-        </button>
-      )}
-      <span className="tools">
-        <span className="extra">
-          <label className={`all-day-toggle ${e.allDay ? 'on' : ''}`} title={t('panel.event.allDayToggle')}>
-            <input type="checkbox" checked={e.allDay} onChange={toggleAllDay} />
-            {t('panel.event.allDay')}
-          </label>
+        ) : (
           <button
             type="button"
-            className="remove"
-            aria-label={t('panel.todo.remove', { title: e.title })}
-            onClick={() => {
-              bridge.eventRemove(e.id);
-              onRemoved(e.id);
-            }}
+            className="title"
+            title={t('panel.todo.clickToEdit')}
+            onClick={() => setEditing(true)}
           >
-            ×
+            {e.title}
+            {e.endAt && !e.allDay && <small> ~{timeOf(e.endAt)}</small>}
+            {/* 여러 날이면 기간을 제목 옆에 ("종일 | 워크숍 10/7~10/10"). 시각 칸에 넣으면 칸이 넓어져 제목 줄이 어긋난다 */}
+            {span && span.last > span.first && <small> {allDayLabel(e)}</small>}
           </button>
+        )}
+        <span className="tools">
+          <span className="extra">
+            <label className={`all-day-toggle ${e.allDay ? 'on' : ''}`} title={t('panel.event.allDayToggle')}>
+              <input type="checkbox" checked={e.allDay} onChange={toggleAllDay} />
+              {t('panel.event.allDay')}
+            </label>
+            <button
+              type="button"
+              className="remove"
+              aria-label={t('panel.todo.remove', { title: e.title })}
+              onClick={() => {
+                bridge.eventRemove(e.id);
+                onRemoved(e.id);
+              }}
+            >
+              ×
+            </button>
+          </span>
+          <RemindButton
+            reminds={e.reminds}
+            dateOnly={e.allDay}
+            allDay={e.allDay}
+            open={reminding}
+            controls={sheetId}
+            onToggle={() => setReminding((v) => !v)}
+          />
         </span>
-        <label
-          className={`remind ${e.allDay && e.remindMin === 0 ? 'off' : ''}`}
-          title={t('panel.event.remindTitle', { when: remindText(e.remindMin, e.allDay) })}
-        >
-          <BellIcon />
-          <select
-            value={e.remindMin}
-            aria-label={t('panel.event.remind')}
-            onChange={(ev) => bridge.eventUpdate(e.id, { remindMin: Number(ev.target.value) })}
-          >
-            {choices.map((m) => (
-              <option key={m} value={m}>
-                {remindText(m, e.allDay)}
-              </option>
-            ))}
-          </select>
-        </label>
-      </span>
-    </li>
+      </li>
+      {reminding && (
+        <li className="remind-sheet-row">
+          <RemindSheet
+            id={sheetId}
+            reminds={e.reminds}
+            dateOnly={e.allDay}
+            allDay={e.allDay}
+            onChange={(reminds) => bridge.eventUpdate(e.id, { reminds })}
+            onClose={() => setReminding(false)}
+          />
+        </li>
+      )}
+    </>
   );
 }

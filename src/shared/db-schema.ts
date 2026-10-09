@@ -123,6 +123,35 @@ export const MIGRATIONS: readonly string[] = [
   alter table event add column all_day integer not null default 0; -- 1 이면 종일
   update event set all_day = 1 where source = 'ics' and remind_min = 0 and notified_at = start_at;
   `,
+  // 8판: 여러 개 미리 알림 (일정과 할 일), 할 일 마감 시각. 셈은 shared/remind.ts.
+  // before_min 은 기준보다 몇 분 앞에 알릴지. 기준은 시각 일정이면 시작 시각, 종일 일정과 마감일만 있는 할 일이면 그날 0시
+  // (240 = 전날 저녁 8시, -540 = 당일 아침 9시), 마감 시각이 있는 할 일이면 그 시각.
+  // notified_at 은 null 이면 아직, 0 이면 말없이 넘김(넣을 때 이미 지났거나 늦어서 쓸모없음), 그 밖은 말한 시각.
+  // 일정은 지금 알림(remind_min) 하나를 첫 알림으로 옮긴다. 알림 없는 종일 일정(remind_min 0)은 옮기지 않는다.
+  // 시작이 이미 지났는데 안 알린 것은 넘긴 것으로 둔다. remind_min, notified_at 칸은 남겨 두지만 더 읽지 않는다.
+  // 할 일은 기본 알림(전날 저녁 8시)을 단다. 끝냈거나 지웠거나 마감이 오늘이거나 지난 것은 넘긴 것으로 둔다
+  `
+  create table reminder (
+    kind text not null,          -- event, todo
+    ref_id integer not null,     -- event.id, todo.id
+    before_min integer not null,
+    notified_at integer,
+    primary key (kind, ref_id, before_min)
+  ) without rowid;
+  alter table todo add column due_min integer; -- 마감 시각 (하루 안의 분, 현지). 없으면 날짜만
+
+  insert into reminder (kind, ref_id, before_min, notified_at)
+    select 'event', id, remind_min,
+      case when notified_at is not null then notified_at
+           when start_at + 300000 <= cast(strftime('%s', 'now') as integer) * 1000 then 0
+           else null end
+    from event where not (all_day = 1 and remind_min = 0);
+  insert into reminder (kind, ref_id, before_min, notified_at)
+    select 'todo', id, 240,
+      case when done_at is not null or deleted_at is not null or due <= date('now', 'localtime') then 0
+           else null end
+    from todo;
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

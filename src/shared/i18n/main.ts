@@ -38,6 +38,9 @@ export const ko = {
   'main.update.lockedShort': 'AI 대화는 업데이트한 뒤에 쓸 수 있어',
   'main.update.ready': (v: { version: string }) =>
     `새 버전 ${withParticle(v.version, '을')} 받아 뒀어. 끝낼 때 설치할게.`,
+  // 맥은 끝낼 때 저절로 설치하지 않는다 (main/update.ts installOnQuit)
+  'main.update.readyRestart': (v: { version: string }) =>
+    `새 버전 ${withParticle(v.version, '을')} 받아 뒀어. 다시 켜면 바로 바뀌어.`,
   'main.update.restart': '다시 켜서 업데이트',
   'main.backup.exportTitle': '백업을 둘 폴더',
   'main.backup.importTitle': '가져올 백업 폴더',
@@ -120,6 +123,8 @@ export const en: Translation<typeof ko> = {
   'main.update.lockedShort': 'AI chat is available after you update',
   'main.update.ready': (v: { version: string }) =>
     `Version ${v.version} is downloaded. It installs when you quit.`,
+  'main.update.readyRestart': (v: { version: string }) =>
+    `Version ${v.version} is downloaded. Restart to switch to it.`,
   'main.update.restart': 'Restart to update',
   'main.backup.exportTitle': 'Folder for the backup',
   'main.backup.importTitle': 'Backup folder to import',

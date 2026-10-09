@@ -5,6 +5,8 @@ import {
   defaultHouseRect,
   doorStandX,
   type HouseSpot,
+  houseChange,
+  houseDoorSprite,
   houseHit,
   houseSize,
   parseHouseSpot,
@@ -13,6 +15,7 @@ import {
   spotOf,
 } from '../shared/house.ts';
 import { type HouseStyle, houseLayout, houseSvg } from '../shared/house-art.ts';
+import type { HouseSprites } from '../shared/house-room.ts';
 import { t } from '../shared/i18n/index.ts';
 import { IPC } from '../shared/ipc.ts';
 import { MOVE_SPECS } from '../shared/moves.ts';
@@ -42,8 +45,9 @@ function makeSprite(svg: string, size: number, at: { x: number; y: number }, css
   win.setIgnoreMouseEvents(true);
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
   // 그림(SVG)과 모양(CSS)만 있는 창이라 다른 것은 다 막는다. CSP 가 없으면 개발 실행에서 Electron 보안 경고가 창마다 뜬다.
-  // 들기, 착지 모양은 메인이 executeJavaScript 로 바꾸는데 그것은 페이지 CSP 를 따르지 않아 스크립트는 열지 않는다
-  const csp = "default-src 'none'; style-src 'unsafe-inline'";
+  // 들기, 착지 모양은 메인이 executeJavaScript 로 바꾸는데 그것은 페이지 CSP 를 따르지 않아 스크립트는 열지 않는다.
+  // 그림은 data: 만 (집 안의 펫 그림은 펫 화면이 그린 PNG data URL 이다)
+  const csp = "default-src 'none'; style-src 'unsafe-inline'; img-src data:";
   const html = `<html><head><meta http-equiv="Content-Security-Policy" content="${csp}"><style>${css}</style></head><body style="margin:0;overflow:hidden;background:transparent">${svg.replace('<svg ', `<svg width="${size}" height="${size}" `)}</body></html>`;
   win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
   win.once('ready-to-show', () => win.showInactive());
@@ -180,15 +184,30 @@ body.land svg{animation:land .45s ease-out}
 @keyframes land{0%{transform:scale(1.1,.86)}35%{transform:scale(.95,1.06)}65%{transform:scale(1.03,.97)}100%{transform:none}}
 .rest,.letter{display:none}
 body.home .rest,body.mail .letter{display:inline}
-.hb,.letter{transform-box:fill-box;transform-origin:50% 100%}
+.letter,.blk,.slp,.wkg,.wk{transform-box:fill-box;transform-origin:50% 100%}
 .zzz text{opacity:0}
 body.z1 .zzz text:nth-child(1),body.z2 .zzz text:nth-child(-n+2),body.z3 .zzz text{opacity:1}
-body.home.b .hb{transform:scale(1.016,.984)}
 body.mail.b .letter{transform:translateY(-3px) rotate(-6deg)}
-@media (prefers-reduced-motion:reduce){svg{transition:none}body.lift svg{transform:none}body.land svg{animation:none}.zzz text{opacity:1}body.b .hb,body.b .letter{transform:none}}`;
+.leaf{transform-box:fill-box;transform-origin:0 50%;transition:transform .3s ease-in-out}
+body.open .leaf{transform:scaleX(.14)}
+.bars{transition:opacity .2s}
+body.open .bars{opacity:0}
+.walker{visibility:hidden}
+body.wk-at .walker,body.wk-in .walker{visibility:visible}
+.wkg{transition:transform .56s ease-in,opacity .56s ease-in,filter .56s ease-in}
+body.wk-in .wkg{transform:translateY(-4%) scale(.62);opacity:0;filter:brightness(.35)}
+body.wk-at .wk,body.wk-in .wk{animation:wb .14s ease-in-out 4 alternate}
+@keyframes wb{to{transform:translateY(-5%)}}
+body.nt .wkg,body.nt .leaf{transition:none}
+.room{opacity:0;visibility:hidden;transition:opacity .5s,visibility .5s}
+body.home .room{opacity:1;visibility:visible}
+body.home.b .blk{transform:scaleY(1.1)}
+body.home.b .slp{transform:translateY(-3%)}
+@media (prefers-reduced-motion:reduce){svg,.leaf,.wkg,.room{transition:none}body.lift svg{transform:none}body.land svg,.wk{animation:none}.zzz text{opacity:1}body.b .letter,body.b .blk,body.b .slp{transform:none}}`;
 /**
- * 쉬는 중 움직임은 메인이 0.7초마다 칸을 바꿔 그린다 (z 하나, 둘, 셋, 비움 / 숨쉬기 들썩).
- * CSS 무한 애니메이션으로 돌리면 투명 창이 쉬지 않고 다시 그려 CPU 가 20% 가까이 늘었다 (2026-10-08 측정)
+ * 쉬는 중 움직임은 메인이 0.7초마다 칸을 바꿔 그린다 (z 하나, 둘, 셋, 비움 / 이불이 부풀고 얼굴이 오르는 숨쉬기).
+ * CSS 무한 애니메이션으로 돌리면 투명 창이 쉬지 않고 다시 그려 CPU 가 20% 가까이 늘었다 (2026-10-08 측정).
+ * 문 열고 닫기, 걸어 들어가기, 방 열기는 한 번 하고 끝나는 CSS 전환이라 그때만 그린다
  */
 const REST_TICK_MS = 700;
 
@@ -236,6 +255,12 @@ export function createHouse({ onMoved, onClick, restItem, log }: HouseOptions = 
   let mail = false;
   /** 들기, 착지 같은 잠깐 모양. 쉬는 중 칸을 바꿀 때도 지킨다 */
   let transient = '';
+  /** 문이 열렸다, 문간 펫 그림(at 문 앞, in 문 안으로 들어갔다), 전환 없이 바로(nt) */
+  let open = false;
+  let walker: 'none' | 'at' | 'in' = 'none';
+  let instant = false;
+  /** 펫 화면이 그린 집 안 그림. 집 창을 새로 만들면(단계, 모양 바꾸기) 다시 넣는다 */
+  let sprites: HouseSprites | undefined;
   let restTick = 0;
   let restTimer: NodeJS.Timeout | undefined;
 
@@ -261,11 +286,22 @@ export function createHouse({ onMoved, onClick, restItem, log }: HouseOptions = 
       mail ? 'mail' : '',
       home && step < 3 ? `z${step + 1}` : '',
       (home || mail) && step % 2 === 1 ? 'b' : '',
+      open ? 'open' : '',
+      walker === 'none' ? '' : `wk-${walker}`,
+      instant ? 'nt' : '',
     ]
       .filter(Boolean)
       .join(' ');
     if (alive())
       void win?.webContents.executeJavaScript(`document.body.className=${JSON.stringify(names)}`, true);
+  }
+
+  /** 집 안 그림을 그림에 넣는다 (문간 깬 몸, 침대 자는 얼굴) */
+  function applySprites() {
+    if (!alive() || !sprites) return;
+    const js = `(() => { const s = ${JSON.stringify({ wk: sprites.awake, slp: sprites.sleep })};
+      for (const k of Object.keys(s)) for (const el of document.querySelectorAll('image.' + k)) el.setAttribute('href', s[k]); })()`;
+    void win?.webContents.executeJavaScript(js, true);
   }
 
   function land() {
@@ -407,7 +443,10 @@ export function createHouse({ onMoved, onClick, restItem, log }: HouseOptions = 
       else if (m.type === 'mouseDown' && m.button === 'left' && over) startDrag();
     });
     w.webContents.on('context-menu', () => menu());
-    w.webContents.once('did-finish-load', () => land());
+    w.webContents.once('did-finish-load', () => {
+      applySprites();
+      land();
+    });
   }
 
   // 모니터가 빠지거나 해상도, 독 자리가 바뀌면 보이는 바닥으로 다시 놓는다 (저장한 자리는 그대로)
@@ -421,13 +460,14 @@ export function createHouse({ onMoved, onClick, restItem, log }: HouseOptions = 
   /** 단계와 모양에 맞는 집을 보인다. 같은 모습이면 자리만 맞춘다 */
   function show({ level, style }: { level: number; style: HouseStyle }, near: Rect) {
     lastNear = near;
-    if (level <= 0) {
+    const plan = houseChange({ alive: alive(), level: shownLevel, style: shownStyle }, { level, style });
+    if (plan === 'remove') {
       win?.destroy();
       win = undefined;
       shownLevel = 0;
       return;
     }
-    if (alive() && level === shownLevel && style === shownStyle) {
+    if (plan === 'place') {
       if (!drag && !glideTimer) win?.setBounds(target(houseSize(level)));
       return;
     }
@@ -460,6 +500,37 @@ export function createHouse({ onMoved, onClick, restItem, log }: HouseOptions = 
     },
     /** 지금 집 그림(120 칸)의 문 가운데 x 와 문턱 y */
     doorArt: () => houseLayout(shownStyle, shownLevel).door,
+    /** 문간 펫 그림 자리 (화면 좌표). 집이 없으면 undefined */
+    doorSprite(): Rect | undefined {
+      if (!alive() || !win) return undefined;
+      return houseDoorSprite(win.getBounds(), shownStyle, shownLevel);
+    },
+    /** 펫 화면이 그린 집 안 그림을 넣는다 */
+    setSprites(next: HouseSprites | undefined) {
+      if (!next || next === sprites) return;
+      sprites = next;
+      applySprites();
+    },
+    /** 문을 연다, 닫는다 (전환 0.3초) */
+    setDoor(on: boolean) {
+      if (open === on) return;
+      open = on;
+      setClass(transient);
+    },
+    /**
+     * 문간 펫 그림. at 은 문 앞에 선 모습, in 은 문 안 어둠 속(작고 어둡게 사라짐). 둘 사이는 0.56초 전환.
+     * now 면 전환 없이 바로 (나올 때 문 안에서 시작하려고)
+     */
+    setWalker(state: 'none' | 'at' | 'in', now = false) {
+      walker = state;
+      instant = now;
+      setClass(transient);
+      if (now) {
+        // 다음 칸부터는 다시 전환한다
+        instant = false;
+        setTimeout(() => setClass(transient), 34);
+      }
+    },
     /** 우클릭 "집 원래 자리로" 와 같다 */
     reset,
     /** 펫이 집 안에서 쉬는 중 표시 (불빛, Zzz). 끄면 편지 표시도 지운다 */

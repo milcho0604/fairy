@@ -168,6 +168,9 @@ export function PanelApp() {
         </small>
       </div>
       {s.life.sulk > 0 && <p className="hint sulk">{t('panel.sulk', { name: s.petName, n: s.life.sulk })}</p>}
+      {s.life.poutWhy && (
+        <p className="hint sulk">{t('pout.panel', { name: s.petName, why: s.life.poutWhy })}</p>
+      )}
       {hungry && <p className="hint hungry">{t('panel.hungry', { name: s.petName })}</p>}
 
       <nav className="tabs" aria-label={t('panel.nav')}>

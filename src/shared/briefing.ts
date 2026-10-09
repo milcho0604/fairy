@@ -26,6 +26,14 @@ function greeting(minute: number): string {
 }
 
 export function briefingText(b: BriefingInput): string {
+  return `${greeting(b.nowMinute)} ${briefingBody(b)}`;
+}
+
+/**
+ * 인사 없는 브리핑 (만나는 시간의 맞이 인사 뒤에 붙인다). 아무것도 없으면 empty 글
+ * (기본은 "일정도 마감도 없어", 쉬는 날 한마디처럼 덧붙일 것이 없으면 빈 글을 넘긴다)
+ */
+export function briefingBody(b: Omit<BriefingInput, 'nowMinute'>, empty = t('briefing.nothing')): string {
   const parts: string[] = [];
   const allDay = b.events.filter((e) => e.allDay);
   if (allDay.length > 0) {
@@ -52,8 +60,7 @@ export function briefingText(b: BriefingInput): string {
     const late = b.overdue > 0 ? t('briefing.overdue', { n: b.overdue }) : '';
     parts.push(t('briefing.todos', { list: [due, late].filter(Boolean).join(', ') }));
   }
-  if (parts.length === 0) parts.push(t('briefing.nothing'));
-  return `${greeting(b.nowMinute)} ${parts.join(' ')}`;
+  return parts.length === 0 ? empty : parts.join(' ');
 }
 
 // ---- 하루 회고 (v2) ----

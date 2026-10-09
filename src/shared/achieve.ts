@@ -35,6 +35,9 @@ export interface Achievement {
   key: string;
   name: string;
   hint: string;
+  /** 이름과 힌트의 말 열쇠 (놓친 알림이 언어를 따라가게) */
+  nameKey: I18nKey;
+  hintKey: I18nKey;
   test: (f: Facts) => boolean;
 }
 
@@ -42,6 +45,8 @@ export interface Achievement {
 function ach(key: string, name: I18nKey, hint: I18nKey, test: (f: Facts) => boolean): Achievement {
   return {
     key,
+    nameKey: name,
+    hintKey: hint,
     get name() {
       return t(name);
     },

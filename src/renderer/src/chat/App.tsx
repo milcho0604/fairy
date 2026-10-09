@@ -191,7 +191,8 @@ export function App() {
       <header>
         <div className="title">
           <PetFace />
-          <strong>{petName}</strong>
+          {/* 긴 이름은 말줄임이라 올리면 전체 이름 (패널의 대화 단추와 같다) */}
+          <strong title={petName}>{petName}</strong>
         </div>
         <ProviderPicker
           providers={providers}

@@ -86,7 +86,7 @@ Coordinate system: ground is y=0, the figure is about 1.0 tall, +z faces the vie
 
 Schema:
 {
-  "likeness": [ "short notes, one per feature, e.g. "brown patch over the left eye only"" ],
+  "likeness": [ "short notes, one per feature, e.g. 'brown patch over the left eye only'" ],
   "v": 1,
   "parts": [ { "slot": one of ${JSON.stringify(SLOTS)},
                "shape": one of ${JSON.stringify(SHAPES)},

@@ -68,24 +68,43 @@ export function doorPoint(house: Rect, door: { x: number; bottom: number }): { x
   };
 }
 
-/** 문으로 들어가 이만큼 작아지면 숨는다 (펫 크기에 대한 비율) */
-export const DOOR_MIN = 0.12;
-/** 들어가기, 나오기 시간 (ms). 나온 뒤 600ms 에 모아 둔 말을 꺼내니 그보다 짧게 */
-export const DOOR_MS = 480;
+/**
+ * 문 드나들기 시간 (ms). 들어가기: 문이 열리고(DOOR_OPEN) 펫이 문간까지 걸으며 문 크기로 줄고(approachMs),
+ * 집 창이 넘겨받아 문 안 어둠 속으로 걸어 들어간 뒤(WALK_IN, play.ts HOUSE_CSS .wkg 와 같다) 문이 닫히고(DOOR_CLOSE)
+ * 앞벽이 걷히며 방이 보인다(ROOM, .room 과 같다). 나오기는 거꾸로: 방이 닫히고 문이 열리고 문간까지 걸어 나와
+ * 펫 창이 넘겨받아 커지며 걸어 나오고(OUT) 기지개(STRETCH)
+ */
+export const DOOR_OPEN_MS = 300;
+/** 문간까지 걸어가며 줄기: 거리에 맞춰 이 사이 (초속 약 130px, 집 옆에서 문까지 보통 0.7~1초) */
+export const APPROACH_MIN_MS = 650;
+export const APPROACH_MAX_MS = 1200;
+/** 집 창이 펫 그림을 그린 뒤 펫 창을 숨기기까지 (사이에 펫이 깜빡 사라지지 않게) */
+export const HANDOFF_MS = 70;
+export const WALK_IN_MS = 560;
+export const DOOR_CLOSE_MS = 300;
+export const ROOM_MS = 500;
+/** 나온 뒤 600ms 에 모아 둔 말을 꺼내니(pet-window setHidden) 그보다 짧게 */
+export const OUT_MS = 520;
+export const STRETCH_MS = 1700;
+
+/** 문간에 선 펫(stand)에서 문 안 그림 자리(end)까지 걸어가는 시간 */
+export function approachMs(stand: Rect, end: Rect): number {
+  const d = Math.abs(end.x + end.width / 2 - (stand.x + stand.width / 2));
+  return Math.round(Math.min(APPROACH_MAX_MS, Math.max(APPROACH_MIN_MS, d / 0.13)));
+}
 
 /**
- * 문 드나들기 u(0~1) 때 펫 사각형. from 은 문간에 선 펫, door 는 문 아래 가운데 점.
- * 들어갈 때는 문 쪽으로 가며 작아지고, 펫 아래 가운데가 문턱에 닿는다. 나올 때는 이것을 거꾸로(u 를 1→0) 쓴다.
- * 작아지는 것은 처음엔 천천히, 끝에서 빨리 (쏙 빨려 들어가는 느낌). 가운데쯤 살짝 뛰어오른다.
+ * 문 드나들기 u(0~1) 때 펫 사각형. stand 는 문간에 선 펫, end 는 문 안 펫 그림과 같은 자리(작다).
+ * 들어갈 때는 문 쪽으로 걸어가며 줄고, 펫 아래 가운데가 바닥을 따라 문턱으로 간다. 나올 때는 이것을 거꾸로(u 를 1→0) 쓴다.
+ * 걸음은 고르게, 크기는 처음과 끝에 천천히 (멀어지는 것처럼)
  */
-export function doorFrame(from: Rect, door: { x: number; y: number }, u: number): Rect {
+export function doorFrame(stand: Rect, end: Rect, u: number): Rect {
   const k = Math.min(1, Math.max(0, u));
-  const ease = k * k;
-  const size = Math.max(4, Math.round(from.width * (1 - (1 - DOOR_MIN) * ease)));
-  const cx = from.x + from.width / 2 + (door.x - (from.x + from.width / 2)) * (1 - (1 - k) * (1 - k));
-  const bottom = from.y + from.height + (door.y - (from.y + from.height)) * k;
-  const hop = Math.round(Math.sin(Math.PI * k) * Math.min(18, from.height * 0.12));
-  return { x: Math.round(cx - size / 2), y: Math.round(bottom - size - hop), width: size, height: size };
+  const ease = k * k * (3 - 2 * k);
+  const size = Math.max(4, Math.round(stand.width + (end.width - stand.width) * ease));
+  const cx = stand.x + stand.width / 2 + (end.x + end.width / 2 - (stand.x + stand.width / 2)) * k;
+  const bottom = stand.y + stand.height + (end.y + end.height - (stand.y + stand.height)) * k;
+  return { x: Math.round(cx - size / 2), y: Math.round(bottom - size), width: size, height: size };
 }
 
 /** 나왔을 때 한마디. 쉰 시간(ms)에 따라 */

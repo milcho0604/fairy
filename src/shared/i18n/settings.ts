@@ -56,8 +56,7 @@ export const ko = {
     '같은 사진과 요청사항으로 AI가 몸만 다시 만들어. 이름과 포즈는 그대로야. 30초에서 1분쯤 걸려.',
   'settings.gait.justSwitch': (v: { pick: string }) => `그냥 ${withParticle(v.pick, '으로')} 걷기`,
   'settings.gait.keep': '그대로 두기',
-  'settings.gait.remaking': (v: { pick: string }) =>
-    `${v.pick} 몸으로 다시 만드는 중이야. 30초에서 1분쯤 걸려.`,
+  'settings.gait.remaking': (v: { pick: string }) => `${v.pick} 몸으로 다시 만드는 중이야.`,
   'settings.gait.stop': '그만두기',
   'settings.gait.remade': (v: { name: string }) => `${v.name} 몸을 새로 만들었어`,
   'settings.gait.friendAria': (v: { name: string }) => `${v.name} 걸음새`,
@@ -65,6 +64,9 @@ export const ko = {
   'settings.wanderHint': '가만히 있다가 가끔 걷고 앉아. 끄면 늘 그 자리에 있어.',
   'settings.lookAtCursor': '마우스 쳐다보기',
   'settings.lookAtCursorHint': '한가할 때 마우스가 가까이 오면 그쪽을 봐.',
+  'settings.dayRhythm': '하루 리듬',
+  'settings.dayRhythmHint':
+    '아침엔 잠이 덜 깨고 낮엔 활발하고 밤엔 졸려. 만나는 시간을 정했으면 그 시간에 맞춰. 쉬지 않고 오래 일하면 같이 지쳐.',
   'settings.sounds': '효과음',
   'settings.soundsHint':
     '할 일 끝낼 때, 밥 먹을 때, 일정 알림에 작은 소리를 내. 집중하거나 잘 때는 조용히 있어.',
@@ -75,7 +77,10 @@ export const ko = {
   'settings.boostResting': '지금은 배터리라 쉬는 중이야. 전원을 꽂으면 켜져.',
   'settings.sysMonitor': '메뉴 막대에 컴퓨터 상태',
   'settings.sysMonitorHint':
-    'CPU 사용률을 메뉴 막대에 띄우고, 컴퓨터가 바쁠수록 작은 펫이 빨리 달려. 메뉴를 열면 메모리, 디스크, 그래픽도 보여.',
+    'CPU 사용률을 메뉴 막대에 띄우고, 한가하면 지금 펫이 앉아서 졸고, 바쁠수록 걷다가 달리고 땀 흘리며 질주해. 메뉴를 열면 메모리, 디스크, 그래픽도 보여. 화면을 잠그거나 자리를 비우면 쉬고, 배터리일 때는 펫이 멈춰 서.',
+  'settings.sysMonitorWin': '알림 영역에 컴퓨터 상태',
+  'settings.sysMonitorWinHint':
+    '알림 영역 아이콘에 마우스를 올리면 CPU 사용률이 보이고, 한가하면 지금 펫이 앉아서 졸고, 바쁠수록 걷다가 달리고 땀 흘리며 질주해. 메뉴를 열면 메모리, 디스크, 그래픽도 보여. 화면을 잠그거나 자리를 비우면 쉬고, 배터리나 발표 중에는 펫이 멈춰 서.',
 
   // 친구 펫
   'settings.friends': '친구 펫',
@@ -104,14 +109,15 @@ export const ko = {
   /** 일요일부터 쉼표로 나눈 일곱 요일 */
   'settings.weekdays': '일,월,화,수,목,금,토',
   'settings.spicy': '매운맛',
-  'settings.spicyHint': '안 온 날이 4일을 넘으면 더 크게 삐져(7일까지). 잃는 건 없고 할 일 하나면 바로 풀려.',
+  'settings.spicyHint':
+    '하루 중에도 잘 토라져. 안 놀아 주거나, 밥이 늦거나, 할 일을 미루거나, 쉬자는 말을 넘기면 고개를 돌리고, 더 삐지면 등을 돌려. 쓰다듬기, 밥, 놀기, 칭찬 한마디로 풀리고 가만둬도 두 시간 안에 풀려. 안 온 날은 7일까지 세. 잃는 건 없어.',
 
   // 말풍선
   'settings.bubbles': '말풍선',
   'settings.bubblesAria': '말풍선 빈도',
   'settings.chatterHint.quiet': '답이 왔다는 알림만 해.',
   'settings.chatterHint.normal': '바쁠 때 같은 상태 알림까지, 한 시간에 {n}개까지.',
-  'settings.chatterHint.chatty': '혼잣말도 하고, 한 시간에 {n}개까지.',
+  'settings.chatterHint.chatty': '혼잣말을 자주 하고(4~6분마다), 한 시간에 {n}개까지.',
 
   // AI
   'settings.ai': 'AI',
@@ -381,8 +387,7 @@ export const en: Translation<typeof ko> = {
     'Your AI rebuilds only the body from the same photo and wish. Name and poses stay. Takes 30 seconds to a minute.',
   'settings.gait.justSwitch': (v) => `Just walk on ${v.pick.toLowerCase()}`,
   'settings.gait.keep': 'Keep as is',
-  'settings.gait.remaking': (v) =>
-    `Rebuilding the body for ${v.pick.toLowerCase()}. This takes 30 seconds to a minute.`,
+  'settings.gait.remaking': (v) => `Rebuilding the body for ${v.pick.toLowerCase()}.`,
   'settings.gait.stop': 'Stop',
   'settings.gait.remade': (v) => `${v.name} has a new body`,
   'settings.gait.friendAria': (v) => `How ${v.name} walks`,
@@ -390,6 +395,9 @@ export const en: Translation<typeof ko> = {
   'settings.wanderHint': 'Sits still, then walks and sits now and then. Turn off to stay put.',
   'settings.lookAtCursor': 'Watch the mouse',
   'settings.lookAtCursorHint': 'When idle, looks toward the mouse pointer if it comes close.',
+  'settings.dayRhythm': 'Daily rhythm',
+  'settings.dayRhythmHint':
+    'Groggy in the morning, lively by day, sleepy at night. Follows your meeting time if you set one. Gets worn out with you after long stretches of work.',
   'settings.sounds': 'Sound effects',
   'settings.soundsHint':
     'Soft little sounds for finished to-dos, meals, and event reminders. Stays quiet while you focus or while it sleeps.',
@@ -399,7 +407,10 @@ export const en: Translation<typeof ko> = {
   'settings.boostResting': 'Resting now: on battery. It turns on when you plug in.',
   'settings.sysMonitor': 'Computer status in the menu bar',
   'settings.sysMonitorHint':
-    'Shows CPU use in the menu bar, and a tiny pet runs faster the busier your computer is. Open the menu for memory, disk and graphics.',
+    'Shows CPU use in the menu bar, and your pet naps while the computer is idle, then walks, runs and sprints with a sweat the busier it gets. Open the menu for memory, disk and graphics. It rests while the screen is locked or you are away, and the pet stands still on battery.',
+  'settings.sysMonitorWin': 'Computer status in the notification area',
+  'settings.sysMonitorWinHint':
+    'Hover the notification area icon to see CPU use, and your pet naps while the computer is idle, then walks, runs and sprints with a sweat the busier it gets. Open the menu for memory, disk and graphics. It rests while the screen is locked or you are away, and the pet stands still on battery or while presenting.',
 
   'settings.friends': 'Pet friends',
   'settings.friendsChanged': 'Pet friends updated',
@@ -426,13 +437,13 @@ export const en: Translation<typeof ko> = {
   'settings.weekdays': 'Su,Mo,Tu,We,Th,Fr,Sa',
   'settings.spicy': 'Spicy mode',
   'settings.spicyHint':
-    'After 4 days away, it sulks harder (up to 7 days). You lose nothing, and one to-do makes up.',
+    'Pouts easily, even mid-day. Skip playtime, feed late, put off to-dos, or brush off a break, and it turns its head; push it further and it turns its back. Petting, food, play, or a kind word makes up, and it wears off within two hours anyway. Days away count up to 7. You lose nothing.',
 
   'settings.bubbles': 'Speech bubbles',
   'settings.bubblesAria': 'Bubble frequency',
   'settings.chatterHint.quiet': 'Only tells you when an answer arrives.',
   'settings.chatterHint.normal': 'Also status notes like when you look busy, up to {n} an hour.',
-  'settings.chatterHint.chatty': 'Talks to itself too, up to {n} an hour.',
+  'settings.chatterHint.chatty': 'Chats to itself often (every 4 to 6 min), up to {n} an hour.',
 
   'settings.ai': 'AI',
   'settings.persona': 'Personality and tone',

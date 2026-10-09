@@ -30,12 +30,15 @@ export type RestEvent = 'suggest' | 'rested';
  */
 export class RestCoach {
   #workedMs = 0;
+  /** 쉬지 않고 일한 시간. 권유를 띄워도 0 으로 돌리지 않는다 (기운의 피로, shared/energy.ts). 실제로 쉬어야 0 */
+  #streakMs = 0;
   #last: number | undefined;
   #accepted: number | undefined;
   #away = false;
 
   tick(now: number, idleSec: number, level: ChatterLevel): RestEvent | undefined {
-    const dt = this.#last === undefined ? 0 : Math.min(5 * 60_000, now - this.#last);
+    // 시계를 뒤로 돌리면 음수가 된다 (일한 시간이 줄지 않게)
+    const dt = this.#last === undefined ? 0 : Math.max(0, Math.min(5 * 60_000, now - this.#last));
     this.#last = now;
     if (this.#accepted !== undefined) {
       if (now - this.#accepted > REST.acceptWindowMs) this.#accepted = undefined;
@@ -44,14 +47,17 @@ export class RestCoach {
         this.#accepted = undefined;
         this.#away = false;
         this.#workedMs = 0;
+        this.#streakMs = 0;
         return 'rested';
       }
     }
     if (idleSec >= REST.idleResetSec) {
       this.#workedMs = 0;
+      this.#streakMs = 0;
       return undefined;
     }
     this.#workedMs += dt;
+    this.#streakMs += dt;
     const every = REST_EVERY_MIN[level];
     if (every === undefined || this.#accepted !== undefined) return undefined;
     if (this.#workedMs >= every * 60_000) {
@@ -69,5 +75,10 @@ export class RestCoach {
 
   get workedMin(): number {
     return Math.floor(this.#workedMs / 60_000);
+  }
+
+  /** 쉬지 않고 일한 분 (권유와 상관없이, 5분 넘게 자리를 비우거나 권유대로 쉬어야 0) */
+  get streakMin(): number {
+    return Math.floor(this.#streakMs / 60_000);
   }
 }

@@ -3,6 +3,8 @@ import { plusDays, weekdayOf as weekday } from './day.ts';
 import type { Db } from './db-schema.ts';
 import { FOCUS, focusCoins } from './focus.ts';
 import { t } from './i18n/index.ts';
+import { type Anchor, atLocal, DEFAULT_REMINDS, normalizeReminds, REMIND_MAX_MIN } from './remind.ts';
+import { ReminderStore } from './reminder-store.ts';
 
 export const COIN = {
   /** 할 일 하나 */
@@ -73,7 +75,30 @@ export interface Todo {
   doneAt: number | null;
   coins: number;
   repeat: Repeat | null;
+  /** 마감 시각 (하루 안의 분, 현지). 없으면 마감일만 (8판) */
+  dueMin: number | null;
+  /**
+   * 미리 알림 (8판), 이른 것부터. 마감 시각이 있으면 그 시각 몇 분 전, 없으면 마감일 0시 몇 분 전
+   * (240 = 전날 저녁 8시, -540 = 당일 아침 9시). 마감일이 없으면 울리지 않는다
+   */
+  reminds: number[];
 }
+
+/** 하루 안의 분으로 쓸 수 있는 값인지 (0~1439) */
+export const isDueMin = (v: unknown): v is number =>
+  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 24 * 60;
+
+/** 할 일의 알림 기준: 마감일이 없으면 없음, 시각이 있으면 그 시각, 없으면 마감일 */
+export function todoAnchor(todo: { due: string | null; dueMin: number | null }): Anchor | null {
+  if (!todo.due) return null;
+  return todo.dueMin === null
+    ? { kind: 'day', day: todo.due }
+    : { kind: 'time', at: atLocal(todo.due, todo.dueMin) };
+}
+
+const defaultTodoReminds = (dueMin: number | null): number[] => [
+  ...(dueMin === null ? DEFAULT_REMINDS.todo : DEFAULT_REMINDS.todoTimed),
+];
 
 /** ms 시각의 현지 날짜 YYYY-MM-DD. 하루 상한, 마감 판단에 쓴다. */
 export function localDay(ms: number): string {
@@ -90,9 +115,10 @@ interface Row {
   done_at: number | null;
   coins: number;
   repeat: string | null;
+  due_min?: number | null;
 }
 
-const toTodo = (r: Row): Todo => ({
+const toTodo = (r: Row, reminds: number[] = []): Todo => ({
   id: Number(r.id),
   title: r.title,
   due: r.due,
@@ -101,19 +127,42 @@ const toTodo = (r: Row): Todo => ({
   doneAt: r.done_at === null ? null : Number(r.done_at),
   coins: Number(r.coins),
   repeat: isRepeat(r.repeat) ? r.repeat : null,
+  dueMin: r.due && isDueMin(Number(r.due_min ?? Number.NaN)) ? Number(r.due_min) : null,
+  reminds,
 });
 
 export class TodoStore {
   #db: Db;
   #day: (ms: number) => string;
+  #reminders: ReminderStore;
 
   constructor(db: Db, day: (ms: number) => string = localDay) {
     this.#db = db;
     this.#day = day;
+    this.#reminders = new ReminderStore(db, 'todo');
+  }
+
+  #withReminds(rows: readonly Row[]): Todo[] {
+    const marks = this.#reminders.many(rows.map((r) => Number(r.id)));
+    return rows.map((r) =>
+      toTodo(
+        r,
+        (marks.get(Number(r.id)) ?? []).map((m) => m.before),
+      ),
+    );
   }
 
   add(
-    input: { title: string; due?: string | null; important?: boolean; repeat?: Repeat | null },
+    input: {
+      title: string;
+      due?: string | null;
+      important?: boolean;
+      repeat?: Repeat | null;
+      /** 마감 시각 (하루 안의 분). 마감일이 없으면 버린다 */
+      dueMin?: number | null;
+      /** 미리 알림. 없으면 기본 (마감일만: 전날 저녁 8시, 시각까지: 하루 전과 1시간 전) */
+      reminds?: readonly number[];
+    },
     now: number,
     repeatOf: number | null = null,
   ): Todo {
@@ -122,58 +171,124 @@ export class TodoStore {
     const repeat = isRepeat(input.repeat) ? input.repeat : null;
     // 반복 할 일은 마감이 있어야 다음 회차를 셀 수 있다. 없으면 오늘.
     const due = input.due ?? (repeat ? this.#day(now) : null);
+    const dueMin = due && isDueMin(input.dueMin) ? input.dueMin : null;
     const r = this.#db
       .prepare(
-        'insert into todo (title, due, important, created_at, repeat, repeat_of) values (?, ?, ?, ?, ?, ?)',
+        'insert into todo (title, due, important, created_at, repeat, repeat_of, due_min) values (?, ?, ?, ?, ?, ?, ?)',
       )
-      .run(title.slice(0, 200), due, input.important ? 1 : 0, now, repeat, repeatOf);
-    return this.get(Number(r.lastInsertRowid)) as Todo;
+      .run(title.slice(0, 200), due, input.important ? 1 : 0, now, repeat, repeatOf, dueMin);
+    const id = Number(r.lastInsertRowid);
+    const reminds = input.reminds
+      ? normalizeReminds(input.reminds, dueMin === null)
+      : defaultTodoReminds(dueMin);
+    this.#reminders.set(id, reminds, todoAnchor({ due, dueMin }), { now, reset: true });
+    return this.get(id) as Todo;
   }
 
   get(id: number): Todo | undefined {
     const r = this.#db.prepare('select * from todo where id = ? and deleted_at is null').get(id) as
       | Row
       | undefined;
-    return r ? toTodo(r) : undefined;
+    return r ? this.#withReminds([r])[0] : undefined;
   }
 
   /**
    * 화면에 보일 목록: 안 끝난 것(중요 먼저, 마감 빠른 순, 마감 없는 것은 뒤, 오래된 순)과 오늘 끝낸 것.
    */
   list(now: number): { open: Todo[]; doneToday: Todo[] } {
-    const open = (
+    const open = this.#withReminds(
       this.#db
         .prepare(
           `select * from todo where done_at is null and deleted_at is null
-           order by important desc, due is null, due, created_at`,
+           order by important desc, due is null, due, due_min is not null, due_min, created_at`,
         )
-        .all() as Row[]
-    ).map(toTodo);
+        .all() as Row[],
+    );
     const today = this.#day(now);
     const done = (
       this.#db
         .prepare('select * from todo where done_at is not null and deleted_at is null order by done_at desc')
         .all() as Row[]
     )
-      .map(toTodo)
+      .map((r) => toTodo(r))
       .filter((t) => t.doneAt !== null && this.#day(t.doneAt) === today);
     return { open, doneToday: done };
   }
 
+  /**
+   * 고치기. 마감일이나 마감 시각을 바꾸면 알림 표시를 지워 다시 알린다. 마감 시각을 새로 넣거나 빼면(날짜만과 시각 사이)
+   * 알림을 주지 않았을 때 그쪽 기본으로 (날짜 기준 "전날 저녁 8시" 240 은 시각 기준에서 "4시간 전"이 된다).
+   * now 를 주면(패널) 새로 건 알림 중 이미 지난 것은 넘긴 것으로 적는다
+   */
   update(
     id: number,
-    patch: { title?: string; due?: string | null; important?: boolean; repeat?: Repeat | null },
+    patch: {
+      title?: string;
+      due?: string | null;
+      important?: boolean;
+      repeat?: Repeat | null;
+      dueMin?: number | null;
+      reminds?: readonly number[];
+    },
+    now?: number,
   ): Todo | undefined {
     const t = this.get(id);
     if (!t) return undefined;
     const title = patch.title === undefined ? t.title : patch.title.trim().slice(0, 200) || t.title;
-    const due = patch.due === undefined ? t.due : patch.due;
     const important = patch.important === undefined ? t.important : patch.important;
     const repeat = patch.repeat === undefined ? t.repeat : isRepeat(patch.repeat) ? patch.repeat : null;
+    const asked = patch.due === undefined ? t.due : patch.due;
+    const due = repeat && !asked ? t.due : asked;
+    // 마감일을 지우면 시각도 지운다
+    const wantMin = patch.dueMin === undefined ? t.dueMin : isDueMin(patch.dueMin) ? patch.dueMin : null;
+    const dueMin = due ? wantMin : null;
     this.#db
-      .prepare('update todo set title = ?, due = ?, important = ?, repeat = ? where id = ?')
-      .run(title, repeat && !due ? t.due : due, important ? 1 : 0, repeat, id);
+      .prepare('update todo set title = ?, due = ?, important = ?, repeat = ?, due_min = ? where id = ?')
+      .run(title, due, important ? 1 : 0, repeat, dueMin, id);
+    const flipped = (dueMin === null) !== (t.dueMin === null);
+    const reminds = patch.reminds
+      ? normalizeReminds(patch.reminds, dueMin === null)
+      : flipped
+        ? defaultTodoReminds(dueMin)
+        : t.reminds;
+    const moved = due !== t.due || dueMin !== t.dueMin;
+    if (moved || reminds.join() !== t.reminds.join())
+      this.#reminders.set(id, reminds, todoAnchor({ due, dueMin }), {
+        ...(now === undefined ? {} : { now }),
+        reset: moved,
+      });
     return this.get(id);
+  }
+
+  /**
+   * 지금 알릴 할 일: 안 끝났고 마감일이 있으며 알림 하나가 울릴 때가 된 것.
+   * 마감일만 있으면 마감일이 끝나기 전까지, 시각이 있으면 시각 5분 뒤까지 (지난 마감은 알리지 않는다)
+   */
+  dueReminders(now: number): Todo[] {
+    const rows = this.#db
+      .prepare(
+        `select * from todo t where done_at is null and deleted_at is null and due is not null
+         and due >= ? and due <= ?
+         and exists (select 1 from reminder r where r.kind = 'todo' and r.ref_id = t.id and r.notified_at is null)
+         order by due, due_min, id`,
+      )
+      .all(this.#day(now - 86_400_000), this.#day(now + REMIND_MAX_MIN * 60_000 + 2 * 86_400_000)) as Row[];
+    return this.#withReminds(rows).filter((todo) => {
+      const anchor = todoAnchor(todo);
+      return anchor !== null && this.#reminders.due(todo.id, anchor, now);
+    });
+  }
+
+  /** 알렸다: 울릴 때가 지난 알림을 다 알린 것으로 (늦었으면 곧 올 것까지) */
+  markNotified(id: number, now: number): void {
+    const todo = this.get(id);
+    const anchor = todo ? todoAnchor(todo) : null;
+    if (anchor) this.#reminders.markNotified(id, anchor, now);
+  }
+
+  /** from 뒤로 미리 알림을 말한 할 일 id (오늘 알림으로 말한 것은 오후 마감 알림에서 뺀다) */
+  remindedSince(from: number): Set<number> {
+    return this.#reminders.spokenSince(from);
   }
 
   /** 지운 할 일은 목록에서만 빠진다. 받은 코인은 그대로 둔다 (지우기는 되돌리기가 아니다). */
@@ -210,9 +325,17 @@ export class TodoStore {
         }
       }
       this.#db.prepare('update todo set done_at = ?, coins = ? where id = ?').run(now, coins, id);
+      // 다음 회차도 같은 마감 시각과 같은 알림 (지난 알림은 넘긴다)
       if (t.repeat)
         this.add(
-          { title: t.title, important: t.important, repeat: t.repeat, due: nextDue(t.due, t.repeat, day) },
+          {
+            title: t.title,
+            important: t.important,
+            repeat: t.repeat,
+            due: nextDue(t.due, t.repeat, day),
+            dueMin: t.dueMin,
+            reminds: t.reminds,
+          },
           now,
           id,
         );

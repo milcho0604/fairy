@@ -221,6 +221,13 @@ test('집중 길이와 커서 바라보기: 옛 설정 파일엔 없어서 기�
   assert.equal(applyPatch(DEFAULT_SETTINGS, { lookAtCursor: 'no' }).lookAtCursor, true);
 });
 
+test('하루 리듬: 옛 설정 파일엔 없어서 켬, 틀린 값은 지금 값', () => {
+  assert.equal(parseSettings({ petName: '밤' }).dayRhythm, true);
+  assert.equal(parseSettings({ dayRhythm: false }).dayRhythm, false);
+  assert.equal(applyPatch(DEFAULT_SETTINGS, { dayRhythm: false }).dayRhythm, false);
+  assert.equal(applyPatch(DEFAULT_SETTINGS, { dayRhythm: 'off' }).dayRhythm, true);
+});
+
 test('부스트 모드: 옛 설정 파일엔 없어서 끔, 틀린 값은 지금 값', () => {
   assert.equal(parseSettings({ petName: '밤' }).boost, false);
   assert.equal(applyPatch(DEFAULT_SETTINGS, { boost: true }).boost, true);

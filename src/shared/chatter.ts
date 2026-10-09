@@ -31,8 +31,14 @@ const ENABLED: Record<ChatterLevel, readonly BubbleKind[]> = {
   chatty: ['answer', 'schedule', 'system', 'idle-talk'],
 };
 
-/** 한 시간에 보일 수 있는 말풍선 수 (answer, schedule 은 세지 않는다). */
-export const MAX_PER_HOUR: Record<ChatterLevel, number> = { quiet: 0, normal: 3, chatty: 6 };
+/**
+ * 한 시간에 보일 수 있는 말풍선 수 (answer, schedule 은 세지 않는다).
+ * 수다쟁이는 2026-10-08 사용자 요청("수다쟁이면 말을 좀 많이")으로 6 에서 14 로. 혼잣말이 4~6분마다라 상태 알림과 합쳐 넉넉히.
+ */
+export const MAX_PER_HOUR: Record<ChatterLevel, number> = { quiet: 0, normal: 3, chatty: 14 };
+
+/** 혼잣말은 다른 말풍선(어떤 종류든)이 뜬 뒤 이만큼은 기다린다. 알림 바로 뒤에 수다가 붙지 않게 */
+export const IDLE_AFTER_ANY_MS = 2 * 60_000;
 
 /** "나중에"를 이만큼 연달아 누르면 조용히 할지 묻는다. */
 export const LATER_LIMIT = 3;
@@ -43,6 +49,8 @@ const UNCOUNTED: readonly BubbleKind[] = ['answer', 'schedule'];
 export class ChatterGate {
   #shown: number[] = [];
   #laterInRow = 0;
+  /** 마지막으로 말풍선을 띄운 때 (종류와 상관없이) */
+  #lastAt: number | undefined;
 
   level: ChatterLevel;
 
@@ -58,10 +66,21 @@ export class ChatterGate {
   /** 지금 이 종류의 말풍선을 띄워도 되는지. 된다면 띄운 것으로 센다. */
   take(kind: BubbleKind, now: number): boolean {
     if (!ENABLED[this.level].includes(kind)) return false;
-    if (UNCOUNTED.includes(kind)) return true;
+    if (
+      kind === 'idle-talk' &&
+      this.#lastAt !== undefined &&
+      now >= this.#lastAt &&
+      now - this.#lastAt < IDLE_AFTER_ANY_MS
+    )
+      return false;
+    if (UNCOUNTED.includes(kind)) {
+      this.#lastAt = now;
+      return true;
+    }
     this.#shown = this.#shown.filter((t) => now - t < HOUR);
     if (this.#shown.length >= MAX_PER_HOUR[this.level]) return false;
     this.#shown.push(now);
+    this.#lastAt = now;
     return true;
   }
 

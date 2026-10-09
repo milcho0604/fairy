@@ -6,6 +6,7 @@ import { type LangPref, t } from './i18n/index.ts';
 import { cleanIcsUrl } from './ics.ts';
 import { GAITS, type Gait } from './pet3d/blueprint.ts';
 import { cleanWish } from './pet3d/prompt.ts';
+import { DEFAULT_ROUTINE, parseRoutine, type Routine } from './routine.ts';
 import { isAccelerator, reservedUse, SHORTCUT_DEFAULTS, type ShortcutId, shortcutClash } from './shortcut.ts';
 
 /** 입체 펫 모습: 피규어, 게임 캐릭터, 실사처럼 */
@@ -89,6 +90,11 @@ export interface Settings {
   focusMin: FocusLength;
   /** 한가할 때 커서 쪽을 바라본다 */
   lookAtCursor: boolean;
+  /**
+   * 하루 리듬 (기본 켬, shared/energy.ts): 사용자 컴퓨터 시각대로 아침엔 잠이 덜 깨고 낮엔 활발하고 밤엔 졸리다.
+   * 쉬지 않고 오래 일하면 같이 지친다. 끄면 예전 모습 (밤에 하품이 잦은 것만 남는다). 지친 혼잣말은 수다 빈도를 따른다
+   */
+  dayRhythm: boolean;
   /** 짝꿍 일기를 지금 고른 AI 로 다듬기 (기본 끔. 켜도 숫자와 펫 문장만 보낸다) */
   diaryAi: boolean;
   /** 효과음 (기본 끔). 집중, 잠, 숨김 중에는 안 낸다 */
@@ -106,6 +112,11 @@ export interface Settings {
    * 이 칸이 생기기 전에 만든 펫은 없다(요청사항 없이 다시 만든다). 펫 파일로 내보내지 않는다
    */
   petWishes: Record<string, string>;
+  /**
+   * 만나는 시간 (shared/routine.ts, 사용자 요청 2026-10-08): 요일마다 일을 시작하고 끝내는 시간. 그때 맞이하고 헤어지는 인사.
+   * 기본 꺼짐(예전처럼 켤 때 브리핑). 쉬는 날(만나지 않는 요일)은 삐짐 쉬는 날(restDays)과 따로다
+   */
+  routine: Routine;
 }
 
 /** 보관한 사진 펫. 파일은 pets/ 안 */
@@ -264,11 +275,13 @@ export const DEFAULT_SETTINGS: Settings = {
   petRules: '',
   focusMin: 25,
   lookAtCursor: true,
+  dayRhythm: true,
   diaryAi: false,
   sounds: false,
   boost: false,
   petGaits: {},
   petWishes: {},
+  routine: DEFAULT_ROUTINE,
 };
 
 export const PET_NAME_MAX = 12;
@@ -401,9 +414,11 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
       typeof r.petRules === 'string' ? r.petRules.replace(/\r\n/g, '\n').slice(0, RULES_MAX) : base.petRules,
     focusMin: isFocusLength(r.focusMin) ? r.focusMin : base.focusMin,
     lookAtCursor: bool(r.lookAtCursor, base.lookAtCursor),
+    dayRhythm: bool(r.dayRhythm, base.dayRhythm),
     diaryAi: bool(r.diaryAi, base.diaryAi),
     sounds: bool(r.sounds, base.sounds),
     boost: bool(r.boost, base.boost),
+    routine: parseRoutine(r.routine, base.routine),
     ...bodiesOf(r, base),
     ...(typeof r.skipVersion === 'string' && /^\d+\.\d+\.\d+/.test(r.skipVersion)
       ? { skipVersion: r.skipVersion.slice(0, 32) }

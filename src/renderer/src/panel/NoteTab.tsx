@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { t } from '../../../shared/i18n/index.ts';
 import type { NoteAiKind, NoteHit, PanelState } from '../../../shared/ipc.ts';
-import { splicePolished } from '../../../shared/note-polish.ts';
+import { POLISH_MAX, type PolishReply, splicePolished } from '../../../shared/note-polish.ts';
 import { NOTE_BODY_MAX, NOTE_TITLE_MAX, type Note } from '../../../shared/note-store.ts';
 import { ago } from './format.ts';
 import { isEsc, takeEsc } from './keys.ts';
@@ -11,6 +11,13 @@ const bridge = window.jjakkungPanel;
 const SAVE_MS = 400;
 /** 다듬은 글로 바꾼 뒤 되돌리기를 보여 주는 시간 */
 const UNDO_MS = 10_000;
+/** 글 칸을 떠난 뒤 이 안에 다듬기를 누르면 떠나기 전에 고른 부분을 다듬는다 (키보드로 단추까지 오는 사이) */
+const SEL_KEEP_MS = 30_000;
+const POLISH_ERROR = {
+  fail: 'panel.note.polishFail',
+  locked: 'panel.note.polishLocked',
+  tooLong: 'panel.note.polishTooLong',
+} as const;
 
 /** 다듬기 상태: 기다리는 중, 또는 받은 글 (어느 자리를 다듬었는지와 함께) */
 type Polish = { phase: 'busy' } | { phase: 'ready'; text: string; start: number; end: number };
@@ -213,30 +220,76 @@ function NoteEditor({
     },
     [],
   );
-  const askPolish = async () => {
-    flush();
-    // 글 칸에 커서가 있을 때만 고른 부분을 본다 (예전에 골라 둔 자리가 남아 있어도 전체를 다듬게)
-    const el = document.activeElement === bodyRef.current ? bodyRef.current : null;
-    const start = el?.selectionStart ?? 0;
-    const end = el?.selectionEnd ?? 0;
-    // 고른 것이 공백뿐이면 전체를 다듬는다
-    const part = start < end && body.slice(start, end).trim() ? { start, end } : { start: 0, end: 0 };
-    const src = part.start < part.end ? body.slice(part.start, part.end) : body;
-    setUndo(undefined);
-    setPolish({ phase: 'busy' });
-    const text = await bridge.notePolish(src);
+  /** 지금 AI 이름 (단추 풀이와 진행 글) */
+  const [aiName, setAiName] = useState('');
+  /** 글 칸을 떠나기 직전에 고른 자리. 키보드로 단추에 오면 글 칸에 커서가 없어서 여기서 읽는다 */
+  const lastSel = useRef<{ start: number; end: number; at: number }>(undefined);
+  const notice = (text: string) => {
+    setAiNote(text);
+    setTimeout(() => setAiNote(''), 5000);
+  };
+  const receive = (r: PolishReply) => {
+    // 그새 목록으로 나갔으면 받지 않는다 (메인이 들고 있다가 이 메모를 다시 열 때 준다)
     if (!alive.current) return;
-    if (!text) {
+    bridge.notePolishTaken(note.id);
+    if (!r.ok) {
       setPolish(undefined);
-      setAiNote(t('panel.note.polishFail'));
-      setTimeout(() => setAiNote(''), 4000);
+      if (r.error !== 'none') notice(t(POLISH_ERROR[r.error]));
       return;
     }
-    setPolish({ phase: 'ready', text, ...part });
+    // 패널을 닫았다 연 사이 글이 바뀌었으면 받은 자리가 어긋난다
+    if (r.body !== latest.current.body) {
+      setPolish(undefined);
+      notice(t('panel.note.polishStale'));
+      return;
+    }
+    setPolish({ phase: 'ready', text: r.text, start: r.start, end: r.end });
+  };
+  // 메모를 열 때: 패널이 닫힌 사이에도 돌던 다듬기나 받아 둔 답이 있으면 이어 받는다 (메인이 메모마다 하나만 돌린다)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 메모를 열 때 한 번만
+  useEffect(() => {
+    void bridge.notePolishInfo(note.id).then((info) => {
+      if (!alive.current) return;
+      setAiName(info.ai ?? '');
+      if (info.job === 'none') return;
+      setPolish({ phase: 'busy' });
+      void bridge.notePolish(note.id).then(receive);
+    });
+  }, []);
+  const askPolish = () => {
+    flush();
+    // 글 칸에 커서가 있으면 지금 고른 부분, 방금 글 칸을 떠났으면 떠나기 전에 고른 부분, 아니면 전체
+    const el = bodyRef.current;
+    const mark = lastSel.current;
+    const sel =
+      el && document.activeElement === el
+        ? { start: el.selectionStart, end: el.selectionEnd }
+        : mark && Date.now() - mark.at < SEL_KEEP_MS
+          ? mark
+          : { start: 0, end: 0 };
+    // 고른 것이 공백뿐이면 전체를 다듬는다
+    const part =
+      sel.start < sel.end && body.slice(sel.start, sel.end).trim()
+        ? { start: sel.start, end: sel.end }
+        : { start: 0, end: 0 };
+    const src = part.start < part.end ? body.slice(part.start, part.end) : body;
+    if (src.length > POLISH_MAX) {
+      notice(t('panel.note.polishTooLong'));
+      return;
+    }
+    setUndo(undefined);
+    setPolish({ phase: 'busy' });
+    void bridge.notePolishInfo(note.id).then((info) => alive.current && setAiName(info.ai ?? ''));
+    void bridge.notePolish(note.id, { body, ...part }).then(receive);
   };
   const applyPolish = () => {
     if (polish?.phase !== 'ready') return;
     const next = splicePolished(body, polish.start, polish.end, polish.text);
+    // 메모 한도를 넘으면 끝을 자르지 않고 그대로 둔다 (견주기는 남겨 둬서 글을 옮겨 갈 수 있다)
+    if (next === undefined) {
+      notice(t('panel.note.polishOver'));
+      return;
+    }
     setUndo(body);
     setBody(next);
     save({ body: next });
@@ -323,6 +376,10 @@ function NoteEditor({
     // biome-ignore lint/a11y/noStaticElementInteractions: 메모 안 어디서든 Esc 는 목록으로 (입력칸, 단추 모두)
     <div
       className="note-editor"
+      // 마우스로 다른 곳을 눌렀으면 글 칸을 떠나기 전에 고른 자리는 잊는다 (다듬기 단추는 빼고)
+      onMouseDown={(e) => {
+        if (!(e.target as HTMLElement).closest('[data-polish]')) lastSel.current = undefined;
+      }}
       onKeyDown={(e) => {
         if (isEsc(e) && !e.defaultPrevented) {
           takeEsc(e);
@@ -344,11 +401,12 @@ function NoteEditor({
           <button
             type="button"
             className="link"
-            title={t('panel.note.polishHint')}
+            data-polish
+            title={t('panel.note.polishHint', { ai: aiName })}
             disabled={!body.trim() || !!polish}
             // 누를 때 글 칸의 고른 부분이 풀리지 않게
             onMouseDown={(e) => e.preventDefault()}
-            onClick={() => void askPolish()}
+            onClick={askPolish}
           >
             {t('panel.note.polish')}
           </button>
@@ -372,7 +430,7 @@ function NoteEditor({
       {aiNote && <p className="hint error">{aiNote}</p>}
       {polish?.phase === 'busy' && (
         <p className="note-polish-busy" role="status">
-          {t('panel.note.polishing')}
+          {t('panel.note.polishing', { ai: aiName })}
         </p>
       )}
       {polish?.phase === 'ready' && (
@@ -423,7 +481,15 @@ function NoteEditor({
         placeholder={t('panel.note.bodyPlaceholder')}
         // 다듬는 동안 글이 바뀌면 받은 글을 끼울 자리가 어긋난다
         readOnly={!!polish}
+        onBlur={(e) => {
+          lastSel.current = {
+            start: e.currentTarget.selectionStart,
+            end: e.currentTarget.selectionEnd,
+            at: Date.now(),
+          };
+        }}
         onChange={(e) => {
+          lastSel.current = undefined;
           setUndo(undefined);
           setBody(e.target.value);
           save({ body: e.target.value });

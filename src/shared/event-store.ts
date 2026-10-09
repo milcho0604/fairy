@@ -14,6 +14,8 @@ import {
   koRelDay,
   weekdayOffset,
 } from './quick-words.ts';
+import { type Anchor, DEFAULT_REMINDS, dayOf, normalizeReminds, REMIND_MAX_MIN } from './remind.ts';
+import { ReminderStore } from './reminder-store.ts';
 import { localDay } from './todo-store.ts';
 
 export interface CalEvent {
@@ -21,13 +23,19 @@ export interface CalEvent {
   title: string;
   startAt: number;
   endAt: number | null;
+  /**
+   * 미리 알림 (8판), 이른 것부터. 시각 일정은 시작 몇 분 전, 종일 일정은 첫날 0시 몇 분 전 (remind.ts).
+   * 비었으면 알리지 않는다 (종일 일정은 아침 브리핑에 나온다)
+   */
+  reminds: number[];
+  /** 가장 늦은(시작에 가까운) 알림. 7판의 알림 하나와 같은 뜻이고 없으면 0. 옛 호출(MCP, 시험)이 읽는다 */
   remindMin: number;
+  /** 마지막으로 알린 시각. 없으면 null */
   notifiedAt: number | null;
   /** local(직접 넣음), ics(캘린더에서 가져옴, v2) */
   source: 'local' | 'ics';
   /**
    * 종일 일정. startAt 은 첫날 현지 0시, endAt 은 여러 날이면 마지막 날 다음 날 현지 0시(끝 날은 들지 않는다), 하루면 null.
-   * remindMin 은 첫날 0시보다 몇 분 앞에 알릴지이고 0 이면 알리지 않는다 (아침 브리핑에 나온다)
    */
   allDay: boolean;
 }
@@ -43,36 +51,65 @@ interface Row {
   all_day?: number;
 }
 
-const toEvent = (r: Row): CalEvent => ({
-  id: Number(r.id),
-  title: r.title,
-  startAt: Number(r.start_at),
-  endAt: r.end_at === null ? null : Number(r.end_at),
-  remindMin: Number(r.remind_min),
-  notifiedAt: r.notified_at === null ? null : Number(r.notified_at),
-  source: r.source === 'ics' ? 'ics' : 'local',
-  allDay: Number(r.all_day ?? 0) === 1,
-});
+const toEvent = (r: Row, marks: readonly { before: number; notifiedAt: number | null }[]): CalEvent => {
+  const reminds = marks.map((m) => m.before);
+  const spoken = marks.map((m) => m.notifiedAt ?? 0).filter((v) => v > 0);
+  return {
+    id: Number(r.id),
+    title: r.title,
+    startAt: Number(r.start_at),
+    endAt: r.end_at === null ? null : Number(r.end_at),
+    reminds,
+    remindMin: reminds.length ? Math.min(...reminds) : 0,
+    notifiedAt: spoken.length ? Math.max(...spoken) : null,
+    source: r.source === 'ics' ? 'ics' : 'local',
+    allDay: Number(r.all_day ?? 0) === 1,
+  };
+};
 
-export const REMIND_CHOICES = [0, 5, 10, 30, 60] as const;
+/** 일정의 알림 기준: 종일이면 첫날, 아니면 시작 시각 */
+export const eventAnchor = (e: { startAt: number; allDay: boolean }): Anchor =>
+  e.allDay ? { kind: 'day', day: dayOf(e.startAt) } : { kind: 'time', at: e.startAt };
+
+/** 7판 알림 하나(remindMin)를 알림 목록으로. 종일 일정의 0 은 "알림 없음" */
+const fromLegacy = (m: number, allDay: boolean): number[] =>
+  allDay && m === 0 ? [] : normalizeReminds([clampRemind(m)], allDay);
+
+const defaultReminds = (allDay: boolean): number[] => [
+  ...(allDay ? DEFAULT_REMINDS.allDay : DEFAULT_REMINDS.event),
+];
+
 export const DEFAULT_REMIND_MIN = 10;
 /** 종일 일정 알림: 전날 저녁 8시 (첫날 0시의 4시간 앞) */
 export const ALL_DAY_EVE_MIN = 4 * 60;
 /** 종일 일정 알림 고르기: 없음(아침 브리핑에만), 전날 저녁 */
 export const ALL_DAY_REMIND_CHOICES = [0, ALL_DAY_EVE_MIN] as const;
-/** 이보다 오래 지난 알림은 띄우지 않는다 (컴퓨터가 잠들었다 깬 경우 지난 일정을 몰아서 알리지 않게) */
-const STALE_MS = 5 * 60_000;
 
 export class EventStore {
   #db: Db;
+  #reminders: ReminderStore;
 
   constructor(db: Db) {
     this.#db = db;
+    this.#reminders = new ReminderStore(db, 'event');
+  }
+
+  #withReminds(rows: readonly Row[]): CalEvent[] {
+    const marks = this.#reminders.many(rows.map((r) => Number(r.id)));
+    return rows.map((r) => toEvent(r, marks.get(Number(r.id)) ?? []));
   }
 
   /** 종일 일정(allDay)은 startAt 을 첫날 현지 0시로, endAt 을 여러 날이면 마지막 날 다음 날 0시로 준다 (allDayTimes) */
   add(
-    input: { title: string; startAt: number; endAt?: number | null; remindMin?: number; allDay?: boolean },
+    input: {
+      title: string;
+      startAt: number;
+      endAt?: number | null;
+      /** 알림 목록. 없으면 remindMin(7판 하나), 그것도 없으면 기본 (시각 10분 전, 종일 없음) */
+      reminds?: readonly number[];
+      remindMin?: number;
+      allDay?: boolean;
+    },
     now: number,
   ): CalEvent {
     const title = input.title.trim();
@@ -90,14 +127,21 @@ export class EventStore {
         now,
         allDay ? 1 : 0,
       );
-    return this.get(Number(r.lastInsertRowid)) as CalEvent;
+    const id = Number(r.lastInsertRowid);
+    const reminds = input.reminds
+      ? normalizeReminds(input.reminds, allDay)
+      : input.remindMin !== undefined
+        ? fromLegacy(input.remindMin, allDay)
+        : defaultReminds(allDay);
+    this.#reminders.set(id, reminds, eventAnchor({ startAt: input.startAt, allDay }), { now, reset: true });
+    return this.get(id) as CalEvent;
   }
 
   get(id: number): CalEvent | undefined {
     const r = this.#db.prepare('select * from event where id = ? and deleted_at is null').get(id) as
       | Row
       | undefined;
-    return r ? toEvent(r) : undefined;
+    return r ? this.#withReminds([r])[0] : undefined;
   }
 
   /**
@@ -105,20 +149,32 @@ export class EventStore {
    * (어제부터 3일 여행이 오늘 목록에 나오게). 그런 것은 시작이 이르니 맨 앞에 온다
    */
   between(from: number, to: number): CalEvent[] {
-    return (
+    return this.#withReminds(
       this.#db
         .prepare(
           `select * from event where deleted_at is null and start_at < ?
            and (start_at >= ? or (all_day = 1 and end_at is not null and end_at > ?))
            order by start_at, id`,
         )
-        .all(to, from, from) as Row[]
-    ).map(toEvent);
+        .all(to, from, from) as Row[],
+    );
   }
 
+  /**
+   * 고치기. now 를 주면(패널, 가져오기) 새로 건 알림 중 이미 지난 것은 넘긴 것으로 적는다.
+   * 시작이나 종일을 바꾸면 알림 표시를 지워 다시 알린다. 알림만 바꾸면 이미 말한 알림의 표시는 그대로 둔다
+   */
   update(
     id: number,
-    patch: { title?: string; startAt?: number; endAt?: number | null; remindMin?: number; allDay?: boolean },
+    patch: {
+      title?: string;
+      startAt?: number;
+      endAt?: number | null;
+      reminds?: readonly number[];
+      remindMin?: number;
+      allDay?: boolean;
+    },
+    now?: number,
   ): CalEvent | undefined {
     const e = this.get(id);
     if (!e) return undefined;
@@ -127,25 +183,28 @@ export class EventStore {
     const endAt = patch.endAt === undefined ? e.endAt : patch.endAt;
     const allDay = patch.allDay === undefined ? e.allDay : patch.allDay;
     // 종일과 시각 일정 사이를 바꾸면 알림을 새 쪽의 기본으로 (시각 일정의 "10분 전"은 종일에서는 전날 밤 11시 50분이 된다)
-    const remindMin =
-      patch.remindMin !== undefined
-        ? clampRemind(patch.remindMin)
+    const reminds = patch.reminds
+      ? normalizeReminds(patch.reminds, allDay)
+      : patch.remindMin !== undefined
+        ? fromLegacy(patch.remindMin, allDay)
         : allDay !== e.allDay
-          ? allDay
-            ? 0
-            : DEFAULT_REMIND_MIN
-          : e.remindMin;
-    // 시각이나 알림 시점을 바꾸면 다시 알린다.
-    const renotify = startAt !== e.startAt || remindMin !== e.remindMin || allDay !== e.allDay;
-    // 제목이나 시각을 고치면 사용자 것으로 둔다: 가져온 일정이면 다음 가져오기가 덮지 않는다
+          ? defaultReminds(allDay)
+          : e.reminds;
+    const moved = startAt !== e.startAt || allDay !== e.allDay;
+    const remindsChanged = reminds.join() !== e.reminds.join();
+    // 제목이나 시각을 고치면 사용자 것으로 둔다: 가져온 일정이면 다음 가져오기가 덮지 않는다 (알림만 바꾼 것은 아니다)
     const edited = title !== e.title || startAt !== e.startAt || endAt !== e.endAt || allDay !== e.allDay;
     this.#db
       .prepare(
-        `update event set title = ?, start_at = ?, end_at = ?, remind_min = ?, all_day = ?,
-         notified_at = case when ? then null else notified_at end,
+        `update event set title = ?, start_at = ?, end_at = ?, all_day = ?,
          user_edited = case when ? then 1 else user_edited end where id = ?`,
       )
-      .run(title, startAt, endAt, remindMin, allDay ? 1 : 0, renotify ? 1 : 0, edited ? 1 : 0, id);
+      .run(title, startAt, endAt, allDay ? 1 : 0, edited ? 1 : 0, id);
+    if (moved || remindsChanged)
+      this.#reminders.set(id, reminds, eventAnchor({ startAt, allDay }), {
+        ...(now === undefined ? {} : { now }),
+        reset: moved,
+      });
     return this.get(id);
   }
 
@@ -159,19 +218,18 @@ export class EventStore {
   }
 
   /**
-   * 지금 알릴 일정: 알림 시점이 됐고 아직 안 알렸으며, 시작한 지 5분이 안 지난 것.
-   * 종일 일정은 알림을 골랐을 때만(전날 저녁). 알림 0 인 종일 일정은 0시에 깨우지 않고 아침 브리핑에 맡긴다
+   * 지금 알릴 일정: 알림 하나가 울릴 때가 됐고 아직 안 알렸으며, 시작한 지 5분이 안 지난 것 (종일은 첫날이 끝나기 전).
+   * 컴퓨터가 꺼져 있던 사이 여러 알림이 지났어도 일정마다 한 번 (planReminders). 알림 없는 종일 일정은 아침 브리핑에 맡긴다
    */
   dueReminders(now: number): CalEvent[] {
-    return (
-      this.#db
-        .prepare(
-          `select * from event where deleted_at is null and notified_at is null
-           and not (all_day = 1 and remind_min = 0)
-           and start_at - remind_min * 60000 <= ? and start_at > ? order by start_at`,
-        )
-        .all(now, now - STALE_MS) as Row[]
-    ).map(toEvent);
+    const rows = this.#db
+      .prepare(
+        `select * from event e where deleted_at is null and start_at > ? and start_at <= ?
+         and exists (select 1 from reminder r where r.kind = 'event' and r.ref_id = e.id and r.notified_at is null)
+         order by start_at, id`,
+      )
+      .all(now - 2 * DAY_MS, now + REMIND_MAX_MIN * 60_000 + 2 * DAY_MS) as Row[];
+    return this.#withReminds(rows).filter((e) => this.#reminders.due(e.id, eventAnchor(e), now));
   }
 
   /**
@@ -223,7 +281,7 @@ export class EventStore {
           | undefined;
         const notified = e.allDay ? e.startAt : null;
         if (!old) {
-          this.#db
+          const r = this.#db
             .prepare(
               `insert into event (title, start_at, end_at, remind_min, notified_at, created_at, source, external_id, all_day)
                values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -239,6 +297,10 @@ export class EventStore {
               key,
               e.allDay ? 1 : 0,
             );
+          this.#reminders.set(Number(r.lastInsertRowid), defaultReminds(e.allDay), eventAnchor(e), {
+            now,
+            reset: true,
+          });
           added++;
           continue;
         }
@@ -282,6 +344,14 @@ export class EventStore {
               notified,
               old.id,
             );
+          // 캘린더에서 시각이 바뀌면 다시 알린다. 종일과 시각 사이를 바꿨으면 알림도 그쪽 기본으로
+          if (moved || flipped) {
+            const keep = this.#reminders.marks(old.id).map((m) => m.before);
+            this.#reminders.set(old.id, flipped ? defaultReminds(e.allDay) : keep, eventAnchor(e), {
+              now,
+              reset: true,
+            });
+          }
           updated++;
         }
       }
@@ -301,8 +371,10 @@ export class EventStore {
     }
   }
 
+  /** 알렸다: 울릴 때가 지난 알림을 다 알린 것으로 (늦었으면 곧 올 것까지) */
   markNotified(id: number, now: number): void {
-    this.#db.prepare('update event set notified_at = ? where id = ?').run(now, id);
+    const e = this.get(id);
+    if (e) this.#reminders.markNotified(id, eventAnchor(e), now);
   }
 }
 
@@ -314,6 +386,7 @@ export function externalKey(e: { uid: string; recurrenceId?: string | null }): s
 function clampRemind(n: number): number {
   return Number.isFinite(n) ? Math.max(0, Math.min(24 * 60, Math.round(n))) : DEFAULT_REMIND_MIN;
 }
+const DAY_MS = 86_400_000;
 
 // ---- 한 줄 입력 ----
 

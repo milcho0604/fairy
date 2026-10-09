@@ -150,7 +150,11 @@ const PHOTO_MAX = 768;
  * 머리(귀 포함)만 담는다: 입체는 머리 관절에 붙은 부품만 그려 머리 실루엣 그대로(목, 몸, 팔은 아예 안 그린다),
  * 사진과 2.5D 판은 목을 찾아 그 아래를 부드럽게 지운다. 어두운 바탕에서도 흰 몸이 따라 나오지 않는다
  */
-export function renderFace(src: FaceSource, px = FACE_PX): string | undefined {
+export function renderFace(
+  src: FaceSource,
+  px = FACE_PX,
+  mood: 'idle' | 'sleeping' = 'idle',
+): string | undefined {
   const work = document.createElement('canvas');
   const g = work.getContext('2d', { willReadFrequently: true });
   if (!g) return undefined;
@@ -165,7 +169,7 @@ export function renderFace(src: FaceSource, px = FACE_PX): string | undefined {
     work.height = CANVAS_SIZE * SCALE;
     g.setTransform(SCALE, 0, 0, SCALE, 0, 0);
     const idle: DrawState = {
-      mood: 'idle',
+      mood,
       elapsed: 0,
       blink: -1,
       viewSize: CANVAS_SIZE * SCALE,
@@ -211,4 +215,52 @@ export function renderFace(src: FaceSource, px = FACE_PX): string | undefined {
   o.imageSmoothingQuality = 'high';
   o.drawImage(work, sq.x, sq.y, sq.side, sq.side, 0, 0, px, px);
   return out.toDataURL('image/png');
+}
+
+/** 집 안 그림 (집에서 쉬기): 깬 몸 전체 그림 한 변(px). 집 문간(가장 큰 집에서 약 50px)을 레티나 2배보다 넉넉히 */
+export const BODY_PX = 128;
+
+/**
+ * 지금 모습의 몸 전체 그림 (문으로 걸어 들어가고 나오는 펫, shared/house-room.ts).
+ * 펫 화면과 같은 그림(깬 눈, 발 포함, 바닥 그림자 뺌)을 몸에 맞게 정사각형으로 자르고,
+ * 자른 자리(캔버스 한 변에 대한 비율)를 같이 준다. 펫 창이 그 그림과 같은 자리로 맞춰 넘겨주고 넘겨받는다
+ */
+export function renderBody(
+  src: FaceSource,
+  px = BODY_PX,
+): { url: string; box: { x: number; y: number; side: number } } | undefined {
+  const work = document.createElement('canvas');
+  const g = work.getContext('2d', { willReadFrequently: true });
+  if (!g) return undefined;
+  const full = CANVAS_SIZE * SCALE;
+  work.width = full;
+  work.height = full;
+  g.setTransform(SCALE, 0, 0, SCALE, 0, 0);
+  const m = src.model3d;
+  const keep = m?.maxPx;
+  if (m && keep !== undefined) m.maxPx = Math.max(keep, full);
+  drawPet(g, {
+    mood: 'idle',
+    elapsed: 0,
+    blink: -1,
+    viewSize: full,
+    kind: src.kind,
+    photo: m ? undefined : src.photo,
+    model3d: m,
+  });
+  if (m && keep !== undefined) m.maxPx = keep;
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  const data = g.getImageData(0, 0, full, full);
+  if (dropShadow(data.data)) g.putImageData(data, 0, 0);
+  const body = solidRect(data.data, full, full);
+  if (!body) return undefined;
+  const sq = squareAround(body, 0.04);
+  const out = document.createElement('canvas');
+  out.width = px;
+  out.height = px;
+  const o = out.getContext('2d');
+  if (!o) return undefined;
+  o.imageSmoothingQuality = 'high';
+  o.drawImage(work, sq.x, sq.y, sq.side, sq.side, 0, 0, px, px);
+  return { url: out.toDataURL('image/png'), box: { x: sq.x / full, y: sq.y / full, side: sq.side / full } };
 }

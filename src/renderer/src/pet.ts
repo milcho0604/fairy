@@ -1,4 +1,5 @@
-import { type Activity, nextDelay } from '../../shared/behavior.ts';
+import { type Activity, nextDelay, WALK_SPEED } from '../../shared/behavior.ts';
+import { ENERGY_BLINK, ENERGY_PACE, type EnergyLook, energyLookOf, sameLook } from '../../shared/energy.ts';
 import { BALL_SVG, type CarryToy, PICK_MS, pickPose } from '../../shared/fetch.ts';
 import type { Gaze } from '../../shared/gaze.ts';
 import type { Point } from '../../shared/geometry.ts';
@@ -12,7 +13,7 @@ import {
   magnifierFps,
   magnifierPose,
 } from '../../shared/look-motion.ts';
-import { bodyOfParts, isMove, type MoveAsk } from '../../shared/moves.ts';
+import { bodyOfParts, isMove, MOVE_SPECS, type MoveAsk } from '../../shared/moves.ts';
 import {
   canBlink,
   EXCITED_MS,
@@ -32,7 +33,7 @@ import { AnimatedImage, loadPetImage } from './animated.ts';
 import { CANVAS_SIZE, type CarryDraw, drawPet, HEARTS_MS } from './draw.ts';
 import { initLang } from './lang.ts';
 import { moveFps, SIT_MS, sitDown } from './move-pose.ts';
-import { renderFace } from './pet-face.ts';
+import { renderBody, renderFace } from './pet-face.ts';
 import type { Pet3D } from './pet3d.ts';
 import { quadKind, withGait } from './pet3d-gait.ts';
 import { playSound } from './sound.ts';
@@ -53,12 +54,14 @@ const [canvas, ctx] = setupCanvas();
 // ---- 그리기 루프 ----
 // 정지 상태는 한 번 그리고 멈춘다. 계속 그리면 fps 와 무관하게 CPU 를 먹는다 (L10).
 
-const BLINK_MS = 180;
 /**
  * 깜빡임은 네 틀(반쯤 감음, 감음, 반쯤 뜸, 뜸)로 그린다. 30fps 로는 일곱 틀이었고 첫 틀은 뜬 눈 그대로였다.
- * 쉬는 동안 그리는 틀 대부분이 깜빡임이라 대기 CPU 가 이만큼 준다 (2026-10-07 측정, docs/roadmap.md)
+ * 쉬는 동안 그리는 틀 대부분이 깜빡임이라 대기 CPU 가 이만큼 준다 (2026-10-07 측정, docs/roadmap.md).
+ * 기운(shared/energy.ts)대로: 보통 180ms 네 틀, 활발하면 조금 빨리 자주, 지치거나 졸리면 천천히(320, 460ms) 감았다 뜨고 드물게
  */
-const BLINK_FPS = 4000 / BLINK_MS;
+function blinkSpec() {
+  return ENERGY_BLINK[energy?.stage ?? 'normal'];
+}
 const ANIMATED_FPS: Partial<Record<PetMood, number>> = { excited: 30, thinking: 8 };
 
 let inputs: PetInputs = { ...INITIAL_INPUTS };
@@ -68,6 +71,11 @@ let blinkStart = -1;
 let frameTimer: ReturnType<typeof setTimeout> | undefined;
 let changeTimer: ReturnType<typeof setTimeout> | undefined;
 let blinkTimer: ReturnType<typeof setTimeout> | undefined;
+/** 개운함 반짝임을 시작한 시각 (기지개와 같은 길이). 없으면 -1 */
+let freshStart = -1;
+const FRESH_MS = MOVE_SPECS.stretch.ms;
+/** 기운 (PetStatus.energy, shared/energy.ts). 없으면 예전 모습 */
+let energy: EnergyLook | undefined;
 
 function setInputs(patch: Partial<PetInputs>) {
   inputs = { ...inputs, ...patch };
@@ -101,7 +109,7 @@ function frame() {
   }
   let blink = -1;
   if (blinkStart >= 0) {
-    blink = (now - blinkStart) / BLINK_MS;
+    blink = (now - blinkStart) / blinkSpec().ms;
     if (blink >= 1) {
       blink = -1;
       blinkStart = -1;
@@ -111,6 +119,8 @@ function frame() {
   if (trickT >= 1) trick = undefined;
   const hearts = heartsStart >= 0 ? now - heartsStart : -1;
   if (hearts >= HEARTS_MS) heartsStart = -1;
+  const fresh = freshStart >= 0 ? (now - freshStart) / FRESH_MS : -1;
+  if (fresh >= 1) freshStart = -1;
   // 입체가 되면 사진 대신 입체로 (AI 가 만든 설계도가 있는 사진 펫, 또는 기본 펫)
   const m3d = current3d();
   // 입체 그리기 모듈을 불러오는 중이면 기다린다 (불러오면 다시 그린다). 2D 를 먼저 그리면 깜빡인다
@@ -123,24 +133,29 @@ function frame() {
     elapsed: now - moodSince,
     blink,
     viewSize,
-    activity: activityPose(now),
+    // 매운맛 토라짐 3단계: 등 돌리고 앉아 있다 (몸짓도 앉기만, 커서도 안 본다)
+    activity: activityPose(now) ?? (backTurned() ? { type: 'sit' as const } : undefined),
     hungry: inputs.hungry,
     photo: img instanceof AnimatedImage ? img.frameAt(now) : img,
     kind: petKind,
     sulk: inputs.sulkLevel,
+    pout: inputs.pout,
     hearts: heartsStart >= 0 ? hearts : -1,
     cushion,
     model3d: m3d,
-    gaze: gaze ?? undefined,
+    gaze: backTurned() ? undefined : (gaze ?? undefined),
     trick: trick ? { type: trick.type, t: trickT } : undefined,
     flower,
     calm: reducedMotion.matches,
     peer: looking?.peer,
     gait: gaitPick,
     carry: carryDraw(now),
+    energy,
+    fresh: freshStart >= 0 ? fresh : -1,
   });
   carriedAt = ball;
   syncFace(m3d);
+  syncSprites(m3d);
   syncBody(m3d, img);
 
   const walking = activity?.type === 'walk';
@@ -158,10 +173,10 @@ function frame() {
       ? 30 * k
       : isAnimated(mood)
         ? (ANIMATED_FPS[mood] ?? 30) * k
-        : heartsStart >= 0
+        : heartsStart >= 0 || freshStart >= 0
           ? 30 * k
           : blinkStart >= 0
-            ? BLINK_FPS
+            ? (1000 * blinkSpec().frames) / blinkSpec().ms
             : walking
               ? WALK_FPS * k
               : moving
@@ -296,11 +311,23 @@ let activityEnd: ReturnType<typeof setTimeout> | undefined;
 
 function scheduleActivity() {
   clearTimeout(activityTimer);
+  // 활발하면 자주, 졸리면 드물게 움직인다 (shared/energy.ts)
+  const wait = energy ? ENERGY_PACE[energy.stage].wait : 1;
   activityTimer = setTimeout(() => {
     if (mood === 'idle' && !activity && !look && !carry && !bubbleId && !overPet && !gesture.dragging)
       bridge.activityRequest(moveAsk());
     scheduleActivity();
-  }, nextDelay(Math.random));
+  }, nextDelay(Math.random) * wait);
+}
+
+/**
+ * 한 걸음 시간. 보통 걷기와 그보다 빠른 놀이 달리기는 그대로(520ms), 지치거나 졸려서 천천히 걸으면 걸음도 느리게,
+ * 활발해서 조금 빨리 걸으면 조금 잦게 (shared/energy.ts ENERGY_PACE)
+ */
+function stepMs(a: { dx: number; ms: number }): number {
+  const speed = a.ms > 0 ? (Math.abs(a.dx) / a.ms) * 1000 : WALK_SPEED;
+  if (speed > WALK_SPEED * 1.5 || speed < 1) return STEP_MS;
+  return Math.round(STEP_MS * Math.sqrt(WALK_SPEED / speed));
 }
 
 function stopActivity(tellMain: boolean) {
@@ -312,13 +339,18 @@ function stopActivity(tellMain: boolean) {
   requestFrame();
 }
 
+/** 매운맛 토라짐 3단계: 등 돌리고 앉았다 (같이 보기 중에는 그쪽을 본다) */
+function backTurned(): boolean {
+  return mood === 'sulky' && inputs.pout >= 3 && !look;
+}
+
 function activityPose(now: number) {
   if (!activity) return undefined;
   if (activity.type === 'walk') {
     return {
       type: 'walk' as const,
       dir: (activity.dx < 0 ? -1 : 1) as -1 | 1,
-      phase: ((now - activity.start) / STEP_MS) % 1,
+      phase: ((now - activity.start) / stepMs(activity)) % 1,
       along: (now - activity.start) / activity.ms,
       ms: activity.ms,
     };
@@ -343,16 +375,19 @@ function moveAsk(): MoveAsk {
   const hungry = inputs.hungry;
   const still = photo instanceof HTMLImageElement;
   const bp = (still ? photoModel : undefined) ?? (photo ? undefined : DEFAULT_BLUEPRINTS[petKind]);
+  // 기운 단계 (shared/energy.ts): 메인이 몸짓 무게, 걷기 확률과 빠르기를 정한다
+  const more = energy ? { energy: energy.stage } : {};
   if (use3d && !broken3d && bp) {
-    return { ...bodyOfParts(bp.parts), photo: false, calm, hungry };
+    return { ...bodyOfParts(bp.parts), photo: false, calm, hungry, ...more };
   }
-  if (photo) return { tail: false, ears: false, photo: true, calm, hungry };
+  if (photo) return { tail: false, ears: false, photo: true, calm, hungry, ...more };
   return {
     tail: petKind === 'cat' || petKind === 'dog',
     ears: petKind === 'cat' || petKind === 'bunny' || petKind === 'dog',
     photo: false,
     calm,
     hungry,
+    ...more,
   };
 }
 
@@ -392,11 +427,15 @@ bridge.onImage(async (images: PetImages) => {
   requestFrame();
 });
 
-/** 지금 상태에 맞는 그림: 신남 → 기쁨 포즈, 잠과 졸음 → 졸림 포즈, 배고픈 기본 상태 → 배고픔 포즈 */
+/**
+ * 지금 상태에 맞는 그림: 신남 → 기쁨 포즈, 잠과 졸음 → 졸림 포즈, 배고픈 기본 상태 → 배고픔 포즈.
+ * 기운이 졸림인 기본 상태도 졸림 포즈 (사진은 눈을 바꿀 수 없어서)
+ */
 function pickImage(m: PetMood, hungry: boolean): PetImage | undefined {
   if (!photo) return undefined;
   if (m === 'excited' && poses.happy) return poses.happy;
   if ((m === 'sleeping' || m === 'dozing') && poses.sleepy) return poses.sleepy;
+  if (m === 'idle' && energy?.stage === 'sleepy' && !activity && poses.sleepy) return poses.sleepy;
   if (m === 'idle' && hungry && poses.hungry) return poses.hungry;
   return photo;
 }
@@ -494,6 +533,27 @@ function syncFace(m3d: Pet3D | undefined) {
   if (url) bridge.face(url);
 }
 
+// 집 안 그림 (집에서 쉬기, shared/house-room.ts): 문으로 걸어 들어가고 나오는 깬 몸, 침대 베개 위 자는 얼굴.
+// 얼굴과 같이 모습이 바뀐 뒤 처음 그릴 때 한 번만 그려 메인에 준다 (메인이 집 창에 넣는다)
+let spriteKey: unknown[] = [];
+function syncSprites(m3d: Pet3D | undefined) {
+  if (!wantFace) return;
+  // 입체 모습(피규어, 게임, 실사)을 바꿔도 다시 (같은 설계도라 입체와 설계도는 그대로다)
+  const key = [m3d, m3d ? model3dOf : undefined, m3d ? style3d : undefined, photo, petKind];
+  if (key.length === spriteKey.length && key.every((v, i) => v === spriteKey[i])) return;
+  spriteKey = key;
+  const still = photo instanceof AnimatedImage ? photo.frameAt(0) : photo;
+  const src = {
+    kind: petKind,
+    photo: m3d ? undefined : still,
+    model3d: m3d,
+    relief: !!m3d && model3dOf instanceof HTMLImageElement,
+  };
+  const body = renderBody(src);
+  const sleep = renderFace(src, 128, 'sleeping');
+  if (body && sleep) bridge.sprites({ awake: body.url, sleep, box: body.box });
+}
+
 bridge.onStatus((status) => {
   petKind = status.kind;
   wantFace = status.face === true;
@@ -520,7 +580,17 @@ bridge.onStatus((status) => {
   flower = status.flower;
   sounds = status.sounds;
   boost = status.boost;
-  setInputs({ hungry: status.hungry, focusTimer: status.focus, sulkLevel: status.sulk });
+  // 기운은 단계나 녹초가 바뀔 때만 다시 그린다 (1분에 한 번 이하, 메인이 같은 상태면 보내지도 않는다)
+  const nextEnergy = energyLookOf(status.energy);
+  if (!sameLook(nextEnergy, energy)) {
+    energy = nextEnergy;
+    scheduleBlink();
+    scheduleActivity();
+  }
+  const pout = status.pout ?? 0;
+  // 등 돌리고 앉는 단계가 되면 하던 걷기와 몸짓을 그만둔다 (앉기는 그대로)
+  if (pout >= 3 && inputs.pout < 3 && activity && activity.type !== 'sit') stopActivity(true);
+  setInputs({ hungry: status.hungry, focusTimer: status.focus, sulkLevel: status.sulk, pout });
 });
 // 커서 바라보기: 방향 칸이 바뀔 때만 온다. 한가한 모습(기본, 앉기)일 때만 한 번 다시 그린다
 let gaze: Gaze | null = null;
@@ -548,10 +618,32 @@ bridge.onReact((kind) => {
     sound('wave');
     return;
   }
+  if (kind === 'fresh') {
+    refreshed(now);
+    return;
+  }
   if (kind === 'dance' && !reducedMotion.matches) trick = { type: 'dance', start: now };
   setInputs({ excitedUntil: now + EXCITED_MS });
   sound(kind === 'fed' ? 'fed' : kind === 'dance' ? 'dance' : 'happy');
 });
+
+/**
+ * 개운함 (shared/energy.ts): 지쳤다가 쉬고 왔다. 돌아왔으니 깨고, 한가하면 기지개를 쭉 켜며 머리 둘레가 반짝인다.
+ * 걷던 중이면 반짝임만. 집중 중(잠)이면 깨우지 않는다 (메인이 집중 중에는 보내지 않는다)
+ */
+function refreshed(now: number) {
+  if (!inputs.focusTimer) setInputs({ userIdleMs: 0 });
+  freshStart = now;
+  const m = moodOf(inputs, now);
+  if ((m === 'idle' || m === 'sulky') && activity?.type !== 'walk' && !look && !carry) {
+    activity = { type: 'stretch', ms: MOVE_SPECS.stretch.ms, start: now };
+    clearTimeout(activityEnd);
+    clearTimeout(activityWake);
+    activityEnd = setTimeout(() => stopActivity(false), MOVE_SPECS.stretch.ms);
+  }
+  sound('happy');
+  requestFrame();
+}
 
 /** 효과음 (설정, 기본 끔). 집중, 잠, 바쁨 중에는 안 낸다 */
 function sound(kind: SoundKind) {
@@ -566,8 +658,8 @@ bridge.onActivity((a) => {
     if (a.type === 'walk') bridge.activityStop();
     return;
   }
-  // 삐져 있어도 걷고 논다 (모습만 삐진 얼굴)
-  if (mood !== 'idle' && mood !== 'sulky') {
+  // 삐져 있어도 걷고 논다 (모습만 삐진 얼굴). 매운맛 토라짐 3단계는 등 돌리고 앉아 따라다니지 않는다 (앉기만)
+  if ((mood !== 'idle' && mood !== 'sulky') || (backTurned() && a.type !== 'sit')) {
     if (a.type === 'walk') bridge.activityStop();
     return;
   }
@@ -580,20 +672,21 @@ bridge.onActivity((a) => {
   requestFrame();
 });
 
-/** 3~7초에 한 번 깜빡인다. 깜빡일 수 없는 상태(잠, 바쁨)에서는 타이머도 걸지 않는다. */
+/** 3~7초에 한 번 깜빡인다 (기운대로 더 잦거나 드물게). 깜빡일 수 없는 상태(잠, 바쁨)에서는 타이머도 걸지 않는다. */
 function scheduleBlink() {
   clearTimeout(blinkTimer);
   if (!canBlink(mood)) return;
+  const b = blinkSpec();
   blinkTimer = setTimeout(
     () => {
       if (canBlink(mood)) {
         blinkStart = performance.now();
         // 첫 틀(t=0)은 뜬 눈 그대로라 건너뛴다. 이미 그리는 중이면(걷기 등) 그 흐름이 깜빡임도 그린다
-        frameTimer ??= setTimeout(frame, BLINK_MS / 4);
+        frameTimer ??= setTimeout(frame, blinkSpec().ms / blinkSpec().frames);
       }
       scheduleBlink();
     },
-    3000 + Math.random() * 4000,
+    b.every + Math.random() * b.spread,
   );
 }
 
@@ -613,11 +706,19 @@ function fitToScreen() {
     width: `${viewSize}px`,
     height: `${viewSize}px`,
   });
-  canvas.width = Math.round(viewSize * dpr);
-  canvas.height = Math.round(viewSize * dpr);
+  const px = Math.round(viewSize * dpr);
+  if (canvas.width === px && canvas.height === px) {
+    requestFrame();
+    return;
+  }
+  // 캔버스 크기를 바꾸면 그림이 지워진다. 다음 틀을 기다리면 빈 캔버스가 한 번 화면에 나가
+  // 커지고 작아지는 동안(집 문 드나들기, 두더지) 펫이 깜빡였다. 바로 다시 그린다
+  canvas.width = px;
+  canvas.height = px;
   const k = (dpr * viewSize) / CANVAS_SIZE;
   ctx.setTransform(k, 0, 0, k, 0, 0);
-  requestFrame();
+  clearTimeout(frameTimer);
+  frame();
 }
 
 function watchPixelRatio() {
@@ -858,6 +959,20 @@ Object.assign(window, {
     setInputs,
     requestActivity: () => bridge.activityRequest(moveAsk()),
     moveAsk,
+    /** 기운을 바로 넣는다 (그림 점검용, 메인을 거치지 않는다). undefined 면 예전 모습 */
+    debugEnergy: (e?: EnergyLook) => {
+      energy = energyLookOf(e);
+      scheduleBlink();
+      requestFrame();
+    },
+    /** 개운함 반짝임을 진행 at(0~1) 자리에서 멈춰 그린다 (그림 점검용) */
+    debugFresh: (at = 0.4) => {
+      freshStart = performance.now() - FRESH_MS * at;
+      requestFrame();
+    },
+    get energy() {
+      return energy;
+    },
     /** 행동을 바로 넣는다. at 은 진행 정도 0~1 (하품, 기지개 가운데를 찍을 때). 없으면 그만 */
     debugActivity: (a?: Activity, at = 0) => {
       activity = a ? { ...a, start: performance.now() - a.ms * at } : undefined;

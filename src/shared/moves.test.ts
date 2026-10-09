@@ -155,3 +155,25 @@ test('입체 기본 펫: 냥이, 멍멍이, 삐약이는 꼬리를 흔들고 토
   assert.deepEqual(body('bunny'), { tail: false, ears: true });
   assert.deepEqual(body('kong'), { tail: false, ears: false });
 });
+
+test('기운을 알면 밤 규칙 대신 기운대로: 활발하면 폴짝이 잦고 하품이 드물다, 졸리면 하품과 꾸벅이 잦다', () => {
+  const lively = ctx({ ask: { ...PLAIN_ASK, energy: 'lively' }, hour: 23 });
+  assert.equal(weight(lively, 'hop'), MOVE_SPECS.hop.weight * 1.8);
+  assert.equal(weight(lively, 'yawn'), MOVE_SPECS.yawn.weight * 0.3);
+  const sleepy = ctx({ ask: { ...PLAIN_ASK, energy: 'sleepy' }, hour: 14 });
+  assert.equal(weight(sleepy, 'yawn'), MOVE_SPECS.yawn.weight * 3.5);
+  assert.equal(weight(sleepy, 'nod'), MOVE_SPECS.nod.weight * 3.5);
+  assert.equal(weight(sleepy, 'hop'), MOVE_SPECS.hop.weight * 0.15);
+  // 보통이면 밤이어도 예전 낮 무게
+  const normal = ctx({ ask: { ...PLAIN_ASK, energy: 'normal' }, hour: 2 });
+  assert.equal(weight(normal, 'yawn'), MOVE_SPECS.yawn.weight);
+  // 배고프면 기운과 상관없이 뛰지 않는다
+  assert.ok(!names(ctx({ ask: { ...PLAIN_ASK, hungry: true, energy: 'lively' } })).includes('hop'));
+});
+
+test('화면이 보낸 기운 단계를 고른다. 모르는 값은 버린다', () => {
+  assert.equal(moveAskOf({ energy: 'tired' }).energy, 'tired');
+  assert.equal(moveAskOf({ energy: 'sleepy', tail: true }).energy, 'sleepy');
+  assert.equal('energy' in moveAskOf({ energy: 'zzz' }), false);
+  assert.equal('energy' in moveAskOf({}), false);
+});

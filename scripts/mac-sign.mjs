@@ -27,7 +27,7 @@ function run(cmd, args) {
 
 function loadP12() {
   if (process.env.JJ_MAC_SIGN_P12 && process.env.JJ_MAC_SIGN_PASSWORD) {
-    return { p12: Buffer.from(process.env.JJ_MAC_SIGN_P12, 'base64'), password: process.env.JJ_MAC_SIGN_PASSWORD };
+    return { p12: Buffer.from(process.env.JJ_MAC_SIGN_P12, 'base64'), password: process.env.JJ_MAC_SIGN_PASSWORD.trim() };
   }
   const dir = join(homedir(), '.config', 'jjakkung');
   const file = join(dir, 'mac-sign.p12');

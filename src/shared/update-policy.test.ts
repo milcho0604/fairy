@@ -73,11 +73,32 @@ test('두 번 다 같은 최소 버전으로 강제여야 잠근다', () => {
   assert.equal(confirmedForce({ kind: 'none' }, { kind: 'none' }), false);
 });
 
-test('자동 설치는 설치판 윈도우만 (맥은 서명 전)', () => {
+test('자동 설치는 설치판 윈도우와 맥 (맥은 늘 같은 자체 인증서로 서명)', () => {
   assert.equal(canAutoInstall('win32', true), true);
   assert.equal(canAutoInstall('win32', false), false);
-  assert.equal(canAutoInstall('darwin', true), false);
+  assert.equal(canAutoInstall('darwin', true), true);
+  assert.equal(canAutoInstall('darwin', false), false);
   assert.equal(canAutoInstall('linux', true), false);
+});
+
+test('자동 설치가 받을 파일을 빌드하고 릴리스에 올린다', () => {
+  const yml = readFileSync(new URL('../../electron-builder.yml', import.meta.url), 'utf8');
+  const mac = /^mac:\s*\n((?:[ \t]+.*\n?|\s*\n)+?)^\S/m.exec(yml)?.[1] ?? '';
+  // 맥 자동 업데이트는 zip 만 받는다 (dmg 는 처음 설치용)
+  assert.match(mac, /target:\s*zip/);
+  assert.match(mac, /target:\s*dmg/);
+  const wf = readFileSync(new URL('../../.github/workflows/release.yml', import.meta.url), 'utf8');
+  for (const f of [
+    'dist/latest.yml',
+    'dist/*.exe.blockmap',
+    'dist/latest-mac.yml',
+    'dist/*.zip',
+    'dist/*.zip.blockmap',
+  ])
+    assert.ok(wf.includes(f), `release.yml 이 ${f} 를 올리지 않는다`);
+  // 본문의 최소 버전 줄은 손이 아니라 release/min-version 에서
+  assert.match(wf, /node scripts\/release-body\.mjs "\$GITHUB_REF_NAME" > notes\.md/);
+  assert.match(wf, /--notes-file notes\.md/);
 });
 
 test('electron-builder.yml 의 publish 레포가 앱의 레포와 같다', () => {

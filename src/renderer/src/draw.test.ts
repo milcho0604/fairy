@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { type DrawState, danceTilt, excitedBounce, gazeOf, trickOf, waveSwing } from './draw.ts';
+import {
+  type DrawState,
+  danceTilt,
+  energyFace,
+  excitedBounce,
+  gazeOf,
+  lidOf,
+  trickOf,
+  waveSwing,
+} from './draw.ts';
 
 const base: DrawState = { mood: 'idle', elapsed: 0, blink: -1 };
 const gaze = { x: 1, y: 0 };
@@ -62,4 +71,32 @@ test('움직임 줄이기: 빙글 춤은 안 하고 손 흔들기는 한다, 신
   assert.equal(excitedBounce(10).squash, 0.08);
   assert.equal(excitedBounce(10, true).squash, 0);
   for (let e = 0; e < 1200; e += 37) assert.ok(excitedBounce(e, true).lift <= 3);
+});
+
+test('기운 얼굴은 기본과 말하기 상태에서만, 같이 보기 중에는 없다', () => {
+  const energy = { stage: 'tired' as const, worn: true };
+  assert.deepEqual(energyFace({ mood: 'idle', energy }), energy);
+  assert.deepEqual(energyFace({ mood: 'talking', energy }), energy);
+  for (const mood of [
+    'sleeping',
+    'dozing',
+    'excited',
+    'grabbed',
+    'thinking',
+    'busy',
+    'sulky',
+    'hidden',
+  ] as const)
+    assert.equal(energyFace({ mood, energy }), undefined, mood);
+  assert.equal(energyFace({ mood: 'idle', energy, peer: { dir: { x: 0, y: 0 } } }), undefined);
+  assert.equal(energyFace({ mood: 'idle' }), undefined);
+});
+
+test('눈꺼풀: 보통과 활발은 없고, 지침 0.3, 졸림 0.48, 녹초면 조금 더', () => {
+  assert.equal(lidOf(undefined), 0);
+  assert.equal(lidOf({ stage: 'lively', worn: false }), 0);
+  assert.equal(lidOf({ stage: 'normal', worn: true }), 0);
+  assert.equal(lidOf({ stage: 'tired', worn: false }), 0.3);
+  assert.equal(lidOf({ stage: 'sleepy', worn: false }), 0.48);
+  assert.ok(lidOf({ stage: 'tired', worn: true }) > lidOf({ stage: 'tired', worn: false }));
 });

@@ -250,3 +250,12 @@ test('요청문은 사진 특징을 먼저 적게 하고, 그 칸은 설계도�
   assert.ok(bp);
   assert.equal('likeness' in bp, false);
 });
+
+test('설계도 예시의 문자열 칸은 큰따옴표가 겹치지 않는다 (모델이 따라 쓰면 JSON 이 깨진다)', () => {
+  const line = blueprintPrompt('밀크')
+    .split('\n')
+    .find((l) => l.includes('"likeness": ['));
+  assert.ok(line);
+  const inner = line.slice(line.indexOf('[') + 1, line.lastIndexOf(']'));
+  assert.equal(inner.split('"').length - 1, 2, inner);
+});

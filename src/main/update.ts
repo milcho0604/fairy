@@ -36,9 +36,9 @@ type Log = (tag: string, ...rest: unknown[]) => void;
 type Lock = { version: string; url: string; minVersion: string };
 
 /**
- * 새 버전 알림 (v1), 강제 업데이트, 윈도우 자동 설치. 켜고 1분 뒤, 그 뒤 하루에 한 번 GitHub Releases 를 본다.
- * - 새 버전: 펫이 말풍선으로 알린다. 맥은 "받으러 가기"(릴리스 페이지), 윈도우 설치판은 미리 받아 두고
- *   "다시 켜서 업데이트" (안 누르면 끝낼 때 설치).
+ * 새 버전 알림 (v1), 강제 업데이트, 자동 설치. 켜고 1분 뒤, 그 뒤 하루에 한 번 GitHub Releases 를 본다.
+ * - 새 버전: 펫이 말풍선으로 알린다. 설치판은 미리 받아 두고 "다시 켜서 업데이트". 윈도우는 안 누르면 끝낼 때 설치,
+ *   맥은 누를 때만 설치한다. 받지 못했거나 개발 실행이면 "받으러 가기"(릴리스 페이지).
  * - 강제(릴리스 본문의 min-version 보다 낮음): 건너뛰기 없이, 시간 끝 없이 알리고 AI 대화를 잠근다.
  *   두 번 따로 받은 응답이 같아야 잠그고, 확인이 실패하면 풀린다. 오프라인이면 잠그지 않는다.
  * 사용자 정보는 보내지 않는다(앱 이름과 버전만). 토큰도 없다.
@@ -49,6 +49,13 @@ export function watchUpdates(o: { say: Say; log: Log }) {
   /** 안내가 밀려 기다리는 중이면 기다림을 끝낸다 */
   let wake: (() => void) | undefined;
   const auto = canAutoInstall(process.platform, app.isPackaged);
+  /**
+   * 맥(Squirrel.Mac)은 한 번 넘겨받은 업데이트를 끝낼 때 반드시 설치해서 "건너뛰기"를 되돌릴 수 없다.
+   * 그래서 맥은 받아 두기만 하고, "다시 켜서 업데이트"를 누를 때 넘겨서 서명을 확인받고 설치한다.
+   */
+  const installOnQuit = process.platform !== 'darwin';
+  /** "다시 켜서 업데이트"를 누른 릴리스 페이지. 설치가 거절되면(맥 서명 확인 실패 등) 여기로 보낸다 */
+  let restarting: string | undefined;
   let updater: AppUpdater | undefined;
   /** 받아 둔(끝낼 때 설치될) 버전 */
   let downloaded: string | undefined;
@@ -97,12 +104,20 @@ export function watchUpdates(o: { say: Say; log: Log }) {
       if (!u) return undefined;
       u.setFeedURL({ provider: 'github', owner: RELEASE_REPO.owner, repo: RELEASE_REPO.repo });
       u.autoDownload = false;
-      u.autoInstallOnAppQuit = true;
+      u.autoInstallOnAppQuit = installOnQuit;
       u.logger = null;
-      // 오류 창은 띄우지 않는다. 기록만
-      u.on('error', (err) =>
-        o.log('update', '자동 설치 오류', err instanceof Error ? err.message : String(err)),
-      );
+      // 오류 창은 띄우지 않는다. 기록만. 다시 켜기를 누른 뒤의 오류면 받은 것을 버리고 받으러 가기로 돌린다
+      u.on('error', (err) => {
+        o.log('update', '자동 설치 오류', err instanceof Error ? err.message : String(err));
+        const url = restarting;
+        if (!url) return;
+        restarting = undefined;
+        downloaded = undefined;
+        downloadFailedAt = Date.now();
+        void shell.openExternal(url);
+        // 잠겨 있으면 안내를 다시 띄운다 (이번엔 받으러 가기 단추)
+        if (lock) void nag();
+      });
       updater = u;
       return u;
     } catch (err) {
@@ -134,9 +149,15 @@ export function watchUpdates(o: { say: Say; log: Log }) {
     }
   }
 
-  function restartAndInstall() {
-    // 조용히 설치하고 다시 켠다 (nsis oneClick)
+  function restartAndInstall(url: string) {
+    restarting = url;
+    // 조용히 설치하고 다시 켠다 (윈도우 nsis oneClick. 맥은 이때 Squirrel 이 서명을 확인하고 끝낸 뒤 바꿔 끼운다)
     updater?.quitAndInstall(true, true);
+  }
+
+  /** 받아 둔 업데이트를 끝낼 때 설치할지. 맥은 늘 끈다 (installOnQuit) */
+  function setInstallOnQuit(on: boolean) {
+    if (updater) updater.autoInstallOnAppQuit = on && installOnQuit;
   }
 
   /** 떠 있는 강제 안내를 거둘 때 끊는다 */
@@ -162,8 +183,8 @@ export function watchUpdates(o: { say: Say; log: Log }) {
     try {
       while (lock) {
         const ready = await download();
-        // 전에 이 버전을 건너뛰었어도 강제면 끝낼 때 설치한다
-        if (ready && updater) updater.autoInstallOnAppQuit = true;
+        // 전에 이 버전을 건너뛰었어도 강제면 끝낼 때 설치한다 (윈도우)
+        if (ready) setInstallOnQuit(true);
         nagAbort = new AbortController();
         const answer = await o.say({
           kind: 'answer',
@@ -177,7 +198,7 @@ export function watchUpdates(o: { say: Say; log: Log }) {
         });
         if (!lock) break;
         if (answer === 'restart') {
-          restartAndInstall();
+          restartAndInstall(lock.url);
           break;
         }
         if (answer === 'get') await shell.openExternal(lock.url);
@@ -196,20 +217,20 @@ export function watchUpdates(o: { say: Say; log: Log }) {
   async function notify(version: string, url: string) {
     const ready = await download();
     if (ready) {
-      if (updater) updater.autoInstallOnAppQuit = true;
+      setInstallOnQuit(true);
       const answer = await o.say({
         kind: 'answer',
-        text: t('main.update.ready', { version: ready }),
+        text: t(installOnQuit ? 'main.update.ready' : 'main.update.readyRestart', { version: ready }),
         buttons: [
           { id: 'restart', label: t('main.update.restart') },
           { id: 'skip', label: t('main.update.skip') },
         ],
         ttlMs: 30_000,
       });
-      if (answer === 'restart') restartAndInstall();
+      if (answer === 'restart') restartAndInstall(url);
       if (answer === 'skip') {
         settings.set({ skipVersion: version });
-        if (updater) updater.autoInstallOnAppQuit = false;
+        setInstallOnQuit(false);
       }
       return;
     }

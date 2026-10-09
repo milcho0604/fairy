@@ -1,5 +1,15 @@
 // 집 그림 (SVG 글). 모양 넷 x 단계 다섯. 그림과 같은 숫자로 잡는 자리(hits), 문, Zzz, 편지 자리를 같이 낸다.
 // 메인(집 창)과 패널(상점 미리 보기)이 같이 쓴다. 120 칸 기준으로 그리고 창 크기에 맞춰 늘린다.
+// 집에서 쉬는 동안 보이는 집 안(앞벽을 걷어 낸 방, 침대, 자는 펫)과 문간에서 걸어 들어가는 펫 그림 자리도 여기서 그린다.
+import {
+  type DoorArt,
+  doorSprite,
+  letterSpot,
+  type RoomScene,
+  type RoomShape,
+  roomPath,
+  roomScene,
+} from './house-room.ts';
 
 export const HOUSE_STYLES = ['wood', 'mushroom', 'igloo', 'castle'] as const;
 export type HouseStyle = (typeof HOUSE_STYLES)[number];
@@ -19,10 +29,16 @@ export interface HouseLayout {
   /** 집 몸 (body.home 숨쉬기 때 들썩인다) */
   body: string;
   hits: HitShape[];
-  /** 문 가운데 x 와 문턱 y (펫이 작아지며 들어가는 자리) */
-  door: { x: number; bottom: number };
-  /** 첫 z 글자 자리. 다음 글자는 오른쪽 위로 오른다 */
-  zzz: { x: number; y: number };
+  /** 문 가운데 x, 문턱 y, 둥근 문 꼭대기 y, 너비 (펫이 걸어 들어가는 자리) */
+  door: DoorArt;
+  /** 쉬는 동안 걷어 내 보여 주는 방 (앞벽) */
+  room: RoomShape;
+  /** 방 안 가구 자리 */
+  scene: RoomScene;
+  /** 방 그림 (body.home 일 때 보인다). 미리 보기에는 넣지 않는다 */
+  roomSvg: string;
+  /** 첫 z 글자 자리 (침대에서 자는 얼굴 오른쪽 위)와 글자 크기 비율 k. 다음 글자는 오른쪽 위로 오른다 */
+  zzz: RoomScene['zzz'];
   /** 편지 표시 왼쪽 위 */
   letter: { x: number; y: number };
 }
@@ -30,6 +46,8 @@ export interface HouseLayout {
 const GLASS = '#bfe3ff';
 const LIT = '#ffd27a';
 const GLOW = '#ffc861';
+/** 열린 문 안 어둠 */
+const DARK = '#3b2a21';
 
 interface Ink {
   /** 테두리 */
@@ -43,12 +61,19 @@ class Art {
   back: string[] = [];
   body: string[] = [];
   hits: HitShape[] = [];
-  door = { x: 52, bottom: 110 };
-  zzz = { x: 84, y: 36 };
-  letter = { x: 4, y: 10 };
+  door: DoorArt = { x: 52, bottom: 110, top: 68, w: 24 };
+  /** 쉬는 동안 보여 줄 방 (앞벽). 모양마다 지붕 아래 벽 안쪽으로 정한다 */
+  room: RoomShape = { kind: 'rect', x: 22, y: 57, w: 76, h: 53, r: 4 };
   ink: Ink;
-  constructor(ink: Ink) {
+  /** 그림 안 clipPath 이름 앞붙이 (모양-단계. 상점 미리 보기처럼 한 화면에 여러 집이 있어도 겹치지 않게) */
+  id: string;
+  constructor(ink: Ink, id: string) {
     this.ink = ink;
+    this.id = id;
+  }
+  /** 문 틀 clipPath 이름 */
+  get doorClip() {
+    return `jjdw-${this.id}`;
   }
   add(svg: string, hit?: HitShape) {
     this.body.push(svg);
@@ -78,17 +103,29 @@ class Art {
       { poly: domePoly(cx, cy, rx, ry, sag) },
     );
   }
-  /** 둥근 문. 쉬는 중이면 안이 불빛으로 밝다 */
+  /**
+   * 둥근 문. 쉬는 중이면 안이 불빛으로 밝다.
+   * 문짝(leaf)은 body.open 이면 왼쪽 경첩 쪽으로 접혀 열리고 문 안 어둠이 보인다. 그 사이에 문간 펫 그림(walker)이
+   * 문 틀 모양으로 잘려 있어 펫이 벽 뒤로 걸어 들어가는 것처럼 보인다 (play.ts HOUSE_CSS)
+   */
   arch(cx: number, w: number, top: number, bottom = 110, color = this.ink.door) {
     const r = w / 2;
     const l = cx - r;
     const ir = r - 4;
+    const d = `M${l} ${bottom}V${top + r}a${r} ${r} 0 0 1 ${w} 0V${bottom}Z`;
+    this.door = { x: cx, bottom, top, w };
+    const s = doorSprite(this.door);
+    const n = (v: number) => Math.round(v * 10) / 10;
     this.add(
-      `<path d="M${l} ${bottom}V${top + r}a${r} ${r} 0 0 1 ${w} 0V${bottom}Z" fill="${color}" stroke="${this.ink.line}" stroke-width="2"/>` +
+      `<clipPath id="${this.doorClip}"><path d="${d}"/></clipPath>` +
+        `<path d="${d}" fill="${DARK}"/>` +
+        `<ellipse cx="${cx}" cy="${bottom - 1.5}" rx="${r - 1}" ry="3" fill="${GLOW}" opacity=".45"/>` +
+        `<g clip-path="url(#${this.doorClip})"><g class="walker"><g class="wkg"><image class="wk" x="${n(s.x)}" y="${n(s.y)}" width="${n(s.size)}" height="${n(s.size)}"/></g></g></g>` +
+        `<g class="leaf"><path d="${d}" fill="${color}"/>` +
         `<path class="rest" d="M${l + 4} ${bottom}V${top + r + 1}a${ir} ${ir} 0 0 1 ${ir * 2} 0V${bottom}Z" fill="${GLOW}"/>` +
-        `<circle cx="${cx + r - 5}" cy="${(top + r + bottom) / 2 + 2}" r="1.8" fill="${LIT}"/>`,
+        `<circle cx="${cx + r - 5}" cy="${(top + r + bottom) / 2 + 2}" r="1.8" fill="${LIT}"/></g>` +
+        `<path d="${d}" fill="none" stroke="${this.ink.line}" stroke-width="2"/>`,
     );
-    this.door = { x: cx, bottom };
   }
   /** 네모 창: 유리, 쉬는 중 불빛, 창살 */
   win(x: number, y: number, w: number, h: number, glass = GLASS) {
@@ -187,14 +224,18 @@ class Art {
       { ell: [x, y, r, r] },
     );
   }
-  layout(): HouseLayout {
+  layout(style: HouseStyle): HouseLayout {
+    const scene = roomScene(this.room);
     return {
       back: this.back.join(''),
       body: this.body.join(''),
       hits: this.hits,
       door: this.door,
-      zzz: this.zzz,
-      letter: this.letter,
+      room: this.room,
+      scene,
+      roomSvg: roomSvg(`jjrm-${this.id}`, this.room, scene, style, this.ink.line),
+      zzz: scene.zzz,
+      letter: letterSpot(this.room, scene.zzz),
     };
   }
 }
@@ -263,8 +304,7 @@ function wood(a: Art, level: number) {
     a.arch(42, 22, 82);
     a.win(70, 84, 18, 14);
     a.flowerBox(70, 99, 18);
-    a.zzz = { x: 90, y: 36 };
-    a.letter = { x: 1, y: 14 };
+    a.room = { kind: 'rect', x: 22, y: 49, w: 76, h: 61, r: 4 };
     return;
   }
   // 5단계: 저택. 왼쪽 탑, 오른쪽 굴뚝, 문 양옆 등불
@@ -288,8 +328,7 @@ function wood(a: Art, level: number) {
   a.flag(19, 0, 13);
   a.roundWin(19, 58, 5);
   a.win(13, 76, 12, 15);
-  a.zzz = { x: 93, y: 37 };
-  a.letter = { x: 37, y: 3 };
+  a.room = { kind: 'rect', x: 32, y: 53, w: 70, h: 57, r: 4 };
 }
 
 /** 발코니 난간 (x, 바닥 y, 너비) */
@@ -324,11 +363,11 @@ function mushroom(a: Art, level: number) {
     a.dome(60, 66, 48, 44, cap, 8);
     capDots(a, [34, 50, 6, 60, 34, 7, 86, 50, 5.5, 47, 60, 3, 76, 38, 3.5, 98, 62, 2.5]);
     a.arch(52, 20, 82);
-    a.door = { x: 52, bottom: 110 };
     if (level === 1) a.roundWin(72, 84, 4.5);
     else a.roundWin(72, 84, 7);
     if (level >= 3) a.flowerBox(64, 94, 16);
-    a.zzz = { x: 88, y: 40 };
+    // 방 바로 위가 갓 아래 띠(가운데가 70 까지 처진 테두리)라 Zzz 는 그 아래에
+    a.room = { kind: 'rect', x: 36, y: 71.5, w: 48, h: 38.5, r: 8, ceiling: 74 };
     return;
   }
   if (level === 4) {
@@ -343,8 +382,7 @@ function mushroom(a: Art, level: number) {
     balcony(a, 40, 84, 40);
     a.arch(50, 20, 90);
     a.roundWin(74, 99, 5);
-    a.zzz = { x: 92, y: 40 };
-    a.letter = { x: 2, y: 4 };
+    a.room = { kind: 'rect', x: 34, y: 60, w: 52, h: 50, r: 8 };
     return;
   }
   // 5단계: 큰 버섯과 왼쪽 버섯 탑, 깃발, 등불
@@ -365,8 +403,7 @@ function mushroom(a: Art, level: number) {
   a.flag(19, 17, 16);
   a.roundWin(19, 66, 5);
   a.roundWin(19, 88, 4.5);
-  a.zzz = { x: 93, y: 36 };
-  a.letter = { x: 24, y: 0 };
+  a.room = { kind: 'rect', x: 42, y: 62, w: 50, h: 48, r: 8 };
 }
 
 /** 마당 꼬마 버섯 */
@@ -423,7 +460,7 @@ function igloo(a: Art, level: number) {
     iceRows(a, 58, 110, rx, ry);
     tunnel(a, 46, 30, 80);
     a.roundWin(80, 82, level === 1 ? 4.5 : 7, ICE);
-    a.zzz = { x: 86, y: level === 1 ? 46 : 42 };
+    a.room = { kind: 'dome', cx: 58, floor: 110, rx, ry };
     return;
   }
   if (level === 4) {
@@ -438,8 +475,7 @@ function igloo(a: Art, level: number) {
     iceRows(a, 60, 110, 45, 40);
     tunnel(a, 44, 28, 84);
     a.roundWin(82, 92, 6, ICE);
-    a.zzz = { x: 90, y: 50 };
-    a.letter = { x: 2, y: 30 };
+    a.room = { kind: 'dome', cx: 60, floor: 110, rx: 45, ry: 40 };
     return;
   }
   // 5단계: 얼음 궁전. 가운데 큰 이글루, 양옆 얼음 탑, 깃발, 등불
@@ -461,8 +497,7 @@ function igloo(a: Art, level: number) {
   tunnel(a, 62, 30, 80);
   a.lantern(40, 84);
   a.lantern(84, 84);
-  a.zzz = { x: 82, y: 42 };
-  a.letter = { x: 36, y: 8 };
+  a.room = { kind: 'dome', cx: 62, floor: 110, rx: 42, ry: 60 };
 }
 
 function snowman(a: Art, x: number, y: number) {
@@ -530,9 +565,7 @@ function castle(a: Art, level: number) {
     else a.archWin(70, 60, 12, 17);
     if (level >= 2) a.archWin(38, 60, 9, 13);
     if (level >= 3) a.flowerBox(69, 80, 14);
-    a.door = { x: 54, bottom: 110 };
-    a.zzz = { x: 84, y: 36 };
-    if (level === 3) a.letter = { x: 2, y: 30 };
+    a.room = { kind: 'rect', x: 32, y: 53, w: 56, h: 57 };
     return;
   }
   if (level === 4) {
@@ -553,8 +586,7 @@ function castle(a: Art, level: number) {
     a.arch(46, 22, 84, 110, '#a0724e');
     a.archWin(70, 86, 10, 13);
     a.flowerBox(69, 100, 12);
-    a.zzz = { x: 60, y: 36 };
-    a.letter = { x: 34, y: 8 };
+    a.room = { kind: 'rect', x: 31.5, y: 47, w: 57, h: 63 };
     return;
   }
   // 5단계: 큰 성. 가운데 탑에 깃발, 양옆 탑, 성문 양옆 등불
@@ -570,13 +602,13 @@ function castle(a: Art, level: number) {
   a.archWin(13, 66, 8, 12);
   a.archWin(99, 66, 8, 12);
   a.arch(60, 26, 78, 110, '#a0724e');
+  // 성문 널빤지 줄. 문이 열리면 문짝과 같이 걷힌다
   a.add(
-    `<path d="M53 92V110M60 87V110M67 92V110M49 98H71" stroke="${a.ink.line}" stroke-width="1.3" stroke-opacity=".55"/>`,
+    `<path class="bars" d="M53 92V110M60 87V110M67 92V110M49 98H71" stroke="${a.ink.line}" stroke-width="1.3" stroke-opacity=".55"/>`,
   );
   a.lantern(38, 82);
   a.lantern(82, 82);
-  a.zzz = { x: 86, y: 38 };
-  a.letter = { x: 2, y: 8 };
+  a.room = { kind: 'rect', x: 24, y: 67, w: 72, h: 43 };
 }
 
 const INK: Record<HouseStyle, Ink> = {
@@ -587,6 +619,189 @@ const INK: Record<HouseStyle, Ink> = {
 };
 const DRAW: Record<HouseStyle, (a: Art, level: number) => void> = { wood, mushroom, igloo, castle };
 
+// ---- 집 안 (쉬는 동안 앞벽을 걷어 낸 방) ----
+
+interface RoomInk {
+  /** 벽지와 무늬 */
+  wall: string;
+  pattern: string;
+  /** 바닥과 깔개 (없으면 안 깐다) */
+  floor: string;
+  rug?: string;
+  /** 이불과 줄무늬, 침대 나무 */
+  blanket: string;
+  stripe: string;
+  bed: string;
+}
+
+const ROOM: Record<HouseStyle, RoomInk> = {
+  wood: {
+    wall: '#f7e3c4',
+    pattern: '#eccb9a',
+    floor: '#c58f5e',
+    blanket: '#7fa8e3',
+    stripe: '#5d86c9',
+    bed: '#b07a4f',
+  },
+  mushroom: {
+    wall: '#fde6e0',
+    pattern: '#f6c3ba',
+    floor: '#b78a62',
+    rug: '#8fd47c',
+    blanket: '#f6b73c',
+    stripe: '#e8505b',
+    bed: '#a8784f',
+  },
+  igloo: {
+    wall: '#e3f3ff',
+    pattern: '#b6d7ef',
+    floor: '#cfe6f6',
+    rug: '#ffffff',
+    blanket: '#9b8cf0',
+    stripe: '#7d6be0',
+    bed: '#8eb6d6',
+  },
+  castle: {
+    wall: '#ebe3f3',
+    pattern: '#cdbfe0',
+    floor: '#a98fc0',
+    rug: '#c0395b',
+    blanket: '#d94f70',
+    stripe: '#ffd166',
+    bed: '#8a5a3c',
+  },
+};
+/** 밤 방 그늘 (스탠드 불빛만 밝다) */
+const NIGHT = '#1e2150';
+const SKY = '#2d3b78';
+
+/** 벽지 무늬: 나무집 세로 줄, 버섯집 물방울, 눈집 얼음 벽돌, 성 돌 벽돌 */
+function wallPattern(
+  c: RoomInk,
+  b: { x: number; y: number; w: number; h: number },
+  style: HouseStyle,
+): string {
+  const n = (v: number) => Math.round(v * 10) / 10;
+  let d = '';
+  if (style === 'wood') {
+    for (let x = b.x + 5; x < b.x + b.w; x += 7) d += `M${n(x)} ${n(b.y)}v${n(b.h)}`;
+    return `<path d="${d}" stroke="${c.pattern}" stroke-width="2.2"/>`;
+  }
+  if (style === 'mushroom') {
+    let dots = '';
+    let row = 0;
+    for (let y = b.y + 5; y < b.y + b.h - 6; y += 8, row++)
+      for (let x = b.x + (row % 2 ? 8 : 4); x < b.x + b.w; x += 8)
+        dots += `<circle cx="${n(x)}" cy="${n(y)}" r="1.4"/>`;
+    return `<g fill="${c.pattern}">${dots}</g>`;
+  }
+  let row = 0;
+  const step = style === 'igloo' ? 9 : 8;
+  for (let y = b.y + b.h - 6; y > b.y; y -= step, row++) {
+    d += `M${n(b.x)} ${n(y)}h${n(b.w)}`;
+    for (let x = b.x + (row % 2 ? 6 : 12); x < b.x + b.w; x += 12) d += `M${n(x)} ${n(y)}v${-step}`;
+  }
+  return `<path d="${d}" stroke="${c.pattern}" stroke-width="1.2"/>`;
+}
+
+/**
+ * 방 그림: 벽지, 바닥, (넓으면) 밤하늘 창, 밤 그늘, 스탠드 불빛, 침대, 베개 위 자는 얼굴(펫 화면이 그린 그림,
+ * image.slp 의 href 는 메인이 넣는다), 이불, 벽 단면 테두리. 숨쉬기는 body.b 일 때 이불이 부풀고 얼굴이 살짝 오른다
+ */
+function roomSvg(id: string, room: RoomShape, sc: RoomScene, style: HouseStyle, line: string): string {
+  const c = ROOM[style];
+  const n = (v: number) => Math.round(v * 10) / 10;
+  const d = roomPath(room);
+  const all =
+    room.kind === 'dome'
+      ? { x: room.cx - room.rx, y: room.floor - room.ry, w: room.rx * 2, h: room.ry }
+      : { x: room.x, y: room.y, w: room.w, h: room.h };
+  const { bed, head, blanket: bk, lamp } = sc;
+  const f = bed.floor;
+  const out: string[] = [];
+  out.push(
+    `<rect x="${n(all.x)}" y="${n(all.y)}" width="${n(all.w)}" height="${n(all.h)}" fill="${c.wall}"/>`,
+  );
+  out.push(wallPattern(c, all, style));
+  // 바닥 (나무집은 널빤지 이음)
+  out.push(`<rect x="${n(all.x)}" y="${n(f - 5)}" width="${n(all.w)}" height="5" fill="${c.floor}"/>`);
+  out.push(
+    `<path d="M${n(all.x)} ${n(f - 5)}h${n(all.w)}" stroke="${line}" stroke-width="1" stroke-opacity=".5"/>`,
+  );
+  if (c.rug)
+    out.push(
+      `<ellipse cx="${n(bed.x + bed.w / 2)}" cy="${n(f - 2.5)}" rx="${n(bed.w * 0.62)}" ry="2.6" fill="${c.rug}" opacity=".9"/>`,
+    );
+  if (sc.window) {
+    const w = sc.window;
+    out.push(
+      `<rect x="${n(w.x)}" y="${n(w.y)}" width="${w.w}" height="${w.h}" rx="1.5" fill="${SKY}"/>` +
+        `<circle cx="${n(w.x + w.w * 0.68)}" cy="${n(w.y + w.h * 0.36)}" r="2.6" fill="#ffe9a8"/>` +
+        `<circle cx="${n(w.x + w.w * 0.78)}" cy="${n(w.y + w.h * 0.28)}" r="2.2" fill="${SKY}"/>` +
+        `<circle cx="${n(w.x + w.w * 0.24)}" cy="${n(w.y + w.h * 0.3)}" r=".7" fill="#fff"/>` +
+        `<circle cx="${n(w.x + w.w * 0.36)}" cy="${n(w.y + w.h * 0.72)}" r=".55" fill="#fff"/>` +
+        `<path d="M${n(w.x + w.w / 2)} ${n(w.y)}v${w.h}M${n(w.x)} ${n(w.y + w.h / 2)}h${w.w}" stroke="${line}" stroke-width="1"/>` +
+        `<rect x="${n(w.x)}" y="${n(w.y)}" width="${w.w}" height="${w.h}" rx="1.5" fill="none" stroke="${line}" stroke-width="1.4"/>`,
+    );
+  }
+  // 밤: 방을 어둡게 하고 스탠드 둘레만 밝힌다
+  out.push(
+    `<rect x="${n(all.x)}" y="${n(all.y)}" width="${n(all.w)}" height="${n(all.h)}" fill="${NIGHT}" opacity=".2"/>`,
+  );
+  out.push(
+    `<circle cx="${n(lamp.x)}" cy="${n(lamp.y)}" r="17" fill="${LIT}" opacity=".28"/><circle cx="${n(lamp.x)}" cy="${n(lamp.y)}" r="9" fill="${LIT}" opacity=".4"/>`,
+  );
+  if (lamp.table !== undefined) {
+    const tx = lamp.table;
+    out.push(
+      `<path d="M${n(tx + 1.5)} ${n(f)}V${n(f - 12)}M${n(tx + 7.5)} ${n(f)}V${n(f - 12)}" stroke="${c.bed}" stroke-width="1.6"/>` +
+        `<rect x="${n(tx)}" y="${n(f - 14)}" width="9" height="3" rx="1" fill="${c.bed}" stroke="${line}" stroke-width="1"/>` +
+        `<path d="M${n(lamp.x)} ${n(f - 14)}v-4" stroke="${line}" stroke-width="1.2"/>` +
+        `<path d="M${n(lamp.x - 3.5)} ${n(lamp.y + 3)}l1.6 -6h3.8l1.6 6Z" fill="${LIT}" stroke="${line}" stroke-width="1" stroke-linejoin="round"/>`,
+    );
+  } else {
+    // 벽 등: 머리판 위 벽에 붙은 작은 등
+    out.push(
+      `<path d="M${n(lamp.x - 2)} ${n(lamp.y - 4)}h3v3" fill="none" stroke="${line}" stroke-width="1.1"/>` +
+        `<path d="M${n(lamp.x - 2.6)} ${n(lamp.y + 2)}l1 -4h3.2l1 4Z" fill="${LIT}" stroke="${line}" stroke-width="1" stroke-linejoin="round"/>`,
+    );
+  }
+  // 침대: 머리판, 발판, 매트리스
+  const r = (v: number) => Math.min(3, v);
+  out.push(
+    `<rect x="${n(bed.x)}" y="${n(sc.headboard)}" width="4.5" height="${n(f - sc.headboard)}" rx="${r(2.2)}" fill="${c.bed}" stroke="${line}" stroke-width="1.3"/>` +
+      `<rect x="${n(bed.x + bed.w - 4.5)}" y="${n(sc.footboard)}" width="4.5" height="${n(f - sc.footboard)}" rx="${r(2.2)}" fill="${c.bed}" stroke="${line}" stroke-width="1.3"/>` +
+      `<rect x="${n(bed.x + 3)}" y="${n(bed.top)}" width="${n(bed.w - 6)}" height="5" rx="2" fill="#fffaf2" stroke="${line}" stroke-width="1.1"/>`,
+  );
+  // 베개와 얼굴 (얼굴은 숨쉬기에 살짝 오른다)
+  out.push(
+    `<ellipse cx="${n(head.x + head.size / 2)}" cy="${n(bed.top - 0.5)}" rx="${n(head.size * 0.56)}" ry="${n(Math.max(2.5, head.size * 0.17))}" fill="#fff" stroke="${line}" stroke-width="1.1"/>`,
+  );
+  out.push(
+    `<image class="slp" x="${n(head.x)}" y="${n(head.y)}" width="${n(head.size)}" height="${n(head.size)}"/>`,
+  );
+  // 이불: 턱 밑에서 볼록하게 발판까지. 접은 홑청 띠와 줄무늬
+  const x0 = bk.x0;
+  const x1 = bk.x1;
+  const base = bed.top + 5;
+  const hump = `M${n(x0)} ${n(base)}V${n(bed.top + 1)}C${n(x0)} ${n(bk.top)} ${n(x0 + (x1 - x0) * 0.45)} ${n(bk.top - 1)} ${n(x0 + (x1 - x0) * 0.62)} ${n(bk.top + 1)}S${n(x1)} ${n(bed.top - 1)} ${n(x1)} ${n(bed.top + 1)}V${n(base)}Z`;
+  out.push(
+    `<g class="blk"><path d="${hump}" fill="${c.blanket}" stroke="${line}" stroke-width="1.2" stroke-linejoin="round"/>` +
+      `<path d="M${n(x0 + (x1 - x0) * 0.5)} ${n(bk.top + 1)}V${n(base)}M${n(x0 + (x1 - x0) * 0.75)} ${n(bk.top + 3)}V${n(base)}" stroke="${c.stripe}" stroke-width="2.2" opacity=".75"/>` +
+      `<path d="M${n(x0 + 0.8)} ${n(base)}V${n(bed.top + 1)}C${n(x0 + 0.8)} ${n(bk.top + 2)} ${n(x0 + 3)} ${n(bk.top + 1)} ${n(x0 + 4.5)} ${n(bk.top + 1.5)}V${n(base)}Z" fill="#fffaf2"/></g>`,
+  );
+  // 침대 옆판과 다리 (이불 아래 끝을 덮는다)
+  out.push(
+    `<rect x="${n(bed.x + 2)}" y="${n(base - 1)}" width="${n(bed.w - 4)}" height="${n(Math.max(3, f - base - 2))}" rx="1.5" fill="${c.bed}" stroke="${line}" stroke-width="1.2"/>`,
+  );
+  // 벽 단면: 걷어 낸 벽 두께 띠와 테두리
+  return (
+    `<g class="room"><clipPath id="${id}"><path d="${d}"/></clipPath>` +
+    `<g clip-path="url(#${id})">${out.join('')}<path d="${d}" fill="none" stroke="${c.wall}" stroke-width="5"/></g>` +
+    `<path d="${d}" fill="none" stroke="${line}" stroke-width="2.5" stroke-linejoin="round"/></g>`
+  );
+}
+
 const cache = new Map<string, HouseLayout>();
 
 /** 모양과 단계의 그림과 자리. 이상한 값은 기본 모양, 끝 단계로 */
@@ -596,28 +811,30 @@ export function houseLayout(style: HouseStyle, level: number): HouseLayout {
   const key = `${s}:${lv}`;
   const hit = cache.get(key);
   if (hit) return hit;
-  const a = new Art(INK[s]);
+  const a = new Art(INK[s], `${s}-${lv}`);
   DRAW[s](a, lv);
-  const out = a.layout();
+  const out = a.layout(s);
   cache.set(key, out);
   return out;
 }
 
 /**
- * 집 SVG. still 이면 쉬는 중 불빛, Zzz, 편지 없이 (상점 미리 보기).
- * 집 창에서는 body 의 class(home, mail, z1~z3, b)로 보이고 숨긴다 (play.ts HOUSE_CSS)
+ * 집 SVG. still 이면 쉬는 중 불빛, 집 안, Zzz, 편지 없이 (상점 미리 보기).
+ * 집 창에서는 body 의 class(home, mail, z1~z3, b, open, wk-at, wk-in)로 보이고 숨긴다 (play.ts HOUSE_CSS)
  */
 export function houseSvg(style: HouseStyle, level: number, opts: { still?: boolean } = {}): string {
   const l = houseLayout(style, level);
   const body = opts.still ? l.body.replace(/<[^>]*class="rest"[^>]*\/>/g, '') : l.body;
-  const { x, y } = l.zzz;
+  const { x, y, k, rise = 1 } = l.zzz;
+  const n = (v: number) => Math.round(v * 10) / 10;
   const zzz = opts.still
     ? ''
-    : `<g class="rest zzz" fill="#7d8fd0" stroke="#fff" stroke-width="2.4" paint-order="stroke" font-family="sans-serif" font-weight="800"><text x="${x}" y="${y}" font-size="12">z</text><text x="${x + 8}" y="${y - 11}" font-size="15">z</text><text x="${x + 15}" y="${y - 23}" font-size="18">Z</text></g>`;
+    : `<g class="rest zzz" fill="#7d8fd0" stroke="#fff" stroke-width="2.2" paint-order="stroke" font-family="sans-serif" font-weight="800"><text x="${n(x)}" y="${n(y)}" font-size="${n(10 * k)}">z</text><text x="${n(x + 7 * k)}" y="${n(y - 9 * k * rise)}" font-size="${n(12.5 * k)}">z</text><text x="${n(x + 13 * k)}" y="${n(y - 19 * k * rise)}" font-size="${n(15 * k)}">Z</text></g>`;
   const mail = opts.still
     ? ''
     : `<g transform="translate(${l.letter.x - 4} ${l.letter.y - 10})"><g class="letter"><rect x="4" y="10" width="24" height="17" rx="3" fill="#fff" stroke="#e87a90" stroke-width="2.2"/><path d="M5 12l11 8 11-8" fill="none" stroke="#e87a90" stroke-width="2.2" stroke-linejoin="round"/><circle cx="27" cy="10" r="4.5" fill="#ef476f"/></g></g>`;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${ART} ${ART}">${l.back}<g class="hb">${body}</g>${zzz}${mail}</svg>`;
+  const room = opts.still ? '' : l.roomSvg;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${ART} ${ART}">${l.back}<g class="hb">${body}</g>${room}${zzz}${mail}</svg>`;
 }
 
 /** 그림 칸 점 (x, y) 이 잡는 자리 안인지. pad 만큼 너그럽게 */

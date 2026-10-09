@@ -16,6 +16,8 @@ export const ko = {
   'pet.rest.1': '오래 앉아 있었어. 물 한 잔 마시고 올까?',
   'pet.rest.2': '어깨 한 번 쭉 펴자. 스트레칭 어때?',
   'pet.rest.3': '잠깐 창밖 보고 오자. 눈도 쉬어야 해.',
+  // 기운 (shared/energy.ts): 지쳤다가(90분 넘게 쉬지 않음) 쉬고 오면 개운함
+  'pet.energy.fresh': '푹 쉬고 왔더니 개운해! 다시 힘내자.',
   'pet.share.tooBig': '파일이 너무 커.',
   'pet.share.notPet': '짝꿍 펫 파일이 아니야.',
   'pet.share.newer': '더 새 짝꿍에서 만든 파일이야. 짝꿍을 올려 줘.',
@@ -118,6 +120,7 @@ export const en: Translation<typeof ko> = {
   'pet.rest.1': "You've been sitting a while. Grab some water?",
   'pet.rest.2': "Let's roll those shoulders. Quick stretch?",
   'pet.rest.3': 'Look out the window for a bit. Your eyes need a break too.',
+  'pet.energy.fresh': "That break felt great. Let's keep going!",
   'pet.share.tooBig': 'That file is too big.',
   'pet.share.notPet': "That's not a Jjakkung pet file.",
   'pet.share.newer': 'This file is from a newer Jjakkung. Please update.',

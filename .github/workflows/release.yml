@@ -2,6 +2,7 @@
 # 비공개 레포에서 맥 러너는 분이 10배로 깎여서 올릴 때마다 돌리지 않는다.
 # - 손으로: Actions 탭 → release → Run workflow. 결과는 실행 화면의 Artifacts 에서 받는다.
 # - 태그로: `git tag v0.1.0 && git push origin v0.1.0` 이면 GitHub Releases 에 초안으로 올린다.
+#   태그는 package.json 버전과 같아야 하고, release/min-version 의 최소 버전을 본문에 자동으로 넣는다 (docs/release.md).
 name: release
 
 on:
@@ -29,6 +30,11 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      # 태그가 package.json 버전과 다르거나 release/min-version 이 잘못되었으면 빌드 전에 멈춘다
+      - run: node scripts/release-body.mjs "$GITHUB_REF_NAME" > /dev/null
+        if: startsWith(github.ref, 'refs/tags/v')
+        # 윈도우 러너의 기본 셸(pwsh)은 $GITHUB_REF_NAME 과 /dev/null 을 모른다
+        shell: bash
       - run: npm ci
       - run: npm run check
         if: runner.os == 'macOS'
@@ -45,12 +51,16 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: jjakkung-${{ runner.os }}
-          # latest.yml 과 .blockmap 은 윈도우 자동 설치(electron-updater)가 릴리스에서 읽는다
+          # 자동 설치(electron-updater)가 릴리스에서 읽는다. 윈도우는 latest.yml, exe, .blockmap.
+          # 맥은 latest-mac.yml, zip, .blockmap (dmg 는 처음 설치용)
           path: |
             dist/*.dmg
             dist/*.exe
             dist/*.exe.blockmap
             dist/latest.yml
+            dist/*.zip
+            dist/*.zip.blockmap
+            dist/latest-mac.yml
           if-no-files-found: error
 
   release:
@@ -60,11 +70,21 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
       - uses: actions/download-artifact@v8
         with:
           path: files
           merge-multiple: true
       # 초안으로 올린다. 확인한 뒤 GitHub 화면에서 발행한다.
-      - run: gh release create "$GITHUB_REF_NAME" files/* --draft --title "짝꿍 $GITHUB_REF_NAME" --generate-notes --repo "$GITHUB_REPOSITORY"
+      # 본문 머리의 최소 버전 줄은 release/min-version 에서 만든다 (손으로 적지 않는다). 그 아래에 자동 변경 목록.
+      # 태그에 -beta.1 같은 꼬리가 있으면 사전 릴리스로 올린다 (앱의 업데이트 확인은 사전 릴리스를 보지 않는다)
+      - run: |
+          node scripts/release-body.mjs "$GITHUB_REF_NAME" > notes.md
+          pre=""
+          case "$GITHUB_REF_NAME" in *-*) pre="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" files/* --draft $pre --title "짝꿍 $GITHUB_REF_NAME" --notes-file notes.md --generate-notes --repo "$GITHUB_REPOSITORY"
         env:
           GH_TOKEN: ${{ github.token }}

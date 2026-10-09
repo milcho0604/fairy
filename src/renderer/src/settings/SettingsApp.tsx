@@ -34,9 +34,12 @@ import {
 } from '../../../shared/shortcut.ts';
 import { MAX_SCALE, MIN_SCALE } from '../../../shared/size.ts';
 import { CANVAS_SIZE, drawPet } from '../draw.ts';
+import { MakeProgress } from '../MakeProgress.tsx';
+import { browserStore, loadExpected, saveDuration } from '../make-progress.ts';
 import { PetNameInput } from '../PetNameInput.tsx';
 import { Pet3D } from '../pet3d.ts';
 import { gaitMismatch, shapeOf } from '../pet3d-gait.ts';
+import { RoutinePicker } from '../RoutinePicker.tsx';
 
 const bridge = window.jjakkungSettings;
 
@@ -281,6 +284,12 @@ export function SettingsApp() {
             onChange={(v) => update({ lookAtCursor: v })}
           />
           <Toggle
+            label={t('settings.dayRhythm')}
+            hint={t('settings.dayRhythmHint')}
+            on={s.dayRhythm}
+            onChange={(v) => update({ dayRhythm: v })}
+          />
+          <Toggle
             label={t('settings.sounds')}
             hint={t('settings.soundsHint')}
             on={s.sounds}
@@ -294,8 +303,8 @@ export function SettingsApp() {
             onChange={(v) => update({ boost: v })}
           />
           <Toggle
-            label={t('settings.sysMonitor')}
-            hint={t('settings.sysMonitorHint')}
+            label={t(mac ? 'settings.sysMonitor' : 'settings.sysMonitorWin')}
+            hint={t(mac ? 'settings.sysMonitorHint' : 'settings.sysMonitorWinHint')}
             on={s.sysMonitor}
             onChange={(v) => update({ sysMonitor: v })}
           />
@@ -501,6 +510,25 @@ export function SettingsApp() {
               {t('settings.onboardingAgain')}
             </button>
           </div>
+        </Section>
+
+        <Section title={t('routine.set.title')}>
+          <Toggle
+            label={t('routine.set.on', { name: s.petName })}
+            hint={t('routine.set.onHint')}
+            on={s.routine.on}
+            onChange={(v) => update({ routine: { ...s.routine, on: v } })}
+          />
+          {s.routine.on && (
+            <>
+              <RoutinePicker
+                routine={s.routine}
+                onChange={(routine) => update({ routine })}
+                onError={(m) => flash(m, true)}
+              />
+              {s.review && <small>{t('routine.set.reviewNote')}</small>}
+            </>
+          )}
         </Section>
 
         <Section title={t('settings.review')}>
@@ -770,6 +798,12 @@ function GaitPicker({
   // 고르는 중인 걸음새 (몸과 달라 물어보는 중), 다시 만드는 중인 걸음새, 다시 만들기 실패 글
   const [ask, setAsk] = useState<Gait>();
   const [busy, setBusy] = useState<Gait>();
+  // 다시 만들기 진행 표시: 시작한 때, 예상 시간(지난번 걸린 시간), 끝나서 100% 를 잠깐 보여 주는 중
+  const [busyAt, setBusyAt] = useState(0);
+  const [busyMs, setBusyMs] = useState(0);
+  const [busyDone, setBusyDone] = useState(false);
+  // 그만두기를 눌렀으면 "멈췄어"를 오류처럼 띄우지 않고 묻던 칸으로 조용히 돌아간다
+  const stopped = useRef(false);
   const [error, setError] = useState('');
   const figure = s.petImage && snap.current?.look === 'figure' ? snap.current.model : undefined;
   // 몸 모양: 기본 펫은 기본 설계도, 사진 펫은 그 설계도 (고른 값을 덮기 전)
@@ -812,9 +846,24 @@ function GaitPicker({
     void apply(pick);
   };
   const remake = async (pick: Gait) => {
+    const at = performance.now();
     setBusy(pick);
+    setBusyAt(at);
+    setBusyMs(loadExpected('figure', browserStore()));
+    setBusyDone(false);
     setError('');
+    stopped.current = false;
     const r = await bridge.remakeBody(pick);
+    if (!r.ok && stopped.current) {
+      setBusy(undefined);
+      return;
+    }
+    if (r.ok) {
+      saveDuration('figure', performance.now() - at, browserStore());
+      setBusyDone(true);
+      await new Promise((done) => setTimeout(done, 520));
+      setBusyDone(false);
+    }
     setBusy(undefined);
     if (r.ok) {
       setAsk(undefined);
@@ -844,11 +893,21 @@ function GaitPicker({
       {!shape ? (
         <small>{why}</small>
       ) : busy ? (
-        <div className="action-row notice" role="status">
-          <small className="grow">{t('settings.gait.remaking', { pick: walk(busy) })}</small>
-          <button type="button" className="ghost" onClick={() => bridge.cancelRemake()}>
-            {t('settings.gait.stop')}
-          </button>
+        <div className="notice">
+          <MakeProgress
+            compact
+            task="remake"
+            title={t('settings.gait.remaking', { pick: walk(busy) })}
+            startedAt={busyAt}
+            expectedMs={busyMs}
+            image={snap.current?.thumb}
+            silhouette
+            done={busyDone}
+            onStop={() => {
+              stopped.current = true;
+              bridge.cancelRemake();
+            }}
+          />
         </div>
       ) : ask ? (
         <div className="notice gait-ask" role="status">
@@ -954,9 +1013,10 @@ function Friends({
                     );
                   }}
                 >
+                  {/* 칸 이름이 따로 없어 "자동"만 보이면 무엇인지 모른다. 고른 값 앞에 "걸음새"를 붙인다 */}
                   {GAIT_PICKS.map((g) => (
                     <option key={g} value={g}>
-                      {t(`settings.gait.${g}`)}
+                      {`${t('settings.gait')}: ${t(`settings.gait.${g}`)}`}
                     </option>
                   ))}
                 </select>

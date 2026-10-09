@@ -15,8 +15,11 @@ export const ko = {
   'tray.reload': (v: { name: string }) => `${v.name} 새로고침`,
   'tray.quit': '끝내기',
   'tray.stats': '컴퓨터 상태',
-  'tray.stats.show': '메뉴 막대에 CPU 보이기',
+  // 윈도우는 알림 영역 아이콘 옆에 글자를 못 써서 툴팁에 넣는다
+  'tray.stats.show': (v: { mac: boolean }) => (v.mac ? '메뉴 막대에 CPU 보이기' : '알림 영역에 CPU 보이기'),
   'tray.stats.cpu': (v: { pct: number; bar: string }) => `CPU ${v.bar} ${v.pct}%`,
+  'tray.stats.cpuWait': 'CPU 재는 중 (메뉴를 다시 열면 보여)',
+  'tray.tooltipCpu': (v: { base: string; pct: number }) => `${v.base}\nCPU ${v.pct}%`,
   'tray.stats.cpuModel': (v: { model: string; cores: number }) => `${v.model} (${v.cores}코어)`,
   'tray.stats.memory': (v: { used: string; total: string; bar: string }) =>
     `메모리 ${v.bar} ${v.used} / ${v.total}`,
@@ -41,8 +44,11 @@ export const en: Translation<typeof ko> = {
   'tray.reload': (v: { name: string }) => `Refresh ${v.name}`,
   'tray.quit': 'Quit',
   'tray.stats': 'Computer status',
-  'tray.stats.show': 'Show CPU in the menu bar',
+  'tray.stats.show': (v: { mac: boolean }) =>
+    v.mac ? 'Show CPU in the menu bar' : 'Show CPU in the notification area',
   'tray.stats.cpu': (v: { pct: number; bar: string }) => `CPU ${v.bar} ${v.pct}%`,
+  'tray.stats.cpuWait': 'CPU: measuring (open the menu again)',
+  'tray.tooltipCpu': (v: { base: string; pct: number }) => `${v.base}\nCPU ${v.pct}%`,
   'tray.stats.cpuModel': (v: { model: string; cores: number }) => `${v.model} (${v.cores} cores)`,
   'tray.stats.memory': (v: { used: string; total: string; bar: string }) =>
     `Memory ${v.bar} ${v.used} / ${v.total}`,

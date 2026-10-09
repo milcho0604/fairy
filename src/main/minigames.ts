@@ -660,6 +660,8 @@ export function createMiniGames(o: MiniGameOptions) {
   async function mole(run: Run): Promise<boolean> {
     const pet = o.pet();
     const signal = run.abort.signal;
+    // 안내(2.6초) 동안 펫을 눌러도 그만 놀기가 아니다: 펫 누르기는 처음부터 놀이가 받는다 (그만두기는 우클릭)
+    run.tap = () => {};
     await pet.land();
     await sayFor('play.mole.start', undefined, 2600, signal);
     if (signal.aborted || pet.held()) return false;

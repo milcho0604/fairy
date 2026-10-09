@@ -122,7 +122,10 @@ small {
   background: var(--bg);
 }
 
-.field input:not([type="range"]):focus {
+/* 친구 이름, 짝꿍 규칙 칸도 같은 테두리로 (없으면 운영체제 강조색 테두리가 떠서 이 두 칸만 색이 다르다) */
+.field input:not([type="range"]):focus,
+.friend-add input:focus,
+textarea.rules:focus {
   outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
   outline-offset: -1px;
 }

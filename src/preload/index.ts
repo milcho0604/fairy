@@ -5,6 +5,7 @@ import type { BubbleLayout } from '../shared/bubble-layout.ts';
 import type { ChatState } from '../shared/chat-state.ts';
 import type { Gaze } from '../shared/gaze.ts';
 import type { Point } from '../shared/geometry.ts';
+import type { HouseSprites } from '../shared/house-room.ts';
 import {
   type BubbleMessage,
   type CarryMessage,
@@ -103,6 +104,7 @@ if (kind === 'pet') {
       ipcRenderer.on(IPC.carry, (_e, message: CarryMessage) => listener(message));
     },
     carried: (at: Point | null) => ipcRenderer.send(IPC.carried, at),
+    sprites: (sprites: HouseSprites) => ipcRenderer.send(IPC.sprites, sprites),
   };
   contextBridge.exposeInMainWorld('jjakkung', pet);
 }
@@ -235,7 +237,9 @@ if (kind === 'panel' || kind === 'quick') {
     noteRestore: (id: number) => ipcRenderer.send(PANEL.noteRestore, id),
     noteSearch: (query: string, composing: boolean) => ipcRenderer.invoke(PANEL.noteSearch, query, composing),
     noteAi: (id, kind) => ipcRenderer.invoke(PANEL.noteAi, id, kind),
-    notePolish: (text) => ipcRenderer.invoke(PANEL.notePolish, text),
+    notePolish: (id, req) => ipcRenderer.invoke(PANEL.notePolish, id, req),
+    notePolishInfo: (id) => ipcRenderer.invoke(PANEL.notePolishInfo, id),
+    notePolishTaken: (id) => ipcRenderer.send(PANEL.notePolishTaken, id),
     eventAdd: (text: string) => ipcRenderer.invoke(PANEL.eventAdd, text),
     eventUpdate: (id, patch) => ipcRenderer.send(PANEL.eventUpdate, id, patch),
     eventRemove: (id: number) => ipcRenderer.send(PANEL.eventRemove, id),
@@ -268,6 +272,7 @@ if (kind === 'maker') {
     shape3d: (png: string, wish?: string, gait?: string) =>
       ipcRenderer.invoke(MAKER.shape3d, png, wish, gait),
     resetToDefault: () => ipcRenderer.invoke(MAKER.save, null, ''),
+    cancel: () => ipcRenderer.send(MAKER.cancel),
     close: () => ipcRenderer.send(MAKER.close),
     onProgress: (listener) => {
       ipcRenderer.on(MAKER.progress, (_e, ratio: number) => listener(ratio));

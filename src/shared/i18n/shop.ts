@@ -54,7 +54,8 @@ export const ko = {
   'shop.noHouse': '아직 집이 없어',
   'shop.houseNow': '지금: {name}',
   'shop.bestHouse': '가장 좋은 집이야.',
-  'shop.houseNext': '다음: {name} (화면 왼쪽 아래 구석에 놓여)',
+  'shop.houseFirst': '다음: {name} (처음엔 화면 왼쪽 아래 구석에 놓여. 끌어서 옮길 수 있어)',
+  'shop.houseNext': '다음: {name} (지금 자리에서 커져)',
   'shop.newHouse': '새 집이야!',
   'shop.build': '짓기',
   'shop.upgrade': '늘리기',
@@ -63,6 +64,8 @@ export const ko = {
   'shop.stylesHint': '한 번 사면 언제든 공짜로 바꿀 수 있어. 단계는 그대로야.',
   'shop.styleNow': '쓰는 중',
   'shop.styleUse': '바꾸기',
+  'shop.styleUseLabel': (v: { name: string }) => `${withParticle(v.name, '으로')} 바꾸기`,
+  'shop.styleBuyLabel': (v: { name: string; n: number }) => `${v.name} 사기, 코인 ${v.n}개`,
   'shop.styleChanged': (v: { name: string }) => `${withParticle(v.name, '으로')} 바꿨어`,
 };
 
@@ -118,7 +121,8 @@ export const en: Translation<typeof ko> = {
   'shop.noHouse': 'No house yet',
   'shop.houseNow': 'Now: {name}',
   'shop.bestHouse': "It's the best house.",
-  'shop.houseNext': 'Next: {name} (sits in the bottom left corner)',
+  'shop.houseFirst': 'Next: {name} (starts in the bottom left corner, drag it anywhere)',
+  'shop.houseNext': 'Next: {name} (grows right where it is)',
   'shop.newHouse': 'A new house!',
   'shop.build': 'Build',
   'shop.upgrade': 'Upgrade',
@@ -127,5 +131,7 @@ export const en: Translation<typeof ko> = {
   'shop.stylesHint': 'Buy once, switch any time for free. The level stays.',
   'shop.styleNow': 'In use',
   'shop.styleUse': 'Switch',
+  'shop.styleUseLabel': (v: { name: string }) => `Switch to ${v.name}`,
+  'shop.styleBuyLabel': (v: { name: string; n: number }) => `Buy ${v.name}, ${v.n} coins`,
   'shop.styleChanged': (v: { name: string }) => `Switched to ${v.name}`,
 };

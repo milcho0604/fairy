@@ -1,0 +1,333 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { setLang, t } from './i18n/index.ts';
+import {
+  bodyClock,
+  coversBriefing,
+  coversReview,
+  DEFAULT_ROUTINE,
+  dayBounds,
+  dueUntil,
+  EMPTY_MEMO,
+  type MeetTime,
+  meetCoins,
+  nextMeet,
+  nextStreak,
+  parseMemo,
+  parseRoutine,
+  type Routine,
+  type RoutineMemo,
+  routineDue,
+} from './routine.ts';
+import { farewellText, greetText, restText, variant, weekdayName } from './routine-text.ts';
+import { applyPatch, DEFAULT_SETTINGS, parseSettings } from './settings.ts';
+
+// 2026-10-05 월요일 ~ 2026-10-11 일요일
+const MON = '2026-10-05';
+const TUE = '2026-10-06';
+const FRI = '2026-10-09';
+const SAT = '2026-10-10';
+const SUN = '2026-10-11';
+const NEXT_MON = '2026-10-12';
+const H = (h: number, m = 0) => h * 60 + m;
+const weekdays = (m: MeetTime): Routine => ({ on: true, week: [null, m, m, m, m, m, null] });
+const NINE = weekdays({ start: H(9), end: H(18) });
+const memo = (o: Partial<RoutineMemo> = {}): RoutineMemo => ({ ...EMPTY_MEMO, ...o });
+
+test('설정 읽기: 기본은 꺼짐, 틀린 요일은 기본값, 시작과 끝이 같으면 쓸 수 없다', () => {
+  assert.equal(DEFAULT_SETTINGS.routine.on, false);
+  assert.deepEqual(parseRoutine(undefined), DEFAULT_ROUTINE);
+  const r = parseRoutine({
+    on: true,
+    week: [null, { start: 600, end: 600 }, { start: -1, end: 30 }, { start: 1320, end: 360 }, 'x'],
+  });
+  assert.equal(r.on, true);
+  assert.equal(r.week.length, 7);
+  assert.equal(r.week[0], null);
+  assert.deepEqual(r.week[1], DEFAULT_ROUTINE.week[1]);
+  assert.deepEqual(r.week[2], DEFAULT_ROUTINE.week[2]);
+  assert.deepEqual(r.week[3], { start: 1320, end: 360 });
+  assert.deepEqual(r.week[4], DEFAULT_ROUTINE.week[4]);
+  assert.equal(r.week[6], null);
+  // 설정 바꾸기로 통째로 바꾸고, 엉터리 값이면 지금 값을 둔다
+  const on = applyPatch(DEFAULT_SETTINGS, { routine: NINE });
+  assert.deepEqual(on.routine, NINE);
+  assert.deepEqual(applyPatch(on, { routine: 'off' }).routine, NINE);
+  assert.deepEqual(parseSettings({ routine: { on: true } }).routine.week, DEFAULT_ROUTINE.week);
+});
+
+test('맞이: 일찍, 딱 맞춰, 늦게. 4시간 전부터 문을 연다', () => {
+  assert.equal(routineDue(NINE, memo(), MON, H(4, 59)), undefined);
+  assert.deepEqual(routineDue(NINE, memo(), MON, H(5)), {
+    what: 'greet',
+    day: MON,
+    meet: { start: H(9), end: H(18) },
+    clock: H(5),
+    arrival: 'early',
+  });
+  const at = (m: number) => (routineDue(NINE, memo(), MON, m) as { arrival: string }).arrival;
+  assert.equal(at(H(8, 49)), 'early');
+  assert.equal(at(H(8, 50)), 'onTime');
+  assert.equal(at(H(9, 10)), 'onTime');
+  assert.equal(at(H(9, 11)), 'late');
+  assert.equal(at(H(17, 59)), 'late');
+  // 헤어진 뒤 처음 왔으면 맞이도 헤어짐도 없다 (예전 브리핑이 한다)
+  assert.equal(routineDue(NINE, memo(), MON, H(18)), undefined);
+  assert.equal(coversBriefing(NINE, memo(), MON, H(18)), false);
+  assert.equal(coversBriefing(NINE, memo(), MON, H(7)), true);
+});
+
+test('맞이를 미뤘으면 처음 자리에 있던 때로 판정한다 (집중 중에 왔다가 끝나고 인사)', () => {
+  const m = memo({ arrival: { day: MON, clock: H(8) } });
+  const due = routineDue(NINE, m, MON, H(9, 40));
+  assert.equal(due?.what, 'greet');
+  assert.equal((due as { arrival: string }).arrival, 'early');
+  // 다른 날 기록은 쓰지 않는다
+  const old = routineDue(NINE, memo({ arrival: { day: '2026-10-02', clock: H(8) } }), MON, H(9, 40));
+  assert.equal((old as { arrival: string }).arrival, 'late');
+});
+
+test('하루 한 번: 맞이, 시작 한마디, 헤어짐, 쉬는 날 한마디', () => {
+  const met = memo({ greeted: MON, arrival: { day: MON, clock: H(8) } });
+  // 앱을 다시 켜도 같은 날 다시 맞이하지 않는다
+  assert.equal(routineDue(NINE, met, MON, H(8, 30)), undefined);
+  // 일찍 왔으면 만나는 시간에 한마디 (30분 안에서만)
+  assert.deepEqual(routineDue(NINE, met, MON, H(9)), {
+    what: 'cue',
+    day: MON,
+    meet: { start: H(9), end: H(18) },
+  });
+  assert.equal(routineDue(NINE, met, MON, H(9, 30)), undefined);
+  assert.equal(routineDue(NINE, { ...met, cued: MON }, MON, H(9, 5)), undefined);
+  // 딱 맞춰 왔으면 한마디 없다
+  assert.equal(
+    routineDue(NINE, memo({ greeted: MON, arrival: { day: MON, clock: H(9) } }), MON, H(9, 5)),
+    undefined,
+  );
+  // 헤어짐: 18시부터 그날 자정 전까지, 한 번
+  assert.equal(routineDue(NINE, met, MON, H(17, 59))?.what, undefined);
+  assert.equal(routineDue(NINE, met, MON, H(18))?.what, 'farewell');
+  assert.equal(routineDue(NINE, met, MON, H(23, 59))?.what, 'farewell');
+  assert.equal(routineDue(NINE, { ...met, farewelled: MON }, MON, H(19)), undefined);
+  // 다음 날 아침에는 어제 헤어짐을 꺼내지 않고 오늘 맞이
+  assert.equal(routineDue(NINE, met, TUE, H(7))?.what, 'greet');
+  // 맞이하지 않은 날은 헤어지지도 않는다
+  assert.equal(routineDue(NINE, memo(), MON, H(19)), undefined);
+  // 쉬는 날: 5시부터 한 번
+  assert.equal(routineDue(NINE, memo(), SAT, H(4, 59)), undefined);
+  assert.deepEqual(routineDue(NINE, memo(), SAT, H(10)), { what: 'rest', day: SAT });
+  assert.equal(routineDue(NINE, memo({ restSaid: SAT }), SAT, H(10)), undefined);
+  assert.equal(coversBriefing(NINE, memo(), SAT, H(10)), true);
+  // 꺼져 있으면 아무것도
+  assert.equal(routineDue({ ...NINE, on: false }, memo(), MON, H(9)), undefined);
+  assert.equal(coversBriefing({ ...NINE, on: false }, memo(), MON, H(9)), false);
+});
+
+test('밤 근무: 22시에 만나 다음 날 6시에 헤어진다. 일과는 시작한 날 것', () => {
+  const night: Routine = weekdays({ start: H(22), end: H(6) });
+  assert.deepEqual(dayBounds(night, MON), { start: H(22), end: H(30) });
+  assert.equal(routineDue(night, memo(), MON, H(17, 59)), undefined);
+  const g = routineDue(night, memo(), MON, H(21, 55));
+  assert.equal(g?.what, 'greet');
+  assert.equal((g as { arrival: string }).arrival, 'onTime');
+  // 자정 넘어 처음 왔어도 월요일 일과의 맞이 (늦게)
+  const late = routineDue(night, memo(), TUE, H(1));
+  assert.deepEqual(late && { what: late.what, day: late.day }, { what: 'greet', day: MON });
+  const met = memo({ greeted: MON });
+  assert.equal(routineDue(night, met, TUE, H(5, 59)), undefined);
+  assert.deepEqual(routineDue(night, met, TUE, H(6)), {
+    what: 'farewell',
+    day: MON,
+    meet: { start: H(22), end: H(6) },
+  });
+  // 금요일 밤 근무가 토요일 아침까지: 끝나기 전에는 쉬는 날 한마디를 하지 않는다
+  const fri = memo({ greeted: FRI });
+  assert.equal(routineDue(night, fri, SAT, H(5)), undefined);
+  assert.equal(routineDue(night, fri, SAT, H(6))?.what, 'farewell');
+  // 쉬는 날 한마디는 헤어지는 인사를 기다리는 때(6시 + 4시간)가 지나서
+  assert.equal(routineDue(night, { ...fri, farewelled: FRI }, SAT, H(9, 59)), undefined);
+  assert.equal(routineDue(night, { ...fri, farewelled: FRI }, SAT, H(10))?.what, 'rest');
+});
+
+test('늦게까지 일하는 날: 어제 헤어짐을 기다리는 동안 오늘 맞이를 일찍 하지 않는다', () => {
+  // 4시에 만나 23시에 헤어짐. 자정 넘어 1시에 아직 일하면 어제 헤어짐, 오늘 "일찍 왔네"가 아니다
+  const r = weekdays({ start: H(4), end: H(23) });
+  assert.equal(routineDue(r, memo({ greeted: MON }), TUE, H(1))?.what, 'farewell');
+  assert.equal(routineDue(r, memo({ greeted: MON, farewelled: MON }), TUE, H(1)), undefined);
+  assert.equal(routineDue(r, memo({ greeted: MON, farewelled: MON }), TUE, H(3))?.what, 'greet');
+});
+
+test('연속 기록: 쉬는 날은 건너뛰고, 만나는 날을 놓치면 1 부터, 같은 날과 시계 되돌림은 새로 세지 않는다', () => {
+  assert.deepEqual(nextStreak(NINE, undefined, MON), { day: MON, n: 1, fresh: true });
+  assert.deepEqual(nextStreak(NINE, { day: MON, n: 1 }, TUE), { day: TUE, n: 2, fresh: true });
+  assert.deepEqual(nextStreak(NINE, { day: FRI, n: 5 }, NEXT_MON), { day: NEXT_MON, n: 6, fresh: true });
+  // 화요일을 건너뛰고 수요일
+  assert.equal(nextStreak(NINE, { day: MON, n: 4 }, '2026-10-07').n, 1);
+  assert.deepEqual(nextStreak(NINE, { day: TUE, n: 3 }, TUE), { day: TUE, n: 3, fresh: false });
+  assert.equal(nextStreak(NINE, { day: TUE, n: 3 }, MON).fresh, false);
+  // 만나는 날이 하나도 없으면 늘 1
+  assert.equal(
+    nextStreak({ on: true, week: [null, null, null, null, null, null, null] }, { day: MON, n: 2 }, TUE).n,
+    1,
+  );
+});
+
+test('만난 날 코인은 하루 한 번, 5일마다 보너스', () => {
+  assert.equal(meetCoins({ n: 1, fresh: true }, 0), 3);
+  assert.equal(meetCoins({ n: 4, fresh: true }, 0), 3);
+  assert.equal(meetCoins({ n: 5, fresh: true }, 0), 8);
+  assert.equal(meetCoins({ n: 10, fresh: true }, 0), 8);
+  // 오늘 이미 받았다 (껐다 켜기, 요일 바꾸기, 시계 돌리기)
+  assert.equal(meetCoins({ n: 5, fresh: true }, 1), 0);
+  assert.equal(meetCoins({ n: 2, fresh: false }, 0), 0);
+  // 한 주 내내 매일 만나도 상한: 5일 기준 3*4 + 8 = 20
+  let streak: RoutineMemo['streak'];
+  let total = 0;
+  for (const day of [MON, TUE, '2026-10-07', '2026-10-08', FRI]) {
+    for (let again = 0; again < 3; again++) {
+      const s = nextStreak(NINE, streak, day);
+      total += meetCoins(s, again);
+      streak = { day: s.day, n: s.n };
+    }
+  }
+  assert.equal(total, 20);
+});
+
+test('회고와 마감 알림: 만난 날은 헤어짐이 회고를 맡고, 마감 알림은 헤어지는 시간까지', () => {
+  assert.equal(coversReview(NINE, memo({ greeted: MON }), MON), true);
+  assert.equal(coversReview(NINE, memo(), MON), false);
+  assert.equal(coversReview(NINE, memo({ greeted: FRI }), SAT), false);
+  assert.equal(dueUntil(weekdays({ start: H(10), end: H(19) }), MON, H(18)), H(19));
+  assert.equal(dueUntil(NINE, SAT, H(18)), H(18));
+  assert.equal(dueUntil(weekdays({ start: H(22), end: H(6) }), MON, H(18)), H(18));
+});
+
+test('다음 만나는 날', () => {
+  assert.equal(nextMeet(NINE, MON)?.day, TUE);
+  assert.deepEqual(
+    nextMeet(NINE, FRI) && { day: nextMeet(NINE, FRI)?.day, inDays: nextMeet(NINE, FRI)?.inDays },
+    {
+      day: NEXT_MON,
+      inDays: 3,
+    },
+  );
+  assert.equal(nextMeet({ on: true, week: [null, null, null, null, null, null, null] }, MON), undefined);
+});
+
+test('몸 시계(기운용): 만나는 시간이 9시가 되게 옮긴다', () => {
+  assert.equal(bodyClock({ ...NINE, on: false }, MON, H(7)), H(7));
+  assert.equal(bodyClock(NINE, MON, H(9)), H(9));
+  const late = weekdays({ start: H(13), end: H(22) });
+  assert.equal(bodyClock(late, MON, H(13)), H(9));
+  assert.equal(bodyClock(late, MON, H(2)), H(22));
+  // 쉬는 날은 지난 만나는 날 시간으로 (주말에 갑자기 튀지 않게)
+  assert.equal(bodyClock(late, SAT, H(13)), H(9));
+  assert.equal(bodyClock(late, SUN, H(13)), H(9));
+  // 밤 근무: 일하는 새벽 3시는 낮 14시처럼
+  const night = weekdays({ start: H(22), end: H(6) });
+  assert.equal(bodyClock(night, TUE, H(3)), H(14));
+  assert.equal(bodyClock(night, MON, H(22)), H(9));
+});
+
+test('기록 읽기: 틀린 값은 버린다', () => {
+  assert.deepEqual(parseMemo('x'), EMPTY_MEMO);
+  const m = parseMemo({
+    greeted: MON,
+    farewelled: 'yesterday',
+    restSaid: 3,
+    cued: SAT,
+    arrival: { day: MON, clock: 9999 },
+    streak: { day: MON, n: 4 },
+  });
+  assert.deepEqual(m, { greeted: MON, farewelled: '', restSaid: '', cued: SAT, streak: { day: MON, n: 4 } });
+});
+
+test('말: 맞이, 헤어짐, 쉬는 날 (한국어, 영어)', () => {
+  setLang('ko');
+  const base = {
+    day: MON,
+    first: false,
+    streak: 1,
+    coins: 3,
+    briefing: '오늘 일정은 오전 10:00 회의 하나야.',
+    quiet: false,
+  };
+  const early = greetText({ ...base, arrival: 'early' });
+  assert.match(early, /일찍|벌써/);
+  assert.match(early, /만난 기념 코인 3개!/);
+  assert.match(early, /오전 10:00 회의/);
+  assert.match(greetText({ ...base, arrival: 'late', streak: 3 }), /3일째 만나는 중!/);
+  assert.match(
+    greetText({ ...base, arrival: 'onTime', streak: 5, coins: 8 }),
+    /5일 연속 만난 기념으로 코인 8개!/,
+  );
+  assert.equal(greetText({ ...base, arrival: 'late', quiet: true }).includes('코인'), false);
+  assert.equal(
+    greetText({ ...base, arrival: 'early', first: true }),
+    `${t('routine.hi.first')} 만난 기념 코인 3개! ${base.briefing}`,
+  );
+  // 같은 날은 같은 말, 날마다 바뀔 수 있다
+  assert.equal(variant(MON, 6), variant(MON, 6));
+  assert.ok(new Set([MON, TUE, '2026-10-07', '2026-10-08', FRI].map((d) => variant(d, 3))).size > 1);
+
+  const fri = farewellText({
+    day: FRI,
+    doneTitles: ['보고서'],
+    next: { inDays: 3, day: NEXT_MON, meet: { start: H(9), end: H(18) } },
+    tomorrow: [],
+    leftToday: 0,
+    quiet: false,
+  });
+  assert.match(fri, /"보고서" 끝낸 거 멋졌어\./);
+  assert.match(fri, /다음에 만나는 날은 월요일이야\. 푹 쉬어!/);
+  const mon = farewellText({
+    day: MON,
+    doneTitles: ['a', 'b'],
+    next: { inDays: 1, day: TUE, meet: { start: H(9), end: H(18) } },
+    tomorrow: [
+      { minute: 0, title: '엄마 생일', allDay: true },
+      { minute: H(10), title: '스탠드업' },
+    ],
+    leftToday: 2,
+    quiet: false,
+  });
+  assert.match(
+    mon,
+    /할 일 2개나 끝냈어\. 내일은 오전 10:00 스탠드업부터야\. 오늘 마감 2개가 남았는데 내일로 넘길까\?$/,
+  );
+  assert.match(
+    farewellText({
+      day: MON,
+      doneTitles: [],
+      next: { inDays: 1, day: TUE, meet: { start: H(9), end: H(18) } },
+      tomorrow: [],
+      leftToday: 0,
+      quiet: false,
+    }),
+    /내일 오전 9:00에 또 만나!$/,
+  );
+  // 조용히: 끝낸 일과 미리 보기 없이, 남은 마감 질문은 남긴다
+  const q = farewellText({ day: MON, doneTitles: ['a'], tomorrow: [], leftToday: 1, quiet: true });
+  assert.equal(q.includes('멋졌어'), false);
+  assert.match(q, /내일로 넘길까/);
+  assert.match(restText(SAT, ''), /쉬는 날/);
+  assert.equal(t('routine.set.on', { name: '콩이' }), '콩이와 만나는 시간 정하기');
+  assert.equal(t('routine.onb.title', { name: '밤' }), '밤과 만나는 시간');
+
+  setLang('en');
+  assert.match(greetText({ ...base, briefing: '', arrival: 'late' }), /\+3 coins for showing up!$/);
+  assert.equal(weekdayName(NEXT_MON), 'Monday');
+  assert.match(
+    farewellText({
+      day: FRI,
+      doneTitles: [],
+      next: { inDays: 3, day: NEXT_MON, meet: { start: H(9), end: H(18) } },
+      tomorrow: [],
+      leftToday: 0,
+      quiet: false,
+    }),
+    /See you on Monday\. Rest well!$/,
+  );
+  assert.equal(t('routine.set.on', { name: 'Milk' }), 'Set a meeting time with Milk');
+  setLang('ko');
+});

@@ -12,10 +12,12 @@ import {
   POSE_KINDS,
 } from '../../../shared/settings.ts';
 import { CANVAS_SIZE } from '../draw.ts';
+import { MakeProgress, type ProgressStage } from '../MakeProgress.tsx';
+import { browserStore, loadExpected, saveDuration } from '../make-progress.ts';
 import { PetNameInput } from '../PetNameInput.tsx';
 import { Pet3D } from '../pet3d.ts';
 import { openDepth, predictDepth } from './depth.ts';
-import { backend, openModel, predictMask } from './removeBg.ts';
+import { backend, modelOpen, openModel, predictMask } from './removeBg.ts';
 import { ShownError, shownErrorText } from './shown-error.ts';
 import { FIGURE_LIMITS, RELIEF_LIMITS, Spinner } from './spin.ts';
 
@@ -27,6 +29,14 @@ const OUT_SIDE = 512;
 const UNDO_LIMIT = 20;
 /** 요청사항 칸 아래 예시 (눌러서 더한다) */
 const WISH_CHIPS = ['sleepy', 'sparkle', 'chubby', 'tail', 'ribbon', 'calm'] as const;
+/** 끝나면 100% 와 "다 됐어"를 이만큼 보여 주고 다음 화면으로 */
+const DONE_MS = 520;
+/** 진행 표시에 쓰는 사진 크기 (긴 변, 190px 판의 두 배) */
+const THUMB_SIDE = 380;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** 지난번 걸린 시간을 두는 곳 (못 쓰면 기본 예상 시간) */
+const store = browserStore;
 
 type Step = 'pick' | 'model' | 'working' | 'edit' | 'name' | 'saving' | 'done';
 
@@ -48,6 +58,16 @@ export function MakerApp() {
   const [nameNote, setNameNote] = useState('');
   const [preview, setPreview] = useState('');
   const [elapsed, setElapsed] = useState(0);
+  // 진행 표시: 지금 단계를 시작한 때, 진행 판에 보일 사진, 이번에 모델을 받았는지, 끝나서 100% 를 보여 주는 중인지
+  const [stageAt, setStageAt] = useState(0);
+  const [thumb, setThumb] = useState('');
+  const [fetched, setFetched] = useState(false);
+  const [bgDone, setBgDone] = useState(false);
+  const [cutoutMs, setCutoutMs] = useState(0);
+  // 그만두기 뒤 한 줄 (오류가 아니라 부드러운 안내)
+  const [note, setNote] = useState('');
+  // 사진 고르기부터 다듬기 전까지 한 번의 시도. 그만두면 번호가 바뀌어 늦게 온 결과를 버린다
+  const runRef = useRef(0);
   const fileRef = useRef<HTMLInputElement>(null);
   // 입체로 만들기 (6단계): AI 가 사진을 보고 설계도를 만든다
   // 2.5D (6단계): 사진을 볼 AI 가 없어도 이 창 안에서 깊이를 재서 사진을 입체 판으로
@@ -61,6 +81,14 @@ export function MakerApp() {
   const [gait, setGait] = useState<GaitPick>('auto');
   // 지금 설계도를 만든 요청사항과 걸음새 (바꾸면 단추가 "요청대로 다시 만들기", 저장하면 요청사항을 같이 둔다)
   const [madeWith, setMadeWith] = useState<{ wish: string; gait: GaitPick }>();
+  // 입체 만들기 진행: 무엇을(AI 피규어, 2.5D 받기, 2.5D 깊이 재기), 언제 시작했는지, 예상 시간, 끝났는지
+  const [shapeTask, setShapeTask] = useState<'figure' | 'reliefDownload' | 'relief'>('figure');
+  const [shapeAt, setShapeAt] = useState(0);
+  const [shapeMs, setShapeMs] = useState(0);
+  const [shapeDone, setShapeDone] = useState(false);
+  // 이번 2.5D 에서 깊이 모델을 받았는지 (받았으면 받기와 깊이 재기 두 단계 점)
+  const [fetchedDepth, setFetchedDepth] = useState(false);
+  const shapeRun = useRef(0);
 
   useEffect(() => {
     bridge.info().then((i) => {
@@ -85,9 +113,13 @@ export function MakerApp() {
     async (file: Blob) => {
       if (!info) return;
       setError('');
+      setNote('');
+      const run = ++runRef.current;
+      const alive = () => runRef.current === run;
       try {
         // 움직이는 그림(gif, webp 여러 장)은 배경을 지우지 않고 그대로 쓴다 (v1).
         if (await isAnimated(file)) {
+          if (!alive()) return;
           if (file.size > ANIMATED_MAX) throw new ShownError(t('maker.err.animatedTooBig'));
           setAnimated(true);
           // 앞 사진으로 만든 입체 모습은 버린다 (움직이는 그림은 입체로 만들지 않는다)
@@ -100,20 +132,45 @@ export function MakerApp() {
         }
         setAnimated(false);
         const photo = await loadPhoto(file);
-        if (!info.modelReady) setStep('model');
+        if (!alive()) return;
+        setThumb(thumbOf(photo));
+        // 받을 모델이 있으면 받기부터 (진짜 진행률), 있으면 바로 배경 지우기 (해시 맞춰 보기도 여기에 넣는다)
+        const download = !info.modelReady;
+        setFetched(download);
+        setProgress(0);
+        setBgDone(false);
+        setCutoutMs(loadExpected('cutout', store()));
+        let cutStart = performance.now();
+        setStageAt(cutStart);
+        setStep(download ? 'model' : 'working');
         const r = await bridge.ensureModel();
+        if (!alive()) return;
         if (!r.ok) throw new ShownError(r.error);
         setInfo((v) => v && { ...v, modelReady: true });
-        setStep('working');
-        const res = await fetch(MODEL_URL);
-        if (!res.ok) throw new ShownError(t('maker.err.modelRead'));
-        await openModel(await res.arrayBuffer());
+        if (download) {
+          cutStart = performance.now();
+          setStageAt(cutStart);
+          setStep('working');
+        }
+        if (!modelOpen()) {
+          const res = await fetch(MODEL_URL);
+          if (!res.ok) throw new ShownError(t('maker.err.modelRead'));
+          await openModel(await res.arrayBuffer());
+        }
+        if (!alive()) return;
         const t0 = performance.now();
         const mask = await predictMask(photo, info);
+        if (!alive()) return;
         setElapsed(Math.round(performance.now() - t0));
+        saveDuration('cutout', performance.now() - cutStart, store());
         setWork({ photo, mask, w: photo.width, h: photo.height });
+        setBgDone(true);
+        await sleep(DONE_MS);
+        if (!alive()) return;
+        setBgDone(false);
         setStep('edit');
       } catch (err) {
+        if (!alive()) return;
         setError(shownErrorText(err, t('maker.err.bgFailed')));
         setStep('pick');
       }
@@ -142,6 +199,16 @@ export function MakerApp() {
     if (f && step === 'pick') start(f);
   };
 
+  /** 받기나 배경 지우기를 그만둔다. 받기는 메인이 멈추고, 지우기는 결과를 버린다 */
+  const stopPhoto = () => {
+    runRef.current++;
+    bridge.cancel();
+    setBgDone(false);
+    setError('');
+    setNote(t('maker.progress.stopped'));
+    setStep('pick');
+  };
+
   const toName = () => {
     if (!work) return;
     const url = cutout(work);
@@ -160,14 +227,49 @@ export function MakerApp() {
   const previewRef = useRef(preview);
   previewRef.current = preview;
 
+  /** 입체 만들기 진행 표시를 (다시) 시작한다. 번호(shapeRun)가 바뀌면(그만두기) 늦게 온 결과를 버린다 */
+  const beginShape = (task: 'figure' | 'reliefDownload' | 'relief') => {
+    setShapeTask(task);
+    setShapeAt(performance.now());
+    setShapeMs(loadExpected(task === 'figure' ? 'figure' : 'relief', store()));
+    setShapeDone(false);
+  };
+
+  /** 다 됐으면 100% 를 잠깐 보여 주고 결과를 놓는다. 그사이 그만뒀으면 false */
+  const finishShape = async (run: number) => {
+    setShapeDone(true);
+    await sleep(DONE_MS);
+    setShapeDone(false);
+    return shapeRun.current === run;
+  };
+
+  /** 입체 만들기를 그만둔다. AI 에 묻던 것과 받던 깊이 모델은 메인이 멈춘다 */
+  const stopShape = () => {
+    shapeRun.current++;
+    bridge.cancel();
+    setShaping(false);
+    setShapeDone(false);
+    setError('');
+    setNote(t('maker.progress.stopped'));
+  };
+
   const shape = async () => {
     if (shaping) return;
     const from = preview;
     const asked = cleanWish(wish);
     const walk = gait;
+    const run = ++shapeRun.current;
     setShaping(true);
     setError('');
+    setNote('');
+    const at = performance.now();
+    beginShape('figure');
     const r = await bridge.shape3d(from, asked, walk === 'auto' ? undefined : walk);
+    if (shapeRun.current !== run) return;
+    if (r.ok && previewRef.current === from) {
+      saveDuration('figure', performance.now() - at, store());
+      if (!(await finishShape(run))) return;
+    }
     setShaping(false);
     if (previewRef.current !== from) return;
     if (r.ok) {
@@ -194,23 +296,36 @@ export function MakerApp() {
   };
 
   const makeRelief = async () => {
-    if (!info) return;
+    if (!info || shaping) return;
     const from = preview;
+    const run = ++shapeRun.current;
+    const alive = () => shapeRun.current === run;
     setShaping(true);
     setError('');
+    setNote('');
     setProgress(0);
+    // 깊이 모델이 없으면 받기(진짜 진행률)부터, 있으면 바로 깊이 재기
+    setFetchedDepth(!info.depth.ready);
+    beginShape(info.depth.ready ? 'relief' : 'reliefDownload');
     try {
       const r = await bridge.ensureDepth();
+      if (!alive()) return;
       if (!r.ok) throw new ShownError(r.error);
       setInfo((v) => v && { ...v, depth: { ...v.depth, ready: true } });
+      beginShape('relief');
+      const at = performance.now();
       const res = await fetch(DEPTH_URL);
       if (!res.ok) throw new ShownError(t('maker.err.modelRead'));
       await openDepth(await res.arrayBuffer());
       const d = await predictDepth(await loadImage(from), info.depth);
+      if (!alive()) return;
+      saveDuration('relief', performance.now() - at, store());
+      if (previewRef.current === from && !(await finishShape(run))) return;
       if (previewRef.current === from) setDepth(d);
+      setShaping(false);
     } catch (err) {
+      if (!alive()) return;
       setError(shownErrorText(err, t('maker.err.depthFailed')));
-    } finally {
       setShaping(false);
     }
   };
@@ -237,6 +352,18 @@ export function MakerApp() {
     setStep('done');
     setTimeout(() => bridge.close(), 1400);
   };
+
+  // 사진 단계 진행 점: (받았으면) 도구 받기, 배경 지우기, 다듬기
+  const photoStages: ProgressStage[] = [
+    ...(fetched
+      ? [{ label: t('maker.progress.stage.download'), state: step === 'model' ? 'now' : 'done' } as const]
+      : []),
+    {
+      label: t('maker.progress.stage.cutout'),
+      state: step === 'model' ? 'next' : bgDone ? 'done' : 'now',
+    },
+    { label: t('maker.progress.stage.edit'), state: 'next' },
+  ];
 
   const steps: [Step[], string][] = [
     [['pick', 'model', 'working'], t('maker.step.photo')],
@@ -267,6 +394,11 @@ export function MakerApp() {
         {error && (
           <p className="error" role="alert">
             {error}
+          </p>
+        )}
+        {note && !error && (
+          <p className="note" role="status">
+            {note}
           </p>
         )}
 
@@ -311,26 +443,26 @@ export function MakerApp() {
           </section>
         )}
 
-        {step === 'model' && (
+        {(step === 'model' || step === 'working') && (
           <section className="busy">
-            <p>{t('maker.model.downloading', { mb: info?.modelMB ?? 0 })}</p>
-            <div
-              className="bar"
-              role="progressbar"
-              aria-valuenow={Math.round(progress * 100)}
-              aria-valuemin={0}
-              aria-valuemax={100}
-            >
-              <i style={{ width: `${progress * 100}%` }} />
-            </div>
-            <p className="hint">{Math.round(progress * 100)}%</p>
-          </section>
-        )}
-
-        {step === 'working' && (
-          <section className="busy">
-            <p>{t('maker.working.title')}</p>
-            <p className="hint">{t('maker.working.hint')}</p>
+            <MakeProgress
+              // 단계가 바뀌면 시간을 새로 센다
+              key={step}
+              task={step === 'model' ? 'download' : 'cutout'}
+              title={
+                step === 'model'
+                  ? t('maker.model.downloading', { mb: info?.modelMB ?? 0 })
+                  : t('maker.working.title')
+              }
+              startedAt={stageAt}
+              ratio={step === 'model' ? progress : undefined}
+              totalMb={step === 'model' ? info?.modelMB : undefined}
+              expectedMs={cutoutMs}
+              image={thumb}
+              stages={photoStages}
+              done={bgDone}
+              onStop={stopPhoto}
+            />
           </section>
         )}
 
@@ -345,15 +477,53 @@ export function MakerApp() {
 
         {(step === 'name' || step === 'saving' || step === 'done') && (
           <section className="name">
-            <div className="stage">
-              {look === 'figure' && model ? (
-                <Spin3D model={model} interactive={step === 'name'} />
-              ) : look === 'relief' && depth ? (
-                <Spin3D photo={preview} depth={depth} interactive={step === 'name'} />
-              ) : (
-                <img className={shaping ? 'shaping' : 'bounce'} src={preview} alt={t('maker.name.alt')} />
-              )}
-            </div>
+            {shaping ? (
+              <MakeProgress
+                key={shapeTask}
+                task={
+                  shapeTask === 'figure' ? 'figure' : shapeTask === 'reliefDownload' ? 'download' : 'relief'
+                }
+                title={
+                  shapeTask === 'figure'
+                    ? t('maker.3d.working')
+                    : shapeTask === 'reliefDownload'
+                      ? t('maker.relief.downloading', { mb: info?.depth.mb ?? 27 })
+                      : t('maker.relief.working')
+                }
+                startedAt={shapeAt}
+                ratio={shapeTask === 'reliefDownload' ? progress : undefined}
+                totalMb={shapeTask === 'reliefDownload' ? info?.depth.mb : undefined}
+                expectedMs={shapeMs}
+                image={preview}
+                silhouette
+                stages={
+                  shapeTask !== 'figure' && fetchedDepth
+                    ? [
+                        {
+                          label: t('maker.progress.stage.download'),
+                          state: shapeTask === 'reliefDownload' ? 'now' : 'done',
+                        },
+                        {
+                          label: t('maker.progress.stage.depth'),
+                          state: shapeTask === 'relief' ? (shapeDone ? 'done' : 'now') : 'next',
+                        },
+                      ]
+                    : undefined
+                }
+                done={shapeDone}
+                onStop={stopShape}
+              />
+            ) : (
+              <div className="stage">
+                {look === 'figure' && model ? (
+                  <Spin3D model={model} interactive={step === 'name'} />
+                ) : look === 'relief' && depth ? (
+                  <Spin3D photo={preview} depth={depth} interactive={step === 'name'} />
+                ) : (
+                  <img className="bounce" src={preview} alt={t('maker.name.alt')} />
+                )}
+              </div>
+            )}
             {animated && step === 'name' && <p className="hint">{t('maker.name.animatedNote')}</p>}
             {can3d && step === 'name' && (
               <div className="look3d">
@@ -385,18 +555,14 @@ export function MakerApp() {
                 )}
                 {look === 'relief' && (
                   <>
-                    <p className="hint">
-                      {shaping
-                        ? info?.depth.ready
-                          ? t('maker.relief.working')
-                          : t('maker.relief.downloading', {
-                              mb: info?.depth.mb ?? 27,
-                              pct: Math.round(progress * 100),
-                            })
-                        : depth
+                    {/* 만드는 중에는 진행 표시가 같은 말을 한다 */}
+                    {!shaping && (
+                      <p className="hint">
+                        {depth
                           ? t('maker.relief.ready')
                           : t('maker.relief.hint', { mb: info?.depth.mb ?? 27 })}
-                    </p>
+                      </p>
+                    )}
                     {!shaping && !depth && (
                       <button type="button" className="ghost" onClick={makeRelief}>
                         {t('maker.relief.make')}
@@ -406,9 +572,7 @@ export function MakerApp() {
                 )}
                 {look === 'figure' && (
                   <>
-                    <p className="hint">
-                      {shaping ? t('maker.3d.working') : model ? t('maker.3d.ready') : t('maker.3d.hint')}
-                    </p>
+                    {!shaping && <p className="hint">{model ? t('maker.3d.ready') : t('maker.3d.hint')}</p>}
                     <div className="wish">
                       <div className="gait-row">
                         <span className="wish-label" id="maker-gait">
@@ -943,6 +1107,19 @@ async function loadPhoto(file: Blob): Promise<HTMLCanvasElement> {
   g.drawImage(bitmap, 0, 0, c.width, c.height);
   bitmap.close();
   return c;
+}
+
+/** 진행 표시에 보일 작은 사진 (긴 변 THUMB_SIDE). 투명한 곳이 있는 그림도 있어 webp 로 */
+function thumbOf(photo: HTMLCanvasElement): string {
+  const k = Math.min(1, THUMB_SIDE / Math.max(photo.width, photo.height));
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(photo.width * k));
+  c.height = Math.max(1, Math.round(photo.height * k));
+  const g = c.getContext('2d');
+  if (!g) return '';
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(photo, 0, 0, c.width, c.height);
+  return c.toDataURL('image/webp', 0.86);
 }
 
 /** 마스크를 입혀 남긴 부분만 잘라 긴 변 512 PNG 로. 다 지웠으면 빈 문자열. */

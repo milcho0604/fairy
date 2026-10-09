@@ -102,6 +102,12 @@ h1 {
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.18));
 }
 
+/* 몸 전체 그림은 얼굴 그림보다 빈 곳이 많아 조금 크게 */
+.hero .face.body {
+  width: 112px;
+  height: 112px;
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -255,4 +261,52 @@ footer .ghost,
 
 .perm .ghost {
   margin-top: 4px;
+}
+
+/* 만나는 시간: 두 갈래 고르기 (시간 정하기, 켤 때마다 인사) */
+.pick-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.pick-two button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s;
+}
+
+.pick-two button:not(.on):hover {
+  border-color: var(--accent);
+}
+
+.pick-two button.on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.pick-two button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.routine-note {
+  margin-top: 8px;
+  color: var(--error);
 }

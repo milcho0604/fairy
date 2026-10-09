@@ -1,6 +1,7 @@
 // 펫이 제자리에서 하는 몸짓 (꼬리 흔들기, 귀 쫑긋, 몸 털기, 점프, 뒹굴기 등). 무엇을 고를지는 여기서 정하고
 // 그리기는 renderer 의 move-pose.ts(시간에 따른 자세)를 2D(draw.ts), 사진, 입체(pet3d.ts)가 각자 몸에 옮긴다.
 // 한 번에 몇 초만 움직이고 끝나면 다시 멈춘다 (L10: 계속 그리면 CPU 를 먹는다).
+import { ENERGY_MOVE, type EnergyStage, energyLookOf } from './energy.ts';
 
 export const MOVES = [
   'yawn',
@@ -77,6 +78,11 @@ export interface MoveAsk {
   calm: boolean;
   /** 배고프다 */
   hungry: boolean;
+  /**
+   * 기운 단계 (shared/energy.ts, 설정 "하루 리듬"). 있으면 밤 규칙 대신 이것으로 졸린 몸짓과 기운 쓰는 몸짓 무게를,
+   * 걷기와 앉기 확률, 걷는 빠르기를 정한다. 없으면(꺼짐, 친구 펫, 옛 화면) 예전처럼 시각으로
+   */
+  energy?: EnergyStage;
 }
 
 /**
@@ -100,12 +106,14 @@ export const PLAIN_ASK: MoveAsk = { tail: false, ears: false, photo: false, calm
 export function moveAskOf(raw: unknown): MoveAsk {
   if (typeof raw !== 'object' || raw === null) return { ...PLAIN_ASK };
   const r = raw as Record<string, unknown>;
+  const energy = energyLookOf({ stage: r.energy })?.stage;
   return {
     tail: r.tail === true,
     ears: r.ears === true,
     photo: r.photo === true,
     calm: r.calm === true,
     hungry: r.hungry === true,
+    ...(energy ? { energy } : {}),
   };
 }
 
@@ -128,9 +136,13 @@ export interface MoveContext {
 
 export const isNight = (hour: number | undefined) => hour !== undefined && (hour >= 22 || hour < 6);
 
-/** 지금 할 수 있는 몸짓과 무게. 바로 전 몸짓과 쉬는 중(쿨다운)인 몸짓은 뺀다 */
+/**
+ * 지금 할 수 있는 몸짓과 무게. 바로 전 몸짓과 쉬는 중(쿨다운)인 몸짓은 뺀다.
+ * 기운을 알면 그 단계대로 (활발하면 폴짝, 뒹굴기가 잦고 하품은 드물다. 졸리면 하품, 꾸벅이 잦다), 모르면 밤 규칙
+ */
 export function moveWeights(c: MoveContext): [MoveType, number][] {
   const night = isNight(c.hour);
+  const energy = c.ask.energy ? ENERGY_MOVE[c.ask.energy] : undefined;
   const out: [MoveType, number][] = [];
   for (const type of MOVES) {
     const s = MOVE_SPECS[type];
@@ -143,8 +155,13 @@ export function moveWeights(c: MoveContext): [MoveType, number][] {
     const at = c.recent.at[type];
     if (at !== undefined && c.now - at < s.cooldownMs) continue;
     let w = s.weight;
-    if (night && s.sleepy) w *= 2;
-    if (night && s.energetic) w *= 0.5;
+    if (energy) {
+      if (s.sleepy) w *= energy.sleepy;
+      if (s.energetic) w *= energy.energetic;
+    } else {
+      if (night && s.sleepy) w *= 2;
+      if (night && s.energetic) w *= 0.5;
+    }
     // 배고프면 먹을 것을 찾는 듯 킁킁
     if (c.ask.hungry && type === 'sniff') w *= 2;
     out.push([type, w]);

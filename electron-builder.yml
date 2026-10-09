@@ -36,7 +36,10 @@ asarUnpack:
 mac:
   category: public.app-category.productivity
   target:
+    # dmg 는 처음 설치용, zip 과 latest-mac.yml 은 자동 업데이트(electron-updater, Squirrel.Mac)가 받는다
     - target: dmg
+      arch: [arm64, x64]
+    - target: zip
       arch: [arm64, x64]
   # 개발자 서명 전(D4)이라 electron-builder 는 임시 서명(-)만 하고, afterSign 의 scripts/mac-sign.mjs 가
   # 늘 같은 자체 인증서로 다시 서명한다. 임시 서명만 두면 업데이트마다 화면 기록 권한이 풀린다 (L23).
@@ -61,7 +64,7 @@ nsis:
   deleteAppDataOnUninstall: false
 dmg:
   title: 짝꿍 ${version}
-# 윈도우 자동 설치(electron-updater)가 읽을 latest.yml 과 차이 받기용 .blockmap 을 같이 만든다.
+# 자동 설치(electron-updater)가 읽을 latest.yml(윈도우), latest-mac.yml(맥)과 차이 받기용 .blockmap 을 같이 만든다.
 # 레포는 src/shared/update-policy.ts 의 RELEASE_REPO 와 같아야 한다 (다르면 시험이 깨진다. D8 때 같이 바꾼다).
 # 올리기는 하지 않는다: 스크립트가 --publish never 로 돌고, 릴리스 초안은 release.yml 의 gh 가 만든다.
 publish:

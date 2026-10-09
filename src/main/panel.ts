@@ -25,7 +25,13 @@ import {
   type PanelTab,
   type PlayKind,
 } from '../shared/ipc.ts';
-import { cleanPolished, polishRequest } from '../shared/note-polish.ts';
+import {
+  cleanPolished,
+  createPolishJobs,
+  POLISH_MAX,
+  type PolishReply,
+  polishRequest,
+} from '../shared/note-polish.ts';
 import { NOTE_BODY_MAX, type NoteStore, notePreview, noteTitle, searchNotes } from '../shared/note-store.ts';
 import {
   defaultPanelBounds,
@@ -34,6 +40,14 @@ import {
   placePanel,
 } from '../shared/panel-place.ts';
 import { hasDeadlineWord, parseQuickTodo } from '../shared/quick-add.ts';
+import {
+  parseTodoLine,
+  remindsInput,
+  remindsOf,
+  splitRemind,
+  type TakenRemind,
+  todoPatchInput,
+} from '../shared/remind-parse.ts';
 import { CUSTOM_FOOD_COST, CUSTOM_FOOD_MAX, type Food, type ItemStore } from '../shared/shop.ts';
 import { COIN, FULLNESS, localDay, type TodoStore } from '../shared/todo-store.ts';
 import { focusWindow, stealFocus } from './focus.ts';
@@ -66,7 +80,11 @@ export interface PanelOptions {
   askAi: (prompt: string) => boolean;
   /** 채팅 창 없이 글만 한 번 묻는다 (메모 다듬기). 실패면 undefined */
   askOnce: (text: string, system: string) => Promise<string | undefined>;
-  life: () => { sulk: number; mood: number; affection: number };
+  /** 강제 업데이트 전이라 AI 를 잠갔는지 */
+  aiLocked: () => boolean;
+  /** 지금 고른 AI 이름 (다듬기 단추와 진행 글에 보인다) */
+  aiLabel: () => string | undefined;
+  life: () => { sulk: number; mood: number; affection: number; poutWhy?: string };
   /** 상점 (v1) */
   shop: ItemStore;
   foodImage: (file: string | undefined) => string;
@@ -114,6 +132,8 @@ export function createPanel(o: PanelOptions) {
   const ours = (e: IpcMainEvent | IpcMainInvokeEvent) => senders.has(e.sender);
   /** 이번에 "새 메모"로 만든 것. 패널이 닫힐 때 아직 비어 있으면 지운다 (빈 메모가 쌓이지 않게) */
   const freshNotes = new Set<number>();
+  /** 메모 다듬기 (메모 id 마다 하나) */
+  const polishJobs = createPolishJobs();
 
   function state(): PanelState {
     const now = Date.now();
@@ -190,7 +210,9 @@ export function createPanel(o: PanelOptions) {
     if (!found) return undefined;
     return { ok: false as const, error: t('panel.event.duplicate', { title: found.title }) };
   }
-  function addLine(text: string, now: number): PanelAddResult {
+  function addLine(line: string, now: number): PanelAddResult {
+    // "1시간 전에 알려줘", "하루 전 알림" 같은 알림 말은 먼저 뗀다 (남기면 "1시간"을 일정 길이로 읽는다)
+    const { rest: text, remind } = splitRemind(line);
     const deadline = hasDeadlineWord(text) && !hasTimeRange(text);
     const repeat = parseQuickTodo(text, localDay(now)).repeat !== null;
     const ev = deadline || repeat ? null : parseQuickEvent(text, localDay(now), minuteOfDay(now));
@@ -198,8 +220,14 @@ export function createPanel(o: PanelOptions) {
       const startAt = localTime(ev.day, ev.minute);
       const dup = sameEvent(ev.title, startAt, false);
       if (dup) return dup;
+      const reminds = remindsOf(remind, false, ev.minute);
       const added = o.events.add(
-        { title: ev.title, startAt, endAt: ev.durationMin ? startAt + ev.durationMin * 60_000 : null },
+        {
+          title: ev.title,
+          startAt,
+          endAt: ev.durationMin ? startAt + ev.durationMin * 60_000 : null,
+          ...(reminds ? { reminds } : {}),
+        },
         now,
       );
       push();
@@ -207,13 +235,15 @@ export function createPanel(o: PanelOptions) {
       // 어디에 언제로 넣었는지 알림에 보이고 되돌리거나 할 일로 옮길 수 있게 id 와 시각을 돌려준다
       return { ok: true, kind: 'event', id: added.id, startAt: added.startAt };
     }
-    return addTodo(text, now);
+    return addTodo(text, now, remind);
   }
-  /** 한 줄을 할 일로 넣는다 (마감, 중요, 반복은 글에서 읽는다) */
-  function addTodo(text: string, now: number): PanelAddResult {
-    const parsed = parseQuickTodo(text, localDay(now));
+  /** 한 줄을 할 일로 넣는다 (마감, 마감 시각, 중요, 반복, 알림은 글에서 읽는다) */
+  function addTodo(line: string, now: number, taken?: TakenRemind): PanelAddResult {
+    const split = taken === undefined ? splitRemind(line) : { rest: line, remind: taken };
+    const parsed = parseTodoLine(split.rest, localDay(now), minuteOfDay(now));
     if (!parsed.title) return { ok: false, error: t('panel.add.empty') };
-    const todo = o.store.add(parsed, now);
+    const reminds = remindsOf(split.remind, parsed.dueMin === null, parsed.dueMin ?? 0);
+    const todo = o.store.add({ ...parsed, ...(reminds ? { reminds } : {}) }, now);
     push();
     return { ok: true, kind: 'todo', id: todo.id, due: todo.due };
   }
@@ -274,14 +304,39 @@ export function createPanel(o: PanelOptions) {
     closePanel();
     return true;
   });
-  ipcMain.handle(PANEL.notePolish, async (e, text: unknown) => {
-    if (!ours(e) || typeof text !== 'string' || !text.trim()) return undefined;
-    const src = text.slice(0, NOTE_BODY_MAX);
-    const answer = await o.askOnce(
-      polishRequest(t('panel.noteAi.polishAsk'), src),
-      t('panel.noteAi.polishSystem'),
-    );
-    return cleanPolished(answer, src);
+  ipcMain.handle(PANEL.notePolishInfo, (e, id: unknown) => {
+    if (!ours(e) || typeof id !== 'number') return { job: 'none' };
+    return { ai: o.aiLabel(), job: polishJobs.state(id) };
+  });
+  // 메모마다 하나만 돈다. 같은 메모를 다시 누르거나 패널을 다시 열면 도는 것에 붙는다.
+  // 패널이 닫혀(다른 곳을 눌러서) 받을 창이 없으면 답을 들고 있다가 그 메모를 다시 열 때 견주기로 보여 준다
+  ipcMain.handle(PANEL.notePolish, async (e, id: unknown, req: unknown): Promise<PolishReply> => {
+    if (!ours(e) || typeof id !== 'number') return { ok: false, error: 'none' };
+    let job = polishJobs.get(id);
+    if (!job) {
+      const r = req as { body?: unknown; start?: unknown; end?: unknown } | undefined;
+      if (!r || typeof r.body !== 'string') return { ok: false, error: 'none' };
+      const body = r.body.slice(0, NOTE_BODY_MAX);
+      const start = Number.isInteger(r.start) ? Math.max(0, Math.min(body.length, r.start as number)) : 0;
+      const end = Number.isInteger(r.end) ? Math.max(start, Math.min(body.length, r.end as number)) : start;
+      const src = start < end ? body.slice(start, end) : body;
+      if (!src.trim()) return { ok: false, error: 'none' };
+      if (src.length > POLISH_MAX) return { ok: false, error: 'tooLong' };
+      if (o.aiLocked()) return { ok: false, error: 'locked' };
+      job = polishJobs.start(id, async () => {
+        const answer = await o.askOnce(
+          polishRequest(t('panel.noteAi.polishAsk'), src),
+          t('panel.noteAi.polishSystem'),
+        );
+        const text = cleanPolished(answer, src);
+        return text ? { ok: true, text, body, start, end } : { ok: false, error: 'fail' };
+      });
+    }
+    return job.done;
+  });
+  // 메모 화면이 답을 받아 띄웠다. 그 전에 창이 닫혔거나 목록으로 나갔으면 이 알림이 없어 답을 들고 있는다
+  ipcMain.on(PANEL.notePolishTaken, (e, id: unknown) => {
+    if (ours(e) && typeof id === 'number') polishJobs.taken(id);
   });
   ipcMain.on(PANEL.noteRestore, (e, id: number) => {
     if (!ours(e)) return;
@@ -289,9 +344,11 @@ export function createPanel(o: PanelOptions) {
     push();
   });
   // ---- 일정 ----
-  ipcMain.handle(PANEL.eventAdd, (e, text: string) => {
-    if (!ours(e) || typeof text !== 'string') return { ok: false };
+  ipcMain.handle(PANEL.eventAdd, (e, line: string) => {
+    if (!ours(e) || typeof line !== 'string') return { ok: false };
     const now = Date.now();
+    // 알림 말("1시간 전에 알려줘")은 먼저 뗀다
+    const { rest: text, remind } = splitRemind(line);
     // 일정 탭에서는 날짜만 적어도 된다: "내일 제주도 여행"은 종일, "10/10-10/12 제주도"는 여러 날 종일.
     // (빠른 입력은 위 PANEL.add 처럼 시각이 있어야 일정이다. 거기서 날짜만 있으면 할 일 마감)
     // 반복 일정은 아직 없다: 한 번짜리로 넣지 않고 할 일 탭으로 안내한다
@@ -303,13 +360,20 @@ export function createPanel(o: PanelOptions) {
       const times = allDayTimes(ev.day, ev.lastDay);
       const dup = sameEvent(ev.title, times.startAt, true);
       if (dup) return dup;
-      event = o.events.add({ title: ev.title, ...times, allDay: true }, now);
+      const reminds = remindsOf(remind, true);
+      event = o.events.add({ title: ev.title, ...times, allDay: true, ...(reminds ? { reminds } : {}) }, now);
     } else {
       const startAt = localTime(ev.day, ev.minute);
       const dup = sameEvent(ev.title, startAt, false);
       if (dup) return dup;
+      const reminds = remindsOf(remind, false, ev.minute);
       event = o.events.add(
-        { title: ev.title, startAt, endAt: ev.durationMin ? startAt + ev.durationMin * 60_000 : null },
+        {
+          title: ev.title,
+          startAt,
+          endAt: ev.durationMin ? startAt + ev.durationMin * 60_000 : null,
+          ...(reminds ? { reminds } : {}),
+        },
         now,
       );
     }
@@ -321,15 +385,21 @@ export function createPanel(o: PanelOptions) {
     if (!ours(e) || typeof patch !== 'object' || patch === null) return;
     const p = patch as Record<string, unknown>;
     const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
-    o.events.update(id, {
-      ...(typeof p.title === 'string' ? { title: p.title } : {}),
-      ...(num(p.startAt) !== undefined ? { startAt: num(p.startAt) } : {}),
-      ...(p.endAt === null || num(p.endAt) !== undefined
-        ? { endAt: (p.endAt as number | null) ?? null }
-        : {}),
-      ...(num(p.remindMin) !== undefined ? { remindMin: num(p.remindMin) } : {}),
-      ...(typeof p.allDay === 'boolean' ? { allDay: p.allDay } : {}),
-    });
+    const reminds = remindsInput(p.reminds);
+    o.events.update(
+      id,
+      {
+        ...(typeof p.title === 'string' ? { title: p.title } : {}),
+        ...(num(p.startAt) !== undefined ? { startAt: num(p.startAt) } : {}),
+        ...(p.endAt === null || num(p.endAt) !== undefined
+          ? { endAt: (p.endAt as number | null) ?? null }
+          : {}),
+        ...(num(p.remindMin) !== undefined ? { remindMin: num(p.remindMin) } : {}),
+        ...(reminds ? { reminds } : {}),
+        ...(typeof p.allDay === 'boolean' ? { allDay: p.allDay } : {}),
+      },
+      Date.now(),
+    );
     push();
     o.onEventsChanged();
   });
@@ -422,7 +492,8 @@ export function createPanel(o: PanelOptions) {
   });
   ipcMain.on(PANEL.update, (e, id: number, patch) => {
     if (!ours(e)) return;
-    o.store.update(id, patch ?? {});
+    // 아는 칸만 (마감 시각, 알림은 8판). 지금 시각을 주어 이미 지난 알림은 넘긴다
+    o.store.update(id, todoPatchInput(patch), Date.now());
     push();
   });
   ipcMain.on(PANEL.remove, (e, id: number) => {

@@ -13,6 +13,9 @@ import * as onboarding from './onboarding.ts';
 import * as panel from './panel.ts';
 import * as pet from './pet.ts';
 import * as play from './play.ts';
+import * as pout from './pout.ts';
+import * as remind from './remind.ts';
+import * as routine from './routine.ts';
 import * as settings from './settings.ts';
 import * as shop from './shop.ts';
 import * as tray from './tray.ts';
@@ -35,6 +38,9 @@ export const ko = {
   ...idle.ko,
   ...diary.ko,
   ...play.ko,
+  ...pout.ko,
+  ...routine.ko,
+  ...remind.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -54,4 +60,7 @@ export const en: Translation<typeof ko> = {
   ...idle.en,
   ...diary.en,
   ...play.en,
+  ...pout.en,
+  ...routine.en,
+  ...remind.en,
 };

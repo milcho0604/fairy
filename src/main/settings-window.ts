@@ -167,7 +167,9 @@ export function createSettingsWindow({
   function open(section?: SettingsSection) {
     stealFocus();
     if (win && !win.isDestroyed()) {
-      if (section) win.webContents.send(SETTINGS.focus, section);
+      // 화면 프로세스가 죽었으면(메모리 부족, 강제 종료) 빈 창만 남는다. 같은 창에 다시 읽는다
+      if (win.webContents.isCrashed()) load(win, section);
+      else if (section) win.webContents.send(SETTINGS.focus, section);
       focusWindow(win);
       return;
     }
@@ -199,9 +201,13 @@ export function createSettingsWindow({
     });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (ev) => ev.preventDefault());
+    load(win, section);
+  }
+
+  function load(w: BrowserWindow, section?: SettingsSection) {
     const devUrl = process.env.ELECTRON_RENDERER_URL;
-    if (devUrl) win.loadURL(`${devUrl}/settings.html${section ? `#${section}` : ''}`);
-    else win.loadFile(join(import.meta.dirname, '../renderer/settings.html'), { hash: section });
+    if (devUrl) w.loadURL(`${devUrl}/settings.html${section ? `#${section}` : ''}`);
+    else w.loadFile(join(import.meta.dirname, '../renderer/settings.html'), { hash: section });
   }
 
   return {

@@ -143,26 +143,22 @@ section {
 
 .busy {
   align-items: stretch;
-  padding-top: 80px;
+  padding-top: 8px;
   text-align: center;
+}
+
+/* 그만두기 뒤 한 줄: 오류(.error)가 아니라 부드러운 안내 */
+.note {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--ink);
+  font-size: 13px;
 }
 
 .busy p {
   margin: 0;
-}
-
-.bar {
-  height: 8px;
-  border-radius: 4px;
-  background: var(--code);
-  overflow: hidden;
-}
-
-.bar i {
-  display: block;
-  height: 100%;
-  background: var(--accent);
-  transition: width 0.2s;
 }
 
 .tools {
@@ -529,22 +525,4 @@ section {
 /* 고르기 아래 설명과 요청사항 이름 사이를 조금 띄운다 */
 .gait-row + .hint {
   margin-bottom: 4px;
-}
-
-.stage img.shaping {
-  animation: shaping 1.6s ease-in-out infinite;
-}
-
-@keyframes shaping {
-  50% {
-    opacity: 0.55;
-    transform: scale(0.97);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .stage img.shaping {
-    animation: none;
-    opacity: 0.7;
-  }
 }

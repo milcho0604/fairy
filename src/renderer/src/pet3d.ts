@@ -14,6 +14,7 @@ import {
   DataTexture,
   DirectionalLight,
   DoubleSide,
+  ExtrudeGeometry,
   Group,
   HemisphereLight,
   type Material,
@@ -33,6 +34,7 @@ import {
   Raycaster,
   RepeatWrapping,
   Scene,
+  Shape,
   SphereGeometry,
   SRGBColorSpace,
   type Texture,
@@ -55,7 +57,17 @@ import {
   type Slot,
 } from '../../shared/pet3d/blueprint.ts';
 import type { PetStyle } from '../../shared/settings.ts';
-import { type DrawState, danceTilt, gazeOf, type Model3D, movePoseOf, trickOf, waveSwing } from './draw.ts';
+import {
+  type DrawState,
+  danceTilt,
+  energyFace,
+  gazeOf,
+  type Model3D,
+  movePoseOf,
+  sulkStage,
+  trickOf,
+  waveSwing,
+} from './draw.ts';
 import type { MoveEyes } from './move-pose.ts';
 import {
   gaitOf,
@@ -85,7 +97,15 @@ type MouthState = 'smile' | 'open' | 'yawn' | 'o' | 'flat' | 'frown' | 'wavy';
 const MOVE_EYE: Record<MoveEyes, EyeState> = { closed: 'down', happy: 'up', half: 'half', wide: 'open' };
 
 interface FaceRig {
-  eyes: { side: -1 | 1; states: Record<EyeState, Object3D>; open: Object3D }[];
+  /** brow 는 처진 눈썹(졸림, 녹초), shade 는 눈 밑 그늘(녹초). 기운 (shared/energy.ts) */
+  eyes: {
+    side: -1 | 1;
+    states: Record<EyeState, Object3D>;
+    open: Object3D;
+    heavy: Object3D;
+    brow: Object3D;
+    shade: Object3D;
+  }[];
   mouth: Partial<Record<MouthState, Object3D>>;
   beakLower?: Object3D;
   style: Face['mouth'];
@@ -463,8 +483,9 @@ export class Pet3D implements Model3D {
     this.frameCamera();
     // 옆으로 나온 팔이 없으면 손 흔들 때만 보이는 앞발을 몸 오른쪽 어깨에 붙인다 (카메라 맞춘 뒤라 화면 크기는 그대로)
     this.wavePaw = undefined;
-    const bodyMesh = meshes.find((m) => m.part.slot === 'body')?.mesh;
-    if (!this.hasHand && bodyBox && bodyMesh) {
+    const bodyOf = meshes.find((m) => m.part.slot === 'body');
+    const bodyMesh = bodyOf?.mesh;
+    if (!this.hasHand && bodyBox && bodyOf && bodyMesh) {
       const c = bodyBox.getCenter(new Vector3());
       const size = bodyBox.getSize(new Vector3());
       const pivot = new Group();
@@ -478,6 +499,9 @@ export class Pet3D implements Model3D {
       const paw = new Mesh(new SphereGeometry(1, 24, 16), bodyMesh.material);
       paw.scale.set(r, r * 1.35, r);
       paw.position.set(0, r * 1.1, 0);
+      // 몸과 같은 겉: 실사는 털 껍질, 게임은 테두리 선 (몸 부품의 털 길이와 색을 따른다)
+      if (this.real) this.addFur(paw, { ...bodyOf.part, shape: 'sphere', size: [r, r * 1.35, r] });
+      if (this.game) this.addOutline(paw);
       pivot.add(paw);
       pivot.visible = false;
       this.joints.body.add(pivot);
@@ -538,8 +562,9 @@ export class Pet3D implements Model3D {
         continue;
       }
       // 뒷발을 앞발에서 본뜬다: 몸 가운데를 기준으로 뒤로, 엉덩이처럼 조금 바깥으로, 조금 크게
+      // 자식(게임 테두리 선, 실사 털 껍질)까지 같이 본떠 앞발과 같은 겉이 된다 (모양과 재질은 같이 쓴다)
       const copies = front.map(({ mesh }) => {
-        const m = new Mesh(mesh.geometry, mesh.material);
+        const m = mesh.clone();
         mesh.matrixWorld.decompose(m.position, m.quaternion, m.scale);
         const at = hindFrom(m.position.x, m.position.z, cz);
         m.position.x = at.x;
@@ -817,57 +842,76 @@ export class Pet3D implements Model3D {
   /** 털 가닥 그림과 얼룩 그림 (실사). 한 번 만들어 모든 털 재질이 같이 쓴다 */
   private fur(): { strands: Texture; mottle: Texture } {
     if (this.furTex) return this.furTex;
-    const make = (paint: (g: CanvasRenderingContext2D, n: number) => void, color: boolean) => {
-      const n = 256;
+    // 점마다 방사 그라데이션을 9칸씩 새로 만들면 처음 실사로 바꿀 때 펫 화면이 100ms 남짓 멈췄다.
+    // 픽셀을 직접 칠한다 (그라데이션 점과 같은 셈: 가운데에서 멀어질수록 색과 불투명도가 같이 준다, 몇 ms).
+    // 가장자리를 넘는 점은 반대쪽으로 이어져 같은 그림이 끊김 없이 이어진다
+    const n = 256;
+    const make = (paint: (px: Uint8ClampedArray) => void, color: boolean) => {
       const c = document.createElement('canvas');
       c.width = n;
       c.height = n;
       const g = c.getContext('2d');
-      if (g) paint(g, n);
+      if (g) {
+        const img = g.createImageData(n, n);
+        paint(img.data);
+        g.putImageData(img, 0, 0);
+      }
       const tex = new CanvasTexture(c);
       tex.wrapS = RepeatWrapping;
       tex.wrapT = RepeatWrapping;
       if (color) tex.colorSpace = SRGBColorSpace;
       return tex;
     };
+    /** (x, y) 둘레 r 안의 픽셀마다 가운데에서 얼마나 가까운지(1 가운데, 0 가장자리)로 섞는다. 회색 그림 */
+    const dot = (
+      px: Uint8ClampedArray,
+      x: number,
+      y: number,
+      r: number,
+      mix: (k: number, was: number) => number,
+    ) => {
+      for (let py = Math.floor(y - r); py < y + r; py++)
+        for (let qx = Math.floor(x - r); qx < x + r; qx++) {
+          const k = 1 - Math.hypot(qx + 0.5 - x, py + 0.5 - y) / r;
+          if (k <= 0) continue;
+          const i = ((((py % n) + n) % n) * n + (((qx % n) + n) % n)) * 4;
+          const v = mix(k, px[i] ?? 0);
+          px[i] = v;
+          px[i + 1] = v;
+          px[i + 2] = v;
+        }
+    };
+    const fill = (px: Uint8ClampedArray, v: number) => {
+      for (let i = 0; i < px.length; i += 4) {
+        px[i] = v;
+        px[i + 1] = v;
+        px[i + 2] = v;
+        px[i + 3] = 255;
+      }
+    };
     // 가닥: 검은 바탕에 가닥마다 높이(밝기)가 다른 점. 가운데가 가장 밝아 껍질이 높을수록 가늘어진다
-    // 같은 그림이 이어지도록 가장자리를 넘는 점은 반대쪽에도 찍는다
     const rand = mulberry32(7);
-    const strands = make((g, n) => {
-      g.fillStyle = '#000';
-      g.fillRect(0, 0, n, n);
+    const strands = make((px) => {
+      fill(px, 0);
       for (let i = 0; i < 15000; i++) {
         const x = rand() * n;
         const y = rand() * n;
         const r = 0.7 + rand() * 0.6;
         const h = Math.round((0.45 + rand() * 0.55) * 255);
-        for (const ox of [-n, 0, n])
-          for (const oy of [-n, 0, n]) {
-            const grad = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r);
-            grad.addColorStop(0, `rgb(${h},${h},${h})`);
-            grad.addColorStop(1, 'rgba(0,0,0,0)');
-            g.fillStyle = grad;
-            g.fillRect(x + ox - r, y + oy - r, r * 2, r * 2);
-          }
+        // 밝기 h 에서 투명한 검정으로 가는 점: 색 h*k 를 불투명도 k 로 얹는다
+        dot(px, x, y, r, (k, was) => h * k * k + was * (1 - k));
       }
     }, false);
     // 얼룩: 아주 옅은 밝고 어두운 무늬 (진짜 털은 한 색이 아니다)
-    const mottle = make((g, n) => {
-      g.fillStyle = 'rgb(245,245,245)';
-      g.fillRect(0, 0, n, n);
+    const mottle = make((px) => {
+      fill(px, 245);
       for (let i = 0; i < 260; i++) {
         const x = rand() * n;
         const y = rand() * n;
         const r = 6 + rand() * 22;
         const v = Math.round(200 + rand() * 55);
-        for (const ox of [-n, 0, n])
-          for (const oy of [-n, 0, n]) {
-            const grad = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r);
-            grad.addColorStop(0, `rgba(${v},${v},${v},0.22)`);
-            grad.addColorStop(1, `rgba(${v},${v},${v},0)`);
-            g.fillStyle = grad;
-            g.fillRect(x + ox - r, y + oy - r, r * 2, r * 2);
-          }
+        // 색 v 를 불투명도 0.22 에서 0 으로
+        dot(px, x, y, r, (k, was) => v * 0.22 * k + was * (1 - 0.22 * k));
       }
     }, true);
     this.furTex = { strands, mottle };
@@ -1013,6 +1057,41 @@ export class Pet3D implements Model3D {
         })
       : undefined;
     const sphere = new SphereGeometry(1, 24, 16);
+    // 눈 밑 그늘 (녹초): 옅은 보라. 실사도 같이 (만화 표현이지만 지친 티가 가장 잘 난다)
+    const shadeMat = new MeshBasicMaterial({
+      color: '#7a62a8',
+      transparent: true,
+      opacity: 0.32,
+      depthWrite: false,
+    });
+
+    // 지친 눈 모양 (뜬 눈 세로 반지름 1 기준): 아래는 뜬 눈 둘레, 위는 가운데가 둥글게 솟은 눈꺼풀(∩).
+    // 눈꺼풀 선은 눈 양 끝보다 조금 길게 그어 끝이 아래로 처진다 (무거운 눈꺼풀). 가운데가 처진 선(∪)은 끝이 치켜 올라가
+    // 시큰둥하게 째려보는 눈으로 읽혔다 (사용자 지적 2026-10-08, 2D 와 같다)
+    const LID = 0.26;
+    const ARCH = 0.22;
+    const edge = 0.78 * Math.sqrt(1 - LID * LID);
+    const lidAt = (u: number) => new Vector3(u * edge, LID + ARCH * (1 - u * u), 0);
+    const heavyLid = Array.from({ length: 13 }, (_, i) => lidAt(-1.22 + (i / 12) * 2.44));
+    const heavyShape = new Shape();
+    heavyShape.moveTo(-edge, LID);
+    for (let i = 1; i <= 12; i++) {
+      const p = lidAt(-1 + (i / 12) * 2);
+      heavyShape.lineTo(p.x, p.y);
+    }
+    const a0 = Math.asin(LID);
+    for (let i = 1; i <= 24; i++) {
+      const a = a0 - (i / 24) * (Math.PI + 2 * a0);
+      heavyShape.lineTo(0.78 * Math.cos(a), Math.sin(a));
+    }
+    const heavyGeo = new ExtrudeGeometry(heavyShape, {
+      depth: 0.1,
+      bevelEnabled: true,
+      bevelThickness: 0.14,
+      bevelSize: 0.05,
+      bevelSegments: 3,
+      curveSegments: 12,
+    });
 
     const eyes: FaceRig['eyes'] = [];
     for (const side of [-1, 1] as const) {
@@ -1091,9 +1170,61 @@ export class Pet3D implements Model3D {
       const level = levelRoll(g);
       drowsy.rotation.z = level - side * 0.1;
       half.rotation.z = level;
-      const states = { open, down, up, chevron, half, drowsy };
+      // 지친 눈 (기운 지침): 눈꺼풀이 위를 덮은 눈. 꾸벅 조는 눈(half)보다 크게 뜨고 반짝이가 남는다.
+      // 눈꺼풀 끝선은 가운데가 둥글게 솟고 끝이 처진 선 (heavyLid). 둥근 얼굴에서는 안쪽이 내려가 화난 눈처럼 보여서
+      // 화면에서 수평으로 되돌린 뒤 바깥쪽을 더 내린다
+      const heavy = new Group();
+      const heavyBall = new Mesh(heavyGeo, ink);
+      heavyBall.scale.setScalar(s);
+      heavyBall.position.z = s * 0.12;
+      const heavyShine = new Mesh(sphere, white);
+      heavyShine.scale.setScalar(s * 0.2);
+      heavyShine.position.set(s * 0.26, -s * 0.12, s * 0.46);
+      const lidLine = new Mesh(
+        new TubeGeometry(
+          new CatmullRomCurve3(heavyLid.map((p) => p.clone().multiplyScalar(s))),
+          24,
+          s * 0.13,
+          8,
+        ),
+        ink,
+      );
+      lidLine.position.z = s * 0.4;
+      heavy.add(heavyBall, heavyShine, lidLine);
+      for (const end of [heavyLid[0], heavyLid.at(-1)]) {
+        const cap = new Mesh(sphere, ink);
+        cap.scale.setScalar(s * 0.13);
+        if (end)
+          cap.position
+            .copy(end)
+            .multiplyScalar(s)
+            .setZ(s * 0.4);
+        heavy.add(cap);
+      }
+      heavy.rotation.z = level - side * 0.22;
+      // 팔자 눈썹: 안쪽(얼굴 가운데 쪽)이 올라가고 바깥으로 둥글게 내려간다. 곧은 막대는 찡그린 눈썹처럼 보여서 둥근 선
+      const browPts = [
+        new Vector3(-side * s * 0.5, s * 1.74, 0),
+        new Vector3(side * s * 0.12, s * 1.7, 0),
+        new Vector3(side * s * 0.66, s * 1.32, 0),
+      ];
+      const brow = new Mesh(new TubeGeometry(new CatmullRomCurve3(browPts), 16, s * 0.1, 8), ink);
+      const browGroup = new Group();
+      browGroup.add(brow);
+      for (const end of [browPts[0], browPts[2]]) {
+        const cap = new Mesh(sphere, ink);
+        cap.scale.setScalar(s * 0.1);
+        if (end) cap.position.copy(end);
+        browGroup.add(cap);
+      }
+      browGroup.rotation.z = level;
+      const shade = new Mesh(sphere, shadeMat);
+      shade.scale.set(s * 0.82, s * 0.2, s * 0.08);
+      shade.position.set(0, -s * 1.3, s * 0.02);
+      g.add(browGroup, shade);
+      const states = { open, down, up, chevron, half, drowsy, heavy };
       for (const o of Object.values(states)) g.add(o);
-      eyes.push({ side, states, open });
+      eyes.push({ side, states, open, heavy, brow: browGroup, shade });
     }
 
     const m = s;
@@ -1320,7 +1451,8 @@ export class Pet3D implements Model3D {
       j.wingR.rotation.z = z;
     };
     // 삐지면 고개를 돌린다 (얼굴이 보이게 옆으로만)
-    if (mood === 'sulky' && !s.peer) this.root.rotation.y = 0.8;
+    // 매운맛 토라짐: 흥(2단계)이면 더 홱, 3단계면 등을 돌린다 (뒷모습)
+    if (mood === 'sulky' && !s.peer) this.root.rotation.y = [0, 0.8, 1.15, Math.PI][sulkStage(s)] ?? 0.8;
     this.root.rotation.y += this.spin;
     let eye: EyeState = 'open';
     let mouth: MouthState = s.hungry && mood === 'idle' ? 'wavy' : 'smile';
@@ -1368,6 +1500,13 @@ export class Pet3D implements Model3D {
         break;
       case 'sulky':
         mouth = 'frown';
+        // 흥(매운맛 토라짐 2단계부터): 턱을 살짝 들고 흘겨본다, 귀는 뒤로 젖힌다
+        if (sulkStage(s) >= 2) {
+          head(-0.14, 0, 0);
+          eye = 'half';
+          j.earL.rotation.z = 0.22 * ear;
+          j.earR.rotation.z = -0.22 * ear;
+        }
         break;
     }
     if (act?.type === 'walk' && this.quad) {
@@ -1566,11 +1705,18 @@ export class Pet3D implements Model3D {
     if (!f) return;
     const open = s.blink >= 0 ? Math.abs(1 - 2 * s.blink) : 1;
     // 쉬는 눈 모양 (설계도 face.eyes, pet3d-motion.ts)
-    const shown = restingEye(eye, f.eyeLook);
+    // 기운 (shared/energy.ts): 둥근 눈이면 지침은 눈꺼풀, 졸림은 감기 직전 눈. 졸림이나 녹초는 처진 눈썹, 녹초는 눈 밑 그늘.
+    // 활발하면 눈이 조금 크다. 동그랗게 놀란 눈(몸짓 wide)에는 붙이지 않는다
+    const energy = wide ? undefined : energyFace(s);
+    const shown = restingEye(eye, f.eyeLook, eye === 'open' ? energy?.stage : undefined);
+    const tiredFace = eye === 'open' && !!energy && (energy.stage === 'sleepy' || energy.worn);
     for (const e of f.eyes) {
       for (const [k, o] of Object.entries(e.states)) o.visible = k === shown;
-      const small = s.mood === 'busy' ? 0.8 : wide ? 1.15 : 1;
+      const small = s.mood === 'busy' ? 0.8 : wide ? 1.15 : energy?.stage === 'lively' ? 1.08 : 1;
       e.open.scale.set(small, small * Math.max(0.08, open), small);
+      e.heavy.scale.set(1, Math.max(0.08, open), 1);
+      e.brow.visible = tiredFace;
+      e.shade.visible = eye === 'open' && !!energy?.worn;
     }
     if (f.style === 'beak') {
       if (f.beakLower) f.beakLower.rotation.x = mouth === 'open' || mouth === 'yawn' ? 0.55 : 0;

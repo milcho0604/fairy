@@ -30,6 +30,8 @@ export interface PetInputs {
   focusTimer: boolean;
   /** 삐짐 게이지 칸 수 (v1). */
   sulkLevel: number;
+  /** 매운맛 토라짐 단계 0~3 (shared/pout.ts). 삐짐과 같은 자리(sulky)에서 모습만 더 세진다 */
+  pout: number;
   /** 배부름이 낮다 (2단계). 상태는 바꾸지 않고 기본 상태에 배고픈 표정만 더한다 */
   hungry: boolean;
 }
@@ -50,6 +52,7 @@ export const INITIAL_INPUTS: PetInputs = {
   userIdleMs: 0,
   focusTimer: false,
   sulkLevel: 0,
+  pout: 0,
   hungry: false,
 };
 
@@ -62,7 +65,7 @@ export function moodOf(i: PetInputs, now: number): PetMood {
   if (i.excitedUntil > now) return 'excited';
   if (i.focusTimer || i.userIdleMs >= SLEEP_AFTER_MS) return 'sleeping';
   if (i.userIdleMs >= DOZE_AFTER_MS) return 'dozing';
-  if (i.sulkLevel > 0) return 'sulky';
+  if (i.sulkLevel > 0 || i.pout > 0) return 'sulky';
   return 'idle';
 }
 

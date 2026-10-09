@@ -6,6 +6,7 @@ import { StatStore } from '../shared/beta-stats.ts';
 import type { Db } from '../shared/db-schema.ts';
 import { EventStore } from '../shared/event-store.ts';
 import { locale, t } from '../shared/i18n/index.ts';
+import type { MissedMsg } from '../shared/missed-msg.ts';
 import { NoteStore } from '../shared/note-store.ts';
 import { PetLife } from '../shared/pet-life.ts';
 import { ItemStore } from '../shared/shop.ts';
@@ -84,6 +85,23 @@ export function storeTroubleText(trouble: StoreTrouble): string {
   }
 }
 
+/** 놓친 알림에 남길 말 열쇠 (언어를 바꿔도 따라가게). 되살린 때는 만들 때 언어의 날짜 글 그대로 */
+function storeTroubleMsg(trouble: StoreTrouble): MissedMsg {
+  switch (trouble.kind) {
+    case 'recovered':
+      return {
+        key: 'main.db.recovered',
+        vars: { moved: basename(trouble.moved), when: new Date(trouble.at).toLocaleString(locale()) },
+      };
+    case 'fresh':
+      return { key: 'main.db.fresh', vars: { moved: basename(trouble.moved) } };
+    case 'newer':
+      return { key: 'main.db.newer' };
+    case 'unavailable':
+      return { key: 'main.db.unavailable' };
+  }
+}
+
 /** 펫 말풍선으로 알린다. 옮긴 파일이 있으면 "파일 보기"로 폴더에서 보여 준다 (오류 대화상자는 띄우지 않는다) */
 export async function announceStoreTrouble(
   trouble: StoreTrouble,
@@ -99,7 +117,7 @@ export async function announceStoreTrouble(
     ttlMs: 30_000,
     // 숨어 있거나 못 띄우면 나올 때 말하고, 그래도 못 보면 패널의 놓친 알림에 남긴다.
     // 다른 말에 밀렸다 다시 나와도 "파일 보기"는 그대로 달리고 누르면 폴더를 연다
-    hold: { onAction: showFile },
+    hold: { onAction: showFile, missedMsgs: [storeTroubleMsg(trouble)] },
     buttons: moved
       ? [
           { id: 'show', label: t('main.db.showFile') },

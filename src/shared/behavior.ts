@@ -1,4 +1,6 @@
 // 펫 기본 행동(P1-06). 가만히 있다가 가끔 움직인다(L10: 계속 움직이면 fps 와 상관없이 CPU 를 먹는다).
+
+import { ENERGY_PACE } from './energy.ts';
 import type { Rect } from './geometry.ts';
 import { MOVE_SPECS, type MoveContext, type MoveType, PLAIN_ASK, pickMove } from './moves.ts';
 
@@ -56,8 +58,13 @@ export function pickActivity(
   areas: readonly Rect[] = [],
   opts: Partial<MoveContext> = {},
 ): Activity {
+  // 기운(shared/energy.ts)을 알면 활발할수록 자주, 빨리 걷고 졸릴수록 앉아 있고 천천히 걷는다
+  const pace = opts.ask?.energy ? ENERGY_PACE[opts.ask.energy] : undefined;
+  const walkChance = pace?.walk ?? WALK_CHANCE;
+  const sitChance = pace?.sit ?? SIT_CHANCE;
+  const speed = WALK_SPEED * (pace?.speed ?? 1);
   const r = rand();
-  if (r < WALK_CHANCE) {
+  if (r < walkChance) {
     const span = walkSpan(pet, area, areas);
     const room = { left: pet.x - span.left, right: span.right - (pet.x + pet.width) };
     let dir: -1 | 1 = rand() < 0.5 ? -1 : 1;
@@ -65,10 +72,9 @@ export function pickActivity(
     const room2 = dir < 0 ? room.left : room.right;
     const want = WALK_MIN + (WALK_MAX - WALK_MIN) * rand();
     const dist = Math.floor(Math.min(want, room2));
-    if (dist >= WALK_MIN / 2)
-      return { type: 'walk', dx: dir * dist, ms: Math.round((dist / WALK_SPEED) * 1000) };
+    if (dist >= WALK_MIN / 2) return { type: 'walk', dx: dir * dist, ms: Math.round((dist / speed) * 1000) };
   }
-  if (r < WALK_CHANCE + SIT_CHANCE) return { type: 'sit', ms: Math.round(8_000 + 10_000 * rand()) };
+  if (r < walkChance + sitChance) return { type: 'sit', ms: Math.round(8_000 + 10_000 * rand()) };
   const move = pickMove(
     {
       ask: opts.ask ?? PLAIN_ASK,

@@ -19,14 +19,17 @@ import {
   heldButtons,
   type MissedItem,
   MissedLog,
+  missedEntries,
 } from '../shared/bubble-queue.ts';
 import { type BubbleKind, ChatterGate, type ChatterLevel, LEVEL_LABEL, quieter } from '../shared/chatter.ts';
+import { Conceal, type ConcealReason } from '../shared/conceal.ts';
 import { CrashGuard } from '../shared/crash-guard.ts';
 import { type CarryToy, fromBox, toBox } from '../shared/fetch.ts';
 import { type Gaze, gazeAt, sameGaze } from '../shared/gaze.ts';
 import { clampIntoAreas, type Point, type Rect } from '../shared/geometry.ts';
 import type { GestureEvent } from '../shared/gesture.ts';
-import { DOOR_MS, doorFrame } from '../shared/house-rest.ts';
+import { approachMs, doorFrame, OUT_MS, STRETCH_MS } from '../shared/house-rest.ts';
+import { type HouseSprites, parseSprites } from '../shared/house-room.ts';
 import { t } from '../shared/i18n/index.ts';
 import { type BubbleButton, IPC, type PetBody, type PlayKind, type ReactKind } from '../shared/ipc.ts';
 import {
@@ -113,6 +116,10 @@ export interface PetActions {
   stopPlay?(): void;
   /** 술래잡기 할 친구 이름 (없으면 메뉴에 안 보인다) */
   playmate?(): string | undefined;
+  /** 들어 옮기기 시작 (매운맛: 쓰다듬다 갑자기 끌면 토라진다) */
+  grabbed?(): void;
+  /** 우클릭 메뉴 맨 위에 흐리게 보일 한 줄 (토라지면 대답이 짧다). 없으면 안 보인다 */
+  menuNote?(): string | undefined;
 }
 
 export interface SayOptions {
@@ -127,7 +134,7 @@ export interface SayOptions {
    * 보지 못하고 지나가면(시간 끝, 밀려남, 못 띄움) 패널 오늘 탭의 놓친 알림에 남긴다.
    * staleAt 이 지나서 나오면 말풍선 없이 놓친 알림에만 둔다.
    */
-  hold?: Pick<HeldBubble, 'staleAt' | 'lines' | 'render' | 'missedLines' | 'onAction'>;
+  hold?: Pick<HeldBubble, 'staleAt' | 'lines' | 'render' | 'missedLines' | 'missedMsgs' | 'onAction'>;
   /** 끊으면 이 말풍선을 닫는다(떠 있을 때) 또는 기다리던 것을 버린다. 시간 끝 없는 안내를 거둘 때 (강제 업데이트가 풀림) */
   signal?: AbortSignal;
 }
@@ -162,12 +169,20 @@ export interface PetWindow {
   /** 깡충 뛰어 (x, y) 로 간다 (집에서 쉬기: 바닥이 아닌 곳에서 집 앞으로). 끝까지 뛰었으면 true */
   jumpTo(x: number, y: number): Promise<boolean>;
   /**
-   * 집 문으로 들어간다 (집에서 쉬기): 문 쪽으로 가며 작아지다 숨는다(숨김 까닭 house).
+   * 집 문으로 들어간다 (집에서 쉬기): 문 쪽으로 걸어가며 to(문간 펫 그림과 같은 자리, shared/house-room.ts spriteToPet)
+   * 크기로 줄어든다. 다 가면 handoff(집 창이 같은 자리에 펫 그림을 띄운다)를 기다린 뒤 숨는다(숨김 까닭 house).
    * 숨은 뒤 펫 자리는 문간에 선 원래 크기로 돌려 둔다. 끌리거나 하면 false (들어가지 않았다)
    */
-  enterDoor(door: { x: number; y: number }): Promise<boolean>;
-  /** 집 문에서 나온다: stand 자리(문간)에 커지며 나타난다. 숨김 까닭 house 를 끈다 */
-  leaveDoor(door: { x: number; y: number }, stand: { x: number; y: number }): Promise<void>;
+  enterDoor(to: Rect, handoff: () => Promise<void>): Promise<boolean>;
+  /**
+   * 집 문에서 나온다: from(문간 펫 그림 자리)에 나타나 handoff(집 창 그림 거두기) 하고, stand 자리(문간)까지
+   * 걸어 나오며 커진다. 다 나오면 기지개를 켜고 좋아한다. 숨김 까닭 house 를 끈다
+   */
+  leaveDoor(from: Rect, stand: { x: number; y: number }, handoff: () => void): Promise<void>;
+  /** 문으로 걸어가며 줄던 것을 그만둔다 (가는 중에 불렀다). 그 자리에서 원래 크기로 돌아온다 */
+  cancelDoor(): void;
+  /** 펫 화면이 그려 준 집 안 그림 (깬 몸, 자는 얼굴). 아직 없으면 undefined */
+  sprites(): HouseSprites | undefined;
   /**
    * 놀이: target() 이 주는 x(펫 사각형 왼쪽)로 계속 달린다 (레이저 쫓기, 술래잡기). 걷기와 같은 타이머라
    * 잡기, 숨기, 말풍선이 끊는다. ms 가 다 되면 true, 끊기면 false, signal 로 끝내면 true
@@ -351,6 +366,7 @@ export function createPetWindow({
       actions.click(pet);
     } else if (event.type === 'drag-start') {
       if (looking) return;
+      actions.grabbed?.();
       // 들어 옮기는 동안은 말풍선을 치운다. 창 안 펫 자리가 바뀌므로 오프셋은 펫 기준으로 바꿔 둔다.
       const inWindow = win.getBounds();
       let offset = { x: event.offset.x - (pet.x - inWindow.x), y: event.offset.y - (pet.y - inWindow.y) };
@@ -426,7 +442,9 @@ export function createPetWindow({
       Menu.buildFromTemplate(menu()).popup({ window: win });
       return;
     }
+    const note = actions.menuNote?.();
     Menu.buildFromTemplate([
+      ...(note ? [{ label: note, enabled: false }, { type: 'separator' as const }] : []),
       { label: t('pet.menu.look', { name: petName() }), click: () => actions.lookTogether() },
       { label: t('pet.menu.chat', { name: petName() }), click: () => actions.openChat(pet) },
       { label: t('pet.menu.addTodo'), accelerator: quickAddShortcut(), click: () => actions.quickAdd() },
@@ -591,6 +609,14 @@ export function createPetWindow({
     if (!fromThisWindow(e) || typeof raw !== 'object' || raw === null) return;
     const r = raw as Record<string, unknown>;
     body = { quad: r.quad === true, tail: r.tail === true };
+  };
+  /** 집 안 그림 (집에서 쉬기). 내 펫 화면만 보낸다 (PetStatus.face) */
+  let sprites: HouseSprites | undefined;
+  const onSprites = (e: IpcMainEvent, raw: unknown) => {
+    if (!fromThisWindow(e)) return;
+    const got = parseSprites(raw);
+    if (got) sprites = got;
+    else log('pet', '집 안 그림 거절');
   };
   const onCarried = (e: IpcMainEvent, raw: unknown) => {
     if (!fromThisWindow(e)) return;
@@ -958,7 +984,7 @@ export function createPetWindow({
   const away = () => powerMonitor.getSystemIdleTime() >= 20;
 
   function addMissed(h: HeldBubble) {
-    for (const text of h.missedLines ?? h.lines ?? [h.text]) missed.add({ text, at: h.at });
+    for (const e of missedEntries(h)) missed.add({ ...e, at: h.at });
     if (!id) writeJson(MISSED_FILE, missed.items);
     onMissed?.();
   }
@@ -1083,36 +1109,48 @@ export function createPetWindow({
     done?.(finished);
   }
 
-  /** stand(문간에 선 펫)과 문 사이를 줄어들며(inward) 또는 커지며 오간다. 끝까지 했으면 true */
-  function animateDoor(stand: Rect, door: { x: number; y: number }, inward: boolean): Promise<boolean> {
+  /**
+   * stand(문간에 선 펫)와 end(문 안 펫 그림 자리) 사이를 걸으며 줄어들거나(inward) 커지며 오간다. 끝까지 했으면 true.
+   * 걷는 모습은 펫 화면이 그리고 창은 여기서 옮긴다
+   */
+  function animateDoor(stand: Rect, end: Rect, inward: boolean, ms: number): Promise<boolean> {
     stopDoor();
     stopWalk();
     leavePerch();
     const started = Date.now();
-    // 문 쪽(나올 때는 문 반대쪽)을 보고 걷는 모습. 창은 여기서 옮긴다
-    const toDoor = Math.round(door.x - (stand.x + stand.width / 2)) || -1;
+    // 문 쪽(나올 때는 문 반대쪽)을 보고 걷는다. 문간 바로 앞이면 들어갈 땐 왼쪽, 나올 땐 오른쪽을 본다
+    const toDoor = Math.round(end.x + end.width / 2 - (stand.x + stand.width / 2)) || -1;
     if (!win.isDestroyed())
-      win.webContents.send(IPC.activity, { type: 'walk', dx: inward ? toDoor : -toDoor, ms: DOOR_MS });
+      win.webContents.send(IPC.activity, { type: 'walk', dx: inward ? toDoor : -toDoor, ms });
     return new Promise((resolve) => {
       doorDone = resolve;
       doorTimer = setInterval(() => {
         if (win.isDestroyed()) return stopDoor();
-        const u = Math.min(1, (Date.now() - started) / DOOR_MS);
-        pet = doorFrame(stand, door, inward ? u : 1 - u);
+        const u = Math.min(1, (Date.now() - started) / ms);
+        pet = doorFrame(stand, end, inward ? u : 1 - u);
         applyLayout();
         if (u >= 1) stopDoor(true);
       }, 16);
     });
   }
 
-  async function enterDoor(door: { x: number; y: number }): Promise<boolean> {
+  async function enterDoor(to: Rect, handoff: () => Promise<void>): Promise<boolean> {
     if (win.isDestroyed() || !win.isVisible() || dragTimer) return false;
     closeBubble('replaced');
     stopFlight();
     const stand = { ...pet };
-    const done = await animateDoor(stand, door, true);
-    // 끌려 나왔으면 끌기가 펫 자리를 맡는다. 크기만 원래대로
-    pet = done ? stand : resizeFromBottomCenter(pet, stand.width);
+    let done = await animateDoor(stand, to, true, approachMs(stand, to));
+    // 집 창이 같은 자리에 펫 그림을 띄운 뒤에 숨는다 (사이에 펫이 깜빡 사라지지 않게). 그사이 잡혔으면 안 들어간다
+    if (done) {
+      await handoff();
+      done = !dragTimer && !win.isDestroyed();
+    }
+    // 끌려 나왔으면 끌기가 펫 자리를 맡는다. 크기만 원래대로. 가다가 불렸으면 그 자리 바닥(문간 높이)에 원래 크기로 선다
+    pet = done
+      ? stand
+      : dragTimer
+        ? resizeFromBottomCenter(pet, stand.width)
+        : { ...resizeFromBottomCenter(pet, stand.width), y: stand.y };
     if (done) setHidden('house', true);
     applyLayout();
     if (!done) keepOnScreen();
@@ -1120,45 +1158,86 @@ export function createPetWindow({
     return done;
   }
 
-  async function leaveDoor(door: { x: number; y: number }, at: { x: number; y: number }): Promise<void> {
+  async function leaveDoor(from: Rect, at: { x: number; y: number }, handoff: () => void): Promise<void> {
     if (win.isDestroyed()) return;
     const areas = screen.getAllDisplays().map((d) => d.workArea);
     const stand = clampIntoAreas({ ...pet, x: Math.round(at.x), y: Math.round(at.y) }, areas);
-    // 숨은 채로 문 크기로 줄여 두고 보이게 한 뒤 커진다 (보이자마자 큰 펫이 번쩍하지 않게)
-    pet = doorFrame(stand, door, 1);
+    // 숨은 채로 문간 그림 크기로 줄여 두고 보이게 한 뒤(집 창 그림과 같은 자리) 커진다
+    pet = { ...from };
     applyLayout();
     setHidden('house', false);
-    const done = await animateDoor(stand, door, false);
+    // 펫 창이 그려진 뒤 집 창 그림을 거둔다
+    setTimeout(handoff, 40);
+    const done = await animateDoor(stand, from, false, OUT_MS);
     if (!done && !dragTimer) pet = stand;
     if (!dragTimer) {
       applyLayout();
       keepOnScreen();
       save();
     }
-    if (done && !win.isDestroyed()) win.webContents.send(IPC.react, 'happy');
+    if (!done || win.isDestroyed()) return;
+    // 잘 잤다: 기지개를 켜고 좋아한다. 그사이 말풍선이 뜨거나 잡히면 기지개는 거기서 끝
+    win.webContents.send(IPC.activity, { type: 'stretch', ms: STRETCH_MS });
+    if ((await pause(STRETCH_MS)) && !win.isDestroyed()) win.webContents.send(IPC.react, 'happy');
+  }
+
+  // ---- 잠깐 안 보이게 (두더지 구멍 속, 같이 보기 찍는 순간) ----
+  // 까닭이 하나라도 있으면 불투명도 0, 다 풀리면 처음 가리기 전 값으로 (shared/conceal.ts).
+  // 예전에는 까닭마다 원래 값을 따로 기억해 겹치면 상대가 만든 0 을 원래 값으로 잡아 펫이 투명한 채 남았다.
+  // 사용자 숨기기, 발표, 집 안(문 드나들기)은 창을 숨기는 다른 축(hideReasons)이라 서로 덮지 않는다
+  const conceal = new Conceal();
+  let revealTimer: NodeJS.Timeout | undefined;
+  let revealDone: (() => void) | undefined;
+  /** 리눅스는 창 불투명도를 못 바꿔 숨긴다 */
+  const noOpacity = process.platform === 'linux';
+
+  function stopReveal() {
+    clearInterval(revealTimer);
+    revealTimer = undefined;
+    const done = revealDone;
+    revealDone = undefined;
+    done?.();
+  }
+
+  function setConcealed(reason: ConcealReason, on: boolean, revealMs = 0): Promise<void> {
+    if (win.isDestroyed()) return Promise.resolve();
+    const step = conceal.set(reason, on, () => (noOpacity ? 1 : win.getOpacity()));
+    if (!step) return Promise.resolve();
+    stopReveal();
+    if (step.kind === 'hide') {
+      if (noOpacity) win.hide();
+      else win.setOpacity(0);
+      return Promise.resolve();
+    }
+    const to = step.to;
+    if (noOpacity || revealMs <= 0 || to <= 0) {
+      if (noOpacity) {
+        if (!hideReasons.hidden) win.showInactive();
+      } else win.setOpacity(to);
+      conceal.settled();
+      return Promise.resolve();
+    }
+    // 툭 나타나지 않게 revealMs 동안 차오른다 (찾았다 동작이 같이 시작한다). 그사이 다시 가리면 거기서 멈춘다
+    const started = Date.now();
+    return new Promise((resolve) => {
+      revealDone = resolve;
+      revealTimer = setInterval(() => {
+        const k = Math.min(1, (Date.now() - started) / revealMs);
+        if (!win.isDestroyed()) win.setOpacity(to * k);
+        if (k >= 1 || win.isDestroyed()) {
+          conceal.settled();
+          stopReveal();
+        }
+      }, 16);
+    });
   }
 
   // ---- 두더지 잡기: 구멍에서 솟고 들어가기 ----
   /** 두더지 놀이 중 원래 펫 크기 (아니면 undefined). 그동안 혼자 걷거나 몸짓하지 않는다 */
   let moleSize: number | undefined;
-  /** 구멍 속이라 안 보이게 해 둔 원래 불투명도. 리눅스는 불투명도가 없어 창을 숨긴다 */
-  let moleOpacity: number | undefined;
-
+  /** 구멍 속이라 안 보이게 한다 (같이 보기 가리기와 한곳에서 정한다: setConcealed) */
   function moleConceal(on: boolean) {
-    if (win.isDestroyed()) return;
-    const linux = process.platform === 'linux';
-    if (on) {
-      if (moleOpacity !== undefined) return;
-      moleOpacity = linux ? 1 : win.getOpacity();
-      if (linux) win.hide();
-      else win.setOpacity(0);
-      return;
-    }
-    const to = moleOpacity;
-    if (to === undefined) return;
-    moleOpacity = undefined;
-    if (!linux) win.setOpacity(to);
-    else if (!hideReasons.hidden) win.showInactive();
+    void setConcealed('mole', on);
   }
 
   async function burrow(foot: Point, up: boolean, ms: number): Promise<boolean> {
@@ -1257,6 +1336,7 @@ export function createPetWindow({
   ipcMain.on(IPC.petted, onPetted);
   ipcMain.on(IPC.bubbleClosed, onBubbleClosed);
   ipcMain.on(IPC.body, onBody);
+  ipcMain.on(IPC.sprites, onSprites);
   ipcMain.on(IPC.carried, onCarried);
 
   // ---- 커서 바라보기 ----
@@ -1300,11 +1380,6 @@ export function createPetWindow({
   let looking: { phase: LookPhase; dir: Gaze } | undefined;
   let lookPoll: NodeJS.Timeout | undefined;
   let lookDone: NodeJS.Timeout | undefined;
-  /** 가리기 전 불투명도 (시험 인스턴스는 0 이라 0 으로 돌아간다). 다시 다 나타나면 undefined */
-  let veilBase: number | undefined;
-  let veilTimer: NodeJS.Timeout | undefined;
-  /** 리눅스는 창 불투명도를 못 바꿔 숨긴다 */
-  let veilHidden = false;
 
   function sendLook() {
     if (!win.isDestroyed()) win.webContents.send(IPC.look, looking ? { ...looking, tool: !id } : null);
@@ -1362,48 +1437,11 @@ export function createPetWindow({
     lookDone = setTimeout(() => setLooking(null), FOUND_MS);
   }
 
+  /** 찍는 순간 가린다(true), 다시 보인다(false, REVEAL_MS 동안 차오른다) */
   function veil(on: boolean): Promise<void> {
-    clearInterval(veilTimer);
-    veilTimer = undefined;
-    if (win.isDestroyed()) return Promise.resolve();
-    if (process.platform === 'linux') {
-      if (on && win.isVisible()) {
-        veilHidden = true;
-        win.hide();
-      } else if (!on && veilHidden) {
-        veilHidden = false;
-        if (!hideReasons.hidden) win.showInactive();
-      }
-      return Promise.resolve();
-    }
-    if (on) {
-      // 바로 0 으로. 오버레이도 같은 순간 사라져서 따로 흐리게 할 까닭이 없다
-      // 나타나는 도중에 다시 가리면 처음 값을 그대로 둔다
-      veilBase ??= win.getOpacity();
-      win.setOpacity(0);
-      return Promise.resolve();
-    }
-    const to = veilBase;
-    if (to === undefined) return Promise.resolve();
-    if (to <= 0) {
-      veilBase = undefined;
-      return Promise.resolve();
-    }
-    // 툭 나타나지 않게 REVEAL_MS 동안 차오른다 (찾았다 동작이 같이 시작한다)
-    const started = Date.now();
-    return new Promise((resolve) => {
-      veilTimer = setInterval(() => {
-        const k = Math.min(1, (Date.now() - started) / REVEAL_MS);
-        if (!win.isDestroyed()) win.setOpacity(to * k);
-        if (k >= 1 || win.isDestroyed()) {
-          clearInterval(veilTimer);
-          veilTimer = undefined;
-          veilBase = undefined;
-          resolve();
-        }
-      }, 16);
-    });
+    return setConcealed('veil', on, REVEAL_MS);
   }
+
   // 펫 화면을 다시 불러오면(새로고침, 죽었다 살아남) 같이 보기 상태를 다시 알린다
   win.webContents.on('did-finish-load', () => {
     if (looking) sendLook();
@@ -1413,14 +1451,13 @@ export function createPetWindow({
     stopGaze();
     clearInterval(lookPoll);
     clearTimeout(lookDone);
-    clearInterval(veilTimer);
+    clearInterval(revealTimer);
     clearInterval(releaseTimer);
     powerMonitor.off('lock-screen', onLock);
     powerMonitor.off('unlock-screen', onUnlock);
     // 끄는 동안 모아 둔 것은 놓친 알림으로 남긴다 (다시 켜면 패널 오늘 탭에)
     const { fresh, stale } = held.flush(Date.now());
-    for (const h of [...stale, ...fresh])
-      for (const text of h.missedLines ?? h.lines ?? [h.text]) missed.add({ text, at: h.at });
+    for (const h of [...stale, ...fresh]) for (const e of missedEntries(h)) missed.add({ ...e, at: h.at });
     if (!id && fresh.length + stale.length > 0) writeJson(MISSED_FILE, missed.items);
     stopSettings();
     stopWatching();
@@ -1433,6 +1470,7 @@ export function createPetWindow({
     ipcMain.off(IPC.activityStop, onActivityStop);
     ipcMain.off(IPC.petted, onPetted);
     ipcMain.off(IPC.body, onBody);
+    ipcMain.off(IPC.sprites, onSprites);
     ipcMain.off(IPC.carried, onCarried);
     carriedWait?.(null);
     clearInterval(walkTimer);
@@ -1474,6 +1512,7 @@ export function createPetWindow({
     follow,
     land,
     body: () => body,
+    sprites: () => sprites,
     carry,
     carriedAt,
     pause,
@@ -1496,6 +1535,7 @@ export function createPetWindow({
     },
     enterDoor,
     leaveDoor,
+    cancelDoor: () => stopDoor(false),
     burrow,
     unburrow,
     /** 숨바꼭질 (v2): 화면 가장자리 밖으로 반쯤 나간 자리로 순간이동 (안 보이게 숨겼다가 나타난다) */

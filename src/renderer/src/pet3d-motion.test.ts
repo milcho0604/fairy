@@ -43,3 +43,14 @@ test('통통 튀는 세기는 신남과 걷기에만 곱한다', () => {
     sy: 0.9,
   });
 });
+
+test('기운: 둥근 눈만 지침은 눈꺼풀(heavy), 졸림은 감기 직전 눈(‿). 설계도 눈 모양과 상태 표정이 먼저', () => {
+  assert.equal(restingEye('open', 'round', 'tired'), 'heavy');
+  assert.equal(restingEye('open', undefined, 'sleepy'), 'drowsy');
+  assert.equal(restingEye('open', 'sparkle', 'lively'), 'open');
+  assert.equal(restingEye('open', 'round', 'normal'), 'open');
+  assert.equal(restingEye('open', 'happy', 'sleepy'), 'up');
+  assert.equal(restingEye('open', 'sleepy', 'tired'), 'drowsy');
+  assert.equal(restingEye('up', 'round', 'sleepy'), 'up');
+  assert.equal(restingEye('down', undefined, 'tired'), 'down');
+});

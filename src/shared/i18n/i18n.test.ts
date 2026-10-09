@@ -86,6 +86,7 @@ test('새 버전 글은 버전 번호 끝 소리에 맞는 조사를 붙인다',
   assert.equal(t('main.update.bubble', { version: '1.0.2' }), '새 버전 1.0.2가 나왔어.');
   assert.equal(t('main.update.bubble', { version: '1.0.0' }), '새 버전 1.0.0이 나왔어.');
   assert.match(t('main.update.ready', { version: '1.0.2' }), /1\.0\.2를 받아/);
+  assert.match(t('main.update.readyRestart', { version: '1.0.0' }), /1\.0\.0을 받아.*다시 켜면/);
   assert.match(t('main.update.forced', { version: '1.0.1', min: '1.0.0' }), /1\.0\.1로 업데이트/);
   assert.match(t('main.update.forced', { version: '1.0.3', min: '1.0.0' }), /1\.0\.3으로 업데이트/);
 });

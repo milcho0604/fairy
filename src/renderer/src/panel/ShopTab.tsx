@@ -182,7 +182,7 @@ export function ShopTab({ s }: { s: PanelState }) {
             <small>
               {nextHouse === undefined
                 ? t('shop.bestHouse')
-                : t('shop.houseNext', { name: houseName(level) ?? '' })}
+                : t(level === 0 ? 'shop.houseFirst' : 'shop.houseNext', { name: houseName(level) ?? '' })}
             </small>
           </span>
           {nextHouse !== undefined && (
@@ -239,19 +239,32 @@ function StyleCard(o: {
   onPick: () => void;
 }) {
   const src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(houseSvg(o.style, o.level, { still: true }))}`;
+  const name = houseStyleName(o.style);
+  const cost = HOUSE_STYLE_COSTS[o.style];
   return (
     <li className={o.using ? 'using' : ''}>
       <img src={src} alt="" />
-      <span className="s-name">{houseStyleName(o.style)}</span>
+      <span className="s-name">{name}</span>
       {o.using ? (
         <span className="owned">{t('shop.styleNow')}</span>
       ) : o.owned ? (
-        <button type="button" className="ghost small" onClick={o.onPick}>
+        <button
+          type="button"
+          className="ghost small pick"
+          aria-label={t('shop.styleUseLabel', { name })}
+          onClick={o.onPick}
+        >
           {t('shop.styleUse')}
         </button>
       ) : (
-        <button type="button" className="ghost small" disabled={!o.canBuy} onClick={o.onPick}>
-          <Price n={HOUSE_STYLE_COSTS[o.style]} />
+        <button
+          type="button"
+          className="ghost small pick"
+          disabled={!o.canBuy}
+          aria-label={t('shop.styleBuyLabel', { name, n: cost })}
+          onClick={o.onPick}
+        >
+          <Price n={cost} />
         </button>
       )}
     </li>

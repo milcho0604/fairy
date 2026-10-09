@@ -1,5 +1,6 @@
 // 코드로 그린 기본 펫. 콩, 냥이, 삐약이 세 가지 (v1, D6 그림 대신). 사진 펫(P1-08)이면 몸통 대신 사진.
 
+import type { EnergyLook } from '../../shared/energy.ts';
 import { heldAt } from '../../shared/fetch.ts';
 import type { Gaze } from '../../shared/gaze.ts';
 import type { Point } from '../../shared/geometry.ts';
@@ -60,6 +61,8 @@ export interface DrawState {
   kind?: PetKind;
   /** 삐짐 칸 수 (v1). 1 이상이면 머리 위에 칸 막대 */
   sulk?: number;
+  /** 매운맛 토라짐 단계 0~3 (shared/pout.ts). 삐진 모습(sulky)의 세기를 정한다 (sulkStage) */
+  pout?: number;
   /** 쓰다듬은 뒤 흐른 시간(ms). 하트가 떠오른다. 없으면 -1 */
   hearts?: number;
   /** 쿠션이 있으면 앉을 때 깔고 앉는다 (v1 장난감) */
@@ -82,6 +85,35 @@ export interface DrawState {
   gait?: Gait;
   /** 입에 문 공 (네 발 펫 공놀이, shared/fetch.ts) */
   carry?: CarryDraw;
+  /** 기운 (하루 리듬과 연속 작업 피로, shared/energy.ts). 기본과 말하기 상태의 뜬 눈에만 보인다 (energyFace) */
+  energy?: EnergyLook;
+  /** 개운함 반짝임 진행 0~1 (쉬고 와서 기지개). 없으면 -1 */
+  fresh?: number;
+}
+
+/**
+ * 지금 얼굴에 보일 기운. 기본과 말하기 상태에서만: 잠, 졸기, 신남, 잡힘, 생각 중, 바쁨은 그 상태 표정이 먼저다.
+ * 같이 보기(돋보기) 중에는 눈을 뜨고 집중한다
+ */
+export function energyFace(s: Pick<DrawState, 'mood' | 'energy' | 'peer'>): EnergyLook | undefined {
+  if (!s.energy || s.peer || (s.mood !== 'idle' && s.mood !== 'talking')) return undefined;
+  return s.energy;
+}
+
+/** 눈꺼풀이 덮는 몫 (위에서부터). 녹초면 조금 더 */
+export function lidOf(e: EnergyLook | undefined): number {
+  if (!e) return 0;
+  const base = e.stage === 'sleepy' ? 0.48 : e.stage === 'tired' ? 0.3 : 0;
+  return base + (e.worn && base > 0 ? 0.06 : 0);
+}
+
+/** 축 처진 몸 (지침, 졸림): 살짝 낮고 넓게. 쉬는 모습, 앉기, 두리번일 때만 (걷기와 몸짓은 그대로) */
+function droop(s: DrawState, act: DrawState['activity']): { sx: number; sy: number } {
+  const e = s.mood === 'idle' ? s.energy : undefined;
+  if (!e || (act && act.type !== 'sit' && act.type !== 'look')) return { sx: 1, sy: 1 };
+  if (e.stage === 'sleepy') return { sx: 1.02, sy: 0.97 };
+  if (e.stage === 'tired' || e.worn) return { sx: 1.01, sy: 0.985 };
+  return { sx: 1, sy: 1 };
 }
 
 /** 입에 문 공. r 은 반지름(160 기준), from 은 물기 전 바닥 공 가운데 */
@@ -98,6 +130,17 @@ export interface CarryDraw {
 export interface Trick {
   type: 'wave' | 'dance';
   t: number;
+}
+
+/**
+ * 삐진 모습의 세기 0~3. 삐지지 않았으면 0, 날 단위 삐짐만이면 1 (고개 돌리기).
+ * 매운맛 토라짐이면 그 단계: 2 흥(볼 빵빵, 흘겨보기, 콧김), 3 등 돌리고 앉기(얼굴 안 보임, 화난 표시).
+ * 같이 보기(peer) 중에는 그쪽을 봐야 해서 1 까지만. 기운(피곤) 표정은 sulky 에 안 붙어 겹치지 않는다 (energyFace)
+ */
+export function sulkStage(s: Pick<DrawState, 'mood' | 'pout' | 'peer'>): number {
+  if (s.mood !== 'sulky') return 0;
+  if (s.peer) return 1;
+  return Math.max(1, Math.min(3, Math.round(s.pout ?? 0)));
 }
 
 /** 몸짓을 보일지: 잠, 졸음, 바쁨, 잡힘, 숨김에서는 안 한다. 삐져 있으면 손은 안 흔든다 */
@@ -213,6 +256,10 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
     sx = 1 - 0.08 * k;
     sy = 1 + 0.12 * k;
   }
+  // 지치거나 졸리면 몸이 살짝 처진다 (2D, 사진, 입체 모두)
+  const tiredBody = droop(s, act);
+  sx *= tiredBody.sx;
+  sy *= tiredBody.sy;
   // 제자리 몸짓 (꼬리 흔들기, 몸 털기, 점프 등): 뛰기와 찌그러짐은 2D, 사진, 입체 모두 같이
   const mv = movePoseOf(act, s.calm);
   if (mv) {
@@ -308,13 +355,24 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
   if (kind === 'dog') drawDogEars(ctx, mv?.ears);
   // 손 흔들기 팔은 몸과 귀 다음, 얼굴 전에 (얼굴을 가리지 않게)
   if (trick?.type === 'wave') drawWavingHand(ctx, trick.t);
+  // 매운맛 토라짐 3단계: 등을 돌려 얼굴 대신 뒷모습 (꼬리)
+  const stage = sulkStage(s);
+  if (stage >= 3) {
+    drawBack(ctx, kind);
+    ctx.restore();
+    ctx.restore();
+    drawExtras(ctx, s, GROUND - lift - RY * 2 * sy);
+    return undefined;
+  }
 
   // 볼
   // 얼굴을 옆으로: 삐지면 고개를 돌리고, 걷거나 두리번거리면 그쪽을 본다.
   const g = gazeOf(s, act);
   const look =
     s.mood === 'sulky' && !s.peer
-      ? 12
+      ? stage >= 2
+        ? 16
+        : 12
       : act?.type === 'walk'
         ? act.dir * 6
         : act?.type === 'look'
@@ -331,7 +389,10 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
   ctx.fillStyle = BLUSH;
   for (const x of [-32, 32]) {
     ctx.beginPath();
-    ctx.ellipse(x + look, 10, s.mood === 'sulky' && x > 0 ? 11 : 8, 5, 0, 0, Math.PI * 2);
+    // 삐지면 한쪽 볼이 부풀고, 흥(2단계)이면 두 볼 다 빵빵
+    const puffed = s.mood === 'sulky' && (x > 0 || stage >= 2);
+    const rx = puffed ? (stage >= 2 ? 12 : 11) : 8;
+    ctx.ellipse(x + look, 10, rx, puffed && stage >= 2 ? 6.5 : 5, 0, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -797,7 +858,11 @@ function drawEyes(ctx: CanvasRenderingContext2D, s: DrawState, look: number, gaz
   ctx.strokeStyle = INK;
   ctx.lineWidth = 2.5;
   ctx.lineCap = 'round';
-  for (const side of [-1, 1]) {
+  // 기운 (shared/energy.ts): 활발하면 반짝, 지치면 눈꺼풀이 내려오고, 졸리거나 녹초면 눈썹이 처지고, 녹초면 눈 밑 그늘.
+  // 동그랗게 놀란 눈(몸짓 wide)에는 붙이지 않는다
+  const energy = wide ? undefined : energyFace(s);
+  const lid = lidOf(energy);
+  for (const side of [-1, 1] as const) {
     // 커서를 보면 눈동자가 얼굴보다 조금 더 그쪽으로 (위아래도)
     // 얼굴(look)보다 눈이 조금 더 그쪽으로. 위아래는 눈만 (입과 볼은 그대로)
     const x = side * 20 + look + (gaze ? gaze.x * 3 : 0);
@@ -821,14 +886,167 @@ function drawEyes(ctx: CanvasRenderingContext2D, s: DrawState, look: number, gaz
     } else if (s.mood === 'excited') {
       ctx.arc(x, y + 2, 5, 1.15 * Math.PI, 1.85 * Math.PI); // 웃는 눈 ^ ^
       ctx.stroke();
+    } else if (sulkStage(s) >= 2) {
+      drawSideEye(ctx, x, y, side, s.blink >= 0 ? Math.abs(1 - 2 * s.blink) : 1);
     } else {
       // 깜빡일 때 위아래로 접힌다. 바쁠 때는 작게 뜬다.
       const open = s.blink >= 0 ? Math.abs(1 - 2 * s.blink) : 1;
-      const r = s.mood === 'busy' ? 3.5 : wide ? 5.3 : 4.5;
-      ctx.ellipse(x, y, r, Math.max(0.6, r * 1.15 * open), 0, 0, Math.PI * 2);
-      ctx.fill();
+      const r = s.mood === 'busy' ? 3.5 : wide ? 5.3 : energy?.stage === 'lively' ? 4.8 : 4.5;
+      const ry = Math.max(0.6, r * 1.15 * open);
+      if (energy) drawEnergyEye(ctx, x, y, r, ry, side, lid, energy);
+      else {
+        ctx.ellipse(x, y, r, ry, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
   }
+}
+
+/**
+ * 기운이 보이는 뜬 눈 하나 (drawEyes). 눈꺼풀은 위를 덮고 바깥쪽이 살짝 처진 선, 눈썹은 안쪽이 올라간 짧은 선,
+ * 눈 밑 그늘은 옅은 보라 호. 활발하면 눈이 조금 크고 흰 반짝이가 하나
+ */
+function drawEnergyEye(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  r: number,
+  ry: number,
+  side: -1 | 1,
+  lid: number,
+  e: EnergyLook,
+) {
+  // 다 감기 직전(깜빡임 가운데)은 눈꺼풀 없이 얇은 선 하나로.
+  // 눈꺼풀 끝선은 가운데가 둥글게 솟은 선(∩)이고 바깥 끝은 눈보다 조금 길게 아래로 처진다 (졸려서 무거운 눈).
+  // 가운데가 처진 선(∪)이나 곧은 선은 끝이 치켜 올라가 시큰둥하게 째려보는 눈으로 읽혔다 (사용자 지적 2026-10-08)
+  if (lid > 0 && ry > 1.5) {
+    const ly = y - ry + 2 * ry * lid;
+    const arch = 1.5;
+    const inner = { x: x - side * (r + 0.2), y: ly + 0.4 };
+    const outer = { x: x + side * (r + 1.4), y: ly + 2.2 };
+    const mid = { x: x - side * 0.4, y: ly - 2 * arch };
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(inner.x, inner.y);
+    ctx.quadraticCurveTo(mid.x, mid.y, outer.x, outer.y);
+    ctx.lineTo(outer.x, y + ry + 2);
+    ctx.lineTo(inner.x, y + ry + 2);
+    ctx.closePath();
+    ctx.clip();
+    ctx.beginPath();
+    ctx.ellipse(x, y, r, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(inner.x, inner.y);
+    ctx.quadraticCurveTo(mid.x, mid.y, outer.x, outer.y);
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.ellipse(x, y, r, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (e.stage === 'lively' && ry > 2.5) {
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(x + 1.6, y - ry * 0.42, r * 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = INK;
+  }
+  if (e.stage === 'sleepy' || e.worn) {
+    // 팔자 눈썹: 안쪽(얼굴 가운데 쪽)이 올라가고 바깥으로 둥글게 내려간다 (찡그린 눈썹으로 보이지 않게 옅고 가늘게)
+    ctx.save();
+    ctx.globalAlpha = 0.7;
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(x - side * 4.5, y - 13);
+    ctx.quadraticCurveTo(x + side * 0.5, y - 13, x + side * 4, y - 10.4);
+    ctx.stroke();
+    ctx.restore();
+  }
+  if (e.worn) {
+    // 눈 밑 그늘
+    ctx.save();
+    ctx.strokeStyle = 'rgba(122, 98, 168, 0.4)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y + 1.5, r + 1.6, 0.22 * Math.PI, 0.78 * Math.PI);
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.lineWidth = 2.5;
+}
+
+/**
+ * 흘겨보는 눈 (매운맛 토라짐 2단계): 위가 평평하게 잘린 눈에 눈동자는 바깥(고개 돌린 쪽)으로 몰리고,
+ * 눈썹은 안쪽이 내려간 짧은 선 (뾰로통)
+ */
+function drawSideEye(ctx: CanvasRenderingContext2D, x: number, y: number, side: -1 | 1, open: number) {
+  ctx.save();
+  // 깜빡일 때는 아래 반달이 납작해진다
+  ctx.beginPath();
+  ctx.ellipse(x + 1.5, y + 1, 4.6, Math.max(0.6, 3.6 * open), 0, 0, Math.PI);
+  ctx.fill();
+  ctx.lineWidth = 2.4;
+  ctx.beginPath();
+  ctx.moveTo(x - 5.5, y + 0.6);
+  ctx.lineTo(x + 6, y + 0.6);
+  ctx.stroke();
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.moveTo(x - side * 1.5, y - 7);
+  ctx.lineTo(x + side * 6.5, y - 9.5);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/**
+ * 뒷모습 (매운맛 토라짐 3단계). 몸 가운데 기준 좌표. 얼굴은 안 그리고 등에 꼬리만:
+ * 냥이, 멍멍이는 위로 말린 꼬리, 토순이와 콩이는 동그란 솜꼬리, 삐약이는 꽁지깃 셋
+ */
+function drawBack(ctx: CanvasRenderingContext2D, kind: PetKind) {
+  ctx.save();
+  // 등 그늘: 아래쪽이 살짝 짙다 (앉은 엉덩이)
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+  ctx.beginPath();
+  ctx.ellipse(0, RY * 0.45, RX * 0.8, RY * 0.42, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = BODY;
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  if (kind === 'cat' || kind === 'dog') {
+    ctx.lineWidth = kind === 'cat' ? 7 : 9;
+    ctx.strokeStyle = LINE;
+    ctx.beginPath();
+    ctx.moveTo(4, RY * 0.7);
+    ctx.quadraticCurveTo(26, RY * 0.55, 20, RY * 0.1);
+    ctx.stroke();
+    ctx.lineWidth = kind === 'cat' ? 4 : 6;
+    ctx.strokeStyle = BODY;
+    ctx.stroke();
+  } else if (kind === 'chick') {
+    for (const a of [-0.5, 0, 0.5]) {
+      ctx.beginPath();
+      ctx.ellipse(Math.sin(a) * 9, RY * 0.72 - Math.cos(a) * 4, 4, 9, a, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+  } else {
+    ctx.beginPath();
+    ctx.arc(0, RY * 0.68, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(-4, RY * 0.66);
+    ctx.lineTo(-1, RY * 0.62);
+    ctx.moveTo(2, RY * 0.72);
+    ctx.lineTo(5, RY * 0.68);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 /** 배고픈 입: 물결처럼 꼬불 */
@@ -881,8 +1099,13 @@ function drawExtras(ctx: CanvasRenderingContext2D, s: DrawState, top: number) {
   // 머리 오른쪽 위에 꽂은 꽃. 사진은 머리가 가운데 쪽이라 조금 안으로
   if (s.flower) drawFlower(ctx, CX + (s.photo ? 14 : 24), top + 8);
   if ((s.sulk ?? 0) > 0 && s.mood === 'sulky') drawSulkGauge(ctx, s.sulk ?? 0, top);
+  const pouting = sulkStage(s);
+  if (pouting >= 2) drawHuff(ctx, top, pouting >= 3);
+  if (pouting >= 3) drawCross(ctx, CX - 40, Math.max(12, top + 10));
   if ((s.hearts ?? -1) >= 0 && (s.hearts ?? 0) < HEARTS_MS) drawHearts(ctx, s.hearts ?? 0, top);
   drawMoveMark(ctx, s, top);
+  if ((s.fresh ?? -1) >= 0 && s.mood !== 'sleeping' && s.mood !== 'dozing') drawFresh(ctx, s.fresh ?? 0, top);
+  if (s.photo) drawPhotoEnergy(ctx, s, top);
   ctx.fillStyle = INK;
   if (s.mood === 'thinking') {
     const step = Math.floor(s.elapsed / 400) % 4; // 점이 하나씩 늘어난다
@@ -893,7 +1116,8 @@ function drawExtras(ctx: CanvasRenderingContext2D, s: DrawState, top: number) {
       ctx.fill();
     }
     ctx.globalAlpha = 1;
-  } else if (s.mood === 'sleeping') {
+  } else if (s.mood === 'sleeping' && !s.face) {
+    // 얼굴 그림(집 안 침대의 자는 얼굴)에는 Zz 를 넣지 않는다: 집 그림이 따로 올린다
     ctx.font = 'bold 14px -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
     ctx.fillText('z', CX + 40, top + 2);
     ctx.font = 'bold 18px -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
@@ -908,6 +1132,135 @@ function drawExtras(ctx: CanvasRenderingContext2D, s: DrawState, top: number) {
     ctx.fill();
     if ((s.viewSize ?? CANVAS_SIZE) >= MIN_SIZE_FOR_TEXT) drawTag(ctx, t('pet.busyTag'), top - 22);
   }
+}
+
+/** 네 갈래 반짝이 하나 (개운함, 활발한 사진 펫) */
+function sparkle(ctx: CanvasRenderingContext2D, x: number, y: number, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(x, y - r);
+  ctx.quadraticCurveTo(x + r * 0.18, y - r * 0.18, x + r, y);
+  ctx.quadraticCurveTo(x + r * 0.18, y + r * 0.18, x, y + r);
+  ctx.quadraticCurveTo(x - r * 0.18, y + r * 0.18, x - r, y);
+  ctx.quadraticCurveTo(x - r * 0.18, y - r * 0.18, x, y - r);
+  ctx.fill();
+}
+
+/** 개운함: 머리 둘레에서 반짝이 넷이 차례로 반짝였다 사라진다. t 는 진행 0~1 */
+function drawFresh(ctx: CanvasRenderingContext2D, t: number, top: number) {
+  ctx.save();
+  ctx.fillStyle = '#ffc94d';
+  for (const [i, [dx, dy, r]] of (
+    [
+      [-46, 18, 7],
+      [44, 6, 8],
+      [-30, -4, 5],
+      [58, 30, 5],
+    ] as const
+  ).entries()) {
+    const k = Math.max(0, Math.min(1, t * 1.6 - i * 0.15));
+    if (k <= 0 || k >= 1) continue;
+    const pulse = Math.sin(k * Math.PI);
+    ctx.globalAlpha = pulse;
+    sparkle(ctx, CX + dx, Math.max(8, top + dy - k * 6), r * (0.6 + 0.4 * pulse));
+  }
+  ctx.restore();
+}
+
+/**
+ * 사진 펫은 얼굴을 바꿀 수 없어 기운을 머리 옆 작은 표시로 (멈춘 그림, 다시 그리지 않는다):
+ * 활발하면 반짝이 둘, 졸리면 작은 z, 녹초면 작은 땀방울
+ */
+function drawPhotoEnergy(ctx: CanvasRenderingContext2D, s: DrawState, top: number) {
+  const e = energyFace(s);
+  if (!e || s.activity) return;
+  ctx.save();
+  if (e.stage === 'lively') {
+    ctx.fillStyle = '#ffc94d';
+    ctx.globalAlpha = 0.9;
+    sparkle(ctx, CX + 46, Math.max(10, top + 10), 6);
+    sparkle(ctx, CX + 58, Math.max(18, top + 24), 4);
+  }
+  if (e.stage === 'sleepy') {
+    ctx.fillStyle = INK;
+    ctx.globalAlpha = 0.7;
+    ctx.font = 'bold 13px -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
+    ctx.fillText('z', CX + 44, Math.max(14, top + 8));
+  }
+  if (e.worn) {
+    ctx.fillStyle = '#7cc4ff';
+    ctx.globalAlpha = 0.85;
+    const x = CX - 46;
+    const y = Math.max(10, top + 14);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.quadraticCurveTo(x + 5, y + 8, x, y + 11);
+    ctx.quadraticCurveTo(x - 5, y + 8, x, y);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/**
+ * 흥! 콧김 (매운맛 토라짐 2단계부터): 고개 돌린 쪽 얼굴 옆으로 작은 김 두 덩이.
+ * 등 돌린 3단계는 머리 위로 피어오른다. 멈춘 그림 (다시 그리지 않는다)
+ */
+function drawHuff(ctx: CanvasRenderingContext2D, top: number, back: boolean) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+  ctx.strokeStyle = 'rgba(31, 35, 40, 0.55)';
+  ctx.lineWidth = 1.4;
+  const puffs: [number, number, number][] = back
+    ? [
+        [CX + 34, top + 4, 7],
+        [CX + 46, top - 4, 5],
+      ]
+    : [
+        [CX + 60, top + 44, 6.5],
+        [CX + 70, top + 34, 4.5],
+      ];
+  for (const [x, y, r] of puffs) {
+    const cy = Math.max(r + 2, y);
+    ctx.beginPath();
+    ctx.arc(x - r * 0.55, cy, r * 0.7, 0, Math.PI * 2);
+    ctx.arc(x + r * 0.5, cy - r * 0.15, r * 0.8, 0, Math.PI * 2);
+    ctx.arc(x, cy - r * 0.55, r * 0.65, 0, Math.PI * 2);
+    // 밝은 바탕에서도 보이게 겉선을 먼저 굵게 그리고 흰 속을 채운다
+    ctx.lineWidth = 2.6;
+    ctx.stroke();
+    ctx.fill();
+    ctx.lineWidth = 1.4;
+  }
+  // 김 줄기 (얼굴 쪽에서 나온다)
+  ctx.beginPath();
+  if (back) {
+    ctx.moveTo(CX + 24, Math.max(10, top + 16));
+    ctx.lineTo(CX + 30, Math.max(8, top + 10));
+  } else {
+    ctx.moveTo(CX + 50, top + 52);
+    ctx.lineTo(CX + 55, top + 48);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** 화난 표시 (네 갈래 꺾인 핏줄 모양). 매운맛 토라짐 3단계, 머리 왼쪽 위 (오른쪽은 꽃 자리) */
+function drawCross(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  ctx.save();
+  ctx.strokeStyle = SULK;
+  ctx.lineWidth = 2.6;
+  ctx.lineCap = 'round';
+  for (const [dx, dy] of [
+    [-1, -1],
+    [1, -1],
+    [1, 1],
+    [-1, 1],
+  ] as const) {
+    ctx.beginPath();
+    ctx.moveTo(x + dx * 2, y + dy * 7);
+    ctx.quadraticCurveTo(x + dx * 2.5, y + dy * 2.5, x + dx * 7, y + dy * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 /** 머리 위 7칸 막대: 찬 칸은 빨갛게 (기획서: 펫 머리 위 작은 칸 막대) */

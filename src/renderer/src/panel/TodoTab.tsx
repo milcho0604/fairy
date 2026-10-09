@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
+import { timeLabel } from '../../../shared/event-store.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PanelAddResult, PanelState } from '../../../shared/ipc.ts';
 import { dueLabel } from '../../../shared/quick-add.ts';
 import { REPEAT_LABEL, REPEATS, type Repeat, type Todo } from '../../../shared/todo-store.ts';
 import { CheckIcon, RepeatIcon, StarIcon } from './icons.tsx';
 import { isEsc, takeEsc } from './keys.ts';
+import { RemindButton, RemindSheet } from './RemindPicker.tsx';
 
 const bridge = window.jjakkungPanel;
 /** 쓰다 만 한 줄. 다른 곳을 눌러 패널이 닫혀도 다음에 열면 그대로 있다 */
@@ -164,6 +166,9 @@ export function TodoRow({
 }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(todo.title);
+  // 미리 알림 고르기 (8판). 마감일이 있을 때만 종이 보인다 (마감일이 없으면 알릴 때가 없다)
+  const [reminding, setReminding] = useState(false);
+  const sheetId = useId();
   const due = todo.due ? dueLabel(todo.due, today) : undefined;
   const repeatButton = (
     <button
@@ -190,7 +195,11 @@ export function TodoRow({
       className={`due ${due?.overdue ? 'overdue' : ''} ${todo.due ? '' : 'none'}`}
       title={t('panel.todo.dueDate')}
     >
-      {due?.text ?? t('panel.todo.due')}
+      {due
+        ? todo.dueMin === null
+          ? due.text
+          : `${due.text} ${timeLabel(todo.dueMin)}`
+        : t('panel.todo.due')}
       <input
         type="date"
         value={todo.due ?? ''}
@@ -200,82 +209,109 @@ export function TodoRow({
     </label>
   );
   return (
-    <li className="todo">
-      <button
-        type="button"
-        className="check"
-        aria-label={t('panel.todo.complete', { title: todo.title })}
-        onClick={onComplete}
-      >
-        <CheckIcon />
-      </button>
-      {editing ? (
-        <input
-          className="title-edit"
-          value={title}
-          aria-label={t('panel.todo.editTitle')}
-          // biome-ignore lint/a11y/noAutofocus: 고치기를 누른 바로 그 칸이라 커서가 가야 한다
-          autoFocus
-          onChange={(e) => setTitle(e.target.value)}
-          onBlur={() => {
-            setEditing(false);
-            if (title.trim() && title !== todo.title) bridge.update(todo.id, { title });
-            else setTitle(todo.title);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.nativeEvent.isComposing) (e.target as HTMLInputElement).blur();
-            if (isEsc(e)) {
-              takeEsc(e);
-              setTitle(todo.title);
-              setEditing(false);
-            }
-          }}
-        />
-      ) : (
+    <>
+      <li className="todo">
         <button
           type="button"
-          className="title"
-          title={compact ? undefined : t('panel.todo.clickToEdit')}
-          onClick={() => !compact && setEditing(true)}
+          className="check"
+          aria-label={t('panel.todo.complete', { title: todo.title })}
+          onClick={onComplete}
         >
-          {todo.title}
+          <CheckIcon />
         </button>
-      )}
-      {/* 줄 끝 단추. 마우스를 올려야 나오는 것(extra)은 제목 위에 겹쳐 띄워 제목 폭과 줄 높이가 바뀌지 않게 */}
-      <span className="tools">
-        {(!compact || !todo.due) && (
-          <span className="extra">
-            {!compact && !todo.repeat && repeatButton}
-            {!todo.due && dueChip}
-            {!compact && (
-              <button
-                type="button"
-                className="remove"
-                aria-label={t('panel.todo.remove', { title: todo.title })}
-                onClick={() => {
-                  bridge.remove(todo.id);
-                  onRemoved?.();
-                }}
-              >
-                ×
-              </button>
-            )}
-          </span>
-        )}
-        {!compact && todo.repeat && repeatButton}
-        {todo.due && dueChip}
-        {!compact && (
+        {editing ? (
+          <input
+            className="title-edit"
+            value={title}
+            aria-label={t('panel.todo.editTitle')}
+            // biome-ignore lint/a11y/noAutofocus: 고치기를 누른 바로 그 칸이라 커서가 가야 한다
+            autoFocus
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={() => {
+              setEditing(false);
+              if (title.trim() && title !== todo.title) bridge.update(todo.id, { title });
+              else setTitle(todo.title);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing) (e.target as HTMLInputElement).blur();
+              if (isEsc(e)) {
+                takeEsc(e);
+                setTitle(todo.title);
+                setEditing(false);
+              }
+            }}
+          />
+        ) : (
           <button
             type="button"
-            className={`star ${todo.important ? 'on' : ''}`}
-            aria-pressed={todo.important}
-            aria-label={t('panel.todo.important')}
-            onClick={() => bridge.update(todo.id, { important: !todo.important })}
+            className="title"
+            title={compact ? undefined : t('panel.todo.clickToEdit')}
+            onClick={() => !compact && setEditing(true)}
           >
-            <StarIcon />
+            {todo.title}
           </button>
         )}
-      </span>
-    </li>
+        {/* 줄 끝 단추. 마우스를 올려야 나오는 것(extra)은 제목 위에 겹쳐 띄워 제목 폭과 줄 높이가 바뀌지 않게 */}
+        <span className="tools">
+          {(!compact || !todo.due) && (
+            <span className="extra">
+              {!compact && !todo.repeat && repeatButton}
+              {!todo.due && dueChip}
+              {!compact && (
+                <button
+                  type="button"
+                  className="remove"
+                  aria-label={t('panel.todo.remove', { title: todo.title })}
+                  onClick={() => {
+                    bridge.remove(todo.id);
+                    onRemoved?.();
+                  }}
+                >
+                  ×
+                </button>
+              )}
+            </span>
+          )}
+          {!compact && todo.repeat && repeatButton}
+          {!compact && todo.due && (
+            <RemindButton
+              reminds={todo.reminds}
+              dateOnly={todo.dueMin === null}
+              open={reminding}
+              controls={sheetId}
+              onToggle={() => setReminding((v) => !v)}
+            />
+          )}
+          {todo.due && dueChip}
+          {!compact && (
+            <button
+              type="button"
+              className={`star ${todo.important ? 'on' : ''}`}
+              aria-pressed={todo.important}
+              aria-label={t('panel.todo.important')}
+              onClick={() => bridge.update(todo.id, { important: !todo.important })}
+            >
+              <StarIcon />
+            </button>
+          )}
+        </span>
+      </li>
+      {reminding && !compact && todo.due && (
+        <li className="remind-sheet-row">
+          <RemindSheet
+            id={sheetId}
+            reminds={todo.reminds}
+            dateOnly={todo.dueMin === null}
+            onChange={(reminds) => bridge.update(todo.id, { reminds })}
+            onClose={() => setReminding(false)}
+            dueTime={{
+              due: todo.due,
+              minute: todo.dueMin,
+              onChange: (dueMin) => bridge.update(todo.id, { dueMin }),
+            }}
+          />
+        </li>
+      )}
+    </>
   );
 }
