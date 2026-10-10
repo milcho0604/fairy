@@ -47,6 +47,14 @@ mac:
   identity: "-"
   # 강화 런타임은 공증(D4) 때 켠다. 임시 서명과 같이 켜면 라이브러리 검사에 걸려 안 열린다.
   hardenedRuntime: false
+  # 내 컴퓨터에서 그리기의 sd.cpp 엔진 (인텔 Mac, macOS 12~13). scripts/build-sdcpp.mjs 가 칩마다 만든 sd-cli 를
+  # 앱 안 Contents/Resources/sd/sd-cli 로 넣는다. ${arch} 는 electron-builder 이름(arm64, x64)이라 빌드 폴더도 그 이름.
+  # 빌드 전이면(npm run dist:mac 만 돌림) 빠지고, 앱은 그 엔진을 감춘다. 서명은 scripts/mac-sign.mjs 가 따로 한다
+  extraResources:
+    - from: resources-bin/sd/${arch}/
+      to: sd/
+      filter:
+        - sd-cli
   extendInfo:
     CFBundleDisplayName: 짝꿍
     # 펫 앱이라 Dock 에 안 뜬다 (코드에서 app.dock.hide 도 한다. 이건 켜질 때 잠깐 뜨는 것까지 막는다).

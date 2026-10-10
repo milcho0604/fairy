@@ -5,7 +5,7 @@ import { type FocusLength, isFocusLength } from './focus.ts';
 import { type LangPref, t } from './i18n/index.ts';
 import { cleanIcsUrl } from './ics.ts';
 import { type AgeStage, isAgeStage } from './illustrate.ts';
-import { type IllustEngine, isIllustEngine } from './local-draw.ts';
+import { type IllustEngine, illustEngineOf } from './local-draw.ts';
 import { cleanMemory } from './pet-memory.ts';
 import { GAITS, type Gait } from './pet3d/blueprint.ts';
 import { cleanWish } from './pet3d/prompt.ts';
@@ -450,7 +450,8 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     sounds: bool(r.sounds, base.sounds),
     boost: bool(r.boost, base.boost),
     routine: parseRoutine(r.routine, base.routine),
-    illustEngine: isIllustEngine(r.illustEngine) ? r.illustEngine : base.illustEngine,
+    // 옛 값 'mac' 은 local 로 (내 Mac에서 → 내 컴퓨터에서, 2026-10-10)
+    illustEngine: illustEngineOf(r.illustEngine) ?? base.illustEngine,
     ...bodiesOf(r, base),
     ...(typeof r.skipVersion === 'string' && /^\d+\.\d+\.\d+/.test(r.skipVersion)
       ? { skipVersion: r.skipVersion.slice(0, 32) }

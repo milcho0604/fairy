@@ -282,7 +282,7 @@ export interface SavedPetView extends PetLookView {
 export interface StoredModel {
   id: string;
   label: string;
-  /** draw: 내 Mac에서 그리기 (도구와 줄인 모델이 든 폴더 통째) */
+  /** draw: 내 컴퓨터에서 그리기 (엔진마다 도구와 모델이 든 폴더 통째) */
   kind: 'llm' | 'bg' | 'depth' | 'draw';
   bytes: number;
 }

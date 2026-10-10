@@ -237,13 +237,16 @@ test('부스트 모드: 옛 설정 파일엔 없어서 끔, 틀린 값은 지금
   assert.equal(applyPatch({ ...DEFAULT_SETTINGS, boost: true }, { boost: 'yes' }).boost, true);
 });
 
-test('AI 일러스트 그리는 곳: 옛 설정 파일엔 없어서 무료 서버, 틀린 값은 지금 값', () => {
+test('AI 일러스트 그리는 곳: 옛 설정 파일엔 없어서 무료 서버, 옛 mac 은 local, 틀린 값은 지금 값', () => {
   assert.equal(parseSettings({ petName: '밤' }).illustEngine, 'cloud');
-  assert.equal(parseSettings({ illustEngine: 'mac' }).illustEngine, 'mac');
-  assert.equal(applyPatch(DEFAULT_SETTINGS, { illustEngine: 'mac' }).illustEngine, 'mac');
+  assert.equal(parseSettings({ illustEngine: 'local' }).illustEngine, 'local');
+  // 내 Mac에서(옛 값 mac)를 고른 사람은 내 컴퓨터에서로 그대로 남는다
+  assert.equal(parseSettings({ illustEngine: 'mac' }).illustEngine, 'local');
+  assert.equal(applyPatch(DEFAULT_SETTINGS, { illustEngine: 'local' }).illustEngine, 'local');
+  assert.equal(applyPatch(DEFAULT_SETTINGS, { illustEngine: 'mac' }).illustEngine, 'local');
   assert.equal(
-    applyPatch({ ...DEFAULT_SETTINGS, illustEngine: 'mac' }, { illustEngine: 'gpu' }).illustEngine,
-    'mac',
+    applyPatch({ ...DEFAULT_SETTINGS, illustEngine: 'local' }, { illustEngine: 'gpu' }).illustEngine,
+    'local',
   );
   assert.equal(parseSettings({ illustEngine: 7 }).illustEngine, 'cloud');
 });

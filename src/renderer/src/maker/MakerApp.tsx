@@ -10,7 +10,12 @@ import {
   toGray,
 } from '../../../shared/illustrate.ts';
 import { DEPTH_URL, type MakerInfo, MODEL_URL, type PetLook } from '../../../shared/ipc.ts';
-import { type IllustEngine, LOCAL_DRAW_GB, SETUP_STAGES, setupStageOf } from '../../../shared/local-draw.ts';
+import {
+  type IllustEngine,
+  LOCAL_DRAW_GB,
+  setupStageOf,
+  setupStagesFor,
+} from '../../../shared/local-draw.ts';
 import { contentBox, defringe, keptRatio, stroke } from '../../../shared/mask.ts';
 import type { Blueprint } from '../../../shared/pet3d/blueprint.ts';
 import { cleanWish, WISH_MAX } from '../../../shared/pet3d/prompt.ts';
@@ -51,7 +56,7 @@ const store = browserStore;
 
 type Step = 'pick' | 'setup' | 'illust' | 'model' | 'working' | 'edit' | 'name' | 'saving' | 'done';
 
-/** 무료 서버가 오늘 더 못 그린다는 실패 (내 Mac에서 그리기를 권한다) */
+/** 무료 서버가 오늘 더 못 그린다는 실패 (내 컴퓨터에서 그리기를 권한다) */
 const CLOUD_STUCK = ['quota', 'refused', 'limit'];
 
 /** AI 일러스트 한 번: 고른 사진(원본 파일, 보낼 JPEG, 진행 판 사진), 받은 그림, 그린 나이, 그리는 중인지 */
@@ -130,12 +135,12 @@ export function MakerApp() {
   const autoRelief = useRef(false);
   const [tokenDraft, setTokenDraft] = useState('');
   const [tokenNote, setTokenNote] = useState('');
-  // 내 Mac에서 그리기 (2026-10-10): 고른 곳(설정에 남는다), 준비 시작한 때, 준비가 끝나면 이어서 그릴 사진, 돌아갈 화면
+  // 내 컴퓨터에서 그리기 (2026-10-10): 고른 곳(설정에 남는다), 준비 시작한 때, 준비가 끝나면 이어서 그릴 사진, 돌아갈 화면
   const [engine, setEngine] = useState<IllustEngine>('cloud');
   const [setupAt, setSetupAt] = useState(0);
   const pendingDraw = useRef<{ photo: string; age: AgeStage; wish: string }>(undefined);
   const setupBack = useRef<'pick' | 'illust'>('pick');
-  // 무료 서버가 오늘 횟수 끝으로 막혔는지 (그림 화면에 내 Mac에서 그리기 단추)
+  // 무료 서버가 오늘 횟수 끝으로 막혔는지 (그림 화면에 내 컴퓨터에서 그리기 단추)
   const [cloudStuck, setCloudStuck] = useState(false);
 
   useEffect(() => {
@@ -159,9 +164,19 @@ export function MakerApp() {
   const can3d = info?.target === 'main' && !animated;
   const isMain = info?.target === 'main';
   const canLocal = !!info?.localDraw.supported;
-  /** 실제로 쓸 곳: 이 Mac 이 안 되면 저장된 값이 mac 이어도 무료 서버 */
-  const eng: IllustEngine = canLocal && engine === 'mac' ? 'mac' : 'cloud';
+  /** 실제로 쓸 곳: 이 컴퓨터가 안 되면 저장된 값이 local 이어도 무료 서버 */
+  const eng: IllustEngine = canLocal && engine === 'local' ? 'local' : 'cloud';
   const localReady = !!info?.localDraw.ready;
+  const local = info?.localDraw;
+  /** 준비 안내: mflux 는 받는 양과 남는 양이 다르고(원본을 줄여 저장), sd.cpp 는 받은 그대로 둔다 */
+  const need = local?.need ?? LOCAL_DRAW_GB;
+  const needsText =
+    local?.engine === 'sdcpp'
+      ? t('maker.engine.needsOnce', { download: need.download, memory: need.memory })
+      : t('maker.engine.needs', { download: need.download, keep: need.keep, memory: need.memory });
+  /** 한 장 걸리는 시간 (엔진과 그래픽 칩마다), CPU 로 그리면 느리다는 말도 */
+  const timeText = local?.minutes ? t('maker.engine.time', local.minutes) : '';
+  const setupStages = setupStagesFor(local?.engine);
 
   const chooseEngine = (next: IllustEngine) => {
     setEngine(next);
@@ -176,7 +191,7 @@ export function MakerApp() {
       setError('');
       setNote('');
       setCloudStuck(false);
-      // 내 Mac 은 진짜 진행률(4단계 두 번)이 온다. 무료 서버는 지난번 걸린 시간으로 어림
+      // 내 컴퓨터는 진짜 진행률(4단계 두 번)이 온다. 무료 서버는 지난번 걸린 시간으로 어림
       setProgress(0);
       setIllustMs(loadExpected('illust', store()));
       // 앞 그림은 새 그림을 받을 때까지 둔다 (다시 그리다 쿼터에 걸려도 앞 그림을 고를 수 있게)
@@ -192,7 +207,7 @@ export function MakerApp() {
         setError(r.error);
         if (where === 'cloud' && CLOUD_STUCK.includes(r.kind)) setCloudStuck(true);
         // 준비가 깨졌으면(폴더를 지움 등) 다시 준비하기가 보이게
-        if (where === 'mac' && r.kind === 'notReady')
+        if (where === 'local' && r.kind === 'notReady')
           setInfo((v) => v && { ...v, localDraw: { ...v.localDraw, ready: false } });
         setIllust((v) => v && { ...v, busy: false });
         return;
@@ -211,7 +226,7 @@ export function MakerApp() {
   );
 
   /**
-   * 내 Mac에서 그리기 준비 (처음 한 번 16GB 쯤). 그만두면 돌아간다. 다 되면 기다리던 사진이 있으면 바로 그린다
+   * 내 컴퓨터에서 그리기 준비 (처음 한 번 mflux 16GB, sd.cpp 5.3GB 쯤). 그만두면 돌아간다. 다 되면 기다리던 사진이 있으면 바로 그린다
    */
   const runSetup = useCallback(
     async (back: 'pick' | 'illust') => {
@@ -235,7 +250,7 @@ export function MakerApp() {
       pendingDraw.current = undefined;
       if (p) {
         setStep('illust');
-        await drawIllust(p.photo, p.age, p.wish, 'mac');
+        await drawIllust(p.photo, p.age, p.wish, 'local');
         return;
       }
       setStep(back);
@@ -254,12 +269,12 @@ export function MakerApp() {
     setStep(setupBack.current);
   };
 
-  /** 이 사진을 이 Mac 에서 그린다. 준비가 안 됐으면 준비부터 하고 이어서 */
-  const drawOnMac = useCallback(
+  /** 이 사진을 이 컴퓨터에서 그린다. 준비가 안 됐으면 준비부터 하고 이어서 */
+  const drawLocal = useCallback(
     (photo: string, a: AgeStage, wishText: string, back: 'pick' | 'illust') => {
       if (localReady) {
         setStep('illust');
-        void drawIllust(photo, a, wishText, 'mac');
+        void drawIllust(photo, a, wishText, 'local');
         return;
       }
       pendingDraw.current = { photo, age: a, wish: wishText };
@@ -308,8 +323,8 @@ export function MakerApp() {
             at: 0,
             engine: eng,
           });
-          if (eng === 'mac') {
-            drawOnMac(jpeg, age, illustWish, 'pick');
+          if (eng === 'local') {
+            drawLocal(jpeg, age, illustWish, 'pick');
             return;
           }
           setStep('illust');
@@ -360,7 +375,7 @@ export function MakerApp() {
         setStep(backRef.current);
       }
     },
-    [info, how, age, illustWish, drawIllust, eng, localReady, drawOnMac],
+    [info, how, age, illustWish, drawIllust, eng, localReady, drawLocal],
   );
 
   // 그리기가 끝나면 (진행 화면이 사라져 포커스가 body 로 빠진다) 다음에 누를 단추로
@@ -714,10 +729,10 @@ export function MakerApp() {
                 </fieldset>
                 {how === 'illust' && (
                   <div className="wish illust-opts">
-                    {/* 이 Mac 이 되면 그리는 곳을 고른다: 무료 서버(하루 몇 번) 또는 이 Mac (횟수 제한 없음) */}
+                    {/* 이 컴퓨터가 되면 그리는 곳을 고른다: 무료 서버(하루 몇 번) 또는 이 컴퓨터 (횟수 제한 없음) */}
                     {canLocal && (
                       <fieldset className="segmented engine" aria-label={t('maker.engine.label')}>
-                        {(['cloud', 'mac'] as const).map((k) => (
+                        {(['cloud', 'local'] as const).map((k) => (
                           <button
                             key={k}
                             type="button"
@@ -731,23 +746,21 @@ export function MakerApp() {
                       </fieldset>
                     )}
                     <small className="hint">
-                      {t(eng === 'mac' ? 'maker.engine.macHint' : 'maker.illust.hint')}
+                      {t(eng === 'local' ? 'maker.engine.localHint' : 'maker.illust.hint')}
                     </small>
-                    {/* 사진을 고르기 전에 보이게: 무료 서버는 사진이 밖으로 나가고, 이 Mac 은 나가지 않는다 */}
-                    {eng === 'mac' ? (
-                      <p className="privacy">{t('maker.engine.macPrivacy')}</p>
+                    {eng === 'local' && timeText && <small className="hint">{timeText}</small>}
+                    {eng === 'local' && local?.tier === 'cpu' && (
+                      <small className="hint">{t('maker.engine.cpuSlow')}</small>
+                    )}
+                    {/* 사진을 고르기 전에 보이게: 무료 서버는 사진이 밖으로 나가고, 이 컴퓨터는 나가지 않는다 */}
+                    {eng === 'local' ? (
+                      <p className="privacy">{t('maker.engine.localPrivacy')}</p>
                     ) : (
                       <p className="privacy out">{t('maker.illust.privacy')}</p>
                     )}
-                    {eng === 'mac' && !localReady && (
+                    {eng === 'local' && !localReady && (
                       <div className="local-setup">
-                        <small className="hint">
-                          {t('maker.engine.needs', {
-                            download: LOCAL_DRAW_GB.download,
-                            keep: LOCAL_DRAW_GB.keep,
-                            memory: LOCAL_DRAW_GB.memory,
-                          })}
-                        </small>
+                        <small className="hint">{needsText}</small>
                         <small className="hint">{t('maker.engine.setupNote')}</small>
                         <button type="button" className="ghost" onClick={() => runSetup('pick')}>
                           {t('maker.engine.setup')}
@@ -827,9 +840,9 @@ export function MakerApp() {
               title={t('maker.engine.setupWorking')}
               startedAt={setupAt}
               ratio={progress}
-              totalMb={LOCAL_DRAW_GB.download * 1000}
-              stages={SETUP_STAGES.map((s, i) => {
-                const now = SETUP_STAGES.findIndex((x) => x.id === setupStageOf(progress));
+              totalMb={need.download * 1000}
+              stages={setupStages.map((s, i) => {
+                const now = setupStages.findIndex((x) => x.id === setupStageOf(progress, setupStages));
                 return {
                   label: t(`maker.engine.stage.${s.id}`),
                   state: i < now ? 'done' : i === now ? 'now' : 'next',
@@ -848,10 +861,10 @@ export function MakerApp() {
                 // 그리는 곳이 바뀌면 시간을 새로 센다
                 key={illust.engine}
                 task="illust"
-                title={t(illust.engine === 'mac' ? 'maker.illust.workingMac' : 'maker.illust.working')}
+                title={t(illust.engine === 'local' ? 'maker.illust.workingLocal' : 'maker.illust.working')}
                 startedAt={illust.at}
-                // 이 Mac 은 진짜 진행률(그리기, 털 다듬기 4단계씩)
-                ratio={illust.engine === 'mac' ? progress : undefined}
+                // 이 컴퓨터는 진짜 진행률(그리기, 털 다듬기 4단계씩)
+                ratio={illust.engine === 'local' ? progress : undefined}
                 expectedMs={illustMs}
                 image={illust.thumb}
                 onStop={stopIllust}
@@ -875,47 +888,34 @@ export function MakerApp() {
                 </div>
                 <AgePicker age={age} onAge={setAge} />
                 {illust.image && <p className="hint">{t('maker.illust.next')}</p>}
-                {/* 무료 서버가 오늘 막혔으면 이 Mac 에서 이어 그리기 (안 되는 컴퓨터는 보이지 않는다) */}
+                {/* 무료 서버가 오늘 막혔으면 이 컴퓨터에서 이어 그리기 (안 되는 컴퓨터는 보이지 않는다) */}
                 {cloudStuck && canLocal && illust.engine === 'cloud' && (
                   <div className="local-setup">
-                    <small className="hint">{t('maker.illust.tryMacHint')}</small>
-                    {!localReady && (
-                      <small className="hint">
-                        {t('maker.engine.needs', {
-                          download: LOCAL_DRAW_GB.download,
-                          keep: LOCAL_DRAW_GB.keep,
-                          memory: LOCAL_DRAW_GB.memory,
-                        })}
-                      </small>
-                    )}
-                    <small className="hint">{t('maker.engine.macPrivacy')}</small>
+                    <small className="hint">{t('maker.illust.tryLocalHint')}</small>
+                    {timeText && <small className="hint">{timeText}</small>}
+                    {!localReady && <small className="hint">{needsText}</small>}
+                    <small className="hint">{t('maker.engine.localPrivacy')}</small>
                     <button
                       type="button"
                       className="primary"
                       onClick={() => {
-                        chooseEngine('mac');
-                        drawOnMac(illust.photo, age, illustWish, 'illust');
+                        chooseEngine('local');
+                        drawLocal(illust.photo, age, illustWish, 'illust');
                       }}
                     >
-                      {t('maker.illust.tryMac')}
+                      {t('maker.illust.tryLocal')}
                     </button>
                   </div>
                 )}
-                {/* 이 Mac 준비가 안 됐거나 깨졌으면(notReady) 여기서 준비하기. 다 되면 이 사진을 바로 그린다 */}
-                {eng === 'mac' && !localReady && !(cloudStuck && illust.engine === 'cloud') && (
+                {/* 이 컴퓨터 준비가 안 됐거나 깨졌으면(notReady) 여기서 준비하기. 다 되면 이 사진을 바로 그린다 */}
+                {eng === 'local' && !localReady && !(cloudStuck && illust.engine === 'cloud') && (
                   <div className="local-setup">
-                    <small className="hint">
-                      {t('maker.engine.needs', {
-                        download: LOCAL_DRAW_GB.download,
-                        keep: LOCAL_DRAW_GB.keep,
-                        memory: LOCAL_DRAW_GB.memory,
-                      })}
-                    </small>
+                    <small className="hint">{needsText}</small>
                     <small className="hint">{t('maker.engine.setupNote')}</small>
                     <button
                       type="button"
                       className="primary"
-                      onClick={() => drawOnMac(illust.photo, age, illustWish, 'illust')}
+                      onClick={() => drawLocal(illust.photo, age, illustWish, 'illust')}
                     >
                       {t('maker.engine.setup')}
                     </button>
@@ -937,10 +937,10 @@ export function MakerApp() {
                     ref={againRef}
                     type="button"
                     // 준비하기가 보이면 그것이 주 버튼
-                    className={illust.image || (eng === 'mac' && !localReady) ? 'ghost' : 'primary'}
+                    className={illust.image || (eng === 'local' && !localReady) ? 'ghost' : 'primary'}
                     onClick={() =>
-                      eng === 'mac'
-                        ? drawOnMac(illust.photo, age, illustWish, 'illust')
+                      eng === 'local'
+                        ? drawLocal(illust.photo, age, illustWish, 'illust')
                         : drawIllust(illust.photo, age, illustWish, 'cloud')
                     }
                   >

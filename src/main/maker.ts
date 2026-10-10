@@ -22,7 +22,7 @@ import {
   MODEL_URL,
   type PetImages,
 } from '../shared/ipc.ts';
-import { isIllustEngine, LOCAL_DRAW_GB } from '../shared/local-draw.ts';
+import { illustEngineOf, LOCAL_DRAW_GB } from '../shared/local-draw.ts';
 import { type Blueprint, type Gait, parseBlueprint } from '../shared/pet3d/blueprint.ts';
 import {
   BLUEPRINT_SYSTEM,
@@ -45,7 +45,7 @@ import {
 } from './hf-illust.ts';
 import { hfToken } from './hf-token.ts';
 import { langArg } from './lang.ts';
-import { illustrateLocal, localDrawInfo, setupLocalDraw } from './local-draw.ts';
+import { illustrateLocal, localDrawInfo, localDrawSupport, setupLocalDraw } from './local-draw.ts';
 import { LocalDrawError, type LocalDrawErrorKind } from './local-draw-core.ts';
 import { library } from './pet-library.ts';
 import { readFileIn, writeFileAtomic } from './safe-file.ts';
@@ -314,7 +314,7 @@ export function createMaker(
   });
 
   // AI 일러스트 (2026-10-09): 사용자가 고를 때만 사진을 Hugging Face 무료 Space 로 보낸다. 사진, 요청문, 토큰은 기록에 남기지 않는다.
-  // 내 Mac에서(engine mac, 2026-10-10)는 사진이 이 Mac 밖으로 나가지 않는다 (local-draw.ts)
+  // 내 컴퓨터에서(engine local, 옛 값 mac, 2026-10-10)는 사진이 이 컴퓨터 밖으로 나가지 않는다 (local-draw.ts)
   ipcMain.handle(
     MAKER.illustrate,
     async (e, photoRaw: unknown, ageRaw: unknown, wishRaw?: unknown, engineRaw?: unknown) => {
@@ -330,7 +330,8 @@ export function createMaker(
       });
       if (!fromMaker(e) || target !== 'main') return failed('reopen');
       if (!isAgeStage(ageRaw)) return failed('format');
-      if (engineRaw != null && !isIllustEngine(engineRaw)) return failed('format');
+      const engine = engineRaw == null ? 'cloud' : illustEngineOf(engineRaw);
+      if (!engine) return failed('format');
       if (wishRaw != null && (typeof wishRaw !== 'string' || wishRaw.length > ILLUST_WISH_MAX * 4))
         return failed('format');
       const m = typeof photoRaw === 'string' ? /^data:image\/(jpeg|png);base64,/.exec(photoRaw) : null;
@@ -341,7 +342,7 @@ export function createMaker(
       drawing?.abort();
       const abort = new AbortController();
       drawing = abort;
-      if (engineRaw === 'mac') {
+      if (engine === 'local') {
         try {
           const r = await illustrateLocal(photo, kind, illustratePrompt(ageRaw, wishRaw), {
             signal: abort.signal,
@@ -411,7 +412,7 @@ export function createMaker(
     },
   );
 
-  // 내 Mac에서 그리기 준비 (처음 한 번 16GB 쯤 받기). 그만두기, 창 닫기로 멈추고 다음에 이어서 한다
+  // 내 컴퓨터에서 그리기 준비 (처음 한 번 mflux 16GB, sd.cpp 5.3GB 쯤 받기). 그만두기, 창 닫기로 멈추고 다음에 이어서 한다
   ipcMain.handle(MAKER.setupLocalDraw, async (e) => {
     if (!fromMaker(e)) return { ok: false, kind: 'reopen', error: t('main.maker.reopen') };
     const ac = new AbortController();
@@ -437,7 +438,8 @@ export function createMaker(
   });
 
   ipcMain.handle(MAKER.setIllustEngine, (e, raw: unknown) => {
-    if (fromMaker(e) && isIllustEngine(raw)) settings.set({ illustEngine: raw });
+    const engine = illustEngineOf(raw);
+    if (fromMaker(e) && engine) settings.set({ illustEngine: engine });
     return settings.get().illustEngine;
   });
 
@@ -704,18 +706,23 @@ function illustText(kind: IllustErrorKind): string {
   }
 }
 
-/** 내 Mac에서 그리기 실패 종류마다 화면 글. 준비와 그리기에서 멈춤 글만 다르다. gb 는 이번 준비에 필요한 빈 공간 */
+/** 내 컴퓨터에서 그리기 실패 종류마다 화면 글. 준비와 그리기에서 멈춤 글만 다르다. gb 는 이번 준비에 필요한 빈 공간 */
 function localDrawText(kind: LocalDrawErrorKind, phase: 'setup' | 'draw', gb?: number): string {
   switch (kind) {
-    case 'unsupported':
-      return t('main.localDraw.unsupported');
+    case 'unsupported': {
+      // 로제타로 도는 인텔용 앱이면 Apple 칩용을 깔면 된다
+      const pick = localDrawSupport();
+      return t(
+        !pick.ok && pick.reason === 'rosetta' ? 'main.localDraw.rosetta' : 'main.localDraw.unsupported',
+      );
+    }
     case 'notReady':
       return t('main.localDraw.notReady');
     case 'busy':
       return t('main.localDraw.busy');
     case 'disk':
       return phase === 'setup'
-        ? t('main.localDraw.diskSetup', { gb: gb ?? LOCAL_DRAW_GB.free })
+        ? t('main.localDraw.diskSetup', { gb: gb ?? localDrawInfo().need?.free ?? LOCAL_DRAW_GB.free })
         : t('main.localDraw.disk');
     case 'offline':
       return t('main.localDraw.offline');

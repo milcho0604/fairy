@@ -43,6 +43,17 @@ jobs:
       # 무료 AI 엔진(node-llama-cpp)도 칩마다 다른 패키지라 인텔 것을 더 받는다 (없으면 인텔 맥에서 무료 AI 만 안 된다)
       - run: npm install --no-save --force @koromix/koffi-darwin-x64@3.3.2 @node-llama-cpp/mac-x64@3.22.1
         if: runner.os == 'macOS'
+      # 내 컴퓨터에서 그리기의 sd.cpp 엔진: 인텔 Mac, macOS 12~13 용 sd-cli 를 칩마다 빌드해 앱에 넣는다
+      # (공식 맥 묶음은 macOS 26 용이라 직접, scripts/build-sdcpp.mjs). 같은 커밋이면 캐시에서 바로
+      - uses: actions/cache@v5
+        if: runner.os == 'macOS'
+        with:
+          path: |
+            .cache/sdcpp
+            resources-bin/sd
+          key: sdcpp-${{ runner.os }}-${{ hashFiles('scripts/build-sdcpp.mjs') }}
+      - run: node scripts/build-sdcpp.mjs --arch all
+        if: runner.os == 'macOS'
       - run: npm run ${{ matrix.script }}
         # 맥 고정 서명 인증서 (scripts/mac-sign.mjs). 없으면 맥 빌드가 멈춘다. 윈도우는 안 쓴다
         env:

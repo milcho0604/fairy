@@ -51,10 +51,10 @@ export const KLEIN: IllustSpace = {
   },
 };
 
-/** klein 결과 크기: 비율을 지키며 긴 변 1024 안, 16 의 배수, 짧은 변 256 이상 */
-export function kleinSize(w: number, h: number): { w: number; h: number } {
-  const k = 1024 / Math.max(w, h, 1);
-  const fit = (v: number) => Math.max(256, Math.min(1024, Math.round((v * k) / 16) * 16));
+/** klein 결과 크기: 비율을 지키며 긴 변 long(기본 1024) 안, 16 의 배수, 짧은 변 256 이상. CPU 로 그릴 때는 768 */
+export function kleinSize(w: number, h: number, long = 1024): { w: number; h: number } {
+  const k = long / Math.max(w, h, 1);
+  const fit = (v: number) => Math.max(256, Math.min(long, Math.round((v * k) / 16) * 16));
   return { w: fit(w), h: fit(h) };
 }
 

@@ -88,9 +88,11 @@ export const ko = {
   'main.illust.bad': '그림 서버가 새 그림을 주지 않았어. 다시 그려 보거나 사진 그대로 해 줘.',
   'main.illust.down': '무료 그림 서버가 지금 바쁘거나 쉬는 중이야. 조금 있다가 다시 해 줘.',
   'main.illust.tokenShape': '토큰 모양이 이상해. hf_로 시작하는 토큰을 붙여 넣어 줘.',
-  // 내 Mac에서 그리기 (2026-10-10)
+  // 내 컴퓨터에서 그리기 (2026-10-10)
   'main.localDraw.unsupported':
-    '이 Mac에서는 그릴 수 없어. Apple 칩(M1 이상), macOS 14 이상, 메모리 8GB 이상이 필요해.',
+    '이 컴퓨터에서는 그릴 수 없어. 메모리 8GB 이상에 64비트 Windows나 macOS 12 이상이 필요해.',
+  'main.localDraw.rosetta':
+    '이 Mac은 Apple 칩인데 인텔용 짝꿍이 깔려 있어. Apple 칩용 짝꿍을 받아 깔면 그릴 수 있어.',
   'main.localDraw.notReady': '그림 도구가 아직 준비되지 않았거나 망가졌어. 준비하기를 다시 눌러 줘.',
   'main.localDraw.busy': '이미 그리거나 준비하는 중이야. 끝나면 다시 해 줘.',
   'main.localDraw.diskSetup': (v: { gb: number }) =>
@@ -207,7 +209,9 @@ export const en: Translation<typeof ko> = {
   'main.illust.down': 'The free drawing server is busy or resting right now. Try again in a bit.',
   'main.illust.tokenShape': "That doesn't look like a token. Paste one that starts with hf_.",
   'main.localDraw.unsupported':
-    "This Mac can't draw locally. It needs an Apple chip (M1 or later), macOS 14 or later and 8 GB of memory or more.",
+    "This computer can't draw locally. It needs 8 GB of memory or more and 64-bit Windows or macOS 12 or later.",
+  'main.localDraw.rosetta':
+    'This Mac has an Apple chip but the Intel version of Jjakkung is installed. Install the Apple chip version to draw.',
   'main.localDraw.notReady': "The drawing tools aren't ready or are broken. Press Set up again.",
   'main.localDraw.busy': "I'm already drawing or setting up. Try again when it's done.",
   'main.localDraw.diskSetup': (v) =>

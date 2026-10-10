@@ -11,6 +11,7 @@ import { BG_MODEL } from './bg-model.ts';
 import { DEPTH_MODEL } from './depth-model.ts';
 import { forgetVerified, isReceiving } from './download.ts';
 import { localDrawBytes, removeLocalDraw } from './local-draw.ts';
+import { removeSdDraw, sdDrawBytes } from './sdcpp.ts';
 
 const modelsDir = () => join(app.getPath('userData'), 'models');
 
@@ -46,8 +47,10 @@ const sizeOf = (path: string) => {
   }
 };
 
-/** 내 Mac에서 그리기 (uv, 파이썬, mflux, 줄인 모델이 든 local-draw/ 폴더 통째) */
+/** 내 컴퓨터에서 그리기 mflux (uv, 파이썬, mflux, 줄인 모델이 든 local-draw/ 폴더 통째) */
 const LOCAL_DRAW_ID = 'localDraw';
+/** 내 컴퓨터에서 그리기 sd.cpp (sd-cli 와 모델 셋이 든 local-draw-sd/ 폴더 통째) */
+const LOCAL_DRAW_SD_ID = 'localDrawSd';
 
 /** 지금 디스크에 있는 모델 (받다 만 .part 도 같이 센다) */
 export function storedModels(catalog: Catalog): StoredModel[] {
@@ -60,6 +63,15 @@ export function storedModels(catalog: Catalog): StoredModel[] {
   const drawBytes = localDrawBytes();
   if (drawBytes > 0)
     out.push({ id: LOCAL_DRAW_ID, label: t('settings.storage.localDraw'), kind: 'draw', bytes: drawBytes });
+  // macOS 를 14 로 올린 Apple 칩 Mac 은 둘 다 있을 수 있어 따로 보인다
+  const sdBytes = sdDrawBytes();
+  if (sdBytes > 0)
+    out.push({
+      id: LOCAL_DRAW_SD_ID,
+      label: t('settings.storage.localDrawSd'),
+      kind: 'draw',
+      bytes: sdBytes,
+    });
   // 목록에서 빠진 옛 무료 AI 모델 파일도 지울 수 있게
   const llmDir = join(modelsDir(), 'llm');
   if (existsSync(llmDir)) {
@@ -83,7 +95,7 @@ export function storedModels(catalog: Catalog): StoredModel[] {
 /**
  * 모델 하나를 지운다. 받는 중이거나 무료 AI 가 답하는 중이면 지우지 않는다(false).
  * 무료 AI 는 먼저 일꾼을 끝낸다 (파일을 연 채라서, 윈도우는 열린 파일을 못 지운다).
- * 내 Mac에서 그리기는 준비나 그리기가 돌고 있어도 먼저 멈추고 지운다 (몇 GB 를 쥔 채 기다리게 하지 않는다)
+ * 내 컴퓨터에서 그리기는 준비나 그리기가 돌고 있어도 먼저 멈추고 지운다 (몇 GB 를 쥔 채 기다리게 하지 않는다)
  */
 export async function removeModel(
   catalog: Catalog,
@@ -91,6 +103,7 @@ export async function removeModel(
   log?: (tag: string, ...rest: unknown[]) => void,
 ): Promise<boolean> {
   if (id === LOCAL_DRAW_ID) return removeLocalDraw(log);
+  if (id === LOCAL_DRAW_SD_ID) return removeSdDraw(log);
   let path: string;
   let llm: boolean;
   if (id.startsWith('file:')) {

@@ -123,7 +123,7 @@ ready.then(() => {
   confineTestDisplay();
   // 펫 앱은 Dock 아이콘 없이 뜬다. 끝내기는 펫 우클릭 메뉴나 메뉴 막대 아이콘에서 한다.
   if (process.platform === 'darwin') app.dock?.hide();
-  // 내 Mac에서 그리기: 앞서 갑자기 꺼져 남은 파이썬, 임시 그림, 지우다 만 폴더를 뒤에서 치운다 (기다리지 않는다)
+  // 내 컴퓨터에서 그리기: 앞서 갑자기 꺼져 남은 파이썬, sd-cli, 임시 그림, 지우다 만 폴더를 뒤에서 치운다 (기다리지 않는다)
   sweepLocalDraw(log);
   // 펫 이름은 설정에서 바꿀 수 있어 쓰는 곳마다 지금 값을 읽는다.
   const petName = () => settings.get().petName;
@@ -970,7 +970,7 @@ ready.then(() => {
   }, log);
   app.on('will-quit', () => {
     stopLocal();
-    // 내 Mac에서 그리기(파이썬)를 남겨 두지 않는다
+    // 내 컴퓨터에서 그리기(파이썬, sd-cli)를 남겨 두지 않는다
     stopLocalDrawNow();
     // 답을 기다리던 AI CLI 를 프로세스 묶음째 끝낸다 (생각만 하는 중이면 끄고 나서도 남았다)
     stopAllAi();
