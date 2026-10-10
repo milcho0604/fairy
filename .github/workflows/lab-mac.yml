@@ -3,13 +3,13 @@ name: lab-mac
 on:
   push:
     branches: [lab/illustrate]
-    paths: ['.github/workflows/lab-mac.yml', 'lab/mac-prompt.txt']
+    paths: ['.github/workflows/lab-mac.yml', 'lab/mac-prompt.txt', 'lab/mac_cpu.py']
 permissions:
   contents: write
 jobs:
   run:
     runs-on: macos-14
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - name: 기계 정보
@@ -23,31 +23,21 @@ jobs:
           /usr/bin/time -p uv tool install --python 3.12 mflux 2>&1 | tail -5 | tee lab/out-mac/install.txt
           ls ~/.local/bin | grep mflux | tee -a lab/out-mac/install.txt
           du -sh ~/.local/share/uv 2>/dev/null | tee -a lab/out-mac/install.txt
-      - name: 작은 글그림 (가상 GPU 가 검은 그림을 내는지)
+      - name: CPU 로 그리기 (사진 → 그림)
         continue-on-error: true
+        timeout-minutes: 40
         run: |
-          export PATH="$HOME/.local/bin:$PATH"
-          /usr/bin/time -l mflux-generate-flux2 --model flux2-klein-4b --quantize 8 --prompt "a cute fluffy white cat, studio photo" \
-            --steps 4 --width 256 --height 256 --seed 1 --output lab/out-mac/t2i-q8.png > lab/out-mac/t2i.log 2>&1; tail -5 lab/out-mac/t2i.log
-      - name: 원본 4비트, 낮은 메모리, 608x1024
+          PY="$HOME/.local/share/uv/tools/mflux/bin/python"
+          /usr/bin/time -l "$PY" lab/mac_cpu.py lab/in_cat.png lab/out-mac/cpu-cat.png lab/mac-prompt.txt > lab/out-mac/cpu1.log 2>&1; tail -8 lab/out-mac/cpu1.log
+      - name: CPU 로 털 다듬기 (Kontext 그림 → 털)
         continue-on-error: true
+        timeout-minutes: 40
         run: |
-          export PATH="$HOME/.local/bin:$PATH"
-          P="$(cat lab/mac-prompt.txt)"
-          /usr/bin/time -l mflux-generate-flux2-edit --model flux2-klein-4b --quantize 4 --low-ram \
-            --image-paths lab/in_cat.png --prompt "$P" --steps 4 --guidance 1.0 --width 608 --height 1024 --seed 7 \
-            --output lab/out-mac/cat-q4.png > lab/out-mac/q4.log 2>&1; tail -25 lab/out-mac/q4.log
-      - name: 원본 8비트, 낮은 메모리, 608x1024
-        continue-on-error: true
-        run: |
-          export PATH="$HOME/.local/bin:$PATH"
-          P="$(cat lab/mac-prompt.txt)"
-          /usr/bin/time -l mflux-generate-flux2-edit --model flux2-klein-4b --quantize 8 --low-ram \
-            --image-paths lab/in_poodle.png --prompt "$P" --steps 4 --guidance 1.0 --width 608 --height 1024 --seed 7 \
-            --output lab/out-mac/poodle-q8.png > lab/out-mac/q8.log 2>&1; tail -25 lab/out-mac/q8.log
+          PY="$HOME/.local/share/uv/tools/mflux/bin/python"
+          /usr/bin/time -l "$PY" lab/mac_cpu.py lab/out-fur3/v0/cat-adult.webp lab/out-mac/cpu-fur.png lab/fur-prompt.txt > lab/out-mac/cpu2.log 2>&1; tail -8 lab/out-mac/cpu2.log
       - name: 결과 올리기
         if: always()
         run: |
           git config user.name "jjakkung-lab"; git config user.email "lab@users.noreply.github.com"
-          rm -f lab/out-mac/cat-pre4.png lab/out-mac/poodle-q4.png; git add -A -f lab/out-mac; git commit -qm "lab: 맥 로컬 그리기" || exit 0
+          rm -f lab/out-mac/cat-q4.png; git add -A -f lab/out-mac; git commit -qm "lab: 맥 로컬 그리기" || exit 0
           for i in 1 2 3 4 5; do git pull --rebase -q origin lab/illustrate && git push -q origin HEAD:lab/illustrate && exit 0; sleep $((i*3)); done
