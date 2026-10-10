@@ -295,6 +295,7 @@ ready
       sendFeedback: () => settingsWindow.open('stats'),
       quickAdd: () => panel.openQuick(),
       openTodos: () => panel.openTab('todo'),
+      togglePanel: () => panel.togglePanel(),
       reloadPet: () => {
         pet.reload();
         friends.reloadAll();
@@ -815,13 +816,15 @@ ready
       for (const acc of registered) globalShortcut.unregister(acc);
       registered = [];
       const taken: string[] = [];
-      const { hide, quickAdd, chat: chatKey, look: lookKey } = settings.get().shortcuts;
+      const { hide, quickAdd, chat: chatKey, look: lookKey, panel: panelKey } = settings.get().shortcuts;
       for (const [acc, run, name] of [
         [hide, toggleHidden, t('pet.shortcut.hide')],
         [quickAdd, () => panel.openQuick(), t('pet.shortcut.quickAdd')],
         // 펫 메뉴의 "대화", "같이 보기"와 같다
         [chatKey, () => chat.open(pet.bounds()), t('pet.shortcut.chat')],
         [lookKey, () => void look.start(), t('pet.shortcut.look')],
+        // 펫을 누른 것과 같다 (열려 있으면 닫는다). 펫을 찾아 누르지 않아도 패널을 연다
+        [panelKey, () => panel.togglePanel(), t('pet.shortcut.panel')],
       ] as const) {
         // 비운 단축키(새 기본 키가 사용자 키와 겹쳐 비운 것)는 등록하지 않는다
         if (!acc) continue;
@@ -914,7 +917,7 @@ ready
       },
     });
     settings.onChange((next, prev) => {
-      // 단축키 넷을 다 본다 (대화, 같이 보기 키를 바꿔도 다시 켜야 반영되던 문제, 리뷰 HIGH)
+      // 단축키를 다 본다 (대화, 같이 보기 키를 바꿔도 다시 켜야 반영되던 문제, 리뷰 HIGH)
       if (shortcutsChanged(next.shortcuts, prev.shortcuts)) {
         const taken = applyShortcuts();
         if (taken.length > 0)

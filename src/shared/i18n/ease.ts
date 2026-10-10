@@ -1,6 +1,6 @@
 import type { Translation } from './types.ts';
 
-// 사용자 편의 (2026-10-10 점검): 설정 찾기, 단축키 끄기, 패널 키보드, 대화 첫 질문 예시, 첫 안내 키
+// 사용자 편의 (2026-10-10 점검): 설정 찾기, 단축키 끄기, 패널 키보드, 대화 첫 질문 예시, 첫 안내 키, 패널 여는 단축키
 export const ko = {
   // 단축키 끄기, 패널 안 키 알려 주기
   'settings.shortcut.off': '끄기',
@@ -30,6 +30,12 @@ export const ko = {
   'onboarding.tips.settingsDesc': (v: { mac: boolean }) =>
     `${v.mac ? '메뉴 막대' : '알림 영역'} 아이콘이나 우클릭 메뉴에서 열어. 설정 창 맨 위 찾기 칸으로 바로 찾을 수 있어.`,
   'onboarding.keys': '← → 키로도 넘길 수 있어',
+
+  // 패널 여는 단축키 (펫을 찾아 누르지 않아도)
+  'settings.shortcut.panel': '패널 열기, 닫기',
+  'pet.shortcut.panel': '패널 열기',
+  'tray.panel': '패널 열기',
+  'onboarding.tips.panelDesc': '어디서든 패널(오늘, 할 일, 메모) 열고 닫기',
 };
 
 export const en: Translation<typeof ko> = {
@@ -56,4 +62,9 @@ export const en: Translation<typeof ko> = {
   'onboarding.tips.settingsDesc': (v: { mac: boolean }) =>
     `Open from the ${v.mac ? 'menu bar' : 'tray'} icon or the right-click menu. The search box at the top of Settings finds any setting.`,
   'onboarding.keys': 'You can also use the ← → keys',
+
+  'settings.shortcut.panel': 'Open or close the panel',
+  'pet.shortcut.panel': 'Open panel',
+  'tray.panel': 'Open panel',
+  'onboarding.tips.panelDesc': 'Open or close the panel (today, to-dos, notes) from anywhere',
 };

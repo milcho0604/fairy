@@ -502,6 +502,37 @@ test('단축키 옮기기: 새 기본 키가 사용자 키와 겹치면 새 쪽�
   assert.deepEqual(applyPatch(now, { shortcuts: { hide: now.shortcuts.quickAdd } }).shortcuts, now.shortcuts);
 });
 
+test('패널 단축키 옮기기: 예전 파일에는 없어 기본 키를 주고, 사용자 키와 겹치면 패널 쪽만 비운다', () => {
+  const T = 'CommandOrControl+Alt+Shift+T';
+  // 패널 키가 생기기 전 파일 (hide, quickAdd, chat, look 만)
+  const before = {
+    hide: 'CommandOrControl+Alt+Shift+H',
+    quickAdd: 'CommandOrControl+Alt+Shift+N',
+    chat: 'CommandOrControl+Alt+Shift+J',
+    look: 'CommandOrControl+Alt+Shift+L',
+  };
+  assert.equal(parseSettings({ shortcuts: before }).shortcuts.panel, T);
+  // 사용자가 같이 보기를 T 로 바꿔 두었으면 같이 보기는 그대로, 패널은 비운다 (설정에 "없음")
+  const taken = parseSettings({ shortcuts: { ...before, look: T } });
+  assert.equal(taken.shortcuts.look, T);
+  assert.equal(taken.shortcuts.panel, '');
+  // 숨기기(처음부터 있던 키)를 T 로 바꿔 두어도 마찬가지
+  assert.equal(parseSettings({ shortcuts: { ...before, hide: T } }).shortcuts.panel, '');
+  // 끈 패널 키는 저장하고 다시 읽어도 꺼져 있다
+  const off = parseSettings({ shortcuts: { ...before, panel: '' } });
+  assert.equal(off.shortcuts.panel, '');
+  assert.equal(parseSettings(JSON.parse(JSON.stringify(off))).shortcuts.panel, '');
+  // 비운 패널 키에 새 키를 넣을 수 있고, 다른 키와 같으면 받지 않는다
+  assert.equal(
+    applyPatch(taken, { shortcuts: { ...taken.shortcuts, panel: 'CommandOrControl+Alt+Shift+P' } }).shortcuts
+      .panel,
+    'CommandOrControl+Alt+Shift+P',
+  );
+  assert.equal(applyPatch(taken, { shortcuts: { ...taken.shortcuts, panel: T } }).shortcuts.panel, '');
+  // 새로 깐 사람은 기본 키 그대로
+  assert.equal(DEFAULT_SETTINGS.shortcuts.panel, T);
+});
+
 test('예전 기본 이름(냥이, 멍멍이)은 손대지 않았으면 밀크, 초코로. 지은 이름과 사진 펫은 그대로', () => {
   const cat = { ...DEFAULT_SETTINGS, petKind: 'cat' as const, petName: '냥이' };
   assert.equal(renameOldDefault(cat).petName, '밀크');

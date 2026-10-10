@@ -652,7 +652,7 @@ const HOST_MAC: boolean | undefined =
     : undefined;
 
 /** 나중 버전에 생긴 단축키. 새로 더하면 여기에도 적는다 (예전 설정 파일에는 이 id 가 없다) */
-const LATER_SHORTCUTS: readonly ShortcutId[] = ['chat', 'look'];
+const LATER_SHORTCUTS: readonly ShortcutId[] = ['chat', 'look', 'panel'];
 
 function shortcutsOf(v: unknown, current: Record<ShortcutId, string>): Record<ShortcutId, string> {
   const r = (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>;

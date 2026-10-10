@@ -1,7 +1,7 @@
 // 단축키 바꾸기 (v2). 설정 창에서 키를 눌러 기록하면 Electron 단축키 글자(Accelerator)로 바꾼다.
 import { t } from './i18n/index.ts';
 
-export type ShortcutId = 'hide' | 'quickAdd' | 'chat' | 'look';
+export type ShortcutId = 'hide' | 'quickAdd' | 'chat' | 'look' | 'panel';
 
 /** 모두 Cmd/Ctrl+Option/Alt+Shift 에 글자 하나 (시스템, 편집 조합과 겹치지 않는 자리) */
 export const SHORTCUT_DEFAULTS: Record<ShortcutId, string> = {
@@ -9,6 +9,8 @@ export const SHORTCUT_DEFAULTS: Record<ShortcutId, string> = {
   quickAdd: 'CommandOrControl+Alt+Shift+N',
   chat: 'CommandOrControl+Alt+Shift+J',
   look: 'CommandOrControl+Alt+Shift+L',
+  /** 패널 열고 닫기 (펫 누르기와 같다). T 는 오늘(Today) */
+  panel: 'CommandOrControl+Alt+Shift+T',
 };
 
 /** 화면에 늘어놓는 순서 (설정 단축키 칸) */
@@ -36,7 +38,7 @@ export function shortcutClash(keys: Record<ShortcutId, string>): [ShortcutId, Sh
   return undefined;
 }
 
-/** 단축키 넷 중 하나라도 바뀌었는지 (설정이 바뀔 때 다시 등록할지) */
+/** 단축키 중 하나라도 바뀌었는지 (설정이 바뀔 때 다시 등록할지) */
 export function shortcutsChanged(a: Record<ShortcutId, string>, b: Record<ShortcutId, string>): boolean {
   return (Object.keys(SHORTCUT_DEFAULTS) as ShortcutId[]).some((id) => a[id] !== b[id]);
 }
@@ -54,6 +56,9 @@ export const SHORTCUT_LABEL: Readonly<Record<ShortcutId, string>> = {
   },
   get look() {
     return t('settings.shortcut.look');
+  },
+  get panel() {
+    return t('settings.shortcut.panel');
   },
 };
 

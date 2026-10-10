@@ -6,6 +6,8 @@ import {
   type KeyPress,
   reservedUse,
   SHORTCUT_DEFAULTS,
+  SHORTCUT_IDS,
+  SHORTCUT_LABEL,
   shortcutClash,
   shortcutProblem,
   shortcutsChanged,
@@ -80,7 +82,7 @@ test('단축키 겹침: 같은 키 조합(대소문자 무시)이면 두 이름�
 test('대화, 같이 보기 기본 단축키: Cmd/Ctrl+Option/Alt+Shift+J, L. 서로, 다른 기본과 겹치지 않는다', () => {
   assert.equal(SHORTCUT_DEFAULTS.chat, 'CommandOrControl+Alt+Shift+J');
   assert.deepEqual(acceleratorLabel(SHORTCUT_DEFAULTS.look, true), ['Cmd', 'Option', 'Shift', 'L']);
-  assert.equal(new Set(Object.values(SHORTCUT_DEFAULTS).map((v) => v.toLowerCase())).size, 4);
+  assert.equal(new Set(Object.values(SHORTCUT_DEFAULTS).map((v) => v.toLowerCase())).size, 5);
   for (const mac of [true, false])
     for (const acc of [SHORTCUT_DEFAULTS.chat, SHORTCUT_DEFAULTS.look]) {
       assert.equal(reservedUse(acc, mac), undefined, acc);
@@ -251,4 +253,22 @@ test('shortcutsChanged: 대화, 같이 보기 키가 바뀌어도 다시 등록�
   assert.equal(shortcutsChanged(d, { ...d, chat: 'CommandOrControl+Alt+Shift+O' }), true);
   assert.equal(shortcutsChanged(d, { ...d, look: '' }), true);
   assert.equal(shortcutsChanged(d, { ...d, hide: 'CommandOrControl+Alt+Shift+K' }), true);
+  assert.equal(shortcutsChanged(d, { ...d, panel: '' }), true);
+});
+
+test('패널 단축키: 기본 Cmd/Ctrl+Option/Alt+Shift+T. 시스템 조합이 아니고 다른 기본과 겹치지 않는다', () => {
+  const d = SHORTCUT_DEFAULTS;
+  assert.equal(d.panel, 'CommandOrControl+Alt+Shift+T');
+  assert.deepEqual(acceleratorLabel(d.panel, true), ['Cmd', 'Option', 'Shift', 'T']);
+  assert.deepEqual(acceleratorLabel(d.panel, false), ['Ctrl', 'Alt', 'Shift', 'T']);
+  assert.equal(isAccelerator(d.panel), true);
+  for (const mac of [true, false]) {
+    assert.equal(reservedUse(d.panel, mac), undefined);
+    assert.equal(shortcutProblem(d.panel, mac), undefined);
+  }
+  for (const id of ['hide', 'quickAdd', 'chat', 'look'] as const) assert.notEqual(d[id], d.panel);
+  // 다른 단축키를 패널 키로 바꾸면 겹친다
+  assert.deepEqual(shortcutClash({ ...d, chat: d.panel }), ['chat', 'panel']);
+  assert.equal(SHORTCUT_LABEL.panel, '패널 열기, 닫기');
+  assert.equal(SHORTCUT_IDS.at(-1), 'panel');
 });

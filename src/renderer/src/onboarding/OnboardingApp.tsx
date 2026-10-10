@@ -276,6 +276,12 @@ export function OnboardingApp() {
                   <dd>{t('onboarding.tips.chatDesc')}</dd>
                 </>
               )}
+              {s.shortcuts.panel && (
+                <>
+                  <dt>{keys(s.shortcuts.panel)}</dt>
+                  <dd>{t('onboarding.tips.panelDesc')}</dd>
+                </>
+              )}
               {s.shortcuts.hide && (
                 <>
                   <dt>{keys(s.shortcuts.hide)}</dt>
