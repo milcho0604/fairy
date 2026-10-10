@@ -1,0 +1,12 @@
+[
+ {
+  "job": "k2-cat-adult",
+  "ok": true,
+  "result": "('/tmp/gradio/31f1f8acb672d04aea11814d8ee7b7486bf86a675f0d29b92ffd41eedad0cfb6/image.webp', 1258716104)"
+ },
+ {
+  "job": "k2-cat-teen",
+  "ok": true,
+  "result": "('/tmp/gradio/eebaceba30238a0534f889d7cd0e5a12bdc453ec778738a71a1fdb6901b1169b/image.webp', 1073169627)"
+ }
+]
