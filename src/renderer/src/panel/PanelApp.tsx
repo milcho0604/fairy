@@ -6,8 +6,8 @@ import type { Todo } from '../../../shared/todo-store.ts';
 import { PetFace } from '../PetFace.tsx';
 import { EventTab } from './EventTab.tsx';
 import { addedText, timeOf, whenLabel } from './format.ts';
-import { CoinIcon } from './icons.tsx';
-import { escClosesWindow } from './keys.ts';
+import { CoinIcon, GearIcon } from './icons.tsx';
+import { escClosesWindow, tabByKey, undoByKey } from './keys.ts';
 import { NoteTab } from './NoteTab.tsx';
 import { ShopTab } from './ShopTab.tsx';
 import { TodayTab } from './TodayTab.tsx';
@@ -27,6 +27,9 @@ const TABS: { id: PanelTab; label: I18nKey }[] = [
   { id: 'shop', label: 'panel.tab.shop' },
 ];
 const TAB_KEY = 'jj.panel.tab';
+const MAC = navigator.userAgent.includes('Mac');
+/** 탭 풀이와 설정 단축키 칸에 보이는 수식키 */
+const MOD = MAC ? 'Cmd' : 'Ctrl';
 
 /** 마지막에 본 탭 (창은 열 때마다 새로 만들어서 브라우저 저장소에 둔다). 못 읽으면 오늘. */
 function savedTab(): PanelTab {
@@ -65,6 +68,15 @@ function unlockHint(affection: number): string {
   return t('panel.unlockNext', { step: next.step, what: t(UNLOCK_KEYS[next.unlock]) });
 }
 
+/** 마지막 탭을 기억한다 (다음에 열 때 그 탭) */
+function rememberTab(next: PanelTab) {
+  try {
+    localStorage.setItem(TAB_KEY, next);
+  } catch {
+    // 저장 못 해도 이번에는 바뀐다
+  }
+}
+
 export function PanelApp() {
   const [s, setS] = useState<PanelState>();
   const [tab, setTabState] = useState<PanelTab>(savedTab);
@@ -72,14 +84,12 @@ export function PanelApp() {
   const [fed, setFed] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  /** 지금 알림의 되돌리기 (Cmd/Ctrl+Z). 되돌렸으면 true */
+  const undoRef = useRef<() => boolean>(() => false);
 
   const setTab = (next: PanelTab) => {
     setTabState(next);
-    try {
-      localStorage.setItem(TAB_KEY, next);
-    } catch {
-      // 저장 못 해도 이번에는 바뀐다
-    }
+    rememberTab(next);
   };
 
   useEffect(() => {
@@ -88,7 +98,24 @@ export function PanelApp() {
     bridge.onTab((next) => setTabState(next));
     // 입력칸이 먼저 Esc 를 처리한다(비우기, 메모 목록으로). 한글 조합 중 Esc 는 조합만 끝낸다
     const onKey = (e: KeyboardEvent) => {
-      if (escClosesWindow(e)) bridge.close();
+      if (escClosesWindow(e)) {
+        bridge.close();
+        return;
+      }
+      // Cmd/Ctrl + 1~5: 탭 옮기기
+      const i = tabByKey(e, MAC, TABS.length);
+      const next = i === undefined ? undefined : TABS[i];
+      if (next) {
+        e.preventDefault();
+        setTabState(next.id);
+        rememberTab(next.id);
+        return;
+      }
+      // Cmd/Ctrl+Z: 쓰던 글이 없으면 방금 끝낸 것, 지운 것 되돌리기
+      const el = document.activeElement;
+      const field =
+        el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? el.value : undefined;
+      if (undoByKey(e, MAC, field) && undoRef.current()) e.preventDefault();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -129,6 +156,22 @@ export function PanelApp() {
 
   const hungry = s.fullness < s.hungryBelow;
 
+  /** 알림의 되돌리기 (단추와 Cmd/Ctrl+Z 가 같이 쓴다) */
+  const undoToast = (toast: Toast) => {
+    if (toast.kind === 'done') bridge.undo(toast.id);
+    if (toast.kind === 'note-removed') bridge.noteRestore(toast.id);
+    if (toast.kind === 'event-removed') bridge.eventRestore(toast.id);
+    if (toast.kind === 'todo-removed') bridge.restore(toast.id);
+    if (toast.kind === 'to-event') bridge.eventRemove(toast.id);
+    if (toast.kind === 'moved') for (const m of toast.moved) bridge.update(m.id, { due: m.due });
+    setToast(undefined);
+  };
+  undoRef.current = () => {
+    if (!toast || toast.kind === 'added') return false;
+    undoToast(toast);
+    return true;
+  };
+
   return (
     <div className="card-window panel">
       <header>
@@ -138,6 +181,16 @@ export function PanelApp() {
           <CoinIcon />
           {s.balance}
         </span>
+        {/* 설정은 펫 우클릭과 메뉴 막대에만 있어 찾기 어려웠다 */}
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label={t('panel.openSettings')}
+          title={t('panel.openSettings')}
+          onClick={() => bridge.openSettings()}
+        >
+          <GearIcon />
+        </button>
       </header>
 
       <div className="fullness">
@@ -176,10 +229,11 @@ export function PanelApp() {
       {hungry && <p className="hint hungry">{t('panel.hungry', { name: s.petName })}</p>}
 
       <nav className="tabs" aria-label={t('panel.nav')}>
-        {TABS.map((tb) => (
+        {TABS.map((tb, i) => (
           <button
             key={tb.id}
             type="button"
+            title={t('panel.tabKey', { tab: t(tb.label), keys: `${MOD}+${i + 1}` })}
             className={tab === tb.id ? 'on' : ''}
             aria-current={tab === tb.id ? 'page' : undefined}
             onClick={() => setTab(tb.id)}
@@ -267,20 +321,7 @@ export function PanelApp() {
           {toast.kind !== 'added' && (
             // 단추는 한 묶음: 좁으면 둘이 같이 글 아래로 내려간다
             <div className="toast-actions">
-              <button
-                type="button"
-                className="undo"
-                onClick={() => {
-                  if (toast.kind === 'done') bridge.undo(toast.id);
-                  if (toast.kind === 'note-removed') bridge.noteRestore(toast.id);
-                  if (toast.kind === 'event-removed') bridge.eventRestore(toast.id);
-                  if (toast.kind === 'todo-removed') bridge.restore(toast.id);
-                  if (toast.kind === 'to-event') bridge.eventRemove(toast.id);
-                  if (toast.kind === 'moved')
-                    for (const m of toast.moved) bridge.update(m.id, { due: m.due });
-                  setToast(undefined);
-                }}
-              >
+              <button type="button" className="undo" title={`${MOD}+Z`} onClick={() => undoToast(toast)}>
                 {t('panel.undo')}
               </button>
               {toast.kind === 'to-event' && (

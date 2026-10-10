@@ -714,6 +714,7 @@ ready.then(() => {
     },
     onChanged: () => sendStatus(),
     openChat: () => chat.open(pet.bounds()),
+    openSettings: () => settingsWindow.open(),
     lookTogether: () => look.start(),
     missed: () => pet.missed(),
     diary: () => diary.entries(Date.now()),

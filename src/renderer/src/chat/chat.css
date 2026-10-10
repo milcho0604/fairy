@@ -993,3 +993,31 @@ header .picker {
     Consolas,
     monospace;
 }
+
+/* 빈 대화의 첫 질문 예시 (누르면 입력칸에 채운다) */
+.starters {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.starters button {
+  max-width: 100%;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.starters button:hover,
+.starters button:focus-visible {
+  border-color: var(--accent);
+}

@@ -456,8 +456,17 @@ export function createPetWindow({
     const note = actions.menuNote?.();
     Menu.buildFromTemplate([
       ...(note ? [{ label: note, enabled: false }, { type: 'separator' as const }] : []),
-      { label: t('pet.menu.look', { name: petName() }), click: () => actions.lookTogether() },
-      { label: t('pet.menu.chat', { name: petName() }), click: () => actions.openChat(pet) },
+      // 메뉴에도 단축키를 보여 준다 (마우스 없이 여는 길을 알게)
+      {
+        label: t('pet.menu.look', { name: petName() }),
+        accelerator: settings.get().shortcuts.look || undefined,
+        click: () => actions.lookTogether(),
+      },
+      {
+        label: t('pet.menu.chat', { name: petName() }),
+        accelerator: settings.get().shortcuts.chat || undefined,
+        click: () => actions.openChat(pet),
+      },
       {
         label: t('pet.menu.addTodo'),
         accelerator: quickAddShortcut() || undefined,

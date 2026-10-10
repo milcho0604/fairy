@@ -1496,3 +1496,29 @@ li:is(.todo, .event) .tools .extra .due.none {
 .quick.card-window input {
   -webkit-app-region: no-drag;
 }
+
+/* 패널 머리의 설정 단추 (톱니바퀴) */
+.panel header .icon-btn {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.panel header .icon-btn:hover,
+.panel header .icon-btn:focus-visible {
+  background: var(--code);
+  color: var(--ink);
+}
+
+.panel header .icon-btn svg {
+  width: 16px;
+  height: 16px;
+}

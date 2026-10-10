@@ -48,8 +48,16 @@ export function createTray(petName: () => string, actions: TrayActions): Tray {
         accelerator: hideShortcut() || undefined,
         click: () => actions.toggleHidden(),
       },
-      { label: t('tray.chat', { name: petName() }), click: () => actions.openChat() },
-      { label: t('tray.look', { name: petName() }), click: () => actions.lookTogether() },
+      {
+        label: t('tray.chat', { name: petName() }),
+        accelerator: settings.get().shortcuts.chat || undefined,
+        click: () => actions.openChat(),
+      },
+      {
+        label: t('tray.look', { name: petName() }),
+        accelerator: settings.get().shortcuts.look || undefined,
+        click: () => actions.lookTogether(),
+      },
       { label: t('tray.todos'), click: () => actions.openTodos() },
       {
         label: t('tray.addTodo'),

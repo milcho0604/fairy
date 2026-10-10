@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { PERSONAS } from '../../../shared/ai/persona.ts';
 import { type BetaReport, goalsMet, TARGET } from '../../../shared/beta-stats.ts';
 import { formatBytes } from '../../../shared/bytes.ts';
@@ -26,10 +26,12 @@ import {
   RULES_MAX,
   type Settings,
 } from '../../../shared/settings.ts';
+import { groupRows, type RowKind, searchSettings } from '../../../shared/settings-search.ts';
 import {
   acceleratorLabel,
   NO_SHORTCUT,
   SHORTCUT_DEFAULTS,
+  SHORTCUT_IDS,
   SHORTCUT_LABEL,
   type ShortcutId,
   shortcutClash,
@@ -122,6 +124,60 @@ export function SettingsApp() {
     return () => window.removeEventListener('focus', onFocus);
   }, []);
 
+  // ---- 설정 찾기: 찾는 말에 맞는 칸과 줄만 보인다 (그리기는 그대로, 그린 뒤 hidden 만 바꾼다) ----
+  const [query, setQuery] = useState('');
+  const [composing, setComposing] = useState(false);
+  const [noHit, setNoHit] = useState(false);
+  const mainRef = useRef<HTMLElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  useLayoutEffect(() => {
+    const main = mainRef.current;
+    if (!main) return;
+    const sections = [...main.querySelectorAll<HTMLElement>(':scope > section')].map((sec) => {
+      const box = sec.querySelector<HTMLElement>(':scope > .card') ?? sec;
+      const kids = [...box.children].filter(
+        (c): c is HTMLElement => c instanceof HTMLElement && c.tagName !== 'H2',
+      );
+      const kinds: RowKind[] = kids.map((k) =>
+        k.tagName === 'SMALL' ? 'small' : k.classList.contains('action-row') ? 'action' : 'other',
+      );
+      const group = groupRows(kinds);
+      const groups: HTMLElement[][] = [];
+      kids.forEach((k, i) => {
+        const g = group[i] ?? 0;
+        if (!groups[g]) groups[g] = [];
+        groups[g].push(k);
+      });
+      return {
+        sec,
+        groups,
+        title: sec.querySelector(':scope > h2')?.textContent ?? '',
+        rows: groups.map((g) => g.map((k) => k.textContent ?? '').join(' ')),
+      };
+    });
+    const r = searchSettings(sections, query, composing);
+    sections.forEach((d, i) => {
+      d.sec.hidden = !r[i]?.show;
+      d.groups.forEach((g, j) => {
+        for (const k of g) k.hidden = !r[i]?.rows[j];
+      });
+    });
+    setNoHit(query.trim() !== '' && r.every((x) => !x.show));
+  });
+  // Cmd/Ctrl+F 로 찾기 칸에
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = navigator.userAgent.includes('Mac') ? e.metaKey : e.ctrlKey;
+      if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   if (!snap) return <div className="loading">{t('settings.loading')}</div>;
   const s = snap.settings;
   const mac = snap.platform === 'darwin';
@@ -173,7 +229,46 @@ export function SettingsApp() {
         </span>
       </header>
 
-      <main>
+      <div className="search">
+        <input
+          ref={searchRef}
+          type="search"
+          value={query}
+          aria-label={t('settings.search.label')}
+          placeholder={t('settings.search.placeholder', { keys: `${mod}+F` })}
+          onChange={(e) => setQuery(e.target.value)}
+          onCompositionStart={() => setComposing(true)}
+          onCompositionEnd={() => setComposing(false)}
+          onKeyDown={(e) => {
+            // 한글 조합 중 Esc 는 조합만 끝낸다
+            if (e.key === 'Escape' && !e.nativeEvent.isComposing && query) {
+              e.preventDefault();
+              setQuery('');
+            }
+          }}
+        />
+        {query && (
+          <button
+            type="button"
+            className="search-clear"
+            aria-label={t('settings.search.clear')}
+            title={t('settings.search.clear')}
+            onClick={() => {
+              setQuery('');
+              searchRef.current?.focus();
+            }}
+          >
+            ×
+          </button>
+        )}
+      </div>
+
+      <main ref={mainRef}>
+        {noHit && (
+          <p className="search-empty" role="status">
+            {t('settings.search.empty', { q: query.trim() })}
+          </p>
+        )}
         <Section title={t('settings.pet')}>
           <label className="field">
             <span>{t('settings.name')}</span>
@@ -688,7 +783,7 @@ export function SettingsApp() {
 
         <Section title={t('settings.shortcuts')}>
           <dl className="keys">
-            {(['hide', 'quickAdd', 'chat', 'look'] as const).map((id) => (
+            {SHORTCUT_IDS.map((id) => (
               <ShortcutRow
                 key={id}
                 id={id}
@@ -703,7 +798,10 @@ export function SettingsApp() {
                     flash(t('settings.shortcut.taken', { name: SHORTCUT_LABEL[other] }), true);
                     return;
                   }
-                  void update({ shortcuts: next }, t('settings.shortcutChanged'));
+                  void update(
+                    { shortcuts: next },
+                    acc === NO_SHORTCUT ? t('settings.shortcutOff') : t('settings.shortcutChanged'),
+                  );
                 }}
                 onError={(m) => flash(m, true)}
               />
@@ -711,6 +809,15 @@ export function SettingsApp() {
             <dt>{t('settings.zoomKeys')}</dt>
             <dd>
               <kbd>{mod}</kbd> <kbd>{alt}</kbd> <kbd>=</kbd> / <kbd>-</kbd> / <kbd>0</kbd>
+            </dd>
+            {/* 패널 안에서만 듣는 키 (바꿀 수 없다, 알려 주기만) */}
+            <dt>{t('settings.panelTabKeys')}</dt>
+            <dd>
+              <kbd>{mod}</kbd> <kbd>1</kbd> ~ <kbd>5</kbd>
+            </dd>
+            <dt>{t('settings.panelUndoKeys')}</dt>
+            <dd>
+              <kbd>{mod}</kbd> <kbd>Z</kbd>
             </dd>
           </dl>
         </Section>
@@ -1209,6 +1316,12 @@ function ShortcutRow({
         {value !== SHORTCUT_DEFAULTS[id] && !recording && (
           <button type="button" className="link" onClick={() => onSave(SHORTCUT_DEFAULTS[id])}>
             {t('settings.shortcut.default')}
+          </button>
+        )}
+        {/* 맥은 다른 앱과 겹쳐도 알 수 없어(L18) 끌 수 있게 둔다 */}
+        {value !== NO_SHORTCUT && !recording && (
+          <button type="button" className="link" onClick={() => onSave(NO_SHORTCUT)}>
+            {t('settings.shortcut.off')}
           </button>
         )}
       </dd>

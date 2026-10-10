@@ -343,6 +343,25 @@ export function App() {
           <div className="empty">
             <p>{t('chat.emptyLead')}</p>
             <p className="hint">{t('chat.emptyHint', { name: petName })}</p>
+            {/* 무엇을 물을지 막막할 때: 누르면 입력칸에 채운다 (바로 보내지 않아 고쳐 쓸 수 있다) */}
+            <ul className="starters" aria-label={t('chat.starters')}>
+              {(['chat.starter.today', 'chat.starter.polish', 'chat.starter.break'] as const).map((key) => (
+                <li key={key}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setText(t(key));
+                      const el = inputRef.current;
+                      el?.focus();
+                      // 커서는 글 끝에 (다듬을 글을 바로 붙여 넣게)
+                      requestAnimationFrame(() => el?.setSelectionRange(el.value.length, el.value.length));
+                    }}
+                  >
+                    {t(key).trim()}
+                  </button>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
         {state.messages.map((m) => (

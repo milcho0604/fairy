@@ -641,6 +641,8 @@ export const PANEL = {
   eventToTodo: 'panel:event-to-todo',
   feed: 'panel:feed',
   openChat: 'panel:open-chat',
+  /** 패널 머리의 톱니바퀴: 설정 창 열기 */
+  openSettings: 'panel:open-settings',
   lookTogether: 'panel:look-together',
   close: 'panel:close',
   // 메모 (v1)
@@ -800,6 +802,7 @@ export interface PanelBridge {
   eventToTodo(id: number, text: string): Promise<PanelAddResult>;
   feed(): Promise<{ ok: boolean }>;
   openChat(): void;
+  openSettings(): void;
   lookTogether(): void;
   close(): void;
   onState(listener: (state: PanelState) => void): void;

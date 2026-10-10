@@ -8,6 +8,7 @@ import { PetFace } from '../PetFace.tsx';
 import { PetNameInput } from '../PetNameInput.tsx';
 import { PetShot } from '../PetShot.tsx';
 import { RoutinePicker } from '../RoutinePicker.tsx';
+import { pageByKey } from './page-keys.ts';
 
 const bridge = window.jjakkungOnboard;
 const PAGES = 4;
@@ -58,6 +59,20 @@ export function OnboardingApp() {
     };
     window.addEventListener('beforeunload', flush);
     return () => window.removeEventListener('beforeunload', flush);
+  }, []);
+
+  // ← → 로 쪽 넘기기 (입력칸 밖에서만)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = document.activeElement;
+      const inField =
+        el instanceof HTMLInputElement ||
+        el instanceof HTMLTextAreaElement ||
+        el instanceof HTMLSelectElement;
+      setPage((p) => pageByKey(e, p, PAGES, inField) ?? p);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   if (!snap) return <div className="onboard" />;
@@ -248,10 +263,27 @@ export function OnboardingApp() {
               <dd>{t('onboarding.tips.rubDesc')}</dd>
               <dt>{t('onboarding.tips.throw')}</dt>
               <dd>{t('onboarding.tips.throwDesc')}</dd>
-              <dt>{keys(s.shortcuts.quickAdd)}</dt>
-              <dd>{t('onboarding.tips.quickDesc')}</dd>
-              <dt>{keys(s.shortcuts.hide)}</dt>
-              <dd>{t('onboarding.tips.hideDesc')}</dd>
+              {/* 끈 단축키(빈 키)는 보이지 않는다 */}
+              {s.shortcuts.quickAdd && (
+                <>
+                  <dt>{keys(s.shortcuts.quickAdd)}</dt>
+                  <dd>{t('onboarding.tips.quickDesc')}</dd>
+                </>
+              )}
+              {s.shortcuts.chat && (
+                <>
+                  <dt>{keys(s.shortcuts.chat)}</dt>
+                  <dd>{t('onboarding.tips.chatDesc')}</dd>
+                </>
+              )}
+              {s.shortcuts.hide && (
+                <>
+                  <dt>{keys(s.shortcuts.hide)}</dt>
+                  <dd>{t('onboarding.tips.hideDesc')}</dd>
+                </>
+              )}
+              <dt>{t('onboarding.tips.settings')}</dt>
+              <dd>{t('onboarding.tips.settingsDesc', { mac })}</dd>
             </dl>
           </section>
         )}
@@ -259,7 +291,13 @@ export function OnboardingApp() {
 
       <footer>
         {page > 0 ? (
-          <button type="button" className="ghost" onClick={() => setPage(page - 1)}>
+          <button
+            type="button"
+            className="ghost"
+            title={t('onboarding.keys')}
+            aria-keyshortcuts="ArrowLeft"
+            onClick={() => setPage(page - 1)}
+          >
             {t('onboarding.prev')}
           </button>
         ) : (
@@ -268,7 +306,13 @@ export function OnboardingApp() {
           </button>
         )}
         {page < PAGES - 1 ? (
-          <button type="button" className="primary" onClick={() => setPage(page + 1)}>
+          <button
+            type="button"
+            className="primary"
+            title={t('onboarding.keys')}
+            aria-keyshortcuts="ArrowRight"
+            onClick={() => setPage(page + 1)}
+          >
             {t('onboarding.next')}
           </button>
         ) : (

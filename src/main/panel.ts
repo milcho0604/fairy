@@ -111,6 +111,7 @@ export interface PanelOptions {
   /** 할 일이나 배부름이 바뀌었다 (펫 배고픔 표정 등) */
   onChanged: () => void;
   openChat: () => void;
+  openSettings: () => void;
   lookTogether: () => void;
   /** 오늘 놓친 알림 (펫이 숨어 있거나 자리에 없어 못 본 것) */
   missed: () => PanelState['missed'];
@@ -577,6 +578,11 @@ export function createPanel(o: PanelOptions) {
     push();
     if (r.ok) o.onFed();
     return { ok: r.ok };
+  });
+  ipcMain.on(PANEL.openSettings, (e) => {
+    if (!ours(e)) return;
+    closePanel();
+    o.openSettings();
   });
   ipcMain.on(PANEL.openChat, (e) => {
     if (!ours(e)) return;

@@ -11,6 +11,9 @@ export const SHORTCUT_DEFAULTS: Record<ShortcutId, string> = {
   look: 'CommandOrControl+Alt+Shift+L',
 };
 
+/** 화면에 늘어놓는 순서 (설정 단축키 칸) */
+export const SHORTCUT_IDS = Object.keys(SHORTCUT_DEFAULTS) as ShortcutId[];
+
 /**
  * 키가 없는 단축키. 아무것도 등록하지 않는다. 새로 생긴 기본 단축키가 사용자가 이미 쓰던 키와 겹치면
  * 사용자 키를 되돌리지 않고 새 쪽을 이것으로 비운다 (리뷰: 업데이트하면 바꿔 둔 단축키가 기본으로 돌아갔다)
@@ -284,6 +287,7 @@ export function shortcutProblem(acc: string, mac: boolean): string | undefined {
 
 /** 화면에 보일 글: CommandOrControl → Cmd/Ctrl, Alt → Option(맥) */
 export function acceleratorLabel(acc: string, mac: boolean): string[] {
+  if (!acc) return [];
   return acc.split('+').map((p) => {
     if (p === 'CommandOrControl') return mac ? 'Cmd' : 'Ctrl';
     if (p === 'Alt') return mac ? 'Option' : 'Alt';

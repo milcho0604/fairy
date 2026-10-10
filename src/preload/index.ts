@@ -225,6 +225,7 @@ if (kind === 'panel' || kind === 'quick') {
     eventToTodo: (id: number, text: string) => ipcRenderer.invoke(PANEL.eventToTodo, id, text),
     feed: () => ipcRenderer.invoke(PANEL.feed),
     openChat: () => ipcRenderer.send(PANEL.openChat),
+    openSettings: () => ipcRenderer.send(PANEL.openSettings),
     lookTogether: () => ipcRenderer.send(PANEL.lookTogether),
     close: () => ipcRenderer.send(PANEL.close),
     onState: (listener) => {
