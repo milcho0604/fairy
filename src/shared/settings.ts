@@ -375,6 +375,22 @@ export function defaultPetName(kind: PetKind): string {
   }
 }
 
+/** 예전 기본 이름 (2026-10-10 고양이는 밀크, 강아지는 초코로 이름을 지었다) */
+const OLD_DEFAULT_NAMES: Partial<Record<PetKind, readonly string[]>> = {
+  cat: ['냥이', 'Kitty'],
+  dog: ['멍멍이', 'Buddy'],
+};
+
+/**
+ * 이름을 손대지 않은 고양이, 강아지 펫이 예전 기본 이름(냥이, 멍멍이)이면 새 이름(밀크, 초코)으로.
+ * 사용자가 직접 지은 이름이나 사진 펫은 그대로 둔다
+ */
+export function renameOldDefault(s: Settings): Settings {
+  if (s.petNameEdited || s.petImage) return s;
+  if (!OLD_DEFAULT_NAMES[s.petKind]?.includes(s.petName)) return s;
+  return { ...s, petName: defaultPetName(s.petKind) };
+}
+
 /**
  * 이름을 손대지 않았으면 기본 펫 모습을 바꿀 때 이름도 그 모습의 기본 이름으로 (첫 안내, 설정의 모습 카드).
  * 이름을 같이 바꾸는 변경(보관한 사진 펫 꺼내기, 펫 만들기)과 사진 펫으로 바꾸는 변경은 건드리지 않는다

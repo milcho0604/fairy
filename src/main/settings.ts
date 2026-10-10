@@ -3,6 +3,7 @@ import {
   cleanPetName,
   followKindName,
   parseSettings,
+  renameOldDefault,
   type Settings,
   type SettingsPatch,
 } from '../shared/settings.ts';
@@ -31,7 +32,7 @@ function load(): Settings {
     namedOnDisk = cleanPetName(raw.petName) !== undefined;
     // 이름을 손댔는지 기억하는 칸이 생기기 전부터 쓰던 사람은 손댄 것으로 본다 (모습을 바꿔도 이름이 그대로)
     if (namedOnDisk && typeof raw.petNameEdited !== 'boolean') raw.petNameEdited = true;
-    current = parseSettings(raw);
+    current = renameOldDefault(parseSettings(raw));
   }
   return current;
 }

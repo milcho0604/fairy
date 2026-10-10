@@ -16,6 +16,7 @@ import {
   petNameLength,
   photoPetName,
   pickedGait,
+  renameOldDefault,
   type Settings,
 } from './settings.ts';
 
@@ -288,16 +289,16 @@ test('이름 글자 수: 사람이 보는 글자로 센다 (이모지 묶음, �
   assert.ok([...(cleanPetName(zalgo.repeat(3)) ?? '')].length <= PET_NAME_MAX * 8);
 });
 
-test('기본 이름은 모습을 따른다: 콩이, 냥이, 삐약이, 멍멍이, 토순이 (영어도)', () => {
+test('기본 이름은 모습을 따른다: 콩이, 밀크, 삐약이, 초코, 토순이 (영어도)', () => {
   assert.deepEqual(
     PET_KINDS.map((k) => defaultPetName(k.id)),
-    ['콩이', '냥이', '삐약이', '멍멍이', '토순이'],
+    ['콩이', '밀크', '삐약이', '초코', '토순이'],
   );
   setLang('en');
   try {
     assert.deepEqual(
       PET_KINDS.map((k) => defaultPetName(k.id)),
-      ['Kongi', 'Kitty', 'Peeps', 'Buddy', 'Bunbun'],
+      ['Kongi', 'Milk', 'Peeps', 'Choco', 'Bunbun'],
     );
   } finally {
     setLang('ko');
@@ -308,9 +309,9 @@ test('이름을 손대지 않았으면 기본 펫 모습을 바꿀 때 이름이
   const fresh: Settings = { ...DEFAULT_SETTINGS };
   const follow = (prev: Settings, patch: Record<string, unknown>) =>
     followKindName(prev, applyPatch(prev, patch), patch);
-  // 첫 안내에서 냥이를 고르면 냥이
+  // 첫 안내에서 고양이를 고르면 밀크
   const cat = follow(fresh, { petKind: 'cat', petImage: null });
-  assert.equal(cat.petName, '냥이');
+  assert.equal(cat.petName, '밀크');
   assert.equal(follow(cat, { petKind: 'bunny' }).petName, '토순이');
   // 모습이 그대로면(다른 설정만 바뀌면) 이름도 그대로
   assert.equal(follow({ ...fresh, petName: '아무개' }, { wander: false }).petName, '아무개');
@@ -499,4 +500,14 @@ test('단축키 옮기기: 새 기본 키가 사용자 키와 겹치면 새 쪽�
   // 일부만 바꾸는 요청은 처음부터 있던 키를 비우지 않는다
   const now = { ...DEFAULT_SETTINGS };
   assert.deepEqual(applyPatch(now, { shortcuts: { hide: now.shortcuts.quickAdd } }).shortcuts, now.shortcuts);
+});
+
+test('예전 기본 이름(냥이, 멍멍이)은 손대지 않았으면 밀크, 초코로. 지은 이름과 사진 펫은 그대로', () => {
+  const cat = { ...DEFAULT_SETTINGS, petKind: 'cat' as const, petName: '냥이' };
+  assert.equal(renameOldDefault(cat).petName, '밀크');
+  assert.equal(renameOldDefault({ ...cat, petKind: 'dog', petName: '멍멍이' }).petName, '초코');
+  assert.equal(renameOldDefault({ ...cat, petNameEdited: true }).petName, '냥이');
+  assert.equal(renameOldDefault({ ...cat, petImage: 'pet-1.png' }).petName, '냥이');
+  assert.equal(renameOldDefault({ ...cat, petName: '나비' }).petName, '나비');
+  assert.equal(renameOldDefault({ ...cat, petKind: 'kong', petName: '냥이' }).petName, '냥이');
 });
