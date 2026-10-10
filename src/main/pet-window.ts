@@ -6,6 +6,7 @@ import {
   type IpcMainEvent,
   ipcMain,
   Menu,
+  Notification,
   powerMonitor,
   screen,
 } from 'electron';
@@ -20,6 +21,9 @@ import {
   type MissedItem,
   MissedLog,
   missedEntries,
+  OS_AWAY_SEC,
+  osClickAction,
+  osNotifyFor,
 } from '../shared/bubble-queue.ts';
 import { type BubbleKind, ChatterGate, type ChatterLevel, LEVEL_LABEL, quieter } from '../shared/chatter.ts';
 import { Conceal, type ConcealReason } from '../shared/conceal.ts';
@@ -134,7 +138,10 @@ export interface SayOptions {
    * 보지 못하고 지나가면(시간 끝, 밀려남, 못 띄움) 패널 오늘 탭의 놓친 알림에 남긴다.
    * staleAt 이 지나서 나오면 말풍선 없이 놓친 알림에만 둔다.
    */
-  hold?: Pick<HeldBubble, 'staleAt' | 'lines' | 'render' | 'missedLines' | 'missedMsgs' | 'onAction'>;
+  hold?: Pick<
+    HeldBubble,
+    'staleAt' | 'lines' | 'render' | 'missedLines' | 'missedMsgs' | 'onAction' | 'osNotify'
+  >;
   /** 끊으면 이 말풍선을 닫는다(떠 있을 때) 또는 기다리던 것을 버린다. 시간 끝 없는 안내를 거둘 때 (강제 업데이트가 풀림) */
   signal?: AbortSignal;
 }
@@ -451,7 +458,11 @@ export function createPetWindow({
       ...(note ? [{ label: note, enabled: false }, { type: 'separator' as const }] : []),
       { label: t('pet.menu.look', { name: petName() }), click: () => actions.lookTogether() },
       { label: t('pet.menu.chat', { name: petName() }), click: () => actions.openChat(pet) },
-      { label: t('pet.menu.addTodo'), accelerator: quickAddShortcut(), click: () => actions.quickAdd() },
+      {
+        label: t('pet.menu.addTodo'),
+        accelerator: quickAddShortcut() || undefined,
+        click: () => actions.quickAdd(),
+      },
       { label: t('pet.menu.feed'), click: () => actions.feed() },
       {
         label: t('pet.menu.play'),
@@ -475,7 +486,7 @@ export function createPetWindow({
       },
       {
         label: t('pet.menu.hide', { name: petName() }),
-        accelerator: hideShortcut(),
+        accelerator: hideShortcut() || undefined,
         click: () => setHidden('user', true),
       },
       { label: t('pet.menu.makePet'), click: () => actions.makePet() },
@@ -953,7 +964,8 @@ export function createPetWindow({
 
   async function hideWithHint() {
     const shown = settings.get().hideHints;
-    if (shown >= HIDE_HINT_TIMES || hinting) {
+    // 숨기기 키를 비워 두었으면 알려 줄 키가 없다
+    if (shown >= HIDE_HINT_TIMES || hinting || !hideShortcut()) {
       setHidden('user', true, false);
       return;
     }
@@ -1020,9 +1032,49 @@ export function createPetWindow({
     for (const h of items) for (const out of held.hold(h)) addMissed(out);
   }
 
+  /** 띄운 시스템 알림 (가비지 수집되면 눌러도 click 이 안 온다. 닫히거나 누르면 뺀다) */
+  const notices = new Set<Notification>();
+  /**
+   * 펫이 안 보이는 곳에 있을 때 일정 알림을 운영체제 알림으로 한 번 (osNotifyFor). h 에 알렸다고 적는다.
+   * 누르면 말풍선 단추와 같은 일(회의 열기, 할 일 보기)을 하고, 모아 둔 것을 꺼내 본다.
+   * 끄는 중(끌기)은 사용자가 펫을 들고 있는 것이고, 집에서 쉬는 중이면 펫이 나와서 말하니(tellResting) 돌리지 않는다
+   */
+  function osNotify(h: HeldBubble, action: string | undefined) {
+    if (!h.osNotify) return;
+    const notify = osNotifyFor({
+      kind: h.kind,
+      blocked: blocked() && !dragTimer && !resting(),
+      // 말풍선 쪽 20초가 아니라 더 길게 본다 (전체 화면으로 영상을 보는 사람도 자리에 있다)
+      away: powerMonitor.getSystemIdleTime() >= OS_AWAY_SEC,
+      locked: screenLocked,
+      presenting: hideReasons.has('presentation'),
+      setting: settings.get().osNotify,
+      alreadyNotified: !!h.osNotified,
+      action,
+    });
+    if (!notify || !Notification.isSupported()) return;
+    h.osNotified = true;
+    const lines = h.render?.(Date.now()) ?? h.lines ?? [h.text];
+    const n = new Notification({ title: petName(), body: lines.join('\n'), silent: false });
+    const click = osClickAction(h.buttons);
+    notices.add(n);
+    n.on('click', () => {
+      notices.delete(n);
+      log('bubble', 'os-notice click', click ?? 'pet');
+      // 눌러서 처리한 것은 모아 둔 데서 뺀다 (안 빼면 펫이 나올 때 같은 알림이 또 뜬다)
+      held.remove(h);
+      if (click) h.onAction?.(click);
+      releaseHeld();
+    });
+    n.on('close', () => notices.delete(n));
+    n.show();
+    log('bubble', 'os-notice', action ?? 'blocked');
+  }
+
   /** 놓치면 안 되는 말이 닫혔거나 못 떴다: 봤으면 끝, 아니면 다시 모으거나 놓친 알림으로 (fateOf) */
   function unseen(items: readonly HeldBubble[], action: string | undefined) {
     for (const h of items) {
+      osNotify(h, action);
       const fate = fateOf(action, { blocked: blocked(), away: away(), shown: h.shown ?? 0 });
       if (fate === 'hold') keep([h]);
       else if (fate === 'missed') addMissed(h);
@@ -1074,13 +1126,15 @@ export function createPetWindow({
       });
     }
     const item: HeldBubble | undefined = hold
-      ? { ...hold, text, at: Date.now(), shown: 1, ...(buttons.length ? { buttons } : {}) }
+      ? { ...hold, text, kind, at: Date.now(), shown: 1, ...(buttons.length ? { buttons } : {}) }
       : undefined;
     if (item && !win.isDestroyed()) {
       // 이 수다 빈도에서 안 하는 말은 모으지도 않는다
       if (!gate.allows(kind)) return Promise.resolve(undefined);
       if (blocked()) {
-        keep([{ ...item, shown: 0 }]);
+        const h = { ...item, shown: 0 };
+        osNotify(h, undefined);
+        keep([h]);
         tellResting(kind, true);
         return Promise.resolve(undefined);
       }
@@ -1117,9 +1171,13 @@ export function createPetWindow({
     });
   }
 
+  /** 집에서 쉬는 것만으로 숨어 있다 (사용자가 숨겼거나 발표 중이 아님) */
+  const resting = () =>
+    hideReasons.has('house') && !hideReasons.has('user') && !hideReasons.has('presentation');
+
   /** 집에서 쉬는 중에만 (사용자가 숨겼거나 발표 중이면 그쪽 규칙대로 모으기만). 모아 둔 뒤에 알린다 */
   function tellResting(kind: BubbleKind, important: boolean) {
-    if (!hideReasons.has('house') || hideReasons.has('user') || hideReasons.has('presentation')) return;
+    if (!resting()) return;
     setTimeout(() => onRestHeld?.(kind, important), 0);
   }
 

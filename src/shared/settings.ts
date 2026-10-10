@@ -6,11 +6,18 @@ import { type LangPref, t } from './i18n/index.ts';
 import { cleanIcsUrl } from './ics.ts';
 import { type AgeStage, isAgeStage } from './illustrate.ts';
 import { type IllustEngine, illustEngineOf } from './local-draw.ts';
-import { cleanMemory } from './pet-memory.ts';
+import { cleanMemory, cleanPending } from './pet-memory.ts';
 import { GAITS, type Gait } from './pet3d/blueprint.ts';
 import { cleanWish } from './pet3d/prompt.ts';
 import { DEFAULT_ROUTINE, parseRoutine, type Routine } from './routine.ts';
-import { isAccelerator, reservedUse, SHORTCUT_DEFAULTS, type ShortcutId, shortcutClash } from './shortcut.ts';
+import {
+  isAccelerator,
+  NO_SHORTCUT,
+  reservedUse,
+  SHORTCUT_DEFAULTS,
+  type ShortcutId,
+  shortcutClash,
+} from './shortcut.ts';
 
 /** 입체 펫 모습: 피규어, 게임 캐릭터, 실사처럼 */
 // fluffy 복슬복슬: 부품을 녹여 붙인 한 덩어리 몸에 긴 털 (시험판, 2026-10-09)
@@ -81,6 +88,8 @@ export interface Settings {
    * 저장 파일에 없으면(예전 판) 그때 동작대로: 조용히면 끔, 아니면 켬
    */
   review: boolean;
+  /** 펫이 안 보일 때(전체 화면, 숨김, 발표) 일정 알림을 운영체제 알림으로도 한 번 */
+  osNotify: boolean;
   /** 전역 단축키 (v2 단축키 바꾸기) */
   shortcuts: Record<ShortcutId, string>;
   /** 가져올 캘린더 주소 (.ics, 구글 캘린더 비공개 주소). 비밀 주소라 이 컴퓨터에만 둔다 (v2) */
@@ -99,6 +108,8 @@ export interface Settings {
   petRules: string;
   /** 짝꿍이 기억하는 것 (오래 가는 기억). 질문마다 성격 뒤에 같이 보낸다. 30개, 하나 100자까지. 기본 비어 있음 */
   petMemory: string[];
+  /** AI 도구(MCP remember)가 기억하자고 한 것. 사용자가 설정에서 허락하면 petMemory 로 간다. AI 에게 보내지 않는다 */
+  petMemoryPending: string[];
   /** 집중 타이머 길이 (15, 25, 50분). 마지막에 고른 것 */
   focusMin: FocusLength;
   /** 한가할 때 커서 쪽을 바라본다 */
@@ -292,6 +303,7 @@ export const DEFAULT_SETTINGS: Settings = {
   updateCheck: true,
   reviewMinute: 18 * 60,
   review: true,
+  osNotify: true,
   shortcuts: { ...SHORTCUT_DEFAULTS },
   myMcp: false,
   friends: [],
@@ -300,6 +312,7 @@ export const DEFAULT_SETTINGS: Settings = {
   petLibrary: [],
   petRules: '',
   petMemory: [],
+  petMemoryPending: [],
   focusMin: 25,
   lookAtCursor: true,
   dayRhythm: true,
@@ -433,6 +446,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
         ? r.reviewMinute
         : base.reviewMinute,
     review: typeof r.review === 'boolean' ? r.review : r.chatter === 'quiet' ? false : base.review,
+    osNotify: bool(r.osNotify, base.osNotify),
     shortcuts: shortcutsOf(r.shortcuts, base.shortcuts),
     ...icsOf(r.icsUrl, base.icsUrl),
     myMcp: bool(r.myMcp, base.myMcp),
@@ -443,6 +457,9 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     petRules:
       typeof r.petRules === 'string' ? r.petRules.replace(/\r\n/g, '\n').slice(0, RULES_MAX) : base.petRules,
     petMemory: Array.isArray(r.petMemory) ? cleanMemory(r.petMemory) : [...base.petMemory],
+    petMemoryPending: Array.isArray(r.petMemoryPending)
+      ? cleanPending(r.petMemoryPending)
+      : [...base.petMemoryPending],
     focusMin: isFocusLength(r.focusMin) ? r.focusMin : base.focusMin,
     lookAtCursor: bool(r.lookAtCursor, base.lookAtCursor),
     dayRhythm: bool(r.dayRhythm, base.dayRhythm),
@@ -618,15 +635,35 @@ const HOST_MAC: boolean | undefined =
     ? process.platform === 'darwin'
     : undefined;
 
+/** 나중 버전에 생긴 단축키. 새로 더하면 여기에도 적는다 (예전 설정 파일에는 이 id 가 없다) */
+const LATER_SHORTCUTS: readonly ShortcutId[] = ['chat', 'look'];
+
 function shortcutsOf(v: unknown, current: Record<ShortcutId, string>): Record<ShortcutId, string> {
   const r = (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>;
   const out = { ...current };
+  const given = new Set<ShortcutId>();
   for (const id of Object.keys(SHORTCUT_DEFAULTS) as ShortcutId[]) {
     const v = r[id];
+    if (v === NO_SHORTCUT) {
+      out[id] = NO_SHORTCUT;
+      given.add(id);
+      continue;
+    }
     // 손으로 고친 설정 파일의 복사, 종료 같은 조합은 등록하지 않는다. 운영체제는 이 컴퓨터 것 (파일은 두 운영체제가 같이 쓴다)
-    if (isAccelerator(v) && !(HOST_MAC !== undefined && reservedUse(v, HOST_MAC))) out[id] = v;
+    if (isAccelerator(v) && !(HOST_MAC !== undefined && reservedUse(v, HOST_MAC))) {
+      out[id] = v;
+      given.add(id);
+    }
   }
-  // 두 단축키가 같으면 바꾼 쪽을 버린다 (화면은 shortcutClash 로 먼저 알리고 보내지 않는다)
+  // 새 버전에서 생긴 단축키(파일에 없는 id)의 기본 키가 사용자가 이미 쓰던 키와 겹치면 새 쪽을 비운다.
+  // 예전에는 통째로 기본값으로 돌아가 사용자가 바꿔 둔 키가 사라졌다 (리뷰 HIGH)
+  // 처음부터 있던 숨기기, 할 일 넣기는 여기서 비우지 않는다 (일부만 바꾸는 요청이 멀쩡한 키를 지우지 않게)
+  for (const id of LATER_SHORTCUTS) {
+    if (given.has(id) || out[id] !== SHORTCUT_DEFAULTS[id]) continue;
+    const key = out[id].toLowerCase();
+    if ([...given].some((g) => out[g].toLowerCase() === key)) out[id] = NO_SHORTCUT;
+  }
+  // 그래도 두 단축키가 같으면 바꾼 쪽을 버린다 (화면은 shortcutClash 로 먼저 알리고 보내지 않는다)
   if (shortcutClash(out)) return { ...current };
   return out;
 }

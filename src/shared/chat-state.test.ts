@@ -228,3 +228,16 @@ test('다시 켜도 남는 대화: 깨진 파일은 빈 대화, 틀린 줄만 �
   assert.equal(state.pendingId, undefined);
   assert.equal(ask(state, 9).pendingId, 'p9');
 });
+
+test('기록 안 남김을 켜고 끈 사이에는 되돌리지 않는다 (안 남긴 대화가 기록 파일로 가지 않게)', () => {
+  const off = { ...resetChat(initialChat('claude')), ephemeral: true };
+  const secret = applyEvent(ask(off, 1), 'p1', { type: 'done', text: '비밀' }, 'n');
+  // 안 남긴 대화를 지우고, 기록 안 남김을 끈 뒤 되돌리기
+  const recorded = { ...resetChat(secret), ephemeral: false };
+  assert.equal(undoReset(recorded, secret), undefined);
+  // 반대로 남긴 대화를 안 남김 상태로 되돌리지도 않는다
+  const kept = applyEvent(ask(initialChat('claude'), 2), 'p2', { type: 'done', text: '답' }, 'n');
+  assert.equal(undoReset({ ...resetChat(kept), ephemeral: true }, kept), undefined);
+  // 같은 상태 안에서는 되돌린다
+  assert.equal(undoReset(resetChat(secret), secret)?.messages.length, 2);
+});

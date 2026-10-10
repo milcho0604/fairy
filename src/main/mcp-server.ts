@@ -3,7 +3,7 @@
 // 짝꿍과 같은 저장 파일(jjakkung.db)을 연다. 짝꿍이 켜져 있으면 몇 초 안에 패널에 보인다 (data_version 을 본다).
 // Electron 을 불러오지 않는다. 이 파일은 electron-vite 가 out/main/mcp-server.js 로 따로 낸다.
 
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -13,8 +13,9 @@ import { type Db, SCHEMA_VERSION, schemaVersion } from '../shared/db-schema.ts';
 import { findSameEvent } from '../shared/event-dup.ts';
 import { ALL_DAY_MAX_DAYS, allDaySpan, allDayTimes, EventStore } from '../shared/event-store.ts';
 import { NoteStore, notePreview, noteTitle, searchNotes } from '../shared/note-store.ts';
-import { addMemory, cleanMemory, cleanMemoryItem, MEMORY_INBOX, MEMORY_MAX } from '../shared/pet-memory.ts';
+import { cleanMemoryItem } from '../shared/pet-memory.ts';
 import { isRepeat, localDay, TodoStore } from '../shared/todo-store.ts';
+import { writeInbox } from './memory-inbox.ts';
 
 const VERSION = '0.1.0';
 const PROTOCOLS = ['2025-06-18', '2025-03-26', '2024-11-05'];
@@ -65,6 +66,15 @@ const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
 /** 알림 분: 숫자만 받는다. null, "" 를 Number 로 바꾸면 0 이 되어 "알리지 않음"이 됐다. 없으면 기본 */
 const remindOf = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
 
+/**
+ * 할 일 id: 1 이상의 정수만 받는다. Number 로 바꾸면 "3", true(1), 1.5, [] (0) 같은 것도 통과해
+ * 엉뚱한 할 일을 끝내거나 지울 수 있었다 (리뷰 LOW)
+ */
+export function idOf(v: unknown): number {
+  if (typeof v !== 'number' || !Number.isInteger(v) || v <= 0) throw new Error('id 는 1 이상의 정수로 줘');
+  return v;
+}
+
 /** 마감일: 비면 null, 모양이 틀리거나 없는 날(2026-02-30)이면 던진다 */
 function dueOf(v: unknown): string | null {
   const due = str(v);
@@ -78,20 +88,9 @@ function sameEvent(events: EventStore, ev: { title: string; startAt: number; all
   return findSameEvent(events.between(ev.startAt, ev.startAt + 1), ev);
 }
 
-/** 기억 받은 편지함에 하나 더한다. 짝꿍이 켜져 있으면 곧 설정으로 옮긴다 (임시 파일에 쓰고 이름 바꾸기) */
+/** 기억 받은 편지함에 하나 더한다. 짝꿍이 켜져 있으면 곧 "기다리는 기억"으로 옮기고 사용자가 허락한다 */
 function remember(text: string): boolean {
-  const file = join(userDataDir(), `${MEMORY_INBOX}.json`);
-  let list: string[] = [];
-  try {
-    list = cleanMemory(JSON.parse(readFileSync(file, 'utf8')));
-  } catch {
-    // 없거나 깨졌으면 새로
-  }
-  const next = addMemory(list, text);
-  if (!next.added) return false;
-  writeFileSync(`${file}.tmp`, JSON.stringify(next.list));
-  renameSync(`${file}.tmp`, file);
-  return true;
+  return writeInbox(userDataDir(), text);
 }
 
 const TOOLS: Tool[] = [
@@ -147,11 +146,11 @@ const TOOLS: Tool[] = [
     description: '짝꿍 할 일을 끝낸 것으로 표시한다. id 는 list_todos 에서.',
     inputSchema: {
       type: 'object',
-      properties: { id: { type: 'number', description: '할 일 id' } },
+      properties: { id: { type: 'integer', minimum: 1, description: '할 일 id' } },
       required: ['id'],
     },
     run: (a) => {
-      const id = Number(a.id);
+      const id = idOf(a.id);
       const s = open();
       const t = s.todos.get(id);
       if (!t) throw new Error(`id ${id} 할 일이 없어`);
@@ -166,7 +165,7 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        id: { type: 'number', description: '할 일 id' },
+        id: { type: 'integer', minimum: 1, description: '할 일 id' },
         title: { type: 'string', description: '새 제목 (200자까지)' },
         due: {
           type: ['string', 'null'],
@@ -177,7 +176,7 @@ const TOOLS: Tool[] = [
       required: ['id'],
     },
     run: (a) => {
-      const id = Number(a.id);
+      const id = idOf(a.id);
       const s = open();
       const t = s.todos.get(id);
       if (!t) throw new Error(`id ${id} 할 일이 없어`);
@@ -199,11 +198,11 @@ const TOOLS: Tool[] = [
     description: '짝꿍 할 일을 지운다 (목록에서 빠진다. 받은 코인은 그대로). id 는 list_todos 에서.',
     inputSchema: {
       type: 'object',
-      properties: { id: { type: 'number', description: '할 일 id' } },
+      properties: { id: { type: 'integer', minimum: 1, description: '할 일 id' } },
       required: ['id'],
     },
     run: (a) => {
-      const id = Number(a.id);
+      const id = idOf(a.id);
       const s = open();
       const t = s.todos.get(id);
       if (!t) throw new Error(`id ${id} 할 일이 없어`);
@@ -363,7 +362,8 @@ const TOOLS: Tool[] = [
   },
   {
     name: 'remember',
-    description: `짝꿍이 사용자에 대해 오래 기억할 짧은 글을 남긴다 (예: "아침엔 회의가 많다"). 짝꿍과 대화할 때마다 같이 보내진다. 100자, ${MEMORY_MAX}개까지이고 넘치면 오래된 것부터 빠진다. 사용자가 기억해 달라고 할 때만 쓴다.`,
+    description:
+      '짝꿍이 사용자에 대해 오래 기억할 짧은 글을 남긴다 (예: "아침엔 회의가 많다"). 바로 기억하지 않고 사용자가 짝꿍 설정에서 허락해야 기억이 된다. 100자까지. 사용자가 기억해 달라고 할 때만 쓴다.',
     inputSchema: {
       type: 'object',
       properties: { text: { type: 'string', description: '기억할 글 (한 줄, 100자까지)' } },
@@ -372,8 +372,8 @@ const TOOLS: Tool[] = [
     run: (a) => {
       const text = cleanMemoryItem(a.text);
       if (!text) throw new Error('text 가 비었어');
-      if (!remember(text)) return `이미 기억하고 있어: ${text}`;
-      return `기억했어: ${text}`;
+      if (!remember(text)) return `이미 기억해 달라고 했어: ${text}`;
+      return `짝꿍 설정에서 사용자가 허락하면 기억할게: ${text}`;
     },
   },
 ];

@@ -815,8 +815,8 @@ export interface PanelBridge {
   ): void;
   eventRemove(id: number): void;
   eventRestore(id: number): void;
-  /** 길이(15, 25, 50분)를 주면 그 길이로, 아니면 마지막에 고른 길이로 */
-  focusStart(minutes?: number): void;
+  /** 길이(15, 25, 50분)를 주면 그 길이로, 아니면 마지막에 고른 길이로. todoId 를 주면 그 할 일을 하는 집중 */
+  focusStart(minutes?: number, todoId?: number): void;
   focusStop(): void;
   missedClear(): void;
   buyToy(key: string): Promise<BuyResult>;

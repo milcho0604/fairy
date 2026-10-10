@@ -356,8 +356,8 @@ test('설정 파일의 시스템 단축키(복사, 종료)는 등록하지 않�
     now.shortcuts,
   );
   assert.equal(
-    applyPatch(now, { shortcuts: { hide: 'CommandOrControl+Alt+Shift+J' } }).shortcuts.hide,
-    'CommandOrControl+Alt+Shift+J',
+    applyPatch(now, { shortcuts: { hide: 'CommandOrControl+Alt+Shift+K' } }).shortcuts.hide,
+    'CommandOrControl+Alt+Shift+K',
   );
 });
 
@@ -466,4 +466,37 @@ test('짝꿍이 기억하는 것: 기본 비어 있고, 옛 설정 파일에는 
   assert.deepEqual(applyPatch(now, { petMemory: ['커피', '차'] }).petMemory, ['커피', '차']);
   assert.deepEqual(applyPatch(now, { petMemory: null }).petMemory, ['커피']);
   assert.deepEqual(applyPatch(now, { petMemory: [] }).petMemory, []);
+});
+
+test('단축키 옮기기: 새 기본 키가 사용자 키와 겹치면 새 쪽만 비운다 (사용자 키는 그대로)', () => {
+  // 예전 파일에는 hide, quickAdd 만 있다. 사용자가 숨기기를 새 "대화" 기본 키로 바꿔 두었다
+  const old = parseSettings({
+    shortcuts: { hide: 'CommandOrControl+Alt+Shift+J', quickAdd: 'CommandOrControl+Alt+Shift+K' },
+  });
+  assert.equal(old.shortcuts.hide, 'CommandOrControl+Alt+Shift+J');
+  assert.equal(old.shortcuts.quickAdd, 'CommandOrControl+Alt+Shift+K');
+  assert.equal(old.shortcuts.chat, '');
+  assert.equal(old.shortcuts.look, 'CommandOrControl+Alt+Shift+L');
+  const both = parseSettings({
+    shortcuts: { hide: 'CommandOrControl+Alt+Shift+L', quickAdd: 'CommandOrControl+Alt+Shift+J' },
+  });
+  assert.equal(both.shortcuts.hide, 'CommandOrControl+Alt+Shift+L');
+  assert.equal(both.shortcuts.quickAdd, 'CommandOrControl+Alt+Shift+J');
+  assert.equal(both.shortcuts.chat, '');
+  assert.equal(both.shortcuts.look, '');
+  // 겹치지 않으면 새 기본 키를 그대로 준다
+  const plain = parseSettings({ shortcuts: { hide: 'CommandOrControl+Alt+Shift+K' } });
+  assert.equal(plain.shortcuts.chat, 'CommandOrControl+Alt+Shift+J');
+  // 비운 키는 저장하고 다시 읽어도 비어 있고, 다른 빈 키와 겹친다고 보지 않는다
+  const saved = parseSettings(JSON.parse(JSON.stringify(both)));
+  assert.deepEqual(saved.shortcuts, both.shortcuts);
+  // 설정 창에서 빈 키에 새 키를 넣을 수 있다
+  assert.equal(
+    applyPatch(both, { shortcuts: { ...both.shortcuts, chat: 'CommandOrControl+Alt+Shift+O' } }).shortcuts
+      .chat,
+    'CommandOrControl+Alt+Shift+O',
+  );
+  // 일부만 바꾸는 요청은 처음부터 있던 키를 비우지 않는다
+  const now = { ...DEFAULT_SETTINGS };
+  assert.deepEqual(applyPatch(now, { shortcuts: { hide: now.shortcuts.quickAdd } }).shortcuts, now.shortcuts);
 });

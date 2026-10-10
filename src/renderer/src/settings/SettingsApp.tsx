@@ -5,7 +5,7 @@ import { formatBytes } from '../../../shared/bytes.ts';
 import { type ChatterLevel, LEVEL_LABEL, MAX_PER_HOUR } from '../../../shared/chatter.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PetLookView, SettingsSnapshot } from '../../../shared/ipc.ts';
-import { addMemory, MEMORY_ITEM_MAX, MEMORY_MAX } from '../../../shared/pet-memory.ts';
+import { addMemory, approvePending, MEMORY_ITEM_MAX, MEMORY_MAX } from '../../../shared/pet-memory.ts';
 import type { Gait } from '../../../shared/pet3d/blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from '../../../shared/pet3d/defaults.ts';
 import { restDaysOf } from '../../../shared/routine.ts';
@@ -28,6 +28,7 @@ import {
 } from '../../../shared/settings.ts';
 import {
   acceleratorLabel,
+  NO_SHORTCUT,
   SHORTCUT_DEFAULTS,
   SHORTCUT_LABEL,
   type ShortcutId,
@@ -392,6 +393,12 @@ export function SettingsApp() {
             ))}
           </fieldset>
           <small className="below">{chatterHint(s.chatter)}</small>
+          <Toggle
+            label={t('settings.osNotify')}
+            hint={t('settings.osNotifyHint')}
+            on={s.osNotify}
+            onChange={(v) => update({ osNotify: v })}
+          />
         </Section>
 
         <Section title={t('settings.ai')}>
@@ -462,6 +469,19 @@ export function SettingsApp() {
             list={s.petMemory}
             onChange={(petMemory, message) => update({ petMemory }, message)}
           />
+          {s.petMemoryPending.length > 0 && (
+            <PendingMemory
+              list={s.petMemory}
+              pending={s.petMemoryPending}
+              onChange={(patch, message, warn) => {
+                if (warn) {
+                  flash(message, true);
+                  return;
+                }
+                void update(patch, message);
+              }}
+            />
+          )}
         </Section>
 
         <Section title={t('settings.models')}>
@@ -668,7 +688,7 @@ export function SettingsApp() {
 
         <Section title={t('settings.shortcuts')}>
           <dl className="keys">
-            {(['hide', 'quickAdd'] as const).map((id) => (
+            {(['hide', 'quickAdd', 'chat', 'look'] as const).map((id) => (
               <ShortcutRow
                 key={id}
                 id={id}
@@ -1154,6 +1174,9 @@ function ShortcutRow({
         <span className="keys-line">
           {recording ? (
             <span className="recording">{t('settings.shortcut.recording')}</span>
+          ) : value === NO_SHORTCUT ? (
+            // 새 기본 키가 쓰던 키와 겹쳐 비워 둔 단축키. "바꾸기"로 새 키를 넣는다
+            <span className="none">{t('settings.shortcut.none')}</span>
           ) : (
             acceleratorLabel(value, mac).map((k) => <kbd key={k}>{k}</kbd>)
           )}
@@ -1678,6 +1701,67 @@ function MemoryEditor({
           {t('settings.memory.dupe')}
         </small>
       )}
+    </div>
+  );
+}
+
+/**
+ * AI 도구(MCP remember)가 기억하자고 한 것. 허락해야 기억이 된다 (리뷰 MED: 다른 글에 숨은 지시로
+ * AI 가 기억을 넣으면 질문마다 그 글이 같이 갔다). 버리면 기다리는 데서만 지운다
+ */
+function PendingMemory({
+  list,
+  pending,
+  onChange,
+}: {
+  list: readonly string[];
+  pending: readonly string[];
+  onChange: (patch: Partial<Settings>, message: string, warn?: boolean) => void;
+}) {
+  return (
+    <div className="field">
+      <span>{t('settings.memory.pending')}</span>
+      <small>{t('settings.memory.pendingHint')}</small>
+      <ul className="friends">
+        {pending.map((m) => (
+          <li key={m}>
+            <span>{m}</span>
+            <span>
+              <button
+                type="button"
+                className="link"
+                aria-label={t('settings.memory.approveAria', { text: m })}
+                onClick={() => {
+                  const r = approvePending(list, pending, m);
+                  if (r.result === 'full') {
+                    onChange({}, t('settings.memory.full', { max: MEMORY_MAX }), true);
+                    return;
+                  }
+                  onChange(
+                    { petMemory: r.list, petMemoryPending: r.pending },
+                    r.result === 'added' ? t('settings.memory.added') : t('settings.memory.dupe'),
+                  );
+                }}
+              >
+                {t('settings.memory.approve')}
+              </button>{' '}
+              <button
+                type="button"
+                className="link"
+                aria-label={t('settings.memory.dismissAria', { text: m })}
+                onClick={() =>
+                  onChange(
+                    { petMemoryPending: pending.filter((p) => p !== m) },
+                    t('settings.memory.dismissed'),
+                  )
+                }
+              >
+                {t('settings.memory.dismiss')}
+              </button>
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

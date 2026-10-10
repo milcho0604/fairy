@@ -138,6 +138,9 @@ export const UNDO_RESET_MS = 10_000;
  */
 export function undoReset(current: ChatState, before: ChatState): ChatState | undefined {
   if (current.pendingId || current.messages.length > 0 || before.messages.length === 0) return undefined;
+  // 기록 안 남김을 켜거나 끈 사이에는 되돌리지 않는다. 안 남긴 대화가 남기는 대화로 돌아와
+  // 기록 파일에 쓰이면 안 된다 (리뷰 HIGH, 개인 정보)
+  if (!!current.ephemeral !== !!before.ephemeral) return undefined;
   return { ...current, messages: before.messages, sessions: before.sessions };
 }
 

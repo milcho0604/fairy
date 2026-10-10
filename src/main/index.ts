@@ -14,6 +14,7 @@ import { isMiniGame, PLAY_COIN } from '../shared/minigames.ts';
 import { unlocked, WAVE_AWAY_SEC } from '../shared/pet-life.ts';
 import { restDaysOf } from '../shared/routine.ts';
 import { pickedGait } from '../shared/settings.ts';
+import { shortcutsChanged } from '../shared/shortcut.ts';
 import { FULLNESS, localDay } from '../shared/todo-store.ts';
 import { watchCatalog } from './ai/catalog.ts';
 import { stopLocal } from './ai/local.ts';
@@ -330,7 +331,8 @@ ready.then(() => {
     return ids;
   };
   // ---- 짝꿍이 기억하는 것 ----
-  // 질문마다 성격 뒤에 붙는다 (persona.ts). MCP remember 가 남긴 것은 질문할 때와 1분마다 설정으로 옮긴다
+  // 질문마다 성격 뒤에 붙는다 (persona.ts). MCP remember 가 남긴 것은 질문할 때와 1분마다 "기다리는 기억"으로 옮기고,
+  // 사용자가 설정에서 허락한 것만 여기(petMemory)에 들어온다
   setMemorySource(() => {
     drainMemoryInbox(log);
     return settings.get().petMemory;
@@ -563,8 +565,28 @@ ready.then(() => {
       panel.refresh();
       planner.check();
     },
+    // 연달아 못 읽으면 한 번 (조용히 실패하던 것). 숨어 있으면 모아 두었다가, 못 보면 놓친 알림에
+    onBroken: () => {
+      void pet
+        .say({
+          kind: 'schedule',
+          text: t('pet.calendarBroken'),
+          buttons: [{ id: 'settings', label: t('pet.calendarSettings') }],
+          ttlMs: 30_000,
+          hold: { missedMsgs: [{ key: 'pet.calendarBroken' }], onAction: openCalendarSettings },
+        })
+        .then(openCalendarSettings);
+    },
+    // 설정 창을 보고 있으면 알리지 않는다 (거기 결과 글이 이미 있다)
+    quiet: () => {
+      const w = settingsWindow.window;
+      return !!w && !w.isDestroyed() && w.isVisible();
+    },
     log,
   });
+  function openCalendarSettings(a: string | undefined) {
+    if (a === 'settings') settingsWindow.open();
+  }
   const backup = createBackup({ vacuumInto, log });
   // 펫 MCP 서버(다른 프로세스)가 할 일, 메모, 일정을 넣으면 저장 파일 판 번호가 바뀐다. 3초마다 보고 다시 그린다.
   let seenVersion = dataVersion();
@@ -578,6 +600,11 @@ ready.then(() => {
     planner.check();
   }, 3000).unref();
   watchBetaStats(stats, () => pet.isHidden('user'), log);
+  /** 할 일을 끝냈다 (패널, 집중 끝 "끝냈어"). 친밀도 300 이 넘으면 신나서 빙글 춤 */
+  function todoFinished() {
+    pet.react(unlocked(petLife.state.affection).has('dance') ? 'dance' : 'happy');
+    petLife.activity('todo');
+  }
   // ---- 일정 알림, 오늘 브리핑, 집중 타이머 (v1) ----
   const planner = createPlanner({
     todos: store,
@@ -603,6 +630,8 @@ ready.then(() => {
     openToday: () => panel.openTab('today'),
     openUrl: (url) => openLink(url, log),
     onReward: () => pet.react(),
+    // 집중 끝에 "끝냈어": 패널에서 끝낸 것과 같은 반응
+    onCompleted: () => todoFinished(),
     onChange: () => {
       panel.refresh();
       sendStatus();
@@ -614,7 +643,7 @@ ready.then(() => {
     notes,
     events,
     focus: () => planner.focus,
-    startFocus: (minutes) => planner.startFocus(minutes),
+    startFocus: (minutes, todoId) => planner.startFocus(minutes, todoId),
     focusMin: () => settings.get().focusMin,
     stopFocus: () => planner.stopFocus(),
     onEventsChanged: () => planner.check(),
@@ -676,11 +705,7 @@ ready.then(() => {
     },
     petName,
     petBounds: () => pet.bounds(),
-    onCompleted: () => {
-      // 친밀도 300 이 넘으면 신나서 빙글 춤
-      pet.react(unlocked(petLife.state.affection).has('dance') ? 'dance' : 'happy');
-      petLife.activity('todo');
-    },
+    onCompleted: () => todoFinished(),
     onFed: () => {
       void rest.call(false);
       pet.react('fed');
@@ -761,11 +786,16 @@ ready.then(() => {
     for (const acc of registered) globalShortcut.unregister(acc);
     registered = [];
     const taken: string[] = [];
-    const { hide, quickAdd } = settings.get().shortcuts;
+    const { hide, quickAdd, chat: chatKey, look: lookKey } = settings.get().shortcuts;
     for (const [acc, run, name] of [
       [hide, toggleHidden, t('pet.shortcut.hide')],
       [quickAdd, () => panel.openQuick(), t('pet.shortcut.quickAdd')],
+      // 펫 메뉴의 "대화", "같이 보기"와 같다
+      [chatKey, () => chat.open(pet.bounds()), t('pet.shortcut.chat')],
+      [lookKey, () => void look.start(), t('pet.shortcut.look')],
     ] as const) {
+      // 비운 단축키(새 기본 키가 사용자 키와 겹쳐 비운 것)는 등록하지 않는다
+      if (!acc) continue;
       try {
         if (globalShortcut.register(acc, run)) registered.push(acc);
         else taken.push(name);
@@ -831,7 +861,7 @@ ready.then(() => {
       exportPet: (w) => exportPet(w),
       importPet: (w) => importPet(w, false, log),
       importFriend: (w) => importPet(w, true, log),
-      syncCalendar: () => calendar.sync(),
+      syncCalendar: () => calendar.sync(true),
       calendarLast: () => calendar.last,
       catalog: catalog.get,
       // 설정 창을 연다고 사용자 MCP 서버를 다 띄워 보지 않는다. 내 MCP 쓰기를 켠 사람만 새로 읽는다
@@ -840,7 +870,8 @@ ready.then(() => {
     },
   });
   settings.onChange((next, prev) => {
-    if (next.shortcuts.hide !== prev.shortcuts.hide || next.shortcuts.quickAdd !== prev.shortcuts.quickAdd) {
+    // 단축키 넷을 다 본다 (대화, 같이 보기 키를 바꿔도 다시 켜야 반영되던 문제, 리뷰 HIGH)
+    if (shortcutsChanged(next.shortcuts, prev.shortcuts)) {
       const taken = applyShortcuts();
       if (taken.length > 0)
         void pet.say({
@@ -849,7 +880,7 @@ ready.then(() => {
           ttlMs: 8000,
         });
     }
-    if (next.icsUrl !== prev.icsUrl && next.icsUrl) void calendar.sync();
+    if (next.icsUrl !== prev.icsUrl && next.icsUrl) void calendar.sync(true);
     if (next.myMcp && !prev.myMcp) void refreshMcpServers(log);
     if (JSON.stringify(next.friends) !== JSON.stringify(prev.friends)) {
       friends.sync();
