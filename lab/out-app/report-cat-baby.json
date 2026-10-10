@@ -1,0 +1,11 @@
+[
+  {
+    "job": "cat-baby",
+    "ok": true,
+    "fur": true,
+    "space": "black-forest-labs/FLUX.1-Kontext-Dev + black-forest-labs/FLUX.2-klein-4B",
+    "kind": "webp",
+    "bytes": 55188,
+    "ms": 41018
+  }
+]
