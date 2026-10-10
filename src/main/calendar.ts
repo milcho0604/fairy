@@ -1,7 +1,7 @@
 import { net } from 'electron';
 import type { EventStore } from '../shared/event-store.ts';
 import { t } from '../shared/i18n/index.ts';
-import { cleanIcsUrl, parseIcs } from '../shared/ics.ts';
+import { CAL_FAIL_START, calFailStep, cleanIcsUrl, parseIcs } from '../shared/ics.ts';
 import { readCapped } from './read-capped.ts';
 import { settings } from './settings.ts';
 
@@ -19,12 +19,22 @@ const TIMEOUT_MS = 20_000;
 export function watchCalendar(o: {
   events: EventStore;
   onChanged: () => void;
+  /** 연달아 못 읽었다 (CAL_FAIL_TELL 번째에 한 번). 펫이 알리고 설정을 열 수 있게 한다 */
+  onBroken?: () => void;
   log: (tag: string, ...rest: unknown[]) => void;
 }) {
   let last = '';
+  /** 연달아 못 읽은 수 (calFailStep). 앱을 다시 켜면 처음부터 */
+  let fails = CAL_FAIL_START;
 
-  const done = (msg: string) => {
+  const done = (msg: string, result: 'ok' | 'offline' | 'fail' = 'fail') => {
     last = msg;
+    const step = calFailStep(fails, result);
+    fails = step.state;
+    if (step.tell) {
+      o.log('calendar', '계속 못 읽음', fails.n);
+      o.onBroken?.();
+    }
     return msg;
   };
 
@@ -55,10 +65,12 @@ export function watchCalendar(o: {
           updated: r.updated,
           removed: r.removed,
         }),
+        'ok',
       );
     } catch (err) {
       o.log('calendar', '실패', err instanceof Error ? err.name : 'error');
-      return done(t('panel.calendar.offline'));
+      // 인터넷이 끊겼거나 시간이 끝났다: 캘린더 탓이 아니라 세지 않는다
+      return done(t('panel.calendar.offline'), 'offline');
     } finally {
       clearTimeout(timer);
     }

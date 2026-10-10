@@ -62,14 +62,29 @@ test('표시와 검사', () => {
 
 test('단축키 겹침: 같은 키 조합(대소문자 무시)이면 두 이름을, 아니면 undefined (버그잡이 6차)', () => {
   assert.equal(shortcutClash(SHORTCUT_DEFAULTS), undefined);
-  assert.deepEqual(shortcutClash({ hide: 'CommandOrControl+Alt+J', quickAdd: 'CommandOrControl+Alt+J' }), [
-    'hide',
-    'quickAdd',
-  ]);
-  assert.deepEqual(shortcutClash({ hide: 'CommandOrControl+Alt+j', quickAdd: 'CommandOrControl+Alt+J' }), [
-    'hide',
-    'quickAdd',
-  ]);
+  const d = SHORTCUT_DEFAULTS;
+  assert.deepEqual(
+    shortcutClash({ ...d, hide: 'CommandOrControl+Alt+J', quickAdd: 'CommandOrControl+Alt+J' }),
+    ['hide', 'quickAdd'],
+  );
+  assert.deepEqual(
+    shortcutClash({ ...d, hide: 'CommandOrControl+Alt+j', quickAdd: 'CommandOrControl+Alt+J' }),
+    ['hide', 'quickAdd'],
+  );
+  // 대화, 같이 보기도 같이 본다: 숨기기를 대화 키로 바꾸면 겹친다
+  assert.deepEqual(shortcutClash({ ...d, hide: d.chat }), ['hide', 'chat']);
+  assert.deepEqual(shortcutClash({ ...d, look: d.quickAdd }), ['quickAdd', 'look']);
+});
+
+test('대화, 같이 보기 기본 단축키: Cmd/Ctrl+Option/Alt+Shift+J, L. 서로, 다른 기본과 겹치지 않는다', () => {
+  assert.equal(SHORTCUT_DEFAULTS.chat, 'CommandOrControl+Alt+Shift+J');
+  assert.deepEqual(acceleratorLabel(SHORTCUT_DEFAULTS.look, true), ['Cmd', 'Option', 'Shift', 'L']);
+  assert.equal(new Set(Object.values(SHORTCUT_DEFAULTS).map((v) => v.toLowerCase())).size, 4);
+  for (const mac of [true, false])
+    for (const acc of [SHORTCUT_DEFAULTS.chat, SHORTCUT_DEFAULTS.look]) {
+      assert.equal(reservedUse(acc, mac), undefined, acc);
+      assert.equal(isAccelerator(acc), true);
+    }
 });
 
 const err = (r: ReturnType<typeof toAccelerator>): string => (r && 'error' in r ? r.error : '');

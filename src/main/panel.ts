@@ -69,8 +69,8 @@ export interface PanelOptions {
   notes: NoteStore;
   events: EventStore;
   focus: () => FocusState;
-  /** 집중 시작. 길이(15, 25, 50분)를 주면 그 길이로 */
-  startFocus: (minutes?: number) => void;
+  /** 집중 시작. 길이(15, 25, 50분)를 주면 그 길이로, 할 일 id 를 주면 그 할 일을 하는 집중 */
+  startFocus: (minutes?: number, todoId?: number) => void;
   /** 고른 집중 길이 */
   focusMin: () => number;
   stopFocus: () => void;
@@ -468,8 +468,10 @@ export function createPanel(o: PanelOptions) {
     o.play(kind);
   });
   // ---- 집중 타이머 ----
-  ipcMain.on(PANEL.focusStart, (e, minutes: unknown) => {
-    if (ours(e)) o.startFocus(isFocusLength(minutes) ? minutes : undefined);
+  ipcMain.on(PANEL.focusStart, (e, minutes: unknown, todoId: unknown) => {
+    if (!ours(e)) return;
+    const id = typeof todoId === 'number' && Number.isInteger(todoId) ? todoId : undefined;
+    o.startFocus(isFocusLength(minutes) ? minutes : undefined, id);
   });
   ipcMain.on(PANEL.focusStop, (e) => {
     if (ours(e)) o.stopFocus();

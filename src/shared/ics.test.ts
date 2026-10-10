@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { cleanIcsUrl, parseIcs, resolveTz, WINDOWS_ZONES, zonedToUtc } from './ics.ts';
+import {
+  CAL_FAIL_START,
+  CAL_FAIL_TELL,
+  calFailStep,
+  cleanIcsUrl,
+  parseIcs,
+  resolveTz,
+  WINDOWS_ZONES,
+  zonedToUtc,
+} from './ics.ts';
 
 const SEOUL = 'Asia/Seoul';
 const from = Date.UTC(2026, 9, 1);
@@ -301,4 +310,27 @@ test('종일 일정의 끝: 하루는 null, 여러 날은 끝 날 다음 날 0�
       ['one', Date.UTC(2026, 9, 11, 15), null],
     ],
   );
+});
+
+test('캘린더를 계속 못 읽음: 세 번째에 한 번만 알리고, 인터넷 끊김은 세지 않고, 한 번 읽히면 처음부터', () => {
+  type R = Parameters<typeof calFailStep>[1];
+  const run = (results: R[]) => {
+    let s = CAL_FAIL_START;
+    const told: number[] = [];
+    results.forEach((r, i) => {
+      const step = calFailStep(s, r);
+      s = step.state;
+      if (step.tell) told.push(i);
+    });
+    return { s, told };
+  };
+  assert.equal(CAL_FAIL_TELL, 3);
+  assert.deepEqual(run(['fail', 'fail', 'fail', 'fail', 'fail']).told, [2]);
+  // 인터넷 끊김은 사이에 끼어도 세지도 지우지도 않는다
+  assert.deepEqual(run(['fail', 'offline', 'fail', 'offline', 'fail']).told, [4]);
+  assert.deepEqual(run(['offline', 'offline', 'offline', 'offline']).told, []);
+  // 한 번 읽히면 처음부터: 다시 세 번 못 읽으면 또 알린다
+  assert.deepEqual(run(['fail', 'fail', 'ok', 'fail', 'fail']).told, []);
+  assert.deepEqual(run(['fail', 'fail', 'fail', 'ok', 'fail', 'fail', 'fail']).told, [2, 6]);
+  assert.deepEqual(run(['fail', 'fail', 'fail', 'ok']).s, CAL_FAIL_START);
 });

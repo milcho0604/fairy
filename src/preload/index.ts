@@ -244,7 +244,7 @@ if (kind === 'panel' || kind === 'quick') {
     eventUpdate: (id, patch) => ipcRenderer.send(PANEL.eventUpdate, id, patch),
     eventRemove: (id: number) => ipcRenderer.send(PANEL.eventRemove, id),
     eventRestore: (id: number) => ipcRenderer.send(PANEL.eventRestore, id),
-    focusStart: (minutes?: number) => ipcRenderer.send(PANEL.focusStart, minutes),
+    focusStart: (minutes?: number, todoId?: number) => ipcRenderer.send(PANEL.focusStart, minutes, todoId),
     focusStop: () => ipcRenderer.send(PANEL.focusStop),
     missedClear: () => ipcRenderer.send(PANEL.missedClear),
     buyToy: (key: string) => ipcRenderer.invoke(PANEL.buyToy, key),

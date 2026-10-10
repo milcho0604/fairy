@@ -1,6 +1,8 @@
 // 숨어 있을 때 온 알림 (기획서 "펫 동작 규칙" 숨김: 알림은 쌓아 두었다가 나올 때 한 번에).
 // 펫이 숨은 동안(방해 금지, 발표, 숨기기) 일정 알림이나 업적 같은 말을 버리지 않고 모아 둔다.
 // 다시 나오면 아직 쓸모 있는 것은 말풍선 하나로 묶고, 시작이 한참 지난 일정은 패널 오늘 탭의 "놓친 알림"에만 둔다.
+
+import type { BubbleKind } from './chatter.ts';
 import { t } from './i18n/index.ts';
 import type { BubbleButton } from './ipc.ts';
 import { type MissedMsg, parseMissedMsg, renderMissed } from './missed-msg.ts';
@@ -29,6 +31,12 @@ export interface HeldBubble {
   buttons?: BubbleButton[];
   /** 다시 꺼낸 말풍선이 닫힌 방법을 받는다 (처음 띄운 쪽은 이미 끝났다). 저장하지 않는다 */
   onAction?: (action: string) => void;
+  /** 말풍선 종류 (시스템 알림으로 돌릴지 볼 때. 일정 알림만 돌린다) */
+  kind?: BubbleKind;
+  /** 펫이 안 보이면 시스템 알림으로도 알릴 말 (일정, 할 일 미리 알림만. 인사, 회고는 아니다) */
+  osNotify?: boolean;
+  /** 시스템 알림으로 이미 한 번 알렸다 (같은 알림을 두 번 울리지 않게) */
+  osNotified?: boolean;
 }
 
 /** 보였는데 아무도 못 보고 지나가면 다시 보이는 횟수 상한. 넘으면 놓친 알림으로 */
@@ -56,6 +64,34 @@ export function fateOf(
   return 'missed';
 }
 
+/**
+ * 펫이 안 보일 때 시스템 알림으로 돌릴지 (설정 "펫이 안 보일 때 시스템 알림으로").
+ * 맥은 다른 앱의 전체 화면 위에 펫이 뜨지 않아(visibleOnFullScreen: false) 말풍선이 아무도 못 보는 곳에 떴다 사라지고,
+ * 윈도우는 발표, 전체 화면이면 숨어서 시작이 지나도록 모아만 둔다. 그래서 일정 알림만 운영체제 알림으로도 한 번 알린다.
+ * - 말할 때 이미 못 띄우면(blocked, action 없음) 바로
+ * - 띄웠는데 아무도 안 누르고 시간이 끝났고(action 'timeout') 사용자가 자리에 있으면 (전체 화면이라 못 본 것)
+ * 자리를 비워 시간이 끝난 것은 다시 꺼낼 때 보이니 돌리지 않는다. 한 알림에 한 번만.
+ */
+export function osNotifyFor(o: {
+  kind: BubbleKind | undefined;
+  blocked: boolean;
+  away: boolean;
+  setting: boolean;
+  alreadyNotified: boolean;
+  /** 말풍선이 닫힌 방법. 말할 때(아직 안 띄움)는 없다 */
+  action?: string | undefined;
+}): boolean {
+  if (!o.setting || o.kind !== 'schedule' || o.alreadyNotified) return false;
+  if (o.action === undefined) return o.blocked;
+  return o.action === 'timeout' && !o.away;
+}
+
+/** 시스템 알림을 눌렀을 때 대신 누를 말풍선 단추: 회의 열기, 할 일 보기 순. 없으면 undefined (펫만 보인다) */
+export function osClickAction(buttons: readonly BubbleButton[] | undefined): string | undefined {
+  const ids = (buttons ?? []).map((b) => b.id);
+  return ids.includes('link') ? 'link' : ids.includes('show') ? 'show' : undefined;
+}
+
 export interface MissedItem {
   /** 만들 때 글 (msg 가 없거나 읽지 못하면 이것을 보인다) */
   text: string;
@@ -79,7 +115,7 @@ export const HELD_MAX = 6;
 export const MISSED_MAX = 20;
 /** 일정 알림은 시작 뒤 이만큼 지나면 말풍선으로 꺼내지 않는다 */
 export const SCHEDULE_STALE_MS = 10 * 60_000;
-/** 일정 알림 미루기 (메모리에만. 앱을 끄면 사라진다) */
+/** 일정 알림 미루기 (플래너 저장 파일에 남는다. reminders.ts) */
 export const SNOOZE_MS = 5 * 60_000;
 
 /** 미루기 단추를 보일지: 미룬 뒤에도 시작이 한참 지나기 전이어야 한다 */

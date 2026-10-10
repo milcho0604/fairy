@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { briefingText, deadlineText, dueSlot, reviewText, undoMoved } from './briefing.ts';
+import {
+  briefingText,
+  deadlineText,
+  dueSlot,
+  type NextUpTodo,
+  nextUp,
+  PREPARE_MS,
+  reviewText,
+  undoMoved,
+} from './briefing.ts';
 import { breakFor, focusCoins, focusedMinutes, IDLE, remainLabel, startFocus, tickFocus } from './focus.ts';
 import { setLang } from './i18n/index.ts';
 
@@ -119,4 +128,76 @@ test('회고 내일로 넘기기 되돌리기: 아직 내일 마감인 것만 �
     { id: 1, due: '2026-10-08' },
     { id: 2, due: '2026-10-07' },
   ]);
+});
+
+test('다음 할 일: 30분 안 일정 준비 → 지난 중요 → 오늘 중요 → 오늘 마감 → 오래된 중요', () => {
+  const now = new Date(2026, 9, 10, 10, 0).getTime();
+  let seq = 0;
+  const todo = (title: string, due: string | null, important = false, more: Partial<NextUpTodo> = {}) => ({
+    id: ++seq,
+    title,
+    due,
+    important,
+    createdAt: now - (100 - seq) * MIN,
+    doneAt: null,
+    ...more,
+  });
+  const oldImportant = todo('오래된 중요', null, true);
+  const newImportant = todo('새 중요', '2026-10-20', true);
+  const today = todo('오늘 보통', '2026-10-10');
+  const todayEarly = todo('오늘 보통 9시', '2026-10-10', false, { dueMin: 9 * 60 });
+  const todayImp = todo('오늘 중요', '2026-10-10', true);
+  const lateImp = todo('지난 중요', '2026-10-08', true);
+  const late = todo('지난 보통', '2026-10-01');
+  const done = todo('끝낸 지난 중요', '2026-10-01', true, { doneAt: now - MIN });
+  const all = [oldImportant, newImportant, today, todayEarly, todayImp, lateImp, late, done];
+  const soon = { id: 9, title: '디자인 회의', startAt: now + 20 * MIN, allDay: false };
+  const pick = (todos: typeof all, events = [soon]) => nextUp({ todos, events, now });
+
+  assert.deepEqual(pick(all), { kind: 'event', id: 9, title: '디자인 회의', startAt: now + 20 * MIN });
+  // 30분보다 멀거나, 이미 시작했거나, 종일 일정은 준비할 일이 아니다
+  const notSoon = [
+    { ...soon, startAt: now + PREPARE_MS + 1 },
+    { ...soon, startAt: now - MIN },
+    { ...soon, startAt: now + 5 * MIN, allDay: true },
+  ];
+  assert.deepEqual(pick(all, notSoon), { kind: 'todo', id: lateImp.id, title: '지난 중요', why: 'overdue' });
+  assert.equal(pick([oldImportant, today, todayImp, late], [])?.title, '오늘 중요');
+  // 오늘 마감끼리는 시각이 이른 것부터 (시각 없는 것은 뒤)
+  assert.deepEqual(pick([oldImportant, today, todayEarly, late], []), {
+    kind: 'todo',
+    id: todayEarly.id,
+    title: '오늘 보통 9시',
+    why: 'today',
+  });
+  // 오래된 중요: 먼저 넣은 것
+  assert.deepEqual(pick([newImportant, oldImportant, late], []), {
+    kind: 'todo',
+    id: oldImportant.id,
+    title: '오래된 중요',
+    why: 'important',
+  });
+  // 지난 보통 할 일만 있으면 고르지 않는다 (회고, 마감 알림이 챙긴다)
+  assert.equal(pick([late, done], []), undefined);
+  assert.equal(nextUp({ todos: [], events: [], now }), undefined);
+});
+
+test('브리핑 끝에 먼저 할 일 한 문장. 다른 게 없으면 그 문장만', () => {
+  assert.equal(
+    briefingText({ events: [], dueToday: 1, overdue: 0, nowMinute: 540, next: '보고서' }),
+    "좋은 아침! 할 일은 오늘 마감 1개 있어. 먼저 '보고서'부터 해 볼까?",
+  );
+  assert.equal(
+    briefingText({ events: [], dueToday: 0, overdue: 0, nowMinute: 540, next: '보고서' }),
+    "좋은 아침! 먼저 '보고서'부터 해 볼까?",
+  );
+  setLang('en');
+  try {
+    assert.equal(
+      briefingText({ events: [], dueToday: 0, overdue: 0, nowMinute: 540, next: 'Report' }),
+      "Good morning! How about starting with 'Report'?",
+    );
+  } finally {
+    setLang('ko');
+  }
 });

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { focusedMinutes, IDLE, skipGap, startFocus, tickFocus } from './focus.ts';
+import { focusedMinutes, focusTodoToAsk, IDLE, skipGap, startFocus, tickFocus } from './focus.ts';
 
 test('잠자기나 시계 앞당김: 튄 시간은 집중으로 치지 않고, 짧은 지연은 그대로', () => {
   const T = 1_000_000;
@@ -15,4 +15,24 @@ test('잠자기나 시계 앞당김: 튄 시간은 집중으로 치지 않고, �
   // 시계를 되돌리면 되돌린 만큼 당긴다
   assert.equal(skipGap(s, T, T - 60_000, 15_000).endsAt, s.endsAt - 60_000);
   assert.deepEqual(skipGap(IDLE, T, woke, 15_000), IDLE);
+});
+
+test('할 일을 걸고 집중: id 를 들고 가다 끝나면 아직 열린 그 할 일을 묻는다. 쉬기에는 없다', () => {
+  const T = 1_000_000;
+  const s = startFocus(T, 25, 7);
+  assert.equal(s.todoId, 7);
+  assert.equal(startFocus(T, 25).todoId, undefined);
+  assert.equal(startFocus(T, 25, -1).todoId, undefined);
+  assert.equal(startFocus(T, 25, 1.5).todoId, undefined);
+  // 잠자기로 밀어도 할 일은 그대로
+  assert.equal(skipGap(s, T, T + 40 * 60_000, 15_000).todoId, 7);
+  const r = tickFocus(s, s.endsAt);
+  assert.equal(r.event, 'focus-done');
+  assert.equal(r.state.todoId, undefined);
+  // 끝난 순간의 집중 상태로 묻는다
+  assert.equal(focusTodoToAsk(s, [{ id: 3 }, { id: 7, doneAt: null }]), 7);
+  // 그사이 끝냈거나 지웠으면 묻지 않는다
+  assert.equal(focusTodoToAsk(s, [{ id: 7, doneAt: T }]), undefined);
+  assert.equal(focusTodoToAsk(s, [{ id: 3 }]), undefined);
+  assert.equal(focusTodoToAsk(startFocus(T), [{ id: 7 }]), undefined);
 });

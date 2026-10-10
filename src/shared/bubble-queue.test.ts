@@ -10,6 +10,8 @@ import {
   MAX_SHOWS,
   MISSED_MAX,
   MissedLog,
+  osClickAction,
+  osNotifyFor,
 } from './bubble-queue.ts';
 import { ChatterGate } from './chatter.ts';
 import { setLang } from './i18n/index.ts';
@@ -165,4 +167,39 @@ test('혼자 다시 꺼내는 말은 제 단추를 그대로 단다 (저장 파�
     ),
     ok,
   );
+});
+
+test('시스템 알림으로 돌리기: 일정 알림만, 못 띄우면 바로, 자리에 있는데 시간이 끝나면, 한 번만, 설정을 끄면 없음', () => {
+  const base = {
+    kind: 'schedule' as const,
+    blocked: false,
+    away: false,
+    setting: true,
+    alreadyNotified: false,
+  };
+  // 말할 때 숨음, 발표, 화면 잠금이면 바로
+  assert.equal(osNotifyFor({ ...base, blocked: true }), true);
+  // 말할 때 보이면 말풍선으로 충분
+  assert.equal(osNotifyFor(base), false);
+  // 맥 전체 화면: 말풍선은 떴는데 아무도 못 보고 시간이 끝남
+  assert.equal(osNotifyFor({ ...base, action: 'timeout' }), true);
+  // 자리를 비워 시간이 끝난 것은 돌아오면 다시 보인다
+  assert.equal(osNotifyFor({ ...base, action: 'timeout', away: true }), false);
+  // 눌렀거나 밀렸거나 치웠으면 아니다
+  for (const action of ['ok', 'dismiss', 'replaced', 'cleared'])
+    assert.equal(osNotifyFor({ ...base, blocked: true, action }), false, action);
+  assert.equal(osNotifyFor({ ...base, blocked: true, alreadyNotified: true }), false);
+  assert.equal(osNotifyFor({ ...base, action: 'timeout', alreadyNotified: true }), false);
+  assert.equal(osNotifyFor({ ...base, blocked: true, setting: false }), false);
+  // 업적, 회고 같은 다른 말은 돌리지 않는다
+  assert.equal(osNotifyFor({ ...base, kind: 'system', blocked: true }), false);
+  assert.equal(osNotifyFor({ ...base, kind: undefined, blocked: true }), false);
+});
+
+test('시스템 알림을 누르면: 회의 열기, 할 일 보기 순, 없으면 펫만', () => {
+  const b = (...ids: string[]) => ids.map((id) => ({ id, label: id }));
+  assert.equal(osClickAction(b('ok', 'snooze', 'link')), 'link');
+  assert.equal(osClickAction(b('ok', 'show')), 'show');
+  assert.equal(osClickAction(b('ok', 'snooze')), undefined);
+  assert.equal(osClickAction(undefined), undefined);
 });
