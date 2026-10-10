@@ -10,14 +10,18 @@ import {
 } from 'electron';
 import type { Catalog } from '../shared/ai/catalog.ts';
 import { type BetaReport, reportText, type StatStore } from '../shared/beta-stats.ts';
+import { issueUrl } from '../shared/feedback.ts';
 import { t } from '../shared/i18n/index.ts';
 import { type MakerTarget, SETTINGS, type SettingsSection, type SettingsSnapshot } from '../shared/ipc.ts';
 import type { Gait } from '../shared/pet3d/blueprint.ts';
 import { isGait, isPetKind, type Settings } from '../shared/settings.ts';
+import { RELEASE_REPO } from '../shared/update-policy.ts';
 import { localModelReady } from './ai/local.ts';
+import { createDiagnostics } from './diagnostics.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
 import { langArg } from './lang.ts';
 import { mcpScriptPath } from './mcp-launch.ts';
+import { openLink } from './open-link.ts';
 import { library } from './pet-library.ts';
 import { settings } from './settings.ts';
 import { removeModel, storedModels } from './storage.ts';
@@ -34,6 +38,10 @@ export interface SettingsWindowOptions {
   checkUpdate: () => Promise<string>;
   openOnboarding: () => void;
   log: (tag: string, ...rest: unknown[]) => void;
+  /** 진단 기록 폴더 (userData/logs) */
+  logDir: string;
+  /** 진단 기록에서 글자 그대로 가릴 사용자 글 (할 일, 일정, 메모 제목, 캘린더 주소) */
+  privateWords: () => string[];
   v2: {
     exportData: (win?: BrowserWindow) => Promise<string>;
     importData: (win?: BrowserWindow) => Promise<string>;
@@ -59,6 +67,8 @@ export function createSettingsWindow({
   checkUpdate,
   openOnboarding,
   log,
+  logDir,
+  privateWords,
   v2,
 }: SettingsWindowOptions) {
   let win: BrowserWindow | undefined;
@@ -126,11 +136,30 @@ export function createSettingsWindow({
     if (!fromSettings(e)) return false;
     // 기록 읽기나 클립보드 쓰기가 실패하면 false: 화면이 "복사하지 못했어"를 띄운다
     try {
-      clipboard.writeText(reportText(stats.report(Date.now()), { version: app.getVersion(), os: osLabel() }));
+      clipboard.writeText(statsText());
       return true;
     } catch {
       return false;
     }
+  });
+  // 의견 보내기에 진단 기록 붙이기: 가린 글을 미리 보이고, 복사와 저장은 그 글 그대로 (diagnostics.ts)
+  const statsText = () => reportText(stats.report(Date.now()), { version: app.getVersion(), os: osLabel() });
+  const diagnostics = createDiagnostics({ logDir, statsText, secrets: privateWords, log });
+  ipcMain.handle(SETTINGS.diagnostics, (e) => {
+    if (!fromSettings(e)) return undefined;
+    try {
+      return diagnostics.preview();
+    } catch (err) {
+      log('feedback', '미리 보기 실패', err instanceof Error ? err.message : String(err));
+      return undefined;
+    }
+  });
+  ipcMain.handle(SETTINGS.copyDiagnostics, (e) => fromSettings(e) && diagnostics.copy());
+  ipcMain.handle(SETTINGS.saveDiagnostics, (e) =>
+    fromSettings(e) ? diagnostics.save(win) : { ok: false, message: '' },
+  );
+  ipcMain.on(SETTINGS.reportIssue, (e) => {
+    if (fromSettings(e)) openLink(issueUrl(RELEASE_REPO, { version: app.getVersion(), os: osLabel() }), log);
   });
   ipcMain.handle(SETTINGS.checkUpdate, (e) => (fromSettings(e) ? checkUpdate() : ''));
   ipcMain.handle(SETTINGS.exportData, (e) => (fromSettings(e) ? v2.exportData(win) : ''));

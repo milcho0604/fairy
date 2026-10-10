@@ -9,6 +9,7 @@ import * as common from './common.ts';
 import * as companion from './companion.ts';
 import * as diary from './diary.ts';
 import * as ease from './ease.ts';
+import * as feedback from './feedback.ts';
 import * as idle from './idle.ts';
 import * as main from './main.ts';
 import * as maker from './maker.ts';
@@ -47,6 +48,7 @@ export const ko = {
   ...assist.ko,
   ...ease.ko,
   ...companion.ko,
+  ...feedback.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -72,4 +74,5 @@ export const en: Translation<typeof ko> = {
   ...assist.en,
   ...ease.en,
   ...companion.en,
+  ...feedback.en,
 };

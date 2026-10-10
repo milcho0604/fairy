@@ -45,6 +45,7 @@ import { PetNameInput } from '../PetNameInput.tsx';
 import { Pet3D } from '../pet3d.ts';
 import { gaitMismatch, shapeOf } from '../pet3d-gait.ts';
 import { RoutinePicker } from '../RoutinePicker.tsx';
+import { FeedbackBox } from './FeedbackBox.tsx';
 
 const bridge = window.jjakkungSettings;
 
@@ -935,6 +936,7 @@ function Stats({ onCopied }: { onCopied: (ok: boolean) => void }) {
           </button>
         </div>
         <small>{t('settings.stats.privacy')}</small>
+        <FeedbackBox />
       </div>
     </section>
   );

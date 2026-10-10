@@ -884,6 +884,21 @@ ready
       checkUpdate: () => updates.check(true),
       openOnboarding: () => onboarding.open(),
       log,
+      logDir: join(app.getPath('userData'), 'logs'),
+      // 기록에는 원래 남기지 않지만, 혹시 오류 글에 섞여 와도 의견 보내기에서 가린다 (diagnostics.ts)
+      privateWords: () => {
+        const now = Date.now();
+        const { open, doneToday } = store.list(now);
+        const s = settings.get();
+        return [
+          ...[...open, ...doneToday].flatMap((x) => [x.title, ...x.steps.map((st) => st.title)]),
+          ...events.between(now - 90 * 86_400_000, now + 180 * 86_400_000).map((e) => e.title),
+          ...notes.list().map((n) => n.title),
+          ...(s.icsUrl ? [s.icsUrl] : []),
+          ...s.petMemory,
+          ...s.petRules.split('\n'),
+        ];
+      },
       v2: {
         exportData: (w) => backup.exportTo(w),
         importData: (w) => backup.importFrom(w),

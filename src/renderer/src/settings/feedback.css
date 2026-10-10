@@ -1,0 +1,51 @@
+/* 의견 보내기: 진단 기록 붙이기 (FeedbackBox.tsx). 베타 기록 카드 안, 위 칸과 줄로 나눈다 */
+.feedback-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.feedback-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* 보낼 글 그대로. 좁은 창에서도 가로로 넘치지 않게 줄을 접는다 */
+.feedback-preview textarea {
+  width: 100%;
+  height: 200px;
+  min-height: 120px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--ink);
+  font:
+    11px / 1.5 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  resize: vertical;
+}
+
+.feedback-preview textarea:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: -1px;
+}
+
+small.feedback-ok {
+  color: var(--ink);
+}
+
+.feedback-issue {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}

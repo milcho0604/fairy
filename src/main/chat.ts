@@ -223,7 +223,8 @@ export function createChat(o: ChatOptions) {
     if (typeof spec === 'string') return { ok: false, error: spec };
     customInputs = [...customInputs, { id, input }];
     writeJson(CUSTOM_FILE, customInputs);
-    log('chat', 'provider added', spec.label);
+    // 이름은 사용자가 지은 글이라 남기지 않는다 (의견 보내기 진단 기록)
+    log('chat', 'provider added', id);
     return { ok: true, id };
   });
 

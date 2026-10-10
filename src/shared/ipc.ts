@@ -204,6 +204,11 @@ export const SETTINGS = {
   /** 베타 기록 (P4-04) */
   stats: 'settings:stats',
   copyStats: 'settings:copy-stats',
+  /** 의견 보내기: 가린 진단 기록 미리 보기, 그 글 그대로 복사, 파일로 저장, GitHub 문제 알리기 */
+  diagnostics: 'settings:diagnostics',
+  copyDiagnostics: 'settings:copy-diagnostics',
+  saveDiagnostics: 'settings:save-diagnostics',
+  reportIssue: 'settings:report-issue',
   /** 새 버전 확인 (v1). 결과 글 */
   checkUpdate: 'settings:check-update',
   openOnboarding: 'settings:open-onboarding',
@@ -300,6 +305,14 @@ export interface SettingsBridge {
   stats(): Promise<BetaReport>;
   /** 베타 기록 글을 클립보드에 복사한다 */
   copyStats(): Promise<boolean>;
+  /** 베타 기록 + 가린 진단 기록 (메인이 가린다). 읽지 못하면 undefined */
+  diagnostics(): Promise<{ text: string; lines: number; hidden: number } | undefined>;
+  /** 마지막 diagnostics() 글 그대로 복사 */
+  copyDiagnostics(): Promise<boolean>;
+  /** 마지막 diagnostics() 글 그대로 파일로. 그만두면 ok false, 빈 message */
+  saveDiagnostics(): Promise<{ ok: boolean; message: string }>;
+  /** GitHub 새 이슈 (판, 운영체제만 채움) */
+  reportIssue(): void;
   checkUpdate(): Promise<string>;
   openOnboarding(): void;
   /** 백업 폴더 만들기. 만든 경로 (그만두면 빈 글) */
