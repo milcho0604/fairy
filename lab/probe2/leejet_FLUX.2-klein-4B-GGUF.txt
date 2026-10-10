@@ -1,0 +1,5 @@
+.gitattributes 1643 None
+README.md 470 None
+flux-2-klein-4b-Q4_0.gguf 2460378560 d1023499ef3f2f82ff7c50e6778495195c1b6cc34835741778868428111f9ff4
+flux-2-klein-4b-Q8_0.gguf 4300629440 0bba6951258ec8f92d51114a8fa13e66828297bfff58a738f52729b3ef66fa28
+gated False license apache-2.0
