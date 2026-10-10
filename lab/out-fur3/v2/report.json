@@ -1,0 +1,33 @@
+{
+  "cfg": {
+    "note": "klein-4b distilled (seed 2)",
+    "engine": "klein"
+  },
+  "sample": "A cute, polished, realistic 3D illustration of this exact pet as a fully grown adult in its prime: full size, confident, sitting like a real pet, both front paws on the ground, hind legs folded beside the body, facing the viewer, whole body visible, alone, centered. Keep the pet's identity: same breed, fur color and pattern, markings and eye color. Fur: a very long, thick, fluffy coat on every part of the body, like a freshly blow-dried long-haired show pet: the legs are thick fluffy columns of long fur all the way down to the paws (long feathering on the front legs, fluffy britches on the hind legs, long tufts between the toes), a big chest ruff, cheek fluff and a bushy tail, visible individual strands and soft wispy edges along the whole silhouette. No smooth, sleek, short-haired or shaved areas anywhere, especially not on the legs. It is an animal: never standing upright on its hind legs, never human-like. Plain light solid background, soft studio light. No text, no watermark, no other animals or objects.",
+  "report": [
+    {
+      "v": 2,
+      "note": "klein-4b distilled (seed 2)",
+      "job": "cat-adult",
+      "ok": false,
+      "kind": "refused",
+      "message": "refused"
+    },
+    {
+      "v": 2,
+      "note": "klein-4b distilled (seed 2)",
+      "job": "cat-teen",
+      "ok": false,
+      "kind": "refused",
+      "message": "refused"
+    },
+    {
+      "v": 2,
+      "note": "klein-4b distilled (seed 2)",
+      "job": "poodle-teen",
+      "ok": false,
+      "kind": "refused",
+      "message": "refused"
+    }
+  ]
+}
