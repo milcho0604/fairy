@@ -372,20 +372,26 @@ function WeekBox({ week, today }: { week: WeekSummary; today: string }) {
         <small>{t('assist.week.summary', { done: week.done, focus: week.focusMin })}</small>
       </summary>
       <div className="week-bars">
-        {week.days.map((d, i) => (
-          <span
-            key={d.day}
-            className={`week-bar ${d.future ? 'future' : d.done === 0 ? 'zero' : ''} ${d.day === today ? 'today' : ''}`}
-            title={
-              d.future
-                ? labels[i]
-                : t('assist.week.dayTitle', { label: labels[i] ?? '', done: d.done, focus: d.focusMin })
-            }
-          >
-            <i style={{ height: `${d.future ? 100 : Math.max(6, (d.done / max) * 100)}%` }} />
-            <small>{labels[i]}</small>
-          </span>
-        ))}
+        {week.days.map((d, i) => {
+          const label = d.future
+            ? (labels[i] ?? '')
+            : t('assist.week.dayTitle', { label: labels[i] ?? '', done: d.done, focus: d.focusMin });
+          return (
+            <span
+              key={d.day}
+              className={`week-bar ${d.future ? 'future' : d.done === 0 ? 'zero' : ''} ${d.day === today ? 'today' : ''}`}
+              title={label}
+              role="img"
+              aria-label={label}
+            >
+              {/* 막대는 이름표와 따로 높이가 정해진 칸 안에서 잰다 (이름표 몫만큼 큰 막대가 눌려 70% 와 100% 가 같아 보였다) */}
+              <span className="week-track">
+                <i style={{ height: `${d.future ? 100 : Math.max(6, (d.done / max) * 100)}%` }} />
+              </span>
+              <small aria-hidden="true">{labels[i]}</small>
+            </span>
+          );
+        })}
       </div>
       <ul className="week-lines">
         <li>{t('assist.week.vsLast', { diff: week.done - week.lastDone })}</li>

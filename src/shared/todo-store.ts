@@ -493,10 +493,11 @@ export class TodoStore {
     try {
       if (back > 0) this.#log(-back, 'undo', id, now);
       this.#db.prepare('update todo set done_at = null, coins = 0 where id = ?').run(id);
-      // 끝내서 생긴 다음 회차는 걷어 낸다 (아직 손대지 않은 것만).
+      // 끝내서 생긴 다음 회차는 걷어 낸다 (아직 손대지 않은 것만. 단계를 하나라도 체크했으면 손댄 것이라 둔다).
       this.#db
         .prepare(
-          'update todo set deleted_at = ? where repeat_of = ? and done_at is null and deleted_at is null',
+          `update todo set deleted_at = ? where repeat_of = ? and done_at is null and deleted_at is null
+           and not exists (select 1 from todo_step where todo_step.todo_id = todo.id and todo_step.done = 1)`,
         )
         .run(now, id);
       this.#db.exec('commit');

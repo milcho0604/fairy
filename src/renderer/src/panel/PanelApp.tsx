@@ -163,7 +163,7 @@ export function PanelApp() {
     if (toast.kind === 'event-removed') bridge.eventRestore(toast.id);
     if (toast.kind === 'todo-removed') bridge.restore(toast.id);
     if (toast.kind === 'to-event') bridge.eventRemove(toast.id);
-    if (toast.kind === 'moved') for (const m of toast.moved) bridge.update(m.id, { due: m.due });
+    if (toast.kind === 'moved') bridge.undoMoveOverdue();
     setToast(undefined);
   };
   undoRef.current = () => {

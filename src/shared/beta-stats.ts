@@ -125,9 +125,13 @@ export class StatStore {
       .all(...days) as Row[];
     const byDay = new Map(rows.map((r) => [r.day, r]));
     const done = new Map<string, number>();
+    // 고른 날 중 가장 이른 날 하루 전부터만 읽는다 (패널이 바뀔 때마다 불러 끝낸 할 일 전체를 훑었다)
+    const first = [...want].sort()[0] ?? '';
+    const [y, m, d] = first.split('-').map(Number);
+    const since = y && m && d ? new Date(y, m - 1, d - 1).getTime() : 0;
     const doneRows = this.#db
-      .prepare('select done_at from todo where done_at is not null and deleted_at is null')
-      .all() as { done_at: number }[];
+      .prepare('select done_at from todo where done_at is not null and deleted_at is null and done_at >= ?')
+      .all(since) as { done_at: number }[];
     for (const r of doneRows) {
       const d = this.#day(Number(r.done_at));
       if (want.has(d)) done.set(d, (done.get(d) ?? 0) + 1);

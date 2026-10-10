@@ -683,6 +683,7 @@ export const PANEL = {
   stepRemove: 'panel:step-remove',
   /** 지난 마감을 오늘로 */
   moveOverdue: 'panel:move-overdue',
+  undoMoveOverdue: 'panel:undo-move-overdue',
   /** 메인 → 패널, 빠른 입력: 바뀐 상태 */
   state: 'panel:state',
   /** 메인 → 패널: 이 탭을 보여 줘 (펫 메뉴 "상점") */
@@ -841,13 +842,16 @@ export interface PanelBridge {
   eventRemove(id: number): void;
   eventRestore(id: number): void;
   /** 할 일에 단계 더하기 (9판). 꽉 찼거나 끝난 할 일이면 오류 */
-  stepAdd(todoId: number, title: string): Promise<{ ok: boolean; error?: string }>;
+  /** 단계 넣기 (여러 줄이면 한 번에) */
+  stepAdd(todoId: number, title: string | string[]): Promise<{ ok: boolean; error?: string }>;
   /** 단계 체크와 해제. done 이 없으면 뒤집는다 */
   stepToggle(stepId: number, done?: boolean): void;
   stepRename(stepId: number, title: string): void;
   stepRemove(stepId: number): void;
   /** 지난 마감을 오늘로. 옮긴 것과 원래 마감 (되돌리기는 update 로) */
   moveOverdue(): Promise<{ id: number; due: string | null }[]>;
+  /** 방금 한 지난 마감 오늘로 되돌리기 */
+  undoMoveOverdue(): void;
   /** 길이(15, 25, 50분)를 주면 그 길이로, 아니면 마지막에 고른 길이로. todoId 를 주면 그 할 일을 하는 집중 */
   focusStart(minutes?: number, todoId?: number): void;
   focusStop(): void;

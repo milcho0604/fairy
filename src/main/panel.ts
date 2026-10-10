@@ -8,8 +8,9 @@ import {
   screen,
 } from 'electron';
 import type { StatStore } from '../shared/beta-stats.ts';
+import { undoMoved } from '../shared/briefing.ts';
 import { findSameEvent } from '../shared/event-dup.ts';
-import { overlapping } from '../shared/event-overlap.ts';
+import { overlapping, spanEnd } from '../shared/event-overlap.ts';
 import {
   allDayTimes,
   type EventStore,
@@ -191,8 +192,8 @@ export function createPanel(o: PanelOptions) {
 
   /** 새 시각 일정과 시간이 겹치는 일정 (첫 것). 앞뒤 하루 안에서만 찾는다 */
   function clashOf(ev: { startAt: number; endAt: number | null; id: number }): EventClash | undefined {
-    const near = o.events.between(ev.startAt - 86_400_000, ev.startAt + 86_400_000);
-    const hit = overlapping(near, { ...ev, title: '', allDay: false })[0];
+    const span = { ...ev, title: '', allDay: false };
+    const hit = overlapping(o.events.timedOverlapping(ev.startAt, spanEnd(span)), span)[0];
     return hit ? { title: hit.title, startAt: hit.startAt } : undefined;
   }
 
@@ -412,38 +413,62 @@ export function createPanel(o: PanelOptions) {
     return { ok: true, event, ...(clash ? { clash } : {}) };
   });
   // ---- 할 일 단계 (9판) ----
+  // 한 줄이나 여러 줄 (붙여 넣은 목록은 한 번에 넣고 한 번만 알린다. 줄마다 부르면 패널 상태를 줄 수만큼 다시 만들었다)
   ipcMain.handle(PANEL.stepAdd, (e, todoId: unknown, title: unknown) => {
-    if (!ours(e) || typeof todoId !== 'number' || typeof title !== 'string') return { ok: false };
+    const titles = typeof title === 'string' ? [title] : Array.isArray(title) ? title : undefined;
+    if (!ours(e) || typeof todoId !== 'number' || !titles || !titles.every((x) => typeof x === 'string'))
+      return { ok: false };
     const todo = o.store.get(todoId);
     if (!todo || todo.doneAt !== null) return { ok: false, error: t('panel.retry') };
-    if (todo.steps.length >= STEP_MAX) return { ok: false, error: t('assist.step.full', { n: STEP_MAX }) };
-    const step = o.store.addStep(todoId, title, Date.now());
-    if (!step) return { ok: false, error: t('panel.add.empty') };
+    const room = STEP_MAX - todo.steps.length;
+    if (room <= 0) return { ok: false, error: t('assist.step.full', { n: STEP_MAX }) };
+    const n = o.store.addSteps(todoId, (titles as string[]).slice(0, room), Date.now());
+    if (n === 0) return { ok: false, error: t('panel.add.empty') };
     push();
+    if (titles.length > room) return { ok: false, error: t('assist.step.full', { n: STEP_MAX }) };
     return { ok: true };
   });
+  /** 이 단계의 할 일이 아직 열려 있는지 (끝냈거나 지운 할 일의 단계는 패널에서 바꾸지 않는다) */
+  const openStep = (stepId: number) => {
+    const owner = o.store.stepOwner(stepId);
+    const todo = owner === undefined ? undefined : o.store.get(owner);
+    return !!todo && todo.doneAt === null;
+  };
   ipcMain.on(PANEL.stepToggle, (e, stepId: unknown, done: unknown) => {
-    if (!ours(e) || typeof stepId !== 'number') return;
+    if (!ours(e) || typeof stepId !== 'number' || !openStep(stepId)) return;
     o.store.toggleStep(stepId, typeof done === 'boolean' ? done : undefined);
     push();
   });
   ipcMain.on(PANEL.stepRename, (e, stepId: unknown, title: unknown) => {
-    if (!ours(e) || typeof stepId !== 'number' || typeof title !== 'string') return;
+    if (!ours(e) || typeof stepId !== 'number' || typeof title !== 'string' || !openStep(stepId)) return;
     o.store.renameStep(stepId, title);
     push();
   });
   ipcMain.on(PANEL.stepRemove, (e, stepId: unknown) => {
-    if (!ours(e) || typeof stepId !== 'number') return;
+    if (!ours(e) || typeof stepId !== 'number' || !openStep(stepId)) return;
     o.store.removeStep(stepId);
     push();
   });
+  /** 마지막 "지난 마감 오늘로" (되돌리기는 메인이 지금 상태와 맞춰 한다) */
+  let lastMoved: { moved: { id: number; due: string | null }[]; today: string } | undefined;
   ipcMain.handle(PANEL.moveOverdue, (e) => {
     if (!ours(e)) return [];
     const now = Date.now();
-    const moved = o.store.moveOverdue(localDay(now), now);
+    const today = localDay(now);
+    const moved = o.store.moveOverdue(today, now);
+    lastMoved = { moved, today };
     log('todo', 'move-overdue', moved.length);
     push();
     return moved;
+  });
+  // 되돌리기: 아직 열려 있고 마감이 그대로 오늘인 것만 (그사이 끝냈거나 마감을 바꾼 것은 둔다. 회고 되돌리기와 같다)
+  ipcMain.on(PANEL.undoMoveOverdue, (e) => {
+    if (!ours(e) || !lastMoved) return;
+    const back = undoMoved(lastMoved.moved, o.store.list(Date.now()).open, lastMoved.today);
+    lastMoved = undefined;
+    const at = Date.now();
+    for (const b of back) o.store.update(b.id, { due: b.due }, at);
+    push();
   });
   ipcMain.on(PANEL.eventUpdate, (e, id: number, patch) => {
     if (!ours(e) || typeof patch !== 'object' || patch === null) return;

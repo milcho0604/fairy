@@ -14,6 +14,9 @@ interface Span {
 const endOf = (e: Span) =>
   e.endAt !== null && e.endAt > e.startAt ? e.endAt : e.startAt + NO_END_MIN * 60_000;
 
+/** 일정이 끝나는 때 (끝이 없으면 30분 뒤). 저장 파일에서 겹치는 것을 찾을 범위 */
+export const spanEnd = endOf;
+
 /** ev 와 시간이 겹치는 시각 일정들, 이른 것부터. 같은 id 는 뺀다 */
 export function overlapping<T extends Span>(existing: readonly T[], ev: Span): T[] {
   if (ev.allDay) return [];

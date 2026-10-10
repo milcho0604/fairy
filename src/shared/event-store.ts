@@ -1,6 +1,7 @@
 // 일정 (v1). 시간이 되면 펫이 말풍선으로 알린다. 구글 캘린더는 v2.
 import { plusDays } from './day.ts';
 import type { Db } from './db-schema.ts';
+import { NO_END_MIN } from './event-overlap.ts';
 import { t } from './i18n/index.ts';
 import {
   EN_COUNT,
@@ -157,6 +158,23 @@ export class EventStore {
            order by start_at, id`,
         )
         .all(to, from, from) as Row[],
+    );
+  }
+
+  /**
+   * [from, to) 와 시간이 겹치는 시각 일정 (종일은 뺀다), 이른 것부터. 시작이 from 보다 이른 긴 일정도 넣는다
+   * (월요일 9시부터 수요일 18시까지인 일정이 화요일 회의와 겹치는 것을 between 으로는 못 봤다).
+   * 끝이 없는 일정은 30분짜리로 본다 (event-overlap.ts NO_END_MIN)
+   */
+  timedOverlapping(from: number, to: number): CalEvent[] {
+    return this.#withReminds(
+      this.#db
+        .prepare(
+          `select * from event where deleted_at is null and all_day = 0 and start_at < ?
+           and (case when end_at is not null and end_at > start_at then end_at else start_at + ? end) > ?
+           order by start_at, id`,
+        )
+        .all(to, NO_END_MIN * 60_000, from) as Row[],
     );
   }
 

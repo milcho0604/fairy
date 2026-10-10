@@ -12,7 +12,7 @@ import { nextUp } from '../shared/briefing.ts';
 import { plusDays } from '../shared/day.ts';
 import { type Db, SCHEMA_VERSION, schemaVersion } from '../shared/db-schema.ts';
 import { findSameEvent } from '../shared/event-dup.ts';
-import { overlapping } from '../shared/event-overlap.ts';
+import { overlapping, spanEnd } from '../shared/event-overlap.ts';
 import { ALL_DAY_MAX_DAYS, allDaySpan, allDayTimes, EventStore } from '../shared/event-store.ts';
 import { NOTE_BODY_MAX, NoteStore, notePreview, noteTitle, searchNotes } from '../shared/note-store.ts';
 import { cleanMemoryItem } from '../shared/pet-memory.ts';
@@ -132,8 +132,8 @@ function localStartOf(v: unknown): number {
 
 /** 시각 일정과 시간이 겹치는 일정이 있으면 덧붙일 말 (event-overlap.ts) */
 function clashNote(events: EventStore, ev: { id: number; startAt: number; endAt: number | null }): string {
-  const near = events.between(ev.startAt - 86_400_000, ev.startAt + 86_400_000);
-  const hit = overlapping(near, { ...ev, title: '', allDay: false });
+  const span = { ...ev, title: '', allDay: false };
+  const hit = overlapping(events.timedOverlapping(ev.startAt, spanEnd(span)), span);
   return hit.length > 0
     ? ` (주의: ${hit.map((e) => `${stamp(e.startAt).slice(11)} ${e.title}`).join(', ')} 일정과 시간이 겹쳐)`
     : '';
@@ -174,6 +174,8 @@ const TOOLS: Tool[] = [
       if (!title) throw new Error('title 이 비었어');
       const due = dueOf(a.due);
       const dueMin = dueTimeOf(a.due_time);
+      // 마감 날 없이 시각만 주면 저장이 시각을 버리는데 "넣었어"라고만 답해 AI 가 된 줄 알았다
+      if (dueMin !== null && due === null) throw new Error('due_time 은 due 가 있을 때만 줄 수 있어');
       const now = Date.now();
       const s = open();
       const added = s.todos.add(
@@ -281,6 +283,8 @@ const TOOLS: Tool[] = [
       if (typeof a.important === 'boolean') patch.important = a.important;
       if (Object.keys(patch).length === 0)
         throw new Error('바꿀 것(title, due, due_time, important, repeat)을 줘');
+      if (patch.dueMin != null && (patch.due === undefined ? t.due : patch.due) === null)
+        throw new Error('due_time 은 마감 날(due)이 있는 할 일에만 줄 수 있어');
       const next = s.todos.update(id, patch, Date.now()) ?? t;
       const time =
         next.dueMin === null ? '' : ` ${pad(Math.floor(next.dueMin / 60))}:${pad(next.dueMin % 60)}`;
@@ -609,8 +613,13 @@ const TOOLS: Tool[] = [
       const now = Date.now();
       const s = open();
       const today = localDay(now);
-      const from = new Date(now).setHours(0, 0, 0, 0);
-      const events = s.events.between(from, from + 86_400_000);
+      const d = new Date(now);
+      // 서머타임 날은 하루가 23, 25시간이라 24시간을 더하지 않고 다음 날 0시를 만든다
+      const from = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+      const events = s.events.between(
+        from,
+        new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime(),
+      );
       const { open: list, doneToday } = s.todos.list(now);
       const next = nextUp({ todos: list, events, now });
       const overdue = list.filter((t) => t.due !== null && t.due < today);

@@ -93,7 +93,7 @@ export function TodoTab({
   // biome-ignore lint/correctness/useExhaustiveDependencies: 여는 함수는 매번 새로 만들어도 하는 일이 같다
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'f') {
         e.preventDefault();
         openFind();
       }
@@ -509,12 +509,10 @@ function StepSheet({
   }, []);
 
   const add = async (lines: string[]) => {
-    for (const line of lines) {
-      const r = await bridge.stepAdd(todo.id, line);
-      if (!r.ok) {
-        setError(r.error ?? t('panel.add.failed'));
-        return false;
-      }
+    const r = await bridge.stepAdd(todo.id, lines);
+    if (!r.ok) {
+      setError(r.error ?? t('panel.add.failed'));
+      return false;
     }
     setError('');
     return true;
@@ -588,7 +586,7 @@ function StepItem({ step }: { step: TodoStep }) {
         className={`check ${step.done ? 'on' : ''}`}
         aria-pressed={step.done}
         aria-label={t(step.done ? 'assist.step.uncheck' : 'assist.step.check', { title: step.title })}
-        onClick={() => bridge.stepToggle(step.id)}
+        onClick={() => bridge.stepToggle(step.id, !step.done)}
       >
         <CheckIcon />
       </button>

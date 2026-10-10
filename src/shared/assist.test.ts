@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { type Db, MIGRATIONS, migrate, SCHEMA_VERSION } from './db-schema.ts';
 import { clashIds, overlapping } from './event-overlap.ts';
+import { EventStore } from './event-store.ts';
 import { allTags, filterTodos, titleParts, todoTags } from './todo-filter.ts';
 import { STEP_MAX, stepProgress, TodoStore } from './todo-store.ts';
 import { weekDays, weekStart, weekSummary } from './week.ts';
@@ -215,4 +216,29 @@ test('이번 주: 월요일부터, 지난주 같은 요일까지와 견주고, �
     w.days.map((d) => d.future),
     [false, false, false, true, true, true, true],
   );
+});
+
+test('일정 겹침 찾기: 전날 시작해 이어지는 긴 일정도, 끝 없는 일정은 30분, 종일은 빼고', () => {
+  const { db } = fresh();
+  const events = new EventStore(db);
+  const H = 3_600_000;
+  const long = events.add({ title: '워크숍', startAt: T0, endAt: T0 + 57 * H }, T0); // 월 9시 ~ 수 18시처럼
+  const short = events.add({ title: '점심', startAt: T0 + 29 * H }, T0); // 끝 없음 → 30분
+  events.add({ title: '여행', startAt: T0, endAt: T0 + 72 * H, allDay: true }, T0);
+  const hit = (from: number, to: number) => events.timedOverlapping(from, to).map((e) => e.id);
+  // 다음 날 14시 회의: 24시간 넘게 앞서 시작한 워크숍과 겹친다
+  assert.deepEqual(hit(T0 + 29 * H, T0 + 30 * H), [long.id, short.id]);
+  assert.deepEqual(hit(T0 + 29.5 * H, T0 + 30 * H), [long.id]);
+  assert.deepEqual(hit(T0 + 58 * H, T0 + 59 * H), []);
+});
+
+test('반복 할 일 끝내기를 되돌려도 다음 회차에 체크한 단계가 있으면 그 회차는 남긴다', () => {
+  const { store } = fresh();
+  const todo = store.add({ title: '주간 보고', repeat: 'weekly', due: '2026-10-02' }, T0);
+  store.addStep(todo.id, '숫자 모으기', T0);
+  store.complete(todo.id, T0);
+  const next = store.list(T0).open.find((t) => t.id !== todo.id && t.title === '주간 보고');
+  store.toggleStep(next?.steps[0]?.id ?? 0, true);
+  store.undo(todo.id, T0);
+  assert.ok(store.get(next?.id ?? 0), '손댄 다음 회차는 지우지 않는다');
 });
