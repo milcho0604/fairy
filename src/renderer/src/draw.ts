@@ -83,6 +83,8 @@ export interface DrawState {
   calm?: boolean;
   /** 이름 옆 얼굴 그림용 (pet-face.ts). 발은 그리지 않는다: 얼굴 아이콘은 얼굴만 */
   face?: boolean;
+  /** 바닥 그림자를 그리지 않는다 (얼굴 아이콘, 집 안 그림. pet-face.ts) */
+  noShadow?: boolean;
   /** 같이 보기 (shared/look-motion.ts): 그쪽을 보고, pose 가 있으면 돋보기를 든다 */
   peer?: { dir: Gaze; pose?: MagnifierPose };
   /** 사용자가 고른 걸음새 (설정). 없으면 자동: 2D 는 냥이, 멍멍이, 토순이만 네 발 */

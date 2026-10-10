@@ -30,7 +30,7 @@ import type { Blueprint, Gait } from '../../shared/pet3d/blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from '../../shared/pet3d/defaults.ts';
 import type { PetKind, PetStyle, PoseKind } from '../../shared/settings.ts';
 import { canPlay, type SoundKind } from '../../shared/sound.ts';
-import { AnimatedImage, loadPetImage } from './animated.ts';
+import { AnimatedImage, frameSide, loadPetImage } from './animated.ts';
 import { CANVAS_SIZE, type CarryDraw, CONFETTI_MS, drawPet, HEARTS_MS } from './draw.ts';
 import { initLang } from './lang.ts';
 import { moveFps, SIT_MS, sitDown } from './move-pose.ts';
@@ -407,7 +407,15 @@ function moveAsk(): MoveAsk {
 // 사진 펫 그림 (P1-08). 없으면 기본 펫. gif, webp 는 움직이는 그림 (v1). 상태별 포즈 그림 (v1).
 type PetImage = HTMLImageElement | AnimatedImage;
 let photo: PetImage | undefined;
-let poses: Partial<Record<PoseKind, PetImage>> = {};
+/** 지금 펫 그림의 data URL (기본 그림과 포즈). 포즈는 처음 쓸 때 푼다 (움직이는 그림 넷을 미리 다 풀면 수백 MB) */
+let photoUrl: string | undefined;
+let poseUrls: Partial<Record<PoseKind, string>> = {};
+/** 바꾸는 중인 다음 그림 묶음의 data URL */
+let nextUrls: Set<string> | undefined;
+/** 풀어 둔 그림 (data URL 별). 같은 그림을 여러 포즈에 써도 한 번만 푼다. 못 풀었으면 null */
+const decoded = new Map<string, PetImage | null>();
+/** 푸는 중인 그림 */
+const decoding = new Map<string, Promise<PetImage | undefined>>();
 let petKind: PetKind = 'kong';
 let cushion = false;
 /** 머리에 꽃 (친밀도 600) */
@@ -425,28 +433,95 @@ reducedMotion.addEventListener('change', () => requestFrame());
 let imageLoad = 0;
 /** AI 일러스트 나이 배율 (아기, 청소년은 작게. 사용자 크기 설정 위에 곱한다, illustrate.ts) */
 let photoScale = 1;
+function wantedUrl(url: string): boolean {
+  return url === photoUrl || Object.values(poseUrls).includes(url) || !!nextUrls?.has(url);
+}
+function release(img: PetImage | null | undefined) {
+  if (img instanceof AnimatedImage) img.close();
+}
+/** 움직이는 그림을 풀 크기: 지금 펫 크기와 화면 배율에 맞춘다 */
+function frameSideNow(): number {
+  return frameSide(viewSize, window.devicePixelRatio || 1);
+}
+/** 다 푼 그림을 넣어 둔다. replacing 은 더 선명하게 다시 푼 그림이 갈아 끼울 옛 그림 */
+function settle(url: string, img: PetImage | undefined, replacing?: PetImage): PetImage | undefined {
+  decoding.delete(url);
+  const cur = decoded.get(url);
+  if (replacing && !img) return replacing;
+  if (!wantedUrl(url) || (cur !== undefined && cur !== replacing)) {
+    release(img);
+    return wantedUrl(url) ? (cur ?? undefined) : undefined;
+  }
+  decoded.set(url, img ?? null);
+  if (replacing) {
+    if (photo === replacing) photo = img;
+    release(replacing);
+    requestFrame();
+  }
+  return img;
+}
+/** data URL 을 풀어 둔다 (이미 풀었거나 푸는 중이면 그것을) */
+function acquire(url: string): Promise<PetImage | undefined> {
+  const have = decoded.get(url);
+  if (have !== undefined) return Promise.resolve(have ?? undefined);
+  let p = decoding.get(url);
+  if (!p) {
+    p = loadPetImage(url, frameSideNow()).then((img) => settle(url, img));
+    decoding.set(url, p);
+  }
+  return p;
+}
+/** 펫을 키우거나 레티나 화면으로 옮겨 줄여 둔 움직이는 그림이 흐려지면 그 크기로 다시 푼다 */
+function sharpenImages() {
+  const side = frameSideNow();
+  for (const [url, img] of decoded) {
+    if (!(img instanceof AnimatedImage) || !img.reduced || decoding.has(url)) continue;
+    // 예산 때문에 바란 것보다 작게 풀린 그림은 더 큰 크기를 바랄 때만 다시 (같은 크기로 또 풀지 않게)
+    if (Math.max(img.width, img.height) * 1.2 >= side || img.asked * 1.2 >= side) continue;
+    decoding.set(
+      url,
+      loadPetImage(url, side).then((next) => settle(url, next, img)),
+    );
+  }
+}
+/** 포즈 그림. 아직 안 풀었으면 풀기 시작하고 undefined (그동안은 기본 그림) */
+function poseImage(k: PoseKind): PetImage | undefined {
+  const url = poseUrls[k];
+  if (!url) return undefined;
+  if (url === photoUrl) return photo;
+  const img = decoded.get(url);
+  if (img === undefined && !decoding.has(url)) void acquire(url).then(() => requestFrame());
+  return img ?? undefined;
+}
 bridge.onImage(async (images: PetImages) => {
   const mine = ++imageLoad;
-  const [main, depthImg, ...rest] = await Promise.all([
-    images.main ? loadPetImage(images.main) : Promise.resolve(undefined),
+  const next = new Set<string>();
+  if (images.main) next.add(images.main);
+  for (const url of Object.values(images.poses)) if (url) next.add(url);
+  nextUrls = next;
+  const [main, depthImg] = await Promise.all([
+    images.main ? acquire(images.main) : Promise.resolve(undefined),
     images.depth ? loadPetImage(images.depth) : Promise.resolve(undefined),
-    ...(['happy', 'sleepy', 'hungry'] as const).map((k) =>
-      images.poses[k] ? loadPetImage(images.poses[k] as string) : Promise.resolve(undefined),
-    ),
   ]);
-  const loaded = [main, depthImg, ...rest];
   if (mine !== imageLoad) {
-    // 그사이 또 바뀌었다. 풀어 둔 움직이는 그림은 돌려준다
-    for (const x of loaded) if (x instanceof AnimatedImage) x.close();
+    // 그사이 또 바뀌었다 (풀어 둔 기본 그림은 다음 묶음이 정리한다)
+    release(depthImg);
     return;
   }
-  const old = [photo, poses.happy, poses.sleepy, poses.hungry];
+  nextUrls = undefined;
+  photoUrl = images.main ?? undefined;
+  poseUrls = { ...images.poses };
   photo = main;
   photoModel = images.model ?? undefined;
   photoDepth = depthImg instanceof HTMLImageElement ? depthImg : undefined;
-  poses = { happy: rest[0], sleepy: rest[1], hungry: rest[2] };
+  if (!photoDepth) release(depthImg);
   photoScale = ageScale(images.age);
-  for (const x of old) if (x instanceof AnimatedImage && !loaded.includes(x)) x.close();
+  // 이제 안 쓰는 그림은 돌려준다
+  for (const [url, img] of decoded)
+    if (!wantedUrl(url)) {
+      decoded.delete(url);
+      release(img);
+    }
   requestFrame();
 });
 
@@ -456,10 +531,14 @@ bridge.onImage(async (images: PetImages) => {
  */
 function pickImage(m: PetMood, hungry: boolean): PetImage | undefined {
   if (!photo) return undefined;
-  if (m === 'excited' && poses.happy) return poses.happy;
-  if ((m === 'sleeping' || m === 'dozing') && poses.sleepy) return poses.sleepy;
-  if (m === 'idle' && energy?.stage === 'sleepy' && !activity && poses.sleepy) return poses.sleepy;
-  if (m === 'idle' && hungry && poses.hungry) return poses.hungry;
+  // 포즈는 고른 것만 푼다 (poseImage)
+  if (m === 'excited') return poseImage('happy') ?? photo;
+  if (m === 'sleeping' || m === 'dozing') return poseImage('sleepy') ?? photo;
+  if (m === 'idle' && energy?.stage === 'sleepy' && !activity && poseUrls.sleepy) {
+    const sleepy = poseImage('sleepy');
+    if (sleepy) return sleepy;
+  }
+  if (m === 'idle' && hungry) return poseImage('hungry') ?? photo;
   return photo;
 }
 
@@ -748,6 +827,8 @@ let viewSize = petBox.size;
 function fitToScreen() {
   const dpr = window.devicePixelRatio || 1;
   viewSize = petBox.size;
+  // 줄여 풀어 둔 움직이는 그림이 이제 작으면 다시 푼다 (펫 크기, 화면 배율)
+  sharpenImages();
   Object.assign(canvas.style, {
     left: `${petBox.x}px`,
     top: `${petBox.y}px`,

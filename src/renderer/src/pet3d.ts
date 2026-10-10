@@ -291,8 +291,12 @@ export class Pet3D implements Model3D {
   tilt = 0;
   /** 카메라가 도는 중심과 거리, 지금 카메라에 들어간 기울기 (frameCamera 가 정한다) */
   private orbit = { c: new Vector3(), dist: 1, tilt: 0 };
-  /** 그리는 해상도 상한(px). 펫 화면은 768 이면 충분하고, 앱 아이콘은 더 크게 그린다 */
-  maxPx = 768;
+  /**
+   * 그리는 해상도 상한(px). 그리는 크기는 펫 크기 × 화면 배율에 맞추고(draw), 이 값은 그 위 상한이다.
+   * 레티나에서 300% 로 키운 펫이 약 900px 이라 768 이면 흐렸다 (2026-10-10 검토). 작은 펫은 그대로 작게 그린다.
+   * 앱 아이콘, 얼굴 그림은 잠깐 더 크게 그린다
+   */
+  maxPx = 960;
 
   get ok(): boolean {
     return !this.lost;
@@ -421,12 +425,13 @@ export class Pet3D implements Model3D {
     const geo = new PlaneGeometry(w, h, segX, segY);
     const pos = geo.attributes.position;
     if (pos) {
+      const flat = reliefFlatten(cols, rows);
       for (let i = 0; i < pos.count; i++) {
         const d = (dep[i * 4] ?? 0) / 255;
         const a = alpha[i] ?? 0;
         // 깊이(앞뒤 굴곡) + 베개(가장자리에서 안으로 갈수록 부푼다)
         const pillow = a * a * (3 - 2 * a);
-        pos.setZ(i, (d * 0.16 + 0.1) * pillow);
+        pos.setZ(i, (d * 0.16 + 0.1) * pillow * (flat[i] ?? 1));
       }
     }
     geo.translate(0, h / 2, 0);
@@ -890,13 +895,16 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     // 바닥 그림자: 떠오를수록 옅고 작게
     const away = Math.min(1, lift / 30);
     const rx = this.fit.halfW * d * 0.42 * sx * (1 - 0.3 * away);
-    ctx.save();
-    ctx.globalAlpha = 0.16 * (1 - 0.6 * away);
-    ctx.fillStyle = '#000';
-    ctx.beginPath();
-    ctx.ellipse(CX, GROUND - 1, rx, 5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
+    // 얼굴 아이콘, 집 안 그림(pet-face.ts)에는 그리지 않는다
+    if (!s.noShadow) {
+      ctx.save();
+      ctx.globalAlpha = 0.16 * (1 - 0.6 * away);
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.ellipse(CX, GROUND - 1, rx, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
     ctx.drawImage(this.canvas, x0, y0, d, d);
     this.drawn = { x0, y0, d };
     // 머리 꼭대기 (말풍선 대신 머리 위에 뜨는 것들 자리)
@@ -1618,10 +1626,14 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     if (!Object.values(this.fit).every(Number.isFinite) || d <= 0) this.ready = false;
   }
 
-  /** 카메라를 몸 가운데에서 dist 만큼, 살짝 위(9도)에 tilt 를 더한 높이에 둔다 */
+  /**
+   * 카메라를 몸 가운데에서 dist 만큼, 살짝 위(9도)에 tilt 를 더한 높이에 둔다.
+   * 2.5D 판은 정면(0도)에서: 평평한 사진을 부풀린 판이라 위에서 보면 앞으로 부푼 배가 아래로 쏠려
+   * 아래쪽이 턱처럼 뾰족해지고 두 발이 붙어 보였다 (2026-10-10 검토)
+   */
   private aim(tilt: number) {
     const { c, dist } = this.orbit;
-    const el = 9 * DEG + tilt;
+    const el = (this.relief ? 0 : 9 * DEG) + tilt;
     this.camera.position.set(c.x, c.y + dist * Math.sin(el), c.z + dist * Math.cos(el));
     this.camera.lookAt(c);
     this.camera.updateMatrixWorld(true);
@@ -2028,6 +2040,23 @@ function stroke(a: [number, number], b: [number, number], r: number, mat: Materi
   m.position.set((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, z);
   m.rotation.z = Math.atan2(dy, dx) - Math.PI / 2;
   return m;
+}
+
+/**
+ * 2.5D 판을 납작하게 눌러 둘 비율 (0 이면 앞으로 안 부푼다, 1 이면 그대로). 칸마다.
+ * 그림 테두리 쪽만 누른다: 몸이 그림 끝에 닿아 있으면(꽉 차게 오린 그림) 흐린 알파가 테두리에서 떨어지지 않아
+ * 테두리째 앞으로 부풀었다. 그 줄이 카메라에 가까워 커 보여 아래 끝이 턱처럼 뾰족하게 튀어나왔다 (2026-10-10 검토).
+ * 몸 아래 끝(발) 근처를 더 누르는 것도 해 봤는데, 검은 털에서 그늘진 띠가 보여 그만뒀다
+ */
+export function reliefFlatten(cols: number, rows: number): Float32Array {
+  const out = new Float32Array(cols * rows);
+  const rim = Math.max(2, Math.min(cols, rows) * 0.06);
+  for (let y = 0; y < rows; y++)
+    for (let x = 0; x < cols; x++) {
+      const k = Math.min(1, Math.min(x, y, cols - 1 - x, rows - 1 - y) / rim);
+      out[y * cols + x] = k * k * (3 - 2 * k);
+    }
+  return out;
 }
 
 /** 알파(0~255 RGBA 의 A)를 0~1 로 읽어 상자 흐림을 r 칸 준다. 입체 판 가장자리를 둥글게 부풀릴 때 쓴다 */

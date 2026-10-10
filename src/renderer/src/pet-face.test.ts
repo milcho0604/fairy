@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { dropShadow, fadeBelow, neckOf, solidRect, squareAround } from './pet-face.ts';
+import { fadeBelow, neckOf, opaqueRect, solidRect, squareAround } from './pet-face.ts';
 
 /** w×h 투명 그림에 불투명 사각형들을 칠한 RGBA */
 function paint(
@@ -79,11 +79,39 @@ test('정사각형: 긴 변에 여백을 붙이고 가운데를 맞춘다', () =
   assert.equal(sq.y + sq.side / 2, 20);
 });
 
-test('바닥 그림자(옅은 검정)만 지우고 몸 가장자리(옅은 색)는 남긴다', () => {
-  const px = new Uint8ClampedArray([0, 0, 0, 41, 250, 240, 230, 40, 0, 0, 0, 255, 0, 0, 0, 0]);
-  assert.equal(dropShadow(px), true);
-  assert.deepEqual([...px], [0, 0, 0, 0, 250, 240, 230, 40, 0, 0, 0, 255, 0, 0, 0, 0]);
-  assert.equal(dropShadow(new Uint8ClampedArray([9, 9, 9, 255])), false);
+/** w×h 불투명 바탕(bg)에 다른 색 사각형들 */
+function opaque(w: number, h: number, bg: number[], boxes: [number, number, number, number, number[]][]) {
+  const px = new Uint8ClampedArray(w * h * 4);
+  for (let i = 0; i < w * h; i++) px.set([...bg, 255], i * 4);
+  for (const [x0, y0, x1, y1, c] of boxes)
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) px.set([...c, 255], (y * w + x) * 4);
+  return px;
+}
+
+test('불투명 바탕 그림: 바탕색과 다른 곳을 감싸고, 투명한 그림은 손대지 않는다', () => {
+  // 흰 바탕 가운데 작은 검은 고양이 (검은 털도 펫이다)
+  const cat = opaque(100, 80, [250, 250, 250], [[40, 30, 60, 55, [20, 20, 20]]]);
+  assert.deepEqual(opaqueRect(cat, 100, 80), { x0: 40, y0: 30, x1: 60, y1: 55 });
+  // 한 점짜리 티끌은 펫이 아니다
+  const speck = opaque(
+    100,
+    80,
+    [250, 250, 250],
+    [
+      [40, 30, 60, 55, [20, 20, 20]],
+      [5, 5, 6, 6, [200, 60, 60]],
+      // 세로로 긴 티끌 (진행 막대 끝)
+      [8, 10, 9, 20, [200, 60, 60]],
+    ],
+  );
+  assert.deepEqual(opaqueRect(speck, 100, 80), { x0: 40, y0: 30, x1: 60, y1: 55 });
+  // 귀퉁이가 투명하면 알파로 찾는다
+  assert.equal(opaqueRect(paint(20, 20, [[5, 5, 15, 15]]), 20, 20), undefined);
+  // 귀퉁이 색이 제각각(사진 바탕)이면 가운데 정사각형
+  const photo = opaque(100, 60, [200, 200, 200], [[0, 0, 10, 10, [10, 90, 30]]]);
+  assert.deepEqual(opaqueRect(photo, 100, 60), { x0: 20, y0: 0, x1: 80, y1: 60 });
+  // 바탕만 있으면 가운데 정사각형
+  assert.deepEqual(opaqueRect(opaque(40, 40, [0, 0, 0], []), 40, 40), { x0: 0, y0: 0, x1: 40, y1: 40 });
 });
 
 test('정사각형: 납작한 머리여도 위를 띄워 귀 끝이 가장자리에 붙지 않는다', () => {
