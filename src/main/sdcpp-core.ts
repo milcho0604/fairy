@@ -1,7 +1,7 @@
 // 내 컴퓨터에서 그리기의 sd.cpp 엔진 순수 계산 (Electron, child_process 없이 시험한다, sdcpp-core.test.ts).
 // 무엇을: stable-diffusion.cpp(MIT)의 sd-cli 로 FLUX.2 klein 4B(GGUF Q4_0)를 돌린다. mflux 가 안 되는 컴퓨터
 // (Windows x64, 인텔 Mac, macOS 12~13 의 Apple 칩 Mac)도 공짜로 그리게. 모든 파일은 사용자 데이터 local-draw-sd/ 안에
-import { join, win32 } from 'node:path';
+import { join, relative, win32 } from 'node:path';
 import type { LocalTier, LocalUnsupported } from '../shared/local-draw.ts';
 import { partPath } from './download-resume.ts';
 import { imageSize, kleinSize } from './hf-illust.ts';
@@ -272,8 +272,15 @@ export function sdDrawArgs(
     seed: number;
     backend: SdBackend;
   },
+  /**
+   * 경로를 이 폴더 기준 상대 경로로 (sd-cli 를 cwd: 이 폴더로 돌린다). 왜: 윈도우 sd-cli 는 인자는 유니코드로 받지만
+   * 파일은 시스템 코드 페이지로 열어서, 사용자 이름이 한글이면 모델을 "not found" 로 못 열었다 (2026-10-10 윈도우 러너 실측).
+   * 상대 경로는 우리가 정한 영문 이름뿐이라 깨지지 않는다
+   */
+  base?: string,
 ): string[] {
-  const path = (k: SdModel['key']) => sdModelPath(l, SD_MODELS.find((m) => m.key === k) as SdModel);
+  const rel = (p: string) => (base ? relative(base, p) : p);
+  const path = (k: SdModel['key']) => rel(sdModelPath(l, SD_MODELS.find((m) => m.key === k) as SdModel));
   return [
     '--diffusion-model',
     path('diffusion'),
@@ -282,7 +289,7 @@ export function sdDrawArgs(
     '--llm',
     path('llm'),
     '-r',
-    o.input,
+    rel(o.input),
     '-p',
     o.prompt,
     '--cfg-scale',
@@ -300,7 +307,7 @@ export function sdDrawArgs(
     '--disable-image-metadata',
     ...(o.backend === 'cpu' ? ['--backend', 'cpu'] : ['--offload-to-cpu', '--diffusion-fa']),
     '-o',
-    o.output,
+    rel(o.output),
   ];
 }
 

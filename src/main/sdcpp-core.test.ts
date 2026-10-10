@@ -235,6 +235,25 @@ test('그리기 인자: 4단계 cfg 1.0 euler, GPU 는 오프로드와 flash att
   assert.ok(gpu.includes('--offload-to-cpu') && gpu.includes('--diffusion-fa'));
   assert.ok(gpu.includes('--disable-image-metadata'));
   assert.ok(!gpu.includes('--backend'));
+  // 폴더 기준 상대 경로: 한글 사용자 폴더(윈도우 sd-cli 가 못 여는 경로)가 인자에 들어가지 않는다
+  const kr = sdLayout('/사용자/짝꿍 시험/local-draw-sd');
+  const relArgs = sdDrawArgs(
+    kr,
+    {
+      ...o,
+      input: '/사용자/짝꿍 시험/local-draw-sd/tmp/jj-draw-1/in.jpg',
+      output: '/사용자/짝꿍 시험/local-draw-sd/tmp/jj-draw-1/out.png',
+      backend: 'cpu',
+    },
+    kr.root,
+  );
+  assert.equal(at(relArgs, '--diffusion-model'), 'models/flux-2-klein-4b-Q4_0.gguf');
+  assert.equal(at(relArgs, '-r'), 'tmp/jj-draw-1/in.jpg');
+  assert.equal(at(relArgs, '-o'), 'tmp/jj-draw-1/out.png');
+  assert.ok(
+    relArgs.every((a, i) => relArgs[i - 1] === '-p' || /^[\x20-\x7e]*$/.test(a)),
+    '요청문 말고는 모두 영문',
+  );
   const metal = sdDrawArgs(l, { ...o, backend: 'metal' });
   assert.ok(metal.includes('--offload-to-cpu'));
   const cpu = sdDrawArgs(l, { ...o, backend: 'cpu' });

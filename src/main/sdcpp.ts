@@ -390,7 +390,7 @@ async function drawOnce(
     const bin = binaryPath(l, backend);
     const text = await run(
       bin,
-      sdDrawArgs(l, { input: inPath, output: outPath, prompt, ...want, seed, backend }),
+      sdDrawArgs(l, { input: inPath, output: outPath, prompt, ...want, seed, backend }, l.root),
       {
         env: sdEnv(),
         signal: o.signal,
@@ -399,7 +399,8 @@ async function drawOnce(
         children: o.children,
         runPid: runPidOf(l),
         classify: classifySdFailure,
-        cwd: tmp,
+        // 경로는 이 폴더 기준 영문 상대 경로 (sdDrawArgs base). 한글 사용자 폴더에서도 모델을 연다
+        cwd: l.root,
         onText: (t) => {
           seen = t;
           watch.feed(t);
