@@ -1,0 +1,17 @@
+{
+ "prompt": "Make the fur on the legs, paws, chest and tail longer, thicker and fluffier, like freshly brushed, blow-dried show fur: soft, clean, airy and voluminous (not wet, not stringy, not matted). Long fluffy feathering on all four legs, fluffy britches on the hind legs, fluffy tufts on the paws, as fluffy as the chest. Keep the exact same fur colors and brightness as in this image: do not recolor, tint, darken or gray the fur. Keep the same fur type: curly fur stays curly, straight fur stays straight. Keep everything else exactly the same: same pose, face, eyes, markings, lighting and plain background.",
+ "log": [
+  {
+   "job": "cat-adult",
+   "ok": true
+  },
+  {
+   "job": "cat-teen",
+   "ok": true
+  },
+  {
+   "job": "poodle-teen",
+   "ok": true
+  }
+ ]
+}
