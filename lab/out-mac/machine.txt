@@ -5,4 +5,4 @@ arm64
 Apple M2 Pro (Virtual)
 15032385536
 Filesystem        Size    Used   Avail Capacity iused ifree %iused  Mounted on
-/dev/disk3s1s1   320Gi   9.6Gi    38Gi    21%    406k  401M    0%   /
+/dev/disk3s1s1   320Gi   9.6Gi    38Gi    20%    406k  403M    0%   /
