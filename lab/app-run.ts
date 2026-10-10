@@ -4,11 +4,13 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { illustrateFluffy } from '../app/src/main/hf-illust.ts';
 import { illustratePrompt } from '../app/src/shared/illustrate.ts';
 
-const jobs = [
+const all = [
   { name: 'cat-adult', file: 'lab/in_cat.png', age: 'adult' as const },
   { name: 'poodle-teen', file: 'lab/in_poodle.png', age: 'teen' as const },
   { name: 'cat-baby', file: 'lab/in_cat.png', age: 'baby' as const },
 ];
+// 그림 하나에 무료 횟수 둘(그리기, 털)을 쓴다. 러너마다 하나씩
+const jobs = all.filter((j) => !process.env.JOB || j.name === process.env.JOB);
 mkdirSync('lab/out-app', { recursive: true });
 const report: unknown[] = [];
 for (const j of jobs) {
@@ -25,5 +27,5 @@ for (const j of jobs) {
     report.push({ job: j.name, ok: false, kind: err.kind, message: String(err.message).slice(0, 500), ms: Date.now() - started });
   }
 }
-writeFileSync('lab/out-app/report.json', JSON.stringify(report, null, 2));
+writeFileSync(`lab/out-app/report-${process.env.JOB ?? 'all'}.json`, JSON.stringify(report, null, 2));
 console.log(JSON.stringify(report, null, 2));

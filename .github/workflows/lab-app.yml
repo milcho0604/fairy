@@ -9,6 +9,10 @@ permissions:
 jobs:
   run:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        job: [cat-adult, poodle-teen, cat-baby]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -20,6 +24,8 @@ jobs:
         with:
           node-version: 24
       - run: node lab/app-run.ts
+        env:
+          JOB: ${{ matrix.job }}
         continue-on-error: true
       - name: 결과 올리기
         run: |
