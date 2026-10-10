@@ -14,8 +14,9 @@ import { issueUrl } from '../shared/feedback.ts';
 import { t } from '../shared/i18n/index.ts';
 import { type MakerTarget, SETTINGS, type SettingsSection, type SettingsSnapshot } from '../shared/ipc.ts';
 import type { Gait } from '../shared/pet3d/blueprint.ts';
-import { isGait, isPetKind, type Settings } from '../shared/settings.ts';
+import { isGait, type Settings } from '../shared/settings.ts';
 import { isSettingsTab, type SettingsTab } from '../shared/settings-tabs.ts';
+import { parsePetChoice } from '../shared/starter-pets.ts';
 import { RELEASE_REPO } from '../shared/update-policy.ts';
 import { localModelReady } from './ai/local.ts';
 import { createDiagnostics } from './diagnostics.ts';
@@ -95,6 +96,7 @@ export function createSettingsWindow({
           models: { catalog: v2.catalog(), localReady: localReady() },
           library: library.view(),
           current: library.current(),
+          starters: library.starters(),
           storage: storedModels(v2.catalog()),
           onBattery: powerMonitor.isOnBatteryPower(),
         }
@@ -102,10 +104,11 @@ export function createSettingsWindow({
   );
   const localReady = () => Object.fromEntries(v2.catalog().local.map((m) => [m.id, localModelReady(m)]));
   ipcMain.handle(SETTINGS.choosePet, (e, choice: unknown) => {
-    if (!fromSettings(e) || typeof choice !== 'object' || choice === null) return library.view();
-    const c = choice as Record<string, unknown>;
-    if (isPetKind(c.kind)) library.toDefault(c.kind);
-    else if (typeof c.id === 'string') library.restore(c.id);
+    const c = fromSettings(e) ? parsePetChoice(choice) : undefined;
+    if (!c) return library.view();
+    if ('kind' in c) library.toDefault(c.kind);
+    else if ('starter' in c) library.fromStarter(c.starter);
+    else library.restore(c.id);
     return library.view();
   });
   ipcMain.handle(SETTINGS.removeSavedPet, (e, id: unknown) => {

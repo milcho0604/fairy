@@ -4,6 +4,7 @@ import { t } from '../../../shared/i18n/index.ts';
 import type { OnboardAi, OnboardSnapshot } from '../../../shared/ipc.ts';
 import { cleanPetName, PET_KINDS, PET_NAME_MAX } from '../../../shared/settings.ts';
 import { acceleratorLabel } from '../../../shared/shortcut.ts';
+import { isCurrentStarter, starterOf } from '../../../shared/starter-pets.ts';
 import { PetFace } from '../PetFace.tsx';
 import { PetNameInput } from '../PetNameInput.tsx';
 import { PetShot } from '../PetShot.tsx';
@@ -180,7 +181,36 @@ export function OnboardingApp() {
                     {k.label}
                   </button>
                 ))}
-                <button type="button" className={s.petImage ? 'on' : ''} onClick={() => bridge.openMaker()}>
+                {/* 밀크, 초코: 그림을 사진 펫으로 복사한다. 이름도 그 캐릭터 이름 (펫 만들기로 만든 사진 펫처럼) */}
+                {snap.starters.map((p) => {
+                  const on = isCurrentStarter(s.petImage, p.id);
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className={`starter${on ? ' on' : ''}`}
+                      aria-pressed={on}
+                      aria-label={t('settings.pets.starter', { name: p.name, desc: p.desc })}
+                      title={p.desc}
+                      onClick={async () => {
+                        if (on) return;
+                        const next = await bridge.pickStarter(p.id);
+                        setSnap((v) => v && { ...v, settings: next });
+                        typed.current = false;
+                        setName(next.petName);
+                        setNameNote('');
+                      }}
+                    >
+                      <img src={p.thumb} alt="" />
+                      {p.name}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  className={s.petImage && !starterOf(s.petImage) ? 'on' : ''}
+                  onClick={() => bridge.openMaker()}
+                >
                   {t('onboarding.hello.photo')}
                 </button>
               </fieldset>

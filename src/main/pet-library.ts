@@ -4,13 +4,17 @@ import { closeSync, openSync, readFileSync, readSync, rmSync, statSync } from 'n
 import { join } from 'node:path';
 import { app, nativeImage } from 'electron';
 import { sizeOk } from '../shared/image-head.ts';
-import type { PetLookView, SavedPetView } from '../shared/ipc.ts';
+import type { PetLookView, SavedPetView, StarterView } from '../shared/ipc.ts';
 import { type Blueprint, parseBlueprint } from '../shared/pet3d/blueprint.ts';
 import { LIBRARY_MAX, type PetKind, type SavedPet, type Settings } from '../shared/settings.ts';
+import { STARTER_PETS, type StarterId, starterOf } from '../shared/starter-pets.ts';
 import { readFileIn, safeFileIn } from './safe-file.ts';
 import { settings } from './settings.ts';
+import { copyStarter, readStarter } from './starter-copy.ts';
 
 const petsDir = () => join(app.getPath('userData'), 'pets');
+/** 앱에 든 기본 캐릭터 그림 (밀크, 초코). 설치판은 app.asar 안 resources/pets (tray.png 와 같은 자리) */
+const startersDir = () => join(app.getAppPath(), 'resources', 'pets');
 const THUMB_PX = 160;
 /** 줄이지 못한 그림은 이보다 작을 때만 그대로 보낸다 (설정 창에 수백 MB 를 넘기지 않게) */
 // 움직이는 그림(gif, webp)은 nativeImage 가 못 풀어 파일 그대로 보낸다. 2MB 까지 (예전 512KB 라 대부분 빈칸이었다.
@@ -49,6 +53,9 @@ function archiveCurrent(skip?: string): { list: SavedPet[]; dropped: SavedPet[] 
   const s = settings.get();
   const rest = s.petLibrary.filter((p) => p.id !== skip);
   if (!s.petImage) return { list: rest, dropped: [] };
+  // 손대지 않은 밀크, 초코 복사본은 보관하지 않는다 (다시 고르면 새로 복사된다. 보관함에 같은 그림이 쌓이지 않게)
+  if (untouchedStarter(s))
+    return { list: rest, dropped: [{ id: '', name: s.petName, image: s.petImage, poses: {} }] };
   const saved: SavedPet = {
     id: `p-${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`,
     name: s.petName,
@@ -63,6 +70,13 @@ function archiveCurrent(skip?: string): { list: SavedPet[]; dropped: SavedPet[] 
 }
 
 const NO_POSES = { happy: null, sleepy: null, hungry: null };
+
+/** 지금 펫이 고른 그대로의 밀크, 초코인지: 이름, 입체 피규어, 깊이 그림, 포즈 어느 것도 손대지 않았다 */
+function untouchedStarter(s: Settings): boolean {
+  const id = starterOf(s.petImage);
+  if (!id || s.petModel || s.petDepth || Object.values(s.petPoses).some(Boolean)) return false;
+  return STARTER_PETS.find((p) => p.id === id)?.name === s.petName;
+}
 
 export const library = {
   /** 펫 만들기에서 새 사진 펫을 저장하기 직전: 지금 펫을 보관하고 포즈는 비운다 (포즈는 옛 펫 것) */
@@ -123,6 +137,52 @@ export const library = {
     return true;
   },
 
+  /**
+   * 그림으로 들어 있는 기본 캐릭터(밀크, 초코)로. 이미 그 캐릭터면 그대로, 보관함에 그 캐릭터 복사본이 있으면
+   * 그것을 꺼낸다 (지은 이름, 만든 입체 피규어를 살린다). 아니면 그림을 pets/ 에 복사해 새 사진 펫으로 둔다:
+   * 지금 사진 펫은 보관하고 포즈는 비운다 (펫 만들기 저장과 같은 newPhotoPatch, 설정은 한 번에 쓴다)
+   */
+  fromStarter(id: StarterId): boolean {
+    const s = settings.get();
+    if (starterOf(s.petImage) === id) return true;
+    const saved = s.petLibrary.find((p) => starterOf(p.image) === id);
+    if (saved) return library.restore(saved.id);
+    const pick = STARTER_PETS.find((p) => p.id === id);
+    if (!pick) return false;
+    const file = copyStarter(startersDir(), petsDir(), id);
+    if (!file) return false;
+    try {
+      const prep = library.newPhotoPatch();
+      settings.set({
+        ...prep.patch,
+        petImage: file,
+        petModel: null,
+        petDepth: null,
+        // AI 일러스트로 그린 어른 모습 (화면 크기 배율 1)
+        petAge: 'adult',
+        petName: pick.name,
+      });
+      // 저장은 끝났다: 옛 파일 치우기가 실패해도(윈도우 파일 잠김) 새 그림은 둔다
+      try {
+        prep.cleanup();
+      } catch {
+        // 다음 정리 때 지운다
+      }
+    } catch (err) {
+      rmSync(join(petsDir(), file), { force: true });
+      throw err;
+    }
+    return true;
+  },
+
+  /** 고르기 칸에 보일 기본 캐릭터 (이름과 작은 그림). 그림을 못 읽으면 빠진다 */
+  starters(): StarterView[] {
+    return STARTER_PETS.flatMap((p) => {
+      const thumb = starterThumb(p.id);
+      return thumb ? [{ id: p.id, name: p.name, desc: p.desc, thumb }] : [];
+    });
+  },
+
   /** 보관한 펫을 파일까지 지운다 (다른 곳에서 쓰는 파일은 남긴다) */
   remove(id: string): void {
     const s = settings.get();
@@ -172,6 +232,38 @@ function lookView(p: Pick<SavedPet, 'image' | 'model' | 'depth'>): PetLookView {
   const depth = depthOf(p.depth);
   if (depth) return { key, thumb, look: 'relief', depth };
   return { key, thumb, look: 'photo' };
+}
+
+/** 기본 캐릭터 썸네일 (앱을 켠 동안 한 번만 만든다) */
+const starterThumbs = new Map<StarterId, string>();
+function starterThumb(id: StarterId): string {
+  const hit = starterThumbs.get(id);
+  if (hit !== undefined) return hit;
+  let out = '';
+  const bytes = readStarter(startersDir(), id);
+  try {
+    const img = bytes ? nativeImage.createFromBuffer(bytes) : nativeImage.createEmpty();
+    if (!img.isEmpty()) {
+      const { width, height } = img.getSize();
+      const small =
+        width >= height
+          ? img.resize({
+              width: THUMB_PX,
+              height: Math.max(1, Math.round((height * THUMB_PX) / width)),
+              quality: 'best',
+            })
+          : img.resize({
+              height: THUMB_PX,
+              width: Math.max(1, Math.round((width * THUMB_PX) / height)),
+              quality: 'best',
+            });
+      out = small.toDataURL();
+    }
+  } catch {
+    out = '';
+  }
+  starterThumbs.set(id, out);
+  return out;
 }
 
 /** 설계도도 깊이 그림도 파일 이름마다 한 번만 읽는다 (이름은 만들 때마다 새로 붙고 내용은 안 바뀐다) */

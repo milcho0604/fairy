@@ -1,0 +1,57 @@
+// 그림으로 들어 있는 기본 캐릭터 (2026-10-10 사용자 요청): 밀크(긴 털 흰 고양이), 초코(곱슬 털 갈색 푸들).
+// 앱의 AI 일러스트로 그리고 앱과 같은 배경 지우기(IS-Net, 가장자리 바탕색 빼기)로 오린 PNG 를 resources/pets/ 에 넣었다.
+// 고르면 그림을 사용자 데이터 pets/ 에 복사해 지금 사진 펫으로 둔다. 그 뒤로는 사진 펫과 똑같다
+// (포즈 없음, 얼굴 아이콘, 입체 피규어도 나중에 만들 수 있다). 코드로 그리는 기본 펫(PetKind)과는 따로다
+import { t } from './i18n/index.ts';
+import { isPetKind, type PetKind } from './settings.ts';
+
+export const STARTER_IDS = ['milk', 'choco'] as const;
+export type StarterId = (typeof STARTER_IDS)[number];
+export const isStarterId = (v: unknown): v is StarterId => STARTER_IDS.includes(v as StarterId);
+
+/** 이름과 화면 읽기 설명은 지금 말로 읽는다 (getter, PET_KINDS 처럼) */
+export const STARTER_PETS: readonly { id: StarterId; readonly name: string; readonly desc: string }[] =
+  STARTER_IDS.map((id) => ({
+    id,
+    get name() {
+      return t(`common.starter.${id}`);
+    },
+    get desc() {
+      return t(`common.starter.${id}.desc`);
+    },
+  }));
+
+/** 앱에 든 그림 파일 이름 (resources/pets/ 안) */
+export const starterResource = (id: StarterId): string => `${id}.png`;
+
+/** 상한. 지금 그림은 300KB 안팎이다 (사진 펫 PNG 상한 4MB 보다 훨씬 작게) */
+export const STARTER_MAX_BYTES = 2 * 1024 * 1024;
+
+/** pets/ 에 복사할 파일 이름. 설정의 사진 펫 파일 이름 규칙(pet-*.png)을 따르고, 어느 캐릭터인지 이름에 남긴다 */
+export const starterFileName = (id: StarterId, now: number): string =>
+  `pet-${id}-${Math.max(0, Math.floor(now))}.png`;
+
+const STARTER_FILE = /^pet-(milk|choco)-\d+\.png$/;
+
+/** pets/ 파일이 어느 캐릭터의 복사본인지. 아니면 undefined (펫 만들기 그림은 pet-<숫자>) */
+export function starterOf(file: string | null | undefined): StarterId | undefined {
+  const m = typeof file === 'string' ? STARTER_FILE.exec(file) : null;
+  return m && isStarterId(m[1]) ? m[1] : undefined;
+}
+
+/** 펫 고르기 요청 (설정 창, 첫 안내). 렌더러가 보낸 값을 믿지 않고 모양을 확인한다 */
+export type PetChoice = { kind: PetKind } | { id: string } | { starter: StarterId };
+
+/** 모르는 모양이면 undefined */
+export function parsePetChoice(v: unknown): PetChoice | undefined {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return undefined;
+  const c = v as Record<string, unknown>;
+  if (isPetKind(c.kind)) return { kind: c.kind };
+  if (isStarterId(c.starter)) return { starter: c.starter };
+  if (typeof c.id === 'string' && c.id.length > 0 && c.id.length <= 64) return { id: c.id };
+  return undefined;
+}
+
+/** 이미 그 캐릭터인지 (지금 펫 그림이 그 캐릭터의 복사본). 고르기 칸에 켜짐으로 보인다 */
+export const isCurrentStarter = (petImage: string | null | undefined, id: StarterId): boolean =>
+  starterOf(petImage) === id;

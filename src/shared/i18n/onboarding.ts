@@ -11,6 +11,8 @@ export const ko = {
   'onboarding.hello.nameMax': '이름은 {max}자까지야.',
   'onboarding.hello.look': '모습',
   'onboarding.hello.kinds': '기본 펫 모양',
+  /** 그림으로 들어 있는 친구 (밀크, 초코) 묶음 화면 읽기 */
+  'onboarding.hello.starters': '그림 친구',
   'onboarding.hello.photo': '사진으로',
   'onboarding.hello.photoHint': '반려동물이나 인형 사진 한 장으로 만들 수도 있어. 나중에 설정에서 바꿔도 돼.',
   'onboarding.look.title': '같이 보기',
@@ -54,6 +56,7 @@ export const en: Translation<typeof ko> = {
   'onboarding.hello.nameMax': 'Names can be up to {max} characters.',
   'onboarding.hello.look': 'Look',
   'onboarding.hello.kinds': 'Default pet look',
+  'onboarding.hello.starters': 'Illustrated friends',
   'onboarding.hello.photo': 'From a photo',
   'onboarding.hello.photoHint':
     'You can also make one from a single photo of a pet or a plush. You can change it later in settings.',

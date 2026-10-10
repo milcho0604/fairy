@@ -153,7 +153,7 @@ export const ko = {
   // 모델 고르기 (v2)
   'settings.models': 'AI 모델',
   'settings.pets.hint':
-    '기본 펫이나 전에 만든 펫을 골라. 지금 사진 펫은 지우지 않고 보관함에 둬. 보관한 펫은 × 를 두 번 누르면 지워져.',
+    '기본 펫, 그림 친구 밀크와 초코, 전에 만든 펫 가운데 골라. 지금 사진 펫은 지우지 않고 보관함에 둬. 보관한 펫은 × 를 두 번 누르면 지워져.',
   'settings.pets.now': '지금',
   'settings.pets.figure': '입체',
   'settings.pets.relief': '2.5D',
@@ -161,6 +161,8 @@ export const ko = {
   'settings.pets.age.teen': '청소년',
   'settings.pets.age.adult': '어른',
   'settings.pets.remove': (v: { name: string }) => `${v.name} 지우기`,
+  /** 밀크, 초코 고르기 칸 화면 읽기 */
+  'settings.pets.starter': (v: { name: string; desc: string }) => `${v.name}, ${v.desc}`,
   'settings.pets.removeSure': '지울까?',
   'settings.pets.removed': '보관한 펫을 지웠어',
   'settings.rules': '짝꿍 규칙',
@@ -519,7 +521,7 @@ export const en: Translation<typeof ko> = {
 
   'settings.models': 'AI models',
   'settings.pets.hint':
-    'Pick a default pet or one you made before. Your current photo pet is kept, not deleted. Press × twice to delete a kept pet.',
+    'Pick a default pet, the illustrated friends Milk and Choco, or one you made before. Your current photo pet is kept, not deleted. Press × twice to delete a kept pet.',
   'settings.pets.now': 'Now',
   'settings.pets.figure': '3D',
   'settings.pets.relief': '2.5D',
@@ -527,6 +529,7 @@ export const en: Translation<typeof ko> = {
   'settings.pets.age.teen': 'Teen',
   'settings.pets.age.adult': 'Adult',
   'settings.pets.remove': (v) => `Delete ${v.name}`,
+  'settings.pets.starter': (v) => `${v.name}, ${v.desc}`,
   'settings.pets.removeSure': 'Delete?',
   'settings.pets.removed': 'Deleted the kept pet',
   'settings.rules': 'Pet rules',

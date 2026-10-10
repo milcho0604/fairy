@@ -3,11 +3,12 @@ import { t } from '../../../shared/i18n/index.ts';
 import type { PetLookView, SettingsSnapshot } from '../../../shared/ipc.ts';
 import { DEFAULT_BLUEPRINTS } from '../../../shared/pet3d/defaults.ts';
 import { PET_KINDS, type PetKind } from '../../../shared/settings.ts';
+import { isCurrentStarter, type PetChoice, starterOf } from '../../../shared/starter-pets.ts';
 import { CANVAS_SIZE, drawPet } from '../draw.ts';
 import { Pet3D } from '../pet3d.ts';
 
 /**
- * 펫 고르기 (6단계): 기본 펫 다섯 마리(입체로 보기면 실제 3D 그림)와 보관한 사진 펫.
+ * 펫 고르기 (6단계): 기본 펫 다섯 마리(입체로 보기면 실제 3D 그림), 그림으로 들어 있는 밀크와 초코, 보관한 사진 펫.
  * 고르면 지금 사진 펫은 보관함으로 간다. 보관한 펫은 두 번 눌러 지운다
  */
 export function PetPicker({
@@ -16,7 +17,7 @@ export function PetPicker({
   onRemove,
 }: {
   snap: SettingsSnapshot;
-  onPick: (choice: { kind: PetKind } | { id: string }) => void;
+  onPick: (choice: PetChoice) => void;
   onRemove: (id: string) => void;
 }) {
   const s = snap.settings;
@@ -40,7 +41,8 @@ export function PetPicker({
   const look = (v: PetLookView) => (s.pet3d && lookThumbs.get(v.key)) || v.thumb;
   return (
     <div className="pet-grid">
-      {s.petImage && snap.current && (
+      {/* 밀크, 초코 복사본이면 아래 그 캐릭터 칸이 지금 펫 카드를 맡는다 (같은 펫이 두 번 보이지 않게) */}
+      {s.petImage && snap.current && !starterOf(s.petImage) && (
         <div className="pet-card on" aria-current="true">
           <img src={look(snap.current)} alt="" />
           <span className="pet-name">{s.petName}</span>
@@ -64,6 +66,26 @@ export function PetPicker({
           >
             {thumbs[k.id] ? <img src={thumbs[k.id]} alt="" /> : <i />}
             <span className="pet-name">{k.label}</span>
+          </button>
+        );
+      })}
+      {/* 밀크, 초코: 고르면 사진 펫이 된다 (지금 펫 카드에도 보인다) */}
+      {snap.starters.map((p) => {
+        const on = isCurrentStarter(s.petImage, p.id);
+        return (
+          <button
+            key={p.id}
+            type="button"
+            className={`pet-card starter${on ? ' on' : ''}`}
+            aria-pressed={on}
+            {...(on ? { 'aria-current': true } : {})}
+            aria-label={t('settings.pets.starter', { name: on ? s.petName : p.name, desc: p.desc })}
+            title={p.desc}
+            onClick={() => !on && onPick({ starter: p.id })}
+          >
+            <img src={on && snap.current ? look(snap.current) : p.thumb} alt="" />
+            <span className="pet-name">{on ? s.petName : p.name}</span>
+            {on && <small>{t('settings.pets.now')}</small>}
           </button>
         );
       })}

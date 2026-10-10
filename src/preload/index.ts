@@ -172,6 +172,7 @@ if (kind === 'onboarding') {
     openScreenSettings: () => ipcRenderer.send(ONBOARD.openScreenSettings),
     finish: () => ipcRenderer.send(ONBOARD.finish),
     ai: () => ipcRenderer.invoke(ONBOARD.ai),
+    pickStarter: (id) => ipcRenderer.invoke(ONBOARD.pickStarter, id),
   };
   contextBridge.exposeInMainWorld('jjakkungOnboard', onboard);
 }

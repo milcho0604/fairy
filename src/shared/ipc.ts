@@ -29,6 +29,7 @@ import type { PetKind, PetStyle, PoseKind, Settings } from './settings.ts';
 import type { SettingsTab } from './settings-tabs.ts';
 import type { BuyResult, ShopState } from './shop.ts';
 import type { SoundKind } from './sound.ts';
+import type { PetChoice, StarterId } from './starter-pets.ts';
 import type { Repeat, Todo } from './todo-store.ts';
 import type { WeekSummary } from './week.ts';
 
@@ -172,6 +173,8 @@ export const ONBOARD = {
   finish: 'onboard:finish',
   /** AI 준비 상태. 설치된 AI 를 확인하는 데 몇 초 걸릴 수 있어 화면을 먼저 그리고 따로 묻는다 */
   ai: 'onboard:ai',
+  /** 그림으로 들어 있는 기본 캐릭터(밀크, 초코) 고르기. 바뀐 설정을 돌려준다 */
+  pickStarter: 'onboard:pick-starter',
 } as const;
 
 export interface OnboardAi {
@@ -186,6 +189,8 @@ export interface OnboardSnapshot {
   platform: NodeJS.Platform;
   /** 화면 기록 권한 (맥). 윈도우는 늘 granted */
   screen: 'granted' | 'denied' | 'not-determined' | 'restricted' | 'unknown';
+  /** 그림으로 들어 있는 기본 캐릭터 (밀크, 초코) */
+  starters: StarterView[];
 }
 
 export interface OnboardBridge {
@@ -195,6 +200,7 @@ export interface OnboardBridge {
   openScreenSettings(): void;
   finish(): void;
   ai(): Promise<OnboardAi>;
+  pickStarter(id: StarterId): Promise<Settings>;
 }
 
 export const SETTINGS = {
@@ -261,6 +267,8 @@ export interface SettingsSnapshot {
   library: SavedPetView[];
   /** 지금 사진 펫 (작게 줄인 그림과 입체 모습). 기본 펫이면 null */
   current: PetLookView | null;
+  /** 그림으로 들어 있는 기본 캐릭터 (밀크, 초코) */
+  starters: StarterView[];
   /** 받은 모델과 크기 (6단계) */
   storage: StoredModel[];
   /** 배터리로 도는지 (부스트 모드는 이때 쉰다) */
@@ -286,6 +294,15 @@ export interface PetLookView {
 export interface SavedPetView extends PetLookView {
   id: string;
   name: string;
+}
+
+/** 그림으로 들어 있는 기본 캐릭터 고르기 칸 (shared/starter-pets.ts). thumb 는 긴 변 160px data URL */
+export interface StarterView {
+  id: StarterId;
+  name: string;
+  /** 화면 읽기용 설명 (긴 털 흰 고양이) */
+  desc: string;
+  thumb: string;
 }
 
 export interface StoredModel {
@@ -328,7 +345,7 @@ export interface SettingsBridge {
   refreshMcp(): Promise<string[]>;
   /** 앱을 다시 켠다. 창은 열릴 때 말을 읽어서 말을 바꾸면 다시 켜야 한다 */
   relaunch(): void;
-  choosePet(choice: { kind: PetKind } | { id: string }): Promise<SavedPetView[]>;
+  choosePet(choice: PetChoice): Promise<SavedPetView[]>;
   removeSavedPet(id: string): Promise<SavedPetView[]>;
   deleteModel(
     id: string,
