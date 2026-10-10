@@ -1,0 +1,3 @@
+dyld[2283]: Symbol not found: _OBJC_CLASS_$_MTLResidencySetDescriptor
+  Referenced from: <DAC593AB-198C-3442-BCB4-0E2FD914263B> /Users/runner/work/jjakkung/jjakkung/sd/libstable-diffusion.dylib (built for macOS 26.0 which is newer than running OS)
+  Expected in:     <FB4B6B63-ED29-3EED-9D3C-90786B5779CD> /System/Library/Frameworks/Metal.framework/Versions/A/Metal
