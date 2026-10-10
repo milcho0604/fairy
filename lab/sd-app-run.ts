@@ -18,6 +18,8 @@ import {
   sdProgress,
   sdWinDir,
   sdZipPath,
+  hasVulkanDevice,
+  sdUnzipRel,
   unzipArgs,
   winTar,
 } from '../app/src/main/sdcpp-core.ts';
@@ -46,7 +48,8 @@ const z = SD_WIN_ASSETS.cpu;
 await get(sdAssetUrl(z.name), sdZipPath(l, 'cpu'));
 report.zipSha = (await sha(sdZipPath(l, 'cpu'))) === z.sha256;
 mkdirSync(sdWinDir(l, 'cpu'), { recursive: true });
-const ux = spawnSync(winTar(process.env.SystemRoot), unzipArgs(sdZipPath(l, 'cpu'), sdWinDir(l, 'cpu')), { encoding: 'utf8' });
+const rel = sdUnzipRel('cpu');
+const ux = spawnSync(winTar(process.env.SystemRoot), unzipArgs(rel.zip, rel.dir), { encoding: 'utf8', cwd: l.root });
 report.untar = { status: ux.status, err: ux.stderr?.slice(-300) };
 for (const m of SD_MODELS) {
   await get(m.url, sdModelPath(l, m));
@@ -55,6 +58,8 @@ for (const m of SD_MODELS) {
 report.downloadS = Math.round((Date.now() - t0) / 1000);
 const bin = sdBinary({ platform: 'win32', arch: 'x64', l, backend: 'cpu', resourcesPath: '', appPath: '', packaged: true });
 report.bin = { path: bin, exists: existsSync(bin) };
+const ld = spawnSync(bin, ['--list-devices'], { encoding: 'utf8', windowsHide: true });
+report.listDevices = { status: ld.status, out: (ld.stdout ?? '').slice(0, 600), vulkan: hasVulkanDevice(ld.stdout ?? '') };
 console.log(JSON.stringify(report, null, 2));
 const run = (name: string, input: string, prompt: string) =>
   new Promise<void>((resolve) => {
@@ -65,6 +70,7 @@ const run = (name: string, input: string, prompt: string) =>
     let log = '';
     const seen: string[] = [];
     const child = spawn(bin, args, { windowsHide: true });
+    child.on('error', (e) => { report[name] = { spawnError: String(e) }; resolve(); });
     const onData = (b: Buffer) => {
       log += b.toString();
       const p = sdProgress(log.slice(-4000));
