@@ -17,6 +17,16 @@ PROMPTS = [
     # 2: 1 보다 짧게 (요청이 길면 다른 곳까지 바뀐다)
     ("Only make the fur on the legs and paws fluffier and longer, soft clean and airy like brushed show fur, matching the fluffy chest. "
      "Same fur color and brightness, same fur type (curls stay curly). Do not change anything else."),
+    # 3: 1 에서 색 예시를 뺀다 (흰색을 말하자 갈색 푸들이 하얘졌다)
+    ("Make the fur on the legs, paws, chest and tail longer, thicker and fluffier, like freshly brushed, blow-dried show fur: "
+     "soft, clean, airy and voluminous (not wet, not stringy, not matted). Long fluffy feathering on all four legs, "
+     "fluffy britches on the hind legs, fluffy tufts on the paws, as fluffy as the chest. "
+     "Keep the exact same fur colors and brightness as in this image: do not recolor, tint, darken or gray the fur. "
+     "Keep the same fur type: curly fur stays curly, straight fur stays straight. " + BASE_KEEP),
+    # 4: 2 를 다리 쪽으로 더 세게
+    ("Only make the fur on all four legs and paws much fluffier and longer: long soft feathering down the legs, fluffy britches, "
+     "fluffy tufts on the paws, soft clean and airy like brushed show fur, as fluffy as the chest. "
+     "Same fur colors and brightness, same fur type (curls stay curly). Do not change anything else."),
 ]
 os.makedirs(f"lab/out-fur5/v{v}", exist_ok=True)
 log = []
