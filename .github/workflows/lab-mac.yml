@@ -1,0 +1,52 @@
+# 실험 브랜치 전용: 맥(Apple Silicon)에서 무료 로컬 그리기 (mflux, FLUX.2 klein 4B). main 에는 넣지 않는다.
+name: lab-mac
+on:
+  push:
+    branches: [lab/illustrate]
+    paths: ['.github/workflows/lab-mac.yml', 'lab/mac-prompt.txt']
+permissions:
+  contents: write
+jobs:
+  run:
+    runs-on: macos-14
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: 기계 정보
+        run: |
+          mkdir -p lab/out-mac
+          { sw_vers; uname -m; sysctl -n machdep.cpu.brand_string; sysctl -n hw.memsize; df -h /; } | tee lab/out-mac/machine.txt
+      - name: uv 와 mflux 설치
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          export PATH="$HOME/.local/bin:$PATH"
+          /usr/bin/time -p uv tool install --python 3.12 mflux 2>&1 | tail -5 | tee lab/out-mac/install.txt
+          ls ~/.local/bin | grep mflux | tee -a lab/out-mac/install.txt
+          du -sh ~/.local/share/uv 2>/dev/null | tee -a lab/out-mac/install.txt
+      - name: 미리 4비트로 줄인 모델로 그리기
+        continue-on-error: true
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          P="$(cat lab/mac-prompt.txt)"
+          /usr/bin/time -l mflux-generate-flux2-edit --model ar9av/FLUX.2-klein-4B-mflux-4bit --base-model flux2-klein-4b \
+            --image-paths lab/in_cat.png --prompt "$P" --steps 4 --guidance 1.0 --width 784 --height 1328 --seed 7 \
+            --output lab/out-mac/cat-pre4.png > lab/out-mac/pre4.log 2>&1
+          tail -40 lab/out-mac/pre4.log
+          du -sh ~/.cache/huggingface 2>/dev/null | tee -a lab/out-mac/pre4.log
+      - name: 원본에서 4비트로 그리기 (낮은 메모리)
+        continue-on-error: true
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          df -h / | tee lab/out-mac/df2.txt
+          P="$(cat lab/mac-prompt.txt)"
+          /usr/bin/time -l mflux-generate-flux2-edit --model flux2-klein-4b --quantize 4 --low-ram \
+            --image-paths lab/in_poodle.png --prompt "$P" --steps 4 --guidance 1.0 --width 784 --height 1328 --seed 7 \
+            --output lab/out-mac/poodle-q4.png > lab/out-mac/q4.log 2>&1
+          tail -40 lab/out-mac/q4.log
+          du -sh ~/.cache/huggingface 2>/dev/null | tee -a lab/out-mac/q4.log
+      - name: 결과 올리기
+        if: always()
+        run: |
+          git config user.name "jjakkung-lab"; git config user.email "lab@users.noreply.github.com"
+          git add -f lab/out-mac; git commit -qm "lab: 맥 로컬 그리기" || exit 0
+          for i in 1 2 3 4 5; do git pull --rebase -q origin lab/illustrate && git push -q origin HEAD:lab/illustrate && exit 0; sleep $((i*3)); done
