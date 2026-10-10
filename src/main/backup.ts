@@ -88,6 +88,16 @@ export function createBackup(o: {
       cancelId: 1,
     });
     if (ok.response !== 0) return '';
+    // 사용자 AI 를 뺐다는 안내는 파일을 바꾸기 전에 띄운다. 바꾼 뒤에 기다리면 그사이 돌던 플래너, 설정 저장이
+    // 가져온 planner.json, settings.json 을 지금 것으로 도로 덮어썼다. 바꾸고 나서 끝내기까지는 기다림 없이 한 번에
+    const skipped = customAiCount(readJsonFile(join(from, 'ai-custom.json')));
+    if (skipped > 0)
+      await dialog.showMessageBox({
+        type: 'info',
+        message: t('main.backup.customAiSkipped', { n: skipped }),
+        detail: t('main.backup.customAiSkippedDetail'),
+        buttons: [t('common.ok')],
+      });
     // 같은 분에 두 번 가져와도 겹치지 않게 (freePath)
     const keep = freePath(join(dir(), `before-import-${stamp()}`));
     mkdirSync(keep, { recursive: true });
@@ -113,15 +123,7 @@ export function createBackup(o: {
     // pets/ 는 링크를 빼고 일반 파일만 (링크로 사용자 데이터 폴더 밖 파일을 읽게 하지 못하게)
     if (existsSync(join(from, 'pets')))
       cpSync(join(from, 'pets'), join(dir(), 'pets'), { recursive: true, filter: plainEntry });
-    const skipped = customAiCount(readJsonFile(join(from, 'ai-custom.json')));
     o.log('backup', '가져옴, 다시 켠다', skipped ? `사용자 AI ${skipped}개 뺌` : '');
-    if (skipped > 0)
-      await dialog.showMessageBox({
-        type: 'info',
-        message: t('main.backup.customAiSkipped', { n: skipped }),
-        detail: t('main.backup.customAiSkippedDetail'),
-        buttons: [t('common.ok')],
-      });
     // exit 대신 quit: will-quit 정리(실행 표시 지우기, AI 끝내기, 저장 파일 닫기, 단축키 풀기)가 돌게 한다
     app.relaunch();
     app.quit();
