@@ -3,6 +3,7 @@
 import { readFileSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { app, nativeImage } from 'electron';
+import { sizeOk } from '../shared/image-head.ts';
 import type { PetLookView, SavedPetView } from '../shared/ipc.ts';
 import { type Blueprint, parseBlueprint } from '../shared/pet3d/blueprint.ts';
 import { LIBRARY_MAX, type PetKind, type SavedPet, type Settings } from '../shared/settings.ts';
@@ -12,7 +13,8 @@ import { settings } from './settings.ts';
 const petsDir = () => join(app.getPath('userData'), 'pets');
 const THUMB_PX = 160;
 /** 줄이지 못한 그림은 이보다 작을 때만 그대로 보낸다 (설정 창에 수백 MB 를 넘기지 않게) */
-const RAW_THUMB_MAX = 512 * 1024;
+// 움직이는 그림(gif, webp)은 nativeImage 가 못 풀어 파일 그대로 보낸다. 만들기 창이 받는 상한(8MB)까지 (예전 512KB 라 대부분 빈칸이었다)
+const RAW_THUMB_MAX = 8 * 1024 * 1024;
 /** 깊이 그림 상한. 펫 만들기가 저장할 때와 같다 (maker.ts lookOf) */
 const MAX_DEPTH_BYTES = 1024 * 1024;
 /** 설계도 파일 상한. 부품 40개면 10KB 안팎이라 넉넉하다 */
@@ -63,11 +65,21 @@ const NO_POSES = { happy: null, sleepy: null, hungry: null };
 
 export const library = {
   /** 펫 만들기에서 새 사진 펫을 저장하기 직전: 지금 펫을 보관하고 포즈는 비운다 (포즈는 옛 펫 것) */
-  beforeNewPhoto(): void {
+  /**
+   * 새 사진 펫을 넣기 전: 지금 펫을 보관함에 넣는 설정 조각과, 저장이 된 뒤 지울 파일 치우기.
+   * 새 펫 설정과 한 번에 저장한다 (두 번 나눠 쓰다 둘째가 실패하면 보관함만 바뀌고 포즈는 지워진 채 남았다)
+   */
+  newPhotoPatch(): {
+    patch: { petLibrary: Settings['petLibrary']; petPoses: typeof NO_POSES };
+    cleanup: () => void;
+  } {
     const old = settings.get().petPoses;
     const { list, dropped } = archiveCurrent();
-    settings.set({ petLibrary: list, petPoses: NO_POSES });
-    removeUnused([...dropped.flatMap(files), ...Object.values(old).filter((f): f is string => !!f)]);
+    return {
+      patch: { petLibrary: list, petPoses: NO_POSES },
+      cleanup: () =>
+        removeUnused([...dropped.flatMap(files), ...Object.values(old).filter((f): f is string => !!f)]),
+    };
   },
 
   /** 기본 펫으로: 지금 사진 펫은 보관하고 고른 모양으로 */
@@ -188,7 +200,7 @@ function depthOf(file: string | undefined): string | undefined {
   let out = '';
   const bytes = readFileIn(petsDir(), file, MAX_DEPTH_BYTES);
   try {
-    if (bytes && bytes.length > 12 && bytes.readUInt32BE(0) === 0x89504e47) {
+    if (bytes && bytes.length > 12 && bytes.readUInt32BE(0) === 0x89504e47 && sizeOk(bytes)) {
       const img = nativeImage.createFromBuffer(bytes);
       if (!img.isEmpty()) {
         const { width, height } = img.getSize();
@@ -219,12 +231,18 @@ function thumbOf(file: string): string {
   let thumb = '';
   if (!path) return thumb;
   try {
-    const img = nativeImage.createFromPath(path);
-    if (!img.isEmpty()) {
-      const { width, height } = img.getSize();
-      const small = width >= height ? img.resize({ width: THUMB_PX }) : img.resize({ height: THUMB_PX });
-      thumb = small.toDataURL();
-    } else if (statSync(path).size <= RAW_THUMB_MAX) {
+    // 풀기 전에 머리말 크기를 본다 (가로세로가 터무니없는 그림은 풀면 메인이 멈춘다)
+    const head = readFileSync(path).subarray(0, 64 * 1024);
+    const img = sizeOk(head) ? nativeImage.createFromPath(path) : nativeImage.createEmpty();
+    const { width, height } = img.isEmpty() ? { width: 0, height: 0 } : img.getSize();
+    if (width > 0 && height > 0) {
+      // 아주 가는 그림(1x5000)은 줄이면 0 이 되어 빈 data URL 이 나왔다
+      const small =
+        width >= height
+          ? img.resize({ width: THUMB_PX, height: Math.max(1, Math.round((height * THUMB_PX) / width)) })
+          : img.resize({ height: THUMB_PX, width: Math.max(1, Math.round((width * THUMB_PX) / height)) });
+      if (!small.isEmpty()) thumb = small.toDataURL();
+    } else if (sizeOk(head) && statSync(path).size <= RAW_THUMB_MAX) {
       const ext = file.split('.').pop();
       const mime = ext === 'gif' ? 'image/gif' : ext === 'webp' ? 'image/webp' : 'image/png';
       thumb = `data:${mime};base64,${readFileSync(path).toString('base64')}`;

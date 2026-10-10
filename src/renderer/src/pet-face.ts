@@ -194,8 +194,9 @@ export function renderFace(
   }
   const data = g.getImageData(0, 0, work.width, work.height);
   const pixels = data.data;
-  // 입체 바닥 그림자(검정, 알파 0.16)는 얼굴 그림에 남기지 않는다
-  let dirty = dropShadow(pixels);
+  // 입체 바닥 그림자(검정, 알파 0.16)는 얼굴 그림에 남기지 않는다. 사진, 2.5D 판에는 그림자가 없어 건드리지 않는다
+  // (검은 고양이 가장자리 털이 그림자로 보여 지워져 윤곽이 들쭉날쭉했다)
+  let dirty = src.model3d && !src.relief ? dropShadow(pixels) : false;
   let body = solidRect(pixels, work.width, work.height);
   if (!body) return undefined;
   // 머리 관절을 모르는 그림(사진, 2.5D 판)만 목을 찾는다. 기본 펫 2D(발 뺀 몸)와 입체 머리는 그린 것이 곧 얼굴
@@ -254,7 +255,7 @@ export function renderBody(
   if (m && keep !== undefined) m.maxPx = keep;
   g.setTransform(1, 0, 0, 1, 0, 0);
   const data = g.getImageData(0, 0, full, full);
-  if (dropShadow(data.data)) g.putImageData(data, 0, 0);
+  if (m && !src.relief && dropShadow(data.data)) g.putImageData(data, 0, 0);
   const body = solidRect(data.data, full, full);
   if (!body) return undefined;
   const sq = squareAround(body, 0.04);

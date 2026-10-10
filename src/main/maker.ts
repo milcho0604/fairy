@@ -13,6 +13,7 @@ import type { ImageAttachment } from '../shared/ai/types.ts';
 import { downloadErrorText, saveErrorText } from '../shared/download-error.ts';
 import { t } from '../shared/i18n/index.ts';
 import { ILLUST_WISH_MAX, illustratePrompt, isAgeStage } from '../shared/illustrate.ts';
+import { sizeOk } from '../shared/image-head.ts';
 import {
   DEPTH_URL,
   MAKER,
@@ -495,7 +496,8 @@ export function createMaker(
     // 머리말로 형식을 확인하고 크기를 본다 (data URL 의 형식 글자는 믿지 않는다).
     const kind = kindOf(bytes);
     const max = kind === 'png' ? MAX_PNG_BYTES : MAX_ANIMATED_BYTES;
-    if (!kind || bytes.length > max) return { ok: false, error: t('main.maker.tooBigAny') };
+    // 작은 파일이라도 가로세로가 터무니없으면(23000x23000) 풀 때 메모리를 몇 GB 쓴다
+    if (!kind || bytes.length > max || !sizeOk(bytes)) return { ok: false, error: t('main.maker.tooBigAny') };
     mkdirSync(petsDir(), { recursive: true });
     const file = to === 'main' ? `pet-${Date.now()}.${kind}` : `pose-${to}-${Date.now()}.${kind}`;
     // 그림을 쓴 뒤 설계도, 깊이 그림, 설정 저장이 실패하면 방금 쓴 파일을 지운다 (pets/ 에 주인 없는 그림이 쌓이지 않게)
@@ -520,8 +522,9 @@ export function createMaker(
       if (to === 'main') {
         // 이름 칸을 비우면 지금 펫 이름이 아니라 새 이름 (보관함에 같은 이름이 쌓이지 않게). 보관하기 전에 정한다
         const petName = cleanPetName(name) ?? newPhotoName();
-        library.beforeNewPhoto();
+        const prep = library.newPhotoPatch();
         settings.set({
+          ...prep.patch,
           petImage: file,
           petModel: modelFile ?? null,
           petDepth: depthFile ?? null,
@@ -532,6 +535,7 @@ export function createMaker(
             ? { petWishes: { ...settings.get().petWishes, [modelFile]: look.wish } }
             : {}),
         });
+        prep.cleanup();
       } else settings.set({ petPoses: { [to]: file } });
     } catch (err) {
       for (const f of written) rmSync(join(petsDir(), f), { force: true });

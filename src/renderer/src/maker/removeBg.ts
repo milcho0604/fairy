@@ -81,6 +81,9 @@ async function runMask(photo: HTMLCanvasElement, info: MakerInfo): Promise<Uint8
   const g = c.getContext('2d', { willReadFrequently: true });
   if (!g) throw new ShownError(t('maker.err.canvas'));
   g.imageSmoothingQuality = 'high';
+  // 투명한 칸(오려 둔 PNG)은 흰 바탕으로 본다. 그대로면 모델에 검게 보여 검은 테두리가 남았다
+  g.fillStyle = '#ffffff';
+  g.fillRect(0, 0, size, size);
   g.drawImage(photo, 0, 0, size, size);
   const d = g.getImageData(0, 0, size, size).data;
   let max = 1e-6;

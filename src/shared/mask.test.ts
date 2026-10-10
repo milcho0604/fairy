@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { brush, contentBox, defringe, keptRatio, outputToMask, stroke } from './mask.ts';
+import { brush, clampToAlpha, contentBox, defringe, keptRatio, outputToMask, stroke } from './mask.ts';
 
 test('모델 출력을 0~255 로 편다, 시그모이드 선택', () => {
   assert.deepEqual([...outputToMask([0.2, 0.6, 1.0])], [0, 128, 255]);
@@ -100,4 +100,11 @@ test('가장자리 바탕색 빼기: 이미 털색인 흐린 경계(붓 가장�
       const v = rgba[(1 * w + x) * 4 + k] ?? 0;
       assert.ok(Math.abs(v - (brown[k] ?? 0)) <= 24, `x=${x} k=${k}: ${v}`);
     }
+});
+
+test('이미지 검토: 모델이 거의 못 찾은 사진(흰 벽)은 빈 마스크, 이미 투명한 곳은 마스크에서도 지운다', () => {
+  assert.deepEqual([...outputToMask([0.001, 0.01, 0.018])], [0, 0, 0]);
+  assert.deepEqual([...outputToMask([0, 0.5, 0.9])], [0, 142, 255]);
+  const rgba = new Uint8ClampedArray([0, 0, 0, 0, 9, 9, 9, 128, 9, 9, 9, 255]);
+  assert.deepEqual([...clampToAlpha(new Uint8ClampedArray([200, 200, 200]), rgba)], [0, 128, 200]);
 });

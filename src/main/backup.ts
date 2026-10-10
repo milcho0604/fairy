@@ -347,8 +347,9 @@ export async function importPet(
       petAge: pet.age ?? null,
     };
     // 지금 사진 펫은 보관함으로 (6단계)
-    library.beforeNewPhoto();
-    settings.set(next);
+    const prep = library.newPhotoPatch();
+    settings.set({ ...prep.patch, ...next });
+    prep.cleanup();
     return { ok: true, message: t('main.pet.came', { name: pet.name }) };
   } catch (err) {
     for (const f of made) rmSync(join(app.getPath('userData'), 'pets', f), { force: true });

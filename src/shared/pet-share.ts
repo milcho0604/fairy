@@ -3,6 +3,7 @@
 
 import { t } from './i18n/index.ts';
 import { type AgeStage, isAgeStage } from './illustrate.ts';
+import { sizeOk } from './image-head.ts';
 import { type Blueprint, parseBlueprint } from './pet3d/blueprint.ts';
 import { cleanPetName, isPetKind, type PetKind, type PoseKind } from './settings.ts';
 
@@ -11,6 +12,8 @@ export const SHARE_VERSION = 1;
 /** 파일 하나 상한 (그림 네 장, 움직이는 그림 8MB 를 base64 로) */
 export const SHARE_MAX_BYTES = 48 * 1024 * 1024;
 const IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+/** 깊이 그림 상한 (maker.ts, pet-library.ts MAX_DEPTH_BYTES 와 같다) */
+const DEPTH_MAX_BYTES = 1024 * 1024;
 
 export interface SharedPet {
   name: string;
@@ -43,7 +46,8 @@ function cleanImage(v: unknown): string | undefined {
     (m[1] === 'png' && bytes.readUInt32BE(0) === 0x89504e47) ||
     (m[1] === 'gif' && head.startsWith('GIF8')) ||
     (m[1] === 'webp' && head.startsWith('RIFF') && head.slice(8, 12) === 'WEBP');
-  return ok ? v : undefined;
+  // 머리말 크기도 본다: 2MB PNG 가 23000x23000 이면 펼칠 때 메인이 몇 초 멈추고 2GB 를 썼다
+  return ok && sizeOk(bytes) ? v : undefined;
 }
 
 /** .jjpet 글을 읽는다. 틀리면 이유를 담은 오류 */
@@ -72,7 +76,11 @@ export function decodePet(text: string): SharedPet | { error: string } {
   // 설계도는 사진이 있을 때만. 깨졌으면 사진으로만 데려온다
   const model = image && raw.model !== undefined ? parseBlueprint(raw.model) : undefined;
   const depthImg = image && !model ? cleanImage(raw.depth) : undefined;
-  const depth = depthImg?.startsWith('data:image/png') ? depthImg : undefined;
+  // 깊이 그림은 만들기 창 저장과 같은 상한(1MB)으로 (넘으면 펫 화면은 입체, 설정 카드는 평면으로 엇갈렸다)
+  const depth =
+    depthImg?.startsWith('data:image/png') && (depthImg.length * 3) / 4 <= DEPTH_MAX_BYTES
+      ? depthImg
+      : undefined;
   const age = image && isAgeStage(raw.age) ? raw.age : undefined;
   return {
     name,

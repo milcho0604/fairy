@@ -42,12 +42,38 @@ interface Stats {
   weight: number;
 }
 
-function statsOf(img: Rgba, bg: [number, number, number]): Stats {
+/**
+ * 두 그림(같은 크기, 같은 자리)에 함께 쓸 칸 무게: 칸마다 두 그림 중 펫다운 쪽 무게.
+ * 그림마다 따로 재면 밝은 바탕 위 흰 털은 앞 그림에서 거의 0 이라 눈, 그림자만 남아 흰 고양이가 회색이 된 것을 못 고쳤다
+ */
+function sharedWeights(a: Rgba, b: Rgba): Float32Array | undefined {
+  if (a.w !== b.w || a.h !== b.h) return undefined;
+  const abg = cornerColor(a);
+  const bbg = cornerColor(b);
+  const n = a.w * a.h;
+  const out = new Float32Array(n);
+  for (let p = 0; p < n; p++) {
+    const i = p * 4;
+    // 두 그림에서 색이 달라진 칸도 펫이다 (바탕은 두 그림이 같다): 밝은 바탕 위 흰 털이 반만 고쳐지던 것
+    const diff =
+      Math.abs((a.data[i] ?? 0) - (b.data[i] ?? 0)) +
+      Math.abs((a.data[i + 1] ?? 0) - (b.data[i + 1] ?? 0)) +
+      Math.abs((a.data[i + 2] ?? 0) - (b.data[i + 2] ?? 0));
+    out[p] = Math.max(
+      weightOf(a.data, i, abg),
+      weightOf(b.data, i, bbg),
+      Math.max(0, Math.min(1, (diff - 9) / 18)),
+    );
+  }
+  return out;
+}
+
+function statsOf(img: Rgba, bg: [number, number, number], weights?: Float32Array): Stats {
   const s1 = [0, 0, 0];
   const s2 = [0, 0, 0];
   let wsum = 0;
   for (let i = 0; i < img.w * img.h * 4; i += 4) {
-    const w = weightOf(img.data, i, bg);
+    const w = weights ? (weights[i / 4] ?? 0) : weightOf(img.data, i, bg);
     if (w <= 0) continue;
     wsum += w;
     for (let k = 0; k < 3; k++) {
@@ -69,8 +95,9 @@ function statsOf(img: Rgba, bg: [number, number, number]): Stats {
  *  흰 고양이가 조금 회색, 분홍빛이 되면 16~42)
  */
 export function colorShift(a: Rgba, b: Rgba): number {
-  const sa = statsOf(a, cornerColor(a));
-  const sb = statsOf(b, cornerColor(b));
+  const shared = sharedWeights(a, b);
+  const sa = statsOf(a, cornerColor(a), shared);
+  const sb = statsOf(b, cornerColor(b), shared);
   return [0, 1, 2].reduce((sum, k) => sum + Math.abs((sa.mean[k] ?? 0) - (sb.mean[k] ?? 0)), 0);
 }
 
@@ -84,8 +111,9 @@ export const MAX_FUR_SHIFT = 85;
 export function matchColors(target: Rgba, ref: Rgba): boolean {
   const tbg = cornerColor(target);
   const rbg = cornerColor(ref);
-  const t = statsOf(target, tbg);
-  const r = statsOf(ref, rbg);
+  const shared = sharedWeights(target, ref);
+  const t = statsOf(target, tbg, shared);
+  const r = statsOf(ref, rbg, shared);
   const minWeight = 0.02;
   if (t.weight < target.w * target.h * minWeight || r.weight < ref.w * ref.h * minWeight) return false;
   const scale = [0, 1, 2].map((k) => {
@@ -94,7 +122,7 @@ export function matchColors(target: Rgba, ref: Rgba): boolean {
   });
   const d = target.data;
   for (let i = 0; i < target.w * target.h * 4; i += 4) {
-    const w = weightOf(d, i, tbg);
+    const w = shared ? (shared[i / 4] ?? 0) : weightOf(d, i, tbg);
     if (w <= 0) continue;
     for (let k = 0; k < 3; k++) {
       const v = d[i + k] ?? 0;

@@ -49,3 +49,28 @@ test('색 거리: 조금 바랜 건 작고, 갈색이 흰색이 되면 커서 �
   assert.ok(colorShift(pet([200, 140, 90]), pet([190, 135, 95])) < 30);
   assert.ok(colorShift(pet([120, 70, 40]), pet([235, 235, 235])) > MAX_FUR_SHIFT);
 });
+
+test('이미지 검토: 밝은 바탕 위 흰 고양이가 회색, 분홍빛이 되면 거리를 제대로 재고 흰색으로 되돌린다', () => {
+  const W = 40;
+  const make = (fur: [number, number, number]) => {
+    const data = new Uint8ClampedArray(W * W * 4);
+    for (let y = 0; y < W; y++)
+      for (let x = 0; x < W; x++) {
+        const i = (y * W + x) * 4;
+        const inside = (x - 20) ** 2 + (y - 20) ** 2 < 14 ** 2;
+        const eye = inside && y === 17 && (x === 15 || x === 25);
+        const c = eye ? [10, 10, 10] : inside ? fur : [246, 246, 246];
+        data.set([c[0] ?? 0, c[1] ?? 0, c[2] ?? 0, 255], i);
+      }
+    return { w: W, h: W, data };
+  };
+  const before = make([252, 252, 252]);
+  const after = make([240, 232, 235]);
+  assert.ok(colorShift(after, before) > 25, String(colorShift(after, before)));
+  assert.ok(matchColors(after, before));
+  const i = (20 * W + 20) * 4;
+  assert.ok(
+    (after.data[i] ?? 0) > 248 && (after.data[i + 1] ?? 0) > 248,
+    String([...after.data.subarray(i, i + 3)]),
+  );
+});

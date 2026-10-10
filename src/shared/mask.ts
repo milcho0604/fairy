@@ -1,7 +1,13 @@
 // 사진 펫 만들기(P1-08)의 마스크 계산. 화면 없이 시험할 수 있게 배열만 다룬다.
 // 마스크는 한 칸에 0~255 (0 = 지움, 255 = 남김).
 
-/** 모델 출력(정사각 size x size)을 최소 최대로 펴서 0~255 마스크로. rembg 와 같은 후처리. */
+/**
+ * 모델 출력의 가장 큰 값이 이보다 작으면 펫을 못 찾은 것 (모델은 0~1 을 낸다. 흰 벽만 찍은 사진은 0.02 쯤).
+ * 그대로 펴면 벽 한 조각이 "펫"으로 남았다
+ */
+export const MIN_MASK_PEAK = 0.2;
+
+/** 모델 출력(정사각 size x size)을 최소 최대로 펴서 0~255 마스크로. rembg 와 같은 후처리. 못 찾았으면 다 0 */
 export function outputToMask(out: ArrayLike<number>, sigmoid = false): Uint8ClampedArray {
   const n = out.length;
   const v = new Float32Array(n);
@@ -15,6 +21,7 @@ export function outputToMask(out: ArrayLike<number>, sigmoid = false): Uint8Clam
   }
   const span = ma - mi || 1;
   const m = new Uint8ClampedArray(n);
+  if (!sigmoid && ma < MIN_MASK_PEAK) return m;
   for (let i = 0; i < n; i++) m[i] = (((v[i] ?? 0) - mi) / span) * 255;
   return m;
 }
@@ -164,4 +171,14 @@ export function defringe(rgba: Uint8ClampedArray, mask: ArrayLike<number>, w: nu
       rgba[i * 4 + k] = Math.max(lo, Math.min(hi, solved));
     }
   }
+}
+
+/**
+ * 이미 투명한 곳은 남기지 않는다: 마스크를 사진의 알파 이하로 (칸마다 작은 쪽). 오려 둔 PNG 를 넣으면 투명한 칸이
+ * 모델에 검게 보여 가장자리에 검은 테두리가 생겼다
+ */
+export function clampToAlpha(mask: Uint8ClampedArray, rgba: ArrayLike<number>): Uint8ClampedArray {
+  const out = new Uint8ClampedArray(mask.length);
+  for (let i = 0; i < mask.length; i++) out[i] = Math.min(mask[i] ?? 0, rgba[i * 4 + 3] ?? 255);
+  return out;
 }

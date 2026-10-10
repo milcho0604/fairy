@@ -9,6 +9,10 @@
 // 옛 Gradio(4.x)는 /gradio_api 없이 같은 길이라 처음 올리기가 404 면 한 번 바꿔 본다.
 // 토큰(선택)은 그 Space 주소로만 Authorization 머리에 실어 보낸다. 기록에는 남기지 않는다.
 
+import { type ImageKind, imageKind, imageSize } from '../shared/image-head.ts';
+
+export { type ImageKind, imageKind, imageSize };
+
 /** Space 하나: 이름, 그림 그리는 길 하나(다른 길은 절대 고르지 않는다), 넣을 값 순서 */
 export interface IllustSpace {
   id: string;
@@ -53,43 +57,14 @@ export const KLEIN: IllustSpace = {
 
 /** klein 결과 크기: 비율을 지키며 긴 변 long(기본 1024) 안, 16 의 배수, 짧은 변 256 이상. CPU 로 그릴 때는 768 */
 export function kleinSize(w: number, h: number, long = 1024): { w: number; h: number } {
-  const k = long / Math.max(w, h, 1);
-  const fit = (v: number) => Math.max(256, Math.min(long, Math.round((v * k) / 16) * 16));
+  const big = Math.max(w, h, 1);
+  const small = Math.max(Math.min(w, h), 1);
+  // 짧은 변이 256 보다 작아지면 비율을 지키며 키운다 (긴 변은 1024 까지). 짧은 변만 256 으로 올리면
+  // 1024x100 이 1024x256 으로 늘어나 펫이 늘어지거나 잘렸다. 그래도 모자라는 아주 긴 그림만 비율을 조금 바꾼다
+  let k = long / big;
+  if (small * k < 256) k = Math.min(256 / small, 1024 / big);
+  const fit = (v: number) => Math.max(256, Math.min(1024, Math.round((v * k) / 16) * 16));
   return { w: fit(w), h: fit(h) };
-}
-
-/** 그림 머리말에서 가로세로를 읽는다 (PNG, JPEG, WebP). 모르면 undefined */
-export function imageSize(b: Uint8Array): { w: number; h: number } | undefined {
-  const u16 = (i: number) => ((b[i] ?? 0) << 8) | (b[i + 1] ?? 0);
-  const le16 = (i: number) => (b[i] ?? 0) | ((b[i + 1] ?? 0) << 8);
-  const le24 = (i: number) => le16(i) | ((b[i + 2] ?? 0) << 16);
-  const kind = imageKind(b);
-  if (kind === 'png' && b.length >= 24) {
-    const u32 = (i: number) => (b[i] ?? 0) * 2 ** 24 + ((b[i + 1] ?? 0) << 16) + u16(i + 2);
-    return { w: u32(16), h: u32(20) };
-  }
-  if (kind === 'webp' && b.length >= 30) {
-    const chunk = String.fromCharCode(...b.subarray(12, 16));
-    if (chunk === 'VP8X') return { w: le24(24) + 1, h: le24(27) + 1 };
-    if (chunk === 'VP8 ') return { w: le16(26) & 0x3fff, h: le16(28) & 0x3fff };
-    if (chunk === 'VP8L') {
-      const v = (b[21] ?? 0) | ((b[22] ?? 0) << 8) | ((b[23] ?? 0) << 16) | ((b[24] ?? 0) << 24);
-      return { w: (v & 0x3fff) + 1, h: ((v >>> 14) & 0x3fff) + 1 };
-    }
-    return undefined;
-  }
-  if (kind === 'jpeg') {
-    // SOF 표시(C0~CF, C4 C8 CC 빼고)를 찾아 그 안의 높이, 너비
-    let i = 2;
-    while (i + 9 < b.length) {
-      if (b[i] !== 0xff) return undefined;
-      const m = b[i + 1] ?? 0;
-      if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc)
-        return { w: u16(i + 7), h: u16(i + 5) };
-      i += 2 + u16(i + 2);
-    }
-  }
-  return undefined;
 }
 
 /**
@@ -180,17 +155,6 @@ export function worst(kinds: IllustErrorKind[]): IllustErrorKind {
 
 /** 받을 그림 상한 (webp 784x1328 이 수백 KB) */
 export const MAX_RESULT_BYTES = 16 * 1024 * 1024;
-
-export type ImageKind = 'png' | 'webp' | 'jpeg';
-
-/** 머리말로 그림 형식을 본다 */
-export function imageKind(b: Uint8Array): ImageKind | undefined {
-  if (b.length > 12 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'png';
-  if (b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'jpeg';
-  const s = (from: number, to: number) => String.fromCharCode(...b.subarray(from, to));
-  if (b.length > 12 && s(0, 4) === 'RIFF' && s(8, 12) === 'WEBP') return 'webp';
-  return undefined;
-}
 
 /**
  * 결과 data 에서 그림 파일 주소를 찾는다. 첫 값이 파일 경로 글, {url, path} FileData, {image: FileData} 같은 dict,

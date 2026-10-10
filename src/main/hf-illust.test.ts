@@ -418,3 +418,18 @@ test('털 다듬기: 그린 그림을 klein 에 FUR 요청문으로 한 번 더,
   setTimeout(() => ac.abort(), 30);
   await assert.rejects(p, (e: unknown) => e instanceof IllustError && e.kind === 'cancelled');
 });
+
+test('이미지 검토: 짧은 변이 모자라면 비율을 지키며 키운다 (CPU 768 에서도), 아주 긴 그림만 비율을 조금 바꾼다', () => {
+  // 300x1024 를 768 로: 225x768 이 아니라 짧은 변 256 에 맞춰 비율을 지킨다
+  const a = kleinSize(300, 1024, 768);
+  assert.ok(Math.abs(a.w / a.h - 300 / 1024) < 0.03, JSON.stringify(a));
+  assert.ok(a.w >= 256 && a.h <= 1024);
+  // 1024x300 도 같다
+  const b = kleinSize(1024, 300, 768);
+  assert.ok(Math.abs(b.w / b.h - 1024 / 300) < 0.15, JSON.stringify(b));
+});
+
+test('이미지 검토: GIF 머리말 크기', () => {
+  const gif = Buffer.from('GIF89a\x40\x01\xf0\x00', 'latin1');
+  assert.deepEqual(imageSize(new Uint8Array([...gif, 0, 0, 0])), { w: 320, h: 240 });
+});

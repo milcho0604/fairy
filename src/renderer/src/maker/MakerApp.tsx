@@ -16,7 +16,7 @@ import {
   setupStageOf,
   setupStagesFor,
 } from '../../../shared/local-draw.ts';
-import { contentBox, defringe, keptRatio, stroke } from '../../../shared/mask.ts';
+import { clampToAlpha, contentBox, defringe, keptRatio, stroke } from '../../../shared/mask.ts';
 import type { Blueprint } from '../../../shared/pet3d/blueprint.ts';
 import { cleanWish, WISH_MAX } from '../../../shared/pet3d/prompt.ts';
 import {
@@ -374,7 +374,7 @@ export function MakerApp() {
         }
         if (!alive()) return;
         const t0 = performance.now();
-        const mask = await predictMask(photo, info);
+        const mask = withPhotoAlpha(await predictMask(photo, info), photo);
         if (!alive()) return;
         setElapsed(Math.round(performance.now() - t0));
         saveDuration('cutout', performance.now() - cutStart, store());
@@ -1655,6 +1655,15 @@ function toDataUrl(file: Blob): Promise<string> {
     r.onerror = () => reject(new ShownError(t('maker.err.imageRead')));
     r.readAsDataURL(file);
   });
+}
+
+/** 오려 둔 PNG 처럼 이미 투명한 곳은 마스크에서도 지운다 (mask.ts clampToAlpha) */
+function withPhotoAlpha(mask: Uint8ClampedArray, photo: HTMLCanvasElement): Uint8ClampedArray {
+  const g = photo.getContext('2d', { willReadFrequently: true });
+  if (!g) return mask;
+  const d = g.getImageData(0, 0, photo.width, photo.height).data;
+  for (let i = 3; i < d.length; i += 4) if ((d[i] ?? 255) < 255) return clampToAlpha(mask, d);
+  return mask;
 }
 
 /** 파일을 작업 크기(긴 변 1024 이하) 캔버스로 */
