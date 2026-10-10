@@ -76,7 +76,7 @@ export const ko = {
   // 이름은 이 키 하나만 바꾸면 된다
   'settings.boost': '부스트 모드',
   'settings.boostHint':
-    '사양이 좋은 컴퓨터용. 펫이 더 부드럽게 움직이고 마우스를 더 촘촘히 따라 봐. 무료 AI 는 30분 동안 데워 둬서 답이 빨라. CPU와 메모리를 조금 더 써. 노트북이 배터리로 돌 때는 쉬어.',
+    '사양이 좋은 컴퓨터용. 펫이 더 부드럽게 움직이고 마우스를 더 촘촘히 따라 봐. 무료 AI는 30분 동안 데워 둬서 답이 빨라. CPU와 메모리를 조금 더 써. 노트북이 배터리로 돌 때는 쉬어.',
   'settings.boostResting': '지금은 배터리라 쉬는 중이야. 전원을 꽂으면 켜져.',
   'settings.sysMonitor': '메뉴 막대에 컴퓨터 상태',
   'settings.sysMonitorHint':
@@ -130,19 +130,19 @@ export const ko = {
   'settings.persona': '성격과 말투',
   'settings.personaNext': '다음 질문부터 바뀌어.',
   'settings.aiKnowsTodos': '내 할 일 같이 보내기',
-  'settings.diaryAi': '일기를 AI 로 다듬기',
+  'settings.diaryAi': '일기를 AI로 다듬기',
   'settings.diaryAiHint':
-    '지난 날 짝꿍 일기를 고른 AI 가 펫 말투로 다듬어. 숫자와 일기 문장만 보내고 할 일 제목은 안 보내.',
+    '지난 날 짝꿍 일기를 고른 AI가 펫 말투로 다듬어. 숫자와 일기 문장만 보내고 할 일 제목은 안 보내.',
   'settings.aiKnowsTodosHint':
-    "질문할 때 안 끝낸 할 일 제목과 마감, 오늘 남은 일정 제목을 AI 에 같이 보내. '오늘 뭐부터 할까?'에 답할 수 있어. 채팅 창 아래에서도 켜고 끌 수 있어.",
+    "질문할 때 안 끝낸 할 일 제목과 마감, 오늘 남은 일정 제목을 AI에 같이 보내. '오늘 뭐부터 할까?'에 답할 수 있어. 채팅 창 아래에서도 켜고 끌 수 있어.",
   'settings.myMcp': '내 MCP 도구 쓰기',
   'settings.myMcpOff':
-    '위의 "내 AI 설정 없이 부르기"를 끄면 쓸 수 있어. Claude Code 에 연결해 둔 노션, 슬랙 같은 MCP 도구를 채팅에서 써.',
+    '위의 "내 AI 설정 없이 부르기"를 끄면 쓸 수 있어. Claude Code에 연결해 둔 노션, 슬랙 같은 MCP 도구를 채팅에서 써.',
   'settings.myMcpOn': (v: { n: number }) =>
-    `Claude Code 에 연결해 둔 MCP 도구(${v.n}개 서버)를 채팅에서 묻지 않고 써. 파일, 명령 도구는 여전히 꺼 둬. 글쓰기 같은 도구도 쓸 수 있으니 켤 때 주의해 줘.`,
+    `Claude Code에 연결해 둔 MCP 도구(${v.n}개 서버)를 채팅에서 묻지 않고 써. 파일, 명령 도구는 여전히 꺼 둬. 글쓰기 같은 도구도 쓸 수 있으니 켤 때 주의해 줘.`,
   'settings.aiIsolation': '내 AI 설정 없이 부르기 (권장)',
   'settings.aiIsolationHint':
-    'Claude Code 와 Codex 를 부를 때 내 훅, MCP, 스킬을 싣지 않아. 끄면 내 설정을 그대로 쓰는데 답이 느려지고 한도를 더 쓸 수 있어. 바꾸면 새 대화로 시작해.',
+    'Claude Code와 Codex를 부를 때 내 훅, MCP, 스킬을 싣지 않아. 끄면 내 설정을 그대로 쓰는데 답이 느려지고 한도를 더 쓸 수 있어. 바꾸면 새 대화로 시작해.',
 
   // 모델 고르기 (v2)
   'settings.models': 'AI 모델',
@@ -159,8 +159,8 @@ export const ko = {
   'settings.pets.removed': '보관한 펫을 지웠어',
   'settings.rules': '짝꿍 규칙',
   'settings.rules.label': '대화할 때 늘 지켜 줄 것',
-  'settings.rules.placeholder': '예)\n답은 세 줄 안으로\n코드는 TypeScript 로\n나를 "대장"이라고 불러',
-  'settings.rules.hint': '한 줄에 하나씩. 모든 AI 에 같이 보내고 성격보다 먼저 따라. 칸을 벗어나면 저장해.',
+  'settings.rules.placeholder': '예)\n답은 세 줄 안으로\n코드는 TypeScript로\n나를 "대장"이라고 불러',
+  'settings.rules.hint': '한 줄에 하나씩. 모든 AI에 같이 보내고 성격보다 먼저 따라. 칸을 벗어나면 저장해.',
   'settings.rules.saved': '규칙을 저장했어',
   'settings.storage': '저장 공간',
   'settings.storage.llm': (v: { name: string }) => `무료 AI 모델 ${v.name}`,
@@ -175,7 +175,7 @@ export const ko = {
   'settings.storage.hint': (v: { total: string }) =>
     `모두 ${v.total}. 지워도 그 기능을 다시 쓰면 그때 다시 받아.`,
   'settings.models.hint':
-    '고르지 않으면 그 AI 의 기본 모델을 써. Claude 는 요금제 기본(Pro, Max 는 Opus)이야. 가벼운 모델을 고르면 한도를 아낄 수 있어.',
+    '고르지 않으면 그 AI의 기본 모델을 써. Claude는 요금제 기본(Pro, Max는 Opus)이야. 가벼운 모델을 고르면 한도를 아낄 수 있어.',
   'settings.models.default': '기본',
   'settings.models.latest': (v: { label: string }) => `${v.label} (최신 자동)`,
   'settings.models.pinned': (v: { label: string }) => `${v.label} (이 버전 고정)`,
@@ -185,12 +185,12 @@ export const ko = {
     `처음 쓸 때 받아 (${v.mb}MB, ${v.license})`,
 
   // 다른 AI 에서 쓰기 (MCP)
-  'settings.mcpSection': '다른 AI 에서 짝꿍 쓰기 (MCP)',
+  'settings.mcpSection': '다른 AI에서 짝꿍 쓰기 (MCP)',
   'settings.mcp.intro':
-    'Claude Code, Codex 에 짝꿍을 연결하면 그 안에서 "이거 짝꿍 할 일에 넣어 줘", "내일 3시 회의 일정 잡아 줘"가 돼. 할 일, 메모, 일정을 넣고 볼 수 있어. 넣은 것은 몇 초 안에 패널에 보여.',
+    'Claude Code, Codex에 짝꿍을 연결하면 그 안에서 "이거 짝꿍 할 일에 넣어 줘", "내일 3시 회의 일정 잡아 줘"가 돼. 할 일, 메모, 일정을 넣고 볼 수 있어. 넣은 것은 몇 초 안에 패널에 보여.',
   'settings.mcp.claude': 'Claude Code: 터미널에서 한 번 실행',
   'settings.mcp.copyCmd': '명령 복사',
-  'settings.mcp.codex': 'Codex: ~/.codex/config.toml 에 붙여 넣기',
+  'settings.mcp.codex': 'Codex: ~/.codex/config.toml에 붙여 넣기',
   'settings.mcp.copyConfig': '설정 복사',
   'settings.mcp.moved': '짝꿍을 다른 폴더로 옮기거나 다시 설치하면 경로가 바뀌니 다시 등록해 줘.',
 
@@ -255,7 +255,7 @@ export const ko = {
   'settings.zoomKeys': '크게, 작게, 원래대로 (마우스가 펫 위에 있을 때)',
   'settings.shortcut.hide': '숨기기, 다시 보이기',
   'settings.shortcut.quickAdd': '할 일 한 줄 넣기 (어디서든)',
-  'settings.shortcut.recording': '키를 눌러 줘 (Esc 는 그만)',
+  'settings.shortcut.recording': '키를 눌러 줘 (Esc는 그만)',
   'settings.shortcut.recordingBtn': '기록 중',
   'settings.shortcut.change': '바꾸기',
   'settings.shortcut.default': '기본으로',
@@ -265,8 +265,8 @@ export const ko = {
   'settings.shortcut.needMore':
     '{one} 키 하나만으로는 다른 앱 단축키와 겹쳐. {more} 중 하나를 더 같이 눌러 줘.',
   'settings.shortcut.optionOnly': 'Option 조합은 특수 문자를 칠 때 써. Cmd 키나 Ctrl 키를 같이 눌러 줘.',
-  'settings.shortcut.fKey': 'F1~F12 는 다른 앱이 많이 써. 수식키를 하나 같이 누르거나 F13~F24 를 써 줘.',
-  'settings.shortcut.windowsKey': 'Windows 키 조합은 Windows 가 써. Ctrl 키나 Alt 키로 골라 줘.',
+  'settings.shortcut.fKey': 'F1~F12는 다른 앱이 많이 써. 수식키를 하나 같이 누르거나 F13~F24를 써 줘.',
+  'settings.shortcut.windowsKey': 'Windows 키 조합은 Windows가 써. Ctrl 키나 Alt 키로 골라 줘.',
   'settings.shortcut.reserved': '{what}에 쓰는 조합이라 못 써 ({keys}). 다른 키를 눌러 줘.',
   'settings.shortcut.what.copy': '복사',
   'settings.shortcut.what.paste': '붙여넣기',

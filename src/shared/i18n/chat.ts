@@ -18,19 +18,19 @@ export const ko = {
   'chat.emptyHint': (v: { name: string }) =>
     `${withParticle(v.name, '을')} 우클릭하고 "${withParticle(v.name, '이랑')} 같이 보기"를 고르면 화면 일부를 찍어 여기 붙여. 그림을 붙여 넣거나 끌어다 놓아도 돼.`,
   'chat.imagesBlocked': (v: { label: string }) =>
-    `${withParticle(v.label, '은')} 그림을 받지 않아서 글만 보낼게. 그림을 같이 보려면 그림을 받는 AI 로 바꿔 줘.`,
+    `${withParticle(v.label, '은')} 그림을 받지 않아서 글만 보낼게. 그림을 같이 보려면 그림을 받는 AI로 바꿔 줘.`,
   'chat.attachedAlt': (v: { n: number }) => `붙인 그림 ${v.n}`,
   'chat.removeImage': '그림 빼기',
   'chat.knowsTodosTitle':
     "질문할 때 안 끝낸 할 일 제목과 마감, 오늘 남은 일정 제목을 같이 보내. 그래서 '오늘 뭐부터 할까?'에 답할 수 있어.",
   'chat.knowsTodos': '내 할 일 같이 보내기',
   'chat.ephemeralUnsupported': (v: { label: string }) =>
-    `${withParticle(v.label, '은')} 기록 안 남기기를 지원하지 않아. Claude 나 Codex 에서 돼.`,
+    `${withParticle(v.label, '은')} 기록 안 남기기를 지원하지 않아. Claude나 Codex에서 돼.`,
   'chat.ephemeralTitle': 'AI 쪽에도 이 대화를 저장하지 않아. 켜고 끄면 새 대화로 시작해.',
   'chat.ephemeral': '기록 안 남김',
   'chat.attach': '그림 붙이기',
   'chat.placeholder': (v: { name: string }) => `${v.name}에게 물어보기`,
-  'chat.inputTitle': 'Enter 로 보내고, Shift+Enter 로 줄을 바꿔',
+  'chat.inputTitle': 'Enter로 보내고, Shift+Enter로 줄을 바꿔',
   'chat.stop': '멈춤',
   'chat.send': '보내기',
   'chat.sentAlt': (v: { n: number }) => `보낸 그림 ${v.n}`,
@@ -68,7 +68,7 @@ export const ko = {
   'chat.remove': '빼기',
   'chat.addTitle': '직접 추가',
   'chat.addHint': (v: { prompt: string }) =>
-    `터미널에서 질문 하나를 넣으면 답을 글로 내주는 AI 라면 무엇이든 돼. 인자의 ${v.prompt} 자리에 질문이 들어가. 예: 명령 `,
+    `터미널에서 질문 하나를 넣으면 답을 글로 내주는 AI라면 무엇이든 돼. 인자의 ${v.prompt} 자리에 질문이 들어가. 예: 명령 `,
   'chat.addHintArgs': ', 인자 ',
   'chat.name': '이름',
   'chat.namePlaceholder': '예: Llama',
@@ -78,7 +78,7 @@ export const ko = {
   'chat.argsPlaceholder': '예: run llama3.2 {prompt}',
   'chat.add': '추가',
   'chat.addFoot':
-    '직접 추가한 AI 는 그림을 받지 않고, 대화를 이어 가도록 최근 대화 4개를 질문 앞에 붙여 보내. 셸을 거치지 않아서 파이프나 변수는 못 써.',
+    '직접 추가한 AI는 그림을 받지 않고, 대화를 이어 가도록 최근 대화 4개를 질문 앞에 붙여 보내. 셸을 거치지 않아서 파이프나 변수는 못 써.',
   // 상태
   'chat.status.notFound': (v: { label: string; hint: string }) =>
     `${withParticle(v.label, '을')} 이 컴퓨터에서 못 찾았어. ${v.hint}`,
@@ -97,12 +97,12 @@ export const ko = {
   'chat.usage.longAgo': '한참 전 기준',
   // 같이 보기
   'chat.look.hint': (v: { name: string }) =>
-    `${withParticle(v.name, '이랑')} 같이 볼 곳을 끌어서 골라 줘. 그냥 누르면 이 화면 전체, Esc 는 취소`,
+    `${withParticle(v.name, '이랑')} 같이 볼 곳을 끌어서 골라 줘. 그냥 누르면 이 화면 전체, Esc는 취소`,
   'chat.look.permission': (v: { name: string }) =>
     `${withParticle(v.name, '이')} 화면을 보려면 화면 기록 권한이 필요해`,
   'chat.look.permissionMac':
-    '시스템 설정 > 개인정보 보호 및 보안 > 화면 및 시스템 오디오 녹음에서 Jjakkung 을 켜 줘. 켠 다음에는 짝꿍을 껐다 켜야 해.\n\n' +
-    '이미 켜져 있는데도 이 안내가 또 나오면 목록에서 Jjakkung 을 골라 − 버튼으로 지워 줘. 그다음 짝꿍을 다시 켜고 같이 보기를 누르면 맥이 다시 물어. 그때 허용하면 돼.',
+    '시스템 설정 > 개인정보 보호 및 보안 > 화면 및 시스템 오디오 녹음에서 Jjakkung을 켜 줘. 켠 다음에는 짝꿍을 껐다 켜야 해.\n\n' +
+    '이미 켜져 있는데도 이 안내가 또 나오면 목록에서 Jjakkung을 골라 − 버튼으로 지워 줘. 그다음 짝꿍을 다시 켜고 같이 보기를 누르면 맥이 다시 물어. 그때 허용하면 돼.',
   'chat.look.permissionOther': '화면을 찍지 못했어. 다른 프로그램이 화면 캡처를 막고 있지 않은지 확인해 줘.',
   'chat.look.openSettings': '설정 열기',
 };

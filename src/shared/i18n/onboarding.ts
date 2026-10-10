@@ -15,19 +15,19 @@ export const ko = {
   'onboarding.hello.photoHint': '반려동물이나 인형 사진 한 장으로 만들 수도 있어. 나중에 설정에서 바꿔도 돼.',
   'onboarding.look.title': '같이 보기',
   'onboarding.look.lead': (v: { name: string }) =>
-    `${withParticle(v.name, '을')} 우클릭하고 "${withParticle(v.name, '이랑')} 같이 보기"를 고르면, 화면 일부를 찍어 AI 에게 물어볼 수 있어. 찍은 화면은 저장하지 않고 고른 AI 에게만 보내.`,
+    `${withParticle(v.name, '을')} 우클릭하고 "${withParticle(v.name, '이랑')} 같이 보기"를 고르면, 화면 일부를 찍어 AI에게 물어볼 수 있어. 찍은 화면은 저장하지 않고 고른 AI에게만 보내.`,
   'onboarding.look.granted': '화면 기록 권한이 있어',
   'onboarding.look.needed': '화면 기록 권한이 필요해',
   'onboarding.look.howTo':
-    '시스템 설정 > 개인정보 보호 및 보안 > 화면 및 시스템 오디오 녹음에서 Jjakkung 을 켜 줘. 켠 다음에는 짝꿍을 껐다 켜야 해. ' +
-    '이미 켜져 있는데도 이렇게 나오면 목록에서 Jjakkung 을 골라 − 버튼으로 지우고, 짝꿍을 다시 켠 뒤 같이 보기에서 맥이 물을 때 허용해 줘. ' +
+    '시스템 설정 > 개인정보 보호 및 보안 > 화면 및 시스템 오디오 녹음에서 Jjakkung을 켜 줘. 켠 다음에는 짝꿍을 껐다 켜야 해. ' +
+    '이미 켜져 있는데도 이렇게 나오면 목록에서 Jjakkung을 골라 − 버튼으로 지우고, 짝꿍을 다시 켠 뒤 같이 보기에서 맥이 물을 때 허용해 줘. ' +
     '같이 보기를 안 쓸 거면 넘어가도 돼.',
   'onboarding.look.openSettings': '시스템 설정 열기',
   'onboarding.look.windows': '윈도우는 따로 권한이 필요 없어',
   'onboarding.look.ai':
-    'AI 는 이 컴퓨터에 설치해 로그인해 둔 Claude Code, Codex, Cursor, Gemini 중 하나를 써. 채팅 창에서 고를 수 있어.',
+    'AI는 이 컴퓨터에 설치해 로그인해 둔 Claude Code, Codex, Cursor, Gemini 중 하나를 써. 채팅 창에서 고를 수 있어.',
   'onboarding.look.aiFree': (v: { size: string }) =>
-    `AI 프로그램이 없어도 무료 AI 로 대화할 수 있어. 처음 한 번 모델(${v.size})을 받고, 그 뒤로는 이 컴퓨터 안에서만 돌아.`,
+    `AI 프로그램이 없어도 무료 AI로 대화할 수 있어. 처음 한 번 모델(${v.size})을 받고, 그 뒤로는 이 컴퓨터 안에서만 돌아.`,
   'onboarding.tips.title': '알아 두면 좋은 것',
   'onboarding.tips.click': (v: { name: string }) => `${withParticle(v.name, '을')} 누르면`,
   'onboarding.tips.clickDesc': '할 일, 메모, 일정, 상점 패널',

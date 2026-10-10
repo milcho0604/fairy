@@ -3,7 +3,7 @@ import type { Translation } from './types.ts';
 
 // 사진으로 펫 만들기 창
 export const ko = {
-  'maker.err.animatedTooBig': '움직이는 그림은 8MB 까지 돼.',
+  'maker.err.animatedTooBig': '움직이는 그림은 8MB까지 돼.',
   'maker.err.modelRead': '모델 파일을 못 읽었어. 창을 닫았다가 다시 열어 줘.',
   'maker.err.allErased': '다 지워졌어. 복원 붓으로 펫을 조금 되살려 줘.',
   'maker.err.saveFailed': '저장하지 못했어',
@@ -26,7 +26,7 @@ export const ko = {
     `과일, 과자처럼 먹이가 될 사진이야. 만들면 코인 ${v.cost}개를 써.`,
   'maker.pick.pose': (v: { pose: string }) => `${v.pose} 보일 사진이야. 같은 펫의 다른 표정 사진이면 좋아.`,
   'maker.pick.pet': '반려동물, 좋아하는 인형이나 캐릭터처럼 하나가 또렷한 사진이 잘 돼.',
-  'maker.pick.animated': '움직이는 GIF, WebP 는 배경을 지우지 않고 그대로 써. 배경이 투명한 것이 좋아.',
+  'maker.pick.animated': '움직이는 GIF, WebP는 배경을 지우지 않고 그대로 써. 배경이 투명한 것이 좋아.',
   'maker.pick.privacy': '사진은 이 컴퓨터 안에서만 다뤄. 배경 지우기도 여기서 해서 밖으로 보내지 않아.',
   'maker.pick.removePose': '이 포즈 지우기',
   'maker.pick.resetPet': '기본 펫으로 돌아가기',
@@ -165,7 +165,7 @@ export const ko = {
   'maker.wish.chip.calm': '얌전하게',
   'maker.3d.relief': '2.5D 입체',
   'maker.relief.hint': (v: { mb: number }) =>
-    `AI 없이 이 컴퓨터 안에서 사진의 깊이를 재서 입체 판으로 만들어. 좌우로 살짝 돌아. 처음 한 번 깊이 모델 ${v.mb}MB 를 받아.`,
+    `AI 없이 이 컴퓨터 안에서 사진의 깊이를 재서 입체 판으로 만들어. 좌우로 살짝 돌아. 처음 한 번 깊이 모델 ${v.mb}MB를 받아.`,
   'maker.relief.make': '2.5D로 만들기',
   'maker.relief.downloading': (v: { mb: number }) => `처음 한 번만 깊이 모델을 받고 있어 (${v.mb}MB).`,
   'maker.relief.working': '사진의 깊이를 재는 중이야.',
@@ -181,8 +181,8 @@ export const ko = {
   'maker.spin.side.back': '뒷모습',
   'maker.spin.auto': '자동 회전',
   'maker.spin.front': '정면',
-  'maker.spin.how': '끌거나 좌우 화살표로 돌리고, 위아래 화살표로 기울여. Home 은 정면.',
-  'maker.spin.howRelief': '끌거나 좌우 화살표로 25도까지 돌리고, 위아래 화살표로 기울여. Home 은 정면.',
+  'maker.spin.how': '끌거나 좌우 화살표로 돌리고, 위아래 화살표로 기울여. Home은 정면.',
+  'maker.spin.howRelief': '끌거나 좌우 화살표로 25도까지 돌리고, 위아래 화살표로 기울여. Home은 정면.',
   'maker.edit.brush': '붓',
   'maker.edit.eraser': '지우개',
   'maker.edit.restore': '복원 붓',

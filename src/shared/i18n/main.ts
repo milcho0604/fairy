@@ -51,7 +51,7 @@ export const ko = {
     '설정, 짝꿍 규칙, 캘린더 주소도 백업 것으로 바뀌어. 지금 데이터는 사용자 데이터 폴더의 before-import 폴더에 남겨 둬. 바꾼 뒤 짝꿍을 다시 켜.',
   'main.backup.customAiSkipped': '백업에 있던 사용자 AI {n}개는 옮기지 않았어.',
   'main.backup.customAiSkippedDetail':
-    '사용자 AI 는 이 컴퓨터에서 실행할 명령이라 백업에서 가져오지 않아. 필요하면 다시 켠 뒤 채팅에서 다시 추가해 줘.',
+    '사용자 AI는 이 컴퓨터에서 실행할 명령이라 백업에서 가져오지 않아. 필요하면 다시 켠 뒤 채팅에서 다시 추가해 줘.',
   'main.backup.replace': '바꾸기',
   'main.backup.cancel': '그만두기',
   'main.backup.restarting': '다시 켜는 중',
@@ -66,8 +66,8 @@ export const ko = {
   'main.pet.unreadable': '펫 파일을 읽지 못했어. 파일이 그 자리에 있는지 보고 다시 골라 줘.',
   'main.maker.reopen': '창을 다시 열어 줘.',
   'main.maker.badFormat': '그림 형식이 이상해.',
-  'main.maker.tooBigAny': '그림이 너무 크거나 PNG, GIF, WebP 가 아니야.',
-  'main.maker.tooBigPng': '그림이 너무 크거나 PNG 가 아니야.',
+  'main.maker.tooBigAny': '그림이 너무 크거나 PNG, GIF, WebP가 아니야.',
+  'main.maker.tooBigPng': '그림이 너무 크거나 PNG가 아니야.',
   'main.maker.title': '사진으로 펫 만들기',
   'main.maker.noVisionAi':
     '사진을 볼 수 있는 AI(Claude, Codex)가 없어. 채팅에서 하나를 설치하고 로그인하면 쓸 수 있어.',
@@ -91,7 +91,7 @@ export const ko = {
   'main.remake.notFigure': '입체 피규어로 만든 사진 펫만 몸을 다시 만들 수 있어.',
   'main.remake.changed': '그사이 펫이 바뀌어서 새 몸은 버렸어.',
   'main.db.recovered':
-    '저장 파일이 깨져 있었어. 지우지 않고 {moved} 로 옮겨 두고, {when} 에 남겨 둔 복사본으로 되살렸어. 그 뒤에 한 것은 빠졌을 수 있어.',
+    '저장 파일이 깨져 있었어. 지우지 않고 {moved} 로 옮겨 두고, {when}에 남겨 둔 복사본으로 되살렸어. 그 뒤에 한 것은 빠졌을 수 있어.',
   'main.db.fresh':
     '저장 파일이 깨져 있었어. 지우지 않고 {moved} 로 옮겨 두고 새로 시작했어. 백업이 있으면 설정에서 가져올 수 있어.',
   'main.db.newer':

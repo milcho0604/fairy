@@ -107,3 +107,15 @@ test('맥 화면 기록 안내는 메뉴 위치와, 켜져 있는데도 막힐 �
       assert.ok(out.length <= (lang === 'ko' ? 200 : 320), `${lang} ${key}: ${out.length}자, 너무 길다`);
     }
 });
+
+test('영문, 숫자, 단위 뒤의 조사는 띄우지 않고 붙인다 (PIN으로, 8MB까지, AI는)', () => {
+  // 함수 값의 자리에는 한글을 넣는다. 그 자리 조사는 withParticle 이 붙이고, '2 이 모습' 같은 지시어를 조사로 잘못 보지 않게
+  const word = new Proxy({}, { get: () => new String('콩') }) as never;
+  const particle =
+    /[A-Za-z0-9%)\]] (은|는|이|가|을|를|으로|로|와|과|의|에|에서|에게|도|까지|나|이나|랑|이랑|만|부터|보다|처럼|이에요|예요|라면|이라면)(만|도|는)?(?=[\s.,!?'")\]]|$)/;
+  for (const [key, v] of Object.entries(dicts.ko)) {
+    const out = String(typeof v === 'function' ? (v as (vars: never) => string)(word) : v);
+    const m = out.match(particle);
+    assert.ok(!m, `${key}: "${m?.[0]}" 조사를 붙여 써야 한다`);
+  }
+});
