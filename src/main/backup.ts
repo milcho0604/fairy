@@ -119,7 +119,15 @@ export function createBackup(o: {
     }
     // 저장 파일은 앱이 연 채라 다음에 켤 때 바꾼다: 자리만 마련하고 다시 켠다.
     // 맨 끝에 놓는다: 켤 때 이것이 있어야 설정 파일도 바꿔 끼우므로, 중간에 실패하면 반쪽만 바뀌지 않는다
-    cpSync(join(from, 'jjakkung.db'), join(dir(), PENDING_DB));
+    try {
+      cpSync(join(from, 'jjakkung.db'), join(dir(), PENDING_DB));
+    } catch (err) {
+      // 디스크가 차서 반만 복사됐으면 다음에 켤 때 반쪽 저장 파일로 바꿔 끼웠다. 기다리던 것을 모두 치운다
+      rmSync(join(dir(), PENDING_DB), { force: true });
+      for (const f of IMPORT_FILES) rmSync(join(dir(), staged(f)), { force: true });
+      o.log('backup', '가져오기 실패', err instanceof Error ? err.message : String(err));
+      throw err;
+    }
     // pets/ 는 링크를 빼고 일반 파일만 (링크로 사용자 데이터 폴더 밖 파일을 읽게 하지 못하게)
     if (existsSync(join(from, 'pets')))
       cpSync(join(from, 'pets'), join(dir(), 'pets'), { recursive: true, filter: plainEntry });
