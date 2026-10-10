@@ -26,5 +26,5 @@ jobs:
           git config user.name "jjakkung-lab"
           git config user.email "lab@users.noreply.github.com"
           git add -f lab/out-app
-          git commit -m "lab: 앱 클라이언트 결과" || echo "결과 없음"
-          git push
+          git commit -m "lab: 앱 클라이언트 결과" || exit 0
+          for i in 1 2 3 4 5; do git pull --rebase -q origin lab/illustrate && git push -q origin HEAD:lab/illustrate && exit 0; sleep $((i*3)); done

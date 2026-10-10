@@ -23,30 +23,31 @@ jobs:
           /usr/bin/time -p uv tool install --python 3.12 mflux 2>&1 | tail -5 | tee lab/out-mac/install.txt
           ls ~/.local/bin | grep mflux | tee -a lab/out-mac/install.txt
           du -sh ~/.local/share/uv 2>/dev/null | tee -a lab/out-mac/install.txt
-      - name: 미리 4비트로 줄인 모델, 608x1024, 낮은 메모리
+      - name: 작은 글그림 (가상 GPU 가 검은 그림을 내는지)
+        continue-on-error: true
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          /usr/bin/time -l mflux-generate-flux2 --model flux2-klein-4b --quantize 8 --prompt "a cute fluffy white cat, studio photo" \
+            --steps 4 --width 256 --height 256 --seed 1 --output lab/out-mac/t2i-q8.png > lab/out-mac/t2i.log 2>&1; tail -5 lab/out-mac/t2i.log
+      - name: 원본 4비트, 낮은 메모리, 608x1024
         continue-on-error: true
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           P="$(cat lab/mac-prompt.txt)"
-          /usr/bin/time -l mflux-generate-flux2-edit --model ar9av/FLUX.2-klein-4B-mflux-4bit --base-model flux2-klein-4b \
-            --image-paths lab/in_cat.png --prompt "$P" --steps 4 --guidance 1.0 --width 608 --height 1024 --seed 7 --low-ram \
-            --output lab/out-mac/cat-pre4.png > lab/out-mac/pre4.log 2>&1
-          tail -40 lab/out-mac/pre4.log
-          du -sh ~/.cache/huggingface 2>/dev/null | tee -a lab/out-mac/pre4.log
-      - name: 미리 줄인 모델, 작은 크기, 캐시 상한
+          /usr/bin/time -l mflux-generate-flux2-edit --model flux2-klein-4b --quantize 4 --low-ram \
+            --image-paths lab/in_cat.png --prompt "$P" --steps 4 --guidance 1.0 --width 608 --height 1024 --seed 7 \
+            --output lab/out-mac/cat-q4.png > lab/out-mac/q4.log 2>&1; tail -25 lab/out-mac/q4.log
+      - name: 원본 8비트, 낮은 메모리, 608x1024
         continue-on-error: true
         run: |
           export PATH="$HOME/.local/bin:$PATH"
-          df -h / | tee lab/out-mac/df2.txt
           P="$(cat lab/mac-prompt.txt)"
-          /usr/bin/time -l mflux-generate-flux2-edit --model ar9av/FLUX.2-klein-4B-mflux-4bit --base-model flux2-klein-4b \
-            --image-paths lab/in_poodle.png --prompt "$P" --steps 4 --guidance 1.0 --width 512 --height 864 --seed 7 --mlx-cache-limit-gb 4 \
-            --output lab/out-mac/poodle-q4.png > lab/out-mac/q4.log 2>&1
-          tail -40 lab/out-mac/q4.log
-          du -sh ~/.cache/huggingface 2>/dev/null | tee -a lab/out-mac/q4.log
+          /usr/bin/time -l mflux-generate-flux2-edit --model flux2-klein-4b --quantize 8 --low-ram \
+            --image-paths lab/in_poodle.png --prompt "$P" --steps 4 --guidance 1.0 --width 608 --height 1024 --seed 7 \
+            --output lab/out-mac/poodle-q8.png > lab/out-mac/q8.log 2>&1; tail -25 lab/out-mac/q8.log
       - name: 결과 올리기
         if: always()
         run: |
           git config user.name "jjakkung-lab"; git config user.email "lab@users.noreply.github.com"
-          git add -f lab/out-mac; git commit -qm "lab: 맥 로컬 그리기" || exit 0
+          rm -f lab/out-mac/cat-pre4.png lab/out-mac/poodle-q4.png; git add -A -f lab/out-mac; git commit -qm "lab: 맥 로컬 그리기" || exit 0
           for i in 1 2 3 4 5; do git pull --rebase -q origin lab/illustrate && git push -q origin HEAD:lab/illustrate && exit 0; sleep $((i*3)); done
