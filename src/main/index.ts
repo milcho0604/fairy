@@ -25,6 +25,7 @@ import { watchBetaStats } from './beta.ts';
 import { boostOn, onBoostChange } from './boost.ts';
 import { watchCalendar } from './calendar.ts';
 import { createChat } from './chat.ts';
+import { createCompanion } from './companion.ts';
 import { announceStoreTrouble, openStore } from './db.ts';
 import { createDiary } from './diary.ts';
 import { confineTestDisplay } from './focus.ts';
@@ -600,10 +601,24 @@ ready.then(() => {
     planner.check();
   }, 3000).unref();
   watchBetaStats(stats, () => pet.isHidden('user'), log);
+  // ---- 펫 경험: 끝낸 일 축하, 만난 날 기념, 혼잣말 기억 (main/companion.ts) ----
+  const companion = createCompanion({
+    todos: store,
+    stats,
+    achievements,
+    petName,
+    say: (o) => pet.say(o),
+    react: (kind) => pet.react(kind),
+    canCelebrate: () =>
+      !pet.isHidden('user') && !pet.isHidden('presentation') && planner.focus.phase !== 'focus',
+    log,
+  });
   /** 할 일을 끝냈다 (패널, 집중 끝 "끝냈어"). 친밀도 300 이 넘으면 신나서 빙글 춤 */
   function todoFinished() {
     pet.react(unlocked(petLife.state.affection).has('dance') ? 'dance' : 'happy');
     petLife.activity('todo');
+    // 오늘 할 일 다 끝냄, 연속 기록, 5/10/20개째면 한마디 (그날 한 번씩)
+    companion.completed();
   }
   // ---- 일정 알림, 오늘 브리핑, 집중 타이머 (v1) ----
   const planner = createPlanner({
@@ -625,7 +640,14 @@ ready.then(() => {
         busy: playing || !!seeking || games.running() !== undefined,
         // 기운 (shared/energy.ts): 활발, 나른함, 졸림, 녹초일 때 펫 자신의 몸 상태 대사
         more: petLife.talkKeys(),
+        // 기억: 어제 끝낸 수, 연속 기록, 이번 주, 오늘 집중, 함께한 날 (고를 때만 읽는다)
+        memory: () => companion.memoryFacts(Date.now()),
       };
+    },
+    talkRecent: {
+      load: () => companion.recentTalk(),
+      known: companion.isIdleKey,
+      save: (keys) => companion.saveRecentTalk(keys),
     },
     openToday: () => panel.openTab('today'),
     openUrl: (url) => openLink(url, log),
@@ -1050,6 +1072,7 @@ ready.then(() => {
         maker,
         friends,
         diary,
+        companion,
       },
     });
   if (process.env.JJ_METRICS) logMetrics(Number(process.env.JJ_METRICS));

@@ -93,6 +93,8 @@ export interface DrawState {
   energy?: EnergyLook;
   /** 개운함 반짝임 진행 0~1 (쉬고 와서 기지개). 없으면 -1 */
   fresh?: number;
+  /** 큰 축하 색종이가 터진 뒤 흐른 시간(ms). 없으면 -1 */
+  confetti?: number;
 }
 
 /**
@@ -206,6 +208,52 @@ export interface Model3D {
 
 /** 하트가 떠올라 사라지는 시간 */
 export const HEARTS_MS = 1500;
+/** 축하 색종이가 터져 흩날리다 사라지는 시간 */
+export const CONFETTI_MS = 1800;
+const CONFETTI_COLORS = ['#ff6b8a', '#ffc94d', '#6fcf97', '#7cc4ff', '#b69cff'] as const;
+const CONFETTI_N = 14;
+
+/**
+ * 색종이 조각들의 자리 (펫 그림 좌표, 160 기준). 머리 위(top)에서 위로 터졌다가 양옆으로 흩어지며 떨어지고 끝에 흐려진다.
+ * 조각마다 정해진 값(난수 없음)이라 틀마다 같은 조각이 이어진다
+ */
+export function confettiAt(
+  ms: number,
+  top: number,
+): { x: number; y: number; angle: number; color: string; alpha: number; w: number; h: number }[] {
+  const t = Math.max(0, Math.min(1, ms / CONFETTI_MS));
+  return Array.from({ length: CONFETTI_N }, (_, i) => {
+    const side = i % 2 === 0 ? -1 : 1;
+    const spread = 18 + ((i * 37) % 50);
+    const rise = 26 + ((i * 23) % 22);
+    const x = CX + side * spread * Math.sqrt(t) + side * (i % 3) * 3;
+    // 위로 솟았다가(처음 30%) 천천히 내려온다
+    const y =
+      top + 6 - rise * Math.sin(Math.min(1, t / 0.6) * Math.PI * 0.5) + 70 * Math.max(0, t - 0.3) ** 2;
+    return {
+      x: Math.max(4, Math.min(156, x)),
+      y: Math.max(4, y),
+      angle: (i * 0.9 + t * (4 + (i % 4))) * side,
+      color: CONFETTI_COLORS[i % CONFETTI_COLORS.length] ?? '#ffc94d',
+      alpha: t < 0.7 ? 1 : Math.max(0, 1 - (t - 0.7) / 0.3),
+      w: 5 + (i % 2) * 2,
+      h: 9 - (i % 2) * 3,
+    };
+  });
+}
+
+function drawConfetti(ctx: CanvasRenderingContext2D, ms: number, top: number) {
+  for (const p of confettiAt(ms, top)) {
+    if (p.alpha <= 0) continue;
+    ctx.save();
+    ctx.globalAlpha = p.alpha;
+    ctx.fillStyle = p.color;
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.angle);
+    ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+    ctx.restore();
+  }
+}
 
 /** 이보다 작게 그려지면 글씨표(바쁨)를 그리지 않는다. 12px 글씨가 9px 아래로 줄어드는 크기 */
 const MIN_SIZE_FOR_TEXT = 120;
@@ -1107,6 +1155,7 @@ function drawExtras(ctx: CanvasRenderingContext2D, s: DrawState, top: number) {
   if (pouting >= 2) drawHuff(ctx, top, pouting >= 3);
   if (pouting >= 3) drawCross(ctx, CX - 40, Math.max(12, top + 10));
   if ((s.hearts ?? -1) >= 0 && (s.hearts ?? 0) < HEARTS_MS) drawHearts(ctx, s.hearts ?? 0, top);
+  if ((s.confetti ?? -1) >= 0 && (s.confetti ?? 0) < CONFETTI_MS) drawConfetti(ctx, s.confetti ?? 0, top);
   drawMoveMark(ctx, s, top);
   if ((s.fresh ?? -1) >= 0 && s.mood !== 'sleeping' && s.mood !== 'dozing') drawFresh(ctx, s.fresh ?? 0, top);
   if (s.photo) drawPhotoEnergy(ctx, s, top);

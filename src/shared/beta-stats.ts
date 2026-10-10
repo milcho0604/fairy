@@ -108,6 +108,12 @@ export class StatStore {
     if (minutes > 0) this.#add(now, 'walk_min', Math.round(minutes));
   }
 
+  /** 처음 기록이 있는 날 (펫과 처음 만난 날로 쓴다, shared/companion.ts). 없으면 null */
+  firstDay(): string | null {
+    const r = this.#db.prepare('select min(day) as day from daily_stat').get() as { day: string | null };
+    return r?.day ?? null;
+  }
+
   /** 집중 타이머로 집중한 분 (v1) */
   addFocus(now: number, minutes: number): void {
     if (minutes > 0) this.#add(now, 'focus_min', Math.round(minutes));

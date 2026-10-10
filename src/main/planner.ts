@@ -25,7 +25,7 @@ import {
   tickFocus,
 } from '../shared/focus.ts';
 import { t } from '../shared/i18n/index.ts';
-import { ActivityWatch, type IdleKey, IdleTalker, idleVars } from '../shared/idle-talk.ts';
+import { ActivityWatch, type IdleFacts, type IdleKey, IdleTalker, idleVars } from '../shared/idle-talk.ts';
 import {
   coversBriefing,
   coversReview,
@@ -78,6 +78,14 @@ export interface PlannerOptions {
     sulk?: number;
     busy?: boolean;
     more?: readonly IdleKey[];
+    /** 기억 (어제 일, 연속 기록, 이번 주, 집중, 함께한 날. main/companion.ts). 대사를 고를 때만 부른다 */
+    memory?: () => Partial<IdleFacts>;
+  };
+  /** 최근 혼잣말 저장 (다시 켜도 되풀이하지 않게, main/companion.ts) */
+  talkRecent?: {
+    load: () => readonly string[];
+    known: (k: string) => k is IdleKey;
+    save: (keys: readonly IdleKey[]) => void;
   };
   log: (tag: string, ...rest: unknown[]) => void;
 }
@@ -482,6 +490,7 @@ export function createPlanner(o: PlannerOptions) {
    * 타이핑이나 마우스질 중이면 손이 2초 넘게 쉴 때까지 기다린다. 시간당 상한과 다른 말풍선 뒤 2분은 ChatterGate 가 본다
    */
   const talker = new IdleTalker(Date.now());
+  if (o.talkRecent) talker.talk.restore(o.talkRecent.load(), o.talkRecent.known);
   const activity = new ActivityWatch();
   let talking = false;
   function talk(now: number) {
@@ -526,6 +535,7 @@ export function createPlanner(o: PlannerOptions) {
           ...(pet.affection !== undefined ? { affection: pet.affection } : {}),
           ...(pet.hungry !== undefined ? { hungry: pet.hungry } : {}),
           ...(pet.more ? { more: pet.more } : {}),
+          ...(pet.memory?.() ?? {}),
         };
       },
     );
@@ -537,6 +547,7 @@ export function createPlanner(o: PlannerOptions) {
       .then((a) => {
         talking = false;
         talker.shown(Date.now(), a !== undefined);
+        if (a !== undefined) o.talkRecent?.save(talker.talk.recent);
       });
   }
 

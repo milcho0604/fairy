@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { app, screen } from 'electron';
+import { friendTalk } from '../shared/companion.ts';
 import { t } from '../shared/i18n/index.ts';
 import { IPC, type PetImages, type PetStatus } from '../shared/ipc.ts';
 import { MEET_CHANCE, MEET_COOLDOWN_MS, MEET_EVERY_MS, meetPlan } from '../shared/meet.ts';
@@ -26,6 +27,13 @@ const petFile = (file: string | undefined) => readFileIn(join(app.getPath('userD
 
 /** 설계도 파일 상한 (maker.ts 와 같다). 넘으면 읽지 않고 사진으로 */
 const MAX_MODEL_BYTES = 256 * 1024;
+
+/** 만났을 때 수다를 떨 확률 (수다쟁이만) */
+const FRIEND_TALK_CHANCE = 0.5;
+/** 수다 말풍선 하나가 떠 있는 시간 */
+const FRIEND_TALK_MS = 3200;
+/** 마주 보기와 하트(2.6초)가 끝난 뒤에 말한다 (말풍선이 뜨면 하던 몸짓을 멈춘다) */
+const AFTER_GREET_MS = 2700;
 
 /** 친구의 입체 설계도. 없거나 깨졌거나 너무 크면 null (사진으로) */
 function modelOf(file: string | undefined): Blueprint | null {
@@ -105,9 +113,30 @@ export function createFriends(o: {
       if (!main.isIdle() || !l.pet.isIdle() || Math.abs(main.bounds().x - a.x) > 8) return;
       main.greet(plan.mainDir);
       l.pet.greet(plan.friendDir);
+      chat(main, l, force);
     } finally {
       meeting = false;
     }
+  }
+
+  /**
+   * 마주 보고 하트를 띄운 뒤 가끔 짧게 주고받는다 (수다쟁이만, 혼잣말과 같은 빈도 상한).
+   * 기본 펫이 먼저 말하고, 그 말풍선이 저절로 닫히면 친구가 대답한다 (두 말풍선이 겹치지 않게)
+   */
+  let lastTalk: number | undefined;
+  function chat(main: PetWindow, l: { pet: PetWindow; friend: Friend }, force = false) {
+    if (settings.get().chatter !== 'chatty' || (!force && Math.random() > FRIEND_TALK_CHANCE)) return;
+    const pair = friendTalk(Math.random, lastTalk);
+    const vars = { name: settings.get().petName, friend: l.friend.name };
+    setTimeout(() => {
+      if (!live.has(l.friend.id) || !main.isIdle() || !l.pet.isIdle()) return;
+      lastTalk = pair.index;
+      o.log('friends', '수다', pair.index);
+      void main.say({ kind: 'idle-talk', text: t(pair.a, vars), ttlMs: FRIEND_TALK_MS }).then((a) => {
+        if (a !== 'timeout' || !live.has(l.friend.id)) return;
+        void l.pet.say({ kind: 'answer', text: t(pair.b, vars), ttlMs: FRIEND_TALK_MS });
+      });
+    }, AFTER_GREET_MS).unref();
   }
   const meetTimer = setInterval(() => void meetTick(), MEET_EVERY_MS);
   meetTimer.unref();

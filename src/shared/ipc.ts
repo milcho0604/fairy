@@ -454,7 +454,8 @@ export type CarryMessage =
  * 펫 반응: 신남(통통), 밥 먹음(신남과 같은 모습, 소리만 다름), 손 흔들기(친밀도 100), 빙글 춤(친밀도 300), 친구와 만남(하트),
  * 개운함(지쳤다가 쉬고 왔다, 휴식 권유대로 쉬고 왔다: 반짝이며 기지개. shared/energy.ts)
  */
-export type ReactKind = 'happy' | 'fed' | 'wave' | 'dance' | 'love' | 'fresh';
+/** cheer: 큰 축하 (오늘 할 일 다 끝냄, 만난 날 기념). 머리 위로 색종이가 터져 흩날린다 */
+export type ReactKind = 'happy' | 'fed' | 'wave' | 'dance' | 'love' | 'fresh' | 'cheer';
 
 export interface PetStatus {
   hungry: boolean;

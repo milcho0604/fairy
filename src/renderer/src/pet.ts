@@ -31,7 +31,7 @@ import { DEFAULT_BLUEPRINTS } from '../../shared/pet3d/defaults.ts';
 import type { PetKind, PetStyle, PoseKind } from '../../shared/settings.ts';
 import { canPlay, type SoundKind } from '../../shared/sound.ts';
 import { AnimatedImage, loadPetImage } from './animated.ts';
-import { CANVAS_SIZE, type CarryDraw, drawPet, HEARTS_MS } from './draw.ts';
+import { CANVAS_SIZE, type CarryDraw, CONFETTI_MS, drawPet, HEARTS_MS } from './draw.ts';
 import { initLang } from './lang.ts';
 import { moveFps, SIT_MS, sitDown } from './move-pose.ts';
 import { renderBody, renderFace } from './pet-face.ts';
@@ -74,6 +74,8 @@ let changeTimer: ReturnType<typeof setTimeout> | undefined;
 let blinkTimer: ReturnType<typeof setTimeout> | undefined;
 /** 개운함 반짝임을 시작한 시각 (기지개와 같은 길이). 없으면 -1 */
 let freshStart = -1;
+/** 큰 축하 색종이가 터진 시각 (오늘 할 일 다 끝냄, 만난 날 기념). 없으면 -1 */
+let confettiStart = -1;
 const FRESH_MS = MOVE_SPECS.stretch.ms;
 /** 기운 (PetStatus.energy, shared/energy.ts). 없으면 예전 모습 */
 let energy: EnergyLook | undefined;
@@ -122,6 +124,8 @@ function frame() {
   if (hearts >= HEARTS_MS) heartsStart = -1;
   const fresh = freshStart >= 0 ? (now - freshStart) / FRESH_MS : -1;
   if (fresh >= 1) freshStart = -1;
+  const confetti = confettiStart >= 0 ? now - confettiStart : -1;
+  if (confetti >= CONFETTI_MS) confettiStart = -1;
   // 입체가 되면 사진 대신 입체로 (AI 가 만든 설계도가 있는 사진 펫, 또는 기본 펫)
   const m3d = current3d();
   // 입체 그리기 모듈을 불러오는 중이면 기다린다 (불러오면 다시 그린다). 2D 를 먼저 그리면 깜빡인다
@@ -159,6 +163,7 @@ function frame() {
     carry: carryDraw(now),
     energy,
     fresh: freshStart >= 0 ? fresh : -1,
+    confetti: confettiStart >= 0 ? confetti : -1,
   });
   carriedAt = ball;
   syncFace(m3d);
@@ -181,7 +186,7 @@ function frame() {
       ? 30 * k
       : isAnimated(mood)
         ? (ANIMATED_FPS[mood] ?? 30) * k
-        : heartsStart >= 0 || freshStart >= 0
+        : heartsStart >= 0 || freshStart >= 0 || confettiStart >= 0
           ? 30 * k
           : blinkStart >= 0
             ? (1000 * blinkSpec().frames) / blinkSpec().ms
@@ -652,6 +657,15 @@ bridge.onReact((kind) => {
   }
   if (kind === 'fresh') {
     refreshed(now);
+    return;
+  }
+  if (kind === 'cheer') {
+    // 큰 축하: 색종이가 터지고 통통 튄다. 움직임 줄이기면 색종이 대신 하트만
+    if (reducedMotion.matches) heartsStart = now;
+    else confettiStart = now;
+    setInputs({ excitedUntil: now + EXCITED_MS });
+    sound('happy');
+    requestFrame();
     return;
   }
   if (kind === 'dance' && !reducedMotion.matches) trick = { type: 'dance', start: now };

@@ -13,6 +13,7 @@ import {
   idleCandidates,
   idleVars,
   MOUSE_BUSY_PX,
+  seasonOf,
   type TalkEnv,
   talkBlock,
   WORKED_LONG_MIN,
@@ -36,7 +37,9 @@ test('시각과 요일로 고른다: 월요일 아침, 점심, 금요일 오후,
   assert.ok(fit(9, 15).includes('idle.friday.2'));
   assert.ok(!fit(8, 15).includes('idle.friday.1'));
   assert.deepEqual(fit(6, 23, 30), ['idle.late.1', 'idle.late.2', 'idle.late.3']);
-  assert.deepEqual(fit(6, 2), ['idle.late.1', 'idle.late.2', 'idle.late.3']);
+  // 새벽 1~5시는 지금 시를 말하는 대사가 더해진다
+  assert.deepEqual(fit(6, 2), ['idle.late.1', 'idle.late.2', 'idle.late.3', 'idle.night.1', 'idle.night.2']);
+  assert.deepEqual(fit(7, 0, 30), ['idle.late.1', 'idle.late.2', 'idle.late.3']);
   // 사이 시간(13:30~14:00, 17:00~18:00)은 시각 대사가 없다
   assert.deepEqual(fit(6, 13, 45), []);
   // 10-10 토요일, 10-11 일요일 낮에는 주말 대사. 밤에는 늦은 밤 대사만
@@ -186,7 +189,10 @@ test('아무 때나 하는 대사는 최근 기억보다 많아서 늘 고를 �
 test('대사 값: 남은 할 일, 일정까지 분, 일한 시간이 글에 들어간다', () => {
   setLang('ko');
   const v = idleVars({ now: 0, doneToday: 0, openToday: 3, nextEventMin: 24.6, workedMin: 130 });
-  assert.deepEqual(v, { open: 3, eventMin: 25, workedH: 2 });
+  assert.deepEqual(
+    { open: v.open, eventMin: v.eventMin, workedH: v.workedH },
+    { open: 3, eventMin: 25, workedH: 2 },
+  );
   assert.equal(t('idle.todo.left.1', { name: '콩이', ...v }), '오늘 할 일 3개 남았어. 하나씩 하자.');
   assert.equal(t('idle.event.soon.1', { name: '콩이', ...v }), '25분 뒤에 일정 있어. 미리 물 한 잔?');
   assert.equal(t('idle.work.1', { name: '콩이', ...v }), '벌써 2시간 넘게 쉬지 않았어. 대단한데?');
@@ -345,4 +351,85 @@ test('못 띄운 혼잣말은 되돌려서 1분 뒤에 다시 그 상황을 말�
   assert.equal(talker.nextAt, now + 60_000);
   const again = talker.due(now + 60_000, ENV, () => ({ ...facts(), now: now + 60_000 }));
   assert.ok('key' in again && again.key.startsWith('idle.back.'), JSON.stringify(again));
+});
+
+test('기억 대사: 어제 일은 오전에만, 연속 2일부터, 이번 주는 금요일 오후와 주말, 집중 25분부터, 함께한 날 2일째부터', () => {
+  const fit = (day: number, h: number, more: Partial<IdleFacts>) =>
+    idleCandidates({ now: at(day, h), doneToday: 0, ...more }).fit;
+  assert.ok(fit(6, 9, { yesterdayDone: 2 }).includes('idle.memory.yesterday.1'));
+  assert.ok(!fit(6, 15, { yesterdayDone: 2 }).includes('idle.memory.yesterday.1'));
+  assert.ok(!fit(6, 9, { yesterdayDone: 0 }).includes('idle.memory.yesterday.1'));
+  assert.ok(fit(6, 15, { streak: 2 }).includes('idle.streak.1'));
+  assert.ok(!fit(6, 15, { streak: 1 }).includes('idle.streak.1'));
+  assert.ok(fit(9, 15, { weekDone: 3 }).includes('idle.week.1'));
+  assert.ok(fit(10, 15, { weekDone: 8 }).includes('idle.week.2'));
+  assert.ok(!fit(8, 15, { weekDone: 8 }).includes('idle.week.1'), '목요일은 아직');
+  assert.ok(!fit(9, 15, { weekDone: 2 }).includes('idle.week.1'));
+  assert.ok(fit(6, 15, { focusMin: 25 }).includes('idle.focus.1'));
+  assert.ok(!fit(6, 15, { focusMin: 24 }).includes('idle.focus.1'));
+  assert.ok(fit(6, 15, { daysTogether: 2 }).includes('idle.together.1'));
+  assert.ok(!fit(6, 15, { daysTogether: 1 }).includes('idle.together.1'));
+});
+
+test('철 대사는 아무 때나 하는 말에 섞이고, 특별한 날은 상황 대사에', () => {
+  const cand = (m: number, d: number, h = 15) =>
+    idleCandidates({ now: new Date(2026, m, d, h).getTime(), doneToday: 0 });
+  assert.ok(cand(9, 6).any.includes('idle.season.autumn.1'));
+  assert.ok(cand(3, 6).any.includes('idle.season.spring.2'));
+  assert.ok(cand(6, 6).any.includes('idle.season.summer.1'));
+  assert.ok(cand(0, 6).any.includes('idle.season.winter.1'));
+  assert.ok(!cand(0, 6).any.includes('idle.season.autumn.1'));
+  assert.ok(cand(0, 1).fit.includes('idle.special.newyear'));
+  assert.ok(cand(11, 24).fit.includes('idle.special.christmas'));
+  assert.ok(cand(11, 25).fit.includes('idle.special.christmas'));
+  assert.ok(cand(11, 31).fit.includes('idle.special.yearend'));
+  assert.ok(!cand(11, 26).fit.some((k) => k.startsWith('idle.special')));
+  assert.equal(seasonOf(1), 'winter');
+  assert.equal(seasonOf(2), 'spring');
+  assert.equal(seasonOf(11), 'winter');
+});
+
+test('기억과 새벽 값이 글에 들어간다', () => {
+  setLang('ko');
+  const v = idleVars({
+    now: at(6, 2, 10),
+    doneToday: 0,
+    yesterdayDone: 4,
+    streak: 5,
+    weekDone: 12,
+    focusMin: 49.6,
+    daysTogether: 30,
+  });
+  assert.equal(v.hour, 2);
+  assert.equal(v.focusMin, 50);
+  assert.equal(t('idle.night.1', { name: '콩이', ...v }), '벌써 새벽 2시야. 콩이는 눈이 반쯤 감겼어.');
+  assert.equal(t('idle.streak.2', { name: '콩이', ...v }), '연속 5일! 오늘도 하나만 끝내면 이어져.');
+  assert.equal(
+    t('idle.memory.yesterday.1', { name: '밤', ...v }),
+    '어제 4개 끝낸 거 밤이 기억해. 오늘도 가 보자!',
+  );
+  assert.equal(
+    t('idle.together.1', { name: '콩이', ...v }),
+    '우리 같이 지낸 지 30일째야. 콩이는 매일이 좋아.',
+  );
+  setLang('en');
+  assert.equal(t('idle.week.1', { name: 'Bean', week: 1 }), '1 to-do done this week. What a week!');
+  assert.equal(
+    t('idle.night.2', { name: 'Bean', hour: 3 }),
+    "3 a.m.... Promise you'll sleep after this one!",
+  );
+  setLang('ko');
+});
+
+test('최근 혼잣말을 되살리면 다시 켜도 그 말은 고르지 않는다', () => {
+  const a = new IdleTalk();
+  const facts = { now: at(6, 13, 45), doneToday: 0 };
+  const said = Array.from({ length: 5 }, () => a.pick(facts, () => 0)).filter((k) => k !== undefined);
+  assert.equal(said.length, 5);
+  const b = new IdleTalk();
+  const known = (k: string): k is (typeof said)[number] => k in dicts.ko;
+  b.restore([...a.recent, 'idle.gone.key'], known);
+  assert.deepEqual(b.recent, said);
+  const next = b.pick(facts, () => 0);
+  assert.ok(next && !said.includes(next));
 });
