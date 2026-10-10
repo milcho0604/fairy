@@ -22,7 +22,8 @@ jobs:
           q "models/black-forest-labs/FLUX.2-klein-4B" klein4b
           q "models/black-forest-labs/FLUX.1-Kontext-dev" kontext
           q "spaces/black-forest-labs/FLUX.2-klein-4B" space-klein4b
-          q "spaces/black-forest-labs/FLUX.2-klein" space-klein
+          curl -sS https://black-forest-labs-flux-2-klein-4b.hf.space/gradio_api/info > lab/probe/klein4b-info.json || true
+          curl -sS https://black-forest-labs-flux-2-klein-4b.hf.space/config | head -c 200000 > lab/probe/klein4b-config.json || true
       - run: |
           git config user.name "jjakkung-lab"; git config user.email "lab@users.noreply.github.com"
           git add -f lab/probe; git commit -qm "lab: probe" || exit 0
