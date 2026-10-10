@@ -1,8 +1,8 @@
  + urllib3==2.8.0
 Installed 41 executables: mflux-capabilities, mflux-completions, mflux-concept, mflux-concept-from-image, mflux-generate, mflux-generate-boogu, mflux-generate-controlnet, mflux-generate-depth, mflux-generate-ernie-image, mflux-generate-ernie-image-turbo, mflux-generate-fibo, mflux-generate-fibo-edit, mflux-generate-fill, mflux-generate-flux2, mflux-generate-flux2-edit, mflux-generate-ideogram4, mflux-generate-in-context, mflux-generate-in-context-catvton, mflux-generate-in-context-edit, mflux-generate-kontext, mflux-generate-krea2, mflux-generate-lens, mflux-generate-ming, mflux-generate-qwen, mflux-generate-qwen-2.1, mflux-generate-qwen-2.1-controlnet, mflux-generate-qwen-2.1-edit, mflux-generate-qwen-edit, mflux-generate-redux, mflux-generate-z-image, mflux-generate-z-image-controlnet, mflux-generate-z-image-turbo, mflux-info, mflux-inspire-fibo, mflux-lora-library, mflux-refine-fibo, mflux-save, mflux-save-depth, mflux-train, mflux-upscale-controlnet, mflux-upscale-seedvr2
-real 3.83
-user 2.55
-sys 4.13
+real 3.17
+user 2.28
+sys 2.59
 mflux-capabilities
 mflux-completions
 mflux-concept

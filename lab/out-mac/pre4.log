@@ -1,25 +1,27 @@
 Downloading model from HuggingFace: ar9av/FLUX.2-klein-4B-mflux-4bit...
 Fetching 11 files:   0%|          | 0/11 [00:00<?, ?it/s]Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
 WARNING: Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
-Fetching 11 files:  18%|█▊        | 2/11 [00:00<00:00, 15.78it/s]Fetching 11 files:  55%|█████▍    | 6/11 [00:01<00:01,  4.16it/s]Fetching 11 files:  64%|██████▎   | 7/11 [00:01<00:01,  3.72it/s]Fetching 11 files:  73%|███████▎  | 8/11 [00:06<00:04,  1.40s/it]Fetching 11 files:  82%|████████▏ | 9/11 [00:10<00:03,  1.95s/it]Fetching 11 files:  91%|█████████ | 10/11 [00:32<00:07,  7.24s/it]Fetching 11 files: 100%|██████████| 11/11 [00:49<00:00,  9.70s/it]Fetching 11 files: 100%|██████████| 11/11 [00:49<00:00,  4.46s/it]
-  0%|          | 0/4 [00:00<?, ?it/s] 25%|██▌       | 1/4 [00:30<01:32, 31.00s/it] 50%|█████     | 2/4 [00:47<00:44, 22.22s/it] 75%|███████▌  | 3/4 [01:03<00:19, 19.36s/it]100%|██████████| 4/4 [01:18<00:00, 17.99s/it]100%|██████████| 4/4 [01:18<00:00, 19.73s/it]
-libc++abi: terminating due to uncaught exception of type std::runtime_error: [malloc] Unable to allocate 1066139648 bytes.
-time: command terminated abnormally
-      136.69 real         9.20 user        25.51 sys
-          2030600192  maximum resident set size
+Fetching 11 files:   9%|▉         | 1/11 [00:00<00:01,  5.82it/s]Fetching 11 files:  36%|███▋      | 4/11 [00:00<00:00, 15.93it/s]Fetching 11 files:  55%|█████▍    | 6/11 [00:01<00:01,  3.35it/s]Fetching 11 files:  73%|███████▎  | 8/11 [00:05<00:02,  1.03it/s]Fetching 11 files:  82%|████████▏ | 9/11 [00:09<00:03,  1.63s/it]Fetching 11 files:  91%|█████████ | 10/11 [00:24<00:04,  4.66s/it]Fetching 11 files: 100%|██████████| 11/11 [00:29<00:00,  4.83s/it]Fetching 11 files: 100%|██████████| 11/11 [00:29<00:00,  2.68s/it]
+  0%|          | 0/4 [00:00<?, ?it/s] 25%|██▌       | 1/4 [00:15<00:45, 15.32s/it] 50%|█████     | 2/4 [00:26<00:25, 12.80s/it] 75%|███████▌  | 3/4 [00:37<00:11, 12.00s/it]100%|██████████| 4/4 [00:48<00:00, 11.62s/it]100%|██████████| 4/4 [00:48<00:00, 12.11s/it]
+/Users/runner/.local/share/uv/tools/mflux/lib/python3.12/site-packages/mflux/utils/image_util.py:140: RuntimeWarning: invalid value encountered in cast
+  images = (images * 255).round().astype("uint8")
+INFO: Image saved successfully at: lab/out-mac/cat-pre4.png
+INFO: Metadata embedded successfully at: lab/out-mac/cat-pre4.png
+Peak MLX memory: 4.97 GB
+       85.75 real         7.68 user        12.03 sys
+          3185295360  maximum resident set size
                    0  average shared memory size
                    0  average unshared data size
                    0  average unshared stack size
-              385375  page reclaims
-                1821  page faults
+              369350  page reclaims
+                1839  page faults
                    0  swaps
                    0  block input operations
                    0  block output operations
-                 853  messages sent
-              513735  messages received
+                 884  messages sent
+              524287  messages received
                    0  signals received
-                4314  voluntary context switches
-              286438  involuntary context switches
-          9782877952  peak memory footprint
-/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/multiprocessing/resource_tracker.py:279: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
-  warnings.warn('resource_tracker: There appear to be %d '
+                4029  voluntary context switches
+              302852  involuntary context switches
+          4782052544  peak memory footprint
+4.3G	/Users/runner/.cache/huggingface
