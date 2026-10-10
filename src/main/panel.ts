@@ -10,7 +10,7 @@ import {
 import type { StatStore } from '../shared/beta-stats.ts';
 import { undoMoved } from '../shared/briefing.ts';
 import { findSameEvent } from '../shared/event-dup.ts';
-import { overlapping, spanEnd } from '../shared/event-overlap.ts';
+import { clashIds, overlapping, spanEnd } from '../shared/event-overlap.ts';
 import {
   allDayTimes,
   type EventStore,
@@ -163,6 +163,8 @@ export function createPanel(o: PanelOptions) {
         updatedAt: n.updatedAt,
       })),
       events: o.events.between(startOfDay(now), startOfDayAfter(now, 14)),
+      // 안 끝난 시각 일정끼리 (어제부터 이어지는 것 포함). 일정 탭이 보이는 것과 같은 범위
+      eventClash: [...clashIds(o.events.timedOverlapping(now, startOfDayAfter(now, 14)))],
       focus: o.focus(),
       focusMin: o.focusMin(),
       focusCoins: focusCoins(o.focusMin()),

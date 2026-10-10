@@ -8,6 +8,7 @@ import { withRules } from '../../shared/ai/persona.ts';
 import { HISTORY_TURNS } from '../../shared/ai/text.ts';
 import type { AiEvent } from '../../shared/ai/types.ts';
 import { t } from '../../shared/i18n/index.ts';
+import { hasFinalConsonant } from '../../shared/josa.ts';
 import { boostOn } from '../boost.ts';
 import { ensureVerified, verifyExisting } from '../download.ts';
 import type { WorkerIn, WorkerOut } from '../llm-worker.ts';
@@ -106,7 +107,8 @@ const BANMAL_EXAMPLES = [
  * "했어."처럼 앞뒤 없는 답이 잦았다(2026-10-06 같은 질문 8번 비교)
  */
 const banmalSystem = (petName: string) =>
-  `넌 내 데스크톱 펫 ${petName}야. 나랑 친구니까 반말로 다정하게, 두세 문장으로 짧게 말해. 모르는 건 모른다고 해. 한자, 중국어, 일본어는 절대 쓰지 마. 한글로만 말해.`;
+  // 받침 있는 이름은 "이야", 없으면 "야" (밤이야, 밀크야)
+  `넌 내 데스크톱 펫 ${petName}${hasFinalConsonant(petName) ? '이야' : '야'}. 나랑 친구니까 반말로 다정하게, 두세 문장으로 짧게 말해. 모르는 건 모른다고 해. 한자, 중국어, 일본어는 절대 쓰지 마. 한글로만 말해.`;
 
 /** 무료 AI 로 묻는다. runAi 와 같은 모양(사건 콜백, 취소). banmal: 한국어 반말 성격이면 예시와 후처리를 쓴다 */
 export function runLocal(

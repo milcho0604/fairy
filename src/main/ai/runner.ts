@@ -295,7 +295,9 @@ export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
 export function readCodexUsage(codexHome: string, threadId?: string) {
   const root = join(codexHome, 'sessions');
   for (let back = 0; back < 3; back++) {
-    const d = new Date(Date.now() - back * 86_400_000);
+    // 날짜로 뺀다 (서머타임이 시작하는 23시간 날에 24시간을 빼면 하루를 건너뛰었다)
+    const d = new Date();
+    d.setDate(d.getDate() - back);
     const dir = join(
       root,
       String(d.getFullYear()),

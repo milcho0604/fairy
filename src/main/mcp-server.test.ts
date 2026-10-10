@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { after, test } from 'node:test';
+import { after, mock, test } from 'node:test';
 import { type Db, migrate } from '../shared/db-schema.ts';
 import { EventStore } from '../shared/event-store.ts';
 import { TodoStore } from '../shared/todo-store.ts';
@@ -288,4 +288,23 @@ test('오늘 한눈에: 오늘 날짜와 남은 할 일 수', () => {
   const r = text(tool('today_overview', {}));
   assert.match(r, /^오늘 \d{4}-\d{2}-\d{2}, 지금 \d{2}:\d{2}/);
   assert.match(r, /남은 할 일 모두 \d+개/);
+});
+
+test('list_events: 서머타임이 끝나는 날(25시간)도 그날 밤 일정까지 본다', () => {
+  const tz = process.env.TZ;
+  process.env.TZ = 'America/New_York';
+  // 2026-11-01 은 미국 동부 서머타임이 끝나 하루가 25시간이다
+  mock.timers.enable({ apis: ['Date'], now: new Date(2026, 10, 1, 8, 0).getTime() });
+  try {
+    const added = text(
+      tool('add_event', { title: '늦은 통화', start: '2026-11-01T23:30', duration_min: 20 }),
+    );
+    const id = Number(/id (\d+)/.exec(added)?.[1]);
+    assert.match(text(tool('list_events', { days: 1 })), /2026-11-01 23:30 늦은 통화/);
+    tool('delete_event', { id });
+  } finally {
+    mock.timers.reset();
+    if (tz === undefined) delete process.env.TZ;
+    else process.env.TZ = tz;
+  }
 });

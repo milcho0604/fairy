@@ -232,6 +232,25 @@ test('일정 겹침 찾기: 전날 시작해 이어지는 긴 일정도, 끝 없
   assert.deepEqual(hit(T0 + 58 * H, T0 + 59 * H), []);
 });
 
+test('일정 탭 겹침 표시: 어제 시작해 오늘까지 이어지는 시각 일정과 겹치는 오늘 일정도 표시, 끝난 일정은 표시하지 않는다', () => {
+  const { db } = fresh();
+  const events = new EventStore(db);
+  const H = 3_600_000;
+  const day0 = Date.UTC(2026, 9, 2); // 오늘 0시
+  const now = day0 + 8 * H;
+  const night = events.add({ title: '밤샘 배포', startAt: day0 - 2 * H, endAt: day0 + 10 * H }, now - 10 * H);
+  const standup = events.add({ title: '스탠드업', startAt: day0 + 9 * H, endAt: day0 + 9.5 * H }, now);
+  const early = events.add({ title: '새벽 회의', startAt: day0 + 6 * H, endAt: day0 + 7 * H }, now - 3 * H);
+  const end = day0 + 14 * 24 * H;
+  // 예전: 오늘 0시 뒤에 시작한 것만으로 세서 놓쳤다
+  assert.equal(clashIds(events.between(day0, end)).size, 0);
+  // 메인(panel.ts)이 하듯 안 끝난 시각 일정으로 센다
+  const ids = clashIds(events.timedOverlapping(now, end));
+  assert.ok(ids.has(standup.id));
+  assert.ok(ids.has(night.id));
+  assert.ok(!ids.has(early.id), '이미 끝난 일정은 겹침으로 보지 않는다');
+});
+
 test('반복 할 일 끝내기를 되돌려도 다음 회차에 체크한 단계가 있으면 그 회차는 남긴다', () => {
   const { store } = fresh();
   const todo = store.add({ title: '주간 보고', repeat: 'weekly', due: '2026-10-02' }, T0);

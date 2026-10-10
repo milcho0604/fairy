@@ -119,6 +119,9 @@ export const ko = {
     '저장 파일이 더 새 판 짝꿍에서 만들어졌어. 덮어쓰지 않게 이번에는 저장하지 않고 켰어. 짝꿍을 최신 버전으로 업데이트해 줘.',
   'main.db.unavailable': '저장 파일을 열지 못했어. 이번에는 저장하지 않고 켰어. 짝꿍을 다시 켜 봐.',
   'main.db.showFile': '파일 보기',
+  'main.start.failed': '짝꿍을 켜지 못했어',
+  'main.start.failedDetail':
+    '켜는 중에 문제가 생겨 끝낼게. 다시 켜 봐. 계속 안 되면 기록 파일(logs/main.log)을 보내 줘.\n\n{error}',
 };
 
 export const en: Translation<typeof ko> = {
@@ -239,4 +242,7 @@ export const en: Translation<typeof ko> = {
   'main.db.unavailable':
     "I couldn't open your save file, so nothing is saved this time. Try restarting Jjakkung.",
   'main.db.showFile': 'Show file',
+  'main.start.failed': "Jjakkung couldn't start",
+  'main.start.failedDetail':
+    'Something went wrong while starting, so Jjakkung will close. Try opening it again. If it keeps happening, please send the log file (logs/main.log).\n\n{error}',
 };

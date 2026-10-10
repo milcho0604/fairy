@@ -531,9 +531,11 @@ const TOOLS: Tool[] = [
     },
     run: (a) => {
       const days = Math.max(1, Math.min(60, Number(a.days) || 7));
-      const from = new Date();
-      from.setHours(0, 0, 0, 0);
-      const list = open().events.between(from.getTime(), from.getTime() + days * 86_400_000);
+      const d = new Date();
+      // 서머타임이 바뀌는 날이 끼면 하루가 23, 25시간이라 24시간씩 더하지 않고 n 일 뒤 0시를 만든다
+      const from = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+      const to = new Date(d.getFullYear(), d.getMonth(), d.getDate() + days).getTime();
+      const list = open().events.between(from, to);
       if (list.length === 0) return `앞으로 ${days}일 안에 일정이 없어.`;
       const p = (n: number) => String(n).padStart(2, '0');
       return list

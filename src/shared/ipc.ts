@@ -705,6 +705,11 @@ export interface PanelState {
   notes: NoteSummary[];
   /** 오늘 0시부터 14일 안의 일정 */
   events: CalEvent[];
+  /**
+   * 안 끝난 일정 가운데 다른 일정과 시간이 겹치는 것의 id. events 에 없는 어제 시작한 긴 시각 일정과 겹치는 것도 넣는다
+   * (events 는 오늘 0시 뒤에 시작한 것만이라 패널에서 셈하면 놓쳤다)
+   */
+  eventClash: number[];
   focus: FocusState;
   /** 집중 코인과 오늘 받은 집중 횟수 */
   focusCoins: number;

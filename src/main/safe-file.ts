@@ -62,6 +62,40 @@ export function freePath(base: string): string {
   return out;
 }
 
+/** 윈도우에서 백신, 색인기가 대상 파일을 잠깐 잡고 있으면 이름 바꾸기가 이 오류로 실패한다 */
+const BUSY_CODES = new Set(['EPERM', 'EBUSY', 'EACCES']);
+/** 다시 해 볼 때마다 기다리는 ms (모두 합쳐 0.2초쯤) */
+const RETRY_WAITS = [10, 30, 60, 100];
+
+/** 메인 스레드에서 짧게 기다린다 (동기로 쓰는 저장이라 await 할 수 없다) */
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * renameSync 와 같은데, 윈도우에서 EPERM, EBUSY, EACCES 로 실패하면 조금씩 기다리며 몇 번 더 해 본다.
+ * 다른 운영체제에서는 이 오류가 잠깐 잡힌 게 아니라 진짜 권한 문제라 바로 던진다.
+ */
+export function renameRetry(
+  from: string,
+  to: string,
+  rename: (from: string, to: string) => void = renameSync,
+  platform: NodeJS.Platform = process.platform,
+  sleep: (ms: number) => void = sleepSync,
+): void {
+  for (let i = 0; ; i++) {
+    try {
+      rename(from, to);
+      return;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException | null)?.code;
+      const wait = RETRY_WAITS[i];
+      if (platform !== 'win32' || !code || !BUSY_CODES.has(code) || wait === undefined) throw err;
+      sleep(wait);
+    }
+  }
+}
+
 /**
  * 같은 폴더의 임시 파일에 다 쓴 다음 이름을 바꾼다. 쓰다가 꺼지거나 디스크가 차도 원래 파일(또는 없음)이 남고
  * 반쯤 쓴 그림, 설계도가 남지 않는다 (rename 은 같은 디스크 안에서 한 번에 바뀐다). 실패하면 임시 파일을 지우고 오류를 던진다.
@@ -70,7 +104,7 @@ export function writeFileAtomic(path: string, data: string | Uint8Array): void {
   const tmp = `${path}.${process.pid}-${randomBytes(4).toString('hex')}.tmp`;
   try {
     writeFileSync(tmp, data);
-    renameSync(tmp, path);
+    renameRetry(tmp, path);
   } catch (err) {
     rmSync(tmp, { force: true });
     throw err;

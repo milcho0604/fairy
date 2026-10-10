@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { after, test } from 'node:test';
 import { type Db, migrate, SCHEMA_VERSION, schemaVersion } from '../shared/db-schema.ts';
-import { openDbFile } from './db-open.ts';
+import { copyDbFile, openDbFile } from './db-open.ts';
 
 const dirs: string[] = [];
 after(() => {
@@ -113,4 +113,23 @@ test('새 판 파일은 덮어쓰지 않고 메모리로 연다', () => {
   r.db.close();
   assert.deepEqual(readFileSync(file), before);
   assert.equal(readdirSync(join(file, '..')).filter((f) => f.includes('broken')).length, 0);
+});
+
+test('메모리로 열었을 때 내보내기: WAL 에만 있는 쓰기도 .db 한 파일에 담는다', () => {
+  const { dir, file } = place();
+  goodDb(file, '본 파일');
+  // 다른 연결(펫 MCP 서버 등)이 열어 둔 채 WAL 에만 쓴 상태
+  const writer = new DatabaseSync(file);
+  writer.exec('pragma journal_mode = wal; pragma wal_autocheckpoint = 0;');
+  writer.prepare('insert into todo (title, created_at) values (?, ?)').run('WAL 에만', AT);
+  writer.exec(`pragma user_version = ${SCHEMA_VERSION + 1}`);
+  assert.ok(existsSync(`${file}-wal`));
+  const target = join(dir, 'out.db');
+  copyDbFile(file, target);
+  writer.close();
+  assert.equal(existsSync(`${target}-wal`), false, '가져오기, 되살리기는 .db 만 옮긴다');
+  const copy = new DatabaseSync(target, { readOnly: true });
+  assert.deepEqual(titles(copy).sort(), ['WAL 에만', '본 파일'].sort());
+  assert.equal(schemaVersion(copy as unknown as Db), SCHEMA_VERSION + 1);
+  copy.close();
 });

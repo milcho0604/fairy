@@ -498,34 +498,45 @@ export function createMaker(
     if (!kind || bytes.length > max) return { ok: false, error: t('main.maker.tooBigAny') };
     mkdirSync(petsDir(), { recursive: true });
     const file = to === 'main' ? `pet-${Date.now()}.${kind}` : `pose-${to}-${Date.now()}.${kind}`;
-    writeFileAtomic(join(petsDir(), file), bytes);
-    // 입체 모습은 펫 본 그림에만: AI 설계도(다시 고르기를 거쳐) 또는 2.5D 깊이 그림(PNG 머리말과 크기 확인)
-    const look = to === 'main' && kind === 'png' ? lookOf(lookRaw) : {};
-    const modelFile = look.model ? `model-${Date.now()}.json` : undefined;
-    if (look.model && modelFile) writeFileAtomic(join(petsDir(), modelFile), JSON.stringify(look.model));
-    const depthFile = look.depth ? `depth-${Date.now()}.png` : undefined;
-    // AI 일러스트 나이 단계 (펫 본 그림에만, 모르는 값이면 없음)
-    const age =
-      to === 'main' && typeof lookRaw === 'object' && lookRaw !== null
-        ? (lookRaw as Record<string, unknown>).age
-        : undefined;
-    if (look.depth && depthFile) writeFileAtomic(join(petsDir(), depthFile), look.depth);
-    if (to === 'main') {
-      // 이름 칸을 비우면 지금 펫 이름이 아니라 새 이름 (보관함에 같은 이름이 쌓이지 않게). 보관하기 전에 정한다
-      const petName = cleanPetName(name) ?? newPhotoName();
-      library.beforeNewPhoto();
-      settings.set({
-        petImage: file,
-        petModel: modelFile ?? null,
-        petDepth: depthFile ?? null,
-        petAge: isAgeStage(age) ? age : null,
-        petName,
-        // 설계도를 만든 요청사항은 그 설계도 이름으로 (걸음새에 맞게 다시 만들 때 같은 글로)
-        ...(modelFile && look.wish
-          ? { petWishes: { ...settings.get().petWishes, [modelFile]: look.wish } }
-          : {}),
-      });
-    } else settings.set({ petPoses: { [to]: file } });
+    // 그림을 쓴 뒤 설계도, 깊이 그림, 설정 저장이 실패하면 방금 쓴 파일을 지운다 (pets/ 에 주인 없는 그림이 쌓이지 않게)
+    const written: string[] = [];
+    const write = (name: string, data: string | Uint8Array) => {
+      writeFileAtomic(join(petsDir(), name), data);
+      written.push(name);
+    };
+    try {
+      write(file, bytes);
+      // 입체 모습은 펫 본 그림에만: AI 설계도(다시 고르기를 거쳐) 또는 2.5D 깊이 그림(PNG 머리말과 크기 확인)
+      const look = to === 'main' && kind === 'png' ? lookOf(lookRaw) : {};
+      const modelFile = look.model ? `model-${Date.now()}.json` : undefined;
+      if (look.model && modelFile) write(modelFile, JSON.stringify(look.model));
+      const depthFile = look.depth ? `depth-${Date.now()}.png` : undefined;
+      // AI 일러스트 나이 단계 (펫 본 그림에만, 모르는 값이면 없음)
+      const age =
+        to === 'main' && typeof lookRaw === 'object' && lookRaw !== null
+          ? (lookRaw as Record<string, unknown>).age
+          : undefined;
+      if (look.depth && depthFile) write(depthFile, look.depth);
+      if (to === 'main') {
+        // 이름 칸을 비우면 지금 펫 이름이 아니라 새 이름 (보관함에 같은 이름이 쌓이지 않게). 보관하기 전에 정한다
+        const petName = cleanPetName(name) ?? newPhotoName();
+        library.beforeNewPhoto();
+        settings.set({
+          petImage: file,
+          petModel: modelFile ?? null,
+          petDepth: depthFile ?? null,
+          petAge: isAgeStage(age) ? age : null,
+          petName,
+          // 설계도를 만든 요청사항은 그 설계도 이름으로 (걸음새에 맞게 다시 만들 때 같은 글로)
+          ...(modelFile && look.wish
+            ? { petWishes: { ...settings.get().petWishes, [modelFile]: look.wish } }
+            : {}),
+        });
+      } else settings.set({ petPoses: { [to]: file } });
+    } catch (err) {
+      for (const f of written) rmSync(join(petsDir(), f), { force: true });
+      throw err;
+    }
     if (old && old !== file) rmSync(join(petsDir(), old), { force: true });
     log('maker', 'saved', file, `${Math.round(bytes.length / 1024)}KB`);
     return { ok: true };

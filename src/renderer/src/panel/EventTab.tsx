@@ -1,6 +1,5 @@
 import { useId, useState } from 'react';
 import { plusDays } from '../../../shared/day.ts';
-import { clashIds } from '../../../shared/event-overlap.ts';
 import { allDayLabel, allDaySpan, type CalEvent, dayStartMs } from '../../../shared/event-store.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PanelState } from '../../../shared/ipc.ts';
@@ -46,7 +45,8 @@ export function EventTab({
   const upcoming = s.events.filter((e) =>
     e.allDay ? allDaySpan(e).last >= s.today : (e.endAt ?? e.startAt + 30 * 60_000) >= now,
   );
-  const clashing = clashIds(upcoming);
+  // 겹침은 메인이 저장 파일에서 센다: 어제 시작해 오늘까지 이어지는 시각 일정은 s.events 에 없다
+  const clashing = new Set(s.eventClash);
   const days = new Map<string, CalEvent[]>();
   for (const e of upcoming) {
     const first = localDay(e.startAt);
