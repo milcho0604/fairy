@@ -1,0 +1,28 @@
+# 실험 브랜치 전용: 털 5차. main 에는 넣지 않는다.
+name: lab-fur5
+on:
+  push:
+    branches: [lab/illustrate]
+    paths: ['lab/fur5.py', '.github/workflows/lab-fur5.yml']
+permissions:
+  contents: write
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        job: [0, 1, 2]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -q gradio_client pillow
+      - run: python lab/fur5.py ${{ matrix.job }}
+        continue-on-error: true
+      - run: |
+          git config user.name "jjakkung-lab"; git config user.email "lab@users.noreply.github.com"
+          git add -f lab/out-fur5; git commit -qm "lab: 털 5차 ${{ matrix.job }}" || exit 0
+          for i in 1 2 3 4 5; do git pull --rebase -q origin lab/illustrate && git push -q origin HEAD:lab/illustrate && exit 0; sleep $((i*3)); done
