@@ -1,0 +1,11 @@
+[
+  {
+    "job": "cat-adult",
+    "ok": true,
+    "fur": true,
+    "space": "black-forest-labs/FLUX.1-Kontext-Dev + black-forest-labs/FLUX.2-klein-4B",
+    "kind": "webp",
+    "bytes": 48860,
+    "ms": 41221
+  }
+]
