@@ -2,6 +2,7 @@
 // 남이 준 파일이라 엄격하게 읽는다: 형식, 크기, 그림 머리말.
 
 import { t } from './i18n/index.ts';
+import { type AgeStage, isAgeStage } from './illustrate.ts';
 import { type Blueprint, parseBlueprint } from './pet3d/blueprint.ts';
 import { cleanPetName, isPetKind, type PetKind, type PoseKind } from './settings.ts';
 
@@ -21,6 +22,8 @@ export interface SharedPet {
   model?: Blueprint;
   /** 2.5D 깊이 그림 (6단계, 회색 PNG data URL) */
   depth?: string;
+  /** AI 일러스트 나이 단계 (아기, 청소년은 작게 보인다). 사진이 있을 때만. 옛 앱은 이 칸을 모르고 어른 크기로 보인다 */
+  age?: AgeStage;
 }
 
 export function encodePet(p: SharedPet): string {
@@ -70,6 +73,7 @@ export function decodePet(text: string): SharedPet | { error: string } {
   const model = image && raw.model !== undefined ? parseBlueprint(raw.model) : undefined;
   const depthImg = image && !model ? cleanImage(raw.depth) : undefined;
   const depth = depthImg?.startsWith('data:image/png') ? depthImg : undefined;
+  const age = image && isAgeStage(raw.age) ? raw.age : undefined;
   return {
     name,
     kind,
@@ -77,6 +81,7 @@ export function decodePet(text: string): SharedPet | { error: string } {
     poses,
     ...(model ? { model } : {}),
     ...(depth ? { depth } : {}),
+    ...(age ? { age } : {}),
   };
 }
 

@@ -9,6 +9,7 @@ import {
   reviewText,
   undoMoved,
 } from '../shared/briefing.ts';
+import { plusDays } from '../shared/day.ts';
 import type { EventStore } from '../shared/event-store.ts';
 import {
   type FocusState,
@@ -88,6 +89,9 @@ export function localTime(day: string, minute: number): number {
 /** 현지 날짜의 0시 ms */
 export const startOfDay = (ms: number) => localTime(localDay(ms), 0);
 
+/** n 일 뒤 현지 날짜의 0시 ms. 0시 + 24시간은 서머타임이 바뀌는 날(23, 25시간) 다음 날 0시가 아니다 */
+export const startOfDayAfter = (ms: number, n: number) => localTime(plusDays(localDay(ms), n), 0);
+
 /**
  * 시간에 따라 펫이 알려 주는 것들 (v1 생산성).
  * - 일정 알림: 시작 몇 분 전(일정마다)에 말풍선. 수다 빈도와 상관없이 늘 (기획서 "일정 시작 알림")
@@ -162,7 +166,7 @@ export function createPlanner(o: PlannerOptions) {
   /** 오늘 브리핑에 넣을 것. 오늘 0시부터 본다: 종일 일정은 0시에 시작해 이미 지났지만 오늘 일정이다. 시각 일정은 남은 것만 */
   function todayFacts(now: number) {
     const day = localDay(now);
-    const to = startOfDay(now) + 24 * 3_600_000;
+    const to = startOfDayAfter(now, 1);
     const events = o.events
       .between(startOfDay(now), to)
       .filter((e) => e.allDay || e.startAt >= now)
@@ -232,7 +236,7 @@ export function createPlanner(o: PlannerOptions) {
             : [],
         ttlMs: 30_000,
         hold: {
-          staleAt: startOfDay(now) + 24 * 3_600_000 - 1,
+          staleAt: startOfDayAfter(now, 1) - 1,
           missedLines: [t('briefing.review.missed', { done: doneToday.length, left: left.length })],
           missedMsgs: [
             { key: 'briefing.review.missed', vars: { done: doneToday.length, left: left.length } },
@@ -343,11 +347,11 @@ export function createPlanner(o: PlannerOptions) {
     const left = asks ? open.filter((t) => t.due !== null && t.due <= due.day) : [];
     // 밤 근무는 아침에 헤어져 "내일"이 맞지 않아 미리 보기 없이 "푹 쉬어"
     const next = overnight(due.meet) ? undefined : nextMeet(s.routine, due.day);
-    const from = localTime(due.day, 24 * 60);
+    const from = localTime(plusDays(due.day, 1), 0);
     const tomorrow =
       next?.inDays === 1
         ? o.events
-            .between(from, from + 24 * 3_600_000)
+            .between(from, localTime(plusDays(due.day, 2), 0))
             .map((e) => ({ minute: minuteOfDay(e.startAt), title: e.title, allDay: e.allDay }))
         : [];
     // 묻느라 못 한 미리 보기 (조용히면 없다)
@@ -392,7 +396,7 @@ export function createPlanner(o: PlannerOptions) {
 
   /** 회고 "내일로 넘기기". 누른 때 남은 것을 다시 읽어 넘기고, 잠깐 되돌리기 단추를 보인다. tail 은 뒤에 붙일 한 문장 (헤어짐 미리 보기) */
   function moveToTomorrow(day: string, tail = '') {
-    const tomorrow = localDay(localTime(day, 0) + 36 * 3_600_000);
+    const tomorrow = plusDays(day, 1);
     const left = o.todos.list(Date.now()).open.filter((t) => t.due !== null && t.due <= day);
     if (left.length === 0) {
       // 그새 다 끝냈다: 넘길 것은 없고 미리 보기만
@@ -453,7 +457,7 @@ export function createPlanner(o: PlannerOptions) {
         const day = localDay(now);
         const { open, doneToday } = o.todos.list(now);
         const timed = o.events
-          .between(now, startOfDay(now) + 24 * 3_600_000)
+          .between(now, startOfDayAfter(now, 1))
           .filter((e) => !e.allDay && e.startAt > now);
         const next = timed.reduce<number | undefined>(
           (m, e) => (m === undefined ? e.startAt : Math.min(m, e.startAt)),

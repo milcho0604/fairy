@@ -150,6 +150,8 @@ export interface Friend {
   depth?: string;
   /** 고른 걸음새. 없으면 자동 (친구마다 따로) */
   gait?: Gait;
+  /** AI 일러스트 나이 단계 (펫 파일에서). 아기, 청소년은 작게 */
+  age?: AgeStage;
 }
 
 export const FRIENDS_MAX = 3;
@@ -582,6 +584,7 @@ function friendsOf(list: unknown[]): Friend[] {
       ...(model ? { model } : {}),
       ...(depth ? { depth } : {}),
       ...(isGait(f.gait) ? { gait: f.gait } : {}),
+      ...(image && isAgeStage(f.age) ? { age: f.age } : {}),
     });
     if (out.length >= FRIENDS_MAX) break;
   }

@@ -85,6 +85,21 @@ if (!process.env.JJ_GPU_PROCESS) app.commandLine.appendSwitch('in-process-gpu');
 // (2026-10-07 맥 측정, net.fetch 확인). 문제가 생기면 JJ_NET_PROCESS=1 로 끈다. enable-features 를 더 쓰면 한 줄에 쉼표로 모은다
 if (!process.env.JJ_NET_PROCESS) app.commandLine.appendSwitch('enable-features', 'NetworkServiceInProcess2');
 
+// 펫은 하나만 띄운다. 두 번째로 실행하면 그냥 끝난다.
+// quit() 은 바로 끝나지 않아 ready 가 와서 시작 일(저장 파일 열기, 가져온 백업 끼우기, 창과 아이콘)이 돈다.
+// 그래서 exit() 로 바로 끝내고, 시작 일도 잠금을 잡았을 때만 건다
+const primary = app.requestSingleInstanceLock();
+if (!primary) app.exit(0);
+// 가져온 백업(저장 파일과 설정 파일)이 기다리면 바꿔 끼운다 (v2). 설정을 처음 읽기(아래 initLang) 전에 해야
+// 가져온 설정이 보인다. 잠금을 잡은 쪽만: 이미 떠 있는 펫의 파일을 바꾸지 않게
+// 실패해도 지금 데이터로 켠다 (켜기 전 이 자리에서 던지면 앱이 아예 안 뜬다)
+if (primary)
+  try {
+    applyPendingImport();
+  } catch (err) {
+    log('backup', '가져온 백업 끼우기 실패', err instanceof Error ? err.message : String(err));
+  }
+
 registerModelScheme();
 
 // 화면 말은 메뉴와 창을 만들기 전에 정한다 (v2 다국어). 시각 입력칸 같은 기본 칸은 Chromium 말을 따라서
@@ -92,20 +107,17 @@ registerModelScheme();
 initLang();
 app.commandLine.appendSwitch('lang', locale());
 
-// 펫은 하나만 띄운다. 두 번째로 실행하면 그냥 끝난다.
-if (!app.requestSingleInstanceLock()) app.quit();
-
 // 모든 창(펫, 같이 보기, 놀이 창 포함): 새 창을 열거나 다른 주소로 옮겨 가지 못하게 한다. 링크는 메인이 따로 연다
 app.on('web-contents-created', (_e, wc) => {
   wc.setWindowOpenHandler(() => ({ action: 'deny' }));
   wc.on('will-navigate', (ev) => ev.preventDefault());
 });
 
-app.whenReady().then(() => {
+// 잠금이 없으면 ready 를 기다리지 않는다 (곧 끝난다). 시작 일 전체를 if 로 감싸지 않으려고 약속으로 막는다
+const ready = primary ? app.whenReady() : new Promise<void>(() => {});
+ready.then(() => {
   // 시험 인스턴스는 처음부터 맥북 화면에만 뜬다 (쓰는 사람의 작업 모니터에 잠깐이라도 뜨지 않게)
   confineTestDisplay();
-  // 가져온 백업 저장 파일이 기다리면 저장 파일을 열기 전에 바꿔 끼운다 (v2)
-  applyPendingImport();
   // 펫 앱은 Dock 아이콘 없이 뜬다. 끝내기는 펫 우클릭 메뉴나 메뉴 막대 아이콘에서 한다.
   if (process.platform === 'darwin') app.dock?.hide();
   // 펫 이름은 설정에서 바꿀 수 있어 쓰는 곳마다 지금 값을 읽는다.
@@ -846,6 +858,7 @@ app.whenReady().then(() => {
       next.petImage !== prev.petImage ||
       next.petModel !== prev.petModel ||
       next.petDepth !== prev.petDepth ||
+      next.petAge !== prev.petAge ||
       JSON.stringify(next.petPoses) !== JSON.stringify(prev.petPoses)
     ) {
       sendPetImage();

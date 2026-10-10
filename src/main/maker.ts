@@ -213,7 +213,8 @@ export function createMaker(
       const mb = Math.round(DEPTH_MODEL.bytes / 1_000_000);
       return { ok: false, error: downloadErrorText(err, { aborted: ac.signal.aborted, mb }) };
     } finally {
-      download = undefined;
+      // 그새 다른 받기가 시작했으면 그것은 두고 내 것만 지운다 (지우면 그만두기로 못 멈춘다)
+      if (download === ac) download = undefined;
     }
   });
 
@@ -232,7 +233,8 @@ export function createMaker(
       const mb = Math.round(BG_MODEL.bytes / 1_000_000);
       return { ok: false, error: downloadErrorText(err, { aborted: ac.signal.aborted, mb }) };
     } finally {
-      download = undefined;
+      // 그새 다른 받기가 시작했으면 그것은 두고 내 것만 지운다 (지우면 그만두기로 못 멈춘다)
+      if (download === ac) download = undefined;
     }
   });
 
@@ -534,6 +536,10 @@ export function createMaker(
         focusWindow(win);
         return;
       }
+      // 다시 불러오면 앞 화면이 기다리던 일은 받을 곳이 없다. 그림 그리기(하루 무료 횟수)와 입체, 모델 받기를 멈춘다
+      download?.abort();
+      shaping?.abort();
+      drawing?.abort();
       target = next;
       win.reload();
       focusWindow(win);

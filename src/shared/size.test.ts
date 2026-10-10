@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { clampScale, resizeFromBottomCenter, scaleByStep, scaleByWheel } from './size.ts';
+import { clampScale, MAX_SCALE, resizeFromBottomCenter, scaleByStep, scaleByWheel } from './size.ts';
 
 test('배율은 50%~300% 안, 깨진 값은 100%', () => {
   assert.equal(clampScale(0.1), 0.5);
@@ -10,14 +10,25 @@ test('배율은 50%~300% 안, 깨진 값은 100%', () => {
 });
 
 test('휠을 위로 한 칸 굴리면 10% 커지고 아래로 굴리면 작아진다', () => {
-  assert.equal(scaleByWheel(1, -100), 1.1);
-  assert.equal(scaleByWheel(1, 100), 0.91);
+  assert.equal(clampScale(scaleByWheel(1, -100)), 1.1);
+  assert.equal(clampScale(scaleByWheel(1, 100)), 0.91);
   assert.equal(scaleByWheel(3, -100), 3);
 });
 
 test('트랙패드처럼 잘게 오면 조금만 바뀐다', () => {
   const s = scaleByWheel(1, -10);
   assert.ok(s > 1 && s < 1.02, String(s));
+});
+
+test('트랙패드의 작은 deltaY 가 여러 번 오면 쌓여서 커지고 작아진다', () => {
+  let s = 1;
+  for (let i = 0; i < 100; i++) s = scaleByWheel(s, -2);
+  // 2 씩 100 번 = 휠 두 칸
+  assert.equal(clampScale(s), 1.21);
+  for (let i = 0; i < 100; i++) s = scaleByWheel(s, 2);
+  assert.equal(clampScale(s), 1);
+  for (let i = 0; i < 10_000; i++) s = scaleByWheel(s, -1);
+  assert.equal(s, MAX_SCALE);
 });
 
 test('단축키 한 번은 한 칸', () => {

@@ -58,6 +58,7 @@ function imageOf(f: Friend): PetImages {
       model: modelOf(f.model),
       depth: depthOf(f.depth),
       poses: {},
+      ...(f.age ? { age: f.age } : {}),
     };
   } catch {
     return none;

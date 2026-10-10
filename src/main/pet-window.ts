@@ -317,6 +317,8 @@ export function createPetWindow({
     if (win.isDestroyed() || d.reason === 'clean-exit') return;
     const next = crashes.crashed(Date.now());
     log('pet', 'render-process-gone', id ?? 'main', d.reason, d.exitCode, next);
+    // 끌던 중에 죽으면 놓았다는 알림(drag-end)이 오지 않는다. 다시 부르지 않고 멈출 때도 커서를 따라가지 않게
+    endDrag();
     if (next === 'reload') reload(false);
   });
 
@@ -431,8 +433,10 @@ export function createPetWindow({
   function save() {
     clearTimeout(saveTimer);
     const { x, y } = pet;
-    writeJson(positionFile, { x, y, scale });
-    log('pet', 'saved', JSON.stringify({ x, y, scale }));
+    // 휠은 반올림 안 한 작업 배율로 굴린다(size.ts scaleByWheel). 저장은 0.01 단위로
+    const kept = { x, y, scale: clampScale(scale) };
+    writeJson(positionFile, kept);
+    log('pet', 'saved', JSON.stringify(kept));
   }
 
   const onContextMenu = (e: IpcMainEvent) => {
@@ -527,7 +531,17 @@ export function createPetWindow({
     // 사용자가 직접 부르면 화면이 죽은 횟수를 다시 센다 (자동으로 멈춘 뒤 살리는 길)
     if (byUser) crashes.reset();
     closeBubble('cleared');
+    endDrag();
     win.webContents.reload();
+  }
+
+  /** 화면이 drag-end 를 못 보낸 채 사라질 때(새로고침, 죽음) 끌기를 끝낸다: 놓은 자리에 둔다 */
+  function endDrag() {
+    if (!dragTimer) return;
+    clearInterval(dragTimer);
+    dragTimer = undefined;
+    keepOnScreen();
+    save();
   }
 
   function keepOnScreen() {
@@ -804,6 +818,8 @@ export function createPetWindow({
   let perch: Rect | undefined;
   let perchTimer: NodeJS.Timeout | undefined;
   let hopTimer: NodeJS.Timeout | undefined;
+  /** 깡충 뛰기가 끝나거나 끊기면 알린다 (jumpTo, 올라앉기). 끝까지 뛰었으면 true */
+  let hopDone: ((finished: boolean) => void) | undefined;
 
   /** 앉을 창이 있으면 깡충 뛰어 올라간다. 올라가면 true */
   function tryPerch(): boolean {
@@ -812,7 +828,8 @@ export function createPetWindow({
     const spot = pickPerch(pet, list(), screen.getDisplayMatching(pet).workArea);
     if (!spot) return false;
     log('pet', 'perch', JSON.stringify(spot.win));
-    hopTo({ x: spot.x, y: spot.y }, () => {
+    hopTo({ x: spot.x, y: spot.y }, (finished) => {
+      if (!finished) return;
       perch = spot.win;
       clearInterval(perchTimer);
       // 1초마다 창이 그대로인지 본다. 옮기거나 닫으면 떨어진다.
@@ -833,8 +850,12 @@ export function createPetWindow({
     perchTimer = undefined;
   }
 
-  function hopTo(to: { x: number; y: number }, done: () => void) {
+  function hopTo(to: { x: number; y: number }, done: (finished: boolean) => void) {
     clearInterval(hopTimer);
+    // 뛰던 중에 다시 뛰면 앞 것은 끊긴 것으로 알린다 (기다리던 쪽이 멈추지 않게)
+    const before = hopDone;
+    hopDone = done;
+    before?.(false);
     const from = { x: pet.x, y: pet.y };
     const started = Date.now();
     if (!win.isDestroyed()) win.webContents.send(IPC.react, 'happy');
@@ -847,7 +868,9 @@ export function createPetWindow({
         clearInterval(hopTimer);
         hopTimer = undefined;
         save();
-        done();
+        const end = hopDone;
+        hopDone = undefined;
+        end?.(true);
       }
     }, 16);
   }
@@ -953,6 +976,9 @@ export function createPetWindow({
       closeBubble('cleared');
       stopWalk();
       leavePerch();
+      // 커서가 펫 위에 있던 채로 숨으면 hover 끝 알림이 안 와 전역 크기 단축키가 남는다
+      overPet = false;
+      setShortcuts(false);
       win.hide();
       return;
     }
@@ -1449,6 +1475,23 @@ export function createPetWindow({
   });
 
   win.on('closed', () => {
+    // 기다리던 걷기, 문, 구멍, 깡충, 말풍선, 차오르기를 끊긴 것으로 끝낸다. 안 하면 await 하던 쪽이
+    // 영영 멈춘다 (예: 친구 펫을 걷는 중에 지우면 만남이 끝나지 않는다). 닫힌 창에는 보내지 않는다.
+    // 말풍선을 먼저 닫아야 못 본 놓치면 안 되는 말이 아래 flush 로 놓친 알림에 들어간다
+    clearInterval(walkTimer);
+    walkTimer = undefined;
+    clearInterval(doorTimer);
+    doorTimer = undefined;
+    clearInterval(hopTimer);
+    hopTimer = undefined;
+    for (const done of [walkDone, doorDone, hopDone]) done?.(false);
+    walkDone = doorDone = hopDone = undefined;
+    const shown = bubble;
+    bubble = undefined;
+    shown?.done('cleared');
+    heldAnswer?.resolve(undefined);
+    heldAnswer = undefined;
+    stopReveal();
     stopGaze();
     clearInterval(lookPoll);
     clearTimeout(lookDone);
@@ -1492,7 +1535,7 @@ export function createPetWindow({
     bounds: () => ({ ...pet }),
     say,
     setHidden: (reason: HideReason, on: boolean, hint?: boolean) => setHidden(reason, on, hint),
-    scale: () => scale,
+    scale: () => clampScale(scale),
     react: (kind: ReactKind = 'happy') => {
       if (!win.isDestroyed()) win.webContents.send(IPC.react, kind);
     },
@@ -1530,9 +1573,7 @@ export function createPetWindow({
       stopFlight();
       leavePerch();
       if (win.isDestroyed() || !win.isVisible()) return Promise.resolve(false);
-      return new Promise<boolean>((resolve) =>
-        hopTo({ x: Math.round(x), y: Math.round(y) }, () => resolve(true)),
-      );
+      return new Promise<boolean>((resolve) => hopTo({ x: Math.round(x), y: Math.round(y) }, resolve));
     },
     enterDoor,
     leaveDoor,

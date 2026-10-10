@@ -24,11 +24,11 @@ const port = process.parentPort;
 
 let llama: Llama | undefined;
 let loaded: { path: string; model: LlamaModel; context: LlamaContext } | undefined;
-const running = new Map<string, AbortController>();
-/** 질문은 한 번에 하나씩 줄을 세운다. 멈춘 질문이 문맥(시퀀스 1개)을 놓기 전에 다음 질문이 오면 실패해서 */
-let queue: Promise<void> = Promise.resolve();
-/** 줄에서 기다리다 멈춘 질문 */
-const cancelledEarly = new Set<string>();
+
+/** 줄에서 기다리다 멈춘 질문에 보내는 실패 표시. 메인은 이걸 받아야 듣기를 끝내고 바쁨을 놓는다 */
+export const CANCELLED = '__cancelled__';
+
+type Ask = Extract<WorkerIn, { type: 'ask' }>;
 
 async function load(path: string) {
   if (loaded?.path === path) return loaded;
@@ -42,55 +42,80 @@ async function load(path: string) {
   return loaded;
 }
 
-async function ask(m: Extract<WorkerIn, { type: 'ask' }>) {
-  const post = (o: WorkerOut) => port.postMessage(o);
-  if (cancelledEarly.delete(m.id)) return; // 메인은 이미 멈춤으로 처리했다
-  const abort = new AbortController();
-  running.set(m.id, abort);
-  try {
-    const { context } = await load(m.modelPath);
-    const sequence = context.getSequence();
-    const session = new LlamaChatSession({ contextSequence: sequence });
-    session.setChatHistory([
-      { type: 'system', text: m.system },
-      ...m.history.map((h) =>
-        h.role === 'user'
-          ? { type: 'user' as const, text: h.text }
-          : { type: 'model' as const, response: [h.text] },
-      ),
-    ]);
-    let text = '';
-    try {
-      text = await session.prompt(m.text, {
-        maxTokens: m.maxTokens,
-        // 작은 모델 비교 시험(2026-10-06). presencePenalty 1.5 는 짧은 반말 답을 엉뚱하게 만들어 0.5
-        temperature: 0.7,
-        topP: 0.8,
-        topK: 20,
-        repeatPenalty: { penalty: 1.05, presencePenalty: 0.5 },
-        ...(m.noThink ? { budgets: { thoughtTokens: 0 } } : {}),
-        signal: abort.signal,
-        stopOnAbortSignal: true,
-        onTextChunk: (chunk) => post({ type: 'delta', id: m.id, text: chunk }),
-      });
-    } finally {
-      session.dispose({ disposeSequence: true });
+/**
+ * 질문 줄과 멈춤을 맡는다. 답 만들기(answer)는 바꿔 끼울 수 있어 모델 없이 시험한다.
+ * 질문은 한 번에 하나씩 줄을 세운다. 멈춘 질문이 문맥(시퀀스 1개)을 놓기 전에 다음 질문이 오면 실패해서.
+ */
+export function createAskQueue(
+  post: (o: WorkerOut) => void,
+  answer: (m: Ask, signal: AbortSignal, onDelta: (text: string) => void) => Promise<string>,
+) {
+  const running = new Map<string, AbortController>();
+  let queue: Promise<void> = Promise.resolve();
+  /** 줄에서 기다리다 멈춘 질문 */
+  const cancelledEarly = new Set<string>();
+
+  async function ask(m: Ask) {
+    // 줄에서 멈췄어도 꼭 끝을 알린다. 안 그러면 메인이 계속 듣고 있어 바쁨이 안 풀린다(모델 못 지움, 메모리 안 놓음)
+    if (cancelledEarly.delete(m.id)) {
+      post({ type: 'error', id: m.id, message: CANCELLED });
+      return;
     }
-    post({ type: 'done', id: m.id, text });
-  } catch (err) {
-    post({ type: 'error', id: m.id, message: err instanceof Error ? err.message : String(err) });
+    const abort = new AbortController();
+    running.set(m.id, abort);
+    try {
+      const text = await answer(m, abort.signal, (chunk) => post({ type: 'delta', id: m.id, text: chunk }));
+      post({ type: 'done', id: m.id, text });
+    } catch (err) {
+      post({ type: 'error', id: m.id, message: err instanceof Error ? err.message : String(err) });
+    } finally {
+      running.delete(m.id);
+    }
+  }
+
+  return (m: WorkerIn) => {
+    if (m.type === 'cancel') {
+      const r = running.get(m.id);
+      if (r) r.abort();
+      else cancelledEarly.add(m.id);
+      return;
+    }
+    queue = queue.then(() => ask(m));
+  };
+}
+
+async function answerWithModel(m: Ask, signal: AbortSignal, onDelta: (text: string) => void) {
+  const { context } = await load(m.modelPath);
+  const sequence = context.getSequence();
+  const session = new LlamaChatSession({ contextSequence: sequence });
+  session.setChatHistory([
+    { type: 'system', text: m.system },
+    ...m.history.map((h) =>
+      h.role === 'user'
+        ? { type: 'user' as const, text: h.text }
+        : { type: 'model' as const, response: [h.text] },
+    ),
+  ]);
+  try {
+    return await session.prompt(m.text, {
+      maxTokens: m.maxTokens,
+      // 작은 모델 비교 시험(2026-10-06). presencePenalty 1.5 는 짧은 반말 답을 엉뚱하게 만들어 0.5
+      temperature: 0.7,
+      topP: 0.8,
+      topK: 20,
+      repeatPenalty: { penalty: 1.05, presencePenalty: 0.5 },
+      ...(m.noThink ? { budgets: { thoughtTokens: 0 } } : {}),
+      signal,
+      stopOnAbortSignal: true,
+      onTextChunk: onDelta,
+    });
   } finally {
-    running.delete(m.id);
+    session.dispose({ disposeSequence: true });
   }
 }
 
-port.on('message', (e: { data: WorkerIn }) => {
-  const m = e.data;
-  if (m.type === 'cancel') {
-    const r = running.get(m.id);
-    if (r) r.abort();
-    else cancelledEarly.add(m.id);
-    return;
-  }
-  queue = queue.then(() => ask(m));
-});
+// 일꾼으로 떴을 때만 듣는다 (시험에서 불러올 땐 parentPort 가 없다)
+if (port) {
+  const handle = createAskQueue((o) => port.postMessage(o), answerWithModel);
+  port.on('message', (e: { data: WorkerIn }) => handle(e.data));
+}

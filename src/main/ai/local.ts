@@ -35,6 +35,8 @@ function localModelUsable(m: LocalModel): Promise<boolean> {
 
 /** 일꾼이 죽었을 때 받는 쪽에 알리는 표시 */
 const CRASHED = '__crashed__';
+/** 줄에서 기다리다 멈춘 질문에 일꾼이 보내는 표시 (llm-worker.ts CANCELLED 와 같다. 값을 불러오면 일꾼이 메인에 묶여 들어와 글로 둔다) */
+const CANCELLED = '__cancelled__';
 
 /** 모델을 받는다(처음 한 번). 진행률 0~1. 해시가 맞아야 쓴다 */
 export function downloadLocalModel(m: LocalModel, onProgress: (r: number) => void, signal?: AbortSignal) {
@@ -178,7 +180,7 @@ export function runLocal(
         }
         if (o.type === 'done')
           emit({ type: 'done', text: cleanLocalAnswer(o.text || raw, { banmal: opts.banmal }) });
-        else {
+        else if (o.message !== CANCELLED) {
           log('local-ai', '실패', o.message);
           const message = o.message === CRASHED ? t('ai.local.crashed') : t('ai.local.failed');
           emit({ type: 'error', error: { kind: 'failed', message } });

@@ -52,7 +52,7 @@ import { CUSTOM_FOOD_COST, CUSTOM_FOOD_MAX, type Food, type ItemStore } from '..
 import { COIN, FULLNESS, localDay, type TodoStore } from '../shared/todo-store.ts';
 import { focusWindow, stealFocus } from './focus.ts';
 import { langArg } from './lang.ts';
-import { localTime, minuteOfDay, startOfDay } from './planner.ts';
+import { localTime, minuteOfDay, startOfDay, startOfDayAfter } from './planner.ts';
 import { readJson, removeJson, writeJson } from './store.ts';
 
 const PANEL_SIZE = { width: 360, height: 540 };
@@ -154,7 +154,7 @@ export function createPanel(o: PanelOptions) {
         source: n.source,
         updatedAt: n.updatedAt,
       })),
-      events: o.events.between(startOfDay(now), startOfDay(now) + 14 * 86_400_000),
+      events: o.events.between(startOfDay(now), startOfDayAfter(now, 14)),
       focus: o.focus(),
       focusMin: o.focusMin(),
       focusCoins: focusCoins(o.focusMin()),
