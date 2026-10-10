@@ -16,7 +16,15 @@ import {
   setupStageOf,
   setupStagesFor,
 } from '../../../shared/local-draw.ts';
-import { clampToAlpha, contentBox, defringe, keptRatio, stroke } from '../../../shared/mask.ts';
+import {
+  clampToAlpha,
+  contentBox,
+  defringe,
+  halfKeptShare,
+  keptRatio,
+  refineBox,
+  stroke,
+} from '../../../shared/mask.ts';
 import type { Blueprint } from '../../../shared/pet3d/blueprint.ts';
 import { cleanWish, WISH_MAX } from '../../../shared/pet3d/prompt.ts';
 import {
@@ -42,6 +50,10 @@ const bridge = window.jjakkungMaker;
 const WORK_SIDE = 1024;
 /** 펫으로 저장할 그림 크기 (긴 변) */
 const OUT_SIDE = 512;
+/** 오린 그림의 긴 변이 이보다 작으면 흐릿할 수 있다고 알린다 (펫 화면은 2배 화면에서 250px 쯤으로 그린다) */
+const SMALL_CUT = 200;
+/** 남긴 곳의 이만큼이 반투명이면 복원 붓을 권한다 (흰 벽 앞 흰 고양이 55%, 64px 사진 28%, 보통 인형 사진 2%) */
+const HALF_KEPT_WARN = 0.22;
 const UNDO_LIMIT = 20;
 /** 요청사항 칸 아래 예시 (눌러서 더한다) */
 const WISH_CHIPS = ['sleepy', 'sparkle', 'chubby', 'tail', 'ribbon', 'calm'] as const;
@@ -89,6 +101,8 @@ export function MakerApp() {
   /** 이름이 12자를 넘어 뒤를 뗐을 때 한 줄 */
   const [nameNote, setNameNote] = useState('');
   const [preview, setPreview] = useState('');
+  /** 오린 그림이 작아서(SMALL_CUT) 흐릿할 수 있는지 */
+  const [smallCut, setSmallCut] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   // 진행 표시: 지금 단계를 시작한 때, 진행 판에 보일 사진, 이번에 모델을 받았는지, 끝나서 100% 를 보여 주는 중인지
   const [stageAt, setStageAt] = useState(0);
@@ -374,11 +388,28 @@ export function MakerApp() {
         }
         if (!alive()) return;
         const t0 = performance.now();
-        const mask = withPhotoAlpha(await predictMask(photo, info), photo);
+        let next: Work = {
+          photo,
+          mask: withPhotoAlpha(await predictMask(photo, info), photo),
+          w: photo.width,
+          h: photo.height,
+        };
         if (!alive()) return;
+        // 펫이 사진에서 작으면 그 둘레만 원본 크기로 잘라 한 번 더 오린다 (팔이 살고 바탕 얼룩이 빠지고 덜 흐릿하다)
+        const near = refineBox(contentBox(next.mask, next.w, next.h), next.w, next.h);
+        if (near) {
+          const crop = await cropPhoto(file, photo, near);
+          if (!alive()) return;
+          if (crop) {
+            const mask = withPhotoAlpha(await predictMask(crop, info), crop);
+            if (!alive()) return;
+            // 다시 오린 것이 거의 비었으면(모델이 못 찾음) 처음 것을 쓴다
+            if (keptRatio(mask) > 0.02) next = { photo: crop, mask, w: crop.width, h: crop.height };
+          }
+        }
         setElapsed(Math.round(performance.now() - t0));
         saveDuration('cutout', performance.now() - cutStart, store());
-        setWork({ photo, mask, w: photo.width, h: photo.height });
+        setWork(next);
         setBgDone(true);
         await sleep(DONE_MS);
         if (!alive()) return;
@@ -471,13 +502,14 @@ export function MakerApp() {
 
   const toName = () => {
     if (!work) return;
-    const url = cutout(work);
+    const { url, side } = cutout(work);
     if (!url) {
       setError(t('maker.err.allErased'));
       return;
     }
     setError('');
     setPreview(url);
+    setSmallCut(side < SMALL_CUT);
     setModel(undefined);
     setDepth('');
     // 일러스트에서 왔으면 2.5D 를 골라 두고 저절로 만든다 (아래 효과)
@@ -1063,6 +1095,7 @@ export function MakerApp() {
               </div>
             )}
             {animated && step === 'name' && <p className="hint">{t('maker.name.animatedNote')}</p>}
+            {!animated && smallCut && step === 'name' && <p className="hint">{t('maker.name.smallCut')}</p>}
             {can3d && step === 'name' && (
               <div className="look3d">
                 <fieldset className="segmented" aria-label={t('maker.3d.look')}>
@@ -1510,10 +1543,12 @@ function Editor({
       out.data[i * 4 + 2] = src.data[i * 4 + 2] ?? 0;
       // 지운 곳도 20% 로 남겨 보인다 (저장할 때는 마스크 그대로)
       out.data[i * 4 + 3] = Math.max(a, 50);
-      if (a < 128) {
-        out.data[i * 4] = Math.round((out.data[i * 4] ?? 0) * 0.6 + 255 * 0.4);
-        out.data[i * 4 + 1] = Math.round((out.data[i * 4 + 1] ?? 0) * 0.6);
-        out.data[i * 4 + 2] = Math.round((out.data[i * 4 + 2] ?? 0) * 0.6);
+      // 붉은빛은 지워지는 만큼 (반쯤 남는 곳은 반쯤 붉게). 128 에서 끊으면 반투명으로 저장될 곳이 다 남는 것처럼 보였다
+      const k = 0.4 * (1 - a / 255);
+      if (k > 0) {
+        out.data[i * 4] = Math.round((out.data[i * 4] ?? 0) * (1 - k) + 255 * k);
+        out.data[i * 4 + 1] = Math.round((out.data[i * 4 + 1] ?? 0) * (1 - k));
+        out.data[i * 4 + 2] = Math.round((out.data[i * 4 + 2] ?? 0) * (1 - k));
       }
     }
     g.putImageData(out, 0, 0);
@@ -1539,6 +1574,7 @@ function Editor({
   };
 
   const kept = keptRatio(work.mask);
+  const half = halfKeptShare(work.mask) > HALF_KEPT_WARN;
 
   return (
     <section className="edit">
@@ -1591,7 +1627,8 @@ function Editor({
           width={work.w}
           height={work.h}
           className={mode}
-          style={{ '--brush': `${size}px` } as React.CSSProperties}
+          // 아주 작은 사진, 아주 긴 사진도 칠할 만한 크기로 보인다 (maker.css .canvas-wrap canvas)
+          style={{ '--brush': `${size}px`, '--ar': work.w / work.h } as React.CSSProperties}
           aria-label={t('maker.edit.canvas')}
           onPointerDown={(e) => {
             // 오른쪽, 가운데 단추로는 칠하지 않는다
@@ -1614,6 +1651,7 @@ function Editor({
       <p className="hint">
         {t('maker.edit.hint')} {note}
       </p>
+      {half && kept >= 0.02 && <p className="warn">{t('maker.edit.halfKept')}</p>}
       {(kept < 0.02 || kept > 0.97) && (
         <p className="warn">
           {kept < 0.02 ? t('maker.edit.almostAllErased') : t('maker.edit.barelyErased')}{' '}
@@ -1685,6 +1723,35 @@ async function loadPhoto(file: Blob): Promise<HTMLCanvasElement> {
   return c;
 }
 
+/**
+ * 원본 파일에서 box(작업 사진 좌표) 둘레를 원본 크기로 잘라 낸다 (긴 변 WORK_SIDE 이하). 작업 사진은 긴 변 1024 로
+ * 줄인 것이라 작은 펫은 몇십 칸뿐이었다. 원본도 작으면 늘이지 않는다. 못 읽으면 undefined
+ */
+async function cropPhoto(
+  file: Blob,
+  photo: HTMLCanvasElement,
+  box: { x: number; y: number; width: number; height: number },
+): Promise<HTMLCanvasElement | undefined> {
+  const bitmap = await createImageBitmap(file).catch(() => undefined);
+  if (!bitmap) return undefined;
+  try {
+    const s = bitmap.width / photo.width;
+    const sw = box.width * s;
+    const sh = box.height * s;
+    const k = Math.min(1, WORK_SIDE / Math.max(sw, sh));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(sw * k));
+    c.height = Math.max(1, Math.round(sh * k));
+    const g = c.getContext('2d', { willReadFrequently: true });
+    if (!g) return undefined;
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(bitmap, box.x * s, box.y * s, sw, sh, 0, 0, c.width, c.height);
+    return c;
+  } finally {
+    bitmap.close();
+  }
+}
+
 /** 흰 바탕에 깐 사본 (투명한 PNG 를 JPEG 로 바꾸면 바탕이 검어진다. 그림 서버에는 밝은 바탕이 낫다) */
 function onWhite(photo: HTMLCanvasElement): HTMLCanvasElement {
   const c = document.createElement('canvas');
@@ -1711,18 +1778,19 @@ function thumbOf(photo: HTMLCanvasElement): string {
   return c.toDataURL('image/webp', 0.86);
 }
 
-/** 마스크를 입혀 남긴 부분만 잘라 긴 변 512 PNG 로. 다 지웠으면 빈 문자열. */
-function cutout(work: Work): string {
+/** 마스크를 입혀 남긴 부분만 잘라 긴 변 512 PNG 로 (side 는 저장 그림의 긴 변). 다 지웠으면 빈 문자열. */
+function cutout(work: Work): { url: string; side: number } {
+  const none = { url: '', side: 0 };
   const box = contentBox(work.mask, work.w, work.h);
-  if (!box) return '';
+  if (!box) return none;
   const pg = work.photo.getContext('2d', { willReadFrequently: true });
   const src = pg?.getImageData(0, 0, work.w, work.h);
-  if (!src) return '';
+  if (!src) return none;
   const full = document.createElement('canvas');
   full.width = work.w;
   full.height = work.h;
   const fg = full.getContext('2d');
-  if (!fg) return '';
+  if (!fg) return none;
   const img = fg.createImageData(work.w, work.h);
   img.data.set(src.data);
   // 털 끝에 섞인 바탕색을 뺀다 (어두운 화면에서 흰 테두리가 보이지 않게)
@@ -1734,10 +1802,10 @@ function cutout(work: Work): string {
   out.width = Math.max(1, Math.round(box.width * k));
   out.height = Math.max(1, Math.round(box.height * k));
   const og = out.getContext('2d');
-  if (!og) return '';
+  if (!og) return none;
   og.imageSmoothingQuality = 'high';
   og.drawImage(full, box.x, box.y, box.width, box.height, 0, 0, out.width, out.height);
-  return out.toDataURL('image/png');
+  return { url: out.toDataURL('image/png'), side: Math.max(out.width, out.height) };
 }
 
 /** 두 그림(data URL)을 작게 줄인 회색으로 견준다. 받은 그림이 보낸 사진 그대로면 true (illustrate.ts nearlySame) */

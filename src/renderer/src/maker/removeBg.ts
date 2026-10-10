@@ -3,7 +3,7 @@
 import * as ort from 'onnxruntime-web/jspi';
 import { t } from '../../../shared/i18n/index.ts';
 import type { MakerInfo } from '../../../shared/ipc.ts';
-import { outputToMask } from '../../../shared/mask.ts';
+import { dropFaint, letterbox, outputToMask } from '../../../shared/mask.ts';
 import { ShownError } from './shown-error.ts';
 
 // 엔진 파일(.wasm) 위치는 지정하지 않는다. 묶음마다 맞는 판이 따로라 다른 판(jsep)을 가리키면 'reading Xe' 오류로
@@ -62,7 +62,11 @@ async function run(s: ort.InferenceSession, feeds: Record<string, ort.Tensor>) {
 /** 앞서 돌던 지우기. 그만두기로 버린 지우기가 아직 돌 때 새 사진이 같은 모델을 겹쳐 돌리지 않게 줄 세운다 */
 let running: Promise<unknown> = Promise.resolve();
 
-/** 사진(작업 크기 w x h 캔버스)에서 마스크(w x h, 0~255)를 만든다. rembg 와 같은 전처리. */
+/**
+ * 사진(작업 크기 w x h 캔버스)에서 마스크(w x h, 0~255)를 만든다. rembg 와 같은 전처리.
+ * 정사각이 아닌 사진은 늘이지 않고 흰 여백을 붙여 정사각으로 넣는다 (가로로 긴 사진은 펫이 홀쭉하게 눌려 팔이 지워졌다).
+ * 모델이 남긴 아주 옅은 값(바탕 얼룩)은 0 으로 (mask.ts dropFaint)
+ */
 export function predictMask(photo: HTMLCanvasElement, info: MakerInfo): Promise<Uint8ClampedArray> {
   const next = running.then(
     () => runMask(photo, info),
@@ -84,7 +88,8 @@ async function runMask(photo: HTMLCanvasElement, info: MakerInfo): Promise<Uint8
   // 투명한 칸(오려 둔 PNG)은 흰 바탕으로 본다. 그대로면 모델에 검게 보여 검은 테두리가 남았다
   g.fillStyle = '#ffffff';
   g.fillRect(0, 0, size, size);
-  g.drawImage(photo, 0, 0, size, size);
+  const at = letterbox(photo.width, photo.height, size);
+  g.drawImage(photo, at.x, at.y, at.width, at.height);
   const d = g.getImageData(0, 0, size, size).data;
   let max = 1e-6;
   for (let i = 0; i < d.length; i += 4) max = Math.max(max, d[i] ?? 0, d[i + 1] ?? 0, d[i + 2] ?? 0);
@@ -100,7 +105,7 @@ async function runMask(photo: HTMLCanvasElement, info: MakerInfo): Promise<Uint8
   });
   const raw = out[session.outputNames[0] ?? 'output']?.data as Float32Array;
   const small = outputToMask(raw.subarray(0, n));
-  // 정사각 마스크를 사진 크기로 늘린다 (캔버스가 부드럽게 보간).
+  // 정사각 마스크에서 사진이 놓였던 곳만 사진 크기로 늘린다 (캔버스가 부드럽게 보간).
   const m = document.createElement('canvas');
   m.width = size;
   m.height = size;
@@ -117,9 +122,9 @@ async function runMask(photo: HTMLCanvasElement, info: MakerInfo): Promise<Uint8
   const rg = r.getContext('2d', { willReadFrequently: true });
   if (!rg) throw new ShownError(t('maker.err.canvas'));
   rg.imageSmoothingQuality = 'high';
-  rg.drawImage(m, 0, 0, photo.width, photo.height);
+  rg.drawImage(m, at.x, at.y, at.width, at.height, 0, 0, photo.width, photo.height);
   const rd = rg.getImageData(0, 0, photo.width, photo.height).data;
   const mask = new Uint8ClampedArray(photo.width * photo.height);
   for (let i = 0; i < mask.length; i++) mask[i] = rd[i * 4 + 3] ?? 0;
-  return mask;
+  return dropFaint(mask);
 }

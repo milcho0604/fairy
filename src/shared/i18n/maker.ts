@@ -157,6 +157,7 @@ export const ko = {
   'maker.edit.took': (v: { backend: string; sec: string }) => `${v.backend}로 ${v.sec}초 걸렸어.`,
   'maker.name.alt': '새 펫',
   'maker.name.animatedNote': '움직이는 그림이라 배경은 그대로야.',
+  'maker.name.smallCut': '사진 속 펫이 작아서 조금 흐릿할 수 있어. 펫이 크게 나온 사진이면 더 또렷해.',
   'maker.done.food': (v: { name: string }) => `${withParticle(v.name, '을')} 상점 먹이에 넣었어!`,
   'maker.done.pose': (v: { pose: string }) => `${v.pose} 이 모습으로 보일게!`,
   'maker.done.pet': (v: { name: string }) => `${withParticle(v.name, '이')} 화면에 나타났어!`,
@@ -230,6 +231,7 @@ export const ko = {
   'maker.edit.almostAllErased': '거의 다 지워졌어.',
   'maker.edit.barelyErased': '배경이 거의 안 지워졌어.',
   'maker.edit.tryAgain': '다듬거나 다른 사진을 골라 봐.',
+  'maker.edit.halfKept': '바탕과 색이 비슷해서 몸이 반쯤 비쳐 보여. 복원 붓으로 몸을 칠하면 또렷해져.',
   'maker.edit.otherPhoto': '다른 사진',
   'maker.edit.next': '다 됐어',
 };
@@ -394,6 +396,8 @@ export const en: Translation<typeof ko> = {
   'maker.edit.took': (v) => `Took ${v.sec}s on ${v.backend}.`,
   'maker.name.alt': 'New pet',
   'maker.name.animatedNote': "It's animated, so the background stays as is.",
+  'maker.name.smallCut':
+    'Your pet was small in the photo, so it may look a little blurry. A photo where your pet is bigger will look sharper.',
   'maker.done.food': (v) => `Added ${v.name} to the shop treats!`,
   'maker.done.pose': (v) => `I'll look like this ${v.pose.toLowerCase()}!`,
   'maker.done.pet': (v) => `${v.name} is on your screen now!`,
@@ -469,6 +473,8 @@ export const en: Translation<typeof ko> = {
   'maker.edit.almostAllErased': 'Almost everything got erased.',
   'maker.edit.barelyErased': 'Barely any background got erased.',
   'maker.edit.tryAgain': 'Touch it up or pick another photo.',
+  'maker.edit.halfKept':
+    "Your pet's colors are close to the background, so parts look see-through. Paint over them with the restore brush to make them solid.",
   'maker.edit.otherPhoto': 'Another photo',
   'maker.edit.next': 'Done',
 };

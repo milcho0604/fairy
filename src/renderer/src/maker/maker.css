@@ -202,7 +202,9 @@ section {
 
 .canvas-wrap {
   display: grid;
-  place-items: center;
+  /* 넘치면 왼쪽이 잘려 못 가지 않게 safe */
+  place-items: safe center;
+  overflow: auto;
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -215,8 +217,11 @@ section {
 
 .canvas-wrap canvas {
   display: block;
-  max-width: 100%;
-  max-height: 380px;
+  /* --ar = 가로/세로. 칸에 맞게 키우거나 줄여(380px 높이, 칸 너비까지) 64px 사진도 칠할 만하게 보이고,
+     아주 긴 사진도 높이 160px 아래로는 줄이지 않는다 (넘치면 칸 안에서 가로로 민다). 붓 자리는 화면 크기 비율로 맞춘다 */
+  width: max(min(100%, 380px * var(--ar, 1)), 160px * var(--ar, 1));
+  height: auto;
+  aspect-ratio: var(--ar, 1);
   touch-action: none;
   cursor: crosshair;
 }
@@ -338,8 +343,11 @@ section {
 }
 
 .stage img {
-  max-width: 200px;
-  max-height: 200px;
+  /* 펫 화면처럼 칸에 맞게 키워 보인다 (작게 오린 그림이 실제보다 또렷해 보이지 않게) */
+  width: 200px;
+  height: 200px;
+  object-fit: contain;
+  object-position: 50% 100%;
   transform-origin: 50% 100%;
 }
 

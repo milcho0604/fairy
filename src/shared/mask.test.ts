@@ -1,6 +1,19 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { brush, clampToAlpha, contentBox, defringe, keptRatio, outputToMask, stroke } from './mask.ts';
+import {
+  brush,
+  clampToAlpha,
+  contentBox,
+  defringe,
+  dropFaint,
+  FAINT_ALPHA,
+  halfKeptShare,
+  keptRatio,
+  letterbox,
+  outputToMask,
+  refineBox,
+  stroke,
+} from './mask.ts';
 
 test('모델 출력을 0~255 로 편다, 시그모이드 선택', () => {
   assert.deepEqual([...outputToMask([0.2, 0.6, 1.0])], [0, 128, 255]);
@@ -107,4 +120,50 @@ test('이미지 검토: 모델이 거의 못 찾은 사진(흰 벽)은 빈 마�
   assert.deepEqual([...outputToMask([0, 0.5, 0.9])], [0, 142, 255]);
   const rgba = new Uint8ClampedArray([0, 0, 0, 0, 9, 9, 9, 128, 9, 9, 9, 255]);
   assert.deepEqual([...clampToAlpha(new Uint8ClampedArray([200, 200, 200]), rgba)], [0, 128, 200]);
+});
+
+test('dropFaint: 바탕에 남은 옅은 값은 0, 그 위는 0~255 로 다시 편다', () => {
+  const m = dropFaint(Uint8ClampedArray.from([0, 1, 29, FAINT_ALPHA, FAINT_ALPHA + 1, 128, 255]));
+  assert.deepEqual([...m.subarray(0, 4)], [0, 0, 0, 0]);
+  assert.ok((m[4] ?? 0) > 0 && (m[4] ?? 0) < 4);
+  assert.equal(m[6], 255);
+  // 가운데 값은 순서를 지킨 채 조금 낮아진다 (부드러운 가장자리는 그대로)
+  assert.ok((m[5] ?? 0) > 100 && (m[5] ?? 0) < 128);
+});
+
+test('dropFaint 뒤의 contentBox 는 옅은 바탕 얼룩을 둘러싸지 않는다', () => {
+  const w = 100;
+  const m = new Uint8ClampedArray(w * w).fill(28); // 사진 전체에 옅은 얼룩
+  for (let y = 40; y < 60; y++) for (let x = 40; x < 60; x++) m[y * w + x] = 255;
+  assert.deepEqual(contentBox(m, w, w, 16, 0), { x: 0, y: 0, width: 100, height: 100 });
+  assert.deepEqual(contentBox(dropFaint(m), w, w, 16, 0), { x: 40, y: 40, width: 20, height: 20 });
+});
+
+test('letterbox: 늘이지 않고 정사각 가운데에', () => {
+  assert.deepEqual(letterbox(4000, 400, 1024), { x: 0, y: 461, width: 1024, height: 102 });
+  assert.deepEqual(letterbox(680, 800, 1024), { x: 77, y: 0, width: 870, height: 1024 });
+  assert.deepEqual(letterbox(64, 64, 1024), { x: 0, y: 0, width: 1024, height: 1024 });
+});
+
+test('halfKeptShare: 남긴 곳 가운데 반투명 비율 (지운 곳은 세지 않는다)', () => {
+  assert.equal(halfKeptShare(Uint8ClampedArray.from([0, 0, 255, 255, 128, 100])), 0.5);
+  assert.equal(halfKeptShare(new Uint8ClampedArray(4)), 0);
+});
+
+test('refineBox: 작은 펫만 둘레를 여유 있게 다시 오린다', () => {
+  assert.equal(refineBox(undefined, 100, 100), undefined);
+  assert.equal(refineBox({ x: 10, y: 10, width: 80, height: 60 }, 100, 100), undefined);
+  assert.deepEqual(refineBox({ x: 40, y: 40, width: 20, height: 10 }, 100, 100), {
+    x: 36,
+    y: 36,
+    width: 28,
+    height: 18,
+  });
+  // 가장자리에서는 사진 밖으로 나가지 않는다
+  assert.deepEqual(refineBox({ x: 0, y: 95, width: 10, height: 5 }, 100, 100), {
+    x: 0,
+    y: 93,
+    width: 12,
+    height: 7,
+  });
 });

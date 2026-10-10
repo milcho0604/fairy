@@ -182,3 +182,69 @@ export function clampToAlpha(mask: Uint8ClampedArray, rgba: ArrayLike<number>): 
   for (let i = 0; i < mask.length; i++) out[i] = Math.min(mask[i] ?? 0, rgba[i * 4 + 3] ?? 255);
   return out;
 }
+
+/**
+ * 이 값 이하는 모델이 바탕에 남긴 얼룩으로 보고 0 으로. 펫이 사진에서 작으면 바탕에 1~30 쯤의 옅은 값이 넓게 남아
+ * 어두운 화면에서 펫 둘레에 회색 네모(안개)가 보였다 (2026-10-10). 다듬기 화면은 128 아래를 지운 곳으로 보여서 보이지도 않았다
+ */
+export const FAINT_ALPHA = 32;
+
+/** 옅은 값(floor 이하)은 0, 그 위는 0~255 로 다시 편다 (털 끝처럼 부드러운 가장자리는 그대로 부드럽게) */
+export function dropFaint(mask: Uint8ClampedArray, floor = FAINT_ALPHA): Uint8ClampedArray {
+  const out = new Uint8ClampedArray(mask.length);
+  const k = 255 / (255 - floor);
+  for (let i = 0; i < mask.length; i++) {
+    const v = mask[i] ?? 0;
+    out[i] = v <= floor ? 0 : Math.round((v - floor) * k);
+  }
+  return out;
+}
+
+/** w x h 사진을 늘이지 않고 size 정사각 가운데에 놓을 자리 (모델 입력, 남는 곳은 여백) */
+export function letterbox(w: number, h: number, size: number) {
+  const k = size / Math.max(w, h, 1);
+  const width = Math.max(1, Math.min(size, Math.round(w * k)));
+  const height = Math.max(1, Math.min(size, Math.round(h * k)));
+  return { x: Math.floor((size - width) / 2), y: Math.floor((size - height) / 2), width, height };
+}
+
+/**
+ * 남긴 곳 가운데 반쯤 투명한(lo~hi) 칸의 비율. 바탕과 몸 색이 비슷한 사진(흰 벽 앞 흰 고양이)은 몸이 반투명 유령처럼
+ * 남는다. 이 비율이 크면 복원 붓을 권한다
+ */
+export function halfKeptShare(mask: ArrayLike<number>, lo = 40, hi = 200): number {
+  let kept = 0;
+  let half = 0;
+  for (let i = 0; i < mask.length; i++) {
+    const v = mask[i] ?? 0;
+    if (v <= 16) continue;
+    kept++;
+    if (v >= lo && v <= hi) half++;
+  }
+  return kept ? half / kept : 0;
+}
+
+/**
+ * 펫이 사진에서 작으면 그 둘레만 다시 오려 볼 자리 (원본 사진 좌표, 여백 포함). 크면 undefined.
+ * 작은 펫은 1024 사진 안에서 몇십 칸이라 모델이 팔을 놓치고 바탕을 남겼고, 저장 그림도 그만큼 흐릿했다
+ */
+export function refineBox(
+  box: { x: number; y: number; width: number; height: number } | undefined,
+  w: number,
+  h: number,
+  small = 0.5,
+  margin = 0.2,
+) {
+  if (!box) return undefined;
+  const side = Math.max(box.width, box.height);
+  if (side >= Math.max(w, h) * small) return undefined;
+  const p = Math.round(side * margin);
+  const x = Math.max(0, box.x - p);
+  const y = Math.max(0, box.y - p);
+  return {
+    x,
+    y,
+    width: Math.min(w, box.x + box.width + p) - x,
+    height: Math.min(h, box.y + box.height + p) - y,
+  };
+}
