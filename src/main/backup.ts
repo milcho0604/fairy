@@ -177,11 +177,26 @@ export function applyPendingImport(): void {
     dropStaged();
     return;
   }
-  for (const f of ['jjakkung.db-wal', 'jjakkung.db-shm']) rmSync(join(dir, f), { force: true });
-  cpSync(pending, join(dir, 'jjakkung.db'));
-  rmSync(pending, { force: true });
-  for (const f of IMPORT_FILES)
-    if (existsSync(join(dir, staged(f)))) renameSync(join(dir, staged(f)), join(dir, f));
+  // 복사하지 않고 이름을 바꾼다: 켜는 중에 디스크가 차면 복사가 지금 저장 파일을 반쯤 덮은 채 던졌고,
+  // 던지면 준비 뒤 일이 멈춰 펫도 메뉴 막대도 없이 떠 있었다. 같은 폴더 안 이름 바꾸기는 공간이 들지 않고 한 번에 바뀐다
+  try {
+    for (const f of ['jjakkung.db-wal', 'jjakkung.db-shm']) rmSync(join(dir, f), { force: true });
+    renameSync(pending, join(dir, 'jjakkung.db'));
+  } catch {
+    // 못 바꾸면 지금 저장 파일과 설정으로 켠다 (가져오기 전 복사본은 before-import 폴더에 있다)
+    for (const f of ['', '-wal', '-shm']) rmSync(pending + f, { force: true });
+    dropStaged();
+    return;
+  }
+  for (const f of ['-wal', '-shm']) rmSync(pending + f, { force: true });
+  for (const f of IMPORT_FILES) {
+    try {
+      if (existsSync(join(dir, staged(f)))) renameSync(join(dir, staged(f)), join(dir, f));
+    } catch {
+      // 켜기를 멈추지 않는다: 못 바꾼 설정 파일은 지금 것을 쓴다
+      rmSync(join(dir, staged(f)), { force: true });
+    }
+  }
 }
 
 /**
