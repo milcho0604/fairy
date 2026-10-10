@@ -1,0 +1,235 @@
+{
+ "_id": "69679d6315adbeddf0823223",
+ "id": "black-forest-labs/FLUX.2-klein-4B",
+ "private": false,
+ "pipeline_tag": "image-to-image",
+ "library_name": "diffusers",
+ "tags": [
+  "diffusers",
+  "safetensors",
+  "text-to-image",
+  "image-editing",
+  "flux",
+  "diffusion-single-file",
+  "image-to-image",
+  "en",
+  "license:apache-2.0",
+  "diffusers:Flux2KleinPipeline",
+  "region:us"
+ ],
+ "downloads": 403534,
+ "likes": 1014,
+ "modelId": "black-forest-labs/FLUX.2-klein-4B",
+ "author": "black-forest-labs",
+ "sha": "e7b7dc27f91deacad38e78976d1f2b499d76a294",
+ "lastModified": "2026-02-24T00:18:56.000Z",
+ "gated": false,
+ "disabled": false,
+ "model-index": null,
+ "config": {
+  "diffusers": {
+   "_class_name": "Flux2KleinPipeline"
+  }
+ },
+ "cardData": {
+  "license": "apache-2.0",
+  "language": [
+   "en"
+  ],
+  "pipeline_tag": "image-to-image",
+  "tags": [
+   "text-to-image",
+   "image-editing",
+   "flux",
+   "diffusion-single-file"
+  ]
+ },
+ "siblings": [
+  {
+   "rfilename": ".gitattributes"
+  },
+  {
+   "rfilename": "LICENSE.md"
+  },
+  {
+   "rfilename": "README.md"
+  },
+  {
+   "rfilename": "editing.jpg"
+  },
+  {
+   "rfilename": "flux-2-klein-4b.safetensors"
+  },
+  {
+   "rfilename": "model_index.json"
+  },
+  {
+   "rfilename": "others.jpg"
+  },
+  {
+   "rfilename": "realism.jpg"
+  },
+  {
+   "rfilename": "scheduler/scheduler_config.json"
+  },
+  {
+   "rfilename": "text_encoder/config.json"
+  },
+  {
+   "rfilename": "text_encoder/generation_config.json"
+  },
+  {
+   "rfilename": "text_encoder/model-00001-of-00002.safetensors"
+  },
+  {
+   "rfilename": "text_encoder/model-00002-of-00002.safetensors"
+  },
+  {
+   "rfilename": "text_encoder/model.safetensors.index.json"
+  },
+  {
+   "rfilename": "tokenizer/added_tokens.json"
+  },
+  {
+   "rfilename": "tokenizer/chat_template.jinja"
+  },
+  {
+   "rfilename": "tokenizer/merges.txt"
+  },
+  {
+   "rfilename": "tokenizer/special_tokens_map.json"
+  },
+  {
+   "rfilename": "tokenizer/tokenizer.json"
+  },
+  {
+   "rfilename": "tokenizer/tokenizer_config.json"
+  },
+  {
+   "rfilename": "tokenizer/vocab.json"
+  },
+  {
+   "rfilename": "transformer/config.json"
+  },
+  {
+   "rfilename": "transformer/diffusion_pytorch_model.safetensors"
+  },
+  {
+   "rfilename": "vae/config.json"
+  },
+  {
+   "rfilename": "vae/diffusion_pytorch_model.safetensors"
+  }
+ ],
+ "spaces": [
+  "tardellirs/model-pulse",
+  "embedl/hfviewer",
+  "aquanode/gpu-vram-calculator",
+  "prithivMLmods/PiD-Image-Upscaler",
+  "stephenbtl/klein-build-small-starter",
+  "hugging-apps/qwen-video-edit",
+  "cronos3k/CharacterForgePro",
+  "black-forest-labs/FLUX.2-klein-4B",
+  "multimodalart/follow-the-mean",
+  "merve/daggr-image-to-3d",
+  "prithivMLmods/Flux.2-Klein-Edit-Ultra-Fast",
+  "Aatricks/LightDiffusion-Next",
+  "build-small-hackathon/brad-did-something",
+  "build-small-hackathon/TinyNarrator",
+  "build-small-hackathon/ux-crime-scene",
+  "Upsampler/flux-2-klein-4b",
+  "build-small-hackathon/FrogQuest",
+  "aiqtech/FLUX.2-klein-4B",
+  "123123aa123/UniGeo",
+  "build-small-hackathon/karate-wiener",
+  "build-small-hackathon/PaperProf",
+  "build-small-hackathon/multi-agent-lab",
+  "WonseokJayJung/connect-ai-lab",
+  "build-small-hackathon/tiny-army",
+  "build-small-hackathon/llm-fishing",
+  "epfl-vita/flux2-klein-1step-demo",
+  "NightRaven109/PBRFusion4AlbedoKlein",
+  "build-small-hackathon/storybear",
+  "AST-1320/Sandbox-Testbase-Qwen",
+  "Nate-M/StyleX",
+  "build-small-hackathon/1000-Rooms",
+  "build-small-hackathon/lightloom",
+  "build-small-hackathon/DoodleBook",
+  "build-small-hackathon/Minecraftify",
+  "hugging-apps/flowupscaler-demo",
+  "FoxLoverAI/TurboCustomImageEditing",
+  "build-small-hackathon/stage-whisper",
+  "build-small-hackathon/visual-lineage",
+  "build-small-hackathon/the_shape_of_words",
+  "build-small-hackathon/YeOldeCut",
+  "build-small-hackathon/postcard-from-vk",
+  "build-small-hackathon/numzoo",
+  "build-small-hackathon/NEXUS_Visual_Weaver",
+  "build-small-hackathon/pinch",
+  "sotinhoss/manga-color-studio",
+  "ZeroOne09/necklace-virtual-tryon",
+  "chmielvu/flux-klein-simple",
+  "djemslzhfsa/black-forest-labs-FLUX.2-klein-4B",
+  "basyx/MediaRouter",
+  "lea97338/Flux",
+  "build-small-hackathon/mythograph-atelier",
+  "build-small-hackathon/smol-town",
+  "goumsss/numzoo",
+  "build-small-hackathon/poetic",
+  "build-small-hackathon/persona-capsule",
+  "build-small-hackathon/storygrove",
+  "build-small-hackathon/EuropaLex",
+  "build-small-hackathon/epic-errands",
+  "build-small-hackathon/the-adventure-gang",
+  "build-small-hackathon/DoodleDreams",
+  "build-small-hackathon/midnight_mystery",
+  "build-small-hackathon/whisper-your-own-creature",
+  "jeanbaptdzd/photo-stylizer",
+  "hugging-apps/replan-image-editing",
+  "multimodalart/sprite-forge",
+  "Oliver577/qwen-video-edit",
+  "ysharma/gr-workflow-klein-studio",
+  "tianzijian/flux",
+  "barathE2003/linkedin-image-generator",
+  "monurcan/simit",
+  "SungJinWooX/Telegram",
+  "Abmalik/FLUX.2-klein-4B",
+  "akashsithum90/black-forest-labs-FLUX.2-klein-4B",
+  "sancho420/black-forest-labs-FLUX.2-klein-4B",
+  "denebnfsu/black-forest-labs-FLUX.2-klein-4B",
+  "Niketjain2002/FLUX.2-klein-4B-Niketjain",
+  "luciferdavinci/black-forest-labs-FLUX.2-klein-4B",
+  "Valuedbris/black-forest-labs-FLUX.2-klein-4B",
+  "esperz/FLUX.2-klein-4B",
+  "Kalibro/FLUX.2-klein-4B",
+  "WANGluzi/black-forest-labs-FLUX.2-klein-4B",
+  "Niketjain2002/FLUX.2-klein-4B",
+  "jhh6576/FLUX.2-klein-4B",
+  "merve/daggr-image-to-3d-d",
+  "noobmldude/daggr-image-to-3d",
+  "Duker-S/black-forest-labs-FLUX.2-klein-4B",
+  "leey00nsu/FLUX.2-klein-4B",
+  "JovsxD/black-forest-labs-FLUX.2-klein-4B",
+  "miradontsoa/black-forest-labs-FLUX.2-klein-4B",
+  "Idkanythingaboutit/black-forest-labs-FLUX.2-klein-4B",
+  "vandellier/black-forest-labs-FLUX.2-klein-4B",
+  "medo709/black-forest-labs-FLUX.2-klein-4B",
+  "hoangkha1810/FLUX.2-klein-4B",
+  "yemmygold/black-forest-labs-FLUX.2-klein-4B",
+  "vdmpeniel/FLUX.2-klein-4B",
+  "mr2along/Flux2-Klein",
+  "Sntxasa/black-forest-labs-FLUX.2-klein-4B",
+  "Awesome01/black-forest-labs-FLUX.2-klein-4B",
+  "deux00/black-forest-labs-FLUX.2-klein-4B",
+  "Ahmad787/AIPPTMAKER"
+ ],
+ "createdAt": "2026-01-14T13:42:59.000Z",
+ "safetensors": {
+  "parameters": {
+   "BF16": 3875544576
+  },
+  "total": 3875544576
+ },
+ "inference": "warm",
+ "usedStorage": 23735489815
+}

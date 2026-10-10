@@ -1,0 +1,250 @@
+{
+ "_id": "68378cef5cbef05290b4d045",
+ "id": "black-forest-labs/FLUX.1-Kontext-dev",
+ "private": false,
+ "pipeline_tag": "image-to-image",
+ "library_name": "diffusers",
+ "tags": [
+  "diffusers",
+  "safetensors",
+  "image-generation",
+  "flux",
+  "diffusion-single-file",
+  "image-to-image",
+  "en",
+  "arxiv:2506.15742",
+  "license:other",
+  "diffusers:FluxKontextPipeline",
+  "region:us"
+ ],
+ "downloads": 394831,
+ "likes": 2883,
+ "modelId": "black-forest-labs/FLUX.1-Kontext-dev",
+ "author": "black-forest-labs",
+ "sha": "24e9dedc4ef646698dc8eb4e18ae2cec3c9fea0d",
+ "lastModified": "2026-01-01T15:35:36.000Z",
+ "gated": "auto",
+ "disabled": false,
+ "model-index": null,
+ "config": {
+  "diffusers": {
+   "_class_name": "FluxKontextPipeline"
+  }
+ },
+ "cardData": {
+  "language": [
+   "en"
+  ],
+  "license": "other",
+  "license_name": "flux-1-dev-non-commercial-license",
+  "license_link": "LICENSE.md",
+  "extra_gated_prompt": "By clicking \"Agree\", you agree to the [FluxDev Non-Commercial License Agreement](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev/blob/main/LICENSE.md) and acknowledge the [Acceptable Use Policy](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev/blob/main/POLICY.md).",
+  "tags": [
+   "image-generation",
+   "flux",
+   "diffusion-single-file"
+  ],
+  "pipeline_tag": "image-to-image",
+  "library_name": "diffusers"
+ },
+ "siblings": [
+  {
+   "rfilename": ".gitattributes"
+  },
+  {
+   "rfilename": "LICENSE.md"
+  },
+  {
+   "rfilename": "README.md"
+  },
+  {
+   "rfilename": "ae.safetensors"
+  },
+  {
+   "rfilename": "flux1-kontext-dev.safetensors"
+  },
+  {
+   "rfilename": "model_index.json"
+  },
+  {
+   "rfilename": "scheduler/scheduler_config.json"
+  },
+  {
+   "rfilename": "teaser.png"
+  },
+  {
+   "rfilename": "text_encoder/config.json"
+  },
+  {
+   "rfilename": "text_encoder/model.safetensors"
+  },
+  {
+   "rfilename": "text_encoder_2/config.json"
+  },
+  {
+   "rfilename": "text_encoder_2/model-00001-of-00002.safetensors"
+  },
+  {
+   "rfilename": "text_encoder_2/model-00002-of-00002.safetensors"
+  },
+  {
+   "rfilename": "text_encoder_2/model.safetensors.index.json"
+  },
+  {
+   "rfilename": "tokenizer/merges.txt"
+  },
+  {
+   "rfilename": "tokenizer/special_tokens_map.json"
+  },
+  {
+   "rfilename": "tokenizer/tokenizer_config.json"
+  },
+  {
+   "rfilename": "tokenizer/vocab.json"
+  },
+  {
+   "rfilename": "tokenizer_2/special_tokens_map.json"
+  },
+  {
+   "rfilename": "tokenizer_2/spiece.model"
+  },
+  {
+   "rfilename": "tokenizer_2/tokenizer.json"
+  },
+  {
+   "rfilename": "tokenizer_2/tokenizer_config.json"
+  },
+  {
+   "rfilename": "transformer/config.json"
+  },
+  {
+   "rfilename": "transformer/diffusion_pytorch_model-00001-of-00003.safetensors"
+  },
+  {
+   "rfilename": "transformer/diffusion_pytorch_model-00002-of-00003.safetensors"
+  },
+  {
+   "rfilename": "transformer/diffusion_pytorch_model-00003-of-00003.safetensors"
+  },
+  {
+   "rfilename": "transformer/diffusion_pytorch_model.safetensors.index.json"
+  },
+  {
+   "rfilename": "vae/config.json"
+  },
+  {
+   "rfilename": "vae/diffusion_pytorch_model.safetensors"
+  }
+ ],
+ "spaces": [
+  "tardellirs/model-pulse",
+  "embedl/hfviewer",
+  "black-forest-labs/FLUX.1-Kontext-Dev",
+  "mcp-tools/FLUX.1-Kontext-Dev",
+  "Fabrice-TIERCELIN/SUPIR",
+  "ysharma/Workflow1111",
+  "kontext-community/kontext-relight",
+  "kontext-community/FLUX.1-Kontext-portrait",
+  "kontext-community/FLUX.1-Kontext-multi-image",
+  "prithivMLmods/Photo-Mate-i2i",
+  "wcy1122/DreamOmni2-Gen",
+  "wcy1122/DreamOmni2-Edit",
+  "rizavelioglu/vae-comparison",
+  "lvwerra/agent-ui",
+  "ChenDY/NAG_FLUX.1-Kontext-Dev",
+  "WithAnyone/WithAnyone_demo",
+  "finegrain/finegrain-product-placement-lora",
+  "akhaliq/FLUX.1-Kontext-dev",
+  "Yuanshi/FLUX.1-Kontext-Turbo",
+  "zerogpu-aoti/FLUX.1-Kontext-Dev",
+  "ginigen/Flux-Kontext-FaceLORA",
+  "prithivMLmods/FLUX.1-Kontext-Photo-Mate-v2",
+  "AlekseyCalvin/fast-Kontext-Flux-LoRAs-bySilverAgePoets",
+  "jairwaal/image",
+  "Nymbo/FLUX.1-Kontext-Dev",
+  "eduagarcia/multilingual-tokenizer-leaderboard",
+  "LPX55/Kontext-Multi_Lightning_4bit-nf4",
+  "Kontext-Style/Kontext-Style-LoRAs",
+  "Kapanther/manga-translator",
+  "TIGER-Lab/RationalRewards-Demo",
+  "fffiloni/reachy-mini-doll",
+  "ginigen/Flux-Kontext-Style",
+  "abidlabs/Flux-Kontext-Slider",
+  "Velvessence/watermark-remover",
+  "umint/openwebui",
+  "zerogpu-aoti/FLUX.1-Kontext-Dev-fp8-dynamic",
+  "nazdridoy/inferoxy-hub",
+  "SahilCarterr/Tattoo_FLUX.1_Kontext_LoRA",
+  "csbowei/ART-Makeup-Transfer",
+  "mcjhn/ai",
+  "gparmar/Group-Inference-FLUX.1-Kontext",
+  "Jakob08/moneychatbot",
+  "NoobDoge/Multi_Ref_Edit",
+  "LiuZichen/MagicQuillV2",
+  "akhaliq/black-forest-labs-FLUX.1-Kontext-dev",
+  "ginigen/FLUX.1-Kontext-Dev",
+  "Shakker-Labs/FLUX-Kontext-LoRA-Gallery",
+  "KingNish/Personalized-Video-Gen",
+  "ImDilawer/black-forest-labs-FLUX.1-Kontext-dev",
+  "ovi054/virtual-tryon-flux-kontext",
+  "aiqtech/FLUX.1-Kontext-multi-image",
+  "snap-research/KontinuousKontext",
+  "Secondprinsipal/image",
+  "sean96t/Flux-Kontext-TryOn",
+  "build-small-hackathon/NEXUS_Visual_Weaver",
+  "SarowarSaurav/Finetuned-SLM",
+  "YANGnews/black-forest-labs-FLUX.1-Kontext-dev",
+  "rahul7star/WANGP1",
+  "DoozyWo/Kontext_Lora-Avatar_Transformation",
+  "DoozyWo/Avatar-Navi",
+  "Carlexx/Aduc-srd_Novim",
+  "EU-IA/Aduc-sdr-VIDEO",
+  "ovi054/Draw2Photo",
+  "Jonny001/Image-Editor",
+  "huggingfaceramki/Ramkiran_searchgpt",
+  "XCarleX/Aduc-sdr-cinematic-videoX",
+  "USF00/Wan2GP_Demo",
+  "svjack/WithAnyone_demo_HF",
+  "Hasanarshad/black-forest-labs-FLUX.1-Kontext-dev",
+  "Hasanarshad/Photo-Mate-i2i",
+  "oindrila13saha/sigma-gen-demo",
+  "nicovlr/trumpify-me",
+  "cduss/hfs_backend_exemple",
+  "ZhaoJingzi/moodboard-to-product-shot",
+  "hsmith27/floorplan-to-3d-interior",
+  "pikapool1994/Image_Editor_Fast",
+  "aaryanshah/wearwise-ai-backend",
+  "HasinduR/IWMI-GIS",
+  "3Diiamond/MaterialTransform",
+  "Aqzszdrftgyhujikolpm/uncensored-upscale-edit",
+  "suvadityamuk/inspiration-seeds",
+  "hugging-apps/replan-image-editing",
+  "KeaiPandas/NiuLaiStyleImageGenerator",
+  "jkorstad/daggr-studio",
+  "yongyeol/makeFT",
+  "yongyeol/mk3d",
+  "anujdullar0911/black-forest-labs-FLUX.1-Kontext-dev",
+  "LPX55/ListFluxLayers",
+  "jblas/black-forest-labs-FLUX.1-Kontext-dev",
+  "dafersaurio/black-forest-labs-FLUX.1-Kontext-dev",
+  "gfdfdsfffds/black-forest-labs-FLUX.1-Kontext-dev",
+  "dotisbob/black-forest-labs-FLUX.1-Kontext-dev",
+  "williamchans/black-forest-labs-FLUX.1-Kontext-dev",
+  "pumkinverz/black-forest-labs-FLUX.1-Kontext-dev",
+  "jinhaoyu/kontext-relight",
+  "IntroSpectate/black-forest-labs-FLUX.1-Kontext-dev",
+  "templatedepoot/FLUX.1-Kontext-Dev",
+  "jexlon/black-forest-labs-FLUX.1-Kontext-dev",
+  "nebukad/black-forest-labs-FLUX.1-Kontext-dev",
+  "cisiv62244/black-forest-labs-FLUX.1-Kontext-dev"
+ ],
+ "createdAt": "2025-05-28T22:23:43.000Z",
+ "safetensors": {
+  "parameters": {
+   "BF16": 11901408320
+  },
+  "total": 11901408320
+ },
+ "inference": "warm",
+ "usedStorage": 67084151996
+}

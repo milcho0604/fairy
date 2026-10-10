@@ -1,0 +1,973 @@
+[
+ {
+  "_id": "6968b85e0bef22c2d6a13ba3",
+  "id": "black-forest-labs/FLUX.2-klein-9B",
+  "author": "black-forest-labs",
+  "cardData": {
+   "title": "FLUX.2 [Klein] 9B",
+   "emoji": "\ud83d\udcbb",
+   "colorFrom": "blue",
+   "colorTo": "gray",
+   "sdk": "gradio",
+   "sdk_version": "6.3.0",
+   "app_file": "app.py",
+   "pinned": true
+  },
+  "lastModified": "2026-01-16T13:56:36.000Z",
+  "likes": 942,
+  "private": false,
+  "sha": "e044f8daee76a368c87eb9489be4d648a653c063",
+  "subdomain": "black-forest-labs-flux-2-klein-9b",
+  "sdk": "gradio",
+  "tags": [
+   "gradio",
+   "mcp-server",
+   "region:us"
+  ],
+  "createdAt": "2026-01-15T09:50:22.000Z",
+  "siblings": [
+   {
+    "rfilename": ".gitattributes"
+   },
+   {
+    "rfilename": "README.md"
+   },
+   {
+    "rfilename": "app.py"
+   },
+   {
+    "rfilename": "bird.webp"
+   },
+   {
+    "rfilename": "cat_window.webp"
+   },
+   {
+    "rfilename": "diffusers.zip"
+   },
+   {
+    "rfilename": "optimization.py"
+   },
+   {
+    "rfilename": "person1.webp"
+   },
+   {
+    "rfilename": "requirements.txt"
+   },
+   {
+    "rfilename": "woman1.webp"
+   },
+   {
+    "rfilename": "woman2.webp"
+   }
+  ]
+ },
+ {
+  "_id": "69820991966a0a9798a0ddee",
+  "id": "linoyts/Flux2-Klein-Face-Swap",
+  "author": "linoyts",
+  "cardData": {
+   "title": "Flux2 Klein Face Swap",
+   "emoji": "\ud83e\udd80",
+   "colorFrom": "red",
+   "colorTo": "indigo",
+   "sdk": "gradio",
+   "sdk_version": "6.5.1",
+   "python_version": "3.12",
+   "app_file": "app.py",
+   "pinned": false,
+   "short_description": "Face Swap app using Flux.2 Klein 9B LoRA"
+  },
+  "lastModified": "2026-03-10T10:33:23.000Z",
+  "likes": 648,
+  "private": false,
+  "sha": "1e2ec2bb65acec520d5ea66446594eab90a9b43a",
+  "subdomain": "linoyts-flux2-klein-face-swap",
+  "sdk": "gradio",
+  "tags": [
+   "gradio",
+   "region:us"
+  ],
+  "createdAt": "2026-02-03T14:43:29.000Z",
+  "siblings": [
+   {
+    "rfilename": ".gitattributes"
+   },
+   {
+    "rfilename": "README.md"
+   },
+   {
+    "rfilename": "app.py"
+   },
+   {
+    "rfilename": "requirements.txt"
+   }
+  ]
+ },
+ {
+  "_id": "69b287637e815bf9da285772",
+  "id": "black-forest-labs/flux-klein-9b-kv",
+  "author": "black-forest-labs",
+  "cardData": {
+   "title": "FLUX.2 Klein 9B KV",
+   "emoji": "\ud83c\udfa8",
+   "colorFrom": "indigo",
+   "colorTo": "purple",
+   "sdk": "gradio",
+   "sdk_version": "6.9.0",
+   "app_file": "app.py",
+   "pinned": true,
+   "hf_oauth": false,
+   "secrets": [
+    "HF_TOKEN"
+   ]
+  },
+  "lastModified": "2026-03-12T14:13:56.000Z",
+  "likes": 267,
+  "private": false,
+  "sha": "befb83d306499e70ad80d6c7184bcf6b16f64b86",
+  "subdomain": "black-forest-labs-flux-klein-9b-kv",
+  "sdk": "gradio",
+  "tags": [
+   "gradio",
+   "mcp-server",
+   "region:us"
+  ],
+  "createdAt": "2026-03-12T09:29:07.000Z",
+  "siblings": [
+   {
+    "rfilename": ".gitattributes"
+   },
+   {
+    "rfilename": "README.md"
+   },
+   {
+    "rfilename": "app.py"
+   },
+   {
+    "rfilename": "bird.webp"
+   },
+   {
+    "rfilename": "cat.webp"
+   },
+   {
+    "rfilename": "cat_window.webp"
+   },
+   {
+    "rfilename": "flux2_klein_kv.patch"
+   },
+   {
+    "rfilename": "person1.webp"
+   },
+   {
+    "rfilename": "requirements.txt"
+   },
+   {
+    "rfilename": "woman.webp"
+   },
+   {
+    "rfilename": "woman1.webp"
+   },
+   {
+    "rfilename": "woman2.webp"
+   }
+  ]
+ },
+ {
+  "_id": "69657cc05702d30a93a2276b",
+  "id": "black-forest-labs/FLUX.2-klein-4B",
+  "author": "black-forest-labs",
+  "cardData": {
+   "title": "FLUX.2 [Klein] 4B",
+   "emoji": "\ud83d\udcbb",
+   "colorFrom": "blue",
+   "colorTo": "gray",
+   "sdk": "gradio",
+   "sdk_version": "6.3.0",
+   "app_file": "app.py",
+   "pinned": true
+  },
+  "lastModified": "2026-02-09T09:28:25.000Z",
+  "likes": 238,
+  "private": false,
+  "sha": "0207e56c7ec73975b6ebeadfaf88c8d338d61a8d",
+  "subdomain": "black-forest-labs-flux-2-klein-4b",
+  "sdk": "gradio",
+  "tags": [
+   "gradio",
+   "region:us"
+  ],
+  "createdAt": "2026-01-12T22:59:12.000Z",
+  "siblings": [
+   {
+    "rfilename": ".gitattributes"
+   },
+   {
+    "rfilename": "README.md"
+   },
+   {
+    "rfilename": "app.py"
+   },
+   {
+    "rfilename": "bird.webp"
+   },
+   {
+    "rfilename": "cat_window.webp"
+   },
+   {
+    "rfilename": "diffusers.zip"
+   },
+   {
+    "rfilename": "optimization.py"
+   },
+   {
+    "rfilename": "person1.webp"
+   },
+   {
+    "rfilename": "requirements.txt"
+   },
+   {
+    "rfilename": "woman1.webp"
+   },
+   {
+    "rfilename": "woman2.webp"
+   }
+  ]
+ },
+ {
+  "_id": "69788af7500cd09b6bcb35ce",
+  "id": "prithivMLmods/FLUX.2-Klein-LoRA-Studio",
+  "author": "prithivMLmods",
+  "cardData": {
+   "title": "FLUX.2 Klein LoRA Studio",
+   "emoji": "\ud83e\udd5a",
+   "colorFrom": "blue",
+   "colorTo": "indigo",
+   "sdk": "gradio",
+   "sdk_version": "6.22.0",
+   "app_file": "app.py",
+   "pinned": true,
+   "license": "apache-2.0",
+   "short_description": "Demo of a Collection of FLUX.2-Klein Model LoRAs"
+  },
+  "lastModified": "2026-08-12T07:01:54.000Z",
+  "likes": 165,
+  "private": false,
+  "sha": "0c525cd68357da3f59428680e80adefe02c17a63",
+  "subdomain": "prithivmlmods-flux-2-klein-lora-studio",
+  "sdk": "gradio",
+  "tags": [
+   "gradio",
+   "mcp-server",
+   "region:us"
+  ],
+  "createdAt": "2026-01-27T09:52:55.000Z",
+  "siblings": [
+   {
+    "rfilename": ".gitattributes"
+   },
+   {
+    "rfilename": "README.md"
+   },
+   {
+    "rfilename": "app.py"
+   },
+   {
+    "rfilename": "examples/1.jpg"
+   },
+   {
+    "rfilename": "examples/2.jpg"
+   },
+   {
+    "rfilename": "examples/C.jpg"
+   },
+   {
+    "rfilename": "examples/Snow-Klein-consistency.png"
+   },
+   {
+    "rfilename": "examples/cloth.jpg"
+   },
+   {
+    "rfilename": "examples/face-swap.jpg"
+   },
+   {
+    "rfilename": "examples/image.webp"
+   },
+   {
+    "rfilename": "examples/mc.png"
+   },
+   {
+    "rfilename": "index.html"
+   },
+   {
+    "rfilename": "pre-requirements.txt"
+   },
+   {
+    "rfilename": "requirements.txt"
+   }
+  ]
+ },
+ {
+  "_id": "6a68bde8e6a89377100d425d",
+  "id": "Hittler-AI/FLUX.2-Klein-Multi-LoRA",
+  "author": "Hittler-AI",
+  "cardData": {
+   "title": "FLUX.2 Klein multi-LoRA",
+   "emoji": "\ud83e\udd5a",
+   "colorFrom": "indigo",
+   "colorTo": "gray",
+   "sdk": "gradio",
+   "sdk_version": "6.15.2",
+   "app_file": "app.py",
+   "pinned": true,
+   "license": "apache-2.0",
+   "short_description": "Use multiple FLUX.2-Klein LoRAs"
+  },
+  "lastModified": "2026-07-03T08:47:23.000Z",
+  "likes": 117,
+  "private": false,
+  "sha": "171b9e5a2eff4f6c77be7c8ae8599b6bb5320a87",
+  "subdomain": "hittler-ai-flux-2-klein-multi-lora",
+  "sdk": "gradio",
+  "tags": [
+   "gradio",
+   "mcp-server",
+   "region:us"
+  ],
+  "createdAt": "2026-07-28T14:34:16.000Z",
+  "siblings": [
+   {
+    "rfilename": ".gitattributes"
+   },
+   {
+    "rfilename": "README.md"
+   },
+   {
+    "rfilename": "app.py"
+   },
+   {
+    "rfilename": "config.py"
+   },
+   {
+    "rfilename": "control_tools.py"
+   },
+   {
+    "rfilename": "image_utils.py"
+   },
+   {
+    "rfilename": "logging_utils.py"
+   },
+   {
+    "rfilename": "lora_registry.py"
+   },
+   {
+    "rfilename": "loras/.gitkeep"
+   },
+   {
+    "rfilename": "loras/Flux2-Klein-9b-FlatChested-v1.safetensors"
+   },
+   {
+    "rfilename": "loras/Flux2-Klein-Image-RestoreV1.safetensors"
+   },
+   {
+    "rfilename": "loras/HighResolution9B.safetensors"
+   },
+   {
+    "rfilename": "loras/InstaPic V3.safetensors"
+   },
+   {
+    "rfilename": "loras/PerkyPointyPuffy_v1.1_small_pointy_breasts_large_puffy_nipples.safetensors"
+   },
+   {
+    "rfilename": "loras/realistic_nudes_klein_v3.safetensors"
+   },
+   {
+    "rfilename": "requirements.txt"
+   },
+   {
+    "rfilename": "ui_theme.py"
+   },
+   {
+    "rfilename": "upscale.py"
+   }
+  ]
+ },
+ {
+  "_id": "69935f1258af4ea42b76a8d4",
+  "id": "laruss5/Flux2-Klein-Face-Swap",
+  "author": "laruss5",
+  "cardData": {
+   "title": "Flux2 Klein Face Swap",
+   "emoji": "\ud83e\udd80",
+   "colorFrom": "red",
+   "colorTo": "indigo",
+   "sdk": "gradio",
+   "sdk_version": "6.5.1",
+   "python_version": "3.12",
+   "app_file": "app.py",
+   "pinned": false,
+   "short_description": "Face Swap app using Flux.2 Klein 9B LoRA"
+  },
+  "lastModified": "2026-07-16T19:02:03.000Z",
+  "likes": 107,
+  "private": false,
+  "sha": "638ec5cd929abc22fe59a4bd9b0f311e0f1084a0",
+  "subdomain": "laruss5-flux2-klein-face-swap",
+  "sdk": "gradio",
+  "tags": [
+   "gradio",
+   "mcp-server",
+   "region:us"
+  ],
+  "createdAt": "2026-02-16T18:16:50.000Z",
+  "siblings": [
+   {
+    "rfilename": ".gitattributes"
+   },
+   {
+    "rfilename": "README.md"
+   },
+   {
+    "rfilename": "app.py"
+   },
+   {
+    "rfilename": "requirements.txt"
+   }
+  ]
+ },
+ {
+  "_id": "6aa9c3d2b5c2587c5fef998f",
+  "id": "M3st3rJ4k3l/FLUX.2-Klein-Multi-LoRA-v2",
+  "author": "M3st3rJ4k3l",
+  "cardData": {
+   "title": "FLUX.2 Klein Multi LoRA V2",
+   "emoji": "\ud83c\udf0d",
+   "colorFrom": "blue",
+   "colorTo": "gray",
+   "sdk": "gradio",
+   "sdk_version": "6.27.0",
+   "python_version": "3.12",
+   "app_file": "app.py",
+   "pinned": false,
+   "license": "apache-2.0",
+   "short_description": "Experimental space for image editing with FLUX.2 Klein 9B"
+  },
+  "lastModified": "2026-10-05T12:47:56.000Z",
+  "likes": 102,
+  "private": false,
+  "sha": "6277361cd7a3c5d9d4b4dd23afd2f8c43577f443",
+  "subdomain": "m3st3rj4k3l-flux-2-klein-multi-lora-v2",
+  "sdk": "gradio",
+  "tags": [
+   "gradio",
+   "mcp-server",
+   "region:us"
+  ],
+  "createdAt": "2026-09-15T22:16:50.000Z",
+  "siblings": [
+   {
+    "rfilename": "README.md"
+   },
+   {
+    "rfilename": "app.py"
+   },
+   {
+    "rfilename": "compare_view.py"
+   },
+   {
+    "rfilename": "config.py"
+   },
+   {
+    "rfilename": "control_tools.py"
+   },
+   {
+    "rfilename": "image_utils.py"
+   },
+   {
+    "rfilename": "logging_utils.py"
+   },
+   {
+    "rfilename": "lora_registry.py"
+   },
+   {
+    "rfilename": "prompt_enhance.py"
+   },
+   {
+    "rfilename": "requirements.txt"
+   },
+   {
+    "rfilename": "ui_theme.py"
+   },
+   {
+    "rfilename": "upscale.py"
+   }
+  ]
+ },
+ {
+  "_id": "6a2c17a5d4e2a69aad580977",
+  "id": "linoyts/smart-character-swap-flux2-klein",
+  "author": "linoyts",
+  "cardData": {
+   "title": "Smart Character Swap - FLUX.2 Klein",
+   "emoji": "\ud83c\udfad",
+   "colorFrom": "purple",
+   "colorTo": "pink",
+   "sdk": "gradio",
+   "sdk_version": "6.11.0",
+   "app_file": "app.py",
+   "pinned": false,
+   "short_description": "Occlusion-aware character & face swap with FLUX.2 [klein]",
+   "models": [
+    "black-forest-labs/FLUX.2-klein-9B",
+    "nhathoangfoto/Flux.2-Klein-9B-SmartCharacterSwap"
+   ]
+  },
+  "lastModified": "2026-06-12T15:13:06.000Z",
+  "likes": 93,
+  "private": false,
+  "sha": "186cec174f7837794509ec3d30deb999a2948e03",
+  "subdomain": "linoyts-smart-character-swap-flux2-klein",
+  "sdk": "gradio",
+  "tags": [
+   "gradio",
+   "region:us"
+  ],
+  "createdAt": "2026-06-12T14:28:53.000Z",
+  "siblings": [
+   {
+    "rfilename": ".gitattributes"
+   },
+   {
+    "rfilename": "README.md"
+   },
+   {
+    "rfilename": "app.py"
+   },
+   {
+    "rfilename": "examples/identity_A.jpg"
+   },
+   {
+    "rfilename": "examples/identity_B.jpg"
+   },
+   {
+    "rfilename": "examples/scene_A.jpg"
+   },
+   {
+    "rfilename": "examples/scene_B.jpg"
+   },
+   {
+    "rfilename": "requirements.txt"
+   }
+  ]
+ },
+ {
+  "_id": "696900d505ff633ee61be13e",
+  "id": "linoyts/FLUX.2-klein-relight-brush",
+  "author": "linoyts",
+  "cardData": {
+   "title": "FLUX.2 [Klein] Relight Brush",
+   "emoji": "\ud83d\udca1",
+   "colorFrom": "red",
+   "colorTo": "indigo",
+   "sdk": "gradio",
+   "sdk_version": "6.3.0",
+   "app_file": "app.py",
+   "pinned": true
+  },
+  "lastModified": "2026-01-30T13:12:23.000Z",
+  "likes": 80,
+  "private": false,
+  "sha": "5696dfa69ad0f1c571f751b5ed7091497c41dc70",
+  "subdomain": "linoyts-flux-2-klein-relight-brush",
+  "sdk": "gradio",
+  "tags": [
+   "gradio",
+   "region:us"
+  ],
+  "createdAt": "2026-01-15T14:59:33.000Z",
+  "siblings": [
+   {
+    "rfilename": ".gitattributes"
+   },
+   {
+    "rfilename": "README.md"
+   },
+   {
+    "rfilename": "app.py"
+   },
+   {
+    "rfilename": "bird.webp"
+   },
+   {
+    "rfilename": "cat_window.webp"
+   },
+   {
+    "rfilename": "diffusers.zip"
+   },
+   {
+    "rfilename": "optimization.py"
+   },
+   {
+    "rfilename": "person1.webp"
+   },
+   {
+    "rfilename": "requirements.txt"
+   },
+   {
+    "rfilename": "woman1.webp"
+   },
+   {
+    "rfilename": "woman2.webp"
+   }
+  ]
+ },
+ {
+  "_id": "6aae68736d32635a969311c6",
+  "id": "AST-1320/Qwen-2511-Plus-Flux.2-klein-9B",
+  "author": "AST-1320",
+  "cardData": {
+   "title": "Qwen 2511 + Flux.2 klein 9B",
+   "emoji": "\u2728\ufe0f",
+   "colorFrom": "blue",
+   "colorTo": "red",
+   "sdk": "gradio",
+   "sdk_version": "6.26.0",
+   "python_version": "3.12",
+   "app_file": "app.py",
+   "pinned": true,
+   "license": "apache-2.0",
+   "short_description": "Edit images with Qwen and enhance with FLUX.2 9B"
+  },
+  "lastModified": "2026-10-09T16:41:03.000Z",
+  "likes": 44,
+  "private": false,
+  "sha": "9d1076a90848e55e3bbdb2edea6639be45633e97",
+  "subdomain": "ast-1320-qwen-2511-plus-flux-2-klein-9b",
+  "sdk": "gradio",
+  "tags": [
+   "gradio",
+   "region:us"
+  ],
+  "createdAt": "2026-09-19T10:48:19.000Z",
+  "siblings": [
+   {
+    "rfilename": ".gitattributes"
+   },
+   {
+    "rfilename": "Age_classifier.py"
+   },
+   {
+    "rfilename": "README.md"
+   },
+   {
+    "rfilename": "app.py"
+   },
+   {
+    "rfilename": "optimization.py"
+   },
+   {
+    "rfilename": "packages.txt"
+   },
+   {
+    "rfilename": "qwenimage/__init__.py"
+   },
+   {
+    "rfilename": "qwenimage/pipeline_qwenimage_edit_plus.py"
+   },
+   {
+    "rfilename": "qwenimage/qwen_fa3_processor.py"
+   },
+   {
+    "rfilename": "qwenimage/transformer_qwenimage.py"
+   },
+   {
+    "rfilename": "requirements.txt"
+   },
+   {
+    "rfilename": "security.py"
+   },
+   {
+    "rfilename": "theme_lattice.css"
+   }
+  ]
+ },
+ {
+  "_id": "6a04a19fb131c289021acb2f",
+  "id": "Lakonik/AsymFLUX.2-klein",
+  "author": "Lakonik",
+  "cardData": {
+   "title": "AsymFLUX.2-klein Demo",
+   "emoji": "\ud83d\udcbb",
+   "colorFrom": "gray",
+   "colorTo": "pink",
+   "sdk": "gradio",
+   "sdk_version": "5.49.0",
+   "app_file": "app.py",
+   "pinned": false,
+   "license": "other",
+   "license_name": "flux-non-commercial-license",
+   "license_link": "LICENSE.md",
+   "short_description": "Generate realistic images in pixel space"
+  },
+  "lastModified": "2026-05-21T17:46:46.000Z",
+  "likes": 43,
+  "private": false,
+  "sha": "762bbe3b606dc64688af85bde90835cab7f7139f",
+  "subdomain": "lakonik-asymflux-2-klein",
+  "sdk": "gradio",
+  "tags": [
+   "gradio",
+   "region:us"
+  ],
+  "createdAt": "2026-05-13T16:06:55.000Z",
+  "siblings": [
+   {
+    "rfilename": ".gitattributes"
+   },
+   {
+    "rfilename": ".gitignore"
+   },
+   {
+    "rfilename": "LICENSE.md"
+   },
+   {
+    "rfilename": "README.md"
+   },
+   {
+    "rfilename": "app.py"
+   },
+   {
+    "rfilename": "lakonlab/__init__.py"
+   },
+   {
+    "rfilename": "lakonlab/models/__init__.py"
+   },
+   {
+    "rfilename": "lakonlab/models/architectures/__init__.py"
+   },
+   {
+    "rfilename": "lakonlab/models/architectures/asymflow/__init__.py"
+   },
+   {
+    "rfilename": "lakonlab/models/architectures/asymflow/asymflux2.py"
+   },
+   {
+    "rfilename": "lakonlab/models/architectures/asymflow/common.py"
+   },
+   {
+    "rfilename": "lakonlab/models/architectures/autoencoders/__init__.py"
+   },
+   {
+    "rfilename": "lakonlab/models/architectures/autoencoders/color_encoders.py"
+   },
+   {
+    "rfilename": "lakonlab/models/diffusions/__init__.py"
+   },
+   {
+    "rfilename": "lakonlab/models/diffusions/gaussian_flow.py"
+   },
+   {
+    "rfilename": "lakonlab/models/diffusions/schedulers/__init__.py"
+   },
+   {
+    "rfilename": "lakonlab/models/diffusions/schedulers/flow_adapter.py"
+   },
+   {
+    "rfilename": "lakonlab/pipelines/__init__.py"
+   },
+   {
+    "rfilename": "lakonlab/pipelines/pipeline_pixelflux2_klein.py"
+   },
+   {
+    "rfilename": "lakonlab/pipelines/prompt_rewriters/__init__.py"
+   },
+   {
+    "rfilename": "lakonlab/pipelines/prompt_rewriters/qwen3_vl.py"
+   },
+   {
+    "rfilename": "lakonlab/pipelines/prompt_rewriters/system_prompts/default_text_only.txt"
+   },
+   {
+    "rfilename": "lakonlab/pipelines/prompt_rewriters/system_prompts/default_with_images.txt"
+   },
+   {
+    "rfilename": "lakonlab/pipelines/utils.py"
+   },
+   {
+    "rfilename": "lakonlab/ui/__init__.py"
+   },
+   {
+    "rfilename": "lakonlab/ui/gradio/__init__.py"
+   },
+   {
+    "rfilename": "lakonlab/ui/gradio/create_text_to_img.py"
+   },
+   {
+    "rfilename": "lakonlab/ui/gradio/shared_opts.py"
+   },
+   {
+    "rfilename": "lakonlab/ui/gradio/style.css"
+   },
+   {
+    "rfilename": "requirements.txt"
+   }
+  ]
+ },
+ {
+  "_id": "6a47907581be029ad6210a09",
+  "id": "linoyts/sun-direction-flux2-klein",
+  "author": "linoyts",
+  "cardData": {
+   "title": "Sun Direction Flux Klein",
+   "emoji": "\u2600\ufe0f",
+   "colorFrom": "yellow",
+   "colorTo": "indigo",
+   "sdk": "gradio",
+   "sdk_version": "6.19.0",
+   "app_file": "app.py",
+   "pinned": false,
+   "hardware": "zero-a10g",
+   "license": "apache-2.0",
+   "short_description": "Drag the sun around a 3D ball to relight outdoor photos",
+   "models": [
+    "black-forest-labs/FLUX.2-klein-9B",
+    "eric-venti-seeds/Sun-Direction-Lora-Flux2Klein9B"
+   ]
+  },
+  "lastModified": "2026-07-03T11:53:07.000Z",
+  "likes": 34,
+  "private": false,
+  "sha": "77a6a3e1c628b09915952a277581e23f45775445",
+  "subdomain": "linoyts-sun-direction-flux2-klein",
+  "sdk": "gradio",
+  "tags": [
+   "gradio",
+   "region:us"
+  ],
+  "createdAt": "2026-07-03T10:35:33.000Z",
+  "siblings": [
+   {
+    "rfilename": ".gitattributes"
+   },
+   {
+    "rfilename": "README.md"
+   },
+   {
+    "rfilename": "app.py"
+   },
+   {
+    "rfilename": "examples/landscape.jpg"
+   },
+   {
+    "rfilename": "examples/man_beach.jpg"
+   },
+   {
+    "rfilename": "examples/tent.jpg"
+   },
+   {
+    "rfilename": "requirements.txt"
+   }
+  ]
+ },
+ {
+  "_id": "693259da989e4d0e56c939e1",
+  "id": "prithivMLmods/Flux.2-Klein-KV-Edit-Consistency-Ultra-Fast",
+  "author": "prithivMLmods",
+  "cardData": {
+   "title": "Flux.2-Klein-KV-Edit-Consistency-Ultra-Fast",
+   "emoji": "\ud83e\udd17",
+   "colorFrom": "red",
+   "colorTo": "yellow",
+   "sdk": "gradio",
+   "sdk_version": "6.25.0",
+   "app_file": "app.py",
+   "pinned": true,
+   "license": "apache-2.0",
+   "short_description": "Fast Editing with Robust Consistency"
+  },
+  "lastModified": "2026-08-23T06:31:36.000Z",
+  "likes": 29,
+  "private": false,
+  "sha": "3e4f8e2e92e55b9f910c166bed77a45a038c04aa",
+  "subdomain": "prithivmlmods-flux-2-klein-kv-edit-consistency-u-75d379c",
+  "sdk": "gradio",
+  "tags": [
+   "gradio",
+   "mcp-server",
+   "region:us"
+  ],
+  "createdAt": "2025-12-05T04:04:42.000Z",
+  "siblings": [
+   {
+    "rfilename": ".gitattributes"
+   },
+   {
+    "rfilename": "README.md"
+   },
+   {
+    "rfilename": "app.py"
+   },
+   {
+    "rfilename": "examples/1.jpg"
+   },
+   {
+    "rfilename": "examples/2.jpg"
+   },
+   {
+    "rfilename": "examples/3.jpg"
+   },
+   {
+    "rfilename": "examples/4.jpg"
+   },
+   {
+    "rfilename": "flux2_klein_kv.patch"
+   },
+   {
+    "rfilename": "index.html"
+   },
+   {
+    "rfilename": "pre-requirements.txt"
+   },
+   {
+    "rfilename": "requirements.txt"
+   }
+  ]
+ },
+ {
+  "_id": "69992245dbc5cf85e4a20f14",
+  "id": "Onise/FLUX.2-Klein-LoRA-Studio",
+  "author": "Onise",
+  "cardData": {
+   "title": "FLUX.2 Klein LoRA Studio",
+   "emoji": "\ud83e\udd5a",
+   "colorFrom": "indigo",
+   "colorTo": "gray",
+   "sdk": "gradio",
+   "sdk_version": "6.6.0",
+   "app_file": "app.py",
+   "pinned": true,
+   "license": "apache-2.0",
+   "short_description": "Demo of a Collection of FLUX.2-Klein Model LoRAs"
+  },
+  "lastModified": "2026-04-15T11:12:10.000Z",
+  "likes": 24,
+  "private": false,
+  "sha": "8405b64dc9b2ea2c0ffcad4e8a71c57637adcc99",
+  "subdomain": "onise-flux-2-klein-lora-studio",
+  "sdk": "gradio",
+  "tags": [
+   "gradio",
+   "mcp-server",
+   "region:us"
+  ],
+  "createdAt": "2026-02-21T03:11:01.000Z",
+  "siblings": [
+   {
+    "rfilename": ".gitattributes"
+   },
+   {
+    "rfilename": "README.md"
+   },
+   {
+    "rfilename": "app.py"
+   },
+

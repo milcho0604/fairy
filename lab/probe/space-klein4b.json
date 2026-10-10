@@ -1,0 +1,104 @@
+{
+ "_id": "69657cc05702d30a93a2276b",
+ "id": "black-forest-labs/FLUX.2-klein-4B",
+ "sdk": "gradio",
+ "likes": 238,
+ "tags": [
+  "gradio",
+  "region:us"
+ ],
+ "private": false,
+ "author": "black-forest-labs",
+ "sha": "0207e56c7ec73975b6ebeadfaf88c8d338d61a8d",
+ "lastModified": "2026-02-09T09:28:25.000Z",
+ "cardData": {
+  "title": "FLUX.2 [Klein] 4B",
+  "emoji": "\ud83d\udcbb",
+  "colorFrom": "blue",
+  "colorTo": "gray",
+  "sdk": "gradio",
+  "sdk_version": "6.3.0",
+  "app_file": "app.py",
+  "pinned": true
+ },
+ "subdomain": "black-forest-labs-flux-2-klein-4b",
+ "gated": false,
+ "disabled": false,
+ "host": "https://black-forest-labs-flux-2-klein-4b.hf.space",
+ "models": [
+  "baidu/ERNIE-4.5-VL-424B-A47B-Base-PT",
+  "black-forest-labs/FLUX.2-klein-4B",
+  "black-forest-labs/FLUX.2-klein-base-4B"
+ ],
+ "region": "us",
+ "siblings": [
+  {
+   "rfilename": ".gitattributes"
+  },
+  {
+   "rfilename": "README.md"
+  },
+  {
+   "rfilename": "app.py"
+  },
+  {
+   "rfilename": "bird.webp"
+  },
+  {
+   "rfilename": "cat_window.webp"
+  },
+  {
+   "rfilename": "diffusers.zip"
+  },
+  {
+   "rfilename": "optimization.py"
+  },
+  {
+   "rfilename": "person1.webp"
+  },
+  {
+   "rfilename": "requirements.txt"
+  },
+  {
+   "rfilename": "woman1.webp"
+  },
+  {
+   "rfilename": "woman2.webp"
+  }
+ ],
+ "createdAt": "2026-01-12T22:59:12.000Z",
+ "usedStorage": 11078756,
+ "runtime": {
+  "stage": "RUNNING",
+  "hardware": {
+   "current": "zero-a10g",
+   "requested": "zero-a10g"
+  },
+  "gcTimeout": 172800,
+  "replicas": {
+   "current": 1,
+   "requested": 1
+  },
+  "devMode": false,
+  "domains": [
+   {
+    "domain": "multimodalart-flux-2-klein.hf.space",
+    "stage": "READY"
+   },
+   {
+    "domain": "diffusers-internal-dev-flux-2-klein.hf.space",
+    "stage": "READY"
+   },
+   {
+    "domain": "black-forest-labs-flux-2-klein-9b.hf.space",
+    "stage": "READY"
+   },
+   {
+    "domain": "black-forest-labs-flux-2-klein-4b.hf.space",
+    "stage": "READY"
+   }
+  ],
+  "sha": "0207e56c7ec73975b6ebeadfaf88c8d338d61a8d",
+  "pySpacesVersion": "0.49.3"
+ }
+}
