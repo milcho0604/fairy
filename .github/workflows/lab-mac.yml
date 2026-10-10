@@ -23,24 +23,24 @@ jobs:
           /usr/bin/time -p uv tool install --python 3.12 mflux 2>&1 | tail -5 | tee lab/out-mac/install.txt
           ls ~/.local/bin | grep mflux | tee -a lab/out-mac/install.txt
           du -sh ~/.local/share/uv 2>/dev/null | tee -a lab/out-mac/install.txt
-      - name: 미리 4비트로 줄인 모델로 그리기
+      - name: 미리 4비트로 줄인 모델, 608x1024, 낮은 메모리
         continue-on-error: true
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           P="$(cat lab/mac-prompt.txt)"
           /usr/bin/time -l mflux-generate-flux2-edit --model ar9av/FLUX.2-klein-4B-mflux-4bit --base-model flux2-klein-4b \
-            --image-paths lab/in_cat.png --prompt "$P" --steps 4 --guidance 1.0 --width 784 --height 1328 --seed 7 \
+            --image-paths lab/in_cat.png --prompt "$P" --steps 4 --guidance 1.0 --width 608 --height 1024 --seed 7 --low-ram \
             --output lab/out-mac/cat-pre4.png > lab/out-mac/pre4.log 2>&1
           tail -40 lab/out-mac/pre4.log
           du -sh ~/.cache/huggingface 2>/dev/null | tee -a lab/out-mac/pre4.log
-      - name: 원본에서 4비트로 그리기 (낮은 메모리)
+      - name: 미리 줄인 모델, 작은 크기, 캐시 상한
         continue-on-error: true
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           df -h / | tee lab/out-mac/df2.txt
           P="$(cat lab/mac-prompt.txt)"
-          /usr/bin/time -l mflux-generate-flux2-edit --model flux2-klein-4b --quantize 4 --low-ram \
-            --image-paths lab/in_poodle.png --prompt "$P" --steps 4 --guidance 1.0 --width 784 --height 1328 --seed 7 \
+          /usr/bin/time -l mflux-generate-flux2-edit --model ar9av/FLUX.2-klein-4B-mflux-4bit --base-model flux2-klein-4b \
+            --image-paths lab/in_poodle.png --prompt "$P" --steps 4 --guidance 1.0 --width 512 --height 864 --seed 7 --mlx-cache-limit-gb 4 \
             --output lab/out-mac/poodle-q4.png > lab/out-mac/q4.log 2>&1
           tail -40 lab/out-mac/q4.log
           du -sh ~/.cache/huggingface 2>/dev/null | tee -a lab/out-mac/q4.log
