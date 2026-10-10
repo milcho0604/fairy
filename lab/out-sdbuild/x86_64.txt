@@ -1,0 +1,15 @@
+sdsrc/build/bin/sd-cli: Mach-O 64-bit executable x86_64
+sdsrc/build/bin/sd-cli:
+	/System/Library/Frameworks/Accelerate.framework/Versions/A/Accelerate (compatibility version 1.0.0, current version 4.0.0)
+	/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1345.120.2)
+	/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation (compatibility version 300.0.0, current version 2503.1.0)
+	/System/Library/Frameworks/Metal.framework/Versions/A/Metal (compatibility version 1.0.0, current version 343.19.0)
+	/System/Library/Frameworks/MetalKit.framework/Versions/A/MetalKit (compatibility version 1.0.0, current version 165.2.0)
+	/usr/lib/libc++.1.dylib (compatibility version 1.0.0, current version 1700.255.5)
+	/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation (compatibility version 150.0.0, current version 2503.1.0)
+	/usr/lib/libobjc.A.dylib (compatibility version 1.0.0, current version 228.0.0)
+-rwxr-xr-x  1 runner  staff  43788312 Oct 10 09:07 sdsrc/build/bin/sd-cli
+7b9a7ad3180e2dcd2d05988d1af7f2e7badf7f21381ce956b3953fde39c666b8  sdsrc/build/bin/sd-cli
+stable-diffusion.cpp version master-951-f89d9b1, commit f89d9b1
+Usage: sdsrc/build/bin/sd-cli [options]
+
