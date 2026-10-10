@@ -30,6 +30,7 @@ import { announceStoreTrouble, openStore } from './db.ts';
 import { createDiary } from './diary.ts';
 import { confineTestDisplay } from './focus.ts';
 import { createFriends } from './friends.ts';
+import { createGcal } from './gcal.ts';
 import { createHouseRest } from './house-rest.ts';
 import { initLang } from './lang.ts';
 import { stopLocalDrawNow, sweepLocalDraw } from './local-draw.ts';
@@ -319,8 +320,19 @@ ready
     sysMonitor.setKind(runnerKindNow());
     sysMonitor.setEnabled(settings.get().sysMonitor);
     // ---- 할 일과 코인 (2단계) ----
-    const { store, stats, notes, events, life, shop, achievements, vacuumInto, dataVersion, trouble } =
-      openStore(log);
+    const {
+      store,
+      stats,
+      notes,
+      events,
+      gcalLinks,
+      life,
+      shop,
+      achievements,
+      vacuumInto,
+      dataVersion,
+      trouble,
+    } = openStore(log);
     // 저장 파일이 깨졌거나 새 판이었으면 펫이 화면에 뜬 뒤 알린다 (버그잡이 6차)
     if (trouble)
       pet.win.webContents.once('did-finish-load', () =>
@@ -588,6 +600,8 @@ ready
         const w = settingsWindow.window;
         return !!w && !w.isDestroyed() && w.isVisible();
       },
+      // 구글 캘린더로 보낸 짝꿍 일정이 같은 캘린더를 가져올 때 되돌아오면 거른다 (둘씩 보이지 않게)
+      skipUids: () => gcalLinks.sentUids(),
       log,
     });
     function openCalendarSettings(a: string | undefined) {
@@ -604,6 +618,7 @@ ready
       log('db', '다른 곳에서 바뀜 (MCP)');
       panel.refresh();
       planner.check();
+      gcal.kick();
     }, 3000).unref();
     watchBetaStats(stats, () => pet.isHidden('user'), log);
     // ---- 펫 경험: 끝낸 일 축하, 만난 날 기념, 혼잣말 기억 (main/companion.ts) ----
@@ -674,7 +689,10 @@ ready
       startFocus: (minutes, todoId) => planner.startFocus(minutes, todoId),
       focusMin: () => settings.get().focusMin,
       stopFocus: () => planner.stopFocus(),
-      onEventsChanged: () => planner.check(),
+      onEventsChanged: () => {
+        planner.check();
+        gcal.kick();
+      },
       askAi: (prompt) => chat.askInWindow(prompt, pet.bounds()),
       askOnce: (text, system) => chat.textOnce(text, system),
       aiLocked: () => updates.locked(),
@@ -916,6 +934,27 @@ ready
         refreshMcp: () => refreshMcpServers(log),
       },
     });
+    // ---- 구글 캘린더에 쓰기 (6단계): 짝꿍 일정을 구글로. 설정 창에서 연결한다 ----
+    const gcal = createGcal({
+      store: gcalLinks,
+      isSettings: (wc) => {
+        const w = settingsWindow.window;
+        return !!w && !w.isDestroyed() && w.webContents === wc;
+      },
+      target: () => settingsWindow.window,
+      onLost: () => {
+        void pet
+          .say({
+            kind: 'schedule',
+            text: t('gcal.lost'),
+            buttons: [{ id: 'settings', label: t('pet.calendarSettings') }],
+            ttlMs: 30_000,
+            hold: { missedMsgs: [{ key: 'gcal.lost' }], onAction: openCalendarSettings },
+          })
+          .then(openCalendarSettings);
+      },
+      log,
+    });
     settings.onChange((next, prev) => {
       // 단축키를 다 본다 (대화, 같이 보기 키를 바꿔도 다시 켜야 반영되던 문제, 리뷰 HIGH)
       if (shortcutsChanged(next.shortcuts, prev.shortcuts)) {
@@ -1071,6 +1110,7 @@ ready
           trayImageOf,
           settings,
           settingsWindow,
+          gcal,
           panel,
           store,
           stats,

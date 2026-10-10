@@ -252,7 +252,7 @@ export const ko = {
   'settings.calendar': '캘린더 가져오기',
   'settings.cal.url': '캘린더 주소 (.ics)',
   'settings.cal.hint':
-    '구글 캘린더: 설정 > 내 캘린더 > 캘린더 통합 > "iCal 형식의 비공개 주소"를 붙여 넣어. 30분마다 앞으로 60일 일정을 가져와서 펫이 알려 줘. 이 주소는 이 컴퓨터에만 둬. (읽기만 하고, 짝꿍에서 넣은 일정은 구글로 가지 않아.)',
+    '구글 캘린더: 설정 > 내 캘린더 > 캘린더 통합 > "iCal 형식의 비공개 주소"를 붙여 넣어. 30분마다 앞으로 60일 일정을 가져와서 펫이 알려 줘. 이 주소는 이 컴퓨터에만 둬. (읽기만 해. 짝꿍에서 넣은 일정을 구글로 보내려면 아래 "구글 캘린더로 보내기"를 켜.)',
   'settings.cal.fetch': '지금 가져오기',
   'settings.cal.clear': '지우기',
 
@@ -617,7 +617,7 @@ export const en: Translation<typeof ko> = {
   'settings.calendar': 'Import calendar',
   'settings.cal.url': 'Calendar address (.ics)',
   'settings.cal.hint':
-    'Google Calendar: Settings > My calendars > Integrate calendar > paste the "Secret address in iCal format". Every 30 minutes it fetches the next 60 days and your pet reminds you. The address stays on this computer. (Read only. Events you add in Jjakkung are not sent to Google.)',
+    'Google Calendar: Settings > My calendars > Integrate calendar > paste the "Secret address in iCal format". Every 30 minutes it fetches the next 60 days and your pet reminds you. The address stays on this computer. (Read only. To send events you add in Jjakkung to Google, use "Send to Google Calendar" below.)',
   'settings.cal.fetch': 'Fetch now',
   'settings.cal.clear': 'Clear',
 

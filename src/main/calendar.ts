@@ -30,6 +30,8 @@ export function watchCalendar(o: {
   onBroken?: () => void;
   /** 지금은 알리지 않는다 (설정 창이 열려 있으면 거기서 결과를 이미 본다) */
   quiet?: () => boolean;
+  /** 거를 UID: 짝꿍이 구글 캘린더로 보낸 일정이 같은 캘린더를 읽을 때 되돌아온 것 (gcal.ts) */
+  skipUids?: () => ReadonlySet<string>;
   log: (tag: string, ...rest: unknown[]) => void;
 }) {
   let last = '';
@@ -79,7 +81,8 @@ export function watchCalendar(o: {
     try {
       const now = Date.now();
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const list = parseIcs(text, tz, now - BACK_MS, now + AHEAD_MS);
+      const skip = o.skipUids?.();
+      const list = parseIcs(text, tz, now - BACK_MS, now + AHEAD_MS).filter((e) => !skip?.has(e.uid));
       const r = o.events.syncExternal('ics', list, now - BACK_MS, now + AHEAD_MS, now);
       o.log('calendar', '맞춤', JSON.stringify(r));
       if (r.added || r.updated || r.removed) o.onChanged();

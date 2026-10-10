@@ -4,6 +4,7 @@ import type { Activity } from '../shared/behavior.ts';
 import type { BubbleLayout } from '../shared/bubble-layout.ts';
 import type { ChatState } from '../shared/chat-state.ts';
 import type { Gaze } from '../shared/gaze.ts';
+import { GCAL, type GcalBridge, type GcalStatus } from '../shared/gcal.ts';
 import type { Point } from '../shared/geometry.ts';
 import type { HouseSprites } from '../shared/house-room.ts';
 import {
@@ -214,6 +215,20 @@ if (kind === 'settings') {
     },
   };
   contextBridge.exposeInMainWorld('jjakkungSettings', bridge);
+  // 구글 캘린더에 쓰기 (6단계): 상태만 오간다. 토큰은 메인에만 있다
+  const gcal: GcalBridge = {
+    status: () => ipcRenderer.invoke(GCAL.status),
+    connect: () => ipcRenderer.invoke(GCAL.connect),
+    cancel: () => ipcRenderer.send(GCAL.cancel),
+    disconnect: () => ipcRenderer.invoke(GCAL.disconnect),
+    setPush: (on: boolean) => ipcRenderer.invoke(GCAL.setPush, on),
+    setCalendar: (id: string) => ipcRenderer.invoke(GCAL.setCalendar, id),
+    syncNow: () => ipcRenderer.invoke(GCAL.syncNow),
+    onChanged: (listener) => {
+      ipcRenderer.on(GCAL.changed, (_e, s: GcalStatus) => listener(s));
+    },
+  };
+  contextBridge.exposeInMainWorld('jjakkungGcal', gcal);
 }
 
 // 패널과 빠른 입력 창은 같은 기능을 쓴다.

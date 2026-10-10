@@ -59,6 +59,9 @@ jobs:
         env:
           JJ_MAC_SIGN_P12: ${{ secrets.JJ_MAC_SIGN_P12 }}
           JJ_MAC_SIGN_PASSWORD: ${{ secrets.JJ_MAC_SIGN_PASSWORD }}
+          # 구글 캘린더에 쓰기 (docs/google-calendar.md). 없으면 그 기능만 숨는다
+          JJ_GOOGLE_CLIENT_ID: ${{ secrets.JJ_GOOGLE_CLIENT_ID }}
+          JJ_GOOGLE_CLIENT_SECRET: ${{ secrets.JJ_GOOGLE_CLIENT_SECRET }}
       - uses: actions/upload-artifact@v7
         with:
           name: jjakkung-${{ runner.os }}

@@ -4,6 +4,11 @@ import { defineConfig } from 'electron-vite';
 
 export default defineConfig({
   main: {
+    // 구글 캘린더에 쓰기 (docs/google-calendar.md): 빌드할 때 환경 변수로 OAuth 클라이언트를 넣는다. 없으면 빈 글 (기능이 숨는다)
+    define: {
+      __JJ_GOOGLE_CLIENT_ID__: JSON.stringify(process.env.JJ_GOOGLE_CLIENT_ID ?? ''),
+      __JJ_GOOGLE_CLIENT_SECRET__: JSON.stringify(process.env.JJ_GOOGLE_CLIENT_SECRET ?? ''),
+    },
     // 펫 MCP 서버(v1)를 따로 낸다. AI 도구가 짝꿍 실행 파일을 Node 로 돌려 이 파일을 연다.
     build: {
       rollupOptions: {

@@ -5,6 +5,7 @@ import { AchievementStore } from '../shared/achieve.ts';
 import { StatStore } from '../shared/beta-stats.ts';
 import type { Db } from '../shared/db-schema.ts';
 import { EventStore } from '../shared/event-store.ts';
+import { GcalStore } from '../shared/gcal-store.ts';
 import { locale, t } from '../shared/i18n/index.ts';
 import type { MissedMsg } from '../shared/missed-msg.ts';
 import { NoteStore } from '../shared/note-store.ts';
@@ -25,6 +26,8 @@ export function openStore(log: (tag: string, ...rest: unknown[]) => void): {
   stats: StatStore;
   notes: NoteStore;
   events: EventStore;
+  /** 구글 캘린더로 보낸 일정 (6단계 쓰기) */
+  gcalLinks: GcalStore;
   life: PetLife;
   shop: ItemStore;
   achievements: AchievementStore;
@@ -47,11 +50,13 @@ export function openStore(log: (tag: string, ...rest: unknown[]) => void): {
   });
   const d = db as unknown as Db;
   const store = new TodoStore(d);
+  const events = new EventStore(d);
   return {
     store,
     stats: new StatStore(d),
     notes: new NoteStore(d),
-    events: new EventStore(d),
+    events,
+    gcalLinks: new GcalStore(d, events),
     life: new PetLife(d),
     // 메모리에 열었으면(새 판, 못 엶) 비어 있는 메모리 대신 디스크의 원래 파일을 WAL 까지 합쳐 한 파일로 복사한다
     vacuumInto: (target: string) => {

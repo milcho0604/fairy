@@ -10,6 +10,7 @@ import * as companion from './companion.ts';
 import * as diary from './diary.ts';
 import * as ease from './ease.ts';
 import * as feedback from './feedback.ts';
+import * as gcal from './gcal.ts';
 import * as idle from './idle.ts';
 import * as main from './main.ts';
 import * as maker from './maker.ts';
@@ -51,6 +52,7 @@ export const ko = {
   ...companion.ko,
   ...feedback.ko,
   ...tabs.ko,
+  ...gcal.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -78,4 +80,5 @@ export const en: Translation<typeof ko> = {
   ...companion.en,
   ...feedback.en,
   ...tabs.en,
+  ...gcal.en,
 };

@@ -166,6 +166,17 @@ export const MIGRATIONS: readonly string[] = [
   );
   create index todo_step_todo on todo_step(todo_id, ord);
   `,
+  // 10판: 구글 캘린더에 쓰기 (짝꿍에서 넣은 일정을 구글로, shared/gcal.ts). 짝꿍이 넣은 일정(source = local)만 보낸다.
+  // google_id 는 짝꿍이 정해 보내는 구글 일정 id (다시 보내도 겹치지 않게 미리 정한다). google_cal 은 보낸 캘린더.
+  // google_hash 는 마지막으로 보낸 내용의 지문이라 바뀐 것만 다시 보내고, 'deleted' 면 구글에서도 지웠다.
+  // google_uid 는 구글이 준 iCalUID: 캘린더 가져오기(.ics)로 되돌아온 같은 일정을 거른다
+  `
+  alter table event add column google_id text;
+  alter table event add column google_cal text;
+  alter table event add column google_hash text;
+  alter table event add column google_uid text;
+  create index event_google on event(google_id) where google_id is not null;
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

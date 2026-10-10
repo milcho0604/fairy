@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { type ChatterLevel, LEVEL_LABEL, MAX_PER_HOUR } from '../../../../shared/chatter.ts';
 import { t } from '../../../../shared/i18n/index.ts';
 import { RoutinePicker } from '../../RoutinePicker.tsx';
+import { GoogleCalendarBox } from '../GoogleCalendarBox.tsx';
 import { Section, type TabProps, Toggle } from '../ui.tsx';
 
 const chatterHint = (level: ChatterLevel): string =>
@@ -88,6 +89,7 @@ export function AssistTab({ snap, update, flash }: TabProps) {
           onMsg={flash}
         />
       </Section>
+      <GoogleCalendarBox onMsg={flash} />
     </>
   );
 }
