@@ -27,6 +27,17 @@ function fakeGoogle() {
     const f = forced.shift();
     if (f instanceof Error) throw f;
     if (f) return f;
+    const mv = /^\/calendars\/([^/]+)\/events\/([^/]+)\/move\?destination=(.+)$/.exec(path);
+    if (mv) {
+      const from = cals.get(decodeURIComponent(mv[1] ?? ''));
+      const to = cals.get(decodeURIComponent(mv[3] ?? ''));
+      const id = decodeURIComponent(mv[2] ?? '');
+      const ev = from?.get(id);
+      if (!from || !to || !ev) return res(404, {});
+      from.delete(id);
+      to.set(id, ev);
+      return res(200, ev);
+    }
     const m = /^\/calendars\/([^/]+)\/events(?:\/([^/]+))?$/.exec(path);
     const cal = m && cals.get(decodeURIComponent(m[1] ?? ''));
     if (!m || !cal) return res(404, { error: { code: 404 } });
@@ -208,4 +219,39 @@ test('종일 일정은 날짜로 간다', async () => {
   await pass();
   const ev = g.cals.get('primary')?.get('jjk00001');
   assert.deepEqual([ev?.start, ev?.end], [{ date: '2026-10-12' }, { date: '2026-10-14' }]);
+});
+
+test('보낼 캘린더를 바꾸면 보낸 일정을 새 캘린더로 옮긴다. 옛 캘린더를 못 쓰면 거기 일정 지우기는 넘어간다', async () => {
+  const { events, g, pass } = setup();
+  g.cals.set('work@group.calendar.google.com', new Map());
+  const a = events.add({ title: '회의', startAt: NOW + 2 * HOUR }, NOW);
+  const b = events.add({ title: '점심', startAt: NOW + 3 * HOUR }, NOW);
+  await pass();
+  assert.equal(g.cals.get('primary')?.size, 2);
+  const r = await pass('work@group.calendar.google.com');
+  assert.equal(r.stop, null);
+  assert.equal(g.cals.get('primary')?.size, 0);
+  assert.equal(g.cals.get('work@group.calendar.google.com')?.size, 2);
+  // 또 돌려도 옮기지 않는다
+  g.calls.length = 0;
+  await pass('work@group.calendar.google.com');
+  assert.deepEqual(g.calls, []);
+  void [a, b];
+});
+
+test('옛 캘린더에 남은 일정을 지울 때 그 캘린더를 못 쓰면(403) 지운 것으로 치고 멈추지 않는다', async () => {
+  const { events, g, pass, store } = setup();
+  const c = events.add({ title: '옛것', startAt: NOW + 4 * HOUR }, NOW);
+  await pass('primary');
+  events.remove(c.id, NOW);
+  g.forced.push(g.res(403, { error: { code: 403, errors: [{ reason: 'forbidden' }] } }));
+  const r = await pass('work@group.calendar.google.com');
+  assert.equal(r.stop, null);
+  assert.deepEqual(store.pending(NOW, 'work@group.calendar.google.com', 'Asia/Seoul'), []);
+  // 지금 고른 캘린더에서 403 이면 그대로 멈춘다
+  const d = events.add({ title: '새것', startAt: NOW + 5 * HOUR }, NOW);
+  await pass('primary');
+  events.remove(d.id, NOW);
+  g.forced.push(g.res(403, { error: { code: 403, errors: [{ reason: 'forbidden' }] } }));
+  assert.equal((await pass('primary')).stop, 'calendar');
 });

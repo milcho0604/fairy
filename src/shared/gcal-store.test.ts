@@ -66,16 +66,32 @@ test('보낸 뒤: 안 바뀌면 다시 안 보내고, 고치면 그 캘린더에
   links.markSent(e.id, op.hash, 'jjkabc12345@google.com');
   assert.deepEqual(links.pending(NOW, 'primary', TZ), []);
 
-  // 캘린더를 바꿔도 이미 보낸 것은 원래 캘린더에서 고친다
+  // 보낼 캘린더를 바꾸면 이미 보낸 것은 원래 캘린더에서 새 캘린더로 옮긴다 (안 바뀌었어도)
+  const [move] = links.pending(NOW, 'work@group.calendar.google.com', TZ);
+  assert.ok(move?.kind === 'upsert');
+  assert.deepEqual(
+    [move.googleId, move.confirmed, move.calendarId, move.moveTo],
+    ['jjkabc12345', true, 'primary', 'work@group.calendar.google.com'],
+  );
+  // 고른 캘린더 그대로면 원래 캘린더에서 고친다
   events.update(e.id, { title: '회의 (장소 바뀜)' }, NOW);
-  const [edit] = links.pending(NOW, 'work@group.calendar.google.com', TZ);
+  const [edit] = links.pending(NOW, 'primary', TZ);
   assert.ok(edit?.kind === 'upsert');
-  assert.deepEqual([edit.googleId, edit.confirmed, edit.calendarId], ['jjkabc12345', true, 'primary']);
+  assert.deepEqual(
+    [edit.googleId, edit.confirmed, edit.calendarId, edit.moveTo],
+    ['jjkabc12345', true, 'primary', undefined],
+  );
   links.markSent(e.id, edit.hash, null);
 
   events.remove(e.id, NOW);
   const [del] = links.pending(NOW, 'primary', TZ);
-  assert.deepEqual(del, { kind: 'delete', eventId: e.id, googleId: 'jjkabc12345', calendarId: 'primary' });
+  assert.deepEqual(del, {
+    kind: 'delete',
+    eventId: e.id,
+    googleId: 'jjkabc12345',
+    calendarId: 'primary',
+    stale: false,
+  });
   links.markDeleted(e.id);
   assert.deepEqual(links.pending(NOW, 'primary', TZ), []);
 
@@ -139,4 +155,35 @@ test('sentUids: 보낸 일정의 iCalUID (가져오기가 거른다)', () => {
     'jjkbbbbbbbb@google.com',
   ]);
   assert.equal(GCAL_DELETED, 'deleted');
+});
+
+test('이미 보낸 일정이 200개 넘어도 그 뒤 새 일정을 보낸다 (보낸 것이 늘 앞자리를 차지하지 않게)', () => {
+  const { events, links } = fresh();
+  for (let i = 0; i < 205; i++) events.add({ title: `일정 ${i}`, startAt: NOW + (i + 1) * HOUR }, NOW);
+  const first = links.pending(NOW, 'primary', TZ);
+  assert.equal(first.length, 200);
+  for (const op of first) {
+    if (op.kind !== 'upsert') continue;
+    links.assignId(op.eventId, `jjk${String(op.eventId).padStart(8, '0')}`, 'primary');
+    links.markSent(op.eventId, op.hash, null);
+  }
+  // 아직 확인 전(uid 없음)이라도 지문이 같으면 다시 넣기부터 하므로, 확인된 것으로 맞춘다
+  for (const op of first) if (op.kind === 'upsert') links.markSent(op.eventId, op.hash, `u${op.eventId}`);
+  assert.equal(links.pending(NOW, 'primary', TZ).length, 5);
+  const late = events.add({ title: '새 일정', startAt: NOW + 900 * HOUR }, NOW);
+  assert.ok(links.pending(NOW, 'primary', TZ).some((op) => op.eventId === late.id));
+});
+
+test('보낸 기록 되돌리기(연결 끊기, 다른 계정, 백업): id 는 두고 다시 넣기부터', () => {
+  const { events, links } = fresh();
+  const e = events.add({ title: '회의', startAt: NOW + HOUR }, NOW);
+  const [op] = links.pending(NOW, 'primary', TZ);
+  assert.ok(op?.kind === 'upsert');
+  links.assignId(e.id, 'jjkabc12345', 'primary');
+  links.markSent(e.id, op.hash, 'uid@google.com');
+  assert.deepEqual(links.pending(NOW, 'primary', TZ), []);
+  links.resetSent();
+  const [again] = links.pending(NOW, 'primary', TZ);
+  assert.ok(again?.kind === 'upsert');
+  assert.deepEqual([again.googleId, again.confirmed], ['jjkabc12345', false]);
 });

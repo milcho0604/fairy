@@ -3,7 +3,7 @@
 // 토큰은 google-token.json(0600)에만 두고 설정, 백업(backup.ts FILES 에 없다), 기록, 창에는 넘기지 않는다 (hf-token.ts 와 같다).
 // 켜고 끄기와 캘린더 id 는 비밀이 아니라 google-calendar.json 에 둔다.
 import { randomBytes } from 'node:crypto';
-import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   app,
@@ -92,11 +92,17 @@ const token = {
       return;
     }
     mkdirSync(app.getPath('userData'), { recursive: true });
-    writeFileSync(file, JSON.stringify({ refreshToken }), { mode: 0o600 });
-    // mode 는 새로 만들 때만 먹는다. 이미 있던 파일도 나만 읽게
-    chmodSync(file, 0o600);
+    // 임시 파일에 쓰고 바꿔 끼운다 (쓰다 꺼져 반쪽 파일이 남으면 말없이 연결이 끊긴 것처럼 보였다).
+    // 임시 파일부터 나만 읽게 만든다
+    const tmp = `${file}.${process.pid}.tmp`;
+    writeFileSync(tmp, JSON.stringify({ refreshToken }), { mode: 0o600 });
+    chmodSync(tmp, 0o600);
+    renameSync(tmp, file);
   },
 };
+
+/** 백업을 가져왔다는 표시 (backup.ts applyPendingImport 가 남긴다) */
+export const GCAL_RESET_FILE = 'google-calendar-reset';
 
 const tz = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
@@ -157,6 +163,8 @@ export function createGcal(o: {
     problem = 'expired';
     pending = 0;
     backoff.clear();
+    // 다시 연결하는 계정이 다를 수 있다: 보낸 기록을 "확인 전"으로 (같은 계정이면 겹치지 않고, 다른 계정이면 새로 들어간다)
+    o.store.resetSent();
     broadcast();
     o.onLost();
   }
@@ -221,16 +229,17 @@ export function createGcal(o: {
     if (r.again) again = true;
     if (r.sent) o.log('gcal', '보냄', r.sent);
     if (r.stop === 'scope') {
-      // 허락에서 캘린더 권한이 빠졌다: 다시 연결해야 한다
+      // 허락에서 캘린더 권한이 빠졌다: 다시 연결해야 한다. 남은 권한도 구글에서 거둔다
+      const refresh = token.get();
       token.set(null);
       access = null;
+      o.store.resetSent();
+      if (refresh) void revokeToken(f, refresh).catch(() => {});
     }
+    // 보낸 것이 있으면 적는다 (5분마다 파일을 쓰지 않게. 구글이 받지 않는 일정 하나가 기다려도 멈추지 않게)
+    if (r.sent) setPrefs({ lastSyncAt: Date.now() });
     if (r.stop) problem = r.stop;
-    else if (r.waiting === 0) {
-      if (problem === 'offline' || problem === 'calendar') problem = null;
-      // 보낸 것이 있을 때만 적는다 (5분마다 파일을 쓰지 않게)
-      if (r.sent) setPrefs({ lastSyncAt: Date.now() });
-    }
+    else if (r.waiting === 0 && (problem === 'offline' || problem === 'calendar')) problem = null;
   }
 
   async function run(): Promise<void> {
@@ -354,6 +363,8 @@ export function createGcal(o: {
       await revokeToken(f, refresh)
         .then((ok) => o.log('gcal', '권한 거둠', ok))
         .catch((err) => o.log('gcal', '권한 거두기 실패', err instanceof Error ? err.name : 'error'));
+    // 다음에 다른 계정으로 이어도 빠짐없이 들어가게 보낸 기록을 "확인 전"으로
+    o.store.resetSent();
     o.log('gcal', '연결 끊음');
     broadcast();
     return status();
@@ -412,6 +423,17 @@ export function createGcal(o: {
     return status();
   }
 
+  // 백업을 가져왔으면 보낸 기록이 그 백업 때 것이다: "확인 전"으로 되돌려 지금 일정과 맞춘다 (backup.ts 표시 파일)
+  const imported = userFile(GCAL_RESET_FILE);
+  if (existsSync(imported)) {
+    try {
+      o.store.resetSent();
+      rmSync(imported, { force: true });
+      o.log('gcal', '백업 가져온 뒤 보낸 기록 되돌림');
+    } catch {
+      // 다음에 켤 때 다시
+    }
+  }
   if (client) schedule(15_000);
   app.on('will-quit', () => {
     clearTimeout(timer);

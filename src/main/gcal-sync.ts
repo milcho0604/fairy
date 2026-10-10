@@ -44,11 +44,26 @@ export async function applyOp(
 ): Promise<Outcome> {
   if (op.kind === 'delete') {
     const r = await d.api('DELETE', eventsPath(op.calendarId, op.googleId));
-    if (r.kind === 'ok' || r.kind === 'notFound') {
+    // 지금 고르지 않은 옛 캘린더를 못 쓰면(읽기 전용) 그 일정 때문에 나머지 보내기를 멈추지 않는다
+    if (r.kind === 'ok' || r.kind === 'notFound' || (op.stale && r.kind === 'forbidden')) {
       d.store.markDeleted(op.eventId);
       return 'ok';
     }
     return outcomeOf(r.kind);
+  }
+  // 보낼 캘린더를 바꿨으면 구글의 일정을 새 캘린더로 옮긴다 (events.move). 옛 캘린더를 못 쓰면 새로 넣는다
+  if (op.moveTo && op.googleId) {
+    const r = await d.api(
+      'POST',
+      `${eventsPath(op.calendarId, op.googleId)}/move?destination=${encodeURIComponent(op.moveTo)}`,
+    );
+    if (r.kind === 'ok') {
+      d.store.setCalendar(op.eventId, op.moveTo);
+      op = { ...op, calendarId: op.moveTo, moveTo: undefined };
+    } else if (r.kind === 'notFound' || r.kind === 'forbidden') {
+      d.store.forget(op.eventId);
+      return 'again';
+    } else return outcomeOf(r.kind);
   }
   const id = op.googleId && isGoogleId(op.googleId) ? op.googleId : d.newId();
   const fresh = !op.confirmed || id !== op.googleId;

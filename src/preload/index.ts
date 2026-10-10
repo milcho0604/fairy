@@ -225,7 +225,11 @@ if (kind === 'settings') {
     setCalendar: (id: string) => ipcRenderer.invoke(GCAL.setCalendar, id),
     syncNow: () => ipcRenderer.invoke(GCAL.syncNow),
     onChanged: (listener) => {
-      ipcRenderer.on(GCAL.changed, (_e, s: GcalStatus) => listener(s));
+      const h = (_e: unknown, s: GcalStatus) => listener(s);
+      ipcRenderer.on(GCAL.changed, h);
+      return () => {
+        ipcRenderer.removeListener(GCAL.changed, h);
+      };
     },
   };
   contextBridge.exposeInMainWorld('jjakkungGcal', gcal);

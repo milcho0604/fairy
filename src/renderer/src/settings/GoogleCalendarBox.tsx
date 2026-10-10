@@ -26,11 +26,12 @@ export function GoogleCalendarBox({ onMsg }: { onMsg: (m: string) => void }) {
         setS(v);
         setCal(v.calendarId === GCAL_PRIMARY ? '' : v.calendarId);
       });
-    gcal().onChanged((v) => {
+    const off = gcal().onChanged((v) => {
       if (live) setS(v);
     });
     return () => {
       live = false;
+      off();
     };
   }, []);
 

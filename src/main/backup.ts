@@ -1,4 +1,13 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { app, type BrowserWindow, dialog } from 'electron';
@@ -189,6 +198,12 @@ export function applyPendingImport(): void {
     return;
   }
   for (const f of ['-wal', '-shm']) rmSync(pending + f, { force: true });
+  // 구글 캘린더로 보낸 기록도 백업 때 것이라, 다음 보내기가 지금 일정과 다시 맞추게 표시해 둔다 (gcal.ts)
+  try {
+    writeFileSync(join(dir, 'google-calendar-reset'), '');
+  } catch {
+    // 표시를 못 남기면 바뀐 일정만 보낸다
+  }
   for (const f of IMPORT_FILES) {
     try {
       if (existsSync(join(dir, staged(f)))) renameSync(join(dir, staged(f)), join(dir, f));

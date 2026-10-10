@@ -65,7 +65,8 @@ export interface GcalBridge {
   /** 틀린 모양이면 그대로 둔다 */
   setCalendar(id: string): Promise<GcalStatus>;
   syncNow(): Promise<GcalStatus>;
-  onChanged(listener: (s: GcalStatus) => void): void;
+  /** 듣기를 그만두는 함수를 돌려준다 (탭을 오갈 때 듣는 것이 쌓이지 않게) */
+  onChanged(listener: (s: GcalStatus) => void): () => void;
 }
 
 /**
