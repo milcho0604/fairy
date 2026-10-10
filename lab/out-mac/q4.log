@@ -1,23 +1,20 @@
-  0%|          | 0/4 [00:00<?, ?it/s] 25%|██▌       | 1/4 [00:12<00:37, 12.61s/it] 50%|█████     | 2/4 [00:22<00:21, 10.75s/it] 75%|███████▌  | 3/4 [00:31<00:10, 10.11s/it]100%|██████████| 4/4 [00:40<00:00,  9.82s/it]100%|██████████| 4/4 [00:40<00:00, 10.19s/it]
-/Users/runner/.local/share/uv/tools/mflux/lib/python3.12/site-packages/mflux/utils/image_util.py:140: RuntimeWarning: invalid value encountered in cast
-  images = (images * 255).round().astype("uint8")
-INFO: Image saved successfully at: lab/out-mac/poodle-q4.png
-INFO: Metadata embedded successfully at: lab/out-mac/poodle-q4.png
-Peak MLX memory: 5.65 GB
-       46.13 real         1.93 user         4.20 sys
-          2451980288  maximum resident set size
+  0%|          | 0/4 [00:00<?, ?it/s] 25%|██▌       | 1/4 [00:22<01:08, 22.98s/it] 50%|█████     | 2/4 [00:34<00:32, 16.13s/it] 75%|███████▌  | 3/4 [00:45<00:13, 13.93s/it]100%|██████████| 4/4 [00:56<00:00, 12.84s/it]100%|██████████| 4/4 [00:56<00:00, 14.20s/it]
+INFO: Image saved successfully at: lab/out-mac/cat-q4.png
+INFO: Metadata embedded successfully at: lab/out-mac/cat-q4.png
+Peak MLX memory: 4.39 GB
+       64.74 real         2.56 user        19.83 sys
+          1125236736  maximum resident set size
                    0  average shared memory size
                    0  average unshared data size
                    0  average unshared stack size
-              242401  page reclaims
-                  38  page faults
+              326495  page reclaims
+                 125  page faults
                    0  swaps
                    0  block input operations
                    0  block output operations
                    0  messages sent
                    0  messages received
                    0  signals received
-                4816  voluntary context switches
-               14440  involuntary context switches
-          8977442112  peak memory footprint
-4.3G	/Users/runner/.cache/huggingface
+                1478  voluntary context switches
+               52166  involuntary context switches
+          4609724096  peak memory footprint

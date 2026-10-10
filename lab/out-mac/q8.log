@@ -1,0 +1,28 @@
+  0%|          | 0/4 [00:00<?, ?it/s]  0%|          | 0/4 [00:01<?, ?it/s]
+Peak MLX memory: 1.84 GB
+Traceback (most recent call last):
+  File "/Users/runner/.local/bin/mflux-generate-flux2-edit", line 10, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/Users/runner/.local/share/uv/tools/mflux/lib/python3.12/site-packages/mflux/models/flux2/cli/flux2_edit_generate.py", line 108, in main
+    image = model.generate_image(
+            ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/runner/.local/share/uv/tools/mflux/lib/python3.12/site-packages/mflux/models/flux2/variants/edit/flux2_klein_edit.py", line 176, in generate_image
+    mx.eval(latents)
+RuntimeError: [METAL] Command buffer execution failed: Caused GPU Hang Error (00000003:kIOGPUCommandBufferCallbackErrorHang).
+        5.07 real         1.84 user         2.97 sys
+          1351761920  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+              105851  page reclaims
+                  42  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                4046  voluntary context switches
+                8996  involuntary context switches
+          2030064576  peak memory footprint

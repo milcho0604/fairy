@@ -1,0 +1,32 @@
+Downloading model from HuggingFace: black-forest-labs/FLUX.2-klein-4B...
+Fetching 16 files:   0%|          | 0/16 [00:00<?, ?it/s]Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+WARNING: Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Fetching 16 files:   6%|▋         | 1/16 [00:00<00:02,  6.11it/s]Fetching 16 files:  50%|█████     | 8/16 [00:00<00:00, 35.04it/s]Fetching 16 files:  81%|████████▏ | 13/16 [00:08<00:02,  1.23it/s]Fetching 16 files:  81%|████████▏ | 13/16 [00:20<00:02,  1.23it/s]Fetching 16 files:  88%|████████▊ | 14/16 [00:34<00:07,  3.84s/it]Fetching 16 files:  94%|█████████▍| 15/16 [00:50<00:05,  5.63s/it]Fetching 16 files: 100%|██████████| 16/16 [00:55<00:00,  5.59s/it]Fetching 16 files: 100%|██████████| 16/16 [00:55<00:00,  3.49s/it]
+  0%|          | 0/4 [00:00<?, ?it/s]  0%|          | 0/4 [00:01<?, ?it/s]
+Peak MLX memory: 1.19 GB
+Traceback (most recent call last):
+  File "/Users/runner/.local/bin/mflux-generate-flux2", line 10, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/Users/runner/.local/share/uv/tools/mflux/lib/python3.12/site-packages/mflux/models/flux2/cli/flux2_generate.py", line 101, in main
+    image = model.generate_image(
+            ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/runner/.local/share/uv/tools/mflux/lib/python3.12/site-packages/mflux/models/flux2/variants/txt2img/flux2_klein.py", line 114, in generate_image
+    mx.eval(latents)
+RuntimeError: [METAL] Command buffer execution failed: Caused GPU Hang Error (00000003:kIOGPUCommandBufferCallbackErrorHang).
+       63.74 real        39.09 user        46.37 sys
+          2362589184  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+              271082  page reclaims
+                1739  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                1254  messages sent
+             1345973  messages received
+                   0  signals received
+                6003  voluntary context switches
+              505011  involuntary context switches
+           969349760  peak memory footprint
