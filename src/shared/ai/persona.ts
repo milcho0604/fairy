@@ -41,8 +41,25 @@ const VOICE_EN: Record<PersonaId, string> = {
   calm: 'You talk casually and unhurriedly, like a calm teacher, and briefly point out why when it helps.',
 };
 
-/** 펫 성격 지시. 이모지는 쓰지 않는다 (D5). */
-export function persona(petName: string, id: PersonaId = 'friend', rules = ''): string {
+// 짝꿍이 기억하는 것(설정)을 읽는 곳. 메인이 시작할 때 정한다. 채팅이 persona 를 부를 때 따로 넘기지 않아도 붙게
+let memorySource: () => readonly string[] = () => [];
+export function setMemorySource(source: () => readonly string[]): void {
+  memorySource = source;
+}
+
+/**
+ * 펫 성격 지시. 이모지는 쓰지 않는다 (D5).
+ * now: 지금 시각(현지)을 알려 준다. AI 가 오늘 날짜나 요일을 몰라 "내일"을 엉뚱하게 셌다.
+ * memory: 짝꿍이 기억하는 것. 없으면 설정에서 읽은 것 (일기처럼 질문이 아닌 곳은 빈 목록을 준다)
+ */
+export function persona(
+  petName: string,
+  id: PersonaId = 'friend',
+  rules = '',
+  o: { now?: Date | number; memory?: readonly string[] } = {},
+): string {
+  const now = new Date(o.now ?? Date.now());
+  const tail = withRules(rules) + withMemory(o.memory ?? memorySource());
   if (getLang() === 'en')
     return (
       [
@@ -51,7 +68,8 @@ export function persona(petName: string, id: PersonaId = 'friend', rules = ''): 
         'If the user sends a screenshot, answer as if you are looking at that screen together.',
         'Do not use emoji.',
         'Answer in English.',
-      ].join(' ') + withRules(rules)
+        nowLine(now, 'en'),
+      ].join(' ') + tail
     );
   return (
     [
@@ -59,8 +77,35 @@ export function persona(petName: string, id: PersonaId = 'friend', rules = ''): 
       '답은 짧게, 핵심부터. 길게 설명해야 하면 목록으로 나눈다.',
       '사용자가 화면 캡처를 보내면 그 화면을 같이 보고 있다고 생각하고 답한다.',
       '이모지는 쓰지 않는다.',
-    ].join(' ') + withRules(rules)
+      nowLine(now, 'ko'),
+    ].join(' ') + tail
   );
+}
+
+const KO_WD = ['일', '월', '화', '수', '목', '금', '토'];
+const EN_WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const EN_MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "지금은 2026-10-10(토) 오후 3:12." / "It is now Sat, Oct 10, 2026, 3:12 PM." (현지 시각) */
+export function nowLine(d: Date, lang: 'ko' | 'en'): string {
+  const h = d.getHours();
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  if (lang === 'en')
+    return `It is now ${EN_WD[d.getDay()]}, ${EN_MON[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}, ${h12}:${mm} ${h < 12 ? 'AM' : 'PM'}.`;
+  const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return `지금은 ${day}(${KO_WD[d.getDay()]}) ${h < 12 ? '오전' : '오후'} ${h12}:${mm}.`;
+}
+
+/** 짝꿍이 기억하는 것을 규칙 뒤에 붙인다. 없으면 빈 글 */
+export function withMemory(memory: readonly string[]): string {
+  const items = memory.map((m) => m.trim()).filter(Boolean);
+  if (items.length === 0) return '';
+  const head =
+    getLang() === 'en'
+      ? 'Things you remember about the user. Use them when they help; no need to bring them up:'
+      : '사용자에 대해 기억하는 것이다. 도움이 될 때 참고하고 굳이 꺼내지는 않는다:';
+  return `\n\n${head}\n${items.map((m) => `- ${m}`).join('\n')}`;
 }
 
 /**
@@ -89,9 +134,11 @@ export interface ContextTodo {
 }
 
 export interface ContextEvent {
-  /** "오후 3:00" 같은 글 */
+  /** "오후 3:00" 같은 글. 종일 일정이면 빈 글 */
   time: string;
   title: string;
+  /** 종일 일정: 시각 대신 "종일" */
+  allDay?: boolean;
 }
 
 /** 보낼 할 일 수 상한. 넘치면 중요, 마감 빠른 순으로 자른다. */
@@ -120,7 +167,11 @@ export function todoContext(o: {
     return t('ai.ctx.due', { day: todo.due });
   };
   const lines = [t('ai.ctx.head', { day: o.today })];
-  if (o.events.length > 0) lines.push(t('ai.ctx.events'), ...o.events.map((e) => `- ${e.time} ${e.title}`));
+  if (o.events.length > 0)
+    lines.push(
+      t('ai.ctx.events'),
+      ...o.events.map((e) => `- ${e.allDay ? t('ai.ctx.allDay') : e.time} ${e.title}`),
+    );
   if (todos.length > 0)
     lines.push(
       t('ai.ctx.todos'),
@@ -139,6 +190,7 @@ const TITLE_MAX = 80;
 /**
  * 답에서 할 일 제목을 뽑는다. 목록(-, *, 1., [ ])이 있으면 그 줄들, 없으면 첫 문장 하나.
  * 마크다운 굵게, 코드 표시는 벗기고, 너무 길면 자른다.
+ * 코드 블록(```) 안의 줄과 들여 쓴 아래 목록(세부 설명)은 할 일이 아니라 뺀다 (예전에는 명령어와 설명이 다 할 일로 들어갔다)
  */
 export function extractTodos(answer: string): string[] {
   const clean = (s: string) =>
@@ -148,14 +200,33 @@ export function extractTodos(answer: string): string[] {
       .replace(/\s+/g, ' ')
       .trim()
       .slice(0, TITLE_MAX);
-  const items = answer
-    .split('\n')
-    .map((l) => /^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s*)?(.+)$/.exec(l)?.[1])
-    .filter((t): t is string => !!t)
-    .map(clean)
+  let fenced = false;
+  const lines: string[] = [];
+  for (const l of answer.replace(/\r\n/g, '\n').split('\n')) {
+    if (/^\s*(```|~~~)/.test(l)) {
+      fenced = !fenced;
+      continue;
+    }
+    if (!fenced) lines.push(l);
+  }
+  const bullets = lines
+    .map((l) => /^([ \t]*)(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s*)?(.+)$/.exec(l))
+    .filter((m): m is RegExpExecArray => !!m)
+    .map((m) => ({ indent: (m[1] ?? '').replace(/\t/g, '    ').length, text: m[2] ?? '' }));
+  // 가장 바깥 목록만 (목록 전체가 들여 써져 있어도 그중 가장 얕은 것)
+  const top = Math.min(...bullets.map((b) => b.indent));
+  const items = bullets
+    .filter((b) => b.indent <= top + 1)
+    .map((b) => clean(b.text))
     .filter(Boolean);
   if (items.length > 0) return [...new Set(items)].slice(0, EXTRACT_MAX);
-  const first = clean(answer.replace(/^#+\s*/gm, '').split(/(?<=[.!?。])\s|\n/)[0] ?? '');
+  const first = clean(
+    lines
+      .join('\n')
+      .replace(/^#+\s*/gm, '')
+      .trim()
+      .split(/(?<=[.!?。])\s|\n/)[0] ?? '',
+  );
   return first ? [first] : [];
 }
 

@@ -59,6 +59,7 @@ export const ko = {
   // AI 에게 보내는 질문에 붙이는 틀 (화면에는 안 보이고 AI 가 읽는다. 화면 말과 같은 말로 보낸다)
   'ai.ctx.head': (v: { day: string }) => `[내 오늘 상황, ${v.day}]`,
   'ai.ctx.events': '남은 일정:',
+  'ai.ctx.allDay': '종일',
   'ai.ctx.todos': '안 끝낸 할 일:',
   'ai.ctx.important': '[중요] ',
   'ai.ctx.overdue': ' (마감 지남)',
@@ -119,6 +120,7 @@ export const en: Translation<typeof ko> = {
   'ai.usage.resetAt': (v) => `Resets ${v.when}`,
   'ai.ctx.head': (v) => `[My day so far, ${v.day}]`,
   'ai.ctx.events': 'Events left today:',
+  'ai.ctx.allDay': 'All day',
   'ai.ctx.todos': 'Open to-dos:',
   'ai.ctx.important': '[important] ',
   'ai.ctx.overdue': ' (overdue)',

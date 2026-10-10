@@ -6,6 +6,7 @@ import { type LangPref, t } from './i18n/index.ts';
 import { cleanIcsUrl } from './ics.ts';
 import { type AgeStage, isAgeStage } from './illustrate.ts';
 import { type IllustEngine, isIllustEngine } from './local-draw.ts';
+import { cleanMemory } from './pet-memory.ts';
 import { GAITS, type Gait } from './pet3d/blueprint.ts';
 import { cleanWish } from './pet3d/prompt.ts';
 import { DEFAULT_ROUTINE, parseRoutine, type Routine } from './routine.ts';
@@ -96,6 +97,8 @@ export interface Settings {
   petLibrary: SavedPet[];
   /** 짝꿍 규칙 (6단계). AI 에게 늘 같이 보내는 사용자의 지시 (CLAUDE.md, AGENTS.md 처럼) */
   petRules: string;
+  /** 짝꿍이 기억하는 것 (오래 가는 기억). 질문마다 성격 뒤에 같이 보낸다. 30개, 하나 100자까지. 기본 비어 있음 */
+  petMemory: string[];
   /** 집중 타이머 길이 (15, 25, 50분). 마지막에 고른 것 */
   focusMin: FocusLength;
   /** 한가할 때 커서 쪽을 바라본다 */
@@ -296,6 +299,7 @@ export const DEFAULT_SETTINGS: Settings = {
   aiModels: {},
   petLibrary: [],
   petRules: '',
+  petMemory: [],
   focusMin: 25,
   lookAtCursor: true,
   dayRhythm: true,
@@ -438,6 +442,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     petLibrary: Array.isArray(r.petLibrary) ? libraryOf(r.petLibrary) : base.petLibrary,
     petRules:
       typeof r.petRules === 'string' ? r.petRules.replace(/\r\n/g, '\n').slice(0, RULES_MAX) : base.petRules,
+    petMemory: Array.isArray(r.petMemory) ? cleanMemory(r.petMemory) : [...base.petMemory],
     focusMin: isFocusLength(r.focusMin) ? r.focusMin : base.focusMin,
     lookAtCursor: bool(r.lookAtCursor, base.lookAtCursor),
     dayRhythm: bool(r.dayRhythm, base.dayRhythm),

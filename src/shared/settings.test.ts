@@ -444,3 +444,23 @@ test('AI 일러스트 나이 단계: 사진 펫에만, 보관함에도. 옛 설�
   assert.equal(applyPatch(s, { petName: '두부' }).petAge, 'baby');
   assert.equal(applyPatch(s, { petImage: null }).petAge, undefined, '기본 펫으로 가면 나이도 지운다');
 });
+
+test('짝꿍이 기억하는 것: 기본 비어 있고, 옛 설정 파일에는 없어도 빈 목록, 다듬어 30개까지', () => {
+  assert.deepEqual(DEFAULT_SETTINGS.petMemory, []);
+  // 이 칸이 생기기 전 설정 파일
+  assert.deepEqual(parseSettings({ petName: '콩이', petRules: '짧게' }).petMemory, []);
+  assert.deepEqual(parseSettings({ petMemory: 'x' }).petMemory, []);
+  assert.deepEqual(
+    parseSettings({ petMemory: [' 커피\n좋아함 ', 3, '', '커피 좋아함', '가'.repeat(120)] }).petMemory,
+    ['커피 좋아함', '가'.repeat(100)],
+  );
+  const many = Array.from({ length: 35 }, (_, i) => `기억 ${i}`);
+  const kept = parseSettings({ petMemory: many }).petMemory;
+  assert.equal(kept.length, 30);
+  assert.equal(kept[0], '기억 5');
+  // 화면에서 바꾸기 (applyPatch): 틀린 값이면 그대로
+  const now = parseSettings({ petMemory: ['커피'] });
+  assert.deepEqual(applyPatch(now, { petMemory: ['커피', '차'] }).petMemory, ['커피', '차']);
+  assert.deepEqual(applyPatch(now, { petMemory: null }).petMemory, ['커피']);
+  assert.deepEqual(applyPatch(now, { petMemory: [] }).petMemory, []);
+});

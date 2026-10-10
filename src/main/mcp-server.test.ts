@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { after, test } from 'node:test';
 import { type Db, migrate } from '../shared/db-schema.ts';
+import { EventStore } from '../shared/event-store.ts';
+import { TodoStore } from '../shared/todo-store.ts';
 
 // 서버는 JJ_USER_DATA 의 jjakkung.db 를 연다. 시험용 빈 폴더에 짝꿍이 하듯 최신 판으로 만들어 둔다.
 const dir = mkdtempSync(join(tmpdir(), 'jj-mcp-'));
@@ -44,7 +46,18 @@ test('객체가 아닌 요청(null, 배열)은 죽지 않고 -32600 으로 답�
 test('도구 목록', () => {
   assert.deepEqual(
     call('tools/list').result?.tools?.map((t) => t.name),
-    ['add_todo', 'list_todos', 'complete_todo', 'add_note', 'add_event', 'list_events'],
+    [
+      'add_todo',
+      'list_todos',
+      'complete_todo',
+      'update_todo',
+      'delete_todo',
+      'add_note',
+      'search_notes',
+      'add_event',
+      'list_events',
+      'remember',
+    ],
   );
 });
 
@@ -90,4 +103,95 @@ test('종일 일정: start 가 날짜만이면 종일, end_date 로 여러 날, 
   assert.equal(tool('add_event', { title: 'x', start: '2026-02-30' }).result?.isError, true);
   assert.equal(tool('add_event', { title: 'x', start: day, end_date: '2000-01-01' }).result?.isError, true);
   assert.equal(tool('add_event', { title: 'x', start: day, end_date: '내일' }).result?.isError, true);
+});
+
+// 서버가 쓴 것을 따로 열어 본다 (짝꿍 앱이 같은 파일을 읽듯이)
+const peek = () => {
+  const db = new DatabaseSync(join(dir, 'jjakkung.db')) as unknown as Db;
+  return { events: new EventStore(db), todos: new TodoStore(db) };
+};
+const p2 = (n: number) => String(n).padStart(2, '0');
+const dayAfter = (n: number) => {
+  const d = new Date(Date.now() + n * 86_400_000);
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+};
+
+test('일정 알림 분: 숫자만 받고 null, 빈 글, 글 숫자는 기본(10분)', () => {
+  const day = dayAfter(10);
+  const idOf = (r: ReturnType<typeof call>) => Number(/id (\d+)/.exec(text(r))?.[1]);
+  const at = (title: string, hm: string, remind: unknown) =>
+    idOf(tool('add_event', { title, start: `${day}T${hm}`, remind_min: remind }));
+  const { events } = peek();
+  assert.equal(events.get(at('널', '09:00', null))?.remindMin, 10);
+  assert.equal(events.get(at('빈 글', '09:10', ''))?.remindMin, 10);
+  assert.equal(events.get(at('글 숫자', '09:20', '30'))?.remindMin, 10);
+  assert.equal(events.get(at('30분', '09:30', 30))?.remindMin, 30);
+});
+
+test('시각 일정: 없는 날짜나 시각은 거른다 (다음 날로 넘기지 않는다)', () => {
+  for (const start of ['2027-02-30T10:00', '2027-01-05T24:00', '2027-01-05T10:60', '2027-13-01T10:00'])
+    assert.equal(tool('add_event', { title: 'x', start }).result?.isError, true, start);
+});
+
+test('할 일 마감: 없는 날은 거른다', () => {
+  assert.equal(tool('add_todo', { title: 'x', due: '2027-02-30' }).result?.isError, true);
+  assert.equal(tool('add_todo', { title: 'x', due: '2027-13-01' }).result?.isError, true);
+});
+
+test('같은 일정을 또 넣으면 "이미 있어" (제목 대소문자, 띄어쓰기 무시)', () => {
+  const day = dayAfter(12);
+  const first = text(tool('add_event', { title: 'Team  Sync', start: `${day}T11:00` }));
+  assert.match(first, /일정을 넣었어/);
+  const again = tool('add_event', { title: 'team sync', start: `${day}T11:00` });
+  assert.equal(again.result?.isError, undefined);
+  assert.match(text(again), /^이미 있어 \(id \d+\)/);
+  // 시각이 다르면 다른 일정
+  assert.match(text(tool('add_event', { title: 'team sync', start: `${day}T12:00` })), /일정을 넣었어/);
+  assert.match(text(tool('add_event', { title: '워크숍', start: day })), /종일 일정을 넣었어/);
+  assert.match(text(tool('add_event', { title: '워크숍', start: day })), /^이미 있어/);
+});
+
+test('할 일 고치기와 지우기', () => {
+  const id = Number(/id (\d+)/.exec(text(tool('add_todo', { title: '초안', due: '2099-03-01' })))?.[1]);
+  assert.match(
+    text(tool('update_todo', { id, title: '최종안', important: true })),
+    /고쳤어 .*\(중요\) 최종안, 마감 2099-03-01/,
+  );
+  assert.match(text(tool('update_todo', { id, due: '' })), /고쳤어 .*최종안$/);
+  assert.equal(peek().todos.get(id)?.due, null);
+  assert.match(text(tool('update_todo', { id, due: '2099-04-01' })), /마감 2099-04-01/);
+  assert.equal(tool('update_todo', { id, due: '2099-02-30' }).result?.isError, true);
+  assert.equal(tool('update_todo', { id, title: '  ' }).result?.isError, true);
+  assert.equal(tool('update_todo', { id }).result?.isError, true);
+  assert.equal(tool('update_todo', { id: 99999, title: 'x' }).result?.isError, true);
+  assert.match(text(tool('delete_todo', { id })), /지웠어: 최종안/);
+  assert.doesNotMatch(text(tool('list_todos', {})), /최종안/);
+  assert.equal(tool('delete_todo', { id }).result?.isError, true);
+  // 지운 표시만 해서 짝꿍에서 되살릴 수 있다
+  const { todos } = peek();
+  todos.restore(id);
+  assert.equal(todos.get(id)?.title, '최종안');
+});
+
+test('메모 찾기: 제목과 본문, 개수 상한, 없으면 없다고', () => {
+  tool('add_note', { title: '장보기', body: '우유, 계란' });
+  tool('add_note', { title: '회의록', body: '다음 주에 예산안을 다시 본다' });
+  const hit = text(tool('search_notes', { query: '예산' }));
+  assert.match(hit, /회의록: .*예산안/);
+  assert.doesNotMatch(hit, /장보기/);
+  assert.match(text(tool('search_notes', { query: '장보기' })), /\] 장보기: 우유, 계란/);
+  assert.match(text(tool('search_notes', { query: '없는말' })), /메모가 없어/);
+  assert.equal(tool('search_notes', { query: ' ' }).result?.isError, true);
+  for (let i = 0; i < 4; i++) tool('add_note', { title: `묶음 ${i}`, body: 'x' });
+  assert.equal(text(tool('search_notes', { query: '묶음', limit: 2 })).split('\n').length, 2);
+});
+
+test('기억하기: 받은 편지함에 쌓고 같은 것은 한 번 (짝꿍이 설정으로 옮긴다)', () => {
+  const inbox = () => JSON.parse(readFileSync(join(dir, 'memory-inbox.json'), 'utf8'));
+  assert.match(text(tool('remember', { text: '  아침엔 회의가 많아 ' })), /기억했어: 아침엔 회의가 많아/);
+  assert.match(text(tool('remember', { text: '아침엔  회의가 많아' })), /이미 기억하고 있어/);
+  assert.match(text(tool('remember', { text: '가'.repeat(150) })), /기억했어/);
+  assert.equal(tool('remember', { text: '' }).result?.isError, true);
+  assert.equal(tool('remember', { text: 3 }).result?.isError, true);
+  assert.deepEqual(inbox(), ['아침엔 회의가 많아', '가'.repeat(100)]);
 });
