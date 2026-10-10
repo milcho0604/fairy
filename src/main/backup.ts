@@ -349,7 +349,11 @@ export async function importPet(
     // 지금 사진 펫은 보관함으로 (6단계)
     const prep = library.newPhotoPatch();
     settings.set({ ...prep.patch, ...next });
-    prep.cleanup();
+    try {
+      prep.cleanup();
+    } catch {
+      // 저장은 끝났다: 옛 파일 치우기가 실패해도 가져온 펫 파일은 둔다
+    }
     return { ok: true, message: t('main.pet.came', { name: pet.name }) };
   } catch (err) {
     for (const f of made) rmSync(join(app.getPath('userData'), 'pets', f), { force: true });

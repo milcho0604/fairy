@@ -43,29 +43,35 @@ interface Stats {
 }
 
 /**
- * 두 그림(같은 크기, 같은 자리)에 함께 쓸 칸 무게: 칸마다 두 그림 중 펫다운 쪽 무게.
- * 그림마다 따로 재면 밝은 바탕 위 흰 털은 앞 그림에서 거의 0 이라 눈, 그림자만 남아 흰 고양이가 회색이 된 것을 못 고쳤다
+ * 두 그림(같은 크기, 같은 자리)에 함께 쓸 칸 무게.
+ * - stat: 두 그림 모두에서 펫인 칸만 (작은 쪽). 털 다듬기로 펫이 커진 둘레, 바탕 밝기만 바뀐 칸을 펫으로 세지 않는다
+ *   (세면 색이 그대로인데 거리가 커져 버리거나, 바탕색이 펫 평균에 섞여 털이 바랬다)
+ * - apply: 둘 중 한쪽이라도 펫인 칸, 두 배로 (밝은 바탕 위 흰 털은 바탕과 가까워 무게가 낮아 반만 고쳐졌다)
  */
-function sharedWeights(a: Rgba, b: Rgba): Float32Array | undefined {
+function sharedWeights(
+  a: Rgba,
+  b: Rgba,
+): { stat: Float32Array | undefined; apply: Float32Array } | undefined {
   if (a.w !== b.w || a.h !== b.h) return undefined;
   const abg = cornerColor(a);
   const bbg = cornerColor(b);
   const n = a.w * a.h;
-  const out = new Float32Array(n);
+  const stat = new Float32Array(n);
+  const apply = new Float32Array(n);
+  let both = 0;
+  let either = 0;
   for (let p = 0; p < n; p++) {
-    const i = p * 4;
-    // 두 그림에서 색이 달라진 칸도 펫이다 (바탕은 두 그림이 같다): 밝은 바탕 위 흰 털이 반만 고쳐지던 것
-    const diff =
-      Math.abs((a.data[i] ?? 0) - (b.data[i] ?? 0)) +
-      Math.abs((a.data[i + 1] ?? 0) - (b.data[i + 1] ?? 0)) +
-      Math.abs((a.data[i + 2] ?? 0) - (b.data[i + 2] ?? 0));
-    out[p] = Math.max(
-      weightOf(a.data, i, abg),
-      weightOf(b.data, i, bbg),
-      Math.max(0, Math.min(1, (diff - 9) / 18)),
-    );
+    const wa = weightOf(a.data, p * 4, abg);
+    const wb = weightOf(b.data, p * 4, bbg);
+    stat[p] = Math.min(wa, wb);
+    apply[p] = Math.min(1, 2 * Math.max(wa, wb));
+    both += stat[p] ?? 0;
+    either += Math.max(wa, wb);
   }
-  return out;
+  // 한쪽 펫이 바탕색 가까이로 바뀌었으면(갈색 푸들이 하얘짐) 두 그림 모두 펫인 칸이 거의 없다:
+  // 그때는 그림마다 제 무게로 잰다 (안 그러면 거리가 0 으로 나와 크게 바뀐 털을 받아들였다)
+  if (either > 0 && both < either * 0.15) return { stat: undefined, apply };
+  return { stat, apply };
 }
 
 function statsOf(img: Rgba, bg: [number, number, number], weights?: Float32Array): Stats {
@@ -95,7 +101,7 @@ function statsOf(img: Rgba, bg: [number, number, number], weights?: Float32Array
  *  흰 고양이가 조금 회색, 분홍빛이 되면 16~42)
  */
 export function colorShift(a: Rgba, b: Rgba): number {
-  const shared = sharedWeights(a, b);
+  const shared = sharedWeights(a, b)?.stat;
   const sa = statsOf(a, cornerColor(a), shared);
   const sb = statsOf(b, cornerColor(b), shared);
   return [0, 1, 2].reduce((sum, k) => sum + Math.abs((sa.mean[k] ?? 0) - (sb.mean[k] ?? 0)), 0);
@@ -112,8 +118,8 @@ export function matchColors(target: Rgba, ref: Rgba): boolean {
   const tbg = cornerColor(target);
   const rbg = cornerColor(ref);
   const shared = sharedWeights(target, ref);
-  const t = statsOf(target, tbg, shared);
-  const r = statsOf(ref, rbg, shared);
+  const t = statsOf(target, tbg, shared?.stat);
+  const r = statsOf(ref, rbg, shared?.stat);
   const minWeight = 0.02;
   if (t.weight < target.w * target.h * minWeight || r.weight < ref.w * ref.h * minWeight) return false;
   const scale = [0, 1, 2].map((k) => {
@@ -122,7 +128,7 @@ export function matchColors(target: Rgba, ref: Rgba): boolean {
   });
   const d = target.data;
   for (let i = 0; i < target.w * target.h * 4; i += 4) {
-    const w = shared ? (shared[i / 4] ?? 0) : weightOf(d, i, tbg);
+    const w = shared ? (shared.apply[i / 4] ?? 0) : weightOf(d, i, tbg);
     if (w <= 0) continue;
     for (let k = 0; k < 3; k++) {
       const v = d[i + k] ?? 0;

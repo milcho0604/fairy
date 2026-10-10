@@ -74,3 +74,26 @@ test('이미지 검토: 밝은 바탕 위 흰 고양이가 회색, 분홍빛이 
     String([...after.data.subarray(i, i + 3)]),
   );
 });
+
+test('이미지 검토 2차: 털로 펫이 커져도, 바탕 밝기만 바뀌어도 거리 0. 갈색이 하얘지면 바탕이 바뀌어도 크게', () => {
+  const W = 120;
+  type C = [number, number, number];
+  const make = (bg: C, body: C, grow = 0) => {
+    const data = new Uint8ClampedArray(W * W * 4);
+    for (let y = 0; y < W; y++)
+      for (let x = 0; x < W; x++) {
+        const inside = (x - 60) ** 2 + (y - 60) ** 2 < (30 + grow) ** 2;
+        const c = inside ? body : bg;
+        data.set([c[0], c[1], c[2], 255], (y * W + x) * 4);
+      }
+    return { w: W, h: W, data };
+  };
+  const brown: C = [140, 90, 50];
+  assert.equal(colorShift(make([250, 250, 250], brown, 6), make([250, 250, 250], brown)), 0);
+  assert.equal(colorShift(make([238, 238, 238], brown), make([250, 250, 250], brown)), 0);
+  assert.ok(colorShift(make([242, 242, 242], [245, 245, 245]), make([250, 250, 250], brown)) > MAX_FUR_SHIFT);
+  // 맞추기가 바탕을 다시 칠하지 않는다
+  const t = make([238, 238, 238], brown, 3);
+  matchColors(t, make([250, 250, 250], brown));
+  assert.deepEqual([...t.data.subarray(0, 3)], [238, 238, 238]);
+});

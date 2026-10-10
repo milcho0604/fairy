@@ -55,5 +55,8 @@ export const MAX_IMAGE_PIXELS = 16_000_000;
 /** 머리말로 본 크기가 상한 안인지. 크기를 모르면 false */
 export function sizeOk(b: Uint8Array, side = MAX_IMAGE_SIDE, pixels = MAX_IMAGE_PIXELS): boolean {
   const s = imageSize(b);
-  return !!s && s.w > 0 && s.h > 0 && s.w <= side && s.h <= side && s.w * s.h <= pixels;
+  if (!s) return false;
+  // GIF 의 논리 화면 크기는 0 일 수 있다 (브라우저는 프레임 크기를 쓴다). 그때는 바이트 상한만 믿는다
+  if ((s.w === 0 || s.h === 0) && String.fromCharCode(...b.subarray(0, 4)) === 'GIF8') return true;
+  return s.w > 0 && s.h > 0 && s.w <= side && s.h <= side && s.w * s.h <= pixels;
 }

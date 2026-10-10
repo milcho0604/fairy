@@ -403,8 +403,12 @@ export function MakerApp() {
           if (crop) {
             const mask = withPhotoAlpha(await predictMask(crop, info), crop);
             if (!alive()) return;
-            // 다시 오린 것이 거의 비었으면(모델이 못 찾음) 처음 것을 쓴다
-            if (keptRatio(mask) > 0.02) next = { photo: crop, mask, w: crop.width, h: crop.height };
+            // 다시 오린 것이 거의 비었거나 처음 것보다 훨씬 적게 남기면(꼬리, 다리가 잘린 칸 밖) 처음 것을 쓴다.
+            // 잘린 사진에서는 복원 붓으로도 칸 밖을 되살릴 수 없어서
+            const before = keptIn(next.mask, next.w, near);
+            const after = keptRatio(mask) * near.width * near.height;
+            if (keptRatio(mask) > 0.02 && after >= before * 0.6)
+              next = { photo: crop, mask, w: crop.width, h: crop.height };
           }
         }
         setElapsed(Math.round(performance.now() - t0));
@@ -1727,6 +1731,18 @@ async function loadPhoto(file: Blob): Promise<HTMLCanvasElement> {
  * 원본 파일에서 box(작업 사진 좌표) 둘레를 원본 크기로 잘라 낸다 (긴 변 WORK_SIDE 이하). 작업 사진은 긴 변 1024 로
  * 줄인 것이라 작은 펫은 몇십 칸뿐이었다. 원본도 작으면 늘이지 않는다. 못 읽으면 undefined
  */
+/** 마스크에서 칸 안 남긴 칸 수 (128 넘는 것) */
+function keptIn(
+  mask: Uint8ClampedArray,
+  w: number,
+  box: { x: number; y: number; width: number; height: number },
+) {
+  let n = 0;
+  for (let y = box.y; y < box.y + box.height; y++)
+    for (let x = box.x; x < box.x + box.width; x++) if ((mask[y * w + x] ?? 0) > 128) n++;
+  return n;
+}
+
 async function cropPhoto(
   file: Blob,
   photo: HTMLCanvasElement,

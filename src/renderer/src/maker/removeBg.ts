@@ -91,13 +91,23 @@ async function runMask(photo: HTMLCanvasElement, info: MakerInfo): Promise<Uint8
   const at = letterbox(photo.width, photo.height, size);
   g.drawImage(photo, at.x, at.y, at.width, at.height);
   const d = g.getImageData(0, 0, size, size).data;
+  // 밝기 펴기(rembg 의 im / max)는 사진 자리에서만 잰다. 흰 여백까지 재면 늘 255 라 어두운 사진이 펴지지 않았다.
+  // 여백은 사진에서 가장 밝은 값(1)으로 넣는다
   let max = 1e-6;
-  for (let i = 0; i < d.length; i += 4) max = Math.max(max, d[i] ?? 0, d[i + 1] ?? 0, d[i + 2] ?? 0);
+  for (let y = at.y; y < at.y + at.height; y++)
+    for (let x = at.x; x < at.x + at.width; x++) {
+      const i = (y * size + x) * 4;
+      max = Math.max(max, d[i] ?? 0, d[i + 1] ?? 0, d[i + 2] ?? 0);
+    }
   const n = size * size;
   const input = new Float32Array(3 * n);
   for (let p = 0; p < n; p++) {
+    const px = p % size;
+    const py = (p - px) / size;
+    const pad = px < at.x || py < at.y || px >= at.x + at.width || py >= at.y + at.height;
     for (let ch = 0; ch < 3; ch++) {
-      input[ch * n + p] = ((d[p * 4 + ch] ?? 0) / max - (info.mean[ch] ?? 0)) / (info.std[ch] ?? 1);
+      const v = pad ? 1 : (d[p * 4 + ch] ?? 0) / max;
+      input[ch * n + p] = (v - (info.mean[ch] ?? 0)) / (info.std[ch] ?? 1);
     }
   }
   const out = await run(session, {

@@ -191,11 +191,11 @@ export const FAINT_ALPHA = 32;
 
 /** 옅은 값(floor 이하)은 0, 그 위는 0~255 로 다시 편다 (털 끝처럼 부드러운 가장자리는 그대로 부드럽게) */
 export function dropFaint(mask: Uint8ClampedArray, floor = FAINT_ALPHA): Uint8ClampedArray {
+  // 옅은 값만 0 으로. 나머지는 그대로 둔다 (다시 펴면 128 이 110 이 되는 식으로 몸이 전부 조금 더 비쳤다)
   const out = new Uint8ClampedArray(mask.length);
-  const k = 255 / (255 - floor);
   for (let i = 0; i < mask.length; i++) {
     const v = mask[i] ?? 0;
-    out[i] = v <= floor ? 0 : Math.round((v - floor) * k);
+    out[i] = v <= floor ? 0 : v;
   }
   return out;
 }

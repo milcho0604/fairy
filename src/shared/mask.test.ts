@@ -122,13 +122,9 @@ test('이미지 검토: 모델이 거의 못 찾은 사진(흰 벽)은 빈 마�
   assert.deepEqual([...clampToAlpha(new Uint8ClampedArray([200, 200, 200]), rgba)], [0, 128, 200]);
 });
 
-test('dropFaint: 바탕에 남은 옅은 값은 0, 그 위는 0~255 로 다시 편다', () => {
+test('dropFaint: 바탕에 남은 옅은 값만 0, 그 위는 그대로 (몸이 더 비치지 않게)', () => {
   const m = dropFaint(Uint8ClampedArray.from([0, 1, 29, FAINT_ALPHA, FAINT_ALPHA + 1, 128, 255]));
-  assert.deepEqual([...m.subarray(0, 4)], [0, 0, 0, 0]);
-  assert.ok((m[4] ?? 0) > 0 && (m[4] ?? 0) < 4);
-  assert.equal(m[6], 255);
-  // 가운데 값은 순서를 지킨 채 조금 낮아진다 (부드러운 가장자리는 그대로)
-  assert.ok((m[5] ?? 0) > 100 && (m[5] ?? 0) < 128);
+  assert.deepEqual([...m], [0, 0, 0, 0, FAINT_ALPHA + 1, 128, 255]);
 });
 
 test('dropFaint 뒤의 contentBox 는 옅은 바탕 얼룩을 둘러싸지 않는다', () => {

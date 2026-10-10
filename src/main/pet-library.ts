@@ -1,6 +1,6 @@
 // 만든 펫 보관함 (6단계). 사진 펫을 새로 만들거나 기본 펫으로 바꿔도 옛 펫을 지우지 않고 보관했다가 다시 꺼낸다.
 // 파일(그림, 입체 설계도, 깊이 그림, 포즈)은 pets/ 에 그대로 두고 설정에는 이름만 적는다.
-import { readFileSync, rmSync, statSync } from 'node:fs';
+import { closeSync, openSync, readFileSync, readSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { app, nativeImage } from 'electron';
 import { sizeOk } from '../shared/image-head.ts';
@@ -13,8 +13,9 @@ import { settings } from './settings.ts';
 const petsDir = () => join(app.getPath('userData'), 'pets');
 const THUMB_PX = 160;
 /** 줄이지 못한 그림은 이보다 작을 때만 그대로 보낸다 (설정 창에 수백 MB 를 넘기지 않게) */
-// 움직이는 그림(gif, webp)은 nativeImage 가 못 풀어 파일 그대로 보낸다. 만들기 창이 받는 상한(8MB)까지 (예전 512KB 라 대부분 빈칸이었다)
-const RAW_THUMB_MAX = 8 * 1024 * 1024;
+// 움직이는 그림(gif, webp)은 nativeImage 가 못 풀어 파일 그대로 보낸다. 2MB 까지 (예전 512KB 라 대부분 빈칸이었다.
+// 더 크면 보관함 12마리가 설정 창에 백 MB 넘게 넘어간다)
+const RAW_THUMB_MAX = 2 * 1024 * 1024;
 /** 깊이 그림 상한. 펫 만들기가 저장할 때와 같다 (maker.ts lookOf) */
 const MAX_DEPTH_BYTES = 1024 * 1024;
 /** 설계도 파일 상한. 부품 40개면 10KB 안팎이라 넉넉하다 */
@@ -220,6 +221,17 @@ function depthOf(file: string | undefined): string | undefined {
   return out || undefined;
 }
 
+/** 파일 앞쪽만 읽는다 (그림 머리말 크기를 보려고 8MB 를 다 읽지 않게) */
+function readHead(path: string, n: number): Buffer {
+  const fd = openSync(path, 'r');
+  try {
+    const buf = Buffer.alloc(n);
+    return buf.subarray(0, readSync(fd, buf, 0, n, 0));
+  } finally {
+    closeSync(fd);
+  }
+}
+
 /** 썸네일은 파일 이름마다 한 번만 만든다 (파일 이름은 만들 때마다 새로 붙는다) */
 const thumbs = new Map<string, string>();
 
@@ -232,7 +244,7 @@ function thumbOf(file: string): string {
   if (!path) return thumb;
   try {
     // 풀기 전에 머리말 크기를 본다 (가로세로가 터무니없는 그림은 풀면 메인이 멈춘다)
-    const head = readFileSync(path).subarray(0, 64 * 1024);
+    const head = readHead(path, 64 * 1024);
     const img = sizeOk(head) ? nativeImage.createFromPath(path) : nativeImage.createEmpty();
     const { width, height } = img.isEmpty() ? { width: 0, height: 0 } : img.getSize();
     if (width > 0 && height > 0) {

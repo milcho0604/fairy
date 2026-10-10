@@ -535,7 +535,12 @@ export function createMaker(
             ? { petWishes: { ...settings.get().petWishes, [modelFile]: look.wish } }
             : {}),
         });
-        prep.cleanup();
+        // 저장은 끝났다: 옛 파일 치우기가 실패해도(윈도우 파일 잠김) 방금 쓴 새 펫 파일을 지우지 않는다
+        try {
+          prep.cleanup();
+        } catch (err) {
+          log('maker', '옛 파일 치우기 실패', err instanceof Error ? err.name : 'error');
+        }
       } else settings.set({ petPoses: { [to]: file } });
     } catch (err) {
       for (const f of written) rmSync(join(petsDir(), f), { force: true });
