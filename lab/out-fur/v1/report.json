@@ -1,0 +1,30 @@
+{
+  "prompt": {
+    "note": "fur text",
+    "extra": "Make its natural coat about 50% fluffier: plush, cloud-like fur that puffs out on the legs too (fluffy feathering on the front legs, fluffy britches on the hind legs, little tufts between the toes), a puffy chest ruff, cheek fluff and a bushy tail, with visible individual strands and soft wispy edges everywhere. The legs must look as furry as the body, never smooth, sleek, shaved or thin.",
+    "guidance": 2.5
+  },
+  "report": [
+    {
+      "v": 1,
+      "note": "fur text",
+      "job": "cat-adult",
+      "ok": true,
+      "ms": 32349
+    },
+    {
+      "v": 1,
+      "note": "fur text",
+      "job": "cat-teen",
+      "ok": true,
+      "ms": 29093
+    },
+    {
+      "v": 1,
+      "note": "fur text",
+      "job": "poodle-adult",
+      "ok": true,
+      "ms": 28178
+    }
+  ]
+}
