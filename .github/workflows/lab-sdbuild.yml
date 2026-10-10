@@ -1,0 +1,46 @@
+# 실험 브랜치 전용: 맥용 sd.cpp 를 직접 빌드 (공식은 Apple 칩 + macOS 26 빌드뿐, 인텔 맥 없음). main 에는 넣지 않는다.
+name: lab-sdbuild
+on:
+  push:
+    branches: [lab/illustrate]
+    paths: ['.github/workflows/lab-sdbuild.yml']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x86_64]
+    steps:
+      - uses: actions/checkout@v4
+      - name: 빌드
+        run: |
+          git clone -q https://github.com/leejet/stable-diffusion.cpp sdsrc
+          cd sdsrc && git checkout -q f89d9b1 && git submodule update -q --init --depth 1 ggml thirdparty/libwebp
+          METAL=ON
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
+            -DSD_METAL=$METAL -DGGML_METAL_EMBED_LIBRARY=ON -DSD_WEBM=OFF -DSD_BUILD_SHARED_LIBS=OFF -DGGML_NATIVE=OFF \
+            $( [ "${{ matrix.arch }}" = x86_64 ] && echo "-DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON" ) > ../cmake.log 2>&1 || (tail -40 ../cmake.log; exit 1)
+          cmake --build build --config Release -j 4 --target sd-cli > ../build.log 2>&1 || (tail -60 ../build.log; exit 1)
+          find build -name 'sd-cli' -type f
+      - name: 확인
+        run: |
+          BIN=$(find sdsrc/build -name sd-cli -type f | head -1)
+          file "$BIN"; otool -L "$BIN"; otool -l "$BIN" | grep -A3 -E "LC_BUILD_VERSION|LC_VERSION_MIN" | head -8
+          ls -la "$BIN"
+          "$BIN" --help 2>&1 | head -5 || true
+          mkdir -p lab/out-sdbuild; cp "$BIN" lab/out-sdbuild/sd-cli-${{ matrix.arch }}
+          { file "$BIN"; otool -L "$BIN"; ls -la "$BIN"; shasum -a 256 "$BIN"; "$BIN" --help 2>&1 | head -3; } > lab/out-sdbuild/${{ matrix.arch }}.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sd-cli-${{ matrix.arch }}
+          path: lab/out-sdbuild/
+      - name: 결과 올리기 (기록만)
+        run: |
+          rm -f lab/out-sdbuild/sd-cli-*
+          git config user.name "jjakkung-lab"; git config user.email "lab@users.noreply.github.com"
+          git add -f lab/out-sdbuild; git commit -qm "lab: sd.cpp 맥 빌드 ${{ matrix.arch }}" || exit 0
+          for i in 1 2 3 4 5 6; do git pull --rebase -q origin lab/illustrate && git push -q origin HEAD:lab/illustrate && exit 0; sleep $((i*4)); done
