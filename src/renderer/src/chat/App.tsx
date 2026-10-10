@@ -6,6 +6,7 @@ import type { OutgoingImage, ProviderView } from '../../../shared/ipc.ts';
 import { PetFace } from '../PetFace.tsx';
 import { AiManager } from './AiManager.tsx';
 import { toOutgoing } from './images.ts';
+import { chatKey, lastQuestion } from './keys.ts';
 import { Markdown } from './Markdown.tsx';
 import { ProviderPicker } from './ProviderPicker.tsx';
 import { isReady, statusText } from './providerStatus.ts';
@@ -32,6 +33,12 @@ export function App() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const stickToBottom = useRef(true);
   const readFilesRef = useRef<(files: FileList | File[]) => void>(() => {});
+  /** 창 전체 단축키(Esc, Cmd/Ctrl+N)가 지금 화면 값을 보게 매번 바꿔 끼운다 */
+  const globalKeyRef = useRef<(e: globalThis.KeyboardEvent) => void>(() => {});
+  /** 화면 읽기 프로그램에 읽어 줄 다 온 답. 조각마다 읽으면 시끄러워서 끝났을 때 한 번만 */
+  const [announce, setAnnounce] = useState('');
+  /** 이미 끝난 답 id. 처음 열 때 남아 있던 대화(다시 켬)는 읽지 않는다 */
+  const doneIds = useRef<Set<string>>(undefined);
 
   const refreshStatus = useCallback(async (refresh: boolean) => {
     setChecking(true);
@@ -116,6 +123,27 @@ export function App() {
   }, [hasMessages]);
   useEffect(() => () => clearTimeout(undoTimer.current), []);
 
+  // 답이 새로 끝나면 한 번 알린다
+  useEffect(() => {
+    if (!state) return;
+    const done = state.messages.filter((m) => m.role === 'pet' && m.status === 'done');
+    if (!doneIds.current) {
+      doneIds.current = new Set(done.map((m) => m.id));
+      return;
+    }
+    const fresh = done.filter((m) => !doneIds.current?.has(m.id));
+    for (const m of fresh) doneIds.current.add(m.id);
+    const last = fresh.at(-1);
+    if (last) setAnnounce(t('chat.a11yAnswered', { name: petName, text: last.text }));
+  }, [state, petName]);
+
+  // Esc, Cmd/Ctrl+N 은 입력칸 밖(답 단추 등)에 있어도 듣는다
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => globalKeyRef.current(e);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   // 새 메시지가 오면 맨 아래로. 사용자가 위로 올려 읽는 중이면 두지 않는다.
   useEffect(() => {
     const el = listRef.current;
@@ -163,6 +191,34 @@ export function App() {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
       e.preventDefault();
       send();
+      return;
+    }
+    // 빈 입력칸에서 ↑: 마지막 질문을 다시 불러온다 (고쳐서 다시 묻기)
+    if (chatKey(e.nativeEvent, bridge.platform) === 'recall' && !text) {
+      const last = lastQuestion(state.messages);
+      if (!last) return;
+      e.preventDefault();
+      setText(last);
+      // 값이 들어간 뒤 커서를 끝으로
+      requestAnimationFrame(() => {
+        const el = inputRef.current;
+        el?.setSelectionRange(el.value.length, el.value.length);
+      });
+    }
+  };
+
+  globalKeyRef.current = (e) => {
+    const key = chatKey(e, bridge.platform);
+    if (key === 'escape') {
+      // 그림 크게 보기, AI 관리가 열려 있으면 그것부터 닫는다. 아니면 답을 멈춘다
+      if (zoom) setZoom(undefined);
+      else if (managing) setManaging(false);
+      else if (pending) bridge.cancel();
+      else return;
+      e.preventDefault();
+    } else if (key === 'new-chat') {
+      e.preventDefault();
+      if (!pending && state.messages.length > 0) newChat();
     }
   };
 
@@ -255,6 +311,11 @@ export function App() {
       <div
         className="messages"
         ref={listRef}
+        // 새 메시지(내 질문, 오류)는 덧붙을 때 읽는다. 답 조각은 그리는 중이라 숨기고 끝나면 아래 announce 로
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions"
+        aria-label={t('chat.a11yLog', { name: petName })}
         onScroll={(e) => {
           const el = e.currentTarget;
           stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
@@ -280,6 +341,10 @@ export function App() {
           />
         ))}
       </div>
+
+      <span className="sr-only" role="status" aria-live="polite">
+        {announce}
+      </span>
 
       <footer>
         {undoShown && (
@@ -435,7 +500,8 @@ function Message({
           <Thinking streams={m.provider === 'claude'} label={label} petName={petName} />
         )}
         {m.text && (
-          <div className="bubble">
+          // 오는 중인 답은 화면 읽기에서 숨긴다 (조각마다 읽지 않게). 끝나면 보이고 한 번 알린다
+          <div className="bubble" aria-hidden={m.status === 'streaming' || undefined}>
             <Markdown text={m.text} onLink={bridge.openLink} />
             {m.status === 'done' && <AnswerActions id={m.id} text={m.text} />}
           </div>
@@ -491,6 +557,8 @@ function Message({
 /** 답 아래 작은 단추: 복사, 메모로, 할 일로 (v1 "답변을 메모, 할 일로") */
 function AnswerActions({ id, text }: { id: string; text: string }) {
   const [done, setDone] = useState<{ msg: string; failed?: boolean }>();
+  // 단추가 답마다 있어서 화면 읽기에는 어느 답의 단추인지 앞부분을 같이 읽어 준다
+  const about = snippet(text);
   const flash = (msg: string, failed = false) => {
     setDone({ msg, failed });
     setTimeout(() => setDone(undefined), failed ? 2600 : 1800);
@@ -500,6 +568,7 @@ function AnswerActions({ id, text }: { id: string; text: string }) {
     <span className="answer-actions">
       <button
         type="button"
+        aria-label={t('chat.copyLabel', { text: about })}
         onClick={async () => {
           // 창이 앞에 없거나 권한이 막히면 복사가 실패한다. 됐다고 하지 않고 못 했다고 알린다
           try {
@@ -514,6 +583,7 @@ function AnswerActions({ id, text }: { id: string; text: string }) {
       </button>
       <button
         type="button"
+        aria-label={t('chat.toNoteLabel', { text: about })}
         onClick={async () => {
           const ok = await bridge.toNote(id);
           flash(ok ? t('chat.savedNote') : t('chat.saveFailed'), !ok);
@@ -524,6 +594,7 @@ function AnswerActions({ id, text }: { id: string; text: string }) {
       <button
         type="button"
         title={t('chat.toTodosTitle')}
+        aria-label={t('chat.toTodosLabel', { text: about })}
         onClick={async () => {
           const n = await bridge.toTodos(id);
           flash(n > 0 ? t('chat.todosAdded', { n }) : t('chat.nothingToAdd'));
@@ -533,6 +604,15 @@ function AnswerActions({ id, text }: { id: string; text: string }) {
       </button>
     </span>
   );
+}
+
+/** 답 앞부분 (단추 이름에 붙인다). 마크다운 기호는 읽을 때 거슬려서 뺀다 */
+function snippet(text: string): string {
+  const plain = text
+    .replace(/[#*_`>[\]()~|-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return plain.length > 40 ? `${plain.slice(0, 40)}…` : plain;
 }
 
 function Thinking({ streams, label, petName }: { streams: boolean; label: string; petName: string }) {

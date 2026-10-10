@@ -46,6 +46,13 @@ export const ko = {
   'chat.todosAdded': (v: { n: number }) => `할 일 ${v.n}개 넣음`,
   'chat.nothingToAdd': '넣을 게 없어',
   'chat.toTodos': '할 일로',
+  // 화면 읽기 프로그램용 (보이지 않는 글)
+  'chat.copyLabel': (v: { text: string }) => `이 답 복사: ${v.text}`,
+  'chat.toNoteLabel': (v: { text: string }) => `이 답을 메모로: ${v.text}`,
+  'chat.toTodosLabel': (v: { text: string }) => `이 답을 할 일로: ${v.text}`,
+  'chat.a11yLog': (v: { name: string }) => `${withParticle(v.name, '과')} 나눈 대화`,
+  'chat.a11yAnswered': (v: { name: string; text: string }) =>
+    `${withParticle(v.name, '이')} 답했어. ${v.text}`,
   'chat.thinking': (v: { name: string }) => `${withParticle(v.name, '이')} 생각 중`,
   'chat.thinkingSlow': (v: { label: string }) =>
     `${withParticle(v.label, '은')} 답을 다 만든 뒤 한 번에 보여 줘`,
@@ -150,6 +157,11 @@ export const en: Translation<typeof ko> = {
   'chat.todosAdded': (v) => (Number(v.n) === 1 ? 'Added 1 to-do' : `Added ${v.n} to-dos`),
   'chat.nothingToAdd': 'Nothing to add',
   'chat.toTodos': 'To to-dos',
+  'chat.copyLabel': (v) => `Copy this answer: ${v.text}`,
+  'chat.toNoteLabel': (v) => `Save this answer as a note: ${v.text}`,
+  'chat.toTodosLabel': (v) => `Turn this answer into to-dos: ${v.text}`,
+  'chat.a11yLog': (v) => `Chat with ${v.name}`,
+  'chat.a11yAnswered': (v) => `${v.name} answered. ${v.text}`,
   'chat.thinking': (v) => `${v.name} is thinking`,
   'chat.thinkingSlow': (v) => `${v.label} shows the answer all at once when it's done`,
   'chat.longChat':
