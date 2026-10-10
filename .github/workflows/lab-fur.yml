@@ -1,0 +1,37 @@
+# 실험 브랜치 전용: 털 요청문 비교. main 에는 넣지 않는다.
+name: lab-fur
+on:
+  push:
+    branches: [lab/illustrate]
+    paths: ['lab/fur-run.ts', '.github/workflows/lab-fur.yml']
+permissions:
+  contents: write
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [0, 1, 2]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: ccr-04ba311d-ht78er
+          path: app
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node lab/fur-run.ts
+        continue-on-error: true
+        env:
+          VARIANT: ${{ matrix.variant }}
+      - name: 결과 올리기
+        run: |
+          git config user.name "jjakkung-lab"
+          git config user.email "lab@users.noreply.github.com"
+          git add -f lab/out-fur
+          git commit -m "lab: 털 비교 v${{ matrix.variant }}" || exit 0
+          for i in 1 2 3 4 5; do git pull --rebase -q origin lab/illustrate && git push -q origin HEAD:lab/illustrate && exit 0; sleep $((i*3)); done
+          exit 1
