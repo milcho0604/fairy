@@ -43,17 +43,17 @@ if job == "kontext2":
     for n in ["cat-adult", "cat-teen"]:
         run(f"k2-{n}", lambda n=n: c.predict(input_image=handle_file(f"lab/out-fur3/v0/{n}.webp"), prompt=LEGS,
                                               seed=0, randomize_seed=True, guidance_scale=2.5, steps=28, api_name="/infer"))
-elif job == "klein":
-    c = Client("black-forest-labs/FLUX.2-klein-4B")
+elif job in ("klein", "klein9"):
+    c = Client("black-forest-labs/FLUX.2-klein-4B" if job == "klein" else "black-forest-labs/FLUX.2-klein-9B")
     log.append({"api": str(c.view_api(return_format="dict", print_info=False).get("named_endpoints", {}).get("/infer"))[:3000]})
-    run("klein-cat-adult", lambda: c.predict(prompt=FULL, input_images=[{"image": handle_file("lab/in_cat.png"), "caption": None}],
-                                             mode_choice="Distilled (4 steps)", seed=0, randomize_seed=True, width=784, height=1328,
+    run(f"{job}-cat-adult", lambda: c.predict(prompt=FULL, input_images=[{"image": handle_file("lab/in_cat.png"), "caption": None}],
+                                             mode_choice="Distilled (4 steps)", seed=0, randomize_seed=True, width=608, height=1024,
                                              num_inference_steps=4, guidance_scale=1.0, prompt_upsampling=False, api_name="/infer"))
-    run("klein-poodle-adult", lambda: c.predict(prompt=FULL, input_images=[{"image": handle_file("lab/in_poodle.png"), "caption": None}],
-                                                mode_choice="Distilled (4 steps)", seed=0, randomize_seed=True, width=784, height=1328,
+    run(f"{job}-poodle-adult", lambda: c.predict(prompt=FULL, input_images=[{"image": handle_file("lab/in_poodle.png"), "caption": None}],
+                                                mode_choice="Distilled (4 steps)", seed=0, randomize_seed=True, width=608, height=1024,
                                                 num_inference_steps=4, guidance_scale=1.0, prompt_upsampling=False, api_name="/infer"))
-    run("klein-k2-cat", lambda: c.predict(prompt=LEGS, input_images=[{"image": handle_file("lab/out-fur3/v0/cat-adult.webp"), "caption": None}],
-                                          mode_choice="Distilled (4 steps)", seed=0, randomize_seed=True, width=784, height=1328,
+    run(f"{job}-k2-cat", lambda: c.predict(prompt=LEGS, input_images=[{"image": handle_file("lab/out-fur3/v0/cat-adult.webp"), "caption": None}],
+                                          mode_choice="Distilled (4 steps)", seed=0, randomize_seed=True, width=608, height=1024,
                                           num_inference_steps=4, guidance_scale=1.0, prompt_upsampling=False, api_name="/infer"))
 json.dump(log, open(f"lab/out-fur4/{job}.json", "w"), ensure_ascii=False, indent=1)
 print(json.dumps(log, ensure_ascii=False, indent=1)[:5000])
