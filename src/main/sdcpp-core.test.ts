@@ -8,6 +8,7 @@ import {
   hfResolveUrl,
   isSdSetupDone,
   killTreeArgs,
+  LOCAL_PASSES,
   looksGpuFailure,
   modelsRatio,
   PASS_MINUTES,
@@ -295,12 +296,14 @@ test('진행 줄 읽기: 그리기(s/it, it/s)와 모델 읽기(MB/s), \\r 로 �
   assert.equal(sdProgress('|==| 5/4 - 1.0s/it'), undefined);
 });
 
-test('그리기 진행률: 그리기 반, 털 다듬기 반. 읽기 15%, 4단계 80%', () => {
-  assert.equal(sdDrawRatio(0), 0.01);
-  assert.ok(Math.abs(sdDrawRatio(0, { phase: 'load', n: 1, total: 1 }) - 0.075) < 1e-9);
-  assert.ok(Math.abs(sdDrawRatio(0, { phase: 'sample', n: 4, total: 4 }) - 0.475) < 1e-9);
-  assert.ok(Math.abs(sdDrawRatio(1, { phase: 'sample', n: 2, total: 4 }) - 0.775) < 1e-9);
-  assert.ok(sdDrawRatio(1, { phase: 'sample', n: 4, total: 4 }) < 1);
+test('그리기 진행률: 한 번 그리기가 전부. 읽기 15%, 4단계 80%', () => {
+  assert.equal(LOCAL_PASSES, 1);
+  assert.equal(sdDrawRatio(0), 0.02);
+  assert.ok(Math.abs(sdDrawRatio(0, { phase: 'load', n: 1, total: 1 }) - 0.15) < 1e-9);
+  assert.ok(Math.abs(sdDrawRatio(0, { phase: 'sample', n: 2, total: 4 }) - 0.55) < 1e-9);
+  assert.ok(Math.abs(sdDrawRatio(0, { phase: 'sample', n: 4, total: 4 }) - 0.95) < 1e-9);
+  assert.ok(Math.abs(sdDrawRatio(1, { phase: 'sample', n: 2, total: 4 }, 2) - 0.775) < 1e-9);
+  assert.ok(sdDrawRatio(1, { phase: 'sample', n: 4, total: 4 }, 2) < 1);
 });
 
 test('실패 고르기: 그래픽 메모리, 윈도우 메모리 부족 코드, 모델 못 읽음, 그 밖은 mflux 규칙', () => {
@@ -456,8 +459,9 @@ test('준비 빈 공간: 남은 모델 + 도구 + 여유, 받아 둔 .part 만�
   assert.ok(Math.abs(modelsRatio(SD_MODELS[0].bytes, 0) - SD_MODELS[0].bytes / SD_MODEL_BYTES) < 1e-12);
 });
 
-test('걸리는 시간: 한 장은 두 번 그리기, CPU 는 GPU 보다 오래', () => {
-  assert.deepEqual(pictureMinutes('gpu'), { min: PASS_MINUTES.gpu.min * 2, max: PASS_MINUTES.gpu.max * 2 });
+test('걸리는 시간: 한 장은 한 번 그리기, CPU 는 GPU 보다 오래 (4코어 CPU 실측 약 35분)', () => {
+  assert.deepEqual(pictureMinutes('gpu'), PASS_MINUTES.gpu);
+  assert.ok(pictureMinutes('cpu').max >= 35);
   assert.ok(pictureMinutes('cpu').min > pictureMinutes('gpu').max);
   assert.equal(tierOf('vulkan'), 'gpu');
   assert.equal(tierOf('metal'), 'gpu');

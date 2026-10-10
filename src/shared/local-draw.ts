@@ -36,7 +36,7 @@ export interface LocalDrawInfo {
   ready: boolean;
   /** 안 되는 컴퓨터만: 까닭 (창이 알맞은 안내를 보인다. 로제타면 Apple 칩용 앱을 깔라고) */
   reason?: LocalUnsupported;
-  /** 되는 컴퓨터만: 쓰는 엔진, 시간 단계, 안내 숫자, 한 장(그리기 + 털 다듬기) 걸리는 어림 분 */
+  /** 되는 컴퓨터만: 쓰는 엔진, 시간 단계, 안내 숫자, 한 장(내 컴퓨터는 한 번 그리기) 걸리는 어림 분 */
   engine?: LocalEngine;
   tier?: LocalTier;
   need?: { download: number; keep: number; memory: number; free: number };

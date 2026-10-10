@@ -292,12 +292,12 @@ export function installRatio(text: string): number {
 }
 
 /**
- * 그리기 + 털 다듬기 전체 진행률. pass 0 은 그리기, 1 은 털 다듬기 (반씩). 한 번 안에서는 모델 읽기 15%,
- * 4단계 80%, 저장 5%. step 을 모르면(아직 읽는 중) 읽기 몫의 절반
+ * 전체 진행률. pass 는 몇 번째 그리기 (passes 번 중, 내 컴퓨터에서는 한 번: sdcpp-core LOCAL_PASSES).
+ * 한 번 안에서는 모델 읽기 15%, 4단계 80%, 저장 5%. step 을 모르면(아직 읽는 중) 읽기 몫의 절반
  */
-export function drawRatio(pass: 0 | 1, step?: { n: number; total: number }): number {
+export function drawRatio(pass: 0 | 1, step?: { n: number; total: number }, passes = 1): number {
   const within = step ? 0.15 + 0.8 * Math.min(1, step.n / Math.max(1, step.total)) : 0.07;
-  return Math.min(0.99, (pass + within) / 2);
+  return Math.min(0.99, (pass + within) / passes);
 }
 
 export type LocalDrawErrorKind =

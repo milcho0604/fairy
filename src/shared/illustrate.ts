@@ -33,7 +33,7 @@ const AGE_PHRASE: Record<AgeStage, string> = {
  * 그림 모델에 보낼 요청문 (영어). 펫 생김새는 지키고 나이만 바꾼다. 사용자 바람은 다듬어 따옴표로 묶고
  * 길이를 자르며, 규칙을 바꾸지 못한다고 적는다.
  * 자세를 맨 앞에, 앉은 자세로: 뒤에 두거나 "서 있는" 자세를 시키면 다리 이야기에 끌려 두 발로 서거나 앞발을 들었다
- * (2026-10-10 실제 비교 9장). 다리 털은 이 요청문만으로는 매끈하게 나와 털 다듬기(hf-illust.ts FUR_PROMPT)를 한 번 더 한다
+ * (2026-10-10 실제 비교 9장). 다리 털은 이 요청문만으로는 매끈하게 나와 털 다듬기(hf-illust.ts FUR_PROMPT)를 한 번 더 한다 (클라우드만. 내 컴퓨터의 klein 은 한 번에 다리까지 보송하게 그린다)
  */
 export function illustratePrompt(age: AgeStage, wish?: unknown): string {
   const w = [...cleanWish(wish)].slice(0, ILLUST_WISH_MAX).join('').trim();

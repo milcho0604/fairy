@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { app } from 'electron';
 import { type LocalDrawInfo, SD_DRAW_GB, SD_SETUP_STAGES, setupRatio } from '../shared/local-draw.ts';
 import { ensureVerified, forgetVerified } from './download.ts';
-import { FUR_PROMPT, type ImageKind } from './hf-illust.ts';
+import type { ImageKind } from './hf-illust.ts';
 import { checkDrawn, DRAW_FREE_BYTES, LocalDrawError, tail } from './local-draw-core.ts';
 import {
   dirBytesAsync,
@@ -487,23 +487,10 @@ export function illustrateSd(
       };
       const started = Date.now();
       try {
+        // 한 번만 그린다: klein 이 처음부터 다리 털까지 그려 털 다듬기가 필요 없다 (sdcpp-core LOCAL_PASSES)
         const drawn = await pass(photo, kind, prompt, 0);
         o.log('local-draw', 'sd drawn', backend, `${Math.round((Date.now() - started) / 1000)}s`);
-        try {
-          const fur = await pass(drawn.bytes, drawn.kind, FUR_PROMPT, 1);
-          o.log('local-draw', 'sd fur', `${Math.round((Date.now() - started) / 1000)}s`);
-          return {
-            bytes: fur.bytes,
-            kind: fur.kind,
-            fur: true,
-            before: { bytes: drawn.bytes, kind: drawn.kind },
-          };
-        } catch (err) {
-          if (err instanceof LocalDrawError && (err.kind === 'cancelled' || err.kind === 'notReady'))
-            throw err;
-          o.log('local-draw', 'sd fur skipped', err instanceof LocalDrawError ? err.kind : String(err));
-          return { bytes: drawn.bytes, kind: drawn.kind, fur: false };
-        }
+        return { bytes: drawn.bytes, kind: drawn.kind, fur: false };
       } catch (err) {
         const e = err instanceof LocalDrawError ? err : new LocalDrawError('failed', String(err));
         o.log('local-draw', 'sd draw', e.kind, e.message.slice(0, 300));

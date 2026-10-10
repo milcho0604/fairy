@@ -227,11 +227,13 @@ test('uv 설치 진행: 받기 시작과 끝 줄을 센다', () => {
   assert.equal(installRatio('Downloading a\nDownloaded a\n'), 0.9);
 });
 
-test('그리기 진행률: 그리기 반, 털 다듬기 반', () => {
-  assert.equal(drawRatio(0), 0.035);
-  assert.ok(Math.abs(drawRatio(0, { n: 4, total: 4 }) - 0.475) < 1e-9);
-  assert.ok(Math.abs(drawRatio(1, { n: 0, total: 4 }) - 0.575) < 1e-9);
-  assert.ok(drawRatio(1, { n: 4, total: 4 }) <= 0.99);
+test('그리기 진행률: 한 번 그리기가 전부, 두 번이면 반씩', () => {
+  assert.equal(drawRatio(0), 0.07);
+  assert.ok(Math.abs(drawRatio(0, { n: 2, total: 4 }) - 0.55) < 1e-9);
+  assert.ok(Math.abs(drawRatio(0, { n: 4, total: 4 }) - 0.95) < 1e-9);
+  assert.ok(Math.abs(drawRatio(0, { n: 4, total: 4 }, 2) - 0.475) < 1e-9);
+  assert.ok(Math.abs(drawRatio(1, { n: 0, total: 4 }, 2) - 0.575) < 1e-9);
+  assert.ok(drawRatio(1, { n: 4, total: 4 }, 2) <= 0.99);
 });
 
 test('준비 진행률: 단계 몫을 이어 붙이고, 비율로 단계를 다시 고른다', () => {

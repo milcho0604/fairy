@@ -19,7 +19,7 @@ import { join } from 'node:path';
 import { app, session } from 'electron';
 import { LOCAL_DRAW_GB, type LocalDrawInfo, setupRatio } from '../shared/local-draw.ts';
 import { ensureVerified, forgetVerified } from './download.ts';
-import { FUR_PROMPT, type ImageKind } from './hf-illust.ts';
+import type { ImageKind } from './hf-illust.ts';
 import {
   checkDrawn,
   classifyFailure,
@@ -448,18 +448,10 @@ export function illustrateLocal(
       const opt = { signal: ac.signal, children, onProgress: o.onProgress };
       const started = Date.now();
       try {
+        // 한 번만 그린다: klein 이 처음부터 다리 털까지 그려 털 다듬기가 필요 없다 (sdcpp-core LOCAL_PASSES)
         const drawn = await drawOnce(l, photo, kind, prompt, 0, opt);
         o.log('local-draw', 'drawn', `${Math.round((Date.now() - started) / 1000)}s`);
-        try {
-          const fur = await drawOnce(l, drawn.bytes, drawn.kind, FUR_PROMPT, 1, opt);
-          o.log('local-draw', 'fur', `${Math.round((Date.now() - started) / 1000)}s`);
-          return { ...fur, fur: true, before: drawn };
-        } catch (err) {
-          if (err instanceof LocalDrawError && (err.kind === 'cancelled' || err.kind === 'notReady'))
-            throw err;
-          o.log('local-draw', 'fur skipped', err instanceof LocalDrawError ? err.kind : String(err));
-          return { ...drawn, fur: false };
-        }
+        return { ...drawn, fur: false };
       } catch (err) {
         const e = err instanceof LocalDrawError ? err : new LocalDrawError('failed', String(err));
         o.log('local-draw', 'draw', e.kind, e.message.slice(0, 300));

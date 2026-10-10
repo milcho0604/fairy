@@ -90,19 +90,25 @@ export const SD_TOOLS_FREE_BYTES = 200e6;
 export const SD_FREE_MARGIN = 1e9;
 
 /**
- * 한 번 그리기(4단계) 걸리는 어림 분. 실제로 재서 고칠 자리 (2026-10-10 은 어림 값).
- * mflux 는 M2 Pro 에서 1분쯤, GPU 는 Vulkan(외장, 내장)과 Metal, CPU 는 긴 변 768 로 줄여서
+ * 한 번 그리기(4단계) 걸리는 어림 분. mflux 는 M2 Pro 에서 1분쯤. CPU 는 2026-10-10 윈도우 러너(4코어 EPYC) 실측
+ * 448x768 에 35분(4단계 27분 + 읽기, 풀기). 보통 8코어 PC 는 그 절반쯤이라 15~35분으로 안내
  */
 export const PASS_MINUTES: Record<LocalTier, { min: number; max: number }> = {
-  mflux: { min: 1, max: 1 },
-  gpu: { min: 1, max: 2 },
-  cpu: { min: 10, max: 20 },
+  mflux: { min: 1, max: 2 },
+  gpu: { min: 1, max: 3 },
+  cpu: { min: 15, max: 35 },
 };
 
-/** 한 장(그리기 + 털 다듬기, 두 번) 걸리는 어림 분 */
+/**
+ * 내 컴퓨터에서는 한 번만 그린다 (털 다듬기 없음). 털 다듬기는 클라우드 Kontext 가 다리 털을 매끈하게 그려서 넣은 것인데,
+ * 로컬은 처음부터 klein 이 그려 다리까지 보송했다 (윈도우 러너 실측). 한 번이면 시간이 반이다
+ */
+export const LOCAL_PASSES = 1;
+
+/** 한 장 걸리는 어림 분 */
 export const pictureMinutes = (tier: LocalTier) => ({
-  min: PASS_MINUTES[tier].min * 2,
-  max: PASS_MINUTES[tier].max * 2,
+  min: PASS_MINUTES[tier].min * LOCAL_PASSES,
+  max: PASS_MINUTES[tier].max * LOCAL_PASSES,
 });
 
 /** 한 번 그리기 상한. CPU 는 느린 노트북에서 한참 걸려 넉넉히 */
@@ -337,13 +343,17 @@ export function sdProgress(text: string): { phase: 'load' | 'sample'; n: number;
 }
 
 /**
- * 그리기 + 털 다듬기 전체 진행률. pass 0 은 그리기, 1 은 털 다듬기 (반씩). 한 번 안에서는 모델 읽기 15%,
- * 4단계 80%, 저장 5%. 아직 아무 줄도 없으면 읽기 몫의 조금
+ * 전체 진행률. pass 는 몇 번째 그리기 (passes 번 중). 한 번 안에서는 모델 읽기 15%, 4단계 80%, 저장 5%.
+ * 아직 아무 줄도 없으면 읽기 몫의 조금
  */
-export function sdDrawRatio(pass: 0 | 1, p?: { phase: 'load' | 'sample'; n: number; total: number }): number {
+export function sdDrawRatio(
+  pass: 0 | 1,
+  p?: { phase: 'load' | 'sample'; n: number; total: number },
+  passes: number = LOCAL_PASSES,
+): number {
   const f = p ? Math.min(1, p.n / Math.max(1, p.total)) : 0;
   const within = !p ? 0.02 : p.phase === 'load' ? 0.02 + 0.13 * f : 0.15 + 0.8 * f;
-  return Math.min(0.99, (pass + within) / 2);
+  return Math.min(0.99, (pass + within) / passes);
 }
 
 /**

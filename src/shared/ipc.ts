@@ -603,7 +603,7 @@ export interface MakerBridge {
     | {
         ok: true;
         image: string;
-        /** 털 다듬기 전 그림 (털 다듬기를 했을 때만). 털색이 바뀌었으면 창이 이것으로 되돌리거나 색을 맞춘다 */
+        /** 털 다듬기 전 그림 (털 다듬기를 했을 때만, 클라우드만). 털색이 바뀌었으면 창이 이것으로 되돌리거나 색을 맞춘다 */
         before?: string;
         /** 이 컴퓨터에서 그렸으면 그 뒤의 상태 (CPU 로 되돌렸으면 시간 안내가 바뀐다) */
         localDraw?: LocalDrawInfo;
