@@ -1,4 +1,4 @@
-# 실험 브랜치 전용: Hugging Face 공개 정보 조회. main 에는 넣지 않는다.
+# 실험 브랜치 전용: 공개 정보 조회. main 에는 넣지 않는다.
 name: lab-probe
 on:
   push:
@@ -11,20 +11,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: |
-          mkdir -p lab/probe
-          q() { curl -sS "https://huggingface.co/api/$1" | python3 -c "import json,sys; d=json.load(sys.stdin); print(json.dumps(d,indent=1)[:20000])" > "lab/probe/$2.json" || true; }
-          q "spaces?search=klein&sort=likes&limit=20&full=false" spaces-klein
-          q "spaces?search=kontext&sort=likes&limit=20" spaces-kontext
-          q "models?search=FLUX.2-klein-4B&limit=40" models-klein4b
-          q "models?search=klein&author=mflux-community&limit=40" models-mflux
-          q "models?search=mflux&limit=60&sort=downloads" models-mflux-all
-          q "models/black-forest-labs/FLUX.2-klein-4B" klein4b
-          q "models/black-forest-labs/FLUX.1-Kontext-dev" kontext
-          q "spaces/black-forest-labs/FLUX.2-klein-4B" space-klein4b
-          curl -sS https://black-forest-labs-flux-2-klein-4b.hf.space/gradio_api/info > lab/probe/klein4b-info.json || true
-          curl -sS https://black-forest-labs-flux-2-klein-4b.hf.space/config | head -c 200000 > lab/probe/klein4b-config.json || true
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p lab/probe2
+          curl -sS -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/leejet/stable-diffusion.cpp/releases?per_page=2" \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); [print(r['tag_name'], r['published_at']) or [print('  ',a['name'],a['size'],a['browser_download_url'],a.get('digest')) for a in r['assets']] for r in d]" > lab/probe2/sdcpp-releases.txt
+          for repo in leejet/FLUX.2-klein-4B-GGUF unsloth/Qwen3-4B-GGUF Comfy-Org/flux2-klein-4B black-forest-labs/FLUX.2-klein-4B black-forest-labs/FLUX.2-small-decoder Comfy-Org/flux2-dev; do
+            n=$(echo $repo | tr '/' '_')
+            curl -sS "https://huggingface.co/api/models/$repo/tree/main?recursive=true" | python3 -c "
+          import json,sys
+          try:
+              d=json.load(sys.stdin)
+              for f in d:
+                  if f.get('type')=='file': print(f['path'], f.get('size'), (f.get('lfs') or {}).get('oid'))
+          except Exception as e: print('ERR', e)" > lab/probe2/$n.txt
+            curl -sS "https://huggingface.co/api/models/$repo" | python3 -c "import json,sys; d=json.load(sys.stdin); print('gated', d.get('gated'), 'license', (d.get('cardData') or {}).get('license'))" >> lab/probe2/$n.txt || true
+          done
       - run: |
           git config user.name "jjakkung-lab"; git config user.email "lab@users.noreply.github.com"
-          git add -f lab/probe; git commit -qm "lab: probe" || exit 0
+          git add -f lab/probe2; git commit -qm "lab: probe2" || exit 0
           for i in 1 2 3 4 5; do git pull --rebase -q origin lab/illustrate && git push -q origin HEAD:lab/illustrate && exit 0; sleep $((i*3)); done
