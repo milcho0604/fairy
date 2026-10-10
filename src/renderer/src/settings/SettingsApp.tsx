@@ -420,6 +420,12 @@ export function SettingsApp() {
             onChange={(v) => update({ aiKnowsTodos: v })}
           />
           <Toggle
+            label={t('settings.aiPetTools')}
+            hint={t('settings.aiPetToolsHint')}
+            on={s.aiPetTools}
+            onChange={(v) => update({ aiPetTools: v })}
+          />
+          <Toggle
             label={t('settings.diaryAi')}
             hint={t('settings.diaryAiHint')}
             on={s.diaryAi}

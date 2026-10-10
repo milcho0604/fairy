@@ -154,3 +154,71 @@ export function historyFor(state: ChatState, provider: AiProvider): Exchange[] {
   }
   return out;
 }
+
+/** 다시 켜도 남길 메시지 수. 이어가기는 AI 쪽 세션이 맡아서 화면에는 최근 것만 있으면 된다 */
+export const SAVED_MESSAGES = 40;
+/** 메시지 하나의 글 길이 상한. 손으로 고친 파일이 엄청 커도 창이 버티게 */
+export const SAVED_TEXT_MAX = 20_000;
+
+/** 파일에 남기는 대화. 그림(작은 그림도 data URL 이라 크다)과 끝나지 않은 답, 오류는 남기지 않는다 */
+export interface SavedChat {
+  messages: ChatMessage[];
+  sessions: ChatState['sessions'];
+}
+
+/** 끝까지 주고받은 것만 고른다. 답 없이 남은 질문(오류, 멈춤)은 뺀다 */
+export function serializeChat(s: ChatState): SavedChat {
+  const msgs = s.messages;
+  const keep: ChatMessage[] = [];
+  for (let i = 0; i < msgs.length; i++) {
+    const m = msgs[i];
+    if (!m) continue;
+    if (m.role === 'notice') keep.push({ id: m.id, role: 'notice', text: m.text });
+    else if (m.role === 'pet' && m.status === 'done')
+      keep.push({
+        id: m.id,
+        role: 'pet',
+        text: m.text,
+        status: 'done',
+        ...(m.provider ? { provider: m.provider } : {}),
+      });
+    else if (m.role === 'user') {
+      const answer = msgs[i + 1];
+      // 그림만 보낸 질문은 그림을 빼면 빈 말풍선이라 뺀다
+      if (answer?.role === 'pet' && answer.status === 'done' && m.text)
+        keep.push({ id: m.id, role: 'user', text: m.text });
+    }
+  }
+  // 기록 안 남김 대화는 세션 자리를 undefined 로 비워 둔다. 빈 자리는 옮기지 않는다
+  const sessions = Object.fromEntries(Object.entries(s.sessions).filter(([, v]) => !!v));
+  return { messages: keep.slice(-SAVED_MESSAGES), sessions };
+}
+
+/** 저장 파일을 읽는다. 모양이 틀린 줄은 버리고, 아예 틀리면 빈 대화 (깨진 파일이 채팅 창을 막지 않게) */
+export function parseChat(raw: unknown): SavedChat {
+  const r = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
+  const messages: ChatMessage[] = [];
+  for (const m of Array.isArray(r.messages) ? r.messages : []) {
+    const v = (typeof m === 'object' && m !== null ? m : {}) as Record<string, unknown>;
+    if (typeof v.id !== 'string' || !v.id || typeof v.text !== 'string') continue;
+    const text = v.text.slice(0, SAVED_TEXT_MAX);
+    if (v.role === 'user' || v.role === 'notice') messages.push({ id: v.id, role: v.role, text });
+    else if (v.role === 'pet' && v.status === 'done')
+      messages.push({
+        id: v.id,
+        role: 'pet',
+        text,
+        status: 'done',
+        ...(typeof v.provider === 'string' ? { provider: v.provider } : {}),
+      });
+  }
+  const sessions: ChatState['sessions'] = {};
+  if (typeof r.sessions === 'object' && r.sessions !== null && !Array.isArray(r.sessions)) {
+    for (const [provider, v] of Object.entries(r.sessions as Record<string, unknown>)) {
+      const sv = (typeof v === 'object' && v !== null ? v : {}) as { id?: unknown; turns?: unknown };
+      if (typeof sv.id === 'string' && sv.id && Number.isInteger(sv.turns) && (sv.turns as number) >= 0)
+        sessions[provider] = { id: sv.id, turns: sv.turns as number };
+    }
+  }
+  return { messages: messages.slice(-SAVED_MESSAGES), sessions };
+}

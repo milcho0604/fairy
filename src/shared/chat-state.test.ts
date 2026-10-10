@@ -6,7 +6,11 @@ import {
   type ChatState,
   initialChat,
   LONG_CHAT_TURNS,
+  parseChat,
   resetChat,
+  SAVED_MESSAGES,
+  SAVED_TEXT_MAX,
+  serializeChat,
   switchProvider,
   undoReset,
 } from './chat-state.ts';
@@ -127,4 +131,100 @@ test('새 대화에서 이미 새로 물었거나 지운 것이 없으면 되돌
   assert.equal(undoReset(resetChat(done), resetChat(done)), undefined);
   // 답을 기다리는 중 (다시 물은 직후)
   assert.equal(undoReset({ ...resetChat(done), pendingId: 'x' }, done), undefined);
+});
+
+test('다시 켜도 남는 대화: 끝난 질문과 답, 세션만 남기고 그림, 오류, 기다리는 답은 뺀다', () => {
+  let s = addQuestion(initialChat('claude'), { user: 'u1', pet: 'p1' }, '안녕', [
+    { thumb: 'data:image/png;base64,AA' },
+  ]);
+  s = applyEvent(s, 'p1', { type: 'session', id: 'S' }, 'n');
+  s = applyEvent(s, 'p1', { type: 'done', text: '반가워' }, 'n');
+  // 그림만 보낸 질문: 그림을 빼면 빈 말풍선이라 질문은 빼고 답만 남긴다
+  s = addQuestion(s, { user: 'u2', pet: 'p2' }, '', [{ thumb: 'data:x' }]);
+  s = applyEvent(s, 'p2', { type: 'done', text: '그림 봤어' }, 'n');
+  // 오류 난 질문과 답은 통째로 뺀다
+  s = ask(s, 3);
+  s = applyEvent(s, 'p3', { type: 'error', error: { kind: 'failed', message: 'x' } }, 'n');
+  // 기다리는 중인 질문도 뺀다
+  s = ask(s, 4);
+  s = applyEvent(s, 'p4', { type: 'delta', text: '쓰는 중' }, 'n');
+  const saved = serializeChat(s);
+  assert.deepEqual(
+    saved.messages.map((m) => [m.id, m.role, m.text, m.status]),
+    [
+      ['u1', 'user', '안녕', undefined],
+      ['p1', 'pet', '반가워', 'done'],
+      ['p2', 'pet', '그림 봤어', 'done'],
+    ],
+  );
+  assert.ok(saved.messages.every((m) => !m.images));
+  assert.deepEqual(saved.sessions, { claude: { id: 'S', turns: 2 } });
+  // 파일을 거쳐도 그대로 (JSON)
+  assert.deepEqual(parseChat(JSON.parse(JSON.stringify(saved))), saved);
+});
+
+test('다시 켜도 남는 대화: 기록 안 남김으로 비운 세션 자리는 옮기지 않는다', () => {
+  const s: ChatState = {
+    ...initialChat('codex'),
+    sessions: { codex: undefined, claude: { id: 'C', turns: 1 } },
+  };
+  assert.deepEqual(serializeChat(s).sessions, { claude: { id: 'C', turns: 1 } });
+});
+
+test('다시 켜도 남는 대화: 최근 것만, 긴 글은 자른다', () => {
+  let s = initialChat('claude');
+  for (let i = 1; i <= SAVED_MESSAGES; i++) {
+    s = ask(s, i);
+    s = applyEvent(s, `p${i}`, { type: 'done', text: `답${i}` }, `n${i}`);
+  }
+  const saved = serializeChat(s);
+  assert.equal(saved.messages.length, SAVED_MESSAGES);
+  assert.equal(saved.messages.at(-1)?.text, `답${SAVED_MESSAGES}`);
+  const many = {
+    messages: Array.from({ length: 100 }, (_, i) => ({ id: `m${i}`, role: 'user', text: 'x' })),
+  };
+  assert.equal(parseChat(many).messages.length, SAVED_MESSAGES);
+  assert.equal(parseChat(many).messages[0]?.id, `m${100 - SAVED_MESSAGES}`);
+  const long = parseChat({ messages: [{ id: 'a', role: 'user', text: 'x'.repeat(SAVED_TEXT_MAX + 5) }] });
+  assert.equal(long.messages[0]?.text.length, SAVED_TEXT_MAX);
+});
+
+test('다시 켜도 남는 대화: 깨진 파일은 빈 대화, 틀린 줄만 버린다', () => {
+  for (const raw of [undefined, null, 'x', 3, [], { messages: 'no', sessions: [] }])
+    assert.deepEqual(parseChat(raw), { messages: [], sessions: {} });
+  const parsed = parseChat({
+    messages: [
+      { id: 'a', role: 'user', text: '질문' },
+      { id: 'b', role: 'pet', text: '답', status: 'done', provider: 'claude', images: [{ thumb: 'x' }] },
+      { id: 'c', role: 'pet', text: '쓰는 중', status: 'streaming' },
+      { id: 'd', role: 'pet', text: '오류', status: 'error' },
+      { id: 'e', role: 'robot', text: 'x' },
+      { id: 7, role: 'user', text: 'x' },
+      { id: 'f', role: 'user' },
+      null,
+      { id: 'g', role: 'notice', text: '알림' },
+    ],
+    sessions: {
+      claude: { id: 'S', turns: 2 },
+      codex: { id: '', turns: 1 },
+      x: { id: 'X', turns: -1 },
+      y: 'z',
+    },
+  });
+  assert.deepEqual(
+    parsed.messages.map((m) => m.id),
+    ['a', 'b', 'g'],
+  );
+  assert.deepEqual(parsed.messages[1], {
+    id: 'b',
+    role: 'pet',
+    text: '답',
+    status: 'done',
+    provider: 'claude',
+  });
+  assert.deepEqual(parsed.sessions, { claude: { id: 'S', turns: 2 } });
+  // 읽은 대화로 바로 이어 물을 수 있다 (기다리는 답이 없다)
+  const state = { ...initialChat('claude'), ...parsed };
+  assert.equal(state.pendingId, undefined);
+  assert.equal(ask(state, 9).pendingId, 'p9');
 });

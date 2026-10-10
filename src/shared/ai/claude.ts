@@ -1,7 +1,7 @@
 // claude CLI 의 stream-json 입력을 만들고 출력을 읽는다. 0단계 검증 C1~C6, L5, L13.
 import { t } from '../i18n/index.ts';
 import { classifyError } from './errors.ts';
-import type { AiEvent, ImageAttachment } from './types.ts';
+import { type AiEvent, type ImageAttachment, JJ_MCP_NAME, type McpLaunch } from './types.ts';
 import { claudeUsage } from './usage.ts';
 
 const LABEL = {
@@ -27,6 +27,13 @@ export interface ClaudeTurn {
   mcpServers?: readonly string[];
   /** 고른 모델 (v2). 별칭(sonnet 등)이면 그 계열의 최신. 없으면 CLI 기본 */
   model?: string;
+  /** 짝꿍 도구 쓰기: 펫 MCP 서버. 격리해도 이것만 싣는다 */
+  jjServer?: McpLaunch;
+}
+
+/** 짝꿍 MCP 서버 하나만 담은 --mcp-config 값 */
+export function jjMcpConfig(server: McpLaunch | undefined): string {
+  return JSON.stringify({ mcpServers: server ? { [JJ_MCP_NAME]: { type: 'stdio', ...server } } : {} });
 }
 
 /**
@@ -35,6 +42,11 @@ export interface ClaudeTurn {
  * 빈 MCP 설정을 엄격하게 지정해 늘 빼 둔다.
  */
 export function claudeArgs(turn: ClaudeTurn): string[] {
+  // 허락할 MCP: 격리를 껐을 때 내 MCP 서버들, 그리고 짝꿍 도구. 기본 도구(--tools '')는 그대로 끈다
+  const allowed = [
+    ...(turn.isolate === false ? (turn.mcpServers ?? []) : []),
+    ...(turn.jjServer ? [JJ_MCP_NAME] : []),
+  ];
   return [
     '-p',
     '--input-format',
@@ -53,12 +65,12 @@ export function claudeArgs(turn: ClaudeTurn): string[] {
           '',
           '--strict-mcp-config',
           '--mcp-config',
-          '{"mcpServers":{}}',
+          jjMcpConfig(turn.jjServer),
           '--disable-slash-commands',
         ]),
-    ...(turn.isolate === false && turn.mcpServers?.length
-      ? ['--allowedTools', turn.mcpServers.map(mcpToolPrefix).join(',')]
-      : []),
+    // 격리를 껐으면 내 MCP 설정 위에 짝꿍 서버만 더한다
+    ...(turn.isolate === false && turn.jjServer ? ['--mcp-config', jjMcpConfig(turn.jjServer)] : []),
+    ...(allowed.length ? ['--allowedTools', allowed.map(mcpToolPrefix).join(',')] : []),
     ...(turn.model ? ['--model', turn.model] : []),
     '--append-system-prompt',
     turn.persona,

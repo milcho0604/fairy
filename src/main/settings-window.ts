@@ -1,4 +1,4 @@
-import { join, sep } from 'node:path';
+import { join } from 'node:path';
 import {
   app,
   BrowserWindow,
@@ -17,6 +17,7 @@ import { isGait, isPetKind, type Settings } from '../shared/settings.ts';
 import { localModelReady } from './ai/local.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
 import { langArg } from './lang.ts';
+import { mcpScriptPath } from './mcp-launch.ts';
 import { library } from './pet-library.ts';
 import { settings } from './settings.ts';
 import { removeModel, storedModels } from './storage.ts';
@@ -73,11 +74,8 @@ export function createSettingsWindow({
           version: app.getVersion(),
           mcp: {
             exec: process.execPath,
-            // 설치판에서는 asar 밖에 풀어 둔 사본을 쓴다 (electron-builder asarUnpack)
-            script: join(app.getAppPath(), 'out', 'main', 'mcp-server.js').replace(
-              `app.asar${sep}`,
-              `app.asar.unpacked${sep}`,
-            ),
+            // 설치판에서는 asar 밖에 풀어 둔 사본 (mcp-launch.ts)
+            script: mcpScriptPath(),
           },
           myMcpServers: v2.mcpServers(),
           calendarLast: v2.calendarLast(),

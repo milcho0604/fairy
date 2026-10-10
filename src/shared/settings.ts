@@ -33,6 +33,11 @@ export interface Settings {
   persona: PersonaId;
   /** 질문할 때 오늘 할 일과 일정 제목을 같이 보낸다 (v1, 기본 끔: 밖으로 나가는 정보라 사용자가 켠다) */
   aiKnowsTodos: boolean;
+  /**
+   * 짝꿍 도구 쓰기: 채팅의 claude, codex 가 펫 MCP 서버로 할 일, 메모, 일정을 읽고 넣는다.
+   * 파일, 명령 도구는 여전히 끈다. 기본 끔: 할 일 목록을 읽는 도구라 내 할 일 같이 보내기처럼 밖으로 나가는 정보다
+   */
+  aiPetTools: boolean;
   /** 컴퓨터를 켜면 같이 켜기 (설치한 앱에서만 동작) */
   launchAtLogin: boolean;
   /** 숨기기 전 안내를 보여 준 횟수 (P1-10) */
@@ -270,6 +275,7 @@ export const DEFAULT_SETTINGS: Settings = {
   aiIsolation: true,
   persona: 'friend',
   aiKnowsTodos: false,
+  aiPetTools: false,
   launchAtLogin: false,
   hideHints: 0,
   petKind: 'kong',
@@ -392,6 +398,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     aiIsolation: bool(r.aiIsolation, base.aiIsolation),
     persona: isPersona(r.persona) ? r.persona : base.persona,
     aiKnowsTodos: bool(r.aiKnowsTodos, base.aiKnowsTodos),
+    aiPetTools: bool(r.aiPetTools, base.aiPetTools),
     launchAtLogin: bool(r.launchAtLogin, base.launchAtLogin),
     hideHints:
       typeof r.hideHints === 'number' && Number.isFinite(r.hideHints)
