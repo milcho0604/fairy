@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { type I18nKey, t } from '../../../shared/i18n/index.ts';
-import type { PanelState, PanelTab } from '../../../shared/ipc.ts';
+import type { EventClash, PanelState, PanelTab } from '../../../shared/ipc.ts';
 import { nextUnlock } from '../../../shared/pet-life.ts';
 import type { Todo } from '../../../shared/todo-store.ts';
 import { PetFace } from '../PetFace.tsx';
 import { EventTab } from './EventTab.tsx';
-import { addedText, whenLabel } from './format.ts';
+import { addedText, timeOf, whenLabel } from './format.ts';
 import { CoinIcon } from './icons.tsx';
 import { escClosesWindow } from './keys.ts';
 import { NoteTab } from './NoteTab.tsx';
@@ -47,7 +47,9 @@ type Toast =
   | { kind: 'event-removed'; id: number }
   | { kind: 'todo-removed'; id: number }
   /** 할 일 칸에 적은 한 줄이 시각이 있어 일정으로 들어갔다. text 는 적은 글 그대로 (할 일로 옮길 때) */
-  | { kind: 'to-event'; id: number; startAt: number; text: string }
+  | { kind: 'to-event'; id: number; startAt: number; text: string; clash?: EventClash }
+  /** 지난 마감을 오늘로 옮겼다. 되돌리면 원래 마감으로 */
+  | { kind: 'moved'; moved: { id: number; due: string | null }[] }
   | { kind: 'added'; text: string };
 
 const UNLOCK_KEYS = {
@@ -190,7 +192,14 @@ export function PanelApp() {
         ))}
       </nav>
 
-      {tab === 'today' && <TodayTab s={s} onComplete={complete} goTo={setTab} />}
+      {tab === 'today' && (
+        <TodayTab
+          s={s}
+          onComplete={complete}
+          goTo={setTab}
+          onMoved={(moved) => showToast({ kind: 'moved', moved })}
+        />
+      )}
       {tab === 'todo' && (
         <TodoTab
           s={s}
@@ -198,7 +207,14 @@ export function PanelApp() {
           inputRef={inputRef}
           onAdded={(r, text) => {
             // 시각이 있어 일정으로 들어갔다: 언제로 넣었는지, 되돌리기, 할 일로
-            if (r.kind === 'event') showToast({ kind: 'to-event', id: r.id, startAt: r.startAt, text });
+            if (r.kind === 'event')
+              showToast({
+                kind: 'to-event',
+                id: r.id,
+                startAt: r.startAt,
+                text,
+                ...(r.clash ? { clash: r.clash } : {}),
+              });
             // 여러 줄 붙여 넣기: "할 일 3개 넣었어"
             if (r.kind === 'many') showToast({ kind: 'added', text: addedText(r, s.today) });
           }}
@@ -239,6 +255,11 @@ export function PanelApp() {
             <span>
               {t('panel.toast.toEvent')}
               <strong className="toast-when">{whenLabel(toast.startAt, s.today)}</strong>
+              {toast.clash && (
+                <small className="toast-clash">
+                  {t('assist.clash', { time: timeOf(toast.clash.startAt), title: toast.clash.title })}
+                </small>
+              )}
             </span>
           ) : (
             <span>{toastText(toast)}</span>
@@ -255,6 +276,8 @@ export function PanelApp() {
                   if (toast.kind === 'event-removed') bridge.eventRestore(toast.id);
                   if (toast.kind === 'todo-removed') bridge.restore(toast.id);
                   if (toast.kind === 'to-event') bridge.eventRemove(toast.id);
+                  if (toast.kind === 'moved')
+                    for (const m of toast.moved) bridge.update(m.id, { due: m.due });
                   setToast(undefined);
                 }}
               >
@@ -280,5 +303,6 @@ function toastText(toast: Toast): string {
   if (toast.kind === 'event-removed') return t('panel.toast.eventRemoved');
   if (toast.kind === 'todo-removed') return t('panel.toast.todoRemoved');
   if (toast.kind === 'to-event') return t('panel.toast.toEvent');
+  if (toast.kind === 'moved') return t('assist.overdue.moved', { n: toast.moved.length });
   return toast.text;
 }

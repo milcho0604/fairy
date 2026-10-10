@@ -52,10 +52,17 @@ test('도구 목록', () => {
       'complete_todo',
       'update_todo',
       'delete_todo',
+      'add_todo_steps',
+      'check_todo_step',
       'add_note',
       'search_notes',
+      'read_note',
+      'append_note',
       'add_event',
       'list_events',
+      'update_event',
+      'delete_event',
+      'today_overview',
       'remember',
     ],
   );
@@ -211,4 +218,74 @@ test('할 일 id 는 1 이상의 정수만 (글, 참거짓, 소수, 0, 음수는
         `${name} ${JSON.stringify(bad)}`,
       );
   assert.match(text(tool('update_todo', { id, title: '바꿈' })), /고쳤어/);
+});
+
+test('할 일 단계: 넣을 때 같이, 나중에 더하기, 번호로 체크, 다 하면 끝낼지 묻기', () => {
+  const r = text(
+    tool('add_todo', {
+      title: '발표 준비 #회사',
+      due: '2099-05-01',
+      due_time: '14:30',
+      steps: ['자료 찾기', ' ', '초안'],
+    }),
+  );
+  assert.match(r, /마감 2099-05-01 14:30, 단계 2개/);
+  const id = Number(/id (\d+)/.exec(r)?.[1]);
+  assert.match(
+    text(tool('add_todo_steps', { id, steps: ['리허설'] })),
+    /단계 1개를 더했어[\s\S]*3\. \[ \] 리허설/,
+  );
+  assert.equal(tool('add_todo_steps', { id, steps: [] }).result?.isError, true);
+  assert.match(text(tool('check_todo_step', { id, step: 1 })), /끝냈어: 자료 찾기 \(1\/3\)/);
+  assert.equal(tool('check_todo_step', { id, step: 9 }).result?.isError, true);
+  tool('check_todo_step', { id, step: 2 });
+  assert.match(text(tool('check_todo_step', { id, step: 3 })), /단계를 다 했어/);
+  assert.match(text(tool('check_todo_step', { id, step: 3, done: false })), /되돌렸어: 리허설 \(2\/3\)/);
+  const list = text(tool('list_todos', { tag: '#회사' }));
+  assert.match(list, /맞는 안 끝낸 할 일 1개/);
+  assert.match(list, /\[단계 2\/3\]/);
+  assert.match(list, /1\. \[x\] 자료 찾기/);
+  assert.match(text(tool('list_todos', { query: '리허설' })), /발표 준비/);
+  assert.match(text(tool('list_todos', { query: '없는말' })), /맞는 안 끝낸 할 일 0개/);
+});
+
+test('할 일 고치기: 마감 시각과 반복, 잘못된 시각은 거절', () => {
+  const id = Number(/id (\d+)/.exec(text(tool('add_todo', { title: '운동', due: '2099-06-01' })))?.[1]);
+  assert.match(
+    text(tool('update_todo', { id, due_time: '07:00', repeat: 'daily' })),
+    /마감 2099-06-01 07:00, 반복 daily/,
+  );
+  assert.equal(tool('update_todo', { id, due_time: '25:00' }).result?.isError, true);
+  assert.doesNotMatch(text(tool('update_todo', { id, repeat: 'none', due_time: '' })), /반복|07:00/);
+});
+
+test('메모 읽기와 덧붙이기', () => {
+  const nid = Number(
+    /id (\d+)/.exec(text(tool('add_note', { title: '주간 회의', body: '- 예산 검토' })))?.[1],
+  );
+  assert.match(text(tool('append_note', { id: nid, text: '- 결정: 다음 주 발표' })), /덧붙였어: 주간 회의/);
+  const body = text(tool('read_note', { id: nid }));
+  assert.match(body, /^# 주간 회의/);
+  assert.match(body, /- 예산 검토\n\n- 결정: 다음 주 발표$/);
+  assert.equal(tool('append_note', { id: nid, text: ' ' }).result?.isError, true);
+  assert.equal(tool('read_note', { id: 99999 }).result?.isError, true);
+});
+
+test('일정 겹침 알림, 고치기, 지우기', () => {
+  tool('add_event', { title: '팀 회의', start: '2099-07-01T10:00', duration_min: 60 });
+  const r = text(tool('add_event', { title: '치과', start: '2099-07-01T10:30' }));
+  assert.match(r, /주의: 10:00 팀 회의 일정과 시간이 겹쳐/);
+  const eid = Number(/id (\d+)/.exec(r)?.[1]);
+  const moved = text(tool('update_event', { id: eid, start: '2099-07-01T15:00', title: '치과 검진' }));
+  assert.match(moved, /2099-07-01 15:00 치과 검진/);
+  assert.doesNotMatch(moved, /겹쳐/);
+  assert.equal(tool('update_event', { id: eid }).result?.isError, true);
+  assert.match(text(tool('delete_event', { id: eid })), /지웠어: 치과 검진/);
+  assert.doesNotMatch(text(tool('list_events', { days: 60 })), /치과/);
+});
+
+test('오늘 한눈에: 오늘 날짜와 남은 할 일 수', () => {
+  const r = text(tool('today_overview', {}));
+  assert.match(r, /^오늘 \d{4}-\d{2}-\d{2}, 지금 \d{2}:\d{2}/);
+  assert.match(r, /남은 할 일 모두 \d+개/);
 });

@@ -47,6 +47,37 @@ export function RepeatIcon() {
   );
 }
 
+export function SearchIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="7" cy="7" r="4.3" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <path
+        d="M10.3 10.3l3.4 3.4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+/** 할 일 단계 (체크리스트) */
+export function StepsIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M2 4l1.3 1.3L5.6 3M2 10l1.3 1.3L5.6 9M8 4.3h6M8 10.3h6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function BellIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">

@@ -2,6 +2,7 @@
 
 import * as achieve from './achieve.ts';
 import * as ai from './ai.ts';
+import * as assist from './assist.ts';
 import * as briefing from './briefing.ts';
 import * as chat from './chat.ts';
 import * as common from './common.ts';
@@ -41,6 +42,7 @@ export const ko = {
   ...pout.ko,
   ...routine.ko,
   ...remind.ko,
+  ...assist.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -63,4 +65,5 @@ export const en: Translation<typeof ko> = {
   ...pout.en,
   ...routine.en,
   ...remind.en,
+  ...assist.en,
 };

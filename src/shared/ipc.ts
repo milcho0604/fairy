@@ -29,6 +29,7 @@ import type { PetKind, PetStyle, PoseKind, Settings } from './settings.ts';
 import type { BuyResult, ShopState } from './shop.ts';
 import type { SoundKind } from './sound.ts';
 import type { Repeat, Todo } from './todo-store.ts';
+import type { WeekSummary } from './week.ts';
 
 export const IPC = {
   /** 펫 화면 → 메인: 커서가 펫 위에 있는지 (클릭 통과를 켜고 끈다). */
@@ -673,6 +674,13 @@ export const PANEL = {
   makeFood: 'panel:make-food',
   removeFood: 'panel:remove-food',
   play: 'panel:play',
+  // 할 일 단계 (9판 체크리스트)
+  stepAdd: 'panel:step-add',
+  stepToggle: 'panel:step-toggle',
+  stepRename: 'panel:step-rename',
+  stepRemove: 'panel:step-remove',
+  /** 지난 마감을 오늘로 */
+  moveOverdue: 'panel:move-overdue',
   /** 메인 → 패널, 빠른 입력: 바뀐 상태 */
   state: 'panel:state',
   /** 메인 → 패널: 이 탭을 보여 줘 (펫 메뉴 "상점") */
@@ -714,6 +722,8 @@ export interface PanelState {
   diary: DiaryEntry[];
   /** 상점 (v1). 커스텀 먹이 그림은 data URL 로 */
   shop: ShopState & { foodImages: Record<string, string> };
+  /** 이번 주 돌아보기 (shared/week.ts). 기록을 못 읽으면 없다 */
+  week?: WeekSummary;
 }
 
 /** 짝꿍 일기 한 날 */
@@ -737,10 +747,17 @@ export interface NoteSummary {
 /** 한 줄 입력(PANEL.add) 결과. 어디에 언제로 넣었는지 알려 준다 */
 export type PanelAddResult =
   | { ok: false; error?: string }
-  | { ok: true; kind: 'event'; id: number; startAt: number }
+  /** clash: 시간이 겹치는 다른 일정 (첫 것) */
+  | { ok: true; kind: 'event'; id: number; startAt: number; clash?: EventClash }
   | { ok: true; kind: 'todo'; id: number; due: string | null }
   /** 여러 줄을 붙여 넣어 줄마다 넣었다 */
   | { ok: true; kind: 'many'; todos: number; events: number };
+
+/** 새 일정과 시간이 겹치는 일정 (shared/event-overlap.ts) */
+export interface EventClash {
+  title: string;
+  startAt: number;
+}
 
 /** 메모 찾기 결과 한 줄. 본문에서 찾았으면 찾은 곳 둘레 글(snippet)과 그 안에서 찾은 부분(mark) */
 export interface NoteHit {
@@ -805,7 +822,7 @@ export interface PanelBridge {
   /** 다듬은 글을 받아 띄웠다 (메인이 들고 있던 답을 지운다) */
   notePolishTaken(id: number): void;
   /** 한 줄("내일 3시 회의")로 일정 넣기 */
-  eventAdd(text: string): Promise<{ ok: boolean; error?: string; event?: CalEvent }>;
+  eventAdd(text: string): Promise<{ ok: boolean; error?: string; event?: CalEvent; clash?: EventClash }>;
   eventUpdate(
     id: number,
     patch: {
@@ -820,6 +837,14 @@ export interface PanelBridge {
   ): void;
   eventRemove(id: number): void;
   eventRestore(id: number): void;
+  /** 할 일에 단계 더하기 (9판). 꽉 찼거나 끝난 할 일이면 오류 */
+  stepAdd(todoId: number, title: string): Promise<{ ok: boolean; error?: string }>;
+  /** 단계 체크와 해제. done 이 없으면 뒤집는다 */
+  stepToggle(stepId: number, done?: boolean): void;
+  stepRename(stepId: number, title: string): void;
+  stepRemove(stepId: number): void;
+  /** 지난 마감을 오늘로. 옮긴 것과 원래 마감 (되돌리기는 update 로) */
+  moveOverdue(): Promise<{ id: number; due: string | null }[]>;
   /** 길이(15, 25, 50분)를 주면 그 길이로, 아니면 마지막에 고른 길이로. todoId 를 주면 그 할 일을 하는 집중 */
   focusStart(minutes?: number, todoId?: number): void;
   focusStop(): void;

@@ -153,6 +153,19 @@ export const MIGRATIONS: readonly string[] = [
            else null end
     from todo;
   `,
+  // 9판: 할 일 단계 (체크리스트). 할 일 하나를 작은 단계로 쪼개 하나씩 지운다. 단계에는 코인이 없다 (끝낸 할 일만 코인).
+  // 반복 할 일을 끝내면 다음 회차에 단계를 안 한 채로 옮겨 적는다. 할 일을 지워도 단계는 남지만 읽지 않는다
+  `
+  create table todo_step (
+    id integer primary key,
+    todo_id integer not null,    -- todo.id
+    title text not null,
+    done integer not null default 0,
+    ord integer not null,        -- 할 일 안 순서 (작은 것이 위)
+    created_at integer not null
+  );
+  create index todo_step_todo on todo_step(todo_id, ord);
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

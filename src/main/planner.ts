@@ -10,7 +10,7 @@ import {
   reviewText,
   undoMoved,
 } from '../shared/briefing.ts';
-import { plusDays } from '../shared/day.ts';
+import { plusDays, weekdayOf } from '../shared/day.ts';
 import type { EventStore } from '../shared/event-store.ts';
 import {
   type FocusState,
@@ -42,6 +42,7 @@ import {
 } from '../shared/routine.ts';
 import { farewellNext, farewellText, greetText, restText } from '../shared/routine-text.ts';
 import { localDay, type TodoStore } from '../shared/todo-store.ts';
+import { weekSummary } from '../shared/week.ts';
 import type { SayOptions } from './pet-window.ts';
 import { createReminders } from './reminders.ts';
 import { settings } from './settings.ts';
@@ -207,11 +208,45 @@ export function createPlanner(o: PlannerOptions) {
       .say({
         kind: 'system',
         text: briefingText({ ...facts, nowMinute: minuteOfDay(now) }),
-        ttlMs: 15_000,
+        // 지난 마감이 있으면 오늘로 옮길 수 있게 (하루를 정리하고 시작)
+        ...(facts.overdue > 0 ? { buttons: [{ id: 'overdue', label: t('assist.overdue.brief') }] } : {}),
+        ttlMs: facts.overdue > 0 ? 20_000 : 15_000,
       })
-      .then(() => {
+      .then((a) => {
         briefing = false;
+        if (a === 'overdue') moveOverdue();
       });
+  }
+
+  /** 지난 마감을 오늘로 (아침 브리핑 단추). 잠깐 되돌리기 단추를 보인다 */
+  function moveOverdue() {
+    const at = Date.now();
+    const today = localDay(at);
+    const moved = o.todos.moveOverdue(today, at);
+    if (moved.length === 0) return;
+    o.onChange();
+    o.log('planner', '지난 마감 오늘로', moved.length);
+    void o
+      .say({
+        kind: 'answer',
+        text: t('assist.overdue.moved', { n: moved.length }),
+        buttons: [{ id: 'undo', label: t('panel.review.undo') }],
+        ttlMs: 10_000,
+      })
+      .then((a) => {
+        if (a !== 'undo') return;
+        const back = undoMoved(moved, o.todos.list(Date.now()).open, today);
+        const at2 = Date.now();
+        for (const b of back) o.todos.update(b.id, { due: b.due }, at2);
+        o.onChange();
+      });
+  }
+
+  /** 금요일 회고에 붙일 이번 주 한 줄 (끝낸 게 없으면 빈 글) */
+  function fridayLine(day: string, now: number): string {
+    if (weekdayOf(day) !== 5) return '';
+    const week = weekSummary(day, (days) => o.stats.diaryFacts(days), o.todos.list(now).open);
+    return week.done > 0 ? ` ${t('assist.week.friday', { n: week.done })}` : '';
   }
 
   /**
@@ -237,7 +272,9 @@ export function createPlanner(o: PlannerOptions) {
     void o
       .say({
         kind: 'schedule',
-        text: reviewText({ doneTitles: doneToday.map((t) => t.title), leftToday: left.length }),
+        text:
+          reviewText({ doneTitles: doneToday.map((t) => t.title), leftToday: left.length }) +
+          (left.length === 0 ? fridayLine(day, now) : ''),
         buttons:
           left.length > 0
             ? [

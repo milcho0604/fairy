@@ -7,7 +7,9 @@ import {
   type Rectangle,
   screen,
 } from 'electron';
+import type { StatStore } from '../shared/beta-stats.ts';
 import { findSameEvent } from '../shared/event-dup.ts';
+import { overlapping } from '../shared/event-overlap.ts';
 import {
   allDayTimes,
   type EventStore,
@@ -18,6 +20,7 @@ import {
 import { type FocusState, focusCoins, isFocusLength } from '../shared/focus.ts';
 import { t } from '../shared/i18n/index.ts';
 import {
+  type EventClash,
   type NoteAiKind,
   PANEL,
   type PanelAddResult,
@@ -49,7 +52,8 @@ import {
   todoPatchInput,
 } from '../shared/remind-parse.ts';
 import { CUSTOM_FOOD_COST, CUSTOM_FOOD_MAX, type Food, type ItemStore } from '../shared/shop.ts';
-import { COIN, FULLNESS, localDay, type TodoStore } from '../shared/todo-store.ts';
+import { COIN, FULLNESS, localDay, STEP_MAX, type TodoStore } from '../shared/todo-store.ts';
+import { weekSummary } from '../shared/week.ts';
 import { focusWindow, stealFocus } from './focus.ts';
 import { langArg } from './lang.ts';
 import { localTime, minuteOfDay, startOfDay, startOfDayAfter } from './planner.ts';
@@ -112,6 +116,8 @@ export interface PanelOptions {
   missed: () => PanelState['missed'];
   diary: () => PanelState['diary'];
   clearMissed: () => void;
+  /** 하루 기록 (이번 주 돌아보기). 없으면 이번 주 칸이 없다 */
+  stats?: StatStore;
   log: (tag: string, ...rest: unknown[]) => void;
 }
 
@@ -166,7 +172,27 @@ export function createPanel(o: PanelOptions) {
         ...o.shop.state(),
         foodImages: Object.fromEntries(o.shop.state().customFoods.map((f) => [f.key, o.foodImage(f.image)])),
       },
+      ...(week(now, open) ?? {}),
     };
+  }
+
+  /** 이번 주 돌아보기. 기록을 못 읽어도 패널은 뜨게 */
+  function week(now: number, open: readonly { due: string | null }[]) {
+    const stats = o.stats;
+    if (!stats) return undefined;
+    try {
+      return { week: weekSummary(localDay(now), (days) => stats.diaryFacts(days), open) };
+    } catch (err) {
+      o.log('panel', '이번 주 못 읽음', err instanceof Error ? err.message : String(err));
+      return undefined;
+    }
+  }
+
+  /** 새 시각 일정과 시간이 겹치는 일정 (첫 것). 앞뒤 하루 안에서만 찾는다 */
+  function clashOf(ev: { startAt: number; endAt: number | null; id: number }): EventClash | undefined {
+    const near = o.events.between(ev.startAt - 86_400_000, ev.startAt + 86_400_000);
+    const hit = overlapping(near, { ...ev, title: '', allDay: false })[0];
+    return hit ? { title: hit.title, startAt: hit.startAt } : undefined;
   }
 
   function push() {
@@ -233,7 +259,8 @@ export function createPanel(o: PanelOptions) {
       push();
       o.onEventsChanged();
       // 어디에 언제로 넣었는지 알림에 보이고 되돌리거나 할 일로 옮길 수 있게 id 와 시각을 돌려준다
-      return { ok: true, kind: 'event', id: added.id, startAt: added.startAt };
+      const clash = clashOf(added);
+      return { ok: true, kind: 'event', id: added.id, startAt: added.startAt, ...(clash ? { clash } : {}) };
     }
     return addTodo(text, now, remind);
   }
@@ -380,7 +407,42 @@ export function createPanel(o: PanelOptions) {
     }
     push();
     o.onEventsChanged();
-    return { ok: true, event };
+    const clash = event.allDay ? undefined : clashOf(event);
+    return { ok: true, event, ...(clash ? { clash } : {}) };
+  });
+  // ---- 할 일 단계 (9판) ----
+  ipcMain.handle(PANEL.stepAdd, (e, todoId: unknown, title: unknown) => {
+    if (!ours(e) || typeof todoId !== 'number' || typeof title !== 'string') return { ok: false };
+    const todo = o.store.get(todoId);
+    if (!todo || todo.doneAt !== null) return { ok: false, error: t('panel.retry') };
+    if (todo.steps.length >= STEP_MAX) return { ok: false, error: t('assist.step.full', { n: STEP_MAX }) };
+    const step = o.store.addStep(todoId, title, Date.now());
+    if (!step) return { ok: false, error: t('panel.add.empty') };
+    push();
+    return { ok: true };
+  });
+  ipcMain.on(PANEL.stepToggle, (e, stepId: unknown, done: unknown) => {
+    if (!ours(e) || typeof stepId !== 'number') return;
+    o.store.toggleStep(stepId, typeof done === 'boolean' ? done : undefined);
+    push();
+  });
+  ipcMain.on(PANEL.stepRename, (e, stepId: unknown, title: unknown) => {
+    if (!ours(e) || typeof stepId !== 'number' || typeof title !== 'string') return;
+    o.store.renameStep(stepId, title);
+    push();
+  });
+  ipcMain.on(PANEL.stepRemove, (e, stepId: unknown) => {
+    if (!ours(e) || typeof stepId !== 'number') return;
+    o.store.removeStep(stepId);
+    push();
+  });
+  ipcMain.handle(PANEL.moveOverdue, (e) => {
+    if (!ours(e)) return [];
+    const now = Date.now();
+    const moved = o.store.moveOverdue(localDay(now), now);
+    log('todo', 'move-overdue', moved.length);
+    push();
+    return moved;
   });
   ipcMain.on(PANEL.eventUpdate, (e, id: number, patch) => {
     if (!ours(e) || typeof patch !== 'object' || patch === null) return;

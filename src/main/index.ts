@@ -718,6 +718,7 @@ ready.then(() => {
     missed: () => pet.missed(),
     diary: () => diary.entries(Date.now()),
     clearMissed: () => pet.clearMissed(),
+    stats,
     log,
   });
   /** 패널 밖(펫 우클릭)에서 밥 주기 */
