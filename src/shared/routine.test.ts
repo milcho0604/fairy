@@ -167,6 +167,25 @@ test('늦게까지 일하는 날: 어제 헤어짐을 기다리는 동안 오늘
   assert.equal(routineDue(r, memo({ greeted: MON, farewelled: MON }), TUE, H(3))?.what, 'greet');
 });
 
+test('밤 근무 다음 날 낮 일과: 어제 헤어졌으면 오늘 맞이가 낮 12시까지 밀리지 않는다', () => {
+  // 월 20시~화 8시 밤 근무, 화 9시~17시
+  const r: Routine = {
+    on: true,
+    week: [null, { start: H(20), end: H(8) }, { start: H(9), end: H(17) }, null, null, null, null],
+  };
+  const done = memo({ greeted: MON, farewelled: MON });
+  // 헤어진 뒤 만나는 시간 전에는 "일찍 왔네"로 맞지 않는다 (막 일을 끝낸 참이다)
+  assert.equal(routineDue(r, done, TUE, H(8, 30)), undefined);
+  const g = routineDue(r, done, TUE, H(9));
+  assert.deepEqual(g && { what: g.what, day: g.day }, { what: 'greet', day: TUE });
+  assert.equal((g as { arrival: string }).arrival, 'onTime');
+  const g2 = routineDue(r, done, TUE, H(10));
+  assert.deepEqual(g2 && { what: g2.what, day: g2.day }, { what: 'greet', day: TUE });
+  // 아직 안 헤어졌으면 헤어짐이 먼저, 어제 만나지 않았으면 기다릴 헤어짐이 없다
+  assert.equal(routineDue(r, memo({ greeted: MON }), TUE, H(9))?.what, 'farewell');
+  assert.equal(routineDue(r, memo(), TUE, H(10))?.what, 'greet');
+});
+
 test('연속 기록: 쉬는 날은 건너뛰고, 만나는 날을 놓치면 1 부터, 같은 날과 시계 되돌림은 새로 세지 않는다', () => {
   assert.deepEqual(nextStreak(NINE, undefined, MON), { day: MON, n: 1, fresh: true });
   assert.deepEqual(nextStreak(NINE, { day: MON, n: 1 }, TUE), { day: TUE, n: 2, fresh: true });

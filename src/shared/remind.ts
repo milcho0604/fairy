@@ -216,8 +216,10 @@ const EN_NUM: Record<string, number> = {
 };
 
 // 한국어 한 마디: "1시간", "30분", "3일", "2주", "1시간 반", "하루", "이틀", "일주일"
+// 같은 글을 두 갈래로 읽게 두지 않는다 ("한 주"는 앞 갈래 하나로만). 갈래가 겹치면 "한 주 하고"를 여러 번 이은
+// 글에서 되짚기가 기하급수로 늘어 메인이 멈춘다
 const KO_ONE =
-  '(?:(\\d{1,3}|한|두|세|네|다섯|여섯|일곱) ?(분|시간|일|주일?)( ?반)?|(하루|이틀|사흘|나흘|일주일|한 ?주))';
+  '(?:(\\d{1,3}|한|두|세|네|다섯|여섯|일곱) ?(분|시간|일|주일?)( ?반)?|(하루|이틀|사흘|나흘|일주일))';
 /** 묶음 식에서는 한 마디 식의 잡는 괄호를 안 잡는 괄호로 (바깥 식의 잡는 자리 번호가 밀리지 않게) */
 const quiet = (re: string) => re.replace(/\((?!\?)/g, '(?:');
 const KO_ITEM = `(?:${quiet(KO_ONE)} ?전|정각|시작할 ?때|당일 ?아침|전날 ?(?:저녁|밤))`;
@@ -231,8 +233,9 @@ const KO_TAIL = new RegExp(`(?:^|\\s)(${KO_LIST})(${KO_ASK})?[.!]?$`);
 const KO_HEAD = new RegExp(`^(${KO_LIST})(${KO_ASK})[.,]?\\s`);
 const KO_NONE = /(?:^|\s)(?:알림 ?(?:없이|없음|끄기|꺼 ?줘)|알리지 ?(?:마|말아 ?줘))[.!]?$/;
 
-const EN_UNIT = '(min(?:ute)?s?|m|h(?:ou)?rs?|h|hours?|days?|d|weeks?|w)';
-const EN_ONE = `(?:(\\d{1,3}|an?|one|two|three|four|five|six|seven) ?${EN_UNIT}|(the day|the week|a day|a week))`;
+// 한국어와 같은 까닭으로 겹치는 갈래를 뺐다: hours 는 h(?:ou)?rs? 가, "a day"는 앞 갈래(a + day)가 읽는다
+const EN_UNIT = '(min(?:ute)?s?|m|h(?:ou)?rs?|h|days?|d|weeks?|w)';
+const EN_ONE = `(?:(\\d{1,3}|an?|one|two|three|four|five|six|seven) ?${EN_UNIT}|(the day|the week))`;
 const EN_ITEM = `(?:${quiet(EN_ONE)} (?:before|ahead|early|prior)|at (?:the )?start|on time|when it starts|the (?:night|evening) before|(?:that|the same) morning|morning of)`;
 const EN_JOIN = '(?:, ?| and |, and | & | or )';
 const EN_ASK = '(?:remind me |reminders? |alert me |notify me |ping me )';
@@ -241,6 +244,9 @@ const EN_LIST = `(?:(?:${EN_ITEM}|${quiet(EN_ONE)})${EN_JOIN})*${EN_ITEM}`;
 const EN_TAIL = new RegExp(`(?:^|\\s)(?:,\\s?)?(${EN_ASK}|with (?:a )?reminders? )?(${EN_LIST})[.!]?$`, 'i');
 const EN_HEAD = new RegExp(`^(${EN_ASK})(${EN_LIST})[,:]?\\s`, 'i');
 const EN_NONE = /(?:^|\s)(?:,\s?)?(?:no reminders?|without (?:a )?reminders?|don'?t remind me)[.!]?$/i;
+
+/** 알림 말을 찾아볼 한 줄의 최대 길이 */
+const REMIND_TEXT_MAX = 200;
 
 function koOne(s: string): RemindSpec | undefined {
   const t = s.replace(/\s+/g, '');
@@ -284,6 +290,8 @@ function splitItems(list: string, join: RegExp, one: (s: string) => RemindSpec |
  */
 export function takeRemind(text: string): { specs: RemindSpec[]; none: boolean; rest: string } | null {
   const s = text.trim();
+  // 긴 글은 읽지 않는다: 알림 말 식은 반복 묶음이라 글이 길면 느려진다. 빠른 입력 한 줄은 이보다 짧다
+  if (s.length > REMIND_TEXT_MAX) return null;
   const none = KO_NONE.exec(s) ?? EN_NONE.exec(s);
   if (none) {
     const rest = s
@@ -326,7 +334,8 @@ export function resolveSpecs(specs: readonly RemindSpec[], dateOnly: boolean, mi
       else if (s % DAY_MIN === 0) out.push(dayBefore(s / DAY_MIN, MORNING_MIN));
     } else if (s === 'eve') out.push(minute + (DAY_MIN - EVENING_MIN));
     else if (s === 'morning') {
-      if (minute > MORNING_MIN) out.push(minute - MORNING_MIN);
+      // 아침 9시 정각에 시작하면 당일 아침 알림은 시작할 때다 (날짜 기준에서 'morning'과 0이 같은 것처럼)
+      if (minute >= MORNING_MIN) out.push(minute - MORNING_MIN);
     } else out.push(s);
   }
   return normalizeReminds(out, dateOnly);

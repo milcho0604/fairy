@@ -38,7 +38,8 @@ export class RestCoach {
 
   tick(now: number, idleSec: number, level: ChatterLevel): RestEvent | undefined {
     // 시계를 뒤로 돌리면 음수가 된다 (일한 시간이 줄지 않게)
-    const gap = this.#last === undefined ? 0 : now - this.#last;
+    const prev = this.#last;
+    const gap = prev === undefined ? 0 : now - prev;
     const dt = Math.max(0, Math.min(5 * 60_000, gap));
     this.#last = now;
     // 덮개를 닫아 잠든 동안은 표본이 멈춘다. 깨고 나면 입력 없던 시간이 짧아도 그 틈은 쉰 것이다
@@ -46,10 +47,16 @@ export class RestCoach {
     if (gap >= REST.idleResetSec * 1000) {
       this.#workedMs = 0;
       this.#streakMs = 0;
+      // 권유를 받아들이고 덮개를 닫았으면 자리를 비운 것이다. 돌아와 입력하면 보상 (기한 안에 떠났을 때만)
+      if (this.#accepted !== undefined && prev !== undefined) {
+        if (prev - this.#accepted <= REST.acceptWindowMs) this.#away = true;
+        else if (!this.#away) this.#accepted = undefined;
+      }
       return undefined;
     }
     if (this.#accepted !== undefined) {
-      if (now - this.#accepted > REST.acceptWindowMs) this.#accepted = undefined;
+      // 기한은 떠나기까지만 잰다. 기한 안에 떠났으면 40분 쉬다 와도 보상 (오래 쉬었다고 놓치면 안 된다)
+      if (!this.#away && now - this.#accepted > REST.acceptWindowMs) this.#accepted = undefined;
       else if (idleSec >= REST.breakSec) this.#away = true;
       else if (this.#away && idleSec < 30) {
         this.#accepted = undefined;

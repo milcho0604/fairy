@@ -89,3 +89,31 @@ test('덮개를 닫고 잔 틈은 쉰 것이다 (깨고 나서 입력이 바로 
   c.tick(t0 + 110 * MIN + 10 * 60 * MIN + MIN, 5, 'normal');
   assert.equal(c.streakMin, 1);
 });
+
+test('받아들이고 떠났으면 30분 넘게 쉬다 와도 보상 (기한은 떠나기까지만)', () => {
+  const c = new RestCoach();
+  c.tick(0, 0, 'normal');
+  c.accept(0);
+  // 1분마다 표본이 돈다. 4분째 떠난 게 보이고 40분 동안 입력이 없다
+  for (let m = 1; m <= 40; m++) assert.equal(c.tick(m * MIN, Math.max(0, m - 1) * 60, 'normal'), undefined);
+  assert.equal(c.tick(41 * MIN, 2, 'normal'), 'rested');
+});
+
+test('받아들이고 덮개를 닫았다 열면 쉰 것 (잠든 틈도 자리를 비운 것)', () => {
+  const c = new RestCoach();
+  c.tick(0, 0, 'normal');
+  c.accept(0);
+  c.tick(MIN, 5, 'normal');
+  // 덮개를 닫아 10분 동안 표본이 없다. 깨자마자 입력해서 입력 없던 시간은 짧다
+  assert.equal(c.tick(11 * MIN, 5, 'normal'), undefined);
+  assert.equal(c.tick(12 * MIN, 2, 'normal'), 'rested');
+});
+
+test('받아들이고 30분 넘게 일하다 덮개를 닫으면 보상 없음', () => {
+  const c = new RestCoach();
+  c.tick(0, 0, 'normal');
+  c.accept(0);
+  for (let m = 1; m <= 35; m++) c.tick(m * MIN, 5, 'normal');
+  assert.equal(c.tick(45 * MIN, 5, 'normal'), undefined);
+  assert.equal(c.tick(46 * MIN, 2, 'normal'), undefined);
+});

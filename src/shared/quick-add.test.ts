@@ -25,6 +25,14 @@ test('날짜 낱말과 느낌표', () => {
   });
 });
 
+test('"내일모레"는 모레 (앞의 "내일"만 읽지 않는다)', () => {
+  const want = { title: '보고서 쓰기', due: '2026-11-02', important: false, repeat: null };
+  assert.deepEqual(parseQuickTodo('내일모레 보고서 쓰기', today), want);
+  assert.deepEqual(parseQuickTodo('내일모레까지 보고서 쓰기', today), want);
+  assert.deepEqual(parseQuickTodo('보고서 쓰기 내일모레까지', today), want);
+  assert.deepEqual(parseQuickTodo('내일모레까지보고서 쓰기', today), want);
+});
+
 test('날짜 낱말이 제목 가운데나 붙어 있으면 제목 그대로', () => {
   assert.deepEqual(parseQuickTodo('오늘의 메모 정리', today), {
     title: '오늘의 메모 정리',

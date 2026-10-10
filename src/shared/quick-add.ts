@@ -26,8 +26,8 @@ export interface QuickTodo {
 
 const REPEAT_WORDS: Record<string, Repeat> = { 매일: 'daily', 평일: 'weekdays', 매주: 'weekly' };
 
-// 한국어 날짜 낱말. 영어는 아래 EN_DAY 로 따로 읽는다
-const DAY_WORDS: Record<string, number> = { 오늘: 0, 내일: 1, 모레: 2 };
+// 한국어 날짜 낱말. 영어는 아래 EN_DAY 로 따로 읽는다. "내일모레"(모레)는 "내일"보다 먼저 본다 (순서대로 찾는다)
+const DAY_WORDS: Record<string, number> = { 오늘: 0, 내일모레: 2, 내일: 1, 모레: 2 };
 
 // 한국어 반복 요일 (2026-10-08). 요일 순서는 getUTCDay 와 같다(일요일 0).
 // "매주 월요일 회의", "월요일마다 회의", "회의 매주 월요일", "회의 월요일마다". 요일은 온 이름(월요일)만 읽는다.

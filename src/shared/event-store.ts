@@ -467,7 +467,7 @@ export function normalizeQuick(text: string): string {
   return text
     .replace(/[！-～]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
     .replace(/　/g, ' ')
-    .replace(/(오늘|내일|모레|글피)(?=\d)/g, '$1 ')
+    .replace(/(오늘|내일모레|내일|모레|글피)(?=\d)/g, '$1 ')
     .replace(
       new RegExp(
         `(\\d{1,2}시)(?!${NOT_TIME_AFTER})((?: ?반| ?\\d{1,2}분)?${KO_TIME_TAIL})(?=[가-힣A-Za-z])${GLUED_TAIL}`,
@@ -855,8 +855,9 @@ export const ALL_DAY_MAX_DAYS = 92;
 const TIME_HINT =
   /\d{1,2}시(?!간)|\d{1,2}:\d{2}|\d ?(?:am|pm|a\.m\.|p\.m\.)(?![a-z])|(?:^|\s)(?:noon|midnight)(?:\s|$)|(?:^|\s)(?:at|@) ?\d|\d ?o'?clock/i;
 
-const KO_REL: Record<string, number> = { 오늘: 0, 내일: 1, 모레: 2, 글피: 3 };
-const KO_REL_RE = / (오늘|내일|모레|글피) /;
+// "내일모레"는 모레 (내일보다 먼저 본다: 앞의 "내일"만 읽고 "모레"를 제목에 남기지 않게)
+const KO_REL: Record<string, number> = { 오늘: 0, 내일모레: 2, 내일: 1, 모레: 2, 글피: 3 };
+const KO_REL_RE = / (오늘|내일모레|내일|모레|글피) /;
 // 월/일 뒤 조사: "10월 20일에", 요일 뒤: "금요일에", "금요일날". "이번주 금요일" 의 이번주도 뗀다
 const KO_MD_RE = / (\d{1,2})[/.월] ?(\d{1,2})일?(?:에|엔)? /;
 const KO_WD_RE = / (?:(다다음|다음|이번) ?주 ?)?([일월화수목금토])요일(?:에|엔|날)? /;
@@ -996,7 +997,7 @@ function dayToken(token: string, today: string, base: string): string | null {
 
 // 기간에 쓰는 날짜 모양 (값은 dayToken 이 다시 읽는다)
 const KO_DATE =
-  '(?:오늘|내일|모레|글피|(?:(?:다다음|다음|이번) ?주 )?[일월화수목금토]요일|\\d{1,2}월 ?\\d{1,2}일|\\d{1,2}[/.]\\d{1,2})';
+  '(?:오늘|내일모레|내일|모레|글피|(?:(?:다다음|다음|이번) ?주 )?[일월화수목금토]요일|\\d{1,2}월 ?\\d{1,2}일|\\d{1,2}[/.]\\d{1,2})';
 const EN_DATE = `(?:today|tomorrow|tmrw|(?:(?:next|this) )?(?:${EN_WEEKDAY_ANY})|(?:${EN_MONTH})\\.? \\d{1,2}(?:st|nd|rd|th)?|\\d{1,2}(?:st|nd|rd|th)? (?:of )?(?:${EN_MONTH}))`;
 const DATE = `(?:${KO_DATE}|${EN_DATE})`;
 const EN_COUNT_WORD = `\\d{1,2}|${Object.keys(EN_COUNT).join('|')}`;
@@ -1162,7 +1163,7 @@ export function timeLabel(minute: number): string {
 
 const KO_DUE_TOKEN =
   `(?:(?:다다음|다음|이번) ?주 ?)?[일월화수목금토]요일|${KO_REL_DAY_WORD}|` +
-  '\\d{1,2}월 ?\\d{1,2}일|\\d{1,2}/\\d{1,2}|(?:다음|이번) ?달 ?\\d{1,2}일|\\d{1,2}일 ?(?:뒤|후)|\\d{1,2}일|오늘|내일|모레|글피';
+  '\\d{1,2}월 ?\\d{1,2}일|\\d{1,2}/\\d{1,2}|(?:다음|이번) ?달 ?\\d{1,2}일|\\d{1,2}일 ?(?:뒤|후)|\\d{1,2}일|오늘|내일모레|내일|모레|글피';
 const KO_DUE_PARTICLE = '(?:까지|에|엔|날)?';
 const KO_DUE_HEAD = new RegExp(`^(${KO_DUE_TOKEN})${KO_DUE_PARTICLE} (?!동안|간 )`);
 const KO_DUE_TAIL = new RegExp(` (${KO_DUE_TOKEN})${KO_DUE_PARTICLE}$`);
