@@ -13,7 +13,8 @@
 export interface IllustSpace {
   id: string;
   endpoint: string;
-  inputs(image: FileRef, prompt: string): unknown[];
+  /** size: 보낸 그림의 가로세로 (모를 수 있다). 결과 크기를 정해야 하는 Space(klein)가 쓴다 */
+  inputs(image: FileRef, prompt: string, size?: { w: number; h: number }): unknown[];
 }
 
 /** 올린 파일을 가리키는 Gradio FileData */
@@ -28,13 +29,83 @@ export interface FileRef {
  * Qwen-Image-Edit 는 토큰 없이는 "GPU duration (240s) is larger than the maximum allowed" 로 막혔다 (토큰이 있으면 될 수 있다).
  * 같은 Space 의 /lambda 는 받은 그림을 그대로 돌려주는 길이라 쓰지 않는다
  */
-export const SPACES: IllustSpace[] = [
-  {
-    id: 'black-forest-labs/FLUX.1-Kontext-Dev',
-    endpoint: 'infer',
-    // input_image, prompt, seed, randomize_seed, guidance_scale, steps
-    inputs: (image, prompt) => [image, prompt, 0, true, 2.5, 28],
+export const KONTEXT: IllustSpace = {
+  id: 'black-forest-labs/FLUX.1-Kontext-Dev',
+  endpoint: 'infer',
+  // input_image, prompt, seed, randomize_seed, guidance_scale, steps.
+  // guidance 3.5: 2.5 보다 요청문(털, 앉은 자세)을 잘 따랐다 (2026-10-10 실제 비교)
+  inputs: (image, prompt) => [image, prompt, 0, true, 3.5, 28],
+};
+
+/**
+ * FLUX.2 klein 4B (Apache-2.0, 받기에 로그인이 필요 없다). 4단계라 빠르다. 결과 가로세로는 1024 를 넘지 못한다
+ * ("Value 1328 is greater than maximum value 1024", 2026-10-10). 입력은 갤러리(그림 목록)
+ */
+export const KLEIN: IllustSpace = {
+  id: 'black-forest-labs/FLUX.2-klein-4B',
+  endpoint: 'infer',
+  // prompt, input_images, mode_choice, seed, randomize_seed, width, height, steps, guidance_scale, prompt_upsampling
+  inputs: (image, prompt, size) => {
+    const out = kleinSize(size?.w ?? 768, size?.h ?? 1024);
+    return [prompt, [{ image, caption: null }], 'Distilled (4 steps)', 0, true, out.w, out.h, 4, 1.0, false];
   },
+};
+
+/** klein 결과 크기: 비율을 지키며 긴 변 1024 안, 16 의 배수, 짧은 변 256 이상 */
+export function kleinSize(w: number, h: number): { w: number; h: number } {
+  const k = 1024 / Math.max(w, h, 1);
+  const fit = (v: number) => Math.max(256, Math.min(1024, Math.round((v * k) / 16) * 16));
+  return { w: fit(w), h: fit(h) };
+}
+
+/** 그림 머리말에서 가로세로를 읽는다 (PNG, JPEG, WebP). 모르면 undefined */
+export function imageSize(b: Uint8Array): { w: number; h: number } | undefined {
+  const u16 = (i: number) => ((b[i] ?? 0) << 8) | (b[i + 1] ?? 0);
+  const le16 = (i: number) => (b[i] ?? 0) | ((b[i + 1] ?? 0) << 8);
+  const le24 = (i: number) => le16(i) | ((b[i + 2] ?? 0) << 16);
+  const kind = imageKind(b);
+  if (kind === 'png' && b.length >= 24) {
+    const u32 = (i: number) => (b[i] ?? 0) * 2 ** 24 + ((b[i + 1] ?? 0) << 16) + u16(i + 2);
+    return { w: u32(16), h: u32(20) };
+  }
+  if (kind === 'webp' && b.length >= 30) {
+    const chunk = String.fromCharCode(...b.subarray(12, 16));
+    if (chunk === 'VP8X') return { w: le24(24) + 1, h: le24(27) + 1 };
+    if (chunk === 'VP8 ') return { w: le16(26) & 0x3fff, h: le16(28) & 0x3fff };
+    if (chunk === 'VP8L') {
+      const v = (b[21] ?? 0) | ((b[22] ?? 0) << 8) | ((b[23] ?? 0) << 16) | ((b[24] ?? 0) << 24);
+      return { w: (v & 0x3fff) + 1, h: ((v >>> 14) & 0x3fff) + 1 };
+    }
+    return undefined;
+  }
+  if (kind === 'jpeg') {
+    // SOF 표시(C0~CF, C4 C8 CC 빼고)를 찾아 그 안의 높이, 너비
+    let i = 2;
+    while (i + 9 < b.length) {
+      if (b[i] !== 0xff) return undefined;
+      const m = b[i + 1] ?? 0;
+      if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc)
+        return { w: u16(i + 7), h: u16(i + 5) };
+      i += 2 + u16(i + 2);
+    }
+  }
+  return undefined;
+}
+
+/**
+ * 털 다듬기 요청문 (klein 2차 편집). Kontext 는 요청문을 아무리 세게 써도 고양이 다리를 매끈하게 그렸다.
+ * 다 그린 그림에 "다리 털만 길게" 하나만 시키면 klein 이 잘 따랐다 (2026-10-10 실제 비교: 흰 고양이 다리가 보송해지고 색은 그대로)
+ */
+export const FUR_PROMPT =
+  'Make the fur on the legs, paws, chest and tail longer, thicker and fluffier: long soft fluffy feathering on all four legs, ' +
+  'fluffy britches on the hind legs and fluffy tufts on the paws, as fluffy as the rest of the coat. ' +
+  'Keep the same fur color and fur type (curly fur stays curly). ' +
+  'Keep everything else exactly the same: same pose, face, eyes, markings, colors, lighting and plain background.';
+
+export const SPACES: IllustSpace[] = [
+  KONTEXT,
+  // Kontext 가 막히면(바쁨, 잠듦) klein 으로 그린다. 색이 조금 바랠 수 있지만 그림은 나온다
+  KLEIN,
   {
     id: 'Qwen/Qwen-Image-Edit',
     endpoint: 'infer',
@@ -210,7 +281,7 @@ export const ILLUST_TIMEOUT_MS = 4 * 60_000;
  */
 export async function illustrate(
   photo: Uint8Array,
-  mime: 'image/jpeg' | 'image/png',
+  mime: 'image/jpeg' | 'image/png' | 'image/webp',
   prompt: string,
   opt: IllustOptions,
 ): Promise<IllustResult> {
@@ -248,6 +319,32 @@ export async function illustrate(
     opt.signal?.removeEventListener('abort', onAbort);
   }
 }
+
+/**
+ * 그리기 + 털 다듬기. 먼저 illustrate 로 그리고, 그 그림을 klein 에 "다리 털까지 풍성하게" 로 한 번 더 보낸다.
+ * 털 다듬기가 실패하면(쿼터, 바쁨, 그대로 돌려줌) 첫 그림을 쓴다. 그만두기만 그대로 실패한다.
+ * 털 다듬기도 무료 횟수를 쓴다 (klein 은 4단계라 GPU 시간은 짧다)
+ */
+export async function illustrateFluffy(
+  photo: Uint8Array,
+  mime: 'image/jpeg' | 'image/png',
+  prompt: string,
+  opt: IllustOptions,
+): Promise<IllustResult & { fur: boolean }> {
+  const drawn = await illustrate(photo, mime, prompt, opt);
+  try {
+    const fur = await illustrate(drawn.bytes, mimeOf(drawn.kind), FUR_PROMPT, { ...opt, spaces: [KLEIN] });
+    return { ...fur, space: `${drawn.space} + ${fur.space}`, fur: true };
+  } catch (err) {
+    // 그만두면 멈춘다. 시간이 다 됐거나 막혔으면 첫 그림이라도 쓴다
+    if (err instanceof IllustError && err.kind === 'cancelled') throw err;
+    opt.log?.('illust', 'fur skipped', err instanceof IllustError ? err.kind : errText(err));
+    return { ...drawn, fur: false };
+  }
+}
+
+const mimeOf = (kind: ImageKind): 'image/jpeg' | 'image/png' | 'image/webp' =>
+  kind === 'jpeg' ? 'image/jpeg' : kind === 'png' ? 'image/png' : 'image/webp';
 
 const errText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -291,7 +388,7 @@ async function runSpace(
     );
 
   // 1. 사진 올리기 (새 Gradio 는 /gradio_api 아래, 옛것은 바로 아래)
-  const name = mime === 'image/png' ? 'pet.png' : 'pet.jpg';
+  const name = mime === 'image/png' ? 'pet.png' : mime === 'image/webp' ? 'pet.webp' : 'pet.jpg';
   const boundary = `----jj${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
   const body = multipart(photo, name, mime, boundary);
   let prefix = '/gradio_api';
@@ -317,7 +414,7 @@ async function runSpace(
   res = await call(api, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ data: space.inputs(image, prompt) }),
+    body: JSON.stringify({ data: space.inputs(image, prompt, imageSize(photo)) }),
   });
   if (!res.ok) throw await fail(res);
   const joined = (await json(res).catch(() => null)) as { event_id?: unknown } | null;

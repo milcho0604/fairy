@@ -24,27 +24,28 @@ export const ILLUST_WISH_MAX = 120;
  * "well-groomed", "slimmer" 는 털을 깎은 듯 다리와 몸이 매끈하게 나와 뺐다 (사용자: 털이 너무 빠져 있다)
  */
 const AGE_PHRASE: Record<AgeStage, string> = {
-  baby: 'as a tiny baby (a few weeks old): very small and round, oversized head, big eyes, short stubby legs, extra soft fluffy baby coat, sitting',
-  teen: 'as a playful adolescent (about five months old): lanky with slightly long legs and big paws, standing naturally on all four legs',
-  adult:
-    'as a fully grown adult in its prime: full size, confident, magnificent full coat, standing naturally on all four legs',
+  baby: 'a tiny baby (a few weeks old): very small and round, oversized head, big eyes, short stubby legs, extra soft fluffy baby coat',
+  teen: 'a playful adolescent (about five months old): slightly lanky, big paws',
+  adult: 'a fully grown adult in its prime: full size, confident, magnificent full coat',
 };
 
 /**
  * 그림 모델에 보낼 요청문 (영어). 펫 생김새는 지키고 나이만 바꾼다. 사용자 바람은 다듬어 따옴표로 묶고
- * 길이를 자르며, 규칙을 바꾸지 못한다고 적는다
+ * 길이를 자르며, 규칙을 바꾸지 못한다고 적는다.
+ * 자세를 맨 앞에, 앉은 자세로: 뒤에 두거나 "서 있는" 자세를 시키면 다리 이야기에 끌려 두 발로 서거나 앞발을 들었다
+ * (2026-10-10 실제 비교 9장). 다리 털은 이 요청문만으로는 매끈하게 나와 털 다듬기(hf-illust.ts FUR_PROMPT)를 한 번 더 한다
  */
 export function illustratePrompt(age: AgeStage, wish?: unknown): string {
   const w = [...cleanWish(wish)].slice(0, ILLUST_WISH_MAX).join('').trim();
   const base = [
-    `Redraw this exact pet ${AGE_PHRASE[age]}.`,
+    `A cute, polished, realistic 3D illustration of this exact pet as ${AGE_PHRASE[age]},`,
+    'sitting like a real pet, both front paws on the ground, hind legs folded beside the body,',
+    'facing the viewer, whole body and all paws visible, alone, centered.',
     "Keep the pet's identity: same breed, fur color and texture, markings and eye color.",
-    // 털: 몸 전체(다리, 발, 가슴, 꼬리까지) 풍성하게. 깎은 듯 매끈한 다리가 자주 나와 분명히 적는다
-    'Give it a thick, voluminous, extra fluffy coat over the whole body, including legs, paws, chest and tail:',
-    'dense soft fur with visible strands and wispy fluffy edges, never shaved, trimmed, thin or patchy.',
-    // 털 문장에 다리를 넣자 강아지가 사람처럼 두 발로 섰다 (2026-10-09). 네 발 짐승 자세를 분명히
-    'Show the whole body in a natural animal pose (never standing upright on hind legs like a human), facing the viewer, all paws visible, alone, centered.',
-    'Cute polished realistic 3D illustration, plain light solid background, soft studio light.',
+    'Fur: a very long, thick, fluffy coat on every part of the body, including the legs, paws, chest and tail,',
+    'with visible strands and soft wispy edges, never shaved, trimmed, thin or patchy.',
+    'It is an animal: never standing upright on its hind legs, never human-like.',
+    'Plain light solid background, soft studio light.',
     'No text, no watermark, no other animals or objects.',
   ].join(' ');
   if (!w) return base;

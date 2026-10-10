@@ -16,17 +16,21 @@ test('요청문: 생김새를 지키고, 나이마다 다른 말, 글자 없는 
   for (const p of texts) {
     assert.match(p, /same breed, fur color and texture, markings and eye color/);
     // 털을 풍성하게, 깎은 듯한 말은 넣지 않는다
-    assert.match(p, /extra fluffy coat over the whole body, including legs/);
+    assert.match(p, /fluffy coat on every part of the body, including the legs/);
     assert.match(p, /never shaved, trimmed, thin or patchy/);
-    assert.ok(!/groomed|slimmer/.test(p));
-    // 두 발로 서지 않게
-    assert.match(p, /never standing upright on hind legs/);
-    assert.match(p, /facing the viewer, all paws visible, alone, centered/);
-    assert.match(p, /plain light solid background, soft studio light/);
+    assert.ok(!/groomed|slimmer|standing on all four/.test(p));
+    // 자세는 맨 앞, 앉아서. 두 발로 서지 않게
+    assert.match(
+      p,
+      /^A cute, polished, realistic 3D illustration of this exact pet as .*sitting like a real pet/,
+    );
+    assert.match(p, /never standing upright on its hind legs/);
+    assert.match(p, /facing the viewer, whole body and all paws visible, alone, centered/);
+    assert.match(p, /Plain light solid background, soft studio light/);
     assert.match(p, /No text, no watermark/);
   }
-  assert.match(texts[0] ?? '', /tiny baby \(a few weeks old\).*sitting/);
-  assert.match(texts[1] ?? '', /playful adolescent \(about five months old\).*standing/);
+  assert.match(texts[0] ?? '', /tiny baby \(a few weeks old\)/);
+  assert.match(texts[1] ?? '', /playful adolescent \(about five months old\)/);
   assert.match(texts[2] ?? '', /fully grown adult in its prime/);
   assert.equal(new Set(texts).size, 3);
 });

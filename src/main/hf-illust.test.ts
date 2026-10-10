@@ -6,7 +6,10 @@ import {
   IllustError,
   type IllustSpace,
   illustrate,
+  illustrateFluffy,
   imageKind,
+  imageSize,
+  kleinSize,
   parseSse,
   resultUrl,
   SPACES,
@@ -16,6 +19,7 @@ import {
 
 const KONTEXT = 'https://black-forest-labs-flux-1-kontext-dev.hf.space';
 const QWEN = 'https://qwen-qwen-image-edit.hf.space';
+const KLEIN_R = 'https://black-forest-labs-flux-2-klein-4b.hf.space';
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4, 5]);
 const WEBP = new Uint8Array([
   ...new TextEncoder().encode('RIFF'),
@@ -34,8 +38,62 @@ test('Space 주소와 순서: Kontext 가 먼저, 그리는 길은 /infer 하나
   for (const s of SPACES) assert.equal(s.endpoint, 'infer');
   const file = { path: '/tmp/x.jpg', orig_name: 'pet.jpg', meta: { _type: 'gradio.FileData' as const } };
   // input_image, prompt, seed, randomize_seed, guidance_scale, steps
-  assert.deepEqual(SPACES[0]?.inputs(file, 'p'), [file, 'p', 0, true, 2.5, 28]);
-  assert.deepEqual(SPACES[1]?.inputs(file, 'p'), [file, 'p', 0, true, 4, 50, false]);
+  assert.deepEqual(SPACES[0]?.inputs(file, 'p'), [file, 'p', 0, true, 3.5, 28]);
+  // klein: 갤러리 입력, 결과 크기는 보낸 그림 비율로 긴 변 1024 안
+  assert.deepEqual(SPACES[1]?.inputs(file, 'p', { w: 784, h: 1328 }), [
+    'p',
+    [{ image: file, caption: null }],
+    'Distilled (4 steps)',
+    0,
+    true,
+    608,
+    1024,
+    4,
+    1.0,
+    false,
+  ]);
+  assert.deepEqual(SPACES[2]?.inputs(file, 'p'), [file, 'p', 0, true, 4, 50, false]);
+});
+
+test('klein 크기: 긴 변 1024 안, 16 배수, 짧은 변 256 이상', () => {
+  assert.deepEqual(kleinSize(784, 1328), { w: 608, h: 1024 });
+  assert.deepEqual(kleinSize(2000, 1000), { w: 1024, h: 512 });
+  assert.deepEqual(kleinSize(4000, 100), { w: 1024, h: 256 });
+});
+
+test('그림 크기 읽기: PNG, WebP(VP8X, VP8, VP8L), JPEG, 모르면 undefined', () => {
+  const png = new Uint8Array(24);
+  png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  png.set([0, 0, 3, 16, 0, 0, 5, 48], 16);
+  assert.deepEqual(imageSize(png), { w: 784, h: 1328 });
+  const riff = (chunk: string, body: number[]) => {
+    const b = new Uint8Array(30);
+    b.set(new TextEncoder().encode(`RIFF\0\0\0\0WEBP${chunk}`));
+    b.set(body, 20);
+    return b;
+  };
+  // VP8X: 24 에 너비-1, 27 에 높이-1 (3바이트 little endian)
+  assert.deepEqual(imageSize(riff('VP8X', [0, 0, 0, 0, 783 & 255, 783 >> 8, 0, 1327 & 255, 1327 >> 8, 0])), {
+    w: 784,
+    h: 1328,
+  });
+  // VP8: 26 에 너비, 28 에 높이
+  assert.deepEqual(imageSize(riff('VP8 ', [0, 0, 0, 0, 0, 0, 784 & 255, 784 >> 8, 1328 & 255, 1328 >> 8])), {
+    w: 784,
+    h: 1328,
+  });
+  // VP8L: 21 부터 14비트씩 너비-1, 높이-1
+  const v = (783 | (1327 << 14)) >>> 0;
+  assert.deepEqual(imageSize(riff('VP8L', [0, v & 255, (v >> 8) & 255, (v >> 16) & 255, (v >>> 24) & 255])), {
+    w: 784,
+    h: 1328,
+  });
+  // JPEG: SOI, APP0(길이 4), SOF0(높이, 너비)
+  const jpeg = new Uint8Array([
+    0xff, 0xd8, 0xff, 0xe0, 0, 4, 0, 0, 0xff, 0xc0, 0, 11, 8, 5, 48, 3, 16, 3, 0, 0, 0, 0,
+  ]);
+  assert.deepEqual(imageSize(jpeg), { w: 784, h: 1328 });
+  assert.equal(imageSize(new Uint8Array([1, 2, 3])), undefined);
 });
 
 test('오류 종류: 실제 쿼터 글, 크기 제한, 토큰, 바쁨, 그 밖', () => {
@@ -210,7 +268,7 @@ test('그리기: 올리기, 부르기, 기다리기, 받기. 토큰은 그 Space
     'make it cute',
     0,
     true,
-    2.5,
+    3.5,
     28,
   ]);
 });
@@ -233,26 +291,26 @@ test('그 Space 오류(runtime)면 다음 Space 로', async () => {
   const { fetch, seen } = fakeServer({
     events: {
       [KONTEXT]: ['event: error\ndata: "RuntimeError: boom"\n\n'],
-      [QWEN]: complete('/tmp/q.webp'),
+      [KLEIN_R]: complete('/tmp/q.webp'),
     },
   });
   const logs: unknown[][] = [];
   const r = await illustrate(JPEG, 'image/jpeg', 'p', { fetch, log: (...a) => logs.push(a) });
-  assert.equal(r.space, 'Qwen/Qwen-Image-Edit');
-  assert.ok(seen.some((s) => s.url.startsWith(QWEN)));
+  assert.equal(r.space, 'black-forest-labs/FLUX.2-klein-4B');
+  assert.ok(seen.some((s) => s.url.startsWith(KLEIN_R)));
   assert.deepEqual(logs[0]?.slice(0, 3), ['illust', 'black-forest-labs/FLUX.1-Kontext-Dev', 'runtime']);
 });
 
 test('이유 없는 거절(data: null)은 refused: 다음 Space 도 거절하면 refused 로 보인다', async () => {
   // 2026-10-09 실제: 무료 세 번 뒤 넷째 요청이 두 Space 모두 data: null 로 거절됐다
   const { fetch, seen } = fakeServer({
-    events: { [KONTEXT]: ['event: error\ndata: null\n\n'], [QWEN]: ['event: error\ndata: null\n\n'] },
+    events: { [KONTEXT]: ['event: error\ndata: null\n\n'], [KLEIN_R]: ['event: error\ndata: null\n\n'] },
   });
   await assert.rejects(
     illustrate(JPEG, 'image/jpeg', 'p', { fetch }),
     (e: unknown) => e instanceof IllustError && e.kind === 'refused',
   );
-  assert.ok(seen.some((s) => s.url.startsWith(QWEN)));
+  assert.ok(seen.some((s) => s.url.startsWith(KLEIN_R)));
   assert.equal(worst(['refused', 'limit']), 'refused');
   assert.equal(worst(['refused', 'busy']), 'refused');
 });
@@ -263,14 +321,14 @@ test('무료 사용량 끝이면 다음 Space 를 부르지 않고 quota', async
       [KONTEXT]: [
         'event: error\ndata: "You have exceeded your ZeroGPU runs limit. Authenticate with a Hugging Face token for more quota"\n\n',
       ],
-      [QWEN]: complete(),
+      [KLEIN_R]: complete(),
     },
   });
   await assert.rejects(
     illustrate(JPEG, 'image/jpeg', 'p', { fetch }),
     (e: unknown) => e instanceof IllustError && e.kind === 'quota',
   );
-  assert.ok(!seen.some((s) => s.url.startsWith(QWEN)));
+  assert.ok(!seen.some((s) => s.url.startsWith(KLEIN_R)));
 });
 
 test('받은 그림이 보낸 사진 그대로면 성공으로 세지 않는다 (same)', async () => {
@@ -289,7 +347,7 @@ test('결과가 그림이 아니면 bad, 끝까지 complete 가 없으면 다음
     illustrate(JPEG, 'image/jpeg', 'p', { fetch: html.fetch, spaces: one }),
     (e: unknown) => e instanceof IllustError && e.kind === 'bad',
   );
-  const ended = fakeServer({ events: { [KONTEXT]: ['event: heartbeat\ndata: null\n\n'], [QWEN]: [] } });
+  const ended = fakeServer({ events: { [KONTEXT]: ['event: heartbeat\ndata: null\n\n'], [KLEIN_R]: [] } });
   await assert.rejects(
     illustrate(JPEG, 'image/jpeg', 'p', { fetch: ended.fetch }),
     (e: unknown) => e instanceof IllustError && e.kind === 'busy',
@@ -297,7 +355,7 @@ test('결과가 그림이 아니면 bad, 끝까지 complete 가 없으면 다음
 });
 
 test('연결이 안 되면 network', async () => {
-  const { fetch } = fakeServer({ events: { [KONTEXT]: 'throw', [QWEN]: 'throw' } });
+  const { fetch } = fakeServer({ events: { [KONTEXT]: 'throw', [KLEIN_R]: 'throw', [QWEN]: 'throw' } });
   await assert.rejects(
     illustrate(JPEG, 'image/jpeg', 'p', { fetch }),
     (e: unknown) => e instanceof IllustError && e.kind === 'network',
@@ -305,7 +363,7 @@ test('연결이 안 되면 network', async () => {
 });
 
 test('너무 오래 걸리면 timeout, 그만두면 cancelled (기다리던 SSE 도 멈춘다)', async () => {
-  const hang = fakeServer({ events: { [KONTEXT]: 'hang', [QWEN]: 'hang' } });
+  const hang = fakeServer({ events: { [KONTEXT]: 'hang', [KLEIN_R]: 'hang', [QWEN]: 'hang' } });
   const t0 = Date.now();
   await assert.rejects(
     illustrate(JPEG, 'image/jpeg', 'p', { fetch: hang.fetch, timeoutMs: 60 }),
@@ -313,7 +371,7 @@ test('너무 오래 걸리면 timeout, 그만두면 cancelled (기다리던 SSE 
   );
   assert.ok(Date.now() - t0 < 2000);
   // 첫 Space 에서 멈추면 다음 Space 로 넘어가지 않는다
-  assert.ok(!hang.seen.some((s) => s.url.startsWith(QWEN)));
+  assert.ok(!hang.seen.some((s) => s.url.startsWith(KLEIN_R)));
 
   const ac = new AbortController();
   const again = fakeServer({ events: { [KONTEXT]: 'hang' } });
@@ -327,4 +385,32 @@ test('너무 오래 걸리면 timeout, 그만두면 cancelled (기다리던 SSE 
     illustrate(JPEG, 'image/jpeg', 'p', { fetch: again.fetch, signal: pre.signal }),
     (e: unknown) => e instanceof IllustError && e.kind === 'cancelled',
   );
+});
+
+test('털 다듬기: 그린 그림을 klein 에 FUR 요청문으로 한 번 더, 실패하면 첫 그림, 그만두면 실패', async () => {
+  const FUR = new Uint8Array([...WEBP, 9, 9]);
+  // 첫 그림은 Kontext, 털 다듬기는 klein. 가짜 서버는 Space 마다 같은 결과 파일을 주니 klein 결과를 따로
+  const { fetch, seen } = fakeServer({
+    events: { [KONTEXT]: complete(), [KLEIN_R]: complete('/tmp/fur.webp') },
+  });
+  const furFetch: typeof fetch = async (url, init) =>
+    url.startsWith(`${KLEIN_R}/gradio_api/file=`) ? new Response(FUR as BodyInit) : fetch(url, init);
+  const r = await illustrateFluffy(JPEG, 'image/jpeg', 'p', { fetch: furFetch });
+  assert.equal(r.fur, true);
+  assert.deepEqual([...r.bytes], [...FUR]);
+  assert.equal(r.space, 'black-forest-labs/FLUX.1-Kontext-Dev + black-forest-labs/FLUX.2-klein-4B');
+  const call = seen.find((s) => s.url === `${KLEIN_R}/gradio_api/call/infer`);
+  const data = JSON.parse(String(call?.body)).data as unknown[];
+  assert.match(String(data[0]), /legs, paws, chest and tail longer/);
+  // klein 이 막히면 첫 그림
+  const busy = fakeServer({ events: { [KONTEXT]: complete(), [KLEIN_R]: ['event: error\ndata: null\n\n'] } });
+  const r2 = await illustrateFluffy(JPEG, 'image/jpeg', 'p', { fetch: busy.fetch });
+  assert.equal(r2.fur, false);
+  assert.deepEqual([...r2.bytes], [...WEBP]);
+  // 그만두면 실패
+  const ac = new AbortController();
+  const hang = fakeServer({ events: { [KONTEXT]: complete(), [KLEIN_R]: 'hang' } });
+  const p = illustrateFluffy(JPEG, 'image/jpeg', 'p', { fetch: hang.fetch, signal: ac.signal });
+  setTimeout(() => ac.abort(), 30);
+  await assert.rejects(p, (e: unknown) => e instanceof IllustError && e.kind === 'cancelled');
 });

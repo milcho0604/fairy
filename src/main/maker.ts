@@ -35,7 +35,7 @@ import { CUSTOM_FOOD_COST } from '../shared/shop.ts';
 import { BG_MODEL, ensureModel, modelReady, verifiedModelUrl } from './bg-model.ts';
 import { DEPTH_MODEL, depthReady, ensureDepthModel, verifiedDepthUrl } from './depth-model.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
-import { IllustError, type IllustErrorKind, illustrate, imageKind } from './hf-illust.ts';
+import { IllustError, type IllustErrorKind, illustrateFluffy, imageKind } from './hf-illust.ts';
 import { hfToken } from './hf-token.ts';
 import { langArg } from './lang.ts';
 import { library } from './pet-library.ts';
@@ -327,7 +327,8 @@ export function createMaker(
     const abort = new AbortController();
     drawing = abort;
     try {
-      const r = await illustrate(
+      // 그린 뒤 털 다듬기까지 (다리 털이 매끈하게 나왔다, hf-illust.ts FUR_PROMPT)
+      const r = await illustrateFluffy(
         photo,
         kind === 'png' ? 'image/png' : 'image/jpeg',
         illustratePrompt(ageRaw, wishRaw),
@@ -340,7 +341,14 @@ export function createMaker(
         },
       );
       const mime = r.kind === 'jpeg' ? 'image/jpeg' : `image/${r.kind}`;
-      log('maker', 'illust', r.space, ageRaw, `${Math.round(r.bytes.length / 1024)}KB`);
+      log(
+        'maker',
+        'illust',
+        r.space,
+        ageRaw,
+        r.fur ? 'fur' : 'no fur',
+        `${Math.round(r.bytes.length / 1024)}KB`,
+      );
       return { ok: true as const, image: `data:${mime};base64,${Buffer.from(r.bytes).toString('base64')}` };
     } catch (err) {
       const k = err instanceof IllustError ? err.kind : 'busy';
