@@ -1,0 +1,17 @@
+{
+ "prompt": "Make the fur on the legs, paws, chest and tail longer, thicker and fluffier: long soft fluffy feathering on all four legs, fluffy britches on the hind legs and fluffy tufts on the paws, as fluffy as the rest of the coat. Keep the same fur color and fur type (curly fur stays curly). Keep everything else exactly the same: same pose, face, eyes, markings, lighting and plain background.",
+ "log": [
+  {
+   "job": "cat-adult",
+   "ok": true
+  },
+  {
+   "job": "cat-teen",
+   "ok": true
+  },
+  {
+   "job": "poodle-teen",
+   "ok": true
+  }
+ ]
+}
