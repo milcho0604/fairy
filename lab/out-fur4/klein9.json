@@ -1,0 +1,20 @@
+[
+ {
+  "api": "None"
+ },
+ {
+  "job": "klein9-cat-adult",
+  "ok": false,
+  "error": "Traceback (most recent call last):\n  File \"/home/runner/work/jjakkung/jjakkung/lab/fur4.py\", line 36, in run\n    r = fn()\n        ^^^^\n  File \"/home/runner/work/jjakkung/jjakkung/lab/fur4.py\", line 49, in <lambda>\n    run(f\"{job}-cat-adult\", lambda: c.predict(prompt=FULL, input_images=[{\"image\": handle_file(\"lab/in_cat.png\"), \"caption\": None}],\n                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/gradio_client/client.py\", line 604, in predict\n    return self.submit(\n           ^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/gradio_client/client.py\", line 650, in submit\n    inferred_fn_index = self._infer_fn_index(api_name, fn_index)\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/gradio_client/client.py\", line 994, in _infer_fn_index\n    raise ValueError(error_message)\nValueError: Cannot find a function with `api_name`: /infer.\n"
+ },
+ {
+  "job": "klein9-poodle-adult",
+  "ok": false,
+  "error": "Traceback (most recent call last):\n  File \"/home/runner/work/jjakkung/jjakkung/lab/fur4.py\", line 36, in run\n    r = fn()\n        ^^^^\n  File \"/home/runner/work/jjakkung/jjakkung/lab/fur4.py\", line 52, in <lambda>\n    run(f\"{job}-poodle-adult\", lambda: c.predict(prompt=FULL, input_images=[{\"image\": handle_file(\"lab/in_poodle.png\"), \"caption\": None}],\n                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/gradio_client/client.py\", line 604, in predict\n    return self.submit(\n           ^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/gradio_client/client.py\", line 650, in submit\n    inferred_fn_index = self._infer_fn_index(api_name, fn_index)\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/gradio_client/client.py\", line 994, in _infer_fn_index\n    raise ValueError(error_message)\nValueError: Cannot find a function with `api_name`: /infer.\n"
+ },
+ {
+  "job": "klein9-k2-cat",
+  "ok": false,
+  "error": "Traceback (most recent call last):\n  File \"/home/runner/work/jjakkung/jjakkung/lab/fur4.py\", line 36, in run\n    r = fn()\n        ^^^^\n  File \"/home/runner/work/jjakkung/jjakkung/lab/fur4.py\", line 55, in <lambda>\n    run(f\"{job}-k2-cat\", lambda: c.predict(prompt=LEGS, input_images=[{\"image\": handle_file(\"lab/out-fur3/v0/cat-adult.webp\"), \"caption\": None}],\n                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/gradio_client/client.py\", line 604, in predict\n    return self.submit(\n           ^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/gradio_client/client.py\", line 650, in submit\n    inferred_fn_index = self._infer_fn_index(api_name, fn_index)\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/gradio_client/client.py\", line 994, in _infer_fn_index\n    raise ValueError(error_message)\nValueError: Cannot find a function with `api_name`: /infer.\n"
+ }
+]
