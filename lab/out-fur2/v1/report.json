@@ -1,0 +1,31 @@
+{
+  "prompt": {
+    "note": "pose-first stand, g3.5",
+    "pose": "stand",
+    "guidance": 3.5
+  },
+  "sample": "A cute, polished, realistic 3D illustration of this exact pet as a fully grown adult in its prime: full size, confident, standing on all four paws like a real four-legged animal, side-on three-quarter view, facing the viewer, whole body visible, alone, centered. Keep the pet's identity: same breed, fur color and pattern, markings and eye color. Fur: make its natural coat much fluffier and longer everywhere, like a freshly blow-dried show pet: long fluffy feathering on all four legs, fluffy britches, tufts between the toes, a big chest ruff, cheek fluff and a bushy tail, visible individual strands and soft wispy edges along the whole silhouette. No smooth, sleek, short-haired or shaved areas. It is an animal: never standing upright on its hind legs, never human-like. Plain light solid background, soft studio light. No text, no watermark, no other animals or objects.",
+  "report": [
+    {
+      "v": 1,
+      "note": "pose-first stand, g3.5",
+      "job": "cat-adult",
+      "ok": true,
+      "ms": 30387
+    },
+    {
+      "v": 1,
+      "note": "pose-first stand, g3.5",
+      "job": "cat-teen",
+      "ok": true,
+      "ms": 30738
+    },
+    {
+      "v": 1,
+      "note": "pose-first stand, g3.5",
+      "job": "poodle-teen",
+      "ok": true,
+      "ms": 30347
+    }
+  ]
+}
