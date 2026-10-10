@@ -65,6 +65,15 @@ export const needsJpeg = (pngBytes: number) => pngBytes > IMAGE_MAX_BYTES;
 /** 채팅에 한 번에 붙일 수 있는 그림 수 (채팅 창과 같다) */
 export const SEND_IMAGES_MAX = 4;
 const SEND_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+
+/**
+ * codex 에 넘기려고 임시 폴더에 잠깐 쓰는 그림 파일 이름 (main/ai/runner.ts). 끝나면 지우지만 앱이 죽으면 남는다.
+ * 다음 실행이 이 이름만 골라 지운다 (화면 캡처를 디스크에 남기지 않는다, P3-07)
+ */
+export const aiTempImageName = (uuid: string, mediaType: string): string =>
+  `jjakkung-${uuid}.${mediaType.split('/')[1]?.replace('jpeg', 'jpg') ?? 'png'}`;
+export const isAiTempImage = (name: string): boolean =>
+  /^jjakkung-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(png|jpg|gif|webp)$/.test(name);
 /** base64 글자 수 상한 (약 9MB 그림). 화면은 3.5MB 를 넘으면 JPEG 로 줄여 보낸다 */
 const SEND_DATA_MAX = 12_000_000;
 const THUMB_DATA_MAX = 2_000_000;

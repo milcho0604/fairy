@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  aiTempImageName,
   cleanSendImages,
   dragRect,
   fitWithin,
   IMAGE_MAX_BYTES,
+  isAiTempImage,
   isClick,
   needsJpeg,
   SEND_IMAGES_MAX,
@@ -77,4 +79,21 @@ test('채팅 그림 검사: 허용 형식, 개수, base64 만 통과', () => {
   assert.equal(cleanSendImages([{ ...ok, thumb: { thumb: 'javascript:1' } }]), undefined);
   assert.equal(cleanSendImages(Array(SEND_IMAGES_MAX + 1).fill(ok)), undefined);
   assert.equal(cleanSendImages('x'), undefined);
+});
+
+test('AI 임시 그림 파일: 만든 이름만 지울 대상으로 본다 (죽은 뒤 남은 캡처 지우기)', () => {
+  const uuid = '0b6f1c9e-3d2a-4c55-9a7e-1f2e3d4c5b6a';
+  const png = aiTempImageName(uuid, 'image/png');
+  const jpg = aiTempImageName(uuid, 'image/jpeg');
+  assert.equal(png, `jjakkung-${uuid}.png`);
+  assert.equal(jpg, `jjakkung-${uuid}.jpg`);
+  assert.ok(isAiTempImage(png) && isAiTempImage(jpg));
+  // 다른 앱 파일이나 짝꿍 이름만 같은 파일은 건드리지 않는다
+  for (const other of [
+    'jjakkung-backup.png',
+    `jjakkung-${uuid}.txt`,
+    `x-${uuid}.png`,
+    `jjakkung-${uuid}.png.bak`,
+  ])
+    assert.equal(isAiTempImage(other), false, other);
 });
