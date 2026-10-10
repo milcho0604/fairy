@@ -15,6 +15,7 @@ import { t } from '../shared/i18n/index.ts';
 import { type MakerTarget, SETTINGS, type SettingsSection, type SettingsSnapshot } from '../shared/ipc.ts';
 import type { Gait } from '../shared/pet3d/blueprint.ts';
 import { isGait, isPetKind, type Settings } from '../shared/settings.ts';
+import { isSettingsTab, type SettingsTab } from '../shared/settings-tabs.ts';
 import { RELEASE_REPO } from '../shared/update-policy.ts';
 import { localModelReady } from './ai/local.ts';
 import { createDiagnostics } from './diagnostics.ts';
@@ -72,6 +73,8 @@ export function createSettingsWindow({
   v2,
 }: SettingsWindowOptions) {
   let win: BrowserWindow | undefined;
+  // 마지막으로 본 탭. 창은 닫으면 없어져서 메인이 앱이 켜져 있는 동안만 기억한다 (설정 파일에는 남기지 않는다)
+  let lastTab: SettingsTab | undefined;
   const fromSettings = (e: IpcMainEvent | IpcMainInvokeEvent) => !!win && e.sender === win.webContents;
 
   ipcMain.handle(SETTINGS.get, (e): SettingsSnapshot | undefined =>
@@ -118,6 +121,9 @@ export function createSettingsWindow({
   );
   ipcMain.on(SETTINGS.cancelRemake, (e) => {
     if (fromSettings(e)) cancelRemake();
+  });
+  ipcMain.on(SETTINGS.tab, (e, tab: unknown) => {
+    if (fromSettings(e) && isSettingsTab(tab)) lastTab = tab;
   });
   ipcMain.handle(SETTINGS.set, (e, patch: Partial<Settings>) =>
     fromSettings(e) ? settings.set(patch) : settings.get(),
@@ -233,10 +239,12 @@ export function createSettingsWindow({
     load(win, section);
   }
 
+  /** 칸을 주면 그 칸(#stats), 아니면 지난번 탭(#ai)을 # 뒤에 넣어 연다 (화면이 settings-tabs.ts tabFromHash 로 읽는다) */
   function load(w: BrowserWindow, section?: SettingsSection) {
+    const hash = section ?? lastTab;
     const devUrl = process.env.ELECTRON_RENDERER_URL;
-    if (devUrl) w.loadURL(`${devUrl}/settings.html${section ? `#${section}` : ''}`);
-    else w.loadFile(join(import.meta.dirname, '../renderer/settings.html'), { hash: section });
+    if (devUrl) w.loadURL(`${devUrl}/settings.html${hash ? `#${hash}` : ''}`);
+    else w.loadFile(join(import.meta.dirname, '../renderer/settings.html'), { hash });
   }
 
   return {

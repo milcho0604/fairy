@@ -26,6 +26,7 @@ import type { PolishReply } from './note-polish.ts';
 import type { Note, NoteSource } from './note-store.ts';
 import type { Blueprint, Gait } from './pet3d/blueprint.ts';
 import type { PetKind, PetStyle, PoseKind, Settings } from './settings.ts';
+import type { SettingsTab } from './settings-tabs.ts';
 import type { BuyResult, ShopState } from './shop.ts';
 import type { SoundKind } from './sound.ts';
 import type { Repeat, Todo } from './todo-store.ts';
@@ -231,6 +232,8 @@ export const SETTINGS = {
   /** 지금 사진 펫의 몸을 고른 걸음새에 맞게 다시 만든다 (같은 사진, 같은 요청사항). 그만두기는 cancelRemake */
   remakeBody: 'settings:remake-body',
   cancelRemake: 'settings:cancel-remake',
+  /** 설정 창 → 메인: 지금 보는 탭. 앱이 켜져 있는 동안 기억해 다음에 창을 열면 그 탭으로 (설정 창 재구성) */
+  tab: 'settings:tab',
   /** 메인 → 설정 창: 설정이 바뀌었다 */
   changed: 'settings:changed',
   /** 메인 → 설정 창: 이 칸을 보여 줘 (메뉴 막대 "의견 보내기") */
@@ -333,6 +336,8 @@ export interface SettingsBridge {
   /** 몸 다시 만들기. 끝나면(성공이면 설정이 바뀐 뒤) 결과. AI 가 없으면 noAi */
   remakeBody(gait: Gait): Promise<{ ok: true } | { ok: false; error: string; noAi?: boolean }>;
   cancelRemake(): void;
+  /** 지금 보는 탭을 메인에 알린다 (다음에 열 때 그 탭으로) */
+  rememberTab(tab: SettingsTab): void;
   onChanged(listener: (settings: Settings) => void): void;
   onFocus(listener: (section: SettingsSection) => void): void;
   onPower(listener: (onBattery: boolean) => void): void;

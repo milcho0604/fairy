@@ -22,6 +22,7 @@ import * as remind from './remind.ts';
 import * as routine from './routine.ts';
 import * as settings from './settings.ts';
 import * as shop from './shop.ts';
+import * as tabs from './tabs.ts';
 import * as tray from './tray.ts';
 import type { Translation } from './types.ts';
 
@@ -49,6 +50,7 @@ export const ko = {
   ...ease.ko,
   ...companion.ko,
   ...feedback.ko,
+  ...tabs.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -75,4 +77,5 @@ export const en: Translation<typeof ko> = {
   ...ease.en,
   ...companion.en,
   ...feedback.en,
+  ...tabs.en,
 };

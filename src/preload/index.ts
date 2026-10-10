@@ -202,6 +202,7 @@ if (kind === 'settings') {
     deleteModel: (id: string) => ipcRenderer.invoke(SETTINGS.deleteModel, id),
     remakeBody: (gait) => ipcRenderer.invoke(SETTINGS.remakeBody, gait),
     cancelRemake: () => ipcRenderer.send(SETTINGS.cancelRemake),
+    rememberTab: (tab) => ipcRenderer.send(SETTINGS.tab, tab),
     onChanged: (listener) => {
       ipcRenderer.on(SETTINGS.changed, (_e, next: Settings) => listener(next));
     },
