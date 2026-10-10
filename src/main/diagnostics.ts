@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { app, type BrowserWindow, clipboard, dialog } from 'electron';
 import { feedbackText } from '../shared/feedback.ts';
 import { t } from '../shared/i18n/index.ts';
-import { redactLogDetail, tailLines } from '../shared/redact-log.ts';
+import { DIAG_MAX_BYTES, DIAG_MAX_LINES, redactLogDetail, tailLines } from '../shared/redact-log.ts';
 import { localDay } from '../shared/todo-store.ts';
 import { writeFileAtomic } from './safe-file.ts';
 
@@ -53,8 +53,10 @@ export function createDiagnostics(o: {
     } catch {
       // 저장 파일을 못 읽어도 나머지 규칙으로 가린다
     }
-    // 가린 뒤에 자른다: 가리기 전에 자르면 줄 끝에 걸친 토큰 반쪽이 남을 수 있다
-    const r = redactLogDetail(raw, { home: homedir(), user: safeUser(), host: hostname(), secrets });
+    // 줄 단위로 넉넉히(줄 수 두 배, 바이트 네 배) 먼저 잘라 가리는 양을 묶는다 (2MB 를 통째로 가리면 메인이 오래 멈출 수 있다).
+    // 줄 단위라 토큰 반쪽이 남지 않는다. 가린 뒤 정해진 상한으로 다시 자른다
+    const near = tailLines(raw, DIAG_MAX_LINES * 2, DIAG_MAX_BYTES * 4).join('\n');
+    const r = redactLogDetail(near, { home: homedir(), user: safeUser(), host: hostname(), secrets });
     const lines = tailLines(r.text);
     // 가린 곳 수는 남긴 줄 안에서 다시 센다 (잘려 나간 줄의 것은 빼고)
     const hidden = lines.reduce(

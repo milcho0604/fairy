@@ -197,3 +197,56 @@ test('끝 쪽 줄만: 줄 수 상한과 바이트 상한', () => {
   assert.deepEqual(tailLines(''), []);
   assert.deepEqual(tailLines('a\r\nb'), ['a', 'b']);
 });
+
+test('보안 검토 (2026-10-10): 따옴표 값 통째로, 쿠키 줄 끝까지, Google 토큰, PEM, 긴 비밀 덩어리', () => {
+  assert.equal(redactLog('password: "my pass word"'), 'password: "<secret>"');
+  assert.equal(redactLog('"token": "abc def"'), '"token": "<secret>"');
+  assert.equal(redactLog("token='a&b' x"), "token='<secret>' x");
+  assert.equal(redactLog('Cookie: a=1; sid=abcdef123'), 'Cookie: <secret>');
+  assert.equal(redactLog('got ya29.a0AfH6SMBxyz123456 ok'), 'got <secret> ok');
+  assert.equal(redactLog('refresh 1//0gAbCdEfGhIjKl'), 'refresh <secret>');
+  assert.equal(redactLog('code=4/0AX4XfWhabcdefghij state=x'), 'code=<secret> state=x');
+  assert.equal(redactLog('session_id=0123456789abcdef'), 'session_id=<secret>');
+  assert.equal(redactLog('-----BEGIN PRIVATE KEY-----\nMIIEv\n-----END PRIVATE KEY-----'), '<secret>');
+  assert.equal(redactLog('blob QmFzZTY0IGJsb2IgdGhhdCBpcyBsb25nIGVub3VnaDEyMw=='), 'blob <secret>');
+  // 16진수만인 해시, 진단에 쓰는 오류 코드는 둔다
+  const sha = 'a'.repeat(32) + '0123456789abcdef'.repeat(2);
+  assert.equal(redactLog(`sha256 ${sha}`), `sha256 ${sha}`);
+  assert.equal(redactLog('code=ENOENT exitCode=1'), 'code=ENOENT exitCode=1');
+});
+
+test('보안 검토: \\/ 로 쓴 JSON 주소와 경로, NFD 한글과 대소문자, 띄어쓰기 수가 다른 사용자 글', () => {
+  assert.equal(
+    redactLog('{"u":"https:\\/\\/calendar.google.com\\/calendar\\/ical\\/x\\/private-abc\\/basic.ics"}'),
+    '{"u":"https://calendar.google.com/<calendar>"}',
+  );
+  assert.equal(redactLog('{"path":"\\/Users\\/johndoe\\/x"}'), '{"path":"/Users/<user>/x"}');
+  const secrets = ['치과 예약', 'Secret Project X'];
+  assert.equal(redactLog(`open ${'치과 예약'.normalize('NFD')}.md`, { secrets }), 'open <private>.md');
+  assert.equal(redactLog('secret project x done', { secrets }), '<private> done');
+  assert.equal(redactLog('치과  예약 알림', { secrets }), '<private> 알림');
+  assert.equal(
+    redactLog('https://cloud.example.com/remote.php/dav/public-calendars/AbCd'),
+    'https://cloud.example.com/<calendar>',
+  );
+});
+
+test('보안 검토: 한글 이메일, localhost, %2B 인코딩', () => {
+  assert.equal(redactLog('to 김철수@회사.kr ok'), 'to <email> ok');
+  assert.equal(redactLog('user@localhost'), '<email>');
+  assert.equal(redactLog('q=john%2Bx%40example.com'), 'q=<email>');
+});
+
+test('보안 검토: 긴 글자 줄도 빨리 (정규식이 줄 길이의 제곱으로 느려지지 않게)', () => {
+  const lines = ['a', '_', '1.', 'a-', 'Ab1+'].flatMap((u) =>
+    Array(10).fill(u.repeat(Math.ceil(4000 / u.length))),
+  );
+  const at = performance.now();
+  redactLog(lines.join('\n'), {
+    secrets: ['치과 예약'],
+    home: '/Users/kimcs',
+    user: 'kimcs',
+    host: 'kim-mac',
+  });
+  assert.ok(performance.now() - at < 400, `${Math.round(performance.now() - at)}ms`);
+});

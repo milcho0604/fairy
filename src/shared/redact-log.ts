@@ -49,20 +49,42 @@ const TOKEN_RES: RegExp[] = [
   /\bAKIA[0-9A-Z]{16}\b/g, // AWS
   /\bAIza[0-9A-Za-z_-]{20,}/g, // Google API
   /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,}/g, // JWT
+  /\bya29\.[\w-]{10,}/g, // Google 접근 토큰
+  /(?<![\w/])1\/\/0[\w-]{10,}/g, // Google 새로 받기 토큰
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g, // PEM 개인 키
 ];
+
+/**
+ * 이름 없는 긴 비밀: 대소문자, 숫자가 섞인 40자 넘는 덩어리(base64, 무작위 토큰).
+ * 슬래시는 넣지 않는다 (긴 경로를 통째로 지우지 않게). 해시(16진수만) 같은 것은 둔다
+ */
+const BLOB_RE = /(?<![\w+-])[A-Za-z0-9_+-]{40,}={0,2}(?![\w+-])/g;
+const looksSecretBlob = (s: string) => /[a-z]/.test(s) && /[A-Z]/.test(s) && /\d/.test(s);
 
 /** "Bearer 값", "Basic 값" */
 const AUTH_SCHEME_RE = /\b(Bearer|Basic|Token)\s+(?!<)[A-Za-z0-9._~+/=-]{6,}/gi;
 
 /** 비밀을 뜻하는 키 다음 값: token=..., "password": "...", api_key: ..., Authorization: ... */
+// 키 앞 덧붙은 낱말은 40자까지만 본다 (a-a-a-… 같은 긴 줄에서 시작점마다 끝까지 훑어 느려졌다).
+// 따옴표로 시작한 값은 닫는 따옴표까지 통째로 (공백, & 가 든 비밀번호가 반만 가려졌다)
 const KEY_VALUE_RE =
-  /\b([\w-]*?(?:token|secret|passw(?:or)?d|pwd|api[_-]?key|apikey|auth(?:orization)?|cookie|signature|sig|credential)s?)(["']?\s*[:=]\s*["']?)(?!<)([^\s"'&,;}<>]+)/gi;
+  /(?<![\w-])([\w-]{0,40}?(?:token|secret|passw(?:or)?d|pwd|api[_-]?key|apikey|auth(?:orization)?|signature|sig|credential|session[_-]?id|sid|auth[_-]?code|oauth[_-]?code)s?)(["']?\s*[:=]\s*)(?:"([^"\n]*)"|'([^'\n]*)'|(?!<)([^\s"'&,;}<>]+))/gi;
+
+/** 쿠키는 줄 끝까지 (; 로 이어진 다른 쿠키도) */
+const COOKIE_RE = /\b((?:set-)?cookie)(["']?\s*[:=]\s*)[^\n]+/gi;
+
+/** 주소 밖에 나온 OAuth 코드 (code=4/0A…) */
+const OAUTH_CODE_RE = /\b(code)(\s*[:=]\s*)(4\/[\w-]{10,})/g;
 
 /** 주소: 스킴://나머지. 공백, 따옴표, 꺾쇠, 역따옴표에서 끊는다 */
 const URL_RE = /\b([a-z][a-z0-9+.-]{1,15}):\/\/([^\s'"<>`]+)/gi;
 
-const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
-const EMAIL_ENCODED_RE = /[A-Za-z0-9._+-]+%40[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/gi;
+// 시작을 낱말 경계에 묶고 길이를 64자로 막는다: 긴 글자 줄에서 시작점마다 끝까지 훑어 메인이 멈췄다 (4000자 줄 20개에 0.6초).
+// 한글 같은 글자의 주소(김철수@회사.kr)와 localhost 도
+const EMAIL_RE =
+  /(?<![\p{L}\p{N}._%+-])[\p{L}\p{N}._%+-]{1,64}@[\p{L}\p{N}-]{1,63}(?:\.[\p{L}\p{N}-]{1,63}){0,8}(?:\.\p{L}{2,}|(?<=@localhost))/gu;
+const EMAIL_ENCODED_RE =
+  /(?<![A-Za-z0-9._%+-])(?:[A-Za-z0-9._+-]|%2B){1,64}%40[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){0,8}\.[A-Za-z]{2,}/gi;
 
 const IPV4_RE = /(?<![\d.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\d]|\.\d)/g;
 const IPV6_RE = /(?<![\w:.])(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}(?![\w:])/gi;
@@ -127,7 +149,7 @@ function redactUrl(scheme: string, rest: string, bump: () => void): string {
     lower === 'webcal' ||
     lower === 'webcals' ||
     /\.ics\b/i.test(after) ||
-    /\/ical\b|\/calendars?\//i.test(after) ||
+    /\/ical\b|\/(?:public-)?calendars?\b/i.test(after) ||
     /calendar/i.test(authority);
   if (calendar && after.length > 1) {
     bump();
@@ -153,18 +175,22 @@ export function redactLogDetail(text: string, o: RedactOptions = {}): Redacted {
   const bump = () => {
     count++;
   };
-  let out = text;
+  // 맥 파일 이름은 NFD(자모가 갈라진 한글)로 올 수 있어 NFC 로 맞추고, JSON 이 슬래시를 \/ 로 쓴 것도 / 로 본다
+  // (그대로면 주소, 홈 폴더 규칙을 비켜 갔다)
+  let out = text.normalize('NFC').replace(/\\\//g, '/');
 
-  // 1. 사용자 글 그대로: 긴 것부터 (짧은 것이 긴 것의 일부를 먼저 지우지 않게)
-  const secrets = [...new Set((o.secrets ?? []).map((s) => s.trim()).filter(longEnough))].sort(
-    (a, b) => b.length - a.length,
-  );
-  for (const s of secrets) {
-    const parts = out.split(s);
-    if (parts.length > 1) {
-      count += parts.length - 1;
-      out = parts.join('<private>');
-    }
+  // 1. 사용자 글 그대로: 긴 것부터 (짧은 것이 긴 것의 일부를 먼저 지우지 않게). 대소문자, 띄어쓰기 수는 가리지 않는다
+  const secrets = [
+    ...new Set(
+      (o.secrets ?? []).map((s) => s.normalize('NFC').trim().replace(/\s+/g, ' ')).filter(longEnough),
+    ),
+  ].sort((a, b) => b.length - a.length);
+  if (secrets.length > 0) {
+    const re = new RegExp(secrets.map((s) => escapeRe(s).replace(/ /g, '\\s+')).join('|'), 'giu');
+    out = out.replace(re, () => {
+      bump();
+      return '<private>';
+    });
   }
 
   // 2. 홈 폴더: 그대로, 역슬래시가 겹친(JSON) 꼴, 슬래시를 바꾼 꼴. 윈도우는 대소문자를 가리지 않는다
@@ -204,9 +230,26 @@ export function redactLogDetail(text: string, o: RedactOptions = {}): Redacted {
     bump();
     return `${scheme} <secret>`;
   });
-  out = out.replace(KEY_VALUE_RE, (_m, key: string, sep: string) => {
+  out = out.replace(COOKIE_RE, (_m, key: string, sep: string) => {
     bump();
     return `${key}${sep}<secret>`;
+  });
+  out = out.replace(OAUTH_CODE_RE, (_m, key: string, sep: string) => {
+    bump();
+    return `${key}${sep}<secret>`;
+  });
+  out = out.replace(KEY_VALUE_RE, (m, key: string, sep: string, dq?: string, sq?: string) => {
+    // 이미 가린 값은 다시 세지 않는다
+    if ((dq ?? sq ?? '').startsWith('<')) return m;
+    bump();
+    if (dq !== undefined) return `${key}${sep}"<secret>"`;
+    if (sq !== undefined) return `${key}${sep}'<secret>'`;
+    return `${key}${sep}<secret>`;
+  });
+  out = out.replace(BLOB_RE, (m) => {
+    if (!looksSecretBlob(m)) return m;
+    bump();
+    return '<secret>';
   });
 
   // 5. 이메일
