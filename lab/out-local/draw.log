@@ -1,0 +1,7 @@
+Peak MLX memory: 5.07 GB
+
+  0%|          | 0/4 [00:00<?, ?it/s] 25%|██▌       | 1/4 [00:15<00:46, 15.43s/it] 50%|█████     | 2/4 [00:26<00:25, 12.87s/it] 75%|███████▌  | 3/4 [00:37<00:12, 12.06s/it]100%|██████████| 4/4 [00:48<00:00, 11.68s/it]100%|██████████| 4/4 [00:48<00:00, 12.18s/it]
+/Users/runner/Library/Application Support/jj-lab/local-draw/tools/mflux/lib/python3.12/site-packages/mflux/utils/image_util.py:140: RuntimeWarning: invalid value encountered in cast
+  images = (images * 255).round().astype("uint8")
+INFO: Image saved successfully at: /tmp/jj-draw.png
+INFO: Metadata embedded successfully at: /tmp/jj-draw.png

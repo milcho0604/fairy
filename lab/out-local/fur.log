@@ -1,0 +1,13 @@
+Peak MLX memory: 2.22 GB
+
+  0%|          | 0/4 [00:00<?, ?it/s]  0%|          | 0/4 [00:37<?, ?it/s]
+Traceback (most recent call last):
+  File "/Users/runner/Library/Application Support/jj-lab/local-draw/tools/mflux/bin/mflux-generate-flux2-edit", line 12, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/Users/runner/Library/Application Support/jj-lab/local-draw/tools/mflux/lib/python3.12/site-packages/mflux/models/flux2/cli/flux2_edit_generate.py", line 105, in main
+    image = model.generate_image(
+            ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/runner/Library/Application Support/jj-lab/local-draw/tools/mflux/lib/python3.12/site-packages/mflux/models/flux2/variants/edit/flux2_klein_edit.py", line 174, in generate_image
+    mx.eval(latents)
+RuntimeError: [METAL] Command buffer execution failed: Caused GPU Timeout Error (00000002:kIOGPUCommandBufferCallbackErrorTimeout).

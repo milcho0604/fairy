@@ -1,0 +1,43 @@
+{
+  "root": "/Users/runner/Library/Application Support/jj-lab/local-draw",
+  "uvSha": {
+    "ok": true,
+    "bytes": 17044217,
+    "curl": 0
+  },
+  "untar": {
+    "status": 0,
+    "signal": null,
+    "s": 0
+  },
+  "install": {
+    "status": 0,
+    "signal": null,
+    "s": 4
+  },
+  "entries": {
+    "python": true,
+    "generate": true,
+    "save": true
+  },
+  "save": {
+    "status": 0,
+    "signal": null,
+    "s": 99
+  },
+  "du": "6.5G\t/Users/runner/Library/Application Support/jj-lab/local-draw\n4.3G\t/Users/runner/Library/Application Support/jj-lab/local-draw/models/klein4b-q4\n",
+  "draw": {
+    "status": 0,
+    "signal": null,
+    "s": 54
+  },
+  "drawCheck": {
+    "ok": false,
+    "why": "too small 7786"
+  },
+  "fur": {
+    "status": 1,
+    "signal": null,
+    "s": 40
+  }
+}
