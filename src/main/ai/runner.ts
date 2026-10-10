@@ -10,7 +10,7 @@ import { cursorArgs, cursorParser } from '../../shared/ai/cursor.ts';
 import { classifyError, notInstalled, timedOut } from '../../shared/ai/errors.ts';
 import { fillArgs, type ProviderSpec } from '../../shared/ai/providers.ts';
 import { type Exchange, stripAnsi, textPrompt } from '../../shared/ai/text.ts';
-import type { AiEvent, AiStatus, ImageAttachment } from '../../shared/ai/types.ts';
+import type { AiEvent, AiStatus, ImageAttachment, McpLaunch } from '../../shared/ai/types.ts';
 import { codexUsage, lastCodexLimits } from '../../shared/ai/usage.ts';
 import { t } from '../../shared/i18n/index.ts';
 import { prepareCodexHome } from './codex-home.ts';
@@ -38,6 +38,8 @@ export interface AiRequest {
   mcpServers?: readonly string[];
   /** 고른 모델 (v2, 목록에서 검사한 이름). claude, codex 만 */
   model?: string;
+  /** 짝꿍 도구 쓰기: 펫 MCP 서버. claude, codex 만 */
+  jjServer?: McpLaunch;
 }
 
 export interface AiRun {
@@ -146,6 +148,7 @@ export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
         persona: req.persona,
         ephemeral: req.ephemeral,
         model: req.model,
+        jjServer: req.jjServer,
       });
       // 격리하면 짝꿍 전용 폴더(auth.json 만 연결), 아니면 사용자의 codex 설정 폴더 그대로.
       codexHome = req.isolate ? prepareCodexHome(env.codexHome) : env.codexHome;

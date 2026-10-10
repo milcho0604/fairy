@@ -2,7 +2,7 @@
 import { t } from '../i18n/index.ts';
 import { classifyError } from './errors.ts';
 import { argText } from './text.ts';
-import type { AiEvent } from './types.ts';
+import { type AiEvent, JJ_MCP_NAME, type McpLaunch } from './types.ts';
 
 const LABEL = {
   label: 'Codex',
@@ -22,6 +22,25 @@ export interface CodexTurn {
   ephemeral?: boolean;
   /** 고른 모델 (v2). 없으면 codex 기본 */
   model?: string;
+  /** 짝꿍 도구 쓰기: 펫 MCP 서버. 샌드박스(읽기만)는 그대로 둔다 */
+  jjServer?: McpLaunch;
+}
+
+/** 짝꿍 MCP 서버를 codex 설정(-c, TOML 값)으로. JSON 문자열은 TOML 기본 문자열로도 맞다 */
+export function codexMcpArgs(server: McpLaunch | undefined): string[] {
+  if (!server) return [];
+  const key = `mcp_servers.${JJ_MCP_NAME}`;
+  const env = Object.entries(server.env)
+    .map(([k, v]) => `${JSON.stringify(k)} = ${JSON.stringify(v)}`)
+    .join(', ');
+  return [
+    '-c',
+    `${key}.command=${JSON.stringify(server.command)}`,
+    '-c',
+    `${key}.args=${JSON.stringify(server.args)}`,
+    '-c',
+    `${key}.env={ ${env} }`,
+  ];
 }
 
 /**
@@ -37,6 +56,7 @@ export function codexArgs(turn: CodexTurn): string[] {
     '-c',
     `developer_instructions=${JSON.stringify(turn.persona)}`,
     ...(turn.model ? ['-m', turn.model] : []),
+    ...codexMcpArgs(turn.jjServer),
     ...turn.imagePaths.flatMap((p) => ['-i', p]),
   ];
   const text = argText(turn.text);

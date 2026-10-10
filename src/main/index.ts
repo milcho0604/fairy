@@ -121,6 +121,9 @@ app.whenReady().then(() => {
     rules: () => settings.get().petRules,
     knowsTodos: () => settings.get().aiKnowsTodos,
     setKnowsTodos: (on) => settings.set({ aiKnowsTodos: on }),
+    petTools: () => settings.get().aiPetTools,
+    // 짝꿍 도구로 할 일, 메모가 바뀌었을 수 있다. 3초 판 번호 확인을 기다리지 않고 바로 다시 그린다
+    onTurnEnd: () => panel.refresh(),
     // 질문 앞에 붙일 내 오늘 상황: 안 끝낸 할 일 제목과 마감, 오늘 남은 일정 (기획서 개인정보 표)
     todoContext: () => {
       const now = Date.now();

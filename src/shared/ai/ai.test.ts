@@ -203,3 +203,53 @@ test('고른 모델은 --model, -m 으로 넘기고, 없으면 붙이지 않는�
   assert.equal(codex[codex.indexOf('-m') + 1], 'gpt-x');
   assert.ok(!codexArgs({ text: '질문', imagePaths: [], persona: '반말' }).includes('-m'));
 });
+
+const jj = {
+  command: '/Apps/짝꿍.app/Contents/MacOS/Jjakkung',
+  args: ['C:\\app\\out\\main\\mcp-server.js'],
+  env: { ELECTRON_RUN_AS_NODE: '1', JJ_USER_DATA: '/tmp/jj "data"' },
+};
+
+test('짝꿍 도구: 격리해도 펫 MCP 서버 하나만 싣고 그 도구만 허락한다. 기본 도구는 여전히 끈다', () => {
+  const base = { text: 'q', images: [], sessionId: 's', persona: 'p', resume: false };
+  const on = claudeArgs({ ...base, jjServer: jj });
+  assert.ok(on.includes('--strict-mcp-config'));
+  const config = JSON.parse(on[on.indexOf('--mcp-config') + 1] ?? '');
+  assert.deepEqual(Object.keys(config.mcpServers), ['jjakkung']);
+  assert.equal(config.mcpServers.jjakkung.command, jj.command);
+  assert.deepEqual(config.mcpServers.jjakkung.args, jj.args);
+  assert.deepEqual(config.mcpServers.jjakkung.env, jj.env);
+  assert.equal(on[on.indexOf('--allowedTools') + 1], 'mcp__jjakkung');
+  assert.equal(on[on.indexOf('--tools') + 1], '');
+  // 끄면 예전처럼 빈 MCP 설정, 허락하는 도구 없음
+  const off = claudeArgs(base);
+  assert.equal(off[off.indexOf('--mcp-config') + 1], '{"mcpServers":{}}');
+  assert.ok(!off.includes('--allowedTools'));
+});
+
+test('짝꿍 도구: 격리를 끄면 내 MCP 위에 짝꿍 서버를 더하고 둘 다 허락한다', () => {
+  const base = { text: 'q', images: [], sessionId: 's', persona: 'p', resume: false, isolate: false };
+  const on = claudeArgs({ ...base, mcpServers: ['claude.ai Notion'], jjServer: jj });
+  assert.ok(!on.includes('--strict-mcp-config'));
+  assert.equal(on.filter((a) => a === '--mcp-config').length, 1);
+  assert.equal(on[on.indexOf('--allowedTools') + 1], 'mcp__claude_ai_Notion,mcp__jjakkung');
+  assert.equal(on[on.indexOf('--tools') + 1], '');
+});
+
+test('짝꿍 도구: codex 는 -c mcp_servers.jjakkung 설정으로, 샌드박스는 읽기만 그대로', () => {
+  const args = codexArgs({ text: '질문', imagePaths: ['/a.png'], persona: 'p', jjServer: jj });
+  assert.ok(args.includes(`mcp_servers.jjakkung.command=${JSON.stringify(jj.command)}`));
+  assert.ok(args.includes('mcp_servers.jjakkung.args=["C:\\\\app\\\\out\\\\main\\\\mcp-server.js"]'));
+  assert.ok(
+    args.includes(
+      'mcp_servers.jjakkung.env={ "ELECTRON_RUN_AS_NODE" = "1", "JJ_USER_DATA" = "/tmp/jj \\"data\\"" }',
+    ),
+  );
+  assert.ok(args.includes('sandbox_mode="read-only"'));
+  // 질문은 그대로 맨 앞, 그림은 맨 뒤 (-i 가 뒤의 값을 파일로 먹지 않게)
+  assert.deepEqual(args.slice(0, 2), ['exec', '질문']);
+  assert.deepEqual(args.slice(-2), ['-i', '/a.png']);
+  assert.ok(
+    !codexArgs({ text: '질문', imagePaths: [], persona: 'p' }).some((a) => a.includes('mcp_servers')),
+  );
+});

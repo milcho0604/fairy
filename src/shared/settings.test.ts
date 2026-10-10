@@ -114,6 +114,9 @@ test('v2 설정: 회고 시각, 단축키(겹치면 거절), 캘린더 주소(ht
   const withIcs = applyPatch(now, { icsUrl: 'https://a/b.ics' });
   assert.equal(applyPatch(withIcs, { icsUrl: null }).icsUrl, undefined);
   assert.equal(applyPatch(now, { myMcp: true }).myMcp, true);
+  assert.equal(DEFAULT_SETTINGS.aiPetTools, false);
+  assert.equal(applyPatch(now, { aiPetTools: true }).aiPetTools, true);
+  assert.equal(applyPatch(now, { aiPetTools: 'yes' }).aiPetTools, false);
 });
 
 test('친구 펫: 규칙에 맞는 것만, 같은 id 는 한 번, 3마리까지', () => {

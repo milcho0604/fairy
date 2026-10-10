@@ -132,6 +132,9 @@ export const ko = {
     '지난 날 짝꿍 일기를 고른 AI 가 펫 말투로 다듬어. 숫자와 일기 문장만 보내고 할 일 제목은 안 보내.',
   'settings.aiKnowsTodosHint':
     "질문할 때 안 끝낸 할 일 제목과 마감, 오늘 남은 일정 제목을 AI 에 같이 보내. '오늘 뭐부터 할까?'에 답할 수 있어. 채팅 창 아래에서도 켜고 끌 수 있어.",
+  'settings.aiPetTools': '짝꿍 도구 쓰기',
+  'settings.aiPetToolsHint':
+    "채팅에서 '내일 장보기 할 일로 넣어 줘'처럼 말하면 AI가 짝꿍 할 일, 메모, 일정을 직접 읽고 넣어. Claude나 Codex에서 돼. 할 일 목록을 읽을 수 있어서 기본은 꺼 뒀어. 파일, 명령 도구는 여전히 꺼 둬.",
   'settings.myMcp': '내 MCP 도구 쓰기',
   'settings.myMcpOff':
     '위의 "내 AI 설정 없이 부르기"를 끄면 쓸 수 있어. Claude Code 에 연결해 둔 노션, 슬랙 같은 MCP 도구를 채팅에서 써.',
@@ -461,6 +464,9 @@ export const en: Translation<typeof ko> = {
     "Your chosen AI rewrites past diary entries in your pet's voice. Only the numbers and diary lines are sent, never to-do titles.",
   'settings.aiKnowsTodosHint':
     'Sends your open to-do titles and due dates, plus the titles of today\'s remaining events, with each question. Then it can answer "What should I do first?". You can also switch this under the chat box.',
+  'settings.aiPetTools': 'Let chat use pet tools',
+  'settings.aiPetToolsHint':
+    "Say things like 'add groceries to my to-dos for tomorrow' and the AI reads and adds your pet's to-dos, notes, and events itself. Works with Claude or Codex. It can read your to-do list, so it's off by default. File and command tools stay off.",
   'settings.myMcp': 'Use my MCP tools',
   'settings.myMcpOff':
     'Turn off "Call without my AI setup" above to use this. Lets chat use MCP tools you connected to Claude Code, like Notion or Slack.',
