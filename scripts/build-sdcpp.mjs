@@ -87,6 +87,10 @@ function build(arch) {
   mkdirSync(dirname(dest), { recursive: true });
   copyFileSync(bin, dest);
   chmodSync(dest, 0o755);
+  // 디버그용 지역 기호를 뺀다 (앱 용량 줄이기). 실행에 쓰는 기호는 남는다(-x). 서명은 그 뒤 mac-sign.mjs 가 한다
+  const before = statSync(dest).size;
+  execFileSync('/usr/bin/strip', ['-x', dest]);
+  console.log(`  • build-sdcpp: strip ${Math.round(before / 1e6)}MB → ${Math.round(statSync(dest).size / 1e6)}MB`);
   // 다른 arch 를 만들었으면 여기서 멈춘다 (lipo 가 아키텍처를 알려 준다)
   const archs = out('/usr/bin/lipo', ['-archs', dest]);
   if (archs !== cmakeArch(arch)) throw new Error(`build-sdcpp: ${dest} 가 ${archs} 다 (${cmakeArch(arch)} 이어야 한다)`);

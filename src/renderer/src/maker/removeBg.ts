@@ -1,13 +1,15 @@
 // 배경 제거 (P1-07 에서 고른 IS-Net). 사진은 이 창 안에서만 다루고 밖으로 보내지 않는다.
 
-import * as ort from 'onnxruntime-web/webgpu';
+import * as ort from 'onnxruntime-web/jspi';
 import { t } from '../../../shared/i18n/index.ts';
 import type { MakerInfo } from '../../../shared/ipc.ts';
 import { outputToMask } from '../../../shared/mask.ts';
 import { ShownError } from './shown-error.ts';
 
-// 엔진 파일(.wasm) 위치는 지정하지 않는다. 1.30 의 GPU 묶음은 asyncify 판을 쓰는데, 다른 판(jsep)을 가리키면
-// 'reading Xe' 오류로 멈췄다 (2026-10-02). 빌드 도구가 묶음 옆에 맞는 파일을 내보내고 묶음이 스스로 찾는다.
+// 엔진 파일(.wasm) 위치는 지정하지 않는다. 묶음마다 맞는 판이 따로라 다른 판(jsep)을 가리키면 'reading Xe' 오류로
+// 멈췄다 (2026-10-02). 빌드 도구가 묶음 옆에 맞는 파일을 내보내고 묶음이 스스로 찾는다.
+// GPU 묶음은 JSPI 판을 쓴다: asyncify 판(27MB)과 같은 WebGPU, wasm 을 Electron 44 의 JSPI 로 돌려 17MB 다 (앱 10MB 줄임).
+// 같은 사진에 같은 결과, CPU 는 조금 더 빨랐다 (2026-10-10 IS-Net 1024 실측)
 
 let session: ort.InferenceSession | undefined;
 export let backend = '';
@@ -27,13 +29,33 @@ export function openModel(bytes: ArrayBuffer): Promise<void> {
   return opening;
 }
 
+/** GPU 로 연 모델 파일. 첫 GPU 지우기가 성공할 때까지만 들고 있다가(실패하면 CPU 로 다시 연다) 버린다 */
+let gpuBytes: Uint8Array | undefined;
+
 async function create(bytes: ArrayBuffer): Promise<void> {
   try {
     session = await ort.InferenceSession.create(new Uint8Array(bytes), { executionProviders: ['webgpu'] });
     backend = 'GPU';
+    gpuBytes = new Uint8Array(bytes);
   } catch {
     session = await ort.InferenceSession.create(new Uint8Array(bytes), { executionProviders: ['wasm'] });
     backend = 'CPU';
+  }
+}
+
+/** 돌리기. GPU 가 열리고도 돌리다 실패하면(드라이버, WebGPU 문제) CPU 로 다시 열어 한 번 더 */
+async function run(s: ort.InferenceSession, feeds: Record<string, ort.Tensor>) {
+  try {
+    const out = await s.run(feeds);
+    gpuBytes = undefined;
+    return out;
+  } catch (err) {
+    if (!gpuBytes) throw err;
+    const bytes = gpuBytes;
+    gpuBytes = undefined;
+    session = await ort.InferenceSession.create(bytes, { executionProviders: ['wasm'] });
+    backend = 'CPU';
+    return session.run(feeds);
   }
 }
 
@@ -70,7 +92,7 @@ async function runMask(photo: HTMLCanvasElement, info: MakerInfo): Promise<Uint8
       input[ch * n + p] = ((d[p * 4 + ch] ?? 0) / max - (info.mean[ch] ?? 0)) / (info.std[ch] ?? 1);
     }
   }
-  const out = await session.run({
+  const out = await run(session, {
     [session.inputNames[0] ?? 'input']: new ort.Tensor('float32', input, [1, 3, size, size]),
   });
   const raw = out[session.outputNames[0] ?? 'output']?.data as Float32Array;

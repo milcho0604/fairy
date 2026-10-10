@@ -174,8 +174,15 @@ export function MakerApp() {
   const need = local?.need ?? LOCAL_DRAW_GB;
   const needsText =
     local?.engine === 'sdcpp'
-      ? t('maker.engine.needsOnce', { download: need.download, memory: need.memory })
-      : t('maker.engine.needs', { download: need.download, keep: need.keep, memory: need.memory });
+      ? t('maker.engine.needsOnce', { download: need.download, free: need.free, memory: need.memory })
+      : t('maker.engine.needs', {
+          download: need.download,
+          keep: need.keep,
+          free: need.free,
+          memory: need.memory,
+        });
+  /** 준비가 끝난 뒤: 이 컴퓨터에 남은 크기와 지우는 곳 */
+  const keptText = t('maker.engine.kept', { keep: need.keep });
   /** 한 장 걸리는 시간 (엔진과 그래픽 칩마다), CPU 로 그리면 느리다는 말도 */
   const timeText = local?.minutes ? t('maker.engine.time', local.minutes) : '';
   const setupStages = setupStagesFor(local?.engine);
@@ -768,6 +775,7 @@ export function MakerApp() {
                     ) : (
                       <p className="privacy out">{t('maker.illust.privacy')}</p>
                     )}
+                    {eng === 'local' && localReady && <small className="hint">{keptText}</small>}
                     {eng === 'local' && !localReady && (
                       <div className="local-setup">
                         <small className="hint">{needsText}</small>

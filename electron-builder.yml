@@ -20,6 +20,19 @@ files:
   - "!node_modules/node-llama-cpp/**/*.{map,d.ts,md}"
   # 윈도우 x64 에는 CUDA, Vulkan 판(합쳐 약 620MB)까지 깔린다. CPU 판만 넣는다
   - "!node_modules/@node-llama-cpp/*-{cuda,cuda-ext,vulkan}{,/**}"
+  # 실행에 쓰지 않는 파일: 소스 맵, 타입 선언, 설명서, 시험, 예제, C 헤더 (node-addon-api 는 소스 빌드용).
+  # 라이선스 파일(LICENSE*)은 남긴다
+  - "!node_modules/**/*.{map,d.ts,d.mts,d.cts,markdown,h,hpp,cc,gyp,gypi}"
+  - "!node_modules/**/{README,readme,Readme,CHANGELOG,changelog,HISTORY,CONTRIBUTING}*"
+  - "!node_modules/**/{test,tests,__tests__,example,examples,.github}{,/**}"
+# 화면 말은 한국어와 영어뿐이라 Electron 언어 파일(맥 .lproj, 윈도우 locales/*.pak)도 둘만 둔다 (앱 20MB 쯤 줄임).
+# en-US 는 크로미엄 기본이라 꼭 둔다
+electronLanguages: [ko, en, en-US, en-GB]
+# 설치 파일을 최대로 줄인다 (빌드는 조금 느려진다)
+compression: maximum
+# 다른 운영체제, 다른 칩의 네이티브 패키지를 뺀다 (scripts/prune-native.mjs). 맥은 Apple 칩 앱과 인텔 앱이
+# 같은 node_modules 로 만들어져 두 칩 것을 다 가졌다. 서명(afterSign) 전에 돈다
+afterPack: ./scripts/prune-native.mjs
 # koffi 는 Node-API 라 Electron 용으로 다시 빌드할 필요가 없다. 다시 빌드하면 윈도우 러너에서 컴파일러를 찾는다.
 npmRebuild: false
 # 맥 앱 고정 서명 (mac 아래 identity 설명 참고). dmg 를 만들기 전에 돈다

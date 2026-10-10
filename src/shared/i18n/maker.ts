@@ -94,10 +94,12 @@ export const ko = {
   'maker.engine.localPrivacy':
     '사진은 이 컴퓨터 밖으로 나가지 않아. 인터넷에서는 그림 도구와 모델만 처음 한 번 받아.',
   'maker.engine.needs':
-    '처음 한 번 준비가 필요해: 약 {download}GB를 받고, 다 되면 약 {keep}GB만 남겨. 메모리는 {memory}GB 이상이어야 해.',
+    '처음 한 번 준비가 필요해: 약 {download}GB를 받고, 다 되면 약 {keep}GB만 남겨. 준비하는 동안 빈 공간이 {free}GB 있어야 하고, 메모리는 {memory}GB 이상이어야 해.',
   'maker.engine.needsOnce':
-    '처음 한 번 준비가 필요해: 그림 도구와 모델을 약 {download}GB 받아 둬. 메모리는 {memory}GB 이상이어야 해.',
+    '처음 한 번 준비가 필요해: 그림 도구와 모델을 약 {download}GB 받아 둬. 빈 공간이 {free}GB 있어야 하고, 메모리는 {memory}GB 이상이어야 해.',
   'maker.engine.setup': '준비하기',
+  'maker.engine.kept':
+    '그림 도구와 모델이 이 컴퓨터에 약 {keep}GB 있어. 안 쓰면 설정의 저장 공간에서 지울 수 있어.',
   'maker.engine.setupNote': '준비는 30분쯤 걸릴 수 있어. 멈춰도 다음에 받은 데부터 이어서 해.',
   'maker.engine.ready': '준비됐어. 이제 이 컴퓨터에서 그릴 수 있어.',
   'maker.engine.readyNote': '준비됐어. 사진을 골라 줘.',
@@ -328,10 +330,12 @@ export const en: Translation<typeof ko> = {
   'maker.engine.localPrivacy':
     'Your photo never leaves this computer. Only the drawing tools and model are downloaded, once.',
   'maker.engine.needs':
-    'Needs a one-time setup: downloads about {download} GB and keeps about {keep} GB when done. Needs {memory} GB of memory or more.',
+    'Needs a one-time setup: downloads about {download} GB and keeps about {keep} GB when done. Needs {free} GB of free space while setting up and {memory} GB of memory or more.',
   'maker.engine.needsOnce':
-    'Needs a one-time setup: downloads about {download} GB of drawing tools and model. Needs {memory} GB of memory or more.',
+    'Needs a one-time setup: downloads about {download} GB of drawing tools and model. Needs {free} GB of free space and {memory} GB of memory or more.',
   'maker.engine.setup': 'Set up',
+  'maker.engine.kept':
+    'The drawing tools and model take about {keep} GB on this computer. You can delete them under Storage in Settings.',
   'maker.engine.setupNote':
     'Setup can take about 30 minutes. If it stops, it picks up where it left off next time.',
   'maker.engine.ready': 'All set. You can draw on this computer now.',
