@@ -1,0 +1,29 @@
+# 실험 브랜치 전용: Hugging Face 공개 정보 조회. main 에는 넣지 않는다.
+name: lab-probe
+on:
+  push:
+    branches: [lab/illustrate]
+    paths: ['.github/workflows/lab-probe.yml']
+permissions:
+  contents: write
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p lab/probe
+          q() { curl -sS "https://huggingface.co/api/$1" | python3 -c "import json,sys; d=json.load(sys.stdin); print(json.dumps(d,indent=1)[:20000])" > "lab/probe/$2.json" || true; }
+          q "spaces?search=klein&sort=likes&limit=20&full=false" spaces-klein
+          q "spaces?search=kontext&sort=likes&limit=20" spaces-kontext
+          q "models?search=FLUX.2-klein-4B&limit=40" models-klein4b
+          q "models?search=klein&author=mflux-community&limit=40" models-mflux
+          q "models?search=mflux&limit=60&sort=downloads" models-mflux-all
+          q "models/black-forest-labs/FLUX.2-klein-4B" klein4b
+          q "models/black-forest-labs/FLUX.1-Kontext-dev" kontext
+          q "spaces/black-forest-labs/FLUX.2-klein-4B" space-klein4b
+          q "spaces/black-forest-labs/FLUX.2-klein" space-klein
+      - run: |
+          git config user.name "jjakkung-lab"; git config user.email "lab@users.noreply.github.com"
+          git add -f lab/probe; git commit -qm "lab: probe" || exit 0
+          for i in 1 2 3 4 5; do git pull --rebase -q origin lab/illustrate && git push -q origin HEAD:lab/illustrate && exit 0; sleep $((i*3)); done
