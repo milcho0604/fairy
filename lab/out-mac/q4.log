@@ -1,0 +1,25 @@
+Downloading model from HuggingFace: black-forest-labs/FLUX.2-klein-4B...
+Fetching 16 files:   0%|          | 0/16 [00:00<?, ?it/s]Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+WARNING: Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Fetching 16 files:  44%|████▍     | 7/16 [00:00<00:00, 57.06it/s]Fetching 16 files:  81%|████████▏ | 13/16 [00:07<00:01,  1.52it/s]Fetching 16 files:  81%|████████▏ | 13/16 [00:20<00:01,  1.52it/s]Fetching 16 files:  88%|████████▊ | 14/16 [00:20<00:04,  2.14s/it]Fetching 16 files:  94%|█████████▍| 15/16 [00:38<00:04,  4.39s/it]Fetching 16 files: 100%|██████████| 16/16 [01:02<00:00,  7.72s/it]Fetching 16 files: 100%|██████████| 16/16 [01:02<00:00,  3.92s/it]
+  0%|          | 0/4 [00:00<?, ?it/s] 25%|██▌       | 1/4 [00:32<01:38, 32.89s/it] 50%|█████     | 2/4 [00:48<00:46, 23.02s/it] 75%|███████▌  | 3/4 [01:05<00:19, 19.82s/it]100%|██████████| 4/4 [01:21<00:00, 18.31s/it]100%|██████████| 4/4 [01:21<00:00, 20.26s/it]
+libc++abi: terminating due to uncaught exception of type std::runtime_error: [METAL] Command buffer execution failed: Caused GPU Hang Error (00000003:kIOGPUCommandBufferCallbackErrorHang).
+time: command terminated abnormally
+      152.76 real        33.06 user        67.30 sys
+          2528264192  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+              540326  page reclaims
+                  38  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                1179  messages sent
+             1341904  messages received
+                   0  signals received
+                6613  voluntary context switches
+              637179  involuntary context switches
+          4911863552  peak memory footprint
+/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/multiprocessing/resource_tracker.py:279: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '

@@ -1,0 +1,8 @@
+ProductName:		macOS
+ProductVersion:		14.8.9
+BuildVersion:		23J631
+arm64
+Apple M2 Pro (Virtual)
+15032385536
+Filesystem        Size    Used   Avail Capacity iused ifree %iused  Mounted on
+/dev/disk3s1s1   320Gi   9.6Gi    39Gi    20%    406k  406M    0%   /
