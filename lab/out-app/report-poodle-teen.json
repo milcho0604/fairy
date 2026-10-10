@@ -1,0 +1,11 @@
+[
+  {
+    "job": "poodle-teen",
+    "ok": true,
+    "fur": true,
+    "space": "black-forest-labs/FLUX.1-Kontext-Dev + black-forest-labs/FLUX.2-klein-4B",
+    "kind": "webp",
+    "bytes": 50728,
+    "ms": 39576
+  }
+]
