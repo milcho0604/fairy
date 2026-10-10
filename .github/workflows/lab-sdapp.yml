@@ -1,0 +1,61 @@
+# 실험 브랜치 전용: 앱의 sd.cpp 엔진 순서를 윈도우에서 (한글 폴더). 맥은 빌드 스크립트와 앱 꾸리기. main 에는 넣지 않는다.
+name: lab-sdapp
+on:
+  push:
+    branches: [lab/illustrate]
+    paths: ['lab/sd-app-run.ts', '.github/workflows/lab-sdapp.yml']
+permissions:
+  contents: write
+jobs:
+  win:
+    runs-on: windows-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: ccr-04ba311d-ht78er
+          path: app
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node lab/sd-app-run.ts
+        continue-on-error: true
+        timeout-minutes: 140
+      - if: always()
+        shell: bash
+        run: |
+          git config user.name "jjakkung-lab"; git config user.email "lab@users.noreply.github.com"
+          git add -f lab/out-sdapp; git commit -qm "lab: sd.cpp 앱 순서 윈도우" || exit 0
+          for i in 1 2 3 4 5 6; do git pull --rebase -q origin lab/illustrate && git push -q origin HEAD:lab/illustrate && exit 0; sleep $((i*4)); done
+  macpkg:
+    runs-on: macos-14
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ccr-04ba311d-ht78er
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: node scripts/build-sdcpp.mjs --arch all 2>&1 | tail -30
+      - name: 앱 꾸리기 (서명 없이)
+        run: |
+          npx electron-vite build
+          npx electron-builder --mac dir --arm64 --x64 -c.afterSign=null -c.mac.identity=null --publish never 2>&1 | tail -30
+      - name: 확인
+        run: |
+          mkdir -p out-check
+          for a in dist/mac-arm64 dist/mac; do
+            [ -d "$a" ] || continue
+            APP=$(find "$a" -maxdepth 1 -name '*.app' | head -1)
+            B="$APP/Contents/Resources/sd/sd-cli"
+            echo "== $a"; ls -la "$APP/Contents/Resources/sd" || true
+            file "$B" || true; "$B" --help 2>&1 | head -2 || true
+          done | tee out-check/pkg.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macpkg-check
+          path: out-check/
