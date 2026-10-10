@@ -77,6 +77,8 @@ export interface DrawState {
   trick?: Trick;
   /** 머리에 꽃 (친밀도 600) */
   flower?: boolean;
+  /** 2.5D 그림 펫이 숨을 쉬며 흔들리는지 (계속 그릴 때만 true. 아니면 숨과 흔들림 없이 가만히) */
+  breathe?: boolean;
   /** 움직임 줄이기 (운영체제 설정 prefers-reduced-motion). 신나서 크게 튀지 않고 살짝만 들썩인다 */
   calm?: boolean;
   /** 이름 옆 얼굴 그림용 (pet-face.ts). 발은 그리지 않는다: 얼굴 아이콘은 얼굴만 */

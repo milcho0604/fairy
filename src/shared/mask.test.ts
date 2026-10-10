@@ -77,3 +77,27 @@ test('가장자리 바탕색 빼기: 흰 바탕이 섞인 반투명 털 끝을 �
     assert.equal(at(1, k), 255);
   }
 });
+
+test('가장자리 바탕색 빼기: 이미 털색인 흐린 경계(붓 가장자리, 모델의 흐림)는 검게 만들지 않는다', () => {
+  // 바탕(흰색, 마스크 0) 옆에 마스크만 흐리고 색은 순수 갈색인 칸들: 풀이대로면 검게 됐다
+  const w = 12;
+  const h = 3;
+  const brown = [110, 60, 30];
+  const rgba = new Uint8ClampedArray(w * h * 4);
+  const mask = new Uint8ClampedArray(w * h);
+  const ms = [0, 0, 0, 40, 128, 200, 255, 255, 255, 255, 255, 255];
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      const white = (ms[x] ?? 0) === 0;
+      for (let k = 0; k < 3; k++) rgba[i * 4 + k] = white ? 255 : (brown[k] ?? 0);
+      rgba[i * 4 + 3] = 255;
+      mask[i] = ms[x] ?? 0;
+    }
+  defringe(rgba, mask, w, h, 4);
+  for (const x of [3, 4, 5])
+    for (let k = 0; k < 3; k++) {
+      const v = rgba[(1 * w + x) * 4 + k] ?? 0;
+      assert.ok(Math.abs(v - (brown[k] ?? 0)) <= 24, `x=${x} k=${k}: ${v}`);
+    }
+});

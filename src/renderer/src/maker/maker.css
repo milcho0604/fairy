@@ -655,7 +655,8 @@ section {
   width: auto;
   max-width: 220px;
   height: 260px;
-  box-shadow: 0 6px 24px color-mix(in srgb, var(--ink) 14%, transparent);
+  /* 그림자는 두 테마 다 어두운 색 (어두운 테마의 --ink 는 밝아서 빛 번짐처럼 보였다) */
+  box-shadow: 0 6px 24px rgb(0 0 0 / 18%);
 }
 
 .illust-pair figcaption {

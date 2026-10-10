@@ -129,9 +129,14 @@ function frame() {
   const img = m3d ? undefined : pickImage(mood, inputs.hungry);
   const looking = peerAt(now);
   const picking = !!carry && now - carry.start < PICK_MS;
+  // 2.5D 그림 펫은 가만히 있어도 숨을 쉰다: 부스트 모드(전원 연결)일 때만 8fps (평소엔 다른 움직임이 있을 때만).
+  // 숨을 쉬지 않는 동안은 숨과 흔들림을 멈춘다 (깜빡일 때만 그려 몸이 툭툭 튀었다). 움직임 줄이기면 쉬지 않는다
+  const breathes =
+    boost && use3d && model3dOf instanceof HTMLImageElement && canBlink(mood) && !reducedMotion.matches;
   const ball = drawPet(ctx, {
     mood,
     elapsed: now - moodSince,
+    breathe: breathes,
     blink,
     viewSize,
     // 매운맛 토라짐 3단계: 등 돌리고 앉아 있다 (몸짓도 앉기만, 커서도 안 본다)
@@ -168,8 +173,7 @@ function frame() {
     (sitting >= 0 && activity !== undefined && (sitting < SIT_MS || sitting > activity.ms - SIT_MS));
   // 움직이는 그림은 잠, 바쁨일 때 멈춘다 (L10: 계속 그리면 CPU 를 먹는다). 12fps 까지만.
   const animatedPhoto = img instanceof AnimatedImage && canBlink(mood) ? Math.min(12, img.fps) : 0;
-  // 2.5D 그림 펫은 가만히 있어도 숨을 쉰다: 부스트 모드(전원 연결)일 때만 8fps (평소엔 다른 움직임이 있을 때만)
-  const breathing = boost && use3d && model3dOf instanceof HTMLImageElement && canBlink(mood) ? 8 : 0;
+  const breathing = breathes ? 8 : 0;
   // 부스트 모드면 움직임(신남, 몸짓, 하트, 걷기, 하품)을 두 배로 촘촘히 그린다. 깜빡임과 움직이는 그림은 그대로
   const k = boost ? 2 : 1;
   const fps =
@@ -425,12 +429,19 @@ bridge.onImage(async (images: PetImages) => {
       images.poses[k] ? loadPetImage(images.poses[k] as string) : Promise.resolve(undefined),
     ),
   ]);
-  if (mine !== imageLoad) return; // 그사이 또 바뀌었다
+  const loaded = [main, depthImg, ...rest];
+  if (mine !== imageLoad) {
+    // 그사이 또 바뀌었다. 풀어 둔 움직이는 그림은 돌려준다
+    for (const x of loaded) if (x instanceof AnimatedImage) x.close();
+    return;
+  }
+  const old = [photo, poses.happy, poses.sleepy, poses.hungry];
   photo = main;
   photoModel = images.model ?? undefined;
   photoDepth = depthImg instanceof HTMLImageElement ? depthImg : undefined;
   poses = { happy: rest[0], sleepy: rest[1], hungry: rest[2] };
   photoScale = ageScale(images.age);
+  for (const x of old) if (x instanceof AnimatedImage && !loaded.includes(x)) x.close();
   requestFrame();
 });
 

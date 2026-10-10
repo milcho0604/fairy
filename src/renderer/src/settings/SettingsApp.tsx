@@ -114,6 +114,10 @@ export function SettingsApp() {
     });
     bridge.onPower((onBattery) => setSnap((s) => s && { ...s, onBattery }));
     if (navigator.userAgent.includes('Mac')) document.body.classList.add('mac');
+    // 펫 크기는 펫 위에서 휠, 손가락으로도 바뀐다. 이 창으로 돌아오면 다시 받는다 (밀대가 옛 값으로 펫을 되돌렸다)
+    const onFocus = () => void bridge.get().then((s) => setScale(s.scale));
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
   }, []);
 
   if (!snap) return <div className="loading">{t('settings.loading')}</div>;

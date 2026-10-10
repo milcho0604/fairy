@@ -25,6 +25,12 @@ export function App() {
   const [zoom, setZoom] = useState<string>();
   const [providers, setProviders] = useState<ProviderView[]>([]);
   const [managing, setManaging] = useState(false);
+  // 덮개(AI 관리, 그림 크게 보기)가 열려 있으면 입력칸으로 포커스를 옮기지 않는다 (가려진 입력칸에 붙여 넣고 보내졌다)
+  const overlayRef = useRef(false);
+  overlayRef.current = managing || !!zoom;
+  const focusInput = useCallback(() => {
+    if (!overlayRef.current) inputRef.current?.focus();
+  }, []);
   /** 새 대화를 누른 직후 잠깐 보이는 되돌리기 알림 */
   const [undoShown, setUndoShown] = useState(false);
   const undoTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -41,14 +47,18 @@ export function App() {
     setChecking(false);
   }, []);
 
-  const addImages = useCallback(async (incoming: OutgoingImage[]) => {
-    setImages((prev) => {
-      const next = [...prev, ...incoming].slice(0, MAX_IMAGES);
-      if (prev.length + incoming.length > MAX_IMAGES) setNotice(t('chat.tooManyImages', { max: MAX_IMAGES }));
-      return next;
-    });
-    inputRef.current?.focus();
-  }, []);
+  const addImages = useCallback(
+    async (incoming: OutgoingImage[]) => {
+      setImages((prev) => {
+        const next = [...prev, ...incoming].slice(0, MAX_IMAGES);
+        if (prev.length + incoming.length > MAX_IMAGES)
+          setNotice(t('chat.tooManyImages', { max: MAX_IMAGES }));
+        return next;
+      });
+      focusInput();
+    },
+    [focusInput],
+  );
 
   useEffect(() => {
     bridge.snapshot().then((snap) => {
@@ -76,15 +86,23 @@ export function App() {
     refreshStatus(false);
     inputRef.current?.focus();
     // 같이 보기로 창이 다시 앞에 오면 바로 질문을 쓸 수 있게 입력칸에 커서를 둔다.
-    const onFocus = () => inputRef.current?.focus();
+    const onFocus = focusInput;
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
-  }, [addImages, refreshStatus]);
+  }, [addImages, refreshStatus, focusInput]);
+
+  // 덮개를 닫으면 입력칸으로 돌아온다
+  const covered = managing || !!zoom;
+  const wasCovered = useRef(false);
+  useEffect(() => {
+    if (wasCovered.current && !covered) focusInput();
+    wasCovered.current = covered;
+  }, [covered, focusInput]);
 
   // 그림이 붙으면(같이 보기 포함) 바로 질문을 쓰게 입력칸으로. 새 창이면 입력칸이 그려진 뒤에 한다.
   useEffect(() => {
-    if (images.length > 0) inputRef.current?.focus();
-  }, [images.length]);
+    if (images.length > 0) focusInput();
+  }, [images.length, focusInput]);
 
   // 창 어디에 그림을 끌어다 놓아도 붙인다.
   useEffect(() => {

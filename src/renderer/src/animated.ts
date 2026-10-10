@@ -29,6 +29,11 @@ export class AnimatedImage {
     return Math.max(1, Math.round((1000 * this.#frames.length) / this.#total));
   }
 
+  /** 프레임 비트맵을 돌려준다 (그림을 바꿀 때. GC 만 기다리면 그림 하나에 수십 MB 가 남았다) */
+  close(): void {
+    for (const f of this.#frames) f.bitmap.close();
+  }
+
   frameAt(now: number): ImageBitmap {
     let t = now % this.#total;
     for (const f of this.#frames) {

@@ -25,6 +25,8 @@ export function basicPetShot(kind: PetKind, o: { use3d: boolean; style: PetStyle
     if (shared3d?.ok) {
       shared3d.setStyle(o.style);
       shared3d.setBlueprint(DEFAULT_BLUEPRINTS[kind]);
+      // 복슬복슬 모습은 녹이기를 나눠 하는데, 한 장만 찍으니 지금 다 끝낸다 (털 없는 몸이 찍혔다)
+      shared3d.finishFuse();
       m3d = shared3d;
     }
   }

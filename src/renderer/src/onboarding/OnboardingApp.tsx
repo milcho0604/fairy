@@ -47,6 +47,19 @@ export function OnboardingApp() {
     return () => window.removeEventListener('focus', onFocus);
   }, []);
 
+  // 이름 칸에서 바로 창을 닫아도 쓴 이름을 남긴다 (blur 때만 저장해서 잃었다, 설정 창과 같은 방식)
+  const nameNow = useRef({ name, saved: '' });
+  nameNow.current = { name, saved: snap?.settings.petName ?? '' };
+  useEffect(() => {
+    const flush = () => {
+      if (!typed.current) return;
+      const clean = cleanPetName(nameNow.current.name);
+      if (clean && clean !== nameNow.current.saved) void bridge.set({ petName: clean, petNameEdited: true });
+    };
+    window.addEventListener('beforeunload', flush);
+    return () => window.removeEventListener('beforeunload', flush);
+  }, []);
+
   if (!snap) return <div className="onboard" />;
   const s = snap.settings;
   const mac = snap.platform === 'darwin';

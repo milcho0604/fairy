@@ -88,6 +88,8 @@ export function MakerApp() {
   const [note, setNote] = useState('');
   // 사진 고르기부터 다듬기 전까지 한 번의 시도. 그만두면 번호가 바뀌어 늦게 온 결과를 버린다
   const runRef = useRef(0);
+  /** 그만두거나 실패하면 돌아갈 단계: 일러스트 화면에서 시작한 만들기는 그 화면으로 (받은 그림을 다시 그리지 않게) */
+  const backRef = useRef<'pick' | 'illust'>('pick');
   const fileRef = useRef<HTMLInputElement>(null);
   // 입체로 만들기 (6단계): AI 가 사진을 보고 설계도를 만든다
   // 2.5D (6단계): 사진을 볼 AI 가 없어도 이 창 안에서 깊이를 재서 사진을 입체 판으로
@@ -167,10 +169,11 @@ export function MakerApp() {
   }, []);
 
   const start = useCallback(
-    async (file: Blob, opts: { age?: AgeStage; plain?: boolean } = {}) => {
+    async (file: Blob, opts: { age?: AgeStage; plain?: boolean; back?: 'illust' } = {}) => {
       if (!info) return;
       setError('');
       setNote('');
+      backRef.current = opts.back ?? 'pick';
       const run = ++runRef.current;
       const alive = () => runRef.current === run;
       try {
@@ -241,11 +244,20 @@ export function MakerApp() {
       } catch (err) {
         if (!alive()) return;
         setError(shownErrorText(err, t('maker.err.bgFailed')));
-        setStep('pick');
+        setStep(backRef.current);
       }
     },
     [info, how, age, illustWish, drawIllust],
   );
+
+  // 그리기가 끝나면 (진행 화면이 사라져 포커스가 body 로 빠진다) 다음에 누를 단추로
+  const acceptRef = useRef<HTMLButtonElement>(null);
+  const againRef = useRef<HTMLButtonElement>(null);
+  const illustBusy = illust?.busy;
+  useEffect(() => {
+    if (step !== 'illust' || illustBusy !== false) return;
+    (acceptRef.current ?? againRef.current)?.focus();
+  }, [step, illustBusy]);
 
   /** 일러스트 그리기를 그만둔다 (메인이 멈춘다). 사진은 그대로 두고 다시 그리거나 사진 그대로 쓸 수 있다 */
   const stopIllust = () => {
@@ -260,13 +272,17 @@ export function MakerApp() {
   const acceptIllust = async () => {
     if (!illust?.image) return;
     const blob = await (await fetch(illust.image)).blob();
-    await start(blob, { age: illust.age });
+    await start(blob, { age: illust.age, back: 'illust' });
   };
 
   const saveToken = async (token: string | null) => {
     const r = await bridge.setHfToken(token);
     setInfo((v) => v && { ...v, hfToken: r.has });
-    if (r.ok) setTokenDraft('');
+    if (r.ok) {
+      setTokenDraft('');
+      // 토큰을 넣으라던 안내는 이제 맞지 않다
+      if (token) setError('');
+    }
     setTokenNote(
       r.ok ? (token ? t('maker.illust.token.saved') : t('maker.illust.token.removed')) : (r.error ?? ''),
     );
@@ -300,6 +316,13 @@ export function MakerApp() {
     setBgDone(false);
     setError('');
     setNote(t('maker.progress.stopped'));
+    setStep(backRef.current);
+  };
+
+  /** 고르기 화면으로 (앞 화면의 오류와 안내는 지운다) */
+  const toPick = () => {
+    setError('');
+    setNote('');
     setStep('pick');
   };
 
@@ -464,7 +487,7 @@ export function MakerApp() {
 
   // 무료 Hugging Face 토큰 칸 (고르기 화면, 쿼터에 걸린 뒤 그림 화면). 토큰 글은 메인에만 있고 창은 있는지만 안다
   const tokenBox = (
-    <details className="token" open={step === 'illust' && !!error && !illust?.image}>
+    <details className="token" open={step === 'illust' && !!error}>
       <summary>
         {t('maker.illust.token.summary')}
         {info?.hfToken && <span className="token-on"> ✓</span>}
@@ -676,15 +699,20 @@ export function MakerApp() {
                 </div>
                 <AgePicker age={age} onAge={setAge} />
                 {illust.image && <p className="hint">{t('maker.illust.next')}</p>}
-                {!illust.image && <div className="how">{tokenBox}</div>}
+                <div className="how">{tokenBox}</div>
                 <div className="actions wrap">
-                  <button type="button" className="ghost" onClick={() => setStep('pick')}>
+                  <button type="button" className="ghost" onClick={toPick}>
                     {t('maker.illust.otherPhoto')}
                   </button>
-                  <button type="button" className="ghost" onClick={() => start(illust.file, { plain: true })}>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => start(illust.file, { plain: true, back: 'illust' })}
+                  >
                     {t('maker.illust.usePhoto')}
                   </button>
                   <button
+                    ref={againRef}
                     type="button"
                     className={illust.image ? 'ghost' : 'primary'}
                     onClick={() => drawIllust(illust.photo, age, illustWish)}
@@ -694,7 +722,7 @@ export function MakerApp() {
                       : t('maker.illust.again')}
                   </button>
                   {illust.image && (
-                    <button type="button" className="primary" onClick={acceptIllust}>
+                    <button ref={acceptRef} type="button" className="primary" onClick={acceptIllust}>
                       {t('maker.illust.accept')}
                     </button>
                   )}
@@ -731,7 +759,11 @@ export function MakerApp() {
           <Editor
             work={work}
             note={t('maker.edit.took', { backend, sec: (elapsed / 1000).toFixed(1) })}
-            onBack={() => setStep('pick')}
+            onBack={() => {
+              setError('');
+              setNote('');
+              setStep(backRef.current);
+            }}
             onNext={toName}
           />
         )}
@@ -1317,6 +1349,8 @@ function Editor({
           style={{ '--brush': `${size}px` } as React.CSSProperties}
           aria-label={t('maker.edit.canvas')}
           onPointerDown={(e) => {
+            // 오른쪽, 가운데 단추로는 칠하지 않는다
+            if (e.button !== 0) return;
             e.currentTarget.setPointerCapture(e.pointerId);
             undo.current.push(work.mask.slice());
             if (undo.current.length > UNDO_LIMIT) undo.current.shift();

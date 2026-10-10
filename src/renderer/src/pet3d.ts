@@ -357,6 +357,9 @@ export class Pet3D implements Model3D {
    */
   dispose(): void {
     this.lost = true;
+    // 하던 복슬복슬 몸 만들기도 멈춘다 (죽은 렌더러에 계속 만들고 이 객체를 붙잡았다)
+    this.fuseToken++;
+    this.finishFuse = () => {};
     this.disposeTree(this.root);
     for (const m of this.materials.values()) m.dispose();
     this.furTex?.strands.dispose();
@@ -680,7 +683,6 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       }
       job.group.add(mesh);
       this.root.updateMatrixWorld(true);
-      this.version++;
     };
     /** 남은 일을 budget ms 만큼 한다. 다 했으면 true */
     const work = (budget: number) => {
@@ -697,6 +699,8 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
           if (r.done) {
             jobs.shift();
             apply(job, r.value);
+            // 얼굴 아이콘과 집 그림(version 을 본다)은 다 녹은 뒤 한 번만 다시 그린다 (관절마다 다시 그렸다)
+            if (jobs.length === 0) this.version++;
             this.onUpdate?.();
           }
         }
@@ -1673,8 +1677,10 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     if (w) {
       const t = s.elapsed / 1000;
       const asleep = s.mood === 'sleeping' || s.mood === 'dozing';
-      w.uBreath.value = s.calm ? 0 : Math.sin(t * (asleep ? 1.1 : 2.2)) * (asleep ? 1.3 : 1);
-      let tilt = Math.sin(t * 1.3) * 0.03;
+      // 숨과 살랑임은 계속 그릴 때만 (가끔 그리는 프레임마다 다른 위상을 집어 몸이 툭툭 튀었다)
+      const live = !!s.breathe && !s.calm;
+      w.uBreath.value = live ? Math.sin(t * (asleep ? 1.1 : 2.2)) * (asleep ? 1.3 : 1) : 0;
+      let tilt = live ? Math.sin(t * 1.3) * 0.03 : 0;
       if (s.mood === 'thinking') tilt += 0.12;
       if (g) tilt += -g.x * 0.08;
       if (mv) tilt += mv.tilt * 0.6;

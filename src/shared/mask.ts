@@ -98,58 +98,70 @@ export function keptRatio(mask: Uint8ClampedArray, threshold = 128): number {
 /**
  * 가장자리 바탕색 빼기 (털 끝 흰 테두리 없애기). 반쯤 남긴 칸의 색에는 뒤 바탕색이 섞여 있어서, 어두운 곳에 놓으면
  * 밝은 테두리가 보였다 (AI 일러스트의 밝은 바탕, 2026-10-09). 둘레 r 칸 안의 지운 칸(바탕) 평균을 그 자리 바탕색 B 로 보고
- * 색 C = a*F + (1-a)*B 를 풀어 F 만 남긴다. 털 가닥(반투명)은 그대로 두고 색만 고친다. rgba 를 바로 고친다
+ * 색 C = a*F + (1-a)*B 를 풀어 F 를 구한다. 털 가닥(반투명)은 그대로 두고 색만 고친다. rgba 를 바로 고친다.
+ * 마스크는 진짜 알파가 아니다 (모델의 흐린 경계, 붓 가장자리): 이미 털색인 칸을 그대로 풀면 a 로 나누며 검게 됐다.
+ * 그래서 고친 색은 원래 색 C 와 둘레 몸 평균색 사이(조금 여유)로만 둔다. 둘레에 몸이 없으면 손대지 않는다
  */
 export function defringe(rgba: Uint8ClampedArray, mask: ArrayLike<number>, w: number, h: number, r?: number) {
   const rad = r ?? Math.max(4, Math.round(Math.max(w, h) / 130));
-  const n = w * h;
-  // 바탕 칸의 개수와 색 합을 적분 그림(합 표)으로: 어느 네모 안의 합이든 네 번 읽기로 구한다
   const W1 = w + 1;
-  const cnt = new Float64Array(W1 * (h + 1));
-  const sum = [
-    new Float64Array(W1 * (h + 1)),
-    new Float64Array(W1 * (h + 1)),
-    new Float64Array(W1 * (h + 1)),
-  ];
+  const size = W1 * (h + 1);
+  // 바탕 칸(지움)과 몸 칸(꽉 남김)의 개수와 색 합을 적분 그림(합 표)으로: 어느 네모 안의 합이든 네 번 읽기로 구한다
+  const bgN = new Float64Array(size);
+  const fgN = new Float64Array(size);
+  const bgC = [new Float64Array(size), new Float64Array(size), new Float64Array(size)];
+  const fgC = [new Float64Array(size), new Float64Array(size), new Float64Array(size)];
+  const rowB = [0, 0, 0, 0];
+  const rowF = [0, 0, 0, 0];
   for (let y = 0; y < h; y++) {
-    let rc = 0;
-    let r0 = 0;
-    let r1 = 0;
-    let r2 = 0;
+    rowB.fill(0);
+    rowF.fill(0);
     for (let x = 0; x < w; x++) {
       const i = y * w + x;
-      if ((mask[i] ?? 0) < 16) {
-        rc++;
-        r0 += rgba[i * 4] ?? 0;
-        r1 += rgba[i * 4 + 1] ?? 0;
-        r2 += rgba[i * 4 + 2] ?? 0;
+      const m = mask[i] ?? 0;
+      const row = m < 16 ? rowB : m >= 250 ? rowF : undefined;
+      if (row) {
+        row[0] = (row[0] ?? 0) + 1;
+        for (let k = 0; k < 3; k++) row[k + 1] = (row[k + 1] ?? 0) + (rgba[i * 4 + k] ?? 0);
       }
       const at = (y + 1) * W1 + x + 1;
       const up = y * W1 + x + 1;
-      cnt[at] = (cnt[up] ?? 0) + rc;
-      (sum[0] as Float64Array)[at] = ((sum[0] as Float64Array)[up] ?? 0) + r0;
-      (sum[1] as Float64Array)[at] = ((sum[1] as Float64Array)[up] ?? 0) + r1;
-      (sum[2] as Float64Array)[at] = ((sum[2] as Float64Array)[up] ?? 0) + r2;
+      bgN[at] = (bgN[up] ?? 0) + (rowB[0] ?? 0);
+      fgN[at] = (fgN[up] ?? 0) + (rowF[0] ?? 0);
+      for (let k = 0; k < 3; k++) {
+        const b = bgC[k] as Float64Array;
+        const f = fgC[k] as Float64Array;
+        b[at] = (b[up] ?? 0) + (rowB[k + 1] ?? 0);
+        f[at] = (f[up] ?? 0) + (rowF[k + 1] ?? 0);
+      }
     }
   }
   const rect = (t: Float64Array, x0: number, y0: number, x1: number, y1: number) =>
     (t[y1 * W1 + x1] ?? 0) - (t[y0 * W1 + x1] ?? 0) - (t[y1 * W1 + x0] ?? 0) + (t[y0 * W1 + x0] ?? 0);
-  for (let i = 0; i < n; i++) {
+  /** 고친 색이 원래 색과 몸 평균색 범위를 넘어도 되는 여유 */
+  const SLACK = 24;
+  for (let i = 0; i < w * h; i++) {
     const m = mask[i] ?? 0;
-    if (m < 16 || m >= 255) continue;
+    if (m < 16 || m >= 250) continue;
     const x = i % w;
     const y = (i - x) / w;
     const x0 = Math.max(0, x - rad);
     const y0 = Math.max(0, y - rad);
     const x1 = Math.min(w, x + rad + 1);
     const y1 = Math.min(h, y + rad + 1);
-    const c = rect(cnt, x0, y0, x1, y1);
-    // 둘레에 바탕이 없으면(안쪽 반투명) 그대로
-    if (c < 1) continue;
+    const nb = rect(bgN, x0, y0, x1, y1);
+    const nf = rect(fgN, x0, y0, x1, y1);
+    // 둘레에 바탕이 없거나(안쪽 반투명) 몸이 없으면 그대로
+    if (nb < 1 || nf < 1) continue;
     const a = m / 255;
     for (let k = 0; k < 3; k++) {
-      const b = rect(sum[k] as Float64Array, x0, y0, x1, y1) / c;
-      rgba[i * 4 + k] = ((rgba[i * 4 + k] ?? 0) - (1 - a) * b) / a;
+      const c = rgba[i * 4 + k] ?? 0;
+      const b = rect(bgC[k] as Float64Array, x0, y0, x1, y1) / nb;
+      const f = rect(fgC[k] as Float64Array, x0, y0, x1, y1) / nf;
+      const solved = (c - (1 - a) * b) / a;
+      const lo = Math.min(c, f) - SLACK;
+      const hi = Math.max(c, f) + SLACK;
+      rgba[i * 4 + k] = Math.max(lo, Math.min(hi, solved));
     }
   }
 }
