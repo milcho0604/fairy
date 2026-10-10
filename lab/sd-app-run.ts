@@ -65,11 +65,13 @@ const run = (name: string, input: string, prompt: string) =>
   new Promise<void>((resolve) => {
     const size = sdDrawSize(readFileSync(input), 'cpu');
     const o = join(l.tmp, `jj-${name}.png`);
-    const args = sdDrawArgs(l, { input, output: o, prompt, ...size, seed: 7, backend: 'cpu' });
+    const inCopy = join(l.tmp, `in-${name}${input.slice(input.lastIndexOf('.'))}`);
+    writeFileSync(inCopy, readFileSync(input));
+    const args = sdDrawArgs(l, { input: inCopy, output: o, prompt, ...size, seed: 7, backend: 'cpu' }, l.root);
     const t = Date.now();
     let log = '';
     const seen: string[] = [];
-    const child = spawn(bin, args, { windowsHide: true });
+    const child = spawn(bin, args, { windowsHide: true, cwd: l.root });
     child.on('error', (e) => { report[name] = { spawnError: String(e) }; resolve(); });
     const onData = (b: Buffer) => {
       log += b.toString();
