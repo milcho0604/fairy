@@ -1,0 +1,68 @@
+# 실험 브랜치 전용: stable-diffusion.cpp + FLUX.2 klein 4B (GGUF) 를 운영체제마다 CPU 로. main 에는 넣지 않는다.
+name: lab-sd
+on:
+  push:
+    branches: [lab/illustrate]
+    paths: ['.github/workflows/lab-sd.yml', 'lab/sd-draw-prompt.txt']
+permissions:
+  contents: write
+jobs:
+  run:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            zip: sd-master-f89d9b1-bin-Linux-Ubuntu-24.04-x86_64.zip
+            name: linux
+          - os: windows-latest
+            zip: sd-master-f89d9b1-bin-win-cpu-x64.zip
+            name: win
+          - os: macos-14
+            zip: sd-master-f89d9b1-bin-Darwin-macOS-26.6.2-arm64.zip
+            name: mac
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: 받기
+        run: |
+          mkdir -p sd m lab/out-sd
+          curl -fsSL -o sd.zip "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-951-f89d9b1/${{ matrix.zip }}"
+          unzip -q sd.zip -d sd; find sd -maxdepth 2 | head -30
+          H=https://huggingface.co
+          curl -fsSL -o m/klein.gguf $H/leejet/FLUX.2-klein-4B-GGUF/resolve/main/flux-2-klein-4b-Q4_0.gguf
+          curl -fsSL -o m/qwen.gguf $H/unsloth/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf
+          curl -fsSL -o m/vae.safetensors $H/black-forest-labs/FLUX.2-small-decoder/resolve/main/full_encoder_small_decoder.safetensors
+          ls -la m
+      - name: 그리기 (사진 → 그림)
+        continue-on-error: true
+        timeout-minutes: 50
+        run: |
+          BIN=$(find sd -name 'sd-cli*' -type f | head -1); chmod +x "$BIN" || true; echo "$BIN"
+          EXTRA=""; [ "${{ matrix.name }}" = mac ] && EXTRA="--backend cpu"
+          start=$(date +%s)
+          "$BIN" --diffusion-model m/klein.gguf --vae m/vae.safetensors --llm m/qwen.gguf -r lab/in_cat.png \
+            -p "$(cat lab/sd-draw-prompt.txt)" --cfg-scale 1.0 --sampling-method euler --steps 4 -W 608 -H 1024 --seed 7 \
+            -o lab/out-sd/${{ matrix.name }}-draw.png $EXTRA > lab/out-sd/${{ matrix.name }}-draw.log 2>&1; echo "exit $?" >> lab/out-sd/${{ matrix.name }}-draw.log
+          echo "seconds $(( $(date +%s) - start ))" | tee -a lab/out-sd/${{ matrix.name }}-draw.log; tail -15 lab/out-sd/${{ matrix.name }}-draw.log
+      - name: 털 다듬기
+        continue-on-error: true
+        timeout-minutes: 50
+        run: |
+          BIN=$(find sd -name 'sd-cli*' -type f | head -1)
+          EXTRA=""; [ "${{ matrix.name }}" = mac ] && EXTRA="--backend cpu"
+          start=$(date +%s)
+          "$BIN" --diffusion-model m/klein.gguf --vae m/vae.safetensors --llm m/qwen.gguf -r lab/out-fur3/v0/cat-adult.webp \
+            -p "$(cat lab/sd-fur-prompt.txt)" --cfg-scale 1.0 --sampling-method euler --steps 4 -W 608 -H 1024 --seed 7 \
+            -o lab/out-sd/${{ matrix.name }}-fur.png $EXTRA > lab/out-sd/${{ matrix.name }}-fur.log 2>&1; echo "exit $?" >> lab/out-sd/${{ matrix.name }}-fur.log
+          echo "seconds $(( $(date +%s) - start ))" | tee -a lab/out-sd/${{ matrix.name }}-fur.log; tail -15 lab/out-sd/${{ matrix.name }}-fur.log
+      - name: 결과 올리기
+        if: always()
+        run: |
+          git config user.name "jjakkung-lab"; git config user.email "lab@users.noreply.github.com"
+          git add -f lab/out-sd; git commit -qm "lab: sd.cpp ${{ matrix.name }}" || exit 0
+          for i in 1 2 3 4 5 6; do git pull --rebase -q origin lab/illustrate && git push -q origin HEAD:lab/illustrate && exit 0; sleep $((i*4)); done
