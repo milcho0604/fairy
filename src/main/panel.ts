@@ -107,7 +107,7 @@ export interface PanelOptions {
   petName: () => string;
   /** 펫 자리 (패널을 그 옆에 연다) */
   petBounds: () => Rectangle;
-  onCompleted: (coins: number) => void;
+  onCompleted: (coins: number, id: number) => void;
   onFed: () => void;
   /** 할 일이나 배부름이 바뀌었다 (펫 배고픔 표정 등) */
   onChanged: () => void;
@@ -572,7 +572,7 @@ export function createPanel(o: PanelOptions) {
     const coins = o.store.complete(id, Date.now());
     log('todo', 'complete', id, coins);
     push();
-    o.onCompleted(coins);
+    o.onCompleted(coins, id);
     return coins;
   });
   ipcMain.handle(PANEL.undo, (e, id: number) => {

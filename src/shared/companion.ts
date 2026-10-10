@@ -58,6 +58,16 @@ export interface Anniversary {
   n: number;
 }
 
+/** 처음 만난 날에서 y 년 뒤 같은 월일이 몇째 날인지. 2월 29일에 만났으면 평년은 2월 28일 */
+export function yearMark(firstDay: string, y: number): number {
+  const [fy, fm, fd] = firstDay.split('-').map(Number);
+  const year = (fy ?? 1970) + y;
+  const last = new Date(Date.UTC(year, fm ?? 1, 0)).getUTCDate();
+  const d = Math.min(fd ?? 1, last);
+  const iso = `${year}-${String(fm ?? 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  return dayNumber(firstDay, iso);
+}
+
 /** 지금 처음 만난 날이 몇째 날인지 (처음 만난 날 = 1) */
 export function dayNumber(firstDay: string, today: string): number {
   const t = (s: string) => {
@@ -71,11 +81,17 @@ export function dayNumber(firstDay: string, today: string): number {
  * 오늘 기념할 날. said 는 이미 기념한 mark 들. 기념일에서 ANNIV_LATE_DAYS 넘게 지났으면 건너뛴다
  * (처음 이 기능을 받은 오래 쓴 사용자에게 지난 기념일을 몰아서 말하지 않게)
  */
-export function anniversaryDue(day: number, said: readonly number[]): Anniversary | undefined {
+export function anniversaryDue(
+  day: number,
+  said: readonly number[],
+  firstDay?: string,
+): Anniversary | undefined {
   if (!Number.isFinite(day) || day < 1) return undefined;
   const marks: { mark: number; year?: number }[] = ANNIV_DAYS.map((mark) => ({ mark }));
+  // 해마다는 달력으로: 처음 만난 날의 같은 월일 (첫날이 1일째라 1년은 366, 2월 29일을 지나면 367일째)
   const years = Math.floor(day / 365);
-  for (const y of [years - 1, years]) if (y >= 1) marks.push({ mark: y * 365, year: y });
+  for (const y of [years - 1, years])
+    if (y >= 1) marks.push({ mark: firstDay ? yearMark(firstDay, y) : y * 365 + 1, year: y });
   for (const m of marks) {
     const late = day - m.mark;
     if (late < 0 || late > ANNIV_LATE_DAYS || said.includes(m.mark)) continue;

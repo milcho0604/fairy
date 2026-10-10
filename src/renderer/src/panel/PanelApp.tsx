@@ -111,14 +111,31 @@ export function PanelApp() {
         rememberTab(next.id);
         return;
       }
-      // Cmd/Ctrl+Z: 쓰던 글이 없으면 방금 끝낸 것, 지운 것 되돌리기
+      // Cmd/Ctrl+Z: 쓰던 글이 없으면 방금 끝낸 것, 지운 것 되돌리기. 입력칸에 쓴 적이 있으면(다 지웠어도)
+      // 입력칸 자체 되돌리기에 둔다 (지운 글을 되살리려던 Cmd+Z 가 할 일을 되살리고 글은 잃었다)
       const el = document.activeElement;
       const field =
-        el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? el.value : undefined;
+        el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement
+          ? el.value || (typed.has(el) ? 'typed' : '')
+          : undefined;
       if (undoByKey(e, MAC, field) && undoRef.current()) e.preventDefault();
     };
+    // 포커스를 받은 뒤 글을 고친 입력칸 (떠나면 잊는다)
+    const typed = new WeakSet<EventTarget>();
+    const onInput = (e: Event) => {
+      if (e.target) typed.add(e.target);
+    };
+    const onBlur = (e: FocusEvent) => {
+      if (e.target) typed.delete(e.target);
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('input', onInput, true);
+    window.addEventListener('focusout', onBlur, true);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('input', onInput, true);
+      window.removeEventListener('focusout', onBlur, true);
+    };
   }, []);
 
   // 할 일, 일정 탭은 열자마자 입력칸에 커서를 둔다.

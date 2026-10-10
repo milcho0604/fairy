@@ -37,6 +37,8 @@ export interface CompanionOptions {
   react: (kind?: ReactKind) => void;
   /** 숨거나(사용자, 발표) 집중 중이면 기념은 다음에 (집에서 쉬는 중은 편지로 모아 둔다) */
   canCelebrate: () => boolean;
+  /** 펫 창이 지금 보이는지 (색종이는 보일 때만) */
+  visible: () => boolean;
   log: (tag: string, ...rest: unknown[]) => void;
 }
 
@@ -44,7 +46,14 @@ const isIdleKey = (k: string): k is IdleKey => k.startsWith('idle.') && k in dic
 
 export function createCompanion(o: CompanionOptions) {
   let memory: PetMemory = parseMemory(readJson(FILE));
-  const save = () => writeJson(FILE, memory);
+  // 쓰기가 실패해도(디스크 가득, 권한) 할 일 끝내기 같은 부른 쪽을 멈추지 않는다 (기억만 이번에 못 남긴다)
+  const save = () => {
+    try {
+      writeJson(FILE, memory);
+    } catch (err) {
+      o.log('companion', '기억 저장 실패', err instanceof Error ? err.message : String(err));
+    }
+  };
 
   // ---- 혼잣말에 쓰는 기억 (idle-talk IdleFacts) ----
   /** 혼잣말을 고를 때만 부른다 (4~6분에 한 번). 저장 파일을 몇 번 읽는다 */
@@ -76,16 +85,18 @@ export function createCompanion(o: CompanionOptions) {
   }
 
   // ---- 끝낸 일 축하 ----
-  function completed(now = Date.now()) {
+  function completed(id: number, now = Date.now()) {
     const today = localDay(now);
     const { open, doneToday } = o.todos.list(now);
     const due = (d: string | null) => d !== null && d <= today;
+    // 방금 끝낸 것이 오늘(또는 지난) 마감일 때만 "다 끝냈다" (마감 없는 일을 끝냈는데 아침 일로 축하하지 않게)
+    const justDue = due(o.todos.get(id)?.due ?? null);
     const said = memory.cheers.day === today ? memory.cheers.ids : [];
     const cheer = completionCheer(
       {
         doneToday: doneToday.length,
         doneDueToday: doneToday.filter((x) => due(x.due)).length,
-        openDueToday: open.filter((x) => due(x.due)).length,
+        openDueToday: justDue ? open.filter((x) => due(x.due)).length : Number.POSITIVE_INFINITY,
         streak: streak(o.achievements.doneDays(), today, restDaysOf(settings.get())),
       },
       new Set(said),
@@ -111,12 +122,13 @@ export function createCompanion(o: CompanionOptions) {
     if (settings.get().chatter === 'quiet' || !o.canCelebrate()) return;
     const first = o.stats.firstDay();
     if (!first) return;
-    const due = anniversaryDue(dayNumber(first, localDay(now)), memory.anniv);
+    const due = anniversaryDue(dayNumber(first, localDay(now)), memory.anniv, first);
     if (!due) return;
     memory = { ...memory, anniv: [...memory.anniv, due.mark] };
     save();
     o.log('companion', '기념', due.mark);
-    o.react('cheer');
+    // 집에서 쉬는 중(창 숨김)이면 말은 미뤄 두고 색종이는 보이지 않으니 터뜨리지 않는다
+    if (o.visible()) o.react('cheer');
     const vars = { name: o.petName(), n: due.n };
     void o.say({
       kind: 'system',

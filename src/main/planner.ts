@@ -61,7 +61,7 @@ export interface PlannerOptions {
   /** 코인을 받았다 (펫 신남) */
   onReward: () => void;
   /** 할 일을 끝냈다 (집중 끝에 "끝냈어"). 패널에서 끝낸 것과 같은 반응 */
-  onCompleted?: (coins: number) => void;
+  onCompleted?: (coins: number, id: number) => void;
   /** 집중 상태나 일정이 바뀌었다 (패널, 펫 표정 다시 그리기) */
   onChange: () => void;
   /** 패널 오늘 탭 열기 (마감 알림 "볼게") */
@@ -645,7 +645,7 @@ export function createPlanner(o: PlannerOptions) {
     const coins = o.todos.complete(id, Date.now());
     lastTodoId = undefined;
     o.log('planner', '집중 끝 할 일 끝냄', id, coins);
-    o.onCompleted?.(coins);
+    o.onCompleted?.(coins, id);
     o.onChange();
   }
 

@@ -611,14 +611,15 @@ ready.then(() => {
     react: (kind) => pet.react(kind),
     canCelebrate: () =>
       !pet.isHidden('user') && !pet.isHidden('presentation') && planner.focus.phase !== 'focus',
+    visible: () => !pet.isHidden() && !rest.inside(),
     log,
   });
   /** 할 일을 끝냈다 (패널, 집중 끝 "끝냈어"). 친밀도 300 이 넘으면 신나서 빙글 춤 */
-  function todoFinished() {
+  function todoFinished(id: number) {
     pet.react(unlocked(petLife.state.affection).has('dance') ? 'dance' : 'happy');
     petLife.activity('todo');
     // 오늘 할 일 다 끝냄, 연속 기록, 5/10/20개째면 한마디 (그날 한 번씩)
-    companion.completed();
+    companion.completed(id);
   }
   // ---- 일정 알림, 오늘 브리핑, 집중 타이머 (v1) ----
   const planner = createPlanner({
@@ -653,7 +654,7 @@ ready.then(() => {
     openUrl: (url) => openLink(url, log),
     onReward: () => pet.react(),
     // 집중 끝에 "끝냈어": 패널에서 끝낸 것과 같은 반응
-    onCompleted: () => todoFinished(),
+    onCompleted: (_coins, id) => todoFinished(id),
     onChange: () => {
       panel.refresh();
       sendStatus();
@@ -727,7 +728,7 @@ ready.then(() => {
     },
     petName,
     petBounds: () => pet.bounds(),
-    onCompleted: () => todoFinished(),
+    onCompleted: (_coins, id) => todoFinished(id),
     onFed: () => {
       void rest.call(false);
       pet.react('fed');

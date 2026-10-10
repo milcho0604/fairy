@@ -133,7 +133,9 @@ export function createFriends(o: {
       lastTalk = pair.index;
       o.log('friends', '수다', pair.index);
       void main.say({ kind: 'idle-talk', text: t(pair.a, vars), ttlMs: FRIEND_TALK_MS }).then((a) => {
-        if (a !== 'timeout' || !live.has(l.friend.id)) return;
+        // 그사이 숨기거나(발표 포함) 조용히로 바꿨으면 대답하지 않는다 ('answer' 는 숨김 동안 붙잡아 뒀다가 엉뚱할 때 띄운다)
+        if (a !== 'timeout' || !live.has(l.friend.id) || settings.get().chatter !== 'chatty') return;
+        if (main.isHidden() || l.pet.isHidden()) return;
         void l.pet.say({ kind: 'answer', text: t(pair.b, vars), ttlMs: FRIEND_TALK_MS });
       });
     }, AFTER_GREET_MS).unref();

@@ -9,6 +9,7 @@ import {
   friendTalk,
   parseMemory,
   weekDays,
+  yearMark,
 } from './companion.ts';
 import { dicts, setLang, t } from './i18n/index.ts';
 
@@ -56,9 +57,16 @@ test('만난 날 기념: 그날, 늦어도 3일 안, 한 번만, 오래 쓴 사�
   assert.equal(anniversaryDue(100 + ANNIV_LATE_DAYS + 1, []), undefined);
   assert.equal(anniversaryDue(100, [100]), undefined);
   assert.equal(anniversaryDue(250, []), undefined);
-  assert.deepEqual(anniversaryDue(365, []), { mark: 365, key: 'companion.anniv.year', n: 1 });
-  assert.deepEqual(anniversaryDue(731, [365]), { mark: 730, key: 'companion.anniv.year', n: 2 });
-  assert.equal(anniversaryDue(731, [730]), undefined);
+  // 해마다는 달력으로: 2025-10-10 에 만났으면 2026-10-10(366일째)이 1년, 하루 전에는 하지 않는다
+  const F = '2025-10-10';
+  assert.equal(anniversaryDue(365, [], F), undefined);
+  assert.deepEqual(anniversaryDue(366, [], F), { mark: 366, key: 'companion.anniv.year', n: 1 });
+  assert.deepEqual(anniversaryDue(731, [366], F), { mark: 731, key: 'companion.anniv.year', n: 2 });
+  assert.equal(anniversaryDue(731, [731], F), undefined);
+  // 2월 29일을 지나는 해는 367일째, 2월 29일에 만났으면 평년은 2월 28일
+  assert.equal(yearMark('2027-10-10', 1), 367);
+  assert.equal(yearMark('2028-02-29', 1), 366);
+  assert.equal(dayNumber('2025-10-10', '2026-10-10'), 366);
   assert.equal(anniversaryDue(0, []), undefined);
   assert.equal(anniversaryDue(Number.NaN, []), undefined);
 });
