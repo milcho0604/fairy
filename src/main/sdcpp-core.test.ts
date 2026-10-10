@@ -4,8 +4,11 @@ import { SD_SETUP_STAGES, setupRatio, setupStageOf, setupStagesFor } from '../sh
 import {
   classifySdFailure,
   gpuLooksUsable,
+  hasVulkanDevice,
+  hfResolveUrl,
   isSdSetupDone,
   killTreeArgs,
+  looksGpuFailure,
   modelsRatio,
   PASS_MINUTES,
   parseSdState,
@@ -22,10 +25,16 @@ import {
   sdDrawRatio,
   sdDrawSize,
   sdLayout,
+  sdLogWatch,
+  sdModelPath,
+  sdPartPath,
   sdProgress,
   sdSpaceNeeded,
+  sdStateOnDisk,
   sdStepsToRun,
+  sdUnzipRel,
   shouldFallbackToCpu,
+  sysctlFlag,
   tasklistArgs,
   tasklistHas,
   tierOf,
@@ -53,6 +62,7 @@ const intelMac = {
   arch: 'x64',
   cpuModel: 'Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz',
   osRelease: '22.6.0',
+  cpuFeatures: { avx2: true, fma: true },
 };
 
 test('엔진 고르기: Apple 칩 macOS 14+ 는 mflux, 나머지 되는 컴퓨터는 sd.cpp', () => {
@@ -89,6 +99,28 @@ test('엔진 고르기: Apple 칩 macOS 14+ 는 mflux, 나머지 되는 컴퓨�
   assert.deepEqual(pickLocalEngine({ ...win, platform: 'linux' }), { ok: false, reason: 'os' });
 });
 
+test('엔진 고르기: 인텔 Mac 은 AVX2 와 FMA 가 있어야 (앱 안 sd-cli 가 그것으로 빌드됐다)', () => {
+  // Mac Pro Late 2013 (Ivy Bridge-EP Xeon) 은 AVX 만 있다
+  const macPro2013 = { ...intelMac, cpuModel: 'Intel(R) Xeon(R) CPU E5-1650 v2 @ 3.50GHz' };
+  assert.deepEqual(pickLocalEngine({ ...macPro2013, cpuFeatures: { avx2: false, fma: false } }), {
+    ok: false,
+    reason: 'chip',
+  });
+  assert.deepEqual(pickLocalEngine({ ...intelMac, cpuFeatures: { avx2: true, fma: false } }), {
+    ok: false,
+    reason: 'chip',
+  });
+  // 모르면 없는 것으로 (켜자마자 죽는 것보다 감추는 편이 낫다)
+  assert.deepEqual(pickLocalEngine({ ...intelMac, cpuFeatures: undefined }), { ok: false, reason: 'chip' });
+  // Apple 칩과 윈도우는 상관없다
+  assert.equal(pickLocalEngine({ ...m2, osRelease: '22.6.0' }).ok, true);
+  assert.equal(pickLocalEngine(win).ok, true);
+  assert.equal(sysctlFlag('1\n'), true);
+  assert.equal(sysctlFlag('0'), false);
+  assert.equal(sysctlFlag(''), false);
+  assert.equal(sysctlFlag(undefined), false);
+});
+
 test('엔진 고르기: 메모리 8GB 미만은 어디서나 안 된다 (8GiB 를 조금 덜 알려도 된다)', () => {
   for (const sys of [m2, win, intelMac]) {
     assert.deepEqual(pickLocalEngine({ ...sys, totalMem: 4 * GiB }), { ok: false, reason: 'memory' });
@@ -113,6 +145,18 @@ test('고정한 판: 릴리스 주소, 묶음과 모델 해시 모양', () => {
   assert.ok(SD_RELEASE.commit.startsWith('f89d9b1'));
   for (const a of [...Object.values(SD_WIN_ASSETS), ...SD_MODELS]) assert.match(a.sha256, /^[0-9a-f]{64}$/);
   for (const m of SD_MODELS) assert.ok(m.url.endsWith(`/${m.file}`), m.url);
+  // main 이 아니라 고정한 커밋에서 받는다
+  const pinned = {
+    diffusion: '3b1f5a9dc3abb32238b053aeb3d823c30afdacbd',
+    llm: '22c9fc8a8c7700b76a1789366280a6a5a1ad1120',
+    vae: 'a3efc24f613ef42d9428af62fdbd6f5fd8856c4a',
+  };
+  for (const m of SD_MODELS) {
+    assert.equal(m.rev, pinned[m.key]);
+    assert.ok(m.url.includes(`/resolve/${pinned[m.key]}/`), m.url);
+    assert.ok(!m.url.includes('/resolve/main/'), m.url);
+  }
+  assert.equal(hfResolveUrl('a/b', 'abc', 'c.gguf'), 'https://huggingface.co/a/b/resolve/abc/c.gguf');
   // 안내의 5.2GB 와 맞는다
   assert.ok(SD_MODEL_BYTES > 5.1e9 && SD_MODEL_BYTES < 5.3e9);
 });
@@ -145,6 +189,14 @@ test('윈도우 도구: 시스템 tar 로 zip 풀기, taskkill 로 자손까지,
   assert.ok(winTar('C:\\Windows').endsWith('tar.exe'));
   assert.ok(winTar(undefined).startsWith('C:\\Windows'));
   assert.deepEqual(unzipArgs('a.zip', 'd'), ['-xf', 'a.zip', '-C', 'd']);
+  // 한글 %APPDATA% 를 피해 root 안 상대 경로 (영문만, 윈도우 구분자)
+  for (const w of ['vulkan', 'cpu'] as const) {
+    const rel = sdUnzipRel(w);
+    assert.equal(rel.zip, `download\\${SD_WIN_ASSETS[w].name}`);
+    assert.equal(rel.dir, `bin\\${w}`);
+    assert.match(`${rel.zip}${rel.dir}`, /^[\x20-\x7e]+$/);
+    assert.deepEqual(unzipArgs(rel.zip, rel.dir), ['-xf', rel.zip, '-C', rel.dir]);
+  }
   assert.deepEqual(killTreeArgs(42), ['/pid', '42', '/T', '/F']);
   assert.deepEqual(tasklistArgs(42), ['/FI', 'PID eq 42', '/FO', 'CSV', '/NH']);
   const out = '"sd-cli.exe","4242","Console","1","1,234,567 K"\r\n';
@@ -249,18 +301,66 @@ test('실패 고르기: 그래픽 메모리, 윈도우 메모리 부족 코드, 
   assert.equal(classifySdFailure('', { ...draw, spawnCode: 'ENOENT' }), 'notReady');
 });
 
-test('CPU 로 되돌리기: 그래픽 칩이 죽거나 그래픽 메모리가 모자랄 때만, CPU 는 더 갈 데가 없다', () => {
-  assert.equal(shouldFallbackToCpu('vulkan', 'failed', 'exit 3221225477'), true);
-  assert.equal(shouldFallbackToCpu('metal', 'failed', ''), true);
+test('CPU 로 되돌리기: 그래픽 칩 탓으로 보일 때만 (윈도우 죽음 코드, Vulkan, Metal 흔적), CPU 는 더 갈 데가 없다', () => {
+  // 윈도우가 죽였다는 끝 코드 (0xC0000005, 0xC0000409)
+  assert.equal(shouldFallbackToCpu('vulkan', 'failed', '', 3221225477), true);
+  assert.equal(shouldFallbackToCpu('vulkan', 'failed', '', 3221226505), true);
+  // 부호 있는 값으로 와도 같다
+  assert.equal(shouldFallbackToCpu('vulkan', 'failed', '', 0xc0000005 | 0), true);
+  // 그냥 실패(요청문, 그림 문제)는 CPU 로 가도 같아서 되돌리지 않는다
+  assert.equal(shouldFallbackToCpu('metal', 'failed', ''), false);
+  assert.equal(shouldFallbackToCpu('vulkan', 'failed', 'exit 1: bad prompt', 1), false);
+  for (const log of [
+    'ggml_vulkan: device lost',
+    'vk_create_buffer failed',
+    'ggml_metal_graph_compute: command buffer failed',
+    'CUDA out of memory',
+    'not enough VRAM',
+  ])
+    assert.equal(shouldFallbackToCpu('vulkan', 'failed', log, 1), true, log);
   assert.equal(shouldFallbackToCpu('vulkan', 'memory', 'ggml_vulkan: ErrorOutOfDeviceMemory'), true);
   // 컴퓨터 메모리가 모자란 것은 CPU 로 가도 같다
   assert.equal(shouldFallbackToCpu('vulkan', 'memory', 'std::bad_alloc'), false);
   for (const k of ['cancelled', 'timeout', 'disk', 'notReady', 'bad'] as const)
-    assert.equal(shouldFallbackToCpu('vulkan', k, 'vulkan'), false, k);
-  assert.equal(shouldFallbackToCpu('cpu', 'failed', 'vulkan'), false);
+    assert.equal(shouldFallbackToCpu('vulkan', k, 'vulkan', 3221225477), false, k);
+  assert.equal(shouldFallbackToCpu('cpu', 'failed', 'vulkan', 3221225477), false);
+  // 잘 돌 때도 나오는 Vulkan 안내 줄은 실패 흔적이 아니다
+  assert.equal(
+    shouldFallbackToCpu('vulkan', 'failed', 'ggml_vulkan: Found 1 Vulkan devices:\nbad prompt', 1),
+    false,
+  );
+  assert.equal(looksGpuFailure('[INFO ] sampling completed'), false);
+  assert.equal(looksGpuFailure('ggml_vulkan: 0 = NVIDIA GeForce RTX 3060 (NVIDIA) | uma: 0'), false);
+  assert.equal(looksGpuFailure('ok\nggml_vulkan: vk::Queue::submit: ErrorDeviceLost'), true);
   assert.equal(ranOnCpu('[WARN ] loading CPU backend'), true);
   assert.equal(ranOnCpu('[WARN ] device Vulkan0 failed to init'), true);
   assert.equal(ranOnCpu('[INFO ] Using Vulkan0'), false);
+});
+
+test('글 지켜보기: 끝 64KB 에서 밀려난 처음 경고도 기억한다', () => {
+  const w = sdLogWatch();
+  w.feed('[WARN ] loading CPU backend\n');
+  // 진행 줄이 쌓여 앞 경고가 밀려난 뒤
+  w.feed('  |=====>     | 2/4 - 3.21s/it');
+  assert.equal(w.cpu, true);
+  assert.equal(w.gpu, undefined);
+  const g = sdLogWatch();
+  g.feed('ggml_vulkan: Found 1 Vulkan devices:\r\n[ERROR] ggml_vulkan: device lost\n');
+  g.feed('later noise');
+  assert.equal(g.gpu, '[ERROR] ggml_vulkan: device lost');
+  assert.equal(g.cpu, false);
+  // 처음 본 줄을 그대로 둔다
+  g.feed('vk_other');
+  assert.equal(g.gpu, '[ERROR] ggml_vulkan: device lost');
+});
+
+test('장치 목록: Vulkan 장치가 있어야 Vulkan 판을 쓴다', () => {
+  assert.equal(hasVulkanDevice('CPU\tIntel(R) Core(TM) i5\nVulkan0\tNVIDIA GeForce RTX 3060\n'), true);
+  assert.equal(hasVulkanDevice('Vulkan1\tIntel(R) UHD\r\n'), true);
+  assert.equal(hasVulkanDevice('CPU\tAMD Ryzen 5\n'), false);
+  assert.equal(hasVulkanDevice(''), false);
+  // 설명에 Vulkan 이 든 것은 장치 이름이 아니다
+  assert.equal(hasVulkanDevice('CPU\tVulkan not found\n'), false);
 });
 
 test('준비 기록: 깨진 글은 빈 기록, 모르는 모델과 틀린 해시 모양은 버린다', () => {
@@ -297,6 +397,34 @@ test('할 단계: 윈도우만 도구, 해시가 기록과 다른 모델만. 다
     one.models.map((m) => m.key),
     ['llm', 'vae'],
   );
+});
+
+test('기록을 디스크에 맞춘다: 없는 모델은 빼고, sd-cli 가 없으면 도구 기록을 지운다', () => {
+  const all = Object.fromEntries(SD_MODELS.map((m) => [m.file, m.sha256]));
+  const s = { tools: SD_RELEASE.tag, models: all, backend: 'cpu' as const, bytes: 9 };
+  // 다 있으면 그대로
+  assert.deepEqual(sdStateOnDisk(s, { model: () => true, tools: true }), s);
+  // 누가 llm 파일을 지웠다
+  const noLlm = sdStateOnDisk(s, { model: (m) => m.key !== 'llm', tools: true });
+  assert.deepEqual(
+    sdStepsToRun(noLlm, 'win32').models.map((m) => m.key),
+    ['llm'],
+  );
+  assert.equal(sdStepsToRun(noLlm, 'win32').tools, false);
+  // sd-cli.exe 가 사라졌다 (백신이 지움 등)
+  const noTools = sdStateOnDisk(s, { model: () => true, tools: false });
+  assert.equal(sdStepsToRun(noTools, 'win32').tools, true);
+  assert.equal(noTools.backend, 'cpu');
+  // 원래 기록은 건드리지 않는다
+  assert.equal(s.tools, SD_RELEASE.tag);
+  assert.equal(Object.keys(s.models).length, 3);
+  assert.deepEqual(sdStateOnDisk({}, { model: () => false, tools: false }), {});
+});
+
+test('받다 만 모델은 해시에 묶인 이름', () => {
+  const l = sdLayout('/r');
+  const m = SD_MODELS[0];
+  assert.equal(sdPartPath(l, m), `${sdModelPath(l, m)}.${m.sha256.slice(0, 8)}.part`);
 });
 
 test('준비 빈 공간: 남은 모델 + 도구 + 여유, 받아 둔 .part 만큼 덜, 할 게 없으면 0', () => {

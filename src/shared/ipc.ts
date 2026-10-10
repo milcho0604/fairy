@@ -605,11 +605,16 @@ export interface MakerBridge {
         image: string;
         /** 털 다듬기 전 그림 (털 다듬기를 했을 때만). 털색이 바뀌었으면 창이 이것으로 되돌리거나 색을 맞춘다 */
         before?: string;
+        /** 이 컴퓨터에서 그렸으면 그 뒤의 상태 (CPU 로 되돌렸으면 시간 안내가 바뀐다) */
+        localDraw?: LocalDrawInfo;
       }
-    | { ok: false; error: string; kind: string }
+    | { ok: false; error: string; kind: string; localDraw?: LocalDrawInfo }
   >;
-  /** 내 Mac에서 그리기 준비. 진행률은 onProgress, 그만두기는 cancel */
-  setupLocalDraw(): Promise<{ ok: true } | { ok: false; error: string; kind: string }>;
+  /** 내 컴퓨터에서 그리기 준비. 진행률은 onProgress, 그만두기는 cancel. 끝난 뒤 상태도 준다 */
+  setupLocalDraw(): Promise<
+    | { ok: true; localDraw?: LocalDrawInfo }
+    | { ok: false; error: string; kind: string; localDraw?: LocalDrawInfo }
+  >;
   /** 그리는 곳을 고른다 (설정에 남긴다). 결과는 저장된 값 */
   setIllustEngine(engine: IllustEngine): Promise<IllustEngine>;
   /** 토큰 넣기 (null 이면 지우기). 결과는 지금 토큰이 있는지 */

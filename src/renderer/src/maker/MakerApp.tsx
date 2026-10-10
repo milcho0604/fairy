@@ -168,6 +168,8 @@ export function MakerApp() {
   const eng: IllustEngine = canLocal && engine === 'local' ? 'local' : 'cloud';
   const localReady = !!info?.localDraw.ready;
   const local = info?.localDraw;
+  /** 이 컴퓨터에서 못 그리는 까닭 중 사용자가 알면 좋은 것 (운영체제가 아예 다른 것은 말하지 않는다) */
+  const localWhy = !canLocal && local?.reason && local.reason !== 'os' ? local.reason : undefined;
   /** 준비 안내: mflux 는 받는 양과 남는 양이 다르고(원본을 줄여 저장), sd.cpp 는 받은 그대로 둔다 */
   const need = local?.need ?? LOCAL_DRAW_GB;
   const needsText =
@@ -203,11 +205,14 @@ export function MakerApp() {
         where,
       );
       if (runRef.current !== run) return;
+      // 그리고 난 뒤의 상태로 (CPU 로 되돌렸으면 걸리는 시간과 CPU 안내가 바로 바뀌게)
+      const fresh = r.localDraw;
+      if (fresh) setInfo((v) => v && { ...v, localDraw: fresh });
       if (!r.ok) {
         setError(r.error);
         if (where === 'cloud' && CLOUD_STUCK.includes(r.kind)) setCloudStuck(true);
         // 준비가 깨졌으면(폴더를 지움 등) 다시 준비하기가 보이게
-        if (where === 'local' && r.kind === 'notReady')
+        if (where === 'local' && r.kind === 'notReady' && !fresh)
           setInfo((v) => v && { ...v, localDraw: { ...v.localDraw, ready: false } });
         setIllust((v) => v && { ...v, busy: false });
         return;
@@ -239,13 +244,16 @@ export function MakerApp() {
       setStep('setup');
       const r = await bridge.setupLocalDraw();
       if (runRef.current !== run) return;
+      // 준비하며 CPU 로 바뀌었을 수 있어 메인이 준 새 상태로 (시간 안내가 맞게)
+      const fresh = r.localDraw;
+      if (fresh) setInfo((v) => v && { ...v, localDraw: fresh });
       if (!r.ok) {
         pendingDraw.current = undefined;
         setError(r.error);
         setStep(back);
         return;
       }
-      setInfo((v) => v && { ...v, localDraw: { ...v.localDraw, ready: true } });
+      if (!fresh) setInfo((v) => v && { ...v, localDraw: { ...v.localDraw, ready: true } });
       const p = pendingDraw.current;
       pendingDraw.current = undefined;
       if (p) {
@@ -745,6 +753,8 @@ export function MakerApp() {
                         ))}
                       </fieldset>
                     )}
+                    {/* 못 그리면 왜인지 알린다 (로제타면 Apple 칩용 앱을 깔면 된다) */}
+                    {localWhy && <small className="hint">{t(`maker.engine.why.${localWhy}`)}</small>}
                     <small className="hint">
                       {t(eng === 'local' ? 'maker.engine.localHint' : 'maker.illust.hint')}
                     </small>

@@ -1,8 +1,9 @@
 // 내 컴퓨터에서 그리기의 sd.cpp 엔진 순수 계산 (Electron, child_process 없이 시험한다, sdcpp-core.test.ts).
 // 무엇을: stable-diffusion.cpp(MIT)의 sd-cli 로 FLUX.2 klein 4B(GGUF Q4_0)를 돌린다. mflux 가 안 되는 컴퓨터
 // (Windows x64, 인텔 Mac, macOS 12~13 의 Apple 칩 Mac)도 공짜로 그리게. 모든 파일은 사용자 데이터 local-draw-sd/ 안에
-import { join } from 'node:path';
-import type { LocalTier } from '../shared/local-draw.ts';
+import { join, win32 } from 'node:path';
+import type { LocalTier, LocalUnsupported } from '../shared/local-draw.ts';
+import { partPath } from './download-resume.ts';
 import { imageSize, kleinSize } from './hf-illust.ts';
 import { classifyFailure, type LocalDrawErrorKind, localDrawEligibility } from './local-draw-core.ts';
 
@@ -34,26 +35,48 @@ export const SD_WIN_ASSETS = {
 
 export const sdAssetUrl = (name: string) => releaseUrl(name);
 
-/** 모델 셋 (모두 로그인 없이 받는 Apache-2.0). Hugging Face LFS 의 oid 가 SHA-256 이다 */
+/**
+ * Hugging Face 파일 주소. main 이 아니라 고정한 커밋에서 받는다 (depth-model.ts 처럼): 올린 사람이 파일을 바꿔도
+ * 해시가 어긋나 준비가 깨지지 않고, 받다 만 .part 에 다른 판이 이어 붙지 않게
+ */
+export const hfResolveUrl = (repo: string, rev: string, file: string) =>
+  `https://huggingface.co/${repo}/resolve/${rev}/${file}`;
+
+/** 모델 셋 (모두 로그인 없이 받는 Apache-2.0). Hugging Face LFS 의 oid 가 SHA-256 이다. 커밋은 2026-10-10 에 확인 */
 export const SD_MODELS = [
   {
     key: 'diffusion',
     file: 'flux-2-klein-4b-Q4_0.gguf',
-    url: 'https://huggingface.co/leejet/FLUX.2-klein-4B-GGUF/resolve/main/flux-2-klein-4b-Q4_0.gguf',
+    rev: '3b1f5a9dc3abb32238b053aeb3d823c30afdacbd',
+    url: hfResolveUrl(
+      'leejet/FLUX.2-klein-4B-GGUF',
+      '3b1f5a9dc3abb32238b053aeb3d823c30afdacbd',
+      'flux-2-klein-4b-Q4_0.gguf',
+    ),
     bytes: 2_460_378_560,
     sha256: 'd1023499ef3f2f82ff7c50e6778495195c1b6cc34835741778868428111f9ff4',
   },
   {
     key: 'llm',
     file: 'Qwen3-4B-Q4_K_M.gguf',
-    url: 'https://huggingface.co/unsloth/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf',
+    rev: '22c9fc8a8c7700b76a1789366280a6a5a1ad1120',
+    url: hfResolveUrl(
+      'unsloth/Qwen3-4B-GGUF',
+      '22c9fc8a8c7700b76a1789366280a6a5a1ad1120',
+      'Qwen3-4B-Q4_K_M.gguf',
+    ),
     bytes: 2_497_281_312,
     sha256: 'f6f851777709861056efcdad3af01da38b31223a3ba26e61a4f8bf3a2195813a',
   },
   {
     key: 'vae',
     file: 'full_encoder_small_decoder.safetensors',
-    url: 'https://huggingface.co/black-forest-labs/FLUX.2-small-decoder/resolve/main/full_encoder_small_decoder.safetensors',
+    rev: 'a3efc24f613ef42d9428af62fdbd6f5fd8856c4a',
+    url: hfResolveUrl(
+      'black-forest-labs/FLUX.2-small-decoder',
+      'a3efc24f613ef42d9428af62fdbd6f5fd8856c4a',
+      'full_encoder_small_decoder.safetensors',
+    ),
     bytes: 249_519_092,
     sha256: 'ea4273f02d1fafbf8e1d1c2cf6018ed8748652eb0bf34f2dd91171f16f15ab62',
   },
@@ -91,7 +114,7 @@ export const CPU_LONG_SIDE = 768;
 export type SdBackend = 'vulkan' | 'metal' | 'cpu';
 export const tierOf = (b: SdBackend): LocalTier => (b === 'cpu' ? 'cpu' : 'gpu');
 
-export type LocalUnsupported = 'os' | 'chip' | 'macos' | 'memory' | 'rosetta';
+export type { LocalUnsupported } from '../shared/local-draw.ts';
 export type LocalPick =
   | { ok: true; engine: 'mflux' }
   | { ok: true; engine: 'sdcpp'; backend: SdBackend }
@@ -103,7 +126,8 @@ const GiB = 1024 ** 3;
  * 이 컴퓨터에서 쓸 엔진. 메모리 8GB 이상이 먼저 (둘 다 4~6GB 를 쓴다).
  * 1. Apple 칩 Mac, macOS 14+ → mflux (가장 빠르다)
  * 2. Apple 칩 Mac, macOS 12~13 → sd.cpp Metal
- * 3. 인텔 Mac, macOS 12+ → sd.cpp CPU (인텔, AMD 그래픽의 ggml Metal 은 믿기 어렵다)
+ * 3. 인텔 Mac, macOS 12+ → sd.cpp CPU (인텔, AMD 그래픽의 ggml Metal 은 믿기 어렵다). 앱에 넣은 sd-cli 가
+ *    AVX2, FMA 로 빌드돼서 그게 없는 칩(Mac Pro 2013 같은 Ivy Bridge 이전)은 켜자마자 죽는다 → 칩이 안 된다고 알린다
  * 4. Windows x64 → sd.cpp Vulkan (안 되면 CPU 로, sdcpp.ts)
  * Apple 칩에서 로제타로 도는 인텔용 앱은 macOS 14+ 면 mflux(uv 가 Apple 칩용)로 되지만, 12~13 은
  * 인텔용 sd-cli 가 AVX 를 써서 로제타(macOS 15 전)에서 돌지 않는다 → Apple 칩용 앱을 깔라고 알린다
@@ -114,6 +138,8 @@ export function pickLocalEngine(sys: {
   cpuModel: string;
   totalMem: number;
   osRelease: string;
+  /** 인텔 Mac 의 CPU 기능 (sysctl hw.optional.*). 모르면 없는 것으로 본다 */
+  cpuFeatures?: { avx2: boolean; fma: boolean };
 }): LocalPick {
   if (sys.platform !== 'darwin' && sys.platform !== 'win32') return { ok: false, reason: 'os' };
   // 8GB 컴퓨터는 정확히 8GiB 를 알린다. 조금 모자라게 알리는 경우(내장 그래픽 몫)를 봐서 5% 덜어 둔다
@@ -129,8 +155,12 @@ export function pickLocalEngine(sys: {
   if (!(darwin >= 21)) return { ok: false, reason: 'macos' };
   const appleChip = sys.arch === 'arm64' || /apple/i.test(sys.cpuModel);
   if (appleChip && sys.arch !== 'arm64') return { ok: false, reason: 'rosetta' };
+  if (!appleChip && !(sys.cpuFeatures?.avx2 && sys.cpuFeatures.fma)) return { ok: false, reason: 'chip' };
   return { ok: true, engine: 'sdcpp', backend: appleChip ? 'metal' : 'cpu' };
 }
+
+/** sysctl -n 한 줄 ("1" 이면 있다). 키가 없거나 읽지 못했으면 없는 것으로 */
+export const sysctlFlag = (out: string | undefined | null) => (out ?? '').trim() === '1';
 
 /**
  * 윈도우 그래픽 칩이 쓸 만한지 (Electron app.getGPUInfo('basic') 의 gpuDevice). 없거나 Microsoft 기본 렌더러
@@ -168,6 +198,8 @@ export function sdLayout(root: string): SdLayout {
 }
 
 export const sdModelPath = (l: SdLayout, m: SdModel) => join(l.modelsDir, m.file);
+/** 받다 만 모델 (고정한 해시에 묶인 이름, download-resume.ts partPath) */
+export const sdPartPath = (l: SdLayout, m: SdModel) => partPath(sdModelPath(l, m), m.sha256);
 export const sdZipPath = (l: SdLayout, which: 'vulkan' | 'cpu') =>
   join(l.downloadDir, SD_WIN_ASSETS[which].name);
 /** 윈도우 묶음을 푼 폴더 (묶음은 평평하다: sd-cli.exe 옆에 ggml dll 들) */
@@ -202,6 +234,16 @@ export const winTasklist = (systemRoot: string | undefined) =>
   join(systemRoot || 'C:\\Windows', 'System32', 'tasklist.exe');
 
 export const unzipArgs = (zip: string, dir: string) => ['-xf', zip, '-C', dir];
+
+/**
+ * 윈도우 tar 에 줄 zip 과 풀 자리 (local-draw-sd 안에서 본 상대 경로, 영문만). tar.exe 를 cwd: root 로 돌린다.
+ * 왜: 사용자 이름이 한글이면 %APPDATA% 경로가 한글인데, bsdtar 는 인자를 시스템 코드 페이지로 읽어 그런 절대 경로를
+ * 못 연다. 상대 경로는 우리가 정한 영문 이름뿐이라 깨질 일이 없다
+ */
+export const sdUnzipRel = (which: 'vulkan' | 'cpu') => ({
+  zip: win32.join('download', SD_WIN_ASSETS[which].name),
+  dir: win32.join('bin', which),
+});
 /** 프로세스와 그 자손을 끈다 (윈도우엔 프로세스 묶음이 없다) */
 export const killTreeArgs = (pid: number) => ['/pid', String(pid), '/T', '/F'];
 export const tasklistArgs = (pid: number) => ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'];
@@ -329,20 +371,73 @@ export function classifySdFailure(
   return 'failed';
 }
 
+/** 윈도우가 프로그램이 죽었을 때 주는 끝 코드: 0xC0000005 (잘못된 메모리 접근), 0xC0000409 (스택 깨짐). 드라이버가 흔한 까닭 */
+export const WIN_CRASH_CODES: readonly number[] = [0xc0000005, 0xc0000409];
 /**
- * 그래픽 칩으로 그리다 실패하면 CPU 로 다시 할지. 멈추기, 시간 초과, 공간, 준비 깨짐은 그대로 알린다.
- * 죽거나(드라이버, Vulkan 없음) 그래픽 메모리가 모자라면 CPU 로 (state.json 에 남겨 다음부터 CPU)
+ * 그래픽 칩 쪽 실패로 보이는 줄. Vulkan 판은 잘 돌 때도 "ggml_vulkan: Found 1 Vulkan devices" 를 남겨서
+ * 이름만으로는 안 되고, 그래픽 칩 이름(Vulkan, vk_, Metal, VRAM)에 오류 말이 같이 있거나 장치 잃음, 메모리 모자람일 때만
  */
-export function shouldFallbackToCpu(backend: SdBackend, kind: LocalDrawErrorKind, log: string): boolean {
+export function gpuFailLine(line: string): boolean {
+  if (/device lost|out of memory|out of device memory/i.test(line)) return true;
+  return (
+    /vulkan|vk_|vk::|ggml_metal|VRAM/i.test(line) &&
+    /error|fail|abort|exception|cannot|unable|not enough|lost/i.test(line)
+  );
+}
+export const looksGpuFailure = (log: string) => log.split(/[\r\n]+/).some(gpuFailLine);
+
+/**
+ * 그래픽 칩으로 그리다 실패하면 CPU 로 다시 할지. 그래픽 칩 탓으로 보일 때만: 윈도우가 죽였다고 알린 끝 코드이거나
+ * 남긴 글에 Vulkan, Metal, 장치 잃음, 그래픽 메모리 흔적이 있을 때. 그냥 'failed' 는 CPU 로 가도 같은 실패라
+ * (요청문, 그림 문제) 20분을 더 기다리게 하지 않는다. 멈추기, 시간 초과, 공간, 준비 깨짐은 그대로 알린다
+ */
+export function shouldFallbackToCpu(
+  backend: SdBackend,
+  kind: LocalDrawErrorKind,
+  log: string,
+  exitCode?: number | null,
+): boolean {
   if (backend === 'cpu') return false;
-  if (kind === 'failed') return true;
-  if (kind === 'memory') return /vulkan|vk::|device memory|metal|ggml_metal/i.test(log);
-  return false;
+  if (kind !== 'failed' && kind !== 'memory') return false;
+  if (kind === 'failed' && typeof exitCode === 'number' && WIN_CRASH_CODES.includes(exitCode >>> 0))
+    return true;
+  return looksGpuFailure(log);
 }
 
 /** Vulkan 판이 그래픽 칩을 못 찾아 스스로 CPU 로 돌았는지 (ggml 이 "loading CPU backend" 를 남긴다) */
 export const ranOnCpu = (log: string) =>
-  /loading CPU backend|No devices found|device \S+ failed to init/i.test(log);
+  /loading CPU backend|Using CPU backend|No devices found|device \S+ failed to init/i.test(log);
+
+/**
+ * sd-cli 가 남기는 글을 흐르는 대로 본다. run 이 주는 글은 끝 64KB 뿐이라 처음에 나온 경고("loading CPU backend",
+ * Vulkan 오류)가 뒤의 진행 줄에 밀려 사라질 수 있다 → 보이는 순간 기억해 둔다
+ */
+export function sdLogWatch() {
+  let cpu = false;
+  let gpu: string | undefined;
+  return {
+    feed(text: string) {
+      if (!cpu && ranOnCpu(text)) cpu = true;
+      if (gpu === undefined) gpu = text.split(/[\r\n]+/).find(gpuFailLine);
+    },
+    /** 그래픽 칩 대신 CPU 로 돌았다 */
+    get cpu() {
+      return cpu;
+    },
+    /** 처음 본 그래픽 칩 실패 흔적 줄 */
+    get gpu() {
+      return gpu;
+    },
+  };
+}
+
+/**
+ * sd-cli --list-devices 결과("이름<TAB>설명" 한 줄씩)에 Vulkan 장치가 있는지. 없으면 Vulkan 판도 CPU 로만 돈다
+ * (그래픽 드라이버에 Vulkan 이 없음). 그러면 처음부터 CPU 판을 쓴다 (같은 CPU 라도 CPU 판이 더 맞춰져 있다)
+ */
+export function hasVulkanDevice(out: string): boolean {
+  return out.split(/\r?\n/).some((line) => /^Vulkan\d*\t/i.test(line));
+}
 
 /** 준비 기록 (state.json). 단계마다 다 된 판을 적는다. 고정한 판이 바뀌면 그 단계부터 다시 */
 export interface SdState {
@@ -377,6 +472,24 @@ export function parseSdState(raw: string | undefined | null): SdState {
   } catch {
     return {};
   }
+}
+
+/**
+ * 기록(state.json)을 디스크에 맞춘다. 누가 폴더 안 파일을 지웠으면 기록만 믿고 건너뛰지 않게: 파일이 없는 모델은
+ * 기록에서 빼고, 지금 백엔드의 sd-cli(.exe) 나 되돌릴 CPU 판이 없으면 윈도우 도구 기록을 지운다 (다시 받는다)
+ */
+export function sdStateOnDisk(s: SdState, has: { model: (m: SdModel) => boolean; tools: boolean }): SdState {
+  const out: SdState = { ...s };
+  if (s.models) {
+    const models: Record<string, string> = {};
+    for (const m of SD_MODELS) {
+      const v = s.models[m.file];
+      if (v !== undefined && has.model(m)) models[m.file] = v;
+    }
+    out.models = models;
+  }
+  if (!has.tools) delete out.tools;
+  return out;
 }
 
 /** 아직 할 단계: 윈도우 도구(판이 다르면), 해시가 기록과 다른 모델들 */

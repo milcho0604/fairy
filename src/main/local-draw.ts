@@ -2,7 +2,7 @@
 // 엔진은 pickLocalEngine 이 고른다: Apple 칩 Mac(macOS 14+)은 여기 mflux, 나머지는 sd.cpp (sdcpp.ts).
 // 사진은 이 컴퓨터 밖으로 나가지 않는다. 인터넷은 처음 준비할 때 도구와 모델을 받을 때만 쓴다.
 // 자식 프로세스, 한 번에 하나, 남은 자식 정리는 local-proc.ts 를 두 엔진이 같이 쓴다
-import type { ChildProcess } from 'node:child_process';
+import { type ChildProcess, execFileSync } from 'node:child_process';
 import {
   chmodSync,
   existsSync,
@@ -58,12 +58,14 @@ import {
   freeBytes,
   GB,
   jobBusy,
+  jobBusyFor,
   keepErrorLog,
   killOrphan,
   type Log,
   moveToTrash,
   run as runProc,
   stopJob,
+  stopJobFor,
   stopJobNow,
   sweepBusy,
   sweepDone,
@@ -72,11 +74,31 @@ import {
 } from './local-proc.ts';
 import { writeFileAtomic } from './safe-file.ts';
 import { illustrateSd, sdBinaryReady, sdInfo, sdOrphanSweep, setupSd } from './sdcpp.ts';
-import { type LocalPick, pickLocalEngine, pictureMinutes } from './sdcpp-core.ts';
+import { type LocalPick, pickLocalEngine, pictureMinutes, sysctlFlag } from './sdcpp-core.ts';
 
 const rootDir = () => join(app.getPath('userData'), 'local-draw');
 const L = () => layout(rootDir());
 const runPidOf = (l: Layout) => ({ path: l.runPid, root: l.root });
+
+/** sysctl 값 하나 ("1" 이면 있다). 키가 없는 옛 macOS 나 실패는 없는 것으로 */
+function sysctlHas(key: string): boolean {
+  try {
+    return sysctlFlag(execFileSync('/usr/sbin/sysctl', ['-n', key], { encoding: 'utf8', timeout: 3000 }));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 인텔 Mac 의 AVX2, FMA (앱 안 sd-cli 가 이것으로 빌드돼 없으면 켜자마자 죽는다). 실행 중에 바뀌지 않아 한 번만 묻는다.
+ * 인텔용 앱(x64)으로 도는 맥만 묻는다 (Apple 칩은 Metal 판이라 상관없다)
+ */
+let cpuFeatures: { avx2: boolean; fma: boolean } | undefined;
+function intelMacFeatures(): { avx2: boolean; fma: boolean } | undefined {
+  if (process.platform !== 'darwin' || process.arch !== 'x64') return undefined;
+  cpuFeatures ??= { avx2: sysctlHas('hw.optional.avx2_0'), fma: sysctlHas('hw.optional.fma') };
+  return cpuFeatures;
+}
 
 /** 이 컴퓨터에서 쓸 엔진 (메모리, 운영체제, 칩으로 고른다. sdcpp-core.ts pickLocalEngine) */
 export function localDrawPick(): LocalPick {
@@ -86,6 +108,7 @@ export function localDrawPick(): LocalPick {
     cpuModel: os.cpus()[0]?.model ?? '',
     totalMem: os.totalmem(),
     osRelease: os.release(),
+    cpuFeatures: intelMacFeatures(),
   });
 }
 
@@ -116,7 +139,8 @@ function mfluxReady(): boolean {
 
 export function localDrawInfo(): LocalDrawInfo {
   const pick = localDrawSupport();
-  if (!pick.ok) return { supported: false, ready: false };
+  // 까닭도 보낸다: 창이 숨기기만 하지 않고 알맞은 안내(로제타면 Apple 칩용 앱)를 보이게
+  if (!pick.ok) return { supported: false, ready: false, reason: pick.reason };
   if (pick.engine === 'sdcpp') return sdInfo(pick);
   return {
     supported: true,
@@ -178,9 +202,10 @@ export function localDrawBytes(): number {
  */
 export async function removeLocalDraw(log?: Log): Promise<boolean> {
   await sweepDone();
-  await stopJob();
-  if (jobBusy()) return false;
   const root = rootDir();
+  // 이 폴더의 일만 멈춘다 (sd.cpp 로 그리는 중이면 그대로 두고 지운다)
+  await stopJobFor(root);
+  if (jobBusyFor(root)) return false;
   if (!existsSync(root)) return true;
   if (!moveToTrash(root, log)) return false;
   forgetVerified(L().uvTarball);

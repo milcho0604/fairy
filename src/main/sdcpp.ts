@@ -18,13 +18,13 @@ import {
   FolderSize,
   freeBytes,
   GB,
-  jobBusy,
+  jobBusyFor,
   keepErrorLog,
   killOrphan,
   type Log,
   moveToTrash,
   run,
-  stopJob,
+  stopJobFor,
   sweepDone,
   sweepTrash,
 } from './local-proc.ts';
@@ -32,12 +32,12 @@ import { writeFileAtomic } from './safe-file.ts';
 import {
   classifySdFailure,
   gpuLooksUsable,
+  hasVulkanDevice,
   isSdSetupDone,
   type LocalPick,
   modelsRatio,
   parseSdState,
   pictureMinutes,
-  ranOnCpu,
   SD_MODELS,
   SD_RELEASE,
   SD_TIMEOUT_MS,
@@ -51,10 +51,14 @@ import {
   sdDrawRatio,
   sdDrawSize,
   sdLayout,
+  sdLogWatch,
   sdModelPath,
+  sdPartPath,
   sdProgress,
   sdSpaceNeeded,
+  sdStateOnDisk,
   sdStepsToRun,
+  sdUnzipRel,
   sdWinDir,
   sdZipPath,
   shouldFallbackToCpu,
@@ -107,6 +111,15 @@ export function sdBinaryReady(pick: SdPick): boolean {
   return existsSync(binaryPath(L(), pick.backend));
 }
 
+/**
+ * 윈도우 도구가 디스크에 있는지: 지금 백엔드의 sd-cli.exe 와 되돌릴 자리인 CPU 판. 맥은 앱 안 것이라 늘 true
+ * (없으면 sdBinaryReady 가 고르기를 감춘다)
+ */
+function toolsOnDisk(pick: SdPick, l: SdLayout, s: SdState): boolean {
+  if (process.platform !== 'win32') return true;
+  return existsSync(binaryPath(l, backendOf(pick, s))) && existsSync(binaryPath(l, 'cpu'));
+}
+
 /** 준비가 다 됐는지: 기록이 지금 고정한 판과 같고 실제 파일도 있다 */
 function sdReady(pick: SdPick): boolean {
   const l = L();
@@ -149,9 +162,10 @@ export function sdDrawBytes(): number {
 /** 저장 공간에서 sd.cpp 폴더 지우기 (하던 일을 먼저 멈춘다) */
 export async function removeSdDraw(log?: Log): Promise<boolean> {
   await sweepDone();
-  await stopJob();
-  if (jobBusy()) return false;
   const l = L();
+  // 이 폴더의 일만 멈춘다 (mflux 로 그리는 중이면 그대로 두고 지운다)
+  await stopJobFor(l.root);
+  if (jobBusyFor(l.root)) return false;
   if (!existsSync(l.root)) return true;
   if (!moveToTrash(l.root, log)) return false;
   for (const m of SD_MODELS) forgetVerified(sdModelPath(l, m));
@@ -217,11 +231,16 @@ export function setupSd(
       const l = L();
       mkdirSync(l.root, { recursive: true });
       sweepTrash(FOLDER);
-      const state = readState(l);
+      // 기록만 믿지 않는다: 누가 폴더 안 파일을 지웠으면 그 단계부터 다시
+      const saved = readState(l);
+      const state = sdStateOnDisk(saved, {
+        model: (m) => existsSync(sdModelPath(l, m)),
+        tools: toolsOnDisk(pick, l, saved),
+      });
       const todo = sdStepsToRun(state, process.platform);
       const started = Date.now();
       log('local-draw', 'sd setup', JSON.stringify({ tools: todo.tools, models: todo.models.length }));
-      const parts = todo.models.reduce((n, m) => n + sizeOf(`${sdModelPath(l, m)}.part`), 0);
+      const parts = todo.models.reduce((n, m) => n + sizeOf(sdPartPath(l, m)), 0);
       const need = sdSpaceNeeded(todo, parts);
       const stages = SD_SETUP_STAGES;
       try {
@@ -267,7 +286,12 @@ export function setupSd(
             const dir = sdWinDir(l, which);
             rmSync(dir, { recursive: true, force: true });
             mkdirSync(dir, { recursive: true });
-            await run(winTar(process.env.SystemRoot), unzipArgs(zip, dir), common);
+            // 한글 사용자 이름의 %APPDATA% 를 tar 가 못 열어서 root 안 상대 경로로 (sdUnzipRel)
+            const rel = sdUnzipRel(which);
+            await run(winTar(process.env.SystemRoot), unzipArgs(rel.zip, rel.dir), {
+              ...common,
+              cwd: l.root,
+            });
             if (!existsSync(join(dir, 'sd-cli.exe')))
               throw new LocalDrawError('failed', `sd-cli.exe missing in ${which}`);
             rmSync(zip, { force: true });
@@ -276,6 +300,31 @@ export function setupSd(
           }
           state.tools = SD_RELEASE.tag;
           writeState(l, state);
+        }
+
+        // Vulkan 판이 그래픽 칩을 하나도 못 보면 그리는 동안 말없이 CPU 로 돈다 (느린데 화면은 GPU 시간을 안내).
+        // 한 번 물어보고 없으면 CPU 판으로. 물어보기가 죽어도(vulkan-1.dll 없음 등) Vulkan 은 안 되는 것이다
+        if (process.platform === 'win32' && pick.backend === 'vulkan' && state.backend !== 'cpu') {
+          let devices = '';
+          try {
+            devices = await run(binaryPath(l, 'vulkan'), ['--list-devices'], {
+              ...common,
+              timeoutMs: 60_000,
+              cwd: sdWinDir(l, 'vulkan'),
+            });
+          } catch (err) {
+            if (err instanceof LocalDrawError && err.kind === 'cancelled') throw err;
+            log(
+              'local-draw',
+              'sd list devices',
+              err instanceof Error ? err.message.slice(0, 200) : String(err),
+            );
+          }
+          if (!hasVulkanDevice(devices)) {
+            state.backend = 'cpu';
+            writeState(l, state);
+            log('local-draw', 'sd no vulkan device, cpu');
+          }
         }
 
         // 모델: 이미 받은 것도 진행 막대에 넣어 둔다 (멈췄다 이어 하면 그 자리부터 보이게)
@@ -323,10 +372,12 @@ async function drawOnce(
   prompt: string,
   pass: 0 | 1,
   o: { signal: AbortSignal; children: Set<ChildProcess>; onProgress: (r: number) => void },
-): Promise<{ bytes: Uint8Array; kind: ImageKind; log: string }> {
+): Promise<{ bytes: Uint8Array; kind: ImageKind; ranOnCpu: boolean }> {
   mkdirSync(l.tmp, { recursive: true });
   const tmp = mkdtempSync(join(l.tmp, 'jj-draw-'));
   let seen = '';
+  // 끝 64KB 에서 밀려날 수 있는 처음 경고를 흐르는 대로 기억한다
+  const watch = sdLogWatch();
   try {
     const ext = inputKind === 'jpeg' ? 'jpg' : inputKind;
     const inPath = join(tmp, `in.${ext}`);
@@ -351,6 +402,7 @@ async function drawOnce(
         cwd: tmp,
         onText: (t) => {
           seen = t;
+          watch.feed(t);
           const p = sdProgress(t);
           if (p) o.onProgress(sdDrawRatio(pass, p));
         },
@@ -364,10 +416,10 @@ async function drawOnce(
     }
     const checked = checkDrawn(bytes, want);
     if (!checked.ok) throw new LocalDrawError('bad', checked.why);
-    return { bytes, kind: checked.kind, log: text };
+    return { bytes, kind: checked.kind, ranOnCpu: watch.cpu };
   } catch (err) {
-    // 그래픽 칩 실패인지 보려고 남긴 글 전체를 붙인다 (메시지에는 끝 300자만 있다)
-    if (err instanceof LocalDrawError) Object.assign(err, { log: seen });
+    // 그래픽 칩 실패인지 보려고 남긴 글을 붙인다 (메시지에는 끝 300자만 있다). 밀려난 흔적 줄도 앞에
+    if (err instanceof LocalDrawError) Object.assign(err, { log: `${watch.gpu ?? ''}\n${seen}` });
     throw err;
   } finally {
     rmSync(tmp, { recursive: true, force: true });
@@ -400,6 +452,7 @@ export function illustrateSd(
       const state = readState(l);
       let backend = backendOf(pick, state);
       const opt = { signal: ac.signal, children, onProgress: o.onProgress };
+      /** 다음부터 CPU 로 (state.json). CPU 로 실제로 그려진 뒤에만 부른다 */
       const toCpu = () => {
         backend = 'cpu';
         state.backend = 'cpu';
@@ -409,21 +462,24 @@ export function illustrateSd(
         try {
           const r = await drawOnce(l, backend, input, inputKind, text, n, opt);
           // Vulkan 판이 그래픽 칩을 못 찾아 스스로 CPU 로 그렸으면 기억한다 (다음부터 768 로, 시간 안내도 CPU)
-          if (backend !== 'cpu' && ranOnCpu(r.log)) {
+          if (backend !== 'cpu' && r.ranOnCpu) {
             o.log('local-draw', 'sd ran on cpu');
             toCpu();
           }
           return r;
         } catch (err) {
           const log = (err as { log?: string }).log ?? (err instanceof Error ? err.message : '');
+          const exitCode = (err as { exitCode?: number | null }).exitCode;
           if (
             err instanceof LocalDrawError &&
-            shouldFallbackToCpu(backend, err.kind, log) &&
+            shouldFallbackToCpu(backend, err.kind, log, exitCode) &&
             existsSync(binaryPath(l, 'cpu'))
           ) {
             o.log('local-draw', 'sd gpu failed, cpu', err.kind, err.message.slice(0, 200));
+            // CPU 로 다시 해 보고 되면 그때 기억한다 (CPU 로도 안 되면 그래픽 칩 탓이 아니었다: 다음에도 GPU 로)
+            const r = await drawOnce(l, 'cpu', input, inputKind, text, n, opt);
             toCpu();
-            return drawOnce(l, backend, input, inputKind, text, n, opt);
+            return r;
           }
           throw err;
         }

@@ -85,6 +85,12 @@ export const ko = {
     v.min === v.max ? `한 장에 ${v.min}분쯤 걸려.` : `한 장에 ${v.min}~${v.max}분쯤 걸려.`,
   'maker.engine.cpuSlow':
     '이 컴퓨터는 그래픽 칩 대신 CPU로 그려서 꽤 오래 걸려. 그리는 동안 다른 일을 해도 돼.',
+  // 이 컴퓨터에서 그릴 수 없을 때 까닭 (고르기를 감추기만 하면 왜 없는지 몰랐다)
+  'maker.engine.why.rosetta':
+    '이 Mac은 Apple 칩인데 인텔용 짝꿍이 깔려 있어. Apple 칩용 짝꿍을 깔면 이 컴퓨터에서도 그릴 수 있어.',
+  'maker.engine.why.chip': '이 컴퓨터의 칩으로는 직접 그릴 수 없어서 무료 서버로 그려.',
+  'maker.engine.why.memory': '메모리가 8GB보다 적어서 이 컴퓨터에서는 그릴 수 없어. 무료 서버로 그려.',
+  'maker.engine.why.macos': 'macOS 12 이상이면 이 컴퓨터에서도 그릴 수 있어. 지금은 무료 서버로 그려.',
   'maker.engine.localPrivacy':
     '사진은 이 컴퓨터 밖으로 나가지 않아. 인터넷에서는 그림 도구와 모델만 처음 한 번 받아.',
   'maker.engine.needs':
@@ -312,6 +318,13 @@ export const en: Translation<typeof ko> = {
       : `About ${v.min} to ${v.max} minutes per picture.`,
   'maker.engine.cpuSlow':
     'This computer draws with its CPU instead of a graphics chip, so it takes a while. Feel free to do other things meanwhile.',
+  'maker.engine.why.rosetta':
+    'This Mac has an Apple chip but the Intel version of Jjakkung is installed. Install the Apple chip version to draw on this computer.',
+  'maker.engine.why.chip': "This computer's chip can't draw locally, so it draws on the free server.",
+  'maker.engine.why.memory':
+    "This computer has less than 8 GB of memory, so it can't draw locally. It draws on the free server.",
+  'maker.engine.why.macos':
+    'With macOS 12 or later this computer could draw locally. For now it draws on the free server.',
   'maker.engine.localPrivacy':
     'Your photo never leaves this computer. Only the drawing tools and model are downloaded, once.',
   'maker.engine.needs':

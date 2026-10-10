@@ -363,12 +363,14 @@ export function createMaker(
             ok: true as const,
             image: dataUrlFrom(r.bytes, r.kind),
             ...(r.before ? { before: dataUrlFrom(r.before.bytes, r.before.kind) } : {}),
+            // 그리다 CPU 로 되돌렸으면 걸리는 시간 안내가 바뀐다 (창이 새 값으로 바꾼다)
+            localDraw: localDrawInfo(),
           };
         } catch (err) {
           const k: LocalDrawErrorKind = err instanceof LocalDrawError ? err.kind : 'failed';
           if (!(err instanceof LocalDrawError))
             log('maker', 'illust local', err instanceof Error ? err.message : String(err));
-          return { ok: false as const, kind: k, error: localDrawText(k, 'draw') };
+          return { ok: false as const, kind: k, error: localDrawText(k, 'draw'), localDraw: localDrawInfo() };
         } finally {
           if (drawing === abort) drawing = undefined;
         }
@@ -425,13 +427,14 @@ export function createMaker(
         ac.signal,
         log,
       );
-      return { ok: true };
+      // 준비하며 Vulkan 장치가 없어 CPU 로 바꿨을 수 있다: 시간 안내를 새로 (창이 바꾼다)
+      return { ok: true, localDraw: localDrawInfo() };
     } catch (err) {
       const k: LocalDrawErrorKind = err instanceof LocalDrawError ? err.kind : 'failed';
       if (!(err instanceof LocalDrawError))
         log('maker', 'local setup', err instanceof Error ? err.message : String(err));
       const gb = err instanceof LocalDrawError ? err.gb : undefined;
-      return { ok: false, kind: k, error: localDrawText(k, 'setup', gb) };
+      return { ok: false, kind: k, error: localDrawText(k, 'setup', gb), localDraw: localDrawInfo() };
     } finally {
       if (download === ac) download = undefined;
     }

@@ -24,10 +24,18 @@ export const LOCAL_DRAW_GB = { download: 16, keep: 5, memory: 8, free: 20 } as c
 /** sd.cpp 안내에 보이는 크기 (GB). 모델 셋 5.2GB + 도구 0.05GB 를 받아 그대로 둔다 */
 export const SD_DRAW_GB = { download: 5.3, keep: 5.3, memory: 8, free: 7 } as const;
 
+/**
+ * 이 컴퓨터에서 그릴 수 없는 까닭: os 운영체제, chip 칩(윈도우 ARM, AVX2 없는 인텔 Mac), macos 너무 옛 macOS,
+ * memory 메모리 8GB 미만, rosetta Apple 칩 Mac 에 인텔용 앱
+ */
+export type LocalUnsupported = 'os' | 'chip' | 'macos' | 'memory' | 'rosetta';
+
 /** 이 컴퓨터에서 그릴 수 있는지와 준비됐는지 (펫 만들기 창이 받는다) */
 export interface LocalDrawInfo {
   supported: boolean;
   ready: boolean;
+  /** 안 되는 컴퓨터만: 까닭 (창이 알맞은 안내를 보인다. 로제타면 Apple 칩용 앱을 깔라고) */
+  reason?: LocalUnsupported;
   /** 되는 컴퓨터만: 쓰는 엔진, 시간 단계, 안내 숫자, 한 장(그리기 + 털 다듬기) 걸리는 어림 분 */
   engine?: LocalEngine;
   tier?: LocalTier;

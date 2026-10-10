@@ -76,7 +76,8 @@ function build(arch) {
     '-DSD_WEBM=OFF',
     '-DSD_BUILD_SHARED_LIBS=OFF',
     '-DGGML_NATIVE=OFF',
-    // 인텔 Mac 은 CPU 로 그린다. 2013 년 뒤 인텔 Mac 은 모두 AVX2 가 있다
+    // 인텔 Mac 은 CPU 로 그린다. AVX2, FMA 는 Haswell(2013 년 중반) 뒤 칩부터라 그 앞 칩(Mac Pro Late 2013 의
+    // Ivy Bridge Xeon 포함)에는 없다 → 앱이 sysctl hw.optional.avx2_0, fma 로 보고 없으면 그리기를 감춘다 (sdcpp-core.ts)
     ...(arch === 'x64' ? ['-DGGML_AVX=ON', '-DGGML_AVX2=ON', '-DGGML_FMA=ON', '-DGGML_F16C=ON'] : []),
   ];
   sh('cmake', flags, root);
@@ -96,9 +97,24 @@ function build(arch) {
     .map((l) => l.trim().split(' ')[0])
     .filter((l) => l && !l.startsWith('/System/') && !l.startsWith('/usr/lib/'));
   if (libs.length > 0) throw new Error(`build-sdcpp: 시스템 밖 라이브러리를 쓴다: ${libs.join(', ')}`);
-  // 같은 arch 맥이면 켜지는지까지 본다
+  // 켜지는지까지 본다. 같은 arch 맥이면 그대로, Apple 칩 맥(CI)에서 만든 인텔용은 로제타로
   if (process.arch === arch) execFileSync(dest, ['--help'], { stdio: 'ignore' });
+  else if (arch === 'x64' && process.arch === 'arm64') smokeUnderRosetta(dest);
   console.log(`  • build-sdcpp: ${dest} (${Math.round(statSync(dest).size / 1e6)}MB, ${archs})`);
+}
+
+/**
+ * 인텔용 sd-cli 를 로제타로 켜 본다 (CI 는 Apple 칩 맥이라 이것이 인텔용을 켜 보는 유일한 자리).
+ * 로제타는 macOS 15 부터 AVX2 를 흉내 낸다. 그 앞 macOS 에서 실패하면 빌드 탓이 아닐 수 있어 경고만 한다
+ */
+function smokeUnderRosetta(dest) {
+  try {
+    execFileSync('/usr/bin/arch', ['-x86_64', dest, '--help'], { stdio: 'ignore' });
+  } catch (err) {
+    const major = Number.parseInt(out('/usr/bin/sw_vers', ['-productVersion']), 10);
+    if (major >= 15) throw new Error(`build-sdcpp: 인텔용 ${dest} 가 로제타에서 켜지지 않는다 (${err.message})`);
+    console.warn(`  • build-sdcpp: macOS ${major} 로제타는 AVX2 가 없어 인텔용 켜 보기를 건너뛴다`);
+  }
 }
 
 checkout();

@@ -229,8 +229,12 @@ export function run(
         exitCode: code,
         phase: o.phase,
       });
+      // 끝 코드도 붙인다 (윈도우가 죽였다는 0xC0000005 같은 값으로 그래픽 드라이버 탓인지 본다, sdcpp.ts)
       reject(
-        new LocalDrawError(kind, `${cmd.split(/[\\/]/).pop()} exit ${code ?? signal}: ${tail(text, 300)}`),
+        Object.assign(
+          new LocalDrawError(kind, `${cmd.split(/[\\/]/).pop()} exit ${code ?? signal}: ${tail(text, 300)}`),
+          { exitCode: code },
+        ),
       );
     };
     let settled = false;
@@ -321,6 +325,17 @@ export async function stopJob(): Promise<void> {
   // 자식이 TERM 을 무시해도 3초 뒤 KILL 이 간다. 그래도 안 끝나면 더 기다리지 않는다
   await Promise.race([j.done, sleep(8000)]);
 }
+
+/**
+ * 이 엔진 폴더(root)의 일일 때만 멈추고 기다린다 (지우기 전에). 다른 엔진의 일은 건드리지 않는다:
+ * sd.cpp 폴더를 지운다고 mflux 로 그리던 것이 멈추면 안 된다 (Apple 칩 Mac 은 둘 다 있을 수 있다)
+ */
+export async function stopJobFor(root: string): Promise<void> {
+  if (job?.runPid.root === root) await stopJob();
+}
+
+/** 이 엔진 폴더(root)를 쓰는 일이 아직 도는지 */
+export const jobBusyFor = (root: string) => job?.runPid.root === root;
 
 /** 앱을 끌 때: 기다리지 않고 자식을 끈다 */
 export function stopJobNow() {

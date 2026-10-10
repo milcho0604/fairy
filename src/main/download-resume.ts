@@ -19,3 +19,29 @@ export function resumeAccepted(
   const m = /^bytes\s+(\d+)-\d*\/(\d+|\*)$/i.exec((contentRange ?? '').trim());
   return !!m && Number(m[1]) === from;
 }
+
+/**
+ * 이어 받는 .part 이름. 받을 파일의 해시 앞 8자를 넣어 그 판에 묶는다: 고정한 판(해시)을 바꾸면 옛 판의 반쪽에
+ * 새 판의 뒤쪽이 이어 붙어 몇 GB 를 받고 나서야 해시가 틀리는 일이 없게 (옛 이름은 그냥 남은 찌꺼기로 지운다)
+ */
+export const partPath = (path: string, sha256: string) => `${path}.${sha256.slice(0, 8)}.part`;
+
+/** .part 가 이미 끝까지 받아졌는지 (해시만 맞으면 다시 받지 않고 제자리로 옮긴다) */
+export const partComplete = (partSize: number, total: number) =>
+  Number.isFinite(partSize) && total > 0 && partSize === total;
+
+/**
+ * 서버 답을 어떻게 쓸지. resume 이어 붙이기, fresh 처음부터 새로 쓰기, retry Range 없이 다시 부탁하기.
+ * 206 인데 Content-Range 시작이 부탁한 자리와 다르면 몸통은 파일 일부일 뿐이라 통째 파일로 쓰면 안 된다
+ * (해시가 틀려 처음부터 다시 받게 된다) → 받지 않고 Range 없이 다시
+ */
+export function rangeVerdict(
+  status: number,
+  contentRange: string | null | undefined,
+  from: number,
+): 'resume' | 'fresh' | 'retry' {
+  if (from > 0 && status === 206) return resumeAccepted(status, contentRange, from) ? 'resume' : 'retry';
+  // Range 를 안 보냈는데 206(일부)이면 역시 통째 파일이 아니다
+  if (from <= 0 && status === 206) return 'retry';
+  return 'fresh';
+}
