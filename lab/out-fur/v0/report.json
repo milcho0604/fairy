@@ -1,0 +1,30 @@
+{
+  "prompt": {
+    "note": "current",
+    "extra": "",
+    "guidance": 2.5
+  },
+  "report": [
+    {
+      "v": 0,
+      "note": "current",
+      "job": "cat-adult",
+      "ok": true,
+      "ms": 29724
+    },
+    {
+      "v": 0,
+      "note": "current",
+      "job": "cat-teen",
+      "ok": true,
+      "ms": 30087
+    },
+    {
+      "v": 0,
+      "note": "current",
+      "job": "poodle-adult",
+      "ok": true,
+      "ms": 30079
+    }
+  ]
+}
