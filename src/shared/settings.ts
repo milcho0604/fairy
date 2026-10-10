@@ -5,6 +5,7 @@ import { type FocusLength, isFocusLength } from './focus.ts';
 import { type LangPref, t } from './i18n/index.ts';
 import { cleanIcsUrl } from './ics.ts';
 import { type AgeStage, isAgeStage } from './illustrate.ts';
+import { type IllustEngine, isIllustEngine } from './local-draw.ts';
 import { GAITS, type Gait } from './pet3d/blueprint.ts';
 import { cleanWish } from './pet3d/prompt.ts';
 import { DEFAULT_ROUTINE, parseRoutine, type Routine } from './routine.ts';
@@ -121,6 +122,11 @@ export interface Settings {
    * 기본 꺼짐(예전처럼 켤 때 브리핑). 켜 두면 만나지 않는 요일이 삐짐 쉬는 날도 된다(restDays 대신, routine.ts restDaysOf)
    */
   routine: Routine;
+  /**
+   * AI 일러스트를 어디서 그릴지 (2026-10-10). cloud 무료 서버(하루 몇 번), mac 이 Mac 에서(횟수 제한 없음, 처음 한 번 준비).
+   * 기본 cloud: mac 은 16GB 를 받아야 해서 사용자가 고른다. 고를 수 없는 컴퓨터면 저장된 값이 mac 이어도 창이 cloud 로 쓴다
+   */
+  illustEngine: IllustEngine;
 }
 
 /** 보관한 사진 펫. 파일은 pets/ 안 */
@@ -293,6 +299,7 @@ export const DEFAULT_SETTINGS: Settings = {
   petGaits: {},
   petWishes: {},
   routine: DEFAULT_ROUTINE,
+  illustEngine: 'cloud',
 };
 
 export const PET_NAME_MAX = 12;
@@ -431,6 +438,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     sounds: bool(r.sounds, base.sounds),
     boost: bool(r.boost, base.boost),
     routine: parseRoutine(r.routine, base.routine),
+    illustEngine: isIllustEngine(r.illustEngine) ? r.illustEngine : base.illustEngine,
     ...bodiesOf(r, base),
     ...(typeof r.skipVersion === 'string' && /^\d+\.\d+\.\d+/.test(r.skipVersion)
       ? { skipVersion: r.skipVersion.slice(0, 32) }

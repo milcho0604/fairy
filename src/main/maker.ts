@@ -22,6 +22,7 @@ import {
   MODEL_URL,
   type PetImages,
 } from '../shared/ipc.ts';
+import { isIllustEngine, LOCAL_DRAW_GB } from '../shared/local-draw.ts';
 import { type Blueprint, type Gait, parseBlueprint } from '../shared/pet3d/blueprint.ts';
 import {
   BLUEPRINT_SYSTEM,
@@ -35,9 +36,17 @@ import { CUSTOM_FOOD_COST } from '../shared/shop.ts';
 import { BG_MODEL, ensureModel, modelReady, verifiedModelUrl } from './bg-model.ts';
 import { DEPTH_MODEL, depthReady, ensureDepthModel, verifiedDepthUrl } from './depth-model.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
-import { IllustError, type IllustErrorKind, illustrateFluffy, imageKind } from './hf-illust.ts';
+import {
+  IllustError,
+  type IllustErrorKind,
+  type ImageKind,
+  illustrateFluffy,
+  imageKind,
+} from './hf-illust.ts';
 import { hfToken } from './hf-token.ts';
 import { langArg } from './lang.ts';
+import { illustrateLocal, localDrawInfo, setupLocalDraw } from './local-draw.ts';
+import { LocalDrawError, type LocalDrawErrorKind } from './local-draw-core.ts';
 import { library } from './pet-library.ts';
 import { readFileIn, writeFileAtomic } from './safe-file.ts';
 import { settings } from './settings.ts';
@@ -192,6 +201,8 @@ export function createMaker(
               std: DEPTH_MODEL.std,
             },
             hfToken: hfToken.has(),
+            localDraw: localDrawInfo(),
+            illustEngine: settings.get().illustEngine,
           }
         : undefined,
   );
@@ -302,62 +313,131 @@ export function createMaker(
     return model ? { ok: true, model } : { ok: false, error: t('main.maker.shapeBad') };
   });
 
-  // AI 일러스트 (2026-10-09): 사용자가 고를 때만 사진을 Hugging Face 무료 Space 로 보낸다. 사진, 요청문, 토큰은 기록에 남기지 않는다
-  ipcMain.handle(MAKER.illustrate, async (e, photoRaw: unknown, ageRaw: unknown, wishRaw?: unknown) => {
-    const failed = (kind: IllustErrorKind | 'reopen' | 'format') => ({
-      ok: false as const,
-      kind,
-      error:
-        kind === 'reopen'
-          ? t('main.maker.reopen')
-          : kind === 'format'
-            ? t('main.maker.badFormat')
-            : illustText(kind),
-    });
-    if (!fromMaker(e) || target !== 'main') return failed('reopen');
-    if (!isAgeStage(ageRaw)) return failed('format');
-    if (wishRaw != null && (typeof wishRaw !== 'string' || wishRaw.length > ILLUST_WISH_MAX * 4))
-      return failed('format');
-    const m = typeof photoRaw === 'string' ? /^data:image\/(jpeg|png);base64,/.exec(photoRaw) : null;
-    if (!m || typeof photoRaw !== 'string') return failed('format');
-    const photo = Buffer.from(photoRaw.slice(m[0].length), 'base64');
-    const kind = imageKind(photo);
-    if ((kind !== 'jpeg' && kind !== 'png') || photo.length > MAX_PNG_BYTES) return failed('format');
-    drawing?.abort();
-    const abort = new AbortController();
-    drawing = abort;
+  // AI 일러스트 (2026-10-09): 사용자가 고를 때만 사진을 Hugging Face 무료 Space 로 보낸다. 사진, 요청문, 토큰은 기록에 남기지 않는다.
+  // 내 Mac에서(engine mac, 2026-10-10)는 사진이 이 Mac 밖으로 나가지 않는다 (local-draw.ts)
+  ipcMain.handle(
+    MAKER.illustrate,
+    async (e, photoRaw: unknown, ageRaw: unknown, wishRaw?: unknown, engineRaw?: unknown) => {
+      const failed = (kind: IllustErrorKind | 'reopen' | 'format') => ({
+        ok: false as const,
+        kind,
+        error:
+          kind === 'reopen'
+            ? t('main.maker.reopen')
+            : kind === 'format'
+              ? t('main.maker.badFormat')
+              : illustText(kind),
+      });
+      if (!fromMaker(e) || target !== 'main') return failed('reopen');
+      if (!isAgeStage(ageRaw)) return failed('format');
+      if (engineRaw != null && !isIllustEngine(engineRaw)) return failed('format');
+      if (wishRaw != null && (typeof wishRaw !== 'string' || wishRaw.length > ILLUST_WISH_MAX * 4))
+        return failed('format');
+      const m = typeof photoRaw === 'string' ? /^data:image\/(jpeg|png);base64,/.exec(photoRaw) : null;
+      if (!m || typeof photoRaw !== 'string') return failed('format');
+      const photo = Buffer.from(photoRaw.slice(m[0].length), 'base64');
+      const kind = imageKind(photo);
+      if ((kind !== 'jpeg' && kind !== 'png') || photo.length > MAX_PNG_BYTES) return failed('format');
+      drawing?.abort();
+      const abort = new AbortController();
+      drawing = abort;
+      if (engineRaw === 'mac') {
+        try {
+          const r = await illustrateLocal(photo, kind, illustratePrompt(ageRaw, wishRaw), {
+            signal: abort.signal,
+            onProgress: (ratio) => {
+              if (win && !win.isDestroyed()) win.webContents.send(MAKER.progress, ratio);
+            },
+            log,
+          });
+          log(
+            'maker',
+            'illust',
+            'local',
+            ageRaw,
+            r.fur ? 'fur' : 'no fur',
+            `${Math.round(r.bytes.length / 1024)}KB`,
+          );
+          return {
+            ok: true as const,
+            image: dataUrlFrom(r.bytes, r.kind),
+            ...(r.before ? { before: dataUrlFrom(r.before.bytes, r.before.kind) } : {}),
+          };
+        } catch (err) {
+          const k: LocalDrawErrorKind = err instanceof LocalDrawError ? err.kind : 'failed';
+          if (!(err instanceof LocalDrawError))
+            log('maker', 'illust local', err instanceof Error ? err.message : String(err));
+          return { ok: false as const, kind: k, error: localDrawText(k, 'draw') };
+        } finally {
+          if (drawing === abort) drawing = undefined;
+        }
+      }
+      try {
+        // 그린 뒤 털 다듬기까지 (다리 털이 매끈하게 나왔다, hf-illust.ts FUR_PROMPT)
+        const r = await illustrateFluffy(
+          photo,
+          kind === 'png' ? 'image/png' : 'image/jpeg',
+          illustratePrompt(ageRaw, wishRaw),
+          {
+            // 운영체제 프록시를 따르는 Electron fetch
+            fetch: (url, init) => net.fetch(url, init),
+            token: hfToken.get(),
+            signal: abort.signal,
+            log,
+          },
+        );
+        log(
+          'maker',
+          'illust',
+          r.space,
+          ageRaw,
+          r.fur ? 'fur' : 'no fur',
+          `${Math.round(r.bytes.length / 1024)}KB`,
+        );
+        return {
+          ok: true as const,
+          image: dataUrlFrom(r.bytes, r.kind),
+          // 털 다듬기 전 그림: 창이 털색을 비교해 되돌리거나 맞춘다 (shared/color-match.ts)
+          ...(r.before ? { before: dataUrlFrom(r.before.bytes, r.before.kind) } : {}),
+        };
+      } catch (err) {
+        const k = err instanceof IllustError ? err.kind : 'busy';
+        if (!(err instanceof IllustError))
+          log('maker', 'illust', err instanceof Error ? err.message : String(err));
+        return failed(k);
+      } finally {
+        if (drawing === abort) drawing = undefined;
+      }
+    },
+  );
+
+  // 내 Mac에서 그리기 준비 (처음 한 번 16GB 쯤 받기). 그만두기, 창 닫기로 멈추고 다음에 이어서 한다
+  ipcMain.handle(MAKER.setupLocalDraw, async (e) => {
+    if (!fromMaker(e)) return { ok: false, kind: 'reopen', error: t('main.maker.reopen') };
+    const ac = new AbortController();
+    download = ac;
     try {
-      // 그린 뒤 털 다듬기까지 (다리 털이 매끈하게 나왔다, hf-illust.ts FUR_PROMPT)
-      const r = await illustrateFluffy(
-        photo,
-        kind === 'png' ? 'image/png' : 'image/jpeg',
-        illustratePrompt(ageRaw, wishRaw),
-        {
-          // 운영체제 프록시를 따르는 Electron fetch
-          fetch: (url, init) => net.fetch(url, init),
-          token: hfToken.get(),
-          signal: abort.signal,
-          log,
+      await setupLocalDraw(
+        (ratio) => {
+          if (win && !win.isDestroyed()) win.webContents.send(MAKER.progress, ratio);
         },
+        ac.signal,
+        log,
       );
-      const mime = r.kind === 'jpeg' ? 'image/jpeg' : `image/${r.kind}`;
-      log(
-        'maker',
-        'illust',
-        r.space,
-        ageRaw,
-        r.fur ? 'fur' : 'no fur',
-        `${Math.round(r.bytes.length / 1024)}KB`,
-      );
-      return { ok: true as const, image: `data:${mime};base64,${Buffer.from(r.bytes).toString('base64')}` };
+      return { ok: true };
     } catch (err) {
-      const k = err instanceof IllustError ? err.kind : 'busy';
-      if (!(err instanceof IllustError))
-        log('maker', 'illust', err instanceof Error ? err.message : String(err));
-      return failed(k);
+      const k: LocalDrawErrorKind = err instanceof LocalDrawError ? err.kind : 'failed';
+      if (!(err instanceof LocalDrawError))
+        log('maker', 'local setup', err instanceof Error ? err.message : String(err));
+      return { ok: false, kind: k, error: localDrawText(k, 'setup') };
     } finally {
-      if (drawing === abort) drawing = undefined;
+      if (download === ac) download = undefined;
     }
+  });
+
+  ipcMain.handle(MAKER.setIllustEngine, (e, raw: unknown) => {
+    if (fromMaker(e) && isIllustEngine(raw)) settings.set({ illustEngine: raw });
+    return settings.get().illustEngine;
   });
 
   ipcMain.handle(MAKER.setHfToken, (e, raw: unknown) => {
@@ -621,6 +701,42 @@ function illustText(kind: IllustErrorKind): string {
     default:
       return t('main.illust.down');
   }
+}
+
+/** 내 Mac에서 그리기 실패 종류마다 화면 글. 준비와 그리기에서 멈춤 글만 다르다 */
+function localDrawText(kind: LocalDrawErrorKind, phase: 'setup' | 'draw'): string {
+  switch (kind) {
+    case 'unsupported':
+      return t('main.localDraw.unsupported');
+    case 'notReady':
+      return t('main.localDraw.notReady');
+    case 'busy':
+      return t('main.localDraw.busy');
+    case 'disk':
+      return phase === 'setup'
+        ? t('main.localDraw.diskSetup', { gb: LOCAL_DRAW_GB.free })
+        : t('main.localDraw.disk');
+    case 'offline':
+      return t('main.localDraw.offline');
+    case 'memory':
+      return t('main.localDraw.memory');
+    case 'battery':
+      return t('main.localDraw.battery');
+    case 'timeout':
+      return t('main.localDraw.timeout');
+    case 'cancelled':
+      return t(phase === 'setup' ? 'main.localDraw.setupCancelled' : 'main.illust.cancelled');
+    case 'bad':
+      return t('main.localDraw.bad');
+    default:
+      return t(phase === 'setup' ? 'main.localDraw.setupFailed' : 'main.localDraw.failed');
+  }
+}
+
+/** 그림 바이트를 data URL 로 (머리말로 본 형식) */
+function dataUrlFrom(bytes: Uint8Array, kind: ImageKind): string {
+  const mime = kind === 'jpeg' ? 'image/jpeg' : `image/${kind}`;
+  return `data:${mime};base64,${Buffer.from(bytes).toString('base64')}`;
 }
 
 /** 커스텀 먹이 그림 (data URL). 없으면 빈 글 */

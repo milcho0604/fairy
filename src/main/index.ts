@@ -29,6 +29,7 @@ import { confineTestDisplay } from './focus.ts';
 import { createFriends } from './friends.ts';
 import { createHouseRest } from './house-rest.ts';
 import { initLang } from './lang.ts';
+import { stopLocalDrawNow } from './local-draw.ts';
 import { createLogFile } from './log-file.ts';
 import { createLookTogether } from './look-together.ts';
 import {
@@ -949,6 +950,8 @@ ready.then(() => {
   }, log);
   app.on('will-quit', () => {
     stopLocal();
+    // 내 Mac에서 그리기(파이썬)를 남겨 두지 않는다
+    stopLocalDrawNow();
     // 답을 기다리던 AI CLI 를 프로세스 묶음째 끝낸다 (생각만 하는 중이면 끄고 나서도 남았다)
     stopAllAi();
     for (const acc of registered) globalShortcut.unregister(acc);

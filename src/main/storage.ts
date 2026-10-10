@@ -10,6 +10,7 @@ import { localBusy, localModelPath, stopLocal } from './ai/local.ts';
 import { BG_MODEL } from './bg-model.ts';
 import { DEPTH_MODEL } from './depth-model.ts';
 import { forgetVerified, isReceiving } from './download.ts';
+import { localDrawBytes, removeLocalDraw } from './local-draw.ts';
 
 const modelsDir = () => join(app.getPath('userData'), 'models');
 
@@ -45,6 +46,9 @@ const sizeOf = (path: string) => {
   }
 };
 
+/** 내 Mac에서 그리기 (uv, 파이썬, mflux, 줄인 모델이 든 local-draw/ 폴더 통째) */
+const LOCAL_DRAW_ID = 'localDraw';
+
 /** 지금 디스크에 있는 모델 (받다 만 .part 도 같이 센다) */
 export function storedModels(catalog: Catalog): StoredModel[] {
   const out: StoredModel[] = [];
@@ -52,6 +56,10 @@ export function storedModels(catalog: Catalog): StoredModel[] {
     const bytes = sizeOf(k.path) + sizeOf(`${k.path}.part`);
     if (bytes > 0) out.push({ id: k.id, label: k.label, kind: k.kind, bytes });
   }
+  // 준비하다 멈춘 것(원본 받는 중)도 보여서 지울 수 있게
+  const drawBytes = localDrawBytes();
+  if (drawBytes > 0)
+    out.push({ id: LOCAL_DRAW_ID, label: t('settings.storage.localDraw'), kind: 'draw', bytes: drawBytes });
   // 목록에서 빠진 옛 무료 AI 모델 파일도 지울 수 있게
   const llmDir = join(modelsDir(), 'llm');
   if (existsSync(llmDir)) {
@@ -74,9 +82,15 @@ export function storedModels(catalog: Catalog): StoredModel[] {
 
 /**
  * 모델 하나를 지운다. 받는 중이거나 무료 AI 가 답하는 중이면 지우지 않는다(false).
- * 무료 AI 는 먼저 일꾼을 끝낸다 (파일을 연 채라서, 윈도우는 열린 파일을 못 지운다)
+ * 무료 AI 는 먼저 일꾼을 끝낸다 (파일을 연 채라서, 윈도우는 열린 파일을 못 지운다).
+ * 내 Mac에서 그리기는 준비나 그리기가 돌고 있어도 먼저 멈추고 지운다 (몇 GB 를 쥔 채 기다리게 하지 않는다)
  */
-export function removeModel(catalog: Catalog, id: string): boolean {
+export async function removeModel(
+  catalog: Catalog,
+  id: string,
+  log?: (tag: string, ...rest: unknown[]) => void,
+): Promise<boolean> {
+  if (id === LOCAL_DRAW_ID) return removeLocalDraw(log);
   let path: string;
   let llm: boolean;
   if (id.startsWith('file:')) {

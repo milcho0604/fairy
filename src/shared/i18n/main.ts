@@ -88,6 +88,25 @@ export const ko = {
   'main.illust.bad': '그림 서버가 새 그림을 주지 않았어. 다시 그려 보거나 사진 그대로 해 줘.',
   'main.illust.down': '무료 그림 서버가 지금 바쁘거나 쉬는 중이야. 조금 있다가 다시 해 줘.',
   'main.illust.tokenShape': '토큰 모양이 이상해. hf_로 시작하는 토큰을 붙여 넣어 줘.',
+  // 내 Mac에서 그리기 (2026-10-10)
+  'main.localDraw.unsupported':
+    '이 Mac에서는 그릴 수 없어. Apple 칩(M1 이상), macOS 14 이상, 메모리 8GB 이상이 필요해.',
+  'main.localDraw.notReady': '그림 도구가 아직 준비되지 않았거나 망가졌어. 준비하기를 다시 눌러 줘.',
+  'main.localDraw.busy': '이미 그리거나 준비하는 중이야. 끝나면 다시 해 줘.',
+  'main.localDraw.diskSetup': (v: { gb: number }) =>
+    `저장 공간이 모자라. 준비하는 동안 ${v.gb}GB쯤 비어 있어야 해. 공간을 비우고 다시 눌러 줘.`,
+  'main.localDraw.disk': '저장 공간이 모자라서 그리지 못했어. 1GB쯤 비우고 다시 해 줘.',
+  'main.localDraw.offline':
+    '받는 중에 인터넷 연결이 끊겼어. 연결을 보고 준비하기를 다시 눌러 줘. 받은 데까지는 이어서 받아.',
+  'main.localDraw.memory': '메모리가 모자라서 멈췄어. 다른 앱을 닫고 다시 해 줘.',
+  'main.localDraw.battery': '배터리가 거의 없어서 멈췄어. 전원을 꽂고 다시 해 줘.',
+  'main.localDraw.timeout': '너무 오래 걸려서 멈췄어. 다른 앱을 닫고 다시 해 줘.',
+  'main.localDraw.setupCancelled': '준비를 멈췄어. 다시 누르면 받은 데부터 이어서 해.',
+  'main.localDraw.bad': '그림이 제대로 나오지 않았어. 다시 그려 보거나 사진 그대로 해 줘.',
+  'main.localDraw.setupFailed':
+    '준비하다가 멈췄어. 다시 눌러 보고, 계속되면 설정의 저장 공간에서 지운 뒤 처음부터 해 줘. 자세한 기록은 local-draw 폴더에 남겼어.',
+  'main.localDraw.failed':
+    '그림 도구가 멈췄어. 다시 해 보고, 계속되면 설정의 저장 공간에서 지운 뒤 다시 준비해 줘. 자세한 기록은 local-draw 폴더에 남겼어.',
   'main.remake.notFigure': '입체 피규어로 만든 사진 펫만 몸을 다시 만들 수 있어.',
   'main.remake.changed': '그사이 펫이 바뀌어서 새 몸은 버렸어.',
   'main.db.recovered':
@@ -187,6 +206,24 @@ export const en: Translation<typeof ko> = {
   'main.illust.bad': "The drawing server didn't send a new picture. Draw again, or use the photo as is.",
   'main.illust.down': 'The free drawing server is busy or resting right now. Try again in a bit.',
   'main.illust.tokenShape': "That doesn't look like a token. Paste one that starts with hf_.",
+  'main.localDraw.unsupported':
+    "This Mac can't draw locally. It needs an Apple chip (M1 or later), macOS 14 or later and 8 GB of memory or more.",
+  'main.localDraw.notReady': "The drawing tools aren't ready or are broken. Press Set up again.",
+  'main.localDraw.busy': "I'm already drawing or setting up. Try again when it's done.",
+  'main.localDraw.diskSetup': (v) =>
+    `Not enough disk space. Setup needs about ${v.gb} GB free. Free up some space and press Set up again.`,
+  'main.localDraw.disk': 'Not enough disk space to draw. Free up about 1 GB and try again.',
+  'main.localDraw.offline':
+    'The internet connection dropped while downloading. Check it and press Set up again. It picks up where it left off.',
+  'main.localDraw.memory': 'Ran out of memory, so I stopped. Close other apps and try again.',
+  'main.localDraw.battery': 'The battery is almost empty, so I stopped. Plug in and try again.',
+  'main.localDraw.timeout': 'It took too long, so I stopped. Close other apps and try again.',
+  'main.localDraw.setupCancelled': 'Setup stopped. Press it again to continue from where it left off.',
+  'main.localDraw.bad': "The drawing didn't come out right. Draw again, or use the photo as is.",
+  'main.localDraw.setupFailed':
+    'Setup stopped with an error. Try again, and if it keeps failing, delete it in Settings > Storage and start over. Details are in the local-draw folder.',
+  'main.localDraw.failed':
+    'The drawing tools stopped with an error. Try again, and if it keeps failing, delete them in Settings > Storage and set up again. Details are in the local-draw folder.',
   'main.remake.notFigure': 'Only photo pets made as a 3D figure can get a new body.',
   'main.remake.changed': 'The pet changed in the meantime, so the new body was dropped.',
   'main.db.recovered':

@@ -667,3 +667,19 @@ section {
 .actions.wrap {
   flex-wrap: wrap;
 }
+
+/* 내 Mac에서 그리기 (2026-10-10): 그리는 곳 고르기, 처음 준비 안내, 무료 서버가 막혔을 때 이어 그리기 */
+.segmented.engine {
+  align-self: flex-start;
+  flex-wrap: wrap;
+}
+
+.local-setup {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}

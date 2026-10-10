@@ -10,6 +10,7 @@ import {
   toGray,
 } from '../../../shared/illustrate.ts';
 import { DEPTH_URL, type MakerInfo, MODEL_URL, type PetLook } from '../../../shared/ipc.ts';
+import { type IllustEngine, LOCAL_DRAW_GB, SETUP_STAGES, setupStageOf } from '../../../shared/local-draw.ts';
 import { contentBox, defringe, keptRatio, stroke } from '../../../shared/mask.ts';
 import type { Blueprint } from '../../../shared/pet3d/blueprint.ts';
 import { cleanWish, WISH_MAX } from '../../../shared/pet3d/prompt.ts';
@@ -26,6 +27,7 @@ import { browserStore, loadExpected, saveDuration } from '../make-progress.ts';
 import { PetNameInput } from '../PetNameInput.tsx';
 import { Pet3D } from '../pet3d.ts';
 import { openDepth, predictDepth } from './depth.ts';
+import { settleFur } from './fur-color.ts';
 import { backend, modelOpen, openModel, predictMask } from './removeBg.ts';
 import { ShownError, shownErrorText } from './shown-error.ts';
 import { FIGURE_LIMITS, RELIEF_LIMITS, Spinner } from './spin.ts';
@@ -47,7 +49,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** 지난번 걸린 시간을 두는 곳 (못 쓰면 기본 예상 시간) */
 const store = browserStore;
 
-type Step = 'pick' | 'illust' | 'model' | 'working' | 'edit' | 'name' | 'saving' | 'done';
+type Step = 'pick' | 'setup' | 'illust' | 'model' | 'working' | 'edit' | 'name' | 'saving' | 'done';
+
+/** 무료 서버가 오늘 더 못 그린다는 실패 (내 Mac에서 그리기를 권한다) */
+const CLOUD_STUCK = ['quota', 'refused', 'limit'];
 
 /** AI 일러스트 한 번: 고른 사진(원본 파일, 보낼 JPEG, 진행 판 사진), 받은 그림, 그린 나이, 그리는 중인지 */
 interface Illust {
@@ -58,6 +63,8 @@ interface Illust {
   age: AgeStage;
   busy: boolean;
   at: number;
+  /** 지금(또는 마지막으로) 그린 곳 */
+  engine: IllustEngine;
 }
 
 interface Work {
@@ -123,10 +130,18 @@ export function MakerApp() {
   const autoRelief = useRef(false);
   const [tokenDraft, setTokenDraft] = useState('');
   const [tokenNote, setTokenNote] = useState('');
+  // 내 Mac에서 그리기 (2026-10-10): 고른 곳(설정에 남는다), 준비 시작한 때, 준비가 끝나면 이어서 그릴 사진, 돌아갈 화면
+  const [engine, setEngine] = useState<IllustEngine>('cloud');
+  const [setupAt, setSetupAt] = useState(0);
+  const pendingDraw = useRef<{ photo: string; age: AgeStage; wish: string }>(undefined);
+  const setupBack = useRef<'pick' | 'illust'>('pick');
+  // 무료 서버가 오늘 횟수 끝으로 막혔는지 (그림 화면에 내 Mac에서 그리기 단추)
+  const [cloudStuck, setCloudStuck] = useState(false);
 
   useEffect(() => {
     bridge.info().then((i) => {
       setInfo(i);
+      setEngine(i.illustEngine);
       // 이름 칸은 비워 둔다: 지금 펫 이름을 미리 채우면 보관함에 같은 이름이 쌓였다. 비우면 newPetName 이 붙는다
       setName('');
       // AI 확인(CLI 상태)은 몇 초 걸릴 수 있어 따로 받는다. 그동안 사진 고르기는 막지 않는다
@@ -143,30 +158,115 @@ export function MakerApp() {
   /** 입체로 만들기는 펫 본 그림(움직이지 않는 사진)에만 */
   const can3d = info?.target === 'main' && !animated;
   const isMain = info?.target === 'main';
+  const canLocal = !!info?.localDraw.supported;
+  /** 실제로 쓸 곳: 이 Mac 이 안 되면 저장된 값이 mac 이어도 무료 서버 */
+  const eng: IllustEngine = canLocal && engine === 'mac' ? 'mac' : 'cloud';
+  const localReady = !!info?.localDraw.ready;
+
+  const chooseEngine = (next: IllustEngine) => {
+    setEngine(next);
+    void bridge.setIllustEngine(next).catch(() => {});
+  };
 
   /** 일러스트 그리기 (처음, 다시 그리기). 받은 그림이 보낸 사진과 거의 같으면 실패로 (그대로 돌려준 답) */
-  const drawIllust = useCallback(async (photo: string, a: AgeStage, wishText: string) => {
-    const run = ++runRef.current;
-    const at = performance.now();
+  const drawIllust = useCallback(
+    async (photo: string, a: AgeStage, wishText: string, where: IllustEngine) => {
+      const run = ++runRef.current;
+      const at = performance.now();
+      setError('');
+      setNote('');
+      setCloudStuck(false);
+      // 내 Mac 은 진짜 진행률(4단계 두 번)이 온다. 무료 서버는 지난번 걸린 시간으로 어림
+      setProgress(0);
+      setIllustMs(loadExpected('illust', store()));
+      // 앞 그림은 새 그림을 받을 때까지 둔다 (다시 그리다 쿼터에 걸려도 앞 그림을 고를 수 있게)
+      setIllust((v) => v && { ...v, busy: true, at, engine: where });
+      const r = await bridge.illustrate(
+        photo,
+        a,
+        cleanWish(wishText).slice(0, ILLUST_WISH_MAX) || undefined,
+        where,
+      );
+      if (runRef.current !== run) return;
+      if (!r.ok) {
+        setError(r.error);
+        if (where === 'cloud' && CLOUD_STUCK.includes(r.kind)) setCloudStuck(true);
+        // 준비가 깨졌으면(폴더를 지움 등) 다시 준비하기가 보이게
+        if (where === 'mac' && r.kind === 'notReady')
+          setInfo((v) => v && { ...v, localDraw: { ...v.localDraw, ready: false } });
+        setIllust((v) => v && { ...v, busy: false });
+        return;
+      }
+      // 털 다듬기가 털색을 바꿨으면 되돌리거나 앞 그림 색에 맞춘다 (shared/color-match.ts)
+      const image = r.before ? await settleFur(r.image, r.before) : r.image;
+      if (runRef.current !== run) return;
+      // 사진과 거의 같으면 알려 주되, 실제로 다시 그린 그림일 수도 있으니 고를 수는 있게 둔다
+      const same = await sameAsPhoto(photo, image);
+      if (runRef.current !== run) return;
+      if (same) setError(t('maker.illust.same'));
+      else if (where === 'cloud') saveDuration('illust', performance.now() - at, store());
+      setIllust((v) => v && { ...v, image, age: a, busy: false });
+    },
+    [],
+  );
+
+  /**
+   * 내 Mac에서 그리기 준비 (처음 한 번 16GB 쯤). 그만두면 돌아간다. 다 되면 기다리던 사진이 있으면 바로 그린다
+   */
+  const runSetup = useCallback(
+    async (back: 'pick' | 'illust') => {
+      const run = ++runRef.current;
+      setupBack.current = back;
+      setError('');
+      setNote('');
+      setProgress(0);
+      setSetupAt(performance.now());
+      setStep('setup');
+      const r = await bridge.setupLocalDraw();
+      if (runRef.current !== run) return;
+      if (!r.ok) {
+        pendingDraw.current = undefined;
+        setError(r.error);
+        setStep(back);
+        return;
+      }
+      setInfo((v) => v && { ...v, localDraw: { ...v.localDraw, ready: true } });
+      const p = pendingDraw.current;
+      pendingDraw.current = undefined;
+      if (p) {
+        setStep('illust');
+        await drawIllust(p.photo, p.age, p.wish, 'mac');
+        return;
+      }
+      setStep(back);
+      setNote(t(back === 'pick' ? 'maker.engine.readyNote' : 'maker.engine.ready'));
+    },
+    [drawIllust],
+  );
+
+  /** 준비를 그만둔다 (메인이 받기와 설치를 멈춘다. 다음에 받은 데부터 이어서) */
+  const stopSetup = () => {
+    runRef.current++;
+    pendingDraw.current = undefined;
+    bridge.cancel();
     setError('');
-    setNote('');
-    setIllustMs(loadExpected('illust', store()));
-    // 앞 그림은 새 그림을 받을 때까지 둔다 (다시 그리다 쿼터에 걸려도 앞 그림을 고를 수 있게)
-    setIllust((v) => v && { ...v, busy: true, at });
-    const r = await bridge.illustrate(photo, a, cleanWish(wishText).slice(0, ILLUST_WISH_MAX) || undefined);
-    if (runRef.current !== run) return;
-    if (!r.ok) {
-      setError(r.error);
-      setIllust((v) => v && { ...v, busy: false });
-      return;
-    }
-    // 사진과 거의 같으면 알려 주되, 실제로 다시 그린 그림일 수도 있으니 고를 수는 있게 둔다
-    const same = await sameAsPhoto(photo, r.image);
-    if (runRef.current !== run) return;
-    if (same) setError(t('maker.illust.same'));
-    else saveDuration('illust', performance.now() - at, store());
-    setIllust((v) => v && { ...v, image: r.image, age: a, busy: false });
-  }, []);
+    setNote(t('maker.progress.stopped'));
+    setStep(setupBack.current);
+  };
+
+  /** 이 사진을 이 Mac 에서 그린다. 준비가 안 됐으면 준비부터 하고 이어서 */
+  const drawOnMac = useCallback(
+    (photo: string, a: AgeStage, wishText: string, back: 'pick' | 'illust') => {
+      if (localReady) {
+        setStep('illust');
+        void drawIllust(photo, a, wishText, 'mac');
+        return;
+      }
+      pendingDraw.current = { photo, age: a, wish: wishText };
+      void runSetup(back);
+    },
+    [localReady, drawIllust, runSetup],
+  );
 
   const start = useCallback(
     async (file: Blob, opts: { age?: AgeStage; plain?: boolean; back?: 'illust' } = {}) => {
@@ -198,9 +298,22 @@ export function MakerApp() {
         // AI 일러스트: 사진을 JPEG 로 보내 그림을 받고, 사용자가 고르면 그 그림으로 다시 시작한다
         if (how === 'illust' && info.target === 'main' && !opts.plain && !opts.age) {
           const jpeg = onWhite(photo).toDataURL('image/jpeg', 0.92);
-          setIllust({ file, photo: jpeg, thumb: thumbOf(photo), image: '', age, busy: true, at: 0 });
+          setIllust({
+            file,
+            photo: jpeg,
+            thumb: thumbOf(photo),
+            image: '',
+            age,
+            busy: eng === 'cloud' || localReady,
+            at: 0,
+            engine: eng,
+          });
+          if (eng === 'mac') {
+            drawOnMac(jpeg, age, illustWish, 'pick');
+            return;
+          }
           setStep('illust');
-          await drawIllust(jpeg, age, illustWish);
+          await drawIllust(jpeg, age, illustWish, 'cloud');
           return;
         }
         setMadeAge(opts.age);
@@ -247,7 +360,7 @@ export function MakerApp() {
         setStep(backRef.current);
       }
     },
-    [info, how, age, illustWish, drawIllust],
+    [info, how, age, illustWish, drawIllust, eng, localReady, drawOnMac],
   );
 
   // 그리기가 끝나면 (진행 화면이 사라져 포커스가 body 로 빠진다) 다음에 누를 단추로
@@ -546,7 +659,7 @@ export function MakerApp() {
   ];
 
   const steps: [Step[], string][] = [
-    [['pick', 'illust', 'model', 'working'], t('maker.step.photo')],
+    [['pick', 'setup', 'illust', 'model', 'working'], t('maker.step.photo')],
     [['edit'], t('maker.step.edit')],
     [['name', 'saving', 'done'], isPose ? t('maker.step.confirm') : t('maker.step.name')],
   ];
@@ -601,9 +714,46 @@ export function MakerApp() {
                 </fieldset>
                 {how === 'illust' && (
                   <div className="wish illust-opts">
-                    <small className="hint">{t('maker.illust.hint')}</small>
-                    {/* 사진을 고르기 전에 보이게: 이걸 고르면 사진이 밖으로 나간다 */}
-                    <p className="privacy out">{t('maker.illust.privacy')}</p>
+                    {/* 이 Mac 이 되면 그리는 곳을 고른다: 무료 서버(하루 몇 번) 또는 이 Mac (횟수 제한 없음) */}
+                    {canLocal && (
+                      <fieldset className="segmented engine" aria-label={t('maker.engine.label')}>
+                        {(['cloud', 'mac'] as const).map((k) => (
+                          <button
+                            key={k}
+                            type="button"
+                            aria-pressed={eng === k}
+                            className={eng === k ? 'on' : ''}
+                            onClick={() => chooseEngine(k)}
+                          >
+                            {t(`maker.engine.${k}`)}
+                          </button>
+                        ))}
+                      </fieldset>
+                    )}
+                    <small className="hint">
+                      {t(eng === 'mac' ? 'maker.engine.macHint' : 'maker.illust.hint')}
+                    </small>
+                    {/* 사진을 고르기 전에 보이게: 무료 서버는 사진이 밖으로 나가고, 이 Mac 은 나가지 않는다 */}
+                    {eng === 'mac' ? (
+                      <p className="privacy">{t('maker.engine.macPrivacy')}</p>
+                    ) : (
+                      <p className="privacy out">{t('maker.illust.privacy')}</p>
+                    )}
+                    {eng === 'mac' && !localReady && (
+                      <div className="local-setup">
+                        <small className="hint">
+                          {t('maker.engine.needs', {
+                            download: LOCAL_DRAW_GB.download,
+                            keep: LOCAL_DRAW_GB.keep,
+                            memory: LOCAL_DRAW_GB.memory,
+                          })}
+                        </small>
+                        <small className="hint">{t('maker.engine.setupNote')}</small>
+                        <button type="button" className="ghost" onClick={() => runSetup('pick')}>
+                          {t('maker.engine.setup')}
+                        </button>
+                      </div>
+                    )}
                     <AgePicker age={age} onAge={setAge} />
                     <label className="wish-label" htmlFor="maker-illust-wish">
                       {t('maker.illust.wish')} <small>{t('maker.wish.optional')}</small>
@@ -620,7 +770,7 @@ export function MakerApp() {
                         {t('maker.wish.count', { n: illustWish.length, max: ILLUST_WISH_MAX })}
                       </span>
                     </div>
-                    {tokenBox}
+                    {eng === 'cloud' && tokenBox}
                   </div>
                 )}
               </div>
@@ -669,13 +819,39 @@ export function MakerApp() {
           </section>
         )}
 
+        {step === 'setup' && (
+          <section className="busy">
+            <MakeProgress
+              key="setup"
+              task="download"
+              title={t('maker.engine.setupWorking')}
+              startedAt={setupAt}
+              ratio={progress}
+              totalMb={LOCAL_DRAW_GB.download * 1000}
+              stages={SETUP_STAGES.map((s, i) => {
+                const now = SETUP_STAGES.findIndex((x) => x.id === setupStageOf(progress));
+                return {
+                  label: t(`maker.engine.stage.${s.id}`),
+                  state: i < now ? 'done' : i === now ? 'now' : 'next',
+                };
+              })}
+              onStop={stopSetup}
+            />
+            <p className="hint">{t('maker.engine.setupNote')}</p>
+          </section>
+        )}
+
         {step === 'illust' && illust && (
           <section className="illust">
             {illust.busy ? (
               <MakeProgress
+                // 그리는 곳이 바뀌면 시간을 새로 센다
+                key={illust.engine}
                 task="illust"
-                title={t('maker.illust.working')}
+                title={t(illust.engine === 'mac' ? 'maker.illust.workingMac' : 'maker.illust.working')}
                 startedAt={illust.at}
+                // 이 Mac 은 진짜 진행률(그리기, 털 다듬기 4단계씩)
+                ratio={illust.engine === 'mac' ? progress : undefined}
                 expectedMs={illustMs}
                 image={illust.thumb}
                 onStop={stopIllust}
@@ -699,7 +875,33 @@ export function MakerApp() {
                 </div>
                 <AgePicker age={age} onAge={setAge} />
                 {illust.image && <p className="hint">{t('maker.illust.next')}</p>}
-                <div className="how">{tokenBox}</div>
+                {/* 무료 서버가 오늘 막혔으면 이 Mac 에서 이어 그리기 (안 되는 컴퓨터는 보이지 않는다) */}
+                {cloudStuck && canLocal && illust.engine === 'cloud' && (
+                  <div className="local-setup">
+                    <small className="hint">{t('maker.illust.tryMacHint')}</small>
+                    {!localReady && (
+                      <small className="hint">
+                        {t('maker.engine.needs', {
+                          download: LOCAL_DRAW_GB.download,
+                          keep: LOCAL_DRAW_GB.keep,
+                          memory: LOCAL_DRAW_GB.memory,
+                        })}
+                      </small>
+                    )}
+                    <small className="hint">{t('maker.engine.macPrivacy')}</small>
+                    <button
+                      type="button"
+                      className="primary"
+                      onClick={() => {
+                        chooseEngine('mac');
+                        drawOnMac(illust.photo, age, illustWish, 'illust');
+                      }}
+                    >
+                      {t('maker.illust.tryMac')}
+                    </button>
+                  </div>
+                )}
+                {eng === 'cloud' && <div className="how">{tokenBox}</div>}
                 <div className="actions wrap">
                   <button type="button" className="ghost" onClick={toPick}>
                     {t('maker.illust.otherPhoto')}
@@ -715,7 +917,11 @@ export function MakerApp() {
                     ref={againRef}
                     type="button"
                     className={illust.image ? 'ghost' : 'primary'}
-                    onClick={() => drawIllust(illust.photo, age, illustWish)}
+                    onClick={() =>
+                      eng === 'mac'
+                        ? drawOnMac(illust.photo, age, illustWish, 'illust')
+                        : drawIllust(illust.photo, age, illustWish, 'cloud')
+                    }
                   >
                     {illust.image && illust.age !== age
                       ? t(`maker.illust.againAs.${age}`)

@@ -18,6 +18,7 @@ import type { GestureEvent } from './gesture.ts';
 import type { HouseStyle } from './house-art.ts';
 import type { HouseSprites } from './house-room.ts';
 import type { AgeStage } from './illustrate.ts';
+import type { IllustEngine, LocalDrawInfo } from './local-draw.ts';
 import type { LookMotion } from './look-motion.ts';
 import type { MiniGame } from './minigames.ts';
 import type { MoveAsk } from './moves.ts';
@@ -281,7 +282,8 @@ export interface SavedPetView extends PetLookView {
 export interface StoredModel {
   id: string;
   label: string;
-  kind: 'llm' | 'bg' | 'depth';
+  /** draw: 내 Mac에서 그리기 (도구와 줄인 모델이 든 폴더 통째) */
+  kind: 'llm' | 'bg' | 'depth' | 'draw';
   bytes: number;
 }
 
@@ -512,6 +514,10 @@ export const MAKER = {
   illustrate: 'maker:illustrate',
   /** 무료 Hugging Face 토큰 넣기, 지우기 (메인에만 둔다. 창은 있는지만 안다) */
   setHfToken: 'maker:set-hf-token',
+  /** 내 Mac에서 그리기 준비 (처음 한 번 도구와 모델 받기). 진행률은 progress 로, 그만두기는 cancel */
+  setupLocalDraw: 'maker:setup-local-draw',
+  /** AI 일러스트 그리는 곳 고르기 (설정에 남긴다) */
+  setIllustEngine: 'maker:set-illust-engine',
   /** 받기(모델), 입체 만들기(AI), 일러스트 그리기를 멈춘다 (진행 표시의 그만두기) */
   cancel: 'maker:cancel',
   close: 'maker:close',
@@ -559,6 +565,10 @@ export interface MakerInfo {
   depth: { ready: boolean; mb: number; size: number; mean: readonly number[]; std: readonly number[] };
   /** 무료 Hugging Face 토큰을 넣었는지 (토큰 글은 창에 주지 않는다) */
   hfToken: boolean;
+  /** 내 Mac에서 그리기: 이 컴퓨터가 되는지, 준비됐는지 */
+  localDraw: LocalDrawInfo;
+  /** 마지막으로 고른 그리는 곳 (설정) */
+  illustEngine: IllustEngine;
 }
 
 export interface MakerBridge {
@@ -587,7 +597,21 @@ export interface MakerBridge {
     photo: string,
     age: AgeStage,
     wish?: string,
-  ): Promise<{ ok: true; image: string } | { ok: false; error: string; kind: string }>;
+    /** 어디서 그릴지. 없으면 무료 서버 */
+    engine?: IllustEngine,
+  ): Promise<
+    | {
+        ok: true;
+        image: string;
+        /** 털 다듬기 전 그림 (털 다듬기를 했을 때만). 털색이 바뀌었으면 창이 이것으로 되돌리거나 색을 맞춘다 */
+        before?: string;
+      }
+    | { ok: false; error: string; kind: string }
+  >;
+  /** 내 Mac에서 그리기 준비. 진행률은 onProgress, 그만두기는 cancel */
+  setupLocalDraw(): Promise<{ ok: true } | { ok: false; error: string; kind: string }>;
+  /** 그리는 곳을 고른다 (설정에 남긴다). 결과는 저장된 값 */
+  setIllustEngine(engine: IllustEngine): Promise<IllustEngine>;
   /** 토큰 넣기 (null 이면 지우기). 결과는 지금 토큰이 있는지 */
   setHfToken(token: string | null): Promise<{ ok: boolean; has: boolean; error?: string }>;
   /** 기본 펫으로 돌아가기 */

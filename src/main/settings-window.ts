@@ -99,8 +99,8 @@ export function createSettingsWindow({
     if (fromSettings(e) && typeof id === 'string') library.remove(id);
     return library.view();
   });
-  ipcMain.handle(SETTINGS.deleteModel, (e, id: unknown) => {
-    const ok = fromSettings(e) && typeof id === 'string' && removeModel(v2.catalog(), id);
+  ipcMain.handle(SETTINGS.deleteModel, async (e, id: unknown) => {
+    const ok = fromSettings(e) && typeof id === 'string' && (await removeModel(v2.catalog(), id));
     return { ok, storage: storedModels(v2.catalog()), localReady: localReady() };
   });
   ipcMain.handle(SETTINGS.remakeBody, (e, gait: unknown) =>

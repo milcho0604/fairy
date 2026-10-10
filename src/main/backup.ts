@@ -16,7 +16,8 @@ import { settings } from './settings.ts';
 
 /**
  * 백업에 넣는 작은 설정 파일들 (로그인 셸 PATH, codex 폴더처럼 컴퓨터마다 다른 것은 뺀다).
- * 가져올 때는 IMPORT_FILES 만 쓴다 (사용자 AI 는 옮기지 않는다)
+ * 가져올 때는 IMPORT_FILES 만 쓴다 (사용자 AI 는 옮기지 않는다).
+ * 받은 모델(models/)과 내 Mac에서 그리기 폴더(local-draw/, 5GB 쯤)는 넣지 않는다: 다른 Mac 에서 다시 받으면 된다
  */
 const FILES = ['settings', 'chat-settings', 'ai-custom', 'pet-position', 'planner'].map((n) => `${n}.json`);
 

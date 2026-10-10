@@ -234,6 +234,17 @@ test('부스트 모드: 옛 설정 파일엔 없어서 끔, 틀린 값은 지금
   assert.equal(applyPatch({ ...DEFAULT_SETTINGS, boost: true }, { boost: 'yes' }).boost, true);
 });
 
+test('AI 일러스트 그리는 곳: 옛 설정 파일엔 없어서 무료 서버, 틀린 값은 지금 값', () => {
+  assert.equal(parseSettings({ petName: '밤' }).illustEngine, 'cloud');
+  assert.equal(parseSettings({ illustEngine: 'mac' }).illustEngine, 'mac');
+  assert.equal(applyPatch(DEFAULT_SETTINGS, { illustEngine: 'mac' }).illustEngine, 'mac');
+  assert.equal(
+    applyPatch({ ...DEFAULT_SETTINGS, illustEngine: 'mac' }, { illustEngine: 'gpu' }).illustEngine,
+    'mac',
+  );
+  assert.equal(parseSettings({ illustEngine: 7 }).illustEngine, 'cloud');
+});
+
 test('하루 회고 받기: 예전 저장 파일은 그때 동작대로(조용히면 끔), 그 뒤로는 수다 빈도와 따로', () => {
   assert.equal(parseSettings({ chatter: 'quiet' }).review, false);
   assert.equal(parseSettings({ chatter: 'normal' }).review, true);

@@ -75,6 +75,28 @@ export const ko = {
   'maker.say.illust.middle': '털을 한 올씩 그리는 중',
   'maker.say.illust.almost': '눈에 반짝임을 넣는 중',
   'maker.say.illust.long': '무료 서버가 붐비나 봐. 조금만 더!',
+  // 내 Mac에서 그리기 (2026-10-10): 사진이 이 Mac 밖으로 나가지 않는다
+  'maker.engine.label': '그리는 곳',
+  'maker.engine.cloud': '무료 서버 (하루 몇 번)',
+  'maker.engine.mac': '내 Mac에서 (횟수 제한 없음)',
+  'maker.engine.macHint':
+    '이 Mac에서 직접 그려. 한 장에 2분쯤 걸리고 몇 번이든 그릴 수 있어. 그리는 동안은 Mac이 조금 바빠져.',
+  'maker.engine.macPrivacy':
+    '사진은 이 Mac 밖으로 나가지 않아. 인터넷에서는 그림 도구와 모델만 처음 한 번 받아.',
+  'maker.engine.needs':
+    '처음 한 번 준비가 필요해: 약 {download}GB를 받고, 다 되면 약 {keep}GB만 남겨. 메모리는 {memory}GB 이상이어야 해.',
+  'maker.engine.setup': '준비하기',
+  'maker.engine.setupNote': '준비는 30분쯤 걸릴 수 있어. 멈춰도 다음에 받은 데부터 이어서 해.',
+  'maker.engine.ready': '준비됐어. 이제 이 Mac에서 그릴 수 있어.',
+  'maker.engine.readyNote': '준비됐어. 사진을 골라 줘.',
+  'maker.engine.setupWorking': '그림 도구와 모델을 받는 중이야.',
+  'maker.engine.stage.uv': '도구 받기',
+  'maker.engine.stage.tools': '도구 설치',
+  'maker.engine.stage.model': '모델 받기',
+  'maker.engine.stage.pack': '모델 줄이기',
+  'maker.illust.workingMac': '이 Mac에서 AI 일러스트로 다시 그리는 중이야.',
+  'maker.illust.tryMac': '내 Mac에서 그리기',
+  'maker.illust.tryMacHint': '무료 서버 횟수가 끝나도 이 Mac에서는 계속 그릴 수 있어.',
   'maker.model.downloading': (v: { mb: number }) => `처음 한 번만 배경 지우는 도구를 받고 있어 (${v.mb}MB).`,
   'maker.working.title': '배경을 지우는 중이야.',
   // 기다리는 동안 진행 표시 (MakeProgress.tsx). 남은 시간은 진짜 진행률이나 지난번 걸린 시간으로 어림한다
@@ -273,6 +295,28 @@ export const en: Translation<typeof ko> = {
   'maker.say.illust.middle': 'Painting every bit of fur',
   'maker.say.illust.almost': 'Adding sparkle to the eyes',
   'maker.say.illust.long': 'The free server must be busy. Almost!',
+  'maker.engine.label': 'Where to draw',
+  'maker.engine.cloud': 'Free server (a few a day)',
+  'maker.engine.mac': 'On my Mac (no limit)',
+  'maker.engine.macHint':
+    'Draws right on this Mac. About 2 minutes per picture, as many times as you like. Your Mac gets a little busy while it draws.',
+  'maker.engine.macPrivacy':
+    'Your photo never leaves this Mac. Only the drawing tools and model are downloaded, once.',
+  'maker.engine.needs':
+    'Needs a one-time setup: downloads about {download} GB and keeps about {keep} GB when done. Needs {memory} GB of memory or more.',
+  'maker.engine.setup': 'Set up',
+  'maker.engine.setupNote':
+    'Setup can take about 30 minutes. If it stops, it picks up where it left off next time.',
+  'maker.engine.ready': 'All set. You can draw on this Mac now.',
+  'maker.engine.readyNote': 'All set. Pick a photo.',
+  'maker.engine.setupWorking': 'Downloading the drawing tools and model.',
+  'maker.engine.stage.uv': 'Get tools',
+  'maker.engine.stage.tools': 'Install tools',
+  'maker.engine.stage.model': 'Get model',
+  'maker.engine.stage.pack': 'Shrink model',
+  'maker.illust.workingMac': 'Redrawing your photo as an AI illustration on this Mac.',
+  'maker.illust.tryMac': 'Draw on my Mac',
+  'maker.illust.tryMacHint': 'Even when the free server runs out, you can keep drawing on this Mac.',
   'maker.pick.removePose': 'Remove this pose',
   'maker.pick.resetPet': 'Back to the default pet',
   'maker.model.downloading': (v) => `Downloading the background remover, just this once (${v.mb}MB).`,

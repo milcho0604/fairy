@@ -330,11 +330,17 @@ export async function illustrateFluffy(
   mime: 'image/jpeg' | 'image/png',
   prompt: string,
   opt: IllustOptions,
-): Promise<IllustResult & { fur: boolean }> {
+): Promise<IllustResult & { fur: boolean; before?: { bytes: Uint8Array; kind: ImageKind } }> {
   const drawn = await illustrate(photo, mime, prompt, opt);
   try {
     const fur = await illustrate(drawn.bytes, mimeOf(drawn.kind), FUR_PROMPT, { ...opt, spaces: [KLEIN] });
-    return { ...fur, space: `${drawn.space} + ${fur.space}`, fur: true };
+    // 다듬기 전 그림도 같이: 털색이 크게 바뀌었으면 창이 이것을 쓰고, 아니면 이 색에 맞춘다 (shared/color-match.ts)
+    return {
+      ...fur,
+      space: `${drawn.space} + ${fur.space}`,
+      fur: true,
+      before: { bytes: drawn.bytes, kind: drawn.kind },
+    };
   } catch (err) {
     // 그만두면 멈춘다. 시간이 다 됐거나 막혔으면 첫 그림이라도 쓴다
     if (err instanceof IllustError && err.kind === 'cancelled') throw err;

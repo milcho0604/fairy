@@ -398,6 +398,9 @@ test('털 다듬기: 그린 그림을 klein 에 FUR 요청문으로 한 번 더,
   const r = await illustrateFluffy(JPEG, 'image/jpeg', 'p', { fetch: furFetch });
   assert.equal(r.fur, true);
   assert.deepEqual([...r.bytes], [...FUR]);
+  // 색 맞추기에 쓸 다듬기 전 그림
+  assert.deepEqual([...(r.before?.bytes ?? [])], [...WEBP]);
+  assert.equal(r.before?.kind, 'webp');
   assert.equal(r.space, 'black-forest-labs/FLUX.1-Kontext-Dev + black-forest-labs/FLUX.2-klein-4B');
   const call = seen.find((s) => s.url === `${KLEIN_R}/gradio_api/call/infer`);
   const data = JSON.parse(String(call?.body)).data as unknown[];
@@ -407,6 +410,7 @@ test('털 다듬기: 그린 그림을 klein 에 FUR 요청문으로 한 번 더,
   const r2 = await illustrateFluffy(JPEG, 'image/jpeg', 'p', { fetch: busy.fetch });
   assert.equal(r2.fur, false);
   assert.deepEqual([...r2.bytes], [...WEBP]);
+  assert.equal(r2.before, undefined);
   // 그만두면 실패
   const ac = new AbortController();
   const hang = fakeServer({ events: { [KONTEXT]: complete(), [KLEIN_R]: 'hang' } });
