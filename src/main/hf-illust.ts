@@ -94,13 +94,13 @@ export function imageSize(b: Uint8Array): { w: number; h: number } | undefined {
 
 /**
  * 털 다듬기 요청문 (klein 2차 편집). Kontext 는 요청문을 아무리 세게 써도 고양이 다리를 매끈하게 그렸다.
- * 다 그린 그림에 "다리 털만 길게" 하나만 시키면 klein 이 잘 따랐다 (2026-10-10 실제 비교: 흰 고양이 다리가 보송해지고 색은 그대로)
+ * 다 그린 그림에 "다리 털만 풍성하게" 하나만 시키면 klein 이 잘 따랐다 (2026-10-10 실제 비교).
+ * 짧게 "그것만" 시킨다: 길게 쓰면 다른 곳까지 바뀌었다 (흰 고양이가 회색, 분홍빛으로). 색 예시("흰색은 흰색")를 쓰면
+ * 갈색 푸들까지 하얘졌다. 색이 크게 바뀐 결과는 창에서 버린다 (shared/color-match.ts)
  */
 export const FUR_PROMPT =
-  'Make the fur on the legs, paws, chest and tail longer, thicker and fluffier: long soft fluffy feathering on all four legs, ' +
-  'fluffy britches on the hind legs and fluffy tufts on the paws, as fluffy as the rest of the coat. ' +
-  'Keep the same fur color and fur type (curly fur stays curly). ' +
-  'Keep everything else exactly the same: same pose, face, eyes, markings, colors, lighting and plain background.';
+  'Only make the fur on the legs and paws fluffier and longer, soft clean and airy like brushed show fur, matching the fluffy chest. ' +
+  'Same fur color and brightness, same fur type (curls stay curly). Do not change anything else.';
 
 export const SPACES: IllustSpace[] = [
   KONTEXT,

@@ -401,7 +401,7 @@ test('털 다듬기: 그린 그림을 klein 에 FUR 요청문으로 한 번 더,
   assert.equal(r.space, 'black-forest-labs/FLUX.1-Kontext-Dev + black-forest-labs/FLUX.2-klein-4B');
   const call = seen.find((s) => s.url === `${KLEIN_R}/gradio_api/call/infer`);
   const data = JSON.parse(String(call?.body)).data as unknown[];
-  assert.match(String(data[0]), /legs, paws, chest and tail longer/);
+  assert.match(String(data[0]), /Only make the fur on the legs and paws fluffier/);
   // klein 이 막히면 첫 그림
   const busy = fakeServer({ events: { [KONTEXT]: complete(), [KLEIN_R]: ['event: error\ndata: null\n\n'] } });
   const r2 = await illustrateFluffy(JPEG, 'image/jpeg', 'p', { fetch: busy.fetch });
