@@ -1,0 +1,12 @@
+load_backend: loaded CPU backend from C:\Users\runneradmin\AppData\Roaming\짝꿍 시험\local-draw-sd\bin\cpu\ggml-cpu-cascadelake.dll
+[I] loading diffusion model from 'C:\Users\runneradmin\AppData\Roaming\짝꿍 시험\local-draw-sd\models\flux-2-klein-4b-Q4_0.gguf' --- diffusion_engine.cpp:734
+[W] file C:\Users\runneradmin\AppData\Roaming\짝꿍 시험\local-draw-sd\models\flux-2-klein-4b-Q4_0.gguf not found --- model_loader.cpp:233
+[W] loading diffusion model from 'C:\Users\runneradmin\AppData\Roaming\짝꿍 시험\local-draw-sd\models\flux-2-klein-4b-Q4_0.gguf' failed --- diffusion_engine.cpp:736
+[I] loading llm from 'C:\Users\runneradmin\AppData\Roaming\짝꿍 시험\local-draw-sd\models\Qwen3-4B-Q4_K_M.gguf' --- diffusion_engine.cpp:791
+[W] file C:\Users\runneradmin\AppData\Roaming\짝꿍 시험\local-draw-sd\models\Qwen3-4B-Q4_K_M.gguf not found --- model_loader.cpp:233
+[W] loading llm from 'C:\Users\runneradmin\AppData\Roaming\짝꿍 시험\local-draw-sd\models\Qwen3-4B-Q4_K_M.gguf' failed --- diffusion_engine.cpp:793
+[I] loading vae from 'C:\Users\runneradmin\AppData\Roaming\짝꿍 시험\local-draw-sd\models\full_encoder_small_decoder.safetensors' --- diffusion_engine.cpp:805
+[W] file C:\Users\runneradmin\AppData\Roaming\짝꿍 시험\local-draw-sd\models\full_encoder_small_decoder.safetensors not found --- model_loader.cpp:233
+[E] get sd version from file failed: '' --- diffusion_engine.cpp:994
+[W] loading vae from 'C:\Users\runneradmin\AppData\Roaming\짝꿍 시험\local-draw-sd\models\full_encoder_small_decoder.safetensors' failed --- diffusion_engine.cpp:807
+[I] new_sd_ctx_t failed --- main.cpp:896

@@ -1,0 +1,39 @@
+{
+  "root": "C:\\Users\\runneradmin\\AppData\\Roaming\\짝꿍 시험\\local-draw-sd",
+  "zipSha": true,
+  "untar": {
+    "status": 0,
+    "err": ""
+  },
+  "sha_diffusion": true,
+  "sha_llm": true,
+  "sha_vae": true,
+  "downloadS": 179,
+  "bin": {
+    "path": "C:\\Users\\runneradmin\\AppData\\Roaming\\짝꿍 시험\\local-draw-sd\\bin\\cpu\\sd-cli.exe",
+    "exists": true
+  },
+  "listDevices": {
+    "status": 0,
+    "out": "CPU\tAMD EPYC 9V74 80-Core Processor                \r\n",
+    "vulkan": false
+  },
+  "draw": {
+    "code": 1,
+    "s": 0,
+    "size": {
+      "width": 448,
+      "height": 768
+    },
+    "progress": []
+  },
+  "fur": {
+    "code": 1,
+    "s": 0,
+    "size": {
+      "width": 448,
+      "height": 768
+    },
+    "progress": []
+  }
+}
