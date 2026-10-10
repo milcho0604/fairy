@@ -1,0 +1,17 @@
+{
+ "prompt": "Only make the fur on all four legs and paws much fluffier and longer: long soft feathering down the legs, fluffy britches, fluffy tufts on the paws, soft clean and airy like brushed show fur, as fluffy as the chest. Same fur colors and brightness, same fur type (curls stay curly). Do not change anything else.",
+ "log": [
+  {
+   "job": "cat-adult",
+   "ok": true
+  },
+  {
+   "job": "cat-teen",
+   "ok": true
+  },
+  {
+   "job": "poodle-teen",
+   "ok": true
+  }
+ ]
+}
