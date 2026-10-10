@@ -429,7 +429,8 @@ export function createMaker(
       const k: LocalDrawErrorKind = err instanceof LocalDrawError ? err.kind : 'failed';
       if (!(err instanceof LocalDrawError))
         log('maker', 'local setup', err instanceof Error ? err.message : String(err));
-      return { ok: false, kind: k, error: localDrawText(k, 'setup') };
+      const gb = err instanceof LocalDrawError ? err.gb : undefined;
+      return { ok: false, kind: k, error: localDrawText(k, 'setup', gb) };
     } finally {
       if (download === ac) download = undefined;
     }
@@ -703,8 +704,8 @@ function illustText(kind: IllustErrorKind): string {
   }
 }
 
-/** 내 Mac에서 그리기 실패 종류마다 화면 글. 준비와 그리기에서 멈춤 글만 다르다 */
-function localDrawText(kind: LocalDrawErrorKind, phase: 'setup' | 'draw'): string {
+/** 내 Mac에서 그리기 실패 종류마다 화면 글. 준비와 그리기에서 멈춤 글만 다르다. gb 는 이번 준비에 필요한 빈 공간 */
+function localDrawText(kind: LocalDrawErrorKind, phase: 'setup' | 'draw', gb?: number): string {
   switch (kind) {
     case 'unsupported':
       return t('main.localDraw.unsupported');
@@ -714,7 +715,7 @@ function localDrawText(kind: LocalDrawErrorKind, phase: 'setup' | 'draw'): strin
       return t('main.localDraw.busy');
     case 'disk':
       return phase === 'setup'
-        ? t('main.localDraw.diskSetup', { gb: LOCAL_DRAW_GB.free })
+        ? t('main.localDraw.diskSetup', { gb: gb ?? LOCAL_DRAW_GB.free })
         : t('main.localDraw.disk');
     case 'offline':
       return t('main.localDraw.offline');

@@ -29,7 +29,7 @@ import { confineTestDisplay } from './focus.ts';
 import { createFriends } from './friends.ts';
 import { createHouseRest } from './house-rest.ts';
 import { initLang } from './lang.ts';
-import { stopLocalDrawNow } from './local-draw.ts';
+import { stopLocalDrawNow, sweepLocalDraw } from './local-draw.ts';
 import { createLogFile } from './log-file.ts';
 import { createLookTogether } from './look-together.ts';
 import {
@@ -121,6 +121,8 @@ ready.then(() => {
   confineTestDisplay();
   // 펫 앱은 Dock 아이콘 없이 뜬다. 끝내기는 펫 우클릭 메뉴나 메뉴 막대 아이콘에서 한다.
   if (process.platform === 'darwin') app.dock?.hide();
+  // 내 Mac에서 그리기: 앞서 갑자기 꺼져 남은 파이썬, 임시 그림, 지우다 만 폴더를 뒤에서 치운다 (기다리지 않는다)
+  sweepLocalDraw(log);
   // 펫 이름은 설정에서 바꿀 수 있어 쓰는 곳마다 지금 값을 읽는다.
   const petName = () => settings.get().petName;
   // 모델 목록 (v2): 앱 기본값, 하루 한 번 레포에서 받은 것으로 바꾼다
@@ -805,6 +807,7 @@ ready.then(() => {
     stats,
     checkUpdate: () => updates.check(true),
     openOnboarding: () => onboarding.open(),
+    log,
     v2: {
       exportData: (w) => backup.exportTo(w),
       importData: (w) => backup.importFrom(w),

@@ -4,10 +4,10 @@ import { setupRatio, setupStageOf } from '../shared/local-draw.ts';
 import {
   checkDrawn,
   classifyFailure,
-  descendants,
   drawArgs,
   drawRatio,
   drawSize,
+  drawTmpBase,
   installArgs,
   installRatio,
   isSetupDone,
@@ -18,6 +18,9 @@ import {
   MIN_DRAWN_BYTES,
   mfluxTag,
   modelTag,
+  orphanGroupAlive,
+  parseProxy,
+  parseRunPid,
   parseSetupState,
   saveArgs,
   setupSpaceNeeded,
@@ -112,6 +115,38 @@ test('자식 환경: 사용자 파이썬, uv, HF 값은 빼고 자리는 local-d
   assert.equal(env.HF_HUB_OFFLINE, undefined);
   assert.equal(toolEnv({}, l, { offline: true }).HF_HUB_OFFLINE, '1');
   assert.ok(toolEnv({}, l).PATH?.includes('/usr/bin'));
+  // 회사 망 인증서는 키체인으로
+  assert.equal(env.UV_NATIVE_TLS, '1');
+  assert.equal(toolEnv({ UV_NATIVE_TLS: '0' }, l).UV_NATIVE_TLS, '1');
+});
+
+test('자식 환경 프록시: 시스템 프록시를 넘기고, 셸에 직접 넣은 값이 먼저', () => {
+  const l = layout('/x/local-draw');
+  const env = toolEnv({}, l, { proxy: 'http://p.corp:8080' });
+  assert.equal(env.HTTPS_PROXY, 'http://p.corp:8080');
+  assert.equal(env.HTTP_PROXY, 'http://p.corp:8080');
+  assert.equal(env.https_proxy, 'http://p.corp:8080');
+  assert.equal(toolEnv({}, l).HTTPS_PROXY, undefined);
+  assert.equal(
+    toolEnv({ HTTPS_PROXY: 'http://mine:1' }, l, { proxy: 'http://p:2' }).HTTPS_PROXY,
+    'http://mine:1',
+  );
+});
+
+test('resolveProxy 글 읽기: 앞에서부터, DIRECT 가 먼저면 없음, SOCKS 와 이상한 글은 건너뜀', () => {
+  assert.equal(parseProxy('DIRECT'), undefined);
+  assert.equal(parseProxy(''), undefined);
+  assert.equal(parseProxy(undefined), undefined);
+  assert.equal(parseProxy('PROXY proxy.corp:8080'), 'http://proxy.corp:8080');
+  assert.equal(parseProxy('PROXY proxy.corp:8080; DIRECT'), 'http://proxy.corp:8080');
+  assert.equal(parseProxy('HTTPS secure.corp:443'), 'https://secure.corp:443');
+  assert.equal(parseProxy('DIRECT; PROXY p:1'), undefined);
+  assert.equal(parseProxy('SOCKS5 s:1080; PROXY p:3128'), 'http://p:3128');
+  assert.equal(parseProxy('SOCKS5 s:1080'), undefined);
+  assert.equal(parseProxy('proxy [::1]:8080'), 'http://[::1]:8080');
+  assert.equal(parseProxy('PROXY a b:1'), undefined);
+  assert.equal(parseProxy('PROXY user@evil:1'), undefined);
+  assert.equal(parseProxy('PROXY nohost'), undefined);
 });
 
 test('명령 인자: 셸 없이 배열로, 고정한 판으로', () => {
@@ -256,26 +291,70 @@ test('준비 기록: 깨진 글은 처음부터, 판이 바뀐 단계부터 다�
   assert.equal(isSetupDone({ ...done, model: undefined }), false);
 });
 
-test('필요한 빈 공간: 이어 받으면 덜, 그래도 2GB', () => {
-  assert.equal(setupSpaceNeeded(0), 20e9);
-  assert.equal(setupSpaceNeeded(5e9), 15e9);
-  assert.equal(setupSpaceNeeded(30e9), 2e9);
-  assert.equal(setupSpaceNeeded(-1), 20e9);
+test('필요한 빈 공간: 할 단계만, 받아 둔 원본만큼 덜, 줄인 모델 자리는 남김', () => {
+  const all = { uv: true, mflux: true, model: true };
+  assert.equal(setupSpaceNeeded(all, 0), 22e9);
+  assert.equal(setupSpaceNeeded({ uv: false, mflux: true, model: false }, 0), 2e9);
+  assert.equal(setupSpaceNeeded({ uv: false, mflux: false, model: true }, 5e9), 15e9);
+  assert.equal(setupSpaceNeeded({ uv: false, mflux: false, model: true }, 30e9), 5e9);
+  assert.equal(setupSpaceNeeded({ uv: false, mflux: false, model: true }, -1), 20e9);
+  assert.equal(setupSpaceNeeded({ uv: false, mflux: false, model: true }, Number.NaN), 20e9);
+  assert.equal(setupSpaceNeeded({ uv: false, mflux: false, model: false }, 0), 0);
 });
 
-test('자손 프로세스: 손주까지, 다른 가지는 빼고, 고리는 한 번만', () => {
+test('준비 기록의 폴더 크기: 숫자만', () => {
+  assert.deepEqual(parseSetupState('{"model":"m","bytes":6500000000}'), { model: 'm', bytes: 6.5e9 });
+  assert.deepEqual(parseSetupState('{"bytes":-1}'), {});
+  assert.deepEqual(parseSetupState('{"bytes":"9"}'), {});
+});
+
+test('run.pid 읽기: 깨졌거나 이상한 pid 면 없음', () => {
+  assert.deepEqual(parseRunPid('{"pid":4321,"root":"/r","startedAt":5}'), {
+    pid: 4321,
+    root: '/r',
+    startedAt: 5,
+  });
+  assert.deepEqual(parseRunPid('{"pid":4321,"root":"/r"}'), { pid: 4321, root: '/r', startedAt: 0 });
+  for (const raw of [
+    undefined,
+    '',
+    '{oops',
+    'null',
+    '{"pid":1,"root":"/r"}',
+    '{"pid":0,"root":"/r"}',
+    '{"pid":-5,"root":"/r"}',
+    '{"pid":1.5,"root":"/r"}',
+    '{"pid":"12","root":"/r"}',
+    '{"pid":12,"root":""}',
+    '{"pid":12}',
+  ])
+    assert.equal(parseRunPid(raw), undefined, String(raw));
+});
+
+test('남은 묶음: 그 묶음에 local-draw 경로가 든 명령이 있어야 우리 것', () => {
+  const root = '/Users/a/Library/Application Support/jjakkung/local-draw';
   const ps = [
-    '  1     0',
-    ' 100     1',
-    ' 200   100',
-    ' 201   100',
-    ' 300   200',
-    ' 400     1',
+    '    1 /sbin/launchd',
+    ` 5000 ${root}/tools/mflux/bin/python ${root}/tools/mflux/bin/mflux-save --model flux2-klein-4b`,
+    ` 5000 ${root}/tools/mflux/bin/python -c resource_tracker`,
+    ' 6000 /Applications/Safari.app/Contents/MacOS/Safari',
     'junk',
-    ' 100   300',
   ].join('\n');
-  assert.deepEqual(descendants(ps, 100), [200, 300, 201]);
-  assert.deepEqual(descendants(ps, 999), []);
+  assert.equal(orphanGroupAlive(ps, 5000, root), true);
+  // pid 가 다른 프로그램 묶음으로 다시 쓰였으면 건드리지 않는다
+  assert.equal(orphanGroupAlive(ps, 6000, root), false);
+  assert.equal(orphanGroupAlive(ps, 7000, root), false);
+  assert.equal(orphanGroupAlive(ps, 5000, '/other/local-draw'), false);
+  assert.equal(orphanGroupAlive('', 5000, root), false);
+});
+
+test('그리기 임시 폴더: local-draw/tmp, 경로에 중괄호가 있으면 시스템 임시 폴더', () => {
+  assert.equal(
+    drawTmpBase(layout('/Users/a/Library/Application Support/jj/local-draw'), '/tmp'),
+    '/Users/a/Library/Application Support/jj/local-draw/tmp',
+  );
+  assert.equal(drawTmpBase(layout('/Users/{a}/local-draw'), '/var/T'), '/var/T');
+  assert.equal(drawTmpBase(layout('/Users/a}/local-draw'), '/var/T'), '/var/T');
 });
 
 test('그린 그림 확인: 그림 형식, 부탁한 크기, 너무 작지 않음', () => {

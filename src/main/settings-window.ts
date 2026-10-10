@@ -32,6 +32,7 @@ export interface SettingsWindowOptions {
   stats: StatStore;
   checkUpdate: () => Promise<string>;
   openOnboarding: () => void;
+  log: (tag: string, ...rest: unknown[]) => void;
   v2: {
     exportData: (win?: BrowserWindow) => Promise<string>;
     importData: (win?: BrowserWindow) => Promise<string>;
@@ -56,6 +57,7 @@ export function createSettingsWindow({
   stats,
   checkUpdate,
   openOnboarding,
+  log,
   v2,
 }: SettingsWindowOptions) {
   let win: BrowserWindow | undefined;
@@ -100,7 +102,7 @@ export function createSettingsWindow({
     return library.view();
   });
   ipcMain.handle(SETTINGS.deleteModel, async (e, id: unknown) => {
-    const ok = fromSettings(e) && typeof id === 'string' && (await removeModel(v2.catalog(), id));
+    const ok = fromSettings(e) && typeof id === 'string' && (await removeModel(v2.catalog(), id, log));
     return { ok, storage: storedModels(v2.catalog()), localReady: localReady() };
   });
   ipcMain.handle(SETTINGS.remakeBody, (e, gait: unknown) =>

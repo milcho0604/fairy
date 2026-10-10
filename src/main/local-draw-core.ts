@@ -30,8 +30,12 @@ export const MODEL_PIN = { id: 'flux2-klein-4b', quantize: 4, dir: 'klein4b-q4' 
 
 /** 원본 모델 받기 진행률을 재는 어림 크기 (바이트). 받은 폴더 크기를 이것으로 나눈다 */
 export const MODEL_DOWNLOAD_BYTES = 15_500_000_000;
-/** 준비 중 비어 있어야 하는 공간 (원본 15GB + 줄인 모델 4GB + 도구 1GB) */
+/** 모델 단계에 비어 있어야 하는 공간 (원본 15.5GB + 줄인 모델 4.3GB). 받아 둔 원본만큼 덜 필요하다 */
 export const SETUP_FREE_BYTES = 20 * 1e9;
+/** 모델 단계는 원본을 다 받아 뒀어도 줄인 모델(4.3GB)을 쓸 자리가 있어야 한다 */
+export const MODEL_KEEP_FREE_BYTES = 5e9;
+/** 도구 단계(uv, 파이썬, mflux, 휠 묶음)에 비어 있어야 하는 공간. 다 깔면 2.2GB 쯤 */
+export const TOOLS_FREE_BYTES = 2e9;
 /** 그리기 전 비어 있어야 하는 공간 (임시 그림, MLX 캐시) */
 export const DRAW_FREE_BYTES = 1e9;
 /** 한 장(4단계)을 그리는 상한. M2 Pro 에서 1분쯤 (처음에는 Metal 커널을 만드느라 더 걸린다) */
@@ -85,6 +89,10 @@ export interface Layout {
   save: string;
   state: string;
   errorLog: string;
+  /** 지금 도는 자식(프로세스 묶음)을 적는다. 앱이 갑자기 꺼져도 다음에 찾아 끈다 */
+  runPid: string;
+  /** 그리기 임시 그림. 앱이 꺼져 남은 것은 다음 일을 시작할 때 비운다 */
+  tmp: string;
 }
 
 export function layout(root: string): Layout {
@@ -111,6 +119,8 @@ export function layout(root: string): Layout {
     save: join(venvBin, 'mflux-save'),
     state: join(root, 'state.json'),
     errorLog: join(root, 'last-error.log'),
+    runPid: join(root, 'run.pid'),
+    tmp: join(root, 'tmp'),
   };
 }
 
@@ -125,7 +135,7 @@ const LEAKY = /^(UV_|PYTHON|VIRTUAL_ENV$|CONDA|PIP_|HF_|HUGGING_FACE|MFLUX_|MPLC
 export function toolEnv(
   base: Record<string, string | undefined>,
   l: Layout,
-  o: { offline?: boolean } = {},
+  o: { offline?: boolean; proxy?: string } = {},
 ): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(base)) if (v !== undefined && !LEAKY.test(k)) env[k] = v;
@@ -143,6 +153,8 @@ export function toolEnv(
     UV_TOOL_BIN_DIR: l.binDir,
     UV_CACHE_DIR: l.uvCache,
     UV_NO_PROGRESS: '1',
+    // 회사 망처럼 TLS 를 중간에서 다시 서명하면 uv 내장 인증서로는 실패한다. macOS 키체인을 믿는다
+    UV_NATIVE_TLS: '1',
     PYTHONNOUSERSITE: '1',
     PYTHONUNBUFFERED: '1',
     HF_HOME: l.hfHome,
@@ -155,7 +167,33 @@ export function toolEnv(
     env.HF_HUB_OFFLINE = '1';
     env.TRANSFORMERS_OFFLINE = '1';
   }
+  // Finder 에서 켠 앱은 셸의 프록시 값이 없다. 시스템 설정의 프록시를 넘긴다 (사용자가 직접 넣은 값이 먼저)
+  if (o.proxy && !env.HTTPS_PROXY && !env.https_proxy) {
+    env.HTTPS_PROXY = o.proxy;
+    env.HTTP_PROXY = o.proxy;
+    env.https_proxy = o.proxy;
+    env.http_proxy = o.proxy;
+  }
   return env;
+}
+
+/**
+ * Electron resolveProxy 결과("DIRECT", "PROXY h:p; DIRECT", "HTTPS h:p")에서 자식에게 넘길 프록시 주소.
+ * 앞에서부터 보고 DIRECT 가 먼저면 없음. SOCKS 는 uv, 파이썬이 따로 받쳐 줘야 해서 건너뛴다
+ */
+export function parseProxy(resolved: string | undefined | null): string | undefined {
+  for (const part of (resolved ?? '').split(';')) {
+    const m = /^\s*(\w+)(?:\s+(\S+))?\s*$/.exec(part);
+    if (!m) continue;
+    const kind = (m[1] ?? '').toUpperCase();
+    if (kind === 'DIRECT') return undefined;
+    if (kind !== 'PROXY' && kind !== 'HTTPS') continue;
+    const hostPort = m[2] ?? '';
+    // host:port 또는 [IPv6]:port 만 (이상한 글이 URL 에 섞이지 않게)
+    if (!/^(?:[\w.-]+|\[[0-9a-fA-F:.]+\]):\d{1,5}$/.test(hostPort)) continue;
+    return `${kind === 'HTTPS' ? 'https' : 'http'}://${hostPort}`;
+  }
+  return undefined;
 }
 
 /** uv 풀기: 묶음 안 첫 폴더(uv-aarch64-apple-darwin/)를 벗겨 uv/ 에 uv, uvx 만 */
@@ -277,9 +315,12 @@ export type LocalDrawErrorKind =
 
 export class LocalDrawError extends Error {
   readonly kind: LocalDrawErrorKind;
-  constructor(kind: LocalDrawErrorKind, message: string = kind) {
+  /** disk 일 때 비어 있어야 하는 GB (화면 글에 넣는다) */
+  gb?: number;
+  constructor(kind: LocalDrawErrorKind, message: string = kind, gb?: number) {
     super(message);
     this.kind = kind;
+    this.gb = gb;
   }
 }
 
@@ -340,6 +381,8 @@ export interface SetupState {
   uv?: string;
   mflux?: string;
   model?: string;
+  /** 준비가 끝났을 때 폴더 크기. 저장 공간 창이 처음 열릴 때 폴더를 다 세기 전에 보인다 */
+  bytes?: number;
 }
 
 export const modelTag = () => `${MODEL_PIN.id}-q${MODEL_PIN.quantize}`;
@@ -357,6 +400,7 @@ export function parseSetupState(raw: string | undefined | null): SetupState {
       const x = r[k];
       if (typeof x === 'string' && x.length > 0 && x.length < 200) out[k] = x;
     }
+    if (typeof r.bytes === 'number' && Number.isFinite(r.bytes) && r.bytes >= 0) out.bytes = r.bytes;
     return out;
   } catch {
     return {};
@@ -376,38 +420,62 @@ export const isSetupDone = (s: SetupState) => {
   return !r.uv && !r.mflux && !r.model;
 };
 
-/** 준비에 필요한 빈 공간. 이미 받아 둔 만큼(이어 받기)은 덜 필요하다. 그래도 2GB 는 남긴다 */
-export function setupSpaceNeeded(existingBytes: number): number {
-  return Math.max(2e9, SETUP_FREE_BYTES - Math.max(0, existingBytes));
+/**
+ * 준비에 필요한 빈 공간: 실제로 할 단계만 센다. 도구 단계 2GB, 모델 단계는 20GB 에서 받아 둔 원본(hf/)만큼 빼되
+ * 줄인 모델 자리(5GB)는 남긴다. 이 값은 어림이다 (APFS 는 지울 수 있는 공간을 statfs 에 다 넣지 않는다):
+ * 진짜 막는 것은 쓰다 ENOSPC 가 나면 disk 로 알리는 쪽이다
+ */
+export function setupSpaceNeeded(
+  todo: { uv: boolean; mflux: boolean; model: boolean },
+  hfBytes: number,
+): number {
+  const tools = todo.uv || todo.mflux ? TOOLS_FREE_BYTES : 0;
+  const model = todo.model
+    ? Math.max(MODEL_KEEP_FREE_BYTES, SETUP_FREE_BYTES - Math.max(0, hfBytes || 0))
+    : 0;
+  return tools + model;
+}
+
+/** run.pid 기록: 띄운 자식(묶음 대장) pid, 어느 local-draw 폴더의 일인지, 언제 */
+export interface RunPid {
+  pid: number;
+  root: string;
+  startedAt: number;
+}
+
+/** run.pid 글을 읽는다. 깨졌으면 undefined (그냥 지운다) */
+export function parseRunPid(raw: string | undefined | null): RunPid | undefined {
+  if (!raw) return undefined;
+  try {
+    const v = JSON.parse(raw) as Record<string, unknown> | null;
+    if (typeof v !== 'object' || v === null) return undefined;
+    const { pid, root, startedAt } = v;
+    if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 1) return undefined;
+    if (typeof root !== 'string' || root.length === 0) return undefined;
+    return { pid, root, startedAt: typeof startedAt === 'number' ? startedAt : 0 };
+  } catch {
+    return undefined;
+  }
 }
 
 /**
- * `ps -A -o pid=,ppid=` 결과에서 root 의 자손 pid 들 (자식부터 깊이 순). 그만두면 uv, 파이썬이 띄운 것까지 끈다.
- * 같은 프로세스 묶음(detached:false)이라 묶음째 죽이면 앱도 죽어서 하나씩 찾는다
+ * `ps -A -o pgid=,command=` 결과에서 그 묶음(pgid)에 우리 일(명령 줄에 local-draw 폴더 경로)이 남았는지.
+ * 대장이 먼저 끝나도 자손이 같은 묶음에 남는다. pid 가 다른 프로그램에 다시 쓰였으면 경로가 없어 건드리지 않는다
  */
-export function descendants(psOutput: string, root: number): number[] {
-  const kids = new Map<number, number[]>();
+export function orphanGroupAlive(psOutput: string, pgid: number, root: string): boolean {
   for (const line of psOutput.split('\n')) {
-    const m = /^\s*(\d+)\s+(\d+)\s*$/.exec(line);
-    if (!m) continue;
-    const pid = Number(m[1]);
-    const ppid = Number(m[2]);
-    const list = kids.get(ppid) ?? [];
-    list.push(pid);
-    kids.set(ppid, list);
+    const m = /^\s*(\d+)\s+(.*)$/.exec(line);
+    if (m && Number(m[1]) === pgid && (m[2] ?? '').includes(root)) return true;
   }
-  const out: number[] = [];
-  const seen = new Set<number>([root]);
-  const walk = (p: number) => {
-    for (const c of kids.get(p) ?? []) {
-      if (seen.has(c)) continue;
-      seen.add(c);
-      out.push(c);
-      walk(c);
-    }
-  };
-  walk(root);
-  return out;
+  return false;
+}
+
+/**
+ * 그리기 임시 폴더 자리. mflux 가 출력 경로에 str.format 을 해서 중괄호가 있으면 깨진다:
+ * 사용자 데이터 경로에 중괄호가 있으면 시스템 임시 폴더로 (앱이 꺼져 남으면 macOS 가 치운다)
+ */
+export function drawTmpBase(l: Layout, fallback: string): string {
+  return /[{}]/.test(l.tmp) ? fallback : l.tmp;
 }
 
 /**

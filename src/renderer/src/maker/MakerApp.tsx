@@ -901,6 +901,26 @@ export function MakerApp() {
                     </button>
                   </div>
                 )}
+                {/* 이 Mac 준비가 안 됐거나 깨졌으면(notReady) 여기서 준비하기. 다 되면 이 사진을 바로 그린다 */}
+                {eng === 'mac' && !localReady && !(cloudStuck && illust.engine === 'cloud') && (
+                  <div className="local-setup">
+                    <small className="hint">
+                      {t('maker.engine.needs', {
+                        download: LOCAL_DRAW_GB.download,
+                        keep: LOCAL_DRAW_GB.keep,
+                        memory: LOCAL_DRAW_GB.memory,
+                      })}
+                    </small>
+                    <small className="hint">{t('maker.engine.setupNote')}</small>
+                    <button
+                      type="button"
+                      className="primary"
+                      onClick={() => drawOnMac(illust.photo, age, illustWish, 'illust')}
+                    >
+                      {t('maker.engine.setup')}
+                    </button>
+                  </div>
+                )}
                 {eng === 'cloud' && <div className="how">{tokenBox}</div>}
                 <div className="actions wrap">
                   <button type="button" className="ghost" onClick={toPick}>
@@ -916,7 +936,8 @@ export function MakerApp() {
                   <button
                     ref={againRef}
                     type="button"
-                    className={illust.image ? 'ghost' : 'primary'}
+                    // 준비하기가 보이면 그것이 주 버튼
+                    className={illust.image || (eng === 'mac' && !localReady) ? 'ghost' : 'primary'}
                     onClick={() =>
                       eng === 'mac'
                         ? drawOnMac(illust.photo, age, illustWish, 'illust')
