@@ -2,7 +2,7 @@
 // 사용자 폴더 이름에 한글과 빈칸이 있을 때(짝꿍 시험)도 되는지 본다. CPU 판으로 (러너에 GPU 가 없다)
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -31,7 +31,11 @@ const root = join(process.env.APPDATA ?? 'C:\\tmp', '짝꿍 시험', 'local-draw
 const l = sdLayout(root);
 for (const d of [l.downloadDir, l.modelsDir, l.tmp]) mkdirSync(d, { recursive: true });
 const report: Record<string, unknown> = { root };
-const sha = (f: string) => createHash('sha256').update(readFileSync(f)).digest('hex');
+const sha = async (f: string) => {
+  const h = createHash('sha256');
+  await pipeline(createReadStream(f), h);
+  return h.digest('hex');
+};
 async function get(url: string, file: string) {
   const res = await fetch(url);
   if (!res.ok || !res.body) throw new Error(`${res.status} ${url}`);
@@ -40,13 +44,13 @@ async function get(url: string, file: string) {
 const t0 = Date.now();
 const z = SD_WIN_ASSETS.cpu;
 await get(sdAssetUrl(z.name), sdZipPath(l, 'cpu'));
-report.zipSha = sha(sdZipPath(l, 'cpu')) === z.sha256;
+report.zipSha = (await sha(sdZipPath(l, 'cpu'))) === z.sha256;
 mkdirSync(sdWinDir(l, 'cpu'), { recursive: true });
 const ux = spawnSync(winTar(process.env.SystemRoot), unzipArgs(sdZipPath(l, 'cpu'), sdWinDir(l, 'cpu')), { encoding: 'utf8' });
 report.untar = { status: ux.status, err: ux.stderr?.slice(-300) };
 for (const m of SD_MODELS) {
   await get(m.url, sdModelPath(l, m));
-  report[`sha_${m.key}`] = sha(sdModelPath(l, m)) === m.sha256;
+  report[`sha_${m.key}`] = (await sha(sdModelPath(l, m))) === m.sha256;
 }
 report.downloadS = Math.round((Date.now() - t0) / 1000);
 const bin = sdBinary({ platform: 'win32', arch: 'x64', l, backend: 'cpu', resourcesPath: '', appPath: '', packaged: true });
