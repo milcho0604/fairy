@@ -70,6 +70,8 @@ export interface Settings {
    * 저장 파일에 없으면(예전 판) 그때 동작대로: 조용히면 끔, 아니면 켬
    */
   review: boolean;
+  /** 펫이 안 보일 때(전체 화면, 숨김, 발표) 일정 알림을 운영체제 알림으로도 한 번 */
+  osNotify: boolean;
   /** 전역 단축키 (v2 단축키 바꾸기) */
   shortcuts: Record<ShortcutId, string>;
   /** 가져올 캘린더 주소 (.ics, 구글 캘린더 비공개 주소). 비밀 주소라 이 컴퓨터에만 둔다 (v2) */
@@ -266,6 +268,7 @@ export const DEFAULT_SETTINGS: Settings = {
   updateCheck: true,
   reviewMinute: 18 * 60,
   review: true,
+  osNotify: true,
   shortcuts: { ...SHORTCUT_DEFAULTS },
   myMcp: false,
   friends: [],
@@ -403,6 +406,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
         ? r.reviewMinute
         : base.reviewMinute,
     review: typeof r.review === 'boolean' ? r.review : r.chatter === 'quiet' ? false : base.review,
+    osNotify: bool(r.osNotify, base.osNotify),
     shortcuts: shortcutsOf(r.shortcuts, base.shortcuts),
     ...icsOf(r.icsUrl, base.icsUrl),
     myMcp: bool(r.myMcp, base.myMcp),

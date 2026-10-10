@@ -196,6 +196,40 @@ export function snoozeFor(now: number, start: number, stale: number): number | u
   return undefined;
 }
 
+/** 미룬 알림 하나: at 에 keys 의 일정과 할 일을 다시 말한다 */
+export interface Snoozed {
+  at: number;
+  keys: { kind: 'event' | 'todo'; id: number }[];
+}
+
+/** 앱이 꺼져 있던 사이 때가 된 미룬 알림은 이만큼 지난 것까지 켜자마자 말한다. 더 지난 것은 버린다 */
+export const SNOOZE_KEEP_MS = 10 * MIN;
+const SNOOZED_MAX = 50;
+const SNOOZED_KEYS_MAX = 20;
+
+/**
+ * 저장해 둔 미룬 알림 읽기 (앱을 다시 켜도 미룬 것이 사라지지 않게. 전에는 메모리에만 있었다).
+ * 모양이 틀린 것과 한참 지난 것은 버린다. 그사이 지웠거나 끝낸 것은 말할 때 다시 읽어 뺀다
+ */
+export function parseSnoozed(raw: unknown, now: number): Snoozed[] {
+  if (!Array.isArray(raw)) return [];
+  const out: Snoozed[] = [];
+  for (const v of raw.slice(-SNOOZED_MAX)) {
+    const s = v as Partial<Snoozed> | null;
+    if (!s || typeof s.at !== 'number' || !Number.isFinite(s.at) || s.at < now - SNOOZE_KEEP_MS) continue;
+    if (!Array.isArray(s.keys)) continue;
+    const keys = s.keys
+      .filter(
+        (k): k is Snoozed['keys'][number] =>
+          !!k && (k.kind === 'event' || k.kind === 'todo') && Number.isInteger(k.id) && k.id > 0,
+      )
+      .slice(0, SNOOZED_KEYS_MAX)
+      .map((k) => ({ kind: k.kind, id: k.id }));
+    if (keys.length > 0) out.push({ at: s.at, keys });
+  }
+  return out;
+}
+
 // ---- 빠른 입력: "하루 전 알림", "1시간 전에 알려줘", "3일 전", "remind me 1 hour before" ----
 
 /** 읽은 알림 한 마디. 분이면 시각 기준 셈, eve 는 전날 저녁 8시, morning 은 당일 아침 9시 */

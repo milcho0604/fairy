@@ -1,11 +1,14 @@
 // 단축키 바꾸기 (v2). 설정 창에서 키를 눌러 기록하면 Electron 단축키 글자(Accelerator)로 바꾼다.
 import { t } from './i18n/index.ts';
 
-export type ShortcutId = 'hide' | 'quickAdd';
+export type ShortcutId = 'hide' | 'quickAdd' | 'chat' | 'look';
 
+/** 모두 Cmd/Ctrl+Option/Alt+Shift 에 글자 하나 (시스템, 편집 조합과 겹치지 않는 자리) */
 export const SHORTCUT_DEFAULTS: Record<ShortcutId, string> = {
   hide: 'CommandOrControl+Alt+Shift+H',
   quickAdd: 'CommandOrControl+Alt+Shift+N',
+  chat: 'CommandOrControl+Alt+Shift+J',
+  look: 'CommandOrControl+Alt+Shift+L',
 };
 
 /**
@@ -30,6 +33,12 @@ export const SHORTCUT_LABEL: Readonly<Record<ShortcutId, string>> = {
   },
   get quickAdd() {
     return t('settings.shortcut.quickAdd');
+  },
+  get chat() {
+    return t('settings.shortcut.chat');
+  },
+  get look() {
+    return t('settings.shortcut.look');
   },
 };
 

@@ -16,9 +16,11 @@ import {
   fireAt,
   MAX_REMINDS,
   normalizeReminds,
+  parseSnoozed,
   planReminders,
   resolveSpecs,
   SAME_MORNING,
+  SNOOZE_KEEP_MS,
   SNOOZE_LONG_MS,
   SNOOZE_SHORT_MS,
   snoozeFor,
@@ -176,6 +178,34 @@ test('미루기: 시작이 3시간 넘게 남았으면 1시간, 가까우면 5�
   assert.equal(snoozeFor(now, at('2026-10-23', 9), at('2026-10-23', 9, 10)), SNOOZE_LONG_MS);
   assert.equal(snoozeFor(now, now + 20 * MIN, now + 30 * MIN), SNOOZE_SHORT_MS);
   assert.equal(snoozeFor(now, now - 6 * MIN, now + 4 * MIN), undefined);
+});
+
+test('미룬 알림 저장 읽기: 한참 지난 것과 모양이 틀린 것은 버리고, 꺼져 있던 사이 때가 된 것은 남긴다', () => {
+  const now = at('2026-10-20', 9);
+  const ev = { kind: 'event', id: 3 } as const;
+  assert.deepEqual(parseSnoozed(undefined, now), []);
+  assert.deepEqual(parseSnoozed({ at: now }, now), []);
+  assert.deepEqual(
+    parseSnoozed(
+      [
+        { at: now + 5 * MIN, keys: [ev, { kind: 'todo', id: 7 }] },
+        // 꺼져 있던 사이 때가 됨: 켜자마자 말한다
+        { at: now - 2 * MIN, keys: [ev] },
+        // 한참 지남
+        { at: now - SNOOZE_KEEP_MS - 1, keys: [ev] },
+        { at: 'soon', keys: [ev] },
+        { at: now, keys: [{ kind: 'note', id: 1 }, { kind: 'todo', id: -1 }, null] },
+        { at: now, keys: [{ kind: 'todo', id: 2, extra: 'x' }] },
+        null,
+      ],
+      now,
+    ),
+    [
+      { at: now + 5 * MIN, keys: [ev, { kind: 'todo', id: 7 }] },
+      { at: now - 2 * MIN, keys: [ev] },
+      { at: now, keys: [{ kind: 'todo', id: 2 }] },
+    ],
+  );
 });
 
 // ---- 빠른 입력 ----

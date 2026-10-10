@@ -531,8 +531,23 @@ app.whenReady().then(() => {
       panel.refresh();
       planner.check();
     },
+    // 연달아 못 읽으면 한 번 (조용히 실패하던 것). 숨어 있으면 모아 두었다가, 못 보면 놓친 알림에
+    onBroken: () => {
+      void pet
+        .say({
+          kind: 'schedule',
+          text: t('pet.calendarBroken'),
+          buttons: [{ id: 'settings', label: t('pet.calendarSettings') }],
+          ttlMs: 30_000,
+          hold: { missedMsgs: [{ key: 'pet.calendarBroken' }], onAction: openCalendarSettings },
+        })
+        .then(openCalendarSettings);
+    },
     log,
   });
+  function openCalendarSettings(a: string | undefined) {
+    if (a === 'settings') settingsWindow.open();
+  }
   const backup = createBackup({ vacuumInto, log });
   // 펫 MCP 서버(다른 프로세스)가 할 일, 메모, 일정을 넣으면 저장 파일 판 번호가 바뀐다. 3초마다 보고 다시 그린다.
   let seenVersion = dataVersion();
@@ -546,6 +561,11 @@ app.whenReady().then(() => {
     planner.check();
   }, 3000).unref();
   watchBetaStats(stats, () => pet.isHidden('user'), log);
+  /** 할 일을 끝냈다 (패널, 집중 끝 "끝냈어"). 친밀도 300 이 넘으면 신나서 빙글 춤 */
+  function todoFinished() {
+    pet.react(unlocked(petLife.state.affection).has('dance') ? 'dance' : 'happy');
+    petLife.activity('todo');
+  }
   // ---- 일정 알림, 오늘 브리핑, 집중 타이머 (v1) ----
   const planner = createPlanner({
     todos: store,
@@ -571,6 +591,8 @@ app.whenReady().then(() => {
     openToday: () => panel.openTab('today'),
     openUrl: (url) => openLink(url, log),
     onReward: () => pet.react(),
+    // 집중 끝에 "끝냈어": 패널에서 끝낸 것과 같은 반응
+    onCompleted: () => todoFinished(),
     onChange: () => {
       panel.refresh();
       sendStatus();
@@ -582,7 +604,7 @@ app.whenReady().then(() => {
     notes,
     events,
     focus: () => planner.focus,
-    startFocus: (minutes) => planner.startFocus(minutes),
+    startFocus: (minutes, todoId) => planner.startFocus(minutes, todoId),
     focusMin: () => settings.get().focusMin,
     stopFocus: () => planner.stopFocus(),
     onEventsChanged: () => planner.check(),
@@ -644,11 +666,7 @@ app.whenReady().then(() => {
     },
     petName,
     petBounds: () => pet.bounds(),
-    onCompleted: () => {
-      // 친밀도 300 이 넘으면 신나서 빙글 춤
-      pet.react(unlocked(petLife.state.affection).has('dance') ? 'dance' : 'happy');
-      petLife.activity('todo');
-    },
+    onCompleted: () => todoFinished(),
     onFed: () => {
       void rest.call(false);
       pet.react('fed');
@@ -729,10 +747,13 @@ app.whenReady().then(() => {
     for (const acc of registered) globalShortcut.unregister(acc);
     registered = [];
     const taken: string[] = [];
-    const { hide, quickAdd } = settings.get().shortcuts;
+    const { hide, quickAdd, chat: chatKey, look: lookKey } = settings.get().shortcuts;
     for (const [acc, run, name] of [
       [hide, toggleHidden, t('pet.shortcut.hide')],
       [quickAdd, () => panel.openQuick(), t('pet.shortcut.quickAdd')],
+      // 펫 메뉴의 "대화", "같이 보기"와 같다
+      [chatKey, () => chat.open(pet.bounds()), t('pet.shortcut.chat')],
+      [lookKey, () => void look.start(), t('pet.shortcut.look')],
     ] as const) {
       try {
         if (globalShortcut.register(acc, run)) registered.push(acc);

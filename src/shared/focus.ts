@@ -28,12 +28,29 @@ export interface FocusState {
   startedAt: number;
   /** 지금 단계 끝 시각(ms). idle 이면 0 */
   endsAt: number;
+  /** 이 할 일을 하려고 시작한 집중 (오늘 탭 "다음 할 일"). 끝나면 끝냈는지 묻는다. 쉬기에는 없다 */
+  todoId?: number;
 }
 
 export const IDLE: FocusState = { phase: 'idle', startedAt: 0, endsAt: 0 };
 
-export function startFocus(now: number, minutes: number = FOCUS.focusMin): FocusState {
-  return { phase: 'focus', startedAt: now, endsAt: now + minutes * 60_000 };
+export function startFocus(now: number, minutes: number = FOCUS.focusMin, todoId?: number): FocusState {
+  return {
+    phase: 'focus',
+    startedAt: now,
+    endsAt: now + minutes * 60_000,
+    ...(todoId !== undefined && Number.isInteger(todoId) && todoId > 0 ? { todoId } : {}),
+  };
+}
+
+/** 집중이 끝났을 때 끝냈는지 물을 할 일: 할 일을 걸고 시작했고 그 할 일이 아직 열려 있으면 그 id */
+export function focusTodoToAsk(
+  s: FocusState,
+  open: readonly { id: number; doneAt?: number | null }[],
+): number | undefined {
+  if (s.todoId === undefined) return undefined;
+  const todo = open.find((t) => t.id === s.todoId);
+  return todo && (todo.doneAt === null || todo.doneAt === undefined) ? todo.id : undefined;
 }
 
 export function startBreak(now: number, minutes: number = FOCUS.breakMin): FocusState {

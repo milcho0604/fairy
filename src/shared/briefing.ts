@@ -4,9 +4,75 @@
 import type { ChatterLevel } from './chatter.ts';
 import { timeLabel } from './event-store.ts';
 import { t } from './i18n/index.ts';
+import { localDay } from './todo-store.ts';
 
 /** 이 시각(현지, 분) 전에는 브리핑하지 않는다. 새벽에 켠 컴퓨터에 "좋은 아침"을 하지 않게. */
 export const BRIEFING_FROM_MINUTE = 5 * 60;
+
+// ---- 다음 할 일 ("뭐부터 하지?") ----
+
+/** 이만큼 안에 시작하는 일정이 있으면 그 준비가 다음 할 일이다 */
+export const PREPARE_MS = 30 * 60_000;
+
+export interface NextUpTodo {
+  id: number;
+  title: string;
+  due: string | null;
+  dueMin?: number | null;
+  important: boolean;
+  createdAt: number;
+  doneAt?: number | null;
+}
+
+export interface NextUpEvent {
+  id: number;
+  title: string;
+  startAt: number;
+  allDay: boolean;
+}
+
+export type NextUp =
+  | { kind: 'event'; id: number; title: string; startAt: number }
+  | {
+      kind: 'todo';
+      id: number;
+      title: string;
+      /** 고른 까닭: 지난 중요, 오늘 중요, 오늘 마감, 오래된 중요 */
+      why: 'overdue' | 'today-important' | 'today' | 'important';
+    };
+
+/** 마감이 이른 것, 같으면 시각이 이른 것(시각 없으면 뒤), 그다음 먼저 넣은 것 */
+const byDue = (a: NextUpTodo, b: NextUpTodo) =>
+  (a.due ?? '9999').localeCompare(b.due ?? '9999') ||
+  (a.dueMin ?? 1440) - (b.dueMin ?? 1440) ||
+  a.createdAt - b.createdAt;
+
+/**
+ * 지금 먼저 할 일 하나. 30분 안에 시작하는 일정(준비) → 마감 지난 중요 → 오늘 마감 중요 → 오늘 마감 →
+ * 가장 오래된 중요 순. 마감 지난 보통 할 일은 오늘 회고와 마감 알림이 따로 챙겨서 여기서는 고르지 않는다. 없으면 undefined
+ */
+export function nextUp(o: {
+  todos: readonly NextUpTodo[];
+  events: readonly NextUpEvent[];
+  now: number;
+}): NextUp | undefined {
+  const soon = o.events
+    .filter((e) => !e.allDay && e.startAt > o.now && e.startAt <= o.now + PREPARE_MS)
+    .sort((a, b) => a.startAt - b.startAt)[0];
+  if (soon) return { kind: 'event', id: soon.id, title: soon.title, startAt: soon.startAt };
+  const today = localDay(o.now);
+  const open = o.todos.filter((todo) => todo.doneAt === null || todo.doneAt === undefined);
+  const pick = (why: Extract<NextUp, { kind: 'todo' }>['why'], test: (todo: NextUpTodo) => boolean) => {
+    const todo = open.filter(test).sort(why === 'important' ? (a, b) => a.createdAt - b.createdAt : byDue)[0];
+    return todo ? ({ kind: 'todo', id: todo.id, title: todo.title, why } as const) : undefined;
+  };
+  return (
+    pick('overdue', (x) => x.important && x.due !== null && x.due < today) ??
+    pick('today-important', (x) => x.important && x.due === today) ??
+    pick('today', (x) => x.due === today) ??
+    pick('important', (x) => x.important)
+  );
+}
 
 export interface BriefingInput {
   /** 오늘 남은 일정 (시작 분, 제목), 이른 것부터. 종일 일정(allDay)은 시각 없이 "오늘 종일: ..." 로 먼저 말한다 */
@@ -17,6 +83,8 @@ export interface BriefingInput {
   overdue: number;
   /** 하루 중 지금 분 (인사말용) */
   nowMinute: number;
+  /** 먼저 할 일 제목 (nextUp). 있으면 끝에 "먼저 '...'부터 해 볼까?" */
+  next?: string;
 }
 
 function greeting(minute: number): string {
@@ -34,6 +102,12 @@ export function briefingText(b: BriefingInput): string {
  * (기본은 "일정도 마감도 없어", 쉬는 날 한마디처럼 덧붙일 것이 없으면 빈 글을 넘긴다)
  */
 export function briefingBody(b: Omit<BriefingInput, 'nowMinute'>, empty = t('briefing.nothing')): string {
+  // 먼저 할 일이 있으면 "일정도 마감도 없어" 대신 그 한 문장만
+  const body = briefingFacts(b, b.next ? '' : empty);
+  return b.next ? `${body} ${t('briefing.next', { title: b.next })}`.trim() : body;
+}
+
+function briefingFacts(b: Omit<BriefingInput, 'nowMinute'>, empty: string): string {
   const parts: string[] = [];
   const allDay = b.events.filter((e) => e.allDay);
   if (allDay.length > 0) {

@@ -118,6 +118,9 @@ export const ko = {
   // 말풍선
   'settings.bubbles': '말풍선',
   'settings.bubblesAria': '말풍선 빈도',
+  'settings.osNotify': '펫이 안 보일 때 시스템 알림으로',
+  'settings.osNotifyHint':
+    '전체 화면이나 숨김이라 펫 말풍선을 못 볼 때 일정 알림을 컴퓨터 알림으로도 한 번 보내. 누르면 회의를 열거나 펫을 불러.',
   'settings.chatterHint.quiet': '답이 왔다는 알림만 해.',
   'settings.chatterHint.normal': '바쁠 때 같은 상태 알림까지, 한 시간에 {n}개까지.',
   'settings.chatterHint.chatty': '혼잣말을 자주 하고(4~6분마다), 한 시간에 {n}개까지.',
@@ -249,6 +252,8 @@ export const ko = {
   'settings.zoomKeys': '크게, 작게, 원래대로 (마우스가 펫 위에 있을 때)',
   'settings.shortcut.hide': '숨기기, 다시 보이기',
   'settings.shortcut.quickAdd': '할 일 한 줄 넣기 (어디서든)',
+  'settings.shortcut.chat': '대화 열기',
+  'settings.shortcut.look': '같이 보기',
   'settings.shortcut.recording': '키를 눌러 줘 (Esc 는 그만)',
   'settings.shortcut.recordingBtn': '기록 중',
   'settings.shortcut.change': '바꾸기',
@@ -448,6 +453,9 @@ export const en: Translation<typeof ko> = {
 
   'settings.bubbles': 'Speech bubbles',
   'settings.bubblesAria': 'Bubble frequency',
+  'settings.osNotify': "System notifications when you can't see me",
+  'settings.osNotifyHint':
+    "If you can't see my bubble (full screen, hidden), I'll also send event reminders as a system notification, once. Click it to join the meeting or call me back.",
   'settings.chatterHint.quiet': 'Only tells you when an answer arrives.',
   'settings.chatterHint.normal': 'Also status notes like when you look busy, up to {n} an hour.',
   'settings.chatterHint.chatty': 'Chats to itself often (every 4 to 6 min), up to {n} an hour.',
@@ -573,6 +581,8 @@ export const en: Translation<typeof ko> = {
   'settings.zoomKeys': 'Bigger, smaller, reset (mouse over the pet)',
   'settings.shortcut.hide': 'Hide and show',
   'settings.shortcut.quickAdd': 'Quick add a to-do (anywhere)',
+  'settings.shortcut.chat': 'Open chat',
+  'settings.shortcut.look': 'Look together',
   'settings.shortcut.recording': 'Press keys (Esc to stop)',
   'settings.shortcut.recordingBtn': 'Recording',
   'settings.shortcut.change': 'Change',

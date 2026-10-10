@@ -2,11 +2,12 @@
 // 같은 때 울릴 것이 여럿이면 말풍선 하나로 묶는다 (따로 띄우면 뒤 것이 앞 것을 밀어낸다).
 // 펫이 숨어 있거나(방해 금지, 발표, 숨기기), 집에서 쉬거나, 화면이 잠겼으면 펫이 모아 두었다가 나올 때 말하고(hold),
 // 때가 한참 지났으면 놓친 알림에만 둔다. 'schedule' 종류라 조용히에서도 말하고 시간당 상한에 세지 않는다.
+// 펫이 안 보이는 곳(맥 전체 화면 등)이면 시스템 알림으로도 한 번 (pet-window osNotify). 미룬 것은 플래너 저장 파일에 남는다.
 import { bundleText, SCHEDULE_STALE_MS } from '../shared/bubble-queue.ts';
 import { allDayLabel, type CalEvent, type EventStore, eventAnchor } from '../shared/event-store.ts';
 import { t } from '../shared/i18n/index.ts';
 import { eventLink } from '../shared/links.ts';
-import { type Anchor, anchorAt, snoozeFor, staleAt } from '../shared/remind.ts';
+import { type Anchor, anchorAt, parseSnoozed, type Snoozed, snoozeFor, staleAt } from '../shared/remind.ts';
 import { missedLine, type RemindItem, remindLine } from '../shared/remind-text.ts';
 import { type Todo, type TodoStore, todoAnchor } from '../shared/todo-store.ts';
 import type { SayOptions } from './pet-window.ts';
@@ -19,6 +20,10 @@ export interface RemindersOptions {
   openUrl: (url: string) => void;
   /** 패널 오늘 탭 열기 (할 일 알림 "볼게") */
   openToday: () => void;
+  /** 저장해 둔 미룬 알림 (플래너 저장 파일의 snoozed) */
+  saved?: unknown;
+  /** 미룬 알림이 바뀌었다 (플래너가 저장 파일에 적는다) */
+  onSnoozedChange?: () => void;
   log: (tag: string, ...rest: unknown[]) => void;
 }
 
@@ -47,8 +52,8 @@ const fromTodo = (todo: Todo): Due | undefined => {
 const holdUntil = (a: Anchor) => (a.kind === 'time' ? a.at + SCHEDULE_STALE_MS : staleAt(a));
 
 export function createReminders(o: RemindersOptions) {
-  /** 미룬 알림 (메모리에만, 앱을 끄면 사라진다). at 에 다시 말한다 */
-  let snoozed: { at: number; keys: { kind: 'event' | 'todo'; id: number }[] }[] = [];
+  /** 미룬 알림. at 에 다시 말한다. 플래너 저장 파일에 남겨 앱을 다시 켜도 이어진다 (parseSnoozed) */
+  let snoozed: Snoozed[] = parseSnoozed(o.saved, Date.now());
 
   /** 미룬 것을 다시 읽는다: 그사이 지웠거나 끝냈으면 빼고, 고쳤으면 고친 제목과 시각으로 */
   function reread(k: { kind: 'event' | 'todo'; id: number }): Due | undefined {
@@ -74,7 +79,10 @@ export function createReminders(o: RemindersOptions) {
       o.log('planner', d.kind === 'event' ? '일정 알림' : '할 일 알림', d.id);
     }
     const ready = snoozed.filter((s) => s.at <= now);
-    snoozed = snoozed.filter((s) => s.at > now);
+    if (ready.length > 0) {
+      snoozed = snoozed.filter((s) => s.at > now);
+      o.onSnoozedChange?.();
+    }
     const seen = new Set(due.map((d) => `${d.kind}:${d.id}`));
     const again: Due[] = [];
     for (const k of ready.flatMap((s) => s.keys)) {
@@ -117,6 +125,7 @@ export function createReminders(o: RemindersOptions) {
       if (a !== 'snooze' || snoozeMs === undefined) return;
       o.log('planner', '알림 미룸', list.length, snoozeMs / 60_000);
       snoozed.push({ at: Date.now() + snoozeMs, keys: list.map((d) => ({ kind: d.kind, id: d.id })) });
+      o.onSnoozedChange?.();
     };
     void o
       .say({
@@ -137,12 +146,20 @@ export function createReminders(o: RemindersOptions) {
               ? { span: { startAt: d.e.startAt, endAt: d.e.endAt } }
               : {}),
           })),
-          // 숨어 있다 다시 꺼낸 말풍선에서 누른 단추 (미루기, 회의 열기, 볼게)
+          // 숨어 있다 다시 꺼낸 말풍선에서 누른 단추 (미루기, 회의 열기, 볼게). 시스템 알림을 눌러도 이것
           onAction: act,
+          // 펫이 안 보이면(맥 전체 화면, 숨김, 발표) 시스템 알림으로도 한 번 (설정 osNotify)
+          osNotify: true,
         },
       })
       .then(act);
   }
 
-  return { tick };
+  return {
+    tick,
+    /** 저장할 모양 */
+    get snoozed(): Snoozed[] {
+      return snoozed;
+    },
+  };
 }

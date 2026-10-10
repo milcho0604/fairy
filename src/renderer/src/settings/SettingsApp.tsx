@@ -387,6 +387,12 @@ export function SettingsApp() {
             ))}
           </fieldset>
           <small className="below">{chatterHint(s.chatter)}</small>
+          <Toggle
+            label={t('settings.osNotify')}
+            hint={t('settings.osNotifyHint')}
+            on={s.osNotify}
+            onChange={(v) => update({ osNotify: v })}
+          />
         </Section>
 
         <Section title={t('settings.ai')}>
@@ -650,7 +656,7 @@ export function SettingsApp() {
 
         <Section title={t('settings.shortcuts')}>
           <dl className="keys">
-            {(['hide', 'quickAdd'] as const).map((id) => (
+            {(['hide', 'quickAdd', 'chat', 'look'] as const).map((id) => (
               <ShortcutRow
                 key={id}
                 id={id}

@@ -339,8 +339,8 @@ test('설정 파일의 시스템 단축키(복사, 종료)는 등록하지 않�
     now.shortcuts,
   );
   assert.equal(
-    applyPatch(now, { shortcuts: { hide: 'CommandOrControl+Alt+Shift+J' } }).shortcuts.hide,
-    'CommandOrControl+Alt+Shift+J',
+    applyPatch(now, { shortcuts: { hide: 'CommandOrControl+Alt+Shift+K' } }).shortcuts.hide,
+    'CommandOrControl+Alt+Shift+K',
   );
 });
 
