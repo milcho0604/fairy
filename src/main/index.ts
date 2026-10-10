@@ -2,9 +2,10 @@ import { cpus, homedir } from 'node:os';
 import { join } from 'node:path';
 import { app, globalShortcut, powerMonitor, screen } from 'electron';
 import { ACHIEVEMENTS } from '../shared/achieve.ts';
+import { planTodos } from '../shared/ai/answer-todos.ts';
 import { pickLocal } from '../shared/ai/catalog.ts';
-import { persona, todoContext } from '../shared/ai/persona.ts';
-import { timeLabel } from '../shared/event-store.ts';
+import { contextEvents, todayRange } from '../shared/ai/context-events.ts';
+import { persona, setMemorySource, todoContext } from '../shared/ai/persona.ts';
 import { HIDE_SEEK, pickHideSpot } from '../shared/hide-seek.ts';
 import { locale, t } from '../shared/i18n/index.ts';
 import { IPC, type PetStatus, type PlayKind } from '../shared/ipc.ts';
@@ -45,8 +46,9 @@ import { openLink } from './open-link.ts';
 import { createPanel } from './panel.ts';
 import { createPetFace, trayImageOf } from './pet-face.ts';
 import { createPetLife } from './pet-life.ts';
+import { drainMemoryInbox } from './pet-memory.ts';
 import { createPetWindow } from './pet-window.ts';
-import { createPlanner, minuteOfDay, startOfDay } from './planner.ts';
+import { createPlanner } from './planner.ts';
 import { createHouse, playBall, visitHouse } from './play.ts';
 import { createPout } from './pout.ts';
 import { watchPresentation } from './presence-watch.ts';
@@ -123,13 +125,13 @@ app.whenReady().then(() => {
     setKnowsTodos: (on) => settings.set({ aiKnowsTodos: on }),
     // 질문 앞에 붙일 내 오늘 상황: 안 끝낸 할 일 제목과 마감, 오늘 남은 일정 (기획서 개인정보 표)
     todoContext: () => {
+      // 오늘 일정은 0시부터 다음 날 0시까지 다 읽고 고른다: 종일 일정, 막 시작한 회의도 (context-events.ts)
       const now = Date.now();
+      const day = todayRange(now);
       return todoContext({
         today: localDay(now),
         todos: store.list(now).open,
-        events: events
-          .between(now, startOfDay(now) + 86_400_000)
-          .map((e) => ({ time: timeLabel(minuteOfDay(e.startAt)), title: e.title })),
+        events: contextEvents(events.between(day.from, day.to), now),
       });
     },
     saveNote: (title, body) => {
@@ -137,12 +139,7 @@ app.whenReady().then(() => {
       panel.refresh();
     },
     mcpServers: () => (settings.get().myMcp ? mcpServers(log) : []),
-    addTodos: (titles) => {
-      const now = Date.now();
-      for (const title of titles) store.add({ title }, now);
-      panel.refresh();
-      return titles.length;
-    },
+    addTodos: (titles) => addAnswerTodos(titles).length,
     onUserSaid: (text) => pout.said(text),
     onPetAi: (state) => {
       if (state.thinking) petLife.activity('chat');
@@ -306,11 +303,28 @@ app.whenReady().then(() => {
     pet.win.webContents.once('did-finish-load', () =>
       setTimeout(() => void announceStoreTrouble(trouble, (o) => pet.say(o)), 3000),
     );
+  // 답을 할 일로: 마감 낱말은 마감으로, 이미 있는 할 일은 빼고 넣는다. 넣은 id 를 돌려준다 (되돌리기를 붙일 수 있게)
+  const addAnswerTodos = (titles: readonly string[]): number[] => {
+    const now = Date.now();
+    const planned = planTodos(titles, store.list(now).open, localDay(now));
+    const ids = planned.map((p) => store.add(p, now).id);
+    if (ids.length > 0) panel.refresh();
+    return ids;
+  };
+  // ---- 짝꿍이 기억하는 것 ----
+  // 질문마다 성격 뒤에 붙는다 (persona.ts). MCP remember 가 남긴 것은 질문할 때와 1분마다 설정으로 옮긴다
+  setMemorySource(() => {
+    drainMemoryInbox(log);
+    return settings.get().petMemory;
+  });
+  drainMemoryInbox(log);
+  setInterval(() => drainMemoryInbox(log), 60_000).unref();
   // ---- 짝꿍 일기 ----
   const diary = createDiary({
     stats,
     ask: (text, system) => chat.textOnce(text, system),
-    persona: () => persona(petName(), settings.get().persona, ''),
+    // 일기는 질문이 아니라 기억을 보내지 않는다 (숫자와 펫 문장만)
+    persona: () => persona(petName(), settings.get().persona, '', { memory: [] }),
     onChange: () => panel.refresh(),
     log,
   });

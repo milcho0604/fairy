@@ -5,6 +5,7 @@ import { formatBytes } from '../../../shared/bytes.ts';
 import { type ChatterLevel, LEVEL_LABEL, MAX_PER_HOUR } from '../../../shared/chatter.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PetLookView, SettingsSnapshot } from '../../../shared/ipc.ts';
+import { addMemory, MEMORY_ITEM_MAX, MEMORY_MAX } from '../../../shared/pet-memory.ts';
 import type { Gait } from '../../../shared/pet3d/blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from '../../../shared/pet3d/defaults.ts';
 import { restDaysOf } from '../../../shared/routine.ts';
@@ -443,6 +444,13 @@ export function SettingsApp() {
           <RulesEditor
             value={s.petRules}
             onSave={(petRules) => update({ petRules }, t('settings.rules.saved'))}
+          />
+        </Section>
+
+        <Section title={t('settings.memory')}>
+          <MemoryEditor
+            list={s.petMemory}
+            onChange={(petMemory, message) => update({ petMemory }, message)}
           />
         </Section>
 
@@ -1568,6 +1576,89 @@ function RulesEditor({ value, onSave }: { value: string; onSave: (v: string) => 
         {t('settings.rules.hint')} ({text.length}/{RULES_MAX})
       </small>
     </label>
+  );
+}
+
+/**
+ * 짝꿍이 기억하는 것: 보고, 잊고, 더한다. 기본은 비어 있고 사용자가 넣은 것만 질문과 같이 간다.
+ * 잊기는 한 번 더 눌러야 (친구 집에 보내기와 같다)
+ */
+function MemoryEditor({
+  list,
+  onChange,
+}: {
+  list: readonly string[];
+  onChange: (next: string[], message: string) => void;
+}) {
+  const [text, setText] = useState('');
+  const [sure, setSure] = useState(-1);
+  const [dupe, setDupe] = useState(false);
+  const add = () => {
+    const next = addMemory(list, text);
+    if (!next.added) {
+      setDupe(text.trim() !== '');
+      return;
+    }
+    onChange(next.list, t('settings.memory.added'));
+    setText('');
+  };
+  return (
+    <div className="field">
+      <small>{t('settings.memory.hint', { max: MEMORY_MAX, len: MEMORY_ITEM_MAX })}</small>
+      {list.length === 0 ? (
+        <small className="below">{t('settings.memory.empty')}</small>
+      ) : (
+        <ul className="friends">
+          {list.map((m, i) => (
+            <li key={m}>
+              <span>{m}</span>
+              <button
+                type="button"
+                className={`link${sure === i ? ' sure' : ''}`}
+                aria-label={t('settings.memory.deleteAria', { text: m })}
+                onClick={() => {
+                  if (sure !== i) {
+                    setSure(i);
+                    return;
+                  }
+                  setSure(-1);
+                  onChange(
+                    list.filter((_, j) => j !== i),
+                    t('settings.memory.deleted'),
+                  );
+                }}
+                onBlur={() => setSure(-1)}
+              >
+                {sure === i ? t('settings.memory.deleteSure') : t('settings.memory.delete')}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="friend-add">
+        <input
+          value={text}
+          maxLength={MEMORY_ITEM_MAX}
+          placeholder={t('settings.memory.placeholder')}
+          aria-label={t('settings.memory')}
+          onChange={(e) => {
+            setText(e.target.value);
+            setDupe(false);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing) add();
+          }}
+        />
+        <button type="button" className="ghost" disabled={!text.trim()} onClick={add}>
+          {t('settings.memory.add')}
+        </button>
+      </div>
+      {dupe && (
+        <small className="below warn" role="status">
+          {t('settings.memory.dupe')}
+        </small>
+      )}
+    </div>
   );
 }
 
