@@ -73,6 +73,9 @@ export function watchCalendar(o: {
     }
     if (text === undefined) return done(t('panel.calendar.tooBig'));
     if (!text.includes('BEGIN:VCALENDAR')) return done(t('panel.calendar.notIcs'));
+    // 받는 사이 주소를 바꾸거나 지웠으면 옛 주소의 일정으로 맞추지 않는다 (늦게 온 옛 응답이 새 캘린더 일정을 지웠다)
+    // 이 결과 글은 남기지 않는다 (새 주소의 맞추기가 따로 알린다)
+    if (settings.get().icsUrl !== raw) return settings.get().icsUrl ? last : t('panel.calendar.noUrl');
     try {
       const now = Date.now();
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
