@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { focusedMinutes, focusTodoToAsk, IDLE, skipGap, startFocus, tickFocus } from './focus.ts';
+import {
+  focusDoneAction,
+  focusDoneButtons,
+  focusedMinutes,
+  focusTodoToAsk,
+  IDLE,
+  skipGap,
+  startFocus,
+  tickFocus,
+} from './focus.ts';
 
 test('잠자기나 시계 앞당김: 튄 시간은 집중으로 치지 않고, 짧은 지연은 그대로', () => {
   const T = 1_000_000;
@@ -35,4 +44,18 @@ test('할 일을 걸고 집중: id 를 들고 가다 끝나면 아직 열린 그
   assert.equal(focusTodoToAsk(s, [{ id: 7, doneAt: T }]), undefined);
   assert.equal(focusTodoToAsk(s, [{ id: 3 }]), undefined);
   assert.equal(focusTodoToAsk(startFocus(T), [{ id: 7 }]), undefined);
+});
+
+test('집중 끝 단추: 할 일이 있어도 그만할래가 있고, 조금 더는 같은 할 일로 다시 집중', () => {
+  assert.deepEqual(focusDoneButtons(true), ['finished', 'more', 'stop']);
+  assert.deepEqual(focusDoneButtons(false), ['stop']);
+  assert.equal(focusDoneAction('more', true), 'again');
+  assert.equal(focusDoneAction('finished', true), 'finish');
+  assert.equal(focusDoneAction('stop', true), 'stop');
+  assert.equal(focusDoneAction('stop', false), 'stop');
+  // 닫거나 시간이 끝나면 그대로 쉰다
+  for (const a of [undefined, 'dismiss', 'timeout']) assert.equal(focusDoneAction(a, true), undefined);
+  // 할 일이 없으면 끝냈어, 조금 더는 없다
+  assert.equal(focusDoneAction('more', false), undefined);
+  assert.equal(focusDoneAction('finished', false), undefined);
 });

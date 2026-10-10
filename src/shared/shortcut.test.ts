@@ -8,6 +8,7 @@ import {
   SHORTCUT_DEFAULTS,
   shortcutClash,
   shortcutProblem,
+  shortcutsChanged,
   toAccelerator,
 } from './shortcut.ts';
 
@@ -236,4 +237,18 @@ test('영어 안내도 키 이름과 쓰임을 말한다', async () => {
   } finally {
     setLang('ko');
   }
+});
+
+test('빈 단축키끼리는 겹친 게 아니다', () => {
+  const d = SHORTCUT_DEFAULTS;
+  assert.equal(shortcutClash({ ...d, chat: '', look: '' }), undefined);
+  assert.deepEqual(shortcutClash({ ...d, chat: '', look: d.hide }), ['hide', 'look']);
+});
+
+test('shortcutsChanged: 대화, 같이 보기 키가 바뀌어도 다시 등록한다', () => {
+  const d = SHORTCUT_DEFAULTS;
+  assert.equal(shortcutsChanged(d, { ...d }), false);
+  assert.equal(shortcutsChanged(d, { ...d, chat: 'CommandOrControl+Alt+Shift+O' }), true);
+  assert.equal(shortcutsChanged(d, { ...d, look: '' }), true);
+  assert.equal(shortcutsChanged(d, { ...d, hide: 'CommandOrControl+Alt+Shift+K' }), true);
 });

@@ -14,6 +14,8 @@ import { plusDays } from '../shared/day.ts';
 import type { EventStore } from '../shared/event-store.ts';
 import {
   type FocusState,
+  focusDoneAction,
+  focusDoneButtons,
   focusedMinutes,
   focusTodoToAsk,
   IDLE,
@@ -530,28 +532,24 @@ export function createPlanner(o: PlannerOptions) {
       const todoId = focusTodoToAsk(focus, o.todos.list(now).open);
       const todo = todoId === undefined ? undefined : o.todos.get(todoId);
       lastTodoId = todo?.id;
+      const label = {
+        finished: t('panel.focus.todoDone'),
+        more: t('panel.focus.todoMore'),
+        stop: t('panel.focus.stop'),
+      };
       void o
-        .say(
-          todo
-            ? {
-                kind: 'answer',
-                text: `${done} ${t('panel.focus.todoAsk', { title: todo.title })}`,
-                buttons: [
-                  { id: 'finished', label: t('panel.focus.todoDone') },
-                  { id: 'more', label: t('panel.focus.todoMore') },
-                ],
-                ttlMs: 30_000,
-              }
-            : {
-                kind: 'answer',
-                text: done,
-                buttons: [{ id: 'stop', label: t('panel.focus.stop') }],
-                ttlMs: 20_000,
-              },
-        )
+        .say({
+          kind: 'answer',
+          text: todo ? `${done} ${t('panel.focus.todoAsk', { title: todo.title })}` : done,
+          buttons: focusDoneButtons(!!todo).map((id) => ({ id, label: label[id] })),
+          ttlMs: todo ? 30_000 : 20_000,
+        })
         .then((a) => {
-          if (a === 'stop') stopFocus();
-          if (a === 'finished' && todo) finishTodo(todo.id);
+          const act = focusDoneAction(a, !!todo);
+          if (act === 'stop') stopFocus();
+          else if (act === 'finish' && todo) finishTodo(todo.id);
+          // 조금 더: 쉬지 않고 같은 할 일로 집중을 다시 시작한다
+          else if (act === 'again' && todo) startFocusNow(undefined, todo.id);
         });
     } else if (r.event === 'break-done') {
       void o

@@ -186,12 +186,29 @@ test('메모 찾기: 제목과 본문, 개수 상한, 없으면 없다고', () =
   assert.equal(text(tool('search_notes', { query: '묶음', limit: 2 })).split('\n').length, 2);
 });
 
-test('기억하기: 받은 편지함에 쌓고 같은 것은 한 번 (짝꿍이 설정으로 옮긴다)', () => {
+test('기억하기: 받은 편지함에 쌓고 같은 것은 한 번 (짝꿍이 기다리는 기억으로 옮기고 사용자가 허락한다)', () => {
   const inbox = () => JSON.parse(readFileSync(join(dir, 'memory-inbox.json'), 'utf8'));
-  assert.match(text(tool('remember', { text: '  아침엔 회의가 많아 ' })), /기억했어: 아침엔 회의가 많아/);
-  assert.match(text(tool('remember', { text: '아침엔  회의가 많아' })), /이미 기억하고 있어/);
-  assert.match(text(tool('remember', { text: '가'.repeat(150) })), /기억했어/);
+  assert.match(
+    text(tool('remember', { text: '  아침엔 회의가 많아 ' })),
+    /허락하면 기억할게: 아침엔 회의가 많아/,
+  );
+  assert.match(text(tool('remember', { text: '아침엔  회의가 많아' })), /이미 기억해 달라고 했어/);
+  assert.match(text(tool('remember', { text: '가'.repeat(150) })), /허락하면 기억할게/);
   assert.equal(tool('remember', { text: '' }).result?.isError, true);
   assert.equal(tool('remember', { text: 3 }).result?.isError, true);
   assert.deepEqual(inbox(), ['아침엔 회의가 많아', '가'.repeat(100)]);
+});
+
+test('할 일 id 는 1 이상의 정수만 (글, 참거짓, 소수, 0, 음수는 거절)', () => {
+  const r = text(tool('add_todo', { title: 'id 시험' }));
+  const id = Number(/id (\d+)/.exec(r)?.[1]);
+  assert.ok(id > 0);
+  for (const name of ['complete_todo', 'update_todo', 'delete_todo'])
+    for (const bad of [String(id), true, id + 0.5, 0, -id, null, [id]])
+      assert.equal(
+        tool(name, { id: bad, title: '바꿈' }).result?.isError,
+        true,
+        `${name} ${JSON.stringify(bad)}`,
+      );
+  assert.match(text(tool('update_todo', { id, title: '바꿈' })), /고쳤어/);
 });

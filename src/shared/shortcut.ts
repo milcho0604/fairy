@@ -12,6 +12,12 @@ export const SHORTCUT_DEFAULTS: Record<ShortcutId, string> = {
 };
 
 /**
+ * 키가 없는 단축키. 아무것도 등록하지 않는다. 새로 생긴 기본 단축키가 사용자가 이미 쓰던 키와 겹치면
+ * 사용자 키를 되돌리지 않고 새 쪽을 이것으로 비운다 (리뷰: 업데이트하면 바꿔 둔 단축키가 기본으로 돌아갔다)
+ */
+export const NO_SHORTCUT = '';
+
+/**
  * 같은 키 조합을 쓰는 단축키 둘. 없으면 undefined. 설정 창은 저장하기 전에 이것으로 겹침을 알리고,
  * 설정 검사도 같은 것으로 겹친 값을 버린다 (버그잡이 6차: 조용히 버리면서 "바꿨어"가 떴다)
  */
@@ -21,9 +27,15 @@ export function shortcutClash(keys: Record<ShortcutId, string>): [ShortcutId, Sh
     for (let j = i + 1; j < ids.length; j++) {
       const a = ids[i] as ShortcutId;
       const b = ids[j] as ShortcutId;
-      if (keys[a].toLowerCase() === keys[b].toLowerCase()) return [a, b];
+      // 빈 키끼리는 겹친 게 아니다 (둘 다 꺼 둔 것)
+      if (keys[a] !== NO_SHORTCUT && keys[a].toLowerCase() === keys[b].toLowerCase()) return [a, b];
     }
   return undefined;
+}
+
+/** 단축키 넷 중 하나라도 바뀌었는지 (설정이 바뀔 때 다시 등록할지) */
+export function shortcutsChanged(a: Record<ShortcutId, string>, b: Record<ShortcutId, string>): boolean {
+  return (Object.keys(SHORTCUT_DEFAULTS) as ShortcutId[]).some((id) => a[id] !== b[id]);
 }
 
 // 이름은 지금 말로 읽는다 (getter)

@@ -4,6 +4,8 @@ import {
   CAL_FAIL_START,
   CAL_FAIL_TELL,
   calFailStep,
+  calStatusResult,
+  calTellNow,
   cleanIcsUrl,
   parseIcs,
   resolveTz,
@@ -333,4 +335,17 @@ test('캘린더를 계속 못 읽음: 세 번째에 한 번만 알리고, 인터
   assert.deepEqual(run(['fail', 'fail', 'ok', 'fail', 'fail']).told, []);
   assert.deepEqual(run(['fail', 'fail', 'fail', 'ok', 'fail', 'fail', 'fail']).told, [2, 6]);
   assert.deepEqual(run(['fail', 'fail', 'fail', 'ok']).s, CAL_FAIL_START);
+});
+
+test('캘린더 응답 상태: 5xx 와 429 는 세지 않고, 다른 4xx 는 센다', () => {
+  assert.equal(calStatusResult(200), 'ok');
+  for (const s of [500, 502, 503, 504, 429]) assert.equal(calStatusResult(s), 'offline', String(s));
+  for (const s of [400, 401, 403, 404, 410]) assert.equal(calStatusResult(s), 'fail', String(s));
+});
+
+test('계속 못 읽음 알림: 사용자가 직접 가져왔거나 설정 창이 열려 있으면 말하지 않는다', () => {
+  assert.equal(calTellNow(true, { byUser: false, settingsOpen: false }), true);
+  assert.equal(calTellNow(true, { byUser: true, settingsOpen: false }), false);
+  assert.equal(calTellNow(true, { byUser: false, settingsOpen: true }), false);
+  assert.equal(calTellNow(false, { byUser: false, settingsOpen: false }), false);
 });

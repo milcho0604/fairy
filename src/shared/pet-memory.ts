@@ -1,4 +1,4 @@
-// 짝꿍이 기억하는 것 (오래 가는 기억). 사용자가 설정에서 적거나 MCP remember 로 넣은 짧은 글.
+// 짝꿍이 기억하는 것 (오래 가는 기억). 사용자가 설정에서 적거나, MCP remember 로 온 것을 사용자가 허락한 짧은 글.
 // 질문마다 성격 뒤에 같이 보내니 짧고 적게 둔다. 기본은 비어 있다 (사용자가 넣어야만 보낸다).
 // 이 컴퓨터 설정 파일에만 둔다.
 
@@ -41,9 +41,48 @@ export function addMemory(list: readonly string[], item: unknown): { list: strin
  */
 export const MEMORY_INBOX = 'memory-inbox';
 
-/** 받은 편지함(MCP remember)을 지금 기억 뒤에 합친다. 같은 것은 한 번, 넘치면 오래된 것부터 뺀다 */
-export function mergeMemory(list: readonly string[], incoming: unknown): string[] {
-  let out = [...list];
-  for (const item of cleanMemory(incoming)) out = addMemory(out, item).list;
-  return out;
+/**
+ * AI 도구(MCP remember)가 기억하자고 한 것을 바로 기억에 넣지 않고 기다리게 두는 수.
+ * 다른 글(웹 페이지, 메일)에 숨은 지시로 AI 가 remember 를 부르면 그 글이 질문마다 성격에 붙어 버린다 (리뷰 MED, 프롬프트 주입).
+ * 그래서 사용자가 설정에서 허락한 것만 기억이 된다
+ */
+export const MEMORY_PENDING_MAX = 10;
+
+/** 기다리는 목록 다듬기: cleanMemory 와 같고 MEMORY_PENDING_MAX 개까지 (새것을 남긴다) */
+export function cleanPending(list: unknown): string[] {
+  return cleanMemory(list).slice(-MEMORY_PENDING_MAX);
+}
+
+/**
+ * 받은 편지함(MCP remember)을 기다리는 목록 뒤에 붙인다. 이미 기억하거나 기다리는 것은 빼고,
+ * 넘치면 기다리는 것 중 오래된 것부터 뺀다. 사용자가 적은 기억(approved)은 건드리지 않는다
+ */
+export function mergePending(
+  pending: readonly string[],
+  approved: readonly string[],
+  incoming: unknown,
+): string[] {
+  const known = new Set([...pending, ...approved].map(key));
+  const out = [...pending];
+  for (const item of cleanMemory(incoming)) {
+    if (known.has(key(item))) continue;
+    known.add(key(item));
+    out.push(item);
+  }
+  return out.slice(-MEMORY_PENDING_MAX);
+}
+
+/**
+ * 기다리는 것 하나를 허락해 기억에 넣는다. 꽉 찼으면 넣지 않는다 (허락했다고 사용자가 적은 기억을 밀어내지 않게).
+ * added 면 넣었고, dupe 면 이미 기억하고 있어 기다리는 데서만 뺐고, full 이면 아무것도 안 바꿨다
+ */
+export function approvePending(
+  list: readonly string[],
+  pending: readonly string[],
+  item: string,
+): { list: string[]; pending: string[]; result: 'added' | 'dupe' | 'full' } {
+  const rest = pending.filter((p) => key(p) !== key(item));
+  if (list.some((m) => key(m) === key(item))) return { list: [...list], pending: rest, result: 'dupe' };
+  if (list.length >= MEMORY_MAX) return { list: [...list], pending: [...pending], result: 'full' };
+  return { list: [...list, cleanMemoryItem(item)], pending: rest, result: 'added' };
 }

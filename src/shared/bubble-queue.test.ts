@@ -10,6 +10,7 @@ import {
   MAX_SHOWS,
   MISSED_MAX,
   MissedLog,
+  OS_AWAY_SEC,
   osClickAction,
   osNotifyFor,
 } from './bubble-queue.ts';
@@ -177,8 +178,13 @@ test('시스템 알림으로 돌리기: 일정 알림만, 못 띄우면 바로, 
     setting: true,
     alreadyNotified: false,
   };
-  // 말할 때 숨음, 발표, 화면 잠금이면 바로
+  // 말할 때 사용자가 숨겼으면 바로
   assert.equal(osNotifyFor({ ...base, blocked: true }), true);
+  // 화면 잠금, 발표 중, 자리 비움이면 어느 쪽이든 돌리지 않는다 (잠금 화면, 청중에게 일정 제목이 보인다)
+  for (const flag of ['locked', 'presenting', 'away'] as const) {
+    assert.equal(osNotifyFor({ ...base, blocked: true, [flag]: true }), false, flag);
+    assert.equal(osNotifyFor({ ...base, action: 'timeout', [flag]: true }), false, flag);
+  }
   // 말할 때 보이면 말풍선으로 충분
   assert.equal(osNotifyFor(base), false);
   // 맥 전체 화면: 말풍선은 떴는데 아무도 못 보고 시간이 끝남
@@ -196,10 +202,32 @@ test('시스템 알림으로 돌리기: 일정 알림만, 못 띄우면 바로, 
   assert.equal(osNotifyFor({ ...base, kind: undefined, blocked: true }), false);
 });
 
-test('시스템 알림을 누르면: 회의 열기, 할 일 보기 순, 없으면 펫만', () => {
+test('시스템 알림을 누르면: 맨 앞이 회의 단추일 때만 회의 열기, 그 밖은 오늘 보기, 단추가 없으면 펫만', () => {
   const b = (...ids: string[]) => ids.map((id) => ({ id, label: id }));
-  assert.equal(osClickAction(b('ok', 'snooze', 'link')), 'link');
+  // 회의 주소는 맨 앞에 온다 (reminders.ts)
+  assert.equal(osClickAction(b('link', 'ok', 'snooze')), 'link');
+  // 회의가 아닌 주소는 맨 뒤라 열지 않는다
+  assert.equal(osClickAction(b('ok', 'snooze', 'link')), 'show');
   assert.equal(osClickAction(b('ok', 'show')), 'show');
-  assert.equal(osClickAction(b('ok', 'snooze')), undefined);
+  assert.equal(osClickAction(b('ok', 'snooze')), 'show');
+  assert.equal(osClickAction([]), undefined);
   assert.equal(osClickAction(undefined), undefined);
+});
+
+test('모아 둔 것에서 하나 빼기 (시스템 알림을 눌러 처리한 것)', () => {
+  const held = new HeldBubbles();
+  const a = { text: 'a', at: 1 };
+  const b = { text: 'b', at: 2 };
+  held.hold(a);
+  held.hold(b);
+  assert.equal(held.remove(a), true);
+  assert.equal(held.remove(a), false);
+  assert.deepEqual(
+    held.flush(3).fresh.map((h) => h.text),
+    ['b'],
+  );
+});
+
+test('시스템 알림 자리 비움 기준은 말풍선보다 길다 (전체 화면으로 보는 사람)', () => {
+  assert.ok(OS_AWAY_SEC >= 5 * 60);
 });

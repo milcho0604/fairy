@@ -1,7 +1,14 @@
 import { net } from 'electron';
 import type { EventStore } from '../shared/event-store.ts';
 import { t } from '../shared/i18n/index.ts';
-import { CAL_FAIL_START, calFailStep, cleanIcsUrl, parseIcs } from '../shared/ics.ts';
+import {
+  CAL_FAIL_START,
+  calFailStep,
+  calStatusResult,
+  calTellNow,
+  cleanIcsUrl,
+  parseIcs,
+} from '../shared/ics.ts';
 import { readCapped } from './read-capped.ts';
 import { settings } from './settings.ts';
 
@@ -21,37 +28,52 @@ export function watchCalendar(o: {
   onChanged: () => void;
   /** 연달아 못 읽었다 (CAL_FAIL_TELL 번째에 한 번). 펫이 알리고 설정을 열 수 있게 한다 */
   onBroken?: () => void;
+  /** 지금은 알리지 않는다 (설정 창이 열려 있으면 거기서 결과를 이미 본다) */
+  quiet?: () => boolean;
   log: (tag: string, ...rest: unknown[]) => void;
 }) {
   let last = '';
   /** 연달아 못 읽은 수 (calFailStep). 앱을 다시 켜면 처음부터 */
   let fails = CAL_FAIL_START;
 
-  const done = (msg: string, result: 'ok' | 'offline' | 'fail' = 'fail') => {
+  /** byUser: 사용자가 설정에서 누르거나 주소를 바꾼 것. 결과 글을 바로 보니 펫이 또 알리지 않는다 */
+  const finish = (msg: string, result: 'ok' | 'offline' | 'fail', byUser: boolean) => {
     last = msg;
     const step = calFailStep(fails, result);
     fails = step.state;
     if (step.tell) {
       o.log('calendar', '계속 못 읽음', fails.n);
-      o.onBroken?.();
+      if (calTellNow(true, { byUser, settingsOpen: !!o.quiet?.() })) o.onBroken?.();
     }
     return msg;
   };
 
-  async function sync(): Promise<string> {
+  async function sync(byUser = false): Promise<string> {
+    const done = (msg: string, result: 'ok' | 'offline' | 'fail' = 'fail') => finish(msg, result, byUser);
     const raw = settings.get().icsUrl;
     if (!raw) return t('panel.calendar.noUrl');
     const url = cleanIcsUrl(raw);
     if (!url) return t('panel.calendar.notHttps');
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), TIMEOUT_MS);
+    // 받기와 다루기를 나눈다: 받다가 난 오류(인터넷 끊김, 시간 끝)만 캘린더 탓이 아니고,
+    // 읽거나 맞추다 난 오류는 센다 (리뷰 LOW: 예전에는 무엇이 던져도 인터넷 끊김으로 보아 조용히 넘어갔다)
+    let text: string | undefined;
     try {
       const res = await net.fetch(url, { headers: { accept: 'text/calendar' }, signal: ac.signal });
-      if (!res.ok) return done(t('panel.calendar.failedStatus', { status: res.status }));
+      if (!res.ok)
+        return done(t('panel.calendar.failedStatus', { status: res.status }), calStatusResult(res.status));
       // 다 받은 뒤 재지 않고 받으면서 잰다: 상한을 넘으면 그 자리에서 끊는다
-      const text = await readCapped(res, MAX_BYTES);
-      if (text === undefined) return done(t('panel.calendar.tooBig'));
-      if (!text.includes('BEGIN:VCALENDAR')) return done(t('panel.calendar.notIcs'));
+      text = await readCapped(res, MAX_BYTES);
+    } catch (err) {
+      o.log('calendar', '실패', err instanceof Error ? err.name : 'error');
+      return done(t('panel.calendar.offline'), 'offline');
+    } finally {
+      clearTimeout(timer);
+    }
+    if (text === undefined) return done(t('panel.calendar.tooBig'));
+    if (!text.includes('BEGIN:VCALENDAR')) return done(t('panel.calendar.notIcs'));
+    try {
       const now = Date.now();
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const list = parseIcs(text, tz, now - BACK_MS, now + AHEAD_MS);
@@ -68,11 +90,8 @@ export function watchCalendar(o: {
         'ok',
       );
     } catch (err) {
-      o.log('calendar', '실패', err instanceof Error ? err.name : 'error');
-      // 인터넷이 끊겼거나 시간이 끝났다: 캘린더 탓이 아니라 세지 않는다
-      return done(t('panel.calendar.offline'), 'offline');
-    } finally {
-      clearTimeout(timer);
+      o.log('calendar', '읽기 실패', err instanceof Error ? err.name : 'error');
+      return done(t('panel.calendar.notIcs'));
     }
   }
 

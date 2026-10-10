@@ -49,16 +49,16 @@ export function setMemorySource(source: () => readonly string[]): void {
 
 /**
  * 펫 성격 지시. 이모지는 쓰지 않는다 (D5).
- * now: 지금 시각(현지)을 알려 준다. AI 가 오늘 날짜나 요일을 몰라 "내일"을 엉뚱하게 셌다.
+ * 지금 시각은 여기 넣지 않고 질문마다 앞에 붙인다 (turnPrompt). 시스템 지시가 분마다 바뀌면
+ * AI 쪽 프롬프트 캐시가 매번 깨진다 (리뷰 MED).
  * memory: 짝꿍이 기억하는 것. 없으면 설정에서 읽은 것 (일기처럼 질문이 아닌 곳은 빈 목록을 준다)
  */
 export function persona(
   petName: string,
   id: PersonaId = 'friend',
   rules = '',
-  o: { now?: Date | number; memory?: readonly string[] } = {},
+  o: { memory?: readonly string[] } = {},
 ): string {
-  const now = new Date(o.now ?? Date.now());
   const tail = withRules(rules) + withMemory(o.memory ?? memorySource());
   if (getLang() === 'en')
     return (
@@ -68,7 +68,6 @@ export function persona(
         'If the user sends a screenshot, answer as if you are looking at that screen together.',
         'Do not use emoji.',
         'Answer in English.',
-        nowLine(now, 'en'),
       ].join(' ') + tail
     );
   return (
@@ -77,7 +76,6 @@ export function persona(
       '답은 짧게, 핵심부터. 길게 설명해야 하면 목록으로 나눈다.',
       '사용자가 화면 캡처를 보내면 그 화면을 같이 보고 있다고 생각하고 답한다.',
       '이모지는 쓰지 않는다.',
-      nowLine(now, 'ko'),
     ].join(' ') + tail
   );
 }
@@ -95,6 +93,17 @@ export function nowLine(d: Date, lang: 'ko' | 'en'): string {
     return `It is now ${EN_WD[d.getDay()]}, ${EN_MON[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}, ${h12}:${mm} ${h < 12 ? 'AM' : 'PM'}.`;
   const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   return `지금은 ${day}(${KO_WD[d.getDay()]}) ${h < 12 ? '오전' : '오후'} ${h12}:${mm}.`;
+}
+
+/**
+ * 질문 하나에 보낼 글: 지금 시각, 내 오늘 상황(todoContext, 켰을 때), 질문 순.
+ * AI 가 오늘 날짜나 요일을 몰라 "내일"을 엉뚱하게 셌다. 시각은 질문마다 바뀌니 시스템 지시가 아니라 여기 둔다.
+ * 오늘 상황이 없어도 질문 머리말을 달아 시각 줄이 질문의 일부로 읽히지 않게 한다
+ */
+export function turnPrompt(o: { now?: Date | number; context?: string; question: string }): string {
+  const time = nowLine(new Date(o.now ?? Date.now()), getLang() === 'en' ? 'en' : 'ko');
+  const context = o.context || `${t('ai.ctx.question')}\n`;
+  return `${time}\n${context}${o.question}`;
 }
 
 /** 짝꿍이 기억하는 것을 규칙 뒤에 붙인다. 없으면 빈 글 */

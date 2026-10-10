@@ -53,6 +53,27 @@ export function focusTodoToAsk(
   return todo && (todo.doneAt === null || todo.doneAt === undefined) ? todo.id : undefined;
 }
 
+/** 집중이 끝났을 때 말풍선 단추 (id). 할 일을 걸었으면 끝냈어, 조금 더, 그만할래. 아니면 그만할래 하나 */
+export function focusDoneButtons(withTodo: boolean): ('finished' | 'more' | 'stop')[] {
+  // 할 일을 물을 때도 쉬기를 멈출 길을 남긴다 (리뷰 LOW: 할 일이 있으면 "그만할래"가 사라졌다)
+  return withTodo ? ['finished', 'more', 'stop'] : ['stop'];
+}
+
+/**
+ * 집중 끝 말풍선에서 누른 단추로 할 일. finish 는 할 일을 끝낸다, again 은 같은 할 일로 집중을 바로 다시 한다
+ * ("조금 더"가 아무것도 안 하고 쉬기로 넘어갔다), stop 은 쉬기도 그만한다. 그 밖(닫음, 시간 끝)은 그대로 쉰다
+ */
+export function focusDoneAction(
+  a: string | undefined,
+  withTodo: boolean,
+): 'finish' | 'again' | 'stop' | undefined {
+  if (a === 'stop') return 'stop';
+  if (!withTodo) return undefined;
+  if (a === 'finished') return 'finish';
+  if (a === 'more') return 'again';
+  return undefined;
+}
+
 export function startBreak(now: number, minutes: number = FOCUS.breakMin): FocusState {
   return { phase: 'break', startedAt: now, endsAt: now + minutes * 60_000 };
 }

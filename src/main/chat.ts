@@ -2,7 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { BrowserWindow, type IpcMainEvent, ipcMain, type Rectangle, screen } from 'electron';
 import { type Catalog, pickCli, pickLocal } from '../shared/ai/catalog.ts';
-import { extractTodos, noteTitleFromQuestion, type PersonaId, persona } from '../shared/ai/persona.ts';
+import {
+  extractTodos,
+  noteTitleFromQuestion,
+  type PersonaId,
+  persona,
+  turnPrompt,
+} from '../shared/ai/persona.ts';
 import {
   BUILTIN_PROVIDERS,
   type CustomProviderInput,
@@ -257,7 +263,8 @@ export function createChat(o: ChatOptions) {
     const ephemeral = !!state.ephemeral && (spec.adapter === 'claude' || spec.adapter === 'codex');
     const base = question || t('chat.lookQuestion');
     const context = o.knowsTodos() ? o.todoContext() : '';
-    const prompt = context + (ephemeral ? withHistory(history, base) : base);
+    // 지금 시각은 시스템 지시(persona)가 아니라 질문 앞에 붙인다 (프롬프트 캐시가 매번 깨지지 않게)
+    const prompt = turnPrompt({ context, question: ephemeral ? withHistory(history, base) : base });
     state = addQuestion(
       state,
       ids,
@@ -379,10 +386,14 @@ export function createChat(o: ChatOptions) {
       });
   });
 
+  /** 새 대화로 지운 대화. 잠깐 동안 되돌릴 수 있다 (UNDO_RESET_MS) */
+  let cleared: { state: ChatState; at: number } | undefined;
   ipcMain.on(CHAT.setEphemeral, (e, on: boolean) => {
     if (!fromChat(e) || state.pendingId) return;
     // 켜고 끌 때 새 대화로: 안 남긴 대화는 이어 갈 수 없고, 남긴 대화를 안 남긴 채 이어 갈 수도 없다.
     state = { ...resetChat(state), ephemeral: !!on };
+    // 지운 대화를 되돌릴 거리도 버린다 (안 남긴 대화가 되돌리기로 기록 파일에 쓰이지 않게)
+    cleared = undefined;
     save(true);
     push();
   });
@@ -429,8 +440,6 @@ export function createChat(o: ChatOptions) {
     run?.cancel();
     downloading?.abort(); // 모델 받기도 멈춘다 (받기 진행 옆 취소 단추)
   });
-  /** 새 대화로 지운 대화. 잠깐 동안 되돌릴 수 있다 (UNDO_RESET_MS) */
-  let cleared: { state: ChatState; at: number } | undefined;
   ipcMain.on(CHAT.reset, (e) => {
     if (!fromChat(e) || state.pendingId) return;
     if (state.messages.length > 0) cleared = { state, at: Date.now() };

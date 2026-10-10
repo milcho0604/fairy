@@ -749,6 +749,24 @@ export const CAL_FAIL_START: CalFailState = { n: 0, told: false };
  * ok 면 처음으로, offline(인터넷 끊김, 시간 끝)은 캘린더 탓이 아니라 그대로, fail(주소 틀림, 403, 캘린더 아님, 너무 큼)은 센다.
  * CAL_FAIL_TELL 번째에 한 번만 알리고, 한 번 읽히기 전에는 다시 알리지 않는다
  */
+/**
+ * 받은 응답 상태로 본 결과. 5xx(서버가 잠깐 아픔)와 429(너무 자주 물음)는 캘린더 주소 탓이 아니라 세지 않는다 (리뷰 LOW).
+ * 그 밖의 4xx(주소 틀림, 권한 없음)는 센다
+ */
+export function calStatusResult(status: number): 'ok' | 'offline' | 'fail' {
+  if (status >= 200 && status < 300) return 'ok';
+  if (status >= 500 || status === 429) return 'offline';
+  return 'fail';
+}
+
+/**
+ * 계속 못 읽음을 펫이 말할지. 사용자가 설정에서 직접 가져왔거나(byUser) 설정 창이 열려 있으면(settingsOpen)
+ * 거기 결과 글을 이미 보고 있으니 말하지 않는다 (리뷰 LOW)
+ */
+export function calTellNow(tell: boolean, o: { byUser: boolean; settingsOpen: boolean }): boolean {
+  return tell && !o.byUser && !o.settingsOpen;
+}
+
 export function calFailStep(
   s: CalFailState,
   result: 'ok' | 'offline' | 'fail',

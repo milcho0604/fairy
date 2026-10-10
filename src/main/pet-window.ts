@@ -21,6 +21,7 @@ import {
   type MissedItem,
   MissedLog,
   missedEntries,
+  OS_AWAY_SEC,
   osClickAction,
   osNotifyFor,
 } from '../shared/bubble-queue.ts';
@@ -457,7 +458,11 @@ export function createPetWindow({
       ...(note ? [{ label: note, enabled: false }, { type: 'separator' as const }] : []),
       { label: t('pet.menu.look', { name: petName() }), click: () => actions.lookTogether() },
       { label: t('pet.menu.chat', { name: petName() }), click: () => actions.openChat(pet) },
-      { label: t('pet.menu.addTodo'), accelerator: quickAddShortcut(), click: () => actions.quickAdd() },
+      {
+        label: t('pet.menu.addTodo'),
+        accelerator: quickAddShortcut() || undefined,
+        click: () => actions.quickAdd(),
+      },
       { label: t('pet.menu.feed'), click: () => actions.feed() },
       {
         label: t('pet.menu.play'),
@@ -481,7 +486,7 @@ export function createPetWindow({
       },
       {
         label: t('pet.menu.hide', { name: petName() }),
-        accelerator: hideShortcut(),
+        accelerator: hideShortcut() || undefined,
         click: () => setHidden('user', true),
       },
       { label: t('pet.menu.makePet'), click: () => actions.makePet() },
@@ -959,7 +964,8 @@ export function createPetWindow({
 
   async function hideWithHint() {
     const shown = settings.get().hideHints;
-    if (shown >= HIDE_HINT_TIMES || hinting) {
+    // 숨기기 키를 비워 두었으면 알려 줄 키가 없다
+    if (shown >= HIDE_HINT_TIMES || hinting || !hideShortcut()) {
       setHidden('user', true, false);
       return;
     }
@@ -1038,7 +1044,10 @@ export function createPetWindow({
     const notify = osNotifyFor({
       kind: h.kind,
       blocked: blocked() && !dragTimer && !resting(),
-      away: away(),
+      // 말풍선 쪽 20초가 아니라 더 길게 본다 (전체 화면으로 영상을 보는 사람도 자리에 있다)
+      away: powerMonitor.getSystemIdleTime() >= OS_AWAY_SEC,
+      locked: screenLocked,
+      presenting: hideReasons.has('presentation'),
       setting: settings.get().osNotify,
       alreadyNotified: !!h.osNotified,
       action,
@@ -1052,6 +1061,8 @@ export function createPetWindow({
     n.on('click', () => {
       notices.delete(n);
       log('bubble', 'os-notice click', click ?? 'pet');
+      // 눌러서 처리한 것은 모아 둔 데서 뺀다 (안 빼면 펫이 나올 때 같은 알림이 또 뜬다)
+      held.remove(h);
       if (click) h.onAction?.(click);
       releaseHeld();
     });
