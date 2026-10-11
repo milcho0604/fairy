@@ -543,6 +543,8 @@ export const MAKER = {
   save: 'maker:save',
   /** 다듬은 사진을 AI 에 보내 입체 설계도를 받는다 (6단계) */
   shape3d: 'maker:shape3d',
+  /** 사진과 앱이 그린 설계도 그림을 AI 에 같이 보여 주고 설계도를 한 번 고친다 (선택, 6단계 v2) */
+  refine3d: 'maker:refine3d',
   /** 깊이 모델 준비 (없으면 받음, 2.5D). 진행률은 progress 로 */
   ensureDepth: 'maker:ensure-depth',
   /** 사진을 볼 AI 가 있는지 (CLI 확인이 느릴 수 있어 info 와 따로) */
@@ -630,6 +632,17 @@ export interface MakerBridge {
     png: string,
     wish?: string,
     /** 고른 걸음새. 없으면 자동(AI 가 사진을 보고 정한다) */
+    gait?: Gait,
+  ): Promise<{ ok: true; model: Blueprint } | { ok: false; error: string; noAi?: boolean }>;
+  /**
+   * 두 번째 보기: 사진(PNG data URL)과 창이 그린 설계도 그림(PNG data URL)을 같이 보여 주고 설계도를 한 번 고친다.
+   * 실패하면 창이 처음 설계도를 그대로 쓴다
+   */
+  refine3d(
+    photo: string,
+    render: string,
+    model: Blueprint,
+    wish?: string,
     gait?: Gait,
   ): Promise<{ ok: true; model: Blueprint } | { ok: false; error: string; noAi?: boolean }>;
   /**

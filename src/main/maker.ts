@@ -33,7 +33,9 @@ import {
   BLUEPRINT_SYSTEM,
   blueprintPrompt,
   cleanWish,
+  critiquePrompt,
   extractBlueprint,
+  extractBlueprintWithFixes,
   WISH_MAX,
 } from '../shared/pet3d/prompt.ts';
 import { cleanPetName, isGait, POSE_KINDS, photoPetName } from '../shared/settings.ts';
@@ -160,7 +162,8 @@ export function modelOf(file: string | undefined): Blueprint | null {
 /** AI 한 번 묻기 (chat.oneShot) */
 export type AskWithImage = (
   text: string,
-  image: ImageAttachment,
+  /** 그림 하나 또는 여럿 (사진과 그린 그림을 같이 보여 줄 때) */
+  image: ImageAttachment | readonly ImageAttachment[],
   system: string,
   signal?: AbortSignal,
 ) => Promise<{ ok: true; text: string; provider: string } | { ok: false; error: string; noAi?: true }>;
@@ -335,7 +338,8 @@ export function createMaker(
       log('maker', 'shape3d', r.noAi ? 'no ai' : r.error);
       return r;
     }
-    const model = extractBlueprint(r.text, gait);
+    const got = extractBlueprintWithFixes(r.text, gait);
+    const model = got?.bp;
     log(
       'maker',
       'shape3d',
@@ -345,9 +349,72 @@ export function createMaker(
       // 요청 글은 기록에 남기지 않고 길이만
       wish ? `wish ${[...wish].length}` : 'no wish',
       gait ?? 'gait auto',
+      got?.fixes.length ? `fixed ${got.fixes.join(', ')}` : '',
     );
     return model ? { ok: true, model } : { ok: false, error: t('main.maker.shapeBad') };
   });
+
+  /** PNG data URL 을 base64 로. 아니면 undefined */
+  const pngOf = (dataUrl: unknown): string | undefined => {
+    const prefix = 'data:image/png;base64,';
+    if (typeof dataUrl !== 'string' || !dataUrl.startsWith(prefix)) return undefined;
+    const data = dataUrl.slice(prefix.length);
+    const bytes = Buffer.from(data, 'base64');
+    return kindOf(bytes) === 'png' && bytes.length <= MAX_PNG_BYTES ? data : undefined;
+  };
+
+  // 두 번째 보기 (선택): 사진과 앱이 그린 설계도 그림을 같이 보여 주고 한 번 고치게 한다. 실패하면 창이 처음 설계도를 그대로 쓴다
+  ipcMain.handle(
+    MAKER.refine3d,
+    async (
+      e,
+      photoUrl: unknown,
+      renderUrl: unknown,
+      modelRaw: unknown,
+      wishRaw?: unknown,
+      gaitRaw?: unknown,
+    ) => {
+      if (!fromMaker(e) || !askWithImage) return { ok: false, error: t('main.maker.reopen') };
+      if (wishRaw != null && (typeof wishRaw !== 'string' || wishRaw.length > WISH_MAX * 4))
+        return { ok: false, error: t('main.maker.badFormat') };
+      if (gaitRaw != null && !isGait(gaitRaw)) return { ok: false, error: t('main.maker.badFormat') };
+      const gait = gaitRaw ?? undefined;
+      const wish = cleanWish(wishRaw);
+      const photo = pngOf(photoUrl);
+      const render = pngOf(renderUrl);
+      const model = parseBlueprint(modelRaw);
+      if (!photo || !render || !model) return { ok: false, error: t('main.maker.badFormat') };
+      shaping?.abort();
+      const abort = new AbortController();
+      shaping = abort;
+      const started = Date.now();
+      const r = await askWithImage(
+        critiquePrompt(settings.get().petName, model, wish, gait),
+        [
+          { mediaType: 'image/png', data: photo },
+          { mediaType: 'image/png', data: render },
+        ],
+        BLUEPRINT_SYSTEM,
+        abort.signal,
+      );
+      if (shaping === abort) shaping = undefined;
+      if (abort.signal.aborted) return { ok: false, error: t('main.maker.shapeCancelled') };
+      if (!r.ok) {
+        log('maker', 'refine3d', r.noAi ? 'no ai' : r.error);
+        return r;
+      }
+      const got = extractBlueprintWithFixes(r.text, gait);
+      log(
+        'maker',
+        'refine3d',
+        r.provider,
+        `${Math.round((Date.now() - started) / 1000)}s`,
+        got ? `${got.bp.parts.length} parts` : 'bad',
+        got?.fixes.length ? `fixed ${got.fixes.join(', ')}` : '',
+      );
+      return got ? { ok: true, model: got.bp } : { ok: false, error: t('main.maker.shapeBad') };
+    },
+  );
 
   // AI 일러스트 (2026-10-09): 사용자가 고를 때만 사진을 Hugging Face 무료 Space 로 보낸다. 사진, 요청문, 토큰은 기록에 남기지 않는다.
   // 내 컴퓨터에서(engine local, 옛 값 mac, 2026-10-10)는 사진이 이 컴퓨터 밖으로 나가지 않는다 (local-draw.ts)

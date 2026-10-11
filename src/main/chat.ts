@@ -576,7 +576,7 @@ export function createChat(o: ChatOptions) {
      */
     async oneShot(
       text: string,
-      image: ImageAttachment,
+      image: ImageAttachment | readonly ImageAttachment[],
       system: string,
       signal?: AbortSignal,
     ): Promise<{ ok: true; text: string; provider: string } | { ok: false; error: string; noAi?: true }> {
@@ -592,7 +592,7 @@ export function createChat(o: ChatOptions) {
             spec: use,
             history: [],
             text,
-            images: [image],
+            images: Array.isArray(image) ? image : [image as ImageAttachment],
             persona: system,
             isolate: true,
             ephemeral: true,

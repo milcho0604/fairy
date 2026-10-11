@@ -137,6 +137,9 @@ export function MakerApp() {
   const [wish, setWish] = useState('');
   // 걸음새: 자동이면 AI 가 사진을 보고, 두 발이나 네 발이면 처음부터 그 몸으로 만든다
   const [gait, setGait] = useState<GaitPick>('auto');
+  /** 두 번째 보기: AI 가 사진과 그린 모습을 견줘 설계도를 한 번 고친다 (시간이 두 배쯤) */
+  const [refine, setRefine] = useState(true);
+  const [refining, setRefining] = useState(false);
   // 지금 설계도를 만든 요청사항과 걸음새 (바꾸면 단추가 "요청대로 다시 만들기", 저장하면 요청사항을 같이 둔다)
   const [madeWith, setMadeWith] = useState<{ wish: string; gait: GaitPick }>();
   // 입체 만들기 진행: 무엇을(AI 피규어, 2.5D 받기, 2.5D 깊이 재기), 언제 시작했는지, 예상 시간, 끝났는지
@@ -580,8 +583,20 @@ export function MakerApp() {
     setNote('');
     const at = performance.now();
     beginShape('figure');
-    const r = await bridge.shape3d(from, asked, walk === 'auto' ? undefined : walk);
+    const pick = walk === 'auto' ? undefined : walk;
+    let r = await bridge.shape3d(from, asked, pick);
     if (shapeRun.current !== run) return;
+    // 두 번째 보기: 설계도를 그려서 사진과 같이 보여 주고 한 번 고치게 한다. 실패하면 처음 것 그대로
+    if (r.ok && refine && previewRef.current === from) {
+      setRefining(true);
+      const render = renderBlueprint(r.model);
+      if (render) {
+        const again = await bridge.refine3d(from, render, r.model, asked, pick);
+        if (shapeRun.current !== run) return;
+        if (again.ok) r = again;
+      }
+      setRefining(false);
+    }
     if (r.ok && previewRef.current === from) {
       saveDuration('figure', performance.now() - at, store());
       if (!(await finishShape(run))) return;
@@ -1085,7 +1100,9 @@ export function MakerApp() {
                 }
                 title={
                   shapeTask === 'figure'
-                    ? t('maker.3d.working')
+                    ? refining
+                      ? t('maker.3d.refining')
+                      : t('maker.3d.working')
                     : shapeTask === 'reliefDownload'
                       ? t('maker.relief.downloading', { mb: info?.depth.mb ?? 27 })
                       : t('maker.relief.working')
@@ -1222,6 +1239,15 @@ export function MakerApp() {
                           {t('maker.wish.count', { n: wish.length, max: WISH_MAX })}
                         </span>
                       </div>
+                      <label className="refine">
+                        <input
+                          type="checkbox"
+                          checked={refine}
+                          disabled={shaping}
+                          onChange={(e) => setRefine(e.target.checked)}
+                        />
+                        {t('maker.refine.label')} <small>{t('maker.refine.hint')}</small>
+                      </label>
                       <fieldset className="chips" aria-label={t('maker.wish.chips')}>
                         {WISH_CHIPS.map((id) => {
                           const chip = t(`maker.wish.chip.${id}`);
@@ -1360,6 +1386,38 @@ function AgePicker({ age, onAge }: { age: AgeStage; onAge: (a: AgeStage) => void
 }
 
 let previewPet: Pet3D | undefined;
+
+/**
+ * 설계도를 정면에서 한 장 그린다 (두 번째 보기에서 AI 에 보여 줄 그림, PNG data URL). 미리보기와 같은 Pet3D 를 쓰고
+ * 그린 뒤 비운다. WebGL 을 못 쓰면 undefined
+ */
+function renderBlueprint(model: Blueprint): string | undefined {
+  previewPet ??= Pet3D.create(() => {});
+  const pet = previewPet;
+  if (!pet) return undefined;
+  const side = 320;
+  const canvas = document.createElement('canvas');
+  canvas.width = side;
+  canvas.height = side;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return undefined;
+  try {
+    pet.setBlueprint(model);
+    pet.spin = 0;
+    pet.tilt = 0;
+    // 흰 바탕 (사진도 배경을 지운 흰 바탕이라 견주기 쉽다)
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, side, side);
+    const k = side / CANVAS_SIZE;
+    ctx.setTransform(k, 0, 0, k, 0, 0);
+    pet.draw(ctx, { mood: 'idle', elapsed: 0, blink: -1 }, 0, 1, 1, undefined);
+    return canvas.toDataURL('image/png');
+  } catch {
+    return undefined;
+  } finally {
+    pet.clear();
+  }
+}
 
 /** 미리보기 판(220px)에 펫 캔버스(160)를 이만큼 줄여 그린다. 옆으로 돌면 긴 몸이 판 밖으로 잘려서 */
 const SPIN_ZOOM = 0.88;

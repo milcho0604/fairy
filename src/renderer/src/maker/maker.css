@@ -440,6 +440,20 @@ section {
   flex: 1 1 100%;
 }
 
+/* 두 번째 보기 켜고 끄기 */
+.wish .refine {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.refine small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 /* 입체 피규어 요청사항: 짧은 칸 하나, 글자 수, 눌러서 더하는 예시 */
 .wish {
   display: flex;
