@@ -13,6 +13,7 @@ import { type FactKind, factsForAi } from '../shared/knows.ts';
 import { runnerKindOf } from '../shared/menu-runner.ts';
 import { isMiniGame, PLAY_COIN } from '../shared/minigames.ts';
 import { noteTitle } from '../shared/note-store.ts';
+import { setVoiceSource, voiced } from '../shared/persona-voice.ts';
 import { unlocked, WAVE_AWAY_SEC } from '../shared/pet-life.ts';
 import { restDaysOf } from '../shared/routine.ts';
 import { pickedGait } from '../shared/settings.ts';
@@ -153,6 +154,8 @@ ready
     sweepLocalDraw(log);
     // 펫 이름은 설정에서 바꿀 수 있어 쓰는 곳마다 지금 값을 읽는다.
     const petName = () => settings.get().petName;
+    // 인사, 칭찬, 쉬자는 말처럼 정해진 말도 고른 성격 말투로 (shared/persona-voice.ts)
+    setVoiceSource(() => settings.get().persona);
     // 모델 목록 (v2): 앱 기본값, 하루 한 번 레포에서 받은 것으로 바꾼다
     const catalog = watchCatalog(log);
     const chat = createChat({
@@ -827,7 +830,7 @@ ready
         pet.react('fed');
         petLife.activity('feed');
         const image = food.image ? foodImageDataUrl(food.image) : undefined;
-        void pet.say({ kind: 'answer', text: t('pet.fedWith', { food: food.name }), ttlMs: 3500, image });
+        void pet.say({ kind: 'answer', text: voiced('pet.fedWith', { food: food.name }), ttlMs: 3500, image });
         sendStatus();
       },
       openFoodMaker: () => maker.open('food'),
@@ -869,7 +872,7 @@ ready
         void rest.call(false);
         pet.react('fed');
         petLife.activity('feed');
-        void pet.say({ kind: 'answer', text: t('pet.fed'), ttlMs: 3000 });
+        void pet.say({ kind: 'answer', text: voiced('pet.fed'), ttlMs: 3000 });
       },
       onChanged: () => sendStatus(),
       openChat: () => chat.open(pet.bounds()),
@@ -889,7 +892,7 @@ ready
         void rest.call(false);
         pet.react('fed');
         petLife.activity('feed');
-        void pet.say({ kind: 'answer', text: t('pet.fed'), ttlMs: 3000 });
+        void pet.say({ kind: 'answer', text: voiced('pet.fed'), ttlMs: 3000 });
       } else {
         void pet.say({ kind: 'answer', text: r.full ? t('pet.full') : t('pet.noCoins'), ttlMs: 4000 });
       }

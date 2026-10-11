@@ -1,6 +1,7 @@
 // 만나는 시간의 말 (맞이, 헤어짐, 쉬는 날). 계산은 routine.ts (설정 화면이 일정 모듈까지 싣지 않게 나눴다)
 import { timeLabel } from './event-store.ts';
 import { locale, t } from './i18n/index.ts';
+import { voiced } from './persona-voice.ts';
 import { type Arrival, MEET_COINS, type MeetTime } from './routine.ts';
 
 /** 날짜로 고르는 말 (같은 날은 같은 말, 날마다 바뀐다) */
@@ -33,7 +34,7 @@ export interface GreetInput {
 export function greetText(g: GreetInput): string {
   const i = variant(g.day, 6);
   const hi = g.first
-    ? t('routine.hi.first')
+    ? voiced('routine.hi.first')
     : g.arrival === 'early'
       ? t('routine.hi.early', { i })
       : g.arrival === 'onTime'
@@ -82,14 +83,14 @@ export function farewellText(f: FarewellInput): string {
       ? t('routine.bye.head', { i: variant(f.day, 6) })
       : n === 1
         ? t('routine.bye.doneOne', { title: clip(f.doneTitles[0] ?? '') })
-        : t('routine.bye.doneMany', { n });
+        : voiced('routine.bye.doneMany', { n });
   if (f.leftToday > 0) return `${head} ${t('briefing.review.left', { n: f.leftToday })}`;
   return f.quiet ? head : `${head} ${farewellNext(f)}`;
 }
 
 /** 다음 만남 미리 보기 한 문장: 내일 첫 일정, 내일 종일 일정, 내일 만나는 시간, 다음에 만나는 요일, 없으면 푹 쉬어 */
 export function farewellNext(f: Pick<FarewellInput, 'next' | 'tomorrow'>): string {
-  if (!f.next) return t('routine.bye.rest');
+  if (!f.next) return voiced('routine.bye.rest');
   if (f.next.inDays > 1) return t('routine.bye.nextMeet', { weekday: weekdayName(f.next.day) });
   const allDay = f.tomorrow.filter((e) => e.allDay);
   const first = f.tomorrow.find((e) => !e.allDay);

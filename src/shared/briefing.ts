@@ -4,6 +4,7 @@
 import type { ChatterLevel } from './chatter.ts';
 import { timeLabel } from './event-store.ts';
 import { t } from './i18n/index.ts';
+import { voiced } from './persona-voice.ts';
 import { localDay } from './todo-store.ts';
 
 /** 이 시각(현지, 분) 전에는 브리핑하지 않는다. 새벽에 켠 컴퓨터에 "좋은 아침"을 하지 않게. */
@@ -108,9 +109,10 @@ export interface BriefingInput {
 }
 
 function greeting(minute: number): string {
-  if (minute < 11 * 60) return t('briefing.hi.morning');
-  if (minute < 17 * 60) return t('briefing.hi.day');
-  return t('briefing.hi.evening');
+  // 인사는 고른 성격 말투로 (shared/persona-voice.ts)
+  if (minute < 11 * 60) return voiced('briefing.hi.morning');
+  if (minute < 17 * 60) return voiced('briefing.hi.day');
+  return voiced('briefing.hi.evening');
 }
 
 export function briefingText(b: BriefingInput): string {

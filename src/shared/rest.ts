@@ -1,7 +1,7 @@
 // 휴식 권유 (v1). 오래 쉬지 않고 일하면 물 마시기, 스트레칭, 산책을 권한다. 기획서 "수다 빈도": 보통 2시간, 수다쟁이 1시간, 조용히 끔.
 // 권유를 받아들이고 실제로 3분 넘게 자리를 비웠다 오면 코인 3개 (게임 규칙 "산책, 휴식 권유 따르기").
 import type { ChatterLevel } from './chatter.ts';
-import { t } from './i18n/index.ts';
+import { voiced } from './persona-voice.ts';
 
 export const REST = {
   /** 이만큼 입력이 없으면 쉰 것으로 본다 (연속 작업 시간을 0 으로) */
@@ -20,7 +20,7 @@ export const REST_EVERY_MIN: Record<ChatterLevel, number | undefined> = {
 };
 
 /** 휴식 권유 대사 (지금 말로) */
-export const restLines = (): string[] => [t('pet.rest.1'), t('pet.rest.2'), t('pet.rest.3')];
+export const restLines = (): string[] => [voiced('pet.rest.1'), voiced('pet.rest.2'), voiced('pet.rest.3')];
 
 export type RestEvent = 'suggest' | 'rested';
 

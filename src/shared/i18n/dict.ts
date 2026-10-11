@@ -33,6 +33,7 @@ import * as settings from './settings.ts';
 import * as shop from './shop.ts';
 import * as tabs from './tabs.ts';
 import * as tray from './tray.ts';
+import * as voice from './voice.ts';
 import type { Translation } from './types.ts';
 
 export const ko = {
@@ -69,6 +70,7 @@ export const ko = {
   ...polish.ko,
   ...petmeta.ko,
   ...first.ko,
+  ...voice.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -105,4 +107,5 @@ export const en: Translation<typeof ko> = {
   ...polish.en,
   ...petmeta.en,
   ...first.en,
+  ...voice.en,
 };

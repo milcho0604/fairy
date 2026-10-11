@@ -14,6 +14,7 @@ import { plusDays } from '../shared/day.ts';
 import { dicts, type I18nKey, t } from '../shared/i18n/index.ts';
 import type { IdleFacts, IdleKey } from '../shared/idle-talk.ts';
 import type { ReactKind } from '../shared/ipc.ts';
+import { voiced } from '../shared/persona-voice.ts';
 import { restDaysOf } from '../shared/routine.ts';
 import { localDay, type TodoStore } from '../shared/todo-store.ts';
 import type { SayOptions } from './pet-window.ts';
@@ -115,7 +116,8 @@ export function createCompanion(o: CompanionOptions) {
     setTimeout(() => {
       void o.say({
         kind: clear ? 'answer' : 'system',
-        text: t(cheer.key, { name: o.petName(), n: cheer.n }),
+        // 칭찬은 고른 성격 말투로 (shared/persona-voice.ts)
+        text: voiced(cheer.key, { name: o.petName(), n: cheer.n }),
         ttlMs: 5000,
       });
     }, CHEER_DELAY_MS).unref();
