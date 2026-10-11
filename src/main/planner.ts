@@ -28,6 +28,7 @@ import {
 } from '../shared/focus.ts';
 import { t } from '../shared/i18n/index.ts';
 import { ActivityWatch, type IdleFacts, type IdleKey, IdleTalker, idleVars } from '../shared/idle-talk.ts';
+import { voiced } from '../shared/persona-voice.ts';
 import { nextMinuteTurn, onTick, PLAN_TICK_MS, wakeDelay, wakeNow, zoneKey } from '../shared/planner-wake.ts';
 import {
   coversBriefing,
@@ -251,7 +252,7 @@ export function createPlanner(o: PlannerOptions) {
     void o
       .say({
         kind: 'answer',
-        text: t('assist.overdue.moved', { n: moved.length }),
+        text: voiced('assist.overdue.moved', { n: moved.length }),
         buttons: [{ id: 'undo', label: t('panel.review.undo') }],
         ttlMs: 10_000,
       })
@@ -268,7 +269,7 @@ export function createPlanner(o: PlannerOptions) {
   function fridayLine(day: string, now: number): string {
     if (weekdayOf(day) !== 5) return '';
     const week = weekSummary(day, (days) => o.stats.diaryFacts(days), o.todos.list(now).open);
-    return week.done > 0 ? ` ${t('assist.week.friday', { n: week.done })}` : '';
+    return week.done > 0 ? ` ${voiced('assist.week.friday', { n: week.done })}` : '';
   }
 
   /**
@@ -346,7 +347,7 @@ export function createPlanner(o: PlannerOptions) {
       store();
       if (s.chatter !== 'chatty' || focus.phase === 'focus' || o.petHidden()) return false;
       o.log('planner', '시작 한마디');
-      void o.say({ kind: 'idle-talk', text: t('routine.cue'), ttlMs: 8000 });
+      void o.say({ kind: 'idle-talk', text: voiced('routine.cue'), ttlMs: 8000 });
     } else {
       // 쉬는 날: 예전 브리핑처럼 펫이 보일 때 한 번. 일정만 붙이고 마감은 말하지 않는다 ('system': 조용히면 없다)
       if (o.petHidden()) return true;
@@ -490,8 +491,8 @@ export function createPlanner(o: PlannerOptions) {
       .say({
         kind: 'answer',
         text: tail
-          ? `${t('panel.review.moved', { n: moved.length })} ${tail}`
-          : t('panel.review.moved', { n: moved.length }),
+          ? `${voiced('panel.review.moved', { n: moved.length })} ${tail}`
+          : voiced('panel.review.moved', { n: moved.length }),
         buttons: [{ id: 'undo', label: t('panel.review.undo') }],
         ttlMs: tail ? 12_000 : 10_000,
       })
@@ -564,7 +565,11 @@ export function createPlanner(o: PlannerOptions) {
     o.log('planner', '혼잣말', r.key);
     talking = true;
     void o
-      .say({ kind: 'idle-talk', text: t(r.key, { name: o.petName(), ...idleVars(r.facts) }), ttlMs: 8000 })
+      .say({
+        kind: 'idle-talk',
+        text: voiced(r.key, { name: o.petName(), ...idleVars(r.facts) }),
+        ttlMs: 8000,
+      })
       .then((a) => {
         talking = false;
         talker.shown(Date.now(), a !== undefined);
@@ -605,7 +610,7 @@ export function createPlanner(o: PlannerOptions) {
       o.stats.addFocus(now, minutes);
       const coins = o.todos.rewardFocus(now, minutes);
       if (coins > 0) o.onReward();
-      const done = t('panel.focus.done', {
+      const done = voiced('panel.focus.done', {
         minutes,
         coins,
         breakMin: Math.round((r.state.endsAt - r.state.startedAt) / 60_000),
@@ -622,7 +627,7 @@ export function createPlanner(o: PlannerOptions) {
       void o
         .say({
           kind: 'answer',
-          text: todo ? `${done} ${t('panel.focus.todoAsk', { title: todo.title })}` : done,
+          text: todo ? `${done} ${voiced('panel.focus.todoAsk', { title: todo.title })}` : done,
           buttons: focusDoneButtons(!!todo).map((id) => ({ id, label: label[id] })),
           ttlMs: todo ? 30_000 : 20_000,
         })
@@ -637,7 +642,7 @@ export function createPlanner(o: PlannerOptions) {
       void o
         .say({
           kind: 'answer',
-          text: t('panel.focus.breakDone'),
+          text: voiced('panel.focus.breakDone'),
           buttons: [
             { id: 'again', label: t('panel.focus.again') },
             { id: 'no', label: t('panel.focus.enough') },

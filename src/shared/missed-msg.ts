@@ -1,7 +1,8 @@
 // 놓친 알림 글을 말 열쇠와 값으로 남긴다. 글로 굳혀 두면 언어를 바꿔도 만들 때 언어로 남았다 (검토 2026-10-08).
 // 보일 때 지금 언어로 다시 만든다. 저장 파일(missed.json)에 그대로 들어가서 읽을 때 모양을 검사한다.
 import { allDayLabel } from './event-store.ts';
-import { dicts, t } from './i18n/index.ts';
+import { dicts, type I18nKey } from './i18n/index.ts';
+import { voiced } from './persona-voice.ts';
 import type { Anchor } from './remind.ts';
 import { missedLine, type RemindItem } from './remind-text.ts';
 
@@ -20,7 +21,8 @@ export function renderMissed(m: MissedMsg): string {
   if ('remind' in m) return missedLine(m.span ? { ...m.remind, range: allDayLabel(m.span) } : m.remind);
   const vars: Record<string, string | number> = {};
   for (const [k, v] of Object.entries(m.vars ?? {})) vars[k] = typeof v === 'object' ? renderMissed(v) : v;
-  return (t as (key: string, vars?: unknown) => string)(m.key, m.vars ? vars : undefined);
+  // 펫이 한 말이면 고른 성격 말투로 (shared/persona-voice.ts. 성격 말이 없는 키는 원래 말)
+  return voiced(m.key as I18nKey, m.vars ? vars : undefined);
 }
 
 const MAX_DEPTH = 3;

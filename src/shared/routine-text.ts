@@ -1,6 +1,6 @@
 // 만나는 시간의 말 (맞이, 헤어짐, 쉬는 날). 계산은 routine.ts (설정 화면이 일정 모듈까지 싣지 않게 나눴다)
 import { timeLabel } from './event-store.ts';
-import { locale, t } from './i18n/index.ts';
+import { locale } from './i18n/index.ts';
 import { voiced } from './persona-voice.ts';
 import { type Arrival, MEET_COINS, type MeetTime } from './routine.ts';
 
@@ -36,17 +36,17 @@ export function greetText(g: GreetInput): string {
   const hi = g.first
     ? voiced('routine.hi.first')
     : g.arrival === 'early'
-      ? t('routine.hi.early', { i })
+      ? voiced('routine.hi.early', { i })
       : g.arrival === 'onTime'
-        ? t('routine.hi.onTime', { i })
-        : t('routine.hi.late', { i });
+        ? voiced('routine.hi.onTime', { i })
+        : voiced('routine.hi.late', { i });
   if (g.quiet) return hi;
   const parts = [hi];
   if (g.coins > 0 && g.coins > MEET_COINS)
-    parts.push(t('routine.coinsBonus', { days: g.streak, n: g.coins }));
+    parts.push(voiced('routine.coinsBonus', { days: g.streak, n: g.coins }));
   else {
-    if (g.streak >= 2) parts.push(t('routine.streak', { n: g.streak }));
-    if (g.coins > 0) parts.push(t('routine.coins', { n: g.coins }));
+    if (g.streak >= 2) parts.push(voiced('routine.streak', { n: g.streak }));
+    if (g.coins > 0) parts.push(voiced('routine.coins', { n: g.coins }));
   }
   if (g.briefing) parts.push(g.briefing);
   return parts.join(' ');
@@ -80,31 +80,31 @@ export function farewellText(f: FarewellInput): string {
   const n = f.doneTitles.length;
   const head =
     f.quiet || n === 0
-      ? t('routine.bye.head', { i: variant(f.day, 6) })
+      ? voiced('routine.bye.head', { i: variant(f.day, 6) })
       : n === 1
-        ? t('routine.bye.doneOne', { title: clip(f.doneTitles[0] ?? '') })
+        ? voiced('routine.bye.doneOne', { title: clip(f.doneTitles[0] ?? '') })
         : voiced('routine.bye.doneMany', { n });
-  if (f.leftToday > 0) return `${head} ${t('briefing.review.left', { n: f.leftToday })}`;
+  if (f.leftToday > 0) return `${head} ${voiced('briefing.review.left', { n: f.leftToday })}`;
   return f.quiet ? head : `${head} ${farewellNext(f)}`;
 }
 
 /** 다음 만남 미리 보기 한 문장: 내일 첫 일정, 내일 종일 일정, 내일 만나는 시간, 다음에 만나는 요일, 없으면 푹 쉬어 */
 export function farewellNext(f: Pick<FarewellInput, 'next' | 'tomorrow'>): string {
   if (!f.next) return voiced('routine.bye.rest');
-  if (f.next.inDays > 1) return t('routine.bye.nextMeet', { weekday: weekdayName(f.next.day) });
+  if (f.next.inDays > 1) return voiced('routine.bye.nextMeet', { weekday: weekdayName(f.next.day) });
   const allDay = f.tomorrow.filter((e) => e.allDay);
   const first = f.tomorrow.find((e) => !e.allDay);
   if (first)
-    return t('routine.bye.tomorrowFirst', { time: timeLabel(first.minute), title: clip(first.title) });
+    return voiced('routine.bye.tomorrowFirst', { time: timeLabel(first.minute), title: clip(first.title) });
   const [one] = allDay;
   if (one && allDay.length > 1)
-    return t('routine.bye.tomorrowAllDayMore', { title: clip(one.title), n: allDay.length - 1 });
-  if (one) return t('routine.bye.tomorrowAllDay', { list: clip(one.title) });
-  return t('routine.bye.tomorrowMeet', { time: timeLabel(f.next.meet.start) });
+    return voiced('routine.bye.tomorrowAllDayMore', { title: clip(one.title), n: allDay.length - 1 });
+  if (one) return voiced('routine.bye.tomorrowAllDay', { list: clip(one.title) });
+  return voiced('routine.bye.tomorrowMeet', { time: timeLabel(f.next.meet.start) });
 }
 
 /** 쉬는 날 한마디. 오늘 일정이 있으면 브리핑을 붙인다 */
 export function restText(day: string, briefing: string): string {
-  const hi = t('routine.rest', { i: variant(day, 4) });
+  const hi = voiced('routine.rest', { i: variant(day, 4) });
   return briefing ? `${hi} ${briefing}` : hi;
 }

@@ -123,10 +123,13 @@ export function briefingText(b: BriefingInput): string {
  * 인사 없는 브리핑 (만나는 시간의 맞이 인사 뒤에 붙인다). 아무것도 없으면 empty 글
  * (기본은 "일정도 마감도 없어", 쉬는 날 한마디처럼 덧붙일 것이 없으면 빈 글을 넘긴다)
  */
-export function briefingBody(b: Omit<BriefingInput, 'nowMinute'>, empty = t('briefing.nothing')): string {
+export function briefingBody(
+  b: Omit<BriefingInput, 'nowMinute'>,
+  empty = voiced('briefing.nothing'),
+): string {
   // 먼저 할 일이 있으면 "일정도 마감도 없어" 대신 그 한 문장만
   const body = briefingFacts(b, b.next ? '' : empty);
-  return b.next ? `${body} ${t('briefing.next', { title: b.next })}`.trim() : body;
+  return b.next ? `${body} ${voiced('briefing.next', { title: b.next })}`.trim() : body;
 }
 
 function briefingFacts(b: Omit<BriefingInput, 'nowMinute'>, empty: string): string {
@@ -140,21 +143,21 @@ function briefingFacts(b: Omit<BriefingInput, 'nowMinute'>, empty: string): stri
         .slice(0, 2)
         .map((e) => e.title)
         .join(', ') + (more > 0 ? t('briefing.due.more', { n: more }) : '');
-    parts.push(t('briefing.allDay', { list }));
+    parts.push(voiced('briefing.allDay', { list }));
   }
   const timed = b.events.filter((e) => !e.allDay);
   const first = timed[0];
   if (first) {
     parts.push(
       timed.length === 1
-        ? t('briefing.oneEvent', { time: timeLabel(first.minute), title: first.title })
-        : t('briefing.events', { n: timed.length, time: timeLabel(first.minute), title: first.title }),
+        ? voiced('briefing.oneEvent', { time: timeLabel(first.minute), title: first.title })
+        : voiced('briefing.events', { n: timed.length, time: timeLabel(first.minute), title: first.title }),
     );
   }
   if (b.dueToday > 0 || b.overdue > 0) {
     const due = b.dueToday > 0 ? t('briefing.dueToday', { n: b.dueToday }) : '';
     const late = b.overdue > 0 ? t('briefing.overdue', { n: b.overdue }) : '';
-    parts.push(t('briefing.todos', { list: [due, late].filter(Boolean).join(', ') }));
+    parts.push(voiced('briefing.todos', { list: [due, late].filter(Boolean).join(', ') }));
   }
   return parts.length === 0 ? empty : parts.join(' ');
 }
@@ -172,11 +175,11 @@ export function reviewText(r: ReviewInput): string {
   const n = r.doneTitles.length;
   const done =
     n === 0
-      ? t('briefing.review.none')
+      ? voiced('briefing.review.none')
       : n === 1
-        ? t('briefing.review.one', { title: r.doneTitles[0] ?? '' })
-        : t('briefing.review.many', { n });
-  return r.leftToday > 0 ? `${done} ${t('briefing.review.left', { n: r.leftToday })}` : done;
+        ? voiced('briefing.review.one', { title: r.doneTitles[0] ?? '' })
+        : voiced('briefing.review.many', { n });
+  return r.leftToday > 0 ? `${done} ${voiced('briefing.review.left', { n: r.leftToday })}` : done;
 }
 
 /**
@@ -213,7 +216,7 @@ export function dueSlot(minute: number, level: ChatterLevel, reviewMinute: numbe
 export function deadlineText(titles: readonly string[]): string {
   const shown = titles.slice(0, 3).map((title) => `"${title}"`);
   const more = titles.length - shown.length;
-  return t('briefing.due.left', {
+  return voiced('briefing.due.left', {
     n: titles.length,
     list: shown.join(', ') + (more > 0 ? t('briefing.due.more', { n: more }) : ''),
   });

@@ -36,6 +36,7 @@ import * as together from './together.ts';
 import * as tray from './tray.ts';
 import type { Translation } from './types.ts';
 import * as voice from './voice.ts';
+import * as voiceIdle from './voice-idle.ts';
 
 export const ko = {
   ...common.ko,
@@ -73,6 +74,7 @@ export const ko = {
   ...first.ko,
   ...together.ko,
   ...voice.ko,
+  ...voiceIdle.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -111,4 +113,5 @@ export const en: Translation<typeof ko> = {
   ...first.en,
   ...together.en,
   ...voice.en,
+  ...voiceIdle.en,
 };

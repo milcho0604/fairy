@@ -138,7 +138,7 @@ export function createCompanion(o: CompanionOptions) {
     const vars = { name: o.petName(), n: due.n };
     void o.say({
       kind: 'system',
-      text: t(due.key, vars),
+      text: voiced(due.key, vars),
       ttlMs: 9000,
       // 보지 못하고 지나가면 놓친 알림에 남는다 (일 년에 몇 번 없는 말)
       hold: { missedMsgs: [{ key: due.key, vars }] },

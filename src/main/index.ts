@@ -588,14 +588,14 @@ ready
           }
           return ok;
         }
-        void pet.say({ kind: 'answer', text: t('pet.play.walkStart'), ttlMs: 2000 });
+        void pet.say({ kind: 'answer', text: voiced('pet.play.walkStart'), ttlMs: 2000 });
         await new Promise((r) => setTimeout(r, 2200));
         const started = Date.now();
         const ok = await pet.stroll(walkMin);
         const minutes = Math.round((Date.now() - started) / 60_000);
         stats.addWalk(Date.now(), minutes);
         if (minutes > 0) petLife.activity('play');
-        if (ok) void pet.say({ kind: 'answer', text: t('pet.play.walkEnd'), ttlMs: 4000 });
+        if (ok) void pet.say({ kind: 'answer', text: voiced('pet.play.walkEnd'), ttlMs: 4000 });
         return ok;
       } finally {
         playing = false;
@@ -630,7 +630,7 @@ ready
     async function seek(): Promise<boolean> {
       void pet.say({
         kind: 'answer',
-        text: t('pet.seek.start', { seconds: HIDE_SEEK.seconds }),
+        text: voiced('pet.seek.start', { seconds: HIDE_SEEK.seconds }),
         ttlMs: 2500,
       });
       await new Promise((r) => setTimeout(r, 2800));
@@ -662,11 +662,11 @@ ready
         pet.react();
         void pet.say({
           kind: 'answer',
-          text: coins ? t('pet.seek.foundCoins', { coins }) : t('pet.seek.found'),
+          text: coins ? voiced('pet.seek.foundCoins', { coins }) : voiced('pet.seek.found'),
           ttlMs: 4000,
         });
       } else {
-        void pet.say({ kind: 'answer', text: t('pet.seek.lost'), ttlMs: 4000 });
+        void pet.say({ kind: 'answer', text: voiced('pet.seek.lost'), ttlMs: 4000 });
       }
       panel.refresh();
       return found;
@@ -911,7 +911,11 @@ ready
         petLife.activity('feed');
         void pet.say({ kind: 'answer', text: voiced('pet.fed'), ttlMs: 3000 });
       } else {
-        void pet.say({ kind: 'answer', text: r.full ? t('pet.full') : t('pet.noCoins'), ttlMs: 4000 });
+        void pet.say({
+          kind: 'answer',
+          text: r.full ? voiced('pet.full') : voiced('pet.noCoins'),
+          ttlMs: 4000,
+        });
       }
       panel.refresh();
     }
