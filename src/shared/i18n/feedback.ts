@@ -4,7 +4,7 @@ import type { Translation } from './types.ts';
 export const ko = {
   'feedback.include': '진단 기록도 같이 붙이기',
   'feedback.hint':
-    '앱이 남긴 최근 기록이야. 문제를 찾는 데 큰 도움이 돼. 붙이기 전에 보낼 글을 그대로 보여 줄게. 폴더 경로 속 이름, 이메일, 주소 뒤에 붙은 값, 토큰, IP는 가려 두었어.',
+    '앱이 남긴 최근 기록이야. 문제를 찾는 데 큰 도움이 돼. 붙이기 전에 보낼 글을 그대로 보여 줄게. 폴더 경로 속 이름, 이메일, 주소 뒤에 붙은 값, 토큰, IP, 전화번호, 주민등록번호, 회의 주소는 가려 두었어.',
   'feedback.loading': '기록 읽는 중',
   'feedback.readFailed': '기록을 읽지 못했어. 조금 뒤에 다시 켜 줘',
   'feedback.refresh': '새로 읽기',
@@ -30,7 +30,7 @@ export const ko = {
 export const en: Translation<typeof ko> = {
   'feedback.include': 'Attach diagnostics too',
   'feedback.hint':
-    "Recent notes the app kept. They help a lot with finding problems. You'll see exactly what gets copied first. Your name in folder paths, emails, link parameters, tokens and IPs are hidden.",
+    "Recent notes the app kept. They help a lot with finding problems. You'll see exactly what gets copied first. Your name in folder paths, emails, link parameters, tokens, IPs, phone numbers, ID numbers and meeting links are hidden.",
   'feedback.loading': 'Reading notes',
   'feedback.readFailed': "Couldn't read the notes. Try turning it on again in a bit",
   'feedback.refresh': 'Reload',

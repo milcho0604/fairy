@@ -265,7 +265,7 @@ export function MakerApp() {
   );
 
   /**
-   * 내 컴퓨터에서 그리기 준비 (처음 한 번 mflux 16GB, sd.cpp 5.3GB 쯤). 그만두면 돌아간다. 다 되면 기다리던 사진이 있으면 바로 그린다
+   * 내 컴퓨터에서 그리기 준비 (처음 한 번 mflux 16GB, sd.cpp 5.2GB 쯤). 그만두면 돌아간다. 다 되면 기다리던 사진이 있으면 바로 그린다
    */
   const runSetup = useCallback(
     async (back: 'pick' | 'illust') => {

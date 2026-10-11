@@ -518,7 +518,7 @@ export function createMaker(
     },
   );
 
-  // 내 컴퓨터에서 그리기 준비 (처음 한 번 mflux 16GB, sd.cpp 5.3GB 쯤 받기). 그만두기, 창 닫기로 멈추고 다음에 이어서 한다
+  // 내 컴퓨터에서 그리기 준비 (처음 한 번 mflux 16GB, sd.cpp 5.2GB 쯤 받기). 그만두기, 창 닫기로 멈추고 다음에 이어서 한다
   ipcMain.handle(MAKER.setupLocalDraw, async (e) => {
     if (!fromMaker(e)) return { ok: false, kind: 'reopen', error: t('main.maker.reopen') };
     const ac = new AbortController();
