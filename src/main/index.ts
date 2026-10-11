@@ -997,6 +997,7 @@ ready
           });
       }
       if (next.icsUrl !== prev.icsUrl && next.icsUrl) void calendar.sync(true);
+      else if (prev.icsUrl && !next.icsUrl) calendar.clear();
       if (next.myMcp && !prev.myMcp) void refreshMcpServers(log);
       if (JSON.stringify(next.friends) !== JSON.stringify(prev.friends)) {
         friends.sync();

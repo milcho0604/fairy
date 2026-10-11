@@ -389,6 +389,20 @@ export class EventStore {
     }
   }
 
+  /**
+   * 캘린더 주소를 지웠다: 가져온 일정 중 아직 안 끝난 것(앞으로 올 것, 이어지는 것)을 지운 것으로 둔다.
+   * 맞추기가 지운 것(removed_by 'sync')이라 주소를 다시 넣으면 되살아난다. 지난 일정은 기록으로 둔다. 지운 수를 돌려준다
+   */
+  dropExternal(source: 'ics', now: number): number {
+    const r = this.#db
+      .prepare(
+        `update event set deleted_at = ?, removed_by = 'sync'
+         where source = ? and deleted_at is null and (start_at >= ? or (end_at is not null and end_at > ?))`,
+      )
+      .run(now, source, now, now);
+    return Number(r.changes);
+  }
+
   /** 알렸다: 울릴 때가 지난 알림을 다 알린 것으로 (늦었으면 곧 올 것까지) */
   markNotified(id: number, now: number): void {
     const e = this.get(id);
