@@ -272,6 +272,12 @@ p.empty {
   cursor: text;
 }
 
+/* 영어는 낱말이 길어 5em 이면 "Prepare the weekly meeting slides" 가 네 줄로 접혔다. 제목 자리를 더 남기고
+   칩(단계, 알림, "Today 2:00 PM", 별)을 다음 줄로 (2026-10-11 영어 화면 점검) */
+:where(:lang(en)) .todo .title {
+  min-width: min(8em, 45%);
+}
+
 .todo .title-text {
   pointer-events: auto;
 }

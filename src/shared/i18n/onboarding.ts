@@ -25,7 +25,7 @@ export const ko = {
     '이미 켜져 있는데도 이렇게 나오면 목록에서 fairy를 골라 − 버튼으로 지우고, 페어리를 다시 켠 뒤 같이 보기에서 맥이 물을 때 허용해 줘. ' +
     '같이 보기를 안 쓸 거면 넘어가도 돼.',
   'onboarding.look.openSettings': '시스템 설정 열기',
-  'onboarding.look.windows': '윈도우는 따로 권한이 필요 없어',
+  'onboarding.look.windows': '이 컴퓨터는 따로 권한이 필요 없어',
   'onboarding.look.ai':
     'AI는 이 컴퓨터에 설치해 로그인해 둔 Claude Code, Codex, Cursor, Gemini 중 하나를 써. 채팅 창에서 고를 수 있어.',
   'onboarding.look.aiFree': (v: { size: string }) =>
@@ -70,7 +70,7 @@ export const en: Translation<typeof ko> = {
     'Already on and still seeing this? Select fairy in the list, remove it with the − button, restart fairy and allow it when macOS asks again. ' +
     "If you won't use Look together, you can skip this.",
   'onboarding.look.openSettings': 'Open System Settings',
-  'onboarding.look.windows': 'No extra permission needed on Windows',
+  'onboarding.look.windows': 'No extra permission needed on this computer',
   'onboarding.look.ai':
     'AI uses Claude Code, Codex, Cursor or Gemini, whichever you installed and signed in to on this computer. You can pick one in the chat window.',
   'onboarding.look.aiFree': (v) =>
