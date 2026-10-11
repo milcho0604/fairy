@@ -38,7 +38,7 @@ export const ko = {
   'main.update.lockedShort': 'AI 대화는 업데이트한 뒤에 쓸 수 있어',
   'main.update.ready': (v: { version: string }) =>
     `새 버전 ${withParticle(v.version, '을')} 받아 뒀어. 끝낼 때 설치할게.`,
-  // 맥은 끝낼 때 저절로 설치하지 않는다 (main/update.ts installOnQuit)
+  // 끝낼 때 저절로 설치하지 않는다 (main/update.ts installOnQuit). 위 ready 는 그 값을 켤 때 쓴다
   'main.update.readyRestart': (v: { version: string }) =>
     `새 버전 ${withParticle(v.version, '을')} 받아 뒀어. 다시 켜면 바로 바뀌어.`,
   'main.update.restart': '다시 켜서 업데이트',

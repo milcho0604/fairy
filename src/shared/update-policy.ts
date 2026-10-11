@@ -11,10 +11,9 @@ export const RELEASE_REPO = { owner: 'milcho0604', repo: 'jjakkung' } as const;
 export const RELEASES_API = `https://api.github.com/repos/${RELEASE_REPO.owner}/${RELEASE_REPO.repo}/releases/latest`;
 
 /**
- * 스스로 받아 설치하는 운영체제. 윈도우는 받아 두고 끝낼 때도 설치한다.
+ * 스스로 받아 설치하는 운영체제. 둘 다 받아 두고 "다시 켜서 업데이트"를 누를 때만 설치한다 (main/update.ts installOnQuit).
  * 맥(Squirrel.Mac)은 새 앱의 서명이 지금 앱의 서명 조건(앱 ID + 자체 인증서, scripts/mac-sign.mjs)을
  * 만족해야 받아들인다. 늘 같은 인증서로 서명하므로 된다(2026-10-09 실험: 같은 인증서는 설치, 임시 서명은 거절).
- * 맥은 "다시 켜서 업데이트"를 누를 때만 설치한다 (main/update.ts).
  */
 export const AUTO_INSTALL_PLATFORMS: readonly string[] = ['win32', 'darwin'];
 
