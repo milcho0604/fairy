@@ -12,6 +12,7 @@ import {
   tabKeyStep,
   tabOfSection,
 } from '../../../shared/settings-tabs.ts';
+import { escClosesWindow } from '../panel/keys.ts';
 import { AboutTab } from './tabs/AboutTab.tsx';
 import { AiTab } from './tabs/AiTab.tsx';
 import { AssistTab } from './tabs/AssistTab.tsx';
@@ -30,6 +31,15 @@ export function SettingsApp() {
   const [savedError, setSavedError] = useState(false);
   const libraryKey = useRef('');
   const flashTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  // Esc 로 창을 닫는다 (패널과 같게). 찾기 칸이 먼저 글을 비우고(preventDefault), 한글 조합 중 Esc 는 조합만 끝낸다
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (escClosesWindow(e)) window.close();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   useEffect(() => {
     bridge.get().then(setSnap);

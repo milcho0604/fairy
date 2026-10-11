@@ -14,7 +14,7 @@ import {
 } from '../../../shared/remind.ts';
 import { remindLabel, remindSummary } from '../../../shared/remind-text.ts';
 import { BellIcon } from './icons.tsx';
-import { isEsc, takeEsc } from './keys.ts';
+import { isEsc } from './keys.ts';
 import './remind.css';
 
 /** 줄 끝 종 단추. 알림 수를 작게 보인다 (하나면 숫자 없이) */
@@ -83,6 +83,19 @@ export function RemindSheet({
   useEffect(() => {
     ref.current?.scrollIntoView({ block: 'nearest' });
   }, []);
+  // 펼쳐 있으면 Esc 는 (커서가 종 단추나 다른 곳에 있어도) 이 칸부터 닫는다. 패널 닫기는 그다음 Esc
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!isEsc(e) || e.defaultPrevented) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      closeRef.current();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, []);
   const base = dateOnly ? DATE_CHOICES : TIMED_CHOICES;
   // 고르기 칸에 없는 값(직접 넣은 것, 빠른 입력으로 넣은 것)도 칩으로 보인다. 이른 것부터
   const choices = [...new Set([...base, ...reminds])].sort((a, b) => b - a);
@@ -113,18 +126,7 @@ export function RemindSheet({
   const hint = allDay ? t('remind.allDayHint') : dueTime && dateOnly ? t('remind.dateHint') : '';
 
   return (
-    <fieldset
-      ref={ref}
-      id={id}
-      className="remind-sheet"
-      aria-label={t('remind.title')}
-      onKeyDown={(e) => {
-        if (isEsc(e)) {
-          takeEsc(e);
-          onClose();
-        }
-      }}
-    >
+    <fieldset ref={ref} id={id} className="remind-sheet" aria-label={t('remind.title')}>
       {dueTime && !dueTime.due && <p className="rs-hint">{t('remind.needDue')}</p>}
       {dueTime?.due && (
         <div className="rs-time">

@@ -44,6 +44,7 @@ import { CANVAS_SIZE } from '../draw.ts';
 import { MakeProgress, type ProgressStage } from '../MakeProgress.tsx';
 import { browserStore, loadExpected, saveDuration } from '../make-progress.ts';
 import { PetNameInput } from '../PetNameInput.tsx';
+import { escClosesWindow } from '../panel/keys.ts';
 import { Pet3D } from '../pet3d.ts';
 import { openDepth, predictDepth } from './depth.ts';
 import { settleFur } from './fur-color.ts';
@@ -675,6 +676,16 @@ export function MakerApp() {
       : look === 'relief' && depth
         ? { depth }
         : undefined;
+
+  // Esc 로 닫는다 (패널, 설정과 같게). 만드는 중에는 하던 일을 잃으니 고르기 전과 다 된 뒤에만
+  useEffect(() => {
+    if (step !== 'pick' && step !== 'done') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (escClosesWindow(e)) bridge.close();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [step]);
 
   const canSave = step === 'name' && !shaping && (look === 'photo' || !!chosen);
 

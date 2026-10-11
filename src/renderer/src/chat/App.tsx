@@ -228,10 +228,12 @@ export function App() {
   globalKeyRef.current = (e) => {
     const key = chatKey(e, bridge.platform);
     if (key === 'escape') {
-      // 그림 크게 보기, AI 관리가 열려 있으면 그것부터 닫는다. 아니면 답을 멈춘다
+      // 그림 크게 보기, AI 관리가 열려 있으면 그것부터 닫는다. 답을 기다리면 멈춘다. 아무것도 없고 쓰던 글도 없으면
+      // 창을 닫는다 (패널, 설정 창과 같게. 쓰던 글은 Esc 하나로 잃지 않게 둔다)
       if (zoom) setZoom(undefined);
       else if (managing) setManaging(false);
       else if (pending) bridge.cancel();
+      else if (!text.trim() && !e.defaultPrevented) window.close();
       else return;
       e.preventDefault();
     } else if (key === 'new-chat') {
