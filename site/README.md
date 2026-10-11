@@ -20,7 +20,8 @@ site/
 │   └── icons/          ← favicons from build/icon.png
 ├── sitemap.xml, robots.txt, site.webmanifest   ← written by tools/build.mjs
 ├── vercel.json         ← security headers (CSP) and image caching for Vercel
-└── tools/              ← build.mjs, og.mjs + og.html, images.py, kong_sprite.py (not needed at runtime)
+├── .vercelignore       ← keeps tools/ and this README off the deployed site
+└── tools/              ← build.mjs, og.mjs + og.html, images.py, kong_sprite.py, capture.mjs + shots.py (not deployed)
 ```
 
 Preview locally: `python3 -m http.server -d site 8080` → http://localhost:8080 (add `?lang=en` for English).
@@ -42,7 +43,8 @@ Preview locally: `python3 -m http.server -d site 8080` → http://localhost:8080
   build also writes the matching `sha256-…` hashes into the CSP in `vercel.json` — always run the build after
   editing the CSS, or the browser will refuse the new styles.
 - **Fonts**: IBM Plex Sans KR (body, Google's own unicode-range slices) and Jua for headings only, requested with
-  `text=` so just the heading characters are downloaded. New heading text needs a rebuild to be in the subset.
+  `text=` so just the heading characters are downloaded (`display=block`: the subset is tiny, and a swap would re-wrap
+  the hero title). New heading text needs a rebuild to be in the subset.
 - **What's new**: edit `updates.json` (newest first, ko and en), rebuild.
 - **Language**: Korean by default; `navigator.language` picks English for non-Korean browsers; the header button
   switches and remembers the choice in `localStorage`; `?lang=en|ko` forces one.
@@ -69,6 +71,22 @@ All pictures are the real app screenshots from `docs/assets/screens/` (the to-do
   `background-position` steps and moves it along the hero floor; with *reduce motion* Bean stands still.
 
 Re-run both after re-shooting the screens with `scripts/dev/screens.mjs`.
+
+The panel, chat, AI picker, quick-add bar, first-run look picker and the three maker steps can also be re-shot
+straight from the current app, with made-up data, without touching `docs/`:
+
+```bash
+npm run build
+python3 site/tools/shots.py photo /tmp/shots/photo.png         # sample photo: Milk on a soft backdrop
+OUT=/tmp/shots node site/tools/capture.mjs                     # test instance: JJ_NO_FOCUS=1, empty data folder, ports 9851/9852
+python3 site/tools/shots.py compose /tmp/shots                 # lays the window captures out like the old screens
+SCREENS=/tmp/shots/screens python3 site/tools/images.py        # webp; anything missing there comes from docs/
+node site/tools/og.mjs                                         # the share card uses hero-panel.webp
+```
+
+On Linux run it on its own Xvfb display; `BG_MODEL=<isnet-general-use.onnx>` skips the 170MB model download and
+`JJ_ORT_WASM_URL` is passed through (see `scripts/dev/README.md`). If an image's size changes, update its
+`width`/`height` in `index.html`.
 
 ## Deploy on Vercel (recommended)
 
@@ -126,8 +144,11 @@ The page asks `https://api.github.com/repos/{owner}/{repo}/releases?per_page=10`
 version, date, size and, when GitHub provides it, the SHA-256. The answer is cached for 15 minutes per tab;
 GitHub allows 60 unauthenticated calls per hour per visitor IP.
 
-- Repo private, missing or with no release yet → 404 → buttons read **곧 나와요 / Coming soon**.
-- Rate limit or offline → buttons link to the releases page.
+- The site reads the public, releases-only repo `milcho0604/fairy-releases` (`releases` in `config.js`); every GitHub link
+  on the site (releases, changelog, contact → new issue) points there, never at the source repo.
+- Repo missing (404) or there but with no release yet (200, empty list) → buttons read **곧 나와요 / Coming soon** with a
+  "GitHub에서 소식 받기 / Get notified on GitHub" link to that repo.
+- Rate limit or offline → a different note ("couldn't check just now"), and the buttons link to the releases page.
 
 A private repo's releases are invisible to visitors (and to the app's update check). To keep the source private,
 publish builds to a **public, releases-only** repo, e.g. `milcho0604/fairy-releases`:

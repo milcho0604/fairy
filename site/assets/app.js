@@ -13,7 +13,8 @@
   var page = root.getAttribute('data-page') || 'home';
   var reduceMQ = window.matchMedia('(prefers-reduced-motion: reduce)');
 
-  var REL_PAGE = 'https://github.com/' + S.releases.owner + '/' + S.releases.repo + '/releases';
+  var REPO = 'https://github.com/' + S.releases.owner + '/' + S.releases.repo;
+  var REL_PAGE = REPO + '/releases';
   var ORDER = ['macArm', 'macIntel', 'win', 'linuxAppImage', 'linuxTar'];
 
   /* ---------------- language ---------------- */
@@ -64,6 +65,7 @@
         if (p.length === 2) el.setAttribute(p[0].trim(), t(p[1].trim()));
       });
     });
+    each('[data-lang-toggle] span', function (el) { el.lang = lang === 'ko' ? 'en' : 'ko'; });
     each('[data-news]', function (el) { el.hidden = el.getAttribute('data-news') !== lang; });
     each('[data-name]', function (el) { el.textContent = S.name[lang] || S.name.ko; });
     each('[data-copyright]', function (el) { el.textContent = S.copyright; });
@@ -71,7 +73,7 @@
       var k = el.getAttribute('data-href');
       if (k === 'changelog') el.href = S.changelogUrl || REL_PAGE;
       if (k === 'releases') el.href = REL_PAGE;
-      if (k === 'contact') el.href = S.contactEmail ? 'mailto:' + S.contactEmail : 'https://github.com/' + S.releases.owner + '/' + S.releases.repo + '/issues/new/choose';
+      if (k === 'contact') el.href = S.contactEmail ? 'mailto:' + S.contactEmail : REPO + '/issues/new/choose';
     });
     var titleKey = root.getAttribute('data-title-key') || 'meta.title';
     var title = t(titleKey);
@@ -252,10 +254,10 @@
       if (known && os !== 'linux') html += '<br>' + t(os === 'win' ? 'dl.unsignedWin' : 'dl.unsignedMac');
     } else if (REL.state === 'soon') {
       if (known) { setLink(main, null, true); label.textContent = t('dl.soon'); }
-      html = esc(t('dl.soonNote'));
+      html = esc(t('dl.soonNote')) + ' <a href="' + esc(REPO) + '">' + esc(t('dl.follow')) + '</a>';
     } else {
       if (known) setLink(main, REL_PAGE);
-      html = esc(t('dl.errorNote'));
+      html = esc(t('dl.errorNote')) + ' ' + esc(t('dl.errorHint'));
     }
     meta.innerHTML = html;
 
@@ -268,7 +270,7 @@
       links.push('<a href="' + esc(href) + '">' + esc(name) + '</a>');
     });
     links.push('<a href="' + esc(allLink) + '">' + esc(t('dl.all')) + '</a>');
-    alt.innerHTML = esc(t('dl.others')) + ' ' + links.join('<span class="sep" aria-hidden="true">·</span>');
+    alt.innerHTML = esc(t(known ? 'dl.others' : 'dl.pick')) + ' ' + links.join('<span class="sep" aria-hidden="true">·</span>');
   }
 
   function cardButton(k, small, plain) {
@@ -316,8 +318,8 @@
 
   function renderReleaseLine(el) {
     if (REL.state === 'ok') el.innerHTML = esc(t('dlsec.latest')) + ' <strong>' + esc(REL.version) + '</strong> · ' + esc(day(REL.date)) + ' · <a href="' + esc(REL.url) + '">' + esc(t('dl.releases')) + '</a>';
-    else if (REL.state === 'soon') el.textContent = t('dl.soonNote');
-    else if (REL.state === 'error') el.innerHTML = esc(t('dl.errorNote')) + ' <a href="' + esc(REL_PAGE) + '">' + esc(t('dl.releases')) + '</a>';
+    else if (REL.state === 'soon') el.innerHTML = esc(t('dl.soonNote')) + ' <a href="' + esc(REPO) + '">' + esc(t('dl.follow')) + '</a>';
+    else if (REL.state === 'error') el.innerHTML = esc(t('dl.errorNote')) + ' <a href="' + esc(REL_PAGE) + '">' + esc(t('dl.errorLink')) + '</a>';
     else el.textContent = t('dl.loading');
   }
 
@@ -466,6 +468,8 @@
   }
 
   /* ---------------- go ---------------- */
+  // Jua never came (blocked, offline): let the hero title wrap again in the fallback font
+  if (document.fonts && document.fonts.check) setTimeout(function () { if (!document.fonts.check('1em Jua', '화')) root.classList.add('no-jua'); }, 3500);
   applyText();
   renderDownloads();
   detectOS().then(function (o) { OS = o; renderDownloads(); });
