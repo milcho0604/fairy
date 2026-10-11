@@ -44,7 +44,7 @@
     "image": {
       "type": "string",
       "pattern": "^data:image/(png|gif|webp);base64,[A-Za-z0-9+/=]+$",
-      "description": "Base64 data URL, decoded at most 8 MiB, at most 16 megapixels."
+      "description": "Base64 data URL, decoded at most 8 MiB, at most 4096 px per side and 16 megapixels."
     },
     "png": {
       "type": "string",

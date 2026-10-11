@@ -106,7 +106,8 @@ export function parseGalleryIndex(text: string): GalleryEntry[] | undefined {
   }
   if (typeof raw !== 'object' || raw === null) return undefined;
   const r = raw as Record<string, unknown>;
-  if (r.format !== INDEX_FORMAT || typeof r.version !== 'number' || r.version > INDEX_VERSION) return undefined;
+  if (r.format !== INDEX_FORMAT || typeof r.version !== 'number' || r.version > INDEX_VERSION)
+    return undefined;
   if (!Array.isArray(r.pets)) return undefined;
   const seen = new Set<string>();
   const out: GalleryEntry[] = [];
@@ -198,7 +199,8 @@ export function validateSubmission(
   if (!pet.thumbnail || !cleanThumbnail(pet.thumbnail)) problems.push('images.thumbnail (PNG) is required');
   const poses = (images.poses ?? {}) as Record<string, unknown>;
   for (const k of Object.keys(poses))
-    if (POSE_KEYS.has(k) && !pet.poses[k as keyof SharedPet['poses']]) problems.push(`images.poses.${k} is broken`);
+    if (POSE_KEYS.has(k) && !pet.poses[k as keyof SharedPet['poses']])
+      problems.push(`images.poses.${k} is broken`);
   if (raw.blueprint !== undefined && !pet.model) problems.push('blueprint is broken');
   if (raw.depth !== undefined && !pet.depth) problems.push('depth is broken or used together with blueprint');
   if (manifest.age !== undefined && !pet.age) problems.push('manifest.age is not a known age stage');

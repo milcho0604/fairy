@@ -110,7 +110,12 @@ test('판 1 파일도 그대로 읽는다 (이름표 없이)', () => {
 });
 
 test('판 2 로 쓰고 이름표(만든 사람, 허락, 날짜, 앱 판, 작은 그림)를 그대로 읽는다', () => {
-  const meta = { author: '짝꿍', license: 'CC-BY-SA-4.0' as const, created: '2026-10-11', appVersion: '1.2.3' };
+  const meta = {
+    author: '짝꿍',
+    license: 'CC-BY-SA-4.0' as const,
+    created: '2026-10-11',
+    appVersion: '1.2.3',
+  };
   const pet: SharedPet = { name: '밀크', kind: 'cat', image: PNG, poses: {}, thumbnail: PNG, age: 'adult' };
   const text = encodePet(pet, meta);
   const raw = JSON.parse(text);

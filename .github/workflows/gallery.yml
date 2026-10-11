@@ -1,0 +1,37 @@
+# 펫 갤러리 올리기 검사 (gallery/CONTRIBUTING.md). gallery/ 나 펫 파일 형식 코드가 바뀐 PR 에서만 돈다.
+# 펫 파일(판 2 형식, 크기, 만든 사람, 사용 허락, 그림), 목록(index.json)과 작은 그림의 sha256 이 맞는지 본다.
+# 남의 캐릭터가 아닌지는 사람이 그림을 보고 판단한다. 의존 패키지는 받지 않는다 (node 만으로 돈다).
+name: gallery
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'gallery/**'
+      - 'scripts/gallery-*.mjs'
+      - 'src/shared/gallery*.ts'
+      - 'src/shared/pet-share.ts'
+      - '.github/workflows/gallery.yml'
+  pull_request:
+    paths:
+      - 'gallery/**'
+      - 'scripts/gallery-*.mjs'
+      - 'src/shared/gallery*.ts'
+      - 'src/shared/pet-share.ts'
+      - '.github/workflows/gallery.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: 갤러리 검사
+        run: node scripts/gallery-validate.mjs
