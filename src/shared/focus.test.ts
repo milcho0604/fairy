@@ -46,7 +46,7 @@ test('할 일을 걸고 집중: id 를 들고 가다 끝나면 아직 열린 그
   assert.equal(focusTodoToAsk(startFocus(T), [{ id: 7 }]), undefined);
 });
 
-test('집중 끝 단추: 할 일이 있어도 그만할래가 있고, 조금 더는 같은 할 일로 다시 집중', () => {
+test('집중 끝 단추: 할 일이 있어도 쉬는 시간 끝내기가 있고, 조금 더는 같은 할 일로 다시 집중', () => {
   assert.deepEqual(focusDoneButtons(true), ['finished', 'more', 'stop']);
   assert.deepEqual(focusDoneButtons(false), ['stop']);
   assert.equal(focusDoneAction('more', true), 'again');

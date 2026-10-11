@@ -43,7 +43,7 @@ export const ko = {
   'panel.review.undo': '되돌리기',
   'panel.focus.done': (v: { minutes: number; coins: number; breakMin: number }) =>
     `${v.minutes}분 집중 끝!${v.coins > 0 ? ` 코인 ${v.coins}개.` : ''} ${v.breakMin}분 쉬자.`,
-  'panel.focus.stop': '그만할래',
+  'panel.focus.stop': '쉬는 시간 끝내기',
   'panel.focus.breakDone': '쉬는 시간 끝. 한 번 더 집중할까?',
   'panel.focus.again': '한 번 더',
   'panel.focus.enough': '이제 됐어',
@@ -249,7 +249,7 @@ export const en: Translation<typeof ko> = {
   'panel.review.undo': 'Undo',
   'panel.focus.done': (v: { minutes: number; coins: number; breakMin: number }) =>
     `${v.minutes} min of focus done!${v.coins > 0 ? ` ${plural(v.coins, 'coin')}.` : ''} Take ${v.breakMin}.`,
-  'panel.focus.stop': "I'm done",
+  'panel.focus.stop': 'End break',
   'panel.focus.breakDone': 'Break is over. Another round?',
   'panel.focus.again': 'One more',
   'panel.focus.enough': "That's enough",
