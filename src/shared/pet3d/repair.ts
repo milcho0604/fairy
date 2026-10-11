@@ -145,7 +145,56 @@ export function repairBlueprint(bp: Blueprint): { bp: Blueprint; fixes: string[]
     };
     fixes.push(`ground ${low > 0 ? '-' : '+'}${Math.abs(low).toFixed(2)}`);
   }
-  return { bp: out, fixes };
+
+  // 4. 칸 범위: 바닥에 맞춰 올리면 머리, 얼굴 높이가 parseBlueprint 의 상한(2.5)을 넘을 수 있다. 그대로 두면 저장했다
+  // 다시 읽을 때 잘려 머리만 납작해졌다 (감사 3차). 넘으면 바닥(y=0)을 기준으로 통째로 줄여 넣고, 남는 것은 자른다
+  const fit = fitRange(out);
+  if (fit.scale !== 1) fixes.push(`fit x${fit.scale.toFixed(2)}`);
+  return { bp: fit.bp, fixes };
+}
+
+/** parseBlueprint 의 위치(at, path)와 얼굴 높이 범위 */
+const AT_LO = -1.5;
+const AT_HI = 2.5;
+const FACE_HI = 2.5;
+/** 범위로 자르고 -0 은 0 으로 (JSON 이 -0 을 0 으로 적어 다시 읽으면 달라진다) */
+const clampTo = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n)) + 0;
+
+/**
+ * 설계도를 parseBlueprint 칸 범위 안으로. 가장 높은 위치나 얼굴 높이가 상한을 넘으면 바닥 기준으로 통째로 줄인다
+ * (줄이면 몸이 너무 작아질 때는 줄이지 않는다). 그 뒤 남는 값은 범위로 자른다. parse(repair(x)) 가 repair(x) 와 같게
+ */
+function fitRange(bp: Blueprint): { bp: Blueprint; scale: number } {
+  const f = bp.face;
+  const top = Math.max(
+    ...bp.parts.flatMap((p) => [p.at[1], ...(p.path ?? []).map((pt) => pt[1])]),
+    f.eyeY,
+    f.mouthY,
+    f.nose?.y ?? 0,
+    f.brows?.y ?? 0,
+  );
+  let k = top > AT_HI ? AT_HI / top : 1;
+  // 얼굴을 붙일 몸이나 머리가 0.05 아래로 작아지면 parseBlueprint 가 설계도를 버린다
+  const core = Math.max(
+    ...bp.parts.filter((p) => p.slot === 'body' || p.slot === 'head').map((p) => Math.max(...p.size)),
+  );
+  if (core * k < 0.05) k = 1;
+  const pos = (v: number) => clampTo(v * k, AT_LO, AT_HI);
+  const faceY = (v: number) => clampTo(v * k, 0, FACE_HI);
+  const parts = bp.parts.map((p) => ({
+    ...p,
+    at: p.at.map(pos) as Vec3,
+    ...(k === 1 ? {} : { size: p.size.map((v) => Math.max(0.005, v * k)) as Vec3 }),
+    ...(p.path ? { path: p.path.map((pt) => pt.map(pos) as Vec3) } : {}),
+  }));
+  const face = { ...f, eyeY: faceY(f.eyeY), mouthY: faceY(f.mouthY) };
+  if (k !== 1) {
+    face.eyeGap = clampTo(f.eyeGap * k, 0.02, 0.6);
+    face.eyeSize = clampTo(f.eyeSize * k, 0.015, 0.2);
+  }
+  if (face.nose?.y !== undefined) face.nose = { ...face.nose, y: faceY(face.nose.y) };
+  if (face.brows?.y !== undefined) face.brows = { ...face.brows, y: faceY(face.brows.y) };
+  return { bp: { ...bp, parts, face }, scale: k };
 }
 
 /** 머리와 몸 크기 비율 (머리가 없으면 undefined). 요청문의 귀여운 비율(1~1.2)을 지켰는지 볼 때 */

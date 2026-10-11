@@ -226,3 +226,49 @@ test('두 번째 보기 요청문: 사진과 그림을 견주고 설계도를 �
   const bp = extractBlueprint(`{"critique":["ears bigger"],${JSON.stringify(EXAMPLE_PLUSH).slice(1)}`);
   assert.deepEqual(bp, EXAMPLE_PLUSH);
 });
+
+test('손본 설계도는 저장했다 다시 읽어도 그대로 (마구 만든 설계도 3000개)', () => {
+  // 시드 고정 난수 (mulberry32): 실패하면 같은 설계도로 다시 볼 수 있게
+  let seed = 0x5eed;
+  const rnd = () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let x = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+  const r = (a: number, b: number) => a + rnd() * (b - a);
+  const slots = ['body', 'head', 'legL', 'legR', 'armL', 'earL', 'tail', 'wingL'];
+  const shapes = ['sphere', 'box', 'capsule', 'cone', 'cylinder', 'tube'];
+  let checked = 0;
+  for (let i = 0; i < 3000; i++) {
+    const raw = {
+      parts: Array.from({ length: 1 + Math.floor(rnd() * 8) }, (_, k) => ({
+        slot: k === 0 ? 'body' : slots[Math.floor(rnd() * slots.length)],
+        shape: shapes[Math.floor(rnd() * shapes.length)],
+        at: [r(-1.5, 1.5), r(-1.5, 2.5), r(-1, 1)],
+        size: [r(0.01, 1.2), r(0.01, 1.2), r(0.01, 1.2)],
+        rot: rnd() < 0.3 ? [r(-90, 90), r(-90, 90), r(-90, 90)] : undefined,
+        inner: rnd() < 0.2 ? '#ffccdd' : undefined,
+        color: '#aabbcc',
+        mirror: rnd() < 0.3,
+        path: [
+          [0, 0, 0],
+          [r(-1, 1), r(-1.5, 2.5), 0],
+        ],
+      })),
+      face: {
+        eyeY: r(0, 2.5),
+        mouthY: r(0, 2.5),
+        nose: { shape: 'dot', color: '#000000', y: r(0, 2.5) },
+        brows: { color: '#000000', y: r(0, 2.5) },
+      },
+    };
+    const bp = parseBlueprint(raw);
+    if (!bp) continue;
+    const fixed = repairBlueprint(bp).bp;
+    const back = parseBlueprint(JSON.parse(JSON.stringify(fixed)));
+    assert.deepEqual(back, fixed, `설계도 ${i}`);
+    checked++;
+  }
+  assert.ok(checked > 2500);
+});
