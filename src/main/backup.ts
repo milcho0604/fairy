@@ -112,9 +112,13 @@ export function createBackup(o: {
     mkdirSync(keep, { recursive: true });
     o.vacuumInto(join(keep, 'jjakkung.db'));
     for (const f of FILES) if (existsSync(join(dir(), f))) cpSync(join(dir(), f), join(keep, f));
+    // 펫 그림과 설계도도 남긴다: 가져오기가 같은 이름의 파일을 덮을 수 있다
+    if (existsSync(join(dir(), 'pets')))
+      cpSync(join(dir(), 'pets'), join(keep, 'pets'), { recursive: true, filter: plainEntry });
     // 설정 파일도 저장 파일처럼 다음에 켤 때 바꾼다. 지금 덮으면 끄기 전까지 도는 앱(펫 자리 저장, 플래너,
     // 설정 바꾸기, 끄면서 하는 저장)이 가져온 것을 다시 덮는다. 앞서 하다 만 가져오기의 것은 먼저 치운다
     for (const f of IMPORT_FILES) rmSync(join(dir(), staged(f)), { force: true });
+    rmSync(join(dir(), PENDING_PETS), { recursive: true, force: true });
     // 사용자 AI(ai-custom.json)는 옮기지 않는다: 실행할 명령이라 그 컴퓨터 것이 아니다. 채팅 설정은 고른 AI 만,
     // 사용자 AI 를 골랐으면 기본으로 (버그잡이 7차)
     for (const f of IMPORT_FILES) {
@@ -128,18 +132,20 @@ export function createBackup(o: {
     }
     // 저장 파일은 앱이 연 채라 다음에 켤 때 바꾼다: 자리만 마련하고 다시 켠다.
     // 맨 끝에 놓는다: 켤 때 이것이 있어야 설정 파일도 바꿔 끼우므로, 중간에 실패하면 반쪽만 바뀌지 않는다
+    // pets/ 도 저장 파일과 같이 기다렸다가 다음에 켤 때 넣는다 (저장 파일을 못 바꾸면 펫 파일도 그대로).
+    // 링크를 빼고 일반 파일만 (링크로 사용자 데이터 폴더 밖 파일을 읽게 하지 못하게). 저장 파일보다 먼저 둔다
     try {
+      if (existsSync(join(from, 'pets')))
+        cpSync(join(from, 'pets'), join(dir(), PENDING_PETS), { recursive: true, filter: plainEntry });
       cpSync(join(from, 'jjakkung.db'), join(dir(), PENDING_DB));
     } catch (err) {
       // 디스크가 차서 반만 복사됐으면 다음에 켤 때 반쪽 저장 파일로 바꿔 끼웠다. 기다리던 것을 모두 치운다
       rmSync(join(dir(), PENDING_DB), { force: true });
+      rmSync(join(dir(), PENDING_PETS), { recursive: true, force: true });
       for (const f of IMPORT_FILES) rmSync(join(dir(), staged(f)), { force: true });
       o.log('backup', '가져오기 실패', err instanceof Error ? err.message : String(err));
       throw err;
     }
-    // pets/ 는 링크를 빼고 일반 파일만 (링크로 사용자 데이터 폴더 밖 파일을 읽게 하지 못하게)
-    if (existsSync(join(from, 'pets')))
-      cpSync(join(from, 'pets'), join(dir(), 'pets'), { recursive: true, filter: plainEntry });
     o.log('backup', '가져옴, 다시 켠다', skipped ? `사용자 AI ${skipped}개 뺌` : '');
     // exit 대신 quit: will-quit 정리(실행 표시 지우기, AI 끝내기, 저장 파일 닫기, 단축키 풀기)가 돌게 한다
     app.relaunch();
@@ -161,6 +167,8 @@ function readJsonFile(path: string): unknown {
 
 /** 가져온 저장 파일이 다음에 켤 때까지 기다리는 이름 */
 const PENDING_DB = 'jjakkung.db.import';
+/** 가져온 펫 그림 폴더가 다음에 켤 때까지 기다리는 이름 */
+const PENDING_PETS = 'pets.import';
 /** 가져온 설정 파일이 다음에 켤 때까지 기다리는 이름 */
 const staged = (f: string) => `${f}.import`;
 
@@ -173,6 +181,7 @@ export function applyPendingImport(): void {
   const pending = join(dir, PENDING_DB);
   const dropStaged = () => {
     for (const f of IMPORT_FILES) rmSync(join(dir, staged(f)), { force: true });
+    rmSync(join(dir, PENDING_PETS), { recursive: true, force: true });
   };
   // 저장 파일 없이 남은 설정 파일은 하다 만 가져오기다: 반쪽만 바꾸지 않는다
   if (!existsSync(pending)) {
@@ -188,16 +197,43 @@ export function applyPendingImport(): void {
   }
   // 복사하지 않고 이름을 바꾼다: 켜는 중에 디스크가 차면 복사가 지금 저장 파일을 반쯤 덮은 채 던졌고,
   // 던지면 준비 뒤 일이 멈춰 펫도 메뉴 막대도 없이 떠 있었다. 같은 폴더 안 이름 바꾸기는 공간이 들지 않고 한 번에 바뀐다
+  // 지금 저장 파일의 WAL 은 바꿔 끼운 뒤 남아 있으면 새 파일에 잘못 덧씌워진다. 하지만 바꿔 끼우기가 실패하면
+  // 지금 파일에 필요하다. 먼저 합쳐(checkpoint) 비우고, 그래도 남은 것은 지우지 않고 옆으로 옮겼다가
+  // 바꿔 끼운 뒤에야 지운다 (실패하면 되돌린다)
+  const db = join(dir, 'jjakkung.db');
+  checkpoint(db);
+  const aside: [string, string][] = [];
   try {
-    for (const f of ['jjakkung.db-wal', 'jjakkung.db-shm']) rmSync(join(dir, f), { force: true });
-    renameSync(pending, join(dir, 'jjakkung.db'));
+    for (const ext of ['-wal', '-shm']) {
+      if (!existsSync(db + ext)) continue;
+      renameSync(db + ext, `${db}${ext}.before-import`);
+      aside.push([db + ext, `${db}${ext}.before-import`]);
+    }
+    renameSync(pending, db);
   } catch {
     // 못 바꾸면 지금 저장 파일과 설정으로 켠다 (가져오기 전 복사본은 before-import 폴더에 있다)
+    for (const [orig, moved] of aside)
+      try {
+        renameSync(moved, orig);
+      } catch {
+        // 되돌리지 못하면 옆 이름 그대로 둔다 (지우지 않는다)
+      }
     for (const f of ['', '-wal', '-shm']) rmSync(pending + f, { force: true });
     dropStaged();
     return;
   }
+  for (const [, moved] of aside) rmSync(moved, { force: true });
   for (const f of ['-wal', '-shm']) rmSync(pending + f, { force: true });
+  // 펫 그림은 지금 것 위에 더한다 (같은 이름이면 가져온 것. 지금 것은 before-import 폴더에 있다)
+  const pets = join(dir, PENDING_PETS);
+  if (existsSync(pets)) {
+    try {
+      cpSync(pets, join(dir, 'pets'), { recursive: true, filter: plainEntry });
+    } catch {
+      // 켜기를 멈추지 않는다: 못 넣은 그림은 펫이 기본 그림으로 보인다
+    }
+    rmSync(pets, { recursive: true, force: true });
+  }
   // 구글 캘린더로 보낸 기록도 백업 때 것이라, 다음 보내기가 지금 일정과 다시 맞추게 표시해 둔다 (gcal.ts)
   try {
     writeFileSync(join(dir, 'google-calendar-reset'), '');
@@ -211,6 +247,21 @@ export function applyPendingImport(): void {
       // 켜기를 멈추지 않는다: 못 바꾼 설정 파일은 지금 것을 쓴다
       rmSync(join(dir, staged(f)), { force: true });
     }
+  }
+}
+
+/** WAL 을 본 파일에 합쳐 비운다. 못 하면(잠김, 깨짐) 넘어간다: WAL 은 지우지 않고 옆으로 옮긴다 */
+function checkpoint(file: string): void {
+  if (!existsSync(file) || !existsSync(`${file}-wal`)) return;
+  try {
+    const db = new DatabaseSync(file);
+    try {
+      db.exec('pragma busy_timeout = 2000; pragma wal_checkpoint(truncate);');
+    } finally {
+      db.close();
+    }
+  } catch {
+    // 아래에서 옆으로 옮긴다
   }
 }
 
