@@ -69,9 +69,30 @@ export class ReminderStore {
     for (const m of marks) ins.run(this.#kind, id, m.before, m.notifiedAt);
   }
 
-  /** 지금 말할지 (planReminders). 쓰지 않는다 */
-  due(id: number, anchor: Anchor, now: number): boolean {
-    return planReminders(anchor, this.marks(id), now).speak;
+  /**
+   * 여러 항목 중 지금 말할 것 (marks 는 many 로 한 번에 읽은 것). 말하지 않을 항목의 쓸모없어진 알림(기준이 지나
+   * 넘길 것, planReminders skip)은 그 자리에서 넘긴 것(0)으로 적는다: 적지 않으면 플래너가 15초마다 다시 골랐다
+   */
+  sweep(
+    items: readonly { id: number; anchor: Anchor }[],
+    marks: ReadonlyMap<number, readonly ReminderMark[]>,
+    now: number,
+  ): Set<number> {
+    const speak = new Set<number>();
+    let upd: ReturnType<Db['prepare']> | undefined;
+    for (const { id, anchor } of items) {
+      const plan = planReminders(anchor, marks.get(id) ?? [], now);
+      if (plan.speak) {
+        speak.add(id);
+        continue;
+      }
+      if (plan.skip.length === 0) continue;
+      upd ??= this.#db.prepare(
+        'update reminder set notified_at = 0 where kind = ? and ref_id = ? and before_min = ? and notified_at is null',
+      );
+      for (const b of plan.skip) upd.run(this.#kind, id, b);
+    }
+    return speak;
   }
 
   /** 말했다: 지난 알림(늦었으면 곧 올 것까지)을 말한 것으로, 쓸모없어진 것은 넘긴 것으로 적는다 */

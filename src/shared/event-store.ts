@@ -95,8 +95,10 @@ export class EventStore {
     this.#reminders = new ReminderStore(db, 'event');
   }
 
-  #withReminds(rows: readonly Row[]): CalEvent[] {
-    const marks = this.#reminders.many(rows.map((r) => Number(r.id)));
+  #withReminds(
+    rows: readonly Row[],
+    marks = this.#reminders.many(rows.map((r) => Number(r.id))),
+  ): CalEvent[] {
     return rows.map((r) => toEvent(r, marks.get(Number(r.id)) ?? []));
   }
 
@@ -247,7 +249,15 @@ export class EventStore {
          order by start_at, id`,
       )
       .all(now - 2 * DAY_MS, now + REMIND_MAX_MIN * 60_000 + 2 * DAY_MS) as Row[];
-    return this.#withReminds(rows).filter((e) => this.#reminders.due(e.id, eventAnchor(e), now));
+    // 알림 표시는 한 번에 읽는다 (예전에는 일정마다 다시 읽었다). 쓸모없어진 알림은 넘긴 것으로 적는다 (sweep)
+    const marks = this.#reminders.many(rows.map((r) => Number(r.id)));
+    const list = this.#withReminds(rows, marks);
+    const speak = this.#reminders.sweep(
+      list.map((e) => ({ id: e.id, anchor: eventAnchor(e) })),
+      marks,
+      now,
+    );
+    return list.filter((e) => speak.has(e.id));
   }
 
   /**

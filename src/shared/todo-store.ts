@@ -170,8 +170,7 @@ export class TodoStore {
     this.#reminders = new ReminderStore(db, 'todo');
   }
 
-  #withReminds(rows: readonly Row[]): Todo[] {
-    const marks = this.#reminders.many(rows.map((r) => Number(r.id)));
+  #withReminds(rows: readonly Row[], marks = this.#reminders.many(rows.map((r) => Number(r.id)))): Todo[] {
     const steps = this.#stepsOf(rows.map((r) => Number(r.id)));
     return rows.map((r) =>
       toTodo(
@@ -412,10 +411,15 @@ export class TodoStore {
          order by due, due_min, id`,
       )
       .all(this.#day(now - 86_400_000), this.#day(now + REMIND_MAX_MIN * 60_000 + 2 * 86_400_000)) as Row[];
-    return this.#withReminds(rows).filter((todo) => {
+    // 알림 표시는 한 번에 읽는다 (예전에는 할 일마다 다시 읽었다). 쓸모없어진 알림은 넘긴 것으로 적는다 (sweep)
+    const marks = this.#reminders.many(rows.map((r) => Number(r.id)));
+    const list = this.#withReminds(rows, marks);
+    const items = list.flatMap((todo) => {
       const anchor = todoAnchor(todo);
-      return anchor !== null && this.#reminders.due(todo.id, anchor, now);
+      return anchor ? [{ id: todo.id, anchor }] : [];
     });
+    const speak = this.#reminders.sweep(items, marks, now);
+    return list.filter((todo) => speak.has(todo.id));
   }
 
   /** 알렸다: 울릴 때가 지난 알림을 다 알린 것으로 (늦었으면 곧 올 것까지) */
