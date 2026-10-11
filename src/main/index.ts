@@ -61,6 +61,7 @@ import { createPanel } from './panel.ts';
 import { denyPermissionsByDefault } from './permissions.ts';
 import { createPetConfirm } from './pet-confirm.ts';
 import { createPetFace, trayImageOf } from './pet-face.ts';
+import { library } from './pet-library.ts';
 import { createPetLife } from './pet-life.ts';
 import { drainMemoryInbox } from './pet-memory.ts';
 import { createPetWindow } from './pet-window.ts';
@@ -1439,6 +1440,8 @@ ready
           journey,
           wear,
           weekCard,
+          // 문서 화면 찍기(scripts/dev/screens.mjs)가 그림 친구(밀크, 초코)로 바꿀 때
+          library,
         },
       });
     if (process.env.JJ_METRICS) logMetrics(Number(process.env.JJ_METRICS));

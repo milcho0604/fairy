@@ -12,6 +12,8 @@ OUT=/tmp/jj-shots node scripts/dev/settings.mjs     # 설정 창: 이름, 크기
 OUT=/tmp/jj-shots PHOTO=<사진> node scripts/dev/maker.mjs  # 사진으로 펫 만들기 전체
 ```
 
+- `screens.mjs`: 문서 화면 `docs/assets/screens/pets.png`, `pet-styles.png`, `desktop.png` 를 다시 찍는다. 앱을 직접 띄우고(빈 데이터 폴더, `JJ_NO_FOCUS=1`, 포트 9851/9852) 지어낸 할 일과 일정을 넣어 펫, 말풍선, 패널을 찍은 뒤 숨은 창에서 한 장으로 합친다. 리눅스에서는 `npm run build && xvfb-run -a -s "-screen 0 1512x982x24" node scripts/dev/screens.mjs [pets|styles|desktop]`. 끝나면 데이터 폴더를 지운다
+- `smoke-packaged.mjs`: 설치판(`electron-builder --dir`) 켜 보기 시험. CI 의 리눅스 묶음 시험이 쓴다
 - `cdp.mjs`: 메인 디버거(9229)에서 식 실행(`main`), 창 페이지 찾기(`page`), 화면 찍기, 어두운 모드. 다른 포트로 띄웠으면 `JJ_INSPECT_PORT`, `JJ_PAGE_PORT`
 - 메인 쪽 개발용 손잡이는 `globalThis.__jj` (`src/main/index.ts`, 설치한 앱에는 없다). 상태 넣기: `__jj.chat.debugSetState`, `__jj.pet.debugMoveTo`, `__jj.pet.debugScale`
 - 펫 화면 쪽 손잡이는 `window.__pet` (`setInputs`, `requestActivity`, `mood`)
