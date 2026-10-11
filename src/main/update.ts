@@ -1,6 +1,7 @@
 import { app, net, shell } from 'electron';
 import type { AppUpdater } from 'electron-updater';
 import { t } from '../shared/i18n/index.ts';
+import type { UpdateStatus } from '../shared/ipc.ts';
 import {
   canAutoInstall,
   confirmedForce,
@@ -276,21 +277,23 @@ export function watchUpdates(o: { say: Say; log: Log }) {
     if (answer === 'skip') settings.set({ skipVersion: version });
   }
 
-  async function check(manual = false): Promise<string> {
-    if (!manual && !settings.get().updateCheck) return t('main.update.off');
+  async function check(manual = false): Promise<UpdateStatus> {
+    if (!manual && !settings.get().updateCheck) return { text: t('main.update.off'), tone: 'info' };
     const first = await fetchDecision();
     if (first.kind === 'failed') {
       // 확인을 못 하면 잠그지 않는다 (잠겨 있었으면 푼다)
       setLock(undefined);
-      if (first.status === 404) return t('main.update.none');
-      if (first.bad) return t('main.update.badResponse');
-      return first.status
+      // 404 는 레포가 비공개이거나 릴리스가 아직 없을 때다: 최신이라고 하지 않고 확인할 수 없다고만 (중립)
+      if (first.status === 404) return { text: t('main.update.unavailable'), tone: 'info' };
+      if (first.bad) return { text: t('main.update.badResponse'), tone: 'error' };
+      const text = first.status
         ? t('main.update.failedStatus', { status: first.status })
         : t('main.update.offline');
+      return { text, tone: 'error' };
     }
     if (first.kind === 'none') {
       setLock(undefined);
-      return t('main.update.latest');
+      return { text: t('main.update.latest'), tone: 'ok' };
     }
     // 더 새 버전이 나왔으면 받아 둔 것과 실패 기록을 잊고 새로 받는다
     if (downloaded && downloaded !== first.version) {
@@ -302,15 +305,16 @@ export function watchUpdates(o: { say: Say; log: Log }) {
       const second = await fetchDecision();
       if (second.kind !== 'failed' && confirmedForce(first, second)) {
         setLock({ version: first.version, url: first.url, minVersion: first.minVersion });
-        return t('main.update.forcedFound', { min: first.minVersion });
+        return { text: t('main.update.forcedFound', { min: first.minVersion }), tone: 'info' };
       }
       o.log('update', '강제 표시가 두 번째 확인과 달라 잠그지 않음');
     }
     setLock(undefined);
-    if (!manual && settings.get().skipVersion === first.version) return t('main.update.skipped');
+    if (!manual && settings.get().skipVersion === first.version)
+      return { text: t('main.update.skipped'), tone: 'info' };
     o.log('update', '새 버전', first.version);
     void notify(first.version, first.url);
-    return t('main.update.found', { version: first.version });
+    return { text: t('main.update.found', { version: first.version }), tone: 'ok' };
   }
 
   setTimeout(() => void check(), 60_000).unref();

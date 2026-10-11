@@ -37,6 +37,12 @@ import type { Repeat, Todo } from './todo-store.ts';
 import type { WearLook } from './wear.ts';
 import type { WeekSummary } from './week.ts';
 
+/** 업데이트 확인 결과. tone 은 글 색: ok 초록, info 회색(확인할 수 없음, 꺼짐), error 빨강 */
+export interface UpdateStatus {
+  text: string;
+  tone: 'ok' | 'info' | 'error';
+}
+
 export const IPC = {
   /** 펫 화면 → 메인: 커서가 펫 위에 있는지 (클릭 통과를 켜고 끈다). */
   hover: 'pet:hover',
@@ -352,7 +358,7 @@ export interface SettingsBridge {
   /** GitHub 새 이슈 (판, 운영체제만 채움) */
   reportIssue(): void;
   openNotices(): Promise<boolean>;
-  checkUpdate(): Promise<string>;
+  checkUpdate(): Promise<UpdateStatus>;
   openOnboarding(): void;
   /** 백업 폴더 만들기. 만든 경로 (그만두면 빈 글) */
   exportData(): Promise<string>;

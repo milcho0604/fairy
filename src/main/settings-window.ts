@@ -15,7 +15,13 @@ import { type BetaReport, reportText, type StatStore } from '../shared/beta-stat
 import { issueUrl } from '../shared/feedback.ts';
 import type { GalleryList } from '../shared/gallery.ts';
 import { t } from '../shared/i18n/index.ts';
-import { type MakerTarget, SETTINGS, type SettingsSection, type SettingsSnapshot } from '../shared/ipc.ts';
+import {
+  type MakerTarget,
+  SETTINGS,
+  type SettingsSection,
+  type SettingsSnapshot,
+  type UpdateStatus,
+} from '../shared/ipc.ts';
 import type { Gait } from '../shared/pet3d/blueprint.ts';
 import { isGait, type Settings } from '../shared/settings.ts';
 import { isSettingsTab, type SettingsTab } from '../shared/settings-tabs.ts';
@@ -42,7 +48,7 @@ export interface SettingsWindowOptions {
   remakeBody: (gait: Gait) => Promise<{ ok: true } | { ok: false; error: string; noAi?: boolean }>;
   cancelRemake: () => void;
   stats: StatStore;
-  checkUpdate: () => Promise<string>;
+  checkUpdate: () => Promise<UpdateStatus>;
   openOnboarding: () => void;
   log: (tag: string, ...rest: unknown[]) => void;
   /** 진단 기록 폴더 (userData/logs) */
@@ -210,7 +216,7 @@ export function createSettingsWindow({
     if (!existsSync(file)) return false;
     return (await shell.openPath(file)) === '';
   });
-  ipcMain.handle(SETTINGS.checkUpdate, (e) => (fromSettings(e) ? checkUpdate() : ''));
+  ipcMain.handle(SETTINGS.checkUpdate, (e) => (fromSettings(e) ? checkUpdate() : { text: '', tone: 'info' }));
   ipcMain.handle(SETTINGS.exportData, (e) => (fromSettings(e) ? v2.exportData(win) : ''));
   ipcMain.handle(SETTINGS.importData, (e) => (fromSettings(e) ? v2.importData(win) : ''));
   ipcMain.handle(SETTINGS.exportPet, (e) => (fromSettings(e) ? v2.exportPet(win) : ''));
