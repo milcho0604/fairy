@@ -2,19 +2,70 @@
   "_comment": "홈페이지 '새로 생긴 것' 띠. 맨 위 셋만 보여요. 바꾼 뒤 node site/tools/build.mjs. Latest first; only the first three show.",
   "items": [
     {
-      "date": "2026-10-11",
-      "ko": { "title": "습관 잔디와 아침 계획", "text": "반복하는 할 일을 잔디로 보고, 아침마다 꼭 할 일 셋을 같이 골라요." },
-      "en": { "title": "Habit grid & morning plan", "text": "See repeating to-dos as a grid and pick your top three each morning." }
+      "date": "2026-10-12",
+      "ko": {
+        "title": "달력으로 보는 일정",
+        "text": "월 보기와 주 보기에 일정과 마감이 같이 보이고, 날짜를 누르면 그날에 바로 넣어요."
+      },
+      "en": {
+        "title": "Calendar view",
+        "text": "See events and deadlines by month or week, and tap a day to add to it right away."
+      }
+    },
+    {
+      "date": "2026-10-12",
+      "ko": {
+        "title": "집 숨기기",
+        "text": "집을 잠깐 치워 둘 수 있어요. 다시 꺼내면 모양도 자리도 그대로예요."
+      },
+      "en": {
+        "title": "Tuck the house away",
+        "text": "Hide the house for a while. Bring it back and it's just where you left it."
+      }
+    },
+    {
+      "date": "2026-10-12",
+      "ko": {
+        "title": "더 자연스러운 걸음",
+        "text": "걸을 때 발이 미끄러지지 않고, 자세가 바뀔 때 부드럽게 이어져요."
+      },
+      "en": {
+        "title": "Smoother steps",
+        "text": "Feet stay planted while walking, and poses blend gently into each other."
+      }
     },
     {
       "date": "2026-10-11",
-      "ko": { "title": "알림 미루기", "text": "알림에서 바로 10분, 1시간, 내일 아침으로 미룰 수 있어요." },
-      "en": { "title": "Snooze reminders", "text": "Push a reminder back 10 minutes, an hour or to tomorrow morning." }
+      "ko": {
+        "title": "습관 잔디와 아침 계획",
+        "text": "반복하는 할 일을 잔디로 보고, 아침마다 꼭 할 일 셋을 같이 골라요."
+      },
+      "en": {
+        "title": "Habit grid & morning plan",
+        "text": "See repeating to-dos as a grid and pick your top three each morning."
+      }
     },
     {
       "date": "2026-10-11",
-      "ko": { "title": "페어리 갤러리", "text": "밀크와 초코를 데려와 함께 지낼 수 있어요." },
-      "en": { "title": "Fairy gallery", "text": "Bring Milk and Choco home to live alongside yours." }
+      "ko": {
+        "title": "알림 미루기",
+        "text": "알림에서 바로 10분, 1시간, 내일 아침으로 미룰 수 있어요."
+      },
+      "en": {
+        "title": "Snooze reminders",
+        "text": "Push a reminder back 10 minutes, an hour or to tomorrow morning."
+      }
+    },
+    {
+      "date": "2026-10-11",
+      "ko": {
+        "title": "페어리 갤러리",
+        "text": "밀크와 초코를 데려와 함께 지낼 수 있어요."
+      },
+      "en": {
+        "title": "Fairy gallery",
+        "text": "Bring Milk and Choco home to live alongside yours."
+      }
     }
   ]
 }
