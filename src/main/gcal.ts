@@ -146,11 +146,11 @@ export function createGcal(o: {
     }
   }
 
-  function lose() {
-    o.log('gcal', '연결 끝남');
+  function lose(why: 'expired' | 'relink' = 'expired') {
+    o.log('gcal', '연결 끝남', why);
     token.set(null);
     access = null;
-    problem = 'expired';
+    problem = why;
     pending = 0;
     backoff.clear();
     // 다시 연결하는 계정이 다를 수 있다: 보낸 기록을 "확인 전"으로 (같은 계정이면 겹치지 않고, 다른 계정이면 새로 들어간다)
@@ -195,6 +195,9 @@ export function createGcal(o: {
   const active = () => !!client && prefs.push && connected();
 
   async function pass(): Promise<void> {
+    // 저장한 연결을 이 컴퓨터 열쇠로 풀 수 없다 (앱 이름이 짝꿍에서 페어리로 바뀌면 맥 키체인 항목 이름도 바뀐다).
+    // 말없이 "연결 안 됨"으로 두면 일정이 안 가는 줄 모른다: 끝난 연결로 치우고 다시 연결해 달라고 알린다
+    if (client && !connected() && tokenFile().unreadable()) lose('relink');
     if (!active()) {
       pending = 0;
       return;
@@ -378,7 +381,7 @@ export function createGcal(o: {
       } else {
         clearTimeout(timer);
         pending = 0;
-        if (problem !== 'expired' && problem !== 'scope') problem = null;
+        if (problem !== 'expired' && problem !== 'relink' && problem !== 'scope') problem = null;
       }
     }
     return refreshed();

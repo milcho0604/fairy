@@ -25,6 +25,8 @@ export const ko = {
   'gcal.privacy':
     '일정 쓰기 권한만 받아 (다른 캘린더 정보는 못 봐). 연결 토큰은 이 컴퓨터에만 두고 설정, 백업에 넣지 않아.',
   'gcal.problem.expired': '구글 연결이 끝났어. 구글에서 권한을 거뒀거나 오래돼서 그래. 다시 연결해 줄래?',
+  'gcal.problem.relink':
+    '이 컴퓨터에 저장해 둔 구글 연결을 열 수 없어 (앱 이름이 바뀌었거나 열쇠고리가 바뀌면 그래). 한 번만 다시 연결해 줄래?',
   'gcal.problem.denied': '구글에서 허락하지 않았어. 다시 연결하면 처음부터 할 수 있어.',
   'gcal.problem.scope': '캘린더 권한이 체크되지 않았어. 다시 연결할 때 캘린더 일정 칸을 체크해 줘.',
   'gcal.problem.timeout': '브라우저에서 너무 오래 기다렸어. 다시 연결해 줘.',
@@ -64,6 +66,8 @@ export const en: Translation<typeof ko> = {
     "Asks only for permission to edit events (it can't see your other calendar settings). The sign-in token stays on this computer, never in settings or backups.",
   'gcal.problem.expired':
     'Your Google connection ended (access was removed in Google, or it expired). Could you connect again?',
+  'gcal.problem.relink':
+    "The Google connection saved on this computer can't be opened anymore (this happens when the app is renamed or the keychain changes). Could you connect once more?",
   'gcal.problem.denied': "Google access wasn't allowed. You can connect again to start over.",
   'gcal.problem.scope':
     "The calendar permission wasn't checked. When you connect again, check the calendar events box.",

@@ -61,6 +61,29 @@ export function secretFile(path: string, legacyKey: string, crypto: () => Secret
       return plain;
     },
     write,
+    /**
+     * 운영체제 열쇠로 암호화한 파일이 있는데 지금 열쇠로는 풀지 못한다. 열쇠는 쓸 수 있으니 잠깐 못 쓰는 것이 아니라
+     * 열쇠 자체가 바뀌었다: 맥 키체인과 리눅스 열쇠고리 항목 이름이 앱 이름을 따라가서 이름이 짝꿍에서 페어리로 바뀌면
+     * 예전 열쇠를 찾지 못한다 (다른 컴퓨터에서 가져온 파일도 같다). 다시 받아야 한다
+     */
+    unreadable(): boolean {
+      let raw: SecretShape;
+      try {
+        raw = JSON.parse(readFileSync(path, 'utf8')) as SecretShape;
+      } catch {
+        return false;
+      }
+      if (!raw || typeof raw !== 'object' || raw.v !== 2 || raw.enc !== 'os' || typeof raw.data !== 'string')
+        return false;
+      const c = crypto();
+      if (!c.available()) return false;
+      try {
+        c.decrypt(Buffer.from(raw.data, 'base64'));
+        return false;
+      } catch {
+        return true;
+      }
+    },
     remove(): void {
       rmSync(path, { force: true });
     },

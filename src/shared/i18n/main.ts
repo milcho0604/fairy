@@ -140,6 +140,9 @@ export const ko = {
   'main.start.failed': '페어리를 켜지 못했어',
   'main.start.failedDetail':
     '켜는 중에 문제가 생겨 끝낼게. 다시 켜 봐. 계속 안 되면 기록 파일(logs/main.log)을 보내 줘.\n\n{error}',
+  'main.data.oldRunning': '예전 짝꿍이 아직 켜져 있어',
+  'main.data.oldRunningDetail':
+    '짝꿍이 데이터를 쓰고 있어서 페어리로 옮기지 못했어. 짝꿍을 끝낸 뒤(메뉴 막대나 작업 표시줄 아이콘 → 끝내기) 페어리를 다시 켜 줘. 할 일과 설정은 그대로 있어.',
 };
 
 export const en: Translation<typeof ko> = {
@@ -282,4 +285,7 @@ export const en: Translation<typeof ko> = {
   'main.start.failed': "fairy couldn't start",
   'main.start.failedDetail':
     'Something went wrong while starting, so fairy will close. Try opening it again. If it keeps happening, please send the log file (logs/main.log).\n\n{error}',
+  'main.data.oldRunning': 'The old Jjakkung app is still running',
+  'main.data.oldRunningDetail':
+    "Jjakkung is using your data, so it couldn't be moved to fairy yet. Quit Jjakkung (menu bar or taskbar icon → Quit), then open fairy again. Your to-dos and settings are safe.",
 };

@@ -11,7 +11,7 @@ import {
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
-import { chooseDataDir, findDataDir, lockAlive, MOVED_MARKER } from './data-move.ts';
+import { chooseDataDir, findDataDir, lockAlive, MOVED_MARKER, oldAppBlocks } from './data-move.ts';
 
 const dirs: string[] = [];
 after(() => {
@@ -153,4 +153,16 @@ test('MCP 서버 폴더: 새 앱을 아직 켜지 않았으면 예전 폴더를 
   assert.equal(findDataDir(p.root), p.old);
   chooseDataDir(p.root, { inUse: notRunning });
   assert.equal(findDataDir(p.root), p.now);
+});
+
+test('예전 앱이 막을 때만 알리고 끝낸다 (이미 떠 있는 페어리에 두 번째로 켠 것은 말없이)', () => {
+  const p = appData();
+  assert.equal(oldAppBlocks(false, { kind: 'in-use', dir: p.old }), true);
+  assert.equal(oldAppBlocks(false, { kind: 'failed', dir: p.old, error: 'EBUSY' }), true);
+  assert.equal(oldAppBlocks(false, { kind: 'none' }), false);
+  assert.equal(oldAppBlocks(false, { kind: 'moved', from: p.old, to: p.now }), false);
+  // 시험 실행(JJ_USER_DATA)은 옮기기를 보지 않는다
+  assert.equal(oldAppBlocks(false, undefined), false);
+  // 잠금을 잡았으면 예전 폴더로 그냥 켠다
+  assert.equal(oldAppBlocks(true, { kind: 'in-use', dir: p.old }), false);
 });

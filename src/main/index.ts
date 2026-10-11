@@ -32,7 +32,7 @@ import { watchCalendar } from './calendar.ts';
 import { createChat } from './chat.ts';
 import { createCompanion } from './companion.ts';
 import { createDailyNotes } from './daily-note.ts';
-import { chooseDataDir, DATA_DIR_NAME } from './data-move.ts';
+import { chooseDataDir, DATA_DIR_NAME, oldAppBlocks } from './data-move.ts';
 import { createDayTools } from './day-tools.ts';
 import { announceJsonTrouble, announceStoreTrouble, openStore } from './db.ts';
 import { createDiary } from './diary.ts';
@@ -130,7 +130,26 @@ if (!process.env.JJ_NET_PROCESS) app.commandLine.appendSwitch('enable-features',
 // quit() 은 바로 끝나지 않아 ready 가 와서 시작 일(저장 파일 열기, 가져온 백업 끼우기, 창과 아이콘)이 돈다.
 // 그래서 exit() 로 바로 끝내고, 시작 일도 잠금을 잡았을 때만 건다
 const primary = app.requestSingleInstanceLock();
-if (!primary) app.exit(0);
+// 예전 짝꿍이 떠 있어 데이터를 옮기지 못했고 잠금도 그쪽이면, 말없이 끝나지 않고 짝꿍을 끄라고 알린 뒤 끝낸다.
+// 창은 준비 뒤에만 뜬다 (리눅스는 준비 전 오류 창이 콘솔로만 간다)
+const blockedByOld = oldAppBlocks(primary, dataChoice?.move);
+if (blockedByOld) {
+  log('data', '예전 앱이 예전 데이터 폴더를 쓰고 있어 끝냄');
+  void app.whenReady().then(() => {
+    try {
+      // Dock 아이콘 없는 앱(LSUIElement)이라 앞으로 가져오지 않으면 창이 다른 앱 뒤에 숨는다
+      if (process.platform === 'darwin') app.focus({ steal: true });
+      dialog.showMessageBoxSync({
+        type: 'info',
+        message: t('main.data.oldRunning'),
+        detail: t('main.data.oldRunningDetail'),
+        buttons: [t('common.ok')],
+      });
+    } finally {
+      app.exit(0);
+    }
+  });
+} else if (!primary) app.exit(0);
 // jjakkung:// 주소와 .jjpet 파일 (맥은 ready 전에도 온다. 받는 쪽이 준비될 때까지 모아 둔다, open-handler.ts)
 if (primary) listenEarly();
 // 가져온 백업(저장 파일과 설정 파일)이 기다리면 바꿔 끼운다 (v2). 설정을 처음 읽기(아래 initLang) 전에 해야

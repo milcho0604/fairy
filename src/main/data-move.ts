@@ -128,6 +128,15 @@ export function chooseDataDir(
 }
 
 /**
+ * 하나만 띄우기 잠금을 못 잡은 까닭이 예전 앱(짝꿍)일 때. 옮기지 못해 예전 폴더를 골랐는데 그 폴더의 잠금이 남의 것이다.
+ * 이때 말없이 끝나면 페어리가 아예 안 켜지는 것처럼 보인다 (떠 있는 짝꿍만 앞으로 나온다). 알리고 끝낸다.
+ * 이미 떠 있는 페어리에 두 번째로 켠 것(옮길 것이 없거나 이미 옮김)은 지금처럼 말없이 끝난다
+ */
+export function oldAppBlocks(primary: boolean, move: DataMove | undefined): boolean {
+  return !primary && (move?.kind === 'in-use' || move?.kind === 'failed');
+}
+
+/**
  * MCP 서버용: 옮기지는 않고 읽기만. 새 폴더에 저장 파일이 없고 예전 폴더에 있으면(아직 새 앱을 켜지 않았다) 예전 폴더.
  * 옮기기는 앱이 켜질 때 한다 (MCP 서버가 옮기면 떠 있는 예전 앱과 부딪힌다)
  */
