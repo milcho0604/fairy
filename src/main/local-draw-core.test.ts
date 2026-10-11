@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { setupRatio, setupStageOf } from '../shared/local-draw.ts';
 import {
@@ -40,6 +41,9 @@ const mac = {
   osRelease: '24.1.0',
 };
 
+/** 시험의 경로 기댓값을 이 OS 의 구분자로 (윈도우 CI 에서 join 이 \\ 를 쓴다) */
+const P = (s: string) => join(s);
+
 test('그릴 수 있는 Mac: Apple 칩(로제타 포함), macOS 14 이상, 메모리 8GB 이상', () => {
   assert.deepEqual(localDrawEligibility(mac), { ok: true });
   // 로제타로 도는 x64 앱: 칩 이름으로 안다 (VirtualApple 도)
@@ -61,11 +65,11 @@ test('그릴 수 있는 Mac: Apple 칩(로제타 포함), macOS 14 이상, 메�
 });
 
 test('자리는 모두 local-draw 안 (빈칸 있는 경로도 그대로)', () => {
-  const root = '/Users/a/Library/Application Support/jjakkung/local-draw';
+  const root = P('/Users/a/Library/Application Support/jjakkung/local-draw');
   const l = layout(root);
   for (const v of Object.values(l)) assert.ok(v.startsWith(root), v);
-  assert.equal(l.python, `${root}/tools/mflux/bin/python`);
-  assert.equal(l.model, `${root}/models/klein4b-q4`);
+  assert.equal(l.python, P(`${root}/tools/mflux/bin/python`));
+  assert.equal(l.model, P(`${root}/models/klein4b-q4`));
 });
 
 test('자식 환경: 사용자 파이썬, uv, HF 값은 빼고 자리는 local-draw 안으로', () => {
@@ -153,9 +157,9 @@ test('명령 인자: 셸 없이 배열로, 고정한 판으로', () => {
   const l = layout('/r');
   assert.deepEqual(untarArgs(l), [
     '-xzf',
-    '/r/download/uv-aarch64-apple-darwin.tar.gz',
+    P('/r/download/uv-aarch64-apple-darwin.tar.gz'),
     '-C',
-    '/r/uv',
+    P('/r/uv'),
     '--strip-components',
     '1',
   ]);
@@ -174,8 +178,8 @@ test('명령 인자: 셸 없이 배열로, 고정한 판으로', () => {
   ]);
   const prompt = 'say "hi"; rm -rf ~ $(x)';
   const a = drawArgs(l, {
-    input: '/t/in.png',
-    output: '/t/out.png',
+    input: P('/t/in.png'),
+    output: P('/t/out.png'),
     prompt,
     width: 768,
     height: 1024,
@@ -191,7 +195,7 @@ test('명령 인자: 셸 없이 배열로, 고정한 판으로', () => {
   assert.equal(a[a.indexOf('--height') + 1], '1024');
   assert.equal(a[a.indexOf('--seed') + 1], '42');
   assert.ok(a.includes('--low-ram'));
-  assert.equal(a.at(-1), '/t/out.png');
+  assert.equal(a.at(-1), P('/t/out.png'));
 });
 
 test('그릴 크기: 사진 비율대로 긴 변 1024, 16 의 배수. 모르면 768x1024', () => {
@@ -352,11 +356,11 @@ test('남은 묶음: 그 묶음에 local-draw 경로가 든 명령이 있어야 
 
 test('그리기 임시 폴더: local-draw/tmp, 경로에 중괄호가 있으면 시스템 임시 폴더', () => {
   assert.equal(
-    drawTmpBase(layout('/Users/a/Library/Application Support/jj/local-draw'), '/tmp'),
-    '/Users/a/Library/Application Support/jj/local-draw/tmp',
+    drawTmpBase(layout('/Users/a/Library/Application Support/jj/local-draw'), P('/tmp')),
+    P('/Users/a/Library/Application Support/jj/local-draw/tmp'),
   );
-  assert.equal(drawTmpBase(layout('/Users/{a}/local-draw'), '/var/T'), '/var/T');
-  assert.equal(drawTmpBase(layout('/Users/a}/local-draw'), '/var/T'), '/var/T');
+  assert.equal(drawTmpBase(layout('/Users/{a}/local-draw'), P('/var/T')), P('/var/T'));
+  assert.equal(drawTmpBase(layout('/Users/a}/local-draw'), P('/var/T')), P('/var/T'));
 });
 
 test('그린 그림 확인: 그림 형식, 부탁한 크기, 너무 작지 않음', () => {

@@ -15,7 +15,12 @@ const seed = new DatabaseSync(join(dir, 'jjakkung.db'));
 migrate(seed as unknown as Db);
 seed.close();
 const { handle } = await import('./mcp-server.ts');
-after(() => rmSync(dir, { recursive: true, force: true }));
+// 윈도우는 서버가 연 DB 를 아직 쥐고 있어 지우기가 EPERM 일 수 있다. 시험 뒷정리라 잠깐 기다려 다시 해 보고, 안 되면 둔다
+after(() => {
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  } catch {}
+});
 
 let id = 0;
 const call = (method: string, params?: Record<string, unknown>) =>
