@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="ko" data-base="./" data-page="home">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- meta:start -->
+<title>짝꿍 — 화면 위를 걷는 펫 비서</title>
+<meta name="description" content="화면 위를 돌아다니는 펫이 할 일, 일정, 메모를 같이 챙겨 주는 데스크톱 비서">
+<link rel="canonical" href="https://jjakkung.moilga.com/">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#fbf8f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1b1917" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/png" sizes="32x32" href="./assets/icons/icon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="./assets/icons/icon-192.png">
+<link rel="apple-touch-icon" href="./assets/icons/apple-touch-icon.png">
+<link rel="manifest" href="./site.webmanifest">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="짝꿍">
+<meta property="og:title" content="짝꿍 — 화면 위를 걷는 펫 비서">
+<meta property="og:description" content="화면 위를 돌아다니는 펫이 할 일, 일정, 메모를 같이 챙겨 주는 데스크톱 비서">
+<meta property="og:url" content="https://jjakkung.moilga.com/">
+<meta property="og:image" content="https://jjakkung.moilga.com/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="짝꿍의 펫 콩이가 화면 아래를 걸어가고, 옆에 오늘 할 일 패널이 열려 있어요">
+<meta property="og:locale" content="ko_KR">
+<meta property="og:locale:alternate" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="짝꿍 — 화면 위를 걷는 펫 비서">
+<meta name="twitter:description" content="화면 위를 돌아다니는 펫이 할 일, 일정, 메모를 같이 챙겨 주는 데스크톱 비서">
+<meta name="twitter:image" content="https://jjakkung.moilga.com/assets/og.png">
+<meta name="twitter:image:alt" content="짝꿍의 펫 콩이가 화면 아래를 걸어가고, 옆에 오늘 할 일 패널이 열려 있어요">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Jjakkung","alternateName":"짝꿍","description":"A desktop pet that walks around your screen and keeps your to-dos, calendar and notes","applicationCategory":"ProductivityApplication","operatingSystem":"macOS 12+, Windows 10+ (x64), Linux x64 (preview)","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"url":"https://jjakkung.moilga.com/","image":"https://jjakkung.moilga.com/assets/og.png","downloadUrl":"https://jjakkung.moilga.com/download/","license":"https://opensource.org/licenses/MIT"}</script>
+<!-- meta:end -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&family=Jua&display=swap">
+<link rel="stylesheet" href="assets/site.css">
+<link rel="preload" as="image" href="assets/img/kong-sprite.webp" fetchpriority="low">
+<script src="config.js"></script>
+<script src="i18n.js"></script>
+<script src="assets/app.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main" data-i18n="a11y.skip">본문으로 건너뛰기</a>
+
+<header class="top">
+  <div class="wrap top-in">
+    <a class="brand" href="./" aria-label="짝꿍 처음으로" data-i18n-attr="aria-label:a11y.home">
+      <img src="assets/icons/icon-192.png" width="32" height="32" alt="">
+      <span class="brand-name" data-name>짝꿍</span>
+    </a>
+    <nav class="nav" aria-label="주요 메뉴" data-i18n-attr="aria-label:a11y.nav">
+      <a href="#features" data-i18n="nav.features">기능</a>
+      <a href="#maker" data-i18n="nav.maker">내 펫 만들기</a>
+      <a href="#privacy" data-i18n="nav.privacy">개인정보</a>
+      <a href="#faq" data-i18n="nav.faq">자주 묻는 질문</a>
+    </nav>
+    <div class="top-act">
+      <button class="lang" type="button" data-lang-toggle aria-label="언어 바꾸기" data-i18n-attr="aria-label:a11y.lang"><span data-i18n="lang.other">English</span></button>
+      <a class="btn btn-sm" href="#download" data-i18n="nav.download">받기</a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <!-- Hero: a little desktop. The panel is a real screenshot, the walking pet is cut from the app's own recording. -->
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="wrap">
+      <div class="desk">
+        <div class="desk-grid">
+          <div class="hero-copy">
+            <p class="eyebrow" data-i18n="hero.eyebrow">맥 · 윈도우 데스크톱 앱 · 베타</p>
+            <h1 id="hero-title" class="display" data-i18n-html="hero.title">화면 위에 사는<br><span class="hl">작은 짝꿍</span></h1>
+            <p class="lead" data-i18n="hero.lead">펫이 화면 아래를 걸어 다니다가, 누르면 오늘 할 일과 일정을 펼쳐 줘요. 계정도 서버도 없이, 내 컴퓨터 안에서요.</p>
+            <div class="dl" data-dl="hero">
+              <a class="btn btn-lg dl-main" href="download/">
+                <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19.5h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span class="dl-text"><span class="dl-label" data-i18n="nav.download">받기</span><span class="dl-sub"></span></span>
+              </a>
+              <p class="dl-meta" aria-live="polite"></p>
+              <p class="dl-alt"></p>
+            </div>
+          </div>
+          <figure class="hero-shot">
+            <picture>
+              <source srcset="assets/img/hero-panel-dark.webp" media="(prefers-color-scheme: dark)">
+              <img src="assets/img/hero-panel.webp" width="353" height="536" alt="펫을 누르면 열리는 패널의 오늘 탭. 다음 할 일, 25분 집중 타이머, 오늘 일정이 보여요" data-i18n-attr="alt:hero.panelAlt" fetchpriority="high">
+            </picture>
+          </figure>
+        </div>
+        <div class="floor" data-floor>
+          <button class="kong" type="button" data-kong aria-label="펫 콩이. 누르면 반응해요" data-i18n-attr="aria-label:a11y.kong">
+            <span class="kong-sprite" aria-hidden="true"></span>
+          </button>
+          <p class="bubble" data-bubble aria-hidden="true"></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- What it is -->
+  <section class="sec about" id="features" aria-labelledby="about-title">
+    <div class="wrap">
+      <div class="split">
+        <div>
+          <p class="kicker" data-i18n="about.kicker">짝꿍은 이런 앱이에요</p>
+          <h2 id="about-title" class="h2" data-i18n-html="about.title">옆자리 짝꿍처럼,<br>화면 한쪽에 펫이 살아요</h2>
+        </div>
+        <p class="body-lg" data-i18n="about.body">가만히 있다가 가끔 걸어 다니고, 창 위에 올라앉고, 마우스를 쳐다보고, 쓰다듬으면 하트를 띄워요. 펫을 누르면 오늘 할 일과 일정이 담긴 패널이 열리고, 우클릭하면 AI와 대화하거나 화면을 같이 보며 물어볼 수 있어요.</p>
+      </div>
+      <dl class="trio">
+        <div><dt data-i18n="about.petT">펫</dt><dd data-i18n="about.petD">기본 펫 다섯과 그림 친구 둘. 사진 한 장으로 나만의 펫도 만들어요.</dd></div>
+        <div><dt data-i18n="about.bizT">비서</dt><dd data-i18n="about.bizD">할 일, 메모, 일정, 집중 타이머, 하루 회고. &quot;내일 3시 회의&quot;처럼 한 줄이면 돼요.</dd></div>
+        <div><dt data-i18n="about.aiT">AI</dt><dd data-i18n="about.aiD">이미 쓰는 Claude Code, Codex, Cursor, Gemini CLI와 대화해요. 없으면 컴퓨터 안에서만 도는 무료 AI를 받아요.</dd></div>
+      </dl>
+      <figure class="strip">
+        <img src="assets/img/pets-1600.webp" srcset="assets/img/pets-800.webp 800w, assets/img/pets-1600.webp 1600w" sizes="(min-width: 1240px) 1140px, 94vw" width="1600" height="303" loading="lazy" decoding="async" alt="기본 펫 다섯 콩, 냥이, 삐약이, 멍멍이, 토순이와 그림 친구 밀크(흰 고양이), 초코(갈색 푸들)" data-i18n-attr="alt:about.petsAlt">
+        <figcaption data-i18n="about.petsCap">콩, 냥이, 삐약이, 멍멍이, 토순이, 그리고 그림 친구 밀크와 초코</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- Pet -->
+  <section class="sec" id="pet" aria-labelledby="pet-title">
+    <div class="wrap">
+      <div class="split">
+        <div>
+          <p class="kicker" data-i18n="pet.kicker">펫</p>
+          <h2 id="pet-title" class="h2" data-i18n-html="pet.title">쓰다듬고, 던지고,<br>밥도 줘요</h2>
+        </div>
+        <div>
+          <p class="body-lg" data-i18n="pet.body">드래그로 옮기고, 잡아서 휙 놓으면 통통 튀어요. 좌우로 문지르면 쓰다듬기예요. 기분과 배부름, 친밀도가 있어서 오래 안 놀아 주면 삐지기도 해요.</p>
+          <ul class="ticks">
+            <li data-i18n="pet.li1">할 일을 끝내면 코인이 쌓이고, 코인으로 밥과 장난감, 집을 사 줘요</li>
+            <li data-i18n="pet.li2">모습은 피규어, 게임 캐릭터, 실사, 복슬복슬(시험), 납작한 2D 중에 골라요</li>
+            <li data-i18n="pet.li3">친구 펫을 세 마리까지 데려와 같이 돌아다녀요</li>
+            <li data-i18n="pet.li4">전체 화면으로 일하거나 발표할 때는 알아서 숨어요</li>
+          </ul>
+        </div>
+      </div>
+      <figure class="strip">
+        <img src="assets/img/pet-moods-1600.webp" srcset="assets/img/pet-moods-800.webp 800w, assets/img/pet-moods-1600.webp 1600w" sizes="(min-width: 1240px) 1140px, 94vw" width="1600" height="296" loading="lazy" decoding="async" alt="콩이가 쓰다듬으면 하트를 띄우고, 기뻐하고, 밥 먹고, 춤추고, 졸고, AI 답을 기다리며 말줄임표를 띄우는 모습" data-i18n-attr="alt:pet.moodsAlt">
+        <figcaption data-i18n="pet.moodsCap">쓰다듬기 · 기뻐하기 · 밥 먹기 · 춤추기 · 졸기 · AI 답 기다리기</figcaption>
+      </figure>
+      <figure class="strip">
+        <img src="assets/img/pet-styles-1600.webp" srcset="assets/img/pet-styles-800.webp 800w, assets/img/pet-styles-1600.webp 1600w" sizes="(min-width: 1240px) 1140px, 94vw" width="1600" height="300" loading="lazy" decoding="async" alt="콩을 피규어, 게임 캐릭터, 실사, 복슬복슬, 납작한 2D로 그린 모습과 고양이 사진으로 만든 입체 피규어" data-i18n-attr="alt:pet.stylesAlt">
+        <figcaption data-i18n="pet.stylesCap">피규어 · 게임 캐릭터 · 실사 · 복슬복슬 · 2D · 사진으로 만든 피규어</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- Assistant -->
+  <section class="sec" id="assistant" aria-labelledby="biz-title">
+    <div class="wrap">
+      <div class="split">
+        <div>
+          <p class="kicker" data-i18n="biz.kicker">비서</p>
+          <h2 id="biz-title" class="h2" data-i18n-html="biz.title">할 일, 일정, 메모를<br>패널 하나에</h2>
+          <p class="body-lg" data-i18n="biz.body">펫을 누르면 오늘, 할 일, 메모, 일정, 상점 탭이 있는 패널이 열려요. 다음에 할 일과 그 단계, 바로 시작하는 집중 타이머, 오늘 일정이 한눈에 보여요.</p>
+        </div>
+        <ul class="ticks ticks-rich">
+          <li data-i18n-html="biz.li1"><strong>빠른 입력</strong> 어디서든 단축키 한 번. "내일 3시 회의", "매일 운동"처럼 써도 날짜와 시각을 알아들어요 (한국어, 영어)</li>
+          <li data-i18n-html="biz.li2"><strong>미리 알림</strong> 일정은 10분 전, 할 일은 하루 전과 1시간 전. 알림에서 10분, 1시간, 내일 아침으로 미뤄요</li>
+          <li data-i18n-html="biz.li3"><strong>집중 타이머</strong> 15, 25, 50분. 끝내면 코인 3, 5, 10개</li>
+          <li data-i18n-html="biz.li4"><strong>캘린더 가져오기</strong> 구글 캘린더 같은 캘린더의 <code>.ics</code> 비공개 주소를 넣으면 30분마다 가져와요</li>
+        </ul>
+      </div>
+      <figure class="board">
+        <div class="board-media">
+        <picture tabindex="0">
+          <source media="(prefers-color-scheme: dark)" srcset="assets/img/panel-dark-800.webp 800w, assets/img/panel-dark-1600.webp 1600w" sizes="(max-width: 640px) 760px, (min-width: 1240px) 1140px, 94vw">
+          <img src="assets/img/panel-1600.webp" srcset="assets/img/panel-800.webp 800w, assets/img/panel-1600.webp 1600w" sizes="(max-width: 640px) 760px, (min-width: 1240px) 1140px, 94vw" width="1600" height="588" loading="lazy" decoding="async" alt="패널의 오늘, 할 일, 메모, 일정 탭" data-i18n-attr="alt:biz.panelAlt">
+        </picture>
+        <img class="sticker" src="assets/img/quick-add-716.webp" srcset="assets/img/quick-add-358.webp 358w, assets/img/quick-add-716.webp 716w" sizes="(min-width: 900px) 400px, 70vw" width="716" height="86" loading="lazy" decoding="async" alt="빠른 입력 창에 &quot;내일 오후 3시 치과 예약&quot;을 쓰는 모습" data-i18n-attr="alt:biz.quickAlt">
+        </div>
+        <figcaption data-i18n="biz.panelCap">오늘 · 할 일 · 메모 · 일정. 어두운 모드도 운영체제 설정을 따라가요</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- AI -->
+  <section class="sec" id="ai" aria-labelledby="ai-title">
+    <div class="wrap">
+      <div class="ai-grid">
+        <figure class="ai-shots">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="assets/img/chat-dark-400.webp 400w, assets/img/chat-dark-600.webp 600w" sizes="(min-width: 900px) 380px, 72vw">
+            <img class="chat" src="assets/img/chat-light-600.webp" srcset="assets/img/chat-light-400.webp 400w, assets/img/chat-light-600.webp 600w" sizes="(min-width: 900px) 380px, 72vw" width="600" height="1016" loading="lazy" decoding="async" alt="채팅 창. 오늘 일정과 할 일을 보고 오후 계획을 짜 달라는 질문에 펫이 시간 순서로 정리해 답해요" data-i18n-attr="alt:ai.chatAlt">
+          </picture>
+          <img class="picker" src="assets/img/chat-picker-600.webp" srcset="assets/img/chat-picker-300.webp 300w, assets/img/chat-picker-600.webp 600w" sizes="(min-width: 900px) 250px, 46vw" width="600" height="982" loading="lazy" decoding="async" alt="AI 고르기 메뉴. Claude, 무료 AI, Codex, Cursor, Gemini와 설치 상태" data-i18n-attr="alt:ai.pickerAlt">
+          <figcaption data-i18n="ai.pickerCap">Claude Code · Codex · Cursor · Gemini CLI · 무료 AI</figcaption>
+        </figure>
+        <div class="ai-copy">
+          <p class="kicker" data-i18n="ai.kicker">AI</p>
+          <h2 id="ai-title" class="h2" data-i18n-html="ai.title">이미 쓰는 AI와<br>펫이 대신 이야기해요</h2>
+          <p class="body-lg" data-i18n="ai.body">짝꿍은 AI를 따로 갖고 있지 않아요. 이 컴퓨터에 설치해 둔 AI 프로그램을 불러 펫의 말투로 대화해요. 하나도 없으면 컴퓨터 안에서만 도는 무료 AI(Qwen3)를 받아 쓰면 돼요.</p>
+          <ul class="ticks ticks-rich">
+            <li data-i18n-html="ai.li1"><strong>내 할 일 같이 보내기</strong>를 켜면 "오늘 뭐부터 할까?"에 내 할 일과 일정을 보고 답해요</li>
+            <li data-i18n-html="ai.li2"><strong>같이 보기</strong> 화면 일부를 골라 AI에게 보여 주며 물어봐요</li>
+            <li data-i18n="ai.li3">&quot;내일 장보기 할 일로 넣어 줘&quot;라고 하면 바로 넣어 줘요. 지우거나 고칠 땐 펫이 먼저 물어봐요</li>
+            <li data-i18n="ai.li4">성격과 말투도 골라요. 다정한 친구, 존댓말 비서, 츤데레, 차분한 선생님</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3 class="h3 more-title" data-i18n="more.title">더 챙겨 주는 것</h3>
+      <ul class="more">
+        <li><strong data-i18n="more.1t">습관 잔디</strong><span data-i18n="more.1d">반복 할 일을 날마다 체크하고 최근 12주를 잔디로 봐요. 끊겨도 벌은 없어요.</span></li>
+        <li><strong data-i18n="more.2t">아침 계획</strong><span data-i18n="more.2d">꼭 할 일 셋과 일정 사이 집중 시간을 같이 정해요. AI 없이도 돼요.</span></li>
+        <li><strong data-i18n="more.3t">자라는 펫</strong><span data-i18n="more.3d">함께한 날만큼 자라고, 계절과 명절마다 옷을 갈아입어요.</span></li>
+        <li><strong data-i18n="more.4t">주간 카드</strong><span data-i18n="more.4d">이번 주 기록을 귀여운 카드 그림으로 저장해요.</span></li>
+        <li><strong data-i18n="more.5t">내보내기와 백업</strong><span data-i18n="more.5d">메모는 .md, 할 일은 .csv, 일정은 .ics로. 폴더 하나로 다른 컴퓨터에 옮겨요.</span></li>
+        <li><strong data-i18n="more.6t">접근성</strong><span data-i18n="more.6d">말풍선 읽어 주기, 키보드로 펫 다루기, 운영체제의 움직임 줄이기 설정 따르기.</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Make your own pet -->
+  <section class="sec maker" id="maker" aria-labelledby="maker-title">
+    <div class="wrap">
+      <div class="maker-head">
+        <div>
+          <p class="kicker" data-i18n="maker.kicker">내 펫 만들기</p>
+          <h2 id="maker-title" class="h2" data-i18n-html="maker.title">사진 한 장이면<br>우리 집 아이가 펫이 돼요</h2>
+          <p class="body-lg" data-i18n="maker.body">반려동물이나 좋아하는 인형 사진을 고르면 배경을 지워 주고, 지우개와 복원 붓으로 다듬은 뒤 모습과 이름을 정해요. 배경 지우기는 이 컴퓨터 안에서 해요.</p>
+        </div>
+        <div class="friends" role="img" aria-label="그림 친구 밀크와 초코" data-i18n-attr="aria-label:maker.friends">
+          <img class="milk" src="assets/img/milk-256.webp" srcset="assets/img/milk-256.webp 1x, assets/img/milk-512.webp 2x" width="148" height="256" alt="" loading="lazy" decoding="async">
+          <img class="choco" src="assets/img/choco-256.webp" srcset="assets/img/choco-256.webp 1x, assets/img/choco-512.webp 2x" width="172" height="256" alt="" loading="lazy" decoding="async">
+        </div>
+      </div>
+      <figure class="steps-shot">
+        <div class="steps-scroll" tabindex="0"><img src="assets/img/maker-steps-1600.webp" srcset="assets/img/maker-steps-800.webp 800w, assets/img/maker-steps-1600.webp 1600w" sizes="(max-width: 640px) 720px, (min-width: 1240px) 1140px, 94vw" width="1600" height="552" loading="lazy" decoding="async" alt="사진으로 펫 만들기의 세 단계: 사진 고르기, 배경을 지운 결과를 지우개와 복원 붓으로 다듬기, 모습과 이름 정하기" data-i18n-attr="alt:maker.stepsAlt"></div>
+        <figcaption>
+          <ol class="steps">
+            <li data-i18n="maker.s1">사진 고르기</li>
+            <li data-i18n="maker.s2">다듬기</li>
+            <li data-i18n="maker.s3">모습과 이름</li>
+          </ol>
+        </figcaption>
+      </figure>
+      <h3 class="h3" data-i18n="maker.how">모습은 넷 중에 골라요</h3>
+      <ul class="looks">
+        <li><strong data-i18n="maker.o1t">사진 그대로</strong><span data-i18n="maker.o1d">오린 사진을 그대로 써요. 사진은 컴퓨터 밖으로 나가지 않아요.</span></li>
+        <li><strong data-i18n="maker.o2t">2.5D 입체</strong><span data-i18n="maker.o2d">사진의 깊이를 재서 숨 쉬듯 살짝 입체감 있게 움직여요. 이것도 이 컴퓨터 안에서요.</span></li>
+        <li><strong data-i18n="maker.o3t">입체 피규어</strong><span data-i18n="maker.o3d">Claude나 Codex가 사진을 보고 360도로 돌려 볼 수 있는 피규어를 만들어요. 다듬은 사진 한 장을 그 AI에 보내요.</span></li>
+        <li><strong data-i18n="maker.o4t">AI 일러스트</strong><span data-i18n="maker.o4d">귀여운 그림으로 다시 그려요. 무료 그림 서버(Hugging Face), Gemini 앱에서 직접, 또는 내 컴퓨터에서(메모리 8GB 이상) 그릴 수 있어요.</span></li>
+      </ul>
+      <p class="note" data-i18n-html="maker.share">만든 펫은 <code>.jjpet</code> 파일 하나로 친구에게 줄 수 있어요.</p>
+    </div>
+  </section>
+
+  <!-- Privacy -->
+  <section class="sec" id="privacy" aria-labelledby="privacy-title">
+    <div class="wrap">
+      <div class="split">
+        <div>
+          <p class="kicker" data-i18n="privacy.kicker">개인정보</p>
+          <h2 id="privacy-title" class="h2" data-i18n-html="privacy.title">서버가 없어요.<br>모두 내 컴퓨터에 남아요</h2>
+        </div>
+        <p class="body-lg" data-i18n="privacy.body">짝꿍 자체는 서버가 없고 계정도 필요 없어요. 할 일, 메모, 일정, 코인, 펫, 설정은 모두 이 컴퓨터의 사용자 데이터 폴더에 있어요.</p>
+      </div>
+      <div class="priv">
+        <div class="priv-stay">
+          <h3 class="h3" data-i18n="privacy.stayT">이 컴퓨터에만 남는 것</h3>
+          <ul class="ticks">
+            <li data-i18n="privacy.stay1">할 일, 메모, 일정, 일기, 코인과 펫 상태, 펫이 기억하는 것</li>
+            <li data-i18n="privacy.stay2">채팅 창의 최근 대화 40개 (붙인 그림은 빼고)</li>
+            <li data-i18n="privacy.stay3">사진 펫 배경 지우기, 2.5D 깊이 재기, 무료 AI 대화, 내 컴퓨터에서 그리기</li>
+            <li data-i18n="privacy.stay4">구글 캘린더와 Hugging Face 토큰 (운영체제 열쇠로 암호화할 수 있으면 암호화)</li>
+            <li data-i18n="privacy.stay5">진단 기록. 질문, 답, 할 일과 일정 제목은 남기지 않아요</li>
+          </ul>
+          <p class="note" data-i18n="privacy.shot">같이 보기로 찍은 화면은 디스크에 저장하지 않아요. 화면이나 그림을 실은 질문은 Claude Code와 Codex가 자기 대화 기록에도 남기지 않게 불러요. 보낸 그림은 그 AI 회사의 보관 정책을 따라요.</p>
+        </div>
+        <div class="priv-go">
+          <h3 class="h3"><span data-i18n="privacy.goT">밖으로 나가는 것</span> <small data-i18n="privacy.goSub">그 기능을 쓸 때만요</small></h3>
+          <table class="flow">
+            <thead><tr><th scope="col" data-i18n="privacy.thFeature">기능</th><th scope="col" data-i18n="privacy.thWhere">어디로</th><th scope="col" data-i18n="privacy.thWhat">무엇이</th></tr></thead>
+            <tbody>
+              <tr><th scope="row" data-i18n="privacy.r1a">AI 대화, 같이 보기</th><td data-i18n="privacy.r1b">내가 고른 AI 프로그램이 연결된 곳 (Anthropic, OpenAI, Cursor, Google)</td><td data-i18n="privacy.r1c">질문과 고른 화면 그림. 펫 이름과 성격, 허락한 기억이 같이 가요. &quot;내 할 일 같이 보내기&quot;를 켜면 안 끝낸 할 일 제목과 마감, 오늘 남은 일정 제목도요</td></tr>
+              <tr><th scope="row" data-i18n="privacy.r2a">메모 요약, 다듬기, 할 일로 쪼개기</th><td data-i18n="privacy.r2b">내가 고른 AI</td><td data-i18n="privacy.r2c">그 메모 글 (고른 부분만 고르면 그 부분)</td></tr>
+              <tr><th scope="row" data-i18n="privacy.r3a">일기를 AI로 다듬기</th><td data-i18n="privacy.r3b">내가 고른 AI</td><td data-i18n="privacy.r3c">그날 숫자와 펫이 쓴 일기 문장. 할 일 제목은 보내지 않아요</td></tr>
+              <tr><th scope="row" data-i18n="privacy.r4a">입체 피규어 만들기</th><td data-i18n="privacy.r4b">Claude 또는 Codex</td><td data-i18n="privacy.r4c">다듬은 사진 한 장</td></tr>
+              <tr><th scope="row" data-i18n="privacy.r5a">AI 일러스트 (무료 서버)</th><td data-i18n="privacy.r5b">Hugging Face의 무료 그림 서버 (다른 사람이 운영)</td><td data-i18n="privacy.r5c">고른 사진, 바라는 점, 넣었다면 HF 토큰</td></tr>
+              <tr><th scope="row" data-i18n="privacy.r6a">캘린더 가져오기</th><td data-i18n="privacy.r6b">내가 넣은 .ics 주소</td><td data-i18n="privacy.r6c">요청만 (받아 오기)</td></tr>
+              <tr><th scope="row" data-i18n="privacy.r7a">구글 캘린더로 보내기</th><td data-i18n="privacy.r7b">구글 캘린더 API (연결했을 때만)</td><td data-i18n="privacy.r7c">짝꿍에서 넣은 일정의 제목, 시각, 알림</td></tr>
+              <tr><th scope="row" data-i18n="privacy.r8a">모델과 도구 받기</th><td data-i18n="privacy.r8b">GitHub, Hugging Face, jsDelivr, unpkg, PyPI 등</td><td data-i18n="privacy.r8c">요청만 (받아 오기)</td></tr>
+              <tr><th scope="row" data-i18n="privacy.r9a">업데이트 확인, 모델 목록</th><td data-i18n="privacy.r9b">GitHub</td><td data-i18n="privacy.r9c">요청만 (앱 이름과 버전)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p class="site-note" data-i18n="privacy.site">이 사이트도 쿠키나 방문 추적을 쓰지 않아요. 최신 버전을 알려고 GitHub에 한 번 물어보는 게 전부예요.</p>
+    </div>
+  </section>
+
+  <!-- Download -->
+  <section class="sec dlsec" id="download" aria-labelledby="dl-title">
+    <div class="wrap">
+      <div class="split">
+        <div>
+          <p class="kicker" data-i18n="dlsec.kicker">받기</p>
+          <h2 id="dl-title" class="h2" data-i18n="dlsec.title">내 컴퓨터에 데려가기</h2>
+        </div>
+        <div>
+          <p class="body-lg" data-i18n="dlsec.body">무료예요. 아직 애플과 마이크로소프트의 개발자 서명을 받지 않은 베타라 처음 열 때 한 번 경고가 떠요. 아래 자주 묻는 질문에 넘기는 법이 있어요.</p>
+          <p class="rel-line" data-release-line aria-live="polite"></p>
+        </div>
+      </div>
+      <ul class="cards" data-cards></ul>
+      <p class="cards-more"><a href="download/" data-i18n="dl.all">모든 파일과 설치 방법</a></p>
+
+      <h3 class="h3" data-i18n="dlsec.reqT">필요한 것과 크기</h3>
+      <dl class="req">
+        <div><dt data-i18n="req.mac">맥</dt><dd data-i18n="req.macV">macOS 12(Monterey) 이상. Apple 칩(M1 이후)과 Intel 둘 다</dd></div>
+        <div><dt data-i18n="req.win">윈도우</dt><dd data-i18n="req.winV">Windows 10 이상, 64비트(x64). ARM 윈도우는 아직 지원하지 않아요</dd></div>
+        <div><dt data-i18n="req.linux">리눅스 (시험판)</dt><dd data-i18n="req.linuxV">x64. 데스크톱 환경(X11 또는 Wayland)과 투명 창이 되는 컴포지터</dd></div>
+        <div><dt data-i18n="req.size">설치 파일</dt><dd data-i18n="req.sizeV">리눅스 0.1.0 실측(2026-10-11): tar.gz 약 128MB, AppImage 약 108MB. 맥과 윈도우는 아직 재지 않았어요. 릴리스가 열리면 단추 옆에 진짜 크기가 보여요</dd></div>
+        <div><dt data-i18n="req.disk">디스크</dt><dd data-i18n="req.diskV">앱 약 310MB (리눅스 0.1.0 풀린 크기 기준)</dd></div>
+        <div><dt data-i18n="req.ai">AI 대화</dt><dd data-i18n="req.aiV">Claude Code, Codex, Cursor, Gemini CLI 중 하나, 또는 무료 AI 모델(Qwen3 1.7B 약 940MB, 0.6B 약 400MB). 없어도 펫, 할 일, 메모, 일정은 다 돼요</dd></div>
+        <div><dt data-i18n="req.later">쓸 때만 받는 것</dt><dd data-i18n="req.laterV">사진 펫 배경 지우기 모델 약 170MB와 엔진 약 17MB, 2.5D 깊이 모델 약 27MB</dd></div>
+        <div><dt data-i18n="req.draw">내 컴퓨터에서 그리기</dt><dd data-i18n="req.drawV">메모리 8GB 이상, 빈 공간 7~20GB (엔진에 따라 약 5.2GB 또는 약 16GB를 받아요)</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="sec faq" id="faq" aria-labelledby="faq-title">
+    <div class="wrap faq-grid">
+      <h2 id="faq-title" class="h2" data-i18n="faq.title">자주 묻는 질문</h2>
+      <div class="qa">
+        <details id="faq-mac"><summary data-i18n="faq.macQ">맥에서 &quot;확인할 수 없어 열지 않았다&quot;는 창이 떠요</summary><div class="a" data-i18n-html="faq.macA"><p>아직 애플 개발자 서명 전이라 처음 한 번 떠요. macOS 15(Sequoia) 이상 기준이에요.</p><ol><li>dmg를 열고 <strong>Jjakkung</strong>을 응용 프로그램 폴더로 끌어 넣어요.</li><li>응용 프로그램 폴더에서 열고, 경고 창이 뜨면 <strong>완료</strong>를 눌러요. 휴지통으로 옮기지 마세요.</li><li>시스템 설정 → <strong>개인정보 보호 및 보안</strong> → 아래쪽 "보안" 칸에서 <strong>그래도 열기</strong>를 누르고 맥 암호를 넣어요.</li><li>다시 뜨는 창에서 <strong>그래도 열기</strong>를 누르면 화면에 펫이 나와요.</li></ol><p>이전 macOS에서는 앱을 우클릭해 "열기"를 눌러도 돼요. 그래도 안 열리면 터미널에서 아래 한 줄을 실행하고 다시 열어요. 인터넷에서 받은 파일 표시를 지우는 명령이에요.</p><pre><code>xattr -dr com.apple.quarantine /Applications/Jjakkung.app</code></pre><p>dmg 안에서 바로 열지 말고 꼭 응용 프로그램 폴더로 옮긴 뒤 열어 주세요. 그래야 자동 업데이트가 돼요.</p></div></details>
+        <details id="faq-win"><summary data-i18n="faq.winQ">윈도우에서 &quot;Windows의 PC 보호&quot; 파란 창이 떠요</summary><div class="a" data-i18n-html="faq.winA"><p>서명이 없는 새 앱이라 SmartScreen이 띄우는 창이에요. <strong>추가 정보</strong>를 누르면 보이는 <strong>실행</strong>을 눌러요. 관리자 권한 없이 바로 설치되고 펫이 나와요.</p><p>회사 컴퓨터에서 "실행" 단추 없이 막힌다면 관리자가 막아 둔 거라, 서명한 판이 나올 때까지는 설치할 수 없어요.</p></div></details>
+        <details><summary data-i18n="faq.chipQ">Apple 칩인지 Intel인지 모르겠어요</summary><div class="a" data-i18n-html="faq.chipA"><p>화면 왼쪽 위 사과 메뉴 → <strong>이 Mac에 관하여</strong>에서 "칩"이 Apple M으로 시작하면 Apple 칩이에요. "프로세서"에 Intel이라고 쓰여 있으면 Intel이에요.</p></div></details>
+        <details><summary data-i18n="faq.noAiQ">AI 프로그램이 하나도 없어도 쓸 수 있나요?</summary><div class="a" data-i18n-html="faq.noAiA"><p>네. 펫, 할 일, 메모, 일정은 AI 없이 다 돼요. 대화하고 싶으면 채팅 창의 AI 고르기에서 "무료 AI"를 고르세요. 처음 한 번 모델을 받고, 그다음엔 인터넷 없이 이 컴퓨터 안에서만 돌아요. 큰 AI보다 답이 짧고 단순해요.</p></div></details>
+        <details><summary data-i18n="faq.freeQ">정말 무료예요?</summary><div class="a" data-i18n-html="faq.freeA"><p>네, 앱은 무료이고 회원 가입도 없어요. Claude Code 같은 AI 프로그램과 대화할 때는 그 프로그램의 요금제와 사용량을 따라요. 무료 AI와 사진 그대로 펫 만들기는 사용료가 없어요.</p></div></details>
+        <details><summary data-i18n="faq.coverQ">펫이 작업을 가려요</summary><div class="a" data-i18n-html="faq.coverA"><p>펫 위에서 휠을 그냥 굴리면 아래 창으로 넘어가요. 단축키로 잠깐 숨기거나, 설정 → 펫에서 "가끔 돌아다니기"를 끄고 크기를 줄여 보세요. 발표나 화면 공유 중에는 저절로 숨어요.</p></div></details>
+        <details><summary data-i18n="faq.updateQ">업데이트는 어떻게 해요?</summary><div class="a" data-i18n-html="faq.updateA"><p>맥과 윈도우는 새 버전을 미리 받아 두고 펫이 "다시 켜서 업데이트"를 띄워요. 누를 때만 설치해요. 리눅스는 펫이 릴리스 페이지를 열어 줘요. 설정 → 정보에서 새 버전 알림을 끌 수 있어요.</p></div></details>
+        <details><summary data-i18n="faq.linuxQ">리눅스에서도 되나요?</summary><div class="a" data-i18n-html="faq.linuxA"><p>시험판이에요. <code>tar.gz</code>는 풀어서 안의 <code>jjakkung</code>을 실행하고, <code>AppImage</code>는 실행 권한(<code>chmod +x</code>)을 주고 실행해요. 배포판에 따라 <code>libfuse2</code>가 필요해요. 같이 보기와 창 위에 올라앉기는 데스크톱 환경에 따라 안 될 수 있어요.</p></div></details>
+        <details><summary data-i18n="faq.removeQ">지우려면요?</summary><div class="a" data-i18n-html="faq.removeA"><p>맥은 응용 프로그램 폴더에서 Jjakkung을 휴지통으로, 윈도우는 설정 → 앱 → 설치된 앱에서 제거해요. 앱을 지워도 할 일과 펫은 남아서 다시 설치하면 이어서 써요. 완전히 지우려면 데이터 폴더도 지워요.</p><ul><li>맥 <code>~/Library/Application Support/jjakkung</code></li><li>윈도우 <code>%APPDATA%\jjakkung</code></li><li>리눅스 <code>~/.config/jjakkung</code></li></ul></div></details>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="peek wrap" aria-hidden="true"><span><img src="assets/img/milk-256.webp" srcset="assets/img/milk-256.webp 1x, assets/img/milk-512.webp 2x" width="92" height="159" alt="" loading="lazy" decoding="async"></span></div>
+<footer class="foot">
+  <div class="wrap foot-in">
+    <div class="foot-brand">
+      <span class="brand"><img src="assets/icons/icon-192.png" width="28" height="28" alt=""><span class="brand-name" data-name>짝꿍</span></span>
+      <p data-i18n="footer.tag">화면 위를 돌아다니는 펫이 할 일, 일정, 메모를 같이 챙겨 주는 데스크톱 비서</p>
+    </div>
+    <ul class="foot-links">
+      <li><a href="https://github.com/milcho0604/jjakkung/releases" data-href="changelog" data-i18n="footer.changelog">변경 이력</a></li>
+      <li><a href="https://github.com/milcho0604/jjakkung/releases" data-href="releases" data-i18n="footer.releases">릴리스</a></li>
+      <li><a href="mailto:hello@example.com" data-href="contact" data-i18n="footer.contact">문의</a></li>
+      <li><a href="#main" data-i18n="footer.top">맨 위로</a></li>
+    </ul>
+    <p class="foot-small"><span data-i18n="footer.license">MIT 라이선스</span> · <span data-copyright>© 2026 milcho0604</span></p>
+    <p class="foot-small" data-i18n="footer.made">이 페이지의 화면은 모두 실제 앱에서 찍었어요. 할 일과 일정은 지어낸 예시예요.</p>
+  </div>
+</footer>
+</body>
+</html>

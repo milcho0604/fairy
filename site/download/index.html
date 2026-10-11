@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ko" data-base="../" data-page="download" data-title-key="meta.dlTitle">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- meta:start -->
+<title>짝꿍 받기 — 맥, 윈도우, 리눅스</title>
+<meta name="description" content="짝꿍 설치 파일과 처음 열 때 경고 넘기는 법. 맥(Apple 칩, Intel), 윈도우 x64, 리눅스 시험판.">
+<link rel="canonical" href="https://jjakkung.moilga.com/download/">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#fbf8f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1b1917" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/icon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="../assets/icons/icon-192.png">
+<link rel="apple-touch-icon" href="../assets/icons/apple-touch-icon.png">
+<link rel="manifest" href="../site.webmanifest">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="짝꿍">
+<meta property="og:title" content="짝꿍 받기 — 맥, 윈도우, 리눅스">
+<meta property="og:description" content="짝꿍 설치 파일과 처음 열 때 경고 넘기는 법. 맥(Apple 칩, Intel), 윈도우 x64, 리눅스 시험판.">
+<meta property="og:url" content="https://jjakkung.moilga.com/download/">
+<meta property="og:image" content="https://jjakkung.moilga.com/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="짝꿍의 펫 콩이가 화면 아래를 걸어가고, 옆에 오늘 할 일 패널이 열려 있어요">
+<meta property="og:locale" content="ko_KR">
+<meta property="og:locale:alternate" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="짝꿍 받기 — 맥, 윈도우, 리눅스">
+<meta name="twitter:description" content="짝꿍 설치 파일과 처음 열 때 경고 넘기는 법. 맥(Apple 칩, Intel), 윈도우 x64, 리눅스 시험판.">
+<meta name="twitter:image" content="https://jjakkung.moilga.com/assets/og.png">
+<meta name="twitter:image:alt" content="짝꿍의 펫 콩이가 화면 아래를 걸어가고, 옆에 오늘 할 일 패널이 열려 있어요">
+<!-- meta:end -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&family=Jua&display=swap">
+<link rel="stylesheet" href="../assets/site.css">
+<script src="../config.js"></script>
+<script src="../i18n.js"></script>
+<script src="../assets/app.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main" data-i18n="a11y.skip">본문으로 건너뛰기</a>
+
+<header class="top">
+  <div class="wrap top-in">
+    <a class="brand" href="../" aria-label="짝꿍 처음으로" data-i18n-attr="aria-label:a11y.home">
+      <img src="../assets/icons/icon-192.png" width="32" height="32" alt="">
+      <span class="brand-name" data-name>짝꿍</span>
+    </a>
+    <nav class="nav" aria-label="주요 메뉴" data-i18n-attr="aria-label:a11y.nav">
+      <a href="../#features" data-i18n="nav.features">기능</a>
+      <a href="../#maker" data-i18n="nav.maker">내 펫 만들기</a>
+      <a href="../#privacy" data-i18n="nav.privacy">개인정보</a>
+      <a href="../#faq" data-i18n="nav.faq">자주 묻는 질문</a>
+    </nav>
+    <div class="top-act">
+      <button class="lang" type="button" data-lang-toggle aria-label="언어 바꾸기" data-i18n-attr="aria-label:a11y.lang"><span data-i18n="lang.other">English</span></button>
+      <a class="btn btn-sm" href="../#download" data-i18n="nav.download">받기</a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <section class="page-head" aria-labelledby="dl-title">
+    <div class="wrap">
+      <a class="back" href="../" data-i18n="dlp.back">← 처음으로</a>
+      <h1 id="dl-title" class="display" data-i18n="dlp.title">짝꿍 받기</h1>
+      <p class="lead" data-i18n="dlp.lead">내 컴퓨터에 맞는 파일을 골라 받고, 처음 한 번만 경고를 넘기면 돼요.</p>
+      <div class="dl" data-dl="page">
+        <a class="btn btn-lg dl-main" href="#files">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19.5h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="dl-text"><span class="dl-label" data-i18n="nav.download">받기</span><span class="dl-sub"></span></span>
+        </a>
+        <p class="dl-meta" aria-live="polite"></p>
+        <p class="dl-alt"></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="files" aria-labelledby="files-title">
+    <div class="wrap">
+      <h2 id="files-title" class="h3" data-i18n="dlp.filesT">설치 파일</h2>
+      <p class="rel-line" data-release-line aria-live="polite"></p>
+      <table class="files">
+        <thead><tr><th scope="col" data-i18n="dlp.thOs">컴퓨터</th><th scope="col" data-i18n="dlp.thFile">파일</th><th scope="col" data-i18n="dlp.thSize">크기</th><th scope="col"><span class="sr" data-i18n="nav.download">받기</span></th></tr></thead>
+        <tbody data-files></tbody>
+      </table>
+
+      <div class="howto">
+        <section aria-labelledby="mac-t">
+          <h2 id="mac-t" data-i18n="dlp.macT">맥에 설치하기</h2>
+          <ol>
+            <li data-i18n-html="dlp.mac1">받을 파일 고르기. Apple 칩(M1 이후)은 <code>…-mac-arm64.dmg</code>, Intel은 <code>…-mac-x64.dmg</code></li>
+            <li data-i18n-html="dlp.mac2">dmg를 열고 <strong>Jjakkung</strong>을 응용 프로그램 폴더로 끌어 넣어요</li>
+            <li data-i18n-html="dlp.mac3">응용 프로그램 폴더에서 열어요. 확인할 수 없다는 창이 뜨면 <strong>완료</strong> (휴지통으로 옮기지 않아요)</li>
+            <li data-i18n-html="dlp.mac4">시스템 설정 → <strong>개인정보 보호 및 보안</strong> → "보안" 칸의 <strong>그래도 열기</strong>, 맥 암호 입력</li>
+            <li data-i18n-html="dlp.mac5">다시 뜨는 창에서 <strong>그래도 열기</strong>. 화면에 펫이 나와요</li>
+          </ol>
+          <p data-i18n="dlp.macX">그래도 안 열리면 터미널에서 이 한 줄을 실행하고 다시 열어요.</p>
+          <pre><code data-i18n="dlp.xattr">xattr -dr com.apple.quarantine /Applications/Jjakkung.app</code></pre>
+          <p data-i18n-html="dlp.macShot">"같이 보기"를 처음 쓸 때는 시스템 설정 → 개인정보 보호 및 보안 → <strong>화면 및 시스템 오디오 녹음</strong>에서 Jjakkung을 켜고 앱을 다시 켜요.</p>
+        </section>
+        <section aria-labelledby="win-t">
+          <h2 id="win-t" data-i18n="dlp.winT">윈도우에 설치하기</h2>
+          <ol>
+            <li data-i18n-html="dlp.win1"><code>…-win-x64.exe</code>를 받아 실행해요</li>
+            <li data-i18n-html="dlp.win2"><strong>"Windows의 PC 보호"</strong> 창이 뜨면 <strong>추가 정보</strong> → <strong>실행</strong></li>
+            <li data-i18n="dlp.win3">관리자 권한 없이 바로 설치되고 펫이 나와요. 시작 메뉴에서도 짝꿍을 찾을 수 있어요</li>
+          </ol>
+          <div class="win-more" data-i18n-html="faq.winA"><p>서명이 없는 새 앱이라 SmartScreen이 띄우는 창이에요. <strong>추가 정보</strong>를 누르면 보이는 <strong>실행</strong>을 눌러요. 관리자 권한 없이 바로 설치되고 펫이 나와요.</p><p>회사 컴퓨터에서 "실행" 단추 없이 막힌다면 관리자가 막아 둔 거라, 서명한 판이 나올 때까지는 설치할 수 없어요.</p></div>
+        </section>
+        <section aria-labelledby="linux-t">
+          <h2 id="linux-t" data-i18n="dlp.linuxT">리눅스 (시험판)</h2>
+          <ol>
+            <li data-i18n-html="dlp.linux1"><code>tar.gz</code>: 풀어서 안의 <code>jjakkung</code>을 실행해요</li>
+            <li data-i18n-html="dlp.linux2"><code>AppImage</code>: <code>chmod +x</code>로 실행 권한을 주고 실행해요. 배포판에 따라 <code>libfuse2</code>가 필요해요</li>
+            <li data-i18n="dlp.linux3">자동 업데이트는 없어요. 새 버전이 나오면 펫이 릴리스 페이지를 열어 줘요</li>
+          </ol>
+        </section>
+      </div>
+      <div class="ai-note">
+        <h2 data-i18n="dlp.aiT">AI 연결 (선택)</h2>
+        <p data-i18n-html="dlp.ai">이 컴퓨터에 Claude Code(<code>claude</code>), Codex(<code>codex</code>), Cursor(<code>cursor-agent</code>), Gemini(<code>gemini</code>) 중 하나를 설치하고 로그인해 두면 채팅 창에서 "설치됨, 로그인됨"으로 보여요. 없으면 채팅 창에서 "무료 AI"를 골라 받으면 돼요.</p>
+      </div>
+
+      <h2 class="h3 req-title" data-i18n="dlsec.reqT">필요한 것과 크기</h2>
+      <dl class="req">
+        <div><dt data-i18n="req.mac">맥</dt><dd data-i18n="req.macV">macOS 12(Monterey) 이상. Apple 칩(M1 이후)과 Intel 둘 다</dd></div>
+        <div><dt data-i18n="req.win">윈도우</dt><dd data-i18n="req.winV">Windows 10 이상, 64비트(x64). ARM 윈도우는 아직 지원하지 않아요</dd></div>
+        <div><dt data-i18n="req.linux">리눅스 (시험판)</dt><dd data-i18n="req.linuxV">x64. 데스크톱 환경(X11 또는 Wayland)과 투명 창이 되는 컴포지터</dd></div>
+        <div><dt data-i18n="req.size">설치 파일</dt><dd data-i18n="req.sizeV">리눅스 0.1.0 실측(2026-10-11): tar.gz 약 128MB, AppImage 약 108MB. 맥과 윈도우는 아직 재지 않았어요. 릴리스가 열리면 단추 옆에 진짜 크기가 보여요</dd></div>
+        <div><dt data-i18n="req.disk">디스크</dt><dd data-i18n="req.diskV">앱 약 310MB (리눅스 0.1.0 풀린 크기 기준)</dd></div>
+        <div><dt data-i18n="req.ai">AI 대화</dt><dd data-i18n="req.aiV">Claude Code, Codex, Cursor, Gemini CLI 중 하나, 또는 무료 AI 모델(Qwen3 1.7B 약 940MB, 0.6B 약 400MB). 없어도 펫, 할 일, 메모, 일정은 다 돼요</dd></div>
+      </dl>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="wrap foot-in">
+    <div class="foot-brand">
+      <span class="brand"><img src="../assets/icons/icon-192.png" width="28" height="28" alt=""><span class="brand-name" data-name>짝꿍</span></span>
+      <p data-i18n="footer.tag">화면 위를 돌아다니는 펫이 할 일, 일정, 메모를 같이 챙겨 주는 데스크톱 비서</p>
+    </div>
+    <ul class="foot-links">
+      <li><a href="https://github.com/milcho0604/jjakkung/releases" data-href="changelog" data-i18n="footer.changelog">변경 이력</a></li>
+      <li><a href="https://github.com/milcho0604/jjakkung/releases" data-href="releases" data-i18n="footer.releases">릴리스</a></li>
+      <li><a href="mailto:hello@example.com" data-href="contact" data-i18n="footer.contact">문의</a></li>
+      <li><a href="#main" data-i18n="footer.top">맨 위로</a></li>
+    </ul>
+    <p class="foot-small"><span data-i18n="footer.license">MIT 라이선스</span> · <span data-copyright>© 2026 milcho0604</span></p>
+    <p class="foot-small" data-i18n="footer.made">이 페이지의 화면은 모두 실제 앱에서 찍었어요. 할 일과 일정은 지어낸 예시예요.</p>
+  </div>
+</footer>
+</body>
+</html>
