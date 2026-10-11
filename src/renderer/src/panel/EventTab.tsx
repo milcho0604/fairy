@@ -3,11 +3,23 @@ import { plusDays } from '../../../shared/day.ts';
 import { allDayLabel, allDaySpan, type CalEvent, dayStartMs } from '../../../shared/event-store.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PanelState } from '../../../shared/ipc.ts';
-import { localDay } from '../../../shared/todo-store.ts';
+import { localDay, type Todo } from '../../../shared/todo-store.ts';
+import { CalendarView } from './CalendarView.tsx';
 import { dayHeading, timeOf, toInputValue } from './format.ts';
 import { RemindButton, RemindSheet } from './RemindPicker.tsx';
 
 const bridge = window.jjakkungPanel;
+/** 목록과 달력 가운데 마지막에 본 것 (창을 열 때마다 새로 만들어 브라우저 저장소에 둔다) */
+const VIEW_KEY = 'jj.panel.eventView';
+type View = 'list' | 'calendar';
+
+function savedView(): View {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'calendar' ? 'calendar' : 'list';
+  } catch {
+    return 'list';
+  }
+}
 
 /** 날짜 사이 날 수 (b - a) */
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000);
@@ -17,11 +29,28 @@ export function EventTab({
   s,
   inputRef,
   onRemoved,
+  onComplete,
+  onTodoRemoved,
 }: {
   s: PanelState;
   inputRef: React.RefObject<HTMLInputElement | null>;
   onRemoved: (id: number) => void;
+  /** 달력 보기의 할 일 줄 (할 일 탭과 같은 끝내기, 지우기) */
+  onComplete: (todo: Todo) => void;
+  onTodoRemoved: (todo: Todo) => void;
 }) {
+  const [view, setViewState] = useState<View>(savedView);
+  // 달력에서 고른 날. 입력칸이 이 날에 넣는다
+  const [day, setDay] = useState(s.today);
+  const calendar = view === 'calendar';
+  const setView = (next: View) => {
+    setViewState(next);
+    try {
+      localStorage.setItem(VIEW_KEY, next);
+    } catch {
+      // 못 적어도 이번에는 바뀐다
+    }
+  };
   const [text, setText] = useState('');
   const [error, setError] = useState('');
   // 방금 넣은 일정이 다른 일정과 시간이 겹친다 (넣기는 했다. 다음 글을 적으면 지운다)
@@ -29,7 +58,7 @@ export function EventTab({
   const now = Date.now();
 
   const add = async () => {
-    const r = await bridge.eventAdd(text);
+    const r = await bridge.eventAdd(text, calendar ? day : undefined);
     if (!r.ok) {
       setError(r.error ?? t('panel.add.failed'));
       setClash('');
@@ -56,12 +85,16 @@ export function EventTab({
 
   return (
     <>
-      <div className="add">
+      <div className="add event-add">
         <input
           ref={inputRef}
           value={text}
-          aria-label={t('panel.event.add')}
-          placeholder={t('panel.event.placeholder')}
+          aria-label={calendar ? t('cal.add.label', { day: dayHeading(day, s.today) }) : t('panel.event.add')}
+          placeholder={
+            calendar
+              ? t('cal.add.placeholder', { day: dayHeading(day, s.today) })
+              : t('panel.event.placeholder')
+          }
           onChange={(e) => {
             setText(e.target.value);
             setError('');
@@ -71,34 +104,55 @@ export function EventTab({
             if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) add();
           }}
         />
+        <fieldset className="view-switch" aria-label={t('cal.view.label')}>
+          {(['list', 'calendar'] as const).map((k) => (
+            <button key={k} type="button" aria-pressed={view === k} onClick={() => setView(k)}>
+              {t(k === 'list' ? 'cal.view.list' : 'cal.view.calendar')}
+            </button>
+          ))}
+        </fieldset>
       </div>
       {error && <p className="hint error">{error}</p>}
       {clash && <p className="hint clash">{clash}</p>}
-      <div className="scroll events-list">
-        {days.size === 0 && <p className="empty">{t('panel.event.empty')}</p>}
-        {[...days].map(([day, list]) => (
-          <section key={day}>
-            <h3>{dayHeading(day, s.today)}</h3>
-            <ul className="events">
-              {list.map((e) => (
-                <EventRow
-                  key={e.id}
-                  e={e}
-                  now={now}
-                  today={s.today}
-                  onRemoved={onRemoved}
-                  clash={clashing.has(e.id)}
-                />
-              ))}
-            </ul>
-          </section>
-        ))}
-      </div>
+      {calendar ? (
+        <div className="scroll cal-scroll">
+          <CalendarView
+            s={s}
+            day={day}
+            setDay={setDay}
+            onPick={() => inputRef.current?.focus()}
+            onRemoved={onRemoved}
+            onComplete={onComplete}
+            onTodoRemoved={onTodoRemoved}
+          />
+        </div>
+      ) : (
+        <div className="scroll events-list">
+          {days.size === 0 && <p className="empty">{t('panel.event.empty')}</p>}
+          {[...days].map(([day, list]) => (
+            <section key={day}>
+              <h3>{dayHeading(day, s.today)}</h3>
+              <ul className="events">
+                {list.map((e) => (
+                  <EventRow
+                    key={e.id}
+                    e={e}
+                    now={now}
+                    today={s.today}
+                    onRemoved={onRemoved}
+                    clash={clashing.has(e.id)}
+                  />
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      )}
     </>
   );
 }
 
-function EventRow({
+export function EventRow({
   e,
   now,
   today,
@@ -118,7 +172,9 @@ function EventRow({
   const [reminding, setReminding] = useState(false);
   const sheetId = useId();
   const span = e.allDay ? allDaySpan(e) : null;
-  const started = span ? span.first <= today : e.startAt <= now;
+  // 끝난 일정(달력에서 지난 날을 볼 때)은 "지금" 이 아니다. 끝 판단은 목록의 upcoming 과 같다
+  const ended = span ? span.last < today : (e.endAt ?? e.startAt + 30 * 60_000) < now;
+  const started = !ended && (span ? span.first <= today : e.startAt <= now);
 
   /** 종일과 시각 일정 사이를 바꾼다. 시각으로 바꾸면 첫날 오전 9시 (오늘이면 다음 정시) */
   const toggleAllDay = () => {

@@ -327,7 +327,13 @@ export function PanelApp() {
       {tab === 'note' && <NoteTab s={s} onRemoved={(id) => showToast({ kind: 'note-removed', id })} />}
       {tab === 'shop' && <ShopTab s={s} />}
       {tab === 'event' && (
-        <EventTab s={s} inputRef={inputRef} onRemoved={(id) => showToast({ kind: 'event-removed', id })} />
+        <EventTab
+          s={s}
+          inputRef={inputRef}
+          onRemoved={(id) => showToast({ kind: 'event-removed', id })}
+          onComplete={complete}
+          onTodoRemoved={(todo) => showToast({ kind: 'todo-removed', id: todo.id })}
+        />
       )}
 
       <footer>

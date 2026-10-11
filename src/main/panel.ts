@@ -13,6 +13,8 @@ import { findSameEvent } from '../shared/event-dup.ts';
 import { clashIds, overlapping, spanEnd } from '../shared/event-overlap.ts';
 import {
   allDayTimes,
+  type CalEvent,
+  dayStartMs,
   type EventStore,
   hasTimeRange,
   parseEventInput,
@@ -411,17 +413,27 @@ export function createPanel(o: PanelOptions) {
     push();
   });
   // ---- 일정 ----
-  ipcMain.handle(PANEL.eventAdd, (e, line: string) => {
+  ipcMain.handle(PANEL.eventAdd, (e, line: string, day?: unknown) => {
     if (!ours(e) || typeof line !== 'string') return { ok: false };
     const now = Date.now();
+    // 달력에서 고른 날(day)이 있으면 그날을 기준으로 읽는다 ("3시 회의" 는 그날 3시, "내일" 은 그다음 날).
+    // 오늘이 아닌 날은 0시로 보고 읽는다: 지금 시각보다 이른 시각을 다음 날로 미루지 않게
+    const picked =
+      typeof day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(day) && localDay(dayStartMs(day)) === day
+        ? day
+        : undefined;
+    const base = picked ?? localDay(now);
+    const minute = base === localDay(now) ? minuteOfDay(now) : 0;
     // 알림 말("1시간 전에 알려줘")은 먼저 뗀다
     const { rest: text, remind } = splitRemind(line);
     // 일정 탭에서는 날짜만 적어도 된다: "내일 제주도 여행"은 종일, "10/10-10/12 제주도"는 여러 날 종일.
     // (빠른 입력은 위 PANEL.add 처럼 시각이 있어야 일정이다. 거기서 날짜만 있으면 할 일 마감)
     // 반복 일정은 아직 없다: 한 번짜리로 넣지 않고 할 일 탭으로 안내한다
-    if (parseTodoLine(text, localDay(now), minuteOfDay(now)).repeat)
-      return { ok: false, error: t('panel.event.noRepeat') };
-    const ev = parseEventInput(text, localDay(now), minuteOfDay(now));
+    if (parseTodoLine(text, base, minute).repeat) return { ok: false, error: t('panel.event.noRepeat') };
+    // 달력에서 고른 날이면 날짜도 시각도 없는 글("장보기")은 그날 종일. "오늘" 을 붙여 읽어
+    // 시각처럼 보이는 말("25시 회의")은 종일로 넣지 않고 되묻는 규칙을 그대로 쓴다
+    const ev =
+      parseEventInput(text, base, minute) ?? (picked ? parseEventInput(`오늘 ${text}`, base, minute) : null);
     if (!ev) return { ok: false, error: t('panel.event.needTime') };
     let event: ReturnType<EventStore['add']>;
     if ('allDay' in ev) {
@@ -508,6 +520,16 @@ export function createPanel(o: PanelOptions) {
     const at = Date.now();
     for (const b of back) o.store.update(b.id, { due: b.due }, at);
     push();
+  });
+  // 달력 보기: 기간 안에 시작한 일정과, 앞에서 시작해 이어지는 여러 날 일정 (종일은 between, 시각은 timedOverlapping)
+  ipcMain.handle(PANEL.eventsBetween, (e, from: unknown, to: unknown): CalEvent[] => {
+    if (!ours(e) || typeof from !== 'number' || typeof to !== 'number') return [];
+    // 달력 한 화면(6주)보다 넓게는 받지 않는다
+    if (!(to > from) || to - from > 62 * 86_400_000) return [];
+    const byId = new Map<number, CalEvent>();
+    for (const ev of [...o.events.between(from, to), ...o.events.timedOverlapping(from, to)])
+      byId.set(ev.id, ev);
+    return [...byId.values()].sort((a, b) => a.startAt - b.startAt || a.id - b.id);
   });
   ipcMain.on(PANEL.eventUpdate, (e, id: number, patch) => {
     if (!ours(e) || typeof patch !== 'object' || patch === null) return;

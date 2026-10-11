@@ -6,6 +6,7 @@ import * as ai from './ai.ts';
 import * as assist from './assist.ts';
 import * as bond from './bond.ts';
 import * as briefing from './briefing.ts';
+import * as calendar from './calendar.ts';
 import * as chat from './chat.ts';
 import * as common from './common.ts';
 import * as companion from './companion.ts';
@@ -77,6 +78,7 @@ export const ko = {
   ...voice.ko,
   ...voiceIdle.ko,
   ...speech.ko,
+  ...calendar.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -117,4 +119,5 @@ export const en: Translation<typeof ko> = {
   ...voice.en,
   ...voiceIdle.en,
   ...speech.en,
+  ...calendar.en,
 };
