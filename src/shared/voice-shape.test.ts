@@ -11,7 +11,7 @@ import { DEFAULT_STYLE, type SpeechStyle } from './speech-style.ts';
 
 /** 말풍선에 나오는 말 (메뉴, 설정 글은 빼고) */
 const BUBBLE =
-  /^(idle\.|companion\.(cheer|anniv|friend)\.|pet\.(sulk\.|rest\.|energy\.fresh|life\.(rested|madeUp|affection)|unlock\.|hello\.|hideHint|tooChatty$|busyCpu|play\.(noBall|walk)|seek\.|fed|newHouse|houseMoved|houseStyle|home\.(goIn|back)|noCoins|full|foodMade|calendarBroken)|routine\.(hi\.|bye\.|rest|cue|streak|coins)|briefing\.(hi\.|oneEvent|events|allDay|todos|nothing|next|review\.|due\.left)|remind\.say\.|assist\.(overdue\.moved|week\.friday)|panel\.(review\.moved|focus\.(done|breakDone|todoAsk))|note\.(bring|open$|yesterday|event|habit|birthday|food|like|season|close|special\.)|together\.work)/;
+  /^(idle\.|companion\.(cheer|anniv|friend)\.|pet\.(sulk\.|rest\.|energy\.fresh|life\.(rested|madeUp|affection)|unlock\.|hello\.|hideHint|tooChatty$|busyCpu|play\.(noBall|walk)|seek\.|fed|newHouse|houseMoved|houseStyle|home\.(goIn|back|stowed|unstowed|newStowed|styleStowed)|noCoins|full|foodMade|calendarBroken)|routine\.(hi\.|bye\.|rest|cue|streak|coins)|briefing\.(hi\.|oneEvent|events|allDay|todos|nothing|next|review\.|due\.left)|remind\.say\.|assist\.(overdue\.moved|week\.friday)|panel\.(review\.moved|focus\.(done|breakDone|todoAsk))|note\.(bring|open$|yesterday|event|habit|birthday|food|like|season|close|special\.)|together\.work)/;
 const KEYS = Object.keys(dicts.ko).filter((k) => BUBBLE.test(k)) as I18nKey[];
 
 const KO_VARS = {
