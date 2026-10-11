@@ -1,7 +1,7 @@
 {
-  "name": "짝꿍 (Jjakkung)",
-  "short_name": "짝꿍",
-  "description": "화면 위를 돌아다니는 펫이 할 일, 일정, 메모를 같이 챙겨 주는 데스크톱 비서",
+  "name": "페어리 (fairy)",
+  "short_name": "페어리",
+  "description": "화면 위를 걸어 다니는 작은 페어리가 할 일, 일정, 메모를 같이 챙겨 주는 데스크톱 비서",
   "start_url": "./",
   "display": "browser",
   "background_color": "#fbf8f4",

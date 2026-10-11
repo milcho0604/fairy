@@ -42,6 +42,7 @@
       file: S.filePrefix,
       app: S.appBundleName,
       license: S.license,
+      petFileExt: S.petFileExt,
       home: base,
     };
     if (extra) for (var k in extra) v[k] = extra[k];
@@ -180,7 +181,7 @@
   function osKey(os) { return os === 'linux' ? 'linuxAppImage' : os; }
   function forKey(k) { return k === 'linuxAppImage' || k === 'linuxTar' ? 'linux' : k; }
   function pattern(k) {
-    var tail = { macArm: 'mac-arm64.dmg', macIntel: 'mac-x64.dmg', win: 'win-x64.exe', linuxAppImage: 'linux-x86_64.AppImage', linuxTar: 'linux-x64.tar.gz' }[k];
+    var tail = { macArm: 'mac-arm64.dmg', macIntel: 'mac-x64.dmg', win: 'win-x64.exe', linuxAppImage: 'linux-x86_64.AppImage', linuxTar: 'linux-x64.tar.xz' }[k];
     return t('dlp.pattern') + tail;
   }
 
@@ -209,7 +210,7 @@
       sub.textContent = os === 'mobile' ? t('dl.mobileSub') : '';
     } else {
       label.textContent = t('dl.for.' + forKey(k));
-      sub.textContent = t('dl.sub.' + forKey(k));
+      sub.textContent = ''; // chip / size only once there is a real file to download
     }
 
     var html = '';
@@ -250,7 +251,7 @@
   function cardButton(k, small, plain) {
     var a = REL.state === 'ok' && REL.assets[k];
     var cls = 'btn' + (small ? ' btn-ghost' : '');
-    if (a) return '<a class="' + cls + '" href="' + esc(a.url) + '">' + esc(plain ? t('nav.download') : k === 'linuxTar' ? 'tar.gz' : k === 'linuxAppImage' ? 'AppImage' : t('nav.download')) + '</a>';
+    if (a) return '<a class="' + cls + '" href="' + esc(a.url) + '">' + esc(plain ? t('nav.download') : k === 'linuxTar' ? 'tar.xz' : k === 'linuxAppImage' ? 'AppImage' : t('nav.download')) + '</a>';
     if (REL.state === 'soon' || REL.state === 'loading') return '<a class="' + cls + '" aria-disabled="true" role="link">' + esc(REL.state === 'soon' ? t('dl.soon') : '…') + '</a>';
     return '<a class="' + cls + '" href="' + esc(REL.state === 'ok' ? REL.url : REL_PAGE) + '">' + esc(t('dl.releases')) + '</a>';
   }

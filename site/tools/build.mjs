@@ -26,7 +26,7 @@ const PAGES = [
 ];
 
 function vars(base) {
-  return { name: S.name[LANG], tagline: S.tagline[LANG], file: S.filePrefix, app: S.appBundleName, license: S.license, home: base };
+  return { name: S.name[LANG], tagline: S.tagline[LANG], file: S.filePrefix, app: S.appBundleName, license: S.license, petFileExt: S.petFileExt, home: base };
 }
 
 function head(p) {

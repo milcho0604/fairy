@@ -1,6 +1,6 @@
-# Homepage (site/)
+# Homepage (site/) — fairy.moilga.com
 
-The introduction and download page for the app. Plain static HTML, CSS and JS: no framework, no build step to
+The introduction and download page for **fairy** (페어리). The English brand is always lowercase. Plain static HTML, CSS and JS: no framework, no build step to
 deploy, no server, no cookies, no tracking. The only outside requests are Google Fonts and one call to the GitHub
 API for the latest release.
 
@@ -39,16 +39,15 @@ Preview locally: `python3 -m http.server -d site 8080` → http://localhost:8080
 - **Language**: Korean by default; `navigator.language` picks English for non-Korean browsers; the header button
   switches and remembers the choice in `localStorage`; `?lang=en|ko` forces one.
 
-### When the app gets its English name
+### Changing names later
 
-1. Edit `config.js`: `name.en` (and `name.ko` if Korean pages should use it), `tagline`, `siteUrl`,
-   `releases.repo`, `filePrefix` (start of the installer names), `appBundleName` (the `.app` / product name).
+1. Edit `config.js`: `name` (ko 페어리 / en fairy), `tagline`, `siteUrl`, `releases.repo`, `filePrefix` (start of the
+   installer names, `fairy-<version>-mac-arm64.dmg`), `appBundleName` (`fairy.app`, also used for the data folder
+   paths in the FAQ), `petFileExt` (the share-a-fairy file extension, still `.jjpet` until the app renames it).
 2. `node site/tools/build.mjs`
 3. `node site/tools/og.mjs` to redraw the share card (needs Playwright: `npm i -D playwright && npx playwright install chromium`,
-   or point `PLAYWRIGHT_MODULE` at an existing install).
-4. Read through `i18n.js` for things that are not the product name but may change with it: the hero line
-   "작은 짝꿍" and "옆자리 짝꿍처럼" use 짝꿍 as the common word ("buddy"), the `.jjpet` file extension, the pet names.
-5. `xattr` command, data folder paths and file names in the FAQ follow `appBundleName` / `filePrefix` automatically.
+   or point `PLAYWRIGHT_MODULE` at an existing install). The card's headline lives in `tools/og.html`.
+4. Characters are called 페어리 / fairy on the site, never 펫 / pet.
 
 ## Images
 
@@ -68,11 +67,11 @@ Re-run both after re-shooting the screens with `scripts/dev/screens.mjs`.
 1. vercel.com → **Add New… → Project** → import this GitHub repo (private is fine).
 2. **Root Directory**: `site`. **Framework Preset**: Other. Leave Build Command and Output Directory empty
    (or Output Directory `.`). Deploy.
-3. Project → **Settings → Domains** → add `<name>.moilga.com`.
+3. Project → **Settings → Domains** → add `fairy.moilga.com`.
    - If `moilga.com` already uses Vercel's nameservers (it is in the same Vercel account), the subdomain works at once.
-   - If the apex DNS is elsewhere, add at that DNS provider: `CNAME  <name>  cname.vercel-dns.com`.
+   - If the apex DNS is elsewhere, add at that DNS provider: `CNAME  fairy  cname.vercel-dns.com`.
      Vercel issues the HTTPS certificate by itself once DNS resolves.
-4. Change `siteUrl` in `config.js` to `https://<name>.moilga.com`, run `node site/tools/build.mjs`, commit, push.
+4. `siteUrl` in `config.js` is already `https://fairy.moilga.com`; if the domain changes, edit it and run `node site/tools/build.mjs`.
 
 `vercel.json` sets a strict Content-Security-Policy (only Google Fonts and `api.github.com` are allowed). If you
 later add analytics or embeds, add their hosts there or the browser will block them. Vercel serves `404.html`
@@ -105,8 +104,8 @@ jobs:
         uses: actions/deploy-pages@v4
 ```
 
-Then **Settings → Pages → Source: GitHub Actions**, **Custom domain**: `<name>.moilga.com`, and at the DNS
-provider `CNAME  <name>  <github-user>.github.io`. Tick **Enforce HTTPS** once the certificate is ready.
+Then **Settings → Pages → Source: GitHub Actions**, **Custom domain**: `fairy.moilga.com`, and at the DNS
+provider `CNAME  fairy  <github-user>.github.io`. Tick **Enforce HTTPS** once the certificate is ready.
 GitHub Pages cannot send the security headers in `vercel.json`. `404.html` uses root-relative paths, so it is meant
 for a custom domain (not a `user.github.io/repo/` sub-path).
 
@@ -115,7 +114,7 @@ for a custom domain (not a `user.github.io/repo/` sub-path).
 The page asks `https://api.github.com/repos/{owner}/{repo}/releases?per_page=10` from the visitor's browser
 (no token), takes the newest non-draft release (pre-releases count), and picks files by the name patterns in
 `config.js` (electron-builder's `artifactName` is `<name>-${version}-${os}-${arch}.${ext}`, so mac `…-mac-arm64.dmg`,
-`…-mac-x64.dmg`, windows `…-win-x64.exe`, linux `…-linux-x86_64.AppImage` / `…-linux-x64.tar.gz`). It shows the
+`…-mac-x64.dmg`, windows `…-win-x64.exe`, linux `…-linux-x86_64.AppImage` / `…-linux-x64.tar.xz`). It shows the
 version, date, size and, when GitHub provides it, the SHA-256. The answer is cached for 15 minutes per tab;
 GitHub allows 60 unauthenticated calls per hour per visitor IP.
 
@@ -123,15 +122,15 @@ GitHub allows 60 unauthenticated calls per hour per visitor IP.
 - Rate limit or offline → buttons link to the releases page.
 
 A private repo's releases are invisible to visitors (and to the app's update check). To keep the source private,
-publish builds to a **public, releases-only** repo, e.g. `milcho0604/<name>-releases`:
+publish builds to a **public, releases-only** repo, e.g. `milcho0604/fairy-releases`:
 
 1. Create the public repo with just a README (and a LICENSE if you like). Nothing else needs to live there.
 2. In the private repo, create a fine-grained token with **Contents: read and write** on the releases repo only and
    store it as an Actions secret (e.g. `RELEASES_TOKEN`). In `release.yml`, upload with
-   `gh release create vX.Y.Z -R milcho0604/<name>-releases <files…>` using that token. Upload the update metadata
+   `gh release create vX.Y.Z -R milcho0604/fairy-releases <files…>` using that token. Upload the update metadata
    too (`latest.yml`, `latest-mac.yml`, `*.blockmap`, the mac `.zip`), not only the installers.
 3. Point the app at it (code changes for later, not done here):
-   - `electron-builder.yml` → `publish: { provider: github, owner: milcho0604, repo: <name>-releases }`
+   - `electron-builder.yml` → `publish: { provider: github, owner: milcho0604, repo: fairy-releases }`
      (the auto-updater reads `latest*.yml` from there);
    - `src/shared/update-policy.ts` → `RELEASE_REPO` (a test checks it matches `electron-builder.yml`);
    - `src/shared/ai/catalog.ts` → `CATALOG_URL` and `src/shared/gallery.ts` → `GALLERY_BASE` read
