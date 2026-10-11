@@ -85,8 +85,12 @@ const EN_DEADLINE = new RegExp(
  * 할 일로 남긴다(한국어 "3시까지" 와 같은 규칙).
  */
 export function hasDeadlineWord(text: string): boolean {
-  return text.includes('까지') || EN_DEADLINE.test(text);
+  return text.includes('까지') || EN_DEADLINE.test(text) || DAY_END.test(text);
 }
+
+/** 그 자체로 마감인 말: "eod", "cob", "end of day", "오전 중", "오후 중" (할 일로 둔다) */
+const DAY_END =
+  /\b(?:eod|cob|end of (?:the )?day|close of business)\b|(?:^|\s)(?:오전|오후) ?중(?:에|까지|으로)?(?:\s|$)/i;
 
 /** 맨 앞이나 맨 끝의 영어 날짜, 요일 낱말. 있으면 [마감, 남은 말] */
 function takeEnglishDue(rest: string, today: string): [string, string] | null {

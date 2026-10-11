@@ -1,7 +1,7 @@
 // 빠른 입력과 패널이 넘긴 값에서 미리 알림, 할 일 마감 시각 읽기 (8판).
 // 알림 말 떼기는 remind.ts takeRemind, 시각 읽기는 일정 한 줄과 같은 parseQuickEvent 를 쓴다.
 import { plusDays } from './day.ts';
-import { parseQuickEvent } from './event-store.ts';
+import { KO_WINDOW, normalizeQuick, parseQuickEvent } from './event-store.ts';
 import { hasDeadlineWord, parseQuickTodo, type QuickTodo } from './quick-add.ts';
 import { MAX_REMINDS, type RemindSpec, resolveSpecs, takeRemind } from './remind.ts';
 import { isDueMin, isRepeat, type Repeat } from './todo-store.ts';
@@ -23,7 +23,9 @@ export function parseTodoLine(text: string, today: string, nowMinute: number): Q
   const parsed = parseQuickTodo(text, today);
   if (parsed.repeat || !hasDeadlineWord(text)) return { ...parsed, dueMin: null };
   const ev = parseQuickEvent(text, today, nowMinute);
-  if (!ev || ev.durationMin !== null) return { ...parsed, dueMin: null };
+  // "오전 중", "오후 중" 은 시간대라 길이가 있다: 마감은 그 끝 (낮 12시, 오후 6시)
+  const window = KO_WINDOW.test(` ${normalizeQuick(text)} `);
+  if (!ev || (ev.durationMin !== null && !window)) return { ...parsed, dueMin: null };
   const inner = parseQuickTodo(ev.title.replace(EN_DEADLINE_TAIL, ''), today);
   if (!inner.title) return { ...parsed, dueMin: null };
   // "자정까지", "by midnight" 는 그날 밤 11시 59분 (다음 날 0시로 두면 마감이 "내일 오전 12:00" 으로 보였다)
@@ -33,7 +35,7 @@ export function parseTodoLine(text: string, today: string, nowMinute: number): Q
     due: midnight ? plusDays(ev.day, -1) : ev.day,
     important: parsed.important || inner.important,
     repeat: null,
-    dueMin: midnight ? 24 * 60 - 1 : ev.minute,
+    dueMin: midnight ? 24 * 60 - 1 : ev.minute + (window ? (ev.durationMin ?? 0) : 0),
   };
 }
 
