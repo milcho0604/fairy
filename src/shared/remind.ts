@@ -200,6 +200,8 @@ export function snoozeFor(now: number, start: number, stale: number): number | u
 export interface Snoozed {
   at: number;
   keys: { kind: 'event' | 'todo'; id: number }[];
+  /** 사용자가 고른 때(10분, 1시간, 내일, snooze.ts). 때가 지난 할 일도 그때 다시 말한다 */
+  keep?: boolean;
 }
 
 /** 앱이 꺼져 있던 사이 때가 된 미룬 알림은 이만큼 지난 것까지 켜자마자 말한다. 더 지난 것은 버린다 */
@@ -225,7 +227,7 @@ export function parseSnoozed(raw: unknown, now: number): Snoozed[] {
       )
       .slice(0, SNOOZED_KEYS_MAX)
       .map((k) => ({ kind: k.kind, id: k.id }));
-    if (keys.length > 0) out.push({ at: s.at, keys });
+    if (keys.length > 0) out.push({ at: s.at, keys, ...(s.keep === true ? { keep: true } : {}) });
   }
   return out;
 }
