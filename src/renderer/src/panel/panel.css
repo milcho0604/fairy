@@ -254,8 +254,10 @@ p.empty {
   color: var(--ok-ink);
 }
 
+/* 제목 단추는 글자만큼만 (짧은 제목 옆 빈자리에 마우스를 올리면 뜨는 단추가 겹친다: 제목 누르기가 단추 누르기가 됐다).
+   줄 끝 단추 묶음은 margin-left: auto 로 오른쪽 끝에 */
 .todo .title {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   padding: 0;
   border: 0;
@@ -285,7 +287,8 @@ p.empty {
 }
 
 .todo:hover .due.none,
-.due.none:focus-within {
+.due.none:focus-within,
+.due.none:has(.due-btn:focus-visible) {
   opacity: 0.8;
 }
 
@@ -294,16 +297,35 @@ p.empty {
   background: color-mix(in srgb, var(--error) 12%, transparent);
 }
 
-/* 날짜 고르기는 칩을 누르면 운영체제 달력이 열리게, 입력칸은 칩 위에 투명하게 겹친다. */
-.due input {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
+/* 칩은 단추 하나다 (누르면 showPicker 로 달력). 날짜 칸은 달력이 칩 자리에 뜨게 칩 뒤에 숨겨 둔다 */
+.due-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
   cursor: pointer;
 }
 
-/* 투명하게 겹친 날짜, 시각 칸에 키보드로 오면 칩에 테두리를 그린다 (투명한 칸의 테두리는 안 보인다) */
-.due:has(input:focus-visible),
+.due input {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.due:has(.due-btn:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.due-btn:focus-visible {
+  outline: none;
+}
+
+/* 투명하게 겹친 시각 칸에 키보드로 오면 칸에 테두리를 그린다 (투명한 칸의 테두리는 안 보인다) */
 .events-list .time:has(input:focus-visible) {
   outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
@@ -355,6 +377,7 @@ p.empty {
 .tools {
   position: relative;
   flex: none;
+  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -371,6 +394,12 @@ p.empty {
   height: 22px;
   padding: 0 4px 0 14px;
   background: linear-gradient(to right, transparent, var(--bg) 12px);
+  /* 그늘(왼쪽 여백)은 누름을 아래 제목으로 흘린다. 단추만 받는다 */
+  pointer-events: none;
+}
+
+.tools .extra > * {
+  pointer-events: auto;
 }
 
 .tools .extra:empty,

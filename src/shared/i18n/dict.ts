@@ -23,6 +23,7 @@ import * as onboarding from './onboarding.ts';
 import * as panel from './panel.ts';
 import * as pet from './pet.ts';
 import * as play from './play.ts';
+import * as polish from './polish.ts';
 import * as pout from './pout.ts';
 import * as remind from './remind.ts';
 import * as routine from './routine.ts';
@@ -63,6 +64,7 @@ export const ko = {
   ...day.ko,
   ...access.ko,
   ...bond.ko,
+  ...polish.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -96,4 +98,5 @@ export const en: Translation<typeof ko> = {
   ...day.en,
   ...access.en,
   ...bond.en,
+  ...polish.en,
 };

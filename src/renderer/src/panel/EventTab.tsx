@@ -232,6 +232,7 @@ function EventRow({
             </button>
           </span>
           <RemindButton
+            name={e.title}
             reminds={e.reminds}
             dateOnly={e.allDay}
             allDay={e.allDay}

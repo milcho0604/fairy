@@ -19,6 +19,7 @@ import './remind.css';
 
 /** 줄 끝 종 단추. 알림 수를 작게 보인다 (하나면 숫자 없이) */
 export function RemindButton({
+  name,
   reminds,
   dateOnly,
   allDay,
@@ -26,6 +27,8 @@ export function RemindButton({
   controls,
   onToggle,
 }: {
+  /** 할 일, 일정 제목 (화면 읽기 이름에 넣는다) */
+  name?: string;
   reminds: readonly number[];
   dateOnly: boolean;
   allDay?: boolean;
@@ -35,11 +38,12 @@ export function RemindButton({
   onToggle: () => void;
 }) {
   const label = t('remind.button', { list: remindSummary(reminds, dateOnly, allDay) });
+  const list = remindSummary(reminds, dateOnly, allDay);
   return (
     <button
       type="button"
       className={`remind-btn ${reminds.length === 0 ? 'off' : ''} ${open ? 'open' : ''}`}
-      aria-label={label}
+      aria-label={name ? t('remind.buttonFor', { title: name, list }) : label}
       title={label}
       aria-expanded={open}
       aria-controls={controls}

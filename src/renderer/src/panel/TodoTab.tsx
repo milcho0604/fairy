@@ -280,6 +280,7 @@ export function TodoRow({
 }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(todo.title);
+  const dateRef = useRef<HTMLInputElement>(null);
   // 미리 알림 고르기 (8판). 마감일이 있을 때만 종이 보인다 (마감일이 없으면 알릴 때가 없다)
   const [reminding, setReminding] = useState(false);
   const sheetId = useId();
@@ -328,23 +329,41 @@ export function TodoRow({
       {todo.repeat && <span>{REPEAT_LABEL[todo.repeat]}</span>}
     </button>
   );
+  const dueText = due
+    ? todo.dueMin === null
+      ? due.text
+      : `${due.text} ${timeLabel(todo.dueMin)}`
+    : t('panel.todo.due');
+  // 칩 하나가 단추다: 누르면(키보드로도) 운영체제 달력을 연다. 날짜 칸은 단추 뒤에 숨겨 두고 탭으로 오지 않는다
+  // (예전엔 투명한 날짜 칸이 칩 위에 겹쳐 키보드로 오면 날짜 조각을 고치는 칸이 됐고 달력은 열리지 않았다)
   const dueChip = (
-    <label
-      className={`due ${due?.overdue ? 'overdue' : ''} ${todo.due ? '' : 'none'}`}
-      title={t('panel.todo.dueDate')}
-    >
-      {due
-        ? todo.dueMin === null
-          ? due.text
-          : `${due.text} ${timeLabel(todo.dueMin)}`
-        : t('panel.todo.due')}
+    <span className={`due ${due?.overdue ? 'overdue' : ''} ${todo.due ? '' : 'none'}`}>
+      <button
+        type="button"
+        className="due-btn"
+        title={t('panel.todo.dueDate')}
+        aria-label={t('panel.todo.dueFor', { title: todo.title, when: dueText })}
+        onClick={() => {
+          const el = dateRef.current;
+          if (!el) return;
+          try {
+            el.showPicker();
+          } catch {
+            el.focus();
+          }
+        }}
+      >
+        {dueText}
+      </button>
       <input
+        ref={dateRef}
         type="date"
+        tabIndex={-1}
+        aria-hidden="true"
         value={todo.due ?? ''}
-        aria-label={t('panel.todo.dueDate')}
         onChange={(e) => bridge.update(todo.id, { due: e.target.value || null })}
       />
-    </label>
+    </span>
   );
   return (
     <>
@@ -424,6 +443,7 @@ export function TodoRow({
           {!compact && todo.repeat && repeatButton}
           {!compact && todo.due && (
             <RemindButton
+              name={todo.title}
               reminds={todo.reminds}
               dateOnly={todo.dueMin === null}
               open={reminding}
@@ -437,7 +457,8 @@ export function TodoRow({
               type="button"
               className={`star ${todo.important ? 'on' : ''}`}
               aria-pressed={todo.important}
-              aria-label={t('panel.todo.important')}
+              aria-label={t('panel.todo.importantFor', { title: todo.title })}
+              title={t('panel.todo.important')}
               onClick={() => bridge.update(todo.id, { important: !todo.important })}
             >
               <StarIcon />
