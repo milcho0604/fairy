@@ -3,6 +3,7 @@
 // Reads config.js + i18n.js, stamps <head> meta and the Korean text into the HTML (so crawlers, link previews and
 // no-JS visitors see real content), and writes sitemap.xml, robots.txt and site.webmanifest.
 // Idempotent; no dependencies. Run from anywhere:  node site/tools/build.mjs
+import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,6 +28,117 @@ const PAGES = [
 
 function vars(base) {
   return { name: S.name[LANG], tagline: S.tagline[LANG], file: S.filePrefix, app: S.appBundleName, license: S.license, petFileExt: S.petFileExt, home: base };
+}
+
+// ---- shared header and footer (one copy for every page) ----
+function header(b) {
+  return `<header class="top">
+  <div class="wrap top-in">
+    <a class="brand" href="${b}" data-i18n-attr="aria-label:a11y.home">
+      <img src="${b}assets/icons/icon-192.png" width="32" height="32" alt="">
+      <span class="brand-name" data-name></span>
+    </a>
+    <nav class="nav" data-i18n-attr="aria-label:a11y.nav">
+      <a href="${b}#features" data-nav="features" data-i18n="nav.features"></a>
+      <a href="${b}#maker" data-nav="maker" data-i18n="nav.maker"></a>
+      <a href="${b}#privacy" data-nav="privacy" data-i18n="nav.privacy"></a>
+      <a href="${b}#faq" data-nav="faq" data-i18n="nav.faq"></a>
+    </nav>
+    <div class="top-act">
+      <button class="lang" type="button" data-lang-toggle data-i18n-attr="aria-label:a11y.lang"><span data-i18n="lang.other"></span></button>
+      <a class="btn btn-sm" href="${b}#download" data-i18n="nav.download"></a>
+    </div>
+  </div>
+</header>`;
+}
+function footer(b) {
+  return `<footer class="foot">
+  <div class="wrap foot-in">
+    <div class="peek" aria-hidden="true"><img src="${b}assets/img/milk-256.webp" srcset="${b}assets/img/milk-256.webp 1x, ${b}assets/img/milk-512.webp 2x" width="92" height="159" alt="" loading="lazy" decoding="async"></div>
+    <div class="foot-brand">
+      <a class="brand" href="${b}"><img src="${b}assets/icons/icon-192.png" width="28" height="28" alt=""><span class="brand-name" data-name></span></a>
+      <p data-i18n="footer.tag"></p>
+    </div>
+    <nav class="foot-col" aria-labelledby="foot-explore">
+      <h2 id="foot-explore" data-i18n="footer.explore"></h2>
+      <ul>
+        <li><a href="${b}#features" data-i18n="nav.features"></a></li>
+        <li><a href="${b}#maker" data-i18n="nav.maker"></a></li>
+        <li><a href="${b}#privacy" data-i18n="nav.privacy"></a></li>
+        <li><a href="${b}download/" data-i18n="nav.download"></a></li>
+      </ul>
+    </nav>
+    <nav class="foot-col" aria-labelledby="foot-help">
+      <h2 id="foot-help" data-i18n="footer.help"></h2>
+      <ul>
+        <li><a href="${b}#faq" data-i18n="nav.faq"></a></li>
+        <li><a data-href="changelog" data-i18n="footer.changelog"></a></li>
+        <li><a data-href="releases" data-i18n="footer.releases"></a></li>
+        <li><a data-href="contact" data-i18n="footer.contact"></a></li>
+      </ul>
+    </nav>
+    <div class="foot-bottom">
+      <p><span data-i18n="footer.license"></span> · <span data-copyright></span></p>
+      <p data-i18n="footer.made"></p>
+    </div>
+  </div>
+</footer>`;
+}
+
+// ---- "what's new" strip from updates.json ----
+const UPD = JSON.parse(readFileSync(join(SITE_DIR, 'updates.json'), 'utf8')).items.slice(0, 3);
+function newsDate(iso, lang) {
+  const d = new Date(iso + 'T00:00:00Z');
+  return lang === 'ko' ? `${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일`
+    : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+function newsHead() {
+  return ['ko', 'en'].map((l) => `<time datetime="${UPD[0].date}" data-news="${l}"${l === LANG ? '' : ' hidden'}>${esc(newsDate(UPD[0].date, l))}</time>`).join('');
+}
+function news() {
+  return ['ko', 'en'].map((l) => `<ul class="news-list" data-news="${l}"${l === LANG ? '' : ' hidden'}>
+${UPD.map((u) => `        <li><strong>${esc(u[l].title)}</strong><span>${esc(u[l].text)}</span></li>`).join('\n')}
+      </ul>`).join('\n      ');
+}
+
+// ---- download table: the same rows app.js draws while loading, so nothing jumps when it fills in ----
+function fileRows() {
+  const v = vars('./');
+  const t = (k) => fill(D[LANG][k], v);
+  const tails = { macArm: 'mac-arm64.dmg', macIntel: 'mac-x64.dmg', win: 'win-x64.exe', linuxAppImage: 'linux-x86_64.AppImage', linuxTar: 'linux-x64.tar.xz' };
+  return Object.entries(tails).map(([k, tail]) => `<tr><th scope="row">${esc(t('dl.os.' + k))}</th><td><span class="fname">${esc(t('dlp.pattern') + tail)}</span></td><td>${esc(t('dlp.pending'))}</td><td><a class="btn" aria-disabled="true" role="link">…</a></td></tr>`).join('');
+}
+
+// ---- inline the stylesheet (no render-blocking request); CSP gets its hash ----
+const CSS_SRC = readFileSync(join(SITE_DIR, 'assets/site.css'), 'utf8');
+const styleHashes = new Set();
+function inlineCss(b) {
+  const css = CSS_SRC
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/url\(img\//g, `url(${b}assets/img/`)
+    .replace(/\s*\n\s*/g, '\n')
+    .replace(/\n+/g, '\n')
+    .trim();
+  styleHashes.add(`'sha256-${createHash('sha256').update(css).digest('base64')}'`);
+  return `<style>${css}</style>`;
+}
+
+// ---- Jua is only used for headings: ask Google Fonts for just those characters ----
+const DISPLAY_KEYS = /^(hero\.title|[a-z]+\.title|about\.(pet|biz|ai)T|more\.\dt|maker\.o\dt|steps\.s\dt|dlp\.(title|macT|winT|linuxT|aiT)|nf\.title)$/;
+function fontHref() {
+  let chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!?&’\'"—–-()·:;/';
+  for (const l of Object.keys(D)) {
+    const v = vars('./');
+    v.name = S.name[l];
+    for (const [k, str] of Object.entries(D[l])) if (DISPLAY_KEYS.test(k)) chars += fill(str, v).replace(/<[^>]+>/g, '');
+    chars += S.name[l];
+  }
+  const uniq = [...new Set(chars)].sort().join('');
+  // `text=` subsets every family in a request, so Jua gets its own request
+  return [
+    'https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap',
+    `https://fonts.googleapis.com/css2?family=Jua&display=swap&text=${encodeURIComponent(uniq)}`,
+  ];
 }
 
 function head(p) {
@@ -58,6 +170,7 @@ function head(p) {
     '<meta name="color-scheme" content="light dark">',
     '<meta name="theme-color" content="#fbf8f4" media="(prefers-color-scheme: light)">',
     '<meta name="theme-color" content="#1b1917" media="(prefers-color-scheme: dark)">',
+    `<link rel="icon" type="image/svg+xml" href="${b}assets/icons/icon.svg">`,
     `<link rel="icon" type="image/png" sizes="32x32" href="${b}assets/icons/icon-32.png">`,
     `<link rel="icon" type="image/png" sizes="192x192" href="${b}assets/icons/icon-192.png">`,
     `<link rel="apple-touch-icon" href="${b}assets/icons/apple-touch-icon.png">`,
@@ -92,6 +205,13 @@ function stamp(html, p) {
     return fill(D[LANG][k], v);
   };
   html = html.replace(/<!-- meta:start -->[\s\S]*?<!-- meta:end -->/, `<!-- meta:start -->\n${head(p)}\n<!-- meta:end -->`);
+  html = html.replace(/<!-- header:start -->[\s\S]*?<!-- header:end -->/, `<!-- header:start -->\n${header(p.base)}\n<!-- header:end -->`);
+  html = html.replace(/<!-- footer:start -->[\s\S]*?<!-- footer:end -->/, `<!-- footer:start -->\n${footer(p.base)}\n<!-- footer:end -->`);
+  html = html.replace(/<tbody data-files>[\s\S]*?<\/tbody>/, `<tbody data-files>${fileRows()}</tbody>`);
+  html = html.replace(/<!-- newshead:start -->[\s\S]*?<!-- newshead:end -->/, `<!-- newshead:start -->${newsHead()}<!-- newshead:end -->`);
+  html = html.replace(/<!-- news:start -->[\s\S]*?<!-- news:end -->/, `<!-- news:start -->\n      ${news()}\n      <!-- news:end -->`);
+  html = html.replace(/<!-- css:start -->[\s\S]*?<!-- css:end -->/, `<!-- css:start -->\n${inlineCss(p.base)}\n<!-- css:end -->`);
+  html = html.replace(/(<link rel="stylesheet" href="https:\/\/fonts\.googleapis\.com\/css2[^"]*">\n?)+/, fontHref().map((h) => `<link rel="stylesheet" href="${esc(h)}">\n`).join(''));
   html = html.replace(/<html\b[^>]*>/, (m) => m.replace(/\slang="[^"]*"/, ` lang="${LANG}"`));
   // <tag ... data-i18n="key">…</tag>  (an element with data-i18n must not contain another element of its own tag name)
   html = html.replace(/<([a-z][a-z0-9]*)((?:\s[^>]*?)?\sdata-i18n="([^"]+)"[^>]*)>([\s\S]*?)<\/\1>/g,
@@ -130,6 +250,13 @@ for (const p of PAGES) {
   if (after !== before) writeFileSync(f, after);
   console.log(`${after === before ? 'unchanged' : 'stamped  '} ${p.file}`);
 }
+
+// keep the CSP in vercel.json in step with the inlined styles
+const vjPath = join(SITE_DIR, 'vercel.json');
+const vj = JSON.parse(readFileSync(vjPath, 'utf8'));
+const cspHeader = vj.headers[0].headers.find((h) => h.key === 'Content-Security-Policy');
+cspHeader.value = cspHeader.value.replace(/style-src [^;]*/, `style-src 'self' https://fonts.googleapis.com ${[...styleHashes].sort().join(' ')}`);
+writeFileSync(vjPath, JSON.stringify(vj, null, 2) + '\n');
 
 const today = new Date().toISOString().slice(0, 10);
 writeFileSync(join(SITE_DIR, 'sitemap.xml'),

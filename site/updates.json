@@ -1,0 +1,20 @@
+{
+  "_comment": "홈페이지 '새로 생긴 것' 띠. 맨 위 셋만 보여요. 바꾼 뒤 node site/tools/build.mjs. Latest first; only the first three show.",
+  "items": [
+    {
+      "date": "2026-10-11",
+      "ko": { "title": "습관 잔디와 아침 계획", "text": "반복하는 할 일을 잔디로 보고, 아침마다 꼭 할 일 셋을 같이 골라요." },
+      "en": { "title": "Habit grid & morning plan", "text": "See repeating to-dos as a grid and pick your top three each morning." }
+    },
+    {
+      "date": "2026-10-11",
+      "ko": { "title": "알림 미루기", "text": "알림에서 바로 10분, 1시간, 내일 아침으로 미룰 수 있어요." },
+      "en": { "title": "Snooze reminders", "text": "Push a reminder back 10 minutes, an hour or to tomorrow morning." }
+    },
+    {
+      "date": "2026-10-11",
+      "ko": { "title": "페어리 갤러리", "text": "밀크와 초코를 데려와 함께 지낼 수 있어요." },
+      "en": { "title": "Fairy gallery", "text": "Bring Milk and Choco home to live alongside yours." }
+    }
+  ]
+}

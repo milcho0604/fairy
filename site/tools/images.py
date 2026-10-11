@@ -122,3 +122,20 @@ for w in (716, 358):
     p = OUT / f'quick-add-{w}.webp'
     r.save(p, quality=88, method=6)
     print(p.relative_to(ROOT), r.size)
+
+# "How it starts" step pictures: the look picker from the first-run guide, and a fairy talking on the desktop
+for name, box in (('step-pick', (40, 340, 482, 472)), ('step-pick-dark', (530, 340, 972, 472))):
+    im = Image.open(SCREENS / 'onboarding.png').convert('RGB').crop(box)
+    im.save(OUT / f'{name}.webp', quality=88, method=6)
+    print(name, im.size)
+
+# SVG favicon: the app icon (64px) inside a rounded square, so it stays crisp-edged and small
+import base64, io
+buf = io.BytesIO()
+icon.convert('RGB').resize((64, 64), Image.LANCZOS).save(buf, 'PNG', optimize=True)
+b64 = base64.b64encode(buf.getvalue()).decode()
+(ICONS / 'icon.svg').write_text(
+    '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 64 64">'
+    '<clipPath id="r"><rect width="64" height="64" rx="14"/></clipPath>'
+    f'<image width="64" height="64" clip-path="url(#r)" href="data:image/png;base64,{b64}"/></svg>\n')
+print('icon.svg', (ICONS / 'icon.svg').stat().st_size // 1024, 'KB')

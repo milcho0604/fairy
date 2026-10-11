@@ -64,6 +64,7 @@
         if (p.length === 2) el.setAttribute(p[0].trim(), t(p[1].trim()));
       });
     });
+    each('[data-news]', function (el) { el.hidden = el.getAttribute('data-news') !== lang; });
     each('[data-name]', function (el) { el.textContent = S.name[lang] || S.name.ko; });
     each('[data-copyright]', function (el) { el.textContent = S.copyright; });
     each('[data-href]', function (el) {
@@ -90,12 +91,34 @@
     });
   });
 
-  /* ---------------- header ---------------- */
+  /* ---------------- header: soft background after scrolling, current section in the menu ---------------- */
   var top = document.querySelector('.top');
   if (top) {
     var onScroll = function () { top.classList.toggle('scrolled', window.scrollY > 8); };
     window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
+  }
+  var navLinks = {};
+  each('[data-nav]', function (a) { navLinks[a.getAttribute('data-nav')] = a; });
+  var sectionFor = { features: 'features', pet: 'features', assistant: 'features', ai: 'features', maker: 'maker', privacy: 'privacy', faq: 'faq' };
+  if ('IntersectionObserver' in window && page === 'home') {
+    var visible = {};
+    var mark = function () {
+      var current = null;
+      // the topmost section that is on screen wins
+      Object.keys(visible).sort(function (a, b) { return visible[a] - visible[b]; }).some(function (id) { current = sectionFor[id] || null; return true; });
+      Object.keys(navLinks).forEach(function (k) {
+        if (k === current) navLinks[k].setAttribute('aria-current', 'location');
+        else navLinks[k].removeAttribute('aria-current');
+      });
+    };
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) visible[e.target.id] = e.target.offsetTop; else delete visible[e.target.id];
+      });
+      mark();
+    }, { rootMargin: '-45% 0px -50% 0px' });
+    each('main section[id]', function (sec) { io.observe(sec); });
   }
 
   /* ---------------- which computer is this? ---------------- */

@@ -8,11 +8,12 @@ API for the latest release.
 site/
 ├── config.js           ← product name, tagline, site URL, releases repo, file patterns. Change things HERE.
 ├── i18n.js             ← every string, Korean (default) and English, plus the {name|조사} filler
+├── updates.json        ← the "새로 생긴 것 / What's new" strip under the hero (first three items)
 ├── index.html          ← landing page
 ├── download/index.html ← all files + install steps per OS
 ├── 404.html
 ├── assets/
-│   ├── site.css        ← colors follow the app (src/renderer/src/tokens.css), light + dark
+│   ├── site.css        ← source stylesheet; build.mjs inlines it into each page
 │   ├── app.js          ← language switch, OS detection, release fetch, Bean walking the hero floor
 │   ├── og.png          ← 1200x630 share card (made by tools/og.mjs)
 │   ├── img/            ← webp made from docs/assets/screens (tools/images.py, tools/kong_sprite.py)
@@ -36,6 +37,13 @@ Preview locally: `python3 -m http.server -d site 8080` → http://localhost:8080
   `<!-- meta:start -->` and `<!-- meta:end -->` (title, description, canonical, Open Graph, Twitter card, JSON-LD),
   and regenerates `sitemap.xml`, `robots.txt` and `site.webmanifest`. It is idempotent; run it after any change to
   `config.js` or `i18n.js` and commit the result.
+- **Shared header and footer** are written once in `tools/build.mjs` and stamped into every page.
+- **CSS** lives in `assets/site.css` but is inlined into each page by the build (no render-blocking request). The
+  build also writes the matching `sha256-…` hashes into the CSP in `vercel.json` — always run the build after
+  editing the CSS, or the browser will refuse the new styles.
+- **Fonts**: IBM Plex Sans KR (body, Google's own unicode-range slices) and Jua for headings only, requested with
+  `text=` so just the heading characters are downloaded. New heading text needs a rebuild to be in the subset.
+- **What's new**: edit `updates.json` (newest first, ko and en), rebuild.
 - **Language**: Korean by default; `navigator.language` picks English for non-Korean browsers; the header button
   switches and remembers the choice in `localStorage`; `?lang=en|ko` forces one.
 
@@ -139,3 +147,11 @@ publish builds to a **public, releases-only** repo, e.g. `milcho0604/fairy-relea
 4. Publish releases as normal (not *draft*). The app's update check uses `/releases/latest`, which ignores
    *pre-releases*; the site shows pre-releases too.
 5. Set `releases.repo` in `config.js` and run `node site/tools/build.mjs` (footer links follow it).
+
+## Checks used before each change
+
+Playwright scripts (not in the repo) were run against `python3 -m http.server -d site`: screenshots at
+1440/1024/768/390 in light and dark, Korean and English; CLS (< 0.03 on every page), LCP element, one `h1` and no
+skipped heading levels, every image has `alt`, every internal link and anchor resolves, WCAG AA text contrast in
+both themes, every Tab stop shows a focus ring, no single orphaned word at the end of headings and lead paragraphs
+(360–1440px). `html-validate` (recommended rules) passes on all three pages.
