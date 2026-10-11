@@ -62,6 +62,6 @@ jobs:
       - run: npm run build
       # 설치 파일 없이 풀린 앱만 만든다 (퓨즈, 네이티브 정리, 고지 파일까지 실제와 같다)
       - run: npx electron-builder --linux --dir --publish never
-      # 빈 데이터 폴더, JJ_NO_FOCUS=1 로 켜서 펫 창이 file:// 에서 그려지는지, --inspect 가 막혔는지 본다
-      - run: xvfb-run -a node scripts/dev/smoke-packaged.mjs dist/linux-unpacked/jjakkung
+      # 빈 데이터 폴더, JJ_NO_FOCUS=1 로 켜서 페어리 창이 file:// 에서 그려지는지, --inspect 가 막혔는지 본다
+      - run: xvfb-run -a node scripts/dev/smoke-packaged.mjs dist/linux-unpacked/fairy
         timeout-minutes: 5

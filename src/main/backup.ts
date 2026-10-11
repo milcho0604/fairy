@@ -27,6 +27,7 @@ import {
 } from '../shared/pet-share.ts';
 import type { Blueprint } from '../shared/pet3d/blueprint.ts';
 import { FRIENDS_MAX, POSE_KINDS } from '../shared/settings.ts';
+import { PET_FILE_EXT, PET_FILE_EXTS_READ } from '../shared/url-scheme.ts';
 import { petImages } from './maker.ts';
 import { library } from './pet-library.ts';
 import { freePath, plainEntry, writeFileAtomic } from './safe-file.ts';
@@ -68,8 +69,10 @@ export function createBackup(o: {
     const base = pick.filePaths[0];
     if (pick.canceled || !base) return '';
     // 같은 분에 두 번 내보내도 겹치지 않게 (VACUUM INTO 는 있는 파일에 못 쓴다)
-    let out = join(base, `jjakkung-backup-${stamp()}`);
-    for (let i = 2; existsSync(out); i++) out = join(base, `jjakkung-backup-${stamp()}-${i}`);
+    // 폴더 이름은 새 이름(fairy-backup-…). 안의 표시 파일(jjakkung-backup.json)과 저장 파일 이름은 예전 그대로 둔다:
+    // 예전 판 짝꿍과 새 판이 서로의 백업을 가져올 수 있게 (앱 안쪽 이름이라 사용자에게는 안 보인다)
+    let out = join(base, `fairy-backup-${stamp()}`);
+    for (let i = 2; existsSync(out); i++) out = join(base, `fairy-backup-${stamp()}-${i}`);
     mkdirSync(out, { recursive: true });
     o.vacuumInto(join(out, 'jjakkung.db'));
     for (const f of FILES) if (existsSync(join(dir(), f))) cpSync(join(dir(), f), join(out, f));
@@ -356,7 +359,7 @@ export async function exportPet(
   const opts = {
     title: title ?? t('main.pet.exportTitle'),
     defaultPath: shareFileName(pet.name),
-    filters: [{ name: t('main.pet.fileType'), extensions: ['jjpet'] }],
+    filters: [{ name: t('main.pet.fileType'), extensions: [PET_FILE_EXT.slice(1)] }],
   };
   const r = await (parent ? dialog.showSaveDialog(parent, opts) : dialog.showSaveDialog(opts));
   if (r.canceled || !r.filePath) return '';
@@ -377,7 +380,8 @@ export async function importPet(
   const opts = {
     title: t('main.pet.importTitle'),
     properties: ['openFile' as const],
-    filters: [{ name: t('main.pet.fileType'), extensions: ['jjpet'] }],
+    // 새 .fairy 와 예전 이름(짝꿍) 때 .jjpet 을 같이 고를 수 있다
+    filters: [{ name: t('main.pet.fileType'), extensions: [...PET_FILE_EXTS_READ] }],
   };
   const r = picked
     ? { canceled: false, filePaths: [picked] }

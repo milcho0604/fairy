@@ -59,8 +59,8 @@ test('남이 준 파일은 엄격하게: 형식, 판, 이름, 그림 머리말',
 });
 
 test('공유 파일 이름', () => {
-  assert.equal(shareFileName('까망 이/2'), '까망-이-2.jjpet');
-  assert.equal(shareFileName('***'), 'pet.jjpet');
+  assert.equal(shareFileName('까망 이/2'), '까망-이-2.fairy');
+  assert.equal(shareFileName('***'), 'fairy.fairy');
 });
 
 test('입체 설계도도 같이 주고받는다 (사진이 있을 때만, 깨졌으면 뺀다)', () => {

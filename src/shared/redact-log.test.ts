@@ -162,18 +162,18 @@ test('가린 곳 수를 센다. 이미 가린 글을 다시 넣어도 같은 글
 
 test('실제 기록 꼴 한 덩어리', () => {
   const log = [
-    '2026-10-07T01:00:00.000Z [db] 못 엶 SQLITE_BUSY: /Users/kimcs/Library/Application Support/jjakkung/jjakkung.db',
+    '2026-10-07T01:00:00.000Z [db] 못 엶 SQLITE_BUSY: /Users/kimcs/Library/Application Support/fairy/jjakkung.db',
     '2026-10-07T01:00:01.000Z [calendar] 실패 TypeError',
-    '2026-10-07T01:00:02.000Z [update] 확인 실패 net::ERR_NAME_NOT_RESOLVED https://api.github.com/repos/milcho0604/jjakkung/releases/latest',
+    '2026-10-07T01:00:02.000Z [update] 확인 실패 net::ERR_NAME_NOT_RESOLVED https://api.github.com/repos/milcho0604/fairy/releases/latest',
     '2026-10-07T01:00:03.000Z [maker] illust Error: 401 https://router.huggingface.co/x?token=hf_abcdefgh12345678',
     '2026-10-07T01:00:04.000Z [link] open zoom.us',
   ].join('\n');
   const out = redactLog(log, MAC);
   assert.ok(!out.includes('kimcs'));
   assert.ok(!out.includes('hf_'));
-  assert.ok(out.includes('~/Library/Application Support/jjakkung/jjakkung.db'));
+  assert.ok(out.includes('~/Library/Application Support/fairy/jjakkung.db'));
   assert.ok(out.includes('net::ERR_NAME_NOT_RESOLVED'));
-  assert.ok(out.includes('https://api.github.com/repos/milcho0604/jjakkung/releases/latest'));
+  assert.ok(out.includes('https://api.github.com/repos/milcho0604/fairy/releases/latest'));
   assert.ok(out.includes('https://router.huggingface.co/x?<redacted>'));
 });
 

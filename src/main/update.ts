@@ -71,7 +71,7 @@ export function watchUpdates(o: { say: Say; log: Log }) {
   async function fetchDecision(): Promise<UpdateDecision | { kind: 'failed'; status?: number; bad?: true }> {
     try {
       const res = await net.fetch(releasesApi(), {
-        headers: { accept: 'application/vnd.github+json', 'user-agent': `jjakkung/${app.getVersion()}` },
+        headers: { accept: 'application/vnd.github+json', 'user-agent': `fairy/${app.getVersion()}` },
         // GitHub 은 max-age=60 을 붙여 보낸다. 캐시를 쓰면 10초 뒤 두 번째 확인이 첫 응답을 그대로 받아 이중 확인이 무의미해진다
         cache: 'no-store',
         // 걸린 연결에 매달리지 않는다. 매달리면 같은 주소의 다음 확인도 HTTP 캐시 잠금에 20초씩 묶였다 (2026-10-07 실제 앱 점검)

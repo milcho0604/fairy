@@ -1,11 +1,13 @@
 # 설치 파일 만들기 (P4-02). `npm run dist` 로 지금 컴퓨터용을 만든다. 맥과 윈도우는 GitHub Actions 에서.
 # 앱 고유 ID 를 붙여야 화면 기록 권한, 로그인 시 실행이 개발용 Electron 과 섞이지 않는다.
-appId: io.github.milcho0604.jjakkung
-# 실행 파일과 앱 묶음 이름은 영문이어야 한다. "짝꿍"으로 두면 Electron 44 가 켜지자마자 죽는다 (L20).
-# 사람 눈에 보이는 이름만 한글로: 맥은 CFBundleDisplayName, 윈도우는 바로 가기와 프로그램 목록 이름.
-productName: Jjakkung
+# 이름이 짝꿍에서 페어리(fairy)로 바뀌며 ID 도 fairy.moilga.com 에 맞춰 바꿨다 (2026-10-11, 아직 공개 릴리스 전이라
+# 이어 받을 설치가 없다). 예전 ID(io.github.milcho0604.jjakkung)로 깐 시험판은 따로 지운다 (docs/install.md)
+appId: com.moilga.fairy
+# 실행 파일과 앱 묶음 이름은 영문이어야 한다. 한글로 두면 Electron 44 가 켜지자마자 죽는다 (L20).
+# 영어 이름은 늘 소문자 fairy. 사람 눈에 보이는 이름만 한글로: 맥은 CFBundleDisplayName, 윈도우는 바로 가기와 프로그램 목록 이름.
+productName: fairy
 # 설치 파일 이름은 영문으로 둔다. 한글 파일 이름은 내려받기와 명령줄에서 깨지기 쉽다.
-artifactName: jjakkung-${version}-${os}-${arch}.${ext}
+artifactName: fairy-${version}-${os}-${arch}.${ext}
 directories:
   output: dist
   buildResources: build
@@ -22,7 +24,7 @@ files:
   # 받을 때 npm 원본 묶음을 해시를 맞춰 같이 받는다 (src/shared/llama-bins.ts, src/main/llama-bins.ts, 2026-10-11).
   # GPU 판(cuda, vulkan, 윈도우는 합쳐 약 620MB)도 같이 빠진다
   - "!node_modules/@node-llama-cpp{,/**}"
-  # ipull(node-llama-cpp 의 모델 받기, 짝꿍은 쓰지 않는다)이 파일 복사 때만 부르는 네이티브 모듈
+  # ipull(node-llama-cpp 의 모델 받기, 페어리는 쓰지 않는다)이 파일 복사 때만 부르는 네이티브 모듈
   - "!node_modules/@reflink{,/**}"
   # 실행에 쓰지 않는 파일: 소스 맵, 타입 선언, 설명서, 시험, 예제, C 헤더 (node-addon-api 는 소스 빌드용).
   # 라이선스 파일(LICENSE*)은 남긴다
@@ -40,11 +42,11 @@ afterPack: ./scripts/prune-native.mjs
 # koffi 는 Node-API 라 Electron 용으로 다시 빌드할 필요가 없다. 다시 빌드하면 윈도우 러너에서 컴파일러를 찾는다.
 npmRebuild: false
 # Electron 퓨즈 (실행 파일에 박는 켜고 끄기, @electron/fuses). 서명 바로 전에 뒤집힌다 (2026-10-11 보안 점검).
-# - runAsNode 는 켜 둔다: 펫 MCP 서버를 짝꿍 실행 파일로 띄운다 (ELECTRON_RUN_AS_NODE, src/main/mcp-launch.ts).
-#   끄면 AI 대화의 짝꿍 도구와 "다른 AI 에 붙이기"가 멈춘다. 대신 누구든 짝꿍 실행 파일을 Node 처럼 쓸 수 있다는
+# - runAsNode 는 켜 둔다: 페어리 MCP 서버를 페어리 실행 파일로 띄운다 (ELECTRON_RUN_AS_NODE, src/main/mcp-launch.ts).
+#   끄면 AI 대화의 페어리 도구와 "다른 AI 에 붙이기"가 멈춘다. 대신 누구든 페어리 실행 파일을 Node 처럼 쓸 수 있다는
 #   뜻이지만 그건 그 컴퓨터에서 이미 프로그램을 돌릴 수 있는 사람에게만 해당하고, 맥 화면 기록 권한을 빌려 쓰는
 #   길은 Node 모드에서 열리지 않는다(권한은 창을 띄우는 앱 쪽에 묶인다). docs/release.md "Electron 퓨즈"
-# - NODE_OPTIONS 와 --inspect 류 인자는 막는다: 설치판에 디버거를 붙여 짝꿍 권한(화면 기록, 토큰)을 빌리지 못하게.
+# - NODE_OPTIONS 와 --inspect 류 인자는 막는다: 설치판에 디버거를 붙여 페어리 권한(화면 기록, 토큰)을 빌리지 못하게.
 #   개발 실행(npx electron .)과 시험 창(CLAUDE.md, --inspect)은 퓨즈가 없는 Electron 이라 그대로 된다.
 # - 앱은 app.asar 에서만 읽고, 맥과 윈도우는 asar 무결성(빌드 때 해시)을 확인한다. 리눅스는 무결성 퓨즈를 무시한다.
 # - grantFileProtocolExtraPrivileges 와 쿠키 암호화는 기본값 그대로 둔다: 창과 모델 파일(file://)을 file:// 에서 읽고,
@@ -70,18 +72,25 @@ asarUnpack:
   - node_modules/@koromix/**
   # 무료 AI 엔진 (운영체제별 네이티브 패키지는 처음 쓸 때 userData 에 받는다)
   - node_modules/node-llama-cpp/**
-  # 펫 MCP 서버는 AI 도구가 실행 파일을 Node 로 돌려 연다. asar 밖에 둔다 (나눠진 조각까지 out/main 통째로).
+  # 페어리 MCP 서버는 AI 도구가 실행 파일을 Node 로 돌려 연다. asar 밖에 둔다 (나눠진 조각까지 out/main 통째로).
   - out/main/**
-# jjakkung:// 주소 (단축어, Raycast, Alfred, PowerToys 에서 부르기, docs/integrations.md). 맥은 Info.plist 의
+# fairy:// 주소 (단축어, Raycast, Alfred, PowerToys 에서 부르기, docs/integrations.md). 맥은 Info.plist 의
 # CFBundleURLTypes, 윈도우는 설치할 때 레지스트리에 들어간다. 받는 쪽은 src/main/open-handler.ts, 검사는 shared/url-scheme.ts
+# 예전 이름 jjakkung:// 도 같이 등록한다: 만들어 둔 단축어, Raycast 명령이 그대로 돈다
 protocols:
-  - name: Jjakkung
-    schemes: [jjakkung]
-# .jjpet 펫 파일을 두 번 누르면 짝꿍이 가져온다 (펫 가져오기와 같은 검사와 확인 창, backup.ts importPet)
+  - name: fairy
+    schemes: [fairy, jjakkung]
+# .fairy 페어리 파일을 두 번 누르면 페어리가 가져온다 (페어리 가져오기와 같은 검사와 확인 창, backup.ts importPet).
+# 예전 이름 때 .jjpet 도 같이 연결한다 (안의 모양은 같다, docs/pet-format.md)
 fileAssociations:
+  - ext: fairy
+    name: fairy file
+    description: 페어리 파일
+    mimeType: application/x-fairy
+    role: Viewer
   - ext: jjpet
-    name: Jjakkung Pet
-    description: 짝꿍 펫 파일
+    name: fairy file (old)
+    description: 페어리 파일 (예전 .jjpet)
     mimeType: application/x-jjakkung-pet
     role: Viewer
 mac:
@@ -113,13 +122,13 @@ mac:
     - from: build/mac/ko.lproj/InfoPlist.strings
       to: ko.lproj/InfoPlist.strings
   extendInfo:
-    CFBundleDisplayName: 짝꿍
-    # 펫 앱이라 Dock 에 안 뜬다 (코드에서 app.dock.hide 도 한다. 이건 켜질 때 잠깐 뜨는 것까지 막는다).
+    CFBundleDisplayName: 페어리
+    # 화면 위 페어리 앱이라 Dock 에 안 뜬다 (코드에서 app.dock.hide 도 한다. 이건 켜질 때 잠깐 뜨는 것까지 막는다).
     LSUIElement: true
     # 기본값은 영어. 한국어 맥은 ko.lproj/InfoPlist.strings 의 글을 보인다 (build/mac)
     NSScreenCaptureUsageDescription: Used by Look Together to show the screen area you pick to the AI.
 # 리눅스: 압축 파일(tar.xz, 풀어서 실행)과 AppImage. snap 은 만들지 않는다 (스토어 심사, 샌드박스가 화면 캡처와 AI CLI 를 막는다).
-# 리눅스는 자동 업데이트가 없다 (src/shared/update-policy.ts AUTO_INSTALL_PLATFORMS). 새 버전은 펫이 릴리스 페이지를 연다
+# 리눅스는 자동 업데이트가 없다 (src/shared/update-policy.ts AUTO_INSTALL_PLATFORMS). 새 버전은 페어리가 릴리스 페이지를 연다
 linux:
   target:
     - target: tar.xz
@@ -127,34 +136,34 @@ linux:
     - target: AppImage
       arch: [x64]
   category: Utility
-  executableName: jjakkung
-  synopsis: Desktop pet that works with you
-  description: 화면 위 펫과 같이 일하는 데스크톱 앱 (A desktop pet that keeps your to-dos, notes and calendar)
+  executableName: fairy
+  synopsis: A little fairy on your screen that works with you
+  description: 화면 위 페어리와 같이 일하는 데스크톱 앱 (A little fairy on your screen that keeps your to-dos, notes and calendar)
   # 설치된 .desktop 이름을 package.json desktopName 과 맞춰 작업 표시줄이 같은 앱으로 묶는다
   syncDesktopName: true
   desktop:
     entry:
-      Name: 짝꿍
-      Name[en]: Jjakkung
-      Comment: 화면 위 펫과 같이 일하는 데스크톱 앱
-      Comment[en]: A desktop pet that works with you
-      StartupWMClass: jjakkung
+      Name: 페어리
+      Name[en]: fairy
+      Comment: 화면 위 페어리와 같이 일하는 데스크톱 앱
+      Comment[en]: A little fairy on your screen that works with you
+      StartupWMClass: fairy
 win:
   target:
     - target: nsis
       arch: [x64]
 nsis:
-  shortcutName: 짝꿍
-  uninstallDisplayName: 짝꿍
+  shortcutName: 페어리
+  uninstallDisplayName: 페어리
   oneClick: true
   perMachine: false
   deleteAppDataOnUninstall: false
 dmg:
-  title: 짝꿍 ${version}
+  title: 페어리 ${version}
 # 자동 설치(electron-updater)가 읽을 latest.yml(윈도우), latest-mac.yml(맥)과 차이 받기용 .blockmap 을 같이 만든다.
 # 레포는 src/shared/update-policy.ts 의 RELEASE_REPO 와 같아야 한다 (다르면 시험이 깨진다. D8 때 같이 바꾼다).
 # 올리기는 하지 않는다: 스크립트가 --publish never 로 돌고, 릴리스 초안은 release.yml 의 gh 가 만든다.
 publish:
   provider: github
   owner: milcho0604
-  repo: jjakkung
+  repo: fairy

@@ -1,11 +1,21 @@
-// jjakkung:// 주소 (단축어, Raycast, Alfred, PowerToys 에서 짝꿍 부르기).
+// fairy:// 주소 (단축어, Raycast, Alfred, PowerToys 에서 페어리 부르기). 예전 이름 jjakkung:// 도 같은 주소로 받는다.
 // 다른 앱이 아무 글이나 넘길 수 있는 문이라 엄하게 본다: 아는 동작과 아는 칸만, 길이 상한, 같은 칸 두 번은 거절.
 // 파일 경로, 다른 주소로 옮겨 가기 같은 동작은 아예 없다. 글은 할 일, 메모, 일정 제목으로만 쓰인다.
 // 무엇을 할 수 있는지와 예시는 docs/integrations.md
 
 import { FOCUS_LENGTHS, type FocusLength } from './focus.ts';
 
-export const URL_SCHEME = 'jjakkung';
+export const URL_SCHEME = 'fairy';
+/** 예전 이름(짝꿍) 때 주소. 만들어 둔 단축어, Raycast 명령이 그대로 돌게 같이 받는다 */
+export const LEGACY_URL_SCHEMES = ['jjakkung'] as const;
+/** 받는 주소 이름 모두 (운영체제 등록도 이것 모두) */
+export const URL_SCHEMES: readonly string[] = [URL_SCHEME, ...LEGACY_URL_SCHEMES];
+
+/** 우리 주소 이름으로 시작하는지 (대소문자 무시) */
+const hasOurScheme = (s: string): boolean => {
+  const low = s.toLowerCase();
+  return URL_SCHEMES.some((name) => low.startsWith(`${name}:`));
+};
 /** 주소 전체 길이 상한 (퍼센트 인코딩 포함). 한글 한 글자가 9바이트(%EA%B0%80)라 넉넉히 */
 export const URL_MAX = 8192;
 /** add 글 상한 (빠른 입력 한 줄) */
@@ -66,22 +76,22 @@ export function cleanUrlText(raw: string, max: number, multiline: boolean): stri
   return text;
 }
 
-/** jjakkung:// 주소 하나를 읽는다. 틀리면 까닭 */
+/** fairy:// (또는 예전 jjakkung://) 주소 하나를 읽는다. 틀리면 까닭 */
 export function parseJjUrl(raw: unknown): UrlParse {
   if (typeof raw !== 'string') return fail('malformed');
   if (raw.length > URL_MAX) return fail('tooLong');
   const trimmed = raw.trim();
-  if (!trimmed.toLowerCase().startsWith(`${URL_SCHEME}:`)) return fail('scheme');
+  if (!hasOurScheme(trimmed)) return fail('scheme');
   let url: URL;
   try {
     url = new URL(trimmed);
   } catch {
     return fail('malformed');
   }
-  if (url.protocol !== `${URL_SCHEME}:`) return fail('scheme');
+  if (!URL_SCHEMES.includes(url.protocol.slice(0, -1))) return fail('scheme');
   // 사용자, 비밀번호, 포트, # 은 쓸 데가 없다. 붙어 오면 무언가 잘못 만든 주소다
   if (url.username || url.password || url.port || url.hash) return fail('malformed');
-  // jjakkung://add?… 는 host 가 동작, jjakkung:add?… (슬래시 없이)는 pathname 이 동작
+  // fairy://add?… 는 host 가 동작, fairy:add?… (슬래시 없이)는 pathname 이 동작
   const name = (url.host || url.pathname.replace(/^\/+/, '')).replace(/\/+$/, '').toLowerCase();
   if (url.host && url.pathname && url.pathname !== '/') return fail('malformed');
   if (!Object.hasOwn(PARAMS, name)) return fail('action');
@@ -124,15 +134,25 @@ export function parseJjUrl(raw: unknown): UrlParse {
  * 우리 주소처럼 보이는 첫 인자. 크로미엄 스위치(--…) 뒤에 붙어 와도 찾는다
  */
 export function urlFromArgv(argv: readonly string[]): string | undefined {
-  return argv.find((a) => typeof a === 'string' && a.toLowerCase().startsWith(`${URL_SCHEME}:`));
+  return argv.find((a) => typeof a === 'string' && hasOurScheme(a));
 }
 
-/** .jjpet 파일 확장자 */
-export const PET_FILE_EXT = '.jjpet';
+/** 페어리 파일 확장자. 새로 내보내는 파일은 이것 */
+export const PET_FILE_EXT = '.fairy';
+/** 예전 이름(짝꿍) 때 확장자. 읽기는 그대로 한다 (안의 모양은 같다, docs/pet-format.md) */
+export const LEGACY_PET_FILE_EXT = '.jjpet';
+/** 읽는 확장자 모두 (점 없이, 파일 고르기 창 거르개용) */
+export const PET_FILE_EXTS_READ = [PET_FILE_EXT.slice(1), LEGACY_PET_FILE_EXT.slice(1)] as const;
+
+/** 페어리 파일로 읽을 이름인지 (.fairy, .jjpet, 대소문자 무시) */
+export const isPetFileName = (name: string): boolean => {
+  const low = name.toLowerCase();
+  return low.endsWith(PET_FILE_EXT) || low.endsWith(LEGACY_PET_FILE_EXT);
+};
 
 /**
- * 명령줄에서 .jjpet 파일 경로 (파일 연결로 두 번 눌러 연 것). 첫 인자(실행 파일)와 스위치는 빼고,
- * 확장자가 정확히 .jjpet 인 것만. 읽기와 검사는 펫 가져오기(backup.ts importPet)가 한다
+ * 명령줄에서 페어리 파일 경로 (파일 연결로 두 번 눌러 연 것). 첫 인자(실행 파일)와 스위치는 빼고,
+ * 확장자가 정확히 .fairy 나 .jjpet 인 것만. 읽기와 검사는 페어리 가져오기(backup.ts importPet)가 한다
  */
 export function petFileFromArgv(argv: readonly string[]): string | undefined {
   return argv
@@ -143,7 +163,7 @@ export function petFileFromArgv(argv: readonly string[]): string | undefined {
         !a.startsWith('-') &&
         a.length < 4096 &&
         !a.includes('\0') &&
-        a.toLowerCase().endsWith(PET_FILE_EXT),
+        isPetFileName(a),
     );
 }
 

@@ -9,6 +9,7 @@ import { type AgeStage, isAgeStage } from './illustrate.ts';
 import { imageSize, sizeOk } from './image-head.ts';
 import { type Blueprint, parseBlueprint } from './pet3d/blueprint.ts';
 import { cleanPetName, isPetKind, type PetKind, type PoseKind } from './settings.ts';
+import { PET_FILE_EXT } from './url-scheme.ts';
 
 export const SHARE_FORMAT = 'jjakkung-pet';
 /** 쓰는 판. 읽기는 1, 2 둘 다 */
@@ -292,6 +293,6 @@ function common(raw: Fields): SharedPet | { error: string } {
 
 /** 파일 이름으로 쓸 수 있게 (공유 파일 이름 기본값) */
 export function shareFileName(name: string): string {
-  const safe = name.replace(/[\\/:*?"<>|\s]+/g, '-').replace(/^-+|-+$/g, '') || 'pet';
-  return `${safe}.jjpet`;
+  const safe = name.replace(/[\\/:*?"<>|\s]+/g, '-').replace(/^-+|-+$/g, '') || 'fairy';
+  return `${safe}${PET_FILE_EXT}`;
 }

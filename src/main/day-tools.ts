@@ -337,7 +337,7 @@ export function createDayTools(o: DayToolsOptions) {
       if (!isAbsolute(base) || !existsSync(base) || !statSync(base).isDirectory())
         return { ok: false, error: 'failed' };
       // 고른 폴더를 어지르지 않게 새 폴더 하나에 모은다 (같은 분에 두 번이면 -2)
-      const out = freePath(join(base, `jjakkung-memos-${stamp(now)}`));
+      const out = freePath(join(base, `fairy-memos-${stamp(now)}`));
       mkdirSync(out, { recursive: true });
       const names = noteFileNames(notes);
       notes.forEach((n, i) => {

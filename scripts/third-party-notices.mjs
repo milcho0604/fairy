@@ -117,7 +117,7 @@ SOFTWARE.`;
 const sorted = [...entries.values()].sort((a, b) => a.name.localeCompare(b.name));
 const rule = '-'.repeat(78);
 const parts = [
-  'Jjakkung (짝꿍) - Third-party notices',
+  'fairy (페어리) - Third-party notices',
   '',
   'This app includes the open source software listed below. Electron and Chromium',
   'notices are in the LICENSE and LICENSES.chromium.html files that ship with the app.',

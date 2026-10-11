@@ -220,5 +220,5 @@ test('저장 경로: 절대 경로만, 확장자는 붙인다, 기본 이름', (
   assert.equal(exportPath('/tmp/a\0b.csv', '.csv'), undefined);
   assert.equal(exportPath('/tmp/', '.csv'), undefined);
   assert.equal(exportPath(undefined, '.csv'), undefined);
-  assert.match(defaultExportName('events-ics', NOW), /^jjakkung-events-\d{8}\.ics$/);
+  assert.match(defaultExportName('events-ics', NOW), /^fairy-events-\d{8}\.ics$/);
 });

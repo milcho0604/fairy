@@ -64,7 +64,7 @@ export function cardDiary(text: string | undefined): string {
 
 /** 저장할 파일 이름 (주 첫날로). 말에 맞는 앞말은 부르는 쪽이 준다 */
 export function cardFileName(prefix: string, today: string): string {
-  const safe = prefix.replace(/[\\/:*?"<>|]/g, '').trim() || 'jjakkung';
+  const safe = prefix.replace(/[\\/:*?"<>|]/g, '').trim() || 'fairy';
   return `${safe}-${cardRange(today).from}.png`;
 }
 

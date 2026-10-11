@@ -32,6 +32,7 @@ import { watchCalendar } from './calendar.ts';
 import { createChat } from './chat.ts';
 import { createCompanion } from './companion.ts';
 import { createDailyNotes } from './daily-note.ts';
+import { chooseDataDir, DATA_DIR_NAME } from './data-move.ts';
 import { createDayTools } from './day-tools.ts';
 import { announceJsonTrouble, announceStoreTrouble, openStore } from './db.ts';
 import { createDiary } from './diary.ts';
@@ -83,11 +84,16 @@ import { createWear } from './wear.ts';
 import { createWeekCard } from './week-card.ts';
 import { createWhatFirst } from './what-first.ts';
 
-// 데이터 폴더를 이름으로 고정한다. 기본값은 앱 이름을 따라가서 설치판(Jjakkung)과 개발판(jjakkung)이
-// 운영체제에 따라 다른 폴더가 되고, 나중에 앱 이름을 바꿔도 데이터를 잃는다.
-// 하나만 띄우기 잠금도 이 폴더에 있어 다른 무엇보다 먼저 정한다.
-// JJ_USER_DATA 는 시험용: 설치판을 실제 데이터와 잠금을 건드리지 않고 따로 띄울 때 쓴다.
-app.setPath('userData', process.env.JJ_USER_DATA || join(app.getPath('appData'), 'jjakkung'));
+// 데이터 폴더를 이름으로 고정한다. 기본값은 앱 이름을 따라가서 설치판과 개발판이 운영체제에 따라 다른 폴더가 되고,
+// 앱 이름을 바꾸면 데이터를 잃는다. 하나만 띄우기 잠금도 이 폴더에 있어 다른 무엇보다 먼저 정한다.
+// 이름이 짝꿍에서 페어리로 바뀌어(2026-10-11) 폴더도 <appData>/fairy. 예전 <appData>/jjakkung 에만 데이터가 있으면
+// 처음 켤 때 통째로 옮긴다 (data-move.ts. 예전 앱이 떠 있거나 못 옮기면 이번에는 예전 폴더를 쓴다).
+// JJ_USER_DATA 는 시험용: 설치판을 실제 데이터와 잠금을 건드리지 않고 따로 띄울 때 쓴다. 이때는 옮기지 않는다.
+const dataChoice = process.env.JJ_USER_DATA ? undefined : chooseDataDir(app.getPath('appData'));
+app.setPath(
+  'userData',
+  process.env.JJ_USER_DATA || (dataChoice?.dir ?? join(app.getPath('appData'), DATA_DIR_NAME)),
+);
 
 // 진단 기록: 설치판도 userData/logs/main.log 에 남긴다(1MB 넘으면 main.old.log 로 돌려 두 개만). 개발 실행은 콘솔에도.
 // 질문, 답, 할 일과 일정 제목은 넘기지 않고, 경로 속 사용자 이름은 log-file.ts 가 가린다
@@ -96,6 +102,14 @@ const log = (tag: string, ...rest: unknown[]) => {
   if (!app.isPackaged) console.log(`[${tag}]`, ...rest);
   writeLog(tag, rest);
 };
+// 데이터 폴더 옮기기 결과는 기록이 생긴 뒤에 남긴다
+if (dataChoice) {
+  const m = dataChoice.move;
+  if (m.kind === 'moved') log('data', '예전 이름(jjakkung) 데이터 폴더를 새 폴더로 옮김', m.from, '→', m.to);
+  else if (m.kind === 'in-use') log('data', '예전 앱이 떠 있어 이번에는 예전 데이터 폴더를 씀', m.dir);
+  else if (m.kind === 'failed')
+    log('data', '예전 데이터 폴더를 옮기지 못해 이번에는 그대로 씀', m.dir, m.error);
+}
 
 // 메인에서 잡지 못한 오류는 기록만 남긴다. 처리기가 없으면 Electron 이 "Uncaught Exception" 창을 띄워
 // 사용자 화면을 막는다 (2026-10-07 사용자 지적: 끄는 중 타이머가 닫힌 저장 파일을 읽었다)
@@ -1444,9 +1458,9 @@ ready
       }
       panel.openTab(panelTabOf(a.tab));
     }
-    /** .jjpet 을 두 번 눌러 열었다: 펫 가져오기와 같은 검사, 같은 확인 창을 거친다 (backup.ts importPet) */
+    /** .fairy (예전 .jjpet) 을 두 번 눌러 열었다: 펫 가져오기와 같은 검사, 같은 확인 창을 거친다 (backup.ts importPet) */
     async function importPetFile(path: string) {
-      log('pet', '.jjpet 열기');
+      log('pet', '페어리 파일 열기');
       const r = await importPet(undefined, false, log, path);
       if (r.message) sayShort(r.message);
     }

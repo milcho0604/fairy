@@ -26,18 +26,22 @@ import { cleanMemoryItem } from '../shared/pet-memory.ts';
 import { filterTodos } from '../shared/todo-filter.ts';
 import { isRepeat, localDay, STEP_MAX, stepProgress, type Todo, TodoStore } from '../shared/todo-store.ts';
 import { MCP_BEAT_FILE } from '../shared/together.ts';
+import { findDataDir } from './data-move.ts';
 import { CHAT_INBOX, writeInbox, writeListInbox } from './memory-inbox.ts';
 
 const VERSION = '0.1.0';
 const PROTOCOLS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 
-/** 짝꿍 메인과 같은 데이터 폴더 (index.ts 의 setPath 와 맞춘다). */
+/**
+ * 페어리 메인과 같은 데이터 폴더 (index.ts 의 setPath 와 맞춘다). 새 앱을 아직 켜지 않아 예전 이름(jjakkung) 폴더에만
+ * 데이터가 있으면 그것을 읽는다. 옮기기는 앱이 켜질 때만 한다 (data-move.ts)
+ */
 function userDataDir(): string {
   if (process.env.JJ_USER_DATA) return process.env.JJ_USER_DATA;
-  if (process.platform === 'darwin') return join(homedir(), 'Library', 'Application Support', 'jjakkung');
+  if (process.platform === 'darwin') return findDataDir(join(homedir(), 'Library', 'Application Support'));
   if (process.platform === 'win32')
-    return join(process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'), 'jjakkung');
-  return join(process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config'), 'jjakkung');
+    return findDataDir(process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'));
+  return findDataDir(process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config'));
 }
 
 let stores: { todos: TodoStore; notes: NoteStore; events: EventStore } | undefined;
@@ -726,7 +730,7 @@ export function handle(msg: Json): Json | undefined {
       return reply({
         protocolVersion: PROTOCOLS.includes(asked) ? asked : PROTOCOLS[0],
         capabilities: { tools: {} },
-        serverInfo: { name: 'jjakkung', version: VERSION },
+        serverInfo: { name: 'fairy', version: VERSION },
         instructions:
           '데스크톱 앱 페어리(화면 위에 사는 작은 친구)의 할 일, 메모, 일정을 다룬다. 사용자가 페어리에 넣어 달라고 할 때 쓴다.',
       });

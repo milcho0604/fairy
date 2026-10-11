@@ -49,7 +49,7 @@ test('자르기는 사람이 보는 글자로 센다 (이모지 하나는 한 �
 test('파일 이름과 받을 그림 검사', () => {
   assert.equal(cardFileName('짝꿍-이번주', '2026-10-11'), '짝꿍-이번주-2026-10-05.png');
   assert.equal(cardFileName('a/b:c', '2026-10-11'), 'abc-2026-10-05.png');
-  assert.equal(cardFileName('  ', '2026-10-11'), 'jjakkung-2026-10-05.png');
+  assert.equal(cardFileName('  ', '2026-10-11'), 'fairy-2026-10-05.png');
   assert.equal(isPngDataUrl('data:image/png;base64,AAAA'), true);
   assert.equal(isPngDataUrl('data:image/jpeg;base64,AAAA'), false);
   assert.equal(isPngDataUrl(42), false);

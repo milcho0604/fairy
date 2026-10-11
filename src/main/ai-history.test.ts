@@ -46,3 +46,20 @@ test('짝꿍 폴더만 지운다: 사용자의 다른 claude 프로젝트, codex
   assert.ok(existsSync(join(codexHome, 'auth.json')));
   assert.equal(aiHistoryBytes(d), 0);
 });
+
+test('데이터 폴더를 fairy 로 옮긴 뒤에도 예전 이름(jjakkung) 작업 폴더의 claude 기록까지 지운다', () => {
+  const home = join(root, 'home2');
+  const userData = join(root, 'data2', 'fairy');
+  const projects = join(home, '.claude', 'projects');
+  const now = join(projects, claudeProjectName(aiWorkDir(userData)));
+  const old = join(projects, claudeProjectName(aiWorkDir(join(root, 'data2', 'jjakkung'))));
+  const other = join(projects, claudeProjectName(aiWorkDir(join(root, 'data2', 'someone-else'))));
+  for (const p of [now, old, other]) {
+    mkdirSync(p, { recursive: true });
+    writeFileSync(join(p, 's.jsonl'), 'x');
+  }
+  clearAiHistory({ userData, home });
+  assert.ok(!existsSync(now));
+  assert.ok(!existsSync(old));
+  assert.ok(existsSync(join(other, 's.jsonl')));
+});

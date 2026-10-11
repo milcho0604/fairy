@@ -1,5 +1,5 @@
 // 설치판(electron-builder --dir 결과) 켜 보기 시험. CI 의 리눅스 묶음 시험(check.yml package-linux)과 손으로 쓴다.
-//   node scripts/dev/smoke-packaged.mjs dist/linux-unpacked/jjakkung
+//   node scripts/dev/smoke-packaged.mjs dist/linux-unpacked/fairy
 // - 빈 데이터 폴더(JJ_USER_DATA)와 JJ_NO_FOCUS=1 로 띄운다 (CLAUDE.md 시험 창 규칙: 창은 보이지 않고 입력을 뺏지 않는다)
 // - 화면(--remote-debugging-port)으로 펫 창이 file:// 에서 열리고 그려졌는지 본다
 // - 설치판은 ELECTRON_RENDERER_URL 을 무시해야 한다: 가짜 주소를 심어 두고 창이 그쪽으로 가지 않았는지 본다

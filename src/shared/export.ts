@@ -294,12 +294,13 @@ export function eventsIcs(
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//jjakkung//jjakkung//KO',
+    'PRODID:-//fairy//fairy//KO',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     `X-WR-CALNAME:${icsText(o.calName ?? t('export.ics.calName'))}`,
   ];
   for (const e of events) {
+    // UID 는 예전 이름 그대로: 바꾸면 이미 가져간 캘린더 앱이 같은 일정을 새 일정으로 겹쳐 넣는다
     lines.push('BEGIN:VEVENT', `UID:jjakkung-event-${e.id}@jjakkung.local`, `DTSTAMP:${icsUtc(now)}`);
     if (e.allDay) {
       const first = day(e.startAt);
@@ -349,10 +350,10 @@ export function exportPath(picked: string | undefined, ext: string): string | un
   return picked.toLowerCase().endsWith(ext) ? picked : `${picked}${ext}`;
 }
 
-/** 대화상자에 미리 넣을 파일 이름 "jjakkung-todos-20261011.csv" */
+/** 대화상자에 미리 넣을 파일 이름 "fairy-todos-20261011.csv" */
 export function defaultExportName(kind: Exclude<ExportKind, 'notes-files'>, now: number): string {
   const stem = { 'notes-md': 'memos', 'todos-md': 'todos', 'todos-csv': 'todos', 'events-ics': 'events' }[
     kind
   ];
-  return `jjakkung-${stem}-${localDay(now).replace(/-/g, '')}${EXT[kind]}`;
+  return `fairy-${stem}-${localDay(now).replace(/-/g, '')}${EXT[kind]}`;
 }

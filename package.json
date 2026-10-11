@@ -1,21 +1,22 @@
 {
-  "name": "jjakkung",
+  "name": "fairy",
+  "productName": "fairy",
   "private": true,
   "version": "0.1.0",
-  "description": "화면 위 펫과 같이 일하는 데스크톱 앱",
+  "description": "화면 위 페어리와 같이 일하는 데스크톱 앱",
   "author": {
     "name": "milcho0604",
     "url": "https://github.com/milcho0604"
   },
-  "homepage": "https://github.com/milcho0604/jjakkung",
+  "homepage": "https://fairy.moilga.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/milcho0604/jjakkung.git"
+    "url": "https://github.com/milcho0604/fairy.git"
   },
   "bugs": {
-    "url": "https://github.com/milcho0604/jjakkung/issues"
+    "url": "https://github.com/milcho0604/fairy/issues"
   },
-  "desktopName": "jjakkung.desktop",
+  "desktopName": "fairy.desktop",
   "license": "MIT",
   "type": "module",
   "main": "out/main/index.js",

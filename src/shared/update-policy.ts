@@ -2,11 +2,13 @@
 import { isNewer, parseVersion, readRelease } from './version.ts';
 
 /**
- * 릴리스를 올리는 레포. 앱의 새 버전 확인(GitHub API)과 자동 설치(electron-updater)가 같이 쓴다.
+ * 이 앱의 GitHub 레포 (주소를 적는 곳은 여기 하나). 릴리스를 올리는 레포라 앱의 새 버전 확인(GitHub API)과
+ * 자동 설치(electron-updater)가 같이 쓰고, 갤러리(gallery.ts), 모델 목록(ai/catalog.ts), 버그 제보(feedback.ts)도 이것으로 주소를 만든다.
+ * 이름이 짝꿍에서 페어리로 바뀌며 레포도 milcho0604/jjakkung → milcho0604/fairy (2026-10-11. 옛 주소는 GitHub 가 넘겨준다).
  * D8(공개 배포)에서 레포를 바꾸면 여기와 electron-builder.yml 의 publish 를 같이 바꾼다
  * (둘이 다르면 update-policy.test.ts 가 깨진다). 토큰은 넣지 않는다. 공개 레포만 읽을 수 있다.
  */
-export const RELEASE_REPO = { owner: 'milcho0604', repo: 'jjakkung' } as const;
+export const RELEASE_REPO = { owner: 'milcho0604', repo: 'fairy' } as const;
 
 export const RELEASES_API = `https://api.github.com/repos/${RELEASE_REPO.owner}/${RELEASE_REPO.repo}/releases/latest`;
 

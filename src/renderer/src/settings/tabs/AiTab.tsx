@@ -141,9 +141,9 @@ function McpSetup({
   onCopied: (ok: boolean) => void;
 }) {
   const q = (p: string) => `"${p.replace(/"/g, '\\"')}"`;
-  const claude = `claude mcp add jjakkung -s user -e ELECTRON_RUN_AS_NODE=1 -- ${q(exec)} ${q(script)}`;
+  const claude = `claude mcp add fairy -s user -e ELECTRON_RUN_AS_NODE=1 -- ${q(exec)} ${q(script)}`;
   const codex = [
-    '[mcp_servers.jjakkung]',
+    '[mcp_servers.fairy]',
     `command = ${JSON.stringify(exec)}`,
     `args = [${JSON.stringify(script)}]`,
     'env = { ELECTRON_RUN_AS_NODE = "1" }',

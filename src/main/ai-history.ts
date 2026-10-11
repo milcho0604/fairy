@@ -7,6 +7,7 @@
 // Electron 없이 시험하려고 폴더를 받는다.
 import { existsSync, lstatSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
+import { DATA_DIR_NAME, LEGACY_DATA_DIR_NAME } from './data-move.ts';
 
 export interface AiHistoryDirs {
   /** 짝꿍 데이터 폴더 (app.getPath('userData')) */
@@ -25,14 +26,25 @@ export function claudeProjectName(cwd: string): string {
 /** 짝꿍 AI 작업 폴더 (runner.ts workDir 과 같아야 한다) */
 export const aiWorkDir = (userData: string) => join(userData, 'ai-workdir');
 
+/**
+ * claude 프로젝트 폴더 이름들. 지금 데이터 폴더 것과, 이름이 바뀌기 전(짝꿍) 데이터 폴더 <appData>/jjakkung 것.
+ * 데이터 폴더를 fairy 로 옮기면(data-move.ts) 작업 폴더 경로가 바뀌어 예전 대화는 예전 이름 프로젝트에 남아 있다
+ */
+function projectNames(userData: string): string[] {
+  const names = [claudeProjectName(aiWorkDir(userData))];
+  if (basename(userData) === DATA_DIR_NAME)
+    names.push(claudeProjectName(aiWorkDir(join(dirname(userData), LEGACY_DATA_DIR_NAME))));
+  return names;
+}
+
 /** 지울 곳들. 모두 짝꿍만 쓰는 폴더나 파일이다 */
 export function aiHistoryPaths(d: AiHistoryDirs): string[] {
   const out: string[] = [];
-  const project = claudeProjectName(aiWorkDir(d.userData));
   const configDirs = [
     ...new Set([d.claudeConfigDir, join(d.home, '.claude')].filter((x): x is string => !!x)),
   ];
-  for (const c of configDirs) out.push(join(c, 'projects', project));
+  for (const c of configDirs)
+    for (const project of projectNames(d.userData)) out.push(join(c, 'projects', project));
   const codexHome = join(d.userData, 'codex-home');
   let names: string[] = [];
   try {
@@ -46,8 +58,7 @@ export function aiHistoryPaths(d: AiHistoryDirs): string[] {
 
 /** 지울 곳이 정말 짝꿍 것인지 한 번 더 본다: claude 는 projects 바로 아래 짝꿍 이름, codex 는 짝꿍 데이터 폴더 안 */
 function ours(path: string, d: AiHistoryDirs): boolean {
-  if (basename(dirname(path)) === 'projects')
-    return basename(path) === claudeProjectName(aiWorkDir(d.userData));
+  if (basename(dirname(path)) === 'projects') return projectNames(d.userData).includes(basename(path));
   return dirname(path) === join(d.userData, 'codex-home') && basename(path) !== 'auth.json';
 }
 

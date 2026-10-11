@@ -3,7 +3,9 @@ import { test } from 'node:test';
 import {
   ADD_TEXT_MAX,
   admitUrl,
+  isPetFileName,
   MEMO_TEXT_MAX,
+  PET_FILE_EXTS_READ,
   panelTabOf,
   parseJjUrl,
   petFileFromArgv,
@@ -23,96 +25,108 @@ const reason = (raw: unknown) => {
 };
 
 test('add: 퍼센트 인코딩 한글과 + 공백', () => {
-  assert.deepEqual(ok('jjakkung://add?text=%EB%82%B4%EC%9D%BC%203%EC%8B%9C%20%ED%9A%8C%EC%9D%98'), {
+  assert.deepEqual(ok('fairy://add?text=%EB%82%B4%EC%9D%BC%203%EC%8B%9C%20%ED%9A%8C%EC%9D%98'), {
     action: 'add',
     text: '내일 3시 회의',
   });
-  assert.deepEqual(ok('jjakkung://add?text=buy+milk+tomorrow'), { action: 'add', text: 'buy milk tomorrow' });
+  assert.deepEqual(ok('fairy://add?text=buy+milk+tomorrow'), { action: 'add', text: 'buy milk tomorrow' });
   // 슬래시 없는 꼴, 끝 슬래시, 대문자 동작도 받는다
-  assert.deepEqual(ok('jjakkung:add?text=a'), { action: 'add', text: 'a' });
-  assert.deepEqual(ok('jjakkung://add/?text=a'), { action: 'add', text: 'a' });
+  assert.deepEqual(ok('fairy:add?text=a'), { action: 'add', text: 'a' });
+  assert.deepEqual(ok('fairy://add/?text=a'), { action: 'add', text: 'a' });
   assert.deepEqual(ok('JJAKKUNG://ADD?text=a'), { action: 'add', text: 'a' });
 });
 
 test('add 는 한 줄: 줄바꿈과 탭은 공백, 제어 문자와 방향 바꾸기 문자는 뺀다', () => {
-  assert.deepEqual(ok('jjakkung://add?text=a%0Ab%09c%00d%E2%80%AEe'), { action: 'add', text: 'a b cde' });
+  assert.deepEqual(ok('fairy://add?text=a%0Ab%09c%00d%E2%80%AEe'), { action: 'add', text: 'a b cde' });
 });
 
 test('memo 는 여러 줄을 남긴다', () => {
-  assert.deepEqual(ok('jjakkung://memo?text=%EC%A0%9C%EB%AA%A9%0A%0A%EB%B3%B8%EB%AC%B8%0D%0A'), {
+  assert.deepEqual(ok('fairy://memo?text=%EC%A0%9C%EB%AA%A9%0A%0A%EB%B3%B8%EB%AC%B8%0D%0A'), {
     action: 'memo',
     text: '제목\n\n본문',
   });
 });
 
 test('길이 상한을 넘으면 자르지 않고 거절', () => {
-  assert.equal(reason(`jjakkung://add?text=${'가'.repeat(ADD_TEXT_MAX + 1)}`), 'tooLong');
-  assert.equal(ok(`jjakkung://add?text=${'a'.repeat(ADD_TEXT_MAX)}`).action, 'add');
-  assert.equal(reason(`jjakkung://memo?text=${'a'.repeat(MEMO_TEXT_MAX + 1)}`), 'tooLong');
-  assert.equal(reason(`jjakkung://memo?text=${'a'.repeat(URL_MAX)}`), 'tooLong');
+  assert.equal(reason(`fairy://add?text=${'가'.repeat(ADD_TEXT_MAX + 1)}`), 'tooLong');
+  assert.equal(ok(`fairy://add?text=${'a'.repeat(ADD_TEXT_MAX)}`).action, 'add');
+  assert.equal(reason(`fairy://memo?text=${'a'.repeat(MEMO_TEXT_MAX + 1)}`), 'tooLong');
+  assert.equal(reason(`fairy://memo?text=${'a'.repeat(URL_MAX)}`), 'tooLong');
 });
 
 test('빈 글, 없는 칸', () => {
-  assert.equal(reason('jjakkung://add'), 'empty');
-  assert.equal(reason('jjakkung://add?text=%20%20'), 'empty');
-  assert.equal(reason('jjakkung://memo?text='), 'empty');
+  assert.equal(reason('fairy://add'), 'empty');
+  assert.equal(reason('fairy://add?text=%20%20'), 'empty');
+  assert.equal(reason('fairy://memo?text='), 'empty');
 });
 
 test('focus: 15, 25, 50 만. 없으면 고른 길이', () => {
-  assert.deepEqual(ok('jjakkung://focus?min=25'), { action: 'focus', min: 25 });
-  assert.deepEqual(ok('jjakkung://focus?min=50'), { action: 'focus', min: 50 });
-  assert.deepEqual(ok('jjakkung://focus'), { action: 'focus' });
+  assert.deepEqual(ok('fairy://focus?min=25'), { action: 'focus', min: 25 });
+  assert.deepEqual(ok('fairy://focus?min=50'), { action: 'focus', min: 50 });
+  assert.deepEqual(ok('fairy://focus'), { action: 'focus' });
   for (const bad of ['0', '24', '-25', '25.0', '1e2', 'abc', '9999', ''])
-    assert.equal(reason(`jjakkung://focus?min=${bad}`), 'value', bad);
+    assert.equal(reason(`fairy://focus?min=${bad}`), 'value', bad);
 });
 
 test('open: 아는 탭만, 없으면 오늘', () => {
-  assert.deepEqual(ok('jjakkung://open?tab=calendar'), { action: 'open', tab: 'calendar' });
-  assert.deepEqual(ok('jjakkung://open'), { action: 'open', tab: 'today' });
-  assert.equal(reason('jjakkung://open?tab=shop'), 'value');
-  assert.equal(reason('jjakkung://open?tab=../../etc'), 'value');
+  assert.deepEqual(ok('fairy://open?tab=calendar'), { action: 'open', tab: 'calendar' });
+  assert.deepEqual(ok('fairy://open'), { action: 'open', tab: 'today' });
+  assert.equal(reason('fairy://open?tab=shop'), 'value');
+  assert.equal(reason('fairy://open?tab=../../etc'), 'value');
   assert.equal(panelTabOf('memo'), 'note');
   assert.equal(panelTabOf('calendar'), 'event');
   assert.equal(panelTabOf('todo'), 'todo');
 });
 
 test('모르는 동작, 모르는 칸, 같은 칸 두 번은 거절', () => {
-  assert.equal(reason('jjakkung://delete?id=1'), 'action');
-  assert.equal(reason('jjakkung://navigate?url=https://evil.example'), 'action');
-  assert.equal(reason('jjakkung://file?path=/etc/passwd'), 'action');
-  assert.equal(reason('jjakkung://__proto__'), 'action');
-  assert.equal(reason('jjakkung://constructor'), 'action');
-  assert.equal(reason('jjakkung://add?text=a&url=https://x'), 'param');
-  assert.equal(reason('jjakkung://add?text=a&text=b'), 'duplicate');
-  assert.equal(reason('jjakkung://open?tab=todo&path=/tmp'), 'param');
+  assert.equal(reason('fairy://delete?id=1'), 'action');
+  assert.equal(reason('fairy://navigate?url=https://evil.example'), 'action');
+  assert.equal(reason('fairy://file?path=/etc/passwd'), 'action');
+  assert.equal(reason('fairy://__proto__'), 'action');
+  assert.equal(reason('fairy://constructor'), 'action');
+  assert.equal(reason('fairy://add?text=a&url=https://x'), 'param');
+  assert.equal(reason('fairy://add?text=a&text=b'), 'duplicate');
+  assert.equal(reason('fairy://open?tab=todo&path=/tmp'), 'param');
 });
 
 test('다른 스킴, 이상한 꼴은 거절', () => {
   assert.equal(reason('https://add?text=a'), 'scheme');
   assert.equal(reason('file:///etc/passwd'), 'scheme');
   assert.equal(reason('javascript:alert(1)'), 'scheme');
-  assert.equal(reason('jjakkungx://add?text=a'), 'scheme');
-  assert.equal(reason('jjakkung://user:pw@add?text=a'), 'malformed');
-  assert.equal(reason('jjakkung://add:99?text=a'), 'malformed');
-  assert.equal(reason('jjakkung://add?text=a#frag'), 'malformed');
-  assert.equal(reason('jjakkung://add/more/path?text=a'), 'malformed');
+  assert.equal(reason('fairyx://add?text=a'), 'scheme');
+  assert.equal(reason('fairy://user:pw@add?text=a'), 'malformed');
+  assert.equal(reason('fairy://add:99?text=a'), 'malformed');
+  assert.equal(reason('fairy://add?text=a#frag'), 'malformed');
+  assert.equal(reason('fairy://add/more/path?text=a'), 'malformed');
   assert.equal(reason(42), 'malformed');
   assert.equal(reason(undefined), 'malformed');
 });
 
-test('명령줄에서 주소와 .jjpet 파일 찾기', () => {
-  const argv = ['/app/Jjakkung', '--allow-file-access-from-files', 'jjakkung://add?text=a'];
-  assert.equal(urlFromArgv(argv), 'jjakkung://add?text=a');
-  assert.equal(urlFromArgv(['/app/Jjakkung', '--inspect']), undefined);
-  assert.equal(
-    petFileFromArgv(['C:\\Jjakkung.exe', 'C:\\Users\\me\\콩이.jjpet']),
-    'C:\\Users\\me\\콩이.jjpet',
-  );
-  assert.equal(petFileFromArgv(['/app/Jjakkung', '/home/me/Kong.JJPET']), '/home/me/Kong.JJPET');
+test('예전 이름 jjakkung:// 주소도 같은 동작으로 받는다 (만들어 둔 단축어가 그대로 돈다)', () => {
+  assert.deepEqual(ok('jjakkung://add?text=a'), { action: 'add', text: 'a' });
+  assert.deepEqual(ok('JJAKKUNG://focus?min=25'), { action: 'focus', min: 25 });
+  assert.deepEqual(ok('jjakkung:open?tab=memo'), { action: 'open', tab: 'memo' });
+  assert.equal(reason('jjakkung://delete?id=1'), 'action');
+  assert.equal(reason('jjakkungfairy://add?text=a'), 'scheme');
+  assert.equal(urlFromArgv(['/app/fairy', 'jjakkung://add?text=a']), 'jjakkung://add?text=a');
+});
+
+test('명령줄에서 주소와 .fairy (예전 .jjpet) 파일 찾기', () => {
+  const argv = ['/app/fairy', '--allow-file-access-from-files', 'fairy://add?text=a'];
+  assert.equal(urlFromArgv(argv), 'fairy://add?text=a');
+  assert.equal(urlFromArgv(['/app/fairy', '--inspect']), undefined);
+  assert.equal(petFileFromArgv(['C:\\fairy.exe', 'C:\\Users\\me\\콩이.jjpet']), 'C:\\Users\\me\\콩이.jjpet');
+  assert.equal(petFileFromArgv(['/app/fairy', '/home/me/Kong.JJPET']), '/home/me/Kong.JJPET');
+  assert.equal(petFileFromArgv(['/app/fairy', '/home/me/콩이.fairy']), '/home/me/콩이.fairy');
+  assert.equal(petFileFromArgv(['/app/fairy', '/home/me/Kong.FAIRY']), '/home/me/Kong.FAIRY');
+  assert.ok(isPetFileName('a.fairy') && isPetFileName('a.jjpet') && !isPetFileName('a.fairy.exe'));
+  assert.deepEqual([...PET_FILE_EXTS_READ], ['fairy', 'jjpet']);
   // 실행 파일 자리, 스위치, 다른 확장자는 아니다
   assert.equal(petFileFromArgv(['/x/evil.jjpet']), undefined);
   assert.equal(petFileFromArgv(['/app', '--file=a.jjpet']), undefined);
   assert.equal(petFileFromArgv(['/app', '/tmp/a.jjpet.exe']), undefined);
+  assert.equal(petFileFromArgv(['/x/evil.fairy']), undefined);
+  assert.equal(petFileFromArgv(['/app', '/tmp/fairy']), undefined);
   assert.equal(petFileFromArgv(['/app', '/tmp/a.json']), undefined);
 });
 
