@@ -264,8 +264,7 @@ export const en: Translation<typeof ko> = {
       : v.todos === 0
         ? `Added ${plural(v.events, 'event')}`
         : `Added ${plural(v.todos, 'to-do')} and ${plural(v.events, 'event')}`,
-  'panel.event.noRepeat':
-    "Repeating events aren't supported yet. Write it in To-dos to make a repeating to-do.",
+  'panel.event.noRepeat': "Events can't repeat. Write it in To-dos to make a repeating to-do.",
   'panel.noteAi.summary': 'Summarize the note below in three lines or fewer.',
   'panel.noteAi.todos':
     "Break the note below into a list of to-dos I can start right away. One per line, each starting with '- ', no explanations.",
