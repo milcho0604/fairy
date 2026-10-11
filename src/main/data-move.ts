@@ -1,6 +1,6 @@
 // 데이터 폴더 옮기기 (짝꿍 → 페어리 이름 바꾸기, 2026-10-11).
 // 예전 이름 때 데이터는 <appData>/jjakkung 에 있었다. 새 이름은 <appData>/fairy.
-// 처음 켤 때 새 폴더가 없고 예전 폴더에 데이터가 있으면 폴더째 이름만 바꾼다 (같은 부모 안 rename 이라 한 번에 되거나
+// 처음 켤 때 새 폴더가 없고(또는 크로미엄이 만든 것만 있고) 예전 폴더에 데이터가 있으면 폴더째 이름만 바꾼다 (같은 부모 안 rename 이라 한 번에 되거나
 // 아예 안 된다. 복사가 없어 큰 AI 모델 파일도 그대로). 옮긴 뒤 예전 자리에는 어디로 갔는지 적은 안내 파일만 남긴다.
 // 예전 앱이 아직 떠 있거나(잠금이 살아 있음) 이름 바꾸기가 실패하면 이번에는 예전 폴더를 그대로 쓰고 다음에 다시 해 본다.
 // 어느 쪽이든 데이터를 지우거나 덮어쓰지 않는다. 메인(index.ts)과 MCP 서버(mcp-server.ts)가 같이 쓴다. electron 을 부르지 않는다
@@ -30,13 +30,60 @@ export type DataMove =
   /** 옮길 것 없음 (새로 설치했거나 이미 새 폴더) */
   | { kind: 'none' }
   /** 예전 폴더를 새 이름으로 옮겼다 */
-  | { kind: 'moved'; from: string; to: string }
+  | { kind: 'moved'; from: string; to: string; aside?: string }
   /** 예전 앱이 그 폴더를 쓰는 중이라 이번에는 예전 폴더를 쓴다 */
   | { kind: 'in-use'; dir: string }
   /** 옮기지 못해 이번에는 예전 폴더를 쓴다 (다음에 켤 때 다시 해 본다) */
   | { kind: 'failed'; dir: string; error: string };
 
 export type DataDirChoice = { dir: string; move: DataMove };
+
+/**
+ * 크로미엄/Electron 이 데이터 폴더에 스스로 만드는 것 (사용자 데이터가 아니다). 새 폴더에 이것만 있으면 아직 빈 것으로 본다.
+ * 페어리 저장 파일(jjakkung.db*), 설정(*.json), 펫 그림(pets), 모델(models) 같은 것은 여기 없다
+ */
+const HOUSEKEEPING = new Set([
+  'Crashpad',
+  'Local State',
+  'GPUCache',
+  'GPUPersistentCache',
+  'DawnCache',
+  'DawnGraphiteCache',
+  'DawnWebGPUCache',
+  'ShaderCache',
+  'GrShaderCache',
+  'Code Cache',
+  'Cache',
+  'DIPS',
+  'DIPS-wal',
+  'DIPS-journal',
+  'Dictionaries',
+  'Shared Dictionary',
+  'SharedStorage',
+  'Trust Tokens',
+  'Trust Tokens-journal',
+  'Network Persistent State',
+  'TransportSecurity',
+  'Preferences',
+  'blob_storage',
+  'DevToolsActivePort',
+  'SingletonLock',
+  'SingletonSocket',
+  'SingletonCookie',
+  'lockfile',
+  'declarative_performance_observer.db',
+  'declarative_performance_observer.db-journal',
+  'logs',
+]);
+const isHousekeeping = (name: string) => HOUSEKEEPING.has(name) || name === '.DS_Store';
+
+/** 비켜 둘 이름: <appData>/fairy.pre-move-<시각>, 있으면 -2, -3 … */
+function freeAside(appData: string, at: Date): string {
+  const stamp = at.toISOString().replace(/[-:]/g, '').replace(/\..*$/, '');
+  let p = join(appData, `${DATA_DIR_NAME}.pre-move-${stamp}`);
+  for (let i = 2; existsSync(p); i++) p = join(appData, `${DATA_DIR_NAME}.pre-move-${stamp}-${i}`);
+  return p;
+}
 
 const hasData = (dir: string): boolean =>
   !existsSync(join(dir, MOVED_MARKER)) && DATA_FILES.some((f) => existsSync(join(dir, f)));
@@ -94,27 +141,46 @@ export function chooseDataDir(
   const from = join(appData, LEGACY_DATA_DIR_NAME);
   const none: DataDirChoice = { dir: to, move: { kind: 'none' } };
   if (!existsSync(from) || !hasData(from)) return none;
+  if ((o.inUse ?? lockAlive)(from)) return { dir: from, move: { kind: 'in-use', dir: from } };
+  // 새 폴더가 이미 있으면: 비었으면 치우고, 크로미엄/Electron 이 스스로 만드는 것(Crashpad, Local State, 캐시)만 있으면
+  // 옆 이름(fairy.pre-move-<시각>)으로 비켜 두고 옮긴다 (지우지 않는다. 맥은 켜자마자 Crashpad 를 만들 수 있다).
+  // 저장 파일, 설정, 펫 그림처럼 사용자 것이 하나라도 있거나 모르는 것이 있으면 새 폴더가 주인이다
+  let aside: string | undefined;
   if (existsSync(to)) {
-    // 새 폴더가 비어 있을 때만(무엇이 먼저 만들어 둔 빈 폴더) 치우고 옮긴다. 무엇이든 들어 있으면 새 폴더가 주인이다
-    let empty = false;
+    let entries: string[] | undefined;
     try {
-      empty = readdirSync(to).length === 0;
-    } catch {
-      empty = false;
-    }
-    if (!empty) return none;
-    try {
-      rmdirSync(to);
+      entries = readdirSync(to);
     } catch {
       return none;
     }
+    if (entries.length === 0) {
+      try {
+        rmdirSync(to);
+      } catch {
+        return none;
+      }
+    } else {
+      if (!entries.every(isHousekeeping) || (o.inUse ?? lockAlive)(to)) return none;
+      aside = freeAside(appData, o.now ?? new Date());
+      try {
+        (o.rename ?? renameSync)(to, aside);
+      } catch {
+        return none;
+      }
+    }
   }
-  if ((o.inUse ?? lockAlive)(from)) return { dir: from, move: { kind: 'in-use', dir: from } };
   try {
     (o.rename ?? renameSync)(from, to);
   } catch (err) {
     // 같이 켠 다른 페어리가 먼저 옮겼으면 새 폴더를 쓴다
     if (existsSync(to) && !hasData(from)) return none;
+    // 비켜 둔 것은 제자리로 (못 하면 옆 이름 그대로 둔다)
+    if (aside && !existsSync(to))
+      try {
+        renameSync(aside, to);
+      } catch {
+        // 지우지 않는다
+      }
     return { dir: from, move: { kind: 'failed', dir: from, error: (err as Error)?.message ?? String(err) } };
   }
   // 옮긴 뒤 예전 자리에 안내만 남긴다. 실패해도 데이터는 이미 새 폴더에 있다
@@ -124,7 +190,7 @@ export function chooseDataDir(
   } catch {
     // 안내 파일은 없어도 된다
   }
-  return { dir: to, move: { kind: 'moved', from, to } };
+  return { dir: to, move: { kind: 'moved', from, to, ...(aside ? { aside } : {}) } };
 }
 
 /**

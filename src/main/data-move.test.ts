@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -153,6 +154,59 @@ test('MCP 서버 폴더: 새 앱을 아직 켜지 않았으면 예전 폴더를 
   assert.equal(findDataDir(p.root), p.old);
   chooseDataDir(p.root, { inUse: notRunning });
   assert.equal(findDataDir(p.root), p.now);
+});
+
+test('데이터 옮기기: 새 폴더에 크로미엄이 만든 것(Crashpad 등)만 있으면 옆으로 비켜 두고 옮긴다 (지우지 않는다)', () => {
+  const p = appData();
+  seedOld(p.old);
+  mkdirSync(join(p.now, 'Crashpad', 'completed'), { recursive: true });
+  writeFileSync(join(p.now, 'Crashpad', 'settings.dat'), 'crashpad');
+  writeFileSync(join(p.now, 'Local State'), '{}');
+  const r = chooseDataDir(p.root, { inUse: notRunning, now: AT });
+  assert.equal(r.dir, p.now);
+  assert.equal(r.move.kind, 'moved');
+  const aside = r.move.kind === 'moved' ? r.move.aside : undefined;
+  assert.equal(aside, join(p.root, 'fairy.pre-move-20261011T000000'));
+  // 데이터는 새 폴더에, 비켜 둔 것도 그대로
+  assert.equal(readFileSync(join(p.now, 'jjakkung.db'), 'utf8'), 'db-bytes');
+  assert.equal(readFileSync(join(p.now, 'models', 'big.gguf'), 'utf8'), 'model');
+  assert.equal(readFileSync(join(aside as string, 'Crashpad', 'settings.dat'), 'utf8'), 'crashpad');
+  assert.ok(existsSync(join(aside as string, 'Local State')));
+  assert.ok(existsSync(join(p.old, MOVED_MARKER)));
+});
+
+test('데이터 옮기기: 비켜 둔 뒤 옮기기가 실패하면 새 폴더를 제자리로 돌리고 예전 폴더를 쓴다', () => {
+  const p = appData();
+  seedOld(p.old);
+  mkdirSync(join(p.now, 'Crashpad'), { recursive: true });
+  const r = chooseDataDir(p.root, {
+    inUse: notRunning,
+    now: AT,
+    rename: (a, b) => {
+      if (a === p.old) throw Object.assign(new Error('EBUSY'), { code: 'EBUSY' });
+      renameSync(a, b);
+    },
+  });
+  assert.equal(r.dir, p.old);
+  assert.equal(r.move.kind, 'failed');
+  assert.ok(existsSync(join(p.now, 'Crashpad')));
+  assert.ok(!existsSync(join(p.root, 'fairy.pre-move-20261011T000000')));
+  assert.ok(existsSync(join(p.old, 'jjakkung.db')));
+});
+
+test('데이터 옮기기: 새 폴더에 settings.json 이나 모르는 것이 있으면 Crashpad 가 있어도 건드리지 않는다', () => {
+  for (const mine of ['settings.json', 'jjakkung.db', 'pets', 'something-else']) {
+    const p = appData();
+    seedOld(p.old);
+    mkdirSync(join(p.now, 'Crashpad'), { recursive: true });
+    if (mine === 'pets') mkdirSync(join(p.now, mine));
+    else writeFileSync(join(p.now, mine), '{}');
+    const r = chooseDataDir(p.root, { inUse: notRunning, now: AT });
+    assert.deepEqual(r, { dir: p.now, move: { kind: 'none' } }, mine);
+    assert.ok(existsSync(join(p.now, mine)), mine);
+    assert.equal(readFileSync(join(p.old, 'jjakkung.db'), 'utf8'), 'db-bytes', mine);
+    assert.ok(!existsSync(join(p.old, MOVED_MARKER)), mine);
+  }
 });
 
 test('예전 앱이 막을 때만 알리고 끝낸다 (이미 떠 있는 페어리에 두 번째로 켠 것은 말없이)', () => {

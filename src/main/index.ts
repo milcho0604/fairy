@@ -105,7 +105,15 @@ const log = (tag: string, ...rest: unknown[]) => {
 // 데이터 폴더 옮기기 결과는 기록이 생긴 뒤에 남긴다
 if (dataChoice) {
   const m = dataChoice.move;
-  if (m.kind === 'moved') log('data', '예전 이름(jjakkung) 데이터 폴더를 새 폴더로 옮김', m.from, '→', m.to);
+  if (m.kind === 'moved')
+    log(
+      'data',
+      '예전 이름(jjakkung) 데이터 폴더를 새 폴더로 옮김',
+      m.from,
+      '→',
+      m.to,
+      ...(m.aside ? ['(먼저 있던 새 폴더는 비켜 둠', m.aside, ')'] : []),
+    );
   else if (m.kind === 'in-use') log('data', '예전 앱이 떠 있어 이번에는 예전 데이터 폴더를 씀', m.dir);
   else if (m.kind === 'failed')
     log('data', '예전 데이터 폴더를 옮기지 못해 이번에는 그대로 씀', m.dir, m.error);
