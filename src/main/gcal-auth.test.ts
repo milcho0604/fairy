@@ -60,7 +60,7 @@ test('state: 길이 32 의 무작위, 시간이 새지 않게 맞춰 본다', ()
   const s = newState();
   assert.match(s, /^[A-Za-z0-9_-]{32}$/);
   assert.ok(sameState(s, s));
-  assert.ok(!sameState(s, `${s.slice(0, -1)}x`));
+  assert.ok(!sameState(s, `${s.slice(0, -1)}${s.endsWith('x') ? 'y' : 'x'}`));
   assert.ok(!sameState(s, s.slice(1)));
   assert.ok(!sameState('', ''));
 });
