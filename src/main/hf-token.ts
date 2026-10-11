@@ -14,8 +14,10 @@ let cached: string | undefined | null = null;
 export const hfToken = {
   get(): string | undefined {
     if (cached !== null) return cached;
-    cached = cleanHfToken(file().read());
-    return cached;
+    const v = cleanHfToken(file().read());
+    // 준비 전에는 암호를 못 풀 수 있다 (리눅스). 그때 읽은 "없음"은 기억하지 않는다
+    if (app.isReady()) cached = v;
+    return v;
   },
   has(): boolean {
     return !!hfToken.get();
