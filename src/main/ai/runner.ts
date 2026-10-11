@@ -84,8 +84,13 @@ function sweepTempImages(): void {
 
 export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
   sweepTempImages();
+  // 그림을 실은 질문은 claude, codex 가 세션 기록에 그림째 남긴다. 늘 기록 없이 부른다 (2026-10-11 보안 점검).
+  // 이어가기도 하지 않는다: 이어 간 세션 파일에 그림이 덧붙기 때문이다 (부르는 쪽이 최근 대화를 글로 붙인다)
+  const noSave = !!reqIn.ephemeral || reqIn.images.length > 0;
   const req: AiRequest = {
     ...reqIn,
+    ephemeral: noSave,
+    sessionId: noSave ? undefined : reqIn.sessionId,
     text: noNul(reqIn.text),
     persona: noNul(reqIn.persona),
     history: reqIn.history.map((h) => ({ question: noNul(h.question), answer: noNul(h.answer) })),
