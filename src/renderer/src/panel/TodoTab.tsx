@@ -405,16 +405,18 @@ export function TodoRow({
             title={compact ? undefined : t('panel.todo.clickToEdit')}
             onClick={() => !compact && setEditing(true)}
           >
-            {titleParts(todo.title).map((p, i) =>
-              p.tag ? (
-                // biome-ignore lint/suspicious/noArrayIndexKey: 제목 조각은 순서가 곧 자리다
-                <span key={i} className="tag">
-                  {p.text}
-                </span>
-              ) : (
-                p.text
-              ),
-            )}
+            <span className="title-text">
+              {titleParts(todo.title).map((p, i) =>
+                p.tag ? (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: 제목 조각은 순서가 곧 자리다
+                  <span key={i} className="tag">
+                    {p.text}
+                  </span>
+                ) : (
+                  p.text
+                ),
+              )}
+            </span>
           </button>
         )}
         {/* 줄 끝 단추. 마우스를 올려야 나오는 것(extra)은 제목 위에 겹쳐 띄워 제목 폭과 줄 높이가 바뀌지 않게 */}

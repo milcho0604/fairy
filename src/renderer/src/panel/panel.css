@@ -200,6 +200,7 @@ input {
 
 .todo {
   display: flex;
+  flex-wrap: wrap;
   /* 제목이 여러 줄이어도 동그라미와 버튼은 첫 줄에 맞춘다 */
   align-items: flex-start;
   gap: 6px;
@@ -254,16 +255,22 @@ p.empty {
   color: var(--ok-ink);
 }
 
-/* 제목 단추는 글자만큼만 (짧은 제목 옆 빈자리에 마우스를 올리면 뜨는 단추가 겹친다: 제목 누르기가 단추 누르기가 됐다).
-   줄 끝 단추 묶음은 margin-left: auto 로 오른쪽 끝에 */
+/* 제목 단추는 줄을 채우되 누르기는 글자(.title-text)만 받는다. 짧은 제목 옆 빈자리에는 마우스를 올리면 뜨는 단추가
+   겹쳐서 제목 누르기가 단추 누르기가 됐다. 줄 끝 단추가 넓으면(반복, 알림, "내일 오전 9:00") 제목이 한 글자씩 접히지 않게
+   제목 자리를 남기고 단추를 다음 줄로 */
 .todo .title {
-  flex: 0 1 auto;
-  min-width: 0;
+  flex: 1 1 0;
+  min-width: min(5em, 40%);
+  pointer-events: none;
   padding: 0;
   border: 0;
   background: none;
   text-align: left;
   cursor: text;
+}
+
+.todo .title-text {
+  pointer-events: auto;
 }
 
 .done-item .title {
