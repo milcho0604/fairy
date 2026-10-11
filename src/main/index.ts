@@ -1188,7 +1188,7 @@ ready
         void pet
           .say({
             kind: 'schedule',
-            text: t('gcal.lost'),
+            text: voiced('gcal.lost'),
             buttons: [{ id: 'settings', label: t('pet.calendarSettings') }],
             ttlMs: 30_000,
             hold: { missedMsgs: [{ key: 'gcal.lost' }], onAction: openCalendarSettings },

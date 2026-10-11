@@ -26,7 +26,7 @@ export const ko = {
     '일정 쓰기 권한만 받아 (다른 캘린더 정보는 못 봐). 연결 토큰은 이 컴퓨터에만 두고 설정, 백업에 넣지 않아.',
   'gcal.problem.expired': '구글 연결이 끝났어. 구글에서 권한을 거뒀거나 오래돼서 그래. 다시 연결해 줄래?',
   'gcal.problem.relink':
-    '이 컴퓨터에 저장해 둔 구글 연결을 열 수 없어 (앱 이름이 바뀌었거나 열쇠고리가 바뀌면 그래). 한 번만 다시 연결해 줄래?',
+    '저장해 둔 구글 연결을 더는 열 수 없어. 앱 이름이나 열쇠고리가 바뀌면 이럴 수 있어. 한 번만 다시 연결해 줄래?',
   'gcal.problem.denied': '구글에서 허락하지 않았어. 다시 연결하면 처음부터 할 수 있어.',
   'gcal.problem.scope': '캘린더 권한이 체크되지 않았어. 다시 연결할 때 캘린더 일정 칸을 체크해 줘.',
   'gcal.problem.timeout': '브라우저에서 너무 오래 기다렸어. 다시 연결해 줘.',
@@ -37,7 +37,7 @@ export const ko = {
   'gcal.page.okBody': '이 창은 닫아도 돼. 페어리로 돌아가 줘.',
   'gcal.page.failTitle': '연결하지 못했어',
   'gcal.page.failBody': '페어리 설정에서 다시 연결해 줘. 이 창은 닫아도 돼.',
-  'gcal.lost': '구글 캘린더 연결이 끝났어. 설정에서 다시 연결해 줄래?',
+  'gcal.lost': '구글 캘린더 연결이 끊겼어. 설정에서 다시 연결해 줄래?',
 };
 
 export const en: Translation<typeof ko> = {
@@ -67,7 +67,7 @@ export const en: Translation<typeof ko> = {
   'gcal.problem.expired':
     'Your Google connection ended (access was removed in Google, or it expired). Could you connect again?',
   'gcal.problem.relink':
-    "The Google connection saved on this computer can't be opened anymore (this happens when the app is renamed or the keychain changes). Could you connect once more?",
+    "The saved Google connection can't be opened anymore. This can happen when the app is renamed or the keychain changes. Could you connect once more?",
   'gcal.problem.denied': "Google access wasn't allowed. You can connect again to start over.",
   'gcal.problem.scope':
     "The calendar permission wasn't checked. When you connect again, check the calendar events box.",
@@ -79,5 +79,5 @@ export const en: Translation<typeof ko> = {
   'gcal.page.okBody': 'You can close this tab and go back to fairy.',
   'gcal.page.failTitle': "Couldn't connect",
   'gcal.page.failBody': 'Try again from fairy settings. You can close this tab.',
-  'gcal.lost': 'Your Google Calendar connection ended. Could you reconnect it in settings?',
+  'gcal.lost': 'Google Calendar got disconnected. Could you reconnect it in settings?',
 };
