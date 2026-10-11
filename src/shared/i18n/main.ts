@@ -4,7 +4,7 @@ import type { Translation } from './types.ts';
 // main 영역 글
 export const ko = {
   'main.onboardingTitle': '짝꿍 시작하기',
-  'main.model.offline': '인터넷에 연결되어 있지 않아 받지 못했어. 연결을 확인하고 다시 해 줘.',
+  'main.model.offline': '인터넷에 연결되어 있지 않아 받지 못했어. 인터넷 연결을 확인하고 다시 해 줘.',
   'main.model.network': '연결이 불안정해서 받지 못했어. 인터넷 연결을 확인하고 잠시 뒤 다시 해 줘.',
   'main.model.server': (v: { status: number }) =>
     `받을 곳의 서버가 지금 답하지 않아 (${v.status}). 잠시 뒤 다시 해 줘.`,
@@ -87,7 +87,7 @@ export const ko = {
     "그림 서버가 이유 없이 거절했어. 대개 오늘 무료 횟수(네 인터넷 연결마다 따로, 하루면 다시 채워져)를 다 썼을 때 이래. 아래 'Gemini 앱(무료)에서 만들기'나 '내 컴퓨터에서 그리기'를 쓰거나, 무료 Hugging Face 토큰을 넣어 줘.",
   'main.illust.refusedToken':
     '그림 서버가 이유 없이 거절했어. 대개 이 토큰의 오늘 무료 사용량을 다 썼을 때 이래. 조금 있다가 또는 내일 다시 해 줘.',
-  'main.illust.offline': '그림 서버에 연결하지 못했어. 인터넷 연결을 보고 다시 해 줘.',
+  'main.illust.offline': '그림 서버에 연결하지 못했어. 인터넷 연결을 확인하고 다시 해 줘.',
   'main.illust.timeout': '너무 오래 걸려서 멈췄어. 조금 있다가 다시 해 줘.',
   'main.illust.cancelled': '그리기를 멈췄어.',
   'main.illust.bad': '그림 서버가 새 그림을 주지 않았어. 다시 그려 보거나 사진 그대로 해 줘.',
@@ -104,7 +104,7 @@ export const ko = {
     `저장 공간이 모자라. 준비하는 동안 ${v.gb}GB쯤 비어 있어야 해. 공간을 비우고 다시 눌러 줘.`,
   'main.localDraw.disk': '저장 공간이 모자라서 그리지 못했어. 1GB쯤 비우고 다시 해 줘.',
   'main.localDraw.offline':
-    '받는 중에 인터넷 연결이 끊겼어. 연결을 보고 준비하기를 다시 눌러 줘. 받은 데까지는 이어서 받아.',
+    '받는 중에 인터넷 연결이 끊겼어. 인터넷 연결을 확인하고 준비하기를 다시 눌러 줘. 받은 데까지는 이어서 받아.',
   'main.localDraw.memory': '메모리가 모자라서 멈췄어. 다른 앱을 닫고 다시 해 줘.',
   'main.localDraw.battery': '배터리가 거의 없어서 멈췄어. 전원을 꽂고 다시 해 줘.',
   'main.localDraw.timeout': '너무 오래 걸려서 멈췄어. 다른 앱을 닫고 다시 해 줘.',
@@ -144,7 +144,7 @@ export const ko = {
 
 export const en: Translation<typeof ko> = {
   'main.onboardingTitle': 'Getting started',
-  'main.model.offline': "You're not connected to the internet. Check your connection and try again.",
+  'main.model.offline': "You're not connected to the internet. Check your internet connection and try again.",
   'main.model.network':
     "The connection wasn't stable enough to download. Check your internet connection and try again in a moment.",
   'main.model.server': (v: { status: number }) =>
@@ -228,7 +228,7 @@ export const en: Translation<typeof ko> = {
     "The drawing server said no without a reason. That usually means today's free drawings (counted per internet connection, refilled after a day) are used up. Use 'Make it in the Gemini app (free)' or 'Draw on this computer' below, or add a free Hugging Face token.",
   'main.illust.refusedToken':
     "The drawing server said no without a reason. That usually means this token's free use for today is used up. Try again later or tomorrow.",
-  'main.illust.offline': "Couldn't reach the drawing server. Check your internet and try again.",
+  'main.illust.offline': "Couldn't reach the drawing server. Check your internet connection and try again.",
   'main.illust.timeout': 'It took too long, so I stopped. Try again in a bit.',
   'main.illust.cancelled': 'Stopped drawing.',
   'main.illust.bad': "The drawing server didn't send a new picture. Draw again, or use the photo as is.",
@@ -244,7 +244,7 @@ export const en: Translation<typeof ko> = {
     `Not enough disk space. Setup needs about ${v.gb} GB free. Free up some space and press Set up again.`,
   'main.localDraw.disk': 'Not enough disk space to draw. Free up about 1 GB and try again.',
   'main.localDraw.offline':
-    'The internet connection dropped while downloading. Check it and press Set up again. It picks up where it left off.',
+    'The internet connection dropped while downloading. Check your internet connection and press Set up again. It picks up where it left off.',
   'main.localDraw.memory': 'Ran out of memory, so I stopped. Close other apps and try again.',
   'main.localDraw.battery': 'The battery is almost empty, so I stopped. Plug in and try again.',
   'main.localDraw.timeout': 'It took too long, so I stopped. Close other apps and try again.',
