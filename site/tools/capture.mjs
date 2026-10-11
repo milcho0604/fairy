@@ -9,7 +9,7 @@
 //   OUT=<dir> DISPLAY=:<n> node site/tools/capture.mjs          # needs a display (Xvfb on Linux)
 //
 // 시험 창 규칙 (CLAUDE.md): JJ_NO_FOCUS=1, 빈 JJ_USER_DATA(끝나면 지운다), 포트 JJ_INSPECT_PORT/JJ_PAGE_PORT (기본 9851/9852),
-// 입력은 CDP 로만. 선택: BG_MODEL=<isnet-general-use.onnx> 를 주면 배경 지우기 모델을 받지 않고 복사해 쓴다.
+// 입력은 CDP 로만. 바깥 인터넷은 막고(--proxy-server=127.0.0.1:9) 띄운다. 선택: BG_MODEL=<isnet-general-use.onnx> 를 주면 배경 지우기 모델을 받지 않고 복사해 쓴다.
 // JJ_ORT_WASM_URL 은 그대로 앱에 넘어간다 (scripts/dev/README.md).
 import { spawn } from 'node:child_process';
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -37,7 +37,8 @@ writeFileSync(join(data, 'settings.json'), JSON.stringify({
   lookAtCursor: false, sound: false, dayRhythm: false, chatter: 'quiet', aiKnowsTodos: true,
 }));
 writeFileSync(join(data, 'day-plan.json'), JSON.stringify({ prefs: { auto: false, fromMinute: 480 } }));
-const args = [`--inspect=${INSPECT}`, '.', `--remote-debugging-port=${PAGE}`];
+// no outside network while shooting (AI, updates, gallery, model downloads stay off)
+const args = [`--inspect=${INSPECT}`, '.', `--remote-debugging-port=${PAGE}`, '--proxy-server=127.0.0.1:9'];
 if (process.platform === 'linux') args.push('--ignore-gpu-blocklist', '--use-angle=swiftshader', '--enable-unsafe-swiftshader');
 if (process.getuid?.() === 0) args.push('--no-sandbox');
 const app = spawn(electronPath, args, { cwd: root, env: { ...process.env, JJ_NO_FOCUS: '1', JJ_USER_DATA: data }, stdio: 'ignore' });
@@ -191,7 +192,7 @@ try {
   await sleep(1500);
   for (const dark of [false, true]) {
     await panel.dark(dark);
-    for (const tab of ['today', 'todo', 'note', 'event']) {
+    for (const tab of dark ? ['today', 'todo', 'note', 'event'] : ['today', 'todo', 'note', 'event', 'shop']) {
       await main(`__jj.panel.openTab('${tab}'); 1`);
       await sleep(900);
       await panel.shot(`raw-panel-${tab}${dark ? '-dark' : ''}.png`);
@@ -233,6 +234,20 @@ try {
   await chat.ev(`document.querySelector('.picker-button').click(); 1`);
   await main('__jj.chat.window.hide(); 1');
 
+  // ---- settings: the fairy tab (looks) and the AI tab ----
+  await main('__jj.settingsWindow.open(); 1');
+  await sleep(2500);
+  const st = await page('settings');
+  await st.size(440, 840);
+  await main(`__jj.pet.win.constructor.getAllWindows().find((w) => w.webContents.getURL().includes('settings.html')).setContentSize(440, 840); 1`);
+  await sleep(600);
+  for (const tab of ['pet', 'ai']) {
+    await st.ev(`document.getElementById('tab-${tab}').click(); document.activeElement?.blur(); 1`);
+    await sleep(700);
+    await st.shot(`raw-settings-${tab}.png`);
+  }
+  await main(`__jj.pet.win.constructor.getAllWindows().find((w) => w.webContents.getURL().includes('settings.html')).hide(); 1`);
+
   // ---- first-run guide: the look picker ----
   await main('__jj.onboarding.open(); 1');
   await sleep(2000);
@@ -256,6 +271,14 @@ try {
   await mk.dark(false);
   await sleep(500);
   await mk.shot('raw-maker-pick.png');
+  // the "redraw as an AI illustration" choice, before a photo is picked
+  await mk.ev(`[...document.querySelectorAll('fieldset.segmented button')].at(-1).click(); document.activeElement?.blur(); 1`);
+  await sleep(600);
+  await mk.shot('raw-maker-illust.png');
+  await mk.ev(`[...document.querySelectorAll('fieldset.segmented button')][0].click(); document.activeElement?.blur(); 1`);
+  await sleep(400);
+  // the next two steps need the background model (178MB, downloaded on first use): skip them without BG_MODEL
+  if (!process.env.BG_MODEL) throw new Error('skip-maker');
   const doc = await mk.send('DOM.getDocument', {});
   const q = await mk.send('DOM.querySelector', { nodeId: doc.result.root.nodeId, selector: 'input[type=file]' });
   await mk.send('DOM.setFileInputFiles', { nodeId: q.result.nodeId, files: [PHOTO] });
@@ -276,7 +299,12 @@ try {
 
   writeFileSync(join(OUT, 'rects.json'), JSON.stringify({ ...rects, scale: SCALE }, null, 2));
 } catch (err) {
-  console.error('failed:', err instanceof Error ? err.message : err);
-  failed = true;
+  if (err instanceof Error && err.message === 'skip-maker') {
+    console.log('maker edit and name skipped: no BG_MODEL');
+    writeFileSync(join(OUT, 'rects.json'), JSON.stringify({ ...rects, scale: SCALE }, null, 2));
+  } else {
+    console.error('failed:', err instanceof Error ? err.message : err);
+    failed = true;
+  }
 }
 await finish(failed ? 1 : 0);

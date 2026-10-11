@@ -13,6 +13,8 @@ from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parents[2]
 CREAM = (240, 234, 226, 255)
+# Everything is laid out at twice the old canvas sizes, so the site can serve true 2x pictures (the captures are 2x).
+K = 2
 DARK = (30, 30, 35, 255)
 
 
@@ -44,11 +46,27 @@ def photo(out: Path):
     print('wrote', out)
 
 
+# the captures shown one at a time in the carousel (site/index.html #tour)
+TOUR = ('panel-today', 'panel-todo', 'panel-note', 'panel-event', 'panel-shop', 'chat', 'chat-picker', 'quick',
+        'settings-pet', 'settings-ai', 'onboarding', 'maker-pick', 'maker-illust', 'panel-today-dark', 'chat-dark')
+
+
+def rounded(img: Image.Image, radius=12 * K) -> Image.Image:
+    """Window capture with rounded, transparent corners."""
+    img = img.convert('RGBA')
+    s = 4
+    mask = Image.new('L', (img.width * s, img.height * s), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, img.width * s - 1, img.height * s - 1), radius=radius * s, fill=255)
+    a = Image.composite(img.getchannel('A'), Image.new('L', img.size, 0), mask.resize(img.size, Image.LANCZOS))
+    img.putalpha(a)
+    return img
+
+
 def card(img: Image.Image, width: int) -> Image.Image:
     return img.resize((width, round(img.height * width / img.width)), Image.LANCZOS)
 
 
-def drop(canvas: Image.Image, img: Image.Image, xy, dark=False, radius=12):
+def drop(canvas: Image.Image, img: Image.Image, xy, dark=False, radius=12 * K):
     """Paste a window capture with rounded corners and a soft shadow, like a window on the desktop."""
     x, y = xy
     s = 4
@@ -57,8 +75,8 @@ def drop(canvas: Image.Image, img: Image.Image, xy, dark=False, radius=12):
     mask = mask.resize(img.size, Image.LANCZOS)
     alpha = Image.composite(img.getchannel('A'), Image.new('L', img.size, 0), mask) if img.mode == 'RGBA' else mask
     sh = Image.new('L', canvas.size, 0)
-    sh.paste(alpha, (x, y + 10))
-    sh = sh.filter(ImageFilter.GaussianBlur(18)).point(lambda v: int(v * (0.55 if dark else 0.28)))
+    sh.paste(alpha, (x, y + 10 * K))
+    sh = sh.filter(ImageFilter.GaussianBlur(18 * K)).point(lambda v: int(v * (0.55 if dark else 0.28)))
     canvas.paste((0, 0, 0, 255) if dark else (74, 55, 38, 255), (0, 0), sh)
     canvas.paste(img, (x, y), alpha)
 
@@ -70,38 +88,46 @@ def compose(out: Path):
     rects = json.loads((out / 'rects.json').read_text())
     scale = rects.get('scale', 2)
 
-    # panel strips: four tabs, 1600x588, same spacing as before (one panel every 392px)
+    # panel strips: four tabs, 1600x588 (x K), same spacing as before (one panel every 392px)
     for dark in (False, True):
-        c = Image.new('RGBA', (1600, 588), DARK if dark else CREAM)
+        c = Image.new('RGBA', (1600 * K, 588 * K), DARK if dark else CREAM)
         for i, tab in enumerate(('today', 'todo', 'note', 'event')):
-            p = card(raw(f'panel-{tab}' + ('-dark' if dark else '')), 353)
-            if p.height > 536:
-                p = p.resize((round(p.width * 536 / p.height), 536), Image.LANCZOS)
-            drop(c, p, (35 + 392 * i + (353 - p.width) // 2, 36), dark)
+            p = card(raw(f'panel-{tab}' + ('-dark' if dark else '')), 353 * K)
+            if p.height > 536 * K:
+                p = p.resize((round(p.width * 536 * K / p.height), 536 * K), Image.LANCZOS)
+            drop(c, p, ((35 + 392 * i) * K + (353 * K - p.width) // 2, 36 * K), dark)
             if i == 0:  # the hero cut-out is the Today panel on its own
-                p.save(dst / ('hero-panel-dark.png' if dark else 'hero-panel.png'))
+                rounded(p).save(dst / ('hero-panel-dark.png' if dark else 'hero-panel.png'))
         c.convert('RGB').save(dst / ('panel-dark.png' if dark else 'panel.png'))
 
-    # chat: light and dark side by side, 1200x1016
-    c = Image.new('RGBA', (1200, 1016), CREAM)
+    # chat: light and dark side by side, 1200x1016 (x K)
+    c = Image.new('RGBA', (1200 * K, 1016 * K), CREAM)
     for i, name in enumerate(('chat', 'chat-dark')):
-        p = card(raw(name), 528)
-        drop(c, p, (600 * i + 36, 30), i == 1)
+        p = card(raw(name), 528 * K)
+        drop(c, p, ((600 * i + 36) * K, 30 * K), i == 1)
     c.convert('RGB').save(dst / 'chat.png')
 
-    # AI picker, 600x982
-    c = Image.new('RGBA', (600, 982), CREAM)
-    p = card(raw('chat-picker'), 528)
-    drop(c, p, (36, 30))
-    c = c.crop((0, 0, 600, min(982, 30 + p.height + 40)))
+    # AI picker, 600x982 (x K)
+    c = Image.new('RGBA', (600 * K, 982 * K), CREAM)
+    p = card(raw('chat-picker'), 528 * K)
+    drop(c, p, (36 * K, 30 * K))
+    c = c.crop((0, 0, 600 * K, min(982 * K, 30 * K + p.height + 40 * K)))
     c.convert('RGB').save(dst / 'chat-picker.png')
 
-    # maker: three steps side by side
-    ps = [card(raw(n), 502) for n in ('maker-pick', 'maker-edit', 'maker-name')]
-    c = Image.new('RGBA', (1600, 22 + max(p.height for p in ps) + 36), CREAM)
-    for i, p in enumerate(ps):
-        drop(c, p, (25 + 524 * i, 22))
-    c.convert('RGB').save(dst / 'maker-steps.png')
+    # maker: three steps side by side (only when the background model was there for steps 2 and 3)
+    if all((out / f'raw-{n}.png').exists() for n in ('maker-pick', 'maker-edit', 'maker-name')):
+        ps = [card(raw(n), 502 * K) for n in ('maker-pick', 'maker-edit', 'maker-name')]
+        c = Image.new('RGBA', (1600 * K, (22 + 36) * K + max(p.height for p in ps)), CREAM)
+        for i, p in enumerate(ps):
+            drop(c, p, ((25 + 524 * i) * K, 22 * K))
+        c.convert('RGB').save(dst / 'maker-steps.png')
+
+    # app screens on their own for the carousel (rounded corners, transparent outside), at 2x
+    tour = dst / 'tour'
+    tour.mkdir(exist_ok=True)
+    for n in TOUR:
+        if (out / f'raw-{n}.png').exists():
+            rounded(raw(n)).save(tour / f'{n}.png')
 
     # quick add bar on its own (transparent corners)
     q = raw('quick')
@@ -116,6 +142,65 @@ def compose(out: Path):
     print('composed into', dst)
 
 
+def wall(w: int, h: int) -> Image.Image:
+    """The warm, softly blotched desktop the pet strips sit on (no lavender: the site keeps the app's warm palette)."""
+    import numpy as np
+    y, x = np.mgrid[0:h, 0:w].astype(np.float32)
+    u, v = x / w, y / h
+    base = np.array([243, 226, 210], np.float32) * (1 - u[..., None]) + np.array([236, 207, 196], np.float32) * u[..., None]
+    for cx, cy, rx, ry, col, k in ((.18, .55, .6, .8, (239, 211, 179), .55), (.8, .2, .5, .6, (241, 214, 200), .5),
+                                   (.65, .95, .7, .7, (241, 198, 190), .45)):
+        d = np.clip(1 - np.sqrt(((u - cx) / rx) ** 2 + ((v - cy) / ry) ** 2), 0, 1)[..., None] * k
+        base = base * (1 - d) + np.array(col, np.float32) * d
+    return Image.fromarray(base.clip(0, 255).astype('uint8')).convert('RGBA')
+
+
+def strip(cells, width, height, cell):
+    """Pets standing side by side on the wall, like docs/assets/screens/pets.png (no baked-in captions)."""
+    c = wall(width, height)
+    gap = (width - cell * len(cells)) / (len(cells) + 1)
+    for i, im in enumerate(cells):
+        im = im.resize((cell, cell), Image.LANCZOS)
+        c.alpha_composite(im, (round(gap + i * (cell + gap)), height - cell - round(height * .02)))
+    return c.convert('RGB')
+
+
+# style cards: every picture cut with the same box from the 640px pet window, so the fairies keep one scale
+CARD_BOX = (20, 100, 620, 640)
+STYLES = ('figure', 'game', 'real', 'fluffy', 'flat', 'photo3d', 'milk')
+SPRITE_BOX = (0, 160, 640, 640)  # 4:3 around Bean, the old 200x150 frame
+
+
+def pets(src: Path):
+    """From tools/pets.mjs captures: pets.png, pet-moods.png strips (2x), style cut-outs and Bean's walking sprite."""
+    dst = src / 'screens'
+    dst.mkdir(parents=True, exist_ok=True)
+    im = lambda n: Image.open(src / f'{n}.png').convert('RGBA')  # noqa: E731
+    kinds = [im(f'kind-{k}') for k in ('kong', 'cat', 'chick', 'dog', 'bunny', 'milk', 'choco')]
+    strip(kinds, 1600 * K, 303 * K, 190 * K).save(dst / 'pets.png')
+    moods = [im(f'mood-{k}') for k in ('love', 'happy', 'dance', 'yawn', 'sleep', 'think')]
+    strip(moods, 1600 * K, 296 * K, 230 * K).save(dst / 'pet-moods.png')
+    styles = dst / 'styles'
+    styles.mkdir(exist_ok=True)
+    for k in STYLES:
+        im(f'kind-{k}' if k == 'milk' else f'style-{k}').crop(CARD_BOX).save(styles / f'{k}.png')
+    # sprite: idle 4, one walk loop (frames 12 to 40 return to the same step), the spin dance
+    frames = [f'idle-{i}' for i in range(4)] + [f'walk-{i:02d}' for i in range(12, 41)] + [f'cheer-{i:02d}' for i in range(16)]
+    fw, fh, cols = 400, 300, 10
+    rows = (len(frames) + cols - 1) // cols
+    sheet = Image.new('RGBA', (fw * cols, fh * rows), (0, 0, 0, 0))
+    for i, n in enumerate(frames):
+        # Bean at the same size inside the frame as the old recording (about 63% of the frame width)
+        f = im(n).crop(SPRITE_BOX).resize((round(fw * .82), round(fh * .82)), Image.LANCZOS)
+        sheet.alpha_composite(f, ((i % cols) * fw + (fw - f.width) // 2, (i // cols) * fh + fh - f.height - 3))
+    sheet.save(dst / 'kong-sprite.png')
+    meta = {'w': fw // 2, 'h': fh // 2, 'cols': cols, 'rows': rows,
+            'durations': [600] * 4 + [80] * 29 + [90] * 16,
+            'idle': [0, 4], 'walk': [4, 33], 'cheer': [33, 49], 'walkSpeed': 44}  # the app walked 400px in 8s (50px/s); app.js multiplies by 1.15
+    (dst / 'kong-sprite.json').write_text(json.dumps(meta))
+    print('pets composed into', dst)
+
+
 if __name__ == '__main__':
     cmd, arg = sys.argv[1], Path(sys.argv[2])
-    {'photo': photo, 'compose': compose}[cmd](arg)
+    {'photo': photo, 'compose': compose, 'pets': pets}[cmd](arg)
