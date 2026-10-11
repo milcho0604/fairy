@@ -6,7 +6,8 @@ import { MOVE_SPECS, type MoveContext, type MoveType, PLAIN_ASK, pickMove } from
 
 export type Activity =
   // idle: 혼자 고른 걸음 (놀기, 산책, 집 드나들기처럼 불러서 가는 걸음이 아닌 것)
-  | { type: 'walk'; dx: number; ms: number; idle?: boolean }
+  // linear: 같은 빠르기로 가는 걷기 (따라 달리기). 아니면 처음과 끝이 느리다 (walkOffset)
+  | { type: 'walk'; dx: number; ms: number; idle?: boolean; linear?: boolean }
   | { type: 'sit'; ms: number }
   | { type: 'look'; dir: -1 | 1; ms: number }
   // 제자리 몸짓 (하품, 기지개, 꼬리 흔들기, 몸 털기 등. moves.ts). dir 은 좌우가 있는 몸짓의 방향
@@ -43,6 +44,31 @@ export function walkSpan(
   return { left: leftN ? leftN.x : area.x, right: rightN ? rightN.x + rightN.width : area.x + area.width };
 }
 
+/**
+ * 옆 모니터로 넘어가는 걷기가 두 모니터에 걸쳐 멈추지 않게 거리를 고친다. 걸쳐 멈추면 걷기가 끝난 뒤 한 모니터 안으로
+ * 끌어 넣느라(clampIntoAreas) 펫이 툭 튀었다. 경계를 다 넘을 자리가 있으면 넘어가고, 없으면 경계 앞에서 선다.
+ * dist 는 0 이상, room 은 그쪽으로 걸을 수 있는 거리
+ */
+export function settleDist(
+  pet: Rect,
+  dir: -1 | 1,
+  dist: number,
+  room: number,
+  areas: readonly Rect[],
+): number {
+  const left = pet.x + dir * dist;
+  const inside = (o: Rect) => left >= o.x - 1 && left + pet.width <= o.x + o.width + 1;
+  if (areas.length < 2 || areas.some(inside)) return dist;
+  // 걸친 경계: 끝 자리의 펫 가로 안에 있는 모니터 가장자리
+  const edges = areas.flatMap((o) => [o.x, o.x + o.width]).filter((e) => e > left && e < left + pet.width);
+  const edge = dir > 0 ? Math.min(...edges) : Math.max(...edges);
+  if (!Number.isFinite(edge)) return dist;
+  // 넘어가기: 펫 뒤끝이 경계를 지나게. 경계 앞: 펫 앞끝이 경계에 닿게
+  const across = dir > 0 ? edge - pet.x : pet.x + pet.width - edge;
+  const before = dir > 0 ? edge - pet.width - pet.x : pet.x - edge;
+  return across <= room ? across : Math.max(0, before);
+}
+
 /** 걷기, 앉기 확률. 나머지는 제자리 몸짓 (moves.ts 무게대로) */
 export const WALK_CHANCE = 0.35;
 export const SIT_CHANCE = 0.17;
@@ -72,7 +98,7 @@ export function pickActivity(
     if ((dir < 0 ? room.left : room.right) < WALK_MIN) dir = dir < 0 ? 1 : -1;
     const room2 = dir < 0 ? room.left : room.right;
     const want = WALK_MIN + (WALK_MAX - WALK_MIN) * rand();
-    const dist = Math.floor(Math.min(want, room2));
+    const dist = Math.floor(settleDist(pet, dir, Math.min(want, room2), room2, areas));
     if (dist >= WALK_MIN / 2) return { type: 'walk', dx: dir * dist, ms: Math.round((dist / speed) * 1000) };
   }
   if (r < walkChance + sitChance) return { type: 'sit', ms: Math.round(8_000 + 10_000 * rand()) };

@@ -10,8 +10,10 @@ import {
 import { t } from '../shared/i18n/index.ts';
 import { ONBOARD, type OnboardAi, type OnboardSnapshot } from '../shared/ipc.ts';
 import type { Settings } from '../shared/settings.ts';
+import { isStarterId } from '../shared/starter-pets.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
 import { langArg } from './lang.ts';
+import { library } from './pet-library.ts';
 import { settings } from './settings.ts';
 
 const MAC_SCREEN_SETTINGS = 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture';
@@ -41,9 +43,15 @@ export function createOnboarding(o: {
             process.platform === 'darwin'
               ? (systemPreferences.getMediaAccessStatus('screen') as OnboardSnapshot['screen'])
               : 'granted',
+          starters: library.starters(),
         }
       : undefined,
   );
+  // 밀크, 초코: 그림을 pets/ 에 복사해 사진 펫으로 (지금 사진 펫은 보관함으로, 설정 창 펫 고르기와 같은 길)
+  ipcMain.handle(ONBOARD.pickStarter, (e, id: unknown) => {
+    if (ours(e) && isStarterId(id)) library.fromStarter(id);
+    return settings.get();
+  });
   ipcMain.handle(ONBOARD.set, (e, patch: Partial<Settings>) =>
     ours(e) ? settings.set(patch) : settings.get(),
   );

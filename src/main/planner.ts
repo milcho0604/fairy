@@ -6,13 +6,18 @@ import {
   briefingText,
   deadlineText,
   dueSlot,
+  nextUp,
   reviewText,
   undoMoved,
 } from '../shared/briefing.ts';
+import { plusDays, weekdayOf } from '../shared/day.ts';
 import type { EventStore } from '../shared/event-store.ts';
 import {
   type FocusState,
+  focusDoneAction,
+  focusDoneButtons,
   focusedMinutes,
+  focusTodoToAsk,
   IDLE,
   isFocusLength,
   skipGap,
@@ -20,7 +25,7 @@ import {
   tickFocus,
 } from '../shared/focus.ts';
 import { t } from '../shared/i18n/index.ts';
-import { ActivityWatch, type IdleKey, IdleTalker, idleVars } from '../shared/idle-talk.ts';
+import { ActivityWatch, type IdleFacts, type IdleKey, IdleTalker, idleVars } from '../shared/idle-talk.ts';
 import {
   coversBriefing,
   coversReview,
@@ -37,6 +42,7 @@ import {
 } from '../shared/routine.ts';
 import { farewellNext, farewellText, greetText, restText } from '../shared/routine-text.ts';
 import { localDay, type TodoStore } from '../shared/todo-store.ts';
+import { weekSummary } from '../shared/week.ts';
 import type { SayOptions } from './pet-window.ts';
 import { createReminders } from './reminders.ts';
 import { settings } from './settings.ts';
@@ -54,6 +60,8 @@ export interface PlannerOptions {
   petHidden: () => boolean;
   /** 코인을 받았다 (펫 신남) */
   onReward: () => void;
+  /** 할 일을 끝냈다 (집중 끝에 "끝냈어"). 패널에서 끝낸 것과 같은 반응 */
+  onCompleted?: (coins: number, id: number) => void;
   /** 집중 상태나 일정이 바뀌었다 (패널, 펫 표정 다시 그리기) */
   onChange: () => void;
   /** 패널 오늘 탭 열기 (마감 알림 "볼게") */
@@ -70,6 +78,14 @@ export interface PlannerOptions {
     sulk?: number;
     busy?: boolean;
     more?: readonly IdleKey[];
+    /** 기억 (어제 일, 연속 기록, 이번 주, 집중, 함께한 날. main/companion.ts). 대사를 고를 때만 부른다 */
+    memory?: () => Partial<IdleFacts>;
+  };
+  /** 최근 혼잣말 저장 (다시 켜도 되풀이하지 않게, main/companion.ts) */
+  talkRecent?: {
+    load: () => readonly string[];
+    known: (k: string) => k is IdleKey;
+    save: (keys: readonly IdleKey[]) => void;
   };
   log: (tag: string, ...rest: unknown[]) => void;
 }
@@ -88,6 +104,9 @@ export function localTime(day: string, minute: number): number {
 /** 현지 날짜의 0시 ms */
 export const startOfDay = (ms: number) => localTime(localDay(ms), 0);
 
+/** n 일 뒤 현지 날짜의 0시 ms. 0시 + 24시간은 서머타임이 바뀌는 날(23, 25시간) 다음 날 0시가 아니다 */
+export const startOfDayAfter = (ms: number, n: number) => localTime(plusDays(localDay(ms), n), 0);
+
 /**
  * 시간에 따라 펫이 알려 주는 것들 (v1 생산성).
  * - 일정 알림: 시작 몇 분 전(일정마다)에 말풍선. 수다 빈도와 상관없이 늘 (기획서 "일정 시작 알림")
@@ -97,7 +116,7 @@ export const startOfDay = (ms: number) => localTime(localDay(ms), 0);
 export function createPlanner(o: PlannerOptions) {
   let focus: FocusState = IDLE;
   const saved = readJson(STORE) as
-    | { briefedDay?: string; reviewedDay?: string; dueSaid?: unknown; routine?: unknown }
+    | { briefedDay?: string; reviewedDay?: string; dueSaid?: unknown; routine?: unknown; snoozed?: unknown }
     | undefined;
   let briefedDay = typeof saved?.briefedDay === 'string' ? saved.briefedDay : '';
   let reviewedDay = typeof saved?.reviewedDay === 'string' ? saved.reviewedDay : '';
@@ -107,15 +126,18 @@ export function createPlanner(o: PlannerOptions) {
     : [];
   /** 만나는 시간의 하루 한 번 기록 (맞이, 헤어짐, 쉬는 날, 연속 기록) */
   let memo = parseMemo(saved?.routine);
-  const store = () => writeJson(STORE, { briefedDay, reviewedDay, dueSaid, routine: memo });
+  const store = () =>
+    writeJson(STORE, { briefedDay, reviewedDay, dueSaid, routine: memo, snoozed: reminders.snoozed });
 
-  /** 일정과 할 일의 미리 알림 (8판, reminders.ts). 미루기도 그쪽이 들고 있다 */
+  /** 일정과 할 일의 미리 알림 (8판, reminders.ts). 미루기도 그쪽이 들고 있고, 저장은 이 파일에 같이 */
   const reminders = createReminders({
     events: o.events,
     todos: o.todos,
     say: o.say,
     openUrl: o.openUrl,
     openToday: o.openToday,
+    saved: saved?.snoozed,
+    onSnoozedChange: () => store(),
     log: o.log,
   });
   const remind = (now: number) => reminders.tick(now);
@@ -162,7 +184,7 @@ export function createPlanner(o: PlannerOptions) {
   /** 오늘 브리핑에 넣을 것. 오늘 0시부터 본다: 종일 일정은 0시에 시작해 이미 지났지만 오늘 일정이다. 시각 일정은 남은 것만 */
   function todayFacts(now: number) {
     const day = localDay(now);
-    const to = startOfDay(now) + 24 * 3_600_000;
+    const to = startOfDayAfter(now, 1);
     const events = o.events
       .between(startOfDay(now), to)
       .filter((e) => e.allDay || e.startAt >= now)
@@ -170,7 +192,9 @@ export function createPlanner(o: PlannerOptions) {
     const { open } = o.todos.list(now);
     const dueToday = open.filter((t) => t.due === day).length;
     const overdue = open.filter((t) => t.due !== null && t.due < day).length;
-    return { events, dueToday, overdue };
+    // 먼저 할 일 (곧 시작하는 일정은 미리 알림이 말하니 할 일만 본다)
+    const next = nextUp({ todos: open, events: [], now });
+    return { events, dueToday, overdue, ...(next ? { next: next.title } : {}) };
   }
 
   let briefing = false;
@@ -184,19 +208,53 @@ export function createPlanner(o: PlannerOptions) {
     if (powerMonitor.getSystemIdleState(60) === 'locked') return;
     briefedDay = day;
     store();
-    const { events, dueToday, overdue } = todayFacts(now);
+    const facts = todayFacts(now);
     o.log('planner', '브리핑');
     // 브리핑이 떠 있는 동안은 회고, 마감 알림, 혼잣말이 덮지 않게 기다린다
     briefing = true;
     void o
       .say({
         kind: 'system',
-        text: briefingText({ events, dueToday, overdue, nowMinute: minuteOfDay(now) }),
-        ttlMs: 15_000,
+        text: briefingText({ ...facts, nowMinute: minuteOfDay(now) }),
+        // 지난 마감이 있으면 오늘로 옮길 수 있게 (하루를 정리하고 시작)
+        ...(facts.overdue > 0 ? { buttons: [{ id: 'overdue', label: t('assist.overdue.brief') }] } : {}),
+        ttlMs: facts.overdue > 0 ? 20_000 : 15_000,
       })
-      .then(() => {
+      .then((a) => {
         briefing = false;
+        if (a === 'overdue') moveOverdue();
       });
+  }
+
+  /** 지난 마감을 오늘로 (아침 브리핑 단추). 잠깐 되돌리기 단추를 보인다 */
+  function moveOverdue() {
+    const at = Date.now();
+    const today = localDay(at);
+    const moved = o.todos.moveOverdue(today, at);
+    if (moved.length === 0) return;
+    o.onChange();
+    o.log('planner', '지난 마감 오늘로', moved.length);
+    void o
+      .say({
+        kind: 'answer',
+        text: t('assist.overdue.moved', { n: moved.length }),
+        buttons: [{ id: 'undo', label: t('panel.review.undo') }],
+        ttlMs: 10_000,
+      })
+      .then((a) => {
+        if (a !== 'undo') return;
+        const back = undoMoved(moved, o.todos.list(Date.now()).open, today);
+        const at2 = Date.now();
+        for (const b of back) o.todos.update(b.id, { due: b.due }, at2);
+        o.onChange();
+      });
+  }
+
+  /** 금요일 회고에 붙일 이번 주 한 줄 (끝낸 게 없으면 빈 글) */
+  function fridayLine(day: string, now: number): string {
+    if (weekdayOf(day) !== 5) return '';
+    const week = weekSummary(day, (days) => o.stats.diaryFacts(days), o.todos.list(now).open);
+    return week.done > 0 ? ` ${t('assist.week.friday', { n: week.done })}` : '';
   }
 
   /**
@@ -222,7 +280,9 @@ export function createPlanner(o: PlannerOptions) {
     void o
       .say({
         kind: 'schedule',
-        text: reviewText({ doneTitles: doneToday.map((t) => t.title), leftToday: left.length }),
+        text:
+          reviewText({ doneTitles: doneToday.map((t) => t.title), leftToday: left.length }) +
+          (left.length === 0 ? fridayLine(day, now) : ''),
         buttons:
           left.length > 0
             ? [
@@ -232,7 +292,7 @@ export function createPlanner(o: PlannerOptions) {
             : [],
         ttlMs: 30_000,
         hold: {
-          staleAt: startOfDay(now) + 24 * 3_600_000 - 1,
+          staleAt: startOfDayAfter(now, 1) - 1,
           missedLines: [t('briefing.review.missed', { done: doneToday.length, left: left.length })],
           missedMsgs: [
             { key: 'briefing.review.missed', vars: { done: doneToday.length, left: left.length } },
@@ -343,11 +403,11 @@ export function createPlanner(o: PlannerOptions) {
     const left = asks ? open.filter((t) => t.due !== null && t.due <= due.day) : [];
     // 밤 근무는 아침에 헤어져 "내일"이 맞지 않아 미리 보기 없이 "푹 쉬어"
     const next = overnight(due.meet) ? undefined : nextMeet(s.routine, due.day);
-    const from = localTime(due.day, 24 * 60);
+    const from = localTime(plusDays(due.day, 1), 0);
     const tomorrow =
       next?.inDays === 1
         ? o.events
-            .between(from, from + 24 * 3_600_000)
+            .between(from, localTime(plusDays(due.day, 2), 0))
             .map((e) => ({ minute: minuteOfDay(e.startAt), title: e.title, allDay: e.allDay }))
         : [];
     // 묻느라 못 한 미리 보기 (조용히면 없다)
@@ -392,7 +452,7 @@ export function createPlanner(o: PlannerOptions) {
 
   /** 회고 "내일로 넘기기". 누른 때 남은 것을 다시 읽어 넘기고, 잠깐 되돌리기 단추를 보인다. tail 은 뒤에 붙일 한 문장 (헤어짐 미리 보기) */
   function moveToTomorrow(day: string, tail = '') {
-    const tomorrow = localDay(localTime(day, 0) + 36 * 3_600_000);
+    const tomorrow = plusDays(day, 1);
     const left = o.todos.list(Date.now()).open.filter((t) => t.due !== null && t.due <= day);
     if (left.length === 0) {
       // 그새 다 끝냈다: 넘길 것은 없고 미리 보기만
@@ -430,6 +490,7 @@ export function createPlanner(o: PlannerOptions) {
    * 타이핑이나 마우스질 중이면 손이 2초 넘게 쉴 때까지 기다린다. 시간당 상한과 다른 말풍선 뒤 2분은 ChatterGate 가 본다
    */
   const talker = new IdleTalker(Date.now());
+  if (o.talkRecent) talker.talk.restore(o.talkRecent.load(), o.talkRecent.known);
   const activity = new ActivityWatch();
   let talking = false;
   function talk(now: number) {
@@ -453,7 +514,7 @@ export function createPlanner(o: PlannerOptions) {
         const day = localDay(now);
         const { open, doneToday } = o.todos.list(now);
         const timed = o.events
-          .between(now, startOfDay(now) + 24 * 3_600_000)
+          .between(now, startOfDayAfter(now, 1))
           .filter((e) => !e.allDay && e.startAt > now);
         const next = timed.reduce<number | undefined>(
           (m, e) => (m === undefined ? e.startAt : Math.min(m, e.startAt)),
@@ -474,6 +535,7 @@ export function createPlanner(o: PlannerOptions) {
           ...(pet.affection !== undefined ? { affection: pet.affection } : {}),
           ...(pet.hungry !== undefined ? { hungry: pet.hungry } : {}),
           ...(pet.more ? { more: pet.more } : {}),
+          ...(pet.memory?.() ?? {}),
         };
       },
     );
@@ -485,6 +547,7 @@ export function createPlanner(o: PlannerOptions) {
       .then((a) => {
         talking = false;
         talker.shown(Date.now(), a !== undefined);
+        if (a !== undefined) o.talkRecent?.save(talker.talk.recent);
       });
   }
 
@@ -508,19 +571,33 @@ export function createPlanner(o: PlannerOptions) {
       o.stats.addFocus(now, minutes);
       const coins = o.todos.rewardFocus(now, minutes);
       if (coins > 0) o.onReward();
+      const done = t('panel.focus.done', {
+        minutes,
+        coins,
+        breakMin: Math.round((r.state.endsAt - r.state.startedAt) / 60_000),
+      });
+      // 할 일을 걸고 시작했으면 끝냈는지 묻는다 ("끝냈어"면 패널에서 끝낸 것처럼 코인과 반응)
+      const todoId = focusTodoToAsk(focus, o.todos.list(now).open);
+      const todo = todoId === undefined ? undefined : o.todos.get(todoId);
+      lastTodoId = todo?.id;
+      const label = {
+        finished: t('panel.focus.todoDone'),
+        more: t('panel.focus.todoMore'),
+        stop: t('panel.focus.stop'),
+      };
       void o
         .say({
           kind: 'answer',
-          text: t('panel.focus.done', {
-            minutes,
-            coins,
-            breakMin: Math.round((r.state.endsAt - r.state.startedAt) / 60_000),
-          }),
-          buttons: [{ id: 'stop', label: t('panel.focus.stop') }],
-          ttlMs: 20_000,
+          text: todo ? `${done} ${t('panel.focus.todoAsk', { title: todo.title })}` : done,
+          buttons: focusDoneButtons(!!todo).map((id) => ({ id, label: label[id] })),
+          ttlMs: todo ? 30_000 : 20_000,
         })
         .then((a) => {
-          if (a === 'stop') stopFocus();
+          const act = focusDoneAction(a, !!todo);
+          if (act === 'stop') stopFocus();
+          else if (act === 'finish' && todo) finishTodo(todo.id);
+          // 조금 더: 쉬지 않고 같은 할 일로 집중을 다시 시작한다
+          else if (act === 'again' && todo) startFocusNow(undefined, todo.id);
         });
     } else if (r.event === 'break-done') {
       void o
@@ -534,7 +611,8 @@ export function createPlanner(o: PlannerOptions) {
           ttlMs: 30_000,
         })
         .then((a) => {
-          if (a === 'again') startFocusNow();
+          // 할 일을 걸고 했으면 한 번 더도 그 할 일로 (아직 열려 있으면)
+          if (a === 'again') startFocusNow(undefined, lastTodoId);
         });
     }
     if (r.state !== focus) {
@@ -543,12 +621,31 @@ export function createPlanner(o: PlannerOptions) {
     }
   }
 
-  /** 집중 시작. 길이를 주면 그 길이로 하고 다음에도 그 길이 (설정 focusMin) */
-  function startFocusNow(minutes?: number) {
+  /** 마지막 집중에 건 할 일 ("한 번 더"도 그 할 일로) */
+  let lastTodoId: number | undefined;
+
+  /**
+   * 집중 시작. 길이를 주면 그 길이로 하고 다음에도 그 길이 (설정 focusMin).
+   * todoId 를 주면 그 할 일을 하는 집중 (끝나면 끝냈는지 묻는다). 이미 끝냈거나 없는 할 일이면 그냥 집중
+   */
+  function startFocusNow(minutes?: number, todoId?: number) {
     if (isFocusLength(minutes) && minutes !== settings.get().focusMin) settings.set({ focusMin: minutes });
     const length = settings.get().focusMin;
-    focus = startFocus(Date.now(), length);
-    o.log('planner', '집중 시작', length);
+    const todo = todoId === undefined ? undefined : o.todos.get(todoId);
+    focus = startFocus(Date.now(), length, todo && todo.doneAt === null ? todo.id : undefined);
+    lastTodoId = focus.todoId;
+    o.log('planner', '집중 시작', length, focus.todoId ? '할 일' : '');
+    o.onChange();
+  }
+
+  /** 집중 끝 "끝냈어": 패널에서 끝낸 것과 같다 (코인, 반복이면 다음 것) */
+  function finishTodo(id: number) {
+    const todo = o.todos.get(id);
+    if (!todo || todo.doneAt !== null) return;
+    const coins = o.todos.complete(id, Date.now());
+    lastTodoId = undefined;
+    o.log('planner', '집중 끝 할 일 끝냄', id, coins);
+    o.onCompleted?.(coins, id);
     o.onChange();
   }
 

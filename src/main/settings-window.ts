@@ -1,4 +1,4 @@
-import { join, sep } from 'node:path';
+import { join } from 'node:path';
 import {
   app,
   BrowserWindow,
@@ -10,13 +10,20 @@ import {
 } from 'electron';
 import type { Catalog } from '../shared/ai/catalog.ts';
 import { type BetaReport, reportText, type StatStore } from '../shared/beta-stats.ts';
+import { issueUrl } from '../shared/feedback.ts';
 import { t } from '../shared/i18n/index.ts';
 import { type MakerTarget, SETTINGS, type SettingsSection, type SettingsSnapshot } from '../shared/ipc.ts';
 import type { Gait } from '../shared/pet3d/blueprint.ts';
-import { isGait, isPetKind, type Settings } from '../shared/settings.ts';
+import { isGait, type Settings } from '../shared/settings.ts';
+import { isSettingsTab, type SettingsTab } from '../shared/settings-tabs.ts';
+import { parsePetChoice } from '../shared/starter-pets.ts';
+import { RELEASE_REPO } from '../shared/update-policy.ts';
 import { localModelReady } from './ai/local.ts';
+import { createDiagnostics } from './diagnostics.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
 import { langArg } from './lang.ts';
+import { mcpScriptPath } from './mcp-launch.ts';
+import { openLink } from './open-link.ts';
 import { library } from './pet-library.ts';
 import { settings } from './settings.ts';
 import { removeModel, storedModels } from './storage.ts';
@@ -32,6 +39,11 @@ export interface SettingsWindowOptions {
   stats: StatStore;
   checkUpdate: () => Promise<string>;
   openOnboarding: () => void;
+  log: (tag: string, ...rest: unknown[]) => void;
+  /** 진단 기록 폴더 (userData/logs) */
+  logDir: string;
+  /** 진단 기록에서 글자 그대로 가릴 사용자 글 (할 일, 일정, 메모 제목, 캘린더 주소) */
+  privateWords: () => string[];
   v2: {
     exportData: (win?: BrowserWindow) => Promise<string>;
     importData: (win?: BrowserWindow) => Promise<string>;
@@ -56,9 +68,14 @@ export function createSettingsWindow({
   stats,
   checkUpdate,
   openOnboarding,
+  log,
+  logDir,
+  privateWords,
   v2,
 }: SettingsWindowOptions) {
   let win: BrowserWindow | undefined;
+  // 마지막으로 본 탭. 창은 닫으면 없어져서 메인이 앱이 켜져 있는 동안만 기억한다 (설정 파일에는 남기지 않는다)
+  let lastTab: SettingsTab | undefined;
   const fromSettings = (e: IpcMainEvent | IpcMainInvokeEvent) => !!win && e.sender === win.webContents;
 
   ipcMain.handle(SETTINGS.get, (e): SettingsSnapshot | undefined =>
@@ -71,17 +88,15 @@ export function createSettingsWindow({
           version: app.getVersion(),
           mcp: {
             exec: process.execPath,
-            // 설치판에서는 asar 밖에 풀어 둔 사본을 쓴다 (electron-builder asarUnpack)
-            script: join(app.getAppPath(), 'out', 'main', 'mcp-server.js').replace(
-              `app.asar${sep}`,
-              `app.asar.unpacked${sep}`,
-            ),
+            // 설치판에서는 asar 밖에 풀어 둔 사본 (mcp-launch.ts)
+            script: mcpScriptPath(),
           },
           myMcpServers: v2.mcpServers(),
           calendarLast: v2.calendarLast(),
           models: { catalog: v2.catalog(), localReady: localReady() },
           library: library.view(),
           current: library.current(),
+          starters: library.starters(),
           storage: storedModels(v2.catalog()),
           onBattery: powerMonitor.isOnBatteryPower(),
         }
@@ -89,18 +104,19 @@ export function createSettingsWindow({
   );
   const localReady = () => Object.fromEntries(v2.catalog().local.map((m) => [m.id, localModelReady(m)]));
   ipcMain.handle(SETTINGS.choosePet, (e, choice: unknown) => {
-    if (!fromSettings(e) || typeof choice !== 'object' || choice === null) return library.view();
-    const c = choice as Record<string, unknown>;
-    if (isPetKind(c.kind)) library.toDefault(c.kind);
-    else if (typeof c.id === 'string') library.restore(c.id);
+    const c = fromSettings(e) ? parsePetChoice(choice) : undefined;
+    if (!c) return library.view();
+    if ('kind' in c) library.toDefault(c.kind);
+    else if ('starter' in c) library.fromStarter(c.starter);
+    else library.restore(c.id);
     return library.view();
   });
   ipcMain.handle(SETTINGS.removeSavedPet, (e, id: unknown) => {
     if (fromSettings(e) && typeof id === 'string') library.remove(id);
     return library.view();
   });
-  ipcMain.handle(SETTINGS.deleteModel, (e, id: unknown) => {
-    const ok = fromSettings(e) && typeof id === 'string' && removeModel(v2.catalog(), id);
+  ipcMain.handle(SETTINGS.deleteModel, async (e, id: unknown) => {
+    const ok = fromSettings(e) && typeof id === 'string' && (await removeModel(v2.catalog(), id, log));
     return { ok, storage: storedModels(v2.catalog()), localReady: localReady() };
   });
   ipcMain.handle(SETTINGS.remakeBody, (e, gait: unknown) =>
@@ -108,6 +124,9 @@ export function createSettingsWindow({
   );
   ipcMain.on(SETTINGS.cancelRemake, (e) => {
     if (fromSettings(e)) cancelRemake();
+  });
+  ipcMain.on(SETTINGS.tab, (e, tab: unknown) => {
+    if (fromSettings(e) && isSettingsTab(tab)) lastTab = tab;
   });
   ipcMain.handle(SETTINGS.set, (e, patch: Partial<Settings>) =>
     fromSettings(e) ? settings.set(patch) : settings.get(),
@@ -126,11 +145,30 @@ export function createSettingsWindow({
     if (!fromSettings(e)) return false;
     // 기록 읽기나 클립보드 쓰기가 실패하면 false: 화면이 "복사하지 못했어"를 띄운다
     try {
-      clipboard.writeText(reportText(stats.report(Date.now()), { version: app.getVersion(), os: osLabel() }));
+      clipboard.writeText(statsText());
       return true;
     } catch {
       return false;
     }
+  });
+  // 의견 보내기에 진단 기록 붙이기: 가린 글을 미리 보이고, 복사와 저장은 그 글 그대로 (diagnostics.ts)
+  const statsText = () => reportText(stats.report(Date.now()), { version: app.getVersion(), os: osLabel() });
+  const diagnostics = createDiagnostics({ logDir, statsText, secrets: privateWords, log });
+  ipcMain.handle(SETTINGS.diagnostics, (e) => {
+    if (!fromSettings(e)) return undefined;
+    try {
+      return diagnostics.preview();
+    } catch (err) {
+      log('feedback', '미리 보기 실패', err instanceof Error ? err.message : String(err));
+      return undefined;
+    }
+  });
+  ipcMain.handle(SETTINGS.copyDiagnostics, (e) => fromSettings(e) && diagnostics.copy());
+  ipcMain.handle(SETTINGS.saveDiagnostics, (e) =>
+    fromSettings(e) ? diagnostics.save(win) : { ok: false, message: '' },
+  );
+  ipcMain.on(SETTINGS.reportIssue, (e) => {
+    if (fromSettings(e)) openLink(issueUrl(RELEASE_REPO, { version: app.getVersion(), os: osLabel() }), log);
   });
   ipcMain.handle(SETTINGS.checkUpdate, (e) => (fromSettings(e) ? checkUpdate() : ''));
   ipcMain.handle(SETTINGS.exportData, (e) => (fromSettings(e) ? v2.exportData(win) : ''));
@@ -204,10 +242,12 @@ export function createSettingsWindow({
     load(win, section);
   }
 
+  /** 칸을 주면 그 칸(#stats), 아니면 지난번 탭(#ai)을 # 뒤에 넣어 연다 (화면이 settings-tabs.ts tabFromHash 로 읽는다) */
   function load(w: BrowserWindow, section?: SettingsSection) {
+    const hash = section ?? lastTab;
     const devUrl = process.env.ELECTRON_RENDERER_URL;
-    if (devUrl) w.loadURL(`${devUrl}/settings.html${section ? `#${section}` : ''}`);
-    else w.loadFile(join(import.meta.dirname, '../renderer/settings.html'), { hash: section });
+    if (devUrl) w.loadURL(`${devUrl}/settings.html${hash ? `#${hash}` : ''}`);
+    else w.loadFile(join(import.meta.dirname, '../renderer/settings.html'), { hash });
   }
 
   return {

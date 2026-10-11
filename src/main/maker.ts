@@ -3,15 +3,20 @@ import { join } from 'node:path';
 import {
   app,
   BrowserWindow,
+  clipboard,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
   ipcMain,
   net,
   protocol,
+  shell,
 } from 'electron';
 import type { ImageAttachment } from '../shared/ai/types.ts';
 import { downloadErrorText, saveErrorText } from '../shared/download-error.ts';
+import { GEMINI_URL, geminiPrompt, isGeminiStyle, isGeminiUrl } from '../shared/gemini.ts';
 import { t } from '../shared/i18n/index.ts';
+import { ILLUST_WISH_MAX, illustratePrompt, isAgeStage } from '../shared/illustrate.ts';
+import { sizeOk } from '../shared/image-head.ts';
 import {
   DEPTH_URL,
   MAKER,
@@ -19,14 +24,18 @@ import {
   type MakerTarget,
   MODEL_SCHEME,
   MODEL_URL,
+  ORT_WASM_URL,
   type PetImages,
 } from '../shared/ipc.ts';
+import { illustEngineOf, LOCAL_DRAW_GB } from '../shared/local-draw.ts';
 import { type Blueprint, type Gait, parseBlueprint } from '../shared/pet3d/blueprint.ts';
 import {
   BLUEPRINT_SYSTEM,
   blueprintPrompt,
   cleanWish,
+  critiquePrompt,
   extractBlueprint,
+  extractBlueprintWithFixes,
   WISH_MAX,
 } from '../shared/pet3d/prompt.ts';
 import { cleanPetName, isGait, POSE_KINDS, photoPetName } from '../shared/settings.ts';
@@ -34,7 +43,18 @@ import { CUSTOM_FOOD_COST } from '../shared/shop.ts';
 import { BG_MODEL, ensureModel, modelReady, verifiedModelUrl } from './bg-model.ts';
 import { DEPTH_MODEL, depthReady, ensureDepthModel, verifiedDepthUrl } from './depth-model.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
+import {
+  IllustError,
+  type IllustErrorKind,
+  type ImageKind,
+  illustrateFluffy,
+  imageKind,
+} from './hf-illust.ts';
+import { hfToken } from './hf-token.ts';
 import { langArg } from './lang.ts';
+import { illustrateLocal, localDrawInfo, localDrawSupport, setupLocalDraw } from './local-draw.ts';
+import { LocalDrawError, type LocalDrawErrorKind } from './local-draw-core.ts';
+import { ensureOrtWasm, ORT_WASM, ortWasmReady, verifiedOrtWasmUrl } from './ort-wasm.ts';
 import { library } from './pet-library.ts';
 import { readFileIn, writeFileAtomic } from './safe-file.ts';
 import { settings } from './settings.ts';
@@ -58,6 +78,10 @@ function kindOf(bytes: Buffer): 'png' | 'gif' | 'webp' | undefined {
     return 'webp';
   return undefined;
 }
+
+const toMb = (bytes: number) => Math.round(bytes / 1_000_000);
+/** 아직 받을 사진 AI 엔진 크기 (받았으면 0) */
+const engineBytes = () => (ortWasmReady() ? 0 : ORT_WASM.bytes);
 
 /** 모델 주소(jj-model://)에서 fetch 를 쓸 수 있게 한다. 앱이 준비되기 전에 불러야 한다. */
 export function registerModelScheme() {
@@ -94,6 +118,7 @@ export function petImages(): PetImages {
     model: s.petImage ? modelOf(s.petModel) : null,
     depth: s.petImage ? dataUrlOf(s.petDepth) : null,
     poses,
+    ...(s.petImage && s.petAge ? { age: s.petAge } : {}),
   };
 }
 
@@ -137,14 +162,16 @@ export function modelOf(file: string | undefined): Blueprint | null {
 /** AI 한 번 묻기 (chat.oneShot) */
 export type AskWithImage = (
   text: string,
-  image: ImageAttachment,
+  /** 그림 하나 또는 여럿 (사진과 그린 그림을 같이 보여 줄 때) */
+  image: ImageAttachment | readonly ImageAttachment[],
   system: string,
   signal?: AbortSignal,
 ) => Promise<{ ok: true; text: string; provider: string } | { ok: false; error: string; noAi?: true }>;
 
 /**
  * 사진으로 펫 만들기 창 (P1-08). 배경 제거는 창(렌더러)에서 onnxruntime-web 으로 하고,
- * 메인은 모델 파일 받기와 다듬은 그림 저장만 한다. 사진은 컴퓨터 밖으로 나가지 않는다.
+ * 메인은 모델 파일 받기와 다듬은 그림 저장만 한다. 사진은 컴퓨터 밖으로 나가지 않는다
+ * (사용자가 그때그때 AI 일러스트를 고를 때만 Hugging Face 로 간다, hf-illust.ts).
  */
 export function createMaker(
   log: (tag: string, ...rest: unknown[]) => void,
@@ -157,6 +184,7 @@ export function createMaker(
   let win: BrowserWindow | undefined;
   let download: AbortController | undefined;
   let shaping: AbortController | undefined;
+  let drawing: AbortController | undefined;
   let target: MakerTarget = 'main';
   const fromMaker = (e: IpcMainEvent | IpcMainInvokeEvent) =>
     !!win && !win.isDestroyed() && e.sender === win.webContents;
@@ -172,22 +200,45 @@ export function createMaker(
             hasPhotoPet: !!settings.get().petImage,
             hasPose: target !== 'main' && target !== 'food' && !!settings.get().petPoses[target],
             foodCost: CUSTOM_FOOD_COST,
-            modelReady: modelReady(),
-            modelMB: Math.round(BG_MODEL.bytes / 1_000_000),
+            modelReady: modelReady() && ortWasmReady(),
+            modelMB: toMb(BG_MODEL.bytes + engineBytes()),
             size: BG_MODEL.size,
             mean: BG_MODEL.mean,
             std: BG_MODEL.std,
             visionAi: false,
             depth: {
-              ready: depthReady(),
-              mb: Math.round(DEPTH_MODEL.bytes / 1_000_000),
+              ready: depthReady() && ortWasmReady(),
+              mb: toMb(DEPTH_MODEL.bytes + engineBytes()),
               size: DEPTH_MODEL.size,
               mean: DEPTH_MODEL.mean,
               std: DEPTH_MODEL.std,
             },
+            hfToken: hfToken.has(),
+            localDraw: localDrawInfo(),
+            illustEngine: settings.get().illustEngine,
           }
         : undefined,
   );
+
+  const progress = (ratio: number) => {
+    if (win && !win.isDestroyed()) win.webContents.send(MAKER.progress, ratio);
+  };
+
+  /**
+   * 사진 AI 엔진 wasm 을 먼저, 그다음 모델을 받는다 (엔진은 설치 파일에 없다, ort-wasm.ts).
+   * 진행률은 받을 크기만큼 나눠 하나로 잇는다
+   */
+  async function withEngine(
+    modelBytes: number,
+    haveModel: boolean,
+    signal: AbortSignal,
+    ensure: (onProgress: (ratio: number) => void) => Promise<unknown>,
+  ) {
+    const engine = engineBytes();
+    const share = engine / (engine + (haveModel ? 0 : modelBytes)) || 0;
+    await ensureOrtWasm((r) => progress(r * share), signal);
+    await ensure((r) => progress(share + r * (1 - share)));
+  }
 
   ipcMain.handle(MAKER.visionAi, async (e) => fromMaker(e) && target === 'main' && !!(await ai?.hasVision()));
 
@@ -196,17 +247,16 @@ export function createMaker(
     const ac = new AbortController();
     download = ac;
     try {
-      await ensureDepthModel((ratio) => {
-        if (win && !win.isDestroyed()) win.webContents.send(MAKER.progress, ratio);
-      }, ac.signal);
+      await withEngine(DEPTH_MODEL.bytes, depthReady(), ac.signal, (p) => ensureDepthModel(p, ac.signal));
       return { ok: true };
     } catch (err) {
       // 원문(net::ERR_..., ENOSPC ...)은 기록에만. 화면에는 할 일을 알려 주는 글
       log('maker', 'depth model', err instanceof Error ? err.message : String(err));
-      const mb = Math.round(DEPTH_MODEL.bytes / 1_000_000);
+      const mb = toMb(DEPTH_MODEL.bytes + engineBytes());
       return { ok: false, error: downloadErrorText(err, { aborted: ac.signal.aborted, mb }) };
     } finally {
-      download = undefined;
+      // 그새 다른 받기가 시작했으면 그것은 두고 내 것만 지운다 (지우면 그만두기로 못 멈춘다)
+      if (download === ac) download = undefined;
     }
   });
 
@@ -215,30 +265,39 @@ export function createMaker(
     const ac = new AbortController();
     download = ac;
     try {
-      await ensureModel((ratio) => {
-        if (win && !win.isDestroyed()) win.webContents.send(MAKER.progress, ratio);
-      }, ac.signal);
+      await withEngine(BG_MODEL.bytes, modelReady(), ac.signal, (p) => ensureModel(p, ac.signal));
       return { ok: true };
     } catch (err) {
       // 원문(net::ERR_..., ENOSPC ...)은 기록에만. 화면에는 할 일을 알려 주는 글
       log('maker', 'model', err instanceof Error ? err.message : String(err));
-      const mb = Math.round(BG_MODEL.bytes / 1_000_000);
+      const mb = toMb(BG_MODEL.bytes + engineBytes());
       return { ok: false, error: downloadErrorText(err, { aborted: ac.signal.aborted, mb }) };
     } finally {
-      download = undefined;
+      // 그새 다른 받기가 시작했으면 그것은 두고 내 것만 지운다 (지우면 그만두기로 못 멈춘다)
+      if (download === ac) download = undefined;
     }
   });
 
   // 모델 파일을 디스크에서 그대로 흘려 보낸다. 해시를 맞춘 뒤에만, 정해진 주소 하나만.
   // 창은 file:// (개발 중에는 localhost)에서 열려 다른 출처라 CORS 허용 머리를 붙인다.
   protocol.handle(MODEL_SCHEME, async (req) => {
-    const file =
-      req.url === MODEL_URL ? verifiedModelUrl() : req.url === DEPTH_URL ? verifiedDepthUrl() : undefined;
+    const wasm = req.url === ORT_WASM_URL;
+    const file = wasm
+      ? verifiedOrtWasmUrl()
+      : req.url === MODEL_URL
+        ? verifiedModelUrl()
+        : req.url === DEPTH_URL
+          ? verifiedDepthUrl()
+          : undefined;
     if (!file) return new Response(null, { status: 404 });
     const res = await net.fetch(file);
     return new Response(res.body, {
       status: res.status,
-      headers: { 'content-type': 'application/octet-stream', 'access-control-allow-origin': '*' },
+      // wasm 은 application/wasm 이어야 받으면서 바로 컴파일한다(instantiateStreaming)
+      headers: {
+        'content-type': wasm ? 'application/wasm' : 'application/octet-stream',
+        'access-control-allow-origin': '*',
+      },
     });
   });
 
@@ -279,7 +338,8 @@ export function createMaker(
       log('maker', 'shape3d', r.noAi ? 'no ai' : r.error);
       return r;
     }
-    const model = extractBlueprint(r.text, gait);
+    const got = extractBlueprintWithFixes(r.text, gait);
+    const model = got?.bp;
     log(
       'maker',
       'shape3d',
@@ -289,8 +349,254 @@ export function createMaker(
       // 요청 글은 기록에 남기지 않고 길이만
       wish ? `wish ${[...wish].length}` : 'no wish',
       gait ?? 'gait auto',
+      got?.fixes.length ? `fixed ${got.fixes.join(', ')}` : '',
     );
     return model ? { ok: true, model } : { ok: false, error: t('main.maker.shapeBad') };
+  });
+
+  /** PNG data URL 을 base64 로. 아니면 undefined */
+  const pngOf = (dataUrl: unknown): string | undefined => {
+    const prefix = 'data:image/png;base64,';
+    if (typeof dataUrl !== 'string' || !dataUrl.startsWith(prefix)) return undefined;
+    const data = dataUrl.slice(prefix.length);
+    const bytes = Buffer.from(data, 'base64');
+    return kindOf(bytes) === 'png' && bytes.length <= MAX_PNG_BYTES ? data : undefined;
+  };
+
+  // 두 번째 보기 (선택): 사진과 앱이 그린 설계도 그림을 같이 보여 주고 한 번 고치게 한다. 실패하면 창이 처음 설계도를 그대로 쓴다
+  ipcMain.handle(
+    MAKER.refine3d,
+    async (
+      e,
+      photoUrl: unknown,
+      renderUrl: unknown,
+      modelRaw: unknown,
+      wishRaw?: unknown,
+      gaitRaw?: unknown,
+    ) => {
+      if (!fromMaker(e) || !askWithImage) return { ok: false, error: t('main.maker.reopen') };
+      if (wishRaw != null && (typeof wishRaw !== 'string' || wishRaw.length > WISH_MAX * 4))
+        return { ok: false, error: t('main.maker.badFormat') };
+      if (gaitRaw != null && !isGait(gaitRaw)) return { ok: false, error: t('main.maker.badFormat') };
+      const gait = gaitRaw ?? undefined;
+      const wish = cleanWish(wishRaw);
+      const photo = pngOf(photoUrl);
+      const render = pngOf(renderUrl);
+      const model = parseBlueprint(modelRaw);
+      if (!photo || !render || !model) return { ok: false, error: t('main.maker.badFormat') };
+      shaping?.abort();
+      const abort = new AbortController();
+      shaping = abort;
+      const started = Date.now();
+      const r = await askWithImage(
+        critiquePrompt(settings.get().petName, model, wish, gait),
+        [
+          { mediaType: 'image/png', data: photo },
+          { mediaType: 'image/png', data: render },
+        ],
+        BLUEPRINT_SYSTEM,
+        abort.signal,
+      );
+      if (shaping === abort) shaping = undefined;
+      if (abort.signal.aborted) return { ok: false, error: t('main.maker.shapeCancelled') };
+      if (!r.ok) {
+        log('maker', 'refine3d', r.noAi ? 'no ai' : r.error);
+        return r;
+      }
+      const got = extractBlueprintWithFixes(r.text, gait);
+      log(
+        'maker',
+        'refine3d',
+        r.provider,
+        `${Math.round((Date.now() - started) / 1000)}s`,
+        got ? `${got.bp.parts.length} parts` : 'bad',
+        got?.fixes.length ? `fixed ${got.fixes.join(', ')}` : '',
+      );
+      return got ? { ok: true, model: got.bp } : { ok: false, error: t('main.maker.shapeBad') };
+    },
+  );
+
+  // AI 일러스트 (2026-10-09): 사용자가 고를 때만 사진을 Hugging Face 무료 Space 로 보낸다. 사진, 요청문, 토큰은 기록에 남기지 않는다.
+  // 내 컴퓨터에서(engine local, 옛 값 mac, 2026-10-10)는 사진이 이 컴퓨터 밖으로 나가지 않는다 (local-draw.ts)
+  ipcMain.handle(
+    MAKER.illustrate,
+    async (e, photoRaw: unknown, ageRaw: unknown, wishRaw?: unknown, engineRaw?: unknown) => {
+      const failed = (kind: IllustErrorKind | 'reopen' | 'format') => ({
+        ok: false as const,
+        kind,
+        error:
+          kind === 'reopen'
+            ? t('main.maker.reopen')
+            : kind === 'format'
+              ? t('main.maker.badFormat')
+              : illustText(kind),
+      });
+      if (!fromMaker(e) || target !== 'main') return failed('reopen');
+      if (!isAgeStage(ageRaw)) return failed('format');
+      const engine = engineRaw == null ? 'cloud' : illustEngineOf(engineRaw);
+      if (!engine) return failed('format');
+      if (wishRaw != null && (typeof wishRaw !== 'string' || wishRaw.length > ILLUST_WISH_MAX * 4))
+        return failed('format');
+      const m = typeof photoRaw === 'string' ? /^data:image\/(jpeg|png);base64,/.exec(photoRaw) : null;
+      if (!m || typeof photoRaw !== 'string') return failed('format');
+      const photo = Buffer.from(photoRaw.slice(m[0].length), 'base64');
+      const kind = imageKind(photo);
+      if ((kind !== 'jpeg' && kind !== 'png') || photo.length > MAX_PNG_BYTES) return failed('format');
+      drawing?.abort();
+      const abort = new AbortController();
+      drawing = abort;
+      if (engine === 'local') {
+        try {
+          const r = await illustrateLocal(photo, kind, illustratePrompt(ageRaw, wishRaw), {
+            signal: abort.signal,
+            onProgress: (ratio) => {
+              if (win && !win.isDestroyed()) win.webContents.send(MAKER.progress, ratio);
+            },
+            log,
+          });
+          log(
+            'maker',
+            'illust',
+            'local',
+            ageRaw,
+            r.fur ? 'fur' : 'no fur',
+            `${Math.round(r.bytes.length / 1024)}KB`,
+          );
+          return {
+            ok: true as const,
+            image: dataUrlFrom(r.bytes, r.kind),
+            ...(r.before ? { before: dataUrlFrom(r.before.bytes, r.before.kind) } : {}),
+            // 그리다 CPU 로 되돌렸으면 걸리는 시간 안내가 바뀐다 (창이 새 값으로 바꾼다)
+            localDraw: localDrawInfo(),
+          };
+        } catch (err) {
+          const k: LocalDrawErrorKind = err instanceof LocalDrawError ? err.kind : 'failed';
+          if (!(err instanceof LocalDrawError))
+            log('maker', 'illust local', err instanceof Error ? err.message : String(err));
+          return { ok: false as const, kind: k, error: localDrawText(k, 'draw'), localDraw: localDrawInfo() };
+        } finally {
+          if (drawing === abort) drawing = undefined;
+        }
+      }
+      try {
+        // 그린 뒤 털 다듬기까지 (다리 털이 매끈하게 나왔다, hf-illust.ts FUR_PROMPT)
+        const r = await illustrateFluffy(
+          photo,
+          kind === 'png' ? 'image/png' : 'image/jpeg',
+          illustratePrompt(ageRaw, wishRaw),
+          {
+            // 운영체제 프록시를 따르는 Electron fetch
+            fetch: (url, init) => net.fetch(url, init),
+            token: hfToken.get(),
+            signal: abort.signal,
+            log,
+          },
+        );
+        log(
+          'maker',
+          'illust',
+          r.space,
+          ageRaw,
+          r.fur ? 'fur' : 'no fur',
+          `${Math.round(r.bytes.length / 1024)}KB`,
+        );
+        return {
+          ok: true as const,
+          image: dataUrlFrom(r.bytes, r.kind),
+          // 털 다듬기 전 그림: 창이 털색을 비교해 되돌리거나 맞춘다 (shared/color-match.ts)
+          ...(r.before ? { before: dataUrlFrom(r.before.bytes, r.before.kind) } : {}),
+        };
+      } catch (err) {
+        const k = err instanceof IllustError ? err.kind : 'busy';
+        if (!(err instanceof IllustError))
+          log('maker', 'illust', err instanceof Error ? err.message : String(err));
+        return failed(k);
+      } finally {
+        if (drawing === abort) drawing = undefined;
+      }
+    },
+  );
+
+  // 내 컴퓨터에서 그리기 준비 (처음 한 번 mflux 16GB, sd.cpp 5.3GB 쯤 받기). 그만두기, 창 닫기로 멈추고 다음에 이어서 한다
+  ipcMain.handle(MAKER.setupLocalDraw, async (e) => {
+    if (!fromMaker(e)) return { ok: false, kind: 'reopen', error: t('main.maker.reopen') };
+    const ac = new AbortController();
+    download = ac;
+    try {
+      await setupLocalDraw(
+        (ratio) => {
+          if (win && !win.isDestroyed()) win.webContents.send(MAKER.progress, ratio);
+        },
+        ac.signal,
+        log,
+      );
+      // 준비하며 Vulkan 장치가 없어 CPU 로 바꿨을 수 있다: 시간 안내를 새로 (창이 바꾼다)
+      return { ok: true, localDraw: localDrawInfo() };
+    } catch (err) {
+      const k: LocalDrawErrorKind = err instanceof LocalDrawError ? err.kind : 'failed';
+      if (!(err instanceof LocalDrawError))
+        log('maker', 'local setup', err instanceof Error ? err.message : String(err));
+      const gb = err instanceof LocalDrawError ? err.gb : undefined;
+      return { ok: false, kind: k, error: localDrawText(k, 'setup', gb), localDraw: localDrawInfo() };
+    } finally {
+      if (download === ac) download = undefined;
+    }
+  });
+
+  ipcMain.handle(MAKER.setIllustEngine, (e, raw: unknown) => {
+    const engine = illustEngineOf(raw);
+    if (fromMaker(e) && engine) settings.set({ illustEngine: engine });
+    return settings.get().illustEngine;
+  });
+
+  // Gemini 앱(무료)에서 만들기 (2026-10-11): 요청문은 메인이 만들어 클립보드에 넣는다 (창이 보낸 글을 그대로 넣지 않는다).
+  // 여는 주소는 gemini.google.com/app 하나뿐. 사진은 사용자가 직접 올린다
+  ipcMain.handle(MAKER.openGemini, async (e, styleRaw: unknown, ageRaw: unknown, wishRaw?: unknown) => {
+    if (!fromMaker(e) || !isGeminiStyle(styleRaw) || !isAgeStage(ageRaw))
+      return { copied: false, opened: false };
+    if (wishRaw != null && (typeof wishRaw !== 'string' || wishRaw.length > ILLUST_WISH_MAX * 4))
+      return { copied: false, opened: false };
+    clipboard.writeText(geminiPrompt(styleRaw, ageRaw, wishRaw));
+    if (!isGeminiUrl(GEMINI_URL)) return { copied: true, opened: false };
+    try {
+      await shell.openExternal(GEMINI_URL);
+      log('maker', 'gemini', 'open', styleRaw, ageRaw);
+      return { copied: true, opened: true };
+    } catch (err) {
+      log('maker', 'gemini', 'open failed', err instanceof Error ? err.message : String(err));
+      return { copied: true, opened: false };
+    }
+  });
+
+  // Gemini 에 올릴 사진: 창이 다듬어 보낸 JPEG(흰 바탕, 긴 변 1024)를 임시 폴더에 두고 파일 관리자로 보여 준다.
+  // 붙여 넣은 사진처럼 파일이 없는 사진도 올릴 수 있게. 창을 닫으면 지운다
+  ipcMain.handle(MAKER.revealGeminiPhoto, (e, photoRaw: unknown) => {
+    if (!fromMaker(e)) return false;
+    const prefix = 'data:image/jpeg;base64,';
+    if (typeof photoRaw !== 'string' || !photoRaw.startsWith(prefix)) return false;
+    const bytes = Buffer.from(photoRaw.slice(prefix.length), 'base64');
+    if (imageKind(bytes) !== 'jpeg' || bytes.length > MAX_PNG_BYTES || !sizeOk(bytes)) return false;
+    try {
+      mkdirSync(geminiDir(), { recursive: true });
+      const file = join(geminiDir(), GEMINI_PHOTO);
+      writeFileAtomic(file, bytes);
+      shell.showItemInFolder(file);
+      return true;
+    } catch (err) {
+      log('maker', 'gemini photo', err instanceof Error ? err.message : String(err));
+      return false;
+    }
+  });
+
+  ipcMain.handle(MAKER.setHfToken, (e, raw: unknown) => {
+    if (!fromMaker(e)) return { ok: false, has: hfToken.has() };
+    try {
+      const ok = hfToken.set(raw === null ? null : raw);
+      return ok ? { ok, has: hfToken.has() } : { ok, has: hfToken.has(), error: t('main.illust.tokenShape') };
+    } catch (err) {
+      log('maker', 'hf token save failed', err instanceof Error ? err.message : String(err));
+      return { ok: false, has: hfToken.has(), error: saveErrorText(err) };
+    }
   });
 
   ipcMain.handle(MAKER.save, (e, dataUrl: string | null, name: string, lookRaw?: unknown) => {
@@ -331,31 +637,56 @@ export function createMaker(
     // 머리말로 형식을 확인하고 크기를 본다 (data URL 의 형식 글자는 믿지 않는다).
     const kind = kindOf(bytes);
     const max = kind === 'png' ? MAX_PNG_BYTES : MAX_ANIMATED_BYTES;
-    if (!kind || bytes.length > max) return { ok: false, error: t('main.maker.tooBigAny') };
+    // 작은 파일이라도 가로세로가 터무니없으면(23000x23000) 풀 때 메모리를 몇 GB 쓴다
+    if (!kind || bytes.length > max || !sizeOk(bytes)) return { ok: false, error: t('main.maker.tooBigAny') };
     mkdirSync(petsDir(), { recursive: true });
     const file = to === 'main' ? `pet-${Date.now()}.${kind}` : `pose-${to}-${Date.now()}.${kind}`;
-    writeFileAtomic(join(petsDir(), file), bytes);
-    // 입체 모습은 펫 본 그림에만: AI 설계도(다시 고르기를 거쳐) 또는 2.5D 깊이 그림(PNG 머리말과 크기 확인)
-    const look = to === 'main' && kind === 'png' ? lookOf(lookRaw) : {};
-    const modelFile = look.model ? `model-${Date.now()}.json` : undefined;
-    if (look.model && modelFile) writeFileAtomic(join(petsDir(), modelFile), JSON.stringify(look.model));
-    const depthFile = look.depth ? `depth-${Date.now()}.png` : undefined;
-    if (look.depth && depthFile) writeFileAtomic(join(petsDir(), depthFile), look.depth);
-    if (to === 'main') {
-      // 이름 칸을 비우면 지금 펫 이름이 아니라 새 이름 (보관함에 같은 이름이 쌓이지 않게). 보관하기 전에 정한다
-      const petName = cleanPetName(name) ?? newPhotoName();
-      library.beforeNewPhoto();
-      settings.set({
-        petImage: file,
-        petModel: modelFile ?? null,
-        petDepth: depthFile ?? null,
-        petName,
-        // 설계도를 만든 요청사항은 그 설계도 이름으로 (걸음새에 맞게 다시 만들 때 같은 글로)
-        ...(modelFile && look.wish
-          ? { petWishes: { ...settings.get().petWishes, [modelFile]: look.wish } }
-          : {}),
-      });
-    } else settings.set({ petPoses: { [to]: file } });
+    // 그림을 쓴 뒤 설계도, 깊이 그림, 설정 저장이 실패하면 방금 쓴 파일을 지운다 (pets/ 에 주인 없는 그림이 쌓이지 않게)
+    const written: string[] = [];
+    const write = (name: string, data: string | Uint8Array) => {
+      writeFileAtomic(join(petsDir(), name), data);
+      written.push(name);
+    };
+    try {
+      write(file, bytes);
+      // 입체 모습은 펫 본 그림에만: AI 설계도(다시 고르기를 거쳐) 또는 2.5D 깊이 그림(PNG 머리말과 크기 확인)
+      const look = to === 'main' && kind === 'png' ? lookOf(lookRaw) : {};
+      const modelFile = look.model ? `model-${Date.now()}.json` : undefined;
+      if (look.model && modelFile) write(modelFile, JSON.stringify(look.model));
+      const depthFile = look.depth ? `depth-${Date.now()}.png` : undefined;
+      // AI 일러스트 나이 단계 (펫 본 그림에만, 모르는 값이면 없음)
+      const age =
+        to === 'main' && typeof lookRaw === 'object' && lookRaw !== null
+          ? (lookRaw as Record<string, unknown>).age
+          : undefined;
+      if (look.depth && depthFile) write(depthFile, look.depth);
+      if (to === 'main') {
+        // 이름 칸을 비우면 지금 펫 이름이 아니라 새 이름 (보관함에 같은 이름이 쌓이지 않게). 보관하기 전에 정한다
+        const petName = cleanPetName(name) ?? newPhotoName();
+        const prep = library.newPhotoPatch();
+        settings.set({
+          ...prep.patch,
+          petImage: file,
+          petModel: modelFile ?? null,
+          petDepth: depthFile ?? null,
+          petAge: isAgeStage(age) ? age : null,
+          petName,
+          // 설계도를 만든 요청사항은 그 설계도 이름으로 (걸음새에 맞게 다시 만들 때 같은 글로)
+          ...(modelFile && look.wish
+            ? { petWishes: { ...settings.get().petWishes, [modelFile]: look.wish } }
+            : {}),
+        });
+        // 저장은 끝났다: 옛 파일 치우기가 실패해도(윈도우 파일 잠김) 방금 쓴 새 펫 파일을 지우지 않는다
+        try {
+          prep.cleanup();
+        } catch (err) {
+          log('maker', '옛 파일 치우기 실패', err instanceof Error ? err.name : 'error');
+        }
+      } else settings.set({ petPoses: { [to]: file } });
+    } catch (err) {
+      for (const f of written) rmSync(join(petsDir(), f), { force: true });
+      throw err;
+    }
     if (old && old !== file) rmSync(join(petsDir(), old), { force: true });
     log('maker', 'saved', file, `${Math.round(bytes.length / 1024)}KB`);
     return { ok: true };
@@ -449,6 +780,7 @@ export function createMaker(
     if (!fromMaker(e)) return;
     download?.abort();
     shaping?.abort();
+    drawing?.abort();
   });
 
   /** 펫 본 그림(main)이나 상태별 포즈를 만든다. 다른 것을 만드는 창이 열려 있으면 다시 연다 */
@@ -459,6 +791,10 @@ export function createMaker(
         focusWindow(win);
         return;
       }
+      // 다시 불러오면 앞 화면이 기다리던 일은 받을 곳이 없다. 그림 그리기(하루 무료 횟수)와 입체, 모델 받기를 멈춘다
+      download?.abort();
+      shaping?.abort();
+      drawing?.abort();
       target = next;
       win.reload();
       focusWindow(win);
@@ -488,7 +824,14 @@ export function createMaker(
     win.on('closed', () => {
       download?.abort();
       shaping?.abort();
+      drawing?.abort();
       win = undefined;
+      // Gemini 에 올리려고 꺼내 둔 사진을 치운다
+      try {
+        rmSync(geminiDir(), { recursive: true, force: true });
+      } catch {
+        // 윈도우에서 파일이 열려 있으면 실패할 수 있다. 다음에 덮어쓴다
+      }
     });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (ev) => ev.preventDefault());
@@ -506,6 +849,79 @@ export function createMaker(
       return win;
     },
   };
+}
+
+/** Gemini 에 올릴 사진을 잠깐 두는 폴더와 이름 */
+const geminiDir = () => join(app.getPath('temp'), 'jjakkung-gemini');
+const GEMINI_PHOTO = 'jjakkung-pet-photo.jpg';
+
+/** 일러스트 실패 종류마다 화면 글 */
+function illustText(kind: IllustErrorKind): string {
+  switch (kind) {
+    case 'quota':
+      // 쿼터는 사용자(인터넷 연결)마다 따로, 하루면 다시 찬다. Gemini 앱, 토큰, (되면) 내 컴퓨터에서 그리기를 권한다
+      if (hfToken.has()) return t('main.illust.quotaToken');
+      return t(localDrawInfo().supported ? 'main.illust.quotaLocal' : 'main.illust.quota');
+    case 'limit':
+      return t(hfToken.has() ? 'main.illust.down' : 'main.illust.limit');
+    case 'auth':
+      return t('main.illust.auth');
+    case 'refused':
+      if (hfToken.has()) return t('main.illust.refusedToken');
+      return t(localDrawInfo().supported ? 'main.illust.refusedLocal' : 'main.illust.refused');
+    case 'network':
+      return t('main.illust.offline');
+    case 'timeout':
+      return t('main.illust.timeout');
+    case 'cancelled':
+      return t('main.illust.cancelled');
+    case 'same':
+    case 'bad':
+      return t('main.illust.bad');
+    default:
+      return t('main.illust.down');
+  }
+}
+
+/** 내 컴퓨터에서 그리기 실패 종류마다 화면 글. 준비와 그리기에서 멈춤 글만 다르다. gb 는 이번 준비에 필요한 빈 공간 */
+function localDrawText(kind: LocalDrawErrorKind, phase: 'setup' | 'draw', gb?: number): string {
+  switch (kind) {
+    case 'unsupported': {
+      // 로제타로 도는 인텔용 앱이면 Apple 칩용을 깔면 된다
+      const pick = localDrawSupport();
+      return t(
+        !pick.ok && pick.reason === 'rosetta' ? 'main.localDraw.rosetta' : 'main.localDraw.unsupported',
+      );
+    }
+    case 'notReady':
+      return t('main.localDraw.notReady');
+    case 'busy':
+      return t('main.localDraw.busy');
+    case 'disk':
+      return phase === 'setup'
+        ? t('main.localDraw.diskSetup', { gb: gb ?? localDrawInfo().need?.free ?? LOCAL_DRAW_GB.free })
+        : t('main.localDraw.disk');
+    case 'offline':
+      return t('main.localDraw.offline');
+    case 'memory':
+      return t('main.localDraw.memory');
+    case 'battery':
+      return t('main.localDraw.battery');
+    case 'timeout':
+      return t('main.localDraw.timeout');
+    case 'cancelled':
+      return t(phase === 'setup' ? 'main.localDraw.setupCancelled' : 'main.illust.cancelled');
+    case 'bad':
+      return t('main.localDraw.bad');
+    default:
+      return t(phase === 'setup' ? 'main.localDraw.setupFailed' : 'main.localDraw.failed');
+  }
+}
+
+/** 그림 바이트를 data URL 로 (머리말로 본 형식) */
+function dataUrlFrom(bytes: Uint8Array, kind: ImageKind): string {
+  const mime = kind === 'jpeg' ? 'image/jpeg' : `image/${kind}`;
+  return `data:${mime};base64,${Buffer.from(bytes).toString('base64')}`;
 }
 
 /** 커스텀 먹이 그림 (data URL). 없으면 빈 글 */

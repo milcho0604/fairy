@@ -24,16 +24,20 @@ export function EventTab({
 }) {
   const [text, setText] = useState('');
   const [error, setError] = useState('');
+  // 방금 넣은 일정이 다른 일정과 시간이 겹친다 (넣기는 했다. 다음 글을 적으면 지운다)
+  const [clash, setClash] = useState('');
   const now = Date.now();
 
   const add = async () => {
     const r = await bridge.eventAdd(text);
     if (!r.ok) {
       setError(r.error ?? t('panel.add.failed'));
+      setClash('');
       return;
     }
     setText('');
     setError('');
+    setClash(r.clash ? t('assist.clash', { time: timeOf(r.clash.startAt), title: r.clash.title }) : '');
   };
 
   // 끝난 일정은 빼고 날짜별로 묶는다. 종일 일정은 마지막 날이 지나야 끝나고,
@@ -41,6 +45,8 @@ export function EventTab({
   const upcoming = s.events.filter((e) =>
     e.allDay ? allDaySpan(e).last >= s.today : (e.endAt ?? e.startAt + 30 * 60_000) >= now,
   );
+  // 겹침은 메인이 저장 파일에서 센다: 어제 시작해 오늘까지 이어지는 시각 일정은 s.events 에 없다
+  const clashing = new Set(s.eventClash);
   const days = new Map<string, CalEvent[]>();
   for (const e of upcoming) {
     const first = localDay(e.startAt);
@@ -59,6 +65,7 @@ export function EventTab({
           onChange={(e) => {
             setText(e.target.value);
             setError('');
+            setClash('');
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) add();
@@ -66,6 +73,7 @@ export function EventTab({
         />
       </div>
       {error && <p className="hint error">{error}</p>}
+      {clash && <p className="hint clash">{clash}</p>}
       <div className="scroll events-list">
         {days.size === 0 && <p className="empty">{t('panel.event.empty')}</p>}
         {[...days].map(([day, list]) => (
@@ -73,7 +81,14 @@ export function EventTab({
             <h3>{dayHeading(day, s.today)}</h3>
             <ul className="events">
               {list.map((e) => (
-                <EventRow key={e.id} e={e} now={now} today={s.today} onRemoved={onRemoved} />
+                <EventRow
+                  key={e.id}
+                  e={e}
+                  now={now}
+                  today={s.today}
+                  onRemoved={onRemoved}
+                  clash={clashing.has(e.id)}
+                />
               ))}
             </ul>
           </section>
@@ -88,11 +103,14 @@ function EventRow({
   now,
   today,
   onRemoved,
+  clash,
 }: {
   e: CalEvent;
   now: number;
   today: string;
   onRemoved: (id: number) => void;
+  /** 다른 일정과 시간이 겹친다 */
+  clash?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(e.title);
@@ -191,6 +209,11 @@ function EventRow({
           </button>
         )}
         <span className="tools">
+          {clash && (
+            <span className="clash-badge" title={t('assist.clash.title')}>
+              {t('assist.clash.badge')}
+            </span>
+          )}
           <span className="extra">
             <label className={`all-day-toggle ${e.allDay ? 'on' : ''}`} title={t('panel.event.allDayToggle')}>
               <input type="checkbox" checked={e.allDay} onChange={toggleAllDay} />

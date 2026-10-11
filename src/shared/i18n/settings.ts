@@ -31,6 +31,9 @@ export const ko = {
   'settings.petStyle.figure': '피규어',
   'settings.petStyle.game': '게임 캐릭터',
   'settings.petStyle.real': '실사',
+  'settings.petStyle.fluffy': '복슬복슬 (시험)',
+  'settings.petStyleHint.fluffy':
+    '이음새 없는 한 덩어리 몸에 길고 폭신한 털. 곱슬 털, 뭉친 털도 펫마다 달라. 시험판이라 계속 다듬는 중이고 그래픽을 더 써.',
   'settings.petStyleHint.figure': '말랑한 비닐 피규어처럼 반짝여.',
   'settings.petStyleHint.game': '게임 캐릭터처럼 명암을 또렷하게 나누고 테두리 선을 둘러. 눈도 조금 더 커.',
   'settings.petStyleHint.real':
@@ -73,7 +76,7 @@ export const ko = {
   // 이름은 이 키 하나만 바꾸면 된다
   'settings.boost': '부스트 모드',
   'settings.boostHint':
-    '사양이 좋은 컴퓨터용. 펫이 더 부드럽게 움직이고 마우스를 더 촘촘히 따라 봐. 무료 AI 는 30분 동안 데워 둬서 답이 빨라. CPU와 메모리를 조금 더 써. 노트북이 배터리로 돌 때는 쉬어.',
+    '사양이 좋은 컴퓨터용. 펫이 더 부드럽게 움직이고 마우스를 더 촘촘히 따라 봐. 무료 AI는 30분 동안 데워 둬서 답이 빨라. CPU와 메모리를 조금 더 써. 노트북이 배터리로 돌 때는 쉬어.',
   'settings.boostResting': '지금은 배터리라 쉬는 중이야. 전원을 꽂으면 켜져.',
   'settings.sysMonitor': '메뉴 막대에 컴퓨터 상태',
   'settings.sysMonitorHint':
@@ -118,6 +121,9 @@ export const ko = {
   // 말풍선
   'settings.bubbles': '말풍선',
   'settings.bubblesAria': '말풍선 빈도',
+  'settings.osNotify': '펫이 안 보일 때 시스템 알림으로',
+  'settings.osNotifyHint':
+    '전체 화면이나 숨김이라 펫 말풍선을 못 볼 때 일정 알림을 컴퓨터 알림으로도 한 번 보내. 누르면 회의를 열거나 펫을 불러.',
   'settings.chatterHint.quiet': '답이 왔다는 알림만 해.',
   'settings.chatterHint.normal': '바쁠 때 같은 상태 알림까지, 한 시간에 {n}개까지.',
   'settings.chatterHint.chatty': '혼잣말을 자주 하고(4~6분마다), 한 시간에 {n}개까지.',
@@ -127,39 +133,71 @@ export const ko = {
   'settings.persona': '성격과 말투',
   'settings.personaNext': '다음 질문부터 바뀌어.',
   'settings.aiKnowsTodos': '내 할 일 같이 보내기',
-  'settings.diaryAi': '일기를 AI 로 다듬기',
+  'settings.diaryAi': '일기를 AI로 다듬기',
   'settings.diaryAiHint':
-    '지난 날 짝꿍 일기를 고른 AI 가 펫 말투로 다듬어. 숫자와 일기 문장만 보내고 할 일 제목은 안 보내.',
+    '지난 날 짝꿍 일기를 고른 AI가 펫 말투로 다듬어. 숫자와 일기 문장만 보내고 할 일 제목은 안 보내.',
   'settings.aiKnowsTodosHint':
-    "질문할 때 안 끝낸 할 일 제목과 마감, 오늘 남은 일정 제목을 AI 에 같이 보내. '오늘 뭐부터 할까?'에 답할 수 있어. 채팅 창 아래에서도 켜고 끌 수 있어.",
+    "질문할 때 안 끝낸 할 일 제목과 마감, 오늘 남은 일정 제목을 AI에 같이 보내. '오늘 뭐부터 할까?'에 답할 수 있어. 채팅 창 아래에서도 켜고 끌 수 있어.",
+  'settings.aiPetTools': '짝꿍 도구 쓰기',
+  'settings.aiPetToolsHint':
+    "채팅에서 '내일 장보기 할 일로 넣어 줘'처럼 말하면 AI가 짝꿍 할 일, 메모, 일정을 직접 읽고 넣어. Claude나 Codex에서 돼. 할 일 목록을 읽을 수 있어서 기본은 꺼 뒀어. 파일, 명령 도구는 여전히 꺼 둬.",
   'settings.myMcp': '내 MCP 도구 쓰기',
   'settings.myMcpOff':
-    '위의 "내 AI 설정 없이 부르기"를 끄면 쓸 수 있어. Claude Code 에 연결해 둔 노션, 슬랙 같은 MCP 도구를 채팅에서 써.',
+    '위의 "내 AI 설정 없이 부르기"를 끄면 쓸 수 있어. Claude Code에 연결해 둔 노션, 슬랙 같은 MCP 도구를 채팅에서 써.',
   'settings.myMcpOn': (v: { n: number }) =>
-    `Claude Code 에 연결해 둔 MCP 도구(${v.n}개 서버)를 채팅에서 묻지 않고 써. 파일, 명령 도구는 여전히 꺼 둬. 글쓰기 같은 도구도 쓸 수 있으니 켤 때 주의해 줘.`,
+    `Claude Code에 연결해 둔 MCP 도구(${v.n}개 서버)를 채팅에서 묻지 않고 써. 파일, 명령 도구는 여전히 꺼 둬. 글쓰기 같은 도구도 쓸 수 있으니 켤 때 주의해 줘.`,
   'settings.aiIsolation': '내 AI 설정 없이 부르기 (권장)',
   'settings.aiIsolationHint':
-    'Claude Code 와 Codex 를 부를 때 내 훅, MCP, 스킬을 싣지 않아. 끄면 내 설정을 그대로 쓰는데 답이 느려지고 한도를 더 쓸 수 있어. 바꾸면 새 대화로 시작해.',
+    'Claude Code와 Codex를 부를 때 내 훅, MCP, 스킬을 싣지 않아. 끄면 내 설정을 그대로 쓰는데 답이 느려지고 한도를 더 쓸 수 있어. 바꾸면 새 대화로 시작해.',
 
   // 모델 고르기 (v2)
   'settings.models': 'AI 모델',
   'settings.pets.hint':
-    '기본 펫이나 전에 만든 펫을 골라. 지금 사진 펫은 지우지 않고 보관함에 둬. 보관한 펫은 × 를 두 번 누르면 지워져.',
+    '기본 펫, 그림 친구 밀크와 초코, 전에 만든 펫 가운데 골라. 지금 사진 펫은 지우지 않고 보관함에 둬. 보관한 펫은 × 를 두 번 누르면 지워져.',
   'settings.pets.now': '지금',
   'settings.pets.figure': '입체',
   'settings.pets.relief': '2.5D',
+  'settings.pets.age.baby': '아기',
+  'settings.pets.age.teen': '청소년',
+  'settings.pets.age.adult': '어른',
   'settings.pets.remove': (v: { name: string }) => `${v.name} 지우기`,
+  /** 밀크, 초코 고르기 칸 화면 읽기 */
+  'settings.pets.starter': (v: { name: string; desc: string }) => `${v.name}, ${v.desc}`,
   'settings.pets.removeSure': '지울까?',
   'settings.pets.removed': '보관한 펫을 지웠어',
   'settings.rules': '짝꿍 규칙',
   'settings.rules.label': '대화할 때 늘 지켜 줄 것',
-  'settings.rules.placeholder': '예)\n답은 세 줄 안으로\n코드는 TypeScript 로\n나를 "대장"이라고 불러',
-  'settings.rules.hint': '한 줄에 하나씩. 모든 AI 에 같이 보내고 성격보다 먼저 따라. 칸을 벗어나면 저장해.',
+  'settings.rules.placeholder': '예)\n답은 세 줄 안으로\n코드는 TypeScript로\n나를 "대장"이라고 불러',
+  'settings.rules.hint': '한 줄에 하나씩. 모든 AI에 같이 보내고 성격보다 먼저 따라. 칸을 벗어나면 저장해.',
   'settings.rules.saved': '규칙을 저장했어',
+  'settings.memory': '짝꿍이 기억하는 것',
+  'settings.memory.hint': (v: { max: number; len: number }) =>
+    `짝꿍한테 늘 알려 줄 나에 대한 것. 질문할 때마다 AI에 같이 보내니 비밀은 적지 마. ${v.max}개, 하나에 ${v.len}자까지. 꽉 차면 오래된 것부터 빠져.`,
+  'settings.memory.empty':
+    '아직 기억하는 게 없어. 여기에 적거나, AI 도구에서 "짝꿍한테 기억해 줘"라고 한 것을 허락하면 생겨.',
+  'settings.memory.placeholder': '예) 아침엔 회의가 많아',
+  'settings.memory.add': '기억하기',
+  'settings.memory.delete': '잊기',
+  'settings.memory.deleteSure': '정말 잊을까?',
+  'settings.memory.deleteAria': (v: { text: string }) => `"${v.text}" 잊기`,
+  'settings.memory.added': '기억했어',
+  'settings.memory.deleted': '잊었어',
+  'settings.memory.dupe': '이미 기억하고 있어',
+  'settings.memory.pending': '짝꿍이 기억하자고 한 것',
+  'settings.memory.pendingHint': 'AI 도구가 기억해 두자고 한 거야. 허락한 것만 기억해서 AI에 같이 보내.',
+  'settings.memory.approve': '기억하기',
+  'settings.memory.approveAria': (v: { text: string }) => `"${v.text}" 기억하기`,
+  'settings.memory.dismiss': '버리기',
+  'settings.memory.dismissAria': (v: { text: string }) => `"${v.text}" 버리기`,
+  'settings.memory.dismissed': '버렸어',
+  'settings.memory.full': '기억이 꽉 찼어 ({max}개). 하나 잊고 다시 해 줘',
   'settings.storage': '저장 공간',
   'settings.storage.llm': (v: { name: string }) => `무료 AI 모델 ${v.name}`,
   'settings.storage.bg': '사진 배경 지우기 모델',
   'settings.storage.depth': '2.5D 깊이 모델',
+  'settings.storage.ort': '사진 AI 엔진 (배경 지우기, 2.5D)',
+  'settings.storage.localDraw': '내 컴퓨터에서 그리기 (mflux 도구와 모델)',
+  'settings.storage.localDrawSd': '내 컴퓨터에서 그리기 (sd.cpp 도구와 모델)',
   'settings.storage.oldFile': (v: { name: string }) => `안 쓰는 모델 파일 ${v.name}`,
   'settings.storage.delete': '지우기',
   'settings.storage.sure': '정말 지울까?',
@@ -169,7 +207,7 @@ export const ko = {
   'settings.storage.hint': (v: { total: string }) =>
     `모두 ${v.total}. 지워도 그 기능을 다시 쓰면 그때 다시 받아.`,
   'settings.models.hint':
-    '고르지 않으면 그 AI 의 기본 모델을 써. Claude 는 요금제 기본(Pro, Max 는 Opus)이야. 가벼운 모델을 고르면 한도를 아낄 수 있어.',
+    '고르지 않으면 그 AI의 기본 모델을 써. Claude는 요금제 기본(Pro, Max는 Opus)이야. 가벼운 모델을 고르면 한도를 아낄 수 있어.',
   'settings.models.default': '기본',
   'settings.models.latest': (v: { label: string }) => `${v.label} (최신 자동)`,
   'settings.models.pinned': (v: { label: string }) => `${v.label} (이 버전 고정)`,
@@ -179,12 +217,12 @@ export const ko = {
     `처음 쓸 때 받아 (${v.mb}MB, ${v.license})`,
 
   // 다른 AI 에서 쓰기 (MCP)
-  'settings.mcpSection': '다른 AI 에서 짝꿍 쓰기 (MCP)',
+  'settings.mcpSection': '다른 AI에서 짝꿍 쓰기 (MCP)',
   'settings.mcp.intro':
-    'Claude Code, Codex 에 짝꿍을 연결하면 그 안에서 "이거 짝꿍 할 일에 넣어 줘", "내일 3시 회의 일정 잡아 줘"가 돼. 할 일, 메모, 일정을 넣고 볼 수 있어. 넣은 것은 몇 초 안에 패널에 보여.',
+    'Claude Code, Codex에 짝꿍을 연결하면 그 안에서 "이거 짝꿍 할 일에 넣어 줘", "내일 3시 회의 일정 잡아 줘"가 돼. 할 일, 메모, 일정을 넣고 볼 수 있어. 넣은 것은 몇 초 안에 패널에 보여.',
   'settings.mcp.claude': 'Claude Code: 터미널에서 한 번 실행',
   'settings.mcp.copyCmd': '명령 복사',
-  'settings.mcp.codex': 'Codex: ~/.codex/config.toml 에 붙여 넣기',
+  'settings.mcp.codex': 'Codex: ~/.codex/config.toml에 붙여 넣기',
   'settings.mcp.copyConfig': '설정 복사',
   'settings.mcp.moved': '짝꿍을 다른 폴더로 옮기거나 다시 설치하면 경로가 바뀌니 다시 등록해 줘.',
 
@@ -217,7 +255,7 @@ export const ko = {
   'settings.calendar': '캘린더 가져오기',
   'settings.cal.url': '캘린더 주소 (.ics)',
   'settings.cal.hint':
-    '구글 캘린더: 설정 > 내 캘린더 > 캘린더 통합 > "iCal 형식의 비공개 주소"를 붙여 넣어. 30분마다 앞으로 60일 일정을 가져와서 펫이 알려 줘. 이 주소는 이 컴퓨터에만 둬. (읽기만 하고, 짝꿍에서 넣은 일정은 구글로 가지 않아.)',
+    '구글 캘린더: 설정 > 내 캘린더 > 캘린더 통합 > "iCal 형식의 비공개 주소"를 붙여 넣어. 30분마다 앞으로 60일 일정을 가져와서 펫이 알려 줘. 이 주소는 이 컴퓨터에만 둬. (읽기만 해. 짝꿍에서 넣은 일정을 구글로 보내려면 아래 "구글 캘린더로 보내기"를 켜.)',
   'settings.cal.fetch': '지금 가져오기',
   'settings.cal.clear': '지우기',
 
@@ -249,18 +287,21 @@ export const ko = {
   'settings.zoomKeys': '크게, 작게, 원래대로 (마우스가 펫 위에 있을 때)',
   'settings.shortcut.hide': '숨기기, 다시 보이기',
   'settings.shortcut.quickAdd': '할 일 한 줄 넣기 (어디서든)',
-  'settings.shortcut.recording': '키를 눌러 줘 (Esc 는 그만)',
+  'settings.shortcut.chat': '대화 열기',
+  'settings.shortcut.look': '같이 보기',
+  'settings.shortcut.recording': '키를 눌러 줘 (Esc는 그만)',
   'settings.shortcut.recordingBtn': '기록 중',
   'settings.shortcut.change': '바꾸기',
   'settings.shortcut.default': '기본으로',
+  'settings.shortcut.none': '없음',
   'settings.shortcut.badKey': '이 키는 단축키로 못 써. 글자, 숫자, F1~F24 같은 키를 눌러 줘.',
   'settings.shortcut.taken': "이미 '{name}' 단축키야. 다른 키를 눌러 줘.",
   'settings.shortcut.needMod': '{mod} 키에 {alt} 키나 Shift 키를 더해 눌러 줘. 다른 앱 입력을 빼앗지 않게.',
   'settings.shortcut.needMore':
     '{one} 키 하나만으로는 다른 앱 단축키와 겹쳐. {more} 중 하나를 더 같이 눌러 줘.',
   'settings.shortcut.optionOnly': 'Option 조합은 특수 문자를 칠 때 써. Cmd 키나 Ctrl 키를 같이 눌러 줘.',
-  'settings.shortcut.fKey': 'F1~F12 는 다른 앱이 많이 써. 수식키를 하나 같이 누르거나 F13~F24 를 써 줘.',
-  'settings.shortcut.windowsKey': 'Windows 키 조합은 Windows 가 써. Ctrl 키나 Alt 키로 골라 줘.',
+  'settings.shortcut.fKey': 'F1~F12는 다른 앱이 많이 써. 수식키를 하나 같이 누르거나 F13~F24를 써 줘.',
+  'settings.shortcut.windowsKey': 'Windows 키 조합은 Windows가 써. Ctrl 키나 Alt 키로 골라 줘.',
   'settings.shortcut.reserved': '{what}에 쓰는 조합이라 못 써 ({keys}). 다른 키를 눌러 줘.',
   'settings.shortcut.what.copy': '복사',
   'settings.shortcut.what.paste': '붙여넣기',
@@ -364,6 +405,9 @@ export const en: Translation<typeof ko> = {
   'settings.petStyle.figure': 'Figure',
   'settings.petStyle.game': 'Game character',
   'settings.petStyle.real': 'Realistic',
+  'settings.petStyle.fluffy': 'Fluffy (beta)',
+  'settings.petStyleHint.fluffy':
+    'A seamless body with long, soft fur that can be curly or tufted per pet. Still a beta and uses more graphics power.',
   'settings.petStyleHint.figure': 'Glossy, like a soft vinyl figure.',
   'settings.petStyleHint.game':
     'Crisp cel shading with outlines, like a game character. Slightly bigger eyes too.',
@@ -448,6 +492,9 @@ export const en: Translation<typeof ko> = {
 
   'settings.bubbles': 'Speech bubbles',
   'settings.bubblesAria': 'Bubble frequency',
+  'settings.osNotify': "System notifications when you can't see me",
+  'settings.osNotifyHint':
+    "If you can't see my bubble (full screen, hidden), I'll also send event reminders as a system notification, once. Click it to join the meeting or call me back.",
   'settings.chatterHint.quiet': 'Only tells you when an answer arrives.',
   'settings.chatterHint.normal': 'Also status notes like when you look busy, up to {n} an hour.',
   'settings.chatterHint.chatty': 'Chats to itself often (every 4 to 6 min), up to {n} an hour.',
@@ -461,6 +508,9 @@ export const en: Translation<typeof ko> = {
     "Your chosen AI rewrites past diary entries in your pet's voice. Only the numbers and diary lines are sent, never to-do titles.",
   'settings.aiKnowsTodosHint':
     'Sends your open to-do titles and due dates, plus the titles of today\'s remaining events, with each question. Then it can answer "What should I do first?". You can also switch this under the chat box.',
+  'settings.aiPetTools': 'Let chat use pet tools',
+  'settings.aiPetToolsHint':
+    "Say things like 'add groceries to my to-dos for tomorrow' and the AI reads and adds your pet's to-dos, notes, and events itself. Works with Claude or Codex. It can read your to-do list, so it's off by default. File and command tools stay off.",
   'settings.myMcp': 'Use my MCP tools',
   'settings.myMcpOff':
     'Turn off "Call without my AI setup" above to use this. Lets chat use MCP tools you connected to Claude Code, like Notion or Slack.',
@@ -472,11 +522,15 @@ export const en: Translation<typeof ko> = {
 
   'settings.models': 'AI models',
   'settings.pets.hint':
-    'Pick a default pet or one you made before. Your current photo pet is kept, not deleted. Press × twice to delete a kept pet.',
+    'Pick a default pet, the illustrated friends Milk and Choco, or one you made before. Your current photo pet is kept, not deleted. Press × twice to delete a kept pet.',
   'settings.pets.now': 'Now',
   'settings.pets.figure': '3D',
   'settings.pets.relief': '2.5D',
+  'settings.pets.age.baby': 'Baby',
+  'settings.pets.age.teen': 'Teen',
+  'settings.pets.age.adult': 'Adult',
   'settings.pets.remove': (v) => `Delete ${v.name}`,
+  'settings.pets.starter': (v) => `${v.name}, ${v.desc}`,
   'settings.pets.removeSure': 'Delete?',
   'settings.pets.removed': 'Deleted the kept pet',
   'settings.rules': 'Pet rules',
@@ -486,10 +540,35 @@ export const en: Translation<typeof ko> = {
   'settings.rules.hint':
     'One per line. Sent to every AI and followed before the personality. Saved when you leave the box.',
   'settings.rules.saved': 'Rules saved',
+  'settings.memory': 'Things your pet remembers',
+  'settings.memory.hint': (v) =>
+    `Things about you your pet should always know. They're sent to the AI with every question, so don't put secrets here. Up to ${v.max}, ${v.len} characters each. When it's full, the oldest go first.`,
+  'settings.memory.empty':
+    'Nothing remembered yet. Add one here, or allow something your AI tool asked your pet to remember.',
+  'settings.memory.placeholder': 'e.g. I have lots of meetings in the morning',
+  'settings.memory.add': 'Remember',
+  'settings.memory.delete': 'Forget',
+  'settings.memory.deleteSure': 'Really forget?',
+  'settings.memory.deleteAria': (v) => `Forget "${v.text}"`,
+  'settings.memory.added': 'Got it, remembered',
+  'settings.memory.deleted': 'Forgotten',
+  'settings.memory.dupe': 'Already remembered',
+  'settings.memory.pending': 'Things your pet was asked to remember',
+  'settings.memory.pendingHint':
+    'Your AI tool asked to remember these. Only the ones you allow are remembered and sent to the AI.',
+  'settings.memory.approve': 'Remember',
+  'settings.memory.approveAria': (v) => `Remember "${v.text}"`,
+  'settings.memory.dismiss': 'Dismiss',
+  'settings.memory.dismissAria': (v) => `Dismiss "${v.text}"`,
+  'settings.memory.dismissed': 'Dismissed',
+  'settings.memory.full': 'Memory is full ({max}). Forget one and try again',
   'settings.storage': 'Storage',
   'settings.storage.llm': (v) => `Free AI model ${v.name}`,
   'settings.storage.bg': 'Photo background removal model',
   'settings.storage.depth': '2.5D depth model',
+  'settings.storage.ort': 'Photo AI engine (background removal, 2.5D)',
+  'settings.storage.localDraw': 'Draw on this computer (mflux tools and model)',
+  'settings.storage.localDrawSd': 'Draw on this computer (sd.cpp tools and model)',
   'settings.storage.oldFile': (v) => `Unused model file ${v.name}`,
   'settings.storage.delete': 'Delete',
   'settings.storage.sure': 'Really delete?',
@@ -543,7 +622,7 @@ export const en: Translation<typeof ko> = {
   'settings.calendar': 'Import calendar',
   'settings.cal.url': 'Calendar address (.ics)',
   'settings.cal.hint':
-    'Google Calendar: Settings > My calendars > Integrate calendar > paste the "Secret address in iCal format". Every 30 minutes it fetches the next 60 days and your pet reminds you. The address stays on this computer. (Read only. Events you add in Jjakkung are not sent to Google.)',
+    'Google Calendar: Settings > My calendars > Integrate calendar > paste the "Secret address in iCal format". Every 30 minutes it fetches the next 60 days and your pet reminds you. The address stays on this computer. (Read only. To send events you add in Jjakkung to Google, use "Send to Google Calendar" below.)',
   'settings.cal.fetch': 'Fetch now',
   'settings.cal.clear': 'Clear',
 
@@ -573,10 +652,13 @@ export const en: Translation<typeof ko> = {
   'settings.zoomKeys': 'Bigger, smaller, reset (mouse over the pet)',
   'settings.shortcut.hide': 'Hide and show',
   'settings.shortcut.quickAdd': 'Quick add a to-do (anywhere)',
+  'settings.shortcut.chat': 'Open chat',
+  'settings.shortcut.look': 'Look together',
   'settings.shortcut.recording': 'Press keys (Esc to stop)',
   'settings.shortcut.recordingBtn': 'Recording',
   'settings.shortcut.change': 'Change',
   'settings.shortcut.default': 'Reset',
+  'settings.shortcut.none': 'None',
   'settings.shortcut.badKey': "That key can't be a shortcut. Try a letter, a number or F1 to F24.",
   'settings.shortcut.taken': 'That\'s already the "{name}" shortcut. Try other keys.',
   'settings.shortcut.needMod': 'Hold {mod} plus {alt} or Shift, so other apps keep their keys.',

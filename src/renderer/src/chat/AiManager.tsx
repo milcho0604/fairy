@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useRef, useState } from 'react';
 import type { AiProvider, AiStatus } from '../../../shared/ai/types.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { ProviderView } from '../../../shared/ipc.ts';
@@ -21,6 +21,19 @@ export function AiManager({ providers, status, checking, onRefresh, onAdd, onRem
   const [args, setArgs] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  // 닫기는 부모가 그릴 때마다 새 함수라 ref 로 (효과가 다시 돌면 쓰던 칸의 포커스를 뺏는다)
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  // 열리면 시트 안으로 포커스, Esc 로 닫기 (aria-modal 인데 둘 다 없었다)
+  useEffect(() => {
+    sheetRef.current?.querySelector<HTMLElement>('button, input')?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeRef.current();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -38,7 +51,7 @@ export function AiManager({ providers, status, checking, onRefresh, onAdd, onRem
   };
 
   return (
-    <div className="sheet" role="dialog" aria-modal="true" aria-label={t('chat.manage')}>
+    <div ref={sheetRef} className="sheet" role="dialog" aria-modal="true" aria-label={t('chat.manage')}>
       <div className="sheet-head">
         <strong>{t('chat.manage')}</strong>
         <button type="button" className="ghost" disabled={checking} onClick={onRefresh}>

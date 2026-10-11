@@ -5,6 +5,7 @@ import {
   NEXT_MIN_MS,
   nextDelay,
   pickActivity,
+  settleDist,
   WALK_SPEED,
   walkOffset,
   walkSpan,
@@ -91,7 +92,8 @@ test('맞붙은 옆 모니터로 걸어 넘어간다. 높이가 안 맞으면 �
   assert.deepEqual(walkSpan(pet, area, [area, right]), { left: -1512, right: 1920 });
   const a = pickActivity(pet, area, seq(0.1, 0.9, 1), [area, right]);
   assert.equal(a.type, 'walk');
-  if (a.type === 'walk') assert.equal(a.dx, 160);
+  // 160 만 걸으면 두 모니터에 걸쳐 서서 끝에 한 모니터 안으로 튀었다. 경계를 다 넘어간다
+  if (a.type === 'walk') assert.equal(a.dx, 170);
   const short = { x: 0, y: 0, width: 1920, height: 700 }; // 펫이 들어갈 높이가 아님
   assert.deepEqual(walkSpan(pet, area, [area, short]), { left: -1512, right: 0 });
 });
@@ -121,4 +123,23 @@ test('기운대로 걷는다: 활발하면 자주 빨리, 졸리면 드물게 �
   assert.equal(lively.dx, plain.dx);
   assert.equal(lively.ms, Math.round((Math.abs(plain.dx) / (WALK_SPEED * 1.25)) * 1000));
   assert.equal(tired.ms, Math.round((Math.abs(plain.dx) / (WALK_SPEED * 0.75)) * 1000));
+});
+
+test('옆 모니터로 넘어가는 걷기는 두 모니터에 걸쳐 멈추지 않는다', () => {
+  const left = { x: -1512, y: 0, width: 1512, height: 982 };
+  const right = { x: 0, y: 0, width: 1920, height: 1080 };
+  const areas = [left, right];
+  const pet = { x: -300, y: 800, width: 160, height: 160 };
+  // 걸치지 않으면 그대로
+  assert.equal(settleDist(pet, 1, 100, 2000, areas), 100);
+  // 걸치면 다 넘어간다 (펫 왼끝이 경계 0 에)
+  assert.equal(settleDist(pet, 1, 200, 2000, areas), 300);
+  // 넘어갈 자리가 없으면 경계 앞에서 선다 (펫 오른끝이 경계 0 에)
+  assert.equal(settleDist(pet, 1, 200, 250, areas), 140);
+  // 왼쪽으로도
+  const p2 = { x: 50, y: 800, width: 160, height: 160 };
+  assert.equal(settleDist(p2, -1, 100, 2000, areas), 210);
+  assert.equal(settleDist(p2, -1, 100, 150, areas), 50);
+  // 모니터가 하나면 그대로
+  assert.equal(settleDist(pet, 1, 200, 2000, [right]), 200);
 });

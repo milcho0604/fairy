@@ -4,6 +4,7 @@ import type { Activity } from '../shared/behavior.ts';
 import type { BubbleLayout } from '../shared/bubble-layout.ts';
 import type { ChatState } from '../shared/chat-state.ts';
 import type { Gaze } from '../shared/gaze.ts';
+import { GCAL, type GcalBridge, type GcalStatus } from '../shared/gcal.ts';
 import type { Point } from '../shared/geometry.ts';
 import type { HouseSprites } from '../shared/house-room.ts';
 import {
@@ -171,6 +172,7 @@ if (kind === 'onboarding') {
     openScreenSettings: () => ipcRenderer.send(ONBOARD.openScreenSettings),
     finish: () => ipcRenderer.send(ONBOARD.finish),
     ai: () => ipcRenderer.invoke(ONBOARD.ai),
+    pickStarter: (id) => ipcRenderer.invoke(ONBOARD.pickStarter, id),
   };
   contextBridge.exposeInMainWorld('jjakkungOnboard', onboard);
 }
@@ -183,6 +185,10 @@ if (kind === 'settings') {
     openMaker: (target) => ipcRenderer.send(SETTINGS.openMaker, target),
     stats: () => ipcRenderer.invoke(SETTINGS.stats),
     copyStats: () => ipcRenderer.invoke(SETTINGS.copyStats),
+    diagnostics: () => ipcRenderer.invoke(SETTINGS.diagnostics),
+    copyDiagnostics: () => ipcRenderer.invoke(SETTINGS.copyDiagnostics),
+    saveDiagnostics: () => ipcRenderer.invoke(SETTINGS.saveDiagnostics),
+    reportIssue: () => ipcRenderer.send(SETTINGS.reportIssue),
     checkUpdate: () => ipcRenderer.invoke(SETTINGS.checkUpdate),
     openOnboarding: () => ipcRenderer.send(SETTINGS.openOnboarding),
     exportData: () => ipcRenderer.invoke(SETTINGS.exportData),
@@ -198,6 +204,7 @@ if (kind === 'settings') {
     deleteModel: (id: string) => ipcRenderer.invoke(SETTINGS.deleteModel, id),
     remakeBody: (gait) => ipcRenderer.invoke(SETTINGS.remakeBody, gait),
     cancelRemake: () => ipcRenderer.send(SETTINGS.cancelRemake),
+    rememberTab: (tab) => ipcRenderer.send(SETTINGS.tab, tab),
     onChanged: (listener) => {
       ipcRenderer.on(SETTINGS.changed, (_e, next: Settings) => listener(next));
     },
@@ -209,6 +216,24 @@ if (kind === 'settings') {
     },
   };
   contextBridge.exposeInMainWorld('jjakkungSettings', bridge);
+  // 구글 캘린더에 쓰기 (6단계): 상태만 오간다. 토큰은 메인에만 있다
+  const gcal: GcalBridge = {
+    status: () => ipcRenderer.invoke(GCAL.status),
+    connect: () => ipcRenderer.invoke(GCAL.connect),
+    cancel: () => ipcRenderer.send(GCAL.cancel),
+    disconnect: () => ipcRenderer.invoke(GCAL.disconnect),
+    setPush: (on: boolean) => ipcRenderer.invoke(GCAL.setPush, on),
+    setCalendar: (id: string) => ipcRenderer.invoke(GCAL.setCalendar, id),
+    syncNow: () => ipcRenderer.invoke(GCAL.syncNow),
+    onChanged: (listener) => {
+      const h = (_e: unknown, s: GcalStatus) => listener(s);
+      ipcRenderer.on(GCAL.changed, h);
+      return () => {
+        ipcRenderer.removeListener(GCAL.changed, h);
+      };
+    },
+  };
+  contextBridge.exposeInMainWorld('jjakkungGcal', gcal);
 }
 
 // 패널과 빠른 입력 창은 같은 기능을 쓴다.
@@ -225,6 +250,7 @@ if (kind === 'panel' || kind === 'quick') {
     eventToTodo: (id: number, text: string) => ipcRenderer.invoke(PANEL.eventToTodo, id, text),
     feed: () => ipcRenderer.invoke(PANEL.feed),
     openChat: () => ipcRenderer.send(PANEL.openChat),
+    openSettings: () => ipcRenderer.send(PANEL.openSettings),
     lookTogether: () => ipcRenderer.send(PANEL.lookTogether),
     close: () => ipcRenderer.send(PANEL.close),
     onState: (listener) => {
@@ -244,7 +270,13 @@ if (kind === 'panel' || kind === 'quick') {
     eventUpdate: (id, patch) => ipcRenderer.send(PANEL.eventUpdate, id, patch),
     eventRemove: (id: number) => ipcRenderer.send(PANEL.eventRemove, id),
     eventRestore: (id: number) => ipcRenderer.send(PANEL.eventRestore, id),
-    focusStart: (minutes?: number) => ipcRenderer.send(PANEL.focusStart, minutes),
+    stepAdd: (todoId: number, title: string | string[]) => ipcRenderer.invoke(PANEL.stepAdd, todoId, title),
+    stepToggle: (stepId: number, done?: boolean) => ipcRenderer.send(PANEL.stepToggle, stepId, done),
+    stepRename: (stepId: number, title: string) => ipcRenderer.send(PANEL.stepRename, stepId, title),
+    stepRemove: (stepId: number) => ipcRenderer.send(PANEL.stepRemove, stepId),
+    moveOverdue: () => ipcRenderer.invoke(PANEL.moveOverdue),
+    undoMoveOverdue: () => ipcRenderer.send(PANEL.undoMoveOverdue),
+    focusStart: (minutes?: number, todoId?: number) => ipcRenderer.send(PANEL.focusStart, minutes, todoId),
     focusStop: () => ipcRenderer.send(PANEL.focusStop),
     missedClear: () => ipcRenderer.send(PANEL.missedClear),
     buyToy: (key: string) => ipcRenderer.invoke(PANEL.buyToy, key),
@@ -271,6 +303,16 @@ if (kind === 'maker') {
     ensureDepth: () => ipcRenderer.invoke(MAKER.ensureDepth),
     shape3d: (png: string, wish?: string, gait?: string) =>
       ipcRenderer.invoke(MAKER.shape3d, png, wish, gait),
+    refine3d: (photo: string, render: string, model: unknown, wish?: string, gait?: string) =>
+      ipcRenderer.invoke(MAKER.refine3d, photo, render, model, wish, gait),
+    illustrate: (photo: string, age: string, wish?: string, engine?: string) =>
+      ipcRenderer.invoke(MAKER.illustrate, photo, age, wish, engine),
+    setHfToken: (token: string | null) => ipcRenderer.invoke(MAKER.setHfToken, token),
+    setupLocalDraw: () => ipcRenderer.invoke(MAKER.setupLocalDraw),
+    setIllustEngine: (engine: string) => ipcRenderer.invoke(MAKER.setIllustEngine, engine),
+    openGemini: (style: string, age: string, wish?: string) =>
+      ipcRenderer.invoke(MAKER.openGemini, style, age, wish),
+    revealGeminiPhoto: (photo: string) => ipcRenderer.invoke(MAKER.revealGeminiPhoto, photo),
     resetToDefault: () => ipcRenderer.invoke(MAKER.save, null, ''),
     cancel: () => ipcRenderer.send(MAKER.cancel),
     close: () => ipcRenderer.send(MAKER.close),

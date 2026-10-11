@@ -16,9 +16,11 @@ import {
   fireAt,
   MAX_REMINDS,
   normalizeReminds,
+  parseSnoozed,
   planReminders,
   resolveSpecs,
   SAME_MORNING,
+  SNOOZE_KEEP_MS,
   SNOOZE_LONG_MS,
   SNOOZE_SHORT_MS,
   snoozeFor,
@@ -178,6 +180,34 @@ test('미루기: 시작이 3시간 넘게 남았으면 1시간, 가까우면 5�
   assert.equal(snoozeFor(now, now - 6 * MIN, now + 4 * MIN), undefined);
 });
 
+test('미룬 알림 저장 읽기: 한참 지난 것과 모양이 틀린 것은 버리고, 꺼져 있던 사이 때가 된 것은 남긴다', () => {
+  const now = at('2026-10-20', 9);
+  const ev = { kind: 'event', id: 3 } as const;
+  assert.deepEqual(parseSnoozed(undefined, now), []);
+  assert.deepEqual(parseSnoozed({ at: now }, now), []);
+  assert.deepEqual(
+    parseSnoozed(
+      [
+        { at: now + 5 * MIN, keys: [ev, { kind: 'todo', id: 7 }] },
+        // 꺼져 있던 사이 때가 됨: 켜자마자 말한다
+        { at: now - 2 * MIN, keys: [ev] },
+        // 한참 지남
+        { at: now - SNOOZE_KEEP_MS - 1, keys: [ev] },
+        { at: 'soon', keys: [ev] },
+        { at: now, keys: [{ kind: 'note', id: 1 }, { kind: 'todo', id: -1 }, null] },
+        { at: now, keys: [{ kind: 'todo', id: 2, extra: 'x' }] },
+        null,
+      ],
+      now,
+    ),
+    [
+      { at: now + 5 * MIN, keys: [ev, { kind: 'todo', id: 7 }] },
+      { at: now - 2 * MIN, keys: [ev] },
+      { at: now, keys: [{ kind: 'todo', id: 2 }] },
+    ],
+  );
+});
+
 // ---- 빠른 입력 ----
 
 test('빠른 입력의 알림 말: 한국어와 영어, 여러 개, 맨 끝과 맨 앞', () => {
@@ -230,6 +260,42 @@ test('빠른 입력의 알림 말: 한국어와 영어, 여러 개, 맨 끝과 �
     assert.equal(takeRemind(text), null, text);
 });
 
+test('알림 말: 겹치는 갈래를 뺀 뒤에도 같은 말을 같은 값으로 읽는다', () => {
+  const cases: [string, unknown][] = [
+    ['meeting friday a day before', [DAY_MIN]],
+    ['meeting friday a week before', [7 * DAY_MIN]],
+    ['meeting friday the day before', [DAY_MIN]],
+    ['meeting friday 2 hours before', [120]],
+    ['meeting friday 1 hour before', [60]],
+    ['meeting friday 3 hrs before', [180]],
+    ['meeting friday an hour and a day before', [60, DAY_MIN]],
+    ['회의 금요일 한 주 전', [7 * DAY_MIN]],
+    ['회의 금요일 한주 전', [7 * DAY_MIN]],
+    ['회의 금요일 두 주일 전', [14 * DAY_MIN]],
+  ];
+  for (const [text, specs] of cases) assert.deepEqual(takeRemind(text)?.specs, specs, text);
+});
+
+test('알림 말: 같은 마디를 길게 이어도 금방 끝난다 (되짚기가 기하급수로 늘지 않게)', () => {
+  const inputs = [
+    `meeting ${'1 hour and '.repeat(40)}x`,
+    `meeting ${'1 hour and '.repeat(17)}x`,
+    `meeting ${'a day and '.repeat(19)}x`,
+    `회의 ${'한 주 하고 '.repeat(30)}x`,
+    `회의 ${'한 주 하고 '.repeat(25)}x`,
+    `remind me ${'2 hours, '.repeat(20)}x`,
+  ];
+  for (const text of inputs) takeRemind(text); // 식 컴파일을 먼저 끝낸다
+  for (const text of inputs) {
+    const t0 = performance.now();
+    takeRemind(text);
+    const ms = performance.now() - t0;
+    assert.ok(ms < 50, `${text.slice(0, 30)}: ${ms.toFixed(1)}ms`);
+  }
+  // 너무 긴 줄은 알림 말을 찾지 않는다
+  assert.equal(takeRemind(`${'가'.repeat(200)} 1시간 전`), null);
+});
+
 test('알림 말을 기준에 맞게: 날짜 기준의 "N일 전"은 아침 9시, 시간 단위는 버린다', () => {
   assert.deepEqual(resolveSpecs([DAY_MIN, 60, 0], false), [DAY_MIN, 60, 0]);
   assert.deepEqual(resolveSpecs([DAY_MIN, 3 * DAY_MIN, 'eve', 0], true), [
@@ -241,6 +307,10 @@ test('알림 말을 기준에 맞게: 날짜 기준의 "N일 전"은 아침 9시
   assert.deepEqual(resolveSpecs([60], true), []);
   // 시각 기준의 "전날 저녁"은 전날 8시까지 거꾸로 센 분 (오후 3시 회의면 19시간 전)
   assert.deepEqual(resolveSpecs(['eve'], false, 15 * 60), [19 * 60]);
+  // "당일 아침": 9시 정각 일정이면 시작할 때, 10시면 1시간 전, 8시면 아침이 이미 지나 없다
+  assert.deepEqual(resolveSpecs(['morning'], false, 540), [0]);
+  assert.deepEqual(resolveSpecs(['morning'], false, 600), [60]);
+  assert.deepEqual(resolveSpecs(['morning'], false, 480), []);
   // 뜻이 없는 말만 있으면 기본 알림 (undefined), "알림 없이"는 빈 목록
   assert.equal(remindsOf({ specs: [60], none: false }, true), undefined);
   assert.deepEqual(remindsOf({ specs: [], none: true }, false), []);

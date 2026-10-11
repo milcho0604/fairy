@@ -64,3 +64,14 @@ test('으로/로: 받침 있으면 으로, 없거나 ㄹ 받침이면 로', () =
   assert.equal(withParticle('GPT 3', '으로'), 'GPT 3으로');
   assert.equal(withParticle('???', '으로'), '???(으)로');
 });
+
+test('기본 캐릭터 밀크, 초코(영어 Milk, Choco)는 받침이 없다', () => {
+  for (const name of ['밀크', '초코', 'Milk', 'Choco']) {
+    assert.equal(hasFinalConsonant(name), false, name);
+    assert.equal(withParticle(name, '이'), `${name}가`);
+    assert.equal(withParticle(name, '을'), `${name}를`);
+    assert.equal(withParticle(name, '이랑'), `${name}랑`);
+    assert.equal(withParticle(name, '아'), `${name}야`);
+    assert.equal(withParticle(name, '으로'), `${name}로`);
+  }
+});

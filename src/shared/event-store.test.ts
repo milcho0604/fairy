@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { type Db, MIGRATIONS, migrate, SCHEMA_VERSION } from './db-schema.ts';
-import { EventStore, parseQuickEvent, timeLabel } from './event-store.ts';
+import { EventStore, parseEventInput, parseQuickEvent, takeKoDue, timeLabel } from './event-store.ts';
 import { NoteStore, notePreview, noteTitle } from './note-store.ts';
 
 const MIN = 60_000;
@@ -16,6 +16,30 @@ function fresh() {
   migrate(db);
   return { events: new EventStore(db), notes: new NoteStore(db) };
 }
+
+test('"내일모레"는 모레: 시각 일정, 붙여 쓴 시각, 종일 일정, 기간, 할 일 마감', () => {
+  const ev = parseQuickEvent('내일모레 3시 회의', today, nine);
+  assert.deepEqual(ev && { title: ev.title, day: ev.day }, { title: '회의', day: '2026-10-08' });
+  const glued = parseQuickEvent('내일모레3시 회의', today, nine);
+  assert.deepEqual(glued && { title: glued.title, day: glued.day }, { title: '회의', day: '2026-10-08' });
+  assert.deepEqual(parseEventInput('내일모레 이사', today, nine), {
+    title: '이사',
+    day: '2026-10-08',
+    lastDay: null,
+    allDay: true,
+  });
+  assert.deepEqual(parseEventInput('내일모레부터 3일 출장', today, nine), {
+    title: '출장',
+    day: '2026-10-08',
+    lastDay: '2026-10-10',
+    allDay: true,
+  });
+  assert.deepEqual(takeKoDue('내일모레까지 보고서', today), ['2026-10-08', '보고서']);
+  assert.deepEqual(takeKoDue('보고서 내일모레', today), ['2026-10-08', '보고서']);
+  // "내일"과 "모레"는 그대로
+  assert.equal(parseQuickEvent('내일 3시 회의', today, nine)?.day, '2026-10-07');
+  assert.equal(parseQuickEvent('모레 3시 회의', today, nine)?.day, '2026-10-08');
+});
 
 test('일정 한 줄: 날짜 낱말, 오전/오후, 반, 24시간 표기', () => {
   assert.deepEqual(parseQuickEvent('내일 3시 회의', today, nine), {

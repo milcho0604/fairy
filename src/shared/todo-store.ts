@@ -82,6 +82,26 @@ export interface Todo {
    * (240 = 전날 저녁 8시, -540 = 당일 아침 9시). 마감일이 없으면 울리지 않는다
    */
   reminds: number[];
+  /** 단계 (9판 체크리스트), 위에서부터. 없으면 빈 목록 */
+  steps: TodoStep[];
+}
+
+/** 할 일 단계 하나 (9판) */
+export interface TodoStep {
+  id: number;
+  title: string;
+  done: boolean;
+}
+
+/** 할 일 하나에 넣을 수 있는 단계 수 */
+export const STEP_MAX = 30;
+/** 단계 제목 길이 */
+export const STEP_TITLE_MAX = 200;
+
+/** 단계 진행: 끝낸 수와 전체 수. 단계가 없으면 undefined */
+export function stepProgress(steps: readonly TodoStep[]): { done: number; total: number } | undefined {
+  if (steps.length === 0) return undefined;
+  return { done: steps.filter((s) => s.done).length, total: steps.length };
 }
 
 /** 하루 안의 분으로 쓸 수 있는 값인지 (0~1439) */
@@ -118,7 +138,14 @@ interface Row {
   due_min?: number | null;
 }
 
-const toTodo = (r: Row, reminds: number[] = []): Todo => ({
+interface StepRow {
+  id: number;
+  todo_id: number;
+  title: string;
+  done: number;
+}
+
+const toTodo = (r: Row, reminds: number[] = [], steps: TodoStep[] = []): Todo => ({
   id: Number(r.id),
   title: r.title,
   due: r.due,
@@ -129,6 +156,7 @@ const toTodo = (r: Row, reminds: number[] = []): Todo => ({
   repeat: isRepeat(r.repeat) ? r.repeat : null,
   dueMin: r.due && isDueMin(Number(r.due_min ?? Number.NaN)) ? Number(r.due_min) : null,
   reminds,
+  steps,
 });
 
 export class TodoStore {
@@ -144,12 +172,93 @@ export class TodoStore {
 
   #withReminds(rows: readonly Row[]): Todo[] {
     const marks = this.#reminders.many(rows.map((r) => Number(r.id)));
+    const steps = this.#stepsOf(rows.map((r) => Number(r.id)));
     return rows.map((r) =>
       toTodo(
         r,
         (marks.get(Number(r.id)) ?? []).map((m) => m.before),
+        steps.get(Number(r.id)) ?? [],
       ),
     );
+  }
+
+  /** 할 일 id 들의 단계를 한 번에 읽는다 */
+  #stepsOf(ids: readonly number[]): Map<number, TodoStep[]> {
+    const out = new Map<number, TodoStep[]>();
+    if (ids.length === 0) return out;
+    // SQLite 인자 상한(999 등)에 걸리지 않게 나눠 읽는다
+    for (let i = 0; i < ids.length; i += 500) {
+      const part = ids.slice(i, i + 500);
+      const rows = this.#db
+        .prepare(
+          `select id, todo_id, title, done from todo_step where todo_id in (${part.map(() => '?').join(',')})
+           order by todo_id, ord, id`,
+        )
+        .all(...part) as StepRow[];
+      for (const r of rows) {
+        const list = out.get(Number(r.todo_id)) ?? [];
+        list.push({ id: Number(r.id), title: r.title, done: Number(r.done) === 1 });
+        out.set(Number(r.todo_id), list);
+      }
+    }
+    return out;
+  }
+
+  /** 단계 더하기 (맨 아래). 할 일이 없거나 끝났거나 단계가 꽉 찼거나 제목이 비면 undefined */
+  addStep(todoId: number, title: string, now: number): TodoStep | undefined {
+    const text = title.trim().slice(0, STEP_TITLE_MAX);
+    const todo = this.get(todoId);
+    if (!text || !todo || todo.doneAt !== null || todo.steps.length >= STEP_MAX) return undefined;
+    const ord =
+      Number(
+        (
+          this.#db
+            .prepare('select coalesce(max(ord), 0) as m from todo_step where todo_id = ?')
+            .get(todoId) as {
+            m: number;
+          }
+        ).m,
+      ) + 1;
+    const r = this.#db
+      .prepare('insert into todo_step (todo_id, title, done, ord, created_at) values (?, ?, 0, ?, ?)')
+      .run(todoId, text, ord, now);
+    return { id: Number(r.lastInsertRowid), title: text, done: false };
+  }
+
+  /** 여러 단계를 한 번에 (AI 가 쪼갠 단계, 반복 다음 회차). 넣은 수 */
+  addSteps(todoId: number, titles: readonly string[], now: number): number {
+    let n = 0;
+    for (const title of titles) if (this.addStep(todoId, title, now)) n++;
+    return n;
+  }
+
+  /** 단계 체크와 해제. done 을 안 주면 뒤집는다. 바뀐 단계 (없으면 undefined) */
+  toggleStep(stepId: number, done?: boolean): TodoStep | undefined {
+    const r = this.#db.prepare('select id, todo_id, title, done from todo_step where id = ?').get(stepId) as
+      | StepRow
+      | undefined;
+    if (!r) return undefined;
+    const next = done === undefined ? Number(r.done) !== 1 : done;
+    this.#db.prepare('update todo_step set done = ? where id = ?').run(next ? 1 : 0, stepId);
+    return { id: Number(r.id), title: r.title, done: next };
+  }
+
+  /** 단계 제목 고치기. 비우면 그대로 둔다 */
+  renameStep(stepId: number, title: string): void {
+    const text = title.trim().slice(0, STEP_TITLE_MAX);
+    if (text) this.#db.prepare('update todo_step set title = ? where id = ?').run(text, stepId);
+  }
+
+  removeStep(stepId: number): void {
+    this.#db.prepare('delete from todo_step where id = ?').run(stepId);
+  }
+
+  /** 단계가 속한 할 일 id */
+  stepOwner(stepId: number): number | undefined {
+    const r = this.#db.prepare('select todo_id from todo_step where id = ?').get(stepId) as
+      | { todo_id: number }
+      | undefined;
+    return r ? Number(r.todo_id) : undefined;
   }
 
   add(
@@ -205,13 +314,16 @@ export class TodoStore {
         .all() as Row[],
     );
     const today = this.#day(now);
-    const done = (
+    // 오늘 끝낸 것만 고른 뒤에 단계를 붙인다 (끝낸 할 일이 수천 개여도 단계는 오늘 것만 읽게)
+    const doneRows = (
       this.#db
-        .prepare('select * from todo where done_at is not null and deleted_at is null order by done_at desc')
-        .all() as Row[]
-    )
-      .map((r) => toTodo(r))
-      .filter((t) => t.doneAt !== null && this.#day(t.doneAt) === today);
+        .prepare(
+          'select * from todo where done_at is not null and deleted_at is null and done_at >= ? order by done_at desc',
+        )
+        .all(now - 36 * 3_600_000) as Row[]
+    ).filter((r) => r.done_at !== null && this.#day(Number(r.done_at)) === today);
+    const steps = this.#stepsOf(doneRows.map((r) => Number(r.id)));
+    const done = doneRows.map((r) => toTodo(r, [], steps.get(Number(r.id)) ?? []));
     return { open, doneToday: done };
   }
 
@@ -258,6 +370,24 @@ export class TodoStore {
         reset: moved,
       });
     return this.get(id);
+  }
+
+  /**
+   * 지난 마감(today 전)인 안 끝낸 할 일을 today 로 옮긴다. 옮긴 것과 원래 마감을 돌려준다 (되돌리기용).
+   * now 를 넘겨 옮긴 뒤 이미 지난 알림(전날 저녁 8시)은 말없이 넘긴다
+   */
+  moveOverdue(today: string, now: number): { id: number; due: string | null }[] {
+    const late = this.list(now).open.filter((todo) => todo.due !== null && todo.due < today);
+    if (late.length === 0) return [];
+    this.#db.exec('begin');
+    try {
+      for (const todo of late) this.update(todo.id, { due: today }, now);
+      this.#db.exec('commit');
+    } catch (err) {
+      this.#db.exec('rollback');
+      throw err;
+    }
+    return late.map((todo) => ({ id: todo.id, due: todo.due }));
   }
 
   /**
@@ -326,8 +456,8 @@ export class TodoStore {
       }
       this.#db.prepare('update todo set done_at = ?, coins = ? where id = ?').run(now, coins, id);
       // 다음 회차도 같은 마감 시각과 같은 알림 (지난 알림은 넘긴다)
-      if (t.repeat)
-        this.add(
+      if (t.repeat) {
+        const next = this.add(
           {
             title: t.title,
             important: t.important,
@@ -339,6 +469,13 @@ export class TodoStore {
           now,
           id,
         );
+        // 단계도 안 한 채로 옮겨 적는다 (매일 아침 루틴 체크리스트)
+        this.addSteps(
+          next.id,
+          t.steps.map((st) => st.title),
+          now,
+        );
+      }
       this.#db.exec('commit');
     } catch (err) {
       this.#db.exec('rollback');
@@ -356,10 +493,11 @@ export class TodoStore {
     try {
       if (back > 0) this.#log(-back, 'undo', id, now);
       this.#db.prepare('update todo set done_at = null, coins = 0 where id = ?').run(id);
-      // 끝내서 생긴 다음 회차는 걷어 낸다 (아직 손대지 않은 것만).
+      // 끝내서 생긴 다음 회차는 걷어 낸다 (아직 손대지 않은 것만. 단계를 하나라도 체크했으면 손댄 것이라 둔다).
       this.#db
         .prepare(
-          'update todo set deleted_at = ? where repeat_of = ? and done_at is null and deleted_at is null',
+          `update todo set deleted_at = ? where repeat_of = ? and done_at is null and deleted_at is null
+           and not exists (select 1 from todo_step where todo_step.todo_id = todo.id and todo_step.done = 1)`,
         )
         .run(now, id);
       this.#db.exec('commit');

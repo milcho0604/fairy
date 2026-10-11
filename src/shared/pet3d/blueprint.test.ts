@@ -142,8 +142,11 @@ test('고른 걸음새: 요청문에 몸 만들기 블록이 요청사항보다 
   assert.ok(!two.includes('User wish'));
   // AI 가 다르게 적어도(또는 안 적어도) 고른 값으로
   const cat = JSON.stringify(DEFAULT_BLUEPRINTS.cat);
-  assert.equal(extractBlueprint(cat, 'biped')?.gait, 'biped');
-  assert.equal(extractBlueprint(cat)?.gait, 'quadruped');
+  assert.equal(extractBlueprint(cat, 'quadruped')?.gait, 'quadruped');
+  assert.equal(extractBlueprint(cat)?.gait, 'biped');
+  const bunny = JSON.stringify(DEFAULT_BLUEPRINTS.bunny);
+  assert.equal(extractBlueprint(bunny, 'biped')?.gait, 'biped');
+  assert.equal(extractBlueprint(bunny)?.gait, 'quadruped');
   const kong = JSON.stringify(DEFAULT_BLUEPRINTS.kong);
   assert.equal(extractBlueprint(kong)?.gait, undefined);
   assert.equal(extractBlueprint(kong, 'quadruped')?.gait, 'quadruped');
@@ -225,19 +228,27 @@ test('걸음새: 네 발, 두 발만 받고 모르는 값은 버린다. 요청�
   assert.equal(parseBlueprint({ ...base, gait: 'biped' })?.gait, 'biped');
   assert.equal(parseBlueprint({ ...base, gait: 'hexapod' })?.gait, undefined);
   assert.equal(parseBlueprint({ ...base, gait: 4 })?.gait, undefined);
-  // 기본 펫: 냥이, 멍멍이, 토순이는 네 발, 콩이와 삐약이는 적지 않는다(두 발)
+  // 기본 펫: 토순이는 네 발, 냥이와 멍멍이는 팔이 있어 두 발로 적고, 콩이와 삐약이는 적지 않는다(두 발)
   assert.deepEqual(
     Object.entries(DEFAULT_BLUEPRINTS).map(([k, bp]) => [k, bp.gait]),
     [
       ['kong', undefined],
-      ['cat', 'quadruped'],
+      ['cat', 'biped'],
       ['chick', undefined],
-      ['dog', 'quadruped'],
+      ['dog', 'biped'],
       ['bunny', 'quadruped'],
     ],
   );
+  // 모든 기본 펫에 손(팔이나 날개)이 있다 (2026-10-11 사용자 규칙)
+  for (const [k, bp] of Object.entries(DEFAULT_BLUEPRINTS))
+    assert.ok(
+      bp.parts.some((p) => p.slot === 'armL' || p.slot === 'wingL'),
+      k,
+    );
   const p = blueprintPrompt('밀크');
   assert.ok(p.includes('"gait"') && p.includes('"quadruped"') && p.includes('"biped"'));
+  // 손은 기본 (요청이 없으면 팔이나 날개)
+  assert.match(p, /Every figure has hands by default/);
 });
 
 test('요청문은 사진 특징을 먼저 적게 하고, 그 칸은 설계도에 남지 않는다', () => {
@@ -258,4 +269,164 @@ test('설계도 예시의 문자열 칸은 큰따옴표가 겹치지 않는다 (
   assert.ok(line);
   const inner = line.slice(line.indexOf('[') + 1, line.lastIndexOf(']'));
   assert.equal(inner.split('"').length - 1, 2, inner);
+});
+
+test('v2 칸: 무늬, 안쪽 색, 관의 길, 가늘어짐, 얼굴 코와 눈썹을 읽고 틀린 값은 버린다', () => {
+  const bp = parseBlueprint({
+    v: 2,
+    parts: [
+      {
+        slot: 'body',
+        shape: 'sphere',
+        at: [0, 0.5, 0],
+        size: [0.4, 0.4, 0.4],
+        color: '#aabbcc',
+        pattern: { type: 'split', color: '#FFFFFF', side: 'bottom', amount: 3, scale: 0.01 },
+        taper: 0.5,
+        round: 0.5,
+      },
+      {
+        slot: 'earL',
+        shape: 'cone',
+        at: [-0.3, 0.9, 0],
+        size: [0.1, 0.1, 0.05],
+        color: '#aabbcc',
+        inner: '#ffaaaa',
+        mirror: true,
+      },
+      {
+        slot: 'tail',
+        shape: 'tube',
+        at: [0, 0.4, -0.4],
+        size: [0.05, 0.05, 0.05],
+        color: '#aabbcc',
+        taper: 0.4,
+        path: [[0, 0.4, -0.4], [0, 0.6, -0.6], 'x', [0, 0.9, -0.5]],
+      },
+      { slot: 'tail', shape: 'tube', at: [0, 0.4, -0.4], size: [0.05, 0.1, 0.05], color: '#aabbcc' },
+      {
+        slot: 'top',
+        shape: 'bow',
+        at: [0, 0.9, 0.2],
+        size: [0.1, 0.06, 0.04],
+        color: '#ff4466',
+        pattern: { type: 'plaid', color: '#000000' },
+      },
+      {
+        slot: 'top',
+        shape: 'box',
+        at: [0, 0.9, 0.2],
+        size: [0.1, 0.06, 0.04],
+        color: '#ff4466',
+        round: 2,
+        inner: '#000000',
+      },
+    ],
+    face: {
+      slot: 'body',
+      eyeY: 0.6,
+      eyeShape: 'almond',
+      catchlight: 'big',
+      pupil: 'slit',
+      lashes: true,
+      nose: { shape: 'oval', color: '#222222', y: 0.5, size: 9 },
+      brows: { color: '#333333', tilt: 90 },
+      fluff: '#aabbcc',
+      blushLines: true,
+    },
+  });
+  assert.ok(bp);
+  assert.equal(bp.v, 2);
+  const [body, ear, tail, tail2, bow, box] = bp.parts;
+  assert.deepEqual(body?.pattern, { type: 'split', color: '#ffffff', side: 'bottom', amount: 1, scale: 0.2 });
+  // 구에는 taper 와 round 가 없다
+  assert.equal(body?.taper, undefined);
+  assert.equal(body?.round, undefined);
+  assert.equal(ear?.inner, '#ffaaaa');
+  assert.equal(tail?.taper, 0.4);
+  assert.deepEqual(tail?.path, [
+    [0, 0.4, -0.4],
+    [0, 0.6, -0.6],
+    [0, 0.9, -0.5],
+  ]);
+  // 길이 없는 관은 위로 뻗는 짧은 관
+  assert.equal(tail2?.path?.length, 2);
+  assert.ok(Math.abs((tail2?.path?.[1]?.[1] ?? 0) - 0.6) < 1e-9);
+  assert.equal(bow?.pattern, undefined);
+  assert.equal(box?.round, 1);
+  assert.equal(box?.inner, '#000000');
+  assert.equal(bp.face.eyeShape, 'almond');
+  assert.equal(bp.face.catchlight, 'big');
+  assert.equal(bp.face.pupil, 'slit');
+  assert.equal(bp.face.lashes, true);
+  assert.deepEqual(bp.face.nose, { shape: 'oval', color: '#222222', y: 0.5, size: 3 });
+  assert.deepEqual(bp.face.brows, { color: '#333333', tilt: 45 });
+  assert.equal(bp.face.fluff, '#aabbcc');
+  // 볼 터치 색이 없으면 빗금도 없다
+  assert.equal(bp.face.blushLines, undefined);
+  assert.equal(
+    parseBlueprint({ parts: bp.parts, face: { ...bp.face, blush: '#ffaaaa', blushLines: true } })?.face
+      .blushLines,
+    true,
+  );
+  // 저장했다 다시 읽어도 같다. v 가 없거나 이상하면 1
+  assert.deepEqual(parseBlueprint(JSON.parse(JSON.stringify(bp))), bp);
+  assert.equal(parseBlueprint({ v: 'two', parts: bp.parts, face: bp.face })?.v, 1);
+  // 코에 색이 없으면 코가 없다. 눈 모양 round 는 적지 않는다
+  const bare = parseBlueprint({
+    parts: bp.parts,
+    face: { ...bp.face, nose: { shape: 'dot' }, eyeShape: 'round', brows: {} },
+  });
+  assert.equal(bare?.face.nose, undefined);
+  assert.deepEqual(
+    parseBlueprint({ parts: bp.parts, face: { nose: { shape: 'none', color: 'x' } } })?.face.nose,
+    { shape: 'none' },
+  );
+  assert.equal(bare?.face.eyeShape, undefined);
+  assert.equal(bare?.face.brows, undefined);
+});
+
+test('거울 부품은 관의 길과 좌우 무늬도 뒤집는다', () => {
+  const [, m] = expandMirrors([
+    {
+      slot: 'tail',
+      shape: 'tube',
+      at: [0.2, 0.3, 0],
+      size: [0.05, 0.05, 0.05],
+      path: [
+        [0.2, 0.3, 0],
+        [0.4, 0.5, 0.1],
+      ],
+      color: '#000000',
+      mirror: true,
+      pattern: { type: 'split', color: '#ffffff', side: 'left' },
+    },
+  ]);
+  assert.deepEqual(m?.path, [
+    [-0.2, 0.3, 0],
+    [-0.4, 0.5, 0.1],
+  ]);
+  assert.equal(m?.pattern?.side, 'right');
+});
+
+test('요청문 v2: 새 모양, 무늬, 얼굴 칸과 보기 두 개, 팔 한 줄이 들어간다', () => {
+  const p = blueprintPrompt('밀크');
+  for (const s of [
+    '"tube"',
+    '"tuft"',
+    '"bow"',
+    '"pattern"',
+    '"inner"',
+    '"nose"',
+    '"brows"',
+    '"catchlight"',
+    '"fluff"',
+    '"grin"',
+  ])
+    assert.ok(p.includes(s), s);
+  assert.match(p, /head width : body width between 1:1 and 1\.2:1/);
+  assert.match(p, /arms or front paws it can wave with/);
+  assert.equal(p.split('Example (').length - 1, 2);
+  // 보기 둘은 그대로 꺼낼 수 있다
+  for (const line of p.split('\n').filter((l) => l.startsWith('{"v":2'))) assert.ok(extractBlueprint(line));
 });

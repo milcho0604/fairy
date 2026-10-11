@@ -729,3 +729,51 @@ export function cleanIcsUrl(raw: string): string | undefined {
     return undefined;
   }
 }
+
+// ---- 캘린더를 계속 못 읽을 때 (조용히 실패하던 것을 한 번 알린다) ----
+
+/** 연달아 이만큼 못 읽으면 펫이 한 번 말한다 (30분마다 읽으니 1시간 남짓) */
+export const CAL_FAIL_TELL = 3;
+
+export interface CalFailState {
+  /** 연달아 못 읽은 수 (인터넷이 끊긴 것은 세지 않는다) */
+  n: number;
+  /** 이번에 이어진 실패를 이미 알렸다 */
+  told: boolean;
+}
+
+export const CAL_FAIL_START: CalFailState = { n: 0, told: false };
+
+/**
+ * 가져오기 한 번의 결과로 다음 상태와 지금 알릴지.
+ * ok 면 처음으로, offline(인터넷 끊김, 시간 끝)은 캘린더 탓이 아니라 그대로, fail(주소 틀림, 403, 캘린더 아님, 너무 큼)은 센다.
+ * CAL_FAIL_TELL 번째에 한 번만 알리고, 한 번 읽히기 전에는 다시 알리지 않는다
+ */
+/**
+ * 받은 응답 상태로 본 결과. 5xx(서버가 잠깐 아픔)와 429(너무 자주 물음)는 캘린더 주소 탓이 아니라 세지 않는다 (리뷰 LOW).
+ * 그 밖의 4xx(주소 틀림, 권한 없음)는 센다
+ */
+export function calStatusResult(status: number): 'ok' | 'offline' | 'fail' {
+  if (status >= 200 && status < 300) return 'ok';
+  if (status >= 500 || status === 429) return 'offline';
+  return 'fail';
+}
+
+/**
+ * 계속 못 읽음을 펫이 말할지. 사용자가 설정에서 직접 가져왔거나(byUser) 설정 창이 열려 있으면(settingsOpen)
+ * 거기 결과 글을 이미 보고 있으니 말하지 않는다 (리뷰 LOW)
+ */
+export function calTellNow(tell: boolean, o: { byUser: boolean; settingsOpen: boolean }): boolean {
+  return tell && !o.byUser && !o.settingsOpen;
+}
+
+export function calFailStep(
+  s: CalFailState,
+  result: 'ok' | 'offline' | 'fail',
+): { state: CalFailState; tell: boolean } {
+  if (result === 'ok') return { state: CAL_FAIL_START, tell: false };
+  if (result === 'offline') return { state: s, tell: false };
+  const n = s.n + 1;
+  const tell = !s.told && n >= CAL_FAIL_TELL;
+  return { state: { n, told: s.told || tell }, tell };
+}

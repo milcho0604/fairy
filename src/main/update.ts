@@ -126,8 +126,19 @@ export function watchUpdates(o: { say: Say; log: Log }) {
     }
   }
 
-  /** 새 버전을 받아 둔다. 받았으면 그 버전 */
-  async function download(): Promise<string | undefined> {
+  /** 받는 중인 것. 자동 확인 중에 직접 확인하거나 강제 안내가 겹쳐도 checkForUpdates, downloadUpdate 를 겹쳐 돌리지 않는다 */
+  let downloading: Promise<string | undefined> | undefined;
+
+  /** 새 버전을 받아 둔다. 받았으면 그 버전. 받는 중이면 그 결과를 같이 기다린다 */
+  function download(): Promise<string | undefined> {
+    if (!downloading)
+      downloading = downloadOnce().finally(() => {
+        downloading = undefined;
+      });
+    return downloading;
+  }
+
+  async function downloadOnce(): Promise<string | undefined> {
     if (downloaded) return downloaded;
     if (Date.now() - downloadFailedAt < 3_600_000) return undefined;
     const u = await getUpdater();
@@ -214,7 +225,20 @@ export function watchUpdates(o: { say: Say; log: Log }) {
     }
   }
 
+  /** 알리는 중인 버전. 같은 버전을 두 번(자동 확인과 직접 확인) 겹쳐 알리지 않는다 */
+  let notifying: string | undefined;
+
   async function notify(version: string, url: string) {
+    if (notifying === version) return;
+    notifying = version;
+    try {
+      await notifyOnce(version, url);
+    } finally {
+      if (notifying === version) notifying = undefined;
+    }
+  }
+
+  async function notifyOnce(version: string, url: string) {
     const ready = await download();
     if (ready) {
       setInstallOnQuit(true);

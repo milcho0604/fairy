@@ -98,10 +98,14 @@ export const ko = {
   'pet.full': '배불러서 더는 못 먹어. 나중에 줘.',
   'pet.shortcut.hide': '숨기기',
   'pet.shortcut.quickAdd': '할 일 한 줄 넣기',
+  'pet.shortcut.chat': '대화 열기',
+  'pet.shortcut.look': '같이 보기',
   'pet.shortcut.takenStart': (v: { keys: string }) =>
     `${v.keys} 단축키를 다른 앱이 쓰고 있어. 설정에서 다른 키로 바꿔 줘.`,
   'pet.shortcut.taken': (v: { keys: string }) => `${v.keys} 단축키는 다른 앱이 쓰고 있어. 다른 키로 해 줘.`,
   'pet.foodMade': (v: { food: string }) => `${v.food} 먹어 보고 싶다!`,
+  'pet.calendarBroken': '캘린더를 못 읽고 있어. 주소가 바뀌었는지 한번 봐 줄래?',
+  'pet.calendarSettings': '설정 열기',
   'pet.busyTag': '바빠서 쉬는 중',
   'pet.held.title': (v: { n: number }) => `숨어 있는 동안 알림이 ${v.n}개 왔어`,
 };
@@ -204,11 +208,15 @@ export const en: Translation<typeof ko> = {
   'pet.full': "I'm full! Maybe later.",
   'pet.shortcut.hide': 'Hide',
   'pet.shortcut.quickAdd': 'Quick add to-do',
+  'pet.shortcut.chat': 'Open chat',
+  'pet.shortcut.look': 'Look together',
   'pet.shortcut.takenStart': (v: { keys: string }) =>
     `Another app is using the ${v.keys} shortcut. Pick a different key in Settings.`,
   'pet.shortcut.taken': (v: { keys: string }) =>
     `Another app is using the ${v.keys} shortcut. Try a different key.`,
   'pet.foodMade': (v: { food: string }) => `I want to try ${v.food}!`,
+  'pet.calendarBroken': "I can't read your calendar. Could you check if the address changed?",
+  'pet.calendarSettings': 'Open settings',
   'pet.busyTag': 'Resting, PC busy',
   'pet.held.title': (v: { n: number }) => `${v.n} things came up while I was hiding`,
 };

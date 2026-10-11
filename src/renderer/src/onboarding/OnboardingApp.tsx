@@ -4,10 +4,12 @@ import { t } from '../../../shared/i18n/index.ts';
 import type { OnboardAi, OnboardSnapshot } from '../../../shared/ipc.ts';
 import { cleanPetName, PET_KINDS, PET_NAME_MAX } from '../../../shared/settings.ts';
 import { acceleratorLabel } from '../../../shared/shortcut.ts';
+import { isCurrentStarter, starterOf } from '../../../shared/starter-pets.ts';
 import { PetFace } from '../PetFace.tsx';
 import { PetNameInput } from '../PetNameInput.tsx';
 import { PetShot } from '../PetShot.tsx';
 import { RoutinePicker } from '../RoutinePicker.tsx';
+import { pageByKey } from './page-keys.ts';
 
 const bridge = window.jjakkungOnboard;
 const PAGES = 4;
@@ -45,6 +47,33 @@ export function OnboardingApp() {
     const onFocus = () => refresh();
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
+  }, []);
+
+  // 이름 칸에서 바로 창을 닫아도 쓴 이름을 남긴다 (blur 때만 저장해서 잃었다, 설정 창과 같은 방식)
+  const nameNow = useRef({ name, saved: '' });
+  nameNow.current = { name, saved: snap?.settings.petName ?? '' };
+  useEffect(() => {
+    const flush = () => {
+      if (!typed.current) return;
+      const clean = cleanPetName(nameNow.current.name);
+      if (clean && clean !== nameNow.current.saved) void bridge.set({ petName: clean, petNameEdited: true });
+    };
+    window.addEventListener('beforeunload', flush);
+    return () => window.removeEventListener('beforeunload', flush);
+  }, []);
+
+  // ← → 로 쪽 넘기기 (입력칸 밖에서만)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = document.activeElement;
+      const inField =
+        el instanceof HTMLInputElement ||
+        el instanceof HTMLTextAreaElement ||
+        el instanceof HTMLSelectElement;
+      setPage((p) => pageByKey(e, p, PAGES, inField) ?? p);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   if (!snap) return <div className="onboard" />;
@@ -152,7 +181,36 @@ export function OnboardingApp() {
                     {k.label}
                   </button>
                 ))}
-                <button type="button" className={s.petImage ? 'on' : ''} onClick={() => bridge.openMaker()}>
+                {/* 밀크, 초코: 그림을 사진 펫으로 복사한다. 이름도 그 캐릭터 이름 (펫 만들기로 만든 사진 펫처럼) */}
+                {snap.starters.map((p) => {
+                  const on = isCurrentStarter(s.petImage, p.id);
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className={`starter${on ? ' on' : ''}`}
+                      aria-pressed={on}
+                      aria-label={t('settings.pets.starter', { name: p.name, desc: p.desc })}
+                      title={p.desc}
+                      onClick={async () => {
+                        if (on) return;
+                        const next = await bridge.pickStarter(p.id);
+                        setSnap((v) => v && { ...v, settings: next });
+                        typed.current = false;
+                        setName(next.petName);
+                        setNameNote('');
+                      }}
+                    >
+                      <img src={p.thumb} alt="" />
+                      {p.name}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  className={s.petImage && !starterOf(s.petImage) ? 'on' : ''}
+                  onClick={() => bridge.openMaker()}
+                >
                   {t('onboarding.hello.photo')}
                 </button>
               </fieldset>
@@ -235,10 +293,33 @@ export function OnboardingApp() {
               <dd>{t('onboarding.tips.rubDesc')}</dd>
               <dt>{t('onboarding.tips.throw')}</dt>
               <dd>{t('onboarding.tips.throwDesc')}</dd>
-              <dt>{keys(s.shortcuts.quickAdd)}</dt>
-              <dd>{t('onboarding.tips.quickDesc')}</dd>
-              <dt>{keys(s.shortcuts.hide)}</dt>
-              <dd>{t('onboarding.tips.hideDesc')}</dd>
+              {/* 끈 단축키(빈 키)는 보이지 않는다 */}
+              {s.shortcuts.quickAdd && (
+                <>
+                  <dt>{keys(s.shortcuts.quickAdd)}</dt>
+                  <dd>{t('onboarding.tips.quickDesc')}</dd>
+                </>
+              )}
+              {s.shortcuts.chat && (
+                <>
+                  <dt>{keys(s.shortcuts.chat)}</dt>
+                  <dd>{t('onboarding.tips.chatDesc')}</dd>
+                </>
+              )}
+              {s.shortcuts.panel && (
+                <>
+                  <dt>{keys(s.shortcuts.panel)}</dt>
+                  <dd>{t('onboarding.tips.panelDesc')}</dd>
+                </>
+              )}
+              {s.shortcuts.hide && (
+                <>
+                  <dt>{keys(s.shortcuts.hide)}</dt>
+                  <dd>{t('onboarding.tips.hideDesc')}</dd>
+                </>
+              )}
+              <dt>{t('onboarding.tips.settings')}</dt>
+              <dd>{t('onboarding.tips.settingsDesc', { mac })}</dd>
             </dl>
           </section>
         )}
@@ -246,7 +327,13 @@ export function OnboardingApp() {
 
       <footer>
         {page > 0 ? (
-          <button type="button" className="ghost" onClick={() => setPage(page - 1)}>
+          <button
+            type="button"
+            className="ghost"
+            title={t('onboarding.keys')}
+            aria-keyshortcuts="ArrowLeft"
+            onClick={() => setPage(page - 1)}
+          >
             {t('onboarding.prev')}
           </button>
         ) : (
@@ -255,7 +342,13 @@ export function OnboardingApp() {
           </button>
         )}
         {page < PAGES - 1 ? (
-          <button type="button" className="primary" onClick={() => setPage(page + 1)}>
+          <button
+            type="button"
+            className="primary"
+            title={t('onboarding.keys')}
+            aria-keyshortcuts="ArrowRight"
+            onClick={() => setPage(page + 1)}
+          >
             {t('onboarding.next')}
           </button>
         ) : (

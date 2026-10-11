@@ -77,6 +77,37 @@ export interface IdleFacts {
   hungry?: boolean;
   /** 다른 쪽(기운 등)에서 넣는 상황 대사. 상황 대사와 같이 고른다 */
   more?: readonly IdleKey[];
+  // ---- 기억 (main/companion.ts memoryFacts): 펫이 지난 일을 기억하고 말한다 ----
+  /** 어제 끝낸 할 일 수 */
+  yesterdayDone?: number;
+  /** 할 일을 끝낸 날 연속 기록 (쉬는 날은 건너뜀, shared/achieve.ts streak) */
+  streak?: number;
+  /** 이번 주(월요일부터) 끝낸 할 일 수 */
+  weekDone?: number;
+  /** 오늘 집중 타이머로 집중한 분 */
+  focusMin?: number;
+  /** 처음 만난 날을 1일째로 센 오늘 (함께한 날) */
+  daysTogether?: number;
+}
+
+/** 기억 대사 기준: 연속 이만큼부터, 이번 주 이만큼부터, 집중 이만큼(분)부터 */
+export const MEMORY_MIN = { streak: 2, week: 3, focusMin: 25, together: 2 } as const;
+
+/** 철 (북반구). month 는 Date.getMonth() 처럼 0 이 1월. 1월 1일, 12월 24~25일, 12월 31일은 따로 특별한 날 대사 */
+export function seasonOf(month: number): 'spring' | 'summer' | 'autumn' | 'winter' {
+  if (month >= 2 && month <= 4) return 'spring';
+  if (month >= 5 && month <= 7) return 'summer';
+  if (month >= 8 && month <= 10) return 'autumn';
+  return 'winter';
+}
+
+function specialDay(d: Date): IdleKey | undefined {
+  const m = d.getMonth() + 1;
+  const day = d.getDate();
+  if (m === 1 && day === 1) return 'idle.special.newyear';
+  if (m === 12 && (day === 24 || day === 25)) return 'idle.special.christmas';
+  if (m === 12 && day === 31) return 'idle.special.yearend';
+  return undefined;
 }
 
 /** 지금 할 만한 대사들. now 는 한 번만 할 일(방금 끝냄, 돌아옴), fit 은 지금 상황에 맞는 것, any 는 아무 때나 하는 것 */
@@ -86,8 +117,11 @@ export function idleCandidates(f: IdleFacts): { now: IdleKey[]; fit: IdleKey[]; 
   const day = d.getDay();
   const weekend = day === 0 || day === 6;
   const fit: IdleKey[] = [];
-  if (minute >= 22 * 60 || minute < 5 * 60) fit.push('idle.late.1', 'idle.late.2', 'idle.late.3');
-  else if (minute < 11 * 60) {
+  if (minute >= 22 * 60 || minute < 5 * 60) {
+    fit.push('idle.late.1', 'idle.late.2', 'idle.late.3');
+    // 새벽 1~5시는 지금 시를 말한다 (늦게까지 일하는 동료에게)
+    if (minute >= 60 && minute < 5 * 60) fit.push('idle.night.1', 'idle.night.2');
+  } else if (minute < 11 * 60) {
     fit.push('idle.morning.1', 'idle.morning.2', 'idle.morning.3', 'idle.morning.4');
     if (day === 1) fit.push('idle.monday.1', 'idle.monday.2');
   } else if (minute >= 11 * 60 + 30 && minute < 13 * 60 + 30)
@@ -119,20 +153,49 @@ export function idleCandidates(f: IdleFacts): { now: IdleKey[]; fit: IdleKey[]; 
     else fit.push('idle.friend.new');
   }
   if (f.more) fit.push(...f.more);
+  // 기억: 어제 일(오전에만), 연속 기록, 이번 주(금요일 오후와 주말), 오늘 집중, 함께한 날
+  if ((f.yesterdayDone ?? 0) > 0 && minute >= 5 * 60 && minute < 12 * 60)
+    fit.push('idle.memory.yesterday.1', 'idle.memory.yesterday.2');
+  if ((f.streak ?? 0) >= MEMORY_MIN.streak) fit.push('idle.streak.1', 'idle.streak.2');
+  if ((f.weekDone ?? 0) >= MEMORY_MIN.week && ((day === 5 && minute >= 14 * 60) || weekend))
+    fit.push('idle.week.1', 'idle.week.2');
+  if ((f.focusMin ?? 0) >= MEMORY_MIN.focusMin) fit.push('idle.focus.1', 'idle.focus.2');
+  if ((f.daysTogether ?? 0) >= MEMORY_MIN.together) fit.push('idle.together.1');
+  const special = specialDay(d);
+  if (special) fit.push(special);
   const now: IdleKey[] = [];
   if (f.lastDoneAt !== undefined && f.now - f.lastDoneAt >= 0 && f.now - f.lastDoneAt <= FRESH_MS)
     now.push('idle.done.1', 'idle.done.2', 'idle.done.3', 'idle.done.4');
   if (f.backAt !== undefined && f.now - f.backAt >= 0 && f.now - f.backAt <= FRESH_MS)
     now.push('idle.back.1', 'idle.back.2', 'idle.back.3');
-  return { now, fit, any: ANY };
+  // 철 대사는 아무 때나 하는 말에 섞는다 (계절 내내 상황이 아니라 분위기라서)
+  const season = seasonOf(d.getMonth());
+  const any: IdleKey[] = [...ANY, `idle.season.${season}.1`, `idle.season.${season}.2`];
+  return { now, fit, any };
 }
 
 /** 대사에 넣는 값 (펫 이름은 부르는 쪽이 넣는다) */
-export function idleVars(f: IdleFacts): { open: number; eventMin: number; workedH: number } {
+export function idleVars(f: IdleFacts): {
+  open: number;
+  eventMin: number;
+  workedH: number;
+  yesterday: number;
+  streak: number;
+  week: number;
+  focusMin: number;
+  days: number;
+  hour: number;
+} {
   return {
     open: f.openToday ?? 0,
     eventMin: Math.max(1, Math.round(f.nextEventMin ?? 0)),
     workedH: Math.max(1, Math.floor((f.workedMin ?? 0) / 60)),
+    yesterday: f.yesterdayDone ?? 0,
+    streak: f.streak ?? 0,
+    week: f.weekDone ?? 0,
+    focusMin: Math.round(f.focusMin ?? 0),
+    days: f.daysTogether ?? 0,
+    hour: new Date(f.now).getHours(),
   };
 }
 
@@ -180,6 +243,16 @@ export class IdleTalk {
     this.#recent.push(key);
     if (this.#recent.length > IDLE_RECENT) this.#recent.shift();
     return key;
+  }
+
+  /** 최근에 한 말 (앱을 다시 켜도 되풀이하지 않게 메인이 저장한다, main/companion.ts) */
+  get recent(): readonly IdleKey[] {
+    return this.#recent;
+  }
+
+  /** 저장해 둔 최근 말을 되살린다. 모르는 열쇠(대사가 빠진 판)는 버린다 */
+  restore(keys: readonly string[], known: (k: string) => k is IdleKey): void {
+    this.#recent = keys.filter(known).slice(-IDLE_RECENT);
   }
 
   /** 고른 말을 띄우지 못했다 (상한, 다른 말풍선). 고르기 전으로 돌린다 */

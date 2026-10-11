@@ -3,7 +3,7 @@ import type { Translation } from './types.ts';
 
 // 사진으로 펫 만들기 창
 export const ko = {
-  'maker.err.animatedTooBig': '움직이는 그림은 8MB 까지 돼.',
+  'maker.err.animatedTooBig': '움직이는 그림은 8MB까지 돼.',
   'maker.err.modelRead': '모델 파일을 못 읽었어. 창을 닫았다가 다시 열어 줘.',
   'maker.err.allErased': '다 지워졌어. 복원 붓으로 펫을 조금 되살려 줘.',
   'maker.err.saveFailed': '저장하지 못했어',
@@ -26,10 +26,91 @@ export const ko = {
     `과일, 과자처럼 먹이가 될 사진이야. 만들면 코인 ${v.cost}개를 써.`,
   'maker.pick.pose': (v: { pose: string }) => `${v.pose} 보일 사진이야. 같은 펫의 다른 표정 사진이면 좋아.`,
   'maker.pick.pet': '반려동물, 좋아하는 인형이나 캐릭터처럼 하나가 또렷한 사진이 잘 돼.',
-  'maker.pick.animated': '움직이는 GIF, WebP 는 배경을 지우지 않고 그대로 써. 배경이 투명한 것이 좋아.',
+  'maker.pick.animated': '움직이는 GIF, WebP는 배경을 지우지 않고 그대로 써. 배경이 투명한 것이 좋아.',
   'maker.pick.privacy': '사진은 이 컴퓨터 안에서만 다뤄. 배경 지우기도 여기서 해서 밖으로 보내지 않아.',
   'maker.pick.removePose': '이 포즈 지우기',
   'maker.pick.resetPet': '기본 펫으로 돌아가기',
+  // AI 일러스트로 다시 그리기 (Hugging Face 무료 Space, 2026-10-09). 사진은 이걸 고를 때만 밖으로 나간다
+  'maker.how.label': '만드는 방법',
+  'maker.how.photo': '사진 그대로',
+  'maker.how.illust': 'AI 일러스트로 다시 그리기',
+  'maker.illust.hint':
+    '사진 속 펫을 귀엽고 매끈한 그림으로 다시 그려 줘. 무료 서버라 1분쯤 걸리고, 토큰이 없으면 하루에 몇 번만 그릴 수 있어.',
+  'maker.illust.privacy':
+    "이 방법은 고른 사진과 바라는 점을 Hugging Face의 무료 그림 서버(다른 사람이 운영해)로 보내. 사진을 밖으로 보내기 싫으면 '사진 그대로'를 골라 줘.",
+  'maker.illust.age': '나이',
+  'maker.illust.age.baby': '아기',
+  'maker.illust.age.teen': '청소년',
+  'maker.illust.age.adult': '어른',
+  'maker.illust.ageHint.baby': '아주 작고 동글동글한 아기 모습이야. 화면에서도 작게 보여.',
+  'maker.illust.ageHint.teen': '날씬하고 다리가 조금 긴 청소년 모습이야. 화면에서는 살짝 작게 보여.',
+  'maker.illust.ageHint.adult': '다 자란 어른 모습이야.',
+  'maker.illust.wish': '바라는 점',
+  'maker.illust.wishPlaceholder': '예: 빨간 목도리, 웃는 얼굴',
+  'maker.illust.token.summary': '무료 Hugging Face 토큰 (안 넣어도 돼)',
+  'maker.illust.token.how':
+    '더 많이 그리고 싶으면 Hugging Face에 가입하고 huggingface.co/settings/tokens에서 무료 토큰을 만들어 여기 붙여 넣어 줘. 토큰은 그림 서버(다른 사람이 운영해)에도 같이 가니, 권한을 가장 적게 준 Fine-grained 토큰을 추천해. 이 컴퓨터에만 저장해.',
+  'maker.illust.token.label': '토큰',
+  'maker.illust.token.placeholder': 'hf_로 시작하는 토큰',
+  'maker.illust.token.save': '넣기',
+  'maker.illust.token.remove': '지우기',
+  'maker.illust.token.has': '토큰을 넣어 뒀어.',
+  'maker.illust.token.saved': '토큰을 넣었어.',
+  'maker.illust.token.removed': '토큰을 지웠어.',
+  'maker.illust.working': '사진을 AI 일러스트로 다시 그리는 중이야.',
+  'maker.illust.preview': '이렇게 그렸어. 마음에 들어?',
+  'maker.illust.before': '고른 사진',
+  'maker.illust.after': 'AI 일러스트',
+  'maker.illust.next': '이걸로 하면 배경을 지우고 2.5D 입체로 만들어 줄게.',
+  'maker.illust.again': '다시 그리기',
+  'maker.illust.againAs.baby': '아기로 다시 그리기',
+  'maker.illust.againAs.teen': '청소년으로 다시 그리기',
+  'maker.illust.againAs.adult': '어른으로 다시 그리기',
+  'maker.illust.usePhoto': '사진 그대로 쓰기',
+  'maker.illust.accept': '이걸로 할게',
+  'maker.illust.otherPhoto': '다른 사진',
+  'maker.illust.same':
+    '그림 서버가 사진을 거의 그대로 돌려준 것 같아. 다시 그려 봐도 되고, 괜찮으면 이걸로 해도 돼.',
+  'maker.say.illust.start': '붓이랑 물감을 꺼내는 중',
+  'maker.say.illust.middle': '털을 한 올씩 그리는 중',
+  'maker.say.illust.almost': '눈에 반짝임을 넣는 중',
+  'maker.say.illust.long': '무료 서버가 붐비나 봐. 조금만 더!',
+  // 내 컴퓨터에서 그리기 (2026-10-10): 사진이 이 컴퓨터 밖으로 나가지 않는다
+  'maker.engine.label': '그리는 곳',
+  'maker.engine.cloud': '무료 서버 (하루 몇 번)',
+  'maker.engine.local': '내 컴퓨터에서 (횟수 제한 없음)',
+  'maker.engine.localHint':
+    '이 컴퓨터에서 직접 그려. 몇 번이든 그릴 수 있어. 그리는 동안은 컴퓨터가 조금 바빠져.',
+  'maker.engine.time': (v: { min: number; max: number }) =>
+    v.min === v.max ? `한 장에 ${v.min}분쯤 걸려.` : `한 장에 ${v.min}~${v.max}분쯤 걸려.`,
+  'maker.engine.cpuSlow':
+    '이 컴퓨터는 그래픽 칩 대신 CPU로 그려서 꽤 오래 걸려. 그리는 동안 다른 일을 해도 돼.',
+  // 이 컴퓨터에서 그릴 수 없을 때 까닭 (고르기를 감추기만 하면 왜 없는지 몰랐다)
+  'maker.engine.why.rosetta':
+    '이 Mac은 Apple 칩인데 인텔용 짝꿍이 깔려 있어. Apple 칩용 짝꿍을 깔면 이 컴퓨터에서도 그릴 수 있어.',
+  'maker.engine.why.chip': '이 컴퓨터의 칩으로는 직접 그릴 수 없어서 무료 서버로 그려.',
+  'maker.engine.why.memory': '메모리가 8GB보다 적어서 이 컴퓨터에서는 그릴 수 없어. 무료 서버로 그려.',
+  'maker.engine.why.macos': 'macOS 12 이상이면 이 컴퓨터에서도 그릴 수 있어. 지금은 무료 서버로 그려.',
+  'maker.engine.localPrivacy':
+    '사진은 이 컴퓨터 밖으로 나가지 않아. 인터넷에서는 그림 도구와 모델만 처음 한 번 받아.',
+  'maker.engine.needs':
+    '처음 한 번 준비가 필요해: 약 {download}GB를 받고, 다 되면 약 {keep}GB만 남겨. 준비하는 동안 빈 공간이 {free}GB 있어야 하고, 메모리는 {memory}GB 이상이어야 해.',
+  'maker.engine.needsOnce':
+    '처음 한 번 준비가 필요해: 그림 도구와 모델을 약 {download}GB 받아 둬. 빈 공간이 {free}GB 있어야 하고, 메모리는 {memory}GB 이상이어야 해.',
+  'maker.engine.setup': '준비하기',
+  'maker.engine.kept':
+    '그림 도구와 모델이 이 컴퓨터에 약 {keep}GB 있어. 안 쓰면 설정의 저장 공간에서 지울 수 있어.',
+  'maker.engine.setupNote': '준비는 30분쯤 걸릴 수 있어. 멈춰도 다음에 받은 데부터 이어서 해.',
+  'maker.engine.ready': '준비됐어. 이제 이 컴퓨터에서 그릴 수 있어.',
+  'maker.engine.readyNote': '준비됐어. 사진을 골라 줘.',
+  'maker.engine.setupWorking': '그림 도구와 모델을 받는 중이야.',
+  'maker.engine.stage.uv': '도구 받기',
+  'maker.engine.stage.tools': '도구 설치',
+  'maker.engine.stage.model': '모델 받기',
+  'maker.engine.stage.pack': '모델 줄이기',
+  'maker.illust.workingLocal': '이 컴퓨터에서 AI 일러스트로 다시 그리는 중이야.',
+  'maker.illust.tryLocal': '내 컴퓨터에서 그리기',
+  'maker.illust.tryLocalHint': '무료 서버 횟수가 끝나도 이 컴퓨터에서는 계속 그릴 수 있어.',
   'maker.model.downloading': (v: { mb: number }) => `처음 한 번만 배경 지우는 도구를 받고 있어 (${v.mb}MB).`,
   'maker.working.title': '배경을 지우는 중이야.',
   // 기다리는 동안 진행 표시 (MakeProgress.tsx). 남은 시간은 진짜 진행률이나 지난번 걸린 시간으로 어림한다
@@ -76,6 +157,7 @@ export const ko = {
   'maker.edit.took': (v: { backend: string; sec: string }) => `${v.backend}로 ${v.sec}초 걸렸어.`,
   'maker.name.alt': '새 펫',
   'maker.name.animatedNote': '움직이는 그림이라 배경은 그대로야.',
+  'maker.name.smallCut': '사진 속 펫이 작아서 조금 흐릿할 수 있어. 펫이 크게 나온 사진이면 더 또렷해.',
   'maker.done.food': (v: { name: string }) => `${withParticle(v.name, '을')} 상점 먹이에 넣었어!`,
   'maker.done.pose': (v: { pose: string }) => `${v.pose} 이 모습으로 보일게!`,
   'maker.done.pet': (v: { name: string }) => `${withParticle(v.name, '이')} 화면에 나타났어!`,
@@ -111,6 +193,9 @@ export const ko = {
   'maker.wish.count': (v: { n: number; max: number }) => `${v.n}/${v.max}`,
   'maker.wish.note': '모양, 표정, 몸짓을 적어 줘. 화면에서 펫 크기는 설정의 크기에서 바꿀 수 있어.',
   'maker.wish.remake': '요청대로 다시 만들기',
+  'maker.refine.label': 'AI가 한 번 더 보고 다듬기',
+  'maker.refine.hint': '(사진과 그린 모습을 견줘 고쳐. 시간이 두 배쯤 걸려)',
+  'maker.3d.refining': 'AI가 사진과 그린 모습을 견줘 설계도를 다듬는 중이야.',
   'maker.wish.chips': '눌러서 더하기',
   'maker.wish.chip.sleepy': '졸린 눈',
   'maker.wish.chip.sparkle': '반짝이는 눈',
@@ -120,7 +205,7 @@ export const ko = {
   'maker.wish.chip.calm': '얌전하게',
   'maker.3d.relief': '2.5D 입체',
   'maker.relief.hint': (v: { mb: number }) =>
-    `AI 없이 이 컴퓨터 안에서 사진의 깊이를 재서 입체 판으로 만들어. 좌우로 살짝 돌아. 처음 한 번 깊이 모델 ${v.mb}MB 를 받아.`,
+    `AI 없이 이 컴퓨터 안에서 사진의 깊이를 재서 입체 판으로 만들어. 좌우로 살짝 돌아. 처음 한 번 깊이 모델 ${v.mb}MB를 받아.`,
   'maker.relief.make': '2.5D로 만들기',
   'maker.relief.downloading': (v: { mb: number }) => `처음 한 번만 깊이 모델을 받고 있어 (${v.mb}MB).`,
   'maker.relief.working': '사진의 깊이를 재는 중이야.',
@@ -136,8 +221,8 @@ export const ko = {
   'maker.spin.side.back': '뒷모습',
   'maker.spin.auto': '자동 회전',
   'maker.spin.front': '정면',
-  'maker.spin.how': '끌거나 좌우 화살표로 돌리고, 위아래 화살표로 기울여. Home 은 정면.',
-  'maker.spin.howRelief': '끌거나 좌우 화살표로 25도까지 돌리고, 위아래 화살표로 기울여. Home 은 정면.',
+  'maker.spin.how': '끌거나 좌우 화살표로 돌리고, 위아래 화살표로 기울여. Home은 정면.',
+  'maker.spin.howRelief': '끌거나 좌우 화살표로 25도까지 돌리고, 위아래 화살표로 기울여. Home은 정면.',
   'maker.edit.brush': '붓',
   'maker.edit.eraser': '지우개',
   'maker.edit.restore': '복원 붓',
@@ -149,6 +234,10 @@ export const ko = {
   'maker.edit.almostAllErased': '거의 다 지워졌어.',
   'maker.edit.barelyErased': '배경이 거의 안 지워졌어.',
   'maker.edit.tryAgain': '다듬거나 다른 사진을 골라 봐.',
+  'maker.edit.halfKept': '바탕과 색이 비슷해서 몸 일부가 반쯤 비쳐 보여. 복원 붓으로 그곳을 칠하면 또렷해져.',
+  'maker.edit.hollow': '몸 안쪽이 지워져 테두리만 남은 것 같아. 펫 몸이면 복원 붓으로 칠해 줘.',
+  'maker.edit.others': '펫 말고 다른 것도 같이 남았어. 펫이 아니면 지우개로 지워 줘.',
+  'maker.edit.cutEdge': '펫이 사진 끝에 닿아서 잘렸을 수 있어. 일부러 그렇게 찍었으면 그대로 둬도 돼.',
   'maker.edit.otherPhoto': '다른 사진',
   'maker.edit.next': '다 됐어',
 };
@@ -184,6 +273,89 @@ export const en: Translation<typeof ko> = {
     'Animated GIF and WebP are used as is, without removing the background. A transparent background looks best.',
   'maker.pick.privacy':
     'Your photo stays on this computer. Background removal happens here too, nothing is sent out.',
+  'maker.how.label': 'How to make it',
+  'maker.how.photo': 'Photo as is',
+  'maker.how.illust': 'Redraw as an AI illustration',
+  'maker.illust.hint':
+    'Redraws the pet in your photo as a cute, polished illustration. It is free, takes about a minute, and works a few times a day without a token.',
+  'maker.illust.privacy':
+    'This sends your photo and wish to a free drawing server on Hugging Face, run by someone else. To keep the photo on this computer, pick "Photo as is".',
+  'maker.illust.age': 'Age',
+  'maker.illust.age.baby': 'Baby',
+  'maker.illust.age.teen': 'Teen',
+  'maker.illust.age.adult': 'Adult',
+  'maker.illust.ageHint.baby': 'A tiny, round baby. It looks small on screen too.',
+  'maker.illust.ageHint.teen': 'A slimmer teen with longer legs. It looks a bit smaller on screen.',
+  'maker.illust.ageHint.adult': 'A fully grown adult.',
+  'maker.illust.wish': 'Wish',
+  'maker.illust.wishPlaceholder': 'e.g. red scarf, smiling face',
+  'maker.illust.token.summary': 'Free Hugging Face token (optional)',
+  'maker.illust.token.how':
+    'To draw more, sign up at Hugging Face, make a free token at huggingface.co/settings/tokens and paste it here. The token also goes to the drawing server, which someone else runs, so a Fine-grained token with as few permissions as possible is best. It is saved only on this computer.',
+  'maker.illust.token.label': 'Token',
+  'maker.illust.token.placeholder': 'Token starting with hf_',
+  'maker.illust.token.save': 'Add',
+  'maker.illust.token.remove': 'Remove',
+  'maker.illust.token.has': 'A token is saved.',
+  'maker.illust.token.saved': 'Token added.',
+  'maker.illust.token.removed': 'Token removed.',
+  'maker.illust.working': 'Redrawing your photo as an AI illustration.',
+  'maker.illust.preview': 'Here it is. Do you like it?',
+  'maker.illust.before': 'Your photo',
+  'maker.illust.after': 'AI illustration',
+  'maker.illust.next': "If you pick this, I'll remove the background and make it 2.5D.",
+  'maker.illust.again': 'Draw again',
+  'maker.illust.againAs.baby': 'Draw again as a baby',
+  'maker.illust.againAs.teen': 'Draw again as a teen',
+  'maker.illust.againAs.adult': 'Draw again as an adult',
+  'maker.illust.usePhoto': 'Use the photo as is',
+  'maker.illust.accept': 'Use this one',
+  'maker.illust.otherPhoto': 'Another photo',
+  'maker.illust.same':
+    'The drawing server seems to have sent the photo back almost unchanged. Draw again, or use it if you like it.',
+  'maker.say.illust.start': 'Getting out my brushes',
+  'maker.say.illust.middle': 'Painting every bit of fur',
+  'maker.say.illust.almost': 'Adding sparkle to the eyes',
+  'maker.say.illust.long': 'The free server must be busy. Almost!',
+  'maker.engine.label': 'Where to draw',
+  'maker.engine.cloud': 'Free server (a few a day)',
+  'maker.engine.local': 'On this computer (no daily limit)',
+  'maker.engine.localHint':
+    'Draws right on this computer, as many times as you like. Your computer gets a little busy while it draws.',
+  'maker.engine.time': (v) =>
+    v.min === v.max
+      ? `About ${v.min} minutes per picture.`
+      : `About ${v.min} to ${v.max} minutes per picture.`,
+  'maker.engine.cpuSlow':
+    'This computer draws with its CPU instead of a graphics chip, so it takes a while. Feel free to do other things meanwhile.',
+  'maker.engine.why.rosetta':
+    'This Mac has an Apple chip but the Intel version of Jjakkung is installed. Install the Apple chip version to draw on this computer.',
+  'maker.engine.why.chip': "This computer's chip can't draw locally, so it draws on the free server.",
+  'maker.engine.why.memory':
+    "This computer has less than 8 GB of memory, so it can't draw locally. It draws on the free server.",
+  'maker.engine.why.macos':
+    'With macOS 12 or later this computer could draw locally. For now it draws on the free server.',
+  'maker.engine.localPrivacy':
+    'Your photo never leaves this computer. Only the drawing tools and model are downloaded, once.',
+  'maker.engine.needs':
+    'Needs a one-time setup: downloads about {download} GB and keeps about {keep} GB when done. Needs {free} GB of free space while setting up and {memory} GB of memory or more.',
+  'maker.engine.needsOnce':
+    'Needs a one-time setup: downloads about {download} GB of drawing tools and model. Needs {free} GB of free space and {memory} GB of memory or more.',
+  'maker.engine.setup': 'Set up',
+  'maker.engine.kept':
+    'The drawing tools and model take about {keep} GB on this computer. You can delete them under Storage in Settings.',
+  'maker.engine.setupNote':
+    'Setup can take about 30 minutes. If it stops, it picks up where it left off next time.',
+  'maker.engine.ready': 'All set. You can draw on this computer now.',
+  'maker.engine.readyNote': 'All set. Pick a photo.',
+  'maker.engine.setupWorking': 'Downloading the drawing tools and model.',
+  'maker.engine.stage.uv': 'Get tools',
+  'maker.engine.stage.tools': 'Install tools',
+  'maker.engine.stage.model': 'Get model',
+  'maker.engine.stage.pack': 'Shrink model',
+  'maker.illust.workingLocal': 'Redrawing your photo as an AI illustration on this computer.',
+  'maker.illust.tryLocal': 'Draw on this computer',
+  'maker.illust.tryLocalHint': 'Even when the free server runs out, you can keep drawing on this computer.',
   'maker.pick.removePose': 'Remove this pose',
   'maker.pick.resetPet': 'Back to the default pet',
   'maker.model.downloading': (v) => `Downloading the background remover, just this once (${v.mb}MB).`,
@@ -230,6 +402,8 @@ export const en: Translation<typeof ko> = {
   'maker.edit.took': (v) => `Took ${v.sec}s on ${v.backend}.`,
   'maker.name.alt': 'New pet',
   'maker.name.animatedNote': "It's animated, so the background stays as is.",
+  'maker.name.smallCut':
+    'Your pet was small in the photo, so it may look a little blurry. A photo where your pet is bigger will look sharper.',
   'maker.done.food': (v) => `Added ${v.name} to the shop treats!`,
   'maker.done.pose': (v) => `I'll look like this ${v.pose.toLowerCase()}!`,
   'maker.done.pet': (v) => `${v.name} is on your screen now!`,
@@ -266,6 +440,9 @@ export const en: Translation<typeof ko> = {
   'maker.wish.count': (v) => `${v.n}/${v.max}`,
   'maker.wish.note': 'Shape, face or moves. To change how big your pet is on screen, use Size in Settings.',
   'maker.wish.remake': 'Make again with my wish',
+  'maker.refine.label': 'Let the AI check and refine once',
+  'maker.refine.hint': '(compares the render with the photo; takes about twice as long)',
+  'maker.3d.refining': 'Your AI is comparing the render with the photo and refining the blueprint.',
   'maker.wish.chips': 'Tap to add',
   'maker.wish.chip.sleepy': 'sleepy eyes',
   'maker.wish.chip.sparkle': 'sparkly eyes',
@@ -305,6 +482,14 @@ export const en: Translation<typeof ko> = {
   'maker.edit.almostAllErased': 'Almost everything got erased.',
   'maker.edit.barelyErased': 'Barely any background got erased.',
   'maker.edit.tryAgain': 'Touch it up or pick another photo.',
+  'maker.edit.halfKept':
+    "Your pet's colors are close to the background, so parts look see-through. Paint over them with the restore brush to make them solid.",
+  'maker.edit.hollow':
+    'Part of the inside of your pet got erased, leaving just the outline. If it belongs to your pet, paint it with the restore brush.',
+  'maker.edit.others':
+    "Something besides your pet was kept too. If it's not your pet, erase it with the eraser.",
+  'maker.edit.cutEdge':
+    "Your pet touches the edge of the photo, so it may be cut off. That's fine if you meant it.",
   'maker.edit.otherPhoto': 'Another photo',
   'maker.edit.next': 'Done',
 };

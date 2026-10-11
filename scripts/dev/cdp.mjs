@@ -1,4 +1,4 @@
-// 디자인 점검 도우미: 메인 디버거(9229)와 화면(9344)을 다룬다.
+// 디자인 점검 도우미: 메인 디버거(9229)와 화면(9344)을 다룬다. 다른 포트로 띄웠으면 JJ_INSPECT_PORT, JJ_PAGE_PORT
 import { writeFileSync } from 'node:fs';
 export const OUT = process.env.OUT;
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -19,7 +19,7 @@ async function connect(url) {
 
 let mainConn;
 export async function main(expr) {
-  if (!mainConn) { const [t] = await (await fetch('http://127.0.0.1:9229/json/list')).json(); mainConn = await connect(t.webSocketDebuggerUrl); }
+  if (!mainConn) { const [t] = await (await fetch(`http://127.0.0.1:${process.env.JJ_INSPECT_PORT ?? 9229}/json/list`)).json(); mainConn = await connect(t.webSocketDebuggerUrl); }
   const m = await mainConn.send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
   if (m.result?.exceptionDetails) throw new Error(m.result.exceptionDetails.exception?.description ?? m.result.exceptionDetails.text);
   return m.result?.result?.value;
@@ -28,7 +28,7 @@ export async function main(expr) {
 const pages = {};
 export async function page(name) {
   for (let i = 0; i < 40; i++) {
-    const list = await (await fetch('http://localhost:9344/json')).json();
+    const list = await (await fetch(`http://localhost:${process.env.JJ_PAGE_PORT ?? 9344}/json`)).json();
     const p = list.find((x) => x.type === 'page' && x.url.includes(`${name}.html`));
     if (p) {
       if (pages[name]?.id !== p.id) pages[name] = { id: p.id, ...(await connect(p.webSocketDebuggerUrl)) };

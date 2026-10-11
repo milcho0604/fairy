@@ -1,7 +1,8 @@
 // 2.5D 깊이 (6단계). 사진을 볼 AI 가 없어도 이 창 안에서 깊이 모델(Depth Anything V2 Small)로
 // 픽셀마다 가까운 정도를 재고, 펫 화면이 그 값으로 사진을 입체 판으로 만든다. 사진은 밖으로 나가지 않는다.
 
-import * as ort from 'onnxruntime-web/webgpu';
+import './ort-env.ts';
+import * as ort from 'onnxruntime-web/jspi';
 import { t } from '../../../shared/i18n/index.ts';
 import type { MakerInfo } from '../../../shared/ipc.ts';
 import { ShownError } from './shown-error.ts';
@@ -11,12 +12,31 @@ const OUT_SIDE = 256;
 
 let session: ort.InferenceSession | undefined;
 
+/** GPU 로 연 모델 파일. 첫 GPU 깊이 재기가 성공할 때까지만 들고 있다가(실패하면 CPU 로 다시 연다) 버린다 */
+let gpuBytes: Uint8Array | undefined;
+
 export async function openDepth(bytes: ArrayBuffer): Promise<void> {
   if (session) return;
   try {
     session = await ort.InferenceSession.create(new Uint8Array(bytes), { executionProviders: ['webgpu'] });
+    gpuBytes = new Uint8Array(bytes);
   } catch {
     session = await ort.InferenceSession.create(new Uint8Array(bytes), { executionProviders: ['wasm'] });
+  }
+}
+
+/** 돌리기. GPU 가 열리고도 돌리다 실패하면 CPU 로 다시 열어 한 번 더 (removeBg.ts 와 같다) */
+async function run(s: ort.InferenceSession, feeds: Record<string, ort.Tensor>) {
+  try {
+    const out = await s.run(feeds);
+    gpuBytes = undefined;
+    return out;
+  } catch (err) {
+    if (!gpuBytes) throw err;
+    const bytes = gpuBytes;
+    gpuBytes = undefined;
+    session = await ort.InferenceSession.create(bytes, { executionProviders: ['wasm'] });
+    return session.run(feeds);
   }
 }
 
@@ -42,7 +62,7 @@ export async function predictDepth(img: HTMLImageElement, cfg: MakerInfo['depth'
       input[ch * n + p] = ((d[p * 4 + ch] ?? 0) / 255 - (cfg.mean[ch] ?? 0)) / (cfg.std[ch] ?? 1);
     }
   }
-  const out = await session.run({
+  const out = await run(session, {
     [session.inputNames[0] ?? 'pixel_values']: new ort.Tensor('float32', input, [1, 3, size, size]),
   });
   const raw = out[session.outputNames[0] ?? 'predicted_depth']?.data as Float32Array;

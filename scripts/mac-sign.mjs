@@ -100,6 +100,14 @@ export default async function macSign(context) {
     // 자체 인증서는 맥이 "믿는" 인증서가 아니라 codesign 이 검색 목록에 있는 키체인에서만 찾는다.
     // 잠깐 넣고 finally 에서 원래 목록으로 돌린다.
     run('/usr/bin/security', ['list-keychains', '-d', 'user', '-s', ...before, keychain]);
+    // Resources 안 실행 파일(sd.cpp sd-cli, scripts/build-sdcpp.mjs)은 --deep 이 서명하지 않는다 (코드 자리가 아니라
+    // 자원으로 봉인만 한다). 같은 인증서로 먼저 서명해 둬야 앱 서명이 그 서명째 봉인하고, 맥이 실행할 때도 믿는다
+    const sdCli = join(app, 'Contents', 'Resources', 'sd', 'sd-cli');
+    if (existsSync(sdCli)) {
+      run('/usr/bin/codesign', ['--force', '--sign', CERT_SHA1, sdCli]);
+      run('/usr/bin/codesign', ['--verify', '--strict', sdCli]);
+      console.log(`  • mac-sign: sd-cli 서명 ${sdCli}`);
+    }
     // --deep 은 안쪽 도우미 앱과 프레임워크까지. 권한(entitlements, JIT 허용 등)은 electron-builder 가 단 것을 둔다
     run('/usr/bin/codesign', [
       '--force',

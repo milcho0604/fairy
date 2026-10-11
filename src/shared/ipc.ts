@@ -17,6 +17,8 @@ import type { Point } from './geometry.ts';
 import type { GestureEvent } from './gesture.ts';
 import type { HouseStyle } from './house-art.ts';
 import type { HouseSprites } from './house-room.ts';
+import type { AgeStage } from './illustrate.ts';
+import type { IllustEngine, LocalDrawInfo } from './local-draw.ts';
 import type { LookMotion } from './look-motion.ts';
 import type { MiniGame } from './minigames.ts';
 import type { MoveAsk } from './moves.ts';
@@ -24,9 +26,12 @@ import type { PolishReply } from './note-polish.ts';
 import type { Note, NoteSource } from './note-store.ts';
 import type { Blueprint, Gait } from './pet3d/blueprint.ts';
 import type { PetKind, PetStyle, PoseKind, Settings } from './settings.ts';
+import type { SettingsTab } from './settings-tabs.ts';
 import type { BuyResult, ShopState } from './shop.ts';
 import type { SoundKind } from './sound.ts';
+import type { PetChoice, StarterId } from './starter-pets.ts';
 import type { Repeat, Todo } from './todo-store.ts';
+import type { WeekSummary } from './week.ts';
 
 export const IPC = {
   /** 펫 화면 → 메인: 커서가 펫 위에 있는지 (클릭 통과를 켜고 끈다). */
@@ -168,6 +173,8 @@ export const ONBOARD = {
   finish: 'onboard:finish',
   /** AI 준비 상태. 설치된 AI 를 확인하는 데 몇 초 걸릴 수 있어 화면을 먼저 그리고 따로 묻는다 */
   ai: 'onboard:ai',
+  /** 그림으로 들어 있는 기본 캐릭터(밀크, 초코) 고르기. 바뀐 설정을 돌려준다 */
+  pickStarter: 'onboard:pick-starter',
 } as const;
 
 export interface OnboardAi {
@@ -182,6 +189,8 @@ export interface OnboardSnapshot {
   platform: NodeJS.Platform;
   /** 화면 기록 권한 (맥). 윈도우는 늘 granted */
   screen: 'granted' | 'denied' | 'not-determined' | 'restricted' | 'unknown';
+  /** 그림으로 들어 있는 기본 캐릭터 (밀크, 초코) */
+  starters: StarterView[];
 }
 
 export interface OnboardBridge {
@@ -191,6 +200,7 @@ export interface OnboardBridge {
   openScreenSettings(): void;
   finish(): void;
   ai(): Promise<OnboardAi>;
+  pickStarter(id: StarterId): Promise<Settings>;
 }
 
 export const SETTINGS = {
@@ -201,6 +211,11 @@ export const SETTINGS = {
   /** 베타 기록 (P4-04) */
   stats: 'settings:stats',
   copyStats: 'settings:copy-stats',
+  /** 의견 보내기: 가린 진단 기록 미리 보기, 그 글 그대로 복사, 파일로 저장, GitHub 문제 알리기 */
+  diagnostics: 'settings:diagnostics',
+  copyDiagnostics: 'settings:copy-diagnostics',
+  saveDiagnostics: 'settings:save-diagnostics',
+  reportIssue: 'settings:report-issue',
   /** 새 버전 확인 (v1). 결과 글 */
   checkUpdate: 'settings:check-update',
   openOnboarding: 'settings:open-onboarding',
@@ -223,6 +238,8 @@ export const SETTINGS = {
   /** 지금 사진 펫의 몸을 고른 걸음새에 맞게 다시 만든다 (같은 사진, 같은 요청사항). 그만두기는 cancelRemake */
   remakeBody: 'settings:remake-body',
   cancelRemake: 'settings:cancel-remake',
+  /** 설정 창 → 메인: 지금 보는 탭. 앱이 켜져 있는 동안 기억해 다음에 창을 열면 그 탭으로 (설정 창 재구성) */
+  tab: 'settings:tab',
   /** 메인 → 설정 창: 설정이 바뀌었다 */
   changed: 'settings:changed',
   /** 메인 → 설정 창: 이 칸을 보여 줘 (메뉴 막대 "의견 보내기") */
@@ -250,6 +267,8 @@ export interface SettingsSnapshot {
   library: SavedPetView[];
   /** 지금 사진 펫 (작게 줄인 그림과 입체 모습). 기본 펫이면 null */
   current: PetLookView | null;
+  /** 그림으로 들어 있는 기본 캐릭터 (밀크, 초코) */
+  starters: StarterView[];
   /** 받은 모델과 크기 (6단계) */
   storage: StoredModel[];
   /** 배터리로 도는지 (부스트 모드는 이때 쉰다) */
@@ -268,6 +287,8 @@ export interface PetLookView {
   model?: Blueprint;
   /** 깊이 그림 (작게 줄인 회색 PNG data URL) */
   depth?: string;
+  /** AI 일러스트 나이 단계 (카드에 작은 표시) */
+  age?: AgeStage;
 }
 
 export interface SavedPetView extends PetLookView {
@@ -275,10 +296,20 @@ export interface SavedPetView extends PetLookView {
   name: string;
 }
 
+/** 그림으로 들어 있는 기본 캐릭터 고르기 칸 (shared/starter-pets.ts). thumb 는 긴 변 160px data URL */
+export interface StarterView {
+  id: StarterId;
+  name: string;
+  /** 화면 읽기용 설명 (긴 털 흰 고양이) */
+  desc: string;
+  thumb: string;
+}
+
 export interface StoredModel {
   id: string;
   label: string;
-  kind: 'llm' | 'bg' | 'depth';
+  /** draw: 내 컴퓨터에서 그리기 (엔진마다 도구와 모델이 든 폴더 통째) */
+  kind: 'llm' | 'bg' | 'depth' | 'draw';
   bytes: number;
 }
 
@@ -294,6 +325,14 @@ export interface SettingsBridge {
   stats(): Promise<BetaReport>;
   /** 베타 기록 글을 클립보드에 복사한다 */
   copyStats(): Promise<boolean>;
+  /** 베타 기록 + 가린 진단 기록 (메인이 가린다). 읽지 못하면 undefined */
+  diagnostics(): Promise<{ text: string; lines: number; hidden: number } | undefined>;
+  /** 마지막 diagnostics() 글 그대로 복사 */
+  copyDiagnostics(): Promise<boolean>;
+  /** 마지막 diagnostics() 글 그대로 파일로. 그만두면 ok false, 빈 message */
+  saveDiagnostics(): Promise<{ ok: boolean; message: string }>;
+  /** GitHub 새 이슈 (판, 운영체제만 채움) */
+  reportIssue(): void;
   checkUpdate(): Promise<string>;
   openOnboarding(): void;
   /** 백업 폴더 만들기. 만든 경로 (그만두면 빈 글) */
@@ -306,7 +345,7 @@ export interface SettingsBridge {
   refreshMcp(): Promise<string[]>;
   /** 앱을 다시 켠다. 창은 열릴 때 말을 읽어서 말을 바꾸면 다시 켜야 한다 */
   relaunch(): void;
-  choosePet(choice: { kind: PetKind } | { id: string }): Promise<SavedPetView[]>;
+  choosePet(choice: PetChoice): Promise<SavedPetView[]>;
   removeSavedPet(id: string): Promise<SavedPetView[]>;
   deleteModel(
     id: string,
@@ -314,6 +353,8 @@ export interface SettingsBridge {
   /** 몸 다시 만들기. 끝나면(성공이면 설정이 바뀐 뒤) 결과. AI 가 없으면 noAi */
   remakeBody(gait: Gait): Promise<{ ok: true } | { ok: false; error: string; noAi?: boolean }>;
   cancelRemake(): void;
+  /** 지금 보는 탭을 메인에 알린다 (다음에 열 때 그 탭으로) */
+  rememberTab(tab: SettingsTab): void;
   onChanged(listener: (settings: Settings) => void): void;
   onFocus(listener: (section: SettingsSection) => void): void;
   onPower(listener: (onBattery: boolean) => void): void;
@@ -448,7 +489,8 @@ export type CarryMessage =
  * 펫 반응: 신남(통통), 밥 먹음(신남과 같은 모습, 소리만 다름), 손 흔들기(친밀도 100), 빙글 춤(친밀도 300), 친구와 만남(하트),
  * 개운함(지쳤다가 쉬고 왔다, 휴식 권유대로 쉬고 왔다: 반짝이며 기지개. shared/energy.ts)
  */
-export type ReactKind = 'happy' | 'fed' | 'wave' | 'dance' | 'love' | 'fresh';
+/** cheer: 큰 축하 (오늘 할 일 다 끝냄, 만난 날 기념). 머리 위로 색종이가 터져 흩날린다 */
+export type ReactKind = 'happy' | 'fed' | 'wave' | 'dance' | 'love' | 'fresh' | 'cheer';
 
 export interface PetStatus {
   hungry: boolean;
@@ -488,6 +530,8 @@ export interface PetImages {
   /** 2.5D 깊이 그림 (6단계, 회색 PNG data URL). 있으면 사진을 입체 판으로 */
   depth: string | null;
   poses: Partial<Record<PoseKind, string>>;
+  /** AI 일러스트 나이 단계 (아기, 청소년은 작게 그린다, illustrate.ts ageScale). 없으면 그대로 */
+  age?: AgeStage;
 }
 
 export const MAKER = {
@@ -499,11 +543,25 @@ export const MAKER = {
   save: 'maker:save',
   /** 다듬은 사진을 AI 에 보내 입체 설계도를 받는다 (6단계) */
   shape3d: 'maker:shape3d',
+  /** 사진과 앱이 그린 설계도 그림을 AI 에 같이 보여 주고 설계도를 한 번 고친다 (선택, 6단계 v2) */
+  refine3d: 'maker:refine3d',
   /** 깊이 모델 준비 (없으면 받음, 2.5D). 진행률은 progress 로 */
   ensureDepth: 'maker:ensure-depth',
   /** 사진을 볼 AI 가 있는지 (CLI 확인이 느릴 수 있어 info 와 따로) */
   visionAi: 'maker:vision-ai',
-  /** 받기(모델), 입체 만들기(AI)를 멈춘다 (진행 표시의 그만두기) */
+  /** 사진을 Hugging Face 무료 Space 에 보내 AI 일러스트로 다시 그린다 (사용자가 고를 때만) */
+  illustrate: 'maker:illustrate',
+  /** 무료 Hugging Face 토큰 넣기, 지우기 (메인에만 둔다. 창은 있는지만 안다) */
+  setHfToken: 'maker:set-hf-token',
+  /** 내 Mac에서 그리기 준비 (처음 한 번 도구와 모델 받기). 진행률은 progress 로, 그만두기는 cancel */
+  setupLocalDraw: 'maker:setup-local-draw',
+  /** AI 일러스트 그리는 곳 고르기 (설정에 남긴다) */
+  setIllustEngine: 'maker:set-illust-engine',
+  /** Gemini 앱(무료)에서 만들기: 요청문을 클립보드에 넣고 Gemini 를 기본 브라우저로 연다 */
+  openGemini: 'maker:open-gemini',
+  /** Gemini 에 올릴 사진(창이 보낸 JPEG)을 임시 폴더에 두고 Finder, 탐색기로 보여 준다 */
+  revealGeminiPhoto: 'maker:reveal-gemini-photo',
+  /** 받기(모델), 입체 만들기(AI), 일러스트 그리기를 멈춘다 (진행 표시의 그만두기) */
   cancel: 'maker:cancel',
   close: 'maker:close',
 } as const;
@@ -516,6 +574,8 @@ export const MODEL_SCHEME = 'jj-model';
 export const MODEL_URL = `${MODEL_SCHEME}://bg/model.onnx`;
 /** 깊이 모델 파일 주소 (2.5D) */
 export const DEPTH_URL = `${MODEL_SCHEME}://depth/model.onnx`;
+/** 사진 AI 엔진 wasm 주소 (설치 파일에 없고 처음 쓸 때 받는다, src/shared/ort-wasm.ts) */
+export const ORT_WASM_URL = `${MODEL_SCHEME}://ort/engine.wasm`;
 
 /** 사진 펫의 입체 모습: AI 설계도(model), 또는 2.5D 깊이 그림(depth, 회색 PNG data URL) */
 export interface PetLook {
@@ -523,6 +583,8 @@ export interface PetLook {
   depth?: string;
   /** 설계도를 만든 요청사항 (걸음새에 맞게 다시 만들 때 같은 글로) */
   wish?: string;
+  /** AI 일러스트로 다시 그린 펫의 나이 단계 */
+  age?: AgeStage;
 }
 
 /** 펫 만들기 창이 만드는 것: 펫 본 그림, 또는 상태별 포즈 (v1) */
@@ -546,6 +608,12 @@ export interface MakerInfo {
   /** 사진을 볼 수 있는 AI(claude, codex)가 있는지. 처음엔 false, visionAi() 로 따로 받는다 */
   visionAi: boolean;
   depth: { ready: boolean; mb: number; size: number; mean: readonly number[]; std: readonly number[] };
+  /** 무료 Hugging Face 토큰을 넣었는지 (토큰 글은 창에 주지 않는다) */
+  hfToken: boolean;
+  /** 내 Mac에서 그리기: 이 컴퓨터가 되는지, 준비됐는지 */
+  localDraw: LocalDrawInfo;
+  /** 마지막으로 고른 그리는 곳 (설정) */
+  illustEngine: IllustEngine;
 }
 
 export interface MakerBridge {
@@ -566,6 +634,51 @@ export interface MakerBridge {
     /** 고른 걸음새. 없으면 자동(AI 가 사진을 보고 정한다) */
     gait?: Gait,
   ): Promise<{ ok: true; model: Blueprint } | { ok: false; error: string; noAi?: boolean }>;
+  /**
+   * 두 번째 보기: 사진(PNG data URL)과 창이 그린 설계도 그림(PNG data URL)을 같이 보여 주고 설계도를 한 번 고친다.
+   * 실패하면 창이 처음 설계도를 그대로 쓴다
+   */
+  refine3d(
+    photo: string,
+    render: string,
+    model: Blueprint,
+    wish?: string,
+    gait?: Gait,
+  ): Promise<{ ok: true; model: Blueprint } | { ok: false; error: string; noAi?: boolean }>;
+  /**
+   * 사진(JPEG data URL)을 Hugging Face 무료 Space 로 보내 고른 나이의 일러스트로 받는다 (1분쯤).
+   * 성공이면 그림 data URL (webp, png, jpeg). 그만두기와 창 닫기로 멈춘다
+   */
+  illustrate(
+    photo: string,
+    age: AgeStage,
+    wish?: string,
+    /** 어디서 그릴지. 없으면 무료 서버 */
+    engine?: IllustEngine,
+  ): Promise<
+    | {
+        ok: true;
+        image: string;
+        /** 털 다듬기 전 그림 (털 다듬기를 했을 때만, 클라우드만). 털색이 바뀌었으면 창이 이것으로 되돌리거나 색을 맞춘다 */
+        before?: string;
+        /** 이 컴퓨터에서 그렸으면 그 뒤의 상태 (CPU 로 되돌렸으면 시간 안내가 바뀐다) */
+        localDraw?: LocalDrawInfo;
+      }
+    | { ok: false; error: string; kind: string; localDraw?: LocalDrawInfo }
+  >;
+  /** 내 컴퓨터에서 그리기 준비. 진행률은 onProgress, 그만두기는 cancel. 끝난 뒤 상태도 준다 */
+  setupLocalDraw(): Promise<
+    | { ok: true; localDraw?: LocalDrawInfo }
+    | { ok: false; error: string; kind: string; localDraw?: LocalDrawInfo }
+  >;
+  /** 그리는 곳을 고른다 (설정에 남긴다). 결과는 저장된 값 */
+  setIllustEngine(engine: IllustEngine): Promise<IllustEngine>;
+  /** 요청문(모양, 나이, 바람으로 메인이 만든다)을 클립보드에 넣고 Gemini 앱을 연다. 못 열었으면 opened false */
+  openGemini(style: string, age: string, wish?: string): Promise<{ copied: boolean; opened: boolean }>;
+  /** 사진(JPEG data URL)을 임시 폴더에 두고 파일 관리자로 보여 준다 */
+  revealGeminiPhoto(photo: string): Promise<boolean>;
+  /** 토큰 넣기 (null 이면 지우기). 결과는 지금 토큰이 있는지 */
+  setHfToken(token: string | null): Promise<{ ok: boolean; has: boolean; error?: string }>;
   /** 기본 펫으로 돌아가기 */
   resetToDefault(): Promise<void>;
   /** 받는 중인 모델과 만드는 중인 입체를 멈춘다. 멈춘 일은 실패로 끝난다 */
@@ -587,6 +700,8 @@ export const PANEL = {
   eventToTodo: 'panel:event-to-todo',
   feed: 'panel:feed',
   openChat: 'panel:open-chat',
+  /** 패널 머리의 톱니바퀴: 설정 창 열기 */
+  openSettings: 'panel:open-settings',
   lookTogether: 'panel:look-together',
   close: 'panel:close',
   // 메모 (v1)
@@ -620,6 +735,14 @@ export const PANEL = {
   makeFood: 'panel:make-food',
   removeFood: 'panel:remove-food',
   play: 'panel:play',
+  // 할 일 단계 (9판 체크리스트)
+  stepAdd: 'panel:step-add',
+  stepToggle: 'panel:step-toggle',
+  stepRename: 'panel:step-rename',
+  stepRemove: 'panel:step-remove',
+  /** 지난 마감을 오늘로 */
+  moveOverdue: 'panel:move-overdue',
+  undoMoveOverdue: 'panel:undo-move-overdue',
   /** 메인 → 패널, 빠른 입력: 바뀐 상태 */
   state: 'panel:state',
   /** 메인 → 패널: 이 탭을 보여 줘 (펫 메뉴 "상점") */
@@ -640,6 +763,11 @@ export interface PanelState {
   notes: NoteSummary[];
   /** 오늘 0시부터 14일 안의 일정 */
   events: CalEvent[];
+  /**
+   * 안 끝난 일정 가운데 다른 일정과 시간이 겹치는 것의 id. events 에 없는 어제 시작한 긴 시각 일정과 겹치는 것도 넣는다
+   * (events 는 오늘 0시 뒤에 시작한 것만이라 패널에서 셈하면 놓쳤다)
+   */
+  eventClash: number[];
   focus: FocusState;
   /** 집중 코인과 오늘 받은 집중 횟수 */
   focusCoins: number;
@@ -661,6 +789,8 @@ export interface PanelState {
   diary: DiaryEntry[];
   /** 상점 (v1). 커스텀 먹이 그림은 data URL 로 */
   shop: ShopState & { foodImages: Record<string, string> };
+  /** 이번 주 돌아보기 (shared/week.ts). 기록을 못 읽으면 없다 */
+  week?: WeekSummary;
 }
 
 /** 짝꿍 일기 한 날 */
@@ -684,10 +814,17 @@ export interface NoteSummary {
 /** 한 줄 입력(PANEL.add) 결과. 어디에 언제로 넣었는지 알려 준다 */
 export type PanelAddResult =
   | { ok: false; error?: string }
-  | { ok: true; kind: 'event'; id: number; startAt: number }
+  /** clash: 시간이 겹치는 다른 일정 (첫 것) */
+  | { ok: true; kind: 'event'; id: number; startAt: number; clash?: EventClash }
   | { ok: true; kind: 'todo'; id: number; due: string | null }
   /** 여러 줄을 붙여 넣어 줄마다 넣었다 */
   | { ok: true; kind: 'many'; todos: number; events: number };
+
+/** 새 일정과 시간이 겹치는 일정 (shared/event-overlap.ts) */
+export interface EventClash {
+  title: string;
+  startAt: number;
+}
 
 /** 메모 찾기 결과 한 줄. 본문에서 찾았으면 찾은 곳 둘레 글(snippet)과 그 안에서 찾은 부분(mark) */
 export interface NoteHit {
@@ -730,6 +867,7 @@ export interface PanelBridge {
   eventToTodo(id: number, text: string): Promise<PanelAddResult>;
   feed(): Promise<{ ok: boolean }>;
   openChat(): void;
+  openSettings(): void;
   lookTogether(): void;
   close(): void;
   onState(listener: (state: PanelState) => void): void;
@@ -752,7 +890,7 @@ export interface PanelBridge {
   /** 다듬은 글을 받아 띄웠다 (메인이 들고 있던 답을 지운다) */
   notePolishTaken(id: number): void;
   /** 한 줄("내일 3시 회의")로 일정 넣기 */
-  eventAdd(text: string): Promise<{ ok: boolean; error?: string; event?: CalEvent }>;
+  eventAdd(text: string): Promise<{ ok: boolean; error?: string; event?: CalEvent; clash?: EventClash }>;
   eventUpdate(
     id: number,
     patch: {
@@ -767,8 +905,19 @@ export interface PanelBridge {
   ): void;
   eventRemove(id: number): void;
   eventRestore(id: number): void;
-  /** 길이(15, 25, 50분)를 주면 그 길이로, 아니면 마지막에 고른 길이로 */
-  focusStart(minutes?: number): void;
+  /** 할 일에 단계 더하기 (9판). 꽉 찼거나 끝난 할 일이면 오류 */
+  /** 단계 넣기 (여러 줄이면 한 번에) */
+  stepAdd(todoId: number, title: string | string[]): Promise<{ ok: boolean; error?: string }>;
+  /** 단계 체크와 해제. done 이 없으면 뒤집는다 */
+  stepToggle(stepId: number, done?: boolean): void;
+  stepRename(stepId: number, title: string): void;
+  stepRemove(stepId: number): void;
+  /** 지난 마감을 오늘로. 옮긴 것과 원래 마감 (되돌리기는 update 로) */
+  moveOverdue(): Promise<{ id: number; due: string | null }[]>;
+  /** 방금 한 지난 마감 오늘로 되돌리기 */
+  undoMoveOverdue(): void;
+  /** 길이(15, 25, 50분)를 주면 그 길이로, 아니면 마지막에 고른 길이로. todoId 를 주면 그 할 일을 하는 집중 */
+  focusStart(minutes?: number, todoId?: number): void;
   focusStop(): void;
   missedClear(): void;
   buyToy(key: string): Promise<BuyResult>;

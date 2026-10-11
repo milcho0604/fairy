@@ -11,6 +11,19 @@ export interface ImageAttachment {
   data: string;
 }
 
+/**
+ * 짝꿍 MCP 서버를 띄우는 명령 (짝꿍 실행 파일을 Node 로 돌려 out/main/mcp-server.js).
+ * 채팅 AI 가 펫 할 일, 메모, 일정만 만질 수 있게 넘긴다. 파일, 명령 도구는 여전히 끈다
+ */
+export interface McpLaunch {
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+}
+
+/** 짝꿍 MCP 서버 이름. 도구 이름이 mcp__jjakkung__add_todo 처럼 된다 */
+export const JJ_MCP_NAME = 'jjakkung';
+
 /** 어댑터가 내보내는 사건. 화면은 이것만 안다. */
 export type AiEvent =
   | { type: 'session'; id: string }

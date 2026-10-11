@@ -1,10 +1,19 @@
 import { createHash } from 'node:crypto';
-import { createReadStream, createWriteStream, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
+import {
+  createReadStream,
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+} from 'node:fs';
 import { dirname } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { net } from 'electron';
 import { DownloadError, statusReason } from '../shared/download-error.ts';
+import { partComplete, partPath, rangeFrom, rangeVerdict } from './download-resume.ts';
 
 /** 받을 파일. 받은 뒤 SHA-256 을 맞춰 보고, 안 맞으면 버린다 */
 export interface VerifiedFile {
@@ -14,6 +23,11 @@ export interface VerifiedFile {
   sha256: string;
   /** 서버가 크기를 안 알려 줄 때 진행률 계산용 */
   bytes: number;
+  /**
+   * 멈추거나 끊겨도 .part 를 남겨 다음에 그 뒤부터 받는다 (몇 GB 짜리 그림 모델). 해시가 틀리거나
+   * 목록 크기를 넘으면 그래도 버린다
+   */
+  resume?: boolean;
 }
 
 export async function sha256Of(file: string): Promise<string> {
@@ -77,15 +91,59 @@ export async function ensureVerified(
   }
 }
 
-async function receive(f: VerifiedFile, onProgress: (ratio: number) => void, signal?: AbortSignal) {
+const partSize = (part: string) => {
+  try {
+    return statSync(part).size;
+  } catch {
+    return 0;
+  }
+};
+
+async function receive(
+  f: VerifiedFile,
+  onProgress: (ratio: number) => void,
+  signal?: AbortSignal,
+  /** Range 없이 처음부터 (이어 받기가 한 번 어긋나 다시 하는 중) */
+  fresh = false,
+): Promise<string> {
   mkdirSync(dirname(f.path), { recursive: true });
-  const part = `${f.path}.part`;
+  // 이어 받는 파일은 .part 를 고정한 해시에 묶는다 (판이 바뀌면 옛 반쪽을 이어 쓰지 않게). 옛 이름은 치운다
+  const part = f.resume ? partPath(f.path, f.sha256) : `${f.path}.part`;
+  if (f.resume) rmSync(`${f.path}.part`, { force: true });
+  const have = f.resume && !fresh ? partSize(part) : 0;
+  // 끝까지 받아 두고 해시를 맞추기 전에 멈췄으면(몇 GB 해시는 수십 초) 다시 받지 말고 해시만 본다
+  if (partComplete(have, f.bytes)) {
+    if ((await sha256Of(part)) === f.sha256) return settle(f, part, onProgress);
+    rmSync(part, { force: true });
+  }
+  const from = rangeFrom(have, f.bytes);
+  if (from === 0) rmSync(part, { force: true });
   // 앱의 다른 곳(일정, 목록, 업데이트)처럼 Electron net 으로 받는다. Node fetch 는 연결 시간 초과가 잦았다
-  const res = await net.fetch(f.url, { signal });
+  const res = await net.fetch(f.url, {
+    signal,
+    ...(from > 0 ? { headers: { Range: `bytes=${from}-` } } : {}),
+  });
+  // 받다 만 것이 서버 파일과 안 맞으면(416) 버리고 처음부터 한 번
+  if (from > 0 && res.status === 416) {
+    void res.body?.cancel().catch(() => {});
+    rmSync(part, { force: true });
+    if (fresh) throw new DownloadError('server', res.status);
+    return receive(f, onProgress, signal, true);
+  }
   if (!res.ok || !res.body) throw new DownloadError(res.ok ? 'server' : statusReason(res.status), res.status);
-  const total = Number(res.headers.get('content-length')) || f.bytes;
-  let got = 0;
-  let last = 0;
+  const verdict = rangeVerdict(res.status, res.headers.get('content-range'), from);
+  // 206 인데 부탁한 자리가 아니면 받지 않고 Range 없이 한 번 더 (그래도 어긋나면 서버 탓)
+  if (verdict === 'retry') {
+    void res.body.cancel().catch(() => {});
+    rmSync(part, { force: true });
+    if (fresh) throw new DownloadError('server', res.status);
+    return receive(f, onProgress, signal, true);
+  }
+  const resumed = verdict === 'resume';
+  const length = Number(res.headers.get('content-length'));
+  const total = resumed ? from + (length || f.bytes - from) : length || f.bytes;
+  let got = resumed ? from : 0;
+  let last = got / total;
   // 목록에 적힌 크기보다 한참 크면 끝까지 받지 않고 멈춘다 (해시는 어차피 틀린다)
   const limit = f.bytes * 1.05;
   const counted = Readable.fromWeb(res.body as import('node:stream/web').ReadableStream).on(
@@ -101,15 +159,21 @@ async function receive(f: VerifiedFile, onProgress: (ratio: number) => void, sig
     },
   );
   try {
-    await pipeline(counted, createWriteStream(part));
+    await pipeline(counted, createWriteStream(part, { flags: resumed ? 'a' : 'w' }));
   } catch (err) {
-    rmSync(part, { force: true });
+    // 이어 받는 파일은 끊기거나 멈춰도 남긴다. 넘쳐서 멈춘 것(hash)만 버린다
+    if (!f.resume || err instanceof DownloadError) rmSync(part, { force: true });
     throw err;
   }
   if ((await sha256Of(part)) !== f.sha256) {
     rmSync(part, { force: true });
     throw new DownloadError('hash');
   }
+  return settle(f, part, onProgress);
+}
+
+/** 해시를 맞춘 .part 를 제자리로 */
+function settle(f: VerifiedFile, part: string, onProgress: (ratio: number) => void): string {
   renameSync(part, f.path);
   verified.add(f.path);
   onProgress(1);

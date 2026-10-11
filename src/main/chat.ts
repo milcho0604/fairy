@@ -2,7 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { BrowserWindow, type IpcMainEvent, ipcMain, type Rectangle, screen } from 'electron';
 import { type Catalog, pickCli, pickLocal } from '../shared/ai/catalog.ts';
-import { extractTodos, noteTitleFromQuestion, type PersonaId, persona } from '../shared/ai/persona.ts';
+import {
+  extractTodos,
+  noteTitleFromQuestion,
+  type PersonaId,
+  persona,
+  turnPrompt,
+} from '../shared/ai/persona.ts';
 import {
   BUILTIN_PROVIDERS,
   type CustomProviderInput,
@@ -20,7 +26,9 @@ import {
   type ChatState,
   historyFor,
   initialChat,
+  parseChat,
   resetChat,
+  serializeChat,
   switchProvider,
   UNDO_RESET_MS,
   undoReset,
@@ -41,6 +49,7 @@ import { type AiRun, checkStatus, readCodexUsage, runAi } from './ai/runner.ts';
 import { getShellEnv } from './ai/shell-env.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
 import { langArg } from './lang.ts';
+import { jjMcpLaunch } from './mcp-launch.ts';
 import { openLink } from './open-link.ts';
 import { readJson, writeJson } from './store.ts';
 import { rememberBounds, savedBounds } from './window-bounds.ts';
@@ -51,6 +60,8 @@ const SETTINGS_FILE = 'chat-settings';
 const USAGE_FILE = 'ai-usage';
 /** 사용자가 추가한 AI (이름, 명령, 인자). */
 const CUSTOM_FILE = 'ai-custom';
+/** 다시 켜도 남는 대화 (최근 메시지와 이어갈 세션, chat-state.ts serializeChat) */
+const HISTORY_FILE = 'chat-history';
 
 export interface ChatOptions {
   /** 모델 목록 (v2, 하루 한 번 받아 바뀐다) */
@@ -68,6 +79,10 @@ export interface ChatOptions {
   /** 내 할 일 같이 보내기 (설정). 켜면 todoContext() 를 질문 앞에 붙인다 */
   knowsTodos: () => boolean;
   setKnowsTodos: (on: boolean) => void;
+  /** 짝꿍 도구 쓰기 (설정). 켜면 claude, codex 에 펫 MCP 서버를 실어 할 일, 메모, 일정을 만지게 한다 */
+  petTools: () => boolean;
+  /** 답이 끝났다 (답, 오류, 멈춤 모두). 짝꿍 도구로 바뀐 할 일을 패널에 바로 보인다 */
+  onTurnEnd?: () => void;
   todoContext: () => string;
   /** 답을 메모로 */
   saveNote: (title: string, body: string) => void;
@@ -121,7 +136,8 @@ export function createChat(o: ChatOptions) {
   // 사용량은 마지막으로 본 값을 남겨 두었다가 창을 열자마자 보여 준다 (몇 분 전 값인지 같이 표시).
   const savedUsage = usageOf(readJson(USAGE_FILE));
   const startProvider = saved?.provider && specOf(saved.provider) ? saved.provider : 'claude';
-  let state: ChatState = initialChat(startProvider, savedUsage);
+  // 지난번 대화를 이어 보여 준다. 세션도 같이 읽어 다음 질문이 --resume 으로 이어진다
+  let state: ChatState = { ...initialChat(startProvider, savedUsage), ...parseChat(readJson(HISTORY_FILE)) };
   let run: AiRun | undefined;
   let win: BrowserWindow | undefined;
   let draft: OutgoingImage[] = [];
@@ -131,6 +147,18 @@ export function createChat(o: ChatOptions) {
     win?.webContents.send(CHAT.state, state);
   };
   const fromChat = (e: IpcMainEvent | Electron.IpcMainInvokeEvent) => !!win && e.sender === win.webContents;
+  /**
+   * 대화를 파일에 남긴다 (답이 끝났을 때, 새 대화, 되돌리기). 기록 안 남김을 켠 동안은 쓰지 않는다:
+   * 켤 때 새 대화로 비우며 한 번 써 두어서 파일에는 켜기 전 대화도 남지 않는다
+   */
+  const save = (force = false) => {
+    if (state.ephemeral && !force) return;
+    try {
+      writeJson(HISTORY_FILE, serializeChat(state));
+    } catch (err) {
+      log('chat', 'history save failed', err instanceof Error ? err.message : String(err));
+    }
+  };
 
   // 처음(고른 적 없음)이면 자동으로: 설치되고 로그인된 AI 가 있으면 그것, 없으면 무료 AI (v2).
   // 확인하는 몇 초 사이에 사용자가 직접 고르면 그 선택을 따른다
@@ -195,7 +223,8 @@ export function createChat(o: ChatOptions) {
     if (typeof spec === 'string') return { ok: false, error: spec };
     customInputs = [...customInputs, { id, input }];
     writeJson(CUSTOM_FILE, customInputs);
-    log('chat', 'provider added', spec.label);
+    // 이름은 사용자가 지은 글이라 남기지 않는다 (의견 보내기 진단 기록)
+    log('chat', 'provider added', id);
     return { ok: true, id };
   });
 
@@ -235,7 +264,8 @@ export function createChat(o: ChatOptions) {
     const ephemeral = !!state.ephemeral && (spec.adapter === 'claude' || spec.adapter === 'codex');
     const base = question || t('chat.lookQuestion');
     const context = o.knowsTodos() ? o.todoContext() : '';
-    const prompt = context + (ephemeral ? withHistory(history, base) : base);
+    // 지금 시각은 시스템 지시(persona)가 아니라 질문 앞에 붙인다 (프롬프트 캐시가 매번 깨지지 않게)
+    const prompt = turnPrompt({ context, question: ephemeral ? withHistory(history, base) : base });
     state = addQuestion(
       state,
       ids,
@@ -266,6 +296,9 @@ export function createChat(o: ChatOptions) {
       isolate: aiIsolation(),
       ephemeral,
       mcpServers: aiIsolation() ? [] : o.mcpServers(),
+      // 짝꿍 도구: 격리해도 펫 MCP 서버 하나만 싣는다. 기본 도구(파일, 명령)는 그대로 끈다 (claude.ts, codex.ts)
+      jjServer:
+        o.petTools() && (spec.adapter === 'claude' || spec.adapter === 'codex') ? jjMcpLaunch() : undefined,
       // 고른 모델 (v2). 목록에 없으면 그 AI 의 기본
       model: pickCli(o.catalog(), provider, o.aiModels()[provider]),
     };
@@ -283,6 +316,8 @@ export function createChat(o: ChatOptions) {
       if (event.type === 'done' || event.type === 'error') {
         run = undefined;
         onPetAi({ thinking: false, answered: event.type === 'done' });
+        o.onTurnEnd?.();
+        if (event.type === 'done') save();
         if (event.type === 'done') {
           const inFront = !!win && !win.isDestroyed() && win.isVisible() && win.isFocused();
           onAnswer?.(event.text, inFront);
@@ -352,10 +387,15 @@ export function createChat(o: ChatOptions) {
       });
   });
 
+  /** 새 대화로 지운 대화. 잠깐 동안 되돌릴 수 있다 (UNDO_RESET_MS) */
+  let cleared: { state: ChatState; at: number } | undefined;
   ipcMain.on(CHAT.setEphemeral, (e, on: boolean) => {
     if (!fromChat(e) || state.pendingId) return;
     // 켜고 끌 때 새 대화로: 안 남긴 대화는 이어 갈 수 없고, 남긴 대화를 안 남긴 채 이어 갈 수도 없다.
     state = { ...resetChat(state), ephemeral: !!on };
+    // 지운 대화를 되돌릴 거리도 버린다 (안 남긴 대화가 되돌리기로 기록 파일에 쓰이지 않게)
+    cleared = undefined;
+    save(true);
     push();
   });
   ipcMain.on(CHAT.setKnowsTodos, (e, on: boolean) => {
@@ -401,12 +441,11 @@ export function createChat(o: ChatOptions) {
     run?.cancel();
     downloading?.abort(); // 모델 받기도 멈춘다 (받기 진행 옆 취소 단추)
   });
-  /** 새 대화로 지운 대화. 잠깐 동안 되돌릴 수 있다 (UNDO_RESET_MS) */
-  let cleared: { state: ChatState; at: number } | undefined;
   ipcMain.on(CHAT.reset, (e) => {
     if (!fromChat(e) || state.pendingId) return;
     if (state.messages.length > 0) cleared = { state, at: Date.now() };
     state = resetChat(state);
+    save(true);
     push();
   });
   ipcMain.handle(CHAT.undoReset, (e) => {
@@ -416,6 +455,7 @@ export function createChat(o: ChatOptions) {
     if (!back) return false;
     state = back;
     log('chat', 'undo reset');
+    save();
     push();
     return true;
   });
@@ -536,7 +576,7 @@ export function createChat(o: ChatOptions) {
      */
     async oneShot(
       text: string,
-      image: ImageAttachment,
+      image: ImageAttachment | readonly ImageAttachment[],
       system: string,
       signal?: AbortSignal,
     ): Promise<{ ok: true; text: string; provider: string } | { ok: false; error: string; noAi?: true }> {
@@ -552,7 +592,7 @@ export function createChat(o: ChatOptions) {
             spec: use,
             history: [],
             text,
-            images: [image],
+            images: Array.isArray(image) ? image : [image as ImageAttachment],
             persona: system,
             isolate: true,
             ephemeral: true,
@@ -617,6 +657,7 @@ export function createChat(o: ChatOptions) {
     /** AI 격리 설정이 바뀌면 대화 세션을 끊는다 (격리 폴더와 사용자 폴더의 기록이 달라 이어 갈 수 없다). */
     resetSessions() {
       state = { ...state, sessions: {} };
+      save();
       push();
     },
     /** 개발용: 디자인 점검 때 상태를 직접 넣는다. 메인 디버거에서만 부른다(index.ts 의 __jj). */

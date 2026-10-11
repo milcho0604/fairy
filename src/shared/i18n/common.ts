@@ -18,6 +18,12 @@ export const ko = {
   'common.petKind.chick': '삐약이',
   'common.petKind.dog': '멍멍이',
   'common.petKind.bunny': '토순이',
+  // 그림으로 들어 있는 기본 캐릭터 (사진 펫처럼 움직인다, shared/starter-pets.ts). 이름이자 고르기 칸 이름
+  'common.starter.milk': '밀크',
+  'common.starter.choco': '초코',
+  /** 고르기 칸 화면 읽기: 무슨 동물인지 */
+  'common.starter.milk.desc': '긴 털 흰 고양이',
+  'common.starter.choco.desc': '곱슬 털 갈색 푸들',
   'common.pose.happy': '기쁠 때',
   'common.pose.sleepy': '졸릴 때',
   'common.pose.hungry': '배고플 때',
@@ -46,6 +52,10 @@ export const en: Translation<typeof ko> = {
   'common.petKind.chick': 'Chick',
   'common.petKind.dog': 'Puppy',
   'common.petKind.bunny': 'Bunny',
+  'common.starter.milk': 'Milk',
+  'common.starter.choco': 'Choco',
+  'common.starter.milk.desc': 'white long-haired cat',
+  'common.starter.choco.desc': 'brown curly poodle',
   'common.pose.happy': 'When happy',
   'common.pose.sleepy': 'When sleepy',
   'common.pose.hungry': 'When hungry',

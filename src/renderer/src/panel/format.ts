@@ -34,7 +34,8 @@ export function ago(ms: number, now: number): string {
   if (min < 1) return t('panel.ago.now');
   if (min < 60) return t('panel.ago.min', { n: min });
   if (localDay(ms) === localDay(now)) return t('panel.ago.hour', { n: Math.floor(min / 60) });
-  if (localDay(ms + 86_400_000) === localDay(now)) return t('panel.ago.yesterday');
+  // 날짜로 센다: 24시간을 더하면 서머타임이 끝나는 날(25시간) 이른 시각이 "어제"가 되지 못했다
+  if (plusDays(localDay(ms), 1) === localDay(now)) return t('panel.ago.yesterday');
   const d = new Date(ms);
   return t('panel.due.date', { m: d.getMonth() + 1, d: d.getDate() });
 }

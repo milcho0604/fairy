@@ -14,3 +14,7 @@ __pycache__/
 # 로컬 설정과 비밀값
 .env
 .env.*
+
+# 내 컴퓨터에서 그리기: 맥 앱에 넣는 sd-cli 빌드 (scripts/build-sdcpp.mjs)
+resources-bin/
+.cache/

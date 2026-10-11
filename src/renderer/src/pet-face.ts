@@ -18,7 +18,7 @@ export interface FaceRect {
   y1: number;
 }
 
-/** 이보다 불투명한 픽셀만 몸으로 본다 (입체 바닥 그림자는 알파 0.16 이라 빠진다) */
+/** 이보다 불투명한 픽셀만 몸으로 본다 */
 const SOLID = 96;
 
 /** RGBA 픽셀에서 불투명한 부분을 감싸는 상자. 다 비었으면 undefined */
@@ -110,18 +110,51 @@ export function squareAround(r: FaceRect, pad: number, topPad = 0): { x: number;
   return { x: (r.x0 + r.x1) / 2 - side / 2, y, side };
 }
 
-/** 옅은 검정 픽셀(입체 바닥 그림자)을 지운다. 지운 것이 있으면 true */
-export function dropShadow(rgba: Uint8ClampedArray): boolean {
-  let hit = false;
-  for (let i = 0; i < rgba.length; i += 4) {
-    const a = rgba[i + 3] ?? 0;
-    if (a === 0 || a > 60) continue;
-    if ((rgba[i] ?? 0) < 24 && (rgba[i + 1] ?? 0) < 24 && (rgba[i + 2] ?? 0) < 24) {
-      rgba[i + 3] = 0;
-      hit = true;
-    }
-  }
-  return hit;
+/**
+ * 바탕이 불투명한 그림(배경을 지우지 않은 움직이는 gif 등)에서 펫이 있는 상자.
+ * 네 귀퉁이가 다 불투명할 때만 본다 (아니면 undefined: 알파로 찾는다). 귀퉁이 색이 고르면 그 색과 다른 픽셀을 감싸고,
+ * 귀퉁이 색이 제각각이면(사진 바탕) 가운데 정사각형. 바탕만 있거나 너무 작게 잡히면 역시 가운데 정사각형
+ */
+export function opaqueRect(rgba: ArrayLike<number>, w: number, h: number): FaceRect | undefined {
+  const at = (x: number, y: number, c: number) => rgba[(y * w + x) * 4 + c] ?? 0;
+  const corners: [number, number][] = [
+    [0, 0],
+    [w - 1, 0],
+    [0, h - 1],
+    [w - 1, h - 1],
+  ];
+  if (corners.some(([x, y]) => at(x, y, 3) <= SOLID)) return undefined;
+  const side = Math.min(w, h);
+  const middle = {
+    x0: Math.floor((w - side) / 2),
+    y0: Math.floor((h - side) / 2),
+    x1: Math.floor((w - side) / 2) + side,
+    y1: Math.floor((h - side) / 2) + side,
+  };
+  const bg = [0, 1, 2].map((c) => corners.reduce((a, [x, y]) => a + at(x, y, c), 0) / 4);
+  const far = (x: number, y: number) =>
+    Math.max(...[0, 1, 2].map((c) => Math.abs(at(x, y, c) - (bg[c] ?? 0))));
+  if (corners.some(([x, y]) => far(x, y) > 24)) return middle;
+  // 줄마다, 칸마다 바탕과 다른 픽셀 수. 한두 점(글자 티끌, 진행 막대 끝)은 펫이 아니라 몇 개 넘는 줄만 본다.
+  // 칸은 펫이 있는 줄 안에서만 센다 (위쪽 세로 티끌이 칸 수를 채우지 않게)
+  const hit = (x: number, y: number) => at(x, y, 3) > SOLID && far(x, y) > 40;
+  const rowHits = new Uint32Array(h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (hit(x, y)) rowHits[y] = (rowHits[y] ?? 0) + 1;
+  const span = (hits: Uint32Array, min: number): [number, number] | undefined => {
+    let lo = 0;
+    while (lo < hits.length && (hits[lo] ?? 0) < min) lo++;
+    let hi = hits.length - 1;
+    while (hi > lo && (hits[hi] ?? 0) < min) hi--;
+    return lo < hits.length ? [lo, hi + 1] : undefined;
+  };
+  const ys = span(rowHits, Math.max(2, w * 0.01));
+  if (!ys) return middle;
+  const colHits = new Uint32Array(w);
+  for (let y = ys[0]; y < ys[1]; y++)
+    for (let x = 0; x < w; x++) if (hit(x, y)) colHits[x] = (colHits[x] ?? 0) + 1;
+  const xs = span(colHits, Math.max(2, (ys[1] - ys[0]) * 0.01));
+  if (!xs || (xs[1] - xs[0]) * (ys[1] - ys[0]) < w * h * 0.01) return middle;
+  return { x0: xs[0], y0: ys[0], x1: xs[1], y1: ys[1] };
 }
 
 /** 머리만 그릴 수 있는 입체 (pet3d.ts Pet3D) */
@@ -138,6 +171,8 @@ export interface FaceSource {
   model3d?: Model3D & HeadAware;
   /** 2.5D 판(사진 + 깊이)이면 true. 관절이 없어 사진처럼 목을 찾는다 */
   relief?: boolean;
+  /** 나이 배율 (AI 일러스트 아기, 청소년). 2D 사진은 drawPet 이 줄이고, 입체는 모델에 이미 들어 있다 */
+  photoScale?: number;
 }
 
 /** 기본 펫과 입체는 160 캔버스를 이만큼 키워 그린 다음 자른다 (머리가 잘린 크기에서도 선명하게) */
@@ -175,6 +210,7 @@ export function renderFace(
       viewSize: CANVAS_SIZE * SCALE,
       kind: src.kind,
       face: true,
+      noShadow: true,
     };
     // 잘라서 크게 보이니 이번 한 번은 렌더러 해상도 상한을 올린다 (다음 펫 그리기에서 제 크기로 돌아간다)
     const keep = m?.maxPx;
@@ -192,12 +228,14 @@ export function renderFace(
   }
   const data = g.getImageData(0, 0, work.width, work.height);
   const pixels = data.data;
-  // 입체 바닥 그림자(검정, 알파 0.16)는 얼굴 그림에 남기지 않는다
-  let dirty = dropShadow(pixels);
-  let body = solidRect(pixels, work.width, work.height);
+  // 입체 바닥 그림자는 처음부터 그리지 않는다 (noShadow). 예전처럼 옅은 검정 픽셀을 지우면 검은 털 가장자리도 지워졌다
+  let dirty = false;
+  // 바탕을 지우지 않은 그림(움직이는 gif 등)은 통째로 불투명해 알파로는 펫 자리를 모른다. 바탕색과 다른 곳을 자른다
+  const opaque = src.photo && !m ? opaqueRect(pixels, work.width, work.height) : undefined;
+  let body = opaque ?? solidRect(pixels, work.width, work.height);
   if (!body) return undefined;
   // 머리 관절을 모르는 그림(사진, 2.5D 판)만 목을 찾는다. 기본 펫 2D(발 뺀 몸)와 입체 머리는 그린 것이 곧 얼굴
-  const neck = src.photo || src.relief ? neckOf(pixels, work.width, body) : undefined;
+  const neck = !opaque && (src.photo || src.relief) ? neckOf(pixels, work.width, body) : undefined;
   if (neck !== undefined) {
     // 목 줄에서 이미 다 투명하게: 경계 띠를 목 위(턱 밑)에 둔다. 목 줄에 두면 목 한 토막이 반투명하게 남았다
     const fade = Math.max(2, (neck - body.y0) * 0.05);
@@ -246,12 +284,14 @@ export function renderBody(
     viewSize: full,
     kind: src.kind,
     photo: m ? undefined : src.photo,
+    photoScale: src.photoScale,
     model3d: m,
+    // 바닥 그림자는 집 바닥에 어울리지 않는다
+    noShadow: true,
   });
   if (m && keep !== undefined) m.maxPx = keep;
   g.setTransform(1, 0, 0, 1, 0, 0);
   const data = g.getImageData(0, 0, full, full);
-  if (dropShadow(data.data)) g.putImageData(data, 0, 0);
   const body = solidRect(data.data, full, full);
   if (!body) return undefined;
   const sq = squareAround(body, 0.04);

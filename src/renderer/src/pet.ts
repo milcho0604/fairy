@@ -1,10 +1,11 @@
-import { type Activity, nextDelay, WALK_SPEED } from '../../shared/behavior.ts';
+import { type Activity, nextDelay } from '../../shared/behavior.ts';
 import { ENERGY_BLINK, ENERGY_PACE, type EnergyLook, energyLookOf, sameLook } from '../../shared/energy.ts';
 import { BALL_SVG, type CarryToy, PICK_MS, pickPose } from '../../shared/fetch.ts';
 import type { Gaze } from '../../shared/gaze.ts';
 import type { Point } from '../../shared/geometry.ts';
 import { GestureTracker, RubTracker } from '../../shared/gesture.ts';
 import { t } from '../../shared/i18n/index.ts';
+import { ageScale } from '../../shared/illustrate.ts';
 import type { PetImages } from '../../shared/ipc.ts';
 import {
   canMagnify,
@@ -29,14 +30,15 @@ import type { Blueprint, Gait } from '../../shared/pet3d/blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from '../../shared/pet3d/defaults.ts';
 import type { PetKind, PetStyle, PoseKind } from '../../shared/settings.ts';
 import { canPlay, type SoundKind } from '../../shared/sound.ts';
-import { AnimatedImage, loadPetImage } from './animated.ts';
-import { CANVAS_SIZE, type CarryDraw, drawPet, HEARTS_MS } from './draw.ts';
+import { AnimatedImage, frameSide, loadPetImage } from './animated.ts';
+import { CANVAS_SIZE, type CarryDraw, CONFETTI_MS, drawPet, HEARTS_MS, motionSettling } from './draw.ts';
 import { initLang } from './lang.ts';
-import { moveFps, SIT_MS, sitDown } from './move-pose.ts';
+import { LAND_MS, moveFps, SIT_MS, sitDown } from './move-pose.ts';
 import { renderBody, renderFace } from './pet-face.ts';
 import type { Pet3D } from './pet3d.ts';
 import { quadKind, withGait } from './pet3d-gait.ts';
 import { playSound } from './sound.ts';
+import { continueSeg, segSpeed, stepsAt, strideLen, type WalkSeg } from './walk-pace.ts';
 
 initLang('common.title.pet');
 const bridge = window.jjakkung;
@@ -73,6 +75,10 @@ let changeTimer: ReturnType<typeof setTimeout> | undefined;
 let blinkTimer: ReturnType<typeof setTimeout> | undefined;
 /** 개운함 반짝임을 시작한 시각 (기지개와 같은 길이). 없으면 -1 */
 let freshStart = -1;
+/** 큰 축하 색종이가 터진 시각 (오늘 할 일 다 끝냄, 만난 날 기념). 없으면 -1 */
+let confettiStart = -1;
+/** 들렸다가 놓인 때 (내려앉기). 없으면 -1 */
+let landStart = -1;
 const FRESH_MS = MOVE_SPECS.stretch.ms;
 /** 기운 (PetStatus.energy, shared/energy.ts). 없으면 예전 모습 */
 let energy: EnergyLook | undefined;
@@ -100,6 +106,8 @@ function frame() {
   const now = performance.now();
   const next = moodOf(inputs, now);
   if (next !== mood) {
+    // 들려 있다가(끌기, 던지기) 놓이면 살짝 떨어져 내려앉는다
+    landStart = mood === 'grabbed' && next !== 'hidden' ? now : -1;
     mood = next;
     moodSince = now;
     blinkStart = -1;
@@ -121,6 +129,10 @@ function frame() {
   if (hearts >= HEARTS_MS) heartsStart = -1;
   const fresh = freshStart >= 0 ? (now - freshStart) / FRESH_MS : -1;
   if (fresh >= 1) freshStart = -1;
+  const confetti = confettiStart >= 0 ? now - confettiStart : -1;
+  if (confetti >= CONFETTI_MS) confettiStart = -1;
+  const landed = landStart >= 0 ? now - landStart : -1;
+  if (landed >= LAND_MS) landStart = -1;
   // 입체가 되면 사진 대신 입체로 (AI 가 만든 설계도가 있는 사진 펫, 또는 기본 펫)
   const m3d = current3d();
   // 입체 그리기 모듈을 불러오는 중이면 기다린다 (불러오면 다시 그린다). 2D 를 먼저 그리면 깜빡인다
@@ -128,15 +140,21 @@ function frame() {
   const img = m3d ? undefined : pickImage(mood, inputs.hungry);
   const looking = peerAt(now);
   const picking = !!carry && now - carry.start < PICK_MS;
+  // 2.5D 그림 펫은 가만히 있어도 숨을 쉰다: 부스트 모드(전원 연결)일 때만 8fps (평소엔 다른 움직임이 있을 때만).
+  // 숨을 쉬지 않는 동안은 숨과 흔들림을 멈춘다 (깜빡일 때만 그려 몸이 툭툭 튀었다). 움직임 줄이기면 쉬지 않는다
+  const breathes =
+    boost && use3d && model3dOf instanceof HTMLImageElement && canBlink(mood) && !reducedMotion.matches;
   const ball = drawPet(ctx, {
     mood,
     elapsed: now - moodSince,
+    breathe: breathes,
     blink,
     viewSize,
     // 매운맛 토라짐 3단계: 등 돌리고 앉아 있다 (몸짓도 앉기만, 커서도 안 본다)
     activity: activityPose(now) ?? (backTurned() ? { type: 'sit' as const } : undefined),
     hungry: inputs.hungry,
     photo: img instanceof AnimatedImage ? img.frameAt(now) : img,
+    photoScale,
     kind: petKind,
     sulk: inputs.sulkLevel,
     pout: inputs.pout,
@@ -152,6 +170,9 @@ function frame() {
     carry: carryDraw(now),
     energy,
     fresh: freshStart >= 0 ? fresh : -1,
+    confetti: confettiStart >= 0 ? confetti : -1,
+    land: landStart >= 0 ? landed : -1,
+    now,
   });
   carriedAt = ball;
   syncFace(m3d);
@@ -166,6 +187,7 @@ function frame() {
     (sitting >= 0 && activity !== undefined && (sitting < SIT_MS || sitting > activity.ms - SIT_MS));
   // 움직이는 그림은 잠, 바쁨일 때 멈춘다 (L10: 계속 그리면 CPU 를 먹는다). 12fps 까지만.
   const animatedPhoto = img instanceof AnimatedImage && canBlink(mood) ? Math.min(12, img.fps) : 0;
+  const breathing = breathes ? 8 : 0;
   // 부스트 모드면 움직임(신남, 몸짓, 하트, 걷기, 하품)을 두 배로 촘촘히 그린다. 깜빡임과 움직이는 그림은 그대로
   const k = boost ? 2 : 1;
   const fps =
@@ -173,7 +195,7 @@ function frame() {
       ? 30 * k
       : isAnimated(mood)
         ? (ANIMATED_FPS[mood] ?? 30) * k
-        : heartsStart >= 0 || freshStart >= 0
+        : heartsStart >= 0 || freshStart >= 0 || confettiStart >= 0 || landStart >= 0
           ? 30 * k
           : blinkStart >= 0
             ? (1000 * blinkSpec().frames) / blinkSpec().ms
@@ -181,12 +203,13 @@ function frame() {
               ? WALK_FPS * k
               : moving
                 ? (activity && isMove(activity.type) ? moveFps(activity.type) : 20) * k
-                : animatedPhoto;
+                : Math.max(animatedPhoto, breathing);
   // 이 틀 안에서 requestFrame 이 불렸으면(행동 멈춤 등) 그 타이머를 지운다. 안 지우면 루프가 두 겹이 돈다
   // (2026-10-07 점검: 신남이 30fps 가 아니라 57fps)
   clearTimeout(frameTimer);
   // 돋보기를 든 동안은 그 빠르기로 (부스트면 두 배)
-  const all = Math.max(fps, (looking?.fps ?? 0) * k);
+  // 돌아서기, 고개 돌리기, 걷기 풀기가 아직 따라가는 중이면 끝까지 그린다 (draw.ts motionSettling)
+  const all = Math.max(fps, (looking?.fps ?? 0) * k, motionSettling() ? 30 * k : 0);
   frameTimer = all > 0 ? setTimeout(frame, 1000 / all) : undefined;
 }
 
@@ -303,9 +326,8 @@ function syncBody(m3d: Pet3D | undefined, img: PetImage | undefined) {
 // 25~70초에 한 번, 한가하면 메인에 행동을 골라 달라고 한다. 걷기만 계속 그리고(12fps) 앉기, 두리번은 한 번 그린다.
 
 const WALK_FPS = 12;
-/** 한 걸음(발 한 번씩) 시간 */
-const STEP_MS = 520;
-let activity: (Activity & { start: number }) | undefined;
+/** 걷기는 seg 에 지금 토막(메인이 보낸 walk 하나)을 둔다. 같은 쪽으로 이어 받으면 토막만 바뀐다 (walk-pace.ts) */
+let activity: (Activity & { start: number; seg?: WalkSeg }) | undefined;
 let activityTimer: ReturnType<typeof setTimeout> | undefined;
 let activityEnd: ReturnType<typeof setTimeout> | undefined;
 
@@ -320,14 +342,9 @@ function scheduleActivity() {
   }, nextDelay(Math.random) * wait);
 }
 
-/**
- * 한 걸음 시간. 보통 걷기와 그보다 빠른 놀이 달리기는 그대로(520ms), 지치거나 졸려서 천천히 걸으면 걸음도 느리게,
- * 활발해서 조금 빨리 걸으면 조금 잦게 (shared/energy.ts ENERGY_PACE)
- */
-function stepMs(a: { dx: number; ms: number }): number {
-  const speed = a.ms > 0 ? (Math.abs(a.dx) / a.ms) * 1000 : WALK_SPEED;
-  if (speed > WALK_SPEED * 1.5 || speed < 1) return STEP_MS;
-  return Math.round(STEP_MS * Math.sqrt(WALK_SPEED / speed));
+/** 걷기 토막 (debugActivity 처럼 seg 없이 넣은 걷기는 처음부터 한 토막) */
+function walkSeg(a: Extract<Activity, { type: 'walk' }> & { start: number; seg?: WalkSeg }): WalkSeg {
+  return a.seg ?? { start: a.start, dx: a.dx, ms: a.ms, linear: a.linear, steps0: 0 };
 }
 
 function stopActivity(tellMain: boolean) {
@@ -347,12 +364,18 @@ function backTurned(): boolean {
 function activityPose(now: number) {
   if (!activity) return undefined;
   if (activity.type === 'walk') {
+    // 걸음은 간 거리만큼 (시간으로 세면 출발과 멈출 때, 빨리 달릴 때 발이 미끄러졌다)
+    const seg = walkSeg(activity);
     return {
       type: 'walk' as const,
       dir: (activity.dx < 0 ? -1 : 1) as -1 | 1,
-      phase: ((now - activity.start) / stepMs(activity)) % 1,
-      along: (now - activity.start) / activity.ms,
-      ms: activity.ms,
+      phase: stepsAt(seg, now) % 1,
+      // 출발은 처음 걷기부터, 멈춤은 지금 토막 끝(start + ms, 이어 받으면 늘어난다)에서 잰다
+      since: now - activity.start,
+      left: activity.start + activity.ms - now,
+      segMs: seg.ms,
+      // 한 걸음 길이 (펫 그림 160 기준). 입체 네 발은 디딘 발이 이만큼 뒤로 밀리게 보폭을 맞춘다
+      stride: (strideLen(segSpeed(seg)) * CANVAS_SIZE) / Math.max(1, viewSize),
     };
   }
   if (activity.type === 'look') return { type: 'look' as const, dir: activity.dir };
@@ -394,7 +417,15 @@ function moveAsk(): MoveAsk {
 // 사진 펫 그림 (P1-08). 없으면 기본 펫. gif, webp 는 움직이는 그림 (v1). 상태별 포즈 그림 (v1).
 type PetImage = HTMLImageElement | AnimatedImage;
 let photo: PetImage | undefined;
-let poses: Partial<Record<PoseKind, PetImage>> = {};
+/** 지금 펫 그림의 data URL (기본 그림과 포즈). 포즈는 처음 쓸 때 푼다 (움직이는 그림 넷을 미리 다 풀면 수백 MB) */
+let photoUrl: string | undefined;
+let poseUrls: Partial<Record<PoseKind, string>> = {};
+/** 바꾸는 중인 다음 그림 묶음의 data URL */
+let nextUrls: Set<string> | undefined;
+/** 풀어 둔 그림 (data URL 별). 같은 그림을 여러 포즈에 써도 한 번만 푼다. 못 풀었으면 null */
+const decoded = new Map<string, PetImage | null>();
+/** 푸는 중인 그림 */
+const decoding = new Map<string, Promise<PetImage | undefined>>();
 let petKind: PetKind = 'kong';
 let cushion = false;
 /** 머리에 꽃 (친밀도 600) */
@@ -410,20 +441,97 @@ const TRICK_MS = { wave: 1800, dance: 1400 } as const;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 reducedMotion.addEventListener('change', () => requestFrame());
 let imageLoad = 0;
+/** AI 일러스트 나이 배율 (아기, 청소년은 작게. 사용자 크기 설정 위에 곱한다, illustrate.ts) */
+let photoScale = 1;
+function wantedUrl(url: string): boolean {
+  return url === photoUrl || Object.values(poseUrls).includes(url) || !!nextUrls?.has(url);
+}
+function release(img: PetImage | null | undefined) {
+  if (img instanceof AnimatedImage) img.close();
+}
+/** 움직이는 그림을 풀 크기: 지금 펫 크기와 화면 배율에 맞춘다 */
+function frameSideNow(): number {
+  return frameSide(viewSize, window.devicePixelRatio || 1);
+}
+/** 다 푼 그림을 넣어 둔다. replacing 은 더 선명하게 다시 푼 그림이 갈아 끼울 옛 그림 */
+function settle(url: string, img: PetImage | undefined, replacing?: PetImage): PetImage | undefined {
+  decoding.delete(url);
+  const cur = decoded.get(url);
+  if (replacing && !img) return replacing;
+  if (!wantedUrl(url) || (cur !== undefined && cur !== replacing)) {
+    release(img);
+    return wantedUrl(url) ? (cur ?? undefined) : undefined;
+  }
+  decoded.set(url, img ?? null);
+  if (replacing) {
+    if (photo === replacing) photo = img;
+    release(replacing);
+    requestFrame();
+  }
+  return img;
+}
+/** data URL 을 풀어 둔다 (이미 풀었거나 푸는 중이면 그것을) */
+function acquire(url: string): Promise<PetImage | undefined> {
+  const have = decoded.get(url);
+  if (have !== undefined) return Promise.resolve(have ?? undefined);
+  let p = decoding.get(url);
+  if (!p) {
+    p = loadPetImage(url, frameSideNow()).then((img) => settle(url, img));
+    decoding.set(url, p);
+  }
+  return p;
+}
+/** 펫을 키우거나 레티나 화면으로 옮겨 줄여 둔 움직이는 그림이 흐려지면 그 크기로 다시 푼다 */
+function sharpenImages() {
+  const side = frameSideNow();
+  for (const [url, img] of decoded) {
+    if (!(img instanceof AnimatedImage) || !img.reduced || decoding.has(url)) continue;
+    // 예산 때문에 바란 것보다 작게 풀린 그림은 더 큰 크기를 바랄 때만 다시 (같은 크기로 또 풀지 않게)
+    if (Math.max(img.width, img.height) * 1.2 >= side || img.asked * 1.2 >= side) continue;
+    decoding.set(
+      url,
+      loadPetImage(url, side).then((next) => settle(url, next, img)),
+    );
+  }
+}
+/** 포즈 그림. 아직 안 풀었으면 풀기 시작하고 undefined (그동안은 기본 그림) */
+function poseImage(k: PoseKind): PetImage | undefined {
+  const url = poseUrls[k];
+  if (!url) return undefined;
+  if (url === photoUrl) return photo;
+  const img = decoded.get(url);
+  if (img === undefined && !decoding.has(url)) void acquire(url).then(() => requestFrame());
+  return img ?? undefined;
+}
 bridge.onImage(async (images: PetImages) => {
   const mine = ++imageLoad;
-  const [main, depthImg, ...rest] = await Promise.all([
-    images.main ? loadPetImage(images.main) : Promise.resolve(undefined),
+  const next = new Set<string>();
+  if (images.main) next.add(images.main);
+  for (const url of Object.values(images.poses)) if (url) next.add(url);
+  nextUrls = next;
+  const [main, depthImg] = await Promise.all([
+    images.main ? acquire(images.main) : Promise.resolve(undefined),
     images.depth ? loadPetImage(images.depth) : Promise.resolve(undefined),
-    ...(['happy', 'sleepy', 'hungry'] as const).map((k) =>
-      images.poses[k] ? loadPetImage(images.poses[k] as string) : Promise.resolve(undefined),
-    ),
   ]);
-  if (mine !== imageLoad) return; // 그사이 또 바뀌었다
+  if (mine !== imageLoad) {
+    // 그사이 또 바뀌었다 (풀어 둔 기본 그림은 다음 묶음이 정리한다)
+    release(depthImg);
+    return;
+  }
+  nextUrls = undefined;
+  photoUrl = images.main ?? undefined;
+  poseUrls = { ...images.poses };
   photo = main;
   photoModel = images.model ?? undefined;
   photoDepth = depthImg instanceof HTMLImageElement ? depthImg : undefined;
-  poses = { happy: rest[0], sleepy: rest[1], hungry: rest[2] };
+  if (!photoDepth) release(depthImg);
+  photoScale = ageScale(images.age);
+  // 이제 안 쓰는 그림은 돌려준다
+  for (const [url, img] of decoded)
+    if (!wantedUrl(url)) {
+      decoded.delete(url);
+      release(img);
+    }
   requestFrame();
 });
 
@@ -433,10 +541,14 @@ bridge.onImage(async (images: PetImages) => {
  */
 function pickImage(m: PetMood, hungry: boolean): PetImage | undefined {
   if (!photo) return undefined;
-  if (m === 'excited' && poses.happy) return poses.happy;
-  if ((m === 'sleeping' || m === 'dozing') && poses.sleepy) return poses.sleepy;
-  if (m === 'idle' && energy?.stage === 'sleepy' && !activity && poses.sleepy) return poses.sleepy;
-  if (m === 'idle' && hungry && poses.hungry) return poses.hungry;
+  // 포즈는 고른 것만 푼다 (poseImage)
+  if (m === 'excited') return poseImage('happy') ?? photo;
+  if (m === 'sleeping' || m === 'dozing') return poseImage('sleepy') ?? photo;
+  if (m === 'idle' && energy?.stage === 'sleepy' && !activity && poseUrls.sleepy) {
+    const sleepy = poseImage('sleepy');
+    if (sleepy) return sleepy;
+  }
+  if (m === 'idle' && hungry) return poseImage('hungry') ?? photo;
   return photo;
 }
 
@@ -499,10 +611,14 @@ function current3d(): Pet3D | 'loading' | undefined {
     broken3d = true;
     requestFrame();
   });
+  // 복슬복슬 털이 다 붙으면 다시 그린다 (몸은 프레임 사이에 조금씩 만든다)
+  if (model3d) model3d.onUpdate = requestFrame;
   if (!model3d) {
     broken3d = true;
     return undefined;
   }
+  // 나이 배율은 사진 펫에만 (기본 펫 설계도는 그대로)
+  model3d.setSizeScale(photo ? photoScale : 1);
   const want = bp ?? relief;
   // 모습을 바꾸면 털, 테두리, 눈을 다시 붙여야 해서 다시 조립한다
   if (model3d.setStyle(style3d)) model3dOf = undefined;
@@ -521,7 +637,7 @@ let faceKey: unknown[] = [];
 function syncFace(m3d: Pet3D | undefined) {
   if (!wantFace) return;
   // 입체 모습(피규어, 게임, 실사)을 바꿔도 다시 (같은 설계도라 입체와 설계도는 그대로다)
-  const key = [m3d, m3d ? model3dOf : undefined, m3d ? style3d : undefined, photo, petKind];
+  const key = [m3d, m3d ? model3dOf : undefined, m3d ? style3d : undefined, m3d?.version, photo, petKind];
   if (key.length === faceKey.length && key.every((v, i) => v === faceKey[i])) return;
   faceKey = key;
   const still = photo instanceof AnimatedImage ? photo.frameAt(0) : photo;
@@ -540,7 +656,15 @@ let spriteKey: unknown[] = [];
 function syncSprites(m3d: Pet3D | undefined) {
   if (!wantFace) return;
   // 입체 모습(피규어, 게임, 실사)을 바꿔도 다시 (같은 설계도라 입체와 설계도는 그대로다)
-  const key = [m3d, m3d ? model3dOf : undefined, m3d ? style3d : undefined, photo, petKind];
+  const key = [
+    m3d,
+    m3d ? model3dOf : undefined,
+    m3d ? style3d : undefined,
+    m3d?.version,
+    photo,
+    petKind,
+    photoScale,
+  ];
   if (key.length === spriteKey.length && key.every((v, i) => v === spriteKey[i])) return;
   spriteKey = key;
   const still = photo instanceof AnimatedImage ? photo.frameAt(0) : photo;
@@ -549,6 +673,7 @@ function syncSprites(m3d: Pet3D | undefined) {
     photo: m3d ? undefined : still,
     model3d: m3d,
     relief: !!m3d && model3dOf instanceof HTMLImageElement,
+    photoScale,
   };
   const body = renderBody(src);
   const sleep = renderFace(src, 128, 'sleeping');
@@ -623,6 +748,15 @@ bridge.onReact((kind) => {
     refreshed(now);
     return;
   }
+  if (kind === 'cheer') {
+    // 큰 축하: 색종이가 터지고 통통 튄다. 움직임 줄이기면 색종이 대신 하트만
+    if (reducedMotion.matches) heartsStart = now;
+    else confettiStart = now;
+    setInputs({ excitedUntil: now + EXCITED_MS });
+    sound('happy');
+    requestFrame();
+    return;
+  }
   if (kind === 'dance' && !reducedMotion.matches) trick = { type: 'dance', start: now };
   setInputs({ excitedUntil: now + EXCITED_MS });
   sound(kind === 'fed' ? 'fed' : kind === 'dance' ? 'dance' : 'happy');
@@ -666,7 +800,18 @@ bridge.onActivity((a) => {
     if (a.type === 'walk') bridge.activityStop();
     return;
   }
-  activity = { ...a, start: performance.now() };
+  const now = performance.now();
+  // 같은 쪽으로 걷던 중에 이어 받은 걷기 (따라 달리기는 1초마다 이어 보낸다): 출발과 돌아서기를 다시 하지 않고
+  // 걸음도 끊기지 않게 잇는다. 예전엔 받을 때마다 처음부터 다시 걸어 1초마다 정면으로 돌아섰다
+  const prev = activity?.type === 'walk' ? activity : undefined;
+  const seg =
+    a.type === 'walk' && prev
+      ? continueSeg(walkSeg(prev), { start: now, dx: a.dx, ms: a.ms, linear: a.linear })
+      : undefined;
+  activity =
+    seg && prev && a.type === 'walk'
+      ? { ...a, start: prev.start, ms: now - prev.start + a.ms, seg }
+      : { ...a, start: now };
   clearTimeout(activityEnd);
   clearTimeout(activityWake);
   activityEnd = setTimeout(() => stopActivity(false), a.ms);
@@ -703,6 +848,8 @@ let viewSize = petBox.size;
 function fitToScreen() {
   const dpr = window.devicePixelRatio || 1;
   viewSize = petBox.size;
+  // 줄여 풀어 둔 움직이는 그림이 이제 작으면 다시 푼다 (펫 크기, 화면 배율)
+  sharpenImages();
   Object.assign(canvas.style, {
     left: `${petBox.x}px`,
     top: `${petBox.y}px`,

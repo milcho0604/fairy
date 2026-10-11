@@ -45,17 +45,22 @@ import {
 } from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
   type Blueprint,
   type EyeLook,
-  expandMirrors,
+  expandParts,
   type Face,
   type Finish,
+  type Fur,
   inFace,
   type Part,
+  type Pattern,
   SLOTS,
   type Slot,
+  type Vec3,
 } from '../../shared/pet3d/blueprint.ts';
+import { PATTERN_GLSL, patternMask, patternUniforms } from '../../shared/pet3d/pattern.ts';
 import type { PetStyle } from '../../shared/settings.ts';
 import {
   type DrawState,
@@ -68,7 +73,21 @@ import {
   trickOf,
   waveSwing,
 } from './draw.ts';
+import { Eased } from './motion-ease.ts';
 import type { MoveEyes } from './move-pose.ts';
+import { hopScale, movePeak } from './move-pose.ts';
+import {
+  addShells,
+  bumpFurSteps,
+  fluffBaseMaterial,
+  fluffLayers,
+  fluffLength,
+  fluffShellMaterial,
+  fluffTexture,
+  fusedGeometry,
+  paintGeometry,
+} from './pet3d-fluff.ts';
+import { type FuseClear, type FusedMesh, type FusePart, type FuseShape, fuseSteps } from './pet3d-fuse.ts';
 import {
   gaitOf,
   hindFrom,
@@ -77,12 +96,17 @@ import {
   legCut,
   legGap,
   trotLeg,
-  walkEnvelope,
+  walkEnvelopeOf,
 } from './pet3d-gait.ts';
 import { bounced, type EyeState, restingEye } from './pet3d-motion.ts';
+import { neckRow } from './relief-warp.ts';
 
 const CX = 80;
 const GROUND = 154;
+/** 돌아서기 빠르기 (ms, 1/e 시간: 세 배쯤이면 다 돈다) */
+const HEADING_TAU = 90;
+/** 걷기가 끝난 뒤 다리와 숙인 몸이 풀리는 빠르기 */
+const WALK_OUT_TAU = 80;
 /** 쉬는 자세의 펫이 2D 캔버스(160)에서 차지할 최대 키와 너비 */
 const FIT_H = 118;
 const FIT_W = 140;
@@ -176,12 +200,31 @@ export class Pet3D implements Model3D {
   private drawn: { x0: number; y0: number; d: number } | undefined;
   /** 몸짓 세기 (설계도 motion). 1 이 기본 동작 */
   private motion = { bounce: 1, sway: 1, tail: 1, ear: 1 };
+  /**
+   * 짧게 따라가는 자세 값 (motion-ease.ts): 몸이 향한 쪽(heading), 두리번 고개(lookYaw), 걷기 세기(walk).
+   * 펫 화면이 이어 그릴 때만 따라가고 얼굴 아이콘처럼 한 장 그릴 때는 바로 목표값
+   */
+  private ease = new Eased();
+  /** 마지막 걸음 (걷기가 끝난 뒤 다리와 숙인 몸을 짧게 풀 때 쓴다) */
+  private lastWalk: { dir: -1 | 1; phase: number; stride?: number } | undefined;
+  /** 몸 1 단위가 정면에서 2D 캔버스(fit.d = 2)에서 차지하는 길이 비율 (NDC). 보폭을 간 거리에 맞출 때 */
+  private unitNdc = 0;
   /** 그릴 것이 있는지 (설계도나 입체 판을 넣었는지) */
   private ready = false;
   /** 2.5D 입체 판 (사진 + 깊이). 있으면 관절 대신 몸 전체만 기울인다 */
-  private relief: { texture: CanvasTexture } | undefined;
+  private relief:
+    | {
+        texture: CanvasTexture;
+        /** 그림 휘기 값 (숨쉬기 -1~1, 머리 기울기 라디안). 셰이더가 읽는다 */
+        warp: { uBreath: { value: number }; uTilt: { value: number } };
+      }
+    | undefined;
   /** 쉬는 자세가 화면(NDC)에서 차지하는 자리로 정한 2D 그림 크기와 위치 */
   private fit = { d: 160, cx: 0, bottom: -1, halfW: 0.5 };
+  /** 맞춘 크기 (fit.d 는 여기에 나이 배율을 곱한 값) */
+  private fitD = 160;
+  /** 나이 배율 (AI 일러스트 펫, shared/illustrate.ts ageScale). 발은 바닥(GROUND)에 그대로 */
+  private sizeK = 1;
   private px = 0;
   private lost = false;
   private readonly materials = new Map<string, Material>();
@@ -193,6 +236,16 @@ export class Pet3D implements Model3D {
   private get game(): boolean {
     return this.style === 'game';
   }
+  /** 복슬복슬 (시험판): 부품을 녹여 붙인 한 덩어리 몸에 긴 털 (pet3d-fuse.ts, pet3d-fluff.ts) */
+  private get fluffy(): boolean {
+    return this.style === 'fluffy';
+  }
+  /** 털 있는 모습 (실사, 복슬복슬): 유리알 눈, 볼 터치 없음, 따뜻한 빛 */
+  private get furry(): boolean {
+    return this.real || this.fluffy;
+  }
+  /** 복슬복슬 가닥 그림. 처음 쓸 때 만든다 */
+  private fluffTex: DataTexture | undefined;
   /** 게임 모습의 명암 단계 그림 (3단). 처음 쓸 때 만든다 */
   private toonRamp: DataTexture | undefined;
   /** 털 무늬(가닥 높이)와 얼룩 그림. 실사로 처음 그릴 때 한 번 만든다 */
@@ -257,8 +310,12 @@ export class Pet3D implements Model3D {
   tilt = 0;
   /** 카메라가 도는 중심과 거리, 지금 카메라에 들어간 기울기 (frameCamera 가 정한다) */
   private orbit = { c: new Vector3(), dist: 1, tilt: 0 };
-  /** 그리는 해상도 상한(px). 펫 화면은 768 이면 충분하고, 앱 아이콘은 더 크게 그린다 */
-  maxPx = 768;
+  /**
+   * 그리는 해상도 상한(px). 그리는 크기는 펫 크기 × 화면 배율에 맞추고(draw), 이 값은 그 위 상한이다.
+   * 레티나에서 300% 로 키운 펫이 약 900px 이라 768 이면 흐렸다 (2026-10-10 검토). 작은 펫은 그대로 작게 그린다.
+   * 앱 아이콘, 얼굴 그림은 잠깐 더 크게 그린다
+   */
+  maxPx = 960;
 
   get ok(): boolean {
     return !this.lost;
@@ -285,7 +342,7 @@ export class Pet3D implements Model3D {
       key.intensity = 0.9;
       rim.color.set(0xffffff);
       rim.intensity = 0;
-    } else if (style === 'real') {
+    } else if (style === 'real' || style === 'fluffy') {
       // 실사: 색이 바래지 않게 중립 톤에 노출만 조금. 주 조명은 따뜻하게, 뒤 테두리 빛을 세게 해 털 끝이 빛나게
       this.renderer.toneMapping = NeutralToneMapping;
       this.renderer.toneMappingExposure = 1.05;
@@ -323,11 +380,15 @@ export class Pet3D implements Model3D {
    */
   dispose(): void {
     this.lost = true;
+    // 하던 복슬복슬 몸 만들기도 멈춘다 (죽은 렌더러에 계속 만들고 이 객체를 붙잡았다)
+    this.fuseToken++;
+    this.finishFuse = () => {};
     this.disposeTree(this.root);
     for (const m of this.materials.values()) m.dispose();
     this.furTex?.strands.dispose();
     this.furTex?.mottle.dispose();
     this.toonRamp?.dispose();
+    this.fluffTex?.dispose();
     this.scene.environment?.dispose();
     this.renderer.dispose();
     this.renderer.forceContextLoss();
@@ -335,6 +396,10 @@ export class Pet3D implements Model3D {
 
   /** 옛 모양을 내리고 빈 몸을 준비한다 */
   private resetRoot() {
+    // 하던 복슬복슬 몸 만들기를 버린다
+    this.fuseToken++;
+    this.finishFuse = () => {};
+    this.version++;
     this.scene.remove(this.root);
     this.disposeTree(this.root);
     this.relief?.texture.dispose();
@@ -379,12 +444,13 @@ export class Pet3D implements Model3D {
     const geo = new PlaneGeometry(w, h, segX, segY);
     const pos = geo.attributes.position;
     if (pos) {
+      const flat = reliefFlatten(cols, rows);
       for (let i = 0; i < pos.count; i++) {
         const d = (dep[i * 4] ?? 0) / 255;
         const a = alpha[i] ?? 0;
         // 깊이(앞뒤 굴곡) + 베개(가장자리에서 안으로 갈수록 부푼다)
         const pillow = a * a * (3 - 2 * a);
-        pos.setZ(i, (d * 0.16 + 0.1) * pillow);
+        pos.setZ(i, (d * 0.16 + 0.1) * pillow * (flat[i] ?? 1));
       }
     }
     geo.translate(0, h / 2, 0);
@@ -396,8 +462,37 @@ export class Pet3D implements Model3D {
     const texture = new CanvasTexture(c);
     texture.colorSpace = SRGBColorSpace;
     const mat = new MeshStandardMaterial({ map: texture, alphaTest: 0.5, roughness: 0.7, side: DoubleSide });
+    // 그림 휘기 (사용자 요청 2026-10-09, AI 로 만든 일러스트를 입체감 있게): 몸통은 숨쉬듯 부풀고,
+    // 목 위는 목을 축으로 기운다. 목은 그림에서 몸 너비가 가장 잘록한 줄로 짐작한다 (relief-warp.ts neckRow)
+    const neck = h * (1 - neckRow(alpha, cols, rows) / segY);
+    const warp = { uBreath: { value: 0 }, uTilt: { value: 0 } };
+    mat.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, warp, { uNeck: { value: neck }, uH: { value: h } });
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+uniform float uBreath;
+uniform float uTilt;
+uniform float uNeck;
+uniform float uH;`,
+        )
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+float jjBody = 1.0 - smoothstep(uNeck - 0.1 * uH, uNeck + 0.15 * uH, transformed.y);
+transformed.x *= 1.0 + uBreath * 0.022 * jjBody;
+transformed.z *= 1.0 + uBreath * 0.05 * jjBody;
+transformed.y *= 1.0 + uBreath * 0.012;
+float jjHead = smoothstep(uNeck - 0.05 * uH, uNeck + 0.12 * uH, transformed.y);
+vec2 jjQ = transformed.xy - vec2(0.0, uNeck);
+float jjA = uTilt * jjHead;
+transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jjQ.x * sin(jjA) + jjQ.y * cos(jjA));`,
+        );
+    };
+    mat.customProgramCacheKey = () => 'jj-relief-warp';
     this.root.add(new Mesh(geo, mat));
-    this.relief = { texture };
+    this.relief = { texture, warp };
     this.hasHead = false;
     this.hasHand = false;
     this.ready = true;
@@ -413,7 +508,7 @@ export class Pet3D implements Model3D {
       tail: m?.tailWag ?? 1,
       ear: m?.earWiggle ?? 1,
     };
-    const parts = expandMirrors(bp.parts);
+    const parts = expandParts(bp.parts);
     const meshes = parts.map((p) => ({ part: p, mesh: this.partMesh(p) }));
 
     // 슬롯마다 부품이 차지하는 상자로 관절 자리를 정한다
@@ -461,6 +556,8 @@ export class Pet3D implements Model3D {
       const parent = parentOf(slot);
       g.position.copy(pivots[slot]).sub(parent ? pivots[parent] : new Vector3());
       (parent ? this.joints[parent] : this.root).add(g);
+      // 쉬는 자리 (네 발 걷기에서 팔을 앞발 자리로 옮겼다가 되돌린다)
+      g.userData.base = g.position.clone();
       this.joints[slot] = g;
     }
     for (const { part, mesh } of meshes) {
@@ -473,7 +570,9 @@ export class Pet3D implements Model3D {
     // 실사면 눈, 입을 털 끝에 얹는다 (살갗에 붙이면 털에 묻힌다)
     this.faceLift = this.real
       ? Math.max(0, ...meshes.filter((m) => m.part.slot === faceSlot).map((m) => furLength(m.part) * 0.8))
-      : 0;
+      : this.fluffy
+        ? fluffLength(furOfBlueprint(bp)) * 0.8
+        : 0;
     this.face = this.buildFace(
       bp.face,
       this.joints[faceSlot],
@@ -501,6 +600,11 @@ export class Pet3D implements Model3D {
       paw.position.set(0, r * 1.1, 0);
       // 몸과 같은 겉: 실사는 털 껍질, 게임은 테두리 선 (몸 부품의 털 길이와 색을 따른다)
       if (this.real) this.addFur(paw, { ...bodyOf.part, shape: 'sphere', size: [r, r * 1.35, r] });
+      if (this.fluffy) {
+        paw.geometry = new SphereGeometry(r, 24, 16);
+        paw.scale.set(1, 1.35, 1);
+        this.fluffSkin(paw, new Color(bodyOf.part.color), bodyOf.part.finish === 'fuzzy' ? 1 : 0.75, bp);
+      }
       if (this.game) this.addOutline(paw);
       pivot.add(paw);
       pivot.visible = false;
@@ -509,6 +613,199 @@ export class Pet3D implements Model3D {
     }
     // 네 발 동물이면 다리를 앞발, 뒷발 네 개로 나눈다 (카메라 맞춘 뒤라 화면 크기는 그대로)
     this.quad = bodyBox ? this.buildQuad(bp, parts, meshes, bodyBox) : undefined;
+    // 복슬복슬: 관절마다 부품을 녹여 한 덩어리로 (관절과 다리 나누기가 끝난 뒤라 움직임은 그대로)
+    if (this.fluffy) this.fuseJoints(bp);
+  }
+
+  /**
+   * 복슬복슬: 관절(묶음)마다 그 아래 부품 모양들을 한 겉면으로 녹여 붙이고 털을 입힌다. 반짝(코, 부리, 잎)과
+   * 고리 모양은 또렷해야 해서 그대로 둔다. 얼굴은 녹이기 전 부품 겉면에 붙였고 녹인 겉면도 거의 같은 자리다
+   */
+  private fuseJoints(bp: Blueprint) {
+    const groups = new Map<Object3D, Mesh[]>();
+    this.root.traverse((o) => {
+      const part = o.userData.part as Part | undefined;
+      if (!(o instanceof Mesh) || !part || !o.parent) return;
+      if (part.finish === 'shiny' || part.shape === 'torus') return;
+      // 관(꼬리), 털 뭉치, 리본은 녹이지 않고 제 모양을 지킨다 (관은 털만 입힌다)
+      if (part.shape === 'tube' || part.shape === 'tuft' || part.shape === 'bow') {
+        if (part.shape !== 'bow' && o.geometry.attributes.position)
+          this.fluffSkin(o, new Color(part.color), part.finish === 'fuzzy' ? 1 : 0.6, bp);
+        return;
+      }
+      const list = groups.get(o.parent) ?? [];
+      list.push(o);
+      groups.set(o.parent, list);
+    });
+    const jobs: {
+      group: Object3D;
+      list: Mesh[];
+      steps: Generator<void, FusedMesh | undefined>;
+      /** 녹이기가 끝난 뒤 굴곡 내기 */
+      bump?: Generator<void, BufferGeometry | undefined>;
+    }[] = [];
+    for (const [group, list] of groups) {
+      const fparts: FusePart[] = [];
+      const bounds = new Box3();
+      for (const m of list) {
+        const part = m.userData.part as Part;
+        m.updateMatrix();
+        const geo = m.geometry;
+        geo.computeBoundingBox();
+        if (geo.boundingBox) bounds.union(geo.boundingBox.clone().applyMatrix4(m.matrix));
+        const prm = (geo as BufferGeometry & { parameters?: { radius?: number; height?: number } })
+          .parameters;
+        const c = new Color(part.color);
+        const pat = part.pattern ? this.patternOf(part.pattern, geo, m.scale) : undefined;
+        const patColor = part.pattern ? new Color(part.pattern.color) : undefined;
+        fparts.push({
+          shape: part.shape as FuseShape,
+          inv: m.matrix.clone().invert().elements,
+          scale: Math.min(m.scale.x, m.scale.y, m.scale.z),
+          ...(part.shape === 'capsule'
+            ? { capsule: { r: prm?.radius ?? 1, half: (prm?.height ?? 0) / 2 } }
+            : {}),
+          color: [c.r, c.g, c.b],
+          ...(pat && patColor
+            ? {
+                colorAt: (x: number, y: number, z: number): [number, number, number] => {
+                  const k = patternMask(pat.pattern, [x, y, z], pat.half, pat.scale);
+                  return [
+                    c.r + (patColor.r - c.r) * k,
+                    c.g + (patColor.g - c.g) * k,
+                    c.b + (patColor.b - c.b) * k,
+                  ];
+                },
+              }
+            : {}),
+          // 귀는 짧은 털 (길면 부스스하다)
+          fur: (part.finish === 'fuzzy' ? 1 : 0.75) * (part.slot.startsWith('ear') ? 0.35 : 1),
+        });
+      }
+      if (bounds.isEmpty()) continue;
+      // 얼굴 관절이면 눈, 입, 코(반짝 부품) 둘레 털을 짧게 깎아 얼굴이 털에 묻히지 않게
+      const clears: FuseClear[] = [];
+      if (this.face && this.face.groups[0]?.parent === group) {
+        const r = Math.max(0.03, (bp.face.eyeSize ?? 0.05) * 1.6);
+        for (const g of this.face.groups) clears.push({ at: g.position.toArray(), r });
+      }
+      for (const o of group.children)
+        if (o instanceof Mesh && (o.userData.part as Part | undefined)?.finish === 'shiny') {
+          const part = o.userData.part as Part;
+          clears.push({ at: o.position.toArray(), r: Math.max(...part.size) * 1.3 });
+        }
+      const size = bounds.getSize(new Vector3());
+      // 격자 간격: 한 관절을 48칸 남짓으로 (64칸이면 펫 하나 조립에 이 컴퓨터에서 0.9초까지 걸렸다)
+      const cell = Math.min(0.018, Math.max(0.006, Math.max(size.x, size.y, size.z) / 48));
+      jobs.push({
+        group,
+        list,
+        steps: fuseSteps(
+          fparts,
+          { min: bounds.min.toArray(), max: bounds.max.toArray() },
+          cell,
+          0.035,
+          clears,
+        ),
+      });
+    }
+    const token = ++this.fuseToken;
+    const fur = furOfBlueprint(bp);
+    /** 녹인 몸에 털 뭉치 굴곡을 낸다 (나눠서) */
+    function* finish(fused: FusedMesh | undefined): Generator<void, BufferGeometry | undefined> {
+      if (!fused) return undefined;
+      const geo = fusedGeometry(fused);
+      yield* bumpFurSteps(geo, fur);
+      return geo;
+    }
+    const apply = (job: (typeof jobs)[number], geo: BufferGeometry | undefined) => {
+      if (!geo) return;
+      const mesh = new Mesh(geo, this.fluffBase());
+      mesh.userData.fused = true;
+      this.addFluffShells(mesh, bp);
+      for (const m of job.list) {
+        job.group.remove(m);
+        this.disposeTree(m);
+      }
+      job.group.add(mesh);
+      this.root.updateMatrixWorld(true);
+    };
+    /** 남은 일을 budget ms 만큼 한다. 다 했으면 true */
+    const work = (budget: number) => {
+      const until = performance.now() + budget;
+      while (jobs.length) {
+        if (token !== this.fuseToken) return true;
+        const job = jobs[0];
+        if (!job) break;
+        if (!job.bump) {
+          const r = job.steps.next();
+          if (r.done) job.bump = finish(r.value);
+        } else {
+          const r = job.bump.next();
+          if (r.done) {
+            jobs.shift();
+            apply(job, r.value);
+            // 얼굴 아이콘과 집 그림(version 을 본다)은 다 녹은 뒤 한 번만 다시 그린다 (관절마다 다시 그렸다)
+            if (jobs.length === 0) this.version++;
+            this.onUpdate?.();
+          }
+        }
+        if (performance.now() >= until) return jobs.length === 0;
+      }
+      return true;
+    };
+    this.finishFuse = () => {
+      work(Number.POSITIVE_INFINITY);
+      this.finishFuse = () => {};
+    };
+    // 프레임 사이에 8ms 씩. 그동안 펫은 녹이기 전 몸(털 없는 매끈한 부품)으로 보인다
+    const tick = () => {
+      if (token !== this.fuseToken) return;
+      if (!work(8)) setTimeout(tick, 0);
+    };
+    setTimeout(tick, 0);
+  }
+
+  /** 복슬복슬 몸을 다 만들 때까지 바로 한다 (썸네일, 시험 그림처럼 한 번에 그려야 할 때) */
+  finishFuse: () => void = () => {};
+  /** 몸이 바뀔 때마다(복슬복슬 털이 붙을 때) 늘어난다. 얼굴 그림을 다시 그릴지 볼 때 쓴다 */
+  version = 0;
+  /** 복슬복슬 털이 붙어 다시 그려야 할 때 부른다 (펫 화면이 requestFrame 을 넣는다) */
+  onUpdate: (() => void) | undefined;
+  /** 이 값이 바뀌면 하던 녹이기를 버린다 (펫을 바꿨다) */
+  private fuseToken = 0;
+
+  private fluffBase(): Material {
+    let m = this.materials.get('fluff/base');
+    if (!m) {
+      m = fluffBaseMaterial();
+      this.materials.set('fluff/base', m);
+    }
+    return m;
+  }
+
+  /** 겉면 모양 하나에 털 껍질을 붙인다 (재질은 층과 털 느낌마다 하나, 다른 관절과 같이 쓴다) */
+  private addFluffShells(mesh: Mesh, bp: Blueprint) {
+    const fur = furOfBlueprint(bp);
+    const n = fluffLayers(fur);
+    this.fluffTex ??= fluffTexture();
+    const tex = this.fluffTex;
+    addShells(mesh, n, (i) => {
+      const key = `fluff/${i}/${n}/${fur.length}/${fur.curl}/${fur.clump}`;
+      let m = this.materials.get(key);
+      if (!m) {
+        m = fluffShellMaterial(i, n, tex, fur);
+        this.materials.set(key, m);
+      }
+      return m;
+    });
+  }
+
+  /** 녹이지 않은 모양(손 흔드는 앞발)을 한 색 털로 */
+  private fluffSkin(mesh: Mesh, color: Color, fur: number, bp: Blueprint) {
+    paintGeometry(mesh.geometry, color, fur);
+    mesh.material = this.fluffBase();
+    this.addFluffShells(mesh, bp);
   }
 
   /**
@@ -607,6 +904,11 @@ export class Pet3D implements Model3D {
     };
   }
 
+  /** 방금 그린 자세가 아직 따라가는 중인지 (돌아서기, 걷기 풀기). 펫 화면이 몇 틀 더 그린다 */
+  settling(): boolean {
+    return this.ease.busy;
+  }
+
   /** 펫을 ctx 에 그리고 머리 꼭대기 y 를 돌려준다. 그릴 수 없으면 undefined (2D 로) */
   draw(
     ctx: CanvasRenderingContext2D,
@@ -617,14 +919,20 @@ export class Pet3D implements Model3D {
     act: Act,
   ): number | undefined {
     if (this.lost || !this.ready) return undefined;
+    this.ease.frame(s.now);
     // 통통 튀는 세기 (설계도 motion.bounce, pet3d-motion.ts)
     // 네 발 걷기는 걸음 들썩임도 출발과 멈춤에 맞춰 줄인다 (pet3d-gait.ts walkEnvelope)
-    const bob = this.quad && act?.type === 'walk' ? walkEnvelope(act.along, act.ms).stride : 1;
+    const bob = this.quad && act?.type === 'walk' ? walkEnvelopeOf(act).stride : 1;
     const { lift: up, sx, sy } = bounced(s, act, this.motion.bounce, lift0 * bob, sx0, sy0);
     this.pose(s, sx, sy, act);
     const { d, cx, bottom } = this.fit;
-    // 몸짓으로 폴짝 뛰어도 귀 끝이 캔버스 위로 잘리지 않게 (토순이처럼 키가 큰 펫)
-    const lift = movePoseOf(act, s.calm) ? Math.min(up, this.headTop(0) - 2) : up;
+    // 몸짓으로 폴짝 뛰어도 귀 끝이 캔버스 위로 잘리지 않게 (토순이처럼 키가 큰 펫). 꼭대기만 자르면 판판하게 떠
+    // 있다 떨어져서, 가장 높이 뛰는 높이가 들어가도록 뛰는 곡선 전체를 같은 배율로 낮춘다
+    let lift = up;
+    if (movePoseOf(act, s.calm) && act && 't' in act) {
+      const room = this.headTop(0) - 2;
+      lift = Math.min(up * hopScale(movePeak(act.type, s.calm).lift * this.motion.bounce, room), room);
+    }
     // 2D 캔버스 변환(화면 배율 × 펫 크기)에 맞춰 선명하게
     const scale = ctx.getTransform().a || 1;
     const px = Math.max(64, Math.min(this.maxPx, Math.round(d * scale)));
@@ -639,13 +947,16 @@ export class Pet3D implements Model3D {
     // 바닥 그림자: 떠오를수록 옅고 작게
     const away = Math.min(1, lift / 30);
     const rx = this.fit.halfW * d * 0.42 * sx * (1 - 0.3 * away);
-    ctx.save();
-    ctx.globalAlpha = 0.16 * (1 - 0.6 * away);
-    ctx.fillStyle = '#000';
-    ctx.beginPath();
-    ctx.ellipse(CX, GROUND - 1, rx, 5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
+    // 얼굴 아이콘, 집 안 그림(pet-face.ts)에는 그리지 않는다
+    if (!s.noShadow) {
+      ctx.save();
+      ctx.globalAlpha = 0.16 * (1 - 0.6 * away);
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.ellipse(CX, GROUND - 1, rx, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
     ctx.drawImage(this.canvas, x0, y0, d, d);
     this.drawn = { x0, y0, d };
     // 머리 꼭대기 (말풍선 대신 머리 위에 뜨는 것들 자리)
@@ -714,14 +1025,34 @@ export class Pet3D implements Model3D {
 
   // ---- 조립 ----
 
-  private material(color: string, finish: Finish = 'soft'): Material {
-    const key = `${color}/${finish}/${this.style}`;
+  /** 무늬 값: 설계도 무늬와 모양 상자 반 크기, 부품 배율 (셰이더와 녹인 몸이 같은 식을 쓴다) */
+  private patternOf(pattern: Pattern, geo: BufferGeometry, scale: Vector3): PatternAt {
+    geo.computeBoundingBox();
+    const half = geo.boundingBox?.getSize(new Vector3()).multiplyScalar(0.5) ?? new Vector3(1, 1, 1);
+    return {
+      pattern,
+      half: [Math.max(1e-3, half.x), Math.max(1e-3, half.y), Math.max(1e-3, half.z)],
+      scale: [scale.x, scale.y, scale.z],
+    };
+  }
+
+  /** 선 색 재질 (눈썹 같은 얼굴 선). 색마다 하나 */
+  private inkOf(color: string): Material {
+    const key = `ink/${color}`;
     let m = this.materials.get(key);
-    if (!m && this.game) {
-      m = this.toonMaterial(color, finish);
+    if (!m) {
+      m = new MeshBasicMaterial({ color });
       this.materials.set(key, m);
     }
-    if (!m && this.real) {
+    return m;
+  }
+
+  private material(color: string, finish: Finish = 'soft', pat?: PatternAt): Material {
+    const key = `${color}/${finish}/${this.style}${pat ? `/${patternKey(pat)}` : ''}`;
+    let m = this.materials.get(key);
+    if (m) return m;
+    if (this.game) m = this.toonMaterial(color, finish);
+    else if (this.furry) {
       // 실사: 털 아래 살갗과 속털. 겉색보다 조금 어둡고 얼룩이 있다. 반짝(코, 부리, 잎)은 촉촉하게
       m =
         finish === 'shiny'
@@ -734,9 +1065,8 @@ export class Pet3D implements Model3D {
               sheenRoughness: 0.4,
               sheenColor: new Color(color).lerp(new Color('#ffffff'), 0.35),
             });
-      this.materials.set(key, m);
-    }
-    if (!m) {
+    } else {
+      // 피규어: 비닐 광택. 반짝은 유리처럼, 털(fuzzy)은 보드라운 벨벳처럼
       m = new MeshPhysicalMaterial(
         finish === 'shiny'
           ? { color, roughness: 0.28, clearcoat: 1, clearcoatRoughness: 0.15 }
@@ -744,8 +1074,9 @@ export class Pet3D implements Model3D {
             ? { color, roughness: 0.85, sheen: 1, sheenRoughness: 0.45, sheenColor: '#ffffff' }
             : { color, roughness: 0.55, clearcoat: 0.35, clearcoatRoughness: 0.45 },
       );
-      this.materials.set(key, m);
     }
+    decorate(m, { pattern: pat, figure: this.style === 'figure' && finish !== 'shiny' });
+    this.materials.set(key, m);
     return m;
   }
 
@@ -759,28 +1090,42 @@ export class Pet3D implements Model3D {
         const r = Math.max(x, z);
         geo = new CapsuleGeometry(r, Math.max(0, 2 * y - 2 * r), 10, 24);
         scale.set(x / r, 1, z / r);
+        if (p.taper !== undefined && p.taper < 1) taperY(geo, p.taper);
         break;
       }
       case 'cone':
         geo = new ConeGeometry(1, 2, 32);
         break;
       case 'cylinder':
-        geo = new CylinderGeometry(1, 1, 2, 32);
+        geo = new CylinderGeometry(p.taper ?? 1, 1, 2, 32);
         break;
       case 'box':
-        geo = new RoundedBoxGeometry(2, 2, 2, 4, 0.35);
+        geo = new RoundedBoxGeometry(2, 2, 2, 4, Math.min(0.98, Math.max(0.02, p.round ?? 0.35)));
         break;
       case 'torus':
         geo = new TorusGeometry(1, 0.32, 16, 48);
         break;
+      case 'tube':
+        // 길은 절대 좌표라 at 를 뺀 자리로, 반지름은 모양에 넣는다 (배율로 키우면 길까지 늘어난다)
+        geo = tubeGeometry(p.path ?? [], p.at, x, p.taper ?? 1);
+        scale.set(1, 1, 1);
+        break;
+      case 'tuft':
+        geo = tuftGeometry();
+        break;
+      case 'bow':
+        geo = bowGeometry();
+        break;
       default:
         geo = new SphereGeometry(1, 40, 28);
     }
-    const mesh = new Mesh(geo, this.material(p.color, p.finish));
+    const pat = p.pattern ? this.patternOf(p.pattern, geo, scale) : undefined;
+    const mesh = new Mesh(geo, this.material(p.color, p.finish, pat));
     mesh.position.set(...p.at);
     mesh.scale.copy(scale);
     if (p.rot) mesh.rotation.set(p.rot[0] * DEG, p.rot[1] * DEG, p.rot[2] * DEG);
-    if (this.real) this.addFur(mesh, p);
+    mesh.userData.part = p;
+    if (this.real) this.addFur(mesh, p, pat);
     if (this.game) this.addOutline(mesh);
     return mesh;
   }
@@ -801,7 +1146,7 @@ export class Pet3D implements Model3D {
     }
     const m = new MeshToonMaterial({ color, gradientMap: this.toonRamp });
     if (finish !== 'shiny') return m;
-    m.onBeforeCompile = (shader) => {
+    hook(m, 'toon-gloss', (shader) => {
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <opaque_fragment>',
         `{
@@ -811,8 +1156,7 @@ export class Pet3D implements Model3D {
         }
         #include <opaque_fragment>`,
       );
-    };
-    m.customProgramCacheKey = () => 'jj-toon-gloss';
+    });
     return m;
   }
 
@@ -923,7 +1267,7 @@ export class Pet3D implements Model3D {
    * 밝아서 끝이 빛을 받는다. 반투명 섞기가 아니라 자르기(alphaTest)라 그리는 순서와 상관없다.
    * 털 크기가 부품 크기와 상관없이 같도록 UV 를 부품 크기만큼 늘린다
    */
-  private addFur(mesh: Mesh, p: Part) {
+  private addFur(mesh: Mesh, p: Part, pat?: PatternAt) {
     const len0 = furLength(p);
     if (len0 <= 0 || p.shape === 'torus') return;
     const geo = mesh.geometry;
@@ -951,7 +1295,7 @@ export class Pet3D implements Model3D {
     const layers = p.finish === 'fuzzy' ? 16 : 8;
     for (let i = 1; i <= layers; i++) {
       const t = i / layers;
-      const shell = new Mesh(geo, this.furShell(p.color, p.finish ?? 'soft', i, layers));
+      const shell = new Mesh(geo, this.furShell(p.color, p.finish ?? 'soft', i, layers, pat));
       const grow = len * t;
       shell.scale.set(1 + grow / ext.x, 1 + grow / ext.y, 1 + grow / ext.z);
       // 끝으로 갈수록 살짝 아래로 눕는다 (무게)
@@ -962,8 +1306,8 @@ export class Pet3D implements Model3D {
   }
 
   /** 털 껍질 재질. 색과 겉 느낌, 층마다 하나 (같은 색 부품끼리 같이 쓴다) */
-  private furShell(color: string, finish: Finish, i: number, layers: number): Material {
-    const key = `${color}/${finish}/shell${i}of${layers}`;
+  private furShell(color: string, finish: Finish, i: number, layers: number, pat?: PatternAt): Material {
+    const key = `${color}/${finish}/shell${i}of${layers}${pat ? `/${patternKey(pat)}` : ''}`;
     let m = this.materials.get(key);
     if (!m) {
       const t = i / layers;
@@ -976,6 +1320,7 @@ export class Pet3D implements Model3D {
         alphaTest: 0.38 + 0.55 * t,
         roughness: 0.9,
       });
+      decorate(m, { pattern: pat });
       this.materials.set(key, m);
     }
     return m;
@@ -1036,8 +1381,8 @@ export class Pet3D implements Model3D {
     const ink = new MeshBasicMaterial({ color: INK });
     // 실사면 눈 색이 없어도 갈색 홍채를 넣고, 위에 투명한 각막을 씌워 유리알처럼
     // 게임은 일러스트처럼 까만 눈에 반짝이 둘 (눈 색을 정한 펫만 홍채)
-    const irisColor = f.eyeColor ?? (this.real ? '#3b2416' : undefined);
-    const cornea = this.real
+    const irisColor = f.eyeColor ?? (this.furry ? '#3b2416' : undefined);
+    const cornea = this.furry
       ? new MeshPhysicalMaterial({
           color: '#ffffff',
           roughness: 0.03,
@@ -1093,34 +1438,54 @@ export class Pet3D implements Model3D {
       curveSegments: 12,
     });
 
+    // 눈 테두리 모양 (설계도 face.eyeShape): 가로, 세로 배율. droopy 는 바깥쪽을 아래로 기울인다
+    const shape = f.eyeShape ?? 'round';
+    const ew = shape === 'oval' ? 0.9 : shape === 'almond' ? 1.2 : shape === 'droopy' ? 1.05 : 1;
+    const eh = shape === 'oval' ? 1.15 : shape === 'almond' ? 0.78 : shape === 'droopy' ? 0.95 : 1;
+    // 반짝이 (face.catchlight): 없으면 게임은 점 둘, 나머지는 작은 점 하나. 반짝이는 눈(sparkle)은 늘 크게
+    const catchlight = f.eyes === 'sparkle' ? 'big' : (f.catchlight ?? (this.game ? 'double' : 'small'));
+    // 눈동자: 정했으면 그대로, 아니면 실사에서 눈 색을 정하지 않은 펫(강아지 같은)은 둥근 큰 눈동자, 아니면 세로로 긴 고양이 눈
+    const slit = f.pupil ? f.pupil === 'slit' : !(this.furry && !f.eyeColor);
     const eyes: FaceRig['eyes'] = [];
     for (const side of [-1, 1] as const) {
       const g = place(side * f.eyeGap, f.eyeY);
       const open = new Group();
       const shine = new Mesh(sphere, white);
-      shine.scale.setScalar(s * (this.game ? 0.32 : 0.26));
-      shine.position.set(s * 0.24, s * 0.38, s * 0.36);
+      shine.scale.setScalar(s * (catchlight === 'small' ? 0.26 : catchlight === 'double' ? 0.3 : 0.34));
+      shine.position.set(s * 0.24 * ew, s * 0.38 * eh, s * 0.36);
       if (irisMat) {
-        // 색 홍채 위에 세로로 긴 검은 눈동자
+        // 색 홍채 위에 검은 눈동자
         const iris = new Mesh(sphere, irisMat);
-        iris.scale.set(s * 0.85, s * 1.02, s * 0.4);
+        iris.scale.set(s * 0.85 * ew, s * 1.02 * eh, s * 0.4);
         const pupil = new Mesh(sphere, eyeMat);
-        // 실사에서 눈 색을 정하지 않은 펫(강아지 같은)은 둥근 큰 눈동자, 아니면 세로로 긴 고양이 눈
-        if (this.real && !f.eyeColor) pupil.scale.set(s * 0.58, s * 0.62, s * 0.3);
-        else pupil.scale.set(s * 0.42, s * 0.78, s * 0.3);
+        if (slit) pupil.scale.set(s * 0.42, s * 0.78 * eh, s * 0.3);
+        else pupil.scale.set(s * 0.58 * ew, s * 0.62 * eh, s * 0.3);
         pupil.position.z = s * 0.14;
         shine.position.z = s * 0.42;
         open.add(iris, pupil, shine);
         if (cornea) {
           const dome = new Mesh(sphere, cornea);
-          dome.scale.set(s * 0.95, s * 1.1, s * 0.5);
+          dome.scale.set(s * 0.95 * ew, s * 1.1 * eh, s * 0.5);
           dome.position.z = s * 0.06;
           open.add(dome);
         }
       } else {
         const ball = new Mesh(sphere, eyeMat);
-        ball.scale.set(s * 0.78, s, s * 0.42);
+        ball.scale.set(s * 0.78 * ew, s * eh, s * 0.42);
         open.add(ball, shine);
+      }
+      if (shape === 'droopy') open.rotation.z = -side * 0.2;
+      // 속눈썹 (face.lashes): 눈 위 바깥쪽에 짧은 선 셋
+      if (f.lashes) {
+        // 바깥 위 모서리에 짧은 속눈썹 둘 (많고 길면 더듬이처럼 보였다)
+        for (const a of [0.95, 1.3]) {
+          const rx = s * 0.78 * ew;
+          const ry = s * eh;
+          const from: [number, number] = [side * rx * Math.sin(a) * 0.96, ry * Math.cos(a) * 0.96];
+          const dir = [Math.sin(a + 0.25), Math.cos(a + 0.25)] as const;
+          const to: [number, number] = [from[0] + side * dir[0] * s * 0.32, from[1] + dir[1] * s * 0.32];
+          open.add(stroke(from, to, s * 0.065, ink, s * 0.1));
+        }
       }
       const down = arc(s * 0.75, s * 0.17, ink, true);
       const up = arc(s * 0.75, s * 0.17, ink, false);
@@ -1135,19 +1500,11 @@ export class Pet3D implements Model3D {
       lower.scale.set(s * 0.78, s * 0.42, s * 0.4);
       lower.position.y = -s * 0.25;
       half.add(lower, stroke([-s * 0.85, s * 0.05], [s * 0.85, s * 0.05], s * 0.13, ink));
-      if (this.game && f.eyes !== 'sparkle') {
-        // 게임 캐릭터 눈: 큰 반짝이 아래에 작은 반짝이 하나 더
+      if (catchlight !== 'small') {
+        // 큰 반짝이 아래에 작은 별빛 하나 더 (게임 캐릭터 눈, 반짝이는 눈, 반짝이는 인형 눈)
         const dot = new Mesh(sphere, white);
-        dot.scale.setScalar(s * 0.12);
-        dot.position.set(-s * 0.24, -s * 0.36, shine.position.z);
-        open.add(dot);
-      }
-      if (f.eyes === 'sparkle') {
-        // 반짝이는 눈: 큰 반짝이 하나 더, 아래에 작은 별빛
-        shine.scale.setScalar(s * 0.34);
-        const dot = new Mesh(sphere, white);
-        dot.scale.setScalar(s * 0.14);
-        dot.position.set(-s * 0.26, -s * 0.34, shine.position.z);
+        dot.scale.setScalar(s * (catchlight === 'big' ? 0.14 : 0.12));
+        dot.position.set(-s * 0.25 * ew, -s * 0.35 * eh, shine.position.z);
         open.add(dot);
       }
       // 졸린 눈 (설계도 face.eyes sleepy): 감기 직전의 얕은 ‿. 평평한 눈꺼풀(반달)은 시큰둥하거나 화난 눈으로 읽혀서
@@ -1222,6 +1579,18 @@ export class Pet3D implements Model3D {
       shade.scale.set(s * 0.82, s * 0.2, s * 0.08);
       shade.position.set(0, -s * 1.3, s * 0.02);
       g.add(browGroup, shade);
+      // 늘 보이는 눈썹 (설계도 face.brows): 눈 위 짧은 선. tilt 가 양수면 안쪽 끝이 올라간 순한 눈썹
+      if (f.brows) {
+        // 짧고 가는 선 (길고 굵으면 눈 위에서 찡그린 눈썹으로 읽혔다). 높이는 눈 크기와 상관없이 설계도 크기로 잰다
+        const by = f.brows.y ?? f.eyeY + f.eyeSize * 2.3;
+        const bg = place(side * f.eyeGap, by, 0.003);
+        const tilt = ((f.brows.tilt ?? 0) * Math.PI) / 180;
+        const bw = f.eyeSize * 0.42;
+        const dy = Math.sin(tilt) * bw;
+        const line = stroke([-side * bw, dy], [side * bw, -dy], f.eyeSize * 0.1, this.inkOf(f.brows.color));
+        line.rotation.z += levelRoll(bg);
+        bg.add(line);
+      }
       const states = { open, down, up, chevron, half, drowsy, heavy };
       for (const o of Object.values(states)) g.add(o);
       eyes.push({ side, states, open, heavy, brow: browGroup, shade });
@@ -1258,10 +1627,29 @@ export class Pet3D implements Model3D {
           w.add(a);
         }
         mouth.smile = w;
-        const nose = new Mesh(sphere, this.material(f.blush ?? '#ff8fa0', 'shiny'));
-        nose.scale.set(m * 0.5, m * 0.32, m * 0.3);
-        nose.position.set(0, m * 1.05, m * 0.05);
-        mouthAt.add(nose);
+        // 코를 따로 정하지 않은 고양이 입은 분홍 코
+        if (!f.nose) {
+          const nose = new Mesh(sphere, this.material(f.blush ?? '#ff8fa0', 'shiny'));
+          nose.scale.set(m * 0.5, m * 0.32, m * 0.3);
+          nose.position.set(0, m * 1.05, m * 0.05);
+          mouthAt.add(nose);
+        }
+      } else if (f.mouth === 'grin') {
+        // 활짝 벌린 입: 웃는 호 안을 어둡게 채우고 혀를 내민다
+        const grin = new Group();
+        const rim = arc(m * 1.2, m * 0.16, ink, true);
+        rim.position.y = m * 0.55;
+        const inside = new Mesh(sphere, dark);
+        inside.scale.set(m * 1.08, m * 0.72, m * 0.3);
+        inside.position.set(0, m * 0.05, -m * 0.02);
+        const tip = new Mesh(sphere, tongue);
+        tip.scale.set(m * 0.5, m * 0.42, m * 0.22);
+        tip.position.set(0, -m * 0.3, m * 0.14);
+        grin.add(rim, inside, tip);
+        mouth.smile = grin;
+      } else if (f.mouth === 'tiny') {
+        // 짧은 선 (인형의 박음질 입)
+        mouth.smile = stroke([-m * 0.42, m * 0.3], [m * 0.42, m * 0.3], m * 0.13, ink);
       } else {
         const smile = arc(m * 1.25, m * 0.17, ink, true);
         smile.position.y = m * 0.6;
@@ -1293,7 +1681,7 @@ export class Pet3D implements Model3D {
     }
 
     // 볼 터치는 만화 표현이라 실사에서는 뺀다
-    if (f.blush && !this.real) {
+    if (f.blush && !this.furry) {
       const blush = new MeshBasicMaterial({
         color: f.blush,
         transparent: true,
@@ -1305,6 +1693,17 @@ export class Pet3D implements Model3D {
         const disc = new Mesh(sphere, blush);
         disc.scale.set(s * 1.55, s * 0.85, s * 0.12);
         g.add(disc);
+        // 빗금 볼 (face.blushLines): 짧은 사선 셋, 볼 색보다 진한 선
+        if (f.blushLines) {
+          const lines = new Group();
+          const mat = this.inkOf(`#${new Color(f.blush).multiplyScalar(0.62).getHexString()}`);
+          for (const dx of [-0.75, 0, 0.75])
+            lines.add(
+              stroke([s * (dx - 0.18), -s * 0.38], [s * (dx + 0.18), s * 0.38], s * 0.075, mat, s * 0.08),
+            );
+          lines.rotation.z = levelRoll(g);
+          g.add(lines);
+        }
       }
     }
     if (f.whiskers) {
@@ -1316,7 +1715,69 @@ export class Pet3D implements Model3D {
         }
       }
     }
+    // 코 (설계도 face.nose): 눈과 입 사이. 세모(고양이, 토끼), 납작한 타원(강아지), 점. 위에 작은 반짝이
+    if (f.nose?.color && f.nose.shape !== 'none') {
+      const k = s * (f.nose.size ?? 1);
+      const g = place(0, f.nose.y ?? f.mouthY + s * 1.0, 0.004);
+      const mat = this.material(f.nose.color, 'shiny');
+      let nose: Mesh;
+      if (f.nose.shape === 'triangle') {
+        nose = new Mesh(new ConeGeometry(1, 1.6, 24), mat);
+        nose.rotation.z = Math.PI;
+        nose.scale.set(k * 0.58, k * 0.5, k * 0.32);
+      } else if (f.nose.shape === 'oval') {
+        nose = new Mesh(sphere, mat);
+        nose.scale.set(k * 0.64, k * 0.46, k * 0.36);
+      } else {
+        nose = new Mesh(sphere, mat);
+        nose.scale.set(k * 0.4, k * 0.36, k * 0.3);
+      }
+      g.add(nose);
+      if (!this.game) {
+        const glint = new Mesh(sphere, white);
+        glint.scale.setScalar(k * 0.11);
+        glint.position.set(-k * 0.16, k * 0.14, k * 0.3);
+        g.add(glint);
+      } else this.addOutline(nose);
+    }
+    // 볼 털 (설계도 face.fluff): 볼 옆으로 바깥 아래를 향해 뻗는 털 뭉치
+    if (f.fluff) {
+      // 얼굴 가장자리(볼 바깥)에 붙여 털이 실루엣 밖으로 삐져나오게. 눈과 수염과 겹치지 않는다
+      const halfW = faceBox.isEmpty() ? f.eyeGap * 2.4 : (faceBox.max.x - faceBox.min.x) / 2;
+      const cx = faceBox.isEmpty() ? 0 : (faceBox.max.x + faceBox.min.x) / 2;
+      for (const side of [-1, 1]) {
+        const g = place(cx + side * halfW * 0.9, f.mouthY + s * 0.2, -0.004);
+        const size: Vec3 = [s * 1.25, s * 1.7, s * 0.7];
+        const part: Part = {
+          slot: f.slot,
+          shape: 'tuft',
+          at: [0, 0, 0],
+          size,
+          color: f.fluff,
+          finish: 'fuzzy',
+        };
+        const tuft = new Mesh(tuftGeometry(), this.material(f.fluff, 'fuzzy'));
+        tuft.scale.set(...size);
+        // 바깥 아래로 (볼 털은 옆으로 뻗고 조금 처진다). 얼굴 무리는 겉면을 보고 있어 화면 기준으로 되돌린다
+        tuft.rotation.z = levelRoll(g) - side * (Math.PI / 2 + 0.45);
+        tuft.userData.part = part;
+        if (this.real) this.addFur(tuft, part);
+        if (this.game) this.addOutline(tuft);
+        g.add(tuft);
+      }
+    }
     return { eyes, mouth, beakLower, style: f.mouth, eyeLook: f.eyes ?? 'round', groups, mouthAt };
+  }
+
+  /**
+   * 크기 배율 (AI 일러스트 아기, 청소년 펫을 작게). 그리기, 머리 꼭대기, 눈 자리가 모두 fit.d 를 따라서
+   * 발은 바닥에 그대로 있고 말풍선과 누르기(불투명한 곳)도 맞는다. 같으면 아무것도 안 한다
+   */
+  setSizeScale(k: number): void {
+    const next = Number.isFinite(k) && k > 0 ? k : 1;
+    if (next === this.sizeK) return;
+    this.sizeK = next;
+    this.fit.d = this.fitD * next;
   }
 
   /** 쉬는 자세가 2D 캔버스 안 바닥에 서도록 카메라와 옮길 자리를 정한다 */
@@ -1349,15 +1810,50 @@ export class Pet3D implements Model3D {
           maxY = Math.max(maxY, p.y);
         }
     const d = Math.min(FIT_H / ((maxY - minY) / 2), FIT_W / ((maxX - minX) / 2));
-    this.fit = { d, cx: (minX + maxX) / 2, bottom: minY, halfW: (maxX - minX) / 2 };
+    // 바닥(발 끝)은 상자 모서리가 아니라 실제 몸에서 가장 아래 보이는 점으로. 카메라가 살짝 위에서 보니 상자 앞 아래
+    // 모서리는 발보다 낮게 비쳐, 그 자리를 바닥에 두면 펫이 그림자 위로 떠 보였다
+    const low = this.lowestNdc();
+    const bottom = low !== undefined && low > minY ? low : minY;
+    const o = c.clone().project(this.camera);
+    this.unitNdc = Math.abs(
+      c
+        .clone()
+        .add(new Vector3(1, 0, 0))
+        .project(this.camera).x - o.x,
+    );
+    this.fitD = d;
+    this.fit = { d: d * this.sizeK, cx: (minX + maxX) / 2, bottom, halfW: (maxX - minX) / 2 };
     // 숫자가 깨지면(빈 몸 등) 그리지 않고 2D 로 돌아간다
     if (!Object.values(this.fit).every(Number.isFinite) || d <= 0) this.ready = false;
   }
 
-  /** 카메라를 몸 가운데에서 dist 만큼, 살짝 위(9도)에 tilt 를 더한 높이에 둔다 */
+  /** 보이는 몸 꼭짓점 가운데 화면(NDC)에서 가장 아래 y. 꼭짓점이 많으면 건너뛰며 본다. 없으면 undefined */
+  private lowestNdc(): number | undefined {
+    let low: number | undefined;
+    const v = new Vector3();
+    this.root.traverse((o) => {
+      if (!(o instanceof Mesh) || !o.visible) return;
+      const pos = o.geometry.getAttribute('position');
+      if (!pos) return;
+      // 숨긴 조상이 있으면(손 흔들 앞발 등) 보이지 않는다
+      for (let a: Object3D | null = o.parent; a; a = a.parent) if (!a.visible) return;
+      const step = Math.max(1, Math.floor(pos.count / 4000));
+      for (let i = 0; i < pos.count; i += step) {
+        v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld).project(this.camera);
+        if (low === undefined || v.y < low) low = v.y;
+      }
+    });
+    return low;
+  }
+
+  /**
+   * 카메라를 몸 가운데에서 dist 만큼, 살짝 위(9도)에 tilt 를 더한 높이에 둔다.
+   * 2.5D 판은 정면(0도)에서: 평평한 사진을 부풀린 판이라 위에서 보면 앞으로 부푼 배가 아래로 쏠려
+   * 아래쪽이 턱처럼 뾰족해지고 두 발이 붙어 보였다 (2026-10-10 검토)
+   */
   private aim(tilt: number) {
     const { c, dist } = this.orbit;
-    const el = 9 * DEG + tilt;
+    const el = (this.relief ? 0 : 9 * DEG) + tilt;
     this.camera.position.set(c.x, c.y + dist * Math.sin(el), c.z + dist * Math.cos(el));
     this.camera.lookAt(c);
     this.camera.updateMatrixWorld(true);
@@ -1396,6 +1892,8 @@ export class Pet3D implements Model3D {
       y = g.x * 0.3;
       x = -g.y * 0.08;
     }
+    // 삐치거나 걷기 시작할 때, 두리번거릴 때 한 틀에 돌지 않고 짧게 돌아간다
+    y = this.ease.to('heading', y, HEADING_TAU);
     // 입체 판은 옆이 안 보이게 돌기만: 손 흔들기는 까딱, 빙글 춤은 크게 좌우로
     const trick = trickOf(s);
     if (trick?.type === 'wave') z = waveSwing(trick.t) * 0.08;
@@ -1408,6 +1906,22 @@ export class Pet3D implements Model3D {
       x += mv.pitch * 0.5;
     }
     const max = 0.44;
+    // 그림 휘기: 숨은 늘 (자면 느리고 깊게), 고개는 생각, 쳐다보기, 몸짓에 따라 기운다
+    const w = this.relief?.warp;
+    if (w) {
+      const t = s.elapsed / 1000;
+      const asleep = s.mood === 'sleeping' || s.mood === 'dozing';
+      // 숨과 살랑임은 계속 그릴 때만 (가끔 그리는 프레임마다 다른 위상을 집어 몸이 툭툭 튀었다)
+      const live = !!s.breathe && !s.calm;
+      w.uBreath.value = live ? Math.sin(t * (asleep ? 1.1 : 2.2)) * (asleep ? 1.3 : 1) : 0;
+      let tilt = live ? Math.sin(t * 1.3) * 0.03 : 0;
+      if (s.mood === 'thinking') tilt += 0.12;
+      if (g) tilt += -g.x * 0.08;
+      if (mv) tilt += mv.tilt * 0.6;
+      w.uTilt.value = Math.max(-0.22, Math.min(0.22, tilt));
+      // 머리를 기울이는 만큼 몸 전체 기울기는 덜
+      z *= 0.5;
+    }
     this.root.rotation.set(x, Math.max(-max, Math.min(max, y + this.spin * 0.4)), z);
   }
 
@@ -1418,6 +1932,7 @@ export class Pet3D implements Model3D {
     }
     const j = this.joints;
     for (const slot of SLOTS) j[slot].rotation.set(0, 0, 0);
+    for (const arm of [j.armL, j.armR]) if (arm.userData.base) arm.position.copy(arm.userData.base);
     if (this.wavePaw) this.wavePaw.visible = false;
     for (const leg of this.quad?.legs ?? []) {
       leg.g.position.copy(leg.base);
@@ -1436,6 +1951,13 @@ export class Pet3D implements Model3D {
     this.root.position.set(0, 0, 0);
     this.root.scale.set(sx, sy, sx);
     const { mood, elapsed: e } = s;
+    // 숨쉬기: 몸통이 살짝 부풀었다 꺼진다 (자면 느리고 깊게). 계속 그릴 때만 (가끔 그리는 틀마다 다른 위상을 집으면 툭툭 튄다).
+    // 몸 관절의 축은 몸 바닥이라 발은 그대로고 머리가 숨을 따라 조금 오르내린다
+    const asleep = mood === 'sleeping' || mood === 'dozing';
+    if (s.breathe && !s.calm) {
+      const b = Math.sin((e / 1000) * (asleep ? 1.1 : 2.3)) * (asleep ? 1.3 : 1);
+      j.body.scale.set(1 + 0.007 * b, 1 + 0.012 * b, 1 + 0.01 * b);
+    } else j.body.scale.set(1, 1, 1);
     // 몸짓 세기 (설계도 motion): 흔들기(sway), 꼬리(tail), 귀(ear). 1 이면 기본 동작 그대로
     const { sway, tail, ear } = this.motion;
     const head = (x: number, y: number, z: number) => {
@@ -1450,10 +1972,19 @@ export class Pet3D implements Model3D {
       j.wingL.rotation.z = -z;
       j.wingR.rotation.z = z;
     };
-    // 삐지면 고개를 돌린다 (얼굴이 보이게 옆으로만)
-    // 매운맛 토라짐: 흥(2단계)이면 더 홱, 3단계면 등을 돌린다 (뒷모습)
-    if (mood === 'sulky' && !s.peer) this.root.rotation.y = [0, 0.8, 1.15, Math.PI][sulkStage(s)] ?? 0.8;
-    this.root.rotation.y += this.spin;
+    // 걷기: 걷는 동안 세기 1, 멈추면(따라 달리다 서기, 걷기 끝) 다리와 숙인 몸을 짧게 푼다.
+    // 걷기가 끝나도 세기가 남아 있으면 마지막 걸음으로 이어 그린다 (한 틀에 정면 선 자세로 바뀌지 않게)
+    const stepping = act?.type === 'walk' ? act : undefined;
+    if (stepping) this.lastWalk = { dir: stepping.dir, phase: stepping.phase, stride: stepping.stride };
+    const calmBody = mood === 'idle' || mood === 'sulky';
+    const blend = this.ease.to('walk', stepping ? 1 : 0, calmBody ? WALK_OUT_TAU : 0);
+    const walk: Extract<Act, { type: 'walk' }> | undefined =
+      stepping ?? (blend > 0 && calmBody && this.lastWalk ? { type: 'walk', ...this.lastWalk } : undefined);
+    // 몸이 향한 쪽: 삐지면 고개를 돌린다 (얼굴이 보이게 옆으로만). 매운맛 토라짐: 흥(2단계)이면 더 홱, 3단계면 등을 돌린다.
+    // 걸으면 가는 쪽으로 (네 발은 더 옆으로). 한 틀에 돌지 않고 짧게 돌아선다
+    let heading = mood === 'sulky' && !s.peer ? ([0, 0.8, 1.15, Math.PI][sulkStage(s)] ?? 0.8) : 0;
+    if (stepping) heading = stepping.dir * (this.quad ? 1.1 : 0.75) * walkEnvelopeOf(stepping).turn;
+    this.root.rotation.y = this.ease.to('heading', heading, HEADING_TAU) + this.spin;
     let eye: EyeState = 'open';
     let mouth: MouthState = s.hungry && mood === 'idle' ? 'wavy' : 'smile';
     switch (mood) {
@@ -1488,7 +2019,10 @@ export class Pet3D implements Model3D {
         break;
       case 'thinking':
         head(0, 0, 0.2);
-        j.armR.rotation.set(-0.9, 0, 0.9);
+        // 머리와 옆으로 나온 팔이 있으면(냥이, 멍멍이) 오른손을 앞으로 들어 턱 밑에 괸다.
+        // 몸이 곧 얼굴인 콩이는 팔을 바깥 위로 (턱이 따로 없다)
+        if (this.hasHead && this.hasHand) j.armR.rotation.set(-2.1, 0, -0.85);
+        else j.armR.rotation.set(-0.9, 0, 0.9);
         j.top.rotation.z = Math.sin(e / 400) * 0.15;
         mouth = 'flat';
         break;
@@ -1509,19 +2043,17 @@ export class Pet3D implements Model3D {
         }
         break;
     }
-    if (act?.type === 'walk' && this.quad) {
-      this.walkQuad(this.quad, act);
-    } else if (act?.type === 'walk') {
-      const w = Math.sin(act.phase * Math.PI * 2);
-      this.root.rotation.y = act.dir * 0.75;
+    if (walk && this.quad) {
+      this.walkQuad(this.quad, walk, blend);
+    } else if (walk) {
+      // 두 발: 다리와 팔 흔들기도 출발과 멈춤에 맞춰 줄인다 (멈춘 몸에서 다리만 헛돌지 않게)
+      const w = Math.sin(walk.phase * Math.PI * 2) * walkEnvelopeOf(walk).stride * blend;
       j.legL.rotation.x = w * 0.7;
       j.legR.rotation.x = -w * 0.7;
       j.armL.rotation.x = -w * 0.6 * sway;
       j.armR.rotation.x = w * 0.6 * sway;
       j.tail.rotation.y = w * 0.35 * tail;
       j.top.rotation.z = w * 0.12 * sway;
-    } else if (act?.type === 'look') {
-      head(0, act.dir * 0.55, 0);
     } else if (act?.type === 'sit') {
       // 앉는 정도 (처음에 앉고 끝에 일어난다)
       const down = act.down ?? 1;
@@ -1542,6 +2074,12 @@ export class Pet3D implements Model3D {
       arms(2.6 * k);
       wings(1.3 * k);
       eye = 'up';
+    }
+    // 두리번: 고개를 그쪽으로 돌렸다가 끝나면 다시 앞으로 (한 틀에 돌지 않게)
+    const lookYaw = this.ease.to('lookYaw', act?.type === 'look' ? act.dir * 0.55 : 0, HEADING_TAU);
+    if (lookYaw !== 0) {
+      if (this.hasHead) j.head.rotation.y += lookYaw;
+      else this.root.rotation.y += lookYaw * 0.6;
     }
     // 제자리 몸짓 (꼬리 흔들기, 귀 쫑긋, 몸 털기, 점프, 뒹굴기 등. move-pose.ts).
     // 꼬리, 귀, 다리, 팔은 설계도에 그 부위가 있을 때만 보인다 (없는 관절은 빈 묶음이라 돌려도 아무것도 없다)
@@ -1638,14 +2176,18 @@ export class Pet3D implements Model3D {
    * 출발할 때 돌고 숙이며, 멈출 때 다시 앞을 보고 일어난다 (pet3d-gait.ts walkEnvelope).
    * 숙인 만큼 앞발 관절은 내려가고 뒷발 관절은 올라가니 다리마다 높이를 되돌려 발이 바닥에 붙어 있게 한다
    */
-  private walkQuad(q: QuadRig, act: Extract<Act, { type: 'walk' }>) {
+  private walkQuad(q: QuadRig, act: Extract<Act, { type: 'walk' }>, blend = 1) {
     const j = this.joints;
     const { sway, tail, ear } = this.motion;
-    const env = walkEnvelope(act.along, act.ms);
+    const e0 = walkEnvelopeOf(act);
+    const env = { stride: e0.stride * blend, turn: e0.turn * blend, lean: e0.lean * blend };
     const lean = q.lean * env.lean;
     const a = act.phase * Math.PI * 2;
     const go = env.stride;
-    this.root.rotation.y = act.dir * 1.1 * env.turn + this.spin;
+    // 보폭: 디딘 발이 몸이 간 만큼 뒤로 밀리게 (act.stride 는 한 걸음에 간 거리, 160 캔버스).
+    // 한 걸음에 디딘 발 둘이 2 * stride 씩 민다. 옆으로 돈 만큼(1.1 라디안)만 화면 가로로 보인다
+    const sweep = 4 * q.stride * this.unitNdc * (this.fit.d / 2) * Math.sin(1.1) * this.root.scale.x;
+    const pace = act.stride && sweep > 0 ? Math.max(0.6, Math.min(1.8, act.stride / sweep)) : 1;
     j.body.rotation.x = lean;
     // 걸음마다 엉덩이를 살짝 좌우로
     j.body.rotation.z = Math.sin(a) * 0.05 * sway * go;
@@ -1674,13 +2216,13 @@ export class Pet3D implements Model3D {
     const sn = Math.sin(lean);
     for (const leg of q.legs) {
       const step = trotLeg(leg.id, act.phase);
-      const z = step.dz * q.stride * go;
+      const z = step.dz * q.stride * pace * go;
       const hz = leg.hip.z + (leg.id[0] === 'f' ? front : hind);
       // 숙여서 관절이 올라간 다리(뒷발)는 내리지 않고 늘여 바닥에 닿게 한다 (내리면 몸과 발 사이가 뜬다)
       const back = -hipRise(leg.hip.y, hz, lean);
       const reach = Math.max(0, -back);
       leg.g.scale.set(1, (leg.drop + reach) / Math.max(0.01, leg.drop), 1);
-      const rise = Math.max(0, back) + step.lift * q.lift * go;
+      const rise = Math.max(0, back) + step.lift * q.lift * Math.sqrt(pace) * go;
       // 긴 다리는 관절에서 돌려 딛고, 짧은 발은 앞뒤로 옮긴다
       const long = leg.drop >= 0.18;
       const fz = long ? 0 : z;
@@ -1692,6 +2234,19 @@ export class Pet3D implements Model3D {
       );
       leg.g.rotation.x =
         -lean - (long ? Math.asin(Math.max(-1, Math.min(1, z / leg.drop))) : step.lift * 0.35 * go);
+    }
+    // 팔(두 발 몸을 네 발로 걷게 고른 냥이, 멍멍이, 콩이. 토순이 가슴 앞발)도 앞발처럼 딛는다: 숙인 만큼 되돌려 곧게
+    // 바닥을 향하고, 같은 쪽 앞발과 같은 박자로 앞으로 나가며 들고 뒤로 민다 (늘어뜨린 채 매달려 가지 않게).
+    // 몸통을 늘인 앉은 피규어는 앞발이 앞으로 나간 만큼 같이 나간다
+    for (const [arm, id] of [
+      [j.armL, 'fl'],
+      [j.armR, 'fr'],
+    ] as const) {
+      const step = trotLeg(id, act.phase);
+      arm.rotation.set(-lean - (step.dz * 0.45 + step.lift * 0.25) * go, 0, 0);
+      const base = arm.userData.base as Vector3 | undefined;
+      // 어깨 바깥에 늘어진 팔은 몸 밑으로 조금 당겨 앞발처럼 몸 아래를 딛는다 (옆으로 돌면 몸 가운데에 걸려 보였다)
+      if (base) arm.position.set(base.x * (1 - 0.4 * k), base.y, base.z + front);
     }
     // 꼬리는 뒤로 조금 눕혀 살랑 (곧게 세우면 옆에서 볼 때 든 팔처럼 보였다)
     j.tail.rotation.set(-lean * 0.5 - 0.2 * k, Math.sin(a) * 0.45 * tail * (0.4 + 0.6 * go), 0);
@@ -1750,6 +2305,23 @@ function stroke(a: [number, number], b: [number, number], r: number, mat: Materi
   return m;
 }
 
+/**
+ * 2.5D 판을 납작하게 눌러 둘 비율 (0 이면 앞으로 안 부푼다, 1 이면 그대로). 칸마다.
+ * 그림 테두리 쪽만 누른다: 몸이 그림 끝에 닿아 있으면(꽉 차게 오린 그림) 흐린 알파가 테두리에서 떨어지지 않아
+ * 테두리째 앞으로 부풀었다. 그 줄이 카메라에 가까워 커 보여 아래 끝이 턱처럼 뾰족하게 튀어나왔다 (2026-10-10 검토).
+ * 몸 아래 끝(발) 근처를 더 누르는 것도 해 봤는데, 검은 털에서 그늘진 띠가 보여 그만뒀다
+ */
+export function reliefFlatten(cols: number, rows: number): Float32Array {
+  const out = new Float32Array(cols * rows);
+  const rim = Math.max(2, Math.min(cols, rows) * 0.06);
+  for (let y = 0; y < rows; y++)
+    for (let x = 0; x < cols; x++) {
+      const k = Math.min(1, Math.min(x, y, cols - 1 - x, rows - 1 - y) / rim);
+      out[y * cols + x] = k * k * (3 - 2 * k);
+    }
+  return out;
+}
+
 /** 알파(0~255 RGBA 의 A)를 0~1 로 읽어 상자 흐림을 r 칸 준다. 입체 판 가장자리를 둥글게 부풀릴 때 쓴다 */
 function blurAlpha(rgba: Uint8ClampedArray, cols: number, rows: number, r: number): Float32Array {
   const a = new Float32Array(cols * rows);
@@ -1787,4 +2359,206 @@ function mulberry32(seed: number): () => number {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/** 설계도의 털 느낌. 없으면 부품 겉 느낌으로: 복슬(fuzzy) 부품이 있으면 중간 길이, 없으면 짧은 솜털 */
+function furOfBlueprint(bp: Blueprint): Fur {
+  if (bp.fur) return bp.fur;
+  return bp.parts.some((p) => p.finish === 'fuzzy')
+    ? { length: 0.5, clump: 0.25 }
+    : { length: 0.2, clump: 0.1 };
+}
+
+/** 부품 무늬 값 (shared/pet3d/pattern.ts patternMask 의 인자) */
+interface PatternAt {
+  pattern: Pattern;
+  half: Vec3;
+  scale: Vec3;
+}
+
+/** 재질 캐시 열쇠에 넣을 무늬 값 (같은 무늬, 같은 크기면 재질을 같이 쓴다) */
+function patternKey(p: PatternAt): string {
+  const r = (v: number) => Math.round(v * 100) / 100;
+  return `${JSON.stringify(p.pattern)}/${p.half.map(r).join(',')}/${p.scale.map(r).join(',')}`;
+}
+
+type ShaderOf = Parameters<NonNullable<Material['onBeforeCompile']>>[0];
+
+/**
+ * 재질 셰이더에 손질을 하나 더한다. 이미 손질이 있으면 둘 다 하고, 프로그램 캐시 열쇠도 이어 붙인다
+ * (three 는 열쇠가 같으면 같은 프로그램을 쓰니 손질마다 달라야 한다)
+ */
+function hook(m: Material, name: string, patch: (shader: ShaderOf) => void): void {
+  const prev = m.onBeforeCompile;
+  const prevKey = m.customProgramCacheKey;
+  m.onBeforeCompile = (shader, renderer) => {
+    prev?.call(m, shader, renderer);
+    patch(shader);
+  };
+  m.customProgramCacheKey = () => `${prevKey ? prevKey.call(m) : ''}/jj-${name}`;
+}
+
+/**
+ * 재질 손질. pattern: 무늬 색을 겉면 위에 섞는다 (모양 좌표로 같은 자리에 같은 무늬).
+ * figure: 피규어 모습의 아래쪽 그늘(가벼운 AO)과 가장자리 빛 (비닐 피규어의 매끈한 입체감)
+ */
+function decorate(m: Material, opt: { pattern?: PatternAt; figure?: boolean }): void {
+  const pat = opt.pattern;
+  if (pat) {
+    const uniforms = {
+      ...patternUniforms(pat.pattern, pat.half, pat.scale),
+      uPatColor: { value: new Color(pat.pattern.color) },
+    };
+    hook(m, `pattern-${pat.pattern.type}`, (shader) => {
+      Object.assign(shader.uniforms, uniforms);
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vJjP;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvJjP = position;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          `#include <common>\nvarying vec3 vJjP;\nuniform vec3 uPatColor;\n${PATTERN_GLSL}`,
+        )
+        .replace(
+          '#include <color_fragment>',
+          '#include <color_fragment>\ndiffuseColor.rgb = mix(diffuseColor.rgb, uPatColor, jjPattern(vJjP));',
+        );
+    });
+  }
+  if (opt.figure) {
+    hook(m, 'figure-shade', (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <opaque_fragment>',
+        `{
+          vec3 jjN = normalize(normal);
+          // 아래를 보는 면은 바닥 그늘, 가장자리는 뒤에서 오는 빛을 조금 머금는다
+          outgoingLight *= 1.0 - 0.16 * (0.5 - 0.5 * jjN.y);
+          float jjRim = pow(1.0 - abs(jjN.z), 3.0);
+          outgoingLight += diffuseColor.rgb * 0.1 * jjRim;
+        }
+        #include <opaque_fragment>`,
+      );
+    });
+  }
+}
+
+/** y 축 모양(캡슐)의 위쪽 반지름을 taper 배로 (아래 -1 에서 1, 위 +1 에서 taper 로 선형) */
+function taperY(geo: BufferGeometry, taper: number): void {
+  geo.computeBoundingBox();
+  const b = geo.boundingBox;
+  if (!b) return;
+  const pos = geo.attributes.position;
+  if (!pos) return;
+  for (let i = 0; i < pos.count; i++) {
+    const t = (pos.getY(i) - b.min.y) / Math.max(1e-6, b.max.y - b.min.y);
+    const k = 1 - (1 - taper) * t;
+    pos.setX(i, pos.getX(i) * k);
+    pos.setZ(i, pos.getZ(i) * k);
+  }
+  pos.needsUpdate = true;
+  geo.computeVertexNormals();
+}
+
+/**
+ * 관 (꼬리). 길을 따라 반지름 r 의 관을 만들고 양 끝을 공으로 막는다. 끝으로 갈수록 taper 배로 가늘어진다.
+ * 길이 짧으면(점 둘) 직선
+ */
+function tubeGeometry(path: readonly Vec3[], at: Vec3, r: number, taper: number): BufferGeometry {
+  const pts = path.map(([x, y, z]) => new Vector3(x - at[0], y - at[1], z - at[2]));
+  if (pts.length < 2) pts.push(new Vector3(0, 0, 0), new Vector3(0, r * 4, 0));
+  const curve = new CatmullRomCurve3(pts, false, 'centripetal');
+  const segs = 10 * pts.length;
+  const radial = 14;
+  const tube = new TubeGeometry(curve, segs, r, radial, false);
+  const pos = tube.attributes.position;
+  if (pos) {
+    for (let i = 0; i < pos.count; i++) {
+      const ring = Math.floor(i / (radial + 1));
+      const t = ring / segs;
+      const c = curve.getPointAt(Math.min(1, Math.max(0, t)));
+      const k = 1 - (1 - taper) * t;
+      pos.setXYZ(
+        i,
+        c.x + (pos.getX(i) - c.x) * k,
+        c.y + (pos.getY(i) - c.y) * k,
+        c.z + (pos.getZ(i) - c.z) * k,
+      );
+    }
+    pos.needsUpdate = true;
+    tube.computeVertexNormals();
+  }
+  const start = new SphereGeometry(r, 16, 12).translate(pts[0]?.x ?? 0, pts[0]?.y ?? 0, pts[0]?.z ?? 0);
+  const last = pts.at(-1) ?? new Vector3();
+  const end = new SphereGeometry(r * Math.max(0.05, taper), 16, 12).translate(last.x, last.y, last.z);
+  const merged = mergeGeometries([tube, start, end]);
+  tube.dispose();
+  start.dispose();
+  end.dispose();
+  return merged ?? tube;
+}
+
+/** 모양을 -1~1 상자에 맞춘다 (크기 칸이 반지름처럼 읽히게) */
+function fitUnit(geo: BufferGeometry): BufferGeometry {
+  geo.computeBoundingBox();
+  const b = geo.boundingBox;
+  if (!b) return geo;
+  const c = b.getCenter(new Vector3());
+  const h = b.getSize(new Vector3()).multiplyScalar(0.5);
+  geo.translate(-c.x, -c.y, -c.z);
+  geo.scale(1 / Math.max(1e-6, h.x), 1 / Math.max(1e-6, h.y), 1 / Math.max(1e-6, h.z));
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/**
+ * 털 뭉치: 끝이 둥글게 모인 물방울 가닥 셋 (가운데가 길고 양옆은 짧게 벌어진다, +y 쪽으로 뻗는다).
+ * 뾰족한 원뿔은 작은 화면에서 가시처럼 보였다. 볼 털, 가슴 털, 머리 털
+ */
+function tuftGeometry(): BufferGeometry {
+  const parts: BufferGeometry[] = [];
+  const locks: [number, number, number][] = [
+    [0, 1, 0],
+    [0.5, 0.78, -0.42],
+    [-0.5, 0.78, 0.42],
+  ];
+  for (const [ang, len, dx] of locks) {
+    const g = new SphereGeometry(1, 18, 14);
+    // 물방울: 위로 갈수록 가늘게 (끝은 둥글다)
+    const pos = g.attributes.position;
+    if (pos)
+      for (let i = 0; i < pos.count; i++) {
+        const t = (pos.getY(i) + 1) / 2;
+        const k = 1 - 0.72 * t * t;
+        pos.setXYZ(i, pos.getX(i) * k * 0.42, pos.getY(i) * len, pos.getZ(i) * k * 0.42);
+      }
+    g.computeVertexNormals();
+    g.rotateZ(ang);
+    g.translate(dx, 0, 0);
+    parts.push(g);
+  }
+  const merged = mergeGeometries(parts) ?? parts[0] ?? new SphereGeometry(1);
+  for (const g of parts) g.dispose();
+  return fitUnit(merged);
+}
+
+/** 리본 매듭: 양쪽 고리 둘, 가운데 매듭, 아래로 늘어진 끝 둘 (xy 평면) */
+function bowGeometry(): BufferGeometry {
+  const parts: BufferGeometry[] = [];
+  for (const side of [-1, 1]) {
+    const loop = new SphereGeometry(1, 20, 14);
+    loop.scale(0.62, 0.4, 0.26);
+    loop.rotateZ(side * 0.18);
+    loop.translate(side * 0.6, 0.05, 0);
+    parts.push(loop);
+    const tail = new ConeGeometry(0.2, 0.7, 10);
+    tail.rotateZ(Math.PI + side * 0.35);
+    tail.translate(side * 0.3, -0.45, -0.05);
+    parts.push(tail);
+  }
+  const knot = new SphereGeometry(0.26, 14, 10);
+  knot.scale(1, 0.9, 1.1);
+  parts.push(knot);
+  const merged = mergeGeometries(parts) ?? parts[0] ?? new SphereGeometry(1);
+  for (const g of parts) g.dispose();
+  return fitUnit(merged);
 }

@@ -45,8 +45,10 @@ export const settings = {
     const prev = load();
     const next = followKindName(prev, applyPatch(prev, patch), patch);
     if (JSON.stringify(next) === JSON.stringify(prev)) return prev;
-    current = next;
+    // 먼저 쓰고 나서 바꾼다. 쓰기가 던졌는데(디스크 가득, 권한) 메모리만 바뀌면 같은 값을 다시 저장해도
+    // "안 바뀜"으로 넘어가 끝내 저장되지 않고, 다시 켜면 옛 값으로 돌아갔다
     writeJson(FILE, next);
+    current = next;
     for (const l of listeners) l(next, prev);
     return next;
   },
@@ -57,9 +59,14 @@ export const settings = {
   nameIfNew(name: string): void {
     const now = load();
     if (namedOnDisk) return;
+    const next = { ...now, petName: cleanPetName(name) ?? now.petName };
+    try {
+      writeJson(FILE, next);
+    } catch {
+      // 못 쓰면 이번 실행만 이 이름으로 (켜기를 막지 않는다). 다음에 켤 때 다시 정한다
+    }
     namedOnDisk = true;
-    current = { ...now, petName: cleanPetName(name) ?? now.petName };
-    writeJson(FILE, current);
+    current = next;
   },
   onChange(listener: Listener): () => void {
     listeners.add(listener);

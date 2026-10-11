@@ -86,9 +86,11 @@ export function runnerFrameMs(cpu: number, state: RunnerState = runnerState(cpu)
 // ---- 종류 고르기 ----
 
 /**
- * 메뉴 막대에서 달릴 모습. 기본 펫은 그 종류 그대로. 사진 펫은 걸음새(고른 값, 설계도 gait, 다리 수 짐작)와 설계도 특징으로
- * 가장 가까운 기본 종류를 고른다: 두 발이면 부리나 날개가 있으면 삐약이, 아니면 콩이. 네 발이면 위로 선 긴 귀는 토순이,
- * 고양이 입이나 수염, 뾰족 귀(원뿔)는 냥이, 아니면 멍멍이. 설계도가 없는 사진(평면, 2.5D)은 다리를 몰라 콩이
+ * 메뉴 막대에서 달릴 모습. 기본 펫은 그 종류 그대로. 사진 펫은 설계도 특징으로 가장 가까운 기본 종류를 고른다:
+ * 부리나 날개가 있으면 삐약이, 위로 선 긴 귀는 토순이, 고양이 입이나 수염, 뾰족 귀(원뿔)는 냥이, 그 밖에 귀가 있으면 멍멍이.
+ * 귀 없는 몸은 걸음새(고른 값, 설계도 gait, 다리 수 짐작)로: 네 발이면 멍멍이, 두 발이면 콩이. 종류 특징이 걸음새보다 먼저다
+ * (냥이, 멍멍이도 팔이 있어 두 발로 서지만 메뉴 막대에서는 네 발로 달린다, 2026-10-11).
+ * 설계도가 없는 사진(평면, 2.5D)은 다리를 몰라 콩이
  */
 export function runnerKindOf(
   s: Pick<Settings, 'petImage' | 'petModel' | 'petKind' | 'petGaits'>,
@@ -101,16 +103,15 @@ export function runnerKindOf(
   const gait =
     pickedGait(s) ?? model.gait ?? (legs('legL') >= 2 && legs('legR') >= 2 ? 'quadruped' : 'biped');
   const ears = parts.filter((p) => p.slot === 'earL' || p.slot === 'earR');
-  if (gait === 'biped') {
-    const bird = model.face.mouth === 'beak' || parts.some((p) => p.slot === 'wingL' || p.slot === 'wingR');
-    return bird ? 'chick' : 'kong';
-  }
+  const bird = model.face.mouth === 'beak' || parts.some((p) => p.slot === 'wingL' || p.slot === 'wingR');
+  if (bird) return 'chick';
   const head = parts.find((p) => p.slot === 'head') ?? parts.find((p) => p.slot === 'body');
   const headTop = head ? head.at[1] + head.size[1] * 0.5 : 0;
   // 토순이 귀는 반높이 0.24 로 머리 위에 서 있다. 멍멍이 귀(0.17)는 머리 옆에 늘어져 있다
   if (ears.some((e) => e.size[1] >= 0.2 && e.at[1] >= headTop)) return 'bunny';
   if (model.face.mouth === 'cat' || model.face.whiskers || ears.some((e) => e.shape === 'cone')) return 'cat';
-  return 'dog';
+  // 귀가 있으면 멍멍이 (멍멍이도 두 발로 선다). 귀 없는 몸은 걸음새로
+  return ears.length || gait === 'quadruped' ? 'dog' : 'kong';
 }
 
 // ---- 그리기 ----
@@ -310,7 +311,11 @@ function sweat(m: Motion, hx: number, hy: number, r: number, front = false): Pie
   ];
 }
 
-/** 네 발 친구(냥이, 멍멍이, 토순이)의 몸 짜임 */
+/**
+ * 네 발 친구(냥이, 멍멍이, 토순이)의 몸 짜임. 냥이, 멍멍이는 펫 화면에서 두 발로 서서 손이 있지만 여기서는 네 발로 달린다:
+ * 두 발로 세워 짧은 팔을 단 그림을 16px(윈도우 알림 영역)로 그려 보니 팔이 몸에 묻혀 한두 점으로 뭉개지고,
+ * 큰 머리에 작은 몸이라 귀 달린 콩이처럼 보였다. 달리기도 네 발이 훨씬 잘 읽힌다 (2026-10-11 비교)
+ */
 function quadScene(kind: 'cat' | 'dog' | 'bunny', m: Motion): Scene {
   const pieces: Piece[] = [];
   const holes: F[] = [];

@@ -1,17 +1,18 @@
-import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { app, shell } from 'electron';
 import { AchievementStore } from '../shared/achieve.ts';
 import { StatStore } from '../shared/beta-stats.ts';
 import type { Db } from '../shared/db-schema.ts';
 import { EventStore } from '../shared/event-store.ts';
+import { GcalStore } from '../shared/gcal-store.ts';
 import { locale, t } from '../shared/i18n/index.ts';
 import type { MissedMsg } from '../shared/missed-msg.ts';
 import { NoteStore } from '../shared/note-store.ts';
 import { PetLife } from '../shared/pet-life.ts';
 import { ItemStore } from '../shared/shop.ts';
 import { TodoStore } from '../shared/todo-store.ts';
-import { openDbFile, type StoreTrouble } from './db-open.ts';
+import { copyDbFile, openDbFile, type StoreTrouble } from './db-open.ts';
 import type { SayOptions } from './pet-window.ts';
 
 /**
@@ -25,6 +26,8 @@ export function openStore(log: (tag: string, ...rest: unknown[]) => void): {
   stats: StatStore;
   notes: NoteStore;
   events: EventStore;
+  /** 구글 캘린더로 보낸 일정 (6단계 쓰기) */
+  gcalLinks: GcalStore;
   life: PetLife;
   shop: ItemStore;
   achievements: AchievementStore;
@@ -47,18 +50,18 @@ export function openStore(log: (tag: string, ...rest: unknown[]) => void): {
   });
   const d = db as unknown as Db;
   const store = new TodoStore(d);
+  const events = new EventStore(d);
   return {
     store,
     stats: new StatStore(d),
     notes: new NoteStore(d),
-    events: new EventStore(d),
+    events,
+    gcalLinks: new GcalStore(d, events),
     life: new PetLife(d),
-    // 메모리에 열었으면(새 판, 못 엶) 비어 있는 메모리 대신 디스크의 원래 파일을 그대로 복사한다
+    // 메모리에 열었으면(새 판, 못 엶) 비어 있는 메모리 대신 디스크의 원래 파일을 WAL 까지 합쳐 한 파일로 복사한다
     vacuumInto: (target: string) => {
       if (!memory) return d.exec(`vacuum into '${target.replace(/'/g, "''")}'`);
-      if (!existsSync(file)) throw new Error('저장 파일이 없다');
-      copyFileSync(file, target);
-      if (existsSync(`${file}-wal`)) copyFileSync(`${file}-wal`, `${target}-wal`);
+      copyDbFile(file, target);
     },
     shop: new ItemStore(d, store),
     achievements: new AchievementStore(d),

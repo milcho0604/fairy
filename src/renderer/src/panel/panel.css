@@ -621,6 +621,37 @@ p.empty {
   color: var(--muted);
 }
 
+/* 다음 할 일 (nextUp): 제목 하나와 "이거 25분 집중" */
+.next-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.next-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.next-title {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.next-text small {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.next-go {
+  flex: none;
+  white-space: nowrap;
+}
+
 .focus-card {
   display: flex;
   align-items: center;
@@ -1464,4 +1495,30 @@ li:is(.todo, .event) .tools .extra .due.none {
 .panel > .toast,
 .quick.card-window input {
   -webkit-app-region: no-drag;
+}
+
+/* 패널 머리의 설정 단추 (톱니바퀴) */
+.panel header .icon-btn {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.panel header .icon-btn:hover,
+.panel header .icon-btn:focus-visible {
+  background: var(--code);
+  color: var(--ink);
+}
+
+.panel header .icon-btn svg {
+  width: 16px;
+  height: 16px;
 }

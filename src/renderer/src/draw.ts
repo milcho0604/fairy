@@ -11,8 +11,18 @@ import type { PetMood } from '../../shared/pet-mood.ts';
 import type { Gait } from '../../shared/pet3d/blueprint.ts';
 import type { PetKind } from '../../shared/settings.ts';
 import { drawMagnifier } from './magnifier.ts';
-import { type MovePose, movePose } from './move-pose.ts';
-import { quadKind } from './pet3d-gait.ts';
+import { Eased } from './motion-ease.ts';
+import {
+  HELD_LIFT,
+  HELD_SQUEEZE,
+  hopScale,
+  LAND_MS,
+  landPose,
+  type MovePose,
+  movePeak,
+  movePose,
+} from './move-pose.ts';
+import { quadKind, walkEnvelopeOf } from './pet3d-gait.ts';
 
 export const CANVAS_SIZE = 160;
 
@@ -44,13 +54,24 @@ export interface DrawState {
   hungry?: boolean;
   /** 사진 펫 그림 (P1-08). 있으면 기본 몸통, 얼굴, 발 대신 그린다 */
   photo?: CanvasImageSource & { width: number; height: number };
+  /** 사진 크기 배율 (AI 일러스트 아기, 청소년은 작게). 없으면 1. 발은 바닥에 그대로 */
+  photoScale?: number;
   /**
    * 기본 상태에서 하는 행동 (P1-06). phase 는 걷기 걸음 진행 0~1.
-   * 걷기의 along 은 걷기 전체 진행 0~1, ms 는 걷기 전체 시간 (네 발 펫의 출발과 멈춤, pet3d-gait.ts).
+   * 걷기의 since 는 걷기를 시작하고 지난 시간, left 는 지금 토막이 끝날 때까지 남은 시간, segMs 는 지금 토막 길이
+   * (ms. 네 발 펫의 출발과 멈춤, pet3d-gait.ts walkEnvelope).
    * t 라고 쓰지 않는다: 제자리 몸짓은 't' in act 로 가린다 (movePoseOf)
    */
   activity?:
-    | { type: 'walk'; dir: -1 | 1; phase: number; along?: number; ms?: number }
+    | {
+        type: 'walk';
+        dir: -1 | 1;
+        phase: number;
+        since?: number;
+        left?: number;
+        segMs?: number;
+        stride?: number;
+      }
     | { type: 'sit'; down?: number }
     | { type: 'look'; dir: -1 | 1 }
     | { type: 'yawn'; t: number }
@@ -75,13 +96,17 @@ export interface DrawState {
   trick?: Trick;
   /** 머리에 꽃 (친밀도 600) */
   flower?: boolean;
+  /** 2.5D 그림 펫이 숨을 쉬며 흔들리는지 (계속 그릴 때만 true. 아니면 숨과 흔들림 없이 가만히) */
+  breathe?: boolean;
   /** 움직임 줄이기 (운영체제 설정 prefers-reduced-motion). 신나서 크게 튀지 않고 살짝만 들썩인다 */
   calm?: boolean;
   /** 이름 옆 얼굴 그림용 (pet-face.ts). 발은 그리지 않는다: 얼굴 아이콘은 얼굴만 */
   face?: boolean;
+  /** 바닥 그림자를 그리지 않는다 (얼굴 아이콘, 집 안 그림. pet-face.ts) */
+  noShadow?: boolean;
   /** 같이 보기 (shared/look-motion.ts): 그쪽을 보고, pose 가 있으면 돋보기를 든다 */
   peer?: { dir: Gaze; pose?: MagnifierPose };
-  /** 사용자가 고른 걸음새 (설정). 없으면 자동: 2D 는 냥이, 멍멍이, 토순이만 네 발 */
+  /** 사용자가 고른 걸음새 (설정). 없으면 자동: 2D 는 토순이만 네 발 (냥이, 멍멍이는 팔이 있어 두 발) */
   gait?: Gait;
   /** 입에 문 공 (네 발 펫 공놀이, shared/fetch.ts) */
   carry?: CarryDraw;
@@ -89,6 +114,17 @@ export interface DrawState {
   energy?: EnergyLook;
   /** 개운함 반짝임 진행 0~1 (쉬고 와서 기지개). 없으면 -1 */
   fresh?: number;
+  /** 큰 축하 색종이가 터진 뒤 흐른 시간(ms). 없으면 -1 */
+  confetti?: number;
+  /** 들렸다가 놓인 뒤 흐른 시간(ms). 내려앉으며 살짝 찌그러진다. 없으면 -1 */
+  land?: number;
+  /**
+   * 그리는 시각 (performance.now). 펫 화면이 이어서 그릴 때만 준다: 있으면 돌아서기, 고개 돌리기, 삐친 고개, 커서 보기가
+   * 한 틀에 바뀌지 않고 짧게 따라간다 (motion-ease.ts). 얼굴 아이콘, 미리보기처럼 한 장만 그릴 때는 없다
+   */
+  now?: number;
+  /** drawPet 이 부드럽게 따라간 커서 방향 (gazeOf 가 이것을 돌려준다). null 이면 안 본다. 밖에서 넣지 않는다 */
+  easedGaze?: Gaze | null;
 }
 
 /**
@@ -155,9 +191,11 @@ export function trickOf(s: DrawState): Trick | undefined {
 /** 신나서 통통 튀기: 600ms 마다 한 번. 움직임 줄이기면 18px 대신 3px, 착지 찌그러짐 없이 */
 export function excitedBounce(elapsed: number, calm = false): { lift: number; squash: number } {
   const phase = (elapsed % 600) / 600;
+  // 찌그러짐은 바닥에 닿는 순간(phase 0, 1)에 가장 크고 뜨면서 풀린다 (켜고 끄면 틀마다 툭툭 바뀌었다)
+  const near = Math.min(phase, 1 - phase) / 0.12;
   return {
     lift: Math.sin(phase * Math.PI) * (calm ? 3 : 18),
-    squash: !calm && (phase < 0.12 || phase > 0.88) ? 0.08 : 0,
+    squash: calm || near >= 1 ? 0 : 0.08 * (1 - near * near),
   };
 }
 
@@ -179,6 +217,7 @@ export function movePoseOf(act: DrawState['activity'], calm?: boolean): MovePose
 
 /** 지금 커서를 볼지: 기본 상태에서 아무것도 안 하거나 앉아 있을 때만 */
 export function gazeOf(s: DrawState, act: DrawState['activity']): Gaze | undefined {
+  if (s.easedGaze !== undefined) return s.easedGaze ?? undefined;
   if (s.peer) return s.peer.dir;
   if (s.mood !== 'idle' || !s.gaze || (act && act.type !== 'sit')) return undefined;
   return s.gaze;
@@ -198,10 +237,58 @@ export interface Model3D {
   eye?(side: -1 | 1): { x: number; y: number } | undefined;
   /** 방금 그린 그림에서 입 가운데 (문 공 자리). 입이 없으면 undefined */
   mouth?(): { x: number; y: number } | undefined;
+  /** 방금 그린 자세가 아직 목표로 따라가는 중인지 (돌아서기, 걷기 풀기). 그렇다면 몇 틀 더 그린다 */
+  settling?(): boolean;
 }
 
 /** 하트가 떠올라 사라지는 시간 */
 export const HEARTS_MS = 1500;
+/** 축하 색종이가 터져 흩날리다 사라지는 시간 */
+export const CONFETTI_MS = 1800;
+const CONFETTI_COLORS = ['#ff6b8a', '#ffc94d', '#6fcf97', '#7cc4ff', '#b69cff'] as const;
+const CONFETTI_N = 14;
+
+/**
+ * 색종이 조각들의 자리 (펫 그림 좌표, 160 기준). 머리 위(top)에서 위로 터졌다가 양옆으로 흩어지며 떨어지고 끝에 흐려진다.
+ * 조각마다 정해진 값(난수 없음)이라 틀마다 같은 조각이 이어진다
+ */
+export function confettiAt(
+  ms: number,
+  top: number,
+): { x: number; y: number; angle: number; color: string; alpha: number; w: number; h: number }[] {
+  const t = Math.max(0, Math.min(1, ms / CONFETTI_MS));
+  return Array.from({ length: CONFETTI_N }, (_, i) => {
+    const side = i % 2 === 0 ? -1 : 1;
+    const spread = 18 + ((i * 37) % 50);
+    const rise = 26 + ((i * 23) % 22);
+    const x = CX + side * spread * Math.sqrt(t) + side * (i % 3) * 3;
+    // 위로 솟았다가(처음 30%) 천천히 내려온다
+    const y =
+      top + 6 - rise * Math.sin(Math.min(1, t / 0.6) * Math.PI * 0.5) + 70 * Math.max(0, t - 0.3) ** 2;
+    return {
+      x: Math.max(4, Math.min(156, x)),
+      y: Math.max(4, y),
+      angle: (i * 0.9 + t * (4 + (i % 4))) * side,
+      color: CONFETTI_COLORS[i % CONFETTI_COLORS.length] ?? '#ffc94d',
+      alpha: t < 0.7 ? 1 : Math.max(0, 1 - (t - 0.7) / 0.3),
+      w: 5 + (i % 2) * 2,
+      h: 9 - (i % 2) * 3,
+    };
+  });
+}
+
+function drawConfetti(ctx: CanvasRenderingContext2D, ms: number, top: number) {
+  for (const p of confettiAt(ms, top)) {
+    if (p.alpha <= 0) continue;
+    ctx.save();
+    ctx.globalAlpha = p.alpha;
+    ctx.fillStyle = p.color;
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.angle);
+    ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+    ctx.restore();
+  }
+}
 
 /** 이보다 작게 그려지면 글씨표(바쁨)를 그리지 않는다. 12px 글씨가 9px 아래로 줄어드는 크기 */
 const MIN_SIZE_FOR_TEXT = 120;
@@ -213,9 +300,35 @@ const GROUND = 154;
 const RX = 58;
 const RY = 50;
 
+/** 2D 와 사진 펫이 짧게 따라가는 값 (얼굴 방향, 삐친 사진 뒤집기, 커서 방향) */
+const ease2d = new Eased();
+/**
+ * 한 장만 그릴 때(얼굴 아이콘, 몸 그림, 미리보기) 쓰는 따로 된 것. 늘 목표값 그대로라
+ * 살아 있는 펫이 따라가던 값을 건드리지 않는다
+ */
+const easeStill = new Eased();
+easeStill.frame(undefined);
+/** 이번 drawPet 이 쓰는 것 (살아 있는 틀이면 ease2d) */
+let ease = ease2d;
+/** 마지막으로 이어 그린 입체 펫 (따라가는 중인지 물어본다) */
+let liveModel: Model3D | undefined;
+/** 고개 돌리기, 커서 보기가 따라가는 빠르기 (ms, 1/e 시간) */
+const LOOK_TAU = 70;
+const GAZE_TAU = 90;
+
+/** 방금 이어 그린 자세가 아직 따라가는 중인지 (펫 화면이 그리기를 몇 틀 더 이어 간다) */
+export function motionSettling(): boolean {
+  return ease2d.busy || !!liveModel?.settling?.();
+}
+
 /** 펫을 그린다. 공을 물고 있으면 그 공 가운데를 돌려준다 (메인이 내려놓을 자리를 물을 때) */
 export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | undefined {
   ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  if (s.now !== undefined) {
+    ease = ease2d;
+    ease2d.frame(s.now);
+    liveModel = s.model3d;
+  } else ease = easeStill;
   if (s.mood === 'hidden') return undefined;
   const kind = s.kind ?? 'kong';
   BODY = COLORS[kind].body;
@@ -233,12 +346,25 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
     sy = 1 - squash;
   } else if (s.mood === 'grabbed') {
     // 들려 있으니 몸을 조금 올려 늘어진 발이 캔버스 아래로 잘리지 않게 한다.
-    lift = 6;
-    sx = 0.94;
-    sy = 1.08;
+    lift = HELD_LIFT;
+    sx = 1 - HELD_SQUEEZE.x;
+    sy = 1 + HELD_SQUEEZE.y;
+  } else if ((s.land ?? -1) >= 0 && (s.land ?? 0) < LAND_MS) {
+    // 놓이면 툭 내려앉으며 살짝 납작해졌다 돌아온다
+    const l = landPose(s.land ?? 0, s.calm);
+    lift = l.lift;
+    sx = l.sx;
+    sy = l.sy;
   }
   const act = s.mood === 'idle' || s.mood === 'sulky' ? s.activity : undefined;
   if (act?.type === 'walk') lift = Math.abs(Math.sin(act.phase * Math.PI * 2)) * 3;
+  // 커서 방향은 한 틀에 홱 돌지 않고 따라간다 (걷기를 시작하거나 멈출 때도 고개가 툭 돌아가지 않게)
+  if (s.now !== undefined) {
+    const raw = gazeOf(s, act);
+    const gx = ease.to('gx', raw?.x ?? 0, GAZE_TAU);
+    const gy = ease.to('gy', raw?.y ?? 0, GAZE_TAU);
+    s = { ...s, easedGaze: raw || Math.abs(gx) + Math.abs(gy) > 0.004 ? { x: gx, y: gy } : null };
+  }
   if (s.peer?.pose) lift += s.peer.pose.hop;
   // 앉기: 처음에 천천히 앉고 끝에 일어난다 (down 0 서 있음 ~ 1 앉음)
   const sitK = act?.type === 'sit' ? (act.down ?? 1) : 0;
@@ -274,7 +400,7 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
     const top = drawPhoto(ctx, s, s.photo, lift, sx, sy, act);
     const ball = drawCarry(ctx, s.carry, guessMouth(top, GROUND - lift));
     drawPeer(ctx, s, top, GROUND - lift, PHOTO_EYE_AT);
-    drawExtras(ctx, s, top);
+    drawExtras(ctx, s, top, lift);
     return ball;
   }
   if (s.model3d) {
@@ -284,7 +410,7 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
         ? drawCarry(ctx, s.carry, s.model3d.mouth?.() ?? guessMouth(top, GROUND - lift))
         : undefined;
       drawPeer(ctx, s, top, GROUND - lift, MODEL_EYE_AT, s.model3d);
-      drawExtras(ctx, s, top);
+      drawExtras(ctx, s, top, lift);
       return ball;
     }
   }
@@ -295,7 +421,17 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
   // 발: 몸통보다 먼저 그려서 몸 아래로 조금 나오게. 걸을 때는 번갈아 든다. 매달리면 늘어진다.
   // 얼굴 그림에서는 빼고 둥근 몸만 (몸통이 닫힌 타원이라 발 자리에 틈이 생기지 않는다)
   // 폴짝 뛰어도 귀 끝이 캔버스 위로 잘리지 않게 (토순이 귀는 몸 위로 44 나온다)
-  if (mv) lift = Math.min(lift, GROUND - (RY * 2 + EAR_TOP[kind]) * sy - 4);
+  // 꼭대기를 잘라 판판하게 떠 있지 않게, 뛰는 곡선 전체를 같은 배율로 낮춘다. 토순이는 뛰는 동안 귀를 뒤로 젖혀
+  // (hopEars) 그만큼 더 높이 뛴다
+  if (mv && act && 't' in act) {
+    const peak = movePeak(act.type, s.calm);
+    const room = GROUND - (RY * 2 + EAR_TOP[kind] - earDrop(kind, hopEars(act.type, 1))) * peak.sy - 4;
+    lift = mv.lift * hopScale(peak.lift, room) + (lift - mv.lift);
+    lift = Math.min(
+      lift,
+      GROUND - (RY * 2 + EAR_TOP[kind] - earDrop(kind, hopEars(act.type, mv.legs[0] / 0.6))) * sy - 4,
+    );
+  }
   // 기지개로 몸을 늘여도 귀 끝이 잘리지 않게 (토순이)
   if (act) sy = Math.min(sy, (GROUND - 4 - lift) / (RY * 2 + EAR_TOP[kind]));
   // 옆으로 누우면(뒹굴기) 귀, 발, 꼬리까지 바닥 위에 오게 띄운다
@@ -314,8 +450,10 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
     const spread = 24 + 8 * sitK;
     const step = act?.type === 'walk' ? Math.sin(act.phase * Math.PI * 2) * 4 : 0;
     const dangle = s.mood === 'grabbed' ? 6 : 0;
-    // 네 발 동물(냥이, 멍멍이, 토순이, 또는 네 발을 고른 펫)은 걸을 때 뒷발 둘이 가는 반대쪽 뒤에 보인다 (pet3d-gait.ts)
-    if (act?.type === 'walk' && quadKind(kind, s.gait)) drawHindFeet(ctx, act.dir, step, lift);
+    // 네 발 동물(토순이, 또는 네 발을 고른 펫)은 걸을 때 뒷발 둘이 가는 반대쪽 뒤에 보인다 (pet3d-gait.ts)
+    // 걸을 때 몸은 걸음마다 들썩여도(lift) 디딘 발은 바닥에 그대로 있고 든 발만 올라간다 (예전엔 두 발이 같이 떴다)
+    const footLift = act?.type === 'walk' ? 0 : lift;
+    if (act?.type === 'walk' && quadKind(kind, s.gait)) drawHindFeet(ctx, act.dir, step, footLift);
     ctx.fillStyle = BODY;
     ctx.strokeStyle = LINE;
     ctx.lineWidth = 2;
@@ -324,7 +462,7 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
       [1, Math.max(0, -step) + (mv ? mv.legs[1] * 10 : 0)],
     ] as const) {
       ctx.beginPath();
-      ctx.ellipse(CX + side * spread, GROUND - 2 - lift - up + dangle, 10, 5, 0, 0, Math.PI * 2);
+      ctx.ellipse(CX + side * spread, GROUND - 2 - footLift - up + dangle, 10, 5, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
     }
@@ -342,7 +480,11 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
   // 꼬리는 평소 몸 뒤에 숨어 있다가 흔들 때 옆으로 나온다 (냥이, 멍멍이)
   if (mv && mv.tailOut > 0 && (kind === 'cat' || kind === 'dog')) drawTail(ctx, kind, mv.tail, mv.tailOut);
   if (kind === 'cat') drawCatEars(ctx, mv?.ears);
-  if (kind === 'bunny') drawBunnyEars(ctx, mv?.ears);
+  if (kind === 'bunny') {
+    // 폴짝 뛰는 동안은 귀를 양옆으로 젖힌다 (hopEars)
+    const a = mv && act && 't' in act ? hopEars(act.type, mv.legs[0] / 0.6) : 0;
+    drawBunnyEars(ctx, a > 0 ? [a, a] : mv?.ears);
+  }
 
   // 몸통
   ctx.beginPath();
@@ -352,23 +494,28 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
   ctx.lineWidth = 2;
   ctx.strokeStyle = LINE;
   ctx.stroke();
+  // 손 (모든 펫은 손이 있어야 한다, 2026-10-11 사용자 규칙). 얼굴 다음에 그린다 (든 손이 수염 앞에).
+  // 얼굴 아이콘은 머리만
+  const hand = s.face ? undefined : HAND[kind];
   if (kind === 'dog') drawDogEars(ctx, mv?.ears);
-  // 손 흔들기 팔은 몸과 귀 다음, 얼굴 전에 (얼굴을 가리지 않게)
-  if (trick?.type === 'wave') drawWavingHand(ctx, trick.t);
+  // 손 흔들기 팔은 몸과 귀 다음, 얼굴 전에 (얼굴을 가리지 않게). 팔 끝은 다른 손과 같은 손.
+  // 멍멍이는 팔의 몸 안쪽 부분을 칠하지 않는다 (늘어진 귀를 몸 색으로 덮어 귀가 패여 보였다).
+  // 삐약이는 팔 대신 날개를 들어 파닥인다 (drawHands)
+  if (trick?.type === 'wave' && !hand?.wing) drawWavingHand(ctx, trick.t, hand?.color, kind !== 'dog');
   // 매운맛 토라짐 3단계: 등을 돌려 얼굴 대신 뒷모습 (꼬리)
   const stage = sulkStage(s);
   if (stage >= 3) {
     drawBack(ctx, kind);
     ctx.restore();
     ctx.restore();
-    drawExtras(ctx, s, GROUND - lift - RY * 2 * sy);
+    drawExtras(ctx, s, GROUND - lift - RY * 2 * sy, lift);
     return undefined;
   }
 
   // 볼
   // 얼굴을 옆으로: 삐지면 고개를 돌리고, 걷거나 두리번거리면 그쪽을 본다.
   const g = gazeOf(s, act);
-  const look =
+  const lookTo =
     s.mood === 'sulky' && !s.peer
       ? stage >= 2
         ? 16
@@ -382,6 +529,8 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
             : g
               ? g.x * 8
               : 0;
+  // 삐쳐 고개를 돌리거나 걷기 시작할 때 얼굴이 한 틀에 옆으로 건너뛰지 않고 짧게 돌아간다
+  const look = ease.to('look', lookTo, LOOK_TAU);
   // 위아래를 보면 얼굴 전체(볼, 눈, 입)가 그쪽으로 조금. 고개를 숙이면(킁킁, 꾸벅) 더 아래로
   const faceDy = (g ? g.y * 2.5 : 0) + (mv ? mv.pitch * 22 : 0) + dip * 14;
   ctx.save();
@@ -428,6 +577,24 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
   else if (s.hungry && s.mood === 'idle') drawHungryMouth(ctx, look);
   else drawMouth(ctx, s.mood, look);
   ctx.restore();
+  // 손: 늘어진 귀와 수염 앞에. 손 흔들기 동안 오른손은 흔드는 팔이 대신한다
+  if (hand) {
+    const walking = act?.type === 'walk' ? act : undefined;
+    const step = walking ? Math.sin(walking.phase * Math.PI * 2) : 0;
+    // 네 발로 걸으면 손이 앞발이 된다 (출발하며 숙이는 만큼 내려가고 멈추며 다시 올라온다)
+    const quad = walking && quadKind(kind, s.gait) ? walkEnvelopeOf(walking).lean : 0;
+    // 디딘 앞발 가운데 (발 그리기와 같은 자리: 바닥에서 2 위, 걸을 때 발은 들썩이지 않는다)를 몸 좌표로
+    const footY = RY + (lift - 2) / sy;
+    drawHands(ctx, kind, {
+      raise: pawRaise(s, act, mv?.arms ?? 0, trick),
+      step: quad > 0 ? step * (1 - quad) : step,
+      wave: trick?.type === 'wave' ? trick.t : undefined,
+      quad,
+      footY,
+      lifts: [Math.max(0, step * 4) / sy, Math.max(0, -step * 4) / sy],
+      holding: s.peer?.pose && s.peer.pose.alpha > 0 ? lensSide(s.peer.dir) : undefined,
+    });
+  }
   ctx.restore();
   ctx.restore();
   // 문 공은 얼굴 앞에. 입 자리는 위 입 그리기와 같은 계산 (입은 얼굴 가운데에서 look 만큼 옆, 12 아래)
@@ -444,10 +611,10 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
       pose: s.peer.pose,
       x: CX + (side * 20 + look + (g ? g.x * 3 : 0)) * sx,
       y: GROUND - lift + (-RY + gy - 6 + gy) * sy,
-      paw: { body: BODY, line: LINE },
+      paw: { body: HAND[kind].color, line: LINE },
     });
   }
-  drawExtras(ctx, s, GROUND - lift - RY * 2 * sy);
+  drawExtras(ctx, s, GROUND - lift - RY * 2 * sy, lift);
   return ball;
 }
 
@@ -514,11 +681,152 @@ function drawHindFeet(ctx: CanvasRenderingContext2D, dir: -1 | 1, step: number, 
 }
 
 /**
+ * 기본 펫의 손 (모든 펫은 손이 있어야 한다, 2026-10-11 사용자 규칙). 냥이, 멍멍이, 토순이, 콩이는 동그란 손(발),
+ * 삐약이는 작은 날개 손. 색은 입체 설계도와 같다 (냥이 하얀 발, 멍멍이 크림색 발, 토순이 하얀 배, 콩이 몸 색,
+ * 삐약이 날개 색, shared/pet3d/defaults.ts). pad 면 든 손에 분홍 발바닥
+ */
+const HAND: Record<PetKind, { color: string; pad: boolean; wing?: boolean }> = {
+  kong: { color: COLORS.kong.body, pad: true },
+  cat: { color: '#fbf8f4', pad: true },
+  dog: { color: '#fbefdc', pad: true },
+  bunny: { color: '#fffafa', pad: true },
+  chick: { color: '#ffd24d', pad: false, wing: true },
+};
+
+/**
+ * 손을 드는 정도 0~1 (양손 [왼, 오른], 화면 기준). 신나면(밥 먹기, 큰 축하도) 통통 흔들며 들고, 빙글 춤과 기지개는 활짝,
+ * 들려 있으면 버둥, 폴짝, 뒹굴기 같은 몸짓은 그 팔 값(move-pose.ts arms)대로. 하품은 조금
+ */
+function pawRaise(
+  s: DrawState,
+  act: DrawState['activity'],
+  arms: number,
+  trick: ReturnType<typeof trickOf>,
+): [number, number] {
+  let k = arms * 1.6;
+  if (s.mood === 'excited') {
+    const w = Math.sin(s.elapsed / 90);
+    return [0.85 + w * 0.15, 0.85 - w * 0.15];
+  }
+  if (s.mood === 'grabbed') k = Math.max(k, 0.6);
+  if (trick?.type === 'dance') k = Math.max(k, 0.8);
+  if (act?.type === 'stretch') k = Math.max(k, Math.sin(Math.min(1, act.t) * Math.PI));
+  if (act?.type === 'yawn') k = Math.max(k, 0.4 * Math.sin(Math.min(1, act.t) * Math.PI));
+  if (s.mood === 'thinking') return [0, 0.45];
+  const v = Math.min(1, k);
+  return [v, v];
+}
+
+/** 손 그리기에 넘기는 자세 (몸 좌표, 가운데가 0) */
+interface HandPose {
+  /** 드는 정도 [왼, 오른] 0~1 (pawRaise) */
+  raise: readonly [number, number];
+  /** 걸을 때 흔들기 -1~1 (발과 반대로) */
+  step: number;
+  /** 손 흔들기 진행 0~1. 손 펫은 흔드는 팔이 오른손을 대신하고, 삐약이는 오른 날개를 들어 파닥인다 */
+  wave?: number;
+  /**
+   * 네 발 걷기 정도 0~1 (출발하며 들어가고 멈추며 풀린다). 손이 몸 테두리를 따라 내려가 앞발이 되어 딛는다.
+   * footY 는 디딘 앞발 가운데 높이(몸 좌표), lifts 는 앞발 [왼, 오른]을 든 높이 (발 그리기와 같은 값)
+   */
+  quad: number;
+  footY: number;
+  lifts: readonly [number, number];
+  /** 돋보기를 쥔 쪽 (그쪽 손은 손잡이를 쥐러 갔다) */
+  holding?: -1 | 1;
+}
+
+/** 몸 테두리의 가로 자리 (몸 좌표 y 에서) */
+function bodyEdge(y: number): number {
+  return RX * Math.sqrt(Math.max(0, 1 - (y / RY) ** 2));
+}
+
+/**
+ * 기본 펫의 손: 몸 아래쪽 양옆에 반쯤 나온 동그란 발 (몸 좌표, 가운데가 0). 쉴 때는 배 옆에 붙어 있고,
+ * 들면 몸 테두리를 따라 위로 올라간다. 들어 손바닥이 보이면 분홍 발바닥.
+ * 걸을 때는 발과 반대로 앞뒤(위아래)로 흔든다. 네 발로 걸으면 테두리를 따라 내려가 앞발 자리에서 딛는다.
+ * 삐약이는 날개 손 (drawWing)
+ */
+function drawHands(ctx: CanvasRenderingContext2D, kind: PetKind, p: HandPose) {
+  const hand = HAND[kind];
+  ctx.save();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = LINE;
+  for (const side of [-1, 1] as const) {
+    if (side === p.holding) continue;
+    const i = side === -1 ? 0 : 1;
+    if (hand.wing) {
+      const waving = side === 1 && p.wave !== undefined;
+      const wt = p.wave ?? 0;
+      const up = waving ? Math.max(p.raise[i] ?? 0, Math.min(1, wt * 5, (1 - wt) * 5)) : (p.raise[i] ?? 0);
+      drawWing(ctx, side, up, waving ? waveSwing(wt) * 0.35 : p.step * side * 0.12, hand.color);
+      continue;
+    }
+    if (side === 1 && p.wave !== undefined) continue;
+    const up = p.raise[i] ?? 0;
+    // 손은 늘 몸 테두리에 반쯤 걸쳐 있다 (떨어져 떠 보이지 않게): 쉴 때 배 옆 아래, 들면 테두리를 따라 어깨 위로
+    // 올라가며 조금 더 밖으로 나온다. 걸을 때는 위아래로 조금
+    let y = 24 - up * 40 - side * p.step * 3;
+    let x = side * (bodyEdge(y) + 1 + up * 5);
+    let rx = 9;
+    let ry = 8;
+    if (p.quad > 0) {
+      // 네 발 걷기: 테두리를 따라 내려가 앞발 자리(가운데에서 24)에서 디딘다. 앞발 그림을 덮게 조금 납작하고 넓게
+      y += (p.footY - (p.lifts[i] ?? 0) - y) * p.quad;
+      x = side * Math.max(bodyEdge(y) + 1, 24 + (Math.abs(x) - 24) * (1 - p.quad));
+      rx += 2 * p.quad;
+      ry -= 1.5 * p.quad;
+    }
+    ctx.beginPath();
+    ctx.ellipse(x, y, rx, ry, side * (0.3 + up * 0.5) * (1 - p.quad), 0, Math.PI * 2);
+    ctx.fillStyle = hand.color;
+    ctx.fill();
+    ctx.stroke();
+    if (hand.pad && up > 0.5) {
+      ctx.beginPath();
+      ctx.ellipse(x + side * 0.5, y + 1, 3.6, 3, 0, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 150, 170, ${Math.min(0.6, (up - 0.5) * 1.6)})`;
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+/**
+ * 삐약이 날개 손: 어깨(몸 테두리 조금 안)에서 아래로 늘어진 작은 날개. 들면 바깥 위로 펼치고, flap 만큼 더 파닥인다.
+ * 끝에 깃 두 가닥 홈을 그어 날개로 읽힌다
+ */
+function drawWing(ctx: CanvasRenderingContext2D, side: -1 | 1, up: number, flap: number, color: string) {
+  const y0 = 4 - up * 12;
+  ctx.save();
+  // 들수록 어깨 안쪽에서 더 위로 세운다 (옆으로 눕히면 날개 끝이 캔버스 밖으로 잘린다)
+  ctx.translate(side * (bodyEdge(y0) - 5 - up * 3), y0);
+  ctx.rotate(-side * (0.4 + up * 2.3 + flap));
+  ctx.beginPath();
+  ctx.ellipse(0, 10, 7, 12.5, 0, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.stroke();
+  // 깃 홈: 날개 끝 쪽 짧은 선 둘
+  ctx.lineWidth = 1.3;
+  ctx.lineCap = 'round';
+  ctx.globalAlpha = 0.6;
+  for (const dx of [-2.6, 2.6]) {
+    ctx.beginPath();
+    ctx.moveTo(dx * 0.6, 13);
+    ctx.lineTo(dx, 19.5);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/**
  * 손 흔들기: 몸 오른쪽 안쪽에서 시작한 짧은 팔이 몸 테두리 밖으로 나와 좌우로 흔든다 (몸 좌표, 가운데가 0).
  * 몸 안쪽 부분은 몸과 같은 색으로만 칠해 몸에서 자라난 듯 이어지고, 테두리 선은 밖으로 나온 부분에만 있다.
- * 얼굴(볼, 눈, 수염)보다 먼저 그려 얼굴을 가리지 않는다
+ * 얼굴(볼, 눈, 수염)보다 먼저 그려 얼굴을 가리지 않는다. paw 를 주면 팔 끝에 그 색 손 (HAND).
+ * inside 가 false 면 몸 안쪽 부분을 칠하지 않는다 (몸 위에 그린 귀를 덮지 않게)
  */
-function drawWavingHand(ctx: CanvasRenderingContext2D, t: number) {
+function drawWavingHand(ctx: CanvasRenderingContext2D, t: number, paw?: string, inside = true) {
   const up = Math.min(1, t * 5, (1 - t) * 5);
   const swing = waveSwing(t);
   const len = 27 + up * 7;
@@ -535,15 +843,17 @@ function drawWavingHand(ctx: CanvasRenderingContext2D, t: number) {
   ctx.rotate(0.45 + (1 - up) * 0.8 + swing * 0.28);
   const local = ctx.getTransform();
   ctx.restore();
-  // 몸 안: 몸 색으로만 (몸 테두리 안쪽 반을 덮어 이음매가 없다)
-  ctx.save();
-  body();
-  ctx.clip();
-  ctx.setTransform(local);
-  arm();
-  ctx.fillStyle = BODY;
-  ctx.fill();
-  ctx.restore();
+  // 몸 안: 몸 색으로만 (몸 테두리 안쪽 반을 덮어 이음매가 없다). inside 가 false 면 몸 테두리에서 바로 나온다
+  if (inside) {
+    ctx.save();
+    body();
+    ctx.clip();
+    ctx.setTransform(local);
+    arm();
+    ctx.fillStyle = BODY;
+    ctx.fill();
+    ctx.restore();
+  }
   // 몸 밖: 테두리까지
   ctx.save();
   ctx.beginPath();
@@ -557,6 +867,14 @@ function drawWavingHand(ctx: CanvasRenderingContext2D, t: number) {
   ctx.lineWidth = 2;
   ctx.strokeStyle = LINE;
   ctx.stroke();
+  // 팔 끝은 다른 손과 같은 색 동그란 손 (drawHands)
+  if (paw) {
+    ctx.beginPath();
+    ctx.ellipse(0, -len + 5, 9, 8, 0, 0, Math.PI * 2);
+    ctx.fillStyle = paw;
+    ctx.fill();
+    ctx.stroke();
+  }
   ctx.beginPath();
   ctx.ellipse(0, -len + 6, 3.2, 2.6, 0, 0, Math.PI * 2);
   ctx.fillStyle = 'rgba(255, 150, 170, 0.6)';
@@ -645,6 +963,16 @@ function drawDogEars(ctx: CanvasRenderingContext2D, flick: readonly [number, num
     ctx.stroke();
     ctx.restore();
   }
+}
+
+/** 토순이 2D 가 폴짝 뛰는 동안 귀를 젖히는 각 (air 는 뜬 정도 0~1). 다른 몸짓은 0 */
+function hopEars(type: string, air: number): number {
+  return type === 'hop' ? 1.2 * Math.max(0, Math.min(1, air)) : 0;
+}
+
+/** 귀를 a 만큼 젖혔을 때 귀 끝이 내려온 높이. 토순이만 (밑동에서 귀 끝까지 56, drawBunnyEars 는 0.8 배로 돌린다) */
+function earDrop(kind: PetKind, a: number): number {
+  return kind === 'bunny' ? 56 * (1 - Math.cos(a * 0.8)) : 0;
 }
 
 /** 귀 젖히는 각 (몸짓 ears, 바깥쪽이 +) */
@@ -815,7 +1143,7 @@ function drawPhoto(
   // 캔버스 안 바닥에 서도록, 신남으로 튀어도 위가 안 잘리게 여유를 둔다.
   const maxW = 140;
   const maxH = 124;
-  const k = Math.min(maxW / photo.width, maxH / photo.height);
+  const k = Math.min(maxW / photo.width, maxH / photo.height) * (s.photoScale ?? 1);
   const w = photo.width * k;
   const h = photo.height * k;
   let tilt = 0;
@@ -841,8 +1169,10 @@ function drawPhoto(
   ctx.save();
   ctx.translate(CX + shift, GROUND - lift);
   ctx.rotate(tilt);
-  // 삐지면 등을 돌린 듯 좌우를 뒤집는다.
-  ctx.scale(s.mood === 'sulky' ? -sx : sx, sy);
+  // 삐지면 등을 돌린 듯 좌우를 뒤집는다. 한 틀에 뒤집지 않고 돌아서듯 좁아졌다 뒤집혀 넓어진다.
+  // 걸을 때는 뒤집지 않는다: 사진이 어느 쪽을 보는지 모른다
+  const flip = ease.to('flip', s.mood === 'sulky' ? -1 : 1, LOOK_TAU);
+  ctx.scale((flip < 0 ? -1 : 1) * Math.max(0.12, Math.abs(flip)) * sx, sy);
   if (s.mood === 'sleeping' || s.mood === 'dozing') ctx.globalAlpha = 0.85;
   ctx.drawImage(photo, -w / 2, -h, w, h);
   ctx.restore();
@@ -1094,8 +1424,11 @@ function drawMouth(ctx: CanvasRenderingContext2D, mood: PetMood, look: number) {
   }
 }
 
-/** 몸 밖에 붙는 것들: 생각 중 점, 잠 Zz, 바쁨 땀과 이름표, 삐짐 막대, 하트. top 은 머리 꼭대기 y. */
-function drawExtras(ctx: CanvasRenderingContext2D, s: DrawState, top: number) {
+/**
+ * 몸 밖에 붙는 것들: 생각 중 점, 잠 Zz, 바쁨 땀과 이름표, 삐짐 막대, 하트. top 은 머리 꼭대기 y.
+ * lift 는 몸이 뛰어오른 높이: 색종이는 바닥 기준(top + lift)에서 터져 펫이 통통 튀어도 따라 튀지 않는다
+ */
+function drawExtras(ctx: CanvasRenderingContext2D, s: DrawState, top: number, lift = 0) {
   // 머리 오른쪽 위에 꽂은 꽃. 사진은 머리가 가운데 쪽이라 조금 안으로
   if (s.flower) drawFlower(ctx, CX + (s.photo ? 14 : 24), top + 8);
   if ((s.sulk ?? 0) > 0 && s.mood === 'sulky') drawSulkGauge(ctx, s.sulk ?? 0, top);
@@ -1103,6 +1436,8 @@ function drawExtras(ctx: CanvasRenderingContext2D, s: DrawState, top: number) {
   if (pouting >= 2) drawHuff(ctx, top, pouting >= 3);
   if (pouting >= 3) drawCross(ctx, CX - 40, Math.max(12, top + 10));
   if ((s.hearts ?? -1) >= 0 && (s.hearts ?? 0) < HEARTS_MS) drawHearts(ctx, s.hearts ?? 0, top);
+  if ((s.confetti ?? -1) >= 0 && (s.confetti ?? 0) < CONFETTI_MS)
+    drawConfetti(ctx, s.confetti ?? 0, top + lift);
   drawMoveMark(ctx, s, top);
   if ((s.fresh ?? -1) >= 0 && s.mood !== 'sleeping' && s.mood !== 'dozing') drawFresh(ctx, s.fresh ?? 0, top);
   if (s.photo) drawPhotoEnergy(ctx, s, top);

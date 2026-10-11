@@ -1,57 +1,303 @@
+<div align="center">
+
+<img src="docs/assets/screens/hero.webp" alt="화면 아래를 걸어가다 할 일을 끝냈다고 기뻐하는 펫 콩이" width="680">
+
 # 짝꿍 (Jjakkung)
 
-옆자리 짝꿍처럼 화면 위를 돌아다니는 펫이 할 일, 일정, 메모를 같이 챙기고, 내 컴퓨터에 설치된 AI(Claude, Codex)와 연결돼 "같이 보기"로 화면을 보며 대화하는 데스크톱 앱. 맥과 윈도우를 동시에 지원한다.
+**화면 위를 돌아다니는 펫이 할 일, 일정, 메모를 같이 챙겨 주는 데스크톱 비서예요.**
 
-지금 되는 것 (2026-10-07):
+맥과 윈도우용 · 베타 · [설치 안내](docs/install.md) · [사용 가이드](docs/guide.md) · [변경 이력](CHANGELOG.md)
 
-- 화면 위 펫: 드래그, 던지기, 크기 조절, 위치 기억, 걷기, 창 위에 앉기, 바쁨 모드, 말풍선, 마우스 쳐다보기, 방해 금지(숨기기, 발표), 2D 와 입체(three.js) 캐릭터 5마리, 사진 펫(2.5D 또는 AI 설계도), 친구 펫 3마리, 화면이 죽으면 저절로 다시 불러오기
-- 할 일, 일정, 메모: 펫을 누르면 패널. 빠른 입력(한국어와 영어 날짜, 시각, 반복), 반복 할 일, 일정 알림과 오늘 마감 알림, 놓친 알림, 집중 타이머, 하루 회고, 구글 캘린더(.ics) 가져오기
-- 펫의 하루: 코인과 밥, 상점과 집, 기분과 삐짐, 친밀도 몸짓, 업적과 연속 기록, 짝꿍 일기, 숨바꼭질, 효과음(기본 끔)
-- AI: 채팅(Claude, Codex, Cursor, Gemini, 직접 추가, 무료 AI), 모델 고르기, 같이 보기(화면 일부를 찍어 물어보기), 사용량 보기, 내 할 일 같이 보내기, 짝꿍 규칙, 내 MCP 도구, 다른 AI 에서 짝꿍 쓰기(MCP 서버)
-- 설정과 관리: 한국어와 영어, 단축키 바꾸기, 백업과 옮기기, 펫 공유(.jjpet), 저장 공간, 부스트 모드, 베타 기록, 업데이트 알림(꼭 필요한 업데이트), 메뉴 막대(할 일 보기, 펫 새로고침), 진단 기록(`logs/main.log`)
+</div>
 
-MVP 와 v1, v2 대부분이 맥에서 돌고 맥 설치 파일이 나온다. 윈도우는 확인 전이다([체크리스트](docs/tests/windows.md)). 앱 코드는 `src/`, `spike/` 는 0단계 실험 코드라 0단계가 끝나면 지운다. 진행 상황은 [docs/roadmap.md](docs/roadmap.md)에 있다.
+---
+
+## 짝꿍은 이런 앱이에요
+
+옆자리 짝꿍처럼 화면 한쪽에 펫이 살아요. 가만히 있다가 가끔 걸어 다니고, 창 위에 올라앉고, 마우스를 쳐다보고, 쓰다듬으면 하트를 띄워요. 펫을 누르면 오늘 할 일과 일정이 담긴 패널이 열리고, 우클릭하면 AI와 대화하거나 화면을 같이 보며 물어볼 수 있어요.
+
+- **펫**: 기본 펫 다섯(콩, 냥이, 삐약이, 멍멍이, 토순이)과 그림 친구 둘(밀크, 초코). 반려동물이나 인형 사진 한 장으로 나만의 펫도 만들 수 있어요.
+- **비서**: 할 일, 메모, 일정, 집중 타이머, 하루 회고. "내일 3시 회의"처럼 한 줄로 넣으면 날짜와 시각을 알아들어요.
+- **AI**: 이 컴퓨터에 설치해 둔 Claude Code, Codex, Cursor, Gemini CLI를 불러 대화해요. 하나도 없으면 컴퓨터 안에서만 도는 무료 AI를 받아 쓸 수 있어요.
+
+<p align="center">
+  <img src="docs/assets/screens/desktop.png" alt="바탕 화면 아래쪽에 펫 셋이 있고, 오른쪽에 오늘 할 일과 일정이 담긴 패널이 열려 있다. 콩이가 치과 일정 30분 전이라고 말풍선으로 알려 준다" width="820">
+</p>
+
+> 이 문서의 화면은 모두 실제 앱을 띄워 찍었어요. 할 일, 일정, 메모는 지어낸 예시예요.
+
+## 한눈에 보기
+
+### 펫
+
+<p align="center">
+  <img src="docs/assets/screens/pets.png" alt="기본 펫 다섯 콩, 냥이, 삐약이, 멍멍이, 토순이와 그림 친구 밀크(흰 고양이), 초코(갈색 푸들)" width="820">
+</p>
+
+- 드래그로 옮기고, 잡아서 휙 놓으면 던져져서 통통 튀어요. 좌우로 문지르면 쓰다듬기예요.
+- 기본 펫은 입체(three.js)로 그려요. 모습을 피규어, 게임 캐릭터, 실사, 복슬복슬(시험) 중에 고르거나, 예전처럼 납작한 2D로 둘 수 있어요.
+- 기분, 배부름, 친밀도가 있어요. 할 일을 끝내면 코인이 쌓이고, 코인으로 밥과 장난감, 집을 사 줄 수 있어요. 오래 안 놀아 주면 삐지기도 해요.
+- 친구 펫을 세 마리까지 데려와 같이 돌아다니게 할 수 있어요. 펫은 `.jjpet` 파일로 내보내 친구에게 줄 수 있어요.
+- 다른 앱을 전체 화면으로 쓰거나 발표할 때는 가려지고, 단축키로 잠깐 숨길 수도 있어요.
+
+<p align="center">
+  <img src="docs/assets/screens/pet-styles.png" alt="콩을 피규어, 게임 캐릭터, 실사, 복슬복슬, 납작한 2D 로 그린 모습과, 고양이 사진으로 만든 입체 피규어" width="820">
+</p>
+
+<p align="center">
+  <img src="docs/assets/screens/pet-moods.png" alt="쓰다듬으면 하트, 기뻐하기, 밥 먹기, 춤추기, 졸기, AI 답을 기다리며 말줄임표를 띄운 모습" width="820">
+</p>
+
+### 할 일, 메모, 일정
+
+펫을 누르면 패널이 열려요. 탭은 오늘, 할 일, 메모, 일정, 상점이에요.
+
+<p align="center">
+  <img src="docs/assets/screens/panel.png" alt="패널의 오늘, 할 일, 메모, 일정 탭" width="820">
+</p>
+
+- **오늘**: 다음 할 일과 그 단계, 바로 시작하는 집중 타이머(15, 25, 50분), 오늘 일정, 마감, 이번 주 기록, 업적, 펫의 일기.
+- **할 일**: 마감일과 시각, 중요 표시, 반복(매일, 평일, 매주), 단계 체크리스트, 미리 알림. 끝내면 코인을 받아요.
+- **메모**: 찾기, AI가 대화 중에 남긴 메모는 `AI` 표시가 붙어요.
+- **일정**: 알림(기본 10분 전), 종일 일정, 알림에서 화상 회의 주소 바로 열기. 구글 캘린더 같은 캘린더의 `.ics` 비공개 주소를 넣으면 30분마다 앞으로 60일 일정을 가져와요.
+- **빠른 입력**: 어디서든 단축키 한 번으로 한 줄 입력 창이 떠요. "내일 3시 회의", "매일 운동", "금요일 휴가"처럼 써요(한국어와 영어).
+
+<p align="center">
+  <img src="docs/assets/screens/quick-add.png" alt="빠른 입력 창에 '내일 오후 3시 치과 예약'을 쓰는 모습" width="480">
+</p>
+
+어두운 모드도 운영체제 설정을 따라가요.
+
+<p align="center">
+  <img src="docs/assets/screens/panel-dark.png" alt="어두운 모드의 패널 네 탭" width="820">
+</p>
+
+### 비서와 대화
+
+<p align="center">
+  <img src="docs/assets/screens/chat.png" alt="채팅 창. 오늘 일정과 할 일을 보고 오후 계획을 짜 달라는 질문에 펫이 시간 순서로 정리해 답한다. 밝은 모드와 어두운 모드" width="760">
+</p>
+
+- 고를 수 있는 AI: Claude Code(`claude`), Codex(`codex`), Cursor(`cursor-agent`, 실험적), Gemini(`gemini`, 실험적), 직접 추가한 CLI, 무료 AI(Qwen3 1.7B 또는 0.6B, 이 컴퓨터 안에서만 돌아요).
+- **내 할 일 같이 보내기**를 켜면 "오늘 뭐부터 할까?"에 내 할 일과 일정을 보고 답해요.
+- **짝꿍 도구 쓰기**를 켜면 대화 중에 "내일 장보기 할 일로 넣어 줘"라고 하면 AI가 짝꿍에 직접 넣어요(Claude, Codex).
+- **같이 보기**: 펫을 우클릭해 "같이 보기"를 고르고 화면 일부를 고르면, 그 그림을 AI에게 보여 주며 물어볼 수 있어요.
+- 성격과 말투(다정한 친구, 존댓말 비서, 츤데레, 차분한 선생님), 짝꿍 규칙, AI 사용량 보기, 내 MCP 도구.
+- 반대로 Claude Code나 Codex 안에서 짝꿍을 MCP 서버로 연결해 "이거 짝꿍 할 일에 넣어 줘"라고 할 수도 있어요.
+
+<p align="center">
+  <img src="docs/assets/screens/chat-picker.png" alt="AI 고르기 메뉴. Claude, 무료 AI, Codex, Cursor, Gemini 와 설치 상태" width="360">
+</p>
+
+### 내 펫 만들기
+
+사진 한 장으로 펫을 만들어요. 배경 지우기는 이 컴퓨터 안에서 해요.
+
+<p align="center">
+  <img src="docs/assets/screens/maker-steps.png" alt="사진으로 펫 만들기의 세 단계: 사진 고르기, 배경을 지운 결과를 지우개와 복원 붓으로 다듬기, 모습과 이름 정하기" width="820">
+</p>
+
+마지막 단계에서 모습을 골라요.
+
+- **사진 그대로**: 오린 사진을 그대로 써요.
+- **입체 피규어**: Claude나 Codex가 사진을 보고 입체 설계도를 그려 360도로 돌려 볼 수 있는 피규어를 만들어요. 다듬은 사진 한 장만 보내고 AI 사용량을 조금 써요.
+- **2.5D 입체**: 사진의 깊이를 재서 살짝 입체감 있게 움직여요(깊이 모델은 이 컴퓨터에서 돌아요).
+
+<p align="center">
+  <img src="docs/assets/screens/maker-more.png" alt="왼쪽: AI가 고양이 사진을 보고 만든 입체 피규어 미리 보기와 걸음새, 요청사항. 오른쪽: AI 일러스트로 다시 그리기 화면" width="760">
+</p>
+
+사진을 귀여운 그림으로 다시 그리고 싶다면 **AI 일러스트로 다시 그리기**를 골라요. 그리는 곳은 셋이에요.
+
+| 그리는 곳 | 횟수 | 사진이 나가는 곳 |
+| --- | --- | --- |
+| 무료 서버 (기본) | 하루 몇 번. 횟수는 인터넷 연결마다 따로 세고 하루가 지나면 다시 채워져요. 무료 Hugging Face 토큰을 넣으면 더 그릴 수 있어요 | Hugging Face의 무료 그림 서버(다른 사람이 운영) |
+| Gemini 앱에서 만들기 | Gemini 앱의 무료 사용량만큼 | 내가 직접 Gemini(구글)에 올려요. 짝꿍은 보내지 않아요 |
+| 내 컴퓨터에서 | 제한 없음. 처음 한 번 준비가 필요해요 | 나가지 않아요 |
+
+- **Gemini 앱(무료)에서 만들기**: 단추를 누르면 요청문이 복사되고 Gemini가 열려요. 펫 사진과 요청문을 보내고, 나온 그림을 짝꿍에 끌어다 놓으면 이어서 만들어요. 구글 계정만 있으면 돼요.
+- **내 컴퓨터에서 그리기**: Apple 칩 Mac(macOS 14 이상)은 mflux로, 윈도우 x64와 인텔 Mac, macOS 12~13 Apple 칩 Mac은 sd.cpp로 그려요. 메모리 8GB 이상이 필요하고, 처음 한 번 mflux는 약 16GB를 받아 약 5GB를 남기고, sd.cpp는 약 5.3GB를 받아요. 그래픽 칩 없이 CPU로 그리면 한 장에 꽤 오래 걸려요.
+- **Hugging Face 토큰**: huggingface.co/settings/tokens에서 무료로 만들 수 있어요. 토큰은 그림 서버에도 같이 가니 권한을 가장 적게 준 Fine-grained 토큰을 추천해요. 이 컴퓨터에만 저장하고 백업에도 넣지 않아요.
+
+<p align="center">
+  <img src="docs/assets/screens/maker-gemini.png" alt="Gemini 앱(무료)에서 만들기 안내 카드. 모양(피규어, 일러스트) 고르기, 세 단계 설명, 요청문 복사하고 Gemini 열기 단추, 받은 그림을 놓는 칸" width="420">
+</p>
+
+### 설정
+
+설정은 펫, 비서, AI, 편의, 데이터, 정보 여섯 탭이고, 맨 위 찾기 칸으로 바로 찾을 수 있어요.
+
+<p align="center">
+  <img src="docs/assets/screens/settings-1.png" alt="설정의 펫, 비서, AI 탭" width="820">
+</p>
+
+<p align="center">
+  <img src="docs/assets/screens/settings-2.png" alt="설정의 편의(단축키), 데이터(백업과 저장 공간), 정보(업데이트와 베타 기록) 탭" width="820">
+</p>
+
+## 설치
+
+받을 파일과 처음 열 때 경고 넘기는 법은 **[설치 안내](docs/install.md)** 에 있어요. 짧게 정리하면 이래요.
+
+- **맥**: 애플 실리콘은 `jjakkung-<버전>-mac-arm64.dmg`, 인텔은 `jjakkung-<버전>-mac-x64.dmg`. 아직 애플 개발자 서명 전이라 처음 한 번 시스템 설정 → 개인정보 보호 및 보안에서 "그래도 열기"를 눌러야 해요.
+- **윈도우**: `jjakkung-<버전>-win-x64.exe`. "Windows의 PC 보호" 창이 뜨면 추가 정보 → 실행. 관리자 권한 없이 설치돼요. 윈도우는 아직 확인 중이에요([체크리스트](docs/tests/windows.md)).
+- 설치판은 새 버전을 알아서 받아 두고 펫이 "다시 켜서 업데이트"를 띄워요.
+
+### 시스템 요구 사항과 크기
+
+| | 내용 |
+| --- | --- |
+| 운영체제 | macOS(애플 실리콘, 인텔), Windows x64 |
+| AI 대화 | Claude Code, Codex, Cursor, Gemini CLI 중 하나를 설치하고 로그인해 두거나, 무료 AI 모델(Qwen3 1.7B 약 940MB, 0.6B 약 400MB)을 받아요 |
+| 설치 파일 크기 | 맥과 윈도우 설치 파일 크기는 아직 재지 않았어요. 참고로 리눅스에서 `npm run dist` 로 만든 시험 빌드가 약 128MB였어요 |
+| 처음 쓸 때 받는 것 | 사진 펫 배경 지우기 모델 약 170MB와 사진 AI 엔진 약 17MB, 2.5D 깊이 모델 약 27MB(쓸 때만) |
+| 내 컴퓨터에서 그리기 | 메모리 8GB 이상, 빈 공간 7~20GB (엔진에 따라) |
+
+받은 모델은 설정 → 데이터 → 저장 공간에서 크기를 보고 지울 수 있어요.
+
+## 처음 켜기
+
+처음 켜면 네 쪽짜리 안내가 떠요. 펫 이름과 모습을 고르고, 만나는 시간을 정하고, 같이 보기 권한과 AI 연결을 확인하고, 알아 두면 좋은 조작을 봐요. 언제든 건너뛸 수 있고 나중에 설정에서 다 바꿀 수 있어요.
+
+<p align="center">
+  <img src="docs/assets/screens/onboarding.png" alt="시작 안내: 이름과 모습 고르기(밝은 모드, 어두운 모드), 알아 두면 좋은 것(누르기, 우클릭, 문지르기, 던지기, 단축키)" width="820">
+</p>
+
+자세한 사용법은 **[사용 가이드](docs/guide.md)** 에 단계별로 정리해 뒀어요.
+
+## 단축키
+
+맥은 `Cmd`, `Option`, 윈도우는 `Ctrl`, `Alt` 예요. 어디서나 쓰는 다섯 개는 설정 → 편의에서 바꾸거나 끌 수 있어요.
+
+| 어디서 | 키 | 하는 일 |
+| --- | --- | --- |
+| 어디서나 | `Cmd/Ctrl + Option/Alt + Shift + N` | 빠른 입력 (할 일이나 일정 한 줄) |
+| 어디서나 | `Cmd/Ctrl + Option/Alt + Shift + J` | 대화 창 열기 |
+| 어디서나 | `Cmd/Ctrl + Option/Alt + Shift + L` | 같이 보기 |
+| 어디서나 | `Cmd/Ctrl + Option/Alt + Shift + T` | 패널 열고 닫기 |
+| 어디서나 | `Cmd/Ctrl + Option/Alt + Shift + H` | 펫 숨기기, 다시 보이기 |
+| 마우스가 펫 위에 있을 때 | `Cmd/Ctrl + Option/Alt + =` / `-` / `0` | 펫 크게, 작게, 원래대로 |
+| 마우스가 펫 위에 있을 때 | `Cmd/Ctrl + 휠`, 트랙패드 핀치 | 펫 크기 |
+| 패널 | `Cmd/Ctrl + 1` ~ `5` | 오늘, 할 일, 메모, 일정, 상점 |
+| 패널 | `Cmd/Ctrl + Z` | 방금 지운 것, 끝낸 것 되돌리기 |
+| 패널, 빠른 입력 | `Esc` | 입력칸 비우기, 창 닫기 |
+| 채팅 | `Enter` / `Shift + Enter` | 보내기 / 줄 바꾸기 |
+| 채팅 | `Esc` | 답 멈추기 |
+| 채팅 | `Cmd/Ctrl + N` | 새 대화 |
+| 채팅 | `↑` | 마지막 질문 다시 불러오기 |
+| 설정 | `Cmd/Ctrl + F` | 설정 찾기 |
+| 설정 | `Cmd/Ctrl + [` / `]`, `Cmd/Ctrl + 1` ~ `6` | 탭 옮기기 |
+| 시작 안내 | `←` / `→` | 이전, 다음 쪽 |
+
+## 개인정보: 무엇이 나가고 무엇이 남나요
+
+짝꿍 자체는 서버가 없어요. 할 일, 메모, 일정, 코인, 펫, 설정은 모두 이 컴퓨터의 사용자 데이터 폴더에 있어요.
+
+**이 컴퓨터에만 남는 것**
+
+- 할 일, 메모, 일정, 일기, 코인과 펫 상태 (`jjakkung.db`, `settings.json` 등)
+- 사진 펫 만들기의 배경 지우기와 2.5D 깊이 재기, 무료 AI 대화, 내 컴퓨터에서 그리기
+- 같이 보기로 찍은 화면은 디스크에 저장하지 않아요
+- 베타 기록(쓴 날, 끝낸 할 일 수 같은 숫자)과 진단 기록(`logs/main.log`). 질문, 답, 할 일과 일정 제목은 진단 기록에 남기지 않아요. 의견 보내기에 붙일 때도 내가 복사해서 직접 보내요
+
+**밖으로 나가는 것 (내가 그 기능을 쓸 때만)**
+
+| 기능 | 어디로 | 무엇이 |
+| --- | --- | --- |
+| AI 대화, 같이 보기, 입체 피규어 만들기 | 내가 고른 AI CLI가 연결된 곳 (Anthropic, OpenAI, Cursor, Google) | 질문, 고른 화면 그림, 다듬은 사진 한 장. "내 할 일 같이 보내기"를 켜면 안 끝낸 할 일 제목과 마감, 오늘 남은 일정 제목 |
+| AI 일러스트 (무료 서버) | Hugging Face의 무료 그림 서버 | 고른 사진, 바라는 점, 넣었다면 HF 토큰 |
+| 캘린더 가져오기 | 내가 넣은 `.ics` 주소 | 요청만 (받아 오기) |
+| 구글 캘린더로 보내기 | 구글 캘린더 API (내가 연결했을 때만) | 짝꿍에서 넣은 일정 |
+| 모델과 도구 받기 | GitHub, Hugging Face, jsDelivr/unpkg, PyPI 등 | 요청만 (받아 오기) |
+| 업데이트 확인, 모델 목록 | GitHub (`milcho0604/jjakkung` 릴리스와 `catalog/models.json`) | 요청만 |
+
+Claude Code와 Codex는 기본으로 내 훅, MCP, 스킬을 싣지 않고 불러요(설정 → AI → "내 AI 설정 없이 부르기").
+
+## 백업과 옮기기
+
+설정 → 데이터 → **백업과 옮기기**에서 할 일, 메모, 일정, 코인, 펫, 설정을 폴더 하나로 내보내고, 다른 컴퓨터에서 가져올 수 있어요. 받은 모델과 내 컴퓨터에서 그리기 도구는 크기가 커서 넣지 않아요(다른 컴퓨터에서 다시 받으면 돼요). 펫 하나만 친구에게 줄 때는 **펫 내보내기**로 `.jjpet` 파일을 만들어요.
+
+앱을 지워도 데이터는 남아요. 완전히 지우려면 맥은 `~/Library/Application Support/jjakkung`, 윈도우는 `%APPDATA%\jjakkung` 폴더도 지워요.
+
+## 자주 묻는 질문
+
+**AI 프로그램이 하나도 없어도 쓸 수 있나요?**
+네. 펫, 할 일, 메모, 일정은 AI 없이 다 돼요. 대화는 채팅 창의 AI 고르기에서 "무료 AI"를 고르면 처음 한 번 모델을 받고 이 컴퓨터 안에서만 돌아요.
+
+**채팅 창에 "설치 안 됨"이라고 나와요.**
+짝꿍은 AI를 직접 갖고 있지 않고, 터미널에서 쓰는 AI 프로그램(CLI)을 불러요. 그 프로그램을 설치하고 로그인한 뒤 짝꿍을 다시 켜 보세요. 목록에 없는 CLI는 "AI 추가, 관리"에서 직접 넣을 수 있어요.
+
+**맥에서 같이 보기가 안 돼요.**
+시스템 설정 → 개인정보 보호 및 보안 → 화면 및 시스템 오디오 녹음에서 Jjakkung을 켜고 짝꿍을 다시 켜야 해요. 자세한 건 [설치 안내](docs/install.md#같이-보기-권한-화면-기록)에 있어요.
+
+**펫이 작업을 가려요.**
+펫 위에서 휠을 그냥 굴리면 아래 창으로 넘어가요. 단축키로 잠깐 숨기거나, 설정 → 펫에서 "가끔 돌아다니기"를 끄고 크기를 줄여 보세요. 발표나 화면 공유 중에는 저절로 숨어요.
+
+**무료 그림 횟수가 끝났대요.**
+다음 날 다시 채워져요. 지금 바로 만들려면 "Gemini 앱(무료)에서 만들기"를 쓰거나, 무료 Hugging Face 토큰을 넣거나, 되는 컴퓨터라면 "내 컴퓨터에서 그리기"를 골라요.
+
+**리눅스에서도 되나요?**
+개발 실행(`npm run dev`)과 `npm run dist` 로 만든 시험 빌드는 뜨지만, 공식으로 지원하는 운영체제는 아니에요. 릴리스로 올리는 설치 파일과 자동 업데이트는 맥과 윈도우뿐이에요.
+
+**문제를 알리고 싶어요.**
+메뉴 막대(윈도우는 작업 표시줄 오른쪽 아래)의 짝꿍 아이콘 → **의견 보내기**. 설정 → 정보의 "기록 복사"로 숫자만 담긴 기록을 같이 붙일 수 있어요.
 
 ## 개발
 
-Node 22.18 이상이 필요하다 (테스트가 TypeScript 파일을 그대로 돌린다).
+Node 22.18 이상이 필요해요 (시험이 TypeScript 파일을 그대로 돌려요).
 
 ```bash
 npm install
-npm run dev     # 앱을 띄우고 화면 코드를 고치면 바로 반영
-npm run check   # 타입 검사, 린트, 테스트
-npm run build   # out/ 에 빌드
-npm run dist:mac  # dist/ 에 맥 설치 파일(dmg). 윈도우는 GitHub Actions 의 release
+npm run dev        # 앱을 띄우고 화면 코드를 고치면 바로 반영
+npm run check      # 타입 검사 + 린트 + 시험
+npm test           # 시험만 (node --test "src/**/*.test.ts")
+npm run typecheck  # 타입 검사만
+npm run lint       # biome 검사 (고치려면 npm run format)
+npm run build      # out/ 에 빌드
+npm run dist       # 지금 컴퓨터용 설치 파일 (dist/)
+npm run dist:mac   # 맥 dmg (애플 실리콘과 인텔)
+npm run dist:win   # 윈도우 설치 파일. 릴리스는 GitHub Actions 의 release.yml
 ```
 
 | 폴더 | 내용 |
 | --- | --- |
-| `src/main/` | Electron 메인 프로세스 (창, OS 기능) |
+| `src/main/` | Electron 메인 프로세스 (창, 트레이, DB, AI 실행, MCP 서버) |
 | `src/preload/` | 화면에 열어 줄 기능만 모아 둔 다리 |
-| `src/renderer/` | 화면. 펫 창은 가볍게 두려고 React 없이, 패널과 채팅 창은 React 로 (2단계부터) |
-| `src/shared/` | 화면과 메인이 같이 쓰는 순수 로직과 테스트 |
+| `src/renderer/` | 화면. 펫 창은 가볍게 React 없이, 패널과 채팅, 설정, 펫 만들기는 React |
+| `src/shared/` | 화면과 메인이 같이 쓰는 순수 로직, 번역(`i18n/`), 시험 |
+| `scripts/` | 빌드 보조, 개발 점검 도구(`scripts/dev/`) |
+| `catalog/` | 앱이 하루 한 번 받아 보는 AI 모델 목록 |
+| `spike/` | 0단계 실험 앱 |
 
-## 문서
+실제 앱을 띄워 상태를 넣고 화면을 찍어 보는 도구는 [scripts/dev/README.md](scripts/dev/README.md)에 있어요. 테스트용으로 띄울 때는 늘 `JJ_NO_FOCUS=1`과 빈 `JJ_USER_DATA` 폴더를 써요.
 
-| 파일 | 내용 |
+| 문서 | 내용 |
 | --- | --- |
-| [docs/plan.md](docs/plan.md) | 기획서 원본 |
-| [docs/plan.html](docs/plan.html) | 기획서 html 판. 목차, 테마 전환, 기능 표 필터 포함 |
-| [docs/tests/ai-cli.md](docs/tests/ai-cli.md) | claude, codex 연동 검증 시나리오와 실행 기록 |
-| [docs/install.md](docs/install.md) | 베타 사용자용 설치 안내 (맥, 윈도우, AI 연결, 지우기) |
-| [docs/tests/windows.md](docs/tests/windows.md) | 윈도우 확인 체크리스트 (설치, 펫 창, 방해 금지, AI, 자원) |
-| [docs/assets/](docs/assets/) | 시스템 구조도, 화면 설계 그림 (svg) |
-| [docs/roadmap.md](docs/roadmap.md) | 진행표. 단계별 체크리스트, 다음에 이어서 할 일 |
-| [spike/](spike/) | 0단계 실험 앱 (Electron 44.5.1) |
+| [docs/guide.md](docs/guide.md) | 사용 가이드 |
+| [docs/install.md](docs/install.md) | 설치 안내 (맥, 윈도우, AI 연결, 지우기) |
+| [docs/google-calendar.md](docs/google-calendar.md) | 구글 캘린더 쓰기 연결 (OAuth 클라이언트 등록) |
+| [docs/release.md](docs/release.md) | 릴리스 올리기, 자동 업데이트, 서명 |
+| [docs/roadmap.md](docs/roadmap.md) | 진행표 |
+| [docs/plan.md](docs/plan.md) | 기획서 (html 판은 `python3 scripts/build_plan_html.py` 로 다시 만들어요) |
+| [docs/tests/](docs/tests/) | 확인 시나리오 (AI CLI, 배경 지우기, 윈도우) |
 | [CHANGELOG.md](CHANGELOG.md) | 변경 이력 |
 
-## 기획서 고치는 법
+## 라이선스
 
-`docs/plan.md`만 고치고 html 은 스크립트로 다시 만든다. html 을 손으로 고치지 않는다.
+[MIT](LICENSE) © 2026 milcho0604
 
-```bash
-python3 -m pip install markdown   # 처음 한 번
-python3 scripts/build_plan_html.py
-```
+배경 지우기 모델(IS-Net), 무료 AI 모델(Qwen3, Apache-2.0), 그림 모델 같은 받아 쓰는 모델은 각자의 라이선스를 따라요.
 
-고친 내용은 `CHANGELOG.md`의 `[Unreleased]`에 적는다.
+---
+
+## English summary
+
+**Jjakkung** ("desk buddy") is a desktop app for macOS and Windows (beta) where a small pet lives on your screen and doubles as a personal assistant.
+
+- **Pet**: five built-in 3D pets (Kong, Cat, Chick, Puppy, Bunny) plus two illustrated ones (Milk, Choco). Drag, throw, pet it, feed it with coins earned from finished to-dos, or make your own pet from a photo (background removal runs locally; optional 3D figure, 2.5D depth, or AI illustration via a free Hugging Face Space, the Gemini app, or on-device drawing).
+- **Assistant**: click the pet for a panel with Today, To-dos, Notes, Events and Shop. Natural-language quick add ("meeting tomorrow 3pm", Korean and English), repeating to-dos, reminders, a focus timer, daily review, `.ics` calendar import.
+- **AI**: chat through the AI CLIs you already have (Claude Code, Codex, Cursor, Gemini) or a free local model (Qwen3). "Look together" sends a selected screen area to your AI. Jjakkung also runs as an MCP server so Claude Code or Codex can add to-dos, notes and events.
+- **Privacy**: no Jjakkung server. Your data stays on your computer; things leave only when you use a feature that needs it (your chosen AI, the free illustration server, calendar URLs, downloads, update checks).
+- **Install**: see [docs/install.md](docs/install.md) (Korean). Builds are not yet signed by Apple or Microsoft, so allow the app once on first launch.
+- **Develop**: Node 22.18+, `npm install`, `npm run dev`, `npm run check`.
+- **License**: MIT.

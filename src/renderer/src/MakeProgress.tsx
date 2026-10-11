@@ -12,7 +12,7 @@ import {
 import './make-progress.css';
 
 /** 무엇을 기다리는지: 대사를 고른다 */
-export type ProgressTask = 'download' | 'cutout' | 'figure' | 'relief' | 'remake';
+export type ProgressTask = 'download' | 'cutout' | 'figure' | 'relief' | 'remake' | 'illust';
 
 export interface ProgressStage {
   label: string;
@@ -47,6 +47,12 @@ const SAY: Record<ProgressTask, Record<Phase, I18nKey>> = {
     middle: 'maker.say.relief.middle',
     almost: 'maker.say.relief.almost',
     long: 'maker.say.relief.long',
+  },
+  illust: {
+    start: 'maker.say.illust.start',
+    middle: 'maker.say.illust.middle',
+    almost: 'maker.say.illust.almost',
+    long: 'maker.say.illust.long',
   },
   remake: {
     start: 'maker.say.remake.start',

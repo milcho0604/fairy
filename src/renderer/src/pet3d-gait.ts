@@ -4,7 +4,7 @@ import { type Blueprint, expandMirrors, type Gait, type Part } from '../../share
 import { DEFAULT_BLUEPRINTS } from '../../shared/pet3d/defaults.ts';
 import type { PetKind } from '../../shared/settings.ts';
 
-/** 2D 기본 펫도 네 발로 걷는지 (3D 기본 설계도의 gait 를 따른다: 냥이, 멍멍이, 토순이) */
+/** 2D 기본 펫도 네 발로 걷는지 (3D 기본 설계도의 gait 를 따른다: 토순이. 냥이, 멍멍이는 팔이 있어 두 발) */
 export function isQuadKind(kind: PetKind | undefined): boolean {
   return !!kind && DEFAULT_BLUEPRINTS[kind]?.gait === 'quadruped';
 }
@@ -80,7 +80,7 @@ export function gaitMismatch(pick: Gait | undefined, shape: Gait): boolean {
   return !!pick && pick !== shape;
 }
 
-/** 2D 기본 펫이 네 발로 걷는지: 고른 값이 있으면 그것, 없으면 기본 설계도(냥이, 멍멍이, 토순이) */
+/** 2D 기본 펫이 네 발로 걷는지: 고른 값이 있으면 그것, 없으면 기본 설계도(토순이) */
 export function quadKind(kind: PetKind | undefined, pick: Gait | undefined): boolean {
   return pick ? pick === 'quadruped' : isQuadKind(kind);
 }
@@ -105,22 +105,35 @@ export const LEAN_MS = 420;
 
 /**
  * 걷기 진행에 따른 세기 0~1. 창은 처음과 끝이 느린 곡선(walkOffset)으로 움직이니 보폭(stride)도 빠르기를 따라
- * 처음과 끝에 0 이 된다 (멈춘 몸에서 다리만 헛도는 미끄러짐이 없다). 돌기(turn)와 숙이기(lean)는 시간으로:
- * 처음 TURN_MS, LEAN_MS 동안 들어가고 끝나기 전 같은 시간 동안 풀린다.
- * t, ms 를 모르면(옛 상태) 모두 1
+ * 처음과 끝에 0 이 된다 (멈춘 몸에서 다리만 헛도는 미끄러짐이 없다). 돌기(turn)와 숙이기(lean)도 처음 TURN_MS,
+ * LEAN_MS 동안 들어가고 끝나기 전 같은 시간 동안 풀린다.
+ * 모두 시간으로 잰다: since 는 걷기를 시작하고 지난 시간, left 는 지금 토막이 끝날 때까지 남은 시간, segMs 는
+ * 지금 토막 길이 (ms). 이어 받은 걷기(따라 달리기)는 처음 출발에서 올라가고 지금 토막 끝을 보고 내려간다.
+ * 예전엔 이어 붙인 전체 길이에 대한 비율로 재서 오래 따라 달릴수록 보폭이 줄었다.
+ * 모르면(옛 상태) 모두 1
  */
 export function walkEnvelope(
-  t: number | undefined,
-  ms: number | undefined,
+  since: number | undefined,
+  left: number | undefined,
+  segMs: number | undefined,
 ): { stride: number; turn: number; lean: number } {
-  if (t === undefined || ms === undefined || !(ms > 0)) return { stride: 1, turn: 1, lean: 1 };
-  const k = Math.min(1, Math.max(0, t));
-  const v = k < 0.5 ? 2 * k : 2 * (1 - k);
-  const edge = Math.min(k, 1 - k) * ms;
+  if (since === undefined || left === undefined || segMs === undefined || !(segMs > 0))
+    return { stride: 1, turn: 1, lean: 1 };
+  const edge = Math.max(0, Math.min(since, left));
+  // 보폭은 토막의 1/4 동안 오른다 (한 토막 걷기의 느린 곡선 빠르기와 맞다).
   // 짧은 걷기(1초 안팎)도 다 돌고 숙이게 시간은 걷기 길이의 절반을 넘지 않는다
-  const turnMs = Math.min(TURN_MS, ms * 0.3);
-  const leanMs = Math.min(LEAN_MS, ms * 0.4);
-  return { stride: smooth(0, 0.5, v), turn: smooth(0, turnMs, edge), lean: smooth(0, leanMs, edge) };
+  const turnMs = Math.min(TURN_MS, segMs * 0.3);
+  const leanMs = Math.min(LEAN_MS, segMs * 0.4);
+  return { stride: smooth(0, segMs / 4, edge), turn: smooth(0, turnMs, edge), lean: smooth(0, leanMs, edge) };
+}
+
+/** 그리기 상태의 걷기에서 세기를 얻는다 */
+export function walkEnvelopeOf(w: { since?: number; left?: number; segMs?: number }): {
+  stride: number;
+  turn: number;
+  lean: number;
+} {
+  return walkEnvelope(w.since, w.left, w.segMs);
 }
 
 export type LegId = 'fl' | 'fr' | 'hl' | 'hr';

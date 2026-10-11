@@ -1,4 +1,13 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { app, type BrowserWindow, dialog } from 'electron';
@@ -16,7 +25,8 @@ import { settings } from './settings.ts';
 
 /**
  * 백업에 넣는 작은 설정 파일들 (로그인 셸 PATH, codex 폴더처럼 컴퓨터마다 다른 것은 뺀다).
- * 가져올 때는 IMPORT_FILES 만 쓴다 (사용자 AI 는 옮기지 않는다)
+ * 가져올 때는 IMPORT_FILES 만 쓴다 (사용자 AI 는 옮기지 않는다).
+ * 받은 모델(models/)과 내 컴퓨터에서 그리기 폴더(local-draw/, local-draw-sd/, 5GB 쯤)는 넣지 않는다: 다른 컴퓨터에서 다시 받으면 된다
  */
 const FILES = ['settings', 'chat-settings', 'ai-custom', 'pet-position', 'planner'].map((n) => `${n}.json`);
 
@@ -87,26 +97,9 @@ export function createBackup(o: {
       cancelId: 1,
     });
     if (ok.response !== 0) return '';
-    // 같은 분에 두 번 가져와도 겹치지 않게 (freePath)
-    const keep = freePath(join(dir(), `before-import-${stamp()}`));
-    mkdirSync(keep, { recursive: true });
-    o.vacuumInto(join(keep, 'jjakkung.db'));
-    for (const f of FILES) if (existsSync(join(dir(), f))) cpSync(join(dir(), f), join(keep, f));
-    // 저장 파일은 앱이 연 채라 다음에 켤 때 바꾼다: 자리만 마련하고 다시 켠다
-    cpSync(join(from, 'jjakkung.db'), join(dir(), 'jjakkung.db.import'));
-    // 사용자 AI(ai-custom.json)는 옮기지 않는다: 실행할 명령이라 그 컴퓨터 것이 아니다. 채팅 설정은 고른 AI 만,
-    // 사용자 AI 를 골랐으면 기본으로 (버그잡이 7차)
-    for (const f of IMPORT_FILES) {
-      if (!existsSync(join(from, f))) continue;
-      if (f === 'chat-settings.json')
-        writeFileAtomic(join(dir(), f), JSON.stringify(importedChatSettings(readJsonFile(join(from, f)))));
-      else cpSync(join(from, f), join(dir(), f));
-    }
-    // pets/ 는 링크를 빼고 일반 파일만 (링크로 사용자 데이터 폴더 밖 파일을 읽게 하지 못하게)
-    if (existsSync(join(from, 'pets')))
-      cpSync(join(from, 'pets'), join(dir(), 'pets'), { recursive: true, filter: plainEntry });
+    // 사용자 AI 를 뺐다는 안내는 파일을 바꾸기 전에 띄운다. 바꾼 뒤에 기다리면 그사이 돌던 플래너, 설정 저장이
+    // 가져온 planner.json, settings.json 을 지금 것으로 도로 덮어썼다. 바꾸고 나서 끝내기까지는 기다림 없이 한 번에
     const skipped = customAiCount(readJsonFile(join(from, 'ai-custom.json')));
-    o.log('backup', '가져옴, 다시 켠다', skipped ? `사용자 AI ${skipped}개 뺌` : '');
     if (skipped > 0)
       await dialog.showMessageBox({
         type: 'info',
@@ -114,6 +107,40 @@ export function createBackup(o: {
         detail: t('main.backup.customAiSkippedDetail'),
         buttons: [t('common.ok')],
       });
+    // 같은 분에 두 번 가져와도 겹치지 않게 (freePath)
+    const keep = freePath(join(dir(), `before-import-${stamp()}`));
+    mkdirSync(keep, { recursive: true });
+    o.vacuumInto(join(keep, 'jjakkung.db'));
+    for (const f of FILES) if (existsSync(join(dir(), f))) cpSync(join(dir(), f), join(keep, f));
+    // 설정 파일도 저장 파일처럼 다음에 켤 때 바꾼다. 지금 덮으면 끄기 전까지 도는 앱(펫 자리 저장, 플래너,
+    // 설정 바꾸기, 끄면서 하는 저장)이 가져온 것을 다시 덮는다. 앞서 하다 만 가져오기의 것은 먼저 치운다
+    for (const f of IMPORT_FILES) rmSync(join(dir(), staged(f)), { force: true });
+    // 사용자 AI(ai-custom.json)는 옮기지 않는다: 실행할 명령이라 그 컴퓨터 것이 아니다. 채팅 설정은 고른 AI 만,
+    // 사용자 AI 를 골랐으면 기본으로 (버그잡이 7차)
+    for (const f of IMPORT_FILES) {
+      if (!existsSync(join(from, f))) continue;
+      if (f === 'chat-settings.json')
+        writeFileAtomic(
+          join(dir(), staged(f)),
+          JSON.stringify(importedChatSettings(readJsonFile(join(from, f)))),
+        );
+      else cpSync(join(from, f), join(dir(), staged(f)));
+    }
+    // 저장 파일은 앱이 연 채라 다음에 켤 때 바꾼다: 자리만 마련하고 다시 켠다.
+    // 맨 끝에 놓는다: 켤 때 이것이 있어야 설정 파일도 바꿔 끼우므로, 중간에 실패하면 반쪽만 바뀌지 않는다
+    try {
+      cpSync(join(from, 'jjakkung.db'), join(dir(), PENDING_DB));
+    } catch (err) {
+      // 디스크가 차서 반만 복사됐으면 다음에 켤 때 반쪽 저장 파일로 바꿔 끼웠다. 기다리던 것을 모두 치운다
+      rmSync(join(dir(), PENDING_DB), { force: true });
+      for (const f of IMPORT_FILES) rmSync(join(dir(), staged(f)), { force: true });
+      o.log('backup', '가져오기 실패', err instanceof Error ? err.message : String(err));
+      throw err;
+    }
+    // pets/ 는 링크를 빼고 일반 파일만 (링크로 사용자 데이터 폴더 밖 파일을 읽게 하지 못하게)
+    if (existsSync(join(from, 'pets')))
+      cpSync(join(from, 'pets'), join(dir(), 'pets'), { recursive: true, filter: plainEntry });
+    o.log('backup', '가져옴, 다시 켠다', skipped ? `사용자 AI ${skipped}개 뺌` : '');
     // exit 대신 quit: will-quit 정리(실행 표시 지우기, AI 끝내기, 저장 파일 닫기, 단축키 풀기)가 돌게 한다
     app.relaunch();
     app.quit();
@@ -132,20 +159,59 @@ function readJsonFile(path: string): unknown {
   }
 }
 
-/** 켤 때: 가져온 저장 파일이 기다리고 있으면 바꿔 끼운다 (저장 파일을 열기 전에 부른다) */
+/** 가져온 저장 파일이 다음에 켤 때까지 기다리는 이름 */
+const PENDING_DB = 'jjakkung.db.import';
+/** 가져온 설정 파일이 다음에 켤 때까지 기다리는 이름 */
+const staged = (f: string) => `${f}.import`;
+
+/**
+ * 켤 때: 가져온 저장 파일과 설정 파일이 기다리고 있으면 바꿔 끼운다.
+ * 저장 파일을 열기 전, 설정을 처음 읽기 전에 부른다 (설정은 처음 읽은 것을 기억해 두고 그 위에 쓴다)
+ */
 export function applyPendingImport(): void {
   const dir = app.getPath('userData');
-  const pending = join(dir, 'jjakkung.db.import');
-  if (!existsSync(pending)) return;
+  const pending = join(dir, PENDING_DB);
+  const dropStaged = () => {
+    for (const f of IMPORT_FILES) rmSync(join(dir, staged(f)), { force: true });
+  };
+  // 저장 파일 없이 남은 설정 파일은 하다 만 가져오기다: 반쪽만 바꾸지 않는다
+  if (!existsSync(pending)) {
+    dropStaged();
+    return;
+  }
   // 못 여는 판이면 지금 저장 파일을 그대로 둔다 (가져오기에서 걸렀지만 한 번 더)
   const version = dbVersion(pending);
   if (version === undefined || version > SCHEMA_VERSION) {
     rmSync(pending, { force: true });
+    dropStaged();
     return;
   }
-  for (const f of ['jjakkung.db-wal', 'jjakkung.db-shm']) rmSync(join(dir, f), { force: true });
-  cpSync(pending, join(dir, 'jjakkung.db'));
-  rmSync(pending, { force: true });
+  // 복사하지 않고 이름을 바꾼다: 켜는 중에 디스크가 차면 복사가 지금 저장 파일을 반쯤 덮은 채 던졌고,
+  // 던지면 준비 뒤 일이 멈춰 펫도 메뉴 막대도 없이 떠 있었다. 같은 폴더 안 이름 바꾸기는 공간이 들지 않고 한 번에 바뀐다
+  try {
+    for (const f of ['jjakkung.db-wal', 'jjakkung.db-shm']) rmSync(join(dir, f), { force: true });
+    renameSync(pending, join(dir, 'jjakkung.db'));
+  } catch {
+    // 못 바꾸면 지금 저장 파일과 설정으로 켠다 (가져오기 전 복사본은 before-import 폴더에 있다)
+    for (const f of ['', '-wal', '-shm']) rmSync(pending + f, { force: true });
+    dropStaged();
+    return;
+  }
+  for (const f of ['-wal', '-shm']) rmSync(pending + f, { force: true });
+  // 구글 캘린더로 보낸 기록도 백업 때 것이라, 다음 보내기가 지금 일정과 다시 맞추게 표시해 둔다 (gcal.ts)
+  try {
+    writeFileSync(join(dir, 'google-calendar-reset'), '');
+  } catch {
+    // 표시를 못 남기면 바뀐 일정만 보낸다
+  }
+  for (const f of IMPORT_FILES) {
+    try {
+      if (existsSync(join(dir, staged(f)))) renameSync(join(dir, staged(f)), join(dir, f));
+    } catch {
+      // 켜기를 멈추지 않는다: 못 바꾼 설정 파일은 지금 것을 쓴다
+      rmSync(join(dir, staged(f)), { force: true });
+    }
+  }
 }
 
 /**
@@ -195,6 +261,7 @@ export async function exportPet(parent?: BrowserWindow): Promise<string> {
     poses: imgs.poses,
     ...(imgs.model ? { model: imgs.model } : {}),
     ...(imgs.depth ? { depth: imgs.depth } : {}),
+    ...(imgs.main && s.petAge ? { age: s.petAge } : {}),
   };
   const opts = {
     title: t('main.pet.exportTitle'),
@@ -260,6 +327,7 @@ export async function importPet(
         ...(pet.image ? { image: keep(dataUrlToFile(pet.image, 'pet')) } : {}),
         ...(pet.model ? { model: keep(modelToFile(pet.model)) } : {}),
         ...(pet.depth ? { depth: keep(dataUrlToFile(pet.depth, 'depth')) } : {}),
+        ...(pet.age ? { age: pet.age } : {}),
       };
       settings.set({ friends: [...settings.get().friends, friend] });
       return { ok: true, message: t('main.pet.friendCame', { name: pet.name }) };
@@ -275,10 +343,17 @@ export async function importPet(
       petModel: pet.model ? keep(modelToFile(pet.model)) : null,
       petDepth: pet.depth ? keep(dataUrlToFile(pet.depth, 'depth')) : null,
       petPoses: poses,
+      // 나이 단계는 파일에 있을 때만 (없으면 지운다: 옛 펫 나이가 남지 않게)
+      petAge: pet.age ?? null,
     };
     // 지금 사진 펫은 보관함으로 (6단계)
-    library.beforeNewPhoto();
-    settings.set(next);
+    const prep = library.newPhotoPatch();
+    settings.set({ ...prep.patch, ...next });
+    try {
+      prep.cleanup();
+    } catch {
+      // 저장은 끝났다: 옛 파일 치우기가 실패해도 가져온 펫 파일은 둔다
+    }
     return { ok: true, message: t('main.pet.came', { name: pet.name }) };
   } catch (err) {
     for (const f of made) rmSync(join(app.getPath('userData'), 'pets', f), { force: true });

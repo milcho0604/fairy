@@ -114,6 +114,9 @@ test('v2 설정: 회고 시각, 단축키(겹치면 거절), 캘린더 주소(ht
   const withIcs = applyPatch(now, { icsUrl: 'https://a/b.ics' });
   assert.equal(applyPatch(withIcs, { icsUrl: null }).icsUrl, undefined);
   assert.equal(applyPatch(now, { myMcp: true }).myMcp, true);
+  assert.equal(DEFAULT_SETTINGS.aiPetTools, false);
+  assert.equal(applyPatch(now, { aiPetTools: true }).aiPetTools, true);
+  assert.equal(applyPatch(now, { aiPetTools: 'yes' }).aiPetTools, false);
 });
 
 test('친구 펫: 규칙에 맞는 것만, 같은 id 는 한 번, 3마리까지', () => {
@@ -234,6 +237,20 @@ test('부스트 모드: 옛 설정 파일엔 없어서 끔, 틀린 값은 지금
   assert.equal(applyPatch({ ...DEFAULT_SETTINGS, boost: true }, { boost: 'yes' }).boost, true);
 });
 
+test('AI 일러스트 그리는 곳: 옛 설정 파일엔 없어서 무료 서버, 옛 mac 은 local, 틀린 값은 지금 값', () => {
+  assert.equal(parseSettings({ petName: '밤' }).illustEngine, 'cloud');
+  assert.equal(parseSettings({ illustEngine: 'local' }).illustEngine, 'local');
+  // 내 Mac에서(옛 값 mac)를 고른 사람은 내 컴퓨터에서로 그대로 남는다
+  assert.equal(parseSettings({ illustEngine: 'mac' }).illustEngine, 'local');
+  assert.equal(applyPatch(DEFAULT_SETTINGS, { illustEngine: 'local' }).illustEngine, 'local');
+  assert.equal(applyPatch(DEFAULT_SETTINGS, { illustEngine: 'mac' }).illustEngine, 'local');
+  assert.equal(
+    applyPatch({ ...DEFAULT_SETTINGS, illustEngine: 'local' }, { illustEngine: 'gpu' }).illustEngine,
+    'local',
+  );
+  assert.equal(parseSettings({ illustEngine: 7 }).illustEngine, 'cloud');
+});
+
 test('하루 회고 받기: 예전 저장 파일은 그때 동작대로(조용히면 끔), 그 뒤로는 수다 빈도와 따로', () => {
   assert.equal(parseSettings({ chatter: 'quiet' }).review, false);
   assert.equal(parseSettings({ chatter: 'normal' }).review, true);
@@ -339,8 +356,8 @@ test('설정 파일의 시스템 단축키(복사, 종료)는 등록하지 않�
     now.shortcuts,
   );
   assert.equal(
-    applyPatch(now, { shortcuts: { hide: 'CommandOrControl+Alt+Shift+J' } }).shortcuts.hide,
-    'CommandOrControl+Alt+Shift+J',
+    applyPatch(now, { shortcuts: { hide: 'CommandOrControl+Alt+Shift+K' } }).shortcuts.hide,
+    'CommandOrControl+Alt+Shift+K',
   );
 });
 
@@ -403,4 +420,114 @@ test('친구 펫 걸음새: 친구마다 따로, 틀린 값은 자동', () => {
   assert.equal(s.friends[0]?.gait, 'biped');
   assert.equal(s.friends[1]?.gait, undefined);
   assert.equal('gait' in (s.friends[2] ?? {}), false);
+});
+
+test('AI 일러스트 나이 단계: 사진 펫에만, 보관함에도. 옛 설정은 없이 읽는다', () => {
+  const old = parseSettings({
+    petImage: 'pet-1.png',
+    petLibrary: [{ id: 'p-a', name: '콩', image: 'pet-2.png' }],
+  });
+  assert.equal(old.petAge, undefined);
+  assert.equal(old.petLibrary[0]?.age, undefined);
+  const s = parseSettings({
+    petImage: 'pet-1.png',
+    petAge: 'baby',
+    petLibrary: [
+      { id: 'p-a', name: '콩', image: 'pet-2.png', age: 'teen' },
+      { id: 'p-b', name: '팥', image: 'pet-3.png', age: 'ancient' },
+    ],
+  });
+  assert.equal(s.petAge, 'baby');
+  assert.equal(s.petLibrary[0]?.age, 'teen');
+  assert.equal(s.petLibrary[1]?.age, undefined);
+  assert.equal(parseSettings({ petAge: 'baby' }).petAge, undefined, '사진 펫이 없으면 나이도 없다');
+  assert.equal(parseSettings({ petImage: 'pet-1.png', petAge: 'giant' }).petAge, undefined);
+  assert.equal(applyPatch(s, { petAge: null }).petAge, undefined);
+  assert.equal(applyPatch(s, { petAge: 'adult' }).petAge, 'adult');
+  assert.equal(applyPatch(s, { petName: '두부' }).petAge, 'baby');
+  assert.equal(applyPatch(s, { petImage: null }).petAge, undefined, '기본 펫으로 가면 나이도 지운다');
+});
+
+test('짝꿍이 기억하는 것: 기본 비어 있고, 옛 설정 파일에는 없어도 빈 목록, 다듬어 30개까지', () => {
+  assert.deepEqual(DEFAULT_SETTINGS.petMemory, []);
+  // 이 칸이 생기기 전 설정 파일
+  assert.deepEqual(parseSettings({ petName: '콩이', petRules: '짧게' }).petMemory, []);
+  assert.deepEqual(parseSettings({ petMemory: 'x' }).petMemory, []);
+  assert.deepEqual(
+    parseSettings({ petMemory: [' 커피\n좋아함 ', 3, '', '커피 좋아함', '가'.repeat(120)] }).petMemory,
+    ['커피 좋아함', '가'.repeat(100)],
+  );
+  const many = Array.from({ length: 35 }, (_, i) => `기억 ${i}`);
+  const kept = parseSettings({ petMemory: many }).petMemory;
+  assert.equal(kept.length, 30);
+  assert.equal(kept[0], '기억 5');
+  // 화면에서 바꾸기 (applyPatch): 틀린 값이면 그대로
+  const now = parseSettings({ petMemory: ['커피'] });
+  assert.deepEqual(applyPatch(now, { petMemory: ['커피', '차'] }).petMemory, ['커피', '차']);
+  assert.deepEqual(applyPatch(now, { petMemory: null }).petMemory, ['커피']);
+  assert.deepEqual(applyPatch(now, { petMemory: [] }).petMemory, []);
+});
+
+test('단축키 옮기기: 새 기본 키가 사용자 키와 겹치면 새 쪽만 비운다 (사용자 키는 그대로)', () => {
+  // 예전 파일에는 hide, quickAdd 만 있다. 사용자가 숨기기를 새 "대화" 기본 키로 바꿔 두었다
+  const old = parseSettings({
+    shortcuts: { hide: 'CommandOrControl+Alt+Shift+J', quickAdd: 'CommandOrControl+Alt+Shift+K' },
+  });
+  assert.equal(old.shortcuts.hide, 'CommandOrControl+Alt+Shift+J');
+  assert.equal(old.shortcuts.quickAdd, 'CommandOrControl+Alt+Shift+K');
+  assert.equal(old.shortcuts.chat, '');
+  assert.equal(old.shortcuts.look, 'CommandOrControl+Alt+Shift+L');
+  const both = parseSettings({
+    shortcuts: { hide: 'CommandOrControl+Alt+Shift+L', quickAdd: 'CommandOrControl+Alt+Shift+J' },
+  });
+  assert.equal(both.shortcuts.hide, 'CommandOrControl+Alt+Shift+L');
+  assert.equal(both.shortcuts.quickAdd, 'CommandOrControl+Alt+Shift+J');
+  assert.equal(both.shortcuts.chat, '');
+  assert.equal(both.shortcuts.look, '');
+  // 겹치지 않으면 새 기본 키를 그대로 준다
+  const plain = parseSettings({ shortcuts: { hide: 'CommandOrControl+Alt+Shift+K' } });
+  assert.equal(plain.shortcuts.chat, 'CommandOrControl+Alt+Shift+J');
+  // 비운 키는 저장하고 다시 읽어도 비어 있고, 다른 빈 키와 겹친다고 보지 않는다
+  const saved = parseSettings(JSON.parse(JSON.stringify(both)));
+  assert.deepEqual(saved.shortcuts, both.shortcuts);
+  // 설정 창에서 빈 키에 새 키를 넣을 수 있다
+  assert.equal(
+    applyPatch(both, { shortcuts: { ...both.shortcuts, chat: 'CommandOrControl+Alt+Shift+O' } }).shortcuts
+      .chat,
+    'CommandOrControl+Alt+Shift+O',
+  );
+  // 일부만 바꾸는 요청은 처음부터 있던 키를 비우지 않는다
+  const now = { ...DEFAULT_SETTINGS };
+  assert.deepEqual(applyPatch(now, { shortcuts: { hide: now.shortcuts.quickAdd } }).shortcuts, now.shortcuts);
+});
+
+test('패널 단축키 옮기기: 예전 파일에는 없어 기본 키를 주고, 사용자 키와 겹치면 패널 쪽만 비운다', () => {
+  const T = 'CommandOrControl+Alt+Shift+T';
+  // 패널 키가 생기기 전 파일 (hide, quickAdd, chat, look 만)
+  const before = {
+    hide: 'CommandOrControl+Alt+Shift+H',
+    quickAdd: 'CommandOrControl+Alt+Shift+N',
+    chat: 'CommandOrControl+Alt+Shift+J',
+    look: 'CommandOrControl+Alt+Shift+L',
+  };
+  assert.equal(parseSettings({ shortcuts: before }).shortcuts.panel, T);
+  // 사용자가 같이 보기를 T 로 바꿔 두었으면 같이 보기는 그대로, 패널은 비운다 (설정에 "없음")
+  const taken = parseSettings({ shortcuts: { ...before, look: T } });
+  assert.equal(taken.shortcuts.look, T);
+  assert.equal(taken.shortcuts.panel, '');
+  // 숨기기(처음부터 있던 키)를 T 로 바꿔 두어도 마찬가지
+  assert.equal(parseSettings({ shortcuts: { ...before, hide: T } }).shortcuts.panel, '');
+  // 끈 패널 키는 저장하고 다시 읽어도 꺼져 있다
+  const off = parseSettings({ shortcuts: { ...before, panel: '' } });
+  assert.equal(off.shortcuts.panel, '');
+  assert.equal(parseSettings(JSON.parse(JSON.stringify(off))).shortcuts.panel, '');
+  // 비운 패널 키에 새 키를 넣을 수 있고, 다른 키와 같으면 받지 않는다
+  assert.equal(
+    applyPatch(taken, { shortcuts: { ...taken.shortcuts, panel: 'CommandOrControl+Alt+Shift+P' } }).shortcuts
+      .panel,
+    'CommandOrControl+Alt+Shift+P',
+  );
+  assert.equal(applyPatch(taken, { shortcuts: { ...taken.shortcuts, panel: T } }).shortcuts.panel, '');
+  // 새로 깐 사람은 기본 키 그대로
+  assert.equal(DEFAULT_SETTINGS.shortcuts.panel, T);
 });

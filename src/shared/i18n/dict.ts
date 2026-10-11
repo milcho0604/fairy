@@ -2,10 +2,16 @@
 
 import * as achieve from './achieve.ts';
 import * as ai from './ai.ts';
+import * as assist from './assist.ts';
 import * as briefing from './briefing.ts';
 import * as chat from './chat.ts';
 import * as common from './common.ts';
+import * as companion from './companion.ts';
 import * as diary from './diary.ts';
+import * as ease from './ease.ts';
+import * as feedback from './feedback.ts';
+import * as gcal from './gcal.ts';
+import * as gemini from './gemini.ts';
 import * as idle from './idle.ts';
 import * as main from './main.ts';
 import * as maker from './maker.ts';
@@ -18,6 +24,7 @@ import * as remind from './remind.ts';
 import * as routine from './routine.ts';
 import * as settings from './settings.ts';
 import * as shop from './shop.ts';
+import * as tabs from './tabs.ts';
 import * as tray from './tray.ts';
 import type { Translation } from './types.ts';
 
@@ -41,6 +48,13 @@ export const ko = {
   ...pout.ko,
   ...routine.ko,
   ...remind.ko,
+  ...assist.ko,
+  ...ease.ko,
+  ...companion.ko,
+  ...feedback.ko,
+  ...tabs.ko,
+  ...gcal.ko,
+  ...gemini.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -63,4 +77,11 @@ export const en: Translation<typeof ko> = {
   ...pout.en,
   ...routine.en,
   ...remind.en,
+  ...assist.en,
+  ...ease.en,
+  ...companion.en,
+  ...feedback.en,
+  ...tabs.en,
+  ...gcal.en,
+  ...gemini.en,
 };

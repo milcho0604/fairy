@@ -153,6 +153,30 @@ export const MIGRATIONS: readonly string[] = [
            else null end
     from todo;
   `,
+  // 9판: 할 일 단계 (체크리스트). 할 일 하나를 작은 단계로 쪼개 하나씩 지운다. 단계에는 코인이 없다 (끝낸 할 일만 코인).
+  // 반복 할 일을 끝내면 다음 회차에 단계를 안 한 채로 옮겨 적는다. 할 일을 지워도 단계는 남지만 읽지 않는다
+  `
+  create table todo_step (
+    id integer primary key,
+    todo_id integer not null,    -- todo.id
+    title text not null,
+    done integer not null default 0,
+    ord integer not null,        -- 할 일 안 순서 (작은 것이 위)
+    created_at integer not null
+  );
+  create index todo_step_todo on todo_step(todo_id, ord);
+  `,
+  // 10판: 구글 캘린더에 쓰기 (짝꿍에서 넣은 일정을 구글로, shared/gcal.ts). 짝꿍이 넣은 일정(source = local)만 보낸다.
+  // google_id 는 짝꿍이 정해 보내는 구글 일정 id (다시 보내도 겹치지 않게 미리 정한다). google_cal 은 보낸 캘린더.
+  // google_hash 는 마지막으로 보낸 내용의 지문이라 바뀐 것만 다시 보내고, 'deleted' 면 구글에서도 지웠다.
+  // google_uid 는 구글이 준 iCalUID: 캘린더 가져오기(.ics)로 되돌아온 같은 일정을 거른다
+  `
+  alter table event add column google_id text;
+  alter table event add column google_cal text;
+  alter table event add column google_hash text;
+  alter table event add column google_uid text;
+  create index event_google on event(google_id) where google_id is not null;
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

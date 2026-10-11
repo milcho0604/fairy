@@ -184,3 +184,40 @@ export function openDbFile(
     return { db: memoryDb(), memory: true, trouble: { kind: 'unavailable' } };
   }
 }
+
+/**
+ * 메모리에 열었을 때(새 판, 못 엶) 디스크의 저장 파일을 한 시점 그대로 target 한 파일로 복사한다 (백업 내보내기, 가져오기 전 복사).
+ * 가져오기와 되살리기는 .db 하나만 옮기므로 -wal 을 따로 두면 그 안의 마지막 쓰기를 잃었다.
+ * 읽기 전용으로 열어 VACUUM INTO 로 WAL 까지 합쳐 쓰고, 그래도 못 열면(잠김 등) .db, -wal 을 복사한 뒤 복사본에서 합친다.
+ */
+export function copyDbFile(file: string, target: string): void {
+  if (!existsSync(file)) throw new Error('저장 파일이 없다');
+  // VACUUM INTO 처럼 있는 파일에는 쓰지 않는다 (아래에서 실패한 것을 지울 때 남의 파일을 지우지 않게)
+  if (existsSync(target)) throw new Error('복사할 곳에 이미 파일이 있다');
+  try {
+    const db = new DatabaseSync(file, { readOnly: true });
+    try {
+      db.exec('pragma busy_timeout = 2000;');
+      db.exec(`vacuum into '${target.replace(/'/g, "''")}'`);
+      return;
+    } finally {
+      db.close();
+    }
+  } catch {
+    for (const ext of ['', '-wal', '-shm']) rmSync(target + ext, { force: true });
+  }
+  copyFileSync(file, target);
+  if (!existsSync(`${file}-wal`)) return;
+  copyFileSync(`${file}-wal`, `${target}-wal`);
+  try {
+    // 복사본을 열어 WAL 을 본 파일에 합친다
+    const db = new DatabaseSync(target);
+    try {
+      db.exec('pragma wal_checkpoint(truncate)');
+    } finally {
+      db.close();
+    }
+  } finally {
+    for (const ext of ['-wal', '-shm']) rmSync(target + ext, { force: true });
+  }
+}

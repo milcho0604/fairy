@@ -6,7 +6,7 @@ import { t } from '../../../shared/i18n/index.ts';
 import { localDay } from '../../../shared/todo-store.ts';
 import { initLang } from '../lang.ts';
 import { PetFace } from '../PetFace.tsx';
-import { addedText } from './format.ts';
+import { addedText, timeOf } from './format.ts';
 import { escClosesWindow, isEsc, takeEsc } from './keys.ts';
 
 const bridge = window.jjakkungPanel;
@@ -38,9 +38,14 @@ function QuickAdd() {
     }
     if (value === text) setText('');
     setFailed(false);
-    setMsg(addedText(r, localDay(Date.now())));
+    // 시간이 겹치는 일정이 있으면 같이 알리고 읽을 시간을 더 준다
+    const clash =
+      r.kind === 'event' && r.clash
+        ? ` ${t('assist.clash', { time: timeOf(r.clash.startAt), title: r.clash.title })}`
+        : '';
+    setMsg(addedText(r, localDay(Date.now())) + clash);
     clearTimeout(closeTimer.current);
-    if (!stay) closeTimer.current = setTimeout(() => bridge.close(), CLOSE_MS);
+    if (!stay) closeTimer.current = setTimeout(() => bridge.close(), clash ? CLOSE_MS * 2 : CLOSE_MS);
   };
   useEffect(() => {
     ref.current?.focus();

@@ -171,11 +171,21 @@ export function routineDue(
   if (!r.on) return undefined;
   const yesterday = plusDays(day, -1);
   const y = meetOn(r, yesterday);
-  /** 어제 일과가 아직 끝나지 않았다 (헤어지는 인사를 기다리는 때까지) */
-  const yBusy = !!y && minute + DAY_MIN < farewellUntil(y);
+  const today = meetOn(r, day);
+  const yClock = minute + DAY_MIN;
+  /**
+   * 어제 일과가 아직 끝나지 않았다. 헤어지는 인사를 기다리는 동안(만났고 아직 안 헤어짐)은 그 끝까지.
+   * 이미 헤어졌거나 만나지 않았으면 기다릴 인사가 없다: 일과가 끝난 뒤 남은 여유는 오늘 만나는 시간까지만 막는다
+   * (새벽 1시 "일찍 왔네"는 막되, 밤 근무 다음 날 맞이가 낮 12시 "늦었네"로 밀리지 않게)
+   */
+  const yBusy =
+    !!y &&
+    (memo.greeted === yesterday && memo.farewelled !== yesterday
+      ? yClock < farewellUntil(y)
+      : yClock < spanEnd(y) || (yClock < farewellUntil(y) && (!today || yClock < DAY_MIN + today.start)));
   for (const [d, clock, meet] of [
     [yesterday, minute + DAY_MIN, y],
-    [day, minute, meetOn(r, day)],
+    [day, minute, today],
   ] as const) {
     if (!meet) continue;
     const end = spanEnd(meet);
@@ -193,8 +203,7 @@ export function routineDue(
       return { what: 'greet', day: d, meet, clock, arrival: arrivalOf(meet, first) };
     }
   }
-  if (meetOn(r, day) === null && memo.restSaid !== day && minute >= REST_FROM && !yBusy)
-    return { what: 'rest', day };
+  if (today === null && memo.restSaid !== day && minute >= REST_FROM && !yBusy) return { what: 'rest', day };
   return undefined;
 }
 

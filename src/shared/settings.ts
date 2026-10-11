@@ -4,13 +4,24 @@ import type { ChatterLevel } from './chatter.ts';
 import { type FocusLength, isFocusLength } from './focus.ts';
 import { type LangPref, t } from './i18n/index.ts';
 import { cleanIcsUrl } from './ics.ts';
+import { type AgeStage, isAgeStage } from './illustrate.ts';
+import { type IllustEngine, illustEngineOf } from './local-draw.ts';
+import { cleanMemory, cleanPending } from './pet-memory.ts';
 import { GAITS, type Gait } from './pet3d/blueprint.ts';
 import { cleanWish } from './pet3d/prompt.ts';
 import { DEFAULT_ROUTINE, parseRoutine, type Routine } from './routine.ts';
-import { isAccelerator, reservedUse, SHORTCUT_DEFAULTS, type ShortcutId, shortcutClash } from './shortcut.ts';
+import {
+  isAccelerator,
+  NO_SHORTCUT,
+  reservedUse,
+  SHORTCUT_DEFAULTS,
+  type ShortcutId,
+  shortcutClash,
+} from './shortcut.ts';
 
 /** 입체 펫 모습: 피규어, 게임 캐릭터, 실사처럼 */
-export const PET_STYLES = ['figure', 'game', 'real'] as const;
+// fluffy 복슬복슬: 부품을 녹여 붙인 한 덩어리 몸에 긴 털 (시험판, 2026-10-09)
+export const PET_STYLES = ['figure', 'game', 'real', 'fluffy'] as const;
 export type PetStyle = (typeof PET_STYLES)[number];
 
 export interface Settings {
@@ -30,6 +41,11 @@ export interface Settings {
   persona: PersonaId;
   /** 질문할 때 오늘 할 일과 일정 제목을 같이 보낸다 (v1, 기본 끔: 밖으로 나가는 정보라 사용자가 켠다) */
   aiKnowsTodos: boolean;
+  /**
+   * 짝꿍 도구 쓰기: 채팅의 claude, codex 가 펫 MCP 서버로 할 일, 메모, 일정을 읽고 넣는다.
+   * 파일, 명령 도구는 여전히 끈다. 기본 끔: 할 일 목록을 읽는 도구라 내 할 일 같이 보내기처럼 밖으로 나가는 정보다
+   */
+  aiPetTools: boolean;
   /** 컴퓨터를 켜면 같이 켜기 (설치한 앱에서만 동작) */
   launchAtLogin: boolean;
   /** 숨기기 전 안내를 보여 준 횟수 (P1-10) */
@@ -51,6 +67,8 @@ export interface Settings {
   petModel?: string;
   /** 사진 펫의 2.5D 깊이 그림 (6단계). pets/ 안 depth-*.png. 있으면 입체로 보기일 때 사진을 입체 판으로 */
   petDepth?: string;
+  /** AI 일러스트로 다시 그린 사진 펫의 나이 단계 (2026-10-09). 화면 크기 배율과 보관함 표시에 쓴다. 사진 그대로면 없음 */
+  petAge?: AgeStage;
   /** 상태별 포즈 그림 (v1). 기쁨, 졸림, 배고픔. pets/ 안 파일 이름 */
   petPoses: Partial<Record<PoseKind, string>>;
   /** 삐짐 게이지를 세지 않는 요일 (0 일 ~ 6 토). 기본 토, 일. 만나는 시간을 켜면 쓰지 않는다 (restDaysOf) */
@@ -70,6 +88,8 @@ export interface Settings {
    * 저장 파일에 없으면(예전 판) 그때 동작대로: 조용히면 끔, 아니면 켬
    */
   review: boolean;
+  /** 펫이 안 보일 때(전체 화면, 숨김, 발표) 일정 알림을 운영체제 알림으로도 한 번 */
+  osNotify: boolean;
   /** 전역 단축키 (v2 단축키 바꾸기) */
   shortcuts: Record<ShortcutId, string>;
   /** 가져올 캘린더 주소 (.ics, 구글 캘린더 비공개 주소). 비밀 주소라 이 컴퓨터에만 둔다 (v2) */
@@ -86,6 +106,10 @@ export interface Settings {
   petLibrary: SavedPet[];
   /** 짝꿍 규칙 (6단계). AI 에게 늘 같이 보내는 사용자의 지시 (CLAUDE.md, AGENTS.md 처럼) */
   petRules: string;
+  /** 짝꿍이 기억하는 것 (오래 가는 기억). 질문마다 성격 뒤에 같이 보낸다. 30개, 하나 100자까지. 기본 비어 있음 */
+  petMemory: string[];
+  /** AI 도구(MCP remember)가 기억하자고 한 것. 사용자가 설정에서 허락하면 petMemory 로 간다. AI 에게 보내지 않는다 */
+  petMemoryPending: string[];
   /** 집중 타이머 길이 (15, 25, 50분). 마지막에 고른 것 */
   focusMin: FocusLength;
   /** 한가할 때 커서 쪽을 바라본다 */
@@ -117,6 +141,11 @@ export interface Settings {
    * 기본 꺼짐(예전처럼 켤 때 브리핑). 켜 두면 만나지 않는 요일이 삐짐 쉬는 날도 된다(restDays 대신, routine.ts restDaysOf)
    */
   routine: Routine;
+  /**
+   * AI 일러스트를 어디서 그릴지 (2026-10-10). cloud 무료 서버(하루 몇 번), mac 이 Mac 에서(횟수 제한 없음, 처음 한 번 준비).
+   * 기본 cloud: mac 은 16GB 를 받아야 해서 사용자가 고른다. 고를 수 없는 컴퓨터면 저장된 값이 mac 이어도 창이 cloud 로 쓴다
+   */
+  illustEngine: IllustEngine;
 }
 
 /** 보관한 사진 펫. 파일은 pets/ 안 */
@@ -126,6 +155,8 @@ export interface SavedPet {
   image: string;
   model?: string;
   depth?: string;
+  /** AI 일러스트 나이 단계 (없으면 사진 그대로 만든 펫) */
+  age?: AgeStage;
   poses: Partial<Record<PoseKind, string>>;
 }
 
@@ -144,6 +175,8 @@ export interface Friend {
   depth?: string;
   /** 고른 걸음새. 없으면 자동 (친구마다 따로) */
   gait?: Gait;
+  /** AI 일러스트 나이 단계 (펫 파일에서). 아기, 청소년은 작게 */
+  age?: AgeStage;
 }
 
 export const FRIENDS_MAX = 3;
@@ -238,8 +271,11 @@ export const POSE_KINDS: readonly { id: PoseKind; readonly label: string }[] = [
 const PET_FILE = /^(pet|pose)-[\w-]+\.(png|gif|webp)$/;
 
 /** 바꿀 값만. 사진 펫은 null 이면 지운다 (기본 펫으로). */
-export type SettingsPatch = Partial<Omit<Settings, 'petImage' | 'petPoses' | 'petModel' | 'petDepth'>> & {
+export type SettingsPatch = Partial<
+  Omit<Settings, 'petImage' | 'petPoses' | 'petModel' | 'petDepth' | 'petAge'>
+> & {
   petImage?: string | null;
+  petAge?: AgeStage | null;
   petModel?: string | null;
   petDepth?: string | null;
   petPoses?: Partial<Record<PoseKind, string | null>>;
@@ -253,6 +289,7 @@ export const DEFAULT_SETTINGS: Settings = {
   aiIsolation: true,
   persona: 'friend',
   aiKnowsTodos: false,
+  aiPetTools: false,
   launchAtLogin: false,
   hideHints: 0,
   petKind: 'kong',
@@ -266,6 +303,7 @@ export const DEFAULT_SETTINGS: Settings = {
   updateCheck: true,
   reviewMinute: 18 * 60,
   review: true,
+  osNotify: true,
   shortcuts: { ...SHORTCUT_DEFAULTS },
   myMcp: false,
   friends: [],
@@ -273,6 +311,8 @@ export const DEFAULT_SETTINGS: Settings = {
   aiModels: {},
   petLibrary: [],
   petRules: '',
+  petMemory: [],
+  petMemoryPending: [],
   focusMin: 25,
   lookAtCursor: true,
   dayRhythm: true,
@@ -282,6 +322,7 @@ export const DEFAULT_SETTINGS: Settings = {
   petGaits: {},
   petWishes: {},
   routine: DEFAULT_ROUTINE,
+  illustEngine: 'cloud',
 };
 
 export const PET_NAME_MAX = 12;
@@ -374,6 +415,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     aiIsolation: bool(r.aiIsolation, base.aiIsolation),
     persona: isPersona(r.persona) ? r.persona : base.persona,
     aiKnowsTodos: bool(r.aiKnowsTodos, base.aiKnowsTodos),
+    aiPetTools: bool(r.aiPetTools, base.aiPetTools),
     launchAtLogin: bool(r.launchAtLogin, base.launchAtLogin),
     hideHints:
       typeof r.hideHints === 'number' && Number.isFinite(r.hideHints)
@@ -388,6 +430,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     sysMonitor: bool(r.sysMonitor, base.sysMonitor),
     ...petModelOf(r.petModel, base.petModel),
     ...petDepthOf(r.petDepth, base.petDepth),
+    ...petAgeOf(r, base),
     petPoses: posesOf(r.petPoses, base.petPoses),
     restDays: Array.isArray(r.restDays)
       ? [...new Set(r.restDays.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 6))].sort()
@@ -403,6 +446,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
         ? r.reviewMinute
         : base.reviewMinute,
     review: typeof r.review === 'boolean' ? r.review : r.chatter === 'quiet' ? false : base.review,
+    osNotify: bool(r.osNotify, base.osNotify),
     shortcuts: shortcutsOf(r.shortcuts, base.shortcuts),
     ...icsOf(r.icsUrl, base.icsUrl),
     myMcp: bool(r.myMcp, base.myMcp),
@@ -412,6 +456,10 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     petLibrary: Array.isArray(r.petLibrary) ? libraryOf(r.petLibrary) : base.petLibrary,
     petRules:
       typeof r.petRules === 'string' ? r.petRules.replace(/\r\n/g, '\n').slice(0, RULES_MAX) : base.petRules,
+    petMemory: Array.isArray(r.petMemory) ? cleanMemory(r.petMemory) : [...base.petMemory],
+    petMemoryPending: Array.isArray(r.petMemoryPending)
+      ? cleanPending(r.petMemoryPending)
+      : [...base.petMemoryPending],
     focusMin: isFocusLength(r.focusMin) ? r.focusMin : base.focusMin,
     lookAtCursor: bool(r.lookAtCursor, base.lookAtCursor),
     dayRhythm: bool(r.dayRhythm, base.dayRhythm),
@@ -419,6 +467,8 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     sounds: bool(r.sounds, base.sounds),
     boost: bool(r.boost, base.boost),
     routine: parseRoutine(r.routine, base.routine),
+    // 옛 값 'mac' 은 local 로 (내 Mac에서 → 내 컴퓨터에서, 2026-10-10)
+    illustEngine: illustEngineOf(r.illustEngine) ?? base.illustEngine,
     ...bodiesOf(r, base),
     ...(typeof r.skipVersion === 'string' && /^\d+\.\d+\.\d+/.test(r.skipVersion)
       ? { skipVersion: r.skipVersion.slice(0, 32) }
@@ -492,6 +542,14 @@ function petImageOf(v: unknown, current: string | undefined): { petImage?: strin
   return current ? { petImage: current } : {};
 }
 
+/** 나이 단계: 사진 펫이 있을 때만. null 이면 지운다 */
+function petAgeOf(r: Record<string, unknown>, base: Settings): { petAge?: AgeStage } {
+  if (!petImageOf(r.petImage, base.petImage).petImage) return {};
+  if (r.petAge === null) return {};
+  if (isAgeStage(r.petAge)) return { petAge: r.petAge };
+  return base.petAge ? { petAge: base.petAge } : {};
+}
+
 const MODEL_FILE = /^model-[\w-]+\.json$/;
 const DEPTH_FILE = /^depth-[\w-]+\.png$/;
 function petDepthOf(v: unknown, current: string | undefined): { petDepth?: string } {
@@ -524,6 +582,7 @@ function libraryOf(list: unknown[]): SavedPet[] {
       image,
       ...(model ? { model } : {}),
       ...(depth ? { depth } : {}),
+      ...(isAgeStage(f.age) ? { age: f.age } : {}),
       poses: posesOf(f.poses, {}),
     });
     if (out.length >= LIBRARY_MAX) break;
@@ -563,6 +622,7 @@ function friendsOf(list: unknown[]): Friend[] {
       ...(model ? { model } : {}),
       ...(depth ? { depth } : {}),
       ...(isGait(f.gait) ? { gait: f.gait } : {}),
+      ...(image && isAgeStage(f.age) ? { age: f.age } : {}),
     });
     if (out.length >= FRIENDS_MAX) break;
   }
@@ -575,15 +635,35 @@ const HOST_MAC: boolean | undefined =
     ? process.platform === 'darwin'
     : undefined;
 
+/** 나중 버전에 생긴 단축키. 새로 더하면 여기에도 적는다 (예전 설정 파일에는 이 id 가 없다) */
+const LATER_SHORTCUTS: readonly ShortcutId[] = ['chat', 'look', 'panel'];
+
 function shortcutsOf(v: unknown, current: Record<ShortcutId, string>): Record<ShortcutId, string> {
   const r = (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>;
   const out = { ...current };
+  const given = new Set<ShortcutId>();
   for (const id of Object.keys(SHORTCUT_DEFAULTS) as ShortcutId[]) {
     const v = r[id];
+    if (v === NO_SHORTCUT) {
+      out[id] = NO_SHORTCUT;
+      given.add(id);
+      continue;
+    }
     // 손으로 고친 설정 파일의 복사, 종료 같은 조합은 등록하지 않는다. 운영체제는 이 컴퓨터 것 (파일은 두 운영체제가 같이 쓴다)
-    if (isAccelerator(v) && !(HOST_MAC !== undefined && reservedUse(v, HOST_MAC))) out[id] = v;
+    if (isAccelerator(v) && !(HOST_MAC !== undefined && reservedUse(v, HOST_MAC))) {
+      out[id] = v;
+      given.add(id);
+    }
   }
-  // 두 단축키가 같으면 바꾼 쪽을 버린다 (화면은 shortcutClash 로 먼저 알리고 보내지 않는다)
+  // 새 버전에서 생긴 단축키(파일에 없는 id)의 기본 키가 사용자가 이미 쓰던 키와 겹치면 새 쪽을 비운다.
+  // 예전에는 통째로 기본값으로 돌아가 사용자가 바꿔 둔 키가 사라졌다 (리뷰 HIGH)
+  // 처음부터 있던 숨기기, 할 일 넣기는 여기서 비우지 않는다 (일부만 바꾸는 요청이 멀쩡한 키를 지우지 않게)
+  for (const id of LATER_SHORTCUTS) {
+    if (given.has(id) || out[id] !== SHORTCUT_DEFAULTS[id]) continue;
+    const key = out[id].toLowerCase();
+    if ([...given].some((g) => out[g].toLowerCase() === key)) out[id] = NO_SHORTCUT;
+  }
+  // 그래도 두 단축키가 같으면 바꾼 쪽을 버린다 (화면은 shortcutClash 로 먼저 알리고 보내지 않는다)
   if (shortcutClash(out)) return { ...current };
   return out;
 }

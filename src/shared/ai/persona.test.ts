@@ -7,8 +7,12 @@ import {
   extractTodos,
   isPersona,
   noteTitleFromQuestion,
+  nowLine,
   persona,
+  setMemorySource,
   todoContext,
+  turnPrompt,
+  withMemory,
   withRules,
 } from './persona.ts';
 
@@ -134,4 +138,75 @@ test('짝꿍 규칙은 성격 뒤에 목록으로 붙고, 비면 붙지 않는�
   const p = persona('콩이', 'friend', '답은 세 줄 안으로\n\n- 코드는 TypeScript 로');
   assert.ok(p.endsWith('규칙을 따른다:\n- 답은 세 줄 안으로\n- 코드는 TypeScript 로'));
   assert.ok(!persona('콩이', 'friend').includes('규칙'));
+});
+
+test('답에서 할 일: 코드 블록 안 줄과 들여 쓴 세부 목록은 뺀다', () => {
+  const answer = [
+    '이렇게 해 봐:',
+    '- 패키지 설치',
+    '  - npm 이 없으면 먼저 설치',
+    '    * 버전은 22 이상',
+    '- 테스트 돌리기',
+    '```bash',
+    '- 이건 코드 안 줄',
+    'npm test',
+    '```',
+    '\t- 탭으로 들여 쓴 설명',
+    '1. 결과 확인',
+  ].join('\n');
+  assert.deepEqual(extractTodos(answer), ['패키지 설치', '테스트 돌리기', '결과 확인']);
+  // 목록 전체가 들여 써져 있으면 그중 가장 얕은 것이 바깥 목록
+  assert.deepEqual(extractTodos('  - 하나\n  - 둘\n      - 세부'), ['하나', '둘']);
+  // 목록이 코드 블록 안에만 있으면 첫 문장 (코드 줄은 아니다)
+  assert.deepEqual(extractTodos('```\n- rm -rf\n```\n푹 쉬어. 내일 보자.'), ['푹 쉬어.']);
+});
+
+test('지금 시각: 현지 날짜, 요일, 오전 오후 (한국어, 영어)', () => {
+  const d = new Date(2026, 9, 10, 15, 12);
+  assert.equal(nowLine(d, 'ko'), '지금은 2026-10-10(토) 오후 3:12.');
+  assert.equal(nowLine(d, 'en'), 'It is now Sat, Oct 10, 2026, 3:12 PM.');
+  assert.equal(nowLine(new Date(2026, 0, 4, 0, 5), 'ko'), '지금은 2026-01-04(일) 오전 12:05.');
+  assert.equal(nowLine(new Date(2026, 0, 4, 12, 0), 'en'), 'It is now Sun, Jan 4, 2026, 12:00 PM.');
+  // 시스템 지시에는 시각이 없다 (분마다 바뀌면 프롬프트 캐시가 깨진다)
+  setLang('ko');
+  assert.doesNotMatch(persona('콩이'), /지금은/);
+  assert.equal(persona('콩이'), persona('콩이'));
+  setLang('en');
+  assert.doesNotMatch(persona('Bean'), /It is now/);
+  // 질문마다 앞에 붙인다: 시각, 오늘 상황, 질문 순
+  assert.equal(
+    turnPrompt({ now: d, question: 'hi' }),
+    'It is now Sat, Oct 10, 2026, 3:12 PM.\n[Question]\nhi',
+  );
+  setLang('ko');
+  assert.equal(turnPrompt({ now: d, question: '안녕' }), '지금은 2026-10-10(토) 오후 3:12.\n[질문]\n안녕');
+  assert.equal(
+    turnPrompt({ now: d, context: '[내 오늘 상황]\n[질문]\n', question: '안녕' }),
+    '지금은 2026-10-10(토) 오후 3:12.\n[내 오늘 상황]\n[질문]\n안녕',
+  );
+  // now 를 안 주면 지금 시각
+  assert.match(
+    turnPrompt({ question: 'x' }),
+    /^지금은 \d{4}-\d{2}-\d{2}\([일월화수목금토]\) 오[전후] \d{1,2}:\d{2}\./,
+  );
+});
+
+test('짝꿍이 기억하는 것: 규칙 뒤에 붙고, 비면 붙지 않고, 일기처럼 빈 목록을 주면 빠진다', () => {
+  setLang('ko');
+  assert.equal(withMemory([]), '');
+  assert.equal(withMemory(['  ']), '');
+  const p = persona('콩이', 'friend', '답은 짧게', { memory: ['아침엔 회의가 많아', '커피는 안 마셔'] });
+  assert.ok(p.indexOf('규칙을 따른다:') < p.indexOf('기억하는 것이다'));
+  assert.ok(p.endsWith('굳이 꺼내지는 않는다:\n- 아침엔 회의가 많아\n- 커피는 안 마셔'));
+  // 메인이 정한 기억 출처를 읽는다. memory 를 주면 그것이 먼저
+  setMemorySource(() => ['고양이를 키워']);
+  try {
+    assert.ok(persona('콩이').endsWith('- 고양이를 키워'));
+    assert.ok(!persona('콩이', 'friend', '', { memory: [] }).includes('고양이'));
+    setLang('en');
+    assert.match(persona('Bean'), /Things you remember about the user\. .*:\n- 고양이를 키워$/);
+  } finally {
+    setMemorySource(() => []);
+    setLang('ko');
+  }
 });

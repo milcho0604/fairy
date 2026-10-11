@@ -6,6 +6,7 @@ import type { OutgoingImage, ProviderView } from '../../../shared/ipc.ts';
 import { PetFace } from '../PetFace.tsx';
 import { AiManager } from './AiManager.tsx';
 import { toOutgoing } from './images.ts';
+import { chatKey, lastQuestion } from './keys.ts';
 import { Markdown } from './Markdown.tsx';
 import { ProviderPicker } from './ProviderPicker.tsx';
 import { isReady, statusText } from './providerStatus.ts';
@@ -25,6 +26,12 @@ export function App() {
   const [zoom, setZoom] = useState<string>();
   const [providers, setProviders] = useState<ProviderView[]>([]);
   const [managing, setManaging] = useState(false);
+  // 덮개(AI 관리, 그림 크게 보기)가 열려 있으면 입력칸으로 포커스를 옮기지 않는다 (가려진 입력칸에 붙여 넣고 보내졌다)
+  const overlayRef = useRef(false);
+  overlayRef.current = managing || !!zoom;
+  const focusInput = useCallback(() => {
+    if (!overlayRef.current) inputRef.current?.focus();
+  }, []);
   /** 새 대화를 누른 직후 잠깐 보이는 되돌리기 알림 */
   const [undoShown, setUndoShown] = useState(false);
   const undoTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -32,6 +39,12 @@ export function App() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const stickToBottom = useRef(true);
   const readFilesRef = useRef<(files: FileList | File[]) => void>(() => {});
+  /** 창 전체 단축키(Esc, Cmd/Ctrl+N)가 지금 화면 값을 보게 매번 바꿔 끼운다 */
+  const globalKeyRef = useRef<(e: globalThis.KeyboardEvent) => void>(() => {});
+  /** 화면 읽기 프로그램에 읽어 줄 다 온 답. 조각마다 읽으면 시끄러워서 끝났을 때 한 번만 */
+  const [announce, setAnnounce] = useState('');
+  /** 이미 끝난 답 id. 처음 열 때 남아 있던 대화(다시 켬)는 읽지 않는다 */
+  const doneIds = useRef<Set<string>>(undefined);
 
   const refreshStatus = useCallback(async (refresh: boolean) => {
     setChecking(true);
@@ -41,14 +54,18 @@ export function App() {
     setChecking(false);
   }, []);
 
-  const addImages = useCallback(async (incoming: OutgoingImage[]) => {
-    setImages((prev) => {
-      const next = [...prev, ...incoming].slice(0, MAX_IMAGES);
-      if (prev.length + incoming.length > MAX_IMAGES) setNotice(t('chat.tooManyImages', { max: MAX_IMAGES }));
-      return next;
-    });
-    inputRef.current?.focus();
-  }, []);
+  const addImages = useCallback(
+    async (incoming: OutgoingImage[]) => {
+      setImages((prev) => {
+        const next = [...prev, ...incoming].slice(0, MAX_IMAGES);
+        if (prev.length + incoming.length > MAX_IMAGES)
+          setNotice(t('chat.tooManyImages', { max: MAX_IMAGES }));
+        return next;
+      });
+      focusInput();
+    },
+    [focusInput],
+  );
 
   useEffect(() => {
     bridge.snapshot().then((snap) => {
@@ -76,15 +93,23 @@ export function App() {
     refreshStatus(false);
     inputRef.current?.focus();
     // 같이 보기로 창이 다시 앞에 오면 바로 질문을 쓸 수 있게 입력칸에 커서를 둔다.
-    const onFocus = () => inputRef.current?.focus();
+    const onFocus = focusInput;
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
-  }, [addImages, refreshStatus]);
+  }, [addImages, refreshStatus, focusInput]);
+
+  // 덮개를 닫으면 입력칸으로 돌아온다
+  const covered = managing || !!zoom;
+  const wasCovered = useRef(false);
+  useEffect(() => {
+    if (wasCovered.current && !covered) focusInput();
+    wasCovered.current = covered;
+  }, [covered, focusInput]);
 
   // 그림이 붙으면(같이 보기 포함) 바로 질문을 쓰게 입력칸으로. 새 창이면 입력칸이 그려진 뒤에 한다.
   useEffect(() => {
-    if (images.length > 0) inputRef.current?.focus();
-  }, [images.length]);
+    if (images.length > 0) focusInput();
+  }, [images.length, focusInput]);
 
   // 창 어디에 그림을 끌어다 놓아도 붙인다.
   useEffect(() => {
@@ -115,6 +140,27 @@ export function App() {
     if (hasMessages) setUndoShown(false);
   }, [hasMessages]);
   useEffect(() => () => clearTimeout(undoTimer.current), []);
+
+  // 답이 새로 끝나면 한 번 알린다
+  useEffect(() => {
+    if (!state) return;
+    const done = state.messages.filter((m) => m.role === 'pet' && m.status === 'done');
+    if (!doneIds.current) {
+      doneIds.current = new Set(done.map((m) => m.id));
+      return;
+    }
+    const fresh = done.filter((m) => !doneIds.current?.has(m.id));
+    for (const m of fresh) doneIds.current.add(m.id);
+    const last = fresh.at(-1);
+    if (last) setAnnounce(t('chat.a11yAnswered', { name: petName, text: last.text }));
+  }, [state, petName]);
+
+  // Esc, Cmd/Ctrl+N 은 입력칸 밖(답 단추 등)에 있어도 듣는다
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => globalKeyRef.current(e);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // 새 메시지가 오면 맨 아래로. 사용자가 위로 올려 읽는 중이면 두지 않는다.
   useEffect(() => {
@@ -163,6 +209,34 @@ export function App() {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
       e.preventDefault();
       send();
+      return;
+    }
+    // 빈 입력칸에서 ↑: 마지막 질문을 다시 불러온다 (고쳐서 다시 묻기)
+    if (chatKey(e.nativeEvent, bridge.platform) === 'recall' && !text) {
+      const last = lastQuestion(state.messages);
+      if (!last) return;
+      e.preventDefault();
+      setText(last);
+      // 값이 들어간 뒤 커서를 끝으로
+      requestAnimationFrame(() => {
+        const el = inputRef.current;
+        el?.setSelectionRange(el.value.length, el.value.length);
+      });
+    }
+  };
+
+  globalKeyRef.current = (e) => {
+    const key = chatKey(e, bridge.platform);
+    if (key === 'escape') {
+      // 그림 크게 보기, AI 관리가 열려 있으면 그것부터 닫는다. 아니면 답을 멈춘다
+      if (zoom) setZoom(undefined);
+      else if (managing) setManaging(false);
+      else if (pending) bridge.cancel();
+      else return;
+      e.preventDefault();
+    } else if (key === 'new-chat') {
+      e.preventDefault();
+      if (!pending && state.messages.length > 0) newChat();
     }
   };
 
@@ -255,6 +329,11 @@ export function App() {
       <div
         className="messages"
         ref={listRef}
+        // 새 메시지(내 질문, 오류)는 덧붙을 때 읽는다. 답 조각은 그리는 중이라 숨기고 끝나면 아래 announce 로
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions"
+        aria-label={t('chat.a11yLog', { name: petName })}
         onScroll={(e) => {
           const el = e.currentTarget;
           stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
@@ -264,6 +343,25 @@ export function App() {
           <div className="empty">
             <p>{t('chat.emptyLead')}</p>
             <p className="hint">{t('chat.emptyHint', { name: petName })}</p>
+            {/* 무엇을 물을지 막막할 때: 누르면 입력칸에 채운다 (바로 보내지 않아 고쳐 쓸 수 있다) */}
+            <ul className="starters" aria-label={t('chat.starters')}>
+              {(['chat.starter.today', 'chat.starter.polish', 'chat.starter.break'] as const).map((key) => (
+                <li key={key}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setText(t(key));
+                      const el = inputRef.current;
+                      el?.focus();
+                      // 커서는 글 끝에 (다듬을 글을 바로 붙여 넣게)
+                      requestAnimationFrame(() => el?.setSelectionRange(el.value.length, el.value.length));
+                    }}
+                  >
+                    {t(key).trim()}
+                  </button>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
         {state.messages.map((m) => (
@@ -280,6 +378,10 @@ export function App() {
           />
         ))}
       </div>
+
+      <span className="sr-only" role="status" aria-live="polite">
+        {announce}
+      </span>
 
       <footer>
         {undoShown && (
@@ -435,7 +537,8 @@ function Message({
           <Thinking streams={m.provider === 'claude'} label={label} petName={petName} />
         )}
         {m.text && (
-          <div className="bubble">
+          // 오는 중인 답은 화면 읽기에서 숨긴다 (조각마다 읽지 않게). 끝나면 보이고 한 번 알린다
+          <div className="bubble" aria-hidden={m.status === 'streaming' || undefined}>
             <Markdown text={m.text} onLink={bridge.openLink} />
             {m.status === 'done' && <AnswerActions id={m.id} text={m.text} />}
           </div>
@@ -491,6 +594,8 @@ function Message({
 /** 답 아래 작은 단추: 복사, 메모로, 할 일로 (v1 "답변을 메모, 할 일로") */
 function AnswerActions({ id, text }: { id: string; text: string }) {
   const [done, setDone] = useState<{ msg: string; failed?: boolean }>();
+  // 단추가 답마다 있어서 화면 읽기에는 어느 답의 단추인지 앞부분을 같이 읽어 준다
+  const about = snippet(text);
   const flash = (msg: string, failed = false) => {
     setDone({ msg, failed });
     setTimeout(() => setDone(undefined), failed ? 2600 : 1800);
@@ -500,6 +605,7 @@ function AnswerActions({ id, text }: { id: string; text: string }) {
     <span className="answer-actions">
       <button
         type="button"
+        aria-label={t('chat.copyLabel', { text: about })}
         onClick={async () => {
           // 창이 앞에 없거나 권한이 막히면 복사가 실패한다. 됐다고 하지 않고 못 했다고 알린다
           try {
@@ -514,6 +620,7 @@ function AnswerActions({ id, text }: { id: string; text: string }) {
       </button>
       <button
         type="button"
+        aria-label={t('chat.toNoteLabel', { text: about })}
         onClick={async () => {
           const ok = await bridge.toNote(id);
           flash(ok ? t('chat.savedNote') : t('chat.saveFailed'), !ok);
@@ -524,6 +631,7 @@ function AnswerActions({ id, text }: { id: string; text: string }) {
       <button
         type="button"
         title={t('chat.toTodosTitle')}
+        aria-label={t('chat.toTodosLabel', { text: about })}
         onClick={async () => {
           const n = await bridge.toTodos(id);
           flash(n > 0 ? t('chat.todosAdded', { n }) : t('chat.nothingToAdd'));
@@ -533,6 +641,15 @@ function AnswerActions({ id, text }: { id: string; text: string }) {
       </button>
     </span>
   );
+}
+
+/** 답 앞부분 (단추 이름에 붙인다). 마크다운 기호는 읽을 때 거슬려서 뺀다 */
+function snippet(text: string): string {
+  const plain = text
+    .replace(/[#*_`>[\]()~|-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return plain.length > 40 ? `${plain.slice(0, 40)}…` : plain;
 }
 
 function Thinking({ streams, label, petName }: { streams: boolean; label: string; petName: string }) {

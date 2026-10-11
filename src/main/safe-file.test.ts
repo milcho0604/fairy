@@ -13,7 +13,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
-import { freePath, plainEntry, readFileIn, safeFileIn, writeFileAtomic } from './safe-file.ts';
+import { freePath, plainEntry, readFileIn, renameRetry, safeFileIn, writeFileAtomic } from './safe-file.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'jj-safe-'));
 after(() => rmSync(root, { recursive: true, force: true }));
@@ -84,4 +84,43 @@ test('크기 상한을 주면 그보다 큰 파일은 읽지 않는다 (설계�
   assert.equal(readFileIn(pets, 'model-big.json', 4096)?.length, 2048);
   assert.equal(readFileIn(pets, 'model-big.json')?.length, 2048);
   assert.equal(readFileIn(pets, 'pet-link.png', 4096), undefined);
+});
+
+const busy = (code: string) => Object.assign(new Error(code), { code });
+
+test('renameRetry: 윈도우에서 잠깐 잡힌 파일(EBUSY, EPERM, EACCES)은 몇 번 더 해 본다', () => {
+  let calls = 0;
+  const waits: number[] = [];
+  renameRetry(
+    'a',
+    'b',
+    () => {
+      calls++;
+      if (calls < 3) throw busy(calls === 1 ? 'EBUSY' : 'EPERM');
+    },
+    'win32',
+    (ms) => waits.push(ms),
+  );
+  assert.equal(calls, 3);
+  assert.equal(waits.length, 2);
+});
+
+test('renameRetry: 끝까지 잡혀 있으면 몇 번만 해 보고 던진다, 다른 오류와 다른 운영체제는 바로 던진다', () => {
+  let calls = 0;
+  const always = () => {
+    calls++;
+    throw busy('EACCES');
+  };
+  assert.throws(() => renameRetry('a', 'b', always, 'win32', () => {}), /EACCES/);
+  assert.ok(calls > 1 && calls <= 6, `${calls}번`);
+  calls = 0;
+  assert.throws(() => renameRetry('a', 'b', always, 'darwin', () => {}), /EACCES/);
+  assert.equal(calls, 1);
+  calls = 0;
+  const missing = () => {
+    calls++;
+    throw busy('ENOENT');
+  };
+  assert.throws(() => renameRetry('a', 'b', missing, 'win32', () => {}), /ENOENT/);
+  assert.equal(calls, 1);
 });

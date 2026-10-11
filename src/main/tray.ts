@@ -15,6 +15,8 @@ export interface TrayActions {
   quickAdd(): void;
   /** 패널을 할 일 탭으로 연다 */
   openTodos(): void;
+  /** 패널 열고 닫기 (펫 누르기, 패널 단축키와 같다) */
+  togglePanel(): void;
   /** 펫(과 친구) 화면을 다시 불러온다. 펫이 안 보이거나 멈췄을 때 우클릭을 못 하니 여기에도 둔다 */
   reloadPet(): void;
   /** 컴퓨터 상태 줄들 (system-monitor.ts) */
@@ -45,13 +47,31 @@ export function createTray(petName: () => string, actions: TrayActions): Tray {
     Menu.buildFromTemplate([
       {
         label: actions.isHidden() ? t('tray.show', { name: petName() }) : t('tray.hide', { name: petName() }),
-        accelerator: hideShortcut(),
+        accelerator: hideShortcut() || undefined,
         click: () => actions.toggleHidden(),
       },
-      { label: t('tray.chat', { name: petName() }), click: () => actions.openChat() },
-      { label: t('tray.look', { name: petName() }), click: () => actions.lookTogether() },
+      {
+        label: t('tray.chat', { name: petName() }),
+        accelerator: settings.get().shortcuts.chat || undefined,
+        click: () => actions.openChat(),
+      },
+      {
+        label: t('tray.look', { name: petName() }),
+        accelerator: settings.get().shortcuts.look || undefined,
+        click: () => actions.lookTogether(),
+      },
+      // 패널 단축키를 메뉴에서도 알려 준다 (끈 단축키면 키 없이)
+      {
+        label: t('tray.panel'),
+        accelerator: settings.get().shortcuts.panel || undefined,
+        click: () => actions.togglePanel(),
+      },
       { label: t('tray.todos'), click: () => actions.openTodos() },
-      { label: t('tray.addTodo'), accelerator: quickAddShortcut(), click: () => actions.quickAdd() },
+      {
+        label: t('tray.addTodo'),
+        accelerator: quickAddShortcut() || undefined,
+        click: () => actions.quickAdd(),
+      },
       { label: t('tray.settings'), click: () => actions.openSettings() },
       { label: t('tray.feedback'), click: () => actions.sendFeedback() },
       { type: 'separator' },

@@ -310,3 +310,19 @@ footer .ghost,
   margin-top: 8px;
   color: var(--error);
 }
+
+/* 밀크, 초코 (그림 친구): 작은 그림과 이름을 한 줄로 */
+.choice button.starter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.choice button.starter img {
+  width: 24px;
+  height: 28px;
+  object-fit: contain;
+  flex: none;
+}

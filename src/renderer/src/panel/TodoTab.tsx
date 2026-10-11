@@ -1,10 +1,20 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { timeLabel } from '../../../shared/event-store.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PanelAddResult, PanelState } from '../../../shared/ipc.ts';
 import { dueLabel } from '../../../shared/quick-add.ts';
-import { REPEAT_LABEL, REPEATS, type Repeat, type Todo } from '../../../shared/todo-store.ts';
-import { CheckIcon, RepeatIcon, StarIcon } from './icons.tsx';
+import { allTags, filterTodos, titleParts } from '../../../shared/todo-filter.ts';
+import {
+  REPEAT_LABEL,
+  REPEATS,
+  type Repeat,
+  STEP_MAX,
+  stepProgress,
+  type Todo,
+  type TodoStep,
+} from '../../../shared/todo-store.ts';
+import './assist.css';
+import { CheckIcon, RepeatIcon, SearchIcon, StarIcon, StepsIcon } from './icons.tsx';
 import { isEsc, takeEsc } from './keys.ts';
 import { RemindButton, RemindSheet } from './RemindPicker.tsx';
 
@@ -58,6 +68,39 @@ export function TodoTab({
   };
   const [error, setError] = useState('');
   const [showDone, setShowDone] = useState(false);
+  // 찾기와 태그 (할 일이 많을 때 좁혀 보기)
+  const [finding, setFinding] = useState(false);
+  const [query, setQuery] = useState('');
+  const [composing, setComposing] = useState(false);
+  const [tag, setTag] = useState<string | null>(null);
+  const findRef = useRef<HTMLInputElement>(null);
+  const tags = allTags(s.open);
+  // 고른 태그가 목록에서 사라지면(마지막 것을 끝냄) 모두로
+  const picked = tag && tags.some((x) => x.tag.toLowerCase() === tag.toLowerCase()) ? tag : null;
+  const shown = filterTodos(s.open, { query: finding ? query : '', tag: picked, composing });
+  const filtered = shown.length !== s.open.length;
+  const canFind = s.open.length >= FIND_FROM || finding;
+  const openFind = () => {
+    setFinding(true);
+    requestAnimationFrame(() => findRef.current?.focus());
+  };
+  const closeFind = () => {
+    setFinding(false);
+    setQuery('');
+    inputRef.current?.focus();
+  };
+  // Ctrl/Cmd+F 로 찾기
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 여는 함수는 매번 새로 만들어도 하는 일이 같다
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        openFind();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   /** value 를 넣는다. 여러 줄 붙여 넣기면 칸에 적던 글은 그대로 둔다 */
   const add = async (value = text) => {
@@ -100,12 +143,83 @@ export function TodoTab({
             void add(pasted);
           }}
         />
+        {canFind && !finding && (
+          <button
+            type="button"
+            className="find-btn"
+            aria-label={t('assist.find.open')}
+            title={t('assist.find.open')}
+            onClick={openFind}
+          >
+            <SearchIcon />
+          </button>
+        )}
       </div>
       {error && <p className="hint error">{error}</p>}
+      {finding && (
+        <div className="find-row">
+          <SearchIcon />
+          <input
+            ref={findRef}
+            value={query}
+            aria-label={t('assist.find.open')}
+            placeholder={t('assist.find.placeholder')}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setComposing((e.nativeEvent as InputEvent).isComposing ?? false);
+            }}
+            onCompositionEnd={() => setComposing(false)}
+            onKeyDown={(e) => {
+              if (isEsc(e)) {
+                takeEsc(e);
+                closeFind();
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="find-clear"
+            aria-label={t('assist.find.clear')}
+            onClick={closeFind}
+          >
+            ×
+          </button>
+        </div>
+      )}
+      {tags.length > 0 && (
+        <fieldset className="tag-chips" aria-label={t('assist.tag.nav')}>
+          <button
+            type="button"
+            className={picked === null ? 'len-chip on' : 'len-chip'}
+            aria-pressed={picked === null}
+            onClick={() => setTag(null)}
+          >
+            {t('assist.tag.all')}
+          </button>
+          {tags.map((x) => {
+            const on = picked?.toLowerCase() === x.tag.toLowerCase();
+            return (
+              <button
+                key={x.tag}
+                type="button"
+                className={on ? 'len-chip on' : 'len-chip'}
+                aria-pressed={on}
+                onClick={() => setTag(on ? null : x.tag)}
+              >
+                #{x.tag}
+                <small>{x.n}</small>
+              </button>
+            );
+          })}
+        </fieldset>
+      )}
 
       <ul className="todos scroll">
         {s.open.length === 0 && <li className="empty">{t('panel.todo.empty')}</li>}
-        {s.open.map((todo) => (
+        {s.open.length > 0 && filtered && shown.length === 0 && (
+          <li className="empty">{t('assist.find.none')}</li>
+        )}
+        {shown.map((todo) => (
           <TodoRow
             key={todo.id}
             todo={todo}
@@ -169,6 +283,30 @@ export function TodoRow({
   // 미리 알림 고르기 (8판). 마감일이 있을 때만 종이 보인다 (마감일이 없으면 알릴 때가 없다)
   const [reminding, setReminding] = useState(false);
   const sheetId = useId();
+  // 단계 (9판 체크리스트): 단추를 누르면 줄 아래에 펼친다
+  const [stepping, setStepping] = useState(false);
+  const stepsId = useId();
+  const progress = stepProgress(todo.steps);
+  const stepsButton = (
+    <button
+      type="button"
+      className={`steps-btn ${progress ? 'on' : ''} ${stepping ? 'open' : ''} ${
+        progress && progress.done === progress.total ? 'all' : ''
+      }`}
+      aria-expanded={stepping}
+      aria-controls={stepsId}
+      aria-label={t('assist.step.open', { title: todo.title })}
+      title={t('assist.step.button')}
+      onClick={() => setStepping((v) => !v)}
+    >
+      <StepsIcon />
+      {progress && (
+        <span>
+          {progress.done}/{progress.total}
+        </span>
+      )}
+    </button>
+  );
   const due = todo.due ? dueLabel(todo.due, today) : undefined;
   const repeatButton = (
     <button
@@ -248,7 +386,16 @@ export function TodoRow({
             title={compact ? undefined : t('panel.todo.clickToEdit')}
             onClick={() => !compact && setEditing(true)}
           >
-            {todo.title}
+            {titleParts(todo.title).map((p, i) =>
+              p.tag ? (
+                // biome-ignore lint/suspicious/noArrayIndexKey: 제목 조각은 순서가 곧 자리다
+                <span key={i} className="tag">
+                  {p.text}
+                </span>
+              ) : (
+                p.text
+              ),
+            )}
           </button>
         )}
         {/* 줄 끝 단추. 마우스를 올려야 나오는 것(extra)은 제목 위에 겹쳐 띄워 제목 폭과 줄 높이가 바뀌지 않게 */}
@@ -256,6 +403,7 @@ export function TodoRow({
           {(!compact || !todo.due) && (
             <span className="extra">
               {!compact && !todo.repeat && repeatButton}
+              {!compact && !progress && stepsButton}
               {!todo.due && dueChip}
               {!compact && (
                 <button
@@ -272,6 +420,7 @@ export function TodoRow({
               )}
             </span>
           )}
+          {progress && stepsButton}
           {!compact && todo.repeat && repeatButton}
           {!compact && todo.due && (
             <RemindButton
@@ -296,6 +445,19 @@ export function TodoRow({
           )}
         </span>
       </li>
+      {stepping && (
+        <li className="steps-sheet-row">
+          <StepSheet
+            id={stepsId}
+            todo={todo}
+            onClose={() => setStepping(false)}
+            onFinish={() => {
+              setStepping(false);
+              onComplete();
+            }}
+          />
+        </li>
+      )}
       {reminding && !compact && todo.due && (
         <li className="remind-sheet-row">
           <RemindSheet
@@ -313,5 +475,156 @@ export function TodoRow({
         </li>
       )}
     </>
+  );
+}
+
+/** 이만큼 할 일이 있으면 찾기 단추가 보인다 */
+const FIND_FROM = 6;
+
+/** 붙여 넣은 목록 한 줄의 머리 기호 ("- ", "* [ ] ", "1. ") */
+const LIST_MARK = /^\s*(?:[-*]\s+(?:\[[ xX]\]\s*)?|\d+[.)]\s+)/;
+
+/** 할 일 단계 (9판): 하나씩 체크, 고치기, 지우기, 아래 칸에서 더하기. 여러 줄을 붙여 넣으면 줄마다 하나 */
+function StepSheet({
+  id,
+  todo,
+  onClose,
+  onFinish,
+}: {
+  id: string;
+  todo: Todo;
+  onClose: () => void;
+  /** 단계를 다 했을 때 "끝내기" */
+  onFinish: () => void;
+}) {
+  const [text, setText] = useState('');
+  const [error, setError] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  const progress = stepProgress(todo.steps);
+  const full = todo.steps.length >= STEP_MAX;
+  // 단계가 없으면 바로 적을 수 있게
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 펼칠 때 한 번
+  useEffect(() => {
+    if (todo.steps.length === 0) inputRef.current?.focus();
+  }, []);
+
+  const add = async (lines: string[]) => {
+    const r = await bridge.stepAdd(todo.id, lines);
+    if (!r.ok) {
+      setError(r.error ?? t('panel.add.failed'));
+      return false;
+    }
+    setError('');
+    return true;
+  };
+
+  return (
+    <div className="step-sheet" id={id}>
+      {todo.steps.length > 0 && (
+        <ul className="steps">
+          {todo.steps.map((st) => (
+            <StepItem key={st.id} step={st} />
+          ))}
+        </ul>
+      )}
+      {progress && progress.done === progress.total && (
+        <p className="step-done">
+          <span>{t('assist.step.allDone')}</span>
+          <button type="button" className="primary small" onClick={onFinish}>
+            {t('assist.step.finish')}
+          </button>
+        </p>
+      )}
+      {!full && (
+        <input
+          ref={inputRef}
+          className="step-add"
+          value={text}
+          aria-label={t('assist.step.add')}
+          placeholder={t('assist.step.placeholder')}
+          onChange={(e) => {
+            setText(e.target.value);
+            setError('');
+          }}
+          onKeyDown={async (e) => {
+            if (isEsc(e)) {
+              takeEsc(e);
+              if (text) setText('');
+              else onClose();
+              return;
+            }
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229 && text.trim()) {
+              if (await add([text])) setText('');
+            }
+          }}
+          onPaste={(e) => {
+            // 목록을 붙여 넣으면 줄마다 단계 하나 (머리 기호는 뗀다)
+            const lines = e.clipboardData
+              .getData('text')
+              .split(/\r?\n/)
+              .map((l) => l.replace(LIST_MARK, '').trim())
+              .filter(Boolean);
+            if (lines.length < 2) return;
+            e.preventDefault();
+            void add(lines);
+          }}
+        />
+      )}
+      {error && <p className="hint error">{error}</p>}
+      {todo.steps.length === 0 && <p className="step-hint">{t('assist.step.hint')}</p>}
+    </div>
+  );
+}
+
+function StepItem({ step }: { step: TodoStep }) {
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(step.title);
+  return (
+    <li className={`step ${step.done ? 'done-step' : ''}`}>
+      <button
+        type="button"
+        className={`check ${step.done ? 'on' : ''}`}
+        aria-pressed={step.done}
+        aria-label={t(step.done ? 'assist.step.uncheck' : 'assist.step.check', { title: step.title })}
+        onClick={() => bridge.stepToggle(step.id, !step.done)}
+      >
+        <CheckIcon />
+      </button>
+      {editing ? (
+        <input
+          className="title-edit"
+          value={title}
+          aria-label={t('panel.todo.editTitle')}
+          // biome-ignore lint/a11y/noAutofocus: 고치기를 누른 바로 그 칸이라 커서가 가야 한다
+          autoFocus
+          onChange={(e) => setTitle(e.target.value)}
+          onBlur={() => {
+            setEditing(false);
+            if (title.trim() && title !== step.title) bridge.stepRename(step.id, title);
+            else setTitle(step.title);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing) (e.target as HTMLInputElement).blur();
+            if (isEsc(e)) {
+              takeEsc(e);
+              setTitle(step.title);
+              setEditing(false);
+            }
+          }}
+        />
+      ) : (
+        <button type="button" className="title" onClick={() => setEditing(true)}>
+          {step.title}
+        </button>
+      )}
+      <button
+        type="button"
+        className="remove"
+        aria-label={t('assist.step.remove', { title: step.title })}
+        onClick={() => bridge.stepRemove(step.id)}
+      >
+        ×
+      </button>
+    </li>
   );
 }

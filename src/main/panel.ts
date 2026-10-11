@@ -7,7 +7,10 @@ import {
   type Rectangle,
   screen,
 } from 'electron';
+import type { StatStore } from '../shared/beta-stats.ts';
+import { undoMoved } from '../shared/briefing.ts';
 import { findSameEvent } from '../shared/event-dup.ts';
+import { clashIds, overlapping, spanEnd } from '../shared/event-overlap.ts';
 import {
   allDayTimes,
   type EventStore,
@@ -18,6 +21,7 @@ import {
 import { type FocusState, focusCoins, isFocusLength } from '../shared/focus.ts';
 import { t } from '../shared/i18n/index.ts';
 import {
+  type EventClash,
   type NoteAiKind,
   PANEL,
   type PanelAddResult,
@@ -49,10 +53,11 @@ import {
   todoPatchInput,
 } from '../shared/remind-parse.ts';
 import { CUSTOM_FOOD_COST, CUSTOM_FOOD_MAX, type Food, type ItemStore } from '../shared/shop.ts';
-import { COIN, FULLNESS, localDay, type TodoStore } from '../shared/todo-store.ts';
+import { COIN, FULLNESS, localDay, STEP_MAX, type TodoStore } from '../shared/todo-store.ts';
+import { weekSummary } from '../shared/week.ts';
 import { focusWindow, stealFocus } from './focus.ts';
 import { langArg } from './lang.ts';
-import { localTime, minuteOfDay, startOfDay } from './planner.ts';
+import { localTime, minuteOfDay, startOfDay, startOfDayAfter } from './planner.ts';
 import { readJson, removeJson, writeJson } from './store.ts';
 
 const PANEL_SIZE = { width: 360, height: 540 };
@@ -69,8 +74,8 @@ export interface PanelOptions {
   notes: NoteStore;
   events: EventStore;
   focus: () => FocusState;
-  /** 집중 시작. 길이(15, 25, 50분)를 주면 그 길이로 */
-  startFocus: (minutes?: number) => void;
+  /** 집중 시작. 길이(15, 25, 50분)를 주면 그 길이로, 할 일 id 를 주면 그 할 일을 하는 집중 */
+  startFocus: (minutes?: number, todoId?: number) => void;
   /** 고른 집중 길이 */
   focusMin: () => number;
   stopFocus: () => void;
@@ -102,16 +107,19 @@ export interface PanelOptions {
   petName: () => string;
   /** 펫 자리 (패널을 그 옆에 연다) */
   petBounds: () => Rectangle;
-  onCompleted: (coins: number) => void;
+  onCompleted: (coins: number, id: number) => void;
   onFed: () => void;
   /** 할 일이나 배부름이 바뀌었다 (펫 배고픔 표정 등) */
   onChanged: () => void;
   openChat: () => void;
+  openSettings: () => void;
   lookTogether: () => void;
   /** 오늘 놓친 알림 (펫이 숨어 있거나 자리에 없어 못 본 것) */
   missed: () => PanelState['missed'];
   diary: () => PanelState['diary'];
   clearMissed: () => void;
+  /** 하루 기록 (이번 주 돌아보기). 없으면 이번 주 칸이 없다 */
+  stats?: StatStore;
   log: (tag: string, ...rest: unknown[]) => void;
 }
 
@@ -154,7 +162,9 @@ export function createPanel(o: PanelOptions) {
         source: n.source,
         updatedAt: n.updatedAt,
       })),
-      events: o.events.between(startOfDay(now), startOfDay(now) + 14 * 86_400_000),
+      events: o.events.between(startOfDay(now), startOfDayAfter(now, 14)),
+      // 안 끝난 시각 일정끼리 (어제부터 이어지는 것 포함). 일정 탭이 보이는 것과 같은 범위
+      eventClash: [...clashIds(o.events.timedOverlapping(now, startOfDayAfter(now, 14)))],
       focus: o.focus(),
       focusMin: o.focusMin(),
       focusCoins: focusCoins(o.focusMin()),
@@ -166,7 +176,27 @@ export function createPanel(o: PanelOptions) {
         ...o.shop.state(),
         foodImages: Object.fromEntries(o.shop.state().customFoods.map((f) => [f.key, o.foodImage(f.image)])),
       },
+      ...(week(now, open) ?? {}),
     };
+  }
+
+  /** 이번 주 돌아보기. 기록을 못 읽어도 패널은 뜨게 */
+  function week(now: number, open: readonly { due: string | null }[]) {
+    const stats = o.stats;
+    if (!stats) return undefined;
+    try {
+      return { week: weekSummary(localDay(now), (days) => stats.diaryFacts(days), open) };
+    } catch (err) {
+      o.log('panel', '이번 주 못 읽음', err instanceof Error ? err.message : String(err));
+      return undefined;
+    }
+  }
+
+  /** 새 시각 일정과 시간이 겹치는 일정 (첫 것). 앞뒤 하루 안에서만 찾는다 */
+  function clashOf(ev: { startAt: number; endAt: number | null; id: number }): EventClash | undefined {
+    const span = { ...ev, title: '', allDay: false };
+    const hit = overlapping(o.events.timedOverlapping(ev.startAt, spanEnd(span)), span)[0];
+    return hit ? { title: hit.title, startAt: hit.startAt } : undefined;
   }
 
   function push() {
@@ -233,7 +263,8 @@ export function createPanel(o: PanelOptions) {
       push();
       o.onEventsChanged();
       // 어디에 언제로 넣었는지 알림에 보이고 되돌리거나 할 일로 옮길 수 있게 id 와 시각을 돌려준다
-      return { ok: true, kind: 'event', id: added.id, startAt: added.startAt };
+      const clash = clashOf(added);
+      return { ok: true, kind: 'event', id: added.id, startAt: added.startAt, ...(clash ? { clash } : {}) };
     }
     return addTodo(text, now, remind);
   }
@@ -380,7 +411,66 @@ export function createPanel(o: PanelOptions) {
     }
     push();
     o.onEventsChanged();
-    return { ok: true, event };
+    const clash = event.allDay ? undefined : clashOf(event);
+    return { ok: true, event, ...(clash ? { clash } : {}) };
+  });
+  // ---- 할 일 단계 (9판) ----
+  // 한 줄이나 여러 줄 (붙여 넣은 목록은 한 번에 넣고 한 번만 알린다. 줄마다 부르면 패널 상태를 줄 수만큼 다시 만들었다)
+  ipcMain.handle(PANEL.stepAdd, (e, todoId: unknown, title: unknown) => {
+    const titles = typeof title === 'string' ? [title] : Array.isArray(title) ? title : undefined;
+    if (!ours(e) || typeof todoId !== 'number' || !titles || !titles.every((x) => typeof x === 'string'))
+      return { ok: false };
+    const todo = o.store.get(todoId);
+    if (!todo || todo.doneAt !== null) return { ok: false, error: t('panel.retry') };
+    const room = STEP_MAX - todo.steps.length;
+    if (room <= 0) return { ok: false, error: t('assist.step.full', { n: STEP_MAX }) };
+    const n = o.store.addSteps(todoId, (titles as string[]).slice(0, room), Date.now());
+    if (n === 0) return { ok: false, error: t('panel.add.empty') };
+    push();
+    if (titles.length > room) return { ok: false, error: t('assist.step.full', { n: STEP_MAX }) };
+    return { ok: true };
+  });
+  /** 이 단계의 할 일이 아직 열려 있는지 (끝냈거나 지운 할 일의 단계는 패널에서 바꾸지 않는다) */
+  const openStep = (stepId: number) => {
+    const owner = o.store.stepOwner(stepId);
+    const todo = owner === undefined ? undefined : o.store.get(owner);
+    return !!todo && todo.doneAt === null;
+  };
+  ipcMain.on(PANEL.stepToggle, (e, stepId: unknown, done: unknown) => {
+    if (!ours(e) || typeof stepId !== 'number' || !openStep(stepId)) return;
+    o.store.toggleStep(stepId, typeof done === 'boolean' ? done : undefined);
+    push();
+  });
+  ipcMain.on(PANEL.stepRename, (e, stepId: unknown, title: unknown) => {
+    if (!ours(e) || typeof stepId !== 'number' || typeof title !== 'string' || !openStep(stepId)) return;
+    o.store.renameStep(stepId, title);
+    push();
+  });
+  ipcMain.on(PANEL.stepRemove, (e, stepId: unknown) => {
+    if (!ours(e) || typeof stepId !== 'number' || !openStep(stepId)) return;
+    o.store.removeStep(stepId);
+    push();
+  });
+  /** 마지막 "지난 마감 오늘로" (되돌리기는 메인이 지금 상태와 맞춰 한다) */
+  let lastMoved: { moved: { id: number; due: string | null }[]; today: string } | undefined;
+  ipcMain.handle(PANEL.moveOverdue, (e) => {
+    if (!ours(e)) return [];
+    const now = Date.now();
+    const today = localDay(now);
+    const moved = o.store.moveOverdue(today, now);
+    lastMoved = { moved, today };
+    log('todo', 'move-overdue', moved.length);
+    push();
+    return moved;
+  });
+  // 되돌리기: 아직 열려 있고 마감이 그대로 오늘인 것만 (그사이 끝냈거나 마감을 바꾼 것은 둔다. 회고 되돌리기와 같다)
+  ipcMain.on(PANEL.undoMoveOverdue, (e) => {
+    if (!ours(e) || !lastMoved) return;
+    const back = undoMoved(lastMoved.moved, o.store.list(Date.now()).open, lastMoved.today);
+    lastMoved = undefined;
+    const at = Date.now();
+    for (const b of back) o.store.update(b.id, { due: b.due }, at);
+    push();
   });
   ipcMain.on(PANEL.eventUpdate, (e, id: number, patch) => {
     if (!ours(e) || typeof patch !== 'object' || patch === null) return;
@@ -468,8 +558,10 @@ export function createPanel(o: PanelOptions) {
     o.play(kind);
   });
   // ---- 집중 타이머 ----
-  ipcMain.on(PANEL.focusStart, (e, minutes: unknown) => {
-    if (ours(e)) o.startFocus(isFocusLength(minutes) ? minutes : undefined);
+  ipcMain.on(PANEL.focusStart, (e, minutes: unknown, todoId: unknown) => {
+    if (!ours(e)) return;
+    const id = typeof todoId === 'number' && Number.isInteger(todoId) ? todoId : undefined;
+    o.startFocus(isFocusLength(minutes) ? minutes : undefined, id);
   });
   ipcMain.on(PANEL.focusStop, (e) => {
     if (ours(e)) o.stopFocus();
@@ -482,7 +574,7 @@ export function createPanel(o: PanelOptions) {
     const coins = o.store.complete(id, Date.now());
     log('todo', 'complete', id, coins);
     push();
-    o.onCompleted(coins);
+    o.onCompleted(coins, id);
     return coins;
   });
   ipcMain.handle(PANEL.undo, (e, id: number) => {
@@ -513,6 +605,11 @@ export function createPanel(o: PanelOptions) {
     push();
     if (r.ok) o.onFed();
     return { ok: r.ok };
+  });
+  ipcMain.on(PANEL.openSettings, (e) => {
+    if (!ours(e)) return;
+    closePanel();
+    o.openSettings();
   });
   ipcMain.on(PANEL.openChat, (e) => {
     if (!ours(e)) return;

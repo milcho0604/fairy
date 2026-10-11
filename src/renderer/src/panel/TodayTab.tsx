@@ -1,26 +1,31 @@
 import { useEffect, useRef, useState } from 'react';
+import { nextUp } from '../../../shared/briefing.ts';
 import { allDaySpan } from '../../../shared/event-store.ts';
 import { breakFor, FOCUS_LENGTHS, focusCoins, remainLabel } from '../../../shared/focus.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PanelState } from '../../../shared/ipc.ts';
-import type { Todo } from '../../../shared/todo-store.ts';
+import { stepProgress, type Todo } from '../../../shared/todo-store.ts';
+import type { WeekSummary } from '../../../shared/week.ts';
 import { dayHeading, timeOf } from './format.ts';
 import { TodoRow } from './TodoTab.tsx';
 
 const bridge = window.jjakkungPanel;
 
 /**
- * 오늘 (v1): 집중 타이머, 오늘 남은 일정, 오늘 마감과 지난 마감 할 일.
+ * 오늘 (v1): 다음 할 일(nextUp), 집중 타이머, 오늘 남은 일정, 오늘 마감과 지난 마감 할 일.
  * 기획서 "화면 설계": 패널은 오늘 화면에서 시작한다.
  */
 export function TodayTab({
   s,
   onComplete,
   goTo,
+  onMoved,
 }: {
   s: PanelState;
   onComplete: (todo: Todo) => void;
   goTo: (tab: 'todo' | 'event') => void;
+  /** 지난 마감을 오늘로 옮겼다 (되돌리기 알림) */
+  onMoved?: (moved: { id: number; due: string | null }[]) => void;
 }) {
   const [now, setNow] = useState(Date.now());
   // 고른 집중 길이. 시작하면 다음에도 이 길이 (설정 focusMin)
@@ -29,10 +34,18 @@ export function TodayTab({
   useEffect(() => setLen(s.focusMin), [s.focusMin]);
   const running = s.focus.phase !== 'idle';
   useEffect(() => {
-    if (!running) return;
-    const timer = setInterval(() => setNow(Date.now()), 1000);
+    // 집중 중엔 초를 세고, 아니면 30초마다 (30분 안 일정이 "다음 할 일"로 바뀌게)
+    const timer = setInterval(() => setNow(Date.now()), running ? 1000 : 30_000);
     return () => clearInterval(timer);
   }, [running]);
+  const next = nextUp({ todos: s.open, events: s.events, now });
+  // 다음 할 일에 단계(9판)가 있으면 안 한 첫 단계와 진행
+  const nextTodo = next?.kind === 'todo' ? s.open.find((todo) => todo.id === next.id) : undefined;
+  const nextStep = nextTodo?.steps.find((st) => !st.done);
+  const nextProgress = nextTodo ? stepProgress(nextTodo.steps) : undefined;
+  // 할 일을 걸고 집중하는 중이면 그 제목
+  const focusTodo =
+    s.focus.todoId === undefined ? undefined : s.open.find((todo) => todo.id === s.focus.todoId);
 
   const endOfDay = new Date(now).setHours(24, 0, 0, 0);
   // 종일 일정은 오늘이 그 기간 안이면 (0시에 시작해 이미 지났어도) 오늘 일정이다
@@ -43,6 +56,7 @@ export function TodayTab({
     return first <= s.today && last >= s.today;
   });
   const due = s.open.filter((todo) => todo.due !== null && todo.due <= s.today);
+  const overdue = due.filter((todo) => (todo.due as string) < s.today).length;
   const important = s.open
     .filter((todo) => todo.important && (todo.due === null || todo.due > s.today))
     .slice(0, 3);
@@ -74,6 +88,35 @@ export function TodayTab({
 
   return (
     <div className="scroll today" ref={scroller}>
+      {next && (
+        <section className="next-up">
+          <h3>{t('panel.today.next')}</h3>
+          <div className="next-row">
+            <span className="next-text">
+              <strong className="next-title">{next.title}</strong>
+              {next.kind === 'event' && (
+                <small>{t('panel.today.nextPrepare', { time: timeOf(next.startAt) })}</small>
+              )}
+              {nextStep && nextProgress && (
+                <small>
+                  {t('assist.next.step', { title: nextStep.title })} ({nextProgress.done}/{nextProgress.total}
+                  )
+                </small>
+              )}
+            </span>
+            {next.kind === 'todo' && !running && (
+              <button
+                type="button"
+                className="primary next-go"
+                onClick={() => bridge.focusStart(len, next.id)}
+              >
+                {t('panel.today.nextFocus', { n: len })}
+              </button>
+            )}
+          </div>
+        </section>
+      )}
+
       <section className={`focus-card ${s.focus.phase}`}>
         {s.focus.phase === 'idle' ? (
           <>
@@ -109,7 +152,11 @@ export function TodayTab({
             <div className="focus-text">
               <strong className="clock">{remainLabel(s.focus, now)}</strong>
               <small>
-                {s.focus.phase === 'focus' ? t('panel.today.focusing') : t('panel.today.resting')}
+                {s.focus.phase !== 'focus'
+                  ? t('panel.today.resting')
+                  : focusTodo
+                    ? t('panel.today.focusingOn', { title: focusTodo.title })
+                    : t('panel.today.focusing')}
               </small>
             </div>
             <button type="button" className="ghost" onClick={() => bridge.focusStop()}>
@@ -185,9 +232,23 @@ export function TodayTab({
       <section>
         <h3>
           {t('panel.todo.due')}
-          <button type="button" className="link" onClick={() => goTo('todo')}>
-            {t('panel.today.allTodos')}
-          </button>
+          <span className="h3-links">
+            {overdue > 0 && (
+              <button
+                type="button"
+                className="link"
+                onClick={async () => {
+                  const moved = await bridge.moveOverdue();
+                  if (moved.length > 0) onMoved?.(moved);
+                }}
+              >
+                {t('assist.overdue.move', { n: overdue })}
+              </button>
+            )}
+            <button type="button" className="link" onClick={() => goTo('todo')}>
+              {t('panel.today.allTodos')}
+            </button>
+          </span>
         </h3>
         {due.length === 0 ? (
           <p className="empty-line">{t('panel.today.noDue')}</p>
@@ -232,6 +293,8 @@ export function TodayTab({
           {t(s.achieve.streak === 1 ? 'panel.today.streakAfterOne' : 'panel.today.streakAfter')}
         </span>
       </p>
+
+      {s.week && <WeekBox week={s.week} today={s.today} />}
 
       <details className="achieve">
         <summary>
@@ -297,3 +360,43 @@ export function TodayTab({
 
 /** 이만큼(px) 안 남았으면 다 내려온 것으로 본다 */
 const MORE_SLACK = 12;
+
+/** 이번 주 (shared/week.ts): 요일 막대(끝낸 일), 끝낸 수와 집중 시간, 지난주 이맘때와 견줌, 다음 7일 마감 */
+function WeekBox({ week, today }: { week: WeekSummary; today: string }) {
+  const labels = t('assist.week.days').split(',');
+  const max = Math.max(1, ...week.days.map((d) => d.done));
+  return (
+    <details className="achieve week">
+      <summary>
+        {t('assist.week.title')}
+        <small>{t('assist.week.summary', { done: week.done, focus: week.focusMin })}</small>
+      </summary>
+      <div className="week-bars">
+        {week.days.map((d, i) => {
+          const label = d.future
+            ? (labels[i] ?? '')
+            : t('assist.week.dayTitle', { label: labels[i] ?? '', done: d.done, focus: d.focusMin });
+          return (
+            <span
+              key={d.day}
+              className={`week-bar ${d.future ? 'future' : d.done === 0 ? 'zero' : ''} ${d.day === today ? 'today' : ''}`}
+              title={label}
+              role="img"
+              aria-label={label}
+            >
+              {/* 막대는 이름표와 따로 높이가 정해진 칸 안에서 잰다 (이름표 몫만큼 큰 막대가 눌려 70% 와 100% 가 같아 보였다) */}
+              <span className="week-track">
+                <i style={{ height: `${d.future ? 100 : Math.max(6, (d.done / max) * 100)}%` }} />
+              </span>
+              <small aria-hidden="true">{labels[i]}</small>
+            </span>
+          );
+        })}
+      </div>
+      <ul className="week-lines">
+        <li>{t('assist.week.vsLast', { diff: week.done - week.lastDone })}</li>
+        {week.dueSoon > 0 && <li>{t('assist.week.dueSoon', { n: week.dueSoon })}</li>}
+      </ul>
+    </details>
+  );
+}

@@ -51,7 +51,7 @@ export const ko = {
     '설정, 짝꿍 규칙, 캘린더 주소도 백업 것으로 바뀌어. 지금 데이터는 사용자 데이터 폴더의 before-import 폴더에 남겨 둬. 바꾼 뒤 짝꿍을 다시 켜.',
   'main.backup.customAiSkipped': '백업에 있던 사용자 AI {n}개는 옮기지 않았어.',
   'main.backup.customAiSkippedDetail':
-    '사용자 AI 는 이 컴퓨터에서 실행할 명령이라 백업에서 가져오지 않아. 필요하면 다시 켠 뒤 채팅에서 다시 추가해 줘.',
+    '사용자 AI는 이 컴퓨터에서 실행할 명령이라 백업에서 가져오지 않아. 필요하면 다시 켠 뒤 채팅에서 다시 추가해 줘.',
   'main.backup.replace': '바꾸기',
   'main.backup.cancel': '그만두기',
   'main.backup.restarting': '다시 켜는 중',
@@ -66,23 +66,67 @@ export const ko = {
   'main.pet.unreadable': '펫 파일을 읽지 못했어. 파일이 그 자리에 있는지 보고 다시 골라 줘.',
   'main.maker.reopen': '창을 다시 열어 줘.',
   'main.maker.badFormat': '그림 형식이 이상해.',
-  'main.maker.tooBigAny': '그림이 너무 크거나 PNG, GIF, WebP 가 아니야.',
-  'main.maker.tooBigPng': '그림이 너무 크거나 PNG 가 아니야.',
+  'main.maker.tooBigAny': '그림이 너무 크거나 PNG, GIF, WebP가 아니야.',
+  'main.maker.tooBigPng': '그림이 너무 크거나 PNG가 아니야.',
   'main.maker.title': '사진으로 펫 만들기',
   'main.maker.noVisionAi':
     '사진을 볼 수 있는 AI(Claude, Codex)가 없어. 채팅에서 하나를 설치하고 로그인하면 쓸 수 있어.',
   'main.maker.shapeCancelled': '입체 만들기를 멈췄어.',
   'main.maker.shapeBad': 'AI 답에서 설계도를 못 읽었어. 한 번 더 해 볼래?',
+  'main.illust.quota':
+    "오늘 무료 그림 횟수를 다 썼어. 이 횟수는 다른 사람과 나눠 쓰는 게 아니라 네 인터넷 연결마다 따로 세고, 하루가 지나면 다시 채워져. 지금 바로 만들려면 아래 'Gemini 앱(무료)에서 만들기'를 쓰거나, 무료 Hugging Face 토큰을 넣어 줘.",
+  'main.illust.quotaLocal':
+    "오늘 무료 그림 횟수를 다 썼어. 이 횟수는 다른 사람과 나눠 쓰는 게 아니라 네 인터넷 연결마다 따로 세고, 하루가 지나면 다시 채워져. 지금 바로 만들려면 아래 'Gemini 앱(무료)에서 만들기'나 '내 컴퓨터에서 그리기'를 쓰거나, 무료 Hugging Face 토큰을 넣어 줘.",
+  'main.illust.quotaToken':
+    "이 토큰의 오늘 무료 사용량을 다 썼어. 하루가 지나면 다시 채워져. 지금 바로 만들려면 아래 'Gemini 앱(무료)에서 만들기'를 써 줘.",
+  'main.illust.limit': '토큰 없이는 이 그림을 못 그린대. 아래에서 무료 Hugging Face 토큰을 넣고 다시 해 줘.',
+  'main.illust.auth': 'Hugging Face 토큰이 맞지 않아. 토큰을 지우거나 새로 넣어 줘.',
+  'main.illust.refused':
+    "그림 서버가 이유 없이 거절했어. 대개 오늘 무료 횟수(네 인터넷 연결마다 따로, 하루면 다시 채워져)를 다 썼을 때 이래. 아래 'Gemini 앱(무료)에서 만들기'를 쓰거나, 무료 Hugging Face 토큰을 넣어 줘.",
+  'main.illust.refusedLocal':
+    "그림 서버가 이유 없이 거절했어. 대개 오늘 무료 횟수(네 인터넷 연결마다 따로, 하루면 다시 채워져)를 다 썼을 때 이래. 아래 'Gemini 앱(무료)에서 만들기'나 '내 컴퓨터에서 그리기'를 쓰거나, 무료 Hugging Face 토큰을 넣어 줘.",
+  'main.illust.refusedToken':
+    '그림 서버가 이유 없이 거절했어. 대개 이 토큰의 오늘 무료 사용량을 다 썼을 때 이래. 조금 있다가 또는 내일 다시 해 줘.',
+  'main.illust.offline': '그림 서버에 연결하지 못했어. 인터넷 연결을 보고 다시 해 줘.',
+  'main.illust.timeout': '너무 오래 걸려서 멈췄어. 조금 있다가 다시 해 줘.',
+  'main.illust.cancelled': '그리기를 멈췄어.',
+  'main.illust.bad': '그림 서버가 새 그림을 주지 않았어. 다시 그려 보거나 사진 그대로 해 줘.',
+  'main.illust.down': '무료 그림 서버가 지금 바쁘거나 쉬는 중이야. 조금 있다가 다시 해 줘.',
+  'main.illust.tokenShape': '토큰 모양이 이상해. hf_로 시작하는 토큰을 붙여 넣어 줘.',
+  // 내 컴퓨터에서 그리기 (2026-10-10)
+  'main.localDraw.unsupported':
+    '이 컴퓨터에서는 그릴 수 없어. 메모리 8GB 이상에 x64(인텔/AMD) Windows나 macOS 12 이상이 필요해.',
+  'main.localDraw.rosetta':
+    '이 Mac은 Apple 칩인데 인텔용 짝꿍이 깔려 있어. Apple 칩용 짝꿍을 받아 깔면 그릴 수 있어.',
+  'main.localDraw.notReady': '그림 도구가 아직 준비되지 않았거나 망가졌어. 준비하기를 다시 눌러 줘.',
+  'main.localDraw.busy': '이미 그리거나 준비하는 중이야. 끝나면 다시 해 줘.',
+  'main.localDraw.diskSetup': (v: { gb: number }) =>
+    `저장 공간이 모자라. 준비하는 동안 ${v.gb}GB쯤 비어 있어야 해. 공간을 비우고 다시 눌러 줘.`,
+  'main.localDraw.disk': '저장 공간이 모자라서 그리지 못했어. 1GB쯤 비우고 다시 해 줘.',
+  'main.localDraw.offline':
+    '받는 중에 인터넷 연결이 끊겼어. 연결을 보고 준비하기를 다시 눌러 줘. 받은 데까지는 이어서 받아.',
+  'main.localDraw.memory': '메모리가 모자라서 멈췄어. 다른 앱을 닫고 다시 해 줘.',
+  'main.localDraw.battery': '배터리가 거의 없어서 멈췄어. 전원을 꽂고 다시 해 줘.',
+  'main.localDraw.timeout': '너무 오래 걸려서 멈췄어. 다른 앱을 닫고 다시 해 줘.',
+  'main.localDraw.setupCancelled': '준비를 멈췄어. 다시 누르면 받은 데부터 이어서 해.',
+  'main.localDraw.bad': '그림이 제대로 나오지 않았어. 다시 그려 보거나 사진 그대로 해 줘.',
+  'main.localDraw.setupFailed':
+    '준비하다가 멈췄어. 다시 눌러 보고, 계속되면 설정의 저장 공간에서 지운 뒤 처음부터 해 줘. 자세한 기록은 local-draw 폴더에 남겼어.',
+  'main.localDraw.failed':
+    '그림 도구가 멈췄어. 다시 해 보고, 계속되면 설정의 저장 공간에서 지운 뒤 다시 준비해 줘. 자세한 기록은 local-draw 폴더에 남겼어.',
   'main.remake.notFigure': '입체 피규어로 만든 사진 펫만 몸을 다시 만들 수 있어.',
   'main.remake.changed': '그사이 펫이 바뀌어서 새 몸은 버렸어.',
   'main.db.recovered':
-    '저장 파일이 깨져 있었어. 지우지 않고 {moved} 로 옮겨 두고, {when} 에 남겨 둔 복사본으로 되살렸어. 그 뒤에 한 것은 빠졌을 수 있어.',
+    '저장 파일이 깨져 있었어. 지우지 않고 {moved} 로 옮겨 두고, {when}에 남겨 둔 복사본으로 되살렸어. 그 뒤에 한 것은 빠졌을 수 있어.',
   'main.db.fresh':
     '저장 파일이 깨져 있었어. 지우지 않고 {moved} 로 옮겨 두고 새로 시작했어. 백업이 있으면 설정에서 가져올 수 있어.',
   'main.db.newer':
     '저장 파일이 더 새 판 짝꿍에서 만들어졌어. 덮어쓰지 않게 이번에는 저장하지 않고 켰어. 짝꿍을 최신 버전으로 업데이트해 줘.',
   'main.db.unavailable': '저장 파일을 열지 못했어. 이번에는 저장하지 않고 켰어. 짝꿍을 다시 켜 봐.',
   'main.db.showFile': '파일 보기',
+  'main.start.failed': '짝꿍을 켜지 못했어',
+  'main.start.failedDetail':
+    '켜는 중에 문제가 생겨 끝낼게. 다시 켜 봐. 계속 안 되면 기록 파일(logs/main.log)을 보내 줘.\n\n{error}',
 };
 
 export const en: Translation<typeof ko> = {
@@ -157,6 +201,46 @@ export const en: Translation<typeof ko> = {
     'No AI that can see photos (Claude, Codex). Install and sign in to one from the chat to use this.',
   'main.maker.shapeCancelled': 'Stopped making the 3D pet.',
   'main.maker.shapeBad': "Couldn't read a blueprint from the AI's answer. Try again?",
+  'main.illust.quota':
+    "You've used up today's free drawings. This limit isn't shared with other people: it's counted per internet connection and refills after a day. To make one right now, use 'Make it in the Gemini app (free)' below, or add a free Hugging Face token.",
+  'main.illust.quotaLocal':
+    "You've used up today's free drawings. This limit isn't shared with other people: it's counted per internet connection and refills after a day. To make one right now, use 'Make it in the Gemini app (free)' or 'Draw on this computer' below, or add a free Hugging Face token.",
+  'main.illust.quotaToken':
+    "This token has used up today's free drawings. It refills after a day. To make one right now, use 'Make it in the Gemini app (free)' below.",
+  'main.illust.limit': 'This drawing needs a token. Add a free Hugging Face token below and try again.',
+  'main.illust.auth': "The Hugging Face token didn't work. Remove it or add a new one.",
+  'main.illust.refused':
+    "The drawing server said no without a reason. That usually means today's free drawings (counted per internet connection, refilled after a day) are used up. Use 'Make it in the Gemini app (free)' below, or add a free Hugging Face token.",
+  'main.illust.refusedLocal':
+    "The drawing server said no without a reason. That usually means today's free drawings (counted per internet connection, refilled after a day) are used up. Use 'Make it in the Gemini app (free)' or 'Draw on this computer' below, or add a free Hugging Face token.",
+  'main.illust.refusedToken':
+    "The drawing server said no without a reason. That usually means this token's free use for today is used up. Try again later or tomorrow.",
+  'main.illust.offline': "Couldn't reach the drawing server. Check your internet and try again.",
+  'main.illust.timeout': 'It took too long, so I stopped. Try again in a bit.',
+  'main.illust.cancelled': 'Stopped drawing.',
+  'main.illust.bad': "The drawing server didn't send a new picture. Draw again, or use the photo as is.",
+  'main.illust.down': 'The free drawing server is busy or resting right now. Try again in a bit.',
+  'main.illust.tokenShape': "That doesn't look like a token. Paste one that starts with hf_.",
+  'main.localDraw.unsupported':
+    "This computer can't draw locally. It needs 8 GB of memory or more and x64 (Intel/AMD) Windows or macOS 12 or later.",
+  'main.localDraw.rosetta':
+    'This Mac has an Apple chip but the Intel version of Jjakkung is installed. Install the Apple chip version to draw.',
+  'main.localDraw.notReady': "The drawing tools aren't ready or are broken. Press Set up again.",
+  'main.localDraw.busy': "I'm already drawing or setting up. Try again when it's done.",
+  'main.localDraw.diskSetup': (v) =>
+    `Not enough disk space. Setup needs about ${v.gb} GB free. Free up some space and press Set up again.`,
+  'main.localDraw.disk': 'Not enough disk space to draw. Free up about 1 GB and try again.',
+  'main.localDraw.offline':
+    'The internet connection dropped while downloading. Check it and press Set up again. It picks up where it left off.',
+  'main.localDraw.memory': 'Ran out of memory, so I stopped. Close other apps and try again.',
+  'main.localDraw.battery': 'The battery is almost empty, so I stopped. Plug in and try again.',
+  'main.localDraw.timeout': 'It took too long, so I stopped. Close other apps and try again.',
+  'main.localDraw.setupCancelled': 'Setup stopped. Press it again to continue from where it left off.',
+  'main.localDraw.bad': "The drawing didn't come out right. Draw again, or use the photo as is.",
+  'main.localDraw.setupFailed':
+    'Setup stopped with an error. Try again, and if it keeps failing, delete it in Settings > Storage and start over. Details are in the local-draw folder.',
+  'main.localDraw.failed':
+    'The drawing tools stopped with an error. Try again, and if it keeps failing, delete them in Settings > Storage and set up again. Details are in the local-draw folder.',
   'main.remake.notFigure': 'Only photo pets made as a 3D figure can get a new body.',
   'main.remake.changed': 'The pet changed in the meantime, so the new body was dropped.',
   'main.db.recovered':
@@ -168,4 +252,7 @@ export const en: Translation<typeof ko> = {
   'main.db.unavailable':
     "I couldn't open your save file, so nothing is saved this time. Try restarting Jjakkung.",
   'main.db.showFile': 'Show file',
+  'main.start.failed': "Jjakkung couldn't start",
+  'main.start.failedDetail':
+    'Something went wrong while starting, so Jjakkung will close. Try opening it again. If it keeps happening, please send the log file (logs/main.log).\n\n{error}',
 };

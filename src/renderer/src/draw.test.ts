@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  CONFETTI_MS,
+  confettiAt,
   type DrawState,
   danceTilt,
   energyFace,
@@ -68,7 +70,11 @@ test('움직임 줄이기: 빙글 춤은 안 하고 손 흔들기는 한다, 신
   assert.deepEqual(trickOf({ ...base, trick: dance }), dance);
   assert.equal(Math.round(excitedBounce(300).lift), 18);
   assert.equal(Math.round(excitedBounce(300, true).lift), 3);
-  assert.equal(excitedBounce(10).squash, 0.08);
+  assert.equal(excitedBounce(0).squash, 0.08);
+  assert.ok(excitedBounce(10).squash > 0.07 && excitedBounce(10).squash < 0.08);
+  // 찌그러짐은 뜨면서 풀린다: 틀 사이에 툭 끊기지 않는다
+  for (let e = 0; e < 600; e += 6)
+    assert.ok(Math.abs(excitedBounce(e + 6).squash - excitedBounce(e).squash) < 0.02);
   assert.equal(excitedBounce(10, true).squash, 0);
   for (let e = 0; e < 1200; e += 37) assert.ok(excitedBounce(e, true).lift <= 3);
 });
@@ -99,4 +105,24 @@ test('눈꺼풀: 보통과 활발은 없고, 지침 0.3, 졸림 0.48, 녹초면 
   assert.equal(lidOf({ stage: 'tired', worn: false }), 0.3);
   assert.equal(lidOf({ stage: 'sleepy', worn: false }), 0.48);
   assert.ok(lidOf({ stage: 'tired', worn: true }) > lidOf({ stage: 'tired', worn: false }));
+});
+
+test('축하 색종이: 머리 위로 솟았다가 양옆으로 흩어지며 떨어지고, 끝에는 사라진다. 그림 밖으로 나가지 않는다', () => {
+  const top = 40;
+  const start = confettiAt(0, top);
+  assert.ok(start.length >= 10);
+  // 처음엔 머리 위 한곳에 모여 있다
+  for (const p of start) assert.ok(Math.abs(p.x - 80) <= 6 && p.alpha === 1, JSON.stringify(p));
+  const mid = confettiAt(CONFETTI_MS * 0.3, top);
+  assert.ok(
+    mid.some((p) => p.y < top - 10),
+    '위로 솟는다',
+  );
+  assert.ok(mid.some((p) => p.x < 60) && mid.some((p) => p.x > 100), '양옆으로 흩어진다');
+  const late = confettiAt(CONFETTI_MS * 0.95, top);
+  assert.ok(late.every((p) => p.alpha < 0.3));
+  assert.ok(confettiAt(CONFETTI_MS, top).every((p) => p.alpha === 0));
+  for (let ms = 0; ms <= CONFETTI_MS; ms += 100)
+    for (const p of confettiAt(ms, 4))
+      assert.ok(p.x >= 4 && p.x <= 156 && p.y >= 4, `${ms} ${JSON.stringify(p)}`);
 });

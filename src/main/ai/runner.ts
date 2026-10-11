@@ -10,8 +10,9 @@ import { cursorArgs, cursorParser } from '../../shared/ai/cursor.ts';
 import { classifyError, notInstalled, timedOut } from '../../shared/ai/errors.ts';
 import { fillArgs, type ProviderSpec } from '../../shared/ai/providers.ts';
 import { type Exchange, stripAnsi, textPrompt } from '../../shared/ai/text.ts';
-import type { AiEvent, AiStatus, ImageAttachment } from '../../shared/ai/types.ts';
+import type { AiEvent, AiStatus, ImageAttachment, McpLaunch } from '../../shared/ai/types.ts';
 import { codexUsage, lastCodexLimits } from '../../shared/ai/usage.ts';
+import { aiTempImageName, isAiTempImage } from '../../shared/capture.ts';
 import { t } from '../../shared/i18n/index.ts';
 import { prepareCodexHome } from './codex-home.ts';
 import { getShellEnv, launchOf, resolveBin } from './shell-env.ts';
@@ -38,6 +39,8 @@ export interface AiRequest {
   mcpServers?: readonly string[];
   /** 고른 모델 (v2, 목록에서 검사한 이름). claude, codex 만 */
   model?: string;
+  /** 짝꿍 도구 쓰기: 펫 MCP 서버. claude, codex 만 */
+  jjServer?: McpLaunch;
 }
 
 export interface AiRun {
@@ -66,7 +69,21 @@ export function stopAllAi(): void {
 /** NUL 글자는 프로세스 인자에 못 넣는다(spawn 이 던진다). 미리 뺀다 */
 const noNul = (s: string) => s.replace(/\0/g, '');
 
+/** 지난 실행이 죽으면서 남긴 캡처 임시 파일을 처음 부를 때 한 번 지운다 */
+let swept = false;
+function sweepTempImages(): void {
+  if (swept) return;
+  swept = true;
+  try {
+    for (const name of readdirSync(tmpdir()))
+      if (isAiTempImage(name)) rmSync(join(tmpdir(), name), { force: true });
+  } catch {
+    // 임시 폴더를 못 읽으면 넘어간다
+  }
+}
+
 export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
+  sweepTempImages();
   const req: AiRequest = {
     ...reqIn,
     text: noNul(reqIn.text),
@@ -96,7 +113,7 @@ export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
       });
     }
   })().finally(() => {
-    for (const f of tempFiles) rmSync(f, { force: true });
+    removeTemp();
     live.delete(run);
   });
 
@@ -134,8 +151,7 @@ export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
     } else {
       // codex 는 이미지를 파일로만 받는다. 끝나면 바로 지운다 (P3-07: 캡처를 디스크에 남기지 않는다).
       for (const img of req.images) {
-        const ext = img.mediaType.split('/')[1]?.replace('jpeg', 'jpg') ?? 'png';
-        const file = join(tmpdir(), `jjakkung-${randomUUID()}.${ext}`);
+        const file = join(tmpdir(), aiTempImageName(randomUUID(), img.mediaType));
         writeFileSync(file, Buffer.from(img.data, 'base64'), { mode: 0o600 });
         tempFiles.push(file);
       }
@@ -146,6 +162,7 @@ export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
         persona: req.persona,
         ephemeral: req.ephemeral,
         model: req.model,
+        jjServer: req.jjServer,
       });
       // 격리하면 짝꿍 전용 폴더(auth.json 만 연결), 아니면 사용자의 codex 설정 폴더 그대로.
       codexHome = req.isolate ? prepareCodexHome(env.codexHome) : env.codexHome;
@@ -250,11 +267,18 @@ export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
     setTimeout(() => signal('SIGKILL'), KILL_GRACE_MS).unref();
   }
 
+  /** 캡처 임시 파일을 지운다. 끝날 때(finished)뿐 아니라 취소할 때도 바로: 앱을 끌 때는 취소만 하고 프로세스가 끝나
+   * close 를 기다리지 않아서, 화면 캡처가 임시 폴더에 그대로 남았다 */
+  const removeTemp = () => {
+    for (const f of tempFiles.splice(0)) rmSync(f, { force: true });
+  };
+
   const run: AiRun = {
     cancel() {
       if (cancelled) return;
       cancelled = true;
       stop();
+      removeTemp();
       // 손자가 파이프를 쥐고 있으면 close 가 늦다. 멈춤은 바로 알린다
       emit({ type: 'error', error: { kind: 'cancelled', message: t('ai.error.cancelled') } });
     },
@@ -271,7 +295,9 @@ export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
 export function readCodexUsage(codexHome: string, threadId?: string) {
   const root = join(codexHome, 'sessions');
   for (let back = 0; back < 3; back++) {
-    const d = new Date(Date.now() - back * 86_400_000);
+    // 날짜로 뺀다 (서머타임이 시작하는 23시간 날에 24시간을 빼면 하루를 건너뛰었다)
+    const d = new Date();
+    d.setDate(d.getDate() - back);
     const dir = join(
       root,
       String(d.getFullYear()),
