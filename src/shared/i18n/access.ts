@@ -3,20 +3,20 @@ import type { Translation } from './types.ts';
 
 // 다른 앱에서 부르기(jjakkung:// 주소), 배터리 절약, 접근성(읽어 주기, 키보드로 펫 다루기), 메뉴 막대 글자
 export const ko = {
-  'settings.shortcut.pet': '펫 고르기 (키보드로 펫 다루기)',
-  'pet.shortcut.pet': '펫 고르기',
+  'settings.shortcut.pet': '페어리 고르기 (키보드로 페어리 다루기)',
+  'pet.shortcut.pet': '페어리 고르기',
   'settings.integrations': '다른 앱에서 부르기',
-  'settings.urlScheme': 'jjakkung:// 주소 받기',
+  'settings.urlScheme': 'fairy:// 주소 받기',
   'settings.urlSchemeHint':
-    '단축어, Raycast, Alfred, PowerToys에서 할 일, 메모를 넣고 집중을 시작해. 넣으면 펫이 말풍선으로 알려 줘.',
-  'settings.urlSchemeExample': '예: jjakkung://add?text=내일 3시 회의',
+    '단축어, Raycast, Alfred, PowerToys에서 할 일, 메모를 넣고 집중을 시작해. 넣으면 페어리가 말풍선으로 알려 줘.',
+  'settings.urlSchemeExample': '예: fairy://add?text=내일 3시 회의',
   'settings.power': '배터리일 때 움직임 줄이기',
   'settings.saverAria': '배터리 절약 때',
   'settings.saver.auto': '켜기 (자동)',
   'settings.saver.always': '항상 줄이기',
   'settings.saver.off': '끄기',
   'settings.saverHint':
-    '기본은 켜기(자동)야. 배터리나 저전력일 때 펫이 덜 걷고, 통통 튀는 움직임을 초당 15번까지만 그리고, 창 위에 앉은 걸 3초마다 봐. 펫 우클릭 메뉴에서도 끌 수 있어.',
+    '기본은 켜기(자동)야. 배터리나 저전력일 때 페어리가 덜 걷고, 통통 튀는 움직임을 초당 15번까지만 그리고, 창 위에 앉은 걸 3초마다 봐. 페어리 우클릭 메뉴에서도 끌 수 있어.',
   'settings.saverNow': '지금 움직임을 줄이는 중이야.',
   'settings.access': '접근성',
   'pet.menu.saver': '배터리일 때 움직임 줄이기',
@@ -27,12 +27,12 @@ export const ko = {
   'onboarding.tips.saver': '배터리일 때',
   'onboarding.tips.saverDesc': '움직임을 줄여. 우클릭 메뉴나 설정의 편의에서 끌 수 있어',
   'settings.readAloud': '말풍선 읽어 주기',
-  'settings.readAloudHint': 'VoiceOver, 내레이터 같은 화면 읽기 프로그램이 펫 말을 읽어 줘.',
+  'settings.readAloudHint': 'VoiceOver, 내레이터 같은 화면 읽기 프로그램이 페어리의 말을 읽어 줘.',
   'settings.trayTitle': '메뉴 막대에 다음 일정 보이기',
   'settings.trayTitleHint':
     '아이콘 옆에 다음 일정이나 집중 남은 시간이 보여. 일정 제목이 화면에 늘 보이니 필요할 때만 켜.',
   'settings.petKeysHint': (v: { keys: string }) =>
-    `${v.keys}로 펫을 고르면 Enter는 패널, Shift+F10은 메뉴, 화살표는 걷기, Esc는 나가기야.`,
+    `${v.keys}로 페어리를 고르면 Enter는 패널, Shift+F10은 메뉴, 화살표는 걷기, Esc는 나가기야.`,
   'pet.url.todo': (v: { title: string }) => `할 일에 넣었어: ${v.title}`,
   'pet.url.todos': (v: { n: number }) => `할 일 ${v.n}개 넣었어`,
   'pet.url.event': (v: { title: string; when: string }) => `일정에 넣었어: ${v.when} ${v.title}`,
@@ -52,20 +52,20 @@ export const ko = {
 };
 
 export const en: Translation<typeof ko> = {
-  'settings.shortcut.pet': 'Select pet (keyboard control)',
-  'pet.shortcut.pet': 'Select pet',
+  'settings.shortcut.pet': 'Select fairy (keyboard control)',
+  'pet.shortcut.pet': 'Select fairy',
   'settings.integrations': 'Open from other apps',
-  'settings.urlScheme': 'Accept jjakkung:// links',
+  'settings.urlScheme': 'Accept fairy:// links',
   'settings.urlSchemeHint':
-    'Add to-dos and memos or start focus from Shortcuts, Raycast, Alfred or PowerToys. Your pet confirms in a bubble.',
-  'settings.urlSchemeExample': 'e.g. jjakkung://add?text=meeting tomorrow 3pm',
+    'Add to-dos and memos or start focus from Shortcuts, Raycast, Alfred or PowerToys. Your fairy confirms in a bubble.',
+  'settings.urlSchemeExample': 'e.g. fairy://add?text=meeting tomorrow 3pm',
   'settings.power': 'Reduce motion on battery',
   'settings.saverAria': 'When to save battery',
   'settings.saver.auto': 'On (auto)',
   'settings.saver.always': 'Always reduce',
   'settings.saver.off': 'Off',
   'settings.saverHint':
-    'On (auto) by default. On battery or low power your pet walks less, draws bouncy motion at most 15 frames a second and checks the window it sits on every 3 seconds. You can also turn it off from the pet right-click menu.',
+    "On (auto) by default. On battery or low power your fairy walks less, draws bouncy motion at most 15 frames a second and checks the window it sits on every 3 seconds. You can also turn it off from your fairy's right-click menu.",
   'settings.saverNow': 'Reducing motion now.',
   'settings.access': 'Accessibility',
   'pet.menu.saver': 'Reduce motion on battery',
@@ -77,12 +77,12 @@ export const en: Translation<typeof ko> = {
   'onboarding.tips.saver': 'On battery',
   'onboarding.tips.saverDesc': 'I move less. Turn it off from the right-click menu or Settings, General',
   'settings.readAloud': 'Read bubbles aloud',
-  'settings.readAloudHint': 'Screen readers like VoiceOver or Narrator read what your pet says.',
+  'settings.readAloudHint': 'Screen readers like VoiceOver or Narrator read what your fairy says.',
   'settings.trayTitle': 'Show next event in the menu bar',
   'settings.trayTitleHint':
     'Shows the next event or focus time left next to the icon. Event titles stay visible, so turn it on only if you want that.',
   'settings.petKeysHint': (v: { keys: string }) =>
-    `Press ${v.keys} to select your pet, then Enter opens the panel, Shift+F10 the menu, arrows walk and Esc leaves.`,
+    `Press ${v.keys} to select your fairy, then Enter opens the panel, Shift+F10 the menu, arrows walk and Esc leaves.`,
   'pet.url.todo': (v: { title: string }) => `Added to-do: ${v.title}`,
   'pet.url.todos': (v: { n: number }) => `Added ${v.n} to-dos`,
   'pet.url.event': (v: { title: string; when: string }) => `Added event: ${v.when} ${v.title}`,

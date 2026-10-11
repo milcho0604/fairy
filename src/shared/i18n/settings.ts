@@ -10,7 +10,7 @@ export const ko = {
   'settings.copyFailed': '복사하지 못했어. 글을 직접 골라 복사해 줘',
 
   // 펫
-  'settings.pet': '펫',
+  'settings.pet': '페어리',
   'settings.name': '이름',
   'settings.nameChanged': '이름을 바꿨어',
   'settings.nameHint': (v: { name: string; n: number; max: number }) =>
@@ -18,22 +18,22 @@ export const ko = {
   'settings.nameEmpty': '이름은 비울 수 없어. 원래 이름으로 둘게',
   'settings.nameMax': '이름은 {max}자까지야',
   'settings.look': '모습',
-  'settings.makePhotoPet': '사진으로 펫 만들기',
+  'settings.makePhotoPet': '사진으로 페어리 만들기',
   'settings.poses': '상태별 포즈',
   'settings.poseChange': '{label} 바꾸기',
   'settings.posePhoto': '{label} 사진',
   'settings.posesHint': '기쁠 때, 졸릴 때, 배고플 때 다른 사진으로 바뀌어. 없으면 기본 사진 그대로야.',
   'settings.size': '크기',
-  'settings.sizeHint': '펫 위에서 {mod} + 휠, 트랙패드 핀치로도 바꿀 수 있어.',
+  'settings.sizeHint': '페어리 위에서 {mod} + 휠, 트랙패드 핀치로도 바꿀 수 있어.',
   'settings.pet3d': '입체로 보기',
-  'settings.pet3dHint': '기본 펫을 피규어처럼 입체로 그려. 끄면 예전 납작한 그림이야.',
+  'settings.pet3dHint': '기본 페어리를 피규어처럼 입체로 그려. 끄면 예전 납작한 그림이야.',
   'settings.petStyle': '입체 모습',
   'settings.petStyle.figure': '피규어',
   'settings.petStyle.game': '게임 캐릭터',
   'settings.petStyle.real': '실사',
   'settings.petStyle.fluffy': '복슬복슬 (시험)',
   'settings.petStyleHint.fluffy':
-    '이음새 없는 한 덩어리 몸에 길고 폭신한 털. 곱슬 털, 뭉친 털도 펫마다 달라. 시험판이라 계속 다듬는 중이고 그래픽을 더 써.',
+    '이음새 없는 한 덩어리 몸에 길고 폭신한 털. 곱슬 털, 뭉친 털도 페어리마다 달라. 시험판이라 계속 다듬는 중이고 그래픽을 더 써.',
   'settings.petStyleHint.figure': '말랑한 비닐 피규어처럼 반짝여.',
   'settings.petStyleHint.game': '게임 캐릭터처럼 명암을 또렷하게 나누고 테두리 선을 둘러. 눈도 조금 더 커.',
   'settings.petStyleHint.real':
@@ -45,12 +45,12 @@ export const ko = {
   'settings.gait.body.biped': '두 발',
   'settings.gait.body.quadruped': '네 발',
   'settings.gait.autoNow': (v: { gait: string }) =>
-    `몸 모양을 보고 정해. 지금은 ${withParticle(v.gait, '으로')} 걸어. 펫마다 따로 기억해.`,
-  'settings.gait.kept': '펫마다 따로 기억해. 보관함에서 다른 펫을 꺼내도 각자 값이야.',
+    `몸 모양을 보고 정해. 지금은 ${withParticle(v.gait, '으로')} 걸어. 페어리마다 따로 기억해.`,
+  'settings.gait.kept': '페어리마다 따로 기억해. 보관함에서 다른 페어리를 꺼내도 각자 값이야.',
   'settings.gait.odd': (v: { name: string; body: string }) =>
     `${withParticle(v.name, '은')} ${v.body} 몸이라 조금 어색해 보일 수 있어.`,
   'settings.gait.flat':
-    '사진(평면, 2.5D) 펫은 다리가 따로 없어서 고를 수 없어. 펫 만들기에서 입체 피규어로 만들면 고를 수 있어.',
+    '사진(평면, 2.5D) 페어리는 다리가 따로 없어서 고를 수 없어. 페어리 만들기에서 입체 피규어로 만들면 고를 수 있어.',
   'settings.gait.off3d': '입체로 보기를 켜면 고를 수 있어. 지금은 사진으로 보여서 다리가 없어.',
   'settings.gait.mismatch': (v: { name: string; body: string; pick: string }) =>
     `${withParticle(v.name, '은')} ${v.body} 몸으로 만들어졌어. 그대로 ${withParticle(v.pick, '으로')} 걸으면 어색해 보일 수 있어.`,
@@ -76,34 +76,35 @@ export const ko = {
   // 이름은 이 키 하나만 바꾸면 된다
   'settings.boost': '부스트 모드',
   'settings.boostHint':
-    '사양이 좋은 컴퓨터용. 펫이 더 부드럽게 움직이고 마우스를 더 촘촘히 따라 봐. 무료 AI는 30분 동안 데워 둬서 답이 빨라. CPU와 메모리를 조금 더 써. 노트북이 배터리로 돌 때는 쉬어.',
+    '사양이 좋은 컴퓨터용. 페어리가 더 부드럽게 움직이고 마우스를 더 촘촘히 따라 봐. 무료 AI는 30분 동안 데워 둬서 답이 빨라. CPU와 메모리를 조금 더 써. 노트북이 배터리로 돌 때는 쉬어.',
   'settings.boostResting': '지금은 배터리라 쉬는 중이야. 전원을 꽂으면 켜져.',
   'settings.sysMonitor': '메뉴 막대에 컴퓨터 상태',
   'settings.sysMonitorHint':
-    'CPU 사용률을 메뉴 막대에 띄우고, 한가하면 지금 펫이 앉아서 졸고, 바쁠수록 걷다가 달리고 땀 흘리며 질주해. 메뉴를 열면 메모리, 디스크, 그래픽도 보여. 화면을 잠그거나 자리를 비우면 쉬고, 배터리일 때는 펫이 멈춰 서.',
+    'CPU 사용률을 메뉴 막대에 띄우고, 한가하면 지금 페어리가 앉아서 졸고, 바쁠수록 걷다가 달리고 땀 흘리며 질주해. 메뉴를 열면 메모리, 디스크, 그래픽도 보여. 화면을 잠그거나 자리를 비우면 쉬고, 배터리일 때는 페어리가 멈춰 서.',
   'settings.sysMonitorWin': '알림 영역에 컴퓨터 상태',
   'settings.sysMonitorWinHint':
-    '알림 영역 아이콘에 마우스를 올리면 CPU 사용률이 보이고, 한가하면 지금 펫이 앉아서 졸고, 바쁠수록 걷다가 달리고 땀 흘리며 질주해. 메뉴를 열면 메모리, 디스크, 그래픽도 보여. 화면을 잠그거나 자리를 비우면 쉬고, 배터리나 발표 중에는 펫이 멈춰 서.',
+    '알림 영역 아이콘에 마우스를 올리면 CPU 사용률이 보이고, 한가하면 지금 페어리가 앉아서 졸고, 바쁠수록 걷다가 달리고 땀 흘리며 질주해. 메뉴를 열면 메모리, 디스크, 그래픽도 보여. 화면을 잠그거나 자리를 비우면 쉬고, 배터리나 발표 중에는 페어리가 멈춰 서.',
 
-  // 친구 펫
-  'settings.friends': '친구 펫',
-  'settings.friendsChanged': '친구 펫을 바꿨어',
-  'settings.friends.hint': '친구 펫은 같이 돌아다니고 놀아. 할 일과 대화는 기본 펫이 맡아. {max}마리까지.',
+  // 친구의 페어리 초대하기
+  'settings.friends': '친구의 페어리 초대하기',
+  'settings.friendsChanged': '친구 페어리를 바꿨어',
+  'settings.friends.hint':
+    '초대한 친구 페어리는 같이 돌아다니고 놀아. 할 일과 대화는 기본 페어리가 맡아. {max}마리까지.',
   'settings.friends.photo': '사진',
   'settings.friends.sendHome': '집에 보내기',
   'settings.friends.name': '친구 이름',
   'settings.friends.kind': '친구 모양',
-  'settings.friends.add': '데려오기',
-  'settings.friends.import': '.jjpet 파일로 데려오기',
-  'settings.friends.addAnyway': '그래도 데려오기',
+  'settings.friends.add': '초대하기',
+  'settings.friends.import': '.fairy 파일로 초대하기',
+  'settings.friends.addAnyway': '그래도 초대하기',
   'settings.friends.dupe': (v: { name: string }) =>
-    `${withParticle(v.name, '은')} 이미 있는 이름이야. 그래도 데려올까? 한 번 더 누르면 데려와.`,
+    `${withParticle(v.name, '은')} 이미 있는 이름이야. 그래도 초대할까? 한 번 더 누르면 초대해.`,
   'settings.friends.sendHomeSure': '정말 보낼까?',
   'settings.friends.sendHomeAria': (v: { name: string }) => `${withParticle(v.name, '을')} 집에 보내기`,
   'settings.friends.sendHomeSureAria': (v: { name: string }) =>
     `${withParticle(v.name, '을')} 정말 집에 보내기 (한 번 더 누르면 보내)`,
   'settings.friends.photoGone': (v: { name: string }) =>
-    `${withParticle(v.name, '은')} 사진 친구라 보내면 그림도 지워져. 다시 보려면 .jjpet 파일로 데려와야 해.`,
+    `${withParticle(v.name, '은')} 사진 친구라 보내면 그림도 지워져. 다시 보려면 .fairy 파일로 다시 초대해야 해.`,
 
   // 삐짐
   'settings.sulk': '삐짐',
@@ -121,9 +122,9 @@ export const ko = {
   // 말풍선
   'settings.bubbles': '말풍선',
   'settings.bubblesAria': '말풍선 빈도',
-  'settings.osNotify': '펫이 안 보일 때 시스템 알림으로',
+  'settings.osNotify': '페어리가 안 보일 때 시스템 알림으로',
   'settings.osNotifyHint':
-    '전체 화면이나 숨김이라 펫 말풍선을 못 볼 때 일정 알림을 컴퓨터 알림으로도 한 번 보내. 누르면 회의를 열거나 펫을 불러.',
+    '전체 화면이나 숨김이라 페어리 말풍선을 못 볼 때 일정 알림을 컴퓨터 알림으로도 한 번 보내. 누르면 회의를 열거나 페어리를 불러.',
   'settings.chatterHint.quiet': '답이 왔다는 알림만 해.',
   'settings.chatterHint.normal': '바쁠 때 같은 상태 알림까지, 한 시간에 {n}개까지.',
   'settings.chatterHint.chatty': '혼잣말을 자주 하고(4~6분마다), 한 시간에 {n}개까지.',
@@ -135,12 +136,12 @@ export const ko = {
   'settings.aiKnowsTodos': '내 할 일 같이 보내기',
   'settings.diaryAi': '일기를 AI로 다듬기',
   'settings.diaryAiHint':
-    '지난 날 짝꿍 일기를 고른 AI가 펫 말투로 다듬어. 숫자와 일기 문장만 보내고 할 일 제목은 안 보내.',
+    '지난 날 페어리 일기를 고른 AI가 페어리 말투로 다듬어. 숫자와 일기 문장만 보내고 할 일 제목은 안 보내.',
   'settings.aiKnowsTodosHint':
     "질문할 때 안 끝낸 할 일 제목과 마감, 오늘 남은 일정 제목을 AI에 같이 보내. '오늘 뭐부터 할까?'에 답할 수 있어. 채팅 창 아래에서도 켜고 끌 수 있어.",
-  'settings.aiPetTools': '짝꿍 도구 쓰기',
+  'settings.aiPetTools': '페어리 도구 쓰기',
   'settings.aiPetToolsHint':
-    "채팅에서 '내일 장보기 할 일로 넣어 줘'처럼 말하면 AI가 짝꿍 할 일, 메모, 일정을 직접 읽고 넣어. Claude나 Codex에서 돼. 할 일 목록을 읽을 수 있어서 기본은 꺼 뒀어. 파일, 명령 도구는 여전히 꺼 둬.",
+    "채팅에서 '내일 장보기 할 일로 넣어 줘'처럼 말하면 AI가 페어리의 할 일, 메모, 일정을 직접 읽고 넣어. Claude나 Codex에서 돼. 할 일 목록을 읽을 수 있어서 기본은 꺼 뒀어. 파일, 명령 도구는 여전히 꺼 둬.",
   'settings.myMcp': '내 MCP 도구 쓰기',
   'settings.myMcpOff':
     '위의 "내 AI 설정 없이 부르기"를 끄면 쓸 수 있어. Claude Code에 연결해 둔 노션, 슬랙 같은 MCP 도구를 채팅에서 써.',
@@ -153,7 +154,7 @@ export const ko = {
   // 모델 고르기 (v2)
   'settings.models': 'AI 모델',
   'settings.pets.hint':
-    '기본 펫, 그림 친구 밀크와 초코, 전에 만든 펫 가운데 골라. 지금 사진 펫은 지우지 않고 보관함에 둬. 보관한 펫은 × 를 두 번 누르면 지워져.',
+    '기본 페어리, 그림 친구 밀크와 초코, 전에 만든 페어리 가운데 골라. 지금 사진 페어리는 지우지 않고 보관함에 둬. 보관한 페어리는 × 를 두 번 누르면 지워져.',
   'settings.pets.now': '지금',
   'settings.pets.figure': '입체',
   'settings.pets.relief': '2.5D',
@@ -164,17 +165,17 @@ export const ko = {
   /** 밀크, 초코 고르기 칸 화면 읽기 */
   'settings.pets.starter': (v: { name: string; desc: string }) => `${v.name}, ${v.desc}`,
   'settings.pets.removeSure': '지울까?',
-  'settings.pets.removed': '보관한 펫을 지웠어',
-  'settings.rules': '짝꿍 규칙',
+  'settings.pets.removed': '보관한 페어리를 지웠어',
+  'settings.rules': '페어리 규칙',
   'settings.rules.label': '대화할 때 늘 지켜 줄 것',
   'settings.rules.placeholder': '예)\n답은 세 줄 안으로\n코드는 TypeScript로\n나를 "대장"이라고 불러',
   'settings.rules.hint': '한 줄에 하나씩. 모든 AI에 같이 보내고 성격보다 먼저 따라. 칸을 벗어나면 저장해.',
   'settings.rules.saved': '규칙을 저장했어',
-  'settings.memory': '짝꿍이 기억하는 것',
+  'settings.memory': '페어리가 기억하는 것',
   'settings.memory.hint': (v: { max: number; len: number }) =>
-    `짝꿍한테 늘 알려 줄 나에 대한 것. 질문할 때마다 AI에 같이 보내니 비밀은 적지 마. ${v.max}개, 하나에 ${v.len}자까지. 꽉 차면 오래된 것부터 빠져.`,
+    `페어리한테 늘 알려 줄 나에 대한 것. 질문할 때마다 AI에 같이 보내니 비밀은 적지 마. ${v.max}개, 하나에 ${v.len}자까지. 꽉 차면 오래된 것부터 빠져.`,
   'settings.memory.empty':
-    '아직 기억하는 게 없어. 여기에 적거나, AI 도구에서 "짝꿍한테 기억해 줘"라고 한 것을 허락하면 생겨.',
+    '아직 기억하는 게 없어. 여기에 적거나, AI 도구에서 "페어리한테 기억해 줘"라고 한 것을 허락하면 생겨.',
   'settings.memory.placeholder': '예) 아침엔 회의가 많아',
   'settings.memory.add': '기억하기',
   'settings.memory.delete': '잊기',
@@ -183,7 +184,7 @@ export const ko = {
   'settings.memory.added': '기억했어',
   'settings.memory.deleted': '잊었어',
   'settings.memory.dupe': '이미 기억하고 있어',
-  'settings.memory.pending': '짝꿍이 기억하자고 한 것',
+  'settings.memory.pending': '페어리가 기억하자고 한 것',
   'settings.memory.pendingHint': 'AI 도구가 기억해 두자고 한 거야. 허락한 것만 기억해서 AI에 같이 보내.',
   'settings.memory.approve': '기억하기',
   'settings.memory.approveAria': (v: { text: string }) => `"${v.text}" 기억하기`,
@@ -210,7 +211,7 @@ export const ko = {
   'settings.storage.copyDeleted': '복사본을 지웠어',
   'settings.aiHistory': 'AI 기록',
   'settings.aiHistory.hint':
-    'Claude, Codex는 짝꿍과 한 대화를 자기 기록 폴더에 저장해. 짝꿍 전용 폴더에 남은 것만 지워 (내 ~/.claude, ~/.codex의 다른 기록과 로그인은 그대로). 화면을 보여 준 질문은 처음부터 저장하지 않아.',
+    'Claude, Codex는 페어리와 한 대화를 자기 기록 폴더에 저장해. 페어리 전용 폴더에 남은 것만 지워 (내 ~/.claude, ~/.codex의 다른 기록과 로그인은 그대로). 화면을 보여 준 질문은 처음부터 저장하지 않아.',
   'settings.aiHistory.size': (v: { size: string }) => `지금 ${v.size}`,
   'settings.aiHistory.none': '지금 남은 기록이 없어.',
   'settings.aiHistory.clear': 'AI 기록 지우기',
@@ -230,14 +231,15 @@ export const ko = {
     `처음 쓸 때 받아 (${v.mb}MB, ${v.license})`,
 
   // 다른 AI 에서 쓰기 (MCP)
-  'settings.mcpSection': '다른 AI에서 짝꿍 쓰기 (MCP)',
+  'settings.mcpSection': '다른 AI에서 페어리 쓰기 (MCP)',
   'settings.mcp.intro':
-    'Claude Code, Codex에 짝꿍을 연결하면 그 안에서 "이거 짝꿍 할 일에 넣어 줘", "내일 3시 회의 일정 잡아 줘"가 돼. 할 일, 메모, 일정을 넣고 볼 수 있어. 넣은 것은 몇 초 안에 패널에 보여.',
+    'Claude Code, Codex에 페어리를 연결하면 그 안에서 "이거 페어리 할 일에 넣어 줘", "내일 3시 회의 일정 잡아 줘"가 돼. 할 일, 메모, 일정을 넣고 볼 수 있어. 넣은 것은 몇 초 안에 패널에 보여.',
   'settings.mcp.claude': 'Claude Code: 터미널에서 한 번 실행',
   'settings.mcp.copyCmd': '명령 복사',
   'settings.mcp.codex': 'Codex: ~/.codex/config.toml에 붙여 넣기',
   'settings.mcp.copyConfig': '설정 복사',
-  'settings.mcp.moved': '짝꿍을 다른 폴더로 옮기거나 다시 설치하면 경로가 바뀌니 다시 등록해 줘.',
+  'settings.mcp.moved':
+    '페어리 앱을 다른 폴더로 옮기거나 다시 설치하면 경로가 바뀌니 다시 등록해 줘. 예전 이름(jjakkung)으로 등록해 뒀다면 지우고 이 명령으로 다시 등록해 줘.',
 
   // 언어
   'settings.lang': '언어',
@@ -252,7 +254,7 @@ export const ko = {
   // 시작
   'settings.start': '시작',
   'settings.launchAtLogin': '컴퓨터를 켜면 같이 켜기',
-  'settings.launchPackaged': '로그인하면 짝꿍이 저절로 떠.',
+  'settings.launchPackaged': '로그인하면 페어리가 저절로 떠.',
   'settings.launchDev': '설치한 앱에서만 바꿀 수 있어. 지금은 개발 중 실행이야.',
 
   // 하루 회고
@@ -268,36 +270,37 @@ export const ko = {
   'settings.calendar': '캘린더 가져오기',
   'settings.cal.url': '캘린더 주소 (.ics)',
   'settings.cal.hint':
-    '구글 캘린더: 설정 > 내 캘린더 > 캘린더 통합 > "iCal 형식의 비공개 주소"를 붙여 넣어. 30분마다 앞으로 60일 일정을 가져와서 펫이 알려 줘. 이 주소는 이 컴퓨터에만 둬. (읽기만 해. 짝꿍에서 넣은 일정을 구글로 보내려면 아래 "구글 캘린더로 보내기"를 켜.)',
+    '구글 캘린더: 설정 > 내 캘린더 > 캘린더 통합 > "iCal 형식의 비공개 주소"를 붙여 넣어. 30분마다 앞으로 60일 일정을 가져와서 페어리가 알려 줘. 이 주소는 이 컴퓨터에만 둬. (읽기만 해. 페어리에서 넣은 일정을 구글로 보내려면 아래 "구글 캘린더로 보내기"를 켜.)',
   'settings.cal.fetch': '지금 가져오기',
   'settings.cal.clear': '지우기',
 
   // 백업
   'settings.backup': '백업과 옮기기',
-  'settings.backupHint': '할 일, 메모, 일정, 코인, 펫, 설정을 폴더 하나로 내보내고, 다른 컴퓨터에서 가져와.',
+  'settings.backupHint':
+    '할 일, 메모, 일정, 코인, 페어리, 설정을 폴더 하나로 내보내고, 다른 컴퓨터에서 가져와.',
   'settings.export': '내보내기',
   'settings.exported': '내보냈어',
   'settings.exportFailed': '내보내지 못했어',
   'settings.importFailed': '가져오지 못했어',
   'settings.import': '가져오기',
-  'settings.petOnlyHint': '펫만 친구에게 주려면 .jjpet 파일로.',
-  'settings.exportPet': '펫 내보내기',
-  'settings.petExported': '펫 파일을 만들었어',
-  'settings.petExportFailed': '펫 파일을 만들지 못했어. 다른 폴더에 저장해 봐',
-  'settings.importPet': '펫 가져오기',
+  'settings.petOnlyHint': '페어리만 친구에게 주려면 .fairy 파일로.',
+  'settings.exportPet': '페어리 내보내기',
+  'settings.petExported': '페어리 파일을 만들었어',
+  'settings.petExportFailed': '페어리 파일을 만들지 못했어. 다른 폴더에 저장해 봐',
+  'settings.importPet': '페어리 가져오기',
 
   // 업데이트
   'settings.update': '업데이트',
   'settings.updateCheck': '새 버전 알림',
   'settings.updateHint':
-    '하루에 한 번 새 버전이 나왔는지 보고, 나왔으면 펫이 알려 줘. 설치판은 미리 받아 두고, "다시 켜서 업데이트"를 누를 때 설치해. 꼭 필요한 업데이트가 나오면 업데이트 전까지 AI 대화가 잠겨 (확인을 못 하면 잠그지 않아). 앱 이름과 버전 말고는 보내지 않아.',
+    '하루에 한 번 새 버전이 나왔는지 보고, 나왔으면 페어리가 알려 줘. 설치판은 미리 받아 두고, "다시 켜서 업데이트"를 누를 때 설치해. 꼭 필요한 업데이트가 나오면 업데이트 전까지 AI 대화가 잠겨 (확인을 못 하면 잠그지 않아). 앱 이름과 버전 말고는 보내지 않아.',
   'settings.checkNow': '지금 확인',
   'settings.onboardingAgain': '시작 안내 다시 보기',
 
   // 단축키
   'settings.shortcuts': '단축키',
   'settings.shortcutChanged': '단축키를 바꿨어',
-  'settings.zoomKeys': '크게, 작게, 원래대로 (마우스가 펫 위에 있을 때)',
+  'settings.zoomKeys': '크게, 작게, 원래대로 (마우스가 페어리 위에 있을 때)',
   'settings.shortcut.hide': '숨기기, 다시 보이기',
   'settings.shortcut.quickAdd': '할 일 한 줄 넣기 (어디서든)',
   'settings.shortcut.chat': '대화 열기',
@@ -349,15 +352,15 @@ export const ko = {
 
   // 베타 기록
   'settings.statsCopied': '복사했어. 의견과 같이 붙여 넣어 줘',
-  'settings.version': '짝꿍 {v}',
+  'settings.version': '페어리 {v}',
   'settings.licenses': '오픈소스 라이선스',
   'settings.licensesHint':
-    '짝꿍은 MIT 라이선스 오픈소스야. 함께 들어 있는 다른 오픈소스의 고지를 볼 수 있어.',
+    '페어리는 MIT 라이선스 오픈소스야. 함께 들어 있는 다른 오픈소스의 고지를 볼 수 있어.',
   'settings.licensesOpen': '고지 보기',
   'settings.licensesFailed': '고지 파일을 열지 못했어.',
   'settings.stats.title': '내 기록 (베타)',
   'settings.stats.intro':
-    '짝꿍이 쓸 만한지 보는 숫자야. 이 컴퓨터에만 있고 어디로도 보내지 않아. 의견을 보낼 때 복사해서 같이 붙여 주면 큰 도움이 돼.',
+    '페어리가 쓸 만한지 보는 숫자야. 이 컴퓨터에만 있고 어디로도 보내지 않아. 의견을 보낼 때 복사해서 같이 붙여 주면 큰 도움이 돼.',
   'settings.stats.daysUsed': '쓴 날',
   'settings.stats.dayValue': '{day}일째 (켠 날 {used}일)',
   'settings.stats.dayValueOne': '{day}일째 (켠 날 {used}일)',
@@ -366,7 +369,7 @@ export const ko = {
   'settings.stats.doneMedian': '하루 끝낸 할 일 (중앙값)',
   'settings.stats.count': '{n}개',
   'settings.stats.countAtLeast': '{n}개 이상',
-  'settings.stats.hidden': '펫을 숨긴 시간',
+  'settings.stats.hidden': '페어리를 숨긴 시간',
   'settings.stats.under': '{n}% 미만',
   'settings.stats.look': '같이 보기 (최근 7일)',
   'settings.stats.times': (v: { n: number }) => `${v.n}번`,
@@ -378,11 +381,11 @@ export const ko = {
   'settings.stats.privacy': '복사한 글에는 날짜와 숫자만 들어가. 할 일 제목이나 대화 내용은 없어.',
 
   // 복사해서 보내는 베타 기록 글
-  'settings.report.title': '짝꿍 베타 기록 ({version}, {os})',
+  'settings.report.title': '페어리 베타 기록 ({version}, {os})',
   'settings.report.first': '처음 켠 날 {first}, 오늘 {day}일째, 켠 날 {used}일',
   'settings.report.none': '아직 기록 없음',
   'settings.report.done': '하루 완료 할 일 중앙값 {n}개 (목표 {goal}개 이상)',
-  'settings.report.hidden': '펫 숨긴 시간 {n}% (목표 {goal}% 미만)',
+  'settings.report.hidden': '페어리 숨긴 시간 {n}% (목표 {goal}% 미만)',
   'settings.report.look': '같이 보기 최근 7일 {n}번 (목표 주 {goal}번 이상)',
   'settings.report.crash': '비정상 종료와 멈춤 최근 7일 {n}번 (목표 {goal}번)',
   'settings.report.header': '날짜, 켠 시간, 숨김, 완료, 같이 보기, 종료, 집중',
@@ -401,7 +404,7 @@ export const en: Translation<typeof ko> = {
   'settings.copied': 'Copied',
   'settings.copyFailed': "Couldn't copy. Select the text and copy it yourself",
 
-  'settings.pet': 'Pet',
+  'settings.pet': 'Fairy',
   'settings.name': 'Name',
   'settings.nameChanged': 'Name changed',
   'settings.nameHint': (v) =>
@@ -409,28 +412,28 @@ export const en: Translation<typeof ko> = {
   'settings.nameEmpty': "A name can't be empty. Keeping the old one",
   'settings.nameMax': 'Names can be up to {max} characters',
   'settings.look': 'Look',
-  'settings.makePhotoPet': 'Make a pet from a photo',
+  'settings.makePhotoPet': 'Make a fairy from a photo',
   'settings.poses': 'Poses by mood',
   'settings.poseChange': '{label}: change',
   'settings.posePhoto': '{label}: add photo',
   'settings.posesHint':
     'Shows a different photo when happy, sleepy or hungry. Without one, the main photo stays.',
   'settings.size': 'Size',
-  'settings.sizeHint': 'You can also use {mod} + scroll or a trackpad pinch over the pet.',
+  'settings.sizeHint': 'You can also use {mod} + scroll or a trackpad pinch over your fairy.',
   'settings.pet3d': 'Show in 3D',
-  'settings.pet3dHint': 'Draws the default pet in 3D like a little figure. Turn off for the flat drawing.',
+  'settings.pet3dHint': 'Draws the default fairy in 3D like a little figure. Turn off for the flat drawing.',
   'settings.petStyle': '3D look',
   'settings.petStyle.figure': 'Figure',
   'settings.petStyle.game': 'Game character',
   'settings.petStyle.real': 'Realistic',
   'settings.petStyle.fluffy': 'Fluffy (beta)',
   'settings.petStyleHint.fluffy':
-    'A seamless body with long, soft fur that can be curly or tufted per pet. Still a beta and uses more graphics power.',
+    'A seamless body with long, soft fur that can be curly or tufted per fairy. Still a beta and uses more graphics power.',
   'settings.petStyleHint.figure': 'Glossy, like a soft vinyl figure.',
   'settings.petStyleHint.game':
     'Crisp cel shading with outlines, like a game character. Slightly bigger eyes too.',
   'settings.petStyleHint.real':
-    'Draws the pet like a real animal: fine fur, glassy eyes and soft light. Uses a little more graphics power.',
+    'Draws your fairy like a real animal: fine fur, glassy eyes and soft light. Uses a little more graphics power.',
   'settings.gait': 'Walks on',
   'settings.gait.auto': 'Auto',
   'settings.gait.biped': 'Two legs',
@@ -438,12 +441,12 @@ export const en: Translation<typeof ko> = {
   'settings.gait.body.biped': 'two-legged',
   'settings.gait.body.quadruped': 'four-legged',
   'settings.gait.autoNow': (v) =>
-    `Decided from the body shape. Right now it walks on ${v.gait.toLowerCase()}. Remembered for each pet.`,
+    `Decided from the body shape. Right now it walks on ${v.gait.toLowerCase()}. Remembered for each fairy.`,
   'settings.gait.kept':
-    'Remembered for each pet, so a pet you bring back from your collection keeps its own choice.',
+    'Remembered for each fairy, so a fairy you bring back from your collection keeps its own choice.',
   'settings.gait.odd': (v) => `${v.name} has a ${v.body} body, so this may look a little odd.`,
   'settings.gait.flat':
-    "Photo pets (flat or 2.5D) don't have separate legs, so there's nothing to choose. Make a 3D figure in Make a pet to choose.",
+    "Photo fairies (flat or 2.5D) don't have separate legs, so there's nothing to choose. Make a 3D figure in Make a fairy to choose.",
   'settings.gait.off3d': 'Turn on Show in 3D to choose. Right now it shows as a photo with no legs.',
   'settings.gait.mismatch': (v) =>
     `${v.name} was made with a ${v.body} body. Walking on ${v.pick.toLowerCase()} as is may look odd.`,
@@ -468,33 +471,33 @@ export const en: Translation<typeof ko> = {
     'Soft little sounds for finished to-dos, meals, and event reminders. Stays quiet while you focus or while it sleeps.',
   'settings.boost': 'Boost mode',
   'settings.boostHint':
-    'For powerful computers. Your pet moves more smoothly and follows the mouse more closely, and the free AI stays warm for 30 minutes so answers come faster. Uses a bit more CPU and memory. Takes a break while a laptop runs on battery.',
+    'For powerful computers. Your fairy moves more smoothly and follows the mouse more closely, and the free AI stays warm for 30 minutes so answers come faster. Uses a bit more CPU and memory. Takes a break while a laptop runs on battery.',
   'settings.boostResting': 'Resting now: on battery. It turns on when you plug in.',
   'settings.sysMonitor': 'Computer status in the menu bar',
   'settings.sysMonitorHint':
-    'Shows CPU use in the menu bar, and your pet naps while the computer is idle, then walks, runs and sprints with a sweat the busier it gets. Open the menu for memory, disk and graphics. It rests while the screen is locked or you are away, and the pet stands still on battery.',
+    'Shows CPU use in the menu bar, and your fairy naps while the computer is idle, then walks, runs and sprints with a sweat the busier it gets. Open the menu for memory, disk and graphics. It rests while the screen is locked or you are away, and your fairy stands still on battery.',
   'settings.sysMonitorWin': 'Computer status in the notification area',
   'settings.sysMonitorWinHint':
-    'Hover the notification area icon to see CPU use, and your pet naps while the computer is idle, then walks, runs and sprints with a sweat the busier it gets. Open the menu for memory, disk and graphics. It rests while the screen is locked or you are away, and the pet stands still on battery or while presenting.',
+    'Hover the notification area icon to see CPU use, and your fairy naps while the computer is idle, then walks, runs and sprints with a sweat the busier it gets. Open the menu for memory, disk and graphics. It rests while the screen is locked or you are away, and your fairy stands still on battery or while presenting.',
 
-  'settings.friends': 'Pet friends',
-  'settings.friendsChanged': 'Pet friends updated',
+  'settings.friends': "Invite a friend's fairy",
+  'settings.friendsChanged': 'Friend fairies updated',
   'settings.friends.hint':
-    'Pet friends wander and play along. Your main pet handles to-dos and chat. Up to {max}.',
+    'Invited fairies wander and play along. Your main fairy handles to-dos and chat. Up to {max}.',
   'settings.friends.photo': 'Photo',
   'settings.friends.sendHome': 'Send home',
   'settings.friends.name': 'Friend name',
   'settings.friends.kind': 'Friend look',
-  'settings.friends.add': 'Bring over',
-  'settings.friends.import': 'Bring one from a .jjpet file',
-  'settings.friends.addAnyway': 'Bring anyway',
+  'settings.friends.add': 'Invite',
+  'settings.friends.import': 'Invite one from a .fairy file',
+  'settings.friends.addAnyway': 'Invite anyway',
   'settings.friends.dupe': (v) =>
-    `"${v.name}" is already taken. Bring them anyway? Press again to bring them.`,
+    `"${v.name}" is already taken. Invite them anyway? Press again to invite them.`,
   'settings.friends.sendHomeSure': 'Really?',
   'settings.friends.sendHomeAria': (v) => `Send ${v.name} home`,
   'settings.friends.sendHomeSureAria': (v) => `Really send ${v.name} home (press again to send)`,
   'settings.friends.photoGone': (v) =>
-    `${v.name} is a photo friend, so their picture goes too. To see them again, bring back the .jjpet file.`,
+    `${v.name} is a photo friend, so their picture goes too. To see them again, invite them back from the .fairy file.`,
 
   'settings.sulk': 'Sulking',
   'settings.restDays': 'Days off (no sulking if you skip these)',
@@ -523,12 +526,12 @@ export const en: Translation<typeof ko> = {
   'settings.aiKnowsTodos': 'Share my to-dos',
   'settings.diaryAi': 'Polish the diary with AI',
   'settings.diaryAiHint':
-    "Your chosen AI rewrites past diary entries in your pet's voice. Only the numbers and diary lines are sent, never to-do titles.",
+    "Your chosen AI rewrites past diary entries in your fairy's voice. Only the numbers and diary lines are sent, never to-do titles.",
   'settings.aiKnowsTodosHint':
     'Sends your open to-do titles and due dates, plus the titles of today\'s remaining events, with each question. Then it can answer "What should I do first?". You can also switch this under the chat box.',
-  'settings.aiPetTools': 'Let chat use pet tools',
+  'settings.aiPetTools': 'Let chat use fairy tools',
   'settings.aiPetToolsHint':
-    "Say things like 'add groceries to my to-dos for tomorrow' and the AI reads and adds your pet's to-dos, notes, and events itself. Works with Claude or Codex. It can read your to-do list, so it's off by default. File and command tools stay off.",
+    "Say things like 'add groceries to my to-dos for tomorrow' and the AI reads and adds your fairy's to-dos, notes, and events itself. Works with Claude or Codex. It can read your to-do list, so it's off by default. File and command tools stay off.",
   'settings.myMcp': 'Use my MCP tools',
   'settings.myMcpOff':
     'Turn off "Call without my AI setup" above to use this. Lets chat use MCP tools you connected to Claude Code, like Notion or Slack.',
@@ -540,7 +543,7 @@ export const en: Translation<typeof ko> = {
 
   'settings.models': 'AI models',
   'settings.pets.hint':
-    'Pick a default pet, the illustrated friends Milk and Choco, or one you made before. Your current photo pet is kept, not deleted. Press × twice to delete a kept pet.',
+    'Pick a default fairy, the illustrated friends Milk and Choco, or one you made before. Your current photo fairy is kept, not deleted. Press × twice to delete a kept fairy.',
   'settings.pets.now': 'Now',
   'settings.pets.figure': '3D',
   'settings.pets.relief': '2.5D',
@@ -550,19 +553,19 @@ export const en: Translation<typeof ko> = {
   'settings.pets.remove': (v) => `Delete ${v.name}`,
   'settings.pets.starter': (v) => `${v.name}, ${v.desc}`,
   'settings.pets.removeSure': 'Delete?',
-  'settings.pets.removed': 'Deleted the kept pet',
-  'settings.rules': 'Pet rules',
+  'settings.pets.removed': 'Deleted the kept fairy',
+  'settings.rules': 'Fairy rules',
   'settings.rules.label': 'Always follow these when chatting',
   'settings.rules.placeholder':
     'e.g.\nKeep answers under three lines\nWrite code in TypeScript\nCall me "Boss"',
   'settings.rules.hint':
     'One per line. Sent to every AI and followed before the personality. Saved when you leave the box.',
   'settings.rules.saved': 'Rules saved',
-  'settings.memory': 'Things your pet remembers',
+  'settings.memory': 'Things your fairy remembers',
   'settings.memory.hint': (v) =>
-    `Things about you your pet should always know. They're sent to the AI with every question, so don't put secrets here. Up to ${v.max}, ${v.len} characters each. When it's full, the oldest go first.`,
+    `Things about you your fairy should always know. They're sent to the AI with every question, so don't put secrets here. Up to ${v.max}, ${v.len} characters each. When it's full, the oldest go first.`,
   'settings.memory.empty':
-    'Nothing remembered yet. Add one here, or allow something your AI tool asked your pet to remember.',
+    'Nothing remembered yet. Add one here, or allow something your AI tool asked your fairy to remember.',
   'settings.memory.placeholder': 'e.g. I have lots of meetings in the morning',
   'settings.memory.add': 'Remember',
   'settings.memory.delete': 'Forget',
@@ -571,7 +574,7 @@ export const en: Translation<typeof ko> = {
   'settings.memory.added': 'Got it, remembered',
   'settings.memory.deleted': 'Forgotten',
   'settings.memory.dupe': 'Already remembered',
-  'settings.memory.pending': 'Things your pet was asked to remember',
+  'settings.memory.pending': 'Things your fairy was asked to remember',
   'settings.memory.pendingHint':
     'Your AI tool asked to remember these. Only the ones you allow are remembered and sent to the AI.',
   'settings.memory.approve': 'Remember',
@@ -599,7 +602,7 @@ export const en: Translation<typeof ko> = {
   'settings.storage.copyDeleted': 'Copy deleted',
   'settings.aiHistory': 'AI history',
   'settings.aiHistory.hint':
-    "Claude and Codex save your chats with Jjakkung in their own history folders. This deletes only what's left in Jjakkung's own folders (other history and your login in ~/.claude and ~/.codex stay). Questions that showed your screen are never saved.",
+    "Claude and Codex save your chats with fairy in their own history folders. This deletes only what's left in fairy's own folders (other history and your login in ~/.claude and ~/.codex stay). Questions that showed your screen are never saved.",
   'settings.aiHistory.size': (v) => `${v.size} now`,
   'settings.aiHistory.none': 'Nothing saved right now.',
   'settings.aiHistory.clear': 'Clear AI history',
@@ -620,14 +623,15 @@ export const en: Translation<typeof ko> = {
   'settings.models.freeLater': (v: { mb: number; license: string }) =>
     `Downloads on first use (${v.mb} MB, ${v.license})`,
 
-  'settings.mcpSection': 'Use Jjakkung from other AIs (MCP)',
+  'settings.mcpSection': 'Use fairy from other AIs (MCP)',
   'settings.mcp.intro':
-    'Connect Jjakkung to Claude Code or Codex and you can say "Add this to my Jjakkung to-dos" or "Schedule a meeting tomorrow at 3". It can add and read to-dos, notes and events. New items show up in the panel within seconds.',
+    'Connect fairy to Claude Code or Codex and you can say "Add this to my fairy to-dos" or "Schedule a meeting tomorrow at 3". It can add and read to-dos, notes and events. New items show up in the panel within seconds.',
   'settings.mcp.claude': 'Claude Code: run once in a terminal',
   'settings.mcp.copyCmd': 'Copy command',
   'settings.mcp.codex': 'Codex: paste into ~/.codex/config.toml',
   'settings.mcp.copyConfig': 'Copy config',
-  'settings.mcp.moved': 'If you move or reinstall Jjakkung, the path changes, so register it again.',
+  'settings.mcp.moved':
+    'If you move or reinstall the fairy app, the path changes, so register it again. If you registered it under the old name (jjakkung), remove that and register again with this command.',
 
   'settings.lang': 'Language',
   'settings.langAria': 'Display language',
@@ -640,7 +644,7 @@ export const en: Translation<typeof ko> = {
 
   'settings.start': 'Startup',
   'settings.launchAtLogin': 'Open at login',
-  'settings.launchPackaged': 'Jjakkung shows up when you log in.',
+  'settings.launchPackaged': 'fairy shows up when you log in.',
   'settings.launchDev': 'Only works in the installed app. This is a dev build.',
 
   'settings.review': 'Daily review',
@@ -654,34 +658,34 @@ export const en: Translation<typeof ko> = {
   'settings.calendar': 'Import calendar',
   'settings.cal.url': 'Calendar address (.ics)',
   'settings.cal.hint':
-    'Google Calendar: Settings > My calendars > Integrate calendar > paste the "Secret address in iCal format". Every 30 minutes it fetches the next 60 days and your pet reminds you. The address stays on this computer. (Read only. To send events you add in Jjakkung to Google, use "Send to Google Calendar" below.)',
+    'Google Calendar: Settings > My calendars > Integrate calendar > paste the "Secret address in iCal format". Every 30 minutes it fetches the next 60 days and your fairy reminds you. The address stays on this computer. (Read only. To send events you add in fairy to Google, use "Send to Google Calendar" below.)',
   'settings.cal.fetch': 'Fetch now',
   'settings.cal.clear': 'Clear',
 
   'settings.backup': 'Backup and transfer',
   'settings.backupHint':
-    'Export to-dos, notes, events, coins, pets and settings into one folder, then import them on another computer.',
+    'Export to-dos, notes, events, coins, fairies and settings into one folder, then import them on another computer.',
   'settings.export': 'Export',
   'settings.exported': 'Exported',
   'settings.exportFailed': "Couldn't export",
   'settings.importFailed': "Couldn't import",
   'settings.import': 'Import',
-  'settings.petOnlyHint': 'To give just your pet to a friend, use a .jjpet file.',
-  'settings.exportPet': 'Export pet',
-  'settings.petExported': 'Pet file created',
-  'settings.petExportFailed': "Couldn't create the pet file. Try saving to another folder",
-  'settings.importPet': 'Import pet',
+  'settings.petOnlyHint': 'To give just your fairy to a friend, use a .fairy file.',
+  'settings.exportPet': 'Export fairy',
+  'settings.petExported': 'Fairy file created',
+  'settings.petExportFailed': "Couldn't create the fairy file. Try saving to another folder",
+  'settings.importPet': 'Import fairy',
 
   'settings.update': 'Updates',
   'settings.updateCheck': 'New version alerts',
   'settings.updateHint':
-    'Checks once a day for a new version, and your pet lets you know. The installed app downloads ahead and installs when you press "Restart to update". If a required update comes out, AI chat is locked until you update (never when the check fails). Only the app name and version are sent.',
+    'Checks once a day for a new version, and your fairy lets you know. The installed app downloads ahead and installs when you press "Restart to update". If a required update comes out, AI chat is locked until you update (never when the check fails). Only the app name and version are sent.',
   'settings.checkNow': 'Check now',
   'settings.onboardingAgain': 'Show the intro again',
 
   'settings.shortcuts': 'Shortcuts',
   'settings.shortcutChanged': 'Shortcut changed',
-  'settings.zoomKeys': 'Bigger, smaller, reset (mouse over the pet)',
+  'settings.zoomKeys': 'Bigger, smaller, reset (mouse over your fairy)',
   'settings.shortcut.hide': 'Hide and show',
   'settings.shortcut.quickAdd': 'Quick add a to-do (anywhere)',
   'settings.shortcut.chat': 'Open chat',
@@ -731,15 +735,15 @@ export const en: Translation<typeof ko> = {
   'settings.shortcut.what.rotate': 'rotating the screen',
 
   'settings.statsCopied': 'Copied. Paste it along with your feedback',
-  'settings.version': 'Jjakkung {v}',
+  'settings.version': 'fairy {v}',
   'settings.licenses': 'Open source licenses',
   'settings.licensesHint':
-    'Jjakkung is open source under the MIT license. See the notices for the other open source it includes.',
+    'fairy is open source under the MIT license. See the notices for the other open source it includes.',
   'settings.licensesOpen': 'View notices',
   'settings.licensesFailed': "Couldn't open the notices file.",
   'settings.stats.title': 'My stats (beta)',
   'settings.stats.intro':
-    'Numbers that show whether Jjakkung is useful. They stay on this computer and go nowhere. Copying them into your feedback helps a lot.',
+    'Numbers that show whether fairy is useful. They stay on this computer and go nowhere. Copying them into your feedback helps a lot.',
   'settings.stats.daysUsed': 'Days used',
   'settings.stats.dayValue': 'Day {day} ({used} days opened)',
   'settings.stats.dayValueOne': 'Day {day} ({used} day opened)',
@@ -748,7 +752,7 @@ export const en: Translation<typeof ko> = {
   'settings.stats.doneMedian': 'To-dos done a day (median)',
   'settings.stats.count': '{n}',
   'settings.stats.countAtLeast': '{n} or more',
-  'settings.stats.hidden': 'Time pet was hidden',
+  'settings.stats.hidden': 'Time your fairy was hidden',
   'settings.stats.under': 'Under {n}%',
   'settings.stats.look': 'Look together (last 7 days)',
   'settings.stats.times': (v) => `${v.n} ${Number(v.n) === 1 ? 'time' : 'times'}`,
@@ -759,11 +763,11 @@ export const en: Translation<typeof ko> = {
   'settings.stats.copy': 'Copy stats',
   'settings.stats.privacy': 'The copy has only dates and numbers. No to-do titles or chats.',
 
-  'settings.report.title': 'Jjakkung beta stats ({version}, {os})',
+  'settings.report.title': 'fairy beta stats ({version}, {os})',
   'settings.report.first': 'First day {first}, today is day {day}, opened on {used} days',
   'settings.report.none': 'No stats yet',
   'settings.report.done': 'Median to-dos done a day: {n} (goal {goal} or more)',
-  'settings.report.hidden': 'Pet hidden: {n}% (goal under {goal}%)',
+  'settings.report.hidden': 'Fairy hidden: {n}% (goal under {goal}%)',
   'settings.report.look': 'Look together, last 7 days: {n} (goal {goal}+ a week)',
   'settings.report.crash': 'Crashes and freezes, last 7 days: {n} (goal {goal})',
   'settings.report.header': 'Date, on time, hidden, done, look together, crashes, focus',

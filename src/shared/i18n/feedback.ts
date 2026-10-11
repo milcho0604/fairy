@@ -16,7 +16,7 @@ export const ko = {
   'feedback.saved': '저장했어: {file}',
   'feedback.saveFailed': '저장하지 못했어',
   'feedback.saveTitle': '진단 기록 저장',
-  'feedback.fileName': '짝꿍-진단기록-{day}.txt',
+  'feedback.fileName': '페어리-진단기록-{day}.txt',
   'feedback.fileType': '글 파일',
   'feedback.issue': 'GitHub에 문제 알리기',
   'feedback.issueHint': '새 이슈 화면이 열려. 판과 운영체제만 채워 두니 기록은 직접 붙여 넣어 줘.',
@@ -42,7 +42,7 @@ export const en: Translation<typeof ko> = {
   'feedback.saved': 'Saved: {file}',
   'feedback.saveFailed': "Couldn't save",
   'feedback.saveTitle': 'Save diagnostics',
-  'feedback.fileName': 'jjakkung-diagnostics-{day}.txt',
+  'feedback.fileName': 'fairy-diagnostics-{day}.txt',
   'feedback.fileType': 'Text file',
   'feedback.issue': 'Report a problem on GitHub',
   'feedback.issueHint':

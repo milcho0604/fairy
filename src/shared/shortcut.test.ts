@@ -284,6 +284,6 @@ test('펫 고르기 단축키 (접근성): 기본 Cmd/Ctrl+Option/Alt+Shift+P, �
     assert.equal(shortcutProblem(d.pet, mac), undefined);
   }
   assert.equal(shortcutClash(d), undefined);
-  assert.equal(SHORTCUT_LABEL.pet, '펫 고르기 (키보드로 펫 다루기)');
+  assert.equal(SHORTCUT_LABEL.pet, '페어리 고르기 (키보드로 페어리 다루기)');
   assert.equal(SHORTCUT_IDS.at(-1), 'pet');
 });

@@ -194,7 +194,7 @@ test('지금 시각: 현지 날짜, 요일, 오전 오후 (한국어, 영어)', 
   );
 });
 
-test('짝꿍이 기억하는 것: 규칙 뒤에 붙고, 비면 붙지 않고, 일기처럼 빈 목록을 주면 빠진다', () => {
+test('페어리가 기억하는 것: 규칙 뒤에 붙고, 비면 붙지 않고, 일기처럼 빈 목록을 주면 빠진다', () => {
   setLang('ko');
   assert.equal(withMemory([]), '');
   assert.equal(withMemory(['  ']), '');
@@ -202,12 +202,12 @@ test('짝꿍이 기억하는 것: 규칙 뒤에 붙고, 비면 붙지 않고, �
   assert.ok(p.indexOf('규칙을 따른다:') < p.indexOf('기억하는 것이다'));
   assert.ok(p.endsWith('굳이 꺼내지는 않는다:\n- 아침엔 회의가 많아\n- 커피는 안 마셔'));
   // 메인이 정한 기억 출처를 읽는다. memory 를 주면 그것이 먼저
-  setMemorySource(() => ['고양이를 키워']);
+  setMemorySource(() => ['화분을 키워']);
   try {
-    assert.ok(persona('콩이').endsWith('- 고양이를 키워'));
-    assert.ok(!persona('콩이', 'friend', '', { memory: [] }).includes('고양이'));
+    assert.ok(persona('콩이').endsWith('- 화분을 키워'));
+    assert.ok(!persona('콩이', 'friend', '', { memory: [] }).includes('화분'));
     setLang('en');
-    assert.match(persona('Bean'), /Things you remember about the user\. .*:\n- 고양이를 키워$/);
+    assert.match(persona('Bean'), /Things you remember about the user\. .*:\n- 화분을 키워$/);
   } finally {
     setMemorySource(() => []);
     setLang('ko');

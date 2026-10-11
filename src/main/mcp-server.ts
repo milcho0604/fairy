@@ -46,12 +46,12 @@ let stores: { todos: TodoStore; notes: NoteStore; events: EventStore } | undefin
 function open() {
   if (stores) return stores;
   const file = join(userDataDir(), 'jjakkung.db');
-  if (!existsSync(file)) throw new Error('짝꿍 저장 파일이 없어. 짝꿍을 한 번 켜 줘.');
+  if (!existsSync(file)) throw new Error('페어리 저장 파일이 없어. 페어리를 한 번 켜 줘.');
   const db = new DatabaseSync(file);
   db.exec('pragma journal_mode = wal; pragma busy_timeout = 3000;');
   const v = schemaVersion(db as unknown as Db);
   if (v !== SCHEMA_VERSION)
-    throw new Error(`저장 파일(${v}판)과 이 서버(${SCHEMA_VERSION}판)의 판이 달라. 짝꿍을 최신으로 켜 줘.`);
+    throw new Error(`저장 파일(${v}판)과 이 서버(${SCHEMA_VERSION}판)의 판이 달라. 페어리를 최신으로 켜 줘.`);
   const d = db as unknown as Db;
   stores = { todos: new TodoStore(d), notes: new NoteStore(d), events: new EventStore(d) };
   return stores;
@@ -170,13 +170,14 @@ function queue(action: PetAction, what: string): string {
     list: addPetAction(list, action),
     added: true,
   }));
-  return `아직 하지 않았어. 짝꿍이 사용자에게 "${what}"을 물어보고 허락하면 해. 사용자에게 짝꿍 말풍선에서 허락해 달라고 말해 줘.`;
+  return `아직 하지 않았어. 페어리가 사용자에게 "${what}"을 물어보고 허락하면 해. 사용자에게 페어리 말풍선에서 허락해 달라고 말해 줘.`;
 }
 
 const TOOLS: Tool[] = [
   {
     name: 'add_todo',
-    description: '짝꿍(데스크톱 펫) 할 일 목록에 할 일을 넣는다. 끝내면 사용자가 코인을 받는다.',
+    description:
+      '페어리(화면 위에 사는 데스크톱 친구) 할 일 목록에 할 일을 넣는다. 끝내면 사용자가 코인을 받는다.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -225,7 +226,7 @@ const TOOLS: Tool[] = [
   {
     name: 'list_todos',
     description:
-      '짝꿍의 안 끝낸 할 일과 오늘 끝낸 할 일을 본다. 단계(체크리스트)는 번호와 함께 보인다. query 로 제목과 단계에서 찾고, tag 로 제목 속 #태그 할 일만 본다.',
+      '페어리의 안 끝낸 할 일과 오늘 끝낸 할 일을 본다. 단계(체크리스트)는 번호와 함께 보인다. query 로 제목과 단계에서 찾고, tag 로 제목 속 #태그 할 일만 본다.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -252,7 +253,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: 'complete_todo',
-    description: '짝꿍 할 일을 끝낸 것으로 표시한다. id 는 list_todos 에서.',
+    description: '페어리 할 일을 끝낸 것으로 표시한다. id 는 list_todos 에서.',
     inputSchema: {
       type: 'object',
       properties: { id: { type: 'integer', minimum: 1, description: '할 일 id' } },
@@ -270,7 +271,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: 'update_todo',
-    description: '짝꿍 할 일을 고친다 (제목, 마감, 중요). 준 것만 바꾼다. id 는 list_todos 에서.',
+    description: '페어리 할 일을 고친다 (제목, 마감, 중요). 준 것만 바꾼다. id 는 list_todos 에서.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -322,7 +323,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: 'delete_todo',
-    description: '짝꿍 할 일을 지운다 (목록에서 빠진다. 받은 코인은 그대로). id 는 list_todos 에서.',
+    description: '페어리 할 일을 지운다 (목록에서 빠진다. 받은 코인은 그대로). id 는 list_todos 에서.',
     inputSchema: {
       type: 'object',
       properties: { id: { type: 'integer', minimum: 1, description: '할 일 id' } },
@@ -341,7 +342,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: 'add_todo_steps',
-    description: `짝꿍 할 일에 작은 단계(체크리스트)를 더한다. 큰 일을 쪼갤 때 쓴다 (할 일 하나에 ${STEP_MAX}개까지).`,
+    description: `페어리 할 일에 작은 단계(체크리스트)를 더한다. 큰 일을 쪼갤 때 쓴다 (할 일 하나에 ${STEP_MAX}개까지).`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -367,7 +368,7 @@ const TOOLS: Tool[] = [
   {
     name: 'check_todo_step',
     description:
-      '짝꿍 할 일의 단계를 끝낸 것으로 (done:false 면 되돌린다). step 은 list_todos 에 보이는 단계 번호(1부터).',
+      '페어리 할 일의 단계를 끝낸 것으로 (done:false 면 되돌린다). step 은 list_todos 에 보이는 단계 번호(1부터).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -394,7 +395,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: 'add_note',
-    description: '짝꿍 메모에 마크다운 메모를 남긴다.',
+    description: '페어리 메모에 마크다운 메모를 남긴다.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -412,7 +413,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: 'search_notes',
-    description: '짝꿍 메모를 찾는다 (제목과 본문). 최근에 고친 것부터 제목과 찾은 곳 둘레 글을 준다.',
+    description: '페어리 메모를 찾는다 (제목과 본문). 최근에 고친 것부터 제목과 찾은 곳 둘레 글을 준다.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -443,7 +444,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: 'read_note',
-    description: '짝꿍 메모 하나의 본문 전체(마크다운)를 읽는다. id 는 search_notes 에서.',
+    description: '페어리 메모 하나의 본문 전체(마크다운)를 읽는다. id 는 search_notes 에서.',
     inputSchema: {
       type: 'object',
       properties: { id: { type: 'integer', minimum: 1, description: '메모 id' } },
@@ -457,7 +458,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: 'append_note',
-    description: '짝꿍 메모 끝에 글을 덧붙인다 (원래 글은 그대로). 회의록에 결정 사항 더하기 같은 때.',
+    description: '페어리 메모 끝에 글을 덧붙인다 (원래 글은 그대로). 회의록에 결정 사항 더하기 같은 때.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -483,7 +484,7 @@ const TOOLS: Tool[] = [
   {
     name: 'add_event',
     description:
-      '짝꿍 일정에 넣는다. 시작 전에 펫이 말풍선으로 알린다. start 를 날짜(YYYY-MM-DD)만 주면 종일 일정이고 아침 브리핑에 나온다. 여러 날이면 end_date 도 준다.',
+      '페어리 일정에 넣는다. 시작 전에 페어리가 말풍선으로 알린다. start 를 날짜(YYYY-MM-DD)만 주면 종일 일정이고 아침 브리핑에 나온다. 여러 날이면 end_date 도 준다.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -556,7 +557,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: 'list_events',
-    description: '짝꿍 일정을 본다 (오늘부터 며칠).',
+    description: '페어리 일정을 본다 (오늘부터 며칠).',
     inputSchema: {
       type: 'object',
       properties: { days: { type: 'number', description: '며칠 치 (기본 7, 최대 60)' } },
@@ -585,7 +586,7 @@ const TOOLS: Tool[] = [
   {
     name: 'update_event',
     description:
-      '짝꿍 일정을 고친다 (제목, 시작 시각, 길이). 준 칸만 바뀐다. 시작을 옮기면 길이는 그대로. 종일 일정은 제목만.',
+      '페어리 일정을 고친다 (제목, 시작 시각, 길이). 준 칸만 바뀐다. 시작을 옮기면 길이는 그대로. 종일 일정은 제목만.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -625,7 +626,7 @@ const TOOLS: Tool[] = [
   {
     name: 'delete_event',
     description:
-      '짝꿍 일정을 지운다. 캘린더에서 가져온 일정이면 다음 가져오기에서도 되살리지 않는다. 사용자가 지워 달라고 할 때만.',
+      '페어리 일정을 지운다. 캘린더에서 가져온 일정이면 다음 가져오기에서도 되살리지 않는다. 사용자가 지워 달라고 할 때만.',
     inputSchema: {
       type: 'object',
       properties: { id: { type: 'integer', minimum: 1, description: '일정 id' } },
@@ -643,7 +644,7 @@ const TOOLS: Tool[] = [
   {
     name: 'today_overview',
     description:
-      '짝꿍이 보는 오늘 한눈에: 먼저 할 일, 오늘 일정, 지난 마감과 오늘 마감, 중요 할 일, 오늘 끝낸 수. 하루 계획을 도울 때 먼저 부른다.',
+      '페어리가 보는 오늘 한눈에: 먼저 할 일, 오늘 일정, 지난 마감과 오늘 마감, 중요 할 일, 오늘 끝낸 수. 하루 계획을 도울 때 먼저 부른다.',
     inputSchema: { type: 'object', properties: {} },
     run: () => {
       const now = Date.now();
@@ -692,7 +693,7 @@ const TOOLS: Tool[] = [
   {
     name: 'remember',
     description:
-      '짝꿍이 사용자에 대해 오래 기억할 짧은 글을 남긴다 (예: "아침엔 회의가 많다"). 바로 기억하지 않고 사용자가 짝꿍 설정에서 허락해야 기억이 된다. 100자까지. 사용자가 기억해 달라고 할 때만 쓴다.',
+      '페어리가 사용자에 대해 오래 기억할 짧은 글을 남긴다 (예: "아침엔 회의가 많다"). 바로 기억하지 않고 사용자가 페어리 설정에서 허락해야 기억이 된다. 100자까지. 사용자가 기억해 달라고 할 때만 쓴다.',
     inputSchema: {
       type: 'object',
       properties: { text: { type: 'string', description: '기억할 글 (한 줄, 100자까지)' } },
@@ -702,7 +703,7 @@ const TOOLS: Tool[] = [
       const text = cleanMemoryItem(a.text);
       if (!text) throw new Error('text 가 비었어');
       if (!remember(text)) return `이미 기억해 달라고 했어: ${text}`;
-      return `짝꿍 설정에서 사용자가 허락하면 기억할게: ${text}`;
+      return `페어리 설정에서 사용자가 허락하면 기억할게: ${text}`;
     },
   },
 ];
@@ -726,7 +727,8 @@ export function handle(msg: Json): Json | undefined {
         protocolVersion: PROTOCOLS.includes(asked) ? asked : PROTOCOLS[0],
         capabilities: { tools: {} },
         serverInfo: { name: 'jjakkung', version: VERSION },
-        instructions: '데스크톱 펫 짝꿍의 할 일, 메모, 일정을 다룬다. 사용자가 펫에 넣어 달라고 할 때 쓴다.',
+        instructions:
+          '데스크톱 앱 페어리(화면 위에 사는 작은 친구)의 할 일, 메모, 일정을 다룬다. 사용자가 페어리에 넣어 달라고 할 때 쓴다.',
       });
     }
     case 'ping':

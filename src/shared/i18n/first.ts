@@ -19,7 +19,7 @@ export const ko = {
   'first.why.soon': (v: { m: number; d: number }) => `${v.m}월 ${v.d}일 마감`,
   'first.why.habit': '오늘 습관',
   'first.why.oldest': '제일 먼저 넣은 것',
-  'first.ctx.head': '[짝꿍이 마감과 중요 표시로 세운 오늘 순서. 참고해서 답해 줘]',
+  'first.ctx.head': '[페어리가 마감과 중요 표시로 세운 오늘 순서. 참고해서 답해 줘]',
   'first.ctx.free': (v: { from: string; to: string }) => `다음 빈 시간: ${v.from}~${v.to}`,
   // 채팅 답 위 꼬리표와 답 아래 단추
   'first.tag': 'AI 없이',

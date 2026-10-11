@@ -18,7 +18,7 @@ export const ko = {
   // 내 말투 만들기 (설정 → AI → 말투)
   'speech.title': '내 말투 만들기',
   'speech.lead':
-    'AI 없이도 펫이 하는 모든 정해진 말(인사, 브리핑, 칭찬, 알림)에 적용돼. 채팅 AI를 쓰면 답도 이 말투로 해.',
+    'AI 없이도 페어리가 하는 모든 정해진 말(인사, 브리핑, 칭찬, 알림)에 적용돼. 채팅 AI를 쓰면 답도 이 말투로 해.',
   'speech.level': '말 높이',
   'speech.level.banmal': '반말',
   'speech.level.haeyo': '해요체',
@@ -44,7 +44,7 @@ export const ko = {
   'speech.bang.strong': '힘차게',
   'speech.lines': '자주 하는 말 직접 쓰기',
   'speech.lines.hint':
-    '한 줄에 하나, 다섯 줄까지. 그때마다 하나를 골라 말해. {name} 펫 이름, {me} 나를 부르는 말, {todo} 할 일.',
+    '한 줄에 하나, 다섯 줄까지. 그때마다 하나를 골라 말해. {name} 페어리 이름, {me} 나를 부르는 말, {todo} 할 일.',
   'speech.moment.morning': '아침 인사',
   'speech.moment.praise': '칭찬',
   'speech.moment.rest': '쉬자는 말',
@@ -71,7 +71,7 @@ export const en: Translation<typeof ko> = {
 
   'speech.title': 'Make my style',
   'speech.lead':
-    'Applies to every fixed line your pet says (greetings, briefings, praise, reminders), no AI needed. With a chat AI set up, replies follow it too.',
+    'Applies to every fixed line your fairy says (greetings, briefings, praise, reminders), no AI needed. With a chat AI set up, replies follow it too.',
   'speech.level': 'Politeness',
   'speech.level.banmal': 'Casual',
   'speech.level.haeyo': 'Polite',
@@ -97,7 +97,7 @@ export const en: Translation<typeof ko> = {
   'speech.bang.strong': 'Excited',
   'speech.lines': 'Write my own lines',
   'speech.lines.hint':
-    'One per line, up to five. One is picked each time. {name} pet name, {me} what I call you, {todo} a to-do.',
+    'One per line, up to five. One is picked each time. {name} fairy name, {me} what I call you, {todo} a to-do.',
   'speech.moment.morning': 'Morning hello',
   'speech.moment.praise': 'Praise',
   'speech.moment.rest': 'Take a break',

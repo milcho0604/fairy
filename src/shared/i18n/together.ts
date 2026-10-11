@@ -49,10 +49,10 @@ export const ko = {
   // ---- 설정, 메뉴 ----
   'settings.typeAlong': '같이 타자 치기',
   'settings.typeAlongHint':
-    '내가 키보드를 치는 동안 펫이 작은 키보드를 같이 두드려. 무슨 키를 눌렀는지는 읽지 않고 입력이 있는지만 봐. 배터리 절약 중에는 쉬어.',
+    '내가 키보드를 치는 동안 페어리가 작은 키보드를 같이 두드려. 무슨 키를 눌렀는지는 읽지 않고 입력이 있는지만 봐. 배터리 절약 중에는 쉬어.',
   'settings.dailyNotes': '매일 쪽지',
   'settings.dailyNotesHint':
-    '하루 한 번, 9시 뒤 처음 자리에 있을 때 펫이 쪽지를 들고 와. 이 컴퓨터의 기록으로만 써. 함께한 7일, 30일, 100일, 1년에는 특별한 편지.',
+    '하루 한 번, 9시 뒤 처음 자리에 있을 때 페어리가 쪽지를 들고 와. 이 컴퓨터의 기록으로만 써. 함께한 7일, 30일, 100일, 1년에는 특별한 편지.',
   'pet.menu.typeAlong': '같이 타자 치기',
 
   // ---- 같이 일하는 표정 ----
@@ -92,7 +92,7 @@ export const ko = {
   'note.box': '쪽지함',
   'note.boxUnread': (v: { n: number }) => `안 읽은 쪽지 ${v.n}`,
   'note.boxEmpty': '아직 쪽지가 없어. 내일 아침에 하나 들고 올게.',
-  'note.boxOff': '매일 쪽지가 꺼져 있어. 설정의 펫에서 켤 수 있어.',
+  'note.boxOff': '매일 쪽지가 꺼져 있어. 설정의 페어리 탭에서 켤 수 있어.',
   'note.boxMore': (v: { n: number }) => `지난 쪽지 ${v.n}통 더 보기`,
   'note.boxLess': '접기',
   'note.new': '새 쪽지',
@@ -211,7 +211,7 @@ export const ko = {
     }),
   'note.special.close': (v: Name) =>
     P(v.p, {
-      friend: `앞으로도 잘 부탁해! 너의 짝꿍 ${v.name}`,
+      friend: `앞으로도 잘 부탁해! 너의 단짝 ${v.name}`,
       polite: `앞으로도 잘 부탁드려요. ${v.name} 올림`,
       tsundere: `앞으로도 옆에 있을 거야. 딱히 갈 데도 없고. ${v.name} 씀`,
       calm: `앞으로도 천천히, 같이 가자. ${v.name} 씀`,
@@ -221,10 +221,10 @@ export const ko = {
 export const en: Translation<typeof ko> = {
   'settings.typeAlong': 'Type along',
   'settings.typeAlongHint':
-    "While you type, your pet taps a tiny keyboard with you. It never reads which keys you press, only whether you're typing. Rests in battery saver.",
+    "While you type, your fairy taps a tiny keyboard with you. It never reads which keys you press, only whether you're typing. Rests in battery saver.",
   'settings.dailyNotes': 'Daily notes',
   'settings.dailyNotesHint':
-    'Once a day, the first time you are around after 9:00, your pet brings a note written only from what is on this computer. Special letters on day 7, 30, 100 and 365.',
+    'Once a day, the first time you are around after 9:00, your fairy brings a note written only from what is on this computer. Special letters on day 7, 30, 100 and 365.',
   'pet.menu.typeAlong': 'Type along',
 
   'together.work': (v: Pv) =>
@@ -260,7 +260,7 @@ export const en: Translation<typeof ko> = {
   'note.box': 'Notes',
   'note.boxUnread': (v: { n: number }) => `${v.n} unread`,
   'note.boxEmpty': "No notes yet. I'll bring one tomorrow morning.",
-  'note.boxOff': 'Daily notes are off. You can turn them on in Settings, Pet.',
+  'note.boxOff': 'Daily notes are off. You can turn them on in Settings, Fairy.',
   'note.boxMore': (v: { n: number }) => `Show ${v.n} older ${v.n === 1 ? 'note' : 'notes'}`,
   'note.boxLess': 'Show less',
   'note.new': 'New',

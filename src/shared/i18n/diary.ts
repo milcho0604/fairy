@@ -19,7 +19,7 @@ export const ko = {
   'diary.end.3': '푹 자고 내일 또 놀아야지.',
   'diary.end.4': '좋은 하루였다.',
   'diary.ai.prompt': (v: { text: string }) =>
-    `아래는 데스크톱 펫이 쓴 짧은 일기야. 펫 말투로 한두 문장 일기로 다듬어 줘. 숫자는 그대로 두고, 없는 일을 지어내지 마. 다듬은 일기만 답해.\n\n${v.text}`,
+    `아래는 데스크톱 페어리가 쓴 짧은 일기야. 페어리 말투로 한두 문장 일기로 다듬어 줘. 숫자는 그대로 두고, 없는 일을 지어내지 마. 다듬은 일기만 답해.\n\n${v.text}`,
 };
 
 export const en: Translation<typeof ko> = {
@@ -39,5 +39,5 @@ export const en: Translation<typeof ko> = {
   'diary.end.3': 'Time for a good long sleep.',
   'diary.end.4': 'It was a good day.',
   'diary.ai.prompt': (v: { text: string }) =>
-    `Below is a short diary written by a desktop pet. Rewrite it as a one or two sentence diary in the pet's voice. Keep every number, and don't make anything up. Reply with the diary only.\n\n${v.text}`,
+    `Below is a short diary written by a desktop fairy. Rewrite it as a one or two sentence diary in the fairy's voice. Keep every number, and don't make anything up. Reply with the diary only.\n\n${v.text}`,
 };

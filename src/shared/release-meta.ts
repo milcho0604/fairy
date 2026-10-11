@@ -48,6 +48,6 @@ export function releaseBodyHead(tag: string, pkgVersion: string, minFile: string
   // 사람이 읽는 문장과 앱이 읽는 표시를 따로 둔다. 표시는 화면에 안 보이는 주석 한 줄
   return {
     ok: true,
-    value: `**꼭 필요한 업데이트:** ${min.value} 보다 낮은 짝꿍은 업데이트해야 AI 대화를 쓸 수 있어요.\n\n<!-- min-version: ${min.value} -->\n`,
+    value: `**꼭 필요한 업데이트:** ${min.value} 보다 낮은 페어리는 업데이트해야 AI 대화를 쓸 수 있어요.\n\n<!-- min-version: ${min.value} -->\n`,
   };
 }

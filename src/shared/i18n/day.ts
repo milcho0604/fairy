@@ -77,7 +77,7 @@ export const ko = {
   // ---- 내보내기 ----
   'export.title': '내보내기',
   'export.hint':
-    '다른 앱(메모장, 엑셀, 캘린더)에서 열 수 있게 파일로 저장해. 백업과 달리 짝꿍으로 다시 가져오지는 않아.',
+    '다른 앱(메모장, 엑셀, 캘린더)에서 열 수 있게 파일로 저장해. 백업과 달리 페어리로 다시 가져오지는 않아.',
   'export.notesMd': '메모 한 파일로 (.md)',
   'export.notesFiles': '메모마다 파일로 (.md)',
   'export.todosCsv': '할 일 표 (.csv)',
@@ -107,11 +107,11 @@ export const ko = {
   'export.todos.title': '할 일',
   'export.todos.open': '남은 할 일',
   'export.todos.done': '끝낸 할 일',
-  'export.notes.title': '짝꿍 메모',
+  'export.notes.title': '페어리 메모',
   'export.notes.at': '{day}에 내보냄, 메모 {n}개',
   'export.notes.updated': '고친 때 {at}',
   'export.notes.file': '메모',
-  'export.ics.calName': '짝꿍 일정',
+  'export.ics.calName': '페어리 일정',
 };
 
 export const en: Translation<typeof ko> = {
@@ -190,7 +190,7 @@ export const en: Translation<typeof ko> = {
 
   'export.title': 'Export',
   'export.hint':
-    "Save as files other apps can open (text editors, spreadsheets, calendars). Unlike a backup, these don't import back into Jjakkung.",
+    "Save as files other apps can open (text editors, spreadsheets, calendars). Unlike a backup, these don't import back into fairy.",
   'export.notesMd': 'Notes as one file (.md)',
   'export.notesFiles': 'One file per note (.md)',
   'export.todosCsv': 'To-dos table (.csv)',
@@ -220,9 +220,9 @@ export const en: Translation<typeof ko> = {
   'export.todos.title': 'To-dos',
   'export.todos.open': 'Open',
   'export.todos.done': 'Done',
-  'export.notes.title': 'Jjakkung notes',
+  'export.notes.title': 'fairy notes',
   'export.notes.at': 'Exported {day}, {n} notes',
   'export.notes.updated': 'Edited {at}',
   'export.notes.file': 'note',
-  'export.ics.calName': 'Jjakkung events',
+  'export.ics.calName': 'fairy events',
 };

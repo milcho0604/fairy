@@ -11,7 +11,7 @@ export const ko = {
   'pout.lonely.4': '쓰다듬어 주던 손 어디 갔지?',
   'pout.unheard.1': '...나 여기 있는데',
   'pout.unheard.2': '말 한마디 안 걸고. 흥',
-  'pout.unheard.3': '나 투명 펫 된 줄 알았어',
+  'pout.unheard.3': '나 투명 페어리가 된 줄 알았어',
   'pout.unheard.4': '오늘 나한테 한 말, 0개',
   'pout.hungry.1': '배고픈데 아무도 몰라 줘',
   'pout.hungry.2': '꼬르륵. 이건 서운한 소리야',
@@ -63,7 +63,7 @@ export const ko = {
   'pout.why.todoLate': '할 일을 미뤄서',
   'pout.why.restIgnored': '쉬자는 말을 넘겨서',
   'pout.why.hiddenLong': '오래 숨겨 둬서',
-  'pout.why.friend': '다른 펫을 꺼내서',
+  'pout.why.friend': '다른 페어리를 꺼내서',
   'pout.panel': (v: { name: string; why: string }) =>
     `${withParticle(v.name, '이')} 토라졌어 (${v.why}). 쓰다듬기, 밥, 놀기, 칭찬 한마디로 달래 줘. 가만둬도 곧 풀려.`,
 };
@@ -126,7 +126,7 @@ export const en: Translation<typeof ko> = {
   'pout.why.todoLate': 'to-dos got put off',
   'pout.why.restIgnored': 'their break idea got brushed off',
   'pout.why.hiddenLong': 'they were hidden too long',
-  'pout.why.friend': 'another pet came out',
+  'pout.why.friend': 'another fairy came out',
   'pout.panel': (v: { name: string; why: string }) =>
     `${v.name} is pouting because ${v.why}. Pet, feed, play, or say something nice to make up. It wears off soon anyway.`,
 };

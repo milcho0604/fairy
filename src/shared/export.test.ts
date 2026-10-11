@@ -129,7 +129,7 @@ test('메모 마크다운: 파일 하나에 묶기, 메모마다 파일(앞머�
     { id: 2, title: '', body: '장보기\n우유', source: 'ai', createdAt: NOW, updatedAt: NOW },
   ];
   const one = notesMarkdown(notes, NOW);
-  assert.match(one, /^# 짝꿍 메모/);
+  assert.match(one, /^# 페어리 메모/);
   assert.match(one, /## 회의 "메모"\n\n_.+_\n\n## 안건\n- 하나/);
   assert.match(one, /\n---\n\n## 장보기/);
   const file = noteMarkdown(notes[0] as Note);
