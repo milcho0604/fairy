@@ -1,5 +1,6 @@
 // 하루 도구 (2026-10-11): 습관 체크, 아침 계획(펫 아침 한마디 포함), 방금 울린 알림 미루기, 내보내기.
 // 글과 셈은 shared(habit.ts, day-plan.ts, snooze.ts, export.ts)에 있고 여기는 IPC, 저장 대화상자, 파일 쓰기만 한다.
+
 import { existsSync, mkdirSync, statSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import {
@@ -59,6 +60,7 @@ import { t } from '../shared/i18n/index.ts';
 import type { NoteStore } from '../shared/note-store.ts';
 import { isSnoozeChoice, type SnoozeChoice } from '../shared/snooze.ts';
 import { localDay, type TodoStore } from '../shared/todo-store.ts';
+import { rememberExport } from './exported.ts';
 import type { SayOptions } from './pet-window.ts';
 import { minuteOfDay, startOfDay } from './planner.ts';
 import { freePath, writeFileAtomic } from './safe-file.ts';
@@ -308,7 +310,9 @@ export function createDayTools(o: DayToolsOptions) {
   ipcMain.handle(DATA_EXPORT.run, async (e, kind: unknown): Promise<ExportResult | undefined> => {
     if (!o.isSettings(e.sender) || !isExportKind(kind)) return undefined;
     try {
-      return await runExport(kind);
+      const r = await runExport(kind);
+      if (r?.ok) rememberExport(r.path);
+      return r;
     } catch (err) {
       o.log('export', '실패', kind, err instanceof Error ? err.message : String(err));
       return { ok: false, error: 'failed' };

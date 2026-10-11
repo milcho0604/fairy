@@ -31,6 +31,7 @@ import { localModelReady } from './ai/local.ts';
 import { aiHistoryBytes, clearAiHistory } from './ai-history.ts';
 import { devRendererUrl } from './dev-url.ts';
 import { createDiagnostics } from './diagnostics.ts';
+import { rememberExport, wasExported } from './exported.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
 import { langArg } from './lang.ts';
 import { mcpScriptPath } from './mcp-launch.ts';
@@ -217,9 +218,23 @@ export function createSettingsWindow({
     return (await shell.openPath(file)) === '';
   });
   ipcMain.handle(SETTINGS.checkUpdate, (e) => (fromSettings(e) ? checkUpdate() : { text: '', tone: 'info' }));
-  ipcMain.handle(SETTINGS.exportData, (e) => (fromSettings(e) ? v2.exportData(win) : ''));
+  ipcMain.handle(SETTINGS.exportData, async (e) => {
+    if (!fromSettings(e)) return '';
+    const path = await v2.exportData(win);
+    rememberExport(path);
+    return path;
+  });
+  // 방금 내보낸 것을 파일 관리자에서 보인다 (내보낸 경로만)
+  ipcMain.on(SETTINGS.reveal, (e, path: unknown) => {
+    if (fromSettings(e) && wasExported(path)) shell.showItemInFolder(path);
+  });
   ipcMain.handle(SETTINGS.importData, (e) => (fromSettings(e) ? v2.importData(win) : ''));
-  ipcMain.handle(SETTINGS.exportPet, (e) => (fromSettings(e) ? v2.exportPet(win) : ''));
+  ipcMain.handle(SETTINGS.exportPet, async (e) => {
+    if (!fromSettings(e)) return '';
+    const path = await v2.exportPet(win);
+    rememberExport(path);
+    return path;
+  });
   ipcMain.handle(SETTINGS.importPet, (e) =>
     fromSettings(e) ? v2.importPet(win) : { ok: false, message: '' },
   );

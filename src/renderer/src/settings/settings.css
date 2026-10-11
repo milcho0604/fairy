@@ -957,3 +957,20 @@ textarea.rules {
 .update-status.error {
   color: var(--error);
 }
+
+/* 내보낸 곳과 폴더 열기 */
+.exported-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  min-width: 0;
+}
+
+.exported-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

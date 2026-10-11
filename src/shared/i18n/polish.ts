@@ -12,6 +12,9 @@ export const ko = {
   // AI 관리: 쓸 수 있는 AI 가 없을 때 무료 AI 를 맨 위에
   'chat.recommended': '추천',
   'chat.local.downloadNow': '무료 AI 받기',
+  // 내보낸 곳
+  'settings.exportedTo': (v: { path: string }) => `여기에 저장했어: ${v.path}`,
+  'settings.openFolder': '폴더 열기',
   // 받기가 통째로 막혔을 때 (프록시, 방화벽)
   'main.model.blocked':
     '연결이 막혀서 받지 못했어. 회사나 학교 네트워크라면 프록시나 방화벽이 막고 있을 수 있어. 다른 네트워크에서 해 보거나 관리자에게 물어봐 줘.',
@@ -25,6 +28,8 @@ export const en: Translation<typeof ko> = {
   'maker.3d.needFirst': 'Make the 3D figure first, or pick "Photo as is".',
   'chat.recommended': 'Recommended',
   'chat.local.downloadNow': 'Download free AI',
+  'settings.exportedTo': (v: { path: string }) => `Saved to ${v.path}`,
+  'settings.openFolder': 'Open folder',
   'main.model.blocked':
     'The download was blocked. On a work or school network, a proxy or firewall may be blocking it. Try another network or ask your network admin.',
 };

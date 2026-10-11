@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { formatBytes } from '../../../../shared/bytes.ts';
 import { t } from '../../../../shared/i18n/index.ts';
 import type { SettingsSnapshot } from '../../../../shared/ipc.ts';
-import { ExportBox } from '../ExportBox.tsx';
+import { ExportBox, ExportedRow } from '../ExportBox.tsx';
 import { bridge, Section, type TabProps } from '../ui.tsx';
 
 /** 데이터 탭: 백업과 옮기기, 저장 공간 */
 export function DataTab({ snap, setSnap, flash }: TabProps) {
+  const [exported, setExported] = useState<string>();
   return (
     <>
       <Section title={t('settings.backup')}>
@@ -19,7 +20,10 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
               // 실패하면(쓰기 권한, 디스크 등) 아무 표시 없이 끝나지 않게 상태줄에 알린다
               const r = await bridge.exportData().catch(() => undefined);
               if (r === undefined) flash(t('settings.exportFailed'));
-              else if (r) flash(t('settings.exported'));
+              else if (r) {
+                flash(t('settings.exported'));
+                setExported(r);
+              }
             }}
           >
             {t('settings.export')}
@@ -45,7 +49,10 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
               // 쓰기 실패(권한, 디스크, 그림 파일 읽기)도 말 없이 끝나지 않게 알린다
               const r = await bridge.exportPet().catch(() => undefined);
               if (r === undefined) flash(t('settings.petExportFailed'), true);
-              else if (r) flash(t('settings.petExported'));
+              else if (r) {
+                flash(t('settings.petExported'));
+                setExported(r);
+              }
             }}
           >
             {t('settings.exportPet')}
@@ -61,6 +68,7 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
             {t('settings.importPet')}
           </button>
         </div>
+        <ExportedRow path={exported} />
       </Section>
       <ExportBox flash={flash} />
       <Section title={t('settings.storage')}>

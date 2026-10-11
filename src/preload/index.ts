@@ -208,6 +208,7 @@ if (kind === 'settings') {
     exportData: () => ipcRenderer.invoke(SETTINGS.exportData),
     importData: () => ipcRenderer.invoke(SETTINGS.importData),
     exportPet: () => ipcRenderer.invoke(SETTINGS.exportPet),
+    reveal: (path: string) => ipcRenderer.send(SETTINGS.reveal, path),
     importPet: () => ipcRenderer.invoke(SETTINGS.importPet),
     importFriend: () => ipcRenderer.invoke(SETTINGS.importFriend),
     galleryList: () => ipcRenderer.invoke(SETTINGS.galleryList),

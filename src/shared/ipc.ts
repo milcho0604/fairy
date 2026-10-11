@@ -239,6 +239,8 @@ export const SETTINGS = {
   exportData: 'settings:export-data',
   importData: 'settings:import-data',
   exportPet: 'settings:export-pet',
+  /** 방금 내보낸 파일이나 폴더를 파일 관리자에서 보인다 */
+  reveal: 'settings:reveal',
   importPet: 'settings:import-pet',
   importFriend: 'settings:import-friend',
   /** 펫 갤러리 (P1 #11): 공식 펫 목록 받기, 고른 펫 데려오기, 친구에게 보낼 펫 파일 저장 */
@@ -364,6 +366,7 @@ export interface SettingsBridge {
   exportData(): Promise<string>;
   importData(): Promise<string>;
   exportPet(): Promise<string>;
+  reveal(path: string): void;
   importPet(): Promise<{ ok: boolean; message: string }>;
   importFriend(): Promise<{ ok: boolean; message: string }>;
   /** 펫 갤러리 목록 (메인이 raw.githubusercontent.com 에서 받아 검사한 것) */

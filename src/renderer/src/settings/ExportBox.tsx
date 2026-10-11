@@ -1,7 +1,24 @@
 import { useState } from 'react';
 import type { ExportKind } from '../../../shared/export.ts';
 import { type I18nKey, t } from '../../../shared/i18n/index.ts';
-import { Section } from './ui.tsx';
+import { bridge, Section } from './ui.tsx';
+
+/** 내보낸 곳 한 줄과 "폴더 열기" (내보내고 어디 있는지 몰라 찾아 헤맸다) */
+export function ExportedRow({ path }: { path?: string }) {
+  if (!path) return null;
+  // 긴 경로는 앞이 아니라 끝(폴더와 파일 이름)이 보이게 마지막 두 마디만. 전체는 마우스를 올리면
+  const short = path.split(/[\\/]/).filter(Boolean).slice(-2).join('/');
+  return (
+    <div className="exported-row" role="status">
+      <small className="exported-path" title={path}>
+        {t('settings.exportedTo', { path: short })}
+      </small>
+      <button type="button" className="ghost small" onClick={() => bridge.reveal(path)}>
+        {t('settings.openFolder')}
+      </button>
+    </div>
+  );
+}
 
 const exporter = window.jjakkungExport;
 
@@ -19,13 +36,16 @@ const ROWS: { kind: ExportKind; label: I18nKey }[] = [
  */
 export function ExportBox({ flash }: { flash: (message: string, error?: boolean) => void }) {
   const [busy, setBusy] = useState<ExportKind>();
+  const [done, setDone] = useState<string>();
   const run = async (kind: ExportKind) => {
     setBusy(kind);
     try {
       const r = await exporter.run(kind).catch(() => ({ ok: false as const, error: 'failed' as const }));
       if (!r) return;
-      if (r.ok) flash(t('export.done', { n: r.n }));
-      else flash(r.error === 'nothing' ? t('export.nothing') : t('export.failed'), r.error !== 'nothing');
+      if (r.ok) {
+        flash(t('export.done', { n: r.n }));
+        setDone(r.path);
+      } else flash(r.error === 'nothing' ? t('export.nothing') : t('export.failed'), r.error !== 'nothing');
     } finally {
       setBusy(undefined);
     }
@@ -47,6 +67,7 @@ export function ExportBox({ flash }: { flash: (message: string, error?: boolean)
           </button>
         ))}
       </div>
+      <ExportedRow path={done} />
     </Section>
   );
 }
