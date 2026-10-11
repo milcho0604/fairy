@@ -1,16 +1,17 @@
-// 펫 갤러리 올리기 검사 (CI, .github/workflows/gallery.yml). 앱 가져오기보다 엄격하다.
+// 펫 갤러리 검사 (레포 주인이 공식 펫을 넣은 뒤 손으로 돌린다). 앱 가져오기보다 엄격하다.
 //   node scripts/gallery-validate.mjs
-// - gallery/ 에는 정해진 파일만 (index.json, README.md, CONTRIBUTING.md, pets/*.jjpet, thumbs/*.png)
+// 갤러리에는 주인이 고른 공식 펫만 둔다 (남이 올리는 길은 없다)
+// - gallery/ 에는 정해진 파일만 (index.json, README.md, pets/*.jjpet, thumbs/*.png)
 // - 펫 파일마다 판 2 형식, 크기 상한, 만든 사람, 사용 허락, 본 그림, 작은 그림 (src/shared/gallery.ts validateSubmission)
 // - index.json 과 작은 그림이 펫 파일에서 다시 만든 것과 같다 (sha256, 크기 포함)
-// 남의 캐릭터가 아닌지는 사람이 본다 (gallery/CONTRIBUTING.md 의 약속). 문제가 있으면 1 로 끝난다
+// 문제가 있으면 1 로 끝난다
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { GALLERY_MAX_PETS, INDEX_MAX_BYTES, parseGalleryIndex } from '../src/shared/gallery.ts';
 import { diffGallery, readGallery } from './gallery-index.mjs';
 
 const root = new URL('../gallery/', import.meta.url);
 const problems = [];
-const TOP = new Set(['index.json', 'README.md', 'CONTRIBUTING.md', 'pets', 'thumbs']);
+const TOP = new Set(['index.json', 'README.md', 'pets', 'thumbs']);
 
 for (const n of existsSync(root) ? readdirSync(root) : []) {
   if (!TOP.has(n)) problems.push(`gallery/${n} is not allowed here`);

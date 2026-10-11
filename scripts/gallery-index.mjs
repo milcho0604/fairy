@@ -1,7 +1,7 @@
 // 펫 갤러리 목록을 만든다: gallery/pets/*.jjpet 를 검사하고 gallery/thumbs/<id>.png, gallery/index.json 을 쓴다.
-//   node scripts/gallery-index.mjs          만들기 (펫을 더하거나 고친 PR 에서 돌리고 같이 올린다)
-//   node scripts/gallery-index.mjs --check  쓰지 않고 지금 파일과 같은지만 본다 (CI)
-// 문제가 있으면 이유를 남기고 1 로 끝난다. 형식: docs/pet-format.md, 올리는 법: gallery/CONTRIBUTING.md
+//   node scripts/gallery-index.mjs          만들기 (레포 주인이 공식 펫을 더하거나 고친 뒤 돌리고 같이 커밋한다)
+//   node scripts/gallery-index.mjs --check  쓰지 않고 지금 파일과 같은지만 본다
+// 문제가 있으면 이유를 남기고 1 로 끝난다. 형식: docs/pet-format.md
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { buildGallery } from '../src/shared/gallery-build.ts';
 

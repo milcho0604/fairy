@@ -1,11 +1,10 @@
 # 짝꿍 펫 갤러리
 
-앱의 **설정 → 펫 → 펫 갤러리**가 이 폴더의 `index.json` 을 받아 보여 줘요.
+앱의 **설정 → 펫 → 펫 갤러리**가 이 폴더의 `index.json` 을 받아 보여 줘요. 여기에는 **레포 주인이 고른 공식 펫만** 있어요. 지금은 짝꿍이 직접 만든 그림 친구 밀크, 초코예요 (만든 사람 "짝꿍", CC BY 4.0).
 
 - `pets/<id>.jjpet`: 펫 파일 ([형식](../docs/pet-format.md))
-- `thumbs/<id>.png`, `index.json`: `node scripts/gallery-index.mjs` 가 만든다. 손으로 고치지 않아요
-- 올리는 법과 약속: [CONTRIBUTING.md](CONTRIBUTING.md)
+- `thumbs/<id>.png`, `index.json`: `node scripts/gallery-index.mjs` 가 만든다. 손으로 고치지 않아요. 넣은 뒤 `node scripts/gallery-validate.mjs` 로 검사해요
 
-처음 들어 있는 펫은 짝꿍이 직접 만든 그림 친구 밀크, 초코예요 (만든 사람 "짝꿍", CC BY 4.0).
+다른 사람의 펫은 받지 않아요 (풀 리퀘스트로 펫을 올리는 길은 없어요). 펫을 나누고 싶으면 앱의 **펫 파일로 내보내기 (친구에게 보내기)**로 `.jjpet` 파일을 만들어 친구에게 직접 보내 주세요.
 
-The pet gallery shown in the app. Submit your own original pets by pull request; see [CONTRIBUTING.md](CONTRIBUTING.md).
+Official pets only, curated by the repository owner. Pet submissions are not accepted; share your pets by sending `.jjpet` files to friends directly.
