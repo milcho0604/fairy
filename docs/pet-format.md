@@ -105,7 +105,7 @@ gallery/
 
 - **목록 만들기** (주인이 공식 페어리를 넣은 뒤): `node scripts/gallery-index.mjs` 가 `pets/` 를 검사하고 `thumbs/` 와 `index.json` 을 다시 써요. `--check` 는 쓰지 않고 같은지만 봐요.
 - **검사**: `node scripts/gallery-validate.mjs` (주인이 손으로 돌린다). 정해진 파일만 있는지, 페어리 파일마다 판 2 형식, 크기, 만든 사람, 허락, 본 그림, 작은 그림이 있는지, 앱이 조용히 버리는 것(모르는 칸, 깨진 포즈, 깨진 설계도)이 없는지, 목록의 sha256 과 크기가 파일과 같은지 봐요. 같은 검사는 `npm test` (`src/shared/gallery.test.ts`) 에서도 돌아요.
-- **앱에서 보기**: 설정 → 페어리 → 페어리 갤러리. 앱은 `https://raw.githubusercontent.com/milcho0604/fairy/main/gallery/` 만 받아요 (다른 호스트, 다른 길은 막고 다른 곳으로 넘기기(redirect)도 따라가지 않는다). 목록 256KB, 작은 그림 256KB, 페어리 파일은 목록에 적힌 크기(16MB 까지)를 넘으면 그 자리에서 끊어요. 받은 페어리 파일의 sha256 이 목록과 다르면 버리고, 맞으면 `.fairy` 가져오기와 같은 검사로 데려와요. 인터넷이 없거나 아직 갤러리가 열리지 않았으면(404) 그렇다고 알려 줘요.
+- **앱에서 보기**: 설정 → 페어리 → 페어리 갤러리. 앱은 `https://raw.githubusercontent.com/milcho0604/fairy-releases/main/gallery/` 만 받아요 (다른 호스트, 다른 길은 막고 다른 곳으로 넘기기(redirect)도 따라가지 않는다). 목록 256KB, 작은 그림 256KB, 페어리 파일은 목록에 적힌 크기(16MB 까지)를 넘으면 그 자리에서 끊어요. 받은 페어리 파일의 sha256 이 목록과 다르면 버리고, 맞으면 `.fairy` 가져오기와 같은 검사로 데려와요. 인터넷이 없거나 아직 갤러리가 열리지 않았으면(404) 그렇다고 알려 줘요. 이 레포의 `gallery/` 는 `main` 에 들어가면 `sync-public.yml` 이 공개 레포로 옮겨요 ([docs/release.md](release.md) "두 레포").
 - **친구에게 보내기**: 갤러리에 올리는 길은 없어요. 설정 → 페어리 → 페어리 갤러리 → 페어리 파일로 내보내기에서 만든 사람(선택)과 사용 허락을 적어 판 2 `.fairy` 를 저장하고, 그 파일을 친구에게 직접 보내요.
 
 개발 중에는 `JJ_GALLERY_URL=http://127.0.0.1:<포트>/` 로 내 컴퓨터에서 내려 주는 갤러리를 볼 수 있어요. 이 값은 패키지 안 된 앱(개발 실행)에서만, 그리고 `127.0.0.1`, `localhost` 의 `http` 주소만 받아요.
@@ -121,4 +121,4 @@ gallery/
 - Version 1 is the flat layout `{ format, version: 1, name, kind, image, poses, model, depth, age }` without manifest or thumbnail.
 - The gallery is the `gallery/` folder of this repository and holds **official fairies only**, curated by the repository owner (currently Milk and Choco). There is no community submission flow. The owner adds `gallery/pets/<id>.jjpet`, runs `node scripts/gallery-index.mjs` to regenerate `index.json` and `thumbs/`, and `node scripts/gallery-validate.mjs` to check format, sizes and sha256.
 - People share fairies peer to peer by sending `.fairy` files: Settings → Fairy → Fairy gallery → **Export as a fairy file (send to a friend)** writes a version 2 file with an optional author name and a license; the friend imports it with the normal `.fairy` import.
-- The app fetches only from `https://raw.githubusercontent.com/milcho0604/fairy/main/gallery/` with size caps, timeouts, no redirects, and sha256 verification, then imports through the same validator as a local `.fairy` file.
+- The app fetches only from `https://raw.githubusercontent.com/milcho0604/fairy-releases/main/gallery/` with size caps, timeouts, no redirects, and sha256 verification, then imports through the same validator as a local `.fairy` file.

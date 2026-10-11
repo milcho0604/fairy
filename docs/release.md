@@ -1,11 +1,53 @@
 # 릴리스 올리기
 
-`v*` 태그를 올리면 `release.yml` 이 맥, 윈도우, 리눅스(`tar.xz`, `AppImage`) 설치 파일, 자동 업데이트용 파일(윈도우 `latest.yml` 과 `.exe.blockmap`, 맥 `latest-mac.yml` 과 `.zip`, `.zip.blockmap`)을 GitHub Releases 초안으로 올린다. 초안을 확인한 뒤 발행한다. 릴리스 레포는 `src/shared/update-policy.ts` 의 `RELEASE_REPO` 와 `electron-builder.yml` 의 `publish` 두 곳이고 서로 같아야 한다(다르면 `npm test` 가 깨진다).
+`v*` 태그를 올리면 `release.yml` 이 맥, 윈도우, 리눅스(`tar.xz`, `AppImage`) 설치 파일, 자동 업데이트용 파일(윈도우 `latest.yml` 과 `.exe.blockmap`, 맥 `latest-mac.yml` 과 `.zip`, `.zip.blockmap`)을 **공개 레포 `milcho0604/fairy-releases`** 의 GitHub Releases 초안으로 올린다(아래 "두 레포"). 초안을 확인한 뒤 발행한다. 릴리스 레포는 `src/shared/update-policy.ts` 의 `PUBLIC_REPO`(= `RELEASE_REPO`), `electron-builder.yml` 의 `publish`, `release.yml` 과 `sync-public.yml` 의 `PUBLIC_REPO` 네 곳이고 서로 같아야 한다(다르면 `npm test` 가 깨진다).
 
 - 태그는 `package.json` 의 `version` 앞에 `v` 를 붙인 것과 똑같아야 한다(`0.2.0` 이면 `v0.2.0`). 다르면 빌드 전에 멈춘다. 버전을 안 올리고 태그만 달면 새 앱이 스스로를 옛 버전으로 보고 업데이트 안내가 끝나지 않기 때문이다.
 - `CHANGELOG.md` 에 `## [0.2.0] - 2026-10-20` 처럼 날짜가 붙은 이 버전의 절과 항목이 있어야 한다. 그 절이 릴리스 본문에 들어간다(아래 "릴리스 사전 점검").
 - 태그에 `-beta.1` 같은 꼬리가 있으면 사전 릴리스로 올린다. 앱은 사전 릴리스를 업데이트로 보지 않는다.
 - 초안과 사전 릴리스는 GitHub 의 "최신 릴리스"(`/releases/latest`)에 잡히지 않는다. 발행할 때 "Set as the latest release" 를 끄면 앱이 그 릴리스를 못 본다.
+
+## 두 레포 (소스와 공개)
+
+레포가 둘이다. 소스 레포를 언제든 비공개로 바꿀 수 있도록, 설치된 앱과 사용자가 GitHub 에서 쓰는 것은 모두 공개 레포에 둔다.
+
+| 레포 | 무엇 | 누가 읽나 |
+| --- | --- | --- |
+| `milcho0604/fairy` (소스, `SOURCE_REPO`) | 코드, 개발 문서, `public-repo/`(공개 레포의 틀), `gallery/`, `catalog/` 원본 | 개발자만 |
+| `milcho0604/fairy-releases` (공개, `PUBLIC_REPO`) | 릴리스(설치 파일, `latest*.yml`, `SHA256SUMS.txt`), `README.md`, `SECURITY.md`, `LICENSE`, 이슈 양식, `gallery/`, `catalog/` | 앱(업데이트 확인, 자동 설치, 갤러리, 모델 목록, 문제 알리기)과 사용자(받기, 이슈, 보안 알림) |
+
+- `sync-public.yml`: `main` 에 `public-repo/**`, `gallery/**`, `catalog/**` 가 바뀌면(또는 Actions 에서 손으로) `scripts/sync-public.mjs` 로 공개 레포 `main` 을 소스와 똑같이 맞추고, 바뀐 것이 있을 때만 `sync from source <sha>` 로 커밋해 푸시한다. 공개 레포에서 손으로 고친 파일은 다음 옮기기 때 덮인다(이슈와 릴리스는 건드리지 않는다). 내 컴퓨터에서 미리 보기: `node scripts/sync-public.mjs <빈 폴더>`.
+- `release.yml`: 빌드와 점검은 소스 레포에서 하고, 릴리스 초안은 공개 레포에 만든다. 발행하면 공개 레포 `main` 의 끝 커밋에 태그가 붙는다(소스 레포의 태그와 다른 커밋이다).
+- 공개 레포에는 워크플로를 두지 않는다(`public-repo/.github/workflows/` 를 넣으면 `sync-public.mjs` 가 멈춘다). 토큰에 Workflows 권한을 줄 까닭을 없애려고.
+
+### 처음 한 번 (레포 주인)
+
+1. **공개 레포 만들기:** `gh repo create milcho0604/fairy-releases --public --description "페어리 설치 파일과 버그 제보 (fairy downloads and issues)"`. 비어 있어도 된다(첫 옮기기가 `main` 을 만든다). README 를 넣어 만들었다면 기본 브랜치가 `main` 인지만 본다. 앱은 `main` 브랜치의 `gallery/`, `catalog/` 를 읽는다.
+2. **공개 레포 설정:** Settings → General → Features 에서 **Issues** 를 켠다(Wiki, Projects, Discussions 는 꺼도 된다). Settings → Advanced Security(Code security) → **Private vulnerability reporting** 을 켠다(`SECURITY.md` 가 이 길로 받는다).
+3. **토큰 만들기:** GitHub → Settings → Developer settings → Personal access tokens → **Fine-grained tokens** → Generate new token.
+   - Resource owner `milcho0604`, Repository access **Only select repositories** → `milcho0604/fairy-releases` 하나만
+   - Repository permissions **Contents: Read and write** 만(Metadata: Read 는 저절로 붙는다). Workflows, Issues, Administration 은 주지 않는다
+   - 만료일을 정하고(최대 1년) 만료 전에 새로 만들어 비밀값을 바꾼다. 만료되면 릴리스와 옮기기가 실패한다(실패 메일이 간다)
+4. **비밀값 넣기 (소스 레포):** `gh secret set RELEASES_TOKEN --repo milcho0604/fairy` 를 돌리고 토큰을 붙여 넣는다. **레포 비밀값**으로 넣는다: `release.yml` 의 `preflight` 와 `sync-public.yml` 은 환경 `release` 밖에서 돌아 환경 비밀값을 보지 못한다(`release` 작업은 레포 비밀값도 읽는다). 환경 `release` 에만 넣으면 태그 릴리스가 `preflight` 에서 "RELEASES_TOKEN 없음" 으로 멈춘다.
+5. **첫 옮기기:** Actions → **sync-public** → Run workflow (`gh workflow run sync-public --repo milcho0604/fairy`). 끝나면 공개 레포에 README, SECURITY.md, LICENSE, 이슈 양식, `gallery/`, `catalog/` 가 생겼는지 본다. 비밀값 없이 돌면 알림만 남기고 성공으로 끝나니 커밋이 생겼는지 꼭 본다. 처음은 손으로 올려도 된다: `node scripts/sync-public.mjs <빈 폴더>` 로 만든 내용을 그 레포 `main` 에 푸시하면 같다.
+6. 그다음부터 `v*` 태그를 올리면 릴리스가 공개 레포에 올라간다. 확인: `curl -sI https://raw.githubusercontent.com/milcho0604/fairy-releases/main/catalog/models.json` 이 `200`.
+
+### 소스 레포를 비공개로 바꾸기
+
+위를 마치고 첫 릴리스가 공개 레포에 발행되면 소스 레포는 비공개로 바꿔도 된다(`gh repo edit milcho0604/fairy --visibility private --accept-visibility-change-consequences`). 앱은 소스 레포를 읽지 않는다(`update-policy.test.ts` 가 주소를, `sync-public.test.ts` 가 공개 레포 문서에 소스 레포 링크가 없는지 확인한다).
+
+공개 레포 없이 소스 레포를 비공개로 바꾸면 이렇게 깨진다:
+
+- 업데이트 확인(`/releases/latest`)과 자동 설치(`latest.yml`, `latest-mac.yml`)가 404 가 되어 새 버전을 영영 못 받는다(확인만 조용히 건너뛴다).
+- 페어리 갤러리가 "아직 열리지 않음"으로 보이고, 모델 목록은 앱에 들어 있는 옛 목록에 머문다.
+- "문제 알리기", 이슈 양식, `SECURITY.md` 의 보안 알림 주소, 홈페이지와 문서의 받기 링크가 404 가 된다.
+
+비공개로 바꾸기 전에 볼 것:
+
+- **옛 판:** 0.1.0(사설 빌드)과 이 변경 전 판은 소스 레포를 본다. 공개 레포의 새 버전을 스스로 찾지 못하니 한 번은 직접 받아 설치해야 한다(`docs/install.md` "업데이트"). 그런 판을 쓰는 사람이 많으면, 소스 레포가 공개인 동안 같은 릴리스를 소스 레포에도 손으로 올려 다리를 놓는다(`gh release create vX.Y.Z <파일들> --repo milcho0604/fairy`).
+- 홈페이지(`site/`)의 받기 링크가 공개 레포를 가리키는지.
+- 소스 레포의 열린 이슈는 공개 레포로 옮기거나 닫는다(비공개가 되면 제보한 사람이 못 본다).
+- Actions 시간: 비공개 레포는 무료 시간이 깎인다(맥 러너는 10배). 태그 릴리스가 시간을 다 쓰면 빌드가 멈춘다.
 
 ## 릴리스 사전 점검
 
@@ -15,7 +57,7 @@
 | --- | --- | --- |
 | 태그를 올리기 전(손으로)과 `release.yml` 의 첫 작업 `preflight` | `node scripts/release-check.mjs tag v0.2.0` | 태그 = `v` + `package.json` 버전, `release/min-version` 값, `CHANGELOG.md` 의 `## [0.2.0] - 날짜` 절과 항목. 사전 릴리스 태그(`-beta.1`)는 CHANGELOG 절 없이도 된다 |
 | 빌드가 다 끝나고 초안을 만들기 전(`release` 작업) | `node scripts/release-check.mjs files v0.2.0 <폴더>` | 파일 12개의 이름과 개수(빠진 것, 다른 버전 이름), 비지 않았는지, `latest.yml` 과 `latest-mac.yml` 의 버전과 각 파일 sha512 가 실제 파일과 같은지. 통과하면 `SHA256SUMS.txt` 를 써서 같이 올린다 |
-| 릴리스 본문 | `node scripts/release-check.mjs notes v0.2.0` | 최소 버전 머리 + CHANGELOG 절 (그 아래 체크섬 안내와 GitHub 자동 변경 목록) |
+| 릴리스 본문 | `node scripts/release-check.mjs notes v0.2.0` | 최소 버전 머리 + CHANGELOG 절 (그 아래 체크섬 안내). GitHub 자동 변경 목록은 넣지 않는다(공개 레포의 커밋은 옮기기 기록뿐이고, 소스 레포는 비공개일 수 있다) |
 
 `preflight` 는 의존성 설치 없이 우분투 러너에서 몇 초면 끝나고, 틀리면 맥, 윈도우 빌드가 아예 시작되지 않는다. 태그 릴리스의 빌드는 한 운영체제라도 깨지면 나머지를 바로 멈춘다(`fail-fast`). 손으로 돌린(Run workflow) 빌드는 셋 다 끝까지 돌고 결과는 7일 뒤 지워진다.
 
@@ -112,18 +154,19 @@ export GH_TOKEN=$(gh auth token --user milcho0604)
    ```
 
    그리고 위 "환경 승인"대로 환경 `release` 를 만든다(없으면 릴리스 작업이 승인 없이 돈다).
-   Settings → Code security → **Private vulnerability reporting** 을 켠다(`SECURITY.md` 가 이 길로 받는다).
+   공개 레포 준비(만들기, Issues 와 Private vulnerability reporting 켜기, 비밀값 `RELEASES_TOKEN`, 첫 sync-public)는 위 "두 레포" 의 "처음 한 번" 대로 한다.
 5. **공개 전환:** `gh repo edit milcho0604/fairy --visibility public --accept-visibility-change-consequences`. 공개 레포는 Actions 맥 러너 시간이 깎이지 않으니 태그는 공개 뒤에 올린다.
 6. **버전 올리기와 태그:** `package.json` 의 `version` 을 `0.2.0` 으로(`npm version 0.2.0 --no-git-tag-version`), `CHANGELOG.md` 의 Unreleased 를 `## [0.2.0] - <오늘 날짜>` 로 정리해 커밋하고 `main` 에 푸시한다. 태그 전에 `node scripts/release-check.mjs tag v0.2.0` 이 통과하는지 본다(CI 의 `preflight` 와 같은 점검). 그다음 `git tag v0.2.0 && git push origin v0.2.0`, 진행은 `gh run watch --repo milcho0604/fairy`.
-7. **초안 확인:** `gh release view v0.2.0 --repo milcho0604/fairy` 로 파일 목록(dmg 2, zip 2, zip.blockmap 2, latest-mac.yml, exe, exe.blockmap, latest.yml, tar.xz, AppImage, SHA256SUMS.txt 해서 13개)과 본문(최소 버전을 적었으면 그 문장, CHANGELOG 의 0.2.0 절)을 본다. 이름과 sha512 는 `release` 작업이 이미 맞춰 봤다.
-8. **발행:** `gh release edit v0.2.0 --repo milcho0604/fairy --draft=false --latest`.
+7. **초안 확인:** `gh release view v0.2.0 --repo milcho0604/fairy-releases` 로 파일 목록(dmg 2, zip 2, zip.blockmap 2, latest-mac.yml, exe, exe.blockmap, latest.yml, tar.xz, AppImage, SHA256SUMS.txt 해서 13개)과 본문(최소 버전을 적었으면 그 문장, CHANGELOG 의 0.2.0 절)을 본다. 이름과 sha512 는 `release` 작업이 이미 맞춰 봤다.
+8. **발행:** `gh release edit v0.2.0 --repo milcho0604/fairy-releases --draft=false --latest`.
 9. **공개 후 밖에서 확인 (토큰 없이):**
 
    ```bash
-   curl -s https://api.github.com/repos/milcho0604/fairy/releases/latest | grep -E '"(tag_name|draft|prerelease)"'
-   curl -sIL -o /dev/null -w '%{http_code}\n' https://github.com/milcho0604/fairy/releases/latest/download/latest-mac.yml
-   curl -sIL -o /dev/null -w '%{http_code}\n' https://github.com/milcho0604/fairy/releases/latest/download/latest.yml
+   curl -s https://api.github.com/repos/milcho0604/fairy-releases/releases/latest | grep -E '"(tag_name|draft|prerelease)"'
+   curl -sIL -o /dev/null -w '%{http_code}\n' https://github.com/milcho0604/fairy-releases/releases/latest/download/latest-mac.yml
+   curl -sIL -o /dev/null -w '%{http_code}\n' https://github.com/milcho0604/fairy-releases/releases/latest/download/latest.yml
+   curl -sIL -o /dev/null -w '%{http_code}\n' https://raw.githubusercontent.com/milcho0604/fairy-releases/main/gallery/index.json
    GIT_TERMINAL_PROMPT=0 git clone --depth 1 https://github.com/milcho0604/fairy "$(mktemp -d)/jj"
    ```
 
-   `tag_name` 이 `v0.2.0`, `draft` 와 `prerelease` 가 `false`, 두 파일이 `200` 이면 된다. 쓰던 `0.1.0` 페어리의 설정에서 업데이트 확인을 누르면 "새 버전 0.2.0" 이 떠야 한다.
+   `tag_name` 이 `v0.2.0`, `draft` 와 `prerelease` 가 `false`, 세 파일이 `200` 이면 된다(clone 은 소스 레포가 공개인 동안만 된다). 쓰던 `0.1.0` 페어리의 설정에서 업데이트 확인을 누르면 "새 버전 0.2.0" 이 떠야 한다.

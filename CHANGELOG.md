@@ -96,6 +96,7 @@
 - 윈도우 설치: 바탕 화면과 시작 메뉴 바로 가기, 설치·지우기 말은 한국어와 영어, 지울 때 할 일과 설정은 남긴다고 남는 폴더와 함께 알린다. 맥 dmg: 페어리를 응용 프로그램 폴더로 끌어 넣는 창(앱 바탕색), 더 작은 ULFO 압축. 영어 맥과 리눅스에서는 앱 이름이 fairy, 한국어에서는 페어리
 - 기여 안내(CONTRIBUTING), 보안 신고(SECURITY), 행동 강령, PR, 이슈 양식. 펫은 저장소로 받지 않고 .jjpet 파일로 주고받는다
 - README, 설치 안내, 가이드를 코드와 맞추고 펫 화면을 다시 찍었다 (scripts/dev/screens.mjs). 홍보 영상 대본과 AI 영상 프롬프트(docs/promo/video-prompts.md)
+- 운영: 설치 파일, 업데이트, 페어리 갤러리, 모델 목록, 버그 제보와 보안 알림을 공개 레포 `milcho0604/fairy-releases` 로 옮겼다. 앱은 그 레포만 읽어서 소스 레포를 비공개로 바꿔도 설치된 앱이 멀쩡하다. 릴리스는 비밀값 `RELEASES_TOKEN` 으로 그 레포에 올리고, `public-repo/`, `gallery/`, `catalog/` 는 `sync-public.yml` 이 맞춘다 (docs/release.md "두 레포")
 
 ### 더한 것 (시험판)
 

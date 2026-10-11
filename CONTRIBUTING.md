@@ -36,6 +36,7 @@ JJ_NO_FOCUS=1 JJ_USER_DATA=$(mktemp -d) npx electron --inspect=9851 . --remote-d
 - **다른 회사 캐릭터, 남의 그림은 넣지 않아요.** 페어리와 그림은 직접 그렸거나 라이선스가 분명한 것만(코드로 그린 기본 페어리, 레포에 있는 그림). 팬아트, 유명 캐릭터 닮은 그림도 안 돼요.
 - **개인정보**: 시험과 문서의 예시는 지어낸 것만 써요 (진짜 이름, 이메일, 전화번호, 토큰, 홈 경로 금지. 경로는 `/Users/kim` 처럼 가짜로).
 - **보안 문제**는 이슈로 올리지 말고 [SECURITY.md](SECURITY.md) 방법으로 알려 주세요.
+- 앱을 쓰다 생긴 버그와 바라는 점은 공개 레포 [fairy-releases 의 이슈](https://github.com/milcho0604/fairy-releases/issues)로 받아요. 설치 파일도 거기 올라가요.
 - 화면 말은 한국어와 영어 둘 다 (`src/shared/i18n/`). 한국어는 친근한 반말이 기본이에요.
 - 사용자에게 보이는 변화는 PR 설명에 `CHANGELOG.md` 에 들어갈 한 줄을 적어 주세요(머지하는 사람이 넣어요).
 
@@ -82,6 +83,7 @@ When launching the app for testing, follow [CLAUDE.md](CLAUDE.md): always `JJ_NO
 - **No third-party characters or borrowed art.** Only art you made or that is clearly licensed for this project.
 - Use made-up sample data only (no real names, emails, phone numbers, tokens or home paths).
 - Report security issues privately as described in [SECURITY.md](SECURITY.md), not in public issues.
+- App bug reports and ideas go to [fairy-releases issues](https://github.com/milcho0604/fairy-releases/issues); installers are published there too.
 - UI text must exist in both Korean and English (`src/shared/i18n/`).
 - Mention a one-line `CHANGELOG.md` entry in your PR for user-visible changes.
 

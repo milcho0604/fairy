@@ -6,7 +6,7 @@
 
 **화면 위를 돌아다니는 페어리가 할 일, 일정, 메모를 같이 챙겨 주는 데스크톱 비서예요.**
 
-[fairy.moilga.com](https://fairy.moilga.com) · 맥과 윈도우용(리눅스 시험판) · 베타 · [설치 안내](docs/install.md) · [사용 가이드](docs/guide.md) · [변경 이력](CHANGELOG.md)
+[fairy.moilga.com](https://fairy.moilga.com) · 맥과 윈도우용(리눅스 시험판) · 베타 · [**받기**](https://github.com/milcho0604/fairy-releases/releases/latest) · [설치 안내](docs/install.md) · [사용 가이드](docs/guide.md) · [변경 이력](CHANGELOG.md)
 
 </div>
 
@@ -154,12 +154,12 @@
 
 ## 설치
 
-받을 파일과 처음 열 때 경고 넘기는 법은 **[설치 안내](docs/install.md)** 에 있어요. 짧게 정리하면 이래요.
+설치 파일은 공개 레포 **[fairy-releases 의 Releases](https://github.com/milcho0604/fairy-releases/releases/latest)** 에 있어요. 받을 파일과 처음 열 때 경고 넘기는 법은 **[설치 안내](docs/install.md)** 에 있어요. 짧게 정리하면 이래요.
 
 - **맥**: 애플 실리콘은 `fairy-<버전>-mac-arm64.dmg`, 인텔은 `fairy-<버전>-mac-x64.dmg`. 아직 애플 개발자 서명 전이라 처음 한 번 시스템 설정 → 개인정보 보호 및 보안에서 "그래도 열기"를 눌러야 해요.
 - **윈도우**: `fairy-<버전>-win-x64.exe`. "Windows의 PC 보호" 창이 뜨면 추가 정보 → 실행. 관리자 권한 없이 설치돼요. 윈도우는 아직 확인 중이에요([체크리스트](docs/tests/windows.md)).
 - **리눅스(시험판)**: `fairy-<버전>-linux-x64.tar.xz`(풀어서 `fairy` 실행) 또는 `fairy-<버전>-linux-x86_64.AppImage`(실행 권한을 주고 실행).
-- 새 버전 확인과 AI 모델 목록은 이 GitHub 레포(`milcho0604/fairy`)의 공개 릴리스와 `catalog/models.json`을 읽어요. 레포가 공개되어 있지 않거나 연결이 안 되면 확인만 조용히 건너뛰고, 모델 목록은 앱에 들어 있는 것을 써요.
+- 새 버전 확인, AI 모델 목록, 페어리 갤러리는 공개 레포 `milcho0604/fairy-releases` 의 릴리스와 `catalog/models.json`, `gallery/` 를 읽어요(이 소스 레포는 읽지 않아요). 레포가 공개되어 있지 않거나 연결이 안 되면 확인만 조용히 건너뛰고, 모델 목록은 앱에 들어 있는 것을 써요.
 - 맥과 윈도우 설치판은 새 버전을 미리 받아 두고 페어리가 "다시 켜서 업데이트"를 띄워요. 누를 때만 설치해요. 리눅스는 페어리가 릴리스 페이지를 열어 줘요.
 
 ### 시스템 요구 사항과 크기
@@ -243,7 +243,7 @@
 | 캘린더 가져오기 | 내가 넣은 `.ics` 주소 | 요청만 (받아 오기) |
 | 구글 캘린더로 보내기 | 구글 캘린더 API (내가 연결했을 때만) | 페어리에서 넣은 일정의 제목, 시각, 알림 |
 | 모델과 도구 받기 | GitHub, Hugging Face, jsDelivr/unpkg, PyPI 등 | 요청만 (받아 오기) |
-| 업데이트 확인, 모델 목록 | GitHub (`milcho0604/fairy` 릴리스와 `catalog/models.json`) | 요청만 (앱 이름과 버전) |
+| 업데이트 확인, 모델 목록, 갤러리 | GitHub (`milcho0604/fairy-releases` 릴리스와 `catalog/models.json`, `gallery/`) | 요청만 (앱 이름과 버전) |
 
 Claude Code와 Codex는 기본으로 내 훅, MCP, 스킬을 싣지 않고 불러요(설정 → AI → "내 AI 설정 없이 부르기").
 
@@ -278,7 +278,7 @@ Claude Code와 Codex는 기본으로 내 훅, MCP, 스킬을 싣지 않고 불�
 
 ## 개발
 
-Node 24를 권해요(`.nvmrc`, 최소 22.18. 시험이 TypeScript 파일을 그대로 돌려요). 기여 방법은 [CONTRIBUTING.md](CONTRIBUTING.md), 보안 문제 알리기는 [SECURITY.md](SECURITY.md)를 봐 주세요.
+Node 24를 권해요(`.nvmrc`, 최소 22.18. 시험이 TypeScript 파일을 그대로 돌려요). 기여 방법은 [CONTRIBUTING.md](CONTRIBUTING.md), 보안 문제 알리기는 [SECURITY.md](SECURITY.md)를 봐 주세요. 앱 버그는 [fairy-releases 의 이슈](https://github.com/milcho0604/fairy-releases/issues)로 받아요.
 
 ```bash
 npm install
@@ -333,7 +333,7 @@ npm run dist:linux # 리눅스 tar.xz, AppImage
 - **Assistant**: click the fairy for a panel with Today, To-dos, Notes, Events and Shop. Natural-language quick add ("meeting tomorrow 3pm", Korean and English), repeating to-dos, reminders, a focus timer, daily review, `.ics` calendar import.
 - **AI**: chat through the AI CLIs you already have (Claude Code, Codex, Cursor, Gemini) or a free local model (Qwen3). "Look together" sends a selected screen area to your AI. Fairy also runs as an MCP server so Claude Code or Codex can add to-dos, notes and events.
 - **Privacy**: no fairy server. Your data stays on your computer; things leave only when you use a feature that needs it (your chosen AI, the free illustration server, calendar URLs, downloads, update checks). Questions that carry a screenshot are never saved in the AI CLI's own history, and Settings → Data → Clear AI history removes what Claude Code and Codex kept for fairy. Deletes and edits the chat AI asks for need your OK in the fairy's bubble.
-- **Updates**: update checks and the model catalog read this repository's public releases and `catalog/models.json`; while the repository is private or offline, the check is skipped and the built-in catalog is used.
-- **Install**: see [docs/install.md](docs/install.md) (Korean). Builds are not yet signed by Apple or Microsoft, so allow the app once on first launch.
+- **Updates**: update checks, the model catalog and the fairy gallery read the public repository [milcho0604/fairy-releases](https://github.com/milcho0604/fairy-releases) (its releases, `catalog/models.json` and `gallery/`), never this source repository; when offline, the check is skipped and the built-in catalog is used.
+- **Install**: download from [fairy-releases Releases](https://github.com/milcho0604/fairy-releases/releases/latest); details in [docs/install.md](docs/install.md) (Korean). Bugs go to [fairy-releases issues](https://github.com/milcho0604/fairy-releases/issues). Builds are not yet signed by Apple or Microsoft, so allow the app once on first launch.
 - **Develop**: Node 24 (`.nvmrc`, 22.18+ works), `npm install`, `npm run dev`, `npm run check`. See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
 - **License**: MIT.
