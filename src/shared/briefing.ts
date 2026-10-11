@@ -22,6 +22,8 @@ export interface NextUpTodo {
   important: boolean;
   createdAt: number;
   doneAt?: number | null;
+  /** 반복 할 일(습관)이면 반복 종류. 습관은 맨 뒤에 고른다 */
+  repeat?: string | null;
 }
 
 export interface NextUpEvent {
@@ -37,8 +39,8 @@ export type NextUp =
       kind: 'todo';
       id: number;
       title: string;
-      /** 고른 까닭: 지난 중요, 오늘 중요, 오늘 마감, 오래된 중요 */
-      why: 'overdue' | 'today-important' | 'today' | 'important';
+      /** 고른 까닭: 마감 지남, 오늘 중요, 중요, 오늘 마감, 습관 */
+      why: 'overdue' | 'today-important' | 'today' | 'important' | 'habit';
     };
 
 /** 마감이 이른 것, 같으면 시각이 이른 것(시각 없으면 뒤), 그다음 먼저 넣은 것 */
@@ -48,8 +50,8 @@ const byDue = (a: NextUpTodo, b: NextUpTodo) =>
   a.createdAt - b.createdAt;
 
 /**
- * 지금 먼저 할 일 하나. 30분 안에 시작하는 일정(준비) → 마감 지난 중요 → 오늘 마감 중요 → 오늘 마감 →
- * 가장 오래된 중요 순. 마감 지난 보통 할 일은 오늘 회고와 마감 알림이 따로 챙겨서 여기서는 고르지 않는다. 없으면 undefined
+ * 지금 먼저 할 일 하나. 30분 안에 시작하는 일정(준비) → 마감 지난 할 일(중요 먼저) → 중요(오늘 마감 먼저) →
+ * 오늘 마감 → 습관(반복 할 일) 순. 습관은 오늘 탭 습관 칸에서 체크하니 맨 뒤다. 없으면 undefined
  */
 export function nextUp(o: {
   todos: readonly NextUpTodo[];
@@ -62,15 +64,33 @@ export function nextUp(o: {
   if (soon) return { kind: 'event', id: soon.id, title: soon.title, startAt: soon.startAt };
   const today = localDay(o.now);
   const open = o.todos.filter((todo) => todo.doneAt === null || todo.doneAt === undefined);
-  const pick = (why: Extract<NextUp, { kind: 'todo' }>['why'], test: (todo: NextUpTodo) => boolean) => {
-    const todo = open.filter(test).sort(why === 'important' ? (a, b) => a.createdAt - b.createdAt : byDue)[0];
+  const tasks = open.filter((todo) => !todo.repeat);
+  const pick = (
+    why: Extract<NextUp, { kind: 'todo' }>['why'],
+    list: readonly NextUpTodo[],
+    test: (todo: NextUpTodo) => boolean,
+    order: (a: NextUpTodo, b: NextUpTodo) => number = byDue,
+  ) => {
+    const todo = list.filter(test).sort(order)[0];
     return todo ? ({ kind: 'todo', id: todo.id, title: todo.title, why } as const) : undefined;
   };
+  const isToday = (x: NextUpTodo) => x.due === today;
   return (
-    pick('overdue', (x) => x.important && x.due !== null && x.due < today) ??
-    pick('today-important', (x) => x.important && x.due === today) ??
-    pick('today', (x) => x.due === today) ??
-    pick('important', (x) => x.important)
+    pick(
+      'overdue',
+      tasks,
+      (x) => x.due !== null && x.due < today,
+      (a, b) => +b.important - +a.important || byDue(a, b),
+    ) ??
+    pick('today-important', tasks, (x) => x.important && isToday(x)) ??
+    pick(
+      'important',
+      tasks,
+      (x) => x.important,
+      (a, b) => a.createdAt - b.createdAt,
+    ) ??
+    pick('today', tasks, isToday) ??
+    pick('habit', open, (x) => !!x.repeat && x.due !== null && x.due <= today)
   );
 }
 

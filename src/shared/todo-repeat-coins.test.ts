@@ -102,3 +102,12 @@ test('같은 할 일을 되돌렸다 다시 끝내도 하루 상한은 할 일 �
   const b = store.add({ title: 'b' }, now);
   assert.equal(store.complete(b.id, now), COIN.todo);
 });
+
+test('오늘 탭 링크의 옮기기는 습관(반복)을 두고 센 것만 옮긴다', () => {
+  const { store } = fresh();
+  const habit = store.add({ title: '운동', due: '2026-10-12', repeat: 'daily' }, at('2026-10-12'));
+  const late = store.add({ title: '보고서', due: '2026-10-12' }, at('2026-10-12'));
+  const moved = store.moveOverdue('2026-10-14', at('2026-10-14'), { habits: false });
+  assert.deepEqual(moved, [{ id: late.id, due: '2026-10-12' }]);
+  assert.equal(store.get(habit.id)?.due, '2026-10-12');
+});

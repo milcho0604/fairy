@@ -485,7 +485,8 @@ export function createPanel(o: PanelOptions) {
     if (!ours(e)) return [];
     const now = Date.now();
     const today = localDay(now);
-    const moved = o.store.moveOverdue(today, now);
+    // 오늘 탭 링크가 센 것(습관 빼고)만 옮긴다. 습관의 지난 회차는 습관 칸에서 체크한다
+    const moved = o.store.moveOverdue(today, now, { habits: false });
     lastMoved = { moved, today };
     log('todo', 'move-overdue', moved.length);
     push();

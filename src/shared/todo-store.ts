@@ -391,8 +391,15 @@ export class TodoStore {
    * now 를 넘겨 옮긴 뒤 이미 지난 알림(전날 저녁 8시)은 말없이 넘긴다.
    * 매주 반복은 원래 마감(repeat_anchor)을 기억해 끝내면 다음 회차가 원래 요일로 간다
    */
-  moveOverdue(today: string, now: number): { id: number; due: string | null }[] {
-    const late = this.list(now).open.filter((todo) => todo.due !== null && todo.due < today);
+  moveOverdue(
+    today: string,
+    now: number,
+    { habits = true }: { habits?: boolean } = {},
+  ): { id: number; due: string | null }[] {
+    // habits false: 반복 할 일(습관)은 두고 옮긴다. 오늘 탭 링크는 습관을 빼고 세고 습관 칸에서 따로 체크한다
+    const late = this.list(now).open.filter(
+      (todo) => todo.due !== null && todo.due < today && (habits || !todo.repeat),
+    );
     if (late.length === 0) return [];
     this.#db.exec('begin');
     try {
