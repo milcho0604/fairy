@@ -96,6 +96,7 @@ export GH_TOKEN=$(gh auth token --user milcho0604)
    ```
 
    그리고 위 "환경 승인"대로 환경 `release` 를 만든다(없으면 릴리스 작업이 승인 없이 돈다).
+   Settings → Code security → **Private vulnerability reporting** 을 켠다(`SECURITY.md` 가 이 길로 받는다).
 5. **공개 전환:** `gh repo edit milcho0604/jjakkung --visibility public --accept-visibility-change-consequences`. 공개 레포는 Actions 맥 러너 시간이 깎이지 않으니 태그는 공개 뒤에 올린다.
 6. **버전 올리기와 태그:** `package.json` 의 `version` 을 `0.2.0` 으로(`npm version 0.2.0 --no-git-tag-version`), `CHANGELOG.md` 의 Unreleased 를 `0.2.0` 으로 정리해 커밋하고 `main` 에 푸시한다. 그다음 `git tag v0.2.0 && git push origin v0.2.0`, 진행은 `gh run watch --repo milcho0604/jjakkung`.
 7. **초안 확인:** `gh release view v0.2.0 --repo milcho0604/jjakkung` 로 파일 목록(dmg 2, zip 2, zip.blockmap 2, latest-mac.yml, exe, exe.blockmap, latest.yml, tar.gz, AppImage)과 본문 머리(최소 버전을 적었으면 그 문장)를 본다.

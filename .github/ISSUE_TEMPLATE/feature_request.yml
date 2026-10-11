@@ -1,0 +1,26 @@
+name: 이런 게 있으면 좋겠어요 (Feature request)
+description: 새 기능이나 바꾸고 싶은 점 / Suggest an idea
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        펫 갤러리는 공식 펫만 올려요. 직접 만든 펫은 `.jjpet` 파일로 친구에게 바로 보내 주세요 (펫 추가 요청은 받지 않아요).
+        The pet gallery is official-only; share your own pets as `.jjpet` files directly.
+  - type: textarea
+    id: problem
+    attributes:
+      label: 어떤 불편이 있나요 (Problem)
+      description: 어떤 상황에서 무엇이 아쉬운지
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: 바라는 모습 (Idea)
+    validations:
+      required: true
+  - type: textarea
+    id: else
+    attributes:
+      label: 생각해 본 다른 방법 (Alternatives, optional)
