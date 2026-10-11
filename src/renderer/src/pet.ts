@@ -35,12 +35,24 @@ import { canPlay, type SoundKind } from '../../shared/sound.ts';
 import { NO_TOGETHER, type TogetherLook } from '../../shared/together.ts';
 import { dressBlueprint, GROW_LOOK, type WearLook } from '../../shared/wear.ts';
 import { AnimatedImage, frameSide, loadPetImage } from './animated.ts';
-import { CANVAS_SIZE, type CarryDraw, CONFETTI_MS, drawPet, HEARTS_MS, motionSettling } from './draw.ts';
+import {
+  CANVAS_SIZE,
+  type CarryDraw,
+  CONFETTI_MS,
+  type DrawState,
+  drawPet,
+  HEARTS_MS,
+  motionSettling,
+  noteOf,
+  tapOf,
+  workOf,
+} from './draw.ts';
 import { initLang } from './lang.ts';
 import { LAND_MS, moveFps, SIT_MS, sitDown } from './move-pose.ts';
 import { renderBody, renderFace } from './pet-face.ts';
 import type { Pet3D } from './pet3d.ts';
 import { quadKind, withGait } from './pet3d-gait.ts';
+import { PoseBlend, type PoseKey, shouldBlend } from './pose-blend.ts';
 import { playSound } from './sound.ts';
 import { TAP_FPS, TAP_IN_MS, TAP_OUT_MS } from './together-draw.ts';
 import { continueSeg, segSpeed, stepsAt, strideLen, type WalkSeg } from './walk-pace.ts';
@@ -189,7 +201,7 @@ function frame() {
   // 숨을 쉬지 않는 동안은 숨과 흔들림을 멈춘다 (깜빡일 때만 그려 몸이 툭툭 튀었다). 움직임 줄이기면 쉬지 않는다
   const breathes =
     boost && use3d && model3dOf instanceof HTMLImageElement && canBlink(mood) && !reducedMotion.matches;
-  const ball = drawPet(ctx, {
+  const state: DrawState = {
     mood,
     elapsed: now - moodSince,
     breathe: breathes,
@@ -221,7 +233,21 @@ function frame() {
     land: landStart >= 0 ? landed : -1,
     ...togetherDraw(now),
     now,
-  });
+  };
+  // 자세가 바뀐 틀이면 지난 그림을 떠 두고 짧게 겹쳐 바꾼다 (pose-blend.ts). 처음 그림은 겹치지 않는다
+  const key: PoseKey = {
+    mood,
+    tap: !!tapOf(state, state.activity),
+    note: !!noteOf(state, state.activity),
+    work: workOf(state) !== undefined,
+    trick: trick?.type ?? '',
+    back: backTurned(),
+  };
+  if (firstShown && shouldBlend(poseKey, key, { calm: reducedMotion.matches, saver })) blend.snap(ctx, now);
+  else if (!poseKey || poseKey.mood !== key.mood) blend.stop();
+  poseKey = key;
+  const ball = drawPet(ctx, state);
+  blend.over(ctx, now);
   carriedAt = ball;
   // 얼굴과 집 그림은 첫 그림이 화면에 나간 뒤에 (둘 다 그린 것을 읽어 와 GPU 를 기다려서 켤 때 첫 그림을 늦췄다)
   if (firstShown) {
@@ -262,11 +288,20 @@ function frame() {
   // 돌아서기, 고개 돌리기, 걷기 풀기가 아직 따라가는 중이면 끝까지 그린다 (draw.ts motionSettling)
   // 배터리 절약이면 15fps 까지만 (shared/battery.ts). 멈춘 그림(0)은 그대로 그리지 않는다
   const all = capFps(
-    Math.max(fps, (looking?.fps ?? 0) * k, motionSettling() ? 30 * k : 0, togetherFps(now) * k),
+    Math.max(
+      fps,
+      (looking?.fps ?? 0) * k,
+      motionSettling() || blend.active ? 30 * k : 0,
+      togetherFps(now) * k,
+    ),
     saver,
   );
   frameTimer = all > 0 ? setTimeout(frame, 1000 / all) : undefined;
 }
+
+/** 자세 바꾸기 겹침 (pose-blend.ts): 지난 틀의 자세와 겹치는 중인 그림 */
+const blend = new PoseBlend();
+let poseKey: PoseKey | undefined;
 
 /** 첫 그림이 화면에 나갔는지 (얼굴과 집 그림은 그 뒤에 그린다) */
 let firstShown = false;

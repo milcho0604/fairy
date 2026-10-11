@@ -566,7 +566,7 @@ export const en: Translation<typeof ko> = {
     `Things about you your fairy should always know. They're sent to the AI with every question, so don't put secrets here. Up to ${v.max}, ${v.len} characters each. When it's full, the oldest go first.`,
   'settings.memory.empty':
     'Nothing remembered yet. Add one here, or allow something your AI tool asked your fairy to remember.',
-  'settings.memory.placeholder': 'e.g. I have lots of meetings in the morning',
+  'settings.memory.placeholder': 'e.g. Lots of morning meetings',
   'settings.memory.add': 'Remember',
   'settings.memory.delete': 'Forget',
   'settings.memory.deleteSure': 'Really forget?',
@@ -738,7 +738,7 @@ export const en: Translation<typeof ko> = {
   'settings.version': 'fairy {v}',
   'settings.licenses': 'Open source licenses',
   'settings.licensesHint':
-    'Fairy is open source under the MIT license. See the notices for the other open source it includes.',
+    'The fairy app is open source under the MIT license. See the notices for the other open source software it includes.',
   'settings.licensesOpen': 'View notices',
   'settings.licensesFailed': "Couldn't open the notices file.",
   'settings.stats.title': 'My stats (beta)',

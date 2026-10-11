@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { GalleryList } from '../../../shared/gallery.ts';
-import { t } from '../../../shared/i18n/index.ts';
+import { dicts, t } from '../../../shared/i18n/index.ts';
 import type { PetLookView } from '../../../shared/ipc.ts';
 import {
   AUTHOR_MAX,
@@ -10,8 +10,18 @@ import {
   type PetLicense,
 } from '../../../shared/pet-share.ts';
 import { PET_KINDS } from '../../../shared/settings.ts';
+import { isStarterId, isStarterName } from '../../../shared/starter-pets.ts';
 import { bridge } from './ui.tsx';
 import './gallery.css';
+
+/**
+ * 공식 펫 이름과 만든 사람은 갤러리 목록에 한국어로 적혀 있다 (초코, 밀크, 페어리). 앱에 든 그림 친구와 같은 펫이면
+ * 지금 말 이름으로, 만든 사람이 앱 이름이면 지금 말 앱 이름으로 보인다 (영어 화면에 한국어가 섞였다, 2026-10-11 점검)
+ */
+const nameOf = (p: { id: string; name: string }) =>
+  isStarterId(p.id) && isStarterName(p.id, p.name) ? t(`common.starter.${p.id}`) : p.name;
+const authorOf = (author: string) =>
+  Object.values(dicts).some((d) => d['common.appName'] === author) ? t('common.appName') : author;
 
 const FAIL_TEXT = {
   offline: 'settings.gallery.offline',
@@ -80,14 +90,14 @@ export function Gallery({
           {list.pets.map((p) => (
             <li key={p.id} className="gallery-card">
               {p.thumb ? (
-                <img src={p.thumb} alt={t('settings.gallery.thumbAlt', { name: p.name })} />
+                <img src={p.thumb} alt={t('settings.gallery.thumbAlt', { name: nameOf(p) })} />
               ) : (
                 <i aria-hidden="true" />
               )}
-              <span className="pet-name">{p.name}</span>
+              <span className="pet-name">{nameOf(p)}</span>
               <small>{PET_KINDS.find((k) => k.id === p.species)?.label}</small>
               <small className="gallery-by">
-                {t('settings.gallery.by', { author: p.author, license: LICENSE_LABEL[p.license] })}
+                {t('settings.gallery.by', { author: authorOf(p.author), license: LICENSE_LABEL[p.license] })}
               </small>
               <div className="gallery-actions">
                 <button
