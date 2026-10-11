@@ -3,7 +3,7 @@
 // 짝꿍과 같은 저장 파일(jjakkung.db)을 연다. 짝꿍이 켜져 있으면 몇 초 안에 패널에 보인다 (data_version 을 본다).
 // Electron 을 불러오지 않는다. 이 파일은 electron-vite 가 out/main/mcp-server.js 로 따로 낸다.
 
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -25,6 +25,7 @@ import {
 import { cleanMemoryItem } from '../shared/pet-memory.ts';
 import { filterTodos } from '../shared/todo-filter.ts';
 import { isRepeat, localDay, STEP_MAX, stepProgress, type Todo, TodoStore } from '../shared/todo-store.ts';
+import { MCP_BEAT_FILE } from '../shared/together.ts';
 import { CHAT_INBOX, writeInbox, writeListInbox } from './memory-inbox.ts';
 
 const VERSION = '0.1.0';
@@ -752,6 +753,21 @@ export function handle(msg: Json): Json | undefined {
   }
 }
 
+/**
+ * 같이 일하는 표정 (shared/together.ts): AI 도구가 도구를 부를 때마다 데이터 폴더의 mcp-beat 파일 시각만 바꾼다.
+ * 무엇을 불렀는지, 무슨 글인지는 적지 않는다 (빈 파일). 짝꿍 채팅이 띄운 서버는 이미 생각하는 얼굴이라 건너뛴다
+ */
+function beat() {
+  if (process.env.JJ_MCP_FROM === 'chat') return;
+  const dir = userDataDir();
+  if (!existsSync(dir)) return;
+  try {
+    writeFileSync(join(dir, MCP_BEAT_FILE), '');
+  } catch {
+    // 표정일 뿐이다. 못 써도 도구는 그대로 돈다
+  }
+}
+
 function main() {
   const rl = createInterface({ input: process.stdin });
   rl.on('line', (line) => {
@@ -766,6 +782,7 @@ function main() {
       return;
     }
     let out: Json | undefined;
+    if (typeof msg === 'object' && msg !== null && msg.method === 'tools/call') beat();
     try {
       out = handle(msg);
     } catch (err) {

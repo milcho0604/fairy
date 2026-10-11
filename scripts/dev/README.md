@@ -27,3 +27,4 @@ OUT=/tmp/jj-shots PHOTO=<사진> node scripts/dev/maker.mjs  # 사진으로 펫 
 - 펫 갤러리 시험: `python3 -m http.server <포트> --bind 127.0.0.1 --directory gallery` 로 레포의 gallery/ 를 내주고 `JJ_GALLERY_URL=http://127.0.0.1:<포트>/` 로 띄운다(설치판이 아닌 실행에서만, 이 컴퓨터 http 주소만). 빈 폴더를 내주면 404(아직 안 열림), 서버를 끄면 인터넷 없음 안내
 - 베타 기록: `__jj.stats.tick(시각, 숨김)`, `countLook`, `countCrash` 로 가짜 기록을 넣고 `__jj.settingsWindow.open('stats')`. 비정상 종료 세기는 개발 실행에서 꺼져 있어 `JJ_BETA_CRASH=1` 로 켠다
 - 시험이 만든 할 일, 사진 펫, 위치는 끝나고 되돌린다. 할 일 저장 파일은 사용자 데이터 폴더의 `jjakkung.db`
+- 같이 지내는 느낌: `__jj.together.debugFeed(true)` 는 키보드를 치는 것처럼(진짜 입력은 안 본다, `false` 손 뗌, `undefined` 진짜로), `__jj.together.debugWork()` 는 MCP 를 부른 것처럼. 매일 쪽지는 `__jj.dailyNotes.debugBring()`(오늘 쪽지를 다시 들고 온다, `debugBring(7)` 은 7일 편지), 펫 화면에서 그림만 볼 때는 `__pet.debugTogether({ typing, working, note }, 두드린ms)`

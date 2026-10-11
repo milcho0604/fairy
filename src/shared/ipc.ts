@@ -34,6 +34,7 @@ import type { BuyResult, ShopState } from './shop.ts';
 import type { SoundKind } from './sound.ts';
 import type { PetChoice, StarterId } from './starter-pets.ts';
 import type { Repeat, Todo } from './todo-store.ts';
+import type { NoteLook, TogetherLook } from './together.ts';
 import type { WearLook } from './wear.ts';
 import type { WeekSummary } from './week.ts';
 
@@ -98,6 +99,8 @@ export const IPC = {
   keys: 'pet:keys',
   /** 펫 화면 → 메인: 키보드 명령 (shared/pet-keys.ts) */
   petKey: 'pet:key',
+  /** 메인 → 펫 화면: 같이 타자 치기, 같이 일하는 표정, 든 쪽지 (shared/together.ts TogetherLook). 바뀔 때만 */
+  together: 'pet:together',
 } as const;
 
 /** 펫 얼굴 그림 (shared/face.ts). 펫 화면이 그려 메인에 주고, 메인이 얼굴을 쓰는 창에 나눠 준다 */
@@ -131,6 +134,8 @@ export interface BubbleMessage {
   ttlMs: number;
   /** 말풍선 종류 (일정 알림이면 효과음을 켰을 때 종소리) */
   kind?: BubbleKind;
+  /** 펼친 쪽지 모양 (매일 쪽지는 종이, 특별한 편지는 분홍 편지지). 없으면 보통 말풍선 */
+  paper?: NoteLook;
 }
 
 export interface PetAiState {
@@ -515,6 +520,8 @@ export interface PetBridge {
   onKeys(listener: (name: string | null) => void): void;
   /** 키보드 명령 (shared/pet-keys.ts) */
   petKey(key: PetKey): void;
+  /** 같이 타자 치기, 같이 일하는 표정, 든 쪽지 (shared/together.ts) */
+  onTogether(listener: (look: TogetherLook) => void): void;
 }
 
 /** 펫 화면이 그리는 몸. 네 발로 걷는 펫은 공을 입에 물어 온다 */

@@ -214,6 +214,18 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
           onChange={(v) => update({ dayRhythm: v })}
         />
         <Toggle
+          label={t('settings.typeAlong')}
+          hint={t('settings.typeAlongHint')}
+          on={s.typeAlong}
+          onChange={(v) => update({ typeAlong: v })}
+        />
+        <Toggle
+          label={t('settings.dailyNotes')}
+          hint={t('settings.dailyNotesHint')}
+          on={s.dailyNotes}
+          onChange={(v) => update({ dailyNotes: v })}
+        />
+        <Toggle
           label={t('settings.sounds')}
           hint={t('settings.soundsHint')}
           on={s.sounds}

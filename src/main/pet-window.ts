@@ -62,6 +62,7 @@ import {
   THROW_MAX_SPEED,
   THROW_MIN_SPEED,
 } from '../shared/throw.ts';
+import type { NoteLook } from '../shared/together.ts';
 import { saverNow } from './battery.ts';
 import { boostOn } from './boost.ts';
 import { watchCursor } from './cursor-watch.ts';
@@ -153,6 +154,8 @@ export interface SayOptions {
   >;
   /** 끊으면 이 말풍선을 닫는다(떠 있을 때) 또는 기다리던 것을 버린다. 시간 끝 없는 안내를 거둘 때 (강제 업데이트가 풀림) */
   signal?: AbortSignal;
+  /** 펼친 쪽지 모양 (매일 쪽지, 특별한 편지). 없으면 보통 말풍선 */
+  paper?: NoteLook;
 }
 
 export interface PetWindow {
@@ -519,6 +522,13 @@ export function createPetWindow({
         type: 'checkbox',
         checked: settings.get().batterySaver !== 'off',
         click: (item) => settings.set({ batterySaver: item.checked ? 'auto' : 'off' }),
+      },
+      // 같이 타자 치기 (shared/together.ts): 키 내용은 읽지 않고 입력이 있는지만 본다
+      {
+        label: t('pet.menu.typeAlong'),
+        type: 'checkbox',
+        checked: settings.get().typeAlong,
+        click: (item) => settings.set({ typeAlong: item.checked }),
       },
       {
         label: t('pet.menu.hide', { name: petName() }),
@@ -1171,7 +1181,7 @@ export function createPetWindow({
   const releaseTimer = setInterval(releaseHeld, 2000);
 
   function say(options: SayOptions): Promise<string | undefined> {
-    const { kind, text, buttons = [], ttlMs = BUBBLE_TTL_MS, image, hold, signal } = options;
+    const { kind, text, buttons = [], ttlMs = BUBBLE_TTL_MS, image, hold, signal, paper } = options;
     if (signal?.aborted) return Promise.resolve(undefined);
     if (hideReasons.hidden && kind === 'answer') {
       // 앞에 기다리던 알림은 새 것으로 바꾼다 (가장 최근 답 하나만).
@@ -1226,7 +1236,15 @@ export function createPetWindow({
           resolve(action);
         },
       };
-      win.webContents.send(IPC.bubble, { id, text, buttons, ttlMs, image, kind });
+      win.webContents.send(IPC.bubble, {
+        id,
+        text,
+        buttons,
+        ttlMs,
+        image,
+        kind,
+        ...(paper ? { paper } : {}),
+      });
       signal?.addEventListener(
         'abort',
         () => {

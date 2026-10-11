@@ -42,8 +42,10 @@ import {
 } from '../shared/ipc.ts';
 import type { LookMotion } from '../shared/look-motion.ts';
 import type { MoveAsk } from '../shared/moves.ts';
+import { NOTES, type NoteBox, type NoteBridge } from '../shared/note-ipc.ts';
 import type { Settings } from '../shared/settings.ts';
 import type { SoundKind } from '../shared/sound.ts';
+import type { TogetherLook } from '../shared/together.ts';
 
 // 샌드박스 preload 는 다른 파일을 require 할 수 없어 한 파일로 묶는다.
 // 창마다 자기 기능만 열어 준다: 메인이 창을 만들 때 `--jj-window=<이름>` 을 넘긴다.
@@ -112,6 +114,9 @@ if (kind === 'pet') {
       ipcRenderer.on(IPC.keys, (_e, name: unknown) => listener(typeof name === 'string' ? name : null));
     },
     petKey: (key) => ipcRenderer.send(IPC.petKey, key),
+    onTogether: (listener) => {
+      ipcRenderer.on(IPC.together, (_e, look: TogetherLook) => listener(look));
+    },
   };
   contextBridge.exposeInMainWorld('jjakkung', pet);
 }
@@ -280,6 +285,18 @@ if (kind === 'panel' || kind === 'settings' || kind === 'knows') {
     growGet: () => ipcRenderer.invoke(BOND.growGet),
   };
   contextBridge.exposeInMainWorld('jjakkungBond', bond);
+}
+
+// 매일 쪽지함 (shared/daily-note.ts). 패널 오늘 탭만
+if (kind === 'panel') {
+  const notes: NoteBridge = {
+    list: () => ipcRenderer.invoke(NOTES.list),
+    read: (day) => ipcRenderer.send(NOTES.read, day),
+    onChange: (listener) => {
+      ipcRenderer.on(NOTES.changed, (_e, box: NoteBox) => listener(box));
+    },
+  };
+  contextBridge.exposeInMainWorld('jjakkungNotes', notes);
 }
 
 // 패널과 빠른 입력 창은 같은 기능을 쓴다.

@@ -167,6 +167,13 @@ export interface Settings {
    * 기본 cloud: mac 은 16GB 를 받아야 해서 사용자가 고른다. 고를 수 없는 컴퓨터면 저장된 값이 mac 이어도 창이 cloud 로 쓴다
    */
   illustEngine: IllustEngine;
+  /**
+   * 같이 타자 치기 (2026-10-11, 기본 켬): 사용자가 입력하는 동안 펫이 작은 키보드를 같이 두드린다.
+   * 키 내용은 읽지 않고 입력이 있는지만 본다 (shared/together.ts). 배터리 절약 중에는 쉰다
+   */
+  typeAlong: boolean;
+  /** 매일 쪽지 (2026-10-11, 기본 켬): 하루 한 번 펫이 이 컴퓨터 기록으로 쓴 쪽지를 들고 온다 (shared/daily-note.ts) */
+  dailyNotes: boolean;
 }
 
 /** 보관한 사진 펫. 파일은 pets/ 안 */
@@ -355,6 +362,8 @@ export const DEFAULT_SETTINGS: Settings = {
   petWishes: {},
   routine: DEFAULT_ROUTINE,
   illustEngine: 'cloud',
+  typeAlong: true,
+  dailyNotes: true,
 };
 
 export const PET_NAME_MAX = 12;
@@ -509,6 +518,8 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     routine: parseRoutine(r.routine, base.routine),
     // 옛 값 'mac' 은 local 로 (내 Mac에서 → 내 컴퓨터에서, 2026-10-10)
     illustEngine: illustEngineOf(r.illustEngine) ?? base.illustEngine,
+    typeAlong: bool(r.typeAlong, base.typeAlong),
+    dailyNotes: bool(r.dailyNotes, base.dailyNotes),
     ...bodiesOf(r, base),
     ...(typeof r.skipVersion === 'string' && /^\d+\.\d+\.\d+/.test(r.skipVersion)
       ? { skipVersion: r.skipVersion.slice(0, 32) }

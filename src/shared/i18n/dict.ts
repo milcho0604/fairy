@@ -32,9 +32,10 @@ import * as routine from './routine.ts';
 import * as settings from './settings.ts';
 import * as shop from './shop.ts';
 import * as tabs from './tabs.ts';
+import * as together from './together.ts';
 import * as tray from './tray.ts';
-import * as voice from './voice.ts';
 import type { Translation } from './types.ts';
+import * as voice from './voice.ts';
 
 export const ko = {
   ...common.ko,
@@ -70,6 +71,7 @@ export const ko = {
   ...polish.ko,
   ...petmeta.ko,
   ...first.ko,
+  ...together.ko,
   ...voice.ko,
 };
 
@@ -107,5 +109,6 @@ export const en: Translation<typeof ko> = {
   ...polish.en,
   ...petmeta.en,
   ...first.en,
+  ...together.en,
   ...voice.en,
 };

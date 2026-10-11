@@ -32,6 +32,7 @@ import type { Blueprint, Gait } from '../../shared/pet3d/blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from '../../shared/pet3d/defaults.ts';
 import type { PetKind, PetStyle, PoseKind } from '../../shared/settings.ts';
 import { canPlay, type SoundKind } from '../../shared/sound.ts';
+import { NO_TOGETHER, type TogetherLook } from '../../shared/together.ts';
 import { dressBlueprint, GROW_LOOK, type WearLook } from '../../shared/wear.ts';
 import { AnimatedImage, frameSide, loadPetImage } from './animated.ts';
 import { CANVAS_SIZE, type CarryDraw, CONFETTI_MS, drawPet, HEARTS_MS, motionSettling } from './draw.ts';
@@ -41,6 +42,7 @@ import { renderBody, renderFace } from './pet-face.ts';
 import type { Pet3D } from './pet3d.ts';
 import { quadKind, withGait } from './pet3d-gait.ts';
 import { playSound } from './sound.ts';
+import { TAP_FPS, TAP_IN_MS, TAP_OUT_MS } from './together-draw.ts';
 import { continueSeg, segSpeed, stepsAt, strideLen, type WalkSeg } from './walk-pace.ts';
 
 initLang('common.title.pet');
@@ -177,6 +179,7 @@ function frame() {
     fresh: freshStart >= 0 ? fresh : -1,
     confetti: confettiStart >= 0 ? confetti : -1,
     land: landStart >= 0 ? landed : -1,
+    ...togetherDraw(now),
     now,
   });
   carriedAt = ball;
@@ -215,7 +218,10 @@ function frame() {
   // 돋보기를 든 동안은 그 빠르기로 (부스트면 두 배)
   // 돌아서기, 고개 돌리기, 걷기 풀기가 아직 따라가는 중이면 끝까지 그린다 (draw.ts motionSettling)
   // 배터리 절약이면 15fps 까지만 (shared/battery.ts). 멈춘 그림(0)은 그대로 그리지 않는다
-  const all = capFps(Math.max(fps, (looking?.fps ?? 0) * k, motionSettling() ? 30 * k : 0), saver);
+  const all = capFps(
+    Math.max(fps, (looking?.fps ?? 0) * k, motionSettling() ? 30 * k : 0, togetherFps(now) * k),
+    saver,
+  );
   frameTimer = all > 0 ? setTimeout(frame, 1000 / all) : undefined;
 }
 
@@ -328,6 +334,65 @@ function syncBody(m3d: Pet3D | undefined, img: PetImage | undefined) {
   bridge.body(body);
 }
 
+// ---- 같이 지내는 느낌 (shared/together.ts) ----
+// 같이 타자 치기: 메인이 "사용자가 입력하는 중"(키 내용은 모른다)을 알려 주면 작은 키보드를 꺼내 앞발로 두드린다.
+// 나오고 들어가는 동안만 조금 더 촘촘히, 두드리는 동안은 12fps. 움직임 줄이기면 손을 키보드에 얹고 가만히 (한 번만 그린다)
+// 같이 일하는 표정: AI 도구가 짝꿍 MCP 를 부른 뒤 잠깐 집중한 눈썹과 연필, 반짝이. 든 쪽지: 매일 쪽지를 몸 앞에 든다
+let together: TogetherLook = NO_TOGETHER;
+/** 키보드가 나오고 들어가기: on 나오는 중이나 나옴, at 바뀐 때, from 그때 나와 있던 정도 */
+let tapEdge = { on: false, at: -1, from: 0 };
+/** 두드리기 시작한 때 (박자 기준) */
+let tapStart = 0;
+/** 같이 일하는 표정이 시작된 때. 없으면 -1 */
+let workStart = -1;
+
+function tapK(now: number): number {
+  if (tapEdge.at < 0) return 0;
+  if (reducedMotion.matches) return tapEdge.on ? 1 : 0;
+  const dt = now - tapEdge.at;
+  return tapEdge.on
+    ? Math.min(1, tapEdge.from + dt / TAP_IN_MS)
+    : Math.max(0, tapEdge.from - dt / TAP_OUT_MS);
+}
+const tapOn = () => tapEdge.on || tapK(performance.now()) > 0;
+/** 같이 타자 치기를 그릴 수 있는 몸 상태 (draw.ts tapOf 와 같은 뜻: 한가하거나 말하는 중, 걷지 않을 때) */
+const canTap = () =>
+  (mood === 'idle' || mood === 'talking') && (!activity || activity.type === 'sit') && !look && !carry;
+
+function togetherDraw(now: number) {
+  const k = tapK(now);
+  return {
+    ...(k > 0 ? { tap: { k, ms: reducedMotion.matches ? 0 : now - tapStart } } : {}),
+    work: workStart >= 0 ? now - workStart : -1,
+    ...(together.note ? { note: together.note } : {}),
+  };
+}
+
+/** 같이 지내는 모습을 그리는 빠르기: 키보드가 나오고 들어가는 동안 24, 두드리는 동안 12, 반짝이는 8. 가만히면 0 */
+function togetherFps(now: number): number {
+  if (!canTap() && workStart < 0) return 0;
+  const k = tapK(now);
+  const calm = reducedMotion.matches;
+  if (canTap() && k > 0 && (tapEdge.on ? k < 1 : true) && !calm) return 24;
+  if (canTap() && k > 0 && !calm) return TAP_FPS;
+  if (workStart >= 0 && !calm && mood !== 'sleeping' && mood !== 'dozing') return 8;
+  return 0;
+}
+
+bridge.onTogether((next) => {
+  const now = performance.now();
+  if (next.typing !== tapEdge.on) {
+    const from = tapK(now);
+    if (next.typing && from <= 0) tapStart = now;
+    tapEdge = { on: next.typing, at: now, from };
+    // 두드리기 시작하면 하던 앉기 말고 다른 몸짓(하품, 두리번)은 그만둔다
+    if (next.typing && activity && activity.type !== 'sit' && activity.type !== 'walk') stopActivity(false);
+  }
+  if (next.working !== workStart >= 0) workStart = next.working ? now : -1;
+  together = next;
+  requestFrame();
+});
+
 // ---- 기본 행동 (P1-06) ----
 // 25~70초에 한 번, 한가하면 메인에 행동을 골라 달라고 한다. 걷기만 계속 그리고(12fps) 앉기, 두리번은 한 번 그린다.
 
@@ -343,7 +408,18 @@ function scheduleActivity() {
   // 배터리 절약이면 더 드물게 (shared/battery.ts)
   const wait = (energy ? ENERGY_PACE[energy.stage].wait : 1) * idleWaitFactor(saver);
   activityTimer = setTimeout(() => {
-    if (mood === 'idle' && !activity && !look && !carry && !bubbleId && !overPet && !gesture.dragging)
+    // 같이 타자 치거나 같이 일하는 동안은 돌아다니지 않는다 (옆에서 같이 한다)
+    const together = tapOn() || workStart >= 0;
+    if (
+      mood === 'idle' &&
+      !activity &&
+      !look &&
+      !carry &&
+      !bubbleId &&
+      !overPet &&
+      !gesture.dragging &&
+      !together
+    )
       bridge.activityRequest(moveAsk());
     scheduleActivity();
   }, nextDelay(Math.random) * wait);
@@ -1078,6 +1154,9 @@ bridge.onBubble((b) => {
   bubbleLeft = b.ttlMs;
   if (b.kind === 'schedule') sound('bell');
   bubbleText.textContent = b.text;
+  // 펼친 쪽지는 종이 모양 (pet.css)
+  if (b.paper) bubbleEl.dataset.paper = b.paper;
+  else delete bubbleEl.dataset.paper;
   if (readAloud) announce(b.text);
   bubbleImage.hidden = !b.image;
   if (b.image) bubbleImage.src = b.image;
@@ -1224,6 +1303,18 @@ Object.assign(window, {
     },
     get mood() {
       return mood;
+    },
+    /** 같이 지내는 모습을 바로 넣는다 (메인을 거치지 않는 그림 점검용). at 은 두드린 시간(ms) */
+    debugTogether: (next: TogetherLook, at = 0) => {
+      const now = performance.now();
+      together = next;
+      tapEdge = next.typing ? { on: true, at: now - TAP_IN_MS, from: 0 } : { on: false, at: -1, from: 0 };
+      tapStart = now - at;
+      workStart = next.working ? now - at : -1;
+      requestFrame();
+    },
+    get together() {
+      return { ...together, tapK: tapK(performance.now()), canTap: canTap() };
     },
     get inputs() {
       return inputs;

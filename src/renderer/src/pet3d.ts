@@ -69,9 +69,12 @@ import {
   gazeOf,
   type Model3D,
   movePoseOf,
+  noteOf,
   sulkStage,
+  tapOf,
   trickOf,
   waveSwing,
+  workOf,
 } from './draw.ts';
 import { Eased } from './motion-ease.ts';
 import type { MoveEyes } from './move-pose.ts';
@@ -107,7 +110,19 @@ import {
   walkEnvelopeOf,
 } from './pet3d-gait.ts';
 import { bounced, type EyeState, restingEye } from './pet3d-motion.ts';
+import {
+  buildKeyboard,
+  HANDS,
+  type Keyboard3D,
+  pawTarget,
+  pawTip,
+  poseKeyboard,
+  reachPaw,
+  type TapRig,
+  tapRigOf,
+} from './pet3d-tap.ts';
 import { neckRow } from './relief-warp.ts';
+import { tapPaws } from './together-draw.ts';
 
 const CX = 80;
 const GROUND = 154;
@@ -201,6 +216,9 @@ export class Pet3D implements Model3D {
   private hasHand = false;
   /** 팔이 없는 펫의 손 흔들기 앞발 (평소엔 숨김) */
   private wavePaw: Group | undefined;
+  /** 같이 타자 치기: 앞발을 옮길 자리와 키보드 자리 (pet3d-tap.ts), 만든 입체 키보드 */
+  private tapRig: TapRig | undefined;
+  private keys: Keyboard3D | undefined;
   /** 네 발 걷기 (설계도 gait, pet3d-gait.ts). 두 발 펫이면 undefined */
   private quad: QuadRig | undefined;
   private face: FaceRig | undefined;
@@ -560,6 +578,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       else if (slot === 'tail') pivots[slot] = new Vector3(c.x, b.min.y, b.max.z);
       else pivots[slot] = new Vector3(c.x, b.min.y, c.z); // 귀, 머리 위
     }
+    this.tapRig = tapRigOf(boxes, pivots);
     // body 를 먼저, head 를 다음에 만들어야 자식이 부모를 찾는다 (SLOTS 순서)
     for (const slot of SLOTS) {
       const g = new Group();
@@ -985,6 +1004,25 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
   /** 방금 그린 자세가 아직 따라가는 중인지 (돌아서기, 걷기 풀기). 펫 화면이 몇 틀 더 그린다 */
   settling(): boolean {
     return this.ease.busy;
+  }
+
+  /** 방금 그린 그림에서 side 쪽 앞발 끝 (2D 캔버스 좌표). 앞발이 없으면 undefined (연필, 쪽지를 손에 맞춘다) */
+  hand(side: -1 | 1): { x: number; y: number } | undefined {
+    const rig = this.tapRig;
+    if (!rig || this.relief || !this.drawn) return undefined;
+    for (const slot of side < 0 ? (['armL', 'wingL'] as const) : (['armR', 'wingR'] as const)) {
+      const tip = pawTip(rig, slot);
+      if (!tip) continue;
+      const p = this.joints[slot].localToWorld(tip).project(this.camera);
+      const { x0, y0, d } = this.drawn;
+      return { x: x0 + d / 2 + (p.x * d) / 2, y: y0 + d / 2 - (p.y * d) / 2 };
+    }
+    return undefined;
+  }
+
+  /** 같이 타자 치기를 입체로 그린다 (조립한 몸이고 앞발이 있을 때. 입체 판은 2D 키보드를 얹는다) */
+  ownsTap(): boolean {
+    return !this.relief && !!this.tapRig;
   }
 
   /** 펫을 ctx 에 그리고 머리 꼭대기 y 를 돌려준다. 그릴 수 없으면 undefined (2D 로) */
@@ -2023,8 +2061,10 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     }
     const j = this.joints;
     for (const slot of SLOTS) j[slot].rotation.set(0, 0, 0);
-    for (const arm of [j.armL, j.armR]) if (arm.userData.base) arm.position.copy(arm.userData.base);
+    for (const arm of [j.armL, j.armR, j.wingL, j.wingR])
+      if (arm.userData.base) arm.position.copy(arm.userData.base);
     if (this.wavePaw) this.wavePaw.visible = false;
+    if (this.keys) this.keys.group.visible = false;
     for (const leg of this.quad?.legs ?? []) {
       leg.g.position.copy(leg.base);
       leg.g.scale.set(1, 1, 1);
@@ -2228,6 +2268,19 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       wings(0.12 + 0.2 * (0.5 + 0.5 * Math.sin(trick.t * Math.PI * 10)));
       eye = 'up';
     }
+    // 같이 타자 치기, 쪽지 들기, 같이 일하기 (together-draw.ts): 앞발(팔, 날개)을 몸 앞으로 모아 키보드를 번갈아 누르고,
+    // 쪽지는 두 팔로 몸 앞에 든다. 같이 일할 때는 오른팔을 조금 들어 연필을 쥔다 (연필과 키보드는 draw.ts 가 위에 그린다)
+    if (!walk && !trick) {
+      const tap = tapOf(s, act);
+      if (tap) {
+        const [l, r] = tapPaws(tap.ms, s.calm);
+        this.forePaws(tap.k, (slot) => ({ press: slot.endsWith('L') ? l : r }), [l, r]);
+      } else if (noteOf(s, act)) this.forePaws(1, () => 'hold');
+      else if (workOf(s) !== undefined && !mv) {
+        this.forePaws(1, () => 'pen');
+        if (mouth === 'smile') mouth = 'flat';
+      }
+    }
     // 공을 물 때 고개를 숙이고 몸도 조금 앞으로 (shared/fetch.ts pickPose)
     const dip = s.carry?.dip ?? 0;
     if (dip > 0) {
@@ -2252,6 +2305,37 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
         g2.visible = facing > 0.25 || (g2 === this.face.mouthAt && this.face.style === 'beak');
       }
     }
+  }
+
+  /**
+   * 앞발을 몸 앞으로 모은다 (같이 타자 치기, 쪽지 들기). k 는 모은 정도, l, r 은 누른 정도 0~1.
+   * 앞발 관절을 몸 앞 키보드 위로 옮기고(pet3d-tap.ts) 누르지 않는 발은 조금 든다. board 면 입체 키보드도 보인다
+   */
+  private forePaws(
+    k: number,
+    aim: (slot: (typeof HANDS)[number]) => Parameters<typeof pawTarget>[2],
+    board?: readonly [number, number],
+  ) {
+    const rig = this.tapRig;
+    if (!rig) return;
+    const j = this.joints;
+    for (const slot of HANDS) {
+      const base = j[slot].userData.base as Vector3 | undefined;
+      const target = pawTarget(rig, slot, aim(slot));
+      if (base && target) reachPaw(rig, slot, target, k, j[slot], base);
+    }
+    if (!board) return;
+    const [l, r] = board;
+    if (this.keys?.group.parent !== this.root) {
+      // 펫을 다시 조립하면 옛 키보드는 옛 몸과 같이 버려졌다 (resetRoot). 새 몸에 새로 만든다
+      this.keys = buildKeyboard(
+        rig,
+        (color, shiny) => this.material(color, shiny || this.furry ? 'shiny' : 'soft'),
+        this.game ? (m) => this.addOutline(m) : undefined,
+      );
+      this.root.add(this.keys.group);
+    }
+    poseKeyboard(this.keys, k, [l, r]);
   }
 
   /** 누운 몸을 바닥(y=0)에 붙이고 쉬는 자세의 가운데로 옮긴다 (뒹굴기) */

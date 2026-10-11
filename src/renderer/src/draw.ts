@@ -10,6 +10,7 @@ import type { MoveType } from '../../shared/moves.ts';
 import type { PetMood } from '../../shared/pet-mood.ts';
 import type { Gait } from '../../shared/pet3d/blueprint.ts';
 import type { PetKind } from '../../shared/settings.ts';
+import type { NoteLook } from '../../shared/together.ts';
 import type { Outfit } from '../../shared/wear.ts';
 import { drawMagnifier } from './magnifier.ts';
 import { Eased } from './motion-ease.ts';
@@ -24,6 +25,15 @@ import {
   movePose,
 } from './move-pose.ts';
 import { quadKind, walkEnvelopeOf } from './pet3d-gait.ts';
+import {
+  drawBrow,
+  drawHeldNote,
+  drawKeyboard,
+  drawPencil,
+  drawTapPaws,
+  drawWorkSparkle,
+  tapPaws,
+} from './together-draw.ts';
 import { drawWear2D } from './wear-draw.ts';
 
 export const CANVAS_SIZE = 160;
@@ -131,6 +141,38 @@ export interface DrawState {
   now?: number;
   /** drawPet 이 부드럽게 따라간 커서 방향 (gazeOf 가 이것을 돌려준다). null 이면 안 본다. 밖에서 넣지 않는다 */
   easedGaze?: Gaze | null;
+  /**
+   * 같이 타자 치기 (shared/together.ts): k 는 키보드가 나온 정도 0~1 (나오고 들어가며 바뀐다), ms 는 두드린 시간.
+   * 앞발로 작은 키보드를 번갈아 두드린다 (together-draw.ts tapPaws). 한가한 모습일 때만 (tapOf)
+   */
+  tap?: { k: number; ms: number };
+  /** 같이 일하는 표정이 시작된 뒤 흐른 시간(ms): 집중한 눈썹, 연필, 반짝이. 없으면 -1 */
+  work?: number;
+  /** 든 쪽지 (매일 쪽지, 특별한 편지) */
+  note?: NoteLook;
+}
+
+/** 같이 타자 치기를 보일 때: 한가하거나 말하는 중, 걷거나 몸짓을 하지 않을 때 (앉기는 된다). 얼굴 아이콘은 빼고 */
+export function tapOf(s: DrawState, act: DrawState['activity']): { k: number; ms: number } | undefined {
+  if (!s.tap || s.tap.k <= 0 || s.face) return undefined;
+  if (s.mood !== 'idle' && s.mood !== 'talking') return undefined;
+  if ((act && act.type !== 'sit') || s.peer?.pose || s.carry || trickOf(s)) return undefined;
+  return s.tap;
+}
+
+/** 같이 일하는 표정을 보일 때: 깨어 있고 들리지 않았을 때 */
+export function workOf(s: DrawState): number | undefined {
+  if (s.work === undefined || s.work < 0 || s.face) return undefined;
+  if (['sleeping', 'dozing', 'grabbed', 'hidden', 'busy'].includes(s.mood)) return undefined;
+  return s.work;
+}
+
+/** 든 쪽지를 보일 때: 같이 타자 치는 중이 아니고, 걷거나 몸짓 중이 아니고, 깨어 있을 때 */
+export function noteOf(s: DrawState, act: DrawState['activity']): NoteLook | undefined {
+  if (!s.note || s.face || (s.tap?.k ?? 0) > 0.5) return undefined;
+  if (['sleeping', 'dozing', 'grabbed', 'hidden', 'busy', 'thinking'].includes(s.mood)) return undefined;
+  if ((act && act.type !== 'sit') || s.peer?.pose || s.carry || trickOf(s)) return undefined;
+  return s.note;
 }
 
 /**
@@ -225,6 +267,8 @@ export function movePoseOf(act: DrawState['activity'], calm?: boolean): MovePose
 export function gazeOf(s: DrawState, act: DrawState['activity']): Gaze | undefined {
   if (s.easedGaze !== undefined) return s.easedGaze ?? undefined;
   if (s.peer) return s.peer.dir;
+  // 같이 타자 치거나 같이 일하는 동안은 손 쪽(아래)을 본다
+  if (tapOf(s, act) || (workOf(s) !== undefined && s.mood === 'idle' && !act)) return { x: 0, y: 0.7 };
   if (s.mood !== 'idle' || !s.gaze || (act && act.type !== 'sit')) return undefined;
   return s.gaze;
 }
@@ -245,6 +289,10 @@ export interface Model3D {
   mouth?(): { x: number; y: number } | undefined;
   /** 방금 그린 자세가 아직 목표로 따라가는 중인지 (돌아서기, 걷기 풀기). 그렇다면 몇 틀 더 그린다 */
   settling?(): boolean;
+  /** 같이 타자 치기 키보드와 앞발을 입체로 직접 그린다 (아니면 2D 키보드와 앞발을 위에 얹는다) */
+  ownsTap?(): boolean;
+  /** 방금 그린 그림에서 side 쪽 앞발 끝 (연필과 쪽지를 손에 맞춘다). 모르면 undefined */
+  hand?(side: -1 | 1): { x: number; y: number } | undefined;
 }
 
 /** 하트가 떠올라 사라지는 시간 */
@@ -423,6 +471,7 @@ function drawPetBody(ctx: CanvasRenderingContext2D, s: DrawState): Point | undef
     const top = drawPhoto(ctx, s, s.photo, lift, sx, sy, act);
     const ball = drawCarry(ctx, s.carry, guessMouth(top, GROUND - lift));
     drawPeer(ctx, s, top, GROUND - lift, PHOTO_EYE_AT);
+    drawTogetherOver(ctx, s, act, top, GROUND - lift);
     drawExtras(ctx, s, top, lift);
     return ball;
   }
@@ -433,6 +482,7 @@ function drawPetBody(ctx: CanvasRenderingContext2D, s: DrawState): Point | undef
         ? drawCarry(ctx, s.carry, s.model3d.mouth?.() ?? guessMouth(top, GROUND - lift))
         : undefined;
       drawPeer(ctx, s, top, GROUND - lift, MODEL_EYE_AT, s.model3d);
+      drawTogetherOver(ctx, s, act, top, GROUND - lift, s.model3d);
       drawExtras(ctx, s, top, lift);
       return ball;
     }
@@ -595,6 +645,10 @@ function drawPetBody(ctx: CanvasRenderingContext2D, s: DrawState): Point | undef
     g,
     mv?.eyes === 'wide',
   );
+  // 같이 일하는 표정: 눈 위 집중한 눈썹 (눈 자리는 drawEyes 와 같은 계산)
+  if (workOf(s) !== undefined && !yawning && !mv?.eyes && s.mood !== 'excited')
+    for (const side of [-1, 1] as const)
+      drawBrow(ctx, side * 20 + look + (g ? g.x * 3 : 0), -6 + (g ? g.y * 2.5 : 0), side);
   if (kind === 'chick') drawBeak(ctx, s.mood, look, yawning || mv?.mouth === 'open' || mv?.mouth === 'o');
   else if (yawning) drawYawn(ctx, look);
   else if (mv?.mouth) drawMouth(ctx, mv.mouth === 'o' ? 'sleeping' : 'talking', look);
@@ -603,6 +657,12 @@ function drawPetBody(ctx: CanvasRenderingContext2D, s: DrawState): Point | undef
   ctx.restore();
   // 철마다 옷: 얼굴 다음, 손 전에 (든 손과 쉬는 손이 늘 옷 위에 보이게)
   if (s.wear && !s.face) drawWear2D(ctx, s.wear);
+  // 같이 타자 치기의 키보드, 든 쪽지: 몸 앞, 손 밑에 (몸 좌표. 키보드는 몸 아래쪽을 가로지른다)
+  const tapping = tapOf(s, act);
+  const press = tapping ? tapPaws(tapping.ms, s.calm) : undefined;
+  if (tapping) drawKeyboard(ctx, 0, RY - 12, 66, tapping.k, press);
+  const held = noteOf(s, act);
+  if (held) drawHeldNote(ctx, 0, 26, held, 1.05);
   // 손: 늘어진 귀와 수염 앞에. 손 흔들기 동안 오른손은 흔드는 팔이 대신한다
   if (hand) {
     const walking = act?.type === 'walk' ? act : undefined;
@@ -619,6 +679,9 @@ function drawPetBody(ctx: CanvasRenderingContext2D, s: DrawState): Point | undef
       footY,
       lifts: [Math.max(0, step * 4) / sy, Math.max(0, -step * 4) / sy],
       holding: s.peer?.pose && s.peer.pose.alpha > 0 ? lensSide(s.peer.dir) : undefined,
+      ...(tapping && press ? { tap: { k: tapping.k, press } } : {}),
+      ...(held ? { hold: true } : {}),
+      ...(workOf(s) !== undefined && !tapping && !held && !walking ? { pencil: true } : {}),
     });
   }
   ctx.restore();
@@ -683,6 +746,49 @@ function drawPeer(
   const side = lensSide(s.peer.dir);
   const eye = model?.eye?.(side) ?? { x: CX + side * 18, y: top + (bottom - top) * at };
   drawMagnifier(ctx, { pose: s.peer.pose, ...eye });
+}
+
+/**
+ * 사진과 입체 펫 위에 얹는 같이 지내는 모습 (together-draw.ts): 바닥 앞 작은 키보드(사진은 두드리는 앞발도, 입체는 팔이
+ * 두드린다), 몸 앞에 든 쪽지, 같이 일할 때 연필과 눈썹. top 머리 꼭대기, bottom 발 높이 (2D 캔버스)
+ */
+function drawTogetherOver(
+  ctx: CanvasRenderingContext2D,
+  s: DrawState,
+  act: DrawState['activity'],
+  top: number,
+  bottom: number,
+  model?: Model3D,
+) {
+  const tapping = tapOf(s, act);
+  if (tapping && !model?.ownsTap?.()) {
+    const press = tapPaws(tapping.ms, s.calm);
+    const keyY = bottom - 15;
+    drawKeyboard(ctx, CX, keyY, 70, tapping.k, press);
+    drawTapPaws(ctx, CX, keyY, 70, tapping.k, press);
+  }
+  const held = noteOf(s, act);
+  if (held) {
+    // 입체는 두 앞발 사이 조금 위, 모르면(사진) 배 앞
+    const l = model?.hand?.(-1);
+    const r = model?.hand?.(1);
+    if (l && r) drawHeldNote(ctx, (l.x + r.x) / 2, (l.y + r.y) / 2 - 5, held, 1.05);
+    else drawHeldNote(ctx, CX, top + (bottom - top) * 0.72, held, 1.05);
+  }
+  const work = workOf(s);
+  if (work === undefined) return;
+  // 연필은 오른 앞발에 (모르면 오른쪽 아래 어림). 두드리거나 쪽지를 든 동안은 손이 바빠 안 든다
+  if (!tapping && !held && !(act && act.type !== 'sit')) {
+    const hand = model?.hand?.(1);
+    if (hand) drawPencil(ctx, hand.x + 1, hand.y - 3, 0.38);
+    else drawPencil(ctx, CX + 34, top + (bottom - top) * 0.66, 0.38);
+  }
+  // 눈썹: 입체는 그린 눈 위에, 사진은 눈 자리를 몰라 그리지 않는다
+  if (model?.eye && s.mood !== 'excited')
+    for (const side of [-1, 1] as const) {
+      const eye = model.eye(side);
+      if (eye) drawBrow(ctx, eye.x, eye.y, side, 3.6);
+    }
 }
 
 /**
@@ -760,6 +866,12 @@ interface HandPose {
   lifts: readonly [number, number];
   /** 돋보기를 쥔 쪽 (그쪽 손은 손잡이를 쥐러 갔다) */
   holding?: -1 | 1;
+  /** 같이 타자 치기: 손이 몸 앞 키보드 위로 와서 press [왼, 오른] 만큼 누른다. k 는 나온 정도 */
+  tap?: { k: number; press: readonly [number, number] };
+  /** 쪽지를 두 손으로 몸 앞에 들었다 */
+  hold?: boolean;
+  /** 같이 일하는 중: 오른손에 연필 */
+  pencil?: boolean;
 }
 
 /** 몸 테두리의 가로 자리 (몸 좌표 y 에서) */
@@ -781,15 +893,57 @@ function drawHands(ctx: CanvasRenderingContext2D, kind: PetKind, p: HandPose) {
   for (const side of [-1, 1] as const) {
     if (side === p.holding) continue;
     const i = side === -1 ? 0 : 1;
-    if (hand.wing) {
+    if (hand.wing && !p.tap && !p.hold) {
       const waving = side === 1 && p.wave !== undefined;
       const wt = p.wave ?? 0;
       const up = waving ? Math.max(p.raise[i] ?? 0, Math.min(1, wt * 5, (1 - wt) * 5)) : (p.raise[i] ?? 0);
       drawWing(ctx, side, up, waving ? waveSwing(wt) * 0.35 : p.step * side * 0.12, hand.color);
+      // 같이 일하는 중: 오른 날개 끝에 연필
+      if (p.pencil && side === 1 && !waving) drawPencil(ctx, bodyEdge(4) + 1, 19, 0.38);
       continue;
     }
     if (side === 1 && p.wave !== undefined) continue;
     const up = p.raise[i] ?? 0;
+    if (p.tap || p.hold) {
+      // 같이 타자 치기: 몸 앞 키보드 위로 손을 모아 번갈아 누른다. 쪽지: 두 손으로 몸 앞 쪽지 양끝을 쥔다
+      const k = p.tap ? p.tap.k : 1;
+      const press = p.tap?.press[i] ?? 0;
+      const tx = side * (p.tap ? 17 : 15);
+      const ty = p.tap ? RY - 21 + press * 7 : 30;
+      const rx0 = side * (bodyEdge(24) + 1);
+      const x = rx0 + (tx - rx0) * k;
+      const y = 24 + (ty - 24) * k;
+      ctx.beginPath();
+      // 삐약이는 날개 끝을 모아 쥔다 (조금 길쭉한 날개깃 모양에 깃 홈 하나)
+      if (hand.wing) ctx.ellipse(x, y, 7.5, 9, side * 0.5, 0, Math.PI * 2);
+      else ctx.ellipse(x, y, 9, 7.5, side * 0.3 * (1 - k), 0, Math.PI * 2);
+      ctx.fillStyle = hand.color;
+      ctx.fill();
+      ctx.stroke();
+      if (hand.wing) {
+        ctx.save();
+        ctx.lineWidth = 1.3;
+        ctx.globalAlpha = 0.6;
+        ctx.beginPath();
+        ctx.moveTo(x + side * 1.5, y + 2);
+        ctx.lineTo(x + side * 3, y + 7);
+        ctx.stroke();
+        ctx.restore();
+      }
+      continue;
+    }
+    if (p.pencil && side === 1) {
+      // 같이 일하는 중: 오른손을 조금 들어 연필을 쥔다 (연필 먼저, 손이 그 위를 감싼다)
+      const py = 24 - 0.3 * 40;
+      const px = bodyEdge(py) + 2.5;
+      drawPencil(ctx, px + 1, py - 1, 0.38);
+      ctx.beginPath();
+      ctx.ellipse(px, py, 9, 8, 0.45, 0, Math.PI * 2);
+      ctx.fillStyle = hand.color;
+      ctx.fill();
+      ctx.stroke();
+      continue;
+    }
     // 손은 늘 몸 테두리에 반쯤 걸쳐 있다 (떨어져 떠 보이지 않게): 쉴 때 배 옆 아래, 들면 테두리를 따라 어깨 위로
     // 올라가며 조금 더 밖으로 나온다. 걸을 때는 위아래로 조금
     let y = 24 - up * 40 - side * p.step * 3;
@@ -1466,6 +1620,11 @@ function drawExtras(ctx: CanvasRenderingContext2D, s: DrawState, top: number, li
     drawConfetti(ctx, s.confetti ?? 0, top + lift);
   drawMoveMark(ctx, s, top);
   if ((s.fresh ?? -1) >= 0 && s.mood !== 'sleeping' && s.mood !== 'dozing') drawFresh(ctx, s.fresh ?? 0, top);
+  // 같이 일하는 중: 머리 오른쪽 위 반짝이
+  const work = workOf(s);
+  // 사진 펫은 오른쪽 위에 기운 반짝이가 있어 왼쪽 위에
+  if (work !== undefined && s.mood !== 'thinking')
+    drawWorkSparkle(ctx, CX + (s.photo ? -46 : 42), Math.max(10, top + 4), work, s.calm);
   if (s.photo) drawPhotoEnergy(ctx, s, top);
   ctx.fillStyle = INK;
   if (s.mood === 'thinking') {

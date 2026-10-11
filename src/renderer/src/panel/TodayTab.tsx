@@ -11,6 +11,7 @@ import { dayHeading, timeOf } from './format.ts';
 import { HabitBox } from './HabitBox.tsx';
 import { JourneyCard } from './JourneyCard.tsx';
 import { PlanCard } from './MorningPlan.tsx';
+import { NoteBox } from './NoteBox.tsx';
 import { RemindCard } from './RemindCard.tsx';
 import { TodoRow } from './TodoTab.tsx';
 import { WeekCardButton } from './WeekCard.tsx';
@@ -179,6 +180,9 @@ export function TodayTab({
 
         {/* 첫 7일 여정 (shared/journey.ts). 여정 밖이면 그리지 않는다 */}
         <JourneyCard s={s} />
+
+        {/* 매일 쪽지함 (shared/daily-note.ts). 쪽지가 없고 꺼져 있으면 그리지 않는다 */}
+        <NoteBox />
 
         {s.missed.length > 0 && (
           <section className="missed">

@@ -31,6 +31,7 @@ import { boostOn, onBoostChange } from './boost.ts';
 import { watchCalendar } from './calendar.ts';
 import { createChat } from './chat.ts';
 import { createCompanion } from './companion.ts';
+import { createDailyNotes } from './daily-note.ts';
 import { createDayTools } from './day-tools.ts';
 import { announceJsonTrouble, announceStoreTrouble, openStore } from './db.ts';
 import { createDiary } from './diary.ts';
@@ -74,6 +75,7 @@ import { settings } from './settings.ts';
 import { createSettingsWindow } from './settings-window.ts';
 import { onJsonTrouble } from './store.ts';
 import { createSystemMonitor } from './system-monitor.ts';
+import { createTogether } from './together.ts';
 import { baseTrayIcon, createTray } from './tray.ts';
 import { watchTrayTitle } from './tray-title.ts';
 import { watchUpdates } from './update.ts';
@@ -233,6 +235,11 @@ ready
             return;
           }
           petLife.activity('click');
+          // 쪽지를 들고 있으면 누르기가 쪽지 펼치기 (매일 쪽지, main/daily-note.ts)
+          if (dailyNotes.holding()) {
+            void dailyNotes.open();
+            return;
+          }
           panel.togglePanel();
         },
         openChat: (bounds) => chat.open(bounds),
@@ -830,7 +837,12 @@ ready
         pet.react('fed');
         petLife.activity('feed');
         const image = food.image ? foodImageDataUrl(food.image) : undefined;
-        void pet.say({ kind: 'answer', text: voiced('pet.fedWith', { food: food.name }), ttlMs: 3500, image });
+        void pet.say({
+          kind: 'answer',
+          text: voiced('pet.fedWith', { food: food.name }),
+          ttlMs: 3500,
+          image,
+        });
         sendStatus();
       },
       openFoodMaker: () => maker.open('food'),
@@ -928,6 +940,8 @@ ready
     pet.win.webContents.on('did-finish-load', () => {
       lastStatus = '';
       sendStatus();
+      // 같이 타자 치기, 같이 일하는 표정, 든 쪽지도 다시 (main/together.ts)
+      together.resend();
     });
     // 이름 옆 얼굴: 내 펫 화면이 지금 모습으로 그려 보낸 것을 창들에 나눠 준다 (shared/face.ts)
     // 윈도우 알림 영역 아이콘도 지금 펫 얼굴로 (원래는 콩이 그림 tray.png). 맥 메뉴 막대는 흑백 템플릿이라 그대로
@@ -1198,6 +1212,58 @@ ready
       panel: () => panel.window,
       hold: (work) => panel.hold(work),
       onSaved: () => journey.tried('week'),
+      log,
+    });
+    // ---- 같이 지내는 느낌: 같이 타자 치기, 같이 일하는 표정, 매일 쪽지 (main/together.ts, daily-note.ts) ----
+    const together = createTogether({
+      win: () => pet.win,
+      hidden: () => pet.isHidden() || rest.inside(),
+      asleep: () => planner.focus.phase === 'focus',
+      persona: () => settings.get().persona,
+      canTalk,
+      say: (o) => pet.say(o),
+      userData: app.getPath('userData'),
+      log,
+    });
+    const dailyNotes = createDailyNotes({
+      petName,
+      persona: () => settings.get().persona,
+      firstDay: () => stats.firstDay(),
+      facts: (now) => {
+        const day = todayRange(now);
+        const todays = events
+          .between(day.from, day.to)
+          .filter((e) => e.allDay || (e.endAt ?? e.startAt) >= now)
+          .sort((a, b) => a.startAt - b.startAt);
+        const first = todays.find((e) => !e.allDay) ?? todays[0];
+        const habit = habits.list(now, restDaysOf(settings.get())).sort((a, b) => b.streak - a.streak)[0];
+        return {
+          yesterdayDone: companion.memoryFacts(now).yesterdayDone ?? 0,
+          ...(first
+            ? {
+                firstEvent: {
+                  time: first.allDay
+                    ? ''
+                    : new Date(first.startAt).toLocaleTimeString(locale(), {
+                        hour: 'numeric',
+                        minute: '2-digit',
+                      }),
+                  title: first.title,
+                },
+              }
+            : {}),
+          ...(habit && habit.streak >= 2 ? { habit: { title: habit.title, streak: habit.streak } } : {}),
+          facts: settings.get().petFacts,
+        };
+      },
+      canTalk,
+      say: (o) => pet.say(o),
+      react: (kind) => pet.react(kind),
+      hold: (look) => together.setNote(look),
+      reward: (coins, reason, now) => store.reward(coins, reason, now),
+      panel: () => panel.window,
+      openToday: () => panel.openTab('today'),
+      onChange: () => panel.refresh(),
       log,
     });
     settings.onChange((next, prev) => {
@@ -1482,6 +1548,8 @@ ready
           journey,
           wear,
           weekCard,
+          together,
+          dailyNotes,
           // 문서 화면 찍기(scripts/dev/screens.mjs)가 그림 친구(밀크, 초코)로 바꿀 때
           library,
         },
