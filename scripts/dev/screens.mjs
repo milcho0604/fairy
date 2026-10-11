@@ -611,7 +611,7 @@ try {
   if (want('pets')) {
     const cells = [];
     for (const [kind, label] of [
-      ['kong', '콩'],
+      ['kong', '콩이'],
       ['cat', '냥이'],
       ['chick', '삐약이'],
       ['dog', '멍멍이'],
