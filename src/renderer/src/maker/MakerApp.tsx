@@ -20,10 +20,15 @@ import {
   clampToAlpha,
   contentBox,
   defringe,
-  halfKeptShare,
-  keptRatio,
+  keepSure,
+  keptMass,
+  maskHints,
+  petOnly,
+  pickPet,
+  REFINE_KEEP,
   refineBox,
   stroke,
+  trimHalo,
 } from '../../../shared/mask.ts';
 import type { Blueprint } from '../../../shared/pet3d/blueprint.ts';
 import { cleanWish, WISH_MAX } from '../../../shared/pet3d/prompt.ts';
@@ -53,8 +58,11 @@ const WORK_SIDE = 1024;
 const OUT_SIDE = 512;
 /** 오린 그림의 긴 변이 이보다 작으면 흐릿할 수 있다고 알린다 (펫 화면은 2배 화면에서 250px 쯤으로 그린다) */
 const SMALL_CUT = 200;
-/** 남긴 곳의 이만큼이 반투명이면 복원 붓을 권한다 (흰 벽 앞 흰 고양이 55%, 64px 사진 28%, 보통 인형 사진 2%) */
-const HALF_KEPT_WARN = 0.22;
+/**
+ * 작은 펫을 다시 오릴 때 원본에서 적어도 이만큼(가로 세로, 원본 픽셀)은 둘레째 자른다. 모델 입력(1024)까지 2배 넘게
+ * 키우지 않게 (작게 잘라 7배로 흐리게 키우면 흰 아랫몸을 바탕으로 봤다, 2026-10-10)
+ */
+const REFINE_MIN_SRC = WORK_SIDE / 2;
 const UNDO_LIMIT = 20;
 /** 요청사항 칸 아래 예시 (눌러서 더한다) */
 const WISH_CHIPS = ['sleepy', 'sparkle', 'chubby', 'tail', 'ribbon', 'calm'] as const;
@@ -389,29 +397,35 @@ export function MakerApp() {
         }
         if (!alive()) return;
         const t0 = performance.now();
-        let next: Work = {
-          photo,
-          mask: withPhotoAlpha(await predictMask(photo, info), photo),
-          w: photo.width,
-          h: photo.height,
-        };
+        const first = withPhotoAlpha(await predictMask(photo, info), photo);
+        let next: Work = { photo, mask: first, w: photo.width, h: photo.height };
         if (!alive()) return;
-        // 펫이 사진에서 작으면 그 둘레만 원본 크기로 잘라 한 번 더 오린다 (팔이 살고 바탕 얼룩이 빠지고 덜 흐릿하다)
-        const near = refineBox(contentBox(next.mask, next.w, next.h), next.w, next.h);
-        if (near) {
-          const crop = await cropPhoto(file, photo, near);
+        // 펫이 사진에서 작으면 그 둘레만 원본 크기로 잘라 한 번 더 오린다 (팔이 살고 바탕 얼룩이 빠지고 덜 흐릿하다).
+        // 둘레는 펫으로 보이는 덩어리로 잡는다 (바깥 사진의 나무 줄처럼 따로 남은 바탕 띠는 빼고)
+        const pick = pickPet(first, next.w, next.h);
+        const cut = pick
+          ? await cropPhoto(file, photo, (scale) =>
+              refineBox(pick.box, next.w, next.h, 0.5, 0.2, REFINE_MIN_SRC / scale),
+            )
+          : undefined;
+        if (!alive()) return;
+        if (pick && cut) {
+          const { crop, box } = cut;
+          const second = withPhotoAlpha(await predictMask(crop, info), crop);
           if (!alive()) return;
-          if (crop) {
-            const mask = withPhotoAlpha(await predictMask(crop, info), crop);
-            if (!alive()) return;
-            // 다시 오린 것이 거의 비었거나 처음 것보다 훨씬 적게 남기면(꼬리, 다리가 잘린 칸 밖) 처음 것을 쓴다.
-            // 잘린 사진에서는 복원 붓으로도 칸 밖을 되살릴 수 없어서
-            const before = keptIn(next.mask, next.w, near);
-            const after = keptRatio(mask) * near.width * near.height;
-            if (keptRatio(mask) > 0.02 && after >= before * 0.6)
-              next = { photo: crop, mask, w: crop.width, h: crop.height };
-          }
+          // 다시 오린 것이 처음 것이 확실히 남긴 펫 몸(알파 합)을 덜 남기면(흰 아랫몸이 빠짐, 칸 밖으로 잘린 꼬리) 처음 것을
+          // 쓴다. 쓰더라도 처음 것이 확실히 남긴 몸이 뭉텅이로 빠진 곳은 되살린다 (mask.ts keptMass, keepSure)
+          const pet = petOnly(first, pick);
+          if (keptMass(pet, next.w, box, second, crop.width, crop.height) >= REFINE_KEEP)
+            next = {
+              photo: crop,
+              mask: keepSure(pet, next.w, box, second, crop.width, crop.height),
+              w: crop.width,
+              h: crop.height,
+            };
         }
+        // 몸에서 떨어진 반투명 안개(작은 펫 둘레 회색 네모)를 걷는다
+        next.mask = trimHalo(next.mask, next.w, next.h);
         setElapsed(Math.round(performance.now() - t0));
         saveDuration('cutout', performance.now() - cutStart, store());
         setWork(next);
@@ -1097,7 +1111,11 @@ export function MakerApp() {
                 onStop={stopShape}
               />
             ) : (
-              <div className="stage">
+              <div
+                className={
+                  (look === 'figure' && model) || (look === 'relief' && depth) ? 'stage' : 'stage split'
+                }
+              >
                 {look === 'figure' && model ? (
                   <Spin3D model={model} interactive={step === 'name'} />
                 ) : look === 'relief' && depth ? (
@@ -1531,8 +1549,13 @@ function Editor({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [mode, setMode] = useState<'erase' | 'restore'>('erase');
-  const [size, setSize] = useState(24);
+  // 붓 굵기 = 화면에서 보이는 지름(px). 반지름으로 쓰여 숫자보다 두 배 굵게 칠했다 (2026-10-11)
+  const [size, setSize] = useState(40);
   const [, setVersion] = useState(0);
+  // 안내(반투명, 따로 남은 것, 잘림)는 붓질을 마칠 때와 되돌릴 때 다시 잰다 (mask.ts maskHints)
+  const [hints, setHints] = useState(() => maskHints(work.mask, work.w, work.h));
+  const measure = useCallback(() => setHints(maskHints(work.mask, work.w, work.h)), [work]);
+  useEffect(measure, [measure]);
   const undo = useRef<Uint8ClampedArray[]>([]);
   const last = useRef<{ x: number; y: number }>(undefined);
   const raf = useRef(0);
@@ -1575,8 +1598,9 @@ function Editor({
     const r = e.currentTarget.getBoundingClientRect();
     return { x: ((e.clientX - r.left) / r.width) * work.w, y: ((e.clientY - r.top) / r.height) * work.h };
   };
+  /** 붓 반지름 (작업 사진 칸) */
   const brushPx = (e: React.PointerEvent<HTMLCanvasElement>) =>
-    (size * work.w) / e.currentTarget.getBoundingClientRect().width;
+    (size / 2) * (work.w / e.currentTarget.getBoundingClientRect().width);
 
   const paint = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const p = toWork(e);
@@ -1586,8 +1610,14 @@ function Editor({
     raf.current = requestAnimationFrame(draw);
   };
 
-  const kept = keptRatio(work.mask);
-  const half = halfKeptShare(work.mask) > HALF_KEPT_WARN;
+  // 반쯤 비침 안내가 있거나 따로 남은 것이 있으면 속 빔 안내는 겹치니 빼고 (바탕 띠 사이 틈도 속이 빈 것처럼 잰다)
+  const hollow = hints.hollow && !hints.half && hints.others === 0;
+  const notes =
+    Number(hints.half) +
+    Number(hollow) +
+    Number(hints.others > 0) +
+    Number(hints.empty || hints.full) +
+    Number(hints.cut && !hints.empty && !hints.full);
 
   return (
     <section className="edit">
@@ -1614,8 +1644,8 @@ function Editor({
           {t('maker.edit.size')}
           <input
             type="range"
-            min={6}
-            max={80}
+            min={8}
+            max={120}
             value={size}
             onChange={(e) => setSize(Number(e.target.value))}
           />
@@ -1629,6 +1659,7 @@ function Editor({
             if (prev) work.mask.set(prev);
             draw();
             setVersion((v) => v + 1);
+            measure();
           }}
         >
           {t('maker.edit.undo')}
@@ -1641,7 +1672,14 @@ function Editor({
           height={work.h}
           className={mode}
           // 아주 작은 사진, 아주 긴 사진도 칠할 만한 크기로 보인다 (maker.css .canvas-wrap canvas)
-          style={{ '--brush': `${size}px`, '--ar': work.w / work.h } as React.CSSProperties}
+          style={
+            {
+              '--ar': work.w / work.h,
+              // 안내 줄 수만큼 사진을 줄여 다 됐어 단추까지 한 화면에 (maker.css .canvas-wrap canvas)
+              '--notes': notes,
+              cursor: brushCursor(size),
+            } as React.CSSProperties
+          }
           aria-label={t('maker.edit.canvas')}
           onPointerDown={(e) => {
             // 오른쪽, 가운데 단추로는 칠하지 않는다
@@ -1658,20 +1696,24 @@ function Editor({
           }}
           onPointerUp={() => {
             last.current = undefined;
+            measure();
           }}
         />
       </div>
       <p className="hint">
         {t('maker.edit.hint')} {note}
       </p>
-      {half && kept >= 0.02 && <p className="warn">{t('maker.edit.halfKept')}</p>}
-      {(kept < 0.02 || kept > 0.97) && (
+      {hints.half && <p className="warn">{t('maker.edit.halfKept')}</p>}
+      {hollow && <p className="warn">{t('maker.edit.hollow')}</p>}
+      {hints.others > 0 && <p className="warn">{t('maker.edit.others')}</p>}
+      {(hints.empty || hints.full) && (
         <p className="warn">
-          {kept < 0.02 ? t('maker.edit.almostAllErased') : t('maker.edit.barelyErased')}{' '}
+          {hints.empty ? t('maker.edit.almostAllErased') : t('maker.edit.barelyErased')}{' '}
           {t('maker.edit.tryAgain')}
         </p>
       )}
-      <div className="actions">
+      {hints.cut && !hints.empty && !hints.full && <p className="hint">{t('maker.edit.cutEdge')}</p>}
+      <div className="actions edit-actions">
         <button type="button" className="ghost" onClick={onBack}>
           {t('maker.edit.otherPhoto')}
         </button>
@@ -1681,6 +1723,18 @@ function Editor({
       </div>
     </section>
   );
+}
+
+/**
+ * 붓 모양 커서: 지름 d(px) 동그라미 (밝은 선 + 어두운 선이라 어느 바탕에서도 보인다). 브라우저 커서는 128px 까지라
+ * 그보다 크면 십자로
+ */
+function brushCursor(d: number): string {
+  const s = Math.ceil(d) + 4;
+  if (s > 128) return 'crosshair';
+  const c = s / 2;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}"><circle cx="${c}" cy="${c}" r="${d / 2}" fill="none" stroke="white" stroke-width="2.5"/><circle cx="${c}" cy="${c}" r="${d / 2}" fill="none" stroke="black" stroke-width="1"/></svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${Math.round(c)} ${Math.round(c)}, crosshair`;
 }
 
 const ANIMATED_MAX = 8 * 1024 * 1024;
@@ -1737,30 +1791,23 @@ async function loadPhoto(file: Blob): Promise<HTMLCanvasElement> {
 }
 
 /**
- * 원본 파일에서 box(작업 사진 좌표) 둘레를 원본 크기로 잘라 낸다 (긴 변 WORK_SIDE 이하). 작업 사진은 긴 변 1024 로
- * 줄인 것이라 작은 펫은 몇십 칸뿐이었다. 원본도 작으면 늘이지 않는다. 못 읽으면 undefined
+ * 원본 파일에서 다시 오릴 자리를 원본 크기로 잘라 낸다 (긴 변 WORK_SIDE 이하). 작업 사진은 긴 변 1024 로
+ * 줄인 것이라 작은 펫은 몇십 칸뿐이었다. 원본도 작으면 늘이지 않는다. boxFor 는 원본/작업 사진 배율을 받아 자리
+ * (작업 사진 좌표)를 준다. 다시 오릴 자리가 없거나 못 읽으면 undefined
  */
-/** 마스크에서 칸 안 남긴 칸 수 (128 넘는 것) */
-function keptIn(
-  mask: Uint8ClampedArray,
-  w: number,
-  box: { x: number; y: number; width: number; height: number },
-) {
-  let n = 0;
-  for (let y = box.y; y < box.y + box.height; y++)
-    for (let x = box.x; x < box.x + box.width; x++) if ((mask[y * w + x] ?? 0) > 128) n++;
-  return n;
-}
-
 async function cropPhoto(
   file: Blob,
   photo: HTMLCanvasElement,
-  box: { x: number; y: number; width: number; height: number },
-): Promise<HTMLCanvasElement | undefined> {
+  boxFor: (scale: number) => { x: number; y: number; width: number; height: number } | undefined,
+): Promise<
+  { crop: HTMLCanvasElement; box: { x: number; y: number; width: number; height: number } } | undefined
+> {
   const bitmap = await createImageBitmap(file).catch(() => undefined);
   if (!bitmap) return undefined;
   try {
     const s = bitmap.width / photo.width;
+    const box = boxFor(s);
+    if (!box) return undefined;
     const sw = box.width * s;
     const sh = box.height * s;
     const k = Math.min(1, WORK_SIDE / Math.max(sw, sh));
@@ -1771,7 +1818,7 @@ async function cropPhoto(
     if (!g) return undefined;
     g.imageSmoothingQuality = 'high';
     g.drawImage(bitmap, box.x * s, box.y * s, sw, sh, 0, 0, c.width, c.height);
-    return c;
+    return { crop: c, box };
   } finally {
     bitmap.close();
   }
@@ -1819,8 +1866,9 @@ function cutout(work: Work): { url: string; side: number } {
   const img = fg.createImageData(work.w, work.h);
   img.data.set(src.data);
   // 털 끝에 섞인 바탕색을 뺀다 (어두운 화면에서 흰 테두리가 보이지 않게)
-  defringe(img.data, work.mask, work.w, work.h);
-  for (let i = 0; i < work.mask.length; i++) img.data[i * 4 + 3] = work.mask[i] ?? 0;
+  // 바탕색에 가까운 반투명 가장자리 칸은 알파도 낮춘다 (밝은 벽 앞 어두운 펫의 밝은 테두리)
+  const alpha = defringe(img.data, work.mask, work.w, work.h);
+  for (let i = 0; i < alpha.length; i++) img.data[i * 4 + 3] = alpha[i] ?? 0;
   fg.putImageData(img, 0, 0);
   const k = Math.min(1, OUT_SIDE / Math.max(box.width, box.height));
   const out = document.createElement('canvas');

@@ -231,7 +231,10 @@ export const ko = {
   'maker.edit.almostAllErased': '거의 다 지워졌어.',
   'maker.edit.barelyErased': '배경이 거의 안 지워졌어.',
   'maker.edit.tryAgain': '다듬거나 다른 사진을 골라 봐.',
-  'maker.edit.halfKept': '바탕과 색이 비슷해서 몸이 반쯤 비쳐 보여. 복원 붓으로 몸을 칠하면 또렷해져.',
+  'maker.edit.halfKept': '바탕과 색이 비슷해서 몸 일부가 반쯤 비쳐 보여. 복원 붓으로 그곳을 칠하면 또렷해져.',
+  'maker.edit.hollow': '몸 안쪽이 지워져 테두리만 남은 것 같아. 펫 몸이면 복원 붓으로 칠해 줘.',
+  'maker.edit.others': '펫 말고 다른 것도 같이 남았어. 펫이 아니면 지우개로 지워 줘.',
+  'maker.edit.cutEdge': '펫이 사진 끝에 닿아서 잘렸을 수 있어. 일부러 그렇게 찍었으면 그대로 둬도 돼.',
   'maker.edit.otherPhoto': '다른 사진',
   'maker.edit.next': '다 됐어',
 };
@@ -475,6 +478,12 @@ export const en: Translation<typeof ko> = {
   'maker.edit.tryAgain': 'Touch it up or pick another photo.',
   'maker.edit.halfKept':
     "Your pet's colors are close to the background, so parts look see-through. Paint over them with the restore brush to make them solid.",
+  'maker.edit.hollow':
+    'Part of the inside of your pet got erased, leaving just the outline. If it belongs to your pet, paint it with the restore brush.',
+  'maker.edit.others':
+    "Something besides your pet was kept too. If it's not your pet, erase it with the eraser.",
+  'maker.edit.cutEdge':
+    "Your pet touches the edge of the photo, so it may be cut off. That's fine if you meant it.",
   'maker.edit.otherPhoto': 'Another photo',
   'maker.edit.next': 'Done',
 };

@@ -218,11 +218,17 @@ section {
 .canvas-wrap canvas {
   display: block;
   /* --ar = 가로/세로. 칸에 맞게 키우거나 줄여(380px 높이, 칸 너비까지) 64px 사진도 칠할 만하게 보이고,
-     아주 긴 사진도 높이 160px 아래로는 줄이지 않는다 (넘치면 칸 안에서 가로로 민다). 붓 자리는 화면 크기 비율로 맞춘다 */
-  width: max(min(100%, 380px * var(--ar, 1)), 160px * var(--ar, 1));
+     아주 긴 사진도 높이 160px 아래로는 줄이지 않는다 (넘치면 칸 안에서 가로로 민다). 붓 자리는 화면 크기 비율로 맞춘다.
+     높이는 창 높이에서 위아래 줄과 안내(--notes 줄)를 뺀 만큼까지: 안내가 뜨면 다 됐어 단추가 창 아래로 밀렸다 */
+  width: max(
+    min(100%, 380px * var(--ar, 1), (100vh - 310px - var(--notes, 0) * 58px) * var(--ar, 1)),
+    160px *
+    var(--ar, 1)
+  );
   height: auto;
   aspect-ratio: var(--ar, 1);
   touch-action: none;
+  /* 붓 크기 동그라미 커서는 MakerApp brushCursor */
   cursor: crosshair;
 }
 
@@ -230,6 +236,17 @@ section {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+/* 다듬기 화면: 안내가 여러 줄 떠도 다 됐어, 다른 사진 단추는 늘 보이게 창 아래에 붙인다 (작은 창에서 아래로 밀려 안 보였다) */
+.edit-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin: 0 -16px -16px;
+  padding: 10px 16px 16px;
+  border-top: 1px solid var(--line);
+  background: var(--bg);
 }
 
 .ghost {
@@ -340,6 +357,13 @@ section {
     flex-direction: column;
     align-items: stretch;
   }
+}
+
+/* 사진 그대로 미리 보기: 오른쪽 반은 어두운 판이라 밝은 테두리나 회색 안개가 있으면 저장 전에 보인다 */
+.stage.split {
+  background:
+    linear-gradient(90deg, transparent 50%, #26272b 50%),
+    linear-gradient(var(--panel), color-mix(in srgb, var(--accent) 12%, var(--panel)));
 }
 
 .stage img {
