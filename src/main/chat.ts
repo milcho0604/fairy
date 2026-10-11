@@ -47,6 +47,7 @@ import { prepareCodexHome } from './ai/codex-home.ts';
 import { downloadLocalModel, localModelReady, mb, runLocal } from './ai/local.ts';
 import { type AiRun, checkStatus, readCodexUsage, runAi } from './ai/runner.ts';
 import { getShellEnv } from './ai/shell-env.ts';
+import { devRendererUrl } from './dev-url.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
 import { langArg } from './lang.ts';
 import { jjMcpLaunch } from './mcp-launch.ts';
@@ -512,7 +513,7 @@ export function createChat(o: ChatOptions) {
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (ev) => ev.preventDefault());
 
-    const devUrl = process.env.ELECTRON_RENDERER_URL;
+    const devUrl = devRendererUrl();
     if (devUrl) win.loadURL(`${devUrl}/chat.html`);
     else win.loadFile(join(import.meta.dirname, '../renderer/chat.html'));
   }

@@ -42,6 +42,7 @@ import { cleanPetName, isGait, POSE_KINDS, photoPetName } from '../shared/settin
 import { CUSTOM_FOOD_COST } from '../shared/shop.ts';
 import { BG_MODEL, ensureModel, modelReady, verifiedModelUrl } from './bg-model.ts';
 import { DEPTH_MODEL, depthReady, ensureDepthModel, verifiedDepthUrl } from './depth-model.ts';
+import { devRendererUrl } from './dev-url.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
 import {
   IllustError,
@@ -835,7 +836,7 @@ export function createMaker(
     });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (ev) => ev.preventDefault());
-    const devUrl = process.env.ELECTRON_RENDERER_URL;
+    const devUrl = devRendererUrl();
     if (devUrl) win.loadURL(`${devUrl}/maker.html`);
     else win.loadFile(join(import.meta.dirname, '../renderer/maker.html'));
   }

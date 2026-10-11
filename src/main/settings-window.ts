@@ -19,6 +19,7 @@ import { isSettingsTab, type SettingsTab } from '../shared/settings-tabs.ts';
 import { parsePetChoice } from '../shared/starter-pets.ts';
 import { RELEASE_REPO } from '../shared/update-policy.ts';
 import { localModelReady } from './ai/local.ts';
+import { devRendererUrl } from './dev-url.ts';
 import { createDiagnostics } from './diagnostics.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
 import { langArg } from './lang.ts';
@@ -245,7 +246,7 @@ export function createSettingsWindow({
   /** 칸을 주면 그 칸(#stats), 아니면 지난번 탭(#ai)을 # 뒤에 넣어 연다 (화면이 settings-tabs.ts tabFromHash 로 읽는다) */
   function load(w: BrowserWindow, section?: SettingsSection) {
     const hash = section ?? lastTab;
-    const devUrl = process.env.ELECTRON_RENDERER_URL;
+    const devUrl = devRendererUrl();
     if (devUrl) w.loadURL(`${devUrl}/settings.html${hash ? `#${hash}` : ''}`);
     else w.loadFile(join(import.meta.dirname, '../renderer/settings.html'), { hash });
   }

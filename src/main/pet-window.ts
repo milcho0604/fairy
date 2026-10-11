@@ -62,6 +62,7 @@ import {
 } from '../shared/throw.ts';
 import { boostOn } from './boost.ts';
 import { watchCursor } from './cursor-watch.ts';
+import { devRendererUrl } from './dev-url.ts';
 import { onDisplaysChanged as watchDisplays } from './display-watch.ts';
 import { langArg } from './lang.ts';
 import { settings } from './settings.ts';
@@ -313,7 +314,7 @@ export function createPetWindow({
   win.setIgnoreMouseEvents(true, { forward: true });
   win.once('ready-to-show', () => win.showInactive());
 
-  const devUrl = process.env.ELECTRON_RENDERER_URL;
+  const devUrl = devRendererUrl();
   if (devUrl) win.loadURL(`${devUrl}/pet.html`);
   else win.loadFile(join(import.meta.dirname, '../renderer/pet.html'));
 

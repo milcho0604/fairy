@@ -11,6 +11,7 @@ import { t } from '../shared/i18n/index.ts';
 import { ONBOARD, type OnboardAi, type OnboardSnapshot } from '../shared/ipc.ts';
 import type { Settings } from '../shared/settings.ts';
 import { isStarterId } from '../shared/starter-pets.ts';
+import { devRendererUrl } from './dev-url.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
 import { langArg } from './lang.ts';
 import { library } from './pet-library.ts';
@@ -103,7 +104,7 @@ export function createOnboarding(o: {
     });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (ev) => ev.preventDefault());
-    const devUrl = process.env.ELECTRON_RENDERER_URL;
+    const devUrl = devRendererUrl();
     if (devUrl) win.loadURL(`${devUrl}/onboarding.html`);
     else win.loadFile(join(import.meta.dirname, '../renderer/onboarding.html'));
   }

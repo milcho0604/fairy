@@ -55,6 +55,7 @@ import {
 import { CUSTOM_FOOD_COST, CUSTOM_FOOD_MAX, type Food, type ItemStore } from '../shared/shop.ts';
 import { COIN, FULLNESS, localDay, STEP_MAX, type TodoStore } from '../shared/todo-store.ts';
 import { weekSummary } from '../shared/week.ts';
+import { devRendererUrl } from './dev-url.ts';
 import { focusWindow, stealFocus } from './focus.ts';
 import { langArg } from './lang.ts';
 import { localTime, minuteOfDay, startOfDay, startOfDayAfter } from './planner.ts';
@@ -657,7 +658,7 @@ export function createPanel(o: PanelOptions) {
     win.on('closed', () => senders.delete(sender));
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (ev) => ev.preventDefault());
-    const devUrl = process.env.ELECTRON_RENDERER_URL;
+    const devUrl = devRendererUrl();
     if (devUrl) win.loadURL(`${devUrl}/${kind}.html${tab ? `#${tab}` : ''}`);
     else win.loadFile(join(import.meta.dirname, `../renderer/${kind}.html`), { hash: tab });
     win.once('ready-to-show', () => {
