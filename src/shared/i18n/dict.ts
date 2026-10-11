@@ -7,6 +7,7 @@ import * as briefing from './briefing.ts';
 import * as chat from './chat.ts';
 import * as common from './common.ts';
 import * as companion from './companion.ts';
+import * as day from './day.ts';
 import * as diary from './diary.ts';
 import * as ease from './ease.ts';
 import * as feedback from './feedback.ts';
@@ -57,6 +58,7 @@ export const ko = {
   ...gcal.ko,
   ...gemini.ko,
   ...gallery.ko,
+  ...day.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -87,4 +89,5 @@ export const en: Translation<typeof ko> = {
   ...gcal.en,
   ...gemini.en,
   ...gallery.en,
+  ...day.en,
 };
