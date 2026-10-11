@@ -688,8 +688,18 @@ export function MakerApp() {
   }, [step]);
 
   const canSave = step === 'name' && !shaping && (look === 'photo' || !!chosen);
+  // 2.5D 를 골랐는데 아직 안 만들었으면 "이 펫으로 할게" 가 만들고 저장한다 (예전엔 말없이 눌리지 않았다).
+  // 입체 피규어는 AI 를 쓰니 알아서 만들지 않고 안내만 한다
+  const buildFirst = step === 'name' && !shaping && !chosen && look === 'relief';
+  const needFigure = step === 'name' && !shaping && !chosen && look === 'figure';
+  const saveAfterShape = useRef(false);
 
   const save = async () => {
+    if (buildFirst) {
+      saveAfterShape.current = true;
+      await makeRelief();
+      return;
+    }
     // Enter 로도 오니 단추와 같은 조건을 본다 (만드는 중 Enter 가 평면으로 저장했다)
     if (!canSave) return;
     setStep('saving');
@@ -707,6 +717,14 @@ export function MakerApp() {
     setStep('done');
     setTimeout(() => bridge.close(), 1400);
   };
+
+  // "이 펫으로 할게" 로 2.5D 를 만들었으면 다 되자마자 저장한다. 실패하거나 다른 모양을 고르면 그만둔다
+  // biome-ignore lint/correctness/useExhaustiveDependencies: save 는 렌더마다 새로 만들어져 넣지 않는다
+  useEffect(() => {
+    if (!saveAfterShape.current || shaping) return;
+    saveAfterShape.current = false;
+    if (look === 'relief' && depth && step === 'name') void save();
+  }, [shaping, depth]);
 
   // 무료 Hugging Face 토큰 칸 (고르기 화면, 쿼터에 걸린 뒤 그림 화면). 토큰 글은 메인에만 있고 창은 있는지만 안다
   const tokenBox = (
@@ -1336,6 +1354,9 @@ export function MakerApp() {
                     />
                   </label>
                 )}
+                {(buildFirst || needFigure) && (
+                  <p className="hint">{t(buildFirst ? 'maker.relief.buildOnSave' : 'maker.3d.needFirst')}</p>
+                )}
                 {!isPose && !isFood && (
                   <p className="hint" role="status">
                     {nameNote || t('maker.name.blankHint', { name: info?.newPetName ?? '' })}
@@ -1350,7 +1371,7 @@ export function MakerApp() {
                   >
                     {animated ? t('maker.name.otherImage') : t('maker.name.reedit')}
                   </button>
-                  <button type="button" className="primary" disabled={!canSave} onClick={save}>
+                  <button type="button" className="primary" disabled={!canSave && !buildFirst} onClick={save}>
                     {step === 'saving'
                       ? t('maker.name.saving')
                       : isFood
