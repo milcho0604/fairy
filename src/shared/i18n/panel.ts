@@ -58,7 +58,7 @@ export const ko = {
       : v.todos === 0
         ? `일정 ${v.events}개 넣었어`
         : `할 일 ${v.todos}개, 일정 ${v.events}개 넣었어`,
-  'panel.event.noRepeat': '반복 일정은 아직 못 넣어. 할 일 탭에 적으면 반복 할 일이 돼.',
+  'panel.event.noRepeat': '일정은 반복이 안 돼. 할 일 탭에 적으면 반복 할 일이 돼.',
   'panel.noteAi.summary': '아래 메모를 세 줄 안으로 요약해 줘.',
   'panel.noteAi.todos':
     "아래 메모를 바로 할 수 있는 할 일 목록으로 쪼개 줘. 한 줄에 하나씩 '- '로 시작하고 설명은 붙이지 마.",

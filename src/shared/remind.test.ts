@@ -318,7 +318,7 @@ test('알림 말을 기준에 맞게: 날짜 기준의 "N일 전"은 아침 9시
   assert.deepEqual(splitRemind('그냥 할 일'), { rest: '그냥 할 일', remind: null });
 });
 
-test('할 일 한 줄의 마감 시각: "까지"나 by 가 있을 때만, 반복 할 일과 시각 없는 마감은 그대로', () => {
+test('할 일 한 줄의 마감 시각: "까지"나 by 가 있을 때만, 시각 없는 마감은 그대로', () => {
   const today = '2026-10-08';
   const nine = 9 * 60;
   assert.deepEqual(parseTodoLine('내일 3시까지 보고서', today, nine), {
@@ -344,7 +344,8 @@ test('할 일 한 줄의 마감 시각: "까지"나 by 가 있을 때만, 반복
     repeat: null,
     dueMin: null,
   });
-  assert.equal(parseTodoLine('매일 아침 7시 스트레칭', today, nine).dueMin, null);
+  // 반복 낱말과 시각이 같이 있으면 시각이 있는 반복 할 일이다 (quick-repeat-timed.test.ts)
+  assert.equal(parseTodoLine('매일 아침 7시 스트레칭', today, nine).dueMin, 7 * 60);
   assert.equal(parseTodoLine('우유 사기', today, nine).dueMin, null);
 });
 

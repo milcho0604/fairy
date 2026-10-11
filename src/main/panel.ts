@@ -43,7 +43,7 @@ import {
   parsePanelOffset,
   placePanel,
 } from '../shared/panel-place.ts';
-import { hasDeadlineWord, parseQuickTodo } from '../shared/quick-add.ts';
+import { hasDeadlineWord } from '../shared/quick-add.ts';
 import {
   parseTodoLine,
   remindsInput,
@@ -234,7 +234,7 @@ export function createPanel(o: PanelOptions) {
   /**
    * 한 줄 넣기. 시각이 들어 있으면("내일 3시 회의") 일정으로 넣는다.
    * "3시까지", "by 5pm"은 마감이라 할 일로 둔다(시각 범위 "3시부터 5시까지"는 일정).
-   * 반복 낱말이 있으면("매일 아침 7시 스트레칭") 시각이 있어도 반복 할 일이다 (반복 일정은 없다. 시각은 제목에 남는다)
+   * 반복 낱말이 있으면("매일 아침 7시 스트레칭") 시각이 있어도 반복 할 일이다 (반복 일정은 없다. 시각은 마감 시각)
    */
   /** 같은 제목과 시각의 일정이 이미 있으면 넣지 않고 알릴 답 (두 번 눌러 겹쳐 넣는 일이 잦다) */
   function sameEvent(title: string, startAt: number, allDay: boolean) {
@@ -249,7 +249,8 @@ export function createPanel(o: PanelOptions) {
     // "1시간 전에 알려줘", "하루 전 알림" 같은 알림 말은 먼저 뗀다 (남기면 "1시간"을 일정 길이로 읽는다)
     const { rest: text, remind } = splitRemind(line);
     const deadline = hasDeadlineWord(text) && !hasTimeRange(text);
-    const repeat = parseQuickTodo(text, localDay(now)).repeat !== null;
+    // 반복 낱말이 어디에 있든("standup every weekday 9am") 시각이 있으면 시각이 있는 반복 할 일이다
+    const repeat = parseTodoLine(text, localDay(now), minuteOfDay(now)).repeat !== null;
     const info = deadline || repeat ? undefined : parseQuickEventInfo(text, localDay(now), minuteOfDay(now));
     const ev = info?.ev;
     if (ev) {
@@ -410,7 +411,8 @@ export function createPanel(o: PanelOptions) {
     // 일정 탭에서는 날짜만 적어도 된다: "내일 제주도 여행"은 종일, "10/10-10/12 제주도"는 여러 날 종일.
     // (빠른 입력은 위 PANEL.add 처럼 시각이 있어야 일정이다. 거기서 날짜만 있으면 할 일 마감)
     // 반복 일정은 아직 없다: 한 번짜리로 넣지 않고 할 일 탭으로 안내한다
-    if (parseQuickTodo(text, localDay(now)).repeat) return { ok: false, error: t('panel.event.noRepeat') };
+    if (parseTodoLine(text, localDay(now), minuteOfDay(now)).repeat)
+      return { ok: false, error: t('panel.event.noRepeat') };
     const ev = parseEventInput(text, localDay(now), minuteOfDay(now));
     if (!ev) return { ok: false, error: t('panel.event.needTime') };
     let event: ReturnType<EventStore['add']>;
