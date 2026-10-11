@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { app, screen } from 'electron';
+import { app, type BrowserWindow, screen } from 'electron';
 import { friendTalk } from '../shared/companion.ts';
 import { t } from '../shared/i18n/index.ts';
 import { IPC, type PetImages, type PetStatus } from '../shared/ipc.ts';
@@ -10,7 +10,7 @@ import type { WearLook } from '../shared/wear.ts';
 import { saverNow } from './battery.ts';
 import { boostOn } from './boost.ts';
 import { library } from './pet-library.ts';
-import { createPetWindow, type PetWindow } from './pet-window.ts';
+import { createPetWindow, openPetWindowIn, type PetWindow } from './pet-window.ts';
 import { readFileIn } from './safe-file.ts';
 import { settings } from './settings.ts';
 import { removeJson } from './store.ts';
@@ -165,9 +165,32 @@ export function createFriends(o: {
     };
   }
 
+  /** 창을 여는 중인 친구 (기본 펫 화면에서 여는 데 잠깐 걸린다) */
+  const opening = new Set<string>();
+
+  /**
+   * 친구 창을 기본 펫 화면 프로세스에서 연다 (openPetWindowIn: 친구 하나에 렌더러 하나가 늘지 않는다).
+   * 못 열면 따로 만든다. 여는 사이 집에 보냈거나 이미 있으면 닫는다
+   */
   function open(f: Friend, index: number) {
+    if (opening.has(f.id)) return;
+    opening.add(f.id);
+    void openPetWindowIn(o.mainPet().win.webContents).then((win) => {
+      opening.delete(f.id);
+      const now = settings.get().friends.find((x) => x.id === f.id);
+      if (!now || live.has(f.id)) {
+        win?.destroy();
+        return;
+      }
+      if (!win) o.log('friends', '따로 엶', f.id);
+      build(now, index, win);
+    });
+  }
+
+  function build(f: Friend, index: number, win: BrowserWindow | undefined) {
     const main = o.mainPet().bounds();
     const pet: PetWindow = createPetWindow({
+      ...(win ? { win } : {}),
       id: f.id,
       initial: { x: main.x - (index + 1) * 140, y: main.y },
       petName: () => live.get(f.id)?.friend.name ?? f.name,

@@ -1,7 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import {
   app,
   BrowserWindow,
+  type BrowserWindowConstructorOptions,
   globalShortcut,
   type IpcMainEvent,
   ipcMain,
@@ -269,6 +271,92 @@ export interface PetWindowOptions {
   onMissed?: () => void;
   /** 집에서 쉬는 중(숨김 까닭이 house 하나)에 말이 와서 모아 두었다. important 는 놓치면 안 되는 말(hold) */
   onRestHeld?: (kind: BubbleKind, important: boolean) => void;
+  /** 미리 만든 창 (친구 펫을 기본 펫 화면 프로세스에서 연 것, openPetWindowIn). 없으면 새로 만든다 */
+  win?: BrowserWindow;
+}
+
+/** 펫 창 옵션 (자리는 빼고). 기본 펫과 친구 펫, 미리 만드는 창이 같이 쓴다 */
+function petWindowOptions(): BrowserWindowConstructorOptions {
+  return {
+    width: BASE_SIZE,
+    height: BASE_SIZE,
+    transparent: true,
+    frame: false,
+    hasShadow: false,
+    resizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    focusable: false,
+    alwaysOnTop: true,
+    show: false,
+    webPreferences: {
+      preload: join(import.meta.dirname, '../preload/index.cjs'),
+      additionalArguments: ['--jj-window=pet', langArg()],
+      sandbox: true,
+      contextIsolation: true,
+    },
+  };
+}
+
+/** 한 번에 하나씩 연다 (여는 동안 host 의 새 창 처리기를 잠깐 바꾼다) */
+let opening: Promise<unknown> = Promise.resolve();
+
+/**
+ * 친구 펫 창을 host(기본 펫 화면)에서 window.open 으로 연다. 그러면 같은 렌더러 프로세스를 같이 써서 친구 하나에
+ * 렌더러 하나(약 120MB RSS)가 늘지 않는다. host 화면이 아직 없으면 기다리고, 10초 안에 못 열면 undefined (따로 만든다).
+ * 여는 동안만 host 의 새 창 처리기가 이 이름의 빈 창 하나를 받고, 끝나면 다시 모두 거절한다 (index.ts)
+ */
+export function openPetWindowIn(host: Electron.WebContents): Promise<BrowserWindow | undefined> {
+  const run = opening.then(() => openIn(host));
+  opening = run;
+  return run;
+}
+
+function openIn(host: Electron.WebContents): Promise<BrowserWindow | undefined> {
+  return new Promise((resolve) => {
+    if (host.isDestroyed()) {
+      resolve(undefined);
+      return;
+    }
+    const name = `jj-friend-${randomUUID()}`;
+    let settled = false;
+    const done = (w: BrowserWindow | undefined) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      host.off('did-finish-load', go);
+      if (!host.isDestroyed()) host.setWindowOpenHandler(() => ({ action: 'deny' }));
+      resolve(w);
+    };
+    // 기본 펫 화면을 불러오는 중이면 다 불러올 때까지 기다린다 (켤 때)
+    const timer = setTimeout(() => done(undefined), 10_000);
+    function go() {
+      if (settled || host.isDestroyed()) return;
+      host.setWindowOpenHandler((d) => {
+        if (settled || d.frameName !== name || d.url !== 'about:blank') return { action: 'deny' };
+        return {
+          action: 'allow',
+          overrideBrowserWindowOptions: petWindowOptions(),
+          createWindow: (options) => {
+            const w = new BrowserWindow(options);
+            done(w);
+            return w.webContents;
+          },
+        };
+      });
+      host.executeJavaScript(`window.open('', ${JSON.stringify(name)}) !== null`, true).then(
+        (ok) => {
+          if (!ok) done(undefined);
+        },
+        () => done(undefined),
+      );
+    }
+    // 켤 때는 화면이 아직 없다(주소가 비고 isCrashed 도 true). 죽었으면 다시 불러온 뒤에.
+    // 불러오는 중(isLoading)이면 그냥 연다: did-finish-load 를 부르는 동안에도 true 라 기다리면 오지 않는다
+    if (!host.getURL() || host.isCrashed()) host.once('did-finish-load', go);
+    else go();
+  });
 }
 
 /**
@@ -285,6 +373,7 @@ export function createPetWindow({
   menu,
   onMissed,
   onRestHeld,
+  win: prebuilt,
 }: PetWindowOptions): PetWindow {
   const positionFile = id ? `${POSITION_FILE}-${id}` : POSITION_FILE;
   const saved = readJson(positionFile) ?? (initial ? { ...initial, scale: 1 } : undefined);
@@ -303,32 +392,17 @@ export function createPetWindow({
   const stopSettings = settings.onChange((next) => {
     gate.level = next.chatter;
   });
-  const win = new BrowserWindow({
-    ...pet,
-    transparent: true,
-    frame: false,
-    hasShadow: false,
-    resizable: false,
-    maximizable: false,
-    fullscreenable: false,
-    skipTaskbar: true,
-    focusable: false,
-    alwaysOnTop: true,
-    show: false,
-    webPreferences: {
-      preload: join(import.meta.dirname, '../preload/index.cjs'),
-      additionalArguments: ['--jj-window=pet', langArg()],
-      sandbox: true,
-      contextIsolation: true,
-    },
-  });
+  const win = prebuilt ?? new BrowserWindow({ ...petWindowOptions(), ...pet });
+  if (prebuilt) win.setBounds(pet);
   win.setAlwaysOnTop(true, 'floating');
   // 모든 데스크톱(Space)에 보이되, 다른 앱의 전체 화면 위에는 올라가지 않는다.
   // (전체 화면 위에도 띄우면 다른 앱을 크게 쓰는 중에 펫이 가린다. 2026-10-02 사용자 지적)
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
   // 처음에는 모두 통과시킨다. 커서가 펫 위에 오면 화면이 알려 준다.
   win.setIgnoreMouseEvents(true, { forward: true });
-  win.once('ready-to-show', () => win.showInactive());
+  // 미리 만든 창은 빈 화면을 이미 그려 ready-to-show 가 지나갔을 수 있다: 펫 화면을 다 불러오면 보인다
+  if (prebuilt) win.webContents.once('did-finish-load', () => win.showInactive());
+  else win.once('ready-to-show', () => win.showInactive());
 
   const devUrl = devRendererUrl();
   if (devUrl) win.loadURL(`${devUrl}/pet.html`);
