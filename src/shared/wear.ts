@@ -127,7 +127,7 @@ const biggest = (parts: readonly Part[], slot: Slot) =>
   parts.filter((p) => p.slot === slot && p.shape === 'sphere').sort((a, b) => volume(b) - volume(a))[0];
 
 /** 타원체 p 를 높이 y 에서 자른 둘레 반지름 (x, z). 그 높이에 몸이 없으면 0 */
-function ringAt(p: Part | undefined, y: number): [number, number] {
+function ringAt(p: Pick<Part, 'at' | 'size'> | undefined, y: number): [number, number] {
   if (!p) return [0, 0];
   const k = (y - p.at[1]) / p.size[1];
   if (Math.abs(k) >= 1) return [0, 0];
@@ -184,15 +184,22 @@ export function outfitParts(bp: Blueprint, outfit: Outfit, puff = 0): Part[] {
     case 'santa': {
       const red = outfit === 'santa';
       const rimY = cy + ry * 0.48;
-      const [hx, hz] = ringR(rimY);
+      // 얼굴이 몸에 있는 펫(콩이, 삐약이)은 그 높이의 몸 둘레가 작은 머리보다 넓다. 몸 둘레로 재야 단이 몸에 묻히지 않는다
+      const [sx, sz] = ringAt({ at: a.skin.c, size: a.skin.r }, rimY);
+      const [hx, hz] = ringR(rimY).map((v, i) => Math.max(v, (i ? sz : sx) + puff)) as [number, number];
       const knit = red ? '#d94a3f' : '#7fb0dc';
       const trim = red ? '#ffffff' : '#f6ecd9';
+      const domeY = cy + ry * 0.44;
+      const domeR = ry * 0.66 + puff;
       const parts: Part[] = [
         P({
           slot: 'top',
           shape: 'sphere',
-          at: [cx, cy + ry * 0.44, cz - rz * 0.02],
-          size: [rx * 0.9 + puff, ry * 0.66 + puff, rz * 0.92 + puff],
+          at: [cx, domeY, cz - rz * 0.02],
+          size: [Math.max(rx * 0.9, sx) + puff, domeR, Math.max(rz * 0.92, sz) + puff],
+          // 접은 단 조금 아래에서 자른다. 털이 긴 모습은 꼭대기가 머리보다 커서 아랫부분이 단 밑으로 나와
+          // 털 사이로 뜨개 색이 들쭉날쭉 비쳤다
+          cut: (rimY - 0.03 - domeY) / domeR,
           color: knit,
           finish: 'soft',
         }),
@@ -243,6 +250,10 @@ export function outfitParts(bp: Blueprint, outfit: Outfit, puff = 0): Part[] {
     }
     case 'straw': {
       const brimY = cy + ry * 0.66 + puff * 0.6;
+      // 털이 긴 모습(복슬복슬)은 챙 위로 솟은 머리 꼭대기를 모자 몸통이 덮는다 (좁으면 그 털이 챙 위로 삐져나왔다).
+      // 짧은 털이면 예전 크기 그대로
+      const k = Math.min(0.95, Math.abs((brimY - cy) / ry));
+      const crown = puff >= 0.04 ? Math.max(0.52, Math.sqrt(1 - k * k) + 0.02 / rx) : 0.52;
       return [
         P({
           slot: 'top',
@@ -257,7 +268,7 @@ export function outfitParts(bp: Blueprint, outfit: Outfit, puff = 0): Part[] {
           slot: 'top',
           shape: 'cylinder',
           at: [cx, brimY + 0.075, cz - rz * 0.06],
-          size: [rx * 0.52, 0.075, rz * 0.52],
+          size: [rx * crown, 0.075, rz * crown],
           rot: [-6, 0, 0],
           taper: 0.86,
           color: '#f2d695',
@@ -267,7 +278,7 @@ export function outfitParts(bp: Blueprint, outfit: Outfit, puff = 0): Part[] {
           slot: 'top',
           shape: 'cylinder',
           at: [cx, brimY + 0.03, cz - rz * 0.055],
-          size: [rx * 0.535, 0.026, rz * 0.535],
+          size: [rx * (crown + 0.015), 0.026, rz * (crown + 0.015)],
           rot: [-6, 0, 0],
           color: '#e2504c',
         }),
@@ -437,5 +448,29 @@ export function dressBlueprint(bp: Blueprint, look: WearLook | undefined, puff =
       : grown.parts;
   const tag =
     look.outfit === 'scarf' ? base.filter((p) => !(p.slot === 'body' && p.color === '#f2c14e')) : base;
-  return { ...grown, parts: [...tag, ...outfitParts(grown, look.outfit, puff)] };
+  const worn = outfitParts(grown, look.outfit, puff);
+  // 머리 위 장식(콩이 새싹, 삐약이 깃털)은 모자 꼭대기 위로 올린다. 그대로 두면 털이 긴 모습에서 모자 속에 묻혀
+  // 끝만 점처럼 삐져나왔다
+  const lift = hatLift(grown, look.outfit, worn);
+  const parts = lift
+    ? tag.map((p) =>
+        p.slot === 'top'
+          ? {
+              ...p,
+              at: [p.at[0], p.at[1] + lift, p.at[2]] as Vec3,
+              ...(p.path ? { path: p.path.map((v) => [v[0], v[1] + lift, v[2]] as Vec3) } : {}),
+            }
+          : p,
+      )
+    : tag;
+  return { ...grown, parts: [...parts, ...worn] };
+}
+
+/** 모자를 쓰면 머리 위 장식을 올릴 높이: 모자 꼭대기(털모자 꼭대기, 밀짚모자 몸통 위)와 머리 꼭대기 차이 */
+export function hatLift(bp: Blueprint, outfit: Outfit, worn: readonly Part[]): number {
+  const crown =
+    outfit === 'straw' ? worn[1] : outfit === 'beanie' || outfit === 'santa' ? worn[0] : undefined;
+  const a = anchorOf(bp);
+  if (!crown || !a?.topped) return 0;
+  return Math.max(0, crown.at[1] + crown.size[1] - (a.c[1] + a.r[1]));
 }

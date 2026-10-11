@@ -8,6 +8,7 @@ import {
   GROW_LOOK,
   growBlueprint,
   grownStage,
+  hatLift,
   nextGrow,
   OUTFITS,
   outfitFor,
@@ -124,4 +125,52 @@ test('털이 긴 모습은 옷을 털 밖으로 낸다', () => {
   const a = outfitParts(DEFAULT_BLUEPRINTS.bunny, 'beanie', 0)[0];
   const b = outfitParts(DEFAULT_BLUEPRINTS.bunny, 'beanie', 0.05)[0];
   assert.ok(a && b && b.size[0] > a.size[0]);
+});
+
+test('털모자 꼭대기는 접은 단 바로 밑에서 잘려 단 아래로 내려오지 않는다', () => {
+  for (const kind of PET_KIND_IDS)
+    for (const outfit of ['beanie', 'santa'] as const)
+      for (const puff of [0, 0.05]) {
+        const [dome, rim] = outfitParts(DEFAULT_BLUEPRINTS[kind], outfit, puff);
+        assert.ok(dome?.cut !== undefined && rim, `${kind} ${outfit}`);
+        const bottom = dome.at[1] + dome.cut * dome.size[1];
+        assert.ok(bottom < rim.at[1] && rim.at[1] - bottom < 0.05, `${kind} ${outfit} ${puff}`);
+      }
+  // 설계도 파일에는 남지 않는다
+  const dressed = dressBlueprint(DEFAULT_BLUEPRINTS.cat, { stage: 'adult', outfit: 'beanie' });
+  assert.ok(parseBlueprint({ ...dressed, v: 1 })?.parts.every((p) => p.cut === undefined));
+});
+
+test('털이 긴 모습의 밀짚모자는 챙 높이 머리 둘레를 다 덮고, 짧은 털은 예전 크기 그대로', () => {
+  for (const kind of PET_KIND_IDS) {
+    const bp = DEFAULT_BLUEPRINTS[kind];
+    const [brim0, crown0] = outfitParts(bp, 'straw', 0);
+    const [brim, crown] = outfitParts(bp, 'straw', 0.05);
+    assert.ok(brim0 && crown0 && brim && crown, kind);
+    assert.ok(crown.size[0] >= crown0.size[0], kind);
+    assert.ok(crown.size[0] < brim.size[0], `${kind} 챙이 몸통보다 넓다`);
+  }
+});
+
+test('모자를 쓰면 머리 위 장식(새싹, 깃털)이 모자 꼭대기 위로 올라간다. 장식이 없거나 모자가 아니면 그대로', () => {
+  for (const kind of ['kong', 'chick'] as const)
+    for (const outfit of ['straw', 'beanie', 'santa'] as const)
+      for (const puff of [0, 0.05]) {
+        const bp = DEFAULT_BLUEPRINTS[kind];
+        const lift = hatLift(bp, outfit, outfitParts(bp, outfit, puff));
+        assert.ok(lift > 0, `${kind} ${outfit}`);
+        const dressed = dressBlueprint(bp, { stage: 'adult', outfit }, puff);
+        const before = bp.parts.filter((p) => p.slot === 'top');
+        const after = dressed.parts.filter((p) => p.slot === 'top' && !p.wear);
+        assert.equal(after.length, before.length);
+        for (const [i, p] of after.entries())
+          assert.ok(Math.abs(p.at[1] - (before[i]?.at[1] ?? 0) - lift) < 1e-9);
+      }
+  assert.equal(hatLift(DEFAULT_BLUEPRINTS.cat, 'beanie', outfitParts(DEFAULT_BLUEPRINTS.cat, 'beanie')), 0);
+  const kong = DEFAULT_BLUEPRINTS.kong;
+  assert.equal(hatLift(kong, 'flower', outfitParts(kong, 'flower')), 0);
+  assert.deepEqual(
+    dressBlueprint(kong, { stage: 'adult', outfit: 'scarf' }).parts.filter((p) => p.slot === 'top'),
+    kong.parts.filter((p) => p.slot === 'top'),
+  );
 });

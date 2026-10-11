@@ -1185,6 +1185,12 @@ Object.assign(window, {
       scheduleBlink();
       requestFrame();
     },
+    /** 복슬복슬 털 녹이기를 바로 끝낸다 (그림 점검용: 녹이는 중에 찍으면 매끈한 몸이 찍힌다). 몸이 바뀐 횟수를 돌려준다 */
+    debugSettle3d: () => {
+      model3d?.finishFuse();
+      requestFrame();
+      return model3d?.version;
+    },
     /** 개운함 반짝임을 진행 at(0~1) 자리에서 멈춰 그린다 (그림 점검용) */
     debugFresh: (at = 0.4) => {
       freshStart = performance.now() - FRESH_MS * at;

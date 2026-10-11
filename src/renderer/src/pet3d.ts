@@ -87,7 +87,15 @@ import {
   fusedGeometry,
   paintGeometry,
 } from './pet3d-fluff.ts';
-import { type FuseClear, type FusedMesh, type FusePart, type FuseShape, fuseSteps } from './pet3d-fuse.ts';
+import {
+  coverFur,
+  type FuseClear,
+  type FuseCover,
+  type FusedMesh,
+  type FusePart,
+  type FuseShape,
+  fuseSteps,
+} from './pet3d-fuse.ts';
 import {
   gaitOf,
   hindFrom,
@@ -383,6 +391,7 @@ export class Pet3D implements Model3D {
     // 하던 복슬복슬 몸 만들기도 멈춘다 (죽은 렌더러에 계속 만들고 이 객체를 붙잡았다)
     this.fuseToken++;
     this.finishFuse = () => {};
+    this.fused.clear();
     this.disposeTree(this.root);
     for (const m of this.materials.values()) m.dispose();
     this.furTex?.strands.dispose();
@@ -631,6 +640,14 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
    */
   private fuseJoints(bp: Blueprint) {
     const groups = new Map<Object3D, Mesh[]>();
+    // 털을 덮는 옷 (모자 꼭대기, 단, 챙, 몸통). 그 속과 둘레 털은 깎는다
+    const wears: Mesh[] = [];
+    this.root.updateMatrixWorld(true);
+    this.root.traverse((o) => {
+      const part = o.userData.part as Part | undefined;
+      if (o instanceof Mesh && part?.wear && part.slot === 'top' && COVER_SHAPES.has(part.shape))
+        wears.push(o);
+    });
     this.root.traverse((o) => {
       const part = o.userData.part as Part | undefined;
       if (!(o instanceof Mesh) || !part || !o.parent) return;
@@ -649,7 +666,10 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     const jobs: {
       group: Object3D;
       list: Mesh[];
+      covers: FuseCover[];
       steps: Generator<void, FusedMesh | undefined>;
+      /** 전에 녹인 몸을 다시 쓴다 */
+      hit: boolean;
       /** 녹이기가 끝난 뒤 굴곡 내기 */
       bump?: Generator<void, BufferGeometry | undefined>;
     }[] = [];
@@ -706,24 +726,50 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       const size = bounds.getSize(new Vector3());
       // 격자 간격: 한 관절을 48칸 남짓으로 (64칸이면 펫 하나 조립에 이 컴퓨터에서 0.9초까지 걸렸다)
       const cell = Math.min(0.018, Math.max(0.006, Math.max(size.x, size.y, size.z) / 48));
+      // 같은 몸이면 전에 녹인 것을 다시 쓴다 (옷만 바꿨을 때. 옷은 녹이지 않아 몸은 그대로인데 다시 녹이는 몇 초 동안
+      // 털 없는 매끈한 몸이 보였다)
+      const key = JSON.stringify([
+        list.map((m) => [m.userData.part, Array.from(m.matrix.elements)]),
+        clears,
+        cell,
+      ]);
+      const hit = this.fused.get(key);
+      if (hit) {
+        // 다시 쓴 것을 맨 뒤로 (오래 안 쓴 것부터 버린다)
+        this.fused.delete(key);
+        this.fused.set(key, hit);
+      }
       jobs.push({
         group,
         list,
-        steps: fuseSteps(
-          fparts,
-          { min: bounds.min.toArray(), max: bounds.max.toArray() },
-          cell,
-          0.035,
-          clears,
-        ),
+        covers: coversOf(group, wears),
+        steps: hit
+          ? reuseFused(hit)
+          : this.rememberFused(
+              key,
+              fuseSteps(
+                fparts,
+                { min: bounds.min.toArray(), max: bounds.max.toArray() },
+                cell,
+                0.035,
+                clears,
+              ),
+            ),
+        hit: !!hit,
       });
     }
     const token = ++this.fuseToken;
     const fur = furOfBlueprint(bp);
     /** 녹인 몸에 털 뭉치 굴곡을 낸다 (나눠서) */
-    function* finish(fused: FusedMesh | undefined): Generator<void, BufferGeometry | undefined> {
+    const margin = fluffLength(fur);
+    function* finish(
+      fused: FusedMesh | undefined,
+      covers: FuseCover[],
+    ): Generator<void, BufferGeometry | undefined> {
       if (!fused) return undefined;
       const geo = fusedGeometry(fused);
+      const len = geo.attributes.furLen;
+      if (len) coverFur(fused.positions, len, covers, margin);
       yield* bumpFurSteps(geo, fur);
       return geo;
     }
@@ -748,7 +794,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
         if (!job) break;
         if (!job.bump) {
           const r = job.steps.next();
-          if (r.done) job.bump = finish(r.value);
+          if (r.done) job.bump = finish(r.value, job.covers);
         } else {
           const r = job.bump.next();
           if (r.done) {
@@ -767,6 +813,11 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       work(Number.POSITIVE_INFINITY);
       this.finishFuse = () => {};
     };
+    // 모두 전에 녹인 몸이면 바로 마친다 (털과 굴곡만 다시 낸다. 매끈한 몸이 한 번도 보이지 않게)
+    if (jobs.every((j) => j.hit)) {
+      this.finishFuse();
+      return;
+    }
     // 프레임 사이에 8ms 씩. 그동안 펫은 녹이기 전 몸(털 없는 매끈한 부품)으로 보인다
     const tick = () => {
       if (token !== this.fuseToken) return;
@@ -783,6 +834,24 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
   onUpdate: (() => void) | undefined;
   /** 이 값이 바뀌면 하던 녹이기를 버린다 (펫을 바꿨다) */
   private fuseToken = 0;
+  /** 녹인 몸 (관절 부품과 자리 → 겉면). 옷을 바꾸거나 모습을 오가도 다시 녹이지 않는다. 오래 안 쓴 것부터 버린다 */
+  private fused = new Map<string, FusedMesh>();
+
+  /** 녹이기가 끝나면 그 몸을 기억해 둔다 (털 깎기와 굴곡이 바꾸지 않게 따로 떠서) */
+  private *rememberFused(
+    key: string,
+    steps: Generator<void, FusedMesh | undefined>,
+  ): Generator<void, FusedMesh | undefined> {
+    const r = yield* steps;
+    if (r) {
+      this.fused.set(key, copyFused(r));
+      for (const k of this.fused.keys()) {
+        if (this.fused.size <= FUSED_KEEP) break;
+        this.fused.delete(k);
+      }
+    }
+    return r;
+  }
 
   private fluffBase(): Material {
     let m = this.materials.get('fluff/base');
@@ -1126,7 +1195,11 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
         geo = bowGeometry();
         break;
       default:
-        geo = new SphereGeometry(1, 40, 28);
+        // 잘라 낸 공 (털모자 꼭대기): 위에서 cut 높이까지만
+        geo =
+          p.cut !== undefined && p.cut > -1
+            ? new SphereGeometry(1, 40, 28, 0, Math.PI * 2, 0, Math.acos(Math.max(-1, Math.min(0.95, p.cut))))
+            : new SphereGeometry(1, 40, 28);
     }
     const pat = p.pattern ? this.patternOf(p.pattern, geo, scale) : undefined;
     const mesh = new Mesh(geo, this.material(p.color, p.finish, pat));
@@ -2378,6 +2451,39 @@ function mulberry32(seed: number): () => number {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/** 기억해 두는 녹인 몸 수 (관절 하나에 하나. 펫 둘, 셋 몫) */
+const FUSED_KEEP = 24;
+
+/** 털 깎기와 굴곡이 바꾸는 자리, 털 길이만 새로 뜬다 (나머지는 같이 쓴다) */
+function copyFused(f: FusedMesh): FusedMesh {
+  return { ...f, positions: f.positions.slice(), fur: f.fur.slice() };
+}
+
+/** 전에 녹인 몸을 한 걸음에 돌려준다 */
+// biome-ignore lint/correctness/useYield: 녹이기 단계와 같은 모양으로 쓰려고 생성기로 둔다
+function* reuseFused(f: FusedMesh): Generator<void, FusedMesh | undefined> {
+  return copyFused(f);
+}
+
+/** 털을 덮는 옷 모양 (bow, tube 처럼 모양 거리를 모르는 것은 빼고) */
+const COVER_SHAPES: ReadonlySet<string> = new Set(['sphere', 'cylinder', 'cone', 'box', 'torus']);
+
+/** 옷 메시들을 관절 group 공간에서 본 덮개로 */
+function coversOf(group: Object3D, wears: readonly Mesh[]): FuseCover[] {
+  const gs = group.getWorldScale(new Vector3());
+  return wears.map((w) => {
+    const part = w.userData.part as Part;
+    const inv = w.matrixWorld.clone().invert().multiply(group.matrixWorld);
+    const ws = w.getWorldScale(new Vector3());
+    return {
+      shape: part.shape as FuseCover['shape'],
+      inv: inv.elements,
+      scale: Math.min(ws.x, ws.y, ws.z) / Math.max(1e-6, Math.min(gs.x, gs.y, gs.z)),
+      ...(part.shape === 'sphere' && part.cut !== undefined ? { cut: part.cut } : {}),
+    };
+  });
 }
 
 /** 설계도의 털 느낌. 없으면 부품 겉 느낌으로: 복슬(fuzzy) 부품이 있으면 중간 길이, 없으면 짧은 솜털 */
