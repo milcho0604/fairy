@@ -8,7 +8,7 @@
 // 결과: resources-bin/sd/<arm64|x64>/sd-cli. electron-builder 가 mac.extraResources 로 앱 안 sd/sd-cli 에 넣는다.
 // 소스는 캐시 폴더(JJ_SDCPP_CACHE, 기본 .cache/sdcpp)에 받아 두고, 같은 커밋이면 다시 받지 않는다.
 import { execFileSync } from 'node:child_process';
-import { chmodSync, copyFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { cpus } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -87,6 +87,17 @@ function build(arch) {
   mkdirSync(dirname(dest), { recursive: true });
   copyFileSync(bin, dest);
   chmodSync(dest, 0o755);
+  // sd-cli 옆에 라이선스 (stable-diffusion.cpp, ggml 은 MIT, libwebp 는 BSD). 앱 안 sd/LICENSE.txt 로 들어간다
+  writeFileSync(
+    join(dirname(dest), 'LICENSE.txt'),
+    [
+      ['stable-diffusion.cpp', 'LICENSE'],
+      ['ggml', join('ggml', 'LICENSE')],
+      ['libwebp', join('thirdparty', 'libwebp', 'COPYING')],
+    ]
+      .map(([name, f]) => `${name}\n${'-'.repeat(name.length)}\n${readFileSync(join(src, f), 'utf8').trim()}\n`)
+      .join('\n'),
+  );
   // 디버그용 지역 기호를 뺀다 (앱 용량 줄이기). 실행에 쓰는 기호는 남는다(-x). 서명은 그 뒤 mac-sign.mjs 가 한다
   const before = statSync(dest).size;
   execFileSync('/usr/bin/strip', ['-x', dest]);

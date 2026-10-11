@@ -177,6 +177,32 @@ export const MIGRATIONS: readonly string[] = [
   alter table event add column google_uid text;
   create index event_google on event(google_id) where google_id is not null;
   `,
+  // 11판: 매주 반복 할 일의 요일 기억과 다음 회차 찾기 색인.
+  // repeat_anchor 는 지난 마감 옮기기(moveOverdue)가 오늘로 옮긴 매주 할 일의 원래 마감이다. 다음 회차를 그 요일로 센다
+  // (월요일 할 일을 수요일에 옮겨 끝내면 다음이 수요일이 됐다). 마감을 직접 고치면 지운다.
+  // 되돌리기가 다음 회차를 찾는 repeat_of 에 색인이 없어 할 일이 많으면 표 전체를 훑었다
+  `
+  alter table todo add column repeat_anchor text;
+  create index todo_repeat_of on todo(repeat_of) where repeat_of is not null;
+  `,
+  // 12판: 코인 잔액을 한 행에 (coin_total). 잔액(balance)이 패널을 그릴 때마다 장부 전체를 더했다.
+  // 장부에 쓰거나 지울 때 트리거가 같이 고쳐서, 다른 연결(펫 MCP 서버)이 쓰거나 묶음을 되돌려도 장부 합계와 같다
+  `
+  create table coin_total (
+    id integer primary key check (id = 1),
+    total integer not null
+  );
+  insert into coin_total (id, total) select 1, coalesce(sum(amount), 0) from coin_log;
+  create trigger coin_total_insert after insert on coin_log begin
+    update coin_total set total = total + new.amount where id = 1;
+  end;
+  create trigger coin_total_delete after delete on coin_log begin
+    update coin_total set total = total - old.amount where id = 1;
+  end;
+  create trigger coin_total_update after update of amount on coin_log begin
+    update coin_total set total = total - old.amount + new.amount where id = 1;
+  end;
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
@@ -216,7 +242,7 @@ export function looksLikeOurs(db: Db): boolean {
 export function migrate(db: Db): { from: number; to: number } {
   const from = schemaVersion(db);
   if (from > SCHEMA_VERSION)
-    throw new Error(`이 저장 파일(${from}판)은 이 짝꿍(${SCHEMA_VERSION}판)보다 새 판이다`);
+    throw new Error(`이 저장 파일(${from}판)은 이 페어리(${SCHEMA_VERSION}판)보다 새 판이다`);
   for (let v = from; v < SCHEMA_VERSION; v++) {
     db.exec('begin');
     try {

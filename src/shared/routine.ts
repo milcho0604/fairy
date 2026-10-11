@@ -208,6 +208,30 @@ export function routineDue(
 }
 
 /**
+ * routineDue, coversBriefing, dueUntil 이 지금 분(minute)과 견주는 문턱들 (그날 시계의 분, 어제 일과는 0 아래로 내려온다).
+ * 날짜와 기록(memo)이 같으면 두 문턱 사이에서는 답이 같다: 플래너가 15초마다 묻지 않고 다음 문턱에 깬다 (main/planner.ts).
+ * 위 셈에 분과 견주는 것을 더하면 여기에도 더한다 (routine.test.ts 가 분마다 견줘 본다)
+ */
+export function routineTurns(r: Routine, day: string): number[] {
+  if (!r.on) return [];
+  const out = [REST_FROM];
+  const y = meetOn(r, plusDays(day, -1));
+  const today = meetOn(r, day);
+  for (const [m, shift] of [
+    [y, -DAY_MIN],
+    [today, 0],
+  ] as const) {
+    if (!m) continue;
+    out.push(
+      ...[openAt(m), m.start, m.start + CUE_WINDOW, spanEnd(m), farewellUntil(m), m.end].map(
+        (v) => v + shift,
+      ),
+    );
+  }
+  return out;
+}
+
+/**
  * 오늘 브리핑을 만나는 시간이 맡는지 (그러면 예전 "켤 때 브리핑"은 하지 않는다).
  * 쉬는 날(한마디가 대신), 만나는 날 헤어지기 전, 만난 날, 어제 밤 근무 중. 만나는 날인데 헤어진 뒤에 처음 왔으면 예전 브리핑
  */

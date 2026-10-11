@@ -82,7 +82,7 @@ h1 {
 }
 
 .lead {
-  margin: 0 0 18px;
+  margin: 0 0 14px;
   color: var(--muted);
 }
 
@@ -94,18 +94,18 @@ h1 {
 
 .hero .face {
   display: block;
-  width: 96px;
-  height: 96px;
+  width: 80px;
+  height: 80px;
   object-fit: contain;
   -webkit-user-drag: none;
   /* 흰 펫도 밝은 바탕에서 테두리가 보이게 옅은 그림자 */
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.18));
 }
 
-/* 몸 전체 그림은 얼굴 그림보다 빈 곳이 많아 조금 크게 */
+/* 몸 전체 그림은 얼굴 그림보다 빈 곳이 많아 조금 크게. 480×533 창에서 펫 고르기 단추가 스크롤 없이 보이게 이보다 키우지 않는다 */
 .hero .face.body {
-  width: 112px;
-  height: 112px;
+  width: 84px;
+  height: 84px;
 }
 
 .field {
@@ -191,14 +191,15 @@ small {
   display: grid;
   /* 왼쪽 칸(동작, 단축키)은 절반 남짓까지만. 좁거나 단축키가 길면 줄을 바꿔 설명 칸이 한 단어씩 접히지 않게 */
   grid-template-columns: fit-content(55%) 1fr;
-  gap: 10px 14px;
+  /* 줄이 열 개 남짓이라 창(560)에 스크롤 없이 들어가게 촘촘히 (배터리 줄이 늘어 넘쳤다) */
+  gap: 6px 14px;
   align-items: baseline;
   margin: 8px 0 0;
 }
 
 .tips dt {
   font-weight: 600;
-  line-height: 1.9;
+  line-height: 1.75;
 }
 
 .tips dd {

@@ -18,6 +18,7 @@ import {
 } from '../shared/house-rest.ts';
 import { DEFAULT_BOX, spriteToPet } from '../shared/house-room.ts';
 import { t } from '../shared/i18n/index.ts';
+import { voiced } from '../shared/persona-voice.ts';
 import type { PetWindow } from './pet-window.ts';
 import type { House } from './play.ts';
 
@@ -79,7 +80,7 @@ export function createHouseRest({ pet, house, petName, playing, log }: HouseRest
     const mine = ++run;
     const live = () => phase === 'going' && run === mine;
     // 걷는 동안 말풍선이 뜨면 걷기가 끊겨서, 말을 먼저 하고 닫힌 뒤 걷는다 (산책 시작과 같다)
-    await pet.say({ kind: 'answer', text: t('pet.home.goIn'), ttlMs: 1800 });
+    await pet.say({ kind: 'answer', text: voiced('pet.home.goIn'), ttlMs: 1800 });
     if (!live()) return false;
     const ok = await walkToDoor(live);
     if (!live()) return false;
@@ -182,7 +183,7 @@ export function createHouseRest({ pet, house, petName, playing, log }: HouseRest
       house.setWalker('none');
       house.setDoor(false);
       move('exit');
-      if (greet) void pet.say({ kind: 'answer', text: t(restBackKey(Date.now() - since)), ttlMs: 3500 });
+      if (greet) void pet.say({ kind: 'answer', text: voiced(restBackKey(Date.now() - since)), ttlMs: 3500 });
     } finally {
       doorBusy = was;
     }

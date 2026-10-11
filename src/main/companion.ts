@@ -10,10 +10,12 @@ import {
   parseMemory,
   weekDays,
 } from '../shared/companion.ts';
+import { letterCovers } from '../shared/daily-note.ts';
 import { plusDays } from '../shared/day.ts';
-import { dicts, type I18nKey, t } from '../shared/i18n/index.ts';
+import { dicts, type I18nKey } from '../shared/i18n/index.ts';
 import type { IdleFacts, IdleKey } from '../shared/idle-talk.ts';
 import type { ReactKind } from '../shared/ipc.ts';
+import { voiced } from '../shared/persona-voice.ts';
 import { restDaysOf } from '../shared/routine.ts';
 import { localDay, type TodoStore } from '../shared/todo-store.ts';
 import type { SayOptions } from './pet-window.ts';
@@ -108,10 +110,15 @@ export function createCompanion(o: CompanionOptions) {
     o.log('companion', '축하', cheer.id);
     // 오늘 할 일을 다 끝냈으면 색종이를 터뜨린다 (통통 튀는 동안)
     if (cheer.kind === 'clear') o.react('cheer');
+    // 다 끝냄은 방금 한 일에 바로 하는 짧은 말이라 시간당 상태 알림 수에 넣지 않는다 (막혀서 색종이만 터지고 말이 없었다).
+    // 조용히에서는 말 없이 색종이만
+    const clear = cheer.kind === 'clear';
+    if (clear && settings.get().chatter === 'quiet') return;
     setTimeout(() => {
       void o.say({
-        kind: 'system',
-        text: t(cheer.key, { name: o.petName(), n: cheer.n }),
+        kind: clear ? 'answer' : 'system',
+        // 칭찬은 고른 성격 말투로 (shared/persona-voice.ts)
+        text: voiced(cheer.key, { name: o.petName(), n: cheer.n }),
         ttlMs: 5000,
       });
     }, CHEER_DELAY_MS).unref();
@@ -126,13 +133,18 @@ export function createCompanion(o: CompanionOptions) {
     if (!due) return;
     memory = { ...memory, anniv: [...memory.anniv, due.mark] };
     save();
+    // 매일 쪽지가 켜져 있으면 7, 30, 100일과 해마다는 특별한 편지가 축하한다 (같은 날 같은 말을 두 번 하지 않게)
+    if (settings.get().dailyNotes && letterCovers(due)) {
+      o.log('companion', '기념은 편지로', due.mark);
+      return;
+    }
     o.log('companion', '기념', due.mark);
     // 집에서 쉬는 중(창 숨김)이면 말은 미뤄 두고 색종이는 보이지 않으니 터뜨리지 않는다
     if (o.visible()) o.react('cheer');
     const vars = { name: o.petName(), n: due.n };
     void o.say({
       kind: 'system',
-      text: t(due.key, vars),
+      text: voiced(due.key, vars),
       ttlMs: 9000,
       // 보지 못하고 지나가면 놓친 알림에 남는다 (일 년에 몇 번 없는 말)
       hold: { missedMsgs: [{ key: due.key, vars }] },

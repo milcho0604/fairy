@@ -5,8 +5,8 @@ export const ko = {
   'settings.tabs.label': '설정 묶음',
   'settings.tabs.hits': (v: { n: number }) => `맞는 칸 ${v.n}개`,
   // 탭 이름은 짧게 (좁은 창에서 여섯이 한 줄에 들어가게), 풀이는 찾기 머리말과 마우스 올렸을 때
-  'settings.tab.pet': '펫',
-  'settings.tab.pet.hint': '펫과 친구 펫',
+  'settings.tab.pet': '페어리',
+  'settings.tab.pet.hint': '페어리와 친구 페어리',
   'settings.tab.assist': '비서',
   'settings.tab.assist.hint': '비서와 알림',
   'settings.tab.ai': 'AI',
@@ -23,8 +23,8 @@ export const ko = {
 export const en: Translation<typeof ko> = {
   'settings.tabs.label': 'Settings groups',
   'settings.tabs.hits': (v: { n: number }) => `${v.n} matching ${v.n === 1 ? 'section' : 'sections'}`,
-  'settings.tab.pet': 'Pet',
-  'settings.tab.pet.hint': 'Pet and friends',
+  'settings.tab.pet': 'Fairy',
+  'settings.tab.pet.hint': 'Fairy and friends',
   'settings.tab.assist': 'Assist',
   'settings.tab.assist.hint': 'Assistant and alerts',
   'settings.tab.ai': 'AI',

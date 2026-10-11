@@ -1,0 +1,9 @@
+# 앱의 "문제 알리기"(의견 보내기)가 제목과 본문을 채운 빈 이슈 주소를 연다. 끄면 그 주소가 막힌다
+blank_issues_enabled: true
+contact_links:
+  - name: 보안 문제 (Security vulnerability)
+    url: https://github.com/milcho0604/fairy-releases/security/advisories/new
+    about: 공개 이슈 말고 비공개로 알려 주세요 / Report privately
+  - name: 페어리 홈페이지 (Website)
+    url: https://fairy.moilga.com
+    about: 페어리 소개와 받기 / About fairy and downloads

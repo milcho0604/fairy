@@ -50,13 +50,12 @@ export const ko = {
     `메리 크리스마스! ${withParticle(v.name, '은')} 선물로 쓰다듬기 받고 싶어.`,
   'idle.special.yearend': () => '올해 마지막 날이야. 한 해 동안 정말 수고 많았어.',
   // 끝낸 일 축하 (그날 한 번씩, shared/companion.ts completionCheer)
-  'companion.cheer.clear': (v: Cheer) =>
-    `오늘 할 일 다 끝! ${withParticle(v.name, '이')} 제일 먼저 축하할래!`,
+  'companion.cheer.clear': () => '오늘 할 일 다 끝! 축하해!',
   'companion.cheer.streak': (v: Cheer) => `오늘 첫 끝내기! 이걸로 ${v.n}일 연속이야.`,
   'companion.cheer.count': (v: Cheer) => `오늘 벌써 ${v.n}개째! ${withParticle(v.name, '은')} 놀라는 중.`,
   // 만난 날 기념 (shared/companion.ts anniversaryDue)
   'companion.anniv.day': (v: Anniv) =>
-    `오늘이 우리 만난 지 ${v.n}일째 되는 날이야! ${withParticle(v.name, '이')} 앞으로도 잘 부탁해.`,
+    `오늘이 우리 만난 지 ${v.n}일째 되는 날이야! 앞으로도 ${v.name} 잘 부탁해.`,
   'companion.anniv.late': (v: Anniv) => `우리 만난 지 ${v.n}일이 살짝 지났어! 늦었지만 축하해, 고마워.`,
   'companion.anniv.year': (v: Anniv) =>
     `우리 만난 지 벌써 ${v.n}년이야! ${withParticle(v.name, '은')} 너랑 지낸 날이 다 좋았어.`,
@@ -81,7 +80,7 @@ export const en: Translation<typeof ko> = {
   'idle.memory.yesterday.2': (v: N) =>
     `You did great yesterday, ${v.yesterday ?? 0} ${s(v.yesterday, 'to-do', 'to-dos')}! Start easy today.`,
   'idle.streak.1': (v: N) =>
-    `Day ${v.streak ?? 0} in a row of getting things done. ${v.name} has been counting!`,
+    `${v.streak ?? 0} days in a row of getting things done. ${v.name} has been counting!`,
   'idle.streak.2': (v: N) => `${v.streak ?? 0}-day streak! Finish just one today to keep it going.`,
   'idle.week.1': (v: N) => `${v.week ?? 0} ${s(v.week, 'to-do', 'to-dos')} done this week. What a week!`,
   'idle.week.2': (v: N) => `${v.week ?? 0} done this week. ${v.name} saw every one.`,
@@ -101,10 +100,10 @@ export const en: Translation<typeof ko> = {
   'idle.special.newyear': (v: N) => `Happy New Year! ${v.name} will be right here all year.`,
   'idle.special.christmas': (v: N) => `Merry Christmas! ${v.name} would love a pat as a present.`,
   'idle.special.yearend': () => 'Last day of the year. You worked so hard. Thank you.',
-  'companion.cheer.clear': (v: Cheer) => `Everything for today is done! ${v.name} gets to cheer first!`,
+  'companion.cheer.clear': () => 'All done for today! Yay!',
   'companion.cheer.streak': (v: Cheer) => `First one today! That makes ${v.n} days in a row.`,
   'companion.cheer.count': (v: Cheer) => `That's ${v.n} today already! ${v.name} is amazed.`,
-  'companion.anniv.day': (v: Anniv) => `Today is our day ${v.n} together! ${v.name} is so glad it's you.`,
+  'companion.anniv.day': (v: Anniv) => `Today marks ${v.n} days together! ${v.name} is so glad it's you.`,
   'companion.anniv.late': (v: Anniv) => `We just passed ${v.n} days together! A little late, but thank you.`,
   'companion.anniv.year': (v: Anniv) =>
     `${v.n} ${s(v.n, 'year', 'years')} together already! ${v.name} loved every day of it.`,

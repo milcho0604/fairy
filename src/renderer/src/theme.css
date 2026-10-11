@@ -156,3 +156,35 @@ input[type="range"]:disabled {
   opacity: 0.5;
   cursor: default;
 }
+
+/* 키보드 포커스 고리 기본값 (접근성). :where 로 우선순위를 0 으로 두어 칸마다 따로 정한 고리가 늘 이긴다.
+   강조색은 창 바탕, 카드 위 4.6:1 이상이라 둘레선 기준(3:1)을 넘는다 (tokens.test.ts) */
+:where(
+  button,
+  a[href],
+  input,
+  textarea,
+  select,
+  summary,
+  [tabindex]:not([tabindex="-1"]),
+  [role="switch"]
+):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* 움직임 줄이기 (운영체제 설정): 창 안의 전환, 반짝임, 도는 그림을 거의 멈춘다. 끝 사건은 그대로 온다 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    /* biome-ignore lint/complexity/noImportantStyles: 칸마다 정한 움직임보다 운영체제 설정이 먼저다 */
+    animation-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: 위와 같다 */
+    animation-iteration-count: 1 !important;
+    /* biome-ignore lint/complexity/noImportantStyles: 위와 같다 */
+    transition-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: 위와 같다 */
+    scroll-behavior: auto !important;
+  }
+}

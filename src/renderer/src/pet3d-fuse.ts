@@ -319,3 +319,49 @@ export function* fuseSteps(
   }
   return { positions, normals, colors, fur, indices: new Uint32Array(tris) };
 }
+
+/**
+ * 털을 덮는 옷 (철마다 옷의 모자): 관절 공간 → 모양 공간 행렬과 모양. 이 안과 둘레의 털은 깎는다.
+ * torus 는 TorusGeometry(1, 0.32) 그대로. cut 이 있으면 모양 공간 그 높이 아래는 덮지 않는다 (잘라 낸 공)
+ */
+export interface FuseCover {
+  shape: FuseShape | 'torus';
+  inv: ArrayLike<number>;
+  scale: number;
+  cut?: number;
+}
+
+/** 관절 공간 한 점에서 덮개까지 거리 (안은 음수) */
+export function coverDistance(c: FuseCover, x: number, y: number, z: number): number {
+  const m = c.inv;
+  const lx = (m[0] ?? 0) * x + (m[4] ?? 0) * y + (m[8] ?? 0) * z + (m[12] ?? 0);
+  const ly = (m[1] ?? 0) * x + (m[5] ?? 0) * y + (m[9] ?? 0) * z + (m[13] ?? 0);
+  const lz = (m[2] ?? 0) * x + (m[6] ?? 0) * y + (m[10] ?? 0) * z + (m[14] ?? 0);
+  let d =
+    c.shape === 'torus' ? Math.hypot(Math.hypot(lx, ly) - 1, lz) - 0.32 : shapeDistance(c.shape, lx, ly, lz);
+  if (c.cut !== undefined) d = Math.max(d, c.cut - ly);
+  return d * c.scale;
+}
+
+/**
+ * 옷이 덮은 자리의 털을 깎는다 (모자 속 털이 모자를 뚫고 나오거나 챙 위로 솟지 않게). 덮개 안은 털이 없고,
+ * 덮개 겉에서 margin 까지는 거리만큼 짧게 (모자 단 밑으로 털이 눌린 것처럼)
+ */
+export function coverFur(
+  positions: ArrayLike<number>,
+  fur: { getX(i: number): number; setX(i: number, v: number): unknown; count: number },
+  covers: readonly FuseCover[],
+  margin: number,
+): void {
+  if (!covers.length) return;
+  for (let v = 0; v < fur.count; v++) {
+    const x = positions[v * 3] ?? 0;
+    const y = positions[v * 3 + 1] ?? 0;
+    const z = positions[v * 3 + 2] ?? 0;
+    let d = Number.POSITIVE_INFINITY;
+    for (const c of covers) d = Math.min(d, coverDistance(c, x, y, z));
+    if (d >= margin) continue;
+    const t = Math.max(0, d / margin);
+    fur.setX(v, fur.getX(v) * t * t * (3 - 2 * t));
+  }
+}

@@ -1,0 +1,6 @@
+# 모든 글 파일은 LF 로 체크아웃한다 (윈도우 CI 에서 biome 가 CRLF 를 형식 오류로 잡는다)
+* text=auto eol=lf
+
+# 펫 갤러리: 목록은 늘 LF (sha256, --check 가 윈도우 체크아웃에서도 맞게), 펫 파일은 한 줄 JSON 이라 diff 를 끈다
+gallery/index.json text eol=lf
+*.jjpet -diff

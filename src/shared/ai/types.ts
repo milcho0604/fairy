@@ -21,8 +21,11 @@ export interface McpLaunch {
   env: Record<string, string>;
 }
 
-/** 짝꿍 MCP 서버 이름. 도구 이름이 mcp__jjakkung__add_todo 처럼 된다 */
-export const JJ_MCP_NAME = 'jjakkung';
+/**
+ * 페어리 MCP 서버 이름. 도구 이름이 mcp__fairy__add_todo 처럼 된다. 채팅이 부를 때마다 설정을 새로 만들어 넘기니
+ * 예전 이름(jjakkung)에서 옮길 것이 없다. 사용자가 다른 AI 에 직접 등록한 이름은 사용자 것이라 그대로 돈다 (docs/integrations.md)
+ */
+export const JJ_MCP_NAME = 'fairy';
 
 /** 어댑터가 내보내는 사건. 화면은 이것만 안다. */
 export type AiEvent =

@@ -35,14 +35,17 @@ input {
   color: inherit;
 }
 
-/* 투명 창 안의 카드. 창 가장자리 여백에 그림자가 들어간다. */
+/* 투명 창 안의 카드. 창 가장자리 여백(6px)에 그림자가 들어간다.
+   그림자가 여백보다 넓으면 창 끝에서 잘려 카드 둘레에 각진 회색 네모가 보였다 (예전 0 6px 20px) */
 .card-window {
   position: absolute;
   inset: 6px;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--panel);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  box-shadow:
+    0 1px 5px rgba(0, 0, 0, 0.16),
+    0 0 1px rgba(0, 0, 0, 0.12);
   overflow: hidden;
 }
 
@@ -200,6 +203,7 @@ input {
 
 .todo {
   display: flex;
+  flex-wrap: wrap;
   /* 제목이 여러 줄이어도 동그라미와 버튼은 첫 줄에 맞춘다 */
   align-items: flex-start;
   gap: 6px;
@@ -254,14 +258,22 @@ p.empty {
   color: var(--ok-ink);
 }
 
+/* 제목 단추는 줄을 채우되 누르기는 글자(.title-text)만 받는다. 짧은 제목 옆 빈자리에는 마우스를 올리면 뜨는 단추가
+   겹쳐서 제목 누르기가 단추 누르기가 됐다. 줄 끝 단추가 넓으면(반복, 알림, "내일 오전 9:00") 제목이 한 글자씩 접히지 않게
+   제목 자리를 남기고 단추를 다음 줄로 */
 .todo .title {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 0;
+  min-width: min(5em, 40%);
+  pointer-events: none;
   padding: 0;
   border: 0;
   background: none;
   text-align: left;
   cursor: text;
+}
+
+.todo .title-text {
+  pointer-events: auto;
 }
 
 .done-item .title {
@@ -285,7 +297,8 @@ p.empty {
 }
 
 .todo:hover .due.none,
-.due.none:focus-within {
+.due.none:focus-within,
+.due.none:has(.due-btn:focus-visible) {
   opacity: 0.8;
 }
 
@@ -294,16 +307,35 @@ p.empty {
   background: color-mix(in srgb, var(--error) 12%, transparent);
 }
 
-/* 날짜 고르기는 칩을 누르면 운영체제 달력이 열리게, 입력칸은 칩 위에 투명하게 겹친다. */
-.due input {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
+/* 칩은 단추 하나다 (누르면 showPicker 로 달력). 날짜 칸은 달력이 칩 자리에 뜨게 칩 뒤에 숨겨 둔다 */
+.due-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
   cursor: pointer;
 }
 
-/* 투명하게 겹친 날짜, 시각 칸에 키보드로 오면 칩에 테두리를 그린다 (투명한 칸의 테두리는 안 보인다) */
-.due:has(input:focus-visible),
+.due input {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.due:has(.due-btn:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.due-btn:focus-visible {
+  outline: none;
+}
+
+/* 투명하게 겹친 시각 칸에 키보드로 오면 칸에 테두리를 그린다 (투명한 칸의 테두리는 안 보인다) */
 .events-list .time:has(input:focus-visible) {
   outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
@@ -355,6 +387,7 @@ p.empty {
 .tools {
   position: relative;
   flex: none;
+  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -371,6 +404,12 @@ p.empty {
   height: 22px;
   padding: 0 4px 0 14px;
   background: linear-gradient(to right, transparent, var(--bg) 12px);
+  /* 그늘(왼쪽 여백)은 누름을 아래 제목으로 흘린다. 단추만 받는다 */
+  pointer-events: none;
+}
+
+.tools .extra > * {
+  pointer-events: auto;
 }
 
 .tools .extra:empty,
@@ -458,6 +497,11 @@ p.empty {
   white-space: nowrap;
 }
 
+.toast .toast-guess {
+  font-weight: 400;
+  opacity: 0.75;
+}
+
 .toast .undo {
   flex: none;
   white-space: nowrap;
@@ -512,6 +556,22 @@ p.empty {
 
 .quick-msg.error {
   color: var(--error);
+}
+
+/* 오후로 읽은 일정을 오전으로 (오전, 오후 없는 1~7시) */
+.quick-am {
+  flex: none;
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.quick-am:hover {
+  border-color: var(--accent);
 }
 
 /* 넣은 결과 글이 뜨면 칸이 좁아져 안내 글이 글자 중간에서 잘린다. 결과 글이 있는 동안은 안내 글을 감춘다 */
@@ -1372,25 +1432,24 @@ ul.house-styles li > :last-child {
 }
 
 /* 아래에 더 있음: 바닥에 붙은 옅은 그늘과 작은 알약. 자리를 차지하지 않게 높이만큼 위로 겹친다 */
-.today .more-below {
-  position: sticky;
-  bottom: 0;
+.more-below {
+  /* 오늘 탭 스크롤 칸 바로 아래 줄 (겹쳐 띄우지 않는다: 아래 할 일 줄을 가렸다) */
+  flex: none;
   display: flex;
   justify-content: center;
-  align-items: flex-end;
-  /* 오늘 탭 좌우 여백(14px)까지 그늘이 닿게 */
-  width: calc(100% + 28px);
-  height: 44px;
-  margin: -44px -14px 0;
-  padding: 0 0 6px;
+  align-items: center;
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  padding: 0;
   border: 0;
-  background: linear-gradient(to bottom, transparent, var(--panel) 72%);
+  background: var(--panel);
   color: var(--muted);
   font-size: 12px;
   cursor: pointer;
 }
 
-.today .more-below span {
+.more-below span {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -1400,8 +1459,8 @@ ul.house-styles li > :last-child {
   background: var(--panel);
 }
 
-.today .more-below:hover span,
-.today .more-below:focus-visible span {
+.more-below:hover span,
+.more-below:focus-visible span {
   color: var(--ink);
 }
 

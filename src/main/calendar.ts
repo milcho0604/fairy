@@ -103,8 +103,21 @@ export function watchCalendar(o: {
 
   setTimeout(() => void sync(), 20_000).unref();
   setInterval(() => void sync(), EVERY_MS).unref();
+  /**
+   * 주소를 지웠다: 가져온 일정 중 앞으로 올 것과 그 알림을 걷어 낸다 (감사 3차: 주소를 지워도 남아 계속 알렸다).
+   * 다시 넣으면 다음 맞추기가 되살린다 (EventStore.dropExternal)
+   */
+  function clear(): void {
+    const n = o.events.dropExternal('ics', Date.now());
+    o.log('calendar', '주소 지움', n);
+    last = '';
+    fails = CAL_FAIL_START;
+    if (n > 0) o.onChanged();
+  }
+
   return {
     sync,
+    clear,
     get last() {
       return last;
     },

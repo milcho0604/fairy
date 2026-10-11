@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { type FusePart, fieldAt, fuseParts, shapeDistance, smin } from './pet3d-fuse.ts';
+import {
+  coverDistance,
+  coverFur,
+  type FusePart,
+  fieldAt,
+  fuseParts,
+  shapeDistance,
+  smin,
+} from './pet3d-fuse.ts';
 
 /** 자리 (tx,ty,tz) 에 반지름 r 공 (관절 → 모양 공간: 옮기고 1/r 배) */
 const ball = (
@@ -92,4 +100,34 @@ test('붙은 두 공은 이음새가 메워지고, 색은 가까운 부품을 �
     (m.positions[i * 3] ?? 0) < (m.positions[a * 3] ?? 0) ? i : a,
   );
   assert.ok((m.colors[leftmost * 3] ?? 0) > 0.9 && (m.colors[leftmost * 3 + 2] ?? 1) < 0.1);
+});
+
+test('모자가 덮은 털은 깎고, 잘라 낸 아래와 먼 곳은 그대로', () => {
+  // 반지름 0.3 털 공 위에 가운데 (0, 0.1, 0) 반지름 0.3 모자 꼭대기, 모양 높이 0 아래는 잘라 냈다
+  const r = 0.3;
+  const hat = {
+    shape: 'sphere' as const,
+    inv: [1 / r, 0, 0, 0, 0, 1 / r, 0, 0, 0, 0, 1 / r, 0, 0, -0.1 / r, 0, 1],
+    scale: r,
+    cut: 0,
+  };
+  const pts = [0, 0.3, 0, 0.3, 0.1, 0, 0, -0.3, 0, 0.3, 0.05, 0];
+  const f = new Float32Array([1, 1, 1, 1]);
+  const fur = { count: 4, getX: (i: number) => f[i] ?? 0, setX: (i: number, v: number) => (f[i] = v) };
+  coverFur(pts, fur, [hat], 0.08);
+  assert.equal(f[0], 0, '꼭대기는 털이 없다');
+  assert.ok((f[1] ?? 1) < 0.05, '단 높이 겉도 거의 없다');
+  assert.equal(f[2], 1, '아래는 그대로');
+  assert.ok((f[3] ?? 0) > 0.3 && (f[3] ?? 1) < 1, '단 바로 밑은 짧게');
+});
+
+test('덮개 거리: 고리(접은 단)는 관 속이 음수, 가운데 구멍은 양수. 크기를 곱한다', () => {
+  const ring = {
+    shape: 'torus' as const,
+    inv: [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 1],
+    scale: 2,
+  };
+  assert.ok(coverDistance(ring, 2, 0, 0) < 0, '관 속');
+  assert.ok(Math.abs(coverDistance(ring, 0, 0, 0) - 2 * 0.68) < 1e-9, '가운데');
+  assert.ok(Math.abs(coverDistance(ring, 2, 0, 1) - 2 * (0.5 - 0.32)) < 1e-9, '관 위');
 });

@@ -2,19 +2,30 @@
 import { isNewer, parseVersion, readRelease } from './version.ts';
 
 /**
- * 릴리스를 올리는 레포. 앱의 새 버전 확인(GitHub API)과 자동 설치(electron-updater)가 같이 쓴다.
- * D8(공개 배포)에서 레포를 바꾸면 여기와 electron-builder.yml 의 publish 를 같이 바꾼다
- * (둘이 다르면 update-policy.test.ts 가 깨진다). 토큰은 넣지 않는다. 공개 레포만 읽을 수 있다.
+ * 소스 코드 레포. 개발 문서에서만 가리킨다. 앱은 이 레포를 읽지 않는다 (비공개로 바꿔도 설치된 앱이 멀쩡하도록).
+ * 이름이 짝꿍에서 페어리로 바뀌며 milcho0604/jjakkung → milcho0604/fairy (2026-10-11. 옛 주소는 GitHub 가 넘겨준다).
  */
-export const RELEASE_REPO = { owner: 'milcho0604', repo: 'jjakkung' } as const;
+export const SOURCE_REPO = { owner: 'milcho0604', repo: 'fairy' } as const;
+
+/**
+ * 사용자가 쓰는 공개 레포 (주소를 적는 곳은 여기 하나). 앱이 GitHub 에서 읽는 것은 모두 여기다:
+ * 새 버전 확인(GitHub API)과 자동 설치(electron-updater, main/update.ts), 갤러리(gallery.ts),
+ * 모델 목록(ai/catalog.ts), 버그 제보(feedback.ts issueUrl). 소스 레포의 public-repo/, gallery/, catalog/ 를
+ * sync-public.yml 이 이 레포에 옮겨 두고, release.yml 이 설치 파일을 이 레포의 릴리스로 올린다 (docs/release.md "두 레포").
+ * 바꾸면 electron-builder.yml 의 publish 와 두 워크플로의 레포도 같이 바꾼다 (다르면 update-policy.test.ts 가 깨진다).
+ * 토큰은 넣지 않는다. 공개 레포만 읽을 수 있다.
+ */
+export const PUBLIC_REPO = { owner: 'milcho0604', repo: 'fairy-releases' } as const;
+
+/** 릴리스를 올리고 업데이트를 받는 레포 = 공개 레포 */
+export const RELEASE_REPO = PUBLIC_REPO;
 
 export const RELEASES_API = `https://api.github.com/repos/${RELEASE_REPO.owner}/${RELEASE_REPO.repo}/releases/latest`;
 
 /**
- * 스스로 받아 설치하는 운영체제. 윈도우는 받아 두고 끝낼 때도 설치한다.
+ * 스스로 받아 설치하는 운영체제. 둘 다 받아 두고 "다시 켜서 업데이트"를 누를 때만 설치한다 (main/update.ts installOnQuit).
  * 맥(Squirrel.Mac)은 새 앱의 서명이 지금 앱의 서명 조건(앱 ID + 자체 인증서, scripts/mac-sign.mjs)을
  * 만족해야 받아들인다. 늘 같은 인증서로 서명하므로 된다(2026-10-09 실험: 같은 인증서는 설치, 임시 서명은 거절).
- * 맥은 "다시 켜서 업데이트"를 누를 때만 설치한다 (main/update.ts).
  */
 export const AUTO_INSTALL_PLATFORMS: readonly string[] = ['win32', 'darwin'];
 

@@ -2,6 +2,7 @@
 // 하루 한 번 받아 바꾼다. 새 모델이 나오면 그 파일만 고치면 되고 앱을 다시 배포하지 않는다.
 // 남이 바꿀 수 있는 파일이라 받은 값은 엄격하게 본다: 받는 곳, 해시, 크기 상한, 인자 모양.
 
+import { PUBLIC_REPO } from '../update-policy.ts';
 /** 내 컴퓨터에서 도는 작은 모델 (GGUF). 처음 쓸 때 받는다 */
 export interface LocalModel {
   id: string;
@@ -36,7 +37,7 @@ export const LOCAL_MAX_BYTES = 1_000_000_000;
 /** 모델을 받아도 되는 곳 */
 const MODEL_HOSTS = ['huggingface.co', 'github.com'];
 
-export const CATALOG_URL = 'https://raw.githubusercontent.com/milcho0604/jjakkung/main/catalog/models.json';
+export const CATALOG_URL = `https://raw.githubusercontent.com/${PUBLIC_REPO.owner}/${PUBLIC_REPO.repo}/main/catalog/models.json`;
 
 export const DEFAULT_CATALOG: Catalog = {
   version: 1,

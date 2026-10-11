@@ -54,6 +54,12 @@ export function App() {
     setChecking(false);
   }, []);
 
+  // 무료 AI 받기가 끝나면(AI 관리에서 받았을 때) 상태를 다시 읽어 "받기" 를 "준비됐어" 로
+  const downloadingModel = !!state?.modelDownload && !state.modelDownload.failed;
+  useEffect(() => {
+    if (!downloadingModel) void refreshStatus(false);
+  }, [downloadingModel, refreshStatus]);
+
   const addImages = useCallback(
     async (incoming: OutgoingImage[]) => {
       setImages((prev) => {
@@ -228,10 +234,12 @@ export function App() {
   globalKeyRef.current = (e) => {
     const key = chatKey(e, bridge.platform);
     if (key === 'escape') {
-      // 그림 크게 보기, AI 관리가 열려 있으면 그것부터 닫는다. 아니면 답을 멈춘다
+      // 그림 크게 보기, AI 관리가 열려 있으면 그것부터 닫는다. 답을 기다리면 멈춘다. 아무것도 없고 쓰던 글도 없으면
+      // 창을 닫는다 (패널, 설정 창과 같게. 쓰던 글은 Esc 하나로 잃지 않게 둔다)
       if (zoom) setZoom(undefined);
       else if (managing) setManaging(false);
       else if (pending) bridge.cancel();
+      else if (!text.trim() && !e.defaultPrevented) window.close();
       else return;
       e.preventDefault();
     } else if (key === 'new-chat') {
@@ -285,7 +293,12 @@ export function App() {
           {t('chat.newChat')}
         </button>
       </header>
-      <UsageBar usage={state.usage[state.provider]} spec={spec} hidden={!!current && !current.installed} />
+      <UsageBar
+        usage={state.usage[state.provider]}
+        spec={spec}
+        hidden={!!current && !current.installed}
+        asked={state.messages.length > 0}
+      />
       {managing && (
         <AiManager
           providers={providers}
@@ -304,6 +317,11 @@ export function App() {
             refreshStatus(false);
           }}
           onClose={() => setManaging(false)}
+          onDownload={() => {
+            bridge.setProvider('local');
+            bridge.downloadModel();
+          }}
+          download={state.modelDownload}
         />
       )}
       {zoom && (
@@ -531,7 +549,14 @@ function Message({
       <div className="body">
         <span className="who">
           {petName}
-          {m.provider && <span className="tag">{label}</span>}
+          {/* 규칙 답("오늘 뭐부터")은 AI 이름 대신 "AI 없이" (AI 가 답한 줄 알지 않게) */}
+          {m.byRules ? (
+            <span className="tag" title={t('first.tagTitle')}>
+              {t('first.tag')}
+            </span>
+          ) : (
+            m.provider && <span className="tag">{label}</span>
+          )}
         </span>
         {m.status === 'waiting' && (
           <Thinking streams={m.provider === 'claude'} label={label} petName={petName} />
@@ -541,6 +566,23 @@ function Message({
           <div className="bubble" aria-hidden={m.status === 'streaming' || undefined}>
             <Markdown text={m.text} onLink={bridge.openLink} />
             {m.status === 'done' && <AnswerActions id={m.id} text={m.text} />}
+          </div>
+        )}
+        {/* 규칙 답 아래: 맨 위 할 일로 집중 시작, 패널 열기 */}
+        {m.status === 'done' && m.plan && (
+          <div className="retry action-row">
+            {m.plan.focusTodoId !== undefined && (
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => bridge.planAction('focus', m.plan?.focusTodoId)}
+              >
+                {t('first.focus')}
+              </button>
+            )}
+            <button type="button" className="ghost" onClick={() => bridge.planAction('panel')}>
+              {t('first.panel')}
+            </button>
           </div>
         )}
         {/* 무료 AI 모델 받기 안내는 오류가 아니라 다음 할 일이라 오류색을 쓰지 않는다 */}

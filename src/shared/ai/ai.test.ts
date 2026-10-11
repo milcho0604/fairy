@@ -74,7 +74,7 @@ test('codex 실제 출력(0.155.1): thread_id, 답 한 번에, 완료', () => {
   const events = fixture('codex-hello.jsonl').flatMap(parseCodexLine);
   assert.deepEqual(events, [
     { type: 'session', id: '01a0f9e7-fac9-7b63-a305-d0d5fb56a404' },
-    { type: 'delta', text: '알겠어, 밀초. 기억할게.' },
+    { type: 'delta', text: '알겠어, 친구. 기억할게.' },
     { type: 'done', text: '' },
   ]);
 });
@@ -215,11 +215,11 @@ test('짝꿍 도구: 격리해도 펫 MCP 서버 하나만 싣고 그 도구만 
   const on = claudeArgs({ ...base, jjServer: jj });
   assert.ok(on.includes('--strict-mcp-config'));
   const config = JSON.parse(on[on.indexOf('--mcp-config') + 1] ?? '');
-  assert.deepEqual(Object.keys(config.mcpServers), ['jjakkung']);
-  assert.equal(config.mcpServers.jjakkung.command, jj.command);
-  assert.deepEqual(config.mcpServers.jjakkung.args, jj.args);
-  assert.deepEqual(config.mcpServers.jjakkung.env, jj.env);
-  assert.equal(on[on.indexOf('--allowedTools') + 1], 'mcp__jjakkung');
+  assert.deepEqual(Object.keys(config.mcpServers), ['fairy']);
+  assert.equal(config.mcpServers.fairy.command, jj.command);
+  assert.deepEqual(config.mcpServers.fairy.args, jj.args);
+  assert.deepEqual(config.mcpServers.fairy.env, jj.env);
+  assert.equal(on[on.indexOf('--allowedTools') + 1], 'mcp__fairy');
   assert.equal(on[on.indexOf('--tools') + 1], '');
   // 끄면 예전처럼 빈 MCP 설정, 허락하는 도구 없음
   const off = claudeArgs(base);
@@ -232,17 +232,17 @@ test('짝꿍 도구: 격리를 끄면 내 MCP 위에 짝꿍 서버를 더하고 
   const on = claudeArgs({ ...base, mcpServers: ['claude.ai Notion'], jjServer: jj });
   assert.ok(!on.includes('--strict-mcp-config'));
   assert.equal(on.filter((a) => a === '--mcp-config').length, 1);
-  assert.equal(on[on.indexOf('--allowedTools') + 1], 'mcp__claude_ai_Notion,mcp__jjakkung');
+  assert.equal(on[on.indexOf('--allowedTools') + 1], 'mcp__claude_ai_Notion,mcp__fairy');
   assert.equal(on[on.indexOf('--tools') + 1], '');
 });
 
-test('짝꿍 도구: codex 는 -c mcp_servers.jjakkung 설정으로, 샌드박스는 읽기만 그대로', () => {
+test('짝꿍 도구: codex 는 -c mcp_servers.fairy 설정으로, 샌드박스는 읽기만 그대로', () => {
   const args = codexArgs({ text: '질문', imagePaths: ['/a.png'], persona: 'p', jjServer: jj });
-  assert.ok(args.includes(`mcp_servers.jjakkung.command=${JSON.stringify(jj.command)}`));
-  assert.ok(args.includes('mcp_servers.jjakkung.args=["C:\\\\app\\\\out\\\\main\\\\mcp-server.js"]'));
+  assert.ok(args.includes(`mcp_servers.fairy.command=${JSON.stringify(jj.command)}`));
+  assert.ok(args.includes('mcp_servers.fairy.args=["C:\\\\app\\\\out\\\\main\\\\mcp-server.js"]'));
   assert.ok(
     args.includes(
-      'mcp_servers.jjakkung.env={ "ELECTRON_RUN_AS_NODE" = "1", "JJ_USER_DATA" = "/tmp/jj \\"data\\"" }',
+      'mcp_servers.fairy.env={ "ELECTRON_RUN_AS_NODE" = "1", "JJ_USER_DATA" = "/tmp/jj \\"data\\"" }',
     ),
   );
   assert.ok(args.includes('sandbox_mode="read-only"'));

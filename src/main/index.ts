@@ -1,37 +1,49 @@
 import { cpus, homedir } from 'node:os';
 import { join } from 'node:path';
-import { app, dialog, globalShortcut, powerMonitor, screen } from 'electron';
+import { app, dialog, globalShortcut, Menu, powerMonitor, screen, session } from 'electron';
 import { ACHIEVEMENTS } from '../shared/achieve.ts';
 import { planTodos } from '../shared/ai/answer-todos.ts';
 import { pickLocal } from '../shared/ai/catalog.ts';
 import { contextEvents, todayRange } from '../shared/ai/context-events.ts';
-import { persona, setMemorySource, todoContext } from '../shared/ai/persona.ts';
+import { persona, setMemorySource, setStyleSource, todoContext } from '../shared/ai/persona.ts';
 import { HIDE_SEEK, pickHideSpot } from '../shared/hide-seek.ts';
 import { locale, t } from '../shared/i18n/index.ts';
 import { IPC, type PetStatus, type PlayKind } from '../shared/ipc.ts';
+import { type FactKind, factsForAi } from '../shared/knows.ts';
 import { runnerKindOf } from '../shared/menu-runner.ts';
 import { isMiniGame, PLAY_COIN } from '../shared/minigames.ts';
+import { noteTitle } from '../shared/note-store.ts';
+import { setSpeechSource, setVoiceSource, voiced } from '../shared/persona-voice.ts';
 import { unlocked, WAVE_AWAY_SEC } from '../shared/pet-life.ts';
 import { restDaysOf } from '../shared/routine.ts';
 import { pickedGait } from '../shared/settings.ts';
 import { shortcutsChanged } from '../shared/shortcut.ts';
 import { FULLNESS, localDay } from '../shared/todo-store.ts';
+import { admitUrl, panelTabOf, parseJjUrl } from '../shared/url-scheme.ts';
 import { watchCatalog } from './ai/catalog.ts';
 import { stopLocal } from './ai/local.ts';
 import { cachedMcpServers, mcpServers, refreshMcpServers } from './ai/mcp-list.ts';
 import { stopAllAi } from './ai/runner.ts';
 import { applyPendingImport, createBackup, exportPet, importPet } from './backup.ts';
+import { debugBattery, onSaverChange, powerFacts, saverNow, watchPower } from './battery.ts';
 import { watchBetaStats } from './beta.ts';
 import { boostOn, onBoostChange } from './boost.ts';
 import { watchCalendar } from './calendar.ts';
 import { createChat } from './chat.ts';
 import { createCompanion } from './companion.ts';
-import { announceStoreTrouble, openStore } from './db.ts';
+import { createDailyNotes } from './daily-note.ts';
+import { chooseDataDir, DATA_DIR_NAME, oldAppBlocks } from './data-move.ts';
+import { createDayTools } from './day-tools.ts';
+import { announceJsonTrouble, announceStoreTrouble, openStore } from './db.ts';
 import { createDiary } from './diary.ts';
 import { confineTestDisplay } from './focus.ts';
 import { createFriends } from './friends.ts';
+import { galleryHandlers } from './gallery-app.ts';
 import { createGcal } from './gcal.ts';
 import { createHouseRest } from './house-rest.ts';
+import { createJourney } from './journey.ts';
+import { pruneCopies } from './keep-copies.ts';
+import { createKnows } from './knows.ts';
 import { initLang } from './lang.ts';
 import { stopLocalDrawNow, sweepLocalDraw } from './local-draw.ts';
 import { createLogFile } from './log-file.ts';
@@ -46,9 +58,13 @@ import {
 } from './maker.ts';
 import { createMiniGames } from './minigames.ts';
 import { createOnboarding } from './onboarding.ts';
+import { type Incoming, listenEarly, registerScheme, startIncoming, takeArgv } from './open-handler.ts';
 import { openLink } from './open-link.ts';
 import { createPanel } from './panel.ts';
+import { denyPermissionsByDefault } from './permissions.ts';
+import { createPetConfirm } from './pet-confirm.ts';
 import { createPetFace, trayImageOf } from './pet-face.ts';
+import { library } from './pet-library.ts';
 import { createPetLife } from './pet-life.ts';
 import { drainMemoryInbox } from './pet-memory.ts';
 import { createPetWindow } from './pet-window.ts';
@@ -58,15 +74,26 @@ import { createPout } from './pout.ts';
 import { watchPresentation } from './presence-watch.ts';
 import { settings } from './settings.ts';
 import { createSettingsWindow } from './settings-window.ts';
+import { onJsonTrouble } from './store.ts';
 import { createSystemMonitor } from './system-monitor.ts';
+import { createTogether } from './together.ts';
 import { baseTrayIcon, createTray } from './tray.ts';
+import { watchTrayTitle } from './tray-title.ts';
 import { watchUpdates } from './update.ts';
+import { createWear } from './wear.ts';
+import { createWeekCard } from './week-card.ts';
+import { createWhatFirst } from './what-first.ts';
 
-// 데이터 폴더를 이름으로 고정한다. 기본값은 앱 이름을 따라가서 설치판(Jjakkung)과 개발판(jjakkung)이
-// 운영체제에 따라 다른 폴더가 되고, 나중에 앱 이름을 바꿔도 데이터를 잃는다.
-// 하나만 띄우기 잠금도 이 폴더에 있어 다른 무엇보다 먼저 정한다.
-// JJ_USER_DATA 는 시험용: 설치판을 실제 데이터와 잠금을 건드리지 않고 따로 띄울 때 쓴다.
-app.setPath('userData', process.env.JJ_USER_DATA || join(app.getPath('appData'), 'jjakkung'));
+// 데이터 폴더를 이름으로 고정한다. 기본값은 앱 이름을 따라가서 설치판과 개발판이 운영체제에 따라 다른 폴더가 되고,
+// 앱 이름을 바꾸면 데이터를 잃는다. 하나만 띄우기 잠금도 이 폴더에 있어 다른 무엇보다 먼저 정한다.
+// 이름이 짝꿍에서 페어리로 바뀌어(2026-10-11) 폴더도 <appData>/fairy. 예전 <appData>/jjakkung 에만 데이터가 있으면
+// 처음 켤 때 통째로 옮긴다 (data-move.ts. 예전 앱이 떠 있거나 못 옮기면 이번에는 예전 폴더를 쓴다).
+// JJ_USER_DATA 는 시험용: 설치판을 실제 데이터와 잠금을 건드리지 않고 따로 띄울 때 쓴다. 이때는 옮기지 않는다.
+const dataChoice = process.env.JJ_USER_DATA ? undefined : chooseDataDir(app.getPath('appData'));
+app.setPath(
+  'userData',
+  process.env.JJ_USER_DATA || (dataChoice?.dir ?? join(app.getPath('appData'), DATA_DIR_NAME)),
+);
 
 // 진단 기록: 설치판도 userData/logs/main.log 에 남긴다(1MB 넘으면 main.old.log 로 돌려 두 개만). 개발 실행은 콘솔에도.
 // 질문, 답, 할 일과 일정 제목은 넘기지 않고, 경로 속 사용자 이름은 log-file.ts 가 가린다
@@ -75,6 +102,22 @@ const log = (tag: string, ...rest: unknown[]) => {
   if (!app.isPackaged) console.log(`[${tag}]`, ...rest);
   writeLog(tag, rest);
 };
+// 데이터 폴더 옮기기 결과는 기록이 생긴 뒤에 남긴다
+if (dataChoice) {
+  const m = dataChoice.move;
+  if (m.kind === 'moved')
+    log(
+      'data',
+      '예전 이름(jjakkung) 데이터 폴더를 새 폴더로 옮김',
+      m.from,
+      '→',
+      m.to,
+      ...(m.aside ? ['(먼저 있던 새 폴더는 비켜 둠', m.aside, ')'] : []),
+    );
+  else if (m.kind === 'in-use') log('data', '예전 앱이 떠 있어 이번에는 예전 데이터 폴더를 씀', m.dir);
+  else if (m.kind === 'failed')
+    log('data', '예전 데이터 폴더를 옮기지 못해 이번에는 그대로 씀', m.dir, m.error);
+}
 
 // 메인에서 잡지 못한 오류는 기록만 남긴다. 처리기가 없으면 Electron 이 "Uncaught Exception" 창을 띄워
 // 사용자 화면을 막는다 (2026-10-07 사용자 지적: 끄는 중 타이머가 닫힌 저장 파일을 읽었다)
@@ -95,7 +138,28 @@ if (!process.env.JJ_NET_PROCESS) app.commandLine.appendSwitch('enable-features',
 // quit() 은 바로 끝나지 않아 ready 가 와서 시작 일(저장 파일 열기, 가져온 백업 끼우기, 창과 아이콘)이 돈다.
 // 그래서 exit() 로 바로 끝내고, 시작 일도 잠금을 잡았을 때만 건다
 const primary = app.requestSingleInstanceLock();
-if (!primary) app.exit(0);
+// 예전 짝꿍이 떠 있어 데이터를 옮기지 못했고 잠금도 그쪽이면, 말없이 끝나지 않고 짝꿍을 끄라고 알린 뒤 끝낸다.
+// 창은 준비 뒤에만 뜬다 (리눅스는 준비 전 오류 창이 콘솔로만 간다)
+const blockedByOld = oldAppBlocks(primary, dataChoice?.move);
+if (blockedByOld) {
+  log('data', '예전 앱이 예전 데이터 폴더를 쓰고 있어 끝냄');
+  void app.whenReady().then(() => {
+    try {
+      // Dock 아이콘 없는 앱(LSUIElement)이라 앞으로 가져오지 않으면 창이 다른 앱 뒤에 숨는다
+      if (process.platform === 'darwin') app.focus({ steal: true });
+      dialog.showMessageBoxSync({
+        type: 'info',
+        message: t('main.data.oldRunning'),
+        detail: t('main.data.oldRunningDetail'),
+        buttons: [t('common.ok')],
+      });
+    } finally {
+      app.exit(0);
+    }
+  });
+} else if (!primary) app.exit(0);
+// jjakkung:// 주소와 .jjpet 파일 (맥은 ready 전에도 온다. 받는 쪽이 준비될 때까지 모아 둔다, open-handler.ts)
+if (primary) listenEarly();
 // 가져온 백업(저장 파일과 설정 파일)이 기다리면 바꿔 끼운다 (v2). 설정을 처음 읽기(아래 initLang) 전에 해야
 // 가져온 설정이 보인다. 잠금을 잡은 쪽만: 이미 떠 있는 펫의 파일을 바꾸지 않게
 // 실패해도 지금 데이터로 켠다 (켜기 전 이 자리에서 던지면 앱이 아예 안 뜬다)
@@ -123,14 +187,21 @@ app.on('web-contents-created', (_e, wc) => {
 const ready = primary ? app.whenReady() : new Promise<void>(() => {});
 ready
   .then(() => {
+    // 웹 권한은 복사하기 말고 모두 거절한다 (permissions.ts)
+    denyPermissionsByDefault(session.defaultSession, log);
     // 시험 인스턴스는 처음부터 맥북 화면에만 뜬다 (쓰는 사람의 작업 모니터에 잠깐이라도 뜨지 않게)
     confineTestDisplay();
     // 펫 앱은 Dock 아이콘 없이 뜬다. 끝내기는 펫 우클릭 메뉴나 메뉴 막대 아이콘에서 한다.
     if (process.platform === 'darwin') app.dock?.hide();
+    // 윈도우, 리눅스는 테두리 있는 창(시작 안내, 설정, 채팅, 만들기, 아는 것)마다 기본 메뉴 막대(File Edit View Window)가 붙었다.
+    // 앱 메뉴를 없앤다. 입력 칸의 Ctrl+C, V, X, A, Z 는 메뉴 없이도 된다. 맥은 기본 앱 메뉴(편집 ⌘C, ⌘V)가 있어야 해서 그대로 둔다
+    else Menu.setApplicationMenu(null);
     // 내 컴퓨터에서 그리기: 앞서 갑자기 꺼져 남은 파이썬, sd-cli, 임시 그림, 지우다 만 폴더를 뒤에서 치운다 (기다리지 않는다)
     sweepLocalDraw(log);
     // 펫 이름은 설정에서 바꿀 수 있어 쓰는 곳마다 지금 값을 읽는다.
     const petName = () => settings.get().petName;
+    // 인사, 칭찬, 쉬자는 말처럼 정해진 말도 고른 성격 말투로 (shared/persona-voice.ts)
+    setVoiceSource(() => settings.get().persona);
     // 모델 목록 (v2): 앱 기본값, 하루 한 번 레포에서 받은 것으로 바꾼다
     const catalog = watchCatalog(log);
     const chat = createChat({
@@ -144,7 +215,11 @@ ready
       setKnowsTodos: (on) => settings.set({ aiKnowsTodos: on }),
       petTools: () => settings.get().aiPetTools,
       // 짝꿍 도구로 할 일, 메모가 바뀌었을 수 있다. 3초 판 번호 확인을 기다리지 않고 바로 다시 그린다
-      onTurnEnd: () => panel.refresh(),
+      // 지우기, 고치기는 확인 편지함에 남아 있다: 답이 끝나면 바로 묻는다 (pet-confirm.ts)
+      onTurnEnd: () => {
+        panel.refresh();
+        petConfirm.drain();
+      },
       // 질문 앞에 붙일 내 오늘 상황: 안 끝낸 할 일 제목과 마감, 오늘 남은 일정 (기획서 개인정보 표)
       todoContext: () => {
         // 오늘 일정은 0시부터 다음 날 0시까지 다 읽고 고른다: 종일 일정, 막 시작한 회의도 (context-events.ts)
@@ -162,6 +237,9 @@ ready
       },
       mcpServers: () => (settings.get().myMcp ? mcpServers(log) : []),
       addTodos: (titles) => addAnswerTodos(titles).length,
+      // "오늘 뭐부터 할까?" 규칙 답과 답 아래 단추 (main/what-first.ts)
+      whatFirst: { answer: () => whatFirst.answer(), context: () => whatFirst.context() },
+      onPlanAction: (kind, todoId) => planAction(kind, todoId),
       onUserSaid: (text) => pout.said(text),
       onPetAi: (state) => {
         if (state.thinking) petLife.activity('chat');
@@ -201,6 +279,11 @@ ready
             return;
           }
           petLife.activity('click');
+          // 쪽지를 들고 있으면 누르기가 쪽지 펼치기 (매일 쪽지, main/daily-note.ts)
+          if (dailyNotes.holding()) {
+            void dailyNotes.open();
+            return;
+          }
           panel.togglePanel();
         },
         openChat: (bounds) => chat.open(bounds),
@@ -221,6 +304,8 @@ ready
         menuNote: () => pout.menuNote(),
         focusRunning: () => planner.focus.phase !== 'idle',
         toggleFocus: () => (planner.focus.phase === 'idle' ? planner.startFocus() : planner.stopFocus()),
+        openKnows: () => knows.open(),
+        whatFirst: () => sayWhatFirst(),
       },
       log,
       onMissed: () => panel.refresh(),
@@ -259,6 +344,7 @@ ready
       // 놀던 중이면 그만 논다: 같이 보는 동안 펫은 오버레이 위에서 마우스를 다 통과시켜 놀 수 없다.
       // (두더지 구멍 속 가리기와 찍는 순간 가리기가 겹쳐도 펫은 pet-window setConcealed 가 한곳에서 되돌린다)
       onStart: () => {
+        journey.tried('look');
         const game = games.running();
         if (!game) return;
         log('look', 'stop play', game);
@@ -273,6 +359,7 @@ ready
       // 집중(펫이 잠), 공놀이와 산책, 숨바꼭질 중이 아니고 사용자가 자리에 있을 때만
       canMeet: () =>
         planner.focus.phase !== 'focus' && !playing && !seeking && powerMonitor.getSystemIdleTime() < 60,
+      wear: () => wear.friendLook(),
       log,
     });
     const toggleHidden = () => {
@@ -329,15 +416,94 @@ ready
       life,
       shop,
       achievements,
+      habits,
+      exportTodos,
       vacuumInto,
       dataVersion,
+      onWrite,
       trouble,
     } = openStore(log);
+    // 내 말투와 직접 쓴 말의 {name}, {todo} (shared/persona-voice.ts). 채팅 AI 성격 지시도 내 말투를 읽는다
+    setSpeechSource({
+      style: () => settings.get().speech,
+      petName,
+      todo: () => store.list(Date.now()).open[0]?.title,
+    });
+    setStyleSource(() => (settings.get().persona === 'custom' ? settings.get().speech : undefined));
+    // "오늘 뭐부터 할까?" (채팅 규칙 답, 펫 우클릭 메뉴): 지난 마감 → 오늘 마감 → 중요 → 곧 마감 → 습관, 빈 시간에 집중 칸
+    const whatFirst = createWhatFirst({
+      todos: store,
+      habits,
+      events,
+      restDays: () => restDaysOf(settings.get()),
+      dayEndMinute: () => settings.get().reviewMinute,
+    });
+    /** 펫 우클릭 메뉴 "오늘 뭐부터?": 규칙 답을 말풍선으로, 단추는 집중 시작과 패널 열기 */
+    const sayWhatFirst = () => {
+      const b = whatFirst.bubble();
+      void pet
+        .say({
+          kind: 'answer',
+          text: b.text,
+          buttons: b.empty
+            ? []
+            : [
+                ...(b.focusTodoId !== undefined ? [{ id: 'focus', label: t('first.focus') }] : []),
+                { id: 'panel', label: t('first.panel') },
+              ],
+          ttlMs: 30_000,
+        })
+        .then((a) => {
+          if (a === 'focus' || a === 'panel') planAction(a, b.focusTodoId);
+        });
+    };
+    /** 규칙 답 단추: 집중 시작(이미 집중 중이면 그대로), 패널 오늘 탭 */
+    const planAction = (kind: 'focus' | 'panel', todoId?: number) => {
+      if (kind === 'panel') panel.openTab('today');
+      else if (planner.focus.phase === 'idle') planner.startFocus(undefined, todoId);
+    };
+    // 오래된 안전 복사본(가져오기 전 데이터, 판 올리기 전 복사, 깨진 파일)을 정리한다. 저장 파일을 연 뒤라
+    // 되살리기에 쓸 복사본은 이미 썼다. 종류마다 새것 3개와 30일 안의 것은 남긴다 (keep-copies.ts)
+    try {
+      const gone = pruneCopies(app.getPath('userData'));
+      if (gone.length) log('storage', '오래된 복사본 정리', gone.length);
+    } catch (err) {
+      log('storage', '복사본 정리 실패', err instanceof Error ? err.message : String(err));
+    }
+    // ---- 펫 성장 단계와 철마다 옷 (main/wear.ts) ----
+    const wear = createWear({
+      stats,
+      affection: () => petLife.state.affection,
+      petName,
+      say: (o) => pet.say(o),
+      react: (kind) => pet.react(kind),
+      onChange: () => {
+        sendStatus();
+        friends.resendStatus();
+      },
+      fromSettings: (sender) => {
+        const w = settingsWindow.window;
+        return !!w && !w.isDestroyed() && w.webContents === sender;
+      },
+      log,
+    });
     // 저장 파일이 깨졌거나 새 판이었으면 펫이 화면에 뜬 뒤 알린다 (버그잡이 6차)
     if (trouble)
       pet.win.webContents.once('did-finish-load', () =>
         setTimeout(() => void announceStoreTrouble(trouble, (o) => pet.say(o)), 3000),
       );
+    // 설정 같은 JSON 파일이 깨져 옆으로 옮겼으면(json-file.ts) 조용히 넘어가지 않고 알린다. 켠 뒤에 생긴 것도 바로
+    pet.win.webContents.once('did-finish-load', () =>
+      setTimeout(() => onJsonTrouble((tr) => void announceJsonTrouble(tr, (o) => pet.say(o))), 3500),
+    );
+    // 채팅의 AI 가 부른 지우기, 고치기, 메모 덧붙이기: 펫 말풍선으로 묻고 허락하면 한다 (프롬프트 주입 막기)
+    const petConfirm = createPetConfirm({
+      stores: { todos: store, events, notes },
+      say: (o) => pet.say(o),
+      onChange: () => panel.refresh(),
+      log,
+    });
+    setInterval(() => petConfirm.drain(), 5000).unref();
     // 답을 할 일로: 마감 낱말은 마감으로, 이미 있는 할 일은 빼고 넣는다. 넣은 id 를 돌려준다 (되돌리기를 붙일 수 있게)
     const addAnswerTodos = (titles: readonly string[]): number[] => {
       const now = Date.now();
@@ -349,9 +515,14 @@ ready
     // ---- 짝꿍이 기억하는 것 ----
     // 질문마다 성격 뒤에 붙는다 (persona.ts). MCP remember 가 남긴 것은 질문할 때와 1분마다 "기다리는 기억"으로 옮기고,
     // 사용자가 설정에서 허락한 것만 여기(petMemory)에 들어온다
+    // 사용자가 직접 알려 준 것(생일, 좋아하는 간식, 좋아하는 것)도 앞에 붙인다 (짝꿍이 아는 것, shared/knows.ts)
+    const factLine = (kind: FactKind, v: { value: string; m?: number; d?: number }) =>
+      kind === 'birthday'
+        ? t('bond.fact.ai.birthday', { m: v.m ?? 0, d: v.d ?? 0 })
+        : t(kind === 'food' ? 'bond.fact.ai.food' : 'bond.fact.ai.like', { value: v.value });
     setMemorySource(() => {
       drainMemoryInbox(log);
-      return settings.get().petMemory;
+      return [...factsForAi(settings.get().petFacts, factLine), ...settings.get().petMemory];
     });
     drainMemoryInbox(log);
     setInterval(() => drainMemoryInbox(log), 60_000).unref();
@@ -468,14 +639,14 @@ ready
           }
           return ok;
         }
-        void pet.say({ kind: 'answer', text: t('pet.play.walkStart'), ttlMs: 2000 });
+        void pet.say({ kind: 'answer', text: voiced('pet.play.walkStart'), ttlMs: 2000 });
         await new Promise((r) => setTimeout(r, 2200));
         const started = Date.now();
         const ok = await pet.stroll(walkMin);
         const minutes = Math.round((Date.now() - started) / 60_000);
         stats.addWalk(Date.now(), minutes);
         if (minutes > 0) petLife.activity('play');
-        if (ok) void pet.say({ kind: 'answer', text: t('pet.play.walkEnd'), ttlMs: 4000 });
+        if (ok) void pet.say({ kind: 'answer', text: voiced('pet.play.walkEnd'), ttlMs: 4000 });
         return ok;
       } finally {
         playing = false;
@@ -493,11 +664,11 @@ ready
       mates: () => friends.mates(),
       focus: () => planner.focus.phase === 'focus',
       hungry: () => store.fullness(Date.now()) < FULLNESS.hungry,
-      coinsToday: () => store.coinCount(PLAY_COIN.reason, localDay(Date.now())),
+      // 하루 상한은 받은 코인 합으로 센다 (예전 기록은 한 행에 1코인이라 합과 행 수가 같다)
+      coinsToday: () => store.coinSum(PLAY_COIN.reason, localDay(Date.now())),
       giveCoins: (coins) => {
-        const now = Date.now();
-        // 한 행에 1코인 (하루 상한을 행 수로 센다)
-        for (let i = 0; i < coins; i++) store.reward(1, PLAY_COIN.reason, now);
+        // 한 번 받은 코인은 한 행에 (예전에는 코인마다 한 행이라 장부가 빨리 불었다)
+        store.reward(coins, PLAY_COIN.reason, Date.now());
         panel.refresh();
       },
       played: () => petLife.activity('play'),
@@ -510,7 +681,7 @@ ready
     async function seek(): Promise<boolean> {
       void pet.say({
         kind: 'answer',
-        text: t('pet.seek.start', { seconds: HIDE_SEEK.seconds }),
+        text: voiced('pet.seek.start', { seconds: HIDE_SEEK.seconds }),
         ttlMs: 2500,
       });
       await new Promise((r) => setTimeout(r, 2800));
@@ -542,11 +713,11 @@ ready
         pet.react();
         void pet.say({
           kind: 'answer',
-          text: coins ? t('pet.seek.foundCoins', { coins }) : t('pet.seek.found'),
+          text: coins ? voiced('pet.seek.foundCoins', { coins }) : voiced('pet.seek.found'),
           ttlMs: 4000,
         });
       } else {
-        void pet.say({ kind: 'answer', text: t('pet.seek.lost'), ttlMs: 4000 });
+        void pet.say({ kind: 'answer', text: voiced('pet.seek.lost'), ttlMs: 4000 });
       }
       panel.refresh();
       return found;
@@ -588,7 +759,7 @@ ready
         void pet
           .say({
             kind: 'schedule',
-            text: t('pet.calendarBroken'),
+            text: voiced('pet.calendarBroken'),
             buttons: [{ id: 'settings', label: t('pet.calendarSettings') }],
             ttlMs: 30_000,
             hold: { missedMsgs: [{ key: 'pet.calendarBroken' }], onAction: openCalendarSettings },
@@ -641,6 +812,8 @@ ready
       // 오늘 할 일 다 끝냄, 연속 기록, 5/10/20개째면 한마디 (그날 한 번씩)
       companion.completed(id);
     }
+    /** 메뉴 막대 글자 다시 맞추기 (아래에서 메뉴 막대 글자를 만든 뒤 채운다. 그 전에 불려도 괜찮게) */
+    const titleHook = { refresh: () => {} };
     // ---- 일정 알림, 오늘 브리핑, 집중 타이머 (v1) ----
     const planner = createPlanner({
       todos: store,
@@ -678,8 +851,13 @@ ready
       onChange: () => {
         panel.refresh();
         sendStatus();
+        titleHook.refresh();
       },
       log,
+    });
+    // 할 일, 일정, 알림이 바뀌면 플래너가 다음에 깰 때를 다시 잡는다 (다른 프로세스가 쓴 것은 아래 data_version 이 check 로)
+    onWrite((sql) => {
+      if (/\b(todo|event|reminder)\b/i.test(sql)) planner.soon();
     });
     const panel = createPanel({
       store,
@@ -692,6 +870,7 @@ ready
       onEventsChanged: () => {
         planner.check();
         gcal.kick();
+        journey.tried('event');
       },
       askAi: (prompt) => chat.askInWindow(prompt, pet.bounds()),
       askOnce: (text, system) => chat.textOnce(text, system),
@@ -714,7 +893,12 @@ ready
         pet.react('fed');
         petLife.activity('feed');
         const image = food.image ? foodImageDataUrl(food.image) : undefined;
-        void pet.say({ kind: 'answer', text: t('pet.fedWith', { food: food.name }), ttlMs: 3500, image });
+        void pet.say({
+          kind: 'answer',
+          text: voiced('pet.fedWith', { food: food.name }),
+          ttlMs: 3500,
+          image,
+        });
         sendStatus();
       },
       openFoodMaker: () => maker.open('food'),
@@ -724,7 +908,7 @@ ready
         if (!house.bounds()) rest.houseGone();
         void pet.say({
           kind: 'answer',
-          text: t(what === 'style' ? 'pet.houseStyle' : 'pet.newHouse'),
+          text: voiced(what === 'style' ? 'pet.houseStyle' : 'pet.newHouse'),
           ttlMs: 4000,
         });
       },
@@ -756,7 +940,7 @@ ready
         void rest.call(false);
         pet.react('fed');
         petLife.activity('feed');
-        void pet.say({ kind: 'answer', text: t('pet.fed'), ttlMs: 3000 });
+        void pet.say({ kind: 'answer', text: voiced('pet.fed'), ttlMs: 3000 });
       },
       onChanged: () => sendStatus(),
       openChat: () => chat.open(pet.bounds()),
@@ -776,9 +960,13 @@ ready
         void rest.call(false);
         pet.react('fed');
         petLife.activity('feed');
-        void pet.say({ kind: 'answer', text: t('pet.fed'), ttlMs: 3000 });
+        void pet.say({ kind: 'answer', text: voiced('pet.fed'), ttlMs: 3000 });
       } else {
-        void pet.say({ kind: 'answer', text: r.full ? t('pet.full') : t('pet.noCoins'), ttlMs: 4000 });
+        void pet.say({
+          kind: 'answer',
+          text: r.full ? voiced('pet.full') : voiced('pet.noCoins'),
+          ttlMs: 4000,
+        });
       }
       panel.refresh();
     }
@@ -800,6 +988,9 @@ ready
         face: true,
         gait: pickedGait(settings.get()),
         energy: petLife.energy,
+        saver: saverNow(),
+        readAloud: settings.get().readAloud,
+        wear: wear.look(),
       };
       const key = JSON.stringify(status);
       if (key === lastStatus || pet.win.isDestroyed()) return;
@@ -809,6 +1000,8 @@ ready
     pet.win.webContents.on('did-finish-load', () => {
       lastStatus = '';
       sendStatus();
+      // 같이 타자 치기, 같이 일하는 표정, 든 쪽지도 다시 (main/together.ts)
+      together.resend();
     });
     // 이름 옆 얼굴: 내 펫 화면이 지금 모습으로 그려 보낸 것을 창들에 나눠 준다 (shared/face.ts)
     // 윈도우 알림 영역 아이콘도 지금 펫 얼굴로 (원래는 콩이 그림 tray.png). 맥 메뉴 막대는 흑백 템플릿이라 그대로
@@ -827,6 +1020,39 @@ ready
       sendStatus();
       friends.resendStatus();
     });
+    // 배터리 절약 (설정 편의): 전원, 저전력, 설정이 바뀌면 펫과 친구에게 알린다 (그리기 상한, 걷기 간격)
+    const stopPower = watchPower(log);
+    onSaverChange((on) => {
+      sendStatus();
+      friends.resendStatus();
+      tellSaver(on);
+    });
+    /**
+     * 처음 배터리로 바뀌어 움직임을 줄이면 펫이 한 번 알린다 (몰래 바꾸지 않게, 사용자 요청 2026-10-11).
+     * "그대로 움직이기"를 누르면 바로 끈다. 자동일 때 배터리 때문에 켜진 것만 (항상 줄이기는 사용자가 고른 것)
+     */
+    function tellSaver(on: boolean) {
+      const s = settings.get();
+      if (!on || s.saverTold || s.batterySaver !== 'auto' || !powerFacts().onBattery) return;
+      settings.set({ saverTold: true });
+      void pet
+        .say({
+          kind: 'answer',
+          text: t('pet.saver.told'),
+          buttons: [
+            { id: 'keep', label: t('pet.saver.keep') },
+            { id: 'ok', label: t('pet.saver.ok') },
+          ],
+          ttlMs: 20_000,
+        })
+        .then((action) => {
+          if (action !== 'keep') return;
+          settings.set({ batterySaver: 'off' });
+          sayShort(t('pet.saver.kept'));
+        });
+    }
+    // 켤 때 이미 배터리면 펫이 뜬 뒤 알린다 (한 번만)
+    pet.win.webContents.once('did-finish-load', () => setTimeout(() => tellSaver(saverNow()), 6000));
     // ---- 전역 단축키 (설정에서 바꾼다, v2) ----
     let registered: string[] = [];
     /** 지금 설정의 단축키를 건다. 다른 앱이 쓰고 있어 못 건 것의 이름을 돌려준다 */
@@ -834,7 +1060,14 @@ ready
       for (const acc of registered) globalShortcut.unregister(acc);
       registered = [];
       const taken: string[] = [];
-      const { hide, quickAdd, chat: chatKey, look: lookKey, panel: panelKey } = settings.get().shortcuts;
+      const {
+        hide,
+        quickAdd,
+        chat: chatKey,
+        look: lookKey,
+        panel: panelKey,
+        pet: petKey,
+      } = settings.get().shortcuts;
       for (const [acc, run, name] of [
         [hide, toggleHidden, t('pet.shortcut.hide')],
         [quickAdd, () => panel.openQuick(), t('pet.shortcut.quickAdd')],
@@ -843,6 +1076,15 @@ ready
         [lookKey, () => void look.start(), t('pet.shortcut.look')],
         // 펫을 누른 것과 같다 (열려 있으면 닫는다). 펫을 찾아 누르지 않아도 패널을 연다
         [panelKey, () => panel.togglePanel(), t('pet.shortcut.panel')],
+        // 키보드로 펫 다루기 (접근성): 숨겨 둔 펫이면 먼저 부른다
+        [
+          petKey,
+          () => {
+            if (pet.isHidden('user') || rest.inside()) toggleHidden();
+            else pet.keyboard();
+          },
+          t('pet.shortcut.pet'),
+        ],
       ] as const) {
         // 비운 단축키(새 기본 키가 사용자 키와 겹쳐 비운 것)는 등록하지 않는다
         if (!acc) continue;
@@ -878,7 +1120,7 @@ ready
         if (r.ok)
           void pet.say({
             kind: 'answer',
-            text: t('pet.foodMade', { food: name.trim() }),
+            text: voiced('pet.foodMade', { food: name.trim() }),
             ttlMs: 4000,
             image: foodImageDataUrl(file),
           });
@@ -917,6 +1159,7 @@ ready
           ...notes.list().map((n) => n.title),
           ...(s.icsUrl ? [s.icsUrl] : []),
           ...s.petMemory,
+          ...s.petFacts.map((f) => f.value),
           ...s.petRules.split('\n'),
         ];
       },
@@ -932,7 +1175,9 @@ ready
         // 설정 창을 연다고 사용자 MCP 서버를 다 띄워 보지 않는다. 내 MCP 쓰기를 켠 사람만 새로 읽는다
         mcpServers: () => (settings.get().myMcp ? mcpServers(log) : cachedMcpServers()),
         refreshMcp: () => refreshMcpServers(log),
+        forgetAiSessions: () => chat.forgetSessions(),
       },
+      gallery: galleryHandlers(log),
     });
     // ---- 구글 캘린더에 쓰기 (6단계): 짝꿍 일정을 구글로. 설정 창에서 연결한다 ----
     const gcal = createGcal({
@@ -946,13 +1191,139 @@ ready
         void pet
           .say({
             kind: 'schedule',
-            text: t('gcal.lost'),
+            text: voiced('gcal.lost'),
             buttons: [{ id: 'settings', label: t('pet.calendarSettings') }],
             ttlMs: 30_000,
             hold: { missedMsgs: [{ key: 'gcal.lost' }], onAction: openCalendarSettings },
           })
           .then(openCalendarSettings);
       },
+      log,
+    });
+    // ---- 하루 도구: 습관, 아침 계획, 알림 미루기, 내보내기 (main/day-tools.ts) ----
+    const dayTools = createDayTools({
+      todos: store,
+      habits,
+      events,
+      notes,
+      exportTodos,
+      restDays: () => restDaysOf(settings.get()),
+      dayEndMinute: () => settings.get().reviewMinute,
+      isPanel: (wc) => panel.owns(wc),
+      panelWindow: () => panel.window,
+      openToday: () => panel.openTab('today'),
+      isSettings: (wc) => {
+        const w = settingsWindow.window;
+        return !!w && !w.isDestroyed() && w.webContents === wc;
+      },
+      settingsWindow: () => settingsWindow.window,
+      askOnce: (text, system) => chat.textOnce(text, system),
+      aiLabel: () => chat.aiLabel(),
+      aiLocked: () => updates.locked(),
+      say: (o) => pet.say(o),
+      petHidden: () => pet.isHidden(),
+      focusing: () => planner.focus.phase === 'focus',
+      reminders: planner.reminders,
+      log,
+    });
+    // ---- 짝꿍이 아는 것, 첫 7일 여정, 주간 회고 카드 (2026-10-11) ----
+    // 말을 걸어도 되는 때: 숨거나 집중 중, 노는 중이 아니고 펫이 한가하다
+    const canTalk = () =>
+      !pet.isHidden() &&
+      planner.focus.phase !== 'focus' &&
+      !playing &&
+      !seeking &&
+      !games.running() &&
+      pet.isIdle();
+    const knows = createKnows({
+      petName,
+      say: (o) => pet.say(o),
+      react: (kind) => pet.react(kind),
+      canTalk,
+      log,
+    });
+    const journey = createJourney({
+      todos: store,
+      stats,
+      notes,
+      petName,
+      say: (o) => pet.say(o),
+      react: (kind) => pet.react(kind),
+      canTalk,
+      seen: {
+        quick: () => !!panel.quickWindow && !panel.quickWindow.isDestroyed(),
+        focus: () => planner.focus.phase !== 'idle',
+        maker: () => !!maker.window && !maker.window.isDestroyed(),
+      },
+      open: (step) => {
+        if (step === 'quick') panel.openQuick();
+        else if (step === 'focus') planner.startFocus(25);
+        else if (step === 'note' || step === 'event') panel.openTab(step);
+        else if (step === 'maker') maker.open();
+        else if (step === 'look') void look.start();
+        else panel.openTab('today');
+      },
+      panel: () => panel.window,
+      onChange: () => panel.refresh(),
+      log,
+    });
+    const weekCard = createWeekCard({
+      doneTitlesSince: (from) => store.doneTitlesSince(from),
+      panel: () => panel.window,
+      hold: (work) => panel.hold(work),
+      onSaved: () => journey.tried('week'),
+      log,
+    });
+    // ---- 같이 지내는 느낌: 같이 타자 치기, 같이 일하는 표정, 매일 쪽지 (main/together.ts, daily-note.ts) ----
+    const together = createTogether({
+      win: () => pet.win,
+      hidden: () => pet.isHidden() || rest.inside(),
+      asleep: () => planner.focus.phase === 'focus',
+      persona: () => settings.get().persona,
+      canTalk,
+      say: (o) => pet.say(o),
+      userData: app.getPath('userData'),
+      log,
+    });
+    const dailyNotes = createDailyNotes({
+      petName,
+      persona: () => settings.get().persona,
+      firstDay: () => stats.firstDay(),
+      facts: (now) => {
+        const day = todayRange(now);
+        const todays = events
+          .between(day.from, day.to)
+          .filter((e) => e.allDay || (e.endAt ?? e.startAt) >= now)
+          .sort((a, b) => a.startAt - b.startAt);
+        const first = todays.find((e) => !e.allDay) ?? todays[0];
+        const habit = habits.list(now, restDaysOf(settings.get())).sort((a, b) => b.streak - a.streak)[0];
+        return {
+          yesterdayDone: companion.memoryFacts(now).yesterdayDone ?? 0,
+          ...(first
+            ? {
+                firstEvent: {
+                  time: first.allDay
+                    ? ''
+                    : new Date(first.startAt).toLocaleTimeString(locale(), {
+                        hour: 'numeric',
+                        minute: '2-digit',
+                      }),
+                  title: first.title,
+                },
+              }
+            : {}),
+          ...(habit && habit.streak >= 2 ? { habit: { title: habit.title, streak: habit.streak } } : {}),
+          facts: settings.get().petFacts,
+        };
+      },
+      canTalk,
+      say: (o) => pet.say(o),
+      react: (kind) => pet.react(kind),
+      hold: (look) => together.setNote(look),
+      reward: (coins, reason, now) => store.reward(coins, reason, now),
+      panel: () => panel.window,
+      openToday: () => panel.openTab('today'),
+      onChange: () => panel.refresh(),
       log,
     });
     settings.onChange((next, prev) => {
@@ -967,6 +1338,7 @@ ready
           });
       }
       if (next.icsUrl !== prev.icsUrl && next.icsUrl) void calendar.sync(true);
+      else if (prev.icsUrl && !next.icsUrl) calendar.clear();
       if (next.myMcp && !prev.myMcp) void refreshMcpServers(log);
       if (JSON.stringify(next.friends) !== JSON.stringify(prev.friends)) {
         friends.sync();
@@ -985,6 +1357,8 @@ ready
       )
         sysMonitor.setKind(runnerKindNow());
       if (next.sysMonitor !== prev.sysMonitor) sysMonitor.setEnabled(next.sysMonitor);
+      if (next.trayTitle !== prev.trayTitle) trayTitle.refresh();
+      if (next.readAloud !== prev.readAloud) sendStatus();
       if (next.petName !== prev.petName) {
         chat.petNameChanged();
         panel.refresh();
@@ -1036,6 +1410,8 @@ ready
       // 첫 할 일 유도: 안내를 마친 뒤 처음 펫을 누르면 오늘 탭 대신 할 일 탭(입력칸에 커서)으로 연다. 할 일이 하나도 없을 때만, 한 번만.
       // 오늘 탭에 빠른 입력칸을 더하는 것보다 덜 끼어든다: 새 칸 없이 한 번 탭만 바꾸고, 다음부터는 원래대로 마지막 탭이다
       onFirstDone: () => {
+        // 첫 7일 여정을 시작한다 (main/journey.ts)
+        journey.start();
         const { open, doneToday } = store.list(Date.now());
         if (open.length === 0 && doneToday.length === 0) panel.openNextAt('todo');
       },
@@ -1044,12 +1420,93 @@ ready
     if (!settings.get().onboarded)
       pet.win.webContents.once('did-finish-load', () => setTimeout(() => onboarding.open(), 1500));
 
-    app.on('second-instance', () => {
+    app.on('second-instance', (_e, argv, cwd) => {
+      // 주소나 .jjpet 파일을 넘기며 다시 실행한 것(윈도우, 리눅스)이면 그것만 처리한다
+      if (takeArgv(argv, cwd)) return;
       pet.setHidden('user', false);
       friends.setHidden('user', false);
       void rest.call();
     });
     pet.win.webContents.once('did-finish-load', () => friends.sync());
+    // ---- 다른 앱에서 부르기: jjakkung:// 주소, .jjpet 두 번 눌러 열기 ----
+    registerScheme(log);
+    let urlTimes: number[] = [];
+    const sayShort = (text: string) => void pet.say({ kind: 'answer', text, ttlMs: 5000 });
+    function handleUrl(raw: string) {
+      const admitted = admitUrl(urlTimes, Date.now());
+      if (!admitted) {
+        log('url', '너무 잦아 버림');
+        return;
+      }
+      urlTimes = admitted;
+      if (!settings.get().urlScheme) {
+        log('url', '꺼져 있음');
+        sayShort(t('pet.url.off'));
+        return;
+      }
+      const r = parseJjUrl(raw);
+      if (!r.ok) {
+        log('url', '거절', r.reason);
+        sayShort(r.reason === 'tooLong' ? t('pet.url.tooLong') : t('pet.url.bad'));
+        return;
+      }
+      // 글은 기록에 남기지 않는다 (할 일, 메모 내용)
+      const a = r.value;
+      log('url', a.action);
+      if (a.action === 'add') {
+        const added = panel.addLine(a.text);
+        if (!added.ok) sayShort(t('pet.url.failed', { error: added.error ?? t('panel.add.empty') }));
+        else if (added.kind === 'event') {
+          const ev = events.get(added.id);
+          const when = new Date(added.startAt).toLocaleString(locale(), {
+            month: 'numeric',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+          });
+          sayShort(t('pet.url.event', { title: ev?.title ?? a.text, when }));
+        } else if (added.kind === 'todo')
+          sayShort(t('pet.url.todo', { title: store.get(added.id)?.title ?? a.text }));
+        else sayShort(t('pet.url.todos', { n: added.todos + added.events }));
+        if (added.ok) petLife.activity('todo');
+        return;
+      }
+      if (a.action === 'memo') {
+        const note = notes.add({ body: a.text, source: 'me' }, Date.now());
+        panel.refresh();
+        sayShort(t('pet.url.memo', { title: noteTitle(note) }));
+        return;
+      }
+      if (a.action === 'focus') {
+        if (planner.focus.phase !== 'idle') {
+          sayShort(t('pet.url.focusBusy'));
+          return;
+        }
+        planner.startFocus(a.min);
+        sayShort(t('pet.url.focus', { n: settings.get().focusMin }));
+        return;
+      }
+      panel.openTab(panelTabOf(a.tab));
+    }
+    /** .fairy (예전 .jjpet) 을 두 번 눌러 열었다: 펫 가져오기와 같은 검사, 같은 확인 창을 거친다 (backup.ts importPet) */
+    async function importPetFile(path: string) {
+      log('pet', '페어리 파일 열기');
+      const r = await importPet(undefined, false, log, path);
+      if (r.message) sayShort(r.message);
+    }
+    const handleIncoming = (item: Incoming) => {
+      if (item.kind === 'petFile') void importPetFile(item.path);
+      else handleUrl(item.url);
+    };
+    // 펫 화면이 뜬 뒤에 받는다 (확인 말풍선이 보이게)
+    pet.win.webContents.once('did-finish-load', () => setTimeout(() => startIncoming(handleIncoming), 800));
+    // 맥 메뉴 막대 글자: 다음 일정이나 집중 남은 시간 (설정 편의, 기본 끔)
+    const trayTitle = watchTrayTitle(tray, {
+      on: () => settings.get().trayTitle,
+      focus: () => planner.focus,
+      events: (from, to) => events.between(from, to),
+    });
+    titleHook.refresh = trayTitle.refresh;
     // 집은 펫과 같이 숨고 나온다 (발표, 숨기기). 2초마다 맞춘다. 펫이 집 안에서 쉬는 동안은 집이 보인다
     pet.win.webContents.once('did-finish-load', () => house.show(houseLook(), pet.bounds()));
     // 자리를 4분쯤 비우면 펫이 집 앞으로 가서 존다 (5분부터 졸고 10분부터 잔다). 자리 비울 때마다 한 번.
@@ -1093,6 +1550,8 @@ ready
       stopAllAi();
       for (const acc of registered) globalShortcut.unregister(acc);
       stopPresence();
+      stopPower();
+      trayTitle.dispose();
       sysMonitor.dispose();
       tray.destroy();
     });
@@ -1136,6 +1595,23 @@ ready
           friends,
           diary,
           companion,
+          dayTools,
+          habits,
+          whatFirst,
+          sayWhatFirst,
+          handleUrl,
+          handleIncoming,
+          saverNow,
+          debugBattery,
+          trayTitle,
+          knows,
+          journey,
+          wear,
+          weekCard,
+          together,
+          dailyNotes,
+          // 문서 화면 찍기(scripts/dev/screens.mjs)가 그림 친구(밀크, 초코)로 바꿀 때
+          library,
         },
       });
     if (process.env.JJ_METRICS) logMetrics(Number(process.env.JJ_METRICS));

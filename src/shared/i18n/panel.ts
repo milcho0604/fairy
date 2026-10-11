@@ -43,7 +43,7 @@ export const ko = {
   'panel.review.undo': '되돌리기',
   'panel.focus.done': (v: { minutes: number; coins: number; breakMin: number }) =>
     `${v.minutes}분 집중 끝!${v.coins > 0 ? ` 코인 ${v.coins}개.` : ''} ${v.breakMin}분 쉬자.`,
-  'panel.focus.stop': '그만할래',
+  'panel.focus.stop': '쉬는 시간 끝내기',
   'panel.focus.breakDone': '쉬는 시간 끝. 한 번 더 집중할까?',
   'panel.focus.again': '한 번 더',
   'panel.focus.enough': '이제 됐어',
@@ -58,7 +58,7 @@ export const ko = {
       : v.todos === 0
         ? `일정 ${v.events}개 넣었어`
         : `할 일 ${v.todos}개, 일정 ${v.events}개 넣었어`,
-  'panel.event.noRepeat': '반복 일정은 아직 못 넣어. 할 일 탭에 적으면 반복 할 일이 돼.',
+  'panel.event.noRepeat': '일정은 반복이 안 돼. 할 일 탭에 적으면 반복 할 일이 돼.',
   'panel.noteAi.summary': '아래 메모를 세 줄 안으로 요약해 줘.',
   'panel.noteAi.todos':
     "아래 메모를 바로 할 수 있는 할 일 목록으로 쪼개 줘. 한 줄에 하나씩 '- '로 시작하고 설명은 붙이지 마.",
@@ -77,7 +77,7 @@ export const ko = {
   'panel.ago.yesterday': '어제',
   'panel.add.failed': '못 넣었어',
   'panel.todo.add': '할 일 추가',
-  'panel.todo.placeholder': '할 일 추가 (예: 내일 보고서 쓰기!, 매일 운동)',
+  'panel.todo.placeholder': '할 일 추가 (예: 내일 보고서!)',
   'panel.todo.empty':
     '할 일이 없어. 위에 적어 봐. "내일", "!"를 붙이면 마감과 중요 표시, "매일", "평일", "매주", "매주 월요일"로 시작하면 반복이 돼.',
   'panel.todo.doneToday': '오늘 끝낸 일 {n}',
@@ -156,7 +156,7 @@ export const ko = {
   'panel.remind.min': '{n}분 전',
   'panel.remind.hour': '{n}시간 전',
   'panel.event.add': '일정 추가',
-  'panel.event.placeholder': '일정 추가 (예: 내일 3시 회의, 금요일 휴가)',
+  'panel.event.placeholder': '일정 추가 (예: 내일 3시 회의)',
   'panel.event.empty': '2주 안에 일정이 없어. 위에 날짜나 시각과 같이 적어 봐.',
   'panel.event.allDay': '종일',
   'panel.event.range': '{m1}/{d1}~{m2}/{d2}',
@@ -194,10 +194,10 @@ export const ko = {
   'panel.mood': '기분 {n}',
   'panel.affectionHint': '친밀도: 쌓이기만 하고 줄지 않아',
   'panel.affection': '친밀도 {n}',
-  'panel.unlockNext': (v: { step: number; what: string }) => `친밀도 ${v.step}이 되면 ${v.what}`,
+  'panel.unlockNext': (v: { step: number; what: string }) => `친밀도 ${v.step}: ${v.what}`,
   'panel.unlockAll': '다 열었어',
-  'panel.unlock.wave': '돌아올 때 손 흔들기',
-  'panel.unlock.dance': '할 일 끝내면 빙글 춤',
+  'panel.unlock.wave': '돌아오면 손 인사',
+  'panel.unlock.dance': '끝내면 빙글 춤',
   'panel.unlock.flower': '머리에 꽃',
   'panel.sulk': (v: { name: string; n: number }) =>
     `${withParticle(v.name, '이')} ${v.n}일째 삐져 있어. 할 일 하나를 끝내거나, 쓰다듬고 밥을 주면 풀려.`,
@@ -205,6 +205,8 @@ export const ko = {
   'panel.nav': '패널',
   'panel.toast.toEvent': '시각이 있어서 일정으로 넣었어',
   'panel.toast.asTodo': '할 일로',
+  'panel.toast.pmGuess': '(오후로 읽었어)',
+  'panel.toast.toAm': '오전으로',
   'panel.toast.todoRemoved': '할 일을 지웠어',
   'panel.chatWith': (v: { name: string }) => `${withParticle(v.name, '과')} 대화`,
   'panel.lookTogether': '같이 보기',
@@ -247,7 +249,7 @@ export const en: Translation<typeof ko> = {
   'panel.review.undo': 'Undo',
   'panel.focus.done': (v: { minutes: number; coins: number; breakMin: number }) =>
     `${v.minutes} min of focus done!${v.coins > 0 ? ` ${plural(v.coins, 'coin')}.` : ''} Take ${v.breakMin}.`,
-  'panel.focus.stop': "I'm done",
+  'panel.focus.stop': 'End break',
   'panel.focus.breakDone': 'Break is over. Another round?',
   'panel.focus.again': 'One more',
   'panel.focus.enough': "That's enough",
@@ -262,8 +264,7 @@ export const en: Translation<typeof ko> = {
       : v.todos === 0
         ? `Added ${plural(v.events, 'event')}`
         : `Added ${plural(v.todos, 'to-do')} and ${plural(v.events, 'event')}`,
-  'panel.event.noRepeat':
-    "Repeating events aren't supported yet. Write it in To-dos to make a repeating to-do.",
+  'panel.event.noRepeat': "Events can't repeat. Write it in To-dos to make a repeating to-do.",
   'panel.noteAi.summary': 'Summarize the note below in three lines or fewer.',
   'panel.noteAi.todos':
     "Break the note below into a list of to-dos I can start right away. One per line, each starting with '- ', no explanations.",
@@ -287,7 +288,7 @@ export const en: Translation<typeof ko> = {
   'panel.ago.yesterday': 'Yesterday',
   'panel.add.failed': "Couldn't add it",
   'panel.todo.add': 'Add a to-do',
-  'panel.todo.placeholder': 'Add a to-do (e.g. report friday!, gym daily)',
+  'panel.todo.placeholder': 'Add a to-do (e.g. report friday!)',
   'panel.todo.empty':
     'Nothing to do. Write one above. Add "today", "tomorrow" or a day like "friday" for a due date, and "!" to mark it important. For repeats, use "daily", "weekdays", "weekly" or "every monday".',
   'panel.todo.doneToday': 'Done today {n}',
@@ -368,7 +369,7 @@ export const en: Translation<typeof ko> = {
   'panel.remind.min': '{n} min before',
   'panel.remind.hour': '{n} h before',
   'panel.event.add': 'Add an event',
-  'panel.event.placeholder': 'Add an event (e.g. dentist fri 3pm, trip friday)',
+  'panel.event.placeholder': 'Add an event (e.g. dentist fri 3pm)',
   'panel.event.empty': 'No events in the next 2 weeks. Write one above with a date or time.',
   'panel.event.allDay': 'All day',
   'panel.event.range': '{m1}/{d1}-{m2}/{d2}',
@@ -417,6 +418,8 @@ export const en: Translation<typeof ko> = {
   'panel.nav': 'Panel',
   'panel.toast.toEvent': 'It had a time, so I added it to events',
   'panel.toast.asTodo': 'Make to-do',
+  'panel.toast.pmGuess': '(read as PM)',
+  'panel.toast.toAm': 'Make it AM',
   'panel.toast.todoRemoved': 'To-do deleted',
   'panel.chatWith': (v: { name: string }) => `Chat with ${v.name}`,
   'panel.lookTogether': 'Look together',

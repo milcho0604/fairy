@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { SAVER_MODES } from '../../../../shared/battery.ts';
 import { t } from '../../../../shared/i18n/index.ts';
 import {
   acceleratorLabel,
@@ -12,7 +13,7 @@ import {
 } from '../../../../shared/shortcut.ts';
 import { bridge, isMac, Section, type TabProps, Toggle } from '../ui.tsx';
 
-/** 편의 탭: 단축키, 언어, 시작 */
+/** 편의 탭: 단축키, 다른 앱에서 부르기, 배터리 절약, 접근성, 언어, 시작 */
 export function EaseTab({ snap, update, flash }: TabProps) {
   const s = snap.settings;
   const mac = isMac(snap);
@@ -94,6 +95,69 @@ export function EaseTab({ snap, update, flash }: TabProps) {
           </div>
         ) : (
           <small className="below">{t('settings.langHint')}</small>
+        )}
+        {/* 어두운 모드는 따로 고르지 않고 운영체제를 따른다. 찾기에서 "다크", "theme" 로도 나오게 낱말을 숨겨 둔다 */}
+        <p className="theme-note">
+          {t('settings.themeNote')}
+          <span hidden>{t('settings.themeKeywords')}</span>
+        </p>
+      </Section>
+
+      <Section title={t('settings.integrations')}>
+        <Toggle
+          label={t('settings.urlScheme')}
+          hint={t('settings.urlSchemeHint')}
+          on={s.urlScheme}
+          onChange={(v) => update({ urlScheme: v })}
+        />
+        {s.urlScheme && (
+          <small className="below">
+            <code>{t('settings.urlSchemeExample')}</code>
+          </small>
+        )}
+      </Section>
+
+      <Section title={t('settings.power')}>
+        <fieldset className="segmented" aria-label={t('settings.saverAria')}>
+          {SAVER_MODES.map((m) => (
+            <button
+              key={m}
+              type="button"
+              aria-pressed={s.batterySaver === m}
+              className={s.batterySaver === m ? 'on' : ''}
+              onClick={() => s.batterySaver !== m && update({ batterySaver: m })}
+            >
+              {t(`settings.saver.${m}`)}
+            </button>
+          ))}
+        </fieldset>
+        <small className="below">
+          {(s.batterySaver === 'always' || (s.batterySaver === 'auto' && snap.onBattery)) && (
+            <>{t('settings.saverNow')} </>
+          )}
+          {t('settings.saverHint')}
+        </small>
+      </Section>
+
+      <Section title={t('settings.access')}>
+        <Toggle
+          label={t('settings.readAloud')}
+          hint={t('settings.readAloudHint')}
+          on={s.readAloud}
+          onChange={(v) => update({ readAloud: v })}
+        />
+        {mac && (
+          <Toggle
+            label={t('settings.trayTitle')}
+            hint={t('settings.trayTitleHint')}
+            on={s.trayTitle}
+            onChange={(v) => update({ trayTitle: v })}
+          />
+        )}
+        {s.shortcuts.pet !== NO_SHORTCUT && (
+          <small className="below">
+            {t('settings.petKeysHint', { keys: acceleratorLabel(s.shortcuts.pet, mac).join('+') })}
+          </small>
         )}
       </Section>
 

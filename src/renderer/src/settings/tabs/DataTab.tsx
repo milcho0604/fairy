@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { formatBytes } from '../../../../shared/bytes.ts';
 import { t } from '../../../../shared/i18n/index.ts';
 import type { SettingsSnapshot } from '../../../../shared/ipc.ts';
+import { ExportBox, ExportedRow } from '../ExportBox.tsx';
 import { bridge, Section, type TabProps } from '../ui.tsx';
 
 /** 데이터 탭: 백업과 옮기기, 저장 공간 */
 export function DataTab({ snap, setSnap, flash }: TabProps) {
+  const [exported, setExported] = useState<string>();
   return (
     <>
       <Section title={t('settings.backup')}>
@@ -18,7 +20,10 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
               // 실패하면(쓰기 권한, 디스크 등) 아무 표시 없이 끝나지 않게 상태줄에 알린다
               const r = await bridge.exportData().catch(() => undefined);
               if (r === undefined) flash(t('settings.exportFailed'));
-              else if (r) flash(t('settings.exported'));
+              else if (r) {
+                flash(t('settings.exported'));
+                setExported(r);
+              }
             }}
           >
             {t('settings.export')}
@@ -44,7 +49,10 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
               // 쓰기 실패(권한, 디스크, 그림 파일 읽기)도 말 없이 끝나지 않게 알린다
               const r = await bridge.exportPet().catch(() => undefined);
               if (r === undefined) flash(t('settings.petExportFailed'), true);
-              else if (r) flash(t('settings.petExported'));
+              else if (r) {
+                flash(t('settings.petExported'));
+                setExported(r);
+              }
             }}
           >
             {t('settings.exportPet')}
@@ -60,7 +68,9 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
             {t('settings.importPet')}
           </button>
         </div>
+        <ExportedRow path={exported} />
       </Section>
+      <ExportBox flash={flash} />
       <Section title={t('settings.storage')}>
         <Storage
           list={snap.storage}
@@ -70,13 +80,66 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
               setSnap(
                 (v) => v && { ...v, storage: r.storage, models: { ...v.models, localReady: r.localReady } },
               );
-              flash(t(r.ok ? 'settings.storage.deleted' : 'settings.storage.busy'));
+              const copy = id.startsWith('copy:');
+              flash(
+                t(
+                  r.ok
+                    ? copy
+                      ? 'settings.storage.copyDeleted'
+                      : 'settings.storage.deleted'
+                    : 'settings.storage.busy',
+                ),
+              );
             } catch {
               flash(t('settings.storage.busy'));
             }
           }}
         />
       </Section>
+      <Section title={t('settings.aiHistory')}>
+        <AiHistory
+          bytes={snap.aiHistoryBytes}
+          onClear={async () => {
+            try {
+              const r = await bridge.clearAiHistory();
+              setSnap((v) => v && { ...v, aiHistoryBytes: r.bytes });
+              flash(t(r.ok ? 'settings.aiHistory.cleared' : 'settings.aiHistory.failed'), !r.ok);
+            } catch {
+              flash(t('settings.aiHistory.failed'), true);
+            }
+          }}
+        />
+      </Section>
+    </>
+  );
+}
+
+/** AI CLI 가 짝꿍 전용 폴더에 남긴 대화 기록과 지우기 (두 번 눌러 지운다) */
+function AiHistory({ bytes, onClear }: { bytes: number; onClear: () => void }) {
+  const [confirm, setConfirm] = useState(false);
+  return (
+    <>
+      <small>{t('settings.aiHistory.hint')}</small>
+      <div className="action-row">
+        <button
+          type="button"
+          className={`ghost${confirm ? ' danger' : ''}`}
+          disabled={bytes === 0}
+          onClick={() => {
+            if (!confirm) return setConfirm(true);
+            setConfirm(false);
+            onClear();
+          }}
+          onBlur={() => setConfirm(false)}
+        >
+          {confirm ? t('settings.aiHistory.sure') : t('settings.aiHistory.clear')}
+        </button>
+      </div>
+      <small className="below">
+        {bytes > 0
+          ? t('settings.aiHistory.size', { size: formatBytes(bytes) })
+          : t('settings.aiHistory.none')}
+      </small>
     </>
   );
 }

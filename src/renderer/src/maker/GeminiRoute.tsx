@@ -198,7 +198,9 @@ export function GeminiRoute({
         onDrop={drop}
       >
         <span className="big">{t('maker.gemini.drop.title')}</span>
-        <span className="hint">{t('maker.gemini.drop.how')}</span>
+        <span className="hint">
+          {t('maker.gemini.drop.how', { keys: platform === 'mac' ? '⌘V' : 'Ctrl+V' })}
+        </span>
       </button>
       <input
         ref={fileRef}

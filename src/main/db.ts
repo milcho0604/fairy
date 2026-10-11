@@ -5,7 +5,9 @@ import { AchievementStore } from '../shared/achieve.ts';
 import { StatStore } from '../shared/beta-stats.ts';
 import type { Db } from '../shared/db-schema.ts';
 import { EventStore } from '../shared/event-store.ts';
+import { type ExportTodo, readExportTodos } from '../shared/export.ts';
 import { GcalStore } from '../shared/gcal-store.ts';
+import { HabitStore } from '../shared/habit.ts';
 import { locale, t } from '../shared/i18n/index.ts';
 import type { MissedMsg } from '../shared/missed-msg.ts';
 import { NoteStore } from '../shared/note-store.ts';
@@ -13,6 +15,7 @@ import { PetLife } from '../shared/pet-life.ts';
 import { ItemStore } from '../shared/shop.ts';
 import { TodoStore } from '../shared/todo-store.ts';
 import { copyDbFile, openDbFile, type StoreTrouble } from './db-open.ts';
+import type { JsonTrouble } from './json-file.ts';
 import type { SayOptions } from './pet-window.ts';
 
 /**
@@ -31,10 +34,16 @@ export function openStore(log: (tag: string, ...rest: unknown[]) => void): {
   life: PetLife;
   shop: ItemStore;
   achievements: AchievementStore;
+  /** 습관 (반복 할 일 사슬, shared/habit.ts) */
+  habits: HabitStore;
+  /** 내보낼 할 일 (shared/export.ts) */
+  exportTodos: () => ExportTodo[];
   /** 한 시점 그대로 다른 파일로 복사 (백업, v2) */
   vacuumInto: (file: string) => void;
   /** 다른 연결(펫 MCP 서버)이 쓰면 바뀌는 수. 바뀌었으면 화면을 다시 그린다 */
   dataVersion: () => number;
+  /** 이 앱이 저장 파일에 쓸 때마다 (쓴 SQL). 플래너가 할 일, 일정, 알림이 바뀌면 다음에 깰 때를 다시 잡는다 */
+  onWrite: (listener: (sql: string) => void) => void;
   /** 저장 파일을 그대로 쓰지 못했으면 그 까닭 */
   trouble?: StoreTrouble;
 } {
@@ -48,7 +57,10 @@ export function openStore(log: (tag: string, ...rest: unknown[]) => void): {
     open = false;
     db.close();
   });
-  const d = db as unknown as Db;
+  const writes = new Set<(sql: string) => void>();
+  const d = watchWrites(db as unknown as Db, (sql) => {
+    for (const w of writes) w(sql);
+  });
   const store = new TodoStore(d);
   const events = new EventStore(d);
   return {
@@ -65,9 +77,32 @@ export function openStore(log: (tag: string, ...rest: unknown[]) => void): {
     },
     shop: new ItemStore(d, store),
     achievements: new AchievementStore(d),
+    habits: new HabitStore(d),
+    exportTodos: () => readExportTodos(d),
     dataVersion: () =>
       open ? Number((d.prepare('pragma data_version').get() as { data_version: number }).data_version) : -1,
+    onWrite: (listener) => writes.add(listener),
     ...(trouble ? { trouble } : {}),
+  };
+}
+
+/** 읽기(select, pragma)가 아닌 문장을 돌린 뒤 알린다. 읽기는 감싸지 않아 그대로다 */
+export function watchWrites(db: Db, onWrite: (sql: string) => void): Db {
+  return {
+    exec: (sql) => db.exec(sql),
+    prepare: (sql) => {
+      const st = db.prepare(sql);
+      if (/^\s*(select|pragma)\b/i.test(sql)) return st;
+      const after = <T>(r: T): T => {
+        onWrite(sql);
+        return r;
+      };
+      return {
+        run: (...p) => after(st.run(...p)),
+        get: (...p) => after(st.get(...p)),
+        all: (...p) => after(st.all(...p)),
+      };
+    },
   };
 }
 
@@ -129,4 +164,29 @@ export async function announceStoreTrouble(
       : [{ id: 'ok', label: t('common.ok') }],
   });
   showFile(action);
+}
+
+/** 깨진 JSON 저장 파일(설정 등)을 펫 말풍선으로 알린다. 조용히 기본값으로 돌아가지 않게 (json-file.ts) */
+export async function announceJsonTrouble(
+  trouble: JsonTrouble,
+  say: (o: SayOptions) => Promise<string | undefined>,
+): Promise<void> {
+  const vars = { file: basename(trouble.file), moved: basename(trouble.moved) };
+  const key = trouble.restored ? 'main.json.restored' : 'main.json.reset';
+  const action = await say({
+    kind: 'answer',
+    text: t(key, vars),
+    ttlMs: 30_000,
+    hold: {
+      onAction: (a) => {
+        if (a === 'show') shell.showItemInFolder(trouble.moved);
+      },
+      missedMsgs: [{ key, vars }],
+    },
+    buttons: [
+      { id: 'show', label: t('main.db.showFile') },
+      { id: 'ok', label: t('common.ok') },
+    ],
+  });
+  if (action === 'show') shell.showItemInFolder(trouble.moved);
 }

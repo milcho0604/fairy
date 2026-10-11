@@ -1,0 +1,13 @@
+# 앱 사용자의 버그 제보와 보안 알림은 공개 레포 milcho0604/fairy-releases 로 받는다 (이 레포는 비공개가 될 수 있다).
+# 앱의 "문제 알리기"(src/shared/feedback.ts issueUrl)도 그 레포의 빈 이슈 주소를 연다 (public-repo/.github/ISSUE_TEMPLATE)
+blank_issues_enabled: true
+contact_links:
+  - name: 앱 버그, 바라는 점 (App bugs and ideas)
+    url: https://github.com/milcho0604/fairy-releases/issues/new/choose
+    about: 앱을 쓰다 생긴 문제는 여기로 / Please report app issues here
+  - name: 보안 문제 (Security vulnerability)
+    url: https://github.com/milcho0604/fairy-releases/security/advisories/new
+    about: 공개 이슈 말고 비공개로 알려 주세요 / Report privately
+  - name: 페어리 홈페이지 (Website)
+    url: https://fairy.moilga.com
+    about: 페어리 소개와 받기 / About fairy and downloads

@@ -4,6 +4,7 @@
 import type { ChatterLevel } from './chatter.ts';
 import { timeLabel } from './event-store.ts';
 import { t } from './i18n/index.ts';
+import { voiced } from './persona-voice.ts';
 import { localDay } from './todo-store.ts';
 
 /** 이 시각(현지, 분) 전에는 브리핑하지 않는다. 새벽에 켠 컴퓨터에 "좋은 아침"을 하지 않게. */
@@ -22,6 +23,8 @@ export interface NextUpTodo {
   important: boolean;
   createdAt: number;
   doneAt?: number | null;
+  /** 반복 할 일(습관)이면 반복 종류. 습관은 맨 뒤에 고른다 */
+  repeat?: string | null;
 }
 
 export interface NextUpEvent {
@@ -37,8 +40,8 @@ export type NextUp =
       kind: 'todo';
       id: number;
       title: string;
-      /** 고른 까닭: 지난 중요, 오늘 중요, 오늘 마감, 오래된 중요 */
-      why: 'overdue' | 'today-important' | 'today' | 'important';
+      /** 고른 까닭: 마감 지남, 오늘 중요, 중요, 오늘 마감, 습관 */
+      why: 'overdue' | 'today-important' | 'today' | 'important' | 'habit';
     };
 
 /** 마감이 이른 것, 같으면 시각이 이른 것(시각 없으면 뒤), 그다음 먼저 넣은 것 */
@@ -48,8 +51,8 @@ const byDue = (a: NextUpTodo, b: NextUpTodo) =>
   a.createdAt - b.createdAt;
 
 /**
- * 지금 먼저 할 일 하나. 30분 안에 시작하는 일정(준비) → 마감 지난 중요 → 오늘 마감 중요 → 오늘 마감 →
- * 가장 오래된 중요 순. 마감 지난 보통 할 일은 오늘 회고와 마감 알림이 따로 챙겨서 여기서는 고르지 않는다. 없으면 undefined
+ * 지금 먼저 할 일 하나. 30분 안에 시작하는 일정(준비) → 마감 지난 할 일(중요 먼저) → 중요(오늘 마감 먼저) →
+ * 오늘 마감 → 습관(반복 할 일) 순. 습관은 오늘 탭 습관 칸에서 체크하니 맨 뒤다. 없으면 undefined
  */
 export function nextUp(o: {
   todos: readonly NextUpTodo[];
@@ -62,15 +65,33 @@ export function nextUp(o: {
   if (soon) return { kind: 'event', id: soon.id, title: soon.title, startAt: soon.startAt };
   const today = localDay(o.now);
   const open = o.todos.filter((todo) => todo.doneAt === null || todo.doneAt === undefined);
-  const pick = (why: Extract<NextUp, { kind: 'todo' }>['why'], test: (todo: NextUpTodo) => boolean) => {
-    const todo = open.filter(test).sort(why === 'important' ? (a, b) => a.createdAt - b.createdAt : byDue)[0];
+  const tasks = open.filter((todo) => !todo.repeat);
+  const pick = (
+    why: Extract<NextUp, { kind: 'todo' }>['why'],
+    list: readonly NextUpTodo[],
+    test: (todo: NextUpTodo) => boolean,
+    order: (a: NextUpTodo, b: NextUpTodo) => number = byDue,
+  ) => {
+    const todo = list.filter(test).sort(order)[0];
     return todo ? ({ kind: 'todo', id: todo.id, title: todo.title, why } as const) : undefined;
   };
+  const isToday = (x: NextUpTodo) => x.due === today;
   return (
-    pick('overdue', (x) => x.important && x.due !== null && x.due < today) ??
-    pick('today-important', (x) => x.important && x.due === today) ??
-    pick('today', (x) => x.due === today) ??
-    pick('important', (x) => x.important)
+    pick(
+      'overdue',
+      tasks,
+      (x) => x.due !== null && x.due < today,
+      (a, b) => +b.important - +a.important || byDue(a, b),
+    ) ??
+    pick('today-important', tasks, (x) => x.important && isToday(x)) ??
+    pick(
+      'important',
+      tasks,
+      (x) => x.important,
+      (a, b) => a.createdAt - b.createdAt,
+    ) ??
+    pick('today', tasks, isToday) ??
+    pick('habit', open, (x) => !!x.repeat && x.due !== null && x.due <= today)
   );
 }
 
@@ -88,9 +109,10 @@ export interface BriefingInput {
 }
 
 function greeting(minute: number): string {
-  if (minute < 11 * 60) return t('briefing.hi.morning');
-  if (minute < 17 * 60) return t('briefing.hi.day');
-  return t('briefing.hi.evening');
+  // 인사는 고른 성격 말투로 (shared/persona-voice.ts)
+  if (minute < 11 * 60) return voiced('briefing.hi.morning');
+  if (minute < 17 * 60) return voiced('briefing.hi.day');
+  return voiced('briefing.hi.evening');
 }
 
 export function briefingText(b: BriefingInput): string {
@@ -101,10 +123,13 @@ export function briefingText(b: BriefingInput): string {
  * 인사 없는 브리핑 (만나는 시간의 맞이 인사 뒤에 붙인다). 아무것도 없으면 empty 글
  * (기본은 "일정도 마감도 없어", 쉬는 날 한마디처럼 덧붙일 것이 없으면 빈 글을 넘긴다)
  */
-export function briefingBody(b: Omit<BriefingInput, 'nowMinute'>, empty = t('briefing.nothing')): string {
+export function briefingBody(
+  b: Omit<BriefingInput, 'nowMinute'>,
+  empty = voiced('briefing.nothing'),
+): string {
   // 먼저 할 일이 있으면 "일정도 마감도 없어" 대신 그 한 문장만
   const body = briefingFacts(b, b.next ? '' : empty);
-  return b.next ? `${body} ${t('briefing.next', { title: b.next })}`.trim() : body;
+  return b.next ? `${body} ${voiced('briefing.next', { title: b.next })}`.trim() : body;
 }
 
 function briefingFacts(b: Omit<BriefingInput, 'nowMinute'>, empty: string): string {
@@ -118,21 +143,21 @@ function briefingFacts(b: Omit<BriefingInput, 'nowMinute'>, empty: string): stri
         .slice(0, 2)
         .map((e) => e.title)
         .join(', ') + (more > 0 ? t('briefing.due.more', { n: more }) : '');
-    parts.push(t('briefing.allDay', { list }));
+    parts.push(voiced('briefing.allDay', { list }));
   }
   const timed = b.events.filter((e) => !e.allDay);
   const first = timed[0];
   if (first) {
     parts.push(
       timed.length === 1
-        ? t('briefing.oneEvent', { time: timeLabel(first.minute), title: first.title })
-        : t('briefing.events', { n: timed.length, time: timeLabel(first.minute), title: first.title }),
+        ? voiced('briefing.oneEvent', { time: timeLabel(first.minute), title: first.title })
+        : voiced('briefing.events', { n: timed.length, time: timeLabel(first.minute), title: first.title }),
     );
   }
   if (b.dueToday > 0 || b.overdue > 0) {
     const due = b.dueToday > 0 ? t('briefing.dueToday', { n: b.dueToday }) : '';
     const late = b.overdue > 0 ? t('briefing.overdue', { n: b.overdue }) : '';
-    parts.push(t('briefing.todos', { list: [due, late].filter(Boolean).join(', ') }));
+    parts.push(voiced('briefing.todos', { list: [due, late].filter(Boolean).join(', ') }));
   }
   return parts.length === 0 ? empty : parts.join(' ');
 }
@@ -150,11 +175,11 @@ export function reviewText(r: ReviewInput): string {
   const n = r.doneTitles.length;
   const done =
     n === 0
-      ? t('briefing.review.none')
+      ? voiced('briefing.review.none')
       : n === 1
-        ? t('briefing.review.one', { title: r.doneTitles[0] ?? '' })
-        : t('briefing.review.many', { n });
-  return r.leftToday > 0 ? `${done} ${t('briefing.review.left', { n: r.leftToday })}` : done;
+        ? voiced('briefing.review.one', { title: r.doneTitles[0] ?? '' })
+        : voiced('briefing.review.many', { n });
+  return r.leftToday > 0 ? `${done} ${voiced('briefing.review.left', { n: r.leftToday })}` : done;
 }
 
 /**
@@ -191,7 +216,7 @@ export function dueSlot(minute: number, level: ChatterLevel, reviewMinute: numbe
 export function deadlineText(titles: readonly string[]): string {
   const shown = titles.slice(0, 3).map((title) => `"${title}"`);
   const more = titles.length - shown.length;
-  return t('briefing.due.left', {
+  return voiced('briefing.due.left', {
     n: titles.length,
     list: shown.join(', ') + (more > 0 ? t('briefing.due.more', { n: more }) : ''),
   });

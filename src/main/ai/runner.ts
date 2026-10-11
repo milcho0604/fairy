@@ -4,6 +4,7 @@ import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { app } from 'electron';
+import { aiChildEnv } from '../../shared/ai/child-env.ts';
 import { claudeArgs, claudeInput, parseClaudeLine } from '../../shared/ai/claude.ts';
 import { codexArgs, parseCodexLine } from '../../shared/ai/codex.ts';
 import { cursorArgs, cursorParser } from '../../shared/ai/cursor.ts';
@@ -14,7 +15,8 @@ import type { AiEvent, AiStatus, ImageAttachment, McpLaunch } from '../../shared
 import { codexUsage, lastCodexLimits } from '../../shared/ai/usage.ts';
 import { aiTempImageName, isAiTempImage } from '../../shared/capture.ts';
 import { t } from '../../shared/i18n/index.ts';
-import { prepareCodexHome } from './codex-home.ts';
+import { aiWorkDir } from '../ai-history.ts';
+import { finishCodexHome, prepareCodexHome } from './codex-home.ts';
 import { getShellEnv, launchOf, resolveBin } from './shell-env.ts';
 
 /** 이 시간 동안 출력이 하나도 없으면 멈춘 것으로 본다. */
@@ -53,7 +55,7 @@ export interface AiRun {
  * 비어 있는 전용 폴더라 어느 프로젝트의 CLAUDE.md, AGENTS.md 도 읽히지 않는다.
  */
 function workDir(): string {
-  const dir = join(app.getPath('userData'), 'ai-workdir');
+  const dir = aiWorkDir(app.getPath('userData'));
   mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -84,8 +86,13 @@ function sweepTempImages(): void {
 
 export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
   sweepTempImages();
+  // 그림을 실은 질문은 claude, codex 가 세션 기록에 그림째 남긴다. 늘 기록 없이 부른다 (2026-10-11 보안 점검).
+  // 이어가기도 하지 않는다: 이어 간 세션 파일에 그림이 덧붙기 때문이다 (부르는 쪽이 최근 대화를 글로 붙인다)
+  const noSave = !!reqIn.ephemeral || reqIn.images.length > 0;
   const req: AiRequest = {
     ...reqIn,
+    ephemeral: noSave,
+    sessionId: noSave ? undefined : reqIn.sessionId,
     text: noNul(reqIn.text),
     persona: noNul(reqIn.persona),
     history: reqIn.history.map((h) => ({ question: noNul(h.question), answer: noNul(h.answer) })),
@@ -131,7 +138,8 @@ export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
 
     let args: string[];
     let stdin: string | undefined;
-    const childEnv: NodeJS.ProcessEnv = { ...process.env, PATH: env.path };
+    // 짝꿍 환경 변수를 통째로 넘기지 않는다: 고른 것만 (shared/ai/child-env.ts)
+    const childEnv = aiChildEnv(process.env, { PATH: env.path });
     /** 줄 단위 JSON 해석기. 없으면 표준 출력을 그대로 답으로 본다 (text 어댑터). */
     let parse: ((line: string) => AiEvent[]) | undefined;
     let codexHome: string | undefined;
@@ -238,6 +246,8 @@ export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
             error: classifyError(spec, stripAnsi(stderr) || t('ai.error.exitCode', { code: String(code) })),
           });
         else emit({ type: 'done', text: answer.trim() });
+        // 격리한 codex 가 토큰을 새로 받았으면 사용자 쪽 로그인 파일에 되돌려 쓴다 (윈도우 복사본)
+        if (codexHome && req.isolate) finishCodexHome(env.codexHome);
         // codex 사용량은 대화 기록 파일에 남는다. 끝난 뒤 읽는다. 기록을 안 남겼으면 읽을 것도 없다.
         if (codexHome && sessionId && !req.ephemeral) {
           const usage = readCodexUsage(codexHome, sessionId);
@@ -357,7 +367,7 @@ async function checkStatusNow(spec: ProviderSpec, refresh: boolean): Promise<AiS
   const launch = cli ? launchOf(cli, env) : undefined;
   if (!launch) return { provider, installed: false };
   // cursor-agent status 는 로그인 안 됐으면 브라우저를 열려고 한다. 막는다.
-  const childEnv: NodeJS.ProcessEnv = { ...process.env, PATH: env.path, NO_OPEN_BROWSER: '1', NO_COLOR: '1' };
+  const childEnv = aiChildEnv(process.env, { PATH: env.path, NO_OPEN_BROWSER: '1', NO_COLOR: '1' });
   if (spec.adapter === 'codex') {
     const home = prepareCodexHome(env.codexHome);
     if (home) childEnv.CODEX_HOME = home;

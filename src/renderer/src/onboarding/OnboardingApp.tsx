@@ -79,6 +79,8 @@ export function OnboardingApp() {
   if (!snap) return <div className="onboard" />;
   const s = snap.settings;
   const mac = snap.platform === 'darwin';
+  // 밀크, 초코는 고르기 칸 그림을 바로 쓴다 (고르면 설정만 새로 받아 snap.photo 는 옛 그림이다)
+  const photo = snap.starters.find((p) => isCurrentStarter(s.petImage, p.id))?.thumb ?? snap.photo;
   // 단축키는 설정에서 바꿀 수 있어 지금 값을 보인다
   const keys = (acc: string) =>
     acceleratorLabel(acc, mac).map((k, i) => (
@@ -126,9 +128,14 @@ export function OnboardingApp() {
         {page === 0 && (
           <section>
             <div className="hero">
-              {/* 기본 펫은 화면 위 펫, 설정 썸네일과 같은 몸 전체 그림 (팔다리 포함). 사진 펫은 얼굴 그림 */}
+              {/* 기본 펫은 화면 위 펫, 설정 썸네일과 같은 몸 전체 그림 (팔다리 포함). 사진 펫도 몸 전체 그림
+                  (얼굴 그림은 머리만 잘라 보였다). 그림을 아직 못 받았으면 얼굴 그림 */}
               {s.petImage ? (
-                <PetFace />
+                photo ? (
+                  <img className="face body" src={photo} alt="" draggable={false} />
+                ) : (
+                  <PetFace />
+                )
               ) : (
                 <PetShot
                   className="face body"
@@ -316,6 +323,13 @@ export function OnboardingApp() {
                 <>
                   <dt>{keys(s.shortcuts.hide)}</dt>
                   <dd>{t('onboarding.tips.hideDesc')}</dd>
+                </>
+              )}
+              {/* 배터리일 때 움직임 줄이기 (기본 켜기, 끄는 길을 같이 알린다) */}
+              {s.batterySaver !== 'off' && (
+                <>
+                  <dt>{t('onboarding.tips.saver')}</dt>
+                  <dd>{t('onboarding.tips.saverDesc')}</dd>
                 </>
               )}
               <dt>{t('onboarding.tips.settings')}</dt>

@@ -13,6 +13,8 @@ export function cleanMemoryItem(v: unknown): string {
 
 /** 같은 기억인지 (대소문자, 띄어쓰기 무시) */
 const key = (s: string) => s.toLowerCase().replace(/\s+/g, '');
+/** 같은 기억인지 볼 때 쓰는 열쇠 (짝꿍이 아는 것 화면이 출처를 붙일 때도) */
+export const memoryKey = key;
 
 /** 저장 파일이나 화면에서 온 목록을 다듬는다: 글만, 같은 것 하나, 넘치면 오래된 것부터 뺀다 */
 export function cleanMemory(list: unknown): string[] {

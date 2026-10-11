@@ -57,7 +57,7 @@ export const en: Translation<typeof ko> = {
   'play.menu.laser': 'Chase the laser',
   'play.menu.treats': 'Toss treats',
   'play.menu.rps': 'Rock paper scissors',
-  'play.menu.mole': 'Whack-a-pet',
+  'play.menu.mole': 'Whack-a-mole',
   'play.menu.tag': (v: { name: string }) => `Play tag with ${v.name}`,
   'play.block.focus': "It's focus time, so I'm napping. Let's play after!",
   'play.block.resting': "I'm resting at home. Let's play when I'm out!",

@@ -21,9 +21,9 @@ export const COIN = {
   dailyFocusLimit: 8,
 } as const;
 
-/** 반복: 매일, 평일(월~금), 매주 같은 요일 */
-export type Repeat = 'daily' | 'weekdays' | 'weekly';
-export const REPEATS: readonly Repeat[] = ['daily', 'weekdays', 'weekly'];
+/** 반복: 매일, 평일(월~금), 매주 같은 요일, 매달 같은 날 (매달은 2026-10-11) */
+export type Repeat = 'daily' | 'weekdays' | 'weekly' | 'monthly';
+export const REPEATS: readonly Repeat[] = ['daily', 'weekdays', 'weekly', 'monthly'];
 /** 지금 말로 읽는다 (getter) */
 export const REPEAT_LABEL: Readonly<Record<Repeat, string>> = {
   get daily() {
@@ -35,17 +35,58 @@ export const REPEAT_LABEL: Readonly<Record<Repeat, string>> = {
   get weekly() {
     return t('panel.repeat.weekly');
   },
+  get monthly() {
+    return t('panel.repeat.monthly');
+  },
 };
 
 export function isRepeat(v: unknown): v is Repeat {
-  return v === 'daily' || v === 'weekdays' || v === 'weekly';
+  return v === 'daily' || v === 'weekdays' || v === 'weekly' || v === 'monthly';
+}
+
+/** 매달 반복의 날 (1~31). 아니면 undefined */
+export const isMonthDay = (v: unknown): v is number =>
+  typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 31;
+
+/** 그해 그달의 d 일. 달에 없는 날(31일, 2월 29, 30일)은 그달 끝 */
+export function dayInMonth(year: number, month: number, d: number): string {
+  const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return `${year}-${String(month).padStart(2, '0')}-${String(Math.min(d, last)).padStart(2, '0')}`;
+}
+
+/**
+ * 매달 반복 다음 회차: due 가 든 달부터 한 달씩 보며 그달의 anchorDay 일(없으면 그달 끝)이 base(오늘과 due 중 늦은 날)보다
+ * 뒤인 첫날. 31일 반복은 2월에 28일(윤년 29일)로 가도 3월에는 다시 31일이다 (anchorDay 를 따로 기억한다)
+ */
+export function nextMonthly(due: string | null, anchorDay: number, today: string): string {
+  const from = due ?? today;
+  const base = due && due > today ? due : today;
+  let y = Number(from.slice(0, 4));
+  let m = Number(from.slice(5, 7));
+  for (let guard = 0; guard < 1200; guard++) {
+    const day = dayInMonth(y, m, anchorDay);
+    if (day > base) return day;
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+  }
+  return plusDays(base, 1);
+}
+
+/** 매달 반복이 기억하는 날 (repeat_anchor 에 "31" 처럼 둔다). 없으면 마감일의 날 */
+export function monthAnchor(anchor: string | null, due: string | null): number | undefined {
+  const n = anchor && /^\d{1,2}$/.test(anchor) ? Number(anchor) : due ? Number(due.slice(8, 10)) : Number.NaN;
+  return isMonthDay(n) ? n : undefined;
 }
 
 /**
  * 반복 할 일을 끝냈을 때 다음 회차 마감일. 오늘보다 뒤인 가장 가까운 날로 간다.
  * 밀린 회차를 한꺼번에 만들지 않는다 (사흘 밀린 매일 할 일을 끝내면 다음은 내일).
  */
-export function nextDue(due: string | null, repeat: Repeat, today: string): string {
+export function nextDue(due: string | null, repeat: Repeat, today: string, anchorDay?: number): string {
+  if (repeat === 'monthly') return nextMonthly(due, anchorDay ?? Number((due ?? today).slice(8, 10)), today);
   const base = due && due > today ? due : today;
   if (repeat === 'weekly') {
     let next = plusDays(due ?? today, 7);
@@ -170,8 +211,7 @@ export class TodoStore {
     this.#reminders = new ReminderStore(db, 'todo');
   }
 
-  #withReminds(rows: readonly Row[]): Todo[] {
-    const marks = this.#reminders.many(rows.map((r) => Number(r.id)));
+  #withReminds(rows: readonly Row[], marks = this.#reminders.many(rows.map((r) => Number(r.id)))): Todo[] {
     const steps = this.#stepsOf(rows.map((r) => Number(r.id)));
     return rows.map((r) =>
       toTodo(
@@ -271,6 +311,8 @@ export class TodoStore {
       dueMin?: number | null;
       /** 미리 알림. 없으면 기본 (마감일만: 전날 저녁 8시, 시각까지: 하루 전과 1시간 전) */
       reminds?: readonly number[];
+      /** 매달 반복의 날 ("매달 31일"). 없으면 마감일의 날. 11월에 넣은 "매달 31일" 은 마감이 30일이라 따로 받는다 */
+      repeatDay?: number;
     },
     now: number,
     repeatOf: number | null = null,
@@ -287,6 +329,11 @@ export class TodoStore {
       )
       .run(title.slice(0, 200), due, input.important ? 1 : 0, now, repeat, repeatOf, dueMin);
     const id = Number(r.lastInsertRowid);
+    // 매달 반복은 날을 기억한다 (repeat_anchor 에 "31"). 2월 28일 회차를 끝내도 3월은 31일로
+    const monthDay =
+      repeat === 'monthly' ? (isMonthDay(input.repeatDay) ? input.repeatDay : undefined) : undefined;
+    if (monthDay !== undefined && due && Number(due.slice(8, 10)) !== monthDay)
+      this.#db.prepare('update todo set repeat_anchor = ? where id = ?').run(String(monthDay), id);
     const reminds = input.reminds
       ? normalizeReminds(input.reminds, dueMin === null)
       : defaultTodoReminds(dueMin);
@@ -327,6 +374,17 @@ export class TodoStore {
     return { open, doneToday: done };
   }
 
+  /** 그때부터 끝낸 할 일 제목, 최근 것부터 (주간 회고 카드에서 사용자가 고를 때만) */
+  doneTitlesSince(from: number, limit = 20): string[] {
+    return (
+      this.#db
+        .prepare(
+          'select title from todo where done_at is not null and deleted_at is null and done_at >= ? order by done_at desc limit ?',
+        )
+        .all(from, limit) as { title: string }[]
+    ).map((r) => r.title);
+  }
+
   /**
    * 고치기. 마감일이나 마감 시각을 바꾸면 알림 표시를 지워 다시 알린다. 마감 시각을 새로 넣거나 빼면(날짜만과 시각 사이)
    * 알림을 주지 않았을 때 그쪽 기본으로 (날짜 기준 "전날 저녁 8시" 240 은 시각 기준에서 "4시간 전"이 된다).
@@ -354,9 +412,13 @@ export class TodoStore {
     // 마감일을 지우면 시각도 지운다
     const wantMin = patch.dueMin === undefined ? t.dueMin : isDueMin(patch.dueMin) ? patch.dueMin : null;
     const dueMin = due ? wantMin : null;
+    // 마감을 바꾸면 매주 요일 기억(repeat_anchor)을 버린다: 사용자가 고른 날이 새 요일이다
     this.#db
-      .prepare('update todo set title = ?, due = ?, important = ?, repeat = ?, due_min = ? where id = ?')
-      .run(title, due, important ? 1 : 0, repeat, dueMin, id);
+      .prepare(
+        `update todo set title = ?, due = ?, important = ?, repeat = ?, due_min = ?,
+         repeat_anchor = case when ? then null else repeat_anchor end where id = ?`,
+      )
+      .run(title, due, important ? 1 : 0, repeat, dueMin, due !== t.due || repeat !== t.repeat ? 1 : 0, id);
     const flipped = (dueMin === null) !== (t.dueMin === null);
     const reminds = patch.reminds
       ? normalizeReminds(patch.reminds, dueMin === null)
@@ -374,14 +436,33 @@ export class TodoStore {
 
   /**
    * 지난 마감(today 전)인 안 끝낸 할 일을 today 로 옮긴다. 옮긴 것과 원래 마감을 돌려준다 (되돌리기용).
-   * now 를 넘겨 옮긴 뒤 이미 지난 알림(전날 저녁 8시)은 말없이 넘긴다
+   * now 를 넘겨 옮긴 뒤 이미 지난 알림(전날 저녁 8시)은 말없이 넘긴다.
+   * 매주 반복은 원래 마감(repeat_anchor)을 기억해 끝내면 다음 회차가 원래 요일로 간다.
+   * 매달 반복은 원래 날("25")을 기억해 다음 회차가 그날로 간다
    */
-  moveOverdue(today: string, now: number): { id: number; due: string | null }[] {
-    const late = this.list(now).open.filter((todo) => todo.due !== null && todo.due < today);
+  moveOverdue(
+    today: string,
+    now: number,
+    { habits = true }: { habits?: boolean } = {},
+  ): { id: number; due: string | null }[] {
+    // habits false: 반복 할 일(습관)은 두고 옮긴다. 오늘 탭 링크는 습관을 빼고 세고 습관 칸에서 따로 체크한다
+    const late = this.list(now).open.filter(
+      (todo) => todo.due !== null && todo.due < today && (habits || !todo.repeat),
+    );
     if (late.length === 0) return [];
     this.#db.exec('begin');
     try {
-      for (const todo of late) this.update(todo.id, { due: today }, now);
+      for (const todo of late) {
+        const kept = this.#repeatAnchor(todo.id);
+        const anchor =
+          todo.repeat === 'weekly'
+            ? (kept ?? todo.due)
+            : todo.repeat === 'monthly'
+              ? String(monthAnchor(kept, todo.due) ?? '')
+              : null;
+        this.update(todo.id, { due: today }, now);
+        if (anchor) this.#db.prepare('update todo set repeat_anchor = ? where id = ?').run(anchor, todo.id);
+      }
       this.#db.exec('commit');
     } catch (err) {
       this.#db.exec('rollback');
@@ -395,7 +476,21 @@ export class TodoStore {
    * 마감일만 있으면 마감일이 끝나기 전까지, 시각이 있으면 시각 5분 뒤까지 (지난 마감은 알리지 않는다)
    */
   dueReminders(now: number): Todo[] {
-    const rows = this.#db
+    const rows = this.#remindRows(now);
+    // 알림 표시는 한 번에 읽는다 (예전에는 할 일마다 다시 읽었다). 쓸모없어진 알림은 넘긴 것으로 적는다 (sweep)
+    const marks = this.#reminders.many(rows.map((r) => Number(r.id)));
+    const list = this.#withReminds(rows, marks);
+    const items = list.flatMap((todo) => {
+      const anchor = todoAnchor(todo);
+      return anchor ? [{ id: todo.id, anchor }] : [];
+    });
+    const speak = this.#reminders.sweep(items, marks, now);
+    return list.filter((todo) => speak.has(todo.id));
+  }
+
+  /** dueReminders 가 볼 할 일 (안 끝났고 아직 말하지 않은 알림이 있는 것) */
+  #remindRows(now: number): Row[] {
+    return this.#db
       .prepare(
         `select * from todo t where done_at is null and deleted_at is null and due is not null
          and due >= ? and due <= ?
@@ -403,10 +498,17 @@ export class TodoStore {
          order by due, due_min, id`,
       )
       .all(this.#day(now - 86_400_000), this.#day(now + REMIND_MAX_MIN * 60_000 + 2 * 86_400_000)) as Row[];
-    return this.#withReminds(rows).filter((todo) => {
+  }
+
+  /** now 뒤로 가장 먼저 울릴 할 일 알림의 때 (플래너가 그때 깬다). 없으면 undefined. dueReminders 와 같은 할 일만 본다 */
+  nextReminderAt(now: number): number | undefined {
+    const rows = this.#remindRows(now);
+    const marks = this.#reminders.many(rows.map((r) => Number(r.id)));
+    const items = this.#withReminds(rows, marks).flatMap((todo) => {
       const anchor = todoAnchor(todo);
-      return anchor !== null && this.#reminders.due(todo.id, anchor, now);
+      return anchor ? [{ id: todo.id, anchor }] : [];
     });
+    return this.#reminders.nextFire(items, marks, now);
   }
 
   /** 알렸다: 울릴 때가 지난 알림을 다 알린 것으로 (늦었으면 곧 올 것까지) */
@@ -431,40 +533,68 @@ export class TodoStore {
     this.#db.prepare('update todo set deleted_at = null where id = ?').run(id);
   }
 
-  /** 끝내기. 받은 코인 수를 돌려준다 (이미 끝났으면 0). */
+  /** 지난 마감 옮기기가 기억한 매주 할 일의 원래 마감, 매달 할 일의 날 ("31") */
+  #repeatAnchor(id: number): string | null {
+    const r = this.#db.prepare('select repeat_anchor from todo where id = ?').get(id) as
+      | { repeat_anchor: string | null }
+      | undefined;
+    return r?.repeat_anchor ?? null;
+  }
+
+  /**
+   * 끝내기. 받은 코인 수를 돌려준다 (이미 끝났으면 0).
+   * 전에 끝내고 받은 코인을 되돌리기로 다 되받지 못했으면(그사이 써서) 그만큼 덜 준다: 끝내기, 쓰기, 되돌리기, 끝내기를
+   * 되풀이해 코인을 찍어 내지 못하게. 하루 상한은 코인을 받은 할 일 수로 센다 (같은 할 일을 다시 끝내도 하나)
+   */
   complete(id: number, now: number): number {
     const t = this.get(id);
     if (!t || t.doneAt !== null) return 0;
     const day = this.#day(now);
     const rewardedToday = Number(
       (
-        this.#db.prepare(`select count(*) as n from coin_log where day = ? and reason = 'todo'`).get(day) as {
-          n: number;
-        }
+        this.#db
+          .prepare(
+            `select count(distinct ref_id) as n from coin_log where day = ? and reason = 'todo' and ref_id is not ? `,
+          )
+          .get(day, id) as { n: number }
       ).n,
+    );
+    // 이 할 일로 받고 아직 되받지 않은 코인 (받은 것 - 되돌리기로 되받은 것)
+    const kept = Number(
+      (
+        this.#db
+          .prepare(
+            `select coalesce(sum(amount), 0) as s from coin_log where ref_id = ? and reason in ('todo', 'early', 'undo')`,
+          )
+          .get(id) as { s: number }
+      ).s,
     );
     let coins = 0;
     this.#db.exec('begin');
     try {
       if (rewardedToday < COIN.dailyTodoLimit) {
-        this.#log(COIN.todo, 'todo', id, now);
-        coins += COIN.todo;
-        if (t.due && day <= t.due) {
-          this.#log(COIN.early, 'early', id, now);
-          coins += COIN.early;
-        }
+        const early = t.due !== null && day <= t.due ? COIN.early : 0;
+        let owed = Math.max(0, COIN.todo + early - Math.max(0, kept));
+        const base = Math.min(owed, COIN.todo);
+        if (base > 0) this.#log(base, 'todo', id, now);
+        owed -= base;
+        if (owed > 0) this.#log(owed, 'early', id, now);
+        coins = base + owed;
       }
       this.#db.prepare('update todo set done_at = ?, coins = ? where id = ?').run(now, coins, id);
       // 다음 회차도 같은 마감 시각과 같은 알림 (지난 알림은 넘긴다)
       if (t.repeat) {
+        const kept = this.#repeatAnchor(id);
+        const monthDay = t.repeat === 'monthly' ? monthAnchor(kept, t.due) : undefined;
         const next = this.add(
           {
             title: t.title,
             important: t.important,
             repeat: t.repeat,
-            due: nextDue(t.due, t.repeat, day),
+            due: nextDue(t.repeat === 'weekly' ? (kept ?? t.due) : t.due, t.repeat, day, monthDay),
             dueMin: t.dueMin,
             reminds: t.reminds,
+            ...(monthDay !== undefined ? { repeatDay: monthDay } : {}),
           },
           now,
           id,
@@ -508,8 +638,15 @@ export class TodoStore {
     return back;
   }
 
-  /** 잔액은 장부 합계로만 계산한다 (따로 적어 두면 어긋날 수 있다). */
+  /**
+   * 잔액. 장부 합계를 12판부터 coin_total 한 행에 둔다 (장부에 쓸 때 트리거가 같이 고친다, db-schema.ts).
+   * 행이 없으면(옛 판을 읽는 시험 등) 장부를 더한다
+   */
   balance(): number {
+    const r = this.#db.prepare('select total from coin_total where id = 1').get() as
+      | { total: number }
+      | undefined;
+    if (r) return Number(r.total);
     return Number(
       (this.#db.prepare('select coalesce(sum(amount), 0) as s from coin_log').get() as { s: number }).s,
     );
@@ -558,6 +695,17 @@ export class TodoStore {
       (
         this.#db
           .prepare('select count(*) as n from coin_log where day = ? and reason = ?')
+          .get(day, reason) as { n: number }
+      ).n,
+    );
+  }
+
+  /** 그날 이 이유로 받은 코인 합 (짧은 놀이처럼 코인 수로 하루 상한을 세는 것). 한 번에 여럿 받아도 한 행이다 */
+  coinSum(reason: string, day: string): number {
+    return Number(
+      (
+        this.#db
+          .prepare('select coalesce(sum(amount), 0) as n from coin_log where day = ? and reason = ?')
           .get(day, reason) as { n: number }
       ).n,
     );

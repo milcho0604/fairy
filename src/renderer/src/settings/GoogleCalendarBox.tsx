@@ -35,7 +35,8 @@ export function GoogleCalendarBox({ onMsg }: { onMsg: (m: string) => void }) {
     };
   }, []);
 
-  if (!s) return null;
+  // 구글 클라이언트 없이 만든 판에서는 칸을 통째로 숨긴다 (사용자가 할 수 있는 게 없고, 개발자 안내만 보였다)
+  if (!s?.configured) return null;
 
   const run = async (f: () => Promise<GcalStatus>, done?: (v: GcalStatus) => string | undefined) => {
     setBusy(true);
@@ -76,9 +77,7 @@ export function GoogleCalendarBox({ onMsg }: { onMsg: (m: string) => void }) {
       <h2>{t('gcal.title')}</h2>
       <div className="card">
         <small>{t('gcal.intro')}</small>
-        {!s.configured ? (
-          <small>{t('gcal.notConfigured')}</small>
-        ) : !s.connected ? (
+        {!s.connected ? (
           <>
             <div className="action-row">
               <button

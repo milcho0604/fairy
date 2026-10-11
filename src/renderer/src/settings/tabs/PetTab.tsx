@@ -12,8 +12,10 @@ import { MAX_SCALE, MIN_SCALE } from '../../../../shared/size.ts';
 import { PetNameInput } from '../../PetNameInput.tsx';
 import { Friends } from '../Friends.tsx';
 import { GaitPicker } from '../GaitPicker.tsx';
+import { Gallery } from '../Gallery.tsx';
 import { PetPicker } from '../PetPicker.tsx';
 import { bridge, isMac, Section, type TabProps, Toggle } from '../ui.tsx';
+import { WearBox } from '../WearBox.tsx';
 
 /** 만나는 시간을 켰을 때 삐짐 칸의 안내: 만나지 않는 요일을 이름으로 (일, 토) */
 const restByRoutine = (days: readonly number[]): string => {
@@ -212,6 +214,18 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
           onChange={(v) => update({ dayRhythm: v })}
         />
         <Toggle
+          label={t('settings.typeAlong')}
+          hint={t('settings.typeAlongHint')}
+          on={s.typeAlong}
+          onChange={(v) => update({ typeAlong: v })}
+        />
+        <Toggle
+          label={t('settings.dailyNotes')}
+          hint={t('settings.dailyNotesHint')}
+          on={s.dailyNotes}
+          onChange={(v) => update({ dailyNotes: v })}
+        />
+        <Toggle
           label={t('settings.sounds')}
           hint={t('settings.soundsHint')}
           on={s.sounds}
@@ -232,6 +246,8 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
         />
       </Section>
 
+      <WearBox snap={snap} update={update} />
+
       <Section title={t('settings.friends')}>
         <Friends
           list={s.friends}
@@ -243,6 +259,10 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
             if (r.message) flash(r.message);
           }}
         />
+      </Section>
+
+      <Section title={t('settings.gallery')}>
+        <Gallery onMsg={flash} meta={snap.current?.meta} />
       </Section>
 
       <Section title={t('settings.sulk')}>

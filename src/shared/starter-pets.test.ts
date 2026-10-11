@@ -5,6 +5,7 @@ import { DEFAULT_SETTINGS, parseSettings } from './settings.ts';
 import {
   isCurrentStarter,
   isStarterId,
+  isStarterName,
   parsePetChoice,
   STARTER_PETS,
   starterFileName,
@@ -71,4 +72,16 @@ test('펫 고르기 요청 확인 (설정 창 IPC): 기본 펫, 그림 친구, �
     assert.equal(parsePetChoice(bad), undefined, JSON.stringify(bad));
   assert.ok(isStarterId('choco'));
   assert.ok(!isStarterId('kong'));
+});
+
+test('고른 그대로의 이름은 말을 바꿔도 알아본다 (말 바꾼 뒤 초코가 보관함에 하나 더 생기던 것)', () => {
+  setLang('en');
+  try {
+    assert.equal(isStarterName('choco', '초코'), true);
+    assert.equal(isStarterName('choco', 'Choco'), true);
+    assert.equal(isStarterName('choco', '밀크'), false);
+    assert.equal(isStarterName('milk', '몽실이'), false);
+  } finally {
+    setLang('ko');
+  }
 });

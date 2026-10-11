@@ -9,7 +9,7 @@ export const MINI_GAMES: readonly MiniGame[] = ['bubbles', 'laser', 'treats', 'r
 
 export const isMiniGame = (v: unknown): v is MiniGame => MINI_GAMES.includes(v as MiniGame);
 
-/** 놀이 코인: 한 행에 1코인씩 'play' 로 적는다. 놀이를 다 합쳐 하루 이만큼까지 (기본 먹이 5코인 남짓) */
+/** 놀이 코인: 한 번 받은 만큼 한 행에 'play' 로 적는다 (예전 기록은 한 행에 1코인). 놀이를 다 합쳐 하루 이만큼까지 (기본 먹이 5코인 남짓) */
 export const PLAY_COIN = { reason: 'play', dailyLimit: 6 } as const;
 /** 새 놀이가 친밀도(play 활동)를 올리는 하루 판 수. 가위바위보를 연달아 눌러 친밀도를 쌓지 못하게 */
 export const PLAY_AFFECTION_DAILY = 10;

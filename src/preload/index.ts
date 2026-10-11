@@ -1,8 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { AiProvider } from '../shared/ai/types.ts';
 import type { Activity } from '../shared/behavior.ts';
+import { BOND, type BondBridge } from '../shared/bond-ipc.ts';
 import type { BubbleLayout } from '../shared/bubble-layout.ts';
 import type { ChatState } from '../shared/chat-state.ts';
+import { DATA_EXPORT, DAY, type DayBridge, type ExportBridge } from '../shared/day-ipc.ts';
 import type { Gaze } from '../shared/gaze.ts';
 import { GCAL, type GcalBridge, type GcalStatus } from '../shared/gcal.ts';
 import type { Point } from '../shared/geometry.ts';
@@ -40,8 +42,10 @@ import {
 } from '../shared/ipc.ts';
 import type { LookMotion } from '../shared/look-motion.ts';
 import type { MoveAsk } from '../shared/moves.ts';
+import { NOTES, type NoteBox, type NoteBridge } from '../shared/note-ipc.ts';
 import type { Settings } from '../shared/settings.ts';
 import type { SoundKind } from '../shared/sound.ts';
+import type { TogetherLook } from '../shared/together.ts';
 
 // 샌드박스 preload 는 다른 파일을 require 할 수 없어 한 파일로 묶는다.
 // 창마다 자기 기능만 열어 준다: 메인이 창을 만들 때 `--jj-window=<이름>` 을 넘긴다.
@@ -106,12 +110,26 @@ if (kind === 'pet') {
     },
     carried: (at: Point | null) => ipcRenderer.send(IPC.carried, at),
     sprites: (sprites: HouseSprites) => ipcRenderer.send(IPC.sprites, sprites),
+    onKeys: (listener) => {
+      ipcRenderer.on(IPC.keys, (_e, name: unknown) => listener(typeof name === 'string' ? name : null));
+    },
+    petKey: (key) => ipcRenderer.send(IPC.petKey, key),
+    onTogether: (listener) => {
+      ipcRenderer.on(IPC.together, (_e, look: TogetherLook) => listener(look));
+    },
   };
   contextBridge.exposeInMainWorld('jjakkung', pet);
 }
 
 // 이름 옆 펫 얼굴 (shared/face.ts). 펫 화면이 그린 지금 모습을 받는다
-if (kind === 'chat' || kind === 'panel' || kind === 'quick' || kind === 'onboarding' || kind === 'settings') {
+if (
+  kind === 'chat' ||
+  kind === 'panel' ||
+  kind === 'quick' ||
+  kind === 'onboarding' ||
+  kind === 'settings' ||
+  kind === 'knows'
+) {
   const face: FaceBridge = {
     get: () => ipcRenderer.invoke(FACE.get),
     onChange: (listener) => {
@@ -152,6 +170,7 @@ if (kind === 'chat') {
     toNote: (id: string) => ipcRenderer.invoke(CHAT.toNote, id),
     toTodos: (id: string) => ipcRenderer.invoke(CHAT.toTodos, id),
     retryWith: (provider) => ipcRenderer.send(CHAT.retryWith, provider),
+    planAction: (kind, todoId) => ipcRenderer.send(CHAT.planAction, kind, todoId),
     downloadModel: () => ipcRenderer.send(CHAT.downloadModel),
   };
   contextBridge.exposeInMainWorld('jjakkungChat', chat);
@@ -189,19 +208,25 @@ if (kind === 'settings') {
     copyDiagnostics: () => ipcRenderer.invoke(SETTINGS.copyDiagnostics),
     saveDiagnostics: () => ipcRenderer.invoke(SETTINGS.saveDiagnostics),
     reportIssue: () => ipcRenderer.send(SETTINGS.reportIssue),
+    openNotices: () => ipcRenderer.invoke(SETTINGS.openNotices),
     checkUpdate: () => ipcRenderer.invoke(SETTINGS.checkUpdate),
     openOnboarding: () => ipcRenderer.send(SETTINGS.openOnboarding),
     exportData: () => ipcRenderer.invoke(SETTINGS.exportData),
     importData: () => ipcRenderer.invoke(SETTINGS.importData),
     exportPet: () => ipcRenderer.invoke(SETTINGS.exportPet),
+    reveal: (path: string) => ipcRenderer.send(SETTINGS.reveal, path),
     importPet: () => ipcRenderer.invoke(SETTINGS.importPet),
     importFriend: () => ipcRenderer.invoke(SETTINGS.importFriend),
+    galleryList: () => ipcRenderer.invoke(SETTINGS.galleryList),
+    galleryAdopt: (id, asFriend) => ipcRenderer.invoke(SETTINGS.galleryAdopt, id, asFriend),
+    galleryShare: (meta) => ipcRenderer.invoke(SETTINGS.galleryShare, meta),
     syncCalendar: () => ipcRenderer.invoke(SETTINGS.syncCalendar),
     refreshMcp: () => ipcRenderer.invoke(SETTINGS.refreshMcp),
     relaunch: () => ipcRenderer.send(SETTINGS.relaunch),
     choosePet: (choice) => ipcRenderer.invoke(SETTINGS.choosePet, choice),
     removeSavedPet: (id: string) => ipcRenderer.invoke(SETTINGS.removeSavedPet, id),
     deleteModel: (id: string) => ipcRenderer.invoke(SETTINGS.deleteModel, id),
+    clearAiHistory: () => ipcRenderer.invoke(SETTINGS.clearAiHistory),
     remakeBody: (gait) => ipcRenderer.invoke(SETTINGS.remakeBody, gait),
     cancelRemake: () => ipcRenderer.send(SETTINGS.cancelRemake),
     rememberTab: (tab) => ipcRenderer.send(SETTINGS.tab, tab),
@@ -234,6 +259,44 @@ if (kind === 'settings') {
     },
   };
   contextBridge.exposeInMainWorld('jjakkungGcal', gcal);
+  // 내보내기 (메모 .md, 할 일 .csv/.md, 일정 .ics). 저장 대화상자와 쓰기는 메인이 한다
+  const exporter: ExportBridge = { run: (kind) => ipcRenderer.invoke(DATA_EXPORT.run, kind) };
+  contextBridge.exposeInMainWorld('jjakkungExport', exporter);
+}
+
+// 짝꿍이 아는 것, 첫 7일 여정, 성장과 옷, 주간 회고 카드 (shared/bond-ipc.ts). 메인이 창마다 보낸 곳을 본다
+if (kind === 'panel' || kind === 'settings' || kind === 'knows') {
+  const bond: BondBridge = {
+    openKnows: () => ipcRenderer.send(BOND.openKnows),
+    knowsGet: () => ipcRenderer.invoke(BOND.knowsGet),
+    knowsSet: (patch) => ipcRenderer.invoke(BOND.knowsSet, patch),
+    onKnowsChanged: (listener) => {
+      ipcRenderer.on(BOND.knowsChanged, (_e, next) => listener(next));
+    },
+    journeyGet: () => ipcRenderer.invoke(BOND.journeyGet),
+    journeyGo: (step) => ipcRenderer.send(BOND.journeyGo, step),
+    journeyTried: (step) => ipcRenderer.send(BOND.journeyTried, step),
+    journeySkip: () => ipcRenderer.send(BOND.journeySkip),
+    onJourney: (listener) => {
+      ipcRenderer.on(BOND.journeyChanged, (_e, view) => listener(view));
+    },
+    weekTitles: () => ipcRenderer.invoke(BOND.weekTitles),
+    weekSave: (png) => ipcRenderer.invoke(BOND.weekSave, png),
+    growGet: () => ipcRenderer.invoke(BOND.growGet),
+  };
+  contextBridge.exposeInMainWorld('jjakkungBond', bond);
+}
+
+// 매일 쪽지함 (shared/daily-note.ts). 패널 오늘 탭만
+if (kind === 'panel') {
+  const notes: NoteBridge = {
+    list: () => ipcRenderer.invoke(NOTES.list),
+    read: (day) => ipcRenderer.send(NOTES.read, day),
+    onChange: (listener) => {
+      ipcRenderer.on(NOTES.changed, (_e, box: NoteBox) => listener(box));
+    },
+  };
+  contextBridge.exposeInMainWorld('jjakkungNotes', notes);
 }
 
 // 패널과 빠른 입력 창은 같은 기능을 쓴다.
@@ -291,6 +354,22 @@ if (kind === 'panel' || kind === 'quick') {
     },
   };
   contextBridge.exposeInMainWorld('jjakkungPanel', panel);
+  // 하루 도구 (습관, 아침 계획, 방금 울린 알림 미루기, shared/day-ipc.ts)
+  const day: DayBridge = {
+    habits: () => ipcRenderer.invoke(DAY.habits),
+    plan: (auto) => ipcRenderer.invoke(DAY.plan, auto === true),
+    planSave: (picks, note) => ipcRenderer.invoke(DAY.planSave, picks, note),
+    planPolish: (picks) => ipcRenderer.invoke(DAY.planPolish, picks),
+    planPrefs: (prefs) => ipcRenderer.invoke(DAY.planPrefs, prefs),
+    planShown: () => ipcRenderer.send(DAY.planShown),
+    onOpenPlan: (listener) => {
+      ipcRenderer.on(DAY.openPlan, () => listener());
+    },
+    remind: () => ipcRenderer.invoke(DAY.remind),
+    remindSnooze: (choice) => ipcRenderer.invoke(DAY.remindSnooze, choice),
+    remindDismiss: () => ipcRenderer.send(DAY.remindDismiss),
+  };
+  contextBridge.exposeInMainWorld('jjakkungDay', day);
 }
 
 if (kind === 'maker') {

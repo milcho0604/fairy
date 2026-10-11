@@ -11,7 +11,7 @@ export const ko = {
   'maker.gemini.style.figure': '피규어',
   'maker.gemini.style.illust': '일러스트',
   'maker.gemini.step1': '아래 단추를 누르면 요청문이 복사되고 Gemini가 열려.',
-  'maker.gemini.step2': 'Gemini에 펫 사진을 올리고, 요청문을 붙여 넣어 보내.',
+  'maker.gemini.step2': 'Gemini에 고른 사진을 올리고, 요청문을 붙여 넣어 보내.',
   'maker.gemini.step3': '나온 그림을 저장해서 여기에 끌어다 놓거나 붙여 넣어 줘.',
   'maker.gemini.open': '요청문 복사하고 Gemini 열기',
   'maker.gemini.opened': '요청문을 복사했어. 브라우저에 Gemini가 열렸을 거야.',
@@ -25,7 +25,8 @@ export const ko = {
   'maker.gemini.showPrompt': '요청문 보기',
   'maker.gemini.promptLabel': 'Gemini에 붙여 넣을 요청문',
   'maker.gemini.drop.title': 'Gemini에서 받은 그림을 여기에',
-  'maker.gemini.drop.how': '끌어다 놓거나, 눌러서 고르거나, 붙여 넣어도 돼 (⌘V, Ctrl+V).',
+  'maker.gemini.drop.how': (v: { keys: string }) =>
+    `끌어다 놓거나, 눌러서 고르거나, 붙여 넣어도 돼 (${v.keys}).`,
   'maker.gemini.corner':
     '오른쪽 아래 반짝이 표시는 바탕이 하야면 알아서 지워. 남으면 다듬기에서 지우개로 지워 줘.',
   'maker.gemini.privacy':
@@ -45,7 +46,7 @@ export const en: Translation<typeof ko> = {
   'maker.gemini.style.figure': 'Figure',
   'maker.gemini.style.illust': 'Illustration',
   'maker.gemini.step1': 'Press the button below to copy the prompt and open Gemini.',
-  'maker.gemini.step2': 'In Gemini, add your pet photo, paste the prompt and send it.',
+  'maker.gemini.step2': 'In Gemini, add your photo, paste the prompt and send it.',
   'maker.gemini.step3': 'Save the picture it makes, then drop or paste it here.',
   'maker.gemini.open': 'Copy prompt and open Gemini',
   'maker.gemini.opened': 'Prompt copied. Gemini should be open in your browser.',
@@ -59,7 +60,7 @@ export const en: Translation<typeof ko> = {
   'maker.gemini.showPrompt': 'Show prompt',
   'maker.gemini.promptLabel': 'Prompt to paste into Gemini',
   'maker.gemini.drop.title': 'Bring the Gemini picture here',
-  'maker.gemini.drop.how': 'Drop it, click to pick it, or paste it (⌘V, Ctrl+V).',
+  'maker.gemini.drop.how': (v: { keys: string }) => `Drop it, click to pick it, or paste it (${v.keys}).`,
   'maker.gemini.corner':
     "The sparkle mark in the bottom-right corner is removed for you on a white background. If it's still there, erase it while touching up.",
   'maker.gemini.privacy':

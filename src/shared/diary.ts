@@ -83,7 +83,7 @@ export function acceptPolished(source: string, polished: string): string | undef
   const shared = [...src].filter((b) => out.has(b)).length;
   if (src.size > 0 && shared / src.size < POLISH_MIN_OVERLAP) return undefined;
   if (out.size > 0 && (out.size - shared) / out.size > POLISH_MAX_NEW) return undefined;
-  // 묻는 글의 말("데스크톱 펫")이 답에 새어 나오면 버린다
-  if (/데스크톱\s*펫|desktop pet/i.test(text)) return undefined;
+  // 묻는 글의 말("데스크톱 페어리", 예전 "데스크톱 펫")이 답에 새어 나오면 버린다
+  if (/데스크톱\s*(펫|페어리)|desktop (pet|fairy)/i.test(text)) return undefined;
   return text;
 }

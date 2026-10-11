@@ -5,7 +5,7 @@ import type { Translation } from './types.ts';
 export const ko = {
   'maker.err.animatedTooBig': '움직이는 그림은 8MB까지 돼.',
   'maker.err.modelRead': '모델 파일을 못 읽었어. 창을 닫았다가 다시 열어 줘.',
-  'maker.err.allErased': '다 지워졌어. 복원 붓으로 펫을 조금 되살려 줘.',
+  'maker.err.allErased': '다 지워졌어. 복원 붓으로 페어리를 조금 되살려 줘.',
   'maker.err.saveFailed': '저장하지 못했어',
   'maker.err.imageRead': '그림을 읽지 못했어',
   'maker.err.photoRead': '사진을 읽지 못했어',
@@ -19,23 +19,23 @@ export const ko = {
   'maker.step.name': '이름',
   'maker.title.food': '커스텀 먹이 만들기',
   'maker.title.pose': (v: { pose: string }) => `${v.pose} 포즈 만들기`,
-  'maker.title.pet': '사진으로 펫 만들기',
+  'maker.title.pet': '사진으로 페어리 만들기',
   'maker.pick.title': '사진을 골라 줘',
   'maker.pick.how': '여기를 누르거나, 사진을 끌어다 놓거나, 붙여 넣어도 돼.',
   'maker.pick.food': (v: { cost: number }) =>
     `과일, 과자처럼 먹이가 될 사진이야. 만들면 코인 ${v.cost}개를 써.`,
-  'maker.pick.pose': (v: { pose: string }) => `${v.pose} 보일 사진이야. 같은 펫의 다른 표정 사진이면 좋아.`,
+  'maker.pick.pose': (v: { pose: string }) => `${v.pose} 보일 사진이야. 같은 아이의 다른 표정 사진이면 좋아.`,
   'maker.pick.pet': '반려동물, 좋아하는 인형이나 캐릭터처럼 하나가 또렷한 사진이 잘 돼.',
   'maker.pick.animated': '움직이는 GIF, WebP는 배경을 지우지 않고 그대로 써. 배경이 투명한 것이 좋아.',
   'maker.pick.privacy': '사진은 이 컴퓨터 안에서만 다뤄. 배경 지우기도 여기서 해서 밖으로 보내지 않아.',
   'maker.pick.removePose': '이 포즈 지우기',
-  'maker.pick.resetPet': '기본 펫으로 돌아가기',
+  'maker.pick.resetPet': '기본 페어리로 돌아가기',
   // AI 일러스트로 다시 그리기 (Hugging Face 무료 Space, 2026-10-09). 사진은 이걸 고를 때만 밖으로 나간다
   'maker.how.label': '만드는 방법',
   'maker.how.photo': '사진 그대로',
   'maker.how.illust': 'AI 일러스트로 다시 그리기',
   'maker.illust.hint':
-    '사진 속 펫을 귀엽고 매끈한 그림으로 다시 그려 줘. 무료 서버라 1분쯤 걸리고, 토큰이 없으면 하루에 몇 번만 그릴 수 있어.',
+    '사진 속 주인공을 귀엽고 매끈한 그림으로 다시 그려 줘. 무료 서버라 1분쯤 걸리고, 토큰이 없으면 하루에 몇 번만 그릴 수 있어.',
   'maker.illust.privacy':
     "이 방법은 고른 사진과 바라는 점을 Hugging Face의 무료 그림 서버(다른 사람이 운영해)로 보내. 사진을 밖으로 보내기 싫으면 '사진 그대로'를 골라 줘.",
   'maker.illust.age': '나이',
@@ -87,7 +87,7 @@ export const ko = {
     '이 컴퓨터는 그래픽 칩 대신 CPU로 그려서 꽤 오래 걸려. 그리는 동안 다른 일을 해도 돼.',
   // 이 컴퓨터에서 그릴 수 없을 때 까닭 (고르기를 감추기만 하면 왜 없는지 몰랐다)
   'maker.engine.why.rosetta':
-    '이 Mac은 Apple 칩인데 인텔용 짝꿍이 깔려 있어. Apple 칩용 짝꿍을 깔면 이 컴퓨터에서도 그릴 수 있어.',
+    '이 Mac은 Apple 칩인데 인텔용 페어리가 깔려 있어. Apple 칩용 페어리를 깔면 이 컴퓨터에서도 그릴 수 있어.',
   'maker.engine.why.chip': '이 컴퓨터의 칩으로는 직접 그릴 수 없어서 무료 서버로 그려.',
   'maker.engine.why.memory': '메모리가 8GB보다 적어서 이 컴퓨터에서는 그릴 수 없어. 무료 서버로 그려.',
   'maker.engine.why.macos': 'macOS 12 이상이면 이 컴퓨터에서도 그릴 수 있어. 지금은 무료 서버로 그려.',
@@ -154,10 +154,10 @@ export const ko = {
   'maker.say.remake.almost': '새 다리를 붙이는 중',
   'maker.say.remake.long': 'AI가 아주 꼼꼼한가 봐. 조금만 더!',
   'maker.say.done': '짠! 다 됐어',
-  'maker.edit.took': (v: { backend: string; sec: string }) => `${v.backend}로 ${v.sec}초 걸렸어.`,
-  'maker.name.alt': '새 펫',
+  'maker.name.alt': '새 페어리',
   'maker.name.animatedNote': '움직이는 그림이라 배경은 그대로야.',
-  'maker.name.smallCut': '사진 속 펫이 작아서 조금 흐릿할 수 있어. 펫이 크게 나온 사진이면 더 또렷해.',
+  'maker.name.smallCut':
+    '사진 속 주인공이 작아서 조금 흐릿할 수 있어. 주인공이 크게 나온 사진이면 더 또렷해.',
   'maker.done.food': (v: { name: string }) => `${withParticle(v.name, '을')} 상점 먹이에 넣었어!`,
   'maker.done.pose': (v: { pose: string }) => `${v.pose} 이 모습으로 보일게!`,
   'maker.done.pet': (v: { name: string }) => `${withParticle(v.name, '이')} 화면에 나타났어!`,
@@ -170,7 +170,7 @@ export const ko = {
   'maker.name.saving': '저장 중',
   'maker.name.makeFood': (v: { cost: number }) => `코인 ${v.cost}개로 만들기`,
   'maker.name.usePose': '이 포즈로 할게',
-  'maker.name.choosePet': '이 펫으로 할게',
+  'maker.name.choosePet': '이 페어리로 할게',
   'maker.3d.look': '모습',
   'maker.3d.photo': '사진 그대로',
   'maker.3d.figure': '입체 피규어',
@@ -191,7 +191,7 @@ export const ko = {
   'maker.wish.optional': '(안 적어도 돼)',
   'maker.wish.placeholder': '예: 귀를 더 크고 둥글게, 꼬리는 짧게',
   'maker.wish.count': (v: { n: number; max: number }) => `${v.n}/${v.max}`,
-  'maker.wish.note': '모양, 표정, 몸짓을 적어 줘. 화면에서 펫 크기는 설정의 크기에서 바꿀 수 있어.',
+  'maker.wish.note': '모양, 표정, 몸짓을 적어 줘. 화면에서 페어리 크기는 설정의 크기에서 바꿀 수 있어.',
   'maker.wish.remake': '요청대로 다시 만들기',
   'maker.refine.label': 'AI가 한 번 더 보고 다듬기',
   'maker.refine.hint': '(사진과 그린 모습을 견줘 고쳐. 시간이 두 배쯤 걸려)',
@@ -214,7 +214,7 @@ export const ko = {
     '사진 그대로는 평면이라 돌려 볼 수 없어. 입체 피규어를 고르면 360도로 돌려 볼 수 있어.',
   'maker.3d.photoNoteRelief':
     '사진 그대로는 평면이라 돌려 볼 수 없어. 2.5D 입체를 고르면 좌우로 돌려 볼 수 있어.',
-  'maker.spin.label': '펫 돌려 보기',
+  'maker.spin.label': '페어리 돌려 보기',
   'maker.spin.value': (v: { deg: number; side: string }) => `${v.deg}도, ${v.side}`,
   'maker.spin.side.front': '앞모습',
   'maker.spin.side.side': '옆모습',
@@ -228,16 +228,16 @@ export const ko = {
   'maker.edit.restore': '복원 붓',
   'maker.edit.size': '굵기',
   'maker.edit.undo': '되돌리기',
-  'maker.edit.canvas': '펫 다듬기. 지운 곳은 흐린 붉은빛으로 보여.',
+  'maker.edit.canvas': '페어리 다듬기. 지운 곳은 흐린 붉은빛으로 보여.',
   'maker.edit.hint':
     '흐린 붉은빛이 지워질 곳이야. 남길 곳이 지워졌으면 복원 붓으로, 배경이 남았으면 지우개로 칠해.',
   'maker.edit.almostAllErased': '거의 다 지워졌어.',
   'maker.edit.barelyErased': '배경이 거의 안 지워졌어.',
   'maker.edit.tryAgain': '다듬거나 다른 사진을 골라 봐.',
   'maker.edit.halfKept': '바탕과 색이 비슷해서 몸 일부가 반쯤 비쳐 보여. 복원 붓으로 그곳을 칠하면 또렷해져.',
-  'maker.edit.hollow': '몸 안쪽이 지워져 테두리만 남은 것 같아. 펫 몸이면 복원 붓으로 칠해 줘.',
-  'maker.edit.others': '펫 말고 다른 것도 같이 남았어. 펫이 아니면 지우개로 지워 줘.',
-  'maker.edit.cutEdge': '펫이 사진 끝에 닿아서 잘렸을 수 있어. 일부러 그렇게 찍었으면 그대로 둬도 돼.',
+  'maker.edit.hollow': '몸 안쪽이 지워져 테두리만 남은 것 같아. 페어리 몸이면 복원 붓으로 칠해 줘.',
+  'maker.edit.others': '페어리 말고 다른 것도 같이 남았어. 페어리가 아니면 지우개로 지워 줘.',
+  'maker.edit.cutEdge': '페어리가 사진 끝에 닿아서 잘렸을 수 있어. 일부러 그렇게 찍었으면 그대로 둬도 돼.',
   'maker.edit.otherPhoto': '다른 사진',
   'maker.edit.next': '다 됐어',
 };
@@ -245,7 +245,7 @@ export const ko = {
 export const en: Translation<typeof ko> = {
   'maker.err.animatedTooBig': 'Animated images can be up to 8MB.',
   'maker.err.modelRead': "Couldn't read the model file. Close this window and open it again.",
-  'maker.err.allErased': 'Everything got erased. Bring a bit of your pet back with the restore brush.',
+  'maker.err.allErased': 'Everything got erased. Bring a bit of your fairy back with the restore brush.',
   'maker.err.saveFailed': "Couldn't save",
   'maker.err.imageRead': "Couldn't read the image",
   'maker.err.photoRead': "Couldn't read the photo",
@@ -261,13 +261,13 @@ export const en: Translation<typeof ko> = {
   'maker.step.name': 'Name',
   'maker.title.food': 'Make a custom treat',
   'maker.title.pose': (v) => `New pose (${v.pose.toLowerCase()})`,
-  'maker.title.pet': 'Make a pet from a photo',
+  'maker.title.pet': 'Make a fairy from a photo',
   'maker.pick.title': 'Pick a photo',
   'maker.pick.how': 'Click here, drag a photo in, or paste one.',
   'maker.pick.food': (v) =>
     `A photo of something tasty, like fruit or a snack. Making it costs ${v.cost} coins.`,
   'maker.pick.pose': (v) =>
-    `This photo shows up ${v.pose.toLowerCase()}. A different face of the same pet works best.`,
+    `This photo shows up ${v.pose.toLowerCase()}. A different expression of the same friend works best.`,
   'maker.pick.pet': 'Photos with one clear subject work best, like a pet, a plush toy or a character.',
   'maker.pick.animated':
     'Animated GIF and WebP are used as is, without removing the background. A transparent background looks best.',
@@ -277,7 +277,7 @@ export const en: Translation<typeof ko> = {
   'maker.how.photo': 'Photo as is',
   'maker.how.illust': 'Redraw as an AI illustration',
   'maker.illust.hint':
-    'Redraws the pet in your photo as a cute, polished illustration. It is free, takes about a minute, and works a few times a day without a token.',
+    'Redraws the animal or toy in your photo as a cute, polished illustration. It is free, takes about a minute, and works a few times a day without a token.',
   'maker.illust.privacy':
     'This sends your photo and wish to a free drawing server on Hugging Face, run by someone else. To keep the photo on this computer, pick "Photo as is".',
   'maker.illust.age': 'Age',
@@ -329,7 +329,7 @@ export const en: Translation<typeof ko> = {
   'maker.engine.cpuSlow':
     'This computer draws with its CPU instead of a graphics chip, so it takes a while. Feel free to do other things meanwhile.',
   'maker.engine.why.rosetta':
-    'This Mac has an Apple chip but the Intel version of Jjakkung is installed. Install the Apple chip version to draw on this computer.',
+    'This Mac has an Apple chip but the Intel version of fairy is installed. Install the Apple chip version to draw on this computer.',
   'maker.engine.why.chip': "This computer's chip can't draw locally, so it draws on the free server.",
   'maker.engine.why.memory':
     "This computer has less than 8 GB of memory, so it can't draw locally. It draws on the free server.",
@@ -357,7 +357,7 @@ export const en: Translation<typeof ko> = {
   'maker.illust.tryLocal': 'Draw on this computer',
   'maker.illust.tryLocalHint': 'Even when the free server runs out, you can keep drawing on this computer.',
   'maker.pick.removePose': 'Remove this pose',
-  'maker.pick.resetPet': 'Back to the default pet',
+  'maker.pick.resetPet': 'Back to the default fairy',
   'maker.model.downloading': (v) => `Downloading the background remover, just this once (${v.mb}MB).`,
   'maker.working.title': 'Removing the background.',
   'maker.progress.stop': 'Stop',
@@ -399,11 +399,10 @@ export const en: Translation<typeof ko> = {
   'maker.say.remake.almost': 'Attaching new legs',
   'maker.say.remake.long': 'The AI is being extra careful!',
   'maker.say.done': 'Ta-da! All done',
-  'maker.edit.took': (v) => `Took ${v.sec}s on ${v.backend}.`,
-  'maker.name.alt': 'New pet',
+  'maker.name.alt': 'New fairy',
   'maker.name.animatedNote': "It's animated, so the background stays as is.",
   'maker.name.smallCut':
-    'Your pet was small in the photo, so it may look a little blurry. A photo where your pet is bigger will look sharper.',
+    'The subject was small in the photo, so it may look a little blurry. A photo where it is bigger will look sharper.',
   'maker.done.food': (v) => `Added ${v.name} to the shop treats!`,
   'maker.done.pose': (v) => `I'll look like this ${v.pose.toLowerCase()}!`,
   'maker.done.pet': (v) => `${v.name} is on your screen now!`,
@@ -416,7 +415,7 @@ export const en: Translation<typeof ko> = {
   'maker.name.saving': 'Saving',
   'maker.name.makeFood': (v) => `Make it for ${v.cost} coins`,
   'maker.name.usePose': 'Use this pose',
-  'maker.name.choosePet': 'Use this pet',
+  'maker.name.choosePet': 'Use this fairy',
   'maker.3d.look': 'Look',
   'maker.3d.photo': 'Photo as is',
   'maker.3d.figure': '3D figure',
@@ -438,7 +437,7 @@ export const en: Translation<typeof ko> = {
   'maker.wish.optional': '(optional)',
   'maker.wish.placeholder': 'e.g. bigger, rounder ears and a short tail',
   'maker.wish.count': (v) => `${v.n}/${v.max}`,
-  'maker.wish.note': 'Shape, face or moves. To change how big your pet is on screen, use Size in Settings.',
+  'maker.wish.note': 'Shape, face or moves. To change how big your fairy is on screen, use Size in Settings.',
   'maker.wish.remake': 'Make again with my wish',
   'maker.refine.label': 'Let the AI check and refine once',
   'maker.refine.hint': '(compares the render with the photo; takes about twice as long)',
@@ -460,7 +459,7 @@ export const en: Translation<typeof ko> = {
   'maker.3d.photoNote':
     "A plain photo is flat, so it can't turn. Pick 3D figure to turn it all the way around.",
   'maker.3d.photoNoteRelief': "A plain photo is flat, so it can't turn. Pick 2.5D to turn it side to side.",
-  'maker.spin.label': 'Turn your pet',
+  'maker.spin.label': 'Turn your fairy',
   'maker.spin.value': (v) => `${v.deg} degrees, ${v.side}`,
   'maker.spin.side.front': 'front',
   'maker.spin.side.side': 'side',
@@ -476,20 +475,20 @@ export const en: Translation<typeof ko> = {
   'maker.edit.restore': 'Restore brush',
   'maker.edit.size': 'Size',
   'maker.edit.undo': 'Undo',
-  'maker.edit.canvas': 'Touch up your pet. Erased areas show a faint red tint.',
+  'maker.edit.canvas': 'Touch up your fairy. Erased areas show a faint red tint.',
   'maker.edit.hint':
-    'The faint red areas will be erased. If part of your pet got erased, paint it with the restore brush. If background is left, use the eraser.',
+    'The faint red areas will be erased. If part of your fairy got erased, paint it with the restore brush. If background is left, use the eraser.',
   'maker.edit.almostAllErased': 'Almost everything got erased.',
   'maker.edit.barelyErased': 'Barely any background got erased.',
   'maker.edit.tryAgain': 'Touch it up or pick another photo.',
   'maker.edit.halfKept':
-    "Your pet's colors are close to the background, so parts look see-through. Paint over them with the restore brush to make them solid.",
+    "Your fairy's colors are close to the background, so parts look see-through. Paint over them with the restore brush to make them solid.",
   'maker.edit.hollow':
-    'Part of the inside of your pet got erased, leaving just the outline. If it belongs to your pet, paint it with the restore brush.',
+    'Part of the inside of your fairy got erased, leaving just the outline. If it belongs to your fairy, paint it with the restore brush.',
   'maker.edit.others':
-    "Something besides your pet was kept too. If it's not your pet, erase it with the eraser.",
+    "Something besides your fairy was kept too. If it's not your fairy, erase it with the eraser.",
   'maker.edit.cutEdge':
-    "Your pet touches the edge of the photo, so it may be cut off. That's fine if you meant it.",
+    "Your fairy touches the edge of the photo, so it may be cut off. That's fine if you meant it.",
   'maker.edit.otherPhoto': 'Another photo',
   'maker.edit.next': 'Done',
 };

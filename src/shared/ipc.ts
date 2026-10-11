@@ -12,6 +12,7 @@ import type { EnergyLook } from './energy.ts';
 import type { CalEvent } from './event-store.ts';
 import type { CarryToy } from './fetch.ts';
 import type { FocusState } from './focus.ts';
+import type { GalleryList } from './gallery.ts';
 import type { Gaze } from './gaze.ts';
 import type { Point } from './geometry.ts';
 import type { GestureEvent } from './gesture.ts';
@@ -24,6 +25,8 @@ import type { MiniGame } from './minigames.ts';
 import type { MoveAsk } from './moves.ts';
 import type { PolishReply } from './note-polish.ts';
 import type { Note, NoteSource } from './note-store.ts';
+import type { PetKey } from './pet-keys.ts';
+import type { PetLicense } from './pet-share.ts';
 import type { Blueprint, Gait } from './pet3d/blueprint.ts';
 import type { PetKind, PetStyle, PoseKind, Settings } from './settings.ts';
 import type { SettingsTab } from './settings-tabs.ts';
@@ -31,7 +34,15 @@ import type { BuyResult, ShopState } from './shop.ts';
 import type { SoundKind } from './sound.ts';
 import type { PetChoice, StarterId } from './starter-pets.ts';
 import type { Repeat, Todo } from './todo-store.ts';
+import type { NoteLook, TogetherLook } from './together.ts';
+import type { WearLook } from './wear.ts';
 import type { WeekSummary } from './week.ts';
+
+/** 업데이트 확인 결과. tone 은 글 색: ok 초록, info 회색(확인할 수 없음, 꺼짐), error 빨강 */
+export interface UpdateStatus {
+  text: string;
+  tone: 'ok' | 'info' | 'error';
+}
 
 export const IPC = {
   /** 펫 화면 → 메인: 커서가 펫 위에 있는지 (클릭 통과를 켜고 끈다). */
@@ -84,6 +95,12 @@ export const IPC = {
   carried: 'pet:carried',
   /** 펫 화면 → 메인: 집 안 그림 (깬 몸, 자는 얼굴, shared/house-room.ts HouseSprites). 모습이 바뀔 때만 */
   sprites: 'pet:sprites',
+  /** 메인 → 펫 화면: 키보드로 펫 다루기를 켜고 끈다 (펫 고르기 단축키, 접근성) */
+  keys: 'pet:keys',
+  /** 펫 화면 → 메인: 키보드 명령 (shared/pet-keys.ts) */
+  petKey: 'pet:key',
+  /** 메인 → 펫 화면: 같이 타자 치기, 같이 일하는 표정, 든 쪽지 (shared/together.ts TogetherLook). 바뀔 때만 */
+  together: 'pet:together',
 } as const;
 
 /** 펫 얼굴 그림 (shared/face.ts). 펫 화면이 그려 메인에 주고, 메인이 얼굴을 쓰는 창에 나눠 준다 */
@@ -117,6 +134,8 @@ export interface BubbleMessage {
   ttlMs: number;
   /** 말풍선 종류 (일정 알림이면 효과음을 켰을 때 종소리) */
   kind?: BubbleKind;
+  /** 펼친 쪽지 모양 (매일 쪽지는 종이, 특별한 편지는 분홍 편지지). 없으면 보통 말풍선 */
+  paper?: NoteLook;
 }
 
 export interface PetAiState {
@@ -161,6 +180,8 @@ export const CHAT = {
   toNote: 'chat:to-note',
   toTodos: 'chat:to-todos',
   retryWith: 'chat:retry-with',
+  /** 규칙 답("오늘 뭐부터") 아래 단추: 'focus' | 'panel' 과 할 일 id */
+  planAction: 'chat:plan-action',
   // v2 무료 AI
   downloadModel: 'chat:download-model',
 } as const;
@@ -191,6 +212,8 @@ export interface OnboardSnapshot {
   screen: 'granted' | 'denied' | 'not-determined' | 'restricted' | 'unknown';
   /** 그림으로 들어 있는 기본 캐릭터 (밀크, 초코) */
   starters: StarterView[];
+  /** 지금 사진 펫의 몸 전체 그림 (긴 변 160px data URL). 기본 펫이면 null. 첫 화면에 얼굴만 잘라 보이지 않게 */
+  photo: string | null;
 }
 
 export interface OnboardBridge {
@@ -216,6 +239,8 @@ export const SETTINGS = {
   copyDiagnostics: 'settings:copy-diagnostics',
   saveDiagnostics: 'settings:save-diagnostics',
   reportIssue: 'settings:report-issue',
+  /** 오픈소스 고지(THIRD_PARTY_NOTICES.txt)를 연다. 못 열면 false */
+  openNotices: 'settings:open-notices',
   /** 새 버전 확인 (v1). 결과 글 */
   checkUpdate: 'settings:check-update',
   openOnboarding: 'settings:open-onboarding',
@@ -223,8 +248,14 @@ export const SETTINGS = {
   exportData: 'settings:export-data',
   importData: 'settings:import-data',
   exportPet: 'settings:export-pet',
+  /** 방금 내보낸 파일이나 폴더를 파일 관리자에서 보인다 */
+  reveal: 'settings:reveal',
   importPet: 'settings:import-pet',
   importFriend: 'settings:import-friend',
+  /** 펫 갤러리 (P1 #11): 공식 펫 목록 받기, 고른 펫 데려오기, 친구에게 보낼 펫 파일 저장 */
+  galleryList: 'settings:gallery-list',
+  galleryAdopt: 'settings:gallery-adopt',
+  galleryShare: 'settings:gallery-share',
   syncCalendar: 'settings:sync-calendar',
   refreshMcp: 'settings:refresh-mcp',
   /** 앱을 다시 켠다 (말을 바꾼 뒤) */
@@ -235,6 +266,8 @@ export const SETTINGS = {
   removeSavedPet: 'settings:remove-saved-pet',
   /** 받은 모델 지우기. 새 목록을 돌려준다 */
   deleteModel: 'settings:delete-model',
+  /** AI 기록 지우기: AI CLI 가 짝꿍 대화를 저장한 짝꿍 전용 폴더만 (ai-history.ts). 남은 크기를 돌려준다 */
+  clearAiHistory: 'settings:clear-ai-history',
   /** 지금 사진 펫의 몸을 고른 걸음새에 맞게 다시 만든다 (같은 사진, 같은 요청사항). 그만두기는 cancelRemake */
   remakeBody: 'settings:remake-body',
   cancelRemake: 'settings:cancel-remake',
@@ -271,6 +304,8 @@ export interface SettingsSnapshot {
   starters: StarterView[];
   /** 받은 모델과 크기 (6단계) */
   storage: StoredModel[];
+  /** AI CLI 가 짝꿍 대화를 저장한 크기 (AI 기록 지우기) */
+  aiHistoryBytes: number;
   /** 배터리로 도는지 (부스트 모드는 이때 쉰다) */
   onBattery: boolean;
 }
@@ -289,6 +324,8 @@ export interface PetLookView {
   depth?: string;
   /** AI 일러스트 나이 단계 (카드에 작은 표시) */
   age?: AgeStage;
+  /** 펫 파일에서 데려온 펫의 만든 사람, 사용 허락, 만든 날 (카드 아래 한 줄) */
+  meta?: { author?: string; license: PetLicense; created: string };
 }
 
 export interface SavedPetView extends PetLookView {
@@ -308,8 +345,8 @@ export interface StarterView {
 export interface StoredModel {
   id: string;
   label: string;
-  /** draw: 내 컴퓨터에서 그리기 (엔진마다 도구와 모델이 든 폴더 통째) */
-  kind: 'llm' | 'bg' | 'depth' | 'draw';
+  /** draw: 내 컴퓨터에서 그리기 (엔진마다 도구와 모델이 든 폴더 통째). copy: 안전 복사본 (keep-copies.ts) */
+  kind: 'llm' | 'bg' | 'depth' | 'draw' | 'copy';
   bytes: number;
 }
 
@@ -333,14 +370,22 @@ export interface SettingsBridge {
   saveDiagnostics(): Promise<{ ok: boolean; message: string }>;
   /** GitHub 새 이슈 (판, 운영체제만 채움) */
   reportIssue(): void;
-  checkUpdate(): Promise<string>;
+  openNotices(): Promise<boolean>;
+  checkUpdate(): Promise<UpdateStatus>;
   openOnboarding(): void;
   /** 백업 폴더 만들기. 만든 경로 (그만두면 빈 글) */
   exportData(): Promise<string>;
   importData(): Promise<string>;
   exportPet(): Promise<string>;
+  reveal(path: string): void;
   importPet(): Promise<{ ok: boolean; message: string }>;
   importFriend(): Promise<{ ok: boolean; message: string }>;
+  /** 펫 갤러리 목록 (메인이 raw.githubusercontent.com 에서 받아 검사한 것) */
+  galleryList(): Promise<GalleryList>;
+  /** 목록의 펫을 받아 데려온다 (asFriend 면 친구 펫으로). 그만두면 빈 message */
+  galleryAdopt(id: string, asFriend: boolean): Promise<{ ok: boolean; message: string }>;
+  /** 지금 펫을 친구에게 보낼 판 2 .jjpet 으로 저장한다 (만든 사람은 선택). 그만두면 빈 message */
+  galleryShare(meta: { author?: string; license: PetLicense }): Promise<{ ok: boolean; message: string }>;
   syncCalendar(): Promise<string>;
   refreshMcp(): Promise<string[]>;
   /** 앱을 다시 켠다. 창은 열릴 때 말을 읽어서 말을 바꾸면 다시 켜야 한다 */
@@ -350,6 +395,8 @@ export interface SettingsBridge {
   deleteModel(
     id: string,
   ): Promise<{ ok: boolean; storage: StoredModel[]; localReady: Record<string, boolean> }>;
+  /** AI 기록 지우기. 지운 뒤 남은 크기 */
+  clearAiHistory(): Promise<{ ok: boolean; bytes: number }>;
   /** 몸 다시 만들기. 끝나면(성공이면 설정이 바뀐 뒤) 결과. AI 가 없으면 noAi */
   remakeBody(gait: Gait): Promise<{ ok: true } | { ok: false; error: string; noAi?: boolean }>;
   cancelRemake(): void;
@@ -416,6 +463,8 @@ export interface ChatBridge {
   toTodos(messageId: string): Promise<number>;
   /** 마지막 질문을 다른 AI 로 다시 (한도에 걸렸을 때) */
   retryWith(provider: AiProvider): void;
+  /** 규칙 답 단추: 집중 시작(그 할 일로), 패널 열기 */
+  planAction(kind: 'focus' | 'panel', todoId?: number): void;
   /** 무료 AI 모델 받기 (v2). 다 받으면 마지막 질문을 무료 AI 로 다시 묻는다 */
   downloadModel(): void;
 }
@@ -467,6 +516,12 @@ export interface PetBridge {
   carried(at: Point | null): void;
   /** 집 안 그림 (집에서 쉬기: 문 드나드는 깬 몸, 침대의 자는 얼굴). PetStatus.face 일 때만 */
   sprites(sprites: HouseSprites): void;
+  /** 키보드로 펫 다루기 켬(펫 이름, 읽어 줄 안내에 쓴다), 끔(null) (접근성) */
+  onKeys(listener: (name: string | null) => void): void;
+  /** 키보드 명령 (shared/pet-keys.ts) */
+  petKey(key: PetKey): void;
+  /** 같이 타자 치기, 같이 일하는 표정, 든 쪽지 (shared/together.ts) */
+  onTogether(listener: (look: TogetherLook) => void): void;
 }
 
 /** 펫 화면이 그리는 몸. 네 발로 걷는 펫은 공을 입에 물어 온다 */
@@ -520,6 +575,12 @@ export interface PetStatus {
   gait?: Gait;
   /** 기운 (하루 리듬과 연속 작업 피로, shared/energy.ts). 설정 "하루 리듬"이 꺼졌거나 친구 펫이면 없다 (예전 모습) */
   energy?: EnergyLook;
+  /** 배터리 절약 중 (shared/battery.ts): 그리기 15fps 상한, 한가한 행동을 드물게. 없으면 끔 */
+  saver?: boolean;
+  /** 말풍선을 화면 읽기 프로그램에 읽어 준다 (설정 읽어 주기). 친구 펫은 끔 (같은 말을 두 번 읽지 않게) */
+  readAloud?: boolean;
+  /** 성장 단계와 오늘 옷 (기본 펫만 그린다, shared/wear.ts). 없으면 예전 모습 그대로 */
+  wear?: WearLook;
 }
 
 /** 펫 그림들 (data URL). 없으면 기본 펫. 포즈는 상태별 그림 (v1) */
@@ -814,9 +875,29 @@ export interface NoteSummary {
 /** 한 줄 입력(PANEL.add) 결과. 어디에 언제로 넣었는지 알려 준다 */
 export type PanelAddResult =
   | { ok: false; error?: string }
-  /** clash: 시간이 겹치는 다른 일정 (첫 것) */
-  | { ok: true; kind: 'event'; id: number; startAt: number; clash?: EventClash }
-  | { ok: true; kind: 'todo'; id: number; due: string | null }
+  /**
+   * clash: 시간이 겹치는 다른 일정 (첫 것). am: 오전, 오후 없는 1~7시를 오후로 읽었을 때 오전으로 읽은 시각
+   * (알림의 "오전으로" 단추가 일정을 이리로 옮긴다)
+   */
+  | {
+      ok: true;
+      kind: 'event';
+      id: number;
+      startAt: number;
+      clash?: EventClash;
+      am?: { startAt: number; endAt: number | null };
+    }
+  /** remindAt: "30분 뒤 알려 줘"로 넣은 알림이 울릴 때 (snooze.ts) */
+  /** past: 마감이 이미 지난 날("어제 보고서"). monthly: "매달 25일" 을 매달 반복으로 넣었다 (그날, 25) */
+  | {
+      ok: true;
+      kind: 'todo';
+      id: number;
+      due: string | null;
+      remindAt?: number;
+      past?: true;
+      monthly?: number;
+    }
   /** 여러 줄을 붙여 넣어 줄마다 넣었다 */
   | { ok: true; kind: 'many'; todos: number; events: number };
 

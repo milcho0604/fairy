@@ -1,3 +1,4 @@
+import { capFps, idleWaitFactor } from '../../shared/battery.ts';
 import { type Activity, nextDelay } from '../../shared/behavior.ts';
 import { ENERGY_BLINK, ENERGY_PACE, type EnergyLook, energyLookOf, sameLook } from '../../shared/energy.ts';
 import { BALL_SVG, type CarryToy, PICK_MS, pickPose } from '../../shared/fetch.ts';
@@ -15,6 +16,7 @@ import {
   magnifierPose,
 } from '../../shared/look-motion.ts';
 import { bodyOfParts, isMove, MOVE_SPECS, type MoveAsk } from '../../shared/moves.ts';
+import { petKeyOf } from '../../shared/pet-keys.ts';
 import {
   canBlink,
   EXCITED_MS,
@@ -30,6 +32,8 @@ import type { Blueprint, Gait } from '../../shared/pet3d/blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from '../../shared/pet3d/defaults.ts';
 import type { PetKind, PetStyle, PoseKind } from '../../shared/settings.ts';
 import { canPlay, type SoundKind } from '../../shared/sound.ts';
+import { NO_TOGETHER, type TogetherLook } from '../../shared/together.ts';
+import { dressBlueprint, GROW_LOOK, type WearLook } from '../../shared/wear.ts';
 import { AnimatedImage, frameSide, loadPetImage } from './animated.ts';
 import { CANVAS_SIZE, type CarryDraw, CONFETTI_MS, drawPet, HEARTS_MS, motionSettling } from './draw.ts';
 import { initLang } from './lang.ts';
@@ -38,6 +42,7 @@ import { renderBody, renderFace } from './pet-face.ts';
 import type { Pet3D } from './pet3d.ts';
 import { quadKind, withGait } from './pet3d-gait.ts';
 import { playSound } from './sound.ts';
+import { TAP_FPS, TAP_IN_MS, TAP_OUT_MS } from './together-draw.ts';
 import { continueSeg, segSpeed, stepsAt, strideLen, type WalkSeg } from './walk-pace.ts';
 
 initLang('common.title.pet');
@@ -51,7 +56,45 @@ function setupCanvas(): [HTMLCanvasElement, CanvasRenderingContext2D] {
   if (!context) throw new Error('2d 컨텍스트를 못 얻었다');
   return [el, context];
 }
-const [canvas, ctx] = setupCanvas();
+const [canvas, cpuCtx] = setupCanvas();
+
+/**
+ * 입체 펫은 GPU 쪽 캔버스(#pet 바로 밑, 마우스는 #pet 이 받는다)에 그린다. 위 2D 캔버스는 CPU 쪽이라 WebGL 그림을
+ * 옮겨 그리면 프레임마다 GPU 에서 읽어 와야 했다 (입체가 2D 보다 약 40% 비싼 까닭, docs/roadmap.md). GPU 캔버스끼리는
+ * GPU 안에서 옮긴다. 2D 펫은 그대로 CPU 캔버스에 (작은 그림이라 CPU 쪽이 싸고 픽셀 판정도 싸다). 처음 쓸 때 만든다
+ */
+let gpuLayer: [HTMLCanvasElement, CanvasRenderingContext2D] | undefined;
+/** 지금 그리는 캔버스 (2D 는 #pet, 입체는 gpuLayer) */
+let ctx = cpuCtx;
+/** 그린 틀 수 (픽셀 판정을 같은 틀 안에서 다시 읽지 않게) */
+let drawn = 0;
+/** 마지막 픽셀 판정. 입체(GPU 캔버스)는 읽을 때마다 GPU 를 기다려서 같은 틀, 같은 픽셀이면 다시 읽지 않는다 */
+let hitCache: { frame: number; x: number; y: number; hit: boolean } | undefined;
+
+function drawLayer(gpu: boolean): CanvasRenderingContext2D {
+  if (gpu && !gpuLayer) {
+    const el = document.createElement('canvas');
+    el.id = 'pet-gpu';
+    el.setAttribute('aria-hidden', 'true');
+    const g = el.getContext('2d');
+    if (!g) return cpuCtx;
+    canvas.before(el);
+    gpuLayer = [el, g];
+    sizeLayer(el, g);
+  }
+  const want = gpu && gpuLayer ? gpuLayer[1] : cpuCtx;
+  if (want !== ctx) {
+    // 다른 캔버스로 옮기면 하던 캔버스는 비운다 (두 그림이 겹쳐 보이지 않게)
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.restore();
+    ctx = want;
+    if (gpuLayer) gpuLayer[0].hidden = ctx === cpuCtx;
+    hitCache = undefined;
+  }
+  return ctx;
+}
 
 // ---- 그리기 루프 ----
 // 정지 상태는 한 번 그리고 멈춘다. 계속 그리면 fps 와 무관하게 CPU 를 먹는다 (L10).
@@ -138,6 +181,8 @@ function frame() {
   // 입체 그리기 모듈을 불러오는 중이면 기다린다 (불러오면 다시 그린다). 2D 를 먼저 그리면 깜빡인다
   if (m3d === 'loading') return;
   const img = m3d ? undefined : pickImage(mood, inputs.hungry);
+  drawLayer(!!m3d);
+  drawn++;
   const looking = peerAt(now);
   const picking = !!carry && now - carry.start < PICK_MS;
   // 2.5D 그림 펫은 가만히 있어도 숨을 쉰다: 부스트 모드(전원 연결)일 때만 8fps (평소엔 다른 움직임이 있을 때만).
@@ -164,6 +209,8 @@ function frame() {
     gaze: backTurned() ? undefined : (gaze ?? undefined),
     trick: trick ? { type: trick.type, t: trickT } : undefined,
     flower,
+    // 철마다 옷과 성장은 기본 펫만 (사진 펫은 그대로)
+    ...(img || photo ? {} : { wear: wear?.outfit, grow: GROW_LOOK[wear?.stage ?? 'adult'].scale }),
     calm: reducedMotion.matches,
     peer: looking?.peer,
     gait: gaitPick,
@@ -172,11 +219,15 @@ function frame() {
     fresh: freshStart >= 0 ? fresh : -1,
     confetti: confettiStart >= 0 ? confetti : -1,
     land: landStart >= 0 ? landed : -1,
+    ...togetherDraw(now),
     now,
   });
   carriedAt = ball;
-  syncFace(m3d);
-  syncSprites(m3d);
+  // 얼굴과 집 그림은 첫 그림이 화면에 나간 뒤에 (둘 다 그린 것을 읽어 와 GPU 를 기다려서 켤 때 첫 그림을 늦췄다)
+  if (firstShown) {
+    syncFace(m3d);
+    syncSprites(m3d);
+  } else afterFirstShown();
   syncBody(m3d, img);
 
   const walking = activity?.type === 'walk';
@@ -209,8 +260,28 @@ function frame() {
   clearTimeout(frameTimer);
   // 돋보기를 든 동안은 그 빠르기로 (부스트면 두 배)
   // 돌아서기, 고개 돌리기, 걷기 풀기가 아직 따라가는 중이면 끝까지 그린다 (draw.ts motionSettling)
-  const all = Math.max(fps, (looking?.fps ?? 0) * k, motionSettling() ? 30 * k : 0);
+  // 배터리 절약이면 15fps 까지만 (shared/battery.ts). 멈춘 그림(0)은 그대로 그리지 않는다
+  const all = capFps(
+    Math.max(fps, (looking?.fps ?? 0) * k, motionSettling() ? 30 * k : 0, togetherFps(now) * k),
+    saver,
+  );
   frameTimer = all > 0 ? setTimeout(frame, 1000 / all) : undefined;
+}
+
+/** 첫 그림이 화면에 나갔는지 (얼굴과 집 그림은 그 뒤에 그린다) */
+let firstShown = false;
+let firstShowWait = false;
+function afterFirstShown() {
+  if (firstShowWait) return;
+  firstShowWait = true;
+  const go = () => {
+    if (firstShown) return;
+    firstShown = true;
+    requestFrame();
+  };
+  // 다음 화면 갱신 뒤. 창이 숨어 있으면 화면 갱신이 오지 않아 1초 뒤에는 그냥 한다
+  requestAnimationFrame(() => setTimeout(go, 0));
+  setTimeout(go, 1000);
 }
 
 // ---- 같이 보기 돋보기 (shared/look-motion.ts) ----
@@ -322,6 +393,65 @@ function syncBody(m3d: Pet3D | undefined, img: PetImage | undefined) {
   bridge.body(body);
 }
 
+// ---- 같이 지내는 느낌 (shared/together.ts) ----
+// 같이 타자 치기: 메인이 "사용자가 입력하는 중"(키 내용은 모른다)을 알려 주면 작은 키보드를 꺼내 앞발로 두드린다.
+// 나오고 들어가는 동안만 조금 더 촘촘히, 두드리는 동안은 12fps. 움직임 줄이기면 손을 키보드에 얹고 가만히 (한 번만 그린다)
+// 같이 일하는 표정: AI 도구가 짝꿍 MCP 를 부른 뒤 잠깐 집중한 눈썹과 연필, 반짝이. 든 쪽지: 매일 쪽지를 몸 앞에 든다
+let together: TogetherLook = NO_TOGETHER;
+/** 키보드가 나오고 들어가기: on 나오는 중이나 나옴, at 바뀐 때, from 그때 나와 있던 정도 */
+let tapEdge = { on: false, at: -1, from: 0 };
+/** 두드리기 시작한 때 (박자 기준) */
+let tapStart = 0;
+/** 같이 일하는 표정이 시작된 때. 없으면 -1 */
+let workStart = -1;
+
+function tapK(now: number): number {
+  if (tapEdge.at < 0) return 0;
+  if (reducedMotion.matches) return tapEdge.on ? 1 : 0;
+  const dt = now - tapEdge.at;
+  return tapEdge.on
+    ? Math.min(1, tapEdge.from + dt / TAP_IN_MS)
+    : Math.max(0, tapEdge.from - dt / TAP_OUT_MS);
+}
+const tapOn = () => tapEdge.on || tapK(performance.now()) > 0;
+/** 같이 타자 치기를 그릴 수 있는 몸 상태 (draw.ts tapOf 와 같은 뜻: 한가하거나 말하는 중, 걷지 않을 때) */
+const canTap = () =>
+  (mood === 'idle' || mood === 'talking') && (!activity || activity.type === 'sit') && !look && !carry;
+
+function togetherDraw(now: number) {
+  const k = tapK(now);
+  return {
+    ...(k > 0 ? { tap: { k, ms: reducedMotion.matches ? 0 : now - tapStart } } : {}),
+    work: workStart >= 0 ? now - workStart : -1,
+    ...(together.note ? { note: together.note } : {}),
+  };
+}
+
+/** 같이 지내는 모습을 그리는 빠르기: 키보드가 나오고 들어가는 동안 24, 두드리는 동안 12, 반짝이는 8. 가만히면 0 */
+function togetherFps(now: number): number {
+  if (!canTap() && workStart < 0) return 0;
+  const k = tapK(now);
+  const calm = reducedMotion.matches;
+  if (canTap() && k > 0 && (tapEdge.on ? k < 1 : true) && !calm) return 24;
+  if (canTap() && k > 0 && !calm) return TAP_FPS;
+  if (workStart >= 0 && !calm && mood !== 'sleeping' && mood !== 'dozing') return 8;
+  return 0;
+}
+
+bridge.onTogether((next) => {
+  const now = performance.now();
+  if (next.typing !== tapEdge.on) {
+    const from = tapK(now);
+    if (next.typing && from <= 0) tapStart = now;
+    tapEdge = { on: next.typing, at: now, from };
+    // 두드리기 시작하면 하던 앉기 말고 다른 몸짓(하품, 두리번)은 그만둔다
+    if (next.typing && activity && activity.type !== 'sit' && activity.type !== 'walk') stopActivity(false);
+  }
+  if (next.working !== workStart >= 0) workStart = next.working ? now : -1;
+  together = next;
+  requestFrame();
+});
+
 // ---- 기본 행동 (P1-06) ----
 // 25~70초에 한 번, 한가하면 메인에 행동을 골라 달라고 한다. 걷기만 계속 그리고(12fps) 앉기, 두리번은 한 번 그린다.
 
@@ -334,9 +464,21 @@ let activityEnd: ReturnType<typeof setTimeout> | undefined;
 function scheduleActivity() {
   clearTimeout(activityTimer);
   // 활발하면 자주, 졸리면 드물게 움직인다 (shared/energy.ts)
-  const wait = energy ? ENERGY_PACE[energy.stage].wait : 1;
+  // 배터리 절약이면 더 드물게 (shared/battery.ts)
+  const wait = (energy ? ENERGY_PACE[energy.stage].wait : 1) * idleWaitFactor(saver);
   activityTimer = setTimeout(() => {
-    if (mood === 'idle' && !activity && !look && !carry && !bubbleId && !overPet && !gesture.dragging)
+    // 같이 타자 치거나 같이 일하는 동안은 돌아다니지 않는다 (옆에서 같이 한다)
+    const together = tapOn() || workStart >= 0;
+    if (
+      mood === 'idle' &&
+      !activity &&
+      !look &&
+      !carry &&
+      !bubbleId &&
+      !overPet &&
+      !gesture.dragging &&
+      !together
+    )
       bridge.activityRequest(moveAsk());
     scheduleActivity();
   }, nextDelay(Math.random) * wait);
@@ -397,7 +539,7 @@ function moveAsk(): MoveAsk {
   const calm = reducedMotion.matches;
   const hungry = inputs.hungry;
   const still = photo instanceof HTMLImageElement;
-  const bp = (still ? photoModel : undefined) ?? (photo ? undefined : DEFAULT_BLUEPRINTS[petKind]);
+  const bp = (still ? photoModel : undefined) ?? (photo ? undefined : builtinBlueprint());
   // 기운 단계 (shared/energy.ts): 메인이 몸짓 무게, 걷기 확률과 빠르기를 정한다
   const more = energy ? { energy: energy.stage } : {};
   if (use3d && !broken3d && bp) {
@@ -430,10 +572,26 @@ let petKind: PetKind = 'kong';
 let cushion = false;
 /** 머리에 꽃 (친밀도 600) */
 let flower = false;
+/** 성장 단계와 오늘 옷 (기본 펫만, shared/wear.ts) */
+let wear: WearLook | undefined;
+/** 입체 모습마다 옷을 털 밖으로 내는 길이 (실사, 복슬복슬은 털이 길다) */
+const WEAR_PUFF: Record<PetStyle, number> = { figure: 0, game: 0.006, real: 0.018, fluffy: 0.07 };
+/** 기본 펫 설계도에 성장과 옷을 입힌 것. 같은 값이면 같은 것을 돌려줘 다시 조립하지 않는다 */
+let dressed: { key: string; bp: Blueprint } | undefined;
+function builtinBlueprint(): Blueprint {
+  const key = `${petKind}|${style3d}|${wear?.stage ?? ''}|${wear?.outfit ?? ''}`;
+  if (dressed?.key !== key)
+    dressed = { key, bp: dressBlueprint(DEFAULT_BLUEPRINTS[petKind], wear, WEAR_PUFF[style3d]) };
+  return dressed.bp;
+}
 /** 효과음 (설정) */
 let sounds = false;
 /** 부스트 모드 (설정, 배터리면 메인이 끈다) */
 let boost = false;
+/** 배터리 절약 (설정 편의, 배터리나 저전력이면 메인이 켠다) */
+let saver = false;
+/** 말풍선 읽어 주기 (설정 편의). 친구 펫은 끔 */
+let readAloud = false;
 /** 친밀도로 열린 몸짓. 끝나면 지운다 */
 let trick: { type: 'wave' | 'dance'; start: number } | undefined;
 const TRICK_MS = { wave: 1800, dance: 1400 } as const;
@@ -581,9 +739,7 @@ function pickedBlueprint(bp: Blueprint | undefined): Blueprint | undefined {
 function current3d(): Pet3D | 'loading' | undefined {
   // 사진 펫은 설계도나 깊이 그림이 있을 때만 입체로. 움직이는 그림은 입체 판으로 만들지 않는다
   const still = photo instanceof HTMLImageElement;
-  const bp = pickedBlueprint(
-    (still ? photoModel : undefined) ?? (photo ? undefined : DEFAULT_BLUEPRINTS[petKind]),
-  );
+  const bp = pickedBlueprint((still ? photoModel : undefined) ?? (photo ? undefined : builtinBlueprint()));
   const relief = !bp && still ? photoDepth : undefined;
   if (!use3d || broken3d || (!bp && !relief)) {
     // 입체를 안 쓰면 모양만 내린다. 렌더러는 버리지 않고 다시 쓴다(버리고 새로 만들면 컨텍스트가 샌다)
@@ -618,7 +774,7 @@ function current3d(): Pet3D | 'loading' | undefined {
     return undefined;
   }
   // 나이 배율은 사진 펫에만 (기본 펫 설계도는 그대로)
-  model3d.setSizeScale(photo ? photoScale : 1);
+  model3d.setSizeScale(photo ? photoScale : GROW_LOOK[wear?.stage ?? 'adult'].scale);
   const want = bp ?? relief;
   // 모습을 바꾸면 털, 테두리, 눈을 다시 붙여야 해서 다시 조립한다
   if (model3d.setStyle(style3d)) model3dOf = undefined;
@@ -704,8 +860,18 @@ bridge.onStatus((status) => {
   statusKnown = true;
   cushion = status.cushion;
   flower = status.flower;
+  if (JSON.stringify(status.wear) !== JSON.stringify(wear)) {
+    wear = status.wear;
+    requestFrame();
+  }
   sounds = status.sounds;
   boost = status.boost;
+  readAloud = status.readAloud === true;
+  if ((status.saver === true) !== saver) {
+    saver = status.saver === true;
+    scheduleActivity();
+    requestFrame();
+  }
   // 기운은 단계나 녹초가 바뀔 때만 다시 그린다 (1분에 한 번 이하, 메인이 같은 상태면 보내지도 않는다)
   const nextEnergy = energyLookOf(status.energy);
   if (!sameLook(nextEnergy, energy)) {
@@ -846,29 +1012,37 @@ let petBox = { x: 0, y: 0, size: window.innerWidth || CANVAS_SIZE };
 let viewSize = petBox.size;
 
 function fitToScreen() {
-  const dpr = window.devicePixelRatio || 1;
   viewSize = petBox.size;
   // 줄여 풀어 둔 움직이는 그림이 이제 작으면 다시 푼다 (펫 크기, 화면 배율)
   sharpenImages();
-  Object.assign(canvas.style, {
+  const resized = sizeLayer(canvas, cpuCtx);
+  if (gpuLayer && sizeLayer(...gpuLayer) && ctx !== cpuCtx) hitCache = undefined;
+  if (!resized) {
+    requestFrame();
+    return;
+  }
+  // 캔버스 크기를 바꾸면 그림이 지워진다. 다음 틀을 기다리면 빈 캔버스가 한 번 화면에 나가
+  // 커지고 작아지는 동안(집 문 드나들기, 두더지) 펫이 깜빡였다. 바로 다시 그린다
+  clearTimeout(frameTimer);
+  frame();
+}
+
+/** 캔버스 자리와 해상도를 펫 칸에 맞춘다. 해상도를 바꿨으면 true (그림이 지워졌다) */
+function sizeLayer(el: HTMLCanvasElement, g: CanvasRenderingContext2D): boolean {
+  const dpr = window.devicePixelRatio || 1;
+  Object.assign(el.style, {
     left: `${petBox.x}px`,
     top: `${petBox.y}px`,
     width: `${viewSize}px`,
     height: `${viewSize}px`,
   });
   const px = Math.round(viewSize * dpr);
-  if (canvas.width === px && canvas.height === px) {
-    requestFrame();
-    return;
-  }
-  // 캔버스 크기를 바꾸면 그림이 지워진다. 다음 틀을 기다리면 빈 캔버스가 한 번 화면에 나가
-  // 커지고 작아지는 동안(집 문 드나들기, 두더지) 펫이 깜빡였다. 바로 다시 그린다
-  canvas.width = px;
-  canvas.height = px;
+  if (el.width === px && el.height === px) return false;
+  el.width = px;
+  el.height = px;
   const k = (dpr * viewSize) / CANVAS_SIZE;
-  ctx.setTransform(k, 0, 0, k, 0, 0);
-  clearTimeout(frameTimer);
-  frame();
+  g.setTransform(k, 0, 0, k, 0, 0);
+  return true;
 }
 
 function watchPixelRatio() {
@@ -901,9 +1075,15 @@ function hitTest(wx: number, wy: number): boolean {
   const x = wx - petBox.x;
   const y = wy - petBox.y;
   if (x < 0 || y < 0 || x >= viewSize || y >= viewSize) return false;
-  const dpr = canvas.width / viewSize;
-  const alpha = ctx.getImageData(Math.floor(x * dpr), Math.floor(y * dpr), 1, 1).data[3] ?? 0;
-  return alpha > 16;
+  const g = ctx;
+  const dpr = g.canvas.width / viewSize;
+  const px = Math.floor(x * dpr);
+  const py = Math.floor(y * dpr);
+  const c = hitCache;
+  if (c && c.frame === drawn && c.x === px && c.y === py) return c.hit;
+  const hit = (g.getImageData(px, py, 1, 1).data[3] ?? 0) > 16;
+  hitCache = { frame: drawn, x: px, y: py, hit };
+  return hit;
 }
 
 function setOverPet(hit: boolean) {
@@ -1047,6 +1227,10 @@ bridge.onBubble((b) => {
   bubbleLeft = b.ttlMs;
   if (b.kind === 'schedule') sound('bell');
   bubbleText.textContent = b.text;
+  // 펼친 쪽지는 종이 모양 (pet.css)
+  if (b.paper) bubbleEl.dataset.paper = b.paper;
+  else delete bubbleEl.dataset.paper;
+  if (readAloud) announce(b.text);
   bubbleImage.hidden = !b.image;
   if (b.image) bubbleImage.src = b.image;
   else bubbleImage.removeAttribute('src');
@@ -1090,6 +1274,44 @@ bridge.onLayout((layout) => {
 // 말풍선 몸통을 누르면 닫는다(버튼은 위에서 따로 처리).
 bubbleEl.addEventListener('click', () => closeBubble('dismiss'));
 
+// ---- 접근성: 읽어 주기, 키보드로 펫 다루기 ----
+// 말풍선은 숨겼다 보였다 하며 글을 바꿔서 화면 읽기 프로그램이 놓치기 쉽다. 늘 있는 보이지 않는 알림 칸(aria-live)에
+// 같은 글을 옮겨 적는다. 같은 말이 다시 와도 읽게 한 번 비우고 다음 틀에 넣는다
+const liveEl = document.getElementById('sr-live') as HTMLDivElement;
+let liveTimer: ReturnType<typeof setTimeout> | undefined;
+function announce(text: string) {
+  clearTimeout(liveTimer);
+  liveEl.textContent = '';
+  liveTimer = setTimeout(() => {
+    liveEl.textContent = text;
+  }, 60);
+}
+let keysOn = false;
+bridge.onKeys((name) => {
+  const on = name !== null;
+  keysOn = on;
+  canvas.classList.toggle('keys', on);
+  canvas.tabIndex = on ? 0 : -1;
+  if (name !== null) {
+    canvas.setAttribute('aria-label', t('pet.keys.label', { name }));
+    canvas.focus({ preventScroll: true });
+    announce(t('pet.keys.focused', { name }));
+  } else {
+    canvas.setAttribute('aria-label', t('common.appName'));
+    canvas.blur();
+  }
+});
+canvas.addEventListener('keydown', (e) => {
+  if (!keysOn) return;
+  const key = petKeyOf(e);
+  if (!key) return;
+  e.preventDefault();
+  bridge.petKey(key);
+});
+canvas.addEventListener('blur', () => {
+  if (keysOn) bridge.petKey('leave');
+});
+
 // ---- 메인이 알려 주는 환경 ----
 // 5초마다 온다. 기분이 그대로면 값만 바꾸고 다시 그리지 않는다 (잠, 바쁨에서 쓸데없이 그렸다)
 bridge.onEnv((env) => {
@@ -1114,6 +1336,12 @@ Object.assign(window, {
       energy = energyLookOf(e);
       scheduleBlink();
       requestFrame();
+    },
+    /** 복슬복슬 털 녹이기를 바로 끝낸다 (그림 점검용: 녹이는 중에 찍으면 매끈한 몸이 찍힌다). 몸이 바뀐 횟수를 돌려준다 */
+    debugSettle3d: () => {
+      model3d?.finishFuse();
+      requestFrame();
+      return model3d?.version;
     },
     /** 개운함 반짝임을 진행 at(0~1) 자리에서 멈춰 그린다 (그림 점검용) */
     debugFresh: (at = 0.4) => {
@@ -1148,6 +1376,18 @@ Object.assign(window, {
     },
     get mood() {
       return mood;
+    },
+    /** 같이 지내는 모습을 바로 넣는다 (메인을 거치지 않는 그림 점검용). at 은 두드린 시간(ms) */
+    debugTogether: (next: TogetherLook, at = 0) => {
+      const now = performance.now();
+      together = next;
+      tapEdge = next.typing ? { on: true, at: now - TAP_IN_MS, from: 0 } : { on: false, at: -1, from: 0 };
+      tapStart = now - at;
+      workStart = next.working ? now - at : -1;
+      requestFrame();
+    },
+    get together() {
+      return { ...together, tapK: tapK(performance.now()), canTap: canTap() };
     },
     get inputs() {
       return inputs;

@@ -1,0 +1,84 @@
+# 공개 레포(PUBLIC_REPO) 맞추기. 앱과 사용자가 GitHub 에서 읽는 것은 모두 그 레포에 둔다 (docs/release.md "두 레포").
+# public-repo/ → 그 레포 맨 위, gallery/ → gallery/, catalog/ → catalog/ (scripts/sync-public.mjs).
+# 바뀐 것이 있을 때만 "sync from source <sha>" 로 커밋해 main 에 푸시한다. 릴리스 파일은 release.yml 이 올린다.
+# 토큰은 레포 비밀값 RELEASES_TOKEN (공개 레포 하나에 Contents 읽기/쓰기만). 없으면 알림만 남기고 성공으로 끝난다.
+# 액션은 커밋 SHA 로 고정한다 (태그는 옮길 수 있다). 올릴 때는 주석의 태그와 SHA 를 같이 바꾼다.
+name: sync-public
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'public-repo/**'
+      - 'gallery/**'
+      - 'catalog/**'
+      - 'scripts/sync-public.mjs'
+      - '.github/workflows/sync-public.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # src/shared/update-policy.ts 의 PUBLIC_REPO 와 같아야 한다 (update-policy.test.ts)
+  PUBLIC_REPO: milcho0604/fairy-releases
+
+# 차례로 하나씩 (앞의 푸시를 멈추지 않는다)
+concurrency:
+  group: sync-public
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: RELEASES_TOKEN 확인
+        id: token
+        env:
+          HAS_TOKEN: ${{ secrets.RELEASES_TOKEN != '' }}
+        run: |
+          if [ "$HAS_TOKEN" = "true" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=sync-public 건너뜀::RELEASES_TOKEN 비밀값이 없어 공개 레포 $PUBLIC_REPO 를 맞추지 않았어요 (docs/release.md \"두 레포\")."
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.token.outputs.ok == 'true'
+        with:
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.token.outputs.ok == 'true'
+        with:
+          node-version-file: source/.nvmrc
+      # 공개 레포는 처음에 비어 있을 수 있어 actions/checkout 대신 git 으로 받는다.
+      # 토큰은 디스크(git 설정)에 남기지 않고 명령마다 헤더로만 넘긴다
+      - name: 공개 레포 맞추기
+        if: steps.token.outputs.ok == 'true'
+        env:
+          TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+          echo "::add-mask::$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+          git init -q -b main public
+          cd public
+          git remote add origin "https://github.com/$PUBLIC_REPO.git"
+          if git -c http.extraheader="$auth" ls-remote --exit-code --heads origin main > /dev/null; then
+            git -c http.extraheader="$auth" fetch -q --depth 1 origin main
+            git checkout -q -B main FETCH_HEAD
+          else
+            echo "::notice::$PUBLIC_REPO 에 main 이 없어 새로 만들어요"
+          fi
+          cd ..
+          node source/scripts/sync-public.mjs public > /dev/null
+          cd public
+          git add -A
+          if git diff --cached --quiet; then
+            echo "바뀐 것이 없어요"
+            exit 0
+          fi
+          git diff --cached --stat
+          git -c user.name='github-actions[bot]' -c user.email='41898812+github-actions[bot]@users.noreply.github.com' \
+            commit -q -m "sync from source $GITHUB_SHA"
+          git -c http.extraheader="$auth" push -q origin HEAD:main

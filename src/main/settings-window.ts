@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   app,
@@ -7,19 +8,30 @@ import {
   type IpcMainInvokeEvent,
   ipcMain,
   powerMonitor,
+  shell,
 } from 'electron';
 import type { Catalog } from '../shared/ai/catalog.ts';
 import { type BetaReport, reportText, type StatStore } from '../shared/beta-stats.ts';
 import { issueUrl } from '../shared/feedback.ts';
+import type { GalleryList } from '../shared/gallery.ts';
 import { t } from '../shared/i18n/index.ts';
-import { type MakerTarget, SETTINGS, type SettingsSection, type SettingsSnapshot } from '../shared/ipc.ts';
+import {
+  type MakerTarget,
+  SETTINGS,
+  type SettingsSection,
+  type SettingsSnapshot,
+  type UpdateStatus,
+} from '../shared/ipc.ts';
 import type { Gait } from '../shared/pet3d/blueprint.ts';
 import { isGait, type Settings } from '../shared/settings.ts';
 import { isSettingsTab, type SettingsTab } from '../shared/settings-tabs.ts';
 import { parsePetChoice } from '../shared/starter-pets.ts';
-import { RELEASE_REPO } from '../shared/update-policy.ts';
+import { PUBLIC_REPO } from '../shared/update-policy.ts';
 import { localModelReady } from './ai/local.ts';
+import { aiHistoryBytes, clearAiHistory } from './ai-history.ts';
+import { devRendererUrl } from './dev-url.ts';
 import { createDiagnostics } from './diagnostics.ts';
+import { rememberExport, wasExported } from './exported.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
 import { langArg } from './lang.ts';
 import { mcpScriptPath } from './mcp-launch.ts';
@@ -37,7 +49,7 @@ export interface SettingsWindowOptions {
   remakeBody: (gait: Gait) => Promise<{ ok: true } | { ok: false; error: string; noAi?: boolean }>;
   cancelRemake: () => void;
   stats: StatStore;
-  checkUpdate: () => Promise<string>;
+  checkUpdate: () => Promise<UpdateStatus>;
   openOnboarding: () => void;
   log: (tag: string, ...rest: unknown[]) => void;
   /** 진단 기록 폴더 (userData/logs) */
@@ -55,8 +67,23 @@ export interface SettingsWindowOptions {
     mcpServers: () => string[];
     refreshMcp: () => Promise<string[]>;
     catalog: () => Catalog;
+    /** AI 기록을 지운 뒤: 채팅이 지운 세션을 이어 가지 않게 */
+    forgetAiSessions: () => void;
+  };
+  /** 펫 갤러리 (main/gallery.ts + backup.ts adoptPet). 값은 메인에서 다시 검사한다 */
+  gallery: {
+    list: () => Promise<GalleryList>;
+    adopt: (id: unknown, asFriend: boolean) => Promise<{ ok: boolean; message: string }>;
+    share: (meta: unknown, win?: BrowserWindow) => Promise<{ ok: boolean; message: string }>;
   };
 }
+
+/** AI 기록 지우기가 보는 폴더 (짝꿍 데이터 폴더, 홈, CLAUDE_CONFIG_DIR) */
+const historyDirs = () => ({
+  userData: app.getPath('userData'),
+  home: app.getPath('home'),
+  claudeConfigDir: process.env.CLAUDE_CONFIG_DIR || undefined,
+});
 
 /** 설정 창 (P1-12). 열 때 만들고 닫으면 없앤다 (L6). */
 export function createSettingsWindow({
@@ -72,6 +99,7 @@ export function createSettingsWindow({
   logDir,
   privateWords,
   v2,
+  gallery,
 }: SettingsWindowOptions) {
   let win: BrowserWindow | undefined;
   // 마지막으로 본 탭. 창은 닫으면 없어져서 메인이 앱이 켜져 있는 동안만 기억한다 (설정 파일에는 남기지 않는다)
@@ -98,6 +126,7 @@ export function createSettingsWindow({
           current: library.current(),
           starters: library.starters(),
           storage: storedModels(v2.catalog()),
+          aiHistoryBytes: aiHistoryBytes(historyDirs()),
           onBattery: powerMonitor.isOnBatteryPower(),
         }
       : undefined,
@@ -118,6 +147,15 @@ export function createSettingsWindow({
   ipcMain.handle(SETTINGS.deleteModel, async (e, id: unknown) => {
     const ok = fromSettings(e) && typeof id === 'string' && (await removeModel(v2.catalog(), id, log));
     return { ok, storage: storedModels(v2.catalog()), localReady: localReady() };
+  });
+  ipcMain.handle(SETTINGS.clearAiHistory, (e) => {
+    if (!fromSettings(e)) return { ok: false, bytes: aiHistoryBytes(historyDirs()) };
+    const n = clearAiHistory(historyDirs());
+    // 지운 세션은 이어 갈 수 없다: 채팅은 다음 질문부터 새 대화로
+    v2.forgetAiSessions();
+    log('settings', 'AI 기록 지움', n);
+    const bytes = aiHistoryBytes(historyDirs());
+    return { ok: bytes === 0, bytes };
   });
   ipcMain.handle(SETTINGS.remakeBody, (e, gait: unknown) =>
     fromSettings(e) && isGait(gait) ? remakeBody(gait) : { ok: false, error: t('main.maker.reopen') },
@@ -168,17 +206,49 @@ export function createSettingsWindow({
     fromSettings(e) ? diagnostics.save(win) : { ok: false, message: '' },
   );
   ipcMain.on(SETTINGS.reportIssue, (e) => {
-    if (fromSettings(e)) openLink(issueUrl(RELEASE_REPO, { version: app.getVersion(), os: osLabel() }), log);
+    if (fromSettings(e)) openLink(issueUrl(PUBLIC_REPO, { version: app.getVersion(), os: osLabel() }), log);
   });
-  ipcMain.handle(SETTINGS.checkUpdate, (e) => (fromSettings(e) ? checkUpdate() : ''));
-  ipcMain.handle(SETTINGS.exportData, (e) => (fromSettings(e) ? v2.exportData(win) : ''));
+  // 오픈소스 고지: 설치판은 자원 폴더, 개발 실행은 build/ (npm run notices 로 만든다)
+  ipcMain.handle(SETTINGS.openNotices, async (e) => {
+    if (!fromSettings(e)) return false;
+    const file = app.isPackaged
+      ? join(process.resourcesPath, 'THIRD_PARTY_NOTICES.txt')
+      : join(app.getAppPath(), 'build', 'THIRD_PARTY_NOTICES.txt');
+    if (!existsSync(file)) return false;
+    return (await shell.openPath(file)) === '';
+  });
+  ipcMain.handle(SETTINGS.checkUpdate, (e) => (fromSettings(e) ? checkUpdate() : { text: '', tone: 'info' }));
+  ipcMain.handle(SETTINGS.exportData, async (e) => {
+    if (!fromSettings(e)) return '';
+    const path = await v2.exportData(win);
+    rememberExport(path);
+    return path;
+  });
+  // 방금 내보낸 것을 파일 관리자에서 보인다 (내보낸 경로만)
+  ipcMain.on(SETTINGS.reveal, (e, path: unknown) => {
+    if (fromSettings(e) && wasExported(path)) shell.showItemInFolder(path);
+  });
   ipcMain.handle(SETTINGS.importData, (e) => (fromSettings(e) ? v2.importData(win) : ''));
-  ipcMain.handle(SETTINGS.exportPet, (e) => (fromSettings(e) ? v2.exportPet(win) : ''));
+  ipcMain.handle(SETTINGS.exportPet, async (e) => {
+    if (!fromSettings(e)) return '';
+    const path = await v2.exportPet(win);
+    rememberExport(path);
+    return path;
+  });
   ipcMain.handle(SETTINGS.importPet, (e) =>
     fromSettings(e) ? v2.importPet(win) : { ok: false, message: '' },
   );
   ipcMain.handle(SETTINGS.importFriend, (e) =>
     fromSettings(e) ? v2.importFriend(win) : { ok: false, message: '' },
+  );
+  ipcMain.handle(SETTINGS.galleryList, (e) =>
+    fromSettings(e) ? gallery.list() : { ok: false, reason: 'bad' },
+  );
+  ipcMain.handle(SETTINGS.galleryAdopt, (e, id: unknown, asFriend: unknown) =>
+    fromSettings(e) ? gallery.adopt(id, asFriend === true) : { ok: false, message: '' },
+  );
+  ipcMain.handle(SETTINGS.galleryShare, (e, meta: unknown) =>
+    fromSettings(e) ? gallery.share(meta, win) : { ok: false, message: '' },
   );
   ipcMain.handle(SETTINGS.syncCalendar, (e) => (fromSettings(e) ? v2.syncCalendar() : ''));
   ipcMain.handle(SETTINGS.refreshMcp, (e) => (fromSettings(e) ? v2.refreshMcp() : []));
@@ -245,7 +315,7 @@ export function createSettingsWindow({
   /** 칸을 주면 그 칸(#stats), 아니면 지난번 탭(#ai)을 # 뒤에 넣어 연다 (화면이 settings-tabs.ts tabFromHash 로 읽는다) */
   function load(w: BrowserWindow, section?: SettingsSection) {
     const hash = section ?? lastTab;
-    const devUrl = process.env.ELECTRON_RENDERER_URL;
+    const devUrl = devRendererUrl();
     if (devUrl) w.loadURL(`${devUrl}/settings.html${hash ? `#${hash}` : ''}`);
     else w.loadFile(join(import.meta.dirname, '../renderer/settings.html'), { hash });
   }

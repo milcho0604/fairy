@@ -523,11 +523,69 @@ test('패널 단축키 옮기기: 예전 파일에는 없어 기본 키를 주�
   assert.equal(parseSettings(JSON.parse(JSON.stringify(off))).shortcuts.panel, '');
   // 비운 패널 키에 새 키를 넣을 수 있고, 다른 키와 같으면 받지 않는다
   assert.equal(
-    applyPatch(taken, { shortcuts: { ...taken.shortcuts, panel: 'CommandOrControl+Alt+Shift+P' } }).shortcuts
+    applyPatch(taken, { shortcuts: { ...taken.shortcuts, panel: 'CommandOrControl+Alt+Shift+K' } }).shortcuts
       .panel,
-    'CommandOrControl+Alt+Shift+P',
+    'CommandOrControl+Alt+Shift+K',
   );
   assert.equal(applyPatch(taken, { shortcuts: { ...taken.shortcuts, panel: T } }).shortcuts.panel, '');
   // 새로 깐 사람은 기본 키 그대로
   assert.equal(DEFAULT_SETTINGS.shortcuts.panel, T);
+});
+
+test('펫 고르기 단축키 옮기기: 사용자가 이미 P 를 다른 단축키에 쓰면 펫 고르기를 비운다', () => {
+  const P = 'CommandOrControl+Alt+Shift+P';
+  const s = parseSettings({ shortcuts: { panel: P } });
+  assert.equal(s.shortcuts.panel, P);
+  assert.equal(s.shortcuts.pet, '');
+  assert.equal(parseSettings({}).shortcuts.pet, P);
+});
+
+test('편의 새 칸: 주소 받기, 배터리 절약, 읽어 주기, 메뉴 막대 글자', () => {
+  const d = parseSettings({});
+  assert.equal(d.urlScheme, true);
+  assert.equal(d.batterySaver, 'auto');
+  assert.equal(d.readAloud, true);
+  assert.equal(d.trayTitle, false);
+  const s = parseSettings({ urlScheme: false, batterySaver: 'always', readAloud: false, trayTitle: true });
+  assert.deepEqual([s.urlScheme, s.batterySaver, s.readAloud, s.trayTitle], [false, 'always', false, true]);
+  assert.equal(parseSettings({ batterySaver: 'max' }).batterySaver, 'auto');
+});
+
+test('펫 이름표(만든 사람, 허락): 옛 설정은 없이, 틀린 값은 버리고, 보관함에도', () => {
+  const meta = { author: '짝꿍', license: 'CC-BY-4.0', created: '2026-10-11', appVersion: '1.2.0' } as const;
+  const old = parseSettings({
+    petImage: 'pet-1.png',
+    petLibrary: [{ id: 'p-a', name: '콩', image: 'pet-2.png' }],
+  });
+  assert.equal(old.petMeta, undefined);
+  assert.equal(old.petLibrary[0]?.meta, undefined);
+  const s = parseSettings({
+    petImage: 'pet-1.png',
+    petMeta: meta,
+    petLibrary: [
+      {
+        id: 'p-a',
+        name: '콩',
+        image: 'pet-2.png',
+        meta: { license: 'CC0-1.0', created: '2026-01-02', appVersion: '1.0.0' },
+      },
+      {
+        id: 'p-b',
+        name: '팥',
+        image: 'pet-3.png',
+        meta: { license: 'MIT', created: '2026-01-02', appVersion: '1.0.0' },
+      },
+    ],
+  });
+  assert.deepEqual(s.petMeta, meta);
+  assert.deepEqual(s.petLibrary[0]?.meta, { license: 'CC0-1.0', created: '2026-01-02', appVersion: '1.0.0' });
+  assert.equal(s.petLibrary[1]?.meta, undefined, '모르는 허락은 버린다');
+  assert.equal(parseSettings({ petMeta: { ...meta, created: 'yesterday' } }).petMeta, undefined);
+  assert.equal(applyPatch(s, { petMeta: null }).petMeta, undefined);
+  assert.deepEqual(applyPatch(s, { petName: '두부' }).petMeta, meta, '이름만 바꾸면 그대로');
+  assert.deepEqual(
+    applyPatch(s, { petMeta: { author: 1 } as never }).petMeta,
+    meta,
+    '틀린 값은 지금 것 그대로',
+  );
 });

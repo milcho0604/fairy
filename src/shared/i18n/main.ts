@@ -3,13 +3,13 @@ import type { Translation } from './types.ts';
 
 // main 영역 글
 export const ko = {
-  'main.onboardingTitle': '짝꿍 시작하기',
-  'main.model.offline': '인터넷에 연결되어 있지 않아 받지 못했어. 연결을 확인하고 다시 해 줘.',
+  'main.onboardingTitle': '페어리 시작하기',
+  'main.model.offline': '인터넷에 연결되어 있지 않아 받지 못했어. 인터넷 연결을 확인하고 다시 해 줘.',
   'main.model.network': '연결이 불안정해서 받지 못했어. 인터넷 연결을 확인하고 잠시 뒤 다시 해 줘.',
   'main.model.server': (v: { status: number }) =>
     `받을 곳의 서버가 지금 답하지 않아 (${v.status}). 잠시 뒤 다시 해 줘.`,
   'main.model.gone': (v: { status: number }) =>
-    `받을 파일이 서버에 없어 (${v.status}). 짝꿍을 최신 버전으로 업데이트한 뒤 다시 해 줘.`,
+    `받을 파일이 서버에 없어 (${v.status}). 페어리를 최신 버전으로 업데이트한 뒤 다시 해 줘.`,
   'main.model.badHash':
     '받은 파일이 원래 파일과 달라서 버렸어. 다시 해 줘. 계속 그러면 회사 망이나 프록시가 파일을 바꾸는지 확인해 줘.',
   'main.model.diskFull': (v: { mb: number }) =>
@@ -18,10 +18,10 @@ export const ko = {
   'main.model.cancelled': '받기를 멈췄어.',
   'main.model.failed': '받지 못했어. 잠시 뒤 다시 해 줘.',
   'main.file.diskFull': '저장 공간이 모자라 저장하지 못했어. 공간을 비운 뒤 다시 해 줘.',
-  'main.file.noPermission': '짝꿍 폴더에 쓸 수 없어 저장하지 못했어. 짝꿍을 다시 켜고 해 줘.',
+  'main.file.noPermission': '페어리 폴더에 쓸 수 없어 저장하지 못했어. 페어리를 다시 켜고 해 줘.',
   'main.file.saveFailed': '저장하지 못했어. 다시 해 줘.',
   'main.update.off': '꺼져 있어',
-  'main.update.none': '아직 받을 수 있는 버전이 없어',
+  'main.update.unavailable': '지금은 확인할 수 없어 (릴리스 페이지가 아직 공개되지 않았어)',
   'main.update.failedStatus': (v: { status: number }) => `확인하지 못했어 (${v.status})`,
   'main.update.latest': '최신 버전이야',
   'main.update.skipped': '건너뛴 버전이야',
@@ -38,37 +38,37 @@ export const ko = {
   'main.update.lockedShort': 'AI 대화는 업데이트한 뒤에 쓸 수 있어',
   'main.update.ready': (v: { version: string }) =>
     `새 버전 ${withParticle(v.version, '을')} 받아 뒀어. 끝낼 때 설치할게.`,
-  // 맥은 끝낼 때 저절로 설치하지 않는다 (main/update.ts installOnQuit)
+  // 끝낼 때 저절로 설치하지 않는다 (main/update.ts installOnQuit). 위 ready 는 그 값을 켤 때 쓴다
   'main.update.readyRestart': (v: { version: string }) =>
     `새 버전 ${withParticle(v.version, '을')} 받아 뒀어. 다시 켜면 바로 바뀌어.`,
   'main.update.restart': '다시 켜서 업데이트',
   'main.backup.exportTitle': '백업을 둘 폴더',
   'main.backup.importTitle': '가져올 백업 폴더',
-  'main.backup.notBackup': '짝꿍 백업 폴더가 아니야',
-  'main.backup.newer': '더 새 판 짝꿍이 만든 백업이야. 짝꿍을 새 버전으로 올린 뒤 가져와 줘.',
-  'main.backup.confirm': '지금 할 일, 메모, 펫을 이 백업으로 바꿀까?',
+  'main.backup.notBackup': '페어리 백업 폴더가 아니야',
+  'main.backup.newer': '더 새 판 페어리가 만든 백업이야. 페어리를 새 버전으로 올린 뒤 가져와 줘.',
+  'main.backup.confirm': '지금 할 일, 메모, 페어리를 이 백업으로 바꿀까?',
   'main.backup.confirmDetail':
-    '설정, 짝꿍 규칙, 캘린더 주소도 백업 것으로 바뀌어. 지금 데이터는 사용자 데이터 폴더의 before-import 폴더에 남겨 둬. 바꾼 뒤 짝꿍을 다시 켜.',
+    '설정, 페어리 규칙, 캘린더 주소도 백업 것으로 바뀌어. 지금 데이터는 사용자 데이터 폴더의 before-import 폴더에 남겨 둬. 바꾼 뒤 페어리를 다시 켜.',
   'main.backup.customAiSkipped': '백업에 있던 사용자 AI {n}개는 옮기지 않았어.',
   'main.backup.customAiSkippedDetail':
     '사용자 AI는 이 컴퓨터에서 실행할 명령이라 백업에서 가져오지 않아. 필요하면 다시 켠 뒤 채팅에서 다시 추가해 줘.',
   'main.backup.replace': '바꾸기',
   'main.backup.cancel': '그만두기',
   'main.backup.restarting': '다시 켜는 중',
-  'main.pet.exportTitle': '펫 내보내기',
-  'main.pet.importTitle': '펫 가져오기',
-  'main.pet.fileType': '짝꿍 펫',
-  'main.pet.friendsMax': (v: { max: number }) => `친구 펫은 ${v.max}마리까지야.`,
+  'main.pet.exportTitle': '페어리 내보내기',
+  'main.pet.importTitle': '페어리 가져오기',
+  'main.pet.fileType': '페어리 파일',
+  'main.pet.friendsMax': (v: { max: number }) => `친구 페어리는 ${v.max}마리까지 초대할 수 있어.`,
   'main.pet.friendCame': (v: { name: string }) => `${withParticle(v.name, '이')} 친구로 왔어`,
   'main.pet.replaceAsk': (v: { name: string }) => `${withParticle(v.name, '으로')} 바꿀까?`,
-  'main.pet.replaceDetail': '지금 펫의 이름과 모습이 바뀌어. 할 일, 코인, 친밀도는 그대로야.',
+  'main.pet.replaceDetail': '지금 페어리의 이름과 모습이 바뀌어. 할 일, 코인, 친밀도는 그대로야.',
   'main.pet.came': (v: { name: string }) => `${withParticle(v.name, '이')} 왔어`,
-  'main.pet.unreadable': '펫 파일을 읽지 못했어. 파일이 그 자리에 있는지 보고 다시 골라 줘.',
+  'main.pet.unreadable': '페어리 파일을 읽지 못했어. 파일이 그 자리에 있는지 보고 다시 골라 줘.',
   'main.maker.reopen': '창을 다시 열어 줘.',
   'main.maker.badFormat': '그림 형식이 이상해.',
   'main.maker.tooBigAny': '그림이 너무 크거나 PNG, GIF, WebP가 아니야.',
   'main.maker.tooBigPng': '그림이 너무 크거나 PNG가 아니야.',
-  'main.maker.title': '사진으로 펫 만들기',
+  'main.maker.title': '사진으로 페어리 만들기',
   'main.maker.noVisionAi':
     '사진을 볼 수 있는 AI(Claude, Codex)가 없어. 채팅에서 하나를 설치하고 로그인하면 쓸 수 있어.',
   'main.maker.shapeCancelled': '입체 만들기를 멈췄어.',
@@ -87,7 +87,7 @@ export const ko = {
     "그림 서버가 이유 없이 거절했어. 대개 오늘 무료 횟수(네 인터넷 연결마다 따로, 하루면 다시 채워져)를 다 썼을 때 이래. 아래 'Gemini 앱(무료)에서 만들기'나 '내 컴퓨터에서 그리기'를 쓰거나, 무료 Hugging Face 토큰을 넣어 줘.",
   'main.illust.refusedToken':
     '그림 서버가 이유 없이 거절했어. 대개 이 토큰의 오늘 무료 사용량을 다 썼을 때 이래. 조금 있다가 또는 내일 다시 해 줘.',
-  'main.illust.offline': '그림 서버에 연결하지 못했어. 인터넷 연결을 보고 다시 해 줘.',
+  'main.illust.offline': '그림 서버에 연결하지 못했어. 인터넷 연결을 확인하고 다시 해 줘.',
   'main.illust.timeout': '너무 오래 걸려서 멈췄어. 조금 있다가 다시 해 줘.',
   'main.illust.cancelled': '그리기를 멈췄어.',
   'main.illust.bad': '그림 서버가 새 그림을 주지 않았어. 다시 그려 보거나 사진 그대로 해 줘.',
@@ -97,14 +97,14 @@ export const ko = {
   'main.localDraw.unsupported':
     '이 컴퓨터에서는 그릴 수 없어. 메모리 8GB 이상에 x64(인텔/AMD) Windows나 macOS 12 이상이 필요해.',
   'main.localDraw.rosetta':
-    '이 Mac은 Apple 칩인데 인텔용 짝꿍이 깔려 있어. Apple 칩용 짝꿍을 받아 깔면 그릴 수 있어.',
+    '이 Mac은 Apple 칩인데 인텔용 페어리가 깔려 있어. Apple 칩용 페어리를 받아 깔면 그릴 수 있어.',
   'main.localDraw.notReady': '그림 도구가 아직 준비되지 않았거나 망가졌어. 준비하기를 다시 눌러 줘.',
   'main.localDraw.busy': '이미 그리거나 준비하는 중이야. 끝나면 다시 해 줘.',
   'main.localDraw.diskSetup': (v: { gb: number }) =>
     `저장 공간이 모자라. 준비하는 동안 ${v.gb}GB쯤 비어 있어야 해. 공간을 비우고 다시 눌러 줘.`,
   'main.localDraw.disk': '저장 공간이 모자라서 그리지 못했어. 1GB쯤 비우고 다시 해 줘.',
   'main.localDraw.offline':
-    '받는 중에 인터넷 연결이 끊겼어. 연결을 보고 준비하기를 다시 눌러 줘. 받은 데까지는 이어서 받아.',
+    '받는 중에 인터넷 연결이 끊겼어. 인터넷 연결을 확인하고 준비하기를 다시 눌러 줘. 받은 데까지는 이어서 받아.',
   'main.localDraw.memory': '메모리가 모자라서 멈췄어. 다른 앱을 닫고 다시 해 줘.',
   'main.localDraw.battery': '배터리가 거의 없어서 멈췄어. 전원을 꽂고 다시 해 줘.',
   'main.localDraw.timeout': '너무 오래 걸려서 멈췄어. 다른 앱을 닫고 다시 해 줘.',
@@ -114,30 +114,46 @@ export const ko = {
     '준비하다가 멈췄어. 다시 눌러 보고, 계속되면 설정의 저장 공간에서 지운 뒤 처음부터 해 줘. 자세한 기록은 local-draw 폴더에 남겼어.',
   'main.localDraw.failed':
     '그림 도구가 멈췄어. 다시 해 보고, 계속되면 설정의 저장 공간에서 지운 뒤 다시 준비해 줘. 자세한 기록은 local-draw 폴더에 남겼어.',
-  'main.remake.notFigure': '입체 피규어로 만든 사진 펫만 몸을 다시 만들 수 있어.',
-  'main.remake.changed': '그사이 펫이 바뀌어서 새 몸은 버렸어.',
+  'main.remake.notFigure': '입체 피규어로 만든 사진 페어리만 몸을 다시 만들 수 있어.',
+  'main.remake.changed': '그사이 페어리가 바뀌어서 새 몸은 버렸어.',
   'main.db.recovered':
     '저장 파일이 깨져 있었어. 지우지 않고 {moved} 로 옮겨 두고, {when}에 남겨 둔 복사본으로 되살렸어. 그 뒤에 한 것은 빠졌을 수 있어.',
   'main.db.fresh':
     '저장 파일이 깨져 있었어. 지우지 않고 {moved} 로 옮겨 두고 새로 시작했어. 백업이 있으면 설정에서 가져올 수 있어.',
   'main.db.newer':
-    '저장 파일이 더 새 판 짝꿍에서 만들어졌어. 덮어쓰지 않게 이번에는 저장하지 않고 켰어. 짝꿍을 최신 버전으로 업데이트해 줘.',
-  'main.db.unavailable': '저장 파일을 열지 못했어. 이번에는 저장하지 않고 켰어. 짝꿍을 다시 켜 봐.',
+    '저장 파일이 더 새 판 페어리에서 만들어졌어. 덮어쓰지 않게 이번에는 저장하지 않고 켰어. 페어리를 최신 버전으로 업데이트해 줘.',
+  'main.db.unavailable': '저장 파일을 열지 못했어. 이번에는 저장하지 않고 켰어. 페어리를 다시 켜 봐.',
   'main.db.showFile': '파일 보기',
-  'main.start.failed': '짝꿍을 켜지 못했어',
+  'main.petAction.ask': (v: { n: number }) => `AI가 ${v.n}가지를 바꾸려고 해. 할까?`,
+  'main.petAction.delete_todo': (v: { name: string }) => `할 일 지우기: ${v.name}`,
+  'main.petAction.update_todo': (v: { name: string }) => `할 일 고치기: ${v.name}`,
+  'main.petAction.delete_event': (v: { name: string }) => `일정 지우기: ${v.name}`,
+  'main.petAction.update_event': (v: { name: string }) => `일정 고치기: ${v.name}`,
+  'main.petAction.append_note': (v: { name: string }) => `메모에 덧붙이기: ${v.name}`,
+  'main.petAction.yes': '해 줘',
+  'main.petAction.no': '안 할래',
+  'main.petAction.done': (v: { n: number }) => `${v.n}가지 했어.`,
+  'main.json.restored':
+    '{file} 파일이 깨져 있었어. 지우지 않고 {moved} 로 옮겨 두고, 마지막으로 잘 읽은 복사본으로 되살렸어.',
+  'main.json.reset':
+    '{file} 파일이 깨져 있었어. 지우지 않고 {moved} 로 옮겨 두고 기본값으로 시작했어. 백업이 있으면 설정에서 가져올 수 있어.',
+  'main.start.failed': '페어리를 켜지 못했어',
   'main.start.failedDetail':
     '켜는 중에 문제가 생겨 끝낼게. 다시 켜 봐. 계속 안 되면 기록 파일(logs/main.log)을 보내 줘.\n\n{error}',
+  'main.data.oldRunning': '예전 짝꿍이 아직 켜져 있어',
+  'main.data.oldRunningDetail':
+    '짝꿍이 데이터를 쓰고 있어서 페어리로 옮기지 못했어. 짝꿍을 끝낸 뒤(메뉴 막대나 작업 표시줄 아이콘 → 끝내기) 페어리를 다시 켜 줘. 할 일과 설정은 그대로 있어.',
 };
 
 export const en: Translation<typeof ko> = {
   'main.onboardingTitle': 'Getting started',
-  'main.model.offline': "You're not connected to the internet. Check your connection and try again.",
+  'main.model.offline': "You're not connected to the internet. Check your internet connection and try again.",
   'main.model.network':
     "The connection wasn't stable enough to download. Check your internet connection and try again in a moment.",
   'main.model.server': (v: { status: number }) =>
     `The download server isn't responding right now (${v.status}). Try again in a moment.`,
   'main.model.gone': (v: { status: number }) =>
-    `The file is no longer on the server (${v.status}). Update Jjakkung to the latest version, then try again.`,
+    `The file is no longer on the server (${v.status}). Update fairy to the latest version, then try again.`,
   'main.model.badHash':
     "The downloaded file didn't match the original, so I threw it away. Try again. If it keeps happening, check whether a work network or proxy is changing files.",
   'main.model.diskFull': (v: { mb: number }) =>
@@ -147,10 +163,10 @@ export const en: Translation<typeof ko> = {
   'main.model.failed': "Couldn't download it. Try again in a moment.",
   'main.file.diskFull': 'Not enough disk space to save. Free up some space and try again.',
   'main.file.noPermission':
-    "Couldn't write to the Jjakkung folder, so nothing was saved. Restart Jjakkung and try again.",
+    "Couldn't write to the fairy folder, so nothing was saved. Restart fairy and try again.",
   'main.file.saveFailed': "Couldn't save. Please try again.",
   'main.update.off': "It's turned off",
-  'main.update.none': 'No version to download yet',
+  'main.update.unavailable': "Can't check right now (the releases page isn't public yet)",
   'main.update.failedStatus': (v: { status: number }) => `Couldn't check (${v.status})`,
   'main.update.latest': "You're on the latest version",
   'main.update.skipped': 'You skipped this version',
@@ -172,34 +188,35 @@ export const en: Translation<typeof ko> = {
   'main.update.restart': 'Restart to update',
   'main.backup.exportTitle': 'Folder for the backup',
   'main.backup.importTitle': 'Backup folder to import',
-  'main.backup.notBackup': "That's not a Jjakkung backup folder",
-  'main.backup.newer': 'This backup was made by a newer Jjakkung. Update Jjakkung first, then import it.',
-  'main.backup.confirm': 'Replace your current to-dos, notes and pet with this backup?',
+  'main.backup.notBackup': "That's not a fairy backup folder",
+  'main.backup.newer':
+    'This backup was made by a newer version of fairy. Update fairy first, then import it.',
+  'main.backup.confirm': 'Replace your current to-dos, notes and fairy with this backup?',
   'main.backup.confirmDetail':
-    "Your settings, pet rules and calendar address change to the backup's too. Your current data stays in the before-import folder inside the user data folder. Jjakkung restarts after the switch.",
+    "Your settings, fairy rules and calendar address change to the backup's too. Your current data stays in the before-import folder inside the user data folder. Fairy restarts after the switch.",
   'main.backup.customAiSkipped': "Custom AIs from the backup ({n}) weren't brought over.",
   'main.backup.customAiSkippedDetail':
     'Custom AIs are commands that run on this computer, so backups never import them. Add them again in the chat after the restart if you need them.',
   'main.backup.replace': 'Replace',
   'main.backup.cancel': 'Cancel',
   'main.backup.restarting': 'Restarting',
-  'main.pet.exportTitle': 'Export pet',
-  'main.pet.importTitle': 'Import pet',
-  'main.pet.fileType': 'Jjakkung pet',
-  'main.pet.friendsMax': (v: { max: number }) => `You can have up to ${v.max} friend pets.`,
+  'main.pet.exportTitle': 'Export fairy',
+  'main.pet.importTitle': 'Import fairy',
+  'main.pet.fileType': 'fairy file',
+  'main.pet.friendsMax': (v: { max: number }) => `You can invite up to ${v.max} friend fairies.`,
   'main.pet.friendCame': (v: { name: string }) => `${v.name} came over as a friend`,
   'main.pet.replaceAsk': (v: { name: string }) => `Switch to ${v.name}?`,
-  'main.pet.replaceDetail': "Your pet's name and look will change. To-dos, coins and bond stay the same.",
+  'main.pet.replaceDetail': "Your fairy's name and look will change. To-dos, coins and bond stay the same.",
   'main.pet.came': (v: { name: string }) => `${v.name} is here`,
-  'main.pet.unreadable': "Couldn't read the pet file. Check that it's still there and pick it again.",
+  'main.pet.unreadable': "Couldn't read the fairy file. Check that it's still there and pick it again.",
   'main.maker.reopen': 'Please reopen the window.',
   'main.maker.badFormat': 'The picture format looks off.',
   'main.maker.tooBigAny': 'The picture is too big or not a PNG, GIF or WebP.',
   'main.maker.tooBigPng': 'The picture is too big or not a PNG.',
-  'main.maker.title': 'Make a pet from a photo',
+  'main.maker.title': 'Make a fairy from a photo',
   'main.maker.noVisionAi':
     'No AI that can see photos (Claude, Codex). Install and sign in to one from the chat to use this.',
-  'main.maker.shapeCancelled': 'Stopped making the 3D pet.',
+  'main.maker.shapeCancelled': 'Stopped making the 3D fairy.',
   'main.maker.shapeBad': "Couldn't read a blueprint from the AI's answer. Try again?",
   'main.illust.quota':
     "You've used up today's free drawings. This limit isn't shared with other people: it's counted per internet connection and refills after a day. To make one right now, use 'Make it in the Gemini app (free)' below, or add a free Hugging Face token.",
@@ -215,7 +232,7 @@ export const en: Translation<typeof ko> = {
     "The drawing server said no without a reason. That usually means today's free drawings (counted per internet connection, refilled after a day) are used up. Use 'Make it in the Gemini app (free)' or 'Draw on this computer' below, or add a free Hugging Face token.",
   'main.illust.refusedToken':
     "The drawing server said no without a reason. That usually means this token's free use for today is used up. Try again later or tomorrow.",
-  'main.illust.offline': "Couldn't reach the drawing server. Check your internet and try again.",
+  'main.illust.offline': "Couldn't reach the drawing server. Check your internet connection and try again.",
   'main.illust.timeout': 'It took too long, so I stopped. Try again in a bit.',
   'main.illust.cancelled': 'Stopped drawing.',
   'main.illust.bad': "The drawing server didn't send a new picture. Draw again, or use the photo as is.",
@@ -224,14 +241,14 @@ export const en: Translation<typeof ko> = {
   'main.localDraw.unsupported':
     "This computer can't draw locally. It needs 8 GB of memory or more and x64 (Intel/AMD) Windows or macOS 12 or later.",
   'main.localDraw.rosetta':
-    'This Mac has an Apple chip but the Intel version of Jjakkung is installed. Install the Apple chip version to draw.',
+    'This Mac has an Apple chip but the Intel version of fairy is installed. Install the Apple chip version to draw.',
   'main.localDraw.notReady': "The drawing tools aren't ready or are broken. Press Set up again.",
   'main.localDraw.busy': "I'm already drawing or setting up. Try again when it's done.",
   'main.localDraw.diskSetup': (v) =>
     `Not enough disk space. Setup needs about ${v.gb} GB free. Free up some space and press Set up again.`,
   'main.localDraw.disk': 'Not enough disk space to draw. Free up about 1 GB and try again.',
   'main.localDraw.offline':
-    'The internet connection dropped while downloading. Check it and press Set up again. It picks up where it left off.',
+    'The internet connection dropped while downloading. Check your internet connection and press Set up again. It picks up where it left off.',
   'main.localDraw.memory': 'Ran out of memory, so I stopped. Close other apps and try again.',
   'main.localDraw.battery': 'The battery is almost empty, so I stopped. Plug in and try again.',
   'main.localDraw.timeout': 'It took too long, so I stopped. Close other apps and try again.',
@@ -241,18 +258,35 @@ export const en: Translation<typeof ko> = {
     'Setup stopped with an error. Try again, and if it keeps failing, delete it in Settings > Storage and start over. Details are in the local-draw folder.',
   'main.localDraw.failed':
     'The drawing tools stopped with an error. Try again, and if it keeps failing, delete them in Settings > Storage and set up again. Details are in the local-draw folder.',
-  'main.remake.notFigure': 'Only photo pets made as a 3D figure can get a new body.',
-  'main.remake.changed': 'The pet changed in the meantime, so the new body was dropped.',
+  'main.remake.notFigure': 'Only photo fairies made as a 3D figure can get a new body.',
+  'main.remake.changed': 'Your fairy changed in the meantime, so the new body was dropped.',
   'main.db.recovered':
     'Your save file was damaged. I kept it as {moved} and brought back the copy saved on {when}. Anything after that may be missing.',
   'main.db.fresh':
     'Your save file was damaged. I kept it as {moved} and started fresh. If you have a backup, you can import it in Settings.',
   'main.db.newer':
-    "Your save file is from a newer Jjakkung. So I won't overwrite it, nothing is saved this time. Please update Jjakkung.",
+    'Your save file is from a newer version of fairy. To keep it safe, nothing will be saved this time. Please update fairy.',
   'main.db.unavailable':
-    "I couldn't open your save file, so nothing is saved this time. Try restarting Jjakkung.",
+    "I couldn't open your save file, so nothing is saved this time. Try restarting fairy.",
   'main.db.showFile': 'Show file',
-  'main.start.failed': "Jjakkung couldn't start",
+  'main.petAction.ask': (v: { n: number }) =>
+    `The AI wants to change ${v.n} thing${v.n === 1 ? '' : 's'}. OK?`,
+  'main.petAction.delete_todo': (v: { name: string }) => `Delete to-do: ${v.name}`,
+  'main.petAction.update_todo': (v: { name: string }) => `Edit to-do: ${v.name}`,
+  'main.petAction.delete_event': (v: { name: string }) => `Delete event: ${v.name}`,
+  'main.petAction.update_event': (v: { name: string }) => `Edit event: ${v.name}`,
+  'main.petAction.append_note': (v: { name: string }) => `Add to note: ${v.name}`,
+  'main.petAction.yes': 'Do it',
+  'main.petAction.no': 'No thanks',
+  'main.petAction.done': (v: { n: number }) => `Done (${v.n}).`,
+  'main.json.restored':
+    '{file} was damaged. I kept it as {moved} and brought back the last copy that read fine.',
+  'main.json.reset':
+    '{file} was damaged. I kept it as {moved} and started with defaults. If you have a backup, you can import it in Settings.',
+  'main.start.failed': "Fairy couldn't start",
   'main.start.failedDetail':
-    'Something went wrong while starting, so Jjakkung will close. Try opening it again. If it keeps happening, please send the log file (logs/main.log).\n\n{error}',
+    'Something went wrong while starting, so fairy will close. Try opening it again. If it keeps happening, please send the log file (logs/main.log).\n\n{error}',
+  'main.data.oldRunning': 'The old Jjakkung app is still running',
+  'main.data.oldRunningDetail':
+    "Jjakkung is using your data, so it couldn't be moved to fairy yet. Quit Jjakkung (menu bar or taskbar icon → Quit), then open fairy again. Your to-dos and settings are safe.",
 };

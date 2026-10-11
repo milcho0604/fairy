@@ -42,6 +42,7 @@ import { cleanPetName, isGait, POSE_KINDS, photoPetName } from '../shared/settin
 import { CUSTOM_FOOD_COST } from '../shared/shop.ts';
 import { BG_MODEL, ensureModel, modelReady, verifiedModelUrl } from './bg-model.ts';
 import { DEPTH_MODEL, depthReady, ensureDepthModel, verifiedDepthUrl } from './depth-model.ts';
+import { devRendererUrl } from './dev-url.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
 import {
   IllustError,
@@ -517,7 +518,7 @@ export function createMaker(
     },
   );
 
-  // 내 컴퓨터에서 그리기 준비 (처음 한 번 mflux 16GB, sd.cpp 5.3GB 쯤 받기). 그만두기, 창 닫기로 멈추고 다음에 이어서 한다
+  // 내 컴퓨터에서 그리기 준비 (처음 한 번 mflux 16GB, sd.cpp 5.2GB 쯤 받기). 그만두기, 창 닫기로 멈추고 다음에 이어서 한다
   ipcMain.handle(MAKER.setupLocalDraw, async (e) => {
     if (!fromMaker(e)) return { ok: false, kind: 'reopen', error: t('main.maker.reopen') };
     const ac = new AbortController();
@@ -835,7 +836,7 @@ export function createMaker(
     });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (ev) => ev.preventDefault());
-    const devUrl = process.env.ELECTRON_RENDERER_URL;
+    const devUrl = devRendererUrl();
     if (devUrl) win.loadURL(`${devUrl}/maker.html`);
     else win.loadFile(join(import.meta.dirname, '../renderer/maker.html'));
   }

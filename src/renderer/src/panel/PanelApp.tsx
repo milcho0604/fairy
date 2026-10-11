@@ -8,15 +8,16 @@ import { EventTab } from './EventTab.tsx';
 import { addedText, timeOf, whenLabel } from './format.ts';
 import { CoinIcon, GearIcon } from './icons.tsx';
 import { escClosesWindow, tabByKey, undoByKey } from './keys.ts';
+import { PlanSheetHost } from './MorningPlan.tsx';
 import { NoteTab } from './NoteTab.tsx';
 import { ShopTab } from './ShopTab.tsx';
 import { TodayTab } from './TodayTab.tsx';
 import { TodoTab } from './TodoTab.tsx';
 
 const bridge = window.jjakkungPanel;
-const UNDO_MS = 5000;
+const UNDO_MS = 8000;
 /** 일정으로 넣은 알림은 고를 것이 둘이라(되돌리기, 할 일로) 조금 더 둔다 */
-const CHOICE_MS = 8000;
+const CHOICE_MS = 10_000;
 /** 알림에 마우스를 올렸다 떼면 이만큼 더 둔다 */
 const LINGER_MS = 2500;
 const TABS: { id: PanelTab; label: I18nKey }[] = [
@@ -50,10 +51,20 @@ type Toast =
   | { kind: 'event-removed'; id: number }
   | { kind: 'todo-removed'; id: number }
   /** 할 일 칸에 적은 한 줄이 시각이 있어 일정으로 들어갔다. text 는 적은 글 그대로 (할 일로 옮길 때) */
-  | { kind: 'to-event'; id: number; startAt: number; text: string; clash?: EventClash }
+  /** am: 오전, 오후 없는 1~7시를 오후로 읽었다. 오전으로 바꾸면 이 시각으로 옮긴다 */
+  | {
+      kind: 'to-event';
+      id: number;
+      startAt: number;
+      text: string;
+      clash?: EventClash;
+      am?: { startAt: number; endAt: number | null };
+    }
   /** 지난 마감을 오늘로 옮겼다. 되돌리면 원래 마감으로 */
   | { kind: 'moved'; moved: { id: number; due: string | null }[] }
-  | { kind: 'added'; text: string };
+  | { kind: 'added'; text: string }
+  /** 지난 날("어제")이나 매달("매달 25일")로 읽은 할 일: 알리고 되돌리기, 지난 날이면 오늘로 */
+  | { kind: 'flagged'; id: number; text: string; past: boolean };
 
 const UNLOCK_KEYS = {
   wave: 'panel.unlock.wave',
@@ -84,6 +95,7 @@ export function PanelApp() {
   const [fed, setFed] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const toastRef = useRef<HTMLDivElement>(null);
   /** 지금 알림의 되돌리기 (Cmd/Ctrl+Z). 되돌렸으면 true */
   const undoRef = useRef<() => boolean>(() => false);
 
@@ -148,7 +160,12 @@ export function PanelApp() {
 
   const hideToastIn = (ms: number) => {
     clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(undefined), ms);
+    toastTimer.current = setTimeout(() => {
+      // 마우스가 처음부터 올라가 있었거나(mouseenter 가 안 온다) 키보드로 단추에 와 있으면 조금 더 둔다
+      const el = toastRef.current;
+      if (el && (el.matches(':hover') || el.contains(document.activeElement))) hideToastIn(LINGER_MS);
+      else setToast(undefined);
+    }, ms);
   };
   const showToast = (next: Toast) => {
     setToast(next);
@@ -158,6 +175,14 @@ export function PanelApp() {
   const toTodo = async (toast: Extract<Toast, { kind: 'to-event' }>) => {
     const r = await bridge.eventToTodo(toast.id, toast.text);
     showToast({ kind: 'added', text: r.ok ? addedText(r, s.today) : (r.error ?? t('panel.retry')) });
+  };
+
+  /** 오후로 읽은 일정을 오전으로 옮긴다 (알림은 남겨 옮긴 시각을 보인다) */
+  const toAm = (toast: Extract<Toast, { kind: 'to-event' }>) => {
+    if (!toast.am) return;
+    bridge.eventUpdate(toast.id, toast.am);
+    const { am, clash: _clash, ...rest } = toast;
+    showToast({ ...rest, startAt: am.startAt });
   };
 
   const complete = async (todo: Todo) => {
@@ -181,6 +206,7 @@ export function PanelApp() {
     if (toast.kind === 'todo-removed') bridge.restore(toast.id);
     if (toast.kind === 'to-event') bridge.eventRemove(toast.id);
     if (toast.kind === 'moved') bridge.undoMoveOverdue();
+    if (toast.kind === 'flagged') bridge.remove(toast.id);
     setToast(undefined);
   };
   undoRef.current = () => {
@@ -285,9 +311,15 @@ export function PanelApp() {
                 startAt: r.startAt,
                 text,
                 ...(r.clash ? { clash: r.clash } : {}),
+                ...(r.am ? { am: r.am } : {}),
               });
             // 여러 줄 붙여 넣기: "할 일 3개 넣었어"
             if (r.kind === 'many') showToast({ kind: 'added', text: addedText(r, s.today) });
+            // "30분 뒤 알려 줘": 언제 알려 줄지
+            if (r.kind === 'todo' && r.remindAt !== undefined)
+              showToast({ kind: 'added', text: addedText(r, s.today) });
+            if (r.kind === 'todo' && (r.past || r.monthly))
+              showToast({ kind: 'flagged', id: r.id, text: addedText(r, s.today), past: !!r.past });
           }}
           onRemoved={(todo) => showToast({ kind: 'todo-removed', id: todo.id })}
         />
@@ -313,9 +345,13 @@ export function PanelApp() {
         </button>
       </footer>
 
+      {/* 아침 계획 시트 (MorningPlan.tsx): 아침 첫 열기, 펫 한마디, 오늘 탭 카드에서 띄운다 */}
+      <PlanSheetHost goToday={() => setTab('today')} onSaved={(text) => showToast({ kind: 'added', text })} />
+
       {toast && (
         // 읽는 동안(마우스를 올린 동안)은 사라지지 않는다
         <div
+          ref={toastRef}
           className="toast"
           role="status"
           onMouseEnter={() => clearTimeout(toastTimer.current)}
@@ -325,7 +361,10 @@ export function PanelApp() {
             // 언제로 넣었는지는 따로 한 줄 (좁아도 시각이 쪼개지지 않게)
             <span>
               {t('panel.toast.toEvent')}
-              <strong className="toast-when">{whenLabel(toast.startAt, s.today)}</strong>
+              <strong className="toast-when">
+                {whenLabel(toast.startAt, s.today)}
+                {toast.am && <small className="toast-guess"> {t('panel.toast.pmGuess')}</small>}
+              </strong>
               {toast.clash && (
                 <small className="toast-clash">
                   {t('assist.clash', { time: timeOf(toast.clash.startAt), title: toast.clash.title })}
@@ -341,6 +380,23 @@ export function PanelApp() {
               <button type="button" className="undo" title={`${MOD}+Z`} onClick={() => undoToast(toast)}>
                 {t('panel.undo')}
               </button>
+              {toast.kind === 'flagged' && toast.past && (
+                <button
+                  type="button"
+                  className="undo"
+                  onClick={() => {
+                    bridge.update(toast.id, { due: s.today });
+                    setToast(undefined);
+                  }}
+                >
+                  {t('panel.toast.toToday')}
+                </button>
+              )}
+              {toast.kind === 'to-event' && toast.am && (
+                <button type="button" className="undo" onClick={() => toAm(toast)}>
+                  {t('panel.toast.toAm')}
+                </button>
+              )}
               {toast.kind === 'to-event' && (
                 <button type="button" className="undo" onClick={() => toTodo(toast)}>
                   {t('panel.toast.asTodo')}

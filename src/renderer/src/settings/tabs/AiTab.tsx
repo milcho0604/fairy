@@ -5,6 +5,7 @@ import type { SettingsSnapshot } from '../../../../shared/ipc.ts';
 import { addMemory, approvePending, MEMORY_ITEM_MAX, MEMORY_MAX } from '../../../../shared/pet-memory.ts';
 import { RULES_MAX, type Settings } from '../../../../shared/settings.ts';
 import { Section, type TabProps, Toggle } from '../ui.tsx';
+import { SpeechEditor, SpeechPreview } from './SpeechEditor.tsx';
 
 /** AI 탭: 대화(말투, 할 일 알기, 도구), 짝꿍 규칙, 기억, 모델, 다른 AI 에서 쓰기(MCP) */
 export function AiTab({ snap, update, flash }: TabProps) {
@@ -31,6 +32,12 @@ export function AiTab({ snap, update, flash }: TabProps) {
             {PERSONAS.find((p) => p.id === s.persona)?.hint} {t('settings.personaNext')}
           </small>
         </div>
+        {/* 내 말투면 만들기 칸(미리 보기 포함), 다른 말투는 미리 보기만 */}
+        {s.persona === 'custom' ? (
+          <SpeechEditor value={s.speech} petName={s.petName} onSave={(speech) => void update({ speech })} />
+        ) : (
+          <SpeechPreview persona={s.persona} style={s.speech} petName={s.petName} />
+        )}
         <Toggle
           label={t('settings.aiKnowsTodos')}
           hint={t('settings.aiKnowsTodosHint')}
@@ -75,6 +82,13 @@ export function AiTab({ snap, update, flash }: TabProps) {
       </Section>
 
       <Section title={t('settings.memory')}>
+        {/* 짝꿍이 아는 것 창: 출처와 날짜, 생일과 좋아하는 것, 모두 잊기 (knows/KnowsApp.tsx) */}
+        <div className="action-row">
+          <small className="grow">{t('bond.knows.fromSettings')}</small>
+          <button type="button" className="ghost" onClick={() => window.jjakkungBond?.openKnows()}>
+            {t('bond.knows.open')}
+          </button>
+        </div>
         <MemoryEditor list={s.petMemory} onChange={(petMemory, message) => update({ petMemory }, message)} />
         {s.petMemoryPending.length > 0 && (
           <PendingMemory
@@ -127,9 +141,9 @@ function McpSetup({
   onCopied: (ok: boolean) => void;
 }) {
   const q = (p: string) => `"${p.replace(/"/g, '\\"')}"`;
-  const claude = `claude mcp add jjakkung -s user -e ELECTRON_RUN_AS_NODE=1 -- ${q(exec)} ${q(script)}`;
+  const claude = `claude mcp add fairy -s user -e ELECTRON_RUN_AS_NODE=1 -- ${q(exec)} ${q(script)}`;
   const codex = [
-    '[mcp_servers.jjakkung]',
+    '[mcp_servers.fairy]',
     `command = ${JSON.stringify(exec)}`,
     `args = [${JSON.stringify(script)}]`,
     'env = { ELECTRON_RUN_AS_NODE = "1" }',

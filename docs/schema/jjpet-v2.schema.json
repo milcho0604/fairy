@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/milcho0604/fairy/blob/main/docs/schema/jjpet-v2.schema.json",
+  "title": "fairy file (.fairy, formerly .jjpet) version 2",
+  "description": "One UTF-8 JSON file, at most 48 MiB (gallery: 16 MiB). See docs/pet-format.md. The app (src/shared/pet-share.ts) is the reference validator; it also checks image magic bytes and pixel dimensions, which JSON Schema cannot.",
+  "type": "object",
+  "required": ["format", "version", "manifest", "images"],
+  "properties": {
+    "format": { "const": "jjakkung-pet" },
+    "version": { "const": 2 },
+    "manifest": {
+      "type": "object",
+      "required": ["name", "species", "license", "created", "appVersion"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 24, "description": "Pet name, 1-12 user-perceived letters after trimming." },
+        "species": { "enum": ["kong", "cat", "chick", "dog", "bunny"], "description": "Built-in body the pet uses when it has no picture, and its menu-bar runner. Unknown values read as kong." },
+        "author": { "type": "string", "minLength": 1, "maxLength": 40, "description": "Optional public display name of the creator. Required in the gallery. Control and bidi characters are stripped." },
+        "license": { "enum": ["CC-BY-4.0", "CC-BY-SA-4.0", "CC-BY-NC-4.0", "CC0-1.0"], "default": "CC-BY-4.0" },
+        "created": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}(T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,3})?)?Z)?$", "description": "ISO 8601 date or UTC date-time, 2020 or later." },
+        "appVersion": { "type": "string", "maxLength": 32, "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$" },
+        "age": { "enum": ["baby", "teen", "adult"], "description": "Illustration age stage (baby and teen are drawn smaller). Only with images.main." }
+      }
+    },
+    "images": {
+      "type": "object",
+      "properties": {
+        "main": { "$ref": "#/$defs/image", "description": "The pet picture. Without it the pet is the built-in species body." },
+        "poses": {
+          "type": "object",
+          "properties": {
+            "happy": { "$ref": "#/$defs/image" },
+            "sleepy": { "$ref": "#/$defs/image" },
+            "hungry": { "$ref": "#/$defs/image" }
+          },
+          "description": "Mood pictures. Only used with images.main. A broken pose is dropped by the app (rejected by the gallery)."
+        },
+        "thumbnail": { "$ref": "#/$defs/png", "description": "PNG, longest side at most 512 px, at most 256 KiB. Required in the gallery." }
+      }
+    },
+    "blueprint": { "type": "object", "description": "Optional 3D figure blueprint (parts + face), as made by the app. Only with images.main. Parsed and clamped by src/shared/pet3d/blueprint.ts." },
+    "depth": { "$ref": "#/$defs/png", "description": "Optional grayscale relief depth PNG (2.5D), at most 1 MiB. Only with images.main and without blueprint." }
+  },
+  "$defs": {
+    "image": {
+      "type": "string",
+      "pattern": "^data:image/(png|gif|webp);base64,[A-Za-z0-9+/=]+$",
+      "description": "Base64 data URL, decoded at most 8 MiB, at most 4096 px per side and 16 megapixels."
+    },
+    "png": {
+      "type": "string",
+      "pattern": "^data:image/png;base64,[A-Za-z0-9+/=]+$"
+    }
+  }
+}

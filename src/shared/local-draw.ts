@@ -21,8 +21,8 @@ export type LocalTier = 'mflux' | 'gpu' | 'cpu';
 
 /** mflux 안내에 보이는 크기 (GB). 실제로 받는 양: 도구(uv, 파이썬, mflux) 1GB 안팎 + 원본 모델 15GB 쯤 */
 export const LOCAL_DRAW_GB = { download: 16, keep: 5, memory: 8, free: 20 } as const;
-/** sd.cpp 안내에 보이는 크기 (GB). 모델 셋 5.2GB + 도구 0.05GB 를 받아 그대로 둔다 */
-export const SD_DRAW_GB = { download: 5.3, keep: 5.3, memory: 8, free: 7 } as const;
+/** sd.cpp 안내에 보이는 크기 (GB). 모델 셋 5.21GB(sdcpp-core.ts SD_MODEL_BYTES) + 윈도우 도구 0.03GB 를 받아 그대로 둔다 */
+export const SD_DRAW_GB = { download: 5.2, keep: 5.2, memory: 8, free: 7 } as const;
 
 /**
  * 이 컴퓨터에서 그릴 수 없는 까닭: os 운영체제, chip 칩(윈도우 ARM, AVX2 없는 인텔 Mac), macos 너무 옛 macOS,

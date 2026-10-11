@@ -4,12 +4,13 @@ import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { app } from 'electron';
 import type { Catalog } from '../shared/ai/catalog.ts';
-import { t } from '../shared/i18n/index.ts';
+import { locale, t } from '../shared/i18n/index.ts';
 import type { StoredModel } from '../shared/ipc.ts';
 import { localBusy, localModelPath, stopLocal } from './ai/local.ts';
 import { BG_MODEL } from './bg-model.ts';
 import { DEPTH_MODEL } from './depth-model.ts';
 import { forgetVerified, isReceiving } from './download.ts';
+import { type CopyKind, listCopies, removeCopy } from './keep-copies.ts';
 import { localDrawBytes, removeLocalDraw } from './local-draw.ts';
 import { ortWasmPath } from './ort-wasm.ts';
 import { removeSdDraw, sdDrawBytes } from './sdcpp.ts';
@@ -60,6 +61,13 @@ const LOCAL_DRAW_ID = 'localDraw';
 /** 내 컴퓨터에서 그리기 sd.cpp (sd-cli 와 모델 셋이 든 local-draw-sd/ 폴더 통째) */
 const LOCAL_DRAW_SD_ID = 'localDrawSd';
 
+function copyLabel(kind: CopyKind, name: string, at: number): string {
+  const when = new Date(at).toLocaleString(locale(), { dateStyle: 'medium', timeStyle: 'short' });
+  if (kind === 'beforeImport') return t('settings.storage.copyBeforeImport', { when });
+  if (kind === 'dbVersion') return t('settings.storage.copyDbVersion', { when });
+  return t('settings.storage.copyBroken', { name });
+}
+
 /** 지금 디스크에 있는 모델 (받다 만 .part 도 같이 센다) */
 export function storedModels(catalog: Catalog): StoredModel[] {
   const out: StoredModel[] = [];
@@ -80,6 +88,9 @@ export function storedModels(catalog: Catalog): StoredModel[] {
       kind: 'draw',
       bytes: sdBytes,
     });
+  // 안전 복사본 (가져오기 전 데이터, 판 올리기 전 복사, 깨져서 옮긴 파일). 오래된 것은 켤 때 저절로 지운다
+  for (const c of listCopies(app.getPath('userData')))
+    out.push({ id: `copy:${c.name}`, label: copyLabel(c.kind, c.name, c.at), kind: 'copy', bytes: c.bytes });
   // 목록에서 빠진 옛 무료 AI 모델 파일도 지울 수 있게
   const llmDir = join(modelsDir(), 'llm');
   if (existsSync(llmDir)) {
@@ -112,6 +123,11 @@ export async function removeModel(
 ): Promise<boolean> {
   if (id === LOCAL_DRAW_ID) return removeLocalDraw(log);
   if (id === LOCAL_DRAW_SD_ID) return removeSdDraw(log);
+  if (id.startsWith('copy:')) {
+    const ok = removeCopy(app.getPath('userData'), id.slice(5));
+    if (ok) log?.('storage', '안전 복사본 지움', id.slice(5));
+    return ok;
+  }
   let path: string;
   let llm: boolean;
   if (id.startsWith('file:')) {

@@ -7,10 +7,12 @@
 // 2. 홈 폴더 → ~, 다른 사람 홈(/Users/이름, /home/이름, C:\Users\이름)의 이름 → <user>
 // 3. 주소: 아이디:비번@ 은 떼고, 물음표 뒤(쿼리)와 # 뒤는 <redacted>, 긴 아이디 같은 경로 조각은 <id>.
 //    캘린더 주소(webcal, .ics, ical)는 경로 전체가 비밀이라 호스트만 남긴다 (<calendar>)
-// 4. 토큰: hf_, sk-, ghp_ 같은 머리, JWT, Bearer, "token=", "password:" 같은 키 다음 값 → <secret>
+//    화상 회의 주소(zoom /j/, meet.google.com 코드, teams, webex)는 회의 번호가 곧 입장권이라 <meeting>
+// 4. 토큰: hf_, sk-, ghp_ 같은 머리, JWT, Bearer, "token=", "password:" 같은 키 다음 값, 맨 key=, pass=, pw= → <secret>
 // 5. 이메일 → <email> (%40 으로 바뀐 것도)
-// 6. IP (IPv4, IPv6) → <ip>. 이 컴퓨터 자신(127.x, ::1, 0.0.0.0)은 둔다
-// 7. 컴퓨터 이름 → <host>, 사용자 이름(낱말로 있을 때) → <user>
+// 6. 주민등록번호 → <rrn>, 한국 전화번호(휴대폰, 지역번호, +82) → <phone>
+// 7. IP (IPv4, IPv6) → <ip>. 이 컴퓨터 자신(127.x, ::1, 0.0.0.0)은 둔다
+// 8. 컴퓨터 이름 → <host>, 사용자 이름(낱말로 있을 때) → <user>
 
 export interface RedactOptions {
   /** 홈 폴더 (os.homedir()) */
@@ -69,6 +71,25 @@ const AUTH_SCHEME_RE = /\b(Bearer|Basic|Token)\s+(?!<)[A-Za-z0-9._~+/=-]{6,}/gi;
 // 따옴표로 시작한 값은 닫는 따옴표까지 통째로 (공백, & 가 든 비밀번호가 반만 가려졌다)
 const KEY_VALUE_RE =
   /(?<![\w-])([\w-]{0,40}?(?:token|secret|passw(?:or)?d|pwd|api[_-]?key|apikey|auth(?:orization)?|signature|sig|credential|session[_-]?id|sid|auth[_-]?code|oauth[_-]?code)s?)(["']?\s*[:=]\s*)(?:"([^"\n]*)"|'([^'\n]*)'|(?!<)([^\s"'&,;}<>]+))/gi;
+
+/** 이름만 있는 키: key=, pass=, pw=, passphrase:, private_key= (위 규칙은 token, password 처럼 긴 이름만 본다) */
+const BARE_KEY_RE =
+  /(?<![\w-])((?:private[_-]?|access[_-]?|secret[_-]?)?keys?|pass(?:phrase)?|pw)(["']?\s*[:=]\s*)(?:"([^"\n]*)"|'([^'\n]*)'|(?!<)([^\s"'&,;}<>]+))/gi;
+
+/** 주민등록번호: 생년월일 6자리 - 7자리(첫 자리 1~8). 하이픈 없이 13자리 붙은 것도 */
+const RRN_RE = /(?<!\d)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\s?-?\s?[1-8]\d{6}(?!\d)/g;
+
+/** 한국 전화번호: 010-1234-5678, 01012345678, +82 10 1234 5678, 02-123-4567, 031-123-4567, 070-1234-5678 */
+const KR_PHONE_RE =
+  /(?<![\d+])(?:\+82[\s-]?0?|0)(?:1[016789]|2|[3-6][1-5]|70)[\s.-]?\d{3,4}[\s.-]?\d{4}(?!\d)/g;
+
+/** 화상 회의 주소의 호스트 (경로가 곧 입장 번호) */
+const MEETING_HOST_RE =
+  /(?:^|\.)(?:zoom\.(?:us|com)|meet\.google\.com|teams\.(?:microsoft|live)\.com|webex\.com|whereby\.com|meet\.jit\.si)$/i;
+/** 다른 호스트라도 회의 입장 꼴 경로: /j/123, /w/123, /join/abc, /meet/abc */
+const MEETING_PATH_RE = /\/(j|w|s|wc\/join|join|meet|meetup-join)\/[^/?#]+/gi;
+/** 주소 밖에 나온 Google Meet 코드 (abc-defg-hij) */
+const MEET_CODE_RE = /(?<![\w-])[a-z]{3}-[a-z]{4}-[a-z]{3}(?![\w-])/g;
 
 /** 쿠키는 줄 끝까지 (; 로 이어진 다른 쿠키도) */
 const COOKIE_RE = /\b((?:set-)?cookie)(["']?\s*[:=]\s*)[^\n]+/gi;
@@ -155,6 +176,15 @@ function redactUrl(scheme: string, rest: string, bump: () => void): string {
     bump();
     return `${scheme}://${authority}/<calendar>`;
   }
+  const hostOnly = authority.replace(/^<secret>@/, '').replace(/:\d+$/, '');
+  if (MEETING_HOST_RE.test(hostOnly) && after.length > 1 && after !== '/') {
+    bump();
+    return `${scheme}://${authority}/<meeting>${query}${fragment}`;
+  }
+  after = after.replace(MEETING_PATH_RE, (_m, kind: string) => {
+    bump();
+    return `/${kind}/<meeting>`;
+  });
   const path = after
     .split('/')
     .map((seg) => {
@@ -246,6 +276,17 @@ export function redactLogDetail(text: string, o: RedactOptions = {}): Redacted {
     if (sq !== undefined) return `${key}${sep}'<secret>'`;
     return `${key}${sep}<secret>`;
   });
+  out = out.replace(BARE_KEY_RE, (m, key: string, sep: string, dq?: string, sq?: string) => {
+    if ((dq ?? sq ?? '').startsWith('<')) return m;
+    bump();
+    if (dq !== undefined) return `${key}${sep}"<secret>"`;
+    if (sq !== undefined) return `${key}${sep}'<secret>'`;
+    return `${key}${sep}<secret>`;
+  });
+  out = out.replace(MEET_CODE_RE, () => {
+    bump();
+    return '<meeting>';
+  });
   out = out.replace(BLOB_RE, (m) => {
     if (!looksSecretBlob(m)) return m;
     bump();
@@ -259,7 +300,17 @@ export function redactLogDetail(text: string, o: RedactOptions = {}): Redacted {
       return '<email>';
     });
 
-  // 6. IP
+  // 6. 주민등록번호, 전화번호 (IP 보다 먼저: 점으로 나눈 전화번호를 IP 로 보지 않게)
+  out = out.replace(RRN_RE, () => {
+    bump();
+    return '<rrn>';
+  });
+  out = out.replace(KR_PHONE_RE, () => {
+    bump();
+    return '<phone>';
+  });
+
+  // 7. IP
   out = out.replace(IPV4_RE, (m, a: string, b: string, c: string, d: string) => {
     const [w, x, y, z] = [a, b, c, d].map(Number) as [number, number, number, number];
     if (w > 255 || x > 255 || y > 255 || z > 255) return m;
@@ -276,7 +327,7 @@ export function redactLogDetail(text: string, o: RedactOptions = {}): Redacted {
     return '<ip>';
   });
 
-  // 7. 컴퓨터 이름, 사용자 이름 (낱말로 있을 때만)
+  // 8. 컴퓨터 이름, 사용자 이름 (낱말로 있을 때만)
   const host = o.host?.trim() ?? '';
   const hostBase = host.replace(/\.local$/i, '');
   for (const h of [host, hostBase]) {

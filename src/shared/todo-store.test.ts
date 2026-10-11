@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
-import { type Db, migrate, SCHEMA_VERSION, schemaVersion } from './db-schema.ts';
+import { type Db, MIGRATIONS, migrate, SCHEMA_VERSION, schemaVersion } from './db-schema.ts';
 import { COIN, FULLNESS, nextDue, TodoStore } from './todo-store.ts';
 
 const HOUR = 3_600_000;
@@ -204,4 +204,53 @@ test('배가 꽉 차면 밥을 주지 않고 코인도 안 가져간다', () => 
   assert.equal(r.full, true);
   assert.equal(store.feed(T0).ok, false);
   assert.equal(store.balance(), before);
+});
+
+test('잔액은 coin_total 한 행: 끝내기, 되돌리기, 밥, 되돌린 묶음, 장부 합계와 늘 같다', () => {
+  const { db, store } = fresh();
+  const sum = () =>
+    Number((db.prepare('select coalesce(sum(amount), 0) as s from coin_log').get() as { s: number }).s);
+  const a = store.add({ title: '보고서' }, T0);
+  store.complete(a.id, T0);
+  store.reward(4, 'play', T0);
+  assert.equal(store.balance(), COIN.todo + 4);
+  store.undo(a.id, T0 + 1000);
+  store.feed(T0 + 2 * HOUR);
+  assert.equal(store.balance(), sum());
+  // 되돌린 묶음은 잔액도 되돌린다 (트리거가 같은 묶음 안)
+  db.exec('begin');
+  store.reward(50, 'play', T0);
+  db.exec('rollback');
+  assert.equal(store.balance(), sum());
+  // 다른 연결(펫 MCP 서버)이 장부에 바로 써도 맞다
+  db.prepare('insert into coin_log (amount, reason, ref_id, day, at) values (7, ?, null, ?, ?)').run(
+    'meet',
+    '2026-10-02',
+    T0,
+  );
+  db.prepare('delete from coin_log where reason = ?').run('food');
+  assert.equal(store.balance(), sum());
+});
+
+test('11판 장부를 12판으로 올리면 잔액이 장부 합계로 시작한다', () => {
+  const db = new DatabaseSync(':memory:') as unknown as Db;
+  for (let v = 0; v < 11; v++) db.exec(MIGRATIONS[v] ?? '');
+  db.exec('pragma user_version = 11');
+  for (const n of [10, 5, -3, 1, 1, 1])
+    db.prepare("insert into coin_log (amount, reason, day, at) values (?, 'todo', '2026-10-01', 0)").run(n);
+  migrate(db);
+  assert.equal(new TodoStore(db, utcDay).balance(), 15);
+});
+
+test('놀이 코인은 한 행에 여럿, 하루 합은 옛 기록(한 행에 1)과 섞여도 코인 수', () => {
+  const { db, store } = fresh();
+  store.reward(1, 'play', T0);
+  store.reward(1, 'play', T0);
+  store.reward(3, 'play', T0);
+  assert.equal(store.coinSum('play', '2026-10-02'), 5);
+  assert.equal(store.coinSum('play', '2026-10-03'), 0);
+  assert.equal(
+    Number((db.prepare("select count(*) as n from coin_log where reason = 'play'").get() as { n: number }).n),
+    3,
+  );
 });

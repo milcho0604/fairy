@@ -37,6 +37,8 @@ export interface HeldBubble {
   osNotify?: boolean;
   /** 시스템 알림으로 이미 한 번 알렸다 (같은 알림을 두 번 울리지 않게) */
   osNotified?: boolean;
+  /** 시스템 알림에 달 단추 (맥, 윈도우만. 미루기 10분, 1시간, 내일). 누르면 onAction 에 id */
+  osActions?: BubbleButton[];
 }
 
 /** 보였는데 아무도 못 보고 지나가면 다시 보이는 횟수 상한. 넘으면 놓친 알림으로 */

@@ -20,6 +20,7 @@ import {
   type RoutineMemo,
   restDaysOf,
   routineDue,
+  routineTurns,
 } from './routine.ts';
 import {
   type FarewellInput,
@@ -440,4 +441,50 @@ test('헤어짐 말풍선 길이: 어떤 경우든 두 문장, 긴 제목도 줄
   const base = cases[0];
   assert.ok(base);
   assert.match(farewellText({ ...base, quiet: false, leftToday: 0, doneTitles: [long] }), /…" 끝내느라/);
+});
+
+test('routineTurns: 문턱 사이에서는 routineDue, coversBriefing, dueUntil 이 분마다 같다 (플래너가 문턱에만 깬다)', () => {
+  const routines: Routine[] = [
+    NINE,
+    weekdays({ start: H(6), end: H(14, 30) }),
+    // 밤 근무 (끝이 다음 날)
+    weekdays({ start: H(22), end: H(6) }),
+    {
+      on: true,
+      week: [null, null, { start: H(2), end: H(3) }, null, { start: H(23, 50), end: H(23, 55) }, null, null],
+    },
+    { on: false, week: [null, NINE.week[1] ?? null, null, null, null, null, null] },
+  ];
+  const memos = [
+    memo(),
+    memo({ greeted: MON }),
+    memo({ greeted: TUE, arrival: { day: TUE, clock: H(7) } }),
+    memo({ greeted: MON, farewelled: MON }),
+    memo({ restSaid: SAT, greeted: FRI }),
+  ];
+  for (const r of routines)
+    for (const day of [MON, TUE, FRI, SAT, SUN, NEXT_MON])
+      for (const m of memos) {
+        const turns = new Set(routineTurns(r, day).map((v) => Math.round(v)));
+        // 할 일이 생기고 없어지는 때만 본다 (맞이의 지금 분, 일찍 왔는지는 깨서 말할 때 그 분으로 센다)
+        const at = (minute: number) => {
+          const due = routineDue(r, m, day, minute);
+          return JSON.stringify([
+            due?.what,
+            due?.day,
+            coversBriefing(r, m, day, minute),
+            dueUntil(r, day, H(21)),
+          ]);
+        };
+        let prev = at(0);
+        for (let minute = 1; minute < 24 * 60; minute++) {
+          const now = at(minute);
+          if (now !== prev)
+            assert.ok(
+              turns.has(minute),
+              `${day} ${minute}분에 바뀌었는데 문턱이 아니다 (${[...turns].join(',')}) ${prev} → ${now}`,
+            );
+          prev = now;
+        }
+      }
 });

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { clampIntoAreas, fitSavedBounds, nearestArea } from './geometry.ts';
+import { clampIntoAreas, fitSavedBounds, nearestArea, snapRect } from './geometry.ts';
 
 // 개발 맥의 실제 작업 영역(2026-10-02 screen.getAllDisplays): 내장 화면이 왼쪽 음수 좌표, 외장 둘.
 const builtIn = { x: -1512, y: 33, width: 1512, height: 949 };
@@ -59,4 +59,10 @@ test('저장한 창 모습: 화면보다 크면 줄이고, 최소보다 작으�
   assert.equal(fitSavedBounds(undefined, [main], min), undefined);
   assert.equal(fitSavedBounds({ width: '500', height: 600 }, [main], min), undefined);
   assert.equal(fitSavedBounds({ width: -1, height: 600 }, [main], min), undefined);
+});
+
+test('레이저 쫓기 뒤 소수 좌표는 정수로 맞춘다 (산책 setPosition 이 던지던 것)', () => {
+  const r = snapRect({ x: 512.37, y: 880.5, width: 160, height: 159.6 });
+  assert.deepEqual(r, { x: 512, y: 881, width: 160, height: 160 });
+  for (const v of Object.values(r)) assert.ok(Number.isInteger(v));
 });

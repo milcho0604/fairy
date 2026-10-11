@@ -1,6 +1,7 @@
 import { app, net, shell } from 'electron';
 import type { AppUpdater } from 'electron-updater';
 import { t } from '../shared/i18n/index.ts';
+import type { UpdateStatus } from '../shared/ipc.ts';
 import {
   canAutoInstall,
   confirmedForce,
@@ -37,8 +38,8 @@ type Lock = { version: string; url: string; minVersion: string };
 
 /**
  * 새 버전 알림 (v1), 강제 업데이트, 자동 설치. 켜고 1분 뒤, 그 뒤 하루에 한 번 GitHub Releases 를 본다.
- * - 새 버전: 펫이 말풍선으로 알린다. 설치판은 미리 받아 두고 "다시 켜서 업데이트". 윈도우는 안 누르면 끝낼 때 설치,
- *   맥은 누를 때만 설치한다. 받지 못했거나 개발 실행이면 "받으러 가기"(릴리스 페이지).
+ * - 새 버전: 펫이 말풍선으로 알린다. 설치판은 미리 받아 두고 "다시 켜서 업데이트". 윈도우와 맥 모두
+ *   누를 때만 설치한다 (끝낼 때 저절로 설치하지 않는다). 받지 못했거나 개발 실행이면 "받으러 가기"(릴리스 페이지).
  * - 강제(릴리스 본문의 min-version 보다 낮음): 건너뛰기 없이, 시간 끝 없이 알리고 AI 대화를 잠근다.
  *   두 번 따로 받은 응답이 같아야 잠그고, 확인이 실패하면 풀린다. 오프라인이면 잠그지 않는다.
  * 사용자 정보는 보내지 않는다(앱 이름과 버전만). 토큰도 없다.
@@ -53,7 +54,12 @@ export function watchUpdates(o: { say: Say; log: Log }) {
    * 맥(Squirrel.Mac)은 한 번 넘겨받은 업데이트를 끝낼 때 반드시 설치해서 "건너뛰기"를 되돌릴 수 없다.
    * 그래서 맥은 받아 두기만 하고, "다시 켜서 업데이트"를 누를 때 넘겨서 서명을 확인받고 설치한다.
    */
-  const installOnQuit = process.platform !== 'darwin';
+  /*
+   * 윈도우도 끝낼 때 저절로 설치하지 않는다 (2026-10-11 보안 점검). 윈도우 설치 파일은 서명이 없어서
+   * (코드 서명 인증서는 유료, docs/release.md "윈도우 서명") electron-updater 가 받은 파일의 게시자를 확인할 수 없다.
+   * 사용자가 "다시 켜서 업데이트"를 누른 때만 설치한다. 받은 파일은 latest.yml 의 sha512 로 확인한다.
+   */
+  const installOnQuit = false;
   /** "다시 켜서 업데이트"를 누른 릴리스 페이지. 설치가 거절되면(맥 서명 확인 실패 등) 여기로 보낸다 */
   let restarting: string | undefined;
   let updater: AppUpdater | undefined;
@@ -65,7 +71,7 @@ export function watchUpdates(o: { say: Say; log: Log }) {
   async function fetchDecision(): Promise<UpdateDecision | { kind: 'failed'; status?: number; bad?: true }> {
     try {
       const res = await net.fetch(releasesApi(), {
-        headers: { accept: 'application/vnd.github+json', 'user-agent': `jjakkung/${app.getVersion()}` },
+        headers: { accept: 'application/vnd.github+json', 'user-agent': `fairy/${app.getVersion()}` },
         // GitHub 은 max-age=60 을 붙여 보낸다. 캐시를 쓰면 10초 뒤 두 번째 확인이 첫 응답을 그대로 받아 이중 확인이 무의미해진다
         cache: 'no-store',
         // 걸린 연결에 매달리지 않는다. 매달리면 같은 주소의 다음 확인도 HTTP 캐시 잠금에 20초씩 묶였다 (2026-10-07 실제 앱 점검)
@@ -166,7 +172,7 @@ export function watchUpdates(o: { say: Say; log: Log }) {
     updater?.quitAndInstall(true, true);
   }
 
-  /** 받아 둔 업데이트를 끝낼 때 설치할지. 맥은 늘 끈다 (installOnQuit) */
+  /** 받아 둔 업데이트를 끝낼 때 설치할지. 지금은 모든 운영체제에서 끈다 (installOnQuit) */
   function setInstallOnQuit(on: boolean) {
     if (updater) updater.autoInstallOnAppQuit = on && installOnQuit;
   }
@@ -194,7 +200,7 @@ export function watchUpdates(o: { say: Say; log: Log }) {
     try {
       while (lock) {
         const ready = await download();
-        // 전에 이 버전을 건너뛰었어도 강제면 끝낼 때 설치한다 (윈도우)
+        // 전에 이 버전을 건너뛰었어도 강제면 끝낼 때 설치한다 (installOnQuit 이 켜진 운영체제만)
         if (ready) setInstallOnQuit(true);
         nagAbort = new AbortController();
         const answer = await o.say({
@@ -271,21 +277,23 @@ export function watchUpdates(o: { say: Say; log: Log }) {
     if (answer === 'skip') settings.set({ skipVersion: version });
   }
 
-  async function check(manual = false): Promise<string> {
-    if (!manual && !settings.get().updateCheck) return t('main.update.off');
+  async function check(manual = false): Promise<UpdateStatus> {
+    if (!manual && !settings.get().updateCheck) return { text: t('main.update.off'), tone: 'info' };
     const first = await fetchDecision();
     if (first.kind === 'failed') {
       // 확인을 못 하면 잠그지 않는다 (잠겨 있었으면 푼다)
       setLock(undefined);
-      if (first.status === 404) return t('main.update.none');
-      if (first.bad) return t('main.update.badResponse');
-      return first.status
+      // 404 는 레포가 비공개이거나 릴리스가 아직 없을 때다: 최신이라고 하지 않고 확인할 수 없다고만 (중립)
+      if (first.status === 404) return { text: t('main.update.unavailable'), tone: 'info' };
+      if (first.bad) return { text: t('main.update.badResponse'), tone: 'error' };
+      const text = first.status
         ? t('main.update.failedStatus', { status: first.status })
         : t('main.update.offline');
+      return { text, tone: 'error' };
     }
     if (first.kind === 'none') {
       setLock(undefined);
-      return t('main.update.latest');
+      return { text: t('main.update.latest'), tone: 'ok' };
     }
     // 더 새 버전이 나왔으면 받아 둔 것과 실패 기록을 잊고 새로 받는다
     if (downloaded && downloaded !== first.version) {
@@ -297,15 +305,16 @@ export function watchUpdates(o: { say: Say; log: Log }) {
       const second = await fetchDecision();
       if (second.kind !== 'failed' && confirmedForce(first, second)) {
         setLock({ version: first.version, url: first.url, minVersion: first.minVersion });
-        return t('main.update.forcedFound', { min: first.minVersion });
+        return { text: t('main.update.forcedFound', { min: first.minVersion }), tone: 'info' };
       }
       o.log('update', '강제 표시가 두 번째 확인과 달라 잠그지 않음');
     }
     setLock(undefined);
-    if (!manual && settings.get().skipVersion === first.version) return t('main.update.skipped');
+    if (!manual && settings.get().skipVersion === first.version)
+      return { text: t('main.update.skipped'), tone: 'info' };
     o.log('update', '새 버전', first.version);
     void notify(first.version, first.url);
-    return t('main.update.found', { version: first.version });
+    return { text: t('main.update.found', { version: first.version }), tone: 'ok' };
   }
 
   setTimeout(() => void check(), 60_000).unref();

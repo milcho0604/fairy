@@ -622,6 +622,13 @@ small.warn {
   color: var(--ink);
 }
 
+/* 펫 파일에서 데려온 펫의 만든 사람, 사용 허락 (카드가 좁아 줄을 바꾼다) */
+.pet-card .pet-by {
+  max-width: 100%;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
 .pet-card .pet-age:first-child {
   margin-left: 0;
 }
@@ -942,4 +949,149 @@ textarea.rules {
   .tabs [role="tab"] {
     transition: none;
   }
+}
+
+/* 업데이트 확인 결과: 최신은 초록, 확인할 수 없음은 회색, 실패는 빨강 */
+.update-status {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.update-status.ok {
+  color: var(--ok);
+}
+
+.update-status.error {
+  color: var(--error);
+}
+
+/* 내보낸 곳과 폴더 열기 */
+.exported-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  min-width: 0;
+}
+
+.exported-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.theme-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* 내 말투 만들기 (tabs/SpeechEditor.tsx) */
+.speech-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.speech-editor > small {
+  color: var(--muted);
+}
+
+.speech-editor .field > small {
+  color: var(--muted);
+}
+
+.speech-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.speech-editor .field .speech-chips button,
+.speech-editor .field .speech-chips input {
+  min-width: 0;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.speech-editor .field .speech-chips input:not([type="range"]) {
+  flex: 1 1 120px;
+  width: auto;
+  border-radius: 999px;
+  background: var(--panel);
+  cursor: text;
+}
+
+.speech-editor .field .speech-chips button.on,
+.speech-editor .field .speech-chips input.on:not([type="range"]) {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.speech-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.card .speech-editor .speech-lines > span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.speech-editor .speech-lines textarea {
+  width: 100%;
+  min-height: 46px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  resize: vertical;
+}
+
+.speech-editor .speech-lines textarea:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: -1px;
+}
+
+.speech-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.card .field + .speech-preview > span,
+.card .speech-editor .speech-preview > span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.card .speech-preview .speech-bubble {
+  max-width: 100%;
+  margin: 0;
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: 12px 12px 12px 4px;
+  background: var(--panel);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.card .speech-editor > button.link {
+  align-self: flex-start;
 }

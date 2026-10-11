@@ -18,6 +18,10 @@ export interface ChatMessage {
   images?: ChatImage[];
   status?: 'waiting' | 'streaming' | 'done' | 'error';
   error?: AiError;
+  /** AI 없이 규칙으로 답했다 ("오늘 뭐부터", shared/what-first.ts). 꼬리표가 AI 이름 대신 "AI 없이" */
+  byRules?: true;
+  /** 규칙 답 아래 단추 (집중 시작, 패널 열기). focusTodoId 는 집중할 할 일 */
+  plan?: { focusTodoId?: number };
 }
 
 export interface ChatState {
@@ -184,6 +188,7 @@ export function serializeChat(s: ChatState): SavedChat {
         text: m.text,
         status: 'done',
         ...(m.provider ? { provider: m.provider } : {}),
+        ...(m.byRules ? { byRules: true as const } : {}),
       });
     else if (m.role === 'user') {
       const answer = msgs[i + 1];
@@ -213,6 +218,7 @@ export function parseChat(raw: unknown): SavedChat {
         text,
         status: 'done',
         ...(typeof v.provider === 'string' ? { provider: v.provider } : {}),
+        ...(v.byRules === true ? { byRules: true as const } : {}),
       });
   }
   const sessions: ChatState['sessions'] = {};

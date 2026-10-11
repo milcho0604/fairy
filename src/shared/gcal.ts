@@ -29,6 +29,7 @@ export const GCAL = {
 /**
  * 창에 보이는 문제. 글은 창이 말로 바꾼다
  * - expired: 연결이 끝났다 (구글에서 권한을 거뒀거나 시험판 앱의 7일이 지남). 다시 연결해야 한다
+ * - relink: 저장한 연결을 이 컴퓨터 열쇠로 풀 수 없다 (앱 이름이 바뀌어 키체인 항목이 바뀜). 다시 연결해야 한다
  * - denied: 구글 화면에서 허락하지 않았다
  * - scope: 허락 화면에서 캘린더 칸을 체크하지 않았다
  * - timeout: 브라우저에서 너무 오래 기다렸다
@@ -36,7 +37,15 @@ export const GCAL = {
  * - calendar: 고른 캘린더가 없거나 쓸 수 없다
  * - failed: 그 밖에
  */
-export type GcalProblem = 'expired' | 'denied' | 'scope' | 'timeout' | 'offline' | 'calendar' | 'failed';
+export type GcalProblem =
+  | 'expired'
+  | 'relink'
+  | 'denied'
+  | 'scope'
+  | 'timeout'
+  | 'offline'
+  | 'calendar'
+  | 'failed';
 
 export interface GcalStatus {
   /** 이 짝꿍에 OAuth 클라이언트가 들어 있는지. 없으면 연결 단추 대신 안내만 */

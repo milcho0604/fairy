@@ -15,7 +15,12 @@ const seed = new DatabaseSync(join(dir, 'jjakkung.db'));
 migrate(seed as unknown as Db);
 seed.close();
 const { handle } = await import('./mcp-server.ts');
-after(() => rmSync(dir, { recursive: true, force: true }));
+// 윈도우는 서버가 연 DB 를 아직 쥐고 있어 지우기가 EPERM 일 수 있다. 시험 뒷정리라 잠깐 기다려 다시 해 보고, 안 되면 둔다
+after(() => {
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  } catch {}
+});
 
 let id = 0;
 const call = (method: string, params?: Record<string, unknown>) =>
@@ -306,5 +311,45 @@ test('list_events: 서머타임이 끝나는 날(25시간)도 그날 밤 일정�
     mock.timers.reset();
     if (tz === undefined) delete process.env.TZ;
     else process.env.TZ = tz;
+  }
+});
+
+test('짝꿍 채팅이 띄운 서버(JJ_MCP_CONFIRM)는 지우기, 고치기를 바로 하지 않고 확인 편지함에 남긴다', async () => {
+  const { parsePetActions, applyPetAction } = await import('../shared/pet-actions.ts');
+  const { NoteStore } = await import('../shared/note-store.ts');
+  const added = text(tool('add_todo', { title: '확인할 일' }));
+  const tid = Number(/\[(\d+)\]|id (\d+)/.exec(added)?.slice(1).find(Boolean));
+  assert.ok(tid > 0, added);
+  process.env.JJ_MCP_CONFIRM = '1';
+  try {
+    assert.match(text(tool('delete_todo', { id: tid })), /아직 하지 않았어/);
+    assert.match(
+      text(tool('update_todo', { id: tid, title: '바뀐 제목', important: true })),
+      /아직 하지 않았어/,
+    );
+    // 틀린 인자는 그대로 오류 (편지함에 남지 않는다)
+    assert.equal(tool('update_todo', { id: tid }).result?.isError, true);
+  } finally {
+    delete process.env.JJ_MCP_CONFIRM;
+  }
+  const db = new DatabaseSync(join(dir, 'jjakkung.db'));
+  try {
+    const todos = new TodoStore(db as unknown as Db);
+    assert.equal(todos.get(tid)?.title, '확인할 일');
+    const list = parsePetActions(JSON.parse(readFileSync(join(dir, 'pet-actions-inbox.json'), 'utf8')));
+    assert.deepEqual(
+      list.map((a) => a.tool),
+      ['delete_todo', 'update_todo'],
+    );
+    const stores = {
+      todos,
+      events: new EventStore(db as unknown as Db),
+      notes: new NoteStore(db as unknown as Db),
+    };
+    const update = list.find((a) => a.tool === 'update_todo');
+    assert.ok(update && applyPetAction(stores, update, Date.now()));
+    assert.equal(todos.get(tid)?.title, '바뀐 제목');
+  } finally {
+    db.close();
   }
 });

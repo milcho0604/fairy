@@ -2,6 +2,7 @@
 import { allDayLabel, timeLabel } from './event-store.ts';
 import { t } from './i18n/index.ts';
 import { shortLinks } from './links.ts';
+import { voiced } from './persona-voice.ts';
 import { type Anchor, anchorAt, DAY_MIN, dayOf, EVENING_MIN, MORNING_MIN, splitDayBefore } from './remind.ts';
 
 /** 날짜 기준 알림의 그날 시각 이름: 아침 9시, 저녁 8시, 그 밖은 "오후 6:30" */
@@ -72,24 +73,29 @@ export function remindLine(item: RemindItem, now: number): string {
   if (item.anchor.kind === 'day') {
     const range = item.range ? ` (${item.range})` : '';
     if (item.kind === 'event') {
-      if (days <= 0) return t('remind.say.allDayToday', { title, range });
-      if (days === 1) return t('remind.say.allDayTomorrow', { title, range });
-      return t('remind.say.allDayDays', { title, n: days, date: dateLabel(item.anchor.day) });
+      if (days <= 0) return voiced('remind.say.allDayToday', { title, range });
+      if (days === 1) return voiced('remind.say.allDayTomorrow', { title, range });
+      return voiced('remind.say.allDayDays', { title, n: days, date: dateLabel(item.anchor.day) });
     }
-    if (days <= 0) return t('remind.say.todoToday', { title });
-    if (days === 1) return t('remind.say.todoTomorrow', { title });
-    return t('remind.say.todoDays', { title, n: days, date: dateLabel(item.anchor.day) });
+    if (days <= 0) return voiced('remind.say.todoToday', { title });
+    if (days === 1) return voiced('remind.say.todoTomorrow', { title });
+    return voiced('remind.say.todoDays', { title, n: days, date: dateLabel(item.anchor.day) });
   }
   const time = timeLabel(minuteOf(start));
   const left = Math.round((start - now) / 60_000);
   const ev = item.kind === 'event';
-  if (left <= 0) return t(ev ? 'remind.say.eventNow' : 'remind.say.todoNow', { title, time });
-  if (left < 60) return t(ev ? 'remind.say.eventSoon' : 'remind.say.todoSoon', { title, time, n: left });
+  if (left <= 0) return voiced(ev ? 'remind.say.eventNow' : 'remind.say.todoNow', { title, time });
+  if (left < 60) return voiced(ev ? 'remind.say.eventSoon' : 'remind.say.todoSoon', { title, time, n: left });
   if (days <= 0)
-    return t(ev ? 'remind.say.eventLater' : 'remind.say.todoLater', { title, time, dur: durLabel(left) });
-  if (days === 1) return t(ev ? 'remind.say.eventTomorrow' : 'remind.say.todoTomorrowAt', { title, time });
-  if (ev) return t('remind.say.eventDays', { title, time, n: days, date: dateLabel(dayOf(start)) });
-  return t('remind.say.todoDays', { title, n: days, date: dateLabel(dayOf(start)) });
+    return voiced(ev ? 'remind.say.eventLater' : 'remind.say.todoLater', {
+      title,
+      time,
+      dur: durLabel(left),
+    });
+  if (days === 1)
+    return voiced(ev ? 'remind.say.eventTomorrow' : 'remind.say.todoTomorrowAt', { title, time });
+  if (ev) return voiced('remind.say.eventDays', { title, time, n: days, date: dateLabel(dayOf(start)) });
+  return voiced('remind.say.todoDays', { title, n: days, date: dateLabel(dayOf(start)) });
 }
 
 /** 놓친 알림에 남길 줄: 때가 지나도 맞는 글 ("디자인 회의 (오후 3:00)", "보고서 (10월 9일)") */

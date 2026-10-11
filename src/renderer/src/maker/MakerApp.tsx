@@ -44,11 +44,12 @@ import { CANVAS_SIZE } from '../draw.ts';
 import { MakeProgress, type ProgressStage } from '../MakeProgress.tsx';
 import { browserStore, loadExpected, saveDuration } from '../make-progress.ts';
 import { PetNameInput } from '../PetNameInput.tsx';
+import { escClosesWindow } from '../panel/keys.ts';
 import { Pet3D } from '../pet3d.ts';
 import { openDepth, predictDepth } from './depth.ts';
 import { settleFur } from './fur-color.ts';
 import { GeminiRoute } from './GeminiRoute.tsx';
-import { backend, modelOpen, openModel, predictMask } from './removeBg.ts';
+import { modelOpen, openModel, predictMask } from './removeBg.ts';
 import { ShownError, shownErrorText } from './shown-error.ts';
 import { FIGURE_LIMITS, RELIEF_LIMITS, Spinner } from './spin.ts';
 
@@ -113,7 +114,6 @@ export function MakerApp() {
   const [preview, setPreview] = useState('');
   /** 오린 그림이 작아서(SMALL_CUT) 흐릿할 수 있는지 */
   const [smallCut, setSmallCut] = useState(false);
-  const [elapsed, setElapsed] = useState(0);
   // 진행 표시: 지금 단계를 시작한 때, 진행 판에 보일 사진, 이번에 모델을 받았는지, 끝나서 100% 를 보여 주는 중인지
   const [stageAt, setStageAt] = useState(0);
   const [thumb, setThumb] = useState('');
@@ -265,7 +265,7 @@ export function MakerApp() {
   );
 
   /**
-   * 내 컴퓨터에서 그리기 준비 (처음 한 번 mflux 16GB, sd.cpp 5.3GB 쯤). 그만두면 돌아간다. 다 되면 기다리던 사진이 있으면 바로 그린다
+   * 내 컴퓨터에서 그리기 준비 (처음 한 번 mflux 16GB, sd.cpp 5.2GB 쯤). 그만두면 돌아간다. 다 되면 기다리던 사진이 있으면 바로 그린다
    */
   const runSetup = useCallback(
     async (back: 'pick' | 'illust') => {
@@ -400,7 +400,6 @@ export function MakerApp() {
           await openModel(await res.arrayBuffer());
         }
         if (!alive()) return;
-        const t0 = performance.now();
         const first = withPhotoAlpha(await predictMask(photo, info), photo);
         let next: Work = { photo, mask: first, w: photo.width, h: photo.height };
         if (!alive()) return;
@@ -432,7 +431,6 @@ export function MakerApp() {
         next.mask = trimHalo(next.mask, next.w, next.h);
         // 흰 바탕 흰 펫, 반짝이는 그림의 살짝 비친 몸 속(190~245)을 꽉 채운다 (가장자리 털 끝은 그대로)
         next.mask = solidify(next.mask, next.w, next.h);
-        setElapsed(Math.round(performance.now() - t0));
         saveDuration('cutout', performance.now() - cutStart, store());
         setWork(next);
         setBgDone(true);
@@ -676,9 +674,29 @@ export function MakerApp() {
         ? { depth }
         : undefined;
 
+  // Esc 로 닫는다 (패널, 설정과 같게). 만드는 중에는 하던 일을 잃으니 고르기 전과 다 된 뒤에만
+  useEffect(() => {
+    if (step !== 'pick' && step !== 'done') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (escClosesWindow(e)) bridge.close();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [step]);
+
   const canSave = step === 'name' && !shaping && (look === 'photo' || !!chosen);
+  // 2.5D 를 골랐는데 아직 안 만들었으면 "이 펫으로 할게" 가 만들고 저장한다 (예전엔 말없이 눌리지 않았다).
+  // 입체 피규어는 AI 를 쓰니 알아서 만들지 않고 안내만 한다
+  const buildFirst = step === 'name' && !shaping && !chosen && look === 'relief';
+  const needFigure = step === 'name' && !shaping && !chosen && look === 'figure';
+  const saveAfterShape = useRef(false);
 
   const save = async () => {
+    if (buildFirst) {
+      saveAfterShape.current = true;
+      await makeRelief();
+      return;
+    }
     // Enter 로도 오니 단추와 같은 조건을 본다 (만드는 중 Enter 가 평면으로 저장했다)
     if (!canSave) return;
     setStep('saving');
@@ -696,6 +714,14 @@ export function MakerApp() {
     setStep('done');
     setTimeout(() => bridge.close(), 1400);
   };
+
+  // "이 펫으로 할게" 로 2.5D 를 만들었으면 다 되자마자 저장한다. 실패하거나 다른 모양을 고르면 그만둔다
+  // biome-ignore lint/correctness/useExhaustiveDependencies: save 는 렌더마다 새로 만들어져 넣지 않는다
+  useEffect(() => {
+    if (!saveAfterShape.current || shaping) return;
+    saveAfterShape.current = false;
+    if (look === 'relief' && depth && step === 'name') void save();
+  }, [shaping, depth]);
 
   // 무료 Hugging Face 토큰 칸 (고르기 화면, 쿼터에 걸린 뒤 그림 화면). 토큰 글은 메인에만 있고 창은 있는지만 안다
   const tokenBox = (
@@ -1080,7 +1106,6 @@ export function MakerApp() {
         {step === 'edit' && work && (
           <Editor
             work={work}
-            note={t('maker.edit.took', { backend, sec: (elapsed / 1000).toFixed(1) })}
             onBack={() => {
               setError('');
               setNote('');
@@ -1325,6 +1350,9 @@ export function MakerApp() {
                     />
                   </label>
                 )}
+                {(buildFirst || needFigure) && (
+                  <p className="hint">{t(buildFirst ? 'maker.relief.buildOnSave' : 'maker.3d.needFirst')}</p>
+                )}
                 {!isPose && !isFood && (
                   <p className="hint" role="status">
                     {nameNote || t('maker.name.blankHint', { name: info?.newPetName ?? '' })}
@@ -1339,7 +1367,7 @@ export function MakerApp() {
                   >
                     {animated ? t('maker.name.otherImage') : t('maker.name.reedit')}
                   </button>
-                  <button type="button" className="primary" disabled={!canSave} onClick={save}>
+                  <button type="button" className="primary" disabled={!canSave && !buildFirst} onClick={save}>
                     {step === 'saving'
                       ? t('maker.name.saving')
                       : isFood
@@ -1597,17 +1625,7 @@ function Spin3D({
 }
 
 /** 지우개와 복원 붓으로 마스크를 다듬는다. 지운 곳은 흐리게 보여서 되살릴 곳을 찾기 쉽다. */
-function Editor({
-  work,
-  note,
-  onBack,
-  onNext,
-}: {
-  work: Work;
-  note: string;
-  onBack: () => void;
-  onNext: () => void;
-}) {
+function Editor({ work, onBack, onNext }: { work: Work; onBack: () => void; onNext: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [mode, setMode] = useState<'erase' | 'restore'>('erase');
   // 붓 굵기 = 화면에서 보이는 지름(px). 반지름으로 쓰여 숫자보다 두 배 굵게 칠했다 (2026-10-11)
@@ -1771,9 +1789,7 @@ function Editor({
           }}
         />
       </div>
-      <p className="hint">
-        {t('maker.edit.hint')} {note}
-      </p>
+      <p className="hint">{t('maker.edit.hint')}</p>
       {hints.cut && !hints.empty && !hints.full && <p className="hint">{t('maker.edit.cutEdge')}</p>}
       <div className="actions edit-actions">
         <button type="button" className="ghost" onClick={onBack}>

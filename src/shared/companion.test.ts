@@ -99,10 +99,7 @@ test('친구 수다 글: 이름에 맞는 부름말', () => {
     '1 year together already! Bean loved every day of it.',
   );
   setLang('ko');
-  assert.equal(
-    t('companion.cheer.clear', { name: '콩이', n: 3 }),
-    '오늘 할 일 다 끝! 콩이가 제일 먼저 축하할래!',
-  );
+  assert.equal(t('companion.cheer.clear', { name: '콩이', n: 3 }), '오늘 할 일 다 끝! 축하해!');
 });
 
 test('기억 파일: 깨졌거나 모양이 틀린 칸은 빈 값으로', () => {

@@ -10,14 +10,25 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { app, type BrowserWindow, dialog } from 'electron';
+import { app, type BrowserWindow, dialog, nativeImage } from 'electron';
 import { customAiCount, IMPORT_FILES, importedChatSettings } from '../shared/backup-import.ts';
-import { type Db, looksLikeOurs, SCHEMA_VERSION, schemaVersion } from '../shared/db-schema.ts';
+import { SCHEMA_VERSION } from '../shared/db-schema.ts';
 import { saveErrorText } from '../shared/download-error.ts';
 import { t } from '../shared/i18n/index.ts';
-import { decodePet, encodePet, SHARE_MAX_BYTES, type SharedPet, shareFileName } from '../shared/pet-share.ts';
+import {
+  decodePet,
+  encodePet,
+  type PetMeta,
+  reexportMeta,
+  SHARE_MAX_BYTES,
+  type SharedPet,
+  shareFileName,
+  THUMB_MAX_BYTES,
+} from '../shared/pet-share.ts';
 import type { Blueprint } from '../shared/pet3d/blueprint.ts';
 import { FRIENDS_MAX, POSE_KINDS } from '../shared/settings.ts';
+import { PET_FILE_EXT, PET_FILE_EXTS_READ } from '../shared/url-scheme.ts';
+import { importableDbVersion } from './db-open.ts';
 import { petImages } from './maker.ts';
 import { library } from './pet-library.ts';
 import { freePath, plainEntry, writeFileAtomic } from './safe-file.ts';
@@ -59,8 +70,10 @@ export function createBackup(o: {
     const base = pick.filePaths[0];
     if (pick.canceled || !base) return '';
     // 같은 분에 두 번 내보내도 겹치지 않게 (VACUUM INTO 는 있는 파일에 못 쓴다)
-    let out = join(base, `jjakkung-backup-${stamp()}`);
-    for (let i = 2; existsSync(out); i++) out = join(base, `jjakkung-backup-${stamp()}-${i}`);
+    // 폴더 이름은 새 이름(fairy-backup-…). 안의 표시 파일(jjakkung-backup.json)과 저장 파일 이름은 예전 그대로 둔다:
+    // 예전 판 짝꿍과 새 판이 서로의 백업을 가져올 수 있게 (앱 안쪽 이름이라 사용자에게는 안 보인다)
+    let out = join(base, `fairy-backup-${stamp()}`);
+    for (let i = 2; existsSync(out); i++) out = join(base, `fairy-backup-${stamp()}-${i}`);
     mkdirSync(out, { recursive: true });
     o.vacuumInto(join(out, 'jjakkung.db'));
     for (const f of FILES) if (existsSync(join(dir(), f))) cpSync(join(dir(), f), join(out, f));
@@ -85,7 +98,7 @@ export function createBackup(o: {
     if (!existsSync(join(from, 'jjakkung-backup.json')) || !existsSync(join(from, 'jjakkung.db')))
       return t('main.backup.notBackup');
     // 새 판 짝꿍이 만든 백업은 이 판이 못 연다. 지금 데이터를 덮어쓰기 전에 거른다
-    const version = dbVersion(join(from, 'jjakkung.db'));
+    const version = importableDbVersion(join(from, 'jjakkung.db'));
     if (version === undefined) return t('main.backup.notBackup');
     if (version > SCHEMA_VERSION) return t('main.backup.newer');
     const ok = await dialog.showMessageBox({
@@ -112,9 +125,13 @@ export function createBackup(o: {
     mkdirSync(keep, { recursive: true });
     o.vacuumInto(join(keep, 'jjakkung.db'));
     for (const f of FILES) if (existsSync(join(dir(), f))) cpSync(join(dir(), f), join(keep, f));
+    // 펫 그림과 설계도도 남긴다: 가져오기가 같은 이름의 파일을 덮을 수 있다
+    if (existsSync(join(dir(), 'pets')))
+      cpSync(join(dir(), 'pets'), join(keep, 'pets'), { recursive: true, filter: plainEntry });
     // 설정 파일도 저장 파일처럼 다음에 켤 때 바꾼다. 지금 덮으면 끄기 전까지 도는 앱(펫 자리 저장, 플래너,
     // 설정 바꾸기, 끄면서 하는 저장)이 가져온 것을 다시 덮는다. 앞서 하다 만 가져오기의 것은 먼저 치운다
     for (const f of IMPORT_FILES) rmSync(join(dir(), staged(f)), { force: true });
+    rmSync(join(dir(), PENDING_PETS), { recursive: true, force: true });
     // 사용자 AI(ai-custom.json)는 옮기지 않는다: 실행할 명령이라 그 컴퓨터 것이 아니다. 채팅 설정은 고른 AI 만,
     // 사용자 AI 를 골랐으면 기본으로 (버그잡이 7차)
     for (const f of IMPORT_FILES) {
@@ -128,18 +145,20 @@ export function createBackup(o: {
     }
     // 저장 파일은 앱이 연 채라 다음에 켤 때 바꾼다: 자리만 마련하고 다시 켠다.
     // 맨 끝에 놓는다: 켤 때 이것이 있어야 설정 파일도 바꿔 끼우므로, 중간에 실패하면 반쪽만 바뀌지 않는다
+    // pets/ 도 저장 파일과 같이 기다렸다가 다음에 켤 때 넣는다 (저장 파일을 못 바꾸면 펫 파일도 그대로).
+    // 링크를 빼고 일반 파일만 (링크로 사용자 데이터 폴더 밖 파일을 읽게 하지 못하게). 저장 파일보다 먼저 둔다
     try {
+      if (existsSync(join(from, 'pets')))
+        cpSync(join(from, 'pets'), join(dir(), PENDING_PETS), { recursive: true, filter: plainEntry });
       cpSync(join(from, 'jjakkung.db'), join(dir(), PENDING_DB));
     } catch (err) {
       // 디스크가 차서 반만 복사됐으면 다음에 켤 때 반쪽 저장 파일로 바꿔 끼웠다. 기다리던 것을 모두 치운다
       rmSync(join(dir(), PENDING_DB), { force: true });
+      rmSync(join(dir(), PENDING_PETS), { recursive: true, force: true });
       for (const f of IMPORT_FILES) rmSync(join(dir(), staged(f)), { force: true });
       o.log('backup', '가져오기 실패', err instanceof Error ? err.message : String(err));
       throw err;
     }
-    // pets/ 는 링크를 빼고 일반 파일만 (링크로 사용자 데이터 폴더 밖 파일을 읽게 하지 못하게)
-    if (existsSync(join(from, 'pets')))
-      cpSync(join(from, 'pets'), join(dir(), 'pets'), { recursive: true, filter: plainEntry });
     o.log('backup', '가져옴, 다시 켠다', skipped ? `사용자 AI ${skipped}개 뺌` : '');
     // exit 대신 quit: will-quit 정리(실행 표시 지우기, AI 끝내기, 저장 파일 닫기, 단축키 풀기)가 돌게 한다
     app.relaunch();
@@ -161,6 +180,8 @@ function readJsonFile(path: string): unknown {
 
 /** 가져온 저장 파일이 다음에 켤 때까지 기다리는 이름 */
 const PENDING_DB = 'jjakkung.db.import';
+/** 가져온 펫 그림 폴더가 다음에 켤 때까지 기다리는 이름 */
+const PENDING_PETS = 'pets.import';
 /** 가져온 설정 파일이 다음에 켤 때까지 기다리는 이름 */
 const staged = (f: string) => `${f}.import`;
 
@@ -173,6 +194,7 @@ export function applyPendingImport(): void {
   const pending = join(dir, PENDING_DB);
   const dropStaged = () => {
     for (const f of IMPORT_FILES) rmSync(join(dir, staged(f)), { force: true });
+    rmSync(join(dir, PENDING_PETS), { recursive: true, force: true });
   };
   // 저장 파일 없이 남은 설정 파일은 하다 만 가져오기다: 반쪽만 바꾸지 않는다
   if (!existsSync(pending)) {
@@ -180,7 +202,7 @@ export function applyPendingImport(): void {
     return;
   }
   // 못 여는 판이면 지금 저장 파일을 그대로 둔다 (가져오기에서 걸렀지만 한 번 더)
-  const version = dbVersion(pending);
+  const version = importableDbVersion(pending);
   if (version === undefined || version > SCHEMA_VERSION) {
     rmSync(pending, { force: true });
     dropStaged();
@@ -188,16 +210,43 @@ export function applyPendingImport(): void {
   }
   // 복사하지 않고 이름을 바꾼다: 켜는 중에 디스크가 차면 복사가 지금 저장 파일을 반쯤 덮은 채 던졌고,
   // 던지면 준비 뒤 일이 멈춰 펫도 메뉴 막대도 없이 떠 있었다. 같은 폴더 안 이름 바꾸기는 공간이 들지 않고 한 번에 바뀐다
+  // 지금 저장 파일의 WAL 은 바꿔 끼운 뒤 남아 있으면 새 파일에 잘못 덧씌워진다. 하지만 바꿔 끼우기가 실패하면
+  // 지금 파일에 필요하다. 먼저 합쳐(checkpoint) 비우고, 그래도 남은 것은 지우지 않고 옆으로 옮겼다가
+  // 바꿔 끼운 뒤에야 지운다 (실패하면 되돌린다)
+  const db = join(dir, 'jjakkung.db');
+  checkpoint(db);
+  const aside: [string, string][] = [];
   try {
-    for (const f of ['jjakkung.db-wal', 'jjakkung.db-shm']) rmSync(join(dir, f), { force: true });
-    renameSync(pending, join(dir, 'jjakkung.db'));
+    for (const ext of ['-wal', '-shm']) {
+      if (!existsSync(db + ext)) continue;
+      renameSync(db + ext, `${db}${ext}.before-import`);
+      aside.push([db + ext, `${db}${ext}.before-import`]);
+    }
+    renameSync(pending, db);
   } catch {
     // 못 바꾸면 지금 저장 파일과 설정으로 켠다 (가져오기 전 복사본은 before-import 폴더에 있다)
+    for (const [orig, moved] of aside)
+      try {
+        renameSync(moved, orig);
+      } catch {
+        // 되돌리지 못하면 옆 이름 그대로 둔다 (지우지 않는다)
+      }
     for (const f of ['', '-wal', '-shm']) rmSync(pending + f, { force: true });
     dropStaged();
     return;
   }
+  for (const [, moved] of aside) rmSync(moved, { force: true });
   for (const f of ['-wal', '-shm']) rmSync(pending + f, { force: true });
+  // 펫 그림은 지금 것 위에 더한다 (같은 이름이면 가져온 것. 지금 것은 before-import 폴더에 있다)
+  const pets = join(dir, PENDING_PETS);
+  if (existsSync(pets)) {
+    try {
+      cpSync(pets, join(dir, 'pets'), { recursive: true, filter: plainEntry });
+    } catch {
+      // 켜기를 멈추지 않는다: 못 넣은 그림은 펫이 기본 그림으로 보인다
+    }
+    rmSync(pets, { recursive: true, force: true });
+  }
   // 구글 캘린더로 보낸 기록도 백업 때 것이라, 다음 보내기가 지금 일정과 다시 맞추게 표시해 둔다 (gcal.ts)
   try {
     writeFileSync(join(dir, 'google-calendar-reset'), '');
@@ -214,21 +263,18 @@ export function applyPendingImport(): void {
   }
 }
 
-/**
- * 저장 파일의 판(user_version). 열 수 없거나 짝꿍 저장 파일이 아니면(0바이트, 판 0, 할 일 표가 없는 다른 SQLite) undefined.
- * 예전에는 판만 봐서 빈 파일도 통과해 지금 데이터를 빈 것으로 바꿀 수 있었다 (버그잡이 6차)
- */
-function dbVersion(file: string): number | undefined {
+/** WAL 을 본 파일에 합쳐 비운다. 못 하면(잠김, 깨짐) 넘어간다: WAL 은 지우지 않고 옆으로 옮긴다 */
+function checkpoint(file: string): void {
+  if (!existsSync(file) || !existsSync(`${file}-wal`)) return;
   try {
-    const db = new DatabaseSync(file, { readOnly: true });
+    const db = new DatabaseSync(file);
     try {
-      const d = db as unknown as Db;
-      return looksLikeOurs(d) ? schemaVersion(d) : undefined;
+      db.exec('pragma busy_timeout = 2000; pragma wal_checkpoint(truncate);');
     } finally {
       db.close();
     }
   } catch {
-    return undefined;
+    // 아래에서 옆으로 옮긴다
   }
 }
 
@@ -251,10 +297,30 @@ function modelToFile(model: Blueprint): string {
   return file;
 }
 
-export async function exportPet(parent?: BrowserWindow): Promise<string> {
+/** 갤러리 작은 그림: 본 그림을 긴 쪽 256 으로 줄인 PNG. 못 만들면(움직이는 그림 등) 없이 */
+function thumbnailOf(image: string | null | undefined): string | undefined {
+  if (!image?.startsWith('data:image/png') && !image?.startsWith('data:image/webp')) return undefined;
+  try {
+    const img = nativeImage.createFromDataURL(image);
+    if (img.isEmpty()) return undefined;
+    const { width, height } = img.getSize();
+    const small =
+      width >= height
+        ? img.resize({ width: Math.min(256, width) })
+        : img.resize({ height: Math.min(256, height) });
+    const png = small.toPNG();
+    return png.length <= THUMB_MAX_BYTES ? `data:image/png;base64,${png.toString('base64')}` : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** 지금 펫을 공유 파일 모양으로 (판 2 이름표는 encodePet 이 채운다) */
+export function currentSharedPet(): SharedPet {
   const s = settings.get();
   const imgs = petImages();
-  const pet: SharedPet = {
+  const thumbnail = thumbnailOf(imgs.main);
+  return {
     name: s.petName,
     kind: s.petKind,
     ...(imgs.main ? { image: imgs.main } : {}),
@@ -262,15 +328,26 @@ export async function exportPet(parent?: BrowserWindow): Promise<string> {
     ...(imgs.model ? { model: imgs.model } : {}),
     ...(imgs.depth ? { depth: imgs.depth } : {}),
     ...(imgs.main && s.petAge ? { age: s.petAge } : {}),
+    ...(thumbnail ? { thumbnail } : {}),
   };
+}
+
+/** .jjpet 판 2 로 저장한다. meta 로 만든 사람, 허락을 준다 (갤러리에 올리기). 저장한 경로, 그만두면 빈 글 */
+export async function exportPet(
+  parent?: BrowserWindow,
+  meta?: Partial<PetMeta>,
+  title?: string,
+): Promise<string> {
+  const pet = currentSharedPet();
   const opts = {
-    title: t('main.pet.exportTitle'),
-    defaultPath: shareFileName(s.petName),
-    filters: [{ name: t('main.pet.fileType'), extensions: ['jjpet'] }],
+    title: title ?? t('main.pet.exportTitle'),
+    defaultPath: shareFileName(pet.name),
+    filters: [{ name: t('main.pet.fileType'), extensions: [PET_FILE_EXT.slice(1)] }],
   };
   const r = await (parent ? dialog.showSaveDialog(parent, opts) : dialog.showSaveDialog(opts));
   if (r.canceled || !r.filePath) return '';
-  writeFileAtomic(r.filePath, encodePet(pet));
+  // 데려온 펫이면 만든 사람, 허락, 만든 날을 그대로 (만든 사람을 바꿔 적으면 새 작품으로)
+  writeFileAtomic(r.filePath, encodePet(pet, reexportMeta(settings.get().petMeta, meta, app.getVersion())));
   return r.filePath;
 }
 
@@ -280,13 +357,18 @@ export async function importPet(
   parent?: BrowserWindow,
   asFriend = false,
   log?: (tag: string, ...rest: unknown[]) => void,
+  /** 고를 것 없이 이 파일로 (.jjpet 두 번 눌러 열기). 크기, 형식 검사와 바꿀지 묻기는 똑같이 한다 */
+  picked?: string,
 ): Promise<{ ok: boolean; message: string }> {
   const opts = {
     title: t('main.pet.importTitle'),
     properties: ['openFile' as const],
-    filters: [{ name: t('main.pet.fileType'), extensions: ['jjpet'] }],
+    // 새 .fairy 와 예전 이름(짝꿍) 때 .jjpet 을 같이 고를 수 있다
+    filters: [{ name: t('main.pet.fileType'), extensions: [...PET_FILE_EXTS_READ] }],
   };
-  const r = await (parent ? dialog.showOpenDialog(parent, opts) : dialog.showOpenDialog(opts));
+  const r = picked
+    ? { canceled: false, filePaths: [picked] }
+    : await (parent ? dialog.showOpenDialog(parent, opts) : dialog.showOpenDialog(opts));
   const file = r.filePaths[0];
   if (r.canceled || !file) return { ok: false, message: '' };
   // 읽기 전에 크기를 본다: 큰 파일을 통째로 메모리에 올리지 않게 (버그잡이 7차)
@@ -300,6 +382,18 @@ export async function importPet(
   }
   const pet = decodePet(text);
   if ('error' in pet) return { ok: false, message: pet.error };
+  return adoptPet(pet, asFriend, log);
+}
+
+/**
+ * 검사를 마친 펫을 데려온다 (파일 가져오기, 펫 갤러리). asFriend 가 아니면 바꿀지 먼저 묻는다.
+ * 성공하면 펫 이름이 든 안내, 그만두면 빈 글
+ */
+export async function adoptPet(
+  pet: SharedPet,
+  asFriend: boolean,
+  log?: (tag: string, ...rest: unknown[]) => void,
+): Promise<{ ok: boolean; message: string }> {
   if (!asFriend) {
     const ask = await dialog.showMessageBox({
       type: 'question',
@@ -345,6 +439,8 @@ export async function importPet(
       petPoses: poses,
       // 나이 단계는 파일에 있을 때만 (없으면 지운다: 옛 펫 나이가 남지 않게)
       petAge: pet.age ?? null,
+      // 만든 사람, 사용 허락, 만든 날, 앱 판 (판 2 파일). 다시 내보낼 때 그대로 넘긴다. 판 1 이면 지운다
+      petMeta: pet.meta ?? null,
     };
     // 지금 사진 펫은 보관함으로 (6단계)
     const prep = library.newPhotoPatch();

@@ -95,8 +95,10 @@ export class EventStore {
     this.#reminders = new ReminderStore(db, 'event');
   }
 
-  #withReminds(rows: readonly Row[]): CalEvent[] {
-    const marks = this.#reminders.many(rows.map((r) => Number(r.id)));
+  #withReminds(
+    rows: readonly Row[],
+    marks = this.#reminders.many(rows.map((r) => Number(r.id))),
+  ): CalEvent[] {
     return rows.map((r) => toEvent(r, marks.get(Number(r.id)) ?? []));
   }
 
@@ -240,14 +242,41 @@ export class EventStore {
    * 컴퓨터가 꺼져 있던 사이 여러 알림이 지났어도 일정마다 한 번 (planReminders). 알림 없는 종일 일정은 아침 브리핑에 맡긴다
    */
   dueReminders(now: number): CalEvent[] {
-    const rows = this.#db
+    const rows = this.#remindRows(now);
+    // 알림 표시는 한 번에 읽는다 (예전에는 일정마다 다시 읽었다). 쓸모없어진 알림은 넘긴 것으로 적는다 (sweep)
+    const marks = this.#reminders.many(rows.map((r) => Number(r.id)));
+    const list = this.#withReminds(rows, marks);
+    const speak = this.#reminders.sweep(
+      list.map((e) => ({ id: e.id, anchor: eventAnchor(e) })),
+      marks,
+      now,
+    );
+    return list.filter((e) => speak.has(e.id));
+  }
+
+  /** dueReminders 가 볼 일정 (아직 말하지 않은 알림이 있는 것) */
+  #remindRows(now: number): Row[] {
+    return this.#db
       .prepare(
         `select * from event e where deleted_at is null and start_at > ? and start_at <= ?
          and exists (select 1 from reminder r where r.kind = 'event' and r.ref_id = e.id and r.notified_at is null)
          order by start_at, id`,
       )
       .all(now - 2 * DAY_MS, now + REMIND_MAX_MIN * 60_000 + 2 * DAY_MS) as Row[];
-    return this.#withReminds(rows).filter((e) => this.#reminders.due(e.id, eventAnchor(e), now));
+  }
+
+  /**
+   * now 뒤로 가장 먼저 울릴 일정 알림의 때 (플래너가 그때 깬다). 없으면 undefined.
+   * dueReminders 와 같은 일정만 본다: 더 먼 것은 이틀 넘게 남아 그사이 다시 묻는다
+   */
+  nextReminderAt(now: number): number | undefined {
+    const rows = this.#remindRows(now);
+    const marks = this.#reminders.many(rows.map((r) => Number(r.id)));
+    return this.#reminders.nextFire(
+      this.#withReminds(rows, marks).map((e) => ({ id: e.id, anchor: eventAnchor(e) })),
+      marks,
+      now,
+    );
   }
 
   /**
@@ -389,6 +418,20 @@ export class EventStore {
     }
   }
 
+  /**
+   * 캘린더 주소를 지웠다: 가져온 일정 중 아직 안 끝난 것(앞으로 올 것, 이어지는 것)을 지운 것으로 둔다.
+   * 맞추기가 지운 것(removed_by 'sync')이라 주소를 다시 넣으면 되살아난다. 지난 일정은 기록으로 둔다. 지운 수를 돌려준다
+   */
+  dropExternal(source: 'ics', now: number): number {
+    const r = this.#db
+      .prepare(
+        `update event set deleted_at = ?, removed_by = 'sync'
+         where source = ? and deleted_at is null and (start_at >= ? or (end_at is not null and end_at > ?))`,
+      )
+      .run(now, source, now, now);
+    return Number(r.changes);
+  }
+
   /** 알렸다: 울릴 때가 지난 알림을 다 알린 것으로 (늦었으면 곧 올 것까지) */
   markNotified(id: number, now: number): void {
     const e = this.get(id);
@@ -424,12 +467,13 @@ const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 const EN_DAY_OFFSET: Record<string, number> = {
   today: 0,
   tonight: 0,
+  'this evening': 0,
   tomorrow: 1,
   tmrw: 1,
   'day after tomorrow': 2,
   'the day after tomorrow': 2,
 };
-const EN_DAY = / (?:on )?((?:the )?day after tomorrow|today|tonight|tomorrow|tmrw) /i;
+const EN_DAY = / (?:on )?((?:the )?day after tomorrow|today|tonight|this evening|tomorrow|tmrw) /i;
 const EN_MONTHS = [
   ['january', 'jan'],
   ['february', 'feb'],
@@ -458,7 +502,21 @@ const EN_DURATION =
   / (?:for )?(?:(\d{1,2}(?:\.\d)?) ?(?:h|hr|hrs|hour|hours)(?: ?(\d{1,2}) ?(?:m|min|mins|minute|minutes))?|(\d{1,3}) ?(?:m|min|mins|minute|minutes)|(half an hour|an hour)) /i;
 // 시각: "3pm", "3:30 pm", "at 10am", "@9am", "noon", "at midnight", "at 3"(오전, 오후 없이)
 const EN_TIME_MER = / (?:at |@ ?)?(\d{1,2})(?::(\d{2}))? ?(am|pm|a\.m\.|p\.m\.) /i;
-const EN_TIME_WORD = / (?:at |@ ?)?(noon|midnight) /i;
+// 하루 끝: "eod", "cob", "end of day", "close of business" 는 오후 6시
+const EN_TIME_WORD = / (?:at |@ ?)?(noon|midnight|eod|cob|end of (?:the )?day|close of business) /i;
+/** "tonight 9", "this evening 8:30": 저녁 낱말 뒤에는 at 없이 수만 적어도 시각 */
+const EN_TIME_BARE = / (\d{1,2})(?::(\d{2}))? /;
+/** 오전, 오후 없는 1~7시를 오전으로 읽게 하는 아침 말 ("7시 조깅", "내일 6시 기상") */
+const MORNING_CUE =
+  /아침|기상|일어나|조깅|러닝|출근|등교|모닝|조식|첫차|\b(?:morning|breakfast|wake|jog|jogging|commute)\b/i;
+/** 저녁 말: 오후로 읽은 것이 맞아 보여 오전으로 바꿀 길을 주지 않는다 ("6시 저녁 약속") */
+const EVENING_CUE = /저녁|밤|퇴근|회식|야근|\b(?:dinner|evening|night|drinks)\b/i;
+/** "오전 중", "오후 중": 시간대 (일정은 그 동안, 할 일은 끝까지). 오전 9~12시, 오후 1~6시 */
+export const KO_WINDOW = / (오전|오후) ?중(?:에|까지|으로)? /;
+const WINDOWS: Record<string, { start: number; length: number }> = {
+  오전: { start: 9 * 60, length: 3 * 60 },
+  오후: { start: 13 * 60, length: 5 * 60 },
+};
 const EN_TIME_AT = / (?:at |@ ?)(\d{1,2})(?: o'?clock)? | (\d{1,2}) o'?clock /i;
 
 function monthIndex(word: string): number {
@@ -578,6 +636,19 @@ const EN_TIME_RANGE = new RegExp(
   'i',
 );
 
+/** 범위 끝의 때와 반대쪽 때 (끝에만 때를 적은 범위의 시작이 끝보다 늦을 때) */
+const OTHER_MER: Record<string, string> = {
+  am: 'pm',
+  pm: 'am',
+  오전: '오후',
+  새벽: '오후',
+  아침: '오후',
+  오후: '오전',
+  낮: '오전',
+  저녁: '오전',
+  밤: '오전',
+};
+
 /**
  * 범위의 시작과 끝(분). 끝에만 때 낱말이 있으면 시작도 그쪽으로 ("3-5pm" 은 오후 3시부터),
  * 끝에 없으면 시작보다 뒤인 가장 가까운 시각("오후 2시~4시" 는 4시가 16시, "밤 11시~1시" 는 다음 날 1시).
@@ -588,12 +659,12 @@ function rangeMinutes(
 ): { start: number; length: number; nextDay: boolean } | null {
   let startPart = a;
   if (!a.mer && b.mer) {
-    // 끝의 때를 시작에 빌려 온다. 그러면 시작이 끝보다 늦으면(11시~오후 1시) 오전
+    // 끝의 때를 시작에 빌려 온다. 그러면 시작이 끝보다 늦으면 반대쪽: "11시~오후 1시" 는 오전 11시,
+    // "11시~새벽 1시", "10-2am" 은 전날 밤 (자정을 넘는다)
     const end = clockMinute(b);
     const same = clockMinute({ ...a, mer: b.mer });
     if (!end || !same) return null;
-    startPart =
-      same.minute < end.minute ? { ...a, mer: b.mer } : { ...a, mer: b.mer === 'pm' ? 'am' : '오전' };
+    startPart = same.minute < end.minute ? { ...a, mer: b.mer } : { ...a, mer: OTHER_MER[b.mer] ?? '오전' };
   }
   const s = clockMinute(startPart);
   if (!s) return null;
@@ -602,6 +673,9 @@ function rangeMinutes(
     const e = clockMinute(b);
     if (!e) return null;
     endMin = e.minute + (e.nextDay ? 24 * 60 : 0);
+    // 오후에 시작해 끝을 오전 쪽(새벽 1시, 오전 2시, 1am)으로 적었으면 다음 날: "밤 11시~새벽 1시", "11pm-1am".
+    // 오전에 시작해 오전에 끝나거나(오전 10시~오전 9시) 끝이 오후인데 앞서면(오후 3시~2시) 틀린 범위로 둔다
+    if (endMin <= s.minute && s.minute >= 12 * 60 && e.minute < 12 * 60) endMin += 24 * 60;
   } else {
     if (b.h > 23 || b.m > 59) return null;
     const base = (b.h % 12) * 60 + b.m;
@@ -651,6 +725,19 @@ const REL_MAX_MIN = 7 * 24 * 60;
  * 날짜가 없고 그 시각이 이미 지났으면 내일. now 는 현지 날짜 today 와 지금 분으로 준다 (시험이 시간대를 타지 않게).
  */
 export function parseQuickEvent(text: string, today: string, nowMinute: number): QuickEvent | null {
+  return parseQuickEventInfo(text, today, nowMinute).ev;
+}
+
+/**
+ * parseQuickEvent 에 더해, 오전, 오후 없는 1~7시를 오후로 읽었으면 오전으로 읽은 것(am)도 준다.
+ * 빠른 입력 결과에 "(오후로 읽었어)" 와 오전으로 바꾸는 단추를 단다. 아침 말("7시 조깅")이 있으면 처음부터 오전이라 없다
+ */
+export function parseQuickEventInfo(
+  text: string,
+  today: string,
+  nowMinute: number,
+): { ev: QuickEvent | null; am?: QuickEvent } {
+  const none = { ev: null };
   let rest = ` ${normalizeQuick(text)} `;
   let day: string | null = null;
   let tonight = false;
@@ -675,13 +762,15 @@ export function parseQuickEvent(text: string, today: string, nowMinute: number):
       else offset = Math.round((/^\d/.test(m[2] ?? '') ? Number(m[2]) : 1) * 60);
     }
     const title = titleOf();
-    if (offset < 1 || offset > REL_MAX_MIN || !title) return null;
+    if (offset < 1 || offset > REL_MAX_MIN || !title) return none;
     const total = nowMinute + offset;
     return {
-      title,
-      day: plusDays(today, Math.floor(total / (24 * 60))),
-      minute: total % (24 * 60),
-      durationMin: null,
+      ev: {
+        title,
+        day: plusDays(today, Math.floor(total / (24 * 60))),
+        minute: total % (24 * 60),
+        durationMin: null,
+      },
     };
   }
 
@@ -709,32 +798,33 @@ export function parseQuickEvent(text: string, today: string, nowMinute: number):
     if (en) {
       const key = (en[1] ?? '').toLowerCase();
       day = plusDays(today, EN_DAY_OFFSET[key] ?? 0);
-      tonight = key === 'tonight';
+      tonight = key === 'tonight' || key === 'this evening';
     }
   }
   if (!day) day = takeLaterDay(rest, today, take);
   const md = take(KO_MD_RE);
-  if (md && !setMonthDay(Number(md[1]), Number(md[2]))) return null;
+  if (md && !setMonthDay(Number(md[1]), Number(md[2]))) return none;
   if (!md) {
     const enMd = take(EN_MONTH_DAY);
     const enDm = enMd ? null : take(EN_DAY_MONTH);
-    if (enMd && !setMonthDay(monthIndex(enMd[1] ?? ''), Number(enMd[2]))) return null;
-    if (enDm && !setMonthDay(monthIndex(enDm[2] ?? ''), Number(enDm[1]))) return null;
+    if (enMd && !setMonthDay(monthIndex(enMd[1] ?? ''), Number(enMd[2]))) return none;
+    if (enDm && !setMonthDay(monthIndex(enDm[2] ?? ''), Number(enDm[1]))) return none;
     if (!enMd && !enDm) {
       const nm = take(KO_MONTH_DAY_REL) ?? take(KO_BARE_DAY);
       if (nm) {
         const d = bareDay(nm, today);
-        if (!d) return null;
+        if (!d) return none;
         day = d;
       }
     }
   }
   // 요일: { 요일 번호, 다음 주인가 }
   let wd: { target: number; next: boolean; weeks: number } | null = null;
-  const koWd = take(KO_WD_RE);
-  if (koWd)
-    wd = { target: WEEKDAYS.indexOf(koWd[2] ?? ''), next: koWeeks(koWd[1]) > 0, weeks: koWeeks(koWd[1]) };
-  else {
+  const koWd = take(KO_WD_RE) ?? take(KO_WD_SHORT);
+  if (koWd) {
+    const { lead, name } = koWeekdayOf(koWd);
+    wd = { target: WEEKDAYS.indexOf(name), next: koWeeks(lead) > 0, weeks: koWeeks(lead) };
+  } else {
     const enWd = take(EN_WEEKDAY);
     const next = (enWd?.[1] ?? '').toLowerCase() === 'next';
     if (enWd) wd = { target: enWeekdayIndex(enWd[2] ?? ''), next, weeks: next ? 1 : 0 };
@@ -745,6 +835,11 @@ export function parseQuickEvent(text: string, today: string, nowMinute: number):
   let nextDay = false;
   // 오전, 오후를 적었나. 안 적었으면 "tonight at 8" 을 저녁으로 본다
   let meridiem = false;
+  // 오전, 오후 없이 1~7시라 오후로 읽었다 (아침 말이 있으면 오전으로, 없으면 오전으로 바꿀 길을 준다)
+  let bare = false;
+  const bareHour = (p: ClockPart) => !p.mer && !p.padded && p.h >= 1 && p.h <= 7;
+  // "오전 중", "오후 중" 시간대: 날짜를 정할 때 시작이 아니라 끝이 지났는지 본다
+  let windowLength = 0;
 
   // 시각 범위는 길이보다 먼저 ("2시~4시" 의 "4시" 를 따로 읽지 않게)
   const koRange = take(KO_TIME_RANGE);
@@ -752,20 +847,22 @@ export function parseQuickEvent(text: string, today: string, nowMinute: number):
     const a = readKoPart(koRange[1] ?? '');
     const b = readKoPart(koRange[2] ?? '');
     const r = a && b ? rangeMinutes(a, b) : null;
-    if (!r) return null;
+    if (!r) return none;
     minute = r.start;
     durationMin = r.length;
     nextDay = r.nextDay;
     meridiem = Boolean(a?.mer || b?.mer);
+    bare = !meridiem && !!a && bareHour(a);
   } else {
     const en = enRange(rest);
     if (en) {
       rest = rest.replace(en.m[0], ' ');
       const r = rangeMinutes(en.a, en.b);
-      if (!r) return null;
+      if (!r) return none;
       minute = r.start;
       durationMin = r.length;
       meridiem = Boolean(en.a.mer || en.b.mer);
+      bare = !meridiem && bareHour(en.a);
     }
   }
 
@@ -788,7 +885,7 @@ export function parseQuickEvent(text: string, today: string, nowMinute: number):
         mer: (enMer[3] ?? '').toLowerCase().startsWith('p') ? 'pm' : 'am',
         padded: false,
       });
-      if (!c || Number(enMer[2] ?? 0) > 59) return null;
+      if (!c || Number(enMer[2] ?? 0) > 59) return none;
       minute = c.minute;
       meridiem = true;
     }
@@ -797,9 +894,9 @@ export function parseQuickEvent(text: string, today: string, nowMinute: number):
     const word = take(EN_TIME_WORD) ?? take(KO_TIME_WORD);
     if (word) {
       const w = (word[1] ?? '').toLowerCase();
-      minute = w === 'noon' || w === '정오' ? 12 * 60 : 0;
-      // 자정은 그 날 밤 (다음 날 0시). 영어 midnight 는 tonight 와 같이 쓸 때만 (예전과 같이)
-      nextDay = w === '자정' || (w === 'midnight' && tonight);
+      minute = w === 'noon' || w === '정오' ? 12 * 60 : w === 'midnight' || w === '자정' ? 0 : 18 * 60;
+      // 자정, midnight 는 그 날 밤 (다음 날 0시): "금요일 자정", "friday midnight" 은 토요일 0시
+      nextDay = w === '자정' || w === 'midnight';
       meridiem = true;
     }
   }
@@ -808,10 +905,11 @@ export function parseQuickEvent(text: string, today: string, nowMinute: number):
     if (hm) {
       const p = readKoPart(hm[1] ?? '');
       const c = p && clockMinute(p);
-      if (!c) return null;
+      if (!c) return none;
       minute = c.minute;
       nextDay = c.nextDay;
       meridiem = Boolean(p.mer);
+      bare = bareHour(p);
     }
   }
   if (minute === null) {
@@ -819,39 +917,70 @@ export function parseQuickEvent(text: string, today: string, nowMinute: number):
     if (ko) {
       const p = readKoPart(ko[1] ?? '');
       const c = p && clockMinute(p);
-      if (!c) return null;
+      if (!c) return none;
       minute = c.minute;
       nextDay = c.nextDay;
       meridiem = Boolean(p.mer);
+      bare = bareHour(p);
     }
   }
   if (minute === null) {
     const at = take(EN_TIME_AT);
     if (at) {
       let h = Number(at[1] ?? at[2]);
-      if (h >= 1 && h <= 7) h += 12;
+      bare = h >= 1 && h <= 7;
+      if (bare) h += 12;
       minute = h * 60;
     }
   }
-  if (minute === null || minute >= 24 * 60) return null;
-  if (tonight && !meridiem && minute < 12 * 60) minute += 12 * 60;
-
-  const explicit = Boolean(day || wd);
-  if (wd && wd.target >= 0) {
-    if (wd.next) day = plusDays(today, weekdayOffset(today, wd.target, true) + (wd.weeks - 1) * 7);
-    else {
-      let diff = weekdayOffset(today, wd.target, false);
-      // 그 요일 밤 12시는 다음 날 0시라 지난 시각으로 보지 않는다
-      if (diff === 0 && minute <= nowMinute && !nextDay) diff = 7;
-      day = plusDays(today, diff);
+  // "tonight 9", "this evening 8:30": 저녁 낱말 뒤에는 at 없이 수만 적어도 시각
+  if (minute === null && tonight) {
+    const n = take(EN_TIME_BARE);
+    if (n && Number(n[1]) <= 12 && Number(n[2] ?? 0) <= 59)
+      minute = (Number(n[1]) % 12) * 60 + Number(n[2] ?? 0);
+  }
+  // "오전 중", "오후 중": 그 시간대 (다른 시각이 없을 때만)
+  if (minute === null) {
+    const w = take(KO_WINDOW);
+    const win = w ? WINDOWS[w[1] ?? ''] : undefined;
+    if (win) {
+      minute = win.start;
+      if (durationMin === null) durationMin = win.length;
+      windowLength = win.length;
+      meridiem = true;
     }
   }
+  if (minute === null || minute >= 24 * 60) return none;
+  if (tonight) bare = false;
+  if (tonight && !meridiem && minute < 12 * 60) minute += 12 * 60;
 
-  if (!day) day = minute > nowMinute ? today : plusDays(today, 1);
-  else if (explicit && nextDay) day = plusDays(day, 1);
   const title = titleOf();
-  if (!title) return null;
-  return { title, day, minute, durationMin };
+  if (!title) return none;
+  const explicit = Boolean(day || wd);
+  const said = day;
+  /** 그 시각(분)의 날짜: 적은 날짜, 요일, 없으면 오늘이나 (지났으면) 내일 */
+  const dayFor = (m: number): string => {
+    let d = said;
+    if (wd && wd.target >= 0) {
+      if (wd.next) d = plusDays(today, weekdayOffset(today, wd.target, true) + (wd.weeks - 1) * 7);
+      else {
+        let diff = weekdayOffset(today, wd.target, false);
+        // 그 요일 밤 12시는 다음 날 0시라 지난 시각으로 보지 않는다
+        if (diff === 0 && m + windowLength <= nowMinute && !nextDay) diff = 7;
+        d = plusDays(today, diff);
+      }
+    }
+    if (!d) return m + windowLength > nowMinute ? today : plusDays(today, 1);
+    return explicit && nextDay ? plusDays(d, 1) : d;
+  };
+  // 아침 말이 있으면 오전으로 ("7시 조깅"). 없으면 오후로 두고 오전으로 읽은 것도 준다
+  if (bare && minute >= 12 * 60 && MORNING_CUE.test(title)) {
+    minute -= 12 * 60;
+    bare = false;
+  }
+  const ev = { title, day: dayFor(minute), minute, durationMin };
+  if (!bare || minute < 12 * 60 || EVENING_CUE.test(title)) return { ev };
+  return { ev, am: { title, day: dayFor(minute - 12 * 60), minute: minute - 12 * 60, durationMin } };
 }
 
 // ---- 종일 일정 (일정 탭에서만). "내일 제주도 여행", "10월 10일~12일 제주도", "from tomorrow for 3 days" ----
@@ -871,7 +1000,7 @@ export const ALL_DAY_MAX_DAYS = 92;
 
 /** 시각처럼 보이는 말. 시각 일정으로 못 읽었는데 이런 말이 있으면(25시, 3시 75분) 종일로 넣지 않고 되묻는다 */
 const TIME_HINT =
-  /\d{1,2}시(?!간)|\d{1,2}:\d{2}|\d ?(?:am|pm|a\.m\.|p\.m\.)(?![a-z])|(?:^|\s)(?:noon|midnight)(?:\s|$)|(?:^|\s)(?:at|@) ?\d|\d ?o'?clock/i;
+  /\d{1,2}시(?!간)|(?:^|\s)(?:자정|정오)|\d{1,2}:\d{2}|\d ?(?:am|pm|a\.m\.|p\.m\.)(?![a-z])|(?:^|\s)(?:noon|midnight)(?:\s|$)|(?:^|\s)(?:at|@) ?\d|\d ?o'?clock/i;
 
 // "내일모레"는 모레 (내일보다 먼저 본다: 앞의 "내일"만 읽고 "모레"를 제목에 남기지 않게)
 const KO_REL: Record<string, number> = { 오늘: 0, 내일모레: 2, 내일: 1, 모레: 2, 글피: 3 };
@@ -879,6 +1008,19 @@ const KO_REL_RE = / (오늘|내일모레|내일|모레|글피) /;
 // 월/일 뒤 조사: "10월 20일에", 요일 뒤: "금요일에", "금요일날". "이번주 금요일" 의 이번주도 뗀다
 const KO_MD_RE = / (\d{1,2})[/.월] ?(\d{1,2})일?(?:에|엔)? /;
 const KO_WD_RE = / (?:(다다음|다음|이번) ?주 ?)?([일월화수목금토])요일(?:에|엔|날)? /;
+/**
+ * 한 글자 요일: 뒤에 시각이 오거나("금 3시 회의", "토 오전 10시") 앞에 다음 주, 이번 주가 있을 때만
+ * ("다음주 월 9시", "다음 주 금까지 보고서"). "일"은 일하다일 수 있어 앞말과 시각이 다 있을 때만 ("다음 주 일 3시")
+ */
+const KO_CLOCK_AHEAD = `(?:(?:${KO_MER}) ?)?\\d{1,2}(?:시|:\\d{2})`;
+const KO_WD_SHORT = new RegExp(
+  ` (?:(?:(다다음|다음|이번) ?주 ?)?([월화수목금토])(?:에|엔)? (?=${KO_CLOCK_AHEAD})|(다다음|다음|이번) ?주 ?([월화수목금토])(?:에|엔|까지)? |(다다음|다음|이번) ?주 ?(일)(?:에|엔)? (?=${KO_CLOCK_AHEAD}))`,
+);
+/** KO_WD_RE, KO_WD_SHORT 로 찾은 것 → 앞말(다음, 이번)과 요일 글자 */
+const koWeekdayOf = (m: RegExpMatchArray) => ({
+  lead: m[1] ?? m[3] ?? m[5],
+  name: m[2] ?? m[4] ?? m[6] ?? '',
+});
 /** "다음 주" 1, "다다음 주" 2, 나머지 0 */
 const koWeeks = (lead: string | undefined) => (lead === '다다음' ? 2 : lead === '다음' ? 1 : 0);
 // 상대 날짜: "3일 뒤", 영어 "in 3 days", "in a week", "next week", "end of month", "this weekend" (quick-words.ts EN_REL_DAY_WORD)
@@ -911,8 +1053,8 @@ function takeLaterDay(
 // "다음 달 5일", "이번 달 20일", 달 없이 "15일" (오늘보다 앞이면 다음 달). "3일간", "3일 동안" 은 날 수라 뺀다
 const KO_MONTH_DAY_REL = / (다음|이번) ?달 ?(\d{1,2})일(?:에|엔)? /;
 const KO_BARE_DAY = / ()(\d{1,2})일(?!간| ?동안| ?뒤| ?후|째|차)(?:에|엔)? /;
-// 자정(그 날 밤 12시), 정오
-const KO_TIME_WORD = / (자정|정오)(?:에)? /;
+// 자정(그 날 밤 12시), 정오. 뒤에 조사: "자정까지", "정오부터", "정오쯤"
+const KO_TIME_WORD = new RegExp(` (자정|정오)${KO_TIME_TAIL} `);
 
 /** "다음 달 5일", "15일" → 날짜. 없는 날짜면 null */
 function bareDay(m: RegExpMatchArray, today: string): string | null {
@@ -994,10 +1136,11 @@ function takeDay(
     weeks > 0
       ? plusDays(today, weekdayOffset(today, target, true) + (weeks - 1) * 7)
       : plusDays(base, weekdayOffset(base, target, false));
-  const koWd = take(KO_WD_RE);
+  const koWd = take(KO_WD_RE) ?? take(KO_WD_SHORT);
   const enWd = koWd ? null : (take(EN_WD_FULL_RE) ?? take(looseWeekday ? EN_WD_LOOSE_RE : EN_WD_ABBR_RE));
   if (koWd) {
-    day = weekdayDay(WEEKDAYS.indexOf(koWd[2] ?? ''), koWeeks(koWd[1]));
+    const { lead, name } = koWeekdayOf(koWd);
+    day = weekdayDay(WEEKDAYS.indexOf(name), koWeeks(lead));
   } else if (enWd) {
     const word = enWd[enWd.length - 1] ?? '';
     const lead = (enWd[1] ?? enWd[2] ?? '').toLowerCase();
@@ -1180,7 +1323,7 @@ export function timeLabel(minute: number): string {
 // ---- 할 일 마감 (빠른 입력, 할 일 탭). 날짜는 맨 앞이나 맨 끝에 있을 때만 읽는다 ("오늘의 메모"는 제목) ----
 
 const KO_DUE_TOKEN =
-  `(?:(?:다다음|다음|이번) ?주 ?)?[일월화수목금토]요일|${KO_REL_DAY_WORD}|` +
+  `(?:(?:다다음|다음|이번) ?주 ?)?[일월화수목금토]요일|(?:다다음|다음|이번) ?주 ?[월화수목금토]|${KO_REL_DAY_WORD}|` +
   '\\d{1,2}월 ?\\d{1,2}일|\\d{1,2}/\\d{1,2}|(?:다음|이번) ?달 ?\\d{1,2}일|\\d{1,2}일 ?(?:뒤|후)|\\d{1,2}일|오늘|내일모레|내일|모레|글피';
 const KO_DUE_PARTICLE = '(?:까지|에|엔|날)?';
 const KO_DUE_HEAD = new RegExp(`^(${KO_DUE_TOKEN})${KO_DUE_PARTICLE} (?!동안|간 )`);

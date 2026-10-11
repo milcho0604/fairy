@@ -130,7 +130,7 @@ test('회고 내일로 넘기기 되돌리기: 아직 내일 마감인 것만 �
   ]);
 });
 
-test('다음 할 일: 30분 안 일정 준비 → 지난 중요 → 오늘 중요 → 오늘 마감 → 오래된 중요', () => {
+test('다음 할 일: 30분 안 일정 준비 → 마감 지남 → 오늘 중요 → 중요 → 오늘 마감 → 습관', () => {
   const now = new Date(2026, 9, 10, 10, 0).getTime();
   let seq = 0;
   const todo = (title: string, due: string | null, important = false, more: Partial<NextUpTodo> = {}) => ({
@@ -162,23 +162,29 @@ test('다음 할 일: 30분 안 일정 준비 → 지난 중요 → 오늘 중�
     { ...soon, startAt: now + 5 * MIN, allDay: true },
   ];
   assert.deepEqual(pick(all, notSoon), { kind: 'todo', id: lateImp.id, title: '지난 중요', why: 'overdue' });
-  assert.equal(pick([oldImportant, today, todayImp, late], [])?.title, '오늘 중요');
+  // 마감 지난 할 일이 먼저 (중요가 아니어도). 그다음 중요(오늘 마감 먼저), 오늘 마감, 습관
+  assert.equal(pick([oldImportant, today, todayImp, late], [])?.title, '지난 보통');
+  assert.equal(pick([oldImportant, today, todayImp], [])?.title, '오늘 중요');
+  assert.equal(pick([oldImportant, today], [])?.title, '오래된 중요');
+  const habit = todo('습관 운동', '2026-10-08', false, { repeat: 'daily' });
+  assert.equal(pick([habit, today], [])?.title, '오늘 보통');
+  assert.deepEqual(pick([habit], []), { kind: 'todo', id: habit.id, title: '습관 운동', why: 'habit' });
   // 오늘 마감끼리는 시각이 이른 것부터 (시각 없는 것은 뒤)
-  assert.deepEqual(pick([oldImportant, today, todayEarly, late], []), {
+  assert.deepEqual(pick([today, todayEarly], []), {
     kind: 'todo',
     id: todayEarly.id,
     title: '오늘 보통 9시',
     why: 'today',
   });
   // 오래된 중요: 먼저 넣은 것
-  assert.deepEqual(pick([newImportant, oldImportant, late], []), {
+  assert.deepEqual(pick([newImportant, oldImportant], []), {
     kind: 'todo',
     id: oldImportant.id,
     title: '오래된 중요',
     why: 'important',
   });
-  // 지난 보통 할 일만 있으면 고르지 않는다 (회고, 마감 알림이 챙긴다)
-  assert.equal(pick([late, done], []), undefined);
+  assert.equal(pick([late, done], [])?.title, '지난 보통');
+  assert.equal(pick([done], []), undefined);
   assert.equal(nextUp({ todos: [], events: [], now }), undefined);
 });
 

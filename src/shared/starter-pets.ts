@@ -2,7 +2,7 @@
 // 앱의 AI 일러스트로 그리고 앱과 같은 배경 지우기(IS-Net, 가장자리 바탕색 빼기)로 오린 PNG 를 resources/pets/ 에 넣었다.
 // 고르면 그림을 사용자 데이터 pets/ 에 복사해 지금 사진 펫으로 둔다. 그 뒤로는 사진 펫과 똑같다
 // (포즈 없음, 얼굴 아이콘, 입체 피규어도 나중에 만들 수 있다). 코드로 그리는 기본 펫(PetKind)과는 따로다
-import { t } from './i18n/index.ts';
+import { dicts, t } from './i18n/index.ts';
 import { isPetKind, type PetKind } from './settings.ts';
 
 export const STARTER_IDS = ['milk', 'choco'] as const;
@@ -20,6 +20,15 @@ export const STARTER_PETS: readonly { id: StarterId; readonly name: string; read
       return t(`common.starter.${id}.desc`);
     },
   }));
+
+/**
+ * 고른 그대로의 이름인지: 어느 말의 이름이든 (한국어로 고른 "초코" 는 영어로 바꿔도 손대지 않은 초코다.
+ * 지금 말 이름하고만 견주면 말을 바꾼 뒤 보관함에 초코가 하나 더 생겼다)
+ */
+export function isStarterName(id: StarterId, name: string): boolean {
+  const key = `common.starter.${id}` as const;
+  return Object.values(dicts).some((d) => d[key] === name);
+}
 
 /** 앱에 든 그림 파일 이름 (resources/pets/ 안) */
 export const starterResource = (id: StarterId): string => `${id}.png`;

@@ -68,7 +68,7 @@ test('주소: 쿼리와 # 뒤, 아이디:비번, 긴 아이디 조각을 가린�
   );
   assert.equal(
     redactLog('https://zoom.us/j/123?pwd=abc#success'),
-    'https://zoom.us/j/123?<redacted>#<redacted>',
+    'https://zoom.us/<meeting>?<redacted>#<redacted>',
   );
   assert.equal(redactLog('https://user:pass@example.com/x'), 'https://<secret>@example.com/x');
   // 쿼리 속 토큰은 쿼리째 한 번에, 경로 속 토큰은 토큰으로
@@ -162,18 +162,18 @@ test('가린 곳 수를 센다. 이미 가린 글을 다시 넣어도 같은 글
 
 test('실제 기록 꼴 한 덩어리', () => {
   const log = [
-    '2026-10-07T01:00:00.000Z [db] 못 엶 SQLITE_BUSY: /Users/kimcs/Library/Application Support/jjakkung/jjakkung.db',
+    '2026-10-07T01:00:00.000Z [db] 못 엶 SQLITE_BUSY: /Users/kimcs/Library/Application Support/fairy/jjakkung.db',
     '2026-10-07T01:00:01.000Z [calendar] 실패 TypeError',
-    '2026-10-07T01:00:02.000Z [update] 확인 실패 net::ERR_NAME_NOT_RESOLVED https://api.github.com/repos/milcho0604/jjakkung/releases/latest',
+    '2026-10-07T01:00:02.000Z [update] 확인 실패 net::ERR_NAME_NOT_RESOLVED https://api.github.com/repos/milcho0604/fairy-releases/releases/latest',
     '2026-10-07T01:00:03.000Z [maker] illust Error: 401 https://router.huggingface.co/x?token=hf_abcdefgh12345678',
     '2026-10-07T01:00:04.000Z [link] open zoom.us',
   ].join('\n');
   const out = redactLog(log, MAC);
   assert.ok(!out.includes('kimcs'));
   assert.ok(!out.includes('hf_'));
-  assert.ok(out.includes('~/Library/Application Support/jjakkung/jjakkung.db'));
+  assert.ok(out.includes('~/Library/Application Support/fairy/jjakkung.db'));
   assert.ok(out.includes('net::ERR_NAME_NOT_RESOLVED'));
-  assert.ok(out.includes('https://api.github.com/repos/milcho0604/jjakkung/releases/latest'));
+  assert.ok(out.includes('https://api.github.com/repos/milcho0604/fairy-releases/releases/latest'));
   assert.ok(out.includes('https://router.huggingface.co/x?<redacted>'));
 });
 
@@ -249,4 +249,43 @@ test('보안 검토: 긴 글자 줄도 빨리 (정규식이 줄 길이의 제곱
     host: 'kim-mac',
   });
   assert.ok(performance.now() - at < 400, `${Math.round(performance.now() - at)}ms`);
+});
+
+test('한국 전화번호와 주민등록번호를 가린다. 날짜, 시각, 버전은 둔다', () => {
+  for (const phone of [
+    '010-1234-5678',
+    '01012345678',
+    '010 1234 5678',
+    '010.1234.5678',
+    '+82 10-1234-5678',
+    '+821012345678',
+    '02-123-4567',
+    '031-1234-5678',
+    '070-1234-5678',
+  ])
+    assert.equal(redactLog(`전화 ${phone} 로`), '전화 <phone> 로', phone);
+  assert.equal(redactLog('주민 900101-1234567 끝'), '주민 <rrn> 끝');
+  assert.equal(redactLog('주민 9001011234567 끝'), '주민 <rrn> 끝');
+  const keep = '2026-10-11 09:30:00 v0.2.0 pid=12345 size=1048576 port 9851';
+  assert.equal(redactLog(keep), keep);
+});
+
+test('맨 key=, pass=, pw= 값을 가린다', () => {
+  assert.equal(redactLog('key=abcd1234 pass=hunter2 pw: "p w"'), 'key=<secret> pass=<secret> pw: "<secret>"');
+  assert.equal(redactLog('private_key=xyz access-key: AB12'), 'private_key=<secret> access-key: <secret>');
+  // 다른 낱말 속 key 는 두지 않는다 (monkey, keyboard)
+  assert.equal(redactLog('keyboard layout, monkey=3'), 'keyboard layout, monkey=3');
+});
+
+test('화상 회의 주소와 Meet 코드를 가린다', () => {
+  assert.equal(redactLog('https://us02web.zoom.us/j/81234567890'), 'https://us02web.zoom.us/<meeting>');
+  assert.equal(redactLog('https://meet.google.com/abc-defg-hij'), 'https://meet.google.com/<meeting>');
+  assert.equal(
+    redactLog('https://teams.microsoft.com/l/meetup-join/19%3ameeting_x/0'),
+    'https://teams.microsoft.com/<meeting>',
+  );
+  assert.equal(redactLog('https://example.com/j/9988776655 ok'), 'https://example.com/j/<meeting> ok');
+  assert.equal(redactLog('코드 abc-defg-hij 로 들어와'), '코드 <meeting> 로 들어와');
+  // 회의 호스트라도 첫 화면은 둔다
+  assert.equal(redactLog('https://zoom.us/'), 'https://zoom.us/');
 });

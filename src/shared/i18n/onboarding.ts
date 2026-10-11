@@ -4,13 +4,13 @@ import type { Translation } from './types.ts';
 // 첫 실행 안내 창
 export const ko = {
   'onboarding.pages': (v: { page: number; total: number }) => `${v.total}쪽 중 ${v.page}쪽`,
-  'onboarding.hello.title': '반가워! 화면 위에서 같이 일할 짝꿍이야.',
+  'onboarding.hello.title': '반가워! 화면 위에서 같이 일할 페어리야.',
   'onboarding.hello.lead': '할 일을 끝내면 코인이 쌓이고, 코인으로 밥과 장난감을 사 줄 수 있어.',
   'onboarding.hello.name': '이름',
   'onboarding.hello.nameEmpty': '이름은 비울 수 없어. 원래 이름으로 둘게.',
   'onboarding.hello.nameMax': '이름은 {max}자까지야.',
   'onboarding.hello.look': '모습',
-  'onboarding.hello.kinds': '기본 펫 모양',
+  'onboarding.hello.kinds': '기본 페어리 모양',
   /** 그림으로 들어 있는 친구 (밀크, 초코) 묶음 화면 읽기 */
   'onboarding.hello.starters': '그림 친구',
   'onboarding.hello.photo': '사진으로',
@@ -21,8 +21,8 @@ export const ko = {
   'onboarding.look.granted': '화면 기록 권한이 있어',
   'onboarding.look.needed': '화면 기록 권한이 필요해',
   'onboarding.look.howTo':
-    '시스템 설정 > 개인정보 보호 및 보안 > 화면 및 시스템 오디오 녹음에서 Jjakkung을 켜 줘. 켠 다음에는 짝꿍을 껐다 켜야 해. ' +
-    '이미 켜져 있는데도 이렇게 나오면 목록에서 Jjakkung을 골라 − 버튼으로 지우고, 짝꿍을 다시 켠 뒤 같이 보기에서 맥이 물을 때 허용해 줘. ' +
+    '시스템 설정 > 개인정보 보호 및 보안 > 화면 및 시스템 오디오 녹음에서 fairy를 켜 줘. 켠 다음에는 페어리를 껐다 켜야 해. ' +
+    '이미 켜져 있는데도 이렇게 나오면 목록에서 fairy를 골라 − 버튼으로 지우고, 페어리를 다시 켠 뒤 같이 보기에서 맥이 물을 때 허용해 줘. ' +
     '같이 보기를 안 쓸 거면 넘어가도 돼.',
   'onboarding.look.openSettings': '시스템 설정 열기',
   'onboarding.look.windows': '윈도우는 따로 권한이 필요 없어',
@@ -55,7 +55,7 @@ export const en: Translation<typeof ko> = {
   'onboarding.hello.nameEmpty': "A name can't be empty. Keeping the old one.",
   'onboarding.hello.nameMax': 'Names can be up to {max} characters.',
   'onboarding.hello.look': 'Look',
-  'onboarding.hello.kinds': 'Default pet look',
+  'onboarding.hello.kinds': 'Default fairy look',
   'onboarding.hello.starters': 'Illustrated friends',
   'onboarding.hello.photo': 'From a photo',
   'onboarding.hello.photoHint':
@@ -66,8 +66,8 @@ export const en: Translation<typeof ko> = {
   'onboarding.look.granted': 'Screen recording is allowed',
   'onboarding.look.needed': 'Screen recording permission needed',
   'onboarding.look.howTo':
-    'Turn on Jjakkung in System Settings > Privacy & Security > Screen & System Audio Recording, then restart Jjakkung. ' +
-    'Already on and still seeing this? Select Jjakkung in the list, remove it with the − button, restart Jjakkung and allow it when macOS asks again. ' +
+    'Turn on fairy in System Settings > Privacy & Security > Screen & System Audio Recording, then restart fairy. ' +
+    'Already on and still seeing this? Select fairy in the list, remove it with the − button, restart fairy and allow it when macOS asks again. ' +
     "If you won't use Look together, you can skip this.",
   'onboarding.look.openSettings': 'Open System Settings',
   'onboarding.look.windows': 'No extra permission needed on Windows',

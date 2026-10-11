@@ -1,0 +1,203 @@
+// 성격마다 다른 정해진 말 (2026-10-11): 인사, 칭찬, 쉬자는 말처럼 자주 하는 말을 고른 성격(다정한 친구, 존댓말 비서,
+// 츤데레, 차분한 선생님) 말투로. 다정한 친구는 원래 말 그대로이고, 나머지는 사전의 voice.<성격>.<원래 키> 를 쓴다.
+// AI 없이 정해진 말이다. 메인이 시작할 때 setVoiceSource 로 지금 성격을 읽는 곳을 정한다 (안 정하면 다정한 친구)
+import type { PersonaId } from './ai/persona.ts';
+import { dicts, getLang, type I18nKey, t } from './i18n/index.ts';
+import {
+  applyStyle,
+  callWord,
+  DEFAULT_STYLE,
+  fillLine,
+  type Moment,
+  type SpeechStyle,
+} from './speech-style.ts';
+
+/**
+ * 성격마다 말투를 바꾸는 말 가운데 세 성격(존댓말 비서, 츤데레, 차분한 선생님) 모두 따로 쓴 것.
+ * 이 밖에도 voice.<성격>.<원래 키> 가 사전에 있으면 그 말을 쓴다 (존댓말 비서는 말풍선의 정해진 말을 거의 다,
+ * 츤데레와 차분한 선생님은 감정이 실린 말만. 정보만 전하는 말은 반말 그대로 같이 쓴다)
+ */
+export const VOICED = [
+  // 인사
+  'briefing.hi.morning',
+  'briefing.hi.day',
+  'briefing.hi.evening',
+  'routine.hi.first',
+  'routine.hi.early',
+  'routine.hi.onTime',
+  'routine.hi.late',
+  'routine.bye.rest',
+  'routine.bye.head',
+  'routine.rest',
+  // 칭찬
+  'companion.cheer.clear',
+  'companion.cheer.streak',
+  'companion.cheer.count',
+  'companion.anniv.day',
+  'companion.anniv.late',
+  'companion.anniv.year',
+  'pet.fed',
+  'pet.fedWith',
+  'routine.bye.doneMany',
+  'routine.bye.doneOne',
+  'briefing.review.none',
+  'briefing.review.one',
+  'briefing.review.many',
+  // 쉬자, 하자는 말
+  'pet.rest.1',
+  'pet.rest.2',
+  'pet.rest.3',
+  'routine.cue',
+  'briefing.next',
+] as const satisfies readonly I18nKey[];
+
+/** 원래 말을 덮는 성격 (다정한 친구는 원래 말) */
+export const VOICE_PERSONAS = ['polite', 'tsundere', 'calm'] as const satisfies readonly PersonaId[];
+
+/** 말을 따로 쓴 성격. 나머지(프리셋, 내 말투)는 이 가운데 하나의 말을 규칙으로 바꾼다 (shared/speech-style.ts) */
+export type WrittenPersona = 'friend' | 'polite' | 'tsundere' | 'calm';
+const WRITTEN = new Set<PersonaId>(['friend', 'polite', 'tsundere', 'calm']);
+
+/** 말투 프리셋 (2026-10-11): 정해진 말 전부를 같은 규칙으로 바꾸니 빠지는 말이 없다 */
+export const PRESET_STYLES: Record<Exclude<PersonaId, WrittenPersona | 'custom'>, SpeechStyle> = {
+  cheer: { ...DEFAULT_STYLE, bang: 'strong', emoji: 'many' },
+  cat: { ...DEFAULT_STYLE, ending: '냥', bang: 'soft', emoji: 'some' },
+  puppy: { ...DEFAULT_STYLE, ending: '멍', bang: 'strong', emoji: 'some' },
+  sageuk: { ...DEFAULT_STYLE, level: 'hao', bang: 'soft', emoji: 'none' },
+  announcer: { ...DEFAULT_STYLE, level: 'hapsyo', bang: 'soft', emoji: 'none' },
+};
+export const PRESET_IDS = Object.keys(PRESET_STYLES) as (keyof typeof PRESET_STYLES)[];
+
+let source: () => PersonaId = () => 'friend';
+let customSource: () => SpeechStyle = () => DEFAULT_STYLE;
+let petNameSource: () => string = () => '';
+let todoSource: () => string | undefined = () => undefined;
+
+/** 내 말투, 펫 이름, 지금 먼저 할 일 (직접 쓴 말의 {name}, {todo}) 을 읽는 곳. 메인이 시작할 때 정한다 */
+export function setSpeechSource(o: {
+  style: () => SpeechStyle;
+  petName: () => string;
+  todo?: () => string | undefined;
+}): void {
+  customSource = o.style;
+  petNameSource = o.petName;
+  todoSource = o.todo ?? (() => undefined);
+}
+
+/** 성격의 말투 규칙. 말을 따로 쓴 성격이면 undefined */
+export function styleOf(persona: PersonaId, custom: SpeechStyle = customSource()): SpeechStyle | undefined {
+  if (WRITTEN.has(persona)) return undefined;
+  if (persona === 'custom') return custom;
+  return PRESET_STYLES[persona as keyof typeof PRESET_STYLES];
+}
+
+/** 이 성격이 바탕으로 쓰는 말 (반말이면 다정한 친구, 높임이면 존댓말 비서) */
+export function basePersonaOf(persona: PersonaId, custom: SpeechStyle = customSource()): WrittenPersona {
+  if (WRITTEN.has(persona)) return persona as WrittenPersona;
+  return styleOf(persona, custom)?.level === 'banmal' ? 'friend' : 'polite';
+}
+
+/** 반말로 말하는 성격인지 (채팅 AI 답 다듬기에 쓴다) */
+export const isBanmal = (persona: PersonaId, custom: SpeechStyle = customSource()): boolean =>
+  basePersonaOf(persona, custom) !== 'polite';
+
+/** 때마다 직접 쓴 말로 바꿀 수 있는 말 (내 말투) */
+const MOMENT_OF: [RegExp, Moment][] = [
+  [/^(briefing\.hi\.morning|routine\.hi\.|idle\.morning\.)/, 'morning'],
+  [
+    /^(companion\.cheer\.|idle\.praise\.|idle\.done\.|routine\.bye\.done|briefing\.review\.(one|many))/,
+    'praise',
+  ],
+  [/^pet\.rest\./, 'rest'],
+  [/^(idle\.late\.|idle\.night\.|routine\.bye\.rest)/, 'night'],
+];
+export const momentOf = (key: string): Moment | undefined => MOMENT_OF.find(([re]) => re.test(key))?.[1];
+
+/** 이름을 불러 시작하는 인사 */
+const GREET = /^(briefing\.hi\.|routine\.hi\.|idle\.back\.)/;
+/** 이모지를 많이 고르면 붙이는 그림 (때마다). 정보만 전하는 말(일정, 알림)에는 붙이지 않는다 */
+function emojiFor(key: string, persona: PersonaId): string | undefined {
+  const m = momentOf(key);
+  if (persona === 'cheer' && (m || /^(idle|companion|routine\.(hi|bye\.head|cue|rest))/.test(key)))
+    return '📣';
+  if (m === 'morning') return '☀️';
+  if (m === 'praise') return '👏';
+  if (m === 'rest') return '🍵';
+  if (m === 'night') return '🌙';
+  if (
+    /^(idle\.|companion\.|pet\.(fed|life|energy|unlock|seek|play)|routine\.(hi|bye\.head|cue|rest))/.test(key)
+  )
+    return '✨';
+  return undefined;
+}
+
+/** 직접 쓴 말 하나를 고른다 (rand 0~1) */
+function ownLine(
+  style: SpeechStyle,
+  moment: Moment,
+  vars: Record<string, string | number> | undefined,
+): string | undefined {
+  const list = style.lines[moment];
+  if (!list.length) return undefined;
+  const line = list[Math.min(list.length - 1, Math.floor(rand() * list.length))] ?? list[0] ?? '';
+  const me = callWord(style, getLang());
+  const todo = (typeof vars?.title === 'string' ? vars.title : undefined) ?? todoSource() ?? '';
+  return fillLine(line, { name: petNameSource() || String(vars?.name ?? ''), me, todo });
+}
+let rand = Math.random;
+/** 시험용: 직접 쓴 말 고르기를 정해진 값으로 */
+export function setVoiceRandom(r: () => number): void {
+  rand = r;
+}
+
+export function setVoiceSource(read: () => PersonaId): void {
+  source = read;
+}
+
+const looseT = t as unknown as (key: string, vars?: Record<string, string | number>) => string;
+
+/** 지금 고른 성격 (말풍선 말을 고르는 곳 밖에서 볼 때) */
+export const currentPersona = (): PersonaId => source();
+
+/**
+ * 성격 말투로 고른 말. 그 성격 말(voice.<성격>.<키>)이 사전에 없으면 원래 말.
+ * 펫이 말풍선으로 하는 정해진 말은 t 대신 이것으로 (한 말풍선 안에서 인사만 존댓말이고 몸말은 반말이 되지 않게).
+ * 프리셋과 내 말투는 바탕 말(다정한 친구나 존댓말 비서)을 말투 규칙으로 바꾼다. custom 을 주면 그 내 말투로 (미리 보기)
+ */
+export function voiced(
+  key: I18nKey,
+  vars?: Record<string, string | number>,
+  persona = source(),
+  custom?: SpeechStyle,
+): string {
+  const style = styleOf(persona, custom ?? customSource());
+  if (style) {
+    const moment = momentOf(key);
+    const own = moment ? ownLine(style, moment, vars) : undefined;
+    if (own) return own;
+  }
+  const base = basePersonaOf(persona, custom ?? customSource());
+  let text = looseT(key, vars);
+  if (base !== 'friend') {
+    const alt = `voice.${base}.${key}`;
+    const dict = (getLang() === 'en' ? dicts.en : dicts.ko) as Record<string, unknown>;
+    if (alt in dict) text = looseT(alt, vars);
+  }
+  if (!style) return text;
+  const lang = getLang();
+  const emoji = emojiFor(key, persona);
+  return applyStyle(text, style, {
+    lang,
+    me: callWord(style, lang),
+    greet: GREET.test(key),
+    ...(emoji ? { emoji } : {}),
+  });
+}
+
+/** 이미 만든 말(쪽지 줄처럼 성격마다 따로 쓴 말)에 지금 말투 규칙을 입힌다. 말을 따로 쓴 성격이면 그대로 */
+export function styled(text: string, persona = source(), custom?: SpeechStyle): string {
+  const style = styleOf(persona, custom ?? customSource());
+  if (!style) return text;
+  const lang = getLang();
+  return applyStyle(text, style, { lang, me: callWord(style, lang) });
+}

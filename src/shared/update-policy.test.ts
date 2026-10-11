@@ -1,12 +1,17 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { CATALOG_URL } from './ai/catalog.ts';
+import { GALLERY_BASE } from './gallery.ts';
 import {
   canAutoInstall,
   confirmedForce,
   decideUpdate,
+  PUBLIC_REPO,
   RELEASE_REPO,
+  RELEASES_API,
   readMinVersion,
+  SOURCE_REPO,
 } from './update-policy.ts';
 
 const release = (body: unknown, tag = 'v1.5.0') => ({
@@ -97,7 +102,7 @@ test('자동 설치가 받을 파일을 빌드하고 릴리스에 올린다', ()
   ])
     assert.ok(wf.includes(f), `release.yml 이 ${f} 를 올리지 않는다`);
   // 본문의 최소 버전 줄은 손이 아니라 release/min-version 에서
-  assert.match(wf, /node scripts\/release-body\.mjs "\$GITHUB_REF_NAME" > notes\.md/);
+  assert.match(wf, /node scripts\/release-check\.mjs notes "\$GITHUB_REF_NAME" > notes\.md/);
   assert.match(wf, /--notes-file notes\.md/);
 });
 
@@ -107,4 +112,27 @@ test('electron-builder.yml 의 publish 레포가 앱의 레포와 같다', () =>
   assert.match(publish, /provider:\s*github/);
   assert.match(publish, new RegExp(`owner:\\s*${RELEASE_REPO.owner}\\s*$`, 'm'));
   assert.match(publish, new RegExp(`repo:\\s*${RELEASE_REPO.repo}\\s*$`, 'm'));
+});
+
+test('앱이 읽는 것은 모두 공개 레포에서 (소스 레포를 비공개로 바꿔도 설치된 앱이 멀쩡하다)', () => {
+  const pub = `${PUBLIC_REPO.owner}/${PUBLIC_REPO.repo}`;
+  assert.notEqual(pub, `${SOURCE_REPO.owner}/${SOURCE_REPO.repo}`);
+  assert.equal(RELEASE_REPO, PUBLIC_REPO);
+  assert.equal(RELEASES_API, `https://api.github.com/repos/${pub}/releases/latest`);
+  assert.equal(GALLERY_BASE, `https://raw.githubusercontent.com/${pub}/main/gallery/`);
+  assert.equal(CATALOG_URL, `https://raw.githubusercontent.com/${pub}/main/catalog/models.json`);
+});
+
+test('릴리스와 공개 레포 옮기기 워크플로가 같은 공개 레포를 쓴다', () => {
+  const pub = `${PUBLIC_REPO.owner}/${PUBLIC_REPO.repo}`;
+  for (const name of ['release.yml', 'sync-public.yml']) {
+    const wf = readFileSync(new URL(`../../.github/workflows/${name}`, import.meta.url), 'utf8');
+    const repos = [...wf.matchAll(/PUBLIC_REPO:\s*(\S+)/g)].map((m) => m[1]);
+    assert.deepEqual(repos, [pub], `${name} 의 PUBLIC_REPO`);
+    assert.match(wf, /secrets\.RELEASES_TOKEN/);
+  }
+  const wf = readFileSync(new URL('../../.github/workflows/release.yml', import.meta.url), 'utf8');
+  // 소스 레포(GITHUB_REPOSITORY)에 릴리스를 만들지 않는다
+  assert.doesNotMatch(wf, /--repo "\$GITHUB_REPOSITORY"/);
+  assert.match(wf, /gh release create [^\n]*--repo "\$PUBLIC_REPO"/);
 });

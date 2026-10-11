@@ -16,7 +16,7 @@ import {
   type EventStore,
   hasTimeRange,
   parseEventInput,
-  parseQuickEvent,
+  parseQuickEventInfo,
 } from '../shared/event-store.ts';
 import { type FocusState, focusCoins, isFocusLength } from '../shared/focus.ts';
 import { t } from '../shared/i18n/index.ts';
@@ -43,7 +43,7 @@ import {
   parsePanelOffset,
   placePanel,
 } from '../shared/panel-place.ts';
-import { hasDeadlineWord, parseQuickTodo } from '../shared/quick-add.ts';
+import { hasDeadlineWord } from '../shared/quick-add.ts';
 import {
   parseTodoLine,
   remindsInput,
@@ -53,8 +53,10 @@ import {
   todoPatchInput,
 } from '../shared/remind-parse.ts';
 import { CUSTOM_FOOD_COST, CUSTOM_FOOD_MAX, type Food, type ItemStore } from '../shared/shop.ts';
+import { parseRemindIn, remindInAt } from '../shared/snooze.ts';
 import { COIN, FULLNESS, localDay, STEP_MAX, type TodoStore } from '../shared/todo-store.ts';
 import { weekSummary } from '../shared/week.ts';
+import { devRendererUrl } from './dev-url.ts';
 import { focusWindow, stealFocus } from './focus.ts';
 import { langArg } from './lang.ts';
 import { localTime, minuteOfDay, startOfDay, startOfDayAfter } from './planner.ts';
@@ -232,7 +234,7 @@ export function createPanel(o: PanelOptions) {
   /**
    * 한 줄 넣기. 시각이 들어 있으면("내일 3시 회의") 일정으로 넣는다.
    * "3시까지", "by 5pm"은 마감이라 할 일로 둔다(시각 범위 "3시부터 5시까지"는 일정).
-   * 반복 낱말이 있으면("매일 아침 7시 스트레칭") 시각이 있어도 반복 할 일이다 (반복 일정은 없다. 시각은 제목에 남는다)
+   * 반복 낱말이 있으면("매일 아침 7시 스트레칭") 시각이 있어도 반복 할 일이다 (반복 일정은 없다. 시각은 마감 시각)
    */
   /** 같은 제목과 시각의 일정이 이미 있으면 넣지 않고 알릴 답 (두 번 눌러 겹쳐 넣는 일이 잦다) */
   function sameEvent(title: string, startAt: number, allDay: boolean) {
@@ -241,11 +243,16 @@ export function createPanel(o: PanelOptions) {
     return { ok: false as const, error: t('panel.event.duplicate', { title: found.title }) };
   }
   function addLine(line: string, now: number): PanelAddResult {
+    // "30분 뒤 알려 줘", "in 30 minutes": 지금부터 N분 뒤에 울리는 알림 (마감 시각이 그때인 할 일, snooze.ts)
+    const later = parseRemindIn(line);
+    if (later) return addRemindIn(later.title || t('snooze.remindTitle'), later.minutes, now);
     // "1시간 전에 알려줘", "하루 전 알림" 같은 알림 말은 먼저 뗀다 (남기면 "1시간"을 일정 길이로 읽는다)
     const { rest: text, remind } = splitRemind(line);
     const deadline = hasDeadlineWord(text) && !hasTimeRange(text);
-    const repeat = parseQuickTodo(text, localDay(now)).repeat !== null;
-    const ev = deadline || repeat ? null : parseQuickEvent(text, localDay(now), minuteOfDay(now));
+    // 반복 낱말이 어디에 있든("standup every weekday 9am") 시각이 있으면 시각이 있는 반복 할 일이다
+    const repeat = parseTodoLine(text, localDay(now), minuteOfDay(now)).repeat !== null;
+    const info = deadline || repeat ? undefined : parseQuickEventInfo(text, localDay(now), minuteOfDay(now));
+    const ev = info?.ev;
     if (ev) {
       const startAt = localTime(ev.day, ev.minute);
       const dup = sameEvent(ev.title, startAt, false);
@@ -264,9 +271,29 @@ export function createPanel(o: PanelOptions) {
       o.onEventsChanged();
       // 어디에 언제로 넣었는지 알림에 보이고 되돌리거나 할 일로 옮길 수 있게 id 와 시각을 돌려준다
       const clash = clashOf(added);
-      return { ok: true, kind: 'event', id: added.id, startAt: added.startAt, ...(clash ? { clash } : {}) };
+      // 오전, 오후 없이 1~7시를 오후로 읽었다: 알림에 "(오후로 읽었어)" 와 오전으로 바꾸는 단추
+      const amAt = info?.am ? localTime(info.am.day, info.am.minute) : undefined;
+      const am =
+        amAt === undefined
+          ? undefined
+          : { startAt: amAt, endAt: added.endAt === null ? null : amAt + (added.endAt - added.startAt) };
+      return {
+        ok: true,
+        kind: 'event',
+        id: added.id,
+        startAt: added.startAt,
+        ...(clash ? { clash } : {}),
+        ...(am ? { am } : {}),
+      };
     }
     return addTodo(text, now, remind);
+  }
+  /** N분 뒤 알림: 그 시각이 마감인 할 일에 정각 알림 하나 */
+  function addRemindIn(title: string, minutes: number, now: number): PanelAddResult {
+    const at = remindInAt(now, minutes);
+    const todo = o.store.add({ title, due: localDay(at), dueMin: minuteOfDay(at), reminds: [0] }, now);
+    push();
+    return { ok: true, kind: 'todo', id: todo.id, due: todo.due, remindAt: at };
   }
   /** 한 줄을 할 일로 넣는다 (마감, 마감 시각, 중요, 반복, 알림은 글에서 읽는다) */
   function addTodo(line: string, now: number, taken?: TakenRemind): PanelAddResult {
@@ -276,7 +303,15 @@ export function createPanel(o: PanelOptions) {
     const reminds = remindsOf(split.remind, parsed.dueMin === null, parsed.dueMin ?? 0);
     const todo = o.store.add({ ...parsed, ...(reminds ? { reminds } : {}) }, now);
     push();
-    return { ok: true, kind: 'todo', id: todo.id, due: todo.due };
+    const past = !!todo.due && todo.due < localDay(now);
+    return {
+      ok: true,
+      kind: 'todo',
+      id: todo.id,
+      due: todo.due,
+      ...(past ? { past: true as const } : {}),
+      ...(parsed.repeat === 'monthly' && parsed.repeatDay ? { monthly: parsed.repeatDay } : {}),
+    };
   }
   // 시각이 있어 일정으로 들어간 한 줄을 할 일로 옮긴다 (알림의 "할 일로")
   ipcMain.handle(PANEL.eventToTodo, (e, id: unknown, text: unknown): PanelAddResult => {
@@ -384,7 +419,8 @@ export function createPanel(o: PanelOptions) {
     // 일정 탭에서는 날짜만 적어도 된다: "내일 제주도 여행"은 종일, "10/10-10/12 제주도"는 여러 날 종일.
     // (빠른 입력은 위 PANEL.add 처럼 시각이 있어야 일정이다. 거기서 날짜만 있으면 할 일 마감)
     // 반복 일정은 아직 없다: 한 번짜리로 넣지 않고 할 일 탭으로 안내한다
-    if (parseQuickTodo(text, localDay(now)).repeat) return { ok: false, error: t('panel.event.noRepeat') };
+    if (parseTodoLine(text, localDay(now), minuteOfDay(now)).repeat)
+      return { ok: false, error: t('panel.event.noRepeat') };
     const ev = parseEventInput(text, localDay(now), minuteOfDay(now));
     if (!ev) return { ok: false, error: t('panel.event.needTime') };
     let event: ReturnType<EventStore['add']>;
@@ -457,7 +493,8 @@ export function createPanel(o: PanelOptions) {
     if (!ours(e)) return [];
     const now = Date.now();
     const today = localDay(now);
-    const moved = o.store.moveOverdue(today, now);
+    // 오늘 탭 링크가 센 것(습관 빼고)만 옮긴다. 습관의 지난 회차는 습관 칸에서 체크한다
+    const moved = o.store.moveOverdue(today, now, { habits: false });
     lastMoved = { moved, today };
     log('todo', 'move-overdue', moved.length);
     push();
@@ -631,6 +668,9 @@ export function createPanel(o: PanelOptions) {
     o.log(...(rest as [string, ...unknown[]]));
   }
 
+  /** 패널에서 띄운 저장 창이 떠 있는 수. 그동안은 다른 곳을 눌러도 닫지 않는다 */
+  let holding = 0;
+
   function makeWindow(kind: 'panel' | 'quick', bounds: Rectangle, tab?: PanelTab) {
     const win = new BrowserWindow({
       ...bounds,
@@ -657,7 +697,7 @@ export function createPanel(o: PanelOptions) {
     win.on('closed', () => senders.delete(sender));
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (ev) => ev.preventDefault());
-    const devUrl = process.env.ELECTRON_RENDERER_URL;
+    const devUrl = devRendererUrl();
     if (devUrl) win.loadURL(`${devUrl}/${kind}.html${tab ? `#${tab}` : ''}`);
     else win.loadFile(join(import.meta.dirname, `../renderer/${kind}.html`), { hash: tab });
     win.once('ready-to-show', () => {
@@ -666,7 +706,8 @@ export function createPanel(o: PanelOptions) {
     });
     // 다른 곳을 누르면 닫힌다 (팝오버처럼). 머리를 잡고 끄는 것은 이 창을 누른 것이라 닫히지 않는다.
     win.on('blur', () => {
-      if (!win.isDestroyed()) win.close();
+      // 저장 창(주간 회고 카드)을 띄운 동안은 닫지 않는다 (hold)
+      if (!win.isDestroyed() && holding === 0) win.close();
     });
     keepFrame(win);
     return win;
@@ -816,13 +857,27 @@ export function createPanel(o: PanelOptions) {
     },
     closePanel,
     openQuick,
+    /** 빠른 입력 한 줄과 같게 넣는다 (jjakkung://add): 시각이 있으면 일정, 아니면 할 일 */
+    addLine: (line: string): PanelAddResult => addLine(line, Date.now()),
     /** 펫 이름이나 배부름 등이 밖에서 바뀌었을 때 */
     refresh: push,
+    /** 패널이나 빠른 입력 창이 보낸 것인지 (main/day-tools.ts) */
+    owns: (wc: Electron.WebContents) => senders.has(wc),
     get window() {
       return panel;
     },
     get quickWindow() {
       return quick;
+    },
+    /** 일(저장 창)이 끝날 때까지 패널을 열어 둔다. 끝나면 패널을 다시 앞으로 */
+    async hold<T>(work: () => Promise<T>): Promise<T> {
+      holding++;
+      try {
+        return await work();
+      } finally {
+        holding--;
+        if (panel && !panel.isDestroyed()) focusWindow(panel);
+      }
     },
   };
 }

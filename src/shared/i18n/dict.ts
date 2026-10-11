@@ -1,15 +1,20 @@
 // 영역별 사전을 하나로 합친다. 영역을 더하면 ko 와 en 에 같이 넣는다.
 
+import * as access from './access.ts';
 import * as achieve from './achieve.ts';
 import * as ai from './ai.ts';
 import * as assist from './assist.ts';
+import * as bond from './bond.ts';
 import * as briefing from './briefing.ts';
 import * as chat from './chat.ts';
 import * as common from './common.ts';
 import * as companion from './companion.ts';
+import * as day from './day.ts';
 import * as diary from './diary.ts';
 import * as ease from './ease.ts';
 import * as feedback from './feedback.ts';
+import * as first from './first.ts';
+import * as gallery from './gallery.ts';
 import * as gcal from './gcal.ts';
 import * as gemini from './gemini.ts';
 import * as idle from './idle.ts';
@@ -18,15 +23,21 @@ import * as maker from './maker.ts';
 import * as onboarding from './onboarding.ts';
 import * as panel from './panel.ts';
 import * as pet from './pet.ts';
+import * as petmeta from './petmeta.ts';
 import * as play from './play.ts';
+import * as polish from './polish.ts';
 import * as pout from './pout.ts';
 import * as remind from './remind.ts';
 import * as routine from './routine.ts';
 import * as settings from './settings.ts';
 import * as shop from './shop.ts';
+import * as speech from './speech.ts';
 import * as tabs from './tabs.ts';
+import * as together from './together.ts';
 import * as tray from './tray.ts';
 import type { Translation } from './types.ts';
+import * as voice from './voice.ts';
+import * as voiceIdle from './voice-idle.ts';
 
 export const ko = {
   ...common.ko,
@@ -55,6 +66,17 @@ export const ko = {
   ...tabs.ko,
   ...gcal.ko,
   ...gemini.ko,
+  ...gallery.ko,
+  ...day.ko,
+  ...access.ko,
+  ...bond.ko,
+  ...polish.ko,
+  ...petmeta.ko,
+  ...first.ko,
+  ...together.ko,
+  ...voice.ko,
+  ...voiceIdle.ko,
+  ...speech.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -84,4 +106,15 @@ export const en: Translation<typeof ko> = {
   ...tabs.en,
   ...gcal.en,
   ...gemini.en,
+  ...gallery.en,
+  ...day.en,
+  ...access.en,
+  ...bond.en,
+  ...polish.en,
+  ...petmeta.en,
+  ...first.en,
+  ...together.en,
+  ...voice.en,
+  ...voiceIdle.en,
+  ...speech.en,
 };

@@ -3,7 +3,7 @@ import type { Translation } from './types.ts';
 
 // tray 영역 글
 export const ko = {
-  'tray.tooltip': (v: { name: string }) => `짝꿍 (${v.name})`,
+  'tray.tooltip': (v: { name: string }) => `페어리 (${v.name})`,
   'tray.show': (v: { name: string }) => `${withParticle(v.name, '을')} 다시 보이기`,
   'tray.hide': (v: { name: string }) => `${withParticle(v.name, '을')} 잠깐 숨기기`,
   'tray.chat': (v: { name: string }) => `${withParticle(v.name, '과')} 대화`,
@@ -32,7 +32,7 @@ export const ko = {
 };
 
 export const en: Translation<typeof ko> = {
-  'tray.tooltip': (v: { name: string }) => `Jjakkung (${v.name})`,
+  'tray.tooltip': (v: { name: string }) => `fairy (${v.name})`,
   'tray.show': (v: { name: string }) => `Show ${v.name} again`,
   'tray.hide': (v: { name: string }) => `Hide ${v.name} for a bit`,
   'tray.chat': (v: { name: string }) => `Chat with ${v.name}`,

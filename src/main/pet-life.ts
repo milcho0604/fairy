@@ -2,6 +2,7 @@ import { powerMonitor } from 'electron';
 import { type Energy, type EnergyLook, EnergyWatch, energyTalkKeys } from '../shared/energy.ts';
 import { type I18nKey, t } from '../shared/i18n/index.ts';
 import type { ReactKind } from '../shared/ipc.ts';
+import { voiced } from '../shared/persona-voice.ts';
 import { type Activity, type LifeState, type PetLife, SULK_LINES, UNLOCKS } from '../shared/pet-life.ts';
 import { REST, RestCoach, restLines } from '../shared/rest.ts';
 import { bodyClock, restDaysOf } from '../shared/routine.ts';
@@ -48,7 +49,7 @@ function unlockMsg(step: number): { key: I18nKey; vars?: { step: number } } {
 
 function unlockLine(step: number): string {
   const m = unlockMsg(step);
-  return (t as (key: string, vars?: unknown) => string)(m.key, m.vars);
+  return voiced(m.key, m.vars);
 }
 
 export function createPetLife(o: PetLifeOptions) {
@@ -108,7 +109,7 @@ export function createPetLife(o: PetLifeOptions) {
       // 권유대로 쉬고 왔다: 반짝이며 기지개를 켜고 말한다 (하루 리듬을 끄면 예전처럼 통통 뛰며 바로)
       o.react(rhythmOn ? 'fresh' : 'happy');
       const rested = () =>
-        void o.say({ kind: 'answer', text: t('pet.life.rested', { coins: REST.coins }), ttlMs: 5000 });
+        void o.say({ kind: 'answer', text: voiced('pet.life.rested', { coins: REST.coins }), ttlMs: 5000 });
       if (rhythmOn) setTimeout(rested, AFTER_STRETCH_MS).unref();
       else rested();
       o.onChange();
@@ -147,7 +148,7 @@ export function createPetLife(o: PetLifeOptions) {
     o.log('life', '기운 회복');
     o.react('fresh');
     setTimeout(
-      () => void o.say({ kind: 'system', text: t('pet.energy.fresh'), ttlMs: 5000 }),
+      () => void o.say({ kind: 'system', text: voiced('pet.energy.fresh'), ttlMs: 5000 }),
       AFTER_STRETCH_MS,
     ).unref();
   }
@@ -162,7 +163,7 @@ export function createPetLife(o: PetLifeOptions) {
       o.react();
       void o.say({
         kind: 'answer',
-        text: coins > 0 ? t('pet.life.madeUpCoins', { coins }) : t('pet.life.madeUp'),
+        text: coins > 0 ? voiced('pet.life.madeUpCoins', { coins }) : voiced('pet.life.madeUp'),
         ttlMs: 6000,
       });
     } else if (r.affectionStep) {

@@ -1,7 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import {
   app,
   BrowserWindow,
+  type BrowserWindowConstructorOptions,
   globalShortcut,
   type IpcMainEvent,
   ipcMain,
@@ -10,6 +12,7 @@ import {
   powerMonitor,
   screen,
 } from 'electron';
+import { perchPollMs, SAVER, walkTickMs } from '../shared/battery.ts';
 import { type Activity, pickActivity, WALK_SPEED, walkOffset } from '../shared/behavior.ts';
 import { layoutBubble } from '../shared/bubble-layout.ts';
 import {
@@ -30,7 +33,7 @@ import { Conceal, type ConcealReason } from '../shared/conceal.ts';
 import { CrashGuard } from '../shared/crash-guard.ts';
 import { type CarryToy, fromBox, toBox } from '../shared/fetch.ts';
 import { type Gaze, gazeAt, sameGaze } from '../shared/gaze.ts';
-import { clampIntoAreas, type Point, type Rect } from '../shared/geometry.ts';
+import { clampIntoAreas, type Point, type Rect, snapRect } from '../shared/geometry.ts';
 import type { GestureEvent } from '../shared/gesture.ts';
 import { approachMs, doorFrame, OUT_MS, STRETCH_MS } from '../shared/house-rest.ts';
 import { type HouseSprites, parseSprites } from '../shared/house-room.ts';
@@ -47,6 +50,8 @@ import {
 import { burrowFrame } from '../shared/minigames.ts';
 import { isMove, type MoveHistory, moveAskOf, rememberMove } from '../shared/moves.ts';
 import { hopAt, perchHolds, pickPerch } from '../shared/perch.ts';
+import { voiced } from '../shared/persona-voice.ts';
+import { isPetKey, KEY_NUDGE, KEY_WALK, type PetKey } from '../shared/pet-keys.ts';
 import { type DisplayInfo, parseSavedScale, restorePetBounds } from '../shared/placement.ts';
 import { type HideReason, HideReasons } from '../shared/presence.ts';
 import { acceleratorLabel } from '../shared/shortcut.ts';
@@ -60,9 +65,13 @@ import {
   THROW_MAX_SPEED,
   THROW_MIN_SPEED,
 } from '../shared/throw.ts';
+import type { NoteLook } from '../shared/together.ts';
+import { saverNow } from './battery.ts';
 import { boostOn } from './boost.ts';
 import { watchCursor } from './cursor-watch.ts';
+import { devRendererUrl } from './dev-url.ts';
 import { onDisplaysChanged as watchDisplays } from './display-watch.ts';
+import { focusWindow, stealFocus } from './focus.ts';
 import { langArg } from './lang.ts';
 import { settings } from './settings.ts';
 import { readJson, writeJson } from './store.ts';
@@ -124,6 +133,10 @@ export interface PetActions {
   grabbed?(): void;
   /** 우클릭 메뉴 맨 위에 흐리게 보일 한 줄 (토라지면 대답이 짧다). 없으면 안 보인다 */
   menuNote?(): string | undefined;
+  /** 짝꿍이 아는 것 창 (main/knows.ts). 없으면 메뉴에 안 보인다 */
+  openKnows?(): void;
+  /** "오늘 뭐부터?" 규칙 답을 말풍선으로 (main/what-first.ts). 없으면 메뉴에 안 보인다 */
+  whatFirst?(): void;
 }
 
 export interface SayOptions {
@@ -140,10 +153,12 @@ export interface SayOptions {
    */
   hold?: Pick<
     HeldBubble,
-    'staleAt' | 'lines' | 'render' | 'missedLines' | 'missedMsgs' | 'onAction' | 'osNotify'
+    'staleAt' | 'lines' | 'render' | 'missedLines' | 'missedMsgs' | 'onAction' | 'osNotify' | 'osActions'
   >;
   /** 끊으면 이 말풍선을 닫는다(떠 있을 때) 또는 기다리던 것을 버린다. 시간 끝 없는 안내를 거둘 때 (강제 업데이트가 풀림) */
   signal?: AbortSignal;
+  /** 펼친 쪽지 모양 (매일 쪽지, 특별한 편지). 없으면 보통 말풍선 */
+  paper?: NoteLook;
 }
 
 export interface PetWindow {
@@ -235,6 +250,11 @@ export interface PetWindow {
   carriedAt(): Promise<Point | undefined>;
   /** ms 동안 기다린다. 그사이 잡히거나 던져지거나 숨거나 그만 놀기를 누르면 false */
   pause(ms: number): Promise<boolean>;
+  /**
+   * 키보드로 펫 다루기 (접근성, 펫 고르기 단축키): 펫 창이 키보드를 받아 Enter 패널, Shift+F10 메뉴, 화살표 걷기.
+   * Esc 나 다른 창으로 가면 끝난다. 이미 켜져 있으면 끈다
+   */
+  keyboard(): void;
 }
 
 export interface PetWindowOptions {
@@ -252,6 +272,92 @@ export interface PetWindowOptions {
   onMissed?: () => void;
   /** 집에서 쉬는 중(숨김 까닭이 house 하나)에 말이 와서 모아 두었다. important 는 놓치면 안 되는 말(hold) */
   onRestHeld?: (kind: BubbleKind, important: boolean) => void;
+  /** 미리 만든 창 (친구 펫을 기본 펫 화면 프로세스에서 연 것, openPetWindowIn). 없으면 새로 만든다 */
+  win?: BrowserWindow;
+}
+
+/** 펫 창 옵션 (자리는 빼고). 기본 펫과 친구 펫, 미리 만드는 창이 같이 쓴다 */
+function petWindowOptions(): BrowserWindowConstructorOptions {
+  return {
+    width: BASE_SIZE,
+    height: BASE_SIZE,
+    transparent: true,
+    frame: false,
+    hasShadow: false,
+    resizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    focusable: false,
+    alwaysOnTop: true,
+    show: false,
+    webPreferences: {
+      preload: join(import.meta.dirname, '../preload/index.cjs'),
+      additionalArguments: ['--jj-window=pet', langArg()],
+      sandbox: true,
+      contextIsolation: true,
+    },
+  };
+}
+
+/** 한 번에 하나씩 연다 (여는 동안 host 의 새 창 처리기를 잠깐 바꾼다) */
+let opening: Promise<unknown> = Promise.resolve();
+
+/**
+ * 친구 펫 창을 host(기본 펫 화면)에서 window.open 으로 연다. 그러면 같은 렌더러 프로세스를 같이 써서 친구 하나에
+ * 렌더러 하나(약 120MB RSS)가 늘지 않는다. host 화면이 아직 없으면 기다리고, 10초 안에 못 열면 undefined (따로 만든다).
+ * 여는 동안만 host 의 새 창 처리기가 이 이름의 빈 창 하나를 받고, 끝나면 다시 모두 거절한다 (index.ts)
+ */
+export function openPetWindowIn(host: Electron.WebContents): Promise<BrowserWindow | undefined> {
+  const run = opening.then(() => openIn(host));
+  opening = run;
+  return run;
+}
+
+function openIn(host: Electron.WebContents): Promise<BrowserWindow | undefined> {
+  return new Promise((resolve) => {
+    if (host.isDestroyed()) {
+      resolve(undefined);
+      return;
+    }
+    const name = `jj-friend-${randomUUID()}`;
+    let settled = false;
+    const done = (w: BrowserWindow | undefined) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      host.off('did-finish-load', go);
+      if (!host.isDestroyed()) host.setWindowOpenHandler(() => ({ action: 'deny' }));
+      resolve(w);
+    };
+    // 기본 펫 화면을 불러오는 중이면 다 불러올 때까지 기다린다 (켤 때)
+    const timer = setTimeout(() => done(undefined), 10_000);
+    function go() {
+      if (settled || host.isDestroyed()) return;
+      host.setWindowOpenHandler((d) => {
+        if (settled || d.frameName !== name || d.url !== 'about:blank') return { action: 'deny' };
+        return {
+          action: 'allow',
+          overrideBrowserWindowOptions: petWindowOptions(),
+          createWindow: (options) => {
+            const w = new BrowserWindow(options);
+            done(w);
+            return w.webContents;
+          },
+        };
+      });
+      host.executeJavaScript(`window.open('', ${JSON.stringify(name)}) !== null`, true).then(
+        (ok) => {
+          if (!ok) done(undefined);
+        },
+        () => done(undefined),
+      );
+    }
+    // 켤 때는 화면이 아직 없다(주소가 비고 isCrashed 도 true). 죽었으면 다시 불러온 뒤에.
+    // 불러오는 중(isLoading)이면 그냥 연다: did-finish-load 를 부르는 동안에도 true 라 기다리면 오지 않는다
+    if (!host.getURL() || host.isCrashed()) host.once('did-finish-load', go);
+    else go();
+  });
 }
 
 /**
@@ -268,6 +374,7 @@ export function createPetWindow({
   menu,
   onMissed,
   onRestHeld,
+  win: prebuilt,
 }: PetWindowOptions): PetWindow {
   const positionFile = id ? `${POSITION_FILE}-${id}` : POSITION_FILE;
   const saved = readJson(positionFile) ?? (initial ? { ...initial, scale: 1 } : undefined);
@@ -286,34 +393,19 @@ export function createPetWindow({
   const stopSettings = settings.onChange((next) => {
     gate.level = next.chatter;
   });
-  const win = new BrowserWindow({
-    ...pet,
-    transparent: true,
-    frame: false,
-    hasShadow: false,
-    resizable: false,
-    maximizable: false,
-    fullscreenable: false,
-    skipTaskbar: true,
-    focusable: false,
-    alwaysOnTop: true,
-    show: false,
-    webPreferences: {
-      preload: join(import.meta.dirname, '../preload/index.cjs'),
-      additionalArguments: ['--jj-window=pet', langArg()],
-      sandbox: true,
-      contextIsolation: true,
-    },
-  });
+  const win = prebuilt ?? new BrowserWindow({ ...petWindowOptions(), ...pet });
+  if (prebuilt) win.setBounds(pet);
   win.setAlwaysOnTop(true, 'floating');
   // 모든 데스크톱(Space)에 보이되, 다른 앱의 전체 화면 위에는 올라가지 않는다.
   // (전체 화면 위에도 띄우면 다른 앱을 크게 쓰는 중에 펫이 가린다. 2026-10-02 사용자 지적)
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
   // 처음에는 모두 통과시킨다. 커서가 펫 위에 오면 화면이 알려 준다.
   win.setIgnoreMouseEvents(true, { forward: true });
-  win.once('ready-to-show', () => win.showInactive());
+  // 미리 만든 창은 빈 화면을 이미 그려 ready-to-show 가 지나갔을 수 있다: 펫 화면을 다 불러오면 보인다
+  if (prebuilt) win.webContents.once('did-finish-load', () => win.showInactive());
+  else win.once('ready-to-show', () => win.showInactive());
 
-  const devUrl = process.env.ELECTRON_RENDERER_URL;
+  const devUrl = devRendererUrl();
   if (devUrl) win.loadURL(`${devUrl}/pet.html`);
   else win.loadFile(join(import.meta.dirname, '../renderer/pet.html'));
 
@@ -447,10 +539,15 @@ export function createPetWindow({
   }
 
   const onContextMenu = (e: IpcMainEvent) => {
-    if (!fromThisWindow(e)) return;
+    if (fromThisWindow(e)) showMenu();
+  };
+
+  /** 우클릭 메뉴. 키보드로 열면(Shift+F10, 메뉴 키) at 에 (창 안 좌표, 펫 가운데) */
+  function showMenu(at?: { x: number; y: number }) {
     log('pet', 'context-menu');
+    const where = at ? { window: win, ...at } : { window: win };
     if (menu) {
-      Menu.buildFromTemplate(menu()).popup({ window: win });
+      Menu.buildFromTemplate(menu()).popup(where);
       return;
     }
     const note = actions.menuNote?.();
@@ -472,6 +569,7 @@ export function createPetWindow({
         accelerator: quickAddShortcut() || undefined,
         click: () => actions.quickAdd(),
       },
+      ...(actions.whatFirst ? [{ label: t('first.menu'), click: () => actions.whatFirst?.() }] : []),
       { label: t('pet.menu.feed'), click: () => actions.feed() },
       {
         label: t('pet.menu.play'),
@@ -493,12 +591,29 @@ export function createPetWindow({
           click: () => setChatter(level),
         })),
       },
+      // 배터리일 때 움직임 줄이기 (사용자 요청 2026-10-11: 바로 끄고 켤 수 있게). 켜면 자동, 끄면 끄기
+      {
+        label: t('pet.menu.saver'),
+        type: 'checkbox',
+        checked: settings.get().batterySaver !== 'off',
+        click: (item) => settings.set({ batterySaver: item.checked ? 'auto' : 'off' }),
+      },
+      // 같이 타자 치기 (shared/together.ts): 키 내용은 읽지 않고 입력이 있는지만 본다
+      {
+        label: t('pet.menu.typeAlong'),
+        type: 'checkbox',
+        checked: settings.get().typeAlong,
+        click: (item) => settings.set({ typeAlong: item.checked }),
+      },
       {
         label: t('pet.menu.hide', { name: petName() }),
         accelerator: hideShortcut() || undefined,
         click: () => setHidden('user', true),
       },
       { label: t('pet.menu.makePet'), click: () => actions.makePet() },
+      ...(actions.openKnows
+        ? [{ label: t('bond.menu.knows', { name: petName() }), click: () => actions.openKnows?.() }]
+        : []),
       { label: t('pet.menu.settings'), click: () => actions.openSettings() },
       { type: 'separator' },
       { label: t('pet.menu.reload'), click: () => reload() },
@@ -511,8 +626,8 @@ export function createPetWindow({
         },
       },
       { label: t('pet.menu.quit'), role: 'quit' },
-    ]).popup({ window: win });
-  };
+    ]).popup(where);
+  }
 
   /** 놀기 하위 메뉴. 노는 중이면 맨 위에 "그만 놀기", 다른 놀이는 흐리게 */
   function playMenu(): Electron.MenuItemConstructorOptions[] {
@@ -610,7 +725,9 @@ export function createPetWindow({
     const areas = screen.getAllDisplays().map((d) => d.workArea);
     const area = screen.getDisplayMatching(pet).workArea;
     // 가끔 다른 앱 창 윗변으로 깡충 올라간다. 이미 앉아 있으면 걷지 않는다 (걸으면 떨어지니까).
-    if (!perch && Math.random() < PERCH_CHANCE && tryPerch()) return;
+    // 배터리 절약이면 덜 올라간다 (창 목록 읽기가 비싸다)
+    const perchChance = PERCH_CHANCE * (saverNow() ? SAVER.perchChance : 1);
+    if (!perch && Math.random() < perchChance && tryPerch()) return;
     const now = Date.now();
     let activity: Activity = pickActivity(pet, area, Math.random, areas, {
       ask: moveAskOf(ask),
@@ -707,13 +824,14 @@ export function createPetWindow({
         const t = (Date.now() - started) / walk.ms;
         const x = fromX + walkOffset(walk.dx, t);
         // 걷기 CPU 의 절반이 창 옮기기다. 픽셀이 그대로인 틱(출발, 멈춤 감속)은 옮기지 않는다
-        const moved = Math.round(x) !== Math.round(pet.x);
-        pet = { ...pet, x };
-        if (moved && !win.isDestroyed()) win.setPosition(Math.round(pet.x), pet.y);
+        // 창 좌표는 정수만 받는다. 소수를 담아 두면 다음 setPosition(산책 등)이 던졌다
+        const moved = Math.round(x) !== pet.x;
+        pet = snapRect({ ...pet, x });
+        if (moved && !win.isDestroyed()) win.setPosition(pet.x, pet.y);
         if (t >= 1) stopWalk(true);
-        // 부스트 모드면 60Hz 로 옮긴다 (빨리 걸을 때 한 번에 2~4px 씩 뛰던 것이 1~2px 로)
+        // 부스트 모드면 60Hz 로 옮긴다 (빨리 걸을 때 한 번에 2~4px 씩 뛰던 것이 1~2px 로). 배터리 절약이면 15Hz
       },
-      boostOn() ? 16 : 33,
+      walkTickMs(saverNow(), boostOn()),
     );
   }
 
@@ -736,7 +854,7 @@ export function createPetWindow({
     leavePerch();
     // 바닥으로 먼저 내려간다
     const area = screen.getDisplayMatching(pet).workArea;
-    pet = { ...pet, y: area.y + area.height - pet.height };
+    pet = snapRect({ ...pet, y: area.y + area.height - pet.height });
     if (!win.isDestroyed()) win.setPosition(pet.x, pet.y);
     let toRight = pet.x + pet.width / 2 < area.x + area.width / 2;
     while (Date.now() < end) {
@@ -773,6 +891,8 @@ export function createPetWindow({
     let sentAt = 0;
     let area = screen.getDisplayMatching(pet).workArea;
     let areaAt = started;
+    /** 느리게 달리면 틱마다 1px 이 안 된다. 소수는 여기에만 쌓고 pet 에는 정수를 담는다 */
+    let fx = pet.x;
     const onAbort = () => stopWalk(true);
     signal?.addEventListener('abort', onAbort, { once: true });
     return new Promise((resolve) => {
@@ -797,10 +917,11 @@ export function createPetWindow({
           const dx = tx - pet.x;
           const next: -1 | 0 | 1 = Math.abs(dx) < 3 ? 0 : dx < 0 ? -1 : 1;
           if (next !== 0) {
-            const x = pet.x + next * Math.min(Math.abs(dx), speed * dt);
-            const moved = Math.round(x) !== Math.round(pet.x);
-            pet = { ...pet, x };
-            if (moved && !win.isDestroyed()) win.setPosition(Math.round(pet.x), pet.y);
+            if (Math.round(fx) !== pet.x) fx = pet.x;
+            fx += next * Math.min(Math.abs(tx - fx), speed * dt);
+            const moved = Math.round(fx) !== pet.x;
+            pet = snapRect({ ...pet, x: fx });
+            if (moved && !win.isDestroyed()) win.setPosition(pet.x, pet.y);
             face = next;
           }
           // 걷는 모습: 방향이 바뀌거나 서거나 출발할 때, 걷는 중에는 1040ms 마다 이어 붙인다. 화면은 같은 쪽 걷기를 이어 받으면
@@ -817,7 +938,7 @@ export function createPetWindow({
               );
           }
         },
-        boostOn() ? 16 : 33,
+        walkTickMs(saverNow(), boostOn()),
       );
     });
   }
@@ -853,14 +974,14 @@ export function createPetWindow({
       if (!finished) return;
       perch = spot.win;
       clearInterval(perchTimer);
-      // 1초마다 창이 그대로인지 본다. 옮기거나 닫으면 떨어진다.
+      // 1초마다(배터리 절약이면 3초마다) 창이 그대로인지 본다. 옮기거나 닫으면 떨어진다.
       perchTimer = setInterval(() => {
         if (perch && !perchHolds(perch, list())) {
           log('pet', 'perch lost');
           leavePerch();
           startFlight(0, 0);
         }
-      }, 1000);
+      }, perchPollMs(saverNow()));
     });
     return true;
   }
@@ -970,26 +1091,28 @@ export function createPetWindow({
 
   /** 숨기기 전에 다시 부르는 법을 알려 준다. 메뉴 막대가 붐비면 아이콘이 안 보일 수 있어서다. 처음 3번만. */
   const HIDE_HINT_TIMES = 3;
-  let hinting = false;
-
-  async function hideWithHint() {
+  /**
+   * 숨기기는 바로 한다 (예전엔 말풍선 안내 2.5초를 보이고 숨어 굼떴고, 그사이 또 누르면 두 번 숨었다).
+   * 다시 부르는 키 안내는 처음 3번만 운영체제 알림으로
+   */
+  function hideWithHint() {
     const shown = settings.get().hideHints;
-    // 숨기기 키를 비워 두었으면 알려 줄 키가 없다
-    if (shown >= HIDE_HINT_TIMES || hinting || !hideShortcut()) {
-      setHidden('user', true, false);
+    setHidden('user', true, false);
+    if (
+      shown >= HIDE_HINT_TIMES ||
+      !hideShortcut() ||
+      !settings.get().osNotify ||
+      !Notification.isSupported()
+    )
       return;
-    }
-    hinting = true;
     settings.set({ hideHints: shown + 1 });
     const keys = acceleratorLabel(hideShortcut(), process.platform === 'darwin').join('+');
-    await say({ kind: 'answer', text: t('pet.hideHint', { keys }), ttlMs: 2500 });
-    hinting = false;
-    setHidden('user', true, false);
+    new Notification({ title: petName(), body: voiced('pet.hideHint', { keys }), silent: true }).show();
   }
 
   function setHidden(reason: HideReason, on: boolean, hint = true) {
     if (reason === 'user' && on && hint && !hideReasons.has('user')) {
-      void hideWithHint();
+      hideWithHint();
       return;
     }
     if (win.isDestroyed() || !hideReasons.set(reason, on)) return;
@@ -1065,9 +1188,27 @@ export function createPetWindow({
     if (!notify || !Notification.isSupported()) return;
     h.osNotified = true;
     const lines = h.render?.(Date.now()) ?? h.lines ?? [h.text];
-    const n = new Notification({ title: petName(), body: lines.join('\n'), silent: false });
+    // 미루기 단추 (맥, 윈도우만 단추를 단다. 리눅스는 누르면 오늘 탭에서 고른다)
+    const actions = process.platform === 'darwin' || process.platform === 'win32' ? (h.osActions ?? []) : [];
+    const n = new Notification({
+      title: petName(),
+      body: lines.join('\n'),
+      silent: false,
+      ...(actions.length
+        ? { actions: actions.map((a) => ({ type: 'button' as const, text: a.label })) }
+        : {}),
+    });
     const click = osClickAction(h.buttons);
     notices.add(n);
+    n.on('action', (ev) => {
+      const picked = actions[ev.actionIndex];
+      notices.delete(n);
+      if (!picked) return;
+      log('bubble', 'os-notice action', picked.id);
+      held.remove(h);
+      h.onAction?.(picked.id);
+      releaseHeld();
+    });
     n.on('click', () => {
       notices.delete(n);
       log('bubble', 'os-notice click', click ?? 'pet');
@@ -1115,7 +1256,7 @@ export function createPetWindow({
   const releaseTimer = setInterval(releaseHeld, 2000);
 
   function say(options: SayOptions): Promise<string | undefined> {
-    const { kind, text, buttons = [], ttlMs = BUBBLE_TTL_MS, image, hold, signal } = options;
+    const { kind, text, buttons = [], ttlMs = BUBBLE_TTL_MS, image, hold, signal, paper } = options;
     if (signal?.aborted) return Promise.resolve(undefined);
     if (hideReasons.hidden && kind === 'answer') {
       // 앞에 기다리던 알림은 새 것으로 바꾼다 (가장 최근 답 하나만).
@@ -1170,7 +1311,15 @@ export function createPetWindow({
           resolve(action);
         },
       };
-      win.webContents.send(IPC.bubble, { id, text, buttons, ttlMs, image, kind });
+      win.webContents.send(IPC.bubble, {
+        id,
+        text,
+        buttons,
+        ttlMs,
+        image,
+        kind,
+        ...(paper ? { paper } : {}),
+      });
       signal?.addEventListener(
         'abort',
         () => {
@@ -1393,7 +1542,7 @@ export function createPetWindow({
   async function askQuieter() {
     const answer = await say({
       kind: 'answer',
-      text: t('pet.tooChatty'),
+      text: voiced('pet.tooChatty'),
       buttons: [
         { id: 'yes', label: t('pet.tooChattyYes') },
         { id: 'no', label: t('pet.tooChattyNo') },
@@ -1421,6 +1570,71 @@ export function createPetWindow({
     log('display', 'changed', JSON.stringify({ areas, pet: win.getBounds() }));
   });
 
+  // ---- 키보드로 펫 다루기 (접근성) ----
+  // 펫 창은 평소 키보드를 받지 않는다(focusable false: 누르기만 해도 다른 앱의 입력을 뺏지 않게). 펫 고르기 단축키를
+  // 누를 때만 받을 수 있게 바꾸고 앞으로 부른다. 시험 인스턴스(JJ_NO_FOCUS)는 앞으로 부르지 않는다 (focus.ts)
+  let keyMode = false;
+  function setKeyMode(on: boolean) {
+    if (on === keyMode || win.isDestroyed()) return;
+    keyMode = on;
+    win.setFocusable(on);
+    if (on) {
+      focusWindow(win);
+      stealFocus();
+    } else if (win.isFocused()) win.blur();
+    win.webContents.send(IPC.keys, on ? petName() : null);
+    log('pet', 'keyboard', on);
+  }
+  win.on('blur', () => setKeyMode(false));
+  /** 창 안 좌표로 본 펫 가운데 (메뉴를 펫 위에 연다) */
+  const petCenterInWindow = () => {
+    const b = win.getBounds();
+    return { x: Math.round(pet.x - b.x + pet.width / 2), y: Math.round(pet.y - b.y + pet.height / 2) };
+  };
+  function nudge(dx: number, dy: number) {
+    stopWalk();
+    leavePerch();
+    pet = { ...pet, x: pet.x + dx, y: pet.y + dy };
+    keepOnScreen();
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(save, SAVE_DELAY_MS);
+  }
+  function onKey(key: PetKey) {
+    switch (key) {
+      case 'open':
+        actions.click(pet);
+        return;
+      case 'menu':
+        showMenu(petCenterInWindow());
+        return;
+      case 'left':
+      case 'right': {
+        const area = screen.getDisplayMatching(pet).workArea;
+        const step = Math.round(pet.width * KEY_WALK) * (key === 'left' ? -1 : 1);
+        const x = Math.max(area.x, Math.min(area.x + area.width - pet.width, pet.x + step));
+        leavePerch();
+        void walkTo(x, WALK_SPEED * 2).then(() => save());
+        return;
+      }
+      case 'nudgeLeft':
+        return nudge(-KEY_NUDGE, 0);
+      case 'nudgeRight':
+        return nudge(KEY_NUDGE, 0);
+      case 'nudgeUp':
+        return nudge(0, -KEY_NUDGE);
+      case 'nudgeDown':
+        return nudge(0, KEY_NUDGE);
+      case 'leave':
+        setKeyMode(false);
+        return;
+    }
+  }
+  const onPetKey = (e: IpcMainEvent, key: unknown) => {
+    if (!fromThisWindow(e) || !keyMode || !isPetKey(key)) return;
+    onKey(key);
+  };
+
+  ipcMain.on(IPC.petKey, onPetKey);
   ipcMain.on(IPC.hover, onHover);
   ipcMain.on(IPC.gesture, onGesture);
   ipcMain.on(IPC.contextMenu, onContextMenu);
@@ -1464,7 +1678,7 @@ export function createPetWindow({
     if (win.isDestroyed()) return;
     win.webContents.send(IPC.env, env);
     // 바빠지는 순간에 한 번만 말한다.
-    if (env.systemBusy && !wasBusy) void say({ kind: 'system', text: t('pet.busyCpu') });
+    if (env.systemBusy && !wasBusy) void say({ kind: 'system', text: voiced('pet.busyCpu') });
     wasBusy = env.systemBusy;
   }, log);
   win.webContents.on('did-finish-load', () => applyLayout());
@@ -1594,6 +1808,7 @@ export function createPetWindow({
     ipcMain.off(IPC.hover, onHover);
     ipcMain.off(IPC.gesture, onGesture);
     ipcMain.off(IPC.contextMenu, onContextMenu);
+    ipcMain.off(IPC.petKey, onPetKey);
     stopDisplayWatch();
   });
 
@@ -1620,6 +1835,10 @@ export function createPetWindow({
     /** 개발용: 창 위에 올라앉기 */
     debugPerch: () => tryPerch(),
     walkTo,
+    keyboard: () => {
+      if (win.isDestroyed() || hideReasons.hidden) return;
+      setKeyMode(!keyMode);
+    },
     stroll,
     follow,
     land,

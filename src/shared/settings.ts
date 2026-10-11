@@ -1,12 +1,15 @@
 // 사용자 설정 (P1-12). 2단계에서 SQLite 로 옮기기 전까지 JSON 파일 하나에 둔다.
 import { isPersona, type PersonaId } from './ai/persona.ts';
+import { isSaverMode, type SaverMode } from './battery.ts';
 import type { ChatterLevel } from './chatter.ts';
 import { type FocusLength, isFocusLength } from './focus.ts';
 import { type LangPref, t } from './i18n/index.ts';
 import { cleanIcsUrl } from './ics.ts';
 import { type AgeStage, isAgeStage } from './illustrate.ts';
+import { cleanFacts, cleanMeta, type MemMeta, type PetFact } from './knows.ts';
 import { type IllustEngine, illustEngineOf } from './local-draw.ts';
 import { cleanMemory, cleanPending } from './pet-memory.ts';
+import { cleanPetMeta, type PetMeta } from './pet-share.ts';
 import { GAITS, type Gait } from './pet3d/blueprint.ts';
 import { cleanWish } from './pet3d/prompt.ts';
 import { DEFAULT_ROUTINE, parseRoutine, type Routine } from './routine.ts';
@@ -18,6 +21,7 @@ import {
   type ShortcutId,
   shortcutClash,
 } from './shortcut.ts';
+import { DEFAULT_STYLE, parseStyle, type SpeechStyle } from './speech-style.ts';
 
 /** 입체 펫 모습: 피규어, 게임 캐릭터, 실사처럼 */
 // fluffy 복슬복슬: 부품을 녹여 붙인 한 덩어리 몸에 긴 털 (시험판, 2026-10-09)
@@ -37,8 +41,10 @@ export interface Settings {
   wander: boolean;
   /** AI 를 사용자 설정(훅, MCP, 스킬) 없이 부르기. 끄면 "내 AI 설정 그대로" */
   aiIsolation: boolean;
-  /** 펫 성격과 말투 (v1) */
+  /** 펫 성격과 말투 (v1). 프리셋 말투와 내 말투(custom)도 (2026-10-11) */
   persona: PersonaId;
+  /** 내 말투 (persona 가 custom 일 때 쓴다. shared/speech-style.ts). 옛 설정은 기본값 */
+  speech: SpeechStyle;
   /** 질문할 때 오늘 할 일과 일정 제목을 같이 보낸다 (v1, 기본 끔: 밖으로 나가는 정보라 사용자가 켠다) */
   aiKnowsTodos: boolean;
   /**
@@ -69,6 +75,8 @@ export interface Settings {
   petDepth?: string;
   /** AI 일러스트로 다시 그린 사진 펫의 나이 단계 (2026-10-09). 화면 크기 배율과 보관함 표시에 쓴다. 사진 그대로면 없음 */
   petAge?: AgeStage;
+  /** 펫 파일(.jjpet 판 2)에서 데려온 펫의 이름표: 만든 사람, 사용 허락, 만든 날, 앱 판. 다시 내보낼 때 그대로 넘긴다. 직접 만든 펫은 없음 */
+  petMeta?: PetMeta;
   /** 상태별 포즈 그림 (v1). 기쁨, 졸림, 배고픔. pets/ 안 파일 이름 */
   petPoses: Partial<Record<PoseKind, string>>;
   /** 삐짐 게이지를 세지 않는 요일 (0 일 ~ 6 토). 기본 토, 일. 만나는 시간을 켜면 쓰지 않는다 (restDaysOf) */
@@ -110,10 +118,26 @@ export interface Settings {
   petMemory: string[];
   /** AI 도구(MCP remember)가 기억하자고 한 것. 사용자가 설정에서 허락하면 petMemory 로 간다. AI 에게 보내지 않는다 */
   petMemoryPending: string[];
+  /** 기억마다 출처(대화, 직접, MCP)와 날짜 (짝꿍이 아는 것, shared/knows.ts). 열쇠는 memoryKey */
+  petMemoryMeta: MemMeta;
+  /** 사용자가 직접 알려 준 것: 생일, 좋아하는 간식, 좋아하는 것 (knows.ts). AI 없이도 말풍선에 쓴다 */
+  petFacts: PetFact[];
+  /** 기본 펫이 철마다 옷을 입는다: 봄 꽃, 여름 밀짚모자, 가을 목도리, 겨울 털모자, 명절 (shared/wear.ts). 기본 켬 */
+  seasonWear: boolean;
   /** 집중 타이머 길이 (15, 25, 50분). 마지막에 고른 것 */
   focusMin: FocusLength;
   /** 한가할 때 커서 쪽을 바라본다 */
   lookAtCursor: boolean;
+  /** jjakkung:// 주소로 할 일, 메모 넣기와 집중, 패널 열기 (편의, 기본 켬. shared/url-scheme.ts) */
+  urlScheme: boolean;
+  /** 배터리 절약 (편의): 자동(배터리, 저전력일 때), 항상, 끄기. shared/battery.ts */
+  batterySaver: SaverMode;
+  /** 말풍선을 화면 읽기 프로그램이 읽어 준다 (편의, 기본 켬) */
+  readAloud: boolean;
+  /** 맥 메뉴 막대 아이콘 옆에 다음 일정이나 집중 남은 시간 (편의, 기본 끔: 제목이 화면에 늘 보인다) */
+  trayTitle: boolean;
+  /** 배터리 절약을 펫이 한 번 알렸는지 (처음 배터리로 바뀔 때 한 번, "그대로 움직이기" 단추와 함께) */
+  saverTold: boolean;
   /**
    * 하루 리듬 (기본 켬, shared/energy.ts): 사용자 컴퓨터 시각대로 아침엔 잠이 덜 깨고 낮엔 활발하고 밤엔 졸리다.
    * 쉬지 않고 오래 일하면 같이 지친다. 끄면 예전 모습 (밤에 하품이 잦은 것만 남는다). 지친 혼잣말은 수다 빈도를 따른다
@@ -146,6 +170,13 @@ export interface Settings {
    * 기본 cloud: mac 은 16GB 를 받아야 해서 사용자가 고른다. 고를 수 없는 컴퓨터면 저장된 값이 mac 이어도 창이 cloud 로 쓴다
    */
   illustEngine: IllustEngine;
+  /**
+   * 같이 타자 치기 (2026-10-11, 기본 켬): 사용자가 입력하는 동안 펫이 작은 키보드를 같이 두드린다.
+   * 키 내용은 읽지 않고 입력이 있는지만 본다 (shared/together.ts). 배터리 절약 중에는 쉰다
+   */
+  typeAlong: boolean;
+  /** 매일 쪽지 (2026-10-11, 기본 켬): 하루 한 번 펫이 이 컴퓨터 기록으로 쓴 쪽지를 들고 온다 (shared/daily-note.ts) */
+  dailyNotes: boolean;
 }
 
 /** 보관한 사진 펫. 파일은 pets/ 안 */
@@ -158,6 +189,8 @@ export interface SavedPet {
   /** AI 일러스트 나이 단계 (없으면 사진 그대로 만든 펫) */
   age?: AgeStage;
   poses: Partial<Record<PoseKind, string>>;
+  /** 펫 파일에서 데려온 펫의 이름표 (Settings.petMeta) */
+  meta?: PetMeta;
 }
 
 export const LIBRARY_MAX = 12;
@@ -272,10 +305,11 @@ const PET_FILE = /^(pet|pose)-[\w-]+\.(png|gif|webp)$/;
 
 /** 바꿀 값만. 사진 펫은 null 이면 지운다 (기본 펫으로). */
 export type SettingsPatch = Partial<
-  Omit<Settings, 'petImage' | 'petPoses' | 'petModel' | 'petDepth' | 'petAge'>
+  Omit<Settings, 'petImage' | 'petPoses' | 'petModel' | 'petDepth' | 'petAge' | 'petMeta'>
 > & {
   petImage?: string | null;
   petAge?: AgeStage | null;
+  petMeta?: PetMeta | null;
   petModel?: string | null;
   petDepth?: string | null;
   petPoses?: Partial<Record<PoseKind, string | null>>;
@@ -288,6 +322,7 @@ export const DEFAULT_SETTINGS: Settings = {
   wander: true,
   aiIsolation: true,
   persona: 'friend',
+  speech: DEFAULT_STYLE,
   aiKnowsTodos: false,
   aiPetTools: false,
   launchAtLogin: false,
@@ -313,8 +348,16 @@ export const DEFAULT_SETTINGS: Settings = {
   petRules: '',
   petMemory: [],
   petMemoryPending: [],
+  petMemoryMeta: {},
+  petFacts: [],
+  seasonWear: true,
   focusMin: 25,
   lookAtCursor: true,
+  urlScheme: true,
+  batterySaver: 'auto',
+  readAloud: true,
+  trayTitle: false,
+  saverTold: false,
   dayRhythm: true,
   diaryAi: false,
   sounds: false,
@@ -323,6 +366,8 @@ export const DEFAULT_SETTINGS: Settings = {
   petWishes: {},
   routine: DEFAULT_ROUTINE,
   illustEngine: 'cloud',
+  typeAlong: true,
+  dailyNotes: true,
 };
 
 export const PET_NAME_MAX = 12;
@@ -414,6 +459,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     wander: bool(r.wander, base.wander),
     aiIsolation: bool(r.aiIsolation, base.aiIsolation),
     persona: isPersona(r.persona) ? r.persona : base.persona,
+    speech: r.speech === undefined ? base.speech : parseStyle(r.speech),
     aiKnowsTodos: bool(r.aiKnowsTodos, base.aiKnowsTodos),
     aiPetTools: bool(r.aiPetTools, base.aiPetTools),
     launchAtLogin: bool(r.launchAtLogin, base.launchAtLogin),
@@ -431,6 +477,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     ...petModelOf(r.petModel, base.petModel),
     ...petDepthOf(r.petDepth, base.petDepth),
     ...petAgeOf(r, base),
+    ...petMetaOf(r.petMeta, base.petMeta),
     petPoses: posesOf(r.petPoses, base.petPoses),
     restDays: Array.isArray(r.restDays)
       ? [...new Set(r.restDays.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 6))].sort()
@@ -460,8 +507,15 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     petMemoryPending: Array.isArray(r.petMemoryPending)
       ? cleanPending(r.petMemoryPending)
       : [...base.petMemoryPending],
+    ...memoryNotesOf(r, base),
+    seasonWear: bool(r.seasonWear, base.seasonWear),
     focusMin: isFocusLength(r.focusMin) ? r.focusMin : base.focusMin,
     lookAtCursor: bool(r.lookAtCursor, base.lookAtCursor),
+    urlScheme: bool(r.urlScheme, base.urlScheme),
+    batterySaver: isSaverMode(r.batterySaver) ? r.batterySaver : base.batterySaver,
+    readAloud: bool(r.readAloud, base.readAloud),
+    trayTitle: bool(r.trayTitle, base.trayTitle),
+    saverTold: bool(r.saverTold, base.saverTold),
     dayRhythm: bool(r.dayRhythm, base.dayRhythm),
     diaryAi: bool(r.diaryAi, base.diaryAi),
     sounds: bool(r.sounds, base.sounds),
@@ -469,12 +523,29 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     routine: parseRoutine(r.routine, base.routine),
     // 옛 값 'mac' 은 local 로 (내 Mac에서 → 내 컴퓨터에서, 2026-10-10)
     illustEngine: illustEngineOf(r.illustEngine) ?? base.illustEngine,
+    typeAlong: bool(r.typeAlong, base.typeAlong),
+    dailyNotes: bool(r.dailyNotes, base.dailyNotes),
     ...bodiesOf(r, base),
     ...(typeof r.skipVersion === 'string' && /^\d+\.\d+\.\d+/.test(r.skipVersion)
       ? { skipVersion: r.skipVersion.slice(0, 32) }
       : base.skipVersion
         ? { skipVersion: base.skipVersion }
         : {}),
+  };
+}
+
+/** 기억 출처 표와 알려 준 것 (knows.ts). 출처는 지금 기억하거나 기다리는 글의 것만 남긴다 */
+function memoryNotesOf(
+  r: Record<string, unknown>,
+  base: Settings,
+): Pick<Settings, 'petMemoryMeta' | 'petFacts'> {
+  const memory = Array.isArray(r.petMemory) ? cleanMemory(r.petMemory) : base.petMemory;
+  const pending = Array.isArray(r.petMemoryPending)
+    ? cleanPending(r.petMemoryPending)
+    : base.petMemoryPending;
+  return {
+    petMemoryMeta: cleanMeta(r.petMemoryMeta ?? base.petMemoryMeta, [...memory, ...pending]),
+    petFacts: Array.isArray(r.petFacts) ? cleanFacts(r.petFacts) : [...base.petFacts],
   };
 }
 
@@ -542,6 +613,13 @@ function petImageOf(v: unknown, current: string | undefined): { petImage?: strin
   return current ? { petImage: current } : {};
 }
 
+/** 펫 이름표: null 이면 지운다. 틀린 값은 지금 것 그대로 */
+function petMetaOf(v: unknown, current: PetMeta | undefined): { petMeta?: PetMeta } {
+  if (v === null) return {};
+  const meta = v === undefined ? current : (cleanPetMeta(v) ?? current);
+  return meta ? { petMeta: meta } : {};
+}
+
 /** 나이 단계: 사진 펫이 있을 때만. null 이면 지운다 */
 function petAgeOf(r: Record<string, unknown>, base: Settings): { petAge?: AgeStage } {
   if (!petImageOf(r.petImage, base.petImage).petImage) return {};
@@ -576,6 +654,7 @@ function libraryOf(list: unknown[]): SavedPet[] {
     if (!id || !name || !image || out.some((o) => o.id === id)) continue;
     const model = typeof f.model === 'string' && MODEL_FILE.test(f.model) ? f.model : undefined;
     const depth = typeof f.depth === 'string' && DEPTH_FILE.test(f.depth) ? f.depth : undefined;
+    const meta = cleanPetMeta(f.meta);
     out.push({
       id,
       name,
@@ -584,6 +663,7 @@ function libraryOf(list: unknown[]): SavedPet[] {
       ...(depth ? { depth } : {}),
       ...(isAgeStage(f.age) ? { age: f.age } : {}),
       poses: posesOf(f.poses, {}),
+      ...(meta ? { meta } : {}),
     });
     if (out.length >= LIBRARY_MAX) break;
   }
@@ -636,7 +716,7 @@ const HOST_MAC: boolean | undefined =
     : undefined;
 
 /** 나중 버전에 생긴 단축키. 새로 더하면 여기에도 적는다 (예전 설정 파일에는 이 id 가 없다) */
-const LATER_SHORTCUTS: readonly ShortcutId[] = ['chat', 'look', 'panel'];
+const LATER_SHORTCUTS: readonly ShortcutId[] = ['chat', 'look', 'panel', 'pet'];
 
 function shortcutsOf(v: unknown, current: Record<ShortcutId, string>): Record<ShortcutId, string> {
   const r = (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>;

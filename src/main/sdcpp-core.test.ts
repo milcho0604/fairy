@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { SD_SETUP_STAGES, setupRatio, setupStageOf, setupStagesFor } from '../shared/local-draw.ts';
 import {
@@ -65,6 +66,9 @@ const intelMac = {
   osRelease: '22.6.0',
   cpuFeatures: { avx2: true, fma: true },
 };
+
+/** 시험의 경로 기댓값을 이 OS 의 구분자로 (윈도우 CI 에서 join 이 \\ 를 쓴다) */
+const P = (s: string) => join(s);
 
 test('엔진 고르기: Apple 칩 macOS 14+ 는 mflux, 나머지 되는 컴퓨터는 sd.cpp', () => {
   assert.deepEqual(pickLocalEngine(m2), { ok: true, engine: 'mflux' });
@@ -163,26 +167,26 @@ test('고정한 판: 릴리스 주소, 묶음과 모델 해시 모양', () => {
 });
 
 test('자리는 모두 local-draw-sd 안, sd-cli 는 윈도우는 받은 것, 맥은 앱 안', () => {
-  const root = '/Users/a/Library/Application Support/Jjakkung/local-draw-sd';
+  const root = P('/Users/a/Library/Application Support/Jjakkung/local-draw-sd');
   const l = sdLayout(root);
   for (const v of Object.values(l)) assert.ok(v.startsWith(root), v);
-  const base = { l, resourcesPath: '/App/Contents/Resources', appPath: '/src/jj', packaged: true };
+  const base = { l, resourcesPath: P('/App/Contents/Resources'), appPath: P('/src/jj'), packaged: true };
   assert.equal(
     sdBinary({ ...base, platform: 'win32', arch: 'x64', backend: 'vulkan' }),
-    `${root}/bin/vulkan/sd-cli.exe`,
+    P(`${root}/bin/vulkan/sd-cli.exe`),
   );
   assert.equal(
     sdBinary({ ...base, platform: 'win32', arch: 'x64', backend: 'cpu' }),
-    `${root}/bin/cpu/sd-cli.exe`,
+    P(`${root}/bin/cpu/sd-cli.exe`),
   );
   assert.equal(
     sdBinary({ ...base, platform: 'darwin', arch: 'arm64', backend: 'metal' }),
-    '/App/Contents/Resources/sd/sd-cli',
+    P('/App/Contents/Resources/sd/sd-cli'),
   );
   // 개발 중에는 build-sdcpp.mjs 가 만든 자리
   assert.equal(
     sdBinary({ ...base, packaged: false, platform: 'darwin', arch: 'x64', backend: 'cpu' }),
-    '/src/jj/resources-bin/sd/x64/sd-cli',
+    P('/src/jj/resources-bin/sd/x64/sd-cli'),
   );
 });
 
@@ -211,8 +215,8 @@ test('윈도우 도구: 시스템 tar 로 zip 풀기, taskkill 로 자손까지,
 test('그리기 인자: 4단계 cfg 1.0 euler, GPU 는 오프로드와 flash attention, CPU 는 --backend cpu', () => {
   const l = sdLayout('/r');
   const o = {
-    input: '/t/in.jpg',
-    output: '/t/out.png',
+    input: P('/t/in.jpg'),
+    output: P('/t/out.png'),
     prompt: 'a "cute" pet',
     width: 768,
     height: 1024,
@@ -220,10 +224,10 @@ test('그리기 인자: 4단계 cfg 1.0 euler, GPU 는 오프로드와 flash att
   };
   const gpu = sdDrawArgs(l, { ...o, backend: 'vulkan' });
   const at = (args: string[], k: string) => args[args.indexOf(k) + 1];
-  assert.equal(at(gpu, '--diffusion-model'), '/r/models/flux-2-klein-4b-Q4_0.gguf');
-  assert.equal(at(gpu, '--llm'), '/r/models/Qwen3-4B-Q4_K_M.gguf');
-  assert.equal(at(gpu, '--vae'), '/r/models/full_encoder_small_decoder.safetensors');
-  assert.equal(at(gpu, '-r'), '/t/in.jpg');
+  assert.equal(at(gpu, '--diffusion-model'), P('/r/models/flux-2-klein-4b-Q4_0.gguf'));
+  assert.equal(at(gpu, '--llm'), P('/r/models/Qwen3-4B-Q4_K_M.gguf'));
+  assert.equal(at(gpu, '--vae'), P('/r/models/full_encoder_small_decoder.safetensors'));
+  assert.equal(at(gpu, '-r'), P('/t/in.jpg'));
   // 요청문은 셸 없이 인자 하나로
   assert.equal(at(gpu, '-p'), 'a "cute" pet');
   assert.equal(at(gpu, '--steps'), '4');
@@ -232,7 +236,7 @@ test('그리기 인자: 4단계 cfg 1.0 euler, GPU 는 오프로드와 flash att
   assert.equal(at(gpu, '-W'), '768');
   assert.equal(at(gpu, '-H'), '1024');
   assert.equal(at(gpu, '--seed'), '7');
-  assert.equal(at(gpu, '-o'), '/t/out.png');
+  assert.equal(at(gpu, '-o'), P('/t/out.png'));
   assert.ok(gpu.includes('--offload-to-cpu') && gpu.includes('--diffusion-fa'));
   assert.ok(gpu.includes('--disable-image-metadata'));
   assert.ok(!gpu.includes('--backend'));
@@ -242,15 +246,15 @@ test('그리기 인자: 4단계 cfg 1.0 euler, GPU 는 오프로드와 flash att
     kr,
     {
       ...o,
-      input: '/사용자/짝꿍 시험/local-draw-sd/tmp/jj-draw-1/in.jpg',
-      output: '/사용자/짝꿍 시험/local-draw-sd/tmp/jj-draw-1/out.png',
+      input: P('/사용자/짝꿍 시험/local-draw-sd/tmp/jj-draw-1/in.jpg'),
+      output: P('/사용자/짝꿍 시험/local-draw-sd/tmp/jj-draw-1/out.png'),
       backend: 'cpu',
     },
     kr.root,
   );
-  assert.equal(at(relArgs, '--diffusion-model'), 'models/flux-2-klein-4b-Q4_0.gguf');
-  assert.equal(at(relArgs, '-r'), 'tmp/jj-draw-1/in.jpg');
-  assert.equal(at(relArgs, '-o'), 'tmp/jj-draw-1/out.png');
+  assert.equal(at(relArgs, '--diffusion-model'), P('models/flux-2-klein-4b-Q4_0.gguf'));
+  assert.equal(at(relArgs, '-r'), P('tmp/jj-draw-1/in.jpg'));
+  assert.equal(at(relArgs, '-o'), P('tmp/jj-draw-1/out.png'));
   assert.ok(
     relArgs.every((a, i) => relArgs[i - 1] === '-p' || /^[\x20-\x7e]*$/.test(a)),
     '요청문 말고는 모두 영문',

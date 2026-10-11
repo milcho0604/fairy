@@ -81,3 +81,14 @@ export function fitSavedBounds(
   if (x === undefined || y === undefined) return { width, height };
   return clampIntoAreas({ x, y, width, height }, areas);
 }
+
+/** 창 좌표와 크기는 정수만 된다 (BrowserWindow.setPosition 은 소수면 던진다). 걷기, 달리기가 소수를 남기지 않게 */
+export function snapRect<T extends Rect>(rect: T): T {
+  return {
+    ...rect,
+    x: Math.round(rect.x),
+    y: Math.round(rect.y),
+    width: Math.round(rect.width),
+    height: Math.round(rect.height),
+  };
+}

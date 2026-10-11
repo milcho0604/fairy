@@ -15,19 +15,30 @@ import {
   enWeekdayIndex,
   weekdayOffset,
 } from './quick-words.ts';
-import type { Repeat } from './todo-store.ts';
+import { dayInMonth, isMonthDay, type Repeat } from './todo-store.ts';
 
 export interface QuickTodo {
   title: string;
   due: string | null;
   important: boolean;
   repeat: Repeat | null;
+  /** 매달 반복의 날 ("매달 31일 월세" 는 31). 달에 없는 날이면 마감은 그달 끝이고 다음 달은 다시 이날 */
+  repeatDay?: number;
 }
 
 const REPEAT_WORDS: Record<string, Repeat> = { 매일: 'daily', 평일: 'weekdays', 매주: 'weekly' };
 
 // 한국어 날짜 낱말. 영어는 아래 EN_DAY 로 따로 읽는다. "내일모레"(모레)는 "내일"보다 먼저 본다 (순서대로 찾는다)
-const DAY_WORDS: Record<string, number> = { 오늘: 0, 내일모레: 2, 내일: 1, 모레: 2 };
+// "어제", "그저께" 는 지난 날이다. 넣되 화면이 지난 날이라고 알리고 오늘로 바꾸는 단추를 준다
+const DAY_WORDS: Record<string, number> = {
+  오늘: 0,
+  내일모레: 2,
+  내일: 1,
+  모레: 2,
+  어제: -1,
+  그저께: -2,
+  그제: -2,
+};
 
 // 한국어 반복 요일 (2026-10-08). 요일 순서는 getUTCDay 와 같다(일요일 0).
 // "매주 월요일 회의", "월요일마다 회의", "회의 매주 월요일", "회의 월요일마다". 요일은 온 이름(월요일)만 읽는다.
@@ -52,6 +63,7 @@ const EN_EVERY_DAY_TAIL = new RegExp(` every (${EN_WEEKDAY_ANY})$`, 'i');
 
 // 날짜: today, tonight, tomorrow, the day after tomorrow. 앞에 by, on, due 가 붙어도 된다 ("report by tomorrow")
 const EN_DAY_OFFSET: Record<string, number> = {
+  yesterday: -1,
   today: 0,
   tonight: 0,
   tomorrow: 1,
@@ -59,7 +71,7 @@ const EN_DAY_OFFSET: Record<string, number> = {
   'day after tomorrow': 2,
   'the day after tomorrow': 2,
 };
-const EN_DAY_WORD = '(?:the )?day after tomorrow|today|tonight|tomorrow|tmrw';
+const EN_DAY_WORD = '(?:the )?day after tomorrow|today|tonight|tomorrow|tmrw|yesterday';
 const EN_LEAD = '(?:by |on |due |until )?';
 const EN_DAY_HEAD = new RegExp(`^${EN_LEAD}(${EN_DAY_WORD}) `, 'i');
 const EN_DAY_TAIL = new RegExp(` ${EN_LEAD}(${EN_DAY_WORD})$`, 'i');
@@ -75,6 +87,55 @@ const EN_WD_FULL_TAIL = new RegExp(` ${EN_WD}(${EN_WEEKDAY_FULL})$`, 'i');
 const EN_WD_ABBR_HEAD = new RegExp(`^(?:(by|on|due|until) |(next|this) )+(${EN_WEEKDAY_ANY}) `, 'i');
 const EN_WD_ABBR_TAIL = new RegExp(` (?:(by|on|due|until) |(next|this) )+(${EN_WEEKDAY_ANY})$`, 'i');
 
+// 서수 날짜: "pay bills on the 25th", "the 1st rent", "by the 3rd". 다가오는 그날 (오늘이 그날이면 오늘)
+const EN_ORD = '(?:on |by |due |until )?the (\\d{1,2})(?:st|nd|rd|th)';
+const EN_ORD_HEAD = new RegExp(`^${EN_ORD} `, 'i');
+const EN_ORD_TAIL = new RegExp(` ${EN_ORD}$`, 'i');
+
+/** 이번 달 그날이 오늘이거나 뒤면 이번 달, 지났으면 다음 달. 달에 없는 날(31일)은 그달 끝 */
+export function nextDayOfMonth(today: string, d: number): string | null {
+  if (d < 1 || d > 31) return null;
+  let y = Number(today.slice(0, 4));
+  let m = Number(today.slice(5, 7));
+  let day = dayInMonth(y, m, d);
+  if (day < today) {
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+    day = dayInMonth(y, m, d);
+  }
+  return day;
+}
+
+// 매달 반복 (2026-10-11): "매달 25일 월세", "월세 매월 1일", "25일마다 월세", "pay rent every month on the 15th",
+// "monthly on the 31st rent", "rent on the 1st of every month". 반복 낱말과 날이 같이 있어야 한다:
+// "매달 정산", "monthly report" 는 제목이다
+const KO_MONTHLY_WORD = /(?:^|\s)(?:매달|매월|달마다)(?=\s|$)/;
+const KO_MONTH_DAY = /^(\d{1,2})일(?:마다|에|엔)? | (\d{1,2})일(?:마다|에|엔)?$/;
+const KO_EVERY_MONTH_DAY = /^(\d{1,2})일마다 | (\d{1,2})일마다$/;
+const EN_MONTHLY_WORD = /(?:^|\s)(?:every month|each month|monthly)(?=\s|$)/i;
+const EN_MONTH_DAY = new RegExp(`^${EN_ORD}(?: of)? | ${EN_ORD}(?: of)?$`, 'i');
+const EN_ORD_EVERY_MONTH = new RegExp(`(?:^|\\s)${EN_ORD} of (?:every|each) month(?=\\s|$)`, 'i');
+
+/** 매달 반복 낱말과 날을 뗀다. 있으면 [날, 남은 말] */
+function takeMonthly(rest: string): [number, string] | null {
+  const tidy = (s: string) => s.replace(/\s+/g, ' ').trim();
+  const ofEvery = rest.match(EN_ORD_EVERY_MONTH);
+  if (ofEvery) return [Number(ofEvery[1]), tidy(rest.replace(ofEvery[0], ' '))];
+  const every = rest.match(KO_EVERY_MONTH_DAY);
+  if (every) return [Number(every[1] ?? every[2]), tidy(rest.replace(every[0], ' '))];
+  for (const word of [KO_MONTHLY_WORD, EN_MONTHLY_WORD]) {
+    const w = rest.match(word);
+    if (!w) continue;
+    const left = tidy(rest.replace(w[0], ' '));
+    const day = left.match(word === KO_MONTHLY_WORD ? KO_MONTH_DAY : EN_MONTH_DAY);
+    if (day) return [Number(day[1] ?? day[2]), tidy(left.replace(day[0], ' '))];
+  }
+  return null;
+}
+
 const EN_DEADLINE = new RegExp(
   `\\b(?:by|until|due)\\s+(?:\\d|(?:noon|midnight|${EN_DAY_WORD}|next|this|${EN_WEEKDAY_ANY}|(?:the )?end of|the weekend)\\b|in \\S+ (?:days?|weeks?|months?)\\b)|\\bwithin \\S+ (?:days?|weeks?|months?)\\b`,
   'i',
@@ -85,8 +146,12 @@ const EN_DEADLINE = new RegExp(
  * 할 일로 남긴다(한국어 "3시까지" 와 같은 규칙).
  */
 export function hasDeadlineWord(text: string): boolean {
-  return text.includes('까지') || EN_DEADLINE.test(text);
+  return text.includes('까지') || EN_DEADLINE.test(text) || DAY_END.test(text);
 }
+
+/** 그 자체로 마감인 말: "eod", "cob", "end of day", "오전 중", "오후 중" (할 일로 둔다) */
+const DAY_END =
+  /\b(?:eod|cob|end of (?:the )?day|close of business)\b|(?:^|\s)(?:오전|오후) ?중(?:에|까지|으로)?(?:\s|$)/i;
 
 /** 맨 앞이나 맨 끝의 영어 날짜, 요일 낱말. 있으면 [마감, 남은 말] */
 function takeEnglishDue(rest: string, today: string): [string, string] | null {
@@ -100,6 +165,11 @@ function takeEnglishDue(rest: string, today: string): [string, string] | null {
   for (const re of [EN_REL_HEAD, EN_REL_TAIL]) {
     const m = rest.match(re);
     const day = m ? enRelDay(m[1] ?? '', today) : null;
+    if (day) return [day, rest.replace(re, ' ').trim()];
+  }
+  for (const re of [EN_ORD_HEAD, EN_ORD_TAIL]) {
+    const m = rest.match(re);
+    const day = m ? nextDayOfMonth(today, Number(m[1])) : null;
     if (day) return [day, rest.replace(re, ' ').trim()];
   }
   for (const [re, wdAt, nextAt] of [
@@ -134,6 +204,12 @@ export function parseQuickTodo(text: string, today: string): QuickTodo {
   }
   let repeat: Repeat | null = null;
   let repeatDue: string | null = null;
+  // "매달 25일 월세", "월세 매달 25일", "every month on the 15th": 매달 반복. 마감은 다가오는 그날
+  const month = takeMonthly(rest);
+  if (month && isMonthDay(month[0]) && month[1]) {
+    const [repeatDay, title] = month;
+    return { title, due: nextDayOfMonth(today, repeatDay), important, repeat: 'monthly', repeatDay };
+  }
   // 반복 요일이 있으면 매주, 첫 마감은 다가오는 그 요일 (한국어와 영어가 같은 규칙, weekdayOffset next=false)
   const koEvery = rest.match(KO_EVERY_WD_HEAD) ?? rest.match(KO_EVERY_WD_TAIL);
   if (koEvery) {

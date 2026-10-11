@@ -1,9 +1,9 @@
 // 구글 캘린더에 쓰기 (6단계): 연결(OAuth), 토큰 보관, 보내기, 설정 창 IPC.
 // 네트워크는 모두 여기(메인)서 Electron net.fetch 로 한다. 창은 상태(GcalStatus)만 받는다.
-// 토큰은 google-token.json(0600)에만 두고 설정, 백업(backup.ts FILES 에 없다), 기록, 창에는 넘기지 않는다 (hf-token.ts 와 같다).
+// 토큰은 google-token.json(0600, 운영체제 열쇠로 암호화할 수 있으면 암호화)에만 두고 설정, 백업(backup.ts FILES 에 없다), 기록, 창에는 넘기지 않는다 (hf-token.ts 와 같다).
 // 켜고 끄기와 캘린더 id 는 비밀이 아니라 google-calendar.json 에 둔다.
 import { randomBytes } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   app,
@@ -39,6 +39,9 @@ import {
   startLoopback,
 } from './gcal-auth.ts';
 import { GcalLost, type PassResult, syncPass } from './gcal-sync.ts';
+import { writeFileDurable } from './json-file.ts';
+import { osCrypto } from './os-crypto.ts';
+import { secretFile } from './secret-file.ts';
 
 /** 따로 바뀐 게 없어도 이만큼마다 한 번 맞춰 본다 (펫 MCP 서버가 고친 것, 다시 하기) */
 const EVERY_MS = 5 * 60_000;
@@ -69,35 +72,22 @@ function readPrefs(): Prefs {
 }
 
 function writePrefs(p: Prefs) {
-  mkdirSync(app.getPath('userData'), { recursive: true });
-  writeFileSync(userFile(PREFS_FILE), JSON.stringify(p));
+  writeFileDurable(userFile(PREFS_FILE), JSON.stringify(p));
 }
 
-/** 오래 가는 토큰(refresh token)만 파일에. 잠깐 쓰는 access token 은 메모리에만 */
+/**
+ * 오래 가는 토큰(refresh token)만 파일에. 잠깐 쓰는 access token 은 메모리에만.
+ * 운영체제 열쇠로 암호화할 수 있으면 암호화해 둔다 (secret-file.ts, 옛 평문 파일은 읽을 때 바꿔 쓴다)
+ */
+const tokenFile = () => secretFile(userFile(TOKEN_FILE), 'refreshToken', () => osCrypto);
 const token = {
   get(): string | undefined {
-    try {
-      const v = JSON.parse(readFileSync(userFile(TOKEN_FILE), 'utf8')) as { refreshToken?: unknown };
-      return typeof v.refreshToken === 'string' && v.refreshToken.length > 0 && v.refreshToken.length <= 4096
-        ? v.refreshToken
-        : undefined;
-    } catch {
-      return undefined;
-    }
+    const v = tokenFile().read();
+    return v && v.length <= 4096 ? v : undefined;
   },
   set(refreshToken: string | null) {
-    const file = userFile(TOKEN_FILE);
-    if (refreshToken === null) {
-      rmSync(file, { force: true });
-      return;
-    }
-    mkdirSync(app.getPath('userData'), { recursive: true });
-    // 임시 파일에 쓰고 바꿔 끼운다 (쓰다 꺼져 반쪽 파일이 남으면 말없이 연결이 끊긴 것처럼 보였다).
-    // 임시 파일부터 나만 읽게 만든다
-    const tmp = `${file}.${process.pid}.tmp`;
-    writeFileSync(tmp, JSON.stringify({ refreshToken }), { mode: 0o600 });
-    chmodSync(tmp, 0o600);
-    renameSync(tmp, file);
+    if (refreshToken === null) tokenFile().remove();
+    else tokenFile().write(refreshToken);
   },
 };
 
@@ -156,11 +146,11 @@ export function createGcal(o: {
     }
   }
 
-  function lose() {
-    o.log('gcal', '연결 끝남');
+  function lose(why: 'expired' | 'relink' = 'expired') {
+    o.log('gcal', '연결 끝남', why);
     token.set(null);
     access = null;
-    problem = 'expired';
+    problem = why;
     pending = 0;
     backoff.clear();
     // 다시 연결하는 계정이 다를 수 있다: 보낸 기록을 "확인 전"으로 (같은 계정이면 겹치지 않고, 다른 계정이면 새로 들어간다)
@@ -205,6 +195,9 @@ export function createGcal(o: {
   const active = () => !!client && prefs.push && connected();
 
   async function pass(): Promise<void> {
+    // 저장한 연결을 이 컴퓨터 열쇠로 풀 수 없다 (앱 이름이 짝꿍에서 페어리로 바뀌면 맥 키체인 항목 이름도 바뀐다).
+    // 말없이 "연결 안 됨"으로 두면 일정이 안 가는 줄 모른다: 끝난 연결로 치우고 다시 연결해 달라고 알린다
+    if (client && !connected() && tokenFile().unreadable()) lose('relink');
     if (!active()) {
       pending = 0;
       return;
@@ -388,7 +381,7 @@ export function createGcal(o: {
       } else {
         clearTimeout(timer);
         pending = 0;
-        if (problem !== 'expired' && problem !== 'scope') problem = null;
+        if (problem !== 'expired' && problem !== 'relink' && problem !== 'scope') problem = null;
       }
     }
     return refreshed();

@@ -1,3 +1,4 @@
+import { stampMemory } from '../shared/knows.ts';
 import {
   applyPatch,
   cleanPetName,
@@ -43,7 +44,9 @@ export const settings = {
   /** 바꿀 값만 준다. 틀린 값은 무시된다. 바뀐 뒤 설정을 돌려준다. */
   set(patch: SettingsPatch): Settings {
     const prev = load();
-    const next = followKindName(prev, applyPatch(prev, patch), patch);
+    const moved = followKindName(prev, applyPatch(prev, patch), patch);
+    // 새로 생긴 기억에 출처와 날짜를 붙인다 (짝꿍이 아는 것, shared/knows.ts)
+    const next = { ...moved, petMemoryMeta: stampMemory(prev, moved, Date.now()) };
     if (JSON.stringify(next) === JSON.stringify(prev)) return prev;
     // 먼저 쓰고 나서 바꾼다. 쓰기가 던졌는데(디스크 가득, 권한) 메모리만 바뀌면 같은 값을 다시 저장해도
     // "안 바뀜"으로 넘어가 끝내 저장되지 않고, 다시 켜면 옛 값으로 돌아갔다
