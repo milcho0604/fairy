@@ -97,7 +97,7 @@ test('자동 설치가 받을 파일을 빌드하고 릴리스에 올린다', ()
   ])
     assert.ok(wf.includes(f), `release.yml 이 ${f} 를 올리지 않는다`);
   // 본문의 최소 버전 줄은 손이 아니라 release/min-version 에서
-  assert.match(wf, /node scripts\/release-body\.mjs "\$GITHUB_REF_NAME" > notes\.md/);
+  assert.match(wf, /node scripts\/release-check\.mjs notes "\$GITHUB_REF_NAME" > notes\.md/);
   assert.match(wf, /--notes-file notes\.md/);
 });
 
