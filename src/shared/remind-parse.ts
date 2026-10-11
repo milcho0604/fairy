@@ -1,5 +1,6 @@
 // 빠른 입력과 패널이 넘긴 값에서 미리 알림, 할 일 마감 시각 읽기 (8판).
 // 알림 말 떼기는 remind.ts takeRemind, 시각 읽기는 일정 한 줄과 같은 parseQuickEvent 를 쓴다.
+import { plusDays } from './day.ts';
 import { parseQuickEvent } from './event-store.ts';
 import { hasDeadlineWord, parseQuickTodo, type QuickTodo } from './quick-add.ts';
 import { MAX_REMINDS, type RemindSpec, resolveSpecs, takeRemind } from './remind.ts';
@@ -12,6 +13,7 @@ export interface QuickTodoTimed extends QuickTodo {
 
 /** 영어 마감 낱말이 제목 끝에 남으면 뗀다 ("report by 5pm" 의 시각을 읽고 남은 "report by") */
 const EN_DEADLINE_TAIL = /\s+(?:by|until|due|before)$/i;
+const MIDNIGHT = /자정|\bmidnight\b/i;
 
 /**
  * 할 일 한 줄. parseQuickTodo 에 더해 마감 시각("내일 3시까지 보고서", "보고서 오후 5시까지", "report by 5pm")을 읽는다.
@@ -24,12 +26,14 @@ export function parseTodoLine(text: string, today: string, nowMinute: number): Q
   if (!ev || ev.durationMin !== null) return { ...parsed, dueMin: null };
   const inner = parseQuickTodo(ev.title.replace(EN_DEADLINE_TAIL, ''), today);
   if (!inner.title) return { ...parsed, dueMin: null };
+  // "자정까지", "by midnight" 는 그날 밤 11시 59분 (다음 날 0시로 두면 마감이 "내일 오전 12:00" 으로 보였다)
+  const midnight = ev.minute === 0 && MIDNIGHT.test(text);
   return {
     title: inner.title,
-    due: ev.day,
+    due: midnight ? plusDays(ev.day, -1) : ev.day,
     important: parsed.important || inner.important,
     repeat: null,
-    dueMin: ev.minute,
+    dueMin: midnight ? 24 * 60 - 1 : ev.minute,
   };
 }
 

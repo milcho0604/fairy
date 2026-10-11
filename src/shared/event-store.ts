@@ -592,6 +592,19 @@ const EN_TIME_RANGE = new RegExp(
   'i',
 );
 
+/** 범위 끝의 때와 반대쪽 때 (끝에만 때를 적은 범위의 시작이 끝보다 늦을 때) */
+const OTHER_MER: Record<string, string> = {
+  am: 'pm',
+  pm: 'am',
+  오전: '오후',
+  새벽: '오후',
+  아침: '오후',
+  오후: '오전',
+  낮: '오전',
+  저녁: '오전',
+  밤: '오전',
+};
+
 /**
  * 범위의 시작과 끝(분). 끝에만 때 낱말이 있으면 시작도 그쪽으로 ("3-5pm" 은 오후 3시부터),
  * 끝에 없으면 시작보다 뒤인 가장 가까운 시각("오후 2시~4시" 는 4시가 16시, "밤 11시~1시" 는 다음 날 1시).
@@ -602,12 +615,12 @@ function rangeMinutes(
 ): { start: number; length: number; nextDay: boolean } | null {
   let startPart = a;
   if (!a.mer && b.mer) {
-    // 끝의 때를 시작에 빌려 온다. 그러면 시작이 끝보다 늦으면(11시~오후 1시) 오전
+    // 끝의 때를 시작에 빌려 온다. 그러면 시작이 끝보다 늦으면 반대쪽: "11시~오후 1시" 는 오전 11시,
+    // "11시~새벽 1시", "10-2am" 은 전날 밤 (자정을 넘는다)
     const end = clockMinute(b);
     const same = clockMinute({ ...a, mer: b.mer });
     if (!end || !same) return null;
-    startPart =
-      same.minute < end.minute ? { ...a, mer: b.mer } : { ...a, mer: b.mer === 'pm' ? 'am' : '오전' };
+    startPart = same.minute < end.minute ? { ...a, mer: b.mer } : { ...a, mer: OTHER_MER[b.mer] ?? '오전' };
   }
   const s = clockMinute(startPart);
   if (!s) return null;
@@ -616,6 +629,9 @@ function rangeMinutes(
     const e = clockMinute(b);
     if (!e) return null;
     endMin = e.minute + (e.nextDay ? 24 * 60 : 0);
+    // 오후에 시작해 끝을 오전 쪽(새벽 1시, 오전 2시, 1am)으로 적었으면 다음 날: "밤 11시~새벽 1시", "11pm-1am".
+    // 오전에 시작해 오전에 끝나거나(오전 10시~오전 9시) 끝이 오후인데 앞서면(오후 3시~2시) 틀린 범위로 둔다
+    if (endMin <= s.minute && s.minute >= 12 * 60 && e.minute < 12 * 60) endMin += 24 * 60;
   } else {
     if (b.h > 23 || b.m > 59) return null;
     const base = (b.h % 12) * 60 + b.m;
@@ -812,8 +828,8 @@ export function parseQuickEvent(text: string, today: string, nowMinute: number):
     if (word) {
       const w = (word[1] ?? '').toLowerCase();
       minute = w === 'noon' || w === '정오' ? 12 * 60 : 0;
-      // 자정은 그 날 밤 (다음 날 0시). 영어 midnight 는 tonight 와 같이 쓸 때만 (예전과 같이)
-      nextDay = w === '자정' || (w === 'midnight' && tonight);
+      // 자정, midnight 는 그 날 밤 (다음 날 0시): "금요일 자정", "friday midnight" 은 토요일 0시
+      nextDay = w === '자정' || w === 'midnight';
       meridiem = true;
     }
   }
@@ -885,7 +901,7 @@ export const ALL_DAY_MAX_DAYS = 92;
 
 /** 시각처럼 보이는 말. 시각 일정으로 못 읽었는데 이런 말이 있으면(25시, 3시 75분) 종일로 넣지 않고 되묻는다 */
 const TIME_HINT =
-  /\d{1,2}시(?!간)|\d{1,2}:\d{2}|\d ?(?:am|pm|a\.m\.|p\.m\.)(?![a-z])|(?:^|\s)(?:noon|midnight)(?:\s|$)|(?:^|\s)(?:at|@) ?\d|\d ?o'?clock/i;
+  /\d{1,2}시(?!간)|(?:^|\s)(?:자정|정오)|\d{1,2}:\d{2}|\d ?(?:am|pm|a\.m\.|p\.m\.)(?![a-z])|(?:^|\s)(?:noon|midnight)(?:\s|$)|(?:^|\s)(?:at|@) ?\d|\d ?o'?clock/i;
 
 // "내일모레"는 모레 (내일보다 먼저 본다: 앞의 "내일"만 읽고 "모레"를 제목에 남기지 않게)
 const KO_REL: Record<string, number> = { 오늘: 0, 내일모레: 2, 내일: 1, 모레: 2, 글피: 3 };
@@ -925,8 +941,8 @@ function takeLaterDay(
 // "다음 달 5일", "이번 달 20일", 달 없이 "15일" (오늘보다 앞이면 다음 달). "3일간", "3일 동안" 은 날 수라 뺀다
 const KO_MONTH_DAY_REL = / (다음|이번) ?달 ?(\d{1,2})일(?:에|엔)? /;
 const KO_BARE_DAY = / ()(\d{1,2})일(?!간| ?동안| ?뒤| ?후|째|차)(?:에|엔)? /;
-// 자정(그 날 밤 12시), 정오
-const KO_TIME_WORD = / (자정|정오)(?:에)? /;
+// 자정(그 날 밤 12시), 정오. 뒤에 조사: "자정까지", "정오부터", "정오쯤"
+const KO_TIME_WORD = new RegExp(` (자정|정오)${KO_TIME_TAIL} `);
 
 /** "다음 달 5일", "15일" → 날짜. 없는 날짜면 null */
 function bareDay(m: RegExpMatchArray, today: string): string | null {
