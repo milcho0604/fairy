@@ -45,18 +45,22 @@ import {
 } from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
   type Blueprint,
   type EyeLook,
-  expandMirrors,
+  expandParts,
   type Face,
   type Finish,
   type Fur,
   inFace,
   type Part,
+  type Pattern,
   SLOTS,
   type Slot,
+  type Vec3,
 } from '../../shared/pet3d/blueprint.ts';
+import { PATTERN_GLSL, patternMask, patternUniforms } from '../../shared/pet3d/pattern.ts';
 import type { PetStyle } from '../../shared/settings.ts';
 import {
   type DrawState,
@@ -504,7 +508,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       tail: m?.tailWag ?? 1,
       ear: m?.earWiggle ?? 1,
     };
-    const parts = expandMirrors(bp.parts);
+    const parts = expandParts(bp.parts);
     const meshes = parts.map((p) => ({ part: p, mesh: this.partMesh(p) }));
 
     // 슬롯마다 부품이 차지하는 상자로 관절 자리를 정한다
@@ -621,6 +625,12 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       const part = o.userData.part as Part | undefined;
       if (!(o instanceof Mesh) || !part || !o.parent) return;
       if (part.finish === 'shiny' || part.shape === 'torus') return;
+      // 관(꼬리), 털 뭉치, 리본은 녹이지 않고 제 모양을 지킨다 (관은 털만 입힌다)
+      if (part.shape === 'tube' || part.shape === 'tuft' || part.shape === 'bow') {
+        if (part.shape !== 'bow' && o.geometry.attributes.position)
+          this.fluffSkin(o, new Color(part.color), part.finish === 'fuzzy' ? 1 : 0.6, bp);
+        return;
+      }
       const list = groups.get(o.parent) ?? [];
       list.push(o);
       groups.set(o.parent, list);
@@ -644,6 +654,8 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
         const prm = (geo as BufferGeometry & { parameters?: { radius?: number; height?: number } })
           .parameters;
         const c = new Color(part.color);
+        const pat = part.pattern ? this.patternOf(part.pattern, geo, m.scale) : undefined;
+        const patColor = part.pattern ? new Color(part.pattern.color) : undefined;
         fparts.push({
           shape: part.shape as FuseShape,
           inv: m.matrix.clone().invert().elements,
@@ -652,6 +664,18 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
             ? { capsule: { r: prm?.radius ?? 1, half: (prm?.height ?? 0) / 2 } }
             : {}),
           color: [c.r, c.g, c.b],
+          ...(pat && patColor
+            ? {
+                colorAt: (x: number, y: number, z: number): [number, number, number] => {
+                  const k = patternMask(pat.pattern, [x, y, z], pat.half, pat.scale);
+                  return [
+                    c.r + (patColor.r - c.r) * k,
+                    c.g + (patColor.g - c.g) * k,
+                    c.b + (patColor.b - c.b) * k,
+                  ];
+                },
+              }
+            : {}),
           // 귀는 짧은 털 (길면 부스스하다)
           fur: (part.finish === 'fuzzy' ? 1 : 0.75) * (part.slot.startsWith('ear') ? 0.35 : 1),
         });
@@ -999,14 +1023,34 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
 
   // ---- 조립 ----
 
-  private material(color: string, finish: Finish = 'soft'): Material {
-    const key = `${color}/${finish}/${this.style}`;
+  /** 무늬 값: 설계도 무늬와 모양 상자 반 크기, 부품 배율 (셰이더와 녹인 몸이 같은 식을 쓴다) */
+  private patternOf(pattern: Pattern, geo: BufferGeometry, scale: Vector3): PatternAt {
+    geo.computeBoundingBox();
+    const half = geo.boundingBox?.getSize(new Vector3()).multiplyScalar(0.5) ?? new Vector3(1, 1, 1);
+    return {
+      pattern,
+      half: [Math.max(1e-3, half.x), Math.max(1e-3, half.y), Math.max(1e-3, half.z)],
+      scale: [scale.x, scale.y, scale.z],
+    };
+  }
+
+  /** 선 색 재질 (눈썹 같은 얼굴 선). 색마다 하나 */
+  private inkOf(color: string): Material {
+    const key = `ink/${color}`;
     let m = this.materials.get(key);
-    if (!m && this.game) {
-      m = this.toonMaterial(color, finish);
+    if (!m) {
+      m = new MeshBasicMaterial({ color });
       this.materials.set(key, m);
     }
-    if (!m && this.furry) {
+    return m;
+  }
+
+  private material(color: string, finish: Finish = 'soft', pat?: PatternAt): Material {
+    const key = `${color}/${finish}/${this.style}${pat ? `/${patternKey(pat)}` : ''}`;
+    let m = this.materials.get(key);
+    if (m) return m;
+    if (this.game) m = this.toonMaterial(color, finish);
+    else if (this.furry) {
       // 실사: 털 아래 살갗과 속털. 겉색보다 조금 어둡고 얼룩이 있다. 반짝(코, 부리, 잎)은 촉촉하게
       m =
         finish === 'shiny'
@@ -1019,9 +1063,8 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
               sheenRoughness: 0.4,
               sheenColor: new Color(color).lerp(new Color('#ffffff'), 0.35),
             });
-      this.materials.set(key, m);
-    }
-    if (!m) {
+    } else {
+      // 피규어: 비닐 광택. 반짝은 유리처럼, 털(fuzzy)은 보드라운 벨벳처럼
       m = new MeshPhysicalMaterial(
         finish === 'shiny'
           ? { color, roughness: 0.28, clearcoat: 1, clearcoatRoughness: 0.15 }
@@ -1029,8 +1072,9 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
             ? { color, roughness: 0.85, sheen: 1, sheenRoughness: 0.45, sheenColor: '#ffffff' }
             : { color, roughness: 0.55, clearcoat: 0.35, clearcoatRoughness: 0.45 },
       );
-      this.materials.set(key, m);
     }
+    decorate(m, { pattern: pat, figure: this.style === 'figure' && finish !== 'shiny' });
+    this.materials.set(key, m);
     return m;
   }
 
@@ -1044,29 +1088,42 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
         const r = Math.max(x, z);
         geo = new CapsuleGeometry(r, Math.max(0, 2 * y - 2 * r), 10, 24);
         scale.set(x / r, 1, z / r);
+        if (p.taper !== undefined && p.taper < 1) taperY(geo, p.taper);
         break;
       }
       case 'cone':
         geo = new ConeGeometry(1, 2, 32);
         break;
       case 'cylinder':
-        geo = new CylinderGeometry(1, 1, 2, 32);
+        geo = new CylinderGeometry(p.taper ?? 1, 1, 2, 32);
         break;
       case 'box':
-        geo = new RoundedBoxGeometry(2, 2, 2, 4, 0.35);
+        geo = new RoundedBoxGeometry(2, 2, 2, 4, Math.min(0.98, Math.max(0.02, p.round ?? 0.35)));
         break;
       case 'torus':
         geo = new TorusGeometry(1, 0.32, 16, 48);
         break;
+      case 'tube':
+        // 길은 절대 좌표라 at 를 뺀 자리로, 반지름은 모양에 넣는다 (배율로 키우면 길까지 늘어난다)
+        geo = tubeGeometry(p.path ?? [], p.at, x, p.taper ?? 1);
+        scale.set(1, 1, 1);
+        break;
+      case 'tuft':
+        geo = tuftGeometry();
+        break;
+      case 'bow':
+        geo = bowGeometry();
+        break;
       default:
         geo = new SphereGeometry(1, 40, 28);
     }
-    const mesh = new Mesh(geo, this.material(p.color, p.finish));
+    const pat = p.pattern ? this.patternOf(p.pattern, geo, scale) : undefined;
+    const mesh = new Mesh(geo, this.material(p.color, p.finish, pat));
     mesh.position.set(...p.at);
     mesh.scale.copy(scale);
     if (p.rot) mesh.rotation.set(p.rot[0] * DEG, p.rot[1] * DEG, p.rot[2] * DEG);
     mesh.userData.part = p;
-    if (this.real) this.addFur(mesh, p);
+    if (this.real) this.addFur(mesh, p, pat);
     if (this.game) this.addOutline(mesh);
     return mesh;
   }
@@ -1087,7 +1144,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     }
     const m = new MeshToonMaterial({ color, gradientMap: this.toonRamp });
     if (finish !== 'shiny') return m;
-    m.onBeforeCompile = (shader) => {
+    hook(m, 'toon-gloss', (shader) => {
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <opaque_fragment>',
         `{
@@ -1097,8 +1154,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
         }
         #include <opaque_fragment>`,
       );
-    };
-    m.customProgramCacheKey = () => 'jj-toon-gloss';
+    });
     return m;
   }
 
@@ -1209,7 +1265,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
    * 밝아서 끝이 빛을 받는다. 반투명 섞기가 아니라 자르기(alphaTest)라 그리는 순서와 상관없다.
    * 털 크기가 부품 크기와 상관없이 같도록 UV 를 부품 크기만큼 늘린다
    */
-  private addFur(mesh: Mesh, p: Part) {
+  private addFur(mesh: Mesh, p: Part, pat?: PatternAt) {
     const len0 = furLength(p);
     if (len0 <= 0 || p.shape === 'torus') return;
     const geo = mesh.geometry;
@@ -1237,7 +1293,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     const layers = p.finish === 'fuzzy' ? 16 : 8;
     for (let i = 1; i <= layers; i++) {
       const t = i / layers;
-      const shell = new Mesh(geo, this.furShell(p.color, p.finish ?? 'soft', i, layers));
+      const shell = new Mesh(geo, this.furShell(p.color, p.finish ?? 'soft', i, layers, pat));
       const grow = len * t;
       shell.scale.set(1 + grow / ext.x, 1 + grow / ext.y, 1 + grow / ext.z);
       // 끝으로 갈수록 살짝 아래로 눕는다 (무게)
@@ -1248,8 +1304,8 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
   }
 
   /** 털 껍질 재질. 색과 겉 느낌, 층마다 하나 (같은 색 부품끼리 같이 쓴다) */
-  private furShell(color: string, finish: Finish, i: number, layers: number): Material {
-    const key = `${color}/${finish}/shell${i}of${layers}`;
+  private furShell(color: string, finish: Finish, i: number, layers: number, pat?: PatternAt): Material {
+    const key = `${color}/${finish}/shell${i}of${layers}${pat ? `/${patternKey(pat)}` : ''}`;
     let m = this.materials.get(key);
     if (!m) {
       const t = i / layers;
@@ -1262,6 +1318,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
         alphaTest: 0.38 + 0.55 * t,
         roughness: 0.9,
       });
+      decorate(m, { pattern: pat });
       this.materials.set(key, m);
     }
     return m;
@@ -1379,34 +1436,54 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       curveSegments: 12,
     });
 
+    // 눈 테두리 모양 (설계도 face.eyeShape): 가로, 세로 배율. droopy 는 바깥쪽을 아래로 기울인다
+    const shape = f.eyeShape ?? 'round';
+    const ew = shape === 'oval' ? 0.9 : shape === 'almond' ? 1.2 : shape === 'droopy' ? 1.05 : 1;
+    const eh = shape === 'oval' ? 1.15 : shape === 'almond' ? 0.78 : shape === 'droopy' ? 0.95 : 1;
+    // 반짝이 (face.catchlight): 없으면 게임은 점 둘, 나머지는 작은 점 하나. 반짝이는 눈(sparkle)은 늘 크게
+    const catchlight = f.eyes === 'sparkle' ? 'big' : (f.catchlight ?? (this.game ? 'double' : 'small'));
+    // 눈동자: 정했으면 그대로, 아니면 실사에서 눈 색을 정하지 않은 펫(강아지 같은)은 둥근 큰 눈동자, 아니면 세로로 긴 고양이 눈
+    const slit = f.pupil ? f.pupil === 'slit' : !(this.furry && !f.eyeColor);
     const eyes: FaceRig['eyes'] = [];
     for (const side of [-1, 1] as const) {
       const g = place(side * f.eyeGap, f.eyeY);
       const open = new Group();
       const shine = new Mesh(sphere, white);
-      shine.scale.setScalar(s * (this.game ? 0.32 : 0.26));
-      shine.position.set(s * 0.24, s * 0.38, s * 0.36);
+      shine.scale.setScalar(s * (catchlight === 'small' ? 0.26 : catchlight === 'double' ? 0.3 : 0.34));
+      shine.position.set(s * 0.24 * ew, s * 0.38 * eh, s * 0.36);
       if (irisMat) {
-        // 색 홍채 위에 세로로 긴 검은 눈동자
+        // 색 홍채 위에 검은 눈동자
         const iris = new Mesh(sphere, irisMat);
-        iris.scale.set(s * 0.85, s * 1.02, s * 0.4);
+        iris.scale.set(s * 0.85 * ew, s * 1.02 * eh, s * 0.4);
         const pupil = new Mesh(sphere, eyeMat);
-        // 실사에서 눈 색을 정하지 않은 펫(강아지 같은)은 둥근 큰 눈동자, 아니면 세로로 긴 고양이 눈
-        if (this.furry && !f.eyeColor) pupil.scale.set(s * 0.58, s * 0.62, s * 0.3);
-        else pupil.scale.set(s * 0.42, s * 0.78, s * 0.3);
+        if (slit) pupil.scale.set(s * 0.42, s * 0.78 * eh, s * 0.3);
+        else pupil.scale.set(s * 0.58 * ew, s * 0.62 * eh, s * 0.3);
         pupil.position.z = s * 0.14;
         shine.position.z = s * 0.42;
         open.add(iris, pupil, shine);
         if (cornea) {
           const dome = new Mesh(sphere, cornea);
-          dome.scale.set(s * 0.95, s * 1.1, s * 0.5);
+          dome.scale.set(s * 0.95 * ew, s * 1.1 * eh, s * 0.5);
           dome.position.z = s * 0.06;
           open.add(dome);
         }
       } else {
         const ball = new Mesh(sphere, eyeMat);
-        ball.scale.set(s * 0.78, s, s * 0.42);
+        ball.scale.set(s * 0.78 * ew, s * eh, s * 0.42);
         open.add(ball, shine);
+      }
+      if (shape === 'droopy') open.rotation.z = -side * 0.2;
+      // 속눈썹 (face.lashes): 눈 위 바깥쪽에 짧은 선 셋
+      if (f.lashes) {
+        // 바깥 위 모서리에 짧은 속눈썹 둘 (많고 길면 더듬이처럼 보였다)
+        for (const a of [0.95, 1.3]) {
+          const rx = s * 0.78 * ew;
+          const ry = s * eh;
+          const from: [number, number] = [side * rx * Math.sin(a) * 0.96, ry * Math.cos(a) * 0.96];
+          const dir = [Math.sin(a + 0.25), Math.cos(a + 0.25)] as const;
+          const to: [number, number] = [from[0] + side * dir[0] * s * 0.32, from[1] + dir[1] * s * 0.32];
+          open.add(stroke(from, to, s * 0.065, ink, s * 0.1));
+        }
       }
       const down = arc(s * 0.75, s * 0.17, ink, true);
       const up = arc(s * 0.75, s * 0.17, ink, false);
@@ -1421,19 +1498,11 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       lower.scale.set(s * 0.78, s * 0.42, s * 0.4);
       lower.position.y = -s * 0.25;
       half.add(lower, stroke([-s * 0.85, s * 0.05], [s * 0.85, s * 0.05], s * 0.13, ink));
-      if (this.game && f.eyes !== 'sparkle') {
-        // 게임 캐릭터 눈: 큰 반짝이 아래에 작은 반짝이 하나 더
+      if (catchlight !== 'small') {
+        // 큰 반짝이 아래에 작은 별빛 하나 더 (게임 캐릭터 눈, 반짝이는 눈, 반짝이는 인형 눈)
         const dot = new Mesh(sphere, white);
-        dot.scale.setScalar(s * 0.12);
-        dot.position.set(-s * 0.24, -s * 0.36, shine.position.z);
-        open.add(dot);
-      }
-      if (f.eyes === 'sparkle') {
-        // 반짝이는 눈: 큰 반짝이 하나 더, 아래에 작은 별빛
-        shine.scale.setScalar(s * 0.34);
-        const dot = new Mesh(sphere, white);
-        dot.scale.setScalar(s * 0.14);
-        dot.position.set(-s * 0.26, -s * 0.34, shine.position.z);
+        dot.scale.setScalar(s * (catchlight === 'big' ? 0.14 : 0.12));
+        dot.position.set(-s * 0.25 * ew, -s * 0.35 * eh, shine.position.z);
         open.add(dot);
       }
       // 졸린 눈 (설계도 face.eyes sleepy): 감기 직전의 얕은 ‿. 평평한 눈꺼풀(반달)은 시큰둥하거나 화난 눈으로 읽혀서
@@ -1508,6 +1577,18 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       shade.scale.set(s * 0.82, s * 0.2, s * 0.08);
       shade.position.set(0, -s * 1.3, s * 0.02);
       g.add(browGroup, shade);
+      // 늘 보이는 눈썹 (설계도 face.brows): 눈 위 짧은 선. tilt 가 양수면 안쪽 끝이 올라간 순한 눈썹
+      if (f.brows) {
+        // 짧고 가는 선 (길고 굵으면 눈 위에서 찡그린 눈썹으로 읽혔다). 높이는 눈 크기와 상관없이 설계도 크기로 잰다
+        const by = f.brows.y ?? f.eyeY + f.eyeSize * 2.3;
+        const bg = place(side * f.eyeGap, by, 0.003);
+        const tilt = ((f.brows.tilt ?? 0) * Math.PI) / 180;
+        const bw = f.eyeSize * 0.42;
+        const dy = Math.sin(tilt) * bw;
+        const line = stroke([-side * bw, dy], [side * bw, -dy], f.eyeSize * 0.1, this.inkOf(f.brows.color));
+        line.rotation.z += levelRoll(bg);
+        bg.add(line);
+      }
       const states = { open, down, up, chevron, half, drowsy, heavy };
       for (const o of Object.values(states)) g.add(o);
       eyes.push({ side, states, open, heavy, brow: browGroup, shade });
@@ -1544,10 +1625,29 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
           w.add(a);
         }
         mouth.smile = w;
-        const nose = new Mesh(sphere, this.material(f.blush ?? '#ff8fa0', 'shiny'));
-        nose.scale.set(m * 0.5, m * 0.32, m * 0.3);
-        nose.position.set(0, m * 1.05, m * 0.05);
-        mouthAt.add(nose);
+        // 코를 따로 정하지 않은 고양이 입은 분홍 코
+        if (!f.nose) {
+          const nose = new Mesh(sphere, this.material(f.blush ?? '#ff8fa0', 'shiny'));
+          nose.scale.set(m * 0.5, m * 0.32, m * 0.3);
+          nose.position.set(0, m * 1.05, m * 0.05);
+          mouthAt.add(nose);
+        }
+      } else if (f.mouth === 'grin') {
+        // 활짝 벌린 입: 웃는 호 안을 어둡게 채우고 혀를 내민다
+        const grin = new Group();
+        const rim = arc(m * 1.2, m * 0.16, ink, true);
+        rim.position.y = m * 0.55;
+        const inside = new Mesh(sphere, dark);
+        inside.scale.set(m * 1.08, m * 0.72, m * 0.3);
+        inside.position.set(0, m * 0.05, -m * 0.02);
+        const tip = new Mesh(sphere, tongue);
+        tip.scale.set(m * 0.5, m * 0.42, m * 0.22);
+        tip.position.set(0, -m * 0.3, m * 0.14);
+        grin.add(rim, inside, tip);
+        mouth.smile = grin;
+      } else if (f.mouth === 'tiny') {
+        // 짧은 선 (인형의 박음질 입)
+        mouth.smile = stroke([-m * 0.42, m * 0.3], [m * 0.42, m * 0.3], m * 0.13, ink);
       } else {
         const smile = arc(m * 1.25, m * 0.17, ink, true);
         smile.position.y = m * 0.6;
@@ -1591,6 +1691,17 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
         const disc = new Mesh(sphere, blush);
         disc.scale.set(s * 1.55, s * 0.85, s * 0.12);
         g.add(disc);
+        // 빗금 볼 (face.blushLines): 짧은 사선 셋, 볼 색보다 진한 선
+        if (f.blushLines) {
+          const lines = new Group();
+          const mat = this.inkOf(`#${new Color(f.blush).multiplyScalar(0.62).getHexString()}`);
+          for (const dx of [-0.75, 0, 0.75])
+            lines.add(
+              stroke([s * (dx - 0.18), -s * 0.38], [s * (dx + 0.18), s * 0.38], s * 0.075, mat, s * 0.08),
+            );
+          lines.rotation.z = levelRoll(g);
+          g.add(lines);
+        }
       }
     }
     if (f.whiskers) {
@@ -1600,6 +1711,57 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
         for (const tilt of [-0.18, 0.12]) {
           g.add(stroke([side * s * 0.4, 0], [side * s * 4.2, s * 4 * tilt], s * 0.05, mat, -s * 0.6));
         }
+      }
+    }
+    // 코 (설계도 face.nose): 눈과 입 사이. 세모(고양이, 토끼), 납작한 타원(강아지), 점. 위에 작은 반짝이
+    if (f.nose?.color && f.nose.shape !== 'none') {
+      const k = s * (f.nose.size ?? 1);
+      const g = place(0, f.nose.y ?? f.mouthY + s * 1.0, 0.004);
+      const mat = this.material(f.nose.color, 'shiny');
+      let nose: Mesh;
+      if (f.nose.shape === 'triangle') {
+        nose = new Mesh(new ConeGeometry(1, 1.6, 24), mat);
+        nose.rotation.z = Math.PI;
+        nose.scale.set(k * 0.58, k * 0.5, k * 0.32);
+      } else if (f.nose.shape === 'oval') {
+        nose = new Mesh(sphere, mat);
+        nose.scale.set(k * 0.64, k * 0.46, k * 0.36);
+      } else {
+        nose = new Mesh(sphere, mat);
+        nose.scale.set(k * 0.4, k * 0.36, k * 0.3);
+      }
+      g.add(nose);
+      if (!this.game) {
+        const glint = new Mesh(sphere, white);
+        glint.scale.setScalar(k * 0.11);
+        glint.position.set(-k * 0.16, k * 0.14, k * 0.3);
+        g.add(glint);
+      } else this.addOutline(nose);
+    }
+    // 볼 털 (설계도 face.fluff): 볼 옆으로 바깥 아래를 향해 뻗는 털 뭉치
+    if (f.fluff) {
+      // 얼굴 가장자리(볼 바깥)에 붙여 털이 실루엣 밖으로 삐져나오게. 눈과 수염과 겹치지 않는다
+      const halfW = faceBox.isEmpty() ? f.eyeGap * 2.4 : (faceBox.max.x - faceBox.min.x) / 2;
+      const cx = faceBox.isEmpty() ? 0 : (faceBox.max.x + faceBox.min.x) / 2;
+      for (const side of [-1, 1]) {
+        const g = place(cx + side * halfW * 0.9, f.mouthY + s * 0.2, -0.004);
+        const size: Vec3 = [s * 1.25, s * 1.7, s * 0.7];
+        const part: Part = {
+          slot: f.slot,
+          shape: 'tuft',
+          at: [0, 0, 0],
+          size,
+          color: f.fluff,
+          finish: 'fuzzy',
+        };
+        const tuft = new Mesh(tuftGeometry(), this.material(f.fluff, 'fuzzy'));
+        tuft.scale.set(...size);
+        // 바깥 아래로 (볼 털은 옆으로 뻗고 조금 처진다). 얼굴 무리는 겉면을 보고 있어 화면 기준으로 되돌린다
+        tuft.rotation.z = levelRoll(g) - side * (Math.PI / 2 + 0.45);
+        tuft.userData.part = part;
+        if (this.real) this.addFur(tuft, part);
+        if (this.game) this.addOutline(tuft);
+        g.add(tuft);
       }
     }
     return { eyes, mouth, beakLower, style: f.mouth, eyeLook: f.eyes ?? 'round', groups, mouthAt };
@@ -1786,6 +1948,13 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     this.root.position.set(0, 0, 0);
     this.root.scale.set(sx, sy, sx);
     const { mood, elapsed: e } = s;
+    // 숨쉬기: 몸통이 살짝 부풀었다 꺼진다 (자면 느리고 깊게). 계속 그릴 때만 (가끔 그리는 틀마다 다른 위상을 집으면 툭툭 튄다).
+    // 몸 관절의 축은 몸 바닥이라 발은 그대로고 머리가 숨을 따라 조금 오르내린다
+    const asleep = mood === 'sleeping' || mood === 'dozing';
+    if (s.breathe && !s.calm) {
+      const b = Math.sin((e / 1000) * (asleep ? 1.1 : 2.3)) * (asleep ? 1.3 : 1);
+      j.body.scale.set(1 + 0.007 * b, 1 + 0.012 * b, 1 + 0.01 * b);
+    } else j.body.scale.set(1, 1, 1);
     // 몸짓 세기 (설계도 motion): 흔들기(sway), 꼬리(tail), 귀(ear). 1 이면 기본 동작 그대로
     const { sway, tail, ear } = this.motion;
     const head = (x: number, y: number, z: number) => {
@@ -2179,4 +2348,198 @@ function furOfBlueprint(bp: Blueprint): Fur {
   return bp.parts.some((p) => p.finish === 'fuzzy')
     ? { length: 0.5, clump: 0.25 }
     : { length: 0.2, clump: 0.1 };
+}
+
+/** 부품 무늬 값 (shared/pet3d/pattern.ts patternMask 의 인자) */
+interface PatternAt {
+  pattern: Pattern;
+  half: Vec3;
+  scale: Vec3;
+}
+
+/** 재질 캐시 열쇠에 넣을 무늬 값 (같은 무늬, 같은 크기면 재질을 같이 쓴다) */
+function patternKey(p: PatternAt): string {
+  const r = (v: number) => Math.round(v * 100) / 100;
+  return `${JSON.stringify(p.pattern)}/${p.half.map(r).join(',')}/${p.scale.map(r).join(',')}`;
+}
+
+type ShaderOf = Parameters<NonNullable<Material['onBeforeCompile']>>[0];
+
+/**
+ * 재질 셰이더에 손질을 하나 더한다. 이미 손질이 있으면 둘 다 하고, 프로그램 캐시 열쇠도 이어 붙인다
+ * (three 는 열쇠가 같으면 같은 프로그램을 쓰니 손질마다 달라야 한다)
+ */
+function hook(m: Material, name: string, patch: (shader: ShaderOf) => void): void {
+  const prev = m.onBeforeCompile;
+  const prevKey = m.customProgramCacheKey;
+  m.onBeforeCompile = (shader, renderer) => {
+    prev?.call(m, shader, renderer);
+    patch(shader);
+  };
+  m.customProgramCacheKey = () => `${prevKey ? prevKey.call(m) : ''}/jj-${name}`;
+}
+
+/**
+ * 재질 손질. pattern: 무늬 색을 겉면 위에 섞는다 (모양 좌표로 같은 자리에 같은 무늬).
+ * figure: 피규어 모습의 아래쪽 그늘(가벼운 AO)과 가장자리 빛 (비닐 피규어의 매끈한 입체감)
+ */
+function decorate(m: Material, opt: { pattern?: PatternAt; figure?: boolean }): void {
+  const pat = opt.pattern;
+  if (pat) {
+    const uniforms = {
+      ...patternUniforms(pat.pattern, pat.half, pat.scale),
+      uPatColor: { value: new Color(pat.pattern.color) },
+    };
+    hook(m, `pattern-${pat.pattern.type}`, (shader) => {
+      Object.assign(shader.uniforms, uniforms);
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vJjP;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvJjP = position;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          `#include <common>\nvarying vec3 vJjP;\nuniform vec3 uPatColor;\n${PATTERN_GLSL}`,
+        )
+        .replace(
+          '#include <color_fragment>',
+          '#include <color_fragment>\ndiffuseColor.rgb = mix(diffuseColor.rgb, uPatColor, jjPattern(vJjP));',
+        );
+    });
+  }
+  if (opt.figure) {
+    hook(m, 'figure-shade', (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <opaque_fragment>',
+        `{
+          vec3 jjN = normalize(normal);
+          // 아래를 보는 면은 바닥 그늘, 가장자리는 뒤에서 오는 빛을 조금 머금는다
+          outgoingLight *= 1.0 - 0.16 * (0.5 - 0.5 * jjN.y);
+          float jjRim = pow(1.0 - abs(jjN.z), 3.0);
+          outgoingLight += diffuseColor.rgb * 0.1 * jjRim;
+        }
+        #include <opaque_fragment>`,
+      );
+    });
+  }
+}
+
+/** y 축 모양(캡슐)의 위쪽 반지름을 taper 배로 (아래 -1 에서 1, 위 +1 에서 taper 로 선형) */
+function taperY(geo: BufferGeometry, taper: number): void {
+  geo.computeBoundingBox();
+  const b = geo.boundingBox;
+  if (!b) return;
+  const pos = geo.attributes.position;
+  if (!pos) return;
+  for (let i = 0; i < pos.count; i++) {
+    const t = (pos.getY(i) - b.min.y) / Math.max(1e-6, b.max.y - b.min.y);
+    const k = 1 - (1 - taper) * t;
+    pos.setX(i, pos.getX(i) * k);
+    pos.setZ(i, pos.getZ(i) * k);
+  }
+  pos.needsUpdate = true;
+  geo.computeVertexNormals();
+}
+
+/**
+ * 관 (꼬리). 길을 따라 반지름 r 의 관을 만들고 양 끝을 공으로 막는다. 끝으로 갈수록 taper 배로 가늘어진다.
+ * 길이 짧으면(점 둘) 직선
+ */
+function tubeGeometry(path: readonly Vec3[], at: Vec3, r: number, taper: number): BufferGeometry {
+  const pts = path.map(([x, y, z]) => new Vector3(x - at[0], y - at[1], z - at[2]));
+  if (pts.length < 2) pts.push(new Vector3(0, 0, 0), new Vector3(0, r * 4, 0));
+  const curve = new CatmullRomCurve3(pts, false, 'centripetal');
+  const segs = 10 * pts.length;
+  const radial = 14;
+  const tube = new TubeGeometry(curve, segs, r, radial, false);
+  const pos = tube.attributes.position;
+  if (pos) {
+    for (let i = 0; i < pos.count; i++) {
+      const ring = Math.floor(i / (radial + 1));
+      const t = ring / segs;
+      const c = curve.getPointAt(Math.min(1, Math.max(0, t)));
+      const k = 1 - (1 - taper) * t;
+      pos.setXYZ(
+        i,
+        c.x + (pos.getX(i) - c.x) * k,
+        c.y + (pos.getY(i) - c.y) * k,
+        c.z + (pos.getZ(i) - c.z) * k,
+      );
+    }
+    pos.needsUpdate = true;
+    tube.computeVertexNormals();
+  }
+  const start = new SphereGeometry(r, 16, 12).translate(pts[0]?.x ?? 0, pts[0]?.y ?? 0, pts[0]?.z ?? 0);
+  const last = pts.at(-1) ?? new Vector3();
+  const end = new SphereGeometry(r * Math.max(0.05, taper), 16, 12).translate(last.x, last.y, last.z);
+  const merged = mergeGeometries([tube, start, end]);
+  tube.dispose();
+  start.dispose();
+  end.dispose();
+  return merged ?? tube;
+}
+
+/** 모양을 -1~1 상자에 맞춘다 (크기 칸이 반지름처럼 읽히게) */
+function fitUnit(geo: BufferGeometry): BufferGeometry {
+  geo.computeBoundingBox();
+  const b = geo.boundingBox;
+  if (!b) return geo;
+  const c = b.getCenter(new Vector3());
+  const h = b.getSize(new Vector3()).multiplyScalar(0.5);
+  geo.translate(-c.x, -c.y, -c.z);
+  geo.scale(1 / Math.max(1e-6, h.x), 1 / Math.max(1e-6, h.y), 1 / Math.max(1e-6, h.z));
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/**
+ * 털 뭉치: 끝이 둥글게 모인 물방울 가닥 셋 (가운데가 길고 양옆은 짧게 벌어진다, +y 쪽으로 뻗는다).
+ * 뾰족한 원뿔은 작은 화면에서 가시처럼 보였다. 볼 털, 가슴 털, 머리 털
+ */
+function tuftGeometry(): BufferGeometry {
+  const parts: BufferGeometry[] = [];
+  const locks: [number, number, number][] = [
+    [0, 1, 0],
+    [0.5, 0.78, -0.42],
+    [-0.5, 0.78, 0.42],
+  ];
+  for (const [ang, len, dx] of locks) {
+    const g = new SphereGeometry(1, 18, 14);
+    // 물방울: 위로 갈수록 가늘게 (끝은 둥글다)
+    const pos = g.attributes.position;
+    if (pos)
+      for (let i = 0; i < pos.count; i++) {
+        const t = (pos.getY(i) + 1) / 2;
+        const k = 1 - 0.72 * t * t;
+        pos.setXYZ(i, pos.getX(i) * k * 0.42, pos.getY(i) * len, pos.getZ(i) * k * 0.42);
+      }
+    g.computeVertexNormals();
+    g.rotateZ(ang);
+    g.translate(dx, 0, 0);
+    parts.push(g);
+  }
+  const merged = mergeGeometries(parts) ?? parts[0] ?? new SphereGeometry(1);
+  for (const g of parts) g.dispose();
+  return fitUnit(merged);
+}
+
+/** 리본 매듭: 양쪽 고리 둘, 가운데 매듭, 아래로 늘어진 끝 둘 (xy 평면) */
+function bowGeometry(): BufferGeometry {
+  const parts: BufferGeometry[] = [];
+  for (const side of [-1, 1]) {
+    const loop = new SphereGeometry(1, 20, 14);
+    loop.scale(0.62, 0.4, 0.26);
+    loop.rotateZ(side * 0.18);
+    loop.translate(side * 0.6, 0.05, 0);
+    parts.push(loop);
+    const tail = new ConeGeometry(0.2, 0.7, 10);
+    tail.rotateZ(Math.PI + side * 0.35);
+    tail.translate(side * 0.3, -0.45, -0.05);
+    parts.push(tail);
+  }
+  const knot = new SphereGeometry(0.26, 14, 10);
+  knot.scale(1, 0.9, 1.1);
+  parts.push(knot);
+  const merged = mergeGeometries(parts) ?? parts[0] ?? new SphereGeometry(1);
+  for (const g of parts) g.dispose();
+  return fitUnit(merged);
 }

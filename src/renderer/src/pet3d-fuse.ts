@@ -13,6 +13,8 @@ export interface FusePart {
   /** 캡슐: 반지름과 몸통 반 길이 (모양 공간) */
   capsule?: { r: number; half: number };
   color: [number, number, number];
+  /** 모양 공간 자리에 따른 색 (무늬). 없으면 color (v2) */
+  colorAt?: (x: number, y: number, z: number) => [number, number, number];
   /** 털 길이 배율 (0 이면 털 없음) */
   fur: number;
 }
@@ -90,12 +92,19 @@ export function smin(a: number, b: number, k: number): number {
   return Math.min(a, b) - h * h * k * 0.25;
 }
 
+/** 관절 공간 한 점을 부품의 모양 공간으로 */
+function localOf(p: FusePart, x: number, y: number, z: number): [number, number, number] {
+  const m = p.inv;
+  return [
+    (m[0] ?? 0) * x + (m[4] ?? 0) * y + (m[8] ?? 0) * z + (m[12] ?? 0),
+    (m[1] ?? 0) * x + (m[5] ?? 0) * y + (m[9] ?? 0) * z + (m[13] ?? 0),
+    (m[2] ?? 0) * x + (m[6] ?? 0) * y + (m[10] ?? 0) * z + (m[14] ?? 0),
+  ];
+}
+
 /** 관절 공간 한 점에서 부품까지 거리 (관절 공간 단위, 대략) */
 function partDistance(p: FusePart, x: number, y: number, z: number): number {
-  const m = p.inv;
-  const lx = (m[0] ?? 0) * x + (m[4] ?? 0) * y + (m[8] ?? 0) * z + (m[12] ?? 0);
-  const ly = (m[1] ?? 0) * x + (m[5] ?? 0) * y + (m[9] ?? 0) * z + (m[13] ?? 0);
-  const lz = (m[2] ?? 0) * x + (m[6] ?? 0) * y + (m[10] ?? 0) * z + (m[14] ?? 0);
+  const [lx, ly, lz] = localOf(p, x, y, z);
   return shapeDistance(p.shape, lx, ly, lz, p.capsule) * p.scale;
 }
 
@@ -132,11 +141,14 @@ function paintAt(parts: readonly FusePart[], x: number, y: number, z: number, ou
   let f = 0;
   let sum = 0;
   for (const p of parts) {
-    const d = Math.max(-0.01, partDistance(p, x, y, z));
+    const [lx, ly, lz] = localOf(p, x, y, z);
+    const d = Math.max(-0.01, shapeDistance(p.shape, lx, ly, lz, p.capsule) * p.scale);
     const w = Math.exp(-d / 0.004);
-    r += p.color[0] * w;
-    g += p.color[1] * w;
-    b += p.color[2] * w;
+    // 무늬가 있는 부품은 그 자리의 무늬 색 (가까운 점만 보니 먼 부품은 셈을 아낀다)
+    const c = p.colorAt && w > 1e-4 ? p.colorAt(lx, ly, lz) : p.color;
+    r += c[0] * w;
+    g += c[1] * w;
+    b += c[2] * w;
     f += p.fur * w;
     sum += w;
   }
