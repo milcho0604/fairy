@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { keepNativePackage } from './native-prune.ts';
+import { keepNativePackage, unusedCpuVariant } from './native-prune.ts';
 
 test('네이티브 패키지 고르기: 이 운영체제와 칩 것만 둔다', () => {
   // Apple 칩 맥 앱
@@ -24,4 +24,25 @@ test('네이티브 패키지 고르기: 이 운영체제와 칩 것만 둔다', 
   assert.equal(keepNativePackage('reflink-linux-x64-musl', 'darwin', 'arm64'), false);
   // 운영체제, 칩이 없는 본 패키지는 둔다
   assert.equal(keepNativePackage('reflink', 'darwin', 'arm64'), true);
+});
+
+test('무료 AI 엔진 CPU 판: 이웃과 겹치는 판만 빼고 기본판과 주요 판은 둔다', () => {
+  for (const f of ['libggml-cpu-piledriver.so', 'ggml-cpu-cooperlake.dll', 'libggml-cpu-cascadelake.so'])
+    assert.equal(unusedCpuVariant(f), true, f);
+  for (const f of [
+    'libggml-cpu-x64.so',
+    'ggml-cpu-x64.dll',
+    'libggml-cpu-sse42.so',
+    'libggml-cpu-sandybridge.so',
+    'libggml-cpu-haswell.so',
+    'libggml-cpu-skylakex.so',
+    'libggml-cpu-icelake.so',
+    'libggml-cpu-zen4.so',
+    'libggml-cpu-alderlake.so',
+    'libggml-cpu-sapphirerapids.so',
+    'libggml-base.so',
+    'libggml-cpu-piledriver.so.bak',
+    'llama-addon.node',
+  ])
+    assert.equal(unusedCpuVariant(f), false, f);
 });

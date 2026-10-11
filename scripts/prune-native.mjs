@@ -2,7 +2,7 @@
 // 고르는 규칙과 까닭은 src/shared/native-prune.ts.
 import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { keepNativePackage, NATIVE_SCOPES } from '../src/shared/native-prune.ts';
+import { keepNativePackage, NATIVE_SCOPES, unusedCpuVariant } from '../src/shared/native-prune.ts';
 
 /** electron-builder 의 Arch 숫자 → 이름 */
 const ARCH = { 0: 'ia32', 1: 'x64', 2: 'armv7l', 3: 'arm64', 4: 'universal' };
@@ -37,5 +37,22 @@ export default async function pruneNative(context) {
       console.log(`  • prune-native: ${scope}/${name} (${platform}-${arch} 에 필요 없음)`);
     }
   }
+  // 무료 AI 엔진의 이웃과 겹치는 CPU 판 (native-prune.ts UNUSED_CPU_VARIANTS). bins/<판 이름>/ 안에 있다
+  const llama = join(modules, '@node-llama-cpp');
+  if (existsSync(llama))
+    for (const pkg of readdirSync(llama)) {
+      const bins = join(llama, pkg, 'bins');
+      if (!existsSync(bins)) continue;
+      for (const dir of readdirSync(bins)) {
+        const d = join(bins, dir);
+        if (!statSync(d).isDirectory()) continue;
+        for (const f of readdirSync(d)) {
+          if (!unusedCpuVariant(f)) continue;
+          freed += dirBytes(join(d, f));
+          rmSync(join(d, f), { force: true });
+          console.log(`  • prune-native: @node-llama-cpp/${pkg}/bins/${dir}/${f} (이웃 CPU 판이 대신함)`);
+        }
+      }
+    }
   console.log(`  • prune-native: ${(freed / 1e6).toFixed(1)}MB 뺌`);
 }

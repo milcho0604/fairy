@@ -50,3 +50,24 @@ export function keepNativePackage(name: string, platform: string, arch: string):
 
 /** 칩마다 나뉜 패키지가 있는 scope. 이 안에서만 고른다 (다른 패키지 이름에 우연히 linux 가 들어가도 건드리지 않게) */
 export const NATIVE_SCOPES = ['@node-llama-cpp', '@koromix', '@reflink'] as const;
+
+/**
+ * 무료 AI 엔진(llama.cpp)의 CPU 판 중 뺄 것. 엔진은 켤 때 폴더의 libggml-cpu-*.so (윈도우 ggml-cpu-*.dll) 를 다 열어
+ * 이 CPU 에서 돌 수 있는 것 중 점수가 가장 높은 것을 고른다. 하나가 없으면 그다음 것을 고를 뿐이라 기능은 그대로고,
+ * 기본판(x64)은 늘 남긴다. 아래는 이웃 판과 거의 같은 것: piledriver(2012 AMD, sandybridge 로),
+ * ivybridge(sandybridge 로), cannonlake(거의 안 팔린 노트북 칩, skylakex 로), cascadelake, cooperlake(서버 Xeon,
+ * skylakex 로). 판마다 1.2~1.4MB 라 합쳐 6.5MB 쯤 준다 (2026-10-11)
+ */
+export const UNUSED_CPU_VARIANTS = [
+  'piledriver',
+  'ivybridge',
+  'cannonlake',
+  'cascadelake',
+  'cooperlake',
+] as const;
+
+/** 이 파일(이름만)이 뺄 CPU 판인지 */
+export function unusedCpuVariant(file: string): boolean {
+  const m = /^(?:lib)?ggml-cpu-([a-z0-9]+)\.(?:so|dll)$/.exec(file);
+  return !!m && (UNUSED_CPU_VARIANTS as readonly string[]).includes(m[1] ?? '');
+}
