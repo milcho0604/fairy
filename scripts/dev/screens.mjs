@@ -7,7 +7,7 @@
 //   xvfb-run -a -s "-screen 0 1512x982x24" node scripts/dev/screens.mjs pets       # 하나만 (pets, styles, desktop)
 //   OUT=/tmp/shots node scripts/dev/screens.mjs                                     # 다른 곳에 쓰기 (기본 docs/assets/screens)
 //
-// CLAUDE.md 시험 창 규칙: JJ_NO_FOCUS=1, 빈 JJ_USER_DATA(끝나면 지운다), 포트 9851(메인), 9852(화면).
+// CLAUDE.md 시험 창 규칙: JJ_NO_FOCUS=1, 빈 JJ_USER_DATA(끝나면 지운다), 포트 9851(메인), 9852(화면). JJ_INSPECT_PORT, JJ_PAGE_PORT 로 바꾼다.
 // 맥에서 돌리면 창은 내장 화면에 투명하게 뜬다. 리눅스(가상 화면)에서는 소프트웨어 WebGL(SwiftShader)로 입체를 그린다.
 // 결과는 찍을 때마다 숨쉬기, 깜빡임 때문에 조금씩 다르다.
 import { spawn } from 'node:child_process';
@@ -20,8 +20,8 @@ import { EXAMPLE_CAT } from '../../src/shared/pet3d/examples.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const OUT = resolve(process.env.OUT ?? join(root, 'docs', 'assets', 'screens'));
-const INSPECT = 9851;
-const PAGE = 9852;
+const INSPECT = Number(process.env.JJ_INSPECT_PORT ?? 9851);
+const PAGE = Number(process.env.JJ_PAGE_PORT ?? 9852);
 const only = new Set(process.argv.slice(2));
 const want = (name) => only.size === 0 || only.has(name);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -45,6 +45,8 @@ writeFileSync(
     chatter: 'quiet',
   }),
 );
+// 아침 계획 화면이 패널을 덮지 않게 저절로 띄우기를 끈다 (src/shared/day-plan.ts PlanPrefs)
+writeFileSync(join(data, 'day-plan.json'), JSON.stringify({ prefs: { auto: false, fromMinute: 480 } }));
 // 감싼 스크립트(node_modules/.bin/electron) 말고 실행 파일을 바로 띄운다: 끝낼 때 진짜 앱이 끝난 뒤에 데이터 폴더를 지우게
 const electron = electronPath;
 const args = [`--inspect=${INSPECT}`, '.', `--remote-debugging-port=${PAGE}`];
