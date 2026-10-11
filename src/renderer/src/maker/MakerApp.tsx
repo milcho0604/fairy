@@ -27,6 +27,7 @@ import {
   pickPet,
   REFINE_KEEP,
   refineBox,
+  solidify,
   stroke,
   trimHalo,
 } from '../../../shared/mask.ts';
@@ -426,6 +427,8 @@ export function MakerApp() {
         }
         // 몸에서 떨어진 반투명 안개(작은 펫 둘레 회색 네모)를 걷는다
         next.mask = trimHalo(next.mask, next.w, next.h);
+        // 흰 바탕 흰 펫, 반짝이는 그림의 살짝 비친 몸 속(190~245)을 꽉 채운다 (가장자리 털 끝은 그대로)
+        next.mask = solidify(next.mask, next.w, next.h);
         setElapsed(Math.round(performance.now() - t0));
         saveDuration('cutout', performance.now() - cutStart, store());
         setWork(next);
@@ -1665,6 +1668,16 @@ function Editor({
           {t('maker.edit.undo')}
         </button>
       </div>
+      {/* 고칠 것 안내는 도구 바로 아래: 긴 설명 아래에 두면 작은 창(460x660)에서 아래 단추 줄에 가려 안 보였다 */}
+      {hints.half && <p className="warn">{t('maker.edit.halfKept')}</p>}
+      {hollow && <p className="warn">{t('maker.edit.hollow')}</p>}
+      {hints.others > 0 && <p className="warn">{t('maker.edit.others')}</p>}
+      {(hints.empty || hints.full) && (
+        <p className="warn">
+          {hints.empty ? t('maker.edit.almostAllErased') : t('maker.edit.barelyErased')}{' '}
+          {t('maker.edit.tryAgain')}
+        </p>
+      )}
       <div className="canvas-wrap">
         <canvas
           ref={canvasRef}
@@ -1703,15 +1716,6 @@ function Editor({
       <p className="hint">
         {t('maker.edit.hint')} {note}
       </p>
-      {hints.half && <p className="warn">{t('maker.edit.halfKept')}</p>}
-      {hollow && <p className="warn">{t('maker.edit.hollow')}</p>}
-      {hints.others > 0 && <p className="warn">{t('maker.edit.others')}</p>}
-      {(hints.empty || hints.full) && (
-        <p className="warn">
-          {hints.empty ? t('maker.edit.almostAllErased') : t('maker.edit.barelyErased')}{' '}
-          {t('maker.edit.tryAgain')}
-        </p>
-      )}
       {hints.cut && !hints.empty && !hints.full && <p className="hint">{t('maker.edit.cutEdge')}</p>}
       <div className="actions edit-actions">
         <button type="button" className="ghost" onClick={onBack}>

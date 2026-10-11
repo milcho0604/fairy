@@ -20,6 +20,8 @@ import {
   petOnly,
   pickPet,
   refineBox,
+  SOLID_FROM,
+  solidify,
   stroke,
   trimHalo,
 } from './mask.ts';
@@ -363,4 +365,57 @@ test('hollowGain: 테두리 선만 남고 몸 안쪽이 지워진 그림을 잡�
   rect(legs, w, 40, 120, 70, 200, 255);
   rect(legs, w, 130, 120, 160, 200, 255);
   assert.ok(hollowGain(legs, w, w, 6) < 0.02, String(hollowGain(legs, w, w, 6)));
+});
+
+/** 가운데 둥근 몸: 안은 inner, 바깥 edge 칸 띠는 0 에서 오르는 털 끝 */
+function disc(w: number, r: number, inner: number, edge = 3): Uint8ClampedArray {
+  const m = new Uint8ClampedArray(w * w);
+  const c = w / 2;
+  for (let y = 0; y < w; y++)
+    for (let x = 0; x < w; x++) {
+      const d = Math.hypot(x + 0.5 - c, y + 0.5 - c);
+      if (d < r - edge) m[y * w + x] = inner;
+      else if (d < r) m[y * w + x] = Math.min(inner, Math.round(((r - d) / edge) * 255));
+    }
+  return m;
+}
+
+test('solidify: 반쯤 비친 몸 속(190~245)은 꽉 채우고, 가장자리 털 끝과 더 옅은 속은 둔다', () => {
+  const w = 200;
+  const c = 100 * w + 100;
+  // 흰 바탕 흰 고양이처럼 몸 속이 200 쯤
+  const m = disc(w, 80, 200);
+  const out = solidify(m, w, w);
+  assert.equal(out[c], 255);
+  // 가장자리 2%(160*0.02 = 3칸) 안쪽 띠는 그대로: 털 끝이 딱딱해지지 않는다
+  const rim = 100 * w + 100 + 78;
+  assert.equal(out[rim], m[rim]);
+  // 띠에서 안으로 조금씩 오른다 (꽉 찬 곳과 둘레 사이에 선이 없다)
+  const row = [...out.slice(100 * w + 100 + 70, 100 * w + 100 + 80)];
+  for (let i = 1; i < row.length; i++) assert.ok((row[i] ?? 0) <= (row[i - 1] ?? 0), row.join(','));
+  // 원본은 그대로
+  assert.equal(m[c], 200);
+  // 흰 벽 앞 흰 고양이의 흐린 아랫몸(90~130)은 몸인지 몰라 둔다
+  const faint = disc(w, 80, 120);
+  assert.deepEqual([...solidify(faint, w, w)], [...faint]);
+  // 경계(SOLID_FROM) 바로 위는 조금만
+  const near = solidify(disc(w, 80, SOLID_FROM + 5), w, w);
+  assert.ok((near[c] ?? 0) > SOLID_FROM + 5 && (near[c] ?? 0) < 255);
+  // 이미 꽉 찬 몸(털 끝만 반투명), 빈 마스크는 그대로
+  const full = disc(w, 80, 255);
+  assert.deepEqual([...solidify(full, w, w)], [...full]);
+  const none = new Uint8ClampedArray(w * w);
+  assert.equal(solidify(none, w, w), none);
+});
+
+test('solidify: 다리 사이 빈 틈 둘레는 가장자리로 보고 둔다', () => {
+  const w = 200;
+  const m = disc(w, 80, 210);
+  // 몸 가운데 세로로 빈 틈 (다리 사이)
+  for (let y = 60; y < 200; y++) for (let x = 98; x < 102; x++) m[y * w + x] = 0;
+  const out = solidify(m, w, w);
+  // 틈 바로 옆은 그대로, 틈에서 멀리 떨어진 속은 꽉
+  assert.equal(out[120 * w + 103], 210);
+  assert.equal(out[120 * w + 140], 255);
+  assert.equal(out[120 * w + 100], 0);
 });

@@ -223,7 +223,7 @@ export function GeminiRoute({
 }
 
 /**
- * 오른쪽 아래 Gemini 반짝이 표시를 흰색으로 덮는다 (흰 바탕일 때만, shared/gemini.ts markCorner).
+ * 오른쪽 아래 Gemini 반짝이 표시를 그 둘레 바탕색으로 덮는다 (민바탕일 때만. 흰 펫은 회색 바탕, shared/gemini.ts markCorner).
  * 덮을 것이 없으면 받은 파일 그대로
  */
 async function withoutMark(file: Blob): Promise<Blob> {
@@ -239,7 +239,7 @@ async function withoutMark(file: Blob): Promise<Blob> {
     g.drawImage(bitmap, 0, 0, c.width, c.height);
     const box = markCorner(g.getImageData(0, 0, c.width, c.height).data, c.width, c.height);
     if (!box) return file;
-    g.fillStyle = '#ffffff';
+    g.fillStyle = `rgb(${box.color.join(',')})`;
     g.fillRect(box.x, box.y, box.width, box.height);
     return await new Promise<Blob>((resolve) => c.toBlob((b) => resolve(b ?? file), 'image/png'));
   } finally {

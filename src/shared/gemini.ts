@@ -67,7 +67,8 @@ export function geminiPrompt(style: GeminiStyle, age: AgeStage, wish?: unknown):
     'Fur is essential: a thick, long, fluffy coat everywhere, including the legs, paws, chest and tail,',
     'with visible soft strands and wispy edges. Never smooth, shaved, bald, glossy plastic skin or patchy.',
     'It is an animal: never standing upright on its hind legs, never human-like, no clothes unless asked below.',
-    'Background: plain pure white (#FFFFFF), seamless and completely empty.',
+    'Background: plain pure white (#FFFFFF), seamless and completely empty;',
+    'but if the pet is white, cream or very light-colored, use a plain solid mid-grey (#808080) background instead so the body stands out.',
     'No base, no stand, no acrylic plate, no packaging box, no desk, no screen, no props, no other animals,',
     'no text, no logo, no frame, no floor shadow or reflection.',
   ];
@@ -92,40 +93,46 @@ export function checkGeminiImage(head: Uint8Array, size: number): GeminiImageChe
   return { ok: true };
 }
 
-/** 흰색으로 볼 밝기 (JPEG 바탕은 순백이 아니다) */
-const WHITE = 232;
+/** 바탕색과 같은 색으로 볼 차이 (채널마다. JPEG 바탕은 고르지 않다) */
+const NEAR = 24;
 
 /**
- * Gemini 무료 그림의 오른쪽 아래 반짝이 표시 칸. 흰 바탕이면 배경 지우기가 이것을 작은 조각으로 남긴다.
- * 오른쪽 아래 12% 칸이 거의 흰색이고(펫이 칸에 들어오지 않았고), 칸의 왼쪽과 위쪽 가장자리가 모두 흰색일 때만
- * (펫이 칸을 지나가지 않음) 그 칸을 돌려준다. 칠할 것이 없으면(다 흰색) 또는 펫이 닿으면 undefined.
+ * Gemini 무료 그림의 오른쪽 아래 반짝이 표시 칸. 민바탕이면 배경 지우기가 이것을 작은 조각으로 남긴다.
+ * 바탕은 흰색(요청문)이지만 흰 펫이면 회색이라 칸 자신의 바탕색으로 본다: 칸의 왼쪽 세로줄과 위 가로줄 평균색이 바탕이고,
+ * 두 줄이 모두 그 색에 가까우며(펫이 칸을 지나가지 않음) 칸 안에 그 색이 아닌 점이 조금(20% 아래) 있을 때만
+ * 그 칸과 덮을 바탕색을 돌려준다. 칠할 것이 없으면(다 바탕색) 또는 펫이 닿으면 undefined.
  * px 는 RGBA (w*h*4)
  */
 export function markCorner(
   px: ArrayLike<number>,
   w: number,
   h: number,
-): { x: number; y: number; width: number; height: number } | undefined {
+): { x: number; y: number; width: number; height: number; color: [number, number, number] } | undefined {
   if (w < 64 || h < 64 || px.length < w * h * 4) return undefined;
   const width = Math.round(w * 0.12);
   const height = Math.round(h * 0.12);
   const x = w - width;
   const y = h - height;
-  const white = (i: number, j: number) => {
-    const k = (j * w + i) * 4;
-    return (
-      (px[k] ?? 0) >= WHITE &&
-      (px[k + 1] ?? 0) >= WHITE &&
-      (px[k + 2] ?? 0) >= WHITE &&
-      (px[k + 3] ?? 255) > 0
-    );
-  };
-  // 가장자리(왼쪽 세로줄, 위 가로줄)에 흰색 아닌 점이 있으면 펫이 칸으로 들어온 것
-  for (let j = y; j < h; j++) if (!white(x, j)) return undefined;
-  for (let i = x; i < w; i++) if (!white(i, y)) return undefined;
-  let dark = 0;
-  for (let j = y; j < h; j++) for (let i = x; i < w; i++) if (!white(i, j)) dark++;
+  const edge: number[] = [];
+  for (let j = y; j < h; j++) edge.push((j * w + x) * 4);
+  for (let i = x + 1; i < w; i++) edge.push((y * w + i) * 4);
+  const sum = [0, 0, 0];
+  for (const k of edge) {
+    // 투명한 가장자리는 바탕으로 볼 수 없다
+    if ((px[k + 3] ?? 255) === 0) return undefined;
+    for (let c = 0; c < 3; c++) sum[c] = (sum[c] ?? 0) + (px[k + c] ?? 0);
+  }
+  const color = sum.map((v) => Math.round(v / edge.length)) as [number, number, number];
+  const near = (k: number) =>
+    (px[k + 3] ?? 255) > 0 &&
+    Math.abs((px[k] ?? 0) - color[0]) <= NEAR &&
+    Math.abs((px[k + 1] ?? 0) - color[1]) <= NEAR &&
+    Math.abs((px[k + 2] ?? 0) - color[2]) <= NEAR;
+  // 가장자리(왼쪽 세로줄, 위 가로줄)에 바탕색 아닌 점이 있으면 펫이 칸으로 들어온 것
+  for (const k of edge) if (!near(k)) return undefined;
+  let other = 0;
+  for (let j = y; j < h; j++) for (let i = x; i < w; i++) if (!near((j * w + i) * 4)) other++;
   // 표시는 칸의 몇 %. 그보다 훨씬 많이 차 있으면 펫(꼬리 끝 등)이다
-  if (dark === 0 || dark > width * height * 0.2) return undefined;
-  return { x, y, width, height };
+  if (other === 0 || other > width * height * 0.2) return undefined;
+  return { x, y, width, height, color };
 }

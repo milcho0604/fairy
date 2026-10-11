@@ -646,6 +646,41 @@ export function trimHalo(mask: Uint8ClampedArray, w: number, h: number): Uint8Cl
   return out;
 }
 
+/** 속을 채울 알파: 이 아래는 그대로, SOLID_FULL 부터 다 채운다 (solidify) */
+export const SOLID_FROM = 155;
+export const SOLID_FULL = 185;
+
+/**
+ * 몸 속을 꽉 채운다. 흰 바탕의 흰 펫, 반짝이는 피규어 그림은 배경 지우기가 몸 속을 190~245 로 남겨 어두운 화면에서
+ * 몸이 살짝 비쳤다 (Gemini 흰 고양이 몸 193~218, 2026-10-11). 남긴 곳(128 이상) 가장자리에서 몸 크기의 2%(band, 적어도
+ * 2칸)보다 안쪽이고 알파가 SOLID_FROM 넘는 칸을 255 쪽으로 올린다. 가장자리 털 끝은 그대로 두고, band~2*band 사이와
+ * SOLID_FROM~SOLID_FULL 사이는 조금씩 올려 꽉 찬 곳과 둘레 사이에 선이 생기지 않게 한다.
+ * 더 옅은 속(흰 벽 앞 흰 고양이의 90~130 아랫몸)은 몸인지 바탕인지 몰라 그대로 둔다 (다듬기 안내가 복원 붓을 권한다)
+ */
+export function solidify(mask: Uint8ClampedArray, w: number, h: number): Uint8ClampedArray {
+  const box = contentBox(mask, w, h, 127, 0);
+  if (!box) return mask;
+  const band = Math.max(2, Math.round(Math.max(box.width, box.height) * 0.02));
+  const outside = new Uint8ClampedArray(w * h);
+  let soft = false;
+  for (let i = 0; i < w * h; i++) {
+    const v = mask[i] ?? 0;
+    if (v < 128) outside[i] = 255;
+    else if (v < 255 && v > SOLID_FROM) soft = true;
+  }
+  if (!soft) return mask;
+  const d = distanceTo(outside, w, h, 255);
+  const out = new Uint8ClampedArray(mask);
+  for (let i = 0; i < w * h; i++) {
+    const v = mask[i] ?? 0;
+    if (v <= SOLID_FROM || v === 255) continue;
+    const kd = Math.min(1, Math.max(0, ((d[i] ?? 0) - band) / band));
+    const ka = Math.min(1, (v - SOLID_FROM) / (SOLID_FULL - SOLID_FROM));
+    out[i] = v + (255 - v) * kd * ka;
+  }
+  return out;
+}
+
 /**
  * 반쯤 투명한(lo~hi) 칸이 뭉친 가장 큰 덩어리의 넓이 (칸 수). 가장자리 둘레의 얇은 반투명 띠는 r 칸 깎아 빼고 잰다.
  * 남긴 곳 전체 비율(halfKeptShare)로는 팔 하나만 비친 사진(회색 벽 앞 흰 팔)을 놓쳤다 (2026-10-10)
