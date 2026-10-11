@@ -96,14 +96,20 @@ export interface SavedLock {
   minVersion: string;
 }
 
+/** 저장한 잠금을 믿는 기간. 이보다 오래 확인이 계속 실패했으면(릴리스가 사라졌거나 오래 오프라인) 버린다 */
+export const SAVED_LOCK_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+
 /**
  * 저장해 둔 잠금을 읽는다. 지금 버전으로 여전히 잠가야 할 때만 돌려준다 (decideUpdate 의 force 조건과 같다).
- * 업데이트해서 최소 버전 이상이 됐거나, 모양이 이상하면 undefined (부르는 쪽이 파일을 지운다).
+ * 업데이트해서 최소 버전 이상이 됐거나, 모양이 이상하거나, 저장한 지 SAVED_LOCK_MAX_AGE_MS 가 지났으면
+ * undefined (부르는 쪽이 파일을 지운다).
  */
-export function readSavedLock(raw: unknown, current: string): SavedLock | undefined {
+export function readSavedLock(raw: unknown, current: string, now = Date.now()): SavedLock | undefined {
   if (typeof raw !== 'object' || raw === null || !parseVersion(current)) return undefined;
   const r = raw as Record<string, unknown>;
-  const { version, url, minVersion } = r;
+  const { version, url, minVersion, savedAt } = r;
+  if (savedAt !== undefined && (typeof savedAt !== 'number' || !(now - savedAt <= SAVED_LOCK_MAX_AGE_MS)))
+    return undefined;
   if (typeof version !== 'string' || typeof url !== 'string' || typeof minVersion !== 'string')
     return undefined;
   if (!parseVersion(version) || !parseVersion(minVersion) || !url.startsWith('https://github.com/'))

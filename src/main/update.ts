@@ -194,7 +194,7 @@ export function watchUpdates(o: { say: Say; log: Log }) {
   /** 확인한 잠금을 남긴다. 다음에 켤 때 바로 잠근다 */
   function remember(l: Lock) {
     try {
-      writeJson(LOCK_FILE, l);
+      writeJson(LOCK_FILE, { ...l, savedAt: Date.now() });
       saved = true;
     } catch (err) {
       o.log('update', '잠금 저장 못 함', err instanceof Error ? err.message : String(err));
@@ -232,13 +232,16 @@ export function watchUpdates(o: { say: Say; log: Log }) {
     try {
       while (lock) {
         const ready = await download();
+        // 받는 동안 확인이 잠금을 풀었을 수 있다
+        const l = lock;
+        if (!l) break;
         // 전에 이 버전을 건너뛰었어도 강제면 끝낼 때 설치한다 (installOnQuit 이 켜진 운영체제만)
         if (ready) setInstallOnQuit(true);
         nagAbort = new AbortController();
         const answer = await o.say({
           kind: 'answer',
           signal: nagAbort.signal,
-          text: t('main.update.forced', { version: lock.version, min: lock.minVersion }),
+          text: t('main.update.forced', { version: l.version, min: l.minVersion }),
           buttons: ready
             ? [{ id: 'restart', label: t('main.update.restart') }]
             : [{ id: 'get', label: t('main.update.get') }],

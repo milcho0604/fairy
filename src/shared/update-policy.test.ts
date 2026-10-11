@@ -16,6 +16,7 @@ import {
   RELEASES_API,
   readMinVersion,
   readSavedLock,
+  SAVED_LOCK_MAX_AGE_MS,
   SOURCE_REPO,
 } from './update-policy.ts';
 
@@ -177,6 +178,11 @@ test('저장한 잠금은 지금 버전으로 여전히 잠가야 할 때만 쓴
   assert.equal(readSavedLock({ ...lock, minVersion: 140 }, '1.0.0'), undefined);
   assert.equal(readSavedLock({ ...lock, version: 'x' }, '1.0.0'), undefined);
   assert.equal(readSavedLock(null, '1.0.0'), undefined);
+  // 저장한 지 오래된 잠금은 버린다 (릴리스가 사라져 확인이 계속 실패해도 영영 잠기지 않게)
+  const at = 1_000_000_000_000;
+  assert.deepEqual(readSavedLock({ ...lock, savedAt: at }, '1.3.9', at + SAVED_LOCK_MAX_AGE_MS), lock);
+  assert.equal(readSavedLock({ ...lock, savedAt: at }, '1.3.9', at + SAVED_LOCK_MAX_AGE_MS + 1), undefined);
+  assert.equal(readSavedLock({ ...lock, savedAt: 'x' }, '1.3.9', at), undefined);
   assert.equal(readSavedLock('min-version: 1.4.0', '1.0.0'), undefined);
   assert.equal(readSavedLock(lock, '개발판'), undefined);
   // 남는 칸은 버린다
