@@ -25,6 +25,8 @@ import {
   movePose,
 } from './move-pose.ts';
 import { quadKind, walkEnvelopeOf } from './pet3d-gait.ts';
+import { type RigMotion, rigPose } from './photo-rig.ts';
+import type { RiggedPhoto } from './photo-rig-draw.ts';
 import {
   drawBrow,
   drawHeldNote,
@@ -69,6 +71,11 @@ export interface DrawState {
   photo?: CanvasImageSource & { width: number; height: number };
   /** 사진 크기 배율 (AI 일러스트 아기, 청소년은 작게). 없으면 1. 발은 바닥에 그대로 */
   photoScale?: number;
+  /**
+   * 뼈대가 있는 그림 펫 (기본 그림 캐릭터 밀크, 초코. photo-rig.ts). photo 가 이 그림일 때만 쓴다:
+   * 걸으면 앞발과 뒷발을 대각선으로 번갈아 딛고, 꼬리, 귀, 고개가 따로 움직인다
+   */
+  rig?: RiggedPhoto;
   /**
    * 기본 상태에서 하는 행동 (P1-06). phase 는 걷기 걸음 진행 0~1.
    * 걷기의 since 는 걷기를 시작하고 지난 시간, left 는 지금 토막이 끝날 때까지 남은 시간, segMs 는 지금 토막 길이
@@ -429,7 +436,9 @@ function drawPetBody(ctx: CanvasRenderingContext2D, s: DrawState): Point | undef
     sy = l.sy;
   }
   const act = s.mood === 'idle' || s.mood === 'sulky' ? s.activity : undefined;
-  if (act?.type === 'walk') lift = Math.abs(Math.sin(act.phase * Math.PI * 2)) * 3;
+  // 뼈대 그림은 걸음 들썩임과 앉기를 몸 안에서 한다 (발은 바닥에 두고 몸만. photo-rig.ts)
+  const rigged = !!s.photo && s.rig?.image === s.photo;
+  if (act?.type === 'walk' && !rigged) lift = Math.abs(Math.sin(act.phase * Math.PI * 2)) * 3;
   // 커서 방향은 한 틀에 홱 돌지 않고 따라간다 (걷기를 시작하거나 멈출 때도 고개가 툭 돌아가지 않게)
   if (s.now !== undefined) {
     const raw = gazeOf(s, act);
@@ -440,7 +449,7 @@ function drawPetBody(ctx: CanvasRenderingContext2D, s: DrawState): Point | undef
   if (s.peer?.pose) lift += s.peer.pose.hop;
   // 앉기: 처음에 천천히 앉고 끝에 일어난다 (down 0 서 있음 ~ 1 앉음)
   const sitK = act?.type === 'sit' ? (act.down ?? 1) : 0;
-  if (act?.type === 'sit') {
+  if (act?.type === 'sit' && !rigged) {
     sx = 1 + 0.06 * sitK;
     sy = 1 - 0.1 * sitK;
   }
@@ -1339,24 +1348,28 @@ function drawPhoto(
   const k = Math.min(maxW / photo.width, maxH / photo.height) * (s.photoScale ?? 1);
   const w = photo.width * k;
   const h = photo.height * k;
+  const rig = s.rig?.image === photo ? s.rig : undefined;
   let tilt = 0;
-  if (act?.type === 'walk') tilt = Math.sin(act.phase * Math.PI * 2) * 0.06;
-  if (act?.type === 'look') tilt = act.dir * 0.08;
+  if (act?.type === 'walk' && !rig) tilt = Math.sin(act.phase * Math.PI * 2) * 0.06;
+  if (act?.type === 'look' && !rig) tilt = act.dir * 0.08;
   const g = gazeOf(s, act);
-  // 커서 쪽으로 살짝 기운다 (사진은 얼굴을 바꿀 수 없어서)
-  if (g) tilt = g.x * 0.06;
-  // 몸짓도 기울기로: 손 흔들기는 좌우로 까딱, 빙글 춤은 크게 흔들기
+  // 커서 쪽으로 살짝 기운다 (사진은 얼굴을 바꿀 수 없어서. 뼈대 그림은 고개만 돌린다)
+  if (g && !rig) tilt = g.x * 0.06;
+  // 몸짓도 기울기로: 손 흔들기는 좌우로 까딱, 빙글 춤은 크게 흔들기 (뼈대 그림은 앞발을 들어 흔든다)
   const trick = trickOf(s);
-  if (trick?.type === 'wave') tilt = waveSwing(trick.t) * 0.1;
+  if (trick?.type === 'wave') tilt = waveSwing(trick.t) * (rig ? 0.02 : 0.1);
   if (trick?.type === 'dance') tilt = danceTilt(trick.t);
-  // 제자리 몸짓: 사진은 관절이 없어 몸 전체를 기울이고 옮긴다 (뒹굴기는 사진 펫이 고르지 않는다)
+  // 제자리 몸짓: 사진은 관절이 없어 몸 전체를 기울이고 옮긴다 (뒹굴기는 사진 펫이 고르지 않는다).
+  // 뼈대 그림은 고개, 귀, 발, 꼬리를 따로 움직이고 몸 전체는 돌리기와 비틀기만
   const mv = movePoseOf(act, s.calm);
   let shift = 0;
   if (mv) {
     // 누운 사진은 깨진 그림처럼 보여서 몸 돌리기는 조금만 (뒹굴기는 사진 펫이 고르지 않지만 혹시 와도)
     const turn = Math.max(-0.3, Math.min(0.3, mv.turn));
-    tilt = turn + mv.twist * 0.3 + mv.tilt * 0.5 + mv.look * 0.08 + mv.pitch * 0.25;
-    shift = mv.dx + mv.look * 4;
+    tilt = rig
+      ? turn + mv.twist * 0.15
+      : turn + mv.twist * 0.3 + mv.tilt * 0.5 + mv.look * 0.08 + mv.pitch * 0.25;
+    shift = mv.dx + (rig ? 0 : mv.look * 4);
   }
   if (s.mood === 'dozing') tilt = 0.1;
   ctx.save();
@@ -1367,13 +1380,85 @@ function drawPhoto(
   const flip = ease.to('flip', s.mood === 'sulky' ? -1 : 1, LOOK_TAU);
   ctx.scale((flip < 0 ? -1 : 1) * Math.max(0.12, Math.abs(flip)) * sx, sy);
   if (s.mood === 'sleeping' || s.mood === 'dozing') ctx.globalAlpha = 0.85;
-  ctx.drawImage(photo, -w / 2, -h, w, h);
+  if (rig) {
+    ctx.translate(-w / 2, -h);
+    ctx.scale(w / rig.def.w, h / rig.def.h);
+    rig.draw(ctx, rigPose(rig.def, rigMotionOf(s, act, mv, g, trick, (w / rig.def.w) * Math.abs(sx))));
+  } else ctx.drawImage(photo, -w / 2, -h, w, h);
   ctx.restore();
   const top = GROUND - lift - h * sy;
   // 사진은 손을 들 수 없어 기울기에 더해 흔드는 표시만 머리 옆에
   if (trick?.type === 'wave' && Math.min(1, trick.t * 5, (1 - trick.t) * 5) > 0.6)
     drawWaveMarks(ctx, CX + w / 2 - 6, top + 22, waveSwing(trick.t));
   return top;
+}
+
+/**
+ * 뼈대 그림의 움직임 (photo-rig.ts rigPose 에 준다). scale 은 그림 1px 이 캔버스 몇 px 인지 (보폭을 그림 px 로 바꾼다).
+ * 잠과 졸음은 반투명하게 그려서 쉬는 자세로 둔다 (세모가 겹친 가장자리가 진하게 줄로 보인다)
+ */
+function rigMotionOf(
+  s: DrawState,
+  act: DrawState['activity'],
+  mv: MovePose | undefined,
+  g: Gaze | undefined,
+  trick: Trick | undefined,
+  scale: number,
+): RigMotion {
+  if (s.mood === 'sleeping' || s.mood === 'dozing' || s.mood === 'hidden') return {};
+  const m: RigMotion = {};
+  if (act?.type === 'walk') {
+    const env = walkEnvelopeOf(act);
+    m.walk = {
+      phase: act.phase,
+      dir: act.dir,
+      stride: (act.stride ?? 0) / Math.max(1e-6, scale),
+      k: env.stride,
+      rise: env.lean,
+    };
+  }
+  if (act?.type === 'sit') m.sit = act.down ?? 1;
+  const head: NonNullable<RigMotion['head']> = {};
+  if (act?.type === 'look') head.look = act.dir * 0.9;
+  if (g) {
+    head.look = g.x * 0.7;
+    head.up = -g.y;
+    head.tilt = g.x * 0.05;
+  }
+  if (act?.type === 'yawn') head.up = Math.sin(Math.min(1, act.t) * Math.PI) * 1.2;
+  if (act?.type === 'stretch') {
+    const k = Math.sin(Math.min(1, act.t) * Math.PI);
+    m.legs = [k * 0.35, k * 0.35];
+    head.up = k * 0.8;
+  }
+  if (mv) {
+    head.look = (head.look ?? 0) + mv.look;
+    head.tilt = (head.tilt ?? 0) + mv.tilt * 0.8;
+    head.pitch = mv.pitch;
+    m.legs = mv.legs;
+    m.tail = mv.tail * 0.6;
+    m.ears = mv.ears;
+    m.twist = mv.twist * 0.25;
+  }
+  m.head = head;
+  if (trick?.type === 'wave')
+    m.wave = { k: Math.min(1, trick.t * 5, (1 - trick.t) * 5), swing: waveSwing(trick.t) };
+  if (trick?.type === 'dance') {
+    const d = Math.sin(trick.t * Math.PI * 4);
+    m.legs = [Math.max(0, d) * 0.7, Math.max(0, -d) * 0.7];
+    m.tail = d * 0.3;
+  }
+  // 같이 타자 치기: 진짜 앞발도 키보드를 따라 살짝 들썩인다
+  const tapping = tapOf(s, act);
+  if (tapping) {
+    const press = tapPaws(tapping.ms, s.calm);
+    m.legs = [(1 - press[0]) * 0.3 * tapping.k, (1 - press[1]) * 0.3 * tapping.k];
+  }
+  // 들리거나 신나서 뛰면 다리가 늘어진다
+  if (s.mood === 'grabbed') m.dangle = 1;
+  if (s.mood === 'excited') m.dangle = Math.min(1, excitedBounce(s.elapsed, s.calm).lift / 12);
+  if (mv && mv.lift > 2) m.dangle = Math.min(1, mv.lift / 14);
+  return m;
 }
 
 function drawEyes(ctx: CanvasRenderingContext2D, s: DrawState, look: number, gaze?: Gaze, wide = false) {

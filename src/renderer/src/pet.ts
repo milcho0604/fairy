@@ -52,6 +52,8 @@ import { LAND_MS, moveFps, SIT_MS, sitDown } from './move-pose.ts';
 import { renderBody, renderFace } from './pet-face.ts';
 import type { Pet3D } from './pet3d.ts';
 import { quadKind, withGait } from './pet3d-gait.ts';
+import { STARTER_RIGS } from './photo-rig-data.ts';
+import { RiggedPhoto } from './photo-rig-draw.ts';
 import { PoseBlend, type PoseKey, shouldBlend } from './pose-blend.ts';
 import { playSound } from './sound.ts';
 import { TAP_FPS, TAP_IN_MS, TAP_OUT_MS } from './together-draw.ts';
@@ -212,6 +214,8 @@ function frame() {
     hungry: inputs.hungry,
     photo: img instanceof AnimatedImage ? img.frameAt(now) : img,
     photoScale,
+    // 뼈대는 기본 그림(포즈 그림이 아닌)일 때만
+    ...(photoRig && img === photoRig.image ? { rig: photoRig } : {}),
     kind: petKind,
     sulk: inputs.sulkLevel,
     pout: inputs.pout,
@@ -580,7 +584,11 @@ function moveAsk(): MoveAsk {
   if (use3d && !broken3d && bp) {
     return { ...bodyOfParts(bp.parts), photo: false, calm, hungry, ...more };
   }
-  if (photo) return { tail: false, ears: false, photo: true, calm, hungry, ...more };
+  // 뼈대가 있는 그림(밀크, 초코)은 꼬리와 귀가 따로 움직여 꼬리 흔들기, 귀 쫑긋도 한다
+  if (photo) {
+    const rig = rigInUse();
+    return { tail: !!rig?.has('tail'), ears: !!rig?.has('earL'), photo: true, calm, hungry, ...more };
+  }
   return {
     tail: petKind === 'cat' || petKind === 'dog',
     ears: petKind === 'cat' || petKind === 'bunny' || petKind === 'dog',
@@ -596,6 +604,13 @@ type PetImage = HTMLImageElement | AnimatedImage;
 let photo: PetImage | undefined;
 /** 지금 펫 그림의 data URL (기본 그림과 포즈). 포즈는 처음 쓸 때 푼다 (움직이는 그림 넷을 미리 다 풀면 수백 MB) */
 let photoUrl: string | undefined;
+/** 기본 그림 캐릭터(밀크, 초코)의 뼈대 (photo-rig.ts). 그림 크기가 뼈대와 같을 때만 */
+let photoRig: RiggedPhoto | undefined;
+/** 지금 2D 로 그려 뼈대를 쓰는지 (입체 설계도나 2.5D 깊이 그림으로 그리면 안 쓴다) */
+function rigInUse(): RiggedPhoto | undefined {
+  if (!photoRig || photo !== photoRig.image) return undefined;
+  return use3d && !broken3d && (photoModel || photoDepth) ? undefined : photoRig;
+}
 let poseUrls: Partial<Record<PoseKind, string>> = {};
 /** 바꾸는 중인 다음 그림 묶음의 data URL */
 let nextUrls: Set<string> | undefined;
@@ -715,6 +730,10 @@ bridge.onImage(async (images: PetImages) => {
   photoUrl = images.main ?? undefined;
   poseUrls = { ...images.poses };
   photo = main;
+  photoRig =
+    images.starter && main instanceof HTMLImageElement
+      ? RiggedPhoto.make(main, STARTER_RIGS[images.starter])
+      : undefined;
   photoModel = images.model ?? undefined;
   photoDepth = depthImg instanceof HTMLImageElement ? depthImg : undefined;
   if (!photoDepth) release(depthImg);

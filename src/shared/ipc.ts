@@ -593,6 +593,8 @@ export interface PetImages {
   poses: Partial<Record<PoseKind, string>>;
   /** AI 일러스트 나이 단계 (아기, 청소년은 작게 그린다, illustrate.ts ageScale). 없으면 그대로 */
   age?: AgeStage;
+  /** 기본 그림 캐릭터(밀크, 초코)를 고른 그림이면 그 캐릭터. 펫 화면이 그 뼈대로 다리, 꼬리, 귀를 움직인다 */
+  starter?: StarterId;
 }
 
 export const MAKER = {
