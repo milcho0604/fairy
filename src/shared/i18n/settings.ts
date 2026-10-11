@@ -644,7 +644,7 @@ export const en: Translation<typeof ko> = {
 
   'settings.start': 'Startup',
   'settings.launchAtLogin': 'Open at login',
-  'settings.launchPackaged': 'fairy shows up when you log in.',
+  'settings.launchPackaged': 'Fairy shows up when you log in.',
   'settings.launchDev': 'Only works in the installed app. This is a dev build.',
 
   'settings.review': 'Daily review',
@@ -738,7 +738,7 @@ export const en: Translation<typeof ko> = {
   'settings.version': 'fairy {v}',
   'settings.licenses': 'Open source licenses',
   'settings.licensesHint':
-    'fairy is open source under the MIT license. See the notices for the other open source it includes.',
+    'Fairy is open source under the MIT license. See the notices for the other open source it includes.',
   'settings.licensesOpen': 'View notices',
   'settings.licensesFailed': "Couldn't open the notices file.",
   'settings.stats.title': 'My stats (beta)',

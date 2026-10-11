@@ -130,14 +130,14 @@ export const ko = {
   'note.event': (v: Ev) =>
     P(v.p, {
       friend: `오늘 첫 일정은 ${v.time} ${v.title}! 잊지 마.`,
-      polite: `오늘 첫 일정은 ${v.time}에 있어요: ${v.title}.`,
+      polite: `오늘은 ${v.time}에 ${withParticle(v.title, '으로')} 하루를 시작해요.`,
       tsundere: `${v.time}에 ${withParticle(v.title, '이')} 있거든? 늦지 마.`,
       calm: `오늘은 ${v.time} ${withParticle(v.title, '으로')} 시작해. 미리 준비해 두자.`,
     }),
   'note.eventAllDay': (v: Ev) =>
     P(v.p, {
       friend: `오늘은 종일 ${v.title}! 기억해 둬.`,
-      polite: `오늘은 종일 일정이 있어요: ${v.title}.`,
+      polite: `오늘은 종일 ${withParticle(v.title, '이')} 있어요. 잊지 마세요.`,
       tsundere: `오늘 종일 ${withParticle(v.title, '이')}잖아. 까먹지 마.`,
       calm: `오늘은 종일 ${v.title}. 무리하지 말고 챙기자.`,
     }),
@@ -151,7 +151,7 @@ export const ko = {
   'note.birthday': (v: Pv) =>
     P(v.p, {
       friend: '오늘 생일이지? 생일 축하해! 오늘은 네가 주인공이야.',
-      polite: '오늘 생신이시죠? 생일 정말 축하드려요!',
+      polite: '오늘 생일이시죠? 정말 축하드려요!',
       tsundere: '생일인 거 다 알거든. ...축하해. 진심이야.',
       calm: '생일 축하해. 한 해 동안 정말 잘 지내 왔어.',
     }),
@@ -267,7 +267,7 @@ export const en: Translation<typeof ko> = {
 
   'note.open': (v: Name) =>
     P(v.p, {
-      friend: V(v.v, ['Good morning! Happy to see you.', "Hi, it's me!", "Let's do our best today!"]),
+      friend: V(v.v, ['Good morning! Happy to see you.', "Hi, it's me!", "Let's make today a good one!"]),
       polite: V(v.v, [
         'Good morning. Lovely to see you.',
         "Hello, here is today's note.",

@@ -242,7 +242,7 @@ export function looksLikeOurs(db: Db): boolean {
 export function migrate(db: Db): { from: number; to: number } {
   const from = schemaVersion(db);
   if (from > SCHEMA_VERSION)
-    throw new Error(`이 저장 파일(${from}판)은 이 짝꿍(${SCHEMA_VERSION}판)보다 새 판이다`);
+    throw new Error(`이 저장 파일(${from}판)은 이 페어리(${SCHEMA_VERSION}판)보다 새 판이다`);
   for (let v = from; v < SCHEMA_VERSION; v++) {
     db.exec('begin');
     try {
