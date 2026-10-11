@@ -94,261 +94,266 @@ export function TodayTab({
   }, []);
 
   return (
-    <div className="scroll today" ref={scroller}>
-      <RemindCard s={s} />
-      {next && (
-        <section className="next-up">
-          <h3>{t('panel.today.next')}</h3>
-          <div className="next-row">
-            <span className="next-text">
-              <strong className="next-title">{next.title}</strong>
-              {next.kind === 'event' && (
-                <small>{t('panel.today.nextPrepare', { time: timeOf(next.startAt) })}</small>
+    <>
+      <div className="scroll today" ref={scroller}>
+        <RemindCard s={s} />
+        {next && (
+          <section className="next-up">
+            <h3>{t('panel.today.next')}</h3>
+            <div className="next-row">
+              <span className="next-text">
+                <strong className="next-title">{next.title}</strong>
+                {next.kind === 'event' && (
+                  <small>{t('panel.today.nextPrepare', { time: timeOf(next.startAt) })}</small>
+                )}
+                {nextStep && nextProgress && (
+                  <small>
+                    {t('assist.next.step', { title: nextStep.title })} ({nextProgress.done}/
+                    {nextProgress.total})
+                  </small>
+                )}
+              </span>
+              {next.kind === 'todo' && !running && (
+                <button
+                  type="button"
+                  className="primary next-go"
+                  onClick={() => bridge.focusStart(len, next.id)}
+                >
+                  {t('panel.today.nextFocus', { n: len })}
+                </button>
               )}
-              {nextStep && nextProgress && (
-                <small>
-                  {t('assist.next.step', { title: nextStep.title })} ({nextProgress.done}/{nextProgress.total}
-                  )
-                </small>
-              )}
-            </span>
-            {next.kind === 'todo' && !running && (
-              <button
-                type="button"
-                className="primary next-go"
-                onClick={() => bridge.focusStart(len, next.id)}
-              >
-                {t('panel.today.nextFocus', { n: len })}
-              </button>
-            )}
-          </div>
-        </section>
-      )}
-
-      <PlanCard s={s} onComplete={onComplete} />
-
-      <section className={`focus-card ${s.focus.phase}`}>
-        {s.focus.phase === 'idle' ? (
-          <>
-            <div className="focus-text">
-              <strong>{t('panel.today.focusTitle', { n: len })}</strong>
-              <small>
-                {t('panel.today.focusHint', {
-                  name: s.petName,
-                  coins: focusCoins(len),
-                  breakMin: breakFor(len),
-                })}
-              </small>
-              <fieldset className="focus-len" aria-label={t('panel.today.focusLength')}>
-                {FOCUS_LENGTHS.map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    aria-pressed={n === len}
-                    className={n === len ? 'len-chip on' : 'len-chip'}
-                    onClick={() => setLen(n)}
-                  >
-                    {t('panel.today.focusMin', { n })}
-                  </button>
-                ))}
-              </fieldset>
             </div>
-            <button type="button" className="primary" onClick={() => bridge.focusStart(len)}>
-              {t('panel.today.start')}
-            </button>
-          </>
-        ) : (
-          <>
-            <div className="focus-text">
-              <strong className="clock">{remainLabel(s.focus, now)}</strong>
-              <small>
-                {s.focus.phase !== 'focus'
-                  ? t('panel.today.resting')
-                  : focusTodo
-                    ? t('panel.today.focusingOn', { title: focusTodo.title })
-                    : t('panel.today.focusing')}
-              </small>
-            </div>
-            <button type="button" className="ghost" onClick={() => bridge.focusStop()}>
-              {t('panel.today.stop')}
-            </button>
-          </>
+          </section>
         )}
-      </section>
 
-      {/* 첫 7일 여정 (shared/journey.ts). 여정 밖이면 그리지 않는다 */}
-      <JourneyCard s={s} />
+        <PlanCard s={s} onComplete={onComplete} />
 
-      {s.missed.length > 0 && (
-        <section className="missed">
+        <section className={`focus-card ${s.focus.phase}`}>
+          {s.focus.phase === 'idle' ? (
+            <>
+              <div className="focus-text">
+                <strong>{t('panel.today.focusTitle', { n: len })}</strong>
+                <small>
+                  {t('panel.today.focusHint', {
+                    name: s.petName,
+                    coins: focusCoins(len),
+                    breakMin: breakFor(len),
+                  })}
+                </small>
+                <fieldset className="focus-len" aria-label={t('panel.today.focusLength')}>
+                  {FOCUS_LENGTHS.map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      aria-pressed={n === len}
+                      className={n === len ? 'len-chip on' : 'len-chip'}
+                      onClick={() => setLen(n)}
+                    >
+                      {t('panel.today.focusMin', { n })}
+                    </button>
+                  ))}
+                </fieldset>
+              </div>
+              <button type="button" className="primary" onClick={() => bridge.focusStart(len)}>
+                {t('panel.today.start')}
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="focus-text">
+                <strong className="clock">{remainLabel(s.focus, now)}</strong>
+                <small>
+                  {s.focus.phase !== 'focus'
+                    ? t('panel.today.resting')
+                    : focusTodo
+                      ? t('panel.today.focusingOn', { title: focusTodo.title })
+                      : t('panel.today.focusing')}
+                </small>
+              </div>
+              <button type="button" className="ghost" onClick={() => bridge.focusStop()}>
+                {t('panel.today.stop')}
+              </button>
+            </>
+          )}
+        </section>
+
+        {/* 첫 7일 여정 (shared/journey.ts). 여정 밖이면 그리지 않는다 */}
+        <JourneyCard s={s} />
+
+        {s.missed.length > 0 && (
+          <section className="missed">
+            <h3>
+              {t('panel.today.missed')}
+              <button type="button" className="link" onClick={() => bridge.missedClear()}>
+                {t('panel.today.missedClear')}
+              </button>
+            </h3>
+            <ul className="events">
+              {s.missed.map((m) => (
+                <li key={`${m.at}-${m.text}`}>
+                  <span className="time">{timeOf(m.at)}</span>
+                  <span className="title">{m.text}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        <section>
           <h3>
-            {t('panel.today.missed')}
-            <button type="button" className="link" onClick={() => bridge.missedClear()}>
-              {t('panel.today.missedClear')}
+            {t('panel.today.events')}
+            <button type="button" className="link" onClick={() => goTo('event')}>
+              {t('panel.today.addEvent')}
             </button>
           </h3>
-          <ul className="events">
-            {s.missed.map((m) => (
-              <li key={`${m.at}-${m.text}`}>
-                <span className="time">{timeOf(m.at)}</span>
-                <span className="title">{m.text}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      <section>
-        <h3>
-          {t('panel.today.events')}
-          <button type="button" className="link" onClick={() => goTo('event')}>
-            {t('panel.today.addEvent')}
-          </button>
-        </h3>
-        {events.length === 0 ? (
-          <p className="empty-line">{t('panel.today.noEvents')}</p>
-        ) : (
-          <ul className="events">
-            {events.map((e) => {
-              if (e.allDay) {
-                // "종일 제주도 여행 ~10/12": 여러 날이면 언제까지인지 붙인다
-                const { last } = allDaySpan(e);
+          {events.length === 0 ? (
+            <p className="empty-line">{t('panel.today.noEvents')}</p>
+          ) : (
+            <ul className="events">
+              {events.map((e) => {
+                if (e.allDay) {
+                  // "종일 제주도 여행 ~10/12": 여러 날이면 언제까지인지 붙인다
+                  const { last } = allDaySpan(e);
+                  return (
+                    <li key={e.id} className="all-day">
+                      <span className="time">{t('panel.event.allDay')}</span>
+                      <span className="title">
+                        {e.title}
+                        {last > s.today && (
+                          <small>
+                            {' '}
+                            {t('panel.event.until', {
+                              m: Number(last.slice(5, 7)),
+                              d: Number(last.slice(8, 10)),
+                            })}
+                          </small>
+                        )}
+                      </span>
+                    </li>
+                  );
+                }
                 return (
-                  <li key={e.id} className="all-day">
-                    <span className="time">{t('panel.event.allDay')}</span>
-                    <span className="title">
-                      {e.title}
-                      {last > s.today && (
-                        <small>
-                          {' '}
-                          {t('panel.event.until', {
-                            m: Number(last.slice(5, 7)),
-                            d: Number(last.slice(8, 10)),
-                          })}
-                        </small>
-                      )}
+                  <li key={e.id} className={e.startAt <= now ? 'now' : ''}>
+                    <span className="time">
+                      {e.startAt <= now ? t('panel.today.now') : timeOf(e.startAt)}
                     </span>
+                    <span className="title">{e.title}</span>
                   </li>
                 );
-              }
-              return (
-                <li key={e.id} className={e.startAt <= now ? 'now' : ''}>
-                  <span className="time">{e.startAt <= now ? t('panel.today.now') : timeOf(e.startAt)}</span>
-                  <span className="title">{e.title}</span>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
-
-      <section>
-        <h3>
-          {t('panel.todo.due')}
-          <span className="h3-links">
-            {overdue > 0 && (
-              <button
-                type="button"
-                className="link"
-                onClick={async () => {
-                  const moved = await bridge.moveOverdue();
-                  if (moved.length > 0) onMoved?.(moved);
-                }}
-              >
-                {t('assist.overdue.move', { n: overdue })}
-              </button>
-            )}
-            <button type="button" className="link" onClick={() => goTo('todo')}>
-              {t('panel.today.allTodos')}
-            </button>
-          </span>
-        </h3>
-        {due.length === 0 ? (
-          <p className="empty-line">{t('panel.today.noDue')}</p>
-        ) : (
-          <ul className="todos">
-            {due.map((todo) => (
-              <TodoRow
-                key={todo.id}
-                todo={todo}
-                today={s.today}
-                onComplete={() => onComplete(todo)}
-                compact
-              />
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <HabitBox s={s} onComplete={onComplete} />
-
-      {important.length > 0 && (
-        <section>
-          <h3>{t('panel.todo.important')}</h3>
-          <ul className="todos">
-            {important.map((todo) => (
-              <TodoRow
-                key={todo.id}
-                todo={todo}
-                today={s.today}
-                onComplete={() => onComplete(todo)}
-                compact
-              />
-            ))}
-          </ul>
+              })}
+            </ul>
+          )}
         </section>
-      )}
 
-      <p className="done-count">
-        <span>
-          {t('panel.today.doneLabel')} <b>{s.doneToday.length}</b>
-        </span>
-        <span className="streak" title={t('panel.today.streakHint')}>
-          {t('panel.today.streakBefore')} <b>{s.achieve.streak}</b>
-          {t(s.achieve.streak === 1 ? 'panel.today.streakAfterOne' : 'panel.today.streakAfter')}
-        </span>
-      </p>
+        <section>
+          <h3>
+            {t('panel.todo.due')}
+            <span className="h3-links">
+              {overdue > 0 && (
+                <button
+                  type="button"
+                  className="link"
+                  onClick={async () => {
+                    const moved = await bridge.moveOverdue();
+                    if (moved.length > 0) onMoved?.(moved);
+                  }}
+                >
+                  {t('assist.overdue.move', { n: overdue })}
+                </button>
+              )}
+              <button type="button" className="link" onClick={() => goTo('todo')}>
+                {t('panel.today.allTodos')}
+              </button>
+            </span>
+          </h3>
+          {due.length === 0 ? (
+            <p className="empty-line">{t('panel.today.noDue')}</p>
+          ) : (
+            <ul className="todos">
+              {due.map((todo) => (
+                <TodoRow
+                  key={todo.id}
+                  todo={todo}
+                  today={s.today}
+                  onComplete={() => onComplete(todo)}
+                  compact
+                />
+              ))}
+            </ul>
+          )}
+        </section>
 
-      {s.week && (
-        <WeekBox week={s.week} today={s.today}>
-          <WeekCardButton s={s} />
-        </WeekBox>
-      )}
+        <HabitBox s={s} onComplete={onComplete} />
 
-      <details className="achieve">
-        <summary>
-          {t('panel.today.achieve', { got: s.achieve.got.length, total: s.achieve.total })}
-          {s.achieve.next && <small>{t('panel.today.achieveNext', { hint: s.achieve.next.hint })}</small>}
-        </summary>
-        <ul>
-          {s.achieve.got.length === 0 && <li className="empty-line">{t('panel.today.noAchieve')}</li>}
-          {s.achieve.got.map((a) => (
-            <li key={a.key}>
-              <b>{a.name}</b>
-              <small>{a.hint}</small>
-            </li>
-          ))}
-        </ul>
-      </details>
+        {important.length > 0 && (
+          <section>
+            <h3>{t('panel.todo.important')}</h3>
+            <ul className="todos">
+              {important.map((todo) => (
+                <TodoRow
+                  key={todo.id}
+                  todo={todo}
+                  today={s.today}
+                  onComplete={() => onComplete(todo)}
+                  compact
+                />
+              ))}
+            </ul>
+          </section>
+        )}
 
-      <details className="achieve diary">
-        <summary>{t('diary.title', { name: s.petName })}</summary>
-        {s.diary.length === 0 ? (
-          <p className="empty-line">{t('diary.empty')}</p>
-        ) : (
+        <p className="done-count">
+          <span>
+            {t('panel.today.doneLabel')} <b>{s.doneToday.length}</b>
+          </span>
+          <span className="streak" title={t('panel.today.streakHint')}>
+            {t('panel.today.streakBefore')} <b>{s.achieve.streak}</b>
+            {t(s.achieve.streak === 1 ? 'panel.today.streakAfterOne' : 'panel.today.streakAfter')}
+          </span>
+        </p>
+
+        {s.week && (
+          <WeekBox week={s.week} today={s.today}>
+            <WeekCardButton s={s} />
+          </WeekBox>
+        )}
+
+        <details className="achieve">
+          <summary>
+            {t('panel.today.achieve', { got: s.achieve.got.length, total: s.achieve.total })}
+            {s.achieve.next && <small>{t('panel.today.achieveNext', { hint: s.achieve.next.hint })}</small>}
+          </summary>
           <ul>
-            {s.diary.map((d) => (
-              <li key={d.day}>
-                <small className="diary-day">
-                  {d.today ? t('diary.today') : dayHeading(d.day, s.today)}
-                  {d.ai && <span className="diary-ai">AI</span>}
-                </small>
-                <span className="diary-text">{d.text}</span>
+            {s.achieve.got.length === 0 && <li className="empty-line">{t('panel.today.noAchieve')}</li>}
+            {s.achieve.got.map((a) => (
+              <li key={a.key}>
+                <b>{a.name}</b>
+                <small>{a.hint}</small>
               </li>
             ))}
           </ul>
-        )}
-      </details>
+        </details>
+
+        <details className="achieve diary">
+          <summary>{t('diary.title', { name: s.petName })}</summary>
+          {s.diary.length === 0 ? (
+            <p className="empty-line">{t('diary.empty')}</p>
+          ) : (
+            <ul>
+              {s.diary.map((d) => (
+                <li key={d.day}>
+                  <small className="diary-day">
+                    {d.today ? t('diary.today') : dayHeading(d.day, s.today)}
+                    {d.ai && <span className="diary-ai">AI</span>}
+                  </small>
+                  <span className="diary-text">{d.text}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </details>
+      </div>
+      {/* 스크롤 칸 밖, 아래에 따로 둔다. 안에 겹쳐 띄우면 둘째 마감 줄을 가렸다 */}
       {more && (
         <button
           type="button"
@@ -373,7 +378,7 @@ export function TodayTab({
           </span>
         </button>
       )}
-    </div>
+    </>
   );
 }
 

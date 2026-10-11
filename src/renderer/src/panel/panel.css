@@ -1393,25 +1393,24 @@ ul.house-styles li > :last-child {
 }
 
 /* 아래에 더 있음: 바닥에 붙은 옅은 그늘과 작은 알약. 자리를 차지하지 않게 높이만큼 위로 겹친다 */
-.today .more-below {
-  position: sticky;
-  bottom: 0;
+.more-below {
+  /* 오늘 탭 스크롤 칸 바로 아래 줄 (겹쳐 띄우지 않는다: 아래 할 일 줄을 가렸다) */
+  flex: none;
   display: flex;
   justify-content: center;
-  align-items: flex-end;
-  /* 오늘 탭 좌우 여백(14px)까지 그늘이 닿게 */
-  width: calc(100% + 28px);
-  height: 44px;
-  margin: -44px -14px 0;
-  padding: 0 0 6px;
+  align-items: center;
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  padding: 0;
   border: 0;
-  background: linear-gradient(to bottom, transparent, var(--panel) 72%);
+  background: var(--panel);
   color: var(--muted);
   font-size: 12px;
   cursor: pointer;
 }
 
-.today .more-below span {
+.more-below span {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -1421,8 +1420,8 @@ ul.house-styles li > :last-child {
   background: var(--panel);
 }
 
-.today .more-below:hover span,
-.today .more-below:focus-visible span {
+.more-below:hover span,
+.more-below:focus-visible span {
   color: var(--ink);
 }
 
