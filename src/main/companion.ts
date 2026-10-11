@@ -108,9 +108,13 @@ export function createCompanion(o: CompanionOptions) {
     o.log('companion', '축하', cheer.id);
     // 오늘 할 일을 다 끝냈으면 색종이를 터뜨린다 (통통 튀는 동안)
     if (cheer.kind === 'clear') o.react('cheer');
+    // 다 끝냄은 방금 한 일에 바로 하는 짧은 말이라 시간당 상태 알림 수에 넣지 않는다 (막혀서 색종이만 터지고 말이 없었다).
+    // 조용히에서는 말 없이 색종이만
+    const clear = cheer.kind === 'clear';
+    if (clear && settings.get().chatter === 'quiet') return;
     setTimeout(() => {
       void o.say({
-        kind: 'system',
+        kind: clear ? 'answer' : 'system',
         text: t(cheer.key, { name: o.petName(), n: cheer.n }),
         ttlMs: 5000,
       });
