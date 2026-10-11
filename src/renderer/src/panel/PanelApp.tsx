@@ -15,9 +15,9 @@ import { TodayTab } from './TodayTab.tsx';
 import { TodoTab } from './TodoTab.tsx';
 
 const bridge = window.jjakkungPanel;
-const UNDO_MS = 5000;
+const UNDO_MS = 8000;
 /** 일정으로 넣은 알림은 고를 것이 둘이라(되돌리기, 할 일로) 조금 더 둔다 */
-const CHOICE_MS = 8000;
+const CHOICE_MS = 10_000;
 /** 알림에 마우스를 올렸다 떼면 이만큼 더 둔다 */
 const LINGER_MS = 2500;
 const TABS: { id: PanelTab; label: I18nKey }[] = [
@@ -93,6 +93,7 @@ export function PanelApp() {
   const [fed, setFed] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const toastRef = useRef<HTMLDivElement>(null);
   /** 지금 알림의 되돌리기 (Cmd/Ctrl+Z). 되돌렸으면 true */
   const undoRef = useRef<() => boolean>(() => false);
 
@@ -157,7 +158,12 @@ export function PanelApp() {
 
   const hideToastIn = (ms: number) => {
     clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(undefined), ms);
+    toastTimer.current = setTimeout(() => {
+      // 마우스가 처음부터 올라가 있었거나(mouseenter 가 안 온다) 키보드로 단추에 와 있으면 조금 더 둔다
+      const el = toastRef.current;
+      if (el && (el.matches(':hover') || el.contains(document.activeElement))) hideToastIn(LINGER_MS);
+      else setToast(undefined);
+    }, ms);
   };
   const showToast = (next: Toast) => {
     setToast(next);
@@ -340,6 +346,7 @@ export function PanelApp() {
       {toast && (
         // 읽는 동안(마우스를 올린 동안)은 사라지지 않는다
         <div
+          ref={toastRef}
           className="toast"
           role="status"
           onMouseEnter={() => clearTimeout(toastTimer.current)}
