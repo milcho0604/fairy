@@ -7,7 +7,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'sha256-L1RBTCm1yyw8h6VGqitJ01bhGEziWR9ntg5FloK+sFQ=' 'sha256-PmtlEIBRQMwP3oKNdeBretzJQm6i3nyx1Q67bpiMfdQ=' 'sha256-VbysykviJrKKBWp7ii4wtI/xh79Hs2F5J3d/sJAdJGg='; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'"
+          "value": "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'sha256-/lawJBqFKPwh/3OTFkTMIsfFSHLN9nVKbhkQObMzT5M=' 'sha256-Y4OqMeKu3RTgi7bBSp8BMqwr7UlqBpoafAyymQmtsKo=' 'sha256-ot3gWrUsOtogBEOJJYJy92+/n+mtbqM4kFHJxFibxfs='; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'"
         },
         {
           "key": "Referrer-Policy",

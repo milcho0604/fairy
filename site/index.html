@@ -140,7 +140,9 @@ box-shadow: 0 10px 28px -22px rgb(74 55 38 / .45);
 }
 .top-in { display: flex; align-items: center; gap: 28px; height: 68px; }
 .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; }
-.brand img { border-radius: 9px; box-shadow: 0 1px 3px rgb(74 55 38 / .2); }
+.brand picture { display: contents; }
+.brand img { filter: drop-shadow(0 1px 1px rgb(74 55 38 / .35)); }
+@media (prefers-color-scheme: dark) { .brand img { filter: drop-shadow(0 1px 1.5px rgb(0 0 0 / .5)); } }
 .brand-name { font: 400 23px/1 var(--display); letter-spacing: .01em; padding-top: 2px; }
 .nav { display: flex; gap: 26px; margin-left: auto; }
 .nav a { position: relative; color: var(--ink-2); text-decoration: none; font-size: 15px; font-weight: 600; padding: 8px 0; transition: color .2s ease; }
@@ -638,7 +640,7 @@ html { scroll-behavior: auto; }
 <header class="top">
   <div class="wrap top-in">
     <a class="brand" href="./" aria-label="페어리 처음으로" data-i18n-attr="aria-label:a11y.home">
-      <img src="./assets/icons/icon-192.png" width="32" height="32" alt="">
+      <picture><source type="image/webp" srcset="./assets/icons/logo-32.webp 1x, ./assets/icons/logo-64.webp 2x, ./assets/icons/logo-96.webp 3x"><img src="./assets/icons/logo-32.png" srcset="./assets/icons/logo-64.png 2x, ./assets/icons/logo-96.png 3x" width="32" height="32" alt=""></picture>
       <span class="brand-name" data-name>페어리</span>
     </a>
     <nav class="nav" aria-label="주요 메뉴" data-i18n-attr="aria-label:a11y.nav">
@@ -1164,7 +1166,7 @@ html { scroll-behavior: auto; }
   <div class="wrap foot-in">
     <div class="peek" aria-hidden="true"><img src="./assets/img/milk-256.webp" srcset="./assets/img/milk-256.webp 1x, ./assets/img/milk-512.webp 2x" width="92" height="159" alt="" loading="lazy" decoding="async"></div>
     <div class="foot-brand">
-      <a class="brand" href="./"><img src="./assets/icons/icon-192.png" width="28" height="28" alt=""><span class="brand-name" data-name>페어리</span></a>
+      <a class="brand" href="./"><picture><source type="image/webp" srcset="./assets/icons/logo-32.webp 1x, ./assets/icons/logo-64.webp 2x, ./assets/icons/logo-96.webp 3x"><img src="./assets/icons/logo-32.png" srcset="./assets/icons/logo-64.png 2x, ./assets/icons/logo-96.png 3x" width="28" height="28" alt=""></picture><span class="brand-name" data-name>페어리</span></a>
       <p data-i18n="footer.tag">화면 위를 걸어 다니는 작은 페어리가 할 일, 일정, 메모를 같이 챙겨 주는 데스크톱 비서</p>
     </div>
     <nav class="foot-col" aria-labelledby="foot-explore">

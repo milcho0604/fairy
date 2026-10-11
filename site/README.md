@@ -17,11 +17,11 @@ site/
 │   ├── app.js          ← language switch, OS detection, release fetch, Bean walking the hero floor, screens carousel
 │   ├── og.png          ← 1200x630 share card (made by tools/og.mjs)
 │   ├── img/            ← webp/avif from the app (tools/capture.mjs, tools/pets.mjs, tools/images.py)
-│   └── icons/          ← favicons from build/icon.png
+│   └── icons/          ← favicons from build/icon.png, and logo-* (the header and footer logo, cut out by tools/logo.py)
 ├── sitemap.xml, robots.txt, site.webmanifest   ← written by tools/build.mjs
 ├── vercel.json         ← security headers (CSP) and image caching for Vercel
 ├── .vercelignore       ← keeps tools/ and this README off the deployed site
-└── tools/              ← build.mjs, og.mjs + og.html, images.py, capture.mjs, pets.mjs + app.mjs, shots.py, kong_sprite.py (not deployed)
+└── tools/              ← build.mjs, og.mjs + og.html, images.py, logo.py, capture.mjs, pets.mjs + app.mjs, shots.py, kong_sprite.py (not deployed)
 ```
 
 Preview locally: `python3 -m http.server -d site 8080` → http://localhost:8080 (add `?lang=en` for English).
@@ -71,6 +71,12 @@ All pictures are the real app screenshots from `docs/assets/screens/` (the to-do
   `background-position` steps and moves it along the hero floor; with *reduce motion* Bean stands still.
 
 Re-run both after re-shooting the screens with `scripts/dev/screens.mjs`.
+
+- `BG_MODEL=<isnet-general-use.onnx> python3 site/tools/logo.py` (needs numpy, scipy, onnxruntime) → `icons/logo-{32,64,96}.{png,webp}`:
+  Choco and Milk from `build/icon.png` with the backdrop and the basket cut away by the app's own background model, for
+  the header and footer next to the name. The favicons and the manifest icons keep the full rounded icon. Without the
+  basket the two faces are bigger at 32px, and the basket read as a plain white bar on the dark page. The page gives the
+  logo a `drop-shadow` (not a box shadow) so the white cat keeps an edge on the light background.
 
 **Sharp on retina.** Every picture has a file at twice the CSS size it is shown at (strips 1140px wide come in
 2280/1520/760, chat 760/400, the hero panel 706/353), picked with `srcset`. Strips and the panel also have an AVIF next to
