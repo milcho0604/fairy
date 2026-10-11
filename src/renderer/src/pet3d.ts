@@ -578,7 +578,10 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       else if (slot === 'tail') pivots[slot] = new Vector3(c.x, b.min.y, b.max.z);
       else pivots[slot] = new Vector3(c.x, b.min.y, c.z); // 귀, 머리 위
     }
-    this.tapRig = tapRigOf(boxes, pivots);
+    // 철마다 옷(목도리 등)의 상자: 타자 칠 때 앞발을 그 앞에 둔다 (옷이 손을 덮지 않게)
+    const worn = new Box3();
+    for (const { part, mesh } of meshes) if (part.wear) worn.union(new Box3().setFromObject(mesh));
+    this.tapRig = tapRigOf(boxes, pivots, worn);
     // body 를 먼저, head 를 다음에 만들어야 자식이 부모를 찾는다 (SLOTS 순서)
     for (const slot of SLOTS) {
       const g = new Group();

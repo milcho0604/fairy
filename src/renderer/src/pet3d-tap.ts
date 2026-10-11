@@ -30,30 +30,42 @@ export interface TapRig {
   board: { x: number; y: number; z: number; w: number; d: number; h: number };
 }
 
+/** 키보드를 카메라 쪽으로 세우는 각 (먼 쪽 모서리가 올라간다). 카메라가 9도 위에서만 봐서 바닥에 눕히면 키가 안 보였다 */
+export const BOARD_TILT = 0.55;
+
 /**
  * 부품 상자와 관절 자리(root 기준)로 키보드 자리와 앞발이 닿을 자리를 잰다. 몸이나 앞발이 없으면 undefined.
- * 키보드는 발 앞 바닥에 몸 너비 0.7 쯤 (위에서 조금 내려다보는 카메라라 윗면 키가 보인다), 앞발 끝은 그 윗면,
- * 가운데에서 몸 너비 0.16 씩 떨어진 두 키 위
+ * 키보드는 배 앞 무릎 높이에 몸 너비 0.86 쯤으로 두고 카메라 쪽으로 세운다 (노트북을 무릎에 얹은 것처럼, 키가 보이게).
+ * 앞발 끝은 가운데에서 몸 너비 0.2 씩 떨어진 두 키 위. 철마다 옷(목도리)이 배 앞에 있으면 그보다 앞에 둔다
+ * (worn: 입는 옷 상자. 목도리 고리가 손을 덮었다, 2026-10-11 검토)
  */
 export function tapRigOf(
   boxes: ReadonlyMap<Slot, Box3>,
   pivots: Readonly<Record<Slot, Vector3>>,
+  worn?: Box3,
 ): TapRig | undefined {
   const body = boxes.get('body');
   if (!body) return undefined;
   const size = body.getSize(new Vector3());
   const c = body.getCenter(new Vector3());
-  const w = size.x * 0.7;
-  const d = size.z * 0.36;
-  const h = Math.max(0.02, size.y * 0.08);
-  // 다리와 발이 몸보다 앞으로 나온 펫도 있어 모든 부품의 앞면을 본다
+  // 옆으로 넓은 몸(콩이)은 몸 높이로 줄인다: 판이 너무 크면 앞 모서리가 캔버스 밑으로 잘린다
+  const w = Math.min(size.x * 0.86, size.y * 0.95);
+  const d = Math.min(size.z * 0.38, w * 0.42);
+  const h = Math.max(0.02, size.y * 0.06);
+  // 배 높이(아래 0.45)까지 앞으로 나온 부품의 앞면 (다리, 발, 앞발이 몸보다 나온 펫도 있다)
+  const belly = body.min.y + size.y * 0.45;
   let front = body.max.z;
-  for (const b of boxes.values()) if (b.min.y < body.min.y + size.y * 0.3) front = Math.max(front, b.max.z);
-  const z = front + d * 0.42;
-  // 카메라가 조금 위에서 보니 앞으로 나온 만큼 화면에서 아래로 내려가 캔버스 밖으로 잘린다.
-  // 그만큼 띄워 키보드 앞 아래 모서리가 펫 발밑 줄에 오게 한다 (바닥 그림자는 2D 가 발밑에 그린다)
-  const y = body.min.y + (z + d / 2 - body.max.z) * 0.2;
-  const top = y + h * 1.3;
+  for (const b of boxes.values()) if (b.min.y < belly) front = Math.max(front, b.max.z);
+  if (worn && !worn.isEmpty() && worn.min.y < belly) front = Math.max(front, worn.max.z);
+  // 키보드 가운데: 앞면에서 반 깊이 + 조금 앞, 바닥에서 몸 높이 0.13 위 (무릎에 얹은 높이. 더 낮으면 앞 모서리가 캔버스 밑으로 잘린다)
+  const z = front + d * 0.5 + size.z * 0.04;
+  // 앞으로 많이 나온 만큼 더 띄운다 (카메라가 위에서 보니 앞으로 나온 만큼 화면에서 내려간다)
+  const y = body.min.y + size.y * 0.13 + Math.max(0, z + d / 2 - body.max.z) * 0.16;
+  // 세운 판 윗면에서 앞발이 누를 줄(둘째 줄, 판 가운데)의 자리
+  const along = 0;
+  const up = h * 1.6;
+  const top = y + up * Math.cos(BOARD_TILT) - along * Math.sin(BOARD_TILT);
+  const tipZ = z + along * Math.cos(BOARD_TILT) + up * Math.sin(BOARD_TILT);
   const paws: TapRig['paws'] = {};
   for (const slot of HANDS) {
     const b = boxes.get(slot);
@@ -69,7 +81,7 @@ export function tapRigOf(
       pivot,
       rest: rest.normalize(),
       len,
-      tip: new Vector3(c.x + side * size.x * 0.16, top, z - d * 0.12),
+      tip: new Vector3(c.x + side * size.x * 0.2, top, tipZ),
     };
   }
   if (Object.keys(paws).length === 0) return undefined;
@@ -77,7 +89,7 @@ export function tapRigOf(
     paws,
     pen: new Vector3(c.x + size.x * 0.24, body.min.y + size.y * 0.3, body.max.z),
     hold: { y: body.min.y + size.y * 0.22, z: body.max.z + size.z * 0.04, dx: size.x * 0.13 },
-    lift: size.y * 0.07,
+    lift: size.y * 0.09,
     board: { x: c.x, y, z, w, d, h },
   };
 }
@@ -139,7 +151,10 @@ export interface Keyboard3D {
   lit: Material;
 }
 
-/** 입체 키보드: 둥근 판 위에 두 줄 키와 스페이스. mat 은 펫 재질 만들기, edge 는 게임 모습 테두리 선 */
+/**
+ * 입체 키보드: 둥근 판 위에 두 줄 키와 스페이스, 카메라 쪽으로 세운다(BOARD_TILT). mat 은 펫 재질 만들기,
+ * edge 는 게임 모습 테두리 선. 판은 짙은 회색, 키는 흰색이라 작은 크기에서도 키가 하나하나 보인다
+ */
 export function buildKeyboard(
   rig: TapRig,
   mat: (color: string, shiny?: boolean) => Material,
@@ -148,37 +163,38 @@ export function buildKeyboard(
   const { w, d, h } = rig.board;
   const group = new Group();
   group.name = 'tap-keyboard';
-  const base = new Mesh(new RoundedBoxGeometry(w, h, d, 3, Math.min(h, d) * 0.45), mat('#98a0ab'));
+  const tilt = new Group();
+  tilt.rotation.x = BOARD_TILT;
+  group.add(tilt);
+  const base = new Mesh(new RoundedBoxGeometry(w, h, d, 3, Math.min(h, d) * 0.45), mat('#6f7782'));
   base.position.y = h / 2;
   edge?.(base);
-  group.add(base);
-  const key = mat('#f7f8fa');
-  const lit = mat('#ffd54a', true);
-  const cols = 7;
-  const gap = w * 0.02;
+  tilt.add(base);
+  const key = mat('#fbfbfd');
+  const lit = mat('#ffc53d', true);
+  const cols = 6;
+  const gap = w * 0.025;
   const kw = (w * 0.9 - gap * (cols - 1)) / cols;
-  const kd = (d * 0.8 - gap * 2) / 3;
-  const kh = h * 0.45;
-  const keyGeo = new RoundedBoxGeometry(kw, kh, kd, 2, Math.min(kw, kd) * 0.25);
+  const kd = (d * 0.84 - gap * 2) / 3;
+  const kh = h * 0.8;
+  const keyGeo = new RoundedBoxGeometry(kw, kh, kd, 2, Math.min(kw, kd) * 0.22);
+  const keyY = h + kh / 2 - kh * 0.35;
   const keys: Mesh[][] = [];
   for (let row = 0; row < 2; row++) {
     keys.push([]);
     for (let col = 0; col < cols; col++) {
       const m = new Mesh(keyGeo, key);
-      m.position.set(
-        -w * 0.45 + kw / 2 + col * (kw + gap),
-        h + kh / 2 - kh * 0.3,
-        -d * 0.4 + kd / 2 + row * (kd + gap),
-      );
-      group.add(m);
+      m.position.set(-w * 0.45 + kw / 2 + col * (kw + gap), keyY, -d * 0.42 + kd / 2 + row * (kd + gap));
+      tilt.add(m);
       keys[row]?.push(m);
     }
   }
-  const space = new Mesh(new RoundedBoxGeometry(w * 0.44, kh, kd, 2, kd * 0.25), key);
-  space.position.set(0, h + kh / 2 - kh * 0.3, -d * 0.4 + kd / 2 + 2 * (kd + gap));
-  group.add(space);
+  const space = new Mesh(new RoundedBoxGeometry(w * 0.5, kh, kd, 2, kd * 0.22), key);
+  space.position.set(0, keyY, -d * 0.42 + kd / 2 + 2 * (kd + gap));
+  tilt.add(space);
   const row = keys[1] ?? [];
-  const under: [Mesh, Mesh] = [row[2] ?? space, row[4] ?? space];
+  // 앞발 밑 키: 가운데에서 몸 너비 0.2 (판 너비의 0.23) 쯤인 키
+  const under: [Mesh, Mesh] = [row[1] ?? space, row[4] ?? space];
   group.position.set(rig.board.x, rig.board.y, rig.board.z);
   group.visible = false;
   return { group, under, space, key, lit };
