@@ -391,7 +391,7 @@ figcaption { margin-top: 12px; font-size: 14px; color: var(--muted); }
 .qa pre { margin: 0 0 14px; padding: 14px 16px; border-radius: var(--r-sm); background: var(--paper); border: 1px solid var(--line); overflow-x: auto; }
 .qa pre code { background: none; padding: 0; word-break: normal; white-space: pre; }
 
-/* footer — Milk peeks over its top edge */
+/* footer: Milk peeks over its top edge */
 .foot { border-top: 1px solid var(--line); padding: 56px 0 48px; font-size: 14.5px; color: var(--muted); }
 main > :last-child { padding-bottom: clamp(88px, 10vw, 128px); }
 .foot-in { position: relative; display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); gap: 32px 40px; }
@@ -462,8 +462,19 @@ main > :last-child { padding-bottom: clamp(88px, 10vw, 128px); }
 .win-more p { margin: 0 0 8px; }
 .req-title { margin-top: 64px; }
 .ai-note { margin-top: 16px; background: var(--tint); border-radius: var(--r-lg); padding: 24px 26px; font-size: 15.5px; }
-.ai-note h2 { font: 400 22px/1.3 var(--display); color: var(--ink); margin: 0 0 8px; }
+.ai-note h2, .ai-note h3 { font: 400 22px/1.3 var(--display); color: var(--ink); margin: 0 0 8px; }
 .ai-note p { margin: 0; }
+/* privacy policy page */
+.pv-date { margin: -16px 0 0; font-size: 15px; color: var(--muted); }
+.policy { max-width: 46em; padding-bottom: clamp(56px, 8vw, 96px); }
+.policy > section { margin-top: 48px; }
+.policy > section:first-child { margin-top: 0; }
+.policy .h3 { margin-bottom: 12px; }
+.policy p { margin: 0 0 12px; }
+.policy ul { margin: 0 0 12px; padding-left: 1.3em; display: grid; gap: 8px; }
+.policy li code, .policy p code { overflow-wrap: anywhere; }
+.policy .ai-note { margin: 20px 0 16px; }
+.policy .ai-note p + p { margin-top: 10px; }
 
 /* 404 */
 .nf { min-height: 60vh; display: grid; place-items: center; text-align: center; padding: 80px 0; }

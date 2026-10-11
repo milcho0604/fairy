@@ -1,4 +1,4 @@
-# Homepage (site/) — fairy.moilga.com
+# Homepage (site/) for fairy.moilga.com
 
 The introduction and download page for **fairy** (페어리). The English brand is always lowercase. Plain static HTML, CSS and JS: no framework, no build step to
 deploy, no server, no cookies, no tracking. The only outside requests are Google Fonts and one call to the GitHub
@@ -40,7 +40,7 @@ Preview locally: `python3 -m http.server -d site 8080` → http://localhost:8080
   `config.js` or `i18n.js` and commit the result.
 - **Shared header and footer** are written once in `tools/build.mjs` and stamped into every page.
 - **CSS** lives in `assets/site.css` but is inlined into each page by the build (no render-blocking request). The
-  build also writes the matching `sha256-…` hashes into the CSP in `vercel.json` — always run the build after
+  build also writes the matching `sha256-…` hashes into the CSP in `vercel.json`. Always run the build after
   editing the CSS, or the browser will refuse the new styles.
 - **Fonts**: IBM Plex Sans KR (body, Google's own unicode-range slices) and Jua for headings only, requested with
   `text=` so just the heading characters are downloaded (`display=block`: the subset is tiny, and a swap would re-wrap

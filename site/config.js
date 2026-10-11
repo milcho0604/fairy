@@ -1,6 +1,6 @@
 /*
- * 사이트 설정 — 이름, 소개 한 줄, 주소, 릴리스 레포는 여기 한 곳에서만 바꿔요.
- * Site settings — the product name, tagline, domain and release repo live here and only here.
+ * 사이트 설정: 이름, 소개 한 줄, 주소, 릴리스 레포는 여기 한 곳에서만 바꿔요.
+ * Site settings: the product name, tagline, domain and release repo live here and only here.
  *
  * 바꾼 뒤에는 저장소 루트에서 한 번 돌려 주세요 (Node 18+, 설치할 것 없음):
  * After editing, run once from the repo root (Node 18+, nothing to install):
