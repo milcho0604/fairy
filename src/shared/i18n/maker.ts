@@ -154,7 +154,6 @@ export const ko = {
   'maker.say.remake.almost': '새 다리를 붙이는 중',
   'maker.say.remake.long': 'AI가 아주 꼼꼼한가 봐. 조금만 더!',
   'maker.say.done': '짠! 다 됐어',
-  'maker.edit.took': (v: { backend: string; sec: string }) => `${v.backend}로 ${v.sec}초 걸렸어.`,
   'maker.name.alt': '새 펫',
   'maker.name.animatedNote': '움직이는 그림이라 배경은 그대로야.',
   'maker.name.smallCut': '사진 속 펫이 작아서 조금 흐릿할 수 있어. 펫이 크게 나온 사진이면 더 또렷해.',
@@ -399,7 +398,6 @@ export const en: Translation<typeof ko> = {
   'maker.say.remake.almost': 'Attaching new legs',
   'maker.say.remake.long': 'The AI is being extra careful!',
   'maker.say.done': 'Ta-da! All done',
-  'maker.edit.took': (v) => `Took ${v.sec}s on ${v.backend}.`,
   'maker.name.alt': 'New pet',
   'maker.name.animatedNote': "It's animated, so the background stays as is.",
   'maker.name.smallCut':

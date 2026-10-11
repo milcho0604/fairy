@@ -25,7 +25,8 @@ export const ko = {
   'maker.gemini.showPrompt': '요청문 보기',
   'maker.gemini.promptLabel': 'Gemini에 붙여 넣을 요청문',
   'maker.gemini.drop.title': 'Gemini에서 받은 그림을 여기에',
-  'maker.gemini.drop.how': '끌어다 놓거나, 눌러서 고르거나, 붙여 넣어도 돼 (⌘V, Ctrl+V).',
+  'maker.gemini.drop.how': (v: { keys: string }) =>
+    `끌어다 놓거나, 눌러서 고르거나, 붙여 넣어도 돼 (${v.keys}).`,
   'maker.gemini.corner':
     '오른쪽 아래 반짝이 표시는 바탕이 하야면 알아서 지워. 남으면 다듬기에서 지우개로 지워 줘.',
   'maker.gemini.privacy':
@@ -59,7 +60,7 @@ export const en: Translation<typeof ko> = {
   'maker.gemini.showPrompt': 'Show prompt',
   'maker.gemini.promptLabel': 'Prompt to paste into Gemini',
   'maker.gemini.drop.title': 'Bring the Gemini picture here',
-  'maker.gemini.drop.how': 'Drop it, click to pick it, or paste it (⌘V, Ctrl+V).',
+  'maker.gemini.drop.how': (v: { keys: string }) => `Drop it, click to pick it, or paste it (${v.keys}).`,
   'maker.gemini.corner':
     "The sparkle mark in the bottom-right corner is removed for you on a white background. If it's still there, erase it while touching up.",
   'maker.gemini.privacy':

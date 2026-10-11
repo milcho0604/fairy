@@ -49,7 +49,7 @@ import { Pet3D } from '../pet3d.ts';
 import { openDepth, predictDepth } from './depth.ts';
 import { settleFur } from './fur-color.ts';
 import { GeminiRoute } from './GeminiRoute.tsx';
-import { backend, modelOpen, openModel, predictMask } from './removeBg.ts';
+import { modelOpen, openModel, predictMask } from './removeBg.ts';
 import { ShownError, shownErrorText } from './shown-error.ts';
 import { FIGURE_LIMITS, RELIEF_LIMITS, Spinner } from './spin.ts';
 
@@ -114,7 +114,6 @@ export function MakerApp() {
   const [preview, setPreview] = useState('');
   /** 오린 그림이 작아서(SMALL_CUT) 흐릿할 수 있는지 */
   const [smallCut, setSmallCut] = useState(false);
-  const [elapsed, setElapsed] = useState(0);
   // 진행 표시: 지금 단계를 시작한 때, 진행 판에 보일 사진, 이번에 모델을 받았는지, 끝나서 100% 를 보여 주는 중인지
   const [stageAt, setStageAt] = useState(0);
   const [thumb, setThumb] = useState('');
@@ -401,7 +400,6 @@ export function MakerApp() {
           await openModel(await res.arrayBuffer());
         }
         if (!alive()) return;
-        const t0 = performance.now();
         const first = withPhotoAlpha(await predictMask(photo, info), photo);
         let next: Work = { photo, mask: first, w: photo.width, h: photo.height };
         if (!alive()) return;
@@ -433,7 +431,6 @@ export function MakerApp() {
         next.mask = trimHalo(next.mask, next.w, next.h);
         // 흰 바탕 흰 펫, 반짝이는 그림의 살짝 비친 몸 속(190~245)을 꽉 채운다 (가장자리 털 끝은 그대로)
         next.mask = solidify(next.mask, next.w, next.h);
-        setElapsed(Math.round(performance.now() - t0));
         saveDuration('cutout', performance.now() - cutStart, store());
         setWork(next);
         setBgDone(true);
@@ -1109,7 +1106,6 @@ export function MakerApp() {
         {step === 'edit' && work && (
           <Editor
             work={work}
-            note={t('maker.edit.took', { backend, sec: (elapsed / 1000).toFixed(1) })}
             onBack={() => {
               setError('');
               setNote('');
@@ -1629,17 +1625,7 @@ function Spin3D({
 }
 
 /** 지우개와 복원 붓으로 마스크를 다듬는다. 지운 곳은 흐리게 보여서 되살릴 곳을 찾기 쉽다. */
-function Editor({
-  work,
-  note,
-  onBack,
-  onNext,
-}: {
-  work: Work;
-  note: string;
-  onBack: () => void;
-  onNext: () => void;
-}) {
+function Editor({ work, onBack, onNext }: { work: Work; onBack: () => void; onNext: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [mode, setMode] = useState<'erase' | 'restore'>('erase');
   // 붓 굵기 = 화면에서 보이는 지름(px). 반지름으로 쓰여 숫자보다 두 배 굵게 칠했다 (2026-10-11)
@@ -1803,9 +1789,7 @@ function Editor({
           }}
         />
       </div>
-      <p className="hint">
-        {t('maker.edit.hint')} {note}
-      </p>
+      <p className="hint">{t('maker.edit.hint')}</p>
       {hints.cut && !hints.empty && !hints.full && <p className="hint">{t('maker.edit.cutEdge')}</p>}
       <div className="actions edit-actions">
         <button type="button" className="ghost" onClick={onBack}>
