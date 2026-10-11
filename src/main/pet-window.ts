@@ -31,7 +31,7 @@ import { Conceal, type ConcealReason } from '../shared/conceal.ts';
 import { CrashGuard } from '../shared/crash-guard.ts';
 import { type CarryToy, fromBox, toBox } from '../shared/fetch.ts';
 import { type Gaze, gazeAt, sameGaze } from '../shared/gaze.ts';
-import { clampIntoAreas, type Point, type Rect } from '../shared/geometry.ts';
+import { clampIntoAreas, type Point, type Rect, snapRect } from '../shared/geometry.ts';
 import type { GestureEvent } from '../shared/gesture.ts';
 import { approachMs, doorFrame, OUT_MS, STRETCH_MS } from '../shared/house-rest.ts';
 import { type HouseSprites, parseSprites } from '../shared/house-room.ts';
@@ -736,9 +736,10 @@ export function createPetWindow({
         const t = (Date.now() - started) / walk.ms;
         const x = fromX + walkOffset(walk.dx, t);
         // 걷기 CPU 의 절반이 창 옮기기다. 픽셀이 그대로인 틱(출발, 멈춤 감속)은 옮기지 않는다
-        const moved = Math.round(x) !== Math.round(pet.x);
-        pet = { ...pet, x };
-        if (moved && !win.isDestroyed()) win.setPosition(Math.round(pet.x), pet.y);
+        // 창 좌표는 정수만 받는다. 소수를 담아 두면 다음 setPosition(산책 등)이 던졌다
+        const moved = Math.round(x) !== pet.x;
+        pet = snapRect({ ...pet, x });
+        if (moved && !win.isDestroyed()) win.setPosition(pet.x, pet.y);
         if (t >= 1) stopWalk(true);
         // 부스트 모드면 60Hz 로 옮긴다 (빨리 걸을 때 한 번에 2~4px 씩 뛰던 것이 1~2px 로). 배터리 절약이면 15Hz
       },
@@ -765,7 +766,7 @@ export function createPetWindow({
     leavePerch();
     // 바닥으로 먼저 내려간다
     const area = screen.getDisplayMatching(pet).workArea;
-    pet = { ...pet, y: area.y + area.height - pet.height };
+    pet = snapRect({ ...pet, y: area.y + area.height - pet.height });
     if (!win.isDestroyed()) win.setPosition(pet.x, pet.y);
     let toRight = pet.x + pet.width / 2 < area.x + area.width / 2;
     while (Date.now() < end) {
@@ -802,6 +803,8 @@ export function createPetWindow({
     let sentAt = 0;
     let area = screen.getDisplayMatching(pet).workArea;
     let areaAt = started;
+    /** 느리게 달리면 틱마다 1px 이 안 된다. 소수는 여기에만 쌓고 pet 에는 정수를 담는다 */
+    let fx = pet.x;
     const onAbort = () => stopWalk(true);
     signal?.addEventListener('abort', onAbort, { once: true });
     return new Promise((resolve) => {
@@ -826,10 +829,11 @@ export function createPetWindow({
           const dx = tx - pet.x;
           const next: -1 | 0 | 1 = Math.abs(dx) < 3 ? 0 : dx < 0 ? -1 : 1;
           if (next !== 0) {
-            const x = pet.x + next * Math.min(Math.abs(dx), speed * dt);
-            const moved = Math.round(x) !== Math.round(pet.x);
-            pet = { ...pet, x };
-            if (moved && !win.isDestroyed()) win.setPosition(Math.round(pet.x), pet.y);
+            if (Math.round(fx) !== pet.x) fx = pet.x;
+            fx += next * Math.min(Math.abs(tx - fx), speed * dt);
+            const moved = Math.round(fx) !== pet.x;
+            pet = snapRect({ ...pet, x: fx });
+            if (moved && !win.isDestroyed()) win.setPosition(pet.x, pet.y);
             face = next;
           }
           // 걷는 모습: 방향이 바뀌거나 서거나 출발할 때, 걷는 중에는 1040ms 마다 이어 붙인다. 화면은 같은 쪽 걷기를 이어 받으면
