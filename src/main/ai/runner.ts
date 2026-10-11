@@ -16,7 +16,7 @@ import { codexUsage, lastCodexLimits } from '../../shared/ai/usage.ts';
 import { aiTempImageName, isAiTempImage } from '../../shared/capture.ts';
 import { t } from '../../shared/i18n/index.ts';
 import { aiWorkDir } from '../ai-history.ts';
-import { prepareCodexHome } from './codex-home.ts';
+import { finishCodexHome, prepareCodexHome } from './codex-home.ts';
 import { getShellEnv, launchOf, resolveBin } from './shell-env.ts';
 
 /** 이 시간 동안 출력이 하나도 없으면 멈춘 것으로 본다. */
@@ -246,6 +246,8 @@ export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
             error: classifyError(spec, stripAnsi(stderr) || t('ai.error.exitCode', { code: String(code) })),
           });
         else emit({ type: 'done', text: answer.trim() });
+        // 격리한 codex 가 토큰을 새로 받았으면 사용자 쪽 로그인 파일에 되돌려 쓴다 (윈도우 복사본)
+        if (codexHome && req.isolate) finishCodexHome(env.codexHome);
         // codex 사용량은 대화 기록 파일에 남는다. 끝난 뒤 읽는다. 기록을 안 남겼으면 읽을 것도 없다.
         if (codexHome && sessionId && !req.ephemeral) {
           const usage = readCodexUsage(codexHome, sessionId);
