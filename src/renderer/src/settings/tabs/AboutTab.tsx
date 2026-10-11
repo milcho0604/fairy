@@ -21,6 +21,21 @@ export function AboutTab({ snap, update, flash, searching }: TabProps & { search
         </div>
       </Section>
       <Stats onCopied={(ok) => flash(ok ? t('settings.statsCopied') : t('settings.copyFailed'), !ok)} />
+      <Section title={t('settings.licenses')}>
+        <small>{t('settings.licensesHint')}</small>
+        <div className="action-row">
+          <button
+            type="button"
+            className="ghost"
+            onClick={async () => {
+              const ok = await bridge.openNotices().catch(() => false);
+              if (!ok) flash(t('settings.licensesFailed'), true);
+            }}
+          >
+            {t('settings.licensesOpen')}
+          </button>
+        </div>
+      </Section>
       {/* 찾는 중에는 판 글을 숨긴다 (찾기 결과가 아니다) */}
       {!searching && <p className="version">{t('settings.version', { v: snap.version })}</p>}
     </>

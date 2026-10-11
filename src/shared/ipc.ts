@@ -218,6 +218,8 @@ export const SETTINGS = {
   copyDiagnostics: 'settings:copy-diagnostics',
   saveDiagnostics: 'settings:save-diagnostics',
   reportIssue: 'settings:report-issue',
+  /** 오픈소스 고지(THIRD_PARTY_NOTICES.txt)를 연다. 못 열면 false */
+  openNotices: 'settings:open-notices',
   /** 새 버전 확인 (v1). 결과 글 */
   checkUpdate: 'settings:check-update',
   openOnboarding: 'settings:open-onboarding',
@@ -343,6 +345,7 @@ export interface SettingsBridge {
   saveDiagnostics(): Promise<{ ok: boolean; message: string }>;
   /** GitHub 새 이슈 (판, 운영체제만 채움) */
   reportIssue(): void;
+  openNotices(): Promise<boolean>;
   checkUpdate(): Promise<string>;
   openOnboarding(): void;
   /** 백업 폴더 만들기. 만든 경로 (그만두면 빈 글) */

@@ -350,6 +350,11 @@ export const ko = {
   // 베타 기록
   'settings.statsCopied': '복사했어. 의견과 같이 붙여 넣어 줘',
   'settings.version': '짝꿍 {v}',
+  'settings.licenses': '오픈소스 라이선스',
+  'settings.licensesHint':
+    '짝꿍은 MIT 라이선스 오픈소스야. 함께 들어 있는 다른 오픈소스의 고지를 볼 수 있어.',
+  'settings.licensesOpen': '고지 보기',
+  'settings.licensesFailed': '고지 파일을 열지 못했어.',
   'settings.stats.title': '내 기록 (베타)',
   'settings.stats.intro':
     '짝꿍이 쓸 만한지 보는 숫자야. 이 컴퓨터에만 있고 어디로도 보내지 않아. 의견을 보낼 때 복사해서 같이 붙여 주면 큰 도움이 돼.',
@@ -727,6 +732,11 @@ export const en: Translation<typeof ko> = {
 
   'settings.statsCopied': 'Copied. Paste it along with your feedback',
   'settings.version': 'Jjakkung {v}',
+  'settings.licenses': 'Open source licenses',
+  'settings.licensesHint':
+    'Jjakkung is open source under the MIT license. See the notices for the other open source it includes.',
+  'settings.licensesOpen': 'View notices',
+  'settings.licensesFailed': "Couldn't open the notices file.",
   'settings.stats.title': 'My stats (beta)',
   'settings.stats.intro':
     'Numbers that show whether Jjakkung is useful. They stay on this computer and go nowhere. Copying them into your feedback helps a lot.',

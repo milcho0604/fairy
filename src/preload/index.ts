@@ -189,6 +189,7 @@ if (kind === 'settings') {
     copyDiagnostics: () => ipcRenderer.invoke(SETTINGS.copyDiagnostics),
     saveDiagnostics: () => ipcRenderer.invoke(SETTINGS.saveDiagnostics),
     reportIssue: () => ipcRenderer.send(SETTINGS.reportIssue),
+    openNotices: () => ipcRenderer.invoke(SETTINGS.openNotices),
     checkUpdate: () => ipcRenderer.invoke(SETTINGS.checkUpdate),
     openOnboarding: () => ipcRenderer.send(SETTINGS.openOnboarding),
     exportData: () => ipcRenderer.invoke(SETTINGS.exportData),

@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   app,
@@ -7,6 +8,7 @@ import {
   type IpcMainInvokeEvent,
   ipcMain,
   powerMonitor,
+  shell,
 } from 'electron';
 import type { Catalog } from '../shared/ai/catalog.ts';
 import { type BetaReport, reportText, type StatStore } from '../shared/beta-stats.ts';
@@ -198,6 +200,15 @@ export function createSettingsWindow({
   );
   ipcMain.on(SETTINGS.reportIssue, (e) => {
     if (fromSettings(e)) openLink(issueUrl(RELEASE_REPO, { version: app.getVersion(), os: osLabel() }), log);
+  });
+  // 오픈소스 고지: 설치판은 자원 폴더, 개발 실행은 build/ (npm run notices 로 만든다)
+  ipcMain.handle(SETTINGS.openNotices, async (e) => {
+    if (!fromSettings(e)) return false;
+    const file = app.isPackaged
+      ? join(process.resourcesPath, 'THIRD_PARTY_NOTICES.txt')
+      : join(app.getAppPath(), 'build', 'THIRD_PARTY_NOTICES.txt');
+    if (!existsSync(file)) return false;
+    return (await shell.openPath(file)) === '';
   });
   ipcMain.handle(SETTINGS.checkUpdate, (e) => (fromSettings(e) ? checkUpdate() : ''));
   ipcMain.handle(SETTINGS.exportData, (e) => (fromSettings(e) ? v2.exportData(win) : ''));
