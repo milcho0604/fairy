@@ -12,6 +12,7 @@ import type { EnergyLook } from './energy.ts';
 import type { CalEvent } from './event-store.ts';
 import type { CarryToy } from './fetch.ts';
 import type { FocusState } from './focus.ts';
+import type { GalleryList } from './gallery.ts';
 import type { Gaze } from './gaze.ts';
 import type { Point } from './geometry.ts';
 import type { GestureEvent } from './gesture.ts';
@@ -24,6 +25,7 @@ import type { MiniGame } from './minigames.ts';
 import type { MoveAsk } from './moves.ts';
 import type { PolishReply } from './note-polish.ts';
 import type { Note, NoteSource } from './note-store.ts';
+import type { PetLicense } from './pet-share.ts';
 import type { Blueprint, Gait } from './pet3d/blueprint.ts';
 import type { PetKind, PetStyle, PoseKind, Settings } from './settings.ts';
 import type { SettingsTab } from './settings-tabs.ts';
@@ -225,6 +227,10 @@ export const SETTINGS = {
   exportPet: 'settings:export-pet',
   importPet: 'settings:import-pet',
   importFriend: 'settings:import-friend',
+  /** 펫 갤러리 (P1 #11): 공식 펫 목록 받기, 고른 펫 데려오기, 친구에게 보낼 펫 파일 저장 */
+  galleryList: 'settings:gallery-list',
+  galleryAdopt: 'settings:gallery-adopt',
+  galleryShare: 'settings:gallery-share',
   syncCalendar: 'settings:sync-calendar',
   refreshMcp: 'settings:refresh-mcp',
   /** 앱을 다시 켠다 (말을 바꾼 뒤) */
@@ -345,6 +351,12 @@ export interface SettingsBridge {
   exportPet(): Promise<string>;
   importPet(): Promise<{ ok: boolean; message: string }>;
   importFriend(): Promise<{ ok: boolean; message: string }>;
+  /** 펫 갤러리 목록 (메인이 raw.githubusercontent.com 에서 받아 검사한 것) */
+  galleryList(): Promise<GalleryList>;
+  /** 목록의 펫을 받아 데려온다 (asFriend 면 친구 펫으로). 그만두면 빈 message */
+  galleryAdopt(id: string, asFriend: boolean): Promise<{ ok: boolean; message: string }>;
+  /** 지금 펫을 친구에게 보낼 판 2 .jjpet 으로 저장한다 (만든 사람은 선택). 그만두면 빈 message */
+  galleryShare(meta: { author?: string; license: PetLicense }): Promise<{ ok: boolean; message: string }>;
   syncCalendar(): Promise<string>;
   refreshMcp(): Promise<string[]>;
   /** 앱을 다시 켠다. 창은 열릴 때 말을 읽어서 말을 바꾸면 다시 켜야 한다 */

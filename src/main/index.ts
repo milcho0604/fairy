@@ -30,6 +30,7 @@ import { announceJsonTrouble, announceStoreTrouble, openStore } from './db.ts';
 import { createDiary } from './diary.ts';
 import { confineTestDisplay } from './focus.ts';
 import { createFriends } from './friends.ts';
+import { galleryHandlers } from './gallery-app.ts';
 import { createGcal } from './gcal.ts';
 import { createHouseRest } from './house-rest.ts';
 import { pruneCopies } from './keep-copies.ts';
@@ -961,6 +962,7 @@ ready
         refreshMcp: () => refreshMcpServers(log),
         forgetAiSessions: () => chat.forgetSessions(),
       },
+      gallery: galleryHandlers(log),
     });
     // ---- 구글 캘린더에 쓰기 (6단계): 짝꿍 일정을 구글로. 설정 창에서 연결한다 ----
     const gcal = createGcal({

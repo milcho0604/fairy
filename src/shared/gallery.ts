@@ -1,8 +1,9 @@
-// 펫 갤러리 (P1 #11): 서버 없이 GitHub 레포의 gallery/ 폴더가 갤러리다.
-// gallery/pets/<id>.jjpet 을 PR 로 올리면 scripts/gallery-index.mjs 가 index.json 과 작은 그림(thumbs/)을 만든다.
+// 펫 갤러리 (P1 #11): 서버 없이 GitHub 레포의 gallery/ 폴더가 갤러리다. 레포 주인이 고른 공식 펫만 둔다
+// (남이 올리는 길은 없다. 사용자끼리는 .jjpet 파일을 직접 주고받는다).
+// 주인이 gallery/pets/<id>.jjpet 을 넣고 scripts/gallery-index.mjs 를 돌리면 index.json 과 작은 그림(thumbs/)이 생긴다.
 // 앱은 raw.githubusercontent.com 에서 index.json 을 받아 보여 주고, 고른 펫을 sha256 으로 확인해 받은 뒤
 // 원래 있던 .jjpet 가져오기(엄격한 검사)로 데려온다. 여기는 electron, node 없이 도는 모양 검사만 둔다.
-// 형식 설명: docs/pet-format.md, gallery/CONTRIBUTING.md
+// 형식 설명: docs/pet-format.md
 
 import {
   cleanAuthor,
@@ -20,8 +21,6 @@ import { RELEASE_REPO } from './update-policy.ts';
 export const GALLERY_HOST = 'raw.githubusercontent.com';
 /** 갤러리 폴더 주소 (끝에 / ). 다른 곳은 받지 않는다 */
 export const GALLERY_BASE = `https://${GALLERY_HOST}/${RELEASE_REPO.owner}/${RELEASE_REPO.repo}/main/gallery/`;
-/** 올리는 방법 안내 (갤러리에 올리기 단추가 연다) */
-export const GALLERY_DOCS_URL = `https://github.com/${RELEASE_REPO.owner}/${RELEASE_REPO.repo}/blob/main/gallery/CONTRIBUTING.md`;
 export const INDEX_FORMAT = 'jjakkung-gallery';
 export const INDEX_VERSION = 1;
 /** index.json 상한 */
@@ -50,6 +49,13 @@ export interface GalleryEntry {
   thumbnail: string;
   thumbSha256: string;
 }
+
+export type GalleryFail = 'offline' | 'notFound' | 'bad';
+/** 창에 보내는 항목: 작은 그림은 메인이 확인을 마친 PNG data URL (못 받았으면 없음) */
+export type GalleryView = Pick<GalleryEntry, 'id' | 'name' | 'species' | 'author' | 'license'> & {
+  thumb?: string;
+};
+export type GalleryList = { ok: true; pets: GalleryView[] } | { ok: false; reason: GalleryFail };
 
 export interface GalleryIndex {
   format: typeof INDEX_FORMAT;
@@ -151,14 +157,14 @@ export function entryFor(
   };
 }
 
-/** 판 2 에서 아는 칸 (갤러리 올리기 검사: 모르는 칸이 있으면 받지 않는다) */
+/** 판 2 에서 아는 칸 (갤러리 펫 검사: 모르는 칸이 있으면 넣지 않는다) */
 const TOP_KEYS = new Set(['format', 'version', 'manifest', 'images', 'blueprint', 'depth']);
 const MANIFEST_KEYS = new Set(['name', 'species', 'author', 'license', 'created', 'appVersion', 'age']);
 const IMAGE_KEYS = new Set(['main', 'poses', 'thumbnail']);
 const POSE_KEYS = new Set(['happy', 'sleepy', 'hungry']);
 
 /**
- * 갤러리에 올린 파일 검사 (CI). 앱 가져오기보다 엄격하다: 판 2, 만든 사람, 본 그림, 작은 그림이 꼭 있고,
+ * 갤러리에 넣을 공식 펫 파일 검사 (scripts/gallery-validate.mjs). 앱 가져오기보다 엄격하다: 판 2, 만든 사람, 본 그림, 작은 그림이 꼭 있고,
  * 앱이 조용히 버리는 것(깨진 포즈, 깨진 설계도, 모르는 칸)도 문제로 본다. 문제가 없으면 빈 배열
  */
 export function validateSubmission(

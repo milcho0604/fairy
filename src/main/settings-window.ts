@@ -11,6 +11,7 @@ import {
 import type { Catalog } from '../shared/ai/catalog.ts';
 import { type BetaReport, reportText, type StatStore } from '../shared/beta-stats.ts';
 import { issueUrl } from '../shared/feedback.ts';
+import type { GalleryList } from '../shared/gallery.ts';
 import { t } from '../shared/i18n/index.ts';
 import { type MakerTarget, SETTINGS, type SettingsSection, type SettingsSnapshot } from '../shared/ipc.ts';
 import type { Gait } from '../shared/pet3d/blueprint.ts';
@@ -60,6 +61,12 @@ export interface SettingsWindowOptions {
     /** AI 기록을 지운 뒤: 채팅이 지운 세션을 이어 가지 않게 */
     forgetAiSessions: () => void;
   };
+  /** 펫 갤러리 (main/gallery.ts + backup.ts adoptPet). 값은 메인에서 다시 검사한다 */
+  gallery: {
+    list: () => Promise<GalleryList>;
+    adopt: (id: unknown, asFriend: boolean) => Promise<{ ok: boolean; message: string }>;
+    share: (meta: unknown, win?: BrowserWindow) => Promise<{ ok: boolean; message: string }>;
+  };
 }
 
 /** AI 기록 지우기가 보는 폴더 (짝꿍 데이터 폴더, 홈, CLAUDE_CONFIG_DIR) */
@@ -83,6 +90,7 @@ export function createSettingsWindow({
   logDir,
   privateWords,
   v2,
+  gallery,
 }: SettingsWindowOptions) {
   let win: BrowserWindow | undefined;
   // 마지막으로 본 탭. 창은 닫으면 없어져서 메인이 앱이 켜져 있는 동안만 기억한다 (설정 파일에는 남기지 않는다)
@@ -200,6 +208,15 @@ export function createSettingsWindow({
   );
   ipcMain.handle(SETTINGS.importFriend, (e) =>
     fromSettings(e) ? v2.importFriend(win) : { ok: false, message: '' },
+  );
+  ipcMain.handle(SETTINGS.galleryList, (e) =>
+    fromSettings(e) ? gallery.list() : { ok: false, reason: 'bad' },
+  );
+  ipcMain.handle(SETTINGS.galleryAdopt, (e, id: unknown, asFriend: unknown) =>
+    fromSettings(e) ? gallery.adopt(id, asFriend === true) : { ok: false, message: '' },
+  );
+  ipcMain.handle(SETTINGS.galleryShare, (e, meta: unknown) =>
+    fromSettings(e) ? gallery.share(meta, win) : { ok: false, message: '' },
   );
   ipcMain.handle(SETTINGS.syncCalendar, (e) => (fromSettings(e) ? v2.syncCalendar() : ''));
   ipcMain.handle(SETTINGS.refreshMcp, (e) => (fromSettings(e) ? v2.refreshMcp() : []));

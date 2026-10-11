@@ -12,6 +12,7 @@ import { MAX_SCALE, MIN_SCALE } from '../../../../shared/size.ts';
 import { PetNameInput } from '../../PetNameInput.tsx';
 import { Friends } from '../Friends.tsx';
 import { GaitPicker } from '../GaitPicker.tsx';
+import { Gallery } from '../Gallery.tsx';
 import { PetPicker } from '../PetPicker.tsx';
 import { bridge, isMac, Section, type TabProps, Toggle } from '../ui.tsx';
 
@@ -243,6 +244,10 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
             if (r.message) flash(r.message);
           }}
         />
+      </Section>
+
+      <Section title={t('settings.gallery')}>
+        <Gallery onMsg={flash} />
       </Section>
 
       <Section title={t('settings.sulk')}>

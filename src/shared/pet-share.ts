@@ -98,8 +98,8 @@ export function encodePet(p: SharedPet, meta?: Partial<PetMeta>): string {
   });
 }
 
-// 글자 제어 문자와 방향 바꾸기 문자는 뺀다 (갤러리 목록에서 다른 글을 가리거나 뒤집지 않게)
-const CONTROL = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g;
+// 글자 제어 문자(Cc)와 서식 문자(Cf: 방향 바꾸기, 폭 없는 글자, BOM)는 뺀다 (갤러리 목록에서 다른 글을 가리거나 뒤집지 않게)
+const CONTROL = /[\p{Cc}\p{Cf}]/gu;
 
 /** 만든 사람 이름: 앞뒤 빈칸, 제어 문자를 빼고 AUTHOR_MAX 글자 안. 비었거나 길면 undefined */
 export function cleanAuthor(v: unknown): string | undefined {
