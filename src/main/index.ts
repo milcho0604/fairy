@@ -1,6 +1,6 @@
 import { cpus, homedir } from 'node:os';
 import { join } from 'node:path';
-import { app, dialog, globalShortcut, powerMonitor, screen } from 'electron';
+import { app, dialog, globalShortcut, powerMonitor, screen, session } from 'electron';
 import { ACHIEVEMENTS } from '../shared/achieve.ts';
 import { planTodos } from '../shared/ai/answer-todos.ts';
 import { pickLocal } from '../shared/ai/catalog.ts';
@@ -50,6 +50,7 @@ import { createMiniGames } from './minigames.ts';
 import { createOnboarding } from './onboarding.ts';
 import { openLink } from './open-link.ts';
 import { createPanel } from './panel.ts';
+import { denyPermissionsByDefault } from './permissions.ts';
 import { createPetConfirm } from './pet-confirm.ts';
 import { createPetFace, trayImageOf } from './pet-face.ts';
 import { createPetLife } from './pet-life.ts';
@@ -127,6 +128,8 @@ app.on('web-contents-created', (_e, wc) => {
 const ready = primary ? app.whenReady() : new Promise<void>(() => {});
 ready
   .then(() => {
+    // 웹 권한은 복사하기 말고 모두 거절한다 (permissions.ts)
+    denyPermissionsByDefault(session.defaultSession, log);
     // 시험 인스턴스는 처음부터 맥북 화면에만 뜬다 (쓰는 사람의 작업 모니터에 잠깐이라도 뜨지 않게)
     confineTestDisplay();
     // 펫 앱은 Dock 아이콘 없이 뜬다. 끝내기는 펫 우클릭 메뉴나 메뉴 막대 아이콘에서 한다.
