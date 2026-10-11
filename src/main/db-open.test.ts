@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { after, test } from 'node:test';
 import { type Db, migrate, SCHEMA_VERSION, schemaVersion } from '../shared/db-schema.ts';
-import { copyDbFile, openDbFile } from './db-open.ts';
+import { copyDbFile, importableDbVersion, openDbFile } from './db-open.ts';
 
 const dirs: string[] = [];
 after(() => {
@@ -132,4 +132,38 @@ test('메모리로 열었을 때 내보내기: WAL 에만 있는 쓰기도 .db �
   assert.deepEqual(titles(copy).sort(), ['WAL 에만', '본 파일'].sort());
   assert.equal(schemaVersion(copy as unknown as Db), SCHEMA_VERSION + 1);
   copy.close();
+});
+
+test('백업 가져오기 검사: 정상 파일은 판, 빈 파일, 다른 SQLite, 중간이 깨진 파일은 거른다', () => {
+  const { dir, file } = place();
+  goodDb(file, '할 일');
+  assert.equal(importableDbVersion(file), SCHEMA_VERSION);
+  // 새 판 파일도 판을 알린다 (부르는 쪽이 "새 판 백업" 이라고 알린다)
+  const newer = join(dir, 'newer.db');
+  goodDb(newer, '새 판');
+  const nd = new DatabaseSync(newer);
+  nd.exec(`pragma user_version = ${SCHEMA_VERSION + 1}`);
+  nd.close();
+  assert.equal(importableDbVersion(newer), SCHEMA_VERSION + 1);
+  const empty = join(dir, 'empty.db');
+  writeFileSync(empty, '');
+  assert.equal(importableDbVersion(empty), undefined);
+  const other = join(dir, 'other.db');
+  const od = new DatabaseSync(other);
+  od.exec('create table notes (x); pragma user_version = 3');
+  od.close();
+  assert.equal(importableDbVersion(other), undefined);
+  assert.equal(importableDbVersion(join(dir, 'missing.db')), undefined);
+  // 머리는 멀쩡하고 가운데가 깨진 파일: 판만 보면 통과했다
+  const broken = join(dir, 'broken.db');
+  goodDb(broken, '깨질 것');
+  const bd = new DatabaseSync(broken);
+  for (let i = 0; i < 300; i++)
+    bd.prepare('insert into todo (title, created_at) values (?, ?)').run('x'.repeat(200), AT);
+  bd.exec('pragma wal_checkpoint(truncate)');
+  bd.close();
+  const buf = readFileSync(broken);
+  buf.fill(7, 4096 * 2, 4096 * 6);
+  writeFileSync(broken, buf);
+  assert.equal(importableDbVersion(broken), undefined);
 });

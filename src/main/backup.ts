@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { app, type BrowserWindow, dialog, nativeImage } from 'electron';
 import { customAiCount, IMPORT_FILES, importedChatSettings } from '../shared/backup-import.ts';
-import { type Db, looksLikeOurs, SCHEMA_VERSION, schemaVersion } from '../shared/db-schema.ts';
+import { SCHEMA_VERSION } from '../shared/db-schema.ts';
 import { saveErrorText } from '../shared/download-error.ts';
 import { t } from '../shared/i18n/index.ts';
 import {
@@ -28,6 +28,7 @@ import {
 import type { Blueprint } from '../shared/pet3d/blueprint.ts';
 import { FRIENDS_MAX, POSE_KINDS } from '../shared/settings.ts';
 import { PET_FILE_EXT, PET_FILE_EXTS_READ } from '../shared/url-scheme.ts';
+import { importableDbVersion } from './db-open.ts';
 import { petImages } from './maker.ts';
 import { library } from './pet-library.ts';
 import { freePath, plainEntry, writeFileAtomic } from './safe-file.ts';
@@ -97,7 +98,7 @@ export function createBackup(o: {
     if (!existsSync(join(from, 'jjakkung-backup.json')) || !existsSync(join(from, 'jjakkung.db')))
       return t('main.backup.notBackup');
     // 새 판 짝꿍이 만든 백업은 이 판이 못 연다. 지금 데이터를 덮어쓰기 전에 거른다
-    const version = dbVersion(join(from, 'jjakkung.db'));
+    const version = importableDbVersion(join(from, 'jjakkung.db'));
     if (version === undefined) return t('main.backup.notBackup');
     if (version > SCHEMA_VERSION) return t('main.backup.newer');
     const ok = await dialog.showMessageBox({
@@ -201,7 +202,7 @@ export function applyPendingImport(): void {
     return;
   }
   // 못 여는 판이면 지금 저장 파일을 그대로 둔다 (가져오기에서 걸렀지만 한 번 더)
-  const version = dbVersion(pending);
+  const version = importableDbVersion(pending);
   if (version === undefined || version > SCHEMA_VERSION) {
     rmSync(pending, { force: true });
     dropStaged();
@@ -274,24 +275,6 @@ function checkpoint(file: string): void {
     }
   } catch {
     // 아래에서 옆으로 옮긴다
-  }
-}
-
-/**
- * 저장 파일의 판(user_version). 열 수 없거나 짝꿍 저장 파일이 아니면(0바이트, 판 0, 할 일 표가 없는 다른 SQLite) undefined.
- * 예전에는 판만 봐서 빈 파일도 통과해 지금 데이터를 빈 것으로 바꿀 수 있었다 (버그잡이 6차)
- */
-function dbVersion(file: string): number | undefined {
-  try {
-    const db = new DatabaseSync(file, { readOnly: true });
-    try {
-      const d = db as unknown as Db;
-      return looksLikeOurs(d) ? schemaVersion(d) : undefined;
-    } finally {
-      db.close();
-    }
-  } catch {
-    return undefined;
   }
 }
 

@@ -134,6 +134,28 @@ function usable(path: string): boolean {
 }
 
 /**
+ * 백업에서 가져올 저장 파일의 판(user_version). 열 수 없거나, 짝꿍 저장 파일이 아니거나(0바이트, 판 0, 할 일 표가 없는
+ * 다른 SQLite), 깨졌으면(quick_check) undefined. 예전에는 판만 봐서 빈 파일도 통과해 지금 데이터를 빈 것으로 바꿀 수
+ * 있었다 (버그잡이 6차). 깨진 파일을 끼우면 다음에 켤 때 깨진 것으로 보고 가져오기 전 복사본으로 되돌아가,
+ * "가져왔어" 하고는 아무것도 바뀌지 않았다. 새 판인지는 부르는 쪽이 SCHEMA_VERSION 과 비교한다
+ */
+export function importableDbVersion(file: string): number | undefined {
+  try {
+    const db = new DatabaseSync(file, { readOnly: true });
+    try {
+      const d = db as unknown as Db;
+      if (!looksLikeOurs(d)) return undefined;
+      // 새 판 파일은 판만 알린다 (그 판의 표 모양을 이 앱이 검사할 수는 없지만 quick_check 는 판과 상관없다)
+      return quickCheckOk(db) ? schemaVersion(d) : undefined;
+    } finally {
+      db.close();
+    }
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * 저장 파일을 연다. 앱이 반만 켜진 채 멈추지 않게 어떤 경우에도 쓸 수 있는 DB 를 돌려준다.
  * - 깨졌으면 지우지 않고 옆으로 옮긴 뒤, 남은 복사본이 있으면 그것으로, 없으면 새로 시작한다.
  * - 새 판이면 덮어쓰지 않고 메모리에 연다 (앱을 업데이트해야 한다).
