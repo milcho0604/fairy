@@ -15,6 +15,11 @@ export const ko = {
   // 내보낸 곳
   'settings.exportedTo': (v: { path: string }) => `여기에 저장했어: ${v.path}`,
   'settings.openFolder': '폴더 열기',
+  // 설정 찾기: 어두운 모드
+  'settings.themeNote':
+    '밝은 화면, 어두운 화면(다크 모드)은 컴퓨터 설정을 따라가. 바꾸려면 운영체제 화면 설정에서 바꿔 줘.',
+  'settings.themeKeywords':
+    '테마 다크 다크모드 어두운 모드 밝은 모드 라이트 theme dark mode light appearance',
   // 받기가 통째로 막혔을 때 (프록시, 방화벽)
   'main.model.blocked':
     '연결이 막혀서 받지 못했어. 회사나 학교 네트워크라면 프록시나 방화벽이 막고 있을 수 있어. 다른 네트워크에서 해 보거나 관리자에게 물어봐 줘.',
@@ -30,6 +35,9 @@ export const en: Translation<typeof ko> = {
   'chat.local.downloadNow': 'Download free AI',
   'settings.exportedTo': (v: { path: string }) => `Saved to ${v.path}`,
   'settings.openFolder': 'Open folder',
+  'settings.themeNote':
+    "Light and dark (dark mode) follow your computer's appearance. Change it in your system's display settings.",
+  'settings.themeKeywords': 'theme dark mode light appearance 테마 다크 다크모드 어두운 밝은',
   'main.model.blocked':
     'The download was blocked. On a work or school network, a proxy or firewall may be blocking it. Try another network or ask your network admin.',
 };

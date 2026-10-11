@@ -96,6 +96,11 @@ export function EaseTab({ snap, update, flash }: TabProps) {
         ) : (
           <small className="below">{t('settings.langHint')}</small>
         )}
+        {/* 어두운 모드는 따로 고르지 않고 운영체제를 따른다. 찾기에서 "다크", "theme" 로도 나오게 낱말을 숨겨 둔다 */}
+        <p className="theme-note">
+          {t('settings.themeNote')}
+          <span hidden>{t('settings.themeKeywords')}</span>
+        </p>
       </Section>
 
       <Section title={t('settings.integrations')}>
