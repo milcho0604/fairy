@@ -182,7 +182,11 @@ const TOOLS: Tool[] = [
         title: { type: 'string', description: '할 일 제목 (200자까지)' },
         due: { type: 'string', description: '마감일 YYYY-MM-DD (현지 날짜). 없으면 마감 없음' },
         important: { type: 'boolean', description: '중요 표시' },
-        repeat: { type: 'string', enum: ['daily', 'weekdays', 'weekly'], description: '반복' },
+        repeat: {
+          type: 'string',
+          enum: ['daily', 'weekdays', 'weekly', 'monthly'],
+          description: '반복 (monthly 는 마감일의 날짜로 매달)',
+        },
         due_time: { type: 'string', description: '마감 시각 HH:mm (24시간, 현지). due 가 있을 때만' },
         steps: {
           type: 'array',
@@ -282,7 +286,7 @@ const TOOLS: Tool[] = [
         },
         repeat: {
           type: 'string',
-          enum: ['daily', 'weekdays', 'weekly', 'none'],
+          enum: ['daily', 'weekdays', 'weekly', 'monthly', 'none'],
           description: '반복 (none 이면 끔)',
         },
       },

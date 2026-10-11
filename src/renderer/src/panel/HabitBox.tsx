@@ -93,7 +93,9 @@ function HabitRow({ h, today, onCheck }: { h: Habit; today: string; onCheck: () 
   // 연속이 있으면 "3일째", 끊겼으면 "오늘 다시 시작!", 처음이면 "첫 체크를 기다려" (벌이나 잃은 수는 말하지 않는다)
   const note =
     h.streak > 0
-      ? t('habit.streak', { n: h.streak, weekly })
+      ? h.repeat === 'monthly'
+        ? t('habit.streakMonthly', { n: h.streak })
+        : t('habit.streak', { n: h.streak, weekly })
       : h.total > 0
         ? t('habit.restart')
         : t('habit.first');

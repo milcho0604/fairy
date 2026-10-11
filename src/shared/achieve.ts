@@ -23,16 +23,36 @@ export function streak(doneDays: ReadonlySet<string>, today: string, restDays: r
 export const weekStartOf = (day: string): string => plusDays(day, -((weekday(day) + 6) % 7));
 
 /**
- * 습관 연속 기록 (반복 할 일 하나, shared/habit.ts). 매일은 날마다, 평일은 주말을 건너뛰고, 매주는 주(월요일부터)마다
- * 한 번 이상 한 것이 이어진 수. 오늘(매주는 이번 주)을 아직 안 했으면 어제(지난주)까지로 센다.
+ * 습관 연속 기록 (반복 할 일 하나, shared/habit.ts). 매일은 날마다, 평일은 주말을 건너뛰고, 매주는 주(월요일부터)마다,
+ * 매달은 달마다 한 번 이상 한 것이 이어진 수. 오늘(매주는 이번 주, 매달은 이번 달)을 아직 안 했으면 어제(지난주, 지난달)까지로 센다.
  * 쉬는 날(restDays)은 건너뛰어도 끊기지 않는다. 끊겨도 잃는 것은 없다: 화면은 다시 시작하자고만 한다
  */
 export function habitStreak(
   doneDays: ReadonlySet<string>,
   today: string,
-  repeat: 'daily' | 'weekdays' | 'weekly',
+  repeat: 'daily' | 'weekdays' | 'weekly' | 'monthly',
   restDays: readonly number[],
 ): number {
+  if (repeat === 'monthly') {
+    const months = new Set([...doneDays].map((d) => d.slice(0, 7)));
+    let y = Number(today.slice(0, 4));
+    let m = Number(today.slice(5, 7));
+    const key = () => `${y}-${String(m).padStart(2, '0')}`;
+    const back = () => {
+      m -= 1;
+      if (m < 1) {
+        m = 12;
+        y -= 1;
+      }
+    };
+    if (!months.has(key())) back();
+    let n = 0;
+    while (months.has(key()) && n < 1200) {
+      n++;
+      back();
+    }
+    return n;
+  }
   if (repeat === 'weekly') {
     const weeks = new Set([...doneDays].map(weekStartOf));
     let week = weekStartOf(today);

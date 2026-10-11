@@ -13,6 +13,7 @@ import * as day from './day.ts';
 import * as diary from './diary.ts';
 import * as ease from './ease.ts';
 import * as feedback from './feedback.ts';
+import * as first from './first.ts';
 import * as gallery from './gallery.ts';
 import * as gcal from './gcal.ts';
 import * as gemini from './gemini.ts';
@@ -67,6 +68,7 @@ export const ko = {
   ...bond.ko,
   ...polish.ko,
   ...petmeta.ko,
+  ...first.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -102,4 +104,5 @@ export const en: Translation<typeof ko> = {
   ...bond.en,
   ...polish.en,
   ...petmeta.en,
+  ...first.en,
 };

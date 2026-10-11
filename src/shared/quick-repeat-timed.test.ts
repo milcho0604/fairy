@@ -74,12 +74,12 @@ test('서수 날짜와 매달, 지난 날 ("pay bills on the 25th", "매달 25�
   assert.equal(line('rent on the 3rd').due, '2026-11-03');
   assert.equal(line('the 14th review').due, today);
   const m = parseQuickTodo('매달 25일 월세', today);
-  assert.deepEqual([m.title, m.due, m.monthly], ['월세', '2026-10-25', true]);
-  assert.equal(parseQuickTodo('월세 매달 25일', today).monthly, true);
-  // 매달만 있고 날짜가 없으면 표시하지 않는다
+  assert.deepEqual([m.title, m.due, m.repeat, m.repeatDay], ['월세', '2026-10-25', 'monthly', 25]);
+  assert.equal(parseQuickTodo('월세 매달 25일', today).repeat, 'monthly');
+  // 매달만 있고 날짜가 없으면 제목 낱말이다
   assert.deepEqual(
-    [parseQuickTodo('매달 정산', today).title, parseQuickTodo('매달 정산', today).monthly],
-    ['매달 정산', undefined],
+    [parseQuickTodo('매달 정산', today).title, parseQuickTodo('매달 정산', today).repeat],
+    ['매달 정산', null],
   );
   assert.deepEqual(
     [parseQuickTodo('어제 보고서', today).due, parseQuickTodo('report yesterday', today).due],

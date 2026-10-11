@@ -75,6 +75,13 @@ export function parseTodoLine(text: string, today: string, nowMinute: number): Q
   const timed = parseRepeatTimed(text, today, nowMinute);
   if (timed) return timed;
   const parsed = parseQuickTodo(text, today);
+  // 매달 반복에 시각이 있으면("매달 25일 오전 9시 월세") 그 시각이 마감 시각이다
+  if (parsed.repeat === 'monthly') {
+    const ev = parseQuickEvent(parsed.title, today, nowMinute);
+    return ev?.title && ev.durationMin === null
+      ? { ...parsed, title: ev.title, dueMin: ev.minute }
+      : { ...parsed, dueMin: null };
+  }
   if (parsed.repeat || !hasDeadlineWord(text)) return { ...parsed, dueMin: null };
   const ev = parseQuickEvent(text, today, nowMinute);
   // "오전 중", "오후 중" 은 시간대라 길이가 있다: 마감은 그 끝 (낮 12시, 오후 6시)

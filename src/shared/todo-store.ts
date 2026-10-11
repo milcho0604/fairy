@@ -21,9 +21,9 @@ export const COIN = {
   dailyFocusLimit: 8,
 } as const;
 
-/** 반복: 매일, 평일(월~금), 매주 같은 요일 */
-export type Repeat = 'daily' | 'weekdays' | 'weekly';
-export const REPEATS: readonly Repeat[] = ['daily', 'weekdays', 'weekly'];
+/** 반복: 매일, 평일(월~금), 매주 같은 요일, 매달 같은 날 (매달은 2026-10-11) */
+export type Repeat = 'daily' | 'weekdays' | 'weekly' | 'monthly';
+export const REPEATS: readonly Repeat[] = ['daily', 'weekdays', 'weekly', 'monthly'];
 /** 지금 말로 읽는다 (getter) */
 export const REPEAT_LABEL: Readonly<Record<Repeat, string>> = {
   get daily() {
@@ -35,17 +35,58 @@ export const REPEAT_LABEL: Readonly<Record<Repeat, string>> = {
   get weekly() {
     return t('panel.repeat.weekly');
   },
+  get monthly() {
+    return t('panel.repeat.monthly');
+  },
 };
 
 export function isRepeat(v: unknown): v is Repeat {
-  return v === 'daily' || v === 'weekdays' || v === 'weekly';
+  return v === 'daily' || v === 'weekdays' || v === 'weekly' || v === 'monthly';
+}
+
+/** 매달 반복의 날 (1~31). 아니면 undefined */
+export const isMonthDay = (v: unknown): v is number =>
+  typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 31;
+
+/** 그해 그달의 d 일. 달에 없는 날(31일, 2월 29, 30일)은 그달 끝 */
+export function dayInMonth(year: number, month: number, d: number): string {
+  const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return `${year}-${String(month).padStart(2, '0')}-${String(Math.min(d, last)).padStart(2, '0')}`;
+}
+
+/**
+ * 매달 반복 다음 회차: due 가 든 달부터 한 달씩 보며 그달의 anchorDay 일(없으면 그달 끝)이 base(오늘과 due 중 늦은 날)보다
+ * 뒤인 첫날. 31일 반복은 2월에 28일(윤년 29일)로 가도 3월에는 다시 31일이다 (anchorDay 를 따로 기억한다)
+ */
+export function nextMonthly(due: string | null, anchorDay: number, today: string): string {
+  const from = due ?? today;
+  const base = due && due > today ? due : today;
+  let y = Number(from.slice(0, 4));
+  let m = Number(from.slice(5, 7));
+  for (let guard = 0; guard < 1200; guard++) {
+    const day = dayInMonth(y, m, anchorDay);
+    if (day > base) return day;
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+  }
+  return plusDays(base, 1);
+}
+
+/** 매달 반복이 기억하는 날 (repeat_anchor 에 "31" 처럼 둔다). 없으면 마감일의 날 */
+export function monthAnchor(anchor: string | null, due: string | null): number | undefined {
+  const n = anchor && /^\d{1,2}$/.test(anchor) ? Number(anchor) : due ? Number(due.slice(8, 10)) : Number.NaN;
+  return isMonthDay(n) ? n : undefined;
 }
 
 /**
  * 반복 할 일을 끝냈을 때 다음 회차 마감일. 오늘보다 뒤인 가장 가까운 날로 간다.
  * 밀린 회차를 한꺼번에 만들지 않는다 (사흘 밀린 매일 할 일을 끝내면 다음은 내일).
  */
-export function nextDue(due: string | null, repeat: Repeat, today: string): string {
+export function nextDue(due: string | null, repeat: Repeat, today: string, anchorDay?: number): string {
+  if (repeat === 'monthly') return nextMonthly(due, anchorDay ?? Number((due ?? today).slice(8, 10)), today);
   const base = due && due > today ? due : today;
   if (repeat === 'weekly') {
     let next = plusDays(due ?? today, 7);
@@ -270,6 +311,8 @@ export class TodoStore {
       dueMin?: number | null;
       /** 미리 알림. 없으면 기본 (마감일만: 전날 저녁 8시, 시각까지: 하루 전과 1시간 전) */
       reminds?: readonly number[];
+      /** 매달 반복의 날 ("매달 31일"). 없으면 마감일의 날. 11월에 넣은 "매달 31일" 은 마감이 30일이라 따로 받는다 */
+      repeatDay?: number;
     },
     now: number,
     repeatOf: number | null = null,
@@ -286,6 +329,11 @@ export class TodoStore {
       )
       .run(title.slice(0, 200), due, input.important ? 1 : 0, now, repeat, repeatOf, dueMin);
     const id = Number(r.lastInsertRowid);
+    // 매달 반복은 날을 기억한다 (repeat_anchor 에 "31"). 2월 28일 회차를 끝내도 3월은 31일로
+    const monthDay =
+      repeat === 'monthly' ? (isMonthDay(input.repeatDay) ? input.repeatDay : undefined) : undefined;
+    if (monthDay !== undefined && due && Number(due.slice(8, 10)) !== monthDay)
+      this.#db.prepare('update todo set repeat_anchor = ? where id = ?').run(String(monthDay), id);
     const reminds = input.reminds
       ? normalizeReminds(input.reminds, dueMin === null)
       : defaultTodoReminds(dueMin);
@@ -389,7 +437,8 @@ export class TodoStore {
   /**
    * 지난 마감(today 전)인 안 끝낸 할 일을 today 로 옮긴다. 옮긴 것과 원래 마감을 돌려준다 (되돌리기용).
    * now 를 넘겨 옮긴 뒤 이미 지난 알림(전날 저녁 8시)은 말없이 넘긴다.
-   * 매주 반복은 원래 마감(repeat_anchor)을 기억해 끝내면 다음 회차가 원래 요일로 간다
+   * 매주 반복은 원래 마감(repeat_anchor)을 기억해 끝내면 다음 회차가 원래 요일로 간다.
+   * 매달 반복은 원래 날("25")을 기억해 다음 회차가 그날로 간다
    */
   moveOverdue(
     today: string,
@@ -404,7 +453,13 @@ export class TodoStore {
     this.#db.exec('begin');
     try {
       for (const todo of late) {
-        const anchor = todo.repeat === 'weekly' ? (this.#repeatAnchor(todo.id) ?? todo.due) : null;
+        const kept = this.#repeatAnchor(todo.id);
+        const anchor =
+          todo.repeat === 'weekly'
+            ? (kept ?? todo.due)
+            : todo.repeat === 'monthly'
+              ? String(monthAnchor(kept, todo.due) ?? '')
+              : null;
         this.update(todo.id, { due: today }, now);
         if (anchor) this.#db.prepare('update todo set repeat_anchor = ? where id = ?').run(anchor, todo.id);
       }
@@ -462,7 +517,7 @@ export class TodoStore {
     this.#db.prepare('update todo set deleted_at = null where id = ?').run(id);
   }
 
-  /** 지난 마감 옮기기가 기억한 매주 할 일의 원래 마감 */
+  /** 지난 마감 옮기기가 기억한 매주 할 일의 원래 마감, 매달 할 일의 날 ("31") */
   #repeatAnchor(id: number): string | null {
     const r = this.#db.prepare('select repeat_anchor from todo where id = ?').get(id) as
       | { repeat_anchor: string | null }
@@ -513,14 +568,17 @@ export class TodoStore {
       this.#db.prepare('update todo set done_at = ?, coins = ? where id = ?').run(now, coins, id);
       // 다음 회차도 같은 마감 시각과 같은 알림 (지난 알림은 넘긴다)
       if (t.repeat) {
+        const kept = this.#repeatAnchor(id);
+        const monthDay = t.repeat === 'monthly' ? monthAnchor(kept, t.due) : undefined;
         const next = this.add(
           {
             title: t.title,
             important: t.important,
             repeat: t.repeat,
-            due: nextDue(t.repeat === 'weekly' ? (this.#repeatAnchor(id) ?? t.due) : t.due, t.repeat, day),
+            due: nextDue(t.repeat === 'weekly' ? (kept ?? t.due) : t.due, t.repeat, day, monthDay),
             dueMin: t.dueMin,
             reminds: t.reminds,
+            ...(monthDay !== undefined ? { repeatDay: monthDay } : {}),
           },
           now,
           id,

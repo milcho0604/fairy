@@ -15,10 +15,8 @@ export const ko = {
   // 내보낸 곳
   'settings.exportedTo': (v: { path: string }) => `여기에 저장했어: ${v.path}`,
   'settings.openFolder': '폴더 열기',
-  // 빠른 입력: 지난 날, 매달
+  // 빠른 입력: 지난 날
   'panel.quick.todoPast': (v: { due: string }) => `마감을 ${v.due}로 넣었어. 이미 지난 날이야.`,
-  'panel.quick.monthlyOnce': (v: { due: string }) =>
-    `${v.due} 마감으로 넣었어. 매달 반복은 아직 없어서 이번 한 번만.`,
   'panel.toast.toToday': '오늘로',
   // 설정 찾기: 어두운 모드
   'settings.themeNote':
@@ -41,8 +39,6 @@ export const en: Translation<typeof ko> = {
   'settings.exportedTo': (v: { path: string }) => `Saved to ${v.path}`,
   'settings.openFolder': 'Open folder',
   'panel.quick.todoPast': (v: { due: string }) => `Due ${v.due}, which has already passed.`,
-  'panel.quick.monthlyOnce': (v: { due: string }) =>
-    `Added with ${v.due} as the due date. Monthly repeats aren't supported yet, so just this once.`,
   'panel.toast.toToday': 'Make it today',
   'settings.themeNote':
     "Light and dark (dark mode) follow your computer's appearance. Change it in your system's display settings.",

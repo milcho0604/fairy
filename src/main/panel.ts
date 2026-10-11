@@ -310,7 +310,7 @@ export function createPanel(o: PanelOptions) {
       id: todo.id,
       due: todo.due,
       ...(past ? { past: true as const } : {}),
-      ...(parsed.monthly ? { monthly: true as const } : {}),
+      ...(parsed.repeat === 'monthly' && parsed.repeatDay ? { monthly: parsed.repeatDay } : {}),
     };
   }
   // 시각이 있어 일정으로 들어간 한 줄을 할 일로 옮긴다 (알림의 "할 일로")
