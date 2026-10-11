@@ -18,8 +18,12 @@ files:
   - "!node_modules/node-llama-cpp/llama/{gitRelease.bundle,addon,cmake,CMakeLists.txt,patches,toolchains,xpack,profiles}{,/**}"
   - "!node_modules/node-llama-cpp/{templates,bins}{,/**}"
   - "!node_modules/node-llama-cpp/**/*.{map,d.ts,md}"
-  # 윈도우 x64 에는 CUDA, Vulkan 판(합쳐 약 620MB)까지 깔린다. CPU 판만 넣는다
-  - "!node_modules/@node-llama-cpp/*-{cuda,cuda-ext,vulkan}{,/**}"
+  # 무료 AI 엔진의 운영체제별 패키지(@node-llama-cpp/linux-x64 등, 압축해도 5~11MB)는 넣지 않는다. 처음 무료 AI 모델을
+  # 받을 때 npm 원본 묶음을 해시를 맞춰 같이 받는다 (src/shared/llama-bins.ts, src/main/llama-bins.ts, 2026-10-11).
+  # GPU 판(cuda, vulkan, 윈도우는 합쳐 약 620MB)도 같이 빠진다
+  - "!node_modules/@node-llama-cpp{,/**}"
+  # ipull(node-llama-cpp 의 모델 받기, 짝꿍은 쓰지 않는다)이 파일 복사 때만 부르는 네이티브 모듈
+  - "!node_modules/@reflink{,/**}"
   # 실행에 쓰지 않는 파일: 소스 맵, 타입 선언, 설명서, 시험, 예제, C 헤더 (node-addon-api 는 소스 빌드용).
   # 라이선스 파일(LICENSE*)은 남긴다
   - "!node_modules/**/*.{map,d.ts,d.mts,d.cts,markdown,h,hpp,cc,gyp,gypi}"
@@ -64,9 +68,8 @@ afterSign: ./scripts/mac-sign.mjs
 asarUnpack:
   - node_modules/koffi/**
   - node_modules/@koromix/**
-  # 무료 AI 엔진의 네이티브 파일 (운영체제별 패키지 @node-llama-cpp/mac-arm64-metal 등)
+  # 무료 AI 엔진 (운영체제별 네이티브 패키지는 처음 쓸 때 userData 에 받는다)
   - node_modules/node-llama-cpp/**
-  - node_modules/@node-llama-cpp/**
   # 펫 MCP 서버는 AI 도구가 실행 파일을 Node 로 돌려 연다. asar 밖에 둔다 (나눠진 조각까지 out/main 통째로).
   - out/main/**
 # jjakkung:// 주소 (단축어, Raycast, Alfred, PowerToys 에서 부르기, docs/integrations.md). 맥은 Info.plist 의

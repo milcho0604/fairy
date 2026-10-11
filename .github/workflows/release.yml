@@ -44,8 +44,8 @@ jobs:
       - run: npm run check
       # 인텔 맥 dmg 도 같이 만든다. koffi 네이티브 파일은 운영체제와 칩마다 다른 패키지라 x64 것을 더 받는다
       # (창 위에 올라앉기가 쓴다. 없으면 그 기능만 꺼진다).
-      # 무료 AI 엔진(node-llama-cpp)도 칩마다 다른 패키지라 인텔 것을 더 받는다 (없으면 인텔 맥에서 무료 AI 만 안 된다)
-      - run: npm install --no-save --force @koromix/koffi-darwin-x64@3.3.2 @node-llama-cpp/mac-x64@3.22.1
+      # 무료 AI 엔진(node-llama-cpp 의 칩별 패키지)은 설치 파일에 넣지 않고 앱이 처음 쓸 때 받는다 (src/shared/llama-bins.ts)
+      - run: npm install --no-save --force @koromix/koffi-darwin-x64@3.3.2
         if: runner.os == 'macOS'
       # 내 컴퓨터에서 그리기의 sd.cpp 엔진: 인텔 Mac, macOS 12~13 용 sd-cli 를 칩마다 빌드해 앱에 넣는다
       # (공식 맥 묶음은 macOS 26 용이라 직접, scripts/build-sdcpp.mjs). 같은 커밋이면 캐시에서 바로

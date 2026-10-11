@@ -11,6 +11,7 @@ import { t } from '../../shared/i18n/index.ts';
 import { hasFinalConsonant } from '../../shared/josa.ts';
 import { boostOn } from '../boost.ts';
 import { ensureVerified, verifyExisting } from '../download.ts';
+import { ensureLlamaBins, llamaBinsMissingBytes, llamaBinsReady, llamaWorkerEnv } from '../llama-bins.ts';
 import type { WorkerIn, WorkerOut } from '../llm-worker.ts';
 import type { AiRequest, AiRun } from './runner.ts';
 
@@ -24,14 +25,15 @@ const MAX_TOKENS = 220;
 const FIRST_TOKEN_MS = 60_000;
 
 export const localModelPath = (m: LocalModel) => join(app.getPath('userData'), 'models', 'llm', m.file);
-export const localModelReady = (m: LocalModel) => existsSync(localModelPath(m));
+/** 모델과 엔진(처음 쓸 때 같이 받는다, llama-bins.ts)이 다 있는지 */
+export const localModelReady = (m: LocalModel) => existsSync(localModelPath(m)) && llamaBinsReady();
 
 /**
  * 모델 파일을 쓸 수 있는지: 있고, 해시가 목록과 맞는지(실행마다 한 번 확인). 깨졌거나 목록의 해시가 바뀌었으면
  * 지우고 false 라서 받기 단추가 다시 뜬다.
  */
-function localModelUsable(m: LocalModel): Promise<boolean> {
-  return verifyExisting(localModelPath(m), m.sha256);
+async function localModelUsable(m: LocalModel): Promise<boolean> {
+  return llamaBinsReady() && (await verifyExisting(localModelPath(m), m.sha256));
 }
 
 /** 일꾼이 죽었을 때 받는 쪽에 알리는 표시 */
@@ -39,11 +41,21 @@ const CRASHED = '__crashed__';
 /** 줄에서 기다리다 멈춘 질문에 일꾼이 보내는 표시 (llm-worker.ts CANCELLED 와 같다. 값을 불러오면 일꾼이 메인에 묶여 들어와 글로 둔다) */
 const CANCELLED = '__cancelled__';
 
-/** 모델을 받는다(처음 한 번). 진행률 0~1. 해시가 맞아야 쓴다 */
-export function downloadLocalModel(m: LocalModel, onProgress: (r: number) => void, signal?: AbortSignal) {
+/**
+ * 모델을 받는다(처음 한 번). 엔진이 없으면 엔진(약 5~11MB)부터. 진행률 0~1 은 둘을 합친 크기로 센다.
+ * 둘 다 해시가 맞아야 쓴다
+ */
+export async function downloadLocalModel(
+  m: LocalModel,
+  onProgress: (r: number) => void,
+  signal?: AbortSignal,
+) {
+  const engine = llamaBinsMissingBytes();
+  const total = engine + m.bytes;
+  await ensureLlamaBins((r) => onProgress((r * engine) / total), signal);
   return ensureVerified(
     { path: localModelPath(m), url: m.url, sha256: m.sha256, bytes: m.bytes },
-    onProgress,
+    (r) => onProgress((engine + r * m.bytes) / total),
     signal,
   );
 }
@@ -59,6 +71,8 @@ function getWorker(log: (tag: string, ...rest: unknown[]) => void): UtilityProce
   if (worker) return worker;
   const w = utilityProcess.fork(join(import.meta.dirname, 'llm-worker.js'), [], {
     serviceName: 'jjakkung-llm',
+    // 받아 둔 엔진 폴더 (설치판). 개발 실행이면 비어 있어 node_modules 의 것을 쓴다
+    env: { ...process.env, ...llamaWorkerEnv() },
   });
   w.on('message', (o: WorkerOut) => {
     const l = listeners.get(o.id);
@@ -232,7 +246,8 @@ export function shortPersona(persona: string, rules: string, short: string): str
   return persona.slice(0, -full.length) + withRules(short);
 }
 
-export const mb = (m: LocalModel) => Math.round(m.bytes / 1_000_000);
+/** 받을 크기(MB). 엔진을 아직 안 받았으면 엔진도 더한다 */
+export const mb = (m: LocalModel) => Math.round((m.bytes + llamaBinsMissingBytes()) / 1_000_000);
 
 /** 답하는 중인지 (모델 파일을 지우기 전에 본다) */
 export const localBusy = () => listeners.size > 0 || starting.size > 0;

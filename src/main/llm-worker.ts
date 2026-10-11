@@ -1,6 +1,7 @@
 // 무료 AI(로컬 모델) 일꾼 (v2). 메인과 따로 도는 utilityProcess 라 오래 안 쓰면 통째로 끝내서
 // 모델 메모리(약 1GB)를 다 돌려준다. 메인과는 메시지로만 이야기한다.
 import { getLlama, type Llama, LlamaChatSession, type LlamaContext, type LlamaModel } from 'node-llama-cpp';
+import { pointToDownloadedLlama } from './llama-hook.ts';
 
 export type WorkerIn =
   | {
@@ -116,6 +117,8 @@ async function answerWithModel(m: Ask, signal: AbortSignal, onDelta: (text: stri
 
 // 일꾼으로 떴을 때만 듣는다 (시험에서 불러올 땐 parentPort 가 없다)
 if (port) {
+  // 설치판은 엔진을 userData 에 받아 둔다. 엔진이 그 폴더를 찾게 한다 (getLlama 전에)
+  pointToDownloadedLlama();
   const handle = createAskQueue((o) => port.postMessage(o), answerWithModel);
   port.on('message', (e: { data: WorkerIn }) => handle(e.data));
 }
