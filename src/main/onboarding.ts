@@ -45,6 +45,7 @@ export function createOnboarding(o: {
               ? (systemPreferences.getMediaAccessStatus('screen') as OnboardSnapshot['screen'])
               : 'granted',
           starters: library.starters(),
+          photo: library.current()?.thumb ?? null,
         }
       : undefined,
   );

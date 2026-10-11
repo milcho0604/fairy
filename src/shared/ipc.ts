@@ -205,6 +205,8 @@ export interface OnboardSnapshot {
   screen: 'granted' | 'denied' | 'not-determined' | 'restricted' | 'unknown';
   /** 그림으로 들어 있는 기본 캐릭터 (밀크, 초코) */
   starters: StarterView[];
+  /** 지금 사진 펫의 몸 전체 그림 (긴 변 160px data URL). 기본 펫이면 null. 첫 화면에 얼굴만 잘라 보이지 않게 */
+  photo: string | null;
 }
 
 export interface OnboardBridge {
