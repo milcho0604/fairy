@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { plusDays } from '../../../shared/day.ts';
 import { allDayLabel, allDaySpan, type CalEvent, dayStartMs } from '../../../shared/event-store.ts';
 import { t } from '../../../shared/i18n/index.ts';
@@ -42,6 +42,13 @@ export function EventTab({
   const [view, setViewState] = useState<View>(savedView);
   // 달력에서 고른 날. 입력칸이 이 날에 넣는다
   const [day, setDay] = useState(s.today);
+  // 자정을 넘기면 오늘을 고르고 있던 사람은 새 오늘로 따라간다 (다른 날을 골랐으면 그대로)
+  const lastToday = useRef(s.today);
+  useEffect(() => {
+    const was = lastToday.current;
+    lastToday.current = s.today;
+    if (was !== s.today) setDay((d) => (d === was ? s.today : d));
+  }, [s.today]);
   const calendar = view === 'calendar';
   const setView = (next: View) => {
     setViewState(next);

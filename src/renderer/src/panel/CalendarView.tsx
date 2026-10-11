@@ -164,7 +164,8 @@ export function CalendarView({
       onPick();
       return;
     }
-    if (e.key === 't' || e.key === 'T') {
+    // 한글 입력 상태에서는 e.key 가 'ㅅ' 이라 자리(code)로 본다
+    if (e.code === 'KeyT') {
       e.preventDefault();
       go(s.today, true);
       return;
