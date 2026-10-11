@@ -58,7 +58,8 @@ export const DEFAULT_BLUEPRINTS: Record<PetKind, Blueprint> = {
       blush: '#ff8c8c',
     },
   },
-  // 냥이: 큰 머리와 작은 몸(피규어 비율), 세모 귀, 꼬리
+  // 냥이: 큰 머리와 작은 몸(피규어 비율), 세모 귀, 꼬리. 두 발로 서서 앞발이 짧은 팔(흰 발 손)이다
+  // (모든 펫은 손이 있어야 한다, 2026-10-11 사용자 규칙: 흔들고, 들고, 춤춘다)
   cat: {
     v: 1,
     // 복슬복슬 모습의 털 (blueprint.ts Fur)
@@ -101,10 +102,30 @@ export const DEFAULT_BLUEPRINTS: Record<PetKind, Blueprint> = {
         color: '#ffb3bd',
         mirror: true,
       },
+      // 팔: 어깨에서 조금 바깥으로 늘어뜨린 짧은 팔 끝에 하얀 발 (주둥이와 같은 색)
+      {
+        slot: 'armL',
+        shape: 'capsule',
+        at: [-0.35, 0.31, 0.08],
+        size: [0.06, 0.11, 0.06],
+        rot: [0, 0, -14],
+        color: CAT,
+        finish: 'fuzzy',
+        mirror: true,
+      },
+      {
+        slot: 'armL',
+        shape: 'sphere',
+        at: [-0.41, 0.145, 0.12],
+        size: [0.075, 0.065, 0.075],
+        color: '#fbf5ec',
+        finish: 'fuzzy',
+        mirror: true,
+      },
       {
         slot: 'legL',
         shape: 'sphere',
-        at: [-0.14, 0.06, 0.17],
+        at: [-0.14, 0.06, 0.15],
         size: [0.085, 0.07, 0.095],
         color: CAT,
         finish: 'fuzzy',
@@ -131,8 +152,8 @@ export const DEFAULT_BLUEPRINTS: Record<PetKind, Blueprint> = {
       blush: '#ffa0a8',
       whiskers: '#8d8178',
     },
-    // 네 발 동물: 걸을 때 앞으로 숙여 네 발로 걷는다 (뒷발은 앞발을 본떠 그린다, pet3d.ts)
-    gait: 'quadruped',
+    // 두 발로 선다: 팔은 흔들고 뒷발로 걷는다 (네 발 걷기는 설정에서 고를 수 있다)
+    gait: 'biped',
   },
   // 삐약이: 동그란 병아리, 날개, 주황 부리와 발, 머리 깃털
   chick: {
@@ -188,7 +209,8 @@ export const DEFAULT_BLUEPRINTS: Record<PetKind, Blueprint> = {
       blush: '#ff9a8a',
     },
   },
-  // 멍멍이: 시바 느낌. 처진 귀, 흰 주둥이와 배, 빨간 목줄과 금색 이름표, 말린 꼬리
+  // 멍멍이: 시바 느낌. 처진 귀, 흰 주둥이와 배, 빨간 목줄과 금색 이름표, 말린 꼬리.
+  // 두 발로 서서 앞발이 짧은 팔(크림색 발 손)이다 (모든 펫은 손이 있어야 한다, 2026-10-11 사용자 규칙)
   dog: {
     v: 1,
     // 복슬복슬 모습의 털 (blueprint.ts Fur)
@@ -260,10 +282,30 @@ export const DEFAULT_BLUEPRINTS: Record<PetKind, Blueprint> = {
         finish: 'fuzzy',
         mirror: true,
       },
+      // 팔: 어깨에서 조금 바깥으로 늘어뜨린 짧은 팔 끝에 크림색 발 (배, 주둥이와 같은 색)
+      {
+        slot: 'armL',
+        shape: 'capsule',
+        at: [-0.34, 0.31, 0.08],
+        size: [0.06, 0.11, 0.06],
+        rot: [0, 0, -14],
+        color: DOG,
+        finish: 'fuzzy',
+        mirror: true,
+      },
+      {
+        slot: 'armL',
+        shape: 'sphere',
+        at: [-0.4, 0.145, 0.12],
+        size: [0.075, 0.065, 0.075],
+        color: CREAM,
+        finish: 'fuzzy',
+        mirror: true,
+      },
       {
         slot: 'legL',
         shape: 'sphere',
-        at: [-0.14, 0.06, 0.17],
+        at: [-0.14, 0.06, 0.15],
         size: [0.085, 0.07, 0.095],
         color: CREAM,
         finish: 'fuzzy',
@@ -296,8 +338,8 @@ export const DEFAULT_BLUEPRINTS: Record<PetKind, Blueprint> = {
       mouthY: 0.585,
       blush: '#ff9e8f',
     },
-    // 네 발 동물: 걸을 때 앞으로 숙여 네 발로 걷는다 (뒷발은 앞발을 본떠 그린다, pet3d.ts)
-    gait: 'quadruped',
+    // 두 발로 선다: 팔은 흔들고 뒷발로 걷는다 (네 발 걷기는 설정에서 고를 수 있다)
+    gait: 'biped',
   },
   // 토순이: 긴 귀(안쪽 분홍), 큰 발, 배 앞에 모은 앞발, 솜뭉치 꼬리
   bunny: {

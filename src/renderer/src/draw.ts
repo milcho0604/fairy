@@ -106,7 +106,7 @@ export interface DrawState {
   noShadow?: boolean;
   /** 같이 보기 (shared/look-motion.ts): 그쪽을 보고, pose 가 있으면 돋보기를 든다 */
   peer?: { dir: Gaze; pose?: MagnifierPose };
-  /** 사용자가 고른 걸음새 (설정). 없으면 자동: 2D 는 냥이, 멍멍이, 토순이만 네 발 */
+  /** 사용자가 고른 걸음새 (설정). 없으면 자동: 2D 는 토순이만 네 발 (냥이, 멍멍이는 팔이 있어 두 발) */
   gait?: Gait;
   /** 입에 문 공 (네 발 펫 공놀이, shared/fetch.ts) */
   carry?: CarryDraw;
@@ -450,7 +450,7 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
     const spread = 24 + 8 * sitK;
     const step = act?.type === 'walk' ? Math.sin(act.phase * Math.PI * 2) * 4 : 0;
     const dangle = s.mood === 'grabbed' ? 6 : 0;
-    // 네 발 동물(냥이, 멍멍이, 토순이, 또는 네 발을 고른 펫)은 걸을 때 뒷발 둘이 가는 반대쪽 뒤에 보인다 (pet3d-gait.ts)
+    // 네 발 동물(토순이, 또는 네 발을 고른 펫)은 걸을 때 뒷발 둘이 가는 반대쪽 뒤에 보인다 (pet3d-gait.ts)
     // 걸을 때 몸은 걸음마다 들썩여도(lift) 디딘 발은 바닥에 그대로 있고 든 발만 올라간다 (예전엔 두 발이 같이 떴다)
     const footLift = act?.type === 'walk' ? 0 : lift;
     if (act?.type === 'walk' && quadKind(kind, s.gait)) drawHindFeet(ctx, act.dir, step, footLift);
@@ -494,9 +494,12 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
   ctx.lineWidth = 2;
   ctx.strokeStyle = LINE;
   ctx.stroke();
+  // 냥이, 멍멍이의 손 (모든 펫은 손이 있어야 한다, 2026-10-11 사용자 규칙). 얼굴 다음에 그린다 (든 손이 수염 앞에)
+  const paw = (kind === 'cat' || kind === 'dog') && !s.face ? PAW[kind] : undefined;
   if (kind === 'dog') drawDogEars(ctx, mv?.ears);
-  // 손 흔들기 팔은 몸과 귀 다음, 얼굴 전에 (얼굴을 가리지 않게)
-  if (trick?.type === 'wave') drawWavingHand(ctx, trick.t);
+  // 손 흔들기 팔은 몸과 귀 다음, 얼굴 전에 (얼굴을 가리지 않게). 손이 있는 펫은 팔 끝도 같은 손.
+  // 멍멍이는 팔의 몸 안쪽 부분을 칠하지 않는다 (늘어진 귀를 몸 색으로 덮어 귀가 패여 보였다)
+  if (trick?.type === 'wave') drawWavingHand(ctx, trick.t, paw, kind !== 'dog');
   // 매운맛 토라짐 3단계: 등을 돌려 얼굴 대신 뒷모습 (꼬리)
   const stage = sulkStage(s);
   if (stage >= 3) {
@@ -572,6 +575,11 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
   else if (s.hungry && s.mood === 'idle') drawHungryMouth(ctx, look);
   else drawMouth(ctx, s.mood, look);
   ctx.restore();
+  // 손: 늘어진 귀와 수염 앞에. 손 흔들기 동안 오른손은 흔드는 팔이 대신한다
+  if (paw) {
+    const step = act?.type === 'walk' ? Math.sin(act.phase * Math.PI * 2) : 0;
+    drawPaws(ctx, paw, pawRaise(s, act, mv?.arms ?? 0, trick), step, trick?.type === 'wave');
+  }
   ctx.restore();
   ctx.restore();
   // 문 공은 얼굴 앞에. 입 자리는 위 입 그리기와 같은 계산 (입은 얼굴 가운데에서 look 만큼 옆, 12 아래)
@@ -657,12 +665,77 @@ function drawHindFeet(ctx: CanvasRenderingContext2D, dir: -1 | 1, step: number, 
   ctx.restore();
 }
 
+/** 냥이, 멍멍이 손(발끝) 색. 입체 설계도와 같다 (냥이 하얀 발, 멍멍이 크림색 발, shared/pet3d/defaults.ts) */
+const PAW: Record<'cat' | 'dog', string> = { cat: '#fbf8f4', dog: '#fbefdc' };
+
+/**
+ * 손을 드는 정도 0~1 (양손 [왼, 오른], 화면 기준). 신나면 통통 흔들며 들고, 빙글 춤과 기지개는 활짝,
+ * 들려 있으면 버둥, 폴짝, 뒹굴기 같은 몸짓은 그 팔 값(move-pose.ts arms)대로. 하품은 조금
+ */
+function pawRaise(
+  s: DrawState,
+  act: DrawState['activity'],
+  arms: number,
+  trick: ReturnType<typeof trickOf>,
+): [number, number] {
+  let k = arms * 1.6;
+  if (s.mood === 'excited') {
+    const w = Math.sin(s.elapsed / 90);
+    return [0.85 + w * 0.15, 0.85 - w * 0.15];
+  }
+  if (s.mood === 'grabbed') k = Math.max(k, 0.6);
+  if (trick?.type === 'dance') k = Math.max(k, 0.8);
+  if (act?.type === 'stretch') k = Math.max(k, Math.sin(Math.min(1, act.t) * Math.PI));
+  if (act?.type === 'yawn') k = Math.max(k, 0.4 * Math.sin(Math.min(1, act.t) * Math.PI));
+  if (s.mood === 'thinking') return [0, 0.45];
+  const v = Math.min(1, k);
+  return [v, v];
+}
+
+/**
+ * 냥이, 멍멍이의 손: 몸 아래쪽 양옆에 반쯤 나온 동그란 발 (몸 좌표, 가운데가 0). 쉴 때는 배 옆에 붙어 있고,
+ * 들면 몸 테두리를 따라 위로 올라간다. 들어 손바닥이 보이면 분홍 발바닥.
+ * 걸을 때는 발과 반대로 앞뒤(위아래)로 흔든다. noRight 면 오른손을 안 그린다 (손 흔들기 팔이 대신)
+ */
+function drawPaws(
+  ctx: CanvasRenderingContext2D,
+  color: string,
+  raise: readonly [number, number],
+  step: number,
+  noRight: boolean,
+) {
+  ctx.save();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = LINE;
+  for (const side of [-1, 1] as const) {
+    if (side === 1 && noRight) continue;
+    const up = raise[side === -1 ? 0 : 1] ?? 0;
+    // 손은 늘 몸 테두리에 반쯤 걸쳐 있다 (떨어져 떠 보이지 않게): 쉴 때 배 옆 아래, 들면 테두리를 따라 어깨 위로
+    // 올라가며 조금 더 밖으로 나온다. 걸을 때는 위아래로 조금
+    const y = 24 - up * 40 - side * step * 3;
+    const x = side * (RX * Math.sqrt(Math.max(0, 1 - (y / RY) ** 2)) + 1 + up * 5);
+    ctx.beginPath();
+    ctx.ellipse(x, y, 9, 8, side * (0.3 + up * 0.5), 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.stroke();
+    if (up > 0.5) {
+      ctx.beginPath();
+      ctx.ellipse(x + side * 0.5, y + 1, 3.6, 3, 0, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 150, 170, ${Math.min(0.6, (up - 0.5) * 1.6)})`;
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
 /**
  * 손 흔들기: 몸 오른쪽 안쪽에서 시작한 짧은 팔이 몸 테두리 밖으로 나와 좌우로 흔든다 (몸 좌표, 가운데가 0).
  * 몸 안쪽 부분은 몸과 같은 색으로만 칠해 몸에서 자라난 듯 이어지고, 테두리 선은 밖으로 나온 부분에만 있다.
- * 얼굴(볼, 눈, 수염)보다 먼저 그려 얼굴을 가리지 않는다
+ * 얼굴(볼, 눈, 수염)보다 먼저 그려 얼굴을 가리지 않는다. paw 를 주면 팔 끝에 그 색 손 (냥이, 멍멍이).
+ * inside 가 false 면 몸 안쪽 부분을 칠하지 않는다 (몸 위에 그린 귀를 덮지 않게)
  */
-function drawWavingHand(ctx: CanvasRenderingContext2D, t: number) {
+function drawWavingHand(ctx: CanvasRenderingContext2D, t: number, paw?: string, inside = true) {
   const up = Math.min(1, t * 5, (1 - t) * 5);
   const swing = waveSwing(t);
   const len = 27 + up * 7;
@@ -679,15 +752,17 @@ function drawWavingHand(ctx: CanvasRenderingContext2D, t: number) {
   ctx.rotate(0.45 + (1 - up) * 0.8 + swing * 0.28);
   const local = ctx.getTransform();
   ctx.restore();
-  // 몸 안: 몸 색으로만 (몸 테두리 안쪽 반을 덮어 이음매가 없다)
-  ctx.save();
-  body();
-  ctx.clip();
-  ctx.setTransform(local);
-  arm();
-  ctx.fillStyle = BODY;
-  ctx.fill();
-  ctx.restore();
+  // 몸 안: 몸 색으로만 (몸 테두리 안쪽 반을 덮어 이음매가 없다). inside 가 false 면 몸 테두리에서 바로 나온다
+  if (inside) {
+    ctx.save();
+    body();
+    ctx.clip();
+    ctx.setTransform(local);
+    arm();
+    ctx.fillStyle = BODY;
+    ctx.fill();
+    ctx.restore();
+  }
   // 몸 밖: 테두리까지
   ctx.save();
   ctx.beginPath();
@@ -701,6 +776,14 @@ function drawWavingHand(ctx: CanvasRenderingContext2D, t: number) {
   ctx.lineWidth = 2;
   ctx.strokeStyle = LINE;
   ctx.stroke();
+  // 손이 있는 펫(냥이, 멍멍이)은 팔 끝이 다른 손과 같은 색 동그란 손 (drawPaws)
+  if (paw) {
+    ctx.beginPath();
+    ctx.ellipse(0, -len + 5, 9, 8, 0, 0, Math.PI * 2);
+    ctx.fillStyle = paw;
+    ctx.fill();
+    ctx.stroke();
+  }
   ctx.beginPath();
   ctx.ellipse(0, -len + 6, 3.2, 2.6, 0, 0, Math.PI * 2);
   ctx.fillStyle = 'rgba(255, 150, 170, 0.6)';

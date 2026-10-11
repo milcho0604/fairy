@@ -2016,7 +2016,10 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
         break;
       case 'thinking':
         head(0, 0, 0.2);
-        j.armR.rotation.set(-0.9, 0, 0.9);
+        // 머리와 옆으로 나온 팔이 있으면(냥이, 멍멍이) 오른손을 앞으로 들어 턱 밑에 괸다.
+        // 몸이 곧 얼굴인 콩이는 팔을 바깥 위로 (턱이 따로 없다)
+        if (this.hasHead && this.hasHand) j.armR.rotation.set(-2.1, 0, -0.85);
+        else j.armR.rotation.set(-0.9, 0, 0.9);
         j.top.rotation.z = Math.sin(e / 400) * 0.15;
         mouth = 'flat';
         break;

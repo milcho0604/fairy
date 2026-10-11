@@ -55,7 +55,8 @@ test('걸음새: 적혀 있으면 그대로, 없으면 다리가 앞뒤 넷일 �
   assert.equal(gaitOf({}, [leg('legL', 0.2), leg('legL', -0.2), leg('legR', 0.2, 0.15)], 0.6), 'biped');
   // 기본 펫은 설계도에 적힌 대로
   for (const [k, bp] of Object.entries(DEFAULT_BLUEPRINTS)) {
-    const want = k === 'cat' || k === 'dog' || k === 'bunny' ? 'quadruped' : 'biped';
+    // 냥이, 멍멍이는 팔이 있어 두 발 (2026-10-11: 모든 펫은 손이 있어야 한다)
+    const want = k === 'bunny' ? 'quadruped' : 'biped';
     assert.equal(gaitOf(bp, expandMirrors(bp.parts), 0.6), want, k);
     assert.equal(isQuadKind(k as keyof typeof DEFAULT_BLUEPRINTS), want === 'quadruped', k);
   }
@@ -71,10 +72,10 @@ test('걸음새 짐작: gait 칸 없는 앉은 피규어(앞발만, 귀와 꼬�
     gaitOf({}, expandMirrors([part('legL'), part('earL'), part('tail'), part('wingL')]), 0.6),
     'biped',
   );
-  // 기본 냥이, 멍멍이, 토순이는 설계도에 적힌 gait 로 네 발 (짐작과 상관없다)
-  for (const k of ['cat', 'dog', 'bunny'] as const)
-    assert.equal(shapeOf(DEFAULT_BLUEPRINTS[k]), 'quadruped', k);
-  for (const k of ['kong', 'chick'] as const) assert.equal(shapeOf(DEFAULT_BLUEPRINTS[k]), 'biped', k);
+  // 기본 토순이는 설계도에 적힌 gait 로 네 발 (짐작과 상관없다). 냥이, 멍멍이는 팔이 있어 두 발로 적었다
+  assert.equal(shapeOf(DEFAULT_BLUEPRINTS.bunny), 'quadruped');
+  for (const k of ['kong', 'chick', 'cat', 'dog'] as const)
+    assert.equal(shapeOf(DEFAULT_BLUEPRINTS[k]), 'biped', k);
 });
 
 test('몸 두께 어림: 몸 부품 z 범위, 몸이 없으면 0', () => {
@@ -95,7 +96,7 @@ test('몸 두께 어림: 몸 부품 z 범위, 몸이 없으면 0', () => {
 });
 
 test('고른 걸음새가 설계도보다 먼저: 덮기, 다른지 보기, 2D', () => {
-  const cat = DEFAULT_BLUEPRINTS.cat;
+  const cat = DEFAULT_BLUEPRINTS.bunny;
   // 안 골랐거나(자동) 같은 값이면 같은 설계도 그대로 (다시 조립하지 않는다)
   assert.equal(withGait(cat, undefined), cat);
   assert.equal(withGait(cat, 'quadruped'), cat);
@@ -104,6 +105,8 @@ test('고른 걸음새가 설계도보다 먼저: 덮기, 다른지 보기, 2D',
   assert.equal(two.gait, 'biped');
   assert.equal(cat.gait, 'quadruped');
   assert.equal(gaitOf(two, expandMirrors(two.parts), 0.6), 'biped');
+  // 냥이는 두 발 설계도: 네 발을 고르면 덮는다
+  assert.equal(withGait(DEFAULT_BLUEPRINTS.cat, 'quadruped').gait, 'quadruped');
   // gait 칸 없는 설계도에도 덮는다
   const old: Pick<Blueprint, 'gait' | 'parts'> = { parts: [] };
   assert.equal(withGait(old, 'quadruped').gait, 'quadruped');
@@ -113,8 +116,10 @@ test('고른 걸음새가 설계도보다 먼저: 덮기, 다른지 보기, 2D',
   assert.equal(gaitMismatch('quadruped', 'biped'), true);
   assert.equal(gaitMismatch('biped', 'quadruped'), true);
   // 2D: 고른 값이 먼저, 없으면 기본 설계도대로
-  assert.equal(quadKind('cat', undefined), true);
-  assert.equal(quadKind('cat', 'biped'), false);
+  assert.equal(quadKind('bunny', undefined), true);
+  assert.equal(quadKind('bunny', 'biped'), false);
+  assert.equal(quadKind('cat', undefined), false);
+  assert.equal(quadKind('cat', 'quadruped'), true);
   assert.equal(quadKind('kong', undefined), false);
   assert.equal(quadKind('kong', 'quadruped'), true);
   assert.equal(quadKind(undefined, undefined), false);

@@ -4,7 +4,7 @@ import { type Blueprint, expandMirrors, type Gait, type Part } from '../../share
 import { DEFAULT_BLUEPRINTS } from '../../shared/pet3d/defaults.ts';
 import type { PetKind } from '../../shared/settings.ts';
 
-/** 2D 기본 펫도 네 발로 걷는지 (3D 기본 설계도의 gait 를 따른다: 냥이, 멍멍이, 토순이) */
+/** 2D 기본 펫도 네 발로 걷는지 (3D 기본 설계도의 gait 를 따른다: 토순이. 냥이, 멍멍이는 팔이 있어 두 발) */
 export function isQuadKind(kind: PetKind | undefined): boolean {
   return !!kind && DEFAULT_BLUEPRINTS[kind]?.gait === 'quadruped';
 }
@@ -80,7 +80,7 @@ export function gaitMismatch(pick: Gait | undefined, shape: Gait): boolean {
   return !!pick && pick !== shape;
 }
 
-/** 2D 기본 펫이 네 발로 걷는지: 고른 값이 있으면 그것, 없으면 기본 설계도(냥이, 멍멍이, 토순이) */
+/** 2D 기본 펫이 네 발로 걷는지: 고른 값이 있으면 그것, 없으면 기본 설계도(토순이) */
 export function quadKind(kind: PetKind | undefined, pick: Gait | undefined): boolean {
   return pick ? pick === 'quadruped' : isQuadKind(kind);
 }

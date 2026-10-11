@@ -99,19 +99,21 @@ test('사진 펫: 설계도가 없으면 콩이, 고른 걸음새가 설계도�
   const cat = DEFAULT_BLUEPRINTS.cat;
   const chick = DEFAULT_BLUEPRINTS.chick;
   assert.ok(cat && chick);
-  // 냥이 몸이어도 두 발을 고르면 두 발 친구로 (부리가 없으니 콩이)
-  assert.equal(runnerKindOf({ ...photo, petGaits: { 'model-1.json': 'biped' } }, cat), 'kong');
-  // 삐약이 몸에 네 발을 고르면 네 발 친구 (귀가 없고 고양이 입도 아니니 멍멍이)
-  assert.equal(runnerKindOf({ ...photo, petGaits: { 'model-1.json': 'quadruped' } }, chick), 'dog');
-  // 다른 몸의 고른 값은 쓰지 않는다
-  assert.equal(runnerKindOf({ ...photo, petGaits: { 'model-2.json': 'biped' } }, cat), 'cat');
+  // 종류 특징이 걸음새보다 먼저: 냥이 몸(수염, 뾰족 귀)은 두 발이든 네 발이든 냥이, 삐약이 몸(부리)은 네 발을 골라도 삐약이
+  assert.equal(runnerKindOf({ ...photo, petGaits: { 'model-1.json': 'biped' } }, cat), 'cat');
+  assert.equal(runnerKindOf({ ...photo, petGaits: { 'model-1.json': 'quadruped' } }, cat), 'cat');
+  assert.equal(runnerKindOf({ ...photo, petGaits: { 'model-1.json': 'quadruped' } }, chick), 'chick');
+  // 특징이 없는 몸(콩이)은 걸음새로: 네 발을 고르면 멍멍이, 두 발이면 콩이. 다른 몸의 고른 값은 쓰지 않는다
+  const kong = DEFAULT_BLUEPRINTS.kong;
+  assert.equal(runnerKindOf({ ...photo, petGaits: { 'model-1.json': 'quadruped' } }, kong), 'dog');
+  assert.equal(runnerKindOf({ ...photo, petGaits: { 'model-2.json': 'quadruped' } }, kong), 'kong');
   // gait 칸이 없는 옛 설계도: 펫 화면(pet3d-gait.ts gaitOf)처럼 다리가 한쪽에 둘 이상(앞뒤)이면 네 발, 아니면 두 발
-  const { gait: _g, ...oldCat } = cat;
-  assert.equal(runnerKindOf(photo, oldCat), 'kong');
-  const hind = oldCat.parts
+  const { gait: _g, ...oldKong } = kong;
+  assert.equal(runnerKindOf(photo, oldKong), 'kong');
+  const hind = oldKong.parts
     .filter((p) => p.slot === 'legL')
     .map((p) => ({ ...p, at: [p.at[0], p.at[1], -0.2] as [number, number, number] }));
-  assert.equal(runnerKindOf(photo, { ...oldCat, parts: [...oldCat.parts, ...hind] }), 'cat');
+  assert.equal(runnerKindOf(photo, { ...oldKong, parts: [...oldKong.parts, ...hind] }), 'dog');
   // 기본 펫이면 설계도를 줘도 종류 그대로
   assert.equal(runnerKindOf({ ...basic, petKind: 'bunny' }, cat), 'bunny');
 });

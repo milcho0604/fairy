@@ -142,8 +142,11 @@ test('고른 걸음새: 요청문에 몸 만들기 블록이 요청사항보다 
   assert.ok(!two.includes('User wish'));
   // AI 가 다르게 적어도(또는 안 적어도) 고른 값으로
   const cat = JSON.stringify(DEFAULT_BLUEPRINTS.cat);
-  assert.equal(extractBlueprint(cat, 'biped')?.gait, 'biped');
-  assert.equal(extractBlueprint(cat)?.gait, 'quadruped');
+  assert.equal(extractBlueprint(cat, 'quadruped')?.gait, 'quadruped');
+  assert.equal(extractBlueprint(cat)?.gait, 'biped');
+  const bunny = JSON.stringify(DEFAULT_BLUEPRINTS.bunny);
+  assert.equal(extractBlueprint(bunny, 'biped')?.gait, 'biped');
+  assert.equal(extractBlueprint(bunny)?.gait, 'quadruped');
   const kong = JSON.stringify(DEFAULT_BLUEPRINTS.kong);
   assert.equal(extractBlueprint(kong)?.gait, undefined);
   assert.equal(extractBlueprint(kong, 'quadruped')?.gait, 'quadruped');
@@ -225,17 +228,23 @@ test('걸음새: 네 발, 두 발만 받고 모르는 값은 버린다. 요청�
   assert.equal(parseBlueprint({ ...base, gait: 'biped' })?.gait, 'biped');
   assert.equal(parseBlueprint({ ...base, gait: 'hexapod' })?.gait, undefined);
   assert.equal(parseBlueprint({ ...base, gait: 4 })?.gait, undefined);
-  // 기본 펫: 냥이, 멍멍이, 토순이는 네 발, 콩이와 삐약이는 적지 않는다(두 발)
+  // 기본 펫: 토순이는 네 발, 냥이와 멍멍이는 팔이 있어 두 발로 적고, 콩이와 삐약이는 적지 않는다(두 발)
   assert.deepEqual(
     Object.entries(DEFAULT_BLUEPRINTS).map(([k, bp]) => [k, bp.gait]),
     [
       ['kong', undefined],
-      ['cat', 'quadruped'],
+      ['cat', 'biped'],
       ['chick', undefined],
-      ['dog', 'quadruped'],
+      ['dog', 'biped'],
       ['bunny', 'quadruped'],
     ],
   );
+  // 모든 기본 펫에 손(팔이나 날개)이 있다 (2026-10-11 사용자 규칙)
+  for (const [k, bp] of Object.entries(DEFAULT_BLUEPRINTS))
+    assert.ok(
+      bp.parts.some((p) => p.slot === 'armL' || p.slot === 'wingL'),
+      k,
+    );
   const p = blueprintPrompt('밀크');
   assert.ok(p.includes('"gait"') && p.includes('"quadruped"') && p.includes('"biped"'));
 });
