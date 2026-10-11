@@ -90,15 +90,19 @@ export function neckOf(rgba: ArrayLike<number>, w: number, body: FaceRect): numb
  * 얼굴 그림을 자를 줄 (사진, 2.5D 판). 없으면 undefined: 전체가 얼굴.
  * 목(neckOf)이 그 위 가장 넓은 줄(머리 너비)보다 얕게 잡히면 목이 아니라 늘어진 귀 끝이다
  * (2026-10-11 초코: 곱슬 귀가 얼굴 옆으로 길게 내려와 귀 끝 아래 입 가운데가 목으로 잡혀 코 밑이 잘렸다).
- * 머리는 너비만큼은 내려간다고 보고 맨 위에서 머리 너비까지는 남긴다. 진짜 목은 보통 그보다 깊어 그대로다
+ * 머리는 너비만큼은 내려간다고 보고 맨 위에서 머리 너비까지는 남긴다. 진짜 목은 보통 그보다 깊어 그대로다.
+ * 내려가다 머리보다 넓은 줄(몸)을 만나면 거기서 멈추고, 바닥까지 가 버리면 원래 목에서 자른다
+ * (넓적한 얼굴은 머리 너비가 키보다 커서 몸통까지 따라 나오거나 아예 안 잘렸다)
  */
 export function headCut(rgba: ArrayLike<number>, w: number, body: FaceRect): number | undefined {
   const neck = neckOf(rgba, w, body);
   if (neck === undefined) return undefined;
   let head = 0;
   for (let y = body.y0; y < neck; y++) head = Math.max(head, rowWidth(rgba, w, y));
-  const cut = Math.max(neck, body.y0 + head);
-  return cut < body.y1 ? cut : undefined;
+  const end = Math.min(body.y1, body.y0 + head);
+  let cut = neck;
+  while (cut < end && rowWidth(rgba, w, cut) <= head) cut++;
+  return cut < body.y1 ? cut : neck;
 }
 
 /** 목 아래를 부드럽게 지운다: cut - fade 부터 cut + fade 까지 알파를 1 에서 0 으로, 그 아래는 0 */

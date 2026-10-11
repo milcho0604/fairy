@@ -90,6 +90,31 @@ test('자를 줄: 늘어진 귀 끝은 목이 아니다, 머리 너비만큼은 
   assert.ok(c);
   assert.equal(headCut(cat, 60, c), neckOf(cat, 60, c));
 
+  // 넓적한 얼굴 (머리 너비 90 이 머리 키보다 크다): 목 아래 넓은 몸통까지 내려가지 않는다
+  const wide = paint(130, 210, [
+    [25, 10, 35, 22],
+    [95, 10, 105, 22],
+    [20, 22, 110, 70],
+    [45, 70, 85, 76],
+    [10, 76, 120, 200],
+  ]);
+  const wb = solidRect(wide, 130, 210);
+  assert.ok(wb);
+  const wn = neckOf(wide, 130, wb);
+  const wc = headCut(wide, 130, wb);
+  assert.ok(wn !== undefined && wc !== undefined && wc <= 76, `넓적한 얼굴 자를 줄 ${wc}, 목 ${wn}`);
+
+  // 귀가 옆으로 퍼진 그림: 바닥까지 가 버려도 자르지 않는 게 아니라 목에서 자른다
+  const ears = paint(140, 130, [
+    [10, 10, 130, 20],
+    [40, 20, 100, 60],
+    [55, 60, 85, 64],
+    [30, 64, 110, 120],
+  ]);
+  const eb = solidRect(ears, 140, 130);
+  assert.ok(eb);
+  assert.equal(headCut(ears, 140, eb), neckOf(ears, 140, eb));
+
   // 동그란 몸은 자르지 않는다
   const round = paint(40, 40, [[5, 8, 35, 36]]);
   const r = solidRect(round, 40, 40);
