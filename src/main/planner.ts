@@ -4,6 +4,8 @@ import {
   BRIEFING_FROM_MINUTE,
   briefingBody,
   briefingText,
+  DUE_AM_FROM,
+  DUE_PM_FROM,
   deadlineText,
   dueSlot,
   nextUp,
@@ -26,6 +28,7 @@ import {
 } from '../shared/focus.ts';
 import { t } from '../shared/i18n/index.ts';
 import { ActivityWatch, type IdleFacts, type IdleKey, IdleTalker, idleVars } from '../shared/idle-talk.ts';
+import { nextMinuteTurn, onTick, PLAN_TICK_MS, wakeDelay, wakeNow, zoneKey } from '../shared/planner-wake.ts';
 import {
   coversBriefing,
   coversReview,
@@ -38,6 +41,7 @@ import {
   parseMemo,
   type RoutineDue,
   routineDue,
+  routineTurns,
   spanEnd,
 } from '../shared/routine.ts';
 import { farewellNext, farewellText, greetText, restText } from '../shared/routine-text.ts';
@@ -48,7 +52,7 @@ import { createReminders } from './reminders.ts';
 import { settings } from './settings.ts';
 import { readJson, writeJson } from './store.ts';
 
-const TICK_MS = 15_000;
+const TICK_MS = PLAN_TICK_MS;
 const STORE = 'planner';
 
 export interface PlannerOptions {
@@ -137,28 +141,35 @@ export function createPlanner(o: PlannerOptions) {
     openUrl: o.openUrl,
     openToday: o.openToday,
     saved: saved?.snoozed,
-    onSnoozedChange: () => store(),
+    onSnoozedChange: () => {
+      store();
+      soon();
+    },
     log: o.log,
   });
   const remind = (now: number) => reminders.tick(now);
 
-  /** 오늘 마감 알림: 보통은 오후 한 번, 수다쟁이는 오전과 오후. 자리에 있고 펫이 보일 때만 */
+  /**
+   * 오늘 마감 알림: 보통은 오후 한 번, 수다쟁이는 오전과 오후. 자리에 있고 펫이 보일 때만.
+   * 아직 할 일이 남아 기다리는 중(자리 비움, 숨음, 묻는 중)이면 true (플래너가 15초마다 다시 본다)
+   */
   let dueAsking = false;
-  function dueAlert(now: number) {
+  function dueAlert(now: number): boolean {
     const day = localDay(now);
     const s = settings.get();
     // 만나는 날은 헤어지는 시간까지 (헤어지는 인사가 남은 마감을 묻는다)
     const slot = dueSlot(minuteOfDay(now), s.chatter, dueUntil(s.routine, day, s.reviewMinute));
-    if (!slot || dueSaid.includes(`${day}:${slot}`)) return;
-    if (focus.phase === 'focus' || o.petHidden() || powerMonitor.getSystemIdleTime() > 60) return;
-    if (powerMonitor.getSystemIdleState(60) === 'locked') return;
-    // 남은 게 없으면 칸을 쓰지 않는다 (나중에 오늘 마감을 넣으면 그 칸에 알리게)
+    if (!slot || dueSaid.includes(`${day}:${slot}`)) return false;
+    if (focus.phase === 'focus' || o.petHidden() || powerMonitor.getSystemIdleTime() > 60) return true;
+    if (powerMonitor.getSystemIdleState(60) === 'locked') return true;
+    // 남은 게 없으면 칸을 쓰지 않는다 (나중에 오늘 마감을 넣으면 그 칸에 알리게. 할 일이 바뀌면 플래너가 다시 본다)
     // 오늘 미리 알림으로 이미 말한 할 일은 빼고 (하루 한 번)
     const said = o.todos.remindedSince(startOfDay(now));
     const left = o.todos
       .list(now)
       .open.filter((todo) => todo.due !== null && todo.due === day && !said.has(todo.id));
-    if (left.length === 0 || dueAsking) return;
+    if (left.length === 0) return false;
+    if (dueAsking) return true;
     // 말풍선이 실제로 떴을 때만 그 칸을 한 것으로 적는다 (시간당 상한에 막히면 다음 틱에 다시)
     dueAsking = true;
     o.log('planner', '마감 알림', slot, left.length);
@@ -179,6 +190,7 @@ export function createPlanner(o: PlannerOptions) {
         store();
         if (a === 'open') o.openToday();
       });
+    return true;
   }
 
   /** 오늘 브리핑에 넣을 것. 오늘 0시부터 본다: 종일 일정은 0시에 시작해 이미 지났지만 오늘 일정이다. 시각 일정은 남은 것만 */
@@ -198,14 +210,15 @@ export function createPlanner(o: PlannerOptions) {
   }
 
   let briefing = false;
-  function brief(now: number) {
+  /** 오늘 브리핑. 할 때가 됐는데 자리 비움이나 숨음으로 기다리면 true */
+  function brief(now: number): boolean {
     const day = localDay(now);
-    if (briefedDay === day || minuteOfDay(now) < BRIEFING_FROM_MINUTE) return;
+    if (briefedDay === day || minuteOfDay(now) < BRIEFING_FROM_MINUTE) return false;
     // 만나는 시간을 정해 두었으면 맞이 인사(쉬는 날은 한마디)가 브리핑을 맡는다
-    if (coversBriefing(settings.get().routine, memo, day, minuteOfDay(now))) return;
+    if (coversBriefing(settings.get().routine, memo, day, minuteOfDay(now))) return false;
     // 자리에 있을 때만 (1분 안에 입력이 있었고 화면이 잠기지 않음), 펫이 보일 때만.
-    if (o.petHidden() || powerMonitor.getSystemIdleTime() > 60) return;
-    if (powerMonitor.getSystemIdleState(60) === 'locked') return;
+    if (o.petHidden() || powerMonitor.getSystemIdleTime() > 60) return true;
+    if (powerMonitor.getSystemIdleState(60) === 'locked') return true;
     briefedDay = day;
     store();
     const facts = todayFacts(now);
@@ -224,6 +237,7 @@ export function createPlanner(o: PlannerOptions) {
         briefing = false;
         if (a === 'overdue') moveOverdue();
       });
+    return false;
   }
 
   /** 지난 마감을 오늘로 (아침 브리핑 단추). 잠깐 되돌리기 단추를 보인다 */
@@ -262,13 +276,13 @@ export function createPlanner(o: PlannerOptions) {
    * 수다 빈도와 따로 켜고 끈다(설정 review). 켜 두었으면 조용히에서도 온다 (그래서 'schedule' 종류: 조용히에서도 말하고 시간당 상한에 안 센다).
    * 숨어 있으면 모아 두었다가 나올 때, 못 보고 지나가면 놓친 알림에 남긴다 (hold). 그날이 지나면 꺼내지 않는다
    */
-  function review(now: number) {
+  function review(now: number): boolean {
     const day = localDay(now);
     const s = settings.get();
-    if (!s.review || reviewedDay === day || minuteOfDay(now) < s.reviewMinute) return;
+    if (!s.review || reviewedDay === day || minuteOfDay(now) < s.reviewMinute) return false;
     // 만나는 날 만났으면 헤어지는 인사가 회고를 같이 한다
-    if (coversReview(s.routine, memo, day)) return;
-    if (powerMonitor.getSystemIdleTime() > 60) return;
+    if (coversReview(s.routine, memo, day)) return false;
+    if (powerMonitor.getSystemIdleTime() > 60) return true;
     reviewedDay = day;
     store();
     const { open, doneToday } = o.todos.list(now);
@@ -301,16 +315,20 @@ export function createPlanner(o: PlannerOptions) {
         },
       })
       .then(act);
+    return false;
   }
 
   // ---- 만나는 시간 (shared/routine.ts): 맞이, 시작 한마디, 헤어지는 인사, 쉬는 날 한마디. 하루 한 번씩 ----
   // 자리에 있을 때만 (1분 안에 입력, 화면 안 잠김). 맞이와 헤어짐은 'schedule' 이라 조용히에서도 오지만 한 줄로 줄이고,
   // 숨어 있으면 모아 두었다가 나올 때, 집에서 쉬는 중이면 나와서 말한다(일정 알림과 같다). 집중 중(펫이 잠)에는 끝날 때까지 기다린다
-  function meet(now: number) {
+  /** 만나는 시간. 할 때가 됐는데 기다리면(자리 비움, 브리핑 중, 집중 중, 숨음) true */
+  function meet(now: number): boolean {
     const s = settings.get();
     const due = routineDue(s.routine, memo, localDay(now), minuteOfDay(now));
-    if (!due || briefing) return;
-    if (powerMonitor.getSystemIdleTime() > 60 || powerMonitor.getSystemIdleState(60) === 'locked') return;
+    if (!due) return false;
+    if (briefing) return true;
+    if (powerMonitor.getSystemIdleTime() > 60 || powerMonitor.getSystemIdleState(60) === 'locked')
+      return true;
     const quiet = s.chatter === 'quiet';
     if (due.what === 'greet') {
       // 처음 자리에 있던 때를 적어 둔다 (집중으로 미뤄도 "일찍 왔네"가 맞게)
@@ -318,18 +336,20 @@ export function createPlanner(o: PlannerOptions) {
         memo = { ...memo, arrival: { day: due.day, clock: due.clock } };
         store();
       }
-      if (focus.phase !== 'focus') greet(now, due, quiet);
+      if (focus.phase === 'focus') return true;
+      greet(now, due, quiet);
     } else if (due.what === 'farewell') {
-      if (focus.phase !== 'focus') farewell(now, due, quiet);
+      if (focus.phase === 'focus') return true;
+      farewell(now, due, quiet);
     } else if (due.what === 'cue') {
       memo = { ...memo, cued: due.day };
       store();
-      if (s.chatter !== 'chatty' || focus.phase === 'focus' || o.petHidden()) return;
+      if (s.chatter !== 'chatty' || focus.phase === 'focus' || o.petHidden()) return false;
       o.log('planner', '시작 한마디');
       void o.say({ kind: 'idle-talk', text: t('routine.cue'), ttlMs: 8000 });
     } else {
       // 쉬는 날: 예전 브리핑처럼 펫이 보일 때 한 번. 일정만 붙이고 마감은 말하지 않는다 ('system': 조용히면 없다)
-      if (o.petHidden()) return;
+      if (o.petHidden()) return true;
       const day = localDay(now);
       memo = { ...memo, restSaid: due.day };
       briefedDay = day;
@@ -347,6 +367,7 @@ export function createPlanner(o: PlannerOptions) {
           briefing = false;
         });
     }
+    return false;
   }
 
   /** 맞이: 연속 기록과 만난 날 코인(하루 한 번), 오늘 브리핑을 같이 */
@@ -491,7 +512,7 @@ export function createPlanner(o: PlannerOptions) {
    */
   const talker = new IdleTalker(Date.now());
   if (o.talkRecent) talker.talk.restore(o.talkRecent.load(), o.talkRecent.known);
-  const activity = new ActivityWatch();
+  let activity = new ActivityWatch();
   let talking = false;
   function talk(now: number) {
     const idleSec = powerMonitor.getSystemIdleTime();
@@ -552,19 +573,32 @@ export function createPlanner(o: PlannerOptions) {
   }
 
   let lastTick = 0;
+  /** 이번 틱에서 기다리는 것이 있었는지 (있으면 다음 틱도 15초 뒤) */
+  let waiting = false;
+  let ticking = false;
   function tick() {
     const now = Date.now();
-    // 잠자기나 시계 바꾸기로 시간이 튀면 그 사이는 집중으로 치지 않는다
+    origin ||= now;
+    ticking = true;
+    try {
+      tickAt(now);
+    } finally {
+      ticking = false;
+      schedule();
+    }
+  }
+  function tickAt(now: number) {
+    // 잠자기나 시계 바꾸기로 시간이 튀면 그 사이는 집중으로 치지 않는다 (집중 중에는 15초마다 깬다)
     focus = skipGap(focus, lastTick, now, TICK_MS);
     lastTick = now;
     remind(now);
-    meet(now);
-    brief(now);
+    waiting = meet(now);
+    waiting = brief(now) || waiting;
     if (!briefing) {
-      review(now);
-      dueAlert(now);
+      waiting = review(now) || waiting;
+      waiting = dueAlert(now) || waiting;
       talk(now);
-    }
+    } else waiting = true;
     const r = tickFocus(focus, now);
     if (r.event === 'focus-done') {
       const minutes = focusedMinutes(focus, now);
@@ -636,6 +670,9 @@ export function createPlanner(o: PlannerOptions) {
     lastTodoId = focus.todoId;
     o.log('planner', '집중 시작', length, focus.todoId ? '할 일' : '');
     o.onChange();
+    // 집중 중에는 15초마다 깬다. 마지막 틱이 오래전이어도 그 사이를 잠으로 치지 않게 지금부터 센다 (skipGap)
+    lastTick = Date.now();
+    schedule();
   }
 
   /** 집중 끝 "끝냈어": 패널에서 끝낸 것과 같다 (코인, 반복이면 다음 것) */
@@ -656,12 +693,77 @@ export function createPlanner(o: PlannerOptions) {
     focus = IDLE;
     o.log('planner', '집중 그만', minutes);
     o.onChange();
+    schedule();
   }
 
-  const timer = setInterval(tick, TICK_MS);
-  timer.unref();
+  // ---- 다음에 깰 때 (shared/planner-wake.ts) ----
+  // 예전에는 15초마다 깨어 모든 것을 물었다. 이제 다음 알림이나 하루 일의 다음 문턱까지 잔다 (길어도 1분, 깰 때마다 시계를 본다).
+  // 기다리는 것이 있거나, 집중 중이거나, 수다쟁이(혼잣말이 입력과 커서를 15초마다 본다)면 예전처럼 15초마다.
+  // 저장 파일, 설정, 미루기가 바뀌거나(soon) 잠에서 깨면 바로 다시 본다
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  /** 첫 틱 때. 다음 때는 여기서 15초씩 떨어진 예전 틱 자리로 올린다 (onTick) */
+  let origin = 0;
+  /** 다음 틱을 할 벽시계 때 */
+  let dueAt = 0;
+  /** 잠들 때의 벽시계와 단조 시계 (깨서 시계가 튀었는지 본다) */
+  let armed = { wall: 0, mono: 0, zone: '' };
+  let stopped = false;
+  function nextAt(now: number): number | undefined {
+    const s = settings.get();
+    const day = localDay(now);
+    const turn = nextMinuteTurn(now, [
+      BRIEFING_FROM_MINUTE,
+      s.reviewMinute,
+      DUE_AM_FROM,
+      DUE_PM_FROM.normal,
+      DUE_PM_FROM.chatty,
+      dueUntil(s.routine, day, s.reviewMinute),
+      ...routineTurns(s.routine, day),
+    ]);
+    const remindAt = reminders.nextAt(now);
+    return remindAt === undefined ? turn : Math.min(turn, remindAt);
+  }
+  function schedule() {
+    if (stopped) return;
+    const now = Date.now();
+    const poll = waiting || focus.phase !== 'idle' || settings.get().chatter === 'chatty';
+    const at = poll ? undefined : nextAt(now);
+    dueAt = at === undefined ? (poll ? now + TICK_MS : Number.POSITIVE_INFINITY) : onTick(at, origin || now);
+    armed = { wall: now, mono: performance.now(), zone: zoneKey(now) };
+    arm(wakeDelay(now, poll, at === undefined ? undefined : dueAt));
+  }
+  function arm(ms: number) {
+    clearTimeout(timer);
+    timer = setTimeout(wake, ms);
+    timer.unref();
+  }
+  function wake() {
+    const now = Date.now();
+    // 잠자기, 시계 바꾸기, 시간대 바꾸기면 바로 틱
+    if (wakeNow({ now, mono: performance.now(), zone: zoneKey(now), dueAt, armed })) tick();
+    // 아직이면 같은 때를 향해 다시 잔다 (할 일, 일정, 설정이 바뀌면 soon 이 다시 잡는다)
+    else arm(wakeDelay(now, false, dueAt));
+  }
+  /** 할 일, 일정, 설정, 미루기가 바뀌었다: 조금 뒤 한 번 본다 (연달아 바뀌면 한 번만). 틱 안에서 바꾼 것은 그 틱이 끝나고 다시 잡는다 */
+  let soonTimer: ReturnType<typeof setTimeout> | undefined;
+  function soon() {
+    if (ticking || stopped || soonTimer) return;
+    soonTimer = setTimeout(() => {
+      soonTimer = undefined;
+      tick();
+    }, 300);
+    soonTimer.unref();
+  }
+  const stopSettings = settings.onChange((next, prev) => {
+    // 수다쟁이로 바꾸면 입력과 커서를 다시 15초마다 본다. 드문드문 본 기록은 버린다 (자리를 비웠다 온 것으로 잘못 보지 않게)
+    if (next.chatter === 'chatty' && prev.chatter !== 'chatty') activity = new ActivityWatch();
+    soon();
+  });
+  const onResume = () => soon();
+  powerMonitor.on('resume', onResume);
   // 켜자마자 한 번 (켜 둔 사이 지난 알림, 아침 브리핑). 펫이 자리를 잡을 시간을 준다.
-  setTimeout(tick, 4000).unref();
+  timer = setTimeout(tick, 4000);
+  timer.unref();
 
   return {
     get focus() {
@@ -671,7 +773,15 @@ export function createPlanner(o: PlannerOptions) {
     stopFocus,
     /** 일정이 바뀌었을 때 바로 한 번 본다 (곧 시작하는 일정을 넣은 경우) */
     check: tick,
-    stop: () => clearInterval(timer),
+    /** 저장 파일(할 일, 일정, 알림)이 바뀌었다: 조금 뒤 한 번 본다 */
+    soon,
+    stop: () => {
+      stopped = true;
+      clearTimeout(timer);
+      clearTimeout(soonTimer);
+      stopSettings();
+      powerMonitor.off('resume', onResume);
+    },
     /** 미리 알림 (방금 울린 알림 미루기, main/day-tools.ts) */
     reminders,
   };

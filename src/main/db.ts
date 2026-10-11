@@ -42,6 +42,8 @@ export function openStore(log: (tag: string, ...rest: unknown[]) => void): {
   vacuumInto: (file: string) => void;
   /** 다른 연결(펫 MCP 서버)이 쓰면 바뀌는 수. 바뀌었으면 화면을 다시 그린다 */
   dataVersion: () => number;
+  /** 이 앱이 저장 파일에 쓸 때마다 (쓴 SQL). 플래너가 할 일, 일정, 알림이 바뀌면 다음에 깰 때를 다시 잡는다 */
+  onWrite: (listener: (sql: string) => void) => void;
   /** 저장 파일을 그대로 쓰지 못했으면 그 까닭 */
   trouble?: StoreTrouble;
 } {
@@ -55,7 +57,10 @@ export function openStore(log: (tag: string, ...rest: unknown[]) => void): {
     open = false;
     db.close();
   });
-  const d = db as unknown as Db;
+  const writes = new Set<(sql: string) => void>();
+  const d = watchWrites(db as unknown as Db, (sql) => {
+    for (const w of writes) w(sql);
+  });
   const store = new TodoStore(d);
   const events = new EventStore(d);
   return {
@@ -76,7 +81,28 @@ export function openStore(log: (tag: string, ...rest: unknown[]) => void): {
     exportTodos: () => readExportTodos(d),
     dataVersion: () =>
       open ? Number((d.prepare('pragma data_version').get() as { data_version: number }).data_version) : -1,
+    onWrite: (listener) => writes.add(listener),
     ...(trouble ? { trouble } : {}),
+  };
+}
+
+/** 읽기(select, pragma)가 아닌 문장을 돌린 뒤 알린다. 읽기는 감싸지 않아 그대로다 */
+export function watchWrites(db: Db, onWrite: (sql: string) => void): Db {
+  return {
+    exec: (sql) => db.exec(sql),
+    prepare: (sql) => {
+      const st = db.prepare(sql);
+      if (/^\s*(select|pragma)\b/i.test(sql)) return st;
+      const after = <T>(r: T): T => {
+        onWrite(sql);
+        return r;
+      };
+      return {
+        run: (...p) => after(st.run(...p)),
+        get: (...p) => after(st.get(...p)),
+        all: (...p) => after(st.all(...p)),
+      };
+    },
   };
 }
 

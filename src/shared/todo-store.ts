@@ -476,14 +476,7 @@ export class TodoStore {
    * 마감일만 있으면 마감일이 끝나기 전까지, 시각이 있으면 시각 5분 뒤까지 (지난 마감은 알리지 않는다)
    */
   dueReminders(now: number): Todo[] {
-    const rows = this.#db
-      .prepare(
-        `select * from todo t where done_at is null and deleted_at is null and due is not null
-         and due >= ? and due <= ?
-         and exists (select 1 from reminder r where r.kind = 'todo' and r.ref_id = t.id and r.notified_at is null)
-         order by due, due_min, id`,
-      )
-      .all(this.#day(now - 86_400_000), this.#day(now + REMIND_MAX_MIN * 60_000 + 2 * 86_400_000)) as Row[];
+    const rows = this.#remindRows(now);
     // 알림 표시는 한 번에 읽는다 (예전에는 할 일마다 다시 읽었다). 쓸모없어진 알림은 넘긴 것으로 적는다 (sweep)
     const marks = this.#reminders.many(rows.map((r) => Number(r.id)));
     const list = this.#withReminds(rows, marks);
@@ -493,6 +486,29 @@ export class TodoStore {
     });
     const speak = this.#reminders.sweep(items, marks, now);
     return list.filter((todo) => speak.has(todo.id));
+  }
+
+  /** dueReminders 가 볼 할 일 (안 끝났고 아직 말하지 않은 알림이 있는 것) */
+  #remindRows(now: number): Row[] {
+    return this.#db
+      .prepare(
+        `select * from todo t where done_at is null and deleted_at is null and due is not null
+         and due >= ? and due <= ?
+         and exists (select 1 from reminder r where r.kind = 'todo' and r.ref_id = t.id and r.notified_at is null)
+         order by due, due_min, id`,
+      )
+      .all(this.#day(now - 86_400_000), this.#day(now + REMIND_MAX_MIN * 60_000 + 2 * 86_400_000)) as Row[];
+  }
+
+  /** now 뒤로 가장 먼저 울릴 할 일 알림의 때 (플래너가 그때 깬다). 없으면 undefined. dueReminders 와 같은 할 일만 본다 */
+  nextReminderAt(now: number): number | undefined {
+    const rows = this.#remindRows(now);
+    const marks = this.#reminders.many(rows.map((r) => Number(r.id)));
+    const items = this.#withReminds(rows, marks).flatMap((todo) => {
+      const anchor = todoAnchor(todo);
+      return anchor ? [{ id: todo.id, anchor }] : [];
+    });
+    return this.#reminders.nextFire(items, marks, now);
   }
 
   /** 알렸다: 울릴 때가 지난 알림을 다 알린 것으로 (늦었으면 곧 올 것까지) */

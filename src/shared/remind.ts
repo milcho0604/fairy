@@ -154,6 +154,17 @@ export function planReminders(
   return { speak: true, mark: [...passed, ...soon].map((p) => p.before), skip: [] };
 }
 
+/** 아직 말하지 않은 알림 중 now 뒤로 가장 먼저 울릴 때. 없으면 undefined (플래너가 다음에 깰 때) */
+export function nextFireAt(anchor: Anchor, marks: readonly ReminderMark[], now: number): number | undefined {
+  let next: number | undefined;
+  for (const m of marks) {
+    if (m.notifiedAt !== null) continue;
+    const at = fireAt(anchor, m.before);
+    if (at > now && (next === undefined || at < next)) next = at;
+  }
+  return next;
+}
+
 /**
  * 알림을 새로 걸 때(넣기, 기준 바꾸기, 알림 더하기)의 상태. keep 에 있는 것은 그대로 둔다(이미 말한 알림).
  * 이미 지난 알림은 말없이 넘긴다: 오늘 마감 할 일을 넣자마자 "전날 저녁" 알림이 울리지 않게.

@@ -1,4 +1,4 @@
-// 미리 알림 말풍선 (8판). 일정과 할 일의 여러 알림을 때가 되면 펫이 말한다. 플래너가 15초마다 부른다.
+// 미리 알림 말풍선 (8판). 일정과 할 일의 여러 알림을 때가 되면 펫이 말한다. 플래너가 알림 때(nextAt)에 깨어 부른다.
 // 같은 때 울릴 것이 여럿이면 말풍선 하나로 묶는다 (따로 띄우면 뒤 것이 앞 것을 밀어낸다).
 // 펫이 숨어 있거나(방해 금지, 발표, 숨기기), 집에서 쉬거나, 화면이 잠겼으면 펫이 모아 두었다가 나올 때 말하고(hold),
 // 때가 한참 지났으면 놓친 알림에만 둔다. 'schedule' 종류라 조용히에서도 말하고 시간당 상한에 세지 않는다.
@@ -208,6 +208,14 @@ export function createReminders(o: RemindersOptions) {
 
   return {
     tick,
+    /** now 뒤로 가장 먼저 울릴 알림이나 미룬 알림의 때 (플래너가 그때 깬다). 없으면 undefined */
+    nextAt(now: number): number | undefined {
+      const times = [o.events.nextReminderAt(now), o.todos.nextReminderAt(now), ...snoozed.map((s) => s.at)];
+      return times.reduce<number | undefined>(
+        (m, at) => (at === undefined || (m !== undefined && m <= at) ? m : at),
+        undefined,
+      );
+    },
     /** 방금(30분 안) 울린 알림. 고를 미루기가 없으면 없다 */
     recent(now: number) {
       if (!recent || now - recent.at > RECENT_MS || recent.choices.length === 0) return undefined;

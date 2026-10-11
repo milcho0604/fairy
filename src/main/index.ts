@@ -376,6 +376,7 @@ ready
       exportTodos,
       vacuumInto,
       dataVersion,
+      onWrite,
       trouble,
     } = openStore(log);
     // "오늘 뭐부터 할까?" (채팅 규칙 답, 펫 우클릭 메뉴): 지난 마감 → 오늘 마감 → 중요 → 곧 마감 → 습관, 빈 시간에 집중 칸
@@ -802,6 +803,10 @@ ready
         titleHook.refresh();
       },
       log,
+    });
+    // 할 일, 일정, 알림이 바뀌면 플래너가 다음에 깰 때를 다시 잡는다 (다른 프로세스가 쓴 것은 아래 data_version 이 check 로)
+    onWrite((sql) => {
+      if (/\b(todo|event|reminder)\b/i.test(sql)) planner.soon();
     });
     const panel = createPanel({
       store,

@@ -242,13 +242,7 @@ export class EventStore {
    * 컴퓨터가 꺼져 있던 사이 여러 알림이 지났어도 일정마다 한 번 (planReminders). 알림 없는 종일 일정은 아침 브리핑에 맡긴다
    */
   dueReminders(now: number): CalEvent[] {
-    const rows = this.#db
-      .prepare(
-        `select * from event e where deleted_at is null and start_at > ? and start_at <= ?
-         and exists (select 1 from reminder r where r.kind = 'event' and r.ref_id = e.id and r.notified_at is null)
-         order by start_at, id`,
-      )
-      .all(now - 2 * DAY_MS, now + REMIND_MAX_MIN * 60_000 + 2 * DAY_MS) as Row[];
+    const rows = this.#remindRows(now);
     // 알림 표시는 한 번에 읽는다 (예전에는 일정마다 다시 읽었다). 쓸모없어진 알림은 넘긴 것으로 적는다 (sweep)
     const marks = this.#reminders.many(rows.map((r) => Number(r.id)));
     const list = this.#withReminds(rows, marks);
@@ -258,6 +252,31 @@ export class EventStore {
       now,
     );
     return list.filter((e) => speak.has(e.id));
+  }
+
+  /** dueReminders 가 볼 일정 (아직 말하지 않은 알림이 있는 것) */
+  #remindRows(now: number): Row[] {
+    return this.#db
+      .prepare(
+        `select * from event e where deleted_at is null and start_at > ? and start_at <= ?
+         and exists (select 1 from reminder r where r.kind = 'event' and r.ref_id = e.id and r.notified_at is null)
+         order by start_at, id`,
+      )
+      .all(now - 2 * DAY_MS, now + REMIND_MAX_MIN * 60_000 + 2 * DAY_MS) as Row[];
+  }
+
+  /**
+   * now 뒤로 가장 먼저 울릴 일정 알림의 때 (플래너가 그때 깬다). 없으면 undefined.
+   * dueReminders 와 같은 일정만 본다: 더 먼 것은 이틀 넘게 남아 그사이 다시 묻는다
+   */
+  nextReminderAt(now: number): number | undefined {
+    const rows = this.#remindRows(now);
+    const marks = this.#reminders.many(rows.map((r) => Number(r.id)));
+    return this.#reminders.nextFire(
+      this.#withReminds(rows, marks).map((e) => ({ id: e.id, anchor: eventAnchor(e) })),
+      marks,
+      now,
+    );
   }
 
   /**

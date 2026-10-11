@@ -1,6 +1,6 @@
 // 미리 알림 저장 (db 8판 reminder 표). 일정(EventStore)과 할 일(TodoStore)이 같이 쓴다. 셈은 remind.ts.
 import type { Db } from './db-schema.ts';
-import { type Anchor, armReminders, planReminders, type ReminderMark } from './remind.ts';
+import { type Anchor, armReminders, nextFireAt, planReminders, type ReminderMark } from './remind.ts';
 
 export type ReminderKind = 'event' | 'todo';
 
@@ -93,6 +93,20 @@ export class ReminderStore {
       for (const b of plan.skip) upd.run(this.#kind, id, b);
     }
     return speak;
+  }
+
+  /** 여러 항목 중 now 뒤로 가장 먼저 울릴 알림의 때 (marks 는 many 로 한 번에 읽은 것). 없으면 undefined */
+  nextFire(
+    items: readonly { id: number; anchor: Anchor }[],
+    marks: ReadonlyMap<number, readonly ReminderMark[]>,
+    now: number,
+  ): number | undefined {
+    let next: number | undefined;
+    for (const { id, anchor } of items) {
+      const at = nextFireAt(anchor, marks.get(id) ?? [], now);
+      if (at !== undefined && (next === undefined || at < next)) next = at;
+    }
+    return next;
   }
 
   /** 말했다: 지난 알림(늦었으면 곧 올 것까지)을 말한 것으로, 쓸모없어진 것은 넘긴 것으로 적는다 */
