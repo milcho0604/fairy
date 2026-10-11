@@ -58,7 +58,7 @@ export const en: Translation<typeof ko> = {
   'first.tagTitle': 'Picked without AI, from due dates, stars, and events',
   'first.focus': 'Start focus',
   'first.panel': 'Open panel',
-  'first.menu': 'What first today?',
+  'first.menu': 'What should I do first?',
   'panel.repeat.monthly': 'Monthly',
   'repeat.monthly.added': (v: { d: number; due: string }) =>
     `Added as a monthly repeat on day ${v.d}. First due ${v.due}.`,

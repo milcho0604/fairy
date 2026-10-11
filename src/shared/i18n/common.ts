@@ -6,14 +6,14 @@ export const ko = {
   'common.ok': '확인',
   'common.cancel': '취소',
   'common.defaultPetName': '콩이',
-  // 기본 펫 모습마다의 기본 이름 (콩은 위의 defaultPetName). 이름을 손대지 않았으면 모습을 따라간다
+  // 기본 펫 모습마다의 기본 이름 (콩이는 위의 defaultPetName). 이름을 손대지 않았으면 모습을 따라간다
   'common.petName.cat': '냥이',
   'common.petName.chick': '삐약이',
   'common.petName.dog': '멍멍이',
   'common.petName.bunny': '토순이',
   /** 사진 펫을 이름 없이 만들 때 */
   'common.petName.photo': '찰칵이',
-  'common.petKind.kong': '콩',
+  'common.petKind.kong': '콩이',
   'common.petKind.cat': '냥이',
   'common.petKind.chick': '삐약이',
   'common.petKind.dog': '멍멍이',

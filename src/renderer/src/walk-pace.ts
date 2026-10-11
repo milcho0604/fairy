@@ -52,3 +52,14 @@ export function continueSeg(prev: WalkSeg | undefined, next: Omit<WalkSeg, 'step
   if (!prev || Math.sign(prev.dx) !== Math.sign(next.dx) || next.dx === 0) return undefined;
   return { ...next, steps0: stepsAt(prev, next.start) };
 }
+
+/**
+ * 2D 발 하나가 몸에서 앞뒤로 놓인 자리 (보폭 단위, 앞 +0.25 ~ 뒤 -0.25). 한 걸음(phase 0~1) 동안 발은 반은 들려
+ * 앞으로 나가고(swingAt 부터 반 걸음) 반은 바닥을 딛고 뒤로 밀린다. 딛는 동안 몸이 반 보폭을 가니 디딘 발도 몸에 대해
+ * 반 보폭을 뒤로 가야 바닥에서 미끄러지지 않는다 (예전 2D 는 두 발이 몸에 붙어 같이 미끄러졌다)
+ */
+export function footSlide(phase: number, swingAt: number): number {
+  const p = (((phase - swingAt) % 1) + 1) % 1;
+  if (p < 0.5) return -0.25 + (0.5 * (1 - Math.cos(Math.PI * (p / 0.5)))) / 2;
+  return 0.25 - 0.5 * ((p - 0.5) / 0.5);
+}

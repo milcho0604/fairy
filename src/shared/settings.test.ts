@@ -156,7 +156,7 @@ test('펫 모양 이름은 지금 말로 읽는다', () => {
   } finally {
     setLang('ko');
   }
-  assert.equal(PET_KINDS[0]?.label, '콩');
+  assert.equal(PET_KINDS[0]?.label, '콩이');
 });
 
 test('AI 모델 고르기: 모양이 맞는 것만, 옵션처럼 보이는 값은 버린다', () => {
