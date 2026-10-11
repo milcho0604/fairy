@@ -25,6 +25,21 @@ body {
   cursor: grab;
 }
 
+/* 입체 펫을 그리는 GPU 캔버스 (pet.ts drawLayer). #pet 바로 밑에 겹쳐 두고 마우스는 #pet 이 받는다 */
+#pet-gpu {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+}
+
+#pet-gpu[hidden] {
+  display: none;
+}
+
 /* 말풍선. 크기를 잰 뒤 자리를 받으면(.shown) 보인다. 꼬리는 펫 가운데(--tail-x)를 가리킨다. */
 #bubble {
   position: absolute;

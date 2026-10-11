@@ -56,7 +56,45 @@ function setupCanvas(): [HTMLCanvasElement, CanvasRenderingContext2D] {
   if (!context) throw new Error('2d 컨텍스트를 못 얻었다');
   return [el, context];
 }
-const [canvas, ctx] = setupCanvas();
+const [canvas, cpuCtx] = setupCanvas();
+
+/**
+ * 입체 펫은 GPU 쪽 캔버스(#pet 바로 밑, 마우스는 #pet 이 받는다)에 그린다. 위 2D 캔버스는 CPU 쪽이라 WebGL 그림을
+ * 옮겨 그리면 프레임마다 GPU 에서 읽어 와야 했다 (입체가 2D 보다 약 40% 비싼 까닭, docs/roadmap.md). GPU 캔버스끼리는
+ * GPU 안에서 옮긴다. 2D 펫은 그대로 CPU 캔버스에 (작은 그림이라 CPU 쪽이 싸고 픽셀 판정도 싸다). 처음 쓸 때 만든다
+ */
+let gpuLayer: [HTMLCanvasElement, CanvasRenderingContext2D] | undefined;
+/** 지금 그리는 캔버스 (2D 는 #pet, 입체는 gpuLayer) */
+let ctx = cpuCtx;
+/** 그린 틀 수 (픽셀 판정을 같은 틀 안에서 다시 읽지 않게) */
+let drawn = 0;
+/** 마지막 픽셀 판정. 입체(GPU 캔버스)는 읽을 때마다 GPU 를 기다려서 같은 틀, 같은 픽셀이면 다시 읽지 않는다 */
+let hitCache: { frame: number; x: number; y: number; hit: boolean } | undefined;
+
+function drawLayer(gpu: boolean): CanvasRenderingContext2D {
+  if (gpu && !gpuLayer) {
+    const el = document.createElement('canvas');
+    el.id = 'pet-gpu';
+    el.setAttribute('aria-hidden', 'true');
+    const g = el.getContext('2d');
+    if (!g) return cpuCtx;
+    canvas.before(el);
+    gpuLayer = [el, g];
+    sizeLayer(el, g);
+  }
+  const want = gpu && gpuLayer ? gpuLayer[1] : cpuCtx;
+  if (want !== ctx) {
+    // 다른 캔버스로 옮기면 하던 캔버스는 비운다 (두 그림이 겹쳐 보이지 않게)
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.restore();
+    ctx = want;
+    if (gpuLayer) gpuLayer[0].hidden = ctx === cpuCtx;
+    hitCache = undefined;
+  }
+  return ctx;
+}
 
 // ---- 그리기 루프 ----
 // 정지 상태는 한 번 그리고 멈춘다. 계속 그리면 fps 와 무관하게 CPU 를 먹는다 (L10).
@@ -143,6 +181,8 @@ function frame() {
   // 입체 그리기 모듈을 불러오는 중이면 기다린다 (불러오면 다시 그린다). 2D 를 먼저 그리면 깜빡인다
   if (m3d === 'loading') return;
   const img = m3d ? undefined : pickImage(mood, inputs.hungry);
+  drawLayer(!!m3d);
+  drawn++;
   const looking = peerAt(now);
   const picking = !!carry && now - carry.start < PICK_MS;
   // 2.5D 그림 펫은 가만히 있어도 숨을 쉰다: 부스트 모드(전원 연결)일 때만 8fps (평소엔 다른 움직임이 있을 때만).
@@ -953,29 +993,37 @@ let petBox = { x: 0, y: 0, size: window.innerWidth || CANVAS_SIZE };
 let viewSize = petBox.size;
 
 function fitToScreen() {
-  const dpr = window.devicePixelRatio || 1;
   viewSize = petBox.size;
   // 줄여 풀어 둔 움직이는 그림이 이제 작으면 다시 푼다 (펫 크기, 화면 배율)
   sharpenImages();
-  Object.assign(canvas.style, {
+  const resized = sizeLayer(canvas, cpuCtx);
+  if (gpuLayer && sizeLayer(...gpuLayer) && ctx !== cpuCtx) hitCache = undefined;
+  if (!resized) {
+    requestFrame();
+    return;
+  }
+  // 캔버스 크기를 바꾸면 그림이 지워진다. 다음 틀을 기다리면 빈 캔버스가 한 번 화면에 나가
+  // 커지고 작아지는 동안(집 문 드나들기, 두더지) 펫이 깜빡였다. 바로 다시 그린다
+  clearTimeout(frameTimer);
+  frame();
+}
+
+/** 캔버스 자리와 해상도를 펫 칸에 맞춘다. 해상도를 바꿨으면 true (그림이 지워졌다) */
+function sizeLayer(el: HTMLCanvasElement, g: CanvasRenderingContext2D): boolean {
+  const dpr = window.devicePixelRatio || 1;
+  Object.assign(el.style, {
     left: `${petBox.x}px`,
     top: `${petBox.y}px`,
     width: `${viewSize}px`,
     height: `${viewSize}px`,
   });
   const px = Math.round(viewSize * dpr);
-  if (canvas.width === px && canvas.height === px) {
-    requestFrame();
-    return;
-  }
-  // 캔버스 크기를 바꾸면 그림이 지워진다. 다음 틀을 기다리면 빈 캔버스가 한 번 화면에 나가
-  // 커지고 작아지는 동안(집 문 드나들기, 두더지) 펫이 깜빡였다. 바로 다시 그린다
-  canvas.width = px;
-  canvas.height = px;
+  if (el.width === px && el.height === px) return false;
+  el.width = px;
+  el.height = px;
   const k = (dpr * viewSize) / CANVAS_SIZE;
-  ctx.setTransform(k, 0, 0, k, 0, 0);
-  clearTimeout(frameTimer);
-  frame();
+  g.setTransform(k, 0, 0, k, 0, 0);
+  return true;
 }
 
 function watchPixelRatio() {
@@ -1008,9 +1056,15 @@ function hitTest(wx: number, wy: number): boolean {
   const x = wx - petBox.x;
   const y = wy - petBox.y;
   if (x < 0 || y < 0 || x >= viewSize || y >= viewSize) return false;
-  const dpr = canvas.width / viewSize;
-  const alpha = ctx.getImageData(Math.floor(x * dpr), Math.floor(y * dpr), 1, 1).data[3] ?? 0;
-  return alpha > 16;
+  const g = ctx;
+  const dpr = g.canvas.width / viewSize;
+  const px = Math.floor(x * dpr);
+  const py = Math.floor(y * dpr);
+  const c = hitCache;
+  if (c && c.frame === drawn && c.x === px && c.y === py) return c.hit;
+  const hit = (g.getImageData(px, py, 1, 1).data[3] ?? 0) > 16;
+  hitCache = { frame: drawn, x: px, y: py, hit };
+  return hit;
 }
 
 function setOverPet(hit: boolean) {
