@@ -14,7 +14,7 @@ OUT=/tmp/jj-shots node scripts/dev/settings.mjs     # 설정 창: 이름, 크기
 OUT=/tmp/jj-shots PHOTO=<사진> node scripts/dev/maker.mjs  # 사진으로 페어리 만들기 전체
 ```
 
-- `screens.mjs`: 문서 화면 `docs/assets/screens/pets.png`, `pet-styles.png`, `desktop.png` 를 다시 찍는다. 앱을 직접 띄우고(빈 데이터 폴더, `JJ_NO_FOCUS=1`, 포트 9851/9852) 지어낸 할 일과 일정을 넣어 페어리, 말풍선, 패널을 찍은 뒤 숨은 창에서 한 장으로 합친다. 리눅스에서는 `npm run build && xvfb-run -a -s "-screen 0 1512x982x24" node scripts/dev/screens.mjs [pets|styles|desktop]`. 끝나면 데이터 폴더를 지운다
+- `screens.mjs`: 문서 화면 `docs/assets/screens/` 를 다시 찍는다 (페어리 줄, 모습, 바탕 화면, 설정, 패널, 채팅, 빠른 입력, 시작 안내, 페어리 만들기). 앱을 직접 띄우고(빈 데이터 폴더, `JJ_NO_FOCUS=1`, 포트 9851/9852) 지어낸 할 일, 일정, 메모, 대화를 넣어 창을 2배로 찍은 뒤 숨은 창에서 한 장으로 합친다. 리눅스에서는 `npm run build && xvfb-run -a -s "-screen 0 1512x982x24" node scripts/dev/screens.mjs [pets|styles|desktop|settings|panel|chat|quick|onboarding|maker]`. 만들기 화면은 받아 둔 배경 지우기 모델이 있어야 한다(`JJ_BG_MODEL=<isnet-general-use.onnx>`). 맥 글꼴과 비슷하게 찍으려면 Pretendard 를 fontconfig 로 "Apple SD Gothic Neo" 에 잇는다(`FONTCONFIG_FILE`). 창 화면(설정, 패널, 채팅, 만들기 등)은 찍은 뒤 256색으로 줄여 용량을 반쯤으로 줄였다(Pillow `quantize(256)`, 사진이 든 desktop, pets, pet-styles 는 그대로). 끝나면 데이터 폴더를 지운다
 - `smoke-packaged.mjs`: 설치판(`electron-builder --dir`) 켜 보기 시험. CI 의 리눅스 묶음 시험이 쓴다
 - `cdp.mjs`: 메인 디버거(9229)에서 식 실행(`main`), 창 페이지 찾기(`page`), 화면 찍기, 어두운 모드. 다른 포트로 띄웠으면 `JJ_INSPECT_PORT`, `JJ_PAGE_PORT`
 - 메인 쪽 개발용 손잡이는 `globalThis.__jj` (`src/main/index.ts`, 설치한 앱에는 없다). 상태 넣기: `__jj.chat.debugSetState`, `__jj.pet.debugMoveTo`, `__jj.pet.debugScale`

@@ -35,14 +35,17 @@ input {
   color: inherit;
 }
 
-/* 투명 창 안의 카드. 창 가장자리 여백에 그림자가 들어간다. */
+/* 투명 창 안의 카드. 창 가장자리 여백(6px)에 그림자가 들어간다.
+   그림자가 여백보다 넓으면 창 끝에서 잘려 카드 둘레에 각진 회색 네모가 보였다 (예전 0 6px 20px) */
 .card-window {
   position: absolute;
   inset: 6px;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--panel);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  box-shadow:
+    0 1px 5px rgba(0, 0, 0, 0.16),
+    0 0 1px rgba(0, 0, 0, 0.12);
   overflow: hidden;
 }
 

@@ -16,6 +16,12 @@ interface Paw {
   len: number;
   /** 누를 때 앞발 끝이 닿을 자리 (키보드 윗면) */
   tip: Vector3;
+  /**
+   * 날개만: 어깨에서 끝까지 뻗는 방향을 정해 둔다 (안쪽 아래, 조금 앞). 없으면 어깨에서 닿을 자리를 곧장 본다.
+   * 날개는 옆으로 얇고 위아래로 긴 판이라 곧장 보면 키 위에 똑바로 선 판처럼 볼을 가리고 키를 누르는지 안 보였다.
+   * 안쪽으로 비스듬히 눕히면 어깨에서 키까지 손처럼 뻗어 보인다 (삐약이, 2026-10-11)
+   */
+  lean?: Vector3;
 }
 
 export interface TapRig {
@@ -77,11 +83,14 @@ export function tapRigOf(
     const len = rest.length();
     if (len < 1e-4) continue;
     const side = slot.endsWith('L') ? -1 : 1;
+    const wing = slot.startsWith('wing');
     paws[slot] = {
       pivot,
       rest: rest.normalize(),
       len,
       tip: new Vector3(c.x + side * size.x * 0.2, top, tipZ),
+      // 끝은 키에, 날개 뿌리는 원래 어깨 가까이에 온다
+      ...(wing ? { lean: new Vector3(-side * 0.72, -0.62, 0.32).normalize() } : {}),
     };
   }
   if (Object.keys(paws).length === 0) return undefined;
@@ -128,7 +137,8 @@ export function reachPaw(
   const p = rig.paws[slot];
   if (!p || k <= 0) return;
   tmpTip.copy(target);
-  tmpDir.copy(tmpTip).sub(p.pivot).normalize();
+  if (p.lean) tmpDir.copy(p.lean);
+  else tmpDir.copy(tmpTip).sub(p.pivot).normalize();
   tmpQ.setFromUnitVectors(p.rest, tmpDir);
   joint.quaternion.copy(ID).slerp(tmpQ, k);
   // 돌린 끝에서 닿을 자리까지 모자란 만큼 관절을 옮긴다

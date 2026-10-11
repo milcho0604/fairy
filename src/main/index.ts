@@ -1,6 +1,6 @@
 import { cpus, homedir } from 'node:os';
 import { join } from 'node:path';
-import { app, dialog, globalShortcut, powerMonitor, screen, session } from 'electron';
+import { app, dialog, globalShortcut, Menu, powerMonitor, screen, session } from 'electron';
 import { ACHIEVEMENTS } from '../shared/achieve.ts';
 import { planTodos } from '../shared/ai/answer-todos.ts';
 import { pickLocal } from '../shared/ai/catalog.ts';
@@ -193,6 +193,9 @@ ready
     confineTestDisplay();
     // 펫 앱은 Dock 아이콘 없이 뜬다. 끝내기는 펫 우클릭 메뉴나 메뉴 막대 아이콘에서 한다.
     if (process.platform === 'darwin') app.dock?.hide();
+    // 윈도우, 리눅스는 테두리 있는 창(시작 안내, 설정, 채팅, 만들기, 아는 것)마다 기본 메뉴 막대(File Edit View Window)가 붙었다.
+    // 앱 메뉴를 없앤다. 입력 칸의 Ctrl+C, V, X, A, Z 는 메뉴 없이도 된다. 맥은 기본 앱 메뉴(편집 ⌘C, ⌘V)가 있어야 해서 그대로 둔다
+    else Menu.setApplicationMenu(null);
     // 내 컴퓨터에서 그리기: 앞서 갑자기 꺼져 남은 파이썬, sd-cli, 임시 그림, 지우다 만 폴더를 뒤에서 치운다 (기다리지 않는다)
     sweepLocalDraw(log);
     // 펫 이름은 설정에서 바꿀 수 있어 쓰는 곳마다 지금 값을 읽는다.
