@@ -91,6 +91,7 @@
       applyText();
       renderDownloads();
       if (window.__kongLang) window.__kongLang();
+      if (window.__tourLang) window.__tourLang();
     });
   });
 
@@ -103,7 +104,7 @@
   }
   var navLinks = {};
   each('[data-nav]', function (a) { navLinks[a.getAttribute('data-nav')] = a; });
-  var sectionFor = { features: 'features', pet: 'features', assistant: 'features', ai: 'features', maker: 'maker', privacy: 'privacy', faq: 'faq' };
+  var sectionFor = { features: 'features', pet: 'features', looks: 'features', assistant: 'features', ai: 'features', tour: 'features', maker: 'maker', privacy: 'privacy', faq: 'faq' };
   if ('IntersectionObserver' in window && page === 'home') {
     var visible = {};
     var mark = function () {
@@ -468,6 +469,146 @@
     }
   }
 
+  /* ---------------- real app screens: carousel and a zoomed view ---------------- */
+  // One screen at a time. Moves on by itself every few seconds, except with reduce motion; stops while the pointer is
+  // over it, while something inside has focus, while the zoomed view is open and when it is off screen. The pause
+  // button stops it for good. Arrow keys, Home and End work anywhere inside; swipe on touch screens.
+  function tour() {
+    var box = document.querySelector('[data-carousel]');
+    if (!box) return;
+    var track = box.querySelector('[data-track]');
+    var view = box.querySelector('[data-view]');
+    var slides = Array.prototype.slice.call(box.querySelectorAll('[data-slide]'));
+    var dots = Array.prototype.slice.call(box.querySelectorAll('[data-dot]'));
+    var playBtn = box.querySelector('[data-play]');
+    var dlg = document.querySelector('[data-lightbox]');
+    var n = slides.length, cur = 0, timer = 0;
+    var DELAY = 4500;
+    var stopped = reduceMQ.matches; // the pause button (or reduce motion) turned rotation off
+    var hover = false, focusIn = false, onScreen = true;
+
+    function show(i, fromUser) {
+      cur = (i + n) % n;
+      track.style.transform = 'translateX(' + (-100 * cur) + '%)';
+      slides.forEach(function (s, k) {
+        var on = k === cur;
+        s.setAttribute('aria-hidden', on ? 'false' : 'true');
+        if (on) s.removeAttribute('inert'); else s.setAttribute('inert', '');
+      });
+      dots.forEach(function (d, k) { d.setAttribute('aria-current', k === cur ? 'true' : 'false'); });
+      // only announce changes the visitor asked for, not the timer
+      track.setAttribute('aria-live', fromUser ? 'polite' : 'off');
+      if (dlg && dlg.open) fillBox();
+      schedule();
+    }
+    function running() { return !stopped && !hover && !focusIn && onScreen && !document.hidden && !(dlg && dlg.open); }
+    function schedule() {
+      clearTimeout(timer);
+      timer = 0;
+      if (running()) timer = setTimeout(function () { show(cur + 1, false); }, DELAY);
+    }
+    function labelPlay() {
+      if (!playBtn) return;
+      playBtn.hidden = false;
+      playBtn.setAttribute('data-on', stopped ? 'false' : 'true');
+      playBtn.setAttribute('aria-label', t(stopped ? 'tour.play' : 'tour.pause'));
+    }
+    window.__tourLang = function () { labelPlay(); if (dlg && dlg.open) fillBox(); };
+
+    box.querySelector('[data-prev]').addEventListener('click', function () { show(cur - 1, true); });
+    box.querySelector('[data-next]').addEventListener('click', function () { show(cur + 1, true); });
+    dots.forEach(function (d, k) { d.addEventListener('click', function () { show(k, true); }); });
+    if (playBtn) playBtn.addEventListener('click', function () { stopped = !stopped; labelPlay(); schedule(); });
+
+    box.addEventListener('mouseenter', function () { hover = true; schedule(); });
+    box.addEventListener('mouseleave', function () { hover = false; schedule(); });
+    box.addEventListener('focusin', function () { focusIn = true; schedule(); });
+    box.addEventListener('focusout', function (e) { if (!box.contains(e.relatedTarget)) { focusIn = false; schedule(); } });
+    box.addEventListener('keydown', function (e) {
+      var k = e.key;
+      if (k !== 'ArrowLeft' && k !== 'ArrowRight' && k !== 'Home' && k !== 'End') return;
+      e.preventDefault();
+      var a = document.activeElement;
+      var dot = dots.indexOf(a);
+      var onDot = dot >= 0;
+      // the focused slide goes inert when it slides away, so carry focus to the new one
+      var inSlide = !!(a && a.closest && a.closest('[data-slide]'));
+      var from = onDot ? dot : cur;
+      show(k === 'Home' ? 0 : k === 'End' ? n - 1 : from + (k === 'ArrowLeft' ? -1 : 1), true);
+      if (onDot) dots[cur].focus();
+      else if (inSlide) { var z = slides[cur].querySelector('[data-zoom]'); if (z) z.focus(); }
+    });
+    if (reduceMQ.addEventListener) reduceMQ.addEventListener('change', function () { stopped = reduceMQ.matches; labelPlay(); schedule(); });
+    document.addEventListener('visibilitychange', schedule);
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(function (es) { onScreen = es[0].isIntersecting; schedule(); }, { threshold: 0.35 }).observe(box);
+    }
+
+    // swipe: a mostly sideways move of 40px or more turns the page (vertical moves keep scrolling the page)
+    var sx = 0, sy = 0, swiping = false, swiped = false;
+    view.addEventListener('pointerdown', function (e) { if (e.pointerType === 'mouse') return; sx = e.clientX; sy = e.clientY; swiping = true; swiped = false; });
+    view.addEventListener('pointerup', function (e) {
+      if (!swiping) return;
+      swiping = false;
+      var dx = e.clientX - sx, dy = e.clientY - sy;
+      if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.2) { swiped = true; show(cur + (dx < 0 ? 1 : -1), true); }
+    });
+    view.addEventListener('pointercancel', function () { swiping = false; });
+
+    /* zoomed view: <dialog> keeps focus inside and closes on Esc by itself */
+    if (dlg && dlg.showModal) {
+      var big = dlg.querySelector('[data-lb-img]');
+      var cap = dlg.querySelector('[data-lb-cap]');
+      var opener = null;
+      var fillBox = function () {
+        var z = slides[cur].querySelector('[data-zoom]');
+        var im = z.querySelector('img');
+        big.loading = 'eager';
+        big.src = z.getAttribute('data-full');
+        big.setAttribute('width', im.getAttribute('width'));
+        big.setAttribute('height', im.getAttribute('height'));
+        cap.textContent = slides[cur].querySelector('.car-cap').textContent + ' (' + (cur + 1) + ' / ' + n + ')';
+      };
+      slides.forEach(function (s) {
+        s.querySelector('[data-zoom]').addEventListener('click', function (e) {
+          if (swiped) { swiped = false; e.preventDefault(); return; }
+          opener = e.currentTarget;
+          fillBox();
+          dlg.showModal();
+          root.classList.add('lb-open');
+          schedule();
+        });
+      });
+      var closeBox = function () { if (dlg.open) dlg.close(); };
+      dlg.addEventListener('close', function () {
+        root.classList.remove('lb-open');
+        // the slide may have changed inside: give focus to the button of the screen now showing
+        var z = slides[cur].querySelector('[data-zoom]');
+        (z || opener).focus();
+        schedule();
+      });
+      dlg.querySelector('[data-lb-close]').addEventListener('click', closeBox);
+      dlg.querySelector('[data-lb-prev]').addEventListener('click', function () { show(cur - 1, true); });
+      dlg.querySelector('[data-lb-next]').addEventListener('click', function () { show(cur + 1, true); });
+      // a click on the dark backdrop (the dialog itself, outside the picture and buttons) closes
+      dlg.addEventListener('click', function (e) { if (e.target === dlg) closeBox(); });
+      dlg.addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowLeft') { e.preventDefault(); show(cur - 1, true); }
+        else if (e.key === 'ArrowRight') { e.preventDefault(); show(cur + 1, true); }
+      });
+      var lx = 0, ly = 0;
+      dlg.addEventListener('pointerdown', function (e) { lx = e.clientX; ly = e.clientY; });
+      dlg.addEventListener('pointerup', function (e) {
+        if (e.pointerType === 'mouse') return;
+        var dx = e.clientX - lx, dy = e.clientY - ly;
+        if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.2) show(cur + (dx < 0 ? 1 : -1), true);
+      });
+    }
+
+    labelPlay();
+    show(0, false);
+  }
+
   /* ---------------- go ---------------- */
   // Jua never came (blocked, offline): let the hero title wrap again in the fallback font
   if (document.fonts && document.fonts.check) setTimeout(function () { if (!document.fonts.check('1em Jua', '화')) root.classList.add('no-jua'); }, 3500);
@@ -476,4 +617,5 @@
   detectOS().then(function (o) { OS = o; renderDownloads(); });
   getRelease().then(function (r) { REL = r; renderDownloads(); });
   kong();
+  tour();
 })();

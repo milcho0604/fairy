@@ -14,14 +14,14 @@ site/
 ├── 404.html
 ├── assets/
 │   ├── site.css        ← source stylesheet; build.mjs inlines it into each page
-│   ├── app.js          ← language switch, OS detection, release fetch, Bean walking the hero floor
+│   ├── app.js          ← language switch, OS detection, release fetch, Bean walking the hero floor, screens carousel
 │   ├── og.png          ← 1200x630 share card (made by tools/og.mjs)
-│   ├── img/            ← webp made from docs/assets/screens (tools/images.py, tools/kong_sprite.py)
+│   ├── img/            ← webp/avif from the app (tools/capture.mjs, tools/pets.mjs, tools/images.py)
 │   └── icons/          ← favicons from build/icon.png
 ├── sitemap.xml, robots.txt, site.webmanifest   ← written by tools/build.mjs
 ├── vercel.json         ← security headers (CSP) and image caching for Vercel
 ├── .vercelignore       ← keeps tools/ and this README off the deployed site
-└── tools/              ← build.mjs, og.mjs + og.html, images.py, kong_sprite.py, capture.mjs + shots.py (not deployed)
+└── tools/              ← build.mjs, og.mjs + og.html, images.py, capture.mjs, pets.mjs + app.mjs, shots.py, kong_sprite.py (not deployed)
 ```
 
 Preview locally: `python3 -m http.server -d site 8080` → http://localhost:8080 (add `?lang=en` for English).
@@ -72,17 +72,29 @@ All pictures are the real app screenshots from `docs/assets/screens/` (the to-do
 
 Re-run both after re-shooting the screens with `scripts/dev/screens.mjs`.
 
+**Sharp on retina.** Every picture has a file at twice the CSS size it is shown at (strips 1140px wide come in
+2280/1520/760, chat 760/400, the hero panel 706/353), picked with `srcset`. Strips and the panel also have an AVIF next to
+the webp in a `<picture>`; Bean's sprite uses CSS `image-set()` (AVIF, webp fallback). The fairy pictures and Bean's walk
+are shot fresh from the app at 4x by `tools/pets.mjs` (pet scale 2, device scale 2, transparent, app clock frozen so
+each walk and dance step is exact); `kong_sprite.py` (the old cut-out of `hero.webp`) is no longer needed for the site.
+The maker steps 2 and 3 need the 178MB background model (`BG_MODEL=...`); without it `maker-steps` stays as it is.
+
 The panel, chat, AI picker, quick-add bar, first-run look picker and the three maker steps can also be re-shot
 straight from the current app, with made-up data, without touching `docs/`:
 
 ```bash
 npm run build
 python3 site/tools/shots.py photo /tmp/shots/photo.png         # sample photo: Milk on a soft backdrop
-OUT=/tmp/shots node site/tools/capture.mjs                     # test instance: JJ_NO_FOCUS=1, empty data folder, ports 9851/9852
-python3 site/tools/shots.py compose /tmp/shots                 # lays the window captures out like the old screens
-SCREENS=/tmp/shots/screens python3 site/tools/images.py        # webp; anything missing there comes from docs/
-node site/tools/og.mjs                                         # the share card uses hero-panel.webp
+OUT=/tmp/shots node site/tools/capture.mjs                     # test instance: JJ_NO_FOCUS=1, empty data folder, no network, ports 9851/9852
+python3 site/tools/shots.py compose /tmp/shots                 # 2x layouts, hero cut-outs, tour/*.png for the carousel
+OUT=/tmp/pets node site/tools/pets.mjs                         # fairies, looks, moods and Bean's walk at 4x (same test-instance rules)
+python3 site/tools/shots.py pets /tmp/pets                     # pets and moods strips, look cut-outs, kong-sprite.png/json
+SCREENS=/tmp/shots/screens PETS=/tmp/pets/screens python3 site/tools/images.py   # webp + avif; missing ones come from docs/
+node site/tools/og.mjs                                         # the share card uses hero-panel-706.webp (PLAYWRIGHT_CHROMIUM=<binary> if needed)
 ```
+
+`images.py` also re-encodes `milk-*`, `choco-*` and the icons from their sources; if their pixels did not change, keep
+the committed files (`git checkout -- site/assets/icons site/assets/img/milk-* site/assets/img/choco-*`).
 
 On Linux run it on its own Xvfb display; `BG_MODEL=<isnet-general-use.onnx>` skips the 170MB model download and
 `JJ_ORT_WASM_URL` is passed through (see `scripts/dev/README.md`). If an image's size changes, update its
