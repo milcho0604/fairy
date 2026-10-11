@@ -105,6 +105,9 @@ export interface PanelOptions {
   /** 집 단계가 바뀌었다 */
   /** 집 단계가 올랐거나(level) 모양을 바꿨다(style) */
   onHouseChanged: (what: 'level' | 'style') => void;
+  /** 집을 숨겨 두었는지, 숨기기와 다시 보이기 (shared/house-stow.ts) */
+  houseHidden: () => boolean;
+  setHouseHidden: (on: boolean) => void;
   /** 놀이 시작 (공놀이, 산책) */
   play: (kind: PlayKind) => void;
   achieve: () => PanelState['achieve'];
@@ -179,6 +182,7 @@ export function createPanel(o: PanelOptions) {
       shop: {
         ...o.shop.state(),
         foodImages: Object.fromEntries(o.shop.state().customFoods.map((f) => [f.key, o.foodImage(f.image)])),
+        houseHidden: o.houseHidden(),
       },
       ...(week(now, open) ?? {}),
     };
@@ -584,6 +588,9 @@ export function createPanel(o: PanelOptions) {
     push();
     if (r.ok && o.shop.state().houseStyle !== before) o.onHouseChanged('style');
     return r;
+  });
+  ipcMain.on(PANEL.setHouseHidden, (e, on: unknown) => {
+    if (ours(e) && typeof on === 'boolean') o.setHouseHidden(on);
   });
   ipcMain.handle(PANEL.feedWith, (e, key: string) => {
     if (!ours(e) || typeof key !== 'string') return { ok: false };

@@ -88,3 +88,60 @@ export function decideUpdate(json: unknown, current: string): UpdateDecision {
 export function confirmedForce(first: UpdateDecision, second: UpdateDecision): boolean {
   return first.kind === 'force' && second.kind === 'force' && first.minVersion === second.minVersion;
 }
+
+/** 강제 업데이트 잠금. 켤 때 바로 잠그려고 사용자 데이터 폴더(update-lock.json)에 남긴다 */
+export interface SavedLock {
+  version: string;
+  url: string;
+  minVersion: string;
+}
+
+/** 저장한 잠금을 믿는 기간. 이보다 오래 확인이 계속 실패했으면(릴리스가 사라졌거나 오래 오프라인) 버린다 */
+export const SAVED_LOCK_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+
+/**
+ * 저장해 둔 잠금을 읽는다. 지금 버전으로 여전히 잠가야 할 때만 돌려준다 (decideUpdate 의 force 조건과 같다).
+ * 업데이트해서 최소 버전 이상이 됐거나, 모양이 이상하거나, 저장한 지 SAVED_LOCK_MAX_AGE_MS 가 지났으면
+ * undefined (부르는 쪽이 파일을 지운다).
+ */
+export function readSavedLock(raw: unknown, current: string, now = Date.now()): SavedLock | undefined {
+  if (typeof raw !== 'object' || raw === null || !parseVersion(current)) return undefined;
+  const r = raw as Record<string, unknown>;
+  const { version, url, minVersion, savedAt } = r;
+  if (savedAt !== undefined && (typeof savedAt !== 'number' || !(now - savedAt <= SAVED_LOCK_MAX_AGE_MS)))
+    return undefined;
+  if (typeof version !== 'string' || typeof url !== 'string' || typeof minVersion !== 'string')
+    return undefined;
+  if (!parseVersion(version) || !parseVersion(minVersion) || !url.startsWith('https://github.com/'))
+    return undefined;
+  if (!isNewer(version, current) || !isNewer(minVersion, current) || isNewer(minVersion, version))
+    return undefined;
+  return { version, url, minVersion };
+}
+
+/**
+ * 자동 확인에서 찾은 새 버전(강제 아님)을 말풍선으로 알릴지. 설정 "새 버전 알림"을 끄면 알리지 않는다.
+ * 꺼져 있어도 확인은 한다: 강제 업데이트(잠금)와 잠금 풀기는 이 설정과 상관없다 (main/update.ts check).
+ */
+export function notifyPlan(o: {
+  manual: boolean;
+  updateCheck: boolean;
+  skipVersion?: string;
+  version: string;
+}): 'notify' | 'off' | 'skipped' {
+  if (o.manual) return 'notify';
+  if (!o.updateCheck) return 'off';
+  return o.skipVersion === o.version ? 'skipped' : 'notify';
+}
+
+/** 눌러 닫은 강제 안내를 다시 띄우는 간격 */
+export const NAG_DISMISSED_MS = 500;
+/**
+ * 강제 안내가 다른 말풍선에 밀렸거나 못 떴을 때 다시 띄우는 간격. 보통 말풍선이 떠 있는 시간(8초)쯤 보여 준 뒤 되찾는다.
+ * 예전 60초는 잠긴 채 안내가 1분 가까이 사라졌다 (2026-10-12 점검).
+ */
+export const NAG_PUSHED_MS = 10_000;
+
+export function nagDelayMs(answer: string | undefined): number {
+  return answer === 'dismiss' ? NAG_DISMISSED_MS : NAG_PUSHED_MS;
+}

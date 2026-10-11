@@ -7,6 +7,7 @@ import { pickLocal } from '../shared/ai/catalog.ts';
 import { contextEvents, todayRange } from '../shared/ai/context-events.ts';
 import { persona, setMemorySource, setStyleSource, todoContext } from '../shared/ai/persona.ts';
 import { HIDE_SEEK, pickHideSpot } from '../shared/hide-seek.ts';
+import { houseMenuKey, houseNewsKey, stowSayKey, stowStep } from '../shared/house-stow.ts';
 import { locale, t } from '../shared/i18n/index.ts';
 import { IPC, type PetStatus, type PlayKind } from '../shared/ipc.ts';
 import { type FactKind, factsForAi } from '../shared/knows.ts';
@@ -306,6 +307,12 @@ ready
         toggleFocus: () => (planner.focus.phase === 'idle' ? planner.startFocus() : planner.stopFocus()),
         openKnows: () => knows.open(),
         whatFirst: () => sayWhatFirst(),
+        // 집 숨기기, 다시 보이기 (shared/house-stow.ts). 집을 숨기면 집 우클릭을 못 하니 펫 메뉴에 둔다
+        houseItem: () => {
+          const hidden = settings.get().houseHidden;
+          const key = houseMenuKey(shop.state().houseLevel, hidden);
+          return key ? { label: t(key), click: () => setHouseHidden(!hidden) } : undefined;
+        },
       },
       log,
       onMissed: () => panel.refresh(),
@@ -586,6 +593,7 @@ ready
         if (rest.inside()) void rest.call();
       },
       restItem: () => rest.menuItem(),
+      onStow: () => setHouseHidden(true),
       log,
     });
     const houseLook = () => {
@@ -594,6 +602,34 @@ ready
     };
     let playing = false;
     const rest = createHouseRest({ pet, house, petName, playing: () => playing, log });
+    // ---- 집 숨기기 (2026-10-12, shared/house-stow.ts) ----
+    // 저장한 값(설정 houseHidden)대로 처음부터 감춘다. 다시 켜도 숨긴 그대로이고 말은 하지 않는다
+    house.stow(settings.get().houseHidden);
+    function setHouseHidden(on: boolean) {
+      settings.set({ houseHidden: on });
+    }
+    /** 바꾸기 차례 번호. 펫이 나오기를 기다리는 사이에 다시 바꾸면 앞 차례는 그만둔다 */
+    let stowRun = 0;
+    /** 설정이 바뀌면 집을 맞춘다 (메뉴, 상점, 백업 가져오기 모두 여기로). 집 안에 있던 펫은 먼저 걸어 나온다 */
+    async function applyHouseStow(on: boolean) {
+      const mine = ++stowRun;
+      // 나오는 데 2초 남짓. 무엇에 걸려도 10초 뒤에는 숨긴다
+      for (let i = 0; on && i < 100; i++) {
+        const step = stowStep(rest.phase(), rest.doorBusy());
+        if (step === 'now') break;
+        if (step === 'call') await rest.call(false);
+        else await new Promise((done) => setTimeout(done, 100));
+        if (mine !== stowRun) return;
+      }
+      house.stow(on);
+      log('house', on ? 'stow' : 'unstow');
+      panel.refresh();
+      if (shop.state().houseLevel > 0 && !pet.isHidden())
+        void pet.say({ kind: 'answer', text: voiced(stowSayKey(on)), ttlMs: 4000 });
+    }
+    settings.onChange((next, prev) => {
+      if (next.houseHidden !== prev.houseHidden) void applyHouseStow(next.houseHidden);
+    });
     /** 공놀이(공이나 털실이 있어야), 산책. 노는 중이면 무시 */
     async function play(kind: PlayKind, walkMin = 5): Promise<boolean> {
       if (playing) return false;
@@ -903,12 +939,15 @@ ready
       },
       openFoodMaker: () => maker.open('food'),
       removeFoodImage,
+      houseHidden: () => settings.get().houseHidden,
+      setHouseHidden,
       onHouseChanged: (what) => {
         house.show(houseLook(), pet.bounds());
         if (!house.bounds()) rest.houseGone();
         void pet.say({
           kind: 'answer',
-          text: voiced(what === 'style' ? 'pet.houseStyle' : 'pet.newHouse'),
+          // 숨겨 둔 동안이면 꺼내야 보인다고 (숨긴 채로 둔다)
+          text: voiced(houseNewsKey(what, settings.get().houseHidden)),
           ttlMs: 4000,
         });
       },
@@ -1582,6 +1621,7 @@ ready
           shop,
           house,
           rest,
+          setHouseHidden,
           toggleHidden,
           play,
           updates,

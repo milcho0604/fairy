@@ -794,6 +794,7 @@ export const PANEL = {
   buyToy: 'panel:buy-toy',
   buyHouse: 'panel:buy-house',
   buyHouseStyle: 'panel:buy-house-style',
+  setHouseHidden: 'panel:set-house-hidden',
   feedWith: 'panel:feed-with',
   makeFood: 'panel:make-food',
   removeFood: 'panel:remove-food',
@@ -851,7 +852,7 @@ export interface PanelState {
   /** 짝꿍 일기 (최근 것부터, 기록 있는 날만) */
   diary: DiaryEntry[];
   /** 상점 (v1). 커스텀 먹이 그림은 data URL 로 */
-  shop: ShopState & { foodImages: Record<string, string> };
+  shop: ShopState & { foodImages: Record<string, string>; houseHidden: boolean };
   /** 이번 주 돌아보기 (shared/week.ts). 기록을 못 읽으면 없다 */
   week?: WeekSummary;
 }
@@ -1016,6 +1017,8 @@ export interface PanelBridge {
   buyHouse(level: number): Promise<BuyResult>;
   /** 집 모양: 없으면 사고, 있으면 공짜로 바꾼다 */
   buyHouseStyle(style: HouseStyle): Promise<BuyResult>;
+  /** 집 숨기기, 다시 보이기 (shared/house-stow.ts) */
+  setHouseHidden(on: boolean): void;
   /** 이 먹이를 준다 (기본, 간식, 케이크, 커스텀) */
   feedWith(key: string): Promise<{ ok: boolean; error?: string }>;
   /** 커스텀 먹이 만들기 창을 연다. 코인이 모자라면 오류 */

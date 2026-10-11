@@ -199,6 +199,15 @@ export function ShopTab({ s }: { s: PanelState }) {
             </>
           )}
         </div>
+        {/* 집을 숨겨 두었으면 사고 바꾸기는 그대로 되고, 화면에 보이려면 꺼내야 한다고 알린다 (shared/house-stow.ts) */}
+        {level > 0 && shop.houseHidden && (
+          <div className="row-line">
+            <span>{t('shop.houseHidden')}</span>
+            <button type="button" className="ghost small" onClick={() => bridge.setHouseHidden(false)}>
+              {t('shop.houseShow')}
+            </button>
+          </div>
+        )}
         {level > 0 && (
           <>
             <h3 className="sub">
