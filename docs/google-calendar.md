@@ -17,6 +17,7 @@
    - 대상(Audience): **외부(External)**. 내부는 Google Workspace 조직 안에서만 된다
 4. **권한(Data access)**: 범위 추가 → `https://www.googleapis.com/auth/calendar.events` **하나만**.
    "모든 캘린더의 일정 보기 및 수정" 이다. 캘린더 목록, 공유 설정, 다른 캘린더 정보는 못 본다. 구글 분류로는 "민감한 범위(sensitive)"이고 "제한된 범위(restricted)"가 아니다
+   - **왜 더 좁은 범위가 아닌가 (2026-10-11 점검):** 더 좁은 `calendar.app.created`(짝꿍이 만든 캘린더만)가 있지만, 그러면 사용자가 고른 기존 캘린더(기본 캘린더 포함)에 넣을 수 없고 짝꿍 전용 캘린더를 새로 만들어야 한다. 지금 쓰는 사람들의 "기본 캘린더로 보내기"와 이미 보낸 일정이 끊기므로 이번에는 범위를 그대로 둔다. 후속 과제: "짝꿍 캘린더 만들기"를 기본으로 하고 `calendar.app.created` 로 옮기는 것(옮길 때 이미 보낸 일정은 새 캘린더로 events.move, 범위가 바뀌어 모두 한 번 다시 연결). 그 전까지 짝꿍은 `calendar.events` 로도 자기가 넣은 일정(`google_id` 가 있는 것)만 고치고 지운다
 5. **대상 → 테스트 사용자**: 게시 상태는 **테스트(Testing)** 로 둔다. 쓸 사람의 구글 메일을 넣는다 (**100명까지**).
    테스트 사용자가 아닌 계정으로 연결하면 구글이 "액세스 차단됨"을 보인다
 6. **클라이언트 만들기**: 클라이언트 → 클라이언트 만들기 → 애플리케이션 유형 **데스크톱 앱** → 이름 `jjakkung desktop` → 만들기.
@@ -68,7 +69,7 @@
 
 - 코드: `src/main/gcal-auth.ts`(OAuth, API 부르기, 루프백 서버), `src/main/gcal-sync.ts`(한 차례 보내기), `src/main/gcal.ts`(토큰 보관, 일정 맞추기, 설정 창 IPC), `src/shared/gcal.ts`(일정 → 구글 일정, 지문, 다시 하기 간격), `src/shared/gcal-store.ts`(저장 파일), 설정 창 `src/renderer/src/settings/GoogleCalendarBox.tsx`
 - **OAuth**: 설치 앱용 Authorization Code + PKCE(S256). `127.0.0.1` 빈 포트에 잠깐 서버를 열고, `state` 를 맞춰 본 뒤(틀리면 무시), code 를 토큰으로 바꾸고 서버를 닫는다. `access_type=offline` + `prompt=consent` 로 refresh token 을 받는다
-- **토큰**: refresh token 만 사용자 데이터 폴더의 `google-token.json`(0600)에 둔다. access token 은 메모리에만. 설정, 백업(`backup.ts` FILES), 기록, 창에는 넘기지 않는다 (창은 상태만 받는다). 켜고 끄기와 캘린더 ID 는 `google-calendar.json`
+- **토큰**: refresh token 만 사용자 데이터 폴더의 `google-token.json`(0600)에 둔다. 운영체제 열쇠(맥 키체인, 윈도우 DPAPI, 리눅스 libsecret)로 암호화할 수 있으면 Electron safeStorage 로 암호화해 두고, 예전 평문 파일은 읽을 때 바꿔 쓴다(`src/main/secret-file.ts`). 리눅스에서 열쇠고리가 없으면 평문 0600 그대로. 다른 컴퓨터로 옮긴 파일은 풀 수 없어 다시 연결해야 한다. access token 은 메모리에만. 설정, 백업(`backup.ts` FILES), 기록, 창에는 넘기지 않는다 (창은 상태만 받는다). 켜고 끄기와 캘린더 ID 는 `google-calendar.json`
 - **네트워크**: 모두 메인에서 Electron `net.fetch`, 하나에 20초 제한
 - **저장 파일 10판**: `event.google_id`(짝꿍이 미리 정해 보내는 구글 id, `jjk` + base32hex), `google_cal`(보낸 캘린더), `google_hash`(마지막으로 보낸 내용의 지문, 구글에서 지웠으면 `deleted`), `google_uid`(구글이 준 iCalUID)
 - **보낼 것 = 저장 파일**: 따로 줄을 두지 않는다. 짝꿍이 넣은 일정(`source = local`) 중 지금 내용의 지문이 마지막으로 보낸 것과 다르면 보내고, 지운 일정에 구글 id 가 있으면 구글에서도 지운다. 그래서 앱이 꺼지거나 인터넷이 끊겨도, 펫 MCP 서버(다른 프로세스)가 고쳐도 그대로 따라간다. 일정이 바뀌면 1.5초 뒤, 아니면 5분마다
