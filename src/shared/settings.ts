@@ -136,6 +136,8 @@ export interface Settings {
   readAloud: boolean;
   /** 맥 메뉴 막대 아이콘 옆에 다음 일정이나 집중 남은 시간 (편의, 기본 끔: 제목이 화면에 늘 보인다) */
   trayTitle: boolean;
+  /** 집 숨기기 (2026-10-12, shared/house-stow.ts): 화면의 집을 숨겨 둔다. 자리, 단계, 모양은 그대로 */
+  houseHidden: boolean;
   /** 배터리 절약을 펫이 한 번 알렸는지 (처음 배터리로 바뀔 때 한 번, "그대로 움직이기" 단추와 함께) */
   saverTold: boolean;
   /**
@@ -357,6 +359,7 @@ export const DEFAULT_SETTINGS: Settings = {
   batterySaver: 'auto',
   readAloud: true,
   trayTitle: false,
+  houseHidden: false,
   saverTold: false,
   dayRhythm: true,
   diaryAi: false,
@@ -515,6 +518,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     batterySaver: isSaverMode(r.batterySaver) ? r.batterySaver : base.batterySaver,
     readAloud: bool(r.readAloud, base.readAloud),
     trayTitle: bool(r.trayTitle, base.trayTitle),
+    houseHidden: bool(r.houseHidden, base.houseHidden),
     saverTold: bool(r.saverTold, base.saverTold),
     dayRhythm: bool(r.dayRhythm, base.dayRhythm),
     diaryAi: bool(r.diaryAi, base.diaryAi),

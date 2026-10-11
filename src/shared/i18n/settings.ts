@@ -293,7 +293,7 @@ export const ko = {
   'settings.update': '업데이트',
   'settings.updateCheck': '새 버전 알림',
   'settings.updateHint':
-    '하루에 한 번 새 버전이 나왔는지 보고, 나왔으면 페어리가 알려 줘. 설치판은 미리 받아 두고, "다시 켜서 업데이트"를 누를 때 설치해. 꼭 필요한 업데이트가 나오면 업데이트 전까지 AI 대화가 잠겨 (확인을 못 하면 잠그지 않아). 앱 이름과 버전 말고는 보내지 않아.',
+    '하루에 한 번 새 버전이 나왔는지 보고, 나왔으면 페어리가 알려 줘. 설치판은 미리 받아 두고, "다시 켜서 업데이트"를 누를 때 설치해. 꼭 필요한 업데이트가 나오면 업데이트 전까지 AI 대화가 잠겨 (확인을 못 하면 잠그지 않아). 꺼 두면 새 버전 말풍선만 쉬고, 꼭 필요한 업데이트는 계속 확인해. 앱 이름과 버전 말고는 보내지 않아.',
   'settings.checkNow': '지금 확인',
   'settings.onboardingAgain': '시작 안내 다시 보기',
 
@@ -679,7 +679,7 @@ export const en: Translation<typeof ko> = {
   'settings.update': 'Updates',
   'settings.updateCheck': 'New version alerts',
   'settings.updateHint':
-    'Checks once a day for a new version, and your fairy lets you know. The installed app downloads ahead and installs when you press "Restart to update". If a required update comes out, AI chat is locked until you update (never when the check fails). Only the app name and version are sent.',
+    'Checks once a day for a new version, and your fairy lets you know. The installed app downloads ahead and installs when you press "Restart to update". If a required update comes out, AI chat is locked until you update (never when the check fails). Turning this off only silences new version bubbles; required updates are still checked. Only the app name and version are sent.',
   'settings.checkNow': 'Check now',
   'settings.onboardingAgain': 'Show the intro again',
 

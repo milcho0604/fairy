@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { fadeBelow, neckOf, opaqueRect, solidRect, squareAround } from './pet-face.ts';
+import { fadeBelow, headCut, neckOf, opaqueRect, solidRect, squareAround } from './pet-face.ts';
 
 /** w×h 투명 그림에 불투명 사각형들을 칠한 RGBA */
 function paint(
@@ -59,6 +59,67 @@ test('목 짐작: 동그란 몸은 목이 없고, 머리 아래 좁아졌다 넓
   assert.ok(b);
   const neck = neckOf(tall, 60, b);
   assert.ok(neck !== undefined && neck >= 24 && neck < 26, `목 줄 ${neck}`);
+});
+
+test('자를 줄: 늘어진 귀 끝은 목이 아니다, 머리 너비만큼은 남긴다 (초코 얼굴이 코 밑에서 잘림)', () => {
+  // 곱슬 머리 꼭대기 (2~10), 머리와 양옆으로 늘어진 귀 (10~40, 너비 56), 귀 아래 입과 혀 (40~56, 너비 24),
+  // 그 아래 넓어지는 가슴과 몸 (56~100)
+  const poodle = paint(70, 104, [
+    [25, 2, 45, 10],
+    [7, 10, 63, 40],
+    [23, 40, 47, 56],
+    [15, 56, 55, 100],
+  ]);
+  const b = solidRect(poodle, 70, 104);
+  assert.ok(b);
+  const neck = neckOf(poodle, 70, b);
+  assert.ok(neck !== undefined && neck < 56, `목 짐작은 입 언저리 ${neck}`);
+  const cut = headCut(poodle, 70, b);
+  // 맨 위(2)에서 머리 너비(56)까지: 혀 끝(56)이 남는다
+  assert.equal(cut, 58);
+
+  // 귀가 선 고양이: 목이 머리 너비보다 깊으면 목 그대로
+  const cat = paint(60, 120, [
+    [16, 4, 22, 14],
+    [38, 4, 44, 14],
+    [14, 14, 46, 50],
+    [24, 50, 36, 54],
+    [8, 54, 52, 118],
+  ]);
+  const c = solidRect(cat, 60, 120);
+  assert.ok(c);
+  assert.equal(headCut(cat, 60, c), neckOf(cat, 60, c));
+
+  // 넓적한 얼굴 (머리 너비 90 이 머리 키보다 크다): 목 아래 넓은 몸통까지 내려가지 않는다
+  const wide = paint(130, 210, [
+    [25, 10, 35, 22],
+    [95, 10, 105, 22],
+    [20, 22, 110, 70],
+    [45, 70, 85, 76],
+    [10, 76, 120, 200],
+  ]);
+  const wb = solidRect(wide, 130, 210);
+  assert.ok(wb);
+  const wn = neckOf(wide, 130, wb);
+  const wc = headCut(wide, 130, wb);
+  assert.ok(wn !== undefined && wc !== undefined && wc <= 76, `넓적한 얼굴 자를 줄 ${wc}, 목 ${wn}`);
+
+  // 귀가 옆으로 퍼진 그림: 바닥까지 가 버려도 자르지 않는 게 아니라 목에서 자른다
+  const ears = paint(140, 130, [
+    [10, 10, 130, 20],
+    [40, 20, 100, 60],
+    [55, 60, 85, 64],
+    [30, 64, 110, 120],
+  ]);
+  const eb = solidRect(ears, 140, 130);
+  assert.ok(eb);
+  assert.equal(headCut(ears, 140, eb), neckOf(ears, 140, eb));
+
+  // 동그란 몸은 자르지 않는다
+  const round = paint(40, 40, [[5, 8, 35, 36]]);
+  const r = solidRect(round, 40, 40);
+  assert.ok(r);
+  assert.equal(headCut(round, 40, r), undefined);
 });
 
 test('목 아래 지우기: 위는 그대로, 경계는 부드럽게, 아래는 투명', () => {

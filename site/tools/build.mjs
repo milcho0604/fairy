@@ -36,7 +36,7 @@ function header(b) {
   return `<header class="top">
   <div class="wrap top-in">
     <a class="brand" href="${b}" data-i18n-attr="aria-label:a11y.home">
-      <img src="${b}assets/icons/icon-192.png" width="32" height="32" alt="">
+      <picture><source type="image/webp" srcset="${b}assets/icons/logo-32.webp 1x, ${b}assets/icons/logo-64.webp 2x, ${b}assets/icons/logo-96.webp 3x"><img src="${b}assets/icons/logo-32.png" srcset="${b}assets/icons/logo-64.png 2x, ${b}assets/icons/logo-96.png 3x" width="32" height="32" alt=""></picture>
       <span class="brand-name" data-name></span>
     </a>
     <nav class="nav" data-i18n-attr="aria-label:a11y.nav">
@@ -57,7 +57,7 @@ function footer(b) {
   <div class="wrap foot-in">
     <div class="peek" aria-hidden="true"><img src="${b}assets/img/milk-256.webp" srcset="${b}assets/img/milk-256.webp 1x, ${b}assets/img/milk-512.webp 2x" width="92" height="159" alt="" loading="lazy" decoding="async"></div>
     <div class="foot-brand">
-      <a class="brand" href="${b}"><img src="${b}assets/icons/icon-192.png" width="28" height="28" alt=""><span class="brand-name" data-name></span></a>
+      <a class="brand" href="${b}"><picture><source type="image/webp" srcset="${b}assets/icons/logo-32.webp 1x, ${b}assets/icons/logo-64.webp 2x, ${b}assets/icons/logo-96.webp 3x"><img src="${b}assets/icons/logo-32.png" srcset="${b}assets/icons/logo-64.png 2x, ${b}assets/icons/logo-96.png 3x" width="28" height="28" alt=""></picture><span class="brand-name" data-name></span></a>
       <p data-i18n="footer.tag"></p>
     </div>
     <nav class="foot-col" aria-labelledby="foot-explore">
@@ -126,7 +126,7 @@ function inlineCss(b) {
 }
 
 // ---- Jua is only used for headings: ask Google Fonts for just those characters ----
-const DISPLAY_KEYS = /^(hero\.title|[a-z]+\.title|about\.(pet|biz|ai)T|more\.\dt|maker\.o\dt|steps\.s\dt|dlp\.(title|macT|winT|linuxT|aiT)|nf\.title)$/;
+const DISPLAY_KEYS = /^(hero\.title|[a-z]+\.title|about\.(pet|biz|ai)T|more\.\dt|maker\.o\dt|looks\.\dt|steps\.s\dt|dlp\.(title|macT|winT|linuxT|aiT)|nf\.title)$/;
 function fontHref() {
   let chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!?&’\'"–-():;/';
   for (const l of Object.keys(D)) {

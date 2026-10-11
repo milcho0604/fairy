@@ -16,6 +16,7 @@ import {
 } from '../shared/house.ts';
 import { type HouseStyle, houseLayout, houseSvg } from '../shared/house-art.ts';
 import type { HouseSprites } from '../shared/house-room.ts';
+import { type HouseHideReason, houseVisible } from '../shared/house-stow.ts';
 import { t } from '../shared/i18n/index.ts';
 import { IPC } from '../shared/ipc.ts';
 import { MOVE_SPECS } from '../shared/moves.ts';
@@ -25,8 +26,17 @@ import { onDisplaysChanged as watchDisplays } from './display-watch.ts';
 import type { PetWindow } from './pet-window.ts';
 import { readJson, removeJson, writeJson } from './store.ts';
 
-/** 투명 작은 창 하나에 그림 하나. 마우스는 다 통과한다 (집은 그림 위에서만 잡는다) */
-function makeSprite(svg: string, size: number, at: { x: number; y: number }, css = ''): BrowserWindow {
+/**
+ * 투명 작은 창 하나에 그림 하나. 마우스는 다 통과한다 (집은 그림 위에서만 잡는다).
+ * visible 이 거짓이면 다 그려도 띄우지 않는다 (숨겨 둔 집을 단계, 모양 바꾸기로 새로 만들 때)
+ */
+function makeSprite(
+  svg: string,
+  size: number,
+  at: { x: number; y: number },
+  css = '',
+  visible: () => boolean = () => true,
+): BrowserWindow {
   const win = new BrowserWindow({
     x: Math.round(at.x),
     y: Math.round(at.y),
@@ -51,7 +61,9 @@ function makeSprite(svg: string, size: number, at: { x: number; y: number }, css
   const csp = "default-src 'none'; style-src 'unsafe-inline'; img-src data:";
   const html = `<html><head><meta http-equiv="Content-Security-Policy" content="${csp}"><style>${css}</style></head><body style="margin:0;overflow:hidden;background:transparent">${svg.replace('<svg ', `<svg width="${size}" height="${size}" `)}</body></html>`;
   win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-  win.once('ready-to-show', () => win.showInactive());
+  win.once('ready-to-show', () => {
+    if (visible()) win.showInactive();
+  });
   return win;
 }
 
@@ -227,6 +239,8 @@ export interface HouseOptions {
   onClick?: () => void;
   /** 우클릭 메뉴 맨 위에 붙일 집에서 쉬기 항목 (house-rest.ts) */
   restItem?: () => Electron.MenuItemConstructorOptions;
+  /** 우클릭 "집 숨기기" (shared/house-stow.ts). 없으면 항목이 없다 */
+  onStow?: () => void;
   log?: (tag: string, ...rest: unknown[]) => void;
 }
 
@@ -238,7 +252,7 @@ export type House = ReturnType<typeof createHouse>;
  * 모니터가 빠지거나 바뀌면 보이는 모니터 바닥으로 옮겨 두되, 저장한 자리는 그대로 둔다(다시 꽂으면 돌아간다).
  * 단계가 오르면 모습과 크기가 바뀌고 아래 가운데를 지킨다. 모양(나무집, 버섯집, 눈집, 성)을 바꾸면 크기는 그대로. 0 단계면 없다.
  */
-export function createHouse({ onMoved, onClick, restItem, log }: HouseOptions = {}) {
+export function createHouse({ onMoved, onClick, restItem, onStow, log }: HouseOptions = {}) {
   let win: BrowserWindow | undefined;
   let shownLevel = 0;
   let shownStyle: HouseStyle = 'wood';
@@ -264,6 +278,11 @@ export function createHouse({ onMoved, onClick, restItem, log }: HouseOptions = 
   let sprites: HouseSprites | undefined;
   let restTick = 0;
   let restTimer: NodeJS.Timeout | undefined;
+  /** 집 창을 감춘 까닭 (사용자가 숨김, 펫과 같이 숨음). 하나라도 있으면 감춘다 */
+  const hiddenBy = new Set<HouseHideReason>();
+  const visible = () => houseVisible(hiddenBy);
+  /** 사용자가 숨겨 두었다: 집이 없는 것처럼 자리를 알려 주지 않는다 (쉬기, 보러 가기, 집 앞에서 졸기를 안 한다) */
+  const stowed = () => hiddenBy.has('stowed');
 
   const alive = () => !!win && !win.isDestroyed();
   const areas = () => screen.getAllDisplays().map((d) => d.workArea);
@@ -414,6 +433,9 @@ export function createHouse({ onMoved, onClick, restItem, log }: HouseOptions = 
       { label: t('pet.house.dragHint'), enabled: false },
       { type: 'separator' },
       { label: t('pet.house.reset'), enabled: !!spot, click: () => reset() },
+      ...(onStow
+        ? [{ type: 'separator' as const }, { label: t('pet.menu.houseHide'), click: () => onStow() }]
+        : []),
     ]).popup({ window: win });
   }
 
@@ -478,24 +500,45 @@ export function createHouse({ onMoved, onClick, restItem, log }: HouseOptions = 
     shownLevel = level;
     shownStyle = style;
     const size = houseSize(level);
-    win = makeSprite(houseSvg(style, level), size, target(size), HOUSE_CSS);
+    win = makeSprite(houseSvg(style, level), size, target(size), HOUSE_CSS, visible);
     wire(win);
+  }
+
+  /**
+   * 감출 까닭이 바뀌었다. 감출 때는 끌기와 미끄러지기를 끝내고 마우스를 놓는다(끌던 자리는 저장된다).
+   * 다시 보일 때는 저장한 자리(그새 모니터가 바뀌었으면 보이는 바닥)에 지금 단계 크기로 둔다
+   */
+  function setHiddenBy(reason: HouseHideReason, on: boolean) {
+    if (on === hiddenBy.has(reason)) return;
+    if (on) hiddenBy.add(reason);
+    else hiddenBy.delete(reason);
+    if (!alive() || !win) return;
+    if (!visible()) {
+      endDrag();
+      stopGlide();
+      catchMouse(false);
+      win.hide();
+      return;
+    }
+    win.setBounds(target(houseSize(shownLevel)));
+    win.showInactive();
   }
 
   return {
     show,
-    hide: () => {
-      endDrag();
-      win?.hide();
-    },
-    unhide: () => {
-      if (alive()) win?.showInactive();
-    },
-    /** 집 창 자리 (없으면 undefined) */
-    bounds: (): Rect | undefined => (alive() ? win?.getBounds() : undefined),
+    /** 펫과 같이 숨는다 (발표, 펫 숨기기) */
+    hide: () => setHiddenBy('pet', true),
+    unhide: () => setHiddenBy('pet', false),
+    /** 사용자가 집을 숨겨 둔다, 다시 보인다 (설정 houseHidden). 창, 단계, 모양, 자리는 그대로 */
+    stow: (on: boolean) => setHiddenBy('stowed', on),
+    stowed,
+    /** 지금 화면에 보이는지 (창이 있고 감출 까닭이 없다) */
+    visible: () => alive() && visible() && !!win?.isVisible(),
+    /** 집 창 자리 (없거나 숨겨 두었으면 undefined) */
+    bounds: (): Rect | undefined => (alive() && !stowed() ? win?.getBounds() : undefined),
     /** 펫이 자러 가거나 보러 갈 때 설 자리 (펫 가운데 x). petWidth 로 화면 밖으로 나가지 않게 고른다 */
     door(petWidth = 160): { x: number } | undefined {
-      if (!alive() || !win) return undefined;
+      if (!alive() || !win || stowed()) return undefined;
       const b = win.getBounds();
       return { x: doorStandX(b, screen.getDisplayMatching(b).workArea, petWidth) };
     },
@@ -503,7 +546,7 @@ export function createHouse({ onMoved, onClick, restItem, log }: HouseOptions = 
     doorArt: () => houseLayout(shownStyle, shownLevel).door,
     /** 문간 펫 그림 자리 (화면 좌표). 집이 없으면 undefined */
     doorSprite(): Rect | undefined {
-      if (!alive() || !win) return undefined;
+      if (!alive() || !win || stowed()) return undefined;
       return houseDoorSprite(win.getBounds(), shownStyle, shownLevel);
     },
     /** 펫 화면이 그린 집 안 그림을 넣는다 */

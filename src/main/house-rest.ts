@@ -211,6 +211,8 @@ export function createHouseRest({ pet, house, petName, playing, log }: HouseRest
     start,
     call,
     phase: () => phase,
+    /** 문을 드나드는 중 (펫 창과 집 창이 펫을 주고받는 사이). 집을 숨기기 전에 끝나기를 기다린다 */
+    doorBusy: () => doorBusy,
     /** 집 안 (나오는 중 포함). 숨긴 것처럼 보이지 않는다 */
     inside: () => phase === 'inside' || phase === 'leaving',
     /** 쉬는 중에 말이 왔다 (pet-window onRestHeld) */
