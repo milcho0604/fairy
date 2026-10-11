@@ -5,8 +5,6 @@ export const ko = {
   'gcal.title': '구글 캘린더로 보내기',
   'gcal.intro':
     '짝꿍에서 넣은 일정을 내 구글 캘린더에도 넣어. 짝꿍에서 고치거나 지우면 구글에서도 바뀌어. 캘린더에서 가져온 일정은 다시 보내지 않아.',
-  'gcal.notConfigured':
-    '이 짝꿍에는 구글 연결이 아직 준비되지 않았어. 만든 사람이 구글 OAuth 클라이언트를 넣어야 쓸 수 있어 (docs/google-calendar.md).',
   'gcal.connect': '구글 계정 연결',
   'gcal.connecting':
     '브라우저에서 허락을 기다리는 중이야. 구글 화면에서 캘린더 일정 권한을 체크하고 계속을 눌러 줘.',
@@ -44,8 +42,6 @@ export const en: Translation<typeof ko> = {
   'gcal.title': 'Send to Google Calendar',
   'gcal.intro':
     'Adds events you create in Jjakkung to your Google Calendar too. Edits and deletions in Jjakkung follow. Events imported from a calendar are never sent back.',
-  'gcal.notConfigured':
-    "Google connection isn't set up in this build yet. The developer needs to add a Google OAuth client (docs/google-calendar.md).",
   'gcal.connect': 'Connect Google account',
   'gcal.connecting':
     'Waiting for you in the browser. On the Google screen, check the calendar events permission and press Continue.',
