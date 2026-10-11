@@ -1,0 +1,38 @@
+# 홈페이지(site/, fairy.moilga.com) 검사. 앱 CI(check.yml)는 site/ 만 바뀐 것에는 돌지 않고 이것만 돈다 (1분 안쪽).
+# - 미리 그린 글, <head>, CSP 해시가 config.js, i18n.js, site.css 와 맞는지: tools/build.mjs 를 다시 돌려 바뀐 것이 없어야 한다
+#   (sitemap.xml 의 lastmod 는 돌린 날이라 뺀다). 다르면 `node site/tools/build.mjs` 를 돌려 커밋한다.
+# - HTML 검사: html-validate 권장 규칙 (site/README.md "Checks used before each change"). 판은 고정한다.
+# 액션은 커밋 SHA 로 고정한다 (check.yml 과 같은 판).
+name: site
+
+on:
+  push:
+    branches: [main]
+    paths: ['site/**', '.github/workflows/site.yml']
+  pull_request:
+    paths: ['site/**', '.github/workflows/site.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  site:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: 미리 그린 페이지가 최신인지
+        run: |
+          node site/tools/build.mjs
+          git diff --exit-code -- site ':!site/sitemap.xml'
+      - name: HTML 검사
+        run: npx --yes html-validate@11.16.0 site/index.html site/download/index.html site/404.html

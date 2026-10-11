@@ -1,7 +1,18 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { isPrereleaseTag, parseMinVersionFile, releaseBodyHead } from './release-meta.ts';
+import {
+  ARTIFACT_PREFIX,
+  CHECKSUM_FILE,
+  changelogSection,
+  checkReleaseAssets,
+  checkUpdateYml,
+  isPrereleaseTag,
+  parseMinVersionFile,
+  releaseAssetNames,
+  releaseBodyHead,
+  sha256Sums,
+} from './release-meta.ts';
 import { decideUpdate, readMinVersion } from './update-policy.ts';
 
 const HEAD = '# 설명\n# 1.4.0 처럼 적는다\n';
@@ -41,6 +52,75 @@ test('릴리스 본문 머리: 태그, 버전, 최소 버전을 맞춰 본다', 
 test('사전 릴리스 태그', () => {
   assert.equal(isPrereleaseTag('v0.3.0-beta.1'), true);
   assert.equal(isPrereleaseTag('v0.3.0'), false);
+});
+
+test('릴리스 파일 이름: 빠진 것, 이름이 다른 것', () => {
+  const all = releaseAssetNames('0.2.0');
+  assert.equal(all.length, 12);
+  assert.deepEqual(checkReleaseAssets('0.2.0', [...all, CHECKSUM_FILE]), { ok: true, value: undefined });
+  const less = checkReleaseAssets('0.2.0', all.slice(1));
+  assert.equal(less.ok, false);
+  assert.match(less.ok ? '' : less.error, /빠진 파일: fairy-0\.2\.0-mac-arm64\.dmg/);
+  // 다른 버전으로 빌드된 파일(버전을 안 올림)이나 이름이 바뀐 파일
+  const odd = checkReleaseAssets('0.2.0', [...all, 'fairy-0.1.0-win-x64.exe']);
+  assert.match(odd.ok ? '' : odd.error, /이름이 다른 파일: fairy-0\.1\.0-win-x64\.exe/);
+});
+
+test('electron-builder.yml 의 설치 파일 이름이 점검과 같은 모양이다', () => {
+  const yml = readFileSync(new URL('../../electron-builder.yml', import.meta.url), 'utf8');
+  const name = /^artifactName:\s*(\S+)\s*$/m.exec(yml)?.[1];
+  assert.equal(name, `${ARTIFACT_PREFIX}-\${version}-\${os}-\${arch}.\${ext}`);
+});
+
+test('CHANGELOG 의 버전 절', () => {
+  const log =
+    '# Changelog\n\n## [Unreleased]\n\n- 새것\n\n## [0.2.0] - 2026-10-20\n\n### 더한 것\n\n- 하나\n\n## [0.1.0] - 2026-10-01\n\n- 옛것\n';
+  assert.deepEqual(changelogSection(log, '0.2.0'), { ok: true, value: '### 더한 것\n\n- 하나' });
+  assert.deepEqual(changelogSection(log, '0.1.0'), { ok: true, value: '- 옛것' });
+  // 없음, 날짜 없음, 항목 없음, 비슷한 버전(0.2.0 절이 0.2.0-beta.1 에 걸리지 않게)
+  assert.equal(changelogSection(log, '0.3.0').ok, false);
+  assert.equal(changelogSection('## [0.3.0]\n\n- 하나\n', '0.3.0').ok, false);
+  assert.equal(changelogSection('## [0.3.0] - 2026-10-20\n\n### 더한 것\n', '0.3.0').ok, false);
+  assert.equal(changelogSection(log, '0.2').ok, false);
+  assert.equal(changelogSection('## [0.2.0-beta.1] - 2026-10-20\n- 하나\n', '0.2.0').ok, false);
+});
+
+test('자동 업데이트 파일의 버전과 sha512', () => {
+  const yml = [
+    'version: 0.2.0',
+    'files:',
+    '  - url: fairy-0.2.0-mac-arm64.zip',
+    '    sha512: AAA==',
+    '    size: 10',
+    '  - url: fairy-0.2.0-mac-x64.zip',
+    '    sha512: BBB==',
+    '    size: 11',
+    'path: fairy-0.2.0-mac-arm64.zip',
+    'sha512: AAA==',
+    "releaseDate: '2026-10-20T00:00:00.000Z'",
+    '',
+  ].join('\n');
+  const real: Record<string, string> = {
+    'fairy-0.2.0-mac-arm64.zip': 'AAA==',
+    'fairy-0.2.0-mac-x64.zip': 'BBB==',
+  };
+  const of = (f: string) => real[f];
+  assert.equal(checkUpdateYml('latest-mac.yml', yml, '0.2.0', of).ok, true);
+  assert.equal(checkUpdateYml('latest-mac.yml', yml.replace(/\n/g, '\r\n'), '0.2.0', of).ok, true);
+  assert.equal(checkUpdateYml('latest-mac.yml', yml, '0.3.0', of).ok, false);
+  assert.equal(checkUpdateYml('latest-mac.yml', yml.replace('BBB==', 'CCC=='), '0.2.0', of).ok, false);
+  assert.equal(checkUpdateYml('latest-mac.yml', yml, '0.2.0', () => undefined).ok, false);
+  assert.equal(checkUpdateYml('latest.yml', 'version: 0.2.0\n', '0.2.0', of).ok, false);
+});
+
+test('SHA256 목록은 sha256sum -c 모양으로 이름 순', () => {
+  assert.equal(
+    sha256Sums([
+      { name: 'b.exe', sha256: '22' },
+      { name: 'a.dmg', sha256: '11' },
+    ]),
+    '11  a.dmg\n22  b.exe\n',
+  );
 });
 
 test('레포의 release/min-version 이 지금 버전으로 릴리스할 수 있는 값이다', () => {

@@ -71,3 +71,22 @@ export function unusedCpuVariant(file: string): boolean {
   const m = /^(?:lib)?ggml-cpu-([a-z0-9]+)\.(?:so|dll)$/.exec(file);
   return !!m && (UNUSED_CPU_VARIANTS as readonly string[]).includes(m[1] ?? '');
 }
+
+/**
+ * SwiftShader(그래픽 칩 없이 CPU 로 그리는 Vulkan) 파일의 앱 폴더 안 자리. scripts/prune-native.mjs 가 뺀다.
+ * Electron 44(Chromium)는 그래픽 칩이 없거나 막혔을 때 SwiftShader 로 WebGL, WebGPU 를 열지 않는다
+ * (--enable-unsafe-swiftshader 를 줄 때만 쓰고, 페어리는 주지 않는다). 실행에 쓰이지 않는 짐이다.
+ * 2026-10-11 리눅스 설치판 측정 (Xvfb, 그래픽 칩 없음): SwiftShader 가 있어도 없어도 WebGL, WebGPU 둘 다 열리지 않고
+ * 페어리는 2D 그림으로 돈다 (--disable-gpu 도 같다). 입체 페어리와 사진 AI 의 GPU 길은 진짜 그래픽 칩에서만 쓴다.
+ * 개발 실행의 화면 찍기(scripts/dev/screens.mjs)는 node_modules 의 Electron 이라 그대로 SwiftShader 로 입체를 찍는다.
+ * 맥은 프레임워크 안이라 서명 전에 빼야 하고, afterPack 은 서명보다 먼저 돈다
+ */
+export function swiftShaderFiles(platform: string, appName: string): string[] {
+  if (platform === 'linux') return ['libvk_swiftshader.so', 'vk_swiftshader_icd.json'];
+  if (platform === 'win32') return ['vk_swiftshader.dll', 'vk_swiftshader_icd.json'];
+  if (platform === 'darwin') {
+    const lib = `${appName}.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries`;
+    return [`${lib}/libvk_swiftshader.dylib`, `${lib}/vk_swiftshader_icd.json`];
+  }
+  return [];
+}

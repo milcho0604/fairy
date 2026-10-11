@@ -3,8 +3,23 @@
 `v*` 태그를 올리면 `release.yml` 이 맥, 윈도우, 리눅스(`tar.xz`, `AppImage`) 설치 파일, 자동 업데이트용 파일(윈도우 `latest.yml` 과 `.exe.blockmap`, 맥 `latest-mac.yml` 과 `.zip`, `.zip.blockmap`)을 GitHub Releases 초안으로 올린다. 초안을 확인한 뒤 발행한다. 릴리스 레포는 `src/shared/update-policy.ts` 의 `RELEASE_REPO` 와 `electron-builder.yml` 의 `publish` 두 곳이고 서로 같아야 한다(다르면 `npm test` 가 깨진다).
 
 - 태그는 `package.json` 의 `version` 앞에 `v` 를 붙인 것과 똑같아야 한다(`0.2.0` 이면 `v0.2.0`). 다르면 빌드 전에 멈춘다. 버전을 안 올리고 태그만 달면 새 앱이 스스로를 옛 버전으로 보고 업데이트 안내가 끝나지 않기 때문이다.
+- `CHANGELOG.md` 에 `## [0.2.0] - 2026-10-20` 처럼 날짜가 붙은 이 버전의 절과 항목이 있어야 한다. 그 절이 릴리스 본문에 들어간다(아래 "릴리스 사전 점검").
 - 태그에 `-beta.1` 같은 꼬리가 있으면 사전 릴리스로 올린다. 앱은 사전 릴리스를 업데이트로 보지 않는다.
 - 초안과 사전 릴리스는 GitHub 의 "최신 릴리스"(`/releases/latest`)에 잡히지 않는다. 발행할 때 "Set as the latest release" 를 끄면 앱이 그 릴리스를 못 본다.
+
+## 릴리스 사전 점검
+
+`scripts/release-check.mjs` 가 틀린 릴리스를 비싼 빌드 전에, 그리고 올리기 전에 한 번 더 막는다. 규칙은 `src/shared/release-meta.ts`(시험 `release-meta.test.ts`).
+
+| 언제 | 명령 | 보는 것 |
+| --- | --- | --- |
+| 태그를 올리기 전(손으로)과 `release.yml` 의 첫 작업 `preflight` | `node scripts/release-check.mjs tag v0.2.0` | 태그 = `v` + `package.json` 버전, `release/min-version` 값, `CHANGELOG.md` 의 `## [0.2.0] - 날짜` 절과 항목. 사전 릴리스 태그(`-beta.1`)는 CHANGELOG 절 없이도 된다 |
+| 빌드가 다 끝나고 초안을 만들기 전(`release` 작업) | `node scripts/release-check.mjs files v0.2.0 <폴더>` | 파일 12개의 이름과 개수(빠진 것, 다른 버전 이름), 비지 않았는지, `latest.yml` 과 `latest-mac.yml` 의 버전과 각 파일 sha512 가 실제 파일과 같은지. 통과하면 `SHA256SUMS.txt` 를 써서 같이 올린다 |
+| 릴리스 본문 | `node scripts/release-check.mjs notes v0.2.0` | 최소 버전 머리 + CHANGELOG 절 (그 아래 체크섬 안내와 GitHub 자동 변경 목록) |
+
+`preflight` 는 의존성 설치 없이 우분투 러너에서 몇 초면 끝나고, 틀리면 맥, 윈도우 빌드가 아예 시작되지 않는다. 태그 릴리스의 빌드는 한 운영체제라도 깨지면 나머지를 바로 멈춘다(`fail-fast`). 손으로 돌린(Run workflow) 빌드는 셋 다 끝까지 돌고 결과는 7일 뒤 지워진다.
+
+받는 사람은 `SHA256SUMS.txt` 로 내려받은 파일을 확인할 수 있다: 같은 폴더에서 `sha256sum -c SHA256SUMS.txt --ignore-missing`(맥은 `shasum -a 256 <파일>`, 윈도우 PowerShell 은 `Get-FileHash <파일>` 이 보이는 값을 목록과 견준다). GitHub 릴리스 화면도 파일마다 sha256 을 보인다.
 
 ## 자동 업데이트
 
@@ -99,8 +114,8 @@ export GH_TOKEN=$(gh auth token --user milcho0604)
    그리고 위 "환경 승인"대로 환경 `release` 를 만든다(없으면 릴리스 작업이 승인 없이 돈다).
    Settings → Code security → **Private vulnerability reporting** 을 켠다(`SECURITY.md` 가 이 길로 받는다).
 5. **공개 전환:** `gh repo edit milcho0604/fairy --visibility public --accept-visibility-change-consequences`. 공개 레포는 Actions 맥 러너 시간이 깎이지 않으니 태그는 공개 뒤에 올린다.
-6. **버전 올리기와 태그:** `package.json` 의 `version` 을 `0.2.0` 으로(`npm version 0.2.0 --no-git-tag-version`), `CHANGELOG.md` 의 Unreleased 를 `0.2.0` 으로 정리해 커밋하고 `main` 에 푸시한다. 그다음 `git tag v0.2.0 && git push origin v0.2.0`, 진행은 `gh run watch --repo milcho0604/fairy`.
-7. **초안 확인:** `gh release view v0.2.0 --repo milcho0604/fairy` 로 파일 목록(dmg 2, zip 2, zip.blockmap 2, latest-mac.yml, exe, exe.blockmap, latest.yml, tar.xz, AppImage)과 본문 머리(최소 버전을 적었으면 그 문장)를 본다.
+6. **버전 올리기와 태그:** `package.json` 의 `version` 을 `0.2.0` 으로(`npm version 0.2.0 --no-git-tag-version`), `CHANGELOG.md` 의 Unreleased 를 `## [0.2.0] - <오늘 날짜>` 로 정리해 커밋하고 `main` 에 푸시한다. 태그 전에 `node scripts/release-check.mjs tag v0.2.0` 이 통과하는지 본다(CI 의 `preflight` 와 같은 점검). 그다음 `git tag v0.2.0 && git push origin v0.2.0`, 진행은 `gh run watch --repo milcho0604/fairy`.
+7. **초안 확인:** `gh release view v0.2.0 --repo milcho0604/fairy` 로 파일 목록(dmg 2, zip 2, zip.blockmap 2, latest-mac.yml, exe, exe.blockmap, latest.yml, tar.xz, AppImage, SHA256SUMS.txt 해서 13개)과 본문(최소 버전을 적었으면 그 문장, CHANGELOG 의 0.2.0 절)을 본다. 이름과 sha512 는 `release` 작업이 이미 맞춰 봤다.
 8. **발행:** `gh release edit v0.2.0 --repo milcho0604/fairy --draft=false --latest`.
 9. **공개 후 밖에서 확인 (토큰 없이):**
 
