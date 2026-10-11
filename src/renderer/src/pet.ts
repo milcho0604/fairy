@@ -30,6 +30,7 @@ import {
 } from '../../shared/pet-mood.ts';
 import type { Blueprint, Gait } from '../../shared/pet3d/blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from '../../shared/pet3d/defaults.ts';
+import { standingBlueprint } from '../../shared/pet3d/stand.ts';
 import type { PetKind, PetStyle, PoseKind } from '../../shared/settings.ts';
 import { canPlay, type SoundKind } from '../../shared/sound.ts';
 import { NO_TOGETHER, type TogetherLook } from '../../shared/together.ts';
@@ -779,12 +780,17 @@ let broken3d = false;
 let style3d: PetStyle = 'figure';
 /** 사용자가 고른 걸음새 (설정, PetStatus.gait). 없으면 자동 */
 let gaitPick: Gait | undefined;
+/** 사진 동물 페어리를 네 발로 선 피규어로 보는지 (설정, PetStatus.stand) */
+let standPick = false;
 /** 고른 걸음새를 덮은 설계도. 같은 설계도와 같은 값이면 같은 것을 돌려줘 다시 조립하지 않는다 */
-let picked: { from: Blueprint; gait: Gait | undefined; bp: Blueprint } | undefined;
+let picked: { from: Blueprint; gait: Gait | undefined; stand: boolean; bp: Blueprint } | undefined;
 function pickedBlueprint(bp: Blueprint | undefined): Blueprint | undefined {
   if (!bp) return undefined;
-  if (picked?.from !== bp || picked.gait !== gaitPick)
-    picked = { from: bp, gait: gaitPick, bp: withGait(bp, gaitPick) };
+  if (picked?.from !== bp || picked.gait !== gaitPick || picked.stand !== standPick) {
+    // 네 발로 서기는 사진 펫 설계도에만 (기본 펫과 밀크, 초코는 그대로)
+    const stood = standPick && bp === photoModel ? standingBlueprint(bp) : undefined;
+    picked = { from: bp, gait: gaitPick, stand: standPick, bp: stood ?? withGait(bp, gaitPick) };
+  }
   return picked.bp;
 }
 function current3d(): Pet3D | 'loading' | undefined {
@@ -904,8 +910,9 @@ bridge.onStatus((status) => {
     requestFrame();
   }
   // 걸음새를 바꾸면 펫 창을 다시 켜지 않고 다음 그림부터 (설계도를 덮어 다시 조립한다)
-  if (status.gait !== gaitPick) {
+  if (status.gait !== gaitPick || !!status.stand !== standPick) {
     gaitPick = status.gait;
+    standPick = !!status.stand;
     requestFrame();
   }
   statusKnown = true;

@@ -163,6 +163,11 @@ export interface Settings {
    */
   petWishes: Record<string, string>;
   /**
+   * 네 발로 선 피규어로 볼 사진 동물 페어리 (밀크, 초코처럼, shared/pet3d/stand.ts). 키는 설계도 파일 이름.
+   * 고른 펫만 (예전에 만든 펫은 그대로 앉은 피규어다)
+   */
+  petStands: Record<string, boolean>;
+  /**
    * 만나는 시간 (shared/routine.ts, 사용자 요청 2026-10-08): 요일마다 일을 시작하고 끝내는 시간. 그때 맞이하고 헤어지는 인사.
    * 기본 꺼짐(예전처럼 켤 때 브리핑). 켜 두면 만나지 않는 요일이 삐짐 쉬는 날도 된다(restDays 대신, routine.ts restDaysOf)
    */
@@ -228,6 +233,20 @@ export const isGait = (v: unknown): v is Gait => GAITS.includes(v as Gait);
 export function bodyKey(s: Pick<Settings, 'petImage' | 'petModel' | 'petKind'>): string | undefined {
   if (!s.petImage) return `kind:${s.petKind}`;
   return s.petModel;
+}
+
+/** 지금 사진 펫을 네 발로 선 피규어로 보는지 (설정 petStands) */
+export function pickedStand(s: Pick<Settings, 'petImage' | 'petModel' | 'petKind' | 'petStands'>): boolean {
+  const key = s.petImage ? s.petModel : undefined;
+  return !!key && s.petStands[key] === true;
+}
+
+/** 지금 사진 펫의 네 발로 서기를 바꾸는 값. 고를 수 없는 펫(설계도 없음)이면 undefined */
+export function standPatch(s: Settings, on: boolean): Pick<Settings, 'petStands'> | undefined {
+  const key = s.petImage ? s.petModel : undefined;
+  if (!key) return undefined;
+  const { [key]: _, ...rest } = s.petStands;
+  return { petStands: on ? { ...rest, [key]: true } : rest };
 }
 
 /** 지금 펫에 고른 걸음새. 자동이면 undefined */
@@ -367,6 +386,7 @@ export const DEFAULT_SETTINGS: Settings = {
   boost: false,
   petGaits: {},
   petWishes: {},
+  petStands: {},
   routine: DEFAULT_ROUTINE,
   illustEngine: 'cloud',
   typeAlong: true,
@@ -560,7 +580,10 @@ const KIND_KEY = /^kind:(\w+)$/;
  * 걸음새와 요청사항 칸 검사. 설계도 파일 키는 지금 펫이나 보관함이 아직 쓰는 것만 남긴다
  * (펫을 지우거나 몸을 다시 만들면 옛 키가 빠진다). 기본 펫 키는 아는 모양만
  */
-function bodiesOf(r: Record<string, unknown>, base: Settings): Pick<Settings, 'petGaits' | 'petWishes'> {
+function bodiesOf(
+  r: Record<string, unknown>,
+  base: Settings,
+): Pick<Settings, 'petGaits' | 'petWishes' | 'petStands'> {
   const models = new Set<string>();
   const image = petImageOf(r.petImage, base.petImage).petImage;
   const current = petModelOf(r.petModel, base.petModel).petModel;
@@ -596,6 +619,13 @@ function bodiesOf(r: Record<string, unknown>, base: Settings): Pick<Settings, 'p
       base.petWishes,
       (k) => models.has(k),
       (x) => cleanWish(x) || undefined,
+    ),
+    // 네 발로 서기는 입체 사진 펫에만 (켠 것만 남긴다)
+    petStands: pick(
+      r.petStands,
+      base.petStands,
+      (k) => models.has(k),
+      (x) => (x === true ? true : undefined),
     ),
   };
 }

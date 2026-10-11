@@ -573,6 +573,8 @@ export interface PetStatus {
   face?: boolean;
   /** 사용자가 고른 걸음새 (설정). 없으면 자동: 설계도 gait, 없으면 다리 모양으로 짐작 */
   gait?: Gait;
+  /** 사진 동물 페어리를 네 발로 선 피규어로 본다 (설정 petStands, shared/pet3d/stand.ts) */
+  stand?: boolean;
   /** 기운 (하루 리듬과 연속 작업 피로, shared/energy.ts). 설정 "하루 리듬"이 꺼졌거나 친구 펫이면 없다 (예전 모습) */
   energy?: EnergyLook;
   /** 배터리 절약 중 (shared/battery.ts): 그리기 15fps 상한, 한가한 행동을 드물게. 없으면 끔 */

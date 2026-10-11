@@ -47,6 +47,9 @@ export const ko = {
   'settings.gait.autoNow': (v: { gait: string }) =>
     `몸 모양을 보고 정해. 지금은 ${withParticle(v.gait, '으로')} 걸어. 페어리마다 따로 기억해.`,
   'settings.gait.kept': '페어리마다 따로 기억해. 보관함에서 다른 페어리를 꺼내도 각자 값이야.',
+  'settings.stand.toggle': '네 발로 선 피규어 (밀크, 초코처럼)',
+  'settings.stand.hint': (v: { name: string }) =>
+    `${withParticle(v.name, '이')} 진짜 동물처럼 네 발로 서서 걷고, 앉고, 엎드려. 지금 색과 무늬, 눈, 귀 모양을 그대로 써서 AI를 다시 부르지 않아. 끄면 원래 몸으로 돌아와.`,
   'settings.gait.odd': (v: { name: string; body: string }) =>
     `${withParticle(v.name, '은')} ${v.body} 몸이라 조금 어색해 보일 수 있어.`,
   'settings.gait.flat':
@@ -444,6 +447,9 @@ export const en: Translation<typeof ko> = {
     `Decided from the body shape. Right now it walks on ${v.gait.toLowerCase()}. Remembered for each fairy.`,
   'settings.gait.kept':
     'Remembered for each fairy, so a fairy you bring back from your collection keeps its own choice.',
+  'settings.stand.toggle': 'Stand on four legs (like Milk and Choco)',
+  'settings.stand.hint': (v) =>
+    `${v.name} stands, walks, sits and lies down on four legs like a real animal. It keeps its colors, markings, eyes and ear shape, so no AI is needed. Turn it off to get the old body back.`,
   'settings.gait.odd': (v) => `${v.name} has a ${v.body} body, so this may look a little odd.`,
   'settings.gait.flat':
     "Photo fairies (flat or 2.5D) don't have separate legs, so there's nothing to choose. Make a 3D figure in Make a fairy to choose.",
