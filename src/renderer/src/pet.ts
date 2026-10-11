@@ -223,8 +223,11 @@ function frame() {
     now,
   });
   carriedAt = ball;
-  syncFace(m3d);
-  syncSprites(m3d);
+  // 얼굴과 집 그림은 첫 그림이 화면에 나간 뒤에 (둘 다 그린 것을 읽어 와 GPU 를 기다려서 켤 때 첫 그림을 늦췄다)
+  if (firstShown) {
+    syncFace(m3d);
+    syncSprites(m3d);
+  } else afterFirstShown();
   syncBody(m3d, img);
 
   const walking = activity?.type === 'walk';
@@ -263,6 +266,22 @@ function frame() {
     saver,
   );
   frameTimer = all > 0 ? setTimeout(frame, 1000 / all) : undefined;
+}
+
+/** 첫 그림이 화면에 나갔는지 (얼굴과 집 그림은 그 뒤에 그린다) */
+let firstShown = false;
+let firstShowWait = false;
+function afterFirstShown() {
+  if (firstShowWait) return;
+  firstShowWait = true;
+  const go = () => {
+    if (firstShown) return;
+    firstShown = true;
+    requestFrame();
+  };
+  // 다음 화면 갱신 뒤. 창이 숨어 있으면 화면 갱신이 오지 않아 1초 뒤에는 그냥 한다
+  requestAnimationFrame(() => setTimeout(go, 0));
+  setTimeout(go, 1000);
 }
 
 // ---- 같이 보기 돋보기 (shared/look-motion.ts) ----

@@ -304,6 +304,9 @@ export class Pet3D implements Model3D {
       powerPreference: 'low-power',
     });
     this.renderer.setClearColor(0x000000, 0);
+    // 셰이더 컴파일 오류를 프로그램마다 묻지 않는다 (물으면 컴파일이 끝날 때까지 기다려 켤 때 첫 그림이 늦었다).
+    // 셰이더는 앱에 든 것뿐이고, 깨지면 그리지 못해 2D 로 돌아가는 길은 그대로다
+    this.renderer.debug.checkShaderErrors = false;
     this.renderer.setPixelRatio(1);
     this.renderer.toneMapping = NeutralToneMapping;
     this.renderer.outputColorSpace = SRGBColorSpace;
