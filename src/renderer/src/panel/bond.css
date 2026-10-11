@@ -1,0 +1,217 @@
+/* 오늘 탭: 첫 7일 여정 칸, 주간 회고 카드 (JourneyCard.tsx, WeekCard.tsx). 색은 tokens.css */
+
+.journey {
+  padding: 10px 12px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg));
+}
+
+.journey h3 {
+  margin-bottom: 8px;
+}
+
+.journey-track {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.journey-dot {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  line-height: 1;
+  height: 24px;
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  background: var(--panel);
+}
+
+.journey-dot.jd-done {
+  border-color: transparent;
+  background: var(--ok);
+  color: var(--ok-ink);
+}
+
+.journey-dot.jd-now {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.journey-dot.jd-later {
+  border-style: dashed;
+  opacity: 0.6;
+}
+
+.journey-dot > span {
+  display: flex;
+}
+
+.journey .sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.journey-now {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 0;
+}
+
+.journey-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.journey-text strong {
+  font-size: 13.5px;
+}
+
+.journey-text small,
+p.journey-now {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+p.journey-now.done {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.journey-go {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.journey-coin {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-ink) 22%, transparent);
+  font-size: 11px;
+  line-height: 17px;
+}
+
+/* ---- 주간 회고 카드 ---- */
+.week-card-open {
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.week-card-dim {
+  position: fixed;
+  inset: 6px;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.32);
+  animation: week-card-fade 0.15s ease-out;
+}
+
+.week-card-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-height: 100%;
+  padding: 12px 14px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  overflow-y: auto;
+  user-select: none;
+}
+
+.week-card-dialog h3 {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+/* 미리 보기: 카드 비율(4:5) 그대로, 창 높이에 맞춰 줄인다 */
+.week-card-preview {
+  align-self: center;
+  width: auto;
+  height: min(330px, 52vh);
+  aspect-ratio: 4 / 5;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+}
+
+.week-card-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.week-card-check input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.week-card-hint {
+  margin-top: -4px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.week-card-status {
+  font-size: 12px;
+}
+
+.week-card-status.ok {
+  color: var(--ok);
+}
+
+.week-card-status.error {
+  color: var(--error);
+}
+
+.week-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.week-card-actions .ghost {
+  padding: 6px 12px;
+}
+
+@keyframes week-card-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .week-card-dim {
+    animation: none;
+  }
+}

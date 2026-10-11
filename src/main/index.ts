@@ -9,6 +9,7 @@ import { persona, setMemorySource, todoContext } from '../shared/ai/persona.ts';
 import { HIDE_SEEK, pickHideSpot } from '../shared/hide-seek.ts';
 import { locale, t } from '../shared/i18n/index.ts';
 import { IPC, type PetStatus, type PlayKind } from '../shared/ipc.ts';
+import { type FactKind, factsForAi } from '../shared/knows.ts';
 import { runnerKindOf } from '../shared/menu-runner.ts';
 import { isMiniGame, PLAY_COIN } from '../shared/minigames.ts';
 import { noteTitle } from '../shared/note-store.ts';
@@ -37,7 +38,9 @@ import { createFriends } from './friends.ts';
 import { galleryHandlers } from './gallery-app.ts';
 import { createGcal } from './gcal.ts';
 import { createHouseRest } from './house-rest.ts';
+import { createJourney } from './journey.ts';
 import { pruneCopies } from './keep-copies.ts';
+import { createKnows } from './knows.ts';
 import { initLang } from './lang.ts';
 import { stopLocalDrawNow, sweepLocalDraw } from './local-draw.ts';
 import { createLogFile } from './log-file.ts';
@@ -72,6 +75,8 @@ import { createSystemMonitor } from './system-monitor.ts';
 import { baseTrayIcon, createTray } from './tray.ts';
 import { watchTrayTitle } from './tray-title.ts';
 import { watchUpdates } from './update.ts';
+import { createWear } from './wear.ts';
+import { createWeekCard } from './week-card.ts';
 
 // 데이터 폴더를 이름으로 고정한다. 기본값은 앱 이름을 따라가서 설치판(Jjakkung)과 개발판(jjakkung)이
 // 운영체제에 따라 다른 폴더가 되고, 나중에 앱 이름을 바꿔도 데이터를 잃는다.
@@ -240,6 +245,7 @@ ready
         menuNote: () => pout.menuNote(),
         focusRunning: () => planner.focus.phase !== 'idle',
         toggleFocus: () => (planner.focus.phase === 'idle' ? planner.startFocus() : planner.stopFocus()),
+        openKnows: () => knows.open(),
       },
       log,
       onMissed: () => panel.refresh(),
@@ -278,6 +284,7 @@ ready
       // 놀던 중이면 그만 논다: 같이 보는 동안 펫은 오버레이 위에서 마우스를 다 통과시켜 놀 수 없다.
       // (두더지 구멍 속 가리기와 찍는 순간 가리기가 겹쳐도 펫은 pet-window setConcealed 가 한곳에서 되돌린다)
       onStart: () => {
+        journey.tried('look');
         const game = games.running();
         if (!game) return;
         log('look', 'stop play', game);
@@ -292,6 +299,7 @@ ready
       // 집중(펫이 잠), 공놀이와 산책, 숨바꼭질 중이 아니고 사용자가 자리에 있을 때만
       canMeet: () =>
         planner.focus.phase !== 'focus' && !playing && !seeking && powerMonitor.getSystemIdleTime() < 60,
+      wear: () => wear.friendLook(),
       log,
     });
     const toggleHidden = () => {
@@ -362,6 +370,23 @@ ready
     } catch (err) {
       log('storage', '복사본 정리 실패', err instanceof Error ? err.message : String(err));
     }
+    // ---- 펫 성장 단계와 철마다 옷 (main/wear.ts) ----
+    const wear = createWear({
+      stats,
+      affection: () => petLife.state.affection,
+      petName,
+      say: (o) => pet.say(o),
+      react: (kind) => pet.react(kind),
+      onChange: () => {
+        sendStatus();
+        friends.resendStatus();
+      },
+      fromSettings: (sender) => {
+        const w = settingsWindow.window;
+        return !!w && !w.isDestroyed() && w.webContents === sender;
+      },
+      log,
+    });
     // 저장 파일이 깨졌거나 새 판이었으면 펫이 화면에 뜬 뒤 알린다 (버그잡이 6차)
     if (trouble)
       pet.win.webContents.once('did-finish-load', () =>
@@ -390,9 +415,14 @@ ready
     // ---- 짝꿍이 기억하는 것 ----
     // 질문마다 성격 뒤에 붙는다 (persona.ts). MCP remember 가 남긴 것은 질문할 때와 1분마다 "기다리는 기억"으로 옮기고,
     // 사용자가 설정에서 허락한 것만 여기(petMemory)에 들어온다
+    // 사용자가 직접 알려 준 것(생일, 좋아하는 간식, 좋아하는 것)도 앞에 붙인다 (짝꿍이 아는 것, shared/knows.ts)
+    const factLine = (kind: FactKind, v: { value: string; m?: number; d?: number }) =>
+      kind === 'birthday'
+        ? t('bond.fact.ai.birthday', { m: v.m ?? 0, d: v.d ?? 0 })
+        : t(kind === 'food' ? 'bond.fact.ai.food' : 'bond.fact.ai.like', { value: v.value });
     setMemorySource(() => {
       drainMemoryInbox(log);
-      return settings.get().petMemory;
+      return [...factsForAi(settings.get().petFacts, factLine), ...settings.get().petMemory];
     });
     drainMemoryInbox(log);
     setInterval(() => drainMemoryInbox(log), 60_000).unref();
@@ -736,6 +766,7 @@ ready
       onEventsChanged: () => {
         planner.check();
         gcal.kick();
+        journey.tried('event');
       },
       askAi: (prompt) => chat.askInWindow(prompt, pet.bounds()),
       askOnce: (text, system) => chat.textOnce(text, system),
@@ -846,6 +877,7 @@ ready
         energy: petLife.energy,
         saver: saverNow(),
         readAloud: settings.get().readAloud,
+        wear: wear.look(),
       };
       const key = JSON.stringify(status);
       if (key === lastStatus || pet.win.isDestroyed()) return;
@@ -1012,6 +1044,7 @@ ready
           ...notes.list().map((n) => n.title),
           ...(s.icsUrl ? [s.icsUrl] : []),
           ...s.petMemory,
+          ...s.petFacts.map((f) => f.value),
           ...s.petRules.split('\n'),
         ];
       },
@@ -1076,6 +1109,54 @@ ready
       petHidden: () => pet.isHidden(),
       focusing: () => planner.focus.phase === 'focus',
       reminders: planner.reminders,
+      log,
+    });
+    // ---- 짝꿍이 아는 것, 첫 7일 여정, 주간 회고 카드 (2026-10-11) ----
+    // 말을 걸어도 되는 때: 숨거나 집중 중, 노는 중이 아니고 펫이 한가하다
+    const canTalk = () =>
+      !pet.isHidden() &&
+      planner.focus.phase !== 'focus' &&
+      !playing &&
+      !seeking &&
+      !games.running() &&
+      pet.isIdle();
+    const knows = createKnows({
+      petName,
+      say: (o) => pet.say(o),
+      react: (kind) => pet.react(kind),
+      canTalk,
+      log,
+    });
+    const journey = createJourney({
+      todos: store,
+      stats,
+      notes,
+      petName,
+      say: (o) => pet.say(o),
+      react: (kind) => pet.react(kind),
+      canTalk,
+      seen: {
+        quick: () => !!panel.quickWindow && !panel.quickWindow.isDestroyed(),
+        focus: () => planner.focus.phase !== 'idle',
+        maker: () => !!maker.window && !maker.window.isDestroyed(),
+      },
+      open: (step) => {
+        if (step === 'quick') panel.openQuick();
+        else if (step === 'focus') planner.startFocus(25);
+        else if (step === 'note' || step === 'event') panel.openTab(step);
+        else if (step === 'maker') maker.open();
+        else if (step === 'look') void look.start();
+        else panel.openTab('today');
+      },
+      panel: () => panel.window,
+      onChange: () => panel.refresh(),
+      log,
+    });
+    const weekCard = createWeekCard({
+      doneTitlesSince: (from) => store.doneTitlesSince(from),
+      panel: () => panel.window,
+      hold: (work) => panel.hold(work),
+      onSaved: () => journey.tried('week'),
       log,
     });
     settings.onChange((next, prev) => {
@@ -1162,6 +1243,8 @@ ready
       // 첫 할 일 유도: 안내를 마친 뒤 처음 펫을 누르면 오늘 탭 대신 할 일 탭(입력칸에 커서)으로 연다. 할 일이 하나도 없을 때만, 한 번만.
       // 오늘 탭에 빠른 입력칸을 더하는 것보다 덜 끼어든다: 새 칸 없이 한 번 탭만 바꾸고, 다음부터는 원래대로 마지막 탭이다
       onFirstDone: () => {
+        // 첫 7일 여정을 시작한다 (main/journey.ts)
+        journey.start();
         const { open, doneToday } = store.list(Date.now());
         if (open.length === 0 && doneToday.length === 0) panel.openNextAt('todo');
       },
@@ -1352,6 +1435,10 @@ ready
           saverNow,
           debugBattery,
           trayTitle,
+          knows,
+          journey,
+          wear,
+          weekCard,
         },
       });
     if (process.env.JJ_METRICS) logMetrics(Number(process.env.JJ_METRICS));

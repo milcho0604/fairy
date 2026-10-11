@@ -29,3 +29,8 @@ export function PetFace() {
     <span className="face" aria-hidden="true" />
   );
 }
+
+/** 얼굴 그림 주소 그대로 (주간 회고 카드처럼 캔버스에 그릴 때). 아직 못 받았으면 null */
+export function useFaceUrl(): string | null {
+  return useSyncExternalStore(subscribe, () => face);
+}

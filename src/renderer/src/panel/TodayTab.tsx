@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { nextUp } from '../../../shared/briefing.ts';
 import { allDaySpan } from '../../../shared/event-store.ts';
 import { breakFor, FOCUS_LENGTHS, focusCoins, remainLabel } from '../../../shared/focus.ts';
@@ -6,11 +6,14 @@ import { t } from '../../../shared/i18n/index.ts';
 import type { PanelState } from '../../../shared/ipc.ts';
 import { stepProgress, type Todo } from '../../../shared/todo-store.ts';
 import type { WeekSummary } from '../../../shared/week.ts';
+import './bond.css';
 import { dayHeading, timeOf } from './format.ts';
 import { HabitBox } from './HabitBox.tsx';
+import { JourneyCard } from './JourneyCard.tsx';
 import { PlanCard } from './MorningPlan.tsx';
 import { RemindCard } from './RemindCard.tsx';
 import { TodoRow } from './TodoTab.tsx';
+import { WeekCardButton } from './WeekCard.tsx';
 
 const bridge = window.jjakkungPanel;
 
@@ -173,6 +176,9 @@ export function TodayTab({
         )}
       </section>
 
+      {/* 첫 7일 여정 (shared/journey.ts). 여정 밖이면 그리지 않는다 */}
+      <JourneyCard s={s} />
+
       {s.missed.length > 0 && (
         <section className="missed">
           <h3>
@@ -303,7 +309,11 @@ export function TodayTab({
         </span>
       </p>
 
-      {s.week && <WeekBox week={s.week} today={s.today} />}
+      {s.week && (
+        <WeekBox week={s.week} today={s.today}>
+          <WeekCardButton s={s} />
+        </WeekBox>
+      )}
 
       <details className="achieve">
         <summary>
@@ -371,7 +381,7 @@ export function TodayTab({
 const MORE_SLACK = 12;
 
 /** 이번 주 (shared/week.ts): 요일 막대(끝낸 일), 끝낸 수와 집중 시간, 지난주 이맘때와 견줌, 다음 7일 마감 */
-function WeekBox({ week, today }: { week: WeekSummary; today: string }) {
+function WeekBox({ week, today, children }: { week: WeekSummary; today: string; children?: ReactNode }) {
   const labels = t('assist.week.days').split(',');
   const max = Math.max(1, ...week.days.map((d) => d.done));
   return (
@@ -406,6 +416,7 @@ function WeekBox({ week, today }: { week: WeekSummary; today: string }) {
         <li>{t('assist.week.vsLast', { diff: week.done - week.lastDone })}</li>
         {week.dueSoon > 0 && <li>{t('assist.week.dueSoon', { n: week.dueSoon })}</li>}
       </ul>
+      {children}
     </details>
   );
 }

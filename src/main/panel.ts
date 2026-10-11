@@ -657,6 +657,9 @@ export function createPanel(o: PanelOptions) {
     o.log(...(rest as [string, ...unknown[]]));
   }
 
+  /** 패널에서 띄운 저장 창이 떠 있는 수. 그동안은 다른 곳을 눌러도 닫지 않는다 */
+  let holding = 0;
+
   function makeWindow(kind: 'panel' | 'quick', bounds: Rectangle, tab?: PanelTab) {
     const win = new BrowserWindow({
       ...bounds,
@@ -692,7 +695,8 @@ export function createPanel(o: PanelOptions) {
     });
     // 다른 곳을 누르면 닫힌다 (팝오버처럼). 머리를 잡고 끄는 것은 이 창을 누른 것이라 닫히지 않는다.
     win.on('blur', () => {
-      if (!win.isDestroyed()) win.close();
+      // 저장 창(주간 회고 카드)을 띄운 동안은 닫지 않는다 (hold)
+      if (!win.isDestroyed() && holding === 0) win.close();
     });
     keepFrame(win);
     return win;
@@ -853,6 +857,16 @@ export function createPanel(o: PanelOptions) {
     },
     get quickWindow() {
       return quick;
+    },
+    /** 일(저장 창)이 끝날 때까지 패널을 열어 둔다. 끝나면 패널을 다시 앞으로 */
+    async hold<T>(work: () => Promise<T>): Promise<T> {
+      holding++;
+      try {
+        return await work();
+      } finally {
+        holding--;
+        if (panel && !panel.isDestroyed()) focusWindow(panel);
+      }
     },
   };
 }
