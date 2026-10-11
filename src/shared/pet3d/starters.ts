@@ -374,8 +374,7 @@ export const STARTER_BLUEPRINTS: Record<StarterId, Blueprint> = {
       pupil: 'round',
       mouth: 'grin',
       mouthY: 0.605,
-      nose: { shape: 'oval', color: CHOCO_NOSE, y: 0.655, size: 1.35 },
-      blush: '#ff9e8f',
+      nose: { shape: 'oval', color: CHOCO_NOSE, y: 0.648, size: 1.35 },
     },
   },
 };

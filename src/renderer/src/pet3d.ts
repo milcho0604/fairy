@@ -183,6 +183,8 @@ interface FaceRig {
   groups: Group[];
   /** 입 자리 (부리는 옆에서도 보여서 숨기지 않는다) */
   mouthAt: Group;
+  /** 코 자리 (설계도 face.nose). 주둥이 끝에 솟아 있어 옆모습에서도 보인다 */
+  noseAt?: Group;
 }
 
 /** 네 발 걷기의 다리 하나 (pet3d-gait.ts) */
@@ -232,6 +234,8 @@ interface StanceLeg {
   /** 쉬는 자리 (root 기준): 엉덩이 관절, 발 가운데 */
   hip: Vector3;
   foot: Vector3;
+  /** 발 바닥 자리 (무릎 관절 기준). 털을 녹여 붙여 발 부품이 바뀌어도 그대로 */
+  sole: Vector3;
   l1: number;
   l2: number;
   /** 쉬는 자세의 윗마디, 아랫마디 각 (곧장 아래에서 앞으로) */
@@ -703,7 +707,8 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
             .map((m) => furLength(m.part) * 0.8),
         )
       : this.fluffy
-        ? fluffLength(furOfBlueprint(bp)) * 0.8
+        ? // 네 발로 선 몸은 얼굴 둘레 털을 깎은 자리에 눈, 코가 앉는다 (털 끝까지 띄우면 옆에서 코가 주둥이 앞에 떠 보였다)
+          fluffLength(furOfBlueprint(bp)) * (bp.stance ? 0.35 : 0.8)
         : 0;
     this.face = this.buildFace(
       bp.face,
@@ -896,7 +901,8 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       if (!geo) return;
       const mesh = new Mesh(geo, this.fluffBase());
       mesh.userData.fused = true;
-      this.addFluffShells(mesh, bp);
+      // 네 발로 선 몸의 다리 마디는 화면에서 작아 털 껍질을 덜 겹친다 (마디가 여덟이라 걸을 때 그리기가 늘었다)
+      this.addFluffShells(mesh, bp, job.group.userData.thin ? 0.6 : 1);
       for (const m of job.list) {
         job.group.remove(m);
         this.disposeTree(m);
@@ -982,9 +988,9 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
   }
 
   /** 겉면 모양 하나에 털 껍질을 붙인다 (재질은 층과 털 느낌마다 하나, 다른 관절과 같이 쓴다) */
-  private addFluffShells(mesh: Mesh, bp: Blueprint) {
+  private addFluffShells(mesh: Mesh, bp: Blueprint, k = 1) {
     const fur = furOfBlueprint(bp);
-    const n = fluffLayers(fur);
+    const n = Math.max(6, Math.round(fluffLayers(fur) * k));
     this.fluffTex ??= fluffTexture();
     const tex = this.fluffTex;
     addShells(mesh, n, (i) => {
@@ -1145,12 +1151,18 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
         own.add(hipG);
         hipG.updateMatrixWorld(true);
         for (const m of upper) hipG.attach(m.mesh);
+        hipG.userData.thin = true;
         const kneeG = new Group();
+        kneeG.userData.thin = true;
         kneeG.position.copy(hipG.worldToLocal(knee.clone()));
         hipG.add(kneeG);
         kneeG.updateMatrixWorld(true);
         for (const m of lower) kneeG.attach(m.mesh);
+        const sole = kneeG.worldToLocal(
+          new Vector3(foot.x, Math.max(0, foot.y - (bottom.part.size[1] ?? 0)), foot.z),
+        );
         legs.push({
+          sole,
           id: `${front ? 'f' : 'h'}${side}`,
           front,
           hipG,
@@ -1325,7 +1337,13 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     // 바닥 판(y=0) 위 몸 아래 점. 뒹굴 때 바닥에 붙이려고 옮긴 높이는 빼지 않는다
     const p = this.tmp.set(this.root.position.x, 0, this.root.position.z);
     p.project(this.camera);
-    return p.y;
+    // 앞으로 뻗은 가까운 발(엎드리기)이 원근으로 캔버스 아래로 잘리지 않게: 가장 낮은 발바닥이 바닥 줄 아래 5.5px 까지만 (캔버스 끝 160, 바닥 154)
+    let low = Number.POSITIVE_INFINITY;
+    for (const leg of this.stance.legs) {
+      const q = leg.kneeG.localToWorld(this.faceTmp.eye.copy(leg.sole)).project(this.camera);
+      low = Math.min(low, q.y);
+    }
+    return Math.min(p.y, low + 11 / Math.max(1, this.fit.d));
   }
 
   /** 방금 그린 그림에서 side 쪽 눈 가운데 (2D 캔버스 좌표). 눈이 없으면 undefined (같이 보기 돋보기) */
@@ -2089,10 +2107,12 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
         }
       }
     }
+    let noseAt: Group | undefined;
     // 코 (설계도 face.nose): 눈과 입 사이. 세모(고양이, 토끼), 납작한 타원(강아지), 점. 위에 작은 반짝이
     if (f.nose?.color && f.nose.shape !== 'none') {
       const k = s * (f.nose.size ?? 1);
       const g = place(0, f.nose.y ?? f.mouthY + s * 1.0, 0.004);
+      noseAt = g;
       const mat = this.material(f.nose.color, 'shiny');
       let nose: Mesh;
       if (f.nose.shape === 'triangle') {
@@ -2140,7 +2160,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
         g.add(tuft);
       }
     }
-    return { eyes, mouth, beakLower, style: f.mouth, eyeLook: f.eyes ?? 'round', groups, mouthAt };
+    return { eyes, mouth, beakLower, style: f.mouth, eyeLook: f.eyes ?? 'round', groups, mouthAt, noseAt };
   }
 
   /**
@@ -2566,7 +2586,10 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
         g2.getWorldPosition(at);
         n.setFromMatrixColumn(g2.matrixWorld, 2).normalize();
         const facing = n.dot(eye.copy(this.camera.position).sub(at).normalize());
-        g2.visible = facing > 0.25 || (g2 === this.face.mouthAt && this.face.style === 'beak');
+        // 네 발로 선 몸의 코는 주둥이 끝에 솟아 옆모습에서도 보인다 (옆으로 걸을 때 코 없는 주둥이가 되었다)
+        const nose = !!this.stance && g2 === this.face.noseAt;
+        g2.visible =
+          facing > (nose ? -0.15 : 0.25) || (g2 === this.face.mouthAt && this.face.style === 'beak');
       }
     }
   }
@@ -2699,7 +2722,8 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     let hx = body.pitch * (asleep ? 0.6 : 0.9);
     let hy = 0;
     let hz = 0;
-    if (w.lie > 0) hx += (asleep ? 0.42 : 0.12) * w.lie;
+    // 자면 고개를 앞발에 묻는다. 한 장만 그리는 자는 얼굴(집 침대 베개)은 얼굴이 보이게 조금만
+    if (w.lie > 0) hx += (asleep ? (live ? 0.42 : 0.12) : 0.12) * w.lie;
     if (asleep) hy += -side * 0.35 * w.lie;
     if (mood === 'dozing') hx += 0.25 + Math.sin(e / 900) * 0.04;
     if (walk) {
@@ -2771,7 +2795,6 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     this.root.updateMatrixWorld(true);
     const sit = st.sit;
     const lie = st.lie;
-    const lieShoulderZ = d.shoulder.z + (lie.hip.z - d.hip.z);
     const airUnits = pxPerUnit > 0 ? Math.min(0.45 * L, this.air / pxPerUnit) : 0;
     const press = tap ? tapPaws(tap.ms, s.calm) : undefined;
     // 손 흔들기: 오른 앞발을 턱 높이까지 들어 조금 바깥으로 벌린다 (가슴 앞에 들면 흰 가슴에 묻혔다)
@@ -2781,8 +2804,17 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     for (const leg of st.legs) {
       const right = leg.id.endsWith('r');
       // 자세마다 발 자리 (바닥)
+      leg.hipG.getWorldPosition(hip);
+      this.root.worldToLocal(hip);
       const sitZ = leg.front ? leg.foot.z : sit.hip.z + 0.26 * L;
-      const lieZ = leg.front ? lieShoulderZ + 0.72 * L : lie.hip.z + 0.5 * L;
+      // 엎드리면 앞다리는 팔꿈치를 바닥에 대고 앞발을 앞으로 뻗는다 (스핑크스 자세). 팔꿈치가 바닥 아래로 꺾이지 않게
+      // 지금 어깨 높이에서 팔꿈치가 바닥에 닿는 자리를 풀고 그 앞에 발을 둔다
+      const elbowY = 0.05 * L * 3;
+      const lieZ = leg.front
+        ? hip.z -
+          Math.sqrt(Math.max(0, leg.l1 ** 2 - (hip.y - elbowY) ** 2)) +
+          Math.sqrt(Math.max(0, leg.l2 ** 2 - (elbowY - d.pawY) ** 2))
+        : lie.hip.z + 0.5 * L;
       let z = leg.foot.z * standW + sitZ * w.sit + lieZ * w.lie;
       let y = d.pawY;
       // 자세를 바꾸는 동안 옮기는 발은 살짝 들어 옮긴다 (바닥을 끌지 않게)
@@ -2818,8 +2850,6 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       // 뛰는 동안 발을 몸 쪽으로 접는다
       y += airUnits * 0.6;
       z += (leg.front ? -1 : 1) * airUnits * 0.25;
-      leg.hipG.getWorldPosition(hip);
-      this.root.worldToLocal(hip);
       // 들리면 다리가 늘어진다
       if (mood === 'grabbed') {
         y = hip.y - (leg.l1 + leg.l2) * 0.97;
