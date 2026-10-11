@@ -4,6 +4,7 @@ import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { app } from 'electron';
+import { aiChildEnv } from '../../shared/ai/child-env.ts';
 import { claudeArgs, claudeInput, parseClaudeLine } from '../../shared/ai/claude.ts';
 import { codexArgs, parseCodexLine } from '../../shared/ai/codex.ts';
 import { cursorArgs, cursorParser } from '../../shared/ai/cursor.ts';
@@ -137,7 +138,8 @@ export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
 
     let args: string[];
     let stdin: string | undefined;
-    const childEnv: NodeJS.ProcessEnv = { ...process.env, PATH: env.path };
+    // 짝꿍 환경 변수를 통째로 넘기지 않는다: 고른 것만 (shared/ai/child-env.ts)
+    const childEnv = aiChildEnv(process.env, { PATH: env.path });
     /** 줄 단위 JSON 해석기. 없으면 표준 출력을 그대로 답으로 본다 (text 어댑터). */
     let parse: ((line: string) => AiEvent[]) | undefined;
     let codexHome: string | undefined;
@@ -363,7 +365,7 @@ async function checkStatusNow(spec: ProviderSpec, refresh: boolean): Promise<AiS
   const launch = cli ? launchOf(cli, env) : undefined;
   if (!launch) return { provider, installed: false };
   // cursor-agent status 는 로그인 안 됐으면 브라우저를 열려고 한다. 막는다.
-  const childEnv: NodeJS.ProcessEnv = { ...process.env, PATH: env.path, NO_OPEN_BROWSER: '1', NO_COLOR: '1' };
+  const childEnv = aiChildEnv(process.env, { PATH: env.path, NO_OPEN_BROWSER: '1', NO_COLOR: '1' });
   if (spec.adapter === 'codex') {
     const home = prepareCodexHome(env.codexHome);
     if (home) childEnv.CODEX_HOME = home;

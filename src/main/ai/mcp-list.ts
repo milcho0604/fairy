@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { aiChildEnv } from '../../shared/ai/child-env.ts';
 import { parseMcpList } from '../../shared/ai/claude.ts';
 import { readJson, writeJson } from '../store.ts';
 import { getShellEnv, launchOf, resolveBin } from './shell-env.ts';
@@ -36,7 +37,11 @@ export function refreshMcpServers(log: (tag: string, ...rest: unknown[]) => void
         execFile(
           launch.file,
           [...launch.pre, 'mcp', 'list'],
-          { env: { ...process.env, PATH: env.path, ...launch.env }, timeout: 60_000, encoding: 'utf8' },
+          {
+            env: aiChildEnv(process.env, { PATH: env.path, ...launch.env }),
+            timeout: 60_000,
+            encoding: 'utf8',
+          },
           (_e, stdout) => resolve(stdout ?? ''),
         );
       });
