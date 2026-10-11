@@ -142,6 +142,14 @@ export function milestoneDue(days: number, marks: readonly number[]): number | u
   return due.length ? Math.max(...due) : undefined;
 }
 
+/**
+ * 만난 날 기념 말풍선(shared/companion.ts anniversaryDue)을 특별한 편지가 대신하는 날: 7, 30, 100일과 해마다.
+ * 매일 쪽지가 켜져 있으면 같은 날 "만난 지 7일째야!" 말풍선과 편지가 겹쳐 같은 말을 두 번 했다
+ */
+export function letterCovers(due: { mark: number; key: string }): boolean {
+  return due.key === 'companion.anniv.year' || (NOTE_MILESTONES as readonly number[]).includes(due.mark);
+}
+
 export type Season = 0 | 1 | 2 | 3;
 /** 철: 3~5월 봄(0), 6~8월 여름(1), 9~11월 가을(2), 12~2월 겨울(3) */
 export function seasonOf(day: string): Season {

@@ -10,6 +10,7 @@ import {
   parseMemory,
   weekDays,
 } from '../shared/companion.ts';
+import { letterCovers } from '../shared/daily-note.ts';
 import { plusDays } from '../shared/day.ts';
 import { dicts, type I18nKey, t } from '../shared/i18n/index.ts';
 import type { IdleFacts, IdleKey } from '../shared/idle-talk.ts';
@@ -132,6 +133,11 @@ export function createCompanion(o: CompanionOptions) {
     if (!due) return;
     memory = { ...memory, anniv: [...memory.anniv, due.mark] };
     save();
+    // 매일 쪽지가 켜져 있으면 7, 30, 100일과 해마다는 특별한 편지가 축하한다 (같은 날 같은 말을 두 번 하지 않게)
+    if (settings.get().dailyNotes && letterCovers(due)) {
+      o.log('companion', '기념은 편지로', due.mark);
+      return;
+    }
     o.log('companion', '기념', due.mark);
     // 집에서 쉬는 중(창 숨김)이면 말은 미뤄 두고 색종이는 보이지 않으니 터뜨리지 않는다
     if (o.visible()) o.react('cheer');

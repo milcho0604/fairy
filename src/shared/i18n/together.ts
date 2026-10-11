@@ -84,7 +84,9 @@ export const ko = {
   'note.thanks': '고마워',
   'note.toBox': '쪽지함',
   'note.title': (v: { m: number; d: number }) => `${v.m}월 ${v.d}일 쪽지`,
-  'note.letterTitle': (v: { n: number }) => `함께한 ${v.n}일 편지`,
+  // 1년(365일), 2년(730일)... 은 해로 센다. 날 수는 제목에만 (편지 첫 줄이 같은 수를 되풀이하지 않게)
+  'note.letterTitle': (v: { n: number }) =>
+    v.n >= 365 && v.n % 365 === 0 ? `함께한 ${v.n / 365}년 편지` : `함께한 ${v.n}일 편지`,
 
   // ---- 쪽지함 (오늘 탭) ----
   'note.box': '쪽지함',
@@ -188,10 +190,10 @@ export const ko = {
   // 특별한 편지
   'note.special.open': (v: N) =>
     P(v.p, {
-      friend: `우리 만난 지 벌써 ${v.n}일째야!`,
-      polite: `함께한 지 ${v.n}일째 되는 날이에요.`,
-      tsundere: `${v.n}일... 세고 있던 건 아니야. 그냥 알았어.`,
-      calm: `오늘로 함께한 지 ${v.n}일이 됐어.`,
+      friend: '시간 진짜 빠르다! 벌써 이만큼이나 같이 지냈어.',
+      polite: '시간이 참 빠르네요. 벌써 이만큼 함께했어요.',
+      tsundere: '...날짜 세고 있던 건 아니야. 그냥 알았어.',
+      calm: '돌아보면 금방이야. 그만큼 같이 걸어왔어.',
     }),
   'note.special.heart': (v: N) =>
     P(v.p, {
@@ -252,7 +254,8 @@ export const en: Translation<typeof ko> = {
   'note.thanks': 'Thanks',
   'note.toBox': 'Notes',
   'note.title': (v: { m: number; d: number }) => `Note for ${v.m}/${v.d}`,
-  'note.letterTitle': (v: { n: number }) => `Day ${v.n} letter`,
+  'note.letterTitle': (v: { n: number }) =>
+    v.n >= 365 && v.n % 365 === 0 ? `Year ${v.n / 365} letter` : `Day ${v.n} letter`,
 
   'note.box': 'Notes',
   'note.boxUnread': (v: { n: number }) => `${v.n} unread`,
@@ -357,10 +360,10 @@ export const en: Translation<typeof ko> = {
     }),
   'note.special.open': (v: N) =>
     P(v.p, {
-      friend: `It's already day ${v.n} since we met!`,
-      polite: `Today marks ${v.n} days together.`,
-      tsundere: `Day ${v.n}... Not that I was counting. I just knew.`,
-      calm: `As of today, we've been together ${v.n} days.`,
+      friend: "Time flies! We've already been together this long.",
+      polite: "Time truly flies. We've come this far together.",
+      tsundere: '...Not that I was counting the days. I just knew.',
+      calm: "Looking back, it went by quickly. We've walked this far together.",
     }),
   'note.special.heart': (v: N) =>
     P(v.p, {

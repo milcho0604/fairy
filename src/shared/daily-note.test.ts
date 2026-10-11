@@ -6,6 +6,7 @@ import {
   EMPTY_NOTES,
   fileNote,
   heldNote,
+  letterCovers,
   markRead,
   milestoneCoins,
   milestoneDue,
@@ -139,8 +140,10 @@ test('특별한 편지는 봉투 모양, 날 수와 코인, 성격 말투', () =
   assert.equal(note.coins, 5);
   assert.equal(note.lines.length, 4);
   const lines = text(note);
-  assert.ok(lines[0]?.includes('7'));
-  assert.ok(lines.some((l) => l.includes('5')));
+  // 날 수는 제목(note.letterTitle)에만, 코인은 한 줄에만
+  assert.match(t('note.letterTitle', { n: 7 }), /7/);
+  assert.ok(!lines.some((l) => l.includes('7')));
+  assert.equal(lines.filter((l) => l.includes('5')).length, 1);
   assert.ok(lines.at(-1)?.includes('콩이'));
 });
 
@@ -213,4 +216,31 @@ test('철: 봄 여름 가을 겨울', () => {
     ['2026-03-01', '2026-07-01', '2026-10-11', '2026-12-25', '2026-02-01'].map(seasonOf),
     [0, 1, 2, 3, 3],
   );
+});
+
+test('특별한 편지는 날 수를 제목에만 말하고, 코인은 한 번만 말한다 (네 성격, 7, 30, 100, 365일)', () => {
+  for (const lang of ['ko', 'en'] as const) {
+    setLang(lang);
+    for (const persona of ['friend', 'polite', 'tsundere', 'calm'] as const)
+      for (const milestone of [7, 30, 100, 365, 730]) {
+        const n = composeNote({ ...base, persona, milestone }, () => 0.4);
+        const body = text(n).join('\n');
+        const coins = String(n.coins);
+        assert.equal(body.split(coins).length - 1, 1, `${lang} ${persona} ${milestone}: ${body}`);
+        assert.equal((body.match(/코인|coin/gi) ?? []).length, 1, body);
+        assert.ok(!body.includes(String(milestone)), `${lang} ${persona} ${milestone}: ${body}`);
+      }
+    assert.match(t('note.letterTitle', { n: 365 }), lang === 'ko' ? /1년/ : /Year 1/);
+    assert.match(t('note.letterTitle', { n: 730 }), lang === 'ko' ? /2년/ : /Year 2/);
+    assert.match(t('note.letterTitle', { n: 30 }), /30/);
+  }
+  setLang('ko');
+});
+
+test('7, 30, 100일과 해마다 기념 말풍선은 특별한 편지가 대신한다 (50, 200, 300일은 말풍선)', () => {
+  assert.ok(letterCovers({ mark: 7, key: 'companion.anniv.day' }));
+  assert.ok(letterCovers({ mark: 100, key: 'companion.anniv.late' }));
+  assert.ok(letterCovers({ mark: 366, key: 'companion.anniv.year' }));
+  assert.ok(!letterCovers({ mark: 50, key: 'companion.anniv.day' }));
+  assert.ok(!letterCovers({ mark: 200, key: 'companion.anniv.day' }));
 });
