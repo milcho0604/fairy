@@ -137,6 +137,8 @@ export interface PetActions {
   openKnows?(): void;
   /** "오늘 뭐부터?" 규칙 답을 말풍선으로 (main/what-first.ts). 없으면 메뉴에 안 보인다 */
   whatFirst?(): void;
+  /** 집 숨기기, 다시 보이기 (shared/house-stow.ts). 집이 없으면 undefined 라 메뉴에 안 보인다 */
+  houseItem?(): Electron.MenuItemConstructorOptions | undefined;
 }
 
 export interface SayOptions {
@@ -605,6 +607,7 @@ export function createPetWindow({
         checked: settings.get().typeAlong,
         click: (item) => settings.set({ typeAlong: item.checked }),
       },
+      ...houseMenu(),
       {
         label: t('pet.menu.hide', { name: petName() }),
         accelerator: hideShortcut() || undefined,
@@ -627,6 +630,12 @@ export function createPetWindow({
       },
       { label: t('pet.menu.quit'), role: 'quit' },
     ]).popup(where);
+  }
+
+  /** 집 숨기기, 다시 보이기 한 줄 (집이 있을 때만) */
+  function houseMenu(): Electron.MenuItemConstructorOptions[] {
+    const item = actions.houseItem?.();
+    return item ? [item] : [];
   }
 
   /** 놀기 하위 메뉴. 노는 중이면 맨 위에 "그만 놀기", 다른 놀이는 흐리게 */
