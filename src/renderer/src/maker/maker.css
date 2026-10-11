@@ -241,12 +241,18 @@ section {
 /* 다듬기 화면: 안내가 여러 줄 떠도 다 됐어, 다른 사진 단추는 늘 보이게 창 아래에 붙인다 (작은 창에서 아래로 밀려 안 보였다) */
 .edit-actions {
   position: sticky;
-  bottom: 0;
+  /* 붙는 자리는 main 의 안쪽 여백(16px)만큼 올라가니 그만큼 내려 창 바닥에 붙인다. 아니면 단추 아래 16px 틈으로 내용이 비쳐 지나갔다 */
+  bottom: -16px;
   z-index: 1;
   margin: 0 -16px -16px;
   padding: 10px 16px 16px;
   border-top: 1px solid var(--line);
   background: var(--bg);
+}
+
+/* 다듬기 화면 안내는 section 간격(12px)으로 띄운다 */
+.edit .warn {
+  margin: 0;
 }
 
 .ghost {
