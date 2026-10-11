@@ -6,12 +6,17 @@ import {
   canAutoInstall,
   confirmedForce,
   decideUpdate,
+  nagDelayMs,
+  notifyPlan,
   RELEASE_REPO,
   RELEASES_API,
+  readSavedLock,
+  type SavedLock,
   type UpdateDecision,
 } from '../shared/update-policy.ts';
 import type { SayOptions } from './pet-window.ts';
 import { settings } from './settings.ts';
+import { readJson, removeJson, writeJson } from './store.ts';
 
 export { RELEASES_API };
 
@@ -29,12 +34,12 @@ function releasesApi(): string {
 const CONFIRM_MS = 10_000;
 /** 릴리스 확인 응답을 기다리는 한도 (캘린더와 같다) */
 const FETCH_TIMEOUT_MS = 20_000;
-/** 잠긴 동안 말풍선이 다른 말에 밀렸으면 다시 띄우는 간격 */
-const NAG_AGAIN_MS = 60_000;
+/** 잠금을 남겨 두는 파일 (사용자 데이터 폴더의 update-lock.json). 켤 때 첫 확인을 기다리지 않고 바로 잠근다 */
+const LOCK_FILE = 'update-lock';
 
 type Say = (s: SayOptions) => Promise<string | undefined>;
 type Log = (tag: string, ...rest: unknown[]) => void;
-type Lock = { version: string; url: string; minVersion: string };
+type Lock = SavedLock;
 
 /**
  * 새 버전 알림 (v1), 강제 업데이트, 자동 설치. 켜고 1분 뒤, 그 뒤 하루에 한 번 GitHub Releases 를 본다.
@@ -42,6 +47,9 @@ type Lock = { version: string; url: string; minVersion: string };
  *   누를 때만 설치한다 (끝낼 때 저절로 설치하지 않는다). 받지 못했거나 개발 실행이면 "받으러 가기"(릴리스 페이지).
  * - 강제(릴리스 본문의 min-version 보다 낮음): 건너뛰기 없이, 시간 끝 없이 알리고 AI 대화를 잠근다.
  *   두 번 따로 받은 응답이 같아야 잠그고, 확인이 실패하면 풀린다. 오프라인이면 잠그지 않는다.
+ *   잠금은 저장해 두고 다음에 켤 때 바로 잠근다. 다음 확인이 강제가 아니라고 답하면 지우고, 확인이 실패하면
+ *   이번 실행만 풀고 저장은 남긴다 (실패는 강제가 아니라는 답이 아니다).
+ * - 설정 "새 버전 알림"을 꺼도 확인은 한다. 강제가 아닌 새 버전 말풍선만 생략한다 (notifyPlan).
  * 사용자 정보는 보내지 않는다(앱 이름과 버전만). 토큰도 없다.
  */
 export function watchUpdates(o: { say: Say; log: Log }) {
@@ -180,6 +188,30 @@ export function watchUpdates(o: { say: Say; log: Log }) {
   /** 떠 있는 강제 안내를 거둘 때 끊는다 */
   let nagAbort: AbortController | undefined;
 
+  /** 저장해 둔 잠금이 있는지 (없으면 지우러 가지 않는다) */
+  let saved = false;
+
+  /** 확인한 잠금을 남긴다. 다음에 켤 때 바로 잠근다 */
+  function remember(l: Lock) {
+    try {
+      writeJson(LOCK_FILE, l);
+      saved = true;
+    } catch (err) {
+      o.log('update', '잠금 저장 못 함', err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  /** 강제가 아니라는 답을 받았다. 남긴 잠금을 지운다 */
+  function forget() {
+    if (!saved) return;
+    try {
+      removeJson(LOCK_FILE);
+      saved = false;
+    } catch (err) {
+      o.log('update', '잠금 지우기 못 함', err instanceof Error ? err.message : String(err));
+    }
+  }
+
   function setLock(next: Lock | undefined) {
     const was = lock;
     lock = next;
@@ -193,7 +225,7 @@ export function watchUpdates(o: { say: Say; log: Log }) {
     if (next) void nag();
   }
 
-  /** 잠긴 동안 업데이트 안내를 계속 띄운다. 눌러 닫으면 바로, 다른 말에 밀리면 1분 뒤 다시 */
+  /** 잠긴 동안 업데이트 안내를 계속 띄운다. 눌러 닫으면 바로, 다른 말에 밀리면 10초 뒤 다시 */
   async function nag() {
     if (nagging) return;
     nagging = true;
@@ -219,10 +251,11 @@ export function watchUpdates(o: { say: Say; log: Log }) {
           break;
         }
         if (answer === 'get') await shell.openExternal(lock.url);
-        // 눌러 닫으면 곧바로 다시 (닫을 수 없는 안내). 다른 말에 밀렸거나 못 띄웠으면 조금 뒤에
+        // 눌러 닫으면 곧바로 다시 (닫을 수 없는 안내). 다른 말에 밀렸거나 못 띄웠으면 그 말을 읽을 틈만 주고 다시 (nagDelayMs)
+        o.log('update', '강제 안내 닫힘', answer ?? '못 띄움');
         await new Promise<void>((resolve) => {
           wake = resolve;
-          setTimeout(resolve, answer === 'dismiss' ? 500 : NAG_AGAIN_MS).unref?.();
+          setTimeout(resolve, nagDelayMs(answer)).unref?.();
         });
         wake = undefined;
       }
@@ -278,7 +311,7 @@ export function watchUpdates(o: { say: Say; log: Log }) {
   }
 
   async function check(manual = false): Promise<UpdateStatus> {
-    if (!manual && !settings.get().updateCheck) return { text: t('main.update.off'), tone: 'info' };
+    // 설정을 꺼도 확인은 한다: 강제 업데이트 잠금과 풀기는 꺼짐과 상관없다. 꺼지면 아래에서 새 버전 말풍선만 생략
     const first = await fetchDecision();
     if (first.kind === 'failed') {
       // 확인을 못 하면 잠그지 않는다 (잠겨 있었으면 푼다)
@@ -293,6 +326,7 @@ export function watchUpdates(o: { say: Say; log: Log }) {
     }
     if (first.kind === 'none') {
       setLock(undefined);
+      forget();
       return { text: t('main.update.latest'), tone: 'ok' };
     }
     // 더 새 버전이 나왔으면 받아 둔 것과 실패 기록을 잊고 새로 받는다
@@ -300,21 +334,40 @@ export function watchUpdates(o: { say: Say; log: Log }) {
       downloaded = undefined;
       downloadFailedAt = 0;
     }
+    /** 두 번째 확인이 실패했다. 강제가 아니라는 답이 아니라서, 이번만 풀고 저장한 잠금은 남긴다 */
+    let unconfirmed = false;
     if (first.kind === 'force') {
       await wait(manual ? 0 : CONFIRM_MS);
       const second = await fetchDecision();
       if (second.kind !== 'failed' && confirmedForce(first, second)) {
-        setLock({ version: first.version, url: first.url, minVersion: first.minVersion });
+        const next = { version: first.version, url: first.url, minVersion: first.minVersion };
+        setLock(next);
+        remember(next);
         return { text: t('main.update.forcedFound', { min: first.minVersion }), tone: 'info' };
       }
       o.log('update', '강제 표시가 두 번째 확인과 달라 잠그지 않음');
+      unconfirmed = second.kind === 'failed';
     }
     setLock(undefined);
-    if (!manual && settings.get().skipVersion === first.version)
-      return { text: t('main.update.skipped'), tone: 'info' };
+    if (!unconfirmed) forget();
+    const { updateCheck, skipVersion } = settings.get();
+    const plan = notifyPlan({ manual, updateCheck, skipVersion, version: first.version });
+    if (plan === 'off') return { text: t('main.update.off'), tone: 'info' };
+    if (plan === 'skipped') return { text: t('main.update.skipped'), tone: 'info' };
     o.log('update', '새 버전', first.version);
     void notify(first.version, first.url);
     return { text: t('main.update.found', { version: first.version }), tone: 'ok' };
+  }
+
+  // 지난번에 확인한 잠금이 아직 맞으면 첫 확인(1분 뒤)을 기다리지 않고 바로 잠근다. 업데이트했으면 지운다
+  const raw = readJson(LOCK_FILE);
+  if (raw !== undefined) {
+    saved = true;
+    const restored = readSavedLock(raw, app.getVersion());
+    if (restored) {
+      o.log('update', '저장한 잠금으로 시작', restored.minVersion);
+      setLock(restored);
+    } else forget();
   }
 
   setTimeout(() => void check(), 60_000).unref();

@@ -7,10 +7,15 @@ import {
   canAutoInstall,
   confirmedForce,
   decideUpdate,
+  NAG_DISMISSED_MS,
+  NAG_PUSHED_MS,
+  nagDelayMs,
+  notifyPlan,
   PUBLIC_REPO,
   RELEASE_REPO,
   RELEASES_API,
   readMinVersion,
+  readSavedLock,
   SOURCE_REPO,
 } from './update-policy.ts';
 
@@ -135,4 +140,52 @@ test('릴리스와 공개 레포 옮기기 워크플로가 같은 공개 레포�
   // 소스 레포(GITHUB_REPOSITORY)에 릴리스를 만들지 않는다
   assert.doesNotMatch(wf, /--repo "\$GITHUB_REPOSITORY"/);
   assert.match(wf, /gh release create [^\n]*--repo "\$PUBLIC_REPO"/);
+});
+
+test('새 버전 알림을 꺼도 강제 업데이트는 확인한다 (말풍선만 생략)', () => {
+  const v = { version: '1.5.0' };
+  assert.equal(notifyPlan({ manual: false, updateCheck: true, ...v }), 'notify');
+  assert.equal(notifyPlan({ manual: false, updateCheck: false, ...v }), 'off');
+  assert.equal(notifyPlan({ manual: false, updateCheck: true, skipVersion: '1.5.0', ...v }), 'skipped');
+  assert.equal(notifyPlan({ manual: false, updateCheck: true, skipVersion: '1.4.0', ...v }), 'notify');
+  // 직접 확인은 꺼짐과 건너뛰기를 넘는다
+  assert.equal(notifyPlan({ manual: true, updateCheck: false, skipVersion: '1.5.0', ...v }), 'notify');
+  // 확인 자체를 꺼짐으로 건너뛰면 강제 업데이트도 잠금 풀기도 오지 않는다 (2026-10-12 점검의 빈틈 1)
+  const src = readFileSync(new URL('../main/update.ts', import.meta.url), 'utf8');
+  const check = src.slice(
+    src.indexOf('async function check('),
+    src.indexOf('const first = await fetchDecision()'),
+  );
+  assert.ok(
+    check.length > 0 && !/updateCheck/.test(check),
+    'check() 가 확인 전에 updateCheck 로 돌아가면 안 된다',
+  );
+  assert.match(src, /notifyPlan\(/);
+});
+
+test('저장한 잠금은 지금 버전으로 여전히 잠가야 할 때만 쓴다', () => {
+  const lock = { version: '1.5.0', url: 'https://github.com/a/b/releases/tag/v1.5.0', minVersion: '1.4.0' };
+  assert.deepEqual(readSavedLock(lock, '1.3.9'), lock);
+  // 업데이트해서 최소 버전 이상이 됐다
+  assert.equal(readSavedLock(lock, '1.4.0'), undefined);
+  assert.equal(readSavedLock(lock, '1.5.0'), undefined);
+  // 받을 버전이 지금보다 새것이 아니다, 최소 버전이 받을 버전보다 높다
+  assert.equal(readSavedLock({ ...lock, version: '1.3.9' }, '1.3.9'), undefined);
+  assert.equal(readSavedLock({ ...lock, minVersion: '1.6.0' }, '1.0.0'), undefined);
+  // 모양이 이상하다
+  assert.equal(readSavedLock({ ...lock, url: 'https://evil.example/x' }, '1.0.0'), undefined);
+  assert.equal(readSavedLock({ ...lock, minVersion: 140 }, '1.0.0'), undefined);
+  assert.equal(readSavedLock({ ...lock, version: 'x' }, '1.0.0'), undefined);
+  assert.equal(readSavedLock(null, '1.0.0'), undefined);
+  assert.equal(readSavedLock('min-version: 1.4.0', '1.0.0'), undefined);
+  assert.equal(readSavedLock(lock, '개발판'), undefined);
+  // 남는 칸은 버린다
+  assert.deepEqual(readSavedLock({ ...lock, extra: 1 }, '1.0.0'), lock);
+});
+
+test('강제 안내가 밀리면 10초 안에 다시 띄운다', () => {
+  assert.equal(nagDelayMs('dismiss'), NAG_DISMISSED_MS);
+  for (const a of ['replaced', 'cleared', 'timeout', undefined]) assert.equal(nagDelayMs(a), NAG_PUSHED_MS);
+  assert.ok(NAG_PUSHED_MS <= 10_000, '밀린 안내가 10초 넘게 사라지면 안 된다');
+  assert.ok(NAG_DISMISSED_MS < NAG_PUSHED_MS);
 });
