@@ -1,5 +1,5 @@
-<!-- 고마워요! 이 레포는 코드와 문서 기여만 받아요. 펫 그림, .jjpet 파일, 갤러리 추가는 받지 않아요 (CONTRIBUTING.md). -->
-<!-- Thanks! Code and docs only. Pet art, .jjpet files and gallery entries are not accepted (see CONTRIBUTING.md). -->
+<!-- 고마워요! 이 레포는 코드와 문서 기여만 받아요. 페어리 그림, .fairy 파일, 갤러리 추가는 받지 않아요 (CONTRIBUTING.md). -->
+<!-- Thanks! Code and docs only. Fairy art, .fairy files and gallery entries are not accepted (see CONTRIBUTING.md). -->
 
 ## 무엇을, 왜 (What and why)
 

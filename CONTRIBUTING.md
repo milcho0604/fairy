@@ -1,8 +1,8 @@
 # 기여하기 (Contributing)
 
-짝꿍에 관심 가져 줘서 고마워요. 이 레포는 **코드와 문서 기여**를 받아요. English follows below.
+페어리에 관심 가져 줘서 고마워요. 이 레포는 **코드와 문서 기여**를 받아요. English follows below.
 
-> **펫은 레포로 받지 않아요.** 펫 갤러리는 공식 펫만 올려요. 직접 만든 펫은 설정 → 데이터 → **펫 내보내기**로 `.jjpet` 파일을 만들어 친구에게 바로 보내 주세요. 펫 그림, `.jjpet` 파일, 갤러리 추가 요청 PR 은 닫아요.
+> **직접 만든 페어리는 레포로 받지 않아요.** 페어리 갤러리는 공식 페어리만 올려요. 직접 만든 페어리는 설정 → 데이터 → **페어리 내보내기**로 `.fairy` 파일을 만들어 친구에게 바로 보내 주세요. 페어리 그림, `.fairy` 파일, 갤러리 추가 요청 PR 은 닫아요.
 
 ## 개발 준비
 
@@ -17,7 +17,7 @@ npm run build      # out/ 에 빌드
 ```
 
 - **설치 파일 만들기**(`npm run dist`, `dist:mac`, `dist:win`, `dist:linux`)는 진짜 `node_modules` 폴더가 있어야 해요. git worktree 에서 `node_modules` 를 심볼릭 링크로 두면 electron-builder 가 의존성을 못 찾아 망가진 앱을 만들어요. 링크를 지우고 복사하거나 그 폴더에서 `npm ci` 를 돌려요.
-- 리눅스 설치판이 켜지는지는 `xvfb-run -a node scripts/dev/smoke-packaged.mjs dist/linux-unpacked/jjakkung` 로 봐요 (CI 도 같은 것을 돌려요).
+- 리눅스 설치판이 켜지는지는 `xvfb-run -a node scripts/dev/smoke-packaged.mjs dist/linux-unpacked/fairy` 로 봐요 (CI 도 같은 것을 돌려요).
 
 ## 시험 창 규칙 (CLAUDE.md)
 
@@ -33,7 +33,7 @@ JJ_NO_FOCUS=1 JJ_USER_DATA=$(mktemp -d) npx electron --inspect=9851 . --remote-d
 
 ## 지켜 줄 것
 
-- **다른 회사 캐릭터, 남의 그림은 넣지 않아요.** 펫과 그림은 직접 그렸거나 라이선스가 분명한 것만(코드로 그린 기본 펫, 레포에 있는 그림). 팬아트, 유명 캐릭터 닮은 그림도 안 돼요.
+- **다른 회사 캐릭터, 남의 그림은 넣지 않아요.** 페어리와 그림은 직접 그렸거나 라이선스가 분명한 것만(코드로 그린 기본 페어리, 레포에 있는 그림). 팬아트, 유명 캐릭터 닮은 그림도 안 돼요.
 - **개인정보**: 시험과 문서의 예시는 지어낸 것만 써요 (진짜 이름, 이메일, 전화번호, 토큰, 홈 경로 금지. 경로는 `/Users/kim` 처럼 가짜로).
 - **보안 문제**는 이슈로 올리지 말고 [SECURITY.md](SECURITY.md) 방법으로 알려 주세요.
 - 화면 말은 한국어와 영어 둘 다 (`src/shared/i18n/`). 한국어는 친근한 반말이 기본이에요.
@@ -64,14 +64,14 @@ fix: 화면을 실은 질문은 AI CLI 가 세션 기록에 남기지 않게 한
 
 Thanks for your interest! This repository accepts **code and documentation contributions**.
 
-> **Pets are not accepted into the repository.** The pet gallery lists official pets only. To share a pet you made, use Settings → Data → **Export pet** and send the `.jjpet` file to your friend directly. PRs that add pet art, `.jjpet` files or gallery entries will be closed.
+> **Fairies are not accepted into the repository.** The fairy gallery lists official fairies only. To share a fairy you made, use Settings → Data → **Export fairy** and send the `.fairy` file to your friend directly. PRs that add fairy art, `.fairy` files or gallery entries will be closed.
 
 ### Setup
 
 - Node 24 (`.nvmrc`; 22.18+ works — tests run TypeScript directly).
 - `npm ci`, `npm run dev`, `npm run check` (typecheck + biome + tests, required before a PR), `npx biome check --write src scripts`, `npm run build`.
 - Packaging (`npm run dist*`) needs a **real** `node_modules` directory. A symlinked `node_modules` (common in git worktrees) makes electron-builder produce a broken app.
-- Smoke-test a Linux build with `xvfb-run -a node scripts/dev/smoke-packaged.mjs dist/linux-unpacked/jjakkung`.
+- Smoke-test a Linux build with `xvfb-run -a node scripts/dev/smoke-packaged.mjs dist/linux-unpacked/fairy`.
 
 ### Test window rules (CLAUDE.md)
 

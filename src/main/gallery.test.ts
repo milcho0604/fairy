@@ -36,14 +36,14 @@ test('목록과 작은 그림을 받고, 고른 펫을 sha256 확인 뒤 읽는�
   assert.deepEqual(
     r.pets.map((p) => [p.id, p.name, p.author, p.license, !!p.thumb?.startsWith('data:image/png;base64,')]),
     [
-      ['choco', '초코', '짝꿍', 'CC-BY-4.0', true],
-      ['milk', '밀크', '짝꿍', 'CC-BY-4.0', true],
+      ['choco', '초코', '페어리', 'CC-BY-4.0', true],
+      ['milk', '밀크', '페어리', 'CC-BY-4.0', true],
     ],
   );
   // 넘기기는 따라가지 않고 쿠키도 보내지 않는다
   assert.ok(f.init.every((i) => i.redirect === 'error' && i.credentials === 'omit'));
   const d = await g.download('milk');
-  assert.ok(d.ok && d.pet.name === '밀크' && d.pet.kind === 'cat' && d.pet.meta?.author === '짝꿍');
+  assert.ok(d.ok && d.pet.name === '밀크' && d.pet.kind === 'cat' && d.pet.meta?.author === '페어리');
   assert.ok(f.urls.every((u) => u.startsWith(GALLERY_BASE)));
 });
 

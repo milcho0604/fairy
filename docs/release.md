@@ -8,12 +8,12 @@
 
 ## 자동 업데이트
 
-설치판은 새 버전을 미리 받아 두고 펫이 "다시 켜서 업데이트"를 띄운다.
+설치판은 새 버전을 미리 받아 두고 페어리가 "다시 켜서 업데이트"를 띄운다.
 
 - 윈도우: 누를 때만 설치한다(2026-10-11부터). 윈도우 설치 파일은 코드 서명이 없어(아래 "윈도우 서명") 받은 파일의 게시자를 운영체제가 확인할 수 없다. 받은 파일은 `latest.yml` 의 sha512 로만 확인하므로, 끝낼 때 몰래 설치하지 않고 사용자가 "다시 켜서 업데이트"를 누른 때만 설치한다.
-- 리눅스: 자동 설치가 없다. 새 버전이 나오면 펫이 릴리스 페이지를 연다.
-- 맥: 누를 때만 설치한다. 맥의 업데이트 장치(Squirrel.Mac)는 한 번 넘겨받으면 끝낼 때 반드시 설치해서 "건너뛰기"를 되돌릴 수 없기 때문이다. 새 앱의 서명이 지금 앱의 서명 조건(앱 ID + 아래 자체 인증서)을 만족해야 받아들인다. 다른 인증서나 임시 서명으로 만든 빌드는 거절되고, 그때 펫은 릴리스 페이지를 연다(2026-10-09 실험: 같은 인증서는 설치, 임시 서명은 "did not pass validation" 으로 거절).
-- 이 기능이 없는 0.1.0 은 맥에서 한 번은 직접 받아 설치해야 한다(펫의 "받으러 가기"). 그 뒤부터 자동이다.
+- 리눅스: 자동 설치가 없다. 새 버전이 나오면 페어리가 릴리스 페이지를 연다.
+- 맥: 누를 때만 설치한다. 맥의 업데이트 장치(Squirrel.Mac)는 한 번 넘겨받으면 끝낼 때 반드시 설치해서 "건너뛰기"를 되돌릴 수 없기 때문이다. 새 앱의 서명이 지금 앱의 서명 조건(앱 ID + 아래 자체 인증서)을 만족해야 받아들인다. 다른 인증서나 임시 서명으로 만든 빌드는 거절되고, 그때 페어리는 릴리스 페이지를 연다(2026-10-09 실험: 같은 인증서는 설치, 임시 서명은 "did not pass validation" 으로 거절).
+- 이 기능이 없는 0.1.0 은 맥에서 한 번은 직접 받아 설치해야 한다(페어리의 "받으러 가기"). 그 뒤부터 자동이다.
 - 앱이 읽기 전용 위치(dmg 안, 다운로드 폴더에서 격리된 채)에서 돌면 설치가 거절된다. 이때도 릴리스 페이지로 돌아간다.
 
 ## 맥 서명 인증서
@@ -21,7 +21,7 @@
 맥 앱은 electron-builder 가 임시 서명을 한 뒤 `scripts/mac-sign.mjs` 가 자체 인증서 `Jjakkung Self Signed` 로 다시 서명한다. 맥은 애플 서명 없는 앱의 화면 기록 권한을 서명 조건으로 기억하는데, 임시 서명은 빌드마다 바뀌어 업데이트할 때마다 권한이 풀린다(L23). 같은 인증서면 조건이 "앱 ID + 인증서"로 고정되어 업데이트해도 유지되고, 맥 자동 업데이트도 이 조건으로 새 앱을 확인한다. 애플 개발자 서명(D4)을 붙이면 이 단계는 빼도 되지만, 그때는 서명 조건이 바뀌어 자체 인증서 판에서 개발자 서명 판으로는 자동 업데이트가 안 된다(한 번은 직접 설치).
 
 - 인증서 지문(SHA1): `45DAB97976E727D42955956ED8DC2B5ED6D12714`. 스크립트에 박혀 있어 다른 인증서면 빌드가 멈춘다.
-- 위치: 만든 사람 컴퓨터 `~/.config/jjakkung/mac-sign.p12`, 암호는 같은 폴더 `mac-sign.password`. GitHub Actions 는 비밀값 `JJ_MAC_SIGN_P12`(p12 를 base64 로)와 `JJ_MAC_SIGN_PASSWORD`.
+- 위치: 만든 사람 컴퓨터 `~/.config/jjakkung/mac-sign.p12`(이름이 페어리로 바뀌어도 이 폴더 이름은 그대로, `scripts/mac-sign.mjs`), 암호는 같은 폴더 `mac-sign.password`. GitHub Actions 는 비밀값 `JJ_MAC_SIGN_P12`(p12 를 base64 로)와 `JJ_MAC_SIGN_PASSWORD`.
 - **잃어버리면 안 된다.** 새로 만들면 모든 사용자가 권한을 한 번 다시 줘야 하고 자동 업데이트도 끊긴다. p12 와 암호를 비밀번호 관리자 같은 곳에 따로 보관한다.
 - 비밀값 넣기는 아래 "공개 전환 체크리스트" 4.
 - 권한과 상관없는 시험 빌드만 `JJ_ALLOW_ADHOC=1` 로 임시 서명에 둘 수 있다. 그 빌드는 배포하지 않는다.
@@ -43,7 +43,7 @@
 
 | 퓨즈 | 값 | 까닭 |
 | --- | --- | --- |
-| RunAsNode | 켬 | 펫 MCP 서버를 짝꿍 실행 파일로 띄운다(`ELECTRON_RUN_AS_NODE`, `src/main/mcp-launch.ts`). 끄면 AI 대화의 짝꿍 도구와 "다른 AI 에 붙이기"가 멈춘다. 대가: 이 컴퓨터에서 프로그램을 돌릴 수 있는 사람은 짝꿍 실행 파일을 Node 처럼 쓸 수 있다. 맥 화면 기록 권한은 창을 띄운 앱 쪽에 묶여 Node 모드로는 빌릴 수 없다. 나중에 MCP 서버를 따로 묶은 실행 파일(또는 utilityProcess 중계)로 바꾸면 끈다 |
+| RunAsNode | 켬 | 페어리 MCP 서버를 페어리 실행 파일로 띄운다(`ELECTRON_RUN_AS_NODE`, `src/main/mcp-launch.ts`). 끄면 AI 대화의 페어리 도구와 "다른 AI 에 붙이기"가 멈춘다. 대가: 이 컴퓨터에서 프로그램을 돌릴 수 있는 사람은 페어리 실행 파일을 Node 처럼 쓸 수 있다. 맥 화면 기록 권한은 창을 띄운 앱 쪽에 묶여 Node 모드로는 빌릴 수 없다. 나중에 MCP 서버를 따로 묶은 실행 파일(또는 utilityProcess 중계)로 바꾸면 끈다 |
 | EnableNodeOptionsEnvironmentVariable | 끔 | `NODE_OPTIONS` 로 설치판에 코드를 끼워 넣지 못하게 |
 | EnableNodeCliInspectArguments | 끔 | `--inspect` 로 설치판에 디버거를 붙여 토큰, 화면 권한을 빌리지 못하게. 개발 실행(`npx electron .`)과 시험 창은 퓨즈 없는 Electron 이라 그대로 된다 |
 | OnlyLoadAppFromAsar | 켬 | 앱 코드는 `app.asar` 에서만 읽는다 |
@@ -66,7 +66,7 @@
 
 이전 버전을 더 쓰면 안 될 때(데이터를 망가뜨리는 결함, 보안 문제)만 레포의 `release/min-version` 에 `1.4.0` 처럼 한 줄로 적고 커밋한다. 태그를 올리면 `release.yml` 이 값을 검사하고(숫자 셋, 이 릴리스 버전 이하, 한 줄) 릴리스 본문 맨 위에 사람이 읽는 문장과 앱이 읽는 표시 `<!-- min-version: 1.4.0 -->` 를 넣는다. 값이 잘못되었으면 빌드 전에 멈춘다. 본문에 손으로 적지 않는다.
 
-- 이보다 낮은 버전의 짝꿍은 건너뛰기 없이 업데이트 안내를 띄우고 업데이트 전까지 AI 대화를 잠근다.
+- 이보다 낮은 버전의 페어리는 건너뛰기 없이 업데이트 안내를 띄우고 업데이트 전까지 AI 대화를 잠근다.
 - 앱은 최신 릴리스 하나만 본다. 파일에 값이 남아 있는 동안은 다음 릴리스에도 계속 붙는다. 풀려면 값 줄을 지운다.
 - 잠그려면 따로 받은 두 응답(10초 간격)이 같은 최소 버전을 말해야 한다. 확인에 실패하거나 오프라인이면 잠그지 않으니 잠금은 보안 장치가 아니라 안내다.
 - 앱이 읽는 규칙(본문을 손으로 고칠 때): 줄 전체가 `min-version: 1.4.0` 또는 `<!-- min-version: 1.4.0 -->` 여야 하고, 값이 최신 릴리스보다 높거나, 서로 다른 값이 둘이거나, 코드 블록(```) 안이면 무시된다.
@@ -91,24 +91,24 @@ export GH_TOKEN=$(gh auth token --user milcho0604)
 4. **비밀값 넣기 (맥 빌드에 필요, 값은 화면에 찍지 않는다):**
 
    ```bash
-   base64 -i ~/.config/jjakkung/mac-sign.p12 | gh secret set JJ_MAC_SIGN_P12 --repo milcho0604/jjakkung
-   gh secret set JJ_MAC_SIGN_PASSWORD --repo milcho0604/jjakkung < ~/.config/jjakkung/mac-sign.password
-   gh secret list --repo milcho0604/jjakkung
+   base64 -i ~/.config/jjakkung/mac-sign.p12 | gh secret set JJ_MAC_SIGN_P12 --repo milcho0604/fairy
+   gh secret set JJ_MAC_SIGN_PASSWORD --repo milcho0604/fairy < ~/.config/jjakkung/mac-sign.password
+   gh secret list --repo milcho0604/fairy
    ```
 
    그리고 위 "환경 승인"대로 환경 `release` 를 만든다(없으면 릴리스 작업이 승인 없이 돈다).
    Settings → Code security → **Private vulnerability reporting** 을 켠다(`SECURITY.md` 가 이 길로 받는다).
-5. **공개 전환:** `gh repo edit milcho0604/jjakkung --visibility public --accept-visibility-change-consequences`. 공개 레포는 Actions 맥 러너 시간이 깎이지 않으니 태그는 공개 뒤에 올린다.
-6. **버전 올리기와 태그:** `package.json` 의 `version` 을 `0.2.0` 으로(`npm version 0.2.0 --no-git-tag-version`), `CHANGELOG.md` 의 Unreleased 를 `0.2.0` 으로 정리해 커밋하고 `main` 에 푸시한다. 그다음 `git tag v0.2.0 && git push origin v0.2.0`, 진행은 `gh run watch --repo milcho0604/jjakkung`.
-7. **초안 확인:** `gh release view v0.2.0 --repo milcho0604/jjakkung` 로 파일 목록(dmg 2, zip 2, zip.blockmap 2, latest-mac.yml, exe, exe.blockmap, latest.yml, tar.xz, AppImage)과 본문 머리(최소 버전을 적었으면 그 문장)를 본다.
-8. **발행:** `gh release edit v0.2.0 --repo milcho0604/jjakkung --draft=false --latest`.
+5. **공개 전환:** `gh repo edit milcho0604/fairy --visibility public --accept-visibility-change-consequences`. 공개 레포는 Actions 맥 러너 시간이 깎이지 않으니 태그는 공개 뒤에 올린다.
+6. **버전 올리기와 태그:** `package.json` 의 `version` 을 `0.2.0` 으로(`npm version 0.2.0 --no-git-tag-version`), `CHANGELOG.md` 의 Unreleased 를 `0.2.0` 으로 정리해 커밋하고 `main` 에 푸시한다. 그다음 `git tag v0.2.0 && git push origin v0.2.0`, 진행은 `gh run watch --repo milcho0604/fairy`.
+7. **초안 확인:** `gh release view v0.2.0 --repo milcho0604/fairy` 로 파일 목록(dmg 2, zip 2, zip.blockmap 2, latest-mac.yml, exe, exe.blockmap, latest.yml, tar.xz, AppImage)과 본문 머리(최소 버전을 적었으면 그 문장)를 본다.
+8. **발행:** `gh release edit v0.2.0 --repo milcho0604/fairy --draft=false --latest`.
 9. **공개 후 밖에서 확인 (토큰 없이):**
 
    ```bash
-   curl -s https://api.github.com/repos/milcho0604/jjakkung/releases/latest | grep -E '"(tag_name|draft|prerelease)"'
-   curl -sIL -o /dev/null -w '%{http_code}\n' https://github.com/milcho0604/jjakkung/releases/latest/download/latest-mac.yml
-   curl -sIL -o /dev/null -w '%{http_code}\n' https://github.com/milcho0604/jjakkung/releases/latest/download/latest.yml
-   GIT_TERMINAL_PROMPT=0 git clone --depth 1 https://github.com/milcho0604/jjakkung "$(mktemp -d)/jj"
+   curl -s https://api.github.com/repos/milcho0604/fairy/releases/latest | grep -E '"(tag_name|draft|prerelease)"'
+   curl -sIL -o /dev/null -w '%{http_code}\n' https://github.com/milcho0604/fairy/releases/latest/download/latest-mac.yml
+   curl -sIL -o /dev/null -w '%{http_code}\n' https://github.com/milcho0604/fairy/releases/latest/download/latest.yml
+   GIT_TERMINAL_PROMPT=0 git clone --depth 1 https://github.com/milcho0604/fairy "$(mktemp -d)/jj"
    ```
 
-   `tag_name` 이 `v0.2.0`, `draft` 와 `prerelease` 가 `false`, 두 파일이 `200` 이면 된다. 쓰던 `0.1.0` 짝꿍의 설정에서 업데이트 확인을 누르면 "새 버전 0.2.0" 이 떠야 한다.
+   `tag_name` 이 `v0.2.0`, `draft` 와 `prerelease` 가 `false`, 두 파일이 `200` 이면 된다. 쓰던 `0.1.0` 페어리의 설정에서 업데이트 확인을 누르면 "새 버전 0.2.0" 이 떠야 한다.

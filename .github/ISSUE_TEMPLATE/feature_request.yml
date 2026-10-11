@@ -5,8 +5,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        펫 갤러리는 공식 펫만 올려요. 직접 만든 펫은 `.jjpet` 파일로 친구에게 바로 보내 주세요 (펫 추가 요청은 받지 않아요).
-        The pet gallery is official-only; share your own pets as `.jjpet` files directly.
+        페어리 갤러리는 공식 페어리만 올려요. 직접 만든 페어리는 `.fairy` 파일로 친구에게 바로 보내 주세요 (페어리 추가 요청은 받지 않아요).
+        The fairy gallery is official-only; share your own fairies as `.fairy` files directly.
   - type: textarea
     id: problem
     attributes:

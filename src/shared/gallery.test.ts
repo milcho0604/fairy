@@ -143,8 +143,8 @@ test('레포 gallery/ 의 목록이 펫 파일과 맞다 (밀크, 초코만)', (
   assert.deepEqual(
     index?.map((e) => [e.id, e.name, e.author, e.license]),
     [
-      ['choco', '초코', '짝꿍', 'CC-BY-4.0'],
-      ['milk', '밀크', '짝꿍', 'CC-BY-4.0'],
+      ['choco', '초코', '페어리', 'CC-BY-4.0'],
+      ['milk', '밀크', '페어리', 'CC-BY-4.0'],
     ],
   );
   for (const e of index ?? []) {

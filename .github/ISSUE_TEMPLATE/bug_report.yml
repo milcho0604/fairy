@@ -1,11 +1,11 @@
 name: 버그 알리기 (Bug report)
-description: 짝꿍이 이상하게 움직여요 / Something doesn't work
+description: 페어리가 이상하게 움직여요 / Something doesn't work
 labels: [bug]
 body:
   - type: markdown
     attributes:
       value: |
-        고마워요! **보안 문제는 여기 올리지 말고** [SECURITY.md](https://github.com/milcho0604/jjakkung/blob/main/SECURITY.md) 방법으로 알려 주세요.
+        고마워요! **보안 문제는 여기 올리지 말고** [SECURITY.md](https://github.com/milcho0604/fairy/blob/main/SECURITY.md) 방법으로 알려 주세요.
         진짜 할 일 제목, 이메일, 토큰 같은 개인정보는 지우고 올려 주세요.
         Please report security issues privately (see SECURITY.md) and remove personal data.
   - type: input

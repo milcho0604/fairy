@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/milcho0604/jjakkung/blob/main/docs/schema/jjpet-v2.schema.json",
-  "title": "Jjakkung pet file (.jjpet) version 2",
+  "$id": "https://github.com/milcho0604/fairy/blob/main/docs/schema/jjpet-v2.schema.json",
+  "title": "fairy file (.fairy, formerly .jjpet) version 2",
   "description": "One UTF-8 JSON file, at most 48 MiB (gallery: 16 MiB). See docs/pet-format.md. The app (src/shared/pet-share.ts) is the reference validator; it also checks image magic bytes and pixel dimensions, which JSON Schema cannot.",
   "type": "object",
   "required": ["format", "version", "manifest", "images"],
