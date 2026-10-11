@@ -3,6 +3,7 @@ import type { AiProvider } from '../shared/ai/types.ts';
 import type { Activity } from '../shared/behavior.ts';
 import type { BubbleLayout } from '../shared/bubble-layout.ts';
 import type { ChatState } from '../shared/chat-state.ts';
+import { DATA_EXPORT, DAY, type DayBridge, type ExportBridge } from '../shared/day-ipc.ts';
 import type { Gaze } from '../shared/gaze.ts';
 import { GCAL, type GcalBridge, type GcalStatus } from '../shared/gcal.ts';
 import type { Point } from '../shared/geometry.ts';
@@ -239,6 +240,9 @@ if (kind === 'settings') {
     },
   };
   contextBridge.exposeInMainWorld('jjakkungGcal', gcal);
+  // 내보내기 (메모 .md, 할 일 .csv/.md, 일정 .ics). 저장 대화상자와 쓰기는 메인이 한다
+  const exporter: ExportBridge = { run: (kind) => ipcRenderer.invoke(DATA_EXPORT.run, kind) };
+  contextBridge.exposeInMainWorld('jjakkungExport', exporter);
 }
 
 // 패널과 빠른 입력 창은 같은 기능을 쓴다.
@@ -296,6 +300,22 @@ if (kind === 'panel' || kind === 'quick') {
     },
   };
   contextBridge.exposeInMainWorld('jjakkungPanel', panel);
+  // 하루 도구 (습관, 아침 계획, 방금 울린 알림 미루기, shared/day-ipc.ts)
+  const day: DayBridge = {
+    habits: () => ipcRenderer.invoke(DAY.habits),
+    plan: (auto) => ipcRenderer.invoke(DAY.plan, auto === true),
+    planSave: (picks, note) => ipcRenderer.invoke(DAY.planSave, picks, note),
+    planPolish: (picks) => ipcRenderer.invoke(DAY.planPolish, picks),
+    planPrefs: (prefs) => ipcRenderer.invoke(DAY.planPrefs, prefs),
+    planShown: () => ipcRenderer.send(DAY.planShown),
+    onOpenPlan: (listener) => {
+      ipcRenderer.on(DAY.openPlan, () => listener());
+    },
+    remind: () => ipcRenderer.invoke(DAY.remind),
+    remindSnooze: (choice) => ipcRenderer.invoke(DAY.remindSnooze, choice),
+    remindDismiss: () => ipcRenderer.send(DAY.remindDismiss),
+  };
+  contextBridge.exposeInMainWorld('jjakkungDay', day);
 }
 
 if (kind === 'maker') {

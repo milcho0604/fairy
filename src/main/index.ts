@@ -26,6 +26,7 @@ import { boostOn, onBoostChange } from './boost.ts';
 import { watchCalendar } from './calendar.ts';
 import { createChat } from './chat.ts';
 import { createCompanion } from './companion.ts';
+import { createDayTools } from './day-tools.ts';
 import { announceJsonTrouble, announceStoreTrouble, openStore } from './db.ts';
 import { createDiary } from './diary.ts';
 import { confineTestDisplay } from './focus.ts';
@@ -340,6 +341,8 @@ ready
       life,
       shop,
       achievements,
+      habits,
+      exportTodos,
       vacuumInto,
       dataVersion,
       trouble,
@@ -988,6 +991,32 @@ ready
       },
       log,
     });
+    // ---- 하루 도구: 습관, 아침 계획, 알림 미루기, 내보내기 (main/day-tools.ts) ----
+    const dayTools = createDayTools({
+      todos: store,
+      habits,
+      events,
+      notes,
+      exportTodos,
+      restDays: () => restDaysOf(settings.get()),
+      dayEndMinute: () => settings.get().reviewMinute,
+      isPanel: (wc) => panel.owns(wc),
+      panelWindow: () => panel.window,
+      openToday: () => panel.openTab('today'),
+      isSettings: (wc) => {
+        const w = settingsWindow.window;
+        return !!w && !w.isDestroyed() && w.webContents === wc;
+      },
+      settingsWindow: () => settingsWindow.window,
+      askOnce: (text, system) => chat.textOnce(text, system),
+      aiLabel: () => chat.aiLabel(),
+      aiLocked: () => updates.locked(),
+      say: (o) => pet.say(o),
+      petHidden: () => pet.isHidden(),
+      focusing: () => planner.focus.phase === 'focus',
+      reminders: planner.reminders,
+      log,
+    });
     settings.onChange((next, prev) => {
       // 단축키를 다 본다 (대화, 같이 보기 키를 바꿔도 다시 켜야 반영되던 문제, 리뷰 HIGH)
       if (shortcutsChanged(next.shortcuts, prev.shortcuts)) {
@@ -1170,6 +1199,8 @@ ready
           friends,
           diary,
           companion,
+          dayTools,
+          habits,
         },
       });
     if (process.env.JJ_METRICS) logMetrics(Number(process.env.JJ_METRICS));

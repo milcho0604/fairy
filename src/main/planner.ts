@@ -672,5 +672,7 @@ export function createPlanner(o: PlannerOptions) {
     /** 일정이 바뀌었을 때 바로 한 번 본다 (곧 시작하는 일정을 넣은 경우) */
     check: tick,
     stop: () => clearInterval(timer),
+    /** 미리 알림 (방금 울린 알림 미루기, main/day-tools.ts) */
+    reminders,
   };
 }

@@ -9,6 +9,13 @@ import { t } from '../shared/i18n/index.ts';
 import { eventLink } from '../shared/links.ts';
 import { type Anchor, anchorAt, parseSnoozed, type Snoozed, snoozeFor, staleAt } from '../shared/remind.ts';
 import { missedLine, type RemindItem, remindLine } from '../shared/remind-text.ts';
+import {
+  choiceOfAction,
+  type SnoozeChoice,
+  snoozeAction,
+  snoozeAt,
+  snoozeChoices,
+} from '../shared/snooze.ts';
 import { type Todo, type TodoStore, todoAnchor } from '../shared/todo-store.ts';
 import type { SayOptions } from './pet-window.ts';
 
@@ -49,6 +56,9 @@ const fromTodo = (todo: Todo): Due | undefined => {
 };
 
 /** 말풍선으로 꺼내도 되는 마지막 때: 시각 기준은 시작 10분 뒤(7판과 같다), 날짜 기준은 그날 끝 */
+/** 오늘 탭 "방금 울린 알림"은 이만큼 둔다 */
+const RECENT_MS = 30 * 60_000;
+
 const holdUntil = (a: Anchor) => (a.kind === 'time' ? a.at + SCHEDULE_STALE_MS : staleAt(a));
 
 export function createReminders(o: RemindersOptions) {
@@ -85,20 +95,39 @@ export function createReminders(o: RemindersOptions) {
     }
     const seen = new Set(due.map((d) => `${d.kind}:${d.id}`));
     const again: Due[] = [];
-    for (const k of ready.flatMap((s) => s.keys)) {
-      const key = `${k.kind}:${k.id}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const d = reread(k);
-      // 그사이 때가 지나 쓸모없어졌으면 다시 말하지 않는다
-      if (d && now < holdUntil(d.anchor)) again.push(d);
-    }
+    /** 사용자가 때를 골라 미룬 것 (때가 지난 할 일도 다시 말한다) */
+    const kept = new Set<string>();
+    for (const s of ready)
+      for (const k of s.keys) {
+        const key = `${k.kind}:${k.id}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const d = reread(k);
+        // 그사이 때가 지나 쓸모없어졌으면 다시 말하지 않는다 (고른 때에 미룬 것은 말한다)
+        if (d && (s.keep || now < holdUntil(d.anchor))) again.push(d);
+        if (d && s.keep) kept.add(key);
+      }
     const list = [...due, ...again].sort((a, b) => anchorAt(a.anchor) - anchorAt(b.anchor));
     if (list.length === 0) return;
     const first = list[0] as Due;
     const items = list.map(itemOf);
     const lines = items.map((it) => remindLine(it, now));
-    const stale = Math.min(...list.map((d) => holdUntil(d.anchor)));
+    const stale = Math.min(
+      ...list.map((d) =>
+        kept.has(`${d.kind}:${d.id}`)
+          ? Math.max(holdUntil(d.anchor), now + 3 * SCHEDULE_STALE_MS)
+          : holdUntil(d.anchor),
+      ),
+    );
+    // 미루기 고르기 (시스템 알림 단추, 오늘 탭 "방금 울린 알림")
+    const choices = snoozeChoices({ now, stale, todosOnly: list.every((d) => d.kind === 'todo') });
+    const keys = list.map((d) => ({ kind: d.kind, id: d.id }));
+    recent = {
+      keys,
+      titles: list.map((d) => (d.kind === 'event' ? d.e.title : d.todo.title)),
+      at: now,
+      choices,
+    };
     const buttons = [{ id: 'ok', label: t('panel.remind.ok') }];
     const snoozeMs = snoozeFor(now, anchorAt(first.anchor), stale);
     if (snoozeMs !== undefined)
@@ -117,6 +146,13 @@ export function createReminders(o: RemindersOptions) {
     // 할 일만 있으면 패널에서 바로 볼 수 있게
     else if (list.every((d) => d.kind === 'todo')) buttons.push({ id: 'show', label: t('remind.show') });
     const act = (a: string | undefined) => {
+      const choice = choiceOfAction(a);
+      if (choice) {
+        snooze(keys, choice);
+        return;
+      }
+      // 확인, 미루기, 회의 열기를 눌렀으면 오늘 탭의 "방금 울린 알림"은 거둔다 (볼게, 시간 끝은 남긴다)
+      if ((a === 'ok' || a === 'snooze' || a === 'link') && recent?.keys === keys) recent = undefined;
       if (a === 'link' && link) {
         o.log('planner', '일정 링크 열기', link.meeting ? 'meeting' : 'link');
         o.openUrl(link.url);
@@ -150,13 +186,41 @@ export function createReminders(o: RemindersOptions) {
           onAction: act,
           // 펫이 안 보이면(맥 전체 화면, 숨김, 발표) 시스템 알림으로도 한 번 (설정 osNotify)
           osNotify: true,
+          // 시스템 알림 단추로 미루기 (맥, 윈도우). 단추가 없는 곳은 알림을 누르면 오늘 탭에서 고른다
+          osActions: choices.map((c) => ({ id: snoozeAction(c), label: t(`snooze.${c}`) })),
         },
       })
       .then(act);
   }
 
+  /** 방금 울린 알림 (오늘 탭에서 미루기를 고를 수 있게). 확인하거나 미루면 없어진다 */
+  let recent: { keys: Snoozed['keys']; titles: string[]; at: number; choices: SnoozeChoice[] } | undefined;
+
+  /** 고른 때에 다시 말한다 (keep: 때가 지난 할 일도) */
+  function snooze(keys: Snoozed['keys'], choice: SnoozeChoice): number {
+    const at = snoozeAt(choice, Date.now());
+    o.log('planner', '알림 미룸', keys.length, choice);
+    snoozed.push({ at, keys, keep: true });
+    if (recent?.keys === keys) recent = undefined;
+    o.onSnoozedChange?.();
+    return at;
+  }
+
   return {
     tick,
+    /** 방금(30분 안) 울린 알림. 고를 미루기가 없으면 없다 */
+    recent(now: number) {
+      if (!recent || now - recent.at > RECENT_MS || recent.choices.length === 0) return undefined;
+      return { titles: recent.titles, at: recent.at, choices: recent.choices };
+    },
+    /** 방금 울린 알림을 미룬다. 다시 울릴 때 (없으면 undefined) */
+    snoozeRecent(choice: SnoozeChoice, now: number): number | undefined {
+      if (!recent || now - recent.at > RECENT_MS || !recent.choices.includes(choice)) return undefined;
+      return snooze(recent.keys, choice);
+    },
+    dismissRecent() {
+      recent = undefined;
+    },
     /** 저장할 모양 */
     get snoozed(): Snoozed[] {
       return snoozed;

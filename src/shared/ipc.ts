@@ -847,7 +847,8 @@ export type PanelAddResult =
       clash?: EventClash;
       am?: { startAt: number; endAt: number | null };
     }
-  | { ok: true; kind: 'todo'; id: number; due: string | null }
+  /** remindAt: "30분 뒤 알려 줘"로 넣은 알림이 울릴 때 (snooze.ts) */
+  | { ok: true; kind: 'todo'; id: number; due: string | null; remindAt?: number }
   /** 여러 줄을 붙여 넣어 줄마다 넣었다 */
   | { ok: true; kind: 'many'; todos: number; events: number };
 

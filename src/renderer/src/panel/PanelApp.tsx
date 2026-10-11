@@ -8,6 +8,7 @@ import { EventTab } from './EventTab.tsx';
 import { addedText, timeOf, whenLabel } from './format.ts';
 import { CoinIcon, GearIcon } from './icons.tsx';
 import { escClosesWindow, tabByKey, undoByKey } from './keys.ts';
+import { PlanSheetHost } from './MorningPlan.tsx';
 import { NoteTab } from './NoteTab.tsx';
 import { ShopTab } from './ShopTab.tsx';
 import { TodayTab } from './TodayTab.tsx';
@@ -305,6 +306,9 @@ export function PanelApp() {
               });
             // 여러 줄 붙여 넣기: "할 일 3개 넣었어"
             if (r.kind === 'many') showToast({ kind: 'added', text: addedText(r, s.today) });
+            // "30분 뒤 알려 줘": 언제 알려 줄지
+            if (r.kind === 'todo' && r.remindAt !== undefined)
+              showToast({ kind: 'added', text: addedText(r, s.today) });
           }}
           onRemoved={(todo) => showToast({ kind: 'todo-removed', id: todo.id })}
         />
@@ -329,6 +333,9 @@ export function PanelApp() {
           {t('panel.lookTogether')}
         </button>
       </footer>
+
+      {/* 아침 계획 시트 (MorningPlan.tsx): 아침 첫 열기, 펫 한마디, 오늘 탭 카드에서 띄운다 */}
+      <PlanSheetHost goToday={() => setTab('today')} onSaved={(text) => showToast({ kind: 'added', text })} />
 
       {toast && (
         // 읽는 동안(마우스를 올린 동안)은 사라지지 않는다

@@ -7,6 +7,9 @@ import type { PanelState } from '../../../shared/ipc.ts';
 import { stepProgress, type Todo } from '../../../shared/todo-store.ts';
 import type { WeekSummary } from '../../../shared/week.ts';
 import { dayHeading, timeOf } from './format.ts';
+import { HabitBox } from './HabitBox.tsx';
+import { PlanCard } from './MorningPlan.tsx';
+import { RemindCard } from './RemindCard.tsx';
 import { TodoRow } from './TodoTab.tsx';
 
 const bridge = window.jjakkungPanel;
@@ -55,7 +58,8 @@ export function TodayTab({
     const { first, last } = allDaySpan(e);
     return first <= s.today && last >= s.today;
   });
-  const due = s.open.filter((todo) => todo.due !== null && todo.due <= s.today);
+  // 반복 할 일(습관)은 아래 습관 칸에서 체크한다 (두 번 보이지 않게)
+  const due = s.open.filter((todo) => todo.due !== null && todo.due <= s.today && !todo.repeat);
   const overdue = due.filter((todo) => (todo.due as string) < s.today).length;
   const important = s.open
     .filter((todo) => todo.important && (todo.due === null || todo.due > s.today))
@@ -88,6 +92,7 @@ export function TodayTab({
 
   return (
     <div className="scroll today" ref={scroller}>
+      <RemindCard s={s} />
       {next && (
         <section className="next-up">
           <h3>{t('panel.today.next')}</h3>
@@ -116,6 +121,8 @@ export function TodayTab({
           </div>
         </section>
       )}
+
+      <PlanCard s={s} onComplete={onComplete} />
 
       <section className={`focus-card ${s.focus.phase}`}>
         {s.focus.phase === 'idle' ? (
@@ -266,6 +273,8 @@ export function TodayTab({
           </ul>
         )}
       </section>
+
+      <HabitBox s={s} onComplete={onComplete} />
 
       {important.length > 0 && (
         <section>

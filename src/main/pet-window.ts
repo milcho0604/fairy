@@ -141,7 +141,7 @@ export interface SayOptions {
    */
   hold?: Pick<
     HeldBubble,
-    'staleAt' | 'lines' | 'render' | 'missedLines' | 'missedMsgs' | 'onAction' | 'osNotify'
+    'staleAt' | 'lines' | 'render' | 'missedLines' | 'missedMsgs' | 'onAction' | 'osNotify' | 'osActions'
   >;
   /** 끊으면 이 말풍선을 닫는다(떠 있을 때) 또는 기다리던 것을 버린다. 시간 끝 없는 안내를 거둘 때 (강제 업데이트가 풀림) */
   signal?: AbortSignal;
@@ -1066,9 +1066,27 @@ export function createPetWindow({
     if (!notify || !Notification.isSupported()) return;
     h.osNotified = true;
     const lines = h.render?.(Date.now()) ?? h.lines ?? [h.text];
-    const n = new Notification({ title: petName(), body: lines.join('\n'), silent: false });
+    // 미루기 단추 (맥, 윈도우만 단추를 단다. 리눅스는 누르면 오늘 탭에서 고른다)
+    const actions = process.platform === 'darwin' || process.platform === 'win32' ? (h.osActions ?? []) : [];
+    const n = new Notification({
+      title: petName(),
+      body: lines.join('\n'),
+      silent: false,
+      ...(actions.length
+        ? { actions: actions.map((a) => ({ type: 'button' as const, text: a.label })) }
+        : {}),
+    });
     const click = osClickAction(h.buttons);
     notices.add(n);
+    n.on('action', (ev) => {
+      const picked = actions[ev.actionIndex];
+      notices.delete(n);
+      if (!picked) return;
+      log('bubble', 'os-notice action', picked.id);
+      held.remove(h);
+      h.onAction?.(picked.id);
+      releaseHeld();
+    });
     n.on('click', () => {
       notices.delete(n);
       log('bubble', 'os-notice click', click ?? 'pet');

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { formatBytes } from '../../../../shared/bytes.ts';
 import { t } from '../../../../shared/i18n/index.ts';
 import type { SettingsSnapshot } from '../../../../shared/ipc.ts';
+import { ExportBox } from '../ExportBox.tsx';
 import { bridge, Section, type TabProps } from '../ui.tsx';
 
 /** 데이터 탭: 백업과 옮기기, 저장 공간 */
@@ -61,6 +62,7 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
           </button>
         </div>
       </Section>
+      <ExportBox flash={flash} />
       <Section title={t('settings.storage')}>
         <Storage
           list={snap.storage}

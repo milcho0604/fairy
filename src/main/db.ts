@@ -5,7 +5,9 @@ import { AchievementStore } from '../shared/achieve.ts';
 import { StatStore } from '../shared/beta-stats.ts';
 import type { Db } from '../shared/db-schema.ts';
 import { EventStore } from '../shared/event-store.ts';
+import { type ExportTodo, readExportTodos } from '../shared/export.ts';
 import { GcalStore } from '../shared/gcal-store.ts';
+import { HabitStore } from '../shared/habit.ts';
 import { locale, t } from '../shared/i18n/index.ts';
 import type { MissedMsg } from '../shared/missed-msg.ts';
 import { NoteStore } from '../shared/note-store.ts';
@@ -32,6 +34,10 @@ export function openStore(log: (tag: string, ...rest: unknown[]) => void): {
   life: PetLife;
   shop: ItemStore;
   achievements: AchievementStore;
+  /** 습관 (반복 할 일 사슬, shared/habit.ts) */
+  habits: HabitStore;
+  /** 내보낼 할 일 (shared/export.ts) */
+  exportTodos: () => ExportTodo[];
   /** 한 시점 그대로 다른 파일로 복사 (백업, v2) */
   vacuumInto: (file: string) => void;
   /** 다른 연결(펫 MCP 서버)이 쓰면 바뀌는 수. 바뀌었으면 화면을 다시 그린다 */
@@ -66,6 +72,8 @@ export function openStore(log: (tag: string, ...rest: unknown[]) => void): {
     },
     shop: new ItemStore(d, store),
     achievements: new AchievementStore(d),
+    habits: new HabitStore(d),
+    exportTodos: () => readExportTodos(d),
     dataVersion: () =>
       open ? Number((d.prepare('pragma data_version').get() as { data_version: number }).data_version) : -1,
     ...(trouble ? { trouble } : {}),

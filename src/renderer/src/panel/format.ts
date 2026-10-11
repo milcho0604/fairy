@@ -49,6 +49,7 @@ export function whenLabel(startAt: number, today: string): string {
 export function addedText(r: Extract<PanelAddResult, { ok: true }>, today: string): string {
   if (r.kind === 'many') return t('panel.add.many', { todos: r.todos, events: r.events });
   if (r.kind === 'event') return t('panel.quick.event', { when: whenLabel(r.startAt, today) });
+  if (r.remindAt !== undefined) return t('snooze.quick.added', { when: whenLabel(r.remindAt, today) });
   if (!r.due) return t('panel.quick.todo');
   // 모레 뒤는 요일까지: 주말에 적은 "이번 주 금요일"이 어느 금요일로 들어갔는지 보이게
   const later = r.due > plusDays(today, 1);

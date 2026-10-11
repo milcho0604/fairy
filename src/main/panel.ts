@@ -53,6 +53,7 @@ import {
   todoPatchInput,
 } from '../shared/remind-parse.ts';
 import { CUSTOM_FOOD_COST, CUSTOM_FOOD_MAX, type Food, type ItemStore } from '../shared/shop.ts';
+import { parseRemindIn, remindInAt } from '../shared/snooze.ts';
 import { COIN, FULLNESS, localDay, STEP_MAX, type TodoStore } from '../shared/todo-store.ts';
 import { weekSummary } from '../shared/week.ts';
 import { devRendererUrl } from './dev-url.ts';
@@ -242,6 +243,9 @@ export function createPanel(o: PanelOptions) {
     return { ok: false as const, error: t('panel.event.duplicate', { title: found.title }) };
   }
   function addLine(line: string, now: number): PanelAddResult {
+    // "30분 뒤 알려 줘", "in 30 minutes": 지금부터 N분 뒤에 울리는 알림 (마감 시각이 그때인 할 일, snooze.ts)
+    const later = parseRemindIn(line);
+    if (later) return addRemindIn(later.title || t('snooze.remindTitle'), later.minutes, now);
     // "1시간 전에 알려줘", "하루 전 알림" 같은 알림 말은 먼저 뗀다 (남기면 "1시간"을 일정 길이로 읽는다)
     const { rest: text, remind } = splitRemind(line);
     const deadline = hasDeadlineWord(text) && !hasTimeRange(text);
@@ -282,6 +286,13 @@ export function createPanel(o: PanelOptions) {
       };
     }
     return addTodo(text, now, remind);
+  }
+  /** N분 뒤 알림: 그 시각이 마감인 할 일에 정각 알림 하나 */
+  function addRemindIn(title: string, minutes: number, now: number): PanelAddResult {
+    const at = remindInAt(now, minutes);
+    const todo = o.store.add({ title, due: localDay(at), dueMin: minuteOfDay(at), reminds: [0] }, now);
+    push();
+    return { ok: true, kind: 'todo', id: todo.id, due: todo.due, remindAt: at };
   }
   /** 한 줄을 할 일로 넣는다 (마감, 마감 시각, 중요, 반복, 알림은 글에서 읽는다) */
   function addTodo(line: string, now: number, taken?: TakenRemind): PanelAddResult {
@@ -833,6 +844,8 @@ export function createPanel(o: PanelOptions) {
     openQuick,
     /** 펫 이름이나 배부름 등이 밖에서 바뀌었을 때 */
     refresh: push,
+    /** 패널이나 빠른 입력 창이 보낸 것인지 (main/day-tools.ts) */
+    owns: (wc: Electron.WebContents) => senders.has(wc),
     get window() {
       return panel;
     },
