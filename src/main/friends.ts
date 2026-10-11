@@ -6,6 +6,7 @@ import { IPC, type PetImages, type PetStatus } from '../shared/ipc.ts';
 import { MEET_CHANCE, MEET_COOLDOWN_MS, MEET_EVERY_MS, meetPlan } from '../shared/meet.ts';
 import { type Blueprint, parseBlueprint } from '../shared/pet3d/blueprint.ts';
 import type { Friend } from '../shared/settings.ts';
+import { saverNow } from './battery.ts';
 import { boostOn } from './boost.ts';
 import { library } from './pet-library.ts';
 import { createPetWindow, type PetWindow } from './pet-window.ts';
@@ -155,6 +156,7 @@ export function createFriends(o: {
       flower: false,
       sounds: false,
       boost: boostOn(),
+      saver: saverNow(),
       ...(f.gait ? { gait: f.gait } : {}),
     };
   }

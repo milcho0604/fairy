@@ -318,6 +318,13 @@ export function OnboardingApp() {
                   <dd>{t('onboarding.tips.hideDesc')}</dd>
                 </>
               )}
+              {/* 배터리일 때 움직임 줄이기 (기본 켜기, 끄는 길을 같이 알린다) */}
+              {s.batterySaver !== 'off' && (
+                <>
+                  <dt>{t('onboarding.tips.saver')}</dt>
+                  <dd>{t('onboarding.tips.saverDesc')}</dd>
+                </>
+              )}
               <dt>{t('onboarding.tips.settings')}</dt>
               <dd>{t('onboarding.tips.settingsDesc', { mac })}</dd>
             </dl>

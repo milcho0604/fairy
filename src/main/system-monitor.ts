@@ -25,6 +25,7 @@ import {
   VM_INFO64_COUNT,
 } from '../shared/system-stats.ts';
 import { createMonitorCore, type PauseReason } from './monitor-core.ts';
+import { setTrayTitlePart } from './tray-title.ts';
 
 export interface SystemMonitor {
   /** 켜고 끈다 (설정 sysMonitor) */
@@ -115,12 +116,12 @@ export function createSystemMonitor(
     idleSec: () => powerMonitor.getSystemIdleTime(),
     showCpu: (pct) => {
       if (!alive()) return;
-      if (mac) tray.setTitle(cpuTitle(pct), { fontType: 'monospacedDigit' });
+      if (mac) setTrayTitlePart(tray, 'cpu', cpuTitle(pct));
       else tray.setToolTip(t('tray.tooltipCpu', { base: baseTooltip(), pct }));
     },
     clearCpu: () => {
       if (!alive()) return;
-      if (mac) tray.setTitle('');
+      if (mac) setTrayTitlePart(tray, 'cpu', '');
       else tray.setToolTip(baseTooltip());
     },
     showFrame: (i) => {

@@ -11,16 +11,19 @@ import { locale, t } from '../shared/i18n/index.ts';
 import { IPC, type PetStatus, type PlayKind } from '../shared/ipc.ts';
 import { runnerKindOf } from '../shared/menu-runner.ts';
 import { isMiniGame, PLAY_COIN } from '../shared/minigames.ts';
+import { noteTitle } from '../shared/note-store.ts';
 import { unlocked, WAVE_AWAY_SEC } from '../shared/pet-life.ts';
 import { restDaysOf } from '../shared/routine.ts';
 import { pickedGait } from '../shared/settings.ts';
 import { shortcutsChanged } from '../shared/shortcut.ts';
 import { FULLNESS, localDay } from '../shared/todo-store.ts';
+import { admitUrl, panelTabOf, parseJjUrl } from '../shared/url-scheme.ts';
 import { watchCatalog } from './ai/catalog.ts';
 import { stopLocal } from './ai/local.ts';
 import { cachedMcpServers, mcpServers, refreshMcpServers } from './ai/mcp-list.ts';
 import { stopAllAi } from './ai/runner.ts';
 import { applyPendingImport, createBackup, exportPet, importPet } from './backup.ts';
+import { debugBattery, onSaverChange, powerFacts, saverNow, watchPower } from './battery.ts';
 import { watchBetaStats } from './beta.ts';
 import { boostOn, onBoostChange } from './boost.ts';
 import { watchCalendar } from './calendar.ts';
@@ -49,6 +52,7 @@ import {
 } from './maker.ts';
 import { createMiniGames } from './minigames.ts';
 import { createOnboarding } from './onboarding.ts';
+import { type Incoming, listenEarly, registerScheme, startIncoming, takeArgv } from './open-handler.ts';
 import { openLink } from './open-link.ts';
 import { createPanel } from './panel.ts';
 import { denyPermissionsByDefault } from './permissions.ts';
@@ -66,6 +70,7 @@ import { createSettingsWindow } from './settings-window.ts';
 import { onJsonTrouble } from './store.ts';
 import { createSystemMonitor } from './system-monitor.ts';
 import { baseTrayIcon, createTray } from './tray.ts';
+import { watchTrayTitle } from './tray-title.ts';
 import { watchUpdates } from './update.ts';
 
 // 데이터 폴더를 이름으로 고정한다. 기본값은 앱 이름을 따라가서 설치판(Jjakkung)과 개발판(jjakkung)이
@@ -102,6 +107,8 @@ if (!process.env.JJ_NET_PROCESS) app.commandLine.appendSwitch('enable-features',
 // 그래서 exit() 로 바로 끝내고, 시작 일도 잠금을 잡았을 때만 건다
 const primary = app.requestSingleInstanceLock();
 if (!primary) app.exit(0);
+// jjakkung:// 주소와 .jjpet 파일 (맥은 ready 전에도 온다. 받는 쪽이 준비될 때까지 모아 둔다, open-handler.ts)
+if (primary) listenEarly();
 // 가져온 백업(저장 파일과 설정 파일)이 기다리면 바꿔 끼운다 (v2). 설정을 처음 읽기(아래 initLang) 전에 해야
 // 가져온 설정이 보인다. 잠금을 잡은 쪽만: 이미 떠 있는 펫의 파일을 바꾸지 않게
 // 실패해도 지금 데이터로 켠다 (켜기 전 이 자리에서 던지면 앱이 아예 안 뜬다)
@@ -675,6 +682,8 @@ ready
       // 오늘 할 일 다 끝냄, 연속 기록, 5/10/20개째면 한마디 (그날 한 번씩)
       companion.completed(id);
     }
+    /** 메뉴 막대 글자 다시 맞추기 (아래에서 메뉴 막대 글자를 만든 뒤 채운다. 그 전에 불려도 괜찮게) */
+    const titleHook = { refresh: () => {} };
     // ---- 일정 알림, 오늘 브리핑, 집중 타이머 (v1) ----
     const planner = createPlanner({
       todos: store,
@@ -712,6 +721,7 @@ ready
       onChange: () => {
         panel.refresh();
         sendStatus();
+        titleHook.refresh();
       },
       log,
     });
@@ -834,6 +844,8 @@ ready
         face: true,
         gait: pickedGait(settings.get()),
         energy: petLife.energy,
+        saver: saverNow(),
+        readAloud: settings.get().readAloud,
       };
       const key = JSON.stringify(status);
       if (key === lastStatus || pet.win.isDestroyed()) return;
@@ -861,6 +873,39 @@ ready
       sendStatus();
       friends.resendStatus();
     });
+    // 배터리 절약 (설정 편의): 전원, 저전력, 설정이 바뀌면 펫과 친구에게 알린다 (그리기 상한, 걷기 간격)
+    const stopPower = watchPower(log);
+    onSaverChange((on) => {
+      sendStatus();
+      friends.resendStatus();
+      tellSaver(on);
+    });
+    /**
+     * 처음 배터리로 바뀌어 움직임을 줄이면 펫이 한 번 알린다 (몰래 바꾸지 않게, 사용자 요청 2026-10-11).
+     * "그대로 움직이기"를 누르면 바로 끈다. 자동일 때 배터리 때문에 켜진 것만 (항상 줄이기는 사용자가 고른 것)
+     */
+    function tellSaver(on: boolean) {
+      const s = settings.get();
+      if (!on || s.saverTold || s.batterySaver !== 'auto' || !powerFacts().onBattery) return;
+      settings.set({ saverTold: true });
+      void pet
+        .say({
+          kind: 'answer',
+          text: t('pet.saver.told'),
+          buttons: [
+            { id: 'keep', label: t('pet.saver.keep') },
+            { id: 'ok', label: t('pet.saver.ok') },
+          ],
+          ttlMs: 20_000,
+        })
+        .then((action) => {
+          if (action !== 'keep') return;
+          settings.set({ batterySaver: 'off' });
+          sayShort(t('pet.saver.kept'));
+        });
+    }
+    // 켤 때 이미 배터리면 펫이 뜬 뒤 알린다 (한 번만)
+    pet.win.webContents.once('did-finish-load', () => setTimeout(() => tellSaver(saverNow()), 6000));
     // ---- 전역 단축키 (설정에서 바꾼다, v2) ----
     let registered: string[] = [];
     /** 지금 설정의 단축키를 건다. 다른 앱이 쓰고 있어 못 건 것의 이름을 돌려준다 */
@@ -868,7 +913,14 @@ ready
       for (const acc of registered) globalShortcut.unregister(acc);
       registered = [];
       const taken: string[] = [];
-      const { hide, quickAdd, chat: chatKey, look: lookKey, panel: panelKey } = settings.get().shortcuts;
+      const {
+        hide,
+        quickAdd,
+        chat: chatKey,
+        look: lookKey,
+        panel: panelKey,
+        pet: petKey,
+      } = settings.get().shortcuts;
       for (const [acc, run, name] of [
         [hide, toggleHidden, t('pet.shortcut.hide')],
         [quickAdd, () => panel.openQuick(), t('pet.shortcut.quickAdd')],
@@ -877,6 +929,15 @@ ready
         [lookKey, () => void look.start(), t('pet.shortcut.look')],
         // 펫을 누른 것과 같다 (열려 있으면 닫는다). 펫을 찾아 누르지 않아도 패널을 연다
         [panelKey, () => panel.togglePanel(), t('pet.shortcut.panel')],
+        // 키보드로 펫 다루기 (접근성): 숨겨 둔 펫이면 먼저 부른다
+        [
+          petKey,
+          () => {
+            if (pet.isHidden('user') || rest.inside()) toggleHidden();
+            else pet.keyboard();
+          },
+          t('pet.shortcut.pet'),
+        ],
       ] as const) {
         // 비운 단축키(새 기본 키가 사용자 키와 겹쳐 비운 것)는 등록하지 않는다
         if (!acc) continue;
@@ -1048,6 +1109,8 @@ ready
       )
         sysMonitor.setKind(runnerKindNow());
       if (next.sysMonitor !== prev.sysMonitor) sysMonitor.setEnabled(next.sysMonitor);
+      if (next.trayTitle !== prev.trayTitle) trayTitle.refresh();
+      if (next.readAloud !== prev.readAloud) sendStatus();
       if (next.petName !== prev.petName) {
         chat.petNameChanged();
         panel.refresh();
@@ -1107,12 +1170,93 @@ ready
     if (!settings.get().onboarded)
       pet.win.webContents.once('did-finish-load', () => setTimeout(() => onboarding.open(), 1500));
 
-    app.on('second-instance', () => {
+    app.on('second-instance', (_e, argv, cwd) => {
+      // 주소나 .jjpet 파일을 넘기며 다시 실행한 것(윈도우, 리눅스)이면 그것만 처리한다
+      if (takeArgv(argv, cwd)) return;
       pet.setHidden('user', false);
       friends.setHidden('user', false);
       void rest.call();
     });
     pet.win.webContents.once('did-finish-load', () => friends.sync());
+    // ---- 다른 앱에서 부르기: jjakkung:// 주소, .jjpet 두 번 눌러 열기 ----
+    registerScheme(log);
+    let urlTimes: number[] = [];
+    const sayShort = (text: string) => void pet.say({ kind: 'answer', text, ttlMs: 5000 });
+    function handleUrl(raw: string) {
+      const admitted = admitUrl(urlTimes, Date.now());
+      if (!admitted) {
+        log('url', '너무 잦아 버림');
+        return;
+      }
+      urlTimes = admitted;
+      if (!settings.get().urlScheme) {
+        log('url', '꺼져 있음');
+        sayShort(t('pet.url.off'));
+        return;
+      }
+      const r = parseJjUrl(raw);
+      if (!r.ok) {
+        log('url', '거절', r.reason);
+        sayShort(r.reason === 'tooLong' ? t('pet.url.tooLong') : t('pet.url.bad'));
+        return;
+      }
+      // 글은 기록에 남기지 않는다 (할 일, 메모 내용)
+      const a = r.value;
+      log('url', a.action);
+      if (a.action === 'add') {
+        const added = panel.addLine(a.text);
+        if (!added.ok) sayShort(t('pet.url.failed', { error: added.error ?? t('panel.add.empty') }));
+        else if (added.kind === 'event') {
+          const ev = events.get(added.id);
+          const when = new Date(added.startAt).toLocaleString(locale(), {
+            month: 'numeric',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+          });
+          sayShort(t('pet.url.event', { title: ev?.title ?? a.text, when }));
+        } else if (added.kind === 'todo')
+          sayShort(t('pet.url.todo', { title: store.get(added.id)?.title ?? a.text }));
+        else sayShort(t('pet.url.todos', { n: added.todos + added.events }));
+        if (added.ok) petLife.activity('todo');
+        return;
+      }
+      if (a.action === 'memo') {
+        const note = notes.add({ body: a.text, source: 'me' }, Date.now());
+        panel.refresh();
+        sayShort(t('pet.url.memo', { title: noteTitle(note) }));
+        return;
+      }
+      if (a.action === 'focus') {
+        if (planner.focus.phase !== 'idle') {
+          sayShort(t('pet.url.focusBusy'));
+          return;
+        }
+        planner.startFocus(a.min);
+        sayShort(t('pet.url.focus', { n: settings.get().focusMin }));
+        return;
+      }
+      panel.openTab(panelTabOf(a.tab));
+    }
+    /** .jjpet 을 두 번 눌러 열었다: 펫 가져오기와 같은 검사, 같은 확인 창을 거친다 (backup.ts importPet) */
+    async function importPetFile(path: string) {
+      log('pet', '.jjpet 열기');
+      const r = await importPet(undefined, false, log, path);
+      if (r.message) sayShort(r.message);
+    }
+    const handleIncoming = (item: Incoming) => {
+      if (item.kind === 'petFile') void importPetFile(item.path);
+      else handleUrl(item.url);
+    };
+    // 펫 화면이 뜬 뒤에 받는다 (확인 말풍선이 보이게)
+    pet.win.webContents.once('did-finish-load', () => setTimeout(() => startIncoming(handleIncoming), 800));
+    // 맥 메뉴 막대 글자: 다음 일정이나 집중 남은 시간 (설정 편의, 기본 끔)
+    const trayTitle = watchTrayTitle(tray, {
+      on: () => settings.get().trayTitle,
+      focus: () => planner.focus,
+      events: (from, to) => events.between(from, to),
+    });
+    titleHook.refresh = trayTitle.refresh;
     // 집은 펫과 같이 숨고 나온다 (발표, 숨기기). 2초마다 맞춘다. 펫이 집 안에서 쉬는 동안은 집이 보인다
     pet.win.webContents.once('did-finish-load', () => house.show(houseLook(), pet.bounds()));
     // 자리를 4분쯤 비우면 펫이 집 앞으로 가서 존다 (5분부터 졸고 10분부터 잔다). 자리 비울 때마다 한 번.
@@ -1156,6 +1300,8 @@ ready
       stopAllAi();
       for (const acc of registered) globalShortcut.unregister(acc);
       stopPresence();
+      stopPower();
+      trayTitle.dispose();
       sysMonitor.dispose();
       tray.destroy();
     });
@@ -1201,6 +1347,11 @@ ready
           companion,
           dayTools,
           habits,
+          handleUrl,
+          handleIncoming,
+          saverNow,
+          debugBattery,
+          trayTitle,
         },
       });
     if (process.env.JJ_METRICS) logMetrics(Number(process.env.JJ_METRICS));

@@ -147,3 +147,28 @@ body {
     color: var(--accent-ink);
   }
 }
+
+/* 키보드로 펫을 골랐을 때(펫 고르기 단축키) 펫 둘레에 고리. 강조색은 바탕 4.6:1 이상이라 둘레선(3:1)도 넉넉하다 */
+#pet.keys {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+  border-radius: 24px;
+}
+
+#bubble button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* 화면에는 안 보이고 화면 읽기 프로그램만 읽는 칸 (말풍선 읽어 주기) */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}

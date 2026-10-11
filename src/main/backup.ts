@@ -369,13 +369,17 @@ export async function importPet(
   parent?: BrowserWindow,
   asFriend = false,
   log?: (tag: string, ...rest: unknown[]) => void,
+  /** 고를 것 없이 이 파일로 (.jjpet 두 번 눌러 열기). 크기, 형식 검사와 바꿀지 묻기는 똑같이 한다 */
+  picked?: string,
 ): Promise<{ ok: boolean; message: string }> {
   const opts = {
     title: t('main.pet.importTitle'),
     properties: ['openFile' as const],
     filters: [{ name: t('main.pet.fileType'), extensions: ['jjpet'] }],
   };
-  const r = await (parent ? dialog.showOpenDialog(parent, opts) : dialog.showOpenDialog(opts));
+  const r = picked
+    ? { canceled: false, filePaths: [picked] }
+    : await (parent ? dialog.showOpenDialog(parent, opts) : dialog.showOpenDialog(opts));
   const file = r.filePaths[0];
   if (r.canceled || !file) return { ok: false, message: '' };
   // 읽기 전에 크기를 본다: 큰 파일을 통째로 메모리에 올리지 않게 (버그잡이 7차)

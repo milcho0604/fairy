@@ -107,6 +107,10 @@ if (kind === 'pet') {
     },
     carried: (at: Point | null) => ipcRenderer.send(IPC.carried, at),
     sprites: (sprites: HouseSprites) => ipcRenderer.send(IPC.sprites, sprites),
+    onKeys: (listener) => {
+      ipcRenderer.on(IPC.keys, (_e, name: unknown) => listener(typeof name === 'string' ? name : null));
+    },
+    petKey: (key) => ipcRenderer.send(IPC.petKey, key),
   };
   contextBridge.exposeInMainWorld('jjakkung', pet);
 }

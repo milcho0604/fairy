@@ -10,6 +10,7 @@ import {
   powerMonitor,
   screen,
 } from 'electron';
+import { perchPollMs, SAVER, walkTickMs } from '../shared/battery.ts';
 import { type Activity, pickActivity, WALK_SPEED, walkOffset } from '../shared/behavior.ts';
 import { layoutBubble } from '../shared/bubble-layout.ts';
 import {
@@ -47,6 +48,7 @@ import {
 import { burrowFrame } from '../shared/minigames.ts';
 import { isMove, type MoveHistory, moveAskOf, rememberMove } from '../shared/moves.ts';
 import { hopAt, perchHolds, pickPerch } from '../shared/perch.ts';
+import { isPetKey, KEY_NUDGE, KEY_WALK, type PetKey } from '../shared/pet-keys.ts';
 import { type DisplayInfo, parseSavedScale, restorePetBounds } from '../shared/placement.ts';
 import { type HideReason, HideReasons } from '../shared/presence.ts';
 import { acceleratorLabel } from '../shared/shortcut.ts';
@@ -60,10 +62,12 @@ import {
   THROW_MAX_SPEED,
   THROW_MIN_SPEED,
 } from '../shared/throw.ts';
+import { saverNow } from './battery.ts';
 import { boostOn } from './boost.ts';
 import { watchCursor } from './cursor-watch.ts';
 import { devRendererUrl } from './dev-url.ts';
 import { onDisplaysChanged as watchDisplays } from './display-watch.ts';
+import { focusWindow, stealFocus } from './focus.ts';
 import { langArg } from './lang.ts';
 import { settings } from './settings.ts';
 import { readJson, writeJson } from './store.ts';
@@ -236,6 +240,11 @@ export interface PetWindow {
   carriedAt(): Promise<Point | undefined>;
   /** ms 동안 기다린다. 그사이 잡히거나 던져지거나 숨거나 그만 놀기를 누르면 false */
   pause(ms: number): Promise<boolean>;
+  /**
+   * 키보드로 펫 다루기 (접근성, 펫 고르기 단축키): 펫 창이 키보드를 받아 Enter 패널, Shift+F10 메뉴, 화살표 걷기.
+   * Esc 나 다른 창으로 가면 끝난다. 이미 켜져 있으면 끈다
+   */
+  keyboard(): void;
 }
 
 export interface PetWindowOptions {
@@ -448,10 +457,15 @@ export function createPetWindow({
   }
 
   const onContextMenu = (e: IpcMainEvent) => {
-    if (!fromThisWindow(e)) return;
+    if (fromThisWindow(e)) showMenu();
+  };
+
+  /** 우클릭 메뉴. 키보드로 열면(Shift+F10, 메뉴 키) at 에 (창 안 좌표, 펫 가운데) */
+  function showMenu(at?: { x: number; y: number }) {
     log('pet', 'context-menu');
+    const where = at ? { window: win, ...at } : { window: win };
     if (menu) {
-      Menu.buildFromTemplate(menu()).popup({ window: win });
+      Menu.buildFromTemplate(menu()).popup(where);
       return;
     }
     const note = actions.menuNote?.();
@@ -494,6 +508,13 @@ export function createPetWindow({
           click: () => setChatter(level),
         })),
       },
+      // 배터리일 때 움직임 줄이기 (사용자 요청 2026-10-11: 바로 끄고 켤 수 있게). 켜면 자동, 끄면 끄기
+      {
+        label: t('pet.menu.saver'),
+        type: 'checkbox',
+        checked: settings.get().batterySaver !== 'off',
+        click: (item) => settings.set({ batterySaver: item.checked ? 'auto' : 'off' }),
+      },
       {
         label: t('pet.menu.hide', { name: petName() }),
         accelerator: hideShortcut() || undefined,
@@ -512,8 +533,8 @@ export function createPetWindow({
         },
       },
       { label: t('pet.menu.quit'), role: 'quit' },
-    ]).popup({ window: win });
-  };
+    ]).popup(where);
+  }
 
   /** 놀기 하위 메뉴. 노는 중이면 맨 위에 "그만 놀기", 다른 놀이는 흐리게 */
   function playMenu(): Electron.MenuItemConstructorOptions[] {
@@ -611,7 +632,9 @@ export function createPetWindow({
     const areas = screen.getAllDisplays().map((d) => d.workArea);
     const area = screen.getDisplayMatching(pet).workArea;
     // 가끔 다른 앱 창 윗변으로 깡충 올라간다. 이미 앉아 있으면 걷지 않는다 (걸으면 떨어지니까).
-    if (!perch && Math.random() < PERCH_CHANCE && tryPerch()) return;
+    // 배터리 절약이면 덜 올라간다 (창 목록 읽기가 비싸다)
+    const perchChance = PERCH_CHANCE * (saverNow() ? SAVER.perchChance : 1);
+    if (!perch && Math.random() < perchChance && tryPerch()) return;
     const now = Date.now();
     let activity: Activity = pickActivity(pet, area, Math.random, areas, {
       ask: moveAskOf(ask),
@@ -712,9 +735,9 @@ export function createPetWindow({
         pet = { ...pet, x };
         if (moved && !win.isDestroyed()) win.setPosition(Math.round(pet.x), pet.y);
         if (t >= 1) stopWalk(true);
-        // 부스트 모드면 60Hz 로 옮긴다 (빨리 걸을 때 한 번에 2~4px 씩 뛰던 것이 1~2px 로)
+        // 부스트 모드면 60Hz 로 옮긴다 (빨리 걸을 때 한 번에 2~4px 씩 뛰던 것이 1~2px 로). 배터리 절약이면 15Hz
       },
-      boostOn() ? 16 : 33,
+      walkTickMs(saverNow(), boostOn()),
     );
   }
 
@@ -818,7 +841,7 @@ export function createPetWindow({
               );
           }
         },
-        boostOn() ? 16 : 33,
+        walkTickMs(saverNow(), boostOn()),
       );
     });
   }
@@ -854,14 +877,14 @@ export function createPetWindow({
       if (!finished) return;
       perch = spot.win;
       clearInterval(perchTimer);
-      // 1초마다 창이 그대로인지 본다. 옮기거나 닫으면 떨어진다.
+      // 1초마다(배터리 절약이면 3초마다) 창이 그대로인지 본다. 옮기거나 닫으면 떨어진다.
       perchTimer = setInterval(() => {
         if (perch && !perchHolds(perch, list())) {
           log('pet', 'perch lost');
           leavePerch();
           startFlight(0, 0);
         }
-      }, 1000);
+      }, perchPollMs(saverNow()));
     });
     return true;
   }
@@ -1440,6 +1463,71 @@ export function createPetWindow({
     log('display', 'changed', JSON.stringify({ areas, pet: win.getBounds() }));
   });
 
+  // ---- 키보드로 펫 다루기 (접근성) ----
+  // 펫 창은 평소 키보드를 받지 않는다(focusable false: 누르기만 해도 다른 앱의 입력을 뺏지 않게). 펫 고르기 단축키를
+  // 누를 때만 받을 수 있게 바꾸고 앞으로 부른다. 시험 인스턴스(JJ_NO_FOCUS)는 앞으로 부르지 않는다 (focus.ts)
+  let keyMode = false;
+  function setKeyMode(on: boolean) {
+    if (on === keyMode || win.isDestroyed()) return;
+    keyMode = on;
+    win.setFocusable(on);
+    if (on) {
+      focusWindow(win);
+      stealFocus();
+    } else if (win.isFocused()) win.blur();
+    win.webContents.send(IPC.keys, on ? petName() : null);
+    log('pet', 'keyboard', on);
+  }
+  win.on('blur', () => setKeyMode(false));
+  /** 창 안 좌표로 본 펫 가운데 (메뉴를 펫 위에 연다) */
+  const petCenterInWindow = () => {
+    const b = win.getBounds();
+    return { x: Math.round(pet.x - b.x + pet.width / 2), y: Math.round(pet.y - b.y + pet.height / 2) };
+  };
+  function nudge(dx: number, dy: number) {
+    stopWalk();
+    leavePerch();
+    pet = { ...pet, x: pet.x + dx, y: pet.y + dy };
+    keepOnScreen();
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(save, SAVE_DELAY_MS);
+  }
+  function onKey(key: PetKey) {
+    switch (key) {
+      case 'open':
+        actions.click(pet);
+        return;
+      case 'menu':
+        showMenu(petCenterInWindow());
+        return;
+      case 'left':
+      case 'right': {
+        const area = screen.getDisplayMatching(pet).workArea;
+        const step = Math.round(pet.width * KEY_WALK) * (key === 'left' ? -1 : 1);
+        const x = Math.max(area.x, Math.min(area.x + area.width - pet.width, pet.x + step));
+        leavePerch();
+        void walkTo(x, WALK_SPEED * 2).then(() => save());
+        return;
+      }
+      case 'nudgeLeft':
+        return nudge(-KEY_NUDGE, 0);
+      case 'nudgeRight':
+        return nudge(KEY_NUDGE, 0);
+      case 'nudgeUp':
+        return nudge(0, -KEY_NUDGE);
+      case 'nudgeDown':
+        return nudge(0, KEY_NUDGE);
+      case 'leave':
+        setKeyMode(false);
+        return;
+    }
+  }
+  const onPetKey = (e: IpcMainEvent, key: unknown) => {
+    if (!fromThisWindow(e) || !keyMode || !isPetKey(key)) return;
+    onKey(key);
+  };
+
+  ipcMain.on(IPC.petKey, onPetKey);
   ipcMain.on(IPC.hover, onHover);
   ipcMain.on(IPC.gesture, onGesture);
   ipcMain.on(IPC.contextMenu, onContextMenu);
@@ -1613,6 +1701,7 @@ export function createPetWindow({
     ipcMain.off(IPC.hover, onHover);
     ipcMain.off(IPC.gesture, onGesture);
     ipcMain.off(IPC.contextMenu, onContextMenu);
+    ipcMain.off(IPC.petKey, onPetKey);
     stopDisplayWatch();
   });
 
@@ -1639,6 +1728,10 @@ export function createPetWindow({
     /** 개발용: 창 위에 올라앉기 */
     debugPerch: () => tryPerch(),
     walkTo,
+    keyboard: () => {
+      if (win.isDestroyed() || hideReasons.hidden) return;
+      setKeyMode(!keyMode);
+    },
     stroll,
     follow,
     land,

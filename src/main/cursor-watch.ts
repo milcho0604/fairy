@@ -1,6 +1,7 @@
 import { screen } from 'electron';
 import { gazePollMs } from '../shared/gaze.ts';
 import type { Rect } from '../shared/geometry.ts';
+import { saverNow } from './battery.ts';
 import { boostOn } from './boost.ts';
 
 /**
@@ -24,11 +25,12 @@ function tick() {
   // 다음 차례를 먼저 건다. 듣는 쪽 하나가 던져도 커서 보기가 멈추지 않게
   timer = setTimeout(
     tick,
+    // 배터리 절약이면 두 배 느슨히 (커서 바라보기는 덜 촘촘해도 티가 덜 난다)
     gazePollMs(
       [...watchers].map((w) => w.rect()),
       cursor,
       boostOn(),
-    ),
+    ) * (saverNow() ? 2 : 1),
   );
   for (const w of watchers) w.onCursor(cursor);
 }

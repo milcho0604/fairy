@@ -1,3 +1,4 @@
+import { capFps, idleWaitFactor } from '../../shared/battery.ts';
 import { type Activity, nextDelay } from '../../shared/behavior.ts';
 import { ENERGY_BLINK, ENERGY_PACE, type EnergyLook, energyLookOf, sameLook } from '../../shared/energy.ts';
 import { BALL_SVG, type CarryToy, PICK_MS, pickPose } from '../../shared/fetch.ts';
@@ -15,6 +16,7 @@ import {
   magnifierPose,
 } from '../../shared/look-motion.ts';
 import { bodyOfParts, isMove, MOVE_SPECS, type MoveAsk } from '../../shared/moves.ts';
+import { petKeyOf } from '../../shared/pet-keys.ts';
 import {
   canBlink,
   EXCITED_MS,
@@ -209,7 +211,8 @@ function frame() {
   clearTimeout(frameTimer);
   // 돋보기를 든 동안은 그 빠르기로 (부스트면 두 배)
   // 돌아서기, 고개 돌리기, 걷기 풀기가 아직 따라가는 중이면 끝까지 그린다 (draw.ts motionSettling)
-  const all = Math.max(fps, (looking?.fps ?? 0) * k, motionSettling() ? 30 * k : 0);
+  // 배터리 절약이면 15fps 까지만 (shared/battery.ts). 멈춘 그림(0)은 그대로 그리지 않는다
+  const all = capFps(Math.max(fps, (looking?.fps ?? 0) * k, motionSettling() ? 30 * k : 0), saver);
   frameTimer = all > 0 ? setTimeout(frame, 1000 / all) : undefined;
 }
 
@@ -334,7 +337,8 @@ let activityEnd: ReturnType<typeof setTimeout> | undefined;
 function scheduleActivity() {
   clearTimeout(activityTimer);
   // 활발하면 자주, 졸리면 드물게 움직인다 (shared/energy.ts)
-  const wait = energy ? ENERGY_PACE[energy.stage].wait : 1;
+  // 배터리 절약이면 더 드물게 (shared/battery.ts)
+  const wait = (energy ? ENERGY_PACE[energy.stage].wait : 1) * idleWaitFactor(saver);
   activityTimer = setTimeout(() => {
     if (mood === 'idle' && !activity && !look && !carry && !bubbleId && !overPet && !gesture.dragging)
       bridge.activityRequest(moveAsk());
@@ -434,6 +438,10 @@ let flower = false;
 let sounds = false;
 /** 부스트 모드 (설정, 배터리면 메인이 끈다) */
 let boost = false;
+/** 배터리 절약 (설정 편의, 배터리나 저전력이면 메인이 켠다) */
+let saver = false;
+/** 말풍선 읽어 주기 (설정 편의). 친구 펫은 끔 */
+let readAloud = false;
 /** 친밀도로 열린 몸짓. 끝나면 지운다 */
 let trick: { type: 'wave' | 'dance'; start: number } | undefined;
 const TRICK_MS = { wave: 1800, dance: 1400 } as const;
@@ -706,6 +714,12 @@ bridge.onStatus((status) => {
   flower = status.flower;
   sounds = status.sounds;
   boost = status.boost;
+  readAloud = status.readAloud === true;
+  if ((status.saver === true) !== saver) {
+    saver = status.saver === true;
+    scheduleActivity();
+    requestFrame();
+  }
   // 기운은 단계나 녹초가 바뀔 때만 다시 그린다 (1분에 한 번 이하, 메인이 같은 상태면 보내지도 않는다)
   const nextEnergy = energyLookOf(status.energy);
   if (!sameLook(nextEnergy, energy)) {
@@ -1047,6 +1061,7 @@ bridge.onBubble((b) => {
   bubbleLeft = b.ttlMs;
   if (b.kind === 'schedule') sound('bell');
   bubbleText.textContent = b.text;
+  if (readAloud) announce(b.text);
   bubbleImage.hidden = !b.image;
   if (b.image) bubbleImage.src = b.image;
   else bubbleImage.removeAttribute('src');
@@ -1089,6 +1104,44 @@ bridge.onLayout((layout) => {
 
 // 말풍선 몸통을 누르면 닫는다(버튼은 위에서 따로 처리).
 bubbleEl.addEventListener('click', () => closeBubble('dismiss'));
+
+// ---- 접근성: 읽어 주기, 키보드로 펫 다루기 ----
+// 말풍선은 숨겼다 보였다 하며 글을 바꿔서 화면 읽기 프로그램이 놓치기 쉽다. 늘 있는 보이지 않는 알림 칸(aria-live)에
+// 같은 글을 옮겨 적는다. 같은 말이 다시 와도 읽게 한 번 비우고 다음 틀에 넣는다
+const liveEl = document.getElementById('sr-live') as HTMLDivElement;
+let liveTimer: ReturnType<typeof setTimeout> | undefined;
+function announce(text: string) {
+  clearTimeout(liveTimer);
+  liveEl.textContent = '';
+  liveTimer = setTimeout(() => {
+    liveEl.textContent = text;
+  }, 60);
+}
+let keysOn = false;
+bridge.onKeys((name) => {
+  const on = name !== null;
+  keysOn = on;
+  canvas.classList.toggle('keys', on);
+  canvas.tabIndex = on ? 0 : -1;
+  if (name !== null) {
+    canvas.setAttribute('aria-label', t('pet.keys.label', { name }));
+    canvas.focus({ preventScroll: true });
+    announce(t('pet.keys.focused', { name }));
+  } else {
+    canvas.setAttribute('aria-label', t('common.appName'));
+    canvas.blur();
+  }
+});
+canvas.addEventListener('keydown', (e) => {
+  if (!keysOn) return;
+  const key = petKeyOf(e);
+  if (!key) return;
+  e.preventDefault();
+  bridge.petKey(key);
+});
+canvas.addEventListener('blur', () => {
+  if (keysOn) bridge.petKey('leave');
+});
 
 // ---- 메인이 알려 주는 환경 ----
 // 5초마다 온다. 기분이 그대로면 값만 바꾸고 다시 그리지 않는다 (잠, 바쁨에서 쓸데없이 그렸다)

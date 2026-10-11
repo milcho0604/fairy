@@ -842,6 +842,8 @@ export function createPanel(o: PanelOptions) {
     },
     closePanel,
     openQuick,
+    /** 빠른 입력 한 줄과 같게 넣는다 (jjakkung://add): 시각이 있으면 일정, 아니면 할 일 */
+    addLine: (line: string): PanelAddResult => addLine(line, Date.now()),
     /** 펫 이름이나 배부름 등이 밖에서 바뀌었을 때 */
     refresh: push,
     /** 패널이나 빠른 입력 창이 보낸 것인지 (main/day-tools.ts) */

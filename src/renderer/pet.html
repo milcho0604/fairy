@@ -11,10 +11,12 @@
   </head>
   <body>
     <canvas id="pet" width="160" height="160" aria-label="짝꿍"></canvas>
-    <div id="bubble" hidden role="status" aria-live="polite">
+    <!-- 말풍선 글은 아래 읽어 주기 칸이 읽는다 (설정 읽어 주기를 끄면 안 읽게, 숨겼다 보이는 칸은 놓치기 쉽다) -->
+    <div id="bubble" hidden>
       <div class="bubble-body"><img alt="" hidden /><p></p></div>
       <div class="actions"></div>
     </div>
+    <div id="sr-live" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
     <script type="module" src="./src/pet.ts"></script>
   </body>
 </html>
