@@ -490,6 +490,8 @@ const EN_TIME_BARE = / (\d{1,2})(?::(\d{2}))? /;
 /** 오전, 오후 없는 1~7시를 오전으로 읽게 하는 아침 말 ("7시 조깅", "내일 6시 기상") */
 const MORNING_CUE =
   /아침|기상|일어나|조깅|러닝|출근|등교|모닝|조식|첫차|\b(?:morning|breakfast|wake|jog|jogging|commute)\b/i;
+/** 저녁 말: 오후로 읽은 것이 맞아 보여 오전으로 바꿀 길을 주지 않는다 ("6시 저녁 약속") */
+const EVENING_CUE = /저녁|밤|퇴근|회식|야근|\b(?:dinner|evening|night|drinks)\b/i;
 /** "오전 중", "오후 중": 시간대 (일정은 그 동안, 할 일은 끝까지). 오전 9~12시, 오후 1~6시 */
 export const KO_WINDOW = / (오전|오후) ?중(?:에|까지|으로)? /;
 const WINDOWS: Record<string, { start: number; length: number }> = {
@@ -958,7 +960,7 @@ export function parseQuickEventInfo(
     bare = false;
   }
   const ev = { title, day: dayFor(minute), minute, durationMin };
-  if (!bare || minute < 12 * 60) return { ev };
+  if (!bare || minute < 12 * 60 || EVENING_CUE.test(title)) return { ev };
   return { ev, am: { title, day: dayFor(minute - 12 * 60), minute: minute - 12 * 60, durationMin } };
 }
 

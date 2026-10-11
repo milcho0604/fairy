@@ -832,8 +832,18 @@ export interface NoteSummary {
 /** 한 줄 입력(PANEL.add) 결과. 어디에 언제로 넣었는지 알려 준다 */
 export type PanelAddResult =
   | { ok: false; error?: string }
-  /** clash: 시간이 겹치는 다른 일정 (첫 것) */
-  | { ok: true; kind: 'event'; id: number; startAt: number; clash?: EventClash }
+  /**
+   * clash: 시간이 겹치는 다른 일정 (첫 것). am: 오전, 오후 없는 1~7시를 오후로 읽었을 때 오전으로 읽은 시각
+   * (알림의 "오전으로" 단추가 일정을 이리로 옮긴다)
+   */
+  | {
+      ok: true;
+      kind: 'event';
+      id: number;
+      startAt: number;
+      clash?: EventClash;
+      am?: { startAt: number; endAt: number | null };
+    }
   | { ok: true; kind: 'todo'; id: number; due: string | null }
   /** 여러 줄을 붙여 넣어 줄마다 넣었다 */
   | { ok: true; kind: 'many'; todos: number; events: number };

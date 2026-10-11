@@ -50,7 +50,15 @@ type Toast =
   | { kind: 'event-removed'; id: number }
   | { kind: 'todo-removed'; id: number }
   /** 할 일 칸에 적은 한 줄이 시각이 있어 일정으로 들어갔다. text 는 적은 글 그대로 (할 일로 옮길 때) */
-  | { kind: 'to-event'; id: number; startAt: number; text: string; clash?: EventClash }
+  /** am: 오전, 오후 없는 1~7시를 오후로 읽었다. 오전으로 바꾸면 이 시각으로 옮긴다 */
+  | {
+      kind: 'to-event';
+      id: number;
+      startAt: number;
+      text: string;
+      clash?: EventClash;
+      am?: { startAt: number; endAt: number | null };
+    }
   /** 지난 마감을 오늘로 옮겼다. 되돌리면 원래 마감으로 */
   | { kind: 'moved'; moved: { id: number; due: string | null }[] }
   | { kind: 'added'; text: string };
@@ -158,6 +166,14 @@ export function PanelApp() {
   const toTodo = async (toast: Extract<Toast, { kind: 'to-event' }>) => {
     const r = await bridge.eventToTodo(toast.id, toast.text);
     showToast({ kind: 'added', text: r.ok ? addedText(r, s.today) : (r.error ?? t('panel.retry')) });
+  };
+
+  /** 오후로 읽은 일정을 오전으로 옮긴다 (알림은 남겨 옮긴 시각을 보인다) */
+  const toAm = (toast: Extract<Toast, { kind: 'to-event' }>) => {
+    if (!toast.am) return;
+    bridge.eventUpdate(toast.id, toast.am);
+    const { am, clash: _clash, ...rest } = toast;
+    showToast({ ...rest, startAt: am.startAt });
   };
 
   const complete = async (todo: Todo) => {
@@ -285,6 +301,7 @@ export function PanelApp() {
                 startAt: r.startAt,
                 text,
                 ...(r.clash ? { clash: r.clash } : {}),
+                ...(r.am ? { am: r.am } : {}),
               });
             // 여러 줄 붙여 넣기: "할 일 3개 넣었어"
             if (r.kind === 'many') showToast({ kind: 'added', text: addedText(r, s.today) });
@@ -325,7 +342,10 @@ export function PanelApp() {
             // 언제로 넣었는지는 따로 한 줄 (좁아도 시각이 쪼개지지 않게)
             <span>
               {t('panel.toast.toEvent')}
-              <strong className="toast-when">{whenLabel(toast.startAt, s.today)}</strong>
+              <strong className="toast-when">
+                {whenLabel(toast.startAt, s.today)}
+                {toast.am && <small className="toast-guess"> {t('panel.toast.pmGuess')}</small>}
+              </strong>
               {toast.clash && (
                 <small className="toast-clash">
                   {t('assist.clash', { time: timeOf(toast.clash.startAt), title: toast.clash.title })}
@@ -341,6 +361,11 @@ export function PanelApp() {
               <button type="button" className="undo" title={`${MOD}+Z`} onClick={() => undoToast(toast)}>
                 {t('panel.undo')}
               </button>
+              {toast.kind === 'to-event' && toast.am && (
+                <button type="button" className="undo" onClick={() => toAm(toast)}>
+                  {t('panel.toast.toAm')}
+                </button>
+              )}
               {toast.kind === 'to-event' && (
                 <button type="button" className="undo" onClick={() => toTodo(toast)}>
                   {t('panel.toast.asTodo')}

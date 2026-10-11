@@ -125,7 +125,16 @@ test('오전, 오후 없는 1~7시: 아침 말이 있으면 오전, 아니면 �
     parseQuickEventInfo('금 2시~4시 회의', today, ten).am,
     E('회의', '2026-10-16', at(2), 120),
   );
-  for (const text of ['오후 3시 회의', '15:00 회의', '내일 7시 조깅', '9시 회의', '07:30 회의', '3pm call'])
+  for (const text of [
+    '오후 3시 회의',
+    '15:00 회의',
+    '내일 7시 조깅',
+    '9시 회의',
+    '07:30 회의',
+    '3pm call',
+    '6시 저녁 약속',
+    'dinner at 7',
+  ])
     assert.equal(parseQuickEventInfo(text, today, ten).am, undefined, text);
 });
 

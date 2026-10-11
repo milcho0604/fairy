@@ -458,6 +458,11 @@ p.empty {
   white-space: nowrap;
 }
 
+.toast .toast-guess {
+  font-weight: 400;
+  opacity: 0.75;
+}
+
 .toast .undo {
   flex: none;
   white-space: nowrap;
@@ -512,6 +517,22 @@ p.empty {
 
 .quick-msg.error {
   color: var(--error);
+}
+
+/* 오후로 읽은 일정을 오전으로 (오전, 오후 없는 1~7시) */
+.quick-am {
+  flex: none;
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.quick-am:hover {
+  border-color: var(--accent);
 }
 
 /* 넣은 결과 글이 뜨면 칸이 좁아져 안내 글이 글자 중간에서 잘린다. 결과 글이 있는 동안은 안내 글을 감춘다 */

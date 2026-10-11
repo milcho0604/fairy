@@ -16,7 +16,7 @@ import {
   type EventStore,
   hasTimeRange,
   parseEventInput,
-  parseQuickEvent,
+  parseQuickEventInfo,
 } from '../shared/event-store.ts';
 import { type FocusState, focusCoins, isFocusLength } from '../shared/focus.ts';
 import { t } from '../shared/i18n/index.ts';
@@ -246,7 +246,8 @@ export function createPanel(o: PanelOptions) {
     const { rest: text, remind } = splitRemind(line);
     const deadline = hasDeadlineWord(text) && !hasTimeRange(text);
     const repeat = parseQuickTodo(text, localDay(now)).repeat !== null;
-    const ev = deadline || repeat ? null : parseQuickEvent(text, localDay(now), minuteOfDay(now));
+    const info = deadline || repeat ? undefined : parseQuickEventInfo(text, localDay(now), minuteOfDay(now));
+    const ev = info?.ev;
     if (ev) {
       const startAt = localTime(ev.day, ev.minute);
       const dup = sameEvent(ev.title, startAt, false);
@@ -265,7 +266,20 @@ export function createPanel(o: PanelOptions) {
       o.onEventsChanged();
       // 어디에 언제로 넣었는지 알림에 보이고 되돌리거나 할 일로 옮길 수 있게 id 와 시각을 돌려준다
       const clash = clashOf(added);
-      return { ok: true, kind: 'event', id: added.id, startAt: added.startAt, ...(clash ? { clash } : {}) };
+      // 오전, 오후 없이 1~7시를 오후로 읽었다: 알림에 "(오후로 읽었어)" 와 오전으로 바꾸는 단추
+      const amAt = info?.am ? localTime(info.am.day, info.am.minute) : undefined;
+      const am =
+        amAt === undefined
+          ? undefined
+          : { startAt: amAt, endAt: added.endAt === null ? null : amAt + (added.endAt - added.startAt) };
+      return {
+        ok: true,
+        kind: 'event',
+        id: added.id,
+        startAt: added.startAt,
+        ...(clash ? { clash } : {}),
+        ...(am ? { am } : {}),
+      };
     }
     return addTodo(text, now, remind);
   }

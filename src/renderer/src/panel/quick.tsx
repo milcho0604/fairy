@@ -6,7 +6,7 @@ import { t } from '../../../shared/i18n/index.ts';
 import { localDay } from '../../../shared/todo-store.ts';
 import { initLang } from '../lang.ts';
 import { PetFace } from '../PetFace.tsx';
-import { addedText, timeOf } from './format.ts';
+import { addedText, timeOf, whenLabel } from './format.ts';
 import { escClosesWindow, isEsc, takeEsc } from './keys.ts';
 
 const bridge = window.jjakkungPanel;
@@ -21,6 +21,8 @@ function QuickAdd() {
   const [text, setText] = useState('');
   const [msg, setMsg] = useState('');
   const [failed, setFailed] = useState(false);
+  /** 오후로 읽은 일정: 오전으로 바꾸는 단추 (shared/event-store.ts parseQuickEventInfo) */
+  const [am, setAm] = useState<{ id: number; startAt: number; endAt: number | null }>();
   const ref = useRef<HTMLInputElement>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   /** 넣는 중 (Enter 를 빨리 두 번 눌러 두 번 들어가지 않게) */
@@ -31,6 +33,7 @@ function QuickAdd() {
     const r = await bridge.add(value).finally(() => {
       busy.current = false;
     });
+    setAm(undefined);
     if (!r.ok) {
       setMsg(r.error ?? t('panel.add.failed'));
       setFailed(true);
@@ -43,9 +46,22 @@ function QuickAdd() {
       r.kind === 'event' && r.clash
         ? ` ${t('assist.clash', { time: timeOf(r.clash.startAt), title: r.clash.title })}`
         : '';
-    setMsg(addedText(r, localDay(Date.now())) + clash);
+    const guess = r.kind === 'event' && r.am ? ` ${t('panel.toast.pmGuess')}` : '';
+    if (r.kind === 'event' && r.am) setAm({ id: r.id, ...r.am });
+    setMsg(addedText(r, localDay(Date.now())) + guess + clash);
     clearTimeout(closeTimer.current);
-    if (!stay) closeTimer.current = setTimeout(() => bridge.close(), clash ? CLOSE_MS * 2 : CLOSE_MS);
+    // 오전으로 바꿀 수 있으면 누를 시간을 더 준다
+    const wait = guess ? CLOSE_MS * 3 : clash ? CLOSE_MS * 2 : CLOSE_MS;
+    if (!stay) closeTimer.current = setTimeout(() => bridge.close(), wait);
+  };
+  const toAm = () => {
+    if (!am) return;
+    const { id, ...at } = am;
+    bridge.eventUpdate(id, at);
+    setAm(undefined);
+    setMsg(t('panel.quick.event', { when: whenLabel(at.startAt, localDay(Date.now())) }));
+    clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => bridge.close(), CLOSE_MS);
   };
   useEffect(() => {
     ref.current?.focus();
@@ -69,6 +85,7 @@ function QuickAdd() {
         onChange={(e) => {
           setText(e.target.value);
           setMsg('');
+          setAm(undefined);
           // 넣고 닫히기 전에 다시 쓰기 시작했다: 닫지 않는다
           clearTimeout(closeTimer.current);
         }}
@@ -95,6 +112,11 @@ function QuickAdd() {
         <span className={`quick-msg ${failed ? 'error' : ''}`} title={msg}>
           {msg}
         </span>
+      )}
+      {am && (
+        <button type="button" className="quick-am" onClick={toAm}>
+          {t('panel.toast.toAm')}
+        </button>
       )}
     </div>
   );
