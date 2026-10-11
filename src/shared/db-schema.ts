@@ -177,6 +177,14 @@ export const MIGRATIONS: readonly string[] = [
   alter table event add column google_uid text;
   create index event_google on event(google_id) where google_id is not null;
   `,
+  // 11판: 매주 반복 할 일의 요일 기억과 다음 회차 찾기 색인.
+  // repeat_anchor 는 지난 마감 옮기기(moveOverdue)가 오늘로 옮긴 매주 할 일의 원래 마감이다. 다음 회차를 그 요일로 센다
+  // (월요일 할 일을 수요일에 옮겨 끝내면 다음이 수요일이 됐다). 마감을 직접 고치면 지운다.
+  // 되돌리기가 다음 회차를 찾는 repeat_of 에 색인이 없어 할 일이 많으면 표 전체를 훑었다
+  `
+  alter table todo add column repeat_anchor text;
+  create index todo_repeat_of on todo(repeat_of) where repeat_of is not null;
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

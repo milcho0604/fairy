@@ -354,9 +354,13 @@ export class TodoStore {
     // 마감일을 지우면 시각도 지운다
     const wantMin = patch.dueMin === undefined ? t.dueMin : isDueMin(patch.dueMin) ? patch.dueMin : null;
     const dueMin = due ? wantMin : null;
+    // 마감을 바꾸면 매주 요일 기억(repeat_anchor)을 버린다: 사용자가 고른 날이 새 요일이다
     this.#db
-      .prepare('update todo set title = ?, due = ?, important = ?, repeat = ?, due_min = ? where id = ?')
-      .run(title, due, important ? 1 : 0, repeat, dueMin, id);
+      .prepare(
+        `update todo set title = ?, due = ?, important = ?, repeat = ?, due_min = ?,
+         repeat_anchor = case when ? then null else repeat_anchor end where id = ?`,
+      )
+      .run(title, due, important ? 1 : 0, repeat, dueMin, due !== t.due || repeat !== t.repeat ? 1 : 0, id);
     const flipped = (dueMin === null) !== (t.dueMin === null);
     const reminds = patch.reminds
       ? normalizeReminds(patch.reminds, dueMin === null)
@@ -374,14 +378,19 @@ export class TodoStore {
 
   /**
    * 지난 마감(today 전)인 안 끝낸 할 일을 today 로 옮긴다. 옮긴 것과 원래 마감을 돌려준다 (되돌리기용).
-   * now 를 넘겨 옮긴 뒤 이미 지난 알림(전날 저녁 8시)은 말없이 넘긴다
+   * now 를 넘겨 옮긴 뒤 이미 지난 알림(전날 저녁 8시)은 말없이 넘긴다.
+   * 매주 반복은 원래 마감(repeat_anchor)을 기억해 끝내면 다음 회차가 원래 요일로 간다
    */
   moveOverdue(today: string, now: number): { id: number; due: string | null }[] {
     const late = this.list(now).open.filter((todo) => todo.due !== null && todo.due < today);
     if (late.length === 0) return [];
     this.#db.exec('begin');
     try {
-      for (const todo of late) this.update(todo.id, { due: today }, now);
+      for (const todo of late) {
+        const anchor = todo.repeat === 'weekly' ? (this.#repeatAnchor(todo.id) ?? todo.due) : null;
+        this.update(todo.id, { due: today }, now);
+        if (anchor) this.#db.prepare('update todo set repeat_anchor = ? where id = ?').run(anchor, todo.id);
+      }
       this.#db.exec('commit');
     } catch (err) {
       this.#db.exec('rollback');
@@ -431,28 +440,53 @@ export class TodoStore {
     this.#db.prepare('update todo set deleted_at = null where id = ?').run(id);
   }
 
-  /** 끝내기. 받은 코인 수를 돌려준다 (이미 끝났으면 0). */
+  /** 지난 마감 옮기기가 기억한 매주 할 일의 원래 마감 */
+  #repeatAnchor(id: number): string | null {
+    const r = this.#db.prepare('select repeat_anchor from todo where id = ?').get(id) as
+      | { repeat_anchor: string | null }
+      | undefined;
+    return r?.repeat_anchor ?? null;
+  }
+
+  /**
+   * 끝내기. 받은 코인 수를 돌려준다 (이미 끝났으면 0).
+   * 전에 끝내고 받은 코인을 되돌리기로 다 되받지 못했으면(그사이 써서) 그만큼 덜 준다: 끝내기, 쓰기, 되돌리기, 끝내기를
+   * 되풀이해 코인을 찍어 내지 못하게. 하루 상한은 코인을 받은 할 일 수로 센다 (같은 할 일을 다시 끝내도 하나)
+   */
   complete(id: number, now: number): number {
     const t = this.get(id);
     if (!t || t.doneAt !== null) return 0;
     const day = this.#day(now);
     const rewardedToday = Number(
       (
-        this.#db.prepare(`select count(*) as n from coin_log where day = ? and reason = 'todo'`).get(day) as {
-          n: number;
-        }
+        this.#db
+          .prepare(
+            `select count(distinct ref_id) as n from coin_log where day = ? and reason = 'todo' and ref_id is not ? `,
+          )
+          .get(day, id) as { n: number }
       ).n,
+    );
+    // 이 할 일로 받고 아직 되받지 않은 코인 (받은 것 - 되돌리기로 되받은 것)
+    const kept = Number(
+      (
+        this.#db
+          .prepare(
+            `select coalesce(sum(amount), 0) as s from coin_log where ref_id = ? and reason in ('todo', 'early', 'undo')`,
+          )
+          .get(id) as { s: number }
+      ).s,
     );
     let coins = 0;
     this.#db.exec('begin');
     try {
       if (rewardedToday < COIN.dailyTodoLimit) {
-        this.#log(COIN.todo, 'todo', id, now);
-        coins += COIN.todo;
-        if (t.due && day <= t.due) {
-          this.#log(COIN.early, 'early', id, now);
-          coins += COIN.early;
-        }
+        const early = t.due !== null && day <= t.due ? COIN.early : 0;
+        let owed = Math.max(0, COIN.todo + early - Math.max(0, kept));
+        const base = Math.min(owed, COIN.todo);
+        if (base > 0) this.#log(base, 'todo', id, now);
+        owed -= base;
+        if (owed > 0) this.#log(owed, 'early', id, now);
+        coins = base + owed;
       }
       this.#db.prepare('update todo set done_at = ?, coins = ? where id = ?').run(now, coins, id);
       // 다음 회차도 같은 마감 시각과 같은 알림 (지난 알림은 넘긴다)
@@ -462,7 +496,7 @@ export class TodoStore {
             title: t.title,
             important: t.important,
             repeat: t.repeat,
-            due: nextDue(t.due, t.repeat, day),
+            due: nextDue(t.repeat === 'weekly' ? (this.#repeatAnchor(id) ?? t.due) : t.due, t.repeat, day),
             dueMin: t.dueMin,
             reminds: t.reminds,
           },
