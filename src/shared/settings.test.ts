@@ -523,11 +523,30 @@ test('패널 단축키 옮기기: 예전 파일에는 없어 기본 키를 주�
   assert.equal(parseSettings(JSON.parse(JSON.stringify(off))).shortcuts.panel, '');
   // 비운 패널 키에 새 키를 넣을 수 있고, 다른 키와 같으면 받지 않는다
   assert.equal(
-    applyPatch(taken, { shortcuts: { ...taken.shortcuts, panel: 'CommandOrControl+Alt+Shift+P' } }).shortcuts
+    applyPatch(taken, { shortcuts: { ...taken.shortcuts, panel: 'CommandOrControl+Alt+Shift+K' } }).shortcuts
       .panel,
-    'CommandOrControl+Alt+Shift+P',
+    'CommandOrControl+Alt+Shift+K',
   );
   assert.equal(applyPatch(taken, { shortcuts: { ...taken.shortcuts, panel: T } }).shortcuts.panel, '');
   // 새로 깐 사람은 기본 키 그대로
   assert.equal(DEFAULT_SETTINGS.shortcuts.panel, T);
+});
+
+test('펫 고르기 단축키 옮기기: 사용자가 이미 P 를 다른 단축키에 쓰면 펫 고르기를 비운다', () => {
+  const P = 'CommandOrControl+Alt+Shift+P';
+  const s = parseSettings({ shortcuts: { panel: P } });
+  assert.equal(s.shortcuts.panel, P);
+  assert.equal(s.shortcuts.pet, '');
+  assert.equal(parseSettings({}).shortcuts.pet, P);
+});
+
+test('편의 새 칸: 주소 받기, 배터리 절약, 읽어 주기, 메뉴 막대 글자', () => {
+  const d = parseSettings({});
+  assert.equal(d.urlScheme, true);
+  assert.equal(d.batterySaver, 'auto');
+  assert.equal(d.readAloud, true);
+  assert.equal(d.trayTitle, false);
+  const s = parseSettings({ urlScheme: false, batterySaver: 'always', readAloud: false, trayTitle: true });
+  assert.deepEqual([s.urlScheme, s.batterySaver, s.readAloud, s.trayTitle], [false, 'always', false, true]);
+  assert.equal(parseSettings({ batterySaver: 'max' }).batterySaver, 'auto');
 });

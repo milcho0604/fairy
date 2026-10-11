@@ -26,6 +26,7 @@ import type { MoveAsk } from './moves.ts';
 import type { PolishReply } from './note-polish.ts';
 import type { Note, NoteSource } from './note-store.ts';
 import type { PetLicense } from './pet-share.ts';
+import type { PetKey } from './pet-keys.ts';
 import type { Blueprint, Gait } from './pet3d/blueprint.ts';
 import type { PetKind, PetStyle, PoseKind, Settings } from './settings.ts';
 import type { SettingsTab } from './settings-tabs.ts';
@@ -86,6 +87,10 @@ export const IPC = {
   carried: 'pet:carried',
   /** 펫 화면 → 메인: 집 안 그림 (깬 몸, 자는 얼굴, shared/house-room.ts HouseSprites). 모습이 바뀔 때만 */
   sprites: 'pet:sprites',
+  /** 메인 → 펫 화면: 키보드로 펫 다루기를 켜고 끈다 (펫 고르기 단축키, 접근성) */
+  keys: 'pet:keys',
+  /** 펫 화면 → 메인: 키보드 명령 (shared/pet-keys.ts) */
+  petKey: 'pet:key',
 } as const;
 
 /** 펫 얼굴 그림 (shared/face.ts). 펫 화면이 그려 메인에 주고, 메인이 얼굴을 쓰는 창에 나눠 준다 */
@@ -488,6 +493,10 @@ export interface PetBridge {
   carried(at: Point | null): void;
   /** 집 안 그림 (집에서 쉬기: 문 드나드는 깬 몸, 침대의 자는 얼굴). PetStatus.face 일 때만 */
   sprites(sprites: HouseSprites): void;
+  /** 키보드로 펫 다루기 켬(펫 이름, 읽어 줄 안내에 쓴다), 끔(null) (접근성) */
+  onKeys(listener: (name: string | null) => void): void;
+  /** 키보드 명령 (shared/pet-keys.ts) */
+  petKey(key: PetKey): void;
 }
 
 /** 펫 화면이 그리는 몸. 네 발로 걷는 펫은 공을 입에 물어 온다 */
@@ -541,6 +550,10 @@ export interface PetStatus {
   gait?: Gait;
   /** 기운 (하루 리듬과 연속 작업 피로, shared/energy.ts). 설정 "하루 리듬"이 꺼졌거나 친구 펫이면 없다 (예전 모습) */
   energy?: EnergyLook;
+  /** 배터리 절약 중 (shared/battery.ts): 그리기 15fps 상한, 한가한 행동을 드물게. 없으면 끔 */
+  saver?: boolean;
+  /** 말풍선을 화면 읽기 프로그램에 읽어 준다 (설정 읽어 주기). 친구 펫은 끔 (같은 말을 두 번 읽지 않게) */
+  readAloud?: boolean;
 }
 
 /** 펫 그림들 (data URL). 없으면 기본 펫. 포즈는 상태별 그림 (v1) */

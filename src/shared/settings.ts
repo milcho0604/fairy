@@ -1,5 +1,6 @@
 // 사용자 설정 (P1-12). 2단계에서 SQLite 로 옮기기 전까지 JSON 파일 하나에 둔다.
 import { isPersona, type PersonaId } from './ai/persona.ts';
+import { isSaverMode, type SaverMode } from './battery.ts';
 import type { ChatterLevel } from './chatter.ts';
 import { type FocusLength, isFocusLength } from './focus.ts';
 import { type LangPref, t } from './i18n/index.ts';
@@ -114,6 +115,16 @@ export interface Settings {
   focusMin: FocusLength;
   /** 한가할 때 커서 쪽을 바라본다 */
   lookAtCursor: boolean;
+  /** jjakkung:// 주소로 할 일, 메모 넣기와 집중, 패널 열기 (편의, 기본 켬. shared/url-scheme.ts) */
+  urlScheme: boolean;
+  /** 배터리 절약 (편의): 자동(배터리, 저전력일 때), 항상, 끄기. shared/battery.ts */
+  batterySaver: SaverMode;
+  /** 말풍선을 화면 읽기 프로그램이 읽어 준다 (편의, 기본 켬) */
+  readAloud: boolean;
+  /** 맥 메뉴 막대 아이콘 옆에 다음 일정이나 집중 남은 시간 (편의, 기본 끔: 제목이 화면에 늘 보인다) */
+  trayTitle: boolean;
+  /** 배터리 절약을 펫이 한 번 알렸는지 (처음 배터리로 바뀔 때 한 번, "그대로 움직이기" 단추와 함께) */
+  saverTold: boolean;
   /**
    * 하루 리듬 (기본 켬, shared/energy.ts): 사용자 컴퓨터 시각대로 아침엔 잠이 덜 깨고 낮엔 활발하고 밤엔 졸리다.
    * 쉬지 않고 오래 일하면 같이 지친다. 끄면 예전 모습 (밤에 하품이 잦은 것만 남는다). 지친 혼잣말은 수다 빈도를 따른다
@@ -315,6 +326,11 @@ export const DEFAULT_SETTINGS: Settings = {
   petMemoryPending: [],
   focusMin: 25,
   lookAtCursor: true,
+  urlScheme: true,
+  batterySaver: 'auto',
+  readAloud: true,
+  trayTitle: false,
+  saverTold: false,
   dayRhythm: true,
   diaryAi: false,
   sounds: false,
@@ -462,6 +478,11 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
       : [...base.petMemoryPending],
     focusMin: isFocusLength(r.focusMin) ? r.focusMin : base.focusMin,
     lookAtCursor: bool(r.lookAtCursor, base.lookAtCursor),
+    urlScheme: bool(r.urlScheme, base.urlScheme),
+    batterySaver: isSaverMode(r.batterySaver) ? r.batterySaver : base.batterySaver,
+    readAloud: bool(r.readAloud, base.readAloud),
+    trayTitle: bool(r.trayTitle, base.trayTitle),
+    saverTold: bool(r.saverTold, base.saverTold),
     dayRhythm: bool(r.dayRhythm, base.dayRhythm),
     diaryAi: bool(r.diaryAi, base.diaryAi),
     sounds: bool(r.sounds, base.sounds),
@@ -636,7 +657,7 @@ const HOST_MAC: boolean | undefined =
     : undefined;
 
 /** 나중 버전에 생긴 단축키. 새로 더하면 여기에도 적는다 (예전 설정 파일에는 이 id 가 없다) */
-const LATER_SHORTCUTS: readonly ShortcutId[] = ['chat', 'look', 'panel'];
+const LATER_SHORTCUTS: readonly ShortcutId[] = ['chat', 'look', 'panel', 'pet'];
 
 function shortcutsOf(v: unknown, current: Record<ShortcutId, string>): Record<ShortcutId, string> {
   const r = (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>;

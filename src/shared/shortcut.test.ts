@@ -82,7 +82,10 @@ test('단축키 겹침: 같은 키 조합(대소문자 무시)이면 두 이름�
 test('대화, 같이 보기 기본 단축키: Cmd/Ctrl+Option/Alt+Shift+J, L. 서로, 다른 기본과 겹치지 않는다', () => {
   assert.equal(SHORTCUT_DEFAULTS.chat, 'CommandOrControl+Alt+Shift+J');
   assert.deepEqual(acceleratorLabel(SHORTCUT_DEFAULTS.look, true), ['Cmd', 'Option', 'Shift', 'L']);
-  assert.equal(new Set(Object.values(SHORTCUT_DEFAULTS).map((v) => v.toLowerCase())).size, 5);
+  assert.equal(
+    new Set(Object.values(SHORTCUT_DEFAULTS).map((v) => v.toLowerCase())).size,
+    SHORTCUT_IDS.length,
+  );
   for (const mac of [true, false])
     for (const acc of [SHORTCUT_DEFAULTS.chat, SHORTCUT_DEFAULTS.look]) {
       assert.equal(reservedUse(acc, mac), undefined, acc);
@@ -270,5 +273,17 @@ test('패널 단축키: 기본 Cmd/Ctrl+Option/Alt+Shift+T. 시스템 조합이 
   // 다른 단축키를 패널 키로 바꾸면 겹친다
   assert.deepEqual(shortcutClash({ ...d, chat: d.panel }), ['chat', 'panel']);
   assert.equal(SHORTCUT_LABEL.panel, '패널 열기, 닫기');
-  assert.equal(SHORTCUT_IDS.at(-1), 'panel');
+  assert.equal(SHORTCUT_IDS.at(-2), 'panel');
+});
+
+test('펫 고르기 단축키 (접근성): 기본 Cmd/Ctrl+Option/Alt+Shift+P, 시스템 조합이 아니고 다른 기본과 겹치지 않는다', () => {
+  const d = SHORTCUT_DEFAULTS;
+  assert.equal(d.pet, 'CommandOrControl+Alt+Shift+P');
+  for (const mac of [true, false]) {
+    assert.equal(reservedUse(d.pet, mac), undefined);
+    assert.equal(shortcutProblem(d.pet, mac), undefined);
+  }
+  assert.equal(shortcutClash(d), undefined);
+  assert.equal(SHORTCUT_LABEL.pet, '펫 고르기 (키보드로 펫 다루기)');
+  assert.equal(SHORTCUT_IDS.at(-1), 'pet');
 });

@@ -1,5 +1,6 @@
 // 영역별 사전을 하나로 합친다. 영역을 더하면 ko 와 en 에 같이 넣는다.
 
+import * as access from './access.ts';
 import * as achieve from './achieve.ts';
 import * as ai from './ai.ts';
 import * as assist from './assist.ts';
@@ -59,6 +60,7 @@ export const ko = {
   ...gemini.ko,
   ...gallery.ko,
   ...day.ko,
+  ...access.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -90,4 +92,5 @@ export const en: Translation<typeof ko> = {
   ...gemini.en,
   ...gallery.en,
   ...day.en,
+  ...access.en,
 };
