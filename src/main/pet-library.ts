@@ -7,7 +7,7 @@ import { sizeOk } from '../shared/image-head.ts';
 import type { PetLookView, SavedPetView, StarterView } from '../shared/ipc.ts';
 import { type Blueprint, parseBlueprint } from '../shared/pet3d/blueprint.ts';
 import { LIBRARY_MAX, type PetKind, type SavedPet, type Settings } from '../shared/settings.ts';
-import { STARTER_PETS, type StarterId, starterOf } from '../shared/starter-pets.ts';
+import { isStarterName, STARTER_PETS, type StarterId, starterOf } from '../shared/starter-pets.ts';
 import { readFileIn, safeFileIn } from './safe-file.ts';
 import { settings } from './settings.ts';
 import { copyStarter, readStarter } from './starter-copy.ts';
@@ -75,7 +75,7 @@ const NO_POSES = { happy: null, sleepy: null, hungry: null };
 function untouchedStarter(s: Settings): boolean {
   const id = starterOf(s.petImage);
   if (!id || s.petModel || s.petDepth || Object.values(s.petPoses).some(Boolean)) return false;
-  return STARTER_PETS.find((p) => p.id === id)?.name === s.petName;
+  return isStarterName(id, s.petName);
 }
 
 export const library = {
