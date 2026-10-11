@@ -783,6 +783,8 @@ export const PANEL = {
   eventUpdate: 'panel:event-update',
   eventRemove: 'panel:event-remove',
   eventRestore: 'panel:event-restore',
+  /** 달력 보기: 기간 안의 일정 */
+  eventsBetween: 'panel:events-between',
   // 집중 타이머 (v1)
   focusStart: 'panel:focus-start',
   focusStop: 'panel:focus-stop',
@@ -971,8 +973,16 @@ export interface PanelBridge {
   notePolishInfo(id: number): Promise<{ ai?: string; job: 'none' | 'busy' | 'ready' }>;
   /** 다듬은 글을 받아 띄웠다 (메인이 들고 있던 답을 지운다) */
   notePolishTaken(id: number): void;
-  /** 한 줄("내일 3시 회의")로 일정 넣기 */
-  eventAdd(text: string): Promise<{ ok: boolean; error?: string; event?: CalEvent; clash?: EventClash }>;
+  /**
+   * 한 줄("내일 3시 회의")로 일정 넣기. day(YYYY-MM-DD)를 주면 그날을 기준으로 읽고(달력에서 고른 날),
+   * 날짜도 시각도 없으면 그날 종일 일정
+   */
+  eventAdd(
+    text: string,
+    day?: string,
+  ): Promise<{ ok: boolean; error?: string; event?: CalEvent; clash?: EventClash }>;
+  /** 달력 보기: [from, to) 와 겹치는 일정 (앞에서 시작해 이어지는 여러 날 일정도) */
+  eventsBetween(from: number, to: number): Promise<CalEvent[]>;
   eventUpdate(
     id: number,
     patch: {
