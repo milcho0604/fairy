@@ -106,6 +106,11 @@ export interface Part {
    * 설계도 파일에서는 읽지 않는다
    */
   cut?: number;
+  /**
+   * 네 발로 선 몸(Blueprint.stance)의 다리 부품만: 무릎 아래 마디 (정강이, 발). 이 칸이 있는 부품 가운데 가장 높은
+   * 것의 가운데가 무릎 관절이다 (무릎 공을 두면 굽혀도 틈이 안 보인다). 가장 낮은 것의 가운데가 발이다
+   */
+  knee?: boolean;
 }
 
 export const MOUTHS = ['smile', 'cat', 'beak', 'grin', 'tiny'] as const;
@@ -219,7 +224,16 @@ export interface Blueprint {
   gait?: Gait;
   /** 털 느낌 (복슬복슬 모습). 없으면 부품 겉 느낌(fuzzy, soft)으로 정한다 */
   fur?: Fur;
+  /**
+   * 몸을 세운 방식. stand 는 진짜 네 발 동물처럼 몸통을 눕혀 네 다리로 선 모양으로 만든 설계도 (밀크, 초코).
+   * 앱이 앉히고, 눕히고, 옆으로 돌아 걷게 한다 (renderer pet3d-stance.ts). 다리 부품 가운데 knee 칸이 있는 것은
+   * 무릎 아래 마디다. 없으면 예전처럼 앉은 피규어 (네 발로 걸을 때 몸을 숙인다)
+   */
+  stance?: Stance;
 }
+
+export const STANCES = ['stand'] as const;
+export type Stance = (typeof STANCES)[number];
 
 /**
  * 털 느낌. 모두 0~1. length 짧은 솜털(0)~긴 털(1), curl 곧은 털(0)~곱슬(1, 푸들),
@@ -323,6 +337,12 @@ export function parseBlueprint(raw: unknown): Blueprint | undefined {
   if (gait) bp.gait = gait;
   const fur = furOf(r.fur);
   if (fur) bp.fur = fur;
+  // 네 발로 선 몸은 네 발로 걷는다 (걸음새 칸이 두 발이면 무시한다: 선 몸을 두 발로 세울 수 없다)
+  const stance = oneOf(STANCES, r.stance);
+  if (stance) {
+    bp.stance = stance;
+    bp.gait = 'quadruped';
+  }
   return bp;
 }
 
@@ -362,6 +382,7 @@ function parsePart(p: unknown): Part | undefined {
   }
   const pattern = patternOf(q.pattern);
   if (pattern) part.pattern = pattern;
+  if (q.knee === true && (slot === 'legL' || slot === 'legR')) part.knee = true;
   return part;
 }
 

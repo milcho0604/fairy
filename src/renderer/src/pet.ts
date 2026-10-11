@@ -547,6 +547,8 @@ function activityPose(now: number) {
       type: 'walk' as const,
       dir: (activity.dx < 0 ? -1 : 1) as -1 | 1,
       phase: stepsAt(seg, now) % 1,
+      steps: stepsAt(seg, now),
+      ...(activity.facing ? { facing: activity.facing } : {}),
       // 출발은 처음 걷기부터, 멈춤은 지금 토막 끝(start + ms, 이어 받으면 늘어난다)에서 잰다
       since: now - activity.start,
       left: activity.start + activity.ms - now,

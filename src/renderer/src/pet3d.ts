@@ -4,6 +4,7 @@
 import {
   BackSide,
   Box3,
+  BufferAttribute,
   type BufferGeometry,
   CanvasTexture,
   CapsuleGeometry,
@@ -46,6 +47,7 @@ import {
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { WALK_SPEED } from '../../shared/behavior.ts';
 import {
   type Blueprint,
   type EyeLook,
@@ -111,6 +113,24 @@ import {
 } from './pet3d-gait.ts';
 import { bounced, type EyeState, restingEye } from './pet3d-motion.ts';
 import {
+  type BodyPose,
+  blendPose,
+  DUTY,
+  footCycle,
+  footPhase,
+  gaitFor,
+  gaitPhase,
+  liePose,
+  type Pt,
+  pitchAbout,
+  type StanceDims,
+  type StanceGoal,
+  segAngle,
+  sitPose,
+  solveLeg,
+  stanceGoal,
+} from './pet3d-stance.ts';
+import {
   buildKeyboard,
   HANDS,
   type Keyboard3D,
@@ -123,6 +143,7 @@ import {
 } from './pet3d-tap.ts';
 import { neckRow } from './relief-warp.ts';
 import { tapPaws } from './together-draw.ts';
+import { strideLen } from './walk-pace.ts';
 
 const CX = 80;
 const GROUND = 154;
@@ -202,6 +223,39 @@ interface QuadRig {
   };
 }
 
+/** 네 발로 선 몸의 다리 하나 (pet3d-stance.ts): 엉덩이(어깨) 관절 아래 윗마디, 무릎 관절 아래 아랫마디와 발 */
+interface StanceLeg {
+  id: LegId;
+  front: boolean;
+  hipG: Group;
+  kneeG: Group;
+  /** 쉬는 자리 (root 기준): 엉덩이 관절, 발 가운데 */
+  hip: Vector3;
+  foot: Vector3;
+  l1: number;
+  l2: number;
+  /** 쉬는 자세의 윗마디, 아랫마디 각 (곧장 아래에서 앞으로) */
+  rest1: number;
+  rest2: number;
+}
+
+interface StanceRig {
+  legs: StanceLeg[];
+  dims: StanceDims;
+  /** 몸 관절 쉬는 자리 (root 기준) */
+  pivot: Vector3;
+  /** 앉은 자세, 엎드린 자세 */
+  sit: BodyPose;
+  lie: BodyPose;
+  /** 다리 길이 (앞다리 두 마디 합). 걸음 크기와 발 드는 높이의 기준 */
+  leg: number;
+  /** 귀가 늘어진 귀인지 (관절이 위에 있다) */
+  floppy: boolean;
+  /** 쉬는 자리: 머리, 꼬리 관절 */
+  headBase: Vector3;
+  tailBase: Vector3;
+}
+
 export class Pet3D implements Model3D {
   private readonly canvas = document.createElement('canvas');
   private readonly renderer: WebGLRenderer;
@@ -221,6 +275,16 @@ export class Pet3D implements Model3D {
   private keys: Keyboard3D | undefined;
   /** 네 발 걷기 (설계도 gait, pet3d-gait.ts). 두 발 펫이면 undefined */
   private quad: QuadRig | undefined;
+  /**
+   * 피규어 모습에서 털(fuzzy) 부품 겉에 새긴 털 결: curl 곱슬 뭉치(초코), long 아래로 빗은 긴 털 결(밀크).
+   * 네 발로 선 몸의 설계도만 (예전 펫 모습은 그대로)
+   */
+  private sculpt: 'curl' | 'long' | undefined;
+  /** 네 발로 선 몸 (설계도 stance, pet3d-stance.ts). 아니면 undefined */
+  private stance: StanceRig | undefined;
+  /** 네 발로 선 몸: 마지막으로 걸은 때와 쪽 (걷고 나서 잠깐 서 있다가 앉는다, 몸을 그쪽으로 조금 돌린다) */
+  private walkedAt = Number.NEGATIVE_INFINITY;
+  private walkedDir: -1 | 1 = 1;
   private face: FaceRig | undefined;
   /** 마지막으로 그린 자리 (2D 캔버스 좌표). 같이 보기 돋보기가 눈 자리를 찾을 때 쓴다 */
   private drawn: { x0: number; y0: number; d: number } | undefined;
@@ -232,7 +296,9 @@ export class Pet3D implements Model3D {
    */
   private ease = new Eased();
   /** 마지막 걸음 (걷기가 끝난 뒤 다리와 숙인 몸을 짧게 풀 때 쓴다) */
-  private lastWalk: { dir: -1 | 1; phase: number; stride?: number } | undefined;
+  private lastWalk: { dir: -1 | 1; phase: number; stride?: number; steps?: number } | undefined;
+  /** 이번 틀에 몸을 띄운 높이 (160 캔버스 px). 네 발로 선 몸은 뛰는 동안 발을 몸 쪽으로 접는다 */
+  private air = 0;
   /** 몸 1 단위가 정면에서 2D 캔버스(fit.d = 2)에서 차지하는 길이 비율 (NDC). 보폭을 간 거리에 맞출 때 */
   private unitNdc = 0;
   /** 그릴 것이 있는지 (설계도나 입체 판을 넣었는지) */
@@ -436,6 +502,8 @@ export class Pet3D implements Model3D {
     this.relief = undefined;
     this.face = undefined;
     this.quad = undefined;
+    this.stance = undefined;
+    this.walkedAt = Number.NEGATIVE_INFINITY;
     this.motion = { bounce: 1, sway: 1, tail: 1, ear: 1 };
     this.ready = false;
     // 색별 재질도 비운다 (펫을 갈아끼울 때마다 쌓이지 않게)
@@ -539,6 +607,15 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       ear: m?.earWiggle ?? 1,
     };
     const parts = expandParts(bp.parts);
+    const fur = bp.fur;
+    this.sculpt =
+      bp.stance && this.style === 'figure' && fur
+        ? (fur.curl ?? 0) >= 0.5
+          ? 'curl'
+          : (fur.length ?? 0) >= 0.6
+            ? 'long'
+            : undefined
+        : undefined;
     const meshes = parts.map((p) => ({ part: p, mesh: this.partMesh(p) }));
 
     // 슬롯마다 부품이 차지하는 상자로 관절 자리를 정한다
@@ -580,6 +657,20 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
         pivots[slot] = new Vector3(c.x, b.max.y - (b.max.y - b.min.y) * 0.2, c.z);
       else if (slot === 'tail') pivots[slot] = new Vector3(c.x, b.min.y, b.max.z);
       else pivots[slot] = new Vector3(c.x, b.min.y, c.z); // 귀, 머리 위
+    }
+    // 네 발로 선 몸: 목은 머리 뒤 아래 (앞으로 내민 머리가 목에서 돈다), 늘어진 귀는 위에서 매달려 흔들린다
+    const standing = bp.stance === 'stand';
+    const headBox = boxes.get('head');
+    if (standing && headBox) {
+      const c = headBox.getCenter(new Vector3());
+      const size = headBox.getSize(new Vector3());
+      pivots.head = new Vector3(c.x, headBox.min.y + size.y * 0.3, headBox.min.z + size.z * 0.3);
+      for (const ear of ['earL', 'earR'] as const) {
+        const b = boxes.get(ear);
+        if (!b || b.getCenter(new Vector3()).y >= c.y) continue;
+        const ec = b.getCenter(new Vector3());
+        pivots[ear] = new Vector3(ec.x, b.max.y - (b.max.x - b.min.x) * 0.4, ec.z);
+      }
     }
     // 철마다 옷(목도리 등)의 상자: 타자 칠 때 앞발을 그 앞에 둔다 (옷이 손을 덮지 않게)
     const worn = new Box3();
@@ -626,7 +717,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     this.wavePaw = undefined;
     const bodyOf = meshes.find((m) => m.part.slot === 'body');
     const bodyMesh = bodyOf?.mesh;
-    if (!this.hasHand && bodyBox && bodyOf && bodyMesh) {
+    if (!this.hasHand && !standing && bodyBox && bodyOf && bodyMesh) {
       const c = bodyBox.getCenter(new Vector3());
       const size = bodyBox.getSize(new Vector3());
       const pivot = new Group();
@@ -654,7 +745,10 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       this.wavePaw = pivot;
     }
     // 네 발 동물이면 다리를 앞발, 뒷발 네 개로 나눈다 (카메라 맞춘 뒤라 화면 크기는 그대로)
-    this.quad = bodyBox ? this.buildQuad(bp, parts, meshes, bodyBox) : undefined;
+    // 네 발로 선 몸은 따로 (앉고, 엎드리고, 옆으로 돌아 걷는다). 카메라는 그 자세들이 다 들어가게 다시 맞춘다
+    this.stance = standing && bodyBox ? this.buildStance(meshes, bodyBox) : undefined;
+    this.quad = bodyBox && !this.stance ? this.buildQuad(bp, parts, meshes, bodyBox) : undefined;
+    if (this.stance) this.fitStance();
     // 복슬복슬: 관절마다 부품을 녹여 한 덩어리로 (관절과 다리 나누기가 끝난 뒤라 움직임은 그대로)
     if (this.fluffy) this.fuseJoints(bp);
   }
@@ -1007,6 +1101,123 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     };
   }
 
+  /**
+   * 네 발로 선 몸 준비 (설계도 stance: 'stand'). 다리 슬롯마다 부품을 앞다리, 뒷다리로 나누고, 다리마다 엉덩이(어깨) 관절
+   * 아래 윗마디, 무릎 관절 아래 아랫마디(knee 칸 부품)를 묶는다. 앉은 자세와 엎드린 자세는 몸 치수로 미리 푼다
+   */
+  private buildStance(meshes: { part: Part; mesh: Mesh }[], bodyBox: Box3): StanceRig | undefined {
+    this.root.updateMatrixWorld(true);
+    const depth = bodyBox.max.z - bodyBox.min.z;
+    const wp = (m: Mesh) => m.getWorldPosition(new Vector3());
+    const pt = (v: Vector3): Pt => ({ y: v.y, z: v.z });
+    const legs: StanceLeg[] = [];
+    for (const [slot, side] of [
+      ['legL', 'l'],
+      ['legR', 'r'],
+    ] as const) {
+      const mine = meshes.filter((m) => m.part.slot === slot && !m.part.wear);
+      const cut = legCut(
+        mine.map((m) => m.part.at[2]),
+        legGap(depth),
+      );
+      if (cut === undefined) return undefined;
+      for (const front of [true, false]) {
+        const list = mine.filter((m) => m.part.at[2] > cut === front);
+        const upper = list.filter((m) => !m.part.knee);
+        const lower = list.filter((m) => m.part.knee).sort((a, b) => wp(b.mesh).y - wp(a.mesh).y);
+        const top = lower[0];
+        const bottom = lower.at(-1);
+        if (!top || !bottom) return undefined;
+        const knee = wp(top.mesh);
+        const foot = wp(bottom.mesh);
+        let hip = knee.clone().add(new Vector3(0, 0.12, 0));
+        if (upper.length) {
+          const box = new Box3();
+          for (const m of upper) box.union(new Box3().setFromObject(m.mesh));
+          const c = box.getCenter(new Vector3());
+          const size = box.getSize(new Vector3());
+          // 관절은 윗마디 꼭대기에서 굵기 반만큼 아래 (캡슐 위쪽 둥근 끝의 가운데)
+          hip = new Vector3(c.x, box.max.y - Math.min(size.x, size.z) / 2, c.z);
+        }
+        const own = this.joints[slot];
+        const hipG = new Group();
+        hipG.position.copy(own.worldToLocal(hip.clone()));
+        own.add(hipG);
+        hipG.updateMatrixWorld(true);
+        for (const m of upper) hipG.attach(m.mesh);
+        const kneeG = new Group();
+        kneeG.position.copy(hipG.worldToLocal(knee.clone()));
+        hipG.add(kneeG);
+        kneeG.updateMatrixWorld(true);
+        for (const m of lower) kneeG.attach(m.mesh);
+        legs.push({
+          id: `${front ? 'f' : 'h'}${side}`,
+          front,
+          hipG,
+          kneeG,
+          hip,
+          foot,
+          l1: Math.hypot(knee.y - hip.y, knee.z - hip.z),
+          l2: Math.hypot(foot.y - knee.y, foot.z - knee.z),
+          rest1: segAngle(pt(hip), pt(knee)),
+          rest2: segAngle(pt(knee), pt(foot)),
+        });
+      }
+    }
+    const avg = (list: StanceLeg[], f: (l: StanceLeg) => number) =>
+      list.reduce((a, l) => a + f(l), 0) / Math.max(1, list.length);
+    const fronts = legs.filter((l) => l.front);
+    const hinds = legs.filter((l) => !l.front);
+    const hip = { y: avg(hinds, (l) => l.hip.y), z: avg(hinds, (l) => l.hip.z) };
+    const shoulder = { y: avg(fronts, (l) => l.hip.y), z: avg(fronts, (l) => l.hip.z) };
+    const dims: StanceDims = {
+      hip,
+      shoulder,
+      rump: hip.y - bodyBox.min.y,
+      chest: shoulder.y - bodyBox.min.y,
+      pawY: avg(legs, (l) => l.foot.y),
+      frontFootZ: avg(fronts, (l) => l.foot.z),
+      frontReach: avg(fronts, (l) => Math.hypot(l.hip.y - l.foot.y, l.hip.z - l.foot.z)),
+    };
+    // 늘어진 귀: 귀 관절이 귀 부품 가운데보다 위에 있다 (setBlueprint 가 위에 둔다)
+    const earBox = new Box3();
+    for (const m of meshes) if (m.part.slot === 'earL') earBox.union(new Box3().setFromObject(m.mesh));
+    const floppy =
+      !earBox.isEmpty() &&
+      this.joints.earL.getWorldPosition(new Vector3()).y > earBox.getCenter(new Vector3()).y;
+    return {
+      legs,
+      dims,
+      pivot: this.joints.body.position.clone(),
+      sit: sitPose(dims),
+      lie: liePose(dims),
+      leg: avg(fronts, (l) => l.l1 + l.l2),
+      floppy,
+      headBase: this.joints.head.position.clone(),
+      tailBase: this.joints.tail.position.clone(),
+    };
+  }
+
+  /**
+   * 네 발로 선 몸의 카메라 맞추기: 앉아서 앞을 본 자세와 옆으로 돌아 걷는 자세가 다 캔버스에 들어가게.
+   * 쉬는 모습(앉은 자세)으로 되돌린 뒤 맞춘다
+   */
+  private fitStance() {
+    const still: DrawState = { mood: 'idle', elapsed: 0, blink: -1 };
+    const box = new Box3();
+    this.ease.frame(undefined);
+    const measure = (act: Act, yaw: number) => {
+      this.poseStance(still, 1, 1, act);
+      this.root.rotation.y = yaw;
+      this.root.updateMatrixWorld(true);
+      box.union(new Box3().setFromObject(this.root));
+    };
+    for (const dir of [-1, 1] as const) measure({ type: 'walk', dir, phase: 0.3 }, dir * (Math.PI / 2));
+    measure(undefined, 0);
+    this.poseStance(still, 1, 1, undefined);
+    this.frameCamera(box);
+  }
+
   /** 방금 그린 자세가 아직 따라가는 중인지 (돌아서기, 걷기 풀기). 펫 화면이 몇 틀 더 그린다 */
   settling(): boolean {
     return this.ease.busy;
@@ -1044,8 +1255,15 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     this.ease.frame(s.now);
     // 통통 튀는 세기 (설계도 motion.bounce, pet3d-motion.ts)
     // 네 발 걷기는 걸음 들썩임도 출발과 멈춤에 맞춰 줄인다 (pet3d-gait.ts walkEnvelope)
-    const bob = this.quad && act?.type === 'walk' ? walkEnvelopeOf(act).stride : 1;
+    // 네 발로 선 몸은 걸을 때 그림 전체를 띄우지 않는다 (몸통만 오르내리고 디딘 발은 바닥에 붙어 있다)
+    const bob =
+      this.stance && act?.type === 'walk'
+        ? 0
+        : this.quad && act?.type === 'walk'
+          ? walkEnvelopeOf(act).stride
+          : 1;
     const { lift: up, sx, sy } = bounced(s, act, this.motion.bounce, lift0 * bob, sx0, sy0);
+    this.air = up;
     this.pose(s, sx, sy, act);
     const { d, cx, bottom } = this.fit;
     // 몸짓으로 폴짝 뛰어도 귀 끝이 캔버스 위로 잘리지 않게 (토순이처럼 키가 큰 펫). 꼭대기만 자르면 판판하게 떠
@@ -1065,7 +1283,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     if (this.tilt !== this.orbit.tilt) this.aim(this.tilt);
     this.renderer.render(this.scene, this.camera);
     const x0 = CX - d / 2 - (cx * d) / 2;
-    const y0 = GROUND - d / 2 + (bottom * d) / 2 - lift;
+    const y0 = GROUND - d / 2 + (this.groundNdc(bottom) * d) / 2 - lift;
     // 바닥 그림자: 떠오를수록 옅고 작게
     const away = Math.min(1, lift / 30);
     const rx = this.fit.halfW * d * 0.42 * sx * (1 - 0.3 * away);
@@ -1088,12 +1306,26 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
   /** 지금 자세의 머리 꼭대기 y (2D 캔버스). lift 만큼 띄웠을 때 */
   private headTop(lift: number): number {
     const { d, bottom } = this.fit;
-    const y0 = GROUND - d / 2 + (bottom * d) / 2 - lift;
+    const y0 = GROUND - d / 2 + (this.groundNdc(bottom) * d) / 2 - lift;
     this.box.setFromObject(this.root);
     this.box.getCenter(this.tmp);
     this.tmp.y = this.box.max.y;
     this.tmp.project(this.camera);
     return y0 + d / 2 - (this.tmp.y * d) / 2;
+  }
+
+  /**
+   * 바닥(GROUND)에 둘 화면 높이 (NDC). 네 발로 선 몸은 몸 아래 바닥 가운데를 그림자 가운데에 둔다: 돌아서면 가까운 발과
+   * 먼 발이 원근으로 위아래로 나뉘는데(그림자 타원 앞뒤처럼), 쉬는 자세(앞을 본 앉은 자세)의 가장 낮은 점에 맞추면
+   * 옆으로 걸을 때 발이 떠 보였다. 다른 몸은 쉬는 자세에서 잰 값 그대로
+   */
+  private groundNdc(bottom: number): number {
+    if (!this.stance) return bottom;
+    this.root.updateMatrixWorld(true);
+    // 바닥 판(y=0) 위 몸 아래 점. 뒹굴 때 바닥에 붙이려고 옮긴 높이는 빼지 않는다
+    const p = this.tmp.set(this.root.position.x, 0, this.root.position.z);
+    p.project(this.camera);
+    return p.y;
   }
 
   /** 방금 그린 그림에서 side 쪽 눈 가운데 (2D 캔버스 좌표). 눈이 없으면 undefined (같이 보기 돋보기) */
@@ -1115,7 +1347,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
 
   /** 네 발로 걷는 몸인지 (설계도 gait, 없으면 다리 모양 짐작). 입체 판은 두 발로 본다 */
   get fourLegged(): boolean {
-    return !!this.quad && !this.relief;
+    return (!!this.quad || !!this.stance) && !this.relief;
   }
 
   /**
@@ -1169,8 +1401,13 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     return m;
   }
 
-  private material(color: string, finish: Finish = 'soft', pat?: PatternAt): Material {
-    const key = `${color}/${finish}/${this.style}${pat ? `/${patternKey(pat)}` : ''}`;
+  private material(
+    color: string,
+    finish: Finish = 'soft',
+    pat?: PatternAt,
+    sculpt?: 'curl' | 'long',
+  ): Material {
+    const key = `${color}/${finish}/${this.style}${pat ? `/${patternKey(pat)}` : ''}${sculpt ? `/${sculpt}` : ''}`;
     let m = this.materials.get(key);
     if (m) return m;
     if (this.game) m = this.toonMaterial(color, finish);
@@ -1197,7 +1434,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
             : { color, roughness: 0.55, clearcoat: 0.35, clearcoatRoughness: 0.45 },
       );
     }
-    decorate(m, { pattern: pat, figure: this.style === 'figure' && finish !== 'shiny' });
+    decorate(m, { pattern: pat, figure: this.style === 'figure' && finish !== 'shiny', sculpt });
     this.materials.set(key, m);
     return m;
   }
@@ -1246,7 +1483,18 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
             : new SphereGeometry(1, 40, 28);
     }
     const pat = p.pattern ? this.patternOf(p.pattern, geo, scale) : undefined;
-    const mesh = new Mesh(geo, this.material(p.color, p.finish, pat));
+    // 새긴 털 결은 모양 좌표 × 크기(세상 길이)로 찍는다: 부품 크기와 상관없이 같은 굵기, 움직여도 겉에 붙어 있다
+    const sculpt = p.finish === 'fuzzy' && !p.wear ? this.sculpt : undefined;
+    if (sculpt) {
+      const pos = geo.attributes.position;
+      if (pos) {
+        const v = new Float32Array(pos.count * 3);
+        for (let i = 0; i < pos.count; i++)
+          v.set([pos.getX(i) * scale.x, pos.getY(i) * scale.y, pos.getZ(i) * scale.z], i * 3);
+        geo.setAttribute('jjFurP', new BufferAttribute(v, 3));
+      }
+    }
+    const mesh = new Mesh(geo, this.material(p.color, p.finish, pat, sculpt));
     mesh.position.set(...p.at);
     mesh.scale.copy(scale);
     if (p.rot) mesh.rotation.set(p.rot[0] * DEG, p.rot[1] * DEG, p.rot[2] * DEG);
@@ -1907,17 +2155,17 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
   }
 
   /** 쉬는 자세가 2D 캔버스 안 바닥에 서도록 카메라와 옮길 자리를 정한다 */
-  private frameCamera() {
+  private frameCamera(fixed?: Box3) {
     this.root.rotation.set(0, 0, 0);
     this.root.scale.set(1, 1, 1);
     this.root.updateMatrixWorld(true);
     // 입는 옷은 빼고 잰다: 모자를 써도 펫 크기와 자리가 그대로다
-    const b = new Box3();
+    const b = fixed?.clone() ?? new Box3();
     const worn = (o: Object3D | null): boolean =>
       !!o && o !== this.root && (!!(o.userData.part as Part | undefined)?.wear || worn(o.parent));
     this.root.traverse((o) => {
       // 모양이 있는 것마다 (자식까지 넣어도 겹칠 뿐이다). 옷 메시와 그 테두리는 뺀다
-      if (!('geometry' in o) || worn(o)) return;
+      if (fixed || !('geometry' in o) || worn(o)) return;
       b.expandByObject(o, false);
     });
     if (b.isEmpty()) b.setFromObject(this.root);
@@ -2063,6 +2311,10 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
   private pose(s: DrawState, sx: number, sy: number, act: Act) {
     if (this.relief) {
       this.poseRelief(s, sx, sy, act);
+      return;
+    }
+    if (this.stance) {
+      this.poseStance(s, sx, sy, act);
       return;
     }
     const j = this.joints;
@@ -2298,9 +2550,15 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     // 양수 x 가 고개를 숙이는 쪽 (잘 때 0.28). 아래는 조금만 숙인다 (많이 숙이면 눈이 찡그린 듯 납작해 보였다)
     if (g) head(g.y > 0 ? g.y * 0.12 : g.y * 0.22, g.x * 0.5, 0);
     this.setFace(eye, mouth, s, wide);
-    // 옆이나 뒤로 돌아 안 보이는 얼굴 부품은 숨긴다 (가장자리에 조각처럼 떠 보였다). 부리는 옆에서도 보인다.
-    // 얼굴 전체가 아니라 부품마다 겉면이 향한 쪽으로 본다: 옆모습에서 가까운 눈과 볼은 보이고 먼 쪽만 숨는다
-    // (펫 만들기 미리보기에서 360도 돌릴 때 옆얼굴이 밋밋한 공처럼 보였다)
+    this.hideHiddenFace();
+  }
+
+  /**
+   * 옆이나 뒤로 돌아 안 보이는 얼굴 부품은 숨긴다 (가장자리에 조각처럼 떠 보였다). 부리는 옆에서도 보인다.
+   * 얼굴 전체가 아니라 부품마다 겉면이 향한 쪽으로 본다: 옆모습에서 가까운 눈과 볼은 보이고 먼 쪽만 숨는다
+   * (펫 만들기 미리보기에서 360도 돌릴 때 옆얼굴이 밋밋한 공처럼 보였다)
+   */
+  private hideHiddenFace() {
     if (this.face) {
       this.root.updateMatrixWorld(true);
       const { at, n, eye } = this.faceTmp;
@@ -2311,6 +2569,313 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
         g2.visible = facing > 0.25 || (g2 === this.face.mouthAt && this.face.style === 'beak');
       }
     }
+  }
+
+  /**
+   * 네 발로 선 몸의 자세 (pet3d-stance.ts). 바라는 자세(서기, 앉기, 엎드리기)를 짧게 따라가며 섞고, 몸통을 그 자세로 놓은 뒤
+   * 발 자리를 정해 다리마다 두 마디로 푼다. 걸을 때는 옆으로 돌아 옆 차례 걸음(빠르면 속보)으로 몸이 간 만큼 딛는다.
+   * 디딘 발은 바닥에서 미끄러지지 않고, 그림 전체를 띄우지 않는다
+   */
+  private poseStance(s: DrawState, sx: number, sy: number, act: Act) {
+    const st = this.stance;
+    if (!st) return;
+    const j = this.joints;
+    const d = st.dims;
+    const L = st.leg;
+    for (const slot of SLOTS) j[slot].rotation.set(0, 0, 0);
+    j.head.position.copy(st.headBase);
+    j.tail.position.copy(st.tailBase);
+    this.root.rotation.set(0, 0, 0);
+    this.root.position.set(0, 0, 0);
+    const live = s.now !== undefined;
+    const { mood, elapsed: e } = s;
+    const { sway, tail, ear } = this.motion;
+    const asleep = mood === 'sleeping' || mood === 'dozing';
+    // 걷기 (끝나면 마지막 걸음에서 짧게 풀린다)
+    const stepping = act?.type === 'walk' ? act : undefined;
+    if (stepping) {
+      this.lastWalk = {
+        dir: stepping.dir,
+        phase: stepping.phase,
+        stride: stepping.stride,
+        steps: stepping.steps,
+      };
+      if (live && s.now !== undefined) {
+        this.walkedAt = s.now;
+        this.walkedDir = stepping.dir;
+      }
+    }
+    const calmBody = mood === 'idle' || mood === 'sulky';
+    const go = this.ease.to('walk', stepping ? 1 : 0, calmBody ? WALK_OUT_TAU * 1.6 : 0);
+    const walk: Extract<Act, { type: 'walk' }> | undefined =
+      stepping ?? (go > 0 && calmBody && this.lastWalk ? { type: 'walk', ...this.lastWalk } : undefined);
+    const trick = trickOf(s);
+    const mv = movePoseOf(act, s.calm);
+    const tap = !walk && !trick ? tapOf(s, act) : undefined;
+    const held = !walk && !trick && !tap && !!noteOf(s, act);
+    const pen = !walk && !trick && !tap && !held && workOf(s) !== undefined && !mv;
+    const goal: StanceGoal = stanceGoal({
+      mood,
+      act: act?.type,
+      trick: trick?.type,
+      sinceWalk: live && s.now !== undefined ? s.now - this.walkedAt : undefined,
+      hands: !!tap || held || pen,
+    });
+    // 자세 무게: 앉기 몸짓(act sit)은 앉은 채 엎드린다 (down 만큼)
+    const down = act?.type === 'sit' && goal === 'lie' ? (act.down ?? 1) : goal === 'lie' ? 1 : 0;
+    const sitT = goal === 'sit' ? 1 : act?.type === 'sit' && goal === 'lie' ? 1 - down : 0;
+    const w = {
+      sit: this.ease.to('sit', sitT, 150),
+      lie: this.ease.to('lie', down, act?.type === 'sit' ? 60 : 170),
+    };
+    const standW = Math.max(0, 1 - w.sit - w.lie);
+    // 몸이 향한 쪽: 걸으면 가는 쪽 옆모습(얼굴이 조금 보이게), 서 있으면 3/4, 앉으면 거의 앞, 자면 비스듬히.
+    // 집 문으로 들어가면 등을, 나오면 얼굴을 보인다. 한 장만 그릴 때(얼굴 아이콘, 집 그림)는 앞을 본다
+    const env = walk ? walkEnvelopeOf(walk) : { stride: 0, turn: 0, lean: 0 };
+    const side = this.walkedDir;
+    let heading = live ? side * (0.6 * standW + 0.2 * w.sit + 0.5 * w.lie) : 0;
+    if (stepping) {
+      const away = stepping.facing === 'away';
+      const toward = stepping.facing === 'toward';
+      heading = stepping.dir * (away ? Math.PI - 0.55 : toward ? 0.45 : 1.38) * env.turn;
+    }
+    if (mood === 'sulky' && !s.peer) heading = side * ([0, 0.8, 1.15, Math.PI][sulkStage(s)] ?? 0.8);
+    if (asleep && live) heading = side * 0.45;
+    this.root.rotation.y = this.ease.to('heading', heading, stepping ? HEADING_TAU : 240) + this.spin;
+    // 그림 찌그러짐은 앉기, 기지개, 하품, 걷기에서 뺀다 (자세가 대신한다). 나머지(통통 뛰기)는 반만
+    const squash =
+      act?.type === 'walk' || act?.type === 'sit' || act?.type === 'stretch' || act?.type === 'yawn';
+    const ksx = squash ? 1 : 1 + (sx - 1) * 0.5;
+    const ksy = squash ? 1 : 1 + (sy - 1) * 0.5;
+    this.root.scale.set(ksx, ksy, ksx);
+
+    // 걸음: 몸이 간 거리로 센다 (act.steps × 한 걸음 길이를 펫 몸 단위로). 몸 단위 하나가 화면에서 몇 px 인지는
+    // 바닥 높이에서 몸 앞쪽으로 한 단위 간 점을 비춰 잰다 (원근과 돌아선 각까지 맞아 디딘 발이 바닥에 붙어 있다)
+    this.root.updateMatrixWorld(true);
+    const g0 = this.root.localToWorld(this.faceTmp.at.set(0, d.pawY, 0)).project(this.camera).x;
+    const g1 = this.root.localToWorld(this.faceTmp.n.set(0, d.pawY, 1)).project(this.camera).x;
+    const pxPerUnit = Math.max(Math.abs(g1 - g0), this.unitNdc * 0.5) * (this.fit.d / 2);
+    const strideWin = ((walk?.stride ?? 0) * (s.viewSize ?? 160)) / 160;
+    const gait = gaitFor((strideWin / strideLen(WALK_SPEED)) ** 2);
+    const cycle = L * 1.05 * gait.cycleK;
+    const phase = !walk
+      ? 0
+      : walk.steps !== undefined && walk.stride && pxPerUnit > 0
+        ? gaitPhase((walk.steps * walk.stride) / pxPerUnit, cycle)
+        : walk.phase;
+    const a = phase * Math.PI * 2;
+    const trot = gait.kind === 'trot';
+
+    // ---- 몸통 ----
+    const stand: BodyPose = { pitch: 0, hip: { ...d.hip } };
+    const body = blendPose(stand, st.sit, st.lie, w);
+    let roll = 0;
+    // 걸을 때 몸통은 걸음마다 살짝 오르내리고 좌우로 흔들린다 (속보는 더)
+    if (walk) {
+      body.hip.y += -Math.cos(a * 2) * L * (trot ? 0.035 : 0.018) * go;
+      body.pitch += Math.sin(a * 2) * (trot ? 0.025 : 0.012) * go;
+      roll = Math.sin(a) * 0.035 * sway * go;
+    }
+    // 기지개: 앞을 낮추고 엉덩이를 들어 앞발을 쭉 뻗는다 (고양이 기지개)
+    const stretchK = act?.type === 'stretch' ? Math.sin(Math.min(1, act.t) * Math.PI) : 0;
+    body.pitch -= 0.5 * stretchK;
+    body.hip.y += 0.1 * L * stretchK;
+    // 공을 물 때 앞을 숙인다
+    const dip = s.carry?.dip ?? 0;
+    body.pitch -= 0.18 * dip;
+    // 몸 털기: 몸통을 좌우로 빠르게 비튼다
+    if (mv) roll += mv.twist * 1.1;
+    const pivot = { y: st.pivot.y, z: st.pivot.z };
+    const turned = pitchAbout(d.hip, pivot, body.pitch);
+    j.body.position.set(st.pivot.x, st.pivot.y + body.hip.y - turned.y, st.pivot.z + body.hip.z - turned.z);
+    j.body.rotation.set(-body.pitch, 0, roll);
+    // 숨쉬기 (계속 그릴 때만)
+    if (s.breathe && !s.calm) {
+      const b = Math.sin((e / 1000) * (asleep ? 1.1 : 2.3)) * (asleep ? 1.3 : 1);
+      j.body.scale.set(1 + 0.008 * b, 1 + 0.012 * b, 1 + 0.004 * b);
+    } else j.body.scale.set(1, 1, 1);
+
+    // ---- 머리 ----
+    let hx = body.pitch * (asleep ? 0.6 : 0.9);
+    let hy = 0;
+    let hz = 0;
+    if (w.lie > 0) hx += (asleep ? 0.42 : 0.12) * w.lie;
+    if (asleep) hy += -side * 0.35 * w.lie;
+    if (mood === 'dozing') hx += 0.25 + Math.sin(e / 900) * 0.04;
+    if (walk) {
+      hx += Math.sin(a * 2) * 0.03 * go;
+      hy += -walk.dir * 0.32 * env.turn * (stepping?.facing ? 0 : 1);
+    }
+    if (mood === 'thinking') hz += 0.2;
+    if (mood === 'sulky' && sulkStage(s) >= 2) hx -= 0.14;
+    if (act?.type === 'yawn') hx -= 0.35 * Math.sin(Math.min(1, act.t) * Math.PI);
+    if (stretchK > 0) hx += 0.3 * stretchK;
+    hx += 0.7 * dip;
+    hy += this.ease.to('lookYaw', act?.type === 'look' ? act.dir * 0.6 : 0, HEADING_TAU);
+    if (mv) {
+      hx += mv.pitch;
+      hy += mv.look * 0.6;
+      hz -= mv.tilt;
+    }
+    if (trick?.type === 'wave') hz += waveSwing(trick.t) * 0.1 * sway;
+    const g = gazeOf(s, act);
+    if (g) {
+      hx += g.y > 0 ? g.y * 0.15 : g.y * 0.25;
+      hy += g.x * 0.55;
+    }
+    j.head.rotation.set(hx, Math.max(-1, Math.min(1, hy)), hz);
+
+    // ---- 꼬리, 귀 ----
+    // 꼬리: 서면 위로, 앉으면 몸 옆 바닥에 감고, 자면 몸을 둘러 앞으로. 걸으면 살랑, 신나면 빠르게 흔든다
+    // 먼저 뒤로 눕히고(x) 그다음 세로축으로 돌려(y) 몸 옆을 감는다
+    j.tail.rotation.order = 'YXZ';
+    let tx = -0.95 * w.sit - 1.15 * w.lie;
+    let ty = side * (1.5 * w.sit + 2.1 * w.lie);
+    let tz = 0;
+    if (walk) ty += Math.sin(a) * 0.22 * tail * go;
+    if (mood === 'excited') ty += Math.sin(e / 85) * 0.55 * tail;
+    if (mv) ty += mv.tail * 0.9 * tail;
+    if (trick) ty += Math.sin(trick.t * Math.PI * 8) * 0.35 * tail;
+    if (mood === 'grabbed') tx = 1.1;
+    if (stretchK > 0) tx -= 0.5 * stretchK;
+    if (mood === 'sulky' && sulkStage(s) >= 2) tz = side * 0.2;
+    j.tail.rotation.set(tx, ty, tz);
+    // 귀: 선 귀는 쫑긋, 늘어진 귀는 걸음과 몸짓에 따라 흔들린다
+    let el = 0;
+    let er = 0;
+    if (walk) {
+      const flap = Math.sin(a * 2) * (st.floppy ? 0.16 : 0.05) * ear * go;
+      el += flap;
+      er -= flap;
+    }
+    if (mood === 'excited') {
+      el += Math.sin(e / 90) * 0.18 * ear;
+      er -= Math.sin(e / 90) * 0.18 * ear;
+    }
+    if (mv) {
+      el += mv.ears[0] * ear;
+      er -= mv.ears[1] * ear;
+    }
+    if (asleep) {
+      el += 0.2;
+      er -= 0.2;
+    }
+    if (mood === 'sulky' && sulkStage(s) >= 2) {
+      el += 0.3 * ear;
+      er -= 0.3 * ear;
+    }
+    j.earL.rotation.z = st.floppy ? -el * 0.8 : el;
+    j.earR.rotation.z = st.floppy ? -er * 0.8 : er;
+
+    // ---- 다리 ----
+    this.root.updateMatrixWorld(true);
+    const sit = st.sit;
+    const lie = st.lie;
+    const lieShoulderZ = d.shoulder.z + (lie.hip.z - d.hip.z);
+    const airUnits = pxPerUnit > 0 ? Math.min(0.45 * L, this.air / pxPerUnit) : 0;
+    const press = tap ? tapPaws(tap.ms, s.calm) : undefined;
+    // 손 흔들기: 오른 앞발을 턱 높이까지 들어 조금 바깥으로 벌린다 (가슴 앞에 들면 흰 가슴에 묻혔다)
+    const waving = trick?.type === 'wave';
+    const waveUp = waving ? Math.min(1, trick.t * 5, (1 - trick.t) * 5) : 0;
+    const hip = new Vector3();
+    for (const leg of st.legs) {
+      const right = leg.id.endsWith('r');
+      // 자세마다 발 자리 (바닥)
+      const sitZ = leg.front ? leg.foot.z : sit.hip.z + 0.26 * L;
+      const lieZ = leg.front ? lieShoulderZ + 0.72 * L : lie.hip.z + 0.5 * L;
+      let z = leg.foot.z * standW + sitZ * w.sit + lieZ * w.lie;
+      let y = d.pawY;
+      // 자세를 바꾸는 동안 옮기는 발은 살짝 들어 옮긴다 (바닥을 끌지 않게)
+      y += (leg.front ? 0.1 * Math.sin(Math.PI * w.lie) : 0.14 * Math.sin(Math.PI * w.sit)) * L;
+      if (walk) {
+        const f = footCycle(
+          footPhase(leg.id, phase, gait.kind),
+          DUTY[gait.kind],
+          DUTY[gait.kind] * cycle,
+          0.2 * L,
+        );
+        z += f.dz * go;
+        y += f.dy * go;
+      }
+      if (leg.front) {
+        z += 0.75 * L * stretchK;
+        if (mv) y += 0.16 * L * mv.legs[right ? 1 : 0];
+        if (mood === 'thinking' && right) {
+          y += 0.22 * L;
+          z += 0.12 * L;
+        }
+        if (waving && right) {
+          y += waveUp * (0.95 * L + waveSwing(trick?.t ?? 0) * 0.1 * L);
+          z += waveUp * 0.4 * L;
+        }
+        if (press) y += 0.12 * L * (1 - (right ? press[1] : press[0])) * (tap?.k ?? 0);
+        if (held || pen) {
+          const k = held || right ? 1 : 0;
+          y += 0.3 * L * k;
+          z += 0.2 * L * k;
+        }
+      }
+      // 뛰는 동안 발을 몸 쪽으로 접는다
+      y += airUnits * 0.6;
+      z += (leg.front ? -1 : 1) * airUnits * 0.25;
+      leg.hipG.getWorldPosition(hip);
+      this.root.worldToLocal(hip);
+      // 들리면 다리가 늘어진다
+      if (mood === 'grabbed') {
+        y = hip.y - (leg.l1 + leg.l2) * 0.97;
+        z = hip.z + (leg.front ? 0.06 : -0.04) * L;
+      }
+      const solved = solveLeg({ y: hip.y, z: hip.z }, { y, z }, leg.l1, leg.l2, leg.front ? -1 : 1);
+      const r1 = leg.rest1 - solved.a1 + body.pitch;
+      // 흔드는 앞발은 몸 바깥쪽으로 벌린다 (오른다리는 -x 쪽이 바깥: 펫의 오른쪽이 화면 왼쪽)
+      const out = waving && leg.front && right ? (leg.hip.x < 0 ? -1 : 1) * 0.35 * waveUp : 0;
+      leg.hipG.rotation.set(r1, 0, -out);
+      leg.kneeG.rotation.set(leg.rest2 - solved.a2 + body.pitch - r1, 0, 0);
+    }
+
+    // ---- 몸 전체 몸짓 ----
+    if (mv) {
+      this.root.rotation.y += mv.look * 0.15;
+      this.root.rotation.z -= mv.turn;
+      if (Math.abs(mv.turn) > 0.01) this.groundRoot();
+    }
+    if (trick?.type === 'dance') {
+      const t = trick.t;
+      const k = t < 0.5 ? 4 * t ** 3 : 1 - (-2 * t + 2) ** 3 / 2;
+      this.root.rotation.y += k * Math.PI * 2;
+    }
+
+    // ---- 얼굴 ----
+    let eye: EyeState = 'open';
+    let mouth: MouthState = s.hungry && mood === 'idle' ? 'wavy' : 'smile';
+    if (mood === 'excited' || trick) eye = 'up';
+    if (mood === 'grabbed') {
+      eye = 'chevron';
+      mouth = 'open';
+    }
+    if (asleep) {
+      eye = mood === 'sleeping' ? 'down' : 'half';
+      mouth = 'o';
+    }
+    if (mood === 'thinking' || mood === 'busy' || pen) mouth = 'flat';
+    if (mood === 'talking') mouth = 'open';
+    if (mood === 'sulky') {
+      mouth = 'frown';
+      if (sulkStage(s) >= 2) eye = 'half';
+    }
+    if (act?.type === 'yawn' && act.t > 0.15 && act.t < 0.85) {
+      eye = 'down';
+      mouth = 'yawn';
+    }
+    if (stretchK > 0.3) eye = 'up';
+    let wide = false;
+    if (mv) {
+      if (mv.eyes) eye = MOVE_EYE[mv.eyes];
+      if (mv.mouth) mouth = mv.mouth;
+      wide = mv.eyes === 'wide';
+    }
+    this.setFace(eye, mouth, s, wide);
+    this.hideHiddenFace();
   }
 
   /**
@@ -2617,7 +3182,10 @@ function hook(m: Material, name: string, patch: (shader: ShaderOf) => void): voi
  * 재질 손질. pattern: 무늬 색을 겉면 위에 섞는다 (모양 좌표로 같은 자리에 같은 무늬).
  * figure: 피규어 모습의 아래쪽 그늘(가벼운 AO)과 가장자리 빛 (비닐 피규어의 매끈한 입체감)
  */
-function decorate(m: Material, opt: { pattern?: PatternAt; figure?: boolean }): void {
+function decorate(
+  m: Material,
+  opt: { pattern?: PatternAt; figure?: boolean; sculpt?: 'curl' | 'long' },
+): void {
   const pat = opt.pattern;
   if (pat) {
     const uniforms = {
@@ -2640,6 +3208,45 @@ function decorate(m: Material, opt: { pattern?: PatternAt; figure?: boolean }): 
         );
     });
   }
+  if (opt.sculpt) {
+    const curl = opt.sculpt === 'curl';
+    hook(m, `sculpt-${opt.sculpt}`, (shader) => {
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          '#include <common>\nattribute vec3 jjFurP;\nvarying vec3 vJjFur;\nvarying vec3 vJjX;\nvarying vec3 vJjY;\nvarying vec3 vJjZ;',
+        )
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+          vJjFur = jjFurP;
+          vJjX = normalize(modelViewMatrix[0].xyz);
+          vJjY = normalize(modelViewMatrix[1].xyz);
+          vJjZ = normalize(modelViewMatrix[2].xyz);`,
+        );
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          `#include <common>\nvarying vec3 vJjFur;\nvarying vec3 vJjX;\nvarying vec3 vJjY;\nvarying vec3 vJjZ;\n${SCULPT_GLSL}`,
+        )
+        .replace(
+          '#include <normal_fragment_maps>',
+          `#include <normal_fragment_maps>
+          vec4 jjS = ${curl ? 'jjCurl(vJjFur)' : 'jjLong(vJjFur)'};
+          // 한 픽셀보다 잘아지면 흐리게 (작은 화면에서 자글자글 깨지지 않게)
+          float jjFade = clamp(1.7 - length(fwidth(vJjFur)) * ${curl ? '24.0' : '30.0'}, 0.0, 1.0);
+          vec3 jjG = (jjS.y * vJjX + jjS.z * vJjY + jjS.w * vJjZ) * ${curl ? '0.013' : '0.006'} * jjFade;
+          normal = normalize(normal - (jjG - dot(jjG, normal) * normal));
+          float jjAo = mix(1.0, ${curl ? '0.74 + 0.3' : '0.9 + 0.11'} * jjS.x, jjFade);`,
+        )
+        .replace(
+          '#include <opaque_fragment>',
+          // 골은 조금 어둡게 (빛이 고르게 와도 털 결이 보인다)
+          `outgoingLight *= jjAo;
+          #include <opaque_fragment>`,
+        );
+    });
+  }
   if (opt.figure) {
     hook(m, 'figure-shade', (shader) => {
       shader.fragmentShader = shader.fragmentShader.replace(
@@ -2656,6 +3263,55 @@ function decorate(m: Material, opt: { pattern?: PatternAt; figure?: boolean }): 
     });
   }
 }
+
+/**
+ * 새긴 털 결 (피규어 모습). jjCurl: 동글동글한 곱슬 뭉치 (3차원 세포 잡음, 뭉치 가운데가 볼록),
+ * jjLong: 아래로 빗은 긴 털 결 (가로로 촘촘하고 세로로 긴 세포). 기울기를 셈으로 바로 구한다:
+ * 화면 미분(dFdx)으로 구하면 작은 그림에서 2x2 픽셀 덩어리로 깨졌다
+ */
+const SCULPT_GLSL = `
+vec3 jjHash3(vec3 p) {
+  p = vec3(dot(p, vec3(127.1, 311.7, 74.7)), dot(p, vec3(269.5, 183.3, 246.1)), dot(p, vec3(113.5, 271.9, 124.6)));
+  return fract(sin(p) * 43758.5453);
+}
+// 가장 가까운 점까지: x 거리, yzw 그 점으로 가는 방향 (칸 좌표)
+vec4 jjCell(vec3 q) {
+  vec3 i = floor(q);
+  vec3 f = fract(q);
+  float best = 9.0;
+  vec3 near = vec3(0.0);
+  for (int x = -1; x <= 1; x++)
+    for (int y = -1; y <= 1; y++)
+      for (int z = -1; z <= 1; z++) {
+        vec3 o = vec3(float(x), float(y), float(z));
+        vec3 r = o + jjHash3(i + o) - f;
+        float d = dot(r, r);
+        if (d < best) {
+          best = d;
+          near = r;
+        }
+      }
+  return vec4(sqrt(best), near);
+}
+// 높이와 그 기울기 (세상 길이 좌표). 뭉치 가운데가 가장 높다
+vec4 jjBumpOf(vec3 p, vec3 freq) {
+  vec4 c = jjCell(p * freq);
+  float d = min(1.0, c.x);
+  float h = (1.0 - d) * (1.0 - d);
+  vec3 g = c.x > 1e-4 ? 2.0 * (1.0 - d) * c.yzw / c.x * freq : vec3(0.0);
+  return vec4(h, g);
+}
+vec4 jjCurl(vec3 p) {
+  vec4 a = jjBumpOf(p, vec3(21.0));
+  vec4 b = jjBumpOf(p + 0.37, vec3(37.0));
+  return a * 0.8 + b * 0.3;
+}
+vec4 jjLong(vec3 p) {
+  vec4 a = jjBumpOf(p, vec3(34.0, 4.5, 34.0));
+  vec4 b = jjBumpOf(p + 0.21, vec3(60.0, 7.0, 60.0));
+  return a * 0.7 + b * 0.35;
+}
+`;
 
 /** y 축 모양(캡슐)의 위쪽 반지름을 taper 배로 (아래 -1 에서 1, 위 +1 에서 taper 로 선형) */
 function taperY(geo: BufferGeometry, taper: number): void {

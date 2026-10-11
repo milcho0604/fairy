@@ -84,6 +84,10 @@ export interface DrawState {
         left?: number;
         segMs?: number;
         stride?: number;
+        /** 걷기를 시작하고 걸은 걸음 수 (소수, phase 를 감지 않은 값). 네 발로 선 입체 몸이 간 거리를 잰다 */
+        steps?: number;
+        /** 집 문으로 들어가며(away) 등을 보이고, 나오며(toward) 얼굴을 보인다. 없으면 옆으로 */
+        facing?: 'away' | 'toward';
       }
     | { type: 'sit'; down?: number }
     | { type: 'look'; dir: -1 | 1 }
