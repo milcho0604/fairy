@@ -1,9 +1,9 @@
 // 설치 파일에서 다른 운영체제, 다른 칩의 네이티브 패키지를 지운다 (electron-builder afterPack 훅, 서명 전).
-// 고르는 규칙과 까닭은 src/shared/native-prune.ts.
+// 쓰이지 않는 SwiftShader(CPU 로 그리는 Vulkan)도 뺀다. 고르는 규칙과 까닭은 src/shared/native-prune.ts.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { keepNativePackage, NATIVE_SCOPES } from '../src/shared/native-prune.ts';
+import { keepNativePackage, NATIVE_SCOPES, swiftShaderFiles } from '../src/shared/native-prune.ts';
 
 /** electron-builder 의 Arch 숫자 → 이름 */
 const ARCH = { 0: 'ia32', 1: 'x64', 2: 'armv7l', 3: 'arm64', 4: 'universal' };
@@ -72,6 +72,13 @@ export default async function pruneNative(context) {
       rmSync(p, { recursive: true, force: true });
       console.log(`  • prune-native: ${scope}/${name} (${platform}-${arch} 에 필요 없음)`);
     }
+  }
+  for (const rel of swiftShaderFiles(platform, context.packager.appInfo.productFilename)) {
+    const p = join(context.appOutDir, rel);
+    if (!existsSync(p)) continue;
+    freed += statSync(p).size;
+    rmSync(p, { force: true });
+    console.log(`  • prune-native: ${rel.replace(/^.*\//, '')} (SwiftShader, 쓰지 않음)`);
   }
   if (platform === 'linux') {
     // koffi 의 musl 판(Alpine 같은 musl 리눅스용)은 쓰지 않는다. Electron 은 glibc 에서만 돌고, koffi 는 실행 파일의

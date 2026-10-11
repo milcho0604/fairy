@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { keepNativePackage, unusedCpuVariant } from './native-prune.ts';
+import { keepNativePackage, swiftShaderFiles, unusedCpuVariant } from './native-prune.ts';
 
 test('네이티브 패키지 고르기: 이 운영체제와 칩 것만 둔다', () => {
   // Apple 칩 맥 앱
@@ -45,4 +45,14 @@ test('무료 AI 엔진 CPU 판: 이웃과 겹치는 판만 빼고 기본판과 �
     'llama-addon.node',
   ])
     assert.equal(unusedCpuVariant(f), false, f);
+});
+
+test('SwiftShader 파일 자리', () => {
+  assert.deepEqual(swiftShaderFiles('linux', 'fairy'), ['libvk_swiftshader.so', 'vk_swiftshader_icd.json']);
+  assert.deepEqual(swiftShaderFiles('win32', 'fairy'), ['vk_swiftshader.dll', 'vk_swiftshader_icd.json']);
+  const mac = swiftShaderFiles('darwin', 'fairy');
+  assert.equal(mac.length, 2);
+  for (const f of mac)
+    assert.ok(f.startsWith('fairy.app/Contents/Frameworks/Electron Framework.framework/'), f);
+  assert.deepEqual(swiftShaderFiles('freebsd', 'fairy'), []);
 });

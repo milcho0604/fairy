@@ -138,28 +138,57 @@ linux:
   category: Utility
   executableName: fairy
   synopsis: A little fairy on your screen that works with you
-  description: 화면 위 페어리와 같이 일하는 데스크톱 앱 (A little fairy on your screen that keeps your to-dos, notes and calendar)
+  # 리눅스 바로 가기(.desktop)의 Comment 로 들어간다 (desktop.entry 의 Comment 보다 앞선다). 한국어는 Comment[ko]
+  description: A little fairy on your screen that keeps your to-dos, notes and calendar
   # 설치된 .desktop 이름을 package.json desktopName 과 맞춰 작업 표시줄이 같은 앱으로 묶는다
   syncDesktopName: true
+  # 언어가 맞지 않는 데스크톱(독일어, 일본어 등)은 꾸밈 없는 Name 을 보인다. 그래서 기본은 영어 fairy, 한국어 데스크톱만 페어리
+  # (맥의 Info.plist 기본 영어 + ko.lproj 와 같은 짜임)
   desktop:
     entry:
-      Name: 페어리
-      Name[en]: fairy
-      Comment: 화면 위 페어리와 같이 일하는 데스크톱 앱
-      Comment[en]: A little fairy on your screen that works with you
+      Name: fairy
+      Name[ko]: 페어리
+      Comment: A little fairy on your screen that works with you
+      Comment[ko]: 화면 위 페어리와 같이 일하는 데스크톱 앱
+      Keywords: todo;calendar;notes;assistant;fairy;할일;일정;메모;페어리;
       StartupWMClass: fairy
 win:
   target:
     - target: nsis
       arch: [x64]
+# 윈도우 설치: 한 번 누르면 이 사용자에게만 바로 깔린다 (관리자 권한 없음, %LOCALAPPDATA%\Programs\fairy).
+# 바탕 화면과 시작 메뉴에 "페어리" 바로 가기, 다 깔리면 바로 켠다. 설치, 지우기 말은 윈도우 언어가 한국어면 한국어, 아니면 영어
+# (목록 첫째가 기본). 지울 때 데이터(%APPDATA%\fairy)는 남기고, 지우기 직전에 남긴다는 것과 폴더를 알린다 (build/installer.nsh).
+# 업데이트(electron-updater)는 옛 판을 --updated 로 조용히 지워 그 안내가 뜨지 않는다
 nsis:
-  shortcutName: 페어리
-  uninstallDisplayName: 페어리
   oneClick: true
   perMachine: false
+  shortcutName: 페어리
+  uninstallDisplayName: 페어리
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  runAfterFinish: true
   deleteAppDataOnUninstall: false
+  installerLanguages: [en_US, ko_KR]
+  include: build/installer.nsh
+# dmg 창: 왼쪽 페어리를 오른쪽 응용 프로그램 폴더로 끌어 넣는다. 바탕은 앱 창의 밝은 바탕색(--bg #fbf8f4, 새 그림 없이 색만).
+# ULFO(lzfse) 압축은 기본(UDZO, zlib)보다 작고 빨리 열린다. macOS 10.11 부터 열려서 페어리(macOS 12 이상)는 괜찮다
 dmg:
   title: 페어리 ${version}
+  format: ULFO
+  backgroundColor: '#fbf8f4'
+  iconSize: 96
+  window:
+    width: 540
+    height: 380
+  contents:
+    - x: 150
+      y: 180
+      type: file
+    - x: 390
+      y: 180
+      type: link
+      path: /Applications
 # 자동 설치(electron-updater)가 읽을 latest.yml(윈도우), latest-mac.yml(맥)과 차이 받기용 .blockmap 을 같이 만든다.
 # 레포는 src/shared/update-policy.ts 의 RELEASE_REPO 와 같아야 한다 (다르면 시험이 깨진다. D8 때 같이 바꾼다).
 # 올리기는 하지 않는다: 스크립트가 --publish never 로 돌고, 릴리스 초안은 release.yml 의 gh 가 만든다.
