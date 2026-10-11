@@ -2,6 +2,7 @@
 import { join, sep } from 'node:path';
 import { app } from 'electron';
 import type { McpLaunch } from '../shared/ai/types.ts';
+import { CONFIRM_ENV } from '../shared/pet-actions.ts';
 
 /** 서버 스크립트 경로. 설치판에서는 asar 밖에 풀어 둔 사본을 쓴다 (electron-builder asarUnpack) */
 export function mcpScriptPath(): string {
@@ -19,6 +20,7 @@ export function jjMcpLaunch(): McpLaunch {
   return {
     command: process.execPath,
     args: [mcpScriptPath()],
-    env: { ELECTRON_RUN_AS_NODE: '1', JJ_USER_DATA: app.getPath('userData') },
+    // 짝꿍 채팅에서 띄운 서버: 지우기, 고치기, 메모 덧붙이기는 사용자 확인을 기다린다 (shared/pet-actions.ts)
+    env: { ELECTRON_RUN_AS_NODE: '1', JJ_USER_DATA: app.getPath('userData'), [CONFIRM_ENV]: '1' },
   };
 }

@@ -124,6 +124,15 @@ export const ko = {
     '저장 파일이 더 새 판 짝꿍에서 만들어졌어. 덮어쓰지 않게 이번에는 저장하지 않고 켰어. 짝꿍을 최신 버전으로 업데이트해 줘.',
   'main.db.unavailable': '저장 파일을 열지 못했어. 이번에는 저장하지 않고 켰어. 짝꿍을 다시 켜 봐.',
   'main.db.showFile': '파일 보기',
+  'main.petAction.ask': (v: { n: number }) => `AI가 ${v.n}가지를 바꾸려고 해. 할까?`,
+  'main.petAction.delete_todo': (v: { name: string }) => `할 일 지우기: ${v.name}`,
+  'main.petAction.update_todo': (v: { name: string }) => `할 일 고치기: ${v.name}`,
+  'main.petAction.delete_event': (v: { name: string }) => `일정 지우기: ${v.name}`,
+  'main.petAction.update_event': (v: { name: string }) => `일정 고치기: ${v.name}`,
+  'main.petAction.append_note': (v: { name: string }) => `메모에 덧붙이기: ${v.name}`,
+  'main.petAction.yes': '해 줘',
+  'main.petAction.no': '안 할래',
+  'main.petAction.done': (v: { n: number }) => `${v.n}가지 했어.`,
   'main.json.restored':
     '{file} 파일이 깨져 있었어. 지우지 않고 {moved} 로 옮겨 두고, 마지막으로 잘 읽은 복사본으로 되살렸어.',
   'main.json.reset':
@@ -256,6 +265,16 @@ export const en: Translation<typeof ko> = {
   'main.db.unavailable':
     "I couldn't open your save file, so nothing is saved this time. Try restarting Jjakkung.",
   'main.db.showFile': 'Show file',
+  'main.petAction.ask': (v: { n: number }) =>
+    `The AI wants to change ${v.n} thing${v.n === 1 ? '' : 's'}. OK?`,
+  'main.petAction.delete_todo': (v: { name: string }) => `Delete to-do: ${v.name}`,
+  'main.petAction.update_todo': (v: { name: string }) => `Edit to-do: ${v.name}`,
+  'main.petAction.delete_event': (v: { name: string }) => `Delete event: ${v.name}`,
+  'main.petAction.update_event': (v: { name: string }) => `Edit event: ${v.name}`,
+  'main.petAction.append_note': (v: { name: string }) => `Add to note: ${v.name}`,
+  'main.petAction.yes': 'Do it',
+  'main.petAction.no': 'No thanks',
+  'main.petAction.done': (v: { n: number }) => `Done (${v.n}).`,
   'main.json.restored':
     '{file} was damaged. I kept it as {moved} and brought back the last copy that read fine.',
   'main.json.reset':

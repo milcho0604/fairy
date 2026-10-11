@@ -15,10 +15,17 @@ import { findSameEvent } from '../shared/event-dup.ts';
 import { overlapping, spanEnd } from '../shared/event-overlap.ts';
 import { ALL_DAY_MAX_DAYS, allDaySpan, allDayTimes, EventStore } from '../shared/event-store.ts';
 import { NOTE_BODY_MAX, NoteStore, notePreview, noteTitle, searchNotes } from '../shared/note-store.ts';
+import {
+  addPetAction,
+  CONFIRM_ENV,
+  PET_ACTIONS_INBOX,
+  type PetAction,
+  parsePetActions,
+} from '../shared/pet-actions.ts';
 import { cleanMemoryItem } from '../shared/pet-memory.ts';
 import { filterTodos } from '../shared/todo-filter.ts';
 import { isRepeat, localDay, STEP_MAX, stepProgress, type Todo, TodoStore } from '../shared/todo-store.ts';
-import { writeInbox } from './memory-inbox.ts';
+import { writeInbox, writeListInbox } from './memory-inbox.ts';
 
 const VERSION = '0.1.0';
 const PROTOCOLS = ['2025-06-18', '2025-03-26', '2024-11-05'];
@@ -147,6 +154,20 @@ function sameEvent(events: EventStore, ev: { title: string; startAt: number; all
 /** 기억 받은 편지함에 하나 더한다. 짝꿍이 켜져 있으면 곧 "기다리는 기억"으로 옮기고 사용자가 허락한다 */
 function remember(text: string): boolean {
   return writeInbox(userDataDir(), text);
+}
+
+/**
+ * 짝꿍 채팅이 띄운 서버면(CONFIRM_ENV) 지우기, 고치기, 메모 덧붙이기는 바로 하지 않고 확인 편지함에 남긴다.
+ * 짝꿍이 펫 말풍선으로 물어 사용자가 허락하면 한다 (shared/pet-actions.ts, 프롬프트 주입 막기)
+ */
+const confirming = () => process.env[CONFIRM_ENV] === '1';
+
+function queue(action: PetAction, what: string): string {
+  writeListInbox(userDataDir(), `${PET_ACTIONS_INBOX}.json`, parsePetActions, (list) => ({
+    list: addPetAction(list, action),
+    added: true,
+  }));
+  return `아직 하지 않았어. 짝꿍이 사용자에게 "${what}"을 물어보고 허락하면 해. 사용자에게 짝꿍 말풍선에서 허락해 달라고 말해 줘.`;
 }
 
 const TOOLS: Tool[] = [
@@ -285,6 +306,7 @@ const TOOLS: Tool[] = [
         throw new Error('바꿀 것(title, due, due_time, important, repeat)을 줘');
       if (patch.dueMin != null && (patch.due === undefined ? t.due : patch.due) === null)
         throw new Error('due_time 은 마감 날(due)이 있는 할 일에만 줄 수 있어');
+      if (confirming()) return queue({ tool: 'update_todo', id, patch }, `할 일 고치기: ${t.title}`);
       const next = s.todos.update(id, patch, Date.now()) ?? t;
       const time =
         next.dueMin === null ? '' : ` ${pad(Math.floor(next.dueMin / 60))}:${pad(next.dueMin % 60)}`;
@@ -304,6 +326,7 @@ const TOOLS: Tool[] = [
       const s = open();
       const t = s.todos.get(id);
       if (!t) throw new Error(`id ${id} 할 일이 없어`);
+      if (confirming()) return queue({ tool: 'delete_todo', id }, `할 일 지우기: ${t.title}`);
       // 패널의 지우기와 같다: 지운 표시만 해서 짝꿍에서 되살릴 수 있다
       s.todos.remove(id, Date.now());
       return `지웠어: ${t.title}`;
@@ -444,6 +467,8 @@ const TOOLS: Tool[] = [
       if (!text) throw new Error('text 가 비었어');
       const body = n.body.trim() ? `${n.body.replace(/\s+$/, '')}\n\n${text}` : text;
       if (body.length > NOTE_BODY_MAX) throw new Error(`메모가 너무 길어져 (${NOTE_BODY_MAX}자까지)`);
+      if (confirming())
+        return queue({ tool: 'append_note', id: n.id, text }, `메모에 덧붙이기: ${noteTitle(n)}`);
       s.notes.update(n.id, { body }, Date.now());
       return `덧붙였어: ${noteTitle(n)}`;
     },
@@ -583,6 +608,7 @@ const TOOLS: Tool[] = [
       if (dur !== undefined) patch.endAt = dur > 0 ? startAt + dur * 60_000 : null;
       else if (a.start !== undefined && e.endAt !== null) patch.endAt = startAt + (e.endAt - e.startAt);
       if (Object.keys(patch).length === 0) throw new Error('바꿀 것(title, start, duration_min)을 줘');
+      if (confirming()) return queue({ tool: 'update_event', id: e.id, patch }, `일정 고치기: ${e.title}`);
       const after = s.events.update(e.id, patch, Date.now()) ?? e;
       return `고쳤어 (id ${after.id}): ${after.allDay ? '종일' : stamp(after.startAt)} ${after.title}${
         after.allDay ? '' : clashNote(s.events, after)
@@ -602,6 +628,7 @@ const TOOLS: Tool[] = [
       const s = open();
       const e = s.events.get(idOf(a.id));
       if (!e) throw new Error(`id ${String(a.id)} 일정이 없어`);
+      if (confirming()) return queue({ tool: 'delete_event', id: e.id }, `일정 지우기: ${e.title}`);
       s.events.remove(e.id, Date.now());
       return `지웠어: ${e.title}`;
     },

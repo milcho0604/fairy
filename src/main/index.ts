@@ -49,6 +49,7 @@ import { createMiniGames } from './minigames.ts';
 import { createOnboarding } from './onboarding.ts';
 import { openLink } from './open-link.ts';
 import { createPanel } from './panel.ts';
+import { createPetConfirm } from './pet-confirm.ts';
 import { createPetFace, trayImageOf } from './pet-face.ts';
 import { createPetLife } from './pet-life.ts';
 import { drainMemoryInbox } from './pet-memory.ts';
@@ -146,7 +147,11 @@ ready
       setKnowsTodos: (on) => settings.set({ aiKnowsTodos: on }),
       petTools: () => settings.get().aiPetTools,
       // 짝꿍 도구로 할 일, 메모가 바뀌었을 수 있다. 3초 판 번호 확인을 기다리지 않고 바로 다시 그린다
-      onTurnEnd: () => panel.refresh(),
+      // 지우기, 고치기는 확인 편지함에 남아 있다: 답이 끝나면 바로 묻는다 (pet-confirm.ts)
+      onTurnEnd: () => {
+        panel.refresh();
+        petConfirm.drain();
+      },
       // 질문 앞에 붙일 내 오늘 상황: 안 끝낸 할 일 제목과 마감, 오늘 남은 일정 (기획서 개인정보 표)
       todoContext: () => {
         // 오늘 일정은 0시부터 다음 날 0시까지 다 읽고 고른다: 종일 일정, 막 시작한 회의도 (context-events.ts)
@@ -352,6 +357,14 @@ ready
     pet.win.webContents.once('did-finish-load', () =>
       setTimeout(() => onJsonTrouble((tr) => void announceJsonTrouble(tr, (o) => pet.say(o))), 3500),
     );
+    // 채팅의 AI 가 부른 지우기, 고치기, 메모 덧붙이기: 펫 말풍선으로 묻고 허락하면 한다 (프롬프트 주입 막기)
+    const petConfirm = createPetConfirm({
+      stores: { todos: store, events, notes },
+      say: (o) => pet.say(o),
+      onChange: () => panel.refresh(),
+      log,
+    });
+    setInterval(() => petConfirm.drain(), 5000).unref();
     // 답을 할 일로: 마감 낱말은 마감으로, 이미 있는 할 일은 빼고 넣는다. 넣은 id 를 돌려준다 (되돌리기를 붙일 수 있게)
     const addAnswerTodos = (titles: readonly string[]): number[] => {
       const now = Date.now();
