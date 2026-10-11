@@ -129,6 +129,8 @@ export interface PetActions {
   grabbed?(): void;
   /** 우클릭 메뉴 맨 위에 흐리게 보일 한 줄 (토라지면 대답이 짧다). 없으면 안 보인다 */
   menuNote?(): string | undefined;
+  /** 짝꿍이 아는 것 창 (main/knows.ts). 없으면 메뉴에 안 보인다 */
+  openKnows?(): void;
 }
 
 export interface SayOptions {
@@ -521,6 +523,9 @@ export function createPetWindow({
         click: () => setHidden('user', true),
       },
       { label: t('pet.menu.makePet'), click: () => actions.makePet() },
+      ...(actions.openKnows
+        ? [{ label: t('bond.menu.knows', { name: petName() }), click: () => actions.openKnows?.() }]
+        : []),
       { label: t('pet.menu.settings'), click: () => actions.openSettings() },
       { type: 'separator' },
       { label: t('pet.menu.reload'), click: () => reload() },

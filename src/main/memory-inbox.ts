@@ -7,6 +7,8 @@ import { join } from 'node:path';
 import { addMemory, cleanMemory, MEMORY_INBOX } from '../shared/pet-memory.ts';
 
 const INBOX = `${MEMORY_INBOX}.json`;
+/** 채팅의 AI 가 짝꿍 도구로 남긴 기억 (출처 "대화"). 다른 AI 프로그램 것과 따로 받는다 (짝꿍이 아는 것) */
+export const CHAT_INBOX = `${MEMORY_INBOX}-chat.json`;
 /** 다른 프로세스와 겹치지 않는 이름 조각 */
 const unique = () => `${process.pid}-${Date.now()}-${randomBytes(4).toString('hex')}`;
 /** 읽는 중인 편지함 이름: memory-inbox.json.taking (예전) 또는 memory-inbox.json.<조각>.taking */
@@ -54,8 +56,8 @@ export function drainInbox(dir: string, apply: (incoming: unknown) => void, inbo
  * 다른 MCP 가 같은 때 써서 내 것이 덮였으면 다시 해 본다 (리뷰: 같은 .tmp 이름을 둘이 써서 깨지거나 잃었다).
  * 이미 편지함에 있으면 false
  */
-export function writeInbox(dir: string, text: string, tries = 3): boolean {
-  return writeListInbox(dir, INBOX, cleanMemory, (list) => addMemory(list, text), tries);
+export function writeInbox(dir: string, text: string, tries = 3, inbox = INBOX): boolean {
+  return writeListInbox(dir, inbox, cleanMemory, (list) => addMemory(list, text), tries);
 }
 
 /**

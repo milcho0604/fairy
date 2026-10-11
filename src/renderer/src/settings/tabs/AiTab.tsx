@@ -75,6 +75,13 @@ export function AiTab({ snap, update, flash }: TabProps) {
       </Section>
 
       <Section title={t('settings.memory')}>
+        {/* 짝꿍이 아는 것 창: 출처와 날짜, 생일과 좋아하는 것, 모두 잊기 (knows/KnowsApp.tsx) */}
+        <div className="action-row">
+          <small className="grow">{t('bond.knows.fromSettings')}</small>
+          <button type="button" className="ghost" onClick={() => window.jjakkungBond?.openKnows()}>
+            {t('bond.knows.open')}
+          </button>
+        </div>
         <MemoryEditor list={s.petMemory} onChange={(petMemory, message) => update({ petMemory }, message)} />
         {s.petMemoryPending.length > 0 && (
           <PendingMemory

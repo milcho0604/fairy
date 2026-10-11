@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { AiProvider } from '../shared/ai/types.ts';
 import type { Activity } from '../shared/behavior.ts';
+import { BOND, type BondBridge } from '../shared/bond-ipc.ts';
 import type { BubbleLayout } from '../shared/bubble-layout.ts';
 import type { ChatState } from '../shared/chat-state.ts';
 import { DATA_EXPORT, DAY, type DayBridge, type ExportBridge } from '../shared/day-ipc.ts';
@@ -116,7 +117,14 @@ if (kind === 'pet') {
 }
 
 // 이름 옆 펫 얼굴 (shared/face.ts). 펫 화면이 그린 지금 모습을 받는다
-if (kind === 'chat' || kind === 'panel' || kind === 'quick' || kind === 'onboarding' || kind === 'settings') {
+if (
+  kind === 'chat' ||
+  kind === 'panel' ||
+  kind === 'quick' ||
+  kind === 'onboarding' ||
+  kind === 'settings' ||
+  kind === 'knows'
+) {
   const face: FaceBridge = {
     get: () => ipcRenderer.invoke(FACE.get),
     onChange: (listener) => {
@@ -247,6 +255,29 @@ if (kind === 'settings') {
   // 내보내기 (메모 .md, 할 일 .csv/.md, 일정 .ics). 저장 대화상자와 쓰기는 메인이 한다
   const exporter: ExportBridge = { run: (kind) => ipcRenderer.invoke(DATA_EXPORT.run, kind) };
   contextBridge.exposeInMainWorld('jjakkungExport', exporter);
+}
+
+// 짝꿍이 아는 것, 첫 7일 여정, 성장과 옷, 주간 회고 카드 (shared/bond-ipc.ts). 메인이 창마다 보낸 곳을 본다
+if (kind === 'panel' || kind === 'settings' || kind === 'knows') {
+  const bond: BondBridge = {
+    openKnows: () => ipcRenderer.send(BOND.openKnows),
+    knowsGet: () => ipcRenderer.invoke(BOND.knowsGet),
+    knowsSet: (patch) => ipcRenderer.invoke(BOND.knowsSet, patch),
+    onKnowsChanged: (listener) => {
+      ipcRenderer.on(BOND.knowsChanged, (_e, next) => listener(next));
+    },
+    journeyGet: () => ipcRenderer.invoke(BOND.journeyGet),
+    journeyGo: (step) => ipcRenderer.send(BOND.journeyGo, step),
+    journeyTried: (step) => ipcRenderer.send(BOND.journeyTried, step),
+    journeySkip: () => ipcRenderer.send(BOND.journeySkip),
+    onJourney: (listener) => {
+      ipcRenderer.on(BOND.journeyChanged, (_e, view) => listener(view));
+    },
+    weekTitles: () => ipcRenderer.invoke(BOND.weekTitles),
+    weekSave: (png) => ipcRenderer.invoke(BOND.weekSave, png),
+    growGet: () => ipcRenderer.invoke(BOND.growGet),
+  };
+  contextBridge.exposeInMainWorld('jjakkungBond', bond);
 }
 
 // 패널과 빠른 입력 창은 같은 기능을 쓴다.

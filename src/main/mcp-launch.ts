@@ -20,7 +20,13 @@ export function jjMcpLaunch(): McpLaunch {
   return {
     command: process.execPath,
     args: [mcpScriptPath()],
-    // 짝꿍 채팅에서 띄운 서버: 지우기, 고치기, 메모 덧붙이기는 사용자 확인을 기다린다 (shared/pet-actions.ts)
-    env: { ELECTRON_RUN_AS_NODE: '1', JJ_USER_DATA: app.getPath('userData'), [CONFIRM_ENV]: '1' },
+    // 짝꿍 채팅에서 띄운 서버: 지우기, 고치기, 메모 덧붙이기는 사용자 확인을 기다린다 (shared/pet-actions.ts).
+    // JJ_MCP_FROM: 기억(remember)의 출처를 "대화"로 적게 (짝꿍이 아는 것)
+    env: {
+      ELECTRON_RUN_AS_NODE: '1',
+      JJ_USER_DATA: app.getPath('userData'),
+      [CONFIRM_ENV]: '1',
+      JJ_MCP_FROM: 'chat',
+    },
   };
 }

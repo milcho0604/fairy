@@ -25,7 +25,7 @@ import {
 import { cleanMemoryItem } from '../shared/pet-memory.ts';
 import { filterTodos } from '../shared/todo-filter.ts';
 import { isRepeat, localDay, STEP_MAX, stepProgress, type Todo, TodoStore } from '../shared/todo-store.ts';
-import { writeInbox, writeListInbox } from './memory-inbox.ts';
+import { CHAT_INBOX, writeInbox, writeListInbox } from './memory-inbox.ts';
 
 const VERSION = '0.1.0';
 const PROTOCOLS = ['2025-06-18', '2025-03-26', '2024-11-05'];
@@ -153,7 +153,9 @@ function sameEvent(events: EventStore, ev: { title: string; startAt: number; all
 
 /** 기억 받은 편지함에 하나 더한다. 짝꿍이 켜져 있으면 곧 "기다리는 기억"으로 옮기고 사용자가 허락한다 */
 function remember(text: string): boolean {
-  return writeInbox(userDataDir(), text);
+  // 채팅의 짝꿍 도구로 띄운 서버면 출처 "대화"로 따로 둔다 (mcp-launch.ts JJ_MCP_FROM)
+  const fromChat = process.env.JJ_MCP_FROM === 'chat';
+  return fromChat ? writeInbox(userDataDir(), text, 3, CHAT_INBOX) : writeInbox(userDataDir(), text);
 }
 
 /**

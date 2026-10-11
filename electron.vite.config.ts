@@ -70,6 +70,8 @@ export default defineConfig({
           quick: resolve('src/renderer/quick.html'),
           maker: resolve('src/renderer/maker.html'),
           onboarding: resolve('src/renderer/onboarding.html'),
+          // 짝꿍이 아는 것 (main/knows.ts)
+          knows: resolve('src/renderer/knows.html'),
         },
       },
       minify: true,

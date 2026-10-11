@@ -1,0 +1,238 @@
+/* 짝꿍이 아는 것 창. 머리, 칸, 단추 모양은 설정 창(settings.css)과 같고 여기는 목록 줄만 더한다 */
+
+.knows header .face {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+}
+
+.knows header > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.knows-intro {
+  margin: 12px 2px 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.knows h2 .count {
+  margin-left: 4px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.knows-empty {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.know-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.know-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 7px 0;
+  border-top: 1px solid var(--line);
+}
+
+.know-list .know-item:first-child {
+  border-top: 0;
+}
+
+.know-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.know-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+/* 출처 표: 대화(강조색), 직접(초록), MCP(흐린 색) */
+.know-meta .src {
+  padding: 0 6px;
+  border-radius: 999px;
+  line-height: 18px;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--muted) 12%, transparent);
+}
+
+.know-meta .src-chat {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.know-meta .src-user {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 10%, transparent);
+}
+
+.know-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+}
+
+.know-item .link.sure {
+  color: var(--error);
+  font-weight: 600;
+}
+
+.know-item.editing input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 9px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--bg);
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -1px;
+}
+
+/* 알려 준 것: 이름표 줄 + 그 아래 값 */
+.facts {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fact {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fact-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.fact-label .fact-count {
+  margin-left: 4px;
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.birthday {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.birthday select {
+  min-width: 84px;
+}
+
+/* 모두 잊기 */
+.forget-all {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: 22px 0 6px;
+  text-align: center;
+}
+
+.ghost.danger {
+  color: var(--error);
+}
+
+.ghost.danger:not(:disabled):hover {
+  border-color: var(--error);
+}
+
+.primary.danger {
+  background: var(--error);
+  /* 어두운 모드 위험색은 밝아서 흰 글자 대신 바탕색 글자 */
+  color: var(--bg);
+}
+
+.primary.danger:hover {
+  background: color-mix(in srgb, var(--error) 88%, var(--ink));
+}
+
+.know-dim {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.32);
+  animation: know-fade 0.15s ease-out;
+}
+
+.know-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(340px, 100%);
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.22);
+}
+
+.know-dialog small {
+  font-size: 12.5px;
+}
+
+.know-dialog .check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.know-dialog .check input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.know-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+@keyframes know-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .know-dim {
+    animation: none;
+  }
+}

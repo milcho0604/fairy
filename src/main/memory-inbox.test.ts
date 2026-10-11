@@ -3,7 +3,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { drainInbox, writeInbox } from './memory-inbox.ts';
+import { CHAT_INBOX, drainInbox, writeInbox } from './memory-inbox.ts';
 
 const fresh = () => mkdtempSync(join(tmpdir(), 'jj-inbox-'));
 
@@ -63,6 +63,30 @@ test('편지함 비우기: 옮기다 실패하면 .taking 을 남겨 다음에 �
     const got: unknown[] = [];
     drainInbox(dir, (v) => got.push(...(v as unknown[])));
     assert.deepEqual(got, ['잃으면 안 됨']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('대화 편지함(채팅의 짝꿍 도구)은 따로 쓰고 따로 비운다', () => {
+  const dir = fresh();
+  try {
+    assert.equal(writeInbox(dir, '밤에 일함', 3, CHAT_INBOX), true);
+    assert.equal(writeInbox(dir, '커피 좋아함'), true);
+    const chat: unknown[] = [];
+    const mcp: unknown[] = [];
+    assert.equal(
+      drainInbox(dir, (v) => chat.push(...(v as unknown[])), CHAT_INBOX),
+      1,
+    );
+    assert.deepEqual(chat, ['밤에 일함']);
+    // 다른 편지함은 그대로 남아 있다
+    assert.equal(
+      drainInbox(dir, (v) => mcp.push(...(v as unknown[]))),
+      1,
+    );
+    assert.deepEqual(mcp, ['커피 좋아함']);
+    assert.deepEqual(readdirSync(dir), []);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
