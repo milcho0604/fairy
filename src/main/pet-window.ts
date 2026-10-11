@@ -803,7 +803,8 @@ export function createPetWindow({
             if (moved && !win.isDestroyed()) win.setPosition(Math.round(pet.x), pet.y);
             face = next;
           }
-          // 걷는 모습: 방향이 바뀌거나 서거나 출발할 때, 걷는 중에는 걸음 두 번(1040ms)마다 이어 붙인다 (발 박자가 끊기지 않게)
+          // 걷는 모습: 방향이 바뀌거나 서거나 출발할 때, 걷는 중에는 1040ms 마다 이어 붙인다. 화면은 같은 쪽 걷기를 이어 받으면
+          // 돌아서기와 걸음을 처음부터 하지 않고 잇는다 (pet.ts). 실제 빠르기를 보내 걸음이 간 거리에 맞는다 (walk-pace.ts)
           if (next !== dir || (next !== 0 && now - sentAt >= 1040)) {
             sentAt = now;
             dir = next;
@@ -812,7 +813,7 @@ export function createPetWindow({
                 IPC.activity,
                 next === 0
                   ? { type: 'look', dir: face, ms: 1200 }
-                  : { type: 'walk', dx: next * 100, ms: 1400 },
+                  : { type: 'walk', dx: next * Math.max(1, Math.round(speed * 1.4)), ms: 1400, linear: true },
               );
           }
         },

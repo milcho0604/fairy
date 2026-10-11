@@ -70,7 +70,11 @@ test('움직임 줄이기: 빙글 춤은 안 하고 손 흔들기는 한다, 신
   assert.deepEqual(trickOf({ ...base, trick: dance }), dance);
   assert.equal(Math.round(excitedBounce(300).lift), 18);
   assert.equal(Math.round(excitedBounce(300, true).lift), 3);
-  assert.equal(excitedBounce(10).squash, 0.08);
+  assert.equal(excitedBounce(0).squash, 0.08);
+  assert.ok(excitedBounce(10).squash > 0.07 && excitedBounce(10).squash < 0.08);
+  // 찌그러짐은 뜨면서 풀린다: 틀 사이에 툭 끊기지 않는다
+  for (let e = 0; e < 600; e += 6)
+    assert.ok(Math.abs(excitedBounce(e + 6).squash - excitedBounce(e).squash) < 0.02);
   assert.equal(excitedBounce(10, true).squash, 0);
   for (let e = 0; e < 1200; e += 37) assert.ok(excitedBounce(e, true).lift <= 3);
 });

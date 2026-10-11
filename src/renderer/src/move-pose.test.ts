@@ -1,7 +1,20 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { MOVE_SPECS, MOVES } from '../../shared/moves.ts';
-import { type MovePose, moveFps, movePose, REST_POSE, SIT_MS, sitDown } from './move-pose.ts';
+import {
+  HELD_LIFT,
+  HELD_SQUEEZE,
+  hopScale,
+  LAND_MS,
+  landPose,
+  type MovePose,
+  moveFps,
+  movePeak,
+  movePose,
+  REST_POSE,
+  SIT_MS,
+  sitDown,
+} from './move-pose.ts';
 
 // 하품, 기지개는 draw.ts, pet3d.ts 가 예전부터 직접 그린다
 const POSED = MOVES.filter((m) => m !== 'yawn' && m !== 'stretch');
@@ -90,4 +103,38 @@ test('앉기: 처음에 앉고 끝에 일어난다', () => {
   assert.equal(sitDown(5_000, 10_000), 1);
   assert.equal(sitDown(10_000, 10_000), 0);
   assert.ok(sitDown(SIT_MS / 2, 10_000) > 0.3 && sitDown(SIT_MS / 2, 10_000) < 0.7);
+});
+
+test('놓이면 들린 모습에서 이어 떨어지고, 닿을 때 납작했다가 쉬는 몸으로 끝난다', () => {
+  const a = landPose(0);
+  assert.equal(a.lift, HELD_LIFT);
+  assert.ok(Math.abs(a.sx - (1 - HELD_SQUEEZE.x)) < 1e-9 && Math.abs(a.sy - (1 + HELD_SQUEEZE.y)) < 1e-9);
+  const end = landPose(LAND_MS);
+  assert.equal(end.lift, 0);
+  assert.ok(Math.abs(end.sx - 1) < 1e-3 && Math.abs(end.sy - 1) < 1e-3);
+  let flattest = 1;
+  let prev = a;
+  for (let ms = 5; ms <= LAND_MS; ms += 5) {
+    const p = landPose(ms);
+    flattest = Math.min(flattest, p.sy);
+    // 틀 사이에 툭 튀지 않는다
+    assert.ok(Math.abs(p.lift - prev.lift) < 1.5 && Math.abs(p.sy - prev.sy) < 0.03, `${ms}`);
+    prev = p;
+  }
+  assert.ok(flattest < 0.93);
+  // 움직임 줄이기면 찌그러지지 않는다
+  for (let ms = 0; ms <= LAND_MS; ms += 10) assert.ok(landPose(ms, true).sy >= 1);
+});
+
+test('뛰는 높이를 줄일 때 꼭대기를 자르지 않고 곡선째 낮춘다', () => {
+  const peak = movePeak('hop');
+  assert.ok(peak.lift > 20 && peak.t > 0.3 && peak.t < 0.7);
+  assert.equal(hopScale(peak.lift, 100), 1);
+  assert.equal(hopScale(peak.lift, peak.lift / 2), 0.5);
+  assert.equal(hopScale(0, 5), 1);
+  // 줄인 곡선은 꼭대기에서만 room 에 닿는다 (판판한 구간이 없다)
+  const k = hopScale(peak.lift, 12);
+  let atTop = 0;
+  for (let i = 0; i <= 64; i++) if (movePose('hop', i / 64).lift * k > 11.9) atTop++;
+  assert.ok(atTop <= 3, `${atTop}`);
 });

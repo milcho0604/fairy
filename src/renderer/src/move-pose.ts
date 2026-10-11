@@ -263,3 +263,57 @@ export const SIT_MS = 450;
 export function sitDown(elapsed: number, ms: number): number {
   return smooth(Math.min(elapsed, ms - elapsed) / SIT_MS);
 }
+
+/** 몸짓 하나에서 가장 높이 뜬 순간 (t, 높이, 그때 세로 늘임). 뛰는 높이를 줄여야 할 때 곡선 모양째 줄이려고 쓴다 */
+const peaks = new Map<string, { t: number; lift: number; sy: number }>();
+export function movePeak(type: MoveType, calm = false): { t: number; lift: number; sy: number } {
+  const key = `${type}:${calm}`;
+  const got = peaks.get(key);
+  if (got) return got;
+  let best = { t: 0, lift: 0, sy: 1 };
+  for (let i = 0; i <= 64; i++) {
+    const p = movePose(type, i / 64, 1, calm);
+    if (p.lift > best.lift) best = { t: i / 64, lift: p.lift, sy: p.sy };
+  }
+  peaks.set(key, best);
+  return best;
+}
+
+/**
+ * 뛰는 높이를 room 안에 넣는 배율 0~1. 꼭대기를 잘라 평평하게 만들지 않고 뛰는 곡선 전체를 같은 배율로 낮춘다
+ * (예전엔 토순이 2D 가 24px 대신 6px 에서 잘려 판판하게 떠 있다 떨어졌다)
+ */
+export function hopScale(peak: number, room: number): number {
+  if (!(peak > 0)) return 1;
+  return Math.max(0, Math.min(1, room / peak));
+}
+
+/** 들렸다가 놓여 내려앉는 시간 */
+export const LAND_MS = 380;
+/** 들린 자세가 몸을 띄운 높이 (draw.ts 의 grabbed lift 와 같다) */
+export const HELD_LIFT = 6;
+/** 들린 자세의 가로 줄임과 세로 늘임 (draw.ts 의 grabbed sx 0.94, sy 1.08) */
+export const HELD_SQUEEZE = { x: 0.06, y: 0.08 } as const;
+
+/**
+ * 놓인 뒤 ms 가 지난 몸: 들린 높이에서 툭 떨어지고(처음 22%) 닿을 때 납작했다가 살짝 튀어 돌아온다.
+ * 움직임 줄이기면 찌그러짐 없이 내려오기만
+ */
+export function landPose(ms: number, calm = false): { lift: number; sx: number; sy: number } {
+  const t = clamp01(ms / LAND_MS);
+  const fall = 0.22;
+  if (t < fall) {
+    const k = t / fall;
+    // 들린 모습(가늘고 길게 늘어남)에서 이어진다
+    return {
+      lift: HELD_LIFT * (1 - k * k),
+      sx: 1 - HELD_SQUEEZE.x * (1 - k),
+      sy: 1 + HELD_SQUEEZE.y * (1 - k),
+    };
+  }
+  if (calm) return { lift: 0, sx: 1, sy: 1 };
+  const u = (t - fall) / (1 - fall);
+  // 닿자마자 빠르게 눌렸다가 조금 늘어났다 쉬는 몸으로
+  const squash = Math.min(1, u / 0.12) * Math.exp(-u * 4) * Math.cos(u * Math.PI * 1.6) * (1 - u);
+  return { lift: 0, sx: 1 + 0.13 * squash, sy: 1 - 0.17 * squash };
+}

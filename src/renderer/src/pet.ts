@@ -1,4 +1,4 @@
-import { type Activity, nextDelay, WALK_SPEED } from '../../shared/behavior.ts';
+import { type Activity, nextDelay } from '../../shared/behavior.ts';
 import { ENERGY_BLINK, ENERGY_PACE, type EnergyLook, energyLookOf, sameLook } from '../../shared/energy.ts';
 import { BALL_SVG, type CarryToy, PICK_MS, pickPose } from '../../shared/fetch.ts';
 import type { Gaze } from '../../shared/gaze.ts';
@@ -31,13 +31,14 @@ import { DEFAULT_BLUEPRINTS } from '../../shared/pet3d/defaults.ts';
 import type { PetKind, PetStyle, PoseKind } from '../../shared/settings.ts';
 import { canPlay, type SoundKind } from '../../shared/sound.ts';
 import { AnimatedImage, frameSide, loadPetImage } from './animated.ts';
-import { CANVAS_SIZE, type CarryDraw, CONFETTI_MS, drawPet, HEARTS_MS } from './draw.ts';
+import { CANVAS_SIZE, type CarryDraw, CONFETTI_MS, drawPet, HEARTS_MS, motionSettling } from './draw.ts';
 import { initLang } from './lang.ts';
-import { moveFps, SIT_MS, sitDown } from './move-pose.ts';
+import { LAND_MS, moveFps, SIT_MS, sitDown } from './move-pose.ts';
 import { renderBody, renderFace } from './pet-face.ts';
 import type { Pet3D } from './pet3d.ts';
 import { quadKind, withGait } from './pet3d-gait.ts';
 import { playSound } from './sound.ts';
+import { continueSeg, segSpeed, stepsAt, strideLen, type WalkSeg } from './walk-pace.ts';
 
 initLang('common.title.pet');
 const bridge = window.jjakkung;
@@ -76,6 +77,8 @@ let blinkTimer: ReturnType<typeof setTimeout> | undefined;
 let freshStart = -1;
 /** 큰 축하 색종이가 터진 시각 (오늘 할 일 다 끝냄, 만난 날 기념). 없으면 -1 */
 let confettiStart = -1;
+/** 들렸다가 놓인 때 (내려앉기). 없으면 -1 */
+let landStart = -1;
 const FRESH_MS = MOVE_SPECS.stretch.ms;
 /** 기운 (PetStatus.energy, shared/energy.ts). 없으면 예전 모습 */
 let energy: EnergyLook | undefined;
@@ -103,6 +106,8 @@ function frame() {
   const now = performance.now();
   const next = moodOf(inputs, now);
   if (next !== mood) {
+    // 들려 있다가(끌기, 던지기) 놓이면 살짝 떨어져 내려앉는다
+    landStart = mood === 'grabbed' && next !== 'hidden' ? now : -1;
     mood = next;
     moodSince = now;
     blinkStart = -1;
@@ -126,6 +131,8 @@ function frame() {
   if (fresh >= 1) freshStart = -1;
   const confetti = confettiStart >= 0 ? now - confettiStart : -1;
   if (confetti >= CONFETTI_MS) confettiStart = -1;
+  const landed = landStart >= 0 ? now - landStart : -1;
+  if (landed >= LAND_MS) landStart = -1;
   // 입체가 되면 사진 대신 입체로 (AI 가 만든 설계도가 있는 사진 펫, 또는 기본 펫)
   const m3d = current3d();
   // 입체 그리기 모듈을 불러오는 중이면 기다린다 (불러오면 다시 그린다). 2D 를 먼저 그리면 깜빡인다
@@ -164,6 +171,8 @@ function frame() {
     energy,
     fresh: freshStart >= 0 ? fresh : -1,
     confetti: confettiStart >= 0 ? confetti : -1,
+    land: landStart >= 0 ? landed : -1,
+    now,
   });
   carriedAt = ball;
   syncFace(m3d);
@@ -186,7 +195,7 @@ function frame() {
       ? 30 * k
       : isAnimated(mood)
         ? (ANIMATED_FPS[mood] ?? 30) * k
-        : heartsStart >= 0 || freshStart >= 0 || confettiStart >= 0
+        : heartsStart >= 0 || freshStart >= 0 || confettiStart >= 0 || landStart >= 0
           ? 30 * k
           : blinkStart >= 0
             ? (1000 * blinkSpec().frames) / blinkSpec().ms
@@ -199,7 +208,8 @@ function frame() {
   // (2026-10-07 점검: 신남이 30fps 가 아니라 57fps)
   clearTimeout(frameTimer);
   // 돋보기를 든 동안은 그 빠르기로 (부스트면 두 배)
-  const all = Math.max(fps, (looking?.fps ?? 0) * k);
+  // 돌아서기, 고개 돌리기, 걷기 풀기가 아직 따라가는 중이면 끝까지 그린다 (draw.ts motionSettling)
+  const all = Math.max(fps, (looking?.fps ?? 0) * k, motionSettling() ? 30 * k : 0);
   frameTimer = all > 0 ? setTimeout(frame, 1000 / all) : undefined;
 }
 
@@ -316,9 +326,8 @@ function syncBody(m3d: Pet3D | undefined, img: PetImage | undefined) {
 // 25~70초에 한 번, 한가하면 메인에 행동을 골라 달라고 한다. 걷기만 계속 그리고(12fps) 앉기, 두리번은 한 번 그린다.
 
 const WALK_FPS = 12;
-/** 한 걸음(발 한 번씩) 시간 */
-const STEP_MS = 520;
-let activity: (Activity & { start: number }) | undefined;
+/** 걷기는 seg 에 지금 토막(메인이 보낸 walk 하나)을 둔다. 같은 쪽으로 이어 받으면 토막만 바뀐다 (walk-pace.ts) */
+let activity: (Activity & { start: number; seg?: WalkSeg }) | undefined;
 let activityTimer: ReturnType<typeof setTimeout> | undefined;
 let activityEnd: ReturnType<typeof setTimeout> | undefined;
 
@@ -333,14 +342,9 @@ function scheduleActivity() {
   }, nextDelay(Math.random) * wait);
 }
 
-/**
- * 한 걸음 시간. 보통 걷기와 그보다 빠른 놀이 달리기는 그대로(520ms), 지치거나 졸려서 천천히 걸으면 걸음도 느리게,
- * 활발해서 조금 빨리 걸으면 조금 잦게 (shared/energy.ts ENERGY_PACE)
- */
-function stepMs(a: { dx: number; ms: number }): number {
-  const speed = a.ms > 0 ? (Math.abs(a.dx) / a.ms) * 1000 : WALK_SPEED;
-  if (speed > WALK_SPEED * 1.5 || speed < 1) return STEP_MS;
-  return Math.round(STEP_MS * Math.sqrt(WALK_SPEED / speed));
+/** 걷기 토막 (debugActivity 처럼 seg 없이 넣은 걷기는 처음부터 한 토막) */
+function walkSeg(a: Extract<Activity, { type: 'walk' }> & { start: number; seg?: WalkSeg }): WalkSeg {
+  return a.seg ?? { start: a.start, dx: a.dx, ms: a.ms, linear: a.linear, steps0: 0 };
 }
 
 function stopActivity(tellMain: boolean) {
@@ -360,12 +364,16 @@ function backTurned(): boolean {
 function activityPose(now: number) {
   if (!activity) return undefined;
   if (activity.type === 'walk') {
+    // 걸음은 간 거리만큼 (시간으로 세면 출발과 멈출 때, 빨리 달릴 때 발이 미끄러졌다)
+    const seg = walkSeg(activity);
     return {
       type: 'walk' as const,
       dir: (activity.dx < 0 ? -1 : 1) as -1 | 1,
-      phase: ((now - activity.start) / stepMs(activity)) % 1,
+      phase: stepsAt(seg, now) % 1,
       along: (now - activity.start) / activity.ms,
       ms: activity.ms,
+      // 한 걸음 길이 (펫 그림 160 기준). 입체 네 발은 디딘 발이 이만큼 뒤로 밀리게 보폭을 맞춘다
+      stride: (strideLen(segSpeed(seg)) * CANVAS_SIZE) / Math.max(1, viewSize),
     };
   }
   if (activity.type === 'look') return { type: 'look' as const, dir: activity.dir };
@@ -790,7 +798,18 @@ bridge.onActivity((a) => {
     if (a.type === 'walk') bridge.activityStop();
     return;
   }
-  activity = { ...a, start: performance.now() };
+  const now = performance.now();
+  // 같은 쪽으로 걷던 중에 이어 받은 걷기 (따라 달리기는 1초마다 이어 보낸다): 출발과 돌아서기를 다시 하지 않고
+  // 걸음도 끊기지 않게 잇는다. 예전엔 받을 때마다 처음부터 다시 걸어 1초마다 정면으로 돌아섰다
+  const prev = activity?.type === 'walk' ? activity : undefined;
+  const seg =
+    a.type === 'walk' && prev
+      ? continueSeg(walkSeg(prev), { start: now, dx: a.dx, ms: a.ms, linear: a.linear })
+      : undefined;
+  activity =
+    seg && prev && a.type === 'walk'
+      ? { ...a, start: prev.start, ms: now - prev.start + a.ms, seg }
+      : { ...a, start: now };
   clearTimeout(activityEnd);
   clearTimeout(activityWake);
   activityEnd = setTimeout(() => stopActivity(false), a.ms);

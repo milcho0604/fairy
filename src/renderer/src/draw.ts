@@ -11,7 +11,17 @@ import type { PetMood } from '../../shared/pet-mood.ts';
 import type { Gait } from '../../shared/pet3d/blueprint.ts';
 import type { PetKind } from '../../shared/settings.ts';
 import { drawMagnifier } from './magnifier.ts';
-import { type MovePose, movePose } from './move-pose.ts';
+import { Eased } from './motion-ease.ts';
+import {
+  HELD_LIFT,
+  HELD_SQUEEZE,
+  hopScale,
+  LAND_MS,
+  landPose,
+  type MovePose,
+  movePeak,
+  movePose,
+} from './move-pose.ts';
 import { quadKind } from './pet3d-gait.ts';
 
 export const CANVAS_SIZE = 160;
@@ -52,7 +62,7 @@ export interface DrawState {
    * t 라고 쓰지 않는다: 제자리 몸짓은 't' in act 로 가린다 (movePoseOf)
    */
   activity?:
-    | { type: 'walk'; dir: -1 | 1; phase: number; along?: number; ms?: number }
+    | { type: 'walk'; dir: -1 | 1; phase: number; along?: number; ms?: number; stride?: number }
     | { type: 'sit'; down?: number }
     | { type: 'look'; dir: -1 | 1 }
     | { type: 'yawn'; t: number }
@@ -97,6 +107,15 @@ export interface DrawState {
   fresh?: number;
   /** 큰 축하 색종이가 터진 뒤 흐른 시간(ms). 없으면 -1 */
   confetti?: number;
+  /** 들렸다가 놓인 뒤 흐른 시간(ms). 내려앉으며 살짝 찌그러진다. 없으면 -1 */
+  land?: number;
+  /**
+   * 그리는 시각 (performance.now). 펫 화면이 이어서 그릴 때만 준다: 있으면 돌아서기, 고개 돌리기, 삐친 고개, 커서 보기가
+   * 한 틀에 바뀌지 않고 짧게 따라간다 (motion-ease.ts). 얼굴 아이콘, 미리보기처럼 한 장만 그릴 때는 없다
+   */
+  now?: number;
+  /** drawPet 이 부드럽게 따라간 커서 방향 (gazeOf 가 이것을 돌려준다). null 이면 안 본다. 밖에서 넣지 않는다 */
+  easedGaze?: Gaze | null;
 }
 
 /**
@@ -163,9 +182,11 @@ export function trickOf(s: DrawState): Trick | undefined {
 /** 신나서 통통 튀기: 600ms 마다 한 번. 움직임 줄이기면 18px 대신 3px, 착지 찌그러짐 없이 */
 export function excitedBounce(elapsed: number, calm = false): { lift: number; squash: number } {
   const phase = (elapsed % 600) / 600;
+  // 찌그러짐은 바닥에 닿는 순간(phase 0, 1)에 가장 크고 뜨면서 풀린다 (켜고 끄면 틀마다 툭툭 바뀌었다)
+  const near = Math.min(phase, 1 - phase) / 0.12;
   return {
     lift: Math.sin(phase * Math.PI) * (calm ? 3 : 18),
-    squash: !calm && (phase < 0.12 || phase > 0.88) ? 0.08 : 0,
+    squash: calm || near >= 1 ? 0 : 0.08 * (1 - near * near),
   };
 }
 
@@ -187,6 +208,7 @@ export function movePoseOf(act: DrawState['activity'], calm?: boolean): MovePose
 
 /** 지금 커서를 볼지: 기본 상태에서 아무것도 안 하거나 앉아 있을 때만 */
 export function gazeOf(s: DrawState, act: DrawState['activity']): Gaze | undefined {
+  if (s.easedGaze !== undefined) return s.easedGaze ?? undefined;
   if (s.peer) return s.peer.dir;
   if (s.mood !== 'idle' || !s.gaze || (act && act.type !== 'sit')) return undefined;
   return s.gaze;
@@ -206,6 +228,8 @@ export interface Model3D {
   eye?(side: -1 | 1): { x: number; y: number } | undefined;
   /** 방금 그린 그림에서 입 가운데 (문 공 자리). 입이 없으면 undefined */
   mouth?(): { x: number; y: number } | undefined;
+  /** 방금 그린 자세가 아직 목표로 따라가는 중인지 (돌아서기, 걷기 풀기). 그렇다면 몇 틀 더 그린다 */
+  settling?(): boolean;
 }
 
 /** 하트가 떠올라 사라지는 시간 */
@@ -267,9 +291,26 @@ const GROUND = 154;
 const RX = 58;
 const RY = 50;
 
+/** 2D 와 사진 펫이 짧게 따라가는 값 (얼굴 방향, 삐친 사진 뒤집기, 커서 방향) */
+const ease2d = new Eased();
+/** 마지막으로 이어 그린 입체 펫 (따라가는 중인지 물어본다) */
+let liveModel: Model3D | undefined;
+/** 고개 돌리기, 커서 보기가 따라가는 빠르기 (ms, 1/e 시간) */
+const LOOK_TAU = 70;
+const GAZE_TAU = 90;
+
+/** 방금 이어 그린 자세가 아직 따라가는 중인지 (펫 화면이 그리기를 몇 틀 더 이어 간다) */
+export function motionSettling(): boolean {
+  return ease2d.busy || !!liveModel?.settling?.();
+}
+
 /** 펫을 그린다. 공을 물고 있으면 그 공 가운데를 돌려준다 (메인이 내려놓을 자리를 물을 때) */
 export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | undefined {
   ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  if (s.now !== undefined) {
+    ease2d.frame(s.now);
+    liveModel = s.model3d;
+  }
   if (s.mood === 'hidden') return undefined;
   const kind = s.kind ?? 'kong';
   BODY = COLORS[kind].body;
@@ -287,12 +328,25 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
     sy = 1 - squash;
   } else if (s.mood === 'grabbed') {
     // 들려 있으니 몸을 조금 올려 늘어진 발이 캔버스 아래로 잘리지 않게 한다.
-    lift = 6;
-    sx = 0.94;
-    sy = 1.08;
+    lift = HELD_LIFT;
+    sx = 1 - HELD_SQUEEZE.x;
+    sy = 1 + HELD_SQUEEZE.y;
+  } else if ((s.land ?? -1) >= 0 && (s.land ?? 0) < LAND_MS) {
+    // 놓이면 툭 내려앉으며 살짝 납작해졌다 돌아온다
+    const l = landPose(s.land ?? 0, s.calm);
+    lift = l.lift;
+    sx = l.sx;
+    sy = l.sy;
   }
   const act = s.mood === 'idle' || s.mood === 'sulky' ? s.activity : undefined;
   if (act?.type === 'walk') lift = Math.abs(Math.sin(act.phase * Math.PI * 2)) * 3;
+  // 커서 방향은 한 틀에 홱 돌지 않고 따라간다 (걷기를 시작하거나 멈출 때도 고개가 툭 돌아가지 않게)
+  if (s.now !== undefined) {
+    const raw = gazeOf(s, act);
+    const gx = ease2d.to('gx', raw?.x ?? 0, GAZE_TAU);
+    const gy = ease2d.to('gy', raw?.y ?? 0, GAZE_TAU);
+    s = { ...s, easedGaze: raw || Math.abs(gx) + Math.abs(gy) > 0.004 ? { x: gx, y: gy } : null };
+  }
   if (s.peer?.pose) lift += s.peer.pose.hop;
   // 앉기: 처음에 천천히 앉고 끝에 일어난다 (down 0 서 있음 ~ 1 앉음)
   const sitK = act?.type === 'sit' ? (act.down ?? 1) : 0;
@@ -328,7 +382,7 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
     const top = drawPhoto(ctx, s, s.photo, lift, sx, sy, act);
     const ball = drawCarry(ctx, s.carry, guessMouth(top, GROUND - lift));
     drawPeer(ctx, s, top, GROUND - lift, PHOTO_EYE_AT);
-    drawExtras(ctx, s, top);
+    drawExtras(ctx, s, top, lift);
     return ball;
   }
   if (s.model3d) {
@@ -338,7 +392,7 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
         ? drawCarry(ctx, s.carry, s.model3d.mouth?.() ?? guessMouth(top, GROUND - lift))
         : undefined;
       drawPeer(ctx, s, top, GROUND - lift, MODEL_EYE_AT, s.model3d);
-      drawExtras(ctx, s, top);
+      drawExtras(ctx, s, top, lift);
       return ball;
     }
   }
@@ -349,7 +403,17 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
   // 발: 몸통보다 먼저 그려서 몸 아래로 조금 나오게. 걸을 때는 번갈아 든다. 매달리면 늘어진다.
   // 얼굴 그림에서는 빼고 둥근 몸만 (몸통이 닫힌 타원이라 발 자리에 틈이 생기지 않는다)
   // 폴짝 뛰어도 귀 끝이 캔버스 위로 잘리지 않게 (토순이 귀는 몸 위로 44 나온다)
-  if (mv) lift = Math.min(lift, GROUND - (RY * 2 + EAR_TOP[kind]) * sy - 4);
+  // 꼭대기를 잘라 판판하게 떠 있지 않게, 뛰는 곡선 전체를 같은 배율로 낮춘다. 토순이는 뛰는 동안 귀를 뒤로 젖혀
+  // (hopEars) 그만큼 더 높이 뛴다
+  if (mv && act && 't' in act) {
+    const peak = movePeak(act.type, s.calm);
+    const room = GROUND - (RY * 2 + EAR_TOP[kind] - earDrop(kind, hopEars(act.type, 1))) * peak.sy - 4;
+    lift = mv.lift * hopScale(peak.lift, room) + (lift - mv.lift);
+    lift = Math.min(
+      lift,
+      GROUND - (RY * 2 + EAR_TOP[kind] - earDrop(kind, hopEars(act.type, mv.legs[0] / 0.6))) * sy - 4,
+    );
+  }
   // 기지개로 몸을 늘여도 귀 끝이 잘리지 않게 (토순이)
   if (act) sy = Math.min(sy, (GROUND - 4 - lift) / (RY * 2 + EAR_TOP[kind]));
   // 옆으로 누우면(뒹굴기) 귀, 발, 꼬리까지 바닥 위에 오게 띄운다
@@ -369,7 +433,9 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
     const step = act?.type === 'walk' ? Math.sin(act.phase * Math.PI * 2) * 4 : 0;
     const dangle = s.mood === 'grabbed' ? 6 : 0;
     // 네 발 동물(냥이, 멍멍이, 토순이, 또는 네 발을 고른 펫)은 걸을 때 뒷발 둘이 가는 반대쪽 뒤에 보인다 (pet3d-gait.ts)
-    if (act?.type === 'walk' && quadKind(kind, s.gait)) drawHindFeet(ctx, act.dir, step, lift);
+    // 걸을 때 몸은 걸음마다 들썩여도(lift) 디딘 발은 바닥에 그대로 있고 든 발만 올라간다 (예전엔 두 발이 같이 떴다)
+    const footLift = act?.type === 'walk' ? 0 : lift;
+    if (act?.type === 'walk' && quadKind(kind, s.gait)) drawHindFeet(ctx, act.dir, step, footLift);
     ctx.fillStyle = BODY;
     ctx.strokeStyle = LINE;
     ctx.lineWidth = 2;
@@ -378,7 +444,7 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
       [1, Math.max(0, -step) + (mv ? mv.legs[1] * 10 : 0)],
     ] as const) {
       ctx.beginPath();
-      ctx.ellipse(CX + side * spread, GROUND - 2 - lift - up + dangle, 10, 5, 0, 0, Math.PI * 2);
+      ctx.ellipse(CX + side * spread, GROUND - 2 - footLift - up + dangle, 10, 5, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
     }
@@ -396,7 +462,11 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
   // 꼬리는 평소 몸 뒤에 숨어 있다가 흔들 때 옆으로 나온다 (냥이, 멍멍이)
   if (mv && mv.tailOut > 0 && (kind === 'cat' || kind === 'dog')) drawTail(ctx, kind, mv.tail, mv.tailOut);
   if (kind === 'cat') drawCatEars(ctx, mv?.ears);
-  if (kind === 'bunny') drawBunnyEars(ctx, mv?.ears);
+  if (kind === 'bunny') {
+    // 폴짝 뛰는 동안은 귀를 양옆으로 젖힌다 (hopEars)
+    const a = mv && act && 't' in act ? hopEars(act.type, mv.legs[0] / 0.6) : 0;
+    drawBunnyEars(ctx, a > 0 ? [a, a] : mv?.ears);
+  }
 
   // 몸통
   ctx.beginPath();
@@ -415,14 +485,14 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
     drawBack(ctx, kind);
     ctx.restore();
     ctx.restore();
-    drawExtras(ctx, s, GROUND - lift - RY * 2 * sy);
+    drawExtras(ctx, s, GROUND - lift - RY * 2 * sy, lift);
     return undefined;
   }
 
   // 볼
   // 얼굴을 옆으로: 삐지면 고개를 돌리고, 걷거나 두리번거리면 그쪽을 본다.
   const g = gazeOf(s, act);
-  const look =
+  const lookTo =
     s.mood === 'sulky' && !s.peer
       ? stage >= 2
         ? 16
@@ -436,6 +506,8 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
             : g
               ? g.x * 8
               : 0;
+  // 삐쳐 고개를 돌리거나 걷기 시작할 때 얼굴이 한 틀에 옆으로 건너뛰지 않고 짧게 돌아간다
+  const look = ease2d.to('look', lookTo, LOOK_TAU);
   // 위아래를 보면 얼굴 전체(볼, 눈, 입)가 그쪽으로 조금. 고개를 숙이면(킁킁, 꾸벅) 더 아래로
   const faceDy = (g ? g.y * 2.5 : 0) + (mv ? mv.pitch * 22 : 0) + dip * 14;
   ctx.save();
@@ -501,7 +573,7 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
       paw: { body: BODY, line: LINE },
     });
   }
-  drawExtras(ctx, s, GROUND - lift - RY * 2 * sy);
+  drawExtras(ctx, s, GROUND - lift - RY * 2 * sy, lift);
   return ball;
 }
 
@@ -701,6 +773,16 @@ function drawDogEars(ctx: CanvasRenderingContext2D, flick: readonly [number, num
   }
 }
 
+/** 토순이 2D 가 폴짝 뛰는 동안 귀를 젖히는 각 (air 는 뜬 정도 0~1). 다른 몸짓은 0 */
+function hopEars(type: string, air: number): number {
+  return type === 'hop' ? 1.2 * Math.max(0, Math.min(1, air)) : 0;
+}
+
+/** 귀를 a 만큼 젖혔을 때 귀 끝이 내려온 높이. 토순이만 (밑동에서 귀 끝까지 56, drawBunnyEars 는 0.8 배로 돌린다) */
+function earDrop(kind: PetKind, a: number): number {
+  return kind === 'bunny' ? 56 * (1 - Math.cos(a * 0.8)) : 0;
+}
+
 /** 귀 젖히는 각 (몸짓 ears, 바깥쪽이 +) */
 function earAngle(flick: readonly [number, number], side: -1 | 1): number {
   return (side < 0 ? flick[0] : flick[1]) ?? 0;
@@ -895,8 +977,10 @@ function drawPhoto(
   ctx.save();
   ctx.translate(CX + shift, GROUND - lift);
   ctx.rotate(tilt);
-  // 삐지면 등을 돌린 듯 좌우를 뒤집는다.
-  ctx.scale(s.mood === 'sulky' ? -sx : sx, sy);
+  // 삐지면 등을 돌린 듯 좌우를 뒤집는다. 한 틀에 뒤집지 않고 돌아서듯 좁아졌다 뒤집혀 넓어진다.
+  // 걸을 때는 뒤집지 않는다: 사진이 어느 쪽을 보는지 모른다
+  const flip = ease2d.to('flip', s.mood === 'sulky' ? -1 : 1, LOOK_TAU);
+  ctx.scale((flip < 0 ? -1 : 1) * Math.max(0.12, Math.abs(flip)) * sx, sy);
   if (s.mood === 'sleeping' || s.mood === 'dozing') ctx.globalAlpha = 0.85;
   ctx.drawImage(photo, -w / 2, -h, w, h);
   ctx.restore();
@@ -1148,8 +1232,11 @@ function drawMouth(ctx: CanvasRenderingContext2D, mood: PetMood, look: number) {
   }
 }
 
-/** 몸 밖에 붙는 것들: 생각 중 점, 잠 Zz, 바쁨 땀과 이름표, 삐짐 막대, 하트. top 은 머리 꼭대기 y. */
-function drawExtras(ctx: CanvasRenderingContext2D, s: DrawState, top: number) {
+/**
+ * 몸 밖에 붙는 것들: 생각 중 점, 잠 Zz, 바쁨 땀과 이름표, 삐짐 막대, 하트. top 은 머리 꼭대기 y.
+ * lift 는 몸이 뛰어오른 높이: 색종이는 바닥 기준(top + lift)에서 터져 펫이 통통 튀어도 따라 튀지 않는다
+ */
+function drawExtras(ctx: CanvasRenderingContext2D, s: DrawState, top: number, lift = 0) {
   // 머리 오른쪽 위에 꽂은 꽃. 사진은 머리가 가운데 쪽이라 조금 안으로
   if (s.flower) drawFlower(ctx, CX + (s.photo ? 14 : 24), top + 8);
   if ((s.sulk ?? 0) > 0 && s.mood === 'sulky') drawSulkGauge(ctx, s.sulk ?? 0, top);
@@ -1157,7 +1244,8 @@ function drawExtras(ctx: CanvasRenderingContext2D, s: DrawState, top: number) {
   if (pouting >= 2) drawHuff(ctx, top, pouting >= 3);
   if (pouting >= 3) drawCross(ctx, CX - 40, Math.max(12, top + 10));
   if ((s.hearts ?? -1) >= 0 && (s.hearts ?? 0) < HEARTS_MS) drawHearts(ctx, s.hearts ?? 0, top);
-  if ((s.confetti ?? -1) >= 0 && (s.confetti ?? 0) < CONFETTI_MS) drawConfetti(ctx, s.confetti ?? 0, top);
+  if ((s.confetti ?? -1) >= 0 && (s.confetti ?? 0) < CONFETTI_MS)
+    drawConfetti(ctx, s.confetti ?? 0, top + lift);
   drawMoveMark(ctx, s, top);
   if ((s.fresh ?? -1) >= 0 && s.mood !== 'sleeping' && s.mood !== 'dozing') drawFresh(ctx, s.fresh ?? 0, top);
   if (s.photo) drawPhotoEnergy(ctx, s, top);

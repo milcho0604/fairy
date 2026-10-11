@@ -69,7 +69,9 @@ import {
   trickOf,
   waveSwing,
 } from './draw.ts';
+import { Eased } from './motion-ease.ts';
 import type { MoveEyes } from './move-pose.ts';
+import { hopScale, movePeak } from './move-pose.ts';
 import {
   addShells,
   bumpFurSteps,
@@ -97,6 +99,10 @@ import { neckRow } from './relief-warp.ts';
 
 const CX = 80;
 const GROUND = 154;
+/** 돌아서기 빠르기 (ms, 1/e 시간: 세 배쯤이면 다 돈다) */
+const HEADING_TAU = 90;
+/** 걷기가 끝난 뒤 다리와 숙인 몸이 풀리는 빠르기 */
+const WALK_OUT_TAU = 80;
 /** 쉬는 자세의 펫이 2D 캔버스(160)에서 차지할 최대 키와 너비 */
 const FIT_H = 118;
 const FIT_W = 140;
@@ -190,6 +196,15 @@ export class Pet3D implements Model3D {
   private drawn: { x0: number; y0: number; d: number } | undefined;
   /** 몸짓 세기 (설계도 motion). 1 이 기본 동작 */
   private motion = { bounce: 1, sway: 1, tail: 1, ear: 1 };
+  /**
+   * 짧게 따라가는 자세 값 (motion-ease.ts): 몸이 향한 쪽(heading), 두리번 고개(lookYaw), 걷기 세기(walk).
+   * 펫 화면이 이어 그릴 때만 따라가고 얼굴 아이콘처럼 한 장 그릴 때는 바로 목표값
+   */
+  private ease = new Eased();
+  /** 마지막 걸음 (걷기가 끝난 뒤 다리와 숙인 몸을 짧게 풀 때 쓴다) */
+  private lastWalk: { dir: -1 | 1; phase: number; stride?: number } | undefined;
+  /** 몸 1 단위가 정면에서 2D 캔버스(fit.d = 2)에서 차지하는 길이 비율 (NDC). 보폭을 간 거리에 맞출 때 */
+  private unitNdc = 0;
   /** 그릴 것이 있는지 (설계도나 입체 판을 넣었는지) */
   private ready = false;
   /** 2.5D 입체 판 (사진 + 깊이). 있으면 관절 대신 몸 전체만 기울인다 */
@@ -863,6 +878,11 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     };
   }
 
+  /** 방금 그린 자세가 아직 따라가는 중인지 (돌아서기, 걷기 풀기). 펫 화면이 몇 틀 더 그린다 */
+  settling(): boolean {
+    return this.ease.busy;
+  }
+
   /** 펫을 ctx 에 그리고 머리 꼭대기 y 를 돌려준다. 그릴 수 없으면 undefined (2D 로) */
   draw(
     ctx: CanvasRenderingContext2D,
@@ -873,14 +893,20 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     act: Act,
   ): number | undefined {
     if (this.lost || !this.ready) return undefined;
+    this.ease.frame(s.now);
     // 통통 튀는 세기 (설계도 motion.bounce, pet3d-motion.ts)
     // 네 발 걷기는 걸음 들썩임도 출발과 멈춤에 맞춰 줄인다 (pet3d-gait.ts walkEnvelope)
     const bob = this.quad && act?.type === 'walk' ? walkEnvelope(act.along, act.ms).stride : 1;
     const { lift: up, sx, sy } = bounced(s, act, this.motion.bounce, lift0 * bob, sx0, sy0);
     this.pose(s, sx, sy, act);
     const { d, cx, bottom } = this.fit;
-    // 몸짓으로 폴짝 뛰어도 귀 끝이 캔버스 위로 잘리지 않게 (토순이처럼 키가 큰 펫)
-    const lift = movePoseOf(act, s.calm) ? Math.min(up, this.headTop(0) - 2) : up;
+    // 몸짓으로 폴짝 뛰어도 귀 끝이 캔버스 위로 잘리지 않게 (토순이처럼 키가 큰 펫). 꼭대기만 자르면 판판하게 떠
+    // 있다 떨어져서, 가장 높이 뛰는 높이가 들어가도록 뛰는 곡선 전체를 같은 배율로 낮춘다
+    let lift = up;
+    if (movePoseOf(act, s.calm) && act && 't' in act) {
+      const room = this.headTop(0) - 2;
+      lift = Math.min(up * hopScale(movePeak(act.type, s.calm).lift * this.motion.bounce, room), room);
+    }
     // 2D 캔버스 변환(화면 배율 × 펫 크기)에 맞춰 선명하게
     const scale = ctx.getTransform().a || 1;
     const px = Math.max(64, Math.min(this.maxPx, Math.round(d * scale)));
@@ -1620,10 +1646,40 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
           maxY = Math.max(maxY, p.y);
         }
     const d = Math.min(FIT_H / ((maxY - minY) / 2), FIT_W / ((maxX - minX) / 2));
+    // 바닥(발 끝)은 상자 모서리가 아니라 실제 몸에서 가장 아래 보이는 점으로. 카메라가 살짝 위에서 보니 상자 앞 아래
+    // 모서리는 발보다 낮게 비쳐, 그 자리를 바닥에 두면 펫이 그림자 위로 떠 보였다
+    const low = this.lowestNdc();
+    const bottom = low !== undefined && low > minY ? low : minY;
+    const o = c.clone().project(this.camera);
+    this.unitNdc = Math.abs(
+      c
+        .clone()
+        .add(new Vector3(1, 0, 0))
+        .project(this.camera).x - o.x,
+    );
     this.fitD = d;
-    this.fit = { d: d * this.sizeK, cx: (minX + maxX) / 2, bottom: minY, halfW: (maxX - minX) / 2 };
+    this.fit = { d: d * this.sizeK, cx: (minX + maxX) / 2, bottom, halfW: (maxX - minX) / 2 };
     // 숫자가 깨지면(빈 몸 등) 그리지 않고 2D 로 돌아간다
     if (!Object.values(this.fit).every(Number.isFinite) || d <= 0) this.ready = false;
+  }
+
+  /** 보이는 몸 꼭짓점 가운데 화면(NDC)에서 가장 아래 y. 꼭짓점이 많으면 건너뛰며 본다. 없으면 undefined */
+  private lowestNdc(): number | undefined {
+    let low: number | undefined;
+    const v = new Vector3();
+    this.root.traverse((o) => {
+      if (!(o instanceof Mesh) || !o.visible) return;
+      const pos = o.geometry.getAttribute('position');
+      if (!pos) return;
+      // 숨긴 조상이 있으면(손 흔들 앞발 등) 보이지 않는다
+      for (let a: Object3D | null = o.parent; a; a = a.parent) if (!a.visible) return;
+      const step = Math.max(1, Math.floor(pos.count / 4000));
+      for (let i = 0; i < pos.count; i += step) {
+        v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld).project(this.camera);
+        if (low === undefined || v.y < low) low = v.y;
+      }
+    });
+    return low;
   }
 
   /**
@@ -1672,6 +1728,8 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       y = g.x * 0.3;
       x = -g.y * 0.08;
     }
+    // 삐치거나 걷기 시작할 때, 두리번거릴 때 한 틀에 돌지 않고 짧게 돌아간다
+    y = this.ease.to('heading', y, HEADING_TAU);
     // 입체 판은 옆이 안 보이게 돌기만: 손 흔들기는 까딱, 빙글 춤은 크게 좌우로
     const trick = trickOf(s);
     if (trick?.type === 'wave') z = waveSwing(trick.t) * 0.08;
@@ -1742,10 +1800,20 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       j.wingL.rotation.z = -z;
       j.wingR.rotation.z = z;
     };
-    // 삐지면 고개를 돌린다 (얼굴이 보이게 옆으로만)
-    // 매운맛 토라짐: 흥(2단계)이면 더 홱, 3단계면 등을 돌린다 (뒷모습)
-    if (mood === 'sulky' && !s.peer) this.root.rotation.y = [0, 0.8, 1.15, Math.PI][sulkStage(s)] ?? 0.8;
-    this.root.rotation.y += this.spin;
+    // 걷기: 걷는 동안 세기 1, 멈추면(따라 달리다 서기, 걷기 끝) 다리와 숙인 몸을 짧게 푼다.
+    // 걷기가 끝나도 세기가 남아 있으면 마지막 걸음으로 이어 그린다 (한 틀에 정면 선 자세로 바뀌지 않게)
+    const stepping = act?.type === 'walk' ? act : undefined;
+    if (stepping) this.lastWalk = { dir: stepping.dir, phase: stepping.phase, stride: stepping.stride };
+    const calmBody = mood === 'idle' || mood === 'sulky';
+    const blend = this.ease.to('walk', stepping ? 1 : 0, calmBody ? WALK_OUT_TAU : 0);
+    const walk: Extract<Act, { type: 'walk' }> | undefined =
+      stepping ?? (blend > 0 && calmBody && this.lastWalk ? { type: 'walk', ...this.lastWalk } : undefined);
+    // 몸이 향한 쪽: 삐지면 고개를 돌린다 (얼굴이 보이게 옆으로만). 매운맛 토라짐: 흥(2단계)이면 더 홱, 3단계면 등을 돌린다.
+    // 걸으면 가는 쪽으로 (네 발은 더 옆으로). 한 틀에 돌지 않고 짧게 돌아선다
+    let heading = mood === 'sulky' && !s.peer ? ([0, 0.8, 1.15, Math.PI][sulkStage(s)] ?? 0.8) : 0;
+    if (stepping)
+      heading = stepping.dir * (this.quad ? 1.1 : 0.75) * walkEnvelope(stepping.along, stepping.ms).turn;
+    this.root.rotation.y = this.ease.to('heading', heading, HEADING_TAU) + this.spin;
     let eye: EyeState = 'open';
     let mouth: MouthState = s.hungry && mood === 'idle' ? 'wavy' : 'smile';
     switch (mood) {
@@ -1801,19 +1869,17 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
         }
         break;
     }
-    if (act?.type === 'walk' && this.quad) {
-      this.walkQuad(this.quad, act);
-    } else if (act?.type === 'walk') {
-      const w = Math.sin(act.phase * Math.PI * 2);
-      this.root.rotation.y = act.dir * 0.75;
+    if (walk && this.quad) {
+      this.walkQuad(this.quad, walk, blend);
+    } else if (walk) {
+      // 두 발: 다리와 팔 흔들기도 출발과 멈춤에 맞춰 줄인다 (멈춘 몸에서 다리만 헛돌지 않게)
+      const w = Math.sin(walk.phase * Math.PI * 2) * walkEnvelope(walk.along, walk.ms).stride * blend;
       j.legL.rotation.x = w * 0.7;
       j.legR.rotation.x = -w * 0.7;
       j.armL.rotation.x = -w * 0.6 * sway;
       j.armR.rotation.x = w * 0.6 * sway;
       j.tail.rotation.y = w * 0.35 * tail;
       j.top.rotation.z = w * 0.12 * sway;
-    } else if (act?.type === 'look') {
-      head(0, act.dir * 0.55, 0);
     } else if (act?.type === 'sit') {
       // 앉는 정도 (처음에 앉고 끝에 일어난다)
       const down = act.down ?? 1;
@@ -1834,6 +1900,12 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       arms(2.6 * k);
       wings(1.3 * k);
       eye = 'up';
+    }
+    // 두리번: 고개를 그쪽으로 돌렸다가 끝나면 다시 앞으로 (한 틀에 돌지 않게)
+    const lookYaw = this.ease.to('lookYaw', act?.type === 'look' ? act.dir * 0.55 : 0, HEADING_TAU);
+    if (lookYaw !== 0) {
+      if (this.hasHead) j.head.rotation.y += lookYaw;
+      else this.root.rotation.y += lookYaw * 0.6;
     }
     // 제자리 몸짓 (꼬리 흔들기, 귀 쫑긋, 몸 털기, 점프, 뒹굴기 등. move-pose.ts).
     // 꼬리, 귀, 다리, 팔은 설계도에 그 부위가 있을 때만 보인다 (없는 관절은 빈 묶음이라 돌려도 아무것도 없다)
@@ -1930,14 +2002,18 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
    * 출발할 때 돌고 숙이며, 멈출 때 다시 앞을 보고 일어난다 (pet3d-gait.ts walkEnvelope).
    * 숙인 만큼 앞발 관절은 내려가고 뒷발 관절은 올라가니 다리마다 높이를 되돌려 발이 바닥에 붙어 있게 한다
    */
-  private walkQuad(q: QuadRig, act: Extract<Act, { type: 'walk' }>) {
+  private walkQuad(q: QuadRig, act: Extract<Act, { type: 'walk' }>, blend = 1) {
     const j = this.joints;
     const { sway, tail, ear } = this.motion;
-    const env = walkEnvelope(act.along, act.ms);
+    const e0 = walkEnvelope(act.along, act.ms);
+    const env = { stride: e0.stride * blend, turn: e0.turn * blend, lean: e0.lean * blend };
     const lean = q.lean * env.lean;
     const a = act.phase * Math.PI * 2;
     const go = env.stride;
-    this.root.rotation.y = act.dir * 1.1 * env.turn + this.spin;
+    // 보폭: 디딘 발이 몸이 간 만큼 뒤로 밀리게 (act.stride 는 한 걸음에 간 거리, 160 캔버스).
+    // 한 걸음에 디딘 발 둘이 2 * stride 씩 민다. 옆으로 돈 만큼(1.1 라디안)만 화면 가로로 보인다
+    const sweep = 4 * q.stride * this.unitNdc * (this.fit.d / 2) * Math.sin(1.1) * this.root.scale.x;
+    const pace = act.stride && sweep > 0 ? Math.max(0.6, Math.min(1.8, act.stride / sweep)) : 1;
     j.body.rotation.x = lean;
     // 걸음마다 엉덩이를 살짝 좌우로
     j.body.rotation.z = Math.sin(a) * 0.05 * sway * go;
@@ -1966,13 +2042,13 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     const sn = Math.sin(lean);
     for (const leg of q.legs) {
       const step = trotLeg(leg.id, act.phase);
-      const z = step.dz * q.stride * go;
+      const z = step.dz * q.stride * pace * go;
       const hz = leg.hip.z + (leg.id[0] === 'f' ? front : hind);
       // 숙여서 관절이 올라간 다리(뒷발)는 내리지 않고 늘여 바닥에 닿게 한다 (내리면 몸과 발 사이가 뜬다)
       const back = -hipRise(leg.hip.y, hz, lean);
       const reach = Math.max(0, -back);
       leg.g.scale.set(1, (leg.drop + reach) / Math.max(0.01, leg.drop), 1);
-      const rise = Math.max(0, back) + step.lift * q.lift * go;
+      const rise = Math.max(0, back) + step.lift * q.lift * Math.sqrt(pace) * go;
       // 긴 다리는 관절에서 돌려 딛고, 짧은 발은 앞뒤로 옮긴다
       const long = leg.drop >= 0.18;
       const fz = long ? 0 : z;
