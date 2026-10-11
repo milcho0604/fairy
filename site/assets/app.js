@@ -528,9 +528,15 @@
       var k = e.key;
       if (k !== 'ArrowLeft' && k !== 'ArrowRight' && k !== 'Home' && k !== 'End') return;
       e.preventDefault();
-      var onDot = dots.indexOf(document.activeElement) >= 0;
-      show(k === 'Home' ? 0 : k === 'End' ? n - 1 : cur + (k === 'ArrowLeft' ? -1 : 1), true);
+      var a = document.activeElement;
+      var dot = dots.indexOf(a);
+      var onDot = dot >= 0;
+      // the focused slide goes inert when it slides away, so carry focus to the new one
+      var inSlide = !!(a && a.closest && a.closest('[data-slide]'));
+      var from = onDot ? dot : cur;
+      show(k === 'Home' ? 0 : k === 'End' ? n - 1 : from + (k === 'ArrowLeft' ? -1 : 1), true);
       if (onDot) dots[cur].focus();
+      else if (inSlide) { var z = slides[cur].querySelector('[data-zoom]'); if (z) z.focus(); }
     });
     if (reduceMQ.addEventListener) reduceMQ.addEventListener('change', function () { stopped = reduceMQ.matches; labelPlay(); schedule(); });
     document.addEventListener('visibilitychange', schedule);
