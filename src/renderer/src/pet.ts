@@ -247,6 +247,17 @@ function frame() {
   else if (!poseKey || poseKey.mood !== key.mood) blend.stop();
   poseKey = key;
   const ball = drawPet(ctx, state);
+  if (feetLog && m3d) {
+    const a = state.activity;
+    feetLog.push({
+      t: now,
+      walk: a?.type === 'walk' ? { dir: a.dir, steps: a.steps ?? 0, stride: a.stride ?? 0 } : null,
+      feet: m3d.debugFeet() ?? [],
+      screenX: window.screenX,
+      view: viewSize,
+    });
+    if (feetLog.length > 20000) feetLog.shift();
+  }
   blend.over(ctx, now);
   carriedAt = ball;
   // 얼굴과 집 그림은 첫 그림이 화면에 나간 뒤에 (둘 다 그린 것을 읽어 와 GPU 를 기다려서 켤 때 첫 그림을 늦췄다)
@@ -298,6 +309,9 @@ function frame() {
   );
   frameTimer = all > 0 ? setTimeout(frame, 1000 / all) : undefined;
 }
+
+/** 점검용 발 기록 (__pet.debugFeetLog). 틀마다 발바닥 자리와 걸음 */
+let feetLog: unknown[] | undefined;
 
 /** 자세 바꾸기 겹침 (pose-blend.ts): 지난 틀의 자세와 겹치는 중인 그림 */
 const blend = new PoseBlend();
@@ -1428,6 +1442,12 @@ Object.assign(window, {
     },
     get inputs() {
       return inputs;
+    },
+    /** 발 기록을 켜고(true) 끄고(false) 모은 것을 돌려준다 (네 발로 선 입체 몸의 디딘 발 미끄러짐 재기) */
+    debugFeetLog: (on: boolean) => {
+      const got = feetLog ?? [];
+      feetLog = on ? [] : undefined;
+      return got;
     },
     /**
      * 그림 점검용: 지금 펫(입체면 입체)을 주어진 상태로 한 장씩 그려 PNG data URL 로 돌려준다. 시각(now)을 넣지 않아
