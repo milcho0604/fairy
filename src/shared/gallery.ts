@@ -16,11 +16,11 @@ import {
   type SharedPet,
 } from './pet-share.ts';
 import { cleanPetName, isPetKind, type PetKind } from './settings.ts';
-import { RELEASE_REPO } from './update-policy.ts';
+import { PUBLIC_REPO } from './update-policy.ts';
 
 export const GALLERY_HOST = 'raw.githubusercontent.com';
 /** 갤러리 폴더 주소 (끝에 / ). 다른 곳은 받지 않는다 */
-export const GALLERY_BASE = `https://${GALLERY_HOST}/${RELEASE_REPO.owner}/${RELEASE_REPO.repo}/main/gallery/`;
+export const GALLERY_BASE = `https://${GALLERY_HOST}/${PUBLIC_REPO.owner}/${PUBLIC_REPO.repo}/main/gallery/`;
 export const INDEX_FORMAT = 'jjakkung-gallery';
 export const INDEX_VERSION = 1;
 /** index.json 상한 */

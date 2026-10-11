@@ -26,7 +26,7 @@ import type { Gait } from '../shared/pet3d/blueprint.ts';
 import { isGait, type Settings } from '../shared/settings.ts';
 import { isSettingsTab, type SettingsTab } from '../shared/settings-tabs.ts';
 import { parsePetChoice } from '../shared/starter-pets.ts';
-import { RELEASE_REPO } from '../shared/update-policy.ts';
+import { PUBLIC_REPO } from '../shared/update-policy.ts';
 import { localModelReady } from './ai/local.ts';
 import { aiHistoryBytes, clearAiHistory } from './ai-history.ts';
 import { devRendererUrl } from './dev-url.ts';
@@ -206,7 +206,7 @@ export function createSettingsWindow({
     fromSettings(e) ? diagnostics.save(win) : { ok: false, message: '' },
   );
   ipcMain.on(SETTINGS.reportIssue, (e) => {
-    if (fromSettings(e)) openLink(issueUrl(RELEASE_REPO, { version: app.getVersion(), os: osLabel() }), log);
+    if (fromSettings(e)) openLink(issueUrl(PUBLIC_REPO, { version: app.getVersion(), os: osLabel() }), log);
   });
   // 오픈소스 고지: 설치판은 자원 폴더, 개발 실행은 build/ (npm run notices 로 만든다)
   ipcMain.handle(SETTINGS.openNotices, async (e) => {

@@ -2,13 +2,23 @@
 import { isNewer, parseVersion, readRelease } from './version.ts';
 
 /**
- * 이 앱의 GitHub 레포 (주소를 적는 곳은 여기 하나). 릴리스를 올리는 레포라 앱의 새 버전 확인(GitHub API)과
- * 자동 설치(electron-updater)가 같이 쓰고, 갤러리(gallery.ts), 모델 목록(ai/catalog.ts), 버그 제보(feedback.ts)도 이것으로 주소를 만든다.
- * 이름이 짝꿍에서 페어리로 바뀌며 레포도 milcho0604/jjakkung → milcho0604/fairy (2026-10-11. 옛 주소는 GitHub 가 넘겨준다).
- * D8(공개 배포)에서 레포를 바꾸면 여기와 electron-builder.yml 의 publish 를 같이 바꾼다
- * (둘이 다르면 update-policy.test.ts 가 깨진다). 토큰은 넣지 않는다. 공개 레포만 읽을 수 있다.
+ * 소스 코드 레포. 개발 문서에서만 가리킨다. 앱은 이 레포를 읽지 않는다 (비공개로 바꿔도 설치된 앱이 멀쩡하도록).
+ * 이름이 짝꿍에서 페어리로 바뀌며 milcho0604/jjakkung → milcho0604/fairy (2026-10-11. 옛 주소는 GitHub 가 넘겨준다).
  */
-export const RELEASE_REPO = { owner: 'milcho0604', repo: 'fairy' } as const;
+export const SOURCE_REPO = { owner: 'milcho0604', repo: 'fairy' } as const;
+
+/**
+ * 사용자가 쓰는 공개 레포 (주소를 적는 곳은 여기 하나). 앱이 GitHub 에서 읽는 것은 모두 여기다:
+ * 새 버전 확인(GitHub API)과 자동 설치(electron-updater, main/update.ts), 갤러리(gallery.ts),
+ * 모델 목록(ai/catalog.ts), 버그 제보(feedback.ts issueUrl). 소스 레포의 public-repo/, gallery/, catalog/ 를
+ * sync-public.yml 이 이 레포에 옮겨 두고, release.yml 이 설치 파일을 이 레포의 릴리스로 올린다 (docs/release.md "두 레포").
+ * 바꾸면 electron-builder.yml 의 publish 와 두 워크플로의 레포도 같이 바꾼다 (다르면 update-policy.test.ts 가 깨진다).
+ * 토큰은 넣지 않는다. 공개 레포만 읽을 수 있다.
+ */
+export const PUBLIC_REPO = { owner: 'milcho0604', repo: 'fairy-releases' } as const;
+
+/** 릴리스를 올리고 업데이트를 받는 레포 = 공개 레포 */
+export const RELEASE_REPO = PUBLIC_REPO;
 
 export const RELEASES_API = `https://api.github.com/repos/${RELEASE_REPO.owner}/${RELEASE_REPO.repo}/releases/latest`;
 
