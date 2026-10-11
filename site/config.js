@@ -42,8 +42,8 @@ window.SITE = {
   filePrefix: 'fairy',
   appBundleName: 'fairy',
 
-  // 페어리를 친구에게 보내는 파일의 확장자 (앱 이름을 바꾸면 같이 바뀔 예정)
-  petFileExt: '.jjpet',
+  // 페어리를 친구에게 보내는 파일의 확장자 (앱이 .fairy 로 내보낸다. 예전 .jjpet 도 열린다)
+  petFileExt: '.fairy',
 
   // 연락처 (자리표시). 진짜 주소로 바꿔요.
   contactEmail: '', // 비우면 문의는 GitHub 이슈로 간다

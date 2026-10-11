@@ -51,7 +51,7 @@ Preview locally: `python3 -m http.server -d site 8080` → http://localhost:8080
 
 1. Edit `config.js`: `name` (ko 페어리 / en fairy), `tagline`, `siteUrl`, `releases.repo`, `filePrefix` (start of the
    installer names, `fairy-<version>-mac-arm64.dmg`), `appBundleName` (`fairy.app`, also used for the data folder
-   paths in the FAQ), `petFileExt` (the share-a-fairy file extension, still `.jjpet` until the app renames it).
+   paths in the FAQ), `petFileExt` (the share-a-fairy file extension, `.fairy`; the app still opens old `.jjpet` files).
 2. `node site/tools/build.mjs`
 3. `node site/tools/og.mjs` to redraw the share card (needs Playwright: `npm i -D playwright && npx playwright install chromium`,
    or point `PLAYWRIGHT_MODULE` at an existing install). The card's headline lives in `tools/og.html`.
