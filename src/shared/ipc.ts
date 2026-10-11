@@ -317,6 +317,8 @@ export interface PetLookView {
   depth?: string;
   /** AI 일러스트 나이 단계 (카드에 작은 표시) */
   age?: AgeStage;
+  /** 펫 파일에서 데려온 펫의 만든 사람, 사용 허락, 만든 날 (카드 아래 한 줄) */
+  meta?: { author?: string; license: PetLicense; created: string };
 }
 
 export interface SavedPetView extends PetLookView {

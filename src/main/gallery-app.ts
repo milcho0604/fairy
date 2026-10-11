@@ -41,7 +41,8 @@ export function galleryHandlers(log: (tag: string, ...rest: unknown[]) => void) 
       try {
         const path = await exportPet(
           win,
-          { ...(author ? { author } : {}), license },
+          // 비운 칸도 넘긴다: 데려온 펫의 만든 사람을 지우면 새 작품 (reexportMeta)
+          { author: author ?? '', license },
           t('main.gallery.saveTitle'),
         );
         if (!path) return { ok: false, message: '' };

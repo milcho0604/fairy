@@ -9,6 +9,7 @@ import { type AgeStage, isAgeStage } from './illustrate.ts';
 import { cleanFacts, cleanMeta, type MemMeta, type PetFact } from './knows.ts';
 import { type IllustEngine, illustEngineOf } from './local-draw.ts';
 import { cleanMemory, cleanPending } from './pet-memory.ts';
+import { cleanPetMeta, type PetMeta } from './pet-share.ts';
 import { GAITS, type Gait } from './pet3d/blueprint.ts';
 import { cleanWish } from './pet3d/prompt.ts';
 import { DEFAULT_ROUTINE, parseRoutine, type Routine } from './routine.ts';
@@ -71,6 +72,8 @@ export interface Settings {
   petDepth?: string;
   /** AI 일러스트로 다시 그린 사진 펫의 나이 단계 (2026-10-09). 화면 크기 배율과 보관함 표시에 쓴다. 사진 그대로면 없음 */
   petAge?: AgeStage;
+  /** 펫 파일(.jjpet 판 2)에서 데려온 펫의 이름표: 만든 사람, 사용 허락, 만든 날, 앱 판. 다시 내보낼 때 그대로 넘긴다. 직접 만든 펫은 없음 */
+  petMeta?: PetMeta;
   /** 상태별 포즈 그림 (v1). 기쁨, 졸림, 배고픔. pets/ 안 파일 이름 */
   petPoses: Partial<Record<PoseKind, string>>;
   /** 삐짐 게이지를 세지 않는 요일 (0 일 ~ 6 토). 기본 토, 일. 만나는 시간을 켜면 쓰지 않는다 (restDaysOf) */
@@ -176,6 +179,8 @@ export interface SavedPet {
   /** AI 일러스트 나이 단계 (없으면 사진 그대로 만든 펫) */
   age?: AgeStage;
   poses: Partial<Record<PoseKind, string>>;
+  /** 펫 파일에서 데려온 펫의 이름표 (Settings.petMeta) */
+  meta?: PetMeta;
 }
 
 export const LIBRARY_MAX = 12;
@@ -290,10 +295,11 @@ const PET_FILE = /^(pet|pose)-[\w-]+\.(png|gif|webp)$/;
 
 /** 바꿀 값만. 사진 펫은 null 이면 지운다 (기본 펫으로). */
 export type SettingsPatch = Partial<
-  Omit<Settings, 'petImage' | 'petPoses' | 'petModel' | 'petDepth' | 'petAge'>
+  Omit<Settings, 'petImage' | 'petPoses' | 'petModel' | 'petDepth' | 'petAge' | 'petMeta'>
 > & {
   petImage?: string | null;
   petAge?: AgeStage | null;
+  petMeta?: PetMeta | null;
   petModel?: string | null;
   petDepth?: string | null;
   petPoses?: Partial<Record<PoseKind, string | null>>;
@@ -457,6 +463,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     ...petModelOf(r.petModel, base.petModel),
     ...petDepthOf(r.petDepth, base.petDepth),
     ...petAgeOf(r, base),
+    ...petMetaOf(r.petMeta, base.petMeta),
     petPoses: posesOf(r.petPoses, base.petPoses),
     restDays: Array.isArray(r.restDays)
       ? [...new Set(r.restDays.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 6))].sort()
@@ -590,6 +597,13 @@ function petImageOf(v: unknown, current: string | undefined): { petImage?: strin
   return current ? { petImage: current } : {};
 }
 
+/** 펫 이름표: null 이면 지운다. 틀린 값은 지금 것 그대로 */
+function petMetaOf(v: unknown, current: PetMeta | undefined): { petMeta?: PetMeta } {
+  if (v === null) return {};
+  const meta = v === undefined ? current : (cleanPetMeta(v) ?? current);
+  return meta ? { petMeta: meta } : {};
+}
+
 /** 나이 단계: 사진 펫이 있을 때만. null 이면 지운다 */
 function petAgeOf(r: Record<string, unknown>, base: Settings): { petAge?: AgeStage } {
   if (!petImageOf(r.petImage, base.petImage).petImage) return {};
@@ -624,6 +638,7 @@ function libraryOf(list: unknown[]): SavedPet[] {
     if (!id || !name || !image || out.some((o) => o.id === id)) continue;
     const model = typeof f.model === 'string' && MODEL_FILE.test(f.model) ? f.model : undefined;
     const depth = typeof f.depth === 'string' && DEPTH_FILE.test(f.depth) ? f.depth : undefined;
+    const meta = cleanPetMeta(f.meta);
     out.push({
       id,
       name,
@@ -632,6 +647,7 @@ function libraryOf(list: unknown[]): SavedPet[] {
       ...(depth ? { depth } : {}),
       ...(isAgeStage(f.age) ? { age: f.age } : {}),
       poses: posesOf(f.poses, {}),
+      ...(meta ? { meta } : {}),
     });
     if (out.length >= LIBRARY_MAX) break;
   }

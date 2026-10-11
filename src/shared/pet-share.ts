@@ -70,6 +70,40 @@ export interface PetMeta {
   appVersion: string;
 }
 
+/** 저장해 둔 이름표 검사 (설정 파일의 petMeta, 보관함 meta). 틀리면 undefined */
+export function cleanPetMeta(v: unknown): PetMeta | undefined {
+  if (typeof v !== 'object' || v === null) return undefined;
+  const r = v as Record<string, unknown>;
+  const created = cleanCreated(r.created);
+  const appVersion = cleanAppVersion(r.appVersion);
+  if (!isPetLicense(r.license) || !created || !appVersion) return undefined;
+  const author = cleanAuthor(r.author);
+  return { ...(author ? { author } : {}), license: r.license, created, appVersion };
+}
+
+/**
+ * 다시 내보낼 때의 이름표. 가져온 펫(stored)이면 만든 사람, 허락, 만든 날, 앱 판을 그대로 넘긴다.
+ * given 에 만든 사람을 다르게 적었으면(지우기 포함) 새 작품으로 본다: 지금 앱 판, 새 날. 허락은 given 이 먼저
+ */
+export function reexportMeta(
+  stored: PetMeta | undefined,
+  given: Partial<PetMeta> | undefined,
+  appVersion: string,
+): Partial<PetMeta> {
+  const license = isPetLicense(given?.license) ? { license: given.license } : {};
+  const edited = !!given && 'author' in given && cleanAuthor(given.author) !== stored?.author;
+  if (!stored || edited) {
+    const author = cleanAuthor(given?.author);
+    return {
+      appVersion,
+      ...(stored ? { license: stored.license } : {}),
+      ...license,
+      ...(author ? { author } : {}),
+    };
+  }
+  return { ...stored, ...license };
+}
+
 /** 판 2 로 쓴다. meta 를 안 주면 p.meta, 그것도 없으면 기본 허락과 지금 시각 */
 export function encodePet(p: SharedPet, meta?: Partial<PetMeta>): string {
   const m = { ...p.meta, ...meta };

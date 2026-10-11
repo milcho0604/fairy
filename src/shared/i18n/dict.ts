@@ -22,6 +22,7 @@ import * as maker from './maker.ts';
 import * as onboarding from './onboarding.ts';
 import * as panel from './panel.ts';
 import * as pet from './pet.ts';
+import * as petmeta from './petmeta.ts';
 import * as play from './play.ts';
 import * as polish from './polish.ts';
 import * as pout from './pout.ts';
@@ -65,6 +66,7 @@ export const ko = {
   ...access.ko,
   ...bond.ko,
   ...polish.ko,
+  ...petmeta.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -99,4 +101,5 @@ export const en: Translation<typeof ko> = {
   ...access.en,
   ...bond.en,
   ...polish.en,
+  ...petmeta.en,
 };

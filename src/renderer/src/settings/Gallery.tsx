@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { GalleryList } from '../../../shared/gallery.ts';
 import { t } from '../../../shared/i18n/index.ts';
+import type { PetLookView } from '../../../shared/ipc.ts';
 import {
   AUTHOR_MAX,
   DEFAULT_LICENSE,
@@ -23,7 +24,14 @@ const FAIL_TEXT = {
  * 갤러리에는 레포 주인이 고른 공식 펫만 있다. 데려오기는 메인이 sha256 확인 뒤 .jjpet 가져오기와 같은 검사로 한다.
  * 사용자끼리는 아래 "펫 파일로 내보내기"로 .jjpet 을 직접 주고받는다 (갤러리에 올리는 길은 없다)
  */
-export function Gallery({ onMsg }: { onMsg: (m: string, error?: boolean) => void }) {
+export function Gallery({
+  onMsg,
+  meta,
+}: {
+  onMsg: (m: string, error?: boolean) => void;
+  /** 지금 펫이 펫 파일에서 왔으면 그 만든 사람, 허락 (보내기 칸에 미리 채운다) */
+  meta?: PetLookView['meta'];
+}) {
   const [list, setList] = useState<GalleryList | 'loading'>();
   const [busy, setBusy] = useState('');
   const load = async () => {
@@ -103,13 +111,22 @@ export function Gallery({ onMsg }: { onMsg: (m: string, error?: boolean) => void
           ))}
         </ul>
       )}
-      <GalleryShare onMsg={onMsg} />
+      <GalleryShare onMsg={onMsg} meta={meta} />
     </>
   );
 }
 
-/** 친구에게 보내기: 만든 사람(선택), 사용 허락을 적어 판 2 .jjpet 으로 저장한다. 갤러리에는 올라가지 않는다 */
-function GalleryShare({ onMsg }: { onMsg: (m: string, error?: boolean) => void }) {
+/**
+ * 친구에게 보내기: 만든 사람(선택), 사용 허락을 적어 판 2 .jjpet 으로 저장한다. 갤러리에는 올라가지 않는다.
+ * 데려온 펫이면 그 만든 사람, 허락을 미리 채운다 (그대로 두면 만든 날도 그대로 넘어간다)
+ */
+function GalleryShare({
+  onMsg,
+  meta,
+}: {
+  onMsg: (m: string, error?: boolean) => void;
+  meta?: PetLookView['meta'];
+}) {
   const [open, setOpen] = useState(false);
   const [author, setAuthor] = useState('');
   const [license, setLicense] = useState<PetLicense>(DEFAULT_LICENSE);
@@ -117,7 +134,15 @@ function GalleryShare({ onMsg }: { onMsg: (m: string, error?: boolean) => void }
   if (!open)
     return (
       <div className="action-row">
-        <button type="button" className="link" onClick={() => setOpen(true)}>
+        <button
+          type="button"
+          className="link"
+          onClick={() => {
+            setAuthor(meta?.author ?? '');
+            setLicense(meta?.license ?? DEFAULT_LICENSE);
+            setOpen(true);
+          }}
+        >
           {t('settings.gallery.share')}
         </button>
       </div>

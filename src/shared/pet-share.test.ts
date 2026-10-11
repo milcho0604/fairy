@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  cleanPetMeta,
   decodePet as decodeFull,
   encodePet,
   LICENSE_LABEL,
   PET_LICENSES,
+  reexportMeta,
   SHARE_FORMAT,
   type SharedPet,
   shareFileName,
@@ -187,4 +189,54 @@ test('허락 목록은 JSON 스키마와 같다', async () => {
   );
   assert.deepEqual(schema.properties.manifest.properties.license.enum, [...PET_LICENSES]);
   assert.deepEqual(Object.keys(LICENSE_LABEL), [...PET_LICENSES]);
+});
+
+test('다시 내보낼 때 이름표: 데려온 펫은 만든 사람, 허락, 만든 날, 앱 판을 그대로', () => {
+  const stored = {
+    author: '짝꿍',
+    license: 'CC-BY-NC-4.0',
+    created: '2026-10-01T00:00:00Z',
+    appVersion: '1.1.0',
+  } as const;
+  // 설정 → 데이터 → 펫 내보내기 (이름표를 안 준다)
+  assert.deepEqual(reexportMeta(stored, undefined, '2.0.0'), stored);
+  // 보내기 칸을 미리 채운 그대로
+  assert.deepEqual(reexportMeta(stored, { author: '짝꿍', license: 'CC-BY-NC-4.0' }, '2.0.0'), stored);
+  // 만든 사람을 바꿔 적으면 새 작품: 지금 앱 판, 만든 날은 encodePet 이 지금으로
+  assert.deepEqual(reexportMeta(stored, { author: '나', license: 'CC-BY-4.0' }, '2.0.0'), {
+    appVersion: '2.0.0',
+    license: 'CC-BY-4.0',
+    author: '나',
+  });
+  assert.deepEqual(reexportMeta(stored, { author: '' }, '2.0.0'), {
+    appVersion: '2.0.0',
+    license: 'CC-BY-NC-4.0',
+  });
+  // 직접 만든 펫
+  assert.deepEqual(reexportMeta(undefined, { author: '나', license: 'CC0-1.0' }, '2.0.0'), {
+    appVersion: '2.0.0',
+    license: 'CC0-1.0',
+    author: '나',
+  });
+  assert.deepEqual(reexportMeta(undefined, undefined, '2.0.0'), { appVersion: '2.0.0' });
+  // 파일까지: 가져온 이름표가 다시 나온다
+  const back = decodeFull(
+    encodePet({ name: '콩', kind: 'kong', poses: {} }, reexportMeta(stored, undefined, '2.0.0')),
+  );
+  assert.ok(!('error' in back));
+  assert.deepEqual(back.meta, stored);
+});
+
+test('저장해 둔 이름표 검사', () => {
+  assert.deepEqual(
+    cleanPetMeta({ license: 'CC0-1.0', created: '2026-10-11', appVersion: '1.0.0', author: '  ' }),
+    {
+      license: 'CC0-1.0',
+      created: '2026-10-11',
+      appVersion: '1.0.0',
+    },
+  );
+  assert.equal(cleanPetMeta({ license: 'CC0-1.0', created: '2026-10-11' }), undefined);
+  assert.equal(cleanPetMeta('CC0'), undefined);
+  assert.equal(cleanPetMeta(null), undefined);
 });

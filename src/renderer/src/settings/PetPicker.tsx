@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PetLookView, SettingsSnapshot } from '../../../shared/ipc.ts';
+import { LICENSE_LABEL } from '../../../shared/pet-share.ts';
 import { DEFAULT_BLUEPRINTS } from '../../../shared/pet3d/defaults.ts';
 import { PET_KINDS, type PetKind } from '../../../shared/settings.ts';
 import { isCurrentStarter, type PetChoice, starterOf } from '../../../shared/starter-pets.ts';
@@ -52,6 +53,7 @@ export function PetPicker({
               <span className="pet-age">{t(`settings.pets.age.${snap.current.age}`)}</span>
             )}
           </small>
+          <MetaLine meta={snap.current.meta} />
         </div>
       )}
       {PET_KINDS.map((k) => {
@@ -102,6 +104,7 @@ export function PetPicker({
                 {p.age && <span className="pet-age">{t(`settings.pets.age.${p.age}`)}</span>}
               </small>
             )}
+            <MetaLine meta={p.meta} />
           </button>
           <button
             type="button"
@@ -210,4 +213,22 @@ async function loadImage(src: string): Promise<HTMLImageElement> {
   img.src = src;
   await img.decode();
   return img;
+}
+
+/** 펫 파일에서 데려온 펫: 만든 사람과 사용 허락 한 줄 (만든 날은 마우스를 올리면) */
+function MetaLine({ meta }: { meta: PetLookView['meta'] }) {
+  if (!meta) return null;
+  // 허락 이름(CC BY 4.0)은 줄을 바꾸지 않는다 (카드가 좁아 4.0 만 다음 줄로 갔다)
+  const license = LICENSE_LABEL[meta.license].replaceAll(' ', '\u00a0');
+  const text = meta.author
+    ? t('settings.pets.by', { author: meta.author, license })
+    : t('settings.pets.license', { license });
+  return (
+    <small
+      className="pet-by"
+      title={`${text}\n${t('settings.pets.made', { date: meta.created.slice(0, 10) })}`}
+    >
+      {text}
+    </small>
+  );
 }

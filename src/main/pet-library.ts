@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { app, nativeImage } from 'electron';
 import { sizeOk } from '../shared/image-head.ts';
 import type { PetLookView, SavedPetView, StarterView } from '../shared/ipc.ts';
+import type { PetMeta } from '../shared/pet-share.ts';
 import { type Blueprint, parseBlueprint } from '../shared/pet3d/blueprint.ts';
 import { LIBRARY_MAX, type PetKind, type SavedPet, type Settings } from '../shared/settings.ts';
 import { isStarterName, STARTER_PETS, type StarterId, starterOf } from '../shared/starter-pets.ts';
@@ -64,6 +65,7 @@ function archiveCurrent(skip?: string): { list: SavedPet[]; dropped: SavedPet[] 
     ...(s.petDepth ? { depth: s.petDepth } : {}),
     ...(s.petAge ? { age: s.petAge } : {}),
     poses: { ...s.petPoses },
+    ...(s.petMeta ? { meta: s.petMeta } : {}),
   };
   const next = [saved, ...rest];
   return { list: next.slice(0, LIBRARY_MAX), dropped: next.slice(LIBRARY_MAX) };
@@ -85,13 +87,14 @@ export const library = {
    * 새 펫 설정과 한 번에 저장한다 (두 번 나눠 쓰다 둘째가 실패하면 보관함만 바뀌고 포즈는 지워진 채 남았다)
    */
   newPhotoPatch(): {
-    patch: { petLibrary: Settings['petLibrary']; petPoses: typeof NO_POSES };
+    patch: { petLibrary: Settings['petLibrary']; petPoses: typeof NO_POSES; petMeta: null };
     cleanup: () => void;
   } {
     const old = settings.get().petPoses;
     const { list, dropped } = archiveCurrent();
     return {
-      patch: { petLibrary: list, petPoses: NO_POSES },
+      // 새 펫은 직접 만든 것: 옛 펫 이름표(만든 사람, 허락)는 보관함으로만 간다 (펫 파일에서 데려오면 adoptPet 이 다시 채운다)
+      patch: { petLibrary: list, petPoses: NO_POSES, petMeta: null },
       cleanup: () =>
         removeUnused([...dropped.flatMap(files), ...Object.values(old).filter((f): f is string => !!f)]),
     };
@@ -110,6 +113,7 @@ export const library = {
       petModel: null,
       petDepth: null,
       petAge: null,
+      petMeta: null,
       petPoses: NO_POSES,
     });
     removeUnused([...dropped.flatMap(files), ...old, ...oldPoses]);
@@ -127,6 +131,7 @@ export const library = {
       petModel: pick.model ?? null,
       petDepth: pick.depth ?? null,
       petAge: pick.age ?? null,
+      petMeta: pick.meta ?? null,
       petPoses: {
         happy: pick.poses.happy ?? null,
         sleepy: pick.poses.sleepy ?? null,
@@ -202,9 +207,13 @@ export const library = {
 
   /** 설정 창에 보일 목록 (그림은 작게 줄인 data URL, 입체면 설계도나 깊이 그림도) */
   view(): SavedPetView[] {
-    return settings
-      .get()
-      .petLibrary.map((p) => ({ id: p.id, name: p.name, ...lookView(p), ...(p.age ? { age: p.age } : {}) }));
+    return settings.get().petLibrary.map((p) => ({
+      id: p.id,
+      name: p.name,
+      ...lookView(p),
+      ...(p.age ? { age: p.age } : {}),
+      ...metaView(p.meta),
+    }));
   },
 
   /** 설정 창 지금 펫 카드. 기본 펫이면 null */
@@ -216,9 +225,16 @@ export const library = {
       model: s.petModel ?? undefined,
       depth: s.petDepth ?? undefined,
     });
-    return s.petAge ? { ...view, age: s.petAge } : view;
+    return { ...view, ...(s.petAge ? { age: s.petAge } : {}), ...metaView(s.petMeta) };
   },
 };
+
+/** 카드에 보일 이름표 (만든 사람, 허락, 만든 날) */
+function metaView(m: PetMeta | undefined): Pick<PetLookView, 'meta'> {
+  return m
+    ? { meta: { ...(m.author ? { author: m.author } : {}), license: m.license, created: m.created } }
+    : {};
+}
 
 /**
  * 카드 그림 재료. 펫 화면과 같은 순서로 고른다: 읽을 수 있는 설계도면 figure, 아니면 깊이 그림이면 relief,

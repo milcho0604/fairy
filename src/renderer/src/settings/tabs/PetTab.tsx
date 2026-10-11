@@ -250,7 +250,7 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
       </Section>
 
       <Section title={t('settings.gallery')}>
-        <Gallery onMsg={flash} />
+        <Gallery onMsg={flash} meta={snap.current?.meta} />
       </Section>
 
       <Section title={t('settings.sulk')}>

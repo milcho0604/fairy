@@ -19,6 +19,7 @@ import {
   decodePet,
   encodePet,
   type PetMeta,
+  reexportMeta,
   SHARE_MAX_BYTES,
   type SharedPet,
   shareFileName,
@@ -359,7 +360,8 @@ export async function exportPet(
   };
   const r = await (parent ? dialog.showSaveDialog(parent, opts) : dialog.showSaveDialog(opts));
   if (r.canceled || !r.filePath) return '';
-  writeFileAtomic(r.filePath, encodePet(pet, { appVersion: app.getVersion(), ...meta }));
+  // 데려온 펫이면 만든 사람, 허락, 만든 날을 그대로 (만든 사람을 바꿔 적으면 새 작품으로)
+  writeFileAtomic(r.filePath, encodePet(pet, reexportMeta(settings.get().petMeta, meta, app.getVersion())));
   return r.filePath;
 }
 
@@ -450,6 +452,8 @@ export async function adoptPet(
       petPoses: poses,
       // 나이 단계는 파일에 있을 때만 (없으면 지운다: 옛 펫 나이가 남지 않게)
       petAge: pet.age ?? null,
+      // 만든 사람, 사용 허락, 만든 날, 앱 판 (판 2 파일). 다시 내보낼 때 그대로 넘긴다. 판 1 이면 지운다
+      petMeta: pet.meta ?? null,
     };
     // 지금 사진 펫은 보관함으로 (6단계)
     const prep = library.newPhotoPatch();
