@@ -22,12 +22,23 @@ export interface QuickTodo {
   due: string | null;
   important: boolean;
   repeat: Repeat | null;
+  /** "매달 25일 월세": 매달 반복은 아직 없어 다음 그날 한 번으로 넣었다 (화면이 그렇다고 알린다) */
+  monthly?: true;
 }
 
 const REPEAT_WORDS: Record<string, Repeat> = { 매일: 'daily', 평일: 'weekdays', 매주: 'weekly' };
 
 // 한국어 날짜 낱말. 영어는 아래 EN_DAY 로 따로 읽는다. "내일모레"(모레)는 "내일"보다 먼저 본다 (순서대로 찾는다)
-const DAY_WORDS: Record<string, number> = { 오늘: 0, 내일모레: 2, 내일: 1, 모레: 2 };
+// "어제", "그저께" 는 지난 날이다. 넣되 화면이 지난 날이라고 알리고 오늘로 바꾸는 단추를 준다
+const DAY_WORDS: Record<string, number> = {
+  오늘: 0,
+  내일모레: 2,
+  내일: 1,
+  모레: 2,
+  어제: -1,
+  그저께: -2,
+  그제: -2,
+};
 
 // 한국어 반복 요일 (2026-10-08). 요일 순서는 getUTCDay 와 같다(일요일 0).
 // "매주 월요일 회의", "월요일마다 회의", "회의 매주 월요일", "회의 월요일마다". 요일은 온 이름(월요일)만 읽는다.
@@ -52,6 +63,7 @@ const EN_EVERY_DAY_TAIL = new RegExp(` every (${EN_WEEKDAY_ANY})$`, 'i');
 
 // 날짜: today, tonight, tomorrow, the day after tomorrow. 앞에 by, on, due 가 붙어도 된다 ("report by tomorrow")
 const EN_DAY_OFFSET: Record<string, number> = {
+  yesterday: -1,
   today: 0,
   tonight: 0,
   tomorrow: 1,
@@ -59,7 +71,7 @@ const EN_DAY_OFFSET: Record<string, number> = {
   'day after tomorrow': 2,
   'the day after tomorrow': 2,
 };
-const EN_DAY_WORD = '(?:the )?day after tomorrow|today|tonight|tomorrow|tmrw';
+const EN_DAY_WORD = '(?:the )?day after tomorrow|today|tonight|tomorrow|tmrw|yesterday';
 const EN_LEAD = '(?:by |on |due |until )?';
 const EN_DAY_HEAD = new RegExp(`^${EN_LEAD}(${EN_DAY_WORD}) `, 'i');
 const EN_DAY_TAIL = new RegExp(` ${EN_LEAD}(${EN_DAY_WORD})$`, 'i');
@@ -74,6 +86,32 @@ const EN_WD_FULL_HEAD = new RegExp(`^${EN_WD}(${EN_WEEKDAY_FULL}) `, 'i');
 const EN_WD_FULL_TAIL = new RegExp(` ${EN_WD}(${EN_WEEKDAY_FULL})$`, 'i');
 const EN_WD_ABBR_HEAD = new RegExp(`^(?:(by|on|due|until) |(next|this) )+(${EN_WEEKDAY_ANY}) `, 'i');
 const EN_WD_ABBR_TAIL = new RegExp(` (?:(by|on|due|until) |(next|this) )+(${EN_WEEKDAY_ANY})$`, 'i');
+
+// 서수 날짜: "pay bills on the 25th", "the 1st rent", "by the 3rd". 다가오는 그날 (오늘이 그날이면 오늘)
+const EN_ORD = '(?:on |by |due |until )?the (\\d{1,2})(?:st|nd|rd|th)';
+const EN_ORD_HEAD = new RegExp(`^${EN_ORD} `, 'i');
+const EN_ORD_TAIL = new RegExp(` ${EN_ORD}$`, 'i');
+
+/** 이번 달 그날이 오늘이거나 뒤면 이번 달, 지났으면 다음 달. 달에 없는 날(31일)은 그달 끝 */
+export function nextDayOfMonth(today: string, d: number): string | null {
+  if (d < 1 || d > 31) return null;
+  let y = Number(today.slice(0, 4));
+  let m = Number(today.slice(5, 7));
+  const at = (yy: number, mm: number) => {
+    const last = new Date(Date.UTC(yy, mm, 0)).getUTCDate();
+    return `${yy}-${String(mm).padStart(2, '0')}-${String(Math.min(d, last)).padStart(2, '0')}`;
+  };
+  let day = at(y, m);
+  if (day < today) {
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+    day = at(y, m);
+  }
+  return day;
+}
 
 const EN_DEADLINE = new RegExp(
   `\\b(?:by|until|due)\\s+(?:\\d|(?:noon|midnight|${EN_DAY_WORD}|next|this|${EN_WEEKDAY_ANY}|(?:the )?end of|the weekend)\\b|in \\S+ (?:days?|weeks?|months?)\\b)|\\bwithin \\S+ (?:days?|weeks?|months?)\\b`,
@@ -106,6 +144,11 @@ function takeEnglishDue(rest: string, today: string): [string, string] | null {
     const day = m ? enRelDay(m[1] ?? '', today) : null;
     if (day) return [day, rest.replace(re, ' ').trim()];
   }
+  for (const re of [EN_ORD_HEAD, EN_ORD_TAIL]) {
+    const m = rest.match(re);
+    const day = m ? nextDayOfMonth(today, Number(m[1])) : null;
+    if (day) return [day, rest.replace(re, ' ').trim()];
+  }
   for (const [re, wdAt, nextAt] of [
     [EN_WD_FULL_HEAD, 3, 2],
     [EN_WD_FULL_TAIL, 3, 2],
@@ -126,7 +169,7 @@ function takeEnglishDue(rest: string, today: string): [string, string] | null {
  * today 는 현지 날짜 YYYY-MM-DD. 날짜 낱말은 맨 앞이나 맨 끝에 있을 때만 날짜로 본다 ("오늘의 메모"는 제목).
  * 영어도 같다: "tomorrow buy milk", "call mom on friday", "report by next mon", "gym every monday".
  */
-export function parseQuickTodo(text: string, today: string): QuickTodo {
+export function parseQuickTodo(text: string, today: string, keepMonthly = false): QuickTodo {
   // 전각 "！", 붙여 쓴 "내일3시" 를 다듬는다. 띄어쓰기를 하나도 안 했으면 반복 낱말도 띄운다 ("매일운동").
   // 띄어쓰기를 한 글의 "매일경제 읽기" 는 신문 이름일 수 있어 그대로 둔다
   let rest = normalizeQuick(text);
@@ -138,6 +181,17 @@ export function parseQuickTodo(text: string, today: string): QuickTodo {
   }
   let repeat: Repeat | null = null;
   let repeatDue: string | null = null;
+  // "매달 25일 월세", "월세 매달 25일", "monthly rent on the 25th": 매달 반복은 아직 없다. 낱말은 떼고 다음 그날 한 번으로
+  let monthly = false;
+  const month = keepMonthly
+    ? null
+    : rest.match(
+        /^(?:매달|매월|monthly|every month) | (?:매달|매월|monthly|every month)(?= \S+$)| (?:매달|매월|monthly|every month)$/i,
+      );
+  if (month) {
+    monthly = true;
+    rest = rest.replace(month[0], ' ').replace(/\s+/g, ' ').trim();
+  }
   // 반복 요일이 있으면 매주, 첫 마감은 다가오는 그 요일 (한국어와 영어가 같은 규칙, weekdayOffset next=false)
   const koEvery = rest.match(KO_EVERY_WD_HEAD) ?? rest.match(KO_EVERY_WD_TAIL);
   if (koEvery) {
@@ -203,7 +257,9 @@ export function parseQuickTodo(text: string, today: string): QuickTodo {
     if (repeat === 'weekdays')
       while ([0, 6].includes(new Date(`${due}T00:00:00Z`).getUTCDay())) due = plusDays(due, 1);
   }
-  return { title: rest.trim(), due, important, repeat };
+  // "매달 정산" 처럼 날짜가 없으면 매달은 제목 낱말이다: 떼지 않고 다시 읽는다
+  if (monthly && !due) return parseQuickTodo(text, today, true);
+  return { title: rest.trim(), due, important, repeat, ...(monthly ? { monthly: true as const } : {}) };
 }
 
 /** 마감일을 사람 말로: 오늘, 내일, 어제까지, 10월 5일. */

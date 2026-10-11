@@ -62,3 +62,30 @@ test('날짜 낱말에 까지가 붙고 시각이 뒤에 오면 그 날짜 그 �
     repeat: null,
   });
 });
+
+test('서수 날짜와 매달, 지난 날 ("pay bills on the 25th", "매달 25일 월세", "어제 보고서")', async () => {
+  const { parseQuickTodo, nextDayOfMonth } = await import('./quick-add.ts');
+  assert.deepEqual(line('pay bills on the 25th'), {
+    title: 'pay bills',
+    due: '2026-10-25',
+    dueMin: null,
+    repeat: null,
+  });
+  assert.equal(line('rent on the 3rd').due, '2026-11-03');
+  assert.equal(line('the 14th review').due, today);
+  const m = parseQuickTodo('매달 25일 월세', today);
+  assert.deepEqual([m.title, m.due, m.monthly], ['월세', '2026-10-25', true]);
+  assert.equal(parseQuickTodo('월세 매달 25일', today).monthly, true);
+  // 매달만 있고 날짜가 없으면 표시하지 않는다
+  assert.deepEqual(
+    [parseQuickTodo('매달 정산', today).title, parseQuickTodo('매달 정산', today).monthly],
+    ['매달 정산', undefined],
+  );
+  assert.deepEqual(
+    [parseQuickTodo('어제 보고서', today).due, parseQuickTodo('report yesterday', today).due],
+    ['2026-10-13', '2026-10-13'],
+  );
+  assert.equal(nextDayOfMonth('2026-01-31', 31), '2026-01-31');
+  assert.equal(nextDayOfMonth('2026-02-10', 31), '2026-02-28');
+  assert.equal(nextDayOfMonth('2026-12-20', 5), '2027-01-05');
+});

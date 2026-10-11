@@ -51,6 +51,9 @@ export function addedText(r: Extract<PanelAddResult, { ok: true }>, today: strin
   if (r.kind === 'event') return t('panel.quick.event', { when: whenLabel(r.startAt, today) });
   if (r.remindAt !== undefined) return t('snooze.quick.added', { when: whenLabel(r.remindAt, today) });
   if (!r.due) return t('panel.quick.todo');
+  // 지난 날로 들어갔거나 매달을 한 번으로 넣었으면 그렇다고 알린다 (말없이 넣으면 바로 '지난 마감' 이 되거나 반복인 줄 안다)
+  if (r.past) return t('panel.quick.todoPast', { due: dayHeading(r.due, today) });
+  if (r.monthly) return t('panel.quick.monthlyOnce', { due: dayHeading(r.due, today) });
   // 모레 뒤는 요일까지: 주말에 적은 "이번 주 금요일"이 어느 금요일로 들어갔는지 보이게
   const later = r.due > plusDays(today, 1);
   return t('panel.quick.todoDue', { due: later ? dayHeading(r.due, today) : dueLabel(r.due, today).text });

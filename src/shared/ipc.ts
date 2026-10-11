@@ -875,7 +875,8 @@ export type PanelAddResult =
       am?: { startAt: number; endAt: number | null };
     }
   /** remindAt: "30분 뒤 알려 줘"로 넣은 알림이 울릴 때 (snooze.ts) */
-  | { ok: true; kind: 'todo'; id: number; due: string | null; remindAt?: number }
+  /** past: 마감이 이미 지난 날("어제 보고서"). monthly: "매달 25일" 을 다음 그날 한 번으로 넣었다 (매달 반복은 없다) */
+  | { ok: true; kind: 'todo'; id: number; due: string | null; remindAt?: number; past?: true; monthly?: true }
   /** 여러 줄을 붙여 넣어 줄마다 넣었다 */
   | { ok: true; kind: 'many'; todos: number; events: number };
 

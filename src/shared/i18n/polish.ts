@@ -15,6 +15,11 @@ export const ko = {
   // 내보낸 곳
   'settings.exportedTo': (v: { path: string }) => `여기에 저장했어: ${v.path}`,
   'settings.openFolder': '폴더 열기',
+  // 빠른 입력: 지난 날, 매달
+  'panel.quick.todoPast': (v: { due: string }) => `마감을 ${v.due}로 넣었어. 이미 지난 날이야.`,
+  'panel.quick.monthlyOnce': (v: { due: string }) =>
+    `${v.due} 마감으로 넣었어. 매달 반복은 아직 없어서 이번 한 번만.`,
+  'panel.toast.toToday': '오늘로',
   // 설정 찾기: 어두운 모드
   'settings.themeNote':
     '밝은 화면, 어두운 화면(다크 모드)은 컴퓨터 설정을 따라가. 바꾸려면 운영체제 화면 설정에서 바꿔 줘.',
@@ -35,6 +40,10 @@ export const en: Translation<typeof ko> = {
   'chat.local.downloadNow': 'Download free AI',
   'settings.exportedTo': (v: { path: string }) => `Saved to ${v.path}`,
   'settings.openFolder': 'Open folder',
+  'panel.quick.todoPast': (v: { due: string }) => `Due ${v.due}, which has already passed.`,
+  'panel.quick.monthlyOnce': (v: { due: string }) =>
+    `Added with ${v.due} as the due date. Monthly repeats aren't supported yet, so just this once.`,
+  'panel.toast.toToday': 'Make it today',
   'settings.themeNote':
     "Light and dark (dark mode) follow your computer's appearance. Change it in your system's display settings.",
   'settings.themeKeywords': 'theme dark mode light appearance 테마 다크 다크모드 어두운 밝은',

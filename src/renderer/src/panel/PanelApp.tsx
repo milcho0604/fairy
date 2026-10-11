@@ -62,7 +62,9 @@ type Toast =
     }
   /** 지난 마감을 오늘로 옮겼다. 되돌리면 원래 마감으로 */
   | { kind: 'moved'; moved: { id: number; due: string | null }[] }
-  | { kind: 'added'; text: string };
+  | { kind: 'added'; text: string }
+  /** 지난 날("어제")이나 매달("매달 25일")로 읽은 할 일: 알리고 되돌리기, 지난 날이면 오늘로 */
+  | { kind: 'flagged'; id: number; text: string; past: boolean };
 
 const UNLOCK_KEYS = {
   wave: 'panel.unlock.wave',
@@ -204,6 +206,7 @@ export function PanelApp() {
     if (toast.kind === 'todo-removed') bridge.restore(toast.id);
     if (toast.kind === 'to-event') bridge.eventRemove(toast.id);
     if (toast.kind === 'moved') bridge.undoMoveOverdue();
+    if (toast.kind === 'flagged') bridge.remove(toast.id);
     setToast(undefined);
   };
   undoRef.current = () => {
@@ -315,6 +318,8 @@ export function PanelApp() {
             // "30분 뒤 알려 줘": 언제 알려 줄지
             if (r.kind === 'todo' && r.remindAt !== undefined)
               showToast({ kind: 'added', text: addedText(r, s.today) });
+            if (r.kind === 'todo' && (r.past || r.monthly))
+              showToast({ kind: 'flagged', id: r.id, text: addedText(r, s.today), past: !!r.past });
           }}
           onRemoved={(todo) => showToast({ kind: 'todo-removed', id: todo.id })}
         />
@@ -375,6 +380,18 @@ export function PanelApp() {
               <button type="button" className="undo" title={`${MOD}+Z`} onClick={() => undoToast(toast)}>
                 {t('panel.undo')}
               </button>
+              {toast.kind === 'flagged' && toast.past && (
+                <button
+                  type="button"
+                  className="undo"
+                  onClick={() => {
+                    bridge.update(toast.id, { due: s.today });
+                    setToast(undefined);
+                  }}
+                >
+                  {t('panel.toast.toToday')}
+                </button>
+              )}
               {toast.kind === 'to-event' && toast.am && (
                 <button type="button" className="undo" onClick={() => toAm(toast)}>
                   {t('panel.toast.toAm')}

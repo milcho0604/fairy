@@ -51,7 +51,9 @@ function QuickAdd() {
     setMsg(addedText(r, localDay(Date.now())) + guess + clash);
     clearTimeout(closeTimer.current);
     // 오전으로 바꿀 수 있으면 누를 시간을 더 준다
-    const wait = guess ? CLOSE_MS * 3 : clash ? CLOSE_MS * 2 : CLOSE_MS;
+    // 지난 날, 매달 한 번으로 넣었다는 말도 읽을 시간을 준다
+    const flagged = r.kind === 'todo' && (r.past || r.monthly);
+    const wait = guess ? CLOSE_MS * 3 : clash || flagged ? CLOSE_MS * 2 : CLOSE_MS;
     if (!stay) closeTimer.current = setTimeout(() => bridge.close(), wait);
   };
   const toAm = () => {
