@@ -13,6 +13,7 @@ import { PetLife } from '../shared/pet-life.ts';
 import { ItemStore } from '../shared/shop.ts';
 import { TodoStore } from '../shared/todo-store.ts';
 import { copyDbFile, openDbFile, type StoreTrouble } from './db-open.ts';
+import type { JsonTrouble } from './json-file.ts';
 import type { SayOptions } from './pet-window.ts';
 
 /**
@@ -129,4 +130,29 @@ export async function announceStoreTrouble(
       : [{ id: 'ok', label: t('common.ok') }],
   });
   showFile(action);
+}
+
+/** 깨진 JSON 저장 파일(설정 등)을 펫 말풍선으로 알린다. 조용히 기본값으로 돌아가지 않게 (json-file.ts) */
+export async function announceJsonTrouble(
+  trouble: JsonTrouble,
+  say: (o: SayOptions) => Promise<string | undefined>,
+): Promise<void> {
+  const vars = { file: basename(trouble.file), moved: basename(trouble.moved) };
+  const key = trouble.restored ? 'main.json.restored' : 'main.json.reset';
+  const action = await say({
+    kind: 'answer',
+    text: t(key, vars),
+    ttlMs: 30_000,
+    hold: {
+      onAction: (a) => {
+        if (a === 'show') shell.showItemInFolder(trouble.moved);
+      },
+      missedMsgs: [{ key, vars }],
+    },
+    buttons: [
+      { id: 'show', label: t('main.db.showFile') },
+      { id: 'ok', label: t('common.ok') },
+    ],
+  });
+  if (action === 'show') shell.showItemInFolder(trouble.moved);
 }

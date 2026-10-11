@@ -3,16 +3,20 @@
 // 펫 그림처럼 화면이나 공유 파일로 내보낼 수 있었다.
 import { randomBytes } from 'node:crypto';
 import {
+  chmodSync,
+  closeSync,
   existsSync,
+  fsyncSync,
   lstatSync,
+  openSync,
   readFileSync,
   realpathSync,
   renameSync,
   rmSync,
   statSync,
-  writeFileSync,
+  writeSync,
 } from 'node:fs';
-import { basename, join, sep } from 'node:path';
+import { basename, dirname, join, sep } from 'node:path';
 
 /**
  * dir 바로 안의 일반 파일이면 그 경로, 아니면 undefined. 파일 이름만 받고(경로 금지),
@@ -96,17 +100,45 @@ export function renameRetry(
   }
 }
 
-/**
- * 같은 폴더의 임시 파일에 다 쓴 다음 이름을 바꾼다. 쓰다가 꺼지거나 디스크가 차도 원래 파일(또는 없음)이 남고
- * 반쯤 쓴 그림, 설계도가 남지 않는다 (rename 은 같은 디스크 안에서 한 번에 바뀐다). 실패하면 임시 파일을 지우고 오류를 던진다.
- */
-export function writeFileAtomic(path: string, data: string | Uint8Array): void {
-  const tmp = `${path}.${process.pid}-${randomBytes(4).toString('hex')}.tmp`;
+/** 폴더 자체를 fsync 해 이름 바꾸기를 디스크에 남긴다. 윈도우는 폴더를 열 수 없어 넘어간다 */
+function fsyncDir(dir: string): void {
+  if (process.platform === 'win32') return;
+  let fd: number | undefined;
   try {
-    writeFileSync(tmp, data);
+    fd = openSync(dir, 'r');
+    fsyncSync(fd);
+  } catch {
+    // 폴더 fsync 를 못 하는 파일 시스템도 있다. 파일은 이미 fsync 했다
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+/**
+ * 같은 폴더의 임시 파일에 다 쓰고 fsync 한 다음 이름을 바꾸고 폴더를 fsync 한다. 쓰다가 꺼지거나 디스크가 차도
+ * 원래 파일(또는 없음)이 남고 반쯤 쓴 그림, 설계도, 설정이 남지 않는다 (rename 은 같은 디스크 안에서 한 번에 바뀐다.
+ * fsync 없이 이름만 바꾸면 전원이 나갈 때 일부 파일 시스템은 빈 파일을 남긴다).
+ * mode 를 주면 그 권한으로 (토큰은 0600). 실패하면 임시 파일을 지우고 오류를 던진다.
+ */
+export function writeFileAtomic(path: string, data: string | Uint8Array, opts: { mode?: number } = {}): void {
+  const dir = dirname(path);
+  const tmp = join(dir, `.${basename(path)}.${process.pid}-${randomBytes(4).toString('hex')}.tmp`);
+  try {
+    const fd = openSync(tmp, 'w', opts.mode ?? 0o666);
+    try {
+      const buf = typeof data === 'string' ? Buffer.from(data, 'utf8') : data;
+      let off = 0;
+      while (off < buf.length) off += writeSync(fd, buf, off, buf.length - off);
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+    // umask 가 mode 를 깎거나 이미 있던 파일이 넓은 권한이어도 정확히 그 권한으로
+    if (opts.mode !== undefined) chmodSync(tmp, opts.mode);
     renameRetry(tmp, path);
   } catch (err) {
     rmSync(tmp, { force: true });
     throw err;
   }
+  fsyncDir(dir);
 }

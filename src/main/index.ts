@@ -26,7 +26,7 @@ import { boostOn, onBoostChange } from './boost.ts';
 import { watchCalendar } from './calendar.ts';
 import { createChat } from './chat.ts';
 import { createCompanion } from './companion.ts';
-import { announceStoreTrouble, openStore } from './db.ts';
+import { announceJsonTrouble, announceStoreTrouble, openStore } from './db.ts';
 import { createDiary } from './diary.ts';
 import { confineTestDisplay } from './focus.ts';
 import { createFriends } from './friends.ts';
@@ -58,6 +58,7 @@ import { createPout } from './pout.ts';
 import { watchPresentation } from './presence-watch.ts';
 import { settings } from './settings.ts';
 import { createSettingsWindow } from './settings-window.ts';
+import { onJsonTrouble } from './store.ts';
 import { createSystemMonitor } from './system-monitor.ts';
 import { baseTrayIcon, createTray } from './tray.ts';
 import { watchUpdates } from './update.ts';
@@ -338,6 +339,10 @@ ready
       pet.win.webContents.once('did-finish-load', () =>
         setTimeout(() => void announceStoreTrouble(trouble, (o) => pet.say(o)), 3000),
       );
+    // 설정 같은 JSON 파일이 깨져 옆으로 옮겼으면(json-file.ts) 조용히 넘어가지 않고 알린다. 켠 뒤에 생긴 것도 바로
+    pet.win.webContents.once('did-finish-load', () =>
+      setTimeout(() => onJsonTrouble((tr) => void announceJsonTrouble(tr, (o) => pet.say(o))), 3500),
+    );
     // 답을 할 일로: 마감 낱말은 마감으로, 이미 있는 할 일은 빼고 넣는다. 넣은 id 를 돌려준다 (되돌리기를 붙일 수 있게)
     const addAnswerTodos = (titles: readonly string[]): number[] => {
       const now = Date.now();
