@@ -3,6 +3,19 @@
   "private": true,
   "version": "0.1.0",
   "description": "화면 위 펫과 같이 일하는 데스크톱 앱",
+  "author": {
+    "name": "milcho0604",
+    "url": "https://github.com/milcho0604"
+  },
+  "homepage": "https://github.com/milcho0604/jjakkung",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/milcho0604/jjakkung.git"
+  },
+  "bugs": {
+    "url": "https://github.com/milcho0604/jjakkung/issues"
+  },
+  "desktopName": "jjakkung.desktop",
   "license": "MIT",
   "type": "module",
   "main": "out/main/index.js",
@@ -10,14 +23,16 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "dist": "electron-vite build && electron-builder --publish never",
-    "dist:mac": "electron-vite build && electron-builder --mac --publish never",
-    "dist:win": "electron-vite build && electron-builder --win --publish never",
+    "dist": "node scripts/third-party-notices.mjs && electron-vite build && electron-builder --publish never",
+    "dist:mac": "node scripts/third-party-notices.mjs && electron-vite build && electron-builder --mac --publish never",
+    "dist:win": "node scripts/third-party-notices.mjs && electron-vite build && electron-builder --win --publish never",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "biome check .",
     "format": "biome check --write .",
     "test": "node --test \"src/**/*.test.ts\"",
-    "check": "npm run typecheck && npm run lint && npm test"
+    "check": "npm run typecheck && npm run lint && npm test",
+    "dist:linux": "node scripts/third-party-notices.mjs && electron-vite build && electron-builder --linux --publish never",
+    "notices": "node scripts/third-party-notices.mjs"
   },
   "engines": {
     "node": ">=22.18"

@@ -1,4 +1,6 @@
-# 설치 파일 만들기 (P4-02). 맥(dmg, 애플 실리콘과 인텔)과 윈도우(exe).
+# 설치 파일 만들기 (P4-02). 맥(dmg, 애플 실리콘과 인텔), 윈도우(exe), 리눅스(tar.gz, AppImage).
+# 액션은 커밋 SHA 로 고정한다 (태그는 옮길 수 있다). 올릴 때는 주석의 태그와 SHA 를 같이 바꾼다.
+# 릴리스 올리기(release 작업)는 GitHub 환경 release 의 승인을 받아야 돈다 (docs/release.md "환경 승인").
 # 비공개 레포에서 맥 러너는 분이 10배로 깎여서 올릴 때마다 돌리지 않는다.
 # - 손으로: Actions 탭 → release → Run workflow. 결과는 실행 화면의 Artifacts 에서 받는다.
 # - 태그로: `git tag v0.1.0 && git push origin v0.1.0` 이면 GitHub Releases 에 초안으로 올린다.
@@ -23,12 +25,14 @@ jobs:
             script: dist:mac
           - os: windows-latest
             script: dist:win
+          - os: ubuntu-latest
+            script: dist:linux
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: npm
       # 태그가 package.json 버전과 다르거나 release/min-version 이 잘못되었으면 빌드 전에 멈춘다
       - run: node scripts/release-body.mjs "$GITHUB_REF_NAME" > /dev/null
@@ -36,8 +40,8 @@ jobs:
         # 윈도우 러너의 기본 셸(pwsh)은 $GITHUB_REF_NAME 과 /dev/null 을 모른다
         shell: bash
       - run: npm ci
+      # 모든 운영체제에서 검사한다 (윈도우만 깨지는 경로, 줄바꿈 문제를 설치 파일 전에 잡는다)
       - run: npm run check
-        if: runner.os == 'macOS'
       # 인텔 맥 dmg 도 같이 만든다. koffi 네이티브 파일은 운영체제와 칩마다 다른 패키지라 x64 것을 더 받는다
       # (창 위에 올라앉기가 쓴다. 없으면 그 기능만 꺼진다).
       # 무료 AI 엔진(node-llama-cpp)도 칩마다 다른 패키지라 인텔 것을 더 받는다 (없으면 인텔 맥에서 무료 AI 만 안 된다)
@@ -45,7 +49,7 @@ jobs:
         if: runner.os == 'macOS'
       # 내 컴퓨터에서 그리기의 sd.cpp 엔진: 인텔 Mac, macOS 12~13 용 sd-cli 를 칩마다 빌드해 앱에 넣는다
       # (공식 맥 묶음은 macOS 26 용이라 직접, scripts/build-sdcpp.mjs). 같은 커밋이면 캐시에서 바로
-      - uses: actions/cache@v5
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         if: runner.os == 'macOS'
         with:
           path: |
@@ -62,12 +66,14 @@ jobs:
           # 구글 캘린더에 쓰기 (docs/google-calendar.md). 없으면 그 기능만 숨는다
           JJ_GOOGLE_CLIENT_ID: ${{ secrets.JJ_GOOGLE_CLIENT_ID }}
           JJ_GOOGLE_CLIENT_SECRET: ${{ secrets.JJ_GOOGLE_CLIENT_SECRET }}
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: jjakkung-${{ runner.os }}
           # 자동 설치(electron-updater)가 릴리스에서 읽는다. 윈도우는 latest.yml, exe, .blockmap.
           # 맥은 latest-mac.yml, zip, .blockmap (dmg 는 처음 설치용)
           path: |
+            dist/*.tar.gz
+            dist/*.AppImage
             dist/*.dmg
             dist/*.exe
             dist/*.exe.blockmap
@@ -81,14 +87,17 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
+    # 레포 설정 → Environments → release 에 승인할 사람(Required reviewers)을 두면 초안을 올리기 전에 멈추고 기다린다.
+    # 태그만 올린 사람(또는 훔친 토큰)이 혼자 릴리스를 만들지 못하게 (docs/release.md "환경 승인")
+    environment: release
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24
-      - uses: actions/download-artifact@v8
+          node-version-file: .nvmrc
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: files
           merge-multiple: true

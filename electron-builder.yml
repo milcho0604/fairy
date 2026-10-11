@@ -53,6 +53,11 @@ electronFuses:
   onlyLoadAppFromAsar: true
   # 맥 arm64 는 퓨즈를 뒤집으면 임시 서명이 깨진다. 다시 임시 서명한 뒤 afterSign(mac-sign.mjs)이 자체 인증서로 서명한다
   resetAdHocDarwinSignature: true
+# 오픈소스 고지 (scripts/third-party-notices.mjs 가 npm run dist 앞에 만든다). 설정 → 정보에서 연다.
+# 앱 자원 폴더(process.resourcesPath)에 둔다: asar 안이면 운영체제의 글 보기 앱이 열지 못한다
+extraResources:
+  - from: build/THIRD_PARTY_NOTICES.txt
+    to: THIRD_PARTY_NOTICES.txt
 # 맥 앱 고정 서명 (mac 아래 identity 설명 참고). dmg 를 만들기 전에 돈다
 afterSign: ./scripts/mac-sign.mjs
 # 네이티브 파일은 운영체제별 패키지(@koromix/koffi-win32-x64 등)에 들어 있다.
@@ -86,11 +91,39 @@ mac:
       to: sd/
       filter:
         - sd-cli
+        - LICENSE.txt
+    # 권한 창 안내 글을 맥 언어에 맞춘다 (Info.plist 기본값은 영어, 한국어 맥은 ko.lproj)
+    - from: build/mac/en.lproj/InfoPlist.strings
+      to: en.lproj/InfoPlist.strings
+    - from: build/mac/ko.lproj/InfoPlist.strings
+      to: ko.lproj/InfoPlist.strings
   extendInfo:
     CFBundleDisplayName: 짝꿍
     # 펫 앱이라 Dock 에 안 뜬다 (코드에서 app.dock.hide 도 한다. 이건 켜질 때 잠깐 뜨는 것까지 막는다).
     LSUIElement: true
-    NSScreenCaptureUsageDescription: 같이 보기에서 고른 화면 영역을 AI 에게 보여 줄 때 씁니다.
+    # 기본값은 영어. 한국어 맥은 ko.lproj/InfoPlist.strings 의 글을 보인다 (build/mac)
+    NSScreenCaptureUsageDescription: Used by Look Together to show the screen area you pick to the AI.
+# 리눅스: 압축 파일(tar.gz, 풀어서 실행)과 AppImage. snap 은 만들지 않는다 (스토어 심사, 샌드박스가 화면 캡처와 AI CLI 를 막는다).
+# 리눅스는 자동 업데이트가 없다 (src/shared/update-policy.ts AUTO_INSTALL_PLATFORMS). 새 버전은 펫이 릴리스 페이지를 연다
+linux:
+  target:
+    - target: tar.gz
+      arch: [x64]
+    - target: AppImage
+      arch: [x64]
+  category: Utility
+  executableName: jjakkung
+  synopsis: Desktop pet that works with you
+  description: 화면 위 펫과 같이 일하는 데스크톱 앱 (A desktop pet that keeps your to-dos, notes and calendar)
+  # 설치된 .desktop 이름을 package.json desktopName 과 맞춰 작업 표시줄이 같은 앱으로 묶는다
+  syncDesktopName: true
+  desktop:
+    entry:
+      Name: 짝꿍
+      Name[en]: Jjakkung
+      Comment: 화면 위 펫과 같이 일하는 데스크톱 앱
+      Comment[en]: A desktop pet that works with you
+      StartupWMClass: jjakkung
 win:
   target:
     - target: nsis

@@ -1,0 +1,2 @@
+/* 화면 기록 권한 안내 (영어). electron-builder.yml mac.extraResources */
+"NSScreenCaptureUsageDescription" = "Used by Look Together to show the screen area you pick to the AI.";
