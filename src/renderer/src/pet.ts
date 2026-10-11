@@ -370,8 +370,10 @@ function activityPose(now: number) {
       type: 'walk' as const,
       dir: (activity.dx < 0 ? -1 : 1) as -1 | 1,
       phase: stepsAt(seg, now) % 1,
-      along: (now - activity.start) / activity.ms,
-      ms: activity.ms,
+      // 출발은 처음 걷기부터, 멈춤은 지금 토막 끝(start + ms, 이어 받으면 늘어난다)에서 잰다
+      since: now - activity.start,
+      left: activity.start + activity.ms - now,
+      segMs: seg.ms,
       // 한 걸음 길이 (펫 그림 160 기준). 입체 네 발은 디딘 발이 이만큼 뒤로 밀리게 보폭을 맞춘다
       stride: (strideLen(segSpeed(seg)) * CANVAS_SIZE) / Math.max(1, viewSize),
     };

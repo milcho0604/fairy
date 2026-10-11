@@ -92,7 +92,7 @@ import {
   legCut,
   legGap,
   trotLeg,
-  walkEnvelope,
+  walkEnvelopeOf,
 } from './pet3d-gait.ts';
 import { bounced, type EyeState, restingEye } from './pet3d-motion.ts';
 import { neckRow } from './relief-warp.ts';
@@ -896,7 +896,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     this.ease.frame(s.now);
     // 통통 튀는 세기 (설계도 motion.bounce, pet3d-motion.ts)
     // 네 발 걷기는 걸음 들썩임도 출발과 멈춤에 맞춰 줄인다 (pet3d-gait.ts walkEnvelope)
-    const bob = this.quad && act?.type === 'walk' ? walkEnvelope(act.along, act.ms).stride : 1;
+    const bob = this.quad && act?.type === 'walk' ? walkEnvelopeOf(act).stride : 1;
     const { lift: up, sx, sy } = bounced(s, act, this.motion.bounce, lift0 * bob, sx0, sy0);
     this.pose(s, sx, sy, act);
     const { d, cx, bottom } = this.fit;
@@ -1811,8 +1811,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     // 몸이 향한 쪽: 삐지면 고개를 돌린다 (얼굴이 보이게 옆으로만). 매운맛 토라짐: 흥(2단계)이면 더 홱, 3단계면 등을 돌린다.
     // 걸으면 가는 쪽으로 (네 발은 더 옆으로). 한 틀에 돌지 않고 짧게 돌아선다
     let heading = mood === 'sulky' && !s.peer ? ([0, 0.8, 1.15, Math.PI][sulkStage(s)] ?? 0.8) : 0;
-    if (stepping)
-      heading = stepping.dir * (this.quad ? 1.1 : 0.75) * walkEnvelope(stepping.along, stepping.ms).turn;
+    if (stepping) heading = stepping.dir * (this.quad ? 1.1 : 0.75) * walkEnvelopeOf(stepping).turn;
     this.root.rotation.y = this.ease.to('heading', heading, HEADING_TAU) + this.spin;
     let eye: EyeState = 'open';
     let mouth: MouthState = s.hungry && mood === 'idle' ? 'wavy' : 'smile';
@@ -1873,7 +1872,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       this.walkQuad(this.quad, walk, blend);
     } else if (walk) {
       // 두 발: 다리와 팔 흔들기도 출발과 멈춤에 맞춰 줄인다 (멈춘 몸에서 다리만 헛돌지 않게)
-      const w = Math.sin(walk.phase * Math.PI * 2) * walkEnvelope(walk.along, walk.ms).stride * blend;
+      const w = Math.sin(walk.phase * Math.PI * 2) * walkEnvelopeOf(walk).stride * blend;
       j.legL.rotation.x = w * 0.7;
       j.legR.rotation.x = -w * 0.7;
       j.armL.rotation.x = -w * 0.6 * sway;
@@ -2005,7 +2004,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
   private walkQuad(q: QuadRig, act: Extract<Act, { type: 'walk' }>, blend = 1) {
     const j = this.joints;
     const { sway, tail, ear } = this.motion;
-    const e0 = walkEnvelope(act.along, act.ms);
+    const e0 = walkEnvelopeOf(act);
     const env = { stride: e0.stride * blend, turn: e0.turn * blend, lean: e0.lean * blend };
     const lean = q.lean * env.lean;
     const a = act.phase * Math.PI * 2;

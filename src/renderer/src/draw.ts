@@ -58,11 +58,20 @@ export interface DrawState {
   photoScale?: number;
   /**
    * 기본 상태에서 하는 행동 (P1-06). phase 는 걷기 걸음 진행 0~1.
-   * 걷기의 along 은 걷기 전체 진행 0~1, ms 는 걷기 전체 시간 (네 발 펫의 출발과 멈춤, pet3d-gait.ts).
+   * 걷기의 since 는 걷기를 시작하고 지난 시간, left 는 지금 토막이 끝날 때까지 남은 시간, segMs 는 지금 토막 길이
+   * (ms. 네 발 펫의 출발과 멈춤, pet3d-gait.ts walkEnvelope).
    * t 라고 쓰지 않는다: 제자리 몸짓은 't' in act 로 가린다 (movePoseOf)
    */
   activity?:
-    | { type: 'walk'; dir: -1 | 1; phase: number; along?: number; ms?: number; stride?: number }
+    | {
+        type: 'walk';
+        dir: -1 | 1;
+        phase: number;
+        since?: number;
+        left?: number;
+        segMs?: number;
+        stride?: number;
+      }
     | { type: 'sit'; down?: number }
     | { type: 'look'; dir: -1 | 1 }
     | { type: 'yawn'; t: number }
@@ -293,6 +302,14 @@ const RY = 50;
 
 /** 2D 와 사진 펫이 짧게 따라가는 값 (얼굴 방향, 삐친 사진 뒤집기, 커서 방향) */
 const ease2d = new Eased();
+/**
+ * 한 장만 그릴 때(얼굴 아이콘, 몸 그림, 미리보기) 쓰는 따로 된 것. 늘 목표값 그대로라
+ * 살아 있는 펫이 따라가던 값을 건드리지 않는다
+ */
+const easeStill = new Eased();
+easeStill.frame(undefined);
+/** 이번 drawPet 이 쓰는 것 (살아 있는 틀이면 ease2d) */
+let ease = ease2d;
 /** 마지막으로 이어 그린 입체 펫 (따라가는 중인지 물어본다) */
 let liveModel: Model3D | undefined;
 /** 고개 돌리기, 커서 보기가 따라가는 빠르기 (ms, 1/e 시간) */
@@ -308,9 +325,10 @@ export function motionSettling(): boolean {
 export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | undefined {
   ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
   if (s.now !== undefined) {
+    ease = ease2d;
     ease2d.frame(s.now);
     liveModel = s.model3d;
-  }
+  } else ease = easeStill;
   if (s.mood === 'hidden') return undefined;
   const kind = s.kind ?? 'kong';
   BODY = COLORS[kind].body;
@@ -343,8 +361,8 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
   // 커서 방향은 한 틀에 홱 돌지 않고 따라간다 (걷기를 시작하거나 멈출 때도 고개가 툭 돌아가지 않게)
   if (s.now !== undefined) {
     const raw = gazeOf(s, act);
-    const gx = ease2d.to('gx', raw?.x ?? 0, GAZE_TAU);
-    const gy = ease2d.to('gy', raw?.y ?? 0, GAZE_TAU);
+    const gx = ease.to('gx', raw?.x ?? 0, GAZE_TAU);
+    const gy = ease.to('gy', raw?.y ?? 0, GAZE_TAU);
     s = { ...s, easedGaze: raw || Math.abs(gx) + Math.abs(gy) > 0.004 ? { x: gx, y: gy } : null };
   }
   if (s.peer?.pose) lift += s.peer.pose.hop;
@@ -507,7 +525,7 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
               ? g.x * 8
               : 0;
   // 삐쳐 고개를 돌리거나 걷기 시작할 때 얼굴이 한 틀에 옆으로 건너뛰지 않고 짧게 돌아간다
-  const look = ease2d.to('look', lookTo, LOOK_TAU);
+  const look = ease.to('look', lookTo, LOOK_TAU);
   // 위아래를 보면 얼굴 전체(볼, 눈, 입)가 그쪽으로 조금. 고개를 숙이면(킁킁, 꾸벅) 더 아래로
   const faceDy = (g ? g.y * 2.5 : 0) + (mv ? mv.pitch * 22 : 0) + dip * 14;
   ctx.save();
@@ -979,7 +997,7 @@ function drawPhoto(
   ctx.rotate(tilt);
   // 삐지면 등을 돌린 듯 좌우를 뒤집는다. 한 틀에 뒤집지 않고 돌아서듯 좁아졌다 뒤집혀 넓어진다.
   // 걸을 때는 뒤집지 않는다: 사진이 어느 쪽을 보는지 모른다
-  const flip = ease2d.to('flip', s.mood === 'sulky' ? -1 : 1, LOOK_TAU);
+  const flip = ease.to('flip', s.mood === 'sulky' ? -1 : 1, LOOK_TAU);
   ctx.scale((flip < 0 ? -1 : 1) * Math.max(0.12, Math.abs(flip)) * sx, sy);
   if (s.mood === 'sleeping' || s.mood === 'dozing') ctx.globalAlpha = 0.85;
   ctx.drawImage(photo, -w / 2, -h, w, h);
