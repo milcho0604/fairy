@@ -4,6 +4,8 @@
 // 옷: 봄 꽃, 여름 밀짚모자, 가을 목도리, 겨울 털모자, 설날과 추석 댕기 리본, 크리스마스 산타 모자.
 // 입체는 설계도에 부품(머리 위 top, 목 body 슬롯)을 더하고, 2D 는 draw.ts 가 같은 옷을 그린다. 손은 가리지 않는다.
 // 모두 순수 함수다. 저장과 알림은 main/wear.ts, 그리기는 renderer.
+
+import { lunarHolidays } from './lunar-holidays.ts';
 import type { Blueprint, Part, Slot, Vec3 } from './pet3d/blueprint.ts';
 
 // ---- 성장 ----
@@ -65,24 +67,13 @@ export const OUTFITS = ['flower', 'straw', 'scarf', 'beanie', 'ribbon', 'santa']
 export type Outfit = (typeof OUTFITS)[number];
 export const isOutfit = (v: unknown): v is Outfit => OUTFITS.includes(v as Outfit);
 
-/**
- * 설날, 추석 (음력이라 해마다 다르다). 그날 앞뒤 이틀까지 리본. 표에 없는 해는 철 옷만 입는다.
- * 2025~2030 한국천문연구원 월력요항 기준
- */
-const HOLIDAYS: readonly string[] = [
-  '2025-01-29',
-  '2025-10-06',
-  '2026-02-17',
-  '2026-09-25',
-  '2027-02-07',
-  '2027-09-15',
-  '2028-01-27',
-  '2028-10-03',
-  '2029-02-13',
-  '2029-09-22',
-  '2030-02-03',
-  '2030-09-12',
-];
+/** 설날, 추석 (음력이라 해마다 다르다, lunar-holidays.ts 표 2025~2100). 그날 앞뒤 이틀까지 리본. 표에 없는 해는 철 옷만 입는다 */
+function holidaysNear(year: number): string[] {
+  return [year - 1, year, year + 1].flatMap((y) => {
+    const h = lunarHolidays(y);
+    return h ? [h.seollal, h.chuseok] : [];
+  });
+}
 
 const dayMs = (d: string) =>
   Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10)));
@@ -90,7 +81,8 @@ const dayMs = (d: string) =>
 /** 오늘(YYYY-MM-DD) 입을 옷. 명절이 철보다 먼저다. 철은 북반구 (3~5월 봄, 6~8월 여름, 9~11월 가을, 12~2월 겨울) */
 export function outfitFor(day: string): Outfit {
   const t = dayMs(day);
-  if (HOLIDAYS.some((h) => Math.abs(dayMs(h) - t) <= 2 * 86_400_000)) return 'ribbon';
+  if (holidaysNear(Number(day.slice(0, 4))).some((h) => Math.abs(dayMs(h) - t) <= 2 * 86_400_000))
+    return 'ribbon';
   const month = Number(day.slice(5, 7));
   const date = Number(day.slice(8, 10));
   if (month === 12 && date >= 20 && date <= 26) return 'santa';
