@@ -24,6 +24,7 @@ import {
   type MakerTarget,
   MODEL_SCHEME,
   MODEL_URL,
+  ORT_WASM_URL,
   type PetImages,
 } from '../shared/ipc.ts';
 import { illustEngineOf, LOCAL_DRAW_GB } from '../shared/local-draw.ts';
@@ -51,6 +52,7 @@ import { hfToken } from './hf-token.ts';
 import { langArg } from './lang.ts';
 import { illustrateLocal, localDrawInfo, localDrawSupport, setupLocalDraw } from './local-draw.ts';
 import { LocalDrawError, type LocalDrawErrorKind } from './local-draw-core.ts';
+import { ensureOrtWasm, ORT_WASM, ortWasmReady, verifiedOrtWasmUrl } from './ort-wasm.ts';
 import { library } from './pet-library.ts';
 import { readFileIn, writeFileAtomic } from './safe-file.ts';
 import { settings } from './settings.ts';
@@ -74,6 +76,10 @@ function kindOf(bytes: Buffer): 'png' | 'gif' | 'webp' | undefined {
     return 'webp';
   return undefined;
 }
+
+const toMb = (bytes: number) => Math.round(bytes / 1_000_000);
+/** 아직 받을 사진 AI 엔진 크기 (받았으면 0) */
+const engineBytes = () => (ortWasmReady() ? 0 : ORT_WASM.bytes);
 
 /** 모델 주소(jj-model://)에서 fetch 를 쓸 수 있게 한다. 앱이 준비되기 전에 불러야 한다. */
 export function registerModelScheme() {
@@ -191,15 +197,15 @@ export function createMaker(
             hasPhotoPet: !!settings.get().petImage,
             hasPose: target !== 'main' && target !== 'food' && !!settings.get().petPoses[target],
             foodCost: CUSTOM_FOOD_COST,
-            modelReady: modelReady(),
-            modelMB: Math.round(BG_MODEL.bytes / 1_000_000),
+            modelReady: modelReady() && ortWasmReady(),
+            modelMB: toMb(BG_MODEL.bytes + engineBytes()),
             size: BG_MODEL.size,
             mean: BG_MODEL.mean,
             std: BG_MODEL.std,
             visionAi: false,
             depth: {
-              ready: depthReady(),
-              mb: Math.round(DEPTH_MODEL.bytes / 1_000_000),
+              ready: depthReady() && ortWasmReady(),
+              mb: toMb(DEPTH_MODEL.bytes + engineBytes()),
               size: DEPTH_MODEL.size,
               mean: DEPTH_MODEL.mean,
               std: DEPTH_MODEL.std,
@@ -211,6 +217,26 @@ export function createMaker(
         : undefined,
   );
 
+  const progress = (ratio: number) => {
+    if (win && !win.isDestroyed()) win.webContents.send(MAKER.progress, ratio);
+  };
+
+  /**
+   * 사진 AI 엔진 wasm 을 먼저, 그다음 모델을 받는다 (엔진은 설치 파일에 없다, ort-wasm.ts).
+   * 진행률은 받을 크기만큼 나눠 하나로 잇는다
+   */
+  async function withEngine(
+    modelBytes: number,
+    haveModel: boolean,
+    signal: AbortSignal,
+    ensure: (onProgress: (ratio: number) => void) => Promise<unknown>,
+  ) {
+    const engine = engineBytes();
+    const share = engine / (engine + (haveModel ? 0 : modelBytes)) || 0;
+    await ensureOrtWasm((r) => progress(r * share), signal);
+    await ensure((r) => progress(share + r * (1 - share)));
+  }
+
   ipcMain.handle(MAKER.visionAi, async (e) => fromMaker(e) && target === 'main' && !!(await ai?.hasVision()));
 
   ipcMain.handle(MAKER.ensureDepth, async (e) => {
@@ -218,14 +244,12 @@ export function createMaker(
     const ac = new AbortController();
     download = ac;
     try {
-      await ensureDepthModel((ratio) => {
-        if (win && !win.isDestroyed()) win.webContents.send(MAKER.progress, ratio);
-      }, ac.signal);
+      await withEngine(DEPTH_MODEL.bytes, depthReady(), ac.signal, (p) => ensureDepthModel(p, ac.signal));
       return { ok: true };
     } catch (err) {
       // 원문(net::ERR_..., ENOSPC ...)은 기록에만. 화면에는 할 일을 알려 주는 글
       log('maker', 'depth model', err instanceof Error ? err.message : String(err));
-      const mb = Math.round(DEPTH_MODEL.bytes / 1_000_000);
+      const mb = toMb(DEPTH_MODEL.bytes + engineBytes());
       return { ok: false, error: downloadErrorText(err, { aborted: ac.signal.aborted, mb }) };
     } finally {
       // 그새 다른 받기가 시작했으면 그것은 두고 내 것만 지운다 (지우면 그만두기로 못 멈춘다)
@@ -238,14 +262,12 @@ export function createMaker(
     const ac = new AbortController();
     download = ac;
     try {
-      await ensureModel((ratio) => {
-        if (win && !win.isDestroyed()) win.webContents.send(MAKER.progress, ratio);
-      }, ac.signal);
+      await withEngine(BG_MODEL.bytes, modelReady(), ac.signal, (p) => ensureModel(p, ac.signal));
       return { ok: true };
     } catch (err) {
       // 원문(net::ERR_..., ENOSPC ...)은 기록에만. 화면에는 할 일을 알려 주는 글
       log('maker', 'model', err instanceof Error ? err.message : String(err));
-      const mb = Math.round(BG_MODEL.bytes / 1_000_000);
+      const mb = toMb(BG_MODEL.bytes + engineBytes());
       return { ok: false, error: downloadErrorText(err, { aborted: ac.signal.aborted, mb }) };
     } finally {
       // 그새 다른 받기가 시작했으면 그것은 두고 내 것만 지운다 (지우면 그만두기로 못 멈춘다)
@@ -256,13 +278,23 @@ export function createMaker(
   // 모델 파일을 디스크에서 그대로 흘려 보낸다. 해시를 맞춘 뒤에만, 정해진 주소 하나만.
   // 창은 file:// (개발 중에는 localhost)에서 열려 다른 출처라 CORS 허용 머리를 붙인다.
   protocol.handle(MODEL_SCHEME, async (req) => {
-    const file =
-      req.url === MODEL_URL ? verifiedModelUrl() : req.url === DEPTH_URL ? verifiedDepthUrl() : undefined;
+    const wasm = req.url === ORT_WASM_URL;
+    const file = wasm
+      ? verifiedOrtWasmUrl()
+      : req.url === MODEL_URL
+        ? verifiedModelUrl()
+        : req.url === DEPTH_URL
+          ? verifiedDepthUrl()
+          : undefined;
     if (!file) return new Response(null, { status: 404 });
     const res = await net.fetch(file);
     return new Response(res.body, {
       status: res.status,
-      headers: { 'content-type': 'application/octet-stream', 'access-control-allow-origin': '*' },
+      // wasm 은 application/wasm 이어야 받으면서 바로 컴파일한다(instantiateStreaming)
+      headers: {
+        'content-type': wasm ? 'application/wasm' : 'application/octet-stream',
+        'access-control-allow-origin': '*',
+      },
     });
   });
 

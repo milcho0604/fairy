@@ -1,6 +1,31 @@
 import { resolve } from 'node:path';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'electron-vite';
+import type { Plugin } from 'vite';
+import { ORT_WASM_URL } from './src/shared/ipc.ts';
+import { ORT_WASM } from './src/shared/ort-wasm.ts';
+
+/**
+ * 사진 AI 엔진 wasm(17MB)을 설치 파일에 넣지 않는다. 처음 쓸 때 받는다 (src/main/ort-wasm.ts).
+ * onnxruntime-web 묶음이 옆 파일을 new URL(이름, import.meta.url) 로 찾아서 빌드가 그 파일을 같이 내보냈다.
+ * 그 자리를 우리 주소로 바꾸고, 그래도 어딘가 wasm 이 나오면 빌드를 멈춘다 (판을 올리다 이름이 바뀐 것을 놓치지 않게)
+ */
+function ortWasmOnDemand(): Plugin {
+  const local = `new URL("${ORT_WASM.name}",import.meta.url)`;
+  return {
+    name: 'jj-ort-wasm-on-demand',
+    apply: 'build',
+    transform(code, id) {
+      if (!id.includes('onnxruntime-web') || !code.includes(local)) return null;
+      return { code: code.replaceAll(local, `new URL(${JSON.stringify(ORT_WASM_URL)})`), map: null };
+    },
+    generateBundle(_, bundle) {
+      const wasm = Object.keys(bundle).filter((f) => f.endsWith('.wasm'));
+      if (wasm.length)
+        this.error(`wasm 이 설치 파일에 들어간다: ${wasm.join(', ')} (src/shared/ort-wasm.ts 확인)`);
+    },
+  };
+}
 
 export default defineConfig({
   main: {
@@ -33,7 +58,7 @@ export default defineConfig({
   },
   renderer: {
     // 펫 창은 가볍게 두려고 React 없이 만든다 (L6). 채팅 창과 패널은 React.
-    plugins: [react()],
+    plugins: [react(), ortWasmOnDemand()],
     build: {
       rollupOptions: {
         input: {

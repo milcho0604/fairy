@@ -1,4 +1,4 @@
-// 받은 모델 저장 공간 (6단계). 무료 AI 모델(수백 MB~1GB), 배경 제거(170MB), 깊이(27MB)는 처음 쓸 때 받는다.
+// 받은 모델 저장 공간 (6단계). 무료 AI 모델(수백 MB~1GB), 배경 제거(170MB), 깊이(27MB), 사진 AI 엔진(17MB)은 처음 쓸 때 받는다.
 // 설정에서 크기를 보고 지울 수 있게 한다. 지워도 다음에 그 기능을 쓰면 다시 받는다.
 import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -11,6 +11,7 @@ import { BG_MODEL } from './bg-model.ts';
 import { DEPTH_MODEL } from './depth-model.ts';
 import { forgetVerified, isReceiving } from './download.ts';
 import { localDrawBytes, removeLocalDraw } from './local-draw.ts';
+import { ortWasmPath } from './ort-wasm.ts';
 import { removeSdDraw, sdDrawBytes } from './sdcpp.ts';
 
 const modelsDir = () => join(app.getPath('userData'), 'models');
@@ -35,6 +36,13 @@ function known(catalog: Catalog): { id: string; path: string; label: string; kin
       path: join(modelsDir(), DEPTH_MODEL.file),
       label: t('settings.storage.depth'),
       kind: 'depth' as const,
+    },
+    {
+      // 배경 지우기와 2.5D 가 같이 쓰는 엔진 (17MB). 지우면 다음에 둘 중 하나를 쓸 때 다시 받는다
+      id: 'ort',
+      path: ortWasmPath(),
+      label: t('settings.storage.ort'),
+      kind: 'bg' as const,
     },
   ];
 }

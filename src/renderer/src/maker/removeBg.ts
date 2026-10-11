@@ -1,13 +1,14 @@
 // 배경 제거 (P1-07 에서 고른 IS-Net). 사진은 이 창 안에서만 다루고 밖으로 보내지 않는다.
 
+import './ort-env.ts';
 import * as ort from 'onnxruntime-web/jspi';
 import { t } from '../../../shared/i18n/index.ts';
 import type { MakerInfo } from '../../../shared/ipc.ts';
 import { dropFaint, letterbox, outputToMask } from '../../../shared/mask.ts';
 import { ShownError } from './shown-error.ts';
 
-// 엔진 파일(.wasm) 위치는 지정하지 않는다. 묶음마다 맞는 판이 따로라 다른 판(jsep)을 가리키면 'reading Xe' 오류로
-// 멈췄다 (2026-10-02). 빌드 도구가 묶음 옆에 맞는 파일을 내보내고 묶음이 스스로 찾는다.
+// 엔진 파일(.wasm)은 묶음과 같은 판(jspi)이어야 한다. 다른 판(jsep)을 가리키면 'reading Xe' 오류로 멈췄다 (2026-10-02).
+// 설치 파일에 넣지 않고 처음 쓸 때 같은 판을 받아 해시를 맞춘다 (ort-env.ts, src/shared/ort-wasm.ts).
 // GPU 묶음은 JSPI 판을 쓴다: asyncify 판(27MB)과 같은 WebGPU, wasm 을 Electron 44 의 JSPI 로 돌려 17MB 다 (앱 10MB 줄임).
 // 같은 사진에 같은 결과, CPU 는 조금 더 빨랐다 (2026-10-10 IS-Net 1024 실측)
 

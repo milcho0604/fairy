@@ -1,6 +1,7 @@
 // 2.5D 깊이 (6단계). 사진을 볼 AI 가 없어도 이 창 안에서 깊이 모델(Depth Anything V2 Small)로
 // 픽셀마다 가까운 정도를 재고, 펫 화면이 그 값으로 사진을 입체 판으로 만든다. 사진은 밖으로 나가지 않는다.
 
+import './ort-env.ts';
 import * as ort from 'onnxruntime-web/jspi';
 import { t } from '../../../shared/i18n/index.ts';
 import type { MakerInfo } from '../../../shared/ipc.ts';

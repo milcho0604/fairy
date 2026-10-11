@@ -572,6 +572,8 @@ export const MODEL_SCHEME = 'jj-model';
 export const MODEL_URL = `${MODEL_SCHEME}://bg/model.onnx`;
 /** 깊이 모델 파일 주소 (2.5D) */
 export const DEPTH_URL = `${MODEL_SCHEME}://depth/model.onnx`;
+/** 사진 AI 엔진 wasm 주소 (설치 파일에 없고 처음 쓸 때 받는다, src/shared/ort-wasm.ts) */
+export const ORT_WASM_URL = `${MODEL_SCHEME}://ort/engine.wasm`;
 
 /** 사진 펫의 입체 모습: AI 설계도(model), 또는 2.5D 깊이 그림(depth, 회색 PNG data URL) */
 export interface PetLook {
