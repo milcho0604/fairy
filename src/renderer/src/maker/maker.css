@@ -441,12 +441,22 @@ section {
 }
 
 /* 두 번째 보기 켜고 끄기 */
+/* 이름 칸(.name label, .name input)의 세로 쌓기와 칸 테두리를 받지 않는다: 확인란이 한 줄, 글이 그 아래로 떨어졌다 */
 .wish .refine {
   display: flex;
-  align-items: baseline;
-  gap: 6px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
   color: var(--ink);
   font-size: 13px;
+}
+
+.wish .refine input {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  accent-color: var(--accent);
 }
 
 .refine small {
