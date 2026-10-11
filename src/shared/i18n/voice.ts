@@ -28,7 +28,7 @@ export const ko = {
   'voice.polite.routine.hi.first': '오늘이 만나는 첫날이에요. 앞으로 이 시간마다 기다릴게요.',
   'voice.polite.routine.bye.rest': '푹 쉬세요!',
   'voice.polite.companion.cheer.clear': () => '오늘 할 일을 모두 끝내셨어요. 축하드려요!',
-  'voice.polite.companion.cheer.streak': (v: Cheer) => `오늘 첫 완료예요. ${v.n}일 연속이에요.`,
+  'voice.polite.companion.cheer.streak': (v: Cheer) => `오늘 첫 할 일을 끝내셨어요. ${v.n}일 연속이에요.`,
   'voice.polite.companion.cheer.count': (v: Cheer) => `오늘 벌써 ${v.n}개째예요. 대단하세요!`,
   'voice.polite.pet.fed': '잘 먹겠습니다. 감사해요!',
   'voice.polite.pet.fedWith': (v: { food: string }) => `${v.food}, 잘 먹겠습니다. 감사해요!`,
@@ -68,7 +68,7 @@ export const ko = {
   'voice.calm.pet.rest.1': '오래 앉아 있었어. 물을 마시면 집중도 다시 돌아와.',
   'voice.calm.pet.rest.2': '어깨를 쭉 펴 보자. 굳은 몸이 풀리면 머리도 맑아져.',
   'voice.calm.pet.rest.3': '먼 곳을 잠깐 보자. 가까운 화면만 보면 눈이 지쳐.',
-  // ---- 존댓말 비서: 브리핑, 만나는 시간, 회고, 미리 알림, 펫 생활 ----
+  // ---- 존댓말 비서: 브리핑, 만나는 시간, 회고, 미리 알림, 페어리 생활 ----
   'voice.polite.briefing.oneEvent': '오늘은 {time}에 {title} 일정이 하나 있어요.',
   'voice.polite.briefing.events': '오늘 일정이 {n}개 있어요. 첫 일정은 {time} {title}입니다.',
   'voice.polite.briefing.allDay': '오늘은 종일 {list} 일정이 있어요.',
@@ -189,6 +189,23 @@ export const ko = {
   'voice.polite.remind.say.todoDays': (v: Title & N & { date: string }) =>
     `"${v.title}" 마감까지 ${days(v.n)} 남았어요 (${v.date})`,
 
+  // 집, 먹고 싶은 것, 삐친 말, 말 줄이기처럼 페어리가 말풍선으로 하는 말도 존댓말로 (2026-10-11)
+  'voice.polite.pet.newHouse': '새 집이네요! 감사해요. 집은 끌어서 옮기실 수 있어요.',
+  'voice.polite.pet.houseMoved': '자리가 좋네요! 여기서 낮잠 자야겠어요.',
+  'voice.polite.pet.houseStyle': '집이 새 옷을 입었네요! 마음에 쏙 들어요.',
+  'voice.polite.pet.foodMade': (v: { food: string }) => `${v.food}, 꼭 먹어 보고 싶어요!`,
+  'voice.polite.pet.calendarBroken': '캘린더를 못 읽고 있어요. 주소가 바뀌었는지 한번 봐 주시겠어요?',
+  'voice.polite.pet.tooChatty': '제가 좀 시끄러웠죠? 말을 줄일까요?',
+  'voice.polite.pet.busyCpu': '컴퓨터가 바빠 보여서 잠깐 가만히 있을게요.',
+  'voice.polite.pet.hideHint': (v: { keys: string }) => `잠깐 숨을게요. ${v.keys} 누르시면 다시 나올게요.`,
+  'voice.polite.pet.sulk.1': '...오셨어요?',
+  'voice.polite.pet.sulk.2': '어제도 안 오셨더라고요. 흥',
+  'voice.polite.pet.sulk.3': '저 혼자 밥 먹었어요',
+  'voice.polite.pet.sulk.4': '할 일 목록에 먼지가 쌓이고 있어요',
+  'voice.polite.pet.sulk.5': '5일이에요. 제가 세고 있었어요',
+  'voice.polite.pet.sulk.6': '옛날 사진 정리하는 중이에요. 같이 찍은 거요',
+  'voice.polite.pet.sulk.7': '이제 안 기다릴 거예요... 아마도',
+
   // ---- 츤데레: 감정이 실린 말 ----
   'voice.tsundere.briefing.nothing': '오늘은 일정도 마감도 없네. 할 거 있으면 적어 둬.',
   'voice.tsundere.briefing.next': "'{title}'부터 해. 내 말 들어.",
@@ -306,7 +323,7 @@ export const en: Translation<typeof ko> = {
   'voice.polite.briefing.hi.day': 'Hello!',
   'voice.polite.briefing.hi.evening': 'Welcome back.',
   'voice.polite.routine.hi.first':
-    "Today is our first meeting day. I'll be waiting at this time from now on.",
+    "This is our very first day. I'll be waiting for you at this time from now on.",
   'voice.polite.routine.bye.rest': 'Please rest well!',
   'voice.polite.companion.cheer.clear': () => "You've finished everything for today. Congratulations!",
   'voice.polite.companion.cheer.streak': (v: Cheer) => `Your first one today. That's ${v.n} days in a row.`,
@@ -386,7 +403,7 @@ export const en: Translation<typeof ko> = {
   'voice.polite.routine.coins': (v: N) => `Here are ${v.n} coins for coming by.`,
   'voice.polite.routine.coinsBonus': (v: { days: number; n: number }) =>
     `${v.days} days in a row, so here are ${v.n} coins.`,
-  'voice.polite.routine.cue': "It's time to begin. Let's do our best today.",
+  'voice.polite.routine.cue': "It's time to begin. Let's make it a good day.",
   'voice.polite.routine.bye.head': (v: I) =>
     one(['Thank you for your hard work today.', 'You worked hard today.', "That's all for today."], v.i),
   'voice.polite.routine.bye.doneOne': 'Well done finishing "{title}".',
@@ -469,6 +486,23 @@ export const en: Translation<typeof ko> = {
     `"${v.title}" is due tomorrow at ${v.time}. Would you like a head start?`,
   'voice.polite.remind.say.todoDays': (v: Title & N & { date: string }) =>
     `${daysEn(v.n)} left for "${v.title}". (${v.date})`,
+  'voice.polite.pet.newHouse': 'A new house! Thank you. You can drag it wherever you like.',
+  'voice.polite.pet.houseMoved': 'What a nice spot. Perfect for a nap.',
+  'voice.polite.pet.houseStyle': 'My house got a makeover. I love it, thank you.',
+  'voice.polite.pet.foodMade': (v: { food: string }) => `I would love to try ${v.food}!`,
+  'voice.polite.pet.calendarBroken':
+    "I can't read your calendar. Would you check whether the address has changed?",
+  'voice.polite.pet.tooChatty': 'Was I talking too much? Shall I talk less?',
+  'voice.polite.pet.busyCpu': "Your computer looks busy, so I'll keep still for a moment.",
+  'voice.polite.pet.hideHint': (v: { keys: string }) =>
+    `I'll hide for a moment. Press ${v.keys} and I'll come right back.`,
+  'voice.polite.pet.sulk.1': '...Oh, you came?',
+  'voice.polite.pet.sulk.2': "You didn't come yesterday either. Hmph",
+  'voice.polite.pet.sulk.3': 'I had my meal alone',
+  'voice.polite.pet.sulk.4': 'Dust is gathering on the to-do list',
+  'voice.polite.pet.sulk.5': "It's been 5 days. I was counting",
+  'voice.polite.pet.sulk.6': "I'm sorting old photos. The ones of us",
+  'voice.polite.pet.sulk.7': "I won't wait anymore... probably",
 
   'voice.tsundere.briefing.nothing': "No events, no deadlines. Write something down if you've got plans.",
   'voice.tsundere.briefing.next': "Start with '{title}'. Just listen to me.",

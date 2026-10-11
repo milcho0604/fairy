@@ -50,6 +50,7 @@ import {
 import { burrowFrame } from '../shared/minigames.ts';
 import { isMove, type MoveHistory, moveAskOf, rememberMove } from '../shared/moves.ts';
 import { hopAt, perchHolds, pickPerch } from '../shared/perch.ts';
+import { voiced } from '../shared/persona-voice.ts';
 import { isPetKey, KEY_NUDGE, KEY_WALK, type PetKey } from '../shared/pet-keys.ts';
 import { type DisplayInfo, parseSavedScale, restorePetBounds } from '../shared/placement.ts';
 import { type HideReason, HideReasons } from '../shared/presence.ts';
@@ -1106,7 +1107,7 @@ export function createPetWindow({
       return;
     settings.set({ hideHints: shown + 1 });
     const keys = acceleratorLabel(hideShortcut(), process.platform === 'darwin').join('+');
-    new Notification({ title: petName(), body: t('pet.hideHint', { keys }), silent: true }).show();
+    new Notification({ title: petName(), body: voiced('pet.hideHint', { keys }), silent: true }).show();
   }
 
   function setHidden(reason: HideReason, on: boolean, hint = true) {
@@ -1541,7 +1542,7 @@ export function createPetWindow({
   async function askQuieter() {
     const answer = await say({
       kind: 'answer',
-      text: t('pet.tooChatty'),
+      text: voiced('pet.tooChatty'),
       buttons: [
         { id: 'yes', label: t('pet.tooChattyYes') },
         { id: 'no', label: t('pet.tooChattyNo') },
@@ -1677,7 +1678,7 @@ export function createPetWindow({
     if (win.isDestroyed()) return;
     win.webContents.send(IPC.env, env);
     // 바빠지는 순간에 한 번만 말한다.
-    if (env.systemBusy && !wasBusy) void say({ kind: 'system', text: t('pet.busyCpu') });
+    if (env.systemBusy && !wasBusy) void say({ kind: 'system', text: voiced('pet.busyCpu') });
     wasBusy = env.systemBusy;
   }, log);
   win.webContents.on('did-finish-load', () => applyLayout());

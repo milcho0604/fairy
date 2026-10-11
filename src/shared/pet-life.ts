@@ -2,7 +2,7 @@
 // 잃는 것은 없다: 코인, 친밀도는 줄지 않고 삐짐은 모습과 대사뿐이다.
 import { plusDays, weekdayOf as weekday } from './day.ts';
 import type { Db } from './db-schema.ts';
-import { t } from './i18n/index.ts';
+import { voiced } from './persona-voice.ts';
 import { FULLNESS, localDay } from './todo-store.ts';
 
 /** 순한맛은 4칸에서 멈추고, 매운맛은 7칸까지 */
@@ -40,28 +40,28 @@ export function nextUnlock(affection: number): { step: number; unlock: Unlock } 
   return UNLOCKS.find((u) => affection < u.step);
 }
 
-// 대사는 지금 말로 읽는다 (getter)
+// 대사는 지금 말과 고른 성격 말투로 읽는다 (getter)
 export const SULK_LINES: Readonly<Record<number, string>> = {
   get 1() {
-    return t('pet.sulk.1');
+    return voiced('pet.sulk.1');
   },
   get 2() {
-    return t('pet.sulk.2');
+    return voiced('pet.sulk.2');
   },
   get 3() {
-    return t('pet.sulk.3');
+    return voiced('pet.sulk.3');
   },
   get 4() {
-    return t('pet.sulk.4');
+    return voiced('pet.sulk.4');
   },
   get 5() {
-    return t('pet.sulk.5');
+    return voiced('pet.sulk.5');
   },
   get 6() {
-    return t('pet.sulk.6');
+    return voiced('pet.sulk.6');
   },
   get 7() {
-    return t('pet.sulk.7');
+    return voiced('pet.sulk.7');
   },
 };
 
