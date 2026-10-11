@@ -12,7 +12,7 @@ import {
 } from '../shared/companion.ts';
 import { letterCovers } from '../shared/daily-note.ts';
 import { plusDays } from '../shared/day.ts';
-import { dicts, type I18nKey, t } from '../shared/i18n/index.ts';
+import { dicts, type I18nKey } from '../shared/i18n/index.ts';
 import type { IdleFacts, IdleKey } from '../shared/idle-talk.ts';
 import type { ReactKind } from '../shared/ipc.ts';
 import { voiced } from '../shared/persona-voice.ts';

@@ -118,7 +118,7 @@ export const ko = {
   'voice.polite.idle.memory.yesterday.1': (v: M) =>
     `어제 ${v.yesterday ?? 0}개 끝내신 거 ${withParticle(v.name, '이')} 기억해요. 오늘도 해 봐요!`,
   'voice.polite.idle.memory.yesterday.2': (v: M) =>
-    `어제도 잘하셨잖아요. ${v.yesterday ?? 0}개나요! 오늘은 쉬운 것부터 해요.`,
+    `어제도 ${v.yesterday ?? 0}개나 끝내셨어요. 오늘은 쉬운 것부터 해요.`,
   'voice.polite.idle.streak.1': (v: M) =>
     `${v.streak ?? 0}일째 하나씩 끝내고 계세요. ${withParticle(v.name, '이')} 세고 있었어요!`,
   'voice.polite.idle.streak.2': (v: M) => `연속 ${v.streak ?? 0}일이에요! 오늘도 하나만 끝내시면 이어져요.`,

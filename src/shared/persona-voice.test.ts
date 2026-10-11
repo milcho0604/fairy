@@ -3,10 +3,18 @@ import { test } from 'node:test';
 import type { PersonaId } from './ai/persona.ts';
 import { briefingBody, briefingText, deadlineText, reviewText } from './briefing.ts';
 import { dicts, type I18nKey, setLang, t } from './i18n/index.ts';
-import { setVoiceSource, VOICE_PERSONAS, VOICED, voiced } from './persona-voice.ts';
+import {
+  setSpeechSource,
+  setVoiceRandom,
+  setVoiceSource,
+  VOICE_PERSONAS,
+  VOICED,
+  voiced,
+} from './persona-voice.ts';
 import { remindLine } from './remind-text.ts';
 import { restLines } from './rest.ts';
 import { farewellText, greetText, restText } from './routine-text.ts';
+import { DEFAULT_STYLE, type SpeechStyle } from './speech-style.ts';
 
 test('성격마다 바꾸는 말은 세 성격 모두 사전(한국어, 영어)에 있다', () => {
   for (const key of VOICED)
@@ -62,7 +70,7 @@ function sampleBubbles(persona: PersonaId): string[] {
       out.push(briefingText({ events: [], dueToday: 0, overdue: 0, nowMinute }));
       out.push(
         briefingText({
-          events: [...events, { minute: 0, title: '휴가', allDay: true }, events[0]!],
+          events: [...events, { minute: 0, title: '휴가', allDay: true }, { minute: 900, title: '점심' }],
           dueToday: 0,
           overdue: 0,
           nowMinute,
@@ -189,30 +197,75 @@ function endings(text: string): string[] {
     .filter(Boolean);
 }
 const POLITE_END = /(요|니다|니까)$/;
-const BANMAL_END = /(야|해|어|아|지|자|네|게|래|다|까|줘|봐|돼|워|려|져|군|걸|냐|니)$/;
+const BANMAL_END = /(야|해|어|아|지|자|네|게|래|다|까|줘|봐|돼|워|려|져|겨|혀|쳐|켜|펴|여|군|걸|냐|니)$/;
 
-test('성격마다 한 말풍선의 말투가 같다: 존댓말 비서는 존댓말만, 다른 성격은 반말만 (한국어)', () => {
+type Register = 'banmal' | 'haeyo' | 'hapsyo' | 'hao';
+const HAPSYO_END = /(니다|니까|시오|시다|까요)$/;
+const HAO_END = /(소|오|구려|리까|시오|니다)$/;
+
+/** 문장 끝 하나가 그 말 높이에 맞지 않으면 true. ending 이 있으면 반말 끝 뒤에 그 말끝이 붙어야 한다 */
+function offRegister(end: string, reg: Register, ending = ''): boolean {
+  const polite = POLITE_END.test(end);
+  const banmal = BANMAL_END.test(end);
+  if (ending && end.endsWith(ending))
+    return reg === 'banmal' ? POLITE_END.test(end.slice(0, -ending.length)) : false;
+  if (ending && (banmal || polite)) return true; // 말끝이 빠졌다
+  if (reg === 'banmal') return polite;
+  if (reg === 'haeyo') return !polite && banmal;
+  if (reg === 'hapsyo') return !HAPSYO_END.test(end) && (polite || banmal);
+  return !HAO_END.test(end) && (polite || banmal);
+}
+
+const CASES: { persona: PersonaId; reg: Register; ending?: string; custom?: SpeechStyle }[] = [
+  { persona: 'friend', reg: 'banmal' },
+  { persona: 'polite', reg: 'haeyo' },
+  { persona: 'tsundere', reg: 'banmal' },
+  { persona: 'calm', reg: 'banmal' },
+  { persona: 'cheer', reg: 'banmal' },
+  { persona: 'cat', reg: 'banmal', ending: '냥' },
+  { persona: 'puppy', reg: 'banmal', ending: '멍' },
+  { persona: 'sageuk', reg: 'hao' },
+  { persona: 'announcer', reg: 'hapsyo' },
+  {
+    persona: 'custom',
+    reg: 'banmal',
+    ending: '뿌',
+    custom: { ...DEFAULT_STYLE, ending: '뿌', call: 'butler' },
+  },
+  {
+    persona: 'custom',
+    reg: 'haeyo',
+    custom: { ...DEFAULT_STYLE, level: 'haeyo', call: 'master', emoji: 'many' },
+  },
+  {
+    persona: 'custom',
+    reg: 'hapsyo',
+    ending: '용',
+    custom: { ...DEFAULT_STYLE, level: 'hapsyo', ending: '용' },
+  },
+];
+
+test('성격마다 한 말풍선의 말투가 같다: 프리셋과 내 말투까지 모든 정해진 말의 문장 끝 (한국어)', () => {
   setLang('ko');
-  for (const persona of ['friend', ...VOICE_PERSONAS] as const) {
+  for (const c of CASES) {
+    setSpeechSource({ style: () => c.custom ?? DEFAULT_STYLE, petName: () => '콩이' });
     const bad: string[] = [];
-    for (const text of sampleBubbles(persona))
-      for (const end of endings(text)) {
-        const polite = POLITE_END.test(end);
-        if (persona === 'polite' ? !polite && BANMAL_END.test(end) : polite) bad.push(`${end}  ⟵ ${text}`);
-      }
-    assert.deepEqual([...new Set(bad)], [], persona);
+    for (const text of sampleBubbles(c.persona))
+      for (const end of endings(text)) if (offRegister(end, c.reg, c.ending)) bad.push(`${end}  ⟵ ${text}`);
+    assert.deepEqual([...new Set(bad)].slice(0, 30), [], `${c.persona} ${c.reg} ${c.ending ?? ''}`);
   }
+  setSpeechSource({ style: () => DEFAULT_STYLE, petName: () => '' });
 });
 
 test('성격 말은 원래 말과 인자 모양이 같고 영어 사전에도 있다', () => {
   for (const key of Object.keys(dicts.ko)) {
-    const m = /^voice\.(polite|tsundere|calm)\.(.+)$/.exec(key);
-    if (!m) continue;
-    assert.ok(m[2]! in dicts.ko, `원래 키가 없다: ${key}`);
+    const orig = /^voice\.(polite|tsundere|calm)\.(.+)$/.exec(key)?.[2];
+    if (!orig) continue;
+    assert.ok(orig in dicts.ko, `원래 키가 없다: ${key}`);
     assert.ok(key in dicts.en, key);
     assert.equal(
       typeof (dicts.ko as Record<string, unknown>)[key],
-      typeof (dicts.ko as Record<string, unknown>)[m[2]!],
+      typeof (dicts.ko as Record<string, unknown>)[orig],
       key,
     );
   }
@@ -230,5 +283,33 @@ test('영어도 존댓말 비서는 인사 뒤 브리핑과 헤어짐이 같은 
   } finally {
     setVoiceSource(() => 'friend');
     setLang('ko');
+  }
+});
+
+test('내 말투의 직접 쓴 말: 그때의 말을 바꾸고 자리 표시를 채운다 (여러 줄이면 하나를 고른다)', () => {
+  setLang('ko');
+  const style: SpeechStyle = {
+    ...DEFAULT_STYLE,
+    call: 'butler',
+    lines: {
+      morning: ['{me}, 일어나!', '{name} 왔다! {todo}부터?'],
+      praise: ['최고야 {me}'],
+      rest: [],
+      night: [],
+    },
+  };
+  setSpeechSource({ style: () => style, petName: () => '콩이', todo: () => '보고서' });
+  setVoiceRandom(() => 0.99);
+  try {
+    assert.equal(voiced('briefing.hi.morning', undefined, 'custom'), '콩이 왔다! 보고서부터?');
+    assert.equal(voiced('routine.hi.late', { i: 0 }, 'custom'), '콩이 왔다! 보고서부터?');
+    assert.equal(voiced('companion.cheer.count', { name: '콩이', n: 3 }, 'custom'), '최고야 집사');
+    // 직접 쓴 말이 없는 때(쉬자는 말)는 말투 규칙으로 바꾼 원래 말
+    assert.equal(voiced('pet.rest.1', undefined, 'custom'), voiced('pet.rest.1', undefined, 'friend'));
+    // 다른 성격은 직접 쓴 말을 쓰지 않는다
+    assert.equal(voiced('briefing.hi.morning', undefined, 'friend'), '좋은 아침!');
+  } finally {
+    setVoiceRandom(Math.random);
+    setSpeechSource({ style: () => DEFAULT_STYLE, petName: () => '' });
   }
 });

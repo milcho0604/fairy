@@ -31,6 +31,7 @@ import * as remind from './remind.ts';
 import * as routine from './routine.ts';
 import * as settings from './settings.ts';
 import * as shop from './shop.ts';
+import * as speech from './speech.ts';
 import * as tabs from './tabs.ts';
 import * as together from './together.ts';
 import * as tray from './tray.ts';
@@ -75,6 +76,7 @@ export const ko = {
   ...together.ko,
   ...voice.ko,
   ...voiceIdle.ko,
+  ...speech.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -114,4 +116,5 @@ export const en: Translation<typeof ko> = {
   ...together.en,
   ...voice.en,
   ...voiceIdle.en,
+  ...speech.en,
 };

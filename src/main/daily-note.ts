@@ -21,6 +21,7 @@ import {
 import { t } from '../shared/i18n/index.ts';
 import type { ReactKind } from '../shared/ipc.ts';
 import { NOTES, type NoteBox, type NoteView } from '../shared/note-ipc.ts';
+import { basePersonaOf, styled } from '../shared/persona-voice.ts';
 import { localDay } from '../shared/todo-store.ts';
 import type { NoteLook } from '../shared/together.ts';
 import type { SayOptions } from './pet-window.ts';
@@ -84,7 +85,8 @@ export function createDailyNotes(o: DailyNoteOptions) {
       title: n.milestone
         ? t('note.letterTitle', { n: n.milestone })
         : t('note.title', { m: m ?? 1, d: d ?? 1 }),
-      lines: n.lines.map((l) => looseT(l.key, l.vars)),
+      // 프리셋 말투, 내 말투면 지금 말투 규칙을 입힌다
+      lines: n.lines.map((l) => styled(looseT(l.key, l.vars))),
       read: n.read,
       ...(n.coins ? { coins: n.coins } : {}),
     };
@@ -173,10 +175,10 @@ export function createDailyNotes(o: DailyNoteOptions) {
       push();
       // 조용히면 말없이 들고만 있다. 아니면 한마디 (상태 알림이라 수다 빈도를 따른다)
       if (settings.get().chatter === 'quiet') return;
-      const vars = { p: o.persona(), name: o.petName() };
+      const vars = { p: basePersonaOf(o.persona()), name: o.petName() };
       const a = await o.say({
         kind: 'system',
-        text: t(note.look === 'letter' ? 'note.bringLetter' : 'note.bring', vars),
+        text: styled(t(note.look === 'letter' ? 'note.bringLetter' : 'note.bring', vars)),
         buttons: [
           { id: 'open', label: t('note.openNow') },
           { id: 'later', label: t('note.later') },

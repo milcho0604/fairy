@@ -5,7 +5,7 @@ import { ACHIEVEMENTS } from '../shared/achieve.ts';
 import { planTodos } from '../shared/ai/answer-todos.ts';
 import { pickLocal } from '../shared/ai/catalog.ts';
 import { contextEvents, todayRange } from '../shared/ai/context-events.ts';
-import { persona, setMemorySource, todoContext } from '../shared/ai/persona.ts';
+import { persona, setMemorySource, setStyleSource, todoContext } from '../shared/ai/persona.ts';
 import { HIDE_SEEK, pickHideSpot } from '../shared/hide-seek.ts';
 import { locale, t } from '../shared/i18n/index.ts';
 import { IPC, type PetStatus, type PlayKind } from '../shared/ipc.ts';
@@ -13,7 +13,7 @@ import { type FactKind, factsForAi } from '../shared/knows.ts';
 import { runnerKindOf } from '../shared/menu-runner.ts';
 import { isMiniGame, PLAY_COIN } from '../shared/minigames.ts';
 import { noteTitle } from '../shared/note-store.ts';
-import { setVoiceSource, voiced } from '../shared/persona-voice.ts';
+import { setSpeechSource, setVoiceSource, voiced } from '../shared/persona-voice.ts';
 import { unlocked, WAVE_AWAY_SEC } from '../shared/pet-life.ts';
 import { restDaysOf } from '../shared/routine.ts';
 import { pickedGait } from '../shared/settings.ts';
@@ -379,6 +379,13 @@ ready
       onWrite,
       trouble,
     } = openStore(log);
+    // 내 말투와 직접 쓴 말의 {name}, {todo} (shared/persona-voice.ts). 채팅 AI 성격 지시도 내 말투를 읽는다
+    setSpeechSource({
+      style: () => settings.get().speech,
+      petName,
+      todo: () => store.list(Date.now()).open[0]?.title,
+    });
+    setStyleSource(() => (settings.get().persona === 'custom' ? settings.get().speech : undefined));
     // "오늘 뭐부터 할까?" (채팅 규칙 답, 펫 우클릭 메뉴): 지난 마감 → 오늘 마감 → 중요 → 곧 마감 → 습관, 빈 시간에 집중 칸
     const whatFirst = createWhatFirst({
       todos: store,

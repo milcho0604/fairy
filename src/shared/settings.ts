@@ -21,6 +21,7 @@ import {
   type ShortcutId,
   shortcutClash,
 } from './shortcut.ts';
+import { DEFAULT_STYLE, parseStyle, type SpeechStyle } from './speech-style.ts';
 
 /** 입체 펫 모습: 피규어, 게임 캐릭터, 실사처럼 */
 // fluffy 복슬복슬: 부품을 녹여 붙인 한 덩어리 몸에 긴 털 (시험판, 2026-10-09)
@@ -40,8 +41,10 @@ export interface Settings {
   wander: boolean;
   /** AI 를 사용자 설정(훅, MCP, 스킬) 없이 부르기. 끄면 "내 AI 설정 그대로" */
   aiIsolation: boolean;
-  /** 펫 성격과 말투 (v1) */
+  /** 펫 성격과 말투 (v1). 프리셋 말투와 내 말투(custom)도 (2026-10-11) */
   persona: PersonaId;
+  /** 내 말투 (persona 가 custom 일 때 쓴다. shared/speech-style.ts). 옛 설정은 기본값 */
+  speech: SpeechStyle;
   /** 질문할 때 오늘 할 일과 일정 제목을 같이 보낸다 (v1, 기본 끔: 밖으로 나가는 정보라 사용자가 켠다) */
   aiKnowsTodos: boolean;
   /**
@@ -319,6 +322,7 @@ export const DEFAULT_SETTINGS: Settings = {
   wander: true,
   aiIsolation: true,
   persona: 'friend',
+  speech: DEFAULT_STYLE,
   aiKnowsTodos: false,
   aiPetTools: false,
   launchAtLogin: false,
@@ -455,6 +459,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     wander: bool(r.wander, base.wander),
     aiIsolation: bool(r.aiIsolation, base.aiIsolation),
     persona: isPersona(r.persona) ? r.persona : base.persona,
+    speech: r.speech === undefined ? base.speech : parseStyle(r.speech),
     aiKnowsTodos: bool(r.aiKnowsTodos, base.aiKnowsTodos),
     aiPetTools: bool(r.aiPetTools, base.aiPetTools),
     launchAtLogin: bool(r.launchAtLogin, base.launchAtLogin),

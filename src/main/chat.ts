@@ -43,6 +43,7 @@ import {
   type PetAiState,
   type ProviderView,
 } from '../shared/ipc.ts';
+import { isBanmal } from '../shared/persona-voice.ts';
 import { isWhatFirstQuestion } from '../shared/what-first.ts';
 import { prepareCodexHome } from './ai/codex-home.ts';
 import { downloadLocalModel, localModelReady, mb, runLocal } from './ai/local.ts';
@@ -400,7 +401,7 @@ export function createChat(o: ChatOptions) {
         spec.adapter === 'local'
           ? runLocal(req, pickLocal(o.catalog(), o.aiModels().local), onEvent, log, {
               // 한국어이고 존댓말 성격이 아니면 반말 예시와 어미 고치기
-              banmal: getLang() === 'ko' && o.personaId() !== 'polite',
+              banmal: getLang() === 'ko' && isBanmal(o.personaId()),
               petName: petName(),
               rules: o.rules(),
             })
@@ -763,7 +764,7 @@ export function createChat(o: ChatOptions) {
         const run =
           spec.adapter === 'local'
             ? runLocal(req, pickLocal(o.catalog(), o.aiModels().local), onEvent, log, {
-                banmal: getLang() === 'ko' && o.personaId() !== 'polite',
+                banmal: getLang() === 'ko' && isBanmal(o.personaId()),
                 petName: petName(),
                 rules: '',
               })

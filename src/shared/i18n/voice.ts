@@ -71,7 +71,7 @@ export const ko = {
   // ---- 존댓말 비서: 브리핑, 만나는 시간, 회고, 미리 알림, 펫 생활 ----
   'voice.polite.briefing.oneEvent': '오늘 일정은 {time} {title} 하나예요.',
   'voice.polite.briefing.events': '오늘 일정이 {n}개 있어요. 첫 일정은 {time} {title}입니다.',
-  'voice.polite.briefing.allDay': '오늘은 종일 일정이 있어요: {list}.',
+  'voice.polite.briefing.allDay': '오늘은 종일 {list} 일정이 있어요.',
   'voice.polite.briefing.todos': '할 일은 {list} 있어요.',
   'voice.polite.briefing.nothing': '오늘은 일정도 마감도 없어요. 하고 싶은 일을 적어 보세요.',
   'voice.polite.briefing.next': "먼저 '{title}'부터 해 보시는 건 어떠세요?",
@@ -113,9 +113,9 @@ export const ko = {
     one(['오늘 수고하셨어요!', '오늘도 고생 많으셨어요!', '오늘 하루도 끝났어요!'], v.i),
   'voice.polite.routine.bye.doneOne': '"{title}" 끝내느라 수고하셨어요!',
   'voice.polite.routine.bye.tomorrowFirst': '내일은 {time} {title}부터예요.',
-  'voice.polite.routine.bye.tomorrowAllDay': '내일은 종일 일정이 있어요: {list}.',
+  'voice.polite.routine.bye.tomorrowAllDay': '내일은 종일 {list} 일정이 있어요.',
   'voice.polite.routine.bye.tomorrowAllDayMore': (v: { title: string; n: number }) =>
-    `내일은 종일 일정이 있어요: ${v.title} 외 ${v.n}개.`,
+    `내일은 종일 ${v.title} 외 ${v.n}개 일정이 있어요.`,
   'voice.polite.routine.bye.tomorrowMeet': '내일 {time}에 또 만나요!',
   'voice.polite.routine.bye.nextMeet': '푹 쉬시고 {weekday}에 만나요!',
   'voice.polite.routine.rest': (v: I) =>
@@ -131,7 +131,7 @@ export const ko = {
   'voice.polite.companion.anniv.day': (v: Anniv) =>
     `오늘이 우리 만난 지 ${v.n}일째 되는 날이에요! 앞으로도 잘 부탁드려요.`,
   'voice.polite.companion.anniv.late': (v: Anniv) =>
-    `우리 만난 지 ${v.n}일이 살짝 지났어요! 늦었지만 축하드려요, 감사해요.`,
+    `우리 만난 지 ${v.n}일이 살짝 지났어요! 늦었지만 축하드려요. 감사해요.`,
   'voice.polite.companion.anniv.year': (v: Anniv) =>
     `우리 만난 지 벌써 ${v.n}년이에요! 함께한 날이 모두 좋았어요.`,
   'voice.polite.assist.overdue.moved': (v: N) => `지난 마감 ${v.n}개를 오늘로 옮겼어요`,
@@ -161,7 +161,7 @@ export const ko = {
   'voice.polite.pet.seek.found': '찾으셨네요! 재밌었어요.',
   'voice.polite.pet.seek.lost': '못 찾으셨죠! 다음엔 찾아보세요.',
   'voice.polite.pet.home.goIn': '집에서 좀 쉴게요. 집을 누르시면 나올게요!',
-  'voice.polite.pet.home.backShort': '벌써요? 좀 더 자고 싶었는데요.',
+  'voice.polite.pet.home.backShort': '벌써 부르셨어요? 좀 더 자고 싶었는데요.',
   'voice.polite.pet.home.backOk': '잘 쉬었어요! 다시 같이 해요.',
   'voice.polite.pet.home.backLong': '푹 잤어요! 개운해요.',
   'voice.polite.remind.say.eventNow': (v: At) => `지금 ${v.title} 시작이에요! (${v.time})`,

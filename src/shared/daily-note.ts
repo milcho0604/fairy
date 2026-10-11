@@ -5,6 +5,7 @@
 import type { PersonaId } from './ai/persona.ts';
 import { dataLine, isPersona } from './ai/persona.ts';
 import { isBirthday, type PetFact } from './knows.ts';
+import { basePersonaOf } from './persona-voice.ts';
 import type { NoteLook } from './together.ts';
 
 /** 특별한 편지를 주는 날 (처음 만난 날이 1일째). 365일 뒤로는 해마다 (730, 1095, ...) */
@@ -187,7 +188,8 @@ const clip = (s: string) => {
  * 기록은 생일 > 오늘 첫 일정 > 어제 끝낸 수 순으로 하나, 남은 것(습관, 알려 준 것, 어제, 철) 가운데 하나를 rand 로 고른다
  */
 export function composeNote(f: NoteFacts, rand: () => number = Math.random): DailyNote {
-  const p = isPersona(f.persona) ? f.persona : 'friend';
+  // 쪽지 줄은 말을 따로 쓴 네 성격으로 쓰고, 프리셋과 내 말투는 펼칠 때 말투 규칙을 입힌다 (persona-voice.ts styled)
+  const p = basePersonaOf(isPersona(f.persona) ? f.persona : 'friend');
   const pick = (n: number) => 1 + Math.min(n - 1, Math.floor(rand() * n));
   if (f.milestone) {
     const coins = milestoneCoins(f.milestone);

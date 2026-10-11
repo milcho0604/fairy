@@ -13,6 +13,7 @@ import { type BrowserWindow, powerMonitor, screen } from 'electron';
 import type { PersonaId } from '../shared/ai/persona.ts';
 import { t } from '../shared/i18n/index.ts';
 import { IPC } from '../shared/ipc.ts';
+import { basePersonaOf, styled } from '../shared/persona-voice.ts';
 import {
   MCP_BEAT_FILE,
   NO_TOGETHER,
@@ -138,7 +139,11 @@ export function createTogether(o: TogetherOptions) {
     // 같이 하자는 말은 켤 때마다 한 번 (수다 빈도를 따른다: 상태 알림이라 조용히면 말없이 표정만)
     if (!greeted && o.canTalk()) {
       greeted = true;
-      void o.say({ kind: 'system', text: t('together.work', { p: o.persona() }), ttlMs: 4000 });
+      void o.say({
+        kind: 'system',
+        text: styled(t('together.work', { p: basePersonaOf(o.persona()) }), o.persona()),
+        ttlMs: 4000,
+      });
     }
   }
   const beatTimer = setInterval(() => {
