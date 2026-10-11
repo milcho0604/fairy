@@ -19,6 +19,7 @@ import { isSettingsTab, type SettingsTab } from '../shared/settings-tabs.ts';
 import { parsePetChoice } from '../shared/starter-pets.ts';
 import { RELEASE_REPO } from '../shared/update-policy.ts';
 import { localModelReady } from './ai/local.ts';
+import { aiHistoryBytes, clearAiHistory } from './ai-history.ts';
 import { devRendererUrl } from './dev-url.ts';
 import { createDiagnostics } from './diagnostics.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
@@ -56,8 +57,17 @@ export interface SettingsWindowOptions {
     mcpServers: () => string[];
     refreshMcp: () => Promise<string[]>;
     catalog: () => Catalog;
+    /** AI 기록을 지운 뒤: 채팅이 지운 세션을 이어 가지 않게 */
+    forgetAiSessions: () => void;
   };
 }
+
+/** AI 기록 지우기가 보는 폴더 (짝꿍 데이터 폴더, 홈, CLAUDE_CONFIG_DIR) */
+const historyDirs = () => ({
+  userData: app.getPath('userData'),
+  home: app.getPath('home'),
+  claudeConfigDir: process.env.CLAUDE_CONFIG_DIR || undefined,
+});
 
 /** 설정 창 (P1-12). 열 때 만들고 닫으면 없앤다 (L6). */
 export function createSettingsWindow({
@@ -99,6 +109,7 @@ export function createSettingsWindow({
           current: library.current(),
           starters: library.starters(),
           storage: storedModels(v2.catalog()),
+          aiHistoryBytes: aiHistoryBytes(historyDirs()),
           onBattery: powerMonitor.isOnBatteryPower(),
         }
       : undefined,
@@ -119,6 +130,15 @@ export function createSettingsWindow({
   ipcMain.handle(SETTINGS.deleteModel, async (e, id: unknown) => {
     const ok = fromSettings(e) && typeof id === 'string' && (await removeModel(v2.catalog(), id, log));
     return { ok, storage: storedModels(v2.catalog()), localReady: localReady() };
+  });
+  ipcMain.handle(SETTINGS.clearAiHistory, (e) => {
+    if (!fromSettings(e)) return { ok: false, bytes: aiHistoryBytes(historyDirs()) };
+    const n = clearAiHistory(historyDirs());
+    // 지운 세션은 이어 갈 수 없다: 채팅은 다음 질문부터 새 대화로
+    v2.forgetAiSessions();
+    log('settings', 'AI 기록 지움', n);
+    const bytes = aiHistoryBytes(historyDirs());
+    return { ok: bytes === 0, bytes };
   });
   ipcMain.handle(SETTINGS.remakeBody, (e, gait: unknown) =>
     fromSettings(e) && isGait(gait) ? remakeBody(gait) : { ok: false, error: t('main.maker.reopen') },

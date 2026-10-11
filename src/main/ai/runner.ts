@@ -14,6 +14,7 @@ import type { AiEvent, AiStatus, ImageAttachment, McpLaunch } from '../../shared
 import { codexUsage, lastCodexLimits } from '../../shared/ai/usage.ts';
 import { aiTempImageName, isAiTempImage } from '../../shared/capture.ts';
 import { t } from '../../shared/i18n/index.ts';
+import { aiWorkDir } from '../ai-history.ts';
 import { prepareCodexHome } from './codex-home.ts';
 import { getShellEnv, launchOf, resolveBin } from './shell-env.ts';
 
@@ -53,7 +54,7 @@ export interface AiRun {
  * 비어 있는 전용 폴더라 어느 프로젝트의 CLAUDE.md, AGENTS.md 도 읽히지 않는다.
  */
 function workDir(): string {
-  const dir = join(app.getPath('userData'), 'ai-workdir');
+  const dir = aiWorkDir(app.getPath('userData'));
   mkdirSync(dir, { recursive: true });
   return dir;
 }

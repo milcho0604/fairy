@@ -235,6 +235,8 @@ export const SETTINGS = {
   removeSavedPet: 'settings:remove-saved-pet',
   /** 받은 모델 지우기. 새 목록을 돌려준다 */
   deleteModel: 'settings:delete-model',
+  /** AI 기록 지우기: AI CLI 가 짝꿍 대화를 저장한 짝꿍 전용 폴더만 (ai-history.ts). 남은 크기를 돌려준다 */
+  clearAiHistory: 'settings:clear-ai-history',
   /** 지금 사진 펫의 몸을 고른 걸음새에 맞게 다시 만든다 (같은 사진, 같은 요청사항). 그만두기는 cancelRemake */
   remakeBody: 'settings:remake-body',
   cancelRemake: 'settings:cancel-remake',
@@ -271,6 +273,8 @@ export interface SettingsSnapshot {
   starters: StarterView[];
   /** 받은 모델과 크기 (6단계) */
   storage: StoredModel[];
+  /** AI CLI 가 짝꿍 대화를 저장한 크기 (AI 기록 지우기) */
+  aiHistoryBytes: number;
   /** 배터리로 도는지 (부스트 모드는 이때 쉰다) */
   onBattery: boolean;
 }
@@ -308,8 +312,8 @@ export interface StarterView {
 export interface StoredModel {
   id: string;
   label: string;
-  /** draw: 내 컴퓨터에서 그리기 (엔진마다 도구와 모델이 든 폴더 통째) */
-  kind: 'llm' | 'bg' | 'depth' | 'draw';
+  /** draw: 내 컴퓨터에서 그리기 (엔진마다 도구와 모델이 든 폴더 통째). copy: 안전 복사본 (keep-copies.ts) */
+  kind: 'llm' | 'bg' | 'depth' | 'draw' | 'copy';
   bytes: number;
 }
 
@@ -350,6 +354,8 @@ export interface SettingsBridge {
   deleteModel(
     id: string,
   ): Promise<{ ok: boolean; storage: StoredModel[]; localReady: Record<string, boolean> }>;
+  /** AI 기록 지우기. 지운 뒤 남은 크기 */
+  clearAiHistory(): Promise<{ ok: boolean; bytes: number }>;
   /** 몸 다시 만들기. 끝나면(성공이면 설정이 바뀐 뒤) 결과. AI 가 없으면 noAi */
   remakeBody(gait: Gait): Promise<{ ok: true } | { ok: false; error: string; noAi?: boolean }>;
   cancelRemake(): void;

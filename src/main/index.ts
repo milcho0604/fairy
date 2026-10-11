@@ -32,6 +32,7 @@ import { confineTestDisplay } from './focus.ts';
 import { createFriends } from './friends.ts';
 import { createGcal } from './gcal.ts';
 import { createHouseRest } from './house-rest.ts';
+import { pruneCopies } from './keep-copies.ts';
 import { initLang } from './lang.ts';
 import { stopLocalDrawNow, sweepLocalDraw } from './local-draw.ts';
 import { createLogFile } from './log-file.ts';
@@ -334,6 +335,14 @@ ready
       dataVersion,
       trouble,
     } = openStore(log);
+    // 오래된 안전 복사본(가져오기 전 데이터, 판 올리기 전 복사, 깨진 파일)을 정리한다. 저장 파일을 연 뒤라
+    // 되살리기에 쓸 복사본은 이미 썼다. 종류마다 새것 3개와 30일 안의 것은 남긴다 (keep-copies.ts)
+    try {
+      const gone = pruneCopies(app.getPath('userData'));
+      if (gone.length) log('storage', '오래된 복사본 정리', gone.length);
+    } catch (err) {
+      log('storage', '복사본 정리 실패', err instanceof Error ? err.message : String(err));
+    }
     // 저장 파일이 깨졌거나 새 판이었으면 펫이 화면에 뜬 뒤 알린다 (버그잡이 6차)
     if (trouble)
       pet.win.webContents.once('did-finish-load', () =>
@@ -937,6 +946,7 @@ ready
         // 설정 창을 연다고 사용자 MCP 서버를 다 띄워 보지 않는다. 내 MCP 쓰기를 켠 사람만 새로 읽는다
         mcpServers: () => (settings.get().myMcp ? mcpServers(log) : cachedMcpServers()),
         refreshMcp: () => refreshMcpServers(log),
+        forgetAiSessions: () => chat.forgetSessions(),
       },
     });
     // ---- 구글 캘린더에 쓰기 (6단계): 짝꿍 일정을 구글로. 설정 창에서 연결한다 ----

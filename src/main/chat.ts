@@ -633,6 +633,15 @@ export function createChat(o: ChatOptions) {
         void run.finished.then(ended, ended);
       });
     },
+    /**
+     * AI 기록을 지운 뒤 (설정 "AI 기록 지우기"): 지운 세션은 이어 갈 수 없어 버린다. 화면의 대화는 그대로 두고
+     * 다음 질문부터 AI 쪽은 새 대화로 시작한다
+     */
+    forgetSessions(): void {
+      state = { ...state, sessions: {} };
+      carry.clear();
+      save(true);
+    },
     /** 지금 고른 AI 이름 (메모 다듬기가 어느 AI 로 보내는지 보여 준다) */
     aiLabel: (): string | undefined => specOf(state.provider)?.label,
     /**

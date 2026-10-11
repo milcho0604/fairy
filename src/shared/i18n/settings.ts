@@ -204,6 +204,19 @@ export const ko = {
   'settings.storage.deleted': '모델을 지웠어',
   'settings.storage.busy': '받는 중이거나 답하는 중이라 지금은 못 지워. 끝나면 다시 해 줘.',
   'settings.storage.empty': '받아 둔 모델이 없어.',
+  'settings.storage.copyBeforeImport': (v: { when: string }) => `백업을 가져오기 전 데이터 (${v.when})`,
+  'settings.storage.copyDbVersion': (v: { when: string }) => `업데이트 전 저장 파일 복사 (${v.when})`,
+  'settings.storage.copyBroken': (v: { name: string }) => `깨져서 옮겨 둔 파일 ${v.name}`,
+  'settings.storage.copyDeleted': '복사본을 지웠어',
+  'settings.aiHistory': 'AI 기록',
+  'settings.aiHistory.hint':
+    'Claude, Codex는 짝꿍과 한 대화를 자기 기록 폴더에 저장해. 짝꿍 전용 폴더에 남은 것만 지워 (내 ~/.claude, ~/.codex의 다른 기록과 로그인은 그대로). 화면을 보여 준 질문은 처음부터 저장하지 않아.',
+  'settings.aiHistory.size': (v: { size: string }) => `지금 ${v.size}`,
+  'settings.aiHistory.none': '지금 남은 기록이 없어.',
+  'settings.aiHistory.clear': 'AI 기록 지우기',
+  'settings.aiHistory.sure': '정말 지울까?',
+  'settings.aiHistory.cleared': 'AI 기록을 지웠어. 다음 질문부터 새 대화로 시작해.',
+  'settings.aiHistory.failed': '일부는 못 지웠어. AI가 답하는 중이면 끝난 뒤 다시 해 줘.',
   'settings.storage.hint': (v: { total: string }) =>
     `모두 ${v.total}. 지워도 그 기능을 다시 쓰면 그때 다시 받아.`,
   'settings.models.hint':
@@ -575,6 +588,20 @@ export const en: Translation<typeof ko> = {
   'settings.storage.deleted': 'Model deleted',
   'settings.storage.busy': "It's downloading or answering right now. Try again when it's done.",
   'settings.storage.empty': 'No downloaded models.',
+  'settings.storage.copyBeforeImport': (v) => `Data from before a backup import (${v.when})`,
+  'settings.storage.copyDbVersion': (v) => `Save file copy from before an update (${v.when})`,
+  'settings.storage.copyBroken': (v) => `Damaged file set aside: ${v.name}`,
+  'settings.storage.copyDeleted': 'Copy deleted',
+  'settings.aiHistory': 'AI history',
+  'settings.aiHistory.hint':
+    "Claude and Codex save your chats with Jjakkung in their own history folders. This deletes only what's left in Jjakkung's own folders (other history and your login in ~/.claude and ~/.codex stay). Questions that showed your screen are never saved.",
+  'settings.aiHistory.size': (v) => `${v.size} now`,
+  'settings.aiHistory.none': 'Nothing saved right now.',
+  'settings.aiHistory.clear': 'Clear AI history',
+  'settings.aiHistory.sure': 'Really clear?',
+  'settings.aiHistory.cleared': 'AI history cleared. Your next question starts a new chat.',
+  'settings.aiHistory.failed':
+    "Some of it couldn't be deleted. If the AI is answering, try again when it's done.",
   'settings.storage.hint': (v) =>
     `${v.total} in total. Deleted models download again when you use that feature.`,
   'settings.models.hint':

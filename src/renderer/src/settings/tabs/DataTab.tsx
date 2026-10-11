@@ -70,13 +70,66 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
               setSnap(
                 (v) => v && { ...v, storage: r.storage, models: { ...v.models, localReady: r.localReady } },
               );
-              flash(t(r.ok ? 'settings.storage.deleted' : 'settings.storage.busy'));
+              const copy = id.startsWith('copy:');
+              flash(
+                t(
+                  r.ok
+                    ? copy
+                      ? 'settings.storage.copyDeleted'
+                      : 'settings.storage.deleted'
+                    : 'settings.storage.busy',
+                ),
+              );
             } catch {
               flash(t('settings.storage.busy'));
             }
           }}
         />
       </Section>
+      <Section title={t('settings.aiHistory')}>
+        <AiHistory
+          bytes={snap.aiHistoryBytes}
+          onClear={async () => {
+            try {
+              const r = await bridge.clearAiHistory();
+              setSnap((v) => v && { ...v, aiHistoryBytes: r.bytes });
+              flash(t(r.ok ? 'settings.aiHistory.cleared' : 'settings.aiHistory.failed'), !r.ok);
+            } catch {
+              flash(t('settings.aiHistory.failed'), true);
+            }
+          }}
+        />
+      </Section>
+    </>
+  );
+}
+
+/** AI CLI 가 짝꿍 전용 폴더에 남긴 대화 기록과 지우기 (두 번 눌러 지운다) */
+function AiHistory({ bytes, onClear }: { bytes: number; onClear: () => void }) {
+  const [confirm, setConfirm] = useState(false);
+  return (
+    <>
+      <small>{t('settings.aiHistory.hint')}</small>
+      <div className="action-row">
+        <button
+          type="button"
+          className={`ghost${confirm ? ' danger' : ''}`}
+          disabled={bytes === 0}
+          onClick={() => {
+            if (!confirm) return setConfirm(true);
+            setConfirm(false);
+            onClear();
+          }}
+          onBlur={() => setConfirm(false)}
+        >
+          {confirm ? t('settings.aiHistory.sure') : t('settings.aiHistory.clear')}
+        </button>
+      </div>
+      <small className="below">
+        {bytes > 0
+          ? t('settings.aiHistory.size', { size: formatBytes(bytes) })
+          : t('settings.aiHistory.none')}
+      </small>
     </>
   );
 }
