@@ -1,4 +1,4 @@
-# 설치 파일 만들기 (P4-02). 맥(dmg, 애플 실리콘과 인텔), 윈도우(exe), 리눅스(tar.gz, AppImage).
+# 설치 파일 만들기 (P4-02). 맥(dmg, 애플 실리콘과 인텔), 윈도우(exe), 리눅스(tar.xz, AppImage).
 # 액션은 커밋 SHA 로 고정한다 (태그는 옮길 수 있다). 올릴 때는 주석의 태그와 SHA 를 같이 바꾼다.
 # 릴리스 올리기(release 작업)는 GitHub 환경 release 의 승인을 받아야 돈다 (docs/release.md "환경 승인").
 # 비공개 레포에서 맥 러너는 분이 10배로 깎여서 올릴 때마다 돌리지 않는다.
@@ -72,7 +72,7 @@ jobs:
           # 자동 설치(electron-updater)가 릴리스에서 읽는다. 윈도우는 latest.yml, exe, .blockmap.
           # 맥은 latest-mac.yml, zip, .blockmap (dmg 는 처음 설치용)
           path: |
-            dist/*.tar.gz
+            dist/*.tar.xz
             dist/*.AppImage
             dist/*.dmg
             dist/*.exe

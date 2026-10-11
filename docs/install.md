@@ -14,7 +14,7 @@
 | 디스크 | 앱 약 310MB(리눅스 0.1.0 풀린 크기 기준). 무료 AI 모델 400MB~1GB, 사진 펫 도구 약 200MB 는 쓸 때만 받는다 |
 | AI 대화 | 아래 "AI 연결" 중 하나. 없어도 펫, 할 일, 메모, 일정은 다 된다 |
 
-설치 파일 크기(리눅스 0.1.0 실측, 2026-10-11): `tar.gz` 약 119MB, `AppImage` 약 101MB. 맥과 윈도우는 릴리스 페이지에 크기가 보인다. 무료 AI 를 처음 쓸 때 모델과 함께 엔진(5~11MB)을 한 번 받는다.
+설치 파일 크기(리눅스 0.1.0 실측, 2026-10-11): `tar.xz` 약 89MB, `AppImage` 약 101MB. 맥과 윈도우는 릴리스 페이지에 크기가 보인다. 무료 AI 를 처음 쓸 때 모델과 함께 엔진(5~11MB)을 한 번 받는다.
 
 ## 맥
 
@@ -59,10 +59,10 @@ dmg 안에서 바로 열지 말고 응용 프로그램 폴더로 옮긴 뒤 연�
 
 ## 리눅스 (시험판)
 
-- `jjakkung-<버전>-linux-x64.tar.gz`: 풀어서 안의 `jjakkung` 을 실행한다.
+- `jjakkung-<버전>-linux-x64.tar.xz`: 풀어서 안의 `jjakkung` 을 실행한다.
 
     ```bash
-    tar xzf jjakkung-<버전>-linux-x64.tar.gz
+    tar xJf jjakkung-<버전>-linux-x64.tar.xz
     ./jjakkung-<버전>-linux-x64/jjakkung
     ```
 

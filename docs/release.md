@@ -1,6 +1,6 @@
 # 릴리스 올리기
 
-`v*` 태그를 올리면 `release.yml` 이 맥, 윈도우, 리눅스(`tar.gz`, `AppImage`) 설치 파일, 자동 업데이트용 파일(윈도우 `latest.yml` 과 `.exe.blockmap`, 맥 `latest-mac.yml` 과 `.zip`, `.zip.blockmap`)을 GitHub Releases 초안으로 올린다. 초안을 확인한 뒤 발행한다. 릴리스 레포는 `src/shared/update-policy.ts` 의 `RELEASE_REPO` 와 `electron-builder.yml` 의 `publish` 두 곳이고 서로 같아야 한다(다르면 `npm test` 가 깨진다).
+`v*` 태그를 올리면 `release.yml` 이 맥, 윈도우, 리눅스(`tar.xz`, `AppImage`) 설치 파일, 자동 업데이트용 파일(윈도우 `latest.yml` 과 `.exe.blockmap`, 맥 `latest-mac.yml` 과 `.zip`, `.zip.blockmap`)을 GitHub Releases 초안으로 올린다. 초안을 확인한 뒤 발행한다. 릴리스 레포는 `src/shared/update-policy.ts` 의 `RELEASE_REPO` 와 `electron-builder.yml` 의 `publish` 두 곳이고 서로 같아야 한다(다르면 `npm test` 가 깨진다).
 
 - 태그는 `package.json` 의 `version` 앞에 `v` 를 붙인 것과 똑같아야 한다(`0.2.0` 이면 `v0.2.0`). 다르면 빌드 전에 멈춘다. 버전을 안 올리고 태그만 달면 새 앱이 스스로를 옛 버전으로 보고 업데이트 안내가 끝나지 않기 때문이다.
 - 태그에 `-beta.1` 같은 꼬리가 있으면 사전 릴리스로 올린다. 앱은 사전 릴리스를 업데이트로 보지 않는다.
@@ -100,7 +100,7 @@ export GH_TOKEN=$(gh auth token --user milcho0604)
    Settings → Code security → **Private vulnerability reporting** 을 켠다(`SECURITY.md` 가 이 길로 받는다).
 5. **공개 전환:** `gh repo edit milcho0604/jjakkung --visibility public --accept-visibility-change-consequences`. 공개 레포는 Actions 맥 러너 시간이 깎이지 않으니 태그는 공개 뒤에 올린다.
 6. **버전 올리기와 태그:** `package.json` 의 `version` 을 `0.2.0` 으로(`npm version 0.2.0 --no-git-tag-version`), `CHANGELOG.md` 의 Unreleased 를 `0.2.0` 으로 정리해 커밋하고 `main` 에 푸시한다. 그다음 `git tag v0.2.0 && git push origin v0.2.0`, 진행은 `gh run watch --repo milcho0604/jjakkung`.
-7. **초안 확인:** `gh release view v0.2.0 --repo milcho0604/jjakkung` 로 파일 목록(dmg 2, zip 2, zip.blockmap 2, latest-mac.yml, exe, exe.blockmap, latest.yml, tar.gz, AppImage)과 본문 머리(최소 버전을 적었으면 그 문장)를 본다.
+7. **초안 확인:** `gh release view v0.2.0 --repo milcho0604/jjakkung` 로 파일 목록(dmg 2, zip 2, zip.blockmap 2, latest-mac.yml, exe, exe.blockmap, latest.yml, tar.xz, AppImage)과 본문 머리(최소 버전을 적었으면 그 문장)를 본다.
 8. **발행:** `gh release edit v0.2.0 --repo milcho0604/jjakkung --draft=false --latest`.
 9. **공개 후 밖에서 확인 (토큰 없이):**
 

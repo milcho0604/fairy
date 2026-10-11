@@ -118,11 +118,11 @@ mac:
     LSUIElement: true
     # 기본값은 영어. 한국어 맥은 ko.lproj/InfoPlist.strings 의 글을 보인다 (build/mac)
     NSScreenCaptureUsageDescription: Used by Look Together to show the screen area you pick to the AI.
-# 리눅스: 압축 파일(tar.gz, 풀어서 실행)과 AppImage. snap 은 만들지 않는다 (스토어 심사, 샌드박스가 화면 캡처와 AI CLI 를 막는다).
+# 리눅스: 압축 파일(tar.xz, 풀어서 실행)과 AppImage. snap 은 만들지 않는다 (스토어 심사, 샌드박스가 화면 캡처와 AI CLI 를 막는다).
 # 리눅스는 자동 업데이트가 없다 (src/shared/update-policy.ts AUTO_INSTALL_PLATFORMS). 새 버전은 펫이 릴리스 페이지를 연다
 linux:
   target:
-    - target: tar.gz
+    - target: tar.xz
       arch: [x64]
     - target: AppImage
       arch: [x64]
