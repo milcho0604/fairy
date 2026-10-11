@@ -96,6 +96,11 @@ export interface Part {
   path?: Vec3[];
   /** 무늬 (v2) */
   pattern?: Pattern;
+  /**
+   * 입는 옷 (철마다 옷, shared/wear.ts). 앱이 그릴 때만 더하고 설계도 파일에서는 읽지 않는다.
+   * 화면 맞추기(크기), 얼굴 붙이기, 털 녹이기에서 빼서 옷을 입어도 펫 크기와 얼굴이 그대로다
+   */
+  wear?: boolean;
 }
 
 export const MOUTHS = ['smile', 'cat', 'beak', 'grin', 'tiny'] as const;

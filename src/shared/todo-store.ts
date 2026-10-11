@@ -326,6 +326,17 @@ export class TodoStore {
     return { open, doneToday: done };
   }
 
+  /** 그때부터 끝낸 할 일 제목, 최근 것부터 (주간 회고 카드에서 사용자가 고를 때만) */
+  doneTitlesSince(from: number, limit = 20): string[] {
+    return (
+      this.#db
+        .prepare(
+          'select title from todo where done_at is not null and deleted_at is null and done_at >= ? order by done_at desc limit ?',
+        )
+        .all(from, limit) as { title: string }[]
+    ).map((r) => r.title);
+  }
+
   /**
    * 고치기. 마감일이나 마감 시각을 바꾸면 알림 표시를 지워 다시 알린다. 마감 시각을 새로 넣거나 빼면(날짜만과 시각 사이)
    * 알림을 주지 않았을 때 그쪽 기본으로 (날짜 기준 "전날 저녁 8시" 240 은 시각 기준에서 "4시간 전"이 된다).

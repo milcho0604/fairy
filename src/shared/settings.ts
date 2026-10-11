@@ -6,6 +6,7 @@ import { type FocusLength, isFocusLength } from './focus.ts';
 import { type LangPref, t } from './i18n/index.ts';
 import { cleanIcsUrl } from './ics.ts';
 import { type AgeStage, isAgeStage } from './illustrate.ts';
+import { cleanFacts, cleanMeta, type MemMeta, type PetFact } from './knows.ts';
 import { type IllustEngine, illustEngineOf } from './local-draw.ts';
 import { cleanMemory, cleanPending } from './pet-memory.ts';
 import { GAITS, type Gait } from './pet3d/blueprint.ts';
@@ -111,6 +112,12 @@ export interface Settings {
   petMemory: string[];
   /** AI 도구(MCP remember)가 기억하자고 한 것. 사용자가 설정에서 허락하면 petMemory 로 간다. AI 에게 보내지 않는다 */
   petMemoryPending: string[];
+  /** 기억마다 출처(대화, 직접, MCP)와 날짜 (짝꿍이 아는 것, shared/knows.ts). 열쇠는 memoryKey */
+  petMemoryMeta: MemMeta;
+  /** 사용자가 직접 알려 준 것: 생일, 좋아하는 간식, 좋아하는 것 (knows.ts). AI 없이도 말풍선에 쓴다 */
+  petFacts: PetFact[];
+  /** 기본 펫이 철마다 옷을 입는다: 봄 꽃, 여름 밀짚모자, 가을 목도리, 겨울 털모자, 명절 (shared/wear.ts). 기본 켬 */
+  seasonWear: boolean;
   /** 집중 타이머 길이 (15, 25, 50분). 마지막에 고른 것 */
   focusMin: FocusLength;
   /** 한가할 때 커서 쪽을 바라본다 */
@@ -324,6 +331,9 @@ export const DEFAULT_SETTINGS: Settings = {
   petRules: '',
   petMemory: [],
   petMemoryPending: [],
+  petMemoryMeta: {},
+  petFacts: [],
+  seasonWear: true,
   focusMin: 25,
   lookAtCursor: true,
   urlScheme: true,
@@ -476,6 +486,8 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     petMemoryPending: Array.isArray(r.petMemoryPending)
       ? cleanPending(r.petMemoryPending)
       : [...base.petMemoryPending],
+    ...memoryNotesOf(r, base),
+    seasonWear: bool(r.seasonWear, base.seasonWear),
     focusMin: isFocusLength(r.focusMin) ? r.focusMin : base.focusMin,
     lookAtCursor: bool(r.lookAtCursor, base.lookAtCursor),
     urlScheme: bool(r.urlScheme, base.urlScheme),
@@ -496,6 +508,21 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
       : base.skipVersion
         ? { skipVersion: base.skipVersion }
         : {}),
+  };
+}
+
+/** 기억 출처 표와 알려 준 것 (knows.ts). 출처는 지금 기억하거나 기다리는 글의 것만 남긴다 */
+function memoryNotesOf(
+  r: Record<string, unknown>,
+  base: Settings,
+): Pick<Settings, 'petMemoryMeta' | 'petFacts'> {
+  const memory = Array.isArray(r.petMemory) ? cleanMemory(r.petMemory) : base.petMemory;
+  const pending = Array.isArray(r.petMemoryPending)
+    ? cleanPending(r.petMemoryPending)
+    : base.petMemoryPending;
+  return {
+    petMemoryMeta: cleanMeta(r.petMemoryMeta ?? base.petMemoryMeta, [...memory, ...pending]),
+    petFacts: Array.isArray(r.petFacts) ? cleanFacts(r.petFacts) : [...base.petFacts],
   };
 }
 

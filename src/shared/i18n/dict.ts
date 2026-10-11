@@ -4,6 +4,7 @@ import * as access from './access.ts';
 import * as achieve from './achieve.ts';
 import * as ai from './ai.ts';
 import * as assist from './assist.ts';
+import * as bond from './bond.ts';
 import * as briefing from './briefing.ts';
 import * as chat from './chat.ts';
 import * as common from './common.ts';
@@ -61,6 +62,7 @@ export const ko = {
   ...gallery.ko,
   ...day.ko,
   ...access.ko,
+  ...bond.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -93,4 +95,5 @@ export const en: Translation<typeof ko> = {
   ...gallery.en,
   ...day.en,
   ...access.en,
+  ...bond.en,
 };
