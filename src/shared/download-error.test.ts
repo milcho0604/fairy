@@ -96,3 +96,16 @@ test('갈래마다 다른 안내: 공간은 얼마나 비울지, 서버는 상�
   assert.equal(saveErrorText(errno('EPERM')), t('main.file.noPermission'));
   assert.equal(saveErrorText(new Error('그림 형식')), t('main.file.saveFailed'));
 });
+
+test('프록시나 방화벽이 통째로 막으면 그렇다고 알린다 (연결이 불안정하다고 하지 않고)', () => {
+  assert.equal(failReason(new Error('net::ERR_TUNNEL_CONNECTION_FAILED')), 'blocked');
+  assert.equal(failReason(new Error('net::ERR_PROXY_CONNECTION_FAILED')), 'blocked');
+  assert.equal(failReason(new Error('net::ERR_CERT_AUTHORITY_INVALID')), 'blocked');
+  assert.equal(failReason(errno('SELF_SIGNED_CERT_IN_CHAIN')), 'blocked');
+  assert.equal(statusReason(407), 'blocked');
+  setLang('ko');
+  assert.match(downloadErrorText(new Error('net::ERR_TUNNEL_CONNECTION_FAILED')), /프록시나 방화벽/);
+  setLang('en');
+  assert.match(downloadErrorText(new DownloadError('blocked', 407)), /proxy or firewall/);
+  setLang('ko');
+});

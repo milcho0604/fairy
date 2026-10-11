@@ -6,7 +6,8 @@ import { t } from './i18n/index.ts';
 /** 실패 갈래. 사용자가 할 일이 달라지는 만큼만 나눈다 */
 export type FailReason =
   | 'offline' // 인터넷에 안 붙음: 연결을 확인
-  | 'network' // 붙었는데 끊김, 시간 초과, 연결 거절, 프록시 실패: 연결 확인 뒤 다시
+  | 'network' // 붙었는데 끊김, 시간 초과, 연결 거절: 연결 확인 뒤 다시
+  | 'blocked' // 프록시, 방화벽, 인증서 검사가 막음: 다시 해도 같다. 다른 네트워크나 관리자에게
   | 'server' // 서버가 오류로 답함(5xx 등): 잠시 뒤 다시
   | 'gone' // 파일이 서버에 없음(404, 410): 다시 해도 안 됨, 앱 업데이트
   | 'hash' // 받은 파일이 원본과 다름: 다시, 계속되면 회사 프록시 등
@@ -30,11 +31,15 @@ export class DownloadError extends Error {
 
 /** 서버 상태 번호로 갈래를 고른다. 없어진 파일은 다시 해도 소용없어 따로 둔다 */
 export const statusReason = (status: number): FailReason =>
-  status === 404 || status === 410 ? 'gone' : 'server';
+  status === 404 || status === 410 ? 'gone' : status === 407 ? 'blocked' : 'server';
 
 // Chromium 네트워크 오류 중 "인터넷에 아예 안 붙은" 것. 나머지 net::ERR_ 는 연결 문제(network)로 본다
 const OFFLINE =
   /net::ERR_(INTERNET_DISCONNECTED|NAME_NOT_RESOLVED|NAME_RESOLUTION_FAILED|ADDRESS_UNREACHABLE|NETWORK_ACCESS_DENIED|NETWORK_CHANGED)\b/;
+// 회사, 학교 네트워크의 프록시나 방화벽이 막은 것: 터널(CONNECT) 거절, 프록시 연결, 관리자 차단, 회사 인증서
+const BLOCKED =
+  /net::ERR_(TUNNEL_CONNECTION_FAILED|PROXY_\w+|MANDATORY_PROXY_CONFIGURATION_FAILED|BLOCKED_BY_ADMINISTRATOR|CERT_AUTHORITY_INVALID)\b/;
+const BLOCKED_CODES = new Set(['SELF_SIGNED_CERT_IN_CHAIN', 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY']);
 const NET = /net::ERR_\w+/;
 const DISK_FULL = new Set(['ENOSPC', 'EDQUOT']);
 const NO_PERMISSION = new Set(['EACCES', 'EPERM', 'EROFS']);
@@ -53,12 +58,14 @@ export function failReason(err: unknown, aborted = false): FailReason {
     if (NO_PERMISSION.has(code)) return 'no-permission';
     if (OFFLINE_CODES.has(code)) return 'offline';
     if (NET_CODES.has(code)) return 'network';
+    if (BLOCKED_CODES.has(code)) return 'blocked';
   }
   // 감싸져 와서 code 가 없어진 경우 (IPC, pipeline 너머)
   const msg = err.message;
   if (/\bENOSPC\b|\bEDQUOT\b/.test(msg)) return 'disk-full';
   if (/\bEACCES\b|\bEPERM\b|\bEROFS\b/.test(msg)) return 'no-permission';
   if (OFFLINE.test(msg)) return 'offline';
+  if (BLOCKED.test(msg)) return 'blocked';
   if (err.name === 'TimeoutError' || NET.test(msg)) return 'network';
   return 'failed';
 }
@@ -72,6 +79,8 @@ export function downloadErrorText(err: unknown, o: { aborted?: boolean; mb?: num
       return t('main.model.offline');
     case 'network':
       return t('main.model.network');
+    case 'blocked':
+      return t('main.model.blocked');
     case 'server':
       return t('main.model.server', { status: status ?? 0 });
     case 'gone':

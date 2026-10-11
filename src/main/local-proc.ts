@@ -467,7 +467,7 @@ export function downloadKind(err: unknown, aborted: boolean): LocalDrawError {
       ? 'cancelled'
       : r === 'disk-full'
         ? 'disk'
-        : r === 'offline' || r === 'network' || r === 'server'
+        : r === 'offline' || r === 'network' || r === 'blocked' || r === 'server'
           ? 'offline'
           : 'failed';
   return new LocalDrawError(kind, err instanceof Error ? err.message : String(err));
