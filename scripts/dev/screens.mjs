@@ -15,6 +15,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import electronPath from 'electron';
 import { EXAMPLE_CAT } from '../../src/shared/pet3d/examples.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -44,7 +45,8 @@ writeFileSync(
     chatter: 'quiet',
   }),
 );
-const electron = join(root, 'node_modules', '.bin', process.platform === 'win32' ? 'electron.cmd' : 'electron');
+// 감싼 스크립트(node_modules/.bin/electron) 말고 실행 파일을 바로 띄운다: 끝낼 때 진짜 앱이 끝난 뒤에 데이터 폴더를 지우게
+const electron = electronPath;
 const args = [`--inspect=${INSPECT}`, '.', `--remote-debugging-port=${PAGE}`];
 // 가상 화면(그래픽 칩 없음)에서도 입체를 그린다. root 로 돌면 샌드박스를 끈다 (CI 컨테이너)
 if (process.platform === 'linux')
@@ -64,7 +66,11 @@ async function finish(code) {
   app.kill('SIGTERM');
   for (let i = 0; i < 20 && !appExited; i++) await sleep(250);
   if (!appExited) app.kill('SIGKILL');
-  rmSync(data, { recursive: true, force: true });
+  // 끝난 뒤에도 크로미엄 자식 프로세스가 잠깐 캐시를 쓴다. 조금 기다렸다 지우고 한 번 더 지운다
+  for (let i = 0; i < 3; i++) {
+    await sleep(1000);
+    rmSync(data, { recursive: true, force: true });
+  }
   process.exit(code);
 }
 
