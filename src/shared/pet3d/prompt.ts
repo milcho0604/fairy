@@ -133,7 +133,7 @@ Schema:
   "fur": optional { "length": 0 to 1, "curl": 0 to 1, "clump": 0 to 1 } (the coat, used by the app's fluffy look:
             length 0 = short velvet, 0.5 = medium, 1 = long flowing coat; curl 1 = tight curls like a poodle or bichon;
             clump 1 = fur that parts into locks like a long-haired cat. Fill it from the photo for any furry animal),
-  "gait": one of ${JSON.stringify(GAITS)} (how it walks: "quadruped" for four-legged animals such as cats, dogs, rabbits, hamsters, foxes; "biped" for birds, people, plush characters and anything that stands on two feet)
+  "gait": one of ${JSON.stringify(GAITS)} (how it walks; default "biped": the figure stands on two feet and has arms, even a cat or dog. "quadruped" only when the owner chose four legs or the photo clearly shows an animal that must stay on all fours)
 }
 
 Rules:
@@ -143,6 +143,7 @@ Rules:
 - Parts must overlap so the figure is one solid piece, and the lowest paws touch y=0. Put markings and patches as thin flattened spheres slightly in front of the surface, or use "pattern" on the part itself for a belly, saddle, face mask, spots or stripes.
 - The eyes and mouth are drawn by the app on the front surface of the face slot at eyeY and mouthY, so do not model eyes or mouth. Use "beak" only for birds. Use "nose" for a cat, dog or rabbit nose instead of modeling one; a toy with no nose gets "nose": { "shape": "none" }.
 - Give the figure arms or front paws it can wave with (armL/armR for a biped; the front legs for a quadruped) unless the wish says no arms.
+- Every figure has hands by default: stand it upright ("gait": "biped") with small armL/armR ending in paws, even a cat or dog (a bird gets wingL/wingR), so it can wave, hold things and dance. Use four legs only when the owner chose four-leg walking or asks for it.
 - For a quadruped, put the front paws in legL/legR (z > 0) and, when visible, the hind paws in legL/legR too, further back (z < 0). The app leans it forward onto all four paws when it walks.
 - Use the photo's real colors. Avoid pure white (#ffffff) and pure black (#000000) for big parts.
 - Spend parts on the "likeness" features first; skip generic details before dropping a distinctive one.

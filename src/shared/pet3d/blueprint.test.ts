@@ -247,6 +247,8 @@ test('걸음새: 네 발, 두 발만 받고 모르는 값은 버린다. 요청�
     );
   const p = blueprintPrompt('밀크');
   assert.ok(p.includes('"gait"') && p.includes('"quadruped"') && p.includes('"biped"'));
+  // 손은 기본 (요청이 없으면 팔이나 날개)
+  assert.match(p, /Every figure has hands by default/);
 });
 
 test('요청문은 사진 특징을 먼저 적게 하고, 그 칸은 설계도에 남지 않는다', () => {
