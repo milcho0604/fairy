@@ -185,6 +185,24 @@ export const MIGRATIONS: readonly string[] = [
   alter table todo add column repeat_anchor text;
   create index todo_repeat_of on todo(repeat_of) where repeat_of is not null;
   `,
+  // 12판: 코인 잔액을 한 행에 (coin_total). 잔액(balance)이 패널을 그릴 때마다 장부 전체를 더했다.
+  // 장부에 쓰거나 지울 때 트리거가 같이 고쳐서, 다른 연결(펫 MCP 서버)이 쓰거나 묶음을 되돌려도 장부 합계와 같다
+  `
+  create table coin_total (
+    id integer primary key check (id = 1),
+    total integer not null
+  );
+  insert into coin_total (id, total) select 1, coalesce(sum(amount), 0) from coin_log;
+  create trigger coin_total_insert after insert on coin_log begin
+    update coin_total set total = total + new.amount where id = 1;
+  end;
+  create trigger coin_total_delete after delete on coin_log begin
+    update coin_total set total = total - old.amount where id = 1;
+  end;
+  create trigger coin_total_update after update of amount on coin_log begin
+    update coin_total set total = total - old.amount + new.amount where id = 1;
+  end;
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

@@ -612,11 +612,11 @@ ready
       mates: () => friends.mates(),
       focus: () => planner.focus.phase === 'focus',
       hungry: () => store.fullness(Date.now()) < FULLNESS.hungry,
-      coinsToday: () => store.coinCount(PLAY_COIN.reason, localDay(Date.now())),
+      // 하루 상한은 받은 코인 합으로 센다 (예전 기록은 한 행에 1코인이라 합과 행 수가 같다)
+      coinsToday: () => store.coinSum(PLAY_COIN.reason, localDay(Date.now())),
       giveCoins: (coins) => {
-        const now = Date.now();
-        // 한 행에 1코인 (하루 상한을 행 수로 센다)
-        for (let i = 0; i < coins; i++) store.reward(1, PLAY_COIN.reason, now);
+        // 한 번 받은 코인은 한 행에 (예전에는 코인마다 한 행이라 장부가 빨리 불었다)
+        store.reward(coins, PLAY_COIN.reason, Date.now());
         panel.refresh();
       },
       played: () => petLife.activity('play'),

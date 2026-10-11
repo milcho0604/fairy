@@ -622,8 +622,15 @@ export class TodoStore {
     return back;
   }
 
-  /** 잔액은 장부 합계로만 계산한다 (따로 적어 두면 어긋날 수 있다). */
+  /**
+   * 잔액. 장부 합계를 12판부터 coin_total 한 행에 둔다 (장부에 쓸 때 트리거가 같이 고친다, db-schema.ts).
+   * 행이 없으면(옛 판을 읽는 시험 등) 장부를 더한다
+   */
   balance(): number {
+    const r = this.#db.prepare('select total from coin_total where id = 1').get() as
+      | { total: number }
+      | undefined;
+    if (r) return Number(r.total);
     return Number(
       (this.#db.prepare('select coalesce(sum(amount), 0) as s from coin_log').get() as { s: number }).s,
     );
@@ -672,6 +679,17 @@ export class TodoStore {
       (
         this.#db
           .prepare('select count(*) as n from coin_log where day = ? and reason = ?')
+          .get(day, reason) as { n: number }
+      ).n,
+    );
+  }
+
+  /** 그날 이 이유로 받은 코인 합 (짧은 놀이처럼 코인 수로 하루 상한을 세는 것). 한 번에 여럿 받아도 한 행이다 */
+  coinSum(reason: string, day: string): number {
+    return Number(
+      (
+        this.#db
+          .prepare('select coalesce(sum(amount), 0) as n from coin_log where day = ? and reason = ?')
           .get(day, reason) as { n: number }
       ).n,
     );
