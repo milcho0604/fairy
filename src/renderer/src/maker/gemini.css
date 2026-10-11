@@ -1,0 +1,128 @@
+/* Gemini 앱(무료)에서 만들기 (2026-10-11). 색은 tokens.css 값만 쓴다 */
+.gemini {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.gemini[open] {
+  padding-bottom: 12px;
+}
+
+/* details 안은 flex 가 먹지 않아(::details-content) 간격을 margin 으로 */
+.gemini > :not(summary) {
+  margin: 8px 0 0;
+}
+
+.gemini > summary {
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.gemini > summary:focus-visible,
+.gemini-prompt > summary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.gemini-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.gemini-row .segmented button {
+  padding: 3px 12px;
+  font-size: 12.5px;
+}
+
+.gemini-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+}
+
+.gemini-steps li::marker {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.gemini-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.gemini-prompt > summary {
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.gemini > .hint {
+  display: block;
+}
+
+.gemini-prompt textarea {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  color: inherit;
+  font:
+    12px / 1.45 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+  resize: vertical;
+}
+
+.gemini-prompt textarea:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.gemini-drop {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 96px;
+  padding: 14px;
+  border: 2px dashed var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+  text-align: center;
+  cursor: pointer;
+}
+
+.gemini-drop:hover,
+.gemini-drop:focus-visible,
+.gemini-drop.over {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.gemini-drop:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.gemini-drop .big {
+  font-size: 14px;
+  font-weight: 600;
+}

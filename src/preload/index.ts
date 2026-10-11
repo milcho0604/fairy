@@ -308,6 +308,9 @@ if (kind === 'maker') {
     setHfToken: (token: string | null) => ipcRenderer.invoke(MAKER.setHfToken, token),
     setupLocalDraw: () => ipcRenderer.invoke(MAKER.setupLocalDraw),
     setIllustEngine: (engine: string) => ipcRenderer.invoke(MAKER.setIllustEngine, engine),
+    openGemini: (style: string, age: string, wish?: string) =>
+      ipcRenderer.invoke(MAKER.openGemini, style, age, wish),
+    revealGeminiPhoto: (photo: string) => ipcRenderer.invoke(MAKER.revealGeminiPhoto, photo),
     resetToDefault: () => ipcRenderer.invoke(MAKER.save, null, ''),
     cancel: () => ipcRenderer.send(MAKER.cancel),
     close: () => ipcRenderer.send(MAKER.close),

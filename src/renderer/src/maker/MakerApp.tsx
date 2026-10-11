@@ -41,6 +41,7 @@ import { PetNameInput } from '../PetNameInput.tsx';
 import { Pet3D } from '../pet3d.ts';
 import { openDepth, predictDepth } from './depth.ts';
 import { settleFur } from './fur-color.ts';
+import { GeminiRoute } from './GeminiRoute.tsx';
 import { backend, modelOpen, openModel, predictMask } from './removeBg.ts';
 import { ShownError, shownErrorText } from './shown-error.ts';
 import { FIGURE_LIMITS, RELIEF_LIMITS, Spinner } from './spin.ts';
@@ -838,6 +839,7 @@ export function MakerApp() {
                       </span>
                     </div>
                     {eng === 'cloud' && tokenBox}
+                    <GeminiRoute age={age} wish={illustWish} onImage={(b) => start(b, { age })} />
                   </div>
                 )}
               </div>
@@ -976,6 +978,13 @@ export function MakerApp() {
                   </div>
                 )}
                 {eng === 'cloud' && <div className="how">{tokenBox}</div>}
+                <GeminiRoute
+                  age={age}
+                  wish={illustWish}
+                  photo={illust.photo}
+                  stuck={cloudStuck}
+                  onImage={(b) => start(b, { age, back: 'illust' })}
+                />
                 <div className="actions wrap">
                   <button type="button" className="ghost" onClick={toPick}>
                     {t('maker.illust.otherPhoto')}

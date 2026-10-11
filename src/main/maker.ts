@@ -3,14 +3,17 @@ import { join } from 'node:path';
 import {
   app,
   BrowserWindow,
+  clipboard,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
   ipcMain,
   net,
   protocol,
+  shell,
 } from 'electron';
 import type { ImageAttachment } from '../shared/ai/types.ts';
 import { downloadErrorText, saveErrorText } from '../shared/download-error.ts';
+import { GEMINI_URL, geminiPrompt, isGeminiStyle, isGeminiUrl } from '../shared/gemini.ts';
 import { t } from '../shared/i18n/index.ts';
 import { ILLUST_WISH_MAX, illustratePrompt, isAgeStage } from '../shared/illustrate.ts';
 import { sizeOk } from '../shared/image-head.ts';
@@ -447,6 +450,45 @@ export function createMaker(
     return settings.get().illustEngine;
   });
 
+  // Gemini 앱(무료)에서 만들기 (2026-10-11): 요청문은 메인이 만들어 클립보드에 넣는다 (창이 보낸 글을 그대로 넣지 않는다).
+  // 여는 주소는 gemini.google.com/app 하나뿐. 사진은 사용자가 직접 올린다
+  ipcMain.handle(MAKER.openGemini, async (e, styleRaw: unknown, ageRaw: unknown, wishRaw?: unknown) => {
+    if (!fromMaker(e) || !isGeminiStyle(styleRaw) || !isAgeStage(ageRaw))
+      return { copied: false, opened: false };
+    if (wishRaw != null && (typeof wishRaw !== 'string' || wishRaw.length > ILLUST_WISH_MAX * 4))
+      return { copied: false, opened: false };
+    clipboard.writeText(geminiPrompt(styleRaw, ageRaw, wishRaw));
+    if (!isGeminiUrl(GEMINI_URL)) return { copied: true, opened: false };
+    try {
+      await shell.openExternal(GEMINI_URL);
+      log('maker', 'gemini', 'open', styleRaw, ageRaw);
+      return { copied: true, opened: true };
+    } catch (err) {
+      log('maker', 'gemini', 'open failed', err instanceof Error ? err.message : String(err));
+      return { copied: true, opened: false };
+    }
+  });
+
+  // Gemini 에 올릴 사진: 창이 다듬어 보낸 JPEG(흰 바탕, 긴 변 1024)를 임시 폴더에 두고 파일 관리자로 보여 준다.
+  // 붙여 넣은 사진처럼 파일이 없는 사진도 올릴 수 있게. 창을 닫으면 지운다
+  ipcMain.handle(MAKER.revealGeminiPhoto, (e, photoRaw: unknown) => {
+    if (!fromMaker(e)) return false;
+    const prefix = 'data:image/jpeg;base64,';
+    if (typeof photoRaw !== 'string' || !photoRaw.startsWith(prefix)) return false;
+    const bytes = Buffer.from(photoRaw.slice(prefix.length), 'base64');
+    if (imageKind(bytes) !== 'jpeg' || bytes.length > MAX_PNG_BYTES || !sizeOk(bytes)) return false;
+    try {
+      mkdirSync(geminiDir(), { recursive: true });
+      const file = join(geminiDir(), GEMINI_PHOTO);
+      writeFileAtomic(file, bytes);
+      shell.showItemInFolder(file);
+      return true;
+    } catch (err) {
+      log('maker', 'gemini photo', err instanceof Error ? err.message : String(err));
+      return false;
+    }
+  });
+
   ipcMain.handle(MAKER.setHfToken, (e, raw: unknown) => {
     if (!fromMaker(e)) return { ok: false, has: hfToken.has() };
     try {
@@ -685,6 +727,12 @@ export function createMaker(
       shaping?.abort();
       drawing?.abort();
       win = undefined;
+      // Gemini 에 올리려고 꺼내 둔 사진을 치운다
+      try {
+        rmSync(geminiDir(), { recursive: true, force: true });
+      } catch {
+        // 윈도우에서 파일이 열려 있으면 실패할 수 있다. 다음에 덮어쓴다
+      }
     });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (ev) => ev.preventDefault());
@@ -704,17 +752,24 @@ export function createMaker(
   };
 }
 
+/** Gemini 에 올릴 사진을 잠깐 두는 폴더와 이름 */
+const geminiDir = () => join(app.getPath('temp'), 'jjakkung-gemini');
+const GEMINI_PHOTO = 'jjakkung-pet-photo.jpg';
+
 /** 일러스트 실패 종류마다 화면 글 */
 function illustText(kind: IllustErrorKind): string {
   switch (kind) {
     case 'quota':
-      return t(hfToken.has() ? 'main.illust.quotaToken' : 'main.illust.quota');
+      // 쿼터는 사용자(인터넷 연결)마다 따로, 하루면 다시 찬다. Gemini 앱, 토큰, (되면) 내 컴퓨터에서 그리기를 권한다
+      if (hfToken.has()) return t('main.illust.quotaToken');
+      return t(localDrawInfo().supported ? 'main.illust.quotaLocal' : 'main.illust.quota');
     case 'limit':
       return t(hfToken.has() ? 'main.illust.down' : 'main.illust.limit');
     case 'auth':
       return t('main.illust.auth');
     case 'refused':
-      return t(hfToken.has() ? 'main.illust.refusedToken' : 'main.illust.refused');
+      if (hfToken.has()) return t('main.illust.refusedToken');
+      return t(localDrawInfo().supported ? 'main.illust.refusedLocal' : 'main.illust.refused');
     case 'network':
       return t('main.illust.offline');
     case 'timeout':

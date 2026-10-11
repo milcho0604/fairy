@@ -555,6 +555,10 @@ export const MAKER = {
   setupLocalDraw: 'maker:setup-local-draw',
   /** AI 일러스트 그리는 곳 고르기 (설정에 남긴다) */
   setIllustEngine: 'maker:set-illust-engine',
+  /** Gemini 앱(무료)에서 만들기: 요청문을 클립보드에 넣고 Gemini 를 기본 브라우저로 연다 */
+  openGemini: 'maker:open-gemini',
+  /** Gemini 에 올릴 사진(창이 보낸 JPEG)을 임시 폴더에 두고 Finder, 탐색기로 보여 준다 */
+  revealGeminiPhoto: 'maker:reveal-gemini-photo',
   /** 받기(모델), 입체 만들기(AI), 일러스트 그리기를 멈춘다 (진행 표시의 그만두기) */
   cancel: 'maker:cancel',
   close: 'maker:close',
@@ -654,6 +658,10 @@ export interface MakerBridge {
   >;
   /** 그리는 곳을 고른다 (설정에 남긴다). 결과는 저장된 값 */
   setIllustEngine(engine: IllustEngine): Promise<IllustEngine>;
+  /** 요청문(모양, 나이, 바람으로 메인이 만든다)을 클립보드에 넣고 Gemini 앱을 연다. 못 열었으면 opened false */
+  openGemini(style: string, age: string, wish?: string): Promise<{ copied: boolean; opened: boolean }>;
+  /** 사진(JPEG data URL)을 임시 폴더에 두고 파일 관리자로 보여 준다 */
+  revealGeminiPhoto(photo: string): Promise<boolean>;
   /** 토큰 넣기 (null 이면 지우기). 결과는 지금 토큰이 있는지 */
   setHfToken(token: string | null): Promise<{ ok: boolean; has: boolean; error?: string }>;
   /** 기본 펫으로 돌아가기 */

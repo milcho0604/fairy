@@ -23,7 +23,7 @@ export const ILLUST_WISH_MAX = 120;
  * 나이 말. 실제로 돌려 보니 아기는 작고 둥글게, 청소년은 길쭉하게, 어른은 다 큰 몸으로 나왔다 (2026-10-09).
  * "well-groomed", "slimmer" 는 털을 깎은 듯 다리와 몸이 매끈하게 나와 뺐다 (사용자: 털이 너무 빠져 있다)
  */
-const AGE_PHRASE: Record<AgeStage, string> = {
+export const AGE_PHRASE: Record<AgeStage, string> = {
   baby: 'a tiny baby (a few weeks old): very small and round, oversized head, big eyes, short stubby legs, extra soft fluffy baby coat',
   teen: 'a playful adolescent (about five months old): slightly lanky, big paws',
   adult: 'a fully grown adult in its prime: full size, confident, magnificent full coat',

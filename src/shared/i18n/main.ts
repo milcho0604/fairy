@@ -74,12 +74,17 @@ export const ko = {
   'main.maker.shapeCancelled': '입체 만들기를 멈췄어.',
   'main.maker.shapeBad': 'AI 답에서 설계도를 못 읽었어. 한 번 더 해 볼래?',
   'main.illust.quota':
-    '오늘 무료로 그릴 수 있는 만큼 다 그렸어. 내일 다시 해 보거나, 아래에서 무료 Hugging Face 토큰을 넣으면 더 그릴 수 있어.',
-  'main.illust.quotaToken': '이 토큰의 오늘 무료 사용량을 다 썼어. 내일 다시 해 줘.',
+    "오늘 무료 그림 횟수를 다 썼어. 이 횟수는 다른 사람과 나눠 쓰는 게 아니라 네 인터넷 연결마다 따로 세고, 하루가 지나면 다시 채워져. 지금 바로 만들려면 아래 'Gemini 앱(무료)에서 만들기'를 쓰거나, 무료 Hugging Face 토큰을 넣어 줘.",
+  'main.illust.quotaLocal':
+    "오늘 무료 그림 횟수를 다 썼어. 이 횟수는 다른 사람과 나눠 쓰는 게 아니라 네 인터넷 연결마다 따로 세고, 하루가 지나면 다시 채워져. 지금 바로 만들려면 아래 'Gemini 앱(무료)에서 만들기'나 '내 컴퓨터에서 그리기'를 쓰거나, 무료 Hugging Face 토큰을 넣어 줘.",
+  'main.illust.quotaToken':
+    "이 토큰의 오늘 무료 사용량을 다 썼어. 하루가 지나면 다시 채워져. 지금 바로 만들려면 아래 'Gemini 앱(무료)에서 만들기'를 써 줘.",
   'main.illust.limit': '토큰 없이는 이 그림을 못 그린대. 아래에서 무료 Hugging Face 토큰을 넣고 다시 해 줘.',
   'main.illust.auth': 'Hugging Face 토큰이 맞지 않아. 토큰을 지우거나 새로 넣어 줘.',
   'main.illust.refused':
-    '그림 서버가 이유 없이 거절했어. 대개 오늘 무료로 그릴 수 있는 만큼 다 그렸을 때 이래. 내일 다시 해 보거나, 아래에서 무료 Hugging Face 토큰을 넣어 줘.',
+    "그림 서버가 이유 없이 거절했어. 대개 오늘 무료 횟수(네 인터넷 연결마다 따로, 하루면 다시 채워져)를 다 썼을 때 이래. 아래 'Gemini 앱(무료)에서 만들기'를 쓰거나, 무료 Hugging Face 토큰을 넣어 줘.",
+  'main.illust.refusedLocal':
+    "그림 서버가 이유 없이 거절했어. 대개 오늘 무료 횟수(네 인터넷 연결마다 따로, 하루면 다시 채워져)를 다 썼을 때 이래. 아래 'Gemini 앱(무료)에서 만들기'나 '내 컴퓨터에서 그리기'를 쓰거나, 무료 Hugging Face 토큰을 넣어 줘.",
   'main.illust.refusedToken':
     '그림 서버가 이유 없이 거절했어. 대개 이 토큰의 오늘 무료 사용량을 다 썼을 때 이래. 조금 있다가 또는 내일 다시 해 줘.',
   'main.illust.offline': '그림 서버에 연결하지 못했어. 인터넷 연결을 보고 다시 해 줘.',
@@ -197,12 +202,17 @@ export const en: Translation<typeof ko> = {
   'main.maker.shapeCancelled': 'Stopped making the 3D pet.',
   'main.maker.shapeBad': "Couldn't read a blueprint from the AI's answer. Try again?",
   'main.illust.quota':
-    "You've used up today's free drawings. Try again tomorrow, or add a free Hugging Face token below to draw more.",
-  'main.illust.quotaToken': "This token has used up today's free drawings. Try again tomorrow.",
+    "You've used up today's free drawings. This limit isn't shared with other people: it's counted per internet connection and refills after a day. To make one right now, use 'Make it in the Gemini app (free)' below, or add a free Hugging Face token.",
+  'main.illust.quotaLocal':
+    "You've used up today's free drawings. This limit isn't shared with other people: it's counted per internet connection and refills after a day. To make one right now, use 'Make it in the Gemini app (free)' or 'Draw on this computer' below, or add a free Hugging Face token.",
+  'main.illust.quotaToken':
+    "This token has used up today's free drawings. It refills after a day. To make one right now, use 'Make it in the Gemini app (free)' below.",
   'main.illust.limit': 'This drawing needs a token. Add a free Hugging Face token below and try again.',
   'main.illust.auth': "The Hugging Face token didn't work. Remove it or add a new one.",
   'main.illust.refused':
-    "The drawing server said no without a reason. That usually means today's free drawings are used up. Try again tomorrow, or add a free Hugging Face token below.",
+    "The drawing server said no without a reason. That usually means today's free drawings (counted per internet connection, refilled after a day) are used up. Use 'Make it in the Gemini app (free)' below, or add a free Hugging Face token.",
+  'main.illust.refusedLocal':
+    "The drawing server said no without a reason. That usually means today's free drawings (counted per internet connection, refilled after a day) are used up. Use 'Make it in the Gemini app (free)' or 'Draw on this computer' below, or add a free Hugging Face token.",
   'main.illust.refusedToken':
     "The drawing server said no without a reason. That usually means this token's free use for today is used up. Try again later or tomorrow.",
   'main.illust.offline': "Couldn't reach the drawing server. Check your internet and try again.",
