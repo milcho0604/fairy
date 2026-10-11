@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { type Db, migrate } from './db-schema.ts';
 import { EventStore } from './event-store.ts';
-import { TodoStore } from './todo-store.ts';
+import { localDay, TodoStore } from './todo-store.ts';
 
 const MIN = 60_000;
 const NOW = Date.UTC(2026, 9, 14, 9, 0);
@@ -67,13 +67,16 @@ test('아직 울릴 때가 아닌 알림은 그대로 두고, 울릴 것은 고�
 });
 
 test('알릴 것 찾기는 항목이 많아도 질의 수가 같다', () => {
+  const soon = NOW + 5 * MIN;
+  const soonMin = new Date(soon).getHours() * 60 + new Date(soon).getMinutes();
   const run = (n: number) => {
     const { db, c } = counted();
     const events = new EventStore(db);
     const todos = new TodoStore(db, utcDay);
     for (let i = 0; i < n; i++) {
       events.add({ title: `e${i}`, startAt: NOW + 5 * MIN + i }, NOW - 60 * MIN);
-      todos.add({ title: `t${i}`, due: utcDay(NOW), dueMin: 9 * 60 + 5 }, NOW - 60 * MIN);
+      // 마감 시각은 현지 시각이다 (시간대를 타지 않게 5분 뒤를 현지로 적는다)
+      todos.add({ title: `t${i}`, due: localDay(soon), dueMin: soonMin }, NOW - 60 * MIN);
     }
     c.n = 0;
     assert.equal(events.dueReminders(NOW).length, n);
