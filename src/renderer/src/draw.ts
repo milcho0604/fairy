@@ -34,6 +34,7 @@ import {
   drawWorkSparkle,
   tapPaws,
 } from './together-draw.ts';
+import { footSlide } from './walk-pace.ts';
 import { drawWear2D } from './wear-draw.ts';
 
 export const CANVAS_SIZE = 160;
@@ -521,21 +522,27 @@ function drawPetBody(ctx: CanvasRenderingContext2D, s: DrawState): Point | undef
   }
   if (!s.face) {
     const spread = 24 + 8 * sitK;
-    const step = act?.type === 'walk' ? Math.sin(act.phase * Math.PI * 2) * 4 : 0;
+    // 걷기 세기: 출발과 멈출 때 0 에서 오르고 0 으로 내린다 (멈추는 틀에 발이 툭 제자리로 가지 않게)
+    const walkK = act?.type === 'walk' ? walkEnvelopeOf(act).stride : 0;
+    const step = act?.type === 'walk' ? Math.sin(act.phase * Math.PI * 2) * 4 * walkK : 0;
+    // 디딘 발은 몸이 간 만큼 뒤로 밀린다 (walk-pace.ts footSlide). 보폭은 펫 그림 160 기준
+    const slide = (swingAt: number) =>
+      act?.type === 'walk' ? act.dir * footSlide(act.phase, swingAt) * (act.stride ?? 0) * walkK : 0;
     const dangle = s.mood === 'grabbed' ? 6 : 0;
     // 네 발 동물(토순이, 또는 네 발을 고른 펫)은 걸을 때 뒷발 둘이 가는 반대쪽 뒤에 보인다 (pet3d-gait.ts)
     // 걸을 때 몸은 걸음마다 들썩여도(lift) 디딘 발은 바닥에 그대로 있고 든 발만 올라간다 (예전엔 두 발이 같이 떴다)
     const footLift = act?.type === 'walk' ? 0 : lift;
-    if (act?.type === 'walk' && quadKind(kind, s.gait)) drawHindFeet(ctx, act.dir, step, footLift);
+    if (act?.type === 'walk' && quadKind(kind, s.gait))
+      drawHindFeet(ctx, act.dir, step, footLift, [slide(0.5), slide(0)]);
     ctx.fillStyle = BODY;
     ctx.strokeStyle = LINE;
     ctx.lineWidth = 2;
-    for (const [side, up] of [
-      [-1, Math.max(0, step) + (mv ? mv.legs[0] * 10 : 0)],
-      [1, Math.max(0, -step) + (mv ? mv.legs[1] * 10 : 0)],
+    for (const [side, up, dx] of [
+      [-1, Math.max(0, step) + (mv ? mv.legs[0] * 10 : 0), slide(0)],
+      [1, Math.max(0, -step) + (mv ? mv.legs[1] * 10 : 0), slide(0.5)],
     ] as const) {
       ctx.beginPath();
-      ctx.ellipse(CX + side * spread, GROUND - 2 - footLift - up + dangle, 10, 5, 0, 0, Math.PI * 2);
+      ctx.ellipse(CX + side * spread + dx, GROUND - 2 - footLift - up + dangle, 10, 5, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
     }
@@ -795,17 +802,23 @@ function drawTogetherOver(
  * 걷는 네 발 동물의 뒷발. 앞발(몸 아래 둘)보다 먼저, 가는 반대쪽으로 비켜 조금 위(뒤)에 작게 그린다.
  * 대각선 쌍으로 딛는다: 왼앞발과 오른뒷발이 같이 들린다 (step 은 앞발 그리기와 같은 값)
  */
-function drawHindFeet(ctx: CanvasRenderingContext2D, dir: -1 | 1, step: number, lift: number) {
+function drawHindFeet(
+  ctx: CanvasRenderingContext2D,
+  dir: -1 | 1,
+  step: number,
+  lift: number,
+  slide: readonly [number, number],
+) {
   ctx.save();
   ctx.fillStyle = BODY;
   ctx.strokeStyle = LINE;
   ctx.lineWidth = 2;
-  for (const [side, up] of [
-    [-1, Math.max(0, -step)],
-    [1, Math.max(0, step)],
+  for (const [side, up, dx] of [
+    [-1, Math.max(0, -step), slide[0]],
+    [1, Math.max(0, step), slide[1]],
   ] as const) {
     ctx.beginPath();
-    ctx.ellipse(CX - dir * 36 + side * 10, GROUND - 5 - lift - up, 8.5, 4.5, 0, 0, Math.PI * 2);
+    ctx.ellipse(CX - dir * 36 + side * 10 + dx, GROUND - 5 - lift - up, 8.5, 4.5, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
   }
