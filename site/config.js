@@ -26,7 +26,7 @@ window.SITE = {
 
   // 설치 파일을 올리는 "공개" GitHub 레포. 비공개면 사이트는 "준비 중"을 보여요 (site/README.md 참고).
   // The PUBLIC GitHub repo whose releases hold the installers. If it is private the site shows "coming soon".
-  releases: { owner: 'milcho0604', repo: 'fairy' },
+  releases: { owner: 'milcho0604', repo: 'fairy-releases' },
 
   // 설치 파일 고르기 (릴리스 파일 이름 끝을 정규식으로). electron-builder.yml 의 artifactName
   // `<이름>-${version}-${os}-${arch}.${ext}` 기준이라 앱 이름이 바뀌어도 그대로 맞아요.

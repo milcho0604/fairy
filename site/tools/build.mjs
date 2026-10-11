@@ -45,7 +45,7 @@ function header(b) {
       <a href="${b}#faq" data-nav="faq" data-i18n="nav.faq"></a>
     </nav>
     <div class="top-act">
-      <button class="lang" type="button" data-lang-toggle data-i18n-attr="aria-label:a11y.lang"><span data-i18n="lang.other"></span></button>
+      <button class="lang" type="button" data-lang-toggle><span lang="en" data-i18n="lang.other"></span></button>
       <a class="btn btn-sm" href="${b}#download" data-i18n="nav.download"></a>
     </div>
   </div>
@@ -137,7 +137,8 @@ function fontHref() {
   // `text=` subsets every family in a request, so Jua gets its own request
   return [
     'https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap',
-    `https://fonts.googleapis.com/css2?family=Jua&display=swap&text=${encodeURIComponent(uniq)}`,
+    // block, not swap: the subset is tiny and arrives fast, and swapping a wider fallback re-wraps the hero title (CLS)
+    `https://fonts.googleapis.com/css2?family=Jua&display=block&text=${encodeURIComponent(uniq)}`,
   ];
 }
 
@@ -235,7 +236,7 @@ function stamp(html, p) {
     }
     const href = a.match(/\sdata-href="([^"]+)"/);
     if (href) {
-      const to = { changelog: S.changelogUrl || relPage, releases: relPage, contact: `mailto:${S.contactEmail}` }[href[1]];
+      const to = { changelog: S.changelogUrl || relPage, releases: relPage, contact: S.contactEmail ? `mailto:${S.contactEmail}` : `https://github.com/${S.releases.owner}/${S.releases.repo}/issues/new/choose` }[href[1]];
       a = a.replace(/\shref="[^"]*"/, '').replace(/\sdata-href=/, ` href="${esc(to)}" data-href=`);
     }
     return a === attrs ? m : `<${tag}${a}>`;

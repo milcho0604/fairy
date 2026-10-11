@@ -8,7 +8,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SITE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const browser = await chromium.launch();
+// behind an HTTPS proxy (CI, sandboxes) Google Fonts only load through it
+const proxy = process.env.HTTPS_PROXY || process.env.https_proxy;
+const browser = await chromium.launch(proxy ? { args: [`--proxy-server=${proxy}`] } : {});
 const page = await browser.newPage({ viewport: { width: 1200, height: 630 }, deviceScaleFactor: 1 });
 await page.goto(pathToFileURL(join(SITE_DIR, 'tools/og.html')).href, { waitUntil: 'networkidle' });
 await page.evaluate(() => document.fonts.ready);

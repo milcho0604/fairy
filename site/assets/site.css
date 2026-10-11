@@ -196,9 +196,9 @@ figure { margin: 0; }
 html[lang='en'] .display { font-size: clamp(40px, 5.6vw, 70px); }
 .display .hl { color: var(--accent); }
 .lead { font-size: clamp(17px, 1.6vw, 19.5px); line-height: 1.7; max-width: 30em; margin: 0 0 32px; color: var(--wall-ink); }
-.dl-meta { margin: 14px 0 0; font-size: 14px; min-height: 1.6em; }
-.dl-meta a { color: inherit; }
-.dl-alt { margin: 4px 0 0; font-size: 14px; min-height: 1.6em; }
+.dl-meta { margin: 14px 0 0; font-size: 14px; line-height: 1.6; min-height: 3.2em; } /* two lines: version, then the first-open note */
+.dl-meta a { color: inherit; white-space: nowrap; }
+.dl-alt { margin: 4px 0 0; font-size: 14px; line-height: 1.72; min-height: 3.44em; } /* room for two lines so the web font swap does not move the page */
 .dl-alt a { color: var(--wall-ink); font-weight: 600; white-space: nowrap; }
 .dl-alt a:hover { color: var(--accent); }
 .dl-alt .sep { opacity: .45; margin: 0 6px; }
@@ -502,6 +502,12 @@ main > :last-child { padding-bottom: clamp(88px, 10vw, 128px); }
   .desk { border-radius: 28px; }
   .wrap.hero-wrap { padding-inline: 12px; }
   .btn-lg { width: 100%; }
+  /* The hero title keeps its two written lines, sized so Jua fits; the invisible fallback (font-display: block)
+     can then never wrap to a third line and push the page down when Jua arrives. */
+  .hero .display { white-space: nowrap; font-size: min(44px, calc((100vw - 88px) / 5.8)); }
+  html[lang='en'] .hero .display { font-size: min(40px, calc((100vw - 88px) / 6.8)); }
+  html.no-jua .hero .display { white-space: normal; }
+  .dl-meta { min-height: 4.8em; }
   .kong { --s: .72; }
   .bubble { bottom: calc(150px * .72 - 4px); font-size: 14.5px; }
   .trio { grid-template-columns: minmax(0, 1fr); gap: 20px; margin-top: 44px; }
