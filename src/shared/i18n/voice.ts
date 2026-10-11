@@ -69,7 +69,7 @@ export const ko = {
   'voice.calm.pet.rest.2': '어깨를 쭉 펴 보자. 굳은 몸이 풀리면 머리도 맑아져.',
   'voice.calm.pet.rest.3': '먼 곳을 잠깐 보자. 가까운 화면만 보면 눈이 지쳐.',
   // ---- 존댓말 비서: 브리핑, 만나는 시간, 회고, 미리 알림, 펫 생활 ----
-  'voice.polite.briefing.oneEvent': '오늘 일정은 {time} {title} 하나예요.',
+  'voice.polite.briefing.oneEvent': '오늘은 {time}에 {title} 일정이 하나 있어요.',
   'voice.polite.briefing.events': '오늘 일정이 {n}개 있어요. 첫 일정은 {time} {title}입니다.',
   'voice.polite.briefing.allDay': '오늘은 종일 {list} 일정이 있어요.',
   'voice.polite.briefing.todos': '할 일은 {list} 있어요.',

@@ -2,7 +2,7 @@
 // 말 높이(반말, 해요체, 합쇼체, 하오체), 말끝 붙이기(냥, 멍), 나를 부르는 말(집사, 주인님), 이모지, 느낌표 세기,
 // 그리고 때(아침 인사, 칭찬, 쉬자는 말, 잘 자)마다 직접 쓴 말. 프리셋 말투(활발한 응원단, 고양이체 등)도 이 규칙으로 만든다.
 // 바꾸는 것은 문장 끝뿐이다: 따옴표와 괄호 안(할 일, 일정 제목, 시각)은 그대로 둔다. 순수 함수라 화면(미리 보기)도 쓴다
-import { withParticle } from './josa.ts';
+import { hasFinalConsonant, withParticle } from './josa.ts';
 
 export type SpeechLevel = 'banmal' | 'haeyo' | 'hapsyo' | 'hao';
 export type EmojiLevel = 'many' | 'some' | 'none';
@@ -141,11 +141,13 @@ function formalWord(word: string, level: 'hapsyo' | 'hao', q: boolean, prop = fa
     [/거(예|에)요$/, '것입니다', '것이오'],
     [/어때요$/, q ? '어떻습니까' : '어떻습니다', '어떻소'],
     [/아니에요$/, '아닙니다', '아니오'],
-    [/(이에요|예요)$/, q ? '입니까' : '입니다', '이오'],
+    [/이에요$/, q ? '입니까' : '입니다', '이오'],
+    // 받침 없는 이름씨 뒤 하오체 이다는 요 (하나예요 → 하나요, 최고예요 → 최고요)
+    [/예요$/, q ? '입니까' : '입니다', '요'],
     [/닌가요$/, '닙니까', '니오'],
     [/인가요$/, '입니까', '이오'],
     [/겠습니다$/, '겠습니다', '겠소'],
-    [/입니다$/, '입니다', '이오'],
+    [/입니다$/, '입니다', isSyllable(word.at(-4)) && finalOf(word.at(-4)) === 0 ? '요' : '이오'],
     [/실래요$/, '시겠습니까', '시겠소'],
     [/세요$/, q ? '십니까' : '', ''],
     [/을까요$/, '을까요', '으리까'],
@@ -292,8 +294,13 @@ function sentences(text: string): Piece[] {
 
 /** 문장 몸의 끝이 말끝(풀이말)인지: 마지막이 한글 글자이고 따옴표, 괄호로 끝나지 않는다 */
 const PREDICATE_END =
-  /(요|죠|니다|니까|시다|시오|구려|[이리]오|소|[야해어아지자네게래다까줘봐돼워려져겨혀쳐켜펴여군걸냐니]|거든|잖아|구나|는데)$/;
-const endsWithPredicate = (body: string) => PREDICATE_END.test(body.trimEnd());
+  /(요|죠|니다|니까|시다|시오|구려|[이리]오|소|[야해어아지자네게래다까줘봐돼워려져겨혀쳐켜펴여군걸냐니파내빼와데라]|거든|잖아|구나|(신|끝|만|지|떠|일어|\s)나)$/;
+/** 나로 끝나도 풀이말이 아닌 말 (하나, 둘. / 나.) */
+const NOT_PREDICATE = /(^|\s)하나$|^나$/;
+const endsWithPredicate = (body: string) => {
+  const b = body.trimEnd();
+  return PREDICATE_END.test(b) && !NOT_PREDICATE.test(b);
+};
 
 // ---- 말투 바꾸기 ----
 
@@ -320,7 +327,8 @@ export function callWord(style: Pick<SpeechStyle, 'call' | 'callText' | 'level'>
 function vocative(me: string, style: SpeechStyle, lang: 'ko' | 'en'): string {
   if (lang === 'en' || style.call !== 'name') return me;
   if (style.level !== 'banmal') return `${me}님`;
-  return withParticle(me, '아');
+  // 끝 소리를 모르는 이름(이모지, 기호)은 아(야)를 붙이지 않는다
+  return hasFinalConsonant(me) === undefined ? me : withParticle(me, '아');
 }
 
 /** 반말 줄의 너, 네(너의)를 부르는 말로 (네 편이야 → 집사 편이야, 너도 → 집사도) */
@@ -351,15 +359,21 @@ export function applyStyle(base: string, style: SpeechStyle, ctx: StyleContext):
   let text = base;
   if (ko && ctx.me && style.level === 'banmal') text = replaceYou(text, ctx.me);
   const parts = sentences(text);
-  // 한글 말끝(냥, 멍)은 영어 문장에 붙이지 않는다
-  const ending = !ko && /[가-힣]/.test(style.ending) ? '' : style.ending;
+  const ending = endingFor(style.ending, ctx.lang);
+  // 영어 말끝(meow)은 문장마다 붙이면 시끄럽다: 말 하나에 한 번, 마지막 낱말로 끝나는 문장에만
+  const enAt = ko
+    ? -1
+    : parts.findLastIndex((p) => /[A-Za-z0-9]$/.test(stripTrailer(p.body.replace(PAREN_END, '')).core));
   const out = parts.map((p, idx) => {
     // 끝에 붙은 괄호 (오전 10:00) 는 떼어 두었다 다시 붙인다 (말끝은 그 앞이다)
-    const paren = /\s*\([^()]*\)\s*$/.exec(p.body);
+    const paren = PAREN_END.exec(p.body);
     let body = paren ? p.body.slice(0, paren.index) : p.body;
     const after = paren ? paren[0] : '';
     let tail = p.tail;
     const q = tail.startsWith('?');
+    // 끝에 붙은 이모지 (좋아 🎉) 도 떼어 두었다 다시 붙인다 (말끝은 그 앞이다)
+    const cut = stripTrailer(body);
+    body = cut.core;
     const pred = ko && endsWithPredicate(body);
     if (ko && pred && (style.level === 'hapsyo' || style.level === 'hao')) {
       const m = /(\S+)(\s*)$/.exec(body);
@@ -375,14 +389,15 @@ export function applyStyle(base: string, style: SpeechStyle, ctx: StyleContext):
         if (formal) body = body.slice(0, m.index) + formal + (m[2] ?? '');
       }
     }
-    if (ending && (pred || (!ko && /\w$/.test(body.trimEnd())))) {
-      const trimmed = body.trimEnd();
-      body = ko
-        ? `${trimmed}${ending}${body.slice(trimmed.length)}`
-        : `${trimmed}, ${ending}${body.slice(trimmed.length)}`;
-    }
-    // 느낌표 세기: 약하게는 ! 를 마침표로, 세게는 마침표로 끝난 말끝 문장을 ! 로
-    if (style.bang === 'soft') tail = tail.replace(/!+/g, '.').replace(/\?\./g, '?');
+    if (ending && ko && pred) body = withEnding(body, ending, q);
+    else if (ending && idx === enAt) body = `${body}, ${ending}`;
+    body += cut.trailer;
+    // 느낌표 세기: 약하게는 ! 를 마침표로 (…! 는 …), 세게는 마침표로 끝난 말끝 문장을 ! 로
+    if (style.bang === 'soft')
+      tail = tail
+        .replace(/!+/g, '.')
+        .replace(/([?…])\.+/g, '$1')
+        .replace(/\.{4,}/g, '...');
     else if (style.bang === 'strong' && pred && /^\.(\s|$)/.test(tail)) tail = tail.replace('.', '!');
     if (ko && idx === 0 && ctx.greet && ctx.me) body = `${vocative(ctx.me, style, ctx.lang)}, ${body}`;
     return body + after + tail;
@@ -392,10 +407,58 @@ export function applyStyle(base: string, style: SpeechStyle, ctx: StyleContext):
     result = result
       .replace(EMOJI_RE, '')
       .replace(/\s{2,}/g, ' ')
+      .replace(/\s+([.!?,])(?=\s|$)/g, '$1')
       .trim();
   else if (style.emoji === 'many' && ctx.emoji && !HAS_EMOJI.test(result))
     result = `${result.trimEnd()} ${ctx.emoji}`;
   return result;
+}
+
+/** 문장 끝에 붙은 괄호 (오전 10:00) */
+const PAREN_END = /\s*\([^()]*\)\s*$/;
+
+/** 영어 화면의 말끝: 냥, 멍은 영어 울음소리로, 다른 한글 말끝은 붙이지 않는다. 문장 부호와 빈칸은 걷어 낸다 */
+const EN_ENDING: Record<string, string> = { 냥: 'meow', 멍: 'woof' };
+function endingFor(raw: string, lang: 'ko' | 'en'): string {
+  const ending = raw.replace(/[\s.!?~,…'"“”‘’()]/g, '');
+  if (lang === 'ko') return ending;
+  return EN_ENDING[ending] ?? (/[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(ending) ? '' : ending);
+}
+
+/** 문장 몸 끝의 이모지와 빈칸을 떼어 낸다 (core 에 말끝을 붙이고 trailer 를 다시 붙인다) */
+function stripTrailer(body: string): { core: string; trailer: string } {
+  const m = /(?:\s*(?:\p{Extended_Pictographic}|[\u{1F3FB}-\u{1F3FF}]|\u{FE0F}|\u{200D}))*\s*$/u.exec(body);
+  const at = m?.index ?? body.length;
+  return { core: body.slice(0, at), trailer: body.slice(at) };
+}
+
+/**
+ * 한국어 말끝(냥, 멍)을 문장 끝 말에 붙인다. 그냥 붙이면 어색한 모양은 고친다:
+ * 이미 그 말끝이면 그대로 (냥냥), 요 + 용은 용 하나로 (좋아요 → 좋아용), 다 + 요는 네요 (찾았다 → 찾았네요),
+ * 반말 이다(…야) 는 다로 (하나야 → 하나다냥, 거야 → 거다냥), 냥으로 묻는 말은 냥이 물음 끝이 된다
+ * (진짜야? → 진짜냥?, 왔어? → 왔냥?, 괜찮아? → 괜찮냥?)
+ */
+function withEnding(body: string, ending: string, q: boolean): string {
+  if (body.endsWith(ending)) return body;
+  if (/^[요용]/.test(ending)) {
+    if (body.endsWith('요')) return body.slice(0, -1) + ending;
+    // 반말 다 + 요는 네요 (찾았다 → 찾았네요, 월요일이다 → 월요일이네요). 합쇼체 니다는 그대로
+    if (body.endsWith('다') && !body.endsWith('니다')) return `${body.slice(0, -1)}네${ending}`;
+  }
+  const last = body.at(-1);
+  const prev = body.at(-2);
+  // 반말 이다: 이야, 거야, 모음 뒤 야 (최고야). 해야, 자야(…해야 해의 줄임)는 이다가 아니다
+  if (last === '야' && isSyllable(prev) && !/[해워어아자]/.test(prev as string)) {
+    // 반말에 요, 용을 붙이면 해요체 이다로 (하나야 → 하나예요, 편이야 → 편이에요)
+    if (/^[요용]/.test(ending))
+      return prev === '이' ? `${body.slice(0, -1)}에${ending}` : `${body.slice(0, -1)}예${ending}`;
+    if (!q) return `${body.slice(0, -1)}다${ending}`;
+    if (ending === '냥') return `${body.slice(0, -1)}${ending}`;
+  }
+  // 냥으로 묻는 말: 받침 있는 줄기 + 아/어 (왔어, 있어, 괜찮아) 는 아/어를 빼고 냥
+  if (q && ending === '냥' && (last === '어' || last === '아') && finalOf(prev) > 0)
+    return `${body.slice(0, -1)}${ending}`;
+  return body + ending;
 }
 
 /** 직접 쓴 말의 자리 표시를 채운다: {name} 펫 이름, {me} 나를 부르는 말, {todo} 할 일 */
@@ -437,7 +500,9 @@ export function describeStyle(style: SpeechStyle, lang: 'ko' | 'en'): string {
           : '하오체로 점잖게 말한다 (…하오, …소).';
   return [
     level,
-    style.ending ? `문장 끝마다 "${style.ending}"을(를) 붙인다 (예: 좋아${style.ending}).` : '',
+    style.ending
+      ? `문장 끝마다 ${withParticle(`"${style.ending}"`, '을')} 붙인다 (예: 좋아${style.ending}).`
+      : '',
     me ? `사용자를 "${me}"(이)라고 부른다.` : '',
     style.bang === 'strong' ? '느낌표를 자주 써서 힘차게 말한다.' : '',
     style.bang === 'soft' ? '느낌표 없이 차분하게 말한다.' : '',

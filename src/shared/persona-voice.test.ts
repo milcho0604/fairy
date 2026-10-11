@@ -201,7 +201,8 @@ const BANMAL_END = /(야|해|어|아|지|자|네|게|래|다|까|줘|봐|돼|워
 
 type Register = 'banmal' | 'haeyo' | 'hapsyo' | 'hao';
 const HAPSYO_END = /(니다|니까|시오|시다|까요)$/;
-const HAO_END = /(소|오|구려|리까|시오|니다)$/;
+// 받침 없는 이름씨 뒤 하오체 이다는 요 (회의 하나요, 최고요). 해요체 끝(어요, 세요, 예요)은 아니다
+const HAO_END = /(소|오|구려|리까|시오|니다|[^어아여와워해돼세에예게네래까죠지나봐줘]요)$/;
 
 /** 문장 끝 하나가 그 말 높이에 맞지 않으면 true. ending 이 있으면 반말 끝 뒤에 그 말끝이 붙어야 한다 */
 function offRegister(end: string, reg: Register, ending = ''): boolean {

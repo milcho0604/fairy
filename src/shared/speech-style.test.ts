@@ -24,7 +24,7 @@ test('말끝은 문장 끝 말에만 붙는다: 따옴표 안 제목, 괄호 속
   );
   assert.equal(
     ko('지금 회의 시작이야! (오전 10:00)', { ending: '멍' }),
-    '지금 회의 시작이야멍! (오전 10:00)',
+    '지금 회의 시작이다멍! (오전 10:00)',
   );
   assert.equal(
     ko('"보고서" 마감까지 2시간 남았어 (오후 3:00)', { ending: '멍' }),
@@ -59,7 +59,38 @@ test('말 높이: 해요체 말을 합쇼체와 하오체로 (물음, 같이 하
   );
   assert.equal(hao('오셨네요! 반가워요. 푹 쉬세요.'), '오셨구려! 반갑소. 푹 쉬시오.');
   assert.equal(hao('오늘 마감 3개가 남았어요. 내일로 넘길까요?'), '오늘 마감 3개가 남았소. 내일로 넘기리까?');
-  assert.equal(hao('하나예요. 잘 먹겠습니다.'), '하나이오. 잘 먹겠소.');
+  assert.equal(hao('회의예요. 잘 먹겠습니다.'), '회의요. 잘 먹겠소.');
+  assert.equal(hao('첫 일정은 보고서입니다. 월요일이에요.'), '첫 일정은 보고서요. 월요일이오.');
+});
+
+test('말끝을 붙여도 어색하지 않게: 이다는 다, 냥으로 묻기, 겹친 말끝, 이모지 앞, 요와 용', () => {
+  const cat = (t: string) => ko(t, { ending: '냥' });
+  assert.equal(cat('오늘 일정은 회의 하나야.'), '오늘 일정은 회의 하나다냥.');
+  assert.equal(cat('콩이는 네 편이야. 다 잘될 거야.'), '콩이는 네 편이다냥. 다 잘될 거다냥.');
+  assert.equal(cat('페어리 파일이 아니야.'), '페어리 파일이 아니다냥.');
+  assert.equal(cat('진짜야? 잘 쉬었어? 손목 괜찮아?'), '진짜냥? 잘 쉬었냥? 손목 괜찮냥?');
+  assert.equal(cat('해 볼까? 이제 해야 해.'), '해 볼까냥? 이제 해야 해냥.');
+  assert.equal(ko('진짜야?', { ending: '멍' }), '진짜야멍?');
+  assert.equal(cat('고마워 🎉!'), '고마워냥 🎉!');
+  assert.equal(cat('간식 냥냥.'), '간식 냥냥.');
+  // 이름씨로 끝난 문장, 3개나, 하나 (셀 때)에는 안 붙는다
+  assert.equal(cat('잘했잖아. 3개나. 하나, 둘.'), '잘했잖아냥. 3개나. 하나, 둘.');
+  // 배고파, 신나, 힘내, 어서 와 도 풀이말이다
+  assert.equal(cat('배고파. 신나. 힘내. 어서 와.'), '배고파냥. 신나냥. 힘내냥. 어서 와냥.');
+  // 해요체에 용은 요를 바꾼다, 반말에 요를 붙이면 이다도 해요체로
+  assert.equal(ko('좋아요. 하나예요.', { level: 'haeyo', ending: '용' }), '좋아용. 하나예용.');
+  assert.equal(ko('하나야. 네 편이야.', { ending: '요' }), '하나예요. 네 편이에요.');
+  // 화면에서 바로 온 말끝의 부호와 빈칸은 걷어 낸다
+  assert.equal(ko('좋아!', { ending: ' 냥! ' }), '좋아냥!');
+});
+
+test('영어 말끝: 냥, 멍은 meow, woof 로 말 하나에 한 번만. 다른 한글 말끝은 안 붙는다', () => {
+  const en = (t: string, ending: string) =>
+    applyStyle(t, { ...DEFAULT_STYLE, ending }, { lang: 'en', me: '' });
+  assert.equal(en('Good morning! Grab some water.', '냥'), 'Good morning! Grab some water, meow.');
+  assert.equal(en('Meeting now (10:00 AM)', '멍'), 'Meeting now, woof (10:00 AM)');
+  assert.equal(en('Nice work!', '뿌'), 'Nice work!');
+  assert.equal(en('Nice work! Rest well.', 'nya'), 'Nice work! Rest well, nya.');
 });
 
 test('부르는 말: 반말의 너, 네를 바꾸고 인사 앞에서 부른다. 내 이름은 반말이면 아/야, 높이면 님', () => {
