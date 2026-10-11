@@ -1003,26 +1003,28 @@ export function createPetWindow({
 
   /** 숨기기 전에 다시 부르는 법을 알려 준다. 메뉴 막대가 붐비면 아이콘이 안 보일 수 있어서다. 처음 3번만. */
   const HIDE_HINT_TIMES = 3;
-  let hinting = false;
-
-  async function hideWithHint() {
+  /**
+   * 숨기기는 바로 한다 (예전엔 말풍선 안내 2.5초를 보이고 숨어 굼떴고, 그사이 또 누르면 두 번 숨었다).
+   * 다시 부르는 키 안내는 처음 3번만 운영체제 알림으로
+   */
+  function hideWithHint() {
     const shown = settings.get().hideHints;
-    // 숨기기 키를 비워 두었으면 알려 줄 키가 없다
-    if (shown >= HIDE_HINT_TIMES || hinting || !hideShortcut()) {
-      setHidden('user', true, false);
+    setHidden('user', true, false);
+    if (
+      shown >= HIDE_HINT_TIMES ||
+      !hideShortcut() ||
+      !settings.get().osNotify ||
+      !Notification.isSupported()
+    )
       return;
-    }
-    hinting = true;
     settings.set({ hideHints: shown + 1 });
     const keys = acceleratorLabel(hideShortcut(), process.platform === 'darwin').join('+');
-    await say({ kind: 'answer', text: t('pet.hideHint', { keys }), ttlMs: 2500 });
-    hinting = false;
-    setHidden('user', true, false);
+    new Notification({ title: petName(), body: t('pet.hideHint', { keys }), silent: true }).show();
   }
 
   function setHidden(reason: HideReason, on: boolean, hint = true) {
     if (reason === 'user' && on && hint && !hideReasons.has('user')) {
-      void hideWithHint();
+      hideWithHint();
       return;
     }
     if (win.isDestroyed() || !hideReasons.set(reason, on)) return;
