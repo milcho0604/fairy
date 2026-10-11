@@ -6,7 +6,9 @@
 
 **화면 위를 돌아다니는 페어리가 할 일, 일정, 메모를 같이 챙겨 주는 데스크톱 비서예요.**
 
-[fairy.moilga.com](https://fairy.moilga.com) · 맥과 윈도우용(리눅스 시험판) · 베타 · [**받기**](https://github.com/milcho0604/fairy-releases/releases/latest) · [설치 안내](docs/install.md) · [사용 가이드](docs/guide.md) · [변경 이력](CHANGELOG.md)
+맥과 윈도우용(리눅스 시험판), 베타예요. 홈페이지는 [fairy.moilga.com](https://fairy.moilga.com)
+
+[**받기**](https://github.com/milcho0604/fairy-releases/releases/latest) | [설치 안내](docs/install.md) | [사용 가이드](docs/guide.md) | [변경 이력](CHANGELOG.md)
 
 </div>
 
@@ -39,6 +41,7 @@
 - 드래그로 옮기고, 잡아서 휙 놓으면 던져져서 통통 튀어요. 좌우로 문지르면 쓰다듬기예요.
 - 기본 페어리는 입체(three.js)로 그려요. 모습을 피규어, 게임 캐릭터, 실사, 복슬복슬(시험) 중에 고르거나, 예전처럼 납작한 2D로 둘 수 있어요.
 - 기분, 배부름, 친밀도가 있어요. 할 일을 끝내면 코인이 쌓이고, 코인으로 밥과 장난감, 집을 사 줄 수 있어요. 오래 안 놀아 주면 삐지기도 해요.
+- 산 집은 페어리 우클릭 메뉴나 집 우클릭 메뉴의 **집 숨기기**로 잠깐 치워 둘 수 있어요. 단계, 모양, 자리는 그대로 남고, 페어리 우클릭 메뉴의 "집 다시 보이기"나 상점의 "집 보이기"로 다시 꺼내요.
 - **친구의 페어리 초대하기**로 친구 페어리를 세 마리까지 초대해 같이 돌아다니게 할 수 있어요. 페어리는 `.fairy` 파일로 내보내 친구에게 줄 수 있어요 (예전 `.jjpet` 파일도 그대로 열려요).
 - 다른 앱을 전체 화면으로 쓰거나 발표할 때는 가려지고, 단축키로 잠깐 숨길 수도 있어요.
 
@@ -161,6 +164,7 @@
 - **리눅스(시험판)**: `fairy-<버전>-linux-x64.tar.xz`(풀어서 `fairy` 실행) 또는 `fairy-<버전>-linux-x86_64.AppImage`(실행 권한을 주고 실행).
 - 새 버전 확인, AI 모델 목록, 페어리 갤러리는 공개 레포 `milcho0604/fairy-releases` 의 릴리스와 `catalog/models.json`, `gallery/` 를 읽어요(이 소스 레포는 읽지 않아요). 레포가 공개되어 있지 않거나 연결이 안 되면 확인만 조용히 건너뛰고, 모델 목록은 앱에 들어 있는 것을 써요.
 - 맥과 윈도우 설치판은 새 버전을 미리 받아 두고 페어리가 "다시 켜서 업데이트"를 띄워요. 누를 때만 설치해요. 리눅스는 페어리가 릴리스 페이지를 열어 줘요.
+- 꼭 필요한 업데이트가 나오면 업데이트하기 전까지 AI 대화가 잠겨요(확인을 못 하면 잠그지 않아요). 설정 → 정보 → "새 버전 알림"을 끄면 새 버전 말풍선만 쉬고, 꼭 필요한 업데이트 확인은 계속해요.
 
 ### 시스템 요구 사항과 크기
 
@@ -333,7 +337,7 @@ npm run dist:linux # 리눅스 tar.xz, AppImage
 - **Assistant**: click the fairy for a panel with Today, To-dos, Notes, Events and Shop. Natural-language quick add ("meeting tomorrow 3pm", Korean and English), repeating to-dos, reminders, a focus timer, daily review, `.ics` calendar import.
 - **AI**: chat through the AI CLIs you already have (Claude Code, Codex, Cursor, Gemini) or a free local model (Qwen3). "Look together" sends a selected screen area to your AI. Fairy also runs as an MCP server so Claude Code or Codex can add to-dos, notes and events.
 - **Privacy**: no fairy server. Your data stays on your computer; things leave only when you use a feature that needs it (your chosen AI, the free illustration server, calendar URLs, downloads, update checks). Questions that carry a screenshot are never saved in the AI CLI's own history, and Settings → Data → Clear AI history removes what Claude Code and Codex kept for fairy. Deletes and edits the chat AI asks for need your OK in the fairy's bubble.
-- **Updates**: update checks, the model catalog and the fairy gallery read the public repository [milcho0604/fairy-releases](https://github.com/milcho0604/fairy-releases) (its releases, `catalog/models.json` and `gallery/`), never this source repository; when offline, the check is skipped and the built-in catalog is used.
+- **Updates**: update checks, the model catalog and the fairy gallery read the public repository [milcho0604/fairy-releases](https://github.com/milcho0604/fairy-releases) (its releases, `catalog/models.json` and `gallery/`), never this source repository; when offline, the check is skipped and the built-in catalog is used. Turning off new version notices only silences the bubble; required updates are still checked, and AI chat stays locked until you install one.
 - **Install**: download from [fairy-releases Releases](https://github.com/milcho0604/fairy-releases/releases/latest); details in [docs/install.md](docs/install.md) (Korean). Bugs go to [fairy-releases issues](https://github.com/milcho0604/fairy-releases/issues). Builds are not yet signed by Apple or Microsoft, so allow the app once on first launch.
 - **Develop**: Node 24 (`.nvmrc`, 22.18+ works), `npm install`, `npm run dev`, `npm run check`. See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
 - **License**: MIT.
