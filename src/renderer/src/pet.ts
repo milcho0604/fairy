@@ -1429,5 +1429,30 @@ Object.assign(window, {
     get inputs() {
       return inputs;
     },
+    /**
+     * 그림 점검용: 지금 펫(입체면 입체)을 주어진 상태로 한 장씩 그려 PNG data URL 로 돌려준다. 시각(now)을 넣지 않아
+     * 따라가기 없이 늘 같은 그림이 나온다 (바꾸기 전후 픽셀 비교). scale 은 그리는 배율 (기본 2)
+     */
+    debugRender: (states: Partial<DrawState>[], scale = 2): string[] => {
+      const m3d = current3d();
+      const c = document.createElement('canvas');
+      c.width = CANVAS_SIZE * scale;
+      c.height = CANVAS_SIZE * scale;
+      const g = c.getContext('2d');
+      if (!g || m3d === 'loading') return [];
+      return states.map((st) => {
+        g.setTransform(scale, 0, 0, scale, 0, 0);
+        drawPet(g, {
+          mood: 'idle',
+          elapsed: 0,
+          blink: -1,
+          viewSize: CANVAS_SIZE,
+          kind: petKind,
+          model3d: m3d,
+          ...st,
+        });
+        return c.toDataURL('image/png');
+      });
+    },
   },
 });
