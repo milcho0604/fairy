@@ -46,7 +46,7 @@ window.SITE = {
   petFileExt: '.jjpet',
 
   // 연락처 (자리표시). 진짜 주소로 바꿔요.
-  contactEmail: 'hello@example.com',
+  contactEmail: '', // 비우면 문의는 GitHub 이슈로 간다
 
   // 변경 이력 링크. 비워 두면 릴리스 페이지로 가요.
   changelogUrl: '',

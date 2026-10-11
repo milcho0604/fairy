@@ -71,7 +71,7 @@
       var k = el.getAttribute('data-href');
       if (k === 'changelog') el.href = S.changelogUrl || REL_PAGE;
       if (k === 'releases') el.href = REL_PAGE;
-      if (k === 'contact') el.href = 'mailto:' + S.contactEmail;
+      if (k === 'contact') el.href = S.contactEmail ? 'mailto:' + S.contactEmail : 'https://github.com/' + S.releases.owner + '/' + S.releases.repo + '/issues/new/choose';
     });
     var titleKey = root.getAttribute('data-title-key') || 'meta.title';
     var title = t(titleKey);
