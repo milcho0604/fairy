@@ -165,6 +165,7 @@ if (kind === 'chat') {
     toNote: (id: string) => ipcRenderer.invoke(CHAT.toNote, id),
     toTodos: (id: string) => ipcRenderer.invoke(CHAT.toTodos, id),
     retryWith: (provider) => ipcRenderer.send(CHAT.retryWith, provider),
+    planAction: (kind, todoId) => ipcRenderer.send(CHAT.planAction, kind, todoId),
     downloadModel: () => ipcRenderer.send(CHAT.downloadModel),
   };
   contextBridge.exposeInMainWorld('jjakkungChat', chat);

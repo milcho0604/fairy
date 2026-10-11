@@ -175,6 +175,8 @@ export const CHAT = {
   toNote: 'chat:to-note',
   toTodos: 'chat:to-todos',
   retryWith: 'chat:retry-with',
+  /** 규칙 답("오늘 뭐부터") 아래 단추: 'focus' | 'panel' 과 할 일 id */
+  planAction: 'chat:plan-action',
   // v2 무료 AI
   downloadModel: 'chat:download-model',
 } as const;
@@ -456,6 +458,8 @@ export interface ChatBridge {
   toTodos(messageId: string): Promise<number>;
   /** 마지막 질문을 다른 AI 로 다시 (한도에 걸렸을 때) */
   retryWith(provider: AiProvider): void;
+  /** 규칙 답 단추: 집중 시작(그 할 일로), 패널 열기 */
+  planAction(kind: 'focus' | 'panel', todoId?: number): void;
   /** 무료 AI 모델 받기 (v2). 다 받으면 마지막 질문을 무료 AI 로 다시 묻는다 */
   downloadModel(): void;
 }

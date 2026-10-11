@@ -131,6 +131,8 @@ export interface PetActions {
   menuNote?(): string | undefined;
   /** 짝꿍이 아는 것 창 (main/knows.ts). 없으면 메뉴에 안 보인다 */
   openKnows?(): void;
+  /** "오늘 뭐부터?" 규칙 답을 말풍선으로 (main/what-first.ts). 없으면 메뉴에 안 보인다 */
+  whatFirst?(): void;
 }
 
 export interface SayOptions {
@@ -489,6 +491,7 @@ export function createPetWindow({
         accelerator: quickAddShortcut() || undefined,
         click: () => actions.quickAdd(),
       },
+      ...(actions.whatFirst ? [{ label: t('first.menu'), click: () => actions.whatFirst?.() }] : []),
       { label: t('pet.menu.feed'), click: () => actions.feed() },
       {
         label: t('pet.menu.play'),

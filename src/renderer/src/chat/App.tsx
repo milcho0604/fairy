@@ -549,7 +549,14 @@ function Message({
       <div className="body">
         <span className="who">
           {petName}
-          {m.provider && <span className="tag">{label}</span>}
+          {/* 규칙 답("오늘 뭐부터")은 AI 이름 대신 "AI 없이" (AI 가 답한 줄 알지 않게) */}
+          {m.byRules ? (
+            <span className="tag" title={t('first.tagTitle')}>
+              {t('first.tag')}
+            </span>
+          ) : (
+            m.provider && <span className="tag">{label}</span>
+          )}
         </span>
         {m.status === 'waiting' && (
           <Thinking streams={m.provider === 'claude'} label={label} petName={petName} />
@@ -559,6 +566,23 @@ function Message({
           <div className="bubble" aria-hidden={m.status === 'streaming' || undefined}>
             <Markdown text={m.text} onLink={bridge.openLink} />
             {m.status === 'done' && <AnswerActions id={m.id} text={m.text} />}
+          </div>
+        )}
+        {/* 규칙 답 아래: 맨 위 할 일로 집중 시작, 패널 열기 */}
+        {m.status === 'done' && m.plan && (
+          <div className="retry action-row">
+            {m.plan.focusTodoId !== undefined && (
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => bridge.planAction('focus', m.plan?.focusTodoId)}
+              >
+                {t('first.focus')}
+              </button>
+            )}
+            <button type="button" className="ghost" onClick={() => bridge.planAction('panel')}>
+              {t('first.panel')}
+            </button>
           </div>
         )}
         {/* 무료 AI 모델 받기 안내는 오류가 아니라 다음 할 일이라 오류색을 쓰지 않는다 */}

@@ -78,6 +78,7 @@ import { watchTrayTitle } from './tray-title.ts';
 import { watchUpdates } from './update.ts';
 import { createWear } from './wear.ts';
 import { createWeekCard } from './week-card.ts';
+import { createWhatFirst } from './what-first.ts';
 
 // 데이터 폴더를 이름으로 고정한다. 기본값은 앱 이름을 따라가서 설치판(Jjakkung)과 개발판(jjakkung)이
 // 운영체제에 따라 다른 폴더가 되고, 나중에 앱 이름을 바꿔도 데이터를 잃는다.
@@ -187,6 +188,9 @@ ready
       },
       mcpServers: () => (settings.get().myMcp ? mcpServers(log) : []),
       addTodos: (titles) => addAnswerTodos(titles).length,
+      // "오늘 뭐부터 할까?" 규칙 답과 답 아래 단추 (main/what-first.ts)
+      whatFirst: { answer: () => whatFirst.answer(), context: () => whatFirst.context() },
+      onPlanAction: (kind, todoId) => planAction(kind, todoId),
       onUserSaid: (text) => pout.said(text),
       onPetAi: (state) => {
         if (state.thinking) petLife.activity('chat');
@@ -247,6 +251,7 @@ ready
         focusRunning: () => planner.focus.phase !== 'idle',
         toggleFocus: () => (planner.focus.phase === 'idle' ? planner.startFocus() : planner.stopFocus()),
         openKnows: () => knows.open(),
+        whatFirst: () => sayWhatFirst(),
       },
       log,
       onMissed: () => panel.refresh(),
@@ -363,6 +368,38 @@ ready
       dataVersion,
       trouble,
     } = openStore(log);
+    // "오늘 뭐부터 할까?" (채팅 규칙 답, 펫 우클릭 메뉴): 지난 마감 → 오늘 마감 → 중요 → 곧 마감 → 습관, 빈 시간에 집중 칸
+    const whatFirst = createWhatFirst({
+      todos: store,
+      habits,
+      events,
+      restDays: () => restDaysOf(settings.get()),
+      dayEndMinute: () => settings.get().reviewMinute,
+    });
+    /** 펫 우클릭 메뉴 "오늘 뭐부터?": 규칙 답을 말풍선으로, 단추는 집중 시작과 패널 열기 */
+    const sayWhatFirst = () => {
+      const b = whatFirst.bubble();
+      void pet
+        .say({
+          kind: 'answer',
+          text: b.text,
+          buttons: b.empty
+            ? []
+            : [
+                ...(b.focusTodoId !== undefined ? [{ id: 'focus', label: t('first.focus') }] : []),
+                { id: 'panel', label: t('first.panel') },
+              ],
+          ttlMs: 30_000,
+        })
+        .then((a) => {
+          if (a === 'focus' || a === 'panel') planAction(a, b.focusTodoId);
+        });
+    };
+    /** 규칙 답 단추: 집중 시작(이미 집중 중이면 그대로), 패널 오늘 탭 */
+    const planAction = (kind: 'focus' | 'panel', todoId?: number) => {
+      if (kind === 'panel') panel.openTab('today');
+      else if (planner.focus.phase === 'idle') planner.startFocus(undefined, todoId);
+    };
     // 오래된 안전 복사본(가져오기 전 데이터, 판 올리기 전 복사, 깨진 파일)을 정리한다. 저장 파일을 연 뒤라
     // 되살리기에 쓸 복사본은 이미 썼다. 종류마다 새것 3개와 30일 안의 것은 남긴다 (keep-copies.ts)
     try {
@@ -1431,6 +1468,8 @@ ready
           companion,
           dayTools,
           habits,
+          whatFirst,
+          sayWhatFirst,
           handleUrl,
           handleIncoming,
           saverNow,

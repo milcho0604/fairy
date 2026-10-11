@@ -43,6 +43,7 @@ import {
   type PetAiState,
   type ProviderView,
 } from '../shared/ipc.ts';
+import { isWhatFirstQuestion } from '../shared/what-first.ts';
 import { prepareCodexHome } from './ai/codex-home.ts';
 import { downloadLocalModel, localModelReady, mb, runLocal } from './ai/local.ts';
 import { type AiRun, checkStatus, readCodexUsage, runAi } from './ai/runner.ts';
@@ -97,6 +98,16 @@ export interface ChatOptions {
   onUserSaid?: (text: string) => void;
   /** 답이 다 왔다. 채팅 창이 앞에 없으면 펫이 말풍선으로 알린다. */
   onAnswer?: (text: string, chatInFront: boolean) => void;
+  /**
+   * "오늘 뭐부터 할까?" 규칙 답 (main/what-first.ts). AI 가 없거나(설치, 로그인 안 됨) 무료 AI 면 이 답을 바로 주고,
+   * 클라우드 AI 면 AI 에 묻되 할 일 같이 보내기를 켰을 때 이 순서를 자료로 붙인다
+   */
+  whatFirst?: {
+    answer: () => { text: string; focusTodoId?: number };
+    context: () => string;
+  };
+  /** 규칙 답 아래 단추: 집중 시작(그 할 일로), 패널 열기 */
+  onPlanAction?: (kind: 'focus' | 'panel', todoId?: number) => void;
   /** 강제 업데이트 전이라 AI 대화를 잠갔는지. 잠겼으면 창을 열지도 묻지도 않고 onLocked 를 부른다 */
   locked?: () => boolean;
   /** 잠긴 대화를 쓰려 했다 (펫이 까닭을 말한다) */
@@ -249,6 +260,9 @@ export function createChat(o: ChatOptions) {
     if (clean && ask(text, clean)) o.onUserSaid?.(text);
   });
 
+  /** "오늘 뭐부터" 를 AI 에 보낼지 보려고 설치, 로그인을 확인 중인 펫 메시지 id (멈추기) */
+  let checking: string | undefined;
+
   /** 질문을 보낸다. 채팅 창의 보내기와 메모 "AI로 정리"가 같이 쓴다. 답을 기다리는 중이면 false */
   function ask(text: string, images: OutgoingImage[] = []): boolean {
     if (o.locked?.()) {
@@ -270,7 +284,17 @@ export function createChat(o: ChatOptions) {
     const withImage = images.length > 0 && !!spec.images;
     const ephemeral = canSkipSave && (!!state.ephemeral || withImage);
     const base = question || t('chat.lookQuestion');
-    const context = o.knowsTodos() ? o.todoContext() : '';
+    // "오늘 뭐부터 할까?": 무료 AI 나 할 일을 AI 에 안 보내는 설정이면 규칙으로 바로 답한다 (할 일이 컴퓨터 밖으로 나가지 않는다).
+    // 클라우드 AI 면 설치, 로그인을 보고 쓸 수 있으면 규칙 순서를 자료로 붙여 AI 에, 못 쓰면 규칙으로 답한다
+    const first = images.length === 0 && !!o.whatFirst && isWhatFirstQuestion(question);
+    const aiSeesTodos =
+      o.knowsTodos() || (o.petTools() && (spec.adapter === 'claude' || spec.adapter === 'codex'));
+    if (first && (spec.adapter === 'local' || !aiSeesTodos)) {
+      answerByRules(question);
+      return true;
+    }
+    const firstCtx = first ? (o.whatFirst?.context() ?? '') : '';
+    const context = o.knowsTodos() ? firstCtx + o.todoContext() : '';
     // 그림 질문 뒤 이어 가는 세션은 그 문답을 모른다. 다음 질문에 글로만 붙인다
     const carried = !ephemeral ? (carry.get(provider) ?? []) : [];
     carry.delete(provider);
@@ -288,82 +312,132 @@ export function createChat(o: ChatOptions) {
     push();
     // 그림을 받는 AI 에 그림을 보낼 때만 펫이 돋보기로 훑는다
     onPetAi({ thinking: true, answered: false, withImage: images.length > 0 && !!spec.images });
-    const started = Date.now();
-    log(
-      'chat',
-      'send',
-      provider,
-      `images=${images.length}`,
-      ephemeral ? 'ephemeral' : '',
-      context ? 'todos' : '',
-    );
-
-    const sessionBefore = state.sessions[provider];
-    const req = {
-      spec,
-      history,
-      text: prompt,
-      // 그림을 못 받는 AI 에는 글만 보낸다. 화면이 미리 알려 준다.
-      images: spec.images ? images.map((i) => i.full) : [],
-      sessionId: ephemeral ? undefined : state.sessions[provider]?.id,
-      persona: persona(petName(), o.personaId(), o.rules()),
-      isolate: aiIsolation(),
-      ephemeral,
-      mcpServers: aiIsolation() ? [] : o.mcpServers(),
-      // 짝꿍 도구: 격리해도 펫 MCP 서버 하나만 싣는다. 기본 도구(파일, 명령)는 그대로 끈다 (claude.ts, codex.ts)
-      jjServer:
-        o.petTools() && (spec.adapter === 'claude' || spec.adapter === 'codex') ? jjMcpLaunch() : undefined,
-      // 고른 모델 (v2). 목록에 없으면 그 AI 의 기본
-      model: pickCli(o.catalog(), provider, o.aiModels()[provider]),
-    };
-    const onEvent = (event: AiEvent) => {
-      state = applyEvent(state, ids.pet, event, randomUUID());
-      if (event.type === 'usage') writeJson(USAGE_FILE, state.usage);
-      // 기록을 안 남긴 세션은 이어 갈 수 없다. 받아 두지 않는다. 그림 때문에 이번만 안 남겼으면 전 세션을 그대로 둔다
-      if (ephemeral && event.type === 'session')
-        state = {
-          ...state,
-          sessions: { ...state.sessions, [provider]: state.ephemeral ? undefined : sessionBefore },
-        };
-      if (ephemeral && !state.ephemeral && event.type === 'done' && event.text)
-        carry.set(
-          provider,
-          [...(carry.get(provider) ?? []), { question: base, answer: event.text }].slice(-3),
-        );
-      if (event.type === 'delta') {
-        const msg = state.messages.find((m) => m.id === ids.pet);
-        win?.webContents.send(CHAT.delta, ids.pet, msg?.text ?? '');
-        return;
-      }
-      if (event.type === 'done' || event.type === 'error') {
-        run = undefined;
-        onPetAi({ thinking: false, answered: event.type === 'done' });
-        o.onTurnEnd?.();
-        if (event.type === 'done') save();
-        if (event.type === 'done') {
-          const inFront = !!win && !win.isDestroyed() && win.isVisible() && win.isFocused();
-          onAnswer?.(event.text, inFront);
-        }
-        log(
-          'chat',
-          event.type,
-          provider,
-          `${Date.now() - started}ms`,
-          event.type === 'error' ? event.error.kind : '',
-        );
-      }
-      push();
-    };
-    run =
-      spec.adapter === 'local'
-        ? runLocal(req, pickLocal(o.catalog(), o.aiModels().local), onEvent, log, {
-            // 한국어이고 존댓말 성격이 아니면 반말 예시와 어미 고치기
-            banmal: getLang() === 'ko' && o.personaId() !== 'polite',
-            petName: petName(),
-            rules: o.rules(),
-          })
-        : runAi(req, onEvent);
+    if (first) {
+      // 설치, 로그인 확인은 잠깐 기억해 두어 보통 바로 끝난다. 그사이 멈추기를 누르면 규칙으로 답하지 않고 멈춘다
+      checking = ids.pet;
+      void checkStatus(spec)
+        .catch(() => undefined)
+        .then((st) => {
+          if (checking !== ids.pet || state.pendingId !== ids.pet) return;
+          checking = undefined;
+          if (st?.installed && st.loggedIn !== false) start();
+          else finishByRules(ids.pet);
+        });
+      return true;
+    }
+    start();
     return true;
+
+    function start() {
+      if (!spec) return;
+      const started = Date.now();
+      log(
+        'chat',
+        'send',
+        provider,
+        `images=${images.length}`,
+        ephemeral ? 'ephemeral' : '',
+        context ? 'todos' : '',
+      );
+
+      const sessionBefore = state.sessions[provider];
+      const req = {
+        spec,
+        history,
+        text: prompt,
+        // 그림을 못 받는 AI 에는 글만 보낸다. 화면이 미리 알려 준다.
+        images: spec.images ? images.map((i) => i.full) : [],
+        sessionId: ephemeral ? undefined : state.sessions[provider]?.id,
+        persona: persona(petName(), o.personaId(), o.rules()),
+        isolate: aiIsolation(),
+        ephemeral,
+        mcpServers: aiIsolation() ? [] : o.mcpServers(),
+        // 짝꿍 도구: 격리해도 펫 MCP 서버 하나만 싣는다. 기본 도구(파일, 명령)는 그대로 끈다 (claude.ts, codex.ts)
+        jjServer:
+          o.petTools() && (spec.adapter === 'claude' || spec.adapter === 'codex') ? jjMcpLaunch() : undefined,
+        // 고른 모델 (v2). 목록에 없으면 그 AI 의 기본
+        model: pickCli(o.catalog(), provider, o.aiModels()[provider]),
+      };
+      const onEvent = (event: AiEvent) => {
+        state = applyEvent(state, ids.pet, event, randomUUID());
+        if (event.type === 'usage') writeJson(USAGE_FILE, state.usage);
+        // 기록을 안 남긴 세션은 이어 갈 수 없다. 받아 두지 않는다. 그림 때문에 이번만 안 남겼으면 전 세션을 그대로 둔다
+        if (ephemeral && event.type === 'session')
+          state = {
+            ...state,
+            sessions: { ...state.sessions, [provider]: state.ephemeral ? undefined : sessionBefore },
+          };
+        if (ephemeral && !state.ephemeral && event.type === 'done' && event.text)
+          carry.set(
+            provider,
+            [...(carry.get(provider) ?? []), { question: base, answer: event.text }].slice(-3),
+          );
+        if (event.type === 'delta') {
+          const msg = state.messages.find((m) => m.id === ids.pet);
+          win?.webContents.send(CHAT.delta, ids.pet, msg?.text ?? '');
+          return;
+        }
+        if (event.type === 'done' || event.type === 'error') {
+          run = undefined;
+          onPetAi({ thinking: false, answered: event.type === 'done' });
+          o.onTurnEnd?.();
+          if (event.type === 'done') save();
+          if (event.type === 'done') {
+            const inFront = !!win && !win.isDestroyed() && win.isVisible() && win.isFocused();
+            onAnswer?.(event.text, inFront);
+          }
+          log(
+            'chat',
+            event.type,
+            provider,
+            `${Date.now() - started}ms`,
+            event.type === 'error' ? event.error.kind : '',
+          );
+        }
+        push();
+      };
+      run =
+        spec.adapter === 'local'
+          ? runLocal(req, pickLocal(o.catalog(), o.aiModels().local), onEvent, log, {
+              // 한국어이고 존댓말 성격이 아니면 반말 예시와 어미 고치기
+              banmal: getLang() === 'ko' && o.personaId() !== 'polite',
+              petName: petName(),
+              rules: o.rules(),
+            })
+          : runAi(req, onEvent);
+    }
+  }
+
+  /** 질문과 규칙 답을 바로 (AI 를 부르지 않는다) */
+  function answerByRules(question: string) {
+    const ids = { user: randomUUID(), pet: randomUUID() };
+    state = addQuestion(state, ids, question, []);
+    finishByRules(ids.pet);
+  }
+
+  /** 기다리는 펫 메시지를 규칙 답으로 채운다. AI 세션 회차는 세지 않는다 (AI 가 답한 것이 아니다) */
+  function finishByRules(petId: string) {
+    const a = o.whatFirst?.answer();
+    if (!a) return;
+    state = {
+      ...state,
+      pendingId: undefined,
+      messages: state.messages.map((m) =>
+        m.id === petId
+          ? {
+              ...m,
+              text: a.text,
+              status: 'done' as const,
+              byRules: true as const,
+              plan: a.focusTodoId !== undefined ? { focusTodoId: a.focusTodoId } : {},
+            }
+          : m,
+      ),
+    };
+    log('chat', 'what-first', 'rules');
+    onPetAi({ thinking: false, answered: true });
+    save();
+    push();
   }
 
   // 무료 AI 모델 받기 (v2). 사용자가 받기를 눌렀을 때만 받는다. 다 받으면 마지막 질문을 다시 묻는다
@@ -448,6 +522,11 @@ export function createChat(o: ChatOptions) {
     log('chat', 'to-todos', n);
     return n;
   });
+  // 규칙 답 아래 단추 (집중 시작, 패널 열기). 할 일 id 는 메인이 다시 본다 (planner.startFocus)
+  ipcMain.on(CHAT.planAction, (e, kind: unknown, todoId: unknown) => {
+    if (!fromChat(e) || (kind !== 'focus' && kind !== 'panel')) return;
+    o.onPlanAction?.(kind, Number.isInteger(todoId) ? (todoId as number) : undefined);
+  });
   ipcMain.on(CHAT.retryWith, (e, provider: AiProvider) => {
     if (!fromChat(e) || state.pendingId || !specOf(provider)) return;
     userPicked = true;
@@ -461,6 +540,18 @@ export function createChat(o: ChatOptions) {
 
   ipcMain.on(CHAT.cancel, (e) => {
     if (!fromChat(e)) return;
+    if (checking) {
+      const id = checking;
+      checking = undefined;
+      state = applyEvent(
+        state,
+        id,
+        { type: 'error', error: { kind: 'cancelled', message: t('ai.error.cancelled') } },
+        randomUUID(),
+      );
+      onPetAi({ thinking: false, answered: false });
+      push();
+    }
     run?.cancel();
     downloading?.abort(); // 모델 받기도 멈춘다 (받기 진행 옆 취소 단추)
   });
