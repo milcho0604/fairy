@@ -756,7 +756,7 @@ ready
         void pet
           .say({
             kind: 'schedule',
-            text: t('pet.calendarBroken'),
+            text: voiced('pet.calendarBroken'),
             buttons: [{ id: 'settings', label: t('pet.calendarSettings') }],
             ttlMs: 30_000,
             hold: { missedMsgs: [{ key: 'pet.calendarBroken' }], onAction: openCalendarSettings },
@@ -905,7 +905,7 @@ ready
         if (!house.bounds()) rest.houseGone();
         void pet.say({
           kind: 'answer',
-          text: t(what === 'style' ? 'pet.houseStyle' : 'pet.newHouse'),
+          text: voiced(what === 'style' ? 'pet.houseStyle' : 'pet.newHouse'),
           ttlMs: 4000,
         });
       },
@@ -1117,7 +1117,7 @@ ready
         if (r.ok)
           void pet.say({
             kind: 'answer',
-            text: t('pet.foodMade', { food: name.trim() }),
+            text: voiced('pet.foodMade', { food: name.trim() }),
             ttlMs: 4000,
             image: foodImageDataUrl(file),
           });

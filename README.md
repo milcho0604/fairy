@@ -39,7 +39,7 @@
 - 드래그로 옮기고, 잡아서 휙 놓으면 던져져서 통통 튀어요. 좌우로 문지르면 쓰다듬기예요.
 - 기본 페어리는 입체(three.js)로 그려요. 모습을 피규어, 게임 캐릭터, 실사, 복슬복슬(시험) 중에 고르거나, 예전처럼 납작한 2D로 둘 수 있어요.
 - 기분, 배부름, 친밀도가 있어요. 할 일을 끝내면 코인이 쌓이고, 코인으로 밥과 장난감, 집을 사 줄 수 있어요. 오래 안 놀아 주면 삐지기도 해요.
-- 친구 페어리를 세 마리까지 데려와 같이 돌아다니게 할 수 있어요. 페어리는 `.fairy` 파일로 내보내 친구에게 줄 수 있어요 (예전 `.jjpet` 파일도 그대로 열려요).
+- **친구의 페어리 초대하기**로 친구 페어리를 세 마리까지 초대해 같이 돌아다니게 할 수 있어요. 페어리는 `.fairy` 파일로 내보내 친구에게 줄 수 있어요 (예전 `.jjpet` 파일도 그대로 열려요).
 - 다른 앱을 전체 화면으로 쓰거나 발표할 때는 가려지고, 단축키로 잠깐 숨길 수도 있어요.
 
 <p align="center">
@@ -331,7 +331,7 @@ npm run dist:linux # 리눅스 tar.xz, AppImage
 
 - **Fairy**: five built-in 3D fairies (Bean, Kitty, Chick, Puppy, Bunny) plus two illustrated ones (Milk, Choco). Drag, throw, pet it, feed it with coins earned from finished to-dos, or make your own fairy from a photo (background removal runs locally; optional 3D figure, 2.5D depth, or AI illustration via a free Hugging Face Space, the Gemini app, or on-device drawing).
 - **Assistant**: click the fairy for a panel with Today, To-dos, Notes, Events and Shop. Natural-language quick add ("meeting tomorrow 3pm", Korean and English), repeating to-dos, reminders, a focus timer, daily review, `.ics` calendar import.
-- **AI**: chat through the AI CLIs you already have (Claude Code, Codex, Cursor, Gemini) or a free local model (Qwen3). "Look together" sends a selected screen area to your AI. fairy also runs as an MCP server so Claude Code or Codex can add to-dos, notes and events.
+- **AI**: chat through the AI CLIs you already have (Claude Code, Codex, Cursor, Gemini) or a free local model (Qwen3). "Look together" sends a selected screen area to your AI. Fairy also runs as an MCP server so Claude Code or Codex can add to-dos, notes and events.
 - **Privacy**: no fairy server. Your data stays on your computer; things leave only when you use a feature that needs it (your chosen AI, the free illustration server, calendar URLs, downloads, update checks). Questions that carry a screenshot are never saved in the AI CLI's own history, and Settings → Data → Clear AI history removes what Claude Code and Codex kept for fairy. Deletes and edits the chat AI asks for need your OK in the fairy's bubble.
 - **Updates**: update checks and the model catalog read this repository's public releases and `catalog/models.json`; while the repository is private or offline, the check is skipped and the built-in catalog is used.
 - **Install**: see [docs/install.md](docs/install.md) (Korean). Builds are not yet signed by Apple or Microsoft, so allow the app once on first launch.

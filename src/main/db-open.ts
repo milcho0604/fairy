@@ -25,7 +25,7 @@ export interface OpenedDb {
 class NewerError extends Error {
   readonly version: number;
   constructor(version: number) {
-    super(`이 저장 파일(${version}판)은 이 짝꿍(${SCHEMA_VERSION}판)보다 새 판이다`);
+    super(`이 저장 파일(${version}판)은 이 페어리(${SCHEMA_VERSION}판)보다 새 판이다`);
     this.version = version;
   }
 }

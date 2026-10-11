@@ -189,10 +189,11 @@ export const en: Translation<typeof ko> = {
   'main.backup.exportTitle': 'Folder for the backup',
   'main.backup.importTitle': 'Backup folder to import',
   'main.backup.notBackup': "That's not a fairy backup folder",
-  'main.backup.newer': 'This backup was made by a newer fairy. Update fairy first, then import it.',
+  'main.backup.newer':
+    'This backup was made by a newer version of fairy. Update fairy first, then import it.',
   'main.backup.confirm': 'Replace your current to-dos, notes and fairy with this backup?',
   'main.backup.confirmDetail':
-    "Your settings, fairy rules and calendar address change to the backup's too. Your current data stays in the before-import folder inside the user data folder. fairy restarts after the switch.",
+    "Your settings, fairy rules and calendar address change to the backup's too. Your current data stays in the before-import folder inside the user data folder. Fairy restarts after the switch.",
   'main.backup.customAiSkipped': "Custom AIs from the backup ({n}) weren't brought over.",
   'main.backup.customAiSkippedDetail':
     'Custom AIs are commands that run on this computer, so backups never import them. Add them again in the chat after the restart if you need them.',
@@ -264,7 +265,7 @@ export const en: Translation<typeof ko> = {
   'main.db.fresh':
     'Your save file was damaged. I kept it as {moved} and started fresh. If you have a backup, you can import it in Settings.',
   'main.db.newer':
-    "Your save file is from a newer fairy. So I won't overwrite it, nothing is saved this time. Please update fairy.",
+    'Your save file is from a newer version of fairy. To keep it safe, nothing will be saved this time. Please update fairy.',
   'main.db.unavailable':
     "I couldn't open your save file, so nothing is saved this time. Try restarting fairy.",
   'main.db.showFile': 'Show file',
@@ -282,7 +283,7 @@ export const en: Translation<typeof ko> = {
     '{file} was damaged. I kept it as {moved} and brought back the last copy that read fine.',
   'main.json.reset':
     '{file} was damaged. I kept it as {moved} and started with defaults. If you have a backup, you can import it in Settings.',
-  'main.start.failed': "fairy couldn't start",
+  'main.start.failed': "Fairy couldn't start",
   'main.start.failedDetail':
     'Something went wrong while starting, so fairy will close. Try opening it again. If it keeps happening, please send the log file (logs/main.log).\n\n{error}',
   'main.data.oldRunning': 'The old Jjakkung app is still running',

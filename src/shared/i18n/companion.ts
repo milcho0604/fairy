@@ -55,7 +55,7 @@ export const ko = {
   'companion.cheer.count': (v: Cheer) => `오늘 벌써 ${v.n}개째! ${withParticle(v.name, '은')} 놀라는 중.`,
   // 만난 날 기념 (shared/companion.ts anniversaryDue)
   'companion.anniv.day': (v: Anniv) =>
-    `오늘이 우리 만난 지 ${v.n}일째 되는 날이야! ${withParticle(v.name, '이')} 앞으로도 잘 부탁해.`,
+    `오늘이 우리 만난 지 ${v.n}일째 되는 날이야! 앞으로도 ${v.name} 잘 부탁해.`,
   'companion.anniv.late': (v: Anniv) => `우리 만난 지 ${v.n}일이 살짝 지났어! 늦었지만 축하해, 고마워.`,
   'companion.anniv.year': (v: Anniv) =>
     `우리 만난 지 벌써 ${v.n}년이야! ${withParticle(v.name, '은')} 너랑 지낸 날이 다 좋았어.`,
@@ -80,7 +80,7 @@ export const en: Translation<typeof ko> = {
   'idle.memory.yesterday.2': (v: N) =>
     `You did great yesterday, ${v.yesterday ?? 0} ${s(v.yesterday, 'to-do', 'to-dos')}! Start easy today.`,
   'idle.streak.1': (v: N) =>
-    `Day ${v.streak ?? 0} in a row of getting things done. ${v.name} has been counting!`,
+    `${v.streak ?? 0} days in a row of getting things done. ${v.name} has been counting!`,
   'idle.streak.2': (v: N) => `${v.streak ?? 0}-day streak! Finish just one today to keep it going.`,
   'idle.week.1': (v: N) => `${v.week ?? 0} ${s(v.week, 'to-do', 'to-dos')} done this week. What a week!`,
   'idle.week.2': (v: N) => `${v.week ?? 0} done this week. ${v.name} saw every one.`,
@@ -103,7 +103,7 @@ export const en: Translation<typeof ko> = {
   'companion.cheer.clear': () => 'All done for today! Yay!',
   'companion.cheer.streak': (v: Cheer) => `First one today! That makes ${v.n} days in a row.`,
   'companion.cheer.count': (v: Cheer) => `That's ${v.n} today already! ${v.name} is amazed.`,
-  'companion.anniv.day': (v: Anniv) => `Today is our day ${v.n} together! ${v.name} is so glad it's you.`,
+  'companion.anniv.day': (v: Anniv) => `Today marks ${v.n} days together! ${v.name} is so glad it's you.`,
   'companion.anniv.late': (v: Anniv) => `We just passed ${v.n} days together! A little late, but thank you.`,
   'companion.anniv.year': (v: Anniv) =>
     `${v.n} ${s(v.n, 'year', 'years')} together already! ${v.name} loved every day of it.`,

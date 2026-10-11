@@ -75,7 +75,7 @@ export const en: Translation<typeof ko> = {
   'gcal.problem.offline': "No internet, so nothing was sent yet. I'll retry on my own.",
   'gcal.problem.calendar': "Can't write to that calendar. Check the calendar ID and that you can edit it.",
   'gcal.problem.failed': "Couldn't connect. Please try again in a bit.",
-  'gcal.page.okTitle': 'fairy is connected to Google Calendar',
+  'gcal.page.okTitle': 'Fairy is connected to Google Calendar',
   'gcal.page.okBody': 'You can close this tab and go back to fairy.',
   'gcal.page.failTitle': "Couldn't connect",
   'gcal.page.failBody': 'Try again from fairy settings. You can close this tab.',

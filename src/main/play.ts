@@ -19,6 +19,7 @@ import type { HouseSprites } from '../shared/house-room.ts';
 import { t } from '../shared/i18n/index.ts';
 import { IPC } from '../shared/ipc.ts';
 import { MOVE_SPECS } from '../shared/moves.ts';
+import { voiced } from '../shared/persona-voice.ts';
 import { type Body, bounce, GRAVITY } from '../shared/throw.ts';
 import { onDisplaysChanged as watchDisplays } from './display-watch.ts';
 import type { PetWindow } from './pet-window.ts';
@@ -578,5 +579,5 @@ export async function visitHouse(pet: PetWindow, house: House): Promise<void> {
   const door = house.door(p.width);
   if (onFloor && door && !(await pet.walkTo(door.x - p.width / 2, 200))) return;
   pet.react('happy');
-  void pet.say({ kind: 'answer', text: t('pet.houseMoved'), ttlMs: 3000 });
+  void pet.say({ kind: 'answer', text: voiced('pet.houseMoved'), ttlMs: 3000 });
 }

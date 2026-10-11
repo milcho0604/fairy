@@ -66,7 +66,7 @@ export const ko = {
 };
 
 export const en: Translation<typeof ko> = {
-  'routine.hi.first': "Our first meeting day! I'll be waiting at this time from now on.",
+  'routine.hi.first': "Our very first day! I'll be waiting for you at this time from now on.",
   'routine.hi.early': (v: { i: number }) =>
     one(
       ["You're early! Good to see you.", 'Already here? Look at you go!', "Ooh, early! Let's get started."],
@@ -86,7 +86,7 @@ export const en: Translation<typeof ko> = {
   'routine.streak': (v: { n: number }) => `Day ${v.n} in a row!`,
   'routine.coins': (v: { n: number }) => `+${v.n} coins for showing up!`,
   'routine.coinsBonus': (v: { days: number; n: number }) => `${v.days} days in a row, so +${v.n} coins!`,
-  'routine.cue': "It's time to start! Let's do our best today.",
+  'routine.cue': "Time to start! Let's make today a good one.",
   'routine.bye.head': (v: { i: number }) =>
     one(['Great work today!', 'You did a lot today!', "That's a wrap!"], v.i),
   'routine.bye.doneOne': 'Nice work finishing "{title}"!',
@@ -111,11 +111,11 @@ export const en: Translation<typeof ko> = {
   'routine.set.title': 'Meeting time',
   'routine.set.on': (v: { name: string }) => `Set a meeting time with ${v.name}`,
   'routine.set.onHint':
-    "I'll greet you when you start work and show today's briefing. When you're done, I'll say goodbye. Off: I greet you when the computer starts.",
+    "I'll greet you when you start work and show today's briefing. When you're done, I'll say goodbye. When it's off, I'll say hi when you turn on your computer.",
   'routine.set.days': 'Meeting days',
   'routine.set.daysAria': 'Meeting days',
   'routine.set.start': 'Meet at',
-  'routine.set.end': 'Part at',
+  'routine.set.end': 'Say bye at',
   'routine.set.overnight': 'Ends the next day',
   'routine.set.same': 'Same time',
   'routine.set.each': 'Per day',
@@ -129,7 +129,7 @@ export const en: Translation<typeof ko> = {
     "Tell me when you start work and I'll greet you then with today's to-dos. When you're done, I'll say goodbye.",
   'routine.onb.set': 'Pick a time',
   'routine.onb.setHint': 'Choose days and hours',
-  'routine.onb.free': 'Greet on start',
+  'routine.onb.free': 'Say hi at startup',
   'routine.onb.freeHint': 'No set time',
   'routine.onb.later': 'You can change this in Settings anytime.',
 };
