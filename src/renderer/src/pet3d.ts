@@ -556,6 +556,8 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       const parent = parentOf(slot);
       g.position.copy(pivots[slot]).sub(parent ? pivots[parent] : new Vector3());
       (parent ? this.joints[parent] : this.root).add(g);
+      // 쉬는 자리 (네 발 걷기에서 팔을 앞발 자리로 옮겼다가 되돌린다)
+      g.userData.base = g.position.clone();
       this.joints[slot] = g;
     }
     for (const { part, mesh } of meshes) {
@@ -1930,6 +1932,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     }
     const j = this.joints;
     for (const slot of SLOTS) j[slot].rotation.set(0, 0, 0);
+    for (const arm of [j.armL, j.armR]) if (arm.userData.base) arm.position.copy(arm.userData.base);
     if (this.wavePaw) this.wavePaw.visible = false;
     for (const leg of this.quad?.legs ?? []) {
       leg.g.position.copy(leg.base);
@@ -2231,6 +2234,19 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       );
       leg.g.rotation.x =
         -lean - (long ? Math.asin(Math.max(-1, Math.min(1, z / leg.drop))) : step.lift * 0.35 * go);
+    }
+    // 팔(두 발 몸을 네 발로 걷게 고른 냥이, 멍멍이, 콩이. 토순이 가슴 앞발)도 앞발처럼 딛는다: 숙인 만큼 되돌려 곧게
+    // 바닥을 향하고, 같은 쪽 앞발과 같은 박자로 앞으로 나가며 들고 뒤로 민다 (늘어뜨린 채 매달려 가지 않게).
+    // 몸통을 늘인 앉은 피규어는 앞발이 앞으로 나간 만큼 같이 나간다
+    for (const [arm, id] of [
+      [j.armL, 'fl'],
+      [j.armR, 'fr'],
+    ] as const) {
+      const step = trotLeg(id, act.phase);
+      arm.rotation.set(-lean - (step.dz * 0.45 + step.lift * 0.25) * go, 0, 0);
+      const base = arm.userData.base as Vector3 | undefined;
+      // 어깨 바깥에 늘어진 팔은 몸 밑으로 조금 당겨 앞발처럼 몸 아래를 딛는다 (옆으로 돌면 몸 가운데에 걸려 보였다)
+      if (base) arm.position.set(base.x * (1 - 0.4 * k), base.y, base.z + front);
     }
     // 꼬리는 뒤로 조금 눕혀 살랑 (곧게 세우면 옆에서 볼 때 든 팔처럼 보였다)
     j.tail.rotation.set(-lean * 0.5 - 0.2 * k, Math.sin(a) * 0.45 * tail * (0.4 + 0.6 * go), 0);

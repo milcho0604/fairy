@@ -311,7 +311,11 @@ function sweat(m: Motion, hx: number, hy: number, r: number, front = false): Pie
   ];
 }
 
-/** 네 발 친구(냥이, 멍멍이, 토순이)의 몸 짜임 */
+/**
+ * 네 발 친구(냥이, 멍멍이, 토순이)의 몸 짜임. 냥이, 멍멍이는 펫 화면에서 두 발로 서서 손이 있지만 여기서는 네 발로 달린다:
+ * 두 발로 세워 짧은 팔을 단 그림을 16px(윈도우 알림 영역)로 그려 보니 팔이 몸에 묻혀 한두 점으로 뭉개지고,
+ * 큰 머리에 작은 몸이라 귀 달린 콩이처럼 보였다. 달리기도 네 발이 훨씬 잘 읽힌다 (2026-10-11 비교)
+ */
 function quadScene(kind: 'cat' | 'dog' | 'bunny', m: Motion): Scene {
   const pieces: Piece[] = [];
   const holes: F[] = [];
