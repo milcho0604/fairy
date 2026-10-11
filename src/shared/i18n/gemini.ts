@@ -4,7 +4,7 @@ import type { Translation } from './types.ts';
 export const ko = {
   'maker.gemini.summary': 'Gemini 앱(무료)에서 만들기',
   'maker.gemini.lead':
-    '횟수 걱정 없이 무료 Gemini 앱에서 그림을 만들어 가져올 수 있어. 구글 계정만 있으면 돼.',
+    '하루에 여러 장 만들 수 있는 무료 Gemini 앱에서 그림을 만들어 가져올 수 있어. 구글 계정만 있으면 돼.',
   'maker.gemini.stuckLead':
     '무료 서버는 오늘 끝났지만, Gemini 앱(무료)에서 만들어 오면 바로 이어서 할 수 있어.',
   'maker.gemini.style': '모양',
@@ -38,7 +38,7 @@ export const ko = {
 export const en: Translation<typeof ko> = {
   'maker.gemini.summary': 'Make it in the Gemini app (free)',
   'maker.gemini.lead':
-    'Make the picture in the free Gemini app and bring it back here, with no daily limit to worry about. All you need is a Google account.',
+    'Make the picture in the free Gemini app and bring it back here. It allows many pictures a day. All you need is a Google account.',
   'maker.gemini.stuckLead':
     'The free server is done for today, but you can make it in the Gemini app (free) and keep going right away.',
   'maker.gemini.style': 'Style',
