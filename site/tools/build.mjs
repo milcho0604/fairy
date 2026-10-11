@@ -23,6 +23,7 @@ const relPage = `https://github.com/${S.releases.owner}/${S.releases.repo}/relea
 const PAGES = [
   { file: 'index.html', path: '/', base: './', titleKey: 'meta.title', descKey: null, sitemap: true },
   { file: 'download/index.html', path: '/download/', base: '../', titleKey: 'meta.dlTitle', descKey: 'meta.dlDesc', sitemap: true },
+  { file: 'privacy/index.html', path: '/privacy/', base: '../', titleKey: 'meta.pvTitle', descKey: 'meta.pvDesc', sitemap: true },
   { file: '404.html', path: '/404.html', base: '/', titleKey: 'nf.title', descKey: null, sitemap: false, noindex: true },
 ];
 
@@ -75,10 +76,11 @@ function footer(b) {
         <li><a data-href="changelog" data-i18n="footer.changelog"></a></li>
         <li><a data-href="releases" data-i18n="footer.releases"></a></li>
         <li><a data-href="contact" data-i18n="footer.contact"></a></li>
+        <li><a href="${b}privacy/" data-i18n="footer.policy"></a></li>
       </ul>
     </nav>
     <div class="foot-bottom">
-      <p><span data-i18n="footer.license"></span> · <span data-copyright></span></p>
+      <p><span data-i18n="footer.license"></span>, <span data-copyright></span></p>
       <p data-i18n="footer.made"></p>
     </div>
   </div>
@@ -126,7 +128,7 @@ function inlineCss(b) {
 // ---- Jua is only used for headings: ask Google Fonts for just those characters ----
 const DISPLAY_KEYS = /^(hero\.title|[a-z]+\.title|about\.(pet|biz|ai)T|more\.\dt|maker\.o\dt|steps\.s\dt|dlp\.(title|macT|winT|linuxT|aiT)|nf\.title)$/;
 function fontHref() {
-  let chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!?&’\'"—–-()·:;/';
+  let chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!?&’\'"–-():;/';
   for (const l of Object.keys(D)) {
     const v = vars('./');
     v.name = S.name[l];
@@ -145,7 +147,7 @@ function fontHref() {
 function head(p) {
   const v = vars(p.base);
   const t = (k) => fill(D[LANG][k], v);
-  const title = p.file === '404.html' ? `${t('nf.title')} — ${v.name}` : t(p.titleKey);
+  const title = p.file === '404.html' ? `${v.name}: ${t('nf.title')}` : t(p.titleKey);
   const desc = p.descKey ? t(p.descKey) : v.tagline;
   const url = siteUrl + p.path;
   const og = `${siteUrl}/assets/og.png`;

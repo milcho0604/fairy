@@ -77,10 +77,11 @@
     });
     var titleKey = root.getAttribute('data-title-key') || 'meta.title';
     var title = t(titleKey);
-    if (page === '404') title = t('nf.title') + ' — ' + vars().name;
+    if (page === '404') title = vars().name + ': ' + t('nf.title');
     document.title = title;
     var desc = document.querySelector('meta[name="description"]');
-    if (desc) desc.setAttribute('content', page === 'download' ? t('meta.dlDesc') : vars().tagline);
+    var descKey = root.getAttribute('data-desc-key');
+    if (desc) desc.setAttribute('content', descKey ? t(descKey) : vars().tagline);
   }
 
   each('[data-lang-toggle]', function (b) {
@@ -246,11 +247,11 @@
       var a = known ? REL.assets[k] : null;
       if (known && a) {
         setLink(main, a.url);
-        sub.textContent = t('dl.sub.' + forKey(k)) + ' · ' + mb(a.size);
+        sub.textContent = t('dl.sub.' + forKey(k)) + ', ' + mb(a.size);
       } else if (known) {
         setLink(main, REL.url);
       }
-      html = esc(REL.version + ' · ' + day(REL.date)) + (known && !a ? ' · ' + esc(t('dl.missing')) : '');
+      html = esc(REL.version + ', ' + day(REL.date)) + (known && !a ? '. ' + esc(t('dl.missing')) : '');
       if (known && os !== 'linux') html += '<br>' + t(os === 'win' ? 'dl.unsignedWin' : 'dl.unsignedMac');
     } else if (REL.state === 'soon') {
       if (known) { setLink(main, null, true); label.textContent = t('dl.soon'); }
@@ -270,7 +271,7 @@
       links.push('<a href="' + esc(href) + '">' + esc(name) + '</a>');
     });
     links.push('<a href="' + esc(allLink) + '">' + esc(t('dl.all')) + '</a>');
-    alt.innerHTML = esc(t(known ? 'dl.others' : 'dl.pick')) + ' ' + links.join('<span class="sep" aria-hidden="true">·</span>');
+    alt.innerHTML = esc(t(known ? 'dl.others' : 'dl.pick')) + ' ' + links.join('<span class="sep" aria-hidden="true">/</span>');
   }
 
   function cardButton(k, small, plain) {
@@ -293,7 +294,7 @@
       var rec = c.keys.indexOf(mine) >= 0;
       var a = REL.state === 'ok' && REL.assets[c.keys[0]];
       var file = a ? a.name : pattern(c.keys[0]);
-      var meta = a ? mb(a.size) + ' · ' + day(REL.date) : (REL.state === 'ok' ? t('dl.missing') : '');
+      var meta = a ? mb(a.size) + ', ' + day(REL.date) : (REL.state === 'ok' ? t('dl.missing') : '');
       var keys = REL.state === 'ok' ? c.keys : c.keys.slice(0, 1);
       var btns = keys.map(function (k, i) { return cardButton(k, keys.length > 1 && i > 0); }).join('');
       return '<li class="card' + (rec ? ' rec' : '') + '">' +
@@ -309,15 +310,15 @@
     tbody.innerHTML = ORDER.map(function (k) {
       var a = REL.state === 'ok' && REL.assets[k];
       var digest = a && a.digest ? '<span class="digest">' + esc(t('dlp.digest')) + ' ' + esc(a.digest.replace(/^sha256:/, '')) + '</span>' : '';
-      return '<tr' + (k === mine ? ' class="rec"' : '') + '><th scope="row">' + esc(t('dl.os.' + k)) + (k === mine ? ' · ' + esc(t('dlp.recommended')) : '') + '</th>' +
+      return '<tr' + (k === mine ? ' class="rec"' : '') + '><th scope="row">' + esc(t('dl.os.' + k)) + (k === mine ? ' (' + esc(t('dlp.recommended')) + ')' : '') + '</th>' +
         '<td><span class="fname">' + esc(a ? a.name : pattern(k)) + '</span>' + digest + '</td>' +
-        '<td>' + esc(a ? mb(a.size) : REL.state === 'ok' ? '—' : t('dlp.pending')) + '</td>' +
+        '<td>' + esc(a ? mb(a.size) : REL.state === 'ok' ? '-' : t('dlp.pending')) + '</td>' +
         '<td>' + cardButton(k, false, true) + '</td></tr>';
     }).join('');
   }
 
   function renderReleaseLine(el) {
-    if (REL.state === 'ok') el.innerHTML = esc(t('dlsec.latest')) + ' <strong>' + esc(REL.version) + '</strong> · ' + esc(day(REL.date)) + ' · <a href="' + esc(REL.url) + '">' + esc(t('dl.releases')) + '</a>';
+    if (REL.state === 'ok') el.innerHTML = esc(t('dlsec.latest')) + ' <strong>' + esc(REL.version) + '</strong> (' + esc(day(REL.date)) + '). <a href="' + esc(REL.url) + '">' + esc(t('dl.releases')) + '</a>';
     else if (REL.state === 'soon') el.innerHTML = esc(t('dl.soonNote')) + ' <a href="' + esc(REPO) + '">' + esc(t('dl.follow')) + '</a>';
     else if (REL.state === 'error') el.innerHTML = esc(t('dl.errorNote')) + ' <a href="' + esc(REL_PAGE) + '">' + esc(t('dl.errorLink')) + '</a>';
     else el.textContent = t('dl.loading');
