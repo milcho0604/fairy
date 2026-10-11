@@ -22,7 +22,7 @@ export function watchCatalog(log: (tag: string, ...rest: unknown[]) => void) {
   async function refresh(): Promise<void> {
     try {
       const res = await net.fetch(CATALOG_URL, {
-        headers: { 'user-agent': `jjakkung/${app.getVersion()}` },
+        headers: { 'user-agent': `fairy/${app.getVersion()}` },
       });
       if (!res.ok) {
         log('catalog', '못 받음', res.status);

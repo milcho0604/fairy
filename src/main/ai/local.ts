@@ -70,7 +70,7 @@ const starting = new Set<string>();
 function getWorker(log: (tag: string, ...rest: unknown[]) => void): UtilityProcess {
   if (worker) return worker;
   const w = utilityProcess.fork(join(import.meta.dirname, 'llm-worker.js'), [], {
-    serviceName: 'jjakkung-llm',
+    serviceName: 'fairy-llm',
     // 받아 둔 엔진 폴더 (설치판). 개발 실행이면 비어 있어 node_modules 의 것을 쓴다
     env: { ...process.env, ...llamaWorkerEnv() },
   });
