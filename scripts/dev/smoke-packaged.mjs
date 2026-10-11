@@ -109,6 +109,10 @@ if (problems.length) {
   if (existsSync(log)) console.error('--- main.log 끝 ---\n', readFileSync(log, 'utf8').split('\n').slice(-40).join('\n'));
   console.error('--- 출력 끝 ---\n', out.split('\n').slice(-40).join('\n'));
 }
-rmSync(data, { recursive: true, force: true });
+// 끝난 뒤에도 크로미엄 자식 프로세스가 잠깐 캐시를 쓴다. 조금 기다렸다 지우고 한 번 더 지운다
+for (let i = 0; i < 3; i++) {
+  await sleep(1000);
+  rmSync(data, { recursive: true, force: true });
+}
 if (problems.length) process.exit(1);
 console.log('설치판 켜 보기 시험 통과');
