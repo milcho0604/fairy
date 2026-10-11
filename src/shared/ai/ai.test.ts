@@ -74,7 +74,7 @@ test('codex 실제 출력(0.155.1): thread_id, 답 한 번에, 완료', () => {
   const events = fixture('codex-hello.jsonl').flatMap(parseCodexLine);
   assert.deepEqual(events, [
     { type: 'session', id: '01a0f9e7-fac9-7b63-a305-d0d5fb56a404' },
-    { type: 'delta', text: '알겠어, 밀초. 기억할게.' },
+    { type: 'delta', text: '알겠어, 친구. 기억할게.' },
     { type: 'done', text: '' },
   ]);
 });
