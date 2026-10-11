@@ -2,12 +2,28 @@
 
 Run from the repo root:  python3 site/tools/images.py
 Needs Pillow. Writes site/assets/img/*.webp and site/assets/icons/*.png. Re-run after re-shooting the screens.
+
+SCREENS=<dir> reads the screens from another folder, e.g. the output of tools/capture.mjs + tools/shots.py compose
+(which also leaves ready cut-outs: hero-panel*.png, quick-bar.png, step-pick*.png). Pictures missing there come from
+docs/assets/screens.
 """
+import os
 from pathlib import Path
 from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[2]
-SCREENS = ROOT / 'docs/assets/screens'
+DOCS = ROOT / 'docs/assets/screens'
+FRESH = Path(os.environ['SCREENS']).resolve() if os.environ.get('SCREENS') else None
+
+
+def screen(name: str) -> Path:
+    if FRESH and (FRESH / name).exists():
+        return FRESH / name
+    return DOCS / name
+
+
+def fresh(name: str):
+    return FRESH / name if FRESH and (FRESH / name).exists() else None
 OUT = ROOT / 'site/assets/img'
 ICONS = ROOT / 'site/assets/icons'
 OUT.mkdir(parents=True, exist_ok=True)
@@ -61,9 +77,10 @@ def save(img: Image.Image, name: str, width: int, quality=82):
 
 
 for name, (src, box, widths) in JOBS.items():
-    im = Image.open(SCREENS / src)
+    path = screen(src)
+    im = Image.open(path)
     im = im.convert('RGBA' if im.mode in ('RGBA', 'P') and 'transparency' in im.info else 'RGB')
-    if box:
+    if box and (path.parent == DOCS or name.startswith('chat-')):  # fresh screens have no baked-in captions to cut
         im = im.crop(box)
     if name in WARM:
         im = warm(im)
@@ -102,7 +119,14 @@ print('icons done')
 # Hero: the "Today" panel cut out of the panel strips, with its rounded corners made transparent
 for name, src, box in (('hero-panel', 'panel.png', (35, 36, 388, 572)),
                        ('hero-panel-dark', 'panel-dark.png', (34, 34, 390, 574))):
-    im = Image.open(SCREENS / src).convert('RGBA').crop(box).resize((353, 536), Image.LANCZOS)
+    cut = fresh(f'{name}.png')
+    if cut:
+        im = Image.open(cut).convert('RGBA')
+        p = OUT / f'{name}.webp'
+        im.save(p, quality=88, method=6)
+        print(p.relative_to(ROOT), im.size, p.stat().st_size // 1024, 'KB')
+        continue
+    im = Image.open(DOCS / src).convert('RGBA').crop(box).resize((353, 536), Image.LANCZOS)
     s = 4
     mask = Image.new('L', (im.width * s, im.height * s), 0)
     ImageDraw.Draw(mask).rounded_rectangle((0, 0, im.width * s - 1, im.height * s - 1), radius=11 * s, fill=255)
@@ -112,11 +136,15 @@ for name, src, box in (('hero-panel', 'panel.png', (35, 36, 388, 572)),
     print(p.relative_to(ROOT), im.size, p.stat().st_size // 1024, 'KB')
 
 # Quick add bar cut out of its window so it can sit on the panel picture like a sticker
-im = Image.open(SCREENS / 'quick-add.png').convert('RGBA').crop((42, 42, 758, 128))
-s = 4
-mask = Image.new('L', (im.width * s, im.height * s), 0)
-ImageDraw.Draw(mask).rounded_rectangle((0, 0, im.width * s - 1, im.height * s - 1), radius=22 * s, fill=255)
-im.putalpha(mask.resize(im.size, Image.LANCZOS))
+if fresh('quick-bar.png'):
+    im = Image.open(fresh('quick-bar.png')).convert('RGBA')
+    im = im.resize((716, round(im.height * 716 / im.width)), Image.LANCZOS)
+else:
+    im = Image.open(DOCS / 'quick-add.png').convert('RGBA').crop((42, 42, 758, 128))
+    s = 4
+    mask = Image.new('L', (im.width * s, im.height * s), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, im.width * s - 1, im.height * s - 1), radius=22 * s, fill=255)
+    im.putalpha(mask.resize(im.size, Image.LANCZOS))
 for w in (716, 358):
     r = im if w == im.width else im.resize((w, round(im.height * w / im.width)), Image.LANCZOS)
     p = OUT / f'quick-add-{w}.webp'
@@ -125,7 +153,9 @@ for w in (716, 358):
 
 # "How it starts" step pictures: the look picker from the first-run guide, and a fairy talking on the desktop
 for name, box in (('step-pick', (40, 340, 482, 472)), ('step-pick-dark', (530, 340, 972, 472))):
-    im = Image.open(SCREENS / 'onboarding.png').convert('RGB').crop(box)
+    cut = fresh(f'{name}.png')
+    im = Image.open(cut).convert('RGB').resize((442, round(Image.open(cut).height * 442 / Image.open(cut).width)), Image.LANCZOS) if cut \
+        else Image.open(DOCS / 'onboarding.png').convert('RGB').crop(box)
     im.save(OUT / f'{name}.webp', quality=88, method=6)
     print(name, im.size)
 
