@@ -1,0 +1,71 @@
+import type { Translation } from './types.ts';
+
+// 펫 갤러리와 .jjpet 판 2 (2026-10-11, P1 #11)
+export const ko = {
+  'pet.share.badManifest': '펫 파일의 이름표(사용 허락, 만든 날, 앱 판)가 틀렸어.',
+  'settings.gallery': '펫 갤러리',
+  'settings.gallery.lead': '다른 사람이 만든 펫을 구경하고 데려올 수 있어. 목록은 짝꿍 GitHub에 있어.',
+  'settings.gallery.open': '펫 갤러리 열기',
+  'settings.gallery.loading': '갤러리를 여는 중이야…',
+  'settings.gallery.offline': '인터넷에 연결되지 않은 것 같아. 연결한 뒤 다시 열어 줘.',
+  'settings.gallery.notFound': '갤러리가 아직 문을 열지 않았어. 곧 열 거야!',
+  'settings.gallery.bad': '갤러리 목록을 읽지 못했어. 조금 뒤에 다시 해 줘.',
+  'settings.gallery.empty': '아직 갤러리에 펫이 없어.',
+  'settings.gallery.retry': '다시 열기',
+  'settings.gallery.adopt': '내 펫으로',
+  'settings.gallery.friend': '친구로',
+  'settings.gallery.busy': '받는 중…',
+  'settings.gallery.thumbAlt': (v: { name: string }) => `${v.name} 그림`,
+  'settings.gallery.by': (v: { author: string; license: string }) => `${v.author} · ${v.license}`,
+  'settings.gallery.badFile': '받은 파일이 목록과 달라서 데려오지 않았어.',
+  'settings.gallery.downloadFailed': '펫을 받지 못했어. 인터넷 연결을 보고 다시 해 줘.',
+  'settings.gallery.share': '갤러리에 올리기',
+  'settings.gallery.shareLead':
+    '지금 펫을 갤러리용 파일로 저장하고 GitHub에 올리는 방법을 열어 줄게. 자동으로 올리지는 않아.',
+  'settings.gallery.author': '만든 사람 (보여도 되는 이름)',
+  'settings.gallery.license': '사용 허락',
+  'settings.gallery.licenseHint':
+    'CC BY 4.0은 만든 사람 이름만 밝히면 누구나 쓰고 고칠 수 있다는 뜻이야.',
+  'settings.gallery.policy':
+    '직접 만든 펫만 올려 줘. 만화, 게임, 브랜드처럼 남의 캐릭터는 올릴 수 없어.',
+  'settings.gallery.make': '파일 만들고 올리는 방법 보기',
+  'settings.gallery.made': '파일을 저장했어. 올리는 방법을 브라우저에 열었어.',
+  'settings.gallery.needAuthor': '만든 사람 이름을 적어 줘.',
+  'settings.gallery.needPhoto': '갤러리에는 그림이 있는 펫만 올릴 수 있어. 펫 만들기로 먼저 그려 줘.',
+  'settings.gallery.failed': '파일을 저장하지 못했어.',
+  'main.gallery.saveTitle': '갤러리에 올릴 펫 파일 저장',
+};
+
+export const en: Translation<typeof ko> = {
+  'pet.share.badManifest': "The pet file's label (license, date, app version) is broken.",
+  'settings.gallery': 'Pet gallery',
+  'settings.gallery.lead': 'Browse pets other people made and bring one home. The list lives on GitHub.',
+  'settings.gallery.open': 'Open the pet gallery',
+  'settings.gallery.loading': 'Opening the gallery…',
+  'settings.gallery.offline': "Looks like you're offline. Connect and try again.",
+  'settings.gallery.notFound': "The gallery isn't open yet. Coming soon!",
+  'settings.gallery.bad': "Couldn't read the gallery list. Please try again later.",
+  'settings.gallery.empty': 'No pets in the gallery yet.',
+  'settings.gallery.retry': 'Try again',
+  'settings.gallery.adopt': 'Make my pet',
+  'settings.gallery.friend': 'As a friend',
+  'settings.gallery.busy': 'Downloading…',
+  'settings.gallery.thumbAlt': (v: { name: string }) => `Picture of ${v.name}`,
+  'settings.gallery.by': (v: { author: string; license: string }) => `${v.author} · ${v.license}`,
+  'settings.gallery.badFile': "The downloaded file didn't match the list, so I didn't bring it in.",
+  'settings.gallery.downloadFailed': "Couldn't download the pet. Check your connection and try again.",
+  'settings.gallery.share': 'Share to the gallery',
+  'settings.gallery.shareLead':
+    "Saves your pet as a gallery file and opens how to submit it on GitHub. Nothing is uploaded automatically.",
+  'settings.gallery.author': 'Your name (shown publicly)',
+  'settings.gallery.license': 'License',
+  'settings.gallery.licenseHint': 'CC BY 4.0 means anyone can use and change it if they credit you.',
+  'settings.gallery.policy':
+    "Only share pets you made. Characters from comics, games or brands aren't allowed.",
+  'settings.gallery.make': 'Save file and see how to submit',
+  'settings.gallery.made': 'Saved. The submission guide is open in your browser.',
+  'settings.gallery.needAuthor': 'Please enter your name.',
+  'settings.gallery.needPhoto': 'Only pets with a picture can go to the gallery. Draw one in the pet maker first.',
+  'settings.gallery.failed': "Couldn't save the file.",
+  'main.gallery.saveTitle': 'Save pet file for the gallery',
+};

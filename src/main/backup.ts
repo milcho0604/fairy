@@ -10,12 +10,20 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { app, type BrowserWindow, dialog } from 'electron';
+import { app, type BrowserWindow, dialog, nativeImage } from 'electron';
 import { customAiCount, IMPORT_FILES, importedChatSettings } from '../shared/backup-import.ts';
 import { type Db, looksLikeOurs, SCHEMA_VERSION, schemaVersion } from '../shared/db-schema.ts';
 import { saveErrorText } from '../shared/download-error.ts';
 import { t } from '../shared/i18n/index.ts';
-import { decodePet, encodePet, SHARE_MAX_BYTES, type SharedPet, shareFileName } from '../shared/pet-share.ts';
+import {
+  decodePet,
+  encodePet,
+  type PetMeta,
+  SHARE_MAX_BYTES,
+  type SharedPet,
+  shareFileName,
+  THUMB_MAX_BYTES,
+} from '../shared/pet-share.ts';
 import type { Blueprint } from '../shared/pet3d/blueprint.ts';
 import { FRIENDS_MAX, POSE_KINDS } from '../shared/settings.ts';
 import { petImages } from './maker.ts';
@@ -302,10 +310,30 @@ function modelToFile(model: Blueprint): string {
   return file;
 }
 
-export async function exportPet(parent?: BrowserWindow): Promise<string> {
+/** 갤러리 작은 그림: 본 그림을 긴 쪽 256 으로 줄인 PNG. 못 만들면(움직이는 그림 등) 없이 */
+function thumbnailOf(image: string | null | undefined): string | undefined {
+  if (!image?.startsWith('data:image/png') && !image?.startsWith('data:image/webp')) return undefined;
+  try {
+    const img = nativeImage.createFromDataURL(image);
+    if (img.isEmpty()) return undefined;
+    const { width, height } = img.getSize();
+    const small =
+      width >= height
+        ? img.resize({ width: Math.min(256, width) })
+        : img.resize({ height: Math.min(256, height) });
+    const png = small.toPNG();
+    return png.length <= THUMB_MAX_BYTES ? `data:image/png;base64,${png.toString('base64')}` : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** 지금 펫을 공유 파일 모양으로 (판 2 이름표는 encodePet 이 채운다) */
+export function currentSharedPet(): SharedPet {
   const s = settings.get();
   const imgs = petImages();
-  const pet: SharedPet = {
+  const thumbnail = thumbnailOf(imgs.main);
+  return {
     name: s.petName,
     kind: s.petKind,
     ...(imgs.main ? { image: imgs.main } : {}),
@@ -313,15 +341,25 @@ export async function exportPet(parent?: BrowserWindow): Promise<string> {
     ...(imgs.model ? { model: imgs.model } : {}),
     ...(imgs.depth ? { depth: imgs.depth } : {}),
     ...(imgs.main && s.petAge ? { age: s.petAge } : {}),
+    ...(thumbnail ? { thumbnail } : {}),
   };
+}
+
+/** .jjpet 판 2 로 저장한다. meta 로 만든 사람, 허락을 준다 (갤러리에 올리기). 저장한 경로, 그만두면 빈 글 */
+export async function exportPet(
+  parent?: BrowserWindow,
+  meta?: Partial<PetMeta>,
+  title?: string,
+): Promise<string> {
+  const pet = currentSharedPet();
   const opts = {
-    title: t('main.pet.exportTitle'),
-    defaultPath: shareFileName(s.petName),
+    title: title ?? t('main.pet.exportTitle'),
+    defaultPath: shareFileName(pet.name),
     filters: [{ name: t('main.pet.fileType'), extensions: ['jjpet'] }],
   };
   const r = await (parent ? dialog.showSaveDialog(parent, opts) : dialog.showSaveDialog(opts));
   if (r.canceled || !r.filePath) return '';
-  writeFileAtomic(r.filePath, encodePet(pet));
+  writeFileAtomic(r.filePath, encodePet(pet, { appVersion: app.getVersion(), ...meta }));
   return r.filePath;
 }
 
@@ -351,6 +389,18 @@ export async function importPet(
   }
   const pet = decodePet(text);
   if ('error' in pet) return { ok: false, message: pet.error };
+  return adoptPet(pet, asFriend, log);
+}
+
+/**
+ * 검사를 마친 펫을 데려온다 (파일 가져오기, 펫 갤러리). asFriend 가 아니면 바꿀지 먼저 묻는다.
+ * 성공하면 펫 이름이 든 안내, 그만두면 빈 글
+ */
+export async function adoptPet(
+  pet: SharedPet,
+  asFriend: boolean,
+  log?: (tag: string, ...rest: unknown[]) => void,
+): Promise<{ ok: boolean; message: string }> {
   if (!asFriend) {
     const ask = await dialog.showMessageBox({
       type: 'question',

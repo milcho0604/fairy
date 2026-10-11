@@ -10,6 +10,7 @@ import * as companion from './companion.ts';
 import * as diary from './diary.ts';
 import * as ease from './ease.ts';
 import * as feedback from './feedback.ts';
+import * as gallery from './gallery.ts';
 import * as gcal from './gcal.ts';
 import * as gemini from './gemini.ts';
 import * as idle from './idle.ts';
@@ -55,6 +56,7 @@ export const ko = {
   ...tabs.ko,
   ...gcal.ko,
   ...gemini.ko,
+  ...gallery.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -84,4 +86,5 @@ export const en: Translation<typeof ko> = {
   ...tabs.en,
   ...gcal.en,
   ...gemini.en,
+  ...gallery.en,
 };
