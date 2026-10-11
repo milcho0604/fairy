@@ -15,6 +15,7 @@ import { GaitPicker } from '../GaitPicker.tsx';
 import { Gallery } from '../Gallery.tsx';
 import { PetPicker } from '../PetPicker.tsx';
 import { bridge, isMac, Section, type TabProps, Toggle } from '../ui.tsx';
+import { WearBox } from '../WearBox.tsx';
 
 /** 만나는 시간을 켰을 때 삐짐 칸의 안내: 만나지 않는 요일을 이름으로 (일, 토) */
 const restByRoutine = (days: readonly number[]): string => {
@@ -232,6 +233,8 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
           onChange={(v) => update({ sysMonitor: v })}
         />
       </Section>
+
+      <WearBox snap={snap} update={update} />
 
       <Section title={t('settings.friends')}>
         <Friends

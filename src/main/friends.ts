@@ -7,6 +7,7 @@ import { MEET_CHANCE, MEET_COOLDOWN_MS, MEET_EVERY_MS, meetPlan } from '../share
 import { type Blueprint, parseBlueprint } from '../shared/pet3d/blueprint.ts';
 import type { Friend } from '../shared/settings.ts';
 import { saverNow } from './battery.ts';
+import type { WearLook } from '../shared/wear.ts';
 import { boostOn } from './boost.ts';
 import { library } from './pet-library.ts';
 import { createPetWindow, type PetWindow } from './pet-window.ts';
@@ -82,6 +83,8 @@ export function createFriends(o: {
   mainPet: () => PetWindow;
   /** 지금 친구 놀이를 해도 되는지 (집중, 놀이, 숨바꼭질 중이 아니고 사용자가 자리에 있다) */
   canMeet: () => boolean;
+  /** 친구도 같은 철 옷을 입는다 (main/wear.ts friendLook). 없으면 옷 없이 */
+  wear?: () => WearLook;
   log: (tag: string, ...rest: unknown[]) => void;
 }) {
   const live = new Map<string, { pet: PetWindow; friend: Friend }>();
@@ -158,6 +161,7 @@ export function createFriends(o: {
       boost: boostOn(),
       saver: saverNow(),
       ...(f.gait ? { gait: f.gait } : {}),
+      ...(o.wear ? { wear: o.wear() } : {}),
     };
   }
 

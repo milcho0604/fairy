@@ -514,6 +514,8 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     // 슬롯마다 부품이 차지하는 상자로 관절 자리를 정한다
     const boxes = new Map<Slot, Box3>();
     for (const { part, mesh } of meshes) {
+      // 입는 옷(철마다 옷)은 관절 자리를 바꾸지 않는다 (모자를 써도 고개 돌리는 축이 그대로)
+      if (part.wear) continue;
       mesh.updateMatrixWorld(true);
       const b = new Box3().setFromObject(mesh);
       boxes.set(part.slot, boxes.get(part.slot)?.union(b) ?? b);
@@ -569,14 +571,20 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     this.faceOnHead = faceSlot === 'head';
     // 실사면 눈, 입을 털 끝에 얹는다 (살갗에 붙이면 털에 묻힌다)
     this.faceLift = this.real
-      ? Math.max(0, ...meshes.filter((m) => m.part.slot === faceSlot).map((m) => furLength(m.part) * 0.8))
+      ? Math.max(
+          0,
+          ...meshes
+            .filter((m) => m.part.slot === faceSlot && !m.part.wear)
+            .map((m) => furLength(m.part) * 0.8),
+        )
       : this.fluffy
         ? fluffLength(furOfBlueprint(bp)) * 0.8
         : 0;
     this.face = this.buildFace(
       bp.face,
       this.joints[faceSlot],
-      meshes.filter((m) => m.part.slot === faceSlot).map((m) => m.mesh),
+      // 눈과 입은 몸에만 붙인다 (목도리 겉에 붙지 않게)
+      meshes.filter((m) => m.part.slot === faceSlot && !m.part.wear).map((m) => m.mesh),
     );
     this.ready = true;
     this.frameCamera();
@@ -626,7 +634,8 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     this.root.traverse((o) => {
       const part = o.userData.part as Part | undefined;
       if (!(o instanceof Mesh) || !part || !o.parent) return;
-      if (part.finish === 'shiny' || part.shape === 'torus') return;
+      // 입는 옷도 녹이지 않는다 (모자, 목도리가 털 덩어리에 섞이지 않게)
+      if (part.finish === 'shiny' || part.shape === 'torus' || part.wear) return;
       // 관(꼬리), 털 뭉치, 리본은 녹이지 않고 제 모양을 지킨다 (관은 털만 입힌다)
       if (part.shape === 'tube' || part.shape === 'tuft' || part.shape === 'bow') {
         if (part.shape !== 'bow' && o.geometry.attributes.position)
@@ -1785,7 +1794,16 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     this.root.rotation.set(0, 0, 0);
     this.root.scale.set(1, 1, 1);
     this.root.updateMatrixWorld(true);
-    const b = new Box3().setFromObject(this.root);
+    // 입는 옷은 빼고 잰다: 모자를 써도 펫 크기와 자리가 그대로다
+    const b = new Box3();
+    const worn = (o: Object3D | null): boolean =>
+      !!o && o !== this.root && (!!(o.userData.part as Part | undefined)?.wear || worn(o.parent));
+    this.root.traverse((o) => {
+      // 모양이 있는 것마다 (자식까지 넣어도 겹칠 뿐이다). 옷 메시와 그 테두리는 뺀다
+      if (!('geometry' in o) || worn(o)) return;
+      b.expandByObject(o, false);
+    });
+    if (b.isEmpty()) b.setFromObject(this.root);
     const c = b.getCenter(new Vector3());
     const radius = b.getSize(new Vector3()).length() / 2;
     this.restX = c.x;
@@ -2345,7 +2363,8 @@ function blurAlpha(rgba: Uint8ClampedArray, cols: number, rows: number, r: numbe
 
 /** 부품의 털 길이 (실사). fuzzy 는 복슬복슬, soft 는 짧은 솜털, shiny 는 없음 */
 function furLength(p: Part): number {
-  if (p.finish === 'shiny') return 0;
+  // 입는 옷에는 털이 없다 (철마다 옷)
+  if (p.finish === 'shiny' || p.wear) return 0;
   return p.finish === 'fuzzy' ? 0.045 : 0.014;
 }
 

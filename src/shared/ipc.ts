@@ -34,6 +34,7 @@ import type { BuyResult, ShopState } from './shop.ts';
 import type { SoundKind } from './sound.ts';
 import type { PetChoice, StarterId } from './starter-pets.ts';
 import type { Repeat, Todo } from './todo-store.ts';
+import type { WearLook } from './wear.ts';
 import type { WeekSummary } from './week.ts';
 
 export const IPC = {
@@ -554,6 +555,8 @@ export interface PetStatus {
   saver?: boolean;
   /** 말풍선을 화면 읽기 프로그램에 읽어 준다 (설정 읽어 주기). 친구 펫은 끔 (같은 말을 두 번 읽지 않게) */
   readAloud?: boolean;
+  /** 성장 단계와 오늘 옷 (기본 펫만 그린다, shared/wear.ts). 없으면 예전 모습 그대로 */
+  wear?: WearLook;
 }
 
 /** 펫 그림들 (data URL). 없으면 기본 펫. 포즈는 상태별 그림 (v1) */

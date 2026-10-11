@@ -10,6 +10,7 @@ import type { MoveType } from '../../shared/moves.ts';
 import type { PetMood } from '../../shared/pet-mood.ts';
 import type { Gait } from '../../shared/pet3d/blueprint.ts';
 import type { PetKind } from '../../shared/settings.ts';
+import type { Outfit } from '../../shared/wear.ts';
 import { drawMagnifier } from './magnifier.ts';
 import { Eased } from './motion-ease.ts';
 import {
@@ -23,6 +24,7 @@ import {
   movePose,
 } from './move-pose.ts';
 import { quadKind, walkEnvelopeOf } from './pet3d-gait.ts';
+import { drawWear2D } from './wear-draw.ts';
 
 export const CANVAS_SIZE = 160;
 
@@ -96,6 +98,10 @@ export interface DrawState {
   trick?: Trick;
   /** 머리에 꽃 (친밀도 600) */
   flower?: boolean;
+  /** 철마다 옷 (기본 펫, shared/wear.ts). 2D 는 wear-draw.ts 가 그린다. 꽃 옷이면 친밀도 꽃은 뺀다 */
+  wear?: Outfit;
+  /** 성장 배율 (2D 기본 펫, 발 가운데를 축으로). 없으면 1 */
+  grow?: number;
   /** 2.5D 그림 펫이 숨을 쉬며 흔들리는지 (계속 그릴 때만 true. 아니면 숨과 흔들림 없이 가만히) */
   breathe?: boolean;
   /** 움직임 줄이기 (운영체제 설정 prefers-reduced-motion). 신나서 크게 튀지 않고 살짝만 들썩인다 */
@@ -323,6 +329,23 @@ export function motionSettling(): boolean {
 
 /** 펫을 그린다. 공을 물고 있으면 그 공 가운데를 돌려준다 (메인이 내려놓을 자리를 물을 때) */
 export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | undefined {
+  const k = s.grow ?? 1;
+  if (k === 1 || s.photo || s.model3d) return drawPetBody(ctx, s);
+  // 성장 (아기, 어린이): 2D 기본 펫을 발 가운데를 축으로 조금 작게. 지우기는 줄이기 전에 캔버스 전체를
+  ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  ctx.save();
+  ctx.translate(CX, GROUND);
+  ctx.scale(k, k);
+  ctx.translate(-CX, -GROUND);
+  try {
+    const p = drawPetBody(ctx, s);
+    return p && { x: CX + (p.x - CX) * k, y: GROUND + (p.y - GROUND) * k };
+  } finally {
+    ctx.restore();
+  }
+}
+
+function drawPetBody(ctx: CanvasRenderingContext2D, s: DrawState): Point | undefined {
   ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
   if (s.now !== undefined) {
     ease = ease2d;
@@ -506,6 +529,7 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
   const stage = sulkStage(s);
   if (stage >= 3) {
     drawBack(ctx, kind);
+    if (s.wear && !s.face) drawWear2D(ctx, s.wear, true);
     ctx.restore();
     ctx.restore();
     drawExtras(ctx, s, GROUND - lift - RY * 2 * sy, lift);
@@ -577,6 +601,8 @@ export function drawPet(ctx: CanvasRenderingContext2D, s: DrawState): Point | un
   else if (s.hungry && s.mood === 'idle') drawHungryMouth(ctx, look);
   else drawMouth(ctx, s.mood, look);
   ctx.restore();
+  // 철마다 옷: 얼굴 다음, 손 전에 (든 손과 쉬는 손이 늘 옷 위에 보이게)
+  if (s.wear && !s.face) drawWear2D(ctx, s.wear);
   // 손: 늘어진 귀와 수염 앞에. 손 흔들기 동안 오른손은 흔드는 팔이 대신한다
   if (hand) {
     const walking = act?.type === 'walk' ? act : undefined;
@@ -1430,7 +1456,7 @@ function drawMouth(ctx: CanvasRenderingContext2D, mood: PetMood, look: number) {
  */
 function drawExtras(ctx: CanvasRenderingContext2D, s: DrawState, top: number, lift = 0) {
   // 머리 오른쪽 위에 꽂은 꽃. 사진은 머리가 가운데 쪽이라 조금 안으로
-  if (s.flower) drawFlower(ctx, CX + (s.photo ? 14 : 24), top + 8);
+  if (s.flower && s.wear !== 'flower') drawFlower(ctx, CX + (s.photo ? 14 : 24), top + 8);
   if ((s.sulk ?? 0) > 0 && s.mood === 'sulky') drawSulkGauge(ctx, s.sulk ?? 0, top);
   const pouting = sulkStage(s);
   if (pouting >= 2) drawHuff(ctx, top, pouting >= 3);

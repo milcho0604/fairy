@@ -32,6 +32,7 @@ import type { Blueprint, Gait } from '../../shared/pet3d/blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from '../../shared/pet3d/defaults.ts';
 import type { PetKind, PetStyle, PoseKind } from '../../shared/settings.ts';
 import { canPlay, type SoundKind } from '../../shared/sound.ts';
+import { dressBlueprint, GROW_LOOK, type WearLook } from '../../shared/wear.ts';
 import { AnimatedImage, frameSide, loadPetImage } from './animated.ts';
 import { CANVAS_SIZE, type CarryDraw, CONFETTI_MS, drawPet, HEARTS_MS, motionSettling } from './draw.ts';
 import { initLang } from './lang.ts';
@@ -166,6 +167,8 @@ function frame() {
     gaze: backTurned() ? undefined : (gaze ?? undefined),
     trick: trick ? { type: trick.type, t: trickT } : undefined,
     flower,
+    // 철마다 옷과 성장은 기본 펫만 (사진 펫은 그대로)
+    ...(img || photo ? {} : { wear: wear?.outfit, grow: GROW_LOOK[wear?.stage ?? 'adult'].scale }),
     calm: reducedMotion.matches,
     peer: looking?.peer,
     gait: gaitPick,
@@ -401,7 +404,7 @@ function moveAsk(): MoveAsk {
   const calm = reducedMotion.matches;
   const hungry = inputs.hungry;
   const still = photo instanceof HTMLImageElement;
-  const bp = (still ? photoModel : undefined) ?? (photo ? undefined : DEFAULT_BLUEPRINTS[petKind]);
+  const bp = (still ? photoModel : undefined) ?? (photo ? undefined : builtinBlueprint());
   // 기운 단계 (shared/energy.ts): 메인이 몸짓 무게, 걷기 확률과 빠르기를 정한다
   const more = energy ? { energy: energy.stage } : {};
   if (use3d && !broken3d && bp) {
@@ -434,6 +437,18 @@ let petKind: PetKind = 'kong';
 let cushion = false;
 /** 머리에 꽃 (친밀도 600) */
 let flower = false;
+/** 성장 단계와 오늘 옷 (기본 펫만, shared/wear.ts) */
+let wear: WearLook | undefined;
+/** 입체 모습마다 옷을 털 밖으로 내는 길이 (실사, 복슬복슬은 털이 길다) */
+const WEAR_PUFF: Record<PetStyle, number> = { figure: 0, game: 0.006, real: 0.018, fluffy: 0.07 };
+/** 기본 펫 설계도에 성장과 옷을 입힌 것. 같은 값이면 같은 것을 돌려줘 다시 조립하지 않는다 */
+let dressed: { key: string; bp: Blueprint } | undefined;
+function builtinBlueprint(): Blueprint {
+  const key = `${petKind}|${style3d}|${wear?.stage ?? ''}|${wear?.outfit ?? ''}`;
+  if (dressed?.key !== key)
+    dressed = { key, bp: dressBlueprint(DEFAULT_BLUEPRINTS[petKind], wear, WEAR_PUFF[style3d]) };
+  return dressed.bp;
+}
 /** 효과음 (설정) */
 let sounds = false;
 /** 부스트 모드 (설정, 배터리면 메인이 끈다) */
@@ -589,9 +604,7 @@ function pickedBlueprint(bp: Blueprint | undefined): Blueprint | undefined {
 function current3d(): Pet3D | 'loading' | undefined {
   // 사진 펫은 설계도나 깊이 그림이 있을 때만 입체로. 움직이는 그림은 입체 판으로 만들지 않는다
   const still = photo instanceof HTMLImageElement;
-  const bp = pickedBlueprint(
-    (still ? photoModel : undefined) ?? (photo ? undefined : DEFAULT_BLUEPRINTS[petKind]),
-  );
+  const bp = pickedBlueprint((still ? photoModel : undefined) ?? (photo ? undefined : builtinBlueprint()));
   const relief = !bp && still ? photoDepth : undefined;
   if (!use3d || broken3d || (!bp && !relief)) {
     // 입체를 안 쓰면 모양만 내린다. 렌더러는 버리지 않고 다시 쓴다(버리고 새로 만들면 컨텍스트가 샌다)
@@ -626,7 +639,7 @@ function current3d(): Pet3D | 'loading' | undefined {
     return undefined;
   }
   // 나이 배율은 사진 펫에만 (기본 펫 설계도는 그대로)
-  model3d.setSizeScale(photo ? photoScale : 1);
+  model3d.setSizeScale(photo ? photoScale : GROW_LOOK[wear?.stage ?? 'adult'].scale);
   const want = bp ?? relief;
   // 모습을 바꾸면 털, 테두리, 눈을 다시 붙여야 해서 다시 조립한다
   if (model3d.setStyle(style3d)) model3dOf = undefined;
@@ -712,6 +725,10 @@ bridge.onStatus((status) => {
   statusKnown = true;
   cushion = status.cushion;
   flower = status.flower;
+  if (JSON.stringify(status.wear) !== JSON.stringify(wear)) {
+    wear = status.wear;
+    requestFrame();
+  }
   sounds = status.sounds;
   boost = status.boost;
   readAloud = status.readAloud === true;
