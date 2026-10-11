@@ -1,8 +1,9 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import type { AiProvider, AiStatus } from '../../../shared/ai/types.ts';
+import type { ChatState } from '../../../shared/chat-state.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { ProviderView } from '../../../shared/ipc.ts';
-import { dotOf, statusText } from './providerStatus.ts';
+import { dotOf, isReady, statusText } from './providerStatus.ts';
 
 interface Props {
   providers: ProviderView[];
@@ -12,10 +13,23 @@ interface Props {
   onAdd: (input: { label: string; bin: string; args: string }) => Promise<string | undefined>;
   onRemove: (id: AiProvider) => void;
   onClose: () => void;
+  /** 무료 AI 모델 받기 (받는 중이면 진행) */
+  onDownload: () => void;
+  download?: ChatState['modelDownload'];
 }
 
 /** AI 관리: 깔린 AI 상태를 보고, 목록에 없는 CLI 를 직접 추가한다. */
-export function AiManager({ providers, status, checking, onRefresh, onAdd, onRemove, onClose }: Props) {
+export function AiManager({
+  providers,
+  status,
+  checking,
+  onRefresh,
+  onAdd,
+  onRemove,
+  onClose,
+  onDownload,
+  download,
+}: Props) {
   const [label, setLabel] = useState('');
   const [bin, setBin] = useState('');
   const [args, setArgs] = useState('');
@@ -50,6 +64,12 @@ export function AiManager({ providers, status, checking, onRefresh, onAdd, onRem
     setError('');
   };
 
+  // 바로 쓸 수 있는 AI 가 하나도 없으면 무료 AI 를 맨 위에 "추천" 으로 (받기 단추와 같이). 깔린 AI 를 찾아 헤매지 않게
+  const recommend = providers.every((p) => p.id === 'local' || !isReady(status[p.id]));
+  const shown = recommend
+    ? [...providers.filter((p) => p.id === 'local'), ...providers.filter((p) => p.id !== 'local')]
+    : providers;
+
   return (
     <div ref={sheetRef} className="sheet" role="dialog" aria-modal="true" aria-label={t('chat.manage')}>
       <div className="sheet-head">
@@ -63,8 +83,9 @@ export function AiManager({ providers, status, checking, onRefresh, onAdd, onRem
       </div>
 
       <ul className="ai-list">
-        {providers.map((p) => {
+        {shown.map((p) => {
           const s = status[p.id];
+          const pick = recommend && p.id === 'local';
           return (
             <li key={p.id}>
               <span className={`dot ${dotOf(s)}`} aria-hidden="true" />
@@ -76,11 +97,37 @@ export function AiManager({ providers, status, checking, onRefresh, onAdd, onRem
                       {t('chat.notVerified')}
                     </span>
                   )}
+                  {pick && <span className="tag pick">{t('chat.recommended')}</span>}
                   {p.images && <span className="tag">{t('chat.tagImages')}</span>}
                   {p.usage && <span className="tag">{t('chat.tagUsage')}</span>}
                 </span>
                 {p.command && <code className="detail command">{p.command}</code>}
                 <span className="detail">{statusText(p, s)}</span>
+                {p.id === 'local' && s?.needsModel && (
+                  <span className="detail action-row">
+                    {download && !download.failed ? (
+                      <>
+                        <progress max={100} value={download.pct} />
+                        {t('ai.local.downloading', { pct: download.pct })}
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className={pick ? 'primary small' : 'ghost small'}
+                          onClick={onDownload}
+                        >
+                          {t('chat.local.downloadNow')}
+                        </button>
+                        {download?.failed && (
+                          <span className="download failed">
+                            {download.message ?? t('ai.local.downloadFailed')}
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </span>
+                )}
               </div>
               {p.custom && (
                 <button type="button" className="ghost small" onClick={() => onRemove(p.id)}>

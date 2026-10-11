@@ -9,10 +9,13 @@ export function UsageBar({
   usage,
   spec,
   hidden,
+  asked,
 }: {
   usage?: AiUsage;
   spec?: ProviderView;
   hidden?: boolean;
+  /** 이 대화에서 물어본 적이 있다. 사용량을 안 알려 주는 AI 의 안내는 그 뒤에만 (처음 화면부터 뜨면 쓸데없는 말이다) */
+  asked?: boolean;
 }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -21,6 +24,7 @@ export function UsageBar({
   }, []);
   if (!spec || hidden) return null;
   if (!spec.usage) {
+    if (!asked) return null;
     return (
       <p className="usage empty-usage">
         {t('chat.usage.none', { label: spec.label })}

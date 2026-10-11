@@ -54,6 +54,12 @@ export function App() {
     setChecking(false);
   }, []);
 
+  // 무료 AI 받기가 끝나면(AI 관리에서 받았을 때) 상태를 다시 읽어 "받기" 를 "준비됐어" 로
+  const downloadingModel = !!state?.modelDownload && !state.modelDownload.failed;
+  useEffect(() => {
+    if (!downloadingModel) void refreshStatus(false);
+  }, [downloadingModel, refreshStatus]);
+
   const addImages = useCallback(
     async (incoming: OutgoingImage[]) => {
       setImages((prev) => {
@@ -287,7 +293,12 @@ export function App() {
           {t('chat.newChat')}
         </button>
       </header>
-      <UsageBar usage={state.usage[state.provider]} spec={spec} hidden={!!current && !current.installed} />
+      <UsageBar
+        usage={state.usage[state.provider]}
+        spec={spec}
+        hidden={!!current && !current.installed}
+        asked={state.messages.length > 0}
+      />
       {managing && (
         <AiManager
           providers={providers}
@@ -306,6 +317,11 @@ export function App() {
             refreshStatus(false);
           }}
           onClose={() => setManaging(false)}
+          onDownload={() => {
+            bridge.setProvider('local');
+            bridge.downloadModel();
+          }}
+          download={state.modelDownload}
         />
       )}
       {zoom && (
