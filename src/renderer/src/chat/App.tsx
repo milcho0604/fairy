@@ -396,11 +396,22 @@ export function App() {
         </button>
         <button
           type="button"
-          className="ghost"
+          className="ghost new-chat"
+          title={t('chat.newChat')}
           disabled={pending || state.messages.length === 0}
           onClick={newChat}
         >
-          {t('chat.newChat')}
+          {/* 맥 좁은 창에서는 글 대신 + 그림 (chat-list.css) */}
+          <svg className="new-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <path
+              d="M8 3v10M3 8h10"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+            />
+          </svg>
+          <span className="new-label">{t('chat.newChat')}</span>
         </button>
       </header>
       <UsageBar

@@ -164,27 +164,71 @@
   }
 }
 
-/* 머리줄의 목록 단추 (글자 대신 줄 세 개 그림, 이름은 aria-label) */
-header .icon-btn {
+/* 머리줄의 목록 단추: 테두리 없는 작은 그림 단추 (줄 세 개, 이름은 title 과 aria-label).
+   머리줄 얼굴과 펫 이름 자리를 먹지 않게 22px 로 둔다 (#55: 예전엔 420 이하에서 얼굴을 뺐다).
+   이 파일이 chat.css 보다 먼저 들어가서 좁은 창의 header > .ghost 여백을 이기게 body 를 붙인다 */
+body header .icon-btn {
   display: inline-flex;
+  flex: none;
   align-items: center;
   justify-content: center;
-  padding: 4px 7px;
+  padding: 2px;
+  border-color: transparent;
+  border-radius: 6px;
   line-height: 1;
+  color: var(--muted);
+}
+
+header .icon-btn:hover {
+  background: var(--code);
+  color: var(--ink);
+}
+
+header .icon-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
 }
 
 header .icon-btn svg {
   display: block;
 }
 
-/* 기본 폭(400)과 좁은 창: 목록 단추가 들어간 만큼 머리줄 얼굴을 뺀다. 누구와 이야기하는지(이름)가 먼저라
-   이름 글자를 목록 단추 전과 같게 남긴다 (얼굴은 답마다 옆에 있다) */
-@media (max-width: 420px) {
-  header .title .face {
-    display: none;
+/* 새 대화 단추의 그림은 맥 좁은 창에서만 (아래) */
+header .new-chat .new-icon {
+  display: none;
+}
+
+/* 기본 폭(400) 이하: 얼굴과 이름 사이, 단추 사이를 조금 좁혀 이름 글자를 남긴다 (맥 400 에서 "Buddy" 가 몇 px 차이로 잘렸다).
+   360 이하는 chat.css 의 좁은 창 규칙(gap 4px, 2px)이 그대로 맡는다 */
+@media (min-width: 361px) and (max-width: 420px) {
+  body header {
+    gap: 6px;
   }
 
-  header .icon-btn {
-    padding-inline: 5px;
+  header .title {
+    gap: 4px;
+  }
+}
+
+/* 맥 좁은 창(320): 창 버튼 자리(72px)를 빼면 얼굴과 이름이 다 안 들어가서 새 대화 단추를 그림(+)으로 줄인다.
+   글은 화면 읽기 프로그램용으로 남기고 올리면 title 로 보인다. 리눅스, 윈도우는 320 에서도 글 그대로 들어간다 */
+@media (max-width: 360px) {
+  body.mac header .new-chat {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 5px;
+  }
+
+  body.mac header .new-chat .new-icon {
+    display: block;
+  }
+
+  body.mac header .new-chat .new-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
 }
