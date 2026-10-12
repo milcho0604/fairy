@@ -180,7 +180,8 @@ export function calendarDays(
   for (const e of events) {
     const { first, last } = eventSpan(e);
     if (last < from || first > to) continue;
-    const kind = e.source === 'ics' ? 'ics' : 'event';
+    // 바깥에서 가져온 일정(ics, 구글에서 읽어 옴)은 같은 모양으로
+    const kind = e.source === 'local' ? 'event' : 'ics';
     const end = last < to ? last : to;
     for (let day = first < from ? from : first; day <= end; day = plusDays(day, 1)) {
       put(day, {

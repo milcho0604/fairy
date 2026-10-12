@@ -15,6 +15,11 @@ test('구글 표식: 상태마다 글과 툴팁 (ko)', () => {
   // 가져온 일정은 연결과 상관없이 가져옴 (구글 표식보다 앞선다)
   assert.equal(gcalBadge('ics', undefined, null)?.kind, 'imported');
   assert.equal(gcalBadge('ics', 'sent', null)?.kind, 'imported');
+  // 구글에서 읽어 온 일정 (이슈 #54)
+  assert.deepEqual(
+    [gcalBadge('google', undefined, null)?.kind, gcalBadge('google', undefined, null)?.label],
+    ['fromGoogle', '구글에서'],
+  );
   // 보내는 중의 툴팁은 멈춘 까닭을 따른다
   const tip = (p: Parameters<typeof gcalBadge>[2]) => gcalBadge('local', 'pending', p)?.tip;
   assert.match(tip(null) ?? '', /차례/);

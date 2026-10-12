@@ -224,6 +224,8 @@ export function EventRow({
   const ended = span ? span.last < today : (e.endAt ?? e.startAt + 30 * 60_000) < now;
   const started = !ended && (span ? span.first <= today : e.startAt <= now);
   const badge = gcalBadge(e.source, gcal?.marks[e.id], gcal?.problem);
+  // 구글에서 읽어 온 일정은 읽기 전용 (이슈 #54): 제목, 시각, 종일은 구글에서 고친다. 알림, 고정, 숨기기만 페어리 것
+  const readOnly = e.source === 'google';
 
   /** 종일과 시각 일정 사이를 바꾼다. 시각으로 바꾸면 첫날 오전 9시 (오늘이면 다음 정시) */
   const toggleAllDay = () => {
@@ -246,10 +248,11 @@ export function EventRow({
         onContextMenu={pinMenu.onContextMenu}
       >
         {span ? (
-          <label className="time" title={t('panel.event.changeDay')}>
+          <label className="time" title={t(readOnly ? 'gcal.readOnlyTip' : 'panel.event.changeDay')}>
             {t('panel.event.allDay')}
             <input
               type="date"
+              disabled={readOnly}
               value={span.first}
               aria-label={t('panel.event.startDay')}
               onChange={(ev) => {
@@ -265,10 +268,11 @@ export function EventRow({
             />
           </label>
         ) : (
-          <label className="time" title={t('panel.event.changeTime')}>
+          <label className="time" title={t(readOnly ? 'gcal.readOnlyTip' : 'panel.event.changeTime')}>
             {started ? t('panel.today.now') : timeOf(e.startAt)}
             <input
               type="datetime-local"
+              disabled={readOnly}
               value={toInputValue(e.startAt)}
               aria-label={t('panel.event.startTime')}
               onChange={(ev) => {
@@ -308,8 +312,11 @@ export function EventRow({
             type="button"
             className="title"
             dir="auto"
-            title={t('panel.todo.clickToEdit')}
-            onClick={() => setEditing(true)}
+            title={t(readOnly ? 'gcal.readOnlyTip' : 'panel.todo.clickToEdit')}
+            aria-disabled={readOnly || undefined}
+            onClick={() => {
+              if (!readOnly) setEditing(true);
+            }}
           >
             {e.title}
             {e.endAt && !e.allDay && <small> ~{timeOf(e.endAt)}</small>}
@@ -334,13 +341,19 @@ export function EventRow({
           )}
           <span className="extra">
             {!pinned && <PinButton kind="event" id={e.id} title={e.title} pinned={false} />}
-            <label className={`all-day-toggle ${e.allDay ? 'on' : ''}`} title={t('panel.event.allDayToggle')}>
-              <input type="checkbox" checked={e.allDay} onChange={toggleAllDay} />
-              {t('panel.event.allDay')}
-            </label>
+            {!readOnly && (
+              <label
+                className={`all-day-toggle ${e.allDay ? 'on' : ''}`}
+                title={t('panel.event.allDayToggle')}
+              >
+                <input type="checkbox" checked={e.allDay} onChange={toggleAllDay} />
+                {t('panel.event.allDay')}
+              </label>
+            )}
             <button
               type="button"
               className="remove"
+              title={readOnly ? t('gcal.hideTip') : undefined}
               aria-label={t('panel.todo.remove', { title: e.title })}
               onClick={() => {
                 bridge.eventRemove(e.id);

@@ -1,4 +1,4 @@
-// 구글 캘린더에 쓰기 (6단계): 설정 창 칸. 연결, 끊기, 보내기 켜고 끄기, 보낼 캘린더.
+// 구글 캘린더 (6단계 보내기, 이슈 #54 가져오기): 설정 창 칸. 연결, 끊기, 보내기와 가져오기 켜고 끄기, 캘린더.
 // 창은 상태(GcalStatus)만 받는다. 토큰과 네트워크는 메인(main/gcal.ts)에만 있다.
 import { useEffect, useState } from 'react';
 import { cleanCalendarId, GCAL_PRIMARY, type GcalBridge, type GcalStatus } from '../../../shared/gcal.ts';
@@ -71,13 +71,22 @@ export function GoogleCalendarBox({ onMsg }: { onMsg: (m: string) => void }) {
             when: new Date(s.lastSyncAt).toLocaleString(locale(), { dateStyle: 'short', timeStyle: 'short' }),
           })
         : t('gcal.state.idle');
+  const when = (ms: number) =>
+    new Date(ms).toLocaleString(locale(), { dateStyle: 'short', timeStyle: 'short' });
+  const pullLine = !s.pull
+    ? undefined
+    : s.lastPullAt
+      ? t('gcal.state.pulled', { n: s.pulled, when: when(s.lastPullAt) })
+      : t('gcal.state.pullIdle');
+  // 연결 전에는 연결하면 둘 다 켜지니 가져오기 안내를 보인다
+  const twoWay = !s.connected || s.pull;
 
   return (
     <section>
       <h2>{t('gcal.title')}</h2>
       <div className="card">
         <small>{t('gcal.intro')}</small>
-        <small className="gcal-one-way">{t('gcal.oneWay')}</small>
+        <small className="gcal-one-way">{t(twoWay ? 'gcal.twoWay' : 'gcal.oneWay')}</small>
         {!s.connected ? (
           <>
             <div className="action-row">
@@ -124,6 +133,24 @@ export function GoogleCalendarBox({ onMsg }: { onMsg: (m: string) => void }) {
                 <i />
               </button>
             </div>
+            <div className="toggle">
+              <div className="text">
+                <span>{t('gcal.pull')}</span>
+                {pullLine && <small className="toggle-note">{pullLine}</small>}
+                <small>{t('gcal.pullHint')}</small>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={s.pull}
+                aria-label={t('gcal.pull')}
+                className={s.pull ? 'on' : ''}
+                disabled={busy}
+                onClick={() => void run(() => gcal().setPull(!s.pull))}
+              >
+                <i />
+              </button>
+            </div>
             <label className="field">
               <span>{t('gcal.calendar')}</span>
               <input
@@ -146,10 +173,10 @@ export function GoogleCalendarBox({ onMsg }: { onMsg: (m: string) => void }) {
               <button
                 type="button"
                 className="ghost"
-                disabled={!s.push || busy}
+                disabled={!(s.push || s.pull) || busy}
                 onClick={() => void run(() => gcal().syncNow())}
               >
-                {t('gcal.syncNow')}
+                {t(s.push && s.pull ? 'gcal.syncBoth' : s.pull ? 'gcal.pullNow' : 'gcal.syncNow')}
               </button>
               <button
                 type="button"

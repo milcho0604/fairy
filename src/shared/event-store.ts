@@ -36,8 +36,8 @@ export interface CalEvent {
   remindMin: number;
   /** 마지막으로 알린 시각. 없으면 null */
   notifiedAt: number | null;
-  /** local(직접 넣음), ics(캘린더에서 가져옴, v2) */
-  source: 'local' | 'ics';
+  /** local(직접 넣음), ics(캘린더에서 가져옴, v2), google(구글 캘린더에서 읽어 옴, 이슈 #54. 페어리에서는 읽기 전용) */
+  source: EventSource;
   /**
    * 종일 일정. startAt 은 첫날 현지 0시, endAt 은 여러 날이면 마지막 날 다음 날 현지 0시(끝 날은 들지 않는다), 하루면 null.
    */
@@ -45,6 +45,16 @@ export interface CalEvent {
   /** 고정한 시각 (13판, shared/pin.ts). 고정 안 했거나 값이 깨졌으면 null. 구글 보내기와 .ics 내보내기에는 없다 */
   pinnedAt: number | null;
 }
+
+export type EventSource = 'local' | 'ics' | 'google';
+
+/**
+ * AI 에 보내도 되는 일정인지. 구글 API 로 읽어 온 일정(구글 사용자 데이터)은 AI 대화, 페어리 도구(MCP), 계획 다듬기 어디로도
+ * 보내지 않는다 (개인정보처리방침 Limited Use: 구글 데이터는 일정을 보이는 이 기능에만 쓴다)
+ */
+export const aiSafeEvent = (e: { source?: EventSource }): boolean => e.source !== 'google';
+/** 바깥에서 가져온 일정의 출처 */
+export type ExternalSource = 'ics' | 'google';
 
 interface Row {
   id: number;
@@ -69,7 +79,7 @@ const toEvent = (r: Row, marks: readonly { before: number; notifiedAt: number | 
     reminds,
     remindMin: reminds.length ? Math.min(...reminds) : 0,
     notifiedAt: spoken.length ? Math.max(...spoken) : null,
-    source: r.source === 'ics' ? 'ics' : 'local',
+    source: r.source === 'ics' || r.source === 'google' ? r.source : 'local',
     allDay: Number(r.all_day ?? 0) === 1,
     pinnedAt: pinAt(r.pinned_at),
   };
@@ -278,15 +288,23 @@ export class EventStore {
   ): CalEvent | undefined {
     const e = this.get(id);
     if (!e) return undefined;
-    const title = patch.title === undefined ? e.title : cutText(patch.title.trim(), 200) || e.title;
-    const startAt = eventTimeOk(patch.startAt) ? patch.startAt : e.startAt;
-    const endAt = patch.endAt === undefined ? e.endAt : cleanEnd(patch.endAt);
-    const allDay = patch.allDay === undefined ? e.allDay : patch.allDay;
+    // 구글에서 읽어 온 일정은 읽기 전용: 제목, 시각, 종일은 구글 것이라 알림만 바꾼다 (패널, 빠른 입력, MCP 어디서든)
+    const p: typeof patch =
+      e.source === 'google'
+        ? {
+            ...(patch.reminds ? { reminds: patch.reminds } : {}),
+            ...(patch.remindMin !== undefined ? { remindMin: patch.remindMin } : {}),
+          }
+        : patch;
+    const title = p.title === undefined ? e.title : cutText(p.title.trim(), 200) || e.title;
+    const startAt = eventTimeOk(p.startAt) ? p.startAt : e.startAt;
+    const endAt = p.endAt === undefined ? e.endAt : cleanEnd(p.endAt);
+    const allDay = p.allDay === undefined ? e.allDay : p.allDay;
     // 종일과 시각 일정 사이를 바꾸면 알림을 새 쪽의 기본으로 (시각 일정의 "10분 전"은 종일에서는 전날 밤 11시 50분이 된다)
-    const reminds = patch.reminds
-      ? normalizeReminds(patch.reminds, allDay)
-      : patch.remindMin !== undefined
-        ? fromLegacy(patch.remindMin, allDay)
+    const reminds = p.reminds
+      ? normalizeReminds(p.reminds, allDay)
+      : p.remindMin !== undefined
+        ? fromLegacy(p.remindMin, allDay)
         : allDay !== e.allDay
           ? defaultReminds(allDay)
           : e.reminds;
@@ -391,10 +409,12 @@ export class EventStore {
    * 종일 일정은 알리지 않는다(알림 시각을 이미 지난 것으로 둔다). 고친 수를 돌려준다.
    */
   syncExternal(
-    source: 'ics',
+    source: ExternalSource,
     list: readonly {
       uid: string;
       recurrenceId?: string | null;
+      /** 구글에서 읽어 온 일정의 iCalUID (google_uid 칸). 캘린더 가져오기(.ics)와 겹침을 거른다 */
+      icalUid?: string | null;
       title: string;
       startAt: number;
       endAt: number | null;
@@ -438,8 +458,8 @@ export class EventStore {
         if (!old) {
           const r = this.#db
             .prepare(
-              `insert into event (title, start_at, end_at, remind_min, notified_at, created_at, source, external_id, all_day)
-               values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              `insert into event (title, start_at, end_at, remind_min, notified_at, created_at, source, external_id, all_day, google_uid)
+               values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             )
             .run(
               e.title,
@@ -451,6 +471,7 @@ export class EventStore {
               source,
               key,
               e.allDay ? 1 : 0,
+              e.icalUid ?? null,
             );
           this.#reminders.set(Number(r.lastInsertRowid), defaultReminds(e.allDay), eventAnchor(e), {
             now,
@@ -459,6 +480,8 @@ export class EventStore {
           added++;
           continue;
         }
+        if (e.icalUid !== undefined)
+          this.#db.prepare('update event set google_uid = ? where id = ?').run(e.icalUid ?? null, old.id);
         // 사용자가 지운 것: 캘린더에 있어도 되살리지 않는다
         if (old.deleted_at !== null && old.removed_by === 'user') continue;
         const revive = old.deleted_at !== null;
@@ -530,14 +553,50 @@ export class EventStore {
    * 캘린더 주소를 지웠다: 가져온 일정 중 아직 안 끝난 것(앞으로 올 것, 이어지는 것)을 지운 것으로 둔다.
    * 맞추기가 지운 것(removed_by 'sync')이라 주소를 다시 넣으면 되살아난다. 지난 일정은 기록으로 둔다. 지운 수를 돌려준다
    */
-  dropExternal(source: 'ics', now: number): number {
-    const r = this.#db
-      .prepare(
-        `update event set deleted_at = ?, removed_by = 'sync'
-         where source = ? and deleted_at is null and (start_at >= ? or (end_at is not null and end_at > ?))`,
-      )
-      .run(now, source, now, now);
+  dropExternal(source: ExternalSource, now: number, o: { all?: boolean } = {}): number {
+    const r = o.all
+      ? this.#db
+          .prepare(
+            `update event set deleted_at = ?, removed_by = 'sync' where source = ? and deleted_at is null`,
+          )
+          .run(now, source)
+      : this.#db
+          .prepare(
+            `update event set deleted_at = ?, removed_by = 'sync'
+             where source = ? and deleted_at is null and (start_at >= ? or (end_at is not null and end_at > ?))`,
+          )
+          .run(now, source, now, now);
     return Number(r.changes);
+  }
+
+  /** 구글에서 읽어 와 지금 보이는 일정의 iCalUID 들 (캘린더 가져오기가 같은 일정을 또 넣지 않게) */
+  googleUids(): Set<string> {
+    const rows = this.#db
+      .prepare(
+        "select google_uid from event where source = 'google' and deleted_at is null and google_uid is not null",
+      )
+      .all() as { google_uid: string }[];
+    return new Set(rows.map((r) => r.google_uid));
+  }
+
+  /**
+   * 캘린더 가져오기(.ics)로 들어온 일정 가운데 uids 와 같은 일정(반복 회차 포함)을 걷어 낸다 (맞추기가 지운 것으로:
+   * 구글 읽어 오기를 끄면 다음 가져오기가 되살린다). 걷은 수
+   */
+  hideIcsDupes(uids: ReadonlySet<string>, now: number): number {
+    if (uids.size === 0) return 0;
+    const rows = this.#db
+      .prepare("select id, external_id from event where source = 'ics' and deleted_at is null")
+      .all() as { id: number; external_id: string | null }[];
+    let n = 0;
+    for (const r of rows) {
+      const key = r.external_id ?? '';
+      const hash = key.indexOf('#');
+      if (!uids.has(hash < 0 ? key : key.slice(0, hash))) continue;
+      this.#db.prepare("update event set deleted_at = ?, removed_by = 'sync' where id = ?").run(now, r.id);
+      n++;
+    }
+    return n;
   }
 
   /** 알렸다: 울릴 때가 지난 알림을 다 알린 것으로 (늦었으면 곧 올 것까지) */

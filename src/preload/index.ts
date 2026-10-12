@@ -255,6 +255,7 @@ if (kind === 'settings') {
     cancel: () => ipcRenderer.send(GCAL.cancel),
     disconnect: () => ipcRenderer.invoke(GCAL.disconnect),
     setPush: (on: boolean) => ipcRenderer.invoke(GCAL.setPush, on),
+    setPull: (on: boolean) => ipcRenderer.invoke(GCAL.setPull, on),
     setCalendar: (id: string) => ipcRenderer.invoke(GCAL.setCalendar, id),
     syncNow: () => ipcRenderer.invoke(GCAL.syncNow),
     onChanged: (listener) => {

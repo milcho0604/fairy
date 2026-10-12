@@ -15,6 +15,7 @@ import { findSameEvent } from '../shared/event-dup.ts';
 import { overlapping, spanEnd } from '../shared/event-overlap.ts';
 import {
   ALL_DAY_MAX_DAYS,
+  aiSafeEvent,
   allDaySpan,
   allDayTimes,
   EventStore,
@@ -190,7 +191,7 @@ function localStartOf(v: unknown): number {
 /** 시각 일정과 시간이 겹치는 일정이 있으면 덧붙일 말 (event-overlap.ts) */
 function clashNote(events: EventStore, ev: { id: number; startAt: number; endAt: number | null }): string {
   const span = { ...ev, title: '', allDay: false };
-  const hit = overlapping(events.timedOverlapping(ev.startAt, spanEnd(span)), span);
+  const hit = overlapping(events.timedOverlapping(ev.startAt, spanEnd(span)).filter(aiSafeEvent), span);
   return hit.length > 0
     ? ` (주의: ${hit.map((e) => `${stamp(e.startAt).slice(11)} ${e.title}`).join(', ')} 일정과 시간이 겹쳐)`
     : '';
@@ -198,7 +199,7 @@ function clashNote(events: EventStore, ev: { id: number; startAt: number; endAt:
 
 /** 같은 일정이 이미 있으면 그 일정 (제목, 시작, 종일이 같은 것. event-dup.ts) */
 function sameEvent(events: EventStore, ev: { title: string; startAt: number; allDay?: boolean }) {
-  return findSameEvent(events.between(ev.startAt, ev.startAt + 1), ev);
+  return findSameEvent(events.between(ev.startAt, ev.startAt + 1).filter(aiSafeEvent), ev);
 }
 
 /** 기억 받은 편지함에 하나 더한다. 짝꿍이 켜져 있으면 곧 "기다리는 기억"으로 옮기고 사용자가 허락한다 */
@@ -620,7 +621,8 @@ const TOOLS: Tool[] = [
       // 서머타임이 바뀌는 날이 끼면 하루가 23, 25시간이라 24시간씩 더하지 않고 n 일 뒤 0시를 만든다
       const from = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
       const to = new Date(d.getFullYear(), d.getMonth(), d.getDate() + days).getTime();
-      const list = open().events.between(from, to);
+      // 구글에서 읽어 온 일정은 AI 에게 보이지 않는다 (aiSafeEvent)
+      const list = open().events.between(from, to).filter(aiSafeEvent);
       if (list.length === 0) return `앞으로 ${days}일 안에 일정이 없어.`;
       const p = (n: number) => String(n).padStart(2, '0');
       return list
@@ -651,7 +653,9 @@ const TOOLS: Tool[] = [
     },
     run: (a) => {
       const s = open();
-      const e = s.events.get(idOf(a.id));
+      const got = s.events.get(idOf(a.id));
+      // 구글에서 읽어 온 일정은 AI 가 보지도 고치지도 않는다
+      const e = got && aiSafeEvent(got) ? got : undefined;
       if (!e) throw new Error(`id ${String(a.id)} 일정이 없어`);
       if (e.allDay && (a.start !== undefined || a.duration_min !== undefined))
         throw new Error('종일 일정은 제목만 고칠 수 있어');
@@ -685,7 +689,9 @@ const TOOLS: Tool[] = [
     },
     run: (a) => {
       const s = open();
-      const e = s.events.get(idOf(a.id));
+      const got = s.events.get(idOf(a.id));
+      // 구글에서 읽어 온 일정은 AI 가 보지도 고치지도 않는다
+      const e = got && aiSafeEvent(got) ? got : undefined;
       if (!e) throw new Error(`id ${String(a.id)} 일정이 없어`);
       if (confirming()) return queue({ tool: 'delete_event', id: e.id }, `일정 지우기: ${e.title}`);
       s.events.remove(e.id, Date.now());
@@ -704,10 +710,9 @@ const TOOLS: Tool[] = [
       const d = new Date(now);
       // 서머타임 날은 하루가 23, 25시간이라 24시간을 더하지 않고 다음 날 0시를 만든다
       const from = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-      const events = s.events.between(
-        from,
-        new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime(),
-      );
+      const events = s.events
+        .between(from, new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime())
+        .filter(aiSafeEvent);
       const { open: list, doneToday } = s.todos.list(now);
       const next = nextUp({ todos: list, events, now });
       const overdue = list.filter((t) => t.due !== null && t.due < today);

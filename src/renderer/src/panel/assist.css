@@ -364,7 +364,8 @@
 }
 
 .gcal-badge.local,
-.gcal-badge.imported {
+.gcal-badge.imported,
+.gcal-badge.fromGoogle {
   background: color-mix(in srgb, var(--muted) 12%, transparent);
   color: var(--muted);
 }

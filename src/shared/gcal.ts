@@ -1,10 +1,14 @@
 // 구글 캘린더에 쓰기 (6단계 남은 것). 짝꿍에서 넣은 일정을 사용자의 구글 캘린더로 보낸다.
+// 고른 캘린더의 원래 일정을 읽어 오기도 한다 (이슈 #54, shared/gcal-pull.ts, main/gcal-pull.ts).
 // 여기는 화면, 메인, 시험이 같이 쓰는 순수한 것만: 설정 창과 주고받는 모양, 일정 → 구글 일정 바꾸기, 지문, 다시 하기 간격.
 // 네트워크와 토큰은 메인(main/gcal.ts, main/gcal-auth.ts)에만 있다. 창은 상태만 받는다.
 import { plusDays } from './day.ts';
 import { NO_END_MIN } from './event-overlap.ts';
 
-/** 쓰는 권한: 일정 읽기 쓰기만 (캘린더 목록, 설정, 공유는 못 본다) */
+/**
+ * 쓰는 권한: 일정 읽기 쓰기만 (캘린더 목록, 설정, 공유는 못 본다). 보내기(쓰기)와 읽어 오기(events.list)가 이 하나로 된다:
+ * 읽기 때문에 범위를 더하지 않는다
+ */
 export const GCAL_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
 
 /** 기본 캘린더 (로그인한 계정의 기본 캘린더) */
@@ -20,6 +24,7 @@ export const GCAL = {
   cancel: 'gcal:cancel',
   disconnect: 'gcal:disconnect',
   setPush: 'gcal:set-push',
+  setPull: 'gcal:set-pull',
   setCalendar: 'gcal:set-calendar',
   syncNow: 'gcal:sync-now',
   /** 메인 → 설정 창: 상태가 바뀌었다 */
@@ -59,6 +64,12 @@ export interface GcalStatus {
   calendarId: string;
   /** 마지막으로 다 보낸 때 (ms) */
   lastSyncAt: number | null;
+  /** 고른 캘린더의 원래 일정을 페어리로 읽어 오기 (이슈 #54) */
+  pull: boolean;
+  /** 마지막으로 다 읽어 온 때 (ms) */
+  lastPullAt: number | null;
+  /** 마지막으로 읽어 온 일정 수 */
+  pulled: number;
   /** 아직 못 보낸 일정 수 */
   pending: number;
   problem: GcalProblem | null;
@@ -71,7 +82,8 @@ export interface GcalBridge {
   cancel(): void;
   disconnect(): Promise<GcalStatus>;
   setPush(on: boolean): Promise<GcalStatus>;
-  /** 틀린 모양이면 그대로 둔다 */
+  setPull(on: boolean): Promise<GcalStatus>;
+  /** 틀린 모양이면 그대로 둔다. 읽어 오는 캘린더도 이것이다 */
   setCalendar(id: string): Promise<GcalStatus>;
   syncNow(): Promise<GcalStatus>;
   /** 듣기를 그만두는 함수를 돌려준다 (탭을 오갈 때 듣는 것이 쌓이지 않게) */

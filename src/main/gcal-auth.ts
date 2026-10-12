@@ -290,7 +290,7 @@ export interface ApiResult {
 export function callApi(
   f: FetchLike,
   token: string,
-  method: 'POST' | 'PATCH' | 'DELETE',
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
   path: string,
   body?: unknown,
 ): Promise<ApiResult> {

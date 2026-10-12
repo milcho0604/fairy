@@ -39,8 +39,7 @@ import {
   shouldNudge,
   suggestPicks,
 } from '../shared/day-plan.ts';
-import type { EventStore } from '../shared/event-store.ts';
-import { timeLabel } from '../shared/event-store.ts';
+import { aiSafeEvent, type EventStore, timeLabel } from '../shared/event-store.ts';
 import {
   defaultExportName,
   type ExportKind,
@@ -135,7 +134,13 @@ export function createDayTools(o: DayToolsOptions) {
     const events = o.events
       .between(dayStart, to)
       .filter((ev) => !ev.allDay && (ev.endAt ?? ev.startAt) >= now)
-      .map((ev) => ({ title: ev.title, startAt: ev.startAt, endAt: ev.endAt, allDay: false }));
+      .map((ev) => ({
+        title: ev.title,
+        startAt: ev.startAt,
+        endAt: ev.endAt,
+        allDay: false,
+        ai: aiSafeEvent(ev),
+      }));
     return { events, gaps: freeGaps(events, from, to) };
   }
 
@@ -222,7 +227,10 @@ export function createDayTools(o: DayToolsOptions) {
       ask: t('plan.ai.ask'),
       candidates: view.candidates,
       picks: chosen,
-      events: view.events.map((ev) => ({ time: timeLabel(minuteOfDay(ev.startAt)), title: ev.title })),
+      // 구글에서 읽어 온 일정은 AI 로 보내지 않는다 (aiSafeEvent. 빈 시간에는 그대로 든다)
+      events: dayGaps(now)
+        .events.filter((ev) => ev.ai)
+        .map((ev) => ({ time: timeLabel(minuteOfDay(ev.startAt)), title: ev.title })),
       gaps: view.gaps.map((g) => ({
         time: `${timeLabel(minuteOfDay(g.start))}-${timeLabel(minuteOfDay(g.end))}`,
       })),

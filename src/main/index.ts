@@ -7,6 +7,7 @@ import { pickLocal } from '../shared/ai/catalog.ts';
 import { contextEvents, todayRange } from '../shared/ai/context-events.ts';
 import { persona, setMemorySource, setStyleSource, todoContext } from '../shared/ai/persona.ts';
 import { cutText } from '../shared/cut-text.ts';
+import { aiSafeEvent } from '../shared/event-store.ts';
 import { HIDE_SEEK, pickHideSpot } from '../shared/hide-seek.ts';
 import { houseMenuKey, houseNewsKey, stowSayKey, stowStep } from '../shared/house-stow.ts';
 import { locale, t } from '../shared/i18n/index.ts';
@@ -263,7 +264,8 @@ ready
         return todoContext({
           today: localDay(now),
           todos: store.list(now).open,
-          events: contextEvents(events.between(day.from, day.to), now),
+          // 구글에서 읽어 온 일정은 AI 로 보내지 않는다 (aiSafeEvent)
+          events: contextEvents(events.between(day.from, day.to).filter(aiSafeEvent), now),
         });
       },
       saveNote: (title, body) => {
@@ -862,8 +864,8 @@ ready
         const w = settingsWindow.window;
         return !!w && !w.isDestroyed() && w.isVisible();
       },
-      // 구글 캘린더로 보낸 짝꿍 일정이 같은 캘린더를 가져올 때 되돌아오면 거른다 (둘씩 보이지 않게)
-      skipUids: () => gcalLinks.sentUids(),
+      // 구글 캘린더로 보낸 짝꿍 일정, 구글에서 이미 읽어 온 일정이 같은 캘린더를 가져올 때 또 오면 거른다 (둘씩 보이지 않게)
+      skipUids: () => gcal.skipUids(),
       log,
     });
     function openCalendarSettings(a: string | undefined) {
@@ -1281,6 +1283,11 @@ ready
     // ---- 구글 캘린더에 쓰기 (6단계): 짝꿍 일정을 구글로. 설정 창에서 연결한다 ----
     const gcal = createGcal({
       store: gcalLinks,
+      events,
+      onEvents: () => {
+        panel.refresh();
+        planner.check();
+      },
       isSettings: (wc) => {
         const w = settingsWindow.window;
         return !!w && !w.isDestroyed() && w.webContents === wc;
