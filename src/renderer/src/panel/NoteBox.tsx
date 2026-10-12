@@ -46,7 +46,9 @@ export function NoteBox() {
                 onClick={() => toggle(n)}
               >
                 <NoteIcon look={n.look} />
-                <span className="note-title">{n.title}</span>
+                <span className="note-title" dir="auto">
+                  {n.title}
+                </span>
                 {!n.read && <span className="note-new">{t('note.new')}</span>}
               </button>
               {open === n.day && (

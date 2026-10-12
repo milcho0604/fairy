@@ -400,7 +400,9 @@ function DayList({
           {repeats.map((i) => (
             <li key={i.key} className="todo cal-repeat" title={t('cal.kind.repeat')}>
               <RepeatIcon />
-              <span className="title">{i.title}</span>
+              <span className="title" dir="auto">
+                {i.title}
+              </span>
               <small>{i.minute !== null ? timeLabel(i.minute) : t('cal.repeat.next')}</small>
             </li>
           ))}

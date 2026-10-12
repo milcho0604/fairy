@@ -89,7 +89,7 @@ export function PlanCard({ s, onComplete }: { s: PanelState; onComplete: (todo: 
                 >
                   <CheckIcon />
                 </button>
-                <span className="plan-title" title={todo.title}>
+                <span className="plan-title" dir="auto" title={todo.title}>
                   {todo.title}
                 </span>
               </li>
@@ -107,7 +107,9 @@ export function PlanCard({ s, onComplete }: { s: PanelState; onComplete: (todo: 
                 <span className="plan-time">
                   {timeOf(b.start)} ~ {timeOf(b.end)}
                 </span>
-                <span className="plan-title">{todo?.title ?? t('plan.card.blocks')}</span>
+                <span className="plan-title" dir="auto">
+                  {todo?.title ?? t('plan.card.blocks')}
+                </span>
                 {isLive && !running && (
                   <button
                     type="button"
@@ -269,7 +271,9 @@ export function PlanSheetHost({
                     <li key={c.id}>
                       <label className={on ? 'on' : full ? 'dim' : ''}>
                         <input type="checkbox" checked={on} onChange={() => toggle(c.id)} />
-                        <span className="plan-title">{c.title}</span>
+                        <span className="plan-title" dir="auto">
+                          {c.title}
+                        </span>
                         {c.reason && (
                           <small className={`plan-tag ${c.reason}`}>{t(`plan.reason.${c.reason}`)}</small>
                         )}
@@ -300,7 +304,9 @@ export function PlanSheetHost({
                     <span className="plan-time">
                       {timeOf(b.start)} ~ {timeOf(b.end)}
                     </span>
-                    <span className="plan-title">{titleOf(b.todoId) ?? t('plan.card.blocks')}</span>
+                    <span className="plan-title" dir="auto">
+                      {titleOf(b.todoId) ?? t('plan.card.blocks')}
+                    </span>
                   </li>
                 ))}
               </ul>
