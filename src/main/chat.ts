@@ -53,7 +53,7 @@ import { downloadLocalModel, localModelReady, mb, runLocal } from './ai/local.ts
 import { type AiRun, checkStatus, readCodexUsage, runAi } from './ai/runner.ts';
 import { getShellEnv } from './ai/shell-env.ts';
 import { devRendererUrl } from './dev-url.ts';
-import { focusWindow, showWindow, stealFocus } from './focus.ts';
+import { focusWindow, showWindow } from './focus.ts';
 import { langArg } from './lang.ts';
 import { jjMcpLaunch } from './mcp-launch.ts';
 import { openLink } from './open-link.ts';
@@ -625,8 +625,7 @@ export function createChat(o: ChatOptions) {
       o.onLocked?.();
       return;
     }
-    // 펫 앱은 Dock 없이 떠 있어서 창만 앞으로 부르면 키보드가 다른 앱에 남는다. 사용자가 부른 것이니 앱을 앞으로.
-    stealFocus();
+    // 앱을 앞으로 가져오는 것은 창을 띄울 때 한다 (focus.ts. 먼저 하면 맥이 다른 데스크톱으로 넘어간다)
     if (win && !win.isDestroyed()) {
       // 화면 프로세스가 죽었으면 빈 창만 남는다. 다시 부를 때 새로 읽는다 (대화 내용은 메인에 있다)
       if (win.webContents.isCrashed()) win.webContents.reload();

@@ -59,6 +59,7 @@ import {
 } from '../shared/minigames.ts';
 import { voiced } from '../shared/persona-voice.ts';
 import { localDay } from '../shared/todo-store.ts';
+import { KEEP_APP_TYPE } from './active-space.ts';
 import { onDisplaysChanged } from './display-watch.ts';
 import { decoyBox, MOLE_CSS, moleBody } from './mole-art.ts';
 import type { PetWindow } from './pet-window.ts';
@@ -109,7 +110,7 @@ function spriteWindow(rect: Rect, body: string, css: string): BrowserWindow {
   });
   win.setAlwaysOnTop(true, 'floating');
   win.setIgnoreMouseEvents(true);
-  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false, ...KEEP_APP_TYPE });
   // 메인이 executeJavaScript 로 방울을 더하고 모양을 바꾼다. 그것은 페이지 CSP 를 따르지 않아 스크립트는 열지 않는다
   const csp = "default-src 'none'; style-src 'unsafe-inline'";
   const html = `<html><head><meta http-equiv="Content-Security-Policy" content="${csp}"><style>html,body{margin:0;overflow:hidden;background:transparent;user-select:none}${css}</style></head><body>${body}</body></html>`;

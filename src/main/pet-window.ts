@@ -75,6 +75,7 @@ import {
   THROW_MIN_SPEED,
 } from '../shared/throw.ts';
 import type { NoteLook } from '../shared/together.ts';
+import { KEEP_APP_TYPE } from './active-space.ts';
 import { saverNow } from './battery.ts';
 import { boostOn } from './boost.ts';
 import { watchCursor } from './cursor-watch.ts';
@@ -462,7 +463,7 @@ export function createPetWindow({
   win.setAlwaysOnTop(true, 'floating');
   // 모든 데스크톱(Space)에 보이되, 다른 앱의 전체 화면 위에는 올라가지 않는다.
   // (전체 화면 위에도 띄우면 다른 앱을 크게 쓰는 중에 펫이 가린다. 2026-10-02 사용자 지적)
-  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false, ...KEEP_APP_TYPE });
   // 처음에는 모두 통과시킨다. 커서가 펫 위에 오면 화면이 알려 준다.
   win.setIgnoreMouseEvents(true, { forward: true });
   // 미리 만든 창은 빈 화면을 이미 그려 ready-to-show 가 지나갔을 수 있다: 펫 화면을 다 불러오면 보인다
