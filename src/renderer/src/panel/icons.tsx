@@ -107,3 +107,26 @@ export function GearIcon() {
     </svg>
   );
 }
+
+/** 고정(핀). 고정하면 몸통을 채운다 (.pin.on) */
+export function PinIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        className="pin-body"
+        d="M6.4 2.2v3.6L4.2 9.2h7.6L9.6 5.8V2.2z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M5.2 2.2h5.6M8 9.2v4.8"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}

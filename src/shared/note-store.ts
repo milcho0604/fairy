@@ -1,6 +1,7 @@
 // 메모 (v1). 마크다운 글. 펫 패널 메모 탭과 AI 답 저장(답을 메모로)에서 쓴다.
 import type { Db } from './db-schema.ts';
 import { t } from './i18n/index.ts';
+import { pinAt } from './pin.ts';
 
 export type NoteSource = 'me' | 'ai';
 
@@ -11,6 +12,8 @@ export interface Note {
   source: NoteSource;
   createdAt: number;
   updatedAt: number;
+  /** 고정한 시각 (13판, shared/pin.ts). 고정 안 했거나 값이 깨졌으면 null */
+  pinnedAt: number | null;
 }
 
 interface Row {
@@ -20,6 +23,7 @@ interface Row {
   source: string;
   created_at: number;
   updated_at: number;
+  pinned_at?: unknown;
 }
 
 const toNote = (r: Row): Note => ({
@@ -29,6 +33,7 @@ const toNote = (r: Row): Note => ({
   source: r.source === 'ai' ? 'ai' : 'me',
   createdAt: Number(r.created_at),
   updatedAt: Number(r.updated_at),
+  pinnedAt: pinAt(r.pinned_at),
 });
 
 export const NOTE_TITLE_MAX = 80;
@@ -104,6 +109,18 @@ export class NoteStore {
     this.#db
       .prepare('update note set title = ?, body = ?, updated_at = ? where id = ?')
       .run(title, body, now, id);
+    return this.get(id);
+  }
+
+  /**
+   * 고정과 풀기 (13판). 고친 시각(updated_at)은 그대로 둔다 (고정은 글을 고친 것이 아니다).
+   * 이미 고정한 것을 다시 고정하면 처음 자리를 지킨다. 지운 메모는 바꾸지 않는다
+   */
+  pin(id: number, on: boolean, now: number): Note | undefined {
+    const n = this.get(id);
+    if (!n) return undefined;
+    if (on && n.pinnedAt !== null) return n;
+    this.#db.prepare('update note set pinned_at = ? where id = ?').run(on ? now : null, id);
     return this.get(id);
   }
 

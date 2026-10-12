@@ -203,6 +203,13 @@ export const MIGRATIONS: readonly string[] = [
     update coin_total set total = total - old.amount + new.amount where id = 1;
   end;
   `,
+  // 13판: 고정(핀). 고정한 시각(ms), 고정 안 했으면 null. 옛 행은 모두 null 이라 고정 안 됨 (shared/pin.ts).
+  // 화면 순서만 바꾸는 값이라 메모의 고친 시각(updated_at), 일정의 user_edited, 구글 보내기 지문에 들지 않는다
+  `
+  alter table todo add column pinned_at integer;
+  alter table note add column pinned_at integer;
+  alter table event add column pinned_at integer;
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

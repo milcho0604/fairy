@@ -15,6 +15,7 @@ const ev = (title: string, startAt: number, allDay = false): CalEvent => ({
   notifiedAt: null,
   source: 'local',
   allDay,
+  pinnedAt: null,
 });
 
 test('집중 중이면 남은 분 (올림), 쉬는 중이면 쉬기', () => {

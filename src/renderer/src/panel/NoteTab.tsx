@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { t } from '../../../shared/i18n/index.ts';
-import type { NoteAiKind, NoteHit, PanelState } from '../../../shared/ipc.ts';
+import type { NoteAiKind, NoteHit, NoteSummary, PanelState } from '../../../shared/ipc.ts';
 import { POLISH_MAX, type PolishReply, splicePolished } from '../../../shared/note-polish.ts';
 import { NOTE_BODY_MAX, NOTE_TITLE_MAX, type Note } from '../../../shared/note-store.ts';
+import { pinFirst } from '../../../shared/pin.ts';
 import { ago } from './format.ts';
 import { isEsc, takeEsc } from './keys.ts';
 import { type NoteResume, parseResume, RESUME_KEY } from './note-resume.ts';
+import { PinButton, usePinMenu } from './pin.tsx';
 
 const bridge = window.jjakkungPanel;
 const SAVE_MS = 400;
@@ -96,11 +98,15 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
   // 첫 결과가 오기 전에는 목록에 있는 제목과 미리보기로 먼저 거른다
   const local = q.toLowerCase();
   const hitOf = new Map((hits ?? []).map((h) => [h.id, h]));
-  const list = !q
-    ? s.notes
-    : hits
-      ? s.notes.filter((n) => hitOf.has(n.id))
-      : s.notes.filter((n) => `${n.title} ${n.preview}`.toLowerCase().includes(local));
+  // 고정한 것을 맨 위로 (고정한 순서), 아래는 최근에 고친 것부터. 찾을 때도 같다
+  const list = pinFirst(
+    !q
+      ? s.notes
+      : hits
+        ? s.notes.filter((n) => hitOf.has(n.id))
+        : s.notes.filter((n) => `${n.title} ${n.preview}`.toLowerCase().includes(local)),
+  );
+  const lastPinned = list.findLast((n) => n.pinnedAt !== null)?.id;
   return (
     <>
       <div className="add row">
@@ -136,39 +142,67 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
         {list.length === 0 && (
           <li className="empty">{q ? t('panel.note.notFound') : t('panel.note.empty.list')}</li>
         )}
-        {list.map((n) => {
-          const hit = hitOf.get(n.id);
-          return (
-            <li key={n.id}>
-              <button
-                type="button"
-                onClick={async () => {
-                  const full = await bridge.noteGet(n.id);
-                  if (full) setOpen(full);
-                }}
-              >
-                <span className="note-title">
-                  {n.source === 'ai' && <i className="tag">AI</i>}
-                  {n.title}
-                </span>
-                <span className="note-meta">
-                  <span className="when">{ago(n.updatedAt, now)}</span>
-                  {hit?.snippet && hit.mark ? (
-                    <span className="preview snippet">
-                      {hit.snippet.slice(0, hit.mark[0])}
-                      <mark>{hit.snippet.slice(hit.mark[0], hit.mark[1])}</mark>
-                      {hit.snippet.slice(hit.mark[1])}
-                    </span>
-                  ) : (
-                    n.preview && n.preview !== n.title && <span className="preview">{n.preview}</span>
-                  )}
-                </span>
-              </button>
-            </li>
-          );
-        })}
+        {list.map((n) => (
+          <NoteRow
+            key={n.id}
+            n={n}
+            hit={hitOf.get(n.id)}
+            now={now}
+            pinEnd={n.id === lastPinned && list.at(-1)?.id !== n.id}
+            onOpen={async () => {
+              const full = await bridge.noteGet(n.id);
+              if (full) setOpen(full);
+            }}
+          />
+        ))}
       </ul>
     </>
+  );
+}
+
+/** 메모 목록 한 줄: 누르면 연다. 오른쪽 위 고정 단추, 우클릭 메뉴 */
+function NoteRow({
+  n,
+  hit,
+  now,
+  pinEnd,
+  onOpen,
+}: {
+  n: NoteSummary;
+  hit: NoteHit | undefined;
+  now: number;
+  /** 고정한 것 가운데 마지막 줄 (아래 고정 안 한 줄과 사이에 선) */
+  pinEnd: boolean;
+  onOpen: () => void;
+}) {
+  const pinned = n.pinnedAt !== null;
+  const pinMenu = usePinMenu('note', n.id, n.title, pinned);
+  return (
+    <li
+      className={`note-row ${pinned ? 'pinned' : ''} ${pinEnd ? 'pin-end' : ''}`}
+      onContextMenu={pinMenu.onContextMenu}
+    >
+      <button type="button" onClick={onOpen}>
+        <span className="note-title">
+          {n.source === 'ai' && <i className="tag">AI</i>}
+          {n.title}
+        </span>
+        <span className="note-meta">
+          <span className="when">{ago(n.updatedAt, now)}</span>
+          {hit?.snippet && hit.mark ? (
+            <span className="preview snippet">
+              {hit.snippet.slice(0, hit.mark[0])}
+              <mark>{hit.snippet.slice(hit.mark[0], hit.mark[1])}</mark>
+              {hit.snippet.slice(hit.mark[1])}
+            </span>
+          ) : (
+            n.preview && n.preview !== n.title && <span className="preview">{n.preview}</span>
+          )}
+        </span>
+      </button>
+      <PinButton kind="note" id={n.id} title={n.title} pinned={pinned} />
+      {pinMenu.menu}
+    </li>
   );
 }
 
@@ -199,6 +233,8 @@ function NoteEditor({
   const gone = useRef(false);
   const isEmpty = () => !latest.current.title.trim() && !latest.current.body.trim();
 
+  /** 고정 (열 때 받은 값에서 시작해 여기서 바꾼다) */
+  const [pinned, setPinned] = useState(note.pinnedAt !== null);
   const [aiNote, setAiNote] = useState('');
   /** AI 로 정리: 채팅 창이 열리고 답이 그리로 온다. 답 아래 "할 일로"로 넣는다 */
   const askAi = async (kind: NoteAiKind) => {
@@ -411,21 +447,30 @@ function NoteEditor({
             {t('panel.note.polish')}
           </button>
         </span>
-        <button
-          type="button"
-          className="link danger"
-          onClick={() => {
-            flush();
-            writeResume(undefined);
-            gone.current = true;
-            bridge.noteRemove(note.id);
-            // 빈 새 메모는 되돌릴 것이 없다
-            if (!(wasEmpty && isEmpty())) onRemoved(note.id);
-            onBack();
-          }}
-        >
-          {t('panel.note.delete')}
-        </button>
+        <span className="note-end">
+          <PinButton
+            kind="note"
+            id={note.id}
+            title={title.trim() || t('panel.note.empty')}
+            pinned={pinned}
+            onToggle={setPinned}
+          />
+          <button
+            type="button"
+            className="link danger"
+            onClick={() => {
+              flush();
+              writeResume(undefined);
+              gone.current = true;
+              bridge.noteRemove(note.id);
+              // 빈 새 메모는 되돌릴 것이 없다
+              if (!(wasEmpty && isEmpty())) onRemoved(note.id);
+              onBack();
+            }}
+          >
+            {t('panel.note.delete')}
+          </button>
+        </span>
       </div>
       {aiNote && <p className="hint error">{aiNote}</p>}
       {polish?.phase === 'busy' && (
