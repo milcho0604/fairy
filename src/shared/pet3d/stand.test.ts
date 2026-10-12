@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { type Blueprint, parseBlueprint } from './blueprint.ts';
+import { type Blueprint, parseBlueprint, rotateVec } from './blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from './defaults.ts';
 import { EXAMPLE_CAT, EXAMPLE_PLUSH } from './examples.ts';
 import { canStand, catLike, shade, standingBlueprint } from './stand.ts';
@@ -48,6 +48,173 @@ test('네 발로 서기: 인형, 새, 이미 선 몸은 그대로 둔다', () =>
   const milk = standingBlueprint(EXAMPLE_CAT);
   assert.ok(milk);
   assert.equal(standingBlueprint(milk), undefined);
+});
+
+// 그림 캐릭터 (코 없이 그린 점 눈, 빗금 볼). 귀와 꼬리가 있어도 진짜 동물 뼈대로 세우면 호박색 고양이 눈과 수염이 붙고
+// 긴 귀는 처진 강아지 귀가 된다
+const W = '#f7f4ee';
+const longEarBunny: Blueprint = {
+  v: 2,
+  gait: 'biped',
+  parts: [
+    { slot: 'body', shape: 'sphere', at: [0, 0.34, 0], size: [0.36, 0.34, 0.32], color: W, finish: 'soft' },
+    {
+      slot: 'head',
+      shape: 'sphere',
+      at: [0, 0.74, 0.02],
+      size: [0.42, 0.34, 0.36],
+      color: W,
+      finish: 'soft',
+    },
+    {
+      slot: 'earL',
+      shape: 'capsule',
+      at: [-0.14, 1.12, -0.02],
+      size: [0.075, 0.2, 0.05],
+      color: W,
+      inner: '#f4c6cc',
+      mirror: true,
+    },
+    { slot: 'tail', shape: 'sphere', at: [0, 0.2, -0.32], size: [0.08, 0.08, 0.07], color: W },
+  ],
+  face: {
+    slot: 'head',
+    eyeY: 0.72,
+    eyeGap: 0.15,
+    eyeSize: 0.04,
+    mouth: 'cat',
+    mouthY: 0.64,
+    nose: { shape: 'none' },
+    blush: '#f6a3b0',
+  },
+};
+
+test('네 발로 서기: 코 없이 그린 캐릭터(긴 귀 흰 토끼 캐릭터, 머리 무늬 고양이 캐릭터)는 세우지 않는다', () => {
+  assert.equal(canStand(longEarBunny), false);
+  assert.equal(standingBlueprint(longEarBunny), undefined);
+  const capCat: Blueprint = {
+    ...longEarBunny,
+    parts: [
+      ...longEarBunny.parts.filter((p) => !p.slot.startsWith('ear')),
+      {
+        slot: 'earL',
+        shape: 'cone',
+        at: [-0.3, 1.14, 0],
+        size: [0.12, 0.13, 0.07],
+        color: '#6f8fc0',
+        mirror: true,
+      },
+    ],
+    face: { ...longEarBunny.face, blushLines: true },
+  };
+  assert.equal(canStand(capCat), false);
+  // 코가 있는 사진 동물은 그대로 세운다
+  assert.ok(
+    canStand({
+      ...longEarBunny,
+      face: { ...longEarBunny.face, nose: { shape: 'triangle', color: '#e88d8a' } },
+    }),
+  );
+});
+
+// 선 세모 귀 강아지 (시바견처럼): 웃는 입, 타원 코, 수염 없음. 크림색 배 (아래쪽 나누기 무늬)
+const prickEarDog: Blueprint = {
+  v: 2,
+  gait: 'quadruped',
+  fur: { length: 0.3 },
+  parts: [
+    {
+      slot: 'body',
+      shape: 'sphere',
+      at: [0, 0.36, 0],
+      size: [0.34, 0.33, 0.4],
+      color: '#d2894a',
+      finish: 'soft',
+      pattern: { type: 'split', color: '#f4e6cf', side: 'bottom', amount: 0.4 },
+    },
+    { slot: 'head', shape: 'sphere', at: [0, 0.8, 0.12], size: [0.38, 0.33, 0.34], color: '#d48c4c' },
+    {
+      slot: 'earL',
+      shape: 'cone',
+      at: [-0.22, 1.1, 0.08],
+      size: [0.11, 0.14, 0.07],
+      color: '#d2894a',
+      mirror: true,
+    },
+    {
+      slot: 'legL',
+      shape: 'capsule',
+      at: [-0.15, 0.1, 0.24],
+      size: [0.075, 0.1, 0.075],
+      color: '#f4e6cf',
+      mirror: true,
+    },
+    {
+      slot: 'tail',
+      shape: 'tube',
+      at: [0, 0.55, -0.35],
+      size: [0.07, 0.07, 0.07],
+      color: '#d2894a',
+      path: [
+        [0, 0.5, -0.38],
+        [0.1, 0.78, -0.26],
+      ],
+    },
+  ],
+  face: {
+    slot: 'head',
+    eyeY: 0.83,
+    eyeGap: 0.14,
+    eyeSize: 0.05,
+    mouth: 'smile',
+    mouthY: 0.66,
+    nose: { shape: 'oval', color: '#2a2220' },
+  },
+};
+
+test('네 발로 서기: 선 세모 귀라도 웃는 입, 수염 없는 강아지는 강아지 몸', () => {
+  assert.equal(catLike(prickEarDog), false);
+  const bp = standingBlueprint(prickEarDog);
+  assert.ok(bp);
+  assert.equal(bp.face.whiskers, undefined);
+  assert.equal(bp.face.mouth, 'grin');
+  // 고양이(세모 귀, 고양이 입)는 그대로 고양이
+  assert.ok(catLike(EXAMPLE_CAT));
+});
+
+test('네 발로 서기: 흰 배(아래쪽 무늬)는 눕힌 몸통에서도 배 쪽에 온다', () => {
+  for (const src of [prickEarDog, { ...prickEarDog, face: { ...prickEarDog.face, mouth: 'cat' as const } }]) {
+    const bp = standingBlueprint(src);
+    assert.ok(bp);
+    const torso = bp.parts.find((p) => p.slot === 'body' && p.pattern);
+    assert.ok(torso?.pattern?.side);
+    // 몸통의 그 쪽 방향을 돌려 보면 세상 아래(-y)다
+    const dir = {
+      top: [0, 1, 0],
+      bottom: [0, -1, 0],
+      front: [0, 0, 1],
+      back: [0, 0, -1],
+      left: [-1, 0, 0],
+      right: [1, 0, 0],
+    }[torso.pattern.side] as [number, number, number];
+    const [rx, ry, rz] = torso.rot ?? [0, 0, 0];
+    const w = rotateVec(dir, rx, ry, rz);
+    assert.ok(w[1] < -0.9, `${torso.pattern.side} -> ${w.map((v) => v.toFixed(2))}`);
+  }
+});
+
+test('네 발로 서기: 볼 털은 고양이 뼈대만 (강아지 옆모습에서 주둥이 앞에 떠 보였다)', () => {
+  const fluffyDog: Blueprint = {
+    ...DEFAULT_BLUEPRINTS.dog,
+    gait: 'quadruped',
+    face: { ...DEFAULT_BLUEPRINTS.dog.face, fluff: '#f5f1ea' },
+  };
+  const dog = standingBlueprint(fluffyDog);
+  assert.ok(dog);
+  assert.ok(!catLike(fluffyDog));
+  assert.equal(dog.face.fluff, undefined);
+  const cat = standingBlueprint(EXAMPLE_CAT);
+  assert.ok(cat?.face.fluff);
 });
 
 test('색 밝히기, 어둡게', () => {

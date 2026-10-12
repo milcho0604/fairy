@@ -1,7 +1,16 @@
 // 사진으로 만든 동물 페어리를 네 발로 선 피규어로 (밀크, 초코처럼). AI 가 만든 설계도(앉은 피규어)에서 색, 무늬,
 // 눈, 코, 귀 모양(선 귀, 처진 귀), 꼬리 모양, 털 느낌을 가져와 밀크(고양이 몸), 초코(강아지 몸) 뼈대에 입힌다.
 // 다시 AI 를 부르지 않는다 (돈, 시간이 들지 않고 언제든 되돌린다). 사용자가 설정에서 고를 때만 쓴다 (settings.petStands)
-import type { Blueprint, Face, Part } from './blueprint.ts';
+import {
+  type Axis,
+  type Blueprint,
+  type Face,
+  type Part,
+  type Pattern,
+  rotateVec,
+  type Side,
+  type Vec3,
+} from './blueprint.ts';
 import { STARTER_BLUEPRINTS } from './starters.ts';
 
 const first = (parts: readonly Part[], slot: Part['slot']) => parts.find((p) => p.slot === slot && !p.wear);
@@ -35,6 +44,8 @@ export function shade(hex: string, k: number): string {
 /** 고양이 몸인지 (고양이 입, 수염, 세모 귀). 아니면 강아지 몸 */
 export function catLike(bp: Blueprint): boolean {
   if (bp.face.mouth === 'cat' || bp.face.whiskers) return true;
+  // 웃는 입이나 납작한 타원 코는 강아지 (선 세모 귀 강아지가 고양이 몸이 되었다)
+  if (bp.face.mouth === 'smile' || bp.face.mouth === 'grin' || bp.face.nose?.shape === 'oval') return false;
   const ear = first(bp.parts, 'earL') ?? first(bp.parts, 'earR');
   return ear?.shape === 'cone';
 }
@@ -47,6 +58,8 @@ export function canStand(bp: Blueprint): boolean {
   if (bp.stance) return false;
   if (bp.parts.some((p) => !p.wear && (p.slot === 'wingL' || p.slot === 'wingR'))) return false;
   if (bp.face.mouth === 'beak') return false;
+  // 코 없이 그린 캐릭터, 인형 (귀와 꼬리가 있어도 진짜 동물 뼈대에 입히면 점 눈이 고양이 눈이 되고 긴 귀가 처진다)
+  if (bp.face.nose?.shape === 'none') return false;
   const ears = bp.parts.some((p) => !p.wear && (p.slot === 'earL' || p.slot === 'earR'));
   const tail = bp.parts.some((p) => !p.wear && p.slot === 'tail');
   return ears && (tail || bp.gait === 'quadruped');
@@ -120,9 +133,9 @@ export function standingBlueprint(bp: Blueprint): Blueprint | undefined {
                     ? body
                     : (tailP?.color ?? body);
     const out: Part = { ...p, color, finish: p.finish === 'shiny' ? 'shiny' : finish };
-    // 몸, 머리 무늬는 그대로 옮긴다 (점박이, 줄무늬, 흰 배)
-    if (role === 'body' && bodyP?.pattern) out.pattern = bodyP.pattern;
-    else if (role === 'head' && headP?.pattern) out.pattern = headP.pattern;
+    // 몸, 머리 무늬는 그대로 옮긴다 (점박이, 줄무늬, 흰 배). 뼈대 부품이 돌아 있으면(눕힌 몸통) 쪽과 축을 돌려 맞춘다
+    if (role === 'body' && bodyP?.pattern) out.pattern = turnPattern(bodyP.pattern, p.rot);
+    else if (role === 'head' && headP?.pattern) out.pattern = turnPattern(headP.pattern, p.rot);
     else delete out.pattern;
     if (role === 'ear') {
       if (earP?.inner) out.inner = earP.inner;
@@ -156,7 +169,8 @@ export function standingBlueprint(bp: Blueprint): Blueprint | undefined {
     // 볼 터치는 고양이 뼈대만 (강아지 옆모습에서 주둥이 앞에 떠 보인다)
     ...(f.blush && base.face.blush ? { blush: f.blush } : {}),
     ...(f.whiskers ? { whiskers: f.whiskers } : {}),
-    ...(f.fluff ? { fluff: body } : {}),
+    // 볼 털도 고양이 뼈대만 (강아지 뼈대에서는 옆모습에서 주둥이 앞에 떴다)
+    ...(f.fluff && base.face.fluff ? { fluff: body } : {}),
   };
   if (face.brows) delete face.brows.y;
   if (f.nose?.color && base.face.nose) face.nose = { ...base.face.nose, color: f.nose.color };
@@ -169,4 +183,54 @@ export function standingBlueprint(bp: Blueprint): Blueprint | undefined {
     parts,
     face,
   };
+}
+
+const SIDE_DIR: Record<Side, Vec3> = {
+  top: [0, 1, 0],
+  bottom: [0, -1, 0],
+  front: [0, 0, 1],
+  back: [0, 0, -1],
+  left: [-1, 0, 0],
+  right: [1, 0, 0],
+};
+const AXIS_DIR: Record<Axis, Vec3> = { x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
+const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+
+/**
+ * 사진 피규어(앉은 몸)의 무늬를 돌린 뼈대 부품(눕힌 몸통)에 옮긴다. 무늬는 부품 모양 좌표로 그려서 그대로 두면
+ * 흰 배(bottom)가 엉덩이 쪽 반에 왔다. 앉은 몸에서 뜻하는 자리를 선 몸의 세상 쪽으로 정하고(흰 배는 아래, 등 안장은 위,
+ * 등의 줄무늬(back)는 등줄기라 위, 흰 얼굴과 가슴은 앞), 돌린 뒤 세상에서 그 쪽을 가리키는 모양 쪽을 고른다.
+ * 줄무늬 축은 앉은 몸의 위아래(y)와 앞뒤(z)가 선 몸에서는 모두 머리에서 꼬리 쪽(z)이다
+ */
+export function turnPattern(pat: Pattern, rot: Vec3 | undefined): Pattern {
+  if (!rot || (!pat.side && !pat.dir)) return pat;
+  const [rx, ry, rz] = rot;
+  const out: Pattern = { ...pat };
+  if (pat.side) {
+    const want = SIDE_DIR[pat.side === 'back' ? 'top' : pat.side];
+    let best = pat.side;
+    let score = -2;
+    for (const s of Object.keys(SIDE_DIR) as Side[]) {
+      const d = dot(rotateVec(SIDE_DIR[s], rx, ry, rz), want);
+      if (d > score) {
+        score = d;
+        best = s;
+      }
+    }
+    out.side = best;
+  }
+  if (pat.dir) {
+    const want = AXIS_DIR[pat.dir === 'x' ? 'x' : 'z'];
+    let best = pat.dir;
+    let score = -1;
+    for (const a of Object.keys(AXIS_DIR) as Axis[]) {
+      const d = Math.abs(dot(rotateVec(AXIS_DIR[a], rx, ry, rz), want));
+      if (d > score) {
+        score = d;
+        best = a;
+      }
+    }
+    out.dir = best;
+  }
+  return out;
 }
