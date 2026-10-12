@@ -7,6 +7,8 @@
 // 방해하지 않는다: 집중, 숨김(발표 포함), 노는 중에는 새로 삐지지 않고 시간도 세지 않는다.
 // 말은 부르는 쪽이 수다 빈도(system 말풍선)와 떠 있는 말풍선(일정 알림 등)을 보고 한다.
 
+import { voiced } from './persona-voice.ts';
+
 /** 삐지는 까닭. 앱이 실제로 아는 신호만 */
 export type PoutReason =
   /** 쓰다듬기, 밥, 놀기 없이 오래 */
@@ -361,3 +363,11 @@ export function pickLine(pool: readonly string[], recent: readonly string[], ran
 export function remember(recent: readonly string[], line: string, n = 6): string[] {
   return [...recent.filter((l) => l !== line), line].slice(-n);
 }
+
+const VOICED = voiced as unknown as (key: string, vars?: Record<string, string | number>) => string;
+/**
+ * 토라진 말 n 줄 (prefix.1 ~ prefix.n). 고른 성격 말투로 (shared/persona-voice.ts):
+ * 예전엔 t 로 읽어 존댓말 비서도 토라진 말만 반말이었고, 고양이체 같은 말투 규칙도 붙지 않았다
+ */
+export const poutLines = (prefix: string, n: number, vars?: Record<string, string | number>): string[] =>
+  Array.from({ length: n }, (_, i) => VOICED(`${prefix}.${i + 1}`, vars));
