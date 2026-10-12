@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  clampWalkX,
   NEXT_MAX_MS,
   NEXT_MIN_MS,
   nextDelay,
@@ -142,4 +143,14 @@ test('옆 모니터로 넘어가는 걷기는 두 모니터에 걸쳐 멈추지 
   assert.equal(settleDist(p2, -1, 100, 150, areas), 50);
   // 모니터가 하나면 그대로
   assert.equal(settleDist(pet, 1, 200, 2000, [right]), 200);
+});
+
+test('걷다가 펫이 커져도 화면(걸을 범위) 밖으로 나가지 않는다', () => {
+  // 시험 인스턴스에서 잰 값: 100% 로 900 에서 오른쪽으로 450px 걷다 300%(480px)로 키우면 오른쪽 끝이 1829 까지 나갔다
+  const span = { left: 0, right: 1512 };
+  assert.equal(clampWalkX(1349, 480, span), 1032);
+  assert.equal(clampWalkX(-40, 160, span), 0);
+  assert.equal(clampWalkX(700, 160, span), 700);
+  // 맞붙은 옆 모니터까지는 그대로 걷는다
+  assert.equal(clampWalkX(1600, 160, { left: 0, right: 3432 }), 1600);
 });

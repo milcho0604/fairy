@@ -13,7 +13,14 @@ import {
   screen,
 } from 'electron';
 import { perchPollMs, SAVER, walkTickMs } from '../shared/battery.ts';
-import { type Activity, pickActivity, WALK_SPEED, walkOffset } from '../shared/behavior.ts';
+import {
+  type Activity,
+  clampWalkX,
+  pickActivity,
+  WALK_SPEED,
+  walkOffset,
+  walkSpan,
+} from '../shared/behavior.ts';
 import { layoutBubble } from '../shared/bubble-layout.ts';
 import {
   bundleText,
@@ -542,7 +549,10 @@ export function createPetWindow({
     if (next === scale) return;
     scale = next;
     const areas = screen.getAllDisplays().map((d) => d.workArea);
+    const before = pet.x;
     pet = clampIntoAreas(resizeFromBottomCenter(pet, BASE_SIZE * scale), areas);
+    // 걷던 중이면 걷기 기준도 같이 옮긴다. 안 하면 다음 틱에 옛 기준으로 돌아가 펫이 옆으로 튀었다
+    if (walkTimer) walkFrom += pet.x - before;
     applyLayout();
     clearTimeout(saveTimer);
     saveTimer = setTimeout(save, SAVE_DELAY_MS);
@@ -842,13 +852,23 @@ export function createPetWindow({
   /** 걷기가 끝나거나 끊기면 알린다 (walkTo). 끝까지 걸었으면 true */
   let walkDone: ((finished: boolean) => void) | undefined;
 
+  /** 걷기 시작 자리. 걷는 중에 크기를 바꾸면(휠, 단축키) 바뀐 자리만큼 같이 옮긴다 (resize) */
+  let walkFrom = 0;
+
   function startWalk(walk: Extract<Activity, { type: 'walk' }>) {
-    const fromX = pet.x;
+    walkFrom = pet.x;
     const started = Date.now();
+    // 걸을 수 있는 가로 범위 (맞붙은 옆 모니터까지, shared/behavior.ts)
+    const span = walkSpan(
+      pet,
+      screen.getDisplayMatching(pet).workArea,
+      screen.getAllDisplays().map((d) => d.workArea),
+    );
     walkTimer = setInterval(
       () => {
         const t = (Date.now() - started) / walk.ms;
-        const x = fromX + walkOffset(walk.dx, t);
+        // 걷는 중에 커지면 처음 고른 거리만큼 가다 화면 밖으로 나갔다(300% 에서 300px 넘게). 범위 안에서 멈춘다
+        const x = clampWalkX(walkFrom + walkOffset(walk.dx, t), pet.width, span);
         // 걷기 CPU 의 절반이 창 옮기기다. 픽셀이 그대로인 틱(출발, 멈춤 감속)은 옮기지 않는다
         // 창 좌표는 정수만 받는다. 소수를 담아 두면 다음 setPosition(산책 등)이 던졌다
         const moved = Math.round(x) !== pet.x;
