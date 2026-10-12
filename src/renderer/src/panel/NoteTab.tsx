@@ -218,8 +218,18 @@ function NoteEditor({
   onBack: () => void;
   onRemoved: (id: number) => void;
 }) {
-  const [title, setTitle] = useState(note.title);
-  const [body, setBody] = useState(note.body);
+  /** 저장하지 못한 채 닫혔던 글이 있으면 그 글로 연다 (다시 저장한다) */
+  const draft =
+    resume?.id === note.id &&
+    resume.draft &&
+    (resume.draft.title !== note.title || resume.draft.body !== note.body)
+      ? resume.draft
+      : undefined;
+  const [title, setTitle] = useState(draft?.title ?? note.title);
+  const [body, setBody] = useState(draft?.body ?? note.body);
+  /** 마지막 저장이 실패했다 (디스크 가득 등). 글은 들고 있고 다음 고침이나 뒤로 갈 때 다시 보낸다 */
+  const [saveError, setSaveError] = useState('');
+  const failed = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const pending = useRef<{ title?: string; body?: string }>({});
   const titleRef = useRef<HTMLInputElement>(null);
@@ -238,7 +248,7 @@ function NoteEditor({
   const [aiNote, setAiNote] = useState('');
   /** AI 로 정리: 채팅 창이 열리고 답이 그리로 온다. 답 아래 "할 일로"로 넣는다 */
   const askAi = async (kind: NoteAiKind) => {
-    flush();
+    void flush();
     if (!(await bridge.noteAi(note.id, kind))) {
       setAiNote(t('panel.note.aiBusy'));
       setTimeout(() => setAiNote(''), 3000);
@@ -293,7 +303,7 @@ function NoteEditor({
     });
   }, []);
   const askPolish = () => {
-    flush();
+    void flush();
     // 글 칸에 커서가 있으면 지금 고른 부분, 방금 글 칸을 떠났으면 떠나기 전에 고른 부분, 아니면 전체
     const el = bodyRef.current;
     const mark = lastSel.current;
@@ -340,18 +350,55 @@ function NoteEditor({
     setUndo(undefined);
     clearTimeout(undoTimer.current);
   };
-  const flush = () => {
+  /**
+   * 남은 고침을 보낸다. 저장되면 true. 못 저장하면 보낸 것을 다시 모아(그 뒤에 쓴 것이 이긴다) 다음에 다시 보내고
+   * 글 칸 아래에 안내를 띄운다 (버그잡이 4: 예전에는 보내기만 해서 디스크가 가득 차면 쓴 글이 말없이 사라졌다)
+   */
+  const flush = async (): Promise<boolean> => {
     clearTimeout(timer.current);
-    if (Object.keys(pending.current).length > 0) bridge.noteUpdate(note.id, pending.current);
+    if (Object.keys(pending.current).length === 0) return !failed.current;
+    const sent = pending.current;
     pending.current = {};
+    let r: { ok: boolean; error?: string };
+    try {
+      r = await bridge.noteUpdate(note.id, sent);
+    } catch {
+      r = { ok: false };
+    }
+    if (r.ok) {
+      failed.current = false;
+      if (alive.current) setSaveError('');
+      return true;
+    }
+    failed.current = true;
+    pending.current = { ...sent, ...pending.current };
+    if (alive.current) setSaveError(`${r.error ?? t('panel.retry')} ${t('panel.note.unsaved')}`);
+    return false;
+  };
+  /** 저장하지 못한 글을 패널이 닫혀도 잃지 않게 적어 둔다 (다시 열면 이 글로 연다) */
+  const keepDraft = (extra?: Partial<NoteResume>) => {
+    if (!failed.current) return;
+    writeResume({
+      id: note.id,
+      field: 'body',
+      start: 0,
+      end: 0,
+      scroll: 0,
+      ...extra,
+      at: Date.now(),
+      draft: { ...latest.current },
+    });
   };
   const save = (patch: { title?: string; body?: string }) => {
     pending.current = { ...pending.current, ...patch };
     clearTimeout(timer.current);
     timer.current = setTimeout(flush, SAVE_MS);
   };
-  /** 뒤로(단추, Esc). 비었으면 지운다: 새 메모는 소리 없이, 쓰던 것을 다 지웠으면 되돌리기 알림과 함께 */
-  const leave = () => {
+  /**
+   * 뒤로(단추, Esc). 비었으면 지운다: 새 메모는 소리 없이, 쓰던 것을 다 지웠으면 되돌리기 알림과 함께.
+   * 저장이 실패하면 나가지 않고 글을 그대로 둔다 (안내가 뜬다)
+   */
+  const leave = async () => {
     writeResume(undefined);
     if (isEmpty()) {
       gone.current = true;
@@ -363,7 +410,7 @@ function NoteEditor({
         onRemoved(note.id);
       }
       bridge.noteRemove(note.id);
-    } else flush();
+    } else if (!(await flush())) return;
     onBack();
   };
 
@@ -380,9 +427,13 @@ function NoteEditor({
       if (bodyRef.current) bodyRef.current.scrollTop = resume.scroll;
     } else if (!note.title && !note.body) bodyRef.current?.focus();
     writeResume(undefined);
+    // 저장하지 못한 채 닫혔던 글로 열었다: 바로 다시 저장해 본다 (또 실패하면 안내가 뜨고 글은 그대로)
+    if (draft) save({ title: draft.title, body: draft.body });
     // 창이 닫히기 전에(다른 곳을 눌러서) 남은 것을 저장하고 어디였는지 적어 둔다. 빈 새 메모는 지운다.
     const onUnload = () => {
-      flush();
+      // 저장이 한 번이라도 실패한 채면 글도 적어 둔다 (닫히는 중이라 이번 저장의 답은 기다릴 수 없다)
+      const unsent = failed.current;
+      void flush();
       if (gone.current) return;
       if (wasEmpty && isEmpty()) {
         bridge.noteRemove(note.id);
@@ -397,13 +448,15 @@ function NoteEditor({
         end: el?.selectionEnd ?? 0,
         scroll: Math.round(bodyRef.current?.scrollTop ?? 0),
         at: Date.now(),
+        ...(unsent ? { draft: { ...latest.current } } : {}),
       });
     };
     window.addEventListener('beforeunload', onUnload);
     return () => {
       window.removeEventListener('beforeunload', onUnload);
-      // 탭을 바꿔 나갔다: 남은 것을 저장하고, 빈 새 메모는 지운다
-      flush();
+      // 탭을 바꿔 나갔다: 남은 것을 저장하고, 빈 새 메모는 지운다. 저장이 실패한 채면 글을 적어 둔다
+      keepDraft();
+      void flush();
       if (!gone.current && wasEmpty && isEmpty()) bridge.noteRemove(note.id);
     };
   }, []);
@@ -459,7 +512,7 @@ function NoteEditor({
             type="button"
             className="link danger"
             onClick={() => {
-              flush();
+              void flush();
               writeResume(undefined);
               gone.current = true;
               bridge.noteRemove(note.id);
@@ -472,6 +525,11 @@ function NoteEditor({
           </button>
         </span>
       </div>
+      {saveError && (
+        <p className="hint error" role="alert">
+          {saveError}
+        </p>
+      )}
       {aiNote && <p className="hint error">{aiNote}</p>}
       {polish?.phase === 'busy' && (
         <p className="note-polish-busy" role="status">
