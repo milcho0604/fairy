@@ -130,6 +130,8 @@ export const ko = {
   'panel.note.makeFrom': '이 내용으로 메모 만들기',
   'panel.note.empty.list': '메모가 없어. "새 메모"를 눌러 적어 봐. AI 답도 메모로 남길 수 있어.',
   'panel.note.aiBusy': 'AI가 다른 답을 하는 중이야. 끝나면 다시 눌러 줘.',
+  'panel.note.unsaved': '글은 여기 그대로 있어. 고치거나 뒤로 가면 다시 저장해 볼게.',
+  'panel.list.more': (v: { n: number }) => `더 보기 (${v.n}개 남음)`,
   'panel.note.back': '메모',
   'panel.note.toTodos': '할 일로 쪼개기',
   'panel.note.summary': '요약',
@@ -343,6 +345,8 @@ export const en: Translation<typeof ko> = {
   'panel.note.empty.list':
     'No notes yet. Click "New note" to write one. You can save AI answers as notes too.',
   'panel.note.aiBusy': "The AI is busy with another answer. Try again when it's done.",
+  'panel.note.unsaved': "Your text is still here. I'll try saving again when you edit or go back.",
+  'panel.list.more': (v: { n: number }) => `Show more (${v.n} left)`,
   'panel.note.back': 'Notes',
   'panel.note.toTodos': 'Make to-dos',
   'panel.note.summary': 'Summarize',

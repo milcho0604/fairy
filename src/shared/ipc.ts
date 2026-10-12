@@ -916,6 +916,9 @@ export interface NoteSummary {
 }
 
 /** 한 줄 입력(PANEL.add) 결과. 어디에 언제로 넣었는지 알려 준다 */
+/** 메모 저장 답 */
+export type NoteSaveResult = { ok: true } | { ok: false; error?: string };
+
 export type PanelAddResult =
   | { ok: false; error?: string }
   /**
@@ -1001,7 +1004,10 @@ export interface PanelBridge {
   noteGet(id: number): Promise<Note | undefined>;
   /** 새 메모. 만든 메모를 돌려준다. text 를 주면 그 글로 시작한다 (찾기 칸에 적은 글로 메모 만들기) */
   noteAdd(text?: string): Promise<Note>;
-  noteUpdate(id: number, patch: { title?: string; body?: string }): void;
+  /**
+   * 메모 저장. 못 저장하면(디스크 가득, 읽기 전용) ok: false 와 안내 글 (버그잡이 4: 예전에는 보내기만 해서 실패를 몰랐다)
+   */
+  noteUpdate(id: number, patch: { title?: string; body?: string }): Promise<NoteSaveResult>;
   noteRemove(id: number): void;
   noteRestore(id: number): void;
   /** 메모 찾기: 제목과 본문 전체. composing 이면 마지막 글자는 아직 조합 중이라 넓게 찾는다 */

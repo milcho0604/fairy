@@ -26,6 +26,7 @@ import { t } from '../shared/i18n/index.ts';
 import {
   type EventClash,
   type NoteAiKind,
+  type NoteSaveResult,
   PANEL,
   type PanelAddResult,
   type PanelState,
@@ -380,19 +381,25 @@ export function createPanel(o: PanelOptions) {
     if (!ours(e) || typeof query !== 'string') return [];
     return searchNotes(o.notes.list(), query.slice(0, 200), composing === true);
   });
-  ipcMain.on(PANEL.noteUpdate, (e, id: number, patch) => {
-    if (!ours(e) || typeof patch !== 'object' || patch === null) return;
-    const { title, body } = patch as { title?: unknown; body?: unknown };
-    o.notes.update(
-      id,
-      {
-        ...(typeof title === 'string' ? { title } : {}),
-        ...(typeof body === 'string' ? { body } : {}),
-      },
-      Date.now(),
-    );
-    push();
-  });
+  // 저장이 던지면(디스크 가득) 안내 글로 답한다. 메모 창은 글을 들고 있다가 다음 고침 때 다시 보낸다
+  ipcMain.handle(
+    PANEL.noteUpdate,
+    saving((e, id: unknown, patch: unknown): NoteSaveResult => {
+      if (!ours(e) || typeof id !== 'number' || typeof patch !== 'object' || patch === null)
+        return { ok: false };
+      const { title, body } = patch as { title?: unknown; body?: unknown };
+      o.notes.update(
+        id,
+        {
+          ...(typeof title === 'string' ? { title } : {}),
+          ...(typeof body === 'string' ? { body } : {}),
+        },
+        Date.now(),
+      );
+      push();
+      return { ok: true };
+    }),
+  );
   ipcMain.on(PANEL.noteRemove, (e, id: number) => {
     if (!ours(e)) return;
     o.notes.remove(id, Date.now());

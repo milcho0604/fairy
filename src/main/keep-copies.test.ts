@@ -46,13 +46,13 @@ test('켤 때 정리: 오래된 가져오기 전 복사, 깨진 저장 파일(-w
     const d = join(root, `before-import-2026010${i}-0000`);
     mkdirSync(d);
     writeFileSync(join(d, 'jjakkung.db'), 'x');
-    utimesSync(d, old + i, old + i);
+    utimesSync(d, old + i * 10 * 86_400, old + i * 10 * 86_400);
   }
   for (let i = 0; i < 4; i++) {
     const f = join(root, `jjakkung-broken-2026010${i}-000000.db`);
     writeFileSync(f, 'x');
     writeFileSync(`${f}-wal`, 'x');
-    utimesSync(f, old + i, old + i);
+    utimesSync(f, old + i * 10 * 86_400, old + i * 10 * 86_400);
   }
   writeFileSync(join(root, 'jjakkung.db'), 'keep');
   const gone = pruneCopies(root, now);
@@ -68,4 +68,22 @@ test('모양이 다른 이름은 지우지 않는다', () => {
   assert.equal(removeCopy(root, 'jjakkung.db'), false);
   assert.equal(removeCopy(root, '../before-import-20260101-0000'), false);
   assert.ok(existsSync(join(root, 'jjakkung.db')));
+});
+
+test('시계가 앞으로 튀어도(몇 해 뒤) 새것 3개와, 그 종류의 가장 새 복사본에서 7일 안인 것은 남긴다 (버그잡이 4)', () => {
+  const real = Date.UTC(2026, 9, 11);
+  const mk = (name: string, ageDays: number) => ({
+    name,
+    kind: 'broken' as const,
+    at: real - ageDays * DAY,
+    bytes: 1,
+  });
+  const list = [mk('a', 0), mk('b', 1), mk('c', 2), mk('d', 3), mk('e', 6), mk('f', 20)];
+  // 시계가 4년 앞으로: 예전에는 새것 3개 밖(d, e, f)을 모두 지웠다. 가장 새것(a)에서 7일 안인 d, e 는 남긴다
+  assert.deepEqual(
+    expiredCopies(list, real + 4 * 365 * DAY).map((c) => c.name),
+    ['f'],
+  );
+  // 보통 시계에서는 30일 규칙 그대로 (모두 30일 안)
+  assert.deepEqual(expiredCopies(list, real), []);
 });

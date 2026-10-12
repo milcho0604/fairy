@@ -45,3 +45,43 @@ export function rangeVerdict(
   if (from <= 0 && status === 206) return 'retry';
   return 'fresh';
 }
+
+/** 바이트가 이만큼 안 오면 멈춘 것으로 본다 (받기 시작 전 서버 답을 기다리는 동안도) */
+export const STALL_MS = 30_000;
+
+/**
+ * 받기 멈춤 감시 (버그잡이 4). 예전에는 연결이 살아 있는 채 바이트만 끊기면(와이파이 바꿈, 잠든 프록시) 진행률이
+ * 그 자리에 멈춘 채 끝나지 않았다. kick 은 바이트가 올 때마다, stop 은 끝날 때. 멈추면 onStall 을 한 번 부른다
+ */
+export function createStallWatch(ms: number, onStall: () => void) {
+  let stalled = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const arm = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      stalled = true;
+      onStall();
+    }, ms);
+    (timer as { unref?: () => void }).unref?.();
+  };
+  arm();
+  return {
+    kick() {
+      if (!stalled) arm();
+    },
+    stop() {
+      clearTimeout(timer);
+    },
+    get stalled() {
+      return stalled;
+    },
+  };
+}
+
+/**
+ * 받다 만 .part 를 지울지. 이어 받는 파일은 멈추거나 끊기거나 그만둬도 남겨 다음에 그 뒤부터 받는다.
+ * 목록 크기를 넘어 멈춘 것(hash)과 이어 받지 않는 파일은 지운다
+ */
+export function partRemovable(resume: boolean, reason: string): boolean {
+  return !resume || reason === 'hash';
+}

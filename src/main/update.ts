@@ -1,5 +1,6 @@
 import { app, net, shell } from 'electron';
 import type { AppUpdater } from 'electron-updater';
+import { fresh } from '../shared/clock.ts';
 import { t } from '../shared/i18n/index.ts';
 import type { UpdateStatus } from '../shared/ipc.ts';
 import {
@@ -154,7 +155,8 @@ export function watchUpdates(o: { say: Say; log: Log }) {
 
   async function downloadOnce(): Promise<string | undefined> {
     if (downloaded) return downloaded;
-    if (Date.now() - downloadFailedAt < 3_600_000) return undefined;
+    // 실패한 시각이 지금보다 뒤면(시계가 뒤로 감) 기다리지 않는다
+    if (fresh(downloadFailedAt, Date.now(), 3_600_000)) return undefined;
     const u = await getUpdater();
     if (!u) return undefined;
     try {

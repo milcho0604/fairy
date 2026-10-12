@@ -17,6 +17,8 @@ import {
 import './assist.css';
 import { CheckIcon, RepeatIcon, SearchIcon, StarIcon, StepsIcon } from './icons.tsx';
 import { isEsc, takeEsc } from './keys.ts';
+import { MoreRow } from './more.tsx';
+import { pageOf } from './paging.ts';
 import { PinButton, PinMark, usePinMenu } from './pin.tsx';
 import { RemindButton, RemindSheet } from './RemindPicker.tsx';
 
@@ -75,6 +77,8 @@ export function TodoTab({
   const [query, setQuery] = useState('');
   const [composing, setComposing] = useState(false);
   const [tag, setTag] = useState<string | null>(null);
+  /** 그린 쪽 수 (찾는 말과 태그마다) */
+  const [paging, setPaging] = useState({ key: '', pages: 1 });
   const findRef = useRef<HTMLInputElement>(null);
   const tags = allTags(s.open);
   // 고른 태그가 목록에서 사라지면(마지막 것을 끝냄) 모두로
@@ -83,6 +87,10 @@ export function TodoTab({
   const shown = pinFirst(filterTodos(s.open, { query: finding ? query : '', tag: picked, composing }));
   const lastPinned = shown.findLast((todo) => todo.pinnedAt !== null)?.id;
   const filtered = shown.length !== s.open.length;
+  // 앞에서부터 한 쪽씩 그린다 (paging.ts). 찾는 말이나 태그가 바뀌면 첫 쪽부터
+  const pageKey = `${finding ? query : ''}\u0000${picked ?? ''}`;
+  const pages = paging.key === pageKey ? paging.pages : 1;
+  const page = pageOf(shown, pages);
   const canFind = s.open.length >= FIND_FROM || finding;
   const openFind = () => {
     setFinding(true);
@@ -223,7 +231,7 @@ export function TodoTab({
         {s.open.length > 0 && filtered && shown.length === 0 && (
           <li className="empty">{t('assist.find.none')}</li>
         )}
-        {shown.map((todo) => (
+        {page.shown.map((todo) => (
           <TodoRow
             key={todo.id}
             todo={todo}
@@ -233,6 +241,7 @@ export function TodoTab({
             onRemoved={() => onRemoved(todo)}
           />
         ))}
+        <MoreRow rest={page.rest} onMore={() => setPaging({ key: pageKey, pages: pages + 1 })} />
       </ul>
 
       {s.doneToday.length > 0 && (
