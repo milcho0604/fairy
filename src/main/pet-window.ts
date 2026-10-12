@@ -59,6 +59,7 @@ import { clampScale, resizeFromBottomCenter, scaleByStep, scaleByWheel } from '.
 import type { SoundKind } from '../shared/sound.ts';
 import {
   bounce,
+  bounceHit,
   FLIGHT_MAX_MS,
   GRAVITY,
   releaseVelocity,
@@ -1054,6 +1055,7 @@ export function createPetWindow({
         x: Math.round(x + pet.width / 2),
         y: Math.round(y + pet.height / 2),
       }).workArea;
+      const before = { vx, vy };
       const step = bounce(
         { x, y, vx, vy },
         pet.width,
@@ -1062,6 +1064,9 @@ export function createPetWindow({
         screen.getAllDisplays().map((d) => d.workArea),
       );
       ({ x, y, vx, vy } = step);
+      // 부딪히면 펫 화면이 그쪽으로 잠깐 눌렸다 돌아온다 (사진, 만든 펫)
+      const hit = bounceHit(before, step);
+      if (hit && !win.isDestroyed()) win.webContents.send(IPC.impact, hit);
       pet = { ...pet, x: Math.round(x), y: Math.round(y) };
       if (!win.isDestroyed()) win.setPosition(pet.x, pet.y);
       if (step.rest || now - started > FLIGHT_MAX_MS) stopFlight();

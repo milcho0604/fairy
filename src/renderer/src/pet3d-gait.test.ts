@@ -4,6 +4,8 @@ import type { Blueprint, Part } from '../../shared/pet3d/blueprint.ts';
 import { expandMirrors } from '../../shared/pet3d/blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from '../../shared/pet3d/defaults.ts';
 import {
+  BIPED_SWING_MAX,
+  bipedFoot,
   bodyDepthOf,
   gaitMismatch,
   gaitOf,
@@ -142,7 +144,10 @@ test('대각선 쌍: 왼앞발과 오른뒷발이 같이, 다른 쌍은 반대�
     >;
     assert.deepEqual(s.fl, s.hr);
     assert.deepEqual(s.fr, s.hl);
-    close(s.fl.dz, -s.fr.dz);
+    // 반대 쌍은 반 걸음 늦게 같은 움직임
+    const half = trotLeg('fr', p + 0.5);
+    close(s.fl.dz, half.dz);
+    close(s.fl.lift, half.lift);
     // 한 쌍이 들려 있으면 다른 쌍은 디디고 있다 (네 발이 한꺼번에 뜨지 않는다)
     assert.ok(s.fl.lift === 0 || s.fr.lift === 0);
   }
@@ -151,6 +156,17 @@ test('대각선 쌍: 왼앞발과 오른뒷발이 같이, 다른 쌍은 반대�
   const b = trotLeg('fl', 0.01);
   assert.equal(a.lift, 1);
   assert.ok(b.dz > a.dz);
+});
+
+test('대각선 쌍: 디딘 발은 같은 빠르기로 뒤로 민다 (몸이 고르게 가니 바닥에서 미끄러지지 않는다)', () => {
+  for (const id of ['fl', 'fr', 'hl', 'hr'] as const) {
+    let prev: { dz: number; lift: number } | undefined;
+    for (let i = 0; i <= 200; i++) {
+      const st = trotLeg(id, i / 200);
+      if (prev && prev.lift === 0 && st.lift === 0) close(st.dz - prev.dz, -4 / 200);
+      prev = st;
+    }
+  }
 });
 
 test('출발과 멈춤: 보폭, 돌기, 숙이기는 처음과 끝에 0, 가운데서 1', () => {
@@ -211,4 +227,52 @@ test('따라 달리기: 1.04초마다 이어 받는 1.4초 걷기는 10초 동�
   // 마지막 토막이 끝날 때는 0 으로 내려앉는다
   assert.deepEqual(walkEnvelope(end - start, 0, SEG), { stride: 0, turn: 0, lean: 0 });
   assert.ok(walkEnvelope(end - start - 100, 100, SEG).stride < 0.5);
+});
+
+test('두 발 걷기: 디딘 발은 몸이 간 만큼 뒤로 밀려 바닥에서 미끄러지지 않는다 (다리 길이와 상관없이)', () => {
+  const stride = 20;
+  const px = 90;
+  for (const leg of [0.04, 0.09, 0.2, 0.4]) {
+    // 디딘 동안(걸음의 뒤 반) 발이 몸에 대해 간 거리 + 몸이 간 거리 = 0
+    const at = (phase: number) => {
+      const f = bipedFoot(phase, 0, stride, px, leg, 1);
+      return f.shift + leg * Math.sin(f.angle);
+    };
+    for (let p = 0.5; p < 1; p += 0.05) {
+      const moved = (at(p + 0.05) - at(p)) * px;
+      const body = stride * 0.05;
+      assert.ok(Math.abs(moved + body) < 1e-6, `${leg} ${p}`);
+    }
+  }
+});
+
+test('두 발 걷기: 디딘 발바닥은 바닥에 (돌려서 들린 만큼 내린다), 든 발만 뜬다', () => {
+  for (const leg of [0.05, 0.12, 0.3]) {
+    for (let p = 0; p < 1; p += 0.02) {
+      const f = bipedFoot(p, 0, 24, 80, leg, 1);
+      const sole = f.rise + leg * (1 - Math.cos(f.angle));
+      if (p >= 0.5) assert.ok(Math.abs(sole) < 1e-9, `planted ${leg} ${p}`);
+      else assert.ok(sole >= -1e-9 && sole <= 0.05 + 1e-9, `swing ${leg} ${p}`);
+    }
+  }
+});
+
+test('두 발 걷기: 짧은 다리(발 한 덩이)는 돌리지 않고 다리째 옮긴다, 긴 다리는 돌리기만', () => {
+  const short = bipedFoot(0.5, 0, 30, 80, 0.1, 1);
+  assert.equal(short.angle, 0);
+  assert.ok(Math.abs(short.shift) > 0.08);
+  // 드는 동안 발끝을 살짝 든다
+  assert.ok(bipedFoot(0.25, 0, 30, 80, 0.1, 1).pitch > 0.2);
+  assert.ok(Math.abs(bipedFoot(0.25, 0, 30, 80, 0.4, 1).pitch) < 1e-9);
+  const mid = bipedFoot(0.5, 0, 30, 80, 0.17, 1);
+  assert.ok(mid.angle > 0 && mid.angle <= BIPED_SWING_MAX + 1e-9 && mid.shift > 0);
+  const long = bipedFoot(0.5, 0, 30, 80, 0.4, 1);
+  assert.ok(Math.abs(long.shift) < 1e-9);
+  assert.ok(long.angle > 0, '걸음 끝에 든 발이 앞에 있다');
+});
+
+test('두 발 걷기: 걷기 세기 0 이면(출발, 멈춤) 쉬는 다리', () => {
+  for (let p = 0; p < 1; p += 0.1)
+    assert.deepEqual(bipedFoot(p, 0.5, 20, 90, 0.1, 0), { angle: 0, shift: 0, rise: 0, pitch: 0 });
+  assert.deepEqual(bipedFoot(0.3, 0, 20, 90, 0, 1), { angle: 0, shift: 0, rise: 0, pitch: 0 });
 });

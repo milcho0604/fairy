@@ -80,6 +80,8 @@ export const IPC = {
   petted: 'pet:petted',
   /** 메인 → 펫 화면: 던져져 날아가는 중 (v1) */
   flight: 'pet:flight',
+  /** 메인 → 펫 화면: 날아가다 바닥(y)이나 벽(x)에 부딪혔다. k 는 세기 0~1 */
+  impact: 'pet:impact',
   /** 메인 → 펫 화면: 사진 펫 그림 */
   image: 'pet:image',
   /** 메인 → 펫 화면: 커서 쪽 방향 칸 (null 이면 앞). 칸이 바뀔 때만 */
@@ -500,6 +502,7 @@ export interface PetBridge {
   onReact(listener: (kind: ReactKind) => void): void;
   petted(): void;
   onFlight(listener: (flying: boolean) => void): void;
+  onImpact(listener: (hit: { axis: 'x' | 'y'; k: number }) => void): void;
   /** 커서 바라보기: 방향 칸 (null 이면 앞을 본다) */
   onGaze(listener: (gaze: Gaze | null) => void): void;
   /** 같이 보기 돋보기 모션. null 이면 끝 */

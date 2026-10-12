@@ -54,6 +54,7 @@ import { LAND_MS, moveFps, SIT_MS, sitDown } from './move-pose.ts';
 import { renderBody, renderFace } from './pet-face.ts';
 import type { Pet3D } from './pet3d.ts';
 import { quadKind, withGait } from './pet3d-gait.ts';
+import { IMPACT_MS } from './photo-motion.ts';
 import { PoseBlend, type PoseKey, shouldBlend } from './pose-blend.ts';
 import { playSound } from './sound.ts';
 import { TAP_FPS, TAP_IN_MS, TAP_OUT_MS } from './together-draw.ts';
@@ -199,10 +200,10 @@ function frame() {
   drawn++;
   const looking = peerAt(now);
   const picking = !!carry && now - carry.start < PICK_MS;
-  // 2.5D 그림 펫은 가만히 있어도 숨을 쉰다: 부스트 모드(전원 연결)일 때만 8fps (평소엔 다른 움직임이 있을 때만).
-  // 숨을 쉬지 않는 동안은 숨과 흔들림을 멈춘다 (깜빡일 때만 그려 몸이 툭툭 튀었다). 움직임 줄이기면 쉬지 않는다
-  const breathes =
-    boost && use3d && model3dOf instanceof HTMLImageElement && canBlink(mood) && !reducedMotion.matches;
+  // 2.5D 그림 펫과 사진 펫(밀크, 초코)은 가만히 있어도 숨을 쉰다: 부스트 모드(전원 연결)일 때만 8fps (평소엔 다른 움직임이
+  // 있을 때만). 숨을 쉬지 않는 동안은 숨과 흔들림을 멈춘다 (깜빡일 때만 그려 몸이 툭툭 튀었다). 움직임 줄이기면 쉬지 않는다
+  const flatImage = (use3d && model3dOf instanceof HTMLImageElement) || (!m3d && !!img);
+  const breathes = boost && flatImage && canBlink(mood) && !reducedMotion.matches;
   const state: DrawState = {
     mood,
     elapsed: now - moodSince,
@@ -235,6 +236,9 @@ function frame() {
     fresh: freshStart >= 0 ? fresh : -1,
     confetti: confettiStart >= 0 ? confetti : -1,
     land: landStart >= 0 ? landed : -1,
+    ...(impact && now - impact.start < IMPACT_MS
+      ? { impact: { ms: now - impact.start, axis: impact.axis, k: impact.k } }
+      : {}),
     ...togetherDraw(now),
     now,
   };
@@ -287,7 +291,11 @@ function frame() {
       ? 30 * k
       : isAnimated(mood)
         ? (ANIMATED_FPS[mood] ?? 30) * k
-        : heartsStart >= 0 || freshStart >= 0 || confettiStart >= 0 || landStart >= 0
+        : heartsStart >= 0 ||
+            freshStart >= 0 ||
+            confettiStart >= 0 ||
+            landStart >= 0 ||
+            (!!impact && now - impact.start < IMPACT_MS)
           ? 30 * k
           : blinkStart >= 0
             ? (1000 * blinkSpec().frames) / blinkSpec().ms
@@ -312,7 +320,11 @@ function frame() {
     saver,
   );
   frameTimer = all > 0 ? setTimeout(frame, 1000 / all) : undefined;
+  nextFrameMs = all > 0 ? 1000 / all : 0;
 }
+
+/** 다음 틀까지 기다리는 시간 (ms, 멈춘 그림이면 0). 점검용 debugFrame */
+let nextFrameMs = 0;
 
 /** 점검용 발 기록 (__pet.debugFeetLog). 틀마다 발바닥 자리와 걸음 */
 let feetLog: unknown[] | undefined;
@@ -958,6 +970,16 @@ bridge.onGaze((g) => {
 });
 // 던져져 날아가는 동안은 잡힌 얼굴 (> <)
 bridge.onFlight((flying) => setInputs({ grabbed: flying }));
+
+// ---- 던져서 부딪히기 (photo-motion.ts) ----
+// 날아가다 바닥이나 벽에 부딪히면(메인이 알려 준다) 그쪽으로 잠깐 눌렸다 돌아온다.
+// 사진, 2.5D 판, 만든 입체 펫만 (기본 펫은 예전 그대로). 움직임 줄이기면 하지 않는다
+let impact: { start: number; axis: 'x' | 'y'; k: number } | undefined;
+bridge.onImpact((hit) => {
+  if (!photo || reducedMotion.matches) return;
+  impact = { start: performance.now(), ...hit };
+  requestFrame();
+});
 // 할 일을 끝내거나 밥을 먹으면 신나서 통통 튄다.
 // 친밀도로 열린 몸짓: 돌아오면 손 흔들기(100), 할 일을 끝내면 빙글 춤(300)
 bridge.onReact((kind) => {
@@ -1435,6 +1457,15 @@ Object.assign(window, {
     },
     get look() {
       return look;
+    },
+    /**
+     * 지금 한 틀을 바로 그린다 (움직임 점검: performance.now 를 바꿔 끼운 가상 시계로 한 틀씩 찍을 때).
+     * 다음 틀까지 기다릴 시간(ms, 멈춘 그림이면 0)을 돌려준다
+     */
+    debugFrame: (): number => {
+      clearTimeout(frameTimer);
+      frame();
+      return nextFrameMs;
     },
     /** 다음 그리기가 걸려 있는지 (끝난 뒤 타이머가 남지 않았는지 볼 때) */
     get framePending() {

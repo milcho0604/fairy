@@ -74,3 +74,17 @@ export function bounce(
   const rest = onFloor && Math.abs(vx) < STOP_VX;
   return { x, y, vx: rest ? 0 : vx, vy, rest };
 }
+
+/**
+ * 한 걸음 튕기기 전후 속도로 바닥, 벽에 부딪혔는지 (펫 화면이 그쪽으로 잠깐 눌렸다 돌아온다, renderer photo-motion.ts).
+ * 바닥은 아래로 빨리 가다 튀어 오르거나 멈춘 것, 벽은 옆으로 빨리 가다 거꾸로 간 것. 세기 k 는 0~1
+ */
+export function bounceHit(
+  before: { vx: number; vy: number },
+  after: { vx: number; vy: number },
+): { axis: 'x' | 'y'; k: number } | undefined {
+  if (before.vy > 250 && after.vy <= 0) return { axis: 'y', k: Math.min(1, before.vy / 1800) };
+  if (Math.abs(before.vx) > 250 && Math.sign(after.vx) === -Math.sign(before.vx))
+    return { axis: 'x', k: Math.min(1, Math.abs(before.vx) / 2200) };
+  return undefined;
+}

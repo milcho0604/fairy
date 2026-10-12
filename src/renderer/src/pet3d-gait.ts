@@ -3,6 +3,7 @@
 import { type Blueprint, expandMirrors, type Gait, type Part } from '../../shared/pet3d/blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from '../../shared/pet3d/defaults.ts';
 import type { PetKind } from '../../shared/settings.ts';
+import { footSlide } from './walk-pace.ts';
 
 /** 2D 기본 펫도 네 발로 걷는지 (3D 기본 설계도의 gait 를 따른다: 토순이. 냥이, 멍멍이는 팔이 있어 두 발) */
 export function isQuadKind(kind: PetKind | undefined): boolean {
@@ -141,12 +142,16 @@ export type LegId = 'fl' | 'fr' | 'hl' | 'hr';
 /**
  * 대각선 쌍 걸음(속보, trot): 왼앞발과 오른뒷발이 한 쌍, 오른앞발과 왼뒷발이 반대 쌍.
  * 한 걸음(phase 0~1)에 두 쌍이 한 번씩 든다. 든 발은 앞으로 나가고(dz 가 커진다) 디딘 발은 뒤로 민다.
+ * 디딘 발은 같은 빠르기로 민다 (2D 발 walk-pace.ts footSlide 와 같은 모양): 예전엔 사인 곡선이라 몸은 고르게 가는데 디딘 발은
+ * 빨랐다 느렸다 해서 바닥에서 앞뒤로 미끄러졌다.
  * dz 는 -1~1(보폭 단위), lift 는 0~1(들어 올린 높이 단위)
  */
 export function trotLeg(leg: LegId, phase: number): { dz: number; lift: number } {
   const pairA = leg === 'fl' || leg === 'hr';
-  const a = phase * Math.PI * 2 + (pairA ? 0 : Math.PI);
-  return { dz: Math.sin(a), lift: Math.max(0, Math.cos(a)) };
+  // 왼앞발 쌍은 phase 0 에 가장 높이 든다
+  const swingAt = pairA ? 0.75 : 0.25;
+  const p = (((phase - swingAt) % 1) + 1) % 1;
+  return { dz: footSlide(phase, swingAt) * 4, lift: p < 0.5 ? Math.sin(Math.PI * (p / 0.5)) : 0 };
 }
 
 /**
@@ -155,4 +160,52 @@ export function trotLeg(leg: LegId, phase: number): { dz: number; lift: number }
  */
 export function hipRise(y: number, z: number, lean: number): number {
   return y * Math.cos(lean) - z * Math.sin(lean) - y;
+}
+
+/** 두 발 다리를 관절에서 돌리는 가장 큰 각 (라디안). 그 넘게 나가야 하는 발은 다리째 앞뒤로 옮긴다 */
+export const BIPED_SWING_MAX = 0.6;
+
+/**
+ * 다리를 관절에서 돌려 딛는 정도 0~1 (나머지는 다리째 옮긴다). 관절에서 발바닥까지(leg)가 짧은 몸은 다리가 곧 발 한 덩이라
+ * 관절(발 위쪽)에서 돌리면 발이 앞뒤로 가지 않고 기울기만 해서 몸만 미끄러졌다 (콩이, 큰 머리 꼬마 피규어).
+ * 네 발 걷기(walkQuad)의 긴 다리 기준(0.18)과 맞춘다
+ */
+export function swingShare(leg: number): number {
+  return smooth(0.12, 0.22, leg);
+}
+
+/**
+ * 두 발로 선 입체 몸(앉은 피규어, 말로 만든 캐릭터)의 발 하나. 예전엔 다리 길이와 상관없이 관절에서 ±0.7 라디안 돌려,
+ * 짧은 다리는 발이 거의 안 움직여 몸만 미끄러지고 긴 다리는 몸보다 빨리 헛디뎠다.
+ * 이제 2D 발(walk-pace.ts footSlide)처럼 디딘 발은 몸이 간 만큼 뒤로 밀리고 든 발은 앞으로 나간다. 그 거리를 다리 길이에 맞춰
+ * 관절 돌리기(angle)와 다리째 옮기기(shift)로 나누고, 돌려서 들린 만큼 내려(rise 음수) 디딘 발바닥이 바닥에 붙어 있게 한다.
+ * 다리째 옮기는 발은 드는 동안 발끝을 살짝 든다(pitch, 라디안. 발 위 관절에서 발끝이 올라가는 쪽이 +).
+ * stridePx 는 한 걸음 길이(160 캔버스 px), pxPerUnit 은 몸 앞쪽으로 1 단위가 화면 가로로 보이는 길이(px),
+ * leg 는 관절에서 발바닥까지 높이(몸 단위), go 는 걷기 세기 0~1. 앞이 +
+ */
+export function bipedFoot(
+  phase: number,
+  swingAt: number,
+  stridePx: number,
+  pxPerUnit: number,
+  leg: number,
+  go: number,
+): { angle: number; shift: number; rise: number; pitch: number } {
+  if (!(go > 0) || !(stridePx > 0) || !(pxPerUnit > 0) || !(leg > 0))
+    return { angle: 0, shift: 0, rise: 0, pitch: 0 };
+  const dz = (footSlide(phase, swingAt) * stridePx * go) / pxPerUnit;
+  const share = swingShare(leg);
+  const lim = Math.sin(BIPED_SWING_MAX);
+  const s = Math.max(-lim, Math.min(lim, (dz * share) / leg));
+  const angle = Math.asin(s);
+  // 든 발: 걸음의 앞 반 동안 둥글게 든다. 다리 길이의 30% (짧은 다리도 조금은 들어 보이게, 긴 다리도 너무 높지 않게)
+  const p = (((phase - swingAt) % 1) + 1) % 1;
+  const up = p < 0.5 ? Math.sin(Math.PI * (p / 0.5)) : 0;
+  const lift = Math.min(0.05, Math.max(0.015, leg * 0.3)) * up * go;
+  return {
+    angle,
+    shift: dz - leg * s,
+    rise: lift - leg * (1 - Math.cos(angle)),
+    pitch: 0.3 * up * go * (1 - share),
+  };
 }
