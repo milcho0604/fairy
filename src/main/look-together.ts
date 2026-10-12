@@ -25,6 +25,7 @@ import type { Point, Rect } from '../shared/geometry.ts';
 import { t } from '../shared/i18n/index.ts';
 import { LOOK, type OutgoingImage } from '../shared/ipc.ts';
 import { targetOf } from '../shared/look-motion.ts';
+import { KEEP_APP_TYPE } from './active-space.ts';
 import { devRendererUrl } from './dev-url.ts';
 import { focusWindow, showWindow } from './focus.ts';
 import { langArg } from './lang.ts';
@@ -132,7 +133,7 @@ export function createLookTogether({ petName, hideChat, pets, onImage, onStart, 
         },
       });
       win.setAlwaysOnTop(true, 'screen-saver');
-      win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+      win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, ...KEEP_APP_TYPE });
       win.setBounds(display.bounds); // 맥이 메뉴 막대 아래로 밀어낸 경우를 되돌린다
       const query = { name: petName() };
       const devUrl = devRendererUrl();

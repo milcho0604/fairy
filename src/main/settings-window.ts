@@ -32,7 +32,7 @@ import { aiHistoryBytes, clearAiHistory } from './ai-history.ts';
 import { devRendererUrl } from './dev-url.ts';
 import { createDiagnostics } from './diagnostics.ts';
 import { rememberExport, wasExported } from './exported.ts';
-import { focusWindow, showWindow, stealFocus } from './focus.ts';
+import { focusWindow, showWindow } from './focus.ts';
 import { langArg } from './lang.ts';
 import { mcpScriptPath } from './mcp-launch.ts';
 import { openLink } from './open-link.ts';
@@ -273,7 +273,6 @@ export function createSettingsWindow({
 
   /** section 을 주면 그 칸을 바로 보여 준다 (메뉴 막대 "의견 보내기" → 베타 기록). */
   function open(section?: SettingsSection) {
-    stealFocus();
     if (win && !win.isDestroyed()) {
       // 화면 프로세스가 죽었으면(메모리 부족, 강제 종료) 빈 창만 남는다. 같은 창에 다시 읽는다
       if (win.webContents.isCrashed()) load(win, section);

@@ -63,7 +63,7 @@ import { parseRemindIn, remindInAt } from '../shared/snooze.ts';
 import { COIN, FULLNESS, localDay, STEP_MAX, type TodoStore } from '../shared/todo-store.ts';
 import { weekSummary } from '../shared/week.ts';
 import { devRendererUrl } from './dev-url.ts';
-import { focusWindow, stealFocus } from './focus.ts';
+import { focusWindow } from './focus.ts';
 import { langArg } from './lang.ts';
 import { localTime, minuteOfDay, startOfDay, startOfDayAfter } from './planner.ts';
 import { readJson, removeJson, writeJson } from './store.ts';
@@ -795,10 +795,7 @@ export function createPanel(o: PanelOptions) {
     const devUrl = devRendererUrl();
     if (devUrl) win.loadURL(`${devUrl}/${kind}.html${tab ? `#${tab}` : ''}`);
     else win.loadFile(join(import.meta.dirname, `../renderer/${kind}.html`), { hash: tab });
-    win.once('ready-to-show', () => {
-      stealFocus();
-      focusWindow(win);
-    });
+    win.once('ready-to-show', () => focusWindow(win));
     // 다른 곳을 누르면 닫힌다 (팝오버처럼). 머리를 잡고 끄는 것은 이 창을 누른 것이라 닫히지 않는다.
     win.on('blur', () => {
       // 저장 창(주간 회고 카드)을 띄운 동안은 닫지 않는다 (hold)
