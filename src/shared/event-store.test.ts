@@ -437,3 +437,28 @@ test('너무 큰 일정 시각: 끝은 끝 없음으로 저장하고, 이미 들
   );
   assert.equal(repairEventTimes(db, T0), 0);
 });
+
+test('제목 상한이 이모지 가운데에 걸려도 저장한 제목 끝이 깨지지 않는다 (메모, 할 일, 일정)', async () => {
+  const { TodoStore } = await import('./todo-store.ts');
+  const db = new DatabaseSync(':memory:') as unknown as Db;
+  migrate(db);
+  const notes = new NoteStore(db);
+  const events = new EventStore(db);
+  const todos = new TodoStore(db);
+  const at200 = `${'a'.repeat(199)}😀`;
+  const n = notes.add({ title: `${'a'.repeat(79)}😀`, body: `${'b'.repeat(49_999)}😀` }, T0);
+  assert.equal(n.title, 'a'.repeat(79));
+  assert.equal(n.body, 'b'.repeat(49_999));
+  const u = notes.update(n.id, { title: `${'c'.repeat(79)}🎉` }, T0 + 1);
+  assert.equal(u?.title, 'c'.repeat(79));
+  assert.equal(noteTitle({ title: '', body: `${'d'.repeat(79)}😀` }), 'd'.repeat(79));
+  const e = events.add({ title: at200, startAt: T0 + 60 * MIN }, T0);
+  assert.equal(e.title, 'a'.repeat(199));
+  assert.equal(events.update(e.id, { title: `x${at200}` }, T0)?.title, `x${'a'.repeat(199)}`);
+  const td = todos.add({ title: at200 }, T0);
+  assert.equal(td.title, 'a'.repeat(199));
+  assert.equal(todos.update(td.id, { title: `x${at200}` }, T0)?.title, `x${'a'.repeat(199)}`);
+  const step = todos.addStep(td.id, `${'s'.repeat(199)}😀`, T0);
+  assert.equal(step?.title, 's'.repeat(199));
+  for (const s of [n.title, n.body, e.title, td.title]) assert.equal(s.includes('�'), false);
+});

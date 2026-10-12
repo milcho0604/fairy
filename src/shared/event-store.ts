@@ -1,4 +1,6 @@
 // 일정 (v1). 시간이 되면 펫이 말풍선으로 알린다. 구글 캘린더는 v2.
+
+import { cutText } from './cut-text.ts';
 import { plusDays } from './day.ts';
 import type { Db } from './db-schema.ts';
 import { NO_END_MIN } from './event-overlap.ts';
@@ -157,7 +159,7 @@ export class EventStore {
         'insert into event (title, start_at, end_at, remind_min, created_at, all_day) values (?, ?, ?, ?, ?, ?)',
       )
       .run(
-        title.slice(0, 200),
+        cutText(title, 200),
         input.startAt,
         cleanEnd(input.endAt),
         clampRemind(input.remindMin ?? (allDay ? 0 : DEFAULT_REMIND_MIN)),
@@ -232,7 +234,7 @@ export class EventStore {
   ): CalEvent | undefined {
     const e = this.get(id);
     if (!e) return undefined;
-    const title = patch.title === undefined ? e.title : patch.title.trim().slice(0, 200) || e.title;
+    const title = patch.title === undefined ? e.title : cutText(patch.title.trim(), 200) || e.title;
     const startAt = eventTimeOk(patch.startAt) ? patch.startAt : e.startAt;
     const endAt = patch.endAt === undefined ? e.endAt : cleanEnd(patch.endAt);
     const allDay = patch.allDay === undefined ? e.allDay : patch.allDay;

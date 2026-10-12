@@ -4,6 +4,8 @@
 // 펫 MCP 서버가 받은 편지함(pet-actions-inbox.json)에 남기고, 짝꿍 메인이 펫 말풍선으로 물어 허락하면 한다.
 // "다른 AI 에 붙이기"로 사용자가 직접 연결한 AI 는 그 AI 의 도구 허락 창이 있어 바로 한다.
 // MCP 서버(Node)와 메인이 같이 쓴다. Electron 을 불러오지 않는다.
+
+import { cutText } from './cut-text.ts';
 import type { EventStore } from './event-store.ts';
 import { NOTE_BODY_MAX, type NoteStore, noteTitle } from './note-store.ts';
 import { isRepeat, type Repeat, type TodoStore } from './todo-store.ts';
@@ -53,7 +55,7 @@ function todoPatchOf(v: unknown): TodoPatch | undefined {
   const p: TodoPatch = {};
   if (v.title !== undefined) {
     if (typeof v.title !== 'string' || !v.title.trim()) return undefined;
-    p.title = v.title.trim().slice(0, TITLE_MAX);
+    p.title = cutText(v.title.trim(), TITLE_MAX);
   }
   if (v.due !== undefined) {
     if (v.due !== null && !(typeof v.due === 'string' && DAY_RE.test(v.due))) return undefined;
@@ -83,7 +85,7 @@ function eventPatchOf(v: unknown): EventPatch | undefined {
   const p: EventPatch = {};
   if (v.title !== undefined) {
     if (typeof v.title !== 'string' || !v.title.trim()) return undefined;
-    p.title = v.title.trim().slice(0, TITLE_MAX);
+    p.title = cutText(v.title.trim(), TITLE_MAX);
   }
   if (v.startAt !== undefined) {
     if (typeof v.startAt !== 'number' || !Number.isFinite(v.startAt)) return undefined;
@@ -113,7 +115,7 @@ export function parsePetAction(v: unknown): PetAction | undefined {
     }
     case 'append_note':
       return typeof v.text === 'string' && v.text.trim()
-        ? { tool: 'append_note', id: v.id, text: v.text.trim().slice(0, NOTE_BODY_MAX) }
+        ? { tool: 'append_note', id: v.id, text: cutText(v.text.trim(), NOTE_BODY_MAX) }
         : undefined;
     default:
       return undefined;

@@ -6,6 +6,7 @@ import { planTodos } from '../shared/ai/answer-todos.ts';
 import { pickLocal } from '../shared/ai/catalog.ts';
 import { contextEvents, todayRange } from '../shared/ai/context-events.ts';
 import { persona, setMemorySource, setStyleSource, todoContext } from '../shared/ai/persona.ts';
+import { cutText } from '../shared/cut-text.ts';
 import { HIDE_SEEK, pickHideSpot } from '../shared/hide-seek.ts';
 import { houseMenuKey, houseNewsKey, stowSayKey, stowStep } from '../shared/house-stow.ts';
 import { locale, t } from '../shared/i18n/index.ts';
@@ -1704,7 +1705,7 @@ export function preview(text: string): string {
     .replace(/[`*#>_]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
-  return plain.length > 30 ? `${plain.slice(0, 30)}...` : plain;
+  return plain.length > 30 ? `${cutText(plain, 30)}...` : plain;
 }
 
 /**

@@ -1,4 +1,6 @@
 // 메모 (v1). 마크다운 글. 펫 패널 메모 탭과 AI 답 저장(답을 메모로)에서 쓴다.
+
+import { cutText, textBoundary } from './cut-text.ts';
 import type { Db } from './db-schema.ts';
 import { t } from './i18n/index.ts';
 import { pinAt } from './pin.ts';
@@ -43,7 +45,7 @@ export const NOTE_BODY_MAX = 50_000;
 export function noteTitle(n: Pick<Note, 'title' | 'body'>): string {
   if (n.title.trim()) return n.title.trim();
   const first = n.body.split('\n').find((l) => l.trim()) ?? '';
-  return first.replace(/^\s*(#+|[-*]|\d+\.)\s*/, '').slice(0, NOTE_TITLE_MAX) || t('panel.note.empty');
+  return cutText(first.replace(/^\s*(#+|[-*]|\d+\.)\s*/, ''), NOTE_TITLE_MAX) || t('panel.note.empty');
 }
 
 /** 미리보기 길이 (글자) */
@@ -82,7 +84,7 @@ export function notePreview(n: Pick<Note, 'title' | 'body'>): string {
     kept.push(line);
     len += line.length + 1;
   }
-  return kept.join(' ').slice(0, PREVIEW_MAX);
+  return cutText(kept.join(' '), PREVIEW_MAX);
 }
 
 export class NoteStore {
@@ -112,8 +114,8 @@ export class NoteStore {
     const r = this.#db
       .prepare('insert into note (title, body, source, created_at, updated_at) values (?, ?, ?, ?, ?)')
       .run(
-        (input.title ?? '').trim().slice(0, NOTE_TITLE_MAX),
-        (input.body ?? '').slice(0, NOTE_BODY_MAX),
+        cutText((input.title ?? '').trim(), NOTE_TITLE_MAX),
+        cutText(input.body ?? '', NOTE_BODY_MAX),
         input.source === 'ai' ? 'ai' : 'me',
         now,
         now,
@@ -124,8 +126,8 @@ export class NoteStore {
   update(id: number, patch: { title?: string; body?: string }, now: number): Note | undefined {
     const n = this.get(id);
     if (!n) return undefined;
-    const title = patch.title === undefined ? n.title : patch.title.trim().slice(0, NOTE_TITLE_MAX);
-    const body = patch.body === undefined ? n.body : patch.body.slice(0, NOTE_BODY_MAX);
+    const title = patch.title === undefined ? n.title : cutText(patch.title.trim(), NOTE_TITLE_MAX);
+    const body = patch.body === undefined ? n.body : cutText(patch.body, NOTE_BODY_MAX);
     if (title === n.title && body === n.body) return n;
     this.#db
       .prepare('update note set title = ?, body = ?, updated_at = ? where id = ?')
@@ -220,8 +222,8 @@ export function searchNotes(
     const src = folded.length === body.length ? body : folded;
     const at = m.index;
     const end = at + m[0].length;
-    const from = Math.max(0, at - SNIPPET_BEFORE);
-    const to = Math.min(src.length, end + SNIPPET_AFTER);
+    const from = textBoundary(src, Math.max(0, at - SNIPPET_BEFORE));
+    const to = textBoundary(src, Math.min(src.length, end + SNIPPET_AFTER));
     const flat = (s: string) => s.replace(/\s+/g, ' ');
     const before = `${from > 0 ? '…' : ''}${flat(src.slice(from, at)).trimStart()}`;
     const hit = flat(src.slice(at, end));
