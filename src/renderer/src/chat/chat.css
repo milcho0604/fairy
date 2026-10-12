@@ -1162,3 +1162,26 @@ header .picker {
   font-size: 12.5px;
   background: var(--code);
 }
+
+/* 대화 안에서 펼치는 설치, 로그인 안내 (#29). 말풍선 아래에 같은 단계를 그대로 */
+.inline-guide {
+  margin-top: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.inline-guide-title {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.inline-guide .guide-steps {
+  margin-bottom: 8px;
+}
+
+.inline-guide > button + button {
+  margin-left: 6px;
+}

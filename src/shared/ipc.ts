@@ -432,6 +432,8 @@ export interface ProviderView {
   loginHint?: string;
   /** 사용자 추가 AI 의 명령 한 줄 (보여 주기용) */
   command?: string;
+  /** 사용자 추가 AI 의 실행 파일 (못 찾을 때 경로 찾기 안내에 쓴다). 기본 제공 AI 는 비운다 */
+  bin?: string;
   /** 기록 남기지 않기를 할 수 있는지 (claude, codex) */
   ephemeral: boolean;
 }

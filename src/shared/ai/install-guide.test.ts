@@ -2,8 +2,16 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { setLang, t } from '../i18n/index.ts';
 import { safeExternalUrl } from '../links.ts';
-import { guideOs, installGuide, isGuideProvider, NODE_DOWNLOAD } from './install-guide.ts';
-import { BUILTIN_PROVIDERS } from './providers.ts';
+import {
+  guideModeOf,
+  guideOs,
+  hasGuide,
+  installGuide,
+  isGuideProvider,
+  NODE_DOWNLOAD,
+  whereCommand,
+} from './install-guide.ts';
+import { BUILTIN_PROVIDERS, customProvider } from './providers.ts';
 
 const PLATFORMS = ['darwin', 'win32', 'linux'] as const;
 
@@ -65,5 +73,67 @@ test('안내 글: 로그인 명령과 고를 항목에 맞는 조사, 운영체�
   assert.match(t('ai.install.gemini'), /gemini를 한 번 실행해 로그인/);
   setLang('en');
   assert.match(t('ai.guide.still.mac'), /Dock or Finder/);
+  setLang('ko');
+});
+
+test('로그인 안 됨도 같은 틀: 상태와 오류 종류에서 펼칠 안내를 고른다', () => {
+  assert.equal(guideModeOf({ kind: 'not-installed' }), 'install');
+  assert.equal(guideModeOf({ kind: 'not-logged-in' }), 'login');
+  assert.equal(guideModeOf({ kind: 'rate-limit' }), undefined);
+  assert.equal(guideModeOf({ kind: 'timeout' }), undefined);
+  assert.equal(guideModeOf({ installed: false }), 'install');
+  assert.equal(guideModeOf({ installed: true, loggedIn: false }), 'login');
+  // 로그인 확인을 못 하는 AI(undefined)와 준비된 AI 는 안내를 펼치지 않는다
+  assert.equal(guideModeOf({ installed: true }), undefined);
+  assert.equal(guideModeOf({ installed: true, loggedIn: true }), undefined);
+  assert.equal(guideModeOf(undefined), undefined);
+});
+
+test('로그인 상태 명령은 공식 문서에 있는 것만, 짝꿍이 찾는 실행 파일 이름으로', () => {
+  for (const platform of PLATFORMS) {
+    assert.equal(installGuide('claude', platform)?.status, 'claude auth status');
+    assert.equal(installGuide('codex', platform)?.status, 'codex login status');
+    assert.equal(installGuide('cursor', platform)?.status, 'cursor-agent status');
+    // Gemini 는 공식 문서에 상태 명령이 없다
+    assert.equal(installGuide('gemini', platform)?.status, undefined);
+  }
+});
+
+test('직접 추가한 AI 도 안내가 있다: 설치 명령 대신 경로 찾기 명령', () => {
+  const spec = customProvider({ label: 'Llama', bin: 'ollama', args: 'run llama3.2 {prompt}' }, 'custom-1');
+  assert.ok(typeof spec !== 'string');
+  assert.equal(hasGuide({ id: spec.id, custom: spec.custom, bin: spec.bin }), true);
+  // 실행 파일 이름을 모르면(옛 상태) 경로 명령을 만들 수 없어 단추를 두지 않는다
+  assert.equal(hasGuide({ id: 'custom-2', custom: true }), false);
+  assert.equal(hasGuide({ id: 'local' }), false);
+  assert.equal(hasGuide({ id: 'gemini' }), true);
+  assert.equal(whereCommand('ollama', 'darwin'), 'command -v ollama');
+  assert.equal(whereCommand('ollama', 'linux'), 'command -v ollama');
+  assert.equal(whereCommand('ollama', 'win32'), 'where.exe ollama');
+});
+
+test('Gemini 도 로그인 안 됨 오류에 로그인 방법을 말한다', () => {
+  setLang('ko');
+  const gemini = BUILTIN_PROVIDERS.find((p) => p.id === 'gemini');
+  assert.match(gemini?.loginHint ?? '', /Sign in with Google/);
+  setLang('en');
+  assert.match(gemini?.loginHint ?? '', /Sign in with Google/);
+  setLang('ko');
+});
+
+test('로그인, 직접 추가 안내 글 (ko, en)', () => {
+  setLang('ko');
+  assert.equal(t('ai.guide.showLogin'), '로그인 방법 보기');
+  assert.equal(t('ai.guide.loginTitle', { label: 'Codex' }), 'Codex 로그인하기');
+  assert.equal(
+    t('ai.guide.login.still.status', { cmd: 'claude auth status' }),
+    '터미널에서 claude auth status로 로그인 상태를 볼 수 있어. 로그인 안 됨으로 나오면 위 명령을 다시 실행해 줘.',
+  );
+  assert.match(t('ai.guide.custom.step1', { bin: 'ollama' }), /ollama가 실행되는지/);
+  assert.match(t('ai.guide.custom.step2'), /AI 관리에서 이 AI를 빼고/);
+  setLang('en');
+  assert.equal(t('ai.guide.showLogin'), 'How to log in');
+  assert.equal(t('ai.guide.loginTitle', { label: 'Codex' }), 'Log in to Codex');
+  assert.match(t('ai.guide.custom.step2'), /Manage AIs/);
   setLang('ko');
 });
