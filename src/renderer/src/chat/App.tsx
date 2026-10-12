@@ -14,6 +14,7 @@ import { t } from '../../../shared/i18n/index.ts';
 import type { OutgoingImage, ProviderView } from '../../../shared/ipc.ts';
 import { PetFace } from '../PetFace.tsx';
 import { AiManager } from './AiManager.tsx';
+import { ChatList } from './ChatList.tsx';
 import { InstallGuide } from './InstallGuide.tsx';
 import { toOutgoing } from './images.ts';
 import { chatKey, lastQuestion } from './keys.ts';
@@ -39,9 +40,11 @@ export function App() {
   const [managing, setManaging] = useState(false);
   /** 설치 방법 시트를 연 AI (#29) */
   const [guideFor, setGuideFor] = useState<AiProvider>();
+  /** 지난 대화 목록 */
+  const [listing, setListing] = useState(false);
   // 덮개(AI 관리, 그림 크게 보기)가 열려 있으면 입력칸으로 포커스를 옮기지 않는다 (가려진 입력칸에 붙여 넣고 보내졌다)
   const overlayRef = useRef(false);
-  overlayRef.current = managing || !!zoom || !!guideFor;
+  overlayRef.current = managing || !!zoom || !!guideFor || listing;
   const focusInput = useCallback(() => {
     if (!overlayRef.current) inputRef.current?.focus();
   }, []);
@@ -126,7 +129,7 @@ export function App() {
   }, [addImages, refreshStatus, focusInput]);
 
   // 덮개를 닫으면 입력칸으로 돌아온다
-  const covered = managing || !!zoom || !!guideFor;
+  const covered = managing || !!zoom || !!guideFor || listing;
   const wasCovered = useRef(false);
   useEffect(() => {
     if (wasCovered.current && !covered) focusInput();
@@ -268,6 +271,7 @@ export function App() {
 
   // 새 대화: 바로 지우되 몇 초 동안 되돌릴 수 있다 (메인이 지운 대화를 잠깐 들고 있다, UNDO_RESET_MS)
   const newChat = () => {
+    setListing(false);
     bridge.reset();
     setUndoShown(true);
     clearTimeout(undoTimer.current);
@@ -317,7 +321,11 @@ export function App() {
       // 답을 기다리면 멈춘다. 아무것도 없고 쓰던 글도 없으면 창을 닫는다 (패널, 설정 창과 같게. 쓰던 글은 Esc 하나로 잃지 않게 둔다)
       if (zoom) setZoom(undefined);
       else if (guideFor) setGuideFor(undefined);
-      else if (managing) setManaging(false);
+      else if (listing) {
+        // 이름 바꾸기 칸의 Esc 는 그 칸만 닫는다 (ChatList 가 막는다)
+        if (!e.defaultPrevented) setListing(false);
+        return;
+      } else if (managing) setManaging(false);
       else if (pending) bridge.cancel();
       else if (!text.trim() && !e.defaultPrevented) window.close();
       else return;
@@ -370,6 +378,23 @@ export function App() {
         />
         <button
           type="button"
+          className="ghost icon-btn"
+          title={t('chat.list.open')}
+          aria-label={t('chat.list.open')}
+          onClick={() => setListing(true)}
+        >
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <path
+              d="M2.5 4h11M2.5 8h11M2.5 12h7"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
+        <button
+          type="button"
           className="ghost"
           disabled={pending || state.messages.length === 0}
           onClick={newChat}
@@ -383,6 +408,19 @@ export function App() {
         hidden={!!current && !current.installed}
         asked={state.messages.length > 0}
       />
+      {listing && (
+        <ChatList
+          pending={pending}
+          ephemeral={!!state.ephemeral}
+          version={`${state.messages.length}:${state.messages.at(-1)?.id ?? ''}:${state.pendingId ?? ''}`}
+          labelOf={labelOf}
+          onOpened={() => {
+            setListing(false);
+            following.current = true;
+          }}
+          onClose={() => setListing(false)}
+        />
+      )}
       {managing && (
         <AiManager
           providers={providers}

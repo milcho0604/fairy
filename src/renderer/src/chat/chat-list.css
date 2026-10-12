@@ -1,0 +1,190 @@
+/* 지난 대화 목록 (ChatList.tsx). 겉틀은 AI 관리와 같은 .sheet */
+
+.list-search,
+.thread .rename input {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+}
+
+.list-search:focus,
+.thread .rename input:focus {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -1px;
+}
+
+.list-note,
+.list-empty {
+  margin: 10px 2px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.list-note {
+  color: var(--warn);
+}
+
+.thread-list {
+  margin: 8px 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.thread {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+/* 줄 전체가 여는 단추 (제목, 날짜, AI) */
+.thread-open {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.thread-open:hover:not(:disabled) {
+  background: var(--code);
+}
+
+.thread.current .thread-open {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.thread-open:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.thread-title {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.thread-meta .tag:first-of-type {
+  margin-left: 6px;
+}
+
+.tag.now {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.thread-actions {
+  display: flex;
+  flex: none;
+  gap: 4px;
+}
+
+.thread .danger {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+/* 지울지 묻기와 이름 바꾸기는 줄 안에서 (팝업 창을 띄우지 않는다) */
+.thread .confirm {
+  flex: 1 1 100%;
+  font-size: 12.5px;
+}
+
+.thread:has(.confirm) {
+  flex-wrap: wrap;
+}
+
+.thread .confirm p {
+  margin: 0 0 2px;
+  font-weight: 600;
+}
+
+.thread .confirm small {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+}
+
+.thread.editing {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.thread .rename {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.chat-list .more {
+  display: block;
+  margin: 0 auto;
+}
+
+/* 좁은 창(320): 단추는 제목 아래 줄로 내린다 (제목이 한두 글자로 줄지 않게) */
+@media (max-width: 360px) {
+  .thread {
+    flex-wrap: wrap;
+  }
+
+  .thread-open {
+    flex-basis: 100%;
+  }
+
+  .thread-actions {
+    margin-left: auto;
+  }
+
+  .thread .rename {
+    flex-wrap: wrap;
+  }
+}
+
+/* 머리줄의 목록 단추 (글자 대신 줄 세 개 그림, 이름은 aria-label) */
+header .icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 7px;
+  line-height: 1;
+}
+
+header .icon-btn svg {
+  display: block;
+}
+
+/* 기본 폭(400)과 좁은 창: 목록 단추가 들어간 만큼 머리줄 얼굴을 뺀다. 누구와 이야기하는지(이름)가 먼저라
+   이름 글자를 목록 단추 전과 같게 남긴다 (얼굴은 답마다 옆에 있다) */
+@media (max-width: 420px) {
+  header .title .face {
+    display: none;
+  }
+
+  header .icon-btn {
+    padding-inline: 5px;
+  }
+}

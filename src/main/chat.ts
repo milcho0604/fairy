@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { join } from 'node:path';
-import { BrowserWindow, type IpcMainEvent, ipcMain, type Rectangle, screen } from 'electron';
+import { statSync } from 'node:fs';
+import { basename, join } from 'node:path';
+import { app, BrowserWindow, type IpcMainEvent, ipcMain, type Rectangle, screen } from 'electron';
 import { type Catalog, pickCli, pickLocal } from '../shared/ai/catalog.ts';
 import {
   extractTodos,
@@ -33,6 +34,7 @@ import {
   UNDO_RESET_MS,
   undoReset,
 } from '../shared/chat-state.ts';
+import { isThreadId, staleSessions } from '../shared/chat-threads.ts';
 import { downloadErrorText } from '../shared/download-error.ts';
 import { clampIntoAreas } from '../shared/geometry.ts';
 import { getLang, t } from '../shared/i18n/index.ts';
@@ -42,6 +44,7 @@ import {
   type OutgoingImage,
   type PetAiState,
   type ProviderView,
+  type ThreadList,
 } from '../shared/ipc.ts';
 import { isBanmal } from '../shared/persona-voice.ts';
 import { textAiOrder } from '../shared/pet3d/text-prompt.ts';
@@ -50,6 +53,7 @@ import { prepareCodexHome } from './ai/codex-home.ts';
 import { downloadLocalModel, localModelReady, mb, runLocal } from './ai/local.ts';
 import { type AiRun, checkStatus, readCodexUsage, runAi } from './ai/runner.ts';
 import { getShellEnv } from './ai/shell-env.ts';
+import { createThreadStore } from './chat-threads.ts';
 import { devRendererUrl } from './dev-url.ts';
 import { focusWindow, showWindow, stealFocus } from './focus.ts';
 import { langArg } from './lang.ts';
@@ -151,7 +155,17 @@ export function createChat(o: ChatOptions) {
   const savedUsage = usageOf(readJson(USAGE_FILE));
   const startProvider = saved?.provider && specOf(saved.provider) ? saved.provider : 'claude';
   // 지난번 대화를 이어 보여 준다. 세션도 같이 읽어 다음 질문이 --resume 으로 이어진다
-  let state: ChatState = { ...initialChat(startProvider, savedUsage), ...parseChat(readJson(HISTORY_FILE)) };
+  const history = parseChat(readJson(HISTORY_FILE));
+  let state: ChatState = { ...initialChat(startProvider, savedUsage), ...history };
+  // 지난 대화 목록 (chat-threads.ts). 옛 판에서 올라왔으면 지금 대화가 목록 첫 항목으로 들어간다
+  const threads = createThreadStore(app.getPath('userData'), {
+    history,
+    historyAt: mtimeOf(join(app.getPath('userData'), `${HISTORY_FILE}.json`)),
+    isolated: aiIsolation(),
+    log: (...rest) => log('chat', ...rest),
+    // 깨진 대화 파일은 옆으로 옮기고(json-file.ts) 그 대화만 못 연다. 이름만 남긴다
+    onTrouble: (tr) => log('chat', 'thread file broken', basename(tr.file)),
+  });
   let run: AiRun | undefined;
   let win: BrowserWindow | undefined;
   let draft: OutgoingImage[] = [];
@@ -170,7 +184,10 @@ export function createChat(o: ChatOptions) {
   const save = (force = false) => {
     if (state.ephemeral && !force) return;
     try {
-      writeJson(HISTORY_FILE, serializeChat(state));
+      const saved = serializeChat(state);
+      writeJson(HISTORY_FILE, saved);
+      // 기록 안 남김 대화는 목록에도 넣지 않는다
+      if (!state.ephemeral) threads.saveCurrent(saved, aiIsolation());
     } catch (err) {
       log('chat', 'history save failed', err instanceof Error ? err.message : String(err));
     }
@@ -485,12 +502,13 @@ export function createChat(o: ChatOptions) {
       });
   });
 
-  /** 새 대화로 지운 대화. 잠깐 동안 되돌릴 수 있다 (UNDO_RESET_MS) */
-  let cleared: { state: ChatState; at: number } | undefined;
+  /** 새 대화로 지운 대화. 잠깐 동안 되돌릴 수 있다 (UNDO_RESET_MS). thread 는 그 대화의 목록 id */
+  let cleared: { state: ChatState; at: number; thread?: string } | undefined;
   ipcMain.on(CHAT.setEphemeral, (e, on: boolean) => {
     if (!fromChat(e) || state.pendingId) return;
     // 켜고 끌 때 새 대화로: 안 남긴 대화는 이어 갈 수 없고, 남긴 대화를 안 남긴 채 이어 갈 수도 없다.
     state = { ...resetChat(state), ephemeral: !!on };
+    threads.detach();
     carry.clear();
     // 지운 대화를 되돌릴 거리도 버린다 (안 남긴 대화가 되돌리기로 기록 파일에 쓰이지 않게)
     cleared = undefined;
@@ -559,8 +577,10 @@ export function createChat(o: ChatOptions) {
   });
   ipcMain.on(CHAT.reset, (e) => {
     if (!fromChat(e) || state.pendingId) return;
-    if (state.messages.length > 0) cleared = { state, at: Date.now() };
+    if (state.messages.length > 0) cleared = { state, at: Date.now(), thread: threads.current };
     state = resetChat(state);
+    // 지난 대화는 목록에 남는다 (답이 끝날 때마다 저장해 두었다). 다음 질문은 새 목록 항목이 된다
+    threads.detach();
     carry.clear();
     save(true);
     push();
@@ -568,12 +588,83 @@ export function createChat(o: ChatOptions) {
   ipcMain.handle(CHAT.undoReset, (e) => {
     if (!fromChat(e) || !cleared || Date.now() - cleared.at > UNDO_RESET_MS) return false;
     const back = undoReset(state, cleared.state);
+    const thread = cleared.thread;
     cleared = undefined;
     if (!back) return false;
     state = back;
+    // 같은 목록 항목으로 돌아간다 (되돌린 대화가 목록에 두 번 생기지 않게)
+    if (thread) threads.attach(thread);
     log('chat', 'undo reset');
     save();
     push();
+    return true;
+  });
+  // 지난 대화 목록 (열기, 이름 바꾸기, 지우기)
+  ipcMain.handle(CHAT.threads, (e, query: unknown): ThreadList => {
+    if (!fromChat(e)) return { threads: [] };
+    const current = threads.current;
+    return {
+      threads: threads.list(typeof query === 'string' ? query.slice(0, 200) : ''),
+      ...(current ? { current } : {}),
+    };
+  });
+  ipcMain.handle(CHAT.openThread, (e, id: unknown) => {
+    // 답을 기다리는 중이나 기록 안 남김 중에는 열지 않는다 (안 남기는 중에 연 대화가 기록에 이어 쓰이지 않게)
+    if (!fromChat(e) || !isThreadId(id) || state.pendingId || state.ephemeral) return false;
+    if (threads.current === id) return true;
+    const saved = threads.read(id);
+    const meta = threads.meta(id);
+    if (!saved || !meta || saved.messages.length === 0) return false;
+    let next: ChatState = { ...resetChat(state), messages: saved.messages, sessions: saved.sessions };
+    // 그 대화를 하던 AI 로 이어 간다 (세션은 AI 마다 따로라 다른 AI 로는 앞 대화를 모른다)
+    if (meta.provider && specOf(meta.provider) && meta.provider !== next.provider) {
+      next = switchProvider(next, meta.provider);
+      userPicked = true;
+      writeJson(SETTINGS_FILE, { provider: next.provider });
+    }
+    carry.clear();
+    // 이어 갈 수 없는 세션(격리 설정이 바뀜, claude 의 오래된 세션)은 빼고 최근 문답을 글로 붙인다
+    for (const p of staleSessions(
+      meta,
+      saved.sessions,
+      Date.now(),
+      aiIsolation(),
+      (p) => specOf(p)?.adapter,
+    )) {
+      next = { ...next, sessions: { ...next.sessions, [p]: undefined } };
+      carry.set(p, historyFor(next, p).slice(-3));
+    }
+    state = next;
+    cleared = undefined;
+    threads.attach(id);
+    // 열기만 했을 때는 목록 순서(마지막 대화 날짜)를 바꾸지 않는다. 지금 대화 파일만 맞춘다
+    try {
+      writeJson(HISTORY_FILE, serializeChat(state));
+    } catch (err) {
+      log('chat', 'history save failed', err instanceof Error ? err.message : String(err));
+    }
+    log('chat', 'open thread', saved.messages.length);
+    push();
+    return true;
+  });
+  ipcMain.handle(CHAT.renameThread, (e, id: unknown, title: unknown) => {
+    if (!fromChat(e) || !isThreadId(id) || typeof title !== 'string') return false;
+    return threads.rename(id, title);
+  });
+  ipcMain.handle(CHAT.deleteThread, (e, id: unknown) => {
+    if (!fromChat(e) || !isThreadId(id)) return false;
+    // 답을 기다리는 대화는 지우지 않는다 (답이 끝나며 다시 저장된다)
+    if (threads.current === id && state.pendingId) return false;
+    // 되돌리기로 지운 대화가 살아나지 않게
+    if (cleared?.thread === id) cleared = undefined;
+    const wasCurrent = threads.remove(id);
+    log('chat', 'delete thread', wasCurrent ? 'current' : '');
+    if (wasCurrent) {
+      state = resetChat(state);
+      carry.clear();
+      save(true);
+      push();
+    }
     return true;
   });
   // 답 속 주소는 기본 브라우저로. http, https 만 (safeExternalUrl), 창 안에서는 열지 않는다
@@ -876,6 +967,15 @@ function placeNear(near: Rectangle | undefined, size: { width: number; height: n
   const x = leftX >= area.x ? leftX : near.x + near.width + gap;
   const y = near.y + near.height - fit.height;
   return clampIntoAreas({ x, y, ...fit }, [area]);
+}
+
+/** 파일을 마지막으로 쓴 때. 없으면 undefined (옛 판 대화를 목록에 넣을 때 날짜로 쓴다) */
+function mtimeOf(path: string): number | undefined {
+  try {
+    return statSync(path).mtimeMs;
+  } catch {
+    return undefined;
+  }
 }
 
 /** 저장해 둔 사용량을 고른다. 모양이 틀린 것은 버린다 (틀린 값이 채팅 창을 빈 화면으로 만들었다) */
