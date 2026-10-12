@@ -47,6 +47,7 @@ import {
   readTextAnswer,
   TEXT_SYSTEM,
   TWEAK_MAX,
+  textLength,
   textOk,
   tweakPrompt,
 } from '../shared/pet3d/text-prompt.ts';
@@ -331,7 +332,7 @@ export function createMaker(
     if (!textOk(textRaw, DESCRIBE_MAX)) return { ok: false, error: t('main.maker.badFormat') };
     const text = cleanDescribe(textRaw);
     if (!text) return { ok: false, error: t('main.maker.textEmpty') };
-    return askText('describe', describePrompt(text, { webSearch: true }), [...text].length);
+    return askText('describe', describePrompt(text, { webSearch: true }), textLength(text));
   });
 
   // 말로 만들기 고치기: 지금 설계도(다시 검사)와 고칠 점. 처음 결과가 캐릭터였으면 고친 뒤에도 그대로 둔다
@@ -348,7 +349,7 @@ export function createMaker(
       const r = await askText(
         'tweak',
         tweakPrompt(model, ask, cleanDescribe(originalRaw), named),
-        [...ask].length,
+        textLength(ask),
       );
       return r.ok ? { ...r, namedCharacter: r.namedCharacter || named } : r;
     },

@@ -9,7 +9,17 @@ import { EXAMPLE_PLUSH } from './examples.ts';
 import { schemaBlock } from './prompt.ts';
 import { repairBlueprint } from './repair.ts';
 
-/** 처음 적는 글 상한 (글자, 코드 포인트) */
+/** 사람이 보는 글자 단위 (이모지, 피부색, 풀어 쓴 한글도 한 글자). 칸의 n/200 과 자르기가 같은 기준이다 */
+const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+const graphemesOf = (text: string): string[] => Array.from(segmenter.segment(text), (g) => g.segment);
+
+/** 글 길이 (사람이 보는 글자) */
+export const textLength = (text: string): number => graphemesOf(text).length;
+
+/** max 글자(사람이 보는 글자)까지 */
+export const clipText = (text: string, max: number): string => graphemesOf(text).slice(0, max).join('');
+
+/** 처음 적는 글 상한 (사람이 보는 글자) */
 export const DESCRIBE_MAX = 200;
 /** 고칠 점 글 상한 */
 export const TWEAK_MAX = 120;
@@ -26,12 +36,15 @@ export function cleanDescribe(raw: unknown, max = DESCRIBE_MAX): string {
     .replace(/JJ_DATA/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  return [...flat].slice(0, max).join('').trim();
+  return clipText(flat, max).trim();
 }
 
-/** 창이 보낸 글이 받을 만한지: 글이고, 칸 상한보다 한참 길지 않다 (칸은 max 에서 끊으니 4배면 창이 보낸 값이 아니다) */
+/**
+ * 창이 보낸 글이 받을 만한지: 글이고, 칸 상한보다 한참 길지 않다. 칸은 사람이 보는 글자로 max 에서 끊고
+ * 이모지 한 글자가 UTF-16 으로 열 칸을 넘기도 해서 16배까지 받는다
+ */
 export const textOk = (raw: unknown, max: number): raw is string =>
-  typeof raw === 'string' && raw.length <= max * 4;
+  typeof raw === 'string' && raw.length <= max * 16;
 
 export const TEXT_SYSTEM = `You design cute 3D desktop-pet figures out of simple primitives.
 The owner describes the character they want in a few words. Turn the description into ONE JSON blueprint that a renderer assembles with three.js.

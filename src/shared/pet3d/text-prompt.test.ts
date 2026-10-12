@@ -5,6 +5,7 @@ import { PET_NAME_MAX, petNameLength } from '../settings.ts';
 import { EXAMPLE_PLUSH } from './examples.ts';
 import {
   cleanDescribe,
+  clipText,
   DESCRIBE_MAX,
   describePrompt,
   makerTabs,
@@ -13,6 +14,7 @@ import {
   TEXT_SYSTEM,
   TWEAK_MAX,
   textAiOrder,
+  textLength,
   textOk,
   tweakPrompt,
 } from './text-prompt.ts';
@@ -30,15 +32,21 @@ test('말로 만들기 글 다듬기: 제어, 서식 문자, 줄 나눔, 자료 
   assert.equal(cleanDescribe(undefined), '');
 });
 
-test('말로 만들기 글 길이: 코드 포인트로 자르고 이모지를 반으로 가르지 않는다', () => {
-  assert.equal([...cleanDescribe('가'.repeat(500))].length, DESCRIBE_MAX);
+test('말로 만들기 글 길이: 사람이 보는 글자로 세고 자른다 (이모지 하나는 한 글자, 반으로 가르지 않는다)', () => {
+  assert.equal(textLength(cleanDescribe('가'.repeat(500))), DESCRIBE_MAX);
   const emoji = cleanDescribe('🐱'.repeat(300));
+  assert.equal(textLength(emoji), DESCRIBE_MAX);
   assert.equal([...emoji].length, DESCRIBE_MAX);
   assert.ok(!emoji.includes('\ud83d\ud83d'));
-  assert.equal([...cleanDescribe('나'.repeat(500), TWEAK_MAX)].length, TWEAK_MAX);
-  // 창이 보낸 값 검사: 칸 상한의 4배 넘게 긴 글, 글이 아닌 값은 받지 않는다
+  // 피부색 붙은 이모지도 한 글자 (칸의 n/200 과 같다)
+  assert.equal(textLength('👋🏽'), 1);
+  assert.equal(textLength(clipText('👋🏽'.repeat(300), DESCRIBE_MAX)), DESCRIBE_MAX);
+  assert.equal(textLength(cleanDescribe('👋🏽'.repeat(300))), DESCRIBE_MAX);
+  assert.equal(textLength(cleanDescribe('나'.repeat(500), TWEAK_MAX)), TWEAK_MAX);
+  // 창이 보낸 값 검사: 칸 상한의 16배 넘게 긴 글, 글이 아닌 값은 받지 않는다 (200 이모지는 받는다)
   assert.ok(textOk('짧은 글', DESCRIBE_MAX));
-  assert.ok(!textOk('가'.repeat(DESCRIBE_MAX * 4 + 1), DESCRIBE_MAX));
+  assert.ok(textOk('👋🏽'.repeat(DESCRIBE_MAX), DESCRIBE_MAX));
+  assert.ok(!textOk('가'.repeat(DESCRIBE_MAX * 16 + 1), DESCRIBE_MAX));
   assert.ok(!textOk({ text: 'x' }, DESCRIBE_MAX));
 });
 

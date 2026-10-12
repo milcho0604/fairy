@@ -36,10 +36,12 @@ import { cleanWish, WISH_MAX } from '../../../shared/pet3d/prompt.ts';
 import { canStand, standingBlueprint } from '../../../shared/pet3d/stand.ts';
 import {
   cleanDescribe,
+  clipText,
   DESCRIBE_MAX,
   makerTabs,
   nameFromText,
   TWEAK_MAX,
+  textLength,
 } from '../../../shared/pet3d/text-prompt.ts';
 import {
   cleanPetName,
@@ -1047,13 +1049,12 @@ export function MakerApp() {
                         // biome-ignore lint/a11y/noAutofocus: 탭을 고르면 바로 적을 수 있게 (이 칸 하나뿐인 화면)
                         autoFocus
                         value={textDraft}
-                        maxLength={DESCRIBE_MAX}
                         placeholder={t('maker.text.placeholder')}
                         aria-describedby="maker-text-hint maker-text-privacy"
-                        onChange={(e) => setTextDraft(e.target.value)}
+                        onChange={(e) => setTextDraft(clipText(e.target.value, DESCRIBE_MAX))}
                       />
                       <span className="wish-count" aria-hidden="true">
-                        {t('maker.wish.count', { n: textDraft.length, max: DESCRIBE_MAX })}
+                        {t('maker.wish.count', { n: textLength(textDraft), max: DESCRIBE_MAX })}
                       </span>
                     </div>
                     <small id="maker-text-hint" className="hint">
@@ -1370,12 +1371,11 @@ export function MakerApp() {
                     ref={tweakRef}
                     id="maker-tweak"
                     value={tweakDraft}
-                    maxLength={TWEAK_MAX}
                     placeholder={t('maker.text.tweakPlaceholder')}
-                    onChange={(e) => setTweakDraft(e.target.value)}
+                    onChange={(e) => setTweakDraft(clipText(e.target.value, TWEAK_MAX))}
                   />
                   <span className="wish-count" aria-hidden="true">
-                    {t('maker.wish.count', { n: tweakDraft.length, max: TWEAK_MAX })}
+                    {t('maker.wish.count', { n: textLength(tweakDraft), max: TWEAK_MAX })}
                   </span>
                 </div>
                 <button type="submit" className="ghost" disabled={!tweakDraft.trim()}>
