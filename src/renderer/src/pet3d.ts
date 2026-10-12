@@ -148,6 +148,7 @@ import {
   type TapRig,
   tapRigOf,
 } from './pet3d-tap.ts';
+import { eyedPhoto, photoEyeOpen } from './photo-eyes.ts';
 import { neckRow } from './relief-warp.ts';
 import { tapPaws } from './together-draw.ts';
 import { strideLen } from './walk-pace.ts';
@@ -344,6 +345,10 @@ export class Pet3D implements Model3D {
         texture: CanvasTexture;
         /** 그림 휘기 값 (숨쉬기 -1~1, 머리 기울기 라디안). 셰이더가 읽는다 */
         warp: { uBreath: { value: number }; uTilt: { value: number } };
+        /** 붙인 그림과 그 캔버스. 눈 자리를 아는 그림(밀크, 초코)은 감은 만큼 다시 그린다 (photo-eyes.ts) */
+        photo: CanvasImageSource & { width: number; height: number };
+        canvas: HTMLCanvasElement;
+        open: number;
       }
     | undefined;
   /** 쉬는 자세가 화면(NDC)에서 차지하는 자리로 정한 2D 그림 크기와 위치 */
@@ -625,7 +630,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     };
     mat.customProgramCacheKey = () => 'jj-relief-warp';
     this.root.add(new Mesh(geo, mat));
-    this.relief = { texture, warp };
+    this.relief = { texture, warp, photo, canvas: c, open: 1 };
     this.hasHead = false;
     this.hasHand = false;
     this.ready = true;
@@ -2534,6 +2539,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
   /** 입체 판은 관절이 없어 몸 전체를 살짝 돌리고 기울인다. 옆이 보이지 않게 25도까지 */
   private poseRelief(s: DrawState, sx: number, sy: number, act: Act) {
     this.root.scale.set(sx, sy, sx);
+    this.reliefEyes(s, act);
     let y = 0;
     let z = 0;
     let x = 0;
@@ -2582,6 +2588,22 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       z *= 0.5;
     }
     this.root.rotation.set(x, Math.max(-max, Math.min(max, y + this.spin * 0.4)), z);
+  }
+
+  /** 2.5D 판도 사진처럼 잠, 졸음, 깜빡임에 눈을 감는다 (눈 자리를 아는 그림만, 2026-10-12) */
+  private reliefEyes(s: DrawState, act: Act) {
+    const r = this.relief;
+    if (!r) return;
+    const open = s.photoEyes
+      ? photoEyeOpen({ ...s, activity: act, moveEyes: movePoseOf(act, s.calm)?.eyes, sulk: sulkStage(s) })
+      : 1;
+    if (open === r.open) return;
+    r.open = open;
+    const g = r.canvas.getContext('2d');
+    if (!g) return;
+    g.clearRect(0, 0, r.canvas.width, r.canvas.height);
+    g.drawImage(eyedPhoto(r.photo, s.photoEyes, open), 0, 0);
+    r.texture.needsUpdate = true;
   }
 
   private pose(s: DrawState, sx: number, sy: number, act: Act) {

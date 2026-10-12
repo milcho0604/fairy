@@ -7,6 +7,7 @@ import { MEET_CHANCE, MEET_COOLDOWN_MS, MEET_EVERY_MS, meetPlan } from '../share
 import { type Blueprint, parseBlueprint } from '../shared/pet3d/blueprint.ts';
 import { starterModelOf } from '../shared/pet3d/starters.ts';
 import type { Friend } from '../shared/settings.ts';
+import { starterOf } from '../shared/starter-pets.ts';
 import type { WearLook } from '../shared/wear.ts';
 import { saverNow } from './battery.ts';
 import { boostOn } from './boost.ts';
@@ -70,6 +71,7 @@ function imageOf(f: Friend): PetImages {
       depth: depthOf(f.depth),
       poses: {},
       ...(f.age ? { age: f.age } : {}),
+      ...(starterOf(f.image) ? { starter: starterOf(f.image) } : {}),
     };
   } catch {
     return none;
