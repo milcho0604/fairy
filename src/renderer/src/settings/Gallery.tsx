@@ -37,10 +37,13 @@ const FAIL_TEXT = {
 export function Gallery({
   onMsg,
   meta,
+  personal = false,
 }: {
   onMsg: (m: string, error?: boolean) => void;
   /** 지금 펫이 펫 파일에서 왔으면 그 만든 사람, 허락 (보내기 칸에 미리 채운다) */
   meta?: PetLookView['meta'];
+  /** 지금 펫이 다른 캐릭터를 닮게 말로 만든 개인 용도 페어리인지 (보내기 칸에 한 줄 안내) */
+  personal?: boolean;
 }) {
   const [list, setList] = useState<GalleryList | 'loading'>();
   const [busy, setBusy] = useState('');
@@ -121,7 +124,7 @@ export function Gallery({
           ))}
         </ul>
       )}
-      <GalleryShare onMsg={onMsg} meta={meta} />
+      <GalleryShare onMsg={onMsg} meta={meta} personal={personal} />
     </>
   );
 }
@@ -133,9 +136,11 @@ export function Gallery({
 function GalleryShare({
   onMsg,
   meta,
+  personal,
 }: {
   onMsg: (m: string, error?: boolean) => void;
   meta?: PetLookView['meta'];
+  personal: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [author, setAuthor] = useState('');
@@ -187,6 +192,8 @@ function GalleryShare({
         </select>
         <small>{t('settings.gallery.licenseHint')}</small>
       </label>
+      {/* 다른 캐릭터를 닮은 페어리: 막지 않고 한 줄만 (shared/pet-share.ts personalOnly) */}
+      {personal && <small>{t('pet.share.personalHint')}</small>}
       <div className="action-row">
         <button type="button" className="ghost" disabled={saving} onClick={share}>
           {t('settings.gallery.make')}

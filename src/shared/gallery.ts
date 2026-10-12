@@ -159,7 +159,16 @@ export function entryFor(
 
 /** 판 2 에서 아는 칸 (갤러리 펫 검사: 모르는 칸이 있으면 넣지 않는다) */
 const TOP_KEYS = new Set(['format', 'version', 'manifest', 'images', 'blueprint', 'depth']);
-const MANIFEST_KEYS = new Set(['name', 'species', 'author', 'license', 'created', 'appVersion', 'age']);
+const MANIFEST_KEYS = new Set([
+  'name',
+  'species',
+  'author',
+  'license',
+  'created',
+  'appVersion',
+  'age',
+  'personalOnly',
+]);
 const IMAGE_KEYS = new Set(['main', 'poses', 'thumbnail']);
 const POSE_KEYS = new Set(['happy', 'sleepy', 'hungry']);
 
@@ -210,6 +219,9 @@ export function validateSubmission(
   if (raw.blueprint !== undefined && !pet.model) problems.push('blueprint is broken');
   if (raw.depth !== undefined && !pet.depth) problems.push('depth is broken or used together with blueprint');
   if (manifest.age !== undefined && !pet.age) problems.push('manifest.age is not a known age stage');
+  // 이미 있는 캐릭터를 닮게 만든 개인 용도 페어리는 공식 갤러리에 올리지 않는다 (말로 만들기, pet-share.ts personalOnly)
+  if (manifest.personalOnly !== undefined)
+    problems.push('manifest.personalOnly: personal-use fairies are not accepted in the gallery');
   return problems.length ? { problems } : { problems, pet };
 }
 

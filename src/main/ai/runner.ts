@@ -43,6 +43,8 @@ export interface AiRequest {
   model?: string;
   /** 짝꿍 도구 쓰기: 펫 MCP 서버. claude, codex 만 */
   jjServer?: McpLaunch;
+  /** 웹 검색 도구 하나만 켠다 (말로 만들기에서 캐릭터 모습 찾기). claude 만 */
+  webSearch?: boolean;
 }
 
 export interface AiRun {

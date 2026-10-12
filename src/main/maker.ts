@@ -38,7 +38,18 @@ import {
   extractBlueprintWithFixes,
   WISH_MAX,
 } from '../shared/pet3d/prompt.ts';
+import { canStand } from '../shared/pet3d/stand.ts';
 import { starterFigureOf } from '../shared/pet3d/starters.ts';
+import {
+  cleanDescribe,
+  DESCRIBE_MAX,
+  describePrompt,
+  readTextAnswer,
+  TEXT_SYSTEM,
+  TWEAK_MAX,
+  textOk,
+  tweakPrompt,
+} from '../shared/pet3d/text-prompt.ts';
 import { cleanPetName, isGait, POSE_KINDS, photoPetName } from '../shared/settings.ts';
 import { CUSTOM_FOOD_COST } from '../shared/shop.ts';
 import { starterOf } from '../shared/starter-pets.ts';
@@ -134,13 +145,25 @@ const MAX_DEPTH_BYTES = 1024 * 1024;
  * 저장할 입체 모습을 고른다. 설계도는 다시 검사하고, 깊이 그림은 PNG 인지와 크기를 본다.
  * 설계도와 같이 온 요청사항(그 설계도를 만든 글)은 다듬어 둔다 (걸음새에 맞게 다시 만들 때 쓴다)
  */
-function lookOf(raw: unknown): { model?: Blueprint; depth?: Buffer; wish?: string } {
+function lookOf(raw: unknown): {
+  model?: Blueprint;
+  depth?: Buffer;
+  wish?: string;
+  personalOnly?: true;
+  stand?: true;
+} {
   if (typeof raw !== 'object' || raw === null) return {};
   const r = raw as Record<string, unknown>;
   const model = parseBlueprint(r.model);
   if (model) {
     const wish = typeof r.wish === 'string' && r.wish.length <= WISH_MAX * 4 ? cleanWish(r.wish) : '';
-    return wish ? { model, wish } : { model };
+    return {
+      model,
+      ...(wish ? { wish } : {}),
+      // 말로 만들기: 개인 용도 표시와 네 발로 서기 (서기는 설 수 있는 몸일 때만)
+      ...(r.personalOnly === true ? { personalOnly: true as const } : {}),
+      ...(r.stand === true && canStand(model) ? { stand: true as const } : {}),
+    };
   }
   const prefix = 'data:image/png;base64,';
   if (typeof r.depth === 'string' && r.depth.startsWith(prefix)) {
@@ -164,6 +187,13 @@ export function modelOf(file: string | undefined): Blueprint | null {
   }
 }
 
+/** 글만으로 AI 한 번 묻기 (chat.textShot, 말로 만들기) */
+export type AskText = (
+  text: string,
+  system: string,
+  signal?: AbortSignal,
+) => Promise<{ ok: true; text: string; provider: string } | { ok: false; error: string; noAi?: true }>;
+
 /** AI 한 번 묻기 (chat.oneShot) */
 export type AskWithImage = (
   text: string,
@@ -183,9 +213,16 @@ export function createMaker(
   /** 커스텀 먹이 (v1 상점): 그림 파일을 저장한 뒤 상점에 넣는다. 코인이 모자라면 실패 */
   makeFood?: (name: string, file: string) => { ok: boolean; error?: string },
   /** 사진을 AI 에 보내 입체 설계도를 받는다 (6단계) */
-  ai?: { ask: AskWithImage; hasVision: () => Promise<boolean> },
+  ai?: {
+    ask: AskWithImage;
+    hasVision: () => Promise<boolean>;
+    /** 말로 만들기 (글만 보내는 AI) */
+    text?: { ask: AskText; has: () => Promise<boolean> };
+  },
 ) {
   const askWithImage = ai?.ask;
+  /** 말로 만들기에 쓸 AI. 개발 시험은 __jj.maker.debugTextAi 로 가짜 AI 를 넣는다 (진짜 AI 를 부르지 않게) */
+  let textAi = ai?.text;
   let win: BrowserWindow | undefined;
   let download: AbortController | undefined;
   let shaping: AbortController | undefined;
@@ -246,6 +283,72 @@ export function createMaker(
   }
 
   ipcMain.handle(MAKER.visionAi, async (e) => fromMaker(e) && target === 'main' && !!(await ai?.hasVision()));
+
+  ipcMain.handle(MAKER.textAi, async (e) => fromMaker(e) && target === 'main' && !!(await textAi?.has()));
+
+  /** 말로 만들기 한 번 (처음 만들기, 고치기). 글은 기록에 남기지 않고 길이만 */
+  async function askText(kind: 'describe' | 'tweak', prompt: string, chars: number) {
+    const ask = textAi?.ask;
+    if (!ask) return { ok: false as const, noAi: true, error: t('main.maker.noTextAi') };
+    shaping?.abort();
+    const abort = new AbortController();
+    shaping = abort;
+    const started = Date.now();
+    const r = await ask(prompt, TEXT_SYSTEM, abort.signal);
+    if (shaping === abort) shaping = undefined;
+    const secs = `${Math.round((Date.now() - started) / 1000)}s`;
+    if (abort.signal.aborted) {
+      log('maker', kind, 'cancelled', secs);
+      return { ok: false as const, error: t('main.maker.shapeCancelled') };
+    }
+    if (!r.ok) {
+      log('maker', kind, r.noAi ? 'no ai' : r.error);
+      return r;
+    }
+    const got = readTextAnswer(r.text);
+    log(
+      'maker',
+      kind,
+      r.provider,
+      secs,
+      got.ok ? `${got.bp.parts.length} parts` : got.reason,
+      `text ${chars}`,
+      got.ok && got.namedCharacter ? 'named' : '',
+      got.ok && got.fixes.length ? `fixed ${got.fixes.join(', ')}` : '',
+    );
+    return got.ok
+      ? { ok: true as const, model: got.bp, namedCharacter: got.namedCharacter }
+      : { ok: false as const, error: t('main.maker.textBad') };
+  }
+
+  // 말로 만들기: 적은 글(다듬어 자료 칸에 넣는다)만 AI 에 보낸다. 기록은 남기지 않는다
+  ipcMain.handle(MAKER.describe, async (e, textRaw: unknown) => {
+    if (!fromMaker(e) || target !== 'main') return { ok: false, error: t('main.maker.reopen') };
+    if (!textOk(textRaw, DESCRIBE_MAX)) return { ok: false, error: t('main.maker.badFormat') };
+    const text = cleanDescribe(textRaw);
+    if (!text) return { ok: false, error: t('main.maker.textEmpty') };
+    return askText('describe', describePrompt(text, { webSearch: true }), [...text].length);
+  });
+
+  // 말로 만들기 고치기: 지금 설계도(다시 검사)와 고칠 점. 처음 결과가 캐릭터였으면 고친 뒤에도 그대로 둔다
+  ipcMain.handle(
+    MAKER.tweak,
+    async (e, modelRaw: unknown, askRaw: unknown, originalRaw: unknown, namedRaw: unknown) => {
+      if (!fromMaker(e) || target !== 'main') return { ok: false, error: t('main.maker.reopen') };
+      const model = parseBlueprint(modelRaw);
+      if (!model || !textOk(askRaw, TWEAK_MAX) || (originalRaw != null && !textOk(originalRaw, DESCRIBE_MAX)))
+        return { ok: false, error: t('main.maker.badFormat') };
+      const ask = cleanDescribe(askRaw, TWEAK_MAX);
+      if (!ask) return { ok: false, error: t('main.maker.textEmpty') };
+      const named = namedRaw === true;
+      const r = await askText(
+        'tweak',
+        tweakPrompt(model, ask, cleanDescribe(originalRaw), named),
+        [...ask].length,
+      );
+      return r.ok ? { ...r, namedCharacter: r.namedCharacter || named } : r;
+    },
+  );
 
   ipcMain.handle(MAKER.ensureDepth, async (e) => {
     if (!fromMaker(e)) return { ok: false, error: t('main.maker.reopen') };
@@ -680,6 +783,13 @@ export function createMaker(
           ...(modelFile && look.wish
             ? { petWishes: { ...settings.get().petWishes, [modelFile]: look.wish } }
             : {}),
+          // 말로 만든 펫: 개인 용도 표시, 네 발로 선 피규어 (설계도 이름으로. 설정에서 바꿀 수 있다)
+          ...(modelFile && look.personalOnly
+            ? { petPersonal: { ...settings.get().petPersonal, [modelFile]: true } }
+            : {}),
+          ...(modelFile && look.stand
+            ? { petStands: { ...settings.get().petStands, [modelFile]: true } }
+            : {}),
         });
         // 저장은 끝났다: 옛 파일 치우기가 실패해도(윈도우 파일 잠김) 방금 쓴 새 펫 파일을 지우지 않는다
         try {
@@ -771,6 +881,8 @@ export function createMaker(
     settings.set({
       petModel: file,
       ...(wish ? { petWishes: { ...now.petWishes, [file]: wish } } : {}),
+      // 개인 용도 표시는 새 몸에도 (말로 만든 펫. 다시 만들어도 갤러리에 못 올리는 것은 같다)
+      ...(now.petPersonal[oldModel] ? { petPersonal: { ...now.petPersonal, [file]: true } } : {}),
     });
     library.cleanup([oldModel]);
     return { ok: true };
@@ -848,6 +960,18 @@ export function createMaker(
   return {
     open,
     remake,
+    /**
+     * 개발용 (__jj): 말로 만들기에 가짜 AI 를 넣는다. 답할 글을 돌려주는 함수, undefined 면 원래 AI 로.
+     * 시험이 진짜 AI 를 부르지 않게 한다. 설치한 앱에서는 __jj 가 없어 부를 수 없다
+     */
+    debugTextAi(answer?: (prompt: string) => string | Promise<string>) {
+      textAi = answer
+        ? {
+            has: async () => true,
+            ask: async (prompt) => ({ ok: true, text: await answer(prompt), provider: 'stub' }),
+          }
+        : ai?.text;
+    },
     /** 다시 만들기를 멈춘다 (설정 창의 그만두기, 창 닫기) */
     cancelRemake: () => remaking?.abort(),
     get window() {

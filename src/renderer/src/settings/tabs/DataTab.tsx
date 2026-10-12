@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { formatBytes } from '../../../../shared/bytes.ts';
 import { t } from '../../../../shared/i18n/index.ts';
 import type { SettingsSnapshot } from '../../../../shared/ipc.ts';
+import { isPersonalPet } from '../../../../shared/settings.ts';
 import { ExportBox, ExportedRow } from '../ExportBox.tsx';
 import { bridge, Section, type TabProps } from '../ui.tsx';
 
@@ -68,6 +69,8 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
             {t('settings.importPet')}
           </button>
         </div>
+        {/* 다른 캐릭터를 닮게 말로 만든 페어리: 막지 않고 한 줄만 (shared/pet-share.ts personalOnly) */}
+        {isPersonalPet(snap.settings) && <small>{t('pet.share.personalHint')}</small>}
         <ExportedRow path={exported} />
       </Section>
       <ExportBox flash={flash} />

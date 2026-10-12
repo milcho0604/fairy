@@ -253,3 +253,15 @@ test('짝꿍 도구: codex 는 -c mcp_servers.fairy 설정으로, 샌드박스�
     !codexArgs({ text: '질문', imagePaths: [], persona: 'p' }).some((a) => a.includes('mcp_servers')),
   );
 });
+
+test('claude 명령: 말로 만들기는 웹 검색 도구 하나만 켜고 나머지 도구는 그대로 끈다', () => {
+  const base = { text: 'q', images: [], sessionId: 'abc', persona: 'p', resume: false, ephemeral: true };
+  const off = claudeArgs(base);
+  assert.equal(off[off.indexOf('--tools') + 1], '');
+  assert.ok(!off.includes('--allowedTools'));
+  const on = claudeArgs({ ...base, webSearch: true });
+  assert.equal(on[on.indexOf('--tools') + 1], 'WebSearch');
+  assert.equal(on[on.indexOf('--allowedTools') + 1], 'WebSearch');
+  // 격리는 그대로
+  assert.ok(on.includes('--strict-mcp-config') && on.includes('--no-session-persistence'));
+});

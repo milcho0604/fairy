@@ -1171,6 +1171,7 @@ ready
       {
         ask: (text, image, system, signal) => chat.oneShot(text, image, system, signal),
         hasVision: chat.hasVisionAi,
+        text: { ask: (text, system, signal) => chat.textShot(text, system, signal), has: chat.hasTextAi },
       },
     );
     const sendPetImage = () => {
