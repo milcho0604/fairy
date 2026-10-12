@@ -23,7 +23,7 @@ import {
 } from './export.ts';
 import { setLang } from './i18n/index.ts';
 import type { Note } from './note-store.ts';
-import { TodoStore } from './todo-store.ts';
+import { localDay, TodoStore } from './todo-store.ts';
 
 const utcDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 const NOW = Date.UTC(2026, 9, 11, 5, 0);
@@ -94,7 +94,8 @@ test('할 일 CSV 와 마크다운: 머리줄, BOM, CRLF, 단계, 끝낸 것', (
   assert.match(lines[2] ?? '', /^물 \*마시기\*,끝냄,,,,매일,/);
 
   const md = todosMarkdown(todos, NOW);
-  assert.match(md, /^# 할 일 \(2026-10-11\)/);
+  // 머리 날짜는 현지 날짜다 (시간대에 따라 2026-10-10 이나 10-11)
+  assert.ok(md.startsWith(`# 할 일 (${localDay(NOW)})`));
   assert.match(
     md,
     /- \[ \] 보고서, 초안 \(마감 2026-10-12 15:00, 중요\)\n {2}- \[x\] 자료 모으기\n {2}- \[ \] 쓰기/,
