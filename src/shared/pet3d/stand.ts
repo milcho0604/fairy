@@ -47,6 +47,8 @@ export function canStand(bp: Blueprint): boolean {
   if (bp.stance) return false;
   if (bp.parts.some((p) => !p.wear && (p.slot === 'wingL' || p.slot === 'wingR'))) return false;
   if (bp.face.mouth === 'beak') return false;
+  // 코 없이 그린 캐릭터, 인형 (귀와 꼬리가 있어도 진짜 동물 뼈대에 입히면 점 눈이 고양이 눈이 되고 긴 귀가 처진다)
+  if (bp.face.nose?.shape === 'none') return false;
   const ears = bp.parts.some((p) => !p.wear && (p.slot === 'earL' || p.slot === 'earR'));
   const tail = bp.parts.some((p) => !p.wear && p.slot === 'tail');
   return ears && (tail || bp.gait === 'quadruped');

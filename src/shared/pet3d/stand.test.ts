@@ -50,6 +50,73 @@ test('네 발로 서기: 인형, 새, 이미 선 몸은 그대로 둔다', () =>
   assert.equal(standingBlueprint(milk), undefined);
 });
 
+// 그림 캐릭터 (코 없이 그린 점 눈, 빗금 볼). 귀와 꼬리가 있어도 진짜 동물 뼈대로 세우면 호박색 고양이 눈과 수염이 붙고
+// 긴 귀는 처진 강아지 귀가 된다
+const W = '#f7f4ee';
+const longEarBunny: Blueprint = {
+  v: 2,
+  gait: 'biped',
+  parts: [
+    { slot: 'body', shape: 'sphere', at: [0, 0.34, 0], size: [0.36, 0.34, 0.32], color: W, finish: 'soft' },
+    {
+      slot: 'head',
+      shape: 'sphere',
+      at: [0, 0.74, 0.02],
+      size: [0.42, 0.34, 0.36],
+      color: W,
+      finish: 'soft',
+    },
+    {
+      slot: 'earL',
+      shape: 'capsule',
+      at: [-0.14, 1.12, -0.02],
+      size: [0.075, 0.2, 0.05],
+      color: W,
+      inner: '#f4c6cc',
+      mirror: true,
+    },
+    { slot: 'tail', shape: 'sphere', at: [0, 0.2, -0.32], size: [0.08, 0.08, 0.07], color: W },
+  ],
+  face: {
+    slot: 'head',
+    eyeY: 0.72,
+    eyeGap: 0.15,
+    eyeSize: 0.04,
+    mouth: 'cat',
+    mouthY: 0.64,
+    nose: { shape: 'none' },
+    blush: '#f6a3b0',
+  },
+};
+
+test('네 발로 서기: 코 없이 그린 캐릭터(긴 귀 흰 토끼 캐릭터, 머리 무늬 고양이 캐릭터)는 세우지 않는다', () => {
+  assert.equal(canStand(longEarBunny), false);
+  assert.equal(standingBlueprint(longEarBunny), undefined);
+  const capCat: Blueprint = {
+    ...longEarBunny,
+    parts: [
+      ...longEarBunny.parts.filter((p) => !p.slot.startsWith('ear')),
+      {
+        slot: 'earL',
+        shape: 'cone',
+        at: [-0.3, 1.14, 0],
+        size: [0.12, 0.13, 0.07],
+        color: '#6f8fc0',
+        mirror: true,
+      },
+    ],
+    face: { ...longEarBunny.face, blushLines: true },
+  };
+  assert.equal(canStand(capCat), false);
+  // 코가 있는 사진 동물은 그대로 세운다
+  assert.ok(
+    canStand({
+      ...longEarBunny,
+      face: { ...longEarBunny.face, nose: { shape: 'triangle', color: '#e88d8a' } },
+    }),
+  );
+});
+
 test('색 밝히기, 어둡게', () => {
   assert.equal(shade('#000000', 0.5), '#808080');
   assert.equal(shade('#ffffff', -0.5), '#808080');
