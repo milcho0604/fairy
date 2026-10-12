@@ -41,6 +41,7 @@ import {
 import { starterModelOf } from '../shared/pet3d/starters.ts';
 import { cleanPetName, isGait, POSE_KINDS, photoPetName } from '../shared/settings.ts';
 import { CUSTOM_FOOD_COST } from '../shared/shop.ts';
+import { starterOf } from '../shared/starter-pets.ts';
 import { BG_MODEL, ensureModel, modelReady, verifiedModelUrl } from './bg-model.ts';
 import { DEPTH_MODEL, depthReady, ensureDepthModel, verifiedDepthUrl } from './depth-model.ts';
 import { devRendererUrl } from './dev-url.ts';
@@ -122,6 +123,7 @@ export function petImages(): PetImages {
     depth: s.petImage ? dataUrlOf(s.petDepth) : null,
     poses,
     ...(s.petImage && s.petAge ? { age: s.petAge } : {}),
+    ...(starterOf(s.petImage) ? { starter: starterOf(s.petImage) } : {}),
   };
 }
 
