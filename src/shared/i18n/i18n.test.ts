@@ -134,3 +134,27 @@ test('영어 하나일 때 단수: 어제 끝낸 할 일 쪽지, 링크로 넣�
     setLang('ko');
   }
 });
+
+test('영어 하나일 때 단수: 오늘 일정 수, 메모 찾기, 습관 횟수, 보낼 일정, 진단 기록, 내보낸 메모, 비눗방울', () => {
+  setLang('en');
+  try {
+    assert.equal(t('plan.sheet.events', { n: 1 }), '1 event today');
+    assert.equal(t('plan.sheet.events', { n: 2 }), '2 events today');
+    assert.equal(t('panel.note.searchIn', { n: 1 }), 'Search 1 note');
+    assert.equal(t('panel.note.searchIn', { n: 4 }), 'Search 4 notes');
+    assert.equal(t('habit.total', { n: 1 }), '1 time so far');
+    assert.equal(t('habit.total', { n: 3 }), '3 times so far');
+    assert.equal(t('gcal.state.pending', { n: 1 }), '1 event left to send');
+    assert.equal(t('feedback.summary', { n: 1, hidden: 1 }), 'Last 1 line, 1 spot hidden');
+    assert.equal(t('feedback.summary', { n: 20, hidden: 0 }), 'Last 20 lines, 0 spots hidden');
+    assert.equal(t('export.notes.at', { day: '2026-10-12', n: 1 }), 'Exported 2026-10-12, 1 note');
+    assert.match(t('settings.report.first', { first: '2026-10-12', day: 1, used: 1 }), /opened on 1 day$/);
+    assert.match(t('play.bubbles.end', { popped: 1 }), /^Pop! 1 bubble\./);
+    assert.match(t('play.bubbles.endCoins', { popped: 1, coins: 1 }), /^Pop! 1 bubble\. 1 coin\.$/);
+  } finally {
+    setLang('ko');
+  }
+  // 한국어는 그대로
+  assert.equal(t('plan.sheet.events', { n: 1 }), '오늘 일정 1개');
+  assert.equal(t('habit.total', { n: 2 }), '지금까지 2번');
+});

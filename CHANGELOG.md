@@ -17,6 +17,7 @@
 
 ### 고친 것
 
+- 영어 화면에서 하나뿐일 때도 복수형으로 나오던 말을 고쳤어요. 아침 계획의 "1 events today", 메모 찾기 칸의 "Search 1 notes", 습관의 "1 times so far", 구글 캘린더의 "1 events left to send", 진단 기록 요약, 내보낸 메모 머리말, 비눗방울 놀이 끝 말이 이제 단수로 보여요
 - 영어 화면에서 어제 할 일을 하나 끝낸 날 쪽지가 "You finished 1 to-dos" 로 나오던 것을 고쳤어요
 - 영어 화면 달력 제목이 "December ..." 처럼 잘리던 것을 고쳤어요. 이제 "Dec 2026" 으로 보여요
 - 영어 화면 메모 편집 위 단추가 "Summariz e", "Delet e" 처럼 글자 중간에서 꺾이던 것을 고쳤어요. 이제 한 줄에 들어가요("Split into to-dos" 는 "Make to-dos" 로 줄였어요)
