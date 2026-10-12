@@ -235,15 +235,41 @@ export function bodyKey(s: Pick<Settings, 'petImage' | 'petModel' | 'petKind'>):
   return s.petModel;
 }
 
+/** 밀크, 초코 그림을 복사한 파일 이름 (starter-pets.ts starterFileName). 그쪽이 이 파일을 가져다 써서 모양만 따로 둔다 */
+const STARTER_IMAGE = /^pet-(milk|choco)-\d+\.png$/;
+/** 밀크, 초코의 네 발로 서기 키 (petStands) */
+const STARTER_STAND = /^starter:(milk|choco)$/;
+
+/**
+ * 네 발로 서기 키 (petStands). 설계도가 있는 사진 펫은 설계도 파일 이름, 설계도 없는 밀크, 초코 그림은 starter:<이름>.
+ * 밀크, 초코는 기본이 사진 그대로이고 켜면 앱에 든 네 발 피규어다 (0.4.1 사용자 결정: 0.4.0 피규어가 사진과 너무 달랐다)
+ */
+export function standKey(
+  image: string | null | undefined,
+  model: string | null | undefined,
+): string | undefined {
+  if (!image) return undefined;
+  if (model) return model;
+  const m = STARTER_IMAGE.exec(image);
+  return m ? `starter:${m[1]}` : undefined;
+}
+
 /** 지금 사진 펫을 네 발로 선 피규어로 보는지 (설정 petStands) */
 export function pickedStand(s: Pick<Settings, 'petImage' | 'petModel' | 'petKind' | 'petStands'>): boolean {
-  const key = s.petImage ? s.petModel : undefined;
+  const key = standKey(s.petImage, s.petModel);
   return !!key && s.petStands[key] === true;
+}
+
+/** 지금 펫이 설계도 없는 밀크, 초코 그림이면 네 발 피규어를 켰는지. 아니면 undefined (설정 창 칸) */
+export function starterStand(
+  s: Pick<Settings, 'petImage' | 'petModel' | 'petKind' | 'petStands'>,
+): boolean | undefined {
+  return standKey(s.petImage, s.petModel)?.startsWith('starter:') ? pickedStand(s) : undefined;
 }
 
 /** 지금 사진 펫의 네 발로 서기를 바꾸는 값. 고를 수 없는 펫(설계도 없음)이면 undefined */
 export function standPatch(s: Settings, on: boolean): Pick<Settings, 'petStands'> | undefined {
-  const key = s.petImage ? s.petModel : undefined;
+  const key = standKey(s.petImage, s.petModel);
   if (!key) return undefined;
   const { [key]: _, ...rest } = s.petStands;
   return { petStands: on ? { ...rest, [key]: true } : rest };
@@ -625,11 +651,11 @@ function bodiesOf(
       (k) => models.has(k),
       (x) => cleanWish(x) || undefined,
     ),
-    // 네 발로 서기는 입체 사진 펫에만 (켠 것만 남긴다)
+    // 네 발로 서기는 입체 사진 펫과 밀크, 초코에만 (켠 것만 남긴다)
     petStands: pick(
       r.petStands,
       base.petStands,
-      (k) => models.has(k),
+      (k) => models.has(k) || STARTER_STAND.test(k),
       (x) => (x === true ? true : undefined),
     ),
   };

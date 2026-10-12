@@ -59,6 +59,11 @@ export const ko = {
   'settings.gait.off3d': '입체로 보기를 켜면 고를 수 있어. 지금은 사진으로 보여서 다리가 없어.',
   'settings.gait.stand': (v: { name: string }) =>
     `${withParticle(v.name, '은')} 네 발로 선 피규어라 늘 네 발로 걸어.`,
+  'settings.gait.starterPhoto': (v: { name: string }) =>
+    `${withParticle(v.name, '은')} 지금 사진 그대로라 다리가 따로 없어. 아래 네 발로 선 피규어를 켜면 네 발로 걸어.`,
+  'settings.stand.starter': '네 발로 선 피규어',
+  'settings.stand.starterHint': (v: { name: string }) =>
+    `${withParticle(v.name, '을')} 사진 대신 네 발로 서서 걷고, 앉고, 엎드리는 입체 피규어로 보여 줘. 끄면 다시 사진 그대로야.`,
   'settings.gait.mismatch': (v: { name: string; body: string; pick: string }) =>
     `${withParticle(v.name, '은')} ${v.body} 몸으로 만들어졌어. 그대로 ${withParticle(v.pick, '으로')} 걸으면 어색해 보일 수 있어.`,
   'settings.gait.remake': (v: { pick: string }) => `${v.pick} 몸으로 다시 만들기`,
@@ -462,6 +467,11 @@ export const en: Translation<typeof ko> = {
   'settings.gait.off3d': 'Turn on Show in 3D to choose. Right now it shows as a photo with no legs.',
   'settings.gait.stand': (v) =>
     `${v.name} is a figure standing on four legs, so it always walks on four legs.`,
+  'settings.gait.starterPhoto': (v) =>
+    `${v.name} is shown as its photo, so it has no separate legs. Turn on the four-legged figure below to walk on four legs.`,
+  'settings.stand.starter': 'Four-legged figure',
+  'settings.stand.starterHint': (v) =>
+    `Show ${v.name} as a 3D figure that stands, walks, sits and lies down on four legs instead of the photo. Turn it off to see the photo again.`,
   'settings.gait.mismatch': (v) =>
     `${v.name} was made with a ${v.body} body. Walking on ${v.pick.toLowerCase()} as is may look odd.`,
   'settings.gait.remake': (v) => `Rebuild for ${v.pick.toLowerCase()}`,

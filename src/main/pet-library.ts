@@ -8,7 +8,7 @@ import type { PetLookView, SavedPetView, StarterView } from '../shared/ipc.ts';
 import { swapIn } from '../shared/pet-order.ts';
 import type { PetMeta } from '../shared/pet-share.ts';
 import { type Blueprint, parseBlueprint } from '../shared/pet3d/blueprint.ts';
-import { starterModelOf } from '../shared/pet3d/starters.ts';
+import { starterFigureOf } from '../shared/pet3d/starters.ts';
 import { LIBRARY_MAX, type PetKind, type SavedPet, type Settings } from '../shared/settings.ts';
 import { isStarterName, STARTER_PETS, type StarterId, starterOf } from '../shared/starter-pets.ts';
 import { readFileIn, safeFileIn } from './safe-file.ts';
@@ -248,8 +248,8 @@ function metaView(m: PetMeta | undefined): Pick<PetLookView, 'meta'> {
 function lookView(p: Pick<SavedPet, 'image' | 'model' | 'depth'>): PetLookView {
   const key = [p.image, p.model ?? '', p.depth ?? ''].join('|');
   const thumb = thumbOf(p.image);
-  // 밀크, 초코 그림은 앱에 든 네 발 입체 피규어 (maker.ts petImages 와 같은 순서)
-  const model = modelOf(p.model) ?? starterModelOf(p.image) ?? undefined;
+  // 밀크, 초코 그림은 네 발로 선 피규어를 켰을 때만 앱에 든 피규어 (maker.ts petImages 와 같은 순서)
+  const model = modelOf(p.model) ?? starterFigureOf(p.image, settings.get().petStands) ?? undefined;
   if (model) return { key, thumb, look: 'figure', model };
   const depth = depthOf(p.depth);
   if (depth) return { key, thumb, look: 'relief', depth };

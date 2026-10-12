@@ -16,7 +16,7 @@ import { isMiniGame, PLAY_COIN } from '../shared/minigames.ts';
 import { noteTitle } from '../shared/note-store.ts';
 import { setSpeechSource, setVoiceSource, voiced } from '../shared/persona-voice.ts';
 import { unlocked, WAVE_AWAY_SEC } from '../shared/pet-life.ts';
-import { starterModelOf } from '../shared/pet3d/starters.ts';
+import { starterFigureOf, starterModelOf } from '../shared/pet3d/starters.ts';
 import { restDaysOf } from '../shared/routine.ts';
 import { pickedGait, pickedStand } from '../shared/settings.ts';
 import { shortcutsChanged } from '../shared/shortcut.ts';
@@ -1413,7 +1413,9 @@ ready
         next.petModel !== prev.petModel ||
         next.petDepth !== prev.petDepth ||
         next.petAge !== prev.petAge ||
-        JSON.stringify(next.petPoses) !== JSON.stringify(prev.petPoses)
+        JSON.stringify(next.petPoses) !== JSON.stringify(prev.petPoses) ||
+        // 밀크, 초코의 네 발로 선 피규어 켜고 끄기 (사진과 피규어가 바뀐다)
+        starterFigureOf(next.petImage, next.petStands) !== starterFigureOf(prev.petImage, prev.petStands)
       ) {
         sendPetImage();
         pet.react();
