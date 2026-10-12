@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { customAiCount, IMPORT_FILES, importedChatSettings } from './backup-import.ts';
+import { customAiCount, IMPORT_FILES, importedChatSettings, PET_STATE_FILES } from './backup-import.ts';
 
 test('백업 가져오기: 사용자 AI 파일은 옮기지 않는다 (버그잡이 7차)', () => {
   assert.equal((IMPORT_FILES as readonly string[]).includes('ai-custom.json'), false);
@@ -25,4 +25,17 @@ test('백업에 든 사용자 AI 수', () => {
   );
   assert.equal(customAiCount(undefined), 0);
   assert.equal(customAiCount({}), 0);
+});
+
+test('백업 가져오기: 펫과 같이 지낸 기록(자람, 여정, 쪽지함, 기념일, 일기, 생일 인사)도 옮긴다', () => {
+  for (const f of [
+    'grow.json',
+    'journey.json',
+    'daily-note.json',
+    'pet-memory.json',
+    'diary.json',
+    'knows.json',
+  ])
+    assert.ok((IMPORT_FILES as readonly string[]).includes(f), f);
+  assert.ok(PET_STATE_FILES.every((f) => (IMPORT_FILES as readonly string[]).includes(f)));
 });

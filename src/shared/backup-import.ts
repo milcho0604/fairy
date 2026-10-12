@@ -4,11 +4,26 @@
  * 가져올 작은 설정 파일. 사용자 AI(ai-custom.json)는 빠진다: 실행할 프로그램과 인자라 그 컴퓨터 것이 아니고,
  * 남이 만든 백업이면 이름을 "Claude" 로 속인 명령을 기본 AI 로 심을 수 있었다.
  */
+/**
+ * 펫과 같이 지낸 기록 (2026-10-11 에 생긴 작은 파일들): 자란 단계, 첫 7일 여정, 매일 쪽지함과 받은 편지, 기념일 인사,
+ * 일기 다듬은 글, 생일 인사한 날. 백업에 없어 새 컴퓨터로 옮기면 첫 7일 여정이 다시 뜨고, 쪽지함이 비고,
+ * 받았던 기념 편지(코인 선물)를 또 받았다. 읽을 때 모두 모양을 검사한다
+ */
+export const PET_STATE_FILES = [
+  'grow.json',
+  'journey.json',
+  'daily-note.json',
+  'pet-memory.json',
+  'diary.json',
+  'knows.json',
+] as const;
+
 export const IMPORT_FILES = [
   'settings.json',
   'chat-settings.json',
   'pet-position.json',
   'planner.json',
+  ...PET_STATE_FILES,
 ] as const;
 
 /** 가져온 채팅 설정: 고른 AI 가 사용자 AI(custom-)면 기본으로 되돌린다 (그 AI 는 가져오지 않으니까) */
