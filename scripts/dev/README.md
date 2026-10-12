@@ -18,7 +18,7 @@ OUT=/tmp/jj-shots PHOTO=<사진> node scripts/dev/maker.mjs  # 사진으로 페�
 - `smoke-packaged.mjs`: 설치판(`electron-builder --dir`) 켜 보기 시험. CI 의 리눅스 묶음 시험이 쓴다
 - `cdp.mjs`: 메인 디버거(9229)에서 식 실행(`main`), 창 페이지 찾기(`page`), 화면 찍기, 어두운 모드. 다른 포트로 띄웠으면 `JJ_INSPECT_PORT`, `JJ_PAGE_PORT`
 - 메인 쪽 개발용 손잡이는 `globalThis.__jj` (`src/main/index.ts`, 설치한 앱에는 없다). 상태 넣기: `__jj.chat.debugSetState`, `__jj.pet.debugMoveTo`, `__jj.pet.debugScale`
-- 페어리 화면 쪽 손잡이는 `window.__pet` (`setInputs`, `requestActivity`, `mood`)
+- 페어리 화면 쪽 손잡이는 `window.__pet` (`setInputs`, `requestActivity`, `mood`). 움직임 점검: 페이지에서 `performance.now` 를 가상 시계로 바꿔 끼우고 `__pet.debugFrame()` 으로 한 틀씩 그리면(돌려준 값이 다음 틀까지 ms) 느린 가상 화면(swiftshader)에서도 앱이 고른 빠르기 그대로 틀을 찍는다. `__pet.debugFeetLog(true)` 는 입체 발바닥 자리와 디딘 발인지(두 발, 앉은 네 발, 네 발로 선 몸)를 모은다
 - 실제 데이터를 건드리지 않으려면 `JJ_USER_DATA=<빈 폴더>` 로 따로 띄운다(하나만 띄우기 잠금도 따로라 쓰는 앱과 같이 뜬다). 진단 기록은 그 폴더의 `logs/main.log`(1MB 넘으면 `main.old.log`)에 남는다
 - `JJ_NO_FOCUS=1`(시험 인스턴스, 늘 켠다): 창을 처음부터 맥북 내장 화면에 연다(`src/main/focus.ts` `confineTestDisplay`. 앱이 내장 화면만 있는 것처럼 본다). 창은 투명하게 숨기고 마우스를 통과시켜 사람이 실수로 잡지 못하고, 창을 앞으로 가져와 입력을 뺏지도 않는다. 화면은 CDP 로 찍고 입력도 CDP 로 넣는다. 띄운 뒤 옮기는 방식은 쓰지 않는다: 옮기기 전에 작업 모니터에 잠깐 떠 버린다 (규칙은 `CLAUDE.md`)
 - `JJ_SHOW=1`: `JJ_NO_FOCUS=1` 과 같이 쓰면 숨기지 않고 보이게 둔다(사람이 눈으로 봐야 할 때만). 맥북 화면 안, 입력 안 뺏기는 그대로

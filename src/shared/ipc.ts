@@ -84,6 +84,8 @@ export const IPC = {
   shotAsk: 'pet:shot-ask',
   /** 펫 화면 → 메인: 그린 PNG data URL (못 그렸으면 null) */
   shotGot: 'pet:shot-got',
+  /** 메인 → 펫 화면: 날아가다 바닥(y)이나 벽(x)에 부딪혔다. k 는 세기 0~1 */
+  impact: 'pet:impact',
   /** 메인 → 펫 화면: 사진 펫 그림 */
   image: 'pet:image',
   /** 메인 → 펫 화면: 커서 쪽 방향 칸 (null 이면 앞). 칸이 바뀔 때만 */
@@ -507,6 +509,7 @@ export interface PetBridge {
   /** 설계도 정면 그림 부탁 (걸음새로 다시 만든 몸의 펫 그림). 답은 shotGot 으로 */
   onShotAsk(listener: (id: number, model: unknown) => void): void;
   shotGot(id: number, png: string | null): void;
+  onImpact(listener: (hit: { axis: 'x' | 'y'; k: number }) => void): void;
   /** 커서 바라보기: 방향 칸 (null 이면 앞을 본다) */
   onGaze(listener: (gaze: Gaze | null) => void): void;
   /** 같이 보기 돋보기 모션. null 이면 끝 */

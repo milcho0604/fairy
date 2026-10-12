@@ -98,6 +98,9 @@ if (kind === 'pet') {
       ipcRenderer.on(IPC.shotAsk, (_e, id: number, model: unknown) => listener(id, model));
     },
     shotGot: (id: number, png: string | null) => ipcRenderer.send(IPC.shotGot, id, png),
+    onImpact: (listener) => {
+      ipcRenderer.on(IPC.impact, (_e, hit: { axis: 'x' | 'y'; k: number }) => listener(hit));
+    },
     onGaze: (listener) => {
       ipcRenderer.on(IPC.gaze, (_e, gaze: Gaze | null) => listener(gaze));
     },

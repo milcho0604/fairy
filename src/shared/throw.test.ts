@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { bounce, FLIGHT_MAX_MS, GRAVITY, releaseVelocity } from './throw.ts';
+import { bounce, bounceHit, FLIGHT_MAX_MS, GRAVITY, releaseVelocity } from './throw.ts';
 
 const area = { x: 0, y: 25, width: 1000, height: 775 }; // 바닥 y = 800
 const W = 160;
@@ -52,4 +52,13 @@ test('던지면 결국 바닥에 선다 (흉내)', () => {
   assert.equal(rest, true);
   assert.equal(b.y, 640);
   assert.ok(b.x >= 0 && b.x <= 840);
+});
+
+test('부딪힘: 아래로 빨리 가다 튀어 오르거나 멈추면 바닥, 옆으로 가다 거꾸로면 벽', () => {
+  assert.equal(bounceHit({ vx: 0, vy: 1200 }, { vx: 0, vy: -500 })?.axis, 'y');
+  assert.equal(bounceHit({ vx: 0, vy: 1200 }, { vx: 0, vy: 0 })?.axis, 'y');
+  assert.equal(bounceHit({ vx: 0, vy: 100 }, { vx: 0, vy: -50 }), undefined, '살살 닿으면 아니다');
+  assert.equal(bounceHit({ vx: 900, vy: 0 }, { vx: -500, vy: 0 })?.axis, 'x');
+  assert.equal(bounceHit({ vx: 900, vy: 300 }, { vx: 765, vy: 400 }), undefined, '그냥 날아가는 중');
+  assert.equal(bounceHit({ vx: 0, vy: 3600 }, { vx: 0, vy: -1600 })?.k, 1);
 });
