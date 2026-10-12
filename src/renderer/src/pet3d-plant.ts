@@ -168,7 +168,9 @@ export class FootPlanter {
       goal[id] = { x: s.x + this.bodyX, z: s.z };
     }
     // 오래 안 그렸거나 처음이거나 발을 붙여 두지 않는 자세: 발을 바랄 자리에 둔다
-    if (!(dt >= 0 && dt < GAP_MS) || f.hold < 0.5) {
+    // 걷는 중에 한 틀이 늦었으면(컴퓨터가 잠깐 바빴다) 디딘 자리를 그대로 두고 멀어진 발만 옮긴다
+    const gap = gait || Math.abs(f.move) > 1e-7 ? GAP_MS * 5 : GAP_MS;
+    if (!(dt >= 0 && dt < gap) || f.hold < 0.5) {
       for (const id of LEGS) {
         const n = nominal[id];
         this.feet.set(id, { ax: n.x, az: n.z, early: false });
