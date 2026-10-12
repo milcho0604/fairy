@@ -1,15 +1,26 @@
-import { type ClipboardEvent, type KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  type ClipboardEvent,
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
+import { isGuideProvider } from '../../../shared/ai/install-guide.ts';
 import type { AiProvider, AiStatus } from '../../../shared/ai/types.ts';
 import type { ChatMessage, ChatState } from '../../../shared/chat-state.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { OutgoingImage, ProviderView } from '../../../shared/ipc.ts';
 import { PetFace } from '../PetFace.tsx';
 import { AiManager } from './AiManager.tsx';
+import { InstallGuide } from './InstallGuide.tsx';
 import { toOutgoing } from './images.ts';
 import { chatKey, lastQuestion } from './keys.ts';
 import { Markdown } from './Markdown.tsx';
 import { ProviderPicker } from './ProviderPicker.tsx';
 import { isReady, statusText } from './providerStatus.ts';
+import { contentKey, conversationChanged, isNearBottom, jumpBehavior, scrollDecision } from './scroll.ts';
 import { UsageBar } from './UsageBar.tsx';
 
 const bridge = window.jjakkungChat;
@@ -26,9 +37,11 @@ export function App() {
   const [zoom, setZoom] = useState<string>();
   const [providers, setProviders] = useState<ProviderView[]>([]);
   const [managing, setManaging] = useState(false);
+  /** 설치 방법 시트를 연 AI (#29) */
+  const [guideFor, setGuideFor] = useState<AiProvider>();
   // 덮개(AI 관리, 그림 크게 보기)가 열려 있으면 입력칸으로 포커스를 옮기지 않는다 (가려진 입력칸에 붙여 넣고 보내졌다)
   const overlayRef = useRef(false);
-  overlayRef.current = managing || !!zoom;
+  overlayRef.current = managing || !!zoom || !!guideFor;
   const focusInput = useCallback(() => {
     if (!overlayRef.current) inputRef.current?.focus();
   }, []);
@@ -37,7 +50,15 @@ export function App() {
   const undoTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const stickToBottom = useRef(true);
+  // 아래 따라가기 (scroll.ts). following: 사용자가 맨 아래를 보고 있다. unseen: 위를 읽는 사이 새것이 왔다
+  const following = useRef(true);
+  const [unseen, setUnseen] = useState(false);
+  /** 내가 막 보냈다: 읽던 자리와 상관없이 내 질문과 답을 보여 준다 */
+  const sentRef = useRef(false);
+  /** "새 메시지" 단추로 부드럽게 내려가는 중 (그사이 스크롤 사건으로 따라가기를 끄지 않게) */
+  const jumping = useRef(false);
+  const jumpTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const seen = useRef<{ messages?: ChatState['messages']; key: string; provider?: string }>({ key: '' });
   const readFilesRef = useRef<(files: FileList | File[]) => void>(() => {});
   /** 창 전체 단축키(Esc, Cmd/Ctrl+N)가 지금 화면 값을 보게 매번 바꿔 끼운다 */
   const globalKeyRef = useRef<(e: globalThis.KeyboardEvent) => void>(() => {});
@@ -105,7 +126,7 @@ export function App() {
   }, [addImages, refreshStatus, focusInput]);
 
   // 덮개를 닫으면 입력칸으로 돌아온다
-  const covered = managing || !!zoom;
+  const covered = managing || !!zoom || !!guideFor;
   const wasCovered = useRef(false);
   useEffect(() => {
     if (wasCovered.current && !covered) focusInput();
@@ -145,7 +166,13 @@ export function App() {
   useEffect(() => {
     if (hasMessages) setUndoShown(false);
   }, [hasMessages]);
-  useEffect(() => () => clearTimeout(undoTimer.current), []);
+  useEffect(
+    () => () => {
+      clearTimeout(undoTimer.current);
+      clearTimeout(jumpTimer.current);
+    },
+    [],
+  );
 
   // 답이 새로 끝나면 한 번 알린다
   useEffect(() => {
@@ -168,17 +195,69 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // 새 메시지가 오면 맨 아래로. 사용자가 위로 올려 읽는 중이면 두지 않는다.
+  // 새 메시지, 답 조각, 생각 중 표시가 생기면 맨 아래로 (그리기 전에 옮겨 깜빡이지 않게).
+  // 사용자가 위로 올려 읽는 중이면 끌어내리지 않고 "새 메시지" 단추를 띄운다
+  useLayoutEffect(() => {
+    const el = listRef.current;
+    if (!el || !state) return;
+    const before = seen.current;
+    const key = contentKey(state.messages, state.pendingId);
+    const grew = key !== before.key;
+    const switched =
+      (before.messages !== state.messages && conversationChanged(before.messages, state.messages)) ||
+      (before.provider !== undefined && before.provider !== state.provider);
+    const decision = scrollDecision({ following: following.current, grew, sent: sentRef.current, switched });
+    if (decision === 'follow') {
+      following.current = true;
+      jumping.current = false;
+      el.scrollTop = el.scrollHeight;
+      setUnseen(false);
+    } else if (decision === 'notify') setUnseen(true);
+    if (grew) sentRef.current = false;
+    seen.current = { messages: state.messages, key, provider: state.provider };
+  });
+
+  // 다시 그리기 없이 크기만 바뀌어도(늦게 뜨는 그림, 5초 뒤 "오래 걸려" 안내, 창 크기) 아래를 보고 있었으면 아래에 둔다
+  const resizeObs = useRef<ResizeObserver>(undefined);
+  useEffect(() => {
+    const ro = new ResizeObserver(() => {
+      const el = listRef.current;
+      // 단추로 내려가는 중이어도 갈 곳은 맨 아래라 바로 맞춘다 (창 크기가 바뀌면 부드러운 스크롤이 도중에 멈춘다)
+      if (el && following.current) el.scrollTop = el.scrollHeight;
+    });
+    resizeObs.current = ro;
+    return () => ro.disconnect();
+  }, []);
   useEffect(() => {
     const el = listRef.current;
-    if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
+    const ro = resizeObs.current;
+    if (!el || !ro) return;
+    ro.observe(el);
+    for (const child of el.children) ro.observe(child);
   });
+
+  const jumpToBottom = () => {
+    const el = listRef.current;
+    if (!el) return;
+    following.current = true;
+    setUnseen(false);
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    jumping.current = !reduced;
+    el.scrollTo({ top: el.scrollHeight, behavior: jumpBehavior(reduced) });
+    // 부드러운 스크롤이 끝에 닿지 못하고 멈춰도 오래 붙잡지 않는다
+    clearTimeout(jumpTimer.current);
+    jumpTimer.current = setTimeout(() => {
+      jumping.current = false;
+    }, 1500);
+    focusInput();
+  };
 
   if (!state) return <div className="loading">{t('chat.loading')}</div>;
 
   const pending = !!state.pendingId;
   const current = status[state.provider];
   const spec = providers.find((p) => p.id === state.provider);
+  const guideSpec = providers.find((p) => p.id === guideFor);
   const labelOf = (id?: AiProvider) => providers.find((p) => p.id === id)?.label ?? id ?? '';
   const imagesBlocked = !!spec && !spec.images && images.length > 0;
   // 한도에 걸리면 바로 물어볼 수 있는 다른 AI (설치, 로그인 확인된 것)
@@ -198,7 +277,7 @@ export function App() {
   const undoNewChat = async () => {
     clearTimeout(undoTimer.current);
     setUndoShown(false);
-    if (await bridge.undoReset()) stickToBottom.current = true;
+    if (await bridge.undoReset()) following.current = true;
   };
 
   const send = () => {
@@ -207,7 +286,7 @@ export function App() {
     setText('');
     setImages([]);
     setNotice('');
-    stickToBottom.current = true;
+    sentRef.current = true;
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -234,9 +313,10 @@ export function App() {
   globalKeyRef.current = (e) => {
     const key = chatKey(e, bridge.platform);
     if (key === 'escape') {
-      // 그림 크게 보기, AI 관리가 열려 있으면 그것부터 닫는다. 답을 기다리면 멈춘다. 아무것도 없고 쓰던 글도 없으면
-      // 창을 닫는다 (패널, 설정 창과 같게. 쓰던 글은 Esc 하나로 잃지 않게 둔다)
+      // 그림 크게 보기, 설치 방법, AI 관리가 열려 있으면 그것부터 닫는다 (설치 방법은 AI 관리 위에 뜰 수 있어 먼저).
+      // 답을 기다리면 멈춘다. 아무것도 없고 쓰던 글도 없으면 창을 닫는다 (패널, 설정 창과 같게. 쓰던 글은 Esc 하나로 잃지 않게 둔다)
       if (zoom) setZoom(undefined);
+      else if (guideFor) setGuideFor(undefined);
       else if (managing) setManaging(false);
       else if (pending) bridge.cancel();
       else if (!text.trim() && !e.defaultPrevented) window.close();
@@ -317,11 +397,24 @@ export function App() {
             refreshStatus(false);
           }}
           onClose={() => setManaging(false)}
+          onGuide={setGuideFor}
           onDownload={() => {
             bridge.setProvider('local');
             bridge.downloadModel();
           }}
           download={state.modelDownload}
+        />
+      )}
+      {guideFor && (
+        <InstallGuide
+          provider={guideFor}
+          label={labelOf(guideFor)}
+          platform={bridge.platform}
+          checking={checking}
+          statusLine={guideSpec ? statusText(guideSpec, status[guideFor]) : undefined}
+          onRecheck={() => refreshStatus(true)}
+          onLink={bridge.openLink}
+          onClose={() => setGuideFor(undefined)}
         />
       )}
       {zoom && (
@@ -338,6 +431,11 @@ export function App() {
       {spec && current && !isReady(current) && (
         <div className="banner action-row" role="status">
           <span className="grow">{statusText(spec, current)}</span>
+          {!current.installed && isGuideProvider(spec.id) && (
+            <button type="button" className="ghost" onClick={() => setGuideFor(spec.id)}>
+              {t('ai.guide.show')}
+            </button>
+          )}
           <button type="button" className="ghost" disabled={checking} onClick={() => refreshStatus(true)}>
             {checking ? t('chat.checking') : t('chat.recheck')}
           </button>
@@ -353,8 +451,16 @@ export function App() {
         aria-relevant="additions"
         aria-label={t('chat.a11yLog', { name: petName })}
         onScroll={(e) => {
-          const el = e.currentTarget;
-          stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+          const near = isNearBottom(e.currentTarget);
+          // 단추로 내려가는 중의 중간 자리는 사용자가 올린 것이 아니다
+          if (jumping.current && !near) return;
+          jumping.current = false;
+          following.current = near;
+          if (near) setUnseen(false);
+        }}
+        // 내려가는 중에 사용자가 직접 굴리면 그 손을 따른다
+        onWheel={() => {
+          jumping.current = false;
         }}
       >
         {state.messages.length === 0 && (
@@ -393,9 +499,25 @@ export function App() {
             download={m.id === state.messages.at(-1)?.id ? state.modelDownload : undefined}
             isLast={m.id === state.messages.at(-1)?.id}
             freeModelMb={freeModelMb(m)}
+            onGuide={setGuideFor}
           />
         ))}
       </div>
+
+      {unseen && (
+        <div className="new-below-wrap">
+          <button
+            type="button"
+            className="new-below"
+            // 눌러도 입력칸의 커서를 뺏지 않는다
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={jumpToBottom}
+          >
+            {t('chat.newBelow')}
+            <span aria-hidden="true"> ↓</span>
+          </button>
+        </div>
+      )}
 
       <span className="sr-only" role="status" aria-live="polite">
         {announce}
@@ -511,6 +633,8 @@ interface MessageProps {
   /** 받을 모델 크기 (오류 문구에서 읽는다) */
   freeModelMb?: string;
   isLast: boolean;
+  /** 설치 방법 시트 열기 (못 찾음 오류 아래 단추) */
+  onGuide: (id: AiProvider) => void;
 }
 
 /** 무료 AI 오류 문구의 "(397MB)" 에서 크기를 읽는다. 단추에 같이 적는다 */
@@ -525,6 +649,7 @@ function Message({
   download,
   freeModelMb: mb,
   isLast,
+  onGuide,
 }: MessageProps) {
   if (m.role === 'notice') return <p className="system">{m.text}</p>;
   if (m.role === 'user') {
@@ -614,6 +739,17 @@ function Message({
             )}
           </div>
         )}
+        {/* 못 찾음: 말풍선은 짧게, 자세한 설치와 로그인은 시트로 (#29) */}
+        {m.status === 'error' &&
+          m.error?.kind === 'not-installed' &&
+          m.provider &&
+          isGuideProvider(m.provider) && (
+            <div className="retry action-row">
+              <button type="button" className="ghost" onClick={() => m.provider && onGuide(m.provider)}>
+                {t('ai.guide.show')}
+              </button>
+            </div>
+          )}
         {/* 한도, 설치 안 됨, 로그인 안 됨: 바로 물어볼 수 있는 다른 AI (무료 AI 포함) */}
         {m.status === 'error' &&
           (m.error?.kind === 'rate-limit' ||

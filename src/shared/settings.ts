@@ -267,6 +267,23 @@ export function starterStand(
   return standKey(s.petImage, s.petModel)?.startsWith('starter:') ? pickedStand(s) : undefined;
 }
 
+/**
+ * 지금 펫 모습(설정 창 snapshot.current)을 다시 받아야 하는지 가르는 열쇠. 그림, 설계도, 깊이, 보관함이 바뀌거나
+ * 밀크, 초코의 네 발 피규어를 켜고 끌 때 (그때 사진이 피규어로 바뀐다, starters.ts starterFigureOf).
+ * 피규어 켜기가 빠져 있어 켠 뒤에도 설정 창이 옛 사진 모습으로 걸음새 칸을 그렸다 (#28)
+ */
+export function lookKey(
+  s: Pick<Settings, 'petImage' | 'petModel' | 'petKind' | 'petDepth' | 'petLibrary' | 'petStands'>,
+): string {
+  return JSON.stringify([
+    s.petImage,
+    s.petModel,
+    s.petDepth,
+    s.petLibrary.map((p) => p.id),
+    starterStand(s) ?? null,
+  ]);
+}
+
 /** 지금 사진 펫의 네 발로 서기를 바꾸는 값. 고를 수 없는 펫(설계도 없음)이면 undefined */
 export function standPatch(s: Settings, on: boolean): Pick<Settings, 'petStands'> | undefined {
   const key = standKey(s.petImage, s.petModel);

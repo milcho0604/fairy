@@ -1,7 +1,7 @@
 import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { t } from '../../../shared/i18n/index.ts';
 import type { SettingsSnapshot } from '../../../shared/ipc.ts';
-import type { Settings } from '../../../shared/settings.ts';
+import { lookKey, type Settings } from '../../../shared/settings.ts';
 import { groupRows, type RowKind, searchSettings } from '../../../shared/settings-search.ts';
 import {
   globalTabKey,
@@ -46,12 +46,8 @@ export function SettingsApp() {
     bridge.onChanged((settings) => {
       // 펫 만들기 창에서 새 펫을 저장하면 보관함과 지금 그림이 바뀐다. 그때만 다시 받는다
       // 몸을 다시 만들면(걸음새) 설계도 파일만 바뀐다. 그때도 지금 펫 카드와 몸 모양을 다시 받는다
-      const key = JSON.stringify([
-        settings.petImage,
-        settings.petModel,
-        settings.petDepth,
-        settings.petLibrary.map((p) => p.id),
-      ]);
+      // 밀크, 초코의 네 발 피규어를 켜고 끌 때도 (사진이 피규어로 바뀐다, #28)
+      const key = lookKey(settings);
       if (key !== libraryKey.current) {
         libraryKey.current = key;
         // 설정과 보관함을 한 번에 바꾼다. 설정만 먼저 바꾸면 잠깐 새 지금 펫과 옛 보관함이 섞여 카드가 사라졌다 나타났다

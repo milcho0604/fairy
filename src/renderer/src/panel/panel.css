@@ -484,6 +484,7 @@ li.pin-end {
 
 .note-end {
   display: inline-flex;
+  margin-left: auto;
   align-items: center;
   gap: 6px;
 }
@@ -1188,7 +1189,15 @@ li.pin-end {
 
 .note-bar {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
+  row-gap: 4px;
+}
+
+/* 단추 글이 글자 단위로 꺾이지 않게 ("Summariz e"). 좁으면 줄째로 다음 줄로 간다 */
+.note-bar .link {
+  white-space: nowrap;
 }
 
 .note-bar .back {
@@ -1232,9 +1241,9 @@ li.pin-end {
 
 .note-ai {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   margin-left: auto;
-  margin-right: 14px;
+  margin-right: 10px;
 }
 
 /* 메모 다듬기: 받은 글을 원래 글 위에 두고 견준다 */

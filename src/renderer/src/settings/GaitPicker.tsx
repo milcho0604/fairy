@@ -2,13 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { t } from '../../../shared/i18n/index.ts';
 import type { SettingsSnapshot } from '../../../shared/ipc.ts';
 import type { Gait } from '../../../shared/pet3d/blueprint.ts';
-import { DEFAULT_BLUEPRINTS } from '../../../shared/pet3d/defaults.ts';
 import { canStand, oddBody } from '../../../shared/pet3d/stand.ts';
 import {
   GAIT_PICKS,
   type GaitPick,
   gaitPatch,
-  pickedGait,
   pickedStand,
   type Settings,
   standPatch,
@@ -16,7 +14,8 @@ import {
 } from '../../../shared/settings.ts';
 import { MakeProgress } from '../MakeProgress.tsx';
 import { browserStore, loadExpected, saveDuration } from '../make-progress.ts';
-import { gaitMismatch, shapeOf } from '../pet3d-gait.ts';
+import { gaitMismatch } from '../pet3d-gait.ts';
+import { gaitView } from './gait-view.ts';
 import { bridge, Toggle } from './ui.tsx';
 
 /**
@@ -46,14 +45,8 @@ export function GaitPicker({
   const stopped = useRef(false);
   const [error, setError] = useState('');
   const figure = s.petImage && snap.current?.look === 'figure' ? snap.current.model : undefined;
-  // 네 발로 선 몸(밀크, 초코, 네 발로 서기를 켠 사진 펫)은 늘 네 발로 걷는다. 고른 걸음새를 펫 화면이 쓰지 않는다 (pet.ts pickedBlueprint)
-  const stands = !!figure && s.pet3d && (!!figure.stance || (pickedStand(s) && canStand(figure)));
-  // 몸 모양: 기본 펫은 기본 설계도, 사진 펫은 그 설계도 (고른 값을 덮기 전)
-  const shape: Gait | undefined = !s.petImage
-    ? shapeOf(DEFAULT_BLUEPRINTS[s.petKind])
-    : figure && s.pet3d && !stands
-      ? shapeOf(figure)
-      : undefined;
+  // 몸 모양, 네 발로 선 몸인지, 고른 값, 켜져 보일 단추 (settings/gait-view.ts). 네 발로 선 몸은 흐린 채 "네 발"이 켜진다
+  const { shape, stands, picked, on } = gaitView(s, figure);
   // 밀크, 초코 그림이면 네 발로 선 피규어를 켰는지 (기본 꺼짐, 사진 그대로). 다른 펫이면 undefined
   const starter = starterStand(s);
   const why = shape
@@ -65,7 +58,6 @@ export function GaitPicker({
         : figure
           ? t('settings.gait.off3d')
           : t('settings.gait.flat');
-  const picked = shape ? pickedGait(s) : undefined;
   const now: GaitPick = picked ?? 'auto';
   const canRemake = !!figure;
   // 펫을 바꾸면 묻던 것을 접는다
@@ -77,6 +69,15 @@ export function GaitPicker({
     setAsk(undefined);
     setError('');
   }, [petKey]);
+  // 네 발로 서기를 켜는 등으로 고를 수 없게 되면 묻던 것도 접는다 (나중에 끄면 옛 물음이 다시 뜨지 않게)
+  useEffect(() => {
+    if (!shape) setAsk(undefined);
+  }, [shape]);
+  // 물음이 뜨면 단추 바로 아래 물음 칸이 보이게 (설정 창 아래쪽이라 가려져 눌러도 안 된 것처럼 보였다, #28)
+  const askRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (ask) askRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+  }, [ask]);
 
   const apply = async (pick: GaitPick) => {
     const patch = gaitPatch(s, pick);
@@ -125,6 +126,8 @@ export function GaitPicker({
   const walk = (g: Gait) => t(`settings.gait.${g}`);
   const body = (g: Gait) => t(`settings.gait.body.${g}`);
   const odd = !!shape && !!picked && gaitMismatch(picked, shape);
+  // 아직 바뀌지 않고 물어보거나 다시 만드는 중인 걸음새
+  const pending = shape ? (busy ?? ask) : undefined;
 
   return (
     <div className="field">
@@ -134,8 +137,10 @@ export function GaitPicker({
           <button
             key={g}
             type="button"
-            aria-pressed={now === g}
-            className={now === g && shape ? 'on' : ''}
+            // 켜진 단추는 펫이 실제로 걷는 걸음새 (네 발로 선 몸은 흐린 채 네 발). 물어보는 중인 단추는 점선 테두리로
+            aria-pressed={on === g}
+            aria-describedby={pending === g ? 'gait-ask' : undefined}
+            className={[on === g ? 'on' : '', pending === g ? 'pending' : ''].join(' ').trim() || undefined}
             onClick={() => choose(g)}
           >
             {t(`settings.gait.${g}`)}
@@ -162,7 +167,7 @@ export function GaitPicker({
           />
         </div>
       ) : ask ? (
-        <div className="notice gait-ask" role="status">
+        <div ref={askRef} id="gait-ask" className="notice gait-ask" role="status" aria-live="polite">
           <small>
             {t('settings.gait.mismatch', { name: s.petName, body: body(shape), pick: walk(ask) })}
           </small>

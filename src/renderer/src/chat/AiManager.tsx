@@ -1,4 +1,5 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { isGuideProvider } from '../../../shared/ai/install-guide.ts';
 import type { AiProvider, AiStatus } from '../../../shared/ai/types.ts';
 import type { ChatState } from '../../../shared/chat-state.ts';
 import { t } from '../../../shared/i18n/index.ts';
@@ -13,6 +14,8 @@ interface Props {
   onAdd: (input: { label: string; bin: string; args: string }) => Promise<string | undefined>;
   onRemove: (id: AiProvider) => void;
   onClose: () => void;
+  /** 못 찾은 AI 의 설치 방법 시트 열기 (#29) */
+  onGuide: (id: AiProvider) => void;
   /** 무료 AI 모델 받기 (받는 중이면 진행) */
   onDownload: () => void;
   download?: ChatState['modelDownload'];
@@ -27,6 +30,7 @@ export function AiManager({
   onAdd,
   onRemove,
   onClose,
+  onGuide,
   onDownload,
   download,
 }: Props) {
@@ -43,7 +47,8 @@ export function AiManager({
   useEffect(() => {
     sheetRef.current?.querySelector<HTMLElement>('button, input')?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeRef.current();
+      // 위에 뜬 설치 방법 시트를 Esc 로 닫았으면(채팅 창이 먼저 받아 막는다) AI 관리는 그대로 둔다
+      if (e.key === 'Escape' && !e.defaultPrevented) closeRef.current();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -103,6 +108,13 @@ export function AiManager({
                 </span>
                 {p.command && <code className="detail command">{p.command}</code>}
                 <span className="detail">{statusText(p, s)}</span>
+                {s && !s.installed && isGuideProvider(p.id) && (
+                  <span className="detail action-row">
+                    <button type="button" className="ghost small" onClick={() => onGuide(p.id)}>
+                      {t('ai.guide.show')}
+                    </button>
+                  </span>
+                )}
                 {p.id === 'local' && s?.needsModel && (
                   <span className="detail action-row">
                     {download && !download.failed ? (

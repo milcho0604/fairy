@@ -84,7 +84,7 @@ export const en: Translation<typeof ko> = {
   'settings.petKeysHint': (v: { keys: string }) =>
     `Press ${v.keys} to select your fairy, then Enter opens the panel, Shift+F10 the menu, arrows walk and Esc leaves.`,
   'pet.url.todo': (v: { title: string }) => `Added to-do: ${v.title}`,
-  'pet.url.todos': (v: { n: number }) => `Added ${v.n} to-dos`,
+  'pet.url.todos': (v: { n: number }) => (v.n === 1 ? 'Added 1 to-do' : `Added ${v.n} to-dos`),
   'pet.url.event': (v: { title: string; when: string }) => `Added event: ${v.when} ${v.title}`,
   'pet.url.memo': (v: { title: string }) => `Saved memo: ${v.title}`,
   'pet.url.focus': (v: { n: number }) => `${v.n}-minute focus started!`,

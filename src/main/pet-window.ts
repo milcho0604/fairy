@@ -397,6 +397,9 @@ export function createPetWindow({
   });
   const win = prebuilt ?? new BrowserWindow({ ...petWindowOptions(), ...pet });
   if (prebuilt) win.setBounds(pet);
+  // 펫 화면을 다 불러오면 할 일이 여럿이라(상태, 집, 친구, 쪽지, 알림 등) 켤 때 did-finish-load 듣개가 11개를 넘는다.
+  // 켤 때 한 번 붙는 정해진 수라 새는 것이 아니다: 기본 상한 10 의 MaxListenersExceededWarning 이 기록마다 남지 않게
+  win.webContents.setMaxListeners(30);
   win.setAlwaysOnTop(true, 'floating');
   // 모든 데스크톱(Space)에 보이되, 다른 앱의 전체 화면 위에는 올라가지 않는다.
   // (전체 화면 위에도 띄우면 다른 앱을 크게 쓰는 중에 펫이 가린다. 2026-10-02 사용자 지적)
