@@ -9,6 +9,7 @@ import {
 } from 'electron';
 import type { StatStore } from '../shared/beta-stats.ts';
 import { undoMoved } from '../shared/briefing.ts';
+import { dayWatch } from '../shared/day-watch.ts';
 import { saveErrorText } from '../shared/download-error.ts';
 import { findSameEvent } from '../shared/event-dup.ts';
 import { clashIds, overlapping, spanEnd } from '../shared/event-overlap.ts';
@@ -67,6 +68,9 @@ import { focusWindow, stealFocus } from './focus.ts';
 import { langArg } from './lang.ts';
 import { localTime, minuteOfDay, startOfDay, startOfDayAfter } from './planner.ts';
 import { readJson, removeJson, writeJson } from './store.ts';
+
+/** 날이 바뀌었는지 보는 간격. 자정 뒤 이만큼 안에 패널이 새 날로 바뀐다 */
+const DAY_CHECK_MS = 20_000;
 
 const PANEL_SIZE = { width: 360, height: 540 };
 /** 여러 줄 붙여 넣기는 한 번에 이만큼까지 */
@@ -174,6 +178,7 @@ export function createPanel(o: PanelOptions) {
   function state(): PanelState {
     const now = Date.now();
     const { open, doneToday } = o.store.list(now);
+    dayTurn.seen(localDay(now));
     return {
       petName: o.petName(),
       today: localDay(now),
@@ -235,6 +240,15 @@ export function createPanel(o: PanelOptions) {
     for (const w of [panel, quick]) if (w && !w.isDestroyed()) w.webContents.send(PANEL.state, s);
     o.onChanged();
   }
+  // 자정을 넘기면 열려 있는 패널에 새 날 것을 보낸다 (오늘 끝낸 일, 오늘 마감, 오늘 일정이 어제 것으로 남았다)
+  const dayTurn = dayWatch({
+    now: () => Date.now(),
+    day: localDay,
+    onTurn: () => {
+      if ([panel, quick].some((w) => w && !w.isDestroyed())) push();
+    },
+  });
+  setInterval(() => dayTurn.check(), DAY_CHECK_MS).unref();
 
   ipcMain.handle(PANEL.snapshot, (e) => (ours(e) ? state() : undefined));
   ipcMain.handle(
