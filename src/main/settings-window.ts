@@ -16,6 +16,7 @@ import { issueUrl } from '../shared/feedback.ts';
 import type { GalleryList } from '../shared/gallery.ts';
 import { t } from '../shared/i18n/index.ts';
 import {
+  type CalSync,
   type MakerTarget,
   SETTINGS,
   type SettingsSection,
@@ -32,7 +33,7 @@ import { aiHistoryBytes, clearAiHistory } from './ai-history.ts';
 import { devRendererUrl } from './dev-url.ts';
 import { createDiagnostics } from './diagnostics.ts';
 import { rememberExport, wasExported } from './exported.ts';
-import { focusWindow, showWindow, stealFocus } from './focus.ts';
+import { focusWindow, showWindow } from './focus.ts';
 import { langArg } from './lang.ts';
 import { mcpScriptPath } from './mcp-launch.ts';
 import { openLink } from './open-link.ts';
@@ -58,12 +59,12 @@ export interface SettingsWindowOptions {
   privateWords: () => string[];
   v2: {
     exportData: (win?: BrowserWindow) => Promise<string>;
-    importData: (win?: BrowserWindow) => Promise<string>;
+    importData: (win?: BrowserWindow) => Promise<{ ok: boolean; message: string }>;
     exportPet: (win?: BrowserWindow) => Promise<string>;
     importPet: (win?: BrowserWindow) => Promise<{ ok: boolean; message: string }>;
     importFriend: (win?: BrowserWindow) => Promise<{ ok: boolean; message: string }>;
-    syncCalendar: () => Promise<string>;
-    calendarLast: () => string;
+    syncCalendar: () => Promise<CalSync>;
+    calendarLast: () => CalSync;
     mcpServers: () => string[];
     refreshMcp: () => Promise<string[]>;
     catalog: () => Catalog;
@@ -137,6 +138,7 @@ export function createSettingsWindow({
     if (!c) return library.view();
     if ('kind' in c) library.toDefault(c.kind);
     else if ('starter' in c) library.fromStarter(c.starter);
+    else if ('friend' in c) library.fromFriend(c.friend);
     else library.restore(c.id);
     return library.view();
   });
@@ -228,7 +230,9 @@ export function createSettingsWindow({
   ipcMain.on(SETTINGS.reveal, (e, path: unknown) => {
     if (fromSettings(e) && wasExported(path)) shell.showItemInFolder(path);
   });
-  ipcMain.handle(SETTINGS.importData, (e) => (fromSettings(e) ? v2.importData(win) : ''));
+  ipcMain.handle(SETTINGS.importData, (e) =>
+    fromSettings(e) ? v2.importData(win) : { ok: true, message: '' },
+  );
   ipcMain.handle(SETTINGS.exportPet, async (e) => {
     if (!fromSettings(e)) return '';
     const path = await v2.exportPet(win);
@@ -250,7 +254,9 @@ export function createSettingsWindow({
   ipcMain.handle(SETTINGS.galleryShare, (e, meta: unknown) =>
     fromSettings(e) ? gallery.share(meta, win) : { ok: false, message: '' },
   );
-  ipcMain.handle(SETTINGS.syncCalendar, (e) => (fromSettings(e) ? v2.syncCalendar() : ''));
+  ipcMain.handle(SETTINGS.syncCalendar, (e) =>
+    fromSettings(e) ? v2.syncCalendar() : { text: '', ok: true },
+  );
   ipcMain.handle(SETTINGS.refreshMcp, (e) => (fromSettings(e) ? v2.refreshMcp() : []));
   ipcMain.on(SETTINGS.relaunch, (e) => {
     if (!fromSettings(e)) return;
@@ -273,7 +279,6 @@ export function createSettingsWindow({
 
   /** section 을 주면 그 칸을 바로 보여 준다 (메뉴 막대 "의견 보내기" → 베타 기록). */
   function open(section?: SettingsSection) {
-    stealFocus();
     if (win && !win.isDestroyed()) {
       // 화면 프로세스가 죽었으면(메모리 부족, 강제 종료) 빈 창만 남는다. 같은 창에 다시 읽는다
       if (win.webContents.isCrashed()) load(win, section);

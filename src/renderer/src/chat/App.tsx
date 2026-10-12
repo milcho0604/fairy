@@ -20,6 +20,7 @@ import { chatKey, lastQuestion } from './keys.ts';
 import { Markdown } from './Markdown.tsx';
 import { ProviderPicker } from './ProviderPicker.tsx';
 import { isReady, statusText } from './providerStatus.ts';
+import { LookStatus, LookToggle, useChatLook } from './ScreenLook.tsx';
 import { contentKey, conversationChanged, isNearBottom, jumpBehavior, scrollDecision } from './scroll.ts';
 import { singleFlight } from './single-flight.ts';
 import { UsageBar } from './UsageBar.tsx';
@@ -237,6 +238,11 @@ export function App() {
     for (const child of el.children) ro.observe(child);
   });
 
+  // 같이 보기 (ScreenLook.tsx). 처음 그릴 때는 대화 상태가 없어 AI 를 모른다
+  const lookSpec = providers.find((p) => p.id === state?.provider);
+  const lookStatus = state && status[state.provider];
+  const look = useChatLook(lookSpec, !!lookStatus && isReady(lookStatus));
+
   const jumpToBottom = () => {
     const el = listRef.current;
     if (!el) return;
@@ -290,9 +296,12 @@ export function App() {
     if (await bridge.undoReset()) following.current = true;
   };
 
-  const send = () => {
-    if (pending || (!text.trim() && images.length === 0)) return;
-    bridge.send(text, images);
+  // screen: 화면도 찍어 보낼지 (같이 보기 묻는 줄에서 고름). 없으면 같이 보기 켬 상태를 따른다
+  const send = async (screen?: boolean) => {
+    if (pending || look.shooting || (!text.trim() && images.length === 0)) return;
+    const out = await look.prepare(text, images, screen);
+    if (!out) return;
+    bridge.send(text, out);
     setText('');
     setImages([]);
     setNotice('');
@@ -303,7 +312,7 @@ export function App() {
     // 한글 조합 중 Enter 는 글자를 확정하는 키라 보내지 않는다.
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
       e.preventDefault();
-      send();
+      void send();
       return;
     }
     // 빈 입력칸에서 ↑: 마지막 질문을 다시 불러온다 (고쳐서 다시 묻기)
@@ -603,6 +612,8 @@ export function App() {
               {t('chat.ephemeralUnsupported', { label: spec.label })}
             </small>
           )}
+          <LookToggle look={look} />
+          <LookStatus look={look} petName={petName} spec={spec} onSend={(screen) => void send(screen)} />
         </div>
         <div className="composer">
           <label className="ghost icon" title={t('chat.attach')}>
@@ -639,8 +650,8 @@ export function App() {
             <button
               type="button"
               className="primary"
-              disabled={!text.trim() && images.length === 0}
-              onClick={send}
+              disabled={look.shooting || (!text.trim() && images.length === 0)}
+              onClick={() => void send()}
             >
               {t('chat.send')}
             </button>

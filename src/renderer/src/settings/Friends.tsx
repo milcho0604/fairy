@@ -18,6 +18,7 @@ export function Friends({
   petName,
   onChange,
   onImport,
+  onMakeMain,
   onMsg,
 }: {
   list: Friend[];
@@ -25,6 +26,8 @@ export function Friends({
   petName: string;
   onChange: (next: Friend[]) => void;
   onImport: () => void;
+  /** 이 친구를 기본 페어리로 (지금 기본 페어리는 이 친구 자리로, friend-swap.ts) */
+  onMakeMain: (id: string) => void;
   onMsg: (m: string, error?: boolean) => void;
 }) {
   const [name, setName] = useState('');
@@ -86,26 +89,39 @@ export function Friends({
                   ))}
                 </select>
               )}
-              <button
-                type="button"
-                className={`link${sure === f.id ? ' sure' : ''}`}
-                aria-label={
-                  sure === f.id
-                    ? t('settings.friends.sendHomeSureAria', { name: f.name })
-                    : t('settings.friends.sendHomeAria', { name: f.name })
-                }
-                onClick={() => {
-                  if (sure !== f.id) {
-                    setSure(f.id);
-                    return;
+              {/* 두 단추는 한 묶음으로 (좁은 창에서 따로 떨어지지 않게) */}
+              <span className="friend-acts">
+                {/* 서로 바꾸기라 되돌릴 수 있다: 한 번에 바꾼다. 줄 자리(순서)는 그대로 */}
+                <button
+                  type="button"
+                  className="link make-main"
+                  aria-label={t('settings.friends.makeMainAria', { name: f.name, main: petName })}
+                  title={t('settings.friends.makeMainAria', { name: f.name, main: petName })}
+                  onClick={() => onMakeMain(f.id)}
+                >
+                  {t('settings.friends.makeMain')}
+                </button>
+                <button
+                  type="button"
+                  className={`link${sure === f.id ? ' sure' : ''}`}
+                  aria-label={
+                    sure === f.id
+                      ? t('settings.friends.sendHomeSureAria', { name: f.name })
+                      : t('settings.friends.sendHomeAria', { name: f.name })
                   }
-                  setSure('');
-                  onChange(list.filter((x) => x.id !== f.id));
-                }}
-                onBlur={() => setSure('')}
-              >
-                {sure === f.id ? t('settings.friends.sendHomeSure') : t('settings.friends.sendHome')}
-              </button>
+                  onClick={() => {
+                    if (sure !== f.id) {
+                      setSure(f.id);
+                      return;
+                    }
+                    setSure('');
+                    onChange(list.filter((x) => x.id !== f.id));
+                  }}
+                  onBlur={() => setSure('')}
+                >
+                  {sure === f.id ? t('settings.friends.sendHomeSure') : t('settings.friends.sendHome')}
+                </button>
+              </span>
             </li>
           ))}
         </ul>

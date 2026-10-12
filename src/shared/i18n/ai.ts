@@ -102,6 +102,8 @@ export const ko = {
   'ai.local.slow': '무료 AI가 너무 오래 걸려. 다시 물어봐 줘.',
   'ai.local.failed': '무료 AI가 답을 못 만들었어. 다시 물어봐 줘.',
   'ai.local.crashed': '무료 AI가 멈췄어. 다시 물어봐 줘.',
+  'ai.emptyAnswer': '답이 비어서 왔어. 한 번 더 물어봐 줄래?',
+  'ai.toolsOnly': '말없이 도구만 쓰고 끝났어. 할 일이나 메모가 바뀌었는지 패널에서 봐 줘.',
   'ai.error.exitCode': (v: { code: string }) => `종료 코드 ${v.code}`,
   // 사용량
   'ai.usage.days': (v: { n: number }) => `${v.n}일`,
@@ -219,6 +221,8 @@ export const en: Translation<typeof ko> = {
   'ai.local.slow': 'The free AI is taking too long. Try asking again.',
   'ai.local.failed': "The free AI couldn't answer. Try asking again.",
   'ai.local.crashed': 'The free AI stopped. Try asking again.',
+  'ai.emptyAnswer': 'The answer came back empty. Could you ask again?',
+  'ai.toolsOnly': 'It used its tools without saying anything. Check the panel for changed to-dos or notes.',
   'ai.error.exitCode': (v) => `Exit code ${v.code}`,
   'ai.usage.days': (v) => `${v.n}d`,
   'ai.usage.hours': (v) => `${v.n}h`,

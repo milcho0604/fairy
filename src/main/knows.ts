@@ -8,7 +8,7 @@ import type { ReactKind } from '../shared/ipc.ts';
 import { factTalkHour, isBirthday, pickFactTalk } from '../shared/knows.ts';
 import type { Settings } from '../shared/settings.ts';
 import { localDay } from '../shared/todo-store.ts';
-import { focusWindow, showWindow, stealFocus } from './focus.ts';
+import { focusWindow, showWindow } from './focus.ts';
 import { langArg } from './lang.ts';
 import type { SayOptions } from './pet-window.ts';
 import { settings } from './settings.ts';
@@ -79,7 +79,6 @@ export function createKnows(o: KnowsOptions) {
   });
 
   function open() {
-    stealFocus();
     if (win && !win.isDestroyed()) {
       focusWindow(win);
       return;

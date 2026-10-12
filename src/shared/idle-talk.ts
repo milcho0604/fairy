@@ -216,6 +216,19 @@ const dayOf = (ms: number) => {
   return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
 };
 
+/**
+ * 상황이 하루 내내 이어져 되풀이되던 대사: 남은 할 일, 오래 일함, 배고픔. 수다쟁이(시간당 12번쯤)에서 최근 말만 피하면
+ * 하루 5~6번 같은 말을 했다 (이슈 #65). 하루 perDay 번까지, 앞에 한 뒤 gapMs 가 지나야 다시 한다
+ */
+export const SITUATION_CAP = { perDay: 2, gapMs: 2 * 60 * 60_000 } as const;
+/** 횟수를 세는 묶음 (idle.todo.left.2 → todo.left. 다 끝냄 todo.clear 는 세지 않는다) */
+const situationOf = (k: IdleKey): string | undefined => {
+  const [, a, b] = k.split('.');
+  if (a === 'todo' && b === 'left') return 'todo.left';
+  if (a === 'work' || a === 'hungry') return a;
+  return undefined;
+};
+
 /** 대사 고르기. 한 번만 할 일을 먼저, 그다음 상황에 맞는 말(10번에 7번), 최근에 한 말과 바로 앞 묶음은 건너뛴다 */
 export class IdleTalk {
   #recent: IdleKey[] = [];
@@ -224,14 +237,25 @@ export class IdleTalk {
   #backSaid: number | undefined;
   /** 하루 한 번 묶음(ONCE_A_DAY)을 말한 날 */
   #daySaid = new Map<string, string>();
+  /** 상황 대사(SITUATION_CAP)를 말한 날, 그날 횟수, 마지막 때 */
+  #situSaid = new Map<string, { day: string; n: number; at: number }>();
   #undo: (() => void) | undefined;
 
   pick(f: IdleFacts, rand: () => number = Math.random): IdleKey | undefined {
     const { now, fit, any } = idleCandidates(f);
     const today = dayOf(f.now);
+    const capped = (k: IdleKey) => {
+      const g = situationOf(k);
+      const said = g ? this.#situSaid.get(g) : undefined;
+      if (!said || said.day !== today) return false;
+      return said.n >= SITUATION_CAP.perDay || f.now - said.at < SITUATION_CAP.gapMs;
+    };
     const fresh = (list: IdleKey[]) =>
       list.filter(
-        (k) => !this.#recent.includes(k) && !(onceADay(k) && this.#daySaid.get(groupOf(k)) === today),
+        (k) =>
+          !this.#recent.includes(k) &&
+          !(onceADay(k) && this.#daySaid.get(groupOf(k)) === today) &&
+          !capped(k),
       );
     const nowFresh = fresh(now).filter((k) =>
       groupOf(k) === 'done' ? f.lastDoneAt !== this.#doneSaid : f.backAt !== this.#backSaid,
@@ -257,16 +281,23 @@ export class IdleTalk {
       done: this.#doneSaid,
       back: this.#backSaid,
       daySaid: new Map(this.#daySaid),
+      situSaid: new Map(this.#situSaid),
     };
     this.#undo = () => {
       this.#recent = before.recent;
       this.#doneSaid = before.done;
       this.#backSaid = before.back;
       this.#daySaid = before.daySaid;
+      this.#situSaid = before.situSaid;
     };
     if (groupOf(key) === 'done') this.#doneSaid = f.lastDoneAt;
     if (groupOf(key) === 'back') this.#backSaid = f.backAt;
     if (onceADay(key)) this.#daySaid.set(groupOf(key), today);
+    const situ = situationOf(key);
+    if (situ) {
+      const prev = this.#situSaid.get(situ);
+      this.#situSaid.set(situ, { day: today, n: prev?.day === today ? prev.n + 1 : 1, at: f.now });
+    }
     this.#recent.push(key);
     if (this.#recent.length > IDLE_RECENT) this.#recent.shift();
     return key;

@@ -9,6 +9,7 @@ import {
   cleanIcsUrl,
   parseIcs,
 } from '../shared/ics.ts';
+import type { CalSync } from '../shared/ipc.ts';
 import { readCapped } from './read-capped.ts';
 import { settings } from './settings.ts';
 
@@ -34,28 +35,28 @@ export function watchCalendar(o: {
   skipUids?: () => ReadonlySet<string>;
   log: (tag: string, ...rest: unknown[]) => void;
 }) {
-  let last = '';
+  let last: CalSync = { text: '', ok: true };
   /** 연달아 못 읽은 수 (calFailStep). 앱을 다시 켜면 처음부터 */
   let fails = CAL_FAIL_START;
 
   /** byUser: 사용자가 설정에서 누르거나 주소를 바꾼 것. 결과 글을 바로 보니 펫이 또 알리지 않는다 */
-  const finish = (msg: string, result: 'ok' | 'offline' | 'fail', byUser: boolean) => {
-    last = msg;
+  const finish = (msg: string, result: 'ok' | 'offline' | 'fail', byUser: boolean): CalSync => {
+    last = { text: msg, ok: result === 'ok' };
     const step = calFailStep(fails, result);
     fails = step.state;
     if (step.tell) {
       o.log('calendar', '계속 못 읽음', fails.n);
       if (calTellNow(true, { byUser, settingsOpen: !!o.quiet?.() })) o.onBroken?.();
     }
-    return msg;
+    return last;
   };
 
-  async function sync(byUser = false): Promise<string> {
+  async function sync(byUser = false): Promise<CalSync> {
     const done = (msg: string, result: 'ok' | 'offline' | 'fail' = 'fail') => finish(msg, result, byUser);
     const raw = settings.get().icsUrl;
-    if (!raw) return t('panel.calendar.noUrl');
+    if (!raw) return { text: t('panel.calendar.noUrl'), ok: false };
     const url = cleanIcsUrl(raw);
-    if (!url) return t('panel.calendar.notHttps');
+    if (!url) return { text: t('panel.calendar.notHttps'), ok: false };
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), TIMEOUT_MS);
     // 받기와 다루기를 나눈다: 받다가 난 오류(인터넷 끊김, 시간 끝)만 캘린더 탓이 아니고,
@@ -77,7 +78,8 @@ export function watchCalendar(o: {
     if (!text.includes('BEGIN:VCALENDAR')) return done(t('panel.calendar.notIcs'));
     // 받는 사이 주소를 바꾸거나 지웠으면 옛 주소의 일정으로 맞추지 않는다 (늦게 온 옛 응답이 새 캘린더 일정을 지웠다)
     // 이 결과 글은 남기지 않는다 (새 주소의 맞추기가 따로 알린다)
-    if (settings.get().icsUrl !== raw) return settings.get().icsUrl ? last : t('panel.calendar.noUrl');
+    if (settings.get().icsUrl !== raw)
+      return settings.get().icsUrl ? last : { text: t('panel.calendar.noUrl'), ok: false };
     try {
       const now = Date.now();
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -110,7 +112,7 @@ export function watchCalendar(o: {
   function clear(): void {
     const n = o.events.dropExternal('ics', Date.now());
     o.log('calendar', '주소 지움', n);
-    last = '';
+    last = { text: '', ok: true };
     fails = CAL_FAIL_START;
     if (n > 0) o.onChanged();
   }
