@@ -87,6 +87,8 @@ export interface DrawState {
   photo?: CanvasImageSource & { width: number; height: number };
   /** 사진 크기 배율 (AI 일러스트 아기, 청소년은 작게). 없으면 1. 발은 바닥에 그대로 */
   photoScale?: number;
+  /** photo 가 옆모습 걷기 그림이면 가는 방향 (그림은 오른쪽을 본다). 기울이지 않고 방향대로 뒤집는다 */
+  photoWalk?: -1 | 1;
   /** 사진 속 눈 자리 (밀크, 초코). 있으면 잠, 졸음, 깜빡임에 사진 눈을 감긴다 (photo-eyes.ts). 2.5D 판도 쓴다 */
   photoEyes?: PhotoEyes;
   /**
@@ -479,7 +481,8 @@ function drawPetBody(ctx: CanvasRenderingContext2D, s: DrawState): Point | undef
   }
   const act = s.mood === 'idle' || s.mood === 'sulky' ? s.activity : undefined;
   // 한 장 그림(사진, 2.5D 판)은 다리가 없어 걸음마다 몸 전체가 눌렸다 늘어난다 (photo-motion.ts). 2D 와 입체는 들썩이기만
-  if (act?.type === 'walk') {
+  // 걷기 그림을 넘기면(photoWalk) 그림 속 몸이 이미 들썩여서 눌림과 들썩임을 더하지 않는다
+  if (act?.type === 'walk' && !s.photoWalk) {
     if (s.photo || s.model3d?.flat) {
       const st = photoStep(act, s.calm);
       lift = st.lift;
@@ -1592,7 +1595,8 @@ function drawPhoto(
   act: DrawState['activity'],
 ): number {
   // 캔버스 안 바닥에 서도록, 신남으로 튀어도 위가 안 잘리게 여유를 둔다.
-  const maxW = 140;
+  // 옆모습 걷기 그림은 가로로 길어 140 에 맞추면 앉은 사진보다 확 작아 보였다. 캔버스 폭 안에서 넓게
+  const maxW = s.photoWalk ? 156 : 140;
   const maxH = 124;
   const k = Math.min(maxW / photo.width, maxH / photo.height) * (s.photoScale ?? 1);
   const w = photo.width * k;
@@ -1603,7 +1607,8 @@ function drawPhoto(
   let rock = 0;
   let lean = 0;
   const walking = act?.type === 'walk' ? act : undefined;
-  if (walking) {
+  // 걷기 그림을 넘길 때(photoWalk)는 그림 속 다리와 몸이 걸음을 보여 주므로 까딱, 숙이기, 커서 기울기를 얹지 않는다
+  if (walking && !s.photoWalk) {
     const st = photoStep(walking, s.calm);
     rock = st.rock;
     lean = st.lean;
@@ -1611,7 +1616,7 @@ function drawPhoto(
   if (act?.type === 'look') tilt = act.dir * 0.08;
   const g = gazeOf(s, act);
   // 커서 쪽으로 살짝 기운다 (사진은 얼굴을 바꿀 수 없어서)
-  if (g) tilt = g.x * 0.06;
+  if (g && !s.photoWalk) tilt = g.x * 0.06;
   if (s.mood === 'dozing') tilt = 0.1;
   tilt = ease.to('ptilt', tilt, PHOTO_TILT_TAU);
   // 걷다 거꾸로 돌아서면 잠깐 좁아졌다 돌아온다 (사진을 한 틀에 뒤집지 않는다)
@@ -1654,8 +1659,14 @@ function drawPhoto(
   // 삐지면 등을 돌린 듯 좌우를 뒤집는다. 한 틀에 뒤집지 않고 돌아서듯 좁아졌다 뒤집혀 넓어진다.
   // 걸을 때는 뒤집지 않는다: 사진이 어느 쪽을 보는지 모른다
   const flip = ease.to('flip', s.mood === 'sulky' ? -1 : 1, LOOK_TAU);
+  // 걷기 그림은 오른쪽을 본다: 가는 방향대로 뒤집는다 (돌아설 때는 위의 좁아짐이 뒤집힘을 가린다)
   ctx.scale(
-    (flip < 0 ? -1 : 1) * Math.max(0.12, Math.abs(flip)) * sx * turn.sx * (1 - 0.006 * breath),
+    (flip < 0 ? -1 : 1) *
+      (s.photoWalk ?? 1) *
+      Math.max(0.12, Math.abs(flip)) *
+      sx *
+      turn.sx *
+      (1 - 0.006 * breath),
     sy * turn.sy * (1 + 0.012 * breath),
   );
   if (s.mood === 'sleeping' || s.mood === 'dozing') ctx.globalAlpha = 0.85;

@@ -57,6 +57,7 @@ import { renderBody, renderFace } from './pet-face.ts';
 import type { Pet3D } from './pet3d.ts';
 import { quadKind, withGait } from './pet3d-gait.ts';
 import { IMPACT_MS } from './photo-motion.ts';
+import { walkFrameIndex } from './photo-walk.ts';
 import { PoseBlend, type PoseKey, shouldBlend } from './pose-blend.ts';
 import { playSound } from './sound.ts';
 import { TAP_FPS, TAP_IN_MS, TAP_OUT_MS } from './together-draw.ts';
@@ -198,6 +199,8 @@ function frame() {
   // 입체 그리기 모듈을 불러오는 중이면 기다린다 (불러오면 다시 그린다). 2D 를 먼저 그리면 깜빡인다
   if (m3d === 'loading') return;
   const img = m3d ? undefined : pickImage(mood, inputs.hungry);
+  // 밀크, 초코를 사진 모습으로 보면 걸을 때 옆모습 걷기 그림을 넘긴다 (photo-walk.ts)
+  const walkPic = img ? walkPhoto(now) : undefined;
   drawLayer(!!m3d);
   drawn++;
   const looking = peerAt(now);
@@ -215,10 +218,11 @@ function frame() {
     // 매운맛 토라짐 3단계: 등 돌리고 앉아 있다 (몸짓도 앉기만, 커서도 안 본다)
     activity: activityPose(now) ?? (backTurned() ? { type: 'sit' as const } : undefined),
     hungry: inputs.hungry,
-    photo: img instanceof AnimatedImage ? img.frameAt(now) : img,
+    photo: walkPic?.img ?? (img instanceof AnimatedImage ? img.frameAt(now) : img),
+    ...(walkPic ? { photoWalk: walkPic.dir } : {}),
     photoScale,
     // 눈 자리는 원래 그림 것이다 (포즈 그림이면 눈이 다른 데 있다). 입체 판(2.5D)도 원래 그림이라 같이 준다
-    photoEyes: img === undefined || img === photo ? photoEyes : undefined,
+    photoEyes: !walkPic && (img === undefined || img === photo) ? photoEyes : undefined,
     kind: petKind,
     sulk: inputs.sulkLevel,
     pout: inputs.pout,
@@ -677,6 +681,24 @@ let imageLoad = 0;
 let photoScale = 1;
 /** 사진 속 눈 자리 (밀크, 초코 그림만. photo-eyes.ts). 잠, 졸음, 깜빡임에 사진 눈을 감긴다 */
 let photoEyes: PhotoEyes | undefined;
+/** 밀크, 초코의 옆모습 걷기 그림 (오른쪽을 보는 한 주기). 다 풀린 것만, 없으면 빈 배열 */
+let walkImgs: HTMLImageElement[] = [];
+/** 걷는 중이면 걸음에 맞는 걷기 그림과 방향. 집 문으로 드나들 때(facing)는 사진 그대로 */
+function walkPhoto(now: number): { img: HTMLImageElement; dir: -1 | 1 } | undefined {
+  if (walkImgs.length === 0 || activity?.type !== 'walk') return undefined;
+  const a = activityPose(now);
+  if (a?.type !== 'walk' || a.facing) return undefined;
+  const img = walkImgs[walkFrameIndex(a.steps ?? 0, walkImgs.length)];
+  return img ? { img, dir: a.dir } : undefined;
+}
+function loadPlain(url: string): Promise<HTMLImageElement | undefined> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(undefined);
+    img.src = url;
+  });
+}
 function wantedUrl(url: string): boolean {
   return url === photoUrl || Object.values(poseUrls).includes(url) || !!nextUrls?.has(url);
 }
@@ -761,6 +783,14 @@ bridge.onImage(async (images: PetImages) => {
   if (!photoDepth) release(depthImg);
   photoScale = ageScale(images.age);
   photoEyes = images.starter ? STARTER_EYES[images.starter] : undefined;
+  walkImgs = [];
+  if (images.walk?.length)
+    void Promise.all(images.walk.map(loadPlain)).then((all) => {
+      // 한 장이라도 못 풀면 쓰지 않는다 (빠진 장이 있으면 다리가 튄다). 그사이 펫이 바뀌었으면 버린다
+      if (mine !== imageLoad || all.some((x) => !x)) return;
+      walkImgs = all as HTMLImageElement[];
+      requestFrame();
+    });
   // 이제 안 쓰는 그림은 돌려준다
   for (const [url, img] of decoded)
     if (!wantedUrl(url)) {

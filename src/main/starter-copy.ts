@@ -6,9 +6,12 @@ import { imageKind, sizeOk } from '../shared/image-head.ts';
 import {
   isStarterId,
   STARTER_MAX_BYTES,
+  STARTER_WALK_FRAMES,
+  STARTER_WALK_MAX_BYTES,
   type StarterId,
   starterFileName,
   starterResource,
+  starterWalkResource,
 } from '../shared/starter-pets.ts';
 import { writeFileAtomic } from './safe-file.ts';
 
@@ -46,4 +49,27 @@ export function copyStarter(
   while (existsSync(join(destDir, file))) file = starterFileName(id, ++at);
   writeFileAtomic(join(destDir, file), bytes);
   return file;
+}
+
+/**
+ * 앱에 든 옆모습 걷기 그림들 (shared/starter-pets.ts STARTER_WALK_FRAMES). 한 장이라도 못 읽으면 빈 배열:
+ * 몇 장 빠진 채로 넘기면 다리가 튀어 보여서, 그때는 예전처럼 사진 한 장으로 걷는다
+ */
+export function readStarterWalk(srcDir: string, id: StarterId): Buffer[] {
+  if (!isStarterId(id)) return [];
+  const n = STARTER_WALK_FRAMES[id] ?? 0;
+  const out: Buffer[] = [];
+  for (let i = 0; i < n; i++) {
+    try {
+      const path = join(srcDir, starterWalkResource(id, i));
+      const st = lstatSync(path);
+      if (!st.isFile() || st.size > STARTER_WALK_MAX_BYTES) return [];
+      const bytes = readFileSync(path);
+      if (imageKind(bytes) !== 'webp' || !sizeOk(bytes)) return [];
+      out.push(bytes);
+    } catch {
+      return [];
+    }
+  }
+  return out;
 }

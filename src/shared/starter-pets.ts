@@ -113,3 +113,18 @@ export const STARTER_EYES: Record<StarterId, PhotoEyes> = {
     [208, 128, 17.6, 16.5],
   ),
 };
+
+/**
+ * 사진 모습으로 걸을 때 넘겨 보이는 옆모습 걷기 그림 수 (이슈 #24). 그림은 resources/pets/<id>-walk-<n>.webp,
+ * 오른쪽을 보고 걷는 한 주기다. 그림을 휘지 않고 같은 개체의 장면 그림을 넘긴다 (사진을 휘는 방식은 사용자가 거절했다).
+ * 만든 법: 원본 사진(resources/pets/<id>.png)을 첫 장으로 Wan 2.2 영상(Apache-2.0)을 뽑고, isnet(Apache-2.0)으로
+ * 배경을 지워 한 주기를 고른다. 출처와 라이선스는 docs/tests/photo-walk/README.md.
+ * 없는 캐릭터는 예전처럼 사진 한 장을 기울이며 걷는다
+ */
+export const STARTER_WALK_FRAMES: Partial<Record<StarterId, number>> = { choco: 8 };
+
+/** 걷기 그림 파일 이름 (resources/pets/ 안) */
+export const starterWalkResource = (id: StarterId, i: number): string => `${id}-walk-${i}.webp`;
+
+/** 걷기 그림 한 장 상한. 지금 그림은 320px 폭 webp 로 장마다 25KB 안팎이다 */
+export const STARTER_WALK_MAX_BYTES = 256 * 1024;
