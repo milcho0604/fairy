@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { type Blueprint, parseBlueprint } from './blueprint.ts';
+import { type Blueprint, parseBlueprint, rotateVec } from './blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from './defaults.ts';
 import { EXAMPLE_CAT, EXAMPLE_PLUSH } from './examples.ts';
 import { canStand, catLike, shade, standingBlueprint } from './stand.ts';
@@ -180,6 +180,27 @@ test('네 발로 서기: 선 세모 귀라도 웃는 입, 수염 없는 강아�
   assert.equal(bp.face.mouth, 'grin');
   // 고양이(세모 귀, 고양이 입)는 그대로 고양이
   assert.ok(catLike(EXAMPLE_CAT));
+});
+
+test('네 발로 서기: 흰 배(아래쪽 무늬)는 눕힌 몸통에서도 배 쪽에 온다', () => {
+  for (const src of [prickEarDog, { ...prickEarDog, face: { ...prickEarDog.face, mouth: 'cat' as const } }]) {
+    const bp = standingBlueprint(src);
+    assert.ok(bp);
+    const torso = bp.parts.find((p) => p.slot === 'body' && p.pattern);
+    assert.ok(torso?.pattern?.side);
+    // 몸통의 그 쪽 방향을 돌려 보면 세상 아래(-y)다
+    const dir = {
+      top: [0, 1, 0],
+      bottom: [0, -1, 0],
+      front: [0, 0, 1],
+      back: [0, 0, -1],
+      left: [-1, 0, 0],
+      right: [1, 0, 0],
+    }[torso.pattern.side] as [number, number, number];
+    const [rx, ry, rz] = torso.rot ?? [0, 0, 0];
+    const w = rotateVec(dir, rx, ry, rz);
+    assert.ok(w[1] < -0.9, `${torso.pattern.side} -> ${w.map((v) => v.toFixed(2))}`);
+  }
 });
 
 test('색 밝히기, 어둡게', () => {
