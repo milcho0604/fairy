@@ -33,6 +33,7 @@ function run(
   ms: number,
   fps: number,
   start = 0.6,
+  watch?: (t: number, out: Record<LegId, { x: number; z: number; planted: boolean }>) => void,
 ): {
   drift: number;
   reach: number;
@@ -87,6 +88,7 @@ function run(
       if (o.planted) reach = Math.max(reach, Math.hypot(o.x - REST[id].x, o.z - REST[id].z));
     }
     maxUp = Math.max(maxUp, up);
+    watch?.(t, out);
     last = { fl: { ...out.fl }, fr: { ...out.fr }, hl: { ...out.hl }, hr: { ...out.hr } };
   }
   const none = { x: 0, z: 0, planted: false };
@@ -202,3 +204,38 @@ test('발 딛기: 가장 드물게 그려도(걷기 12fps) 빠르게 달리면 �
   assert.ok(r.drift < 1e-9, `drift ${r.drift}`);
   assert.ok(r.reach < 0.6 * L, `reach ${r.reach / L} L`);
 });
+
+for (const fps of [60, 30, 24]) {
+  test(`발 딛기 (${fps}fps): 따라 걷다 멈추며 3/4 로 돌아서도 발이 옆으로 벌어지거나 엇갈린 채 서 있지 않는다`, () => {
+    // 같은 빠르기로 걷다(따라가기) 끝 320ms 동안 걷는 방향(1.38)에서 선 자세 방향(0.6)으로 돌며 멈춘다 (pet3d.ts)
+    const walkMs = 4000;
+    const turnMs = 320;
+    let spread = 0;
+    let cross = Number.POSITIVE_INFINITY;
+    let worstLate = 0;
+    const r = run(
+      (t) => {
+        const w = t >= 0 && t < walkMs;
+        const k = w ? Math.min(1, (walkMs - t) / turnMs) : 0;
+        return { v: w ? 0.4 : 0, heading: 0.6 + (1.38 - 0.6) * k * k * (3 - 2 * k), walking: w };
+      },
+      walkMs + 1500,
+      fps,
+      1.38,
+      (t, out) => {
+        if (t < walkMs) return;
+        // 멈춘 뒤: 쉬는 자리보다 바깥으로 간 만큼, 왼발과 오른발의 옆 사이 (다리 길이 배)
+        for (const id of LEGS) spread = Math.max(spread, (Math.abs(out[id].x) - Math.abs(REST[id].x)) / L);
+        cross = Math.min(cross, (out.fr.x - out.fl.x) / L, (out.hr.x - out.hl.x) / L);
+        if (t >= walkMs + 400)
+          for (const id of LEGS)
+            worstLate = Math.max(worstLate, Math.hypot(out[id].x - REST[id].x, out[id].z - REST[id].z) / L);
+      },
+    );
+    assert.ok(r.drift < 1e-9, `drift ${r.drift}`);
+    assert.ok(spread < 0.1, `spread ${spread} L`);
+    assert.ok(cross > 0, `cross ${cross} L`);
+    assert.ok(worstLate < 0.08, `0.4초 뒤 ${worstLate} L`);
+    assert.ok(settled(r.end, r.endHeading).worst < 0.08 * L);
+  });
+}
