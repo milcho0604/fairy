@@ -417,8 +417,12 @@ export function createPetWindow({
   // 처음에는 모두 통과시킨다. 커서가 펫 위에 오면 화면이 알려 준다.
   win.setIgnoreMouseEvents(true, { forward: true });
   // 미리 만든 창은 빈 화면을 이미 그려 ready-to-show 가 지나갔을 수 있다: 펫 화면을 다 불러오면 보인다
-  if (prebuilt) win.webContents.once('did-finish-load', () => win.showInactive());
-  else win.once('ready-to-show', () => win.showInactive());
+  // 다 불러오기 전에 숨겼으면(숨긴 동안 온 친구 펫) 보이지 않는다
+  const firstShow = () => {
+    if (!win.isDestroyed() && !hideReasons.hidden) win.showInactive();
+  };
+  if (prebuilt) win.webContents.once('did-finish-load', firstShow);
+  else win.once('ready-to-show', firstShow);
 
   const devUrl = devRendererUrl();
   if (devUrl) win.loadURL(`${devUrl}/pet.html`);
