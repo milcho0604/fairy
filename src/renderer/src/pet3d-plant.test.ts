@@ -239,3 +239,41 @@ for (const fps of [60, 30, 24]) {
     assert.ok(settled(r.end, r.endHeading).worst < 0.08 * L);
   });
 }
+
+/** 옆으로 걷는 한 틀 (pet3d.ts 처럼 다 돈 뒤면 걸음 박자로) */
+const walkFrame = (now: number, dt: number, v: number, rest = REST, l = L, hold = 1): PlantFrame => {
+  const kind: GaitKind = Math.abs(v) > 0.75 ? 'trot' : 'walk';
+  const gait =
+    v !== 0
+      ? { kind, duty: DUTY[kind], cycle: l * 1.05 * (kind === 'trot' ? 1.4 : 1), lift: 0.2 * l }
+      : undefined;
+  return {
+    now,
+    heading: 1.38,
+    aim: 1.38,
+    move: (v * dt) / 1000,
+    ...(gait ? { gait } : {}),
+    rest,
+    hold,
+    L: l,
+  };
+};
+const offL = (out: Record<LegId, { x: number; z: number }>, rest: Record<LegId, Spot>, l: number) =>
+  Math.max(...LEGS.map((id) => Math.hypot(out[id].x - rest[id].x, out[id].z - rest[id].z) / l));
+
+test('발 딛기: 걷다가 다른 몸으로 바뀌면(펫이나 모습을 바꿨다) 새 몸의 첫 틀은 새 몸 바랄 자리에서 시작한다', () => {
+  const p = new FootPlanter();
+  let t = 0;
+  for (; t < 1500; t += 33) p.update(walkFrame(t, 33, 0.45));
+  // 밀크에서 초코로: 다리 길이와 발 자리가 다른 몸 (pet3d.ts resetRoot 뒤 첫 틀, 틀 사이는 그대로 짧다)
+  const L2 = 0.296;
+  const REST2: Record<LegId, Spot> = {
+    fl: { x: -0.07, z: 0.17 },
+    fr: { x: 0.07, z: 0.17 },
+    hl: { x: -0.085, z: -0.19 },
+    hr: { x: 0.085, z: -0.19 },
+  };
+  const out = p.update({ ...walkFrame(t, 33, 0, REST2, L2), heading: 0.6, aim: 0.6 });
+  assert.ok(offL(out, REST2, L2) < 1e-9, `첫 틀 ${offL(out, REST2, L2)} L`);
+  for (const id of LEGS) assert.ok(out[id].planted, `${id} planted`);
+});

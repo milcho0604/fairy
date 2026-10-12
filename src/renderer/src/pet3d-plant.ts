@@ -125,6 +125,8 @@ export class FootPlanter {
   phase = 0;
   private dir: -1 | 1 = 1;
   private last: number | undefined;
+  /** 지난 틀 몸의 다리 길이. 바뀌면 다른 몸이다 (펫이나 모습을 바꿨다): 발을 새 몸 바랄 자리에서 다시 시작한다 */
+  private bodyL: number | undefined;
   /** 아직 옮길 발이 있는지 (든 발이 있거나 바랄 자리에서 벗어난 디딘 발). 펫 화면이 몇 틀 더 그린다 */
   busy = false;
 
@@ -132,6 +134,7 @@ export class FootPlanter {
   reset(): void {
     this.feet.clear();
     this.last = undefined;
+    this.bodyL = undefined;
     this.bodyX = 0;
     this.phase = 0;
   }
@@ -183,10 +186,12 @@ export class FootPlanter {
       const s = toStage(f.rest[id], aimH);
       goal[id] = { x: s.x + this.bodyX, z: s.z };
     }
-    // 오래 안 그렸거나 처음이거나 발을 붙여 두지 않는 자세: 발을 바랄 자리에 둔다
+    // 오래 안 그렸거나 처음이거나 다른 몸이거나 발을 붙여 두지 않는 자세: 발을 바랄 자리에 둔다
     // 걷는 중에 한 틀이 늦었으면(컴퓨터가 잠깐 바빴다) 디딘 자리를 그대로 두고 멀어진 발만 옮긴다
     const gap = gait || Math.abs(f.move) > 1e-7 ? GAP_MS * 5 : GAP_MS;
-    if (!(dt >= 0 && dt < gap) || f.hold < 0.5) {
+    const newBody = this.bodyL !== undefined && f.L !== this.bodyL;
+    this.bodyL = f.L;
+    if (!(dt >= 0 && dt < gap) || f.hold < 0.5 || newBody) {
       for (const id of LEGS) {
         const n = nominal[id];
         this.feet.set(id, { ax: n.x, az: n.z, early: false });
