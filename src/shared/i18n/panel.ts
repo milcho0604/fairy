@@ -342,7 +342,7 @@ export const en: Translation<typeof ko> = {
     'No notes yet. Click "New note" to write one. You can save AI answers as notes too.',
   'panel.note.aiBusy': "The AI is busy with another answer. Try again when it's done.",
   'panel.note.back': 'Notes',
-  'panel.note.toTodos': 'Split into to-dos',
+  'panel.note.toTodos': 'Make to-dos',
   'panel.note.summary': 'Summarize',
   'panel.note.polish': 'Polish',
   'panel.note.polishHint': (v: { ai: string }) =>
