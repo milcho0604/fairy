@@ -12,6 +12,7 @@ import { houseMenuKey, houseNewsKey, stowSayKey, stowStep } from '../shared/hous
 import { locale, t } from '../shared/i18n/index.ts';
 import { IPC, type PetStatus, type PlayKind } from '../shared/ipc.ts';
 import { type FactKind, factsForAi } from '../shared/knows.ts';
+import { ownsLoginItem } from '../shared/login-item.ts';
 import { runnerKindOf } from '../shared/menu-runner.ts';
 import { isMiniGame, PLAY_COIN } from '../shared/minigames.ts';
 import { noteTitle } from '../shared/note-store.ts';
@@ -1488,12 +1489,16 @@ ready
         pickedStand(next) !== pickedStand(prev)
       )
         sendStatus();
-      if (next.launchAtLogin !== prev.launchAtLogin && app.isPackaged) {
+      if (
+        next.launchAtLogin !== prev.launchAtLogin &&
+        ownsLoginItem(app.isPackaged, process.env.JJ_USER_DATA)
+      ) {
         app.setLoginItemSettings({ openAtLogin: next.launchAtLogin });
       }
     });
     // 켤 때 자동 실행 설정을 운영체제 것에 맞춘다: 사용자가 시스템 설정에서 끈 것을 다시 켜지 않고, 설정 창도 맞게 보인다 (버그잡이 7차)
-    if (app.isPackaged) {
+    // 시험 실행(JJ_USER_DATA)은 읽지 않는다: 사용자 페어리의 값을 읽어 와 위에서 다시 쓰게 된다 (shared/login-item.ts)
+    if (ownsLoginItem(app.isPackaged, process.env.JJ_USER_DATA)) {
       const atLogin = app.getLoginItemSettings().openAtLogin;
       if (atLogin !== settings.get().launchAtLogin) settings.set({ launchAtLogin: atLogin });
     }

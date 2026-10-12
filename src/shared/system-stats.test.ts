@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { cpuTitle, gb, gpuName, macMemoryUse, meter, uptimeParts, VM_INFO64_COUNT } from './system-stats.ts';
+import {
+  canReadMacMemory,
+  cpuTitle,
+  gb,
+  gpuName,
+  macMemoryUse,
+  meter,
+  uptimeParts,
+  VM_INFO64_COUNT,
+} from './system-stats.ts';
 
 test('메뉴 막대 글자는 늘 두 자리 이상', () => {
   assert.equal(cpuTitle(3.4), ' 3%');
@@ -47,4 +56,11 @@ test('켜진 시간, GB, 막대', () => {
   assert.equal(gb(8 * 1024 ** 3), '8.0GB');
   assert.equal(meter(0.42), '▮▮▮▮▯▯▯▯▯▯');
   assert.equal(meter(2), '▮'.repeat(10));
+});
+
+test('Rosetta 로 도는 인텔 맥 앱은 마하 트랩으로 메모리를 읽지 않는다 (읽으면 켜자마자 죽는다)', () => {
+  assert.equal(canReadMacMemory('darwin', false), true);
+  assert.equal(canReadMacMemory('darwin', true), false);
+  assert.equal(canReadMacMemory('win32', false), false);
+  assert.equal(canReadMacMemory('linux', false), false);
 });
