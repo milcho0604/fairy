@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { BrowserWindow, type IpcMainEvent, ipcMain, type Rectangle, screen } from 'electron';
 import { type Catalog, pickCli, pickLocal } from '../shared/ai/catalog.ts';
+import { finalAnswer } from '../shared/ai/empty-answer.ts';
 import {
   extractTodos,
   noteTitleFromQuestion,
@@ -372,7 +373,11 @@ export function createChat(o: ChatOptions) {
         // 고른 모델 (v2). 목록에 없으면 그 AI 의 기본
         model: pickCli(o.catalog(), provider, o.aiModels()[provider]),
       };
-      const onEvent = (event: AiEvent) => {
+      const onEvent = (raw: AiEvent) => {
+        // 글 없이 끝났으면 빈 말풍선 대신 안내 말 (이슈 #65). 대화 창 답에만: 일기 다듬기 같은 한 번 묻기는 빈 답을 그대로 받는다
+        const streamed = () => state.messages.find((m) => m.id === ids.pet)?.text ?? '';
+        const event =
+          raw.type === 'done' ? { ...raw, text: finalAnswer(raw.text, streamed(), !!raw.tools) } : raw;
         state = applyEvent(state, ids.pet, event, randomUUID());
         if (event.type === 'usage') writeJson(USAGE_FILE, state.usage);
         // 기록을 안 남긴 세션은 이어 갈 수 없다. 받아 두지 않는다. 그림 때문에 이번만 안 남겼으면 전 세션을 그대로 둔다
@@ -381,10 +386,11 @@ export function createChat(o: ChatOptions) {
             ...state,
             sessions: { ...state.sessions, [provider]: state.ephemeral ? undefined : sessionBefore },
           };
-        if (ephemeral && !state.ephemeral && event.type === 'done' && event.text)
+        // 안내 말(빈 답)은 이어 붙이지 않는다
+        if (ephemeral && !state.ephemeral && raw.type === 'done' && raw.text.trim())
           carry.set(
             provider,
-            [...(carry.get(provider) ?? []), { question: base, answer: event.text }].slice(-3),
+            [...(carry.get(provider) ?? []), { question: base, answer: raw.text }].slice(-3),
           );
         if (event.type === 'delta') {
           const msg = state.messages.find((m) => m.id === ids.pet);
