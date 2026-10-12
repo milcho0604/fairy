@@ -3,7 +3,7 @@ import { t } from '../../../shared/i18n/index.ts';
 import type { SettingsSnapshot } from '../../../shared/ipc.ts';
 import type { Gait } from '../../../shared/pet3d/blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from '../../../shared/pet3d/defaults.ts';
-import { canStand } from '../../../shared/pet3d/stand.ts';
+import { canStand, oddBody } from '../../../shared/pet3d/stand.ts';
 import {
   GAIT_PICKS,
   type GaitPick,
@@ -46,7 +46,7 @@ export function GaitPicker({
   const [error, setError] = useState('');
   const figure = s.petImage && snap.current?.look === 'figure' ? snap.current.model : undefined;
   // 네 발로 선 몸(밀크, 초코, 네 발로 서기를 켠 사진 펫)은 늘 네 발로 걷는다. 고른 걸음새를 펫 화면이 쓰지 않는다 (pet.ts pickedBlueprint)
-  const stands = !!figure && s.pet3d && (!!figure.stance || pickedStand(s));
+  const stands = !!figure && s.pet3d && (!!figure.stance || (pickedStand(s) && canStand(figure)));
   // 몸 모양: 기본 펫은 기본 설계도, 사진 펫은 그 설계도 (고른 값을 덮기 전)
   const shape: Gait | undefined = !s.petImage
     ? shapeOf(DEFAULT_BLUEPRINTS[s.petKind])
@@ -192,12 +192,13 @@ export function GaitPicker({
         <small>{picked ? t('settings.gait.kept') : t('settings.gait.autoNow', { gait: walk(shape) })}</small>
       )}
       {/* 사진 동물 페어리를 밀크, 초코처럼 네 발로 선 피규어로 (AI 를 다시 부르지 않는다, shared/pet3d/stand.ts) */}
-      {figure && s.pet3d && canStand(figure) && (
+      {/* 뼈대에 맞지 않는 몸의 사진 동물(토끼, 햄스터)은 끈 채로 흐리게 두고 이유를 적는다. 코 없는 캐릭터는 숨긴 그대로 */}
+      {figure && s.pet3d && (canStand(figure) || (oddBody(figure) && figure.face.nose?.shape !== 'none')) && (
         <Toggle
           label={t('settings.stand.toggle')}
-          hint={t('settings.stand.hint', { name: s.petName })}
-          on={pickedStand(s)}
-          disabled={!!busy}
+          hint={t(canStand(figure) ? 'settings.stand.hint' : 'settings.stand.odd', { name: s.petName })}
+          on={pickedStand(s) && canStand(figure)}
+          disabled={!!busy || !canStand(figure)}
           onChange={(v) => {
             const patch = standPatch(s, v);
             if (patch) void update(patch);

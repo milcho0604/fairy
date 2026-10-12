@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { type Blueprint, parseBlueprint, rotateVec } from './blueprint.ts';
+import { type Blueprint, type Part, parseBlueprint, rotateVec } from './blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from './defaults.ts';
 import { EXAMPLE_CAT, EXAMPLE_PLUSH } from './examples.ts';
-import { canStand, catLike, shade, standingBlueprint } from './stand.ts';
+import { canStand, catLike, oddBody, shade, standingBlueprint } from './stand.ts';
 
 test('네 발로 서기: 사진 고양이 피규어는 밀크 뼈대에 원래 색과 눈, 코, 무늬를 입힌다', () => {
   const bp = standingBlueprint(EXAMPLE_CAT);
@@ -108,13 +108,119 @@ test('네 발로 서기: 코 없이 그린 캐릭터(긴 귀 흰 토끼 캐릭�
     face: { ...longEarBunny.face, blushLines: true },
   };
   assert.equal(canStand(capCat), false);
-  // 코가 있는 사진 동물은 그대로 세운다
+  // 코가 있는 사진 동물은 그대로 세운다 (긴 귀 토끼는 코가 있어도 몸이 맞지 않아 아래 시험)
   assert.ok(
     canStand({
-      ...longEarBunny,
-      face: { ...longEarBunny.face, nose: { shape: 'triangle', color: '#e88d8a' } },
+      ...capCat,
+      face: { ...capCat.face, nose: { shape: 'triangle', color: '#e88d8a' } },
     }),
   );
+});
+
+// 진짜 동물 사진이라도 고양이(밀크)나 강아지(초코) 뼈대에 맞지 않는 몸. 세우면 토끼 귀가 처진 강아지 귀가 되고
+// 햄스터가 세모 귀 고양이가 되어 그 동물로 보이지 않았다
+const realRabbit: Blueprint = {
+  v: 2,
+  gait: 'quadruped',
+  parts: [
+    { slot: 'body', shape: 'sphere', at: [0, 0.34, -0.04], size: [0.34, 0.32, 0.4], color: '#9a8270' },
+    { slot: 'head', shape: 'sphere', at: [0, 0.76, 0.14], size: [0.34, 0.3, 0.32], color: '#a08874' },
+    {
+      slot: 'earL',
+      shape: 'capsule',
+      at: [-0.1, 1.2, 0.06],
+      size: [0.07, 0.26, 0.04],
+      color: '#9a8270',
+      inner: '#e9b4b4',
+      mirror: true,
+    },
+    { slot: 'tail', shape: 'sphere', at: [0, 0.3, -0.44], size: [0.09, 0.09, 0.08], color: '#f6f2ea' },
+  ],
+  face: {
+    slot: 'head',
+    eyeY: 0.8,
+    eyeGap: 0.16,
+    eyeSize: 0.05,
+    mouth: 'cat',
+    mouthY: 0.63,
+    nose: { shape: 'triangle', color: '#d98c94' },
+    whiskers: '#efe8de',
+  },
+};
+const roundEar = (p: Part): Part =>
+  p.slot === 'earL' ? { ...p, shape: 'sphere', at: [-0.22, 1.04, 0.02], size: [0.08, 0.08, 0.04] } : p;
+const hamster: Blueprint = {
+  ...realRabbit,
+  gait: 'biped',
+  parts: realRabbit.parts.map((p) => (p.slot === 'tail' ? { ...p, size: [0.04, 0.04, 0.04] } : roundEar(p))),
+};
+
+test('네 발로 서기: 고양이, 강아지 뼈대에 맞지 않는 몸(토끼, 햄스터, 기니피그, 곰)은 세우지 않는다', () => {
+  // 길게 선 귀 토끼
+  assert.equal(oddBody(realRabbit), true);
+  assert.equal(canStand(realRabbit), false);
+  assert.equal(standingBlueprint(realRabbit), undefined);
+  // 귀가 처진 토끼(롭이어)도 솜뭉치 꼬리에 고양이 입
+  const lop: Blueprint = {
+    ...realRabbit,
+    parts: realRabbit.parts.map((p) =>
+      p.slot === 'earL' ? { ...p, at: [-0.24, 0.66, 0.1], rot: [0, 0, -12] } : p,
+    ),
+  };
+  assert.equal(canStand(lop), false);
+  // 작은 둥근 귀에 꼬리가 거의 없는 햄스터, 꼬리가 없는 기니피그
+  assert.equal(canStand(hamster), false);
+  assert.equal(
+    canStand({ ...hamster, gait: 'quadruped', parts: hamster.parts.filter((p) => p.slot !== 'tail') }),
+    false,
+  );
+  // 둥근 귀, 짧은 꼬리 곰 (웃는 입, 타원 코라도)
+  const bear: Blueprint = {
+    ...hamster,
+    face: { ...hamster.face, mouth: 'smile', nose: { shape: 'oval', color: '#2a2220' }, whiskers: undefined },
+  };
+  assert.equal(canStand(bear), false);
+  // 기본 토끼 페어리 몸도 같다
+  assert.equal(canStand(DEFAULT_BLUEPRINTS.bunny), false);
+});
+
+test('네 발로 서기: 여우, 너구리(긴 꼬리), 처진 귀 짧은 꼬리 강아지, 꼬리 짧은 고양이는 그대로 세운다', () => {
+  const fox: Blueprint = {
+    ...prickEarDog,
+    parts: prickEarDog.parts.map((p) =>
+      p.slot === 'tail'
+        ? {
+            ...p,
+            size: [0.1, 0.1, 0.1],
+            path: [
+              [0, 0.36, -0.42],
+              [0.24, 0.2, -0.7],
+            ],
+          }
+        : p,
+    ),
+  };
+  assert.equal(oddBody(fox), false);
+  assert.equal(catLike(fox), false);
+  assert.ok(standingBlueprint(fox));
+  // 둥근 귀라도 긴 꼬리면 (너구리)
+  assert.equal(canStand({ ...fox, parts: fox.parts.map(roundEar) }), true);
+  // 처진 귀에 방울 꼬리만 있는 강아지 (푸들)
+  const poodle: Blueprint = {
+    ...DEFAULT_BLUEPRINTS.dog,
+    gait: 'quadruped',
+    parts: DEFAULT_BLUEPRINTS.dog.parts.filter((p) => !(p.slot === 'tail' && p.shape === 'capsule')),
+  };
+  assert.equal(canStand(poodle), true);
+  // 세모 귀 고양이는 꼬리가 짧거나 없어도
+  const bobtail: Blueprint = {
+    ...EXAMPLE_CAT,
+    gait: 'quadruped',
+    parts: EXAMPLE_CAT.parts.filter((p) => p.slot !== 'tail'),
+  };
+  assert.equal(canStand(bobtail), true);
+  assert.equal(canStand(EXAMPLE_CAT), true);
+  assert.equal(canStand(DEFAULT_BLUEPRINTS.dog), true);
 });
 
 // 선 세모 귀 강아지 (시바견처럼): 웃는 입, 타원 코, 수염 없음. 크림색 배 (아래쪽 나누기 무늬)

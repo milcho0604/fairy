@@ -51,6 +51,26 @@ export function catLike(bp: Blueprint): boolean {
 }
 
 /**
+ * 고양이(밀크)나 강아지(초코) 뼈대에 맞지 않는 몸인지 (토끼, 햄스터, 기니피그, 곰). 뼈대에 입히면 길게 선 귀가
+ * 처진 강아지 귀나 세모 고양이 귀가 되고 솜뭉치 꼬리가 긴 꼬리가 되어 그 동물로 보이지 않는다.
+ * 길게 선 귀(세모가 아닌, 머리 위로 폭의 두 배 넘게 긴 귀)이거나, 꼬리가 없거나 작은 공 하나뿐인데
+ * 둥근 귀이거나 강아지 얼굴(웃는 입, 타원 코)이 아니고 세모 귀도 아니면 맞지 않는다
+ */
+export function oddBody(bp: Blueprint): boolean {
+  const ear = first(bp.parts, 'earL') ?? first(bp.parts, 'earR');
+  if (!ear || ear.shape === 'cone') return false;
+  const head = biggest(bp.parts, 'head') ?? biggest(bp.parts, 'body');
+  const wide = Math.max(ear.size[0], ear.size[2]);
+  if (head && ear.at[1] > head.at[1] && ear.size[1] >= wide * 2) return true;
+  const tails = bp.parts.filter((p) => p.slot === 'tail' && !p.wear);
+  const puff = tails.every((p) => p.shape === 'sphere' && Math.max(...p.size) <= 0.1);
+  if (!puff) return false;
+  const round = ear.size[1] <= wide * 1.4 && (!head || ear.at[1] >= head.at[1]);
+  const dogFace = bp.face.mouth === 'smile' || bp.face.mouth === 'grin' || bp.face.nose?.shape === 'oval';
+  return round || !dogFace;
+}
+
+/**
  * 네 발로 선 피규어로 만들 수 있는 동물인지: 귀나 꼬리가 있고 얼굴이 있는 네 발(또는 동물 모양) 설계도.
  * 이미 네 발로 선 몸이거나, 귀와 꼬리가 다 없는 것(인형, 사람, 새)은 아니다
  */
@@ -62,7 +82,7 @@ export function canStand(bp: Blueprint): boolean {
   if (bp.face.nose?.shape === 'none') return false;
   const ears = bp.parts.some((p) => !p.wear && (p.slot === 'earL' || p.slot === 'earR'));
   const tail = bp.parts.some((p) => !p.wear && p.slot === 'tail');
-  return ears && (tail || bp.gait === 'quadruped');
+  return ears && (tail || bp.gait === 'quadruped') && !oddBody(bp);
 }
 
 /** 처진 귀인지 (귀 가운데가 머리 가운데보다 낮다, 또는 세모가 아닌 아래로 긴 귀) */
