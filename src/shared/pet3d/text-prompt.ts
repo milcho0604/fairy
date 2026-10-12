@@ -4,7 +4,7 @@
 // 요청문은 사용자에게 보이지 않고 JSON 정확도가 중요해 영어로 쓴다.
 import { DATA_CLOSE, DATA_OPEN } from '../ai/persona.ts';
 import { clipPetName, PET_NAME_MAX, petNameLength } from '../settings.ts';
-import { type Blueprint, type Gait, MAX_PARTS, parseBlueprint } from './blueprint.ts';
+import { type Blueprint, type Gait, MAX_PARTS, type Part, parseBlueprint } from './blueprint.ts';
 import { EXAMPLE_PLUSH } from './examples.ts';
 import { gaitBlock, schemaBlock } from './prompt.ts';
 import { repairBlueprint } from './repair.ts';
@@ -67,8 +67,9 @@ function textRules(webSearch: boolean): string {
 - Keep it cute and simple: a chibi collectible figure, 8 to ${MAX_PARTS} parts, everything rounded. Keep everything within x and z of -0.7..0.7 and y of 0..1.3.
 - Proportions: a big head (as wide as the body or up to 1.3 times wider, and taller than the body), a short round body, small stubby limbs. A character drawn with a tiny body under a huge head keeps that.
 - Pick the body type: "gait": "biped" for characters that stand on two feet (people, birds, plush toys, most mascots), with armL/armR (a bird gets wingL/wingR). "gait": "quadruped" only for an animal that should walk on all fours: then put two front paws in legL/legR at z > 0 and two hind paws in legL/legR at z < 0, at least 0.3 apart, all touching y=0, and no armL/armR.
-- Colors: use the described or known colors as hex values, at their real lightness: a pale pastel stays pale (a light cream, a soft grayish blue), not a bright saturated version. Avoid pure white (#ffffff) and pure black (#000000) for big parts.
-- Ears are what tells similar characters apart, so match their shape and size: long upright ears are tall narrow capsules standing nearly straight on top of the head (ry 0.25 to 0.35, rx about a third of ry), placed so the part above the head is at least as tall as half the head; small round ears are small flattened spheres half sunk into the top of the head; pointed ears are cones. Color the ear like the head part it sits on, with "inner" when the inside differs.
+- Colors: use the described or known colors as hex values, at their real lightness. Soft cartoon and kawaii characters are drawn in soft, slightly grayish pastels: pick light, low-saturation tones (a pale blue-gray like #a9bfd6 rather than a sky blue like #7fb6e0, a cream like #f6ecc4 rather than a bright yellow like #f8e27a, a dusty pink rather than a hot pink). Use strong saturated colors only when the character really has them. Avoid pure white (#ffffff) and pure black (#000000) for big parts.
+- Add "pastel": true as an extra top-level key when the figure should stay in soft pastel tones (a soft cartoon, kawaii art, a plush, or the owner asks for pale or pastel colors); otherwise "pastel": false. The app then softens any color that came out too vivid.
+- Ears are what tells similar characters apart, so match their shape and size: long upright ears (rabbits, bunnies, any "long ears") are tall narrow capsules on top of the head, each sticking out above the head about as tall as the head itself (ry 0.3 to 0.38, rx about a quarter of ry, only the bottom end sunk into the head), with a slight outward tilt (rot z about 10 on the left ear, mirror for the right); small round ears are small flattened spheres half sunk into the top of the head; pointed ears are cones. Color the ear like the head part it sits on, with "inner" when the inside differs.
 - Head markings use "pattern" on the head part instead of extra parts: a colored cap is "split" with side "top" (amount 0.4 to 0.55 so it ends just above the eyes); a cap parted at the front center by a pointed wedge of the face color adds "notch" (0.4 to 0.8); a pale face or muzzle on a darker head is "split" with side "front". Other markings and accessories (hat, ribbon, scarf, glasses, collar, cape) are separate parts in a fitting slot that overlap the surface. A bow uses "shape": "bow".
 - The eyes and mouth are drawn by the app from "face", so do not model them. Copy the character's usual expression: "grin" for a wide open smiling mouth, "tiny" for a small calm mouth, "cat" for a w mouth, "smile" for a closed smile; "blush" when it has rosy cheeks; "nose": { "shape": "none" } when it is drawn without a nose. Use "nose" for an animal nose, "beak" only for birds.
 - Parts must overlap so the figure is one solid piece, and the lowest feet touch y=0.
@@ -122,6 +123,71 @@ ${JSON.stringify(bp)}
 Reply with the full corrected blueprint, only the JSON inside a \`\`\`json code block.`;
 }
 
+/** 길게 선 귀가 머리 위로 나와야 할 만큼: 귀 반길이(ry)에 대한 배율. 가운데가 머리 꼭대기보다 이만큼 위 */
+const LONG_EAR_LIFT = 0.4;
+
+/**
+ * 길게 선 귀(귀 슬롯의 세로로 긴 capsule)가 머리에 거의 묻혀 짧아 보이면 위로 올린다. AI 가 귀를 길게 만들어도
+ * 가운데를 머리 꼭대기 아래에 두어 뭉툭한 귀가 됐다. 말로 만들기 길에서만 (사진 길은 사진의 귀 자리를 따른다)
+ */
+export function liftLongEars(bp: Blueprint): Blueprint {
+  const heads = bp.parts.filter((p) => p.slot === 'head');
+  if (!heads.length) return bp;
+  const top = Math.max(...heads.map((p) => p.at[1] + p.size[1]));
+  let changed = false;
+  const parts = bp.parts.map((p): Part => {
+    const [rx, ry] = p.size;
+    const long =
+      (p.slot === 'earL' || p.slot === 'earR') && p.shape === 'capsule' && ry >= 0.2 && ry >= rx * 2;
+    const want = Math.round((top + ry * LONG_EAR_LIFT) * 1000) / 1000;
+    if (!long || p.at[1] >= want) return p;
+    changed = true;
+    return { ...p, at: [p.at[0], want, p.at[2]] };
+  });
+  return changed ? { ...bp, parts } : bp;
+}
+
+/** 파스텔 모습의 색 짙기 상한 (가장 큰 채널과 작은 채널의 차, 0~1) */
+const PASTEL_CHROMA = 0.24;
+
+/**
+ * 한 색을 파스텔로: 짙기가 상한을 넘는 밝은 색(가장 큰 채널이 0.55 넘게)만 짙기를 낮춘다. 가장 밝은 채널과 색상은 그대로
+ * 두고 나머지 채널을 끌어올려서, 진한 노랑은 크림, 하늘색은 옅은 회청색이 된다 (탁해지지 않게). 어두운 색과 이미 옅은 색은 그대로.
+ * HSL 채도는 흰색 가까이에서 부풀어 옅은 크림도 진하다고 보므로 짙기(채널 차)로 잰다
+ */
+export function pastel(hex: string): string {
+  const n = Number.parseInt(hex.slice(1), 16);
+  const ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => v / 255);
+  const max = Math.max(...ch);
+  const d = max - Math.min(...ch);
+  if (d <= PASTEL_CHROMA || max <= 0.55) return hex;
+  const k = PASTEL_CHROMA / d;
+  return `#${ch
+    .map((v) =>
+      Math.round((max - (max - v) * k) * 255)
+        .toString(16)
+        .padStart(2, '0'),
+    )
+    .join('')}`;
+}
+
+/** 부품 색(겉, 안쪽, 무늬)을 파스텔로. 얼굴 색(눈, 볼, 코)은 그대로. 바뀐 것이 없으면 같은 설계도 */
+export function softenColors(bp: Blueprint): Blueprint {
+  let changed = false;
+  const soft = (c: string) => {
+    const out = pastel(c);
+    if (out !== c) changed = true;
+    return out;
+  };
+  const parts = bp.parts.map((p): Part => {
+    const out: Part = { ...p, color: soft(p.color) };
+    if (p.inner) out.inner = soft(p.inner);
+    if (p.pattern) out.pattern = { ...p.pattern, color: soft(p.pattern.color) };
+    return out;
+  });
+  return changed ? { ...bp, parts } : bp;
+}
+
 /** AI 답 읽기 결과. 실패면 까닭: 답이 비었다(empty) 또는 설계도로 못 읽었다(bad) */
 export type TextAnswer =
   | { ok: true; bp: Blueprint; namedCharacter: boolean; fixes: string[] }
@@ -141,7 +207,14 @@ export function readTextAnswer(answer: unknown, gait?: Gait): TextAnswer {
       const raw = JSON.parse(c);
       const parsed = parseBlueprint(raw);
       if (!parsed) continue;
-      const { bp, fixes } = repairBlueprint(parsed);
+      const { bp: repaired, fixes } = repairBlueprint(parsed);
+      let bp = liftLongEars(repaired);
+      if (bp !== repaired) fixes.push('long ears');
+      if (raw?.pastel === true) {
+        const soft = softenColors(bp);
+        if (soft !== bp) fixes.push('pastel');
+        bp = soft;
+      }
       // 고른 걸음새로 다시 만들었으면 그 걸음새로 둔다 (사진 길 extractBlueprint 와 같다)
       return {
         ok: true,
