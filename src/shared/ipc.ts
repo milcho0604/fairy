@@ -791,6 +791,7 @@ export const PANEL = {
   openSettings: 'panel:open-settings',
   lookTogether: 'panel:look-together',
   close: 'panel:close',
+  quickFit: 'panel:quick-fit',
   // 메모 (v1)
   noteGet: 'panel:note-get',
   noteAdd: 'panel:note-add',
@@ -987,6 +988,8 @@ export interface PanelBridge {
   openSettings(): void;
   lookTogether(): void;
   close(): void;
+  /** 빠른 입력 창: 내용 높이(CSS px)에 맞게 창 높이를 바꿔 달라 (큰 글씨에서 잘리지 않게, shared/quick-fit.ts) */
+  quickFit(contentCss: number): void;
   onState(listener: (state: PanelState) => void): void;
   noteGet(id: number): Promise<Note | undefined>;
   /** 새 메모. 만든 메모를 돌려준다. text 를 주면 그 글로 시작한다 (찾기 칸에 적은 글로 메모 만들기) */

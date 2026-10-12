@@ -47,6 +47,7 @@ import {
 } from '../shared/panel-place.ts';
 import { isPinKind } from '../shared/pin.ts';
 import { hasDeadlineWord } from '../shared/quick-add.ts';
+import { quickHeight } from '../shared/quick-fit.ts';
 import {
   parseTodoLine,
   remindsInput,
@@ -702,6 +703,14 @@ export function createPanel(o: PanelOptions) {
     if (!ours(e)) return;
     closePanel();
     o.lookTogether();
+  });
+  // 빠른 입력 창 높이를 내용에 맞춘다 (큰 글씨에서 위아래가 잘렸다). 위 가장자리는 그대로 두고 아래로 늘린다
+  ipcMain.on(PANEL.quickFit, (e, contentCss: unknown) => {
+    if (!quick || quick.isDestroyed() || e.sender !== quick.webContents || typeof contentCss !== 'number')
+      return;
+    const height = quickHeight(contentCss, quick.webContents.getZoomFactor());
+    const b = quick.getBounds();
+    if (b.height !== height) quick.setBounds({ ...b, height });
   });
   ipcMain.on(PANEL.close, (e) => {
     if (!ours(e)) return;

@@ -316,6 +316,7 @@ if (kind === 'panel' || kind === 'quick') {
     openSettings: () => ipcRenderer.send(PANEL.openSettings),
     lookTogether: () => ipcRenderer.send(PANEL.lookTogether),
     close: () => ipcRenderer.send(PANEL.close),
+    quickFit: (contentCss: number) => ipcRenderer.send(PANEL.quickFit, contentCss),
     onState: (listener) => {
       ipcRenderer.on(PANEL.state, (_e, state: PanelState) => listener(state));
     },

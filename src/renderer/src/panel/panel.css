@@ -665,7 +665,8 @@ li.pin-end {
 .quick input {
   flex: 1;
   min-width: 0;
-  height: 34px;
+  /* 글씨가 커지면(최소 글자 크기 설정) 칸도 같이 커지게 높이는 최소만 */
+  min-height: 34px;
   padding: 0 4px;
   border: 0;
   background: transparent;
