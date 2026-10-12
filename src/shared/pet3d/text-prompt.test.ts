@@ -10,6 +10,7 @@ import {
   describePrompt,
   makerTabs,
   nameFromText,
+  pastel,
   readTextAnswer,
   TEXT_SYSTEM,
   TWEAK_MAX,
@@ -179,8 +180,56 @@ test('처음 만들기 요청문: 닮게 만드는 규칙 (찾아보기, 귀 모
   assert.ok(p.includes('"notch"'));
   assert.ok(p.includes('long upright ears'));
   assert.ok(p.includes('"grin" for a wide open smiling mouth'));
-  assert.ok(p.includes('a pale pastel stays pale'));
+  assert.ok(p.includes('low-saturation tones') && p.includes('"pastel": true'));
   // 고치기도 같은 규칙을 쓰지만 찾아보지는 않는다
   const t = tweakPrompt(EXAMPLE_PLUSH, '귀 길게');
   assert.ok(t.includes('long upright ears') && !t.includes('web search tool'));
+});
+
+const answerOf = (parts: object[], extra: object = {}) =>
+  `\`\`\`json\n${JSON.stringify({ v: 2, parts, face: { slot: 'head', eyeY: 0.7, mouth: 'grin', mouthY: 0.6 }, ...extra })}\n\`\`\``;
+const headPart = { slot: 'head', shape: 'sphere', at: [0, 0.8, 0], size: [0.5, 0.4, 0.4], color: '#f6ecc4' };
+const bodyPart = { slot: 'body', shape: 'sphere', at: [0, 0.3, 0], size: [0.35, 0.3, 0.3], color: '#f6ecc4' };
+
+test('길게 선 귀가 머리에 묻혀 있으면 위로 올리고, 둥근 귀와 이미 높은 귀는 그대로', () => {
+  const ear = (size: number[], y: number, shape = 'capsule') => ({
+    slot: 'earL',
+    shape,
+    at: [-0.2, y, 0],
+    size,
+    color: '#f6ecc4',
+    mirror: true,
+  });
+  const low = readTextAnswer(answerOf([bodyPart, headPart, ear([0.09, 0.3, 0.06], 1.08)]));
+  assert.ok(low.ok);
+  assert.equal(low.bp.parts.find((p) => p.slot === 'earL')?.at[1], 1.32);
+  assert.ok(low.fixes.includes('long ears'));
+  const round = readTextAnswer(answerOf([bodyPart, headPart, ear([0.12, 0.12, 0.07], 1.1, 'sphere')]));
+  assert.ok(round.ok && round.bp.parts.find((p) => p.slot === 'earL')?.at[1] === 1.1);
+  const high = readTextAnswer(answerOf([bodyPart, headPart, ear([0.09, 0.3, 0.06], 1.4)]));
+  assert.ok(high.ok && high.bp.parts.find((p) => p.slot === 'earL')?.at[1] === 1.4);
+  assert.ok(high.ok && !high.fixes.includes('long ears'));
+});
+
+test('파스텔 표시가 있으면 너무 진한 밝은 색만 옅게, 어두운 색과 얼굴 색은 그대로', () => {
+  assert.equal(pastel('#f6ecc4'), '#f6ecc4');
+  assert.equal(pastel('#2b2224'), '#2b2224');
+  const soft = pastel('#f8e27a');
+  assert.notEqual(soft, '#f8e27a');
+  // 채도가 내려간다 (가장 큰 값과 작은 값의 차이가 준다)
+  const spread = (h: string) => {
+    const v = [1, 3, 5].map((i) => Number.parseInt(h.slice(i, i + 2), 16));
+    return Math.max(...v) - Math.min(...v);
+  };
+  assert.ok(spread(soft) < spread('#f8e27a'));
+  assert.equal(pastel(soft), soft);
+  const yellow = { ...headPart, color: '#f8e27a', pattern: { type: 'split', color: '#4aa3f0', side: 'top' } };
+  const vivid = readTextAnswer(answerOf([bodyPart, yellow], { pastel: false }));
+  assert.ok(vivid.ok && vivid.bp.parts[1]?.color === '#f8e27a');
+  const pale = readTextAnswer(answerOf([bodyPart, yellow], { pastel: true }));
+  assert.ok(pale.ok);
+  assert.equal(pale.bp.parts[1]?.color, soft);
+  assert.notEqual(pale.bp.parts[1]?.pattern?.color, '#4aa3f0');
+  assert.equal(pale.bp.parts[0]?.color, '#f6ecc4');
+  assert.ok(pale.fixes.includes('pastel'));
 });
