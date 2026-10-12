@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { t } from '../../../shared/i18n/index.ts';
-import type { PetLookView, SettingsSnapshot } from '../../../shared/ipc.ts';
+import type { PetLookView, SavedPetView, SettingsSnapshot } from '../../../shared/ipc.ts';
+import { keepOrder } from '../../../shared/pet-order.ts';
 import { LICENSE_LABEL } from '../../../shared/pet-share.ts';
 import { DEFAULT_BLUEPRINTS } from '../../../shared/pet3d/defaults.ts';
 import { PET_KINDS, type PetKind } from '../../../shared/settings.ts';
@@ -10,7 +11,8 @@ import { Pet3D } from '../pet3d.ts';
 
 /**
  * 펫 고르기 (6단계): 기본 펫 다섯 마리(입체로 보기면 실제 3D 그림), 그림으로 들어 있는 밀크와 초코, 보관한 사진 펫.
- * 고르면 지금 사진 펫은 보관함으로 간다. 보관한 펫은 두 번 눌러 지운다
+ * 고르면 지금 사진 펫은 보관함으로 간다. 보관한 펫은 두 번 눌러 지운다.
+ * 사진 펫 카드는 고를 때마다 제자리를 지키고 "지금" 표시만 옮긴다 (pet-order.ts. 예전에는 고른 카드가 맨 위로 가고 다른 카드가 밀렸다)
  */
 export function PetPicker({
   snap,
@@ -40,22 +42,24 @@ export function PetPicker({
     };
   }, [s.pet3d, snap.current, snap.library]);
   const look = (v: PetLookView) => (s.pet3d && lookThumbs.get(v.key)) || v.thumb;
+  // 사진 펫 카드 순서 기억 (창이 열려 있는 동안). 열쇠는 그림 파일 이름: 보관할 때마다 id 는 새로 붙지만 그림은 그대로다
+  const order = useRef<string[]>([]);
+  const cur = s.petImage;
+  // 밀크, 초코 복사본은 아래 그 캐릭터 칸이 지금 펫 카드를 맡는다 (같은 펫이 두 번 보이지 않게).
+  // 다만 보관함 카드로 보이던 복사본을 고르면 그 카드가 제자리에서 지금 펫이 된다 (카드가 사라지지 않게)
+  const starterOwns = !!cur && !!starterOf(cur) && !order.current.includes(cur);
+  // 설정이 보관함보다 먼저 오면 잠깐 고른 펫이 보관함에도 있다. 같은 그림은 한 장만
+  const views = new Map<string, SavedPetView>();
+  for (const p of snap.library) if (!views.has(keyOf(p))) views.set(keyOf(p), p);
+  const keys = [...(cur && !starterOwns ? [cur] : []), ...views.keys()].filter(
+    (k) => !(starterOwns && k === cur),
+  );
+  order.current = keepOrder(order.current, keys);
+  const photoCards = order.current.filter((k) => keys.includes(k));
+  const nowView =
+    snap.current && cur && keyOf(snap.current) === cur ? snap.current : cur ? views.get(cur) : undefined;
   return (
     <div className="pet-grid">
-      {/* 밀크, 초코 복사본이면 아래 그 캐릭터 칸이 지금 펫 카드를 맡는다 (같은 펫이 두 번 보이지 않게) */}
-      {s.petImage && snap.current && !starterOf(s.petImage) && (
-        <div className="pet-card on" aria-current="true">
-          <img src={look(snap.current)} alt="" />
-          <span className="pet-name">{s.petName}</span>
-          <small>
-            {t('settings.pets.now')}
-            {snap.current.age && (
-              <span className="pet-age">{t(`settings.pets.age.${snap.current.age}`)}</span>
-            )}
-          </small>
-          <MetaLine meta={snap.current.meta} />
-        </div>
-      )}
       {PET_KINDS.map((k) => {
         const on = !s.petImage && s.petKind === k.id;
         return (
@@ -73,7 +77,7 @@ export function PetPicker({
       })}
       {/* 밀크, 초코: 고르면 사진 펫이 된다 (지금 펫 카드에도 보인다) */}
       {snap.starters.map((p) => {
-        const on = isCurrentStarter(s.petImage, p.id);
+        const on = starterOwns && isCurrentStarter(s.petImage, p.id);
         return (
           <button
             key={p.id}
@@ -91,39 +95,61 @@ export function PetPicker({
           </button>
         );
       })}
-      {snap.library.map((p) => (
-        <div key={p.id} className="pet-card saved">
-          <button type="button" className="pick" onClick={() => onPick({ id: p.id })}>
-            {p.thumb ? <img src={look(p)} alt="" /> : <i />}
-            <span className="pet-name">{p.name}</span>
-            {(p.look !== 'photo' || p.age) && (
+      {photoCards.map((k) => {
+        if (k === cur) {
+          if (!nowView) return null;
+          return (
+            <div key={k} className="pet-card on" aria-current="true">
+              <img src={look(nowView)} alt="" />
+              <span className="pet-name">{s.petName}</span>
               <small>
-                {p.look !== 'photo' &&
-                  (p.look === 'figure' ? t('settings.pets.figure') : t('settings.pets.relief'))}
-                {/* AI 일러스트 나이 단계 (아기, 청소년, 어른) */}
-                {p.age && <span className="pet-age">{t(`settings.pets.age.${p.age}`)}</span>}
+                {t('settings.pets.now')}
+                {nowView.age && <span className="pet-age">{t(`settings.pets.age.${nowView.age}`)}</span>}
               </small>
-            )}
-            <MetaLine meta={p.meta} />
-          </button>
-          <button
-            type="button"
-            className={`remove${confirm === p.id ? ' sure' : ''}`}
-            aria-label={t('settings.pets.remove', { name: p.name })}
-            title={t('settings.pets.remove', { name: p.name })}
-            onClick={() => {
-              if (confirm === p.id) onRemove(p.id);
-              else setConfirm(p.id);
-            }}
-            onBlur={() => setConfirm('')}
-          >
-            {confirm === p.id ? t('settings.pets.removeSure') : '×'}
-          </button>
-        </div>
-      ))}
+              <MetaLine meta={nowView.meta} />
+            </div>
+          );
+        }
+        const p = views.get(k);
+        return (
+          p && (
+            <div key={k} className="pet-card saved">
+              <button type="button" className="pick" onClick={() => onPick({ id: p.id })}>
+                {p.thumb ? <img src={look(p)} alt="" /> : <i />}
+                <span className="pet-name">{p.name}</span>
+                {(p.look !== 'photo' || p.age) && (
+                  <small>
+                    {p.look !== 'photo' &&
+                      (p.look === 'figure' ? t('settings.pets.figure') : t('settings.pets.relief'))}
+                    {/* AI 일러스트 나이 단계 (아기, 청소년, 어른) */}
+                    {p.age && <span className="pet-age">{t(`settings.pets.age.${p.age}`)}</span>}
+                  </small>
+                )}
+                <MetaLine meta={p.meta} />
+              </button>
+              <button
+                type="button"
+                className={`remove${confirm === p.id ? ' sure' : ''}`}
+                aria-label={t('settings.pets.remove', { name: p.name })}
+                title={t('settings.pets.remove', { name: p.name })}
+                onClick={() => {
+                  if (confirm === p.id) onRemove(p.id);
+                  else setConfirm(p.id);
+                }}
+                onBlur={() => setConfirm('')}
+              >
+                {confirm === p.id ? t('settings.pets.removeSure') : '×'}
+              </button>
+            </div>
+          )
+        );
+      })}
     </div>
   );
 }
+
+/** 사진 펫 카드 열쇠: 그림 파일 이름 (PetLookView.key 는 그림|설계도|깊이 그림) */
+const keyOf = (v: PetLookView): string => v.key.split('|')[0] ?? v.key;
 
 /** 기본 펫 미리보기 그림. 입체로 보기면 3D 를 한 번씩 그려 사진으로 만든다 (렌더러는 하나만) */
 let thumbPet: Pet3D | undefined;

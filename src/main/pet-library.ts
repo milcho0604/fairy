@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { app, nativeImage } from 'electron';
 import { sizeOk } from '../shared/image-head.ts';
 import type { PetLookView, SavedPetView, StarterView } from '../shared/ipc.ts';
+import { swapIn } from '../shared/pet-order.ts';
 import type { PetMeta } from '../shared/pet-share.ts';
 import { type Blueprint, parseBlueprint } from '../shared/pet3d/blueprint.ts';
 import { starterModelOf } from '../shared/pet3d/starters.ts';
@@ -50,10 +51,13 @@ function removeUnused(list: string[]) {
   for (const f of list) if (!used.has(f)) rmSync(join(petsDir(), f), { force: true });
 }
 
-/** 지금 사진 펫을 보관함 맨 앞에 넣은 목록. 고를 펫(skip)은 먼저 빼고 자른다. 넘친 것은 dropped 로 */
+/**
+ * 지금 사진 펫을 보관함에 넣은 목록. 고를 펫(skip)이 있으면 그 자리에, 없으면 맨 앞에 넣고 자른다 (pet-order.ts).
+ * 넘친 것은 dropped 로
+ */
 function archiveCurrent(skip?: string): { list: SavedPet[]; dropped: SavedPet[] } {
   const s = settings.get();
-  const rest = s.petLibrary.filter((p) => p.id !== skip);
+  const rest = swapIn(s.petLibrary, undefined, skip);
   if (!s.petImage) return { list: rest, dropped: [] };
   // 손대지 않은 밀크, 초코 복사본은 보관하지 않는다 (다시 고르면 새로 복사된다. 보관함에 같은 그림이 쌓이지 않게)
   if (untouchedStarter(s))
@@ -68,7 +72,7 @@ function archiveCurrent(skip?: string): { list: SavedPet[]; dropped: SavedPet[] 
     poses: { ...s.petPoses },
     ...(s.petMeta ? { meta: s.petMeta } : {}),
   };
-  const next = [saved, ...rest];
+  const next = swapIn(s.petLibrary, saved, skip);
   return { list: next.slice(0, LIBRARY_MAX), dropped: next.slice(LIBRARY_MAX) };
 }
 
