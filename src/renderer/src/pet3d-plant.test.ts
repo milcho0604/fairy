@@ -277,3 +277,55 @@ test('발 딛기: 걷다가 다른 몸으로 바뀌면(펫이나 모습을 바�
   assert.ok(offL(out, REST2, L2) < 1e-9, `첫 틀 ${offL(out, REST2, L2)} L`);
   for (const id of LEGS) assert.ok(out[id].planted, `${id} planted`);
 });
+
+for (const [v, stall] of [
+  [0.15, 500],
+  [1.1, 250],
+  [0.45, 400],
+  [0.45, 900],
+  [0.45, 1350],
+  [0.45, 1900],
+  [1.1, 1900],
+] as const) {
+  test(`발 딛기: 걷는 중 그리기가 ${stall}ms 늦어도(빠르기 ${v}) 다리가 닿지 않는 발 없이 바로 몸 아래로, 닿는 발은 디딘 자리 그대로`, () => {
+    // 걸음 박자 어디에서 늦든 (늦은 틀이 걸음 한 바퀴의 여러 자리에 오게)
+    for (let s = 0; s < 30; s++) {
+      const p = new FootPlanter();
+      let t = 0;
+      for (; t < 1500 + s * 33; t += 33) p.update(walkFrame(t, 33, v));
+      const before = p.anchors();
+      const x0 = p.travelled;
+      t += stall;
+      const late = p.update(walkFrame(t, stall, v));
+      // 다리가 닿는 곳에 있던 디딘 발은 처음 자리로 되돌아가지 않고 세상 자리 그대로 (d215c9b)
+      let kept = 0;
+      for (const id of LEGS) {
+        const b = before[id];
+        if (!b.planted) continue;
+        const local = toLocal({ x: b.x - p.travelled, z: b.z }, 1.38);
+        if (Math.hypot(local.x - REST[id].x, local.z - REST[id].z) > 0.5 * L) continue;
+        if (!late[id].planted) continue;
+        const w = toStage(late[id], 1.38);
+        assert.ok(Math.hypot(w.x + p.travelled - b.x, w.z - b.z) < 1e-9, `${s}: ${id} 디딘 자리가 움직였다`);
+        kept++;
+      }
+      // 천천히 걷다 늦으면 몸이 조금만 가서 디딘 발이 다리가 닿는 곳에 남는다
+      if (v < 0.2) assert.ok(kept >= 2, `디딘 채 남은 발 ${kept}`);
+      assert.ok(p.travelled - x0 > 0, '몸이 갔다');
+      // 늦은 틀과 그 뒤 20틀: 든 발이든 디딘 발이든 다리가 닿는 곳 안에 그린다. 늦은 틀에 네 발을 한꺼번에 들지 않고
+      // 걷기는 두 발까지 (속보는 원래 네 발이 다 뜨는 틀이 있다)
+      const up = (o: Record<LegId, { planted: boolean }>) => LEGS.filter((id) => !o[id].planted).length;
+      let worst = offL(late, REST, L);
+      let maxUp = up(late);
+      for (let i = 0; i < 20; i++) {
+        t += 33;
+        const o = p.update(walkFrame(t, 33, v));
+        worst = Math.max(worst, offL(o, REST, L));
+        maxUp = Math.max(maxUp, up(o));
+      }
+      assert.ok(worst < 0.55, `늦은 틀 뒤 발이 ${worst.toFixed(2)} L 떨어졌다`);
+      assert.ok(up(late) < 4, `늦은 틀에 든 발 ${up(late)}`);
+      if (v < 0.75) assert.ok(maxUp <= 2, `늦은 틀 뒤 든 발 ${maxUp}`);
+    }
+  });
+}

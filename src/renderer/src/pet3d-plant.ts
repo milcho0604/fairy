@@ -90,6 +90,8 @@ const SWING_MAX_MS = 300;
 const FIX_SWING = 0.75;
 /** 이 틀 사이가 길면(그리지 않던 동안) 발을 바랄 자리에 다시 둔다 */
 const GAP_MS = 400;
+/** 걷는 중 틀 사이가 이만큼 길면 늦은 틀이다 (가장 드물게 그려도 12fps, 83ms) */
+const LATE_MS = 150;
 
 const smooth = (a: number, b: number, x: number) => {
   const k = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -199,6 +201,59 @@ export class FootPlanter {
     }
     const L = f.L;
     const moving = Math.abs(f.move) > 1e-7;
+    // 늦은 틀(창이 잠들었거나 바빴다) 뒤 몸은 그동안 간 만큼 한 번에 와 있고 걸음 박자도 건너뛰었다. 다리가 닿는 디딘 발은
+    // 그 자리 그대로 두고(처음 자리로 되돌리지 않는다), 닿지 않는 발은 들어 옮기면 뻗친 다리가 여러 틀 보이니 바로 몸 아래
+    // 지금 박자의 자리에 둔다. 박자가 드는 때인 발은 그만큼 든 발로 (늦은 동안 내렸어야 할 발이 한 바퀴 늦게 따라오지 않게)
+    if (dt >= LATE_MS && w0(f.hold) > 0)
+      for (const id of LEGS) {
+        const foot = this.feet.get(id);
+        if (!foot) continue;
+        foot.early = false;
+        const sw = foot.swing;
+        const reach = (x: number, z: number) => {
+          const local = toLocal({ x: x - this.bodyX, z }, f.heading);
+          return Math.hypot(local.x - f.rest[id].x, local.z - f.rest[id].z) <= REACH * L;
+        };
+        if (gait) {
+          const { duty, cycle } = gait;
+          const n = nominal[id];
+          const u = footPhase(id, this.phase, gait.kind);
+          const keep = !sw && reach(foot.ax, foot.az);
+          foot.swing = undefined;
+          if (u < duty) {
+            if (keep) continue;
+            foot.ax = n.x + this.dir * cycle * (duty / 2 - u);
+            foot.az = n.z;
+            continue;
+          }
+          if (!keep) {
+            foot.ax = n.x - (this.dir * cycle * duty) / 2;
+            foot.az = n.z;
+          }
+          foot.swing = {
+            fx: foot.ax,
+            fz: foot.az,
+            t0: f.now,
+            p0: 0,
+            dur: SWING_MAX_MS,
+            height: gait.lift,
+            tx: n.x + this.dir * ((1 - u) * cycle + (duty * cycle) / 2),
+            tz: n.z,
+          };
+          continue;
+        }
+        // 박자 없이 옮기는 중(돌아서기)이면 닿지 않는 발만 옮겨 내릴 자리에
+        if (sw ? reach(sw.fx, sw.fz) : reach(foot.ax, foot.az)) continue;
+        const x = goal[id].x + (moving ? this.dir * 0.12 * L : 0);
+        const z = goal[id].z;
+        if (sw) {
+          sw.fx = x;
+          sw.fz = z;
+        } else {
+          foot.ax = x;
+          foot.az = z;
+        }
+      }
     const swinging = () => LEGS.filter((id) => this.feet.get(id)?.swing);
     /** 이웃(같은 쪽)이 든 동안은 들지 않는다. 너무 멀어진 발(urgent)은 그래도 든다 (다리가 닿지 않으면 미끄러진다) */
     const canLift = (id: LegId, max: number, urgent = false) => {
@@ -229,8 +284,9 @@ export class FootPlanter {
         const u = footPhase(id, this.phase, kind);
         const n = nominal[id];
         if (!foot.swing) {
-          // 반 틀 앞을 내다보고 든다 (드물게 그리면 한 틀 늦게 들어 디딘 발이 다리 끝까지 끌려갔다)
-          const lead = du * 0.5;
+          // 반 틀 앞을 내다보고 든다 (드물게 그리면 한 틀 늦게 들어 디딘 발이 다리 끝까지 끌려갔다).
+          // 늦은 틀은 박자가 크게 건너뛰어 내다보면 네 발을 다 든다: 위에서 박자 자리에 두었으니 내다보지 않는다
+          const lead = dt >= LATE_MS ? 0 : du * 0.5;
           if (u < duty - lead) foot.early = false;
           // 걸음 박자의 들기는 막지 않는다 (앞 쌍이 이번 틀에 내리는 중이라 셋까지 세일 수 있다)
           else if (!foot.early && canLift(id, kind === 'trot' ? 4 : 2, true))
