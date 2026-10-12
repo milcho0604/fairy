@@ -16,7 +16,7 @@ export const ko = {
   'settings.tab.data': '데이터',
   'settings.tab.data.hint': '백업과 저장 공간',
   'settings.tab.about': '정보',
-  'settings.tab.about.hint': '업데이트와 베타 기록',
+  'settings.tab.about.hint': '업데이트와 내 기록',
   'settings.tabKeys': '설정 탭 옮기기 (설정 창에서)',
 };
 
@@ -34,6 +34,6 @@ export const en: Translation<typeof ko> = {
   'settings.tab.data': 'Data',
   'settings.tab.data.hint': 'Backup and storage',
   'settings.tab.about': 'About',
-  'settings.tab.about.hint': 'Updates and beta stats',
+  'settings.tab.about.hint': 'Updates and my stats',
   'settings.tabKeys': 'Switch settings tabs (in Settings)',
 };

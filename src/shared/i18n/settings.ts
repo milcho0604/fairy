@@ -358,7 +358,7 @@ export const ko = {
     '페어리는 MIT 라이선스 오픈소스야. 함께 들어 있는 다른 오픈소스의 고지를 볼 수 있어.',
   'settings.licensesOpen': '고지 보기',
   'settings.licensesFailed': '고지 파일을 열지 못했어.',
-  'settings.stats.title': '내 기록 (베타)',
+  'settings.stats.title': '내 기록',
   'settings.stats.intro':
     '페어리가 쓸 만한지 보는 숫자야. 이 컴퓨터에만 있고 어디로도 보내지 않아. 의견을 보낼 때 복사해서 같이 붙여 주면 큰 도움이 돼.',
   'settings.stats.daysUsed': '쓴 날',
@@ -381,7 +381,7 @@ export const ko = {
   'settings.stats.privacy': '복사한 글에는 날짜와 숫자만 들어가. 할 일 제목이나 대화 내용은 없어.',
 
   // 복사해서 보내는 베타 기록 글
-  'settings.report.title': '페어리 베타 기록 ({version}, {os})',
+  'settings.report.title': '페어리 내 기록 ({version}, {os})',
   'settings.report.first': '처음 켠 날 {first}, 오늘 {day}일째, 켠 날 {used}일',
   'settings.report.none': '아직 기록 없음',
   'settings.report.done': '하루 완료 할 일 중앙값 {n}개 (목표 {goal}개 이상)',
@@ -426,9 +426,9 @@ export const en: Translation<typeof ko> = {
   'settings.petStyle.figure': 'Figure',
   'settings.petStyle.game': 'Game character',
   'settings.petStyle.real': 'Realistic',
-  'settings.petStyle.fluffy': 'Fluffy (beta)',
+  'settings.petStyle.fluffy': 'Fluffy (experimental)',
   'settings.petStyleHint.fluffy':
-    'A seamless body with long, soft fur that can be curly or tufted per fairy. Still a beta and uses more graphics power.',
+    'A seamless body with long, soft fur that can be curly or tufted per fairy. Still experimental and uses more graphics power.',
   'settings.petStyleHint.figure': 'Glossy, like a soft vinyl figure.',
   'settings.petStyleHint.game':
     'Crisp cel shading with outlines, like a game character. Slightly bigger eyes too.',
@@ -741,7 +741,7 @@ export const en: Translation<typeof ko> = {
     'The fairy app is open source under the MIT license. See the notices for the other open source software it includes.',
   'settings.licensesOpen': 'View notices',
   'settings.licensesFailed': "Couldn't open the notices file.",
-  'settings.stats.title': 'My stats (beta)',
+  'settings.stats.title': 'My stats',
   'settings.stats.intro':
     'Numbers that show whether fairy is useful. They stay on this computer and go nowhere. Copying them into your feedback helps a lot.',
   'settings.stats.daysUsed': 'Days used',
@@ -763,7 +763,7 @@ export const en: Translation<typeof ko> = {
   'settings.stats.copy': 'Copy stats',
   'settings.stats.privacy': 'The copy has only dates and numbers. No to-do titles or chats.',
 
-  'settings.report.title': 'fairy beta stats ({version}, {os})',
+  'settings.report.title': 'fairy stats ({version}, {os})',
   'settings.report.first': 'First day {first}, today is day {day}, opened on {used} days',
   'settings.report.none': 'No stats yet',
   'settings.report.done': 'Median to-dos done a day: {n} (goal {goal} or more)',
