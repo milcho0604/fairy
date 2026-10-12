@@ -3,6 +3,7 @@
 import type { Exchange } from './ai/text.ts';
 import type { AiError, AiEvent, AiProvider } from './ai/types.ts';
 import type { AiUsage } from './ai/usage.ts';
+import { cutText } from './cut-text.ts';
 import { t } from './i18n/index.ts';
 
 export interface ChatImage {
@@ -209,7 +210,7 @@ export function parseChat(raw: unknown): SavedChat {
   for (const m of Array.isArray(r.messages) ? r.messages : []) {
     const v = (typeof m === 'object' && m !== null ? m : {}) as Record<string, unknown>;
     if (typeof v.id !== 'string' || !v.id || typeof v.text !== 'string') continue;
-    const text = v.text.slice(0, SAVED_TEXT_MAX);
+    const text = cutText(v.text, SAVED_TEXT_MAX);
     if (v.role === 'user' || v.role === 'notice') messages.push({ id: v.id, role: v.role, text });
     else if (v.role === 'pet' && v.status === 'done')
       messages.push({
