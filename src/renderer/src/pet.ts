@@ -27,6 +27,7 @@ import {
   type PetInputs,
   type PetMood,
   TALK_MS,
+  wanders,
 } from '../../shared/pet-mood.ts';
 import { type Blueprint, type Gait, parseBlueprint } from '../../shared/pet3d/blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from '../../shared/pet3d/defaults.ts';
@@ -536,7 +537,7 @@ function scheduleActivity() {
     // 같이 타자 치거나 같이 일하는 동안은 돌아다니지 않는다 (옆에서 같이 한다)
     const together = tapOn() || workStart >= 0;
     if (
-      mood === 'idle' &&
+      wanders(mood, inputs.pout) &&
       !activity &&
       !look &&
       !carry &&

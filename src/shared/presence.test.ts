@@ -23,3 +23,13 @@ test('까닭이 하나라도 남아 있으면 숨은 채로', () => {
   assert.equal(r.set('user', false), true); // 다시 보임
   assert.equal(r.hidden, false);
 });
+
+test('숨은 동안 새로 온 친구 펫에 걸 까닭: 켜진 것만, 끄면 빠진다', () => {
+  const r = new HideReasons();
+  assert.deepEqual(r.list(), []);
+  r.set('user', true);
+  r.set('presentation', true);
+  assert.deepEqual(r.list().sort(), ['presentation', 'user']);
+  r.set('user', false);
+  assert.deepEqual(r.list(), ['presentation']);
+});

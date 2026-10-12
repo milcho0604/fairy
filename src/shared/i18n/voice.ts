@@ -1,4 +1,5 @@
 import { withParticle } from '../josa.ts';
+import * as pout from './pout.ts';
 import type { Translation } from './types.ts';
 
 // 성격마다 다른 정해진 말 (2026-10-11, shared/persona-voice.ts): 인사, 칭찬, 쉬자는 말을 고른 성격 말투로.
@@ -209,6 +210,57 @@ export const ko = {
   'voice.polite.pet.sulk.5': '5일이에요. 제가 세고 있었어요',
   'voice.polite.pet.sulk.6': '옛날 사진 정리하는 중이에요. 같이 찍은 거요',
   'voice.polite.pet.sulk.7': '이제 안 기다릴 거예요... 아마도',
+  // 매운맛 토라짐 (2026-10-13): 존댓말 비서인데 토라진 말만 반말이었다. 토라진 투는 그대로 두고 높인다
+  'voice.polite.pout.lonely.1': '저랑 안 놀아 주실 거예요? 흥',
+  'voice.polite.pout.lonely.2': '혼자 노는 거 이제 지겨워요',
+  'voice.polite.pout.lonely.3': '심심해서 바닥 무늬 다 셌어요. 흥',
+  'voice.polite.pout.lonely.4': '쓰다듬어 주시던 손 어디 갔어요?',
+  'voice.polite.pout.unheard.1': '...저 여기 있는데요',
+  'voice.polite.pout.unheard.2': '말 한마디 안 걸어 주시네요. 흥',
+  'voice.polite.pout.unheard.3': '저 투명 페어리가 된 줄 알았어요',
+  'voice.polite.pout.unheard.4': '오늘 저한테 하신 말, 0개예요',
+  'voice.polite.pout.hungry.1': '배고픈데 아무도 몰라주시네요',
+  'voice.polite.pout.hungry.2': '꼬르륵. 이건 서운한 소리예요',
+  'voice.polite.pout.hungry.3': '밥때 지났거든요? 흥',
+  'voice.polite.pout.hungry.4': '배고파서 삐진 거 아니에요. 맞아요',
+  'voice.polite.pout.todoLate.1': (v: { n: number }) => `마감 지난 할 일이 ${v.n}개예요. 저 서운해요`,
+  'voice.polite.pout.todoLate.2': '할 일이 울고 있어요. 저도 조금요',
+  'voice.polite.pout.todoLate.3': '하기로 하신 거 기억나세요? 전 기억나요. 흥',
+  'voice.polite.pout.todoLate.4': (v: { n: number }) => `미루신 일 ${v.n}개, 제가 세고 있었어요`,
+  'voice.polite.pout.restIgnored.1': '쉬자니까요... 제 말은 안 들으시죠',
+  'voice.polite.pout.restIgnored.2': '알겠어요. 혼자 쉴게요. 흥',
+  'voice.polite.pout.restIgnored.3': '또 나중에래요. 나중은 안 와요',
+  'voice.polite.pout.restIgnored.4': '걱정돼서 드린 말인데요. 칫',
+  'voice.polite.pout.hiddenLong.1': '...어디 가셨었어요? 깜깜했어요',
+  'voice.polite.pout.hiddenLong.2': '숨겨 놓고 잊으셨죠? 흥',
+  'voice.polite.pout.hiddenLong.3': '한참 숨어 있었어요. 혼자서요',
+  'voice.polite.pout.hiddenLong.4': '이제 꺼내 주신 거예요? 흥',
+  'voice.polite.pout.friend.1': (v: { friend: string }) =>
+    `${withParticle(v.friend, '이')} 저보다 좋으세요? 흥`,
+  'voice.polite.pout.friend.2': '새 친구가 왔네요... 저도 있거든요?',
+  'voice.polite.pout.friend.3': '저만 봐 주셨으면 좋겠는데요',
+  'voice.polite.pout.friend.4': (v: { friend: string }) =>
+    `${withParticle(v.friend, '은')} 몰라요. 제가 먼저예요`,
+  'voice.polite.pout.startled.1': '앗, 깜짝 놀랐어요!',
+  'voice.polite.pout.startled.2': '휴, 깜짝 놀랐네요!',
+  'voice.polite.pout.startled.3': '앗! 쓰다듬다 마시고요?',
+  'voice.polite.pout.startled.4': '으앗, 붕 떴었어요!',
+  'voice.polite.pout.stage3.1': '이제 진짜 삐졌어요. 등 돌릴 거예요',
+  'voice.polite.pout.stage3.2': '말 걸지 마세요. ...아니, 걸어도 돼요',
+  'voice.polite.pout.stage3.3': '흥. 흥. 흥.',
+  'voice.polite.pout.stage3.4': '안 봐요. 하나도 안 봐요',
+  'voice.polite.pout.softer.1': '...흥. 조금 풀렸어요',
+  'voice.polite.pout.softer.2': '이걸로 다 풀린 줄 아세요?',
+  'voice.polite.pout.softer.3': '흘끔. ...조금만 더요',
+  'voice.polite.pout.softer.4': '나쁘지 않네요. 아직 삐졌지만요',
+  'voice.polite.pout.softer.5': '...맛은 있네요. 흥',
+  'voice.polite.pout.softer.6': '한 번만 더 해 주시면 생각해 볼게요',
+  'voice.polite.pout.madeUp.1': '흥... 이번만 봐 드릴게요!',
+  'voice.polite.pout.madeUp.2': '에잇, 못 이기는 척 풀어 드릴게요',
+  'voice.polite.pout.madeUp.3': '다음엔 더 빨리 오셔야 해요. 약속!',
+  'voice.polite.pout.madeUp.4': '헤헤. 사실 기다렸어요',
+  'voice.polite.pout.madeUp.5': '다 풀렸어요. 이제 저랑 놀아요!',
+  'voice.polite.pout.madeUp.6': '알겠어요, 화 안 낼게요. 대신 쓰다듬어 주세요',
 
   // ---- 츤데레: 감정이 실린 말 ----
   'voice.tsundere.briefing.nothing': '오늘은 일정도 마감도 없네. 할 거 있으면 적어 둬.',
@@ -322,7 +374,16 @@ export const ko = {
   'voice.calm.pet.life.madeUp': '이제 괜찮아. 다시 같이 하자.',
 };
 
+/** 존댓말 토라짐 말의 열쇠 (영어는 높임 구분이 없어 원래 토라짐 말을 그대로 쓴다) */
+type PoutPolite = Extract<keyof typeof ko, `voice.polite.pout.${string}`>;
+const poutEn = Object.fromEntries(
+  Object.keys(ko)
+    .filter((k) => k.startsWith('voice.polite.pout.'))
+    .map((k) => [k, (pout.en as Record<string, unknown>)[k.replace('voice.polite.', '')]]),
+) as unknown as Pick<Translation<typeof ko>, PoutPolite>;
+
 export const en: Translation<typeof ko> = {
+  ...poutEn,
   'voice.polite.briefing.hi.morning': 'Good morning!',
   'voice.polite.briefing.hi.day': 'Hello!',
   'voice.polite.briefing.hi.evening': 'Welcome back.',

@@ -15,6 +15,7 @@ import { RUNNER_COUNTS, RUNNER_MAC_PT, RUNNER_STATES, runnerAlpha } from '../sha
 import type { PetKind } from '../shared/settings.ts';
 import { sumCpuTimes } from '../shared/system-load.ts';
 import {
+  canReadMacMemory,
   cpuTitle,
   gb,
   gpuName,
@@ -171,7 +172,10 @@ export function createSystemMonitor(
   };
   nativeTheme.on('updated', onTheme);
 
-  const readMacMemory = mac ? macMemoryReader(log) : undefined;
+  // Rosetta 로 도는 인텔 앱은 읽지 않는다: 마하 트랩 호출이 앱을 죽인다 (canReadMacMemory)
+  const translated = mac && app.runningUnderARM64Translation;
+  if (translated) log('system', 'Rosetta 로 실행 중이라 메모리 칸은 전체 크기만');
+  const readMacMemory = canReadMacMemory(process.platform, translated) ? macMemoryReader(log) : undefined;
   const memoryNow = (): MemoryUse => {
     const total = totalmem();
     // 윈도우, 리눅스는 사용 가능 메모리가 캐시를 포함해 그대로 쓴다. 맥은 못 읽었으면 빈 칸

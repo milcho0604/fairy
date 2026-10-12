@@ -1,4 +1,6 @@
 // 메모 (v1). 마크다운 글. 펫 패널 메모 탭과 AI 답 저장(답을 메모로)에서 쓴다.
+
+import { cutText, textBoundary } from './cut-text.ts';
 import type { Db } from './db-schema.ts';
 import { t } from './i18n/index.ts';
 import { pinAt } from './pin.ts';
@@ -43,7 +45,7 @@ export const NOTE_BODY_MAX = 50_000;
 export function noteTitle(n: Pick<Note, 'title' | 'body'>): string {
   if (n.title.trim()) return n.title.trim();
   const first = n.body.split('\n').find((l) => l.trim()) ?? '';
-  return first.replace(/^\s*(#+|[-*]|\d+\.)\s*/, '').slice(0, NOTE_TITLE_MAX) || t('panel.note.empty');
+  return cutText(first.replace(/^\s*(#+|[-*]|\d+\.)\s*/, ''), NOTE_TITLE_MAX) || t('panel.note.empty');
 }
 
 /** 미리보기 길이 (글자) */
@@ -82,7 +84,24 @@ export function notePreview(n: Pick<Note, 'title' | 'body'>): string {
     kept.push(line);
     len += line.length + 1;
   }
-  return kept.join(' ').slice(0, PREVIEW_MAX);
+  return cutText(kept.join(' '), PREVIEW_MAX);
+}
+
+/**
+ * 세 갈래 본문 합치기. base 는 둘이 갈라지기 전 글, mine 은 메모 창의 글, theirs 는 지금 저장된 글.
+ * 한쪽만 바뀌었으면 그쪽. 둘 다 바뀌었고 저장된 쪽이 끝에 덧붙인 것(append_note 는 끝 공백을 걷고 붙인다)이면
+ * 창의 글 끝에 그 덧붙인 부분을 잇는다. 그 밖에 둘 다 고쳤으면 창의 글 (보고 있는 글이 남는다)
+ */
+export function mergeNoteText(base: string, mine: string, theirs: string): string {
+  if (theirs === base || theirs === mine) return mine;
+  if (mine === base) return theirs;
+  const head = base.replace(/\s+$/, '');
+  if (theirs.length > head.length && theirs.startsWith(head)) {
+    const tail = theirs.slice(head.length);
+    const joined = /^\s/.test(tail) ? `${mine.replace(/\s+$/, '')}${tail}` : `${mine}${tail}`;
+    return cutText(joined, NOTE_BODY_MAX);
+  }
+  return mine;
 }
 
 export class NoteStore {
@@ -112,8 +131,8 @@ export class NoteStore {
     const r = this.#db
       .prepare('insert into note (title, body, source, created_at, updated_at) values (?, ?, ?, ?, ?)')
       .run(
-        (input.title ?? '').trim().slice(0, NOTE_TITLE_MAX),
-        (input.body ?? '').slice(0, NOTE_BODY_MAX),
+        cutText((input.title ?? '').trim(), NOTE_TITLE_MAX),
+        cutText(input.body ?? '', NOTE_BODY_MAX),
         input.source === 'ai' ? 'ai' : 'me',
         now,
         now,
@@ -124,13 +143,40 @@ export class NoteStore {
   update(id: number, patch: { title?: string; body?: string }, now: number): Note | undefined {
     const n = this.get(id);
     if (!n) return undefined;
-    const title = patch.title === undefined ? n.title : patch.title.trim().slice(0, NOTE_TITLE_MAX);
-    const body = patch.body === undefined ? n.body : patch.body.slice(0, NOTE_BODY_MAX);
+    const title = patch.title === undefined ? n.title : cutText(patch.title.trim(), NOTE_TITLE_MAX);
+    const body = patch.body === undefined ? n.body : cutText(patch.body, NOTE_BODY_MAX);
     if (title === n.title && body === n.body) return n;
     this.#db
       .prepare('update note set title = ?, body = ?, updated_at = ? where id = ?')
       .run(title, body, now, id);
     return this.get(id);
+  }
+
+  /**
+   * 메모 창이 고친 본문을 저장한다. base 는 창이 마지막으로 받은 저장된 본문.
+   * 그사이 다른 곳(Claude Code 의 append_note, 펫 실행의 메모 덧붙이기)이 본문을 바꿨으면 창의 글로 덮지 않고
+   * mergeNoteText 로 합친다. 예전에는 메모를 열어 둔 채 덧붙인 글이 다음 타자 한 번에 사라졌다 (버그잡이 b)
+   */
+  updateFrom(
+    id: number,
+    patch: { title?: string; body?: string },
+    base: { body?: string } | undefined,
+    now: number,
+  ): Note | undefined {
+    const n = this.get(id);
+    if (!n) return undefined;
+    const body =
+      patch.body !== undefined && base?.body !== undefined
+        ? mergeNoteText(base.body, patch.body, n.body)
+        : patch.body;
+    return this.update(
+      id,
+      {
+        ...(patch.title !== undefined ? { title: patch.title } : {}),
+        ...(body !== undefined ? { body } : {}),
+      },
+      now,
+    );
   }
 
   /**
@@ -220,8 +266,8 @@ export function searchNotes(
     const src = folded.length === body.length ? body : folded;
     const at = m.index;
     const end = at + m[0].length;
-    const from = Math.max(0, at - SNIPPET_BEFORE);
-    const to = Math.min(src.length, end + SNIPPET_AFTER);
+    const from = textBoundary(src, Math.max(0, at - SNIPPET_BEFORE));
+    const to = textBoundary(src, Math.min(src.length, end + SNIPPET_AFTER));
     const flat = (s: string) => s.replace(/\s+/g, ' ');
     const before = `${from > 0 ? '…' : ''}${flat(src.slice(from, at)).trimStart()}`;
     const hit = flat(src.slice(at, end));
