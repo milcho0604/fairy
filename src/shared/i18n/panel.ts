@@ -369,7 +369,7 @@ export const en: Translation<typeof ko> = {
   'panel.remind.min': '{n} min before',
   'panel.remind.hour': '{n} h before',
   'panel.event.add': 'Add an event',
-  'panel.event.placeholder': 'Add an event (e.g. dentist fri 3pm)',
+  'panel.event.placeholder': 'Add event (e.g. gym 3pm)',
   'panel.event.empty': 'No events in the next 2 weeks. Write one above with a date or time.',
   'panel.event.allDay': 'All day',
   'panel.event.range': '{m1}/{d1}-{m2}/{d2}',
