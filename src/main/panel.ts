@@ -384,20 +384,26 @@ export function createPanel(o: PanelOptions) {
   // 저장이 던지면(디스크 가득) 안내 글로 답한다. 메모 창은 글을 들고 있다가 다음 고침 때 다시 보낸다
   ipcMain.handle(
     PANEL.noteUpdate,
-    saving((e, id: unknown, patch: unknown): NoteSaveResult => {
+    saving((e, id: unknown, patch: unknown, base: unknown): NoteSaveResult => {
       if (!ours(e) || typeof id !== 'number' || typeof patch !== 'object' || patch === null)
         return { ok: false };
       const { title, body } = patch as { title?: unknown; body?: unknown };
-      o.notes.update(
+      const baseBody =
+        typeof base === 'object' && base !== null ? (base as { body?: unknown }).body : undefined;
+      // 창이 연 뒤 다른 곳(append_note 등)이 덧붙였으면 덮지 않고 합친다 (note-store.ts mergeNoteText)
+      const saved = o.notes.updateFrom(
         id,
         {
           ...(typeof title === 'string' ? { title } : {}),
           ...(typeof body === 'string' ? { body } : {}),
         },
+        typeof baseBody === 'string' ? { body: baseBody } : undefined,
         Date.now(),
       );
       push();
-      return { ok: true };
+      return saved && typeof body === 'string' && saved.body !== body
+        ? { ok: true, body: saved.body }
+        : { ok: true };
     }),
   );
   ipcMain.on(PANEL.noteRemove, (e, id: number) => {

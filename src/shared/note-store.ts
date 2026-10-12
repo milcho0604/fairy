@@ -87,6 +87,23 @@ export function notePreview(n: Pick<Note, 'title' | 'body'>): string {
   return cutText(kept.join(' '), PREVIEW_MAX);
 }
 
+/**
+ * 세 갈래 본문 합치기. base 는 둘이 갈라지기 전 글, mine 은 메모 창의 글, theirs 는 지금 저장된 글.
+ * 한쪽만 바뀌었으면 그쪽. 둘 다 바뀌었고 저장된 쪽이 끝에 덧붙인 것(append_note 는 끝 공백을 걷고 붙인다)이면
+ * 창의 글 끝에 그 덧붙인 부분을 잇는다. 그 밖에 둘 다 고쳤으면 창의 글 (보고 있는 글이 남는다)
+ */
+export function mergeNoteText(base: string, mine: string, theirs: string): string {
+  if (theirs === base || theirs === mine) return mine;
+  if (mine === base) return theirs;
+  const head = base.replace(/\s+$/, '');
+  if (theirs.length > head.length && theirs.startsWith(head)) {
+    const tail = theirs.slice(head.length);
+    const joined = /^\s/.test(tail) ? `${mine.replace(/\s+$/, '')}${tail}` : `${mine}${tail}`;
+    return cutText(joined, NOTE_BODY_MAX);
+  }
+  return mine;
+}
+
 export class NoteStore {
   #db: Db;
 
@@ -133,6 +150,33 @@ export class NoteStore {
       .prepare('update note set title = ?, body = ?, updated_at = ? where id = ?')
       .run(title, body, now, id);
     return this.get(id);
+  }
+
+  /**
+   * 메모 창이 고친 본문을 저장한다. base 는 창이 마지막으로 받은 저장된 본문.
+   * 그사이 다른 곳(Claude Code 의 append_note, 펫 실행의 메모 덧붙이기)이 본문을 바꿨으면 창의 글로 덮지 않고
+   * mergeNoteText 로 합친다. 예전에는 메모를 열어 둔 채 덧붙인 글이 다음 타자 한 번에 사라졌다 (버그잡이 b)
+   */
+  updateFrom(
+    id: number,
+    patch: { title?: string; body?: string },
+    base: { body?: string } | undefined,
+    now: number,
+  ): Note | undefined {
+    const n = this.get(id);
+    if (!n) return undefined;
+    const body =
+      patch.body !== undefined && base?.body !== undefined
+        ? mergeNoteText(base.body, patch.body, n.body)
+        : patch.body;
+    return this.update(
+      id,
+      {
+        ...(patch.title !== undefined ? { title: patch.title } : {}),
+        ...(body !== undefined ? { body } : {}),
+      },
+      now,
+    );
   }
 
   /**

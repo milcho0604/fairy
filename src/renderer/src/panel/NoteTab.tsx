@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { t } from '../../../shared/i18n/index.ts';
 import type { NoteAiKind, NoteHit, NoteSummary, PanelState } from '../../../shared/ipc.ts';
 import { POLISH_MAX, type PolishReply, splicePolished } from '../../../shared/note-polish.ts';
-import { NOTE_BODY_MAX, NOTE_TITLE_MAX, type Note } from '../../../shared/note-store.ts';
+import { mergeNoteText, NOTE_BODY_MAX, NOTE_TITLE_MAX, type Note } from '../../../shared/note-store.ts';
 import { pinFirst } from '../../../shared/pin.ts';
 import { ago } from './format.ts';
 import { isEsc, takeEsc } from './keys.ts';
@@ -89,6 +89,7 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
     return (
       <NoteEditor
         note={open}
+        changedAt={s.notes.find((n) => n.id === open.id)?.updatedAt}
         resume={resume}
         onBack={() => {
           setResume(undefined);
@@ -239,11 +240,14 @@ function NoteRow({
 
 function NoteEditor({
   note,
+  changedAt,
   resume,
   onBack,
   onRemoved,
 }: {
   note: Note;
+  /** 목록에 온 이 메모의 고친 시각. 연 뒤 다른 곳(append_note 등)이 고치면 커진다 */
+  changedAt?: number;
   /** 다른 곳을 눌러 닫혔던 자리 (커서, 스크롤) */
   resume?: NoteResume;
   onBack: () => void;
@@ -273,6 +277,48 @@ function NoteEditor({
   /** 지웠다 (뒤로 나가며 빈 것을 지웠거나 지우기 단추). 두 번 지우지 않게 */
   const gone = useRef(false);
   const isEmpty = () => !latest.current.title.trim() && !latest.current.body.trim();
+  /**
+   * 마지막으로 받은 저장된 본문과 그 시각. 열어 둔 사이 다른 곳(Claude Code 의 append_note, 펫 실행)이 덧붙이면
+   * 창에 받아 오고, 저장할 때 같이 보내 메인이 덮지 않고 합친다. 예전에는 창이 처음 받은 글로 덮어 덧붙인 글이 사라졌다
+   */
+  const base = useRef(note.body);
+  const seen = useRef(note.updatedAt);
+  const sending = useRef(false);
+  /** S 를 바탕으로 쓰던 창 글에 저장된 글 M 을 합쳐 보여 준다. 합친 글이 저장된 글과 다르면 다시 저장한다 */
+  const takeStored = (S: string, M: string) => {
+    const mine = latest.current.body;
+    const next = mergeNoteText(S, mine, M);
+    if (next !== mine && alive.current) {
+      const el = bodyRef.current;
+      const sel =
+        el && document.activeElement === el
+          ? { el, start: el.selectionStart, end: el.selectionEnd }
+          : undefined;
+      latest.current = { ...latest.current, body: next };
+      setBody(next);
+      // 덧붙인 글은 끝에 붙어 커서 앞은 그대로다: 쓰던 자리를 지킨다
+      if (sel)
+        requestAnimationFrame(() => {
+          if (document.activeElement !== sel.el) return;
+          sel.el.setSelectionRange(Math.min(sel.start, next.length), Math.min(sel.end, next.length));
+        });
+    }
+    if (next !== M) save({ body: next });
+  };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 고친 시각이 바뀔 때만
+  useEffect(() => {
+    if (changedAt === undefined || changedAt <= seen.current) return;
+    seen.current = changedAt;
+    // 보내는 중이거나 보낼 것이 있으면 그 저장이 메인에서 합친다
+    if (sending.current || pending.current.body !== undefined) return;
+    void bridge.noteGet(note.id).then((n) => {
+      if (!n || !alive.current || sending.current || pending.current.body !== undefined) return;
+      if (n.body === base.current) return;
+      const S = base.current;
+      base.current = n.body;
+      takeStored(S, n.body);
+    });
+  }, [changedAt]);
 
   /** 고정 (열 때 받은 값에서 시작해 여기서 바꾼다) */
   const [pinned, setPinned] = useState(note.pinnedAt !== null);
@@ -390,15 +436,24 @@ function NoteEditor({
     if (Object.keys(pending.current).length === 0) return !failed.current;
     const sent = pending.current;
     pending.current = {};
-    let r: { ok: boolean; error?: string };
+    let r: { ok: boolean; error?: string; body?: string };
+    const from = base.current;
+    sending.current = true;
     try {
-      r = await bridge.noteUpdate(note.id, sent);
+      r = await bridge.noteUpdate(note.id, sent, sent.body !== undefined ? { body: from } : undefined);
     } catch {
       r = { ok: false };
+    } finally {
+      sending.current = false;
     }
     if (r.ok) {
       failed.current = false;
       if (alive.current) setSaveError('');
+      if (sent.body !== undefined) {
+        const stored = r.body ?? sent.body;
+        base.current = stored;
+        if (r.body !== undefined) takeStored(sent.body, stored);
+      }
       return true;
     }
     failed.current = true;
