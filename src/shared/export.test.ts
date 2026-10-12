@@ -154,6 +154,11 @@ test('파일 이름: 금지 글자, 예약 이름, 겹치는 이름', () => {
   assert.equal(safeFileName('  ..숨김.  '), '숨김');
   assert.equal(safeFileName('CON'), '_CON');
   assert.equal(safeFileName('nul.txt'), '_nul.txt');
+  // 그림 글자 80개(320바이트)는 파일 이름 상한(255바이트)을 넘었다 (버그잡이 4)
+  const emoji = safeFileName('😀'.repeat(100));
+  assert.ok(Buffer.byteLength(`${emoji} (12).md`, 'utf8') <= 255);
+  assert.equal(emoji, '😀'.repeat(60));
+  assert.equal(safeFileName('가'.repeat(100)), '가'.repeat(80));
   assert.equal(safeFileName('\u0001\u0002'), 'memo');
   assert.equal([...safeFileName('가'.repeat(200))].length, 80);
   const n = (title: string): Note => ({
