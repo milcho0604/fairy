@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { noteQuery, searchNotes } from './note-store.ts';
+import { notePreview, noteQuery, searchNotes } from './note-store.ts';
 
 const note = (id: number, title: string, body: string) => ({ id, title, body });
 
@@ -71,4 +71,21 @@ test('한글 조합 중이면 마지막 글자를 넓게 본다', () => {
 test('빈 말이면 전부, 정규식은 null', () => {
   assert.equal(noteQuery('   '), null);
   assert.equal(searchNotes([note(1, 'a', ''), note(2, 'b', '')], ' ').length, 2);
+});
+
+test('미리보기는 80자가 차면 남은 줄을 다듬지 않는다: 긴 메모가 많아도 패널 바꿈이 느려지지 않는다 (버그잡이 4)', () => {
+  assert.equal(
+    notePreview({ title: '', body: '# 제목\n\n- **첫** 항목\n> [둘](http://x)\n`셋`' }),
+    '첫 항목 둘 셋',
+  );
+  assert.equal(notePreview({ title: '제목', body: '\n\n한 줄' }), '한 줄');
+  assert.equal(notePreview({ title: '', body: `${'가'.repeat(100)}\n${'나'.repeat(100)}` }), '나'.repeat(80));
+  // 50,000자 메모 2천 개: 예전에는 줄마다 정규식을 돌려 몇 초 걸렸다
+  const body = Array.from({ length: 2500 }, (_, i) => `- **항목** ${i} [링크](http://x) 내용`)
+    .join('\n')
+    .slice(0, 50_000);
+  const t0 = performance.now();
+  for (let i = 0; i < 2000; i++) notePreview({ title: '긴 회의록', body });
+  assert.ok(performance.now() - t0 < 1000);
+  assert.equal(notePreview({ title: '긴 회의록', body }).length, 80);
 });
