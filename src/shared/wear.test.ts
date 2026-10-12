@@ -99,7 +99,7 @@ test('옷 입히기: 원래 부품은 그대로 두고 옷만 더한다 (목도�
 });
 
 test('아기는 머리가 조금 크고 얼굴도 같이 커진다. 발과 몸은 그대로', () => {
-  // 머리가 따로 있는 피규어 (토순이. 냥이, 멍멍이, 햄찌, 뒤뚱이, 곰돌이도 머리가 따로다)
+  // 머리가 따로 있는 피규어 (토순이. 냥이, 멍멍이는 피규어, 게임에서 콩이처럼 몸이 곧 얼굴)
   const cat = DEFAULT_BLUEPRINTS.bunny;
   const baby = growBlueprint(cat, 'baby');
   const h = GROW_LOOK.baby.head;

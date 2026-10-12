@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { DEFAULT_BLUEPRINTS } from '../../shared/pet3d/defaults.ts';
+import { defaultBlueprint } from '../../shared/pet3d/defaults.ts';
 import type { PetKind, PetStyle } from '../../shared/settings.ts';
 import { CANVAS_SIZE, drawPet } from './draw.ts';
 import { Pet3D } from './pet3d.ts';
@@ -24,7 +24,7 @@ export function basicPetShot(kind: PetKind, o: { use3d: boolean; style: PetStyle
     });
     if (shared3d?.ok) {
       shared3d.setStyle(o.style);
-      shared3d.setBlueprint(DEFAULT_BLUEPRINTS[kind]);
+      shared3d.setBlueprint(defaultBlueprint(kind, o.style));
       // 복슬복슬 모습은 녹이기를 나눠 하는데, 한 장만 찍으니 지금 다 끝낸다 (털 없는 몸이 찍혔다)
       shared3d.finishFuse();
       m3d = shared3d;
