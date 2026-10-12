@@ -25,6 +25,16 @@ export interface MemoryUse {
  * 칸 수 HOST_VM_INFO64_COUNT 는 38 (152바이트). vm_stat 명령도 같은 값을 찍는다
  */
 export const VM_INFO64_COUNT = 38;
+
+/**
+ * 맥 메모리를 koffi 로 마하 트랩(mach_host_self)을 불러 읽어도 되는가.
+ * 인텔(x64) 앱을 애플 칩 맥에서 Rosetta 로 돌리면 koffi 의 마하 트랩 호출(mach_host_self, task_self_trap 등)이
+ * 앱을 그 자리에서 죽인다(SIGSEGV). sysctlbyname 같은 BSD 호출은 멀쩡하다 (2026-10-13 v0.4.1 x64 dmg 실측).
+ * 그때는 읽지 않고 메모리 칸을 비운다
+ */
+export function canReadMacMemory(platform: string, translated: boolean): boolean {
+  return platform === 'darwin' && !translated;
+}
 const VM_ACTIVE = 1;
 const VM_WIRED = 3;
 const VM_PURGEABLE = 22;
