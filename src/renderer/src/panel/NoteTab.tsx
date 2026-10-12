@@ -6,7 +6,9 @@ import { NOTE_BODY_MAX, NOTE_TITLE_MAX, type Note } from '../../../shared/note-s
 import { pinFirst } from '../../../shared/pin.ts';
 import { ago } from './format.ts';
 import { isEsc, takeEsc } from './keys.ts';
+import { MoreRow } from './more.tsx';
 import { type NoteResume, parseResume, RESUME_KEY } from './note-resume.ts';
+import { pageOf } from './paging.ts';
 import { PinButton, usePinMenu } from './pin.tsx';
 
 const bridge = window.jjakkungPanel;
@@ -51,6 +53,8 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
   /** 본문까지 찾은 결과 (메인에서). 새 결과가 올 때까지 앞 결과를 둔다 */
   const [hits, setHits] = useState<NoteHit[]>();
   const searchSeq = useRef(0);
+  /** 그린 쪽 수 (찾는 말마다) */
+  const [paging, setPaging] = useState({ q: '', pages: 1 });
   const now = Date.now();
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: 탭을 열 때 한 번만
@@ -107,6 +111,9 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
         : s.notes.filter((n) => `${n.title} ${n.preview}`.toLowerCase().includes(local)),
   );
   const lastPinned = list.findLast((n) => n.pinnedAt !== null)?.id;
+  // 앞에서부터 한 쪽씩 그린다 (paging.ts). 찾는 말이 바뀌면 첫 쪽부터
+  const pages = paging.q === q ? paging.pages : 1;
+  const page = pageOf(list, pages);
   return (
     <>
       <div className="add row">
@@ -142,7 +149,7 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
         {list.length === 0 && (
           <li className="empty">{q ? t('panel.note.notFound') : t('panel.note.empty.list')}</li>
         )}
-        {list.map((n) => (
+        {page.shown.map((n) => (
           <NoteRow
             key={n.id}
             n={n}
@@ -155,6 +162,7 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
             }}
           />
         ))}
+        <MoreRow rest={page.rest} onMore={() => setPaging({ q, pages: pages + 1 })} />
       </ul>
     </>
   );
