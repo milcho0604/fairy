@@ -119,3 +119,18 @@ test('영문, 숫자, 단위 뒤의 조사는 띄우지 않고 붙인다 (PIN으
     assert.ok(!m, `${key}: "${m?.[0]}" 조사를 붙여 써야 한다`);
   }
 });
+
+test('영어 하나일 때 단수: 어제 끝낸 할 일 쪽지, 링크로 넣은 할 일', () => {
+  setLang('en');
+  try {
+    assert.equal(t('pet.url.todos', { n: 1 }), 'Added 1 to-do');
+    assert.equal(t('pet.url.todos', { n: 3 }), 'Added 3 to-dos');
+    for (const p of ['friend', 'polite'] as const) {
+      const one = t('note.yesterday', { p, n: 1 });
+      assert.ok(!/1 to-dos/.test(one), one);
+      assert.match(t('note.yesterday', { p, n: 4 }), /4 to-dos/);
+    }
+  } finally {
+    setLang('ko');
+  }
+});
