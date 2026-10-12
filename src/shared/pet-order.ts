@@ -25,3 +25,32 @@ export function keepOrder(prev: readonly string[], keys: readonly string[]): str
   const fresh = keys.filter((k, i) => !prev.includes(k) && keys.indexOf(k) === i);
   return fresh.length === 0 ? [...prev] : [...fresh, ...prev];
 }
+
+/**
+ * 모습 칸 카드 나누기. 밀크, 초코 복사본은 아직 사진 카드로 보인 적이 없으면 그 캐릭터 칸이 맡는다:
+ * 지금 펫이면 starterCur, 보관함에 있으면 starterSaved (그 칸을 누르면 어차피 그 복사본을 꺼낸다, fromStarter).
+ * 그래서 이름 바꾼 밀크를 두고 다른 펫을 골라도 새 카드가 앞에 생기지 않는다. 사진 카드로 보인 복사본은 제자리를 지킨다
+ */
+export function pickerCards(o: {
+  cur: string | null | undefined;
+  library: readonly string[];
+  prev: readonly string[];
+  starterOf: (k: string) => string | undefined;
+}): { order: string[]; photo: string[]; starterCur: boolean; starterSaved: Record<string, string> } {
+  const hidden = (k: string) => !!o.starterOf(k) && !o.prev.includes(k);
+  const starterCur = !!o.cur && hidden(o.cur);
+  const taken = new Set(starterCur && o.cur ? [o.starterOf(o.cur)] : []);
+  const starterSaved: Record<string, string> = {};
+  for (const k of o.library) {
+    const id = o.starterOf(k);
+    if (k === o.cur || !id || !hidden(k) || taken.has(id)) continue;
+    taken.add(id);
+    starterSaved[id] = k;
+  }
+  const inStarter = new Set(Object.values(starterSaved));
+  const keys = [...(o.cur && !starterCur ? [o.cur] : []), ...o.library].filter(
+    (k, i, a) => a.indexOf(k) === i && !(starterCur && k === o.cur) && !inStarter.has(k),
+  );
+  const order = keepOrder(o.prev, keys);
+  return { order, photo: order.filter((k) => keys.includes(k)), starterCur, starterSaved };
+}

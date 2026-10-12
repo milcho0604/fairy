@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PetLookView, SavedPetView, SettingsSnapshot } from '../../../shared/ipc.ts';
-import { keepOrder } from '../../../shared/pet-order.ts';
+import { pickerCards } from '../../../shared/pet-order.ts';
 import { LICENSE_LABEL } from '../../../shared/pet-share.ts';
 import { DEFAULT_BLUEPRINTS } from '../../../shared/pet3d/defaults.ts';
 import { PET_KINDS, type PetKind } from '../../../shared/settings.ts';
@@ -45,17 +45,15 @@ export function PetPicker({
   // 사진 펫 카드 순서 기억 (창이 열려 있는 동안). 열쇠는 그림 파일 이름: 보관할 때마다 id 는 새로 붙지만 그림은 그대로다
   const order = useRef<string[]>([]);
   const cur = s.petImage;
-  // 밀크, 초코 복사본은 아래 그 캐릭터 칸이 지금 펫 카드를 맡는다 (같은 펫이 두 번 보이지 않게).
-  // 다만 보관함 카드로 보이던 복사본을 고르면 그 카드가 제자리에서 지금 펫이 된다 (카드가 사라지지 않게)
-  const starterOwns = !!cur && !!starterOf(cur) && !order.current.includes(cur);
   // 설정이 보관함보다 먼저 오면 잠깐 고른 펫이 보관함에도 있다. 같은 그림은 한 장만
   const views = new Map<string, SavedPetView>();
   for (const p of snap.library) if (!views.has(keyOf(p))) views.set(keyOf(p), p);
-  const keys = [...(cur && !starterOwns ? [cur] : []), ...views.keys()].filter(
-    (k) => !(starterOwns && k === cur),
-  );
-  order.current = keepOrder(order.current, keys);
-  const photoCards = order.current.filter((k) => keys.includes(k));
+  // 밀크, 초코 복사본은 그 캐릭터 칸이 맡는다 (같은 펫이 두 번 보이지 않고, 보관할 때 카드가 새로 생기지 않게).
+  // 사진 카드로 보이던 복사본은 그 자리에서 지금 펫이 된다 (카드가 사라지지 않게)
+  const cards = pickerCards({ cur, library: [...views.keys()], prev: order.current, starterOf });
+  order.current = cards.order;
+  const starterOwns = cards.starterCur;
+  const photoCards = cards.photo;
   const nowView =
     snap.current && cur && keyOf(snap.current) === cur ? snap.current : cur ? views.get(cur) : undefined;
   return (
@@ -78,6 +76,8 @@ export function PetPicker({
       {/* 밀크, 초코: 고르면 사진 펫이 된다 (지금 펫 카드에도 보인다) */}
       {snap.starters.map((p) => {
         const on = starterOwns && isCurrentStarter(s.petImage, p.id);
+        // 보관한 복사본(이름 바꾼 밀크)이면 그 이름과 모습으로 (누르면 그것을 꺼낸다)
+        const saved = on ? undefined : views.get(cards.starterSaved[p.id] ?? '');
         return (
           <button
             key={p.id}
@@ -85,12 +85,15 @@ export function PetPicker({
             className={`pet-card starter${on ? ' on' : ''}`}
             aria-pressed={on}
             {...(on ? { 'aria-current': true } : {})}
-            aria-label={t('settings.pets.starter', { name: on ? s.petName : p.name, desc: p.desc })}
+            aria-label={t('settings.pets.starter', {
+              name: on ? s.petName : (saved?.name ?? p.name),
+              desc: p.desc,
+            })}
             title={p.desc}
             onClick={() => !on && onPick({ starter: p.id })}
           >
-            <img src={on && snap.current ? look(snap.current) : p.thumb} alt="" />
-            <span className="pet-name">{on ? s.petName : p.name}</span>
+            <img src={on && nowView ? look(nowView) : saved ? look(saved) : p.thumb} alt="" />
+            <span className="pet-name">{on ? s.petName : (saved?.name ?? p.name)}</span>
             {on && <small>{t('settings.pets.now')}</small>}
           </button>
         );
