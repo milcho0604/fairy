@@ -449,6 +449,13 @@ header .picker {
   cursor: default;
 }
 
+/* 못 켜는 칸의 까닭 (한 줄 통째로) */
+.opt-why {
+  flex-basis: 100%;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
 .lightbox {
   position: fixed;
   inset: 0;

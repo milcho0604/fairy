@@ -561,20 +561,23 @@ export function App() {
           </label>
           <label
             className={`opt ${pending || (spec && !spec.ephemeral) ? 'disabled' : ''}`}
-            title={
-              spec && !spec.ephemeral
-                ? t('chat.ephemeralUnsupported', { label: spec.label })
-                : t('chat.ephemeralTitle')
-            }
+            title={spec && !spec.ephemeral ? undefined : t('chat.ephemeralTitle')}
           >
             <input
               type="checkbox"
               checked={!!state.ephemeral}
               disabled={pending || (!!spec && !spec.ephemeral)}
+              aria-describedby={spec && !spec.ephemeral ? 'ephemeral-why' : undefined}
               onChange={(e) => bridge.setEphemeral(e.target.checked)}
             />
             {t('chat.ephemeral')}
           </label>
+          {/* 못 켜는 까닭은 풀이(마우스를 올려야 보임)가 아니라 바로 아래 글로. 꺼진 칸은 키보드로 갈 수 없어 풀이를 못 봤다 */}
+          {spec && !spec.ephemeral && (
+            <small id="ephemeral-why" className="opt-why">
+              {t('chat.ephemeralUnsupported', { label: spec.label })}
+            </small>
+          )}
         </div>
         <div className="composer">
           <label className="ghost icon" title={t('chat.attach')}>
