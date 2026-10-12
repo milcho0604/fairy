@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import {
+  app,
   BrowserWindow,
   type Display,
   desktopCapturer,
@@ -7,6 +8,7 @@ import {
   type IpcMainEvent,
   ipcMain,
   type NativeImage,
+  nativeImage,
   screen,
   shell,
   systemPreferences,
@@ -21,6 +23,7 @@ import {
   THUMB_JPEG_QUALITY,
   toPixels,
 } from '../shared/capture.ts';
+import type { ScreenAccess } from '../shared/chat-look.ts';
 import type { Point, Rect } from '../shared/geometry.ts';
 import { t } from '../shared/i18n/index.ts';
 import { LOOK, type OutgoingImage } from '../shared/ipc.ts';
@@ -34,6 +37,27 @@ const HIDE_SETTLE_MS = 150;
 /** 찾았다 첫 장면을 그릴 틈. 펫 창이 다시 보이기 시작할 때 고르던 모습이 비치지 않게 */
 const FOUND_DRAW_MS = 34;
 const MAC_SCREEN_SETTINGS = 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture';
+/**
+ * 시험용 가짜 화면 (개발 실행에서만). granted 면 진짜 화면 대신 만든 그림을 찍고, denied 면 권한이 없는 것처럼 군다.
+ * 시험이 진짜 화면을 찍으면 맥이 화면 기록 권한 창을 띄우고 쓰는 사람의 화면이 찍힌다
+ */
+const fakeScreen = (): ScreenAccess | undefined => {
+  const v = app.isPackaged ? undefined : process.env.JJ_FAKE_SCREEN;
+  return v === 'granted' || v === 'denied' ? v : undefined;
+};
+
+/** 화면 기록 권한. 묻지 않는다 (맥은 처음 찍을 때 묻는다) */
+export function screenAccess(): ScreenAccess {
+  const fake = fakeScreen();
+  if (fake) return fake;
+  if (process.platform !== 'darwin') return 'granted';
+  return systemPreferences.getMediaAccessStatus('screen') as ScreenAccess;
+}
+
+/** 화면 기록 권한 설정을 연다 (맥). 다른 운영체제는 할 일이 없다 */
+export function openScreenSettings(): void {
+  if (process.platform === 'darwin' && !fakeScreen()) void shell.openExternal(MAC_SCREEN_SETTINGS);
+}
 
 /**
  * 같이 보는 펫들 (기본 펫과 친구). 영역을 고르는 동안 돋보기를 들고 고르는 쪽을 들여다보고(aim),
@@ -96,8 +120,8 @@ export function createLookTogether({ petName, hideChat, pets, onImage, onStart, 
   async function start() {
     if (active || overlays.length > 0) return;
     // 맥에서 권한을 거절한 상태면 바로 안내한다. 아직 묻지 않은 상태면 첫 캡처 때 맥이 묻는다.
-    if (process.platform === 'darwin') {
-      const status = systemPreferences.getMediaAccessStatus('screen');
+    {
+      const status = screenAccess();
       if (status === 'denied' || status === 'restricted') {
         await explainPermission();
         return;
@@ -186,8 +210,11 @@ export function createLookTogether({ petName, hideChat, pets, onImage, onStart, 
     }
   });
 
-  async function capture(display: Display, rect: Rect): Promise<OutgoingImage | undefined> {
-    const started = Date.now();
+  /** 모니터 하나를 통째로 찍은 그림 (실제 픽셀 크기와 다를 수 있다) */
+  async function grab(display: Display): Promise<NativeImage> {
+    const fake = fakeScreen();
+    if (fake === 'denied') throw new Error('가짜 화면: 권한 없음');
+    if (fake) return fakeShot(display.size);
     const all = screen.getAllDisplays();
     // 썸네일 상자는 하나라 가장 큰 모니터의 실제 픽셀에 맞춘다. 작은 모니터는 비율로 다시 계산한다.
     const box = all.reduce(
@@ -203,12 +230,20 @@ export function createLookTogether({ petName, hideChat, pets, onImage, onStart, 
       sources.find((s) => s.display_id === String(display.id)) ??
       (sources.length === all.length ? sources[all.findIndex((d) => d.id === display.id)] : undefined);
     if (!source || source.thumbnail.isEmpty()) throw new Error('화면 소스가 없다 (권한 없음 의심)');
+    return source.thumbnail;
+  }
 
-    const shot = source.thumbnail;
+  async function capture(display: Display, rect: Rect): Promise<OutgoingImage | undefined> {
+    const started = Date.now();
+    const shot = await grab(display);
     const area = isClick(rect) ? { x: 0, y: 0, ...display.size } : rect;
-    let cropped = shot.crop(toPixels(area, display.size, shot.getSize()));
+    const cropped = shot.crop(toPixels(area, display.size, shot.getSize()));
     if (looksBlank(cropped)) throw new Error('빈 화면 (권한 없음 의심)');
+    return encode(cropped, started);
+  }
 
+  function encode(image: NativeImage, started: number): OutgoingImage {
+    let cropped = image;
     // 크기 규칙은 채팅 붙이기와 같다: 긴 변 2000, PNG 가 3.5MB 를 넘으면 JPEG (shared/capture.ts)
     const fit = fitWithin(cropped.getSize(), IMAGE_MAX_SIDE);
     if (fit) cropped = cropped.resize({ ...fit, quality: 'best' });
@@ -231,6 +266,37 @@ export function createLookTogether({ petName, hideChat, pets, onImage, onStart, 
     };
   }
 
+  /**
+   * 채팅 창의 같이 보기: 고르지 않고 지금 그 모니터 화면을 통째로 찍는다. 채팅 창은 hide 로 가리고(돌려준 함수가 되돌린다)
+   * 펫과 친구도 찍는 순간만 가린다. 권한이 없으면 'denied', 그 밖에 못 찍으면 'failed'. 안내 창은 띄우지 않는다 (채팅 창이 글로 안내한다)
+   */
+  async function shot(
+    display: Display,
+    hide: () => () => void,
+  ): Promise<OutgoingImage | 'denied' | 'failed'> {
+    const access = screenAccess();
+    if (access === 'denied' || access === 'restricted') return 'denied';
+    if (active) return 'failed';
+    active = true;
+    const started = Date.now();
+    const unhide = hide();
+    await pets.veil(true);
+    await new Promise((r) => setTimeout(r, HIDE_SETTLE_MS));
+    try {
+      const image = await grab(display);
+      if (looksBlank(image)) throw new Error('빈 화면 (권한 없음 의심)');
+      return encode(image, started);
+    } catch (err) {
+      log('look', 'chat shot error', err instanceof Error ? err.message : String(err));
+      // 권한을 묻기 전이었거나 거절된 직후면 맥은 빈 화면을 준다. 권한이 확인되지 않았으면 권한 쪽으로 안내한다
+      return screenAccess() === 'granted' ? 'failed' : 'denied';
+    } finally {
+      unhide();
+      await pets.veil(false);
+      active = false;
+    }
+  }
+
   async function explainPermission() {
     const isMac = process.platform === 'darwin';
     const { response } = await dialog.showMessageBox({
@@ -243,7 +309,26 @@ export function createLookTogether({ petName, hideChat, pets, onImage, onStart, 
     if (isMac && response === 0) await shell.openExternal(MAC_SCREEN_SETTINGS);
   }
 
-  return { start };
+  return { start, shot };
+}
+
+/** 시험용 가짜 화면: 줄무늬 그림 (빈 화면으로 보지 않게 색이 여럿) */
+function fakeShot(size: { width: number; height: number }): NativeImage {
+  const width = Math.max(1, Math.round(size.width / 2));
+  const height = Math.max(1, Math.round(size.height / 2));
+  const buf = Buffer.alloc(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      const band = Math.floor(x / 40) % 3;
+      // BGRA
+      buf[i] = band === 0 ? 220 : 120;
+      buf[i + 1] = band === 1 ? 200 : 140 + (y % 60);
+      buf[i + 2] = band === 2 ? 230 : 90;
+      buf[i + 3] = 255;
+    }
+  }
+  return nativeImage.createFromBitmap(buf, { width, height });
 }
 
 /** 권한이 없으면 맥은 바탕화면만, 또는 한 색으로 찍어 준다. 표본 픽셀의 색 가짓수로 본다. */

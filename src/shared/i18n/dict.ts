@@ -8,6 +8,7 @@ import * as bond from './bond.ts';
 import * as briefing from './briefing.ts';
 import * as calendar from './calendar.ts';
 import * as chat from './chat.ts';
+import * as chatLook from './chat-look.ts';
 import * as common from './common.ts';
 import * as companion from './companion.ts';
 import * as day from './day.ts';
@@ -51,6 +52,7 @@ export const ko = {
   ...achieve.ko,
   ...briefing.ko,
   ...chat.ko,
+  ...chatLook.ko,
   ...ai.ko,
   ...settings.ko,
   ...maker.ko,
@@ -93,6 +95,7 @@ export const en: Translation<typeof ko> = {
   ...achieve.en,
   ...briefing.en,
   ...chat.en,
+  ...chatLook.en,
   ...ai.en,
   ...settings.en,
   ...maker.en,
