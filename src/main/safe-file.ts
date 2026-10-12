@@ -3,6 +3,7 @@
 // 펫 그림처럼 화면이나 공유 파일로 내보낼 수 있었다.
 import { randomBytes } from 'node:crypto';
 import {
+  accessSync,
   chmodSync,
   closeSync,
   constants,
@@ -80,6 +81,19 @@ export function readPlainCapped(path: string, maxBytes: number): Buffer | 'tooBi
     return undefined;
   } finally {
     if (fd !== undefined) closeSync(fd);
+  }
+}
+
+/**
+ * 폴더에 쓸 수 있는지 (없으면 만들 수 있는지). 하나만 띄우기 잠금을 못 잡았을 때, 다른 페어리가 떠 있는 것인지
+ * 데이터 폴더에 쓸 수 없는 것인지(읽기 전용 디스크, sudo 로 켜서 주인이 root 가 된 폴더) 가른다
+ */
+export function writableDir(dir: string): boolean {
+  try {
+    accessSync(existsSync(dir) ? dir : dirname(dir), constants.W_OK);
+    return true;
+  } catch {
+    return false;
   }
 }
 

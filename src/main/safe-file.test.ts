@@ -22,6 +22,7 @@ import {
   readPlainCapped,
   renameRetry,
   safeFileIn,
+  writableDir,
   writeFileAtomic,
 } from './safe-file.ts';
 
@@ -157,4 +158,12 @@ test('고른 파일 상한까지 읽기: 일반 파일만, 크면 tooBig, 장치
     execFileSync('mkfifo', [fifo]);
     assert.equal(readPlainCapped(fifo, 100), undefined);
   }
+});
+
+test('폴더에 쓸 수 있는지: 있는 폴더, 아직 없는 폴더(부모), 읽기 전용 (버그잡이 4)', () => {
+  assert.equal(writableDir(root), true);
+  assert.equal(writableDir(join(root, 'not-yet')), true);
+  assert.equal(writableDir(join(root, 'no', 'parent')), false);
+  // root 는 권한을 무시하므로 리눅스 /proc 처럼 늘 읽기 전용인 곳으로 본다
+  if (process.platform === 'linux') assert.equal(writableDir('/proc/self'), false);
 });
