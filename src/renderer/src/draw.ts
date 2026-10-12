@@ -27,7 +27,7 @@ import {
 } from './move-pose.ts';
 import { quadKind, walkEnvelopeOf } from './pet3d-gait.ts';
 import { eyedPhoto, photoEyeOpen } from './photo-eyes.ts';
-import { impactSquash, photoStep, TurnWatch, turnSquash } from './photo-motion.ts';
+import { fitTilt, impactSquash, photoStep, TurnWatch, turnSquash } from './photo-motion.ts';
 import {
   drawBrow,
   drawHeldNote,
@@ -1400,6 +1400,8 @@ function drawPhoto(
   if (trick?.type === 'wave') tilt = waveSwing(trick.t) * 0.1;
   if (trick?.type === 'dance') tilt = danceTilt(trick.t);
   tilt += rock + lean;
+  // 걸을 때 넓은 사진의 위 모서리가 캔버스 밖으로 나가 잘리지 않게 (이슈 #65, photo-motion.ts fitTilt)
+  if (walking) tilt = fitTilt(tilt, (w / 2) * Math.abs(sx) * turn.sx * 1.025, h * sy, CX - 1);
   // 제자리 몸짓: 사진은 관절이 없어 몸 전체를 기울이고 옮긴다 (뒹굴기는 사진 펫이 고르지 않는다)
   const mv = movePoseOf(act, s.calm);
   let shift = 0;
