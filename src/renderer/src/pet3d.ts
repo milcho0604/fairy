@@ -1245,6 +1245,12 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
         });
       }
     }
+    // 다리 마디와 발: 보는 쪽에 따라 광택과 그늘을 손질한다 (limbLook)
+    if (!this.fluffy)
+      for (const l of legs)
+        l.hipG.traverse((o) => {
+          if (o instanceof Mesh && o.userData.part) limbLook(o, this.root, l.front);
+        });
     const avg = (list: StanceLeg[], f: (l: StanceLeg) => number) =>
       list.reduce((a, l) => a + f(l), 0) / Math.max(1, list.length);
     const fronts = legs.filter((l) => l.front);
@@ -3814,4 +3820,43 @@ function worldFurCoords(mesh: Mesh): void {
     fur.setXYZ(i, v.x, v.y, v.z);
   }
   fur.needsUpdate = true;
+}
+
+/**
+ * 네 발로 선 몸의 다리 마디와 발을 보는 쪽에 맞춰 손질한다. 재질은 같은 색 부품끼리 같이 쓰므로 마디마다 따로 복사한다
+ * (셰이더 손질은 그대로 물려받아 프로그램도 같다). 정면과 옆에서는 아무것도 바꾸지 않아 그 그림은 그대로다.
+ * - 마디를 끝에서 보면(놀자 인사, 엎드린 앞다리) 보이는 겉이 다 비스듬해 벨벳 광택(sheen)이 하얗게 덮어 그 마디만
+ *   옅은 분홍으로 비쳐 보였다. 마디 축이 시선과 겹칠수록(cos 0.75 위) 광택을 줄인다.
+ * - 등을 보이면 앞다리는 몸통 너머 그늘 속인데 그림자가 없어 뒷다리만큼 밝았다. 흰 고양이는 뒷다리 사이로 보이는
+ *   앞다리가 같은 밝기의 반투명한 다리가 겹친 것처럼 보였다. 몸 앞이 보는 쪽에서 멀어질수록 앞다리를 조금 어둡게
+ */
+function limbLook(mesh: Mesh, root: Object3D, front: boolean): void {
+  const shared = mesh.material;
+  if (!(shared instanceof MeshPhysicalMaterial)) return;
+  const segment = mesh.userData.part?.shape === 'capsule' && shared.sheen > 0;
+  if (!segment && !front) return;
+  const mat = shared.clone();
+  mat.onBeforeCompile = shared.onBeforeCompile;
+  mat.customProgramCacheKey = shared.customProgramCacheKey;
+  mesh.material = mat;
+  const sheen = shared.sheen;
+  const color = shared.color.clone();
+  const axis = new Vector3();
+  const look = new Vector3();
+  const ease = (a: number, b: number, x: number) => {
+    const k = Math.min(1, Math.max(0, (x - a) / (b - a)));
+    return k * k * (3 - 2 * k);
+  };
+  mesh.onBeforeRender = (_r, _s, camera) => {
+    look.setFromMatrixPosition(mesh.matrixWorld).sub(camera.position).normalize();
+    if (segment) {
+      axis.setFromMatrixColumn(mesh.matrixWorld, 1).normalize();
+      // 0 이 되면 셰이더가 바뀌어(USE_SHEEN) 다시 만든다. 조금은 남긴다
+      mat.sheen = sheen * (1 - 0.8 * ease(0.75, 0.95, Math.abs(axis.dot(look))));
+    }
+    if (front) {
+      axis.setFromMatrixColumn(root.matrixWorld, 2).normalize();
+      mat.color.copy(color).multiplyScalar(1 - 0.25 * ease(0.3, 0.8, axis.dot(look)));
+    }
+  };
 }
