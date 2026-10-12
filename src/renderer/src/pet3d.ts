@@ -162,6 +162,8 @@ const WALK_OUT_TAU = 80;
 const STANCE_TURN_RATE = 2.5;
 /** 네 발로 선 몸의 한 걸음(네 발이 한 번씩) 거리 (다리 길이 배). 디딘 발이 다리가 닿는 곳 안에 있게 */
 const STANCE_CYCLE = 0.95;
+/** 앉으면 머리를 가슴 쪽으로 내리는 만큼 (다리 길이 배): 아래로, 앞으로 */
+const HEAD_SINK = { down: 0.25, fwd: 0.1 };
 /** 쉬는 자세의 펫이 2D 캔버스(160)에서 차지할 최대 키와 너비 */
 const FIT_H = 118;
 const FIT_W = 140;
@@ -314,6 +316,8 @@ export class Pet3D implements Model3D {
   private plantSteps: number | undefined;
   /** 지난 틀의 발 딛기 답 (점검용 debugFeet) */
   private lastFeet: Record<LegId, FootOut> | undefined;
+  /** 카메라를 맞추려고 자세를 재는 중 (앉아 내린 머리는 빼고 잰다: 그림 크기가 그대로) */
+  private fitting = false;
   /** 이번 틀의 신남 몸짓 (네 발로 선 몸, pet3d-stance.ts excitement) */
   private excite: Excitement = CALM_EXCITEMENT;
   private face: FaceRig | undefined;
@@ -1353,6 +1357,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     const still: DrawState = { mood: 'idle', elapsed: 0, blink: -1 };
     const box = new Box3();
     this.ease.frame(undefined);
+    this.fitting = true;
     const measure = (act: Act, yaw: number) => {
       this.poseStance(still, 1, 1, act);
       this.root.rotation.y = yaw;
@@ -1361,6 +1366,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     };
     for (const dir of [-1, 1] as const) measure({ type: 'walk', dir, phase: 0.3 }, dir * (Math.PI / 2));
     measure(undefined, 0);
+    this.fitting = false;
     this.poseStance(still, 1, 1, undefined);
     this.frameCamera(box);
   }
@@ -2834,7 +2840,10 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     if (stepping) {
       const away = stepping.facing === 'away';
       const toward = stepping.facing === 'toward';
-      heading = stepping.dir * (away ? Math.PI - 0.55 : toward ? 0.45 : 1.38) * env.turn;
+      // 출발하고 멈추며 돌 때는 선 자세의 방향(3/4)과 걷는 방향 사이를 오간다. 멈추며 앞(0)까지 돌았다가 다시 3/4 로
+      // 돌아오면 디딘 발이 몸을 따라 두 번 밀려 다리가 벌어지고 엇갈렸다 (한 장 그림은 선 자세 방향이 앞이라 그대로)
+      const walkHeading = stepping.dir * (away ? Math.PI - 0.55 : toward ? 0.45 : 1.38);
+      heading += (walkHeading - heading) * env.turn;
     }
     if (mood === 'sulky' && !s.peer) heading = side * ([0, 0.8, 1.15, Math.PI][sulkStage(s)] ?? 0.8);
     if (asleep && live) heading = side * 0.45;
@@ -2934,6 +2943,16 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       hy += g.x * 0.55;
     }
     j.head.rotation.set(hx, Math.max(-1, Math.min(1, hy)), hz);
+    // 앉으면 머리를 가슴 쪽으로 내리고 조금 앞으로 낸다 (몸통이 서면 머리가 긴 몸통 위에 얹혀 목이 드러났다).
+    // 머리 관절은 몸통에 붙어 있어 몸통이 든 각(pitch)만큼 되돌려 바닥 기준으로 옮긴다
+    if (w.sit > 0 && !this.fitting) {
+      const down = HEAD_SINK.down * L * w.sit;
+      const fwd = HEAD_SINK.fwd * L * w.sit;
+      const c = Math.cos(body.pitch);
+      const sn = Math.sin(body.pitch);
+      j.head.position.y += -down * c - fwd * sn;
+      j.head.position.z += -down * sn + fwd * c;
+    }
 
     // ---- 꼬리, 귀 ----
     // 꼬리: 서면 위로, 앉으면 몸 옆 바닥에 감고, 자면 몸을 둘러 앞으로. 걸으면 살랑, 신나면 빠르게 흔든다

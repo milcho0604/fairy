@@ -74,6 +74,10 @@ const LEGS: readonly LegId[] = ['fl', 'fr', 'hl', 'hr'];
 const PAIR_ERR = 0.28;
 /** 디딘 발이 쉬는 자리에서 이만큼(다리 길이 배) 넘게 벗어나면 다리가 닿지 않는다: 바로 옮긴다 */
 const REACH = 0.52;
+/** 다리는 앞뒤보다 옆으로 덜 벌어진다: 디딘 발이 쉬는 자리에서 옆으로 이만큼(다리 길이 배) 넘게 벗어나면 먼저 옮긴다 */
+const SIDE_REACH = 0.2;
+/** 디딘 발이 몸 가운데 쪽으로 와서 쉬는 자리 옆 거리의 이 몫보다 가까우면(반대쪽 발과 엇갈린다) 먼저 옮긴다 */
+const MID_GUARD = 0.3;
 /** 이만큼 벗어난 발은 같은 쪽 다리가 들려 있어도 옮긴다 */
 const URGENT = 0.5;
 /** 옮겨 딛는 발이 앞질러 내다보는 몸 돌기 (라디안) */
@@ -82,6 +86,8 @@ const AIM_AHEAD = 0.55;
 const MISS = 0.22;
 /** 한 번 들어 옮기는 데 걸리는 시간 상한 (ms). 걸음 박자가 느려져도(멈추는 중) 이 안에 내린다 */
 const SWING_MAX_MS = 300;
+/** 걸음 박자 없이 옮기는 발의 드는 시간 배 */
+const FIX_SWING = 0.75;
 /** 이 틀 사이가 길면(그리지 않던 동안) 발을 바랄 자리에 다시 둔다 */
 const GAP_MS = 400;
 
@@ -145,6 +151,16 @@ export class FootPlanter {
     return this.bodyX;
   }
 
+  /** 디딘 발이 지금 몸에서 옆으로 크게 벌어졌거나 몸 가운데를 넘어 반대쪽 발과 엇갈렸는지 */
+  private splayed(foot: Foot, r: Spot, heading: number, L: number): boolean {
+    if (foot.swing) return false;
+    const local = toLocal({ x: foot.ax - this.bodyX, z: foot.az }, heading);
+    const side = Math.sign(r.x);
+    return (
+      Math.abs(local.x - r.x) > SIDE_REACH * L || (side !== 0 && local.x * side < MID_GUARD * Math.abs(r.x))
+    );
+  }
+
   update(f: PlantFrame): Record<LegId, FootOut> {
     const dt = this.last === undefined ? Number.POSITIVE_INFINITY : f.now - this.last;
     this.last = f.now;
@@ -191,7 +207,8 @@ export class FootPlanter {
         fz: foot.az,
         t0: f.now,
         ...(p0 !== undefined ? { p0 } : {}),
-        dur: Math.min(210, Math.max(140, 130 + (120 * dist) / Math.max(1e-6, L))),
+        // 걸음 박자 없이 옮기는 발(돌아서기, 멈추기)은 조금 빨리 내린다: 걷다 멈추며 도는 동안 디딘 발이 밀리는 것을 따라잡는다
+        dur: Math.min(210, Math.max(140, 130 + (120 * dist) / Math.max(1e-6, L))) * (gait ? 1 : FIX_SWING),
         height: gait && p0 !== undefined ? gait.lift : Math.min(0.16 * L, 0.05 * L + 0.5 * dist),
         tx,
         tz,
@@ -249,15 +266,17 @@ export class FootPlanter {
               Math.hypot(foot.ax - g.x - lead, foot.az - g.z),
             )
           : 0;
-        return { id, foot, e };
+        return { id, foot, e, splayed: !!foot && this.splayed(foot, f.rest[id], f.heading, L) };
       })
-        .filter((v) => v.foot && !v.foot.swing && v.e > thr)
-        .sort((a, b) => b.e - a.e);
+        .filter((v) => v.foot && !v.foot.swing && (v.e > thr || v.splayed))
+        // 옆으로 벌어졌거나 엇갈린 발부터 (걷다 멈추며 돌면 몸만 돌고 디딘 발은 옆으로 밀린다)
+        .sort((a, b) => Number(b.splayed) - Number(a.splayed) || b.e - a.e);
       for (const v of errs) {
         if (!v.foot) continue;
         const g = goal[v.id];
-        if (canLift(v.id, v.e > PAIR_ERR * L ? 2 : 1, v.e > URGENT * L))
-          start(v.foot, undefined, g.x + lead, g.z);
+        // 그런 발이 있거나 멈춰 섰으면 두 발까지 같이 옮긴다 (한 발씩이면 다 모으는 데 오래 걸렸다)
+        const two = v.e > PAIR_ERR * L || !moving || errs.some((o) => o.splayed);
+        if (canLift(v.id, two ? 2 : 1, v.e > URGENT * L)) start(v.foot, undefined, g.x + lead, g.z);
       }
       for (const id of LEGS) {
         const sw = this.feet.get(id)?.swing;
