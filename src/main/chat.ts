@@ -44,6 +44,7 @@ import {
   type ProviderView,
 } from '../shared/ipc.ts';
 import { isBanmal } from '../shared/persona-voice.ts';
+import { textAiOrder } from '../shared/pet3d/text-prompt.ts';
 import { isWhatFirstQuestion } from '../shared/what-first.ts';
 import { prepareCodexHome } from './ai/codex-home.ts';
 import { downloadLocalModel, localModelReady, mb, runLocal } from './ai/local.ts';
@@ -660,10 +661,64 @@ export function createChat(o: ChatOptions) {
     return undefined;
   }
 
+  /**
+   * 글만으로 설계도를 쓸 수 있는 AI (말로 만들기, 2026-10-12): 앱에 든 CLI AI(claude, codex, cursor, gemini) 가운데
+   * 지금 채팅에서 고른 것, 아니면 설치되고 로그인된 첫 번째. 무료 AI(작은 앱 안 모델)는 긴 설계도 JSON 을 잘 못 써서 빼고,
+   * 사용자가 더한 AI 도 무엇을 할 수 있는지 몰라 뺀다
+   */
+  async function textSpec(): Promise<ProviderSpec | undefined> {
+    for (const id of textAiOrder(state.provider)) {
+      const s = specOf(id);
+      if (!s || s.custom) continue;
+      const st = await checkStatus(s);
+      if (st.installed && st.loggedIn !== false) return s;
+    }
+    return undefined;
+  }
+
   return {
     open,
     toggle,
     attach,
+    /** 말로 만들기를 쓸 AI 가 있는지 (만들기 창이 탭을 보일지) */
+    hasTextAi: async () => !!(await textSpec()),
+    /**
+     * 대화 밖에서 글만으로 한 번 묻는다 (말로 만들기). 격리하고 기록을 남기지 않는다. claude 는 웹 검색 도구 하나만 켠다
+     * (캐릭터 이름이면 모습을 찾아보게. 파일, 명령 도구는 그대로 끈다). 쓸 AI 가 없으면 noAi
+     */
+    async textShot(
+      text: string,
+      system: string,
+      signal?: AbortSignal,
+    ): Promise<{ ok: true; text: string; provider: string } | { ok: false; error: string; noAi?: true }> {
+      if (o.locked?.()) return { ok: false, error: t('main.update.lockedShort') };
+      const spec = await textSpec();
+      if (!spec) return { ok: false, noAi: true, error: t('main.maker.noTextAi') };
+      if (signal?.aborted) return { ok: false, error: t('main.maker.shapeCancelled') };
+      log('chat', 'text-shot', spec.id);
+      return new Promise((resolve) => {
+        const run = runAi(
+          {
+            spec,
+            history: [],
+            text,
+            images: [],
+            persona: system,
+            isolate: true,
+            ephemeral: true,
+            webSearch: spec.adapter === 'claude',
+            model: pickCli(o.catalog(), spec.id, o.aiModels()[spec.id]),
+          },
+          (e) => {
+            if (e.type === 'done') resolve({ ok: true, text: e.text, provider: spec.id });
+            else if (e.type === 'error') resolve({ ok: false, error: e.error.message });
+          },
+        );
+        signal?.addEventListener('abort', () => run.cancel());
+        const ended = () => resolve({ ok: false, error: t('main.maker.shapeCancelled') });
+        void run.finished.then(ended, ended);
+      });
+    },
     /** 창을 열고 질문을 보낸다 (메모 "AI로 정리"). 답을 기다리는 중이면 false */
     askInWindow(text: string, near?: Rectangle): boolean {
       open(near);

@@ -10,6 +10,7 @@ import {
   defaultPetName,
   followKindName,
   gaitPatch,
+  isPersonalPet,
   PET_KINDS,
   PET_NAME_MAX,
   parseSettings,
@@ -610,4 +611,22 @@ test('펫 이름표(만든 사람, 허락): 옛 설정은 없이, 틀린 값은 
     meta,
     '틀린 값은 지금 것 그대로',
   );
+});
+
+test('개인 용도 페어리 표시(petPersonal): 설계도 펫에만, 켠 것만, 펫이 바뀌면 옛 열쇠는 빠진다', () => {
+  const s = parseSettings({
+    petImage: 'pet-1.png',
+    petModel: 'model-1.json',
+    petLibrary: [{ id: 'p-a', name: '구름', image: 'pet-2.png', model: 'model-2.json', poses: {} }],
+    petPersonal: { 'model-1.json': true, 'model-2.json': true, 'model-9.json': true, 'kind:cat': true },
+  });
+  assert.deepEqual(s.petPersonal, { 'model-1.json': true, 'model-2.json': true });
+  assert.equal(isPersonalPet(s), true);
+  assert.deepEqual(parseSettings({ petPersonal: { 'model-1.json': 'yes' } }).petPersonal, {});
+  // 설계도가 바뀌면(새 펫) 표시가 따라가지 않는다
+  const next = applyPatch(s, { petModel: 'model-3.json' });
+  assert.equal(isPersonalPet(next), false);
+  assert.deepEqual(next.petPersonal, { 'model-2.json': true });
+  // 그림 없는 기본 펫은 개인 용도가 아니다
+  assert.equal(isPersonalPet(DEFAULT_SETTINGS), false);
 });

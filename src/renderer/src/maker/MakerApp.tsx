@@ -33,6 +33,14 @@ import {
 } from '../../../shared/mask.ts';
 import type { Blueprint } from '../../../shared/pet3d/blueprint.ts';
 import { cleanWish, WISH_MAX } from '../../../shared/pet3d/prompt.ts';
+import { canStand, standingBlueprint } from '../../../shared/pet3d/stand.ts';
+import {
+  cleanDescribe,
+  DESCRIBE_MAX,
+  makerTabs,
+  nameFromText,
+  TWEAK_MAX,
+} from '../../../shared/pet3d/text-prompt.ts';
 import {
   cleanPetName,
   GAIT_PICKS,
@@ -151,7 +159,14 @@ export function MakerApp() {
   const [fetchedDepth, setFetchedDepth] = useState(false);
   const shapeRun = useRef(0);
   // AI 일러스트로 다시 그리기 (2026-10-09): 고르면 사진을 Hugging Face 무료 서버로 보낸다 (펫 본 그림만)
-  const [how, setHow] = useState<'photo' | 'illust'>('photo');
+  const [how, setHow] = useState<'photo' | 'illust' | 'text'>('photo');
+  // 말로 만들기 (2026-10-12): 연결된 AI 가 있을 때만 탭이 보인다. 적은 글, 지금 설계도를 만든 글과 캐릭터 표시, 고칠 점
+  const [textAi, setTextAi] = useState(false);
+  const [textDraft, setTextDraft] = useState('');
+  const [fromText, setFromText] = useState<{ text: string; named: boolean }>();
+  const [tweakDraft, setTweakDraft] = useState('');
+  const [textTask, setTextTask] = useState<'describe' | 'tweak'>('describe');
+  const tweakRef = useRef<HTMLInputElement>(null);
   const [age, setAge] = useState<AgeStage>(DEFAULT_AGE);
   const [illustWish, setIllustWish] = useState('');
   const [illust, setIllust] = useState<Illust>();
@@ -178,6 +193,8 @@ export function MakerApp() {
       setName('');
       // AI 확인(CLI 상태)은 몇 초 걸릴 수 있어 따로 받는다. 그동안 사진 고르기는 막지 않는다
       void bridge.visionAi().then((visionAi) => setInfo((v) => v && { ...v, visionAi }));
+      // 말로 만들기 탭: AI 가 없으면 아예 보이지 않는다 (막힌 탭을 보여 주지 않는다)
+      if (i.target === 'main') void bridge.textAi().then(setTextAi, () => setTextAi(false));
     });
     bridge.onProgress(setProgress);
     if (navigator.userAgent.includes('Mac')) document.body.classList.add('mac');
@@ -330,6 +347,7 @@ export function MakerApp() {
       if (!info) return;
       setError('');
       setNote('');
+      setFromText(undefined);
       backRef.current = opts.back ?? 'pick';
       const run = ++runRef.current;
       const alive = () => runRef.current === run;
@@ -568,7 +586,95 @@ export function MakerApp() {
     setShapeDone(false);
     setError('');
     setNote(t('maker.progress.stopped'));
+    // 말로 만들기에서 아직 아무것도 못 받았으면 적던 화면으로
+    if (fromText && !model) setStep('pick');
   };
+
+  /** 받은 설계도를 놓는다: 미리보기, 저장할 그림(정면을 그린 PNG) */
+  const placeTextModel = (bp: Blueprint) => {
+    setModel(bp);
+    setLook('figure');
+    const png = renderBlueprint(shownModel(bp, true), { side: 512, clear: true });
+    setPreview(png ?? '');
+    // 그림을 못 그리면(WebGL 없음) 저장할 펫 그림이 없다: 저장을 누르기 전에 알린다
+    if (!png) setError(t('maker.err.canvas'));
+  };
+
+  /** 말로 만들기: 적은 글로 AI 에게 설계도를 받는다. 실패하면 적던 화면으로 (글은 그대로) */
+  const makeFromText = async () => {
+    if (shaping) return;
+    const text = cleanDescribe(textDraft);
+    if (!text) {
+      setError(t('main.maker.textEmpty'));
+      return;
+    }
+    const run = ++shapeRun.current;
+    runRef.current++;
+    setError('');
+    setNote('');
+    setAnimated(false);
+    setMadeAge(undefined);
+    setMadeWith(undefined);
+    setDepth('');
+    setModel(undefined);
+    setPreview('');
+    setSmallCut(false);
+    setLook('figure');
+    setFromText({ text, named: false });
+    setTweakDraft('');
+    // 이름은 적은 글로 채워 둔다 (고칠 수 있다)
+    setName(nameFromText(text));
+    setNameNote('');
+    setTextTask('describe');
+    setShaping(true);
+    beginShape('figure');
+    setStep('name');
+    const at = performance.now();
+    const r = await bridge.describe(text);
+    if (shapeRun.current !== run) return;
+    if (!r.ok) {
+      setShaping(false);
+      setError(r.error);
+      setStep('pick');
+      return;
+    }
+    saveDuration('figure', performance.now() - at, store());
+    if (!(await finishShape(run))) return;
+    setFromText({ text, named: r.namedCharacter });
+    placeTextModel(r.model);
+    setShaping(false);
+  };
+
+  /** 말로 만들기 고치기: 지금 설계도와 고칠 점을 보낸다. 실패하면 지금 설계도 그대로 */
+  const tweakText = async () => {
+    if (shaping || !model || !fromText) return;
+    const ask = cleanDescribe(tweakDraft, TWEAK_MAX);
+    if (!ask) return;
+    const run = ++shapeRun.current;
+    setError('');
+    setNote('');
+    setTextTask('tweak');
+    setShaping(true);
+    beginShape('figure');
+    const r = await bridge.tweak(model, ask, fromText.text, fromText.named);
+    if (shapeRun.current !== run) return;
+    if (!r.ok) {
+      setShaping(false);
+      setError(r.error);
+      return;
+    }
+    if (!(await finishShape(run))) return;
+    setFromText({ text: fromText.text, named: r.namedCharacter });
+    placeTextModel(r.model);
+    setTweakDraft('');
+    setNote(t('maker.text.tweaked'));
+    setShaping(false);
+  };
+
+  // 설계도를 받으면 (진행 표시가 사라져 포커스가 body 로 빠진다) 고칠 점 칸으로
+  useEffect(() => {
+    if (step === 'name' && fromText && model && !shaping) tweakRef.current?.focus({ preventScroll: true });
+  }, [step, fromText, model, shaping]);
 
   const shape = async () => {
     if (shaping) return;
@@ -669,7 +775,13 @@ export function MakerApp() {
 
   const chosen: PetLook | undefined =
     look === 'figure' && model
-      ? { model, ...(madeWith?.wish ? { wish: madeWith.wish } : {}) }
+      ? {
+          model,
+          ...(madeWith?.wish ? { wish: madeWith.wish } : {}),
+          // 말로 만든 펫: 이미 있는 캐릭터면 개인 용도 표시, 네 발 동물이면 네 발로 선 피규어
+          ...(fromText?.named ? { personalOnly: true } : {}),
+          ...(fromText && standsUp(model) ? { stand: true } : {}),
+        }
       : look === 'relief' && depth
         ? { depth }
         : undefined;
@@ -783,16 +895,25 @@ export function MakerApp() {
     { label: t('maker.progress.stage.edit'), state: 'next' },
   ];
 
-  const steps: [Step[], string][] = [
-    [['pick', 'setup', 'illust', 'model', 'working'], t('maker.step.photo')],
-    [['edit'], t('maker.step.edit')],
-    [['name', 'saving', 'done'], isPose ? t('maker.step.confirm') : t('maker.step.name')],
-  ];
+  // 말로 만들기는 두 단계 (적기, 이름). 사진 다듬기가 없다
+  const byText = isMain && (step === 'pick' ? how === 'text' && textAi : !!fromText);
+  const steps: [Step[], string][] = byText
+    ? [
+        [['pick'], t('maker.step.text')],
+        [['name', 'saving', 'done'], t('maker.step.name')],
+      ]
+    : [
+        [['pick', 'setup', 'illust', 'model', 'working'], t('maker.step.photo')],
+        [['edit'], t('maker.step.edit')],
+        [['name', 'saving', 'done'], isPose ? t('maker.step.confirm') : t('maker.step.name')],
+      ];
   const title = isFood
     ? t('maker.title.food')
     : isPose
       ? t('maker.title.pose', { pose: poseLabel })
-      : t('maker.title.pet');
+      : byText
+        ? t('maker.title.text')
+        : t('maker.title.pet');
 
   return (
     <div className="maker" onPaste={onPaste}>
@@ -825,13 +946,17 @@ export function MakerApp() {
             {isMain && (
               <div className="how">
                 <fieldset className="segmented" aria-label={t('maker.how.label')}>
-                  {(['photo', 'illust'] as const).map((k) => (
+                  {makerTabs(textAi).map((k) => (
                     <button
                       key={k}
                       type="button"
                       aria-pressed={how === k}
                       className={how === k ? 'on' : ''}
-                      onClick={() => setHow(k)}
+                      onClick={() => {
+                        setHow(k);
+                        setError('');
+                        setNote('');
+                      }}
                     >
                       {t(`maker.how.${k}`)}
                     </button>
@@ -900,24 +1025,65 @@ export function MakerApp() {
                     <GeminiRoute age={age} wish={illustWish} onImage={(b) => start(b, { age })} />
                   </div>
                 )}
+                {how === 'text' && textAi && (
+                  <form
+                    className="wish text-make"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void makeFromText();
+                    }}
+                  >
+                    <label className="wish-label" htmlFor="maker-text">
+                      {t('maker.text.label')}
+                    </label>
+                    <div className="wish-box">
+                      <input
+                        id="maker-text"
+                        // biome-ignore lint/a11y/noAutofocus: 탭을 고르면 바로 적을 수 있게 (이 칸 하나뿐인 화면)
+                        autoFocus
+                        value={textDraft}
+                        maxLength={DESCRIBE_MAX}
+                        placeholder={t('maker.text.placeholder')}
+                        aria-describedby="maker-text-hint maker-text-privacy"
+                        onChange={(e) => setTextDraft(e.target.value)}
+                      />
+                      <span className="wish-count" aria-hidden="true">
+                        {t('maker.wish.count', { n: textDraft.length, max: DESCRIBE_MAX })}
+                      </span>
+                    </div>
+                    <small id="maker-text-hint" className="hint">
+                      {t('maker.text.hint')}
+                    </small>
+                    <p id="maker-text-privacy" className="privacy out">
+                      {t('maker.text.privacy')}
+                    </p>
+                    <div className="actions">
+                      <button type="submit" className="primary" disabled={!textDraft.trim()}>
+                        {t('maker.text.make')}
+                      </button>
+                    </div>
+                  </form>
+                )}
               </div>
             )}
-            <button
-              type="button"
-              className={`drop${isMain ? ' short' : ''}`}
-              onClick={() => fileRef.current?.click()}
-            >
-              <span className="big">{t('maker.pick.title')}</span>
-              <span>{t('maker.pick.how')}</span>
-              <span className="hint">
-                {isFood
-                  ? t('maker.pick.food', { cost: info?.foodCost ?? 50 })
-                  : isPose
-                    ? t('maker.pick.pose', { pose: poseLabel })
-                    : t('maker.pick.pet')}
-              </span>
-              <span className="hint">{t('maker.pick.animated')}</span>
-            </button>
+            {!(isMain && how === 'text' && textAi) && (
+              <button
+                type="button"
+                className={`drop${isMain ? ' short' : ''}`}
+                onClick={() => fileRef.current?.click()}
+              >
+                <span className="big">{t('maker.pick.title')}</span>
+                <span>{t('maker.pick.how')}</span>
+                <span className="hint">
+                  {isFood
+                    ? t('maker.pick.food', { cost: info?.foodCost ?? 50 })
+                    : isPose
+                      ? t('maker.pick.pose', { pose: poseLabel })
+                      : t('maker.pick.pet')}
+                </span>
+                <span className="hint">{t('maker.pick.animated')}</span>
+              </button>
+            )}
             <input
               ref={fileRef}
               type="file"
@@ -929,8 +1095,10 @@ export function MakerApp() {
                 e.target.value = '';
               }}
             />
-            {/* 일러스트 안내는 위 옵션 칸에 있다. 그 밖에는 사진이 이 컴퓨터를 떠나지 않는다 */}
-            {!(isMain && how === 'illust') && <p className="privacy">{t('maker.pick.privacy')}</p>}
+            {/* 일러스트, 말로 만들기 안내는 위 옵션 칸에 있다. 그 밖에는 사진이 이 컴퓨터를 떠나지 않는다 */}
+            {!(isMain && (how === 'illust' || (how === 'text' && textAi))) && (
+              <p className="privacy">{t('maker.pick.privacy')}</p>
+            )}
             {!isFood && (isPose ? info?.hasPose : info?.hasPhotoPet) && (
               <button
                 type="button"
@@ -1119,24 +1287,32 @@ export function MakerApp() {
           <section className="name">
             {shaping ? (
               <MakeProgress
-                key={shapeTask}
+                key={fromText ? `text-${textTask}` : shapeTask}
                 task={
-                  shapeTask === 'figure' ? 'figure' : shapeTask === 'reliefDownload' ? 'download' : 'relief'
+                  fromText
+                    ? 'text'
+                    : shapeTask === 'figure'
+                      ? 'figure'
+                      : shapeTask === 'reliefDownload'
+                        ? 'download'
+                        : 'relief'
                 }
                 title={
-                  shapeTask === 'figure'
-                    ? refining
-                      ? t('maker.3d.refining')
-                      : t('maker.3d.working')
-                    : shapeTask === 'reliefDownload'
-                      ? t('maker.relief.downloading', { mb: info?.depth.mb ?? 27 })
-                      : t('maker.relief.working')
+                  fromText
+                    ? t(textTask === 'tweak' ? 'maker.text.tweaking' : 'maker.text.working')
+                    : shapeTask === 'figure'
+                      ? refining
+                        ? t('maker.3d.refining')
+                        : t('maker.3d.working')
+                      : shapeTask === 'reliefDownload'
+                        ? t('maker.relief.downloading', { mb: info?.depth.mb ?? 27 })
+                        : t('maker.relief.working')
                 }
                 startedAt={shapeAt}
                 ratio={shapeTask === 'reliefDownload' ? progress : undefined}
                 totalMb={shapeTask === 'reliefDownload' ? info?.depth.mb : undefined}
                 expectedMs={shapeMs}
-                image={preview}
+                image={preview || undefined}
                 silhouette
                 stages={
                   shapeTask !== 'figure' && fetchedDepth
@@ -1162,7 +1338,7 @@ export function MakerApp() {
                 }
               >
                 {look === 'figure' && model ? (
-                  <Spin3D model={model} interactive={step === 'name'} />
+                  <Spin3D model={shownModel(model, !!fromText)} interactive={step === 'name'} />
                 ) : look === 'relief' && depth ? (
                   <Spin3D photo={preview} depth={depth} interactive={step === 'name'} />
                 ) : (
@@ -1172,7 +1348,37 @@ export function MakerApp() {
             )}
             {animated && step === 'name' && <p className="hint">{t('maker.name.animatedNote')}</p>}
             {!animated && smallCut && step === 'name' && <p className="hint">{t('maker.name.smallCut')}</p>}
-            {can3d && step === 'name' && (
+            {fromText && model && step === 'name' && !shaping && (
+              <form
+                className="look3d wish text-tweak"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void tweakText();
+                }}
+              >
+                <p className="hint">{t('maker.text.ready')}</p>
+                <label className="wish-label" htmlFor="maker-tweak">
+                  {t('maker.text.tweakLabel')} <small>{t('maker.wish.optional')}</small>
+                </label>
+                <div className="wish-box">
+                  <input
+                    ref={tweakRef}
+                    id="maker-tweak"
+                    value={tweakDraft}
+                    maxLength={TWEAK_MAX}
+                    placeholder={t('maker.text.tweakPlaceholder')}
+                    onChange={(e) => setTweakDraft(e.target.value)}
+                  />
+                  <span className="wish-count" aria-hidden="true">
+                    {t('maker.wish.count', { n: tweakDraft.length, max: TWEAK_MAX })}
+                  </span>
+                </div>
+                <button type="submit" className="ghost" disabled={!tweakDraft.trim()}>
+                  {t('maker.text.tweak')}
+                </button>
+              </form>
+            )}
+            {can3d && !fromText && step === 'name' && (
               <div className="look3d">
                 <fieldset className="segmented" aria-label={t('maker.3d.look')}>
                   {(info?.visionAi
@@ -1363,9 +1569,17 @@ export function MakerApp() {
                     type="button"
                     className="ghost"
                     disabled={shaping}
-                    onClick={() => setStep(animated ? 'pick' : 'edit')}
+                    onClick={() => {
+                      setError('');
+                      setNote('');
+                      setStep(animated || fromText ? 'pick' : 'edit');
+                    }}
                   >
-                    {animated ? t('maker.name.otherImage') : t('maker.name.reedit')}
+                    {fromText
+                      ? t('maker.text.rewrite')
+                      : animated
+                        ? t('maker.name.otherImage')
+                        : t('maker.name.reedit')}
                   </button>
                   <button type="button" className="primary" disabled={!canSave && !buildFirst} onClick={save}>
                     {step === 'saving'
@@ -1415,31 +1629,47 @@ function AgePicker({ age, onAge }: { age: AgeStage; onAge: (a: AgeStage) => void
 
 let previewPet: Pet3D | undefined;
 
+/** 말로 만든 네 발 동물은 네 발로 선 피규어로 본다 (밀크, 초코처럼, stand.ts). 설 수 없는 몸이면 그대로 */
+function standsUp(model: Blueprint): boolean {
+  return model.gait === 'quadruped' && canStand(model);
+}
+
+/** 미리보기에 그릴 설계도 (말로 만든 것이면 저장 뒤 화면과 같게 네 발로 선 모습) */
+function shownModel(model: Blueprint, text: boolean): Blueprint {
+  return text && standsUp(model) ? (standingBlueprint(model) ?? model) : model;
+}
+
 /**
- * 설계도를 정면에서 한 장 그린다 (두 번째 보기에서 AI 에 보여 줄 그림, PNG data URL). 미리보기와 같은 Pet3D 를 쓰고
- * 그린 뒤 비운다. WebGL 을 못 쓰면 undefined
+ * 설계도를 정면에서 한 장 그린다 (PNG data URL). 미리보기와 같은 Pet3D 를 쓰고 그린 뒤 비운다. WebGL 을 못 쓰면 undefined.
+ * 기본은 두 번째 보기에서 AI 에 보여 줄 흰 바탕 320px. clear 면 바탕 없이 그려 그림 둘레를 잘라 낸다
+ * (말로 만든 펫의 펫 그림: 평면 보기, 보관함, 갤러리 작은 그림에 쓴다)
  */
-function renderBlueprint(model: Blueprint): string | undefined {
+function renderBlueprint(
+  model: Blueprint,
+  opts: { side?: number; clear?: boolean } = {},
+): string | undefined {
   previewPet ??= Pet3D.create(() => {});
   const pet = previewPet;
   if (!pet) return undefined;
-  const side = 320;
+  const side = opts.side ?? 320;
   const canvas = document.createElement('canvas');
   canvas.width = side;
   canvas.height = side;
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d', { willReadFrequently: !!opts.clear });
   if (!ctx) return undefined;
   try {
     pet.setBlueprint(model);
     pet.spin = 0;
     pet.tilt = 0;
     // 흰 바탕 (사진도 배경을 지운 흰 바탕이라 견주기 쉽다)
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, side, side);
+    if (!opts.clear) {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, side, side);
+    }
     const k = side / CANVAS_SIZE;
     ctx.setTransform(k, 0, 0, k, 0, 0);
     pet.draw(ctx, { mood: 'idle', elapsed: 0, blink: -1 }, 0, 1, 1, undefined);
-    return canvas.toDataURL('image/png');
+    return opts.clear ? trimmed(canvas) : canvas.toDataURL('image/png');
   } catch {
     return undefined;
   } finally {
@@ -1984,6 +2214,37 @@ async function sameAsPhoto(sent: string, got: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** 투명한 둘레를 잘라 낸 PNG (조금 여백을 둔다). 다 비었으면 undefined */
+function trimmed(canvas: HTMLCanvasElement): string | undefined {
+  const g = canvas.getContext('2d');
+  if (!g) return undefined;
+  const { width: w, height: h } = canvas;
+  const d = g.getImageData(0, 0, w, h).data;
+  let x0 = w;
+  let y0 = h;
+  let x1 = -1;
+  let y1 = -1;
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++)
+      if ((d[(y * w + x) * 4 + 3] ?? 0) > 8) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+  if (x1 < 0) return undefined;
+  const pad = 4;
+  x0 = Math.max(0, x0 - pad);
+  y0 = Math.max(0, y0 - pad);
+  x1 = Math.min(w - 1, x1 + pad);
+  y1 = Math.min(h - 1, y1 + pad);
+  const out = document.createElement('canvas');
+  out.width = x1 - x0 + 1;
+  out.height = y1 - y0 + 1;
+  out.getContext('2d')?.drawImage(canvas, x0, y0, out.width, out.height, 0, 0, out.width, out.height);
+  return out.toDataURL('image/png');
 }
 
 /** data URL 그림을 연다 */

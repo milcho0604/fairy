@@ -3,6 +3,7 @@ import { t } from '../../../../shared/i18n/index.ts';
 import { restDaysOf } from '../../../../shared/routine.ts';
 import {
   cleanPetName,
+  isPersonalPet,
   PET_NAME_MAX,
   PET_STYLES,
   POSE_KINDS,
@@ -264,7 +265,7 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
       </Section>
 
       <Section title={t('settings.gallery')}>
-        <Gallery onMsg={flash} meta={snap.current?.meta} />
+        <Gallery onMsg={flash} meta={snap.current?.meta} personal={isPersonalPet(snap.settings)} />
       </Section>
 
       <Section title={t('settings.sulk')}>

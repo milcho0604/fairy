@@ -29,6 +29,8 @@ export interface ClaudeTurn {
   model?: string;
   /** 짝꿍 도구 쓰기: 펫 MCP 서버. 격리해도 이것만 싣는다 */
   jjServer?: McpLaunch;
+  /** 웹 검색 도구(WebSearch) 하나만 켠다 (말로 만들기). 파일, 명령 도구는 그대로 끈다 */
+  webSearch?: boolean;
 }
 
 /** 짝꿍 MCP 서버 하나만 담은 --mcp-config 값 */
@@ -47,6 +49,7 @@ export function claudeArgs(turn: ClaudeTurn): string[] {
     ...(turn.isolate === false ? (turn.mcpServers ?? []) : []),
     ...(turn.jjServer ? [JJ_MCP_NAME] : []),
   ];
+  const search = turn.webSearch ? ['WebSearch'] : [];
   return [
     '-p',
     '--input-format',
@@ -57,7 +60,7 @@ export function claudeArgs(turn: ClaudeTurn): string[] {
     '--include-partial-messages',
     // 도구는 격리 여부와 상관없이 끈다 (기획서 AI 연동 규칙 2: 펫 채팅의 AI 는 파일을 고치거나 명령을 실행하지 않는다)
     '--tools',
-    '',
+    search.join(','),
     ...(turn.isolate === false
       ? []
       : [
@@ -70,7 +73,9 @@ export function claudeArgs(turn: ClaudeTurn): string[] {
         ]),
     // 격리를 껐으면 내 MCP 설정 위에 짝꿍 서버만 더한다
     ...(turn.isolate === false && turn.jjServer ? ['--mcp-config', jjMcpConfig(turn.jjServer)] : []),
-    ...(allowed.length ? ['--allowedTools', allowed.map(mcpToolPrefix).join(',')] : []),
+    ...(allowed.length || search.length
+      ? ['--allowedTools', [...allowed.map(mcpToolPrefix), ...search].join(',')]
+      : []),
     ...(turn.model ? ['--model', turn.model] : []),
     '--append-system-prompt',
     turn.persona,

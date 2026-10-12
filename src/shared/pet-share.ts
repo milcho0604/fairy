@@ -58,6 +58,11 @@ export interface SharedPet {
   thumbnail?: string;
   /** 이름표의 나머지 (판 2). 판 1 파일에는 없다 */
   meta?: PetMeta;
+  /**
+   * 개인 용도 페어리 (말로 만들기, 이미 있는 캐릭터 이름으로 만든 것). 이름표에 personalOnly: true 로 적고,
+   * 공식 갤러리는 이 표시가 있는 파일을 받지 않는다 (gallery.ts validateSubmission). 옛 앱은 이 칸을 모르고 그냥 읽는다
+   */
+  personalOnly?: boolean;
 }
 
 /** 판 2 이름표에서 이름, 종류 말고 나머지 */
@@ -117,6 +122,7 @@ export function encodePet(p: SharedPet, meta?: Partial<PetMeta>): string {
     created: cleanCreated(m.created) ?? new Date().toISOString(),
     appVersion: cleanAppVersion(m.appVersion) ?? '0.0.0',
     ...(p.image && p.age ? { age: p.age } : {}),
+    ...(p.personalOnly ? { personalOnly: true } : {}),
   };
   const images = {
     ...(p.image ? { main: p.image } : {}),
@@ -255,6 +261,7 @@ function fromV2(raw: Record<string, unknown>): SharedPet | { error: string } {
   return {
     ...base,
     ...(thumbnail ? { thumbnail } : {}),
+    ...(manifest.personalOnly === true ? { personalOnly: true } : {}),
     meta: { ...(author ? { author } : {}), license, created, appVersion },
   };
 }

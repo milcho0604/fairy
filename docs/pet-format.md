@@ -58,6 +58,7 @@
 | `created` | 꼭 | 만든 날. ISO 8601 날짜(`2026-10-10`)나 UTC 시각(`2026-10-10T09:00:00.000Z`), 2020년부터 |
 | `appVersion` | 꼭 | 만든 앱 판 (`1.2.3`, `1.2.3-beta.1`) |
 | `age` | 선택 | AI 일러스트 나이 단계 `baby`, `teen`, `adult` (아기, 청소년은 작게 보인다). 본 그림이 있을 때만 |
+| `personalOnly` | 선택 | `true` 면 다른 사람의 캐릭터를 닮게 말로 만든 개인 용도 페어리. 앱은 그대로 읽고 다시 내보낼 때도 남긴다. **갤러리는 받지 않는다** |
 
 판 2 는 이름표를 엄격하게 봐요. `license`, `created`, `appVersion` 이 틀리거나 `author` 가 비었으면 파일을 받지 않아요. 갤러리에서 누가 무엇을 허락했는지가 중요해서예요.
 
@@ -114,7 +115,7 @@ gallery/
 
 - A `.fairy` file (formerly `.jjpet`, same contents; both are read) is a single UTF-8 JSON document (not a zip), at most 48 MiB (16 MiB in the gallery). Version 2 is what the app writes; version 1 files are still read.
 - Version 2 layout: `{ format: "jjakkung-pet", version: 2, manifest, images, blueprint?, depth? }`. The `format` value keeps the old app name on purpose so old and new apps can read each other's files.
-  - `manifest`: `name` (1-12 letters), `species` (`kong|cat|chick|dog|bunny`), optional `author` (display name, max 40 chars, control and bidi characters stripped; required in the gallery), `license` (`CC-BY-4.0` default, `CC-BY-SA-4.0`, `CC-BY-NC-4.0`, `CC0-1.0`), `created` (ISO 8601 date or UTC date-time), `appVersion` (semver), optional `age` (`baby|teen|adult`).
+  - `manifest`: `name` (1-12 letters), `species` (`kong|cat|chick|dog|bunny`), optional `author` (display name, max 40 chars, control and bidi characters stripped; required in the gallery), `license` (`CC-BY-4.0` default, `CC-BY-SA-4.0`, `CC-BY-NC-4.0`, `CC0-1.0`), `created` (ISO 8601 date or UTC date-time), `appVersion` (semver), optional `age` (`baby|teen|adult`), optional `personalOnly: true` (a personal-use fairy made to look like someone else's character; the gallery rejects it).
   - `images`: optional `main` and `poses.{happy,sleepy,hungry}` (PNG/GIF/WebP data URLs, decoded at most 8 MiB, 4096 px per side and 16 megapixels, magic bytes must match), optional `thumbnail` (PNG, longest side at most 512 px, at most 256 KiB).
   - `blueprint` (3D figure) and `depth` (grayscale relief PNG, at most 1 MiB) are optional and only read when `images.main` exists.
 - Validation is strict: a broken manifest or main image rejects the file; broken poses or blueprints are dropped by the app but rejected by the gallery check.

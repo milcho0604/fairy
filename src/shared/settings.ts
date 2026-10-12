@@ -168,6 +168,11 @@ export interface Settings {
    */
   petStands: Record<string, boolean>;
   /**
+   * 개인 용도 페어리 (말로 만들기, 2026-10-12): 이미 있는 캐릭터 이름으로 만든 입체 펫. 키는 설계도 파일 이름.
+   * 펫 파일로 내보낼 때 이름표에 personalOnly 를 적고(공식 갤러리가 받지 않는다) 내보내기 칸에 한 줄 안내를 보인다
+   */
+  petPersonal: Record<string, boolean>;
+  /**
    * 만나는 시간 (shared/routine.ts, 사용자 요청 2026-10-08): 요일마다 일을 시작하고 끝내는 시간. 그때 맞이하고 헤어지는 인사.
    * 기본 꺼짐(예전처럼 켤 때 브리핑). 켜 두면 만나지 않는 요일이 삐짐 쉬는 날도 된다(restDays 대신, routine.ts restDaysOf)
    */
@@ -282,6 +287,11 @@ export function lookKey(
     s.petLibrary.map((p) => p.id),
     starterStand(s) ?? null,
   ]);
+}
+
+/** 지금 펫이 개인 용도 페어리인지 (이미 있는 캐릭터 이름으로 말로 만들기, petPersonal) */
+export function isPersonalPet(s: Pick<Settings, 'petImage' | 'petModel' | 'petPersonal'>): boolean {
+  return !!s.petImage && !!s.petModel && s.petPersonal[s.petModel] === true;
 }
 
 /** 지금 사진 펫의 네 발로 서기를 바꾸는 값. 고를 수 없는 펫(설계도 없음)이면 undefined */
@@ -430,6 +440,7 @@ export const DEFAULT_SETTINGS: Settings = {
   petGaits: {},
   petWishes: {},
   petStands: {},
+  petPersonal: {},
   routine: DEFAULT_ROUTINE,
   illustEngine: 'cloud',
   typeAlong: true,
@@ -631,7 +642,7 @@ const KIND_KEY = /^kind:(\w+)$/;
 function bodiesOf(
   r: Record<string, unknown>,
   base: Settings,
-): Pick<Settings, 'petGaits' | 'petWishes' | 'petStands'> {
+): Pick<Settings, 'petGaits' | 'petWishes' | 'petStands' | 'petPersonal'> {
   const models = new Set<string>();
   const image = petImageOf(r.petImage, base.petImage).petImage;
   const current = petModelOf(r.petModel, base.petModel).petModel;
@@ -673,6 +684,13 @@ function bodiesOf(
       r.petStands,
       base.petStands,
       (k) => models.has(k) || STARTER_STAND.test(k),
+      (x) => (x === true ? true : undefined),
+    ),
+    // 개인 용도 표시는 입체 사진 펫(설계도)에만, 켠 것만 남긴다
+    petPersonal: pick(
+      r.petPersonal,
+      base.petPersonal,
+      (k) => models.has(k),
       (x) => (x === true ? true : undefined),
     ),
   };

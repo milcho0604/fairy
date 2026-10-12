@@ -154,3 +154,11 @@ test('레포 gallery/ 의 목록이 펫 파일과 맞다 (밀크, 초코만)', (
     assert.equal(sha256(readFileSync(new URL(e.thumbnail, root))), e.thumbSha256);
   }
 });
+
+test('갤러리 올리기 검사: 개인 용도 페어리(personalOnly)는 받지 않는다', () => {
+  const r = validateSubmission('cloud', encodePet({ ...PET, personalOnly: true }, META), 100);
+  assert.ok(r.problems.some((p) => p.includes('personalOnly')));
+  assert.equal(r.pet, undefined);
+  const built = buildGallery([file('cloud.jjpet', encodePet({ ...PET, personalOnly: true }, META))]);
+  assert.deepEqual(built.entries, []);
+});

@@ -83,18 +83,12 @@ Walking style (chosen by the owner): two legs.
 /** 요청문에 넣을 설계도 보기 (한 줄 JSON) */
 const example = (bp: Blueprint) => JSON.stringify(bp);
 
-/** 사진 펫 이름(과 사용자 요청사항, 고른 걸음새)을 넣은 요청 본문. 걸음새를 안 고르면(자동) AI 가 사진을 보고 정한다 */
-export function blueprintPrompt(petName: string, wish = '', gait?: Gait): string {
-  const w = cleanWish(wish);
-  return `Make a chibi figure of this pet (name: ${JSON.stringify(petName)}) that clearly resembles the photo: same main colors, markings, ear and tail shapes, body proportions.
-The owner must recognize THEIR pet at a glance, so likeness beats generic cuteness. Then make it as cute as a well-made collectible figure.
-
-Step 1, study the photo (write the result into "likeness", the first key of the JSON):
-- List the 3 to 6 features that make this pet look like itself, most distinctive first. Look at: breed or species silhouette; ear shape and position (pointy, floppy, folded, rounded, tall, wide-set) and inner ear color; coat pattern and exactly where each patch is (around one or both eyes, muzzle, forehead blaze, chest bib, belly, socks or paws, tail tip, back saddle, spots, tabby stripes); fur length and volume (fluffy breeds look rounder and bigger; cheek fluff, chest ruff, ear tufts, top-knot); muzzle length and color; nose shape and color; tail shape (curled, plume, short, long, kinked); eyebrows or eyebrow spots; accessories (collar, ribbon, clothes) and their colors; eye color and shape if striking.
-- Note each color as a hex value sampled from the photo, not a generic guess. Where a region is two-toned (white belly, dark saddle, blue cap on a plush), note both colors and the boundary.
-Step 2, build the figure so every listed feature is visible from the front view, placed where it is in the photo (left side as seen by the viewer is x > 0 only when the photo shows it on the viewer's right).
-
-Coordinate system: ground is y=0, the figure is about 1.0 tall, +z faces the viewer, +x is the figure's right side as seen by the viewer. Angles are degrees.
+/**
+ * 설계도 좌표와 스키마 설명 (사진으로 만들기와 말로 만들기가 같이 쓴다). 답은 이 모양 그대로여야
+ * parseBlueprint 가 읽는다. "likeness" 는 사진 길의 메모 칸이라 말로 만들기에서는 그냥 무시된다
+ */
+export function schemaBlock(): string {
+  return `Coordinate system: ground is y=0, the figure is about 1.0 tall, +z faces the viewer, +x is the figure's right side as seen by the viewer. Angles are degrees.
 
 Schema:
 {
@@ -134,7 +128,21 @@ Schema:
             length 0 = short velvet, 0.5 = medium, 1 = long flowing coat; curl 1 = tight curls like a poodle or bichon;
             clump 1 = fur that parts into locks like a long-haired cat. Fill it from the photo for any furry animal),
   "gait": one of ${JSON.stringify(GAITS)} (how it walks; default "biped": the figure stands on two feet and has arms, even a cat or dog. "quadruped" only when the owner chose four legs or the photo clearly shows an animal that must stay on all fours)
+}`;
 }
+
+/** 사진 펫 이름(과 사용자 요청사항, 고른 걸음새)을 넣은 요청 본문. 걸음새를 안 고르면(자동) AI 가 사진을 보고 정한다 */
+export function blueprintPrompt(petName: string, wish = '', gait?: Gait): string {
+  const w = cleanWish(wish);
+  return `Make a chibi figure of this pet (name: ${JSON.stringify(petName)}) that clearly resembles the photo: same main colors, markings, ear and tail shapes, body proportions.
+The owner must recognize THEIR pet at a glance, so likeness beats generic cuteness. Then make it as cute as a well-made collectible figure.
+
+Step 1, study the photo (write the result into "likeness", the first key of the JSON):
+- List the 3 to 6 features that make this pet look like itself, most distinctive first. Look at: breed or species silhouette; ear shape and position (pointy, floppy, folded, rounded, tall, wide-set) and inner ear color; coat pattern and exactly where each patch is (around one or both eyes, muzzle, forehead blaze, chest bib, belly, socks or paws, tail tip, back saddle, spots, tabby stripes); fur length and volume (fluffy breeds look rounder and bigger; cheek fluff, chest ruff, ear tufts, top-knot); muzzle length and color; nose shape and color; tail shape (curled, plume, short, long, kinked); eyebrows or eyebrow spots; accessories (collar, ribbon, clothes) and their colors; eye color and shape if striking.
+- Note each color as a hex value sampled from the photo, not a generic guess. Where a region is two-toned (white belly, dark saddle, blue cap on a plush), note both colors and the boundary.
+Step 2, build the figure so every listed feature is visible from the front view, placed where it is in the photo (left side as seen by the viewer is x > 0 only when the photo shows it on the viewer's right).
+
+${schemaBlock()}
 
 Rules:
 - 8 to ${MAX_PARTS} parts. Parts that move together share a slot: legs move with legL/legR, ears with earL/earR, and so on.

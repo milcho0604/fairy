@@ -380,6 +380,10 @@ if (kind === 'maker') {
     platform: process.platform,
     info: () => ipcRenderer.invoke(MAKER.modelReady),
     visionAi: () => ipcRenderer.invoke(MAKER.visionAi),
+    textAi: () => ipcRenderer.invoke(MAKER.textAi),
+    describe: (text: string) => ipcRenderer.invoke(MAKER.describe, text),
+    tweak: (model: unknown, instruction: string, original: string, named: boolean) =>
+      ipcRenderer.invoke(MAKER.tweak, model, instruction, original, named),
     ensureModel: () => ipcRenderer.invoke(MAKER.ensureModel),
     save: (png: string, name: string, look?: unknown) => ipcRenderer.invoke(MAKER.save, png, name, look),
     ensureDepth: () => ipcRenderer.invoke(MAKER.ensureDepth),
