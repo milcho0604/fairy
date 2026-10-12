@@ -3,6 +3,7 @@ import { statSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { app, BrowserWindow, type IpcMainEvent, ipcMain, type Rectangle, screen } from 'electron';
 import { type Catalog, pickCli, pickLocal } from '../shared/ai/catalog.ts';
+import { finalAnswer } from '../shared/ai/empty-answer.ts';
 import {
   extractTodos,
   noteTitleFromQuestion,
@@ -56,7 +57,7 @@ import { type AiRun, checkStatus, readCodexUsage, runAi } from './ai/runner.ts';
 import { getShellEnv } from './ai/shell-env.ts';
 import { createThreadStore } from './chat-threads.ts';
 import { devRendererUrl } from './dev-url.ts';
-import { focusWindow, showWindow, stealFocus } from './focus.ts';
+import { focusWindow, showWindow } from './focus.ts';
 import { langArg } from './lang.ts';
 import { jjMcpLaunch } from './mcp-launch.ts';
 import { openLink } from './open-link.ts';
@@ -389,7 +390,11 @@ export function createChat(o: ChatOptions) {
         // 고른 모델 (v2). 목록에 없으면 그 AI 의 기본
         model: pickCli(o.catalog(), provider, o.aiModels()[provider]),
       };
-      const onEvent = (event: AiEvent) => {
+      const onEvent = (raw: AiEvent) => {
+        // 글 없이 끝났으면 빈 말풍선 대신 안내 말 (이슈 #65). 대화 창 답에만: 일기 다듬기 같은 한 번 묻기는 빈 답을 그대로 받는다
+        const streamed = () => state.messages.find((m) => m.id === ids.pet)?.text ?? '';
+        const event =
+          raw.type === 'done' ? { ...raw, text: finalAnswer(raw.text, streamed(), !!raw.tools) } : raw;
         state = applyEvent(state, ids.pet, event, randomUUID());
         if (event.type === 'usage') writeJson(USAGE_FILE, state.usage);
         // 기록을 안 남긴 세션은 이어 갈 수 없다. 받아 두지 않는다. 그림 때문에 이번만 안 남겼으면 전 세션을 그대로 둔다
@@ -398,10 +403,11 @@ export function createChat(o: ChatOptions) {
             ...state,
             sessions: { ...state.sessions, [provider]: state.ephemeral ? undefined : sessionBefore },
           };
-        if (ephemeral && !state.ephemeral && event.type === 'done' && event.text)
+        // 안내 말(빈 답)은 이어 붙이지 않는다
+        if (ephemeral && !state.ephemeral && raw.type === 'done' && raw.text.trim())
           carry.set(
             provider,
-            [...(carry.get(provider) ?? []), { question: base, answer: event.text }].slice(-3),
+            [...(carry.get(provider) ?? []), { question: base, answer: raw.text }].slice(-3),
           );
         if (event.type === 'delta') {
           const msg = state.messages.find((m) => m.id === ids.pet);
@@ -710,8 +716,7 @@ export function createChat(o: ChatOptions) {
       o.onLocked?.();
       return;
     }
-    // 펫 앱은 Dock 없이 떠 있어서 창만 앞으로 부르면 키보드가 다른 앱에 남는다. 사용자가 부른 것이니 앱을 앞으로.
-    stealFocus();
+    // 앱을 앞으로 가져오는 것은 창을 띄울 때 한다 (focus.ts. 먼저 하면 맥이 다른 데스크톱으로 넘어간다)
     if (win && !win.isDestroyed()) {
       // 화면 프로세스가 죽었으면 빈 창만 남는다. 다시 부를 때 새로 읽는다 (대화 내용은 메인에 있다)
       if (win.webContents.isCrashed()) win.webContents.reload();

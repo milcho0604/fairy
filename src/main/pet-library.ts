@@ -3,6 +3,7 @@
 import { closeSync, openSync, readFileSync, readSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { app, nativeImage } from 'electron';
+import { friendSwap } from '../shared/friend-swap.ts';
 import { sizeOk } from '../shared/image-head.ts';
 import type { PetLookView, SavedPetView, StarterView } from '../shared/ipc.ts';
 import { swapIn } from '../shared/pet-order.ts';
@@ -40,7 +41,8 @@ function inUse(s: Settings, lib: SavedPet[]): Set<string> {
     ...files({ image: s.petImage, model: s.petModel, depth: s.petDepth, poses: s.petPoses }),
     ...lib.flatMap(files),
   ]);
-  for (const f of s.friends) for (const x of [f.image, f.model, f.depth]) if (x) used.add(x);
+  for (const f of s.friends)
+    for (const x of [f.image, f.model, f.depth, ...Object.values(f.poses ?? {})]) if (x) used.add(x);
   return used;
 }
 
@@ -182,6 +184,17 @@ export const library = {
       rmSync(join(petsDir(), file), { force: true });
       throw err;
     }
+    return true;
+  },
+
+  /**
+   * 친구 페어리를 기본 페어리로: 지금 기본 페어리는 그 친구 자리로 간다 (서로 바꾸기, friend-swap.ts).
+   * 보관함은 건드리지 않는다. 파일은 둘 다 계속 쓰니 지우지 않는다
+   */
+  fromFriend(id: string): boolean {
+    const patch = friendSwap(settings.get(), id);
+    if (!patch) return false;
+    settings.set(patch);
     return true;
   },
 

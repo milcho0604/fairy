@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { type ChatterLevel, LEVEL_LABEL, MAX_PER_HOUR } from '../../../../shared/chatter.ts';
 import { t } from '../../../../shared/i18n/index.ts';
+import type { CalSync } from '../../../../shared/ipc.ts';
 import { RoutinePicker } from '../../RoutinePicker.tsx';
+import { calendarFlash } from '../flash-of.ts';
 import { GoogleCalendarBox } from '../GoogleCalendarBox.tsx';
 import { icsInput } from '../ics-input.ts';
 import { Section, type TabProps, Toggle } from '../ui.tsx';
@@ -103,7 +105,7 @@ function CalendarSetup({
   onMsg,
 }: {
   url: string;
-  last: string;
+  last: CalSync;
   onSave: (v: string) => Promise<unknown>;
   onMsg: (m: string, error?: boolean) => void;
 }) {
@@ -149,7 +151,8 @@ function CalendarSetup({
             if (!(await commit())) return;
             const r = await window.jjakkungSettings.syncCalendar();
             setResult(r);
-            onMsg(r);
+            const f = calendarFlash(r);
+            onMsg(f.text, f.error);
           }}
         >
           {t('settings.cal.fetch')}
@@ -167,7 +170,7 @@ function CalendarSetup({
           </button>
         )}
       </div>
-      {result && <small>{result}</small>}
+      {result.text && <small className={result.ok ? undefined : 'warn'}>{result.text}</small>}
     </>
   );
 }

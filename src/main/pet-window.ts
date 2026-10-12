@@ -21,7 +21,7 @@ import {
   walkOffset,
   walkSpan,
 } from '../shared/behavior.ts';
-import { layoutBubble } from '../shared/bubble-layout.ts';
+import { BUBBLE_GUESS, bubbleClashes, bubbleRectOf, layoutBubble } from '../shared/bubble-layout.ts';
 import {
   bundleText,
   fateOf,
@@ -75,6 +75,7 @@ import {
   THROW_MIN_SPEED,
 } from '../shared/throw.ts';
 import type { NoteLook } from '../shared/together.ts';
+import { KEEP_APP_TYPE } from './active-space.ts';
 import { saverNow } from './battery.ts';
 import { boostOn } from './boost.ts';
 import { watchCursor } from './cursor-watch.ts';
@@ -174,6 +175,19 @@ export interface SayOptions {
 
 /** 설계도 정면 그림을 기다리는 시간 (입체 모듈을 처음 불러오는 데도 걸린다) */
 const SHOT_WAIT_MS = 15_000;
+
+// ---- 두 펫이 같이 말할 때 (이슈 #65) ----
+// 기본 펫과 친구 펫이 동시에 말하면 말풍선이 포개졌다. 다른 펫 말풍선과 겹칠 자리면 혼잣말은 건너뛰고,
+// 다른 말은 그 말풍선이 닫힐 때까지 조금(BUBBLE_WAIT_MAX_MS) 미뤘다가 띄운다
+/** 떠 있는 펫 창마다 지금 말풍선의 화면 사각형 (없으면 undefined) */
+const talkers = new Set<() => Rect | undefined>();
+/** 말풍선이 닫히기를 기다리는 말 */
+const roomWaiters = new Set<() => void>();
+/** 다른 펫 말풍선이 닫히기를 이만큼까지 기다린다. 넘으면 그냥 띄운다 (놓치면 안 되는 말을 오래 붙잡지 않게) */
+const BUBBLE_WAIT_MAX_MS = 6000;
+const roomMaybe = () => {
+  for (const w of [...roomWaiters]) w();
+};
 
 export interface PetWindow {
   /** 펫 화면만 다시 불러온다 (우클릭 새로고침) */
@@ -414,13 +428,42 @@ export function createPetWindow({
   });
   const win = prebuilt ?? new BrowserWindow({ ...petWindowOptions(), ...pet });
   if (prebuilt) win.setBounds(pet);
+  /** 지금 말풍선의 화면 사각형. 크기를 재기 전이면 어림 크기로 */
+  const bubbleRect = (): Rect | undefined =>
+    bubble && !win.isDestroyed() && win.isVisible()
+      ? bubbleRectOf(pet, bubble.size ?? BUBBLE_GUESS, screen.getDisplayMatching(pet).workArea)
+      : undefined;
+  talkers.add(bubbleRect);
+  /** 다른 펫의 떠 있는 말풍선과 겹칠 자리인지 */
+  const clashing = () => {
+    const others = [...talkers].filter((r) => r !== bubbleRect).map((r) => r());
+    const list = others.filter((r): r is Rect => !!r);
+    return list.length > 0 && bubbleClashes(pet, screen.getDisplayMatching(pet).workArea, list);
+  };
+  /** 다른 펫 말풍선이 닫혀 자리가 나면 true, 기다리다 끝나거나 그만두면 false */
+  const waitForRoom = (until: number, signal?: AbortSignal): Promise<boolean> =>
+    new Promise((resolve) => {
+      const end = (room: boolean) => {
+        clearTimeout(timer);
+        roomWaiters.delete(check);
+        signal?.removeEventListener('abort', abort);
+        resolve(room);
+      };
+      const check = () => {
+        if (!clashing()) end(true);
+      };
+      const abort = () => end(false);
+      const timer = setTimeout(abort, Math.max(0, until - Date.now()));
+      roomWaiters.add(check);
+      signal?.addEventListener('abort', abort, { once: true });
+    });
   // 펫 화면을 다 불러오면 할 일이 여럿이라(상태, 집, 친구, 쪽지, 알림 등) 켤 때 did-finish-load 듣개가 11개를 넘는다.
   // 켤 때 한 번 붙는 정해진 수라 새는 것이 아니다: 기본 상한 10 의 MaxListenersExceededWarning 이 기록마다 남지 않게
   win.webContents.setMaxListeners(30);
   win.setAlwaysOnTop(true, 'floating');
   // 모든 데스크톱(Space)에 보이되, 다른 앱의 전체 화면 위에는 올라가지 않는다.
   // (전체 화면 위에도 띄우면 다른 앱을 크게 쓰는 중에 펫이 가린다. 2026-10-02 사용자 지적)
-  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false, ...KEEP_APP_TYPE });
   // 처음에는 모두 통과시킨다. 커서가 펫 위에 오면 화면이 알려 준다.
   win.setIgnoreMouseEvents(true, { forward: true });
   // 미리 만든 창은 빈 화면을 이미 그려 ready-to-show 가 지나갔을 수 있다: 펫 화면을 다 불러오면 보인다
@@ -1158,6 +1201,8 @@ export function createPetWindow({
     win.webContents.send(IPC.bubble, null);
     applyLayout();
     current.done(action);
+    // 이 말풍선이 닫히기를 기다리던 다른 펫의 말 (이슈 #65)
+    roomMaybe();
   }
 
   /** 숨기기 전에 다시 부르는 법을 알려 준다. 메뉴 막대가 붐비면 아이콘이 안 보일 수 있어서다. 처음 3번만. */
@@ -1339,6 +1384,11 @@ export function createPetWindow({
   }
 
   function say(options: SayOptions): Promise<string | undefined> {
+    return speak(options, Date.now() + BUBBLE_WAIT_MAX_MS);
+  }
+
+  /** until: 다른 펫 말풍선이 닫히기를 이때까지 기다린다 (이슈 #65) */
+  function speak(options: SayOptions, until: number): Promise<string | undefined> {
     const { kind, text, buttons = [], ttlMs = BUBBLE_TTL_MS, image, hold, signal, paper } = options;
     if (signal?.aborted) return Promise.resolve(undefined);
     // 숨은 동안, 펫을 끄는 동안 온 답 알림은 붙잡아 둔다. 끄는 중에는 예전에 그냥 버려서 답이 왔다는 말이 사라졌다
@@ -1376,6 +1426,12 @@ export function createPetWindow({
     }
     // 혼잣말은 떠 있는 다른 말을 밀어내지 않는다
     if (kind === 'idle-talk' && bubble) return Promise.resolve(undefined);
+    // 옆 펫이 말하는 중이라 말풍선이 포개질 자리면: 혼잣말은 건너뛰고, 다른 말은 그 말풍선이 닫힐 때까지 미룬다
+    if (!win.isDestroyed() && win.isVisible() && clashing()) {
+      if (kind === 'idle-talk') return Promise.resolve(undefined);
+      if (Date.now() < until)
+        return waitForRoom(until, signal).then(() => (signal?.aborted ? undefined : speak(options, until)));
+    }
     if (win.isDestroyed() || !win.isVisible() || dragTimer || !gate.take(kind, Date.now())) {
       if (item && !win.isDestroyed()) unseen([item], undefined);
       return Promise.resolve(undefined);
@@ -1870,6 +1926,8 @@ export function createPetWindow({
     const shown = bubble;
     bubble = undefined;
     shown?.done('cleared');
+    talkers.delete(bubbleRect);
+    roomMaybe();
     heldAnswer?.resolve(undefined);
     heldAnswer = undefined;
     stopReveal();

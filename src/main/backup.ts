@@ -88,20 +88,20 @@ export function createBackup(o: {
   }
 
   /** 백업 폴더를 골라 지금 데이터를 바꾼다. 바꾸기 전 지금 것을 한 벌 남기고, 끝나면 다시 켠다 */
-  async function importFrom(parent?: BrowserWindow): Promise<string> {
+  async function importFrom(parent?: BrowserWindow): Promise<{ ok: boolean; message: string }> {
     const pick = await (parent
       ? dialog.showOpenDialog(parent, { title: t('main.backup.importTitle'), properties: ['openDirectory'] })
       : dialog.showOpenDialog({ title: t('main.backup.importTitle'), properties: ['openDirectory'] }));
     const from = pick.filePaths[0];
-    if (pick.canceled || !from) return '';
+    if (pick.canceled || !from) return { ok: true, message: '' };
     // 저장 파일과 설정은 링크가 아닌 일반 파일만 (버그잡이 4). cpSync 는 링크를 링크 그대로 복사해, 링크로 된
     // jjakkung.db 를 가져오면 앱 저장 파일이 데이터 폴더 밖(백업 폴더, USB)을 가리킨 채 거기에 계속 썼다
     if (!existsSync(join(from, 'jjakkung-backup.json')) || !plainFile(join(from, 'jjakkung.db')))
-      return t('main.backup.notBackup');
+      return { ok: false, message: t('main.backup.notBackup') };
     // 새 판 짝꿍이 만든 백업은 이 판이 못 연다. 지금 데이터를 덮어쓰기 전에 거른다
     const version = importableDbVersion(join(from, 'jjakkung.db'));
-    if (version === undefined) return t('main.backup.notBackup');
-    if (version > SCHEMA_VERSION) return t('main.backup.newer');
+    if (version === undefined) return { ok: false, message: t('main.backup.notBackup') };
+    if (version > SCHEMA_VERSION) return { ok: false, message: t('main.backup.newer') };
     const ok = await dialog.showMessageBox({
       type: 'warning',
       message: t('main.backup.confirm'),
@@ -110,7 +110,7 @@ export function createBackup(o: {
       defaultId: 1,
       cancelId: 1,
     });
-    if (ok.response !== 0) return '';
+    if (ok.response !== 0) return { ok: true, message: '' };
     // 사용자 AI 를 뺐다는 안내는 파일을 바꾸기 전에 띄운다. 바꾼 뒤에 기다리면 그사이 돌던 플래너, 설정 저장이
     // 가져온 planner.json, settings.json 을 지금 것으로 도로 덮어썼다. 바꾸고 나서 끝내기까지는 기다림 없이 한 번에
     const skipped = customAiCount(readJsonFile(join(from, 'ai-custom.json')));
@@ -164,7 +164,7 @@ export function createBackup(o: {
     // exit 대신 quit: will-quit 정리(실행 표시 지우기, AI 끝내기, 저장 파일 닫기, 단축키 풀기)가 돌게 한다
     app.relaunch();
     app.quit();
-    return t('main.backup.restarting');
+    return { ok: true, message: t('main.backup.restarting') };
   }
 
   return { exportTo, importFrom };

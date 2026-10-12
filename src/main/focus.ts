@@ -1,4 +1,5 @@
 import { app, type BrowserWindow, type Display, screen } from 'electron';
+import { onActiveSpace } from './active-space.ts';
 
 /**
  * 창을 앞으로 부르기. 펫 앱은 Dock 없이 떠 있어서 창만 앞으로 부르면 키보드가 다른 앱에 남는다.
@@ -11,10 +12,18 @@ export function stealFocus(): void {
   if (!noFocus && process.platform === 'darwin') app.focus({ steal: true });
 }
 
+/**
+ * 앱을 앞으로 가져오는 것(stealFocus)은 창을 지금 데스크톱에 띄운 뒤에 한다. 먼저 하면 맥이 이 앱 창이 있는 다른
+ * 데스크톱(Space)으로 화면을 넘긴다 (2026-10-12: 다른 데스크톱에서 펫을 누르면 원래 데스크톱으로 돌아감, active-space.ts)
+ */
 export function showWindow(win: BrowserWindow | undefined): void {
   if (!win || win.isDestroyed()) return;
   if (noFocus) win.showInactive();
-  else win.show();
+  else
+    onActiveSpace(win, () => {
+      win.show();
+      stealFocus();
+    });
 }
 
 export function focusWindow(win: BrowserWindow | undefined): void {
@@ -23,8 +32,11 @@ export function focusWindow(win: BrowserWindow | undefined): void {
     win.showInactive();
     return;
   }
-  win.show();
-  win.focus();
+  onActiveSpace(win, () => {
+    win.show();
+    win.focus();
+    stealFocus();
+  });
 }
 
 /**

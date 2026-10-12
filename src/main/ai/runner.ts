@@ -8,6 +8,7 @@ import { aiChildEnv } from '../../shared/ai/child-env.ts';
 import { claudeArgs, claudeInput, parseClaudeLine } from '../../shared/ai/claude.ts';
 import { codexArgs, parseCodexLine } from '../../shared/ai/codex.ts';
 import { cursorArgs, cursorParser } from '../../shared/ai/cursor.ts';
+import { lineUsedTool } from '../../shared/ai/empty-answer.ts';
 import { classifyError, notInstalled, timedOut } from '../../shared/ai/errors.ts';
 import { fillArgs, type ProviderSpec } from '../../shared/ai/providers.ts';
 import { type Exchange, stripAnsi, textPrompt } from '../../shared/ai/text.ts';
@@ -199,6 +200,8 @@ export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
     let buffer = '';
     let stderr = '';
     let answer = '';
+    /** 도구를 불렀다. 끝 사건에 실어 말없이 도구만 쓰고 끝난 것을 빈 답과 가른다 (empty-answer.ts, 이슈 #65) */
+    let usedTool = false;
     child.stdout?.setEncoding('utf8');
     let ansiTail = '';
     child.stdout?.on('data', (chunk: string) => {
@@ -220,11 +223,16 @@ export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
       for (let nl = buffer.indexOf('\n'); nl >= 0; nl = buffer.indexOf('\n')) {
         const line = buffer.slice(0, nl);
         buffer = buffer.slice(nl + 1);
+        if (!usedTool && lineUsedTool(line)) usedTool = true;
         for (const e of parse(line)) {
           if (e.type === 'delta') answer += e.text;
           if (e.type === 'session') sessionId = e.id;
           // codex 의 완료에는 글이 없다. 모은 답을 실어 보낸다.
-          emit(e.type === 'done' && !e.text ? { type: 'done', text: answer } : e);
+          emit(
+            e.type === 'done'
+              ? { type: 'done', text: e.text || answer, ...(usedTool ? { tools: true } : {}) }
+              : e,
+          );
         }
       }
     });
@@ -247,7 +255,7 @@ export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
             type: 'error',
             error: classifyError(spec, stripAnsi(stderr) || t('ai.error.exitCode', { code: String(code) })),
           });
-        else emit({ type: 'done', text: answer.trim() });
+        else emit({ type: 'done', text: answer.trim(), ...(usedTool ? { tools: true } : {}) });
         // 격리한 codex 가 토큰을 새로 받았으면 사용자 쪽 로그인 파일에 되돌려 쓴다 (윈도우 복사본)
         if (codexHome && req.isolate) finishCodexHome(env.codexHome);
         // codex 사용량은 대화 기록 파일에 남는다. 끝난 뒤 읽는다. 기록을 안 남겼으면 읽을 것도 없다.

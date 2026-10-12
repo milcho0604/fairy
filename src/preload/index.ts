@@ -183,6 +183,14 @@ if (kind === 'chat') {
     openThread: (id) => ipcRenderer.invoke(CHAT.openThread, id),
     renameThread: (id, title) => ipcRenderer.invoke(CHAT.renameThread, id, title),
     deleteThread: (id) => ipcRenderer.invoke(CHAT.deleteThread, id),
+    look: () => ipcRenderer.invoke(CHAT.look),
+    setLook: (on, agree) => ipcRenderer.send(CHAT.setLook, on, agree),
+    lookShot: () => ipcRenderer.invoke(CHAT.lookShot),
+    lookPick: () => ipcRenderer.send(CHAT.lookPick),
+    lookSettings: () => ipcRenderer.send(CHAT.lookSettings),
+    onLook: (listener) => {
+      ipcRenderer.on(CHAT.lookState, (_e, view) => listener(view));
+    },
   };
   contextBridge.exposeInMainWorld('jjakkungChat', chat);
 }

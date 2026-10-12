@@ -111,3 +111,18 @@ export function impactSquash(
   const s = Math.min(1, t / 0.15) * Math.cos(t * Math.PI * 1.5) * (1 - t) * Math.min(1, k);
   return axis === 'y' ? { sx: 1 + 0.12 * s, sy: 1 - 0.16 * s } : { sx: 1 - 0.14 * s, sy: 1 + 0.08 * s };
 }
+
+/**
+ * 바닥 가운데를 축으로 기울인 한 장 그림이 캔버스 가로(가운데에서 좌우 room)를 넘지 않게 기울기를 줄인다.
+ * halfW 는 그림 반폭, h 는 높이. 기울이면 위 모서리가 h·sin 만큼 옆으로 나가서 넓은 사진(140px)은 걸음 까딱과
+ * 숙이기를 더한 0.095 라디안에 캔버스 밖으로 2~3px 잘렸다 (이슈 #65 "걷는 중 창 왼쪽에 잘려 보임")
+ */
+export function fitTilt(tilt: number, halfW: number, h: number, room: number): number {
+  const a = Math.abs(tilt);
+  if (halfW * Math.cos(a) + h * Math.sin(a) <= room) return tilt;
+  if (halfW >= room) return 0;
+  // halfW·cos t + h·sin t = R·cos(t - φ) = room 의 작은 근
+  const r = Math.hypot(halfW, h);
+  const t = Math.atan2(h, halfW) - Math.acos(Math.min(1, room / r));
+  return Math.sign(tilt) * Math.max(0, Math.min(a, t));
+}
