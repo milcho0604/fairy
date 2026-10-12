@@ -6,11 +6,13 @@ import { planTodos } from '../shared/ai/answer-todos.ts';
 import { pickLocal } from '../shared/ai/catalog.ts';
 import { contextEvents, todayRange } from '../shared/ai/context-events.ts';
 import { persona, setMemorySource, setStyleSource, todoContext } from '../shared/ai/persona.ts';
+import { cutText } from '../shared/cut-text.ts';
 import { HIDE_SEEK, pickHideSpot } from '../shared/hide-seek.ts';
 import { houseMenuKey, houseNewsKey, stowSayKey, stowStep } from '../shared/house-stow.ts';
 import { locale, t } from '../shared/i18n/index.ts';
 import { IPC, type PetStatus, type PlayKind } from '../shared/ipc.ts';
 import { type FactKind, factsForAi } from '../shared/knows.ts';
+import { ownsLoginItem } from '../shared/login-item.ts';
 import { runnerKindOf } from '../shared/menu-runner.ts';
 import { isMiniGame, PLAY_COIN } from '../shared/minigames.ts';
 import { noteTitle } from '../shared/note-store.ts';
@@ -40,6 +42,7 @@ import { announceJsonTrouble, announceStoreTrouble, openStore } from './db.ts';
 import { createDiary } from './diary.ts';
 import { confineTestDisplay } from './focus.ts';
 import { createFriends } from './friends.ts';
+import { CHAIN_FILE, createTickle, createWordChain } from './fun.ts';
 import { galleryHandlers } from './gallery-app.ts';
 import { createGcal } from './gcal.ts';
 import { createHouseRest } from './house-rest.ts';
@@ -77,7 +80,7 @@ import { watchPresentation } from './presence-watch.ts';
 import { writableDir } from './safe-file.ts';
 import { settings } from './settings.ts';
 import { createSettingsWindow } from './settings-window.ts';
-import { onJsonTrouble } from './store.ts';
+import { onJsonTrouble, readJson, writeJson } from './store.ts';
 import { createSystemMonitor } from './system-monitor.ts';
 import { createTogether } from './together.ts';
 import { baseTrayIcon, createTray } from './tray.ts';
@@ -224,6 +227,18 @@ ready
     setVoiceSource(() => settings.get().persona);
     // 모델 목록 (v2): 앱 기본값, 하루 한 번 레포에서 받은 것으로 바꾼다
     const catalog = watchCatalog(log);
+    // 끝말잇기 (main/fun.ts): 채팅 창에서 AI 없이. 이기면 놀이 코인 (하루 상한 안에서)
+    const wordChain = createWordChain({
+      coinsToday: () => store.coinSum(PLAY_COIN.reason, localDay(Date.now())),
+      giveCoins: (coins) => {
+        store.reward(coins, PLAY_COIN.reason, Date.now());
+        panel.refresh();
+      },
+      played: () => petLife.activity('play'),
+      load: () => readJson(CHAIN_FILE),
+      save: (v) => writeJson(CHAIN_FILE, v),
+      log,
+    });
     const chat = createChat({
       catalog: catalog.get,
       aiModels: () => settings.get().aiModels,
@@ -281,6 +296,7 @@ ready
       // 강제 업데이트 전이면 AI 대화를 잠그고 펫이 까닭을 말한다 (updates 는 아래에서 만든다. 부를 때는 있다)
       locked: () => updates.locked(),
       onLocked: () => updates.remind(),
+      localGame: { turn: (text) => wordChain.turn(text), reset: () => wordChain.reset() },
       log,
     });
     const pet = createPetWindow({
@@ -312,7 +328,10 @@ ready
         quickAdd: () => panel.openQuick(),
         feed: () => feedPet(),
         makePet: () => maker.open(),
-        petted: () => petLife.activity('pet'),
+        petted: () => {
+          petLife.activity('pet');
+          tickling.petted();
+        },
         play: (kind) => void play(kind),
         toy: () =>
           shop.owns('yarn') ? t('pet.toy.yarn') : shop.owns('ball') ? t('pet.toy.ball') : undefined,
@@ -652,6 +671,13 @@ ready
     });
     /** 공놀이(공이나 털실이 있어야), 산책. 노는 중이면 무시 */
     async function play(kind: PlayKind, walkMin = 5): Promise<boolean> {
+      // 끝말잇기는 채팅 창에서 하는 말놀이라 노는 중이어도 연다. 답을 기다리는 중이면 판을 열지 않고 창만
+      if (kind === 'wordchain') {
+        const ok = chat.sayLocal(wordChain.start());
+        if (!ok) wordChain.reset();
+        chat.open(pet.bounds());
+        return ok;
+      }
       if (playing) return false;
       // 집중 중에는 펫이 잔다. 놀지 않고 까닭만 말한다
       if (planner.focus.phase === 'focus') {
@@ -728,6 +754,15 @@ ready
         panel.refresh();
       },
       played: () => petLife.activity('play'),
+      log,
+    });
+    // 간지럼 (main/fun.ts): 짧은 사이에 여러 번 쓰다듬으면 깔깔. 숨음, 놀이, 집중, 들림 중에는 안 한다
+    const tickling = createTickle({
+      busy: () => pet.isHidden() || playing || pet.held() || planner.focus.phase === 'focus',
+      giggle: (text) => {
+        pet.react('dance');
+        void pet.say({ kind: 'answer', text, ttlMs: 3000 });
+      },
       log,
     });
     // ---- 숨바꼭질 (v2 미니 게임) ----
@@ -1454,12 +1489,16 @@ ready
         pickedStand(next) !== pickedStand(prev)
       )
         sendStatus();
-      if (next.launchAtLogin !== prev.launchAtLogin && app.isPackaged) {
+      if (
+        next.launchAtLogin !== prev.launchAtLogin &&
+        ownsLoginItem(app.isPackaged, process.env.JJ_USER_DATA)
+      ) {
         app.setLoginItemSettings({ openAtLogin: next.launchAtLogin });
       }
     });
     // 켤 때 자동 실행 설정을 운영체제 것에 맞춘다: 사용자가 시스템 설정에서 끈 것을 다시 켜지 않고, 설정 창도 맞게 보인다 (버그잡이 7차)
-    if (app.isPackaged) {
+    // 시험 실행(JJ_USER_DATA)은 읽지 않는다: 사용자 페어리의 값을 읽어 와 위에서 다시 쓰게 된다 (shared/login-item.ts)
+    if (ownsLoginItem(app.isPackaged, process.env.JJ_USER_DATA)) {
       const atLogin = app.getLoginItemSettings().openAtLogin;
       if (atLogin !== settings.get().launchAtLogin) settings.set({ launchAtLogin: atLogin });
     }
@@ -1658,6 +1697,8 @@ ready
           achievements,
           seek,
           games,
+          wordChain,
+          tickling,
           maker,
           friends,
           diary,
@@ -1704,7 +1745,7 @@ export function preview(text: string): string {
     .replace(/[`*#>_]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
-  return plain.length > 30 ? `${plain.slice(0, 30)}...` : plain;
+  return plain.length > 30 ? `${cutText(plain, 30)}...` : plain;
 }
 
 /**

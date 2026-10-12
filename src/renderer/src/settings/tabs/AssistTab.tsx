@@ -3,6 +3,7 @@ import { type ChatterLevel, LEVEL_LABEL, MAX_PER_HOUR } from '../../../../shared
 import { t } from '../../../../shared/i18n/index.ts';
 import { RoutinePicker } from '../../RoutinePicker.tsx';
 import { GoogleCalendarBox } from '../GoogleCalendarBox.tsx';
+import { icsInput } from '../ics-input.ts';
 import { Section, type TabProps, Toggle } from '../ui.tsx';
 
 const chatterHint = (level: ChatterLevel): string =>
@@ -103,11 +104,28 @@ function CalendarSetup({
 }: {
   url: string;
   last: string;
-  onSave: (v: string) => void;
-  onMsg: (m: string) => void;
+  onSave: (v: string) => Promise<unknown>;
+  onMsg: (m: string, error?: boolean) => void;
 }) {
   const [value, setValue] = useState(url);
   const [result, setResult] = useState(last);
+  /**
+   * 칸의 글을 저장한다. https 가 아니면 저장하지 않고 빨간 글씨로 알린다 (설정 검사가 조용히 버려 "저장했어"만 떴다).
+   * webcal 은 https 로 바꿔 저장하고 칸에도 그 주소를 보인다. 저장할 수 있었으면 true
+   */
+  const commit = async (): Promise<boolean> => {
+    const r = icsInput(value, url || undefined);
+    if (r.kind === 'bad') {
+      onMsg(t('settings.cal.bad'), true);
+      return false;
+    }
+    if (r.kind === 'clear') await onSave('');
+    if (r.kind === 'save') {
+      setValue(r.url);
+      await onSave(r.url);
+    }
+    return true;
+  };
   return (
     <>
       <label className="field">
@@ -117,7 +135,7 @@ function CalendarSetup({
           value={value}
           placeholder="https://calendar.google.com/calendar/ical/.../basic.ics"
           onChange={(e) => setValue(e.target.value)}
-          onBlur={() => value.trim() !== url && onSave(value.trim())}
+          onBlur={() => void commit()}
         />
         <small>{t('settings.cal.hint')}</small>
       </label>
@@ -127,7 +145,8 @@ function CalendarSetup({
           className="ghost"
           disabled={!value.trim()}
           onClick={async () => {
-            if (value.trim() !== url) onSave(value.trim());
+            // 틀린 주소면 가져오지 않는다 (예전에는 칸과 다른 옛 주소로 가져왔다)
+            if (!(await commit())) return;
             const r = await window.jjakkungSettings.syncCalendar();
             setResult(r);
             onMsg(r);
@@ -141,7 +160,7 @@ function CalendarSetup({
             className="link"
             onClick={() => {
               setValue('');
-              onSave('');
+              void onSave('');
             }}
           >
             {t('settings.cal.clear')}
