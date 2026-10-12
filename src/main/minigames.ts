@@ -1,7 +1,16 @@
-// 짧은 놀이 (미니 게임) 실행: 비눗방울, 레이저 쫓기, 간식 받아먹기, 가위바위보, 친구와 술래잡기, 두더지 잡기.
+// 짧은 놀이 (미니 게임) 실행: 비눗방울, 레이저 쫓기, 간식 받아먹기, 가위바위보, 친구와 술래잡기, 두더지 잡기, 웃겨 줘, 하이파이브.
 // 규칙과 계산은 shared/minigames.ts. 여기는 작은 투명 창(방울, 점, 간식, 구멍)과 타이머만 다룬다.
 // 한 번에 하나만 하고, 끝나면(다 함, 그만 놀기, 숨음, 화면 잠금, 모니터 바뀜, 끌기) 창과 타이머를 다 치운다.
 import { BrowserWindow, powerMonitor, screen, systemPreferences } from 'electron';
+import {
+  HIGH_FIVE,
+  highFiveResult,
+  JOKE_PAUSE_MS,
+  jokeMove,
+  pickJoke,
+  pickLine,
+  rememberJoke,
+} from '../shared/fun.ts';
 import type { Rect } from '../shared/geometry.ts';
 import { type I18nKey, t } from '../shared/i18n/index.ts';
 import {
@@ -796,7 +805,56 @@ export function createMiniGames(o: MiniGameOptions) {
     return !signal.aborted;
   }
 
-  const PLAYS: Record<MiniGame, (run: Run) => Promise<boolean>> = { bubbles, laser, treats, rps, tag, mole };
+  // ---- 웃겨 줘 ----
+  // 말장난이나 몸개그 하나: 문제(또는 예고)를 말하고 잠깐 뒤 펀치와 몸짓. 최근 것은 다시 고르지 않는다. 코인은 없다
+  let jokeRecent: number[] = [];
+  async function joke(run: Run): Promise<boolean> {
+    const pet = o.pet();
+    const signal = run.abort.signal;
+    const n = pickJoke(jokeRecent, Math.random);
+    jokeRecent = rememberJoke(jokeRecent, n);
+    await sayFor(`fun.joke.${n}.q` as I18nKey, undefined, JOKE_PAUSE_MS, signal);
+    if (signal.aborted) return false;
+    pet.react(jokeMove(n));
+    void say(`fun.joke.${n}.a` as I18nKey, undefined, 4000);
+    return true;
+  }
+
+  // ---- 하이파이브 ----
+  // 말풍선 손바닥 단추 하나. 누르면 짝(놀이 친밀도, 하루 상한 안에서), 놓치면 허공에 하이파이브. 코인은 없다
+  async function highfive(run: Run): Promise<boolean> {
+    const pet = o.pet();
+    const signal = run.abort.signal;
+    const answer = await pet.say({
+      kind: 'answer',
+      text: t('fun.five.ask'),
+      buttons: [{ id: 'five', label: t('fun.five.button') }],
+      ttlMs: HIGH_FIVE.waitMs,
+      signal,
+    });
+    const result = highFiveResult(answer, signal.aborted);
+    if (result === 'stop') return false;
+    if (result === 'hit') {
+      countPlay();
+      pet.react('cheer');
+      void say(`fun.five.hit.${pickLine(HIGH_FIVE.hits, Math.random)}` as I18nKey, undefined, 3000);
+    } else {
+      pet.react('wave');
+      void say('fun.five.miss', undefined, 3000);
+    }
+    return true;
+  }
+
+  const PLAYS: Record<MiniGame, (run: Run) => Promise<boolean>> = {
+    bubbles,
+    laser,
+    treats,
+    rps,
+    tag,
+    mole,
+    joke,
+    highfive,
+  };
 
   return {
     start,

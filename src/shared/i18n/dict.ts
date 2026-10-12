@@ -15,6 +15,7 @@ import * as diary from './diary.ts';
 import * as ease from './ease.ts';
 import * as feedback from './feedback.ts';
 import * as first from './first.ts';
+import * as fun from './fun.ts';
 import * as gallery from './gallery.ts';
 import * as gcal from './gcal.ts';
 import * as gemini from './gemini.ts';
@@ -75,6 +76,7 @@ export const ko = {
   ...polish.ko,
   ...petmeta.ko,
   ...first.ko,
+  ...fun.ko,
   ...together.ko,
   ...voice.ko,
   ...voiceIdle.ko,
@@ -117,6 +119,7 @@ export const en: Translation<typeof ko> = {
   ...polish.en,
   ...petmeta.en,
   ...first.en,
+  ...fun.en,
   ...together.en,
   ...voice.en,
   ...voiceIdle.en,
