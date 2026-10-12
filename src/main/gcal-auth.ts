@@ -5,7 +5,7 @@
 import { createHash, randomBytes as nodeRandomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { GCAL_SCOPE } from '../shared/gcal.ts';
+import { GCAL_LIST_SCOPE, GCAL_SCOPE } from '../shared/gcal.ts';
 
 export const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 export const TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -91,7 +91,8 @@ export function authUrl(o: {
     client_id: o.clientId,
     redirect_uri: o.redirectUri,
     response_type: 'code',
-    scope: GCAL_SCOPE,
+    // 일정 읽기 쓰기 + 캘린더 목록 보기 (구글 캘린더 옵션 창). 허락 화면에서 목록 칸만 풀 수도 있다 (listScope)
+    scope: `${GCAL_SCOPE} ${GCAL_LIST_SCOPE}`,
     code_challenge: o.challenge,
     code_challenge_method: 'S256',
     state: o.state,
@@ -146,6 +147,8 @@ export interface Tokens {
   refreshToken?: string;
   /** 허락받은 권한에 캘린더 일정이 있는지 (허락 화면에서 체크를 풀 수 있다) */
   scopeOk: boolean;
+  /** 캘린더 목록 보기 권한도 있는지. 예전(일정 권한만) 연결이면 false: 옵션 창이 다시 연결해 달라고 한다 */
+  listScope: boolean;
 }
 
 export type TokenResult =
@@ -174,6 +177,7 @@ export function parseTokenResponse(status: number, json: unknown, now: number): 
       ...(typeof refresh === 'string' && refresh && refresh.length <= 4096 ? { refreshToken: refresh } : {}),
       // scope 가 없으면 구글이 요청한 그대로 준 것
       scopeOk: scope.length === 0 || scope.includes(GCAL_SCOPE),
+      listScope: scope.length === 0 || scope.includes(GCAL_LIST_SCOPE),
     },
   };
 }

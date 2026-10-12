@@ -44,6 +44,8 @@ export interface CalEvent {
   allDay: boolean;
   /** 고정한 시각 (13판, shared/pin.ts). 고정 안 했거나 값이 깨졌으면 null. 구글 보내기와 .ics 내보내기에는 없다 */
   pinnedAt: number | null;
+  /** 구글에서 읽어 온 일정이 든 캘린더 이름과 색 (패널이 붙인다. 저장 파일에는 캘린더 id 만 있다) */
+  gcalCal?: { name: string; color: string | null };
 }
 
 export type EventSource = 'local' | 'ics' | 'google';
@@ -431,7 +433,13 @@ export class EventStore {
     from: number,
     to: number,
     now: number,
+    /**
+     * calendar: 구글 캘린더 하나의 것만 맞춘다 (여러 캘린더 가져오기). 그 캘린더 줄만 찾고 지우며, 저장 키는 "캘린더 id + 빈칸 + 일정 id"
+     * (같은 일정 id 가 두 캘린더에 있어도 겹치지 않게), google_cal 에 캘린더를 적는다
+     */
+    o: { calendar?: string } = {},
   ): { added: number; updated: number; removed: number } {
+    const cal = o.calendar;
     let added = 0;
     let updated = 0;
     this.#db.exec('begin');
@@ -441,7 +449,7 @@ export class EventStore {
         // 쓸 수 없는 시각(캘린더의 엉뚱한 DURATION 등): 시작이 틀리면 건너뛰고, 끝이 틀리면 끝 없이
         if (!eventTimeOk(raw.startAt)) continue;
         const e = { ...raw, endAt: cleanEnd(raw.endAt) };
-        const key = externalKey(e);
+        const key = cal ? `${cal} ${externalKey(e)}` : externalKey(e);
         // 같은 키가 두 번 오면 앞의 것만 (둘이 한 행을 서로 덮어 매번 "고침"이 되지 않게)
         if (seen.has(key)) continue;
         seen.add(key);
@@ -466,8 +474,8 @@ export class EventStore {
         if (!old) {
           const r = this.#db
             .prepare(
-              `insert into event (title, start_at, end_at, remind_min, notified_at, created_at, source, external_id, all_day, google_uid)
-               values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              `insert into event (title, start_at, end_at, remind_min, notified_at, created_at, source, external_id, all_day, google_uid, google_cal)
+               values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             )
             .run(
               e.title,
@@ -480,6 +488,7 @@ export class EventStore {
               key,
               e.allDay ? 1 : 0,
               e.icalUid ?? null,
+              cal ?? null,
             );
           this.#reminders.set(Number(r.lastInsertRowid), defaultReminds(e.allDay), eventAnchor(e), {
             now,
@@ -541,11 +550,19 @@ export class EventStore {
           updated++;
         }
       }
-      const inRange = this.#db
-        .prepare(
-          'select id, external_id from event where source = ? and deleted_at is null and start_at >= ? and start_at < ?',
-        )
-        .all(source, from, to) as { id: number; external_id: string }[];
+      const inRange = (
+        cal
+          ? this.#db
+              .prepare(
+                'select id, external_id from event where source = ? and google_cal = ? and deleted_at is null and start_at >= ? and start_at < ?',
+              )
+              .all(source, cal, from, to)
+          : this.#db
+              .prepare(
+                'select id, external_id from event where source = ? and deleted_at is null and start_at >= ? and start_at < ?',
+              )
+              .all(source, from, to)
+      ) as { id: number; external_id: string }[];
       const gone = inRange.filter((r) => !seen.has(r.external_id));
       for (const r of gone)
         this.#db.prepare("update event set deleted_at = ?, removed_by = 'sync' where id = ?").run(now, r.id);
@@ -577,13 +594,63 @@ export class EventStore {
     return Number(r.changes);
   }
 
-  /** 구글에서 읽어 와 지금 보이는 일정의 iCalUID 들 (캘린더 가져오기가 같은 일정을 또 넣지 않게) */
-  googleUids(): Set<string> {
+  /**
+   * 가져오기에서 뺀 구글 캘린더의 일정을 걷는다 (맞추기가 지운 것으로: 다시 넣으면 되살아난다). keep 에 없는 캘린더 것 모두.
+   * 걷은 수
+   */
+  dropGoogleCals(keep: readonly string[], now: number): number {
     const rows = this.#db
+      .prepare("select id, google_cal from event where source = 'google' and deleted_at is null")
+      .all() as { id: number; google_cal: string | null }[];
+    let n = 0;
+    for (const r of rows) {
+      if (r.google_cal !== null && keep.includes(r.google_cal)) continue;
+      this.#db.prepare("update event set deleted_at = ?, removed_by = 'sync' where id = ?").run(now, r.id);
+      n++;
+    }
+    return n;
+  }
+
+  /**
+   * 예전 판(캘린더 하나만 가져오던 때)에 넣은 구글 일정을 그 캘린더 것으로 이어받는다: 키에 캘린더를 붙이고 google_cal 을 적는다.
+   * 다시 넣지 않으니 알림, 고정, 숨김이 그대로 간다. 이어받은 수
+   */
+  claimGoogleRows(calendar: string): number {
+    const r = this.#db
       .prepare(
-        "select google_uid from event where source = 'google' and deleted_at is null and google_uid is not null",
+        `update event set google_cal = ?, external_id = ? || ' ' || external_id
+         where source = 'google' and google_cal is null and external_id is not null`,
       )
-      .all() as { google_uid: string }[];
+      .run(calendar, calendar);
+    return Number(r.changes);
+  }
+
+  /** 구글에서 읽어 온 일정 id → 캘린더 id (일정 줄에 캘린더 이름과 색을 보인다) */
+  googleCalOf(ids: readonly number[]): Record<number, string> {
+    const out: Record<number, string> = {};
+    const stmt = this.#db.prepare("select google_cal from event where id = ? and source = 'google'");
+    for (const id of new Set(ids)) {
+      const r = stmt.get(id) as { google_cal: string | null } | undefined;
+      if (r?.google_cal) out[id] = r.google_cal;
+    }
+    return out;
+  }
+
+  /** 구글에서 읽어 와 지금 보이는 일정의 iCalUID 들 (캘린더 가져오기가 같은 일정을 또 넣지 않게) */
+  googleUids(calendar?: string): Set<string> {
+    const rows = (
+      calendar
+        ? this.#db
+            .prepare(
+              "select google_uid from event where source = 'google' and google_cal = ? and deleted_at is null and google_uid is not null",
+            )
+            .all(calendar)
+        : this.#db
+            .prepare(
+              "select google_uid from event where source = 'google' and deleted_at is null and google_uid is not null",
+            )
+            .all()
+    ) as { google_uid: string }[];
     return new Set(rows.map((r) => r.google_uid));
   }
 

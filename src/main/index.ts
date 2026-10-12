@@ -970,6 +970,7 @@ ready
         journey.tried('event');
       },
       gcalMarks: (ids) => gcal.marks(ids),
+      gcalCals: (ids) => gcal.calLabels(ids),
       askAi: (prompt) => chat.askInWindow(prompt, pet.bounds()),
       askOnce: (text, system) => chat.textOnce(text, system),
       aiLocked: () => updates.locked(),

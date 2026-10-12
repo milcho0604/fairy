@@ -44,3 +44,17 @@ test('구글 표식: en 글이 다 있고 ko 와 다르다', () => {
   assert.match(gcalBadge('local', 'pending', 'offline')?.tip ?? '', /online/);
   setLang('ko');
 });
+
+test('구글에서 읽어 온 일정: 캘린더를 알면 그 캘린더 이름과 색, 툴팁에 캘린더 이름', () => {
+  setLang('ko');
+  const b = gcalBadge('google', undefined, null, { name: '가족', color: '#f691b2' });
+  assert.deepEqual([b?.kind, b?.label, b?.color], ['fromGoogle', '가족', '#f691b2']);
+  assert.match(b?.tip ?? '', /"가족" 캘린더/);
+  assert.equal(gcalBadge('google', undefined, null)?.color, undefined);
+  setLang('en');
+  assert.match(
+    gcalBadge('google', undefined, null, { name: 'Family', color: null })?.tip ?? '',
+    /"Family" calendar/,
+  );
+  setLang('ko');
+});

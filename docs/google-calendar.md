@@ -16,8 +16,10 @@
    - 앱 이름: `페어리` (사용자가 허락 화면에서 본다)
    - 사용자 지원 메일, 개발자 연락처 메일: 내 메일
    - 대상(Audience): **외부(External)**. 내부는 Google Workspace 조직 안에서만 된다
-4. **권한(Data access)**: 범위 추가 → `https://www.googleapis.com/auth/calendar.events` **하나만**.
-   "모든 캘린더의 일정 보기 및 수정" 이다. 캘린더 목록, 공유 설정, 다른 캘린더 정보는 못 본다. 구글 분류로는 "민감한 범위(sensitive)"이고 "제한된 범위(restricted)"가 아니다
+4. **권한(Data access)**: 범위 추가 → `https://www.googleapis.com/auth/calendar.events` 와 `https://www.googleapis.com/auth/calendar.calendarlist.readonly` **둘만**.
+   `calendar.events` 는 "모든 캘린더의 일정 보기 및 수정", `calendar.calendarlist.readonly` 는 "구독 중인 Google 캘린더 목록 보기"다. 캘린더 설정, 공유 설정은 못 본다. 콘솔에서 범위를 더할 때 보이는 분류(민감한 범위인지)를 확인해 아래 검수 설명에 맞춘다 (`calendar.events` 는 "민감한 범위(sensitive)"이고 "제한된 범위(restricted)"가 아니다)
+   - **캘린더 목록 범위 (2026-10-12, 구글 캘린더 옵션 창):** 캘린더마다 가져오기와 보내기를 고르려면 내 캘린더 목록(`calendarList.list`)이 있어야 한다. 구글 Calendar API 디스커버리 문서(`https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest`, revision 20261005)에서 `calendarList.list` 를 부를 수 있는 범위는 `calendar`, `calendar.calendarlist`, `calendar.calendarlist.readonly`, `calendar.readonly` 넷이고, 이 가운데 가장 좁은 것이 `calendar.calendarlist.readonly`("See the list of Google calendars you're subscribed to")다. `calendar.events` 로는 부를 수 없다. 받는 칸은 `fields` 로 id, summary, summaryOverride, backgroundColor, accessRole, primary, selected, hidden 만. `minAccessRole=reader` 라 일정 제목을 못 보는 캘린더(free/busy 만)는 목록에 없다
+   - **예전 연결:** 범위가 늘어 예전(일정 권한만) 연결은 목록을 못 읽는다(토큰 대답의 `scope` 에 목록 범위가 없음, 또는 목록 부르기가 403 insufficientPermissions). 옵션 창이 "캘린더 목록을 보려면 다시 연결해 줘"와 다시 연결 단추를 보이고, 그동안은 예전처럼 기본 캘린더와 직접 넣은 캘린더 ID 로 보내고 가져온다. 허락 화면에서 목록 칸만 풀어도 같다
    - **왜 더 좁은 범위가 아닌가 (2026-10-11 점검):** 더 좁은 `calendar.app.created`(페어리가 만든 캘린더만)가 있지만, 그러면 사용자가 고른 기존 캘린더(기본 캘린더 포함)에 넣을 수 없고 페어리 전용 캘린더를 새로 만들어야 한다. 지금 쓰는 사람들의 "기본 캘린더로 보내기"와 이미 보낸 일정이 끊기므로 이번에는 범위를 그대로 둔다. 후속 과제: "페어리 캘린더 만들기"를 기본으로 하고 `calendar.app.created` 로 옮기는 것(옮길 때 이미 보낸 일정은 새 캘린더로 events.move, 범위가 바뀌어 모두 한 번 다시 연결). 그 전까지 페어리는 `calendar.events` 로도 자기가 넣은 일정(`google_id` 가 있는 것)만 고치고 지운다
    - **읽어 오기도 같은 범위다 (2026-10-12, 이슈 #54):** `calendar.events` 는 이미 "보기 및 수정"이라 `events.list` 가 된다. 읽기 때문에 `calendar.events.readonly` 나 `calendar.readonly` 를 더하지 않는다 (범위를 더하면 모두 다시 연결해야 하고 검수 범위도 넓어진다). 나중에 `calendar.app.created` 로 옮기면 그 캘린더 밖의 일정은 못 읽으니, 그때 읽어 오기를 어떻게 할지 같이 정한다
 5. **대상 → 테스트 사용자**: 게시 상태는 **테스트(Testing)** 로 둔다. 쓸 사람의 구글 메일을 넣는다 (**100명까지**).
@@ -48,12 +50,12 @@
 
 - **7일 만료**: 테스트 모드에서 받은 연결은 7일 뒤 끝난다. 페어리는 `invalid_grant` 를 받으면 연결을 지우고 말풍선으로 "구글 캘린더 연결이 끝났어. 설정에서 다시 연결해 줄래?"라고 알린다 (놓치면 패널의 놓친 알림에 남는다). 못 보낸 일정은 저장 파일에 그대로 있어서 다시 연결하면 이어서 보낸다.
 - **검수(verification)** 를 받으면 경고와 7일 만료가 없어진다. `calendar.events` 는 민감한 범위라서 필요한 것:
-  - 내가 가진 도메인의 **홈페이지** 와 **개인정보처리방침** 주소 (구글 서치 콘솔로 도메인 소유 확인). 처리방침에는 "일정 제목, 시각, 알림만 사용자의 구글 캘린더에 쓰고, 고른 캘린더 일정의 제목과 시각만 읽어 이 컴퓨터에만 두며, 사용자가 'AI가 구글 일정도 볼 수 있게'를 켠 경우에만 사용자가 고른 AI로 보내고, 페어리 서버는 없고 토큰은 사용자 컴퓨터에만 둔다"를 적는다 (`site/privacy`, 2026-10-12 판)
+  - 내가 가진 도메인의 **홈페이지** 와 **개인정보처리방침** 주소 (구글 서치 콘솔로 도메인 소유 확인). 처리방침에는 "일정 제목, 시각, 알림만 사용자의 구글 캘린더에 쓰고, 캘린더 목록(이름, 색, 권한)과 고른 캘린더들 일정의 제목과 시각만 읽어 이 컴퓨터에만 두며, 사용자가 'AI가 구글 일정도 볼 수 있게'를 켠 경우에만 사용자가 고른 AI로 보내고, 페어리 서버는 없고 토큰은 사용자 컴퓨터에만 둔다"를 적는다 (`site/privacy`, 2026-10-12 판)
   - 앱 이름, 로고 (동의 화면에 보일 것)
-  - 범위가 왜 필요한지 설명. 제출할 글 (영어, 2026-10-12 읽어 오기를 더해 고침):
-    > fairy is a desktop companion app with a to-do list and a calendar. It uses `calendar.events` for two user-facing features in one calendar the user picks (primary by default): (1) events the user creates in fairy are inserted into that calendar, and updated or deleted there when the user edits or deletes them in fairy; fairy only modifies events it created itself. (2) The user's existing events in that calendar (from 7 days ago to 60 days ahead) are read with `events.list` (title, start/end time, ids and status only) and shown read-only in fairy's event list and calendar with reminders. fairy never edits or deletes events it did not create. All data stays on the user's computer; there is no fairy server. Google data is not sent to any AI model or third party by default. Only if the user turns on the opt-in setting "Let AI see Google events too" (off by default) are the titles and times of the read events passed to the AI assistant the user picked (a cloud AI or a local model), so it can help the user plan their day; turning it off stops this immediately. Google data is never used to train AI models. A narrower scope does not fit: `calendar.events.readonly` cannot write, and `calendar.app.created` cannot read or write the user's existing calendars.
+  - 범위가 왜 필요한지 설명. 제출할 글 (영어, 2026-10-12 여러 캘린더와 목록 범위를 더해 고침):
+    > fairy is a desktop companion app with a to-do list and a calendar. It uses `calendar.events` for two user-facing features: (1) events the user creates in fairy are inserted into the one calendar the user picks to send to (primary by default, or none), and updated or deleted there when the user edits or deletes them in fairy; fairy only modifies events it created itself. (2) The user's existing events in the calendars the user picks to bring in (primary by default; from 7 days ago to 60 days ahead) are read with `events.list` (title, start/end time, ids and status only) and shown read-only in fairy's event list and calendar with the calendar's name and color, and reminders. fairy never edits or deletes events it did not create. It uses `calendar.calendarlist.readonly` only to show the user's calendar list (id, name, color, access role, primary, hidden) in a settings window where the user checks which calendars to bring in and picks which writable calendar to send to; calendars the user can only view cannot be chosen for sending. This is the narrowest scope that allows `calendarList.list`. All data stays on the user's computer; there is no fairy server. Google data is not sent to any AI model or third party by default. Only if the user turns on the opt-in setting "Let AI see Google events too" (off by default) are the titles and times of the read events passed to the AI assistant the user picked (a cloud AI or a local model), so it can help the user plan their day; turning it off stops this immediately. Google data is never used to train AI models. A narrower scope does not fit: `calendar.events.readonly` cannot write, and `calendar.app.created` cannot read or write the user's existing calendars.
   - **시연 영상** (YouTube, 비공개 목록 가능): 페어리 설정에서 연결 → 구글 허락 화면(주소창의 client_id 가 보이게) → 페어리에서 일정 넣기 → 구글 캘린더에 생긴 것까지 → 구글 캘린더에서 넣은 일정이 페어리에 "구글에서" 표식을 달아 보이는 것 → 구글에서 지우면 페어리에서도 사라지는 것
-  - **다시 검수를 받아야 하나 (2026-10-12):** 범위가 그대로(`calendar.events` 하나)라 새 범위 검수는 없다. 다만 구글은 검수 때 적은 쓰임새와 실제 쓰임새가 같아야 하므로, 이미 검수를 냈거나 받았다면 위 설명과 시연 영상을 새 쓰임새(읽어 오기, 켠 경우에만 고른 AI로 보내기)로 바꿔 동의 화면 정보를 고쳐 다시 제출한다 (콘솔에서 "변경 사항 저장" 뒤 검수 다시 요청). 아직 테스트 모드면 처리방침과 설명만 고쳐 두면 된다
+  - **다시 검수를 받아야 하나 (2026-10-12 고침):** 캘린더 목록 범위(`calendar.calendarlist.readonly`)를 더했으므로 동의 화면 Data access 에 그 범위를 더하고, 이미 검수를 냈거나 받았다면 위 설명과 시연 영상(옵션 창에서 캘린더 고르기 포함)으로 다시 제출해야 한다. 예전 메모: 읽어 오기만 더했을 때는 범위가 그대로(`calendar.events` 하나)라 새 범위 검수는 없었다. 다만 구글은 검수 때 적은 쓰임새와 실제 쓰임새가 같아야 하므로, 이미 검수를 냈거나 받았다면 위 설명과 시연 영상을 새 쓰임새(읽어 오기, 켠 경우에만 고른 AI로 보내기)로 바꿔 동의 화면 정보를 고쳐 다시 제출한다 (콘솔에서 "변경 사항 저장" 뒤 검수 다시 요청). 아직 테스트 모드면 처리방침과 설명만 고쳐 두면 된다
   - 며칠에서 몇 주. 제한된 범위가 아니라 유료 보안 평가(CASA)는 없다
 - Calendar API 사용량은 무료다 (기본 하루 100만 번, 사용자별 초당 제한). 페어리는 바뀐 일정만 보낸다.
 
@@ -61,12 +63,14 @@
 
 1. 설정 → **구글 캘린더** → **구글 계정 연결**
 2. 기본 브라우저에 구글 로그인과 허락 화면이 열린다. 테스트 모드면 "Google에서 확인하지 않은 앱" → 고급 → 페어리(으)로 이동.
-   "모든 캘린더의 일정 보기 및 수정" 을 **체크**하고 계속. (체크를 풀면 페어리가 "캘린더 권한이 체크되지 않았어"라고 알리고 받은 권한을 바로 돌려준다)
+   "모든 캘린더의 일정 보기 및 수정"과 "구독 중인 캘린더 목록 보기"를 **체크**하고 계속. (일정 칸을 풀면 페어리가 "캘린더 권한이 체크되지 않았어"라고 알리고 받은 권한을 바로 돌려준다. 목록 칸만 풀면 옵션 창이 다시 연결해 달라고 하고, 그동안은 직접 넣은 캘린더 ID 로 돈다)
 3. 브라우저에 "페어리가 구글 캘린더에 연결됐어. 이 창은 닫아도 돼." 가 보인다. 3분 안에 끝내지 않으면 그만둔다
-4. 설정에 "페어리 일정을 구글 캘린더로 보내기"와 "구글 캘린더 일정 가져오기"가 켜진다. 어제 이후 일정부터 보내고, 그 뒤 페어리에서 넣고 고치고 지우는 일정이 따라간다.
-   가져오기는 고른 캘린더의 지난 7일부터 앞으로 60일까지를 15분마다(그리고 "지금 맞추기"에서) 읽어 와 "구글에서" 표식을 달아 보인다. 둘은 따로 끌 수 있다. 예전에 연결한 사람은 가져오기가 꺼져 있다 (설정에서 켠다)
-5. **보낼 캘린더**: 비우면 기본 캘린더. 다른 캘린더는 구글 캘린더 설정 → 그 캘린더 → 캘린더 통합의 "캘린더 ID" 를 붙여 넣는다. 캘린더를 바꾸면 이미 보낸 일정도 새 캘린더로 옮긴다(events.move). 옛 캘린더를 쓸 수 없으면 새 캘린더에 새로 넣는다 (옛 캘린더에 남은 것은 손으로 지워야 한다)
-   (`calendar.events` 범위로는 캘린더 목록을 못 읽어서 고르는 목록 대신 ID 를 받는다)
+4. 설정에 "페어리 일정을 구글 캘린더로 보내기"와 "구글 캘린더 일정 가져오기"가 켜지고, **구글 캘린더 옵션** 창이 바로 열린다 (설정 구글 칸의 "캘린더 고르기"로도 연다).
+   캘린더마다 한 줄: 색 점, 이름, 내 캘린더/공유됨/읽기만, "가져오기" 체크, "보내기" 라디오. 보내기는 하나만 고르고 "보내지 않기"도 있다. 읽기만 캘린더는 보내기를 고를 수 없다(툴팁에 까닭). 기본은 기본 캘린더만 가져오고 기본 캘린더로 보낸다. 고르면 바로 저장된다.
+   어제 이후 일정부터 보내고, 그 뒤 페어리에서 넣고 고치고 지우는 일정이 따라간다.
+   가져오기는 고른 캘린더들마다 지난 7일부터 앞으로 60일까지를 15분마다(그리고 "지금 맞추기"에서) 읽어 와 그 캘린더 이름과 색 점을 달아 보인다 (달력 보기 줄도 그 색). 다 못 읽은 캘린더는 그 캘린더 것만 그대로 둔다. 캘린더를 빼면 그 캘린더 일정은 바로 걷는다. 같은 일정이 두 캘린더에 있으면(같은 iCalUID) 앞 캘린더 것 하나만. 예전에 연결한 사람은 가져오기가 꺼져 있다 (설정에서 켠다)
+5. **보낼 캘린더를 바꾸면** 이미 보낸 일정도 새 캘린더로 옮긴다(events.move). 옛 캘린더를 쓸 수 없으면 새 캘린더에 새로 넣는다 (옛 캘린더에 남은 것은 손으로 지워야 한다).
+   목록에 없는 캘린더는 옵션 창의 "목록에 없는 캘린더 ID 직접 넣기"에 구글 캘린더 설정 → 그 캘린더 → 캘린더 통합의 "캘린더 ID" 를 붙여 넣는다 (가져오기에 들어가고, 보내기로도 고를 수 있다)
 6. **연결 끊기**: 이 컴퓨터의 토큰을 지우고 구글에서도 권한을 거둔다 (`oauth2.googleapis.com/revoke`). 이미 보낸 일정은 구글에 그대로 둔다.
    구글 계정 → 보안 → 서드 파티 연결에서 거둬도 된다 (그러면 다음에 보낼 때 연결이 끝난 것으로 알린다)
 
@@ -80,6 +84,7 @@
 - **보낼 것 = 저장 파일**: 따로 줄을 두지 않는다. 페어리가 넣은 일정(`source = local`) 중 지금 내용의 지문이 마지막으로 보낸 것과 다르면 보내고, 지운 일정에 구글 id 가 있으면 구글에서도 지운다. 그래서 앱이 꺼지거나 인터넷이 끊겨도, 페어리 MCP 서버(다른 프로세스)가 고쳐도 그대로 따라간다. 일정이 바뀌면 1.5초 뒤, 아니면 5분마다
 - **겹침 막기**: id 를 넣기 전에 정해 적어 둔다. 대답을 못 받고 다시 보내면 409 → 고치기. 구글에서 지운 일정(404/410)은 새 id 로 다시 넣는다
 - **다시 하기**: 인터넷 끊김, 429, 5xx, 사용량 초과는 30초부터 두 배씩 30분까지 (일정마다, 흔들기 0~20%). 구글이 받지 않는 일정(400)은 6시간, 고치면 바로
+- **여러 캘린더 (구글 캘린더 옵션 창, `src/shared/gcal-cals.ts`, `src/renderer/src/settings/GcalCalendarsSheet.tsx`)**: `google-calendar.json` 에 `pullCals`(가져올 캘린더들, 예전 설정은 `[calendarId]`), `calendarId`+`push`(보낼 곳), `cals`(마지막 목록), `listScope`. 기본 캘린더는 목록에서 늘 `primary` 로 바꿔 둔다(예전 설정과 보낸 기록의 `google_cal` 이 `primary` 라 옮기기가 생기지 않게). 가져온 일정은 `google_cal` 에 캘린더를, `external_id` 에 "캘린더 id + 빈칸 + 일정 id" 를 둔다 (같은 일정 id 가 두 캘린더에 있어도 겹치지 않게). 예전 판에서 가져온 줄은 켤 때 그때 캘린더 것으로 이어받는다(`claimGoogleRows`, 알림과 숨김 그대로). 공휴일 같은 구독 캘린더 id 에 `#` 가 들어 `cleanCalendarId` 가 받는다
 - **읽어 오기 (이슈 #54, `src/main/gcal-pull.ts`, `src/shared/gcal-pull.ts`)**: `events.list` 를 `timeMin`(지난 7일) ~ `timeMax`(앞으로 60일), `singleEvents=true`(반복 일정은 회차마다), `showDeleted=false`, `fields`(id, iCalUID, status, summary, start, end, 짝꿍 표시만)로 쪽마다 다 읽은 뒤 저장 파일(`source = google`, `external_id` = 구글 일정 id, `google_uid` = iCalUID)과 맞춘다. 범위 안인데 이번에 없는 것은 지운 것으로 둔다(구글에서 지움, 취소됨). `syncToken` 대신 범위를 통째로 다시 읽는 까닭: `syncToken` 은 `timeMin`/`timeMax` 와 같이 쓸 수 없어 반복 일정이 끝없이 펼쳐질 수 있고, 토큰이 끝나면(410) 다시 다 읽어야 해서 길이 둘이 된다. 60일이면 보통 한두 쪽이라 15분마다 다시 읽어도 사용량이 작다. 다 못 읽으면(인터넷, 권한, 쪽이 20개 넘음) 아무것도 바꾸지 않는다. 읽는 사이 끄거나 캘린더를 바꾸면 버린다
   - 페어리가 보낸 일정은 다시 가져오지 않는다: 짝꿍 표시(`extendedProperties.private.jjakkung`), 보낸 기록의 iCalUID
   - **읽기 전용**: 구글로 PATCH 하지 않는다. 고친 것이 구글에서 바뀐 것과 엇갈리는 문제, 남의 캘린더(읽기만 되는 공유 캘린더)에서 실패하는 문제, 페어리가 남이 만든 일정을 고칠 수 있다는 검수 설명이 다 없어진다. 제목, 시각, 종일은 패널과 MCP 어디서도 바뀌지 않고(`EventStore.update`), 알림과 고정만 페어리 것. ×는 페어리에서만 숨긴다(다음 읽기가 되살리지 않는다)

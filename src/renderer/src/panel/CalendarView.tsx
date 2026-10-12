@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
 import {
   type CalItem,
   calendarDays,
@@ -278,8 +278,9 @@ export function CalendarView({
                         {shown.map((i) => (
                           <span
                             key={i.key}
-                            className={`cal-line k-${i.kind} ${i.part} ${i.minute === null && (i.kind === 'event' || i.kind === 'ics') ? 'bar' : ''}`}
+                            className={`cal-line k-${i.kind} ${i.part} ${i.minute === null && (i.kind === 'event' || i.kind === 'ics') ? 'bar' : ''}${i.color ? ' cal-color' : ''}`}
                             title={itemHint(i)}
+                            style={i.color ? ({ '--cal': i.color } as CSSProperties) : undefined}
                           >
                             {i.part === 'middle' || i.part === 'last' ? '\u00a0' : i.title}
                           </span>

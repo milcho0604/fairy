@@ -121,7 +121,7 @@ test('목록을 쪽마다 다 읽어 페어리 일정으로 넣는다 (쪽 넘�
       ),
     );
   const r = await pull();
-  assert.deepEqual(r, { ok: true, count: 5, added: 5, updated: 0, removed: 0, hidden: 0 });
+  assert.deepEqual(r, { ok: true, count: 5, added: 5, updated: 0, removed: 0, hidden: 0, failed: [] });
   assert.equal(g.calls.length, 3);
   assert.match(g.calls[1] ?? '', /pageToken=2/);
   const got = google();
@@ -133,7 +133,7 @@ test('목록을 쪽마다 다 읽어 페어리 일정으로 넣는다 (쪽 넘�
   assert.deepEqual(got[0]?.reminds, [10]);
   // 다시 읽어도 안 바뀌면 그대로
   const again = await pull();
-  assert.deepEqual(again, { ok: true, count: 5, added: 0, updated: 0, removed: 0, hidden: 0 });
+  assert.deepEqual(again, { ok: true, count: 5, added: 0, updated: 0, removed: 0, hidden: 0, failed: [] });
   assert.equal(events.googleUids().size, 5);
 });
 
@@ -149,7 +149,7 @@ test('구글에서 지우거나 취소한 일정은 페어리에서도 사라지
   (g.items[0] as Record<string, unknown>).status = 'cancelled';
   (g.items[1] as Record<string, unknown>).summary = '고친 제목';
   const r = await pull();
-  assert.deepEqual(r, { ok: true, count: 1, added: 0, updated: 1, removed: 2, hidden: 0 });
+  assert.deepEqual(r, { ok: true, count: 1, added: 0, updated: 1, removed: 2, hidden: 0, failed: [] });
   assert.deepEqual(
     google().map((e) => e.title),
     ['고친 제목'],

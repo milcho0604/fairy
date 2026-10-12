@@ -223,7 +223,7 @@ export function EventRow({
   // 끝난 일정(달력에서 지난 날을 볼 때)은 "지금" 이 아니다. 끝 판단은 목록의 upcoming 과 같다
   const ended = span ? span.last < today : (e.endAt ?? e.startAt + 30 * 60_000) < now;
   const started = !ended && (span ? span.first <= today : e.startAt <= now);
-  const badge = gcalBadge(e.source, gcal?.marks[e.id], gcal?.problem);
+  const badge = gcalBadge(e.source, gcal?.marks[e.id], gcal?.problem, e.gcalCal);
   // 구글에서 읽어 온 일정은 읽기 전용 (이슈 #54): 제목, 시각, 종일은 구글에서 고친다. 알림, 고정, 숨기기만 페어리 것
   const readOnly = e.source === 'google';
 
@@ -330,6 +330,9 @@ export function EventRow({
         <span className="tools">
           {badge && (
             <span className={`gcal-badge ${badge.kind}`} title={badge.tip} data-gcal={badge.kind}>
+              {badge.color && (
+                <i className="gcal-dot" style={{ background: badge.color }} aria-hidden="true" />
+              )}
               {badge.label}
               <span className="sr-only">: {badge.tip}</span>
             </span>

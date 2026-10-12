@@ -363,6 +363,23 @@
   color: var(--error);
 }
 
+/* 구글에서 읽어 온 일정: 캘린더 이름이 길면 줄여 제목 자리를 지킨다 */
+.gcal-badge.fromGoogle {
+  max-width: 7.5em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 캘린더 색 점 (구글에서 고른 색) */
+.gcal-badge .gcal-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 4px;
+  border-radius: 50%;
+  vertical-align: 0;
+}
+
 .gcal-badge.local,
 .gcal-badge.imported,
 .gcal-badge.fromGoogle {

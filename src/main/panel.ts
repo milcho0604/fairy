@@ -23,7 +23,7 @@ import {
   parseQuickEventInfo,
 } from '../shared/event-store.ts';
 import { type FocusState, focusCoins, isFocusLength } from '../shared/focus.ts';
-import type { PanelGcal } from '../shared/gcal.ts';
+import type { GcalCalLabel, PanelGcal } from '../shared/gcal.ts';
 import { t } from '../shared/i18n/index.ts';
 import {
   type EventClash,
@@ -96,6 +96,8 @@ export interface PanelOptions {
   onEventsChanged: () => void;
   /** 일정 줄의 구글 표식 (구글 캘린더에 연결했을 때만) */
   gcalMarks?: (ids: readonly number[]) => PanelGcal | undefined;
+  /** 구글에서 읽어 온 일정의 캘린더 이름과 색 (main/gcal.ts calLabels) */
+  gcalCals?: (ids: readonly number[]) => Record<number, GcalCalLabel>;
   /** 채팅 창을 열고 묻는다. 답을 기다리는 중이면 false */
   askAi: (prompt: string) => boolean;
   /** 채팅 창 없이 글만 한 번 묻는다 (메모 다듬기). 실패면 undefined */
@@ -181,8 +183,8 @@ export function createPanel(o: PanelOptions) {
   function state(): PanelState {
     const now = Date.now();
     const { open, doneToday } = o.store.list(now);
-    const events = o.events.between(startOfDay(now), startOfDayAfter(now, 14));
-    const pinnedEvents = o.events.pinned(now);
+    const events = withCals(o.events.between(startOfDay(now), startOfDayAfter(now, 14)));
+    const pinnedEvents = withCals(o.events.pinned(now));
     dayTurn.seen(localDay(now));
     return {
       petName: o.petName(),
@@ -223,6 +225,18 @@ export function createPanel(o: PanelOptions) {
   }
 
   /** 일정 줄의 구글 표식. 못 읽어도 패널은 뜨게 (표식만 빠진다) */
+  /** 구글에서 읽어 온 일정에 캘린더 이름과 색을 붙인다 (일정 줄, 달력). 못 읽으면 그대로 */
+  function withCals(list: CalEvent[]): CalEvent[] {
+    const ids = list.filter((e) => e.source === 'google').map((e) => e.id);
+    if (!o.gcalCals || ids.length === 0) return list;
+    try {
+      const cals = o.gcalCals(ids);
+      return list.map((e) => (cals[e.id] ? { ...e, gcalCal: cals[e.id] } : e));
+    } catch {
+      return list;
+    }
+  }
+
   function gcalOf(events: readonly CalEvent[], pinned: readonly CalEvent[]): { gcal?: PanelGcal } {
     if (!o.gcalMarks) return {};
     try {
@@ -618,7 +632,7 @@ export function createPanel(o: PanelOptions) {
     const byId = new Map<number, CalEvent>();
     for (const ev of [...o.events.between(from, to), ...o.events.timedOverlapping(from, to)])
       byId.set(ev.id, ev);
-    return [...byId.values()].sort((a, b) => a.startAt - b.startAt || a.id - b.id);
+    return withCals([...byId.values()].sort((a, b) => a.startAt - b.startAt || a.id - b.id));
   });
   ipcMain.on(PANEL.eventUpdate, (e, id: number, patch) => {
     if (!ours(e) || typeof patch !== 'object' || patch === null) return;

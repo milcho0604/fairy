@@ -10,6 +10,8 @@ export interface GcalBadge {
   kind: GcalBadgeKind;
   label: string;
   tip: string;
+  /** 구글에서 읽어 온 일정의 캘린더 색 (색 점) */
+  color?: string;
 }
 
 /**
@@ -21,9 +23,18 @@ export function gcalBadge(
   source: EventSource,
   mark: GcalMark | undefined,
   problem: GcalProblem | null | undefined,
+  /** 구글에서 읽어 온 일정이 든 캘린더 (캘린더 목록을 읽었을 때). 있으면 "구글에서" 대신 캘린더 이름 */
+  cal?: { name: string; color: string | null },
 ): GcalBadge | null {
   if (source === 'google')
-    return { kind: 'fromGoogle', label: t('gcal.mark.fromGoogle'), tip: t('gcal.mark.fromGoogleTip') };
+    return cal
+      ? {
+          kind: 'fromGoogle',
+          label: cal.name,
+          tip: t('gcal.mark.fromCalTip', { name: cal.name }),
+          ...(cal.color ? { color: cal.color } : {}),
+        }
+      : { kind: 'fromGoogle', label: t('gcal.mark.fromGoogle'), tip: t('gcal.mark.fromGoogleTip') };
   if (source === 'ics')
     return { kind: 'imported', label: t('gcal.mark.imported'), tip: t('gcal.mark.importedTip') };
   switch (mark) {

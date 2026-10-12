@@ -245,6 +245,16 @@
   background: color-mix(in srgb, var(--ok) 10%, transparent);
 }
 
+/* 구글에서 읽어 온 일정은 그 캘린더 색 (CalendarView 가 --cal 을 준다) */
+.cal-line.k-ics.cal-color {
+  border-left-color: var(--cal);
+}
+
+.cal-line.k-ics.bar.cal-color {
+  border-left-color: transparent;
+  background: color-mix(in srgb, var(--cal) 24%, transparent);
+}
+
 .cal-line.k-todo,
 .cal-line.k-repeat {
   border-left-color: var(--muted);

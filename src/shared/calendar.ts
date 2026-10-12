@@ -90,6 +90,8 @@ export interface CalItem {
   remind: boolean;
   /** 중요 표시한 할 일 */
   important: boolean;
+  /** 구글에서 읽어 온 일정의 캘린더 색 */
+  color?: string;
 }
 
 const minuteOf = (ms: number) => {
@@ -194,6 +196,7 @@ export function calendarDays(
         part: partOf(day, first, last),
         remind: e.reminds.length > 0,
         important: false,
+        ...(e.gcalCal?.color ? { color: e.gcalCal.color } : {}),
       });
     }
   }

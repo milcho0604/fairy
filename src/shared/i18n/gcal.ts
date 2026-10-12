@@ -11,7 +11,7 @@ export const ko = {
     '구글 캘린더에 원래 있던 일정도 페어리로 가져와서 "구글에서" 표식을 달아 보여 줘. 가져온 일정은 페어리에서 고치지 않아. 구글 캘린더에서 고치거나 지우면 따라와.',
   'gcal.connect': '구글 계정 연결',
   'gcal.connecting':
-    '브라우저에서 허락을 기다리는 중이야. 구글 화면에서 캘린더 일정 권한을 체크하고 계속을 눌러 줘.',
+    '브라우저에서 허락을 기다리는 중이야. 구글 화면에서 캘린더 일정과 캘린더 목록 권한을 체크하고 계속을 눌러 줘.',
   'gcal.cancel': '그만두기',
   'gcal.disconnect': '연결 끊기',
   'gcal.disconnected': '구글 연결을 끊었어',
@@ -27,8 +27,41 @@ export const ko = {
   'gcal.aiOnNote':
     '구글 일정 제목과 시각이 고른 AI로 가. 클라우드 AI면 이 컴퓨터 밖으로 나가. AI가 봐도 구글 일정은 고치지 못해.',
   'gcal.calendar': '보내고 가져올 캘린더',
-  'gcal.calendarHint':
-    '비우면 기본 캘린더야. 다른 캘린더는 구글 캘린더 설정 > 캘린더 통합의 "캘린더 ID"를 붙여 넣어.',
+  'gcal.calendarHint': '구글 캘린더 설정 > 그 캘린더 > 캘린더 통합의 "캘린더 ID"를 붙여 넣어.',
+  'gcal.pick': '캘린더 고르기',
+  'gcal.pickPull': (v: { names: string }) => `가져오기: ${v.names}`,
+  'gcal.pickPush': (v: { name: string }) => `보내기: ${v.name}`,
+  'gcal.pickNone': '없음',
+  'gcal.pickRelink': '캘린더 목록을 보려면 한 번 다시 연결해 줘. 그동안은 지금처럼 해.',
+  'gcal.sheet.title': '구글 캘린더 옵션',
+  'gcal.sheet.intro':
+    '캘린더마다 페어리로 가져올지 고르고, 페어리 일정을 보낼 캘린더를 하나 골라. 고르면 바로 저장돼.',
+  'gcal.sheet.colCal': '캘린더',
+  'gcal.sheet.colPull': '가져오기',
+  'gcal.sheet.colPush': '보내기',
+  'gcal.sheet.kind.primary': '기본 캘린더',
+  'gcal.sheet.kind.mine': '내 캘린더',
+  'gcal.sheet.kind.shared': '공유됨',
+  'gcal.sheet.kind.readOnly': '읽기만',
+  'gcal.sheet.custom': '직접 넣음',
+  'gcal.sheet.hidden': '구글에서 숨김',
+  'gcal.sheet.failed': '지난번에 못 읽었어',
+  'gcal.sheet.pullOf': (v: { name: string }) => `가져오기: ${v.name}`,
+  'gcal.sheet.pushTo': (v: { name: string }) => `보내기: ${v.name}`,
+  'gcal.sheet.readOnlyTip': '보기만 할 수 있는 캘린더라 페어리 일정을 보낼 수 없어',
+  'gcal.sheet.noPush': '보내지 않기',
+  'gcal.sheet.noPushHint': '페어리 일정은 페어리에만 둬',
+  'gcal.sheet.pushMoves': '보낼 캘린더를 바꾸면 이미 보낸 일정도 새 캘린더로 옮겨.',
+  'gcal.sheet.loading': '캘린더 목록을 읽는 중이야',
+  'gcal.sheet.listFailed': '캘린더 목록을 못 읽었어. 인터넷을 보고 다시 해 줘.',
+  'gcal.sheet.retry': '다시 읽기',
+  'gcal.sheet.relinkTitle': '캘린더 목록을 보려면 다시 연결해 줘',
+  'gcal.sheet.relink':
+    '예전에 연결할 때는 캘린더 목록 권한을 받지 않았어. 한 번 다시 연결하면 여기서 캘린더를 고를 수 있어. 그동안은 아래 캘린더로 지금처럼 해.',
+  'gcal.sheet.relinkBtn': '다시 연결',
+  'gcal.sheet.addId': '목록에 없는 캘린더 ID 직접 넣기',
+  'gcal.sheet.add': '더하기',
+  'gcal.sheet.done': '다 됐어',
   'gcal.calendarBad': '캘린더 ID 모양이 아니야. 메일 주소처럼 생긴 ID를 넣어 줘',
   'gcal.syncNow': '지금 보내기',
   'gcal.pullNow': '지금 가져오기',
@@ -39,7 +72,7 @@ export const ko = {
   'gcal.state.pulled': (v: { n: number; when: string }) => `일정 ${v.n}개 가져왔어 (${v.when})`,
   'gcal.state.pullIdle': '곧 가져올게',
   'gcal.privacy':
-    '캘린더 일정 권한 하나만 받아 (캘린더 목록, 설정, 공유는 못 봐). 가져온 일정은 제목과 시각만 이 컴퓨터에 둬. 연결 토큰은 이 컴퓨터에만 두고 설정, 백업에 넣지 않아.',
+    '캘린더 일정 권한과 캘린더 목록 보기 권한만 받아 (캘린더 설정, 공유는 못 봐). 가져온 일정은 제목과 시각, 캘린더 이름과 색만 이 컴퓨터에 둬. 연결 토큰은 이 컴퓨터에만 두고 설정, 백업에 넣지 않아.',
   'gcal.problem.expired': '구글 연결이 끝났어. 구글에서 권한을 거뒀거나 오래돼서 그래. 다시 연결해 줄래?',
   'gcal.problem.relink':
     '저장해 둔 구글 연결을 더는 열 수 없어. 앱 이름이나 열쇠고리가 바뀌면 이럴 수 있어. 한 번만 다시 연결해 줄래?',
@@ -70,6 +103,8 @@ export const ko = {
   'gcal.mark.fromGoogle': '구글에서',
   'gcal.mark.fromGoogleTip':
     '구글 캘린더에 있던 일정이야. 고치려면 구글 캘린더에서 고쳐 줘. 알림은 페어리에서 바꿀 수 있어',
+  'gcal.mark.fromCalTip': (v: { name: string }) =>
+    `구글의 "${v.name}" 캘린더에 있던 일정이야. 고치려면 구글 캘린더에서 고쳐 줘. 알림은 페어리에서 바꿀 수 있어`,
   'gcal.readOnlyTip': '구글 캘린더에서 가져온 일정이라 여기서는 못 고쳐. 구글 캘린더에서 고치면 따라와',
   'gcal.hideTip': '페어리에서만 지워. 구글 캘린더에는 그대로 있어',
 };
@@ -84,7 +119,7 @@ export const en: Translation<typeof ko> = {
     'Events already in your Google Calendar come into fairy too, marked "From Google". Fairy doesn\'t edit them: change or delete them in Google Calendar and fairy follows.',
   'gcal.connect': 'Connect Google account',
   'gcal.connecting':
-    'Waiting for you in the browser. On the Google screen, check the calendar events permission and press Continue.',
+    'Waiting for you in the browser. On the Google screen, check the calendar events and calendar list permissions and press Continue.',
   'gcal.cancel': 'Cancel',
   'gcal.disconnect': 'Disconnect',
   'gcal.disconnected': 'Disconnected from Google',
@@ -102,7 +137,41 @@ export const en: Translation<typeof ko> = {
     "Google event titles and times go to the AI you picked. With a cloud AI they leave this computer. AI still can't edit Google events.",
   'gcal.calendar': 'Calendar',
   'gcal.calendarHint':
-    'Leave empty for your main calendar. For another one, paste its "Calendar ID" from Google Calendar settings > Integrate calendar.',
+    'Paste the "Calendar ID" from Google Calendar settings > that calendar > Integrate calendar.',
+  'gcal.pick': 'Choose calendars',
+  'gcal.pickPull': (v: { names: string }) => `Bring in: ${v.names}`,
+  'gcal.pickPush': (v: { name: string }) => `Send to: ${v.name}`,
+  'gcal.pickNone': 'none',
+  'gcal.pickRelink': 'Reconnect once to see your calendar list. Until then, things work as before.',
+  'gcal.sheet.title': 'Google Calendar options',
+  'gcal.sheet.intro':
+    'Pick which calendars to bring into fairy, and one calendar to send fairy events to. Changes save right away.',
+  'gcal.sheet.colCal': 'Calendar',
+  'gcal.sheet.colPull': 'Bring in',
+  'gcal.sheet.colPush': 'Send',
+  'gcal.sheet.kind.primary': 'Primary',
+  'gcal.sheet.kind.mine': 'Mine',
+  'gcal.sheet.kind.shared': 'Shared',
+  'gcal.sheet.kind.readOnly': 'Read-only',
+  'gcal.sheet.custom': 'Added by ID',
+  'gcal.sheet.hidden': 'Hidden in Google',
+  'gcal.sheet.failed': "Couldn't read it last time",
+  'gcal.sheet.pullOf': (v: { name: string }) => `Bring in ${v.name}`,
+  'gcal.sheet.pushTo': (v: { name: string }) => `Send to ${v.name}`,
+  'gcal.sheet.readOnlyTip': "You can only view this calendar, so fairy events can't be sent there",
+  'gcal.sheet.noPush': "Don't send",
+  'gcal.sheet.noPushHint': 'Keep fairy events in fairy only',
+  'gcal.sheet.pushMoves': 'Changing where to send also moves the events already sent.',
+  'gcal.sheet.loading': 'Reading your calendar list',
+  'gcal.sheet.listFailed': "Couldn't read your calendar list. Check your internet and try again.",
+  'gcal.sheet.retry': 'Try again',
+  'gcal.sheet.relinkTitle': 'Reconnect to see your calendar list',
+  'gcal.sheet.relink':
+    "When you connected before, fairy didn't ask to see your calendar list. Reconnect once to pick calendars here. Until then, the calendars below work as before.",
+  'gcal.sheet.relinkBtn': 'Reconnect',
+  'gcal.sheet.addId': 'Add a calendar ID not in the list',
+  'gcal.sheet.add': 'Add',
+  'gcal.sheet.done': 'Done',
   'gcal.calendarBad': "That doesn't look like a calendar ID. It looks like an email address",
   'gcal.syncNow': 'Send now',
   'gcal.pullNow': 'Bring in now',
@@ -115,7 +184,7 @@ export const en: Translation<typeof ko> = {
     Number(v.n) === 1 ? `Brought in 1 event (${v.when})` : `Brought in ${v.n} events (${v.when})`,
   'gcal.state.pullIdle': 'Bringing them in shortly',
   'gcal.privacy':
-    "Asks for one permission, calendar events (it can't see your calendar list, settings or sharing). Events it brings in keep only their title and time, on this computer. The sign-in token stays on this computer, never in settings or backups.",
+    "Asks only for calendar events and seeing your calendar list (it can't see calendar settings or sharing). Events it brings in keep only their title and time, plus the calendar's name and color, on this computer. The sign-in token stays on this computer, never in settings or backups.",
   'gcal.problem.expired':
     'Your Google connection ended (access was removed in Google, or it expired). Could you connect again?',
   'gcal.problem.relink':
@@ -148,6 +217,8 @@ export const en: Translation<typeof ko> = {
   'gcal.mark.fromGoogle': 'From Google',
   'gcal.mark.fromGoogleTip':
     'This event lives in your Google Calendar. Edit it there. You can still change its reminders in fairy',
+  'gcal.mark.fromCalTip': (v: { name: string }) =>
+    `This event lives in your "${v.name}" calendar in Google. Edit it there. You can still change its reminders in fairy`,
   'gcal.readOnlyTip':
     "Brought in from Google Calendar, so it can't be edited here. Edit it in Google Calendar and fairy follows",
   'gcal.hideTip': 'Removes it from fairy only. It stays in Google Calendar',
