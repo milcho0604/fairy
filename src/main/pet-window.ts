@@ -13,7 +13,14 @@ import {
   screen,
 } from 'electron';
 import { perchPollMs, SAVER, walkTickMs } from '../shared/battery.ts';
-import { type Activity, pickActivity, WALK_SPEED, walkOffset } from '../shared/behavior.ts';
+import {
+  type Activity,
+  clampWalkX,
+  pickActivity,
+  WALK_SPEED,
+  walkOffset,
+  walkSpan,
+} from '../shared/behavior.ts';
 import { layoutBubble } from '../shared/bubble-layout.ts';
 import {
   bundleText,
@@ -417,8 +424,12 @@ export function createPetWindow({
   // 처음에는 모두 통과시킨다. 커서가 펫 위에 오면 화면이 알려 준다.
   win.setIgnoreMouseEvents(true, { forward: true });
   // 미리 만든 창은 빈 화면을 이미 그려 ready-to-show 가 지나갔을 수 있다: 펫 화면을 다 불러오면 보인다
-  if (prebuilt) win.webContents.once('did-finish-load', () => win.showInactive());
-  else win.once('ready-to-show', () => win.showInactive());
+  // 다 불러오기 전에 숨겼으면(숨긴 동안 온 친구 펫) 보이지 않는다
+  const firstShow = () => {
+    if (!win.isDestroyed() && !hideReasons.hidden) win.showInactive();
+  };
+  if (prebuilt) win.webContents.once('did-finish-load', firstShow);
+  else win.once('ready-to-show', firstShow);
 
   const devUrl = devRendererUrl();
   if (devUrl) win.loadURL(`${devUrl}/pet.html`);
@@ -497,6 +508,9 @@ export function createPetWindow({
       stopDoor();
       clearInterval(dragTimer);
       stopFlight();
+      // 깡충 뛰던 중이면 멈춘다. 안 멈추면 끌리는 펫을 뛰던 자리로 잡아당기고, 다 뛰면 창 위에 앉은 것으로
+      // 쳐서(perch) 끌어다 놓은 바닥에서도 돌아다니지 않았다
+      stopHop();
       leavePerch();
       samples = [];
       dragTimer = setInterval(() => {
@@ -538,7 +552,10 @@ export function createPetWindow({
     if (next === scale) return;
     scale = next;
     const areas = screen.getAllDisplays().map((d) => d.workArea);
+    const before = pet.x;
     pet = clampIntoAreas(resizeFromBottomCenter(pet, BASE_SIZE * scale), areas);
+    // 걷던 중이면 걷기 기준도 같이 옮긴다. 안 하면 다음 틱에 옛 기준으로 돌아가 펫이 옆으로 튀었다
+    if (walkTimer) walkFrom += pet.x - before;
     applyLayout();
     clearTimeout(saveTimer);
     saveTimer = setTimeout(save, SAVE_DELAY_MS);
@@ -838,13 +855,23 @@ export function createPetWindow({
   /** 걷기가 끝나거나 끊기면 알린다 (walkTo). 끝까지 걸었으면 true */
   let walkDone: ((finished: boolean) => void) | undefined;
 
+  /** 걷기 시작 자리. 걷는 중에 크기를 바꾸면(휠, 단축키) 바뀐 자리만큼 같이 옮긴다 (resize) */
+  let walkFrom = 0;
+
   function startWalk(walk: Extract<Activity, { type: 'walk' }>) {
-    const fromX = pet.x;
+    walkFrom = pet.x;
     const started = Date.now();
+    // 걸을 수 있는 가로 범위 (맞붙은 옆 모니터까지, shared/behavior.ts)
+    const span = walkSpan(
+      pet,
+      screen.getDisplayMatching(pet).workArea,
+      screen.getAllDisplays().map((d) => d.workArea),
+    );
     walkTimer = setInterval(
       () => {
         const t = (Date.now() - started) / walk.ms;
-        const x = fromX + walkOffset(walk.dx, t);
+        // 걷는 중에 커지면 처음 고른 거리만큼 가다 화면 밖으로 나갔다(300% 에서 300px 넘게). 범위 안에서 멈춘다
+        const x = clampWalkX(walkFrom + walkOffset(walk.dx, t), pet.width, span);
         // 걷기 CPU 의 절반이 창 옮기기다. 픽셀이 그대로인 틱(출발, 멈춤 감속)은 옮기지 않는다
         // 창 좌표는 정수만 받는다. 소수를 담아 두면 다음 setPosition(산책 등)이 던졌다
         const moved = Math.round(x) !== pet.x;
@@ -1014,6 +1041,16 @@ export function createPetWindow({
     perchTimer = undefined;
   }
 
+  /** 깡충 뛰기를 그만둔다 (끌기). 기다리던 쪽에는 끊긴 것으로 알린다 */
+  function stopHop() {
+    if (!hopTimer) return;
+    clearInterval(hopTimer);
+    hopTimer = undefined;
+    const end = hopDone;
+    hopDone = undefined;
+    end?.(false);
+  }
+
   function hopTo(to: { x: number; y: number }, done: (finished: boolean) => void) {
     clearInterval(hopTimer);
     // 뛰던 중에 다시 뛰면 앞 것은 끊긴 것으로 알린다 (기다리던 쪽이 멈추지 않게)
@@ -1149,6 +1186,7 @@ export function createPetWindow({
     if (hideReasons.hidden) {
       closeBubble('cleared');
       stopWalk();
+      stopHop();
       leavePerch();
       // 커서가 펫 위에 있던 채로 숨으면 hover 끝 알림이 안 와 전역 크기 단축키가 남는다
       overPet = false;
@@ -1282,15 +1320,27 @@ export function createPetWindow({
     });
   }
   // 끌기가 끝나거나 화면 잠금이 풀리거나 자리로 돌아오면 2초 안에 꺼낸다
-  const releaseTimer = setInterval(releaseHeld, 2000);
+  const releaseTimer = setInterval(() => {
+    releaseDragAnswer();
+    releaseHeld();
+  }, 2000);
+
+  /** 끄는 동안 온 답 알림을 놓고(던졌으면 다 떨어지고) 나서 띄운다. 숨은 동안 붙잡은 것은 다시 나올 때 setHidden 이 띄운다 */
+  function releaseDragAnswer() {
+    if (!heldAnswer || hideReasons.hidden || dragTimer || flightTimer || win.isDestroyed()) return;
+    const answer = heldAnswer;
+    heldAnswer = undefined;
+    void say(answer.options).then(answer.resolve);
+  }
 
   function say(options: SayOptions): Promise<string | undefined> {
     const { kind, text, buttons = [], ttlMs = BUBBLE_TTL_MS, image, hold, signal, paper } = options;
     if (signal?.aborted) return Promise.resolve(undefined);
-    if (hideReasons.hidden && kind === 'answer') {
+    // 숨은 동안, 펫을 끄는 동안 온 답 알림은 붙잡아 둔다. 끄는 중에는 예전에 그냥 버려서 답이 왔다는 말이 사라졌다
+    if ((hideReasons.hidden || dragTimer) && kind === 'answer') {
       // 앞에 기다리던 알림은 새 것으로 바꾼다 (가장 최근 답 하나만).
       heldAnswer?.resolve(undefined);
-      tellResting(kind, !!hold);
+      if (hideReasons.hidden) tellResting(kind, !!hold);
       return new Promise((resolve) => {
         const held = { options, resolve };
         heldAnswer = held;
