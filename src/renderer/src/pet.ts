@@ -1466,16 +1466,20 @@ Object.assign(window, {
     },
     /**
      * 그림 점검용: 지금 펫(입체면 입체)을 주어진 상태로 한 장씩 그려 PNG data URL 로 돌려준다. 시각(now)을 넣지 않아
-     * 따라가기 없이 늘 같은 그림이 나온다 (바꾸기 전후 픽셀 비교). scale 은 그리는 배율 (기본 2)
+     * 따라가기 없이 늘 같은 그림이 나온다 (바꾸기 전후 픽셀 비교). scale 은 그리는 배율 (기본 2).
+     * spin 은 입체 몸을 돌려 그릴 각(라디안. 0.6 쯤이면 3/4 모습), 그린 뒤 되돌린다
      */
-    debugRender: (states: Partial<DrawState>[], scale = 2): string[] => {
+    debugRender: (states: Partial<DrawState>[], scale = 2, spin = 0): string[] => {
       const m3d = current3d();
       const c = document.createElement('canvas');
       c.width = CANVAS_SIZE * scale;
       c.height = CANVAS_SIZE * scale;
       const g = c.getContext('2d');
       if (!g || m3d === 'loading') return [];
-      return states.map((st) => {
+      const spun = m3d && spin ? m3d : undefined;
+      const before = spun?.spin ?? 0;
+      if (spun) spun.spin = spin;
+      const out = states.map((st) => {
         g.setTransform(scale, 0, 0, scale, 0, 0);
         drawPet(g, {
           mood: 'idle',
@@ -1489,6 +1493,8 @@ Object.assign(window, {
         });
         return c.toDataURL('image/png');
       });
+      if (spun) spun.spin = before;
+      return out;
     },
   },
 });

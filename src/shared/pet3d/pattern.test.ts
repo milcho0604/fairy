@@ -69,3 +69,29 @@ test('셰이더 uniform 과 GLSL 은 같은 상수를 쓴다', () => {
   assert.match(PATTERN_GLSL, /73856093u/);
   assert.match(PATTERN_GLSL, /0\.09 \* uPatScale/);
 });
+
+test('가르마(notch): 머리 위 색을 앞 가운데에서 세모로 비우고, 뒤와 옆은 그대로', () => {
+  const cap: Pattern = { type: 'split', color: '#4a8fd6', side: 'top', amount: 0.5 };
+  const parted: Pattern = { ...cap, notch: 0.6 };
+  // 이마 가운데(앞, x=0)는 바탕색, 옆과 뒤통수는 무늬 색
+  assert.equal(patternMask(cap, [0, 0.4, 0.9], unit, unit), 1);
+  assert.equal(patternMask(parted, [0, 0.4, 0.9], unit, unit), 0);
+  assert.equal(patternMask(parted, [0.6, 0.4, 0.75], unit, unit), 1);
+  assert.equal(patternMask(parted, [0, 0.4, -0.9], unit, unit), 1);
+  // 위로 갈수록 좁아진다 (ㅅ 모양): 같은 x 라도 높으면 무늬 색
+  assert.ok(patternMask(parted, [0.2, 0.3, 0.9], unit, unit) < 0.5);
+  assert.ok(patternMask(parted, [0.2, 0.85, 0.45], unit, unit) > 0.5);
+  // 가르마 0 이나 없음은 예전과 같은 값, 셰이더도 0 을 받는다
+  for (const p of [
+    [0.1, 0.5, 0.8],
+    [0, 0.9, 0.1],
+    [-0.3, 0.2, 0.9],
+  ] as Vec3[])
+    assert.equal(patternMask({ ...cap, notch: 0 }, p, unit, unit), patternMask(cap, p, unit, unit));
+  assert.equal(patternUniforms(cap, unit, unit).uPatNotch.value, 0);
+  assert.equal(patternUniforms(parted, unit, unit).uPatNotch.value, 0.6);
+  // top, bottom 이 아닌 나누기에는 쓰지 않는다
+  const face: Pattern = { type: 'split', color: '#ffffff', side: 'front', notch: 0.6 };
+  assert.equal(patternMask(face, [0, 0, 0.95], unit, unit), 1);
+  assert.equal(patternUniforms(face, unit, unit).uPatNotch.value, 0);
+});
