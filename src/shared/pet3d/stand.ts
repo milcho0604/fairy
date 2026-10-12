@@ -169,7 +169,8 @@ export function standingBlueprint(bp: Blueprint): Blueprint | undefined {
     // 볼 터치는 고양이 뼈대만 (강아지 옆모습에서 주둥이 앞에 떠 보인다)
     ...(f.blush && base.face.blush ? { blush: f.blush } : {}),
     ...(f.whiskers ? { whiskers: f.whiskers } : {}),
-    ...(f.fluff ? { fluff: body } : {}),
+    // 볼 털도 고양이 뼈대만 (강아지 뼈대에서는 옆모습에서 주둥이 앞에 떴다)
+    ...(f.fluff && base.face.fluff ? { fluff: body } : {}),
   };
   if (face.brows) delete face.brows.y;
   if (f.nose?.color && base.face.nose) face.nose = { ...base.face.nose, color: f.nose.color };

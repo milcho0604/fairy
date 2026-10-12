@@ -203,6 +203,20 @@ test('네 발로 서기: 흰 배(아래쪽 무늬)는 눕힌 몸통에서도 배
   }
 });
 
+test('네 발로 서기: 볼 털은 고양이 뼈대만 (강아지 옆모습에서 주둥이 앞에 떠 보였다)', () => {
+  const fluffyDog: Blueprint = {
+    ...DEFAULT_BLUEPRINTS.dog,
+    gait: 'quadruped',
+    face: { ...DEFAULT_BLUEPRINTS.dog.face, fluff: '#f5f1ea' },
+  };
+  const dog = standingBlueprint(fluffyDog);
+  assert.ok(dog);
+  assert.ok(!catLike(fluffyDog));
+  assert.equal(dog.face.fluff, undefined);
+  const cat = standingBlueprint(EXAMPLE_CAT);
+  assert.ok(cat?.face.fluff);
+});
+
 test('색 밝히기, 어둡게', () => {
   assert.equal(shade('#000000', 0.5), '#808080');
   assert.equal(shade('#ffffff', -0.5), '#808080');
