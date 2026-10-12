@@ -6,7 +6,7 @@
 
 **화면 위를 돌아다니는 페어리가 할 일, 일정, 메모를 같이 챙겨 주는 데스크톱 비서예요.**
 
-맥과 윈도우용(리눅스 시험판), 베타예요. 홈페이지는 [fairy.moilga.com](https://fairy.moilga.com)
+맥과 윈도우용이에요(리눅스는 시험판). 홈페이지는 [fairy.moilga.com](https://fairy.moilga.com)
 
 [**받기**](https://github.com/milcho0604/fairy-releases/releases/latest) | [설치 안내](docs/install.md) | [사용 가이드](docs/guide.md) | [변경 이력](CHANGELOG.md)
 
@@ -154,7 +154,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/screens/settings-2.png" alt="설정의 편의(단축키), 데이터(백업과 저장 공간), 정보(업데이트와 베타 기록) 탭" width="820">
+  <img src="docs/assets/screens/settings-2.png" alt="설정의 편의(단축키), 데이터(백업과 저장 공간), 정보(업데이트와 내 기록) 탭" width="820">
 </p>
 
 ## 설치
@@ -225,7 +225,7 @@
 - 채팅 창의 최근 대화 40개 (`chat-history.json`, 붙인 그림은 빼고)
 - 사진 페어리 만들기의 배경 지우기와 2.5D 깊이 재기, 무료 AI 대화, 내 컴퓨터에서 그리기
 - 구글 캘린더 연결 토큰과 Hugging Face 토큰 (운영체제 열쇠로 암호화할 수 있으면 암호화해요)
-- 베타 기록(쓴 날, 끝낸 할 일 수 같은 숫자)과 진단 기록(`logs/main.log`). 질문, 답, 할 일과 일정 제목은 진단 기록에 남기지 않아요. 의견 보내기에 붙일 때도 경로, 주소, 토큰, 전화번호 같은 것을 한 번 더 가리고, 내가 복사해서 직접 보내요
+- 내 기록(쓴 날, 끝낸 할 일 수 같은 숫자)과 진단 기록(`logs/main.log`). 질문, 답, 할 일과 일정 제목은 진단 기록에 남기지 않아요. 의견 보내기에 붙일 때도 경로, 주소, 토큰, 전화번호 같은 것을 한 번 더 가리고, 내가 복사해서 직접 보내요
 
 **같이 보기 화면과 AI 프로그램의 기록**
 
@@ -333,7 +333,7 @@ npm run dist:linux # 리눅스 tar.xz, AppImage
 
 ## English summary
 
-**fairy** (페어리, formerly Jjakkung) is a desktop app for macOS 12+ and Windows 10+ (beta; Linux x64 builds are experimental) where a little fairy, a small creature like a puppy or a kitten, lives on your screen and doubles as a personal assistant. Site: [fairy.moilga.com](https://fairy.moilga.com).
+**fairy** (페어리, formerly Jjakkung) is a desktop app for macOS 12+ and Windows 10+ (Linux x64 builds are experimental) where a little fairy, a small creature like a puppy or a kitten, lives on your screen and doubles as a personal assistant. Site: [fairy.moilga.com](https://fairy.moilga.com).
 
 - **Fairy**: five built-in 3D fairies (Bean, Kitty, Chick, Puppy, Bunny) plus two illustrated ones (Milk, Choco). Drag, throw, pet it, feed it with coins earned from finished to-dos, or make your own fairy from a photo (background removal runs locally; optional 3D figure, 2.5D depth, or AI illustration via a free Hugging Face Space, the Gemini app, or on-device drawing).
 - **Assistant**: click the fairy for a panel with Today, To-dos, Notes, Events and Shop. Natural-language quick add ("meeting tomorrow 3pm", Korean and English), repeating to-dos, reminders, a focus timer, daily review, `.ics` calendar import.
