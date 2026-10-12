@@ -47,6 +47,7 @@ function ev(p: Partial<CalEvent> & Pick<CalEvent, 'startAt'>): CalEvent {
     notifiedAt: null,
     source: 'local',
     allDay: false,
+    pinnedAt: null,
     ...p,
   };
 }
@@ -63,6 +64,7 @@ function todo(p: Partial<Todo>): Todo {
     dueMin: null,
     reminds: [],
     steps: [],
+    pinnedAt: null,
     ...p,
   };
 }

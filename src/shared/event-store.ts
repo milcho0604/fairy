@@ -3,6 +3,7 @@ import { plusDays } from './day.ts';
 import type { Db } from './db-schema.ts';
 import { NO_END_MIN } from './event-overlap.ts';
 import { t } from './i18n/index.ts';
+import { pinAt } from './pin.ts';
 import {
   EN_COUNT,
   EN_REL_DAY_GUARD,
@@ -39,6 +40,8 @@ export interface CalEvent {
    * 종일 일정. startAt 은 첫날 현지 0시, endAt 은 여러 날이면 마지막 날 다음 날 현지 0시(끝 날은 들지 않는다), 하루면 null.
    */
   allDay: boolean;
+  /** 고정한 시각 (13판, shared/pin.ts). 고정 안 했거나 값이 깨졌으면 null. 구글 보내기와 .ics 내보내기에는 없다 */
+  pinnedAt: number | null;
 }
 
 interface Row {
@@ -50,6 +53,7 @@ interface Row {
   notified_at: number | null;
   source?: string;
   all_day?: number;
+  pinned_at?: unknown;
 }
 
 const toEvent = (r: Row, marks: readonly { before: number; notifiedAt: number | null }[]): CalEvent => {
@@ -65,6 +69,7 @@ const toEvent = (r: Row, marks: readonly { before: number; notifiedAt: number | 
     notifiedAt: spoken.length ? Math.max(...spoken) : null,
     source: r.source === 'ics' ? 'ics' : 'local',
     allDay: Number(r.all_day ?? 0) === 1,
+    pinnedAt: pinAt(r.pinned_at),
   };
 };
 
@@ -226,6 +231,31 @@ export class EventStore {
         reset: moved,
       });
     return this.get(id);
+  }
+
+  /**
+   * 고정과 풀기 (13판). 일정의 고침(user_edited)으로 치지 않아 가져온 일정의 다음 가져오기를 막지 않고, 구글로 다시 보내지도 않는다.
+   * 이미 고정한 것을 다시 고정하면 처음 자리를 지킨다. 지운 일정은 바꾸지 않는다
+   */
+  pin(id: number, on: boolean, now: number): CalEvent | undefined {
+    const e = this.get(id);
+    if (!e) return undefined;
+    if (on && e.pinnedAt !== null) return e;
+    this.#db.prepare('update event set pinned_at = ? where id = ?').run(on ? now : null, id);
+    return this.get(id);
+  }
+
+  /**
+   * 고정한 일정 가운데 아직 안 끝난 것, 고정한 순서대로. 날짜가 멀어도(패널 목록 14일 밖) 넣는다.
+   * 끝 판단은 일정 탭 목록과 같다: 종일은 마지막 날이 today 보다 앞이면, 시각 일정은 끝(없으면 시작 30분 뒤)이 now 보다 앞이면 끝
+   */
+  pinned(now: number, today: string = localDay(now)): CalEvent[] {
+    const rows = this.#db
+      .prepare('select * from event where deleted_at is null and pinned_at is not null order by start_at, id')
+      .all() as Row[];
+    return this.#withReminds(rows.filter((r) => pinAt(r.pinned_at) !== null))
+      .filter((e) => (e.allDay ? allDaySpan(e).last >= today : (e.endAt ?? e.startAt + 30 * 60_000) >= now))
+      .sort((a, b) => (a.pinnedAt ?? 0) - (b.pinnedAt ?? 0) || a.id - b.id);
   }
 
   /** 사용자가 지운다. 가져온 일정이면 지운 채로 기억해(묘비) 다음 가져오기가 되살리지 않는다 */

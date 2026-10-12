@@ -28,6 +28,7 @@ import type { Note, NoteSource } from './note-store.ts';
 import type { PetKey } from './pet-keys.ts';
 import type { PetLicense } from './pet-share.ts';
 import type { Blueprint, Gait } from './pet3d/blueprint.ts';
+import type { PinKind } from './pin.ts';
 import type { PetKind, PetStyle, PoseKind, Settings } from './settings.ts';
 import type { SettingsTab } from './settings-tabs.ts';
 import type { BuyResult, ShopState } from './shop.ts';
@@ -804,6 +805,8 @@ export const PANEL = {
   stepToggle: 'panel:step-toggle',
   stepRename: 'panel:step-rename',
   stepRemove: 'panel:step-remove',
+  /** 고정과 풀기 (메모, 할 일, 일정. shared/pin.ts) */
+  pin: 'panel:pin',
   /** 지난 마감을 오늘로 */
   moveOverdue: 'panel:move-overdue',
   undoMoveOverdue: 'panel:undo-move-overdue',
@@ -832,6 +835,8 @@ export interface PanelState {
    * (events 는 오늘 0시 뒤에 시작한 것만이라 패널에서 셈하면 놓쳤다)
    */
   eventClash: number[];
+  /** 고정한 일정 가운데 안 끝난 것, 고정한 순서대로 (14일 밖도). 일정 탭 목록 맨 위 "고정" 칸 */
+  pinnedEvents: CalEvent[];
   focus: FocusState;
   /** 집중 코인과 오늘 받은 집중 횟수 */
   focusCoins: number;
@@ -873,6 +878,8 @@ export interface NoteSummary {
   preview: string;
   source: NoteSource;
   updatedAt: number;
+  /** 고정한 시각. 고정 안 했으면 null */
+  pinnedAt: number | null;
 }
 
 /** 한 줄 입력(PANEL.add) 결과. 어디에 언제로 넣었는지 알려 준다 */
@@ -1004,6 +1011,8 @@ export interface PanelBridge {
   stepToggle(stepId: number, done?: boolean): void;
   stepRename(stepId: number, title: string): void;
   stepRemove(stepId: number): void;
+  /** 고정(on)과 풀기. 메모, 할 일, 일정 (shared/pin.ts) */
+  pin(kind: PinKind, id: number, on: boolean): void;
   /** 지난 마감을 오늘로. 옮긴 것과 원래 마감 (되돌리기는 update 로) */
   moveOverdue(): Promise<{ id: number; due: string | null }[]>;
   /** 방금 한 지난 마감 오늘로 되돌리기 */

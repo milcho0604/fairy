@@ -38,6 +38,7 @@ const ev = (o: Partial<CalEvent>): CalEvent => ({
   notifiedAt: null,
   source: 'local',
   allDay: false,
+  pinnedAt: null,
   ...o,
 });
 
@@ -125,8 +126,16 @@ test('저장 파일에서 내보낼 할 일: 지운 것은 빼고 끝낸 것과 
 test('메모 마크다운: 파일 하나에 묶기, 메모마다 파일(앞머리), 본문 머리는 한 단계 내린다', () => {
   setLang('ko');
   const notes: Note[] = [
-    { id: 1, title: '회의 "메모"', body: '# 안건\n- 하나', source: 'me', createdAt: NOW, updatedAt: NOW },
-    { id: 2, title: '', body: '장보기\n우유', source: 'ai', createdAt: NOW, updatedAt: NOW },
+    {
+      id: 1,
+      title: '회의 "메모"',
+      body: '# 안건\n- 하나',
+      source: 'me',
+      createdAt: NOW,
+      updatedAt: NOW,
+      pinnedAt: null,
+    },
+    { id: 2, title: '', body: '장보기\n우유', source: 'ai', createdAt: NOW, updatedAt: NOW, pinnedAt: null },
   ];
   const one = notesMarkdown(notes, NOW);
   assert.match(one, /^# 페어리 메모/);
@@ -146,7 +155,15 @@ test('파일 이름: 금지 글자, 예약 이름, 겹치는 이름', () => {
   assert.equal(safeFileName('nul.txt'), '_nul.txt');
   assert.equal(safeFileName('\u0001\u0002'), 'memo');
   assert.equal([...safeFileName('가'.repeat(200))].length, 80);
-  const n = (title: string): Note => ({ id: 1, title, body: '', source: 'me', createdAt: 0, updatedAt: 0 });
+  const n = (title: string): Note => ({
+    id: 1,
+    title,
+    body: '',
+    source: 'me',
+    createdAt: 0,
+    updatedAt: 0,
+    pinnedAt: null,
+  });
   assert.deepEqual(noteFileNames([n('메모'), n('메모'), n('MEMO'), n('memo')]), [
     '메모.md',
     '메모 (2).md',

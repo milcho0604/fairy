@@ -3,6 +3,7 @@ import { plusDays, weekdayOf as weekday } from './day.ts';
 import type { Db } from './db-schema.ts';
 import { FOCUS, focusCoins } from './focus.ts';
 import { t } from './i18n/index.ts';
+import { pinAt } from './pin.ts';
 import { type Anchor, atLocal, DEFAULT_REMINDS, normalizeReminds, REMIND_MAX_MIN } from './remind.ts';
 import { ReminderStore } from './reminder-store.ts';
 
@@ -125,6 +126,8 @@ export interface Todo {
   reminds: number[];
   /** 단계 (9판 체크리스트), 위에서부터. 없으면 빈 목록 */
   steps: TodoStep[];
+  /** 고정한 시각 (13판, shared/pin.ts). 고정 안 했거나 값이 깨졌으면 null */
+  pinnedAt: number | null;
 }
 
 /** 할 일 단계 하나 (9판) */
@@ -177,6 +180,7 @@ interface Row {
   coins: number;
   repeat: string | null;
   due_min?: number | null;
+  pinned_at?: unknown;
 }
 
 interface StepRow {
@@ -198,6 +202,7 @@ const toTodo = (r: Row, reminds: number[] = [], steps: TodoStep[] = []): Todo =>
   dueMin: r.due && isDueMin(Number(r.due_min ?? Number.NaN)) ? Number(r.due_min) : null,
   reminds,
   steps,
+  pinnedAt: pinAt(r.pinned_at),
 });
 
 export class TodoStore {
@@ -372,6 +377,18 @@ export class TodoStore {
     const steps = this.#stepsOf(doneRows.map((r) => Number(r.id)));
     const done = doneRows.map((r) => toTodo(r, [], steps.get(Number(r.id)) ?? []));
     return { open, doneToday: done };
+  }
+
+  /**
+   * 고정과 풀기 (13판). 이미 고정한 것을 다시 고정하면 처음 고정한 시각(자리)을 지킨다.
+   * 지운 할 일은 바꾸지 않는다. 끝낸 할 일은 바꿀 수 있다 (되돌리면 그 자리로 돌아온다). 바뀐 할 일 (없으면 undefined)
+   */
+  pin(id: number, on: boolean, now: number): Todo | undefined {
+    const t = this.get(id);
+    if (!t) return undefined;
+    if (on && t.pinnedAt !== null) return t;
+    this.#db.prepare('update todo set pinned_at = ? where id = ?').run(on ? now : null, id);
+    return this.get(id);
   }
 
   /** 그때부터 끝낸 할 일 제목, 최근 것부터 (주간 회고 카드에서 사용자가 고를 때만) */
@@ -599,6 +616,9 @@ export class TodoStore {
           now,
           id,
         );
+        // 고정한 반복 할 일은 다음 회차도 같은 자리에 고정한다
+        if (t.pinnedAt !== null)
+          this.#db.prepare('update todo set pinned_at = ? where id = ?').run(t.pinnedAt, next.id);
         // 단계도 안 한 채로 옮겨 적는다 (매일 아침 루틴 체크리스트)
         this.addSteps(
           next.id,
