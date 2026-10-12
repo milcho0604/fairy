@@ -72,6 +72,11 @@ export interface Pattern {
   amount?: number;
   side?: Side;
   dir?: Axis;
+  /**
+   * split 이 top, bottom 일 때만: 앞 가운데를 세모로 갈라 바탕색을 낸다 (0~1, 클수록 넓고 깊다).
+   * 머리 위 색이 이마 가운데에서 갈라지는 두 색 고양이(이마의 흰 줄), 가운데 가르마 (v2)
+   */
+  notch?: number;
 }
 
 export interface Part {
@@ -405,6 +410,8 @@ export function patternOf(raw: unknown): Pattern | undefined {
   if (side) out.side = side;
   const dir = oneOf(AXES, r.dir);
   if (dir) out.dir = dir;
+  const notch = optNum(r.notch, 0, 1);
+  if (notch && type === 'split' && (out.side === 'top' || out.side === 'bottom')) out.notch = notch;
   return out;
 }
 

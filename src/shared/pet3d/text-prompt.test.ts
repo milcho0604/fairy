@@ -171,3 +171,16 @@ test('걸음새를 바꿔 다시 만들기: 처음 글 요청문에 고른 걸�
   const plain = readTextAnswer(answer);
   assert.ok(plain.ok && plain.bp.gait === 'biped');
 });
+
+test('처음 만들기 요청문: 닮게 만드는 규칙 (찾아보기, 귀 모양, 머리 무늬, 표정, 옅은 색)', () => {
+  const p = describePrompt('파란 모자를 쓴 흰 토끼', { webSearch: true });
+  assert.ok(p.includes('search for how it looks first'));
+  assert.ok(p.includes('Write "likeness" first'));
+  assert.ok(p.includes('"notch"'));
+  assert.ok(p.includes('long upright ears'));
+  assert.ok(p.includes('"grin" for a wide open smiling mouth'));
+  assert.ok(p.includes('a pale pastel stays pale'));
+  // 고치기도 같은 규칙을 쓰지만 찾아보지는 않는다
+  const t = tweakPrompt(EXAMPLE_PLUSH, '귀 길게');
+  assert.ok(t.includes('long upright ears') && !t.includes('web search tool'));
+});
