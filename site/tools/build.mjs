@@ -159,7 +159,7 @@ function head(p) {
     alternateName: S.name.ko !== S.name.en ? S.name.ko : undefined,
     description: S.tagline.en,
     applicationCategory: 'ProductivityApplication',
-    operatingSystem: 'macOS 12+, Windows 10+ (x64), Linux x64 (preview)',
+    operatingSystem: 'macOS 13+, Windows 10+ (x64), Linux x64 (preview)',
     offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
     url: siteUrl + '/',
     image: og,

@@ -6,6 +6,8 @@ import { IPC, type PetImages, type PetStatus } from '../shared/ipc.ts';
 import { MEET_CHANCE, MEET_COOLDOWN_MS, MEET_EVERY_MS, meetPlan } from '../shared/meet.ts';
 import { type Blueprint, parseBlueprint } from '../shared/pet3d/blueprint.ts';
 import { starterFigureOf } from '../shared/pet3d/starters.ts';
+import { friendSpot } from '../shared/placement.ts';
+import { HideReasons } from '../shared/presence.ts';
 import type { Friend } from '../shared/settings.ts';
 import { starterOf } from '../shared/starter-pets.ts';
 import type { WearLook } from '../shared/wear.ts';
@@ -31,6 +33,9 @@ const petFile = (file: string | undefined) => readFileIn(join(app.getPath('userD
 
 /** 설계도 파일 상한 (maker.ts 와 같다). 넘으면 읽지 않고 사진으로 */
 const MAX_MODEL_BYTES = 256 * 1024;
+
+/** 처음 오는 친구 펫 크기 (pet-window 의 기본 크기, 배율 1) */
+const FRIEND_SIZE = 160;
 
 /** 만났을 때 수다를 떨 확률 (수다쟁이만) */
 const FRIEND_TALK_CHANCE = 0.5;
@@ -91,6 +96,8 @@ export function createFriends(o: {
   log: (tag: string, ...rest: unknown[]) => void;
 }) {
   const live = new Map<string, { pet: PetWindow; friend: Friend }>();
+  /** 지금 친구들이 숨은 까닭 (숨긴 동안 새로 온 친구도 숨어서 온다) */
+  const hiddenFor = new HideReasons();
 
   // ---- 친구 펫끼리 놀기 ----
   // 가끔 친구 하나가 기본 펫 옆으로 걸어가 서로 마주 보고 하트를 띄운다. 둘 다 한가할 때만.
@@ -195,7 +202,8 @@ export function createFriends(o: {
     const pet: PetWindow = createPetWindow({
       ...(win ? { win } : {}),
       id: f.id,
-      initial: { x: main.x - (index + 1) * 140, y: main.y },
+      // 기본 펫과 같은 바닥에, 왼쪽에 자리가 없으면 오른쪽에 (처음 올 때만. 옮긴 뒤에는 저장한 자리)
+      initial: friendSpot(main, index, FRIEND_SIZE, screen.getDisplayMatching(main).workArea),
       petName: () => live.get(f.id)?.friend.name ?? f.name,
       log: o.log,
       actions: {
@@ -253,6 +261,8 @@ export function createFriends(o: {
       pet.win.webContents.send(IPC.status, status(now));
       pet.win.webContents.send(IPC.image, imageOf(now));
     });
+    // 숨긴 동안(숨기기, 발표 중) 데려온 친구는 혼자 보이지 않고 같이 숨어 있다가 같이 나온다
+    for (const reason of hiddenFor.list()) pet.setHidden(reason, true, false);
     live.set(f.id, { pet, friend: f });
     o.log('friends', '왔어', f.id);
   }
@@ -285,6 +295,7 @@ export function createFriends(o: {
 
   /** 기본 펫이 숨으면(발표, 숨기기) 친구도 같이 */
   function setHidden(reason: 'user' | 'presentation', on: boolean) {
+    hiddenFor.set(reason, on);
     for (const { pet } of live.values()) pet.setHidden(reason, on, false);
   }
 

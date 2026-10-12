@@ -24,6 +24,7 @@ import {
   addQuestion,
   applyEvent,
   applyUsage,
+  type ChatMessage,
   type ChatState,
   historyFor,
   initialChat,
@@ -118,6 +119,11 @@ export interface ChatOptions {
   locked?: () => boolean;
   /** 잠긴 대화를 쓰려 했다 (펫이 까닭을 말한다) */
   onLocked?: () => void;
+  /**
+   * AI 없이 하는 말놀이 (끝말잇기, main/fun.ts). turn 이 글을 돌려주면 AI 에 보내지 않고 그 글로 바로 답한다.
+   * undefined 면 보통 대화. 새 대화를 열면 reset
+   */
+  localGame?: { turn: (text: string) => string | undefined; reset: () => void };
   log: (tag: string, ...rest: unknown[]) => void;
 }
 
@@ -291,6 +297,12 @@ export function createChat(o: ChatOptions) {
     if (state.pendingId) return false;
     const question = text.trim();
     if (!question && images.length === 0) return false;
+    // 끝말잇기 (main/fun.ts): 하자는 말이나 노는 중의 말이면 AI 를 부르지 않고 바로 답한다 (AI 가 없어도 된다)
+    const local = images.length === 0 ? o.localGame?.turn(question) : undefined;
+    if (local !== undefined) {
+      answerLocal(question, local);
+      return true;
+    }
     const ids = { user: randomUUID(), pet: randomUUID() };
     const provider = state.provider;
     const spec = specOf(provider);
@@ -425,6 +437,19 @@ export function createChat(o: ChatOptions) {
             })
           : runAi(req, onEvent);
     }
+  }
+
+  /**
+   * 말놀이 답을 바로 단다 (AI 를 부르지 않는다). question 이 없으면 펫 말만 (메뉴에서 시작).
+   * 펫 메시지에 AI 이름을 달지 않아 AI 대화 기록(historyFor)에 섞이지 않는다
+   */
+  function answerLocal(question: string | undefined, text: string) {
+    const pet: ChatMessage = { id: randomUUID(), role: 'pet', text, status: 'done', game: true };
+    const user: ChatMessage[] = question ? [{ id: randomUUID(), role: 'user', text: question }] : [];
+    state = { ...state, messages: [...state.messages, ...user, pet] };
+    log('chat', 'local-game');
+    save();
+    push();
   }
 
   /** 질문과 규칙 답을 바로 (AI 를 부르지 않는다) */
@@ -582,6 +607,7 @@ export function createChat(o: ChatOptions) {
     // 지난 대화는 목록에 남는다 (답이 끝날 때마다 저장해 두었다). 다음 질문은 새 목록 항목이 된다
     threads.detach();
     carry.clear();
+    o.localGame?.reset();
     save(true);
     push();
   });
@@ -771,6 +797,12 @@ export function createChat(o: ChatOptions) {
     open,
     toggle,
     attach,
+    /** 말놀이 펫 말을 채팅에 단다 (펫 메뉴에서 끝말잇기 시작). 답을 기다리는 중이면 false */
+    sayLocal: (text: string): boolean => {
+      if (state.pendingId || o.locked?.()) return false;
+      answerLocal(undefined, text);
+      return true;
+    },
     /** 말로 만들기를 쓸 AI 가 있는지 (만들기 창이 탭을 보일지) */
     hasTextAi: async () => !!(await textSpec()),
     /**

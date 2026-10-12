@@ -4,6 +4,7 @@ import {
   addQuestion,
   applyEvent,
   type ChatState,
+  historyFor,
   initialChat,
   LONG_CHAT_TURNS,
   parseChat,
@@ -240,4 +241,28 @@ test('기록 안 남김을 켜고 끈 사이에는 되돌리지 않는다 (안 �
   assert.equal(undoReset({ ...resetChat(kept), ephemeral: true }, kept), undefined);
   // 같은 상태 안에서는 되돌린다
   assert.equal(undoReset(resetChat(secret), secret)?.messages.length, 2);
+});
+
+test('말놀이 답(끝말잇기)은 다시 켜도 놀이 꼬리표를 지키고, AI 대화 기록에 섞이지 않는다', () => {
+  const s: ChatState = {
+    ...initialChat('claude'),
+    messages: [
+      { id: 'p0', role: 'pet', text: '끝말잇기 하자! 가방!', status: 'done', game: true },
+      { id: 'u1', role: 'user', text: '방울' },
+      { id: 'p1', role: 'pet', text: '울타리!', status: 'done', game: true },
+    ],
+  };
+  const back = parseChat(JSON.parse(JSON.stringify(serializeChat(s))));
+  assert.deepEqual(
+    back.messages.map((m) => [m.id, m.game ?? false]),
+    [
+      ['p0', true],
+      ['u1', false],
+      ['p1', true],
+    ],
+  );
+  assert.deepEqual(historyFor(s, 'claude'), []);
+  // 꼬리표 값이 틀리면 버린다
+  const odd = parseChat({ messages: [{ id: 'x', role: 'pet', text: 'a', status: 'done', game: 'yes' }] });
+  assert.equal(odd.messages[0]?.game, undefined);
 });

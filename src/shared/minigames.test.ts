@@ -50,8 +50,10 @@ const seq = (...xs: number[]) => {
 };
 
 test('놀이 이름', () => {
-  for (const g of ['bubbles', 'laser', 'treats', 'rps', 'tag', 'mole']) assert.ok(isMiniGame(g), g);
-  for (const g of ['ball', 'walk', 'seek', '', undefined, 3]) assert.equal(isMiniGame(g), false, String(g));
+  for (const g of ['bubbles', 'laser', 'treats', 'rps', 'tag', 'mole', 'joke', 'highfive'])
+    assert.ok(isMiniGame(g), g);
+  for (const g of ['ball', 'walk', 'seek', 'wordchain', '', undefined, 3])
+    assert.equal(isMiniGame(g), false, String(g));
 });
 
 test('놀이 코인은 하루 상한을 넘지 않고, 음수나 소수가 없다', () => {

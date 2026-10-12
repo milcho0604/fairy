@@ -433,3 +433,66 @@ test('최근 혼잣말을 되살리면 다시 켜도 그 말은 고르지 않는
   const next = b.pick(facts, () => 0);
   assert.ok(next && !said.includes(next));
 });
+
+test('하루 동안 같은 사실(함께한 날, 연속 기록, 어제 일, 이번 주, 철, 친밀도)은 하루에 한 번만 말한다', () => {
+  const talk = new IdleTalk();
+  // 토요일 오전: 어제 일, 연속, 이번 주, 함께한 날, 철 대사가 모두 후보다
+  const f = (h: number, m: number): IdleFacts => ({
+    now: at(10, h, m),
+    doneToday: 0,
+    yesterdayDone: 3,
+    streak: 4,
+    weekDone: 6,
+    daysTogether: 9,
+    affection: 150,
+  });
+  let i = 0;
+  const rand = () => ((i++ * 0.37) % 1) as number;
+  const said: string[] = [];
+  // 9시부터 5분마다 하루 치 (수다쟁이 빈도)
+  for (let n = 0; n < 150; n++) said.push(talk.pick(f(9 + Math.floor(n / 12), (n % 12) * 5), rand) ?? '');
+  const groups = said.map((k) => k.split('.')[1]);
+  for (const g of ['together', 'streak', 'memory', 'week', 'season', 'friend'])
+    assert.ok(
+      groups.filter((x) => x === g).length <= 1,
+      `${g}: ${said.filter((k) => k.split('.')[1] === g)}`,
+    );
+  assert.ok(
+    said.every((k) => k !== ''),
+    '고를 말이 떨어지지 않는다',
+  );
+  // 다음 날에는 다시 한다
+  const next = talk.pick({ ...f(9, 0), now: at(11, 9) }, () => 0);
+  assert.ok(next !== undefined);
+  const nextDay: string[] = [];
+  for (let n = 0; n < 40; n++)
+    nextDay.push(talk.pick({ ...f(9, 0), now: at(11, 9, n) }, rand)?.split('.')[1] ?? '');
+  assert.ok(nextDay.includes('together') || nextDay.includes('streak'), nextDay.join(','));
+});
+
+test('하루 한 번 대사를 띄우지 못해 되돌리면 그날 다시 할 수 있다', () => {
+  const talk = new IdleTalk();
+  // 화요일 11시 10분: 시각 대사가 없어 상황 대사는 함께한 날 하나다 (rand 0 은 상황 대사를 먼저)
+  const f: IdleFacts = { now: at(6, 11, 10), doneToday: 0, daysTogether: 9 };
+  const first = talk.pick(f, () => 0);
+  assert.equal(first, 'idle.together.1');
+  talk.undo();
+  assert.equal(
+    talk.pick({ ...f, now: f.now + 60_000 }, () => 0),
+    'idle.together.1',
+  );
+});
+
+test('셋 넘게 끝낸 칭찬은 실제로 끝낸 수를 말한다 (3개일 때 "세 개 넘게"라고 하지 않는다)', () => {
+  setLang('ko');
+  const three = idleVars({ now: at(6, 15), doneToday: 3 });
+  assert.equal(three.done, 3);
+  assert.equal(t('idle.praise.3', { name: '콩', ...three }), '오늘 벌써 3개나 끝냈어! 콩은 뿌듯해.');
+  assert.equal(
+    t('voice.polite.idle.praise.3', { name: '콩', ...idleVars({ now: at(6, 15), doneToday: 4 }) }),
+    '오늘 벌써 4개나 끝내셨어요! 콩은 뿌듯해요.',
+  );
+  setLang('en');
+  assert.equal(t('idle.praise.3', { name: 'Bean', ...three }), '3 done today already! Bean is so proud.');
+  setLang('ko');
+});

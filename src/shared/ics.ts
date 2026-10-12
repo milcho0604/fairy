@@ -1,5 +1,7 @@
 // 캘린더 가져오기 (v2 "구글 캘린더 연동" 읽기). 구글 캘린더 설정의 "iCal 형식의 비공개 주소"나 다른 캘린더의 .ics 주소를 읽는다.
 // 쓰기(펫에서 구글 일정 만들기)는 OAuth 앱 등록이 필요해 아직이다.
+
+import { cutText } from './cut-text.ts';
 import { t } from './i18n/index.ts';
 
 export interface IcsEvent {
@@ -636,7 +638,7 @@ export function parseIcs(text: string, localTz: string, from: number, to: number
   const titleOf = (...cs: (Comp | undefined)[]) => {
     for (const c of cs) {
       const v = c && one(c, 'SUMMARY')?.value;
-      if (v !== undefined) return unescapeText(v).slice(0, 200) || t('panel.event.untitled');
+      if (v !== undefined) return cutText(unescapeText(v), 200) || t('panel.event.untitled');
     }
     return t('panel.event.untitled');
   };

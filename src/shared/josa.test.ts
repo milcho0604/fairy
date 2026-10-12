@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { setLang, t } from './i18n/index.ts';
 import { hasFinalConsonant, withParticle } from './josa.ts';
 
 test('한글 이름: 받침에 따라 조사가 바뀐다', () => {
@@ -74,4 +75,20 @@ test('기본 캐릭터 밀크, 초코(영어 Milk, Choco)는 받침이 없다', 
     assert.equal(withParticle(name, '아'), `${name}야`);
     assert.equal(withParticle(name, '으로'), `${name}로`);
   }
+});
+
+test('말끝이 바로 붙는 자리: 받침 있으면 이, 없으면 아무것도 (회의잖아, 점심 약속이잖아)', () => {
+  assert.equal(withParticle('회의', '이다'), '회의');
+  assert.equal(withParticle('점심 약속', '이다'), '점심 약속이');
+  assert.equal(withParticle('🎉', '이다'), '🎉(이)');
+  setLang('ko');
+  const ev = (title: string) => t('note.eventAllDay', { p: 'tsundere', time: '', title });
+  assert.equal(ev('회의'), '오늘 종일 회의잖아. 까먹지 마.');
+  assert.equal(ev('점심 약속'), '오늘 종일 점심 약속이잖아. 까먹지 마.');
+});
+
+test('이름 뒤 "한테"에는 이/가를 붙이지 않는다 (콩이한테, 밀크가한테가 아니다)', () => {
+  setLang('ko');
+  assert.match(t('bond.journey.nudge.quick', { name: '콩' }), /콩한테 넘길/);
+  assert.match(t('bond.journey.nudge.quick', { name: '밀크' }), /밀크한테 넘길/);
 });

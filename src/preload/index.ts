@@ -333,7 +333,7 @@ if (kind === 'panel' || kind === 'quick') {
     },
     noteGet: (id: number) => ipcRenderer.invoke(PANEL.noteGet, id),
     noteAdd: (text?: string) => ipcRenderer.invoke(PANEL.noteAdd, text),
-    noteUpdate: (id, patch) => ipcRenderer.invoke(PANEL.noteUpdate, id, patch),
+    noteUpdate: (id, patch, base) => ipcRenderer.invoke(PANEL.noteUpdate, id, patch, base),
     noteRemove: (id: number) => ipcRenderer.send(PANEL.noteRemove, id),
     noteRestore: (id: number) => ipcRenderer.send(PANEL.noteRestore, id),
     noteSearch: (query: string, composing: boolean) => ipcRenderer.invoke(PANEL.noteSearch, query, composing),

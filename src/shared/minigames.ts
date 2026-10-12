@@ -4,8 +4,18 @@
 // 두더지 잡기만 펫 누르기가 잡기라, 그만두기는 우클릭 "그만 놀기"로 한다.
 import type { Point, Rect } from './geometry.ts';
 
-export type MiniGame = 'bubbles' | 'laser' | 'treats' | 'rps' | 'tag' | 'mole';
-export const MINI_GAMES: readonly MiniGame[] = ['bubbles', 'laser', 'treats', 'rps', 'tag', 'mole'];
+/** joke(웃겨 줘), highfive(하이파이브)는 말풍선만 쓰는 짧은 놀이 (shared/fun.ts) */
+export type MiniGame = 'bubbles' | 'laser' | 'treats' | 'rps' | 'tag' | 'mole' | 'joke' | 'highfive';
+export const MINI_GAMES: readonly MiniGame[] = [
+  'bubbles',
+  'laser',
+  'treats',
+  'rps',
+  'tag',
+  'mole',
+  'joke',
+  'highfive',
+];
 
 export const isMiniGame = (v: unknown): v is MiniGame => MINI_GAMES.includes(v as MiniGame);
 

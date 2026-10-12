@@ -940,7 +940,8 @@ export interface NoteSummary {
 
 /** 한 줄 입력(PANEL.add) 결과. 어디에 언제로 넣었는지 알려 준다 */
 /** 메모 저장 답 */
-export type NoteSaveResult = { ok: true } | { ok: false; error?: string };
+/** 메모 저장 답. body 는 저장된 본문이 보낸 것과 다를 때만 (다른 곳이 덧붙인 것과 합쳤거나 상한에서 잘랐다) */
+export type NoteSaveResult = { ok: true; body?: string } | { ok: false; error?: string };
 
 export type PanelAddResult =
   | { ok: false; error?: string }
@@ -986,7 +987,8 @@ export interface NoteHit {
 export type PanelTab = 'today' | 'todo' | 'note' | 'event' | 'shop';
 
 /** 놀이: 공, 산책, 숨바꼭질과 짧은 놀이 (shared/minigames.ts) */
-export type PlayKind = 'ball' | 'walk' | 'seek' | MiniGame;
+/** wordchain: 끝말잇기 (채팅 창에서 AI 없이, main/fun.ts) */
+export type PlayKind = 'ball' | 'walk' | 'seek' | 'wordchain' | MiniGame;
 
 export type NoteAiKind = 'todos' | 'summary';
 
@@ -1030,7 +1032,12 @@ export interface PanelBridge {
   /**
    * 메모 저장. 못 저장하면(디스크 가득, 읽기 전용) ok: false 와 안내 글 (버그잡이 4: 예전에는 보내기만 해서 실패를 몰랐다)
    */
-  noteUpdate(id: number, patch: { title?: string; body?: string }): Promise<NoteSaveResult>;
+  /** base 는 메모 창이 마지막으로 받은 저장된 본문 (그사이 다른 곳이 바꾼 것과 합치려고) */
+  noteUpdate(
+    id: number,
+    patch: { title?: string; body?: string },
+    base?: { body: string },
+  ): Promise<NoteSaveResult>;
   noteRemove(id: number): void;
   noteRestore(id: number): void;
   /** 메모 찾기: 제목과 본문 전체. composing 이면 마지막 글자는 아직 조합 중이라 넓게 찾는다 */

@@ -109,7 +109,7 @@ export const ko = {
   'bond.journey.hint.look': () => '화면 한 곳을 같이 보고 물어봐.',
   'bond.journey.hint.week': () => '이번 주를 카드 한 장으로 돌아봐.',
   'bond.journey.nudge.quick': (v: Name) =>
-    `오늘은 빠른 입력 해 볼래? 어디서든 단축키로 할 일을 ${withParticle(v.name, '이')}한테 넘길 수 있어.`,
+    `오늘은 빠른 입력 해 볼래? 어디서든 단축키로 할 일을 ${v.name}한테 넘길 수 있어.`,
   'bond.journey.nudge.focus': (v: Name) =>
     `오늘은 25분만 같이 집중해 볼까? ${withParticle(v.name, '은')} 옆에서 조용히 있을게.`,
   'bond.journey.nudge.note': () => '생각난 거 있으면 메모로 남겨 볼래? 나중에 같이 찾아 줄게.',
