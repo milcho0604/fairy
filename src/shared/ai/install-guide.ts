@@ -13,7 +13,8 @@
 // - Gemini CLI: https://github.com/google-gemini/gemini-cli README 와 docs/get-started/installation.mdx, authentication.mdx
 //   (npm, Homebrew, MacPorts, Node.js 20 이상, `gemini` 를 실행해 Sign in with Google)
 // - 로그인 상태 확인 명령: Claude 는 https://code.claude.com/docs/en/cli-reference (`claude auth status`, 로그인이면 0 으로 끝남),
-//   Codex 는 https://learn.chatgpt.com/docs/developer-commands?surface=cli (`codex login status`),
+//   Codex 는 https://learn.chatgpt.com/docs/developer-commands?surface=cli (`codex login status`, 소스
+//   https://github.com/openai/codex/blob/main/codex-rs/cli/src/login.rs 의 run_login_status: 로그인이면 0, 아니면 1 로 끝남),
 //   Cursor 는 위 authentication 문서 (`agent status`, 짝꿍은 별칭 cursor-agent 로). Gemini 는 공식 문서에 상태 명령이 없어 쓰지 않는다
 //   (2026-10-12 다시 확인)
 //
