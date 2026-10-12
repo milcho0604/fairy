@@ -183,6 +183,8 @@ test('저장한 잠금은 지금 버전으로 여전히 잠가야 할 때만 쓴
   assert.deepEqual(readSavedLock({ ...lock, savedAt: at }, '1.3.9', at + SAVED_LOCK_MAX_AGE_MS), lock);
   assert.equal(readSavedLock({ ...lock, savedAt: at }, '1.3.9', at + SAVED_LOCK_MAX_AGE_MS + 1), undefined);
   assert.equal(readSavedLock({ ...lock, savedAt: 'x' }, '1.3.9', at), undefined);
+  // 저장한 시각이 지금보다 뒤(시계가 뒤로 감)면 믿지 않는다: 예전에는 그 시각 + 14일까지 잠금이 남았다 (버그잡이 4)
+  assert.equal(readSavedLock({ ...lock, savedAt: at + 365 * 86_400_000 }, '1.3.9', at), undefined);
   assert.equal(readSavedLock('min-version: 1.4.0', '1.0.0'), undefined);
   assert.equal(readSavedLock(lock, '개발판'), undefined);
   // 남는 칸은 버린다
