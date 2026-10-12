@@ -62,3 +62,23 @@ test('깨진 파일 이름이 겹치면 -2 를 붙인다', () => {
   writeFileSync(first, '');
   assert.equal(brokenName(f, at), join(root, 'x-broken-20260102-030405-2.json'));
 });
+
+test('복사본을 두는 파일이 JSON 이어도 객체가 아니면(null 등) 깨진 것으로 보고 좋은 .bak 을 지킨다 (버그잡이 4)', () => {
+  const f = join(root, 'settings-null.json');
+  writeJsonFile(f, { petName: '콩이' });
+  assert.deepEqual(readJsonFile(f, { keepBak: true }).value, { petName: '콩이' });
+  for (const bad of ['null', '"글"', '3', 'true']) {
+    writeFileSync(f, bad);
+    const r = readJsonFile(f, { keepBak: true });
+    assert.deepEqual(r.value, { petName: '콩이' }, bad);
+    assert.equal(r.trouble?.restored, true);
+    assert.equal(readFileSync(bakOf(f), 'utf8'), JSON.stringify({ petName: '콩이' }, null, 2));
+  }
+  // 배열은 그대로 (사용자 AI 목록)
+  writeJsonFile(f, [1]);
+  assert.deepEqual(readJsonFile(f, { keepBak: true }).value, [1]);
+  // 복사본을 두지 않는 파일은 예전처럼 값 그대로
+  const g = join(root, 'plain-null.json');
+  writeFileSync(g, 'null');
+  assert.equal(readJsonFile(g).value, null);
+});
