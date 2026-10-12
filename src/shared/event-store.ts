@@ -868,6 +868,9 @@ export function parseQuickEventInfo(
   // 오전, 오후 없이 1~7시라 오후로 읽었다 (아침 말이 있으면 오전으로, 없으면 오전으로 바꿀 길을 준다)
   let bare = false;
   const bareHour = (p: ClockPart) => !p.mer && !p.padded && p.h >= 1 && p.h <= 7;
+  // 때 낱말 없이 적은 8~11시 (두 자리 "08:00" 은 24시 표기라 뺀다). 저녁 말이 있거나 오전이 이미 지난 "오늘"이면 오후로
+  let plainHour = false;
+  const plain = (p: ClockPart | null | undefined) => !!p && !p.mer && !p.padded && p.h >= 8 && p.h <= 11;
   // "오전 중", "오후 중" 시간대: 날짜를 정할 때 시작이 아니라 끝이 지났는지 본다
   let windowLength = 0;
 
@@ -883,6 +886,7 @@ export function parseQuickEventInfo(
     nextDay = r.nextDay;
     meridiem = Boolean(a?.mer || b?.mer);
     bare = !meridiem && !!a && bareHour(a);
+    plainHour = !meridiem && plain(a);
   } else {
     const en = enRange(rest);
     if (en) {
@@ -893,6 +897,7 @@ export function parseQuickEventInfo(
       durationMin = r.length;
       meridiem = Boolean(en.a.mer || en.b.mer);
       bare = !meridiem && bareHour(en.a);
+      plainHour = !meridiem && plain(en.a);
     }
   }
 
@@ -940,6 +945,7 @@ export function parseQuickEventInfo(
       nextDay = c.nextDay;
       meridiem = Boolean(p.mer);
       bare = bareHour(p);
+      plainHour = plain(p);
     }
   }
   if (minute === null) {
@@ -952,6 +958,7 @@ export function parseQuickEventInfo(
       nextDay = c.nextDay;
       meridiem = Boolean(p.mer);
       bare = bareHour(p);
+      plainHour = plain(p);
     }
   }
   if (minute === null) {
@@ -959,6 +966,7 @@ export function parseQuickEventInfo(
     if (at) {
       let h = Number(at[1] ?? at[2]);
       bare = h >= 1 && h <= 7;
+      plainHour = h >= 8 && h <= 11;
       if (bare) h += 12;
       minute = h * 60;
     }
@@ -1007,6 +1015,15 @@ export function parseQuickEventInfo(
   if (bare && minute >= 12 * 60 && MORNING_CUE.test(title)) {
     minute -= 12 * 60;
     bare = false;
+  }
+  // 때 낱말 없는 8~11시: 저녁 말("오늘 8시 저녁", "today at 8 dinner")이 있으면 오후. 없어도 "오늘"이라 적었고
+  // 오전 그 시각은 지났는데 오후 그 시각은 아직이면 오후 (밤 8시에 "오늘 8시 저녁"이 지난 오전 8시가 되던 것)
+  if (plainHour && !tonight && minute < 12 * 60 && !MORNING_CUE.test(title)) {
+    const pm = minute + 12 * 60;
+    const fits = pm + (durationMin ?? 0) <= 24 * 60;
+    const todaySaid = said === today && !wd;
+    if (fits && (EVENING_CUE.test(title) || (todaySaid && minute < nowMinute && pm >= nowMinute)))
+      minute = pm;
   }
   const ev = { title, day: dayFor(minute), minute, durationMin };
   if (!bare || minute < 12 * 60 || EVENING_CUE.test(title)) return { ev };

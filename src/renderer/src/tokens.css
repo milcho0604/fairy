@@ -6,7 +6,9 @@
   --bg: #fbf8f4;
   --panel: #ffffff;
   --ink: #1f2328;
-  --muted: #6b6f76;
+  /* 흐린 글자. 마감 칩(--code) 4.71:1, 옅은 강조 띠(여정 칸, 고른 카드) 4.6 이상. 예전 #6b6f76 은 칩 4.38,
+     처음 안내 고른 카드 4.31 로 모자랐다 (2026-10-12 접근성 점검). 색상은 그대로 밝기만 낮췄다 */
+  --muted: #666a71;
   --line: #e6dfd6;
   /* 강조색. 흰 글자를 얹는 단추와 강조 글자(링크) 둘 다 쓴다. 흰 바탕 4.89:1, --bg 4.62:1 (WCAG AA 작은 글자 4.5:1).
      예전 #c4854a 는 3.09:1 이었다(2026-10-08 회귀 시험). 색상(주황 갈색)은 그대로 두고 밝기만 낮췄다 */
@@ -26,7 +28,7 @@
   /* 성공색을 바탕으로 깐 곳의 글자, 그림(끝낸 할 일 동그라미의 V) */
   --ok-ink: #ffffff;
   /* 선택 상자의 둥근 V 화살표. 그림 주소 안에서는 변수를 못 써서 색마다 하나씩 둔다(--muted, --accent 와 같은 색) */
-  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1.6 1.8 6 6.2l4.4-4.4' fill='none' stroke='%236b6f76' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1.6 1.8 6 6.2l4.4-4.4' fill='none' stroke='%23666a71' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --chevron-hover: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1.6 1.8 6 6.2l4.4-4.4' fill='none' stroke='%239f632c' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --focus-ring: color-mix(in srgb, var(--accent) 60%, transparent);
 }

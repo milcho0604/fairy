@@ -260,22 +260,20 @@ p.empty {
 
 /* 제목 단추는 줄을 채우되 누르기는 글자(.title-text)만 받는다. 짧은 제목 옆 빈자리에는 마우스를 올리면 뜨는 단추가
    겹쳐서 제목 누르기가 단추 누르기가 됐다. 줄 끝 단추가 넓으면(반복, 알림, "내일 오전 9:00") 제목이 한 글자씩 접히지 않게
-   제목 자리를 남기고 단추를 다음 줄로 */
+   제목 자리를 남기고 단추를 다음 줄로.
+   남길 자리는 8em(줄의 45% 까지)이되 제목 글자 폭보다 넓게 잡지 않는다: "rent (31st)", "월세" 처럼 짧은 제목은 칩
+   (매달, 알림, 마감, 별)이 들어갈 자리가 있으면 같은 줄에 두고, 긴 제목이 좁아질 때만 칩을 다음 줄로 (2026-10-12).
+   예전에는 늘 8em(영어), 5em(한국어)을 남겨 짧은 제목인데도 칩이 다음 줄로 갔고, 한국어 5em 은 "프레젠테이션
+   준비하기" 를 세 줄로 접었다 */
 .todo .title {
   flex: 1 1 0;
-  min-width: min(5em, 40%);
+  min-width: calc-size(max-content, min(size, 8em, 45%));
   pointer-events: none;
   padding: 0;
   border: 0;
   background: none;
   text-align: left;
   cursor: text;
-}
-
-/* 영어는 낱말이 길어 5em 이면 "Prepare the weekly meeting slides" 가 네 줄로 접혔다. 제목 자리를 더 남기고
-   칩(단계, 알림, "Today 2:00 PM", 별)을 다음 줄로 (2026-10-11 영어 화면 점검) */
-:where(:lang(en)) .todo .title {
-  min-width: min(8em, 45%);
 }
 
 .todo .title-text {

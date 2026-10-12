@@ -11,6 +11,11 @@
   margin-bottom: 8px;
 }
 
+/* 여정 칸은 강조색을 옅게 깔아 강조색 글자(.link)가 4.28:1 이었다. 글자색 쪽으로 조금 당겨 4.5:1 을 넘긴다 */
+.journey .link {
+  color: color-mix(in srgb, var(--accent) 85%, var(--ink));
+}
+
 .journey-track {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
@@ -104,10 +109,11 @@ p.journey-now.done {
   white-space: nowrap;
 }
 
+/* 단추 위 코인 알약. 예전에는 흰빛을 옅게 깐 바탕이라 흰 글자가 3.25:1 이었다. 테두리만 두어 단추 글자 대비 그대로 */
 .journey-coin {
-  padding: 0 6px;
+  padding: 0 5px;
+  border: 1px solid currentColor;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--accent-ink) 22%, transparent);
   font-size: 11px;
   line-height: 17px;
 }

@@ -114,10 +114,21 @@ export function OnboardingApp() {
     setSnap((v) => v && { ...v, settings: next });
   };
 
+  // 쪽을 넘기면 화면 읽기 프로그램이 몇 쪽인지와 그 쪽 제목을 읽는다 (다음 단추에 커서가 남아 바뀐 것을 몰랐다)
+  const pageTitles = [
+    t('onboarding.hello.title'),
+    t('routine.onb.title', { name: petName }),
+    t('onboarding.look.title'),
+    t('onboarding.tips.title'),
+  ];
+
   return (
     <div className="onboard">
+      <p className="sr-only" aria-live="polite">
+        {`${t('onboarding.pages', { page: page + 1, total: PAGES })}. ${pageTitles[page] ?? ''}`}
+      </p>
       <header>
-        <ol className="dots" aria-label={t('onboarding.pages', { page: page + 1, total: PAGES })}>
+        <ol className="dots" aria-hidden="true">
           {Array.from({ length: PAGES }, (_, i) => (
             <li key={String(i)} className={i === page ? 'on' : i < page ? 'done' : ''} />
           ))}

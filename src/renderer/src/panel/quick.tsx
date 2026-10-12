@@ -110,8 +110,9 @@ function QuickAdd() {
           void submit(pasted, false);
         }}
       />
+      {/* 화면 읽기 프로그램도 넣은 결과(어디에, 언제로)와 실패를 읽게 (패널 알림과 같은 status, 실패는 alert) */}
       {msg && (
-        <span className={`quick-msg ${failed ? 'error' : ''}`} title={msg}>
+        <span className={`quick-msg ${failed ? 'error' : ''}`} title={msg} role={failed ? 'alert' : 'status'}>
           {msg}
         </span>
       )}
