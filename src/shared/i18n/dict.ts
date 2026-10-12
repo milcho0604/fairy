@@ -41,6 +41,7 @@ import * as tray from './tray.ts';
 import type { Translation } from './types.ts';
 import * as voice from './voice.ts';
 import * as voiceIdle from './voice-idle.ts';
+import * as voicePlay from './voice-play.ts';
 
 export const ko = {
   ...common.ko,
@@ -80,6 +81,7 @@ export const ko = {
   ...together.ko,
   ...voice.ko,
   ...voiceIdle.ko,
+  ...voicePlay.ko,
   ...speech.ko,
   ...calendar.ko,
   ...pin.ko,
@@ -123,6 +125,7 @@ export const en: Translation<typeof ko> = {
   ...together.en,
   ...voice.en,
   ...voiceIdle.en,
+  ...voicePlay.en,
   ...speech.en,
   ...calendar.en,
   ...pin.en,

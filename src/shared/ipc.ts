@@ -288,6 +288,12 @@ export const SETTINGS = {
   power: 'settings:power',
 } as const;
 
+/** 캘린더 가져오기 결과 글과 잘 됐는지 (못 가져왔으면 설정 창이 빨간 글씨로 알린다) */
+export interface CalSync {
+  text: string;
+  ok: boolean;
+}
+
 export interface SettingsSnapshot {
   settings: Settings;
   scale: number;
@@ -300,7 +306,7 @@ export interface SettingsSnapshot {
   /** 내 claude 에 연결된 MCP 서버 (v2, 하루 한 번 읽어 둔 것) */
   myMcpServers: string[];
   /** 마지막 캘린더 가져오기 결과 */
-  calendarLast: string;
+  calendarLast: CalSync;
   /** 모델 목록 (v2)과 무료 AI 모델을 받았는지 (id 별) */
   models: { catalog: Catalog; localReady: Record<string, boolean> };
   /** 만든 펫 보관함 (6단계). thumb 는 그림 data URL */
@@ -382,7 +388,8 @@ export interface SettingsBridge {
   openOnboarding(): void;
   /** 백업 폴더 만들기. 만든 경로 (그만두면 빈 글) */
   exportData(): Promise<string>;
-  importData(): Promise<string>;
+  /** 백업 가져오기. 못 가져왔으면 ok 가 거짓 (그만두면 빈 message) */
+  importData(): Promise<{ ok: boolean; message: string }>;
   exportPet(): Promise<string>;
   reveal(path: string): void;
   importPet(): Promise<{ ok: boolean; message: string }>;
@@ -393,7 +400,7 @@ export interface SettingsBridge {
   galleryAdopt(id: string, asFriend: boolean): Promise<{ ok: boolean; message: string }>;
   /** 지금 펫을 친구에게 보낼 판 2 .jjpet 으로 저장한다 (만든 사람은 선택). 그만두면 빈 message */
   galleryShare(meta: { author?: string; license: PetLicense }): Promise<{ ok: boolean; message: string }>;
-  syncCalendar(): Promise<string>;
+  syncCalendar(): Promise<CalSync>;
   refreshMcp(): Promise<string[]>;
   /** 앱을 다시 켠다. 창은 열릴 때 말을 읽어서 말을 바꾸면 다시 켜야 한다 */
   relaunch(): void;

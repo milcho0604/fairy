@@ -32,7 +32,8 @@ export type AiEvent =
   | { type: 'session'; id: string }
   | { type: 'usage'; usage: AiUsage }
   | { type: 'delta'; text: string }
-  | { type: 'done'; text: string }
+  /** tools: 도구를 불렀다 (글 없이 끝나도 도구만 쓴 정상 경우, empty-answer.ts) */
+  | { type: 'done'; text: string; tools?: boolean }
   | { type: 'error'; error: AiError };
 
 export type AiErrorKind =

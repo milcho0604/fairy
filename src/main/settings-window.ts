@@ -16,6 +16,7 @@ import { issueUrl } from '../shared/feedback.ts';
 import type { GalleryList } from '../shared/gallery.ts';
 import { t } from '../shared/i18n/index.ts';
 import {
+  type CalSync,
   type MakerTarget,
   SETTINGS,
   type SettingsSection,
@@ -58,12 +59,12 @@ export interface SettingsWindowOptions {
   privateWords: () => string[];
   v2: {
     exportData: (win?: BrowserWindow) => Promise<string>;
-    importData: (win?: BrowserWindow) => Promise<string>;
+    importData: (win?: BrowserWindow) => Promise<{ ok: boolean; message: string }>;
     exportPet: (win?: BrowserWindow) => Promise<string>;
     importPet: (win?: BrowserWindow) => Promise<{ ok: boolean; message: string }>;
     importFriend: (win?: BrowserWindow) => Promise<{ ok: boolean; message: string }>;
-    syncCalendar: () => Promise<string>;
-    calendarLast: () => string;
+    syncCalendar: () => Promise<CalSync>;
+    calendarLast: () => CalSync;
     mcpServers: () => string[];
     refreshMcp: () => Promise<string[]>;
     catalog: () => Catalog;
@@ -228,7 +229,9 @@ export function createSettingsWindow({
   ipcMain.on(SETTINGS.reveal, (e, path: unknown) => {
     if (fromSettings(e) && wasExported(path)) shell.showItemInFolder(path);
   });
-  ipcMain.handle(SETTINGS.importData, (e) => (fromSettings(e) ? v2.importData(win) : ''));
+  ipcMain.handle(SETTINGS.importData, (e) =>
+    fromSettings(e) ? v2.importData(win) : { ok: true, message: '' },
+  );
   ipcMain.handle(SETTINGS.exportPet, async (e) => {
     if (!fromSettings(e)) return '';
     const path = await v2.exportPet(win);
@@ -250,7 +253,9 @@ export function createSettingsWindow({
   ipcMain.handle(SETTINGS.galleryShare, (e, meta: unknown) =>
     fromSettings(e) ? gallery.share(meta, win) : { ok: false, message: '' },
   );
-  ipcMain.handle(SETTINGS.syncCalendar, (e) => (fromSettings(e) ? v2.syncCalendar() : ''));
+  ipcMain.handle(SETTINGS.syncCalendar, (e) =>
+    fromSettings(e) ? v2.syncCalendar() : { text: '', ok: true },
+  );
   ipcMain.handle(SETTINGS.refreshMcp, (e) => (fromSettings(e) ? v2.refreshMcp() : []));
   ipcMain.on(SETTINGS.relaunch, (e) => {
     if (!fromSettings(e)) return;

@@ -57,6 +57,7 @@ import {
   treatCaught,
   treatX,
 } from '../shared/minigames.ts';
+import { voiced } from '../shared/persona-voice.ts';
 import { localDay } from '../shared/todo-store.ts';
 import { onDisplaysChanged } from './display-watch.ts';
 import { decoyBox, MOLE_CSS, moleBody } from './mole-art.ts';
@@ -185,7 +186,8 @@ export function createMiniGames(o: MiniGameOptions) {
     | undefined;
 
   const say = (key: I18nKey, vars?: Record<string, string | number>, ttlMs = 3500) =>
-    o.pet().say({ kind: 'answer', text: (t as (k: string, v?: unknown) => string)(key, vars), ttlMs });
+    // 고른 성격 말투로 (존댓말 비서면 존댓말, 이슈 #65)
+    o.pet().say({ kind: 'answer', text: voiced(key, vars), ttlMs });
 
   function blockOf(game: MiniGame): PlayBlock | undefined {
     const pet = o.pet();
@@ -232,7 +234,7 @@ export function createMiniGames(o: MiniGameOptions) {
     signal.addEventListener('abort', stop, { once: true });
     void o.pet().say({
       kind: 'answer',
-      text: (t as (k: string, v?: unknown) => string)(key, vars),
+      text: voiced(key, vars),
       ttlMs: ms + 1000,
       signal: close.signal,
     });
@@ -568,7 +570,7 @@ export function createMiniGames(o: MiniGameOptions) {
     for (let round = 0; round < RPS_MAX_ROUNDS && !signal.aborted; round++) {
       const answer = await pet.say({
         kind: 'answer',
-        text: round === 0 ? t('play.rps.ask') : t('play.rps.again'),
+        text: voiced(round === 0 ? 'play.rps.ask' : 'play.rps.again'),
         buttons: HANDS.map((h) => ({ id: h, label: label(h) })),
         ttlMs: 15_000,
         signal,
@@ -827,7 +829,7 @@ export function createMiniGames(o: MiniGameOptions) {
     const signal = run.abort.signal;
     const answer = await pet.say({
       kind: 'answer',
-      text: t('fun.five.ask'),
+      text: voiced('fun.five.ask'),
       buttons: [{ id: 'five', label: t('fun.five.button') }],
       ttlMs: HIGH_FIVE.waitMs,
       signal,

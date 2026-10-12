@@ -314,3 +314,23 @@ test('내 말투의 직접 쓴 말: 그때의 말을 바꾸고 자리 표시를 
     setSpeechSource({ style: () => DEFAULT_STYLE, petName: () => '' });
   }
 });
+
+/** 펫이 말풍선이나 놀이 채팅으로 하는 놀이 말과 친구 펫 인사 (메뉴, 단추 글, 끝말잇기 꼬리표는 빼고) */
+const PLAY_SPEECH =
+  /^(play\.(block|bubbles|laser|treats|tag|mole)\.|play\.rps\.(ask|again|win|lose|draw|tired)|fun\.(joke|tickle)\.|fun\.five\.(ask|hit|miss)|fun\.chain\.(start|next|wrongStart|used|short|stumped|tired|giveUp)|pet\.hello\.)/;
+
+test('놀이 말과 친구 펫 인사도 존댓말 비서면 존댓말 (이슈 #65)', () => {
+  const keys = Object.keys(dicts.ko).filter((k) => PLAY_SPEECH.test(k)) as I18nKey[];
+  assert.ok(keys.length > 60, `놀이 말 ${keys.length}개`);
+  const vars = { name: '밀크', hand: '✊ 바위', coins: 1, n: 3, popped: 4, word: '사과', need: "'과' 자" };
+  setLang('ko');
+  for (const key of keys) {
+    for (const dict of [dicts.ko, dicts.en])
+      assert.ok(`voice.polite.${key}` in dict, `voice.polite.${key} 없음`);
+    const polite = voiced(key, vars, 'polite');
+    assert.notEqual(polite, t(key, vars as never), `${key} 이 반말 그대로`);
+    assert.match(polite, /요|니다/, `${key}: ${polite}`);
+  }
+  // 다정한 친구는 원래 말 그대로
+  assert.equal(voiced('pet.hello.1', undefined, 'friend'), t('pet.hello.1'));
+});
