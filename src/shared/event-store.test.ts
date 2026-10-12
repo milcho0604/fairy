@@ -3,9 +3,11 @@ import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { type Db, MIGRATIONS, migrate, SCHEMA_VERSION } from './db-schema.ts';
 import {
+  allDayTimes,
   EventStore,
   parseEventInput,
   parseQuickEvent,
+  repairAllDayZone,
   repairEventTimes,
   takeKoDue,
   timeLabel,
@@ -482,4 +484,42 @@ test('본문 합치기: 한쪽만 바뀌면 그쪽, 끝에 덧붙인 것은 잇�
   assert.equal(mergeNoteText('a\n', 'a\nb\n', 'a\n\nz'), 'a\nb\n\nz');
   assert.equal(mergeNoteText('', '창', '덧'), '창덧');
   assert.equal(mergeNoteText('abc', 'abX', 'Zbc'), 'abX');
+});
+
+test('시간대를 바꿔 켜도 종일 일정은 만든 날 그대로 (서울에서 만들고 LA, LA 에서 만들고 서울)', async () => {
+  const { localDay } = await import('./todo-store.ts');
+  const was = process.env.TZ;
+  try {
+    for (const [from, to] of [
+      ['Asia/Seoul', 'America/Los_Angeles'],
+      ['America/Los_Angeles', 'Asia/Seoul'],
+      ['Pacific/Auckland', 'Europe/London'],
+    ] as const) {
+      process.env.TZ = from;
+      const db = new DatabaseSync(':memory:') as unknown as Db;
+      migrate(db);
+      const events = new EventStore(db);
+      const one = events.add({ title: '하루', ...allDayTimes('2026-10-20', null), allDay: true }, T0);
+      const many = events.add(
+        { title: '여러 날', ...allDayTimes('2026-10-20', '2026-10-22'), allDay: true },
+        T0,
+      );
+      const timed = events.add({ title: '시각', startAt: Date.UTC(2026, 9, 20, 6, 0) }, T0);
+      process.env.TZ = to;
+      assert.equal(repairAllDayZone(db), 2, `${from} → ${to}`);
+      const a = events.get(one.id);
+      const b = events.get(many.id);
+      assert.equal(a && localDay(a.startAt), '2026-10-20', `${from} → ${to}`);
+      assert.equal(a?.endAt, null);
+      assert.equal(b && localDay(b.startAt), '2026-10-20');
+      assert.equal(b?.endAt != null && localDay(b.endAt), '2026-10-23');
+      // 시각 일정은 그 순간 그대로 (지금 시간대 시각으로 보인다)
+      assert.equal(events.get(timed.id)?.startAt, Date.UTC(2026, 9, 20, 6, 0));
+      // 한 번 고치면 다시 켜도 그대로
+      assert.equal(repairAllDayZone(db), 0);
+    }
+  } finally {
+    if (was === undefined) delete process.env.TZ;
+    else process.env.TZ = was;
+  }
 });

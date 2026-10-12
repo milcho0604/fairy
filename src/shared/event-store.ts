@@ -121,6 +121,50 @@ export function repairEventTimes(db: Db, now: number): number {
   return Number(ends.changes) + Number(starts.changes);
 }
 
+const HOUR_MS = 3_600_000;
+const QUARTER_MS = 15 * 60_000;
+
+/**
+ * 종일 일정 시각(어느 시간대의 0시)을 만든 날로. 지금 시간대의 0시면 그날이다.
+ * 아니면 시간대를 바꿔 켠 것이다: 그 시각이 0시였던 시간대 차(-12~+14시간, 15분 단위)를 찾아 그 날짜를 돌려준다.
+ * 둘 다 되는 +12~+14 와 -12~-10 은 + 쪽(뉴질랜드, 피지, 통가)으로 본다. 0시였던 시간대가 없으면 undefined
+ */
+export function allDayOrigin(ms: number): string | undefined {
+  const here = localDay(ms);
+  if (dayStartMs(here) === ms) return here;
+  const off = ((-ms % DAY_MS) + DAY_MS) % DAY_MS;
+  if (off % QUARTER_MS !== 0) return undefined;
+  const d = new Date(ms + (off <= 14 * HOUR_MS ? off : off - DAY_MS));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+
+/**
+ * 시간대를 바꿔 켰을 때 종일 일정을 만든 날로 되돌린다 (켤 때 한 번). 종일 일정은 첫날 현지 0시로 저장해,
+ * 서울에서 넣은 10월 20일 종일 일정이 LA 에서 켜면 10월 19일 오전 8시가 되어 19일 칸에 보였다 (버그잡이 b).
+ * 시각 일정은 그 순간 그대로 둔다. 고친 행 수
+ */
+export function repairAllDayZone(db: Db): number {
+  const rows = db.prepare('select id, start_at, end_at from event where all_day = 1').all() as {
+    id: number;
+    start_at: number;
+    end_at: number | null;
+  }[];
+  let fixed = 0;
+  for (const r of rows) {
+    const start = Number(r.start_at);
+    const end = r.end_at === null ? null : Number(r.end_at);
+    const first = allDayOrigin(start);
+    if (first === undefined) continue;
+    const nextStart = dayStartMs(first);
+    const after = end === null ? undefined : allDayOrigin(end);
+    const nextEnd = end === null || after === undefined ? end : dayStartMs(after);
+    if (nextStart === start && nextEnd === end) continue;
+    db.prepare('update event set start_at = ?, end_at = ? where id = ?').run(nextStart, nextEnd, r.id);
+    fixed++;
+  }
+  return fixed;
+}
+
 export class EventStore {
   #db: Db;
   #reminders: ReminderStore;
