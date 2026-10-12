@@ -107,6 +107,13 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
         : s.notes.filter((n) => `${n.title} ${n.preview}`.toLowerCase().includes(local)),
   );
   const lastPinned = list.findLast((n) => n.pinnedAt !== null)?.id;
+  // 찾는 말에 맞는 메모가 없으면 그 글로 바로 메모를 만든다 (처음 쓰는 사람이 찾기 칸에 메모를 적고 Enter 를 눌러
+  // "찾는 메모가 없어" 에서 막혔다, 2026-10-12)
+  const makeFromQuery = async () => {
+    const n = await bridge.noteAdd(q);
+    setQuery('');
+    setOpen(n);
+  };
   return (
     <>
       <div className="add row">
@@ -125,6 +132,10 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
               takeEsc(e);
               setQuery('');
             }
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing && q && list.length === 0) {
+              e.preventDefault();
+              void makeFromQuery();
+            }
           }}
         />
         <button
@@ -140,7 +151,14 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
       </div>
       <ul className="notes scroll">
         {list.length === 0 && (
-          <li className="empty">{q ? t('panel.note.notFound') : t('panel.note.empty.list')}</li>
+          <li className="empty">
+            {q && s.notes.length > 0 ? t('panel.note.notFound') : t('panel.note.empty.list')}
+            {q && (
+              <button type="button" className="ghost note-make" onClick={() => void makeFromQuery()}>
+                {t('panel.note.makeFrom')}
+              </button>
+            )}
+          </li>
         )}
         {list.map((n) => (
           <NoteRow

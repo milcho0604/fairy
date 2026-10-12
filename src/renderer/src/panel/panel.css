@@ -195,7 +195,15 @@ input {
   list-style: none;
 }
 
-.panel > .todos {
+.panel-main,
+.panel-tabpanel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-tabpanel > .todos {
   flex: 1;
   overflow-y: auto;
   scrollbar-width: thin;
@@ -665,7 +673,8 @@ li.pin-end {
 .quick input {
   flex: 1;
   min-width: 0;
-  height: 34px;
+  /* 글씨가 커지면(최소 글자 크기 설정) 칸도 같이 커지게 높이는 최소만 */
+  min-height: 34px;
   padding: 0 4px;
   border: 0;
   background: transparent;
@@ -801,8 +810,8 @@ li.pin-end {
   margin-top: 12px;
 }
 
-.today h3,
-.events-list h3 {
+.today h2,
+.events-list h2 {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -1363,7 +1372,7 @@ li.pin-end {
   margin-top: 12px;
 }
 
-.shop h3 {
+.shop h2 {
   margin: 0 0 4px;
   font-size: 12px;
   font-weight: 600;
@@ -1466,11 +1475,11 @@ li.pin-end {
 }
 
 /* 집 모양 고르기: 지금 단계로 그린 작은 그림 넷 */
-.shop h3.sub {
+.shop h2.sub {
   margin-top: 10px;
 }
 
-.shop h3.sub small {
+.shop h2.sub small {
   font-weight: 400;
 }
 
@@ -1730,4 +1739,26 @@ li:is(.todo, .event) .tools .extra .due.none {
 .panel header .icon-btn svg {
   width: 16px;
   height: 16px;
+}
+
+/* 찾는 메모가 없을 때 "이 내용으로 메모 만들기" (메모 줄 단추 모양을 덮어 가운데 작은 단추로) */
+.panel .notes li.empty > .note-make {
+  display: inline-flex;
+  width: auto;
+  margin: 10px auto 0;
+  padding: 0 12px;
+  height: 30px;
+  line-height: 1;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--accent);
+  font-size: 12.5px;
+}
+
+.panel .notes li.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }

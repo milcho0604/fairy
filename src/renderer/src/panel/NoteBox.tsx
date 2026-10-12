@@ -28,10 +28,10 @@ export function NoteBox() {
   };
   return (
     <section className="note-box" aria-labelledby="note-box-title">
-      <h3>
+      <h2>
         <span id="note-box-title">{t('note.box')}</span>
         {unread > 0 && <small className="note-unread">{t('note.boxUnread', { n: unread })}</small>}
-      </h3>
+      </h2>
       {box.notes.length === 0 ? (
         <p className="empty-line">{box.on ? t('note.boxEmpty') : t('note.boxOff')}</p>
       ) : (

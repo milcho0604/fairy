@@ -205,9 +205,9 @@ export function CalendarView({
         >
           ‹
         </button>
-        <h3 className="cal-title" aria-live="polite">
+        <h2 className="cal-title" aria-live="polite">
           {title}
-        </h3>
+        </h2>
         <button
           type="button"
           className="cal-nav"
@@ -372,12 +372,12 @@ function DayList({
   const repeats = items.filter((i) => i.kind === 'repeat');
   return (
     <section className={`cal-day ${picked ? 'on' : ''}`} data-day={day}>
-      <h3>
+      <h2>
         <button type="button" className="cal-day-head" aria-pressed={picked} onClick={onPick}>
           {dayHeading(day, s.today)}
         </button>
         {holiday && <small className="cal-holiday">{t(holiday)}</small>}
-      </h3>
+      </h2>
       {items.length === 0 && <p className="empty-line">{t('cal.day.empty')}</p>}
       {evs.length > 0 && (
         <ul className="events">

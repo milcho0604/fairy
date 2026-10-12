@@ -27,7 +27,7 @@ export function JourneyCard({ s }: { s: PanelState }) {
   const step = view.today;
   return (
     <section className="journey" aria-labelledby="journey-title">
-      <h3>
+      <h2>
         <span id="journey-title">{t('bond.journey.title', { day: view.day })}</span>
         {!view.finishedToday && (
           <button
@@ -42,7 +42,7 @@ export function JourneyCard({ s }: { s: PanelState }) {
             {sure ? t('bond.journey.skipSure') : t('bond.journey.skip')}
           </button>
         )}
-      </h3>
+      </h2>
       <ol
         className="journey-track"
         aria-label={t('bond.journey.progress', { n: view.steps.filter((x) => x.tried).length })}

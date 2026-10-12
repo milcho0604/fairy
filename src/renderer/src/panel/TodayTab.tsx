@@ -100,7 +100,7 @@ export function TodayTab({
         <RemindCard s={s} />
         {next && (
           <section className="next-up">
-            <h3>{t('panel.today.next')}</h3>
+            <h2>{t('panel.today.next')}</h2>
             <div className="next-row">
               <span className="next-text">
                 <strong className="next-title">{next.title}</strong>
@@ -186,12 +186,12 @@ export function TodayTab({
 
         {s.missed.length > 0 && (
           <section className="missed">
-            <h3>
+            <h2>
               {t('panel.today.missed')}
               <button type="button" className="link" onClick={() => bridge.missedClear()}>
                 {t('panel.today.missedClear')}
               </button>
-            </h3>
+            </h2>
             <ul className="events">
               {s.missed.map((m) => (
                 <li key={`${m.at}-${m.text}`}>
@@ -204,12 +204,12 @@ export function TodayTab({
         )}
 
         <section>
-          <h3>
+          <h2>
             {t('panel.today.events')}
             <button type="button" className="link" onClick={() => goTo('event')}>
               {t('panel.today.addEvent')}
             </button>
-          </h3>
+          </h2>
           {events.length === 0 ? (
             <p className="empty-line">{t('panel.today.noEvents')}</p>
           ) : (
@@ -250,7 +250,7 @@ export function TodayTab({
         </section>
 
         <section>
-          <h3>
+          <h2>
             {t('panel.todo.due')}
             <span className="h3-links">
               {overdue > 0 && (
@@ -269,7 +269,7 @@ export function TodayTab({
                 {t('panel.today.allTodos')}
               </button>
             </span>
-          </h3>
+          </h2>
           {due.length === 0 ? (
             <p className="empty-line">{t('panel.today.noDue')}</p>
           ) : (
@@ -291,7 +291,7 @@ export function TodayTab({
 
         {important.length > 0 && (
           <section>
-            <h3>{t('panel.todo.important')}</h3>
+            <h2>{t('panel.todo.important')}</h2>
             <ul className="todos">
               {important.map((todo) => (
                 <TodoRow

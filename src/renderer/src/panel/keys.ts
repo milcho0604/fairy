@@ -57,3 +57,16 @@ export function undoByKey(e: ModKeyLike, mac: boolean, fieldText: string | undef
   if ((e.code ?? '') !== 'KeyZ' && e.key.toLowerCase() !== 'z') return false;
   return !fieldText;
 }
+
+/**
+ * 탭 줄에서 ← → Home End (aria tablist 관례, 설정 창 탭과 같다): 지금 탭 자리(i)에서 갈 자리. 탭 키가 아니면 undefined.
+ * 끝에서는 반대 끝으로 돌아 들어간다
+ */
+export function tabStepByKey(key: string, i: number, count: number): number | undefined {
+  if (count <= 0) return undefined;
+  if (key === 'ArrowLeft') return (i - 1 + count) % count;
+  if (key === 'ArrowRight') return (i + 1) % count;
+  if (key === 'Home') return 0;
+  if (key === 'End') return count - 1;
+  return undefined;
+}

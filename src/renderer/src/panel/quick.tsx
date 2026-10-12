@@ -65,6 +65,25 @@ function QuickAdd() {
     clearTimeout(closeTimer.current);
     closeTimer.current = setTimeout(() => bridge.close(), CLOSE_MS);
   };
+  // 창 높이를 내용에 맞춘다: 큰 글씨(확대)에서 64 창이 입력칸 위아래를 잘랐다. 가장 큰 줄 높이에 테두리(2),
+  // 창 여백(위아래 6), 숨 쉴 자리(위아래 8)를 더한다. 보통 크기면 64 그대로 (메인이 확대 배율을 곱한다)
+  const cardRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const card = cardRef.current;
+    if (!card) return;
+    const fit = () => {
+      const tallest = Math.max(0, ...[...card.children].map((c) => c.getBoundingClientRect().height));
+      bridge.quickFit(Math.ceil(tallest) + 2 + 12 + 16);
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    for (const c of card.children) ro.observe(c);
+    window.addEventListener('resize', fit);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', fit);
+    };
+  }, []);
   useEffect(() => {
     ref.current?.focus();
     window.addEventListener('focus', () => ref.current?.focus());
@@ -76,7 +95,8 @@ function QuickAdd() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
   return (
-    <div className="quick card-window">
+    <main className="quick card-window" ref={cardRef}>
+      <h1 className="sr-only">{t('common.title.quick')}</h1>
       <PetFace />
       <input
         ref={ref}
@@ -121,7 +141,7 @@ function QuickAdd() {
           {t('panel.toast.toAm')}
         </button>
       )}
-    </div>
+    </main>
   );
 }
 

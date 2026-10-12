@@ -7,7 +7,7 @@
   background: color-mix(in srgb, var(--accent) 6%, var(--bg));
 }
 
-.journey h3 {
+.journey h2 {
   margin-bottom: 8px;
 }
 
@@ -151,7 +151,7 @@ p.journey-now.done {
   user-select: none;
 }
 
-.week-card-dialog h3 {
+.week-card-dialog h2 {
   margin: 0;
   font-size: 13px;
   color: var(--ink);

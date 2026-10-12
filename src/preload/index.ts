@@ -316,11 +316,12 @@ if (kind === 'panel' || kind === 'quick') {
     openSettings: () => ipcRenderer.send(PANEL.openSettings),
     lookTogether: () => ipcRenderer.send(PANEL.lookTogether),
     close: () => ipcRenderer.send(PANEL.close),
+    quickFit: (contentCss: number) => ipcRenderer.send(PANEL.quickFit, contentCss),
     onState: (listener) => {
       ipcRenderer.on(PANEL.state, (_e, state: PanelState) => listener(state));
     },
     noteGet: (id: number) => ipcRenderer.invoke(PANEL.noteGet, id),
-    noteAdd: () => ipcRenderer.invoke(PANEL.noteAdd),
+    noteAdd: (text?: string) => ipcRenderer.invoke(PANEL.noteAdd, text),
     noteUpdate: (id, patch) => ipcRenderer.send(PANEL.noteUpdate, id, patch),
     noteRemove: (id: number) => ipcRenderer.send(PANEL.noteRemove, id),
     noteRestore: (id: number) => ipcRenderer.send(PANEL.noteRestore, id),

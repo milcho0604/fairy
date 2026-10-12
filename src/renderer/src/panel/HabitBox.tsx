@@ -63,14 +63,14 @@ export function HabitBox({ s, onComplete }: { s: PanelState; onComplete: (todo: 
 
   return (
     <section className="habits">
-      <h3>
+      <h2>
         {t('habit.title')}
         {habits.length > 0 && (
           <small className={left === 0 ? 'habit-all' : ''}>
             {left === 0 ? t('habit.allDone') : t('habit.left', { n: left })}
           </small>
         )}
-      </h3>
+      </h2>
       {habits.length === 0 ? (
         <p className="empty-line">{t('habit.empty')}</p>
       ) : (

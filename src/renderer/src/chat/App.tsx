@@ -354,7 +354,11 @@ export function App() {
         <div className="title">
           <PetFace />
           {/* 긴 이름은 말줄임이라 올리면 전체 이름 (패널의 대화 단추와 같다) */}
-          <strong title={petName}>{petName}</strong>
+          {/* 창 제목: 화면 읽기 프로그램에는 h1, 보이는 글은 그대로 */}
+          <h1 className="sr-only">{petName}</h1>
+          <strong title={petName} aria-hidden="true">
+            {petName}
+          </strong>
         </div>
         <ProviderPicker
           providers={providers}
@@ -442,67 +446,70 @@ export function App() {
         </div>
       )}
 
-      <div
-        className="messages"
-        ref={listRef}
-        // 새 메시지(내 질문, 오류)는 덧붙을 때 읽는다. 답 조각은 그리는 중이라 숨기고 끝나면 아래 announce 로
-        role="log"
-        aria-live="polite"
-        aria-relevant="additions"
-        aria-label={t('chat.a11yLog', { name: petName })}
-        onScroll={(e) => {
-          const near = isNearBottom(e.currentTarget);
-          // 단추로 내려가는 중의 중간 자리는 사용자가 올린 것이 아니다
-          if (jumping.current && !near) return;
-          jumping.current = false;
-          following.current = near;
-          if (near) setUnseen(false);
-        }}
-        // 내려가는 중에 사용자가 직접 굴리면 그 손을 따른다
-        onWheel={() => {
-          jumping.current = false;
-        }}
-      >
-        {state.messages.length === 0 && (
-          <div className="empty">
-            <p>{t('chat.emptyLead')}</p>
-            <p className="hint">{t('chat.emptyHint', { name: petName })}</p>
-            {/* 무엇을 물을지 막막할 때: 누르면 입력칸에 채운다 (바로 보내지 않아 고쳐 쓸 수 있다) */}
-            <ul className="starters" aria-label={t('chat.starters')}>
-              {(['chat.starter.today', 'chat.starter.polish', 'chat.starter.break'] as const).map((key) => (
-                <li key={key}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setText(t(key));
-                      const el = inputRef.current;
-                      el?.focus();
-                      // 커서는 글 끝에 (다듬을 글을 바로 붙여 넣게)
-                      requestAnimationFrame(() => el?.setSelectionRange(el.value.length, el.value.length));
-                    }}
-                  >
-                    {t(key).trim()}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {state.messages.map((m) => (
-          <Message
-            key={m.id}
-            message={m}
-            petName={petName}
-            label={labelOf(m.provider)}
-            onZoom={setZoom}
-            alternatives={m.id === state.messages.at(-1)?.id && !pending ? alternatives : []}
-            download={m.id === state.messages.at(-1)?.id ? state.modelDownload : undefined}
-            isLast={m.id === state.messages.at(-1)?.id}
-            freeModelMb={freeModelMb(m)}
-            onGuide={setGuideFor}
-          />
-        ))}
-      </div>
+      {/* 대화가 창의 본문 (화면 읽기 프로그램의 main 이동) */}
+      <main className="chat-main">
+        <div
+          className="messages"
+          ref={listRef}
+          // 새 메시지(내 질문, 오류)는 덧붙을 때 읽는다. 답 조각은 그리는 중이라 숨기고 끝나면 아래 announce 로
+          role="log"
+          aria-live="polite"
+          aria-relevant="additions"
+          aria-label={t('chat.a11yLog', { name: petName })}
+          onScroll={(e) => {
+            const near = isNearBottom(e.currentTarget);
+            // 단추로 내려가는 중의 중간 자리는 사용자가 올린 것이 아니다
+            if (jumping.current && !near) return;
+            jumping.current = false;
+            following.current = near;
+            if (near) setUnseen(false);
+          }}
+          // 내려가는 중에 사용자가 직접 굴리면 그 손을 따른다
+          onWheel={() => {
+            jumping.current = false;
+          }}
+        >
+          {state.messages.length === 0 && (
+            <div className="empty">
+              <p>{t('chat.emptyLead')}</p>
+              <p className="hint">{t('chat.emptyHint', { name: petName })}</p>
+              {/* 무엇을 물을지 막막할 때: 누르면 입력칸에 채운다 (바로 보내지 않아 고쳐 쓸 수 있다) */}
+              <ul className="starters" aria-label={t('chat.starters')}>
+                {(['chat.starter.today', 'chat.starter.polish', 'chat.starter.break'] as const).map((key) => (
+                  <li key={key}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setText(t(key));
+                        const el = inputRef.current;
+                        el?.focus();
+                        // 커서는 글 끝에 (다듬을 글을 바로 붙여 넣게)
+                        requestAnimationFrame(() => el?.setSelectionRange(el.value.length, el.value.length));
+                      }}
+                    >
+                      {t(key).trim()}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {state.messages.map((m) => (
+            <Message
+              key={m.id}
+              message={m}
+              petName={petName}
+              label={labelOf(m.provider)}
+              onZoom={setZoom}
+              alternatives={m.id === state.messages.at(-1)?.id && !pending ? alternatives : []}
+              download={m.id === state.messages.at(-1)?.id ? state.modelDownload : undefined}
+              isLast={m.id === state.messages.at(-1)?.id}
+              freeModelMb={freeModelMb(m)}
+              onGuide={setGuideFor}
+            />
+          ))}
+        </div>
+      </main>
 
       {unseen && (
         <div className="new-below-wrap">
@@ -561,20 +568,23 @@ export function App() {
           </label>
           <label
             className={`opt ${pending || (spec && !spec.ephemeral) ? 'disabled' : ''}`}
-            title={
-              spec && !spec.ephemeral
-                ? t('chat.ephemeralUnsupported', { label: spec.label })
-                : t('chat.ephemeralTitle')
-            }
+            title={spec && !spec.ephemeral ? undefined : t('chat.ephemeralTitle')}
           >
             <input
               type="checkbox"
               checked={!!state.ephemeral}
               disabled={pending || (!!spec && !spec.ephemeral)}
+              aria-describedby={spec && !spec.ephemeral ? 'ephemeral-why' : undefined}
               onChange={(e) => bridge.setEphemeral(e.target.checked)}
             />
             {t('chat.ephemeral')}
           </label>
+          {/* 못 켜는 까닭은 풀이(마우스를 올려야 보임)가 아니라 바로 아래 글로. 꺼진 칸은 키보드로 갈 수 없어 풀이를 못 봤다 */}
+          {spec && !spec.ephemeral && (
+            <small id="ephemeral-why" className="opt-why">
+              {t('chat.ephemeralUnsupported', { label: spec.label })}
+            </small>
+          )}
         </div>
         <div className="composer">
           <label className="ghost icon" title={t('chat.attach')}>
