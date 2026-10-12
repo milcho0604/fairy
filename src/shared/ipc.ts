@@ -594,6 +594,8 @@ export interface PetImages {
   poses: Partial<Record<PoseKind, string>>;
   /** AI 일러스트 나이 단계 (아기, 청소년은 작게 그린다, illustrate.ts ageScale). 없으면 그대로 */
   age?: AgeStage;
+  /** 앱에 든 캐릭터(밀크, 초코) 그림이면 그 이름. 사진에 감은 눈을 그릴 눈 자리를 안다 (starter-pets.ts STARTER_EYES) */
+  starter?: StarterId;
 }
 
 export const MAKER = {

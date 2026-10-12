@@ -6,6 +6,7 @@ import { IPC, type PetImages, type PetStatus } from '../shared/ipc.ts';
 import { MEET_CHANCE, MEET_COOLDOWN_MS, MEET_EVERY_MS, meetPlan } from '../shared/meet.ts';
 import { type Blueprint, parseBlueprint } from '../shared/pet3d/blueprint.ts';
 import type { Friend } from '../shared/settings.ts';
+import { starterOf } from '../shared/starter-pets.ts';
 import type { WearLook } from '../shared/wear.ts';
 import { saverNow } from './battery.ts';
 import { boostOn } from './boost.ts';
@@ -69,6 +70,7 @@ function imageOf(f: Friend): PetImages {
       depth: depthOf(f.depth),
       poses: {},
       ...(f.age ? { age: f.age } : {}),
+      ...(starterOf(f.image) ? { starter: starterOf(f.image) } : {}),
     };
   } catch {
     return none;

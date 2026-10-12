@@ -10,6 +10,7 @@ import type { MoveType } from '../../shared/moves.ts';
 import type { PetMood } from '../../shared/pet-mood.ts';
 import type { Gait } from '../../shared/pet3d/blueprint.ts';
 import type { PetKind } from '../../shared/settings.ts';
+import type { PhotoEyes } from '../../shared/starter-pets.ts';
 import type { NoteLook } from '../../shared/together.ts';
 import type { Outfit } from '../../shared/wear.ts';
 import { drawMagnifier } from './magnifier.ts';
@@ -25,6 +26,7 @@ import {
   movePose,
 } from './move-pose.ts';
 import { quadKind, walkEnvelopeOf } from './pet3d-gait.ts';
+import { eyedPhoto, photoEyeOpen } from './photo-eyes.ts';
 import {
   drawBrow,
   drawHeldNote,
@@ -69,6 +71,8 @@ export interface DrawState {
   photo?: CanvasImageSource & { width: number; height: number };
   /** 사진 크기 배율 (AI 일러스트 아기, 청소년은 작게). 없으면 1. 발은 바닥에 그대로 */
   photoScale?: number;
+  /** 사진 속 눈 자리 (밀크, 초코). 있으면 잠, 졸음, 깜빡임에 사진 눈을 감긴다 (photo-eyes.ts). 2.5D 판도 쓴다 */
+  photoEyes?: PhotoEyes;
   /**
    * 기본 상태에서 하는 행동 (P1-06). phase 는 걷기 걸음 진행 0~1.
    * 걷기의 since 는 걷기를 시작하고 지난 시간, left 는 지금 토막이 끝날 때까지 남은 시간, segMs 는 지금 토막 길이
@@ -1367,7 +1371,11 @@ function drawPhoto(
   const flip = ease.to('flip', s.mood === 'sulky' ? -1 : 1, LOOK_TAU);
   ctx.scale((flip < 0 ? -1 : 1) * Math.max(0.12, Math.abs(flip)) * sx, sy);
   if (s.mood === 'sleeping' || s.mood === 'dozing') ctx.globalAlpha = 0.85;
-  ctx.drawImage(photo, -w / 2, -h, w, h);
+  // 눈 자리를 아는 사진은 잠, 졸음, 깜빡임에 눈을 감는다 (2026-10-12: 초코가 자도 눈을 뜨고 있었다)
+  const open = s.photoEyes
+    ? photoEyeOpen({ ...s, activity: act, moveEyes: mv?.eyes, sulk: sulkStage(s) })
+    : 1;
+  ctx.drawImage(eyedPhoto(photo, s.photoEyes, open), -w / 2, -h, w, h);
   ctx.restore();
   const top = GROUND - lift - h * sy;
   // 사진은 손을 들 수 없어 기울기에 더해 흔드는 표시만 머리 옆에
