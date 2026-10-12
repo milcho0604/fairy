@@ -117,6 +117,71 @@ test('네 발로 서기: 코 없이 그린 캐릭터(긴 귀 흰 토끼 캐릭�
   );
 });
 
+// 선 세모 귀 강아지 (시바견처럼): 웃는 입, 타원 코, 수염 없음. 크림색 배 (아래쪽 나누기 무늬)
+const prickEarDog: Blueprint = {
+  v: 2,
+  gait: 'quadruped',
+  fur: { length: 0.3 },
+  parts: [
+    {
+      slot: 'body',
+      shape: 'sphere',
+      at: [0, 0.36, 0],
+      size: [0.34, 0.33, 0.4],
+      color: '#d2894a',
+      finish: 'soft',
+      pattern: { type: 'split', color: '#f4e6cf', side: 'bottom', amount: 0.4 },
+    },
+    { slot: 'head', shape: 'sphere', at: [0, 0.8, 0.12], size: [0.38, 0.33, 0.34], color: '#d48c4c' },
+    {
+      slot: 'earL',
+      shape: 'cone',
+      at: [-0.22, 1.1, 0.08],
+      size: [0.11, 0.14, 0.07],
+      color: '#d2894a',
+      mirror: true,
+    },
+    {
+      slot: 'legL',
+      shape: 'capsule',
+      at: [-0.15, 0.1, 0.24],
+      size: [0.075, 0.1, 0.075],
+      color: '#f4e6cf',
+      mirror: true,
+    },
+    {
+      slot: 'tail',
+      shape: 'tube',
+      at: [0, 0.55, -0.35],
+      size: [0.07, 0.07, 0.07],
+      color: '#d2894a',
+      path: [
+        [0, 0.5, -0.38],
+        [0.1, 0.78, -0.26],
+      ],
+    },
+  ],
+  face: {
+    slot: 'head',
+    eyeY: 0.83,
+    eyeGap: 0.14,
+    eyeSize: 0.05,
+    mouth: 'smile',
+    mouthY: 0.66,
+    nose: { shape: 'oval', color: '#2a2220' },
+  },
+};
+
+test('네 발로 서기: 선 세모 귀라도 웃는 입, 수염 없는 강아지는 강아지 몸', () => {
+  assert.equal(catLike(prickEarDog), false);
+  const bp = standingBlueprint(prickEarDog);
+  assert.ok(bp);
+  assert.equal(bp.face.whiskers, undefined);
+  assert.equal(bp.face.mouth, 'grin');
+  // 고양이(세모 귀, 고양이 입)는 그대로 고양이
+  assert.ok(catLike(EXAMPLE_CAT));
+});
+
 test('색 밝히기, 어둡게', () => {
   assert.equal(shade('#000000', 0.5), '#808080');
   assert.equal(shade('#ffffff', -0.5), '#808080');

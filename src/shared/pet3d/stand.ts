@@ -35,6 +35,8 @@ export function shade(hex: string, k: number): string {
 /** 고양이 몸인지 (고양이 입, 수염, 세모 귀). 아니면 강아지 몸 */
 export function catLike(bp: Blueprint): boolean {
   if (bp.face.mouth === 'cat' || bp.face.whiskers) return true;
+  // 웃는 입이나 납작한 타원 코는 강아지 (선 세모 귀 강아지가 고양이 몸이 되었다)
+  if (bp.face.mouth === 'smile' || bp.face.mouth === 'grin' || bp.face.nose?.shape === 'oval') return false;
   const ear = first(bp.parts, 'earL') ?? first(bp.parts, 'earR');
   return ear?.shape === 'cone';
 }
