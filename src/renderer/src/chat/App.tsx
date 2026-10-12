@@ -21,6 +21,7 @@ import { Markdown } from './Markdown.tsx';
 import { ProviderPicker } from './ProviderPicker.tsx';
 import { isReady, statusText } from './providerStatus.ts';
 import { contentKey, conversationChanged, isNearBottom, jumpBehavior, scrollDecision } from './scroll.ts';
+import { singleFlight } from './single-flight.ts';
 import { UsageBar } from './UsageBar.tsx';
 
 const bridge = window.jjakkungChat;
@@ -691,7 +692,12 @@ function Message({
         <span className="who">
           {petName}
           {/* 규칙 답("오늘 뭐부터")은 AI 이름 대신 "AI 없이" (AI 가 답한 줄 알지 않게) */}
-          {m.byRules ? (
+          {m.game ? (
+            // 끝말잇기 (AI 없이 하는 말놀이)
+            <span className="tag" title={t('fun.chain.tagTitle')}>
+              {t('fun.chain.tag')}
+            </span>
+          ) : m.byRules ? (
             <span className="tag" title={t('first.tagTitle')}>
               {t('first.tag')}
             </span>
@@ -706,7 +712,7 @@ function Message({
           // 오는 중인 답은 화면 읽기에서 숨긴다 (조각마다 읽지 않게). 끝나면 보이고 한 번 알린다
           <div className="bubble" dir="auto" aria-hidden={m.status === 'streaming' || undefined}>
             <Markdown text={m.text} onLink={bridge.openLink} />
-            {m.status === 'done' && <AnswerActions id={m.id} text={m.text} />}
+            {m.status === 'done' && !m.game && <AnswerActions id={m.id} text={m.text} />}
           </div>
         )}
         {/* 규칙 답 아래: 맨 위 할 일로 집중 시작, 패널 열기 */}
@@ -785,6 +791,9 @@ function Message({
   );
 }
 
+/** 저장한 뒤 단추 대신 알림이 보이는 동안 (그동안 누름은 버린다) */
+const FLASH_HOLD_MS = 1800;
+
 /** 답 아래 작은 단추: 복사, 메모로, 할 일로 (v1 "답변을 메모, 할 일로") */
 function AnswerActions({ id, text }: { id: string; text: string }) {
   const [done, setDone] = useState<{ msg: string; failed?: boolean }>();
@@ -792,8 +801,21 @@ function AnswerActions({ id, text }: { id: string; text: string }) {
   const about = snippet(text);
   const flash = (msg: string, failed = false) => {
     setDone({ msg, failed });
-    setTimeout(() => setDone(undefined), failed ? 2600 : 1800);
+    setTimeout(() => setDone(undefined), failed ? 2600 : FLASH_HOLD_MS);
   };
+  // 두 번 눌러도(더블클릭) 메모나 할 일이 두 벌 생기지 않게: 저장 답이 오기 전 누름은 버린다
+  const [toNote] = useState(() =>
+    singleFlight(async () => {
+      const ok = await bridge.toNote(id);
+      flash(ok ? t('chat.savedNote') : t('chat.saveFailed'), !ok);
+    }, FLASH_HOLD_MS),
+  );
+  const [toTodos] = useState(() =>
+    singleFlight(async () => {
+      const n = await bridge.toTodos(id);
+      flash(n > 0 ? t('chat.todosAdded', { n }) : t('chat.nothingToAdd'));
+    }, FLASH_HOLD_MS),
+  );
   if (done) return <span className={`answer-actions shown ${done.failed ? 'failed' : ''}`}>{done.msg}</span>;
   return (
     <span className="answer-actions">
@@ -812,24 +834,14 @@ function AnswerActions({ id, text }: { id: string; text: string }) {
       >
         {t('chat.copy')}
       </button>
-      <button
-        type="button"
-        aria-label={t('chat.toNoteLabel', { text: about })}
-        onClick={async () => {
-          const ok = await bridge.toNote(id);
-          flash(ok ? t('chat.savedNote') : t('chat.saveFailed'), !ok);
-        }}
-      >
+      <button type="button" aria-label={t('chat.toNoteLabel', { text: about })} onClick={() => void toNote()}>
         {t('chat.toNote')}
       </button>
       <button
         type="button"
         title={t('chat.toTodosTitle')}
         aria-label={t('chat.toTodosLabel', { text: about })}
-        onClick={async () => {
-          const n = await bridge.toTodos(id);
-          flash(n > 0 ? t('chat.todosAdded', { n }) : t('chat.nothingToAdd'));
-        }}
+        onClick={() => void toTodos()}
       >
         {t('chat.toTodos')}
       </button>

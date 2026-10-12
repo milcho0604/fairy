@@ -3,14 +3,16 @@ import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { type Db, MIGRATIONS, migrate, SCHEMA_VERSION } from './db-schema.ts';
 import {
+  allDayTimes,
   EventStore,
   parseEventInput,
   parseQuickEvent,
+  repairAllDayZone,
   repairEventTimes,
   takeKoDue,
   timeLabel,
 } from './event-store.ts';
-import { NoteStore, notePreview, noteTitle } from './note-store.ts';
+import { mergeNoteText, NoteStore, notePreview, noteTitle } from './note-store.ts';
 
 const MIN = 60_000;
 const T0 = Date.UTC(2026, 9, 6, 9, 0); // 기준 시각
@@ -436,4 +438,88 @@ test('너무 큰 일정 시각: 끝은 끝 없음으로 저장하고, 이미 들
     ],
   );
   assert.equal(repairEventTimes(db, T0), 0);
+});
+
+test('제목 상한이 이모지 가운데에 걸려도 저장한 제목 끝이 깨지지 않는다 (메모, 할 일, 일정)', async () => {
+  const { TodoStore } = await import('./todo-store.ts');
+  const db = new DatabaseSync(':memory:') as unknown as Db;
+  migrate(db);
+  const notes = new NoteStore(db);
+  const events = new EventStore(db);
+  const todos = new TodoStore(db);
+  const at200 = `${'a'.repeat(199)}😀`;
+  const n = notes.add({ title: `${'a'.repeat(79)}😀`, body: `${'b'.repeat(49_999)}😀` }, T0);
+  assert.equal(n.title, 'a'.repeat(79));
+  assert.equal(n.body, 'b'.repeat(49_999));
+  const u = notes.update(n.id, { title: `${'c'.repeat(79)}🎉` }, T0 + 1);
+  assert.equal(u?.title, 'c'.repeat(79));
+  assert.equal(noteTitle({ title: '', body: `${'d'.repeat(79)}😀` }), 'd'.repeat(79));
+  const e = events.add({ title: at200, startAt: T0 + 60 * MIN }, T0);
+  assert.equal(e.title, 'a'.repeat(199));
+  assert.equal(events.update(e.id, { title: `x${at200}` }, T0)?.title, `x${'a'.repeat(199)}`);
+  const td = todos.add({ title: at200 }, T0);
+  assert.equal(td.title, 'a'.repeat(199));
+  assert.equal(todos.update(td.id, { title: `x${at200}` }, T0)?.title, `x${'a'.repeat(199)}`);
+  const step = todos.addStep(td.id, `${'s'.repeat(199)}😀`, T0);
+  assert.equal(step?.title, 's'.repeat(199));
+  for (const s of [n.title, n.body, e.title, td.title]) assert.equal(s.includes('�'), false);
+});
+
+test('메모를 열어 둔 사이 덧붙인 글을 메모 창 저장이 지우지 않는다', () => {
+  const { notes } = fresh();
+  const n = notes.add({ title: '회의록', body: '첫 줄' }, T0);
+  // 창이 연 뒤 Claude Code 가 append_note 로 덧붙였다
+  notes.update(n.id, { body: '첫 줄\n\n- 결정: 다음 주 발표' }, T0 + 1);
+  // 창은 열 때 받은 "첫 줄" 위에 타자를 쳐 보낸다
+  const saved = notes.updateFrom(n.id, { body: '첫 줄 추가' }, { body: '첫 줄' }, T0 + 2);
+  assert.equal(saved?.body, '첫 줄 추가\n\n- 결정: 다음 주 발표');
+  // 다른 곳이 안 바꿨으면 창의 글 그대로
+  assert.equal(notes.updateFrom(n.id, { body: 'x' }, { body: saved?.body }, T0 + 3)?.body, 'x');
+});
+
+test('본문 합치기: 한쪽만 바뀌면 그쪽, 끝에 덧붙인 것은 잇고, 둘 다 고치면 창의 글', () => {
+  assert.equal(mergeNoteText('a', 'ab', 'a'), 'ab');
+  assert.equal(mergeNoteText('a', 'a', 'a\n\nz'), 'a\n\nz');
+  // 창 글 끝에 줄바꿈이 있어도 덧붙인 것 앞 빈 줄은 하나
+  assert.equal(mergeNoteText('a\n', 'a\nb\n', 'a\n\nz'), 'a\nb\n\nz');
+  assert.equal(mergeNoteText('', '창', '덧'), '창덧');
+  assert.equal(mergeNoteText('abc', 'abX', 'Zbc'), 'abX');
+});
+
+test('시간대를 바꿔 켜도 종일 일정은 만든 날 그대로 (서울에서 만들고 LA, LA 에서 만들고 서울)', async () => {
+  const { localDay } = await import('./todo-store.ts');
+  const was = process.env.TZ;
+  try {
+    for (const [from, to] of [
+      ['Asia/Seoul', 'America/Los_Angeles'],
+      ['America/Los_Angeles', 'Asia/Seoul'],
+      ['Pacific/Auckland', 'Europe/London'],
+    ] as const) {
+      process.env.TZ = from;
+      const db = new DatabaseSync(':memory:') as unknown as Db;
+      migrate(db);
+      const events = new EventStore(db);
+      const one = events.add({ title: '하루', ...allDayTimes('2026-10-20', null), allDay: true }, T0);
+      const many = events.add(
+        { title: '여러 날', ...allDayTimes('2026-10-20', '2026-10-22'), allDay: true },
+        T0,
+      );
+      const timed = events.add({ title: '시각', startAt: Date.UTC(2026, 9, 20, 6, 0) }, T0);
+      process.env.TZ = to;
+      assert.equal(repairAllDayZone(db), 2, `${from} → ${to}`);
+      const a = events.get(one.id);
+      const b = events.get(many.id);
+      assert.equal(a && localDay(a.startAt), '2026-10-20', `${from} → ${to}`);
+      assert.equal(a?.endAt, null);
+      assert.equal(b && localDay(b.startAt), '2026-10-20');
+      assert.equal(b?.endAt != null && localDay(b.endAt), '2026-10-23');
+      // 시각 일정은 그 순간 그대로 (지금 시간대 시각으로 보인다)
+      assert.equal(events.get(timed.id)?.startAt, Date.UTC(2026, 9, 20, 6, 0));
+      // 한 번 고치면 다시 켜도 그대로
+      assert.equal(repairAllDayZone(db), 0);
+    }
+  } finally {
+    if (was === undefined) delete process.env.TZ;
+    else process.env.TZ = was;
+  }
 });

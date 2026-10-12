@@ -10,6 +10,7 @@ import {
   type PetInputs,
   type PetMood,
   SLEEP_AFTER_MS,
+  wanders,
 } from './pet-mood.ts';
 
 const NOW = 1_000_000;
@@ -94,4 +95,26 @@ test('계속 그리는 상태는 신남과 생각 중뿐, 잠은 깜빡임도 �
     moods.filter((m) => canBlink(m)),
     ['talking', 'sulky', 'idle'],
   );
+});
+
+test('삐져 있어도 혼자 돌아다닌다 (등 돌린 토라짐 3단계만 가만히)', () => {
+  const sulkyDay = moodOf({ ...INITIAL_INPUTS, sulkLevel: 2 }, NOW);
+  assert.equal(sulkyDay, 'sulky');
+  assert.equal(wanders(sulkyDay, 0), true);
+  const pouted = moodOf({ ...INITIAL_INPUTS, pout: 1 }, NOW);
+  assert.equal(wanders(pouted, 1), true);
+  assert.equal(wanders(pouted, 2), true);
+  assert.equal(wanders(moodOf({ ...INITIAL_INPUTS, pout: 3 }, NOW), 3), false);
+  assert.equal(wanders('idle', 0), true);
+  for (const m of [
+    'hidden',
+    'grabbed',
+    'thinking',
+    'talking',
+    'busy',
+    'excited',
+    'sleeping',
+    'dozing',
+  ] as const)
+    assert.equal(wanders(m, 0), false, m);
 });

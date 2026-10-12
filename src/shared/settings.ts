@@ -2,6 +2,7 @@
 import { isPersona, type PersonaId } from './ai/persona.ts';
 import { isSaverMode, type SaverMode } from './battery.ts';
 import type { ChatterLevel } from './chatter.ts';
+import { cutText } from './cut-text.ts';
 import { type FocusLength, isFocusLength } from './focus.ts';
 import { type LangPref, t } from './i18n/index.ts';
 import { cleanIcsUrl } from './ics.ts';
@@ -628,7 +629,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     aiModels: aiModelsOf(r.aiModels, base.aiModels),
     petLibrary: Array.isArray(r.petLibrary) ? libraryOf(r.petLibrary) : base.petLibrary,
     petRules:
-      typeof r.petRules === 'string' ? r.petRules.replace(/\r\n/g, '\n').slice(0, RULES_MAX) : base.petRules,
+      typeof r.petRules === 'string' ? cutText(r.petRules.replace(/\r\n/g, '\n'), RULES_MAX) : base.petRules,
     petMemory: Array.isArray(r.petMemory) ? cleanMemory(r.petMemory) : [...base.petMemory],
     petMemoryPending: Array.isArray(r.petMemoryPending)
       ? cleanPending(r.petMemoryPending)
