@@ -58,10 +58,15 @@ function open() {
   const file = join(userDataDir(), 'jjakkung.db');
   if (!existsSync(file)) throw new Error('페어리 저장 파일이 없어. 페어리를 한 번 켜 줘.');
   const db = new DatabaseSync(file);
-  db.exec('pragma journal_mode = wal; pragma busy_timeout = 3000;');
+  db.exec('pragma busy_timeout = 3000;');
+  // 판을 먼저 본다: 새 판 파일이면 저널 방식도 바꾸지 않고 닫는다 (db-open.ts 와 같이). 예전에는 WAL 로 바꾼 뒤에
+  // 거절하고 연 채 두어, 도구를 부를 때마다 파일을 하나씩 더 열어 두었다 (버그잡이 4)
   const v = schemaVersion(db as unknown as Db);
-  if (v !== SCHEMA_VERSION)
+  if (v !== SCHEMA_VERSION) {
+    db.close();
     throw new Error(`저장 파일(${v}판)과 이 서버(${SCHEMA_VERSION}판)의 판이 달라. 페어리를 최신으로 켜 줘.`);
+  }
+  db.exec('pragma journal_mode = wal;');
   const d = db as unknown as Db;
   // 예전에 들어간 너무 큰 일정 시각은 읽을 때 던진다 (event-store.ts EVENT_TIME_MAX_MS)
   try {
