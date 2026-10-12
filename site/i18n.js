@@ -33,7 +33,7 @@ window.I18N = {
     'nav.download': '받기',
     'lang.other': 'English',
 
-    'hero.eyebrow': '맥과 윈도우용 데스크톱 앱, 베타',
+    'hero.eyebrow': '맥과 윈도우용 데스크톱 앱',
     'hero.title': '화면 위에 사는<br><span class="hl">작은 페어리</span>',
     'hero.lead': '화면 아래를 아장아장 걷다가, 톡 누르면 오늘 할 일과 일정을 펼쳐 줘요. 계정도 서버도 없이, 내 컴퓨터 안에서요.',
     'hero.panelAlt': '페어리를 누르면 열리는 패널의 오늘 탭. 다음 할 일, 25분 집중 타이머, 오늘 일정이 보여요',
@@ -250,7 +250,7 @@ window.I18N = {
 
     'dlsec.kicker': '받기',
     'dlsec.title': '내 컴퓨터로 데려오기',
-    'dlsec.body': '무료예요. 아직 애플과 마이크로소프트의 개발자 서명을 받기 전인 베타라서, 처음 열 때 경고가 한 번 떠요. 넘기는 법은 아래 자주 묻는 질문에 있어요.',
+    'dlsec.body': '무료예요. 아직 애플과 마이크로소프트의 개발자 서명을 받기 전이라 처음 열 때 경고가 한 번 떠요. 넘기는 법은 아래 자주 묻는 질문에 있어요.',
     'dlsec.latest': '최신 버전',
     'dlsec.reqT': '필요한 것과 크기',
     'steps.kicker': '시작하기',
@@ -438,7 +438,7 @@ window.I18N = {
     'nav.download': 'Download',
     'lang.other': '한국어',
 
-    'hero.eyebrow': 'Desktop app for Mac and Windows (beta)',
+    'hero.eyebrow': 'Desktop app for Mac and Windows',
     'hero.title': 'A tiny fairy<br><span class="hl">on your screen</span>',
     'hero.lead': 'It toddles along the bottom of your screen, and one click opens today’s to-dos and calendar. No account, no server. Everything stays on your computer.',
     'hero.panelAlt': 'The Today tab of the panel that opens when you click the fairy: next to-do, a 25-minute focus timer, today’s events',
@@ -514,7 +514,7 @@ window.I18N = {
     'looks.3d': 'Soft light and glassy eyes, drawn like a real animal.',
     'looks.3a': 'Bean in the realistic look',
     'looks.4t': 'Fluffy',
-    'looks.4d': 'A seamless body with long, soft fur. Still a beta, still being polished.',
+    'looks.4d': 'A seamless body with long, soft fur. Still experimental and being polished.',
     'looks.4a': 'A fluffy, furry Bean',
     'looks.5t': 'Flat 2D',
     'looks.5d': 'Turn off "Show in 3D" for a hand-drawn look. It uses the least graphics power.',
@@ -655,7 +655,7 @@ window.I18N = {
 
     'dlsec.kicker': 'Download',
     'dlsec.title': 'Bring it home',
-    'dlsec.body': 'It’s free. As a beta it isn’t signed by Apple or Microsoft yet, so you’ll see a warning the first time you open it. The FAQ below shows how to get past it.',
+    'dlsec.body': 'It’s free. It isn’t signed by Apple or Microsoft yet, so you’ll see a warning the first time you open it. The FAQ below shows how to get past it.',
     'dlsec.latest': 'Latest version',
     'dlsec.reqT': 'Requirements & sizes',
     'steps.kicker': 'Getting started',

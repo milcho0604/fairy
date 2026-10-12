@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { timeLabel } from '../../../shared/event-store.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PanelAddResult, PanelState } from '../../../shared/ipc.ts';
+import { pinFirst } from '../../../shared/pin.ts';
 import { dueLabel } from '../../../shared/quick-add.ts';
 import { allTags, filterTodos, titleParts } from '../../../shared/todo-filter.ts';
 import {
@@ -16,6 +17,7 @@ import {
 import './assist.css';
 import { CheckIcon, RepeatIcon, SearchIcon, StarIcon, StepsIcon } from './icons.tsx';
 import { isEsc, takeEsc } from './keys.ts';
+import { PinButton, PinMark, usePinMenu } from './pin.tsx';
 import { RemindButton, RemindSheet } from './RemindPicker.tsx';
 
 const bridge = window.jjakkungPanel;
@@ -77,7 +79,9 @@ export function TodoTab({
   const tags = allTags(s.open);
   // 고른 태그가 목록에서 사라지면(마지막 것을 끝냄) 모두로
   const picked = tag && tags.some((x) => x.tag.toLowerCase() === tag.toLowerCase()) ? tag : null;
-  const shown = filterTodos(s.open, { query: finding ? query : '', tag: picked, composing });
+  // 고정한 것을 맨 위로 (고정한 순서), 아래는 원래 정렬 (중요, 마감 순)
+  const shown = pinFirst(filterTodos(s.open, { query: finding ? query : '', tag: picked, composing }));
+  const lastPinned = shown.findLast((todo) => todo.pinnedAt !== null)?.id;
   const filtered = shown.length !== s.open.length;
   const canFind = s.open.length >= FIND_FROM || finding;
   const openFind = () => {
@@ -224,6 +228,7 @@ export function TodoTab({
             key={todo.id}
             todo={todo}
             today={s.today}
+            pinEnd={todo.id === lastPinned && shown.length > 1 && shown.at(-1)?.id !== todo.id}
             onComplete={() => onComplete(todo)}
             onRemoved={() => onRemoved(todo)}
           />
@@ -269,6 +274,7 @@ export function TodoRow({
   onComplete,
   onRemoved,
   compact,
+  pinEnd,
 }: {
   todo: Todo;
   today: string;
@@ -277,7 +283,11 @@ export function TodoRow({
   onRemoved?: () => void;
   /** 오늘 탭: 고치기 단추 없이 */
   compact?: boolean;
+  /** 고정한 것 가운데 마지막 줄 (아래 고정 안 한 줄과 사이에 선) */
+  pinEnd?: boolean;
 }) {
+  const pinned = todo.pinnedAt !== null;
+  const pinMenu = usePinMenu('todo', todo.id, todo.title, pinned);
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(todo.title);
   const dateRef = useRef<HTMLInputElement>(null);
@@ -367,7 +377,10 @@ export function TodoRow({
   );
   return (
     <>
-      <li className="todo">
+      <li
+        className={`todo ${pinned ? 'pinned' : ''} ${pinEnd ? 'pin-end' : ''}`}
+        onContextMenu={compact ? undefined : pinMenu.onContextMenu}
+      >
         <button
           type="button"
           className="check"
@@ -423,6 +436,9 @@ export function TodoRow({
         <span className="tools">
           {(!compact || !todo.due) && (
             <span className="extra">
+              {!compact && !pinned && (
+                <PinButton kind="todo" id={todo.id} title={todo.title} pinned={false} />
+              )}
               {!compact && !todo.repeat && repeatButton}
               {!compact && !progress && stepsButton}
               {!todo.due && dueChip}
@@ -441,6 +457,8 @@ export function TodoRow({
               )}
             </span>
           )}
+          {compact && pinned && <PinMark />}
+          {!compact && pinned && <PinButton kind="todo" id={todo.id} title={todo.title} pinned />}
           {progress && stepsButton}
           {!compact && todo.repeat && repeatButton}
           {!compact && todo.due && (
@@ -467,6 +485,7 @@ export function TodoRow({
             </button>
           )}
         </span>
+        {pinMenu.menu}
       </li>
       {stepping && (
         <li className="steps-sheet-row">

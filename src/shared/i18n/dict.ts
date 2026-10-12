@@ -25,6 +25,7 @@ import * as onboarding from './onboarding.ts';
 import * as panel from './panel.ts';
 import * as pet from './pet.ts';
 import * as petmeta from './petmeta.ts';
+import * as pin from './pin.ts';
 import * as play from './play.ts';
 import * as polish from './polish.ts';
 import * as pout from './pout.ts';
@@ -79,6 +80,7 @@ export const ko = {
   ...voiceIdle.ko,
   ...speech.ko,
   ...calendar.ko,
+  ...pin.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -120,4 +122,5 @@ export const en: Translation<typeof ko> = {
   ...voiceIdle.en,
   ...speech.en,
   ...calendar.en,
+  ...pin.en,
 };

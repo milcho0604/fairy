@@ -6,6 +6,8 @@ import type { PanelState } from '../../../shared/ipc.ts';
 import { localDay, type Todo } from '../../../shared/todo-store.ts';
 import { CalendarView } from './CalendarView.tsx';
 import { dayHeading, timeOf, toInputValue } from './format.ts';
+import { PinIcon } from './icons.tsx';
+import { PinButton, usePinMenu } from './pin.tsx';
 import { RemindButton, RemindSheet } from './RemindPicker.tsx';
 
 const bridge = window.jjakkungPanel;
@@ -83,8 +85,13 @@ export function EventTab({
   );
   // 겹침은 메인이 저장 파일에서 센다: 어제 시작해 오늘까지 이어지는 시각 일정은 s.events 에 없다
   const clashing = new Set(s.eventClash);
+  // 고정한 일정은 맨 위 "고정" 칸에 (고정한 순서, 14일 밖도). 날짜 칸에는 다시 넣지 않는다.
+  // 끝난 고정 일정은 메인이 빼서 칸에서 사라진다 (고정 표시는 남아 달력에서 보이고 풀 수 있다)
+  const pinned = s.pinnedEvents;
+  const pinnedIds = new Set(pinned.map((e) => e.id));
   const days = new Map<string, CalEvent[]>();
   for (const e of upcoming) {
+    if (pinnedIds.has(e.id)) continue;
     const first = localDay(e.startAt);
     const d = e.allDay && first < s.today ? s.today : first;
     days.set(d, [...(days.get(d) ?? []), e]);
@@ -135,7 +142,30 @@ export function EventTab({
         </div>
       ) : (
         <div className="scroll events-list">
-          {days.size === 0 && <p className="empty">{t('panel.event.empty')}</p>}
+          {days.size === 0 && pinned.length === 0 && <p className="empty">{t('panel.event.empty')}</p>}
+          {pinned.length > 0 && (
+            <section className="pinned-events" aria-label={t('pin.section')}>
+              <h3>
+                <span className="pin-head">
+                  <PinIcon />
+                  {t('pin.section')}
+                </span>
+              </h3>
+              <ul className="events">
+                {pinned.map((e) => (
+                  <EventRow
+                    key={e.id}
+                    e={e}
+                    now={now}
+                    today={s.today}
+                    onRemoved={onRemoved}
+                    clash={clashing.has(e.id)}
+                    showDay
+                  />
+                ))}
+              </ul>
+            </section>
+          )}
           {[...days].map(([day, list]) => (
             <section key={day}>
               <h3>{dayHeading(day, s.today)}</h3>
@@ -165,6 +195,7 @@ export function EventRow({
   today,
   onRemoved,
   clash,
+  showDay,
 }: {
   e: CalEvent;
   now: number;
@@ -172,7 +203,11 @@ export function EventRow({
   onRemoved: (id: number) => void;
   /** 다른 일정과 시간이 겹친다 */
   clash?: boolean;
+  /** 날짜 칸 밖(맨 위 고정 칸)이라 제목 옆에 날을 쓴다 */
+  showDay?: boolean;
 }) {
+  const pinned = e.pinnedAt !== null;
+  const pinMenu = usePinMenu('event', e.id, e.title, pinned);
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(e.title);
   // 미리 알림 고르기 (8판): 종 단추를 누르면 줄 아래에 펼친다
@@ -199,7 +234,10 @@ export function EventRow({
 
   return (
     <>
-      <li className={`event ${started ? 'now' : ''} ${span ? 'all-day' : ''}`}>
+      <li
+        className={`event ${started ? 'now' : ''} ${span ? 'all-day' : ''} ${pinned ? 'pinned' : ''}`}
+        onContextMenu={pinMenu.onContextMenu}
+      >
         {span ? (
           <label className="time" title={t('panel.event.changeDay')}>
             {t('panel.event.allDay')}
@@ -267,6 +305,9 @@ export function EventRow({
           >
             {e.title}
             {e.endAt && !e.allDay && <small> ~{timeOf(e.endAt)}</small>}
+            {showDay && (!span || span.last === span.first) && (
+              <small className="pin-day"> {dayHeading(localDay(e.startAt), today)}</small>
+            )}
             {/* 여러 날이면 기간을 제목 옆에 ("종일 | 워크숍 10/7~10/10"). 시각 칸에 넣으면 칸이 넓어져 제목 줄이 어긋난다 */}
             {span && span.last > span.first && <small> {allDayLabel(e)}</small>}
           </button>
@@ -278,6 +319,7 @@ export function EventRow({
             </span>
           )}
           <span className="extra">
+            {!pinned && <PinButton kind="event" id={e.id} title={e.title} pinned={false} />}
             <label className={`all-day-toggle ${e.allDay ? 'on' : ''}`} title={t('panel.event.allDayToggle')}>
               <input type="checkbox" checked={e.allDay} onChange={toggleAllDay} />
               {t('panel.event.allDay')}
@@ -294,6 +336,7 @@ export function EventRow({
               ×
             </button>
           </span>
+          {pinned && <PinButton kind="event" id={e.id} title={e.title} pinned />}
           <RemindButton
             name={e.title}
             reminds={e.reminds}
@@ -304,6 +347,7 @@ export function EventRow({
             onToggle={() => setReminding((v) => !v)}
           />
         </span>
+        {pinMenu.menu}
       </li>
       {reminding && (
         <li className="remind-sheet-row">

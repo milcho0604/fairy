@@ -45,6 +45,7 @@ import {
   parsePanelOffset,
   placePanel,
 } from '../shared/panel-place.ts';
+import { isPinKind } from '../shared/pin.ts';
 import { hasDeadlineWord } from '../shared/quick-add.ts';
 import {
   parseTodoLine,
@@ -168,10 +169,12 @@ export function createPanel(o: PanelOptions) {
         preview: notePreview(n),
         source: n.source,
         updatedAt: n.updatedAt,
+        pinnedAt: n.pinnedAt,
       })),
       events: o.events.between(startOfDay(now), startOfDayAfter(now, 14)),
       // 안 끝난 시각 일정끼리 (어제부터 이어지는 것 포함). 일정 탭이 보이는 것과 같은 범위
       eventClash: [...clashIds(o.events.timedOverlapping(now, startOfDayAfter(now, 14)))],
+      pinnedEvents: o.events.pinned(now),
       focus: o.focus(),
       focusMin: o.focusMin(),
       focusCoins: focusCoins(o.focusMin()),
@@ -565,6 +568,15 @@ export function createPanel(o: PanelOptions) {
   ipcMain.on(PANEL.eventRestore, (e, id: number) => {
     if (!ours(e)) return;
     o.events.restore(id);
+    push();
+  });
+  // ---- 고정 (메모, 할 일, 일정) ----
+  ipcMain.on(PANEL.pin, (e, kind: unknown, id: unknown, on: unknown) => {
+    if (!ours(e) || !isPinKind(kind) || typeof id !== 'number' || typeof on !== 'boolean') return;
+    const now = Date.now();
+    if (kind === 'todo') o.store.pin(id, on, now);
+    else if (kind === 'note') o.notes.pin(id, on, now);
+    else o.events.pin(id, on, now);
     push();
   });
   // ---- 상점과 놀이 (v1) ----
