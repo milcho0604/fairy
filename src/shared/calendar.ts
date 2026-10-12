@@ -4,7 +4,7 @@
 import { monthEnd, plusDays, plusMonths, weekdayOf } from './day.ts';
 import { allDaySpan, type CalEvent } from './event-store.ts';
 import { lunarHolidays } from './lunar-holidays.ts';
-import { localDay, nextDue, type Todo } from './todo-store.ts';
+import { localDay, monthAnchor, nextDue, type Todo } from './todo-store.ts';
 
 /** 주 첫 요일: 0 일요일, 1 월요일 */
 export type WeekStart = 0 | 1;
@@ -123,15 +123,18 @@ const REPEAT_CAP = 62;
  * 매달 반복은 마감일의 날을 기억한다 (31일 반복은 30일 달에 30일, 2월에 28일이나 29일)
  */
 export function repeatDays(
-  todo: Pick<Todo, 'due' | 'repeat'>,
+  todo: Pick<Todo, 'due' | 'repeat' | 'repeatAnchor'>,
   today: string,
   from: string,
   to: string,
 ): string[] {
   if (!todo.repeat || !todo.due) return [];
-  const anchor = Number(todo.due.slice(8, 10));
+  // 끝낼 때(TodoStore.complete)와 같은 셈: 매주는 기억한 원래 마감에서, 매달은 기억한 날("31")로
+  const kept = todo.repeatAnchor ?? null;
+  const anchor =
+    monthAnchor(todo.repeat === 'monthly' ? kept : null, todo.due) ?? Number(todo.due.slice(8, 10));
   const out: string[] = [];
-  let d = nextDue(todo.due, todo.repeat, today, anchor);
+  let d = nextDue(todo.repeat === 'weekly' ? (kept ?? todo.due) : todo.due, todo.repeat, today, anchor);
   for (let i = 0; i < 2000 && d <= to && out.length < REPEAT_CAP; i++) {
     if (d >= from) out.push(d);
     d = nextDue(d, todo.repeat, d, anchor);

@@ -224,7 +224,11 @@ test('일정: 고정 칸은 안 끝난 것만 고정 순서로 (14일 밖도), �
   const soon = events.add({ title: '곧', startAt: NOW + HOUR }, NOW);
   const far = events.add({ title: '두 달 뒤', startAt: NOW + 60 * DAY }, NOW);
   const past = events.add({ title: '지난', startAt: NOW - 3 * HOUR, endAt: NOW - 2 * HOUR }, NOW);
-  const allDay = events.add({ title: '오늘 종일', startAt: Date.UTC(2026, 9, 12), allDay: true }, NOW);
+  // 종일 일정은 현지 0시로 넣는다 (Date.UTC 면 서쪽 시간대에서 전날 일정이 된다)
+  const allDay = events.add(
+    { title: '오늘 종일', startAt: new Date(2026, 9, 12).getTime(), allDay: true },
+    NOW,
+  );
   const gone = events.add({ title: '지울 것', startAt: NOW + 2 * HOUR }, NOW);
   events.pin(far.id, true, NOW + 1);
   events.pin(soon.id, true, NOW + 2);

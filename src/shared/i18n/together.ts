@@ -286,8 +286,8 @@ export const en: Translation<typeof ko> = {
     }),
   'note.yesterday': (v: N) =>
     P(v.p, {
-      friend: `You finished ${v.n} to-dos yesterday. Amazing!`,
-      polite: `You finished ${v.n} to-dos yesterday. Wonderful work.`,
+      friend: `You finished ${v.n === 1 ? 'a to-do' : `${v.n} to-dos`} yesterday. Amazing!`,
+      polite: `You finished ${v.n === 1 ? 'a to-do' : `${v.n} to-dos`} yesterday. Wonderful work.`,
       tsundere: `${v.n} done yesterday. I saw. ...Not bad.`,
       calm: `${v.n} done yesterday. Small steps add up.`,
     }),

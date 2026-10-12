@@ -128,6 +128,11 @@ export interface Todo {
   steps: TodoStep[];
   /** 고정한 시각 (13판, shared/pin.ts). 고정 안 했거나 값이 깨졌으면 null */
   pinnedAt: number | null;
+  /**
+   * 반복이 기억한 날 (repeat_anchor): 매주는 지난 마감 옮기기 전의 원래 마감, 매달은 날("31").
+   * 끝내면 다음 회차가 이것을 따른다. 달력이 다음 회차를 같은 날에 그리려고 같이 준다. 없으면 빠진다
+   */
+  repeatAnchor?: string;
 }
 
 /** 할 일 단계 하나 (9판) */
@@ -181,6 +186,7 @@ interface Row {
   repeat: string | null;
   due_min?: number | null;
   pinned_at?: unknown;
+  repeat_anchor?: string | null;
 }
 
 interface StepRow {
@@ -203,6 +209,7 @@ const toTodo = (r: Row, reminds: number[] = [], steps: TodoStep[] = []): Todo =>
   reminds,
   steps,
   pinnedAt: pinAt(r.pinned_at),
+  ...(isRepeat(r.repeat) && r.repeat_anchor ? { repeatAnchor: r.repeat_anchor } : {}),
 });
 
 export class TodoStore {

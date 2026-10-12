@@ -1,6 +1,7 @@
 // 달력 보기 (일정 탭). 날짜 칸 나누기, 키보드 이동, 반복 회차, 공휴일, 시간대, 많은 일정.
 // 시간대 시험은 process.env.TZ 를 바꿔 가며 본다 (node 는 TZ 를 바꾸면 바로 따른다). 끝나면 되돌린다.
 import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import {
   type CalItem,
@@ -18,8 +19,9 @@ import {
   weekOf,
 } from './calendar.ts';
 import { plusDays } from './day.ts';
+import { type Db, migrate } from './db-schema.ts';
 import { type CalEvent, dayStartMs, parseEventInput } from './event-store.ts';
-import type { Todo } from './todo-store.ts';
+import { type Todo, TodoStore } from './todo-store.ts';
 
 const ORIGINAL_TZ = process.env.TZ;
 /** 이 시간대로 바꿔 fn 을 돌리고 되돌린다 */
@@ -294,6 +296,43 @@ test('매일, 평일, 매주 반복 회차와 밀린 반복 (지난 회차는 �
     [],
   );
   assert.deepEqual(repeatDays({ due: null, repeat: 'daily' }, '2026-10-12', '2026-10-01', '2026-10-31'), []);
+});
+
+test('반복 회차는 할 일이 기억한 날(repeatAnchor)을 따른다: 끝냈을 때 생기는 다음 회차와 같다', () => {
+  // 11월에 만든 "매달 31일": 지금 회차는 11/30 이지만 다음은 12/31, 1/31 (12/30 이 아니다)
+  assert.deepEqual(
+    repeatDays(
+      { due: '2026-11-30', repeat: 'monthly', repeatAnchor: '31' },
+      '2026-11-05',
+      '2026-12-01',
+      '2027-01-31',
+    ),
+    ['2026-12-31', '2027-01-31'],
+  );
+  // 월요일(10/5) 매주 할 일을 지난 마감 옮기기로 오늘(수, 10/14)로 옮겼다: 다음은 월요일들
+  assert.deepEqual(
+    repeatDays(
+      { due: '2026-10-14', repeat: 'weekly', repeatAnchor: '2026-10-05' },
+      '2026-10-14',
+      '2026-10-15',
+      '2026-10-31',
+    ),
+    ['2026-10-19', '2026-10-26'],
+  );
+  // 가게에서 만든 할 일 그대로: 달력의 첫 회차가 끝냈을 때 생기는 마감과 같다
+  const db = new DatabaseSync(':memory:') as unknown as Db;
+  migrate(db);
+  const store = new TodoStore(db, () => '2026-11-05');
+  const rent = store.add(
+    { title: '월세', due: '2026-11-30', repeat: 'monthly', repeatDay: 31 },
+    Date.UTC(2026, 10, 5),
+  );
+  const shown = repeatDays(rent, '2026-11-05', '2026-12-01', '2026-12-31');
+  store.complete(rent.id, Date.UTC(2026, 10, 5, 12));
+  assert.deepEqual(
+    shown,
+    store.list(Date.UTC(2026, 10, 5, 12)).open.map((x) => x.due),
+  );
 });
 
 // ---- 줄 수 ----

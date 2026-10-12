@@ -79,7 +79,8 @@ export const en: Translation<typeof ko> = {
   'cal.nextWeek': 'Next week',
   'cal.goToday': 'Today',
   'cal.goToday.hint': 'Go to today (T)',
-  'cal.month': (v: { y: number; m: number }) => `${EN_MONTHS[v.m - 1] ?? v.m} ${v.y}`,
+  // 줄인 달 이름 (주 보기 제목과 같이): 패널 폭에서 "September 2026" 처럼 긴 이름은 잘려 "December ..." 로 보였다
+  'cal.month': (v: { y: number; m: number }) => `${(EN_MONTHS[v.m - 1] ?? String(v.m)).slice(0, 3)} ${v.y}`,
   'cal.week': (v: { m1: number; d1: number; m2: number; d2: number }) => {
     const a = (EN_MONTHS[v.m1 - 1] ?? '').slice(0, 3);
     const b = (EN_MONTHS[v.m2 - 1] ?? '').slice(0, 3);

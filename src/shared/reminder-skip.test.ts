@@ -47,8 +47,9 @@ test('일정: 시작이 지나 쓸모없어진 알림은 처음 볼 때 넘긴 �
 
 test('할 일: 마감일이 지난 날짜 알림도 넘긴 것으로 적는다', () => {
   const { db } = counted();
-  const todos = new TodoStore(db, utcDay);
-  todos.add({ title: '보고서', due: utcDay(NOW - 86_400_000), reminds: [240] }, NOW - 3 * 86_400_000);
+  const todos = new TodoStore(db, localDay);
+  // 어제 마감 (현지 날짜. utcDay 면 서쪽 시간대에서 오늘이 되어 알림이 정말 울린다)
+  todos.add({ title: '보고서', due: localDay(NOW - 86_400_000), reminds: [240] }, NOW - 3 * 86_400_000);
   assert.equal(pending(db, 'todo'), 1);
   assert.deepEqual(todos.dueReminders(NOW), []);
   assert.equal(pending(db, 'todo'), 0);

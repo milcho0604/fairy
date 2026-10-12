@@ -1,4 +1,12 @@
-import { type ClipboardEvent, type KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  type ClipboardEvent,
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { isGuideProvider } from '../../../shared/ai/install-guide.ts';
 import type { AiProvider, AiStatus } from '../../../shared/ai/types.ts';
 import type { ChatMessage, ChatState } from '../../../shared/chat-state.ts';
@@ -12,6 +20,7 @@ import { chatKey, lastQuestion } from './keys.ts';
 import { Markdown } from './Markdown.tsx';
 import { ProviderPicker } from './ProviderPicker.tsx';
 import { isReady, statusText } from './providerStatus.ts';
+import { contentKey, conversationChanged, isNearBottom, jumpBehavior, scrollDecision } from './scroll.ts';
 import { UsageBar } from './UsageBar.tsx';
 
 const bridge = window.jjakkungChat;
@@ -41,7 +50,15 @@ export function App() {
   const undoTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const stickToBottom = useRef(true);
+  // 아래 따라가기 (scroll.ts). following: 사용자가 맨 아래를 보고 있다. unseen: 위를 읽는 사이 새것이 왔다
+  const following = useRef(true);
+  const [unseen, setUnseen] = useState(false);
+  /** 내가 막 보냈다: 읽던 자리와 상관없이 내 질문과 답을 보여 준다 */
+  const sentRef = useRef(false);
+  /** "새 메시지" 단추로 부드럽게 내려가는 중 (그사이 스크롤 사건으로 따라가기를 끄지 않게) */
+  const jumping = useRef(false);
+  const jumpTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const seen = useRef<{ messages?: ChatState['messages']; key: string; provider?: string }>({ key: '' });
   const readFilesRef = useRef<(files: FileList | File[]) => void>(() => {});
   /** 창 전체 단축키(Esc, Cmd/Ctrl+N)가 지금 화면 값을 보게 매번 바꿔 끼운다 */
   const globalKeyRef = useRef<(e: globalThis.KeyboardEvent) => void>(() => {});
@@ -149,7 +166,13 @@ export function App() {
   useEffect(() => {
     if (hasMessages) setUndoShown(false);
   }, [hasMessages]);
-  useEffect(() => () => clearTimeout(undoTimer.current), []);
+  useEffect(
+    () => () => {
+      clearTimeout(undoTimer.current);
+      clearTimeout(jumpTimer.current);
+    },
+    [],
+  );
 
   // 답이 새로 끝나면 한 번 알린다
   useEffect(() => {
@@ -172,11 +195,62 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // 새 메시지가 오면 맨 아래로. 사용자가 위로 올려 읽는 중이면 두지 않는다.
+  // 새 메시지, 답 조각, 생각 중 표시가 생기면 맨 아래로 (그리기 전에 옮겨 깜빡이지 않게).
+  // 사용자가 위로 올려 읽는 중이면 끌어내리지 않고 "새 메시지" 단추를 띄운다
+  useLayoutEffect(() => {
+    const el = listRef.current;
+    if (!el || !state) return;
+    const before = seen.current;
+    const key = contentKey(state.messages, state.pendingId);
+    const grew = key !== before.key;
+    const switched =
+      (before.messages !== state.messages && conversationChanged(before.messages, state.messages)) ||
+      (before.provider !== undefined && before.provider !== state.provider);
+    const decision = scrollDecision({ following: following.current, grew, sent: sentRef.current, switched });
+    if (decision === 'follow') {
+      following.current = true;
+      jumping.current = false;
+      el.scrollTop = el.scrollHeight;
+      setUnseen(false);
+    } else if (decision === 'notify') setUnseen(true);
+    if (grew) sentRef.current = false;
+    seen.current = { messages: state.messages, key, provider: state.provider };
+  });
+
+  // 다시 그리기 없이 크기만 바뀌어도(늦게 뜨는 그림, 5초 뒤 "오래 걸려" 안내, 창 크기) 아래를 보고 있었으면 아래에 둔다
+  const resizeObs = useRef<ResizeObserver>(undefined);
+  useEffect(() => {
+    const ro = new ResizeObserver(() => {
+      const el = listRef.current;
+      // 단추로 내려가는 중이어도 갈 곳은 맨 아래라 바로 맞춘다 (창 크기가 바뀌면 부드러운 스크롤이 도중에 멈춘다)
+      if (el && following.current) el.scrollTop = el.scrollHeight;
+    });
+    resizeObs.current = ro;
+    return () => ro.disconnect();
+  }, []);
   useEffect(() => {
     const el = listRef.current;
-    if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
+    const ro = resizeObs.current;
+    if (!el || !ro) return;
+    ro.observe(el);
+    for (const child of el.children) ro.observe(child);
   });
+
+  const jumpToBottom = () => {
+    const el = listRef.current;
+    if (!el) return;
+    following.current = true;
+    setUnseen(false);
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    jumping.current = !reduced;
+    el.scrollTo({ top: el.scrollHeight, behavior: jumpBehavior(reduced) });
+    // 부드러운 스크롤이 끝에 닿지 못하고 멈춰도 오래 붙잡지 않는다
+    clearTimeout(jumpTimer.current);
+    jumpTimer.current = setTimeout(() => {
+      jumping.current = false;
+    }, 1500);
+    focusInput();
+  };
 
   if (!state) return <div className="loading">{t('chat.loading')}</div>;
 
@@ -203,7 +277,7 @@ export function App() {
   const undoNewChat = async () => {
     clearTimeout(undoTimer.current);
     setUndoShown(false);
-    if (await bridge.undoReset()) stickToBottom.current = true;
+    if (await bridge.undoReset()) following.current = true;
   };
 
   const send = () => {
@@ -212,7 +286,7 @@ export function App() {
     setText('');
     setImages([]);
     setNotice('');
-    stickToBottom.current = true;
+    sentRef.current = true;
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -377,8 +451,16 @@ export function App() {
         aria-relevant="additions"
         aria-label={t('chat.a11yLog', { name: petName })}
         onScroll={(e) => {
-          const el = e.currentTarget;
-          stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+          const near = isNearBottom(e.currentTarget);
+          // 단추로 내려가는 중의 중간 자리는 사용자가 올린 것이 아니다
+          if (jumping.current && !near) return;
+          jumping.current = false;
+          following.current = near;
+          if (near) setUnseen(false);
+        }}
+        // 내려가는 중에 사용자가 직접 굴리면 그 손을 따른다
+        onWheel={() => {
+          jumping.current = false;
         }}
       >
         {state.messages.length === 0 && (
@@ -421,6 +503,21 @@ export function App() {
           />
         ))}
       </div>
+
+      {unseen && (
+        <div className="new-below-wrap">
+          <button
+            type="button"
+            className="new-below"
+            // 눌러도 입력칸의 커서를 뺏지 않는다
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={jumpToBottom}
+          >
+            {t('chat.newBelow')}
+            <span aria-hidden="true"> ↓</span>
+          </button>
+        </div>
+      )}
 
       <span className="sr-only" role="status" aria-live="polite">
         {announce}
