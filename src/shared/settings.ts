@@ -233,6 +233,10 @@ export interface Friend {
   gait?: Gait;
   /** AI 일러스트 나이 단계 (펫 파일에서). 아기, 청소년은 작게 */
   age?: AgeStage;
+  /** 기본 페어리였을 때 만든 상태별 포즈 (친구 창은 쓰지 않는다). 다시 기본 페어리로 바꾸면 돌아간다 (friend-swap.ts) */
+  poses?: Partial<Record<PoseKind, string>>;
+  /** 기본 페어리였을 때의 이름표 (Settings.petMeta). 다시 기본 페어리로 바꾸면 돌아간다 */
+  meta?: PetMeta;
 }
 
 export const FRIENDS_MAX = 3;
@@ -677,7 +681,7 @@ function memoryNotesOf(
 const KIND_KEY = /^kind:(\w+)$/;
 
 /**
- * 걸음새와 요청사항 칸 검사. 설계도 파일 키는 지금 펫이나 보관함이 아직 쓰는 것만 남긴다
+ * 걸음새와 요청사항 칸 검사. 설계도 파일 키는 지금 펫이나 보관함, 친구가 아직 쓰는 것만 남긴다
  * (펫을 지우거나 몸을 다시 만들면 옛 키가 빠진다). 기본 펫 키는 아는 모양만
  */
 /** 말로 만든 처음 글 칸의 UTF-16 상한 (글은 200글자, 이모지 한 글자가 열 칸을 넘기도 한다) */
@@ -693,6 +697,9 @@ function bodiesOf(
   if (image && current) models.add(current);
   const lib = Array.isArray(r.petLibrary) ? libraryOf(r.petLibrary) : base.petLibrary;
   for (const p of lib) if (p.model) models.add(p.model);
+  // 친구 자리로 간 기본 페어리의 몸도 (네 발로 서기, 요청사항, 개인 용도가 다시 기본으로 바꿀 때까지 남게, friend-swap.ts)
+  const friends = Array.isArray(r.friends) ? friendsOf(r.friends) : base.friends;
+  for (const f of friends) if (f.model) models.add(f.model);
   const kindKey = (k: string) => isPetKind(KIND_KEY.exec(k)?.[1]);
   const pick = <T>(
     v: unknown,
@@ -856,6 +863,8 @@ function friendsOf(list: unknown[]): Friend[] {
     const image = typeof f.image === 'string' && PET_FILE.test(f.image) ? f.image : undefined;
     const model = image && typeof f.model === 'string' && MODEL_FILE.test(f.model) ? f.model : undefined;
     const depth = image && typeof f.depth === 'string' && DEPTH_FILE.test(f.depth) ? f.depth : undefined;
+    const poses = image ? posesOf(f.poses, {}) : undefined;
+    const meta = image ? cleanPetMeta(f.meta) : undefined;
     out.push({
       id,
       name,
@@ -865,6 +874,8 @@ function friendsOf(list: unknown[]): Friend[] {
       ...(depth ? { depth } : {}),
       ...(isGait(f.gait) ? { gait: f.gait } : {}),
       ...(image && isAgeStage(f.age) ? { age: f.age } : {}),
+      ...(poses && Object.keys(poses).length > 0 ? { poses } : {}),
+      ...(meta ? { meta } : {}),
     });
     if (out.length >= FRIENDS_MAX) break;
   }

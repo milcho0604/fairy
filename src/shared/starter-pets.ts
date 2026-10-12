@@ -49,7 +49,8 @@ export function starterOf(file: string | null | undefined): StarterId | undefine
 }
 
 /** 펫 고르기 요청 (설정 창, 첫 안내). 렌더러가 보낸 값을 믿지 않고 모양을 확인한다 */
-export type PetChoice = { kind: PetKind } | { id: string } | { starter: StarterId };
+/** 기본 펫 모양(kind), 보관한 펫(id), 밀크와 초코(starter), 친구 페어리와 서로 바꾸기(friend, friend-swap.ts) */
+export type PetChoice = { kind: PetKind } | { id: string } | { starter: StarterId } | { friend: string };
 
 /** 모르는 모양이면 undefined */
 export function parsePetChoice(v: unknown): PetChoice | undefined {
@@ -57,6 +58,8 @@ export function parsePetChoice(v: unknown): PetChoice | undefined {
   const c = v as Record<string, unknown>;
   if (isPetKind(c.kind)) return { kind: c.kind };
   if (isStarterId(c.starter)) return { starter: c.starter };
+  // 친구 id 규칙은 설정 검사(friendsOf)와 같다
+  if (typeof c.friend === 'string' && /^f-[\w-]{1,20}$/.test(c.friend)) return { friend: c.friend };
   if (typeof c.id === 'string' && c.id.length > 0 && c.id.length <= 64) return { id: c.id };
   return undefined;
 }
