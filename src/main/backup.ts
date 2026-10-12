@@ -26,7 +26,7 @@ import {
   THUMB_MAX_BYTES,
 } from '../shared/pet-share.ts';
 import type { Blueprint } from '../shared/pet3d/blueprint.ts';
-import { FRIENDS_MAX, POSE_KINDS } from '../shared/settings.ts';
+import { FRIENDS_MAX, isPersonalPet, POSE_KINDS } from '../shared/settings.ts';
 import { PET_FILE_EXT, PET_FILE_EXTS_READ } from '../shared/url-scheme.ts';
 import { importableDbVersion } from './db-open.ts';
 import { petImages } from './maker.ts';
@@ -329,6 +329,8 @@ export function currentSharedPet(): SharedPet {
     ...(imgs.depth ? { depth: imgs.depth } : {}),
     ...(imgs.main && s.petAge ? { age: s.petAge } : {}),
     ...(thumbnail ? { thumbnail } : {}),
+    // 이미 있는 캐릭터로 말로 만든 펫 (이름표에 적혀 공식 갤러리가 받지 않는다)
+    ...(imgs.model && isPersonalPet(s) ? { personalOnly: true } : {}),
   };
 }
 
@@ -341,6 +343,8 @@ export async function exportPet(
   const pet = currentSharedPet();
   const opts = {
     title: title ?? t('main.pet.exportTitle'),
+    // 개인 용도 페어리면 저장 창에도 한 줄 (맥만 보인다. 막지 않는다. 설정 창 내보내기 칸에도 같은 줄이 있다)
+    ...(pet.personalOnly ? { message: t('pet.share.personalHint') } : {}),
     defaultPath: shareFileName(pet.name),
     filters: [{ name: t('main.pet.fileType'), extensions: [PET_FILE_EXT.slice(1)] }],
   };
@@ -430,13 +434,18 @@ export async function adoptPet(
     // 포즈는 사진 펫에만 붙는다 (그림 없는 기본 펫에 남으면 다음 사진 펫으로 넘어간다)
     for (const { id } of POSE_KINDS)
       poses[id] = pet.image && pet.poses[id] ? keep(dataUrlToFile(pet.poses[id] as string, 'pose')) : null;
+    const model = pet.model ? keep(modelToFile(pet.model)) : null;
     const next = {
       petName: pet.name,
       petKind: pet.kind,
       petImage: pet.image ? keep(dataUrlToFile(pet.image, 'pet')) : null,
-      petModel: pet.model ? keep(modelToFile(pet.model)) : null,
+      petModel: model,
       petDepth: pet.depth ? keep(dataUrlToFile(pet.depth, 'depth')) : null,
       petPoses: poses,
+      // 개인 용도 표시는 데려와도 그대로 (다시 내보낼 때도 이름표에 남는다)
+      ...(model && pet.personalOnly
+        ? { petPersonal: { ...settings.get().petPersonal, [model]: true as const } }
+        : {}),
       // 나이 단계는 파일에 있을 때만 (없으면 지운다: 옛 펫 나이가 남지 않게)
       petAge: pet.age ?? null,
       // 만든 사람, 사용 허락, 만든 날, 앱 판 (판 2 파일). 다시 내보낼 때 그대로 넘긴다. 판 1 이면 지운다

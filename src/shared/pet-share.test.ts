@@ -240,3 +240,18 @@ test('저장해 둔 이름표 검사', () => {
   assert.equal(cleanPetMeta('CC0'), undefined);
   assert.equal(cleanPetMeta(null), undefined);
 });
+
+test('개인 용도 페어리: 이름표에 personalOnly 를 적고 그대로 읽는다 (옛 파일, 표시 없는 파일은 없음)', () => {
+  const model = DEFAULT_BLUEPRINTS.cat;
+  const pet: SharedPet = { name: '구름', kind: 'cat', image: PNG, poses: {}, model, personalOnly: true };
+  const raw = JSON.parse(encodePet(pet));
+  assert.equal(raw.manifest.personalOnly, true);
+  const back = decodeFull(encodePet(pet));
+  assert.ok(!('error' in back) && back.personalOnly === true);
+  const plain = JSON.parse(encodePet({ ...pet, personalOnly: false }));
+  assert.equal('personalOnly' in plain.manifest, false);
+  // true 가 아닌 값은 표시로 보지 않는다
+  raw.manifest.personalOnly = 'yes';
+  const odd = decodeFull(JSON.stringify(raw));
+  assert.ok(!('error' in odd) && odd.personalOnly === undefined);
+});

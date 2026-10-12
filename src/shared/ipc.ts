@@ -627,6 +627,12 @@ export const MAKER = {
   openGemini: 'maker:open-gemini',
   /** Gemini 에 올릴 사진(창이 보낸 JPEG)을 임시 폴더에 두고 Finder, 탐색기로 보여 준다 */
   revealGeminiPhoto: 'maker:reveal-gemini-photo',
+  /** 말로 만들기를 쓸 AI 가 있는지 (없으면 탭을 보이지 않는다) */
+  textAi: 'maker:text-ai',
+  /** 적은 글로 AI 에게 입체 설계도를 받는다 (말로 만들기) */
+  describe: 'maker:describe',
+  /** 지금 설계도와 고칠 점을 AI 에게 보내 고친 설계도를 받는다 (말로 만들기) */
+  tweak: 'maker:tweak',
   /** 받기(모델), 입체 만들기(AI), 일러스트 그리기를 멈춘다 (진행 표시의 그만두기) */
   cancel: 'maker:cancel',
   close: 'maker:close',
@@ -651,7 +657,16 @@ export interface PetLook {
   wish?: string;
   /** AI 일러스트로 다시 그린 펫의 나이 단계 */
   age?: AgeStage;
+  /** 이미 있는 캐릭터 이름으로 말로 만든 펫 (개인 용도, 공식 갤러리에 못 올린다) */
+  personalOnly?: boolean;
+  /** 네 발로 선 피규어로 보기 (말로 만든 네 발 동물, 설정 petStands) */
+  stand?: boolean;
 }
+
+/** 말로 만들기 결과. namedCharacter 는 AI 가 본 "이미 있는 캐릭터 이름인지" */
+export type TextShapeResult =
+  | { ok: true; model: Blueprint; namedCharacter: boolean }
+  | { ok: false; error: string; noAi?: boolean };
 
 /** 펫 만들기 창이 만드는 것: 펫 본 그림, 또는 상태별 포즈 (v1) */
 export type MakerTarget = 'main' | PoseKind | 'food';
@@ -686,6 +701,12 @@ export interface MakerBridge {
   platform: NodeJS.Platform;
   info(): Promise<MakerInfo>;
   visionAi(): Promise<boolean>;
+  /** 말로 만들기를 쓸 AI 가 있는지 */
+  textAi(): Promise<boolean>;
+  /** 적은 글(200자, 메인이 다시 다듬는다)로 입체 설계도를 받는다 */
+  describe(text: string): Promise<TextShapeResult>;
+  /** 지금 설계도를 고칠 점(120자)대로 고친다. original 은 처음 적은 글, named 는 처음 결과의 캐릭터 표시 */
+  tweak(model: Blueprint, instruction: string, original: string, named: boolean): Promise<TextShapeResult>;
   ensureModel(): Promise<{ ok: true } | { ok: false; error: string }>;
   /** 다듬은 그림(PNG data URL, 움직이는 그림은 gif, webp 그대로)과 이름을 저장하고 펫을 바꾼다. 입체 설계도가 있으면 같이 */
   save(png: string, name: string, look?: PetLook): Promise<{ ok: boolean; error?: string }>;
