@@ -300,6 +300,7 @@ export function EventRow({
           <button
             type="button"
             className="title"
+            dir="auto"
             title={t('panel.todo.clickToEdit')}
             onClick={() => setEditing(true)}
           >

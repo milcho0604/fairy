@@ -366,3 +366,13 @@ test('add_event, update_event: 너무 긴 duration_min 은 거절하고 일정 �
   const list = tool('list_events', { days: 60 });
   assert.equal(list.result?.isError, undefined);
 });
+
+test('serverInfo 판은 앱 판 (예전에는 0.1.0 으로 박혀 있었다)', () => {
+  const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
+    version: string;
+  };
+  const info = call('initialize', { protocolVersion: '2025-06-18' }).result?.serverInfo as {
+    version: string;
+  };
+  assert.equal(info.version, pkg.version);
+});

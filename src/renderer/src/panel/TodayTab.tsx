@@ -103,7 +103,9 @@ export function TodayTab({
             <h2>{t('panel.today.next')}</h2>
             <div className="next-row">
               <span className="next-text">
-                <strong className="next-title">{next.title}</strong>
+                <strong className="next-title" dir="auto">
+                  {next.title}
+                </strong>
                 {next.kind === 'event' && (
                   <small>{t('panel.today.nextPrepare', { time: timeOf(next.startAt) })}</small>
                 )}
@@ -196,7 +198,9 @@ export function TodayTab({
               {s.missed.map((m) => (
                 <li key={`${m.at}-${m.text}`}>
                   <span className="time">{timeOf(m.at)}</span>
-                  <span className="title">{m.text}</span>
+                  <span className="title" dir="auto">
+                    {m.text}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -221,7 +225,7 @@ export function TodayTab({
                   return (
                     <li key={e.id} className="all-day">
                       <span className="time">{t('panel.event.allDay')}</span>
-                      <span className="title">
+                      <span className="title" dir="auto">
                         {e.title}
                         {last > s.today && (
                           <small>
@@ -241,7 +245,9 @@ export function TodayTab({
                     <span className="time">
                       {e.startAt <= now ? t('panel.today.now') : timeOf(e.startAt)}
                     </span>
-                    <span className="title">{e.title}</span>
+                    <span className="title" dir="auto">
+                      {e.title}
+                    </span>
                   </li>
                 );
               })}

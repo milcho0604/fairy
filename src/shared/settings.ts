@@ -179,6 +179,11 @@ export interface Settings {
    */
   petKindNames: Record<string, string>;
   /**
+   * 말로 만든 펫의 처음 글 (말로 만들기). 키는 설계도 파일 이름. 걸음새를 바꿔 몸을 다시 만들 때 사진 길(펫 그림을 AI 에
+   * 보이기) 대신 이 글로 다시 만든다. 이 칸이 생기기 전에 만든 펫은 없다(사진 길로 다시 만든다). 펫 파일로 내보내지 않는다
+   */
+  petTexts: Record<string, string>;
+  /**
    * 만나는 시간 (shared/routine.ts, 사용자 요청 2026-10-08): 요일마다 일을 시작하고 끝내는 시간. 그때 맞이하고 헤어지는 인사.
    * 기본 꺼짐(예전처럼 켤 때 브리핑). 켜 두면 만나지 않는 요일이 삐짐 쉬는 날도 된다(restDays 대신, routine.ts restDaysOf)
    */
@@ -448,6 +453,7 @@ export const DEFAULT_SETTINGS: Settings = {
   petStands: {},
   petPersonal: {},
   petKindNames: {},
+  petTexts: {},
   routine: DEFAULT_ROUTINE,
   illustEngine: 'cloud',
   typeAlong: true,
@@ -674,10 +680,13 @@ const KIND_KEY = /^kind:(\w+)$/;
  * 걸음새와 요청사항 칸 검사. 설계도 파일 키는 지금 펫이나 보관함이 아직 쓰는 것만 남긴다
  * (펫을 지우거나 몸을 다시 만들면 옛 키가 빠진다). 기본 펫 키는 아는 모양만
  */
+/** 말로 만든 처음 글 칸의 UTF-16 상한 (글은 200글자, 이모지 한 글자가 열 칸을 넘기도 한다) */
+const PET_TEXT_MAX_UNITS = 3200;
+
 function bodiesOf(
   r: Record<string, unknown>,
   base: Settings,
-): Pick<Settings, 'petGaits' | 'petWishes' | 'petStands' | 'petPersonal'> {
+): Pick<Settings, 'petGaits' | 'petWishes' | 'petStands' | 'petPersonal' | 'petTexts'> {
   const models = new Set<string>();
   const image = petImageOf(r.petImage, base.petImage).petImage;
   const current = petModelOf(r.petModel, base.petModel).petModel;
@@ -727,6 +736,13 @@ function bodiesOf(
       base.petPersonal,
       (k) => models.has(k),
       (x) => (x === true ? true : undefined),
+    ),
+    // 말로 만든 처음 글도 입체 사진 펫(설계도)에만. 다듬기는 저장할 때(maker.ts cleanDescribe) 하고 여기는 모양과 길이만
+    petTexts: pick(
+      r.petTexts,
+      base.petTexts,
+      (k) => models.has(k),
+      (x) => (typeof x === 'string' && x.trim() && x.length <= PET_TEXT_MAX_UNITS ? x.trim() : undefined),
     ),
   };
 }

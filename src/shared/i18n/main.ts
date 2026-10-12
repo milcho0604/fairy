@@ -75,6 +75,7 @@ export const ko = {
   'main.maker.shapeBad': 'AI 답에서 설계도를 못 읽었어. 한 번 더 해 볼래?',
   'main.maker.noTextAi': '연결된 AI를 찾지 못했어. 채팅에서 AI를 설치하고 로그인하면 말로 만들 수 있어.',
   'main.maker.textEmpty': '만들고 싶은 모습을 먼저 적어 줘.',
+  'main.maker.textFailed': '이번엔 AI가 답하지 못했어. 조금 뒤에 다시 해 볼래?',
   'main.maker.textBad': 'AI 답에서 페어리 설계도를 못 읽었어. 조금 다르게 적어서 한 번 더 해 볼래?',
   'main.illust.quota':
     "오늘 무료 그림 횟수를 다 썼어. 이 횟수는 다른 사람과 나눠 쓰는 게 아니라 네 인터넷 연결마다 따로 세고, 하루가 지나면 다시 채워져. 지금 바로 만들려면 아래 'Gemini 앱(무료)에서 만들기'를 쓰거나, 무료 Hugging Face 토큰을 넣어 줘.",
@@ -227,6 +228,7 @@ export const en: Translation<typeof ko> = {
   'main.maker.noTextAi':
     "Couldn't find a connected AI. Install and sign in to one from the chat to make a fairy from words.",
   'main.maker.textEmpty': 'Tell me what you want it to look like first.',
+  'main.maker.textFailed': "Your AI couldn't answer this time. Try again in a moment?",
   'main.maker.textBad':
     "Couldn't read a fairy blueprint from the AI's answer. Try saying it a little differently?",
   'main.illust.quota':

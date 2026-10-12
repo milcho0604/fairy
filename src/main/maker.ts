@@ -47,6 +47,7 @@ import {
   readTextAnswer,
   TEXT_SYSTEM,
   TWEAK_MAX,
+  textLength,
   textOk,
   tweakPrompt,
 } from '../shared/pet3d/text-prompt.ts';
@@ -151,6 +152,7 @@ function lookOf(raw: unknown): {
   wish?: string;
   personalOnly?: true;
   stand?: true;
+  text?: string;
 } {
   if (typeof raw !== 'object' || raw === null) return {};
   const r = raw as Record<string, unknown>;
@@ -163,6 +165,8 @@ function lookOf(raw: unknown): {
       // 말로 만들기: 개인 용도 표시와 네 발로 서기 (서기는 설 수 있는 몸일 때만)
       ...(r.personalOnly === true ? { personalOnly: true as const } : {}),
       ...(r.stand === true && canStand(model) ? { stand: true as const } : {}),
+      // 말로 만든 처음 글 (걸음새를 바꿔 다시 만들 때 쓴다)
+      ...(textOk(r.text, DESCRIBE_MAX) && cleanDescribe(r.text) ? { text: cleanDescribe(r.text) } : {}),
     };
   }
   const prefix = 'data:image/png;base64,';
@@ -294,7 +298,11 @@ export function createMaker(
     const abort = new AbortController();
     shaping = abort;
     const started = Date.now();
-    const r = await ask(prompt, TEXT_SYSTEM, abort.signal);
+    // AI 쪽이 던지면(시작 실패 등) 창의 진행 표시가 멈추지 않고 계속 돌았다: 알기 쉬운 실패로 돌려준다
+    const r = await ask(prompt, TEXT_SYSTEM, abort.signal).catch((err: unknown) => {
+      log('maker', kind, 'threw', err instanceof Error ? err.message : String(err));
+      return { ok: false as const, error: t('main.maker.textFailed'), noAi: undefined };
+    });
     if (shaping === abort) shaping = undefined;
     const secs = `${Math.round((Date.now() - started) / 1000)}s`;
     if (abort.signal.aborted) {
@@ -327,7 +335,7 @@ export function createMaker(
     if (!textOk(textRaw, DESCRIBE_MAX)) return { ok: false, error: t('main.maker.badFormat') };
     const text = cleanDescribe(textRaw);
     if (!text) return { ok: false, error: t('main.maker.textEmpty') };
-    return askText('describe', describePrompt(text, { webSearch: true }), [...text].length);
+    return askText('describe', describePrompt(text, { webSearch: true }), textLength(text));
   });
 
   // 말로 만들기 고치기: 지금 설계도(다시 검사)와 고칠 점. 처음 결과가 캐릭터였으면 고친 뒤에도 그대로 둔다
@@ -344,7 +352,7 @@ export function createMaker(
       const r = await askText(
         'tweak',
         tweakPrompt(model, ask, cleanDescribe(originalRaw), named),
-        [...ask].length,
+        textLength(ask),
       );
       return r.ok ? { ...r, namedCharacter: r.namedCharacter || named } : r;
     },
@@ -790,6 +798,9 @@ export function createMaker(
           ...(modelFile && look.stand
             ? { petStands: { ...settings.get().petStands, [modelFile]: true } }
             : {}),
+          ...(modelFile && look.text
+            ? { petTexts: { ...settings.get().petTexts, [modelFile]: look.text } }
+            : {}),
         });
         // 저장은 끝났다: 옛 파일 치우기가 실패해도(윈도우 파일 잠김) 방금 쓴 새 펫 파일을 지우지 않는다
         try {
@@ -835,36 +846,65 @@ export function createMaker(
   async function remake(gait: Gait): Promise<{ ok: true } | { ok: false; error: string; noAi?: boolean }> {
     const s = settings.get();
     const oldModel = s.petModel;
-    if (!askWithImage || !s.petImage || !oldModel || !s.petImage.endsWith('.png'))
-      return { ok: false, error: t('main.remake.notFigure') };
-    const bytes = readFileIn(petsDir(), s.petImage, MAX_PNG_BYTES);
-    if (!bytes || kindOf(bytes) !== 'png') return { ok: false, error: t('main.remake.notFigure') };
+    if (!s.petImage || !oldModel) return { ok: false, error: t('main.remake.notFigure') };
+    // 말로 만든 펫은 처음 글로 다시 만든다 (펫 그림은 설계도를 그린 것이라 사진 길로 보내면 처음 글을 잃었다)
+    const desc = s.petTexts[oldModel];
     const wish = s.petWishes[oldModel] ?? '';
     remaking?.abort();
     const abort = new AbortController();
     remaking = abort;
     const started = Date.now();
-    const r = await askWithImage(
-      blueprintPrompt(s.petName, wish, gait),
-      { mediaType: 'image/png', data: bytes.toString('base64') },
-      BLUEPRINT_SYSTEM,
-      abort.signal,
-    );
-    if (remaking === abort) remaking = undefined;
-    if (abort.signal.aborted) return { ok: false, error: t('main.maker.shapeCancelled') };
-    if (!r.ok) {
-      log('maker', 'remake', r.noAi ? 'no ai' : r.error);
-      return r;
+    let model: Blueprint | undefined;
+    let provider = '';
+    if (desc && textAi) {
+      const r = await textAi
+        .ask(describePrompt(desc, { webSearch: true, gait }), TEXT_SYSTEM, abort.signal)
+        .catch((err: unknown) => {
+          log('maker', 'remake text threw', err instanceof Error ? err.message : String(err));
+          return { ok: false as const, error: t('main.maker.textFailed'), noAi: undefined };
+        });
+      if (remaking === abort) remaking = undefined;
+      if (abort.signal.aborted) return { ok: false, error: t('main.maker.shapeCancelled') };
+      if (!r.ok) {
+        log('maker', 'remake text', r.noAi ? 'no ai' : r.error);
+        return r;
+      }
+      provider = r.provider;
+      const got = readTextAnswer(r.text, gait);
+      model = got.ok ? got.bp : undefined;
+    } else {
+      if (!askWithImage || !s.petImage.endsWith('.png')) {
+        if (remaking === abort) remaking = undefined;
+        return { ok: false, error: t('main.remake.notFigure') };
+      }
+      const bytes = readFileIn(petsDir(), s.petImage, MAX_PNG_BYTES);
+      if (!bytes || kindOf(bytes) !== 'png') {
+        if (remaking === abort) remaking = undefined;
+        return { ok: false, error: t('main.remake.notFigure') };
+      }
+      const r = await askWithImage(
+        blueprintPrompt(s.petName, wish, gait),
+        { mediaType: 'image/png', data: bytes.toString('base64') },
+        BLUEPRINT_SYSTEM,
+        abort.signal,
+      );
+      if (remaking === abort) remaking = undefined;
+      if (abort.signal.aborted) return { ok: false, error: t('main.maker.shapeCancelled') };
+      if (!r.ok) {
+        log('maker', 'remake', r.noAi ? 'no ai' : r.error);
+        return r;
+      }
+      provider = r.provider;
+      model = extractBlueprint(r.text, gait);
     }
-    const model = extractBlueprint(r.text, gait);
     log(
       'maker',
       'remake',
-      r.provider,
+      provider,
       `${Math.round((Date.now() - started) / 1000)}s`,
       model ? `${model.parts.length} parts` : 'bad',
       gait,
-      wish ? `wish ${[...wish].length}` : 'no wish',
+      desc ? `text ${textLength(desc)}` : wish ? `wish ${[...wish].length}` : 'no wish',
     );
     if (!model) return { ok: false, error: t('main.maker.shapeBad') };
     const now = settings.get();
@@ -883,6 +923,8 @@ export function createMaker(
       ...(wish ? { petWishes: { ...now.petWishes, [file]: wish } } : {}),
       // 개인 용도 표시는 새 몸에도 (말로 만든 펫. 다시 만들어도 갤러리에 못 올리는 것은 같다)
       ...(now.petPersonal[oldModel] ? { petPersonal: { ...now.petPersonal, [file]: true } } : {}),
+      // 처음 글도 새 몸으로 넘긴다 (다음에 또 걸음새를 바꿔도 글로 만든다)
+      ...(desc ? { petTexts: { ...now.petTexts, [file]: desc } } : {}),
     });
     library.cleanup([oldModel]);
     return { ok: true };

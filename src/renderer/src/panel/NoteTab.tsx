@@ -201,7 +201,7 @@ function NoteRow({
       onContextMenu={pinMenu.onContextMenu}
     >
       <button type="button" onClick={onOpen}>
-        <span className="note-title">
+        <span className="note-title" dir="auto">
           {n.source === 'ai' && <i className="tag">AI</i>}
           {n.title}
         </span>
@@ -214,7 +214,12 @@ function NoteRow({
               {hit.snippet.slice(hit.mark[1])}
             </span>
           ) : (
-            n.preview && n.preview !== n.title && <span className="preview">{n.preview}</span>
+            n.preview &&
+            n.preview !== n.title && (
+              <span className="preview" dir="auto">
+                {n.preview}
+              </span>
+            )
           )}
         </span>
       </button>

@@ -36,10 +36,12 @@ import { cleanWish, WISH_MAX } from '../../../shared/pet3d/prompt.ts';
 import { canStand, standingBlueprint } from '../../../shared/pet3d/stand.ts';
 import {
   cleanDescribe,
+  clipText,
   DESCRIBE_MAX,
   makerTabs,
   nameFromText,
   TWEAK_MAX,
+  textLength,
 } from '../../../shared/pet3d/text-prompt.ts';
 import {
   cleanPetName,
@@ -630,7 +632,10 @@ export function MakerApp() {
     beginShape('figure');
     setStep('name');
     const at = performance.now();
-    const r = await bridge.describe(text);
+    // 메인이 던져도(AI 시작 실패) 진행 표시가 멈추지 않던 것: 실패로 받아 적던 화면으로
+    const r = await bridge
+      .describe(text)
+      .catch(() => ({ ok: false as const, error: t('main.maker.textFailed') }));
     if (shapeRun.current !== run) return;
     if (!r.ok) {
       setShaping(false);
@@ -656,7 +661,9 @@ export function MakerApp() {
     setTextTask('tweak');
     setShaping(true);
     beginShape('figure');
-    const r = await bridge.tweak(model, ask, fromText.text, fromText.named);
+    const r = await bridge
+      .tweak(model, ask, fromText.text, fromText.named)
+      .catch(() => ({ ok: false as const, error: t('main.maker.textFailed') }));
     if (shapeRun.current !== run) return;
     if (!r.ok) {
       setShaping(false);
@@ -781,6 +788,8 @@ export function MakerApp() {
           // 말로 만든 펫: 이미 있는 캐릭터면 개인 용도 표시, 네 발 동물이면 네 발로 선 피규어
           ...(fromText?.named ? { personalOnly: true } : {}),
           ...(fromText && standsUp(model) ? { stand: true } : {}),
+          // 처음 글 (설정 걸음새에서 몸을 다시 만들 때 이 글로 만든다)
+          ...(fromText ? { text: fromText.text } : {}),
         }
       : look === 'relief' && depth
         ? { depth }
@@ -1044,13 +1053,12 @@ export function MakerApp() {
                         // biome-ignore lint/a11y/noAutofocus: 탭을 고르면 바로 적을 수 있게 (이 칸 하나뿐인 화면)
                         autoFocus
                         value={textDraft}
-                        maxLength={DESCRIBE_MAX}
                         placeholder={t('maker.text.placeholder')}
                         aria-describedby="maker-text-hint maker-text-privacy"
-                        onChange={(e) => setTextDraft(e.target.value)}
+                        onChange={(e) => setTextDraft(clipText(e.target.value, DESCRIBE_MAX))}
                       />
                       <span className="wish-count" aria-hidden="true">
-                        {t('maker.wish.count', { n: textDraft.length, max: DESCRIBE_MAX })}
+                        {t('maker.wish.count', { n: textLength(textDraft), max: DESCRIBE_MAX })}
                       </span>
                     </div>
                     <small id="maker-text-hint" className="hint">
@@ -1367,12 +1375,11 @@ export function MakerApp() {
                     ref={tweakRef}
                     id="maker-tweak"
                     value={tweakDraft}
-                    maxLength={TWEAK_MAX}
                     placeholder={t('maker.text.tweakPlaceholder')}
-                    onChange={(e) => setTweakDraft(e.target.value)}
+                    onChange={(e) => setTweakDraft(clipText(e.target.value, TWEAK_MAX))}
                   />
                   <span className="wish-count" aria-hidden="true">
-                    {t('maker.wish.count', { n: tweakDraft.length, max: TWEAK_MAX })}
+                    {t('maker.wish.count', { n: textLength(tweakDraft), max: TWEAK_MAX })}
                   </span>
                 </div>
                 <button type="submit" className="ghost" disabled={!tweakDraft.trim()}>

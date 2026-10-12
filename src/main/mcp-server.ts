@@ -3,7 +3,7 @@
 // 짝꿍과 같은 저장 파일(jjakkung.db)을 연다. 짝꿍이 켜져 있으면 몇 초 안에 패널에 보인다 (data_version 을 본다).
 // Electron 을 불러오지 않는다. 이 파일은 electron-vite 가 out/main/mcp-server.js 로 따로 낸다.
 
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -35,7 +35,21 @@ import { MCP_BEAT_FILE } from '../shared/together.ts';
 import { findDataDir } from './data-move.ts';
 import { CHAT_INBOX, writeInbox, writeListInbox } from './memory-inbox.ts';
 
-const VERSION = '0.1.0';
+// 앱 판 (빌드할 때 package.json 에서 넣는다, electron.vite.config.ts). 시험처럼 빌드 없이 돌면 package.json 을 읽는다.
+// 예전에는 '0.1.0' 으로 박혀 있어 AI 도구에 늘 옛 판으로 보였다
+declare const __JJ_APP_VERSION__: string | undefined;
+export const VERSION = typeof __JJ_APP_VERSION__ === 'string' ? __JJ_APP_VERSION__ : devVersion();
+
+function devVersion(): string {
+  try {
+    const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
+      version?: unknown;
+    };
+    return typeof pkg.version === 'string' ? pkg.version : '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
 const PROTOCOLS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 
 /**

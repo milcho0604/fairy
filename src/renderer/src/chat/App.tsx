@@ -676,7 +676,11 @@ function Message({
             ))}
           </div>
         )}
-        {m.text && <div className="bubble">{m.text}</div>}
+        {m.text && (
+          <div className="bubble" dir="auto">
+            {m.text}
+          </div>
+        )}
       </div>
     );
   }
@@ -700,7 +704,7 @@ function Message({
         )}
         {m.text && (
           // 오는 중인 답은 화면 읽기에서 숨긴다 (조각마다 읽지 않게). 끝나면 보이고 한 번 알린다
-          <div className="bubble" aria-hidden={m.status === 'streaming' || undefined}>
+          <div className="bubble" dir="auto" aria-hidden={m.status === 'streaming' || undefined}>
             <Markdown text={m.text} onLink={bridge.openLink} />
             {m.status === 'done' && <AnswerActions id={m.id} text={m.text} />}
           </div>

@@ -10,6 +10,7 @@ import { CoinIcon, GearIcon } from './icons.tsx';
 import { escClosesWindow, tabByKey, tabStepByKey, undoByKey } from './keys.ts';
 import { PlanSheetHost } from './MorningPlan.tsx';
 import { NoteTab } from './NoteTab.tsx';
+import { planTodosKey } from './plan-refresh.ts';
 import { ShopTab } from './ShopTab.tsx';
 import { TodayTab } from './TodayTab.tsx';
 import { TodoTab } from './TodoTab.tsx';
@@ -381,7 +382,11 @@ export function PanelApp() {
       </footer>
 
       {/* 아침 계획 시트 (MorningPlan.tsx): 아침 첫 열기, 펫 한마디, 오늘 탭 카드에서 띄운다 */}
-      <PlanSheetHost goToday={() => setTab('today')} onSaved={(text) => showToast({ kind: 'added', text })} />
+      <PlanSheetHost
+        goToday={() => setTab('today')}
+        onSaved={(text) => showToast({ kind: 'added', text })}
+        todosKey={planTodosKey(s.open)}
+      />
 
       {toast && (
         // 읽는 동안(마우스를 올린 동안)은 사라지지 않는다

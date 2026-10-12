@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'electron-vite';
@@ -27,10 +28,14 @@ function ortWasmOnDemand(): Plugin {
   };
 }
 
+const pkgVersion = (JSON.parse(readFileSync(resolve('package.json'), 'utf8')) as { version: string }).version;
+
 export default defineConfig({
   main: {
     // 구글 캘린더에 쓰기 (docs/google-calendar.md): 빌드할 때 환경 변수로 OAuth 클라이언트를 넣는다. 없으면 빈 글 (기능이 숨는다)
     define: {
+      // 앱 판 (MCP 서버가 serverInfo 로 알린다. 그 프로세스는 Electron app 없이 돈다)
+      __JJ_APP_VERSION__: JSON.stringify(pkgVersion),
       __JJ_GOOGLE_CLIENT_ID__: JSON.stringify(process.env.JJ_GOOGLE_CLIENT_ID ?? ''),
       __JJ_GOOGLE_CLIENT_SECRET__: JSON.stringify(process.env.JJ_GOOGLE_CLIENT_SECRET ?? ''),
     },

@@ -257,7 +257,9 @@ export function TodoTab({
                   >
                     <CheckIcon />
                   </button>
-                  <span className="title">{todo.title}</span>
+                  <span className="title" dir="auto">
+                    {todo.title}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -415,6 +417,7 @@ export function TodoRow({
           <button
             type="button"
             className="title"
+            dir="auto"
             title={compact ? undefined : t('panel.todo.clickToEdit')}
             onClick={() => !compact && setEditing(true)}
           >
@@ -655,7 +658,7 @@ function StepItem({ step }: { step: TodoStep }) {
           }}
         />
       ) : (
-        <button type="button" className="title" onClick={() => setEditing(true)}>
+        <button type="button" className="title" dir="auto" onClick={() => setEditing(true)}>
           {step.title}
         </button>
       )}
