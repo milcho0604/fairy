@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { escClosesWindow, isEsc, type ModKeyLike, tabByKey, undoByKey } from './keys.ts';
+import { escClosesWindow, isEsc, type ModKeyLike, tabByKey, tabStepByKey, undoByKey } from './keys.ts';
 
 test('한글 조합 중 Esc 는 아무것도 하지 않는다 (isComposing, keyCode 229 둘 다)', () => {
   assert.equal(isEsc({ key: 'Escape', isComposing: true, keyCode: 27 }), false);
@@ -48,4 +48,16 @@ test('Cmd/Ctrl+Z 는 쓰던 글이 없을 때만 알림 되돌리기', () => {
   assert.equal(undoByKey(press('KeyZ', { metaKey: true, shiftKey: true }), true, undefined), false);
   assert.equal(undoByKey(press('KeyZ', { ctrlKey: true }), false, undefined), true);
   assert.equal(undoByKey(press('KeyY', { ctrlKey: true }), false, undefined), false);
+});
+
+test('패널 탭 줄 ← → Home End: 끝에서 돌아 들어가고, 다른 키는 아니다', () => {
+  assert.equal(tabStepByKey('ArrowRight', 0, 5), 1);
+  assert.equal(tabStepByKey('ArrowRight', 4, 5), 0);
+  assert.equal(tabStepByKey('ArrowLeft', 0, 5), 4);
+  assert.equal(tabStepByKey('ArrowLeft', 3, 5), 2);
+  assert.equal(tabStepByKey('Home', 3, 5), 0);
+  assert.equal(tabStepByKey('End', 1, 5), 4);
+  assert.equal(tabStepByKey('ArrowDown', 1, 5), undefined);
+  assert.equal(tabStepByKey('Enter', 1, 5), undefined);
+  assert.equal(tabStepByKey('ArrowRight', 0, 0), undefined);
 });
