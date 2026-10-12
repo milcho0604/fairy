@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { inflateSync } from 'node:zlib';
 import { STARTER_EYES, STARTER_IDS } from '../../shared/starter-pets.ts';
 import { lidCurve, lidLine, lidSource, photoEyeOpen } from './photo-eyes.ts';
@@ -143,7 +144,7 @@ function darkShare(
 
 test('밀크, 초코 눈 자리: 그림의 눈동자 위에 있고, 덮개로 가져올 털은 불투명하고 눈동자가 없다', () => {
   for (const id of STARTER_IDS) {
-    const img = readPng(new URL(`../../../resources/pets/${id}.png`, import.meta.url).pathname);
+    const img = readPng(fileURLToPath(new URL(`../../../resources/pets/${id}.png`, import.meta.url)));
     const look = STARTER_EYES[id];
     assert.equal(look.eyes.length, 2);
     const [l, r] = look.eyes;
@@ -183,7 +184,7 @@ test('덮개 털은 눈 위 테두리보다 위에서만 가져온다 (밀크 �
 
 test('덮개 털에 눈 둘레 털과 다른 색 점이 없다 (밀크 이마의 분홍 귀 뿌리 빛이 감은 눈 위에 점으로 실렸다, 2026-10-12)', () => {
   for (const id of STARTER_IDS) {
-    const img = readPng(new URL(`../../../resources/pets/${id}.png`, import.meta.url).pathname);
+    const img = readPng(fileURLToPath(new URL(`../../../resources/pets/${id}.png`, import.meta.url)));
     for (const e of STARTER_EYES[id].eyes) {
       const eye = { cx: e.x * img.w, cy: e.y * img.h, rx: e.rx * img.w, ry: e.ry * img.h };
       const { cx, cy, rx, ry } = eye;
@@ -222,7 +223,7 @@ const luma = (hex: string) => {
 };
 
 test('초코 감은 눈은 어두운 털 위에서도 보인다: 선은 둘레 털보다 확실히 어둡고, 선 아래 테두리와 눈꺼풀은 털보다 밝다', () => {
-  const img = readPng(new URL('../../../resources/pets/choco.png', import.meta.url).pathname);
+  const img = readPng(fileURLToPath(new URL('../../../resources/pets/choco.png', import.meta.url)));
   const look = STARTER_EYES.choco;
   assert.ok(look.edge && look.lid, '초코는 눈꺼풀 빛과 선 아래 테두리가 있다');
   for (const e of look.eyes) {
