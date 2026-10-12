@@ -228,6 +228,17 @@ export const STARTER_BLUEPRINTS: Record<StarterId, Blueprint> = {
         pattern: { type: 'split', color: CHOCO_LIGHT, side: 'front', amount: 0.3 },
         finish: 'fuzzy',
       },
+      // 목: 머리 아래를 어깨에 잇는다. 뒤에서 보면 머리가 몸 위에 얹힌 공처럼 떠 보였다.
+      // 어깨에서 머리 뒤로 비스듬히 올라간다 (옆에서는 목덜미가 조금 채워진다)
+      {
+        slot: 'body',
+        shape: 'capsule',
+        at: [0, 0.64, 0.17],
+        size: [0.105, 0.15, 0.095],
+        rot: [50, 0, 0],
+        color: CHOCO,
+        finish: 'fuzzy',
+      },
       // 머리: 곱슬 털 머리 (위가 봉긋)
       {
         slot: 'head',
