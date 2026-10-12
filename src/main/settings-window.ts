@@ -138,6 +138,7 @@ export function createSettingsWindow({
     if (!c) return library.view();
     if ('kind' in c) library.toDefault(c.kind);
     else if ('starter' in c) library.fromStarter(c.starter);
+    else if ('friend' in c) library.fromFriend(c.friend);
     else library.restore(c.id);
     return library.view();
   });

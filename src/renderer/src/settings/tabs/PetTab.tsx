@@ -257,6 +257,15 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
           petName={s.petName}
           onMsg={flash}
           onChange={(friends) => update({ friends }, t('settings.friendsChanged'))}
+          onMakeMain={async (id) => {
+            const main = s.petName;
+            const name = s.friends.find((f) => f.id === id)?.name ?? '';
+            const library = await bridge.choosePet({ friend: id });
+            const next = await bridge.get();
+            setSnap({ ...next, library });
+            setName(next.settings.petName);
+            flash(t('settings.friends.madeMain', { name, main }));
+          }}
           onImport={async () => {
             const r = await bridge.importFriend();
             if (r.message) flash(r.message, !r.ok);
