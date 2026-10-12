@@ -508,6 +508,9 @@ export function createPetWindow({
       stopDoor();
       clearInterval(dragTimer);
       stopFlight();
+      // 깡충 뛰던 중이면 멈춘다. 안 멈추면 끌리는 펫을 뛰던 자리로 잡아당기고, 다 뛰면 창 위에 앉은 것으로
+      // 쳐서(perch) 끌어다 놓은 바닥에서도 돌아다니지 않았다
+      stopHop();
       leavePerch();
       samples = [];
       dragTimer = setInterval(() => {
@@ -1038,6 +1041,16 @@ export function createPetWindow({
     perchTimer = undefined;
   }
 
+  /** 깡충 뛰기를 그만둔다 (끌기). 기다리던 쪽에는 끊긴 것으로 알린다 */
+  function stopHop() {
+    if (!hopTimer) return;
+    clearInterval(hopTimer);
+    hopTimer = undefined;
+    const end = hopDone;
+    hopDone = undefined;
+    end?.(false);
+  }
+
   function hopTo(to: { x: number; y: number }, done: (finished: boolean) => void) {
     clearInterval(hopTimer);
     // 뛰던 중에 다시 뛰면 앞 것은 끊긴 것으로 알린다 (기다리던 쪽이 멈추지 않게)
@@ -1173,6 +1186,7 @@ export function createPetWindow({
     if (hideReasons.hidden) {
       closeBubble('cleared');
       stopWalk();
+      stopHop();
       leavePerch();
       // 커서가 펫 위에 있던 채로 숨으면 hover 끝 알림이 안 와 전역 크기 단축키가 남는다
       overPet = false;
