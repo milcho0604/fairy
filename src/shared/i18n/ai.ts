@@ -174,7 +174,7 @@ export const en: Translation<typeof ko> = {
     'If it works in a terminal but not here: Fairy reads PATH from your shell config (~/.bashrc, ~/.profile and so on). Make sure PATH is set there, then press Check again. Still nothing? Quit Fairy and open it again.',
   'ai.guide.still.win':
     'If it works in a terminal but not here, quit Fairy completely (Quit from the tray icon) and open it again. Windows apps keep the PATH they started with, so a PATH the installer changed only shows up after a restart.',
-  'ai.guide.docs': 'Open the official install guide',
+  'ai.guide.docs': 'Official install guide',
   'ai.guide.copyLabel': (v) => `Copy command: ${v.cmd}`,
   'ai.guide.showLogin': 'How to log in',
   'ai.guide.hideLogin': 'Hide login steps',

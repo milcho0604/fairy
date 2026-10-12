@@ -1182,6 +1182,8 @@ header .picker {
   margin-bottom: 8px;
 }
 
-.inline-guide > button + button {
-  margin-left: 6px;
+/* 맨 아래 단추 줄 (공식 안내, 다시 확인): 글자는 꺾지 않고, 좁은 창에서 줄이 나뉘면 둘 다 왼쪽 끝에 맞춘다 */
+.inline-guide > button {
+  margin: 4px 4px 0 0;
+  white-space: nowrap;
 }
