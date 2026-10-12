@@ -163,6 +163,15 @@ test('저절로 띄우기와 펫 한마디: 정한 시각 뒤 아침에 하루 �
   assert.equal(shouldNudge({ ...f, nudgedDay: today }, today, 9 * 60), false);
 });
 
+test('고를 할 일이 없으면 저절로 띄우지도, 펫이 묻지도 않는다 (처음 켠 사람의 빈 시트)', () => {
+  const f = parsePlanFile({ prefs: { auto: true, fromMinute: 8 * 60 } });
+  const today = '2026-10-07';
+  assert.equal(shouldAutoOpen(f, today, 9 * 60, 0), false);
+  assert.equal(shouldNudge(f, today, 9 * 60, 0), false);
+  assert.equal(shouldAutoOpen(f, today, 9 * 60, 2), true);
+  assert.equal(shouldNudge(f, today, 9 * 60, 1), true);
+});
+
 test('AI 다듬기: 글에 할 일 id 와 빈 시간, 답은 아는 id 만 셋까지', () => {
   const prompt = polishPlanPrompt({
     ask: '다듬어 줘',

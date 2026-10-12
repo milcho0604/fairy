@@ -157,7 +157,8 @@ export function createDayTools(o: DayToolsOptions) {
     });
     const { events, gaps } = dayGaps(now);
     const plan = file.plan?.day === today ? file.plan : undefined;
-    const autoOpen = auto && (pendingOpen || shouldAutoOpen(file, today, minuteOfDay(now)));
+    const autoOpen =
+      auto && (pendingOpen || shouldAutoOpen(file, today, minuteOfDay(now), candidates.length));
     if (auto) pendingOpen = false;
     const ai = o.aiLocked() ? undefined : o.aiLabel();
     return {
@@ -261,7 +262,10 @@ export function createDayTools(o: DayToolsOptions) {
   function nudgeTick() {
     const now = Date.now();
     const today = localDay(now);
-    if (nudging || !shouldNudge(file, today, minuteOfDay(now))) return;
+    if (nudging) return;
+    // 고를 할 일이 없으면 "오늘 계획 같이 정할까?" 를 묻지 않는다 (눌러도 빈 시트다)
+    const candidates = planCandidates(o.todos.list(now).open, today).length;
+    if (!shouldNudge(file, today, minuteOfDay(now), candidates)) return;
     if (o.petHidden() || o.focusing() || powerMonitor.getSystemIdleTime() > 60) return;
     if (powerMonitor.getSystemIdleState(60) === 'locked') return;
     if (firstSeen?.day !== today) firstSeen = { day: today, at: now };
