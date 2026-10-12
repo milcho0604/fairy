@@ -596,6 +596,8 @@ export function App() {
             value={text}
             rows={1}
             placeholder={t('chat.placeholder', { name: petName })}
+            // 화면 읽기 프로그램이 칸 이름을 "Enter로 보내고..."(title)로 읽었다. 이름은 칸이 하는 일, title 은 설명으로
+            aria-label={t('chat.placeholder', { name: petName })}
             title={t('chat.inputTitle')}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={onKeyDown}
