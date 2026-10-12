@@ -795,6 +795,8 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     if (this.stance) this.fitStance();
     // 복슬복슬: 관절마다 부품을 녹여 한 덩어리로 (관절과 다리 나누기가 끝난 뒤라 움직임은 그대로)
     if (this.fluffy) this.fuseJoints(bp);
+    // 실사 네 발로 선 몸: 관절마다 털 껍질을 층별로 합쳐 그리기 호출을 줄인다
+    if (this.real && this.stance) this.mergeFurShells();
   }
 
   /**
@@ -1906,8 +1908,62 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       // 끝으로 갈수록 살짝 아래로 눕는다 (무게)
       shell.position.y = -(0.25 * len * t * t) / Math.max(1e-3, mesh.scale.y);
       shell.renderOrder = i;
+      // 무늬 없는 껍질은 관절 단위로 합칠 수 있다 (mergeFurShells. 무늬는 모양 좌표로 칠해 합치면 어긋난다)
+      shell.userData.furShell = !pat;
       mesh.add(shell);
     }
+  }
+
+  /**
+   * 실사 네 발로 선 몸(밀크, 초코): 같은 관절에 붙은 부품들의 털 껍질을 층(재질)마다 한 모양으로 합친다.
+   * 껍질은 부품마다 16겹이라 갈기, 털 다발, 귀 덩이처럼 부품을 덧붙일 때마다 그리기 호출이 17번씩 늘었다.
+   * 부품과 껍질은 관절 안에서 움직이지 않으니 관절 기준 자리로 구워도 그림은 같다 (관절이 돌면 같이 돈다).
+   * 자세를 잡은 뒤 부른다 (다리 마디는 붙인 뒤에 자리와 털 결이 정해진다)
+   */
+  private mergeFurShells() {
+    const keep = new Set(['position', 'normal', 'uv']);
+    const byJoint = new Map<Object3D, Map<Material, Mesh[]>>();
+    this.root.traverse((o) => {
+      const part = o.parent;
+      const joint = part?.parent;
+      if (!(o instanceof Mesh) || !o.userData.furShell || !part || !joint) return;
+      const mat = o.material as Material;
+      const mats = byJoint.get(joint) ?? new Map<Material, Mesh[]>();
+      byJoint.set(joint, mats);
+      mats.set(mat, [...(mats.get(mat) ?? []), o]);
+    });
+    for (const [joint, mats] of byJoint)
+      for (const [mat, shells] of mats) {
+        if (shells.length < 2) continue;
+        const geos: BufferGeometry[] = [];
+        const used: Mesh[] = [];
+        for (const s of shells) {
+          const part = s.parent as Object3D;
+          part.updateMatrix();
+          s.updateMatrix();
+          const rel = part.matrix.clone().multiply(s.matrix);
+          // 뒤집힌 자리는 감기 방향이 바뀌어 그대로 둔다
+          if (rel.determinant() <= 0) continue;
+          const g = s.geometry.clone();
+          for (const k of Object.keys(g.attributes)) if (!keep.has(k)) g.deleteAttribute(k);
+          g.morphAttributes = {};
+          g.clearGroups();
+          const n = g.attributes.position?.count ?? 0;
+          if (!g.attributes.uv) g.setAttribute('uv', new BufferAttribute(new Float32Array(n * 2), 2));
+          if (!g.index) g.setIndex(Array.from({ length: n }, (_, i) => i));
+          g.applyMatrix4(rel);
+          geos.push(g);
+          used.push(s);
+        }
+        const merged = used.length >= 2 ? mergeGeometries(geos) : null;
+        for (const g of geos) g.dispose();
+        if (!merged) continue;
+        const one = new Mesh(merged, mat);
+        one.renderOrder = used[0]?.renderOrder ?? 0;
+        joint.add(one);
+        // 껍질은 부품 모양을 같이 쓰므로 모양은 버리지 않는다
+        for (const s of used) s.parent?.remove(s);
+      }
   }
 
   /** 털 껍질 재질. 색과 겉 느낌, 층마다 하나 (같은 색 부품끼리 같이 쓴다) */
