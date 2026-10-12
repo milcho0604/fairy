@@ -12,8 +12,16 @@ import { dirname } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { net } from 'electron';
-import { DownloadError, statusReason } from '../shared/download-error.ts';
-import { partComplete, partPath, rangeFrom, rangeVerdict } from './download-resume.ts';
+import { DownloadError, failReason, statusReason } from '../shared/download-error.ts';
+import {
+  createStallWatch,
+  partComplete,
+  partPath,
+  partRemovable,
+  rangeFrom,
+  rangeVerdict,
+  STALL_MS,
+} from './download-resume.ts';
 
 /** 받을 파일. 받은 뒤 SHA-256 을 맞춰 보고, 안 맞으면 버린다 */
 export interface VerifiedFile {
@@ -28,6 +36,8 @@ export interface VerifiedFile {
    * 목록 크기를 넘으면 그래도 버린다
    */
   resume?: boolean;
+  /** 멈춤으로 볼 시간 (시험용. 기본 STALL_MS) */
+  stallMs?: number;
 }
 
 export async function sha256Of(file: string): Promise<string> {
@@ -118,58 +128,84 @@ async function receive(
   }
   const from = rangeFrom(have, f.bytes);
   if (from === 0) rmSync(part, { force: true });
-  // 앱의 다른 곳(일정, 목록, 업데이트)처럼 Electron net 으로 받는다. Node fetch 는 연결 시간 초과가 잦았다
-  const res = await net.fetch(f.url, {
-    signal,
-    ...(from > 0 ? { headers: { Range: `bytes=${from}-` } } : {}),
+  // 멈춤 감시: 서버 답을 기다리는 동안과 받는 동안 STALL_MS 넘게 바이트가 없으면 끊고 "연결이 끊겼어"로 (버그잡이 4)
+  const stallAc = new AbortController();
+  let counted: Readable | undefined;
+  const stall = createStallWatch(f.stallMs ?? STALL_MS, () => {
+    stallAc.abort();
+    counted?.destroy(new DownloadError('network'));
   });
-  // 받다 만 것이 서버 파일과 안 맞으면(416) 버리고 처음부터 한 번
-  if (from > 0 && res.status === 416) {
-    void res.body?.cancel().catch(() => {});
-    rmSync(part, { force: true });
-    if (fresh) throw new DownloadError('server', res.status);
-    return receive(f, onProgress, signal, true);
+  const both = signal ? AbortSignal.any([signal, stallAc.signal]) : stallAc.signal;
+  try {
+    return await receiveBody();
+  } catch (err) {
+    // 멈춤으로 끊은 것은 사용자가 그만둔 것이 아니라 연결 문제다 (다시 하면 된다)
+    if (stall.stalled && !signal?.aborted) throw new DownloadError('network');
+    throw err;
+  } finally {
+    stall.stop();
   }
-  if (!res.ok || !res.body) throw new DownloadError(res.ok ? 'server' : statusReason(res.status), res.status);
-  const verdict = rangeVerdict(res.status, res.headers.get('content-range'), from);
-  // 206 인데 부탁한 자리가 아니면 받지 않고 Range 없이 한 번 더 (그래도 어긋나면 서버 탓)
-  if (verdict === 'retry') {
-    void res.body.cancel().catch(() => {});
-    rmSync(part, { force: true });
-    if (fresh) throw new DownloadError('server', res.status);
-    return receive(f, onProgress, signal, true);
-  }
-  const resumed = verdict === 'resume';
-  const length = Number(res.headers.get('content-length'));
-  const total = resumed ? from + (length || f.bytes - from) : length || f.bytes;
-  let got = resumed ? from : 0;
-  let last = got / total;
-  // 목록에 적힌 크기보다 한참 크면 끝까지 받지 않고 멈춘다 (해시는 어차피 틀린다)
-  const limit = f.bytes * 1.05;
-  const counted = Readable.fromWeb(res.body as import('node:stream/web').ReadableStream).on(
-    'data',
-    (chunk: Buffer) => {
+
+  async function receiveBody(): Promise<string> {
+    // 앱의 다른 곳(일정, 목록, 업데이트)처럼 Electron net 으로 받는다. Node fetch 는 연결 시간 초과가 잦았다
+    const res = await net.fetch(f.url, {
+      signal: both,
+      ...(from > 0 ? { headers: { Range: `bytes=${from}-` } } : {}),
+    });
+    stall.kick();
+    // 받다 만 것이 서버 파일과 안 맞으면(416) 버리고 처음부터 한 번
+    if (from > 0 && res.status === 416) {
+      void res.body?.cancel().catch(() => {});
+      rmSync(part, { force: true });
+      if (fresh) throw new DownloadError('server', res.status);
+      stall.stop(); // 다시 받기는 제 감시를 둔다
+      return receive(f, onProgress, signal, true);
+    }
+    if (!res.ok || !res.body)
+      throw new DownloadError(res.ok ? 'server' : statusReason(res.status), res.status);
+    const verdict = rangeVerdict(res.status, res.headers.get('content-range'), from);
+    // 206 인데 부탁한 자리가 아니면 받지 않고 Range 없이 한 번 더 (그래도 어긋나면 서버 탓)
+    if (verdict === 'retry') {
+      void res.body.cancel().catch(() => {});
+      rmSync(part, { force: true });
+      if (fresh) throw new DownloadError('server', res.status);
+      stall.stop(); // 다시 받기는 제 감시를 둔다
+      return receive(f, onProgress, signal, true);
+    }
+    const resumed = verdict === 'resume';
+    const length = Number(res.headers.get('content-length'));
+    const total = resumed ? from + (length || f.bytes - from) : length || f.bytes;
+    let got = resumed ? from : 0;
+    let last = got / total;
+    // 목록에 적힌 크기보다 한참 크면 끝까지 받지 않고 멈춘다 (해시는 어차피 틀린다)
+    const limit = f.bytes * 1.05;
+    const body = Readable.fromWeb(res.body as import('node:stream/web').ReadableStream);
+    counted = body;
+    body.on('data', (chunk: Buffer) => {
+      stall.kick();
       got += chunk.length;
-      if (got > limit) counted.destroy(new DownloadError('hash'));
+      if (got > limit) body.destroy(new DownloadError('hash'));
       const ratio = got / total;
       if (ratio - last >= 0.01) {
         last = ratio;
         onProgress(Math.min(1, ratio));
       }
-    },
-  );
-  try {
-    await pipeline(counted, createWriteStream(part, { flags: resumed ? 'a' : 'w' }));
-  } catch (err) {
-    // 이어 받는 파일은 끊기거나 멈춰도 남긴다. 넘쳐서 멈춘 것(hash)만 버린다
-    if (!f.resume || err instanceof DownloadError) rmSync(part, { force: true });
-    throw err;
+    });
+    try {
+      await pipeline(body, createWriteStream(part, { flags: resumed ? 'a' : 'w' }));
+    } catch (err) {
+      // 이어 받는 파일은 끊기거나 멈춰도 남긴다. 넘쳐서 멈춘 것(hash)과 이어 받지 않는 파일은 버린다
+      if (partRemovable(!!f.resume, failReason(err))) rmSync(part, { force: true });
+      throw err;
+    }
+    // 다 받았다: 해시 맞추기(몇 GB 면 수십 초)는 멈춤으로 보지 않는다
+    stall.stop();
+    if ((await sha256Of(part)) !== f.sha256) {
+      rmSync(part, { force: true });
+      throw new DownloadError('hash');
+    }
+    return settle(f, part, onProgress);
   }
-  if ((await sha256Of(part)) !== f.sha256) {
-    rmSync(part, { force: true });
-    throw new DownloadError('hash');
-  }
-  return settle(f, part, onProgress);
 }
 
 /** 해시를 맞춘 .part 를 제자리로 */
