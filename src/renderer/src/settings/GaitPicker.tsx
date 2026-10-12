@@ -45,13 +45,21 @@ export function GaitPicker({
   const stopped = useRef(false);
   const [error, setError] = useState('');
   const figure = s.petImage && snap.current?.look === 'figure' ? snap.current.model : undefined;
+  // 네 발로 선 몸(밀크, 초코, 네 발로 서기를 켠 사진 펫)은 늘 네 발로 걷는다. 고른 걸음새를 펫 화면이 쓰지 않는다 (pet.ts pickedBlueprint)
+  const stands = !!figure && s.pet3d && (!!figure.stance || pickedStand(s));
   // 몸 모양: 기본 펫은 기본 설계도, 사진 펫은 그 설계도 (고른 값을 덮기 전)
   const shape: Gait | undefined = !s.petImage
     ? shapeOf(DEFAULT_BLUEPRINTS[s.petKind])
-    : figure && s.pet3d
+    : figure && s.pet3d && !stands
       ? shapeOf(figure)
       : undefined;
-  const why = shape ? '' : figure ? t('settings.gait.off3d') : t('settings.gait.flat');
+  const why = shape
+    ? ''
+    : stands
+      ? t('settings.gait.stand', { name: s.petName })
+      : figure
+        ? t('settings.gait.off3d')
+        : t('settings.gait.flat');
   const picked = shape ? pickedGait(s) : undefined;
   const now: GaitPick = picked ?? 'auto';
   const canRemake = !!figure;

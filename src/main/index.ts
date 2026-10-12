@@ -16,6 +16,7 @@ import { isMiniGame, PLAY_COIN } from '../shared/minigames.ts';
 import { noteTitle } from '../shared/note-store.ts';
 import { setSpeechSource, setVoiceSource, voiced } from '../shared/persona-voice.ts';
 import { unlocked, WAVE_AWAY_SEC } from '../shared/pet-life.ts';
+import { starterModelOf } from '../shared/pet3d/starters.ts';
 import { restDaysOf } from '../shared/routine.ts';
 import { pickedGait, pickedStand } from '../shared/settings.ts';
 import { shortcutsChanged } from '../shared/shortcut.ts';
@@ -409,7 +410,8 @@ ready
     // 메뉴 막대에서 달릴 모습은 지금 펫 종류 (사진 펫은 걸음새와 설계도로 가장 가까운 종류). 켜기 전에 정해 한 번만 그린다
     const runnerKindNow = () => {
       const s = settings.get();
-      return runnerKindOf(s, s.petImage ? modelOf(s.petModel) : null);
+      // 밀크, 초코 그림은 앱에 든 설계도로 (펫 화면과 같은 몸, maker.ts petImages)
+      return runnerKindOf(s, s.petImage ? (modelOf(s.petModel) ?? starterModelOf(s.petImage)) : null);
     };
     sysMonitor.setKind(runnerKindNow());
     sysMonitor.setEnabled(settings.get().sysMonitor);
