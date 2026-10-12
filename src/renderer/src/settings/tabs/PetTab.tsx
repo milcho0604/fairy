@@ -259,7 +259,7 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
           onChange={(friends) => update({ friends }, t('settings.friendsChanged'))}
           onImport={async () => {
             const r = await bridge.importFriend();
-            if (r.message) flash(r.message);
+            if (r.message) flash(r.message, !r.ok);
           }}
         />
       </Section>
