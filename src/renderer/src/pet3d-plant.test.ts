@@ -329,3 +329,39 @@ for (const [v, stall] of [
     }
   });
 }
+
+test('발 딛기: 몸이 간 거리나 방향이나 시각이 한 번 NaN, Infinity 여도 지난 값으로 이어 간다', () => {
+  const p = new FootPlanter();
+  let t = 0;
+  for (; t < 1000; t += 33) p.update(walkFrame(t, 33, 0.45));
+  const x0 = p.travelled;
+  const bad: Partial<PlantFrame>[] = [
+    { move: Number.NaN },
+    { move: Number.POSITIVE_INFINITY },
+    { heading: Number.NaN },
+    { heading: Number.NEGATIVE_INFINITY, aim: Number.NaN },
+    { aim: Number.POSITIVE_INFINITY },
+    { now: Number.NaN },
+  ];
+  for (const b of bad) {
+    t += 33;
+    const out = p.update({ ...walkFrame(t, 33, 0.45), ...b });
+    for (const id of LEGS)
+      assert.ok([out[id].x, out[id].z, out[id].lift].every(Number.isFinite), `${id} ${JSON.stringify(b)}`);
+  }
+  assert.ok(Number.isFinite(p.travelled) && p.travelled >= x0, `travelled ${p.travelled}`);
+  // 서서 도는 중(박자 없이 발을 옮긴다)에 돌아가려는 각이 NaN
+  for (let i = 0; i < 3; i++) {
+    t += 33;
+    const out = p.update({ ...walkFrame(t, 33, 0), heading: 0.9, aim: Number.NaN });
+    for (const id of LEGS) assert.ok([out[id].x, out[id].z].every(Number.isFinite), `${id} aim NaN`);
+  }
+  for (; t < 3000; t += 33) p.update(walkFrame(t, 33, 0.45));
+  let out = p.update(walkFrame(t, 33, 0));
+  for (let i = 0; i < 40; i++) {
+    t += 33;
+    out = p.update(walkFrame(t, 33, 0));
+  }
+  for (const id of LEGS) assert.ok(out[id].planted && Number.isFinite(out[id].x), `${id} 끝`);
+  assert.ok(offL(out, REST, L) < 0.08, `끝 ${offL(out, REST, L)} L`);
+});

@@ -129,6 +129,8 @@ export class FootPlanter {
   private last: number | undefined;
   /** 지난 틀 몸의 다리 길이. 바뀌면 다른 몸이다 (펫이나 모습을 바꿨다): 발을 새 몸 바랄 자리에서 다시 시작한다 */
   private bodyL: number | undefined;
+  /** 지난 틀의 몸 방향 (방향이 NaN 이면 이어 쓴다) */
+  private heading = 0;
   /** 아직 옮길 발이 있는지 (든 발이 있거나 바랄 자리에서 벗어난 디딘 발). 펫 화면이 몇 틀 더 그린다 */
   busy = false;
 
@@ -166,7 +168,18 @@ export class FootPlanter {
     );
   }
 
-  update(f: PlantFrame): Record<LegId, FootOut> {
+  update(input: PlantFrame): Record<LegId, FootOut> {
+    // 시각, 몸이 간 거리, 방향이 NaN 이나 Infinity 면 그 값은 버리고 지난 값으로 (한 번 들어가면 몸 자리가 영영 NaN 이었다)
+    const fin = (v: number | undefined, prev: number) => (v !== undefined && Number.isFinite(v) ? v : prev);
+    const heading = fin(input.heading, this.heading);
+    this.heading = heading;
+    const f: PlantFrame = {
+      ...input,
+      now: fin(input.now, this.last ?? 0),
+      heading,
+      aim: fin(input.aim, heading),
+      move: fin(input.move, 0),
+    };
     const dt = this.last === undefined ? Number.POSITIVE_INFINITY : f.now - this.last;
     this.last = f.now;
     this.bodyX += f.move;
