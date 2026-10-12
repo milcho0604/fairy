@@ -3,7 +3,7 @@
 // 사용자가 적은 글은 자료 칸(<<<JJ_DATA ... JJ_DATA>>>)에 넣어 지시로 읽히지 않게 한다 (persona.ts 와 같은 테두리).
 // 요청문은 사용자에게 보이지 않고 JSON 정확도가 중요해 영어로 쓴다.
 import { DATA_CLOSE, DATA_OPEN } from '../ai/persona.ts';
-import { clipPetName } from '../settings.ts';
+import { clipPetName, PET_NAME_MAX, petNameLength } from '../settings.ts';
 import { type Blueprint, MAX_PARTS, parseBlueprint } from './blueprint.ts';
 import { EXAMPLE_PLUSH } from './examples.ts';
 import { schemaBlock } from './prompt.ts';
@@ -132,15 +132,44 @@ export function readTextAnswer(answer: unknown): TextAnswer {
   return { ok: false, reason: 'bad' };
 }
 
-/** 이름 기본값: 적은 글을 다듬어 펫 이름 칸 길이(PET_NAME_MAX, 사람이 보는 글자)로. 고칠 수 있다 */
+/** 이름에서 뒤 낱말만 남길 때 앞에서 뗄 낱말: 꾸미는 말끝(…를 쓴, …을 단, 작은)과 영어 관사, 이음말 */
+const KO_LEAD = /(을|를|의|에|쓴|단|든|낀|은|는|운|인|한|두른|입은|신은)$/;
+const EN_LEAD = /^(a|an|the|with|and|of|in|on|wearing|that|who)$/i;
+
+/** 낱말을 뒤에서부터 이름 칸에 들어가는 만큼 남기고, 앞에 남은 꾸밈말, 관사는 뗀다 (머리 명사는 끝에 온다) */
+function tailWords(text: string): string {
+  const words = text.split(' ').filter(Boolean);
+  const kept: string[] = [];
+  for (let i = words.length - 1; i >= 0; i--) {
+    const next = [words[i] as string, ...kept];
+    if (petNameLength(next.join(' ')) > PET_NAME_MAX) break;
+    kept.unshift(words[i] as string);
+  }
+  if (kept.length === 0) return clipPetName(text).trim();
+  while (kept.length > 1 && (KO_LEAD.test(kept[0] as string) || EN_LEAD.test(kept[0] as string)))
+    kept.shift();
+  return kept.join(' ');
+}
+
+/**
+ * 이름 기본값: 적은 글을 다듬어 펫 이름 칸 길이(PET_NAME_MAX, 사람이 보는 글자)로. 고칠 수 있다.
+ * 들어가면 그대로. 길면 처음 자연스럽게 끊기는 곳(쉼표, 괄호, "with", "와/과/하고" 앞, "…에" 뒤)에서 끊고,
+ * 그래도 길면 머리 명사가 있는 뒤쪽 낱말을 들어가는 만큼 남긴다 ("A tiny blue penguin" → "Blue penguin")
+ */
 export function nameFromText(text: string): string {
   const full = cleanDescribe(text);
-  const clipped = clipPetName(full);
-  if (clipped === full) return full;
-  // 낱말 가운데서 잘렸으면 앞 낱말까지 ("A white bunn" 대신 "A white"). 띄어쓰기가 없으면 그대로 자른다
-  const space = clipped.lastIndexOf(' ');
-  const cut = full[clipped.length] === ' ' || space <= 0 ? clipped : clipped.slice(0, space);
-  return cut.trim();
+  if (petNameLength(full) <= PET_NAME_MAX) return full;
+  let part = full.split(/\s*[,(;.、，]|\s+(?:with|wearing|and|who|that)\s+/i)[0]?.trim() || full;
+  // 한국어 이음 조사: "토끼와 곰" 은 앞 낱말까지, "숲에 사는 여우" 는 뒤쪽 (머리 명사가 뒤에 온다)
+  const ko = /^(.*?\S)(와|과|하고)\s+\S/.exec(part);
+  if (ko?.[1] && petNameLength(ko[1]) >= 2) part = ko[1];
+  else {
+    const at = /^\S+에\s+(.+)$/.exec(part);
+    if (at?.[1]) part = at[1];
+  }
+  const out = petNameLength(part) <= PET_NAME_MAX ? part : tailWords(part);
+  // 영어 이름 첫 글자는 대문자 (뒤 낱말만 남기면 "blue penguin" 처럼 소문자로 시작한다)
+  return out.replace(/^[a-z]/, (c) => c.toUpperCase());
 }
 
 /**

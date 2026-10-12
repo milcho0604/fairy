@@ -128,9 +128,17 @@ test('이름 기본값: 적은 글을 다듬어 이름 칸 길이로', () => {
   const long = nameFromText('하얀고양이인형하얀고양이인형하얀');
   assert.equal(petNameLength(long), PET_NAME_MAX);
   assert.equal(nameFromText('\n\n'), '');
-  // 낱말 가운데서 자르지 않는다
-  assert.equal(nameFromText('A white bunny plush with a pink cap'), 'A white');
-  assert.equal(nameFromText('분홍 모자를 쓴 하얀 토끼 인형'), '분홍 모자를 쓴 하얀');
+  // 들어가면 그대로
+  assert.equal(nameFromText('Pikachu'), 'Pikachu');
+  // 처음 끊기는 곳: 쉼표, 괄호, with, 와/과/하고 앞, …에 뒤
+  assert.equal(nameFromText('하얀 고양이, 빨간 목도리'), '하얀 고양이');
+  assert.equal(nameFromText('Pikachu (from the Pokemon games)'), 'Pikachu');
+  assert.equal(nameFromText('토끼와 곰이 같이 있는 인형 친구'), '토끼');
+  assert.equal(nameFromText('숲에 사는 아주 작은 여우 친구'), '아주 작은 여우 친구');
+  // 그래도 길면 머리 명사가 있는 뒤쪽 낱말 (낱말 가운데서 자르지 않는다)
+  assert.equal(nameFromText('A tiny blue penguin'), 'Blue penguin');
+  assert.equal(nameFromText('A white bunny plush with a pink cap'), 'Bunny plush');
+  assert.equal(nameFromText('분홍 모자를 쓴 하얀 토끼 인형'), '하얀 토끼 인형');
 });
 
 test('말로 만들기 탭: AI 가 없으면 아예 보이지 않는다', () => {
