@@ -4,6 +4,7 @@ import type { NoteAiKind, NoteHit, NoteSummary, PanelState } from '../../../shar
 import { POLISH_MAX, type PolishReply, splicePolished } from '../../../shared/note-polish.ts';
 import { mergeNoteText, NOTE_BODY_MAX, NOTE_TITLE_MAX, type Note } from '../../../shared/note-store.ts';
 import { pinFirst } from '../../../shared/pin.ts';
+import { singleFlight } from '../chat/single-flight.ts';
 import { ago } from './format.ts';
 import { isEsc, takeEsc } from './keys.ts';
 import { MoreRow } from './more.tsx';
@@ -13,6 +14,8 @@ import { PinButton, usePinMenu } from './pin.tsx';
 
 const bridge = window.jjakkungPanel;
 const SAVE_MS = 400;
+/** 새 메모를 만든 뒤 이 동안은 또 만들지 않는다 (그사이 메모가 열려 단추가 사라진다) */
+const NEW_NOTE_HOLD_MS = 800;
 /** 다듬은 글로 바꾼 뒤 되돌리기를 보여 주는 시간 */
 const UNDO_MS = 10_000;
 /** 글 칸을 떠난 뒤 이 안에 다듬기를 누르면 떠나기 전에 고른 부분을 다듬는다 (키보드로 단추까지 오는 사이) */
@@ -73,6 +76,15 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
   }, []);
 
   const q = query.trim();
+  // "새 메모"를 두 번 누르거나(더블클릭) Enter 를 두 번 치면 메모가 둘 생겨, 하나는 열리고 다른 하나는 "빈 메모"로
+  // 목록에 남았다. 만든 메모가 열려 목록이 사라질 때까지 누름을 버린다
+  const [newNote] = useState(() =>
+    singleFlight(async (text?: string) => {
+      const n = await bridge.noteAdd(text);
+      setOpen(n);
+      return true;
+    }, NEW_NOTE_HOLD_MS),
+  );
   // biome-ignore lint/correctness/useExhaustiveDependencies: 메모가 바뀌면(s.notes) 다시 찾는다
   useEffect(() => {
     if (!q) {
@@ -114,11 +126,10 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
   const lastPinned = list.findLast((n) => n.pinnedAt !== null)?.id;
   // 찾는 말에 맞는 메모가 없으면 그 글로 바로 메모를 만든다 (처음 쓰는 사람이 찾기 칸에 메모를 적고 Enter 를 눌러
   // "찾는 메모가 없어" 에서 막혔다, 2026-10-12)
-  const makeFromQuery = async () => {
-    const n = await bridge.noteAdd(q);
-    setQuery('');
-    setOpen(n);
-  };
+  const makeFromQuery = () =>
+    newNote(q).then((made) => {
+      if (made) setQuery('');
+    });
   // 앞에서부터 한 쪽씩 그린다 (paging.ts). 찾는 말이 바뀌면 첫 쪽부터
   const pages = paging.q === q ? paging.pages : 1;
   const page = pageOf(list, pages);
@@ -146,14 +157,7 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
             }
           }}
         />
-        <button
-          type="button"
-          className="primary"
-          onClick={async () => {
-            const n = await bridge.noteAdd();
-            setOpen(n);
-          }}
-        >
+        <button type="button" className="primary" onClick={() => void newNote()}>
           {t('panel.note.new')}
         </button>
       </div>
