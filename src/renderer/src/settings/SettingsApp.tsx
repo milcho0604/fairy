@@ -213,7 +213,9 @@ export function SettingsApp() {
   return (
     <div className="settings">
       <header>
-        <strong>{t('settings.title')}</strong>
+        {/* 창 제목: 화면 읽기 프로그램에는 h1, 보이는 글은 그대로 */}
+        <h1 className="sr-only">{t('settings.title')}</h1>
+        <strong aria-hidden="true">{t('settings.title')}</strong>
         <span className={`saved${savedError ? ' error' : ''}`} role="status" aria-live="polite">
           {saved}
         </span>

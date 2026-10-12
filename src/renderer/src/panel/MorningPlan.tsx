@@ -66,12 +66,12 @@ export function PlanCard({ s, onComplete }: { s: PanelState; onComplete: (todo: 
   const running = s.focus.phase !== 'idle';
   return (
     <section className="plan-card">
-      <h3>
+      <h2>
         {t('plan.card.title')}
         <button type="button" className="link" onClick={openPlanSheet}>
           {t('plan.card.edit')}
         </button>
-      </h3>
+      </h2>
       {allDone && <p className="plan-yay">{t('plan.card.allDone')}</p>}
       {picks.length > 0 && (
         <ul className="plan-picks">
@@ -286,10 +286,10 @@ export function PlanSheetHost({
               {msg}
             </p>
           )}
-          <h4>
+          <h3>
             {t('plan.sheet.blocks')}
             {view.events.length > 0 && <small>{t('plan.sheet.events', { n: view.events.length })}</small>}
-          </h4>
+          </h3>
           {blocks.length === 0 ? (
             <p className="empty-line">{t('plan.sheet.noGaps')}</p>
           ) : (

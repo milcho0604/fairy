@@ -918,7 +918,9 @@ export function MakerApp() {
   return (
     <div className="maker" onPaste={onPaste}>
       <header>
-        <strong>{title}</strong>
+        {/* 창 제목: 화면 읽기 프로그램에는 h1, 보이는 글은 그대로 */}
+        <h1 className="sr-only">{title}</h1>
+        <strong aria-hidden="true">{title}</strong>
         <ol className="steps">
           {steps.map(([group, label], i) => (
             <li key={label} className={group.includes(step) ? 'on' : ''}>

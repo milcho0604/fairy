@@ -105,7 +105,9 @@ export function KnowsApp() {
     <div className={`settings knows ${snap.platform === 'darwin' ? 'mac' : ''}`}>
       <header>
         <PetFace />
-        <strong>{t('bond.knows.title', { name })}</strong>
+        {/* 창 제목: 화면 읽기 프로그램에는 h1, 보이는 글은 그대로 */}
+        <h1 className="sr-only">{t('bond.knows.title', { name })}</h1>
+        <strong aria-hidden="true">{t('bond.knows.title', { name })}</strong>
         {note && (
           <span className={`saved ${note.error ? 'error' : ''}`} role="status">
             {note.text}

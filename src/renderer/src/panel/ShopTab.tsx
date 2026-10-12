@@ -58,7 +58,7 @@ export function ShopTab({ s }: { s: PanelState }) {
       )}
 
       <section>
-        <h3>{t('shop.foods')}</h3>
+        <h2>{t('shop.foods')}</h2>
         <ul className="goods">
           {FOODS.map((f) => (
             <li key={f.key}>
@@ -131,7 +131,7 @@ export function ShopTab({ s }: { s: PanelState }) {
       </section>
 
       <section>
-        <h3>{t('shop.toys')}</h3>
+        <h2>{t('shop.toys')}</h2>
         <ul className="goods">
           {TOYS.map((toy) => {
             const owned = shop.toys[toy.key];
@@ -173,7 +173,7 @@ export function ShopTab({ s }: { s: PanelState }) {
       </section>
 
       <section>
-        <h3>{t('shop.house')}</h3>
+        <h2>{t('shop.house')}</h2>
         <div className="row-line">
           <span>
             {level === 0
@@ -210,9 +210,9 @@ export function ShopTab({ s }: { s: PanelState }) {
         )}
         {level > 0 && (
           <>
-            <h3 className="sub">
+            <h2 className="sub">
               {t('shop.styles')} <small>{t('shop.stylesHint')}</small>
-            </h3>
+            </h2>
             <ul className="house-styles">
               {HOUSE_STYLES.map((style) => (
                 <StyleCard

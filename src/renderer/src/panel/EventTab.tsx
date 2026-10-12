@@ -145,12 +145,12 @@ export function EventTab({
           {days.size === 0 && pinned.length === 0 && <p className="empty">{t('panel.event.empty')}</p>}
           {pinned.length > 0 && (
             <section className="pinned-events" aria-label={t('pin.section')}>
-              <h3>
+              <h2>
                 <span className="pin-head">
                   <PinIcon />
                   {t('pin.section')}
                 </span>
-              </h3>
+              </h2>
               <ul className="events">
                 {pinned.map((e) => (
                   <EventRow
@@ -168,7 +168,7 @@ export function EventTab({
           )}
           {[...days].map(([day, list]) => (
             <section key={day}>
-              <h3>{dayHeading(day, s.today)}</h3>
+              <h2>{dayHeading(day, s.today)}</h2>
               <ul className="events">
                 {list.map((e) => (
                   <EventRow

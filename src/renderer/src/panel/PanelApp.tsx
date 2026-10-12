@@ -221,7 +221,9 @@ export function PanelApp() {
     <div className="card-window panel">
       <header>
         <PetFace />
-        <strong>{s.petName}</strong>
+        {/* 창 제목: 화면 읽기 프로그램에는 h1, 보이는 글은 그대로 */}
+        <h1 className="sr-only">{s.petName}</h1>
+        <strong aria-hidden="true">{s.petName}</strong>
         <span className="coins" title={t('panel.coinsHint')}>
           <CoinIcon />
           {s.balance}
@@ -291,52 +293,55 @@ export function PanelApp() {
         ))}
       </nav>
 
-      {tab === 'today' && (
-        <TodayTab
-          s={s}
-          onComplete={complete}
-          goTo={setTab}
-          onMoved={(moved) => showToast({ kind: 'moved', moved })}
-        />
-      )}
-      {tab === 'todo' && (
-        <TodoTab
-          s={s}
-          onComplete={complete}
-          inputRef={inputRef}
-          onAdded={(r, text) => {
-            // 시각이 있어 일정으로 들어갔다: 언제로 넣었는지, 되돌리기, 할 일로
-            if (r.kind === 'event')
-              showToast({
-                kind: 'to-event',
-                id: r.id,
-                startAt: r.startAt,
-                text,
-                ...(r.clash ? { clash: r.clash } : {}),
-                ...(r.am ? { am: r.am } : {}),
-              });
-            // 여러 줄 붙여 넣기: "할 일 3개 넣었어"
-            if (r.kind === 'many') showToast({ kind: 'added', text: addedText(r, s.today) });
-            // "30분 뒤 알려 줘": 언제 알려 줄지
-            if (r.kind === 'todo' && r.remindAt !== undefined)
-              showToast({ kind: 'added', text: addedText(r, s.today) });
-            if (r.kind === 'todo' && (r.past || r.monthly))
-              showToast({ kind: 'flagged', id: r.id, text: addedText(r, s.today), past: !!r.past });
-          }}
-          onRemoved={(todo) => showToast({ kind: 'todo-removed', id: todo.id })}
-        />
-      )}
-      {tab === 'note' && <NoteTab s={s} onRemoved={(id) => showToast({ kind: 'note-removed', id })} />}
-      {tab === 'shop' && <ShopTab s={s} />}
-      {tab === 'event' && (
-        <EventTab
-          s={s}
-          inputRef={inputRef}
-          onRemoved={(id) => showToast({ kind: 'event-removed', id })}
-          onComplete={complete}
-          onTodoRemoved={(todo) => showToast({ kind: 'todo-removed', id: todo.id })}
-        />
-      )}
+      {/* 탭 내용이 창의 본문 (화면 읽기 프로그램의 main 이동) */}
+      <main className="panel-main">
+        {tab === 'today' && (
+          <TodayTab
+            s={s}
+            onComplete={complete}
+            goTo={setTab}
+            onMoved={(moved) => showToast({ kind: 'moved', moved })}
+          />
+        )}
+        {tab === 'todo' && (
+          <TodoTab
+            s={s}
+            onComplete={complete}
+            inputRef={inputRef}
+            onAdded={(r, text) => {
+              // 시각이 있어 일정으로 들어갔다: 언제로 넣었는지, 되돌리기, 할 일로
+              if (r.kind === 'event')
+                showToast({
+                  kind: 'to-event',
+                  id: r.id,
+                  startAt: r.startAt,
+                  text,
+                  ...(r.clash ? { clash: r.clash } : {}),
+                  ...(r.am ? { am: r.am } : {}),
+                });
+              // 여러 줄 붙여 넣기: "할 일 3개 넣었어"
+              if (r.kind === 'many') showToast({ kind: 'added', text: addedText(r, s.today) });
+              // "30분 뒤 알려 줘": 언제 알려 줄지
+              if (r.kind === 'todo' && r.remindAt !== undefined)
+                showToast({ kind: 'added', text: addedText(r, s.today) });
+              if (r.kind === 'todo' && (r.past || r.monthly))
+                showToast({ kind: 'flagged', id: r.id, text: addedText(r, s.today), past: !!r.past });
+            }}
+            onRemoved={(todo) => showToast({ kind: 'todo-removed', id: todo.id })}
+          />
+        )}
+        {tab === 'note' && <NoteTab s={s} onRemoved={(id) => showToast({ kind: 'note-removed', id })} />}
+        {tab === 'shop' && <ShopTab s={s} />}
+        {tab === 'event' && (
+          <EventTab
+            s={s}
+            inputRef={inputRef}
+            onRemoved={(id) => showToast({ kind: 'event-removed', id })}
+            onComplete={complete}
+            onTodoRemoved={(todo) => showToast({ kind: 'todo-removed', id: todo.id })}
+          />
+        )}
+      </main>
 
       <footer>
         {/* 이름이 길어도 한 줄 (넘치면 말줄임, 전체는 풀이에) */}

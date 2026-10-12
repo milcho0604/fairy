@@ -195,7 +195,14 @@ input {
   list-style: none;
 }
 
-.panel > .todos {
+.panel-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-main > .todos {
   flex: 1;
   overflow-y: auto;
   scrollbar-width: thin;
@@ -802,8 +809,8 @@ li.pin-end {
   margin-top: 12px;
 }
 
-.today h3,
-.events-list h3 {
+.today h2,
+.events-list h2 {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -1364,7 +1371,7 @@ li.pin-end {
   margin-top: 12px;
 }
 
-.shop h3 {
+.shop h2 {
   margin: 0 0 4px;
   font-size: 12px;
   font-weight: 600;
@@ -1467,11 +1474,11 @@ li.pin-end {
 }
 
 /* 집 모양 고르기: 지금 단계로 그린 작은 그림 넷 */
-.shop h3.sub {
+.shop h2.sub {
   margin-top: 10px;
 }
 
-.shop h3.sub small {
+.shop h2.sub small {
   font-weight: 400;
 }
 
