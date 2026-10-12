@@ -989,8 +989,8 @@ export interface PanelBridge {
   close(): void;
   onState(listener: (state: PanelState) => void): void;
   noteGet(id: number): Promise<Note | undefined>;
-  /** 새 메모. 만든 메모를 돌려준다 */
-  noteAdd(): Promise<Note>;
+  /** 새 메모. 만든 메모를 돌려준다. text 를 주면 그 글로 시작한다 (찾기 칸에 적은 글로 메모 만들기) */
+  noteAdd(text?: string): Promise<Note>;
   noteUpdate(id: number, patch: { title?: string; body?: string }): void;
   noteRemove(id: number): void;
   noteRestore(id: number): void;

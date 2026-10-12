@@ -341,9 +341,11 @@ export function createPanel(o: PanelOptions) {
   });
   // ---- 메모 ----
   ipcMain.handle(PANEL.noteGet, (e, id: number) => (ours(e) ? o.notes.get(id) : undefined));
-  ipcMain.handle(PANEL.noteAdd, (e) => {
+  ipcMain.handle(PANEL.noteAdd, (e, text: unknown) => {
     if (!ours(e)) return undefined;
-    const n = o.notes.add({}, Date.now());
+    // 찾기 칸에 적은 글로 만들 때는 그 글이 본문 첫 줄 (제목은 첫 줄에서 저절로)
+    const body = typeof text === 'string' ? text.trim() : '';
+    const n = o.notes.add(body ? { body } : {}, Date.now());
     freshNotes.add(n.id);
     push();
     return n;

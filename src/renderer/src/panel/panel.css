@@ -1731,3 +1731,25 @@ li:is(.todo, .event) .tools .extra .due.none {
   width: 16px;
   height: 16px;
 }
+
+/* 찾는 메모가 없을 때 "이 내용으로 메모 만들기" (메모 줄 단추 모양을 덮어 가운데 작은 단추로) */
+.panel .notes li.empty > .note-make {
+  display: inline-flex;
+  width: auto;
+  margin: 10px auto 0;
+  padding: 0 12px;
+  height: 30px;
+  line-height: 1;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--accent);
+  font-size: 12.5px;
+}
+
+.panel .notes li.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
