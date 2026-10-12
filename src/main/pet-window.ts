@@ -1042,6 +1042,9 @@ export function createPetWindow({
     const started = last;
     log('pet', 'throw', Math.round(vx), Math.round(vy));
     win.webContents.send(IPC.flight, true);
+    // 날던 중에 다시 던지면 앞의 타이머를 멈춘다. 그대로 두면 stopFlight 가 뒤의 것만 멈춰 앞의 것이
+    // 끝없이 돌며 펫을 그 자리에 붙잡았다 (걷기, 옮기기가 되돌려졌다)
+    clearInterval(flightTimer);
     flightTimer = setInterval(() => {
       const now = Date.now();
       const dt = Math.min(0.05, (now - last) / 1000);
