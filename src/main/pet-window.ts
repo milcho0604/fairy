@@ -694,6 +694,11 @@ export function createPetWindow({
       item(t('play.menu.mole'), 'mole'),
       ...(mate ? [item(t('play.menu.tag', { name: mate }), 'tag')] : []),
       { type: 'separator' },
+      // 웃게 하기 (shared/fun.ts): AI 없이. 끝말잇기는 채팅 창에서 해서 노는 중이어도 열 수 있다
+      item(t('fun.menu.joke'), 'joke'),
+      item(t('fun.menu.five'), 'highfive'),
+      { label: t('fun.menu.chain'), click: () => actions.play('wordchain') },
+      { type: 'separator' },
       { label: t('pet.menu.shop'), click: () => actions.openShop() },
     ];
   }

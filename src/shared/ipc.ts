@@ -967,7 +967,8 @@ export interface NoteHit {
 export type PanelTab = 'today' | 'todo' | 'note' | 'event' | 'shop';
 
 /** 놀이: 공, 산책, 숨바꼭질과 짧은 놀이 (shared/minigames.ts) */
-export type PlayKind = 'ball' | 'walk' | 'seek' | MiniGame;
+/** wordchain: 끝말잇기 (채팅 창에서 AI 없이, main/fun.ts) */
+export type PlayKind = 'ball' | 'walk' | 'seek' | 'wordchain' | MiniGame;
 
 export type NoteAiKind = 'todos' | 'summary';
 

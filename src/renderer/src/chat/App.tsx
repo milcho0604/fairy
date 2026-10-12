@@ -692,7 +692,12 @@ function Message({
         <span className="who">
           {petName}
           {/* 규칙 답("오늘 뭐부터")은 AI 이름 대신 "AI 없이" (AI 가 답한 줄 알지 않게) */}
-          {m.byRules ? (
+          {m.game ? (
+            // 끝말잇기 (AI 없이 하는 말놀이)
+            <span className="tag" title={t('fun.chain.tagTitle')}>
+              {t('fun.chain.tag')}
+            </span>
+          ) : m.byRules ? (
             <span className="tag" title={t('first.tagTitle')}>
               {t('first.tag')}
             </span>
@@ -707,7 +712,7 @@ function Message({
           // 오는 중인 답은 화면 읽기에서 숨긴다 (조각마다 읽지 않게). 끝나면 보이고 한 번 알린다
           <div className="bubble" dir="auto" aria-hidden={m.status === 'streaming' || undefined}>
             <Markdown text={m.text} onLink={bridge.openLink} />
-            {m.status === 'done' && <AnswerActions id={m.id} text={m.text} />}
+            {m.status === 'done' && !m.game && <AnswerActions id={m.id} text={m.text} />}
           </div>
         )}
         {/* 규칙 답 아래: 맨 위 할 일로 집중 시작, 패널 열기 */}
