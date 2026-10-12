@@ -28,7 +28,7 @@ import {
   type PetMood,
   TALK_MS,
 } from '../../shared/pet-mood.ts';
-import type { Blueprint, Gait } from '../../shared/pet3d/blueprint.ts';
+import { type Blueprint, type Gait, parseBlueprint } from '../../shared/pet3d/blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from '../../shared/pet3d/defaults.ts';
 import { standingBlueprint } from '../../shared/pet3d/stand.ts';
 import type { PetKind, PetStyle, PoseKind } from '../../shared/settings.ts';
@@ -37,6 +37,7 @@ import { type PhotoEyes, STARTER_EYES } from '../../shared/starter-pets.ts';
 import { NO_TOGETHER, type TogetherLook } from '../../shared/together.ts';
 import { dressBlueprint, GROW_LOOK, type WearLook } from '../../shared/wear.ts';
 import { AnimatedImage, frameSide, loadPetImage } from './animated.ts';
+import { shotOf } from './blueprint-shot.ts';
 import {
   CANVAS_SIZE,
   type CarryDraw,
@@ -958,6 +959,22 @@ bridge.onGaze((g) => {
 });
 // 던져져 날아가는 동안은 잡힌 얼굴 (> <)
 bridge.onFlight((flying) => setInputs({ grabbed: flying }));
+
+// 걸음새로 몸을 다시 만든 뒤 새 펫 그림: 메인이 준 설계도를 따로 둔 입체로 정면에서 그려 돌려준다
+// (만들기 창의 저장 그림과 같은 크기, 같은 자르기, blueprint-shot.ts). 지금 보이는 펫 입체는 건드리지 않는다
+let shotPet: Pet3D | undefined;
+bridge.onShotAsk((id, raw) => {
+  const model = parseBlueprint(raw);
+  if (!model) return bridge.shotGot(id, null);
+  void import('./pet3d.ts')
+    .then((m) => {
+      shotPet ??= m.Pet3D.create(() => {
+        shotPet = undefined;
+      });
+      bridge.shotGot(id, (shotPet && shotOf(shotPet, model, { side: 512, clear: true })) ?? null);
+    })
+    .catch(() => bridge.shotGot(id, null));
+});
 // 할 일을 끝내거나 밥을 먹으면 신나서 통통 튄다.
 // 친밀도로 열린 몸짓: 돌아오면 손 흔들기(100), 할 일을 끝내면 빙글 춤(300)
 bridge.onReact((kind) => {

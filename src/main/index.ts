@@ -1192,6 +1192,8 @@ ready
         text: { ask: (text, system, signal) => chat.textShot(text, system, signal), has: chat.hasTextAi },
       },
     );
+    // 걸음새로 다시 만든 말로 만든 펫의 새 펫 그림은 펫 화면이 그린다 (maker.ts redrawFlat)
+    maker.useShot((model) => pet.shot(model));
     const sendPetImage = () => {
       if (!pet.win.isDestroyed()) pet.win.webContents.send(IPC.image, petImages());
     };

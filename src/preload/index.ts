@@ -94,6 +94,10 @@ if (kind === 'pet') {
     onFlight: (listener) => {
       ipcRenderer.on(IPC.flight, (_e, flying: boolean) => listener(flying));
     },
+    onShotAsk: (listener) => {
+      ipcRenderer.on(IPC.shotAsk, (_e, id: number, model: unknown) => listener(id, model));
+    },
+    shotGot: (id: number, png: string | null) => ipcRenderer.send(IPC.shotGot, id, png),
     onGaze: (listener) => {
       ipcRenderer.on(IPC.gaze, (_e, gaze: Gaze | null) => listener(gaze));
     },

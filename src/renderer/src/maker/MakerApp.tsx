@@ -50,6 +50,7 @@ import {
   PET_NAME_MAX,
   POSE_KINDS,
 } from '../../../shared/settings.ts';
+import { shotOf } from '../blueprint-shot.ts';
 import { CANVAS_SIZE } from '../draw.ts';
 import { MakeProgress, type ProgressStage } from '../MakeProgress.tsx';
 import { browserStore, loadExpected, saveDuration } from '../make-progress.ts';
@@ -1658,32 +1659,7 @@ function renderBlueprint(
   opts: { side?: number; clear?: boolean } = {},
 ): string | undefined {
   previewPet ??= Pet3D.create(() => {});
-  const pet = previewPet;
-  if (!pet) return undefined;
-  const side = opts.side ?? 320;
-  const canvas = document.createElement('canvas');
-  canvas.width = side;
-  canvas.height = side;
-  const ctx = canvas.getContext('2d', { willReadFrequently: !!opts.clear });
-  if (!ctx) return undefined;
-  try {
-    pet.setBlueprint(model);
-    pet.spin = 0;
-    pet.tilt = 0;
-    // 흰 바탕 (사진도 배경을 지운 흰 바탕이라 견주기 쉽다)
-    if (!opts.clear) {
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, side, side);
-    }
-    const k = side / CANVAS_SIZE;
-    ctx.setTransform(k, 0, 0, k, 0, 0);
-    pet.draw(ctx, { mood: 'idle', elapsed: 0, blink: -1 }, 0, 1, 1, undefined);
-    return opts.clear ? trimmed(canvas) : canvas.toDataURL('image/png');
-  } catch {
-    return undefined;
-  } finally {
-    pet.clear();
-  }
+  return previewPet ? shotOf(previewPet, model, opts) : undefined;
 }
 
 /** 미리보기 판(220px)에 펫 캔버스(160)를 이만큼 줄여 그린다. 옆으로 돌면 긴 몸이 판 밖으로 잘려서 */
@@ -2223,37 +2199,6 @@ async function sameAsPhoto(sent: string, got: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-/** 투명한 둘레를 잘라 낸 PNG (조금 여백을 둔다). 다 비었으면 undefined */
-function trimmed(canvas: HTMLCanvasElement): string | undefined {
-  const g = canvas.getContext('2d');
-  if (!g) return undefined;
-  const { width: w, height: h } = canvas;
-  const d = g.getImageData(0, 0, w, h).data;
-  let x0 = w;
-  let y0 = h;
-  let x1 = -1;
-  let y1 = -1;
-  for (let y = 0; y < h; y++)
-    for (let x = 0; x < w; x++)
-      if ((d[(y * w + x) * 4 + 3] ?? 0) > 8) {
-        if (x < x0) x0 = x;
-        if (x > x1) x1 = x;
-        if (y < y0) y0 = y;
-        if (y > y1) y1 = y;
-      }
-  if (x1 < 0) return undefined;
-  const pad = 4;
-  x0 = Math.max(0, x0 - pad);
-  y0 = Math.max(0, y0 - pad);
-  x1 = Math.min(w - 1, x1 + pad);
-  y1 = Math.min(h - 1, y1 + pad);
-  const out = document.createElement('canvas');
-  out.width = x1 - x0 + 1;
-  out.height = y1 - y0 + 1;
-  out.getContext('2d')?.drawImage(canvas, x0, y0, out.width, out.height, 0, 0, out.width, out.height);
-  return out.toDataURL('image/png');
 }
 
 /** data URL 그림을 연다 */
