@@ -1,5 +1,5 @@
 // 메뉴 막대에서 달리는 작은 펫 (사용자 요청 2026-10-09: "RunCat 처럼 바쁘면 움직이고, 귀엽게").
-// 지금 고른 펫 종류(콩이, 냥이, 멍멍이, 토순이, 삐약이)의 옆모습이 CPU 에 따라 앉아 졸고, 걷고, 달리고, 땀 흘리며 질주한다.
+// 지금 고른 펫 종류(콩이, 냥이, 멍멍이, 토순이, 삐약이, 햄찌, 뒤뚱이, 곰돌이)의 옆모습이 CPU 에 따라 앉아 졸고, 걷고, 달리고, 땀 흘리며 질주한다.
 // 그림 파일 없이 거리장(SDF: 점에서 모양 가장자리까지 거리)으로 그린다. 둥근 도형을 부드럽게 이어 붙여(smooth union)
 // 통통한 몸이 되고, 가장자리는 거리로 바로 불투명도를 내 16px 에서도 매끄럽다. 화면 없는 계산만 둔다
 // (main/system-monitor.ts 가 그림으로, main/monitor-core.ts 가 장 넘기기에 쓴다).
@@ -87,7 +87,8 @@ export function runnerFrameMs(cpu: number, state: RunnerState = runnerState(cpu)
 
 /**
  * 메뉴 막대에서 달릴 모습. 기본 펫은 그 종류 그대로. 사진 펫은 설계도 특징으로 가장 가까운 기본 종류를 고른다:
- * 부리나 날개가 있으면 삐약이, 위로 선 긴 귀는 토순이, 고양이 입이나 수염, 뾰족 귀(원뿔)는 냥이, 그 밖에 귀가 있으면 멍멍이.
+ * 부리나 날개가 있으면 삐약이(몸이 어두우면 뒤뚱이), 위로 선 긴 귀는 토순이, 고양이 입이나 수염, 뾰족 귀(원뿔)는 냥이,
+ * 동그란 귀(구)는 곰돌이(까만 타원 코)나 햄찌, 그 밖에 귀가 있으면 멍멍이.
  * 귀 없는 몸은 걸음새(고른 값, 설계도 gait, 다리 수 짐작)로: 네 발이면 멍멍이, 두 발이면 콩이. 종류 특징이 걸음새보다 먼저다
  * (냥이, 멍멍이도 팔이 있어 두 발로 서지만 메뉴 막대에서는 네 발로 달린다, 2026-10-11).
  * 설계도가 없는 사진(평면, 2.5D)은 다리를 몰라 콩이
@@ -104,14 +105,27 @@ export function runnerKindOf(
     pickedGait(s) ?? model.gait ?? (legs('legL') >= 2 && legs('legR') >= 2 ? 'quadruped' : 'biped');
   const ears = parts.filter((p) => p.slot === 'earL' || p.slot === 'earR');
   const bird = model.face.mouth === 'beak' || parts.some((p) => p.slot === 'wingL' || p.slot === 'wingR');
-  if (bird) return 'chick';
   const head = parts.find((p) => p.slot === 'head') ?? parts.find((p) => p.slot === 'body');
+  if (bird) return head && darkColor(head.color) ? 'penguin' : 'chick';
   const headTop = head ? head.at[1] + head.size[1] * 0.5 : 0;
   // 토순이 귀는 반높이 0.24 로 머리 위에 서 있다. 멍멍이 귀(0.17)는 머리 옆에 늘어져 있다
   if (ears.some((e) => e.size[1] >= 0.2 && e.at[1] >= headTop)) return 'bunny';
-  if (model.face.mouth === 'cat' || model.face.whiskers || ears.some((e) => e.shape === 'cone')) return 'cat';
+  if (model.face.whiskers || ears.some((e) => e.shape === 'cone')) return 'cat';
+  // 동그란 귀(구, 옆으로 길지 않은 것): 까만 타원 코면 곰돌이, 아니면 햄찌
+  if (ears.length && ears.every((e) => e.shape === 'sphere' && e.size[1] >= e.size[0] * 0.8))
+    return model.face.nose?.shape === 'oval' ? 'bear' : 'hamster';
+  if (model.face.mouth === 'cat') return 'cat';
   // 귀가 있으면 멍멍이 (멍멍이도 두 발로 선다). 귀 없는 몸은 걸음새로
   return ears.length || gait === 'quadruped' ? 'dog' : 'kong';
+}
+
+/** 어두운 색인지 (#rrggbb 밝기 0.35 아래). 못 읽으면 false */
+function darkColor(hex: string): boolean {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!m?.[1]) return false;
+  const n = Number.parseInt(m[1], 16);
+  const lum = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+  return lum < 0.45;
 }
 
 // ---- 그리기 ----
@@ -316,12 +330,14 @@ function sweat(m: Motion, hx: number, hy: number, r: number, front = false): Pie
  * 두 발로 세워 짧은 팔을 단 그림을 16px(윈도우 알림 영역)로 그려 보니 팔이 몸에 묻혀 한두 점으로 뭉개지고,
  * 큰 머리에 작은 몸이라 귀 달린 콩이처럼 보였다. 달리기도 네 발이 훨씬 잘 읽힌다 (2026-10-11 비교)
  */
-function quadScene(kind: 'cat' | 'dog' | 'bunny', m: Motion): Scene {
+function quadScene(kind: 'cat' | 'dog' | 'bunny' | 'bear', m: Motion): Scene {
   const pieces: Piece[] = [];
   const holes: F[] = [];
   const { p, state } = m;
   const bunny = kind === 'bunny';
-  const dog = kind === 'dog';
+  const bear = kind === 'bear';
+  // 곰돌이는 멍멍이처럼 앞으로 나온 주둥이 (귀와 꼬리만 다르다)
+  const dog = kind === 'dog' || bear;
   const s = Math.sin(p * TAU);
   const c = Math.cos(p * TAU);
 
@@ -485,7 +501,7 @@ function quadScene(kind: 'cat' | 'dog' | 'bunny', m: Motion): Scene {
         join: 0.02,
       });
     }
-  } else {
+  } else if (!bear) {
     // 멍멍이: 머리 뒤쪽에 늘어진 귀. 둘레를 파서 머리와 떨어져 보이게. 달리면 펄럭
     const lift = running ? 0.35 + 0.35 * s : state === 'walk' ? 0.1 * Math.sin(p * TAU * 2) : 0;
     const ex = hx - hr * 0.25;
@@ -497,10 +513,22 @@ function quadScene(kind: 'cat' | 'dog' | 'bunny', m: Motion): Scene {
       gap: 0.022,
     });
   }
+  if (bear) {
+    // 곰돌이: 머리 위 동그란 귀 둘 (먼 귀는 조금 뒤). 둘레를 파서 머리와 떨어져 보이게
+    for (const a of [-1.45, -2.15]) {
+      pieces.push({ f: circle(hx + Math.cos(a) * hr * 0.95, hy + Math.sin(a) * hr * 0.95, 0.07), gap: 0.02 });
+    }
+  }
 
   // 꼬리
   const back = { x: bx - rx * 0.92, y: by - ry * 0.25 };
-  if (kind === 'cat') {
+  if (bear) {
+    // 곰돌이: 짧고 동그란 꼬리. 앉아서는 장마다 꼼지락
+    const wig = state === 'rest' ? ([0, 0.03, 0.05, 0.03][m.frame % 4] ?? 0) : 0;
+    const tx = state === 'rest' ? 0.34 - wig : back.x - 0.02;
+    const ty = state === 'rest' ? 0.84 - wig : back.y + 0.04;
+    pieces.push({ f: circle(tx, ty, 0.06), gap: 0.016 });
+  } else if (kind === 'cat') {
     if (state === 'rest') {
       // 바닥에 둘러 놓고 끝만 살랑
       const sway = [0, 0.5, 1, 0.5][m.frame % 4] ?? 0;
@@ -533,22 +561,28 @@ function quadScene(kind: 'cat' | 'dog' | 'bunny', m: Motion): Scene {
   return { pieces, holes };
 }
 
-/** 두 발 친구(콩이, 삐약이). 둥근 몸 하나에 짧은 다리, 콩이는 새싹과 팔, 삐약이는 부리와 날개 */
-function bipedScene(kind: 'kong' | 'chick', m: Motion): Scene {
+/**
+ * 두 발 친구(콩이, 삐약이, 햄찌, 뒤뚱이). 둥근 몸 하나에 짧은 다리, 콩이는 새싹과 팔, 삐약이는 부리와 날개,
+ * 햄찌는 옆으로 넓은 낮은 몸에 동그란 귀, 뒤뚱이는 위로 긴 몸에 작은 부리와 늘어진 날개
+ */
+function bipedScene(kind: 'kong' | 'chick' | 'hamster' | 'penguin', m: Motion): Scene {
   const pieces: Piece[] = [];
   const holes: F[] = [];
   const { p, state } = m;
-  const chick = kind === 'chick';
+  // 삐약이와 뒤뚱이는 새 (가는 다리와 발가락, 부리, 날개)
+  const chick = kind === 'chick' || kind === 'penguin';
+  const penguin = kind === 'penguin';
+  const hamster = kind === 'hamster';
   const running = state === 'run' || state === 'sprint';
-  const rx = chick ? 0.27 : 0.3;
-  const ry = chick ? 0.26 : 0.25;
+  const rx = penguin ? 0.235 : hamster ? 0.33 : chick ? 0.27 : 0.3;
+  const ry = penguin ? 0.31 : hamster ? 0.21 : chick ? 0.26 : 0.25;
   const cx = 0.6;
-  let cy = chick ? 0.54 : 0.47;
+  let cy = penguin ? 0.6 : hamster ? 0.64 : chick ? 0.54 : 0.47;
   let lean = 0;
   let closed = false;
   if (state === 'rest') {
     // 앉으면 몸이 바닥에 닿는다. 셋째 장은 눈을 감고 꾸벅
-    cy = GROUND - ry - (chick ? 0.02 : 0.08);
+    cy = GROUND - ry - (chick ? 0.02 : hamster ? 0.03 : 0.08);
     closed = m.frame === 2;
     if (closed) cy += 0.012;
   } else {
@@ -557,12 +591,16 @@ function bipedScene(kind: 'kong' | 'chick', m: Motion): Scene {
     lean = running ? 0.22 : 0.08;
   }
   const hipY = cy + ry * 0.62;
-  const legO = chick
-    ? { l1: 0.1, l2: 0.1, r1: 0.03, r2: 0.026, foot: 0.03, bend: 1 }
-    : { l1: 0.14, l2: 0.14, r1: 0.05, r2: 0.045, foot: 0.06, bend: 1, join: 0.012 };
+  const legO = penguin
+    ? { l1: 0.07, l2: 0.07, r1: 0.034, r2: 0.03, foot: 0.035, bend: 1 }
+    : chick
+      ? { l1: 0.1, l2: 0.1, r1: 0.03, r2: 0.026, foot: 0.03, bend: 1 }
+      : hamster
+        ? { l1: 0.08, l2: 0.08, r1: 0.045, r2: 0.04, foot: 0.048, bend: 1, join: 0.012 }
+        : { l1: 0.14, l2: 0.14, r1: 0.05, r2: 0.045, foot: 0.06, bend: 1, join: 0.012 };
   const footY = GROUND - legO.foot;
   if (state === 'rest') {
-    if (!chick) {
+    if (kind === 'kong') {
       // 콩이는 두 발을 앞으로 뻗고 앉는다
       pieces.push({ f: bar(cx + 0.04, cy + ry * 0.7, cx + 0.22, footY - 0.01, 0.055), join: 0.04 });
       pieces.push({ f: ellipse(cx + 0.25, footY - 0.015, 0.065, 0.05, -0.3), join: 0.02 });
@@ -593,6 +631,52 @@ function bipedScene(kind: 'kong' | 'chick', m: Motion): Scene {
 
   // 몸 (달리면 앞으로 기운다)
   pieces.push({ f: ellipse(cx, cy, rx, ry, lean * 0.5), join: chick ? 0.03 : 0.05 });
+
+  if (penguin) {
+    // 작은 부리 (얼굴 높이)
+    const by = cy - ry * 0.35;
+    pieces.push({ f: cone(cx + rx * 0.8, by, cx + rx + 0.08, by + 0.025, 0.045, 0.014), join: 0.012 });
+    // 꽁지 (짧게 뒤로)
+    pieces.push({
+      f: cone(cx - rx * 0.7, cy + ry * 0.55, cx - rx - 0.07, cy + ry * 0.7, 0.05, 0.018),
+      join: 0.02,
+    });
+    // 날개: 몸 옆에 늘어진 긴 날개. 둘레를 파서 몸 위에 얹힌 것처럼. 달리면 파닥
+    const flap =
+      state === 'rest'
+        ? ([0, 0.15, 0, 0.15][m.frame % 4] ?? 0)
+        : running
+          ? 0.7 * Math.sin(p * TAU * 2)
+          : 0.25 * Math.sin(p * TAU);
+    pieces.push({ f: ellipse(cx - 0.03, cy + 0.06, 0.06, 0.17, 0.25 + flap), gap: 0.02 });
+    pieces.push(...sweat(m, cx - 0.06, cy - 0.06, 0.22));
+    holes.push(...eye(cx + rx * 0.4, cy - ry * 0.5, 0.04, closed));
+    return { pieces, holes };
+  }
+
+  if (hamster) {
+    // 머리 위 동그란 귀 둘 (먼 귀는 조금 뒤). 둘레를 파서 몸과 떨어져 보이게. 걸으면 살짝
+    const bob = state === 'rest' ? ([0, 0.01, 0.02, 0.01][m.frame % 4] ?? 0) : 0.012 * Math.sin(p * TAU * 2);
+    for (const [dx, r] of [
+      [0.12, 0.06],
+      [-0.06, 0.055],
+    ] as const) {
+      pieces.push({ f: circle(cx + dx, cy - ry * 0.92 + bob, r), gap: 0.018 });
+    }
+    // 볼 주머니: 얼굴 앞 아래가 볼록
+    pieces.push({ f: ellipse(cx + rx * 0.72, cy + ry * 0.2, 0.11, 0.09), join: 0.05 });
+    // 짧은 팔 (가슴 앞에 모은 손이 걸음마다 까딱)
+    const armA = state === 'rest' ? 1.2 : 1.0 + (running ? 0.5 : 0.25) * Math.sin(p * TAU + Math.PI);
+    const shx = cx + rx * 0.62;
+    const shy = cy + ry * 0.45;
+    pieces.push({
+      f: cone(shx, shy, shx + Math.cos(armA) * 0.07, shy + Math.sin(armA) * 0.07, 0.035, 0.03),
+      join: 0.02,
+    });
+    pieces.push(...sweat(m, cx + 0.02, cy - 0.04, 0.2));
+    holes.push(...eye(cx + rx * 0.58, cy - ry * 0.3, 0.04, closed));
+    return { pieces, holes };
+  }
 
   if (chick) {
     // 부리
@@ -657,7 +741,7 @@ function sceneOf(kind: PetKind, state: RunnerState, frame: number): Scene {
   const n = RUNNER_COUNTS[state];
   const f = ((Math.floor(frame) % n) + n) % n;
   const m: Motion = { p: f / n, state, frame: f };
-  if (kind === 'cat' || kind === 'dog' || kind === 'bunny') return quadScene(kind, m);
+  if (kind === 'cat' || kind === 'dog' || kind === 'bunny' || kind === 'bear') return quadScene(kind, m);
   return bipedScene(kind, m);
 }
 

@@ -601,7 +601,7 @@ let activityWake: ReturnType<typeof setTimeout> | undefined;
 
 /**
  * 메인이 제자리 몸짓을 고를 때 쓸 펫 몸과 상태 (shared/moves.ts). 꼬리와 귀는 그려지는 몸에 있을 때만:
- * 입체는 설계도에 그 부위가 있을 때, 2D 는 냥이와 멍멍이 꼬리, 냥이, 토순이, 멍멍이 귀. 사진 펫은 몸 전체만
+ * 입체는 설계도에 그 부위가 있을 때, 2D 는 냥이와 멍멍이 꼬리, 냥이, 토순이, 멍멍이, 햄찌, 곰돌이 귀. 사진 펫은 몸 전체만
  */
 function moveAsk(): MoveAsk {
   const calm = reducedMotion.matches;
@@ -616,7 +616,12 @@ function moveAsk(): MoveAsk {
   if (photo) return { tail: false, ears: false, photo: true, calm, hungry, ...more };
   return {
     tail: petKind === 'cat' || petKind === 'dog',
-    ears: petKind === 'cat' || petKind === 'bunny' || petKind === 'dog',
+    ears:
+      petKind === 'cat' ||
+      petKind === 'bunny' ||
+      petKind === 'dog' ||
+      petKind === 'hamster' ||
+      petKind === 'bear',
     photo: false,
     calm,
     hungry,

@@ -329,7 +329,7 @@ export function gaitPatch(s: Settings, pick: GaitPick): Pick<Settings, 'petGaits
   return { petGaits: pick === 'auto' ? rest : { ...rest, [key]: pick } };
 }
 
-export const PET_KIND_IDS = ['kong', 'cat', 'chick', 'dog', 'bunny'] as const;
+export const PET_KIND_IDS = ['kong', 'cat', 'chick', 'dog', 'bunny', 'hamster', 'penguin', 'bear'] as const;
 export type PetKind = (typeof PET_KIND_IDS)[number];
 export const isPetKind = (v: unknown): v is PetKind => PET_KIND_IDS.includes(v as PetKind);
 // 이름은 지금 말로 읽는다 (getter). 화면은 setLang 뒤에 읽는다.
@@ -362,6 +362,24 @@ export const PET_KINDS: readonly { id: PetKind; readonly label: string }[] = [
     id: 'bunny',
     get label() {
       return t('common.petKind.bunny');
+    },
+  },
+  {
+    id: 'hamster',
+    get label() {
+      return t('common.petKind.hamster');
+    },
+  },
+  {
+    id: 'penguin',
+    get label() {
+      return t('common.petKind.penguin');
+    },
+  },
+  {
+    id: 'bear',
+    get label() {
+      return t('common.petKind.bear');
     },
   },
 ];
@@ -505,6 +523,12 @@ export function defaultPetName(kind: PetKind): string {
       return t('common.petName.dog');
     case 'bunny':
       return t('common.petName.bunny');
+    case 'hamster':
+      return t('common.petName.hamster');
+    case 'penguin':
+      return t('common.petName.penguin');
+    case 'bear':
+      return t('common.petName.bear');
     default:
       return t('common.defaultPetName');
   }
