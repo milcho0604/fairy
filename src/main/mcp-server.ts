@@ -15,12 +15,15 @@ import { findSameEvent } from '../shared/event-dup.ts';
 import { overlapping, spanEnd } from '../shared/event-overlap.ts';
 import {
   ALL_DAY_MAX_DAYS,
+  aiEventFilter,
   aiSafeEvent,
   allDaySpan,
   allDayTimes,
+  type EventSource,
   EventStore,
   repairEventTimes,
 } from '../shared/event-store.ts';
+import { GCAL_PREFS_FILE, gcalAiOn } from '../shared/gcal.ts';
 import { NOTE_BODY_MAX, NoteStore, notePreview, noteTitle, searchNotes } from '../shared/note-store.ts';
 import {
   addPetAction,
@@ -63,6 +66,32 @@ function userDataDir(): string {
   if (process.platform === 'win32')
     return findDataDir(process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'));
   return findDataDir(process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config'));
+}
+
+/**
+ * AI 에게 보일 일정 거르개. 구글에서 읽어 온 일정은 설정 구글 칸의 "AI가 구글 일정도 볼 수 있게"를 켰을 때만 보인다.
+ * 부를 때마다 설정 파일을 읽는다: 짝꿍에서 켜고 끄면 서버를 다시 띄우지 않아도 바로 따른다
+ */
+function aiSees(): (e: { source?: EventSource }) => boolean {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(join(userDataDir(), GCAL_PREFS_FILE), 'utf8'));
+  } catch {
+    raw = undefined;
+  }
+  return aiEventFilter(gcalAiOn(raw));
+}
+
+/**
+ * 고치기, 지우기에 쓸 일정. 구글에서 읽어 온 일정은 켜지 않았으면 없는 일정이고, 켰어도 페어리에서는 읽기 전용이라 거절한다
+ */
+function seenEvent<T extends { source?: EventSource }>(got: T | undefined, id: unknown): T {
+  if (!got || !aiSees()(got)) throw new Error(`id ${String(id)} 일정이 없어`);
+  if (!aiSafeEvent(got))
+    throw new Error(
+      '구글 캘린더에서 가져온 일정이라 페어리에서는 못 고치고 못 지워. 구글 캘린더에서 바꿔 줘',
+    );
+  return got;
 }
 
 let stores: { todos: TodoStore; notes: NoteStore; events: EventStore } | undefined;
@@ -191,7 +220,7 @@ function localStartOf(v: unknown): number {
 /** 시각 일정과 시간이 겹치는 일정이 있으면 덧붙일 말 (event-overlap.ts) */
 function clashNote(events: EventStore, ev: { id: number; startAt: number; endAt: number | null }): string {
   const span = { ...ev, title: '', allDay: false };
-  const hit = overlapping(events.timedOverlapping(ev.startAt, spanEnd(span)).filter(aiSafeEvent), span);
+  const hit = overlapping(events.timedOverlapping(ev.startAt, spanEnd(span)).filter(aiSees()), span);
   return hit.length > 0
     ? ` (주의: ${hit.map((e) => `${stamp(e.startAt).slice(11)} ${e.title}`).join(', ')} 일정과 시간이 겹쳐)`
     : '';
@@ -199,7 +228,7 @@ function clashNote(events: EventStore, ev: { id: number; startAt: number; endAt:
 
 /** 같은 일정이 이미 있으면 그 일정 (제목, 시작, 종일이 같은 것. event-dup.ts) */
 function sameEvent(events: EventStore, ev: { title: string; startAt: number; allDay?: boolean }) {
-  return findSameEvent(events.between(ev.startAt, ev.startAt + 1).filter(aiSafeEvent), ev);
+  return findSameEvent(events.between(ev.startAt, ev.startAt + 1).filter(aiSees()), ev);
 }
 
 /** 기억 받은 편지함에 하나 더한다. 짝꿍이 켜져 있으면 곧 "기다리는 기억"으로 옮기고 사용자가 허락한다 */
@@ -621,18 +650,20 @@ const TOOLS: Tool[] = [
       // 서머타임이 바뀌는 날이 끼면 하루가 23, 25시간이라 24시간씩 더하지 않고 n 일 뒤 0시를 만든다
       const from = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
       const to = new Date(d.getFullYear(), d.getMonth(), d.getDate() + days).getTime();
-      // 구글에서 읽어 온 일정은 AI 에게 보이지 않는다 (aiSafeEvent)
-      const list = open().events.between(from, to).filter(aiSafeEvent);
+      // 구글에서 읽어 온 일정은 사용자가 켠 경우에만 AI 에게 보인다 (aiSees)
+      const list = open().events.between(from, to).filter(aiSees());
       if (list.length === 0) return `앞으로 ${days}일 안에 일정이 없어.`;
       const p = (n: number) => String(n).padStart(2, '0');
       return list
         .map((e) => {
+          // 구글에서 읽어 온 일정은 페어리에서 못 고친다고 알려 둔다
+          const from = aiSafeEvent(e) ? '' : ' (구글 캘린더, 읽기 전용)';
           if (e.allDay) {
             const { first, last } = allDaySpan(e);
-            return `- [${e.id}] ${first === last ? first : `${first}~${last}`} 종일 ${e.title}`;
+            return `- [${e.id}] ${first === last ? first : `${first}~${last}`} 종일 ${e.title}${from}`;
           }
           const d = new Date(e.startAt);
-          return `- [${e.id}] ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())} ${e.title}`;
+          return `- [${e.id}] ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())} ${e.title}${from}`;
         })
         .join('\n');
     },
@@ -654,9 +685,7 @@ const TOOLS: Tool[] = [
     run: (a) => {
       const s = open();
       const got = s.events.get(idOf(a.id));
-      // 구글에서 읽어 온 일정은 AI 가 보지도 고치지도 않는다
-      const e = got && aiSafeEvent(got) ? got : undefined;
-      if (!e) throw new Error(`id ${String(a.id)} 일정이 없어`);
+      const e = seenEvent(got, a.id);
       if (e.allDay && (a.start !== undefined || a.duration_min !== undefined))
         throw new Error('종일 일정은 제목만 고칠 수 있어');
       const patch: Parameters<EventStore['update']>[1] = {};
@@ -690,9 +719,7 @@ const TOOLS: Tool[] = [
     run: (a) => {
       const s = open();
       const got = s.events.get(idOf(a.id));
-      // 구글에서 읽어 온 일정은 AI 가 보지도 고치지도 않는다
-      const e = got && aiSafeEvent(got) ? got : undefined;
-      if (!e) throw new Error(`id ${String(a.id)} 일정이 없어`);
+      const e = seenEvent(got, a.id);
       if (confirming()) return queue({ tool: 'delete_event', id: e.id }, `일정 지우기: ${e.title}`);
       s.events.remove(e.id, Date.now());
       return `지웠어: ${e.title}`;
@@ -712,7 +739,7 @@ const TOOLS: Tool[] = [
       const from = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
       const events = s.events
         .between(from, new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime())
-        .filter(aiSafeEvent);
+        .filter(aiSees());
       const { open: list, doneToday } = s.todos.list(now);
       const next = nextUp({ todos: list, events, now });
       const overdue = list.filter((t) => t.due !== null && t.due < today);

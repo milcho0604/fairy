@@ -17,6 +17,14 @@ export const GCAL_PRIMARY = 'primary';
 /** 짝꿍이 정해 보내는 구글 일정 id 머리. 구글 id 는 base32hex 소문자(0-9, a-v) 5~1024자 */
 export const GCAL_ID_PREFIX = 'jjk';
 
+/** 구글 캘린더 켜고 끄기를 두는 파일 (데이터 폴더, 비밀 아님). 펫 MCP 서버도 "AI가 구글 일정도 보기"를 여기서 읽는다 */
+export const GCAL_PREFS_FILE = 'google-calendar.json';
+
+/** 그 파일 내용에서 "AI가 구글 일정도 볼 수 있게". 켠 것(ai: true)만 켬. 없거나 깨졌거나 다른 값이면 꺼짐 */
+export function gcalAiOn(raw: unknown): boolean {
+  return typeof raw === 'object' && raw !== null && (raw as { ai?: unknown }).ai === true;
+}
+
 /** 설정 창 ↔ 메인 */
 export const GCAL = {
   status: 'gcal:status',
@@ -25,6 +33,7 @@ export const GCAL = {
   disconnect: 'gcal:disconnect',
   setPush: 'gcal:set-push',
   setPull: 'gcal:set-pull',
+  setAi: 'gcal:set-ai',
   setCalendar: 'gcal:set-calendar',
   syncNow: 'gcal:sync-now',
   /** 메인 → 설정 창: 상태가 바뀌었다 */
@@ -66,6 +75,8 @@ export interface GcalStatus {
   lastSyncAt: number | null;
   /** 고른 캘린더의 원래 일정을 페어리로 읽어 오기 (이슈 #54) */
   pull: boolean;
+  /** 가져온 구글 일정도 AI(대화 자료, 오늘 뭐부터, 계획 다듬기, 펫 MCP 도구)에 보이기. 기본 꺼짐 */
+  ai: boolean;
   /** 마지막으로 다 읽어 온 때 (ms) */
   lastPullAt: number | null;
   /** 마지막으로 읽어 온 일정 수 */
@@ -83,6 +94,7 @@ export interface GcalBridge {
   disconnect(): Promise<GcalStatus>;
   setPush(on: boolean): Promise<GcalStatus>;
   setPull(on: boolean): Promise<GcalStatus>;
+  setAi(on: boolean): Promise<GcalStatus>;
   /** 틀린 모양이면 그대로 둔다. 읽어 오는 캘린더도 이것이다 */
   setCalendar(id: string): Promise<GcalStatus>;
   syncNow(): Promise<GcalStatus>;

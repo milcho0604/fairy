@@ -7,7 +7,7 @@ import { pickLocal } from '../shared/ai/catalog.ts';
 import { contextEvents, todayRange } from '../shared/ai/context-events.ts';
 import { persona, setMemorySource, setStyleSource, todoContext } from '../shared/ai/persona.ts';
 import { cutText } from '../shared/cut-text.ts';
-import { aiSafeEvent } from '../shared/event-store.ts';
+import { aiEventFilter } from '../shared/event-store.ts';
 import { HIDE_SEEK, pickHideSpot } from '../shared/hide-seek.ts';
 import { houseMenuKey, houseNewsKey, stowSayKey, stowStep } from '../shared/house-stow.ts';
 import { locale, t } from '../shared/i18n/index.ts';
@@ -46,7 +46,7 @@ import { confineTestDisplay } from './focus.ts';
 import { createFriends } from './friends.ts';
 import { CHAIN_FILE, createTickle, createWordChain } from './fun.ts';
 import { galleryHandlers } from './gallery-app.ts';
-import { createGcal } from './gcal.ts';
+import { createGcal, gcalAiAllowed } from './gcal.ts';
 import { createHouseRest } from './house-rest.ts';
 import { createJourney } from './journey.ts';
 import { pruneCopies } from './keep-copies.ts';
@@ -265,8 +265,8 @@ ready
         return todoContext({
           today: localDay(now),
           todos: store.list(now).open,
-          // 구글에서 읽어 온 일정은 AI 로 보내지 않는다 (aiSafeEvent)
-          events: contextEvents(events.between(day.from, day.to).filter(aiSafeEvent), now),
+          // 구글에서 읽어 온 일정은 "AI가 구글 일정도 볼 수 있게"를 켰을 때만 AI 로 보낸다 (기본 꺼짐)
+          events: contextEvents(events.between(day.from, day.to).filter(aiEventFilter(gcalAiAllowed())), now),
         });
       },
       saveNote: (title, body) => {
@@ -488,6 +488,7 @@ ready
       events,
       restDays: () => restDaysOf(settings.get()),
       dayEndMinute: () => settings.get().reviewMinute,
+      googleForAi: gcalAiAllowed,
     });
     /** 펫 우클릭 메뉴 "오늘 뭐부터?": 규칙 답을 말풍선으로, 단추는 집중 시작과 패널 열기 */
     const sayWhatFirst = () => {
@@ -1319,6 +1320,7 @@ ready
       exportTodos,
       restDays: () => restDaysOf(settings.get()),
       dayEndMinute: () => settings.get().reviewMinute,
+      googleForAi: gcalAiAllowed,
       isPanel: (wc) => panel.owns(wc),
       panelWindow: () => panel.window,
       openToday: () => panel.openTab('today'),

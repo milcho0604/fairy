@@ -1,4 +1,4 @@
-// 구글 캘린더 (6단계 보내기, 이슈 #54 가져오기): 설정 창 칸. 연결, 끊기, 보내기와 가져오기 켜고 끄기, 캘린더.
+// 구글 캘린더 (6단계 보내기, 이슈 #54 가져오기): 설정 창 칸. 연결, 끊기, 보내기와 가져오기 켜고 끄기, AI 가 구글 일정 보기, 캘린더.
 // 창은 상태(GcalStatus)만 받는다. 토큰과 네트워크는 메인(main/gcal.ts)에만 있다.
 import { useEffect, useState } from 'react';
 import { cleanCalendarId, GCAL_PRIMARY, type GcalBridge, type GcalStatus } from '../../../shared/gcal.ts';
@@ -151,6 +151,26 @@ export function GoogleCalendarBox({ onMsg }: { onMsg: (m: string) => void }) {
                 <i />
               </button>
             </div>
+            {s.pull && (
+              <div className="toggle">
+                <div className="text">
+                  <span>{t('gcal.ai')}</span>
+                  <small>{t('gcal.aiHint')}</small>
+                  {s.ai && <small className="toggle-note">{t('gcal.aiOnNote')}</small>}
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={s.ai}
+                  aria-label={t('gcal.ai')}
+                  className={s.ai ? 'on' : ''}
+                  disabled={busy}
+                  onClick={() => void run(() => gcal().setAi(!s.ai))}
+                >
+                  <i />
+                </button>
+              </div>
+            )}
             <label className="field">
               <span>{t('gcal.calendar')}</span>
               <input

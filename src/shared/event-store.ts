@@ -49,10 +49,18 @@ export interface CalEvent {
 export type EventSource = 'local' | 'ics' | 'google';
 
 /**
- * AI 에 보내도 되는 일정인지. 구글 API 로 읽어 온 일정(구글 사용자 데이터)은 AI 대화, 페어리 도구(MCP), 계획 다듬기 어디로도
- * 보내지 않는다 (개인정보처리방침 Limited Use: 구글 데이터는 일정을 보이는 이 기능에만 쓴다)
+ * 사용자가 따로 켜지 않아도 AI 에 보내도 되는 일정인지. 구글 API 로 읽어 온 일정(구글 사용자 데이터)은 기본으로 AI 대화,
+ * 오늘 뭐부터, 페어리 도구(MCP), 계획 다듬기 어디로도 보내지 않는다 (개인정보처리방침 Limited Use)
  */
 export const aiSafeEvent = (e: { source?: EventSource }): boolean => e.source !== 'google';
+/**
+ * AI 로 보낼 일정 거르개. googleOk: 설정 구글 칸의 "AI가 구글 일정도 볼 수 있게"를 켰는지 (기본 꺼짐, shared/gcal.ts gcalAiOn).
+ * 켜면 구글에서 읽어 온 일정도 사용자가 고른 AI로 간다
+ */
+export const aiEventFilter =
+  (googleOk: boolean) =>
+  (e: { source?: EventSource }): boolean =>
+    googleOk || aiSafeEvent(e);
 /** 바깥에서 가져온 일정의 출처 */
 export type ExternalSource = 'ics' | 'google';
 

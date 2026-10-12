@@ -39,7 +39,7 @@ import {
   shouldNudge,
   suggestPicks,
 } from '../shared/day-plan.ts';
-import { aiSafeEvent, type EventStore, timeLabel } from '../shared/event-store.ts';
+import { aiEventFilter, type EventStore, timeLabel } from '../shared/event-store.ts';
 import {
   defaultExportName,
   type ExportKind,
@@ -81,6 +81,8 @@ export interface DayToolsOptions {
   restDays: () => number[];
   /** 하루 마무리 시각 (분). 집중 칸을 찾는 끝 */
   dayEndMinute: () => number;
+  /** 설정 구글 칸의 "AI가 구글 일정도 볼 수 있게"를 켰는지 (main/gcal.ts gcalAiAllowed). 계획 다듬기가 본다 */
+  googleForAi: () => boolean;
   isPanel: (wc: WebContents) => boolean;
   panelWindow: () => BrowserWindow | undefined;
   openToday: () => void;
@@ -131,6 +133,8 @@ export function createDayTools(o: DayToolsOptions) {
   function dayGaps(now: number) {
     const dayStart = startOfDay(now);
     const { from, to } = planRange(dayStart, now, o.dayEndMinute());
+    // 구글에서 읽어 온 일정은 사용자가 켠 경우에만 AI 로 간다 (빈 시간에는 늘 든다)
+    const aiSees = aiEventFilter(o.googleForAi());
     const events = o.events
       .between(dayStart, to)
       .filter((ev) => !ev.allDay && (ev.endAt ?? ev.startAt) >= now)
@@ -139,7 +143,7 @@ export function createDayTools(o: DayToolsOptions) {
         startAt: ev.startAt,
         endAt: ev.endAt,
         allDay: false,
-        ai: aiSafeEvent(ev),
+        ai: aiSees(ev),
       }));
     return { events, gaps: freeGaps(events, from, to) };
   }
@@ -227,7 +231,7 @@ export function createDayTools(o: DayToolsOptions) {
       ask: t('plan.ai.ask'),
       candidates: view.candidates,
       picks: chosen,
-      // 구글에서 읽어 온 일정은 AI 로 보내지 않는다 (aiSafeEvent. 빈 시간에는 그대로 든다)
+      // 구글에서 읽어 온 일정은 "AI가 구글 일정도 볼 수 있게"를 켰을 때만 AI 로 간다 (dayGaps 의 ai. 빈 시간에는 늘 든다)
       events: dayGaps(now)
         .events.filter((ev) => ev.ai)
         .map((ev) => ({ time: timeLabel(minuteOfDay(ev.startAt)), title: ev.title })),

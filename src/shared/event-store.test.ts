@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { type Db, MIGRATIONS, migrate, SCHEMA_VERSION } from './db-schema.ts';
 import {
+  aiEventFilter,
   allDayTimes,
   EventStore,
   parseEventInput,
@@ -522,4 +523,35 @@ test('시간대를 바꿔 켜도 종일 일정은 만든 날 그대로 (서울�
     if (was === undefined) delete process.env.TZ;
     else process.env.TZ = was;
   }
+});
+
+test('AI 로 보낼 일정 거르개: 꺼짐(기본)이면 구글에서 읽어 온 일정을 빼고, 켜면 같이 보낸다', () => {
+  const db = new DatabaseSync(':memory:');
+  migrate(db as unknown as Db);
+  const s = new EventStore(db as unknown as Db);
+  s.add({ title: '내 일정', startAt: T0 + 60 * MIN, endAt: null, remindMin: 10 }, T0);
+  s.syncExternal(
+    'ics',
+    [{ uid: 'i', title: 'ics 일정', startAt: T0 + 90 * MIN, endAt: null, allDay: false }],
+    T0,
+    T0 + 86_400_000,
+    T0,
+  );
+  s.syncExternal(
+    'google',
+    [{ uid: 'g', title: '구글 일정', startAt: T0 + 120 * MIN, endAt: null, allDay: false }],
+    T0,
+    T0 + 86_400_000,
+    T0,
+  );
+  const all = s.between(T0, T0 + 86_400_000);
+  assert.equal(all.length, 3);
+  assert.deepEqual(
+    all.filter(aiEventFilter(false)).map((e) => e.title),
+    ['내 일정', 'ics 일정'],
+  );
+  assert.deepEqual(
+    all.filter(aiEventFilter(true)).map((e) => e.title),
+    ['내 일정', 'ics 일정', '구글 일정'],
+  );
 });

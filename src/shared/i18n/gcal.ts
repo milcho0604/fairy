@@ -21,6 +21,11 @@ export const ko = {
   'gcal.pull': '구글 캘린더 일정 가져오기',
   'gcal.pullHint':
     '고른 캘린더의 지난 7일부터 앞으로 60일까지 일정을 15분마다 읽어 와. 제목과 시각만 읽고, 페어리에서 보낸 일정은 또 가져오지 않아. 끄면 가져온 일정은 페어리에서 사라져.',
+  'gcal.ai': 'AI가 구글 일정도 볼 수 있게',
+  'gcal.aiHint':
+    '켜면 가져온 구글 일정도 AI 대화, "오늘 뭐부터", 계획 다듬기, 페어리 도구(MCP)에서 같이 봐. 꺼 두면 AI에게는 안 보여.',
+  'gcal.aiOnNote':
+    '구글 일정 제목과 시각이 고른 AI로 가. 클라우드 AI면 이 컴퓨터 밖으로 나가. AI가 봐도 구글 일정은 고치지 못해.',
   'gcal.calendar': '보내고 가져올 캘린더',
   'gcal.calendarHint':
     '비우면 기본 캘린더야. 다른 캘린더는 구글 캘린더 설정 > 캘린더 통합의 "캘린더 ID"를 붙여 넣어.',
@@ -90,6 +95,11 @@ export const en: Translation<typeof ko> = {
   'gcal.pull': 'Bring in Google Calendar events',
   'gcal.pullHint':
     "Reads the chosen calendar's events from 7 days ago to 60 days ahead every 15 minutes. Only titles and times, and never the events fairy sent. Turning it off removes them from fairy.",
+  'gcal.ai': 'Let AI see Google events too',
+  'gcal.aiHint':
+    'When on, events brought in from Google also show up for AI chat, "What should I do first?", plan polishing and fairy tools (MCP). When off, AI never sees them.',
+  'gcal.aiOnNote':
+    "Google event titles and times go to the AI you picked. With a cloud AI they leave this computer. AI still can't edit Google events.",
   'gcal.calendar': 'Calendar',
   'gcal.calendarHint':
     'Leave empty for your main calendar. For another one, paste its "Calendar ID" from Google Calendar settings > Integrate calendar.',

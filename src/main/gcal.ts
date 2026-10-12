@@ -18,11 +18,13 @@ import type { EventStore } from '../shared/event-store.ts';
 import {
   cleanCalendarId,
   GCAL,
+  GCAL_PREFS_FILE,
   GCAL_PRIMARY,
   GcalBackoff,
   type GcalMark,
   type GcalProblem,
   type GcalStatus,
+  gcalAiOn,
   newGoogleId,
   type PanelGcal,
 } from '../shared/gcal.ts';
@@ -58,13 +60,15 @@ interface Prefs {
   push: boolean;
   /** 고른 캘린더의 원래 일정을 읽어 오기. 옛 설정(이 칸이 없음)은 꺼 둔다: 연결할 때 켠다 */
   pull: boolean;
+  /** 가져온 구글 일정도 AI 에 보이기. 사용자가 켠 경우에만 (기본 꺼짐) */
+  ai: boolean;
   calendarId: string;
   lastSyncAt: number | null;
 }
 
 const userFile = (name: string) => join(app.getPath('userData'), name);
 const TOKEN_FILE = 'google-token.json';
-const PREFS_FILE = 'google-calendar.json';
+const PREFS_FILE = GCAL_PREFS_FILE;
 
 function readPrefs(): Prefs {
   try {
@@ -72,13 +76,20 @@ function readPrefs(): Prefs {
     return {
       push: v.push === true,
       pull: v.pull === true,
+      ai: gcalAiOn(v),
       calendarId: cleanCalendarId(v.calendarId) ?? GCAL_PRIMARY,
       lastSyncAt: typeof v.lastSyncAt === 'number' && Number.isFinite(v.lastSyncAt) ? v.lastSyncAt : null,
     };
   } catch {
-    return { push: false, pull: false, calendarId: GCAL_PRIMARY, lastSyncAt: null };
+    return { push: false, pull: false, ai: false, calendarId: GCAL_PRIMARY, lastSyncAt: null };
   }
 }
+
+/**
+ * "AI가 구글 일정도 볼 수 있게"를 켰는지 (AI 대화 자료, 오늘 뭐부터, 계획 다듬기가 부른다). 파일에서 바로 읽는다:
+ * 펫 MCP 서버(다른 프로세스)와 같은 값을 본다
+ */
+export const gcalAiAllowed = (): boolean => readPrefs().ai;
 
 function writePrefs(p: Prefs) {
   writeFileDurable(userFile(PREFS_FILE), JSON.stringify(p));
@@ -152,6 +163,7 @@ export function createGcal(o: {
       calendarId: prefs.calendarId,
       lastSyncAt: prefs.lastSyncAt,
       pull: prefs.pull,
+      ai: prefs.ai,
       lastPullAt,
       pulled,
       pending,
@@ -517,6 +529,14 @@ export function createGcal(o: {
       setPrefs({ pull: on });
       if (on) kickPull();
       else dropPulled();
+    }
+    return refreshed();
+  });
+  ipcMain.handle(GCAL.setAi, (e, on: unknown) => {
+    if (!ok(e)) return undefined;
+    if (typeof on === 'boolean' && on !== prefs.ai) {
+      setPrefs({ ai: on });
+      o.log('gcal', 'AI가 구글 일정 보기', on);
     }
     return refreshed();
   });
