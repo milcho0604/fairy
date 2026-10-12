@@ -7,6 +7,7 @@ import type { PanelState } from '../../../shared/ipc.ts';
 import type { Todo } from '../../../shared/todo-store.ts';
 import { timeOf } from './format.ts';
 import { CheckIcon } from './icons.tsx';
+import { refreshedPicks } from './plan-refresh.ts';
 import './day.css';
 
 const panel = window.jjakkungPanel;
@@ -146,9 +147,12 @@ function snapFocus(left: number): number {
 export function PlanSheetHost({
   goToday,
   onSaved,
+  todosKey,
 }: {
   goToday: () => void;
   onSaved: (text: string) => void;
+  /** 안 끝낸 할 일 열쇠 (plan-refresh.ts). 떠 있는 동안 바뀌면 고를 거리를 다시 받는다 */
+  todosKey: string;
 }) {
   const [view, setView] = useState<PlanView>();
   const [open, setOpen] = useState(false);
@@ -188,6 +192,28 @@ export function PlanSheetHost({
     day.onOpenPlan(reopen);
     return () => window.removeEventListener(OPEN_EVENT, reopen);
   }, []);
+
+  // 떠 있는 동안 할 일이 바뀌면 고를 거리를 다시 받는다 (고른 것은 남은 것만 그대로)
+  const latest = useRef({ view, picks });
+  latest.current = { view, picks };
+  const shownKey = useRef(todosKey);
+  useEffect(() => {
+    if (!open) {
+      shownKey.current = todosKey;
+      return;
+    }
+    if (shownKey.current === todosKey) return;
+    shownKey.current = todosKey;
+    void day
+      .plan()
+      .then((next) => {
+        const now = latest.current;
+        if (!next || !now.view) return;
+        setPicks(refreshedPicks(now.picks, now.view, next));
+        setView({ ...next, prefs: now.view.prefs });
+      })
+      .catch(() => undefined);
+  }, [todosKey, open]);
 
   // 띄우면 첫 고르기 칸에 커서. Esc 는 패널을 닫지 않고 시트만 닫는다
   useEffect(() => {
