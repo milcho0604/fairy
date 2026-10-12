@@ -239,3 +239,129 @@ for (const fps of [60, 30, 24]) {
     assert.ok(settled(r.end, r.endHeading).worst < 0.08 * L);
   });
 }
+
+/** 옆으로 걷는 한 틀 (pet3d.ts 처럼 다 돈 뒤면 걸음 박자로) */
+const walkFrame = (now: number, dt: number, v: number, rest = REST, l = L, hold = 1): PlantFrame => {
+  const kind: GaitKind = Math.abs(v) > 0.75 ? 'trot' : 'walk';
+  const gait =
+    v !== 0
+      ? { kind, duty: DUTY[kind], cycle: l * 1.05 * (kind === 'trot' ? 1.4 : 1), lift: 0.2 * l }
+      : undefined;
+  return {
+    now,
+    heading: 1.38,
+    aim: 1.38,
+    move: (v * dt) / 1000,
+    ...(gait ? { gait } : {}),
+    rest,
+    hold,
+    L: l,
+  };
+};
+const offL = (out: Record<LegId, { x: number; z: number }>, rest: Record<LegId, Spot>, l: number) =>
+  Math.max(...LEGS.map((id) => Math.hypot(out[id].x - rest[id].x, out[id].z - rest[id].z) / l));
+
+test('발 딛기: 걷다가 다른 몸으로 바뀌면(펫이나 모습을 바꿨다) 새 몸의 첫 틀은 새 몸 바랄 자리에서 시작한다', () => {
+  const p = new FootPlanter();
+  let t = 0;
+  for (; t < 1500; t += 33) p.update(walkFrame(t, 33, 0.45));
+  // 밀크에서 초코로: 다리 길이와 발 자리가 다른 몸 (pet3d.ts resetRoot 뒤 첫 틀, 틀 사이는 그대로 짧다)
+  const L2 = 0.296;
+  const REST2: Record<LegId, Spot> = {
+    fl: { x: -0.07, z: 0.17 },
+    fr: { x: 0.07, z: 0.17 },
+    hl: { x: -0.085, z: -0.19 },
+    hr: { x: 0.085, z: -0.19 },
+  };
+  const out = p.update({ ...walkFrame(t, 33, 0, REST2, L2), heading: 0.6, aim: 0.6 });
+  assert.ok(offL(out, REST2, L2) < 1e-9, `첫 틀 ${offL(out, REST2, L2)} L`);
+  for (const id of LEGS) assert.ok(out[id].planted, `${id} planted`);
+});
+
+for (const [v, stall] of [
+  [0.15, 500],
+  [1.1, 250],
+  [0.45, 400],
+  [0.45, 900],
+  [0.45, 1350],
+  [0.45, 1900],
+  [1.1, 1900],
+] as const) {
+  test(`발 딛기: 걷는 중 그리기가 ${stall}ms 늦어도(빠르기 ${v}) 다리가 닿지 않는 발 없이 바로 몸 아래로, 닿는 발은 디딘 자리 그대로`, () => {
+    // 걸음 박자 어디에서 늦든 (늦은 틀이 걸음 한 바퀴의 여러 자리에 오게)
+    for (let s = 0; s < 30; s++) {
+      const p = new FootPlanter();
+      let t = 0;
+      for (; t < 1500 + s * 33; t += 33) p.update(walkFrame(t, 33, v));
+      const before = p.anchors();
+      const x0 = p.travelled;
+      t += stall;
+      const late = p.update(walkFrame(t, stall, v));
+      // 다리가 닿는 곳에 있던 디딘 발은 처음 자리로 되돌아가지 않고 세상 자리 그대로 (d215c9b)
+      let kept = 0;
+      for (const id of LEGS) {
+        const b = before[id];
+        if (!b.planted) continue;
+        const local = toLocal({ x: b.x - p.travelled, z: b.z }, 1.38);
+        if (Math.hypot(local.x - REST[id].x, local.z - REST[id].z) > 0.5 * L) continue;
+        if (!late[id].planted) continue;
+        const w = toStage(late[id], 1.38);
+        assert.ok(Math.hypot(w.x + p.travelled - b.x, w.z - b.z) < 1e-9, `${s}: ${id} 디딘 자리가 움직였다`);
+        kept++;
+      }
+      // 천천히 걷다 늦으면 몸이 조금만 가서 디딘 발이 다리가 닿는 곳에 남는다
+      if (v < 0.2) assert.ok(kept >= 2, `디딘 채 남은 발 ${kept}`);
+      assert.ok(p.travelled - x0 > 0, '몸이 갔다');
+      // 늦은 틀과 그 뒤 20틀: 든 발이든 디딘 발이든 다리가 닿는 곳 안에 그린다. 늦은 틀에 네 발을 한꺼번에 들지 않고
+      // 걷기는 두 발까지 (속보는 원래 네 발이 다 뜨는 틀이 있다)
+      const up = (o: Record<LegId, { planted: boolean }>) => LEGS.filter((id) => !o[id].planted).length;
+      let worst = offL(late, REST, L);
+      let maxUp = up(late);
+      for (let i = 0; i < 20; i++) {
+        t += 33;
+        const o = p.update(walkFrame(t, 33, v));
+        worst = Math.max(worst, offL(o, REST, L));
+        maxUp = Math.max(maxUp, up(o));
+      }
+      assert.ok(worst < 0.55, `늦은 틀 뒤 발이 ${worst.toFixed(2)} L 떨어졌다`);
+      assert.ok(up(late) < 4, `늦은 틀에 든 발 ${up(late)}`);
+      if (v < 0.75) assert.ok(maxUp <= 2, `늦은 틀 뒤 든 발 ${maxUp}`);
+    }
+  });
+}
+
+test('발 딛기: 몸이 간 거리나 방향이나 시각이 한 번 NaN, Infinity 여도 지난 값으로 이어 간다', () => {
+  const p = new FootPlanter();
+  let t = 0;
+  for (; t < 1000; t += 33) p.update(walkFrame(t, 33, 0.45));
+  const x0 = p.travelled;
+  const bad: Partial<PlantFrame>[] = [
+    { move: Number.NaN },
+    { move: Number.POSITIVE_INFINITY },
+    { heading: Number.NaN },
+    { heading: Number.NEGATIVE_INFINITY, aim: Number.NaN },
+    { aim: Number.POSITIVE_INFINITY },
+    { now: Number.NaN },
+  ];
+  for (const b of bad) {
+    t += 33;
+    const out = p.update({ ...walkFrame(t, 33, 0.45), ...b });
+    for (const id of LEGS)
+      assert.ok([out[id].x, out[id].z, out[id].lift].every(Number.isFinite), `${id} ${JSON.stringify(b)}`);
+  }
+  assert.ok(Number.isFinite(p.travelled) && p.travelled >= x0, `travelled ${p.travelled}`);
+  // 서서 도는 중(박자 없이 발을 옮긴다)에 돌아가려는 각이 NaN
+  for (let i = 0; i < 3; i++) {
+    t += 33;
+    const out = p.update({ ...walkFrame(t, 33, 0), heading: 0.9, aim: Number.NaN });
+    for (const id of LEGS) assert.ok([out[id].x, out[id].z].every(Number.isFinite), `${id} aim NaN`);
+  }
+  for (; t < 3000; t += 33) p.update(walkFrame(t, 33, 0.45));
+  let out = p.update(walkFrame(t, 33, 0));
+  for (let i = 0; i < 40; i++) {
+    t += 33;
+    out = p.update(walkFrame(t, 33, 0));
+  }
+  for (const id of LEGS) assert.ok(out[id].planted && Number.isFinite(out[id].x), `${id} 끝`);
+  assert.ok(offL(out, REST, L) < 0.08, `끝 ${offL(out, REST, L)} L`);
+});

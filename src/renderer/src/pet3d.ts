@@ -544,6 +544,10 @@ export class Pet3D implements Model3D {
     this.quad = undefined;
     this.stance = undefined;
     this.walkedAt = Number.NEGATIVE_INFINITY;
+    // 새 몸의 발은 옛 몸이 디딘 자리가 아니라 새 몸 바랄 자리에서 시작한다 (걸음 수는 이어 센다: 처음부터 세면
+    // 이번 걷기에 간 거리 전부가 한 틀에 들어간다)
+    this.planter.reset();
+    this.lastFeet = undefined;
     this.motion = { bounce: 1, sway: 1, tail: 1, ear: 1 };
     this.ready = false;
     // 색별 재질도 비운다 (펫을 갈아끼울 때마다 쌓이지 않게)
