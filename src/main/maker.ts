@@ -61,6 +61,7 @@ import { ensureOrtWasm, ORT_WASM, ortWasmReady, verifiedOrtWasmUrl } from './ort
 import { library } from './pet-library.ts';
 import { readFileIn, writeFileAtomic } from './safe-file.ts';
 import { settings } from './settings.ts';
+import { readStarterWalk } from './starter-copy.ts';
 import { rememberBounds, savedBounds } from './window-bounds.ts';
 
 /** 다듬은 펫 그림 크기 상한. 화면에서 512px 로 줄여 보내므로 이보다 크면 이상한 값이다. */
@@ -124,7 +125,22 @@ export function petImages(): PetImages {
     poses,
     ...(s.petImage && s.petAge ? { age: s.petAge } : {}),
     ...(starterOf(s.petImage) ? { starter: starterOf(s.petImage) } : {}),
+    ...walkOf(s.petImage),
   };
+}
+
+/** 밀크, 초코 그림이면 앱에 든 옆모습 걷기 그림 (data URL, 한 번 읽어 둔다). 없으면 빈 것 */
+const walkCache = new Map<string, string[]>();
+function walkOf(petImage: string | null | undefined): { walk?: string[] } {
+  const id = starterOf(petImage);
+  if (!id) return {};
+  let urls = walkCache.get(id);
+  if (!urls) {
+    const dir = join(app.getAppPath(), 'resources', 'pets');
+    urls = readStarterWalk(dir, id).map((b) => `data:image/webp;base64,${b.toString('base64')}`);
+    walkCache.set(id, urls);
+  }
+  return urls.length > 0 ? { walk: urls } : {};
 }
 
 /** 깊이 그림 상한. 화면에서 256px 회색 PNG 로 보낸다 */

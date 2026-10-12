@@ -13,8 +13,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { imageSize } from '../shared/image-head.ts';
-import { STARTER_IDS, STARTER_MAX_BYTES, type StarterId, starterOf } from '../shared/starter-pets.ts';
-import { copyStarter, readStarter } from './starter-copy.ts';
+import {
+  STARTER_IDS,
+  STARTER_MAX_BYTES,
+  STARTER_WALK_FRAMES,
+  type StarterId,
+  starterOf,
+  starterWalkResource,
+} from '../shared/starter-pets.ts';
+import { copyStarter, readStarter, readStarterWalk } from './starter-copy.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'jj-starter-'));
 after(() => rmSync(root, { recursive: true, force: true }));
@@ -80,4 +87,30 @@ test('복사 거절: 없는 그림, PNG 아님, 너무 큼, 터무니없는 가�
   assert.equal(readStarter(src, '../outside' as StarterId), undefined);
   // 거절하면 pets/ 에 아무것도 쓰지 않는다 (폴더도 만들지 않는다)
   assert.equal(existsSync(dest), false);
+});
+
+test('앱에 든 걷기 그림: 정한 장수가 다 있고 webp, 같은 크기', () => {
+  for (const id of STARTER_IDS) {
+    const frames = readStarterWalk(resources, id);
+    assert.equal(frames.length, STARTER_WALK_FRAMES[id] ?? 0, id);
+    const sizes = frames.map((b) => JSON.stringify(imageSize(b)));
+    assert.equal(new Set(sizes).size, frames.length > 0 ? 1 : 0, id);
+  }
+});
+
+test('걷기 그림이 한 장이라도 없거나 webp 가 아니면 빈 배열 (사진 한 장으로 걷는다)', () => {
+  const dir = join(root, 'walk');
+  mkdirSync(dir, { recursive: true });
+  const n = STARTER_WALK_FRAMES.milk ?? 0;
+  assert.ok(n > 1);
+  for (let i = 0; i < n; i++) {
+    const src = readFileSync(join(resources, starterWalkResource('milk', i)));
+    writeFileSync(join(dir, starterWalkResource('milk', i)), src);
+  }
+  assert.equal(readStarterWalk(dir, 'milk').length, n);
+  writeFileSync(join(dir, starterWalkResource('milk', 1)), png(320, 184));
+  assert.deepEqual(readStarterWalk(dir, 'milk'), []);
+  rmSync(join(dir, starterWalkResource('milk', 1)));
+  assert.deepEqual(readStarterWalk(dir, 'milk'), []);
+  assert.deepEqual(readStarterWalk(dir, 'nope' as StarterId), []);
 });
