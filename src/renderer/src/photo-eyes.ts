@@ -67,12 +67,30 @@ const BOX = 1.4;
 const FROM = 2.6;
 
 /**
- * 눈꺼풀 선: 양 끝(x0, x1)이 같은 높이 y 이고, 가운데가 sag 만큼 아래로 처진 곡선 (2차 곡선 조절점 높이 y + sag).
- * 다 감으면 눈 가운데 높이에서 아래로 처진 선(웃듯 감은 눈), 뜰수록 위로 올라간다
+ * 눈꺼풀 선 (2차 곡선): 왼쪽 끝 (x0, y0), 조절점 (cx, cy), 오른쪽 끝 (x1, y1).
+ * 다 감으면 양 끝이 눈 가운데 높이에서 아래로 처진 선(웃듯 감은 눈). 뜰수록 가운데가 눈 위쪽으로 올라간다.
+ * 반쯤 감으면 바깥 눈꼬리(outer 쪽, -1 왼쪽, 1 오른쪽)가 처진다: 일자로 덮으면 째려보는 눈이 됐다 (2026-10-12 밀크 2.5D 졸음)
  */
-export function lidCurve(e: EyePx, open: number): { x0: number; x1: number; y: number; sag: number } {
-  return { x0: e.cx - e.rx * 0.95, x1: e.cx + e.rx * 0.95, y: e.cy - e.ry * 1.05 * open, sag: e.ry * 0.9 };
+export function lidCurve(
+  e: EyePx,
+  open: number,
+  outer: -1 | 1,
+): { x0: number; y0: number; x1: number; y1: number; cx: number; cy: number } {
+  const end = e.cy - e.ry * 0.55 * open;
+  const mid = e.cy + e.ry * 0.45 - e.ry * 1.05 * open;
+  const droop = open > 0 ? e.ry * 0.5 * Math.min(1, (1 - open) * 3) : 0;
+  return {
+    x0: e.cx - e.rx * 0.98,
+    y0: end - (droop / 2) * outer,
+    x1: e.cx + e.rx * 0.98,
+    y1: end + (droop / 2) * outer,
+    cx: e.cx,
+    cy: 2 * mid - end,
+  };
 }
+
+/** 감은 눈 선 굵기 (그림 픽셀). 기본 크기에서 레티나 3 픽셀 넘게 (가늘면 초코 어두운 털에 묻혔다) */
+export const lidLine = (w: number, h: number): number => Math.max(w, h) / 75;
 
 /** 덮개로 가져올 털 자리 (그림 픽셀). 덮개 상자와 같은 크기로 눈 위에서 */
 export function lidSource(e: EyePx): { x: number; y: number; w: number; h: number } {
@@ -103,8 +121,8 @@ export function eyedPhoto<T extends CanvasImageSource & { width: number; height:
   if (!g) return photo;
   g.clearRect(0, 0, w, h);
   g.drawImage(photo, 0, 0, w, h);
-  const line = Math.max(w, h) / 110;
-  for (const eye of look.eyes) drawLid(g, photo, toPx(eye, w, h), open, look.ink, line);
+  for (const eye of look.eyes)
+    drawLid(g, photo, toPx(eye, w, h), open, look, lidLine(w, h), eye.x < 0.5 ? -1 : 1);
   made.set(photo, { look, open, canvas });
   return canvas;
 }
@@ -115,8 +133,9 @@ function drawLid(
   photo: CanvasImageSource,
   e: EyePx,
   open: number,
-  ink: string,
+  look: PhotoEyes,
   line: number,
+  outer: -1 | 1,
 ): void {
   const bw = Math.ceil(e.rx * BOX * 2);
   const bh = Math.ceil(e.ry * BOX * 2);
@@ -129,6 +148,14 @@ function drawLid(
   if (!p) return;
   const from = lidSource(e);
   p.drawImage(photo, from.x, from.y, bw, bh, 0, 0, bw, bh);
+  // 어두운 털은 눈꺼풀을 조금 밝게 (감은 눈이 뜬 눈의 어두운 자리와 구분되게, 초코)
+  if (look.lid) {
+    p.globalCompositeOperation = 'source-atop';
+    p.globalAlpha = look.lid.amount;
+    p.fillStyle = look.lid.color;
+    p.fillRect(0, 0, bw, bh);
+    p.globalAlpha = 1;
+  }
   // 눈 테두리(반지름 1 배)까지는 꽉, BOX 배 밖은 투명 (타원이라 세로로 눌러 그린다)
   p.globalCompositeOperation = 'destination-in';
   p.save();
@@ -140,29 +167,35 @@ function drawLid(
   p.fillStyle = fade;
   p.fillRect(-bw, -bh * (e.rx / e.ry), bw * 2, bh * 2 * (e.rx / e.ry));
   p.restore();
-  const c = lidCurve(e, open);
+  const c = lidCurve(e, open, outer);
   g.save();
   if (open > 0) {
     // 눈꺼풀 선 위쪽만 덮는다
     g.beginPath();
     g.moveTo(x, y);
     g.lineTo(x + bw, y);
-    g.lineTo(x + bw, c.y);
-    g.lineTo(c.x1, c.y);
-    g.quadraticCurveTo(e.cx, c.y + c.sag, c.x0, c.y);
-    g.lineTo(x, c.y);
+    g.lineTo(x + bw, c.y1);
+    g.lineTo(c.x1, c.y1);
+    g.quadraticCurveTo(c.cx, c.cy, c.x0, c.y0);
+    g.lineTo(x, c.y0);
     g.closePath();
     g.clip();
   }
   g.drawImage(patch, x, y);
   g.restore();
-  g.save();
-  g.strokeStyle = ink;
-  g.lineWidth = line;
-  g.lineCap = 'round';
-  g.beginPath();
-  g.moveTo(c.x0, c.y);
-  g.quadraticCurveTo(e.cx, c.y + c.sag, c.x1, c.y);
-  g.stroke();
-  g.restore();
+  const stroke = (color: string, width: number, dy: number, blur: number) => {
+    g.save();
+    g.strokeStyle = color;
+    g.lineWidth = width;
+    g.lineCap = 'round';
+    if (blur > 0) g.filter = `blur(${blur}px)`;
+    g.beginPath();
+    g.moveTo(c.x0, c.y0 + dy);
+    g.quadraticCurveTo(c.cx, c.cy + dy, c.x1, c.y1 + dy);
+    g.stroke();
+    g.restore();
+  };
+  // 선 아래 밝은 털빛 테두리 (어두운 털에서 감은 눈 선이 묻히지 않게, 초코)
+  if (look.edge) stroke(look.edge, line, line, line * 0.4);
+  stroke(look.ink, line, 0, 0);
 }

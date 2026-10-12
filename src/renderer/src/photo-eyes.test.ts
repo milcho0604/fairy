@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { inflateSync } from 'node:zlib';
 import { STARTER_EYES, STARTER_IDS } from '../../shared/starter-pets.ts';
-import { lidCurve, lidSource, photoEyeOpen } from './photo-eyes.ts';
+import { lidCurve, lidLine, lidSource, photoEyeOpen } from './photo-eyes.ts';
 
 const idle = { mood: 'idle' as const, blink: -1 };
 
@@ -37,15 +37,40 @@ test('사진 눈: 하품 가운데, 감는 몸짓, 졸린 기운, 흥은 입체 
     assert.equal(photoEyeOpen({ ...idle, mood }), 1);
 });
 
-test('눈꺼풀 선: 다 감으면 눈 가운데 아래로 처지고, 뜰수록 위로 올라간다', () => {
+/** 2차 곡선 가운데 높이 */
+const midY = (c: { y0: number; y1: number; cy: number }) => (c.y0 + c.y1) / 4 + c.cy / 2;
+
+test('눈꺼풀 선: 다 감으면 눈 가운데 아래로 처진 선, 뜰수록 위로 올라간다', () => {
   const e = { cx: 100, cy: 50, rx: 10, ry: 8 };
-  const shut = lidCurve(e, 0);
-  assert.equal(shut.y, 50);
-  // 가운데 낮은 점 (2차 곡선 가운데 = 끝과 조절점의 가운데)
-  assert.ok(shut.y + shut.sag / 2 > e.cy && shut.y + shut.sag / 2 < e.cy + e.ry);
-  assert.ok(lidCurve(e, 0.5).y < shut.y);
-  assert.ok(lidCurve(e, 1).y + lidCurve(e, 1).sag / 2 < e.cy);
+  const shut = lidCurve(e, 0, -1);
+  assert.equal(shut.y0, shut.y1);
+  assert.ok(midY(shut) > e.cy && midY(shut) < e.cy + e.ry);
+  assert.ok(midY(lidCurve(e, 0.5, -1)) < midY(shut));
+  assert.ok(midY(lidCurve(e, 1, -1)) < e.cy - e.ry * 0.5);
   assert.ok(shut.x0 < e.cx - e.rx * 0.9 && shut.x1 > e.cx + e.rx * 0.9);
+});
+
+test('반쯤 감은 눈은 졸려 보이게: 바깥 눈꼬리가 처지고 가운데가 둥글게 내려온다 (째려보는 일자 눈꺼풀이 아니게)', () => {
+  const e = { cx: 100, cy: 50, rx: 10, ry: 8 };
+  for (const open of [0.35, 0.5, 0.55]) {
+    // 그림 왼쪽 눈(바깥이 왼쪽)과 오른쪽 눈(바깥이 오른쪽)
+    const l = lidCurve(e, open, -1);
+    const r = lidCurve(e, open, 1);
+    assert.ok(l.y0 - l.y1 > e.ry * 0.2, `왼쪽 눈 바깥 처짐 ${open}`);
+    assert.ok(r.y1 - r.y0 > e.ry * 0.2, `오른쪽 눈 바깥 처짐 ${open}`);
+    // 가운데는 안쪽 눈꼬리보다 아래 (위로 볼록한 눈썹 모양이 아니다)
+    assert.ok(midY(l) > l.y1, `가운데가 내려온다 ${open}`);
+  }
+});
+
+test('감은 눈 선 굵기: 기본 크기(160pt, 사진 높이 124pt, 레티나 2배)에서 3 픽셀 넘게', () => {
+  for (const [w, h] of [
+    [303, 512],
+    [340, 512],
+  ] as const) {
+    const k = Math.min(140 / w, 124 / h) * 2;
+    assert.ok(lidLine(w, h) * k >= 3, `${w}x${h} ${lidLine(w, h) * k}`);
+  }
 });
 
 /** 8비트 RGBA, 겹침 없는 PNG 만 푼다 (앱에 든 밀크, 초코 그림) */
@@ -187,5 +212,36 @@ test('덮개 털에 눈 둘레 털과 다른 색 점이 없다 (밀크 이마의
         }
       assert.equal(tint, 0, `${id} 눈(${Math.round(cx)}) 덮개 색 점`);
     }
+  }
+});
+
+/** 밝기 (0~255) */
+const luma = (hex: string) => {
+  const n = Number.parseInt(hex.slice(1), 16);
+  return 0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255);
+};
+
+test('초코 감은 눈은 어두운 털 위에서도 보인다: 선은 둘레 털보다 확실히 어둡고, 선 아래 테두리와 눈꺼풀은 털보다 밝다', () => {
+  const img = readPng(new URL('../../../resources/pets/choco.png', import.meta.url).pathname);
+  const look = STARTER_EYES.choco;
+  assert.ok(look.edge && look.lid, '초코는 눈꺼풀 빛과 선 아래 테두리가 있다');
+  for (const e of look.eyes) {
+    const cx = e.x * img.w;
+    const cy = e.y * img.h;
+    const rx = e.rx * img.w;
+    const ry = e.ry * img.h;
+    const ring: number[] = [];
+    for (let y = cy - ry * 1.4; y < cy + ry * 1.4; y++)
+      for (let x = cx - rx * 1.4; x < cx + rx * 1.4; x++) {
+        const d = Math.hypot((x - cx) / rx, (y - cy) / ry);
+        if (d < 1.05 || d > 1.4) continue;
+        const i = (Math.round(y) * img.w + Math.round(x)) * 4;
+        ring.push(0.299 * (img.px[i] ?? 0) + 0.587 * (img.px[i + 1] ?? 0) + 0.114 * (img.px[i + 2] ?? 0));
+      }
+    ring.sort((a, b) => a - b);
+    const fur = ring[Math.floor(ring.length / 2)] ?? 0;
+    assert.ok(fur - luma(look.ink) > 45, `선 ${luma(look.ink)} 털 ${fur}`);
+    assert.ok(luma(look.edge) - fur > 60, `테두리 ${luma(look.edge)} 털 ${fur}`);
+    assert.ok(luma(look.lid.color) > fur, `눈꺼풀 ${luma(look.lid.color)} 털 ${fur}`);
   }
 });
