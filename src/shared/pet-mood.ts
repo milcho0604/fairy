@@ -80,6 +80,15 @@ export function isAnimated(mood: PetMood): boolean {
   return mood === 'excited' || mood === 'thinking';
 }
 
+/**
+ * 한가할 때 혼자 걷기, 앉기, 몸짓을 고를 상태. 삐져 있어도 걷고 논다(모습만 삐진 얼굴, 펫 화면 onActivity).
+ * 매운맛 토라짐 3단계는 등 돌리고 앉아 있기만 한다. 예전엔 화면이 idle 에서만 행동을 청해서
+ * 삐진 날(날 단위 삐짐)과 토라짐 1, 2단계 내내 펫이 한자리에 굳어 있었다
+ */
+export function wanders(mood: PetMood, pout: number): boolean {
+  return mood === 'idle' || (mood === 'sulky' && pout < 3);
+}
+
 /** 가끔 눈을 깜빡여도 되는 상태. 잠, 바쁨, 숨김에서는 아무것도 움직이지 않는다. */
 export function canBlink(mood: PetMood): boolean {
   return mood === 'idle' || mood === 'sulky' || mood === 'talking';

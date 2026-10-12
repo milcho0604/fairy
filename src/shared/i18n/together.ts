@@ -138,7 +138,7 @@ export const ko = {
     P(v.p, {
       friend: `오늘은 종일 ${v.title}! 기억해 둬.`,
       polite: `오늘은 종일 ${withParticle(v.title, '이')} 있어요. 잊지 마세요.`,
-      tsundere: `오늘 종일 ${withParticle(v.title, '이')}잖아. 까먹지 마.`,
+      tsundere: `오늘 종일 ${withParticle(v.title, '이다')}잖아. 까먹지 마.`,
       calm: `오늘은 종일 ${v.title}. 무리하지 말고 챙기자.`,
     }),
   'note.habit': (v: Habit) =>
