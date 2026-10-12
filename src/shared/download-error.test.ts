@@ -109,3 +109,28 @@ test('프록시나 방화벽이 통째로 막으면 그렇다고 알린다 (연�
   assert.match(downloadErrorText(new DownloadError('blocked', 407)), /proxy or firewall/);
   setLang('ko');
 });
+
+test('저장 파일(SQLite)이 가득 차거나 읽기 전용이면 그 까닭으로 알린다 (버그잡이 4)', async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const db = new DatabaseSync(':memory:');
+  let full: unknown;
+  try {
+    db.exec('pragma max_page_count = 2; create table t (x); insert into t select randomblob(100000);');
+  } catch (err) {
+    full = err;
+  } finally {
+    db.close();
+  }
+  assert.equal(failReason(full), 'disk-full');
+  setLang('ko');
+  assert.equal(saveErrorText(full), t('main.file.diskFull'));
+  const readOnly = Object.assign(new Error('attempt to write a readonly database'), {
+    code: 'ERR_SQLITE_ERROR',
+    errcode: 8,
+  });
+  assert.equal(failReason(readOnly), 'no-permission');
+  assert.equal(
+    failReason(new Error("Error invoking remote method 'panel:add': Error: database or disk is full")),
+    'disk-full',
+  );
+});

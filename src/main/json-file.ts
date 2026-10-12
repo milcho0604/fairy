@@ -47,6 +47,8 @@ export function brokenName(path: string, at: number): string {
 
 export const bakOf = (path: string) => `${path}.bak`;
 
+const isContainer = (v: unknown): boolean => typeof v === 'object' && v !== null;
+
 function parseText(text: string): { ok: true; value: unknown } | { ok: false } {
   try {
     return { ok: true, value: JSON.parse(text) };
@@ -71,7 +73,9 @@ export function readJsonFile(
     return {};
   }
   const parsed = parseText(text);
-  if (parsed.ok) {
+  // 복사본을 두는 파일(설정, 플래너 등)은 늘 객체나 배열이다. JSON 이어도 null, 글, 수면 깨진 것으로 본다:
+  // 예전에는 그대로 "잘 읽음"으로 보아 좋은 .bak 을 그 값으로 덮고 설정을 기본으로 돌렸다 (버그잡이 4)
+  if (parsed.ok && (!opts.keepBak || isContainer(parsed.value))) {
     if (opts.keepBak) {
       try {
         const bak = bakOf(path);
@@ -95,7 +99,7 @@ export function readJsonFile(
     try {
       const bakText = readFileSync(bakOf(path), 'utf8');
       const bak = parseText(bakText);
-      if (bak.ok) {
+      if (bak.ok && isContainer(bak.value)) {
         writeFileDurable(path, bakText);
         return { value: bak.value, trouble: { file: path, moved, restored: true } };
       }

@@ -13,7 +13,13 @@ import { plusDays } from '../shared/day.ts';
 import { type Db, SCHEMA_VERSION, schemaVersion } from '../shared/db-schema.ts';
 import { findSameEvent } from '../shared/event-dup.ts';
 import { overlapping, spanEnd } from '../shared/event-overlap.ts';
-import { ALL_DAY_MAX_DAYS, allDaySpan, allDayTimes, EventStore } from '../shared/event-store.ts';
+import {
+  ALL_DAY_MAX_DAYS,
+  allDaySpan,
+  allDayTimes,
+  EventStore,
+  repairEventTimes,
+} from '../shared/event-store.ts';
 import { NOTE_BODY_MAX, NoteStore, notePreview, noteTitle, searchNotes } from '../shared/note-store.ts';
 import {
   addPetAction,
@@ -52,11 +58,22 @@ function open() {
   const file = join(userDataDir(), 'jjakkung.db');
   if (!existsSync(file)) throw new Error('페어리 저장 파일이 없어. 페어리를 한 번 켜 줘.');
   const db = new DatabaseSync(file);
-  db.exec('pragma journal_mode = wal; pragma busy_timeout = 3000;');
+  db.exec('pragma busy_timeout = 3000;');
+  // 판을 먼저 본다: 새 판 파일이면 저널 방식도 바꾸지 않고 닫는다 (db-open.ts 와 같이). 예전에는 WAL 로 바꾼 뒤에
+  // 거절하고 연 채 두어, 도구를 부를 때마다 파일을 하나씩 더 열어 두었다 (버그잡이 4)
   const v = schemaVersion(db as unknown as Db);
-  if (v !== SCHEMA_VERSION)
+  if (v !== SCHEMA_VERSION) {
+    db.close();
     throw new Error(`저장 파일(${v}판)과 이 서버(${SCHEMA_VERSION}판)의 판이 달라. 페어리를 최신으로 켜 줘.`);
+  }
+  db.exec('pragma journal_mode = wal;');
   const d = db as unknown as Db;
+  // 예전에 들어간 너무 큰 일정 시각은 읽을 때 던진다 (event-store.ts EVENT_TIME_MAX_MS)
+  try {
+    repairEventTimes(d, Date.now());
+  } catch {
+    // 잠겨 있으면 다음에. 페어리도 켤 때 고친다
+  }
   stores = { todos: new TodoStore(d), notes: new NoteStore(d), events: new EventStore(d) };
   return stores;
 }
@@ -108,6 +125,20 @@ function dueTimeOf(v: unknown): number | null {
   const m = TIME_RE.exec(s);
   if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) throw new Error('due_time 은 HH:mm (24시간) 로 줘');
   return Number(m[1]) * 60 + Number(m[2]);
+}
+
+/** 시각 일정 길이 상한(분): 여러 날 종일 일정과 같은 날 수 */
+const EVENT_MAX_MIN = ALL_DAY_MAX_DAYS * 24 * 60;
+
+/**
+ * 시각 일정 길이(분). 숫자가 아니면 undefined(끝 없음). 너무 길면 던진다: 예전에는 1e12 같은 수를 그대로 받아
+ * 끝 시각이 SQLite 에서 읽을 수 없는 수가 됐고, 그 뒤로 일정 목록, 패널, 알림이 모두 멈췄다
+ */
+function durationOf(v: unknown): number | undefined {
+  const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v) : Number.NaN;
+  if (!Number.isFinite(n)) return undefined;
+  if (n > EVENT_MAX_MIN) throw new Error(`duration_min 은 ${EVENT_MAX_MIN}분(${ALL_DAY_MAX_DAYS}일)까지야`);
+  return n;
 }
 
 /** 단계 목록 인자 (글 배열). 빈 것은 뺀다 */
@@ -501,7 +532,10 @@ const TOOLS: Tool[] = [
           type: 'string',
           description: '종일 일정의 마지막 날 YYYY-MM-DD (그날도 든다). 하루면 비운다',
         },
-        duration_min: { type: 'number', description: '길이(분). 시각 일정만' },
+        duration_min: {
+          type: 'number',
+          description: `길이(분). 시각 일정만 (${ALL_DAY_MAX_DAYS * 24 * 60}분까지)`,
+        },
         remind_min: {
           type: 'number',
           description:
@@ -543,7 +577,7 @@ const TOOLS: Tool[] = [
         Number(m[4]),
         Number(m[5]),
       ).getTime();
-      const dur = Number(a.duration_min);
+      const dur = durationOf(a.duration_min);
       const { events } = open();
       const dup = sameEvent(events, { title, startAt });
       if (dup) return `이미 있어 (id ${dup.id}): ${str(a.start)} ${dup.title}`;
@@ -551,7 +585,7 @@ const TOOLS: Tool[] = [
         {
           title,
           startAt,
-          endAt: Number.isFinite(dur) && dur > 0 ? startAt + dur * 60_000 : null,
+          endAt: dur !== undefined && dur > 0 ? startAt + dur * 60_000 : null,
           remindMin: remindOf(a.remind_min),
         },
         Date.now(),
@@ -615,8 +649,7 @@ const TOOLS: Tool[] = [
       }
       const startAt = a.start !== undefined ? localStartOf(a.start) : e.startAt;
       if (a.start !== undefined) patch.startAt = startAt;
-      const dur =
-        typeof a.duration_min === 'number' && Number.isFinite(a.duration_min) ? a.duration_min : undefined;
+      const dur = typeof a.duration_min === 'number' ? durationOf(a.duration_min) : undefined;
       if (dur !== undefined) patch.endAt = dur > 0 ? startAt + dur * 60_000 : null;
       else if (a.start !== undefined && e.endAt !== null) patch.endAt = startAt + (e.endAt - e.startAt);
       if (Object.keys(patch).length === 0) throw new Error('바꿀 것(title, start, duration_min)을 줘');

@@ -9,6 +9,7 @@ import {
 } from 'electron';
 import type { StatStore } from '../shared/beta-stats.ts';
 import { undoMoved } from '../shared/briefing.ts';
+import { saveErrorText } from '../shared/download-error.ts';
 import { findSameEvent } from '../shared/event-dup.ts';
 import { clashIds, overlapping, spanEnd } from '../shared/event-overlap.ts';
 import {
@@ -151,6 +152,23 @@ export function createPanel(o: PanelOptions) {
   /** 메모 다듬기 (메모 id 마다 하나) */
   const polishJobs = createPolishJobs();
 
+  /**
+   * 넣기 답을 주는 IPC: 저장이 던지면(디스크 가득, 읽기 전용 폴더) 오류 글로 답한다. 예전에는 던진 채 두어 창의
+   * await 가 깨지고, 적은 글은 그대로인데 아무 말도 없었다 (버그잡이 4: 디스크를 채워 실제 앱으로 확인)
+   */
+  function saving<A extends unknown[], R>(
+    fn: (e: IpcMainInvokeEvent, ...args: A) => R,
+  ): (e: IpcMainInvokeEvent, ...args: A) => R | { ok: false; error: string } {
+    return (e, ...args) => {
+      try {
+        return fn(e, ...args);
+      } catch (err) {
+        o.log('panel', '저장 실패', err instanceof Error ? err.message : String(err));
+        return { ok: false, error: saveErrorText(err) };
+      }
+    };
+  }
+
   function state(): PanelState {
     const now = Date.now();
     const { open, doneToday } = o.store.list(now);
@@ -217,29 +235,32 @@ export function createPanel(o: PanelOptions) {
   }
 
   ipcMain.handle(PANEL.snapshot, (e) => (ours(e) ? state() : undefined));
-  ipcMain.handle(PANEL.add, (e, text: string): PanelAddResult => {
-    if (!ours(e) || typeof text !== 'string') return { ok: false };
-    const now = Date.now();
-    // 여러 줄을 붙여 넣으면 줄마다 하나씩 (할 일이나 일정). 빈 줄은 건너뛴다
-    const lines = text
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter(Boolean);
-    if (lines.length > 1) {
-      if (lines.length > ADD_MANY_MAX)
-        return { ok: false, error: t('panel.add.tooMany', { n: ADD_MANY_MAX }) };
-      let todos = 0;
-      let events = 0;
-      for (const line of lines) {
-        const r = addLine(line, now);
-        if (r.ok && r.kind === 'event') events++;
-        else if (r.ok) todos++;
+  ipcMain.handle(
+    PANEL.add,
+    saving((e, text: string): PanelAddResult => {
+      if (!ours(e) || typeof text !== 'string') return { ok: false };
+      const now = Date.now();
+      // 여러 줄을 붙여 넣으면 줄마다 하나씩 (할 일이나 일정). 빈 줄은 건너뛴다
+      const lines = text
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+      if (lines.length > 1) {
+        if (lines.length > ADD_MANY_MAX)
+          return { ok: false, error: t('panel.add.tooMany', { n: ADD_MANY_MAX }) };
+        let todos = 0;
+        let events = 0;
+        for (const line of lines) {
+          const r = addLine(line, now);
+          if (r.ok && r.kind === 'event') events++;
+          else if (r.ok) todos++;
+        }
+        if (todos + events === 0) return { ok: false, error: t('panel.add.empty') };
+        return { ok: true, kind: 'many', todos, events };
       }
-      if (todos + events === 0) return { ok: false, error: t('panel.add.empty') };
-      return { ok: true, kind: 'many', todos, events };
-    }
-    return addLine(text, now);
-  });
+      return addLine(text, now);
+    }),
+  );
   /**
    * 한 줄 넣기. 시각이 들어 있으면("내일 3시 회의") 일정으로 넣는다.
    * "3시까지", "by 5pm"은 마감이라 할 일로 둔다(시각 범위 "3시부터 5시까지"는 일정).
@@ -323,22 +344,25 @@ export function createPanel(o: PanelOptions) {
     };
   }
   // 시각이 있어 일정으로 들어간 한 줄을 할 일로 옮긴다 (알림의 "할 일로")
-  ipcMain.handle(PANEL.eventToTodo, (e, id: unknown, text: unknown): PanelAddResult => {
-    if (!ours(e) || typeof id !== 'number' || typeof text !== 'string') return { ok: false };
-    const ev = o.events.get(id);
-    if (!ev) return { ok: false, error: t('panel.retry') };
-    const now = Date.now();
-    const r = addTodo(text, now);
-    if (!r.ok || r.kind !== 'todo') return r;
-    // 글에서 날짜를 못 읽었으면("dentist 3pm") 일정이던 날을 마감으로 (언제 할 일인지 잃지 않게)
-    const due = r.due ?? localDay(ev.startAt);
-    // now 를 넘겨 이미 지난 기본 알림(어제 저녁 8시)은 말없이 넘긴다
-    if (!r.due) o.store.update(r.id, { due }, now);
-    o.events.remove(id, now);
-    push();
-    o.onEventsChanged();
-    return { ...r, due };
-  });
+  ipcMain.handle(
+    PANEL.eventToTodo,
+    saving((e, id: unknown, text: unknown): PanelAddResult => {
+      if (!ours(e) || typeof id !== 'number' || typeof text !== 'string') return { ok: false };
+      const ev = o.events.get(id);
+      if (!ev) return { ok: false, error: t('panel.retry') };
+      const now = Date.now();
+      const r = addTodo(text, now);
+      if (!r.ok || r.kind !== 'todo') return r;
+      // 글에서 날짜를 못 읽었으면("dentist 3pm") 일정이던 날을 마감으로 (언제 할 일인지 잃지 않게)
+      const due = r.due ?? localDay(ev.startAt);
+      // now 를 넘겨 이미 지난 기본 알림(어제 저녁 8시)은 말없이 넘긴다
+      if (!r.due) o.store.update(r.id, { due }, now);
+      o.events.remove(id, now);
+      push();
+      o.onEventsChanged();
+      return { ...r, due };
+    }),
+  );
   // ---- 메모 ----
   ipcMain.handle(PANEL.noteGet, (e, id: number) => (ours(e) ? o.notes.get(id) : undefined));
   ipcMain.handle(PANEL.noteAdd, (e) => {
@@ -420,71 +444,81 @@ export function createPanel(o: PanelOptions) {
     push();
   });
   // ---- 일정 ----
-  ipcMain.handle(PANEL.eventAdd, (e, line: string, day?: unknown) => {
-    if (!ours(e) || typeof line !== 'string') return { ok: false };
-    const now = Date.now();
-    // 달력에서 고른 날(day)이 있으면 그날을 기준으로 읽는다 ("3시 회의" 는 그날 3시, "내일" 은 그다음 날).
-    // 오늘이 아닌 날은 0시로 보고 읽는다: 지금 시각보다 이른 시각을 다음 날로 미루지 않게
-    const picked =
-      typeof day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(day) && localDay(dayStartMs(day)) === day
-        ? day
-        : undefined;
-    const base = picked ?? localDay(now);
-    const minute = base === localDay(now) ? minuteOfDay(now) : 0;
-    // 알림 말("1시간 전에 알려줘")은 먼저 뗀다
-    const { rest: text, remind } = splitRemind(line);
-    // 일정 탭에서는 날짜만 적어도 된다: "내일 제주도 여행"은 종일, "10/10-10/12 제주도"는 여러 날 종일.
-    // (빠른 입력은 위 PANEL.add 처럼 시각이 있어야 일정이다. 거기서 날짜만 있으면 할 일 마감)
-    // 반복 일정은 아직 없다: 한 번짜리로 넣지 않고 할 일 탭으로 안내한다
-    if (parseTodoLine(text, base, minute).repeat) return { ok: false, error: t('panel.event.noRepeat') };
-    // 달력에서 고른 날이면 날짜도 시각도 없는 글("장보기")은 그날 종일. "오늘" 을 붙여 읽어
-    // 시각처럼 보이는 말("25시 회의")은 종일로 넣지 않고 되묻는 규칙을 그대로 쓴다
-    const ev =
-      parseEventInput(text, base, minute) ?? (picked ? parseEventInput(`오늘 ${text}`, base, minute) : null);
-    if (!ev) return { ok: false, error: t('panel.event.needTime') };
-    let event: ReturnType<EventStore['add']>;
-    if ('allDay' in ev) {
-      const times = allDayTimes(ev.day, ev.lastDay);
-      const dup = sameEvent(ev.title, times.startAt, true);
-      if (dup) return dup;
-      const reminds = remindsOf(remind, true);
-      event = o.events.add({ title: ev.title, ...times, allDay: true, ...(reminds ? { reminds } : {}) }, now);
-    } else {
-      const startAt = localTime(ev.day, ev.minute);
-      const dup = sameEvent(ev.title, startAt, false);
-      if (dup) return dup;
-      const reminds = remindsOf(remind, false, ev.minute);
-      event = o.events.add(
-        {
-          title: ev.title,
-          startAt,
-          endAt: ev.durationMin ? startAt + ev.durationMin * 60_000 : null,
-          ...(reminds ? { reminds } : {}),
-        },
-        now,
-      );
-    }
-    push();
-    o.onEventsChanged();
-    const clash = event.allDay ? undefined : clashOf(event);
-    return { ok: true, event, ...(clash ? { clash } : {}) };
-  });
+  ipcMain.handle(
+    PANEL.eventAdd,
+    saving((e, line: string, day?: unknown) => {
+      if (!ours(e) || typeof line !== 'string') return { ok: false };
+      const now = Date.now();
+      // 달력에서 고른 날(day)이 있으면 그날을 기준으로 읽는다 ("3시 회의" 는 그날 3시, "내일" 은 그다음 날).
+      // 오늘이 아닌 날은 0시로 보고 읽는다: 지금 시각보다 이른 시각을 다음 날로 미루지 않게
+      const picked =
+        typeof day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(day) && localDay(dayStartMs(day)) === day
+          ? day
+          : undefined;
+      const base = picked ?? localDay(now);
+      const minute = base === localDay(now) ? minuteOfDay(now) : 0;
+      // 알림 말("1시간 전에 알려줘")은 먼저 뗀다
+      const { rest: text, remind } = splitRemind(line);
+      // 일정 탭에서는 날짜만 적어도 된다: "내일 제주도 여행"은 종일, "10/10-10/12 제주도"는 여러 날 종일.
+      // (빠른 입력은 위 PANEL.add 처럼 시각이 있어야 일정이다. 거기서 날짜만 있으면 할 일 마감)
+      // 반복 일정은 아직 없다: 한 번짜리로 넣지 않고 할 일 탭으로 안내한다
+      if (parseTodoLine(text, base, minute).repeat) return { ok: false, error: t('panel.event.noRepeat') };
+      // 달력에서 고른 날이면 날짜도 시각도 없는 글("장보기")은 그날 종일. "오늘" 을 붙여 읽어
+      // 시각처럼 보이는 말("25시 회의")은 종일로 넣지 않고 되묻는 규칙을 그대로 쓴다
+      const ev =
+        parseEventInput(text, base, minute) ??
+        (picked ? parseEventInput(`오늘 ${text}`, base, minute) : null);
+      if (!ev) return { ok: false, error: t('panel.event.needTime') };
+      let event: ReturnType<EventStore['add']>;
+      if ('allDay' in ev) {
+        const times = allDayTimes(ev.day, ev.lastDay);
+        const dup = sameEvent(ev.title, times.startAt, true);
+        if (dup) return dup;
+        const reminds = remindsOf(remind, true);
+        event = o.events.add(
+          { title: ev.title, ...times, allDay: true, ...(reminds ? { reminds } : {}) },
+          now,
+        );
+      } else {
+        const startAt = localTime(ev.day, ev.minute);
+        const dup = sameEvent(ev.title, startAt, false);
+        if (dup) return dup;
+        const reminds = remindsOf(remind, false, ev.minute);
+        event = o.events.add(
+          {
+            title: ev.title,
+            startAt,
+            endAt: ev.durationMin ? startAt + ev.durationMin * 60_000 : null,
+            ...(reminds ? { reminds } : {}),
+          },
+          now,
+        );
+      }
+      push();
+      o.onEventsChanged();
+      const clash = event.allDay ? undefined : clashOf(event);
+      return { ok: true, event, ...(clash ? { clash } : {}) };
+    }),
+  );
   // ---- 할 일 단계 (9판) ----
   // 한 줄이나 여러 줄 (붙여 넣은 목록은 한 번에 넣고 한 번만 알린다. 줄마다 부르면 패널 상태를 줄 수만큼 다시 만들었다)
-  ipcMain.handle(PANEL.stepAdd, (e, todoId: unknown, title: unknown) => {
-    const titles = typeof title === 'string' ? [title] : Array.isArray(title) ? title : undefined;
-    if (!ours(e) || typeof todoId !== 'number' || !titles || !titles.every((x) => typeof x === 'string'))
-      return { ok: false };
-    const todo = o.store.get(todoId);
-    if (!todo || todo.doneAt !== null) return { ok: false, error: t('panel.retry') };
-    const room = STEP_MAX - todo.steps.length;
-    if (room <= 0) return { ok: false, error: t('assist.step.full', { n: STEP_MAX }) };
-    const n = o.store.addSteps(todoId, (titles as string[]).slice(0, room), Date.now());
-    if (n === 0) return { ok: false, error: t('panel.add.empty') };
-    push();
-    if (titles.length > room) return { ok: false, error: t('assist.step.full', { n: STEP_MAX }) };
-    return { ok: true };
-  });
+  ipcMain.handle(
+    PANEL.stepAdd,
+    saving((e, todoId: unknown, title: unknown) => {
+      const titles = typeof title === 'string' ? [title] : Array.isArray(title) ? title : undefined;
+      if (!ours(e) || typeof todoId !== 'number' || !titles || !titles.every((x) => typeof x === 'string'))
+        return { ok: false };
+      const todo = o.store.get(todoId);
+      if (!todo || todo.doneAt !== null) return { ok: false, error: t('panel.retry') };
+      const room = STEP_MAX - todo.steps.length;
+      if (room <= 0) return { ok: false, error: t('assist.step.full', { n: STEP_MAX }) };
+      const n = o.store.addSteps(todoId, (titles as string[]).slice(0, room), Date.now());
+      if (n === 0) return { ok: false, error: t('panel.add.empty') };
+      push();
+      if (titles.length > room) return { ok: false, error: t('assist.step.full', { n: STEP_MAX }) };
+      return { ok: true };
+    }),
+  );
   /** 이 단계의 할 일이 아직 열려 있는지 (끝냈거나 지운 할 일의 단계는 패널에서 바꾸지 않는다) */
   const openStep = (stepId: number) => {
     const owner = o.store.stepOwner(stepId);

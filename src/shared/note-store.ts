@@ -46,22 +46,43 @@ export function noteTitle(n: Pick<Note, 'title' | 'body'>): string {
   return first.replace(/^\s*(#+|[-*]|\d+\.)\s*/, '').slice(0, NOTE_TITLE_MAX) || t('panel.note.empty');
 }
 
-/** 목록에 보일 본문 한 줄. 제목으로 쓴 첫 줄과 마크다운 기호는 뺀다. */
+/** 미리보기 길이 (글자) */
+const PREVIEW_MAX = 80;
+
+/** 미리보기 한 줄 다듬기: 마크다운 머리 기호와 줄 안의 꾸밈 기호를 뺀다 */
+const previewLine = (l: string) =>
+  l
+    .replace(/^\s*(#+|>|[-*](?=\s)|\d+\.(?=\s))\s*/, '')
+    // 줄 안의 굵게, 기울임, 코드, 지움, 링크 기호도 뺀다 ("**굵게**" 가 "*굵게**" 로 보이던 것)
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/(\*\*|__|~~|`)/g, '')
+    .replace(/(^|\s)[*_]([^*_\s][^*_]*)[*_](?=\s|$)/g, '$1$2')
+    .trim();
+
+/**
+ * 목록에 보일 본문 한 줄. 제목으로 쓴 첫 줄과 마크다운 기호는 뺀다.
+ * 80자가 차면 남은 줄은 다듬지 않는다: 패널이 바뀔 때마다 모든 메모를 다시 만드는데, 예전에는 본문(50,000자까지)
+ * 전체 줄을 정규식 네 번씩 돌려 메모 5천 개에서 한 번에 70ms 넘게 걸렸다 (버그잡이 4: 규모)
+ */
 export function notePreview(n: Pick<Note, 'title' | 'body'>): string {
-  const lines = n.body
-    .split('\n')
-    .map((l) =>
-      l
-        .replace(/^\s*(#+|>|[-*](?=\s)|\d+\.(?=\s))\s*/, '')
-        // 줄 안의 굵게, 기울임, 코드, 지움, 링크 기호도 뺀다 ("**굵게**" 가 "*굵게**" 로 보이던 것)
-        .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-        .replace(/(\*\*|__|~~|`)/g, '')
-        .replace(/(^|\s)[*_]([^*_\s][^*_]*)[*_](?=\s|$)/g, '$1$2')
-        .trim(),
-    )
-    .filter(Boolean);
-  if (!n.title.trim()) lines.shift();
-  return lines.join(' ').slice(0, 80);
+  let skip = !n.title.trim();
+  const kept: string[] = [];
+  let len = -1;
+  let from = 0;
+  while (from <= n.body.length && len < PREVIEW_MAX) {
+    const nl = n.body.indexOf('\n', from);
+    const end = nl < 0 ? n.body.length : nl;
+    const line = previewLine(n.body.slice(from, end));
+    from = end + 1;
+    if (!line) continue;
+    if (skip) {
+      skip = false;
+      continue;
+    }
+    kept.push(line);
+    len += line.length + 1;
+  }
+  return kept.join(' ').slice(0, PREVIEW_MAX);
 }
 
 export class NoteStore {

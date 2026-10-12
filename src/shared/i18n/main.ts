@@ -146,6 +146,9 @@ export const ko = {
   'main.data.oldRunning': '예전 짝꿍이 아직 켜져 있어',
   'main.data.oldRunningDetail':
     '짝꿍이 데이터를 쓰고 있어서 페어리로 옮기지 못했어. 짝꿍을 끝낸 뒤(메뉴 막대나 작업 표시줄 아이콘 → 끝내기) 페어리를 다시 켜 줘. 할 일과 설정은 그대로 있어.',
+  'main.data.readOnly': '데이터 폴더에 쓸 수 없어서 페어리를 켜지 못했어',
+  'main.data.readOnlyDetail': (v: { path: string }) =>
+    `이 폴더에 쓸 권한이 없거나 읽기 전용이야: ${v.path}\n폴더 권한을 확인해 줘. 관리자 권한(sudo)으로 켠 적이 있다면 폴더 주인이 바뀌었을 수 있어. 고친 뒤 페어리를 다시 켜 줘. 할 일과 설정은 그대로 있어.`,
 };
 
 export const en: Translation<typeof ko> = {
@@ -297,4 +300,7 @@ export const en: Translation<typeof ko> = {
   'main.data.oldRunning': 'The old Jjakkung app is still running',
   'main.data.oldRunningDetail':
     "Jjakkung is using your data, so it couldn't be moved to fairy yet. Quit Jjakkung (menu bar or taskbar icon → Quit), then open fairy again. Your to-dos and settings are safe.",
+  'main.data.readOnly': "fairy can't write to its data folder, so it couldn't start",
+  'main.data.readOnlyDetail': (v: { path: string }) =>
+    `fairy doesn't have permission to write to this folder, or it is read-only: ${v.path}\nCheck the folder permissions. If you ever ran fairy with admin rights (sudo), the folder owner may have changed. Fix it, then open fairy again. Your to-dos and settings are safe.`,
 };

@@ -32,8 +32,7 @@ export function imageSize(b: Uint8Array): { w: number; h: number } | undefined {
     }
     return undefined;
   }
-  if (b.length >= 10 && String.fromCharCode(...b.subarray(0, 4)) === 'GIF8')
-    return { w: le16(6), h: le16(8) };
+  if (b.length >= 10 && String.fromCharCode(...b.subarray(0, 4)) === 'GIF8') return gifSize(b);
   if (kind === 'jpeg') {
     // SOF 표시(C0~CF, C4 C8 CC 빼고)를 찾아 그 안의 높이, 너비
     let i = 2;
@@ -46,6 +45,40 @@ export function imageSize(b: Uint8Array): { w: number; h: number } | undefined {
     }
   }
   return undefined;
+}
+
+/**
+ * GIF 크기: 논리 화면과 모든 장면(이미지 설명자)의 오른쪽, 아래 끝 가운데 큰 것.
+ * 브라우저는 장면이 논리 화면보다 크면 장면 크기로 푼다. 예전에는 논리 화면만 보아, 논리 화면 0x0(또는 64x64)에
+ * 장면 12000x12000 인 359바이트 GIF 가 상한을 지나 펫 창이 1.1GB 를 썼다 (버그잡이 4)
+ */
+function gifSize(b: Uint8Array): { w: number; h: number } {
+  const le16 = (i: number) => (b[i] ?? 0) | ((b[i + 1] ?? 0) << 8);
+  const table = (flags: number) => (flags & 0x80 ? 3 * 2 ** ((flags & 7) + 1) : 0);
+  let w = le16(6);
+  let h = le16(8);
+  let i = 13 + table(b[10] ?? 0);
+  /** 이어진 데이터 조각들을 건너뛴다 (길이 0 조각에서 끝) */
+  const skip = () => {
+    while (i < b.length) {
+      const n = b[i] ?? 0;
+      i += 1 + n;
+      if (n === 0) return;
+    }
+  };
+  while (i < b.length) {
+    const tag = b[i];
+    if (tag === 0x21) {
+      i += 2;
+      skip();
+    } else if (tag === 0x2c && i + 10 <= b.length) {
+      w = Math.max(w, le16(i + 1) + le16(i + 5));
+      h = Math.max(h, le16(i + 3) + le16(i + 7));
+      i += 10 + table(b[i + 9] ?? 0) + 1; // 지역 색표, LZW 최소 코드 크기
+      skip();
+    } else break; // 끝(0x3b)이나 모르는 것
+  }
+  return { w, h };
 }
 
 /** 풀어도 되는 그림 크기 (가로세로 각각, 넓이) */

@@ -7,6 +7,7 @@ import {
   calStatusResult,
   calTellNow,
   cleanIcsUrl,
+  ICS_MAX_EVENTS,
   parseIcs,
   resolveTz,
   WINDOWS_ZONES,
@@ -348,4 +349,34 @@ test('계속 못 읽음 알림: 사용자가 직접 가져왔거나 설정 창�
   assert.equal(calTellNow(true, { byUser: true, settingsOpen: false }), false);
   assert.equal(calTellNow(true, { byUser: false, settingsOpen: true }), false);
   assert.equal(calTellNow(false, { byUser: false, settingsOpen: false }), false);
+});
+
+test('일정이 아주 많은 캘린더는 이른 것부터 상한까지만 꺼내고 오래 멈추지 않는다 (버그잡이 4)', () => {
+  const from = Date.UTC(2026, 9, 11);
+  const to = from + 61 * 86_400_000;
+  const lines = ['BEGIN:VCALENDAR'];
+  // 매일 반복 일정 3천 개: 61일이면 18만 회차가 된다
+  for (let i = 0; i < 3000; i++)
+    lines.push(
+      'BEGIN:VEVENT',
+      `UID:u${i}`,
+      'SUMMARY:x',
+      'DTSTART:20261012T100000Z',
+      'RRULE:FREQ=DAILY',
+      'END:VEVENT',
+    );
+  lines.push(
+    'BEGIN:VEVENT',
+    'UID:first',
+    'SUMMARY:맨 앞',
+    'DTSTART:20261011T080000Z',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  );
+  const t0 = performance.now();
+  const out = parseIcs(lines.join('\r\n'), 'UTC', from, to);
+  assert.ok(performance.now() - t0 < 5000);
+  assert.equal(out.length, ICS_MAX_EVENTS);
+  assert.equal(out[0]?.title, '맨 앞');
+  assert.ok(out.every((e, i) => i === 0 || (out[i - 1]?.startAt ?? 0) <= e.startAt));
 });
