@@ -7,6 +7,7 @@ import {
   PET_STYLES,
   POSE_KINDS,
   petNameLength,
+  starterStand,
 } from '../../../../shared/settings.ts';
 import { MAX_SCALE, MIN_SCALE } from '../../../../shared/size.ts';
 import { PetNameInput } from '../../PetNameInput.tsx';
@@ -165,7 +166,8 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
           <small>{t('settings.sizeHint', { mod })}</small>
         </label>
 
-        {(!s.petImage || s.petModel || s.petDepth) && (
+        {/* 밀크, 초코는 네 발로 선 피규어를 켰을 때만 입체 (끄면 사진 그대로라 입체로 보기가 쓸모없다) */}
+        {(!s.petImage || s.petModel || s.petDepth || starterStand(s)) && (
           <Toggle
             label={t('settings.pet3d')}
             hint={t('settings.pet3dHint')}
