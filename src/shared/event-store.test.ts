@@ -2,7 +2,14 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { type Db, MIGRATIONS, migrate, SCHEMA_VERSION } from './db-schema.ts';
-import { EventStore, parseEventInput, parseQuickEvent, takeKoDue, timeLabel } from './event-store.ts';
+import {
+  EventStore,
+  parseEventInput,
+  parseQuickEvent,
+  repairEventTimes,
+  takeKoDue,
+  timeLabel,
+} from './event-store.ts';
 import { NoteStore, notePreview, noteTitle } from './note-store.ts';
 
 const MIN = 60_000;
@@ -381,4 +388,52 @@ test('영어: 제목 속 낱말을 날짜로 읽지 않고, 시각이 없거나 
   assert.equal(ev('3:75pm sync'), null);
   assert.equal(ev('feb 30 3pm party'), null);
   assert.equal(ev('1:1 thursday 3pm')?.title, '1:1');
+});
+
+test('너무 큰 일정 시각: 끝은 끝 없음으로 저장하고, 이미 들어간 것은 고쳐 목록이 다시 읽힌다 (버그잡이 4)', () => {
+  const db = new DatabaseSync(':memory:') as unknown as Db;
+  migrate(db);
+  const events = new EventStore(db);
+  const huge = 6e16; // 2^53 보다 크다: SQLite 에서 읽으면 던졌다
+  const a = events.add({ title: '긴 일정', startAt: T0, endAt: T0 + huge }, T0);
+  assert.equal(a.endAt, null);
+  assert.throws(() => events.add({ title: '엉뚱', startAt: huge }, T0));
+  assert.equal(events.update(a.id, { endAt: Number.POSITIVE_INFINITY }, T0)?.endAt, null);
+  assert.equal(events.update(a.id, { startAt: huge }, T0)?.startAt, T0);
+  events.syncExternal(
+    'ics',
+    [
+      { uid: 'u1', title: '가져온 것', startAt: T0, endAt: T0 + huge, allDay: false },
+      { uid: 'u2', title: '시작이 틀림', startAt: huge, endAt: null, allDay: false },
+    ],
+    T0 - 86_400_000,
+    T0 + 86_400_000,
+    T0,
+  );
+  const listed = events.between(T0 - 1, T0 + 1);
+  assert.deepEqual(
+    listed.map((e) => [e.title, e.endAt]),
+    [
+      ['긴 일정', null],
+      ['가져온 것', null],
+    ],
+  );
+  // 고치기 전 판이 넣은 행: 읽으면 던진다. 켤 때 고친다
+  db.prepare(
+    'insert into event (title, start_at, end_at, remind_min, created_at) values (?, ?, ?, 10, ?)',
+  ).run('옛 행', T0, huge, T0);
+  db.prepare(
+    'insert into event (title, start_at, end_at, remind_min, created_at) values (?, ?, ?, 10, ?)',
+  ).run('옛 시작', huge, null, T0);
+  assert.throws(() => events.between(T0 - 1, T0 + 1));
+  assert.equal(repairEventTimes(db, T0), 2);
+  assert.deepEqual(
+    events.between(T0 - 1, T0 + 1).map((e) => [e.title, e.endAt]),
+    [
+      ['긴 일정', null],
+      ['가져온 것', null],
+      ['옛 행', null],
+    ],
+  );
+  assert.equal(repairEventTimes(db, T0), 0);
 });

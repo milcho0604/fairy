@@ -28,6 +28,19 @@ test('앱보다 새 판 저장 파일은 거부한다 (덮어쓰지 않게)', ()
   assert.throws(() => migrate(db), /새 판/);
 });
 
+test('화면 체크로 끝내기: 안 끝낸 할 일만 코인, 이미 끝냈거나 없으면 null (빠르게 여러 번 누름)', () => {
+  const { store } = fresh();
+  const a = store.add({ title: '빠른 클릭' }, T0);
+  assert.equal(store.completeOpen(a.id, T0), COIN.todo);
+  assert.equal(store.completeOpen(a.id, T0), null);
+  assert.equal(store.completeOpen(a.id, T0 + 10), null);
+  assert.equal(store.completeOpen(9999, T0), null);
+  assert.equal(store.balance(), COIN.todo);
+  // 되돌린 뒤에는 다시 끝낼 수 있다
+  store.undo(a.id, T0 + 20);
+  assert.equal(typeof store.completeOpen(a.id, T0 + 30), 'number');
+});
+
 test('할 일 하나 끝내면 10코인, 마감 전이면 15코인, 두 번 끝내도 한 번만', () => {
   const { store } = fresh();
   const a = store.add({ title: '보고서' }, T0);

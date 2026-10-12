@@ -16,6 +16,7 @@ import {
   parseStyle,
   type SpeechStyle,
 } from '../../../../shared/speech-style.ts';
+import { laterSave } from '../later-save.ts';
 
 // 내 말투 만들기 (2026-10-11, shared/speech-style.ts): 말 높이, 말끝, 부르는 말, 이모지, 느낌표, 때마다 직접 쓴 말.
 // 고르면 바로 저장하고 글 칸은 잠깐 멈추면 저장한다. 미리 보기는 이 창 안에서 같은 규칙으로 바로 만든다
@@ -80,23 +81,36 @@ export function SpeechEditor({
     if (!typing.current)
       setDraft((d) => (JSON.stringify(parseStyle(d)) === JSON.stringify(value) ? d : value));
   }, [value]);
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // 글 칸은 잠깐 멈추면 저장. 그사이 창을 닫거나(beforeunload) 칸이 사라지면 버리지 않고 바로 저장한다
+  // (예전에는 타이머만 지워 0.5초 안에 닫으면 쓴 말끝, 부르는 말을 잃었다)
+  const save = useRef(onSave);
+  save.current = onSave;
+  const saver = useRef(
+    laterSave((v: SpeechStyle) => {
+      typing.current = false;
+      save.current(v);
+    }, 500),
+  );
   const commit = (next: SpeechStyle, later = false) => {
     const clean = parseStyle(next);
     setDraft(next);
-    clearTimeout(timer.current);
     if (!later) {
       typing.current = false;
-      onSave(clean);
+      saver.current.now(clean);
       return;
     }
     typing.current = true;
-    timer.current = setTimeout(() => {
-      typing.current = false;
-      onSave(clean);
-    }, 500);
+    saver.current.later(clean);
   };
-  useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(() => {
+    const s = saver.current;
+    const flush = () => s.flush();
+    window.addEventListener('beforeunload', flush);
+    return () => {
+      window.removeEventListener('beforeunload', flush);
+      s.flush();
+    };
+  }, []);
   const preview = useMemo(() => parseStyle(draft), [draft]);
   const customEnding = draft.ending !== '' && !(ENDING_CHIPS as readonly string[]).includes(draft.ending);
   const seg = <T extends string>(

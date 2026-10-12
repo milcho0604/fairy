@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
-import { partComplete, partPath, rangeFrom, rangeVerdict, resumeAccepted } from './download-resume.ts';
+import { mock, test } from 'node:test';
+import {
+  createStallWatch,
+  partComplete,
+  partPath,
+  partRemovable,
+  rangeFrom,
+  rangeVerdict,
+  resumeAccepted,
+} from './download-resume.ts';
 
 test('이어 받기 시작: 받다 만 만큼, 다 받았거나 넘쳤거나 없으면 처음부터', () => {
   assert.equal(rangeFrom(0, 100), 0);
@@ -42,4 +50,34 @@ test('서버 답 쓰기: 맞는 206 은 이어 붙이고, 어긋난 206 은 Rang
   assert.equal(rangeVerdict(206, 'bytes 0-9/100', 0), 'retry');
   assert.equal(rangeVerdict(200, null, 40), 'fresh');
   assert.equal(rangeVerdict(200, null, 0), 'fresh');
+});
+
+test('받기 멈춤 감시: 바이트가 오면 다시 재고, 정한 시간 동안 안 오면 한 번 알린다 (버그잡이 4)', () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    let stalled = 0;
+    const w = createStallWatch(30_000, () => stalled++);
+    mock.timers.tick(20_000);
+    w.kick(); // 바이트가 왔다
+    mock.timers.tick(20_000);
+    assert.equal(stalled, 0);
+    mock.timers.tick(10_001);
+    assert.equal(stalled, 1);
+    assert.equal(w.stalled, true);
+    mock.timers.tick(60_000);
+    assert.equal(stalled, 1);
+    const done = createStallWatch(30_000, () => stalled++);
+    done.stop(); // 끝났으면 알리지 않는다
+    mock.timers.tick(60_000);
+    assert.equal(stalled, 1);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('받다 만 파일 치우기: 이어 받는 파일은 멈추거나 끊겨도 남기고, 넘친 것(hash)과 이어 받지 않는 파일은 지운다', () => {
+  assert.equal(partRemovable(false, 'network'), true);
+  assert.equal(partRemovable(true, 'network'), false);
+  assert.equal(partRemovable(true, 'cancelled'), false);
+  assert.equal(partRemovable(true, 'hash'), true);
 });

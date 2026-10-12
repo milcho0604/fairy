@@ -1,7 +1,9 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { app, net } from 'electron';
 import { CATALOG_URL, type Catalog, DEFAULT_CATALOG, parseCatalog } from '../../shared/ai/catalog.ts';
+import { writeFileAtomic } from '../safe-file.ts';
+import { fetchCatalogJson } from './catalog-fetch.ts';
 
 const DAY_MS = 86_400_000;
 const cacheFile = () => join(app.getPath('userData'), 'ai-catalog.json');
@@ -20,26 +22,27 @@ export function watchCatalog(log: (tag: string, ...rest: unknown[]) => void) {
   }
 
   async function refresh(): Promise<void> {
-    try {
-      const res = await net.fetch(CATALOG_URL, {
-        headers: { 'user-agent': `fairy/${app.getVersion()}` },
-      });
-      if (!res.ok) {
-        log('catalog', '못 받음', res.status);
-        return;
-      }
-      const json: unknown = await res.json();
-      const parsed = parseCatalog(json);
-      if (!parsed) {
-        log('catalog', '모양이 이상해서 버림');
-        return;
-      }
-      current = parsed;
-      writeFileSync(cacheFile(), JSON.stringify(json));
-      log('catalog', '받음', parsed.local.map((m) => m.id).join(','));
-    } catch (err) {
-      log('catalog', '실패', err instanceof Error ? err.message : String(err));
+    // 시간 상한과 크기 상한을 두고 받는다 (catalog-fetch.ts)
+    const r = await fetchCatalogJson((url, init) => net.fetch(url, init), CATALOG_URL, {
+      headers: { 'user-agent': `fairy/${app.getVersion()}` },
+    });
+    if (!r.ok) {
+      log('catalog', '못 받음', r.why, r.why === 'status' ? r.status : '');
+      return;
     }
+    const parsed = parseCatalog(r.json);
+    if (!parsed) {
+      log('catalog', '모양이 이상해서 버림');
+      return;
+    }
+    current = parsed;
+    try {
+      // 쓰다 꺼져도 반쪽 파일이 남지 않게
+      writeFileAtomic(cacheFile(), JSON.stringify(r.json));
+    } catch (err) {
+      log('catalog', '저장 실패', err instanceof Error ? err.message : String(err));
+    }
+    log('catalog', '받음', parsed.local.map((m) => m.id).join(','));
   }
 
   setTimeout(() => void refresh(), 120_000).unref();

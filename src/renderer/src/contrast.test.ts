@@ -40,6 +40,8 @@ const PAIRS: [string, string, number][] = [
   ['muted', 'bg', 4.5],
   ['muted', 'panel', 4.5],
   ['muted', 'pet', 4.5],
+  // 마감 칩, 단추 칩처럼 --code 바탕에 흐린 글자
+  ['muted', 'code', 4.5],
   ['accent', 'panel', 4.5],
   ['accent', 'bg', 4.5],
   ['accent-ink', 'accent', 4.5],

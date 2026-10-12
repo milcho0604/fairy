@@ -94,6 +94,13 @@ if (kind === 'pet') {
     onFlight: (listener) => {
       ipcRenderer.on(IPC.flight, (_e, flying: boolean) => listener(flying));
     },
+    onShotAsk: (listener) => {
+      ipcRenderer.on(IPC.shotAsk, (_e, id: number, model: unknown) => listener(id, model));
+    },
+    shotGot: (id: number, png: string | null) => ipcRenderer.send(IPC.shotGot, id, png),
+    onImpact: (listener) => {
+      ipcRenderer.on(IPC.impact, (_e, hit: { axis: 'x' | 'y'; k: number }) => listener(hit));
+    },
     onGaze: (listener) => {
       ipcRenderer.on(IPC.gaze, (_e, gaze: Gaze | null) => listener(gaze));
     },
@@ -316,12 +323,13 @@ if (kind === 'panel' || kind === 'quick') {
     openSettings: () => ipcRenderer.send(PANEL.openSettings),
     lookTogether: () => ipcRenderer.send(PANEL.lookTogether),
     close: () => ipcRenderer.send(PANEL.close),
+    quickFit: (contentCss: number) => ipcRenderer.send(PANEL.quickFit, contentCss),
     onState: (listener) => {
       ipcRenderer.on(PANEL.state, (_e, state: PanelState) => listener(state));
     },
     noteGet: (id: number) => ipcRenderer.invoke(PANEL.noteGet, id),
-    noteAdd: () => ipcRenderer.invoke(PANEL.noteAdd),
-    noteUpdate: (id, patch) => ipcRenderer.send(PANEL.noteUpdate, id, patch),
+    noteAdd: (text?: string) => ipcRenderer.invoke(PANEL.noteAdd, text),
+    noteUpdate: (id, patch) => ipcRenderer.invoke(PANEL.noteUpdate, id, patch),
     noteRemove: (id: number) => ipcRenderer.send(PANEL.noteRemove, id),
     noteRestore: (id: number) => ipcRenderer.send(PANEL.noteRestore, id),
     noteSearch: (query: string, composing: boolean) => ipcRenderer.invoke(PANEL.noteSearch, query, composing),

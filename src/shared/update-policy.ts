@@ -1,4 +1,5 @@
 // 업데이트 정책 (강제 업데이트와 자동 설치). 순수 로직만 둔다. 실제 확인과 말풍선은 main/update.ts.
+import { fresh } from './clock.ts';
 import { isNewer, parseVersion, readRelease } from './version.ts';
 
 /**
@@ -100,7 +101,7 @@ export interface SavedLock {
 export const SAVED_LOCK_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 
 /**
- * 저장해 둔 잠금을 읽는다. 지금 버전으로 여전히 잠가야 할 때만 돌려준다 (decideUpdate 의 force 조건과 같다).
+ * 저장해 둔 잠금을 읽는다. 저장한 시각이 지금보다 뒤면(시계가 뒤로 감) 믿지 않는다 (shared/clock.ts). 지금 버전으로 여전히 잠가야 할 때만 돌려준다 (decideUpdate 의 force 조건과 같다).
  * 업데이트해서 최소 버전 이상이 됐거나, 모양이 이상하거나, 저장한 지 SAVED_LOCK_MAX_AGE_MS 가 지났으면
  * undefined (부르는 쪽이 파일을 지운다).
  */
@@ -108,7 +109,10 @@ export function readSavedLock(raw: unknown, current: string, now = Date.now()): 
   if (typeof raw !== 'object' || raw === null || !parseVersion(current)) return undefined;
   const r = raw as Record<string, unknown>;
   const { version, url, minVersion, savedAt } = r;
-  if (savedAt !== undefined && (typeof savedAt !== 'number' || !(now - savedAt <= SAVED_LOCK_MAX_AGE_MS)))
+  if (
+    savedAt !== undefined &&
+    (typeof savedAt !== 'number' || !fresh(savedAt, now, SAVED_LOCK_MAX_AGE_MS + 1))
+  )
     return undefined;
   if (typeof version !== 'string' || typeof url !== 'string' || typeof minVersion !== 'string')
     return undefined;

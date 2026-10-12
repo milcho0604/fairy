@@ -141,7 +141,7 @@ test('메모 마크다운: 파일 하나에 묶기, 메모마다 파일(앞머�
   const one = notesMarkdown(notes, NOW);
   assert.match(one, /^# 페어리 메모/);
   assert.match(one, /## 회의 "메모"\n\n_.+_\n\n## 안건\n- 하나/);
-  assert.match(one, /\n---\n\n## 장보기/);
+  assert.match(one, /\n---\n\n## 장보기\n\n_.+_\n\n우유\n$/);
   const file = noteMarkdown(notes[0] as Note);
   assert.match(file, /^---\ntitle: "회의 \\"메모\\""\ncreated: 2026-10-11T05:00:00.000Z\n/);
   assert.match(file, /---\n\n# 회의 "메모"\n\n# 안건\n- 하나\n$/);
@@ -149,11 +149,42 @@ test('메모 마크다운: 파일 하나에 묶기, 메모마다 파일(앞머�
   assert.match(ai, /source: ai\n---\n\n장보기\n우유\n$/);
 });
 
+test('묶은 메모 마크다운: 제목 칸이 빈 메모는 머리로 쓴 첫 줄을 본문에 또 쓰지 않는다', () => {
+  setLang('ko');
+  const note = (body: string): Note => ({
+    id: 1,
+    title: '',
+    body,
+    source: 'me',
+    createdAt: NOW,
+    updatedAt: NOW,
+    pinnedAt: null,
+  });
+  const one = (body: string) => notesMarkdown([note(body)], NOW).split('\n---\n\n')[1] ?? '';
+  // 머리 줄 (# 제목) 도 한 번만
+  assert.equal(
+    one('# 제목\n본문'),
+    `## 제목\n\n_${'고친 때'} ${localDay(NOW)} ${new Date(NOW).toTimeString().slice(0, 5)}_\n\n본문\n`,
+  );
+  // 첫 줄뿐이면 머리만
+  assert.match(one('장보기'), /^## 장보기\n\n_.+_\n$/);
+  // 목록 줄로 시작하면 본문 그대로 (목록을 깨지 않는다)
+  assert.match(one('- 우유\n- 빵'), /^## 우유\n\n_.+_\n\n- 우유\n- 빵\n$/);
+  // 길어서 잘린 제목이면 본문 그대로 (글을 잃지 않는다)
+  const long = '가'.repeat(200);
+  assert.ok(one(long).includes(long));
+});
+
 test('파일 이름: 금지 글자, 예약 이름, 겹치는 이름', () => {
   assert.equal(safeFileName('a/b:c*?"<>|d'), 'a b c d');
   assert.equal(safeFileName('  ..숨김.  '), '숨김');
   assert.equal(safeFileName('CON'), '_CON');
   assert.equal(safeFileName('nul.txt'), '_nul.txt');
+  // 그림 글자 80개(320바이트)는 파일 이름 상한(255바이트)을 넘었다 (버그잡이 4)
+  const emoji = safeFileName('😀'.repeat(100));
+  assert.ok(Buffer.byteLength(`${emoji} (12).md`, 'utf8') <= 255);
+  assert.equal(emoji, '😀'.repeat(60));
+  assert.equal(safeFileName('가'.repeat(100)), '가'.repeat(80));
   assert.equal(safeFileName('\u0001\u0002'), 'memo');
   assert.equal([...safeFileName('가'.repeat(200))].length, 80);
   const n = (title: string): Note => ({

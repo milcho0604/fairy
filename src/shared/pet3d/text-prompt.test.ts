@@ -5,6 +5,7 @@ import { PET_NAME_MAX, petNameLength } from '../settings.ts';
 import { EXAMPLE_PLUSH } from './examples.ts';
 import {
   cleanDescribe,
+  clipText,
   DESCRIBE_MAX,
   describePrompt,
   makerTabs,
@@ -13,6 +14,7 @@ import {
   TEXT_SYSTEM,
   TWEAK_MAX,
   textAiOrder,
+  textLength,
   textOk,
   tweakPrompt,
 } from './text-prompt.ts';
@@ -30,15 +32,21 @@ test('말로 만들기 글 다듬기: 제어, 서식 문자, 줄 나눔, 자료 
   assert.equal(cleanDescribe(undefined), '');
 });
 
-test('말로 만들기 글 길이: 코드 포인트로 자르고 이모지를 반으로 가르지 않는다', () => {
-  assert.equal([...cleanDescribe('가'.repeat(500))].length, DESCRIBE_MAX);
+test('말로 만들기 글 길이: 사람이 보는 글자로 세고 자른다 (이모지 하나는 한 글자, 반으로 가르지 않는다)', () => {
+  assert.equal(textLength(cleanDescribe('가'.repeat(500))), DESCRIBE_MAX);
   const emoji = cleanDescribe('🐱'.repeat(300));
+  assert.equal(textLength(emoji), DESCRIBE_MAX);
   assert.equal([...emoji].length, DESCRIBE_MAX);
   assert.ok(!emoji.includes('\ud83d\ud83d'));
-  assert.equal([...cleanDescribe('나'.repeat(500), TWEAK_MAX)].length, TWEAK_MAX);
-  // 창이 보낸 값 검사: 칸 상한의 4배 넘게 긴 글, 글이 아닌 값은 받지 않는다
+  // 피부색 붙은 이모지도 한 글자 (칸의 n/200 과 같다)
+  assert.equal(textLength('👋🏽'), 1);
+  assert.equal(textLength(clipText('👋🏽'.repeat(300), DESCRIBE_MAX)), DESCRIBE_MAX);
+  assert.equal(textLength(cleanDescribe('👋🏽'.repeat(300))), DESCRIBE_MAX);
+  assert.equal(textLength(cleanDescribe('나'.repeat(500), TWEAK_MAX)), TWEAK_MAX);
+  // 창이 보낸 값 검사: 칸 상한의 16배 넘게 긴 글, 글이 아닌 값은 받지 않는다 (200 이모지는 받는다)
   assert.ok(textOk('짧은 글', DESCRIBE_MAX));
-  assert.ok(!textOk('가'.repeat(DESCRIBE_MAX * 4 + 1), DESCRIBE_MAX));
+  assert.ok(textOk('👋🏽'.repeat(DESCRIBE_MAX), DESCRIBE_MAX));
+  assert.ok(!textOk('가'.repeat(DESCRIBE_MAX * 16 + 1), DESCRIBE_MAX));
   assert.ok(!textOk({ text: 'x' }, DESCRIBE_MAX));
 });
 
@@ -128,9 +136,17 @@ test('이름 기본값: 적은 글을 다듬어 이름 칸 길이로', () => {
   const long = nameFromText('하얀고양이인형하얀고양이인형하얀');
   assert.equal(petNameLength(long), PET_NAME_MAX);
   assert.equal(nameFromText('\n\n'), '');
-  // 낱말 가운데서 자르지 않는다
-  assert.equal(nameFromText('A white bunny plush with a pink cap'), 'A white');
-  assert.equal(nameFromText('분홍 모자를 쓴 하얀 토끼 인형'), '분홍 모자를 쓴 하얀');
+  // 들어가면 그대로
+  assert.equal(nameFromText('Pikachu'), 'Pikachu');
+  // 처음 끊기는 곳: 쉼표, 괄호, with, 와/과/하고 앞, …에 뒤
+  assert.equal(nameFromText('하얀 고양이, 빨간 목도리'), '하얀 고양이');
+  assert.equal(nameFromText('Pikachu (from the Pokemon games)'), 'Pikachu');
+  assert.equal(nameFromText('토끼와 곰이 같이 있는 인형 친구'), '토끼');
+  assert.equal(nameFromText('숲에 사는 아주 작은 여우 친구'), '아주 작은 여우 친구');
+  // 그래도 길면 머리 명사가 있는 뒤쪽 낱말 (낱말 가운데서 자르지 않는다)
+  assert.equal(nameFromText('A tiny blue penguin'), 'Blue penguin');
+  assert.equal(nameFromText('A white bunny plush with a pink cap'), 'Bunny plush');
+  assert.equal(nameFromText('분홍 모자를 쓴 하얀 토끼 인형'), '하얀 토끼 인형');
 });
 
 test('말로 만들기 탭: AI 가 없으면 아예 보이지 않는다', () => {
@@ -142,4 +158,29 @@ test('말로 만들기 AI: 지금 고른 AI 부터, 무료 AI 와 사용자가 �
   assert.deepEqual(textAiOrder('codex'), ['codex', 'claude', 'cursor', 'gemini']);
   assert.deepEqual(textAiOrder('local'), ['claude', 'codex', 'cursor', 'gemini']);
   assert.deepEqual(textAiOrder('custom-1'), ['claude', 'codex', 'cursor', 'gemini']);
+});
+
+test('걸음새를 바꿔 다시 만들기: 처음 글 요청문에 고른 걸음새를 넣고, 답은 그 걸음새로 둔다', () => {
+  const four = describePrompt('하얀 고양이', { gait: 'quadruped' });
+  assert.match(four, /Walking style \(chosen by the owner\): four legs/);
+  assert.match(describePrompt('하얀 고양이', { gait: 'biped' }), /two legs/);
+  assert.ok(!describePrompt('하얀 고양이').includes('Walking style'));
+  const answer = `\`\`\`json\n${JSON.stringify({ ...EXAMPLE_PLUSH, gait: 'biped' })}\n\`\`\``;
+  const got = readTextAnswer(answer, 'quadruped');
+  assert.ok(got.ok && got.bp.gait === 'quadruped');
+  const plain = readTextAnswer(answer);
+  assert.ok(plain.ok && plain.bp.gait === 'biped');
+});
+
+test('처음 만들기 요청문: 닮게 만드는 규칙 (찾아보기, 귀 모양, 머리 무늬, 표정, 옅은 색)', () => {
+  const p = describePrompt('파란 모자를 쓴 흰 토끼', { webSearch: true });
+  assert.ok(p.includes('search for how it looks first'));
+  assert.ok(p.includes('Write "likeness" first'));
+  assert.ok(p.includes('"notch"'));
+  assert.ok(p.includes('long upright ears'));
+  assert.ok(p.includes('"grin" for a wide open smiling mouth'));
+  assert.ok(p.includes('a pale pastel stays pale'));
+  // 고치기도 같은 규칙을 쓰지만 찾아보지는 않는다
+  const t = tweakPrompt(EXAMPLE_PLUSH, '귀 길게');
+  assert.ok(t.includes('long upright ears') && !t.includes('web search tool'));
 });

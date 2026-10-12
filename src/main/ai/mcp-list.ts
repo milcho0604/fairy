@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { aiChildEnv } from '../../shared/ai/child-env.ts';
 import { parseMcpList } from '../../shared/ai/claude.ts';
+import { fresh } from '../../shared/clock.ts';
 import { readJson, writeJson } from '../store.ts';
 import { getShellEnv, launchOf, resolveBin } from './shell-env.ts';
 
@@ -16,7 +17,8 @@ let running: Promise<string[]> | undefined;
  */
 export function mcpServers(log: (tag: string, ...rest: unknown[]) => void): string[] {
   cache ??= readJson(FILE) as typeof cache;
-  if (!cache || Date.now() - cache.at > FRESH_MS) void refreshMcpServers(log);
+  // 저장 시각이 지금보다 뒤면(시계가 뒤로 감) 오래된 것으로 보고 다시 읽는다
+  if (!cache || !fresh(cache.at, Date.now(), FRESH_MS + 1)) void refreshMcpServers(log);
   return cache?.servers ?? [];
 }
 

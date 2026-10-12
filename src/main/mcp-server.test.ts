@@ -353,3 +353,26 @@ test('짝꿍 채팅이 띄운 서버(JJ_MCP_CONFIRM)는 지우기, 고치기를 
     db.close();
   }
 });
+
+test('add_event, update_event: 너무 긴 duration_min 은 거절하고 일정 목록은 계속 읽힌다 (버그잡이 4)', () => {
+  const r = tool('add_event', { title: '끝없는 회의', start: '2027-01-05T10:00', duration_min: 1e12 });
+  assert.equal(r.result?.isError, true);
+  assert.match(text(r), /duration_min/);
+  const ok = tool('add_event', { title: '보통 회의', start: '2027-01-05T11:00', duration_min: 60 });
+  assert.equal(ok.result?.isError, undefined);
+  const id = Number(/id (\d+)/.exec(text(ok))?.[1]);
+  const up = tool('update_event', { id, duration_min: 1e12 });
+  assert.equal(up.result?.isError, true);
+  const list = tool('list_events', { days: 60 });
+  assert.equal(list.result?.isError, undefined);
+});
+
+test('serverInfo 판은 앱 판 (예전에는 0.1.0 으로 박혀 있었다)', () => {
+  const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
+    version: string;
+  };
+  const info = call('initialize', { protocolVersion: '2025-06-18' }).result?.serverInfo as {
+    version: string;
+  };
+  assert.equal(info.version, pkg.version);
+});

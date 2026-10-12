@@ -52,6 +52,7 @@ import { isMove, type MoveHistory, moveAskOf, rememberMove } from '../shared/mov
 import { hopAt, perchHolds, pickPerch } from '../shared/perch.ts';
 import { voiced } from '../shared/persona-voice.ts';
 import { isPetKey, KEY_NUDGE, KEY_WALK, type PetKey } from '../shared/pet-keys.ts';
+import type { Blueprint } from '../shared/pet3d/blueprint.ts';
 import { type DisplayInfo, parseSavedScale, restorePetBounds } from '../shared/placement.ts';
 import { type HideReason, HideReasons } from '../shared/presence.ts';
 import { acceleratorLabel } from '../shared/shortcut.ts';
@@ -59,6 +60,7 @@ import { clampScale, resizeFromBottomCenter, scaleByStep, scaleByWheel } from '.
 import type { SoundKind } from '../shared/sound.ts';
 import {
   bounce,
+  bounceHit,
   FLIGHT_MAX_MS,
   GRAVITY,
   releaseVelocity,
@@ -163,6 +165,9 @@ export interface SayOptions {
   paper?: NoteLook;
 }
 
+/** 설계도 정면 그림을 기다리는 시간 (입체 모듈을 처음 불러오는 데도 걸린다) */
+const SHOT_WAIT_MS = 15_000;
+
 export interface PetWindow {
   /** 펫 화면만 다시 불러온다 (우클릭 새로고침) */
   reload: () => void;
@@ -184,6 +189,11 @@ export interface PetWindow {
   debugScale(scale: number): void;
   debugThrow(vx: number, vy: number): void;
   debugPerch(): boolean;
+  /**
+   * 설계도를 정면에서 그린 PNG data URL (만들기 창의 펫 그림과 같은 크기, 자르기). 펫 화면이 그린다.
+   * 못 그리거나(입체를 못 씀) 창이 닫히거나 오래 걸리면 undefined
+   */
+  shot(model: Blueprint): Promise<string | undefined>;
   /** 가로로 x 까지 걷는다 (놀이). 끝까지 걸었으면 true */
   walkTo(x: number, speed?: number): Promise<boolean>;
   /** 산책: minutes 동안 바닥을 오간다 */
@@ -1042,6 +1052,9 @@ export function createPetWindow({
     const started = last;
     log('pet', 'throw', Math.round(vx), Math.round(vy));
     win.webContents.send(IPC.flight, true);
+    // 날던 중에 다시 던지면 앞의 타이머를 멈춘다. 그대로 두면 stopFlight 가 뒤의 것만 멈춰 앞의 것이
+    // 끝없이 돌며 펫을 그 자리에 붙잡았다 (걷기, 옮기기가 되돌려졌다)
+    clearInterval(flightTimer);
     flightTimer = setInterval(() => {
       const now = Date.now();
       const dt = Math.min(0.05, (now - last) / 1000);
@@ -1054,6 +1067,7 @@ export function createPetWindow({
         x: Math.round(x + pet.width / 2),
         y: Math.round(y + pet.height / 2),
       }).workArea;
+      const before = { vx, vy };
       const step = bounce(
         { x, y, vx, vy },
         pet.width,
@@ -1062,6 +1076,9 @@ export function createPetWindow({
         screen.getAllDisplays().map((d) => d.workArea),
       );
       ({ x, y, vx, vy } = step);
+      // 부딪히면 펫 화면이 그쪽으로 잠깐 눌렸다 돌아온다 (사진, 만든 펫)
+      const hit = bounceHit(before, step);
+      if (hit && !win.isDestroyed()) win.webContents.send(IPC.impact, hit);
       pet = { ...pet, x: Math.round(x), y: Math.round(y) };
       if (!win.isDestroyed()) win.setPosition(pet.x, pet.y);
       if (step.rest || now - started > FLIGHT_MAX_MS) stopFlight();
@@ -1664,6 +1681,16 @@ export function createPetWindow({
   ipcMain.on(IPC.body, onBody);
   ipcMain.on(IPC.sprites, onSprites);
   ipcMain.on(IPC.carried, onCarried);
+  // 설계도 정면 그림 (shot): 부탁 번호마다 기다린다
+  const shots = new Map<number, (png: string | undefined) => void>();
+  let shotSeq = 0;
+  const onShotGot = (e: IpcMainEvent, id: unknown, png: unknown) => {
+    if (!fromThisWindow(e) || typeof id !== 'number') return;
+    const done = shots.get(id);
+    shots.delete(id);
+    done?.(typeof png === 'string' ? png : undefined);
+  };
+  ipcMain.on(IPC.shotGot, onShotGot);
 
   // ---- 커서 바라보기 ----
   // 한가하고 보일 때만 커서를 본다. 방향 칸이 바뀔 때만 화면에 알린다 (화면도 그때만 다시 그린다).
@@ -1815,6 +1842,9 @@ export function createPetWindow({
     ipcMain.off(IPC.body, onBody);
     ipcMain.off(IPC.sprites, onSprites);
     ipcMain.off(IPC.carried, onCarried);
+    ipcMain.off(IPC.shotGot, onShotGot);
+    for (const done of shots.values()) done(undefined);
+    shots.clear();
     carriedWait?.(null);
     clearInterval(walkTimer);
     clearInterval(flightTimer);
@@ -1851,6 +1881,20 @@ export function createPetWindow({
     debugThrow: (vx: number, vy: number) => startFlight(vx, vy),
     /** 개발용: 창 위에 올라앉기 */
     debugPerch: () => tryPerch(),
+    shot: (model) =>
+      new Promise((resolve) => {
+        if (win.isDestroyed()) return resolve(undefined);
+        const id = ++shotSeq;
+        const timer = setTimeout(() => {
+          shots.delete(id);
+          resolve(undefined);
+        }, SHOT_WAIT_MS);
+        shots.set(id, (png) => {
+          clearTimeout(timer);
+          resolve(png);
+        });
+        win.webContents.send(IPC.shotAsk, id, model);
+      }),
     walkTo,
     keyboard: () => {
       if (win.isDestroyed() || hideReasons.hidden) return;

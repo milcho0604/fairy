@@ -74,6 +74,7 @@ import { createPlanner } from './planner.ts';
 import { createHouse, playBall, visitHouse } from './play.ts';
 import { createPout } from './pout.ts';
 import { watchPresentation } from './presence-watch.ts';
+import { writableDir } from './safe-file.ts';
 import { settings } from './settings.ts';
 import { createSettingsWindow } from './settings-window.ts';
 import { onJsonTrouble } from './store.ts';
@@ -153,6 +154,23 @@ if (blockedByOld) {
         type: 'info',
         message: t('main.data.oldRunning'),
         detail: t('main.data.oldRunningDetail'),
+        buttons: [t('common.ok')],
+      });
+    } finally {
+      app.exit(0);
+    }
+  });
+} else if (!primary && !writableDir(app.getPath('userData'))) {
+  // 잠금을 못 잡은 까닭이 다른 페어리가 아니라 데이터 폴더에 쓸 수 없는 것(읽기 전용 디스크, sudo 로 켜서 주인이
+  // root 가 된 폴더)이면 말없이 끝나지 않고 알린다. 예전에는 아무 창 없이 끝나 앱이 아예 안 켜지는 것처럼 보였다 (버그잡이 4)
+  log('data', '데이터 폴더에 쓸 수 없어 끝냄');
+  void app.whenReady().then(() => {
+    try {
+      if (process.platform === 'darwin') app.focus({ steal: true });
+      dialog.showMessageBoxSync({
+        type: 'error',
+        message: t('main.data.readOnly'),
+        detail: t('main.data.readOnlyDetail', { path: app.getPath('userData') }),
         buttons: [t('common.ok')],
       });
     } finally {
@@ -1174,6 +1192,8 @@ ready
         text: { ask: (text, system, signal) => chat.textShot(text, system, signal), has: chat.hasTextAi },
       },
     );
+    // 걸음새로 다시 만든 말로 만든 펫의 새 펫 그림은 펫 화면이 그린다 (maker.ts redrawFlat)
+    maker.useShot((model) => pet.shot(model));
     const sendPetImage = () => {
       if (!pet.win.isDestroyed()) pet.win.webContents.send(IPC.image, petImages());
     };

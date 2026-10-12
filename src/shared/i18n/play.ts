@@ -68,9 +68,10 @@ export const en: Translation<typeof ko> = {
   'play.block.held': "Put me down and let's play!",
   'play.block.playing': "I'm already playing!",
   'play.bubbles.start': 'Bubbles! Click to pop them.',
-  'play.bubbles.end': (v: { popped: number }) => `Pop! ${v.popped} bubbles. That was fun.`,
+  'play.bubbles.end': (v: { popped: number }) =>
+    `Pop! ${v.popped} bubble${Number(v.popped) === 1 ? '' : 's'}. That was fun.`,
   'play.bubbles.endCoins': (v: { popped: number; coins: number }) =>
-    `Pop! ${v.popped} bubbles. ${v.coins} ${Number(v.coins) === 1 ? 'coin' : 'coins'}.`,
+    `Pop! ${v.popped} bubble${Number(v.popped) === 1 ? '' : 's'}. ${v.coins} ${Number(v.coins) === 1 ? 'coin' : 'coins'}.`,
   'play.bubbles.none': "They all floated away. Let's pop them together next time!",
   'play.laser.start': "A red dot! Bring the cursor down near the floor. I'll catch it.",
   'play.laser.end': (v: { n: number }) =>

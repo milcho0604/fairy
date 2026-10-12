@@ -80,6 +80,12 @@ export const IPC = {
   petted: 'pet:petted',
   /** 메인 → 펫 화면: 던져져 날아가는 중 (v1) */
   flight: 'pet:flight',
+  /** 메인 → 펫 화면: 이 설계도를 정면에서 그려 달라 (걸음새로 몸을 다시 만든 뒤 새 펫 그림, maker.ts remake) */
+  shotAsk: 'pet:shot-ask',
+  /** 펫 화면 → 메인: 그린 PNG data URL (못 그렸으면 null) */
+  shotGot: 'pet:shot-got',
+  /** 메인 → 펫 화면: 날아가다 바닥(y)이나 벽(x)에 부딪혔다. k 는 세기 0~1 */
+  impact: 'pet:impact',
   /** 메인 → 펫 화면: 사진 펫 그림 */
   image: 'pet:image',
   /** 메인 → 펫 화면: 커서 쪽 방향 칸 (null 이면 앞). 칸이 바뀔 때만 */
@@ -500,6 +506,10 @@ export interface PetBridge {
   onReact(listener: (kind: ReactKind) => void): void;
   petted(): void;
   onFlight(listener: (flying: boolean) => void): void;
+  /** 설계도 정면 그림 부탁 (걸음새로 다시 만든 몸의 펫 그림). 답은 shotGot 으로 */
+  onShotAsk(listener: (id: number, model: unknown) => void): void;
+  shotGot(id: number, png: string | null): void;
+  onImpact(listener: (hit: { axis: 'x' | 'y'; k: number }) => void): void;
   /** 커서 바라보기: 방향 칸 (null 이면 앞을 본다) */
   onGaze(listener: (gaze: Gaze | null) => void): void;
   /** 같이 보기 돋보기 모션. null 이면 끝 */
@@ -791,6 +801,7 @@ export const PANEL = {
   openSettings: 'panel:open-settings',
   lookTogether: 'panel:look-together',
   close: 'panel:close',
+  quickFit: 'panel:quick-fit',
   // 메모 (v1)
   noteGet: 'panel:note-get',
   noteAdd: 'panel:note-add',
@@ -908,6 +919,9 @@ export interface NoteSummary {
 }
 
 /** 한 줄 입력(PANEL.add) 결과. 어디에 언제로 넣었는지 알려 준다 */
+/** 메모 저장 답 */
+export type NoteSaveResult = { ok: true } | { ok: false; error?: string };
+
 export type PanelAddResult =
   | { ok: false; error?: string }
   /**
@@ -961,7 +975,8 @@ export interface PanelBridge {
   snapshot(): Promise<PanelState>;
   /** 한 줄 입력(빠른 입력과 같은 규칙)으로 할 일을 더한다 */
   add(text: string): Promise<PanelAddResult>;
-  complete(id: number): Promise<number>;
+  /** 받은 코인 수. 이미 끝냈거나 없는 할 일이면 null (빠르게 여러 번 누른 체크) */
+  complete(id: number): Promise<number | null>;
   undo(id: number): Promise<number>;
   update(
     id: number,
@@ -986,11 +1001,16 @@ export interface PanelBridge {
   openSettings(): void;
   lookTogether(): void;
   close(): void;
+  /** 빠른 입력 창: 내용 높이(CSS px)에 맞게 창 높이를 바꿔 달라 (큰 글씨에서 잘리지 않게, shared/quick-fit.ts) */
+  quickFit(contentCss: number): void;
   onState(listener: (state: PanelState) => void): void;
   noteGet(id: number): Promise<Note | undefined>;
-  /** 새 메모. 만든 메모를 돌려준다 */
-  noteAdd(): Promise<Note>;
-  noteUpdate(id: number, patch: { title?: string; body?: string }): void;
+  /** 새 메모. 만든 메모를 돌려준다. text 를 주면 그 글로 시작한다 (찾기 칸에 적은 글로 메모 만들기) */
+  noteAdd(text?: string): Promise<Note>;
+  /**
+   * 메모 저장. 못 저장하면(디스크 가득, 읽기 전용) ok: false 와 안내 글 (버그잡이 4: 예전에는 보내기만 해서 실패를 몰랐다)
+   */
+  noteUpdate(id: number, patch: { title?: string; body?: string }): Promise<NoteSaveResult>;
   noteRemove(id: number): void;
   noteRestore(id: number): void;
   /** 메모 찾기: 제목과 본문 전체. composing 이면 마지막 글자는 아직 조합 중이라 넓게 찾는다 */

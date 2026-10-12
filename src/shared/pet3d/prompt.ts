@@ -63,7 +63,7 @@ ${JSON.stringify(wish)}
  * 사용자가 고른 걸음새 블록. 몸을 처음부터 그 걸음새로 만든다:
  * 네 발이면 네 다리로 선 몸(앞발과 뒷발이 앞뒤로 떨어진), 두 발이면 서 있는 몸(다리 둘, 뒷발 없음)
  */
-function gaitBlock(gait: Gait): string {
+export function gaitBlock(gait: Gait): string {
   return gait === 'quadruped'
     ? `
 
@@ -112,11 +112,12 @@ Schema:
                "pattern": optional { "type": one of ${JSON.stringify(PATTERNS)}, "color": "#rrggbb", "amount": 0..1, "scale": 0.3..3,
                             "side": one of ${JSON.stringify(SIDES)} (split only: which side gets the pattern color; amount = how much of the part, 0.5 = half),
                             "dir": "x" | "y" | "z" (stripes only: the axis the bands advance along; z for tabby bands across a body or head),
-                            "side" on spots or stripes keeps them on that side only: "top" for stripes on the back and forehead but a clean face, "back" for a striped back } } ],
+                            "side" on spots or stripes keeps them on that side only: "top" for stripes on the back and forehead but a clean face, "back" for a striped back,
+                            "notch": 0..1 (split with side "top" or "bottom" only: a pointed wedge of the part's own color at the front center that splits the pattern color in two, e.g. a colored cap on the head parted down the middle of the forehead like a bicolor cat's blaze; 0.5 is a medium wedge) } } ],
   "face": { "slot": "head" or "body", "eyeY", "eyeGap" (x distance of each eye from center), "eyeSize" (0.045 to 0.07; big eyes are cute),
             "eyeColor" optional, "eyeShape" optional one of ${JSON.stringify(EYE_SHAPES)}, "pupil" optional one of ${JSON.stringify(PUPILS)} (slit for cats, needs eyeColor),
             "catchlight" optional one of ${JSON.stringify(CATCHLIGHTS)} (big = glossy toy eyes), "lashes": true optional,
-            "mouth": one of ${JSON.stringify(MOUTHS)} (smile: dog, bear; cat: the small w mouth of cats, rabbits, plushies; grin: open happy mouth with the tongue out; tiny: a short line; beak: birds only), "mouthY",
+            "mouth": one of ${JSON.stringify(MOUTHS)} (smile: dog, bear; cat: the small w mouth of cats, rabbits, plushies; grin: wide open happy mouth; tiny: a short line; beak: birds only), "mouthY", "tongue": true optional (grin only: the tongue hangs out, a panting dog),
             "mouthColor" optional (beak color), "nose" optional { "shape": one of ${JSON.stringify(NOSES)}, "color", "y" optional, "size" optional 0.5..2 },
             "brows" optional { "color", "tilt": -30..30 degrees (positive = gentle, worried; negative = stern), "y" optional },
             "blush" optional color, "blushLines": true optional (short hatch lines over the blush, as stitched on many plushies and drawn in kawaii art),

@@ -179,6 +179,19 @@ export function noteMarkdown(n: Note): string {
   return `${[...front, ...body].join('\n').trimEnd()}\n`;
 }
 
+/**
+ * 묶은 파일에서 메모 머리(##) 아래에 둘 본문. 제목 칸이 비었으면 머리가 본문 첫 줄이라 그 줄은 뺀다
+ * (noteMarkdown 과 같다. "## 장보기" 아래에 "장보기" 가 또 나왔다). 목록 줄이거나 길어서 잘린 제목이면 본문 그대로
+ */
+function bodyUnderTitle(n: Note): string {
+  const body = n.body.trim();
+  if (n.title.trim()) return body;
+  const [first = '', ...rest] = body.split('\n');
+  if (/^\s*([-*]|\d+\.)\s/.test(first)) return body;
+  if (first.replace(/^\s*#+\s*/, '').trim() !== noteTitle(n)) return body;
+  return rest.join('\n').trim();
+}
+
 /** 메모를 마크다운 하나로 묶는다 (최근에 고친 것부터, 메모 사이에 가로줄) */
 export function notesMarkdown(notes: readonly Note[], now: number): string {
   const head = [
@@ -193,14 +206,19 @@ export function notesMarkdown(notes: readonly Note[], now: number): string {
       `_${t('export.notes.updated', { at: localStamp(n.updatedAt) })}_`,
       '',
       // 본문 안의 큰 머리(#)가 메모 머리(##)보다 커지지 않게 한 단계씩 내린다
-      n.body.trim().replace(/^(#{1,5}) /gm, '#$1 '),
-    ].join('\n'),
+      bodyUnderTitle(n).replace(/^(#{1,5}) /gm, '#$1 '),
+    ]
+      .join('\n')
+      .trimEnd(),
   );
   return `${[head.join('\n'), ...items].join('\n\n---\n\n').trimEnd()}\n`;
 }
 
 const WIN_RESERVED = /^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/i;
 const NAME_MAX = 80;
+/** 파일 이름 앞부분 바이트 상한 (UTF-8). 255 에서 " (9999).md" 자리를 뺀다 */
+const NAME_MAX_BYTES = 240;
+const utf8Bytes = (s: string) => new TextEncoder().encode(s).length;
 
 /** 파일 이름으로 쓸 수 있게: 금지 글자와 제어 글자를 빼고, 앞뒤 점과 빈칸을 떼고, 윈도우 예약 이름을 피한다 */
 export function safeFileName(raw: string, fallback = 'memo'): string {
@@ -211,6 +229,10 @@ export function safeFileName(raw: string, fallback = 'memo'): string {
     .trim()
     .replace(/^[.\s]+|[.\s]+$/g, '');
   s = [...s].slice(0, NAME_MAX).join('').trim();
+  // 파일 이름은 대부분 255바이트까지다 (리눅스 ext4 등). 그림 글자(4바이트) 80개면 320바이트라 쓰기가 실패하고
+  // 메모 내보내기가 중간에 멈췄다. 겹침 표시(" (12)")와 .md 를 붙일 자리를 남기고 글자 단위로 줄인다
+  while (utf8Bytes(s) > NAME_MAX_BYTES) s = [...s].slice(0, -1).join('');
+  s = s.trim();
   if (!s) s = fallback;
   if (WIN_RESERVED.test(s)) s = `_${s}`;
   return s;

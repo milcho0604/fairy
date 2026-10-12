@@ -117,9 +117,14 @@ export function parsePlanFile(raw: unknown): PlanFile {
   return out;
 }
 
-/** 계획 화면을 저절로 띄울지: 켜 두었고, 정한 시각 뒤 아침이고, 오늘 계획도 없고 오늘 띄운 적도 없다 */
-export function shouldAutoOpen(f: PlanFile, today: string, minute: number): boolean {
+/**
+ * 계획 화면을 저절로 띄울지: 켜 두었고, 정한 시각 뒤 아침이고, 오늘 계획도 없고 오늘 띄운 적도 없고, 고를 할 일이 있다.
+ * 고를 할 일(candidates)이 없으면 띄우지 않는다: 처음 켠 사람이 패널을 처음 열면 "아직 열린 할 일이 없어" 시트가
+ * 패널을 덮었다 (2026-10-12). 띄운 것으로 치지 않아 아침에 할 일을 적으면 그때 띄운다
+ */
+export function shouldAutoOpen(f: PlanFile, today: string, minute: number, candidates = 1): boolean {
   if (
+    candidates === 0 ||
     !f.prefs.auto ||
     minute < f.prefs.fromMinute ||
     minute >= Math.max(AUTO_UNTIL_MIN, f.prefs.fromMinute + 60)
@@ -129,8 +134,8 @@ export function shouldAutoOpen(f: PlanFile, today: string, minute: number): bool
 }
 
 /** 펫이 아침에 한 번 물어볼지 (같은 조건에 펫이 아직 안 물었을 때) */
-export function shouldNudge(f: PlanFile, today: string, minute: number): boolean {
-  return shouldAutoOpen({ ...f, shownDay: undefined }, today, minute) && f.nudgedDay !== today;
+export function shouldNudge(f: PlanFile, today: string, minute: number, candidates = 1): boolean {
+  return shouldAutoOpen({ ...f, shownDay: undefined }, today, minute, candidates) && f.nudgedDay !== today;
 }
 
 /**

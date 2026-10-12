@@ -100,10 +100,12 @@ export function TodayTab({
         <RemindCard s={s} />
         {next && (
           <section className="next-up">
-            <h3>{t('panel.today.next')}</h3>
+            <h2>{t('panel.today.next')}</h2>
             <div className="next-row">
               <span className="next-text">
-                <strong className="next-title">{next.title}</strong>
+                <strong className="next-title" dir="auto">
+                  {next.title}
+                </strong>
                 {next.kind === 'event' && (
                   <small>{t('panel.today.nextPrepare', { time: timeOf(next.startAt) })}</small>
                 )}
@@ -186,17 +188,19 @@ export function TodayTab({
 
         {s.missed.length > 0 && (
           <section className="missed">
-            <h3>
+            <h2>
               {t('panel.today.missed')}
               <button type="button" className="link" onClick={() => bridge.missedClear()}>
                 {t('panel.today.missedClear')}
               </button>
-            </h3>
+            </h2>
             <ul className="events">
               {s.missed.map((m) => (
                 <li key={`${m.at}-${m.text}`}>
                   <span className="time">{timeOf(m.at)}</span>
-                  <span className="title">{m.text}</span>
+                  <span className="title" dir="auto">
+                    {m.text}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -204,12 +208,12 @@ export function TodayTab({
         )}
 
         <section>
-          <h3>
+          <h2>
             {t('panel.today.events')}
             <button type="button" className="link" onClick={() => goTo('event')}>
               {t('panel.today.addEvent')}
             </button>
-          </h3>
+          </h2>
           {events.length === 0 ? (
             <p className="empty-line">{t('panel.today.noEvents')}</p>
           ) : (
@@ -221,7 +225,7 @@ export function TodayTab({
                   return (
                     <li key={e.id} className="all-day">
                       <span className="time">{t('panel.event.allDay')}</span>
-                      <span className="title">
+                      <span className="title" dir="auto">
                         {e.title}
                         {last > s.today && (
                           <small>
@@ -241,7 +245,9 @@ export function TodayTab({
                     <span className="time">
                       {e.startAt <= now ? t('panel.today.now') : timeOf(e.startAt)}
                     </span>
-                    <span className="title">{e.title}</span>
+                    <span className="title" dir="auto">
+                      {e.title}
+                    </span>
                   </li>
                 );
               })}
@@ -250,7 +256,7 @@ export function TodayTab({
         </section>
 
         <section>
-          <h3>
+          <h2>
             {t('panel.todo.due')}
             <span className="h3-links">
               {overdue > 0 && (
@@ -269,7 +275,7 @@ export function TodayTab({
                 {t('panel.today.allTodos')}
               </button>
             </span>
-          </h3>
+          </h2>
           {due.length === 0 ? (
             <p className="empty-line">{t('panel.today.noDue')}</p>
           ) : (
@@ -291,7 +297,7 @@ export function TodayTab({
 
         {important.length > 0 && (
           <section>
-            <h3>{t('panel.todo.important')}</h3>
+            <h2>{t('panel.todo.important')}</h2>
             <ul className="todos">
               {important.map((todo) => (
                 <TodoRow

@@ -60,8 +60,13 @@ export function failReason(err: unknown, aborted = false): FailReason {
     if (NET_CODES.has(code)) return 'network';
     if (BLOCKED_CODES.has(code)) return 'blocked';
   }
+  // 저장 파일(node:sqlite): errcode 13 SQLITE_FULL, 8 SQLITE_READONLY (code 는 늘 ERR_SQLITE_ERROR)
+  const sqlite = (err as { errcode?: unknown }).errcode;
+  if (typeof sqlite === 'number' && (sqlite & 0xff) === 13) return 'disk-full';
+  if (typeof sqlite === 'number' && (sqlite & 0xff) === 8) return 'no-permission';
   // 감싸져 와서 code 가 없어진 경우 (IPC, pipeline 너머)
   const msg = err.message;
+  if (/database or disk is full/i.test(msg)) return 'disk-full';
   if (/\bENOSPC\b|\bEDQUOT\b/.test(msg)) return 'disk-full';
   if (/\bEACCES\b|\bEPERM\b|\bEROFS\b/.test(msg)) return 'no-permission';
   if (OFFLINE.test(msg)) return 'offline';

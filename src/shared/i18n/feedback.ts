@@ -9,7 +9,7 @@ export const ko = {
   'feedback.readFailed': '기록을 읽지 못했어. 조금 뒤에 다시 켜 줘',
   'feedback.refresh': '새로 읽기',
   'feedback.previewLabel': '보낼 글 미리 보기',
-  'feedback.summary': '최근 기록 {n}줄, 가린 곳 {hidden}군데',
+  'feedback.summary': (v: { n: number; hidden: number }) => `최근 기록 ${v.n}줄, 가린 곳 ${v.hidden}군데`,
   'feedback.copy': '이대로 복사',
   'feedback.save': '파일로 저장',
   'feedback.copied': '복사했어. 의견에 그대로 붙여 넣어 줘',
@@ -23,9 +23,13 @@ export const ko = {
   'feedback.issueTitle': '문제 알리기: ',
   'feedback.issueBody':
     '**판** {version}\n**운영체제** {os}\n\n**어떤 일이 있었어?**\n\n\n**어떻게 하면 다시 생겨?**\n\n\n**진단 기록** (설정 > 내 기록에서 "이대로 복사" 한 글을 붙여 줘)\n',
-  'feedback.logHeader': '진단 기록 (최근 {n}줄, 가린 곳 {hidden}군데)',
+  'feedback.logHeader': (v: { n: number; hidden: number }) =>
+    `진단 기록 (최근 ${v.n}줄, 가린 곳 ${v.hidden}군데)`,
   'feedback.logEmpty': '진단 기록 (아직 없음)',
 };
+
+const lines = (n: number) => (Number(n) === 1 ? '1 line' : `${n} lines`);
+const spots = (n: number) => (Number(n) === 1 ? '1 spot' : `${n} spots`);
 
 export const en: Translation<typeof ko> = {
   'feedback.include': 'Attach diagnostics too',
@@ -35,7 +39,7 @@ export const en: Translation<typeof ko> = {
   'feedback.readFailed': "Couldn't read the notes. Try turning it on again in a bit",
   'feedback.refresh': 'Reload',
   'feedback.previewLabel': 'Preview of what gets sent',
-  'feedback.summary': 'Last {n} lines, {hidden} spots hidden',
+  'feedback.summary': (v: { n: number; hidden: number }) => `Last ${lines(v.n)}, ${spots(v.hidden)} hidden`,
   'feedback.copy': 'Copy as is',
   'feedback.save': 'Save to file',
   'feedback.copied': 'Copied. Paste it into your feedback as is',
@@ -50,6 +54,7 @@ export const en: Translation<typeof ko> = {
   'feedback.issueTitle': 'Problem: ',
   'feedback.issueBody':
     '**Version** {version}\n**OS** {os}\n\n**What happened?**\n\n\n**How can it happen again?**\n\n\n**Diagnostics** (paste what "Copy as is" copied from Settings > My stats)\n',
-  'feedback.logHeader': 'Diagnostics (last {n} lines, {hidden} spots hidden)',
+  'feedback.logHeader': (v: { n: number; hidden: number }) =>
+    `Diagnostics (last ${lines(v.n)}, ${spots(v.hidden)} hidden)`,
   'feedback.logEmpty': 'Diagnostics (none yet)',
 };

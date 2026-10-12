@@ -27,6 +27,7 @@ import {
 } from './move-pose.ts';
 import { quadKind, walkEnvelopeOf } from './pet3d-gait.ts';
 import { eyedPhoto, photoEyeOpen } from './photo-eyes.ts';
+import { impactSquash, photoStep, TurnWatch, turnSquash } from './photo-motion.ts';
 import {
   drawBrow,
   drawHeldNote,
@@ -143,6 +144,8 @@ export interface DrawState {
   confetti?: number;
   /** 들렸다가 놓인 뒤 흐른 시간(ms). 내려앉으며 살짝 찌그러진다. 없으면 -1 */
   land?: number;
+  /** 던져서 날아가다 바닥이나 벽에 부딪힌 뒤 지난 시간과 방향, 세기 (photo-motion.ts impactSquash). 없으면 undefined */
+  impact?: { ms: number; axis: 'x' | 'y'; k: number };
   /**
    * 그리는 시각 (performance.now). 펫 화면이 이어서 그릴 때만 준다: 있으면 돌아서기, 고개 돌리기, 삐친 고개, 커서 보기가
    * 한 틀에 바뀌지 않고 짧게 따라간다 (motion-ease.ts). 얼굴 아이콘, 미리보기처럼 한 장만 그릴 때는 없다
@@ -298,6 +301,8 @@ export interface Model3D {
   mouth?(): { x: number; y: number } | undefined;
   /** 방금 그린 자세가 아직 목표로 따라가는 중인지 (돌아서기, 걷기 풀기). 그렇다면 몇 틀 더 그린다 */
   settling?(): boolean;
+  /** 관절 없는 한 장 그림(2.5D 판)인지. 걸음 몸짓을 사진처럼 몸 전체로 한다 (photo-motion.ts) */
+  readonly flat?: boolean;
   /** 같이 타자 치기 키보드와 앞발을 입체로 직접 그린다 (아니면 2D 키보드와 앞발을 위에 얹는다) */
   ownsTap?(): boolean;
   /** 방금 그린 그림에서 side 쪽 앞발 끝 (연필과 쪽지를 손에 맞춘다). 모르면 undefined */
@@ -378,10 +383,16 @@ let liveModel: Model3D | undefined;
 /** 고개 돌리기, 커서 보기가 따라가는 빠르기 (ms, 1/e 시간) */
 const LOOK_TAU = 70;
 const GAZE_TAU = 90;
+/** 사진이 상태 따라 기우는 것(두리번, 졸기)이 따라가는 빠르기 (ms). 한 틀에 기울면 그림이 툭 꺾여 보였다 */
+const PHOTO_TILT_TAU = 110;
+/** 사진 펫이 걷다 돌아서는 때 (사진은 어느 쪽을 보는지 몰라 뒤집지 않고 잠깐 좁아진다) */
+const photoTurn = new TurnWatch();
+/** 이번 틀에 사진이 돌아서는 중인지 (끝날 때까지 촘촘히 그린다) */
+let photoTurning = false;
 
 /** 방금 이어 그린 자세가 아직 따라가는 중인지 (펫 화면이 그리기를 몇 틀 더 이어 간다) */
 export function motionSettling(): boolean {
-  return ease2d.busy || !!liveModel?.settling?.();
+  return ease2d.busy || photoTurning || !!liveModel?.settling?.();
 }
 
 /** 펫을 그린다. 공을 물고 있으면 그 공 가운데를 돌려준다 (메인이 내려놓을 자리를 물을 때) */
@@ -429,6 +440,12 @@ function drawPetBody(ctx: CanvasRenderingContext2D, s: DrawState): Point | undef
     lift = HELD_LIFT;
     sx = 1 - HELD_SQUEEZE.x;
     sy = 1 + HELD_SQUEEZE.y;
+    // 던져서 날아가다 부딪히면 그쪽으로 잠깐 눌렸다 돌아온다
+    if (s.impact) {
+      const hit = impactSquash(s.impact.ms, s.impact.axis, s.impact.k, s.calm);
+      sx *= hit.sx;
+      sy *= hit.sy;
+    }
   } else if ((s.land ?? -1) >= 0 && (s.land ?? 0) < LAND_MS) {
     // 놓이면 툭 내려앉으며 살짝 납작해졌다 돌아온다
     const l = landPose(s.land ?? 0, s.calm);
@@ -437,7 +454,15 @@ function drawPetBody(ctx: CanvasRenderingContext2D, s: DrawState): Point | undef
     sy = l.sy;
   }
   const act = s.mood === 'idle' || s.mood === 'sulky' ? s.activity : undefined;
-  if (act?.type === 'walk') lift = Math.abs(Math.sin(act.phase * Math.PI * 2)) * 3;
+  // 한 장 그림(사진, 2.5D 판)은 다리가 없어 걸음마다 몸 전체가 눌렸다 늘어난다 (photo-motion.ts). 2D 와 입체는 들썩이기만
+  if (act?.type === 'walk') {
+    if (s.photo || s.model3d?.flat) {
+      const st = photoStep(act, s.calm);
+      lift = st.lift;
+      sx *= st.sx;
+      sy *= st.sy;
+    } else lift = Math.abs(Math.sin(act.phase * Math.PI * 2)) * 3;
+  }
   // 커서 방향은 한 틀에 홱 돌지 않고 따라간다 (걷기를 시작하거나 멈출 때도 고개가 툭 돌아가지 않게)
   if (s.now !== undefined) {
     const raw = gazeOf(s, act);
@@ -1347,16 +1372,34 @@ function drawPhoto(
   const k = Math.min(maxW / photo.width, maxH / photo.height) * (s.photoScale ?? 1);
   const w = photo.width * k;
   const h = photo.height * k;
+  // 기울기는 셋으로 나눠 다룬다: 상태 따라 기울기(두리번, 졸기, 커서)는 짧게 따라가고, 걸음 까딱과 몸짓은 제 곡선 그대로,
+  // 가는 쪽으로 숙이기는 걷기 세기를 따른다 (예전엔 모두 한 틀에 바뀌어 걷다 멈추거나 두리번거릴 때 그림이 툭 꺾였다)
   let tilt = 0;
-  if (act?.type === 'walk') tilt = Math.sin(act.phase * Math.PI * 2) * 0.06;
+  let rock = 0;
+  let lean = 0;
+  const walking = act?.type === 'walk' ? act : undefined;
+  if (walking) {
+    const st = photoStep(walking, s.calm);
+    rock = st.rock;
+    lean = st.lean;
+  }
   if (act?.type === 'look') tilt = act.dir * 0.08;
   const g = gazeOf(s, act);
   // 커서 쪽으로 살짝 기운다 (사진은 얼굴을 바꿀 수 없어서)
   if (g) tilt = g.x * 0.06;
+  if (s.mood === 'dozing') tilt = 0.1;
+  tilt = ease.to('ptilt', tilt, PHOTO_TILT_TAU);
+  // 걷다 거꾸로 돌아서면 잠깐 좁아졌다 돌아온다 (사진을 한 틀에 뒤집지 않는다)
+  const turnT = photoTurn.update(s.now, walking?.dir);
+  photoTurning = turnT >= 0;
+  const turn = turnSquash(turnT, s.calm);
+  // 가만히 숨쉬기 (부스트 모드에서 계속 그릴 때만, 2.5D 판과 같은 박자). 발은 바닥에 그대로
+  const breath = s.breathe && !s.calm ? Math.sin((s.elapsed / 1000) * 2.2) : 0;
   // 몸짓도 기울기로: 손 흔들기는 좌우로 까딱, 빙글 춤은 크게 흔들기
   const trick = trickOf(s);
   if (trick?.type === 'wave') tilt = waveSwing(trick.t) * 0.1;
   if (trick?.type === 'dance') tilt = danceTilt(trick.t);
+  tilt += rock + lean;
   // 제자리 몸짓: 사진은 관절이 없어 몸 전체를 기울이고 옮긴다 (뒹굴기는 사진 펫이 고르지 않는다)
   const mv = movePoseOf(act, s.calm);
   let shift = 0;
@@ -1366,14 +1409,28 @@ function drawPhoto(
     tilt = turn + mv.twist * 0.3 + mv.tilt * 0.5 + mv.look * 0.08 + mv.pitch * 0.25;
     shift = mv.dx + mv.look * 4;
   }
-  if (s.mood === 'dozing') tilt = 0.1;
+  lift += turn.lift;
+  // 바닥 그림자: 떠오를수록 옅고 작게 (입체와 같은 모양). 얼굴 아이콘, 집 안 그림에는 그리지 않는다
+  if (!s.noShadow) {
+    const away = Math.min(1, lift / 30);
+    ctx.save();
+    ctx.globalAlpha = 0.13 * (1 - 0.6 * away);
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.ellipse(CX + shift, GROUND - 1, w * 0.36 * sx * turn.sx * (1 - 0.3 * away), 4.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
   ctx.save();
   ctx.translate(CX + shift, GROUND - lift);
   ctx.rotate(tilt);
   // 삐지면 등을 돌린 듯 좌우를 뒤집는다. 한 틀에 뒤집지 않고 돌아서듯 좁아졌다 뒤집혀 넓어진다.
   // 걸을 때는 뒤집지 않는다: 사진이 어느 쪽을 보는지 모른다
   const flip = ease.to('flip', s.mood === 'sulky' ? -1 : 1, LOOK_TAU);
-  ctx.scale((flip < 0 ? -1 : 1) * Math.max(0.12, Math.abs(flip)) * sx, sy);
+  ctx.scale(
+    (flip < 0 ? -1 : 1) * Math.max(0.12, Math.abs(flip)) * sx * turn.sx * (1 - 0.006 * breath),
+    sy * turn.sy * (1 + 0.012 * breath),
+  );
   if (s.mood === 'sleeping' || s.mood === 'dozing') ctx.globalAlpha = 0.85;
   // 눈 자리를 아는 사진은 잠, 졸음, 깜빡임에 눈을 감는다 (2026-10-12: 초코가 자도 눈을 뜨고 있었다)
   const open = s.photoEyes

@@ -36,10 +36,12 @@ import { cleanWish, WISH_MAX } from '../../../shared/pet3d/prompt.ts';
 import { canStand, standingBlueprint } from '../../../shared/pet3d/stand.ts';
 import {
   cleanDescribe,
+  clipText,
   DESCRIBE_MAX,
   makerTabs,
   nameFromText,
   TWEAK_MAX,
+  textLength,
 } from '../../../shared/pet3d/text-prompt.ts';
 import {
   cleanPetName,
@@ -48,6 +50,7 @@ import {
   PET_NAME_MAX,
   POSE_KINDS,
 } from '../../../shared/settings.ts';
+import { shotOf } from '../blueprint-shot.ts';
 import { CANVAS_SIZE } from '../draw.ts';
 import { MakeProgress, type ProgressStage } from '../MakeProgress.tsx';
 import { browserStore, loadExpected, saveDuration } from '../make-progress.ts';
@@ -630,7 +633,10 @@ export function MakerApp() {
     beginShape('figure');
     setStep('name');
     const at = performance.now();
-    const r = await bridge.describe(text);
+    // 메인이 던져도(AI 시작 실패) 진행 표시가 멈추지 않던 것: 실패로 받아 적던 화면으로
+    const r = await bridge
+      .describe(text)
+      .catch(() => ({ ok: false as const, error: t('main.maker.textFailed') }));
     if (shapeRun.current !== run) return;
     if (!r.ok) {
       setShaping(false);
@@ -656,7 +662,9 @@ export function MakerApp() {
     setTextTask('tweak');
     setShaping(true);
     beginShape('figure');
-    const r = await bridge.tweak(model, ask, fromText.text, fromText.named);
+    const r = await bridge
+      .tweak(model, ask, fromText.text, fromText.named)
+      .catch(() => ({ ok: false as const, error: t('main.maker.textFailed') }));
     if (shapeRun.current !== run) return;
     if (!r.ok) {
       setShaping(false);
@@ -781,6 +789,8 @@ export function MakerApp() {
           // 말로 만든 펫: 이미 있는 캐릭터면 개인 용도 표시, 네 발 동물이면 네 발로 선 피규어
           ...(fromText?.named ? { personalOnly: true } : {}),
           ...(fromText && standsUp(model) ? { stand: true } : {}),
+          // 처음 글 (설정 걸음새에서 몸을 다시 만들 때 이 글로 만든다)
+          ...(fromText ? { text: fromText.text } : {}),
         }
       : look === 'relief' && depth
         ? { depth }
@@ -918,7 +928,9 @@ export function MakerApp() {
   return (
     <div className="maker" onPaste={onPaste}>
       <header>
-        <strong>{title}</strong>
+        {/* 창 제목: 화면 읽기 프로그램에는 h1, 보이는 글은 그대로 */}
+        <h1 className="sr-only">{title}</h1>
+        <strong aria-hidden="true">{title}</strong>
         <ol className="steps">
           {steps.map(([group, label], i) => (
             <li key={label} className={group.includes(step) ? 'on' : ''}>
@@ -1042,13 +1054,12 @@ export function MakerApp() {
                         // biome-ignore lint/a11y/noAutofocus: 탭을 고르면 바로 적을 수 있게 (이 칸 하나뿐인 화면)
                         autoFocus
                         value={textDraft}
-                        maxLength={DESCRIBE_MAX}
                         placeholder={t('maker.text.placeholder')}
                         aria-describedby="maker-text-hint maker-text-privacy"
-                        onChange={(e) => setTextDraft(e.target.value)}
+                        onChange={(e) => setTextDraft(clipText(e.target.value, DESCRIBE_MAX))}
                       />
                       <span className="wish-count" aria-hidden="true">
-                        {t('maker.wish.count', { n: textDraft.length, max: DESCRIBE_MAX })}
+                        {t('maker.wish.count', { n: textLength(textDraft), max: DESCRIBE_MAX })}
                       </span>
                     </div>
                     <small id="maker-text-hint" className="hint">
@@ -1365,12 +1376,11 @@ export function MakerApp() {
                     ref={tweakRef}
                     id="maker-tweak"
                     value={tweakDraft}
-                    maxLength={TWEAK_MAX}
                     placeholder={t('maker.text.tweakPlaceholder')}
-                    onChange={(e) => setTweakDraft(e.target.value)}
+                    onChange={(e) => setTweakDraft(clipText(e.target.value, TWEAK_MAX))}
                   />
                   <span className="wish-count" aria-hidden="true">
-                    {t('maker.wish.count', { n: tweakDraft.length, max: TWEAK_MAX })}
+                    {t('maker.wish.count', { n: textLength(tweakDraft), max: TWEAK_MAX })}
                   </span>
                 </div>
                 <button type="submit" className="ghost" disabled={!tweakDraft.trim()}>
@@ -1649,32 +1659,7 @@ function renderBlueprint(
   opts: { side?: number; clear?: boolean } = {},
 ): string | undefined {
   previewPet ??= Pet3D.create(() => {});
-  const pet = previewPet;
-  if (!pet) return undefined;
-  const side = opts.side ?? 320;
-  const canvas = document.createElement('canvas');
-  canvas.width = side;
-  canvas.height = side;
-  const ctx = canvas.getContext('2d', { willReadFrequently: !!opts.clear });
-  if (!ctx) return undefined;
-  try {
-    pet.setBlueprint(model);
-    pet.spin = 0;
-    pet.tilt = 0;
-    // 흰 바탕 (사진도 배경을 지운 흰 바탕이라 견주기 쉽다)
-    if (!opts.clear) {
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, side, side);
-    }
-    const k = side / CANVAS_SIZE;
-    ctx.setTransform(k, 0, 0, k, 0, 0);
-    pet.draw(ctx, { mood: 'idle', elapsed: 0, blink: -1 }, 0, 1, 1, undefined);
-    return opts.clear ? trimmed(canvas) : canvas.toDataURL('image/png');
-  } catch {
-    return undefined;
-  } finally {
-    pet.clear();
-  }
+  return previewPet ? shotOf(previewPet, model, opts) : undefined;
 }
 
 /** 미리보기 판(220px)에 펫 캔버스(160)를 이만큼 줄여 그린다. 옆으로 돌면 긴 몸이 판 밖으로 잘려서 */
@@ -2214,37 +2199,6 @@ async function sameAsPhoto(sent: string, got: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-/** 투명한 둘레를 잘라 낸 PNG (조금 여백을 둔다). 다 비었으면 undefined */
-function trimmed(canvas: HTMLCanvasElement): string | undefined {
-  const g = canvas.getContext('2d');
-  if (!g) return undefined;
-  const { width: w, height: h } = canvas;
-  const d = g.getImageData(0, 0, w, h).data;
-  let x0 = w;
-  let y0 = h;
-  let x1 = -1;
-  let y1 = -1;
-  for (let y = 0; y < h; y++)
-    for (let x = 0; x < w; x++)
-      if ((d[(y * w + x) * 4 + 3] ?? 0) > 8) {
-        if (x < x0) x0 = x;
-        if (x > x1) x1 = x;
-        if (y < y0) y0 = y;
-        if (y > y1) y1 = y;
-      }
-  if (x1 < 0) return undefined;
-  const pad = 4;
-  x0 = Math.max(0, x0 - pad);
-  y0 = Math.max(0, y0 - pad);
-  x1 = Math.min(w - 1, x1 + pad);
-  y1 = Math.min(h - 1, y1 + pad);
-  const out = document.createElement('canvas');
-  out.width = x1 - x0 + 1;
-  out.height = y1 - y0 + 1;
-  out.getContext('2d')?.drawImage(canvas, x0, y0, out.width, out.height, 0, 0, out.width, out.height);
-  return out.toDataURL('image/png');
 }
 
 /** data URL 그림을 연다 */

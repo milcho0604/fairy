@@ -4,7 +4,7 @@ import { app, shell } from 'electron';
 import { AchievementStore } from '../shared/achieve.ts';
 import { StatStore } from '../shared/beta-stats.ts';
 import type { Db } from '../shared/db-schema.ts';
-import { EventStore } from '../shared/event-store.ts';
+import { EventStore, repairEventTimes } from '../shared/event-store.ts';
 import { type ExportTodo, readExportTodos } from '../shared/export.ts';
 import { GcalStore } from '../shared/gcal-store.ts';
 import { HabitStore } from '../shared/habit.ts';
@@ -51,6 +51,13 @@ export function openStore(log: (tag: string, ...rest: unknown[]) => void): {
   mkdirSync(dir, { recursive: true });
   const file = join(dir, 'jjakkung.db');
   const { db, memory, trouble } = openDbFile(file, log);
+  // 읽을 때마다 던지는 일정 시각(너무 큰 수)을 먼저 고친다. 못 고쳐도 켜기는 멈추지 않는다
+  try {
+    const fixed = repairEventTimes(db as unknown as Db, Date.now());
+    if (fixed > 0) log('db', '일정 시각 고침', fixed);
+  } catch (err) {
+    log('db', '일정 시각 못 고침', err instanceof Error ? err.message : String(err));
+  }
   // 끄는 중에도 도는 타이머(MCP 변경 보기 등)가 닫힌 파일을 읽지 않게 연 상태를 기억한다
   let open = true;
   app.on('will-quit', () => {

@@ -195,7 +195,15 @@ input {
   list-style: none;
 }
 
-.panel > .todos {
+.panel-main,
+.panel-tabpanel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-tabpanel > .todos {
   flex: 1;
   overflow-y: auto;
   scrollbar-width: thin;
@@ -260,22 +268,20 @@ p.empty {
 
 /* 제목 단추는 줄을 채우되 누르기는 글자(.title-text)만 받는다. 짧은 제목 옆 빈자리에는 마우스를 올리면 뜨는 단추가
    겹쳐서 제목 누르기가 단추 누르기가 됐다. 줄 끝 단추가 넓으면(반복, 알림, "내일 오전 9:00") 제목이 한 글자씩 접히지 않게
-   제목 자리를 남기고 단추를 다음 줄로 */
+   제목 자리를 남기고 단추를 다음 줄로.
+   남길 자리는 8em(줄의 45% 까지)이되 제목 글자 폭보다 넓게 잡지 않는다: "rent (31st)", "월세" 처럼 짧은 제목은 칩
+   (매달, 알림, 마감, 별)이 들어갈 자리가 있으면 같은 줄에 두고, 긴 제목이 좁아질 때만 칩을 다음 줄로 (2026-10-12).
+   예전에는 늘 8em(영어), 5em(한국어)을 남겨 짧은 제목인데도 칩이 다음 줄로 갔고, 한국어 5em 은 "프레젠테이션
+   준비하기" 를 세 줄로 접었다 */
 .todo .title {
   flex: 1 1 0;
-  min-width: min(5em, 40%);
+  min-width: calc-size(max-content, min(size, 8em, 45%));
   pointer-events: none;
   padding: 0;
   border: 0;
   background: none;
-  text-align: left;
+  text-align: start;
   cursor: text;
-}
-
-/* 영어는 낱말이 길어 5em 이면 "Prepare the weekly meeting slides" 가 네 줄로 접혔다. 제목 자리를 더 남기고
-   칩(단계, 알림, "Today 2:00 PM", 별)을 다음 줄로 (2026-10-11 영어 화면 점검) */
-:where(:lang(en)) .todo .title {
-  min-width: min(8em, 45%);
 }
 
 .todo .title-text {
@@ -512,7 +518,7 @@ li.pin-end {
   background: none;
   color: var(--ink);
   font: inherit;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
 }
 
@@ -574,7 +580,7 @@ li.pin-end {
   padding: 7px 14px;
   border: 0;
   background: none;
-  text-align: left;
+  text-align: start;
   font-size: 12.5px;
   color: var(--muted);
   cursor: pointer;
@@ -667,7 +673,8 @@ li.pin-end {
 .quick input {
   flex: 1;
   min-width: 0;
-  height: 34px;
+  /* 글씨가 커지면(최소 글자 크기 설정) 칸도 같이 커지게 높이는 최소만 */
+  min-height: 34px;
   padding: 0 4px;
   border: 0;
   background: transparent;
@@ -803,8 +810,8 @@ li.pin-end {
   margin-top: 12px;
 }
 
-.today h3,
-.events-list h3 {
+.today h2,
+.events-list h2 {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -963,7 +970,7 @@ li.pin-end {
   padding: 0;
   border: 0;
   background: none;
-  text-align: left;
+  text-align: start;
 }
 
 .missed .title {
@@ -1126,7 +1133,7 @@ li.pin-end {
   border: 0;
   border-radius: 8px;
   background: none;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
 }
 
@@ -1257,7 +1264,7 @@ li.pin-end {
   content: "";
   display: inline-block;
   width: 1.2em;
-  text-align: left;
+  text-align: start;
   animation: note-dots 1.2s steps(4) infinite;
 }
 
@@ -1365,7 +1372,7 @@ li.pin-end {
   margin-top: 12px;
 }
 
-.shop h3 {
+.shop h2 {
   margin: 0 0 4px;
   font-size: 12px;
   font-weight: 600;
@@ -1468,11 +1475,11 @@ li.pin-end {
 }
 
 /* 집 모양 고르기: 지금 단계로 그린 작은 그림 넷 */
-.shop h3.sub {
+.shop h2.sub {
   margin-top: 10px;
 }
 
-.shop h3.sub small {
+.shop h2.sub small {
   font-weight: 400;
 }
 
@@ -1732,4 +1739,42 @@ li:is(.todo, .event) .tools .extra .due.none {
 .panel header .icon-btn svg {
   width: 16px;
   height: 16px;
+}
+
+/* 찾는 메모가 없을 때 "이 내용으로 메모 만들기" (메모 줄 단추 모양을 덮어 가운데 작은 단추로) */
+.panel .notes li.empty > .note-make {
+  display: inline-flex;
+  width: auto;
+  margin: 10px auto 0;
+  padding: 0 12px;
+  height: 30px;
+  line-height: 1;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--accent);
+  font-size: 12.5px;
+}
+
+.panel .notes li.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* 긴 목록 끝 "더 보기" (paging.ts). 메모 줄 단추 모양(.panel .notes li > button)을 쓰지 않는다 */
+.panel li.more {
+  display: flex;
+  justify-content: center;
+  padding: 6px 0 10px;
+}
+
+.panel .notes li.more > button,
+.panel .todos li.more > button {
+  display: inline;
+  width: auto;
+  padding: 4px 8px;
+  border-radius: 6px;
+  text-align: center;
 }

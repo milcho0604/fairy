@@ -81,14 +81,25 @@ export function removeCopy(dir: string, name: string): boolean {
   }
 }
 
-/** 지울 것: 종류마다 새것 KEEP_NEWEST 개 밖이면서 KEEP_DAYS 일이 지난 것 */
+/** 그 종류의 가장 새 복사본에서 이만큼 안인 것은 시계와 상관없이 남긴다 (일) */
+export const KEEP_RECENT_DAYS = 7;
+
+/**
+ * 지울 것: 종류마다 새것 KEEP_NEWEST 개 밖이면서 KEEP_DAYS 일이 지났고, 그 종류의 가장 새 복사본보다
+ * KEEP_RECENT_DAYS 일 넘게 오래된 것. 뒤 조건은 시계가 앞으로 튄 때(배터리 나간 컴퓨터, 잘못 맞춘 날짜)
+ * 최근 되살리기 복사본을 한꺼번에 지우지 않게 한다 (버그잡이 4)
+ */
 export function expiredCopies(list: readonly KeptCopy[], now: number): KeptCopy[] {
   const seen = new Map<CopyKind, number>();
+  const newest = new Map<CopyKind, number>();
   const out: KeptCopy[] = [];
   for (const c of [...list].sort((a, b) => b.at - a.at)) {
     const n = (seen.get(c.kind) ?? 0) + 1;
     seen.set(c.kind, n);
-    if (n > KEEP_NEWEST && now - c.at > KEEP_DAYS * 86_400_000) out.push(c);
+    if (!newest.has(c.kind)) newest.set(c.kind, c.at);
+    const fromNewest = (newest.get(c.kind) ?? c.at) - c.at;
+    if (n > KEEP_NEWEST && now - c.at > KEEP_DAYS * 86_400_000 && fromNewest > KEEP_RECENT_DAYS * 86_400_000)
+      out.push(c);
   }
   return out;
 }

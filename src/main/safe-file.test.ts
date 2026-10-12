@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import {
   cpSync,
   existsSync,
@@ -13,7 +14,17 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
-import { freePath, plainEntry, readFileIn, renameRetry, safeFileIn, writeFileAtomic } from './safe-file.ts';
+import {
+  freePath,
+  plainEntry,
+  plainFile,
+  readFileIn,
+  readPlainCapped,
+  renameRetry,
+  safeFileIn,
+  writableDir,
+  writeFileAtomic,
+} from './safe-file.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'jj-safe-'));
 after(() => rmSync(root, { recursive: true, force: true }));
@@ -123,4 +134,36 @@ test('renameRetry: 끝까지 잡혀 있으면 몇 번만 해 보고 던진다, �
   };
   assert.throws(() => renameRetry('a', 'b', missing, 'win32', () => {}), /ENOENT/);
   assert.equal(calls, 1);
+});
+
+test('일반 파일만: 링크, 폴더, 없는 것은 아니다 (백업 가져오기의 설정, 저장 파일. 버그잡이 4)', () => {
+  assert.equal(plainFile(join(pets, 'pet-1.png')), true);
+  assert.equal(plainFile(join(pets, 'pet-link.png')), false);
+  assert.equal(plainFile(join(pets, 'pet-dir.png')), false);
+  assert.equal(plainFile(join(pets, 'none.png')), false);
+});
+
+test('고른 파일 상한까지 읽기: 일반 파일만, 크면 tooBig, 장치 링크와 파이프는 멈추지 않고 거른다 (버그잡이 4)', () => {
+  const f = join(root, 'pet.fairy');
+  writeFileSync(f, '{"a":1}');
+  assert.equal(readPlainCapped(f, 100)?.toString(), '{"a":1}');
+  assert.equal(readPlainCapped(f, 3), 'tooBig');
+  assert.equal(readPlainCapped(join(root, 'none.fairy'), 100), undefined);
+  assert.equal(readPlainCapped(pets, 100), undefined);
+  if (process.platform !== 'win32') {
+    const dev = join(root, 'zero.fairy');
+    symlinkSync('/dev/zero', dev);
+    assert.equal(readPlainCapped(dev, 100), undefined);
+    const fifo = join(root, 'pipe.fairy');
+    execFileSync('mkfifo', [fifo]);
+    assert.equal(readPlainCapped(fifo, 100), undefined);
+  }
+});
+
+test('폴더에 쓸 수 있는지: 있는 폴더, 아직 없는 폴더(부모), 읽기 전용 (버그잡이 4)', () => {
+  assert.equal(writableDir(root), true);
+  assert.equal(writableDir(join(root, 'not-yet')), true);
+  assert.equal(writableDir(join(root, 'no', 'parent')), false);
+  // root 는 권한을 무시하므로 리눅스 /proc 처럼 늘 읽기 전용인 곳으로 본다
+  if (process.platform === 'linux') assert.equal(writableDir('/proc/self'), false);
 });

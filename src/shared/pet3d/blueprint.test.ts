@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { expandMirrors, inFace, MAX_PARTS, parseBlueprint, SLOTS } from './blueprint.ts';
+import { expandMirrors, inFace, MAX_PARTS, parseBlueprint, patternOf, SLOTS } from './blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from './defaults.ts';
 import { blueprintPrompt, cleanWish, extractBlueprint, WISH_MAX } from './prompt.ts';
 
@@ -464,4 +464,15 @@ test('네 발로 선 몸(stance): 읽으면 네 발 걸음새로, 모르는 값�
   });
   assert.equal(other?.stance, undefined);
   assert.equal(other?.gait, undefined);
+});
+
+test('가르마(notch)는 위, 아래 나누기에만 0~1 로 읽는다', () => {
+  const pat = (raw: Record<string, unknown>) => patternOf({ type: 'split', color: '#4a8fd6', ...raw });
+  assert.equal(pat({ side: 'top', notch: 0.6 })?.notch, 0.6);
+  assert.equal(pat({ side: 'bottom', notch: 5 })?.notch, 1);
+  assert.equal(pat({ side: 'top', notch: 0 })?.notch, undefined);
+  assert.equal(pat({ side: 'top', notch: 'wide' })?.notch, undefined);
+  assert.equal(pat({ side: 'front', notch: 0.5 })?.notch, undefined);
+  assert.equal(pat({ notch: 0.5 })?.notch, undefined);
+  assert.equal(patternOf({ type: 'spots', color: '#000000', side: 'top', notch: 0.5 })?.notch, undefined);
 });

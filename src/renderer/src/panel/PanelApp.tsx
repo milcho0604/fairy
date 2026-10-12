@@ -7,9 +7,10 @@ import { PetFace } from '../PetFace.tsx';
 import { EventTab } from './EventTab.tsx';
 import { addedText, timeOf, whenLabel } from './format.ts';
 import { CoinIcon, GearIcon } from './icons.tsx';
-import { escClosesWindow, tabByKey, undoByKey } from './keys.ts';
+import { escClosesWindow, tabByKey, tabStepByKey, undoByKey } from './keys.ts';
 import { PlanSheetHost } from './MorningPlan.tsx';
 import { NoteTab } from './NoteTab.tsx';
+import { planTodosKey } from './plan-refresh.ts';
 import { ShopTab } from './ShopTab.tsx';
 import { TodayTab } from './TodayTab.tsx';
 import { TodoTab } from './TodoTab.tsx';
@@ -150,9 +151,15 @@ export function PanelApp() {
     };
   }, []);
 
-  // 할 일, 일정 탭은 열자마자 입력칸에 커서를 둔다.
+  // 할 일, 일정 탭은 열자마자 입력칸에 커서를 둔다. 탭 줄에서 ← → 로 옮겼으면 커서는 탭에 남긴다 (tablist 관례)
+  const tabKeyMove = useRef(false);
   // biome-ignore lint/correctness/useExhaustiveDependencies: 탭이 바뀔 때와 처음 그릴 때만
   useEffect(() => {
+    if (tabKeyMove.current) {
+      tabKeyMove.current = false;
+      document.getElementById(`ptab-${tab}`)?.focus();
+      return;
+    }
     inputRef.current?.focus();
   }, [tab, !!s]);
 
@@ -187,6 +194,8 @@ export function PanelApp() {
 
   const complete = async (todo: Todo) => {
     const coins = await bridge.complete(todo.id);
+    // 이미 끝낸 할 일 (체크를 빠르게 여러 번 눌렀다): 앞의 "끝! 코인" 알림을 덮지 않는다
+    if (coins === null) return;
     showToast({ kind: 'done', id: todo.id, coins });
   };
 
@@ -219,7 +228,9 @@ export function PanelApp() {
     <div className="card-window panel">
       <header>
         <PetFace />
-        <strong>{s.petName}</strong>
+        {/* 창 제목: 화면 읽기 프로그램에는 h1, 보이는 글은 그대로 */}
+        <h1 className="sr-only">{s.petName}</h1>
+        <strong aria-hidden="true">{s.petName}</strong>
         <span className="coins" title={t('panel.coinsHint')}>
           <CoinIcon />
           {s.balance}
@@ -271,15 +282,29 @@ export function PanelApp() {
       )}
       {hungry && <p className="hint hungry">{t('panel.hungry', { name: s.petName })}</p>}
 
-      <nav className="tabs" aria-label={t('panel.nav')}>
+      {/* 탭 목록 (설정 창 탭과 같은 aria tablist): 탭 키로는 고른 탭 하나에만 오고, ← → Home End 로 옮긴다 */}
+      <div className="tabs" role="tablist" aria-label={t('panel.nav')}>
         {TABS.map((tb, i) => (
           <button
             key={tb.id}
             type="button"
+            role="tab"
+            id={`ptab-${tb.id}`}
+            aria-selected={tab === tb.id}
+            aria-controls="ptab-panel"
+            tabIndex={tab === tb.id ? 0 : -1}
             title={t('panel.tabKey', { tab: t(tb.label), keys: `${MOD}+${i + 1}` })}
             className={tab === tb.id ? 'on' : ''}
-            aria-current={tab === tb.id ? 'page' : undefined}
             onClick={() => setTab(tb.id)}
+            onKeyDown={(e) => {
+              const to = tabStepByKey(e.key, i, TABS.length);
+              const next = to === undefined ? undefined : TABS[to];
+              if (!next) return;
+              e.preventDefault();
+              if (next.id === tab) return;
+              tabKeyMove.current = true;
+              setTab(next.id);
+            }}
           >
             {t(tb.label)}
             {tb.id === 'today' && s.focus.phase === 'focus' && (
@@ -287,54 +312,59 @@ export function PanelApp() {
             )}
           </button>
         ))}
-      </nav>
+      </div>
 
-      {tab === 'today' && (
-        <TodayTab
-          s={s}
-          onComplete={complete}
-          goTo={setTab}
-          onMoved={(moved) => showToast({ kind: 'moved', moved })}
-        />
-      )}
-      {tab === 'todo' && (
-        <TodoTab
-          s={s}
-          onComplete={complete}
-          inputRef={inputRef}
-          onAdded={(r, text) => {
-            // 시각이 있어 일정으로 들어갔다: 언제로 넣었는지, 되돌리기, 할 일로
-            if (r.kind === 'event')
-              showToast({
-                kind: 'to-event',
-                id: r.id,
-                startAt: r.startAt,
-                text,
-                ...(r.clash ? { clash: r.clash } : {}),
-                ...(r.am ? { am: r.am } : {}),
-              });
-            // 여러 줄 붙여 넣기: "할 일 3개 넣었어"
-            if (r.kind === 'many') showToast({ kind: 'added', text: addedText(r, s.today) });
-            // "30분 뒤 알려 줘": 언제 알려 줄지
-            if (r.kind === 'todo' && r.remindAt !== undefined)
-              showToast({ kind: 'added', text: addedText(r, s.today) });
-            if (r.kind === 'todo' && (r.past || r.monthly))
-              showToast({ kind: 'flagged', id: r.id, text: addedText(r, s.today), past: !!r.past });
-          }}
-          onRemoved={(todo) => showToast({ kind: 'todo-removed', id: todo.id })}
-        />
-      )}
-      {tab === 'note' && <NoteTab s={s} onRemoved={(id) => showToast({ kind: 'note-removed', id })} />}
-      {tab === 'shop' && <ShopTab s={s} />}
-      {tab === 'event' && (
-        <EventTab
-          s={s}
-          inputRef={inputRef}
-          onRemoved={(id) => showToast({ kind: 'event-removed', id })}
-          onComplete={complete}
-          onTodoRemoved={(todo) => showToast({ kind: 'todo-removed', id: todo.id })}
-        />
-      )}
+      {/* 탭 내용이 창의 본문 (화면 읽기 프로그램의 main 이동) */}
+      <main className="panel-main">
+        <div className="panel-tabpanel" id="ptab-panel" role="tabpanel" aria-labelledby={`ptab-${tab}`}>
+          {tab === 'today' && (
+            <TodayTab
+              s={s}
+              onComplete={complete}
+              goTo={setTab}
+              onMoved={(moved) => showToast({ kind: 'moved', moved })}
+            />
+          )}
+          {tab === 'todo' && (
+            <TodoTab
+              s={s}
+              onComplete={complete}
+              inputRef={inputRef}
+              onAdded={(r, text) => {
+                // 시각이 있어 일정으로 들어갔다: 언제로 넣었는지, 되돌리기, 할 일로
+                if (r.kind === 'event')
+                  showToast({
+                    kind: 'to-event',
+                    id: r.id,
+                    startAt: r.startAt,
+                    text,
+                    ...(r.clash ? { clash: r.clash } : {}),
+                    ...(r.am ? { am: r.am } : {}),
+                  });
+                // 여러 줄 붙여 넣기: "할 일 3개 넣었어"
+                if (r.kind === 'many') showToast({ kind: 'added', text: addedText(r, s.today) });
+                // "30분 뒤 알려 줘": 언제 알려 줄지
+                if (r.kind === 'todo' && r.remindAt !== undefined)
+                  showToast({ kind: 'added', text: addedText(r, s.today) });
+                if (r.kind === 'todo' && (r.past || r.monthly))
+                  showToast({ kind: 'flagged', id: r.id, text: addedText(r, s.today), past: !!r.past });
+              }}
+              onRemoved={(todo) => showToast({ kind: 'todo-removed', id: todo.id })}
+            />
+          )}
+          {tab === 'note' && <NoteTab s={s} onRemoved={(id) => showToast({ kind: 'note-removed', id })} />}
+          {tab === 'shop' && <ShopTab s={s} />}
+          {tab === 'event' && (
+            <EventTab
+              s={s}
+              inputRef={inputRef}
+              onRemoved={(id) => showToast({ kind: 'event-removed', id })}
+              onComplete={complete}
+              onTodoRemoved={(todo) => showToast({ kind: 'todo-removed', id: todo.id })}
+            />
+          )}
+        </div>
+      </main>
 
       <footer>
         {/* 이름이 길어도 한 줄 (넘치면 말줄임, 전체는 풀이에) */}
@@ -352,7 +382,11 @@ export function PanelApp() {
       </footer>
 
       {/* 아침 계획 시트 (MorningPlan.tsx): 아침 첫 열기, 펫 한마디, 오늘 탭 카드에서 띄운다 */}
-      <PlanSheetHost goToday={() => setTab('today')} onSaved={(text) => showToast({ kind: 'added', text })} />
+      <PlanSheetHost
+        goToday={() => setTab('today')}
+        onSaved={(text) => showToast({ kind: 'added', text })}
+        todosKey={planTodosKey(s.open)}
+      />
 
       {toast && (
         // 읽는 동안(마우스를 올린 동안)은 사라지지 않는다

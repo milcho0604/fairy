@@ -63,7 +63,7 @@ export const ko = {
   'maker.title.text': '말로 페어리 만들기',
   'maker.step.text': '적기',
   'maker.text.label': '어떤 페어리를 만들까?',
-  'maker.text.placeholder': '만들고 싶은 캐릭터나 모습을 적어 줘 (좋아하는 캐릭터 이름도 돼요)',
+  'maker.text.placeholder': '만들고 싶은 캐릭터나 모습을 적어 줘 (좋아하는 캐릭터 이름도 돼)',
   'maker.text.hint':
     '색, 귀, 꼬리, 옷이나 소품을 적으면 더 닮게 나와. 두 발로 설지 네 발로 걸을지는 AI가 정해.',
   'maker.text.privacy': '적은 글만 연결된 AI에게 보내고 기록은 남기지 않아. AI 사용량을 조금 써.',
@@ -324,7 +324,7 @@ export const en: Translation<typeof ko> = {
   'maker.title.text': 'Make a fairy from words',
   'maker.step.text': 'Describe',
   'maker.text.label': 'What kind of fairy should we make?',
-  'maker.text.placeholder': "Describe the character or look you want (a favorite character's name works too)",
+  'maker.text.placeholder': 'Describe a look, or name a favorite character',
   'maker.text.hint':
     'Mention colors, ears, tail, clothes or props for a closer match. Your AI decides whether it stands on two feet or walks on four.',
   'maker.text.privacy':
@@ -334,7 +334,7 @@ export const en: Translation<typeof ko> = {
   'maker.text.tweaking': 'Your AI is changing the blueprint the way you asked.',
   'maker.text.ready': 'Drag to spin it all the way around. Want something changed? Write it below.',
   'maker.text.tweakLabel': 'What to change',
-  'maker.text.tweakPlaceholder': 'e.g. bigger eyes, make the hat red',
+  'maker.text.tweakPlaceholder': 'e.g. bigger eyes, red hat',
   'maker.text.tweak': 'Change it',
   'maker.text.tweaked': 'Changed it the way you asked.',
   'maker.text.rewrite': 'Start over with new words',

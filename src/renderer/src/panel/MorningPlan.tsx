@@ -7,6 +7,7 @@ import type { PanelState } from '../../../shared/ipc.ts';
 import type { Todo } from '../../../shared/todo-store.ts';
 import { timeOf } from './format.ts';
 import { CheckIcon } from './icons.tsx';
+import { refreshedPicks } from './plan-refresh.ts';
 import './day.css';
 
 const panel = window.jjakkungPanel;
@@ -66,12 +67,12 @@ export function PlanCard({ s, onComplete }: { s: PanelState; onComplete: (todo: 
   const running = s.focus.phase !== 'idle';
   return (
     <section className="plan-card">
-      <h3>
+      <h2>
         {t('plan.card.title')}
         <button type="button" className="link" onClick={openPlanSheet}>
           {t('plan.card.edit')}
         </button>
-      </h3>
+      </h2>
       {allDone && <p className="plan-yay">{t('plan.card.allDone')}</p>}
       {picks.length > 0 && (
         <ul className="plan-picks">
@@ -89,7 +90,7 @@ export function PlanCard({ s, onComplete }: { s: PanelState; onComplete: (todo: 
                 >
                   <CheckIcon />
                 </button>
-                <span className="plan-title" title={todo.title}>
+                <span className="plan-title" dir="auto" title={todo.title}>
                   {todo.title}
                 </span>
               </li>
@@ -107,7 +108,9 @@ export function PlanCard({ s, onComplete }: { s: PanelState; onComplete: (todo: 
                 <span className="plan-time">
                   {timeOf(b.start)} ~ {timeOf(b.end)}
                 </span>
-                <span className="plan-title">{todo?.title ?? t('plan.card.blocks')}</span>
+                <span className="plan-title" dir="auto">
+                  {todo?.title ?? t('plan.card.blocks')}
+                </span>
                 {isLive && !running && (
                   <button
                     type="button"
@@ -144,9 +147,12 @@ function snapFocus(left: number): number {
 export function PlanSheetHost({
   goToday,
   onSaved,
+  todosKey,
 }: {
   goToday: () => void;
   onSaved: (text: string) => void;
+  /** 안 끝낸 할 일 열쇠 (plan-refresh.ts). 떠 있는 동안 바뀌면 고를 거리를 다시 받는다 */
+  todosKey: string;
 }) {
   const [view, setView] = useState<PlanView>();
   const [open, setOpen] = useState(false);
@@ -186,6 +192,28 @@ export function PlanSheetHost({
     day.onOpenPlan(reopen);
     return () => window.removeEventListener(OPEN_EVENT, reopen);
   }, []);
+
+  // 떠 있는 동안 할 일이 바뀌면 고를 거리를 다시 받는다 (고른 것은 남은 것만 그대로)
+  const latest = useRef({ view, picks });
+  latest.current = { view, picks };
+  const shownKey = useRef(todosKey);
+  useEffect(() => {
+    if (!open) {
+      shownKey.current = todosKey;
+      return;
+    }
+    if (shownKey.current === todosKey) return;
+    shownKey.current = todosKey;
+    void day
+      .plan()
+      .then((next) => {
+        const now = latest.current;
+        if (!next || !now.view) return;
+        setPicks(refreshedPicks(now.picks, now.view, next));
+        setView({ ...next, prefs: now.view.prefs });
+      })
+      .catch(() => undefined);
+  }, [todosKey, open]);
 
   // 띄우면 첫 고르기 칸에 커서. Esc 는 패널을 닫지 않고 시트만 닫는다
   useEffect(() => {
@@ -269,7 +297,9 @@ export function PlanSheetHost({
                     <li key={c.id}>
                       <label className={on ? 'on' : full ? 'dim' : ''}>
                         <input type="checkbox" checked={on} onChange={() => toggle(c.id)} />
-                        <span className="plan-title">{c.title}</span>
+                        <span className="plan-title" dir="auto">
+                          {c.title}
+                        </span>
                         {c.reason && (
                           <small className={`plan-tag ${c.reason}`}>{t(`plan.reason.${c.reason}`)}</small>
                         )}
@@ -286,10 +316,10 @@ export function PlanSheetHost({
               {msg}
             </p>
           )}
-          <h4>
+          <h3>
             {t('plan.sheet.blocks')}
             {view.events.length > 0 && <small>{t('plan.sheet.events', { n: view.events.length })}</small>}
-          </h4>
+          </h3>
           {blocks.length === 0 ? (
             <p className="empty-line">{t('plan.sheet.noGaps')}</p>
           ) : (
@@ -300,7 +330,9 @@ export function PlanSheetHost({
                     <span className="plan-time">
                       {timeOf(b.start)} ~ {timeOf(b.end)}
                     </span>
-                    <span className="plan-title">{titleOf(b.todoId) ?? t('plan.card.blocks')}</span>
+                    <span className="plan-title" dir="auto">
+                      {titleOf(b.todoId) ?? t('plan.card.blocks')}
+                    </span>
                   </li>
                 ))}
               </ul>

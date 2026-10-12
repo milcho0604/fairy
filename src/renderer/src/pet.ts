@@ -28,7 +28,7 @@ import {
   type PetMood,
   TALK_MS,
 } from '../../shared/pet-mood.ts';
-import type { Blueprint, Gait } from '../../shared/pet3d/blueprint.ts';
+import { type Blueprint, type Gait, parseBlueprint } from '../../shared/pet3d/blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from '../../shared/pet3d/defaults.ts';
 import { standingBlueprint } from '../../shared/pet3d/stand.ts';
 import type { PetKind, PetStyle, PoseKind } from '../../shared/settings.ts';
@@ -37,6 +37,7 @@ import { type PhotoEyes, STARTER_EYES } from '../../shared/starter-pets.ts';
 import { NO_TOGETHER, type TogetherLook } from '../../shared/together.ts';
 import { dressBlueprint, GROW_LOOK, type WearLook } from '../../shared/wear.ts';
 import { AnimatedImage, frameSide, loadPetImage } from './animated.ts';
+import { shotOf } from './blueprint-shot.ts';
 import {
   CANVAS_SIZE,
   type CarryDraw,
@@ -54,6 +55,7 @@ import { LAND_MS, moveFps, SIT_MS, sitDown } from './move-pose.ts';
 import { renderBody, renderFace } from './pet-face.ts';
 import type { Pet3D } from './pet3d.ts';
 import { quadKind, withGait } from './pet3d-gait.ts';
+import { IMPACT_MS } from './photo-motion.ts';
 import { PoseBlend, type PoseKey, shouldBlend } from './pose-blend.ts';
 import { playSound } from './sound.ts';
 import { TAP_FPS, TAP_IN_MS, TAP_OUT_MS } from './together-draw.ts';
@@ -199,10 +201,10 @@ function frame() {
   drawn++;
   const looking = peerAt(now);
   const picking = !!carry && now - carry.start < PICK_MS;
-  // 2.5D 그림 펫은 가만히 있어도 숨을 쉰다: 부스트 모드(전원 연결)일 때만 8fps (평소엔 다른 움직임이 있을 때만).
-  // 숨을 쉬지 않는 동안은 숨과 흔들림을 멈춘다 (깜빡일 때만 그려 몸이 툭툭 튀었다). 움직임 줄이기면 쉬지 않는다
-  const breathes =
-    boost && use3d && model3dOf instanceof HTMLImageElement && canBlink(mood) && !reducedMotion.matches;
+  // 2.5D 그림 펫과 사진 펫(밀크, 초코)은 가만히 있어도 숨을 쉰다: 부스트 모드(전원 연결)일 때만 8fps (평소엔 다른 움직임이
+  // 있을 때만). 숨을 쉬지 않는 동안은 숨과 흔들림을 멈춘다 (깜빡일 때만 그려 몸이 툭툭 튀었다). 움직임 줄이기면 쉬지 않는다
+  const flatImage = (use3d && model3dOf instanceof HTMLImageElement) || (!m3d && !!img);
+  const breathes = boost && flatImage && canBlink(mood) && !reducedMotion.matches;
   const state: DrawState = {
     mood,
     elapsed: now - moodSince,
@@ -235,6 +237,9 @@ function frame() {
     fresh: freshStart >= 0 ? fresh : -1,
     confetti: confettiStart >= 0 ? confetti : -1,
     land: landStart >= 0 ? landed : -1,
+    ...(impact && now - impact.start < IMPACT_MS
+      ? { impact: { ms: now - impact.start, axis: impact.axis, k: impact.k } }
+      : {}),
     ...togetherDraw(now),
     now,
   };
@@ -287,7 +292,11 @@ function frame() {
       ? 30 * k
       : isAnimated(mood)
         ? (ANIMATED_FPS[mood] ?? 30) * k
-        : heartsStart >= 0 || freshStart >= 0 || confettiStart >= 0 || landStart >= 0
+        : heartsStart >= 0 ||
+            freshStart >= 0 ||
+            confettiStart >= 0 ||
+            landStart >= 0 ||
+            (!!impact && now - impact.start < IMPACT_MS)
           ? 30 * k
           : blinkStart >= 0
             ? (1000 * blinkSpec().frames) / blinkSpec().ms
@@ -312,7 +321,11 @@ function frame() {
     saver,
   );
   frameTimer = all > 0 ? setTimeout(frame, 1000 / all) : undefined;
+  nextFrameMs = all > 0 ? 1000 / all : 0;
 }
+
+/** 다음 틀까지 기다리는 시간 (ms, 멈춘 그림이면 0). 점검용 debugFrame */
+let nextFrameMs = 0;
 
 /** 점검용 발 기록 (__pet.debugFeetLog). 틀마다 발바닥 자리와 걸음 */
 let feetLog: unknown[] | undefined;
@@ -958,6 +971,31 @@ bridge.onGaze((g) => {
 });
 // 던져져 날아가는 동안은 잡힌 얼굴 (> <)
 bridge.onFlight((flying) => setInputs({ grabbed: flying }));
+
+// 걸음새로 몸을 다시 만든 뒤 새 펫 그림: 메인이 준 설계도를 따로 둔 입체로 정면에서 그려 돌려준다
+// (만들기 창의 저장 그림과 같은 크기, 같은 자르기, blueprint-shot.ts). 지금 보이는 펫 입체는 건드리지 않는다
+let shotPet: Pet3D | undefined;
+bridge.onShotAsk((id, raw) => {
+  const model = parseBlueprint(raw);
+  if (!model) return bridge.shotGot(id, null);
+  void import('./pet3d.ts')
+    .then((m) => {
+      shotPet ??= m.Pet3D.create(() => {
+        shotPet = undefined;
+      });
+      bridge.shotGot(id, (shotPet && shotOf(shotPet, model, { side: 512, clear: true })) ?? null);
+    })
+    .catch(() => bridge.shotGot(id, null));
+});
+// ---- 던져서 부딪히기 (photo-motion.ts) ----
+// 날아가다 바닥이나 벽에 부딪히면(메인이 알려 준다) 그쪽으로 잠깐 눌렸다 돌아온다.
+// 사진, 2.5D 판, 만든 입체 펫만 (기본 펫은 예전 그대로). 움직임 줄이기면 하지 않는다
+let impact: { start: number; axis: 'x' | 'y'; k: number } | undefined;
+bridge.onImpact((hit) => {
+  if (!photo || reducedMotion.matches) return;
+  impact = { start: performance.now(), ...hit };
+  requestFrame();
+});
 // 할 일을 끝내거나 밥을 먹으면 신나서 통통 튄다.
 // 친밀도로 열린 몸짓: 돌아오면 손 흔들기(100), 할 일을 끝내면 빙글 춤(300)
 bridge.onReact((kind) => {
@@ -1436,6 +1474,15 @@ Object.assign(window, {
     get look() {
       return look;
     },
+    /**
+     * 지금 한 틀을 바로 그린다 (움직임 점검: performance.now 를 바꿔 끼운 가상 시계로 한 틀씩 찍을 때).
+     * 다음 틀까지 기다릴 시간(ms, 멈춘 그림이면 0)을 돌려준다
+     */
+    debugFrame: (): number => {
+      clearTimeout(frameTimer);
+      frame();
+      return nextFrameMs;
+    },
     /** 다음 그리기가 걸려 있는지 (끝난 뒤 타이머가 남지 않았는지 볼 때) */
     get framePending() {
       return frameTimer !== undefined;
@@ -1466,16 +1513,20 @@ Object.assign(window, {
     },
     /**
      * 그림 점검용: 지금 펫(입체면 입체)을 주어진 상태로 한 장씩 그려 PNG data URL 로 돌려준다. 시각(now)을 넣지 않아
-     * 따라가기 없이 늘 같은 그림이 나온다 (바꾸기 전후 픽셀 비교). scale 은 그리는 배율 (기본 2)
+     * 따라가기 없이 늘 같은 그림이 나온다 (바꾸기 전후 픽셀 비교). scale 은 그리는 배율 (기본 2).
+     * spin 은 입체 몸을 돌려 그릴 각(라디안. 0.6 쯤이면 3/4 모습), 그린 뒤 되돌린다
      */
-    debugRender: (states: Partial<DrawState>[], scale = 2): string[] => {
+    debugRender: (states: Partial<DrawState>[], scale = 2, spin = 0): string[] => {
       const m3d = current3d();
       const c = document.createElement('canvas');
       c.width = CANVAS_SIZE * scale;
       c.height = CANVAS_SIZE * scale;
       const g = c.getContext('2d');
       if (!g || m3d === 'loading') return [];
-      return states.map((st) => {
+      const spun = m3d && spin ? m3d : undefined;
+      const before = spun?.spin ?? 0;
+      if (spun) spun.spin = spin;
+      const out = states.map((st) => {
         g.setTransform(scale, 0, 0, scale, 0, 0);
         drawPet(g, {
           mood: 'idle',
@@ -1489,6 +1540,8 @@ Object.assign(window, {
         });
         return c.toDataURL('image/png');
       });
+      if (spun) spun.spin = before;
+      return out;
     },
   },
 });

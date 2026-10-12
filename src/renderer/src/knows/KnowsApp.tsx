@@ -22,6 +22,7 @@ import {
   memoryKey,
 } from '../../../shared/pet-memory.ts';
 import { PetFace } from '../PetFace.tsx';
+import { escClosesWindow } from '../panel/keys.ts';
 
 // 짝꿍이 아는 것 (2026-10-11): 내가 알려 준 것(생일, 좋아하는 간식, 좋아하는 것), 기억, 기억해도 될지 묻는 것, 규칙.
 // 줄마다 어디서 왔는지(대화, 직접, MCP)와 날짜, 고치기와 잊기. 맨 아래 모두 잊기 (한 번 더 묻는다)
@@ -67,6 +68,14 @@ export function KnowsApp() {
     bridge.onKnowsChanged((next) => setSnap((v) => v && { ...v, settings: next }));
   }, []);
   const name = snap?.settings.petName ?? '';
+  // Esc 로 창을 닫는다 (설정, 패널과 같게). 고치던 칸이 먼저 Esc 를 받았으면(preventDefault) 닫지 않는다
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (escClosesWindow(e)) window.close();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   useEffect(() => {
     if (name) document.title = t('bond.knows.title', { name });
   }, [name]);
@@ -96,7 +105,9 @@ export function KnowsApp() {
     <div className={`settings knows ${snap.platform === 'darwin' ? 'mac' : ''}`}>
       <header>
         <PetFace />
-        <strong>{t('bond.knows.title', { name })}</strong>
+        {/* 창 제목: 화면 읽기 프로그램에는 h1, 보이는 글은 그대로 */}
+        <h1 className="sr-only">{t('bond.knows.title', { name })}</h1>
+        <strong aria-hidden="true">{t('bond.knows.title', { name })}</strong>
         {note && (
           <span className={`saved ${note.error ? 'error' : ''}`} role="status">
             {note.text}
@@ -631,11 +642,14 @@ function ForgetDialog({
   const cancelRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     cancelRef.current?.focus();
+    // 먼저 받아(capture) 묻는 창만 닫는다: 창 전체 Esc(창 닫기)까지 가지 않게
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel();
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      onCancel();
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [onCancel]);
   return (
     <div className="know-dim">

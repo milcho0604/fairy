@@ -91,6 +91,34 @@ export const ALL_DAY_EVE_MIN = 4 * 60;
 /** 종일 일정 알림 고르기: 없음(아침 브리핑에만), 전날 저녁 */
 export const ALL_DAY_REMIND_CHOICES = [0, ALL_DAY_EVE_MIN] as const;
 
+/**
+ * 일정 시각으로 받는 가장 먼 때 (ms). JS Date 가 나타내는 끝(서기 275760년)이다. 넘으면 Date 가 Invalid Date 라
+ * 구글 보내기가 던지고, 2^53 을 넘으면 SQLite 에서 읽을 때마다 "Value is too large" 로 던져 일정 표 전체(패널, 알림,
+ * 달력)가 멈췄다. 캘린더 주소의 DURATION:P99999999W 한 줄이나 MCP duration_min 한 번으로 생겼다 (버그잡이 4: 견고함)
+ */
+export const EVENT_TIME_MAX_MS = 8.64e15;
+/** 일정 시각으로 쓸 수 있는 수인지 */
+export const eventTimeOk = (ms: unknown): ms is number =>
+  typeof ms === 'number' && Number.isFinite(ms) && Math.abs(ms) <= EVENT_TIME_MAX_MS;
+/** 끝 시각: 쓸 수 없는 수면 끝 없음으로 */
+const cleanEnd = (ms: number | null | undefined): number | null => (eventTimeOk(ms) ? ms : null);
+
+/**
+ * 이미 저장된 쓸 수 없는 시각을 고친다 (켤 때 한 번). 끝은 지우고(끝 없음), 시작이 틀린 것은 지운 것으로 둔다.
+ * 읽기는 그 행에서 던지므로 쓰기(update)로만 고친다. 고친 행 수
+ */
+export function repairEventTimes(db: Db, now: number): number {
+  const ends = db
+    .prepare('update event set end_at = null where end_at is not null and abs(end_at) > ?')
+    .run(EVENT_TIME_MAX_MS);
+  const starts = db
+    .prepare(
+      "update event set deleted_at = ?, removed_by = 'user' where deleted_at is null and abs(start_at) > ?",
+    )
+    .run(now, EVENT_TIME_MAX_MS);
+  return Number(ends.changes) + Number(starts.changes);
+}
+
 export class EventStore {
   #db: Db;
   #reminders: ReminderStore;
@@ -122,6 +150,7 @@ export class EventStore {
   ): CalEvent {
     const title = input.title.trim();
     if (!title) throw new Error('일정 제목이 비었다');
+    if (!eventTimeOk(input.startAt)) throw new Error('일정 시각이 틀렸다');
     const allDay = input.allDay === true;
     const r = this.#db
       .prepare(
@@ -130,7 +159,7 @@ export class EventStore {
       .run(
         title.slice(0, 200),
         input.startAt,
-        input.endAt ?? null,
+        cleanEnd(input.endAt),
         clampRemind(input.remindMin ?? (allDay ? 0 : DEFAULT_REMIND_MIN)),
         now,
         allDay ? 1 : 0,
@@ -204,8 +233,8 @@ export class EventStore {
     const e = this.get(id);
     if (!e) return undefined;
     const title = patch.title === undefined ? e.title : patch.title.trim().slice(0, 200) || e.title;
-    const startAt = patch.startAt ?? e.startAt;
-    const endAt = patch.endAt === undefined ? e.endAt : patch.endAt;
+    const startAt = eventTimeOk(patch.startAt) ? patch.startAt : e.startAt;
+    const endAt = patch.endAt === undefined ? e.endAt : cleanEnd(patch.endAt);
     const allDay = patch.allDay === undefined ? e.allDay : patch.allDay;
     // 종일과 시각 일정 사이를 바꾸면 알림을 새 쪽의 기본으로 (시각 일정의 "10분 전"은 종일에서는 전날 밤 11시 50분이 된다)
     const reminds = patch.reminds
@@ -334,7 +363,10 @@ export class EventStore {
     this.#db.exec('begin');
     try {
       const seen = new Set<string>();
-      for (const e of list) {
+      for (const raw of list) {
+        // 쓸 수 없는 시각(캘린더의 엉뚱한 DURATION 등): 시작이 틀리면 건너뛰고, 끝이 틀리면 끝 없이
+        if (!eventTimeOk(raw.startAt)) continue;
+        const e = { ...raw, endAt: cleanEnd(raw.endAt) };
         const key = externalKey(e);
         // 같은 키가 두 번 오면 앞의 것만 (둘이 한 행을 서로 덮어 매번 "고침"이 되지 않게)
         if (seen.has(key)) continue;
@@ -868,6 +900,9 @@ export function parseQuickEventInfo(
   // 오전, 오후 없이 1~7시라 오후로 읽었다 (아침 말이 있으면 오전으로, 없으면 오전으로 바꿀 길을 준다)
   let bare = false;
   const bareHour = (p: ClockPart) => !p.mer && !p.padded && p.h >= 1 && p.h <= 7;
+  // 때 낱말 없이 적은 8~11시 (두 자리 "08:00" 은 24시 표기라 뺀다). 저녁 말이 있거나 오전이 이미 지난 "오늘"이면 오후로
+  let plainHour = false;
+  const plain = (p: ClockPart | null | undefined) => !!p && !p.mer && !p.padded && p.h >= 8 && p.h <= 11;
   // "오전 중", "오후 중" 시간대: 날짜를 정할 때 시작이 아니라 끝이 지났는지 본다
   let windowLength = 0;
 
@@ -883,6 +918,7 @@ export function parseQuickEventInfo(
     nextDay = r.nextDay;
     meridiem = Boolean(a?.mer || b?.mer);
     bare = !meridiem && !!a && bareHour(a);
+    plainHour = !meridiem && plain(a);
   } else {
     const en = enRange(rest);
     if (en) {
@@ -893,6 +929,7 @@ export function parseQuickEventInfo(
       durationMin = r.length;
       meridiem = Boolean(en.a.mer || en.b.mer);
       bare = !meridiem && bareHour(en.a);
+      plainHour = !meridiem && plain(en.a);
     }
   }
 
@@ -940,6 +977,7 @@ export function parseQuickEventInfo(
       nextDay = c.nextDay;
       meridiem = Boolean(p.mer);
       bare = bareHour(p);
+      plainHour = plain(p);
     }
   }
   if (minute === null) {
@@ -952,6 +990,7 @@ export function parseQuickEventInfo(
       nextDay = c.nextDay;
       meridiem = Boolean(p.mer);
       bare = bareHour(p);
+      plainHour = plain(p);
     }
   }
   if (minute === null) {
@@ -959,6 +998,7 @@ export function parseQuickEventInfo(
     if (at) {
       let h = Number(at[1] ?? at[2]);
       bare = h >= 1 && h <= 7;
+      plainHour = h >= 8 && h <= 11;
       if (bare) h += 12;
       minute = h * 60;
     }
@@ -1007,6 +1047,15 @@ export function parseQuickEventInfo(
   if (bare && minute >= 12 * 60 && MORNING_CUE.test(title)) {
     minute -= 12 * 60;
     bare = false;
+  }
+  // 때 낱말 없는 8~11시: 저녁 말("오늘 8시 저녁", "today at 8 dinner")이 있으면 오후. 없어도 "오늘"이라 적었고
+  // 오전 그 시각은 지났는데 오후 그 시각은 아직이면 오후 (밤 8시에 "오늘 8시 저녁"이 지난 오전 8시가 되던 것)
+  if (plainHour && !tonight && minute < 12 * 60 && !MORNING_CUE.test(title)) {
+    const pm = minute + 12 * 60;
+    const fits = pm + (durationMin ?? 0) <= 24 * 60;
+    const todaySaid = said === today && !wd;
+    if (fits && (EVENING_CUE.test(title) || (todaySaid && minute < nowMinute && pm >= nowMinute)))
+      minute = pm;
   }
   const ev = { title, day: dayFor(minute), minute, durationMin };
   if (!bare || minute < 12 * 60 || EVENING_CUE.test(title)) return { ev };

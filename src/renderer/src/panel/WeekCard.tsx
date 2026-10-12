@@ -115,7 +115,7 @@ export function WeekCardDialog({ s, onClose }: { s: PanelState; onClose: () => v
   return (
     <div className="week-card-dim">
       <div className="week-card-dialog" role="dialog" aria-modal="true" aria-labelledby="week-card-title">
-        <h3 id="week-card-title">{t('bond.week.title')}</h3>
+        <h2 id="week-card-title">{t('bond.week.title')}</h2>
         <canvas
           ref={canvas}
           width={CARD_W}

@@ -1,6 +1,6 @@
 /* 쪽지함 (오늘 탭, NoteBox.tsx). 펼친 쪽지는 펫 말풍선의 쪽지처럼 줄 쳐진 종이. 색은 tokens.css 를 따르고 종이만 따로 */
 
-.note-box h3 {
+.note-box h2 {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -48,7 +48,7 @@
   color: var(--ink);
   font: inherit;
   font-size: 13px;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
 }
 

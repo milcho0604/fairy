@@ -10,6 +10,9 @@ const CELL = 0.09;
 const BAND = 0.11;
 /** 두 색 나누기 경계의 흐림 (부품 크기 비율). 인형의 솔기처럼 또렷하게 */
 const SPLIT_EDGE = 0.035;
+/** 가르마(notch) 세모 너비 배율과 앞쪽으로 들어오는 폭 (모양 공간) */
+const NOTCH_WIDTH = 0.5;
+const NOTCH_FRONT = 0.35;
 
 /** 정수 셋의 해시 0~1 (GLSL jjHash 와 같은 값) */
 export function hash3(x: number, y: number, z: number): number {
@@ -96,8 +99,21 @@ function rawMask(pat: Pattern, p: Vec3, half: Vec3, scale: Vec3): number {
     const f = Math.abs(v - Math.floor(v) - 0.5) * 2;
     return 1 - smooth(amount - 0.12, amount + 0.12, f);
   }
-  // split: side 쪽에서 amount 만큼
-  return sideMask(pat.side ?? 'bottom', amount, p, half);
+  // split: side 쪽에서 amount 만큼. 가르마가 있으면 앞 가운데를 세모로 비운다
+  const m = sideMask(pat.side ?? 'bottom', amount, p, half);
+  return pat.notch ? m * (1 - notchMask(pat, p, half)) : m;
+}
+
+/**
+ * 가르마(Pattern.notch): split 이 top 이면 이마 가운데에서 위로 뾰족해지는 세모(ㅅ 모양)를, bottom 이면 아래로 뾰족한 세모를
+ * 바탕색으로 비운다. 앞(+z) 쪽에만 (뒤통수는 그대로)
+ */
+function notchMask(pat: Pattern, p: Vec3, half: Vec3): number {
+  const notch = pat.notch ?? 0;
+  if (notch <= 0 || (pat.side !== 'top' && pat.side !== 'bottom')) return 0;
+  const n = pat.side === 'top' ? p[1] / half[1] : -p[1] / half[1];
+  const v = Math.abs(p[0] / half[0]) - notch * NOTCH_WIDTH * (1 - n);
+  return (1 - smooth(-SPLIT_EDGE, SPLIT_EDGE, v)) * smooth(0, NOTCH_FRONT, p[2] / half[2]);
 }
 
 /** 무늬 종류 번호 (셰이더 uniform) */
@@ -121,6 +137,9 @@ export function patternUniforms(pat: Pattern, half: Vec3, scale: Vec3) {
     // 점박이, 줄무늬는 side 가 없으면 -1 (온몸)
     uPatSide: { value: pat.side ? SIDE_ID[pat.side] : pat.type === 'split' ? SIDE_ID.bottom : -1 },
     uPatDir: { value: AXIS_ID[pat.dir ?? 'z'] },
+    uPatNotch: {
+      value: pat.type === 'split' && (pat.side === 'top' || pat.side === 'bottom') ? (pat.notch ?? 0) : 0,
+    },
     uPatHalf: { value: half },
     uPatPartScale: { value: scale },
   };
@@ -135,6 +154,7 @@ uniform int uPatSide;
 uniform int uPatDir;
 uniform vec3 uPatHalf;
 uniform vec3 uPatPartScale;
+uniform float uPatNotch;
 float jjHash(int x, int y, int z) {
   uint h = uint(x) * 73856093u ^ uint(y) * 19349663u ^ uint(z) * 83492791u;
   h = h * 0x9e3779b1u;
@@ -172,7 +192,11 @@ float jjRaw(vec3 p) {
     float f = abs(fract(v) - 0.5) * 2.0;
     return 1.0 - smoothstep(uPatAmount - 0.12, uPatAmount + 0.12, f);
   }
-  return jjSide(p, uPatAmount);
+  float m = jjSide(p, uPatAmount);
+  if (uPatNotch <= 0.0) return m;
+  float n = uPatSide == 0 ? p.y / uPatHalf.y : -p.y / uPatHalf.y;
+  float v = abs(p.x / uPatHalf.x) - uPatNotch * ${NOTCH_WIDTH} * (1.0 - n);
+  return m * (1.0 - (1.0 - smoothstep(-${SPLIT_EDGE}, ${SPLIT_EDGE}, v)) * smoothstep(0.0, ${NOTCH_FRONT}, p.z / uPatHalf.z));
 }
 float jjPattern(vec3 p) {
   float m = jjRaw(p);

@@ -596,6 +596,15 @@ function better(a: Comp | undefined, b: Comp): Comp {
 const cancelled = (c: Comp) => one(c, 'STATUS')?.value.trim().toUpperCase() === 'CANCELLED';
 
 /**
+ * 한 번에 가져오는 일정 수 상한 (이른 것부터). 사람 한 명의 두 달 일정으로는 넉넉하다.
+ * 예전에는 상한이 없어 매일 반복 일정 2천 개(180KB)짜리 캘린더가 12만 행을 넣느라 앱이 10초 넘게 멈췄고,
+ * 10MB 캘린더면 몇 분씩 30분마다 멈추며 저장 파일이 커졌다 (버그잡이 4)
+ */
+export const ICS_MAX_EVENTS = 5000;
+/** 이만큼 모이면 이른 것 ICS_MAX_EVENTS 개만 남기고 줄인다 */
+const ICS_SCAN_MAX = ICS_MAX_EVENTS * 10;
+
+/**
  * .ics 글에서 일정을 꺼낸다. 반복 일정(RRULE: DAILY, WEEKLY, MONTHLY, YEARLY 와 INTERVAL, COUNT, UNTIL,
  * BYDAY, BYMONTHDAY, BYMONTH)은 범위 안 회차로 펼치고 EXDATE 는 빼고 RDATE 는 더한다. 회차를 따로 고친 것
  * (RECURRENCE-ID)은 그 회차를 바꾼다. 취소된 일정과 회차는 뺀다. from~to 사이에 시작하는 것만.
@@ -621,6 +630,9 @@ export function parseIcs(text: string, localTz: string, from: number, to: number
   }
 
   const out: IcsEvent[] = [];
+  const byStart = (a: IcsEvent, b: IcsEvent) => a.startAt - b.startAt || a.uid.localeCompare(b.uid);
+  /** 상한까지 모은 뒤의 마지막 시작. 이보다 늦은 회차는 더 모으지 않는다 (ICS_MAX_EVENTS) */
+  let cutoff: number | undefined;
   const titleOf = (...cs: (Comp | undefined)[]) => {
     for (const c of cs) {
       const v = c && one(c, 'SUMMARY')?.value;
@@ -648,7 +660,7 @@ export function parseIcs(text: string, localTz: string, from: number, to: number
     len: number | null,
     allDay: boolean,
   ) => {
-    if (at < from || at >= to) return;
+    if (at < from || at >= to || (cutoff !== undefined && at > cutoff)) return;
     out.push({
       uid,
       recurrenceId,
@@ -658,6 +670,12 @@ export function parseIcs(text: string, localTz: string, from: number, to: number
       endAt: len === null || (allDay && len <= 26 * 3_600_000) ? null : at + len,
       allDay,
     });
+    // 넉넉히 모이면 이른 것만 남기고 줄인다 (메모리와 시간을 묶는다)
+    if (out.length >= ICS_SCAN_MAX) {
+      out.sort(byStart);
+      out.length = ICS_MAX_EVENTS;
+      cutoff = out[out.length - 1]?.startAt;
+    }
   };
 
   for (const [uid, g] of groups) {
@@ -682,7 +700,7 @@ export function parseIcs(text: string, localTz: string, from: number, to: number
           exact.add(occurrenceKey(toMs(w), w));
         }
       const slots: { at: number; wall: { y: number; mo: number; d: number } }[] = rule
-        ? expandRule(rule, base.start, from, to)
+        ? expandRule(rule, base.start, from, cutoff === undefined ? to : Math.min(to, cutoff + 1))
         : // 모르는 규칙이면 첫 회만 (예전처럼)
           [{ at: base.startAt, wall: base.start }];
       // RDATE 는 회차를 더한다 (기간 PERIOD 값은 시작만)
@@ -716,7 +734,7 @@ export function parseIcs(text: string, localTz: string, from: number, to: number
       push(uid, key, titleOf(o, m), times.startAt, times.length, times.start.allDay);
     }
   }
-  return out.sort((a, b) => a.startAt - b.startAt || a.uid.localeCompare(b.uid));
+  return out.sort((a, b) => a.startAt - b.startAt || a.uid.localeCompare(b.uid)).slice(0, ICS_MAX_EVENTS);
 }
 
 /** 캘린더 주소 검사: https 만, webcal 은 https 로 */
