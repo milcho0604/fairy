@@ -20,6 +20,10 @@ import {
 import type { Fur } from '../../shared/pet3d/blueprint.ts';
 import type { FusedMesh } from './pet3d-fuse.ts';
 
+/** soft 털 (fluffShellMaterial): 이 층 바깥은 섞는다, 가닥 그림 배율 (작을수록 굵은 가닥) */
+const SOFT_FROM = 0.4;
+const SOFT_DEN = 0.5;
+
 /** 털 길이(설계도 0~1)를 세상 길이로 (펫 키가 1 남짓) */
 export const fluffLength = (fur: Fur) => 0.02 + 0.08 * (fur.length ?? 0.4);
 /** 털 길이에 따른 껍질 수 */
@@ -107,9 +111,11 @@ export function fluffBaseMaterial(): Material {
 
 /**
  * 털 껍질 재질 하나 (층 i / n). 모든 층과 모든 펫이 셰이더 하나를 같이 쓰고 값(uniform)만 다르다
- * (층마다 셰이더를 새로 엮으면 처음 그릴 때 멈칫한다)
+ * (층마다 셰이더를 새로 엮으면 처음 그릴 때 멈칫한다).
+ * soft: 바깥 층은 가닥을 자르지 않고 옅게 섞는다 (가닥이 한 픽셀보다 가늘어 잘린 점이 흩어져 가장자리가
+ * 지글지글했다). 가닥도 굵게. 네 발로 선 몸(밀크, 초코)만 (다른 펫 모습은 그대로)
  */
-export function fluffShellMaterial(i: number, n: number, tex: DataTexture, fur: Fur): Material {
+export function fluffShellMaterial(i: number, n: number, tex: DataTexture, fur: Fur, soft = false): Material {
   const t = i / n;
   const length = fur.length ?? 0.4;
   const curl = fur.curl ?? 0;
@@ -117,12 +123,17 @@ export function fluffShellMaterial(i: number, n: number, tex: DataTexture, fur: 
   const clump = Math.max(fur.clump ?? 0.2, curl * 0.8);
   // 뿌리는 그늘져 어둡고 끝은 빛을 받아 밝다
   const shade = 0.82 + 0.2 * t + (t > 0.75 ? (t - 0.75) * 0.25 : 0);
+  // 안쪽 층은 거의 꽉 차 털 부피가 되고, 바깥 층만 성겨져 가장자리가 보송해진다
+  const cut = 0.08 + 0.62 * t ** 1.8;
+  // soft 의 섞는 바깥 층
+  const blend = soft && t > SOFT_FROM;
   const m = new MeshStandardMaterial({
     vertexColors: true,
     color: new Color(shade, shade, shade),
     alphaMap: tex,
-    // 안쪽 층은 거의 꽉 차 털 부피가 되고, 바깥 층만 성겨져 가장자리가 보송해진다
-    alphaTest: 0.08 + 0.62 * t ** 1.8,
+    alphaTest: blend ? 0.01 : cut,
+    transparent: blend,
+    depthWrite: !blend,
     roughness: 0.85,
   });
   const values = {
@@ -132,7 +143,8 @@ export function fluffShellMaterial(i: number, n: number, tex: DataTexture, fur: 
     uCurl: curl,
     uClump: clump,
     // 가닥 간격: 곱슬은 다발이 굵다
-    uDen: 4 / (1 + 0.6 * curl),
+    uDen: (4 / (1 + 0.6 * curl)) * (soft ? SOFT_DEN : 1),
+    uCut: cut,
   };
   m.onBeforeCompile = (shader) => {
     for (const [k, v] of Object.entries(values)) shader.uniforms[k] = { value: v };
@@ -163,6 +175,7 @@ uniform float uShell;
 uniform float uCurl;
 uniform float uClump;
 uniform float uDen;
+uniform float uCut;
 varying vec3 vFurP;
 varying vec3 vFurN;`,
       )
@@ -179,7 +192,12 @@ varying vec3 vFurN;`,
   // 층마다 가닥 자리를 아래로 조금씩 옮겨 가닥이 점이 아니라 아래로 눕는 이어진 털이 되게 (곱슬은 대신 돈다)
   vec2 cu = vec2(cos(ang), sin(ang)) * 0.035 * uCurl + vec2(0.0, uShell * 0.018 * (1.0 - uCurl));
   vec2 st = texture2D(alphaMap, uv * uDen + cu).rg;
-  diffuseColor.a *= mix(st.r, st.g, uClump);
+  ${
+    blend
+      ? `// 자르는 대신 기준 둘레에서 옅게: 바깥 층일수록 더 옅다
+  diffuseColor.a *= smoothstep(uCut - 0.18, uCut + 0.12, mix(st.r, st.g, uClump)) * (1.0 - 0.55 * uShell);`
+      : 'diffuseColor.a *= mix(st.r, st.g, uClump);'
+  }
   // 다발 사이 골은 그늘지고 다발 가운데는 밝다: 정면에서도 털 무늬가 읽힌다
   diffuseColor.rgb *= mix(0.9, 1.04, mix(st.r, st.g, max(uClump, 0.5)));
 }`,
@@ -191,7 +209,7 @@ varying vec3 vFurN;`,
 #include <opaque_fragment>`,
       );
   };
-  m.customProgramCacheKey = () => 'jj-fluff';
+  m.customProgramCacheKey = () => (blend ? 'jj-fluff-soft' : 'jj-fluff');
   return m;
 }
 
