@@ -72,7 +72,7 @@ window.I18N = {
     'dl.all': '모든 파일과 설치 방법',
     'dl.releases': '릴리스 페이지',
     'dl.version': '{version}',
-    'dl.unsignedMac': '처음 열 때 경고가 한 번 떠요. <a href="{home}#faq-mac">여는 법 보기</a>',
+    'dl.unsignedMac': '처음 열 때 "악성 코드가 없음을 확인할 수 없습니다" 창이 한 번 떠요. 고장이 아니에요. <a href="{home}#faq-mac">1분이면 여는 법 보기</a>',
     'dl.unsignedWin': '처음 실행할 때 파란 경고 창이 한 번 떠요. <a href="{home}#faq-win">넘기는 법 보기</a>',
 
     'about.kicker': '{name|은는} 이런 앱이에요',
@@ -282,7 +282,7 @@ window.I18N = {
     'req.drawV': '메모리 8GB 이상, 빈 공간 7~20GB (엔진에 따라 약 5.2GB 또는 약 16GB를 받아요)',
 
     'faq.title': '자주 묻는 질문',
-    'faq.macQ': '맥에서 "확인할 수 없어 열지 않았다"는 창이 떠요',
+    'faq.macQ': '맥에서 "악성 코드가 없음을 확인할 수 없습니다" 창이 떠서 안 열려요',
     'faq.macA': '<p>아직 애플 개발자 서명 전이라 처음 한 번 떠요. macOS 15(Sequoia) 이상 기준이에요.</p><ol><li>dmg를 열고 <strong>{app}</strong>{^app|을를} 응용 프로그램 폴더로 끌어 넣어요.</li><li>응용 프로그램 폴더에서 열고, 경고 창이 뜨면 <strong>완료</strong>를 눌러요. 휴지통으로 옮기지 마세요.</li><li>시스템 설정 → <strong>개인정보 보호 및 보안</strong> → 아래쪽 "보안" 칸에서 <strong>그래도 열기</strong>를 누르고 맥 암호를 넣어요.</li><li>다시 뜨는 창에서 <strong>그래도 열기</strong>를 누르면 화면에 페어리가 나와요.</li></ol><p>이전 macOS에서는 앱을 우클릭해 "열기"를 눌러도 돼요. 그래도 안 열리면 터미널에서 아래 한 줄을 실행하고 다시 열어요. 인터넷에서 받은 파일 표시를 지우는 명령이에요.</p><pre><code>xattr -dr com.apple.quarantine /Applications/{app}.app</code></pre><p>dmg 안에서 바로 열지 말고 꼭 응용 프로그램 폴더로 옮긴 뒤 열어 주세요. 그래야 자동 업데이트가 돼요.</p>',
     'faq.winQ': '윈도우에서 "Windows의 PC 보호" 파란 창이 떠요',
     'faq.winA': '<p>서명이 없는 새 앱이라 SmartScreen이 띄우는 창이에요. <strong>추가 정보</strong>를 누르면 보이는 <strong>실행</strong>을 눌러요. 관리자 권한 없이 바로 설치되고 페어리가 나와요.</p><p>회사 컴퓨터에서 "실행" 단추 없이 막힌다면 관리자가 막아 둔 거라, 서명한 판이 나올 때까지는 설치할 수 없어요.</p>',
@@ -332,7 +332,7 @@ window.I18N = {
     'dlp.macT': '맥에 설치하기',
     'dlp.mac1': '받을 파일 고르기. Apple 칩(M1 이후)은 <code>…-mac-arm64.dmg</code>, Intel은 <code>…-mac-x64.dmg</code>',
     'dlp.mac2': 'dmg를 열고 <strong>{app}</strong>{^app|을를} 응용 프로그램 폴더로 끌어 넣어요',
-    'dlp.mac3': '응용 프로그램 폴더에서 열어요. 확인할 수 없다는 창이 뜨면 <strong>완료</strong> (휴지통으로 옮기지 않아요)',
+    'dlp.mac3': '응용 프로그램 폴더에서 열어요. "악성 코드가 없음을 확인할 수 없습니다" 창이 뜨면 <strong>완료</strong> (휴지통으로 옮기지 않아요)',
     'dlp.mac4': '시스템 설정 → <strong>개인정보 보호 및 보안</strong> → "보안" 칸의 <strong>그래도 열기</strong>, 맥 암호 입력',
     'dlp.mac5': '다시 뜨는 창에서 <strong>그래도 열기</strong>. 화면에 페어리가 나와요',
     'dlp.macX': '그래도 안 열리면 터미널에서 이 한 줄을 실행하고 다시 열어요.',
@@ -479,7 +479,7 @@ window.I18N = {
     'dl.all': 'All files & install steps',
     'dl.releases': 'Releases page',
     'dl.version': '{version}',
-    'dl.unsignedMac': 'You’ll see a one-time warning on first launch. <a href="{home}#faq-mac">How to open it</a>',
+    'dl.unsignedMac': 'On first launch your Mac says Apple “could not verify” it is free of malware. That’s expected. <a href="{home}#faq-mac">Open it in a minute</a>',
     'dl.unsignedWin': 'A blue SmartScreen warning shows once on first run. <a href="{home}#faq-win">How to get past it</a>',
 
     'about.kicker': 'Meet your fairy',
@@ -689,7 +689,7 @@ window.I18N = {
     'req.drawV': '8GB+ memory and 7–20GB free space (downloads about 5.2GB or 16GB depending on the engine)',
 
     'faq.title': 'Questions',
-    'faq.macQ': 'My Mac says the app “can’t be opened” or wasn’t verified',
+    'faq.macQ': 'My Mac says Apple “could not verify” the app is free of malware',
     'faq.macA': '<p>The app isn’t signed by an Apple developer account yet, so this shows once. Steps for macOS 15 (Sequoia) and later:</p><ol><li>Open the dmg and drag <strong>{app}</strong> into Applications.</li><li>Open it from Applications. When the warning appears, click <strong>Done</strong>, and don’t move it to the Trash.</li><li>Go to System Settings → <strong>Privacy &amp; Security</strong>, scroll to “Security” and click <strong>Open Anyway</strong>, then enter your password.</li><li>Click <strong>Open Anyway</strong> once more and your fairy appears.</li></ol><p>On older macOS you can right-click the app and choose “Open”. If it still won’t open, run this in Terminal and try again. It removes the “downloaded from the internet” flag:</p><pre><code>xattr -dr com.apple.quarantine /Applications/{app}.app</code></pre><p>Always move it to Applications before opening; auto-update won’t install while it runs from inside the dmg.</p>',
     'faq.winQ': 'Windows shows a blue “Windows protected your PC” screen',
     'faq.winA': '<p>That’s SmartScreen, shown for new unsigned apps. Click <strong>More info</strong>, then <strong>Run anyway</strong>. It installs without admin rights and your fairy appears.</p><p>If a work computer blocks it with no “Run anyway” button, your administrator has locked this down, and it can’t be installed until a signed build is available.</p>',
@@ -739,7 +739,7 @@ window.I18N = {
     'dlp.macT': 'Install on Mac',
     'dlp.mac1': 'Pick a file: <code>…-mac-arm64.dmg</code> for Apple chips (M1 and later), <code>…-mac-x64.dmg</code> for Intel',
     'dlp.mac2': 'Open the dmg and drag <strong>{app}</strong> into Applications',
-    'dlp.mac3': 'Open it from Applications. If it says it can’t be verified, click <strong>Done</strong> (don’t move it to the Trash)',
+    'dlp.mac3': 'Open it from Applications. If it says Apple “could not verify” it is free of malware, click <strong>Done</strong> (don’t move it to the Trash)',
     'dlp.mac4': 'System Settings → <strong>Privacy &amp; Security</strong> → <strong>Open Anyway</strong> under “Security”, then your password',
     'dlp.mac5': 'Click <strong>Open Anyway</strong> again. Your fairy appears',
     'dlp.macX': 'Still won’t open? Run this in Terminal, then open it again.',
