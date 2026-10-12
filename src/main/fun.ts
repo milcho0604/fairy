@@ -3,6 +3,7 @@
 import { pickLine, TICKLE, TICKLE_START, tickle } from '../shared/fun.ts';
 import { getLang, type I18nKey, t } from '../shared/i18n/index.ts';
 import { grantCoins } from '../shared/minigames.ts';
+import { voiced } from '../shared/persona-voice.ts';
 import { localDay } from '../shared/todo-store.ts';
 import {
   type ChainState,
@@ -60,7 +61,10 @@ export function createWordChain(o: WordChainOptions) {
     const lang = getLang();
     game = startChain(lang, words(lang), rand, at);
     o.log('fun', 'chain', 'start', lang);
-    return t('fun.chain.start', { word: game.last, need: needText(startChars(lastChar(game.last), lang)) });
+    return voiced('fun.chain.start', {
+      word: game.last,
+      need: needText(startChars(lastChar(game.last), lang)),
+    });
   }
 
   /** 판이 끝났다. 사용자가 이겼으면 코인 (하루 상한 둘), 친밀도는 하루 판 수 안에서. 받은 코인 */
@@ -96,36 +100,35 @@ export function createWordChain(o: WordChainOptions) {
         return undefined;
       case 'giveUp':
         finish(false);
-        return t('fun.chain.giveUp');
+        return voiced('fun.chain.giveUp');
       case 'short':
         game = step.state;
-        return t('fun.chain.short');
+        return voiced('fun.chain.short');
       case 'wrongStart':
         game = step.state;
-        return t('fun.chain.wrongStart', { need: needText(step.need) });
+        return voiced('fun.chain.wrongStart', { need: needText(step.need) });
       case 'used':
         game = step.state;
-        return t('fun.chain.used', { word: step.word });
+        return voiced('fun.chain.used', { word: step.word });
       case 'stumped': {
         const coins = finish(true);
         const need = needText(step.need);
-        return coins > 0 ? t('fun.chain.stumpedCoins', { need, coins }) : t('fun.chain.stumped', { need });
+        return coins > 0
+          ? voiced('fun.chain.stumpedCoins', { need, coins })
+          : voiced('fun.chain.stumped', { need });
       }
       case 'tired': {
         const coins = finish(true);
         return coins > 0
-          ? t('fun.chain.tiredCoins', { n: step.turns, coins })
-          : t('fun.chain.tired', { n: step.turns });
+          ? voiced('fun.chain.tiredCoins', { n: step.turns, coins })
+          : voiced('fun.chain.tired', { n: step.turns });
       }
       case 'next':
         game = step.state;
-        return t(
-          `fun.chain.next.${pickLine(3, rand)}` as I18nKey,
-          {
-            word: step.word,
-            need: needText(step.need),
-          } as never,
-        );
+        return voiced(`fun.chain.next.${pickLine(3, rand)}` as I18nKey, {
+          word: step.word,
+          need: needText(step.need),
+        });
     }
   }
 
@@ -170,7 +173,7 @@ export function createTickle(o: TickleOptions) {
       st = { pats: r.pats, lastAt: r.lastAt };
       if (!r.tickled) return false;
       o.log('fun', 'tickle');
-      o.giggle(t(`fun.tickle.${pickLine(TICKLE.lines, rand)}` as I18nKey));
+      o.giggle(voiced(`fun.tickle.${pickLine(TICKLE.lines, rand)}` as I18nKey));
       return true;
     },
   };

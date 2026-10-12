@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  fitTilt,
   IMPACT_MS,
   impactSquash,
   photoStep,
@@ -123,4 +124,22 @@ test('던져서 부딪히면: 처음과 끝은 쉬는 몸, 바닥은 세로로 �
   assert.deepEqual(impactSquash(IMPACT_MS * 0.15, 'y', 1, true), { sx: 1, sy: 1 });
   // 은은하게: 18% 넘게 찌그러지지 않는다
   for (let ms = 0; ms < IMPACT_MS; ms += 5) assert.ok(Math.abs(impactSquash(ms, 'y', 1).sy - 1) <= 0.17);
+});
+
+test('넓은 사진이 걸으며 기울어도 위 모서리가 캔버스 밖으로 나가지 않는다 (이슈 #65)', () => {
+  // 가장 넓은 사진(140x124)을 디딜 때 가로로 조금 퍼진 채, 까딱과 숙이기가 같은 쪽으로 겹친 때
+  const halfW = 70 * 1.025;
+  const h = 124;
+  const room = 79;
+  const reach = (t: number) => halfW * Math.cos(Math.abs(t)) + h * Math.sin(Math.abs(t));
+  const worst = -(0.045 + WALK_LEAN);
+  assert.ok(reach(worst) > room, '고치기 전에는 넘었다');
+  const fit = fitTilt(worst, halfW, h, room);
+  assert.ok(reach(fit) <= room + 1e-9, `넘침 ${reach(fit)}`);
+  assert.ok(fit < 0 && fit > worst, '방향은 그대로, 조금만 덜 기운다');
+  // 좁은 사진은 그대로 기운다
+  assert.equal(fitTilt(worst, 40, 124, room), worst);
+  assert.equal(fitTilt(0.05, 40, 124, room), 0.05);
+  // 기울이지 않아도 넘치면 세운다
+  assert.equal(fitTilt(0.05, 90, 124, room), 0);
 });

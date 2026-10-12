@@ -117,6 +117,11 @@ export const ko = {
     `${withParticle(v.name, '을')} 정말 집에 보내기 (한 번 더 누르면 보내)`,
   'settings.friends.photoGone': (v: { name: string }) =>
     `${withParticle(v.name, '은')} 사진 친구라 보내면 그림도 지워져. 다시 보려면 .fairy 파일로 다시 초대해야 해.`,
+  'settings.friends.makeMain': '기본 페어리로',
+  'settings.friends.makeMainAria': (v: { name: string; main: string }) =>
+    `${withParticle(v.name, '을')} 기본 페어리로 (${withParticle(v.main, '은')} 친구 자리로)`,
+  'settings.friends.madeMain': (v: { name: string; main: string }) =>
+    `${withParticle(v.name, '이')} 기본 페어리가 됐어. ${withParticle(v.main, '은')} 친구로 같이 놀아.`,
 
   // 삐짐
   'settings.sulk': '삐짐',
@@ -524,6 +529,10 @@ export const en: Translation<typeof ko> = {
   'settings.friends.sendHomeSureAria': (v) => `Really send ${v.name} home (press again to send)`,
   'settings.friends.photoGone': (v) =>
     `${v.name} is a photo friend, so their picture goes too. To see them again, invite them back from the .fairy file.`,
+  'settings.friends.makeMain': 'Make main',
+  'settings.friends.makeMainAria': (v) =>
+    `Make ${v.name} your main fairy (${v.main} takes their spot as a friend)`,
+  'settings.friends.madeMain': (v) => `${v.name} is now your main fairy. ${v.main} stays on as a friend.`,
 
   'settings.sulk': 'Sulking',
   'settings.restDays': 'Days off (no sulking if you skip these)',

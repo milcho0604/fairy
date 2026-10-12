@@ -35,6 +35,7 @@ import { watchBetaStats } from './beta.ts';
 import { boostOn, onBoostChange } from './boost.ts';
 import { watchCalendar } from './calendar.ts';
 import { createChat } from './chat.ts';
+import { createChatLook } from './chat-look.ts';
 import { createCompanion } from './companion.ts';
 import { createDailyNotes } from './daily-note.ts';
 import { chooseDataDir, DATA_DIR_NAME, oldAppBlocks } from './data-move.ts';
@@ -399,6 +400,8 @@ ready
       },
       log,
     });
+    // 채팅 창의 같이 보기: 켜고 끄기, 보낼 때 지금 화면 찍기 (main/chat-look.ts)
+    createChatLook({ chatWindow: () => chat.window, look, log });
     // ---- 방해 금지 (P1-10) ----
     // 친구 펫(v2)도 기본 펫과 같이 숨고 나온다
     const friends = createFriends({
