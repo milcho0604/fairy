@@ -1,4 +1,5 @@
 import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { saveErrorText } from '../../../shared/download-error.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { SettingsSnapshot } from '../../../shared/ipc.ts';
 import { lookKey, type Settings } from '../../../shared/settings.ts';
@@ -196,7 +197,15 @@ export function SettingsApp() {
   };
 
   const update = async (patch: Partial<Settings>, message = t('settings.saved')) => {
-    const next = await bridge.set(patch);
+    let next: Settings;
+    try {
+      next = await bridge.set(patch);
+    } catch (err) {
+      // 저장 공간이 없거나 폴더에 쓸 수 없으면 바뀌지 않았다고 알린다 (예전에는 말없이 원래대로 돌아갔다)
+      console.warn('settings save failed', err);
+      flash(saveErrorText(err), true);
+      return snap.settings;
+    }
     setSnap((v) => v && { ...v, settings: next });
     flash(message);
     return next;
