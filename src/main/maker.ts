@@ -38,7 +38,7 @@ import {
   extractBlueprintWithFixes,
   WISH_MAX,
 } from '../shared/pet3d/prompt.ts';
-import { starterModelOf } from '../shared/pet3d/starters.ts';
+import { starterFigureOf } from '../shared/pet3d/starters.ts';
 import { cleanPetName, isGait, POSE_KINDS, photoPetName } from '../shared/settings.ts';
 import { CUSTOM_FOOD_COST } from '../shared/shop.ts';
 import { starterOf } from '../shared/starter-pets.ts';
@@ -118,8 +118,8 @@ export function petImages(): PetImages {
   }
   return {
     main: dataUrlOf(s.petImage),
-    // 밀크, 초코 그림은 앱에 든 네 발 입체 피규어로 (만들기로 고친 설계도가 있으면 그것)
-    model: s.petImage ? (modelOf(s.petModel) ?? starterModelOf(s.petImage)) : null,
+    // 밀크, 초코 그림은 기본이 사진 그대로, 설정에서 네 발로 선 피규어를 켜면 앱에 든 피규어 (만들기로 고친 설계도가 있으면 그것)
+    model: s.petImage ? (modelOf(s.petModel) ?? starterFigureOf(s.petImage, s.petStands)) : null,
     depth: s.petImage ? dataUrlOf(s.petDepth) : null,
     poses,
     ...(s.petImage && s.petAge ? { age: s.petAge } : {}),

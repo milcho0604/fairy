@@ -2,6 +2,7 @@
 // 그림(resources/pets/*.png)에서 색을 뽑아 진짜 네 발 동물처럼 몸통을 눕혀 네 다리로 선 모양으로 만들었다(stance: 'stand').
 // 앱이 앉히고, 엎드리게 하고, 옆으로 돌아 네 발로 걷게 한다 (renderer pet3d-stance.ts).
 // 좌표: 바닥 y=0, 앞(머리)이 +z, 네 발 가운데가 x=0, z=0 근처. 크기는 반지름
+import { standKey } from '../settings.ts';
 import { type StarterId, starterOf } from '../starter-pets.ts';
 import type { Blueprint, Part } from './blueprint.ts';
 
@@ -475,4 +476,16 @@ export const STARTER_LOOKS: Record<StarterId, Blueprint> = {
 export function starterModelOf(image: string | null | undefined): Blueprint | null {
   const id = starterOf(image);
   return id ? STARTER_LOOKS[id] : null;
+}
+
+/**
+ * 펫 화면이 그릴 밀크, 초코 피규어: 설정에서 네 발로 선 피규어를 켰을 때만 (petStands 의 starter:<이름>).
+ * 기본은 null 이라 0.3.0 처럼 사진 그대로 보인다 (0.4.1 사용자 결정). 메뉴 막대 달리기는 켜기와 상관없이 starterModelOf
+ */
+export function starterFigureOf(
+  image: string | null | undefined,
+  stands: Readonly<Record<string, boolean>>,
+): Blueprint | null {
+  const key = standKey(image, undefined);
+  return key && stands[key] === true ? starterModelOf(image) : null;
 }

@@ -12,6 +12,7 @@ import {
   pickedStand,
   type Settings,
   standPatch,
+  starterStand,
 } from '../../../shared/settings.ts';
 import { MakeProgress } from '../MakeProgress.tsx';
 import { browserStore, loadExpected, saveDuration } from '../make-progress.ts';
@@ -53,13 +54,17 @@ export function GaitPicker({
     : figure && s.pet3d && !stands
       ? shapeOf(figure)
       : undefined;
+  // 밀크, 초코 그림이면 네 발로 선 피규어를 켰는지 (기본 꺼짐, 사진 그대로). 다른 펫이면 undefined
+  const starter = starterStand(s);
   const why = shape
     ? ''
     : stands
       ? t('settings.gait.stand', { name: s.petName })
-      : figure
-        ? t('settings.gait.off3d')
-        : t('settings.gait.flat');
+      : starter === false
+        ? t('settings.gait.starterPhoto', { name: s.petName })
+        : figure
+          ? t('settings.gait.off3d')
+          : t('settings.gait.flat');
   const picked = shape ? pickedGait(s) : undefined;
   const now: GaitPick = picked ?? 'auto';
   const canRemake = !!figure;
@@ -199,6 +204,19 @@ export function GaitPicker({
           hint={t(canStand(figure) ? 'settings.stand.hint' : 'settings.stand.odd', { name: s.petName })}
           on={pickedStand(s) && canStand(figure)}
           disabled={!!busy || !canStand(figure)}
+          onChange={(v) => {
+            const patch = standPatch(s, v);
+            if (patch) void update(patch);
+          }}
+        />
+      )}
+      {/* 밀크, 초코: 기본은 사진 그대로, 켜면 앱에 든 네 발 피규어 (0.4.1 사용자 결정, shared/pet3d/starters.ts starterFigureOf) */}
+      {starter !== undefined && (
+        <Toggle
+          label={t('settings.stand.starter')}
+          hint={t('settings.stand.starterHint', { name: s.petName })}
+          on={starter}
+          disabled={!!busy}
           onChange={(v) => {
             const patch = standPatch(s, v);
             if (patch) void update(patch);
