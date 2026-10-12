@@ -9,6 +9,7 @@ npm run build
 JJ_NO_FOCUS=1 JJ_USER_DATA=<빈 폴더> npx electron --inspect=9229 . --remote-debugging-port=9344 &   # 맥북 화면에만, 포커스 안 뺏음
 OUT=/tmp/jj-shots node scripts/dev/audit-chat.mjs   # 채팅 창 상태별 화면, 가로 넘침 검사
 OUT=/tmp/jj-shots node scripts/dev/audit-pet.mjs    # 페어리와 말풍선 위치, 크기, 어두운 모드
+node scripts/dev/pet-moves.mjs                     # 움직임과 입력이 겹칠 때: 뛰다 잡기, 걷다 크기 바꾸기, 끄는 동안 온 답, 친구 자리, 숨긴 동안 온 친구 (PASS/FAIL)
 OUT=/tmp/jj-shots node scripts/dev/panel.mjs        # 패널: 할 일 넣기, 끝내기, 되돌리기, 밥, 빠른 입력
 OUT=/tmp/jj-shots node scripts/dev/settings.mjs     # 설정 창: 이름, 크기, 돌아다니기
 OUT=/tmp/jj-shots PHOTO=<사진> node scripts/dev/maker.mjs  # 사진으로 페어리 만들기 전체
