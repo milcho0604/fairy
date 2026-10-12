@@ -6,6 +6,7 @@ import { IPC, type PetImages, type PetStatus } from '../shared/ipc.ts';
 import { MEET_CHANCE, MEET_COOLDOWN_MS, MEET_EVERY_MS, meetPlan } from '../shared/meet.ts';
 import { type Blueprint, parseBlueprint } from '../shared/pet3d/blueprint.ts';
 import { starterFigureOf } from '../shared/pet3d/starters.ts';
+import { friendSpot } from '../shared/placement.ts';
 import type { Friend } from '../shared/settings.ts';
 import { starterOf } from '../shared/starter-pets.ts';
 import type { WearLook } from '../shared/wear.ts';
@@ -31,6 +32,9 @@ const petFile = (file: string | undefined) => readFileIn(join(app.getPath('userD
 
 /** 설계도 파일 상한 (maker.ts 와 같다). 넘으면 읽지 않고 사진으로 */
 const MAX_MODEL_BYTES = 256 * 1024;
+
+/** 처음 오는 친구 펫 크기 (pet-window 의 기본 크기, 배율 1) */
+const FRIEND_SIZE = 160;
 
 /** 만났을 때 수다를 떨 확률 (수다쟁이만) */
 const FRIEND_TALK_CHANCE = 0.5;
@@ -195,7 +199,8 @@ export function createFriends(o: {
     const pet: PetWindow = createPetWindow({
       ...(win ? { win } : {}),
       id: f.id,
-      initial: { x: main.x - (index + 1) * 140, y: main.y },
+      // 기본 펫과 같은 바닥에, 왼쪽에 자리가 없으면 오른쪽에 (처음 올 때만. 옮긴 뒤에는 저장한 자리)
+      initial: friendSpot(main, index, FRIEND_SIZE, screen.getDisplayMatching(main).workArea),
       petName: () => live.get(f.id)?.friend.name ?? f.name,
       log: o.log,
       actions: {

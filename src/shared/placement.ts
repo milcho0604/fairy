@@ -52,3 +52,21 @@ export function parseSavedScale(saved: unknown): number {
   const { scale } = saved as Record<string, unknown>;
   return typeof scale === 'number' ? clampScale(scale) : 1;
 }
+
+/** 친구 펫이 기본 펫과 겹쳐 서는 폭 (예전 140px 간격과 같다: 160 - 140) */
+const FRIEND_OVERLAP = 20;
+
+/**
+ * 처음 오는 친구 펫(index 번째)의 자리. 기본 펫과 같은 바닥 선에 서고, 왼쪽부터 줄을 서며 왼쪽에 자리가 모자라면
+ * 오른쪽에 선다. 예전에는 기본 펫 윗변(y)에 맞추고 왼쪽으로만 서서, 기본 펫이 크면 친구가 공중에 떠 있었고
+ * 기본 펫이 화면 왼쪽 끝이면 친구가 모두 같은 자리(왼쪽 끝)로 밀려 기본 펫과 한 덩어리로 겹쳤다
+ */
+export function friendSpot(main: Rect, index: number, size: number, area: Rect): Point {
+  const step = size - FRIEND_OVERLAP;
+  const leftAt = (i: number) => main.x + FRIEND_OVERLAP - size - i * step;
+  let left = 0;
+  while (left < 8 && leftAt(left) >= area.x) left++;
+  const x = index < left ? leftAt(index) : main.x + main.width - FRIEND_OVERLAP + (index - left) * step;
+  const spot = clampIntoAreas({ x, y: main.y + main.height - size, width: size, height: size }, [area]);
+  return { x: spot.x, y: spot.y };
+}
