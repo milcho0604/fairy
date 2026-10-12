@@ -63,7 +63,7 @@ ${JSON.stringify(wish)}
  * 사용자가 고른 걸음새 블록. 몸을 처음부터 그 걸음새로 만든다:
  * 네 발이면 네 다리로 선 몸(앞발과 뒷발이 앞뒤로 떨어진), 두 발이면 서 있는 몸(다리 둘, 뒷발 없음)
  */
-function gaitBlock(gait: Gait): string {
+export function gaitBlock(gait: Gait): string {
   return gait === 'quadruped'
     ? `
 

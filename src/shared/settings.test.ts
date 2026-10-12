@@ -630,3 +630,16 @@ test('개인 용도 페어리 표시(petPersonal): 설계도 펫에만, 켠 것�
   // 그림 없는 기본 펫은 개인 용도가 아니다
   assert.equal(isPersonalPet(DEFAULT_SETTINGS), false);
 });
+
+test('말로 만든 처음 글(petTexts): 설계도 펫에만, 글만, 없던 판의 설정은 빈 칸으로', () => {
+  const s = parseSettings({
+    petImage: 'pet-1.png',
+    petModel: 'model-1.json',
+    petLibrary: [{ id: 'p-a', name: '구름', image: 'pet-2.png', model: 'model-2.json', poses: {} }],
+    petTexts: { 'model-1.json': ' 하얀 고양이 ', 'model-2.json': 42, 'model-9.json': '옛 펫' },
+  });
+  assert.deepEqual(s.petTexts, { 'model-1.json': '하얀 고양이' });
+  // 이 칸이 생기기 전 설정 파일
+  assert.deepEqual(parseSettings({ petImage: 'pet-1.png', petModel: 'model-1.json' }).petTexts, {});
+  assert.deepEqual(parseSettings({ petTexts: { 'model-1.json': 'x'.repeat(5000) } }).petTexts, {});
+});

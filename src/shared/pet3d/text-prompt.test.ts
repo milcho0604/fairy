@@ -159,3 +159,15 @@ test('말로 만들기 AI: 지금 고른 AI 부터, 무료 AI 와 사용자가 �
   assert.deepEqual(textAiOrder('local'), ['claude', 'codex', 'cursor', 'gemini']);
   assert.deepEqual(textAiOrder('custom-1'), ['claude', 'codex', 'cursor', 'gemini']);
 });
+
+test('걸음새를 바꿔 다시 만들기: 처음 글 요청문에 고른 걸음새를 넣고, 답은 그 걸음새로 둔다', () => {
+  const four = describePrompt('하얀 고양이', { gait: 'quadruped' });
+  assert.match(four, /Walking style \(chosen by the owner\): four legs/);
+  assert.match(describePrompt('하얀 고양이', { gait: 'biped' }), /two legs/);
+  assert.ok(!describePrompt('하얀 고양이').includes('Walking style'));
+  const answer = `\`\`\`json\n${JSON.stringify({ ...EXAMPLE_PLUSH, gait: 'biped' })}\n\`\`\``;
+  const got = readTextAnswer(answer, 'quadruped');
+  assert.ok(got.ok && got.bp.gait === 'quadruped');
+  const plain = readTextAnswer(answer);
+  assert.ok(plain.ok && plain.bp.gait === 'biped');
+});

@@ -788,6 +788,8 @@ export function MakerApp() {
           // 말로 만든 펫: 이미 있는 캐릭터면 개인 용도 표시, 네 발 동물이면 네 발로 선 피규어
           ...(fromText?.named ? { personalOnly: true } : {}),
           ...(fromText && standsUp(model) ? { stand: true } : {}),
+          // 처음 글 (설정 걸음새에서 몸을 다시 만들 때 이 글로 만든다)
+          ...(fromText ? { text: fromText.text } : {}),
         }
       : look === 'relief' && depth
         ? { depth }
