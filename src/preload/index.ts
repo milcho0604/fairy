@@ -234,6 +234,8 @@ if (kind === 'settings') {
     removeSavedPet: (id: string) => ipcRenderer.invoke(SETTINGS.removeSavedPet, id),
     deleteModel: (id: string) => ipcRenderer.invoke(SETTINGS.deleteModel, id),
     clearAiHistory: () => ipcRenderer.invoke(SETTINGS.clearAiHistory),
+    coinState: () => ipcRenderer.invoke(SETTINGS.coinState),
+    resetCoins: (scope, expect) => ipcRenderer.invoke(SETTINGS.resetCoins, scope, expect),
     remakeBody: (gait) => ipcRenderer.invoke(SETTINGS.remakeBody, gait),
     cancelRemake: () => ipcRenderer.send(SETTINGS.cancelRemake),
     rememberTab: (tab) => ipcRenderer.send(SETTINGS.tab, tab),

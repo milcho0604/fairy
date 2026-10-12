@@ -31,7 +31,7 @@ import type { Blueprint, Gait } from './pet3d/blueprint.ts';
 import type { PinKind } from './pin.ts';
 import type { PetKind, PetStyle, PoseKind, Settings } from './settings.ts';
 import type { SettingsTab } from './settings-tabs.ts';
-import type { BuyResult, ShopState } from './shop.ts';
+import type { BuyResult, CoinResetResult, CoinResetScope, ShopState } from './shop.ts';
 import type { SoundKind } from './sound.ts';
 import type { PetChoice, StarterId } from './starter-pets.ts';
 import type { Repeat, Todo } from './todo-store.ts';
@@ -275,6 +275,10 @@ export const SETTINGS = {
   deleteModel: 'settings:delete-model',
   /** AI 기록 지우기: AI CLI 가 짝꿍 대화를 저장한 짝꿍 전용 폴더만 (ai-history.ts). 남은 크기를 돌려준다 */
   clearAiHistory: 'settings:clear-ai-history',
+  /** 코인 초기화 확인 화면이 보여 줄 지금 잔액과 산 물건 수 */
+  coinState: 'settings:coin-state',
+  /** 코인 초기화 (범위, 확인 화면이 본 잔액). 결과와 새 상태를 돌려준다 */
+  resetCoins: 'settings:reset-coins',
   /** 지금 사진 펫의 몸을 고른 걸음새에 맞게 다시 만든다 (같은 사진, 같은 요청사항). 그만두기는 cancelRemake */
   remakeBody: 'settings:remake-body',
   cancelRemake: 'settings:cancel-remake',
@@ -287,6 +291,12 @@ export const SETTINGS = {
   /** 메인 → 설정 창: 배터리로 도는지 바뀌었다 (부스트가 쉬는지 보여 준다) */
   power: 'settings:power',
 } as const;
+
+/** 설정 > 데이터 > 코인 초기화가 보여 주는 지금 상태: 잔액과 되돌릴 산 물건 수 */
+export interface CoinState {
+  balance: number;
+  items: number;
+}
 
 export interface SettingsSnapshot {
   settings: Settings;
@@ -404,6 +414,10 @@ export interface SettingsBridge {
   ): Promise<{ ok: boolean; storage: StoredModel[]; localReady: Record<string, boolean> }>;
   /** AI 기록 지우기. 지운 뒤 남은 크기 */
   clearAiHistory(): Promise<{ ok: boolean; bytes: number }>;
+  /** 코인 초기화 확인 화면이 보여 줄 지금 상태 */
+  coinState(): Promise<CoinState>;
+  /** 코인 초기화. expect 는 확인 화면이 본 잔액 (그새 바뀌었으면 하지 않고 changed) */
+  resetCoins(scope: CoinResetScope, expect: number): Promise<{ result: CoinResetResult; state: CoinState }>;
   /** 몸 다시 만들기. 끝나면(성공이면 설정이 바뀐 뒤) 결과. AI 가 없으면 noAi */
   remakeBody(gait: Gait): Promise<{ ok: true } | { ok: false; error: string; noAi?: boolean }>;
   cancelRemake(): void;

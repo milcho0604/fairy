@@ -3,10 +3,11 @@ import { formatBytes } from '../../../../shared/bytes.ts';
 import { t } from '../../../../shared/i18n/index.ts';
 import type { SettingsSnapshot } from '../../../../shared/ipc.ts';
 import { isPersonalPet } from '../../../../shared/settings.ts';
+import { CoinReset } from '../CoinReset.tsx';
 import { ExportBox, ExportedRow } from '../ExportBox.tsx';
 import { bridge, Section, type TabProps } from '../ui.tsx';
 
-/** 데이터 탭: 백업과 옮기기, 저장 공간 */
+/** 데이터 탭: 백업과 옮기기, 코인 초기화, 저장 공간 */
 export function DataTab({ snap, setSnap, flash }: TabProps) {
   const [exported, setExported] = useState<string>();
   return (
@@ -74,6 +75,9 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
         <ExportedRow path={exported} />
       </Section>
       <ExportBox flash={flash} />
+      <Section title={t('settings.coinReset')}>
+        <CoinReset flash={flash} />
+      </Section>
       <Section title={t('settings.storage')}>
         <Storage
           list={snap.storage}

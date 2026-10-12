@@ -10,9 +10,11 @@ import {
   HOUSE_STYLE_COSTS,
   houseName,
   ItemStore,
+  nothingToReset,
+  ownedCount,
   parseHouseStyle,
 } from './shop.ts';
-import { TodoStore } from './todo-store.ts';
+import { COIN, TodoStore } from './todo-store.ts';
 
 const T0 = Date.UTC(2026, 9, 6, 9);
 
@@ -135,4 +137,115 @@ test('먹이마다 값과 배부름이 다르다', () => {
   assert.equal(todos.balance(), 70);
   assert.equal(todos.spend(80, 'x', T0), false);
   assert.equal(todos.balance(), 70);
+});
+
+// ---- 코인 초기화 (설정 > 데이터) ----
+
+test('코인 초기화(코인만): 잔액 0, 산 물건은 그대로, 장부는 지우지 않고 reset 한 줄', () => {
+  const { db, todos, shop } = fresh(HOUSE_COSTS[0] + HOUSE_STYLE_COSTS.mushroom + 30 + 77);
+  shop.buyHouse(T0);
+  shop.buyHouseStyle('mushroom', T0);
+  shop.buyToy('ball', T0);
+  todos.rewardFocus(T0, 25);
+  const rows = (db.prepare('select count(*) as n from coin_log').get() as { n: number }).n;
+  const r = shop.resetCoins('coins', T0 + 1);
+  assert.deepEqual(r, { ok: true, coins: 77 + 5, house: false, items: 0 });
+  assert.equal(todos.balance(), 0);
+  const st = shop.state();
+  assert.equal(st.houseLevel, 1);
+  assert.equal(st.houseStyle, 'mushroom');
+  assert.equal(st.toys.ball, true);
+  // 장부: 한 줄만 늘고 합은 0. 기록이 세는 집중 행은 남는다
+  assert.equal((db.prepare('select count(*) as n from coin_log').get() as { n: number }).n, rows + 1);
+  assert.equal(
+    (db.prepare(`select amount from coin_log where reason = 'reset'`).get() as { amount: number }).amount,
+    -82,
+  );
+  assert.equal(
+    (db.prepare('select coalesce(sum(amount), 0) as s from coin_log').get() as { s: number }).s,
+    0,
+  );
+  assert.equal(todos.coinCount('focus', '2026-10-06'), 1);
+});
+
+test('코인 초기화(산 물건도): 집, 집 모양, 장난감은 처음으로, 직접 만든 먹이는 남는다', () => {
+  const { todos, shop } = fresh(HOUSE_COSTS[0] + HOUSE_STYLE_COSTS.castle + 30 + 60 + CUSTOM_FOOD_COST + 3);
+  shop.buyHouse(T0);
+  shop.buyHouseStyle('castle', T0);
+  shop.buyToy('ball', T0);
+  shop.buyToy('yarn', T0);
+  assert.equal(shop.makeCustomFood('떡', 'food-a.png', T0).ok, true);
+  const r = shop.resetCoins('all', T0 + 1);
+  assert.deepEqual(r, { ok: true, coins: 3, house: true, items: 4 });
+  const st = shop.state();
+  assert.equal(todos.balance(), 0);
+  assert.equal(st.houseLevel, 0);
+  assert.equal(st.houseStyle, 'wood');
+  assert.deepEqual(st.houseStyles, { wood: true, mushroom: false, igloo: false, castle: false });
+  assert.deepEqual(st.toys, { ball: false, yarn: false, cushion: false });
+  assert.equal(st.customFoods.length, 1);
+  // 다시 사면 처음 값 그대로
+  todos.reward(HOUSE_COSTS[0], 'test', T0);
+  assert.equal(shop.buyHouse(T0, 0).ok, true);
+  assert.equal(shop.state().houseLevel, 1);
+});
+
+test('코인 초기화: 0 코인이면 장부에 줄을 더하지 않고, 확인 화면이 본 잔액과 다르면 하지 않는다', () => {
+  const { db, todos, shop } = fresh(0);
+  const rows = (db.prepare('select count(*) as n from coin_log').get() as { n: number }).n;
+  assert.deepEqual(shop.resetCoins('coins', T0, 0), { ok: true, coins: 0, house: false, items: 0 });
+  assert.equal((db.prepare('select count(*) as n from coin_log').get() as { n: number }).n, rows);
+  todos.reward(10, 'test', T0);
+  // 확인 상자를 연 뒤 다른 창(패널)에서 코인이 바뀌었다
+  assert.deepEqual(shop.resetCoins('coins', T0, 0), { ok: false, changed: true });
+  assert.equal(todos.balance(), 10);
+  assert.equal(shop.resetCoins('coins', T0, 10).ok, true);
+  assert.equal(todos.balance(), 0);
+});
+
+test('코인 초기화 뒤: 하루 상한은 다시 차지 않고, 되돌리기가 없어진 코인을 또 회수하지 않는다', () => {
+  const { todos, shop } = fresh(0);
+  const a = todos.add({ title: 'a' }, T0);
+  for (let i = 0; i < COIN.dailyTodoLimit; i++) todos.complete(todos.add({ title: `t${i}` }, T0).id, T0);
+  const b = todos.add({ title: 'b' }, T0);
+  shop.resetCoins('coins', T0);
+  // 오늘 이미 20개 받았다: 초기화 뒤에도 21번째는 0
+  assert.equal(todos.complete(b.id, T0), 0);
+  // 초기화 전에 끝낸 할 일을 되돌려도 잔액이 음수가 되거나 새로 번 코인을 가져가지 않는다
+  todos.reward(7, 'test', T0);
+  const done = todos.list(T0).doneToday.find((x) => x.title === 't0');
+  assert.ok(done);
+  assert.equal(todos.undo(done.id, T0), 0);
+  assert.equal(todos.balance(), 7);
+  // 다시 끝내도 예전에 받은 몫은 다시 주지 않는다 (되돌리기, 끝내기로 코인 찍어 내기 막기)
+  assert.equal(todos.complete(done.id, T0), 0);
+  assert.equal(todos.balance(), 7);
+  void a;
+});
+
+test('코인 초기화: 묶음 안에서 실패하면 코인도 물건도 그대로', () => {
+  const { todos, shop } = fresh(HOUSE_COSTS[0] + 9);
+  shop.buyHouse(T0);
+  assert.throws(() =>
+    todos.resetCoins(T0, () => {
+      throw new Error('디스크');
+    }),
+  );
+  assert.equal(todos.balance(), 9);
+  assert.equal(shop.state().houseLevel, 1);
+});
+
+test('되돌릴 것이 없는지와 산 물건 수', () => {
+  assert.equal(nothingToReset({ balance: 0, items: 3 }, 'coins'), true);
+  assert.equal(nothingToReset({ balance: 0, items: 3 }, 'all'), false);
+  assert.equal(nothingToReset({ balance: 1, items: 0 }, 'coins'), false);
+  assert.equal(nothingToReset({ balance: 0, items: 0 }, 'all'), true);
+  assert.equal(
+    ownedCount({
+      houseLevel: 2,
+      houseStyles: { wood: true, mushroom: true, igloo: false, castle: true },
+      toys: { ball: true, yarn: false, cushion: false },
+    }),
+    4,
+  );
 });

@@ -108,6 +108,29 @@ export interface ShopState {
 
 export type BuyResult = { ok: true } | { ok: false; error: string };
 
+/** 코인 초기화 범위: 코인만(기본), 코인과 산 물건 */
+export type CoinResetScope = 'coins' | 'all';
+export const isCoinResetScope = (v: unknown): v is CoinResetScope => v === 'coins' || v === 'all';
+
+/**
+ * 코인 초기화 결과. coins: 뺀 코인 수, house: 집이 있다가 없어졌는지(집 창을 맞춘다), items: 되돌린 물건 수.
+ * changed: 확인 화면이 본 잔액과 지금이 달라 하지 않았다
+ */
+export type CoinResetResult =
+  | { ok: true; coins: number; house: boolean; items: number }
+  | { ok: false; changed: true };
+
+/** 되돌릴 것이 없는지: 코인이 0 이고, 산 물건까지 고르면 물건도 없다 (설정의 초기화 단추를 막는다) */
+export const nothingToReset = (s: { balance: number; items: number }, scope: CoinResetScope): boolean =>
+  s.balance === 0 && (scope === 'coins' || s.items === 0);
+
+/** 초기화로 되돌릴 산 물건 수: 집(단계가 있으면 하나), 산 집 모양(나무집 빼고), 장난감 */
+export function ownedCount(s: Pick<ShopState, 'houseLevel' | 'houseStyles' | 'toys'>): number {
+  const styles = HOUSE_STYLES.filter((x) => x !== 'wood' && s.houseStyles[x]).length;
+  const toys = Object.values(s.toys).filter(Boolean).length;
+  return (s.houseLevel > 0 ? 1 : 0) + styles + toys;
+}
+
 interface ItemRow {
   key: string;
   kind: string;
@@ -228,6 +251,26 @@ export class ItemStore {
     const key = `custom-${now.toString(36)}`;
     this.#put('food', key, clean, image, 1, now);
     return { ok: true, key };
+  }
+
+  /**
+   * 코인 초기화. 'coins' 는 코인만 0 으로, 'all' 은 산 물건(집 단계, 집 모양, 장난감)도 처음으로 되돌린다.
+   * 직접 만든 먹이는 그림과 이름을 사용자가 지은 것이라 남긴다 (지우기는 상점에서 하나씩).
+   * expect: 확인 화면이 보여 준 잔액. 그새 바뀌었으면(다른 창에서 사거나 받음) 하지 않는다 (두 창 대비, buyHouse 와 같다)
+   */
+  resetCoins(scope: CoinResetScope, now: number, expect?: number): CoinResetResult {
+    const before = this.state();
+    if (expect !== undefined && expect !== before.balance) return { ok: false, changed: true };
+    const items = scope === 'all';
+    const coins = this.#todos.resetCoins(now, () => {
+      if (items) this.#db.prepare(`delete from item where kind in ('house', 'house-style', 'toy')`).run();
+    });
+    return {
+      ok: true,
+      coins,
+      house: items && before.houseLevel > 0,
+      items: items ? ownedCount(before) : 0,
+    };
   }
 
   /** 커스텀 먹이 지우기. 지운 그림 파일 이름을 돌려준다 (부르는 쪽이 파일을 지운다). 코인은 돌려주지 않는다 */
