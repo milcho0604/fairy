@@ -13,6 +13,7 @@ import {
   idleCandidates,
   idleVars,
   MOUSE_BUSY_PX,
+  SITUATION_CAP,
   seasonOf,
   type TalkEnv,
   talkBlock,
@@ -495,4 +496,41 @@ test('셋 넘게 끝낸 칭찬은 실제로 끝낸 수를 말한다 (3개일 때
   setLang('en');
   assert.equal(t('idle.praise.3', { name: 'Bean', ...three }), '3 done today already! Bean is so proud.');
   setLang('ko');
+});
+
+test('남은 할 일, 오래 일함, 배고픔 대사는 하루 횟수와 간격을 지킨다 (이슈 #65: 수다쟁이에서 하루 5~6번 되풀이)', () => {
+  const talk = new IdleTalk();
+  // 화요일 9시부터 21시까지 5분마다: 남은 할 일이 있고, 쉬지 않고 일했고, 배고프다
+  const f = (n: number): IdleFacts => ({
+    now: at(6, 9, n * 5),
+    doneToday: 0,
+    openToday: 3,
+    workedMin: 120,
+    hungry: true,
+  });
+  let i = 0;
+  const rand = () => ((i++ * 0.37) % 1) as number;
+  const said: { key: string; at: number }[] = [];
+  for (let n = 0; n < 144; n++) {
+    const key = talk.pick(f(n), rand);
+    if (key) said.push({ key, at: f(n).now });
+  }
+  for (const [label, re] of [
+    ['todo.left', /^idle\.todo\.left\./],
+    ['work', /^idle\.work\./],
+    ['hungry', /^idle\.hungry\./],
+  ] as const) {
+    const times = said.filter((s) => re.test(s.key)).map((s) => s.at);
+    assert.ok(times.length >= 1, `${label} 은 한 번은 한다`);
+    assert.ok(times.length <= SITUATION_CAP.perDay, `${label}: 하루 ${times.length}번`);
+    for (let k = 1; k < times.length; k++)
+      assert.ok((times[k] ?? 0) - (times[k - 1] ?? 0) >= SITUATION_CAP.gapMs, `${label}: 간격이 짧다`);
+  }
+  // 다음 날에는 다시 한다
+  const nextDay: string[] = [];
+  for (let n = 0; n < 24; n++) nextDay.push(talk.pick({ ...f(n), now: at(7, 9, n * 5) }, rand) ?? '');
+  assert.ok(
+    nextDay.some((k) => /^idle\.(todo\.left|work|hungry)\./.test(k)),
+    nextDay.join(','),
+  );
 });
