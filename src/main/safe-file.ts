@@ -5,11 +5,14 @@ import { randomBytes } from 'node:crypto';
 import {
   chmodSync,
   closeSync,
+  constants,
   existsSync,
+  fstatSync,
   fsyncSync,
   lstatSync,
   openSync,
   readFileSync,
+  readSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -51,6 +54,39 @@ export function plainEntry(src: string): boolean {
   try {
     const st = lstatSync(src);
     return st.isFile() || st.isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 사용자가 고른 파일을 상한까지만 읽는다 (페어리 파일 가져오기, 두 번 눌러 열기). 일반 파일이 아니면(장치, 파이프, 폴더)
+ * undefined, 상한보다 크면 'tooBig'. 열어 둔 채로 재고 읽어 재고 난 사이에 커져도 상한 넘게 읽지 않는다.
+ * 예전에는 크기만 보았다: /dev/zero 를 가리키는 링크(이름 cute.fairy)는 크기가 0 이라 통과하고 끝없이 읽어 앱이 멈췄다
+ */
+export function readPlainCapped(path: string, maxBytes: number): Buffer | 'tooBig' | undefined {
+  let fd: number | undefined;
+  try {
+    // 파이프(FIFO)는 쓰는 쪽이 올 때까지 열기에서 멈춘다: 막지 않고 연다 (일반 파일에는 상관없다. 윈도우는 0)
+    fd = openSync(path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
+    const st = fstatSync(fd);
+    if (!st.isFile()) return undefined;
+    if (st.size > maxBytes) return 'tooBig';
+    const buf = Buffer.alloc(Math.min(st.size, maxBytes) + 1);
+    let got = 0;
+    for (let n = 1; n > 0 && got < buf.length; got += n) n = readSync(fd, buf, got, buf.length - got, null);
+    return got > maxBytes ? 'tooBig' : buf.subarray(0, got);
+  } catch {
+    return undefined;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+/** 링크가 아닌 일반 파일인지 (lstat). 없거나 링크, 폴더면 false */
+export function plainFile(path: string): boolean {
+  try {
+    return lstatSync(path).isFile();
   } catch {
     return false;
   }

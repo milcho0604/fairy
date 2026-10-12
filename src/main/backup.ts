@@ -5,7 +5,6 @@ import {
   readFileSync,
   renameSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
@@ -31,7 +30,7 @@ import { PET_FILE_EXT, PET_FILE_EXTS_READ } from '../shared/url-scheme.ts';
 import { importableDbVersion } from './db-open.ts';
 import { petImages } from './maker.ts';
 import { library } from './pet-library.ts';
-import { freePath, plainEntry, writeFileAtomic } from './safe-file.ts';
+import { freePath, plainEntry, plainFile, readPlainCapped, writeFileAtomic } from './safe-file.ts';
 import { settings } from './settings.ts';
 
 /**
@@ -95,7 +94,9 @@ export function createBackup(o: {
       : dialog.showOpenDialog({ title: t('main.backup.importTitle'), properties: ['openDirectory'] }));
     const from = pick.filePaths[0];
     if (pick.canceled || !from) return '';
-    if (!existsSync(join(from, 'jjakkung-backup.json')) || !existsSync(join(from, 'jjakkung.db')))
+    // 저장 파일과 설정은 링크가 아닌 일반 파일만 (버그잡이 4). cpSync 는 링크를 링크 그대로 복사해, 링크로 된
+    // jjakkung.db 를 가져오면 앱 저장 파일이 데이터 폴더 밖(백업 폴더, USB)을 가리킨 채 거기에 계속 썼다
+    if (!existsSync(join(from, 'jjakkung-backup.json')) || !plainFile(join(from, 'jjakkung.db')))
       return t('main.backup.notBackup');
     // 새 판 짝꿍이 만든 백업은 이 판이 못 연다. 지금 데이터를 덮어쓰기 전에 거른다
     const version = importableDbVersion(join(from, 'jjakkung.db'));
@@ -135,7 +136,7 @@ export function createBackup(o: {
     // 사용자 AI(ai-custom.json)는 옮기지 않는다: 실행할 명령이라 그 컴퓨터 것이 아니다. 채팅 설정은 고른 AI 만,
     // 사용자 AI 를 골랐으면 기본으로 (버그잡이 7차)
     for (const f of IMPORT_FILES) {
-      if (!existsSync(join(from, f))) continue;
+      if (!plainFile(join(from, f))) continue;
       if (f === 'chat-settings.json')
         writeFileAtomic(
           join(dir(), staged(f)),
@@ -377,14 +378,11 @@ export async function importPet(
   if (r.canceled || !file) return { ok: false, message: '' };
   // 읽기 전에 크기를 본다: 큰 파일을 통째로 메모리에 올리지 않게 (버그잡이 7차)
   // 고른 뒤 지워졌거나 읽을 권한이 없으면 읽기가 던진다. 던진 채 두면 설정 창에 아무 말도 안 뜬다
-  let text: string;
-  try {
-    if (statSync(file).size > SHARE_MAX_BYTES) return { ok: false, message: t('pet.share.tooBig') };
-    text = readFileSync(file, 'utf8');
-  } catch {
-    return { ok: false, message: t('main.pet.unreadable') };
-  }
-  const pet = decodePet(text);
+  // 일반 파일만, 상한까지만 읽는다 (장치 파일이나 파이프를 가리키는 .fairy 에 앱이 멈추지 않게. 버그잡이 4)
+  const bytes = readPlainCapped(file, SHARE_MAX_BYTES);
+  if (bytes === 'tooBig') return { ok: false, message: t('pet.share.tooBig') };
+  if (!bytes) return { ok: false, message: t('main.pet.unreadable') };
+  const pet = decodePet(bytes.toString('utf8'));
   if ('error' in pet) return { ok: false, message: pet.error };
   return adoptPet(pet, asFriend, log);
 }
