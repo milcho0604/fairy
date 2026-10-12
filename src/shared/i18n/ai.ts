@@ -15,12 +15,40 @@ export const ko = {
   // 설치, 로그인 안내
   'ai.install.claude': 'Claude Code를 설치하고 터미널에서 claude로 한 번 로그인해 줘.',
   'ai.login.claude': '터미널에서 claude로 로그인해 줘.',
-  'ai.install.codex': 'Codex CLI를 설치하고 터미널에서 codex login으로 로그인해 줘.',
-  'ai.login.codex': '터미널에서 codex login으로 로그인해 줘.',
+  'ai.install.codex': 'Codex CLI를 설치하고 터미널에서 codex를 실행해 Sign in with ChatGPT로 로그인해 줘.',
+  'ai.login.codex': '터미널에서 codex를 실행해 Sign in with ChatGPT로 로그인해 줘.',
   'ai.install.cursor': 'Cursor Agent CLI를 설치하고 터미널에서 cursor-agent login으로 로그인해 줘.',
   'ai.login.cursor': '터미널에서 cursor-agent login으로 로그인해 줘.',
   'ai.install.gemini': 'Gemini CLI를 설치하고 터미널에서 gemini를 한 번 실행해 로그인해 줘.',
   'ai.install.custom': (v: { bin: string }) => `터미널에서 ${v.bin} 명령이 실행되는지 확인해 줘.`,
+  // 설치 방법 펼쳐 보기 (#29, 명령과 주소는 shared/ai/install-guide.ts)
+  'ai.guide.show': '설치 방법 보기',
+  'ai.guide.hide': '설치 방법 접기',
+  'ai.guide.title': (v: { label: string }) => `${v.label} 설치하고 로그인하기`,
+  'ai.guide.step1.mac':
+    '1. 터미널 앱을 열어 줘 (Spotlight에서 "터미널" 검색). 아래 명령 중 하나를 붙여 넣고 Enter를 눌러.',
+  'ai.guide.step1.win': '1. 시작 메뉴에서 PowerShell을 열어 줘. 아래 명령 중 하나를 붙여 넣고 Enter를 눌러.',
+  'ai.guide.step1.linux': '1. 터미널을 열어 줘. 아래 명령 중 하나를 붙여 넣고 Enter를 눌러.',
+  'ai.guide.node': (v: { version: string }) => `npm으로 깔려면 Node.js ${v.version} 이상이 먼저 있어야 해.`,
+  'ai.guide.nodeLink': 'Node.js 받기',
+  'ai.guide.step2': (v: { cmd: string }) =>
+    `2. 다 깔리면 터미널을 새로 열고 ${withParticle(v.cmd, '을')} 실행해. 브라우저가 열리면 거기서 로그인하면 끝이야.`,
+  'ai.guide.step2Pick': (v: { cmd: string; pick: string }) =>
+    `2. 다 깔리면 터미널을 새로 열고 ${withParticle(v.cmd, '을')} 실행해. ${v.pick} 항목을 고르고 브라우저에서 로그인하면 끝이야.`,
+  'ai.guide.step3': '3. 여기로 돌아와 다시 확인을 눌러 줘.',
+  'ai.guide.stillTitle': '깔았는데도 못 찾으면',
+  'ai.guide.still.check': (v: { cmd: string }) =>
+    `새 터미널에서 ${v.cmd} 명령이 되는지 먼저 봐 줘. 안 되면 설치가 덜 끝난 거라 위 명령을 다시 실행해 줘.`,
+  'ai.guide.still.path': (v: { dir: string }) =>
+    `터미널에서도 command not found가 나오면 설치 폴더(${v.dir})가 PATH에 없는 거야. 설치 끝에 나온 PATH 안내나 공식 안내를 따라 넣어 줘.`,
+  'ai.guide.still.mac':
+    '터미널에서는 되는데 여기서만 못 찾으면: Dock이나 Finder로 연 앱은 터미널의 PATH를 물려받지 못해서, 페어리는 셸 설정 파일(~/.zshrc, ~/.zprofile)에서 PATH를 따로 읽어. PATH를 거기에 넣었는지 보고 다시 확인을 눌러 줘. 그래도 안 되면 페어리를 껐다 켜 줘.',
+  'ai.guide.still.linux':
+    '터미널에서는 되는데 여기서만 못 찾으면: 페어리는 셸 설정 파일(~/.bashrc, ~/.profile 등)에서 PATH를 읽어. PATH를 거기에 넣었는지 보고 다시 확인을 눌러 줘. 그래도 안 되면 페어리를 껐다 켜 줘.',
+  'ai.guide.still.win':
+    '터미널에서는 되는데 여기서만 못 찾으면 페어리를 완전히 껐다 켜 줘 (트레이 아이콘에서 끝내기). 윈도우 앱은 켤 때의 PATH를 써서, 설치하면서 바뀐 PATH는 다시 켜야 보여.',
+  'ai.guide.docs': '공식 설치 안내 열기',
+  'ai.guide.copyLabel': (v: { cmd: string }) => `명령 복사: ${v.cmd}`,
   'ai.custom.noName': '이름을 적어 줘.',
   'ai.custom.badBin': '명령은 실행 파일 이름 하나만 적어 줘. 나머지는 인자 칸에.',
   // 오류
@@ -84,12 +112,40 @@ export const en: Translation<typeof ko> = {
   'ai.persona.calm.hint': 'Casual and unhurried, explains the why.',
   'ai.install.claude': 'Install Claude Code and log in once by running claude in a terminal.',
   'ai.login.claude': 'Log in by running claude in a terminal.',
-  'ai.install.codex': 'Install the Codex CLI and log in with codex login in a terminal.',
-  'ai.login.codex': 'Log in with codex login in a terminal.',
+  'ai.install.codex': 'Install the Codex CLI, then run codex in a terminal and pick Sign in with ChatGPT.',
+  'ai.login.codex': 'Run codex in a terminal and pick Sign in with ChatGPT.',
   'ai.install.cursor': 'Install the Cursor Agent CLI and log in with cursor-agent login in a terminal.',
   'ai.login.cursor': 'Log in with cursor-agent login in a terminal.',
   'ai.install.gemini': 'Install the Gemini CLI and run gemini once in a terminal to log in.',
   'ai.install.custom': (v) => `Check that the ${v.bin} command runs in a terminal.`,
+  'ai.guide.show': 'How to install',
+  'ai.guide.hide': 'Hide install steps',
+  'ai.guide.title': (v) => `Install and log in to ${v.label}`,
+  'ai.guide.step1.mac':
+    '1. Open the Terminal app (search "Terminal" in Spotlight). Paste one of the commands below and press Enter.',
+  'ai.guide.step1.win':
+    '1. Open PowerShell from the Start menu. Paste one of the commands below and press Enter.',
+  'ai.guide.step1.linux': '1. Open a terminal. Paste one of the commands below and press Enter.',
+  'ai.guide.node': (v) => `Installing with npm needs Node.js ${v.version} or later first.`,
+  'ai.guide.nodeLink': 'Get Node.js',
+  'ai.guide.step2': (v) =>
+    `2. When it's done, open a new terminal and run ${v.cmd}. Log in when your browser opens and you're set.`,
+  'ai.guide.step2Pick': (v) =>
+    `2. When it's done, open a new terminal and run ${v.cmd}. Pick ${v.pick} and log in from your browser and you're set.`,
+  'ai.guide.step3': '3. Come back here and press Check again.',
+  'ai.guide.stillTitle': 'Installed but still not found?',
+  'ai.guide.still.check': (v) =>
+    `First check that ${v.cmd} works in a new terminal. If it doesn't, the install didn't finish, so run the command above again.`,
+  'ai.guide.still.path': (v) =>
+    `If the terminal also says command not found, the install folder (${v.dir}) isn't on your PATH. Follow the PATH note the installer printed, or the official guide.`,
+  'ai.guide.still.mac':
+    "If it works in a terminal but not here: apps opened from the Dock or Finder don't inherit your terminal's PATH, so Fairy reads PATH from your shell config (~/.zshrc, ~/.zprofile). Make sure PATH is set there, then press Check again. Still nothing? Quit Fairy and open it again.",
+  'ai.guide.still.linux':
+    'If it works in a terminal but not here: Fairy reads PATH from your shell config (~/.bashrc, ~/.profile and so on). Make sure PATH is set there, then press Check again. Still nothing? Quit Fairy and open it again.',
+  'ai.guide.still.win':
+    'If it works in a terminal but not here, quit Fairy completely (Quit from the tray icon) and open it again. Windows apps keep the PATH they started with, so a PATH the installer changed only shows up after a restart.',
+  'ai.guide.docs': 'Open the official install guide',
+  'ai.guide.copyLabel': (v) => `Copy command: ${v.cmd}`,
   'ai.custom.noName': 'Give it a name.',
   'ai.custom.badBin': 'Put just the program name in Command. The rest goes in Arguments.',
   'ai.error.rateLimitAt': (v) => `${v.label} hit its usage limit. Ask again after ${v.at}.`,
