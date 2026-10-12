@@ -1035,3 +1035,82 @@ header .picker {
 .starters button:focus-visible {
   border-color: var(--accent);
 }
+
+/* 설치 방법 (#29). AI 관리와 같은 시트에 단계, 명령, 못 찾을 때 */
+.install-guide {
+  font-size: 13px;
+}
+
+.guide-steps {
+  margin: 4px 0 12px;
+  padding-left: 0;
+  list-style: none;
+}
+
+.guide-steps > li {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.install-guide p {
+  margin: 0 0 6px;
+}
+
+.install-guide .commands {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.install-guide .via {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.install-guide .command-row code {
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--code);
+  overflow-wrap: anywhere;
+  user-select: text;
+  font:
+    12px ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+}
+
+.install-guide .note {
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.guide-still h3 {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.guide-still ul {
+  margin: 0 0 12px;
+  padding-left: 18px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.guide-still li + li {
+  margin-top: 4px;
+}
+
+.guide-status {
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  background: var(--code);
+}
