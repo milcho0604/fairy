@@ -4,6 +4,39 @@
     {
       "date": "2026-10-12",
       "ko": {
+        "title": "네 발로 걷는 밀크와 초코",
+        "text": "밀크와 초코가 네 발로 서서 걷고 앉고, 신나면 고양이답게, 강아지답게 굴어요."
+      },
+      "en": {
+        "title": "Milk and Choco on four legs",
+        "text": "Milk and Choco now stand, walk and sit on four legs, and play like a real cat and dog."
+      }
+    },
+    {
+      "date": "2026-10-12",
+      "ko": {
+        "title": "맨 위에 고정",
+        "text": "자주 보는 메모, 할 일, 일정을 핀으로 목록 맨 위에 둬요."
+      },
+      "en": {
+        "title": "Pin to top",
+        "text": "Pin the notes, to-dos and events you check often to the top of the list."
+      }
+    },
+    {
+      "date": "2026-10-12",
+      "ko": {
+        "title": "잘 때 눈 감기",
+        "text": "밀크와 초코가 잘 때, 졸 때, 깜빡일 때 눈을 감아요."
+      },
+      "en": {
+        "title": "Eyes close in sleep",
+        "text": "Milk and Choco close their eyes when they sleep, doze or blink."
+      }
+    },
+    {
+      "date": "2026-10-12",
+      "ko": {
         "title": "달력으로 보는 일정",
         "text": "월 보기와 주 보기에 일정과 마감이 같이 보이고, 날짜를 누르면 그날에 바로 넣어요."
       },
