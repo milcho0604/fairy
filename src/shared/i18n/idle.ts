@@ -2,8 +2,9 @@ import { withParticle } from '../josa.ts';
 import type { Translation } from './types.ts';
 
 // 혼잣말과 칭찬 (수다쟁이). 펫 이름이 들어간다. 반말, 짧게.
-// 값: name 펫 이름, open 오늘 남은 할 일 수, eventMin 다음 일정까지 분, workedH 쉬지 않고 일한 시간 (shared/idle-talk.ts idleVars)
-type N = { name: string; open?: number; eventMin?: number; workedH?: number };
+// 값: name 펫 이름, open 오늘 남은 할 일 수, eventMin 다음 일정까지 분, workedH 쉬지 않고 일한 시간, done 오늘 끝낸 수
+// (shared/idle-talk.ts idleVars)
+type N = { name: string; open?: number; eventMin?: number; workedH?: number; done?: number };
 
 export const ko = {
   'idle.any.1': (v: N) => `${withParticle(v.name, '은')} 여기서 조용히 응원 중.`,
@@ -24,7 +25,7 @@ export const ko = {
   'idle.late.1': () => '벌써 이렇게 늦었어. 오늘은 여기까지 할까?',
   'idle.late.2': (v: N) => `${withParticle(v.name, '은')} 눈이 감겨. 너도 얼른 자.`,
   'idle.praise.1': (v: N) => `벌써 하나 끝냈네. ${withParticle(v.name, '이')} 다 봤어.`,
-  'idle.praise.3': (v: N) => `오늘 세 개 넘게 끝냈어! ${withParticle(v.name, '은')} 뿌듯해.`,
+  'idle.praise.3': (v: N) => `오늘 벌써 ${v.done ?? 3}개나 끝냈어! ${withParticle(v.name, '은')} 뿌듯해.`,
   'idle.praise.5': () => '오늘 완전 날아다니네. 대단해!',
   'idle.any.6': (v: N) => `${withParticle(v.name, '은')} 오늘도 네 편이야.`,
   'idle.any.7': () => '잠깐 창밖 한 번 보고 와. 눈이 쉬어.',
@@ -112,7 +113,7 @@ export const en: Translation<typeof ko> = {
   'idle.late.1': () => "It's getting late. Call it a day?",
   'idle.late.2': (v: N) => `${v.name} can barely keep their eyes open. Get some sleep too.`,
   'idle.praise.1': (v: N) => `One down already. ${v.name} saw that.`,
-  'idle.praise.3': (v: N) => `Three or more done today! ${v.name} is so proud.`,
+  'idle.praise.3': (v: N) => `${v.done ?? 3} done today already! ${v.name} is so proud.`,
   'idle.praise.5': () => "You're on fire today. Amazing!",
   'idle.any.6': (v: N) => `${v.name} is on your side, today and every day.`,
   'idle.any.7': () => 'Look out the window for a sec. Your eyes will thank you.',

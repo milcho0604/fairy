@@ -14,6 +14,7 @@ import {
   type PoutState,
   pickLine,
   pout,
+  poutLines,
   poutStage,
   remember,
   soothe,
@@ -37,8 +38,7 @@ const STARTLE_UNTIL_MS = 10_000;
 const STARTLE_RETRY_MS = 300;
 
 const LOOSE = t as unknown as (key: string, vars?: Record<string, string | number>) => string;
-const lines = (prefix: string, n: number, vars?: Record<string, string | number>) =>
-  Array.from({ length: n }, (_, i) => LOOSE(`${prefix}.${i + 1}`, vars));
+const lines = poutLines;
 
 export interface PoutOptions {
   say: (o: SayOptions) => Promise<string | undefined>;

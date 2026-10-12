@@ -27,6 +27,11 @@ export class HideReasons {
     return this.#reasons.has(reason);
   }
 
+  /** 지금 켜진 까닭들. 숨은 동안 새로 온 창(친구 펫)에 같은 까닭을 걸어 같이 숨긴다 */
+  list(): HideReason[] {
+    return [...this.#reasons];
+  }
+
   get hidden(): boolean {
     return this.#reasons.size > 0;
   }

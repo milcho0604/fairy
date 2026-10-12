@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { dicts } from './i18n/index.ts';
+import { dicts, setLang } from './i18n/index.ts';
+import { setVoiceSource } from './persona-voice.ts';
 import {
   canPout,
   forgive,
@@ -13,6 +14,7 @@ import {
   type PoutState,
   pickLine,
   pout,
+  poutLines,
   poutStage,
   remember,
   soothe,
@@ -296,5 +298,50 @@ test('토라짐 말: 까닭마다 네 줄, 달래기와 화해는 여섯 줄, �
       assert.equal(new Set(lines).size, n, `${prefix} 줄이 겹친다`);
     }
     for (const r of POUT_REASONS) assert.equal(typeof say(`pout.why.${r}`), 'string', r);
+  }
+});
+
+test('토라진 말도 고른 성격 말투로 한다 (존댓말 비서면 존댓말, 고양이체면 냥)', () => {
+  setLang('ko');
+  const groups: [string, number][] = [
+    ['pout.lonely', 4],
+    ['pout.unheard', 4],
+    ['pout.hungry', 4],
+    ['pout.todoLate', 4],
+    ['pout.restIgnored', 4],
+    ['pout.hiddenLong', 4],
+    ['pout.friend', 4],
+    ['pout.startled', 4],
+    ['pout.stage3', 4],
+    ['pout.softer', 6],
+    ['pout.madeUp', 6],
+  ];
+  const ko = dicts.ko as Record<string, unknown>;
+  const en = dicts.en as Record<string, unknown>;
+  // 존댓말 비서 말이 모든 토라진 말에 있고, 영어 사전에도 같은 열쇠가 있다
+  for (const [prefix, n] of groups)
+    for (let i = 1; i <= n; i++) {
+      assert.ok(`voice.polite.${prefix}.${i}` in ko, `voice.polite.${prefix}.${i}`);
+      assert.equal(typeof en[`voice.polite.${prefix}.${i}`], typeof ko[`${prefix}.${i}`]);
+    }
+  try {
+    setVoiceSource(() => 'polite');
+    const vars = { n: 2, friend: '보리' };
+    for (const [prefix, n] of groups)
+      for (const line of poutLines(prefix, n, vars)) assert.match(line, /요|죠|^흥\. 흥\. 흥\.$/, line);
+    assert.equal(poutLines('pout.friend', 4, vars)[0], '보리가 저보다 좋으세요? 흥');
+    setVoiceSource(() => 'cat');
+    assert.ok(
+      poutLines('pout.madeUp', 6).some((l) => l.includes('냥')),
+      poutLines('pout.madeUp', 6).join(' / '),
+    );
+    setVoiceSource(() => 'friend');
+    assert.equal(poutLines('pout.madeUp', 6)[0], '흥... 이번만 봐준다!');
+    setLang('en');
+    setVoiceSource(() => 'polite');
+    assert.equal(poutLines('pout.madeUp', 6)[0], 'Hmph... just this once!');
+  } finally {
+    setVoiceSource(() => 'friend');
+    setLang('ko');
   }
 });

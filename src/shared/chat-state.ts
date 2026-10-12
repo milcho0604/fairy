@@ -3,6 +3,7 @@
 import type { Exchange } from './ai/text.ts';
 import type { AiError, AiEvent, AiProvider } from './ai/types.ts';
 import type { AiUsage } from './ai/usage.ts';
+import { cutText } from './cut-text.ts';
 import { t } from './i18n/index.ts';
 
 export interface ChatImage {
@@ -20,6 +21,8 @@ export interface ChatMessage {
   error?: AiError;
   /** AI 없이 규칙으로 답했다 ("오늘 뭐부터", shared/what-first.ts). 꼬리표가 AI 이름 대신 "AI 없이" */
   byRules?: true;
+  /** AI 없이 하는 말놀이 답 (끝말잇기, shared/word-chain.ts). 꼬리표가 AI 이름 대신 놀이 이름 */
+  game?: true;
   /** 규칙 답 아래 단추 (집중 시작, 패널 열기). focusTodoId 는 집중할 할 일 */
   plan?: { focusTodoId?: number };
 }
@@ -189,6 +192,7 @@ export function serializeChat(s: ChatState): SavedChat {
         status: 'done',
         ...(m.provider ? { provider: m.provider } : {}),
         ...(m.byRules ? { byRules: true as const } : {}),
+        ...(m.game ? { game: true as const } : {}),
       });
     else if (m.role === 'user') {
       const answer = msgs[i + 1];
@@ -209,7 +213,7 @@ export function parseChat(raw: unknown): SavedChat {
   for (const m of Array.isArray(r.messages) ? r.messages : []) {
     const v = (typeof m === 'object' && m !== null ? m : {}) as Record<string, unknown>;
     if (typeof v.id !== 'string' || !v.id || typeof v.text !== 'string') continue;
-    const text = v.text.slice(0, SAVED_TEXT_MAX);
+    const text = cutText(v.text, SAVED_TEXT_MAX);
     if (v.role === 'user' || v.role === 'notice') messages.push({ id: v.id, role: v.role, text });
     else if (v.role === 'pet' && v.status === 'done')
       messages.push({
@@ -219,6 +223,7 @@ export function parseChat(raw: unknown): SavedChat {
         status: 'done',
         ...(typeof v.provider === 'string' ? { provider: v.provider } : {}),
         ...(v.byRules === true ? { byRules: true as const } : {}),
+        ...(v.game === true ? { game: true as const } : {}),
       });
   }
   const sessions: ChatState['sessions'] = {};

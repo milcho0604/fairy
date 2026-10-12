@@ -9,6 +9,7 @@ npm run build
 JJ_NO_FOCUS=1 JJ_USER_DATA=<빈 폴더> npx electron --inspect=9229 . --remote-debugging-port=9344 &   # 맥북 화면에만, 포커스 안 뺏음
 OUT=/tmp/jj-shots node scripts/dev/audit-chat.mjs   # 채팅 창 상태별 화면, 가로 넘침 검사
 OUT=/tmp/jj-shots node scripts/dev/audit-pet.mjs    # 페어리와 말풍선 위치, 크기, 어두운 모드
+node scripts/dev/pet-moves.mjs                     # 움직임과 입력이 겹칠 때: 뛰다 잡기, 걷다 크기 바꾸기, 끄는 동안 온 답, 친구 자리, 숨긴 동안 온 친구 (PASS/FAIL)
 OUT=/tmp/jj-shots node scripts/dev/panel.mjs        # 패널: 할 일 넣기, 끝내기, 되돌리기, 밥, 빠른 입력
 OUT=/tmp/jj-shots node scripts/dev/settings.mjs     # 설정 창: 이름, 크기, 돌아다니기
 OUT=/tmp/jj-shots PHOTO=<사진> node scripts/dev/maker.mjs  # 사진으로 페어리 만들기 전체
@@ -22,7 +23,7 @@ OUT=/tmp/jj-shots PHOTO=<사진> node scripts/dev/maker.mjs  # 사진으로 페�
 - 실제 데이터를 건드리지 않으려면 `JJ_USER_DATA=<빈 폴더>` 로 따로 띄운다(하나만 띄우기 잠금도 따로라 쓰는 앱과 같이 뜬다). 진단 기록은 그 폴더의 `logs/main.log`(1MB 넘으면 `main.old.log`)에 남는다
 - `JJ_NO_FOCUS=1`(시험 인스턴스, 늘 켠다): 창을 처음부터 맥북 내장 화면에 연다(`src/main/focus.ts` `confineTestDisplay`. 앱이 내장 화면만 있는 것처럼 본다). 창은 투명하게 숨기고 마우스를 통과시켜 사람이 실수로 잡지 못하고, 창을 앞으로 가져와 입력을 뺏지도 않는다. 화면은 CDP 로 찍고 입력도 CDP 로 넣는다. 띄운 뒤 옮기는 방식은 쓰지 않는다: 옮기기 전에 작업 모니터에 잠깐 떠 버린다 (규칙은 `CLAUDE.md`)
 - `JJ_SHOW=1`: `JJ_NO_FOCUS=1` 과 같이 쓰면 숨기지 않고 보이게 둔다(사람이 눈으로 봐야 할 때만). 맥북 화면 안, 입력 안 뺏기는 그대로
-- v1: `__jj.notes`, `__jj.events`, `__jj.planner`(집중 `startFocus`, 알림과 브리핑 `check`). 패널은 다른 곳을 누르면 닫혀서 시험 때는 `__jj.panel.window.removeAllListeners('blur')`. 집중 끝은 메인에서 `Date.now` 를 잠깐 바꾸고 `planner.check()`
+- v1: `__jj.notes`, `__jj.events`, `__jj.planner`(집중 `startFocus`, 알림과 브리핑 `check`). 패널은 다른 곳을 누르면 닫혀서 시험 때는 `__jj.panel.window.removeAllListeners('blur')`. 집중 끝은 메인에서 `Date.now` 를 10초씩 앞당기며 `await planner.check()` 를 되풀이한다(한 번에 25분을 건너뛰면 `skipGap` 이 잠자기로 보고 집중 시간을 그만큼 뒤로 미뤄 끝나지 않는다. `src/shared/focus.ts`). 되돌린 시계도 뒤로 뛴 것으로 보니 시험 인스턴스는 앞당긴 시계 그대로 둔다
 - 페어리 MCP 서버: `npm run build` 뒤 `ELECTRON_RUN_AS_NODE=1 JJ_USER_DATA=<폴더> node_modules/electron/dist/Electron.app/Contents/MacOS/Electron out/main/mcp-server.js` 에 JSON-RPC 줄을 넣는다. 실제 Claude Code 로는 `claude -p "<질문>" --setting-sources "" --strict-mcp-config --mcp-config '<json>' --allowedTools mcp__fairy__add_todo` (질문을 맨 앞에. `--allowedTools` 가 뒤 글을 먹는다)
 - 사진 AI 엔진 wasm 은 설치 파일에 없고 처음 쓸 때 CDN 에서 받는다(`src/shared/ort-wasm.ts`). CDN 이 막힌 곳에서는 `node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jspi.wasm` 을 이 컴퓨터 http 서버로 내주고 `JJ_ORT_WASM_URL=http://127.0.0.1:<포트>/ort-wasm-simd-threaded.jspi.wasm` 로 띄운다(해시는 똑같이 맞춘다)
 - 무료 AI 엔진(llama.cpp)도 설치 파일에 없고 처음 모델을 받을 때 npm 저장소에서 받는다(`src/shared/llama-bins.ts`). 막힌 곳에서는 `npm pack @node-llama-cpp/linux-x64@<판>` 으로 받은 .tgz 를 이 컴퓨터 http 서버로 내주고 `JJ_LLAMA_BINS_URL=http://127.0.0.1:<포트>/<파일>.tgz` 로 띄운다(해시는 똑같이 맞춘다). 받은 엔진은 데이터 폴더의 `engines/llama-<패키지>-<판>/`

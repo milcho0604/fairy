@@ -1,6 +1,7 @@
 // 채팅의 AI 가 부른 지우기, 고치기, 메모 덧붙이기를 사용자에게 묻고 허락하면 한다 (shared/pet-actions.ts).
 // 펫 MCP 서버가 pet-actions-inbox.json 에 남긴 것을 읽어 펫 말풍선으로 한 번에 묻는다.
 import { app } from 'electron';
+import { cutText } from '../shared/cut-text.ts';
 import { t } from '../shared/i18n/index.ts';
 import {
   actionTarget,
@@ -15,7 +16,7 @@ import type { SayOptions } from './pet-window.ts';
 
 /** 말풍선에 보일 한 줄 */
 function line(a: PetAction, target: string): string {
-  const name = target.length > 40 ? `${target.slice(0, 39)}…` : target;
+  const name = target.length > 40 ? `${cutText(target, 39)}…` : target;
   return t(`main.petAction.${a.tool}`, { name });
 }
 
