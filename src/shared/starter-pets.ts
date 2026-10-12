@@ -64,3 +64,49 @@ export function parsePetChoice(v: unknown): PetChoice | undefined {
 /** 이미 그 캐릭터인지 (지금 펫 그림이 그 캐릭터의 복사본). 고르기 칸에 켜짐으로 보인다 */
 export const isCurrentStarter = (petImage: string | null | undefined, id: StarterId): boolean =>
   starterOf(petImage) === id;
+
+/** 사진 속 눈 하나: 가운데(x, y)와 가로, 세로 반지름. 그림 너비, 높이에 대한 비율 */
+export interface PhotoEye {
+  x: number;
+  y: number;
+  rx: number;
+  ry: number;
+}
+
+/** 사진 펫의 눈 자리와 감은 눈 선 색 (renderer photo-eyes.ts) */
+export interface PhotoEyes {
+  eyes: readonly PhotoEye[];
+  ink: string;
+  /** 눈꺼풀(덮개 털)에 섞을 빛과 정도. 어두운 털은 조금 밝게 해야 감은 눈이 뜬 눈과 구분된다 */
+  lid?: { color: string; amount: number };
+  /** 감은 눈 선 바로 아래 밝은 테두리 빛. 어두운 털에서 선이 묻히지 않게 */
+  edge?: string;
+}
+
+/** 그림 픽셀 자리를 비율로 (그림 크기는 resources/pets/ 그림 그대로) */
+const eyesAt = (
+  w: number,
+  h: number,
+  more: Omit<PhotoEyes, 'eyes'>,
+  ...px: [number, number, number, number][]
+): PhotoEyes => ({
+  ...more,
+  eyes: px.map(([x, y, rx, ry]) => ({ x: x / w, y: y / h, rx: rx / w, ry: ry / h })),
+});
+
+/**
+ * 밀크, 초코 그림의 눈 자리 (2026-10-12 사용자 보고: 초코가 자도 눈을 감지 않는다).
+ * 사진은 얼굴을 다시 그릴 수 없어 잠, 졸음, 깜빡임에서 눈 위를 바로 위 털로 덮고 감은 눈 선을 긋는다.
+ * 그림 안 어두운 눈동자 픽셀을 감싸 재고(밀크 303x512, 초코 340x512) 눈 테두리와 반사까지 덮게 넉넉히 잡았다
+ */
+export const STARTER_EYES: Record<StarterId, PhotoEyes> = {
+  milk: eyesAt(303, 512, { ink: '#4a3a33' }, [105.5, 138, 19.8, 17.6], [178.5, 138, 19.8, 17.6]),
+  // 초코는 눈도 털도 어두워 감은 눈이 뜬 눈과 비슷하게 보였다 (실제 펫 크기에서): 눈꺼풀을 밝게, 선은 더 어둡게, 선 아래 밝은 테두리
+  choco: eyesAt(
+    340,
+    512,
+    { ink: '#1a0b05', lid: { color: '#c48e66', amount: 0.55 }, edge: '#e8c09a' },
+    [133, 129, 17.6, 16.5],
+    [208, 128, 17.6, 16.5],
+  ),
+};

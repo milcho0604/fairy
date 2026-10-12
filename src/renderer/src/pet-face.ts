@@ -8,7 +8,9 @@
 
 import { FACE_PX } from '../../shared/face.ts';
 import type { PetKind } from '../../shared/settings.ts';
+import type { PhotoEyes } from '../../shared/starter-pets.ts';
 import { CANVAS_SIZE, type DrawState, drawPet, type Model3D } from './draw.ts';
+import { eyedPhoto } from './photo-eyes.ts';
 
 /** 오른쪽(x1), 아래(y1) 끝은 넣지 않는 상자 */
 export interface FaceRect {
@@ -192,6 +194,8 @@ export interface FaceSource {
   relief?: boolean;
   /** 나이 배율 (AI 일러스트 아기, 청소년). 2D 사진은 drawPet 이 줄이고, 입체는 모델에 이미 들어 있다 */
   photoScale?: number;
+  /** 사진 속 눈 자리 (밀크, 초코). 잠 얼굴은 사진 눈을 감긴다 (photo-eyes.ts) */
+  eyes?: PhotoEyes;
 }
 
 /** 기본 펫과 입체는 160 캔버스를 이만큼 키워 그린 다음 자른다 (머리가 잘린 크기에서도 선명하게) */
@@ -217,7 +221,8 @@ export function renderFace(
     const k = Math.min(1, PHOTO_MAX / Math.max(src.photo.width, src.photo.height));
     work.width = Math.max(1, Math.round(src.photo.width * k));
     work.height = Math.max(1, Math.round(src.photo.height * k));
-    g.drawImage(src.photo, 0, 0, work.width, work.height);
+    // 집 안 잠 얼굴: 눈 자리를 아는 사진은 눈을 감긴다 (2026-10-12: 초코가 침대에서 눈을 뜨고 잤다)
+    g.drawImage(eyedPhoto(src.photo, src.eyes, mood === 'sleeping' ? 0 : 1), 0, 0, work.width, work.height);
   } else {
     work.width = CANVAS_SIZE * SCALE;
     work.height = CANVAS_SIZE * SCALE;
@@ -228,6 +233,7 @@ export function renderFace(
       blink: -1,
       viewSize: CANVAS_SIZE * SCALE,
       kind: src.kind,
+      photoEyes: src.eyes,
       face: true,
       noShadow: true,
     };

@@ -32,6 +32,7 @@ import type { Blueprint, Gait } from '../../shared/pet3d/blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from '../../shared/pet3d/defaults.ts';
 import type { PetKind, PetStyle, PoseKind } from '../../shared/settings.ts';
 import { canPlay, type SoundKind } from '../../shared/sound.ts';
+import { type PhotoEyes, STARTER_EYES } from '../../shared/starter-pets.ts';
 import { NO_TOGETHER, type TogetherLook } from '../../shared/together.ts';
 import { dressBlueprint, GROW_LOOK, type WearLook } from '../../shared/wear.ts';
 import { AnimatedImage, frameSide, loadPetImage } from './animated.ts';
@@ -212,6 +213,8 @@ function frame() {
     hungry: inputs.hungry,
     photo: img instanceof AnimatedImage ? img.frameAt(now) : img,
     photoScale,
+    // 눈 자리는 원래 그림 것이다 (포즈 그림이면 눈이 다른 데 있다). 입체 판(2.5D)도 원래 그림이라 같이 준다
+    photoEyes: img === undefined || img === photo ? photoEyes : undefined,
     kind: petKind,
     sulk: inputs.sulkLevel,
     pout: inputs.pout,
@@ -636,6 +639,8 @@ reducedMotion.addEventListener('change', () => requestFrame());
 let imageLoad = 0;
 /** AI 일러스트 나이 배율 (아기, 청소년은 작게. 사용자 크기 설정 위에 곱한다, illustrate.ts) */
 let photoScale = 1;
+/** 사진 속 눈 자리 (밀크, 초코 그림만. photo-eyes.ts). 잠, 졸음, 깜빡임에 사진 눈을 감긴다 */
+let photoEyes: PhotoEyes | undefined;
 function wantedUrl(url: string): boolean {
   return url === photoUrl || Object.values(poseUrls).includes(url) || !!nextUrls?.has(url);
 }
@@ -719,6 +724,7 @@ bridge.onImage(async (images: PetImages) => {
   photoDepth = depthImg instanceof HTMLImageElement ? depthImg : undefined;
   if (!photoDepth) release(depthImg);
   photoScale = ageScale(images.age);
+  photoEyes = images.starter ? STARTER_EYES[images.starter] : undefined;
   // 이제 안 쓰는 그림은 돌려준다
   for (const [url, img] of decoded)
     if (!wantedUrl(url)) {
@@ -855,6 +861,7 @@ function syncSprites(m3d: Pet3D | undefined) {
     photo,
     petKind,
     photoScale,
+    photoEyes,
   ];
   if (key.length === spriteKey.length && key.every((v, i) => v === spriteKey[i])) return;
   spriteKey = key;
@@ -865,6 +872,7 @@ function syncSprites(m3d: Pet3D | undefined) {
     model3d: m3d,
     relief: !!m3d && model3dOf instanceof HTMLImageElement,
     photoScale,
+    eyes: photoEyes,
   };
   const body = renderBody(src);
   const sleep = renderFace(src, 128, 'sleeping');
