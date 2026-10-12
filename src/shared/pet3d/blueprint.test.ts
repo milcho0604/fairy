@@ -430,3 +430,38 @@ test('요청문 v2: 새 모양, 무늬, 얼굴 칸과 보기 두 개, 팔 한 �
   // 보기 둘은 그대로 꺼낼 수 있다
   for (const line of p.split('\n').filter((l) => l.startsWith('{"v":2'))) assert.ok(extractBlueprint(line));
 });
+
+test('네 발로 선 몸(stance): 읽으면 네 발 걸음새로, 모르는 값은 버린다. 무릎 칸은 다리 부품에만', () => {
+  const leg = {
+    slot: 'legL',
+    shape: 'sphere',
+    at: [-0.1, 0.05, 0.2],
+    size: [0.05, 0.05, 0.05],
+    color: '#ffffff',
+  };
+  const bp = parseBlueprint({
+    v: 2,
+    stance: 'stand',
+    gait: 'biped',
+    parts: [
+      { slot: 'body', shape: 'sphere', at: [0, 0.4, 0], size: [0.2, 0.2, 0.3], color: '#ffffff', knee: true },
+      { ...leg, knee: true },
+      { ...leg, knee: 'yes' },
+    ],
+    face: {},
+  });
+  assert.equal(bp?.stance, 'stand');
+  assert.equal(bp?.gait, 'quadruped');
+  assert.deepEqual(
+    bp?.parts.map((p) => p.knee),
+    [undefined, true, undefined],
+  );
+  const other = parseBlueprint({
+    v: 2,
+    stance: 'lie',
+    parts: [{ ...leg, slot: 'body', size: [0.2, 0.2, 0.2] }],
+    face: {},
+  });
+  assert.equal(other?.stance, undefined);
+  assert.equal(other?.gait, undefined);
+});

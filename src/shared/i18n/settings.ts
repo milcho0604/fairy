@@ -47,11 +47,18 @@ export const ko = {
   'settings.gait.autoNow': (v: { gait: string }) =>
     `몸 모양을 보고 정해. 지금은 ${withParticle(v.gait, '으로')} 걸어. 페어리마다 따로 기억해.`,
   'settings.gait.kept': '페어리마다 따로 기억해. 보관함에서 다른 페어리를 꺼내도 각자 값이야.',
+  'settings.stand.toggle': '네 발로 선 피규어 (밀크, 초코처럼)',
+  'settings.stand.hint': (v: { name: string }) =>
+    `${withParticle(v.name, '이')} 진짜 동물처럼 네 발로 서서 걷고, 앉고, 엎드려. 지금 색과 무늬, 눈, 귀 모양을 그대로 써서 AI를 다시 부르지 않아. 끄면 원래 몸으로 돌아와.`,
+  'settings.stand.odd': (v: { name: string }) =>
+    `${withParticle(v.name, '은')} 토끼나 햄스터처럼 귀와 꼬리, 몸 생김새가 고양이(밀크), 강아지(초코) 뼈대와 많이 달라서 네 발로 세우면 ${v.name}처럼 보이지 않아. 그래서 지금 몸 그대로 둬.`,
   'settings.gait.odd': (v: { name: string; body: string }) =>
     `${withParticle(v.name, '은')} ${v.body} 몸이라 조금 어색해 보일 수 있어.`,
   'settings.gait.flat':
     '사진(평면, 2.5D) 페어리는 다리가 따로 없어서 고를 수 없어. 페어리 만들기에서 입체 피규어로 만들면 고를 수 있어.',
   'settings.gait.off3d': '입체로 보기를 켜면 고를 수 있어. 지금은 사진으로 보여서 다리가 없어.',
+  'settings.gait.stand': (v: { name: string }) =>
+    `${withParticle(v.name, '은')} 네 발로 선 피규어라 늘 네 발로 걸어.`,
   'settings.gait.mismatch': (v: { name: string; body: string; pick: string }) =>
     `${withParticle(v.name, '은')} ${v.body} 몸으로 만들어졌어. 그대로 ${withParticle(v.pick, '으로')} 걸으면 어색해 보일 수 있어.`,
   'settings.gait.remake': (v: { pick: string }) => `${v.pick} 몸으로 다시 만들기`,
@@ -444,10 +451,17 @@ export const en: Translation<typeof ko> = {
     `Decided from the body shape. Right now it walks on ${v.gait.toLowerCase()}. Remembered for each fairy.`,
   'settings.gait.kept':
     'Remembered for each fairy, so a fairy you bring back from your collection keeps its own choice.',
+  'settings.stand.toggle': 'Stand on four legs (like Milk and Choco)',
+  'settings.stand.hint': (v) =>
+    `${v.name} stands, walks, sits and lies down on four legs like a real animal. It keeps its colors, markings, eyes and ear shape, so no AI is needed. Turn it off to get the old body back.`,
+  'settings.stand.odd': (v) =>
+    `Like a rabbit or a hamster, ${v.name} has ears, a tail and a body too different from the cat (Milk) and dog (Choco) skeletons, so standing on four legs would stop it looking like ${v.name}. It keeps its own body.`,
   'settings.gait.odd': (v) => `${v.name} has a ${v.body} body, so this may look a little odd.`,
   'settings.gait.flat':
     "Photo fairies (flat or 2.5D) don't have separate legs, so there's nothing to choose. Make a 3D figure in Make a fairy to choose.",
   'settings.gait.off3d': 'Turn on Show in 3D to choose. Right now it shows as a photo with no legs.',
+  'settings.gait.stand': (v) =>
+    `${v.name} is a figure standing on four legs, so it always walks on four legs.`,
   'settings.gait.mismatch': (v) =>
     `${v.name} was made with a ${v.body} body. Walking on ${v.pick.toLowerCase()} as is may look odd.`,
   'settings.gait.remake': (v) => `Rebuild for ${v.pick.toLowerCase()}`,

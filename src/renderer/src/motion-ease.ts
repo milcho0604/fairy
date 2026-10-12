@@ -35,14 +35,24 @@ export class Eased {
     this.last = now;
   }
 
-  to(key: string, target: number, tauMs: number): number {
+  /** rate 가 있으면 1ms 에 그만큼까지만 바뀐다 (네 발로 선 몸이 발을 옮겨 디딜 틈을 두고 돈다) */
+  to(key: string, target: number, tauMs: number, rate?: number): number {
     if (!this.live) return target;
     const cur = this.values.get(key);
     let next = cur === undefined ? target : follow(cur, target, this.dt, tauMs);
+    if (cur !== undefined && rate !== undefined && rate > 0) {
+      const max = rate * this.dt;
+      next = cur + Math.max(-max, Math.min(max, next - cur));
+    }
     if (Math.abs(next - target) <= EPS) next = target;
     else this.busy = true;
     this.values.set(key, next);
     return next;
+  }
+
+  /** 이번 틀이 지난 틀에서 흐른 시간 (ms, 한 장만 그리면 0) */
+  get step(): number {
+    return this.live ? this.dt : 0;
   }
 
   /** 기억한 값 (아직 없으면 undefined) */

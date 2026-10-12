@@ -1374,7 +1374,12 @@ export function createPetWindow({
     // 문 쪽(나올 때는 문 반대쪽)을 보고 걷는다. 문간 바로 앞이면 들어갈 땐 왼쪽, 나올 땐 오른쪽을 본다
     const toDoor = Math.round(end.x + end.width / 2 - (stand.x + stand.width / 2)) || -1;
     if (!win.isDestroyed())
-      win.webContents.send(IPC.activity, { type: 'walk', dx: inward ? toDoor : -toDoor, ms });
+      win.webContents.send(IPC.activity, {
+        type: 'walk',
+        dx: inward ? toDoor : -toDoor,
+        ms,
+        facing: inward ? 'away' : 'toward',
+      });
     return new Promise((resolve) => {
       doorDone = resolve;
       doorTimer = setInterval(() => {

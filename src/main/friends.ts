@@ -5,6 +5,7 @@ import { t } from '../shared/i18n/index.ts';
 import { IPC, type PetImages, type PetStatus } from '../shared/ipc.ts';
 import { MEET_CHANCE, MEET_COOLDOWN_MS, MEET_EVERY_MS, meetPlan } from '../shared/meet.ts';
 import { type Blueprint, parseBlueprint } from '../shared/pet3d/blueprint.ts';
+import { starterModelOf } from '../shared/pet3d/starters.ts';
 import type { Friend } from '../shared/settings.ts';
 import { starterOf } from '../shared/starter-pets.ts';
 import type { WearLook } from '../shared/wear.ts';
@@ -66,7 +67,7 @@ function imageOf(f: Friend): PetImages {
     const b64 = bytes.toString('base64');
     return {
       main: `data:${mime};base64,${b64}`,
-      model: modelOf(f.model),
+      model: modelOf(f.model) ?? starterModelOf(f.image),
       depth: depthOf(f.depth),
       poses: {},
       ...(f.age ? { age: f.age } : {}),

@@ -7,7 +7,8 @@ import { MOVE_SPECS, type MoveContext, type MoveType, PLAIN_ASK, pickMove } from
 export type Activity =
   // idle: 혼자 고른 걸음 (놀기, 산책, 집 드나들기처럼 불러서 가는 걸음이 아닌 것)
   // linear: 같은 빠르기로 가는 걷기 (따라 달리기). 아니면 처음과 끝이 느리다 (walkOffset)
-  | { type: 'walk'; dx: number; ms: number; idle?: boolean; linear?: boolean }
+  // facing: 집 문으로 들어가는 걸음(away)은 등을 보이고, 나오는 걸음(toward)은 얼굴을 보인다 (입체 네 발 몸)
+  | { type: 'walk'; dx: number; ms: number; idle?: boolean; linear?: boolean; facing?: 'away' | 'toward' }
   | { type: 'sit'; ms: number }
   | { type: 'look'; dir: -1 | 1; ms: number }
   // 제자리 몸짓 (하품, 기지개, 꼬리 흔들기, 몸 털기 등. moves.ts). dir 은 좌우가 있는 몸짓의 방향
