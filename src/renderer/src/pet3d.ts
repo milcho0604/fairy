@@ -743,6 +743,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       this.joints[faceSlot],
       // 눈과 입은 몸에만 붙인다 (목도리 겉에 붙지 않게)
       meshes.filter((m) => m.part.slot === faceSlot && !m.part.wear).map((m) => m.mesh),
+      standing,
     );
     this.ready = true;
     this.frameCamera();
@@ -1893,7 +1894,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
   }
 
   /** 앞에서 쏜 선이 얼굴 겉면에 닿는 자리에 눈, 입, 볼, 수염을 붙인다 */
-  private buildFace(f: Face, joint: Group, targets: Mesh[]): FaceRig {
+  private buildFace(f: Face, joint: Group, targets: Mesh[], muzzle = false): FaceRig {
     const ray = new Raycaster();
     const front = new Vector3(0, 0, -1);
     // 게임 캐릭터는 눈이 조금 크다
@@ -1907,8 +1908,8 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     };
     const groups: Group[] = [];
     const lift = this.faceLift;
-    const place = (x0: number, y0: number, out0 = 0.002): Group => {
-      const out = out0 + lift;
+    const place = (x0: number, y0: number, out0 = 0.002, liftK = 1): Group => {
+      const out = out0 + lift * liftK;
       let x = x0;
       let y = y0;
       let hit = shoot(x, y);
@@ -1935,6 +1936,30 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       g.updateMatrixWorld(true);
       g.lookAt(p.clone().add(n));
       return g;
+    };
+    // 네 발로 선 몸의 주둥이는 작고 앞뒤로 얕아서, 겉면에 납작하게 댄 입과 코가 옆이나 3/4 에서 주둥이 둘레 밖 허공으로
+    // 튀어나와 보였다. 정점마다 앞에서 쏜 선이 닿는 겉면 깊이만큼 앞뒤로만 옮겨 주둥이 곡면을 따라 휘게 한다
+    // (앞에서 본 가로, 세로 자리는 그대로라 정면 모습은 같다)
+    const hug = (g: Group) => {
+      g.updateMatrixWorld(true);
+      const c = g.getWorldPosition(new Vector3());
+      const base = shoot(c.x, c.y)?.point.z;
+      if (base === undefined) return;
+      const v = new Vector3();
+      g.traverse((o) => {
+        if (!(o instanceof Mesh)) return;
+        o.geometry = o.geometry.clone();
+        const pos = o.geometry.attributes.position;
+        for (let i = 0; i < pos.count; i++) {
+          o.localToWorld(v.fromBufferAttribute(pos, i));
+          const z = shoot(v.x, v.y)?.point.z;
+          if (z === undefined) continue;
+          v.z += z - base;
+          o.worldToLocal(v);
+          pos.setXYZ(i, v.x, v.y, v.z);
+        }
+        o.geometry.computeVertexNormals();
+      });
     };
     // 눈 색(eyeColor)은 홍채에만. 감은 눈, 입 같은 선은 늘 먹색이다 (노란 눈 고양이의 선이 흐려 보였다)
     const eyeMat = new MeshPhysicalMaterial({
@@ -2163,7 +2188,9 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     }
 
     const m = s;
-    const mouthAt = place(0, f.mouthY);
+    // 주둥이에 붙는 입과 코는 털 끝까지 띄우지 않는다 (실사 옆모습에서 코가 주둥이 앞에 떠 보였다)
+    const muzzleLift = muzzle ? 0.3 : 1;
+    const mouthAt = place(0, f.mouthY, 0.002, muzzleLift);
     const mouth: FaceRig['mouth'] = {};
     let beakLower: Object3D | undefined;
     if (f.mouth === 'beak') {
@@ -2285,7 +2312,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     // 코 (설계도 face.nose): 눈과 입 사이. 세모(고양이, 토끼), 납작한 타원(강아지), 점. 위에 작은 반짝이
     if (f.nose?.color && f.nose.shape !== 'none') {
       const k = s * (f.nose.size ?? 1);
-      const g = place(0, f.nose.y ?? f.mouthY + s * 1.0, 0.004);
+      const g = place(0, f.nose.y ?? f.mouthY + s * 1.0, 0.004, muzzleLift);
       noseAt = g;
       const mat = this.material(f.nose.color, 'shiny');
       let nose: Mesh;
@@ -2333,6 +2360,10 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
         if (this.game) this.addOutline(tuft);
         g.add(tuft);
       }
+    }
+    if (muzzle) {
+      hug(mouthAt);
+      if (noseAt) hug(noseAt);
     }
     return { eyes, mouth, beakLower, style: f.mouth, eyeLook: f.eyes ?? 'round', groups, mouthAt, noseAt };
   }

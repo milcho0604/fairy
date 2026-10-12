@@ -223,7 +223,9 @@ export const STARTER_BLUEPRINTS: Record<StarterId, Blueprint> = {
         shape: 'sphere',
         at: [0, 0.47, 0.16],
         size: [0.145, 0.165, 0.12],
-        color: CHOCO_LIGHT,
+        // 밝은 털은 가슴 앞에만. 공 전체를 밝게 하면 몸통 옆으로 솟은 가장자리가 옆모습에서 비스듬한 밝은 경계로 보였다
+        color: CHOCO,
+        pattern: { type: 'split', color: CHOCO_LIGHT, side: 'front', amount: 0.3 },
         finish: 'fuzzy',
       },
       // 머리: 곱슬 털 머리 (위가 봉긋)
