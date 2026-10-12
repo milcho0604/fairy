@@ -5,7 +5,10 @@ import { STARTER_BLUEPRINTS, starterModelOf } from '../../shared/pet3d/starters.
 import { legCut, legGap } from './pet3d-gait.ts';
 import {
   blendPose,
+  CAT_EXCITE_MS,
+  DOG_EXCITE_MS,
   DUTY,
+  excitement,
   FOOTFALL,
   footCycle,
   footPhase,
@@ -244,4 +247,41 @@ test('밀크, 초코 그림 파일이면 입체 설계도를 준다. 다른 사�
   assert.equal(starterModelOf('pet-123.png'), null);
   assert.equal(starterModelOf(null), null);
   assert.equal(starterModelOf('pet-milk-1.png.png'), null);
+});
+
+test('신남: 고양이는 꼬리를 세우고 꾹꾹 누르다 작게 폴짝, 강아지는 놀자 인사와 통통', () => {
+  let catHop = 0;
+  let catPaw = 0;
+  let dogHop = 0;
+  let dogBow = 0;
+  for (let t = 0; t < 3000; t += 10) {
+    const c = excitement(true, t);
+    catHop = Math.max(catHop, c.hop);
+    catPaw = Math.max(catPaw, c.paws[0], c.paws[1]);
+    assert.equal(c.bow, 0);
+    const d = excitement(false, t);
+    dogHop = Math.max(dogHop, d.hop);
+    dogBow = Math.max(dogBow, d.bow);
+  }
+  // 예전엔 둘 다 18px 씩 계속 뛰었다. 고양이는 낮게, 강아지는 조금 더
+  assert.ok(catHop > 3 && catHop <= 6, `cat hop ${catHop}`);
+  assert.ok(dogHop > catHop && dogHop <= 10, `dog hop ${dogHop}`);
+  assert.ok(catPaw > 0.05, 'cat kneads');
+  assert.ok(dogBow > 0.9, 'dog bows');
+  assert.equal(excitement(true, 1000).tailUp, 1);
+  // 꾹꾹은 왼발 오른발 번갈아 (같이 들지 않는다)
+  for (let t = 0; t < CAT_EXCITE_MS; t += 7) {
+    const c = excitement(true, t);
+    assert.ok(c.paws[0] === 0 || c.paws[1] === 0);
+  }
+  // 한 바퀴 돌면 처음으로 이어진다
+  assert.ok(Math.abs(excitement(false, DOG_EXCITE_MS + 5).bow - excitement(false, 5).bow) < 1e-9);
+});
+
+test('신남: 움직임 줄이기면 뛰지 않는다', () => {
+  for (let t = 0; t < 3000; t += 25) {
+    assert.equal(excitement(true, t, true).hop, 0);
+    assert.equal(excitement(false, t, true).hop, 0);
+    assert.ok(excitement(false, t, true).bow <= 0.5);
+  }
 });

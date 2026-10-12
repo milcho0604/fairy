@@ -30,6 +30,7 @@ import {
 } from '../../shared/pet-mood.ts';
 import type { Blueprint, Gait } from '../../shared/pet3d/blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from '../../shared/pet3d/defaults.ts';
+import { standingBlueprint } from '../../shared/pet3d/stand.ts';
 import type { PetKind, PetStyle, PoseKind } from '../../shared/settings.ts';
 import { canPlay, type SoundKind } from '../../shared/sound.ts';
 import { NO_TOGETHER, type TogetherLook } from '../../shared/together.ts';
@@ -247,6 +248,17 @@ function frame() {
   else if (!poseKey || poseKey.mood !== key.mood) blend.stop();
   poseKey = key;
   const ball = drawPet(ctx, state);
+  if (feetLog && m3d) {
+    const a = state.activity;
+    feetLog.push({
+      t: now,
+      walk: a?.type === 'walk' ? { dir: a.dir, steps: a.steps ?? 0, stride: a.stride ?? 0 } : null,
+      feet: m3d.debugFeet() ?? [],
+      screenX: window.screenX,
+      view: viewSize,
+    });
+    if (feetLog.length > 20000) feetLog.shift();
+  }
   blend.over(ctx, now);
   carriedAt = ball;
   // 얼굴과 집 그림은 첫 그림이 화면에 나간 뒤에 (둘 다 그린 것을 읽어 와 GPU 를 기다려서 켤 때 첫 그림을 늦췄다)
@@ -298,6 +310,9 @@ function frame() {
   );
   frameTimer = all > 0 ? setTimeout(frame, 1000 / all) : undefined;
 }
+
+/** 점검용 발 기록 (__pet.debugFeetLog). 틀마다 발바닥 자리와 걸음 */
+let feetLog: unknown[] | undefined;
 
 /** 자세 바꾸기 겹침 (pose-blend.ts): 지난 틀의 자세와 겹치는 중인 그림 */
 const blend = new PoseBlend();
@@ -765,12 +780,17 @@ let broken3d = false;
 let style3d: PetStyle = 'figure';
 /** 사용자가 고른 걸음새 (설정, PetStatus.gait). 없으면 자동 */
 let gaitPick: Gait | undefined;
+/** 사진 동물 페어리를 네 발로 선 피규어로 보는지 (설정, PetStatus.stand) */
+let standPick = false;
 /** 고른 걸음새를 덮은 설계도. 같은 설계도와 같은 값이면 같은 것을 돌려줘 다시 조립하지 않는다 */
-let picked: { from: Blueprint; gait: Gait | undefined; bp: Blueprint } | undefined;
+let picked: { from: Blueprint; gait: Gait | undefined; stand: boolean; bp: Blueprint } | undefined;
 function pickedBlueprint(bp: Blueprint | undefined): Blueprint | undefined {
   if (!bp) return undefined;
-  if (picked?.from !== bp || picked.gait !== gaitPick)
-    picked = { from: bp, gait: gaitPick, bp: withGait(bp, gaitPick) };
+  if (picked?.from !== bp || picked.gait !== gaitPick || picked.stand !== standPick) {
+    // 네 발로 서기는 사진 펫 설계도에만 (기본 펫과 밀크, 초코는 그대로)
+    const stood = standPick && bp === photoModel ? standingBlueprint(bp) : undefined;
+    picked = { from: bp, gait: gaitPick, stand: standPick, bp: stood ?? withGait(bp, gaitPick) };
+  }
   return picked.bp;
 }
 function current3d(): Pet3D | 'loading' | undefined {
@@ -890,8 +910,9 @@ bridge.onStatus((status) => {
     requestFrame();
   }
   // 걸음새를 바꾸면 펫 창을 다시 켜지 않고 다음 그림부터 (설계도를 덮어 다시 조립한다)
-  if (status.gait !== gaitPick) {
+  if (status.gait !== gaitPick || !!status.stand !== standPick) {
     gaitPick = status.gait;
+    standPick = !!status.stand;
     requestFrame();
   }
   statusKnown = true;
@@ -1428,6 +1449,37 @@ Object.assign(window, {
     },
     get inputs() {
       return inputs;
+    },
+    /** 발 기록을 켜고(true) 끄고(false) 모은 것을 돌려준다 (네 발로 선 입체 몸의 디딘 발 미끄러짐 재기) */
+    debugFeetLog: (on: boolean) => {
+      const got = feetLog ?? [];
+      feetLog = on ? [] : undefined;
+      return got;
+    },
+    /**
+     * 그림 점검용: 지금 펫(입체면 입체)을 주어진 상태로 한 장씩 그려 PNG data URL 로 돌려준다. 시각(now)을 넣지 않아
+     * 따라가기 없이 늘 같은 그림이 나온다 (바꾸기 전후 픽셀 비교). scale 은 그리는 배율 (기본 2)
+     */
+    debugRender: (states: Partial<DrawState>[], scale = 2): string[] => {
+      const m3d = current3d();
+      const c = document.createElement('canvas');
+      c.width = CANVAS_SIZE * scale;
+      c.height = CANVAS_SIZE * scale;
+      const g = c.getContext('2d');
+      if (!g || m3d === 'loading') return [];
+      return states.map((st) => {
+        g.setTransform(scale, 0, 0, scale, 0, 0);
+        drawPet(g, {
+          mood: 'idle',
+          elapsed: 0,
+          blink: -1,
+          viewSize: CANVAS_SIZE,
+          kind: petKind,
+          model3d: m3d,
+          ...st,
+        });
+        return c.toDataURL('image/png');
+      });
     },
   },
 });

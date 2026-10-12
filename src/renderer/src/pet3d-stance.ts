@@ -234,3 +234,65 @@ export function stanceGoal(o: {
   const since = o.sinceWalk ?? Number.POSITIVE_INFINITY;
   return since < STAND_AFTER_WALK_MS ? 'stand' : 'sit';
 }
+
+// ---- 신남 ----
+
+/** 신났을 때 몸짓 (네 발로 선 몸). hop 은 뛰는 높이(펫 그림 px), bow 는 앞을 숙인 정도 0~1(놀자 인사), paws 는 발을 든 높이
+ * (다리 길이 배: 왼앞, 오른앞, 뒤), tailUp 은 꼬리를 곧게 세운 정도 0~1, wag 는 꼬리 흔들기(라디안), quiver 는 꼬리 끝 떨림 */
+export interface Excitement {
+  hop: number;
+  bow: number;
+  paws: [number, number, number];
+  tailUp: number;
+  wag: number;
+  quiver: number;
+}
+
+export const CALM_EXCITEMENT: Excitement = { hop: 0, bow: 0, paws: [0, 0, 0], tailUp: 0, wag: 0, quiver: 0 };
+
+/** 고양이 신남 한 번 (ms): 앞발로 꾹꾹 누르다가 작게 폴짝 */
+export const CAT_EXCITE_MS = 1400;
+/** 강아지 신남 한 번 (ms): 엉덩이를 들고 앞을 숙여 놀자 인사, 그다음 통통 두 번 */
+export const DOG_EXCITE_MS = 1500;
+
+const bump = (x: number) => (x > 0 && x < 1 ? Math.sin(Math.PI * x) : 0);
+
+/**
+ * 신남을 그 동물답게 (사용자 보고 2026-10-12: 고양이가 너무 통통 튄다). 고양이는 꼬리를 곧게 세우고(끝이 떨린다) 앞발로
+ * 꾹꾹 누르다가 작게 폴짝, 강아지는 놀자 인사(앞을 숙이고 엉덩이를 든다)와 통통 뛰기, 꼬리를 빨리 흔든다.
+ * 움직임 줄이기면 뛰지 않고 꼬리와 작은 숙이기만
+ */
+export function excitement(cat: boolean, elapsed: number, calm = false): Excitement {
+  const t = Math.max(0, elapsed);
+  if (cat) {
+    const u = (t % CAT_EXCITE_MS) / CAT_EXCITE_MS;
+    // 들어갈 때 꼬리가 천천히 선다
+    const tailUp = Math.min(1, t / 300);
+    if (calm) return { ...CALM_EXCITEMENT, tailUp, quiver: 0 };
+    // 꾹꾹: 0~0.62 동안 왼발 오른발 번갈아 (발을 살짝 들었다 누른다)
+    const knead = u < 0.62 ? u / 0.62 : -1;
+    const kp = knead >= 0 ? knead * 4 : -1;
+    const left = kp >= 0 ? bump(kp % 1) * (Math.floor(kp) % 2 === 0 ? 1 : 0) : 0;
+    const right = kp >= 0 ? bump(kp % 1) * (Math.floor(kp) % 2 === 1 ? 1 : 0) : 0;
+    // 폴짝: 0.66~0.9 동안 작게
+    const hop = 6 * bump((u - 0.66) / 0.24);
+    return {
+      hop,
+      bow: 0,
+      paws: [0.07 * left, 0.07 * right, 0],
+      tailUp,
+      wag: 0,
+      quiver: Math.sin(t / 45) * 0.12,
+    };
+  }
+  const u = (t % DOG_EXCITE_MS) / DOG_EXCITE_MS;
+  const wag = Math.sin(t / 70) * (calm ? 0.3 : 0.6);
+  // 놀자 인사: 0~0.45 동안 숙였다 편다 (가운데에서 가장 낮다)
+  const bow = (calm ? 0.5 : 1) * bump(u / 0.45) ** 0.7;
+  if (calm) return { ...CALM_EXCITEMENT, bow, wag, tailUp: 0.6 };
+  // 통통 두 번: 0.5~0.75, 0.75~1
+  const h = u >= 0.5 ? ((u - 0.5) / 0.25) % 1 : -1;
+  const hop = h >= 0 ? 10 * bump(h) : 0;
+  const front = h >= 0 ? 0.12 * bump(h) : 0;
+  return { hop, bow, paws: [front, front, 0], tailUp: 0.6, wag, quiver: 0 };
+}

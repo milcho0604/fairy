@@ -17,7 +17,7 @@ import { noteTitle } from '../shared/note-store.ts';
 import { setSpeechSource, setVoiceSource, voiced } from '../shared/persona-voice.ts';
 import { unlocked, WAVE_AWAY_SEC } from '../shared/pet-life.ts';
 import { restDaysOf } from '../shared/routine.ts';
-import { pickedGait } from '../shared/settings.ts';
+import { pickedGait, pickedStand } from '../shared/settings.ts';
 import { shortcutsChanged } from '../shared/shortcut.ts';
 import { FULLNESS, localDay } from '../shared/todo-store.ts';
 import { admitUrl, panelTabOf, parseJjUrl } from '../shared/url-scheme.ts';
@@ -1026,6 +1026,7 @@ ready
         boost: boostOn(),
         face: true,
         gait: pickedGait(settings.get()),
+        ...(pickedStand(settings.get()) ? { stand: true } : {}),
         energy: petLife.energy,
         saver: saverNow(),
         readAloud: settings.get().readAloud,
@@ -1424,7 +1425,8 @@ ready
         restDaysOf(next).join() !== restDaysOf(prev).join() ||
         next.dayRhythm !== prev.dayRhythm ||
         // 걸음새는 몸마다 따로라 고른 값이 그대로여도 펫(몸)이 바뀌면 다시 본다. 같은 값이면 sendStatus 가 거른다
-        pickedGait(next) !== pickedGait(prev)
+        pickedGait(next) !== pickedGait(prev) ||
+        pickedStand(next) !== pickedStand(prev)
       )
         sendStatus();
       if (next.launchAtLogin !== prev.launchAtLogin && app.isPackaged) {

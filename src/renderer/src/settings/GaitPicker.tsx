@@ -3,11 +3,20 @@ import { t } from '../../../shared/i18n/index.ts';
 import type { SettingsSnapshot } from '../../../shared/ipc.ts';
 import type { Gait } from '../../../shared/pet3d/blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from '../../../shared/pet3d/defaults.ts';
-import { GAIT_PICKS, type GaitPick, gaitPatch, pickedGait, type Settings } from '../../../shared/settings.ts';
+import { canStand } from '../../../shared/pet3d/stand.ts';
+import {
+  GAIT_PICKS,
+  type GaitPick,
+  gaitPatch,
+  pickedGait,
+  pickedStand,
+  type Settings,
+  standPatch,
+} from '../../../shared/settings.ts';
 import { MakeProgress } from '../MakeProgress.tsx';
 import { browserStore, loadExpected, saveDuration } from '../make-progress.ts';
 import { gaitMismatch, shapeOf } from '../pet3d-gait.ts';
-import { bridge } from './ui.tsx';
+import { bridge, Toggle } from './ui.tsx';
 
 /**
  * 걸음새 고르기 (자동, 두 발, 네 발). 지금 펫에만 적용하고 펫(몸)마다 따로 기억한다 (settings.petGaits).
@@ -173,6 +182,19 @@ export function GaitPicker({
         </div>
       ) : (
         <small>{picked ? t('settings.gait.kept') : t('settings.gait.autoNow', { gait: walk(shape) })}</small>
+      )}
+      {/* 사진 동물 페어리를 밀크, 초코처럼 네 발로 선 피규어로 (AI 를 다시 부르지 않는다, shared/pet3d/stand.ts) */}
+      {figure && s.pet3d && canStand(figure) && (
+        <Toggle
+          label={t('settings.stand.toggle')}
+          hint={t('settings.stand.hint', { name: s.petName })}
+          on={pickedStand(s)}
+          disabled={!!busy}
+          onChange={(v) => {
+            const patch = standPatch(s, v);
+            if (patch) void update(patch);
+          }}
+        />
       )}
     </div>
   );
