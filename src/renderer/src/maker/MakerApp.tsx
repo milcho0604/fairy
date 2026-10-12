@@ -630,7 +630,10 @@ export function MakerApp() {
     beginShape('figure');
     setStep('name');
     const at = performance.now();
-    const r = await bridge.describe(text);
+    // 메인이 던져도(AI 시작 실패) 진행 표시가 멈추지 않던 것: 실패로 받아 적던 화면으로
+    const r = await bridge
+      .describe(text)
+      .catch(() => ({ ok: false as const, error: t('main.maker.textFailed') }));
     if (shapeRun.current !== run) return;
     if (!r.ok) {
       setShaping(false);
@@ -656,7 +659,9 @@ export function MakerApp() {
     setTextTask('tweak');
     setShaping(true);
     beginShape('figure');
-    const r = await bridge.tweak(model, ask, fromText.text, fromText.named);
+    const r = await bridge
+      .tweak(model, ask, fromText.text, fromText.named)
+      .catch(() => ({ ok: false as const, error: t('main.maker.textFailed') }));
     if (shapeRun.current !== run) return;
     if (!r.ok) {
       setShaping(false);

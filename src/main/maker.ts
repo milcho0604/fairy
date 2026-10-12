@@ -294,7 +294,11 @@ export function createMaker(
     const abort = new AbortController();
     shaping = abort;
     const started = Date.now();
-    const r = await ask(prompt, TEXT_SYSTEM, abort.signal);
+    // AI 쪽이 던지면(시작 실패 등) 창의 진행 표시가 멈추지 않고 계속 돌았다: 알기 쉬운 실패로 돌려준다
+    const r = await ask(prompt, TEXT_SYSTEM, abort.signal).catch((err: unknown) => {
+      log('maker', kind, 'threw', err instanceof Error ? err.message : String(err));
+      return { ok: false as const, error: t('main.maker.textFailed'), noAi: undefined };
+    });
     if (shaping === abort) shaping = undefined;
     const secs = `${Math.round((Date.now() - started) / 1000)}s`;
     if (abort.signal.aborted) {
