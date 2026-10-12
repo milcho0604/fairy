@@ -173,6 +173,12 @@ export interface Settings {
    */
   petPersonal: Record<string, boolean>;
   /**
+   * 기본 펫 모습마다 사용자가 지은 이름 (2026-10-12). 키는 몸 열쇠(bodyKey, kind:<모양>). 사진 펫(밀크, 초코)으로
+   * 갔다가 돌아오면 이 이름을 되살린다 (예전에는 "모찌"로 지은 콩이가 초코를 거쳐 오면 "콩이"가 됐다).
+   * 사진 펫 이름은 보관함(petLibrary)이 들고 있어 여기 없다. 손대지 않은 모습은 없다(기본 이름)
+   */
+  petKindNames: Record<string, string>;
+  /**
    * 만나는 시간 (shared/routine.ts, 사용자 요청 2026-10-08): 요일마다 일을 시작하고 끝내는 시간. 그때 맞이하고 헤어지는 인사.
    * 기본 꺼짐(예전처럼 켤 때 브리핑). 켜 두면 만나지 않는 요일이 삐짐 쉬는 날도 된다(restDays 대신, routine.ts restDaysOf)
    */
@@ -441,6 +447,7 @@ export const DEFAULT_SETTINGS: Settings = {
   petWishes: {},
   petStands: {},
   petPersonal: {},
+  petKindNames: {},
   routine: DEFAULT_ROUTINE,
   illustEngine: 'cloud',
   typeAlong: true,
@@ -504,14 +511,41 @@ export function defaultPetName(kind: PetKind): string {
  * 보관함으로 간다 (표시는 예전 펫 때 남은 것이라 기본 펫이 "밀크"로 불렸다)
  */
 export function followKindName(prev: Settings, next: Settings, patch: unknown): Settings {
+  return rememberKindName(prev, pickKindName(prev, next, patch));
+}
+
+function pickKindName(prev: Settings, next: Settings, patch: unknown): Settings {
   if (next.petImage) return next;
   if (typeof patch === 'object' && patch !== null && 'petName' in patch) return next;
   const leftPhoto = !!prev.petImage;
+  const moved = leftPhoto || prev.petKind !== next.petKind;
+  // 이 모습에 지어 둔 이름이 있으면 그 이름 (초코에 갔다 와도, 다른 모습에 다른 이름을 지었어도)
+  const saved = moved ? next.petKindNames[`kind:${next.petKind}`] : undefined;
+  if (saved)
+    return saved === next.petName && next.petNameEdited
+      ? next
+      : { ...next, petName: saved, petNameEdited: true };
   if (next.petNameEdited && !leftPhoto) return next;
-  if (!leftPhoto && prev.petKind === next.petKind) return next;
+  if (!moved) return next;
   const name = defaultPetName(next.petKind);
   if (name === next.petName && !next.petNameEdited) return next;
   return { ...next, petName: name, petNameEdited: false };
+}
+
+/**
+ * 기본 펫에 지은 이름을 그 모습 열쇠에 적어 둔다 (petKindNames). 바뀌기 전 펫도 적는다: 이 칸이 생기기 전에 지은 이름도
+ * 다른 펫으로 갔다 오면 되살아나게
+ */
+function rememberKindName(prev: Settings, next: Settings): Settings {
+  let names = next.petKindNames;
+  const note = (s: Settings) => {
+    if (s.petImage || !s.petNameEdited) return;
+    const key = `kind:${s.petKind}`;
+    if (names[key] !== s.petName) names = { ...names, [key]: s.petName };
+  };
+  if (!prev.petKindNames[`kind:${prev.petKind}`]) note(prev);
+  note(next);
+  return names === next.petKindNames ? next : { ...next, petKindNames: names };
 }
 
 /**
@@ -609,6 +643,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     typeAlong: bool(r.typeAlong, base.typeAlong),
     dailyNotes: bool(r.dailyNotes, base.dailyNotes),
     ...bodiesOf(r, base),
+    petKindNames: kindNamesOf(r.petKindNames, base.petKindNames),
     ...(typeof r.skipVersion === 'string' && /^\d+\.\d+\.\d+/.test(r.skipVersion)
       ? { skipVersion: r.skipVersion.slice(0, 32) }
       : base.skipVersion
@@ -694,6 +729,17 @@ function bodiesOf(
       (x) => (x === true ? true : undefined),
     ),
   };
+}
+
+/** 기본 펫 모습마다 지은 이름: 아는 모습 열쇠(kind:<모양>)만, 이름은 이름 칸과 같이 다듬는다 */
+function kindNamesOf(v: unknown, fallback: Record<string, string>): Record<string, string> {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return fallback;
+  const out: Record<string, string> = {};
+  for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+    const name = cleanPetName(x);
+    if (name && isPetKind(KIND_KEY.exec(k)?.[1])) out[k] = name;
+  }
+  return out;
 }
 
 /** 고른 모델: 모양만 본다(목록에 있는지는 부를 때 본다). 빈 값이면 그 AI 의 기본으로 되돌린다 */
