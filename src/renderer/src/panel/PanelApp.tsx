@@ -187,6 +187,8 @@ export function PanelApp() {
 
   const complete = async (todo: Todo) => {
     const coins = await bridge.complete(todo.id);
+    // 이미 끝낸 할 일 (체크를 빠르게 여러 번 눌렀다): 앞의 "끝! 코인" 알림을 덮지 않는다
+    if (coins === null) return;
     showToast({ kind: 'done', id: todo.id, coins });
   };
 

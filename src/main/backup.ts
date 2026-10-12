@@ -11,7 +11,12 @@ import {
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { app, type BrowserWindow, dialog, nativeImage } from 'electron';
-import { customAiCount, IMPORT_FILES, importedChatSettings } from '../shared/backup-import.ts';
+import {
+  customAiCount,
+  IMPORT_FILES,
+  importedChatSettings,
+  PET_STATE_FILES,
+} from '../shared/backup-import.ts';
 import { SCHEMA_VERSION } from '../shared/db-schema.ts';
 import { saveErrorText } from '../shared/download-error.ts';
 import { t } from '../shared/i18n/index.ts';
@@ -39,7 +44,10 @@ import { settings } from './settings.ts';
  * 가져올 때는 IMPORT_FILES 만 쓴다 (사용자 AI 는 옮기지 않는다).
  * 받은 모델(models/)과 내 컴퓨터에서 그리기 폴더(local-draw/, local-draw-sd/, 5GB 쯤)는 넣지 않는다: 다른 컴퓨터에서 다시 받으면 된다
  */
-const FILES = ['settings', 'chat-settings', 'ai-custom', 'pet-position', 'planner'].map((n) => `${n}.json`);
+const FILES = [
+  ...['settings', 'chat-settings', 'ai-custom', 'pet-position', 'planner'].map((n) => `${n}.json`),
+  ...PET_STATE_FILES,
+];
 
 const stamp = () => {
   const d = new Date();

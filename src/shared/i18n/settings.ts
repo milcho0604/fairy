@@ -394,7 +394,8 @@ export const ko = {
 
   // 복사해서 보내는 베타 기록 글
   'settings.report.title': '페어리 내 기록 ({version}, {os})',
-  'settings.report.first': '처음 켠 날 {first}, 오늘 {day}일째, 켠 날 {used}일',
+  'settings.report.first': (v: { first: string; day: number; used: number }) =>
+    `처음 켠 날 ${v.first}, 오늘 ${v.day}일째, 켠 날 ${v.used}일`,
   'settings.report.none': '아직 기록 없음',
   'settings.report.done': '하루 완료 할 일 중앙값 {n}개 (목표 {goal}개 이상)',
   'settings.report.hidden': '페어리 숨긴 시간 {n}% (목표 {goal}% 미만)',
@@ -788,7 +789,8 @@ export const en: Translation<typeof ko> = {
   'settings.stats.privacy': 'The copy has only dates and numbers. No to-do titles or chats.',
 
   'settings.report.title': 'fairy stats ({version}, {os})',
-  'settings.report.first': 'First day {first}, today is day {day}, opened on {used} days',
+  'settings.report.first': (v: { first: string; day: number; used: number }) =>
+    `First day ${v.first}, today is day ${v.day}, opened on ${v.used} day${Number(v.used) === 1 ? '' : 's'}`,
   'settings.report.none': 'No stats yet',
   'settings.report.done': 'Median to-dos done a day: {n} (goal {goal} or more)',
   'settings.report.hidden': 'Fairy hidden: {n}% (goal under {goal}%)',

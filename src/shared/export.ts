@@ -179,6 +179,19 @@ export function noteMarkdown(n: Note): string {
   return `${[...front, ...body].join('\n').trimEnd()}\n`;
 }
 
+/**
+ * 묶은 파일에서 메모 머리(##) 아래에 둘 본문. 제목 칸이 비었으면 머리가 본문 첫 줄이라 그 줄은 뺀다
+ * (noteMarkdown 과 같다. "## 장보기" 아래에 "장보기" 가 또 나왔다). 목록 줄이거나 길어서 잘린 제목이면 본문 그대로
+ */
+function bodyUnderTitle(n: Note): string {
+  const body = n.body.trim();
+  if (n.title.trim()) return body;
+  const [first = '', ...rest] = body.split('\n');
+  if (/^\s*([-*]|\d+\.)\s/.test(first)) return body;
+  if (first.replace(/^\s*#+\s*/, '').trim() !== noteTitle(n)) return body;
+  return rest.join('\n').trim();
+}
+
 /** 메모를 마크다운 하나로 묶는다 (최근에 고친 것부터, 메모 사이에 가로줄) */
 export function notesMarkdown(notes: readonly Note[], now: number): string {
   const head = [
@@ -193,8 +206,10 @@ export function notesMarkdown(notes: readonly Note[], now: number): string {
       `_${t('export.notes.updated', { at: localStamp(n.updatedAt) })}_`,
       '',
       // 본문 안의 큰 머리(#)가 메모 머리(##)보다 커지지 않게 한 단계씩 내린다
-      n.body.trim().replace(/^(#{1,5}) /gm, '#$1 '),
-    ].join('\n'),
+      bodyUnderTitle(n).replace(/^(#{1,5}) /gm, '#$1 '),
+    ]
+      .join('\n')
+      .trimEnd(),
   );
   return `${[head.join('\n'), ...items].join('\n\n---\n\n').trimEnd()}\n`;
 }

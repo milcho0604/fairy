@@ -20,7 +20,7 @@ export const ko = {
   'gcal.calendarBad': '캘린더 ID 모양이 아니야. 메일 주소처럼 생긴 ID를 넣어 줘',
   'gcal.syncNow': '지금 보내기',
   'gcal.state.synced': '다 보냈어 ({when})',
-  'gcal.state.pending': '보낼 일정 {n}개가 남았어',
+  'gcal.state.pending': (v: { n: number }) => `보낼 일정 ${v.n}개가 남았어`,
   'gcal.state.idle': '아직 보낸 일정이 없어',
   'gcal.privacy':
     '일정 쓰기 권한만 받아 (다른 캘린더 정보는 못 봐). 연결 토큰은 이 컴퓨터에만 두고 설정, 백업에 넣지 않아.',
@@ -60,7 +60,8 @@ export const en: Translation<typeof ko> = {
   'gcal.calendarBad': "That doesn't look like a calendar ID. It looks like an email address",
   'gcal.syncNow': 'Send now',
   'gcal.state.synced': 'All sent ({when})',
-  'gcal.state.pending': '{n} events left to send',
+  'gcal.state.pending': (v: { n: number }) =>
+    Number(v.n) === 1 ? '1 event left to send' : `${v.n} events left to send`,
   'gcal.state.idle': 'Nothing sent yet',
   'gcal.privacy':
     "Asks only for permission to edit events (it can't see your other calendar settings). The sign-in token stays on this computer, never in settings or backups.",

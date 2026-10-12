@@ -961,7 +961,8 @@ export interface PanelBridge {
   snapshot(): Promise<PanelState>;
   /** 한 줄 입력(빠른 입력과 같은 규칙)으로 할 일을 더한다 */
   add(text: string): Promise<PanelAddResult>;
-  complete(id: number): Promise<number>;
+  /** 받은 코인 수. 이미 끝냈거나 없는 할 일이면 null (빠르게 여러 번 누른 체크) */
+  complete(id: number): Promise<number | null>;
   undo(id: number): Promise<number>;
   update(
     id: number,

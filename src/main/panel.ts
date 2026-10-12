@@ -649,7 +649,9 @@ export function createPanel(o: PanelOptions) {
   });
   ipcMain.handle(PANEL.complete, (e, id: number) => {
     if (!ours(e)) return 0;
-    const coins = o.store.complete(id, Date.now());
+    // 이미 끝냈거나 없는 할 일(체크를 빠르게 여러 번 누름)은 다시 기뻐하지 않는다
+    const coins = o.store.completeOpen(id, Date.now());
+    if (coins === null) return null;
     log('todo', 'complete', id, coins);
     push();
     o.onCompleted(coins, id);
