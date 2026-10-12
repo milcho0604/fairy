@@ -326,6 +326,28 @@ test('이름을 손대지 않았으면 기본 펫 모습을 바꿀 때 이름이
   assert.equal(follow(photo, { petImage: null }).petName, '콩이');
 });
 
+test('사진 펫(밀크)에서 기본 펫으로 돌아오면 손댄 이름 표시가 있어도 그 모습의 기본 이름', () => {
+  const follow = (prev: Settings, patch: Record<string, unknown>) =>
+    followKindName(prev, applyPatch(prev, patch), patch);
+  // 예전에 이름을 지은 적이 있어 표시가 남은 채 밀크를 골랐다. 밀크 이름은 밀크와 같이 보관함으로 간다
+  const milk: Settings = {
+    ...DEFAULT_SETTINGS,
+    petImage: 'pet-milk-1.png',
+    petName: '밀크',
+    petNameEdited: true,
+  };
+  const back = follow(milk, { petKind: 'cat', petImage: null });
+  assert.equal(back.petName, '냥이');
+  // 그 뒤 기본 펫끼리 바꾸면 이름이 따라간다 (새 이름은 아직 손대지 않았다)
+  assert.equal(back.petNameEdited, false);
+  assert.equal(follow(back, { petKind: 'dog' }).petName, '멍멍이');
+  // 기본 펫에 지은 이름은 기본 펫끼리 바꿔도 지킨다
+  const named = { ...DEFAULT_SETTINGS, petName: '몽실이', petNameEdited: true };
+  assert.equal(follow(named, { petKind: 'dog' }).petName, '몽실이');
+  // 기본 펫으로 오면서 이름을 같이 주면 그 이름
+  assert.equal(follow(milk, { petImage: null, petName: '뭉치' }).petName, '뭉치');
+});
+
 test('손댄 이름 표시: 저장 파일 값을 읽고, 이상한 값은 그대로 둔다', () => {
   assert.equal(DEFAULT_SETTINGS.petNameEdited, false);
   assert.equal(parseSettings({ petNameEdited: true }).petNameEdited, true);
