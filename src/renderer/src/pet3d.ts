@@ -115,6 +115,7 @@ import {
   walkEnvelopeOf,
 } from './pet3d-gait.ts';
 import { bounced, type EyeState, restingEye } from './pet3d-motion.ts';
+import { filletSphere, neckPair } from './pet3d-neck.ts';
 import { type FootOut, FootPlanter } from './pet3d-plant.ts';
 import {
   type BodyPose,
@@ -751,6 +752,8 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       mesh.position.sub(pivots[part.slot]);
       this.joints[part.slot].add(mesh);
     }
+    // 피규어: 공 머리와 공 몸이 만나는 골을 메워 한 덩어리로 (게임은 겹친 자리 테두리 선이 모습이고, 실사와 복슬복슬은 털이 덮는다)
+    if (this.style === 'figure' && !standing) this.filletNeck(meshes);
     this.root.updateMatrixWorld(true);
     const faceSlot = bp.face.slot === 'head' && this.hasHead ? 'head' : 'body';
     this.faceOnHead = faceSlot === 'head';
@@ -1009,6 +1012,33 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       if (!work(8)) setTimeout(tick, 0);
     };
     setTimeout(tick, 0);
+  }
+
+  /**
+   * 머리와 몸 사이 골을 메운다 (pet3d-neck.ts). 두 공의 모양을 잘게 나눈 공으로 바꾼 뒤 골 가까이 정점을 둥근 이음 겉면으로
+   * 민다. 무늬 자리(모양 공간)는 거의 그대로다. 얼굴을 붙이기 전에 한다 (눈, 입이 바뀐 겉면에 앉게)
+   */
+  private filletNeck(meshes: readonly { part: Part; mesh: Mesh }[]) {
+    const pair = neckPair(meshes.map((m) => m.part));
+    if (!pair) return;
+    for (const [self, other] of [
+      [pair.head, pair.body],
+      [pair.body, pair.head],
+    ] as const) {
+      const mesh = meshes.find((m) => m.part === self)?.mesh;
+      if (!mesh) continue;
+      const geo = new SphereGeometry(1, 64, 48);
+      const pos = geo.attributes.position;
+      const nrm = geo.attributes.normal;
+      if (!pos || !nrm || !filletSphere(self, other, pos.array as Float32Array, nrm.array as Float32Array)) {
+        geo.dispose();
+        continue;
+      }
+      pos.needsUpdate = true;
+      nrm.needsUpdate = true;
+      mesh.geometry.dispose();
+      mesh.geometry = geo;
+    }
   }
 
   /** 복슬복슬 몸을 다 만들 때까지 바로 한다 (썸네일, 시험 그림처럼 한 번에 그려야 할 때) */
@@ -1728,6 +1758,15 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
             : new CapsuleGeometry(r, Math.max(0, 2 * y - 2 * r), 10, 24);
           scale.set(x / r, 1, z / r);
           if (p.taper !== undefined && p.taper < 1) taperY(geo, p.taper);
+          // 길게 선 귀(토끼 귀)는 곧은 막대 대신 가운데가 도톰한 잎 모양으로, 끝이 살짝 뒤로 휜다.
+          // 게임 모습은 빼다 (테두리 선을 키운 사본으로 그려서 휜 귀 끝에 선이 겹쳐 보였다)
+          if (
+            (p.slot === 'earL' || p.slot === 'earR') &&
+            !p.wear &&
+            !this.game &&
+            y >= LONG_EAR * Math.max(x, z)
+          )
+            earLeaf(geo, z / r);
           break;
         }
         case 'cone':
@@ -2992,8 +3031,14 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
         const facing = n.dot(eye.copy(this.camera.position).sub(at).normalize());
         // 네 발로 선 몸의 코는 주둥이 끝에 솟아 옆모습에서도 보인다 (옆으로 걸을 때 코 없는 주둥이가 되었다)
         const nose = !!this.stance && g2 === this.face.noseAt;
-        g2.visible =
-          facing > (nose ? -0.15 : 0.25) || (g2 === this.face.mouthAt && this.face.style === 'beak');
+        const beak = g2 === this.face.mouthAt && this.face.style === 'beak';
+        g2.visible = facing > (nose ? -0.15 : 0.25) || beak;
+        // 겉면에 칠한 것처럼: 비스듬히 보일수록 눈, 입을 겉면 쪽으로 납작하게 한다. 도톰한 눈알이 그대로면 3/4 와 옆에서
+        // 머리 가장자리에 붙은 먼 눈과 입이 실루엣 밖으로 삐져나왔다. 정면 가까이(facing 0.75 넘게)는 그대로다.
+        // 솟은 것(코, 부리)은 제 두께를 지킨다
+        const solid = beak || g2 === this.face.noseAt;
+        const k = solid ? 1 : Math.min(1, Math.max(0, (facing - 0.25) / 0.5));
+        g2.scale.z = 0.2 + 0.8 * k * k * (3 - 2 * k);
       }
     }
   }
@@ -3916,6 +3961,30 @@ vec4 jjLong(vec3 p) {
 `;
 
 /** y 축 모양(캡슐)의 위쪽 반지름을 taper 배로 (아래 -1 에서 1, 위 +1 에서 taper 로 선형) */
+/** 길게 선 귀로 볼 만큼: 반길이가 반지름의 이 배 넘게 */
+const LONG_EAR = 2.5;
+
+/**
+ * 길게 선 귀를 잎 모양으로 (사용자 지적 2026-10-12: 말로 만든 토끼 귀가 막대처럼 뻣뻣했다). 밑동은 조금 가늘게, 가운데는
+ * 도톰하게 넓히고, 위로 갈수록 뒤(-z)로 살짝 휜다. zScale 은 모양을 부품 크기로 늘리는 z 배율 (휜 만큼을 세상 길이로 맞춘다).
+ * 안쪽 색(inner) 부품도 같은 귀 모양이라 같이 휜다
+ */
+function earLeaf(geo: BufferGeometry, zScale: number): void {
+  geo.computeBoundingBox();
+  const b = geo.boundingBox;
+  const pos = geo.attributes.position;
+  if (!b || !pos) return;
+  const h = Math.max(1e-6, b.max.y - b.min.y);
+  for (let i = 0; i < pos.count; i++) {
+    const t = (pos.getY(i) - b.min.y) / h;
+    const w = 0.8 + 0.42 * Math.sin(Math.PI * Math.min(1, t * 1.1));
+    pos.setX(i, pos.getX(i) * w);
+    pos.setZ(i, pos.getZ(i) * w - (0.12 * h * t * t) / Math.max(1e-6, zScale));
+  }
+  pos.needsUpdate = true;
+  geo.computeVertexNormals();
+}
+
 function taperY(geo: BufferGeometry, taper: number): void {
   geo.computeBoundingBox();
   const b = geo.boundingBox;
