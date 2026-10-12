@@ -1320,15 +1320,27 @@ export function createPetWindow({
     });
   }
   // 끌기가 끝나거나 화면 잠금이 풀리거나 자리로 돌아오면 2초 안에 꺼낸다
-  const releaseTimer = setInterval(releaseHeld, 2000);
+  const releaseTimer = setInterval(() => {
+    releaseDragAnswer();
+    releaseHeld();
+  }, 2000);
+
+  /** 끄는 동안 온 답 알림을 놓고(던졌으면 다 떨어지고) 나서 띄운다. 숨은 동안 붙잡은 것은 다시 나올 때 setHidden 이 띄운다 */
+  function releaseDragAnswer() {
+    if (!heldAnswer || hideReasons.hidden || dragTimer || flightTimer || win.isDestroyed()) return;
+    const answer = heldAnswer;
+    heldAnswer = undefined;
+    void say(answer.options).then(answer.resolve);
+  }
 
   function say(options: SayOptions): Promise<string | undefined> {
     const { kind, text, buttons = [], ttlMs = BUBBLE_TTL_MS, image, hold, signal, paper } = options;
     if (signal?.aborted) return Promise.resolve(undefined);
-    if (hideReasons.hidden && kind === 'answer') {
+    // 숨은 동안, 펫을 끄는 동안 온 답 알림은 붙잡아 둔다. 끄는 중에는 예전에 그냥 버려서 답이 왔다는 말이 사라졌다
+    if ((hideReasons.hidden || dragTimer) && kind === 'answer') {
       // 앞에 기다리던 알림은 새 것으로 바꾼다 (가장 최근 답 하나만).
       heldAnswer?.resolve(undefined);
-      tellResting(kind, !!hold);
+      if (hideReasons.hidden) tellResting(kind, !!hold);
       return new Promise((resolve) => {
         const held = { options, resolve };
         heldAnswer = held;
