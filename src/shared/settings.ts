@@ -445,14 +445,19 @@ export function defaultPetName(kind: PetKind): string {
 
 /**
  * 이름을 손대지 않았으면 기본 펫 모습을 바꿀 때 이름도 그 모습의 기본 이름으로 (첫 안내, 설정의 모습 카드).
- * 이름을 같이 바꾸는 변경(보관한 사진 펫 꺼내기, 펫 만들기)과 사진 펫으로 바꾸는 변경은 건드리지 않는다
+ * 이름을 같이 바꾸는 변경(보관한 사진 펫 꺼내기, 펫 만들기)과 사진 펫으로 바꾸는 변경은 건드리지 않는다.
+ * 사진 펫(밀크, 초코 포함)에서 기본 펫으로 오면 손댄 이름 표시가 있어도 기본 이름: 사진 펫 이름은 그 펫과 함께
+ * 보관함으로 간다 (표시는 예전 펫 때 남은 것이라 기본 펫이 "밀크"로 불렸다)
  */
 export function followKindName(prev: Settings, next: Settings, patch: unknown): Settings {
-  if (next.petNameEdited || next.petImage) return next;
+  if (next.petImage) return next;
   if (typeof patch === 'object' && patch !== null && 'petName' in patch) return next;
-  if (!prev.petImage && prev.petKind === next.petKind) return next;
+  const leftPhoto = !!prev.petImage;
+  if (next.petNameEdited && !leftPhoto) return next;
+  if (!leftPhoto && prev.petKind === next.petKind) return next;
   const name = defaultPetName(next.petKind);
-  return name === next.petName ? next : { ...next, petName: name };
+  if (name === next.petName && !next.petNameEdited) return next;
+  return { ...next, petName: name, petNameEdited: false };
 }
 
 /**

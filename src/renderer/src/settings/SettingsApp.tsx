@@ -44,7 +44,6 @@ export function SettingsApp() {
   useEffect(() => {
     bridge.get().then(setSnap);
     bridge.onChanged((settings) => {
-      setSnap((s) => s && { ...s, settings });
       // 펫 만들기 창에서 새 펫을 저장하면 보관함과 지금 그림이 바뀐다. 그때만 다시 받는다
       // 몸을 다시 만들면(걸음새) 설계도 파일만 바뀐다. 그때도 지금 펫 카드와 몸 모양을 다시 받는다
       const key = JSON.stringify([
@@ -55,10 +54,17 @@ export function SettingsApp() {
       ]);
       if (key !== libraryKey.current) {
         libraryKey.current = key;
+        // 설정과 보관함을 한 번에 바꾼다. 설정만 먼저 바꾸면 잠깐 새 지금 펫과 옛 보관함이 섞여 카드가 사라졌다 나타났다
         void bridge
           .get()
-          .then((next) => setSnap((s) => s && { ...s, library: next.library, current: next.current }));
+          .then((next) =>
+            setSnap(
+              (s) => s && { ...s, settings: next.settings, library: next.library, current: next.current },
+            ),
+          );
+        return;
       }
+      setSnap((s) => s && { ...s, settings });
     });
     bridge.onPower((onBattery) => setSnap((s) => s && { ...s, onBattery }));
     if (navigator.userAgent.includes('Mac')) document.body.classList.add('mac');
