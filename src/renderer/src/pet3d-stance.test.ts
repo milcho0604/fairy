@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { expandParts, type Part, parseBlueprint } from '../../shared/pet3d/blueprint.ts';
-import { STARTER_BLUEPRINTS, starterModelOf } from '../../shared/pet3d/starters.ts';
+import { STARTER_BLUEPRINTS, STARTER_LOOKS, starterModelOf } from '../../shared/pet3d/starters.ts';
 import { legCut, legGap } from './pet3d-gait.ts';
 import {
   blendPose,
@@ -212,7 +212,7 @@ test('바라는 자세: 걷기는 서고, 걷고 나서 잠깐 서 있다가 앉
 });
 
 test('밀크, 초코 설계도: 네 발로 선 몸이고 다리마다 앞뒤가 나뉘며 무릎 아래 마디가 있다', () => {
-  for (const [id, bp] of Object.entries(STARTER_BLUEPRINTS)) {
+  for (const [id, bp] of [...Object.entries(STARTER_BLUEPRINTS), ...Object.entries(STARTER_LOOKS)]) {
     assert.equal(bp.stance, 'stand', id);
     assert.equal(bp.gait, 'quadruped', id);
     const parts = expandParts(bp.parts);
@@ -242,8 +242,12 @@ test('밀크, 초코 설계도: 네 발로 선 몸이고 다리마다 앞뒤가 
 });
 
 test('밀크, 초코 그림 파일이면 입체 설계도를 준다. 다른 사진 펫은 없다', () => {
-  assert.equal(starterModelOf('pet-milk-123.png'), STARTER_BLUEPRINTS.milk);
-  assert.equal(starterModelOf('pet-choco-9.png'), STARTER_BLUEPRINTS.choco);
+  assert.equal(starterModelOf('pet-milk-123.png'), STARTER_LOOKS.milk);
+  assert.equal(starterModelOf('pet-choco-9.png'), STARTER_LOOKS.choco);
+  // 닮게 하는 덧붙임(갈기, 혀)은 앱이 그리는 밀크, 초코에만 (사진 동물을 세우는 뼈대에는 없다)
+  assert.ok(STARTER_LOOKS.milk.parts.length > STARTER_BLUEPRINTS.milk.parts.length);
+  assert.equal(STARTER_LOOKS.choco.face.tongue, true);
+  assert.equal(STARTER_BLUEPRINTS.choco.face.tongue, undefined);
   assert.equal(starterModelOf('pet-123.png'), null);
   assert.equal(starterModelOf(null), null);
   assert.equal(starterModelOf('pet-milk-1.png.png'), null);

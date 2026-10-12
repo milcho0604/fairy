@@ -196,6 +196,8 @@ export interface Face {
   pupil?: Pupil;
   /** 속눈썹 (v2) */
   lashes?: boolean;
+  /** 입 아래로 내민 혀 (grin 입만. 혀를 내민 강아지) */
+  tongue?: boolean;
   /** 코 (v2). 없으면 cat 입에만 분홍 코 */
   nose?: Nose;
   /** 눈썹 (v2) */
@@ -309,6 +311,7 @@ export function parseBlueprint(raw: unknown): Blueprint | undefined {
   const pupil = oneOf(PUPILS, f.pupil);
   if (pupil) face.pupil = pupil;
   if (f.lashes === true) face.lashes = true;
+  if (f.tongue === true && face.mouth === 'grin') face.tongue = true;
   if (f.blushLines === true && face.blush) face.blushLines = true;
   const nose = obj(f.nose);
   const noseShape = oneOf(NOSES, nose?.shape);

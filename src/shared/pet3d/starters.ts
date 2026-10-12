@@ -3,7 +3,7 @@
 // 앱이 앉히고, 엎드리게 하고, 옆으로 돌아 네 발로 걷게 한다 (renderer pet3d-stance.ts).
 // 좌표: 바닥 y=0, 앞(머리)이 +z, 네 발 가운데가 x=0, z=0 근처. 크기는 반지름
 import { type StarterId, starterOf } from '../starter-pets.ts';
-import type { Blueprint } from './blueprint.ts';
+import type { Blueprint, Part } from './blueprint.ts';
 
 // 밀크: 긴 털 흰 고양이 (조금 크림빛). 그림의 밝은 털 #f2efea, 가슴 #ece7e2, 그늘 #d8cfca
 const MILK = '#f3eee8';
@@ -11,10 +11,11 @@ const MILK_EAR = '#efc9be';
 const MILK_NOSE = '#e9a294';
 const MILK_EYE = '#d99a45';
 
-// 초코: 곱슬 털 갈색 토이 푸들. 그림의 털 가운데 #8a4a2a, 밝은 털 #b98064, 가슴 #ad7657, 주둥이 #74290d
-const CHOCO = '#7d3f22';
-const CHOCO_LIGHT = '#98593a';
-const CHOCO_DARK = '#66301a';
+// 초코: 곱슬 털 갈색 토이 푸들. 그림의 털 가운데 #73412b, 밝은 털 #a46d51, 그늘 #3d2313. 빛을 받으면 밝아져
+// 그림 가운데 빛보다 조금 어둡게 둔다 (밝게 두면 피규어는 분홍빛, 실사는 주황빛이 돌았다)
+const CHOCO = '#6a3418';
+const CHOCO_LIGHT = '#8a4f2e';
+const CHOCO_DARK = '#542918';
 const CHOCO_NOSE = '#2b2220';
 
 export const STARTER_BLUEPRINTS: Record<StarterId, Blueprint> = {
@@ -393,10 +394,85 @@ export const STARTER_BLUEPRINTS: Record<StarterId, Blueprint> = {
 };
 
 /**
+ * 그림(사진)을 닮게 하는 덧붙임. 뼈대(STARTER_BLUEPRINTS)는 사진 동물을 네 발로 세울 때도 쓰니(stand.ts) 거기에는
+ * 넣지 않는다 (짧은 털 고양이에 갈기가 붙지 않게). 밀크: 목둘레 갈기, 가슴으로 늘어진 털 다발, 굵고 풍성한 꼬리.
+ * 초코: 아래가 넓게 퍼진 곱슬 귀, 내민 혀
+ */
+const LOOK: Record<StarterId, { add: Part[]; tail?: Partial<Part>; tongue?: boolean }> = {
+  milk: {
+    add: [
+      // 목둘레 갈기: 머리 아래를 둘러 얼굴보다 넓게 (사진처럼 턱 아래가 하얀 털로 부푼다)
+      {
+        slot: 'body',
+        shape: 'sphere',
+        at: [0, 0.53, 0.26],
+        size: [0.205, 0.135, 0.13],
+        color: MILK,
+        finish: 'fuzzy',
+      },
+      // 가슴으로 늘어진 털 다발 (아래로 뻗는 털 뭉치)
+      {
+        slot: 'body',
+        shape: 'tuft',
+        at: [0, 0.4, 0.33],
+        size: [0.075, 0.1, 0.035],
+        rot: [-12, 0, 180],
+        color: MILK,
+        finish: 'fuzzy',
+      },
+      {
+        slot: 'body',
+        shape: 'tuft',
+        at: [-0.085, 0.43, 0.3],
+        size: [0.065, 0.09, 0.035],
+        rot: [-12, -25, 165],
+        color: MILK,
+        finish: 'fuzzy',
+        mirror: true,
+      },
+    ],
+    // 꼬리: 굵고 끝까지 풍성하게 (사진의 깃털 꼬리)
+    tail: { size: [0.1, 0.1, 0.1], taper: 0.78 },
+  },
+  choco: {
+    add: [
+      // 곱슬 귀 아래쪽이 넓게 퍼진다 (사진의 귀는 턱까지 내려오는 곱슬 덩이)
+      {
+        slot: 'earL',
+        shape: 'sphere',
+        at: [-0.158, 0.55, 0.255],
+        size: [0.072, 0.075, 0.072],
+        color: CHOCO_DARK,
+        finish: 'fuzzy',
+        mirror: true,
+      },
+    ],
+    tongue: true,
+  },
+};
+
+function withLook(bp: Blueprint, look: (typeof LOOK)[StarterId]): Blueprint {
+  const parts = bp.parts.map((p) =>
+    p.slot === 'tail' && p.shape === 'tube' && look.tail ? { ...p, ...look.tail } : p,
+  );
+  return {
+    ...bp,
+    parts: [...parts, ...look.add],
+    face: look.tongue ? { ...bp.face, tongue: true } : bp.face,
+  };
+}
+
+/** 앱이 그리는 밀크, 초코 (뼈대 + 사진을 닮게 하는 덧붙임) */
+export const STARTER_LOOKS: Record<StarterId, Blueprint> = {
+  milk: withLook(STARTER_BLUEPRINTS.milk, LOOK.milk),
+  choco: withLook(STARTER_BLUEPRINTS.choco, LOOK.choco),
+};
+
+/**
  * 펫 그림 파일이 밀크, 초코 복사본이면 그 입체 설계도. 아니면 null.
  * 사진 펫에 AI 가 만든 설계도가 있으면 그것이 먼저다 (부르는 쪽이 정한다). 입체로 보기를 끄면 그림 그대로 보인다
  */
 export function starterModelOf(image: string | null | undefined): Blueprint | null {
   const id = starterOf(image);
-  return id ? STARTER_BLUEPRINTS[id] : null;
+  return id ? STARTER_LOOKS[id] : null;
 }

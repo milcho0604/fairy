@@ -1023,11 +1023,13 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     const n = Math.max(6, Math.round(fluffLayers(fur) * k));
     this.fluffTex ??= fluffTexture();
     const tex = this.fluffTex;
+    // 네 발로 선 몸은 털 끝을 부드럽게 (fluffShellMaterial soft)
+    const soft = !!bp.stance;
     addShells(mesh, n, (i) => {
-      const key = `fluff/${i}/${n}/${fur.length}/${fur.curl}/${fur.clump}`;
+      const key = `fluff/${i}/${n}/${fur.length}/${fur.curl}/${fur.clump}${soft ? '/soft' : ''}`;
       let m = this.materials.get(key);
       if (!m) {
-        m = fluffShellMaterial(i, n, tex, fur);
+        m = fluffShellMaterial(i, n, tex, fur, soft);
         this.materials.set(key, m);
       }
       return m;
@@ -1319,6 +1321,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       mesh = this.partMesh({ ...base, size: [r, len / 2 + r, r] });
     } else mesh = this.partMesh(base, limbGeometry(r0, r1, len).translate(0, len / 2, 0));
     worldFurCoords(mesh);
+    if (this.sculpt && !this.fluffy) sculptOutline(mesh.geometry, mesh.scale, this.sculpt);
     parent.attach(mesh);
   }
 
@@ -1335,6 +1338,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     const [sx, sy, sz] = paw.size;
     const mesh = this.partMesh(part, pawGeometry(paw.size, this.stanceToes));
     worldFurCoords(mesh);
+    if (this.sculpt) sculptOutline(mesh.geometry, mesh.scale, this.sculpt);
     // 발바닥 살: 밝은 발은 분홍, 어두운 발은 짙은 살 (발을 들어 발끝을 굽히면 보인다)
     const c = new Color(paw.color);
     const pad = this.material(c.r * 0.3 + c.g * 0.55 + c.b * 0.15 > 0.55 ? '#e9a59c' : '#2f2422', 'soft');
@@ -1617,7 +1621,14 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
         finish === 'shiny'
           ? { color, roughness: 0.28, clearcoat: 1, clearcoatRoughness: 0.15 }
           : finish === 'fuzzy'
-            ? { color, roughness: 0.85, sheen: 1, sheenRoughness: 0.45, sheenColor: '#ffffff' }
+            ? {
+                color,
+                roughness: 0.85,
+                sheen: 1,
+                sheenRoughness: 0.45,
+                // 새긴 털 결(밀크, 초코)은 털 색 빛 (흰 빛이면 갈색 털 가장자리가 분홍빛 회색으로 떴다)
+                sheenColor: sculpt ? new Color(color).lerp(new Color('#ffffff'), 0.3) : '#ffffff',
+              }
             : { color, roughness: 0.55, clearcoat: 0.35, clearcoatRoughness: 0.45 },
       );
     }
@@ -1631,13 +1642,18 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     const [x, y, z] = p.size;
     let geo: BufferGeometry;
     const scale = given ? new Vector3(1, 1, 1) : new Vector3(x, y, z);
+    // 새긴 털 결로 가장자리를 울퉁불퉁하게 하는 부품은 잘게 나눈다 (sculptOutline)
+    // 피규어만 (실사는 털 껍질이 모양을 열여섯 번 겹쳐 그려 잘게 나누면 비싸고, 털이 가장자리를 덮는다)
+    const fine = p.finish === 'fuzzy' && !p.wear && !!this.sculpt && this.style === 'figure';
     if (given) geo = given;
     else
       switch (p.shape) {
         case 'capsule': {
           // 캡슐은 반지름 그대로 만들고 길이로 늘린다 (늘려서 만들면 둥근 끝이 찌그러진다)
           const r = Math.max(x, z);
-          geo = new CapsuleGeometry(r, Math.max(0, 2 * y - 2 * r), 10, 24);
+          geo = fine
+            ? new CapsuleGeometry(r, Math.max(0, 2 * y - 2 * r), 16, 56, 4)
+            : new CapsuleGeometry(r, Math.max(0, 2 * y - 2 * r), 10, 24);
           scale.set(x / r, 1, z / r);
           if (p.taper !== undefined && p.taper < 1) taperY(geo, p.taper);
           break;
@@ -1656,7 +1672,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
           break;
         case 'tube':
           // 길은 절대 좌표라 at 를 뺀 자리로, 반지름은 모양에 넣는다 (배율로 키우면 길까지 늘어난다)
-          geo = tubeGeometry(p.path ?? [], p.at, x, p.taper ?? 1);
+          geo = tubeGeometry(p.path ?? [], p.at, x, p.taper ?? 1, fine);
           scale.set(1, 1, 1);
           break;
         case 'tuft':
@@ -1678,7 +1694,9 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
                   0,
                   Math.acos(Math.max(-1, Math.min(0.95, p.cut))),
                 )
-              : new SphereGeometry(1, 40, 28);
+              : fine
+                ? new SphereGeometry(1, 72, 48)
+                : new SphereGeometry(1, 40, 28);
       }
     const pat = p.pattern ? this.patternOf(p.pattern, geo, scale) : undefined;
     // 새긴 털 결은 모양 좌표 × 크기(세상 길이)로 찍는다: 부품 크기와 상관없이 같은 굵기, 움직여도 겉에 붙어 있다
@@ -1690,6 +1708,9 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
         for (let i = 0; i < pos.count; i++)
           v.set([pos.getX(i) * scale.x, pos.getY(i) * scale.y, pos.getZ(i) * scale.z], i * 3);
         geo.setAttribute('jjFurP', new BufferAttribute(v, 3));
+        // 다리 마디와 발(given)은 세상 자리로 좌표를 옮긴 뒤 한다 (limbMesh, pawMesh)
+        // 고양이 얼굴은 털이 짧다 (긴 털 다발은 몸, 꼬리, 다리만)
+        if (!given) sculptOutline(geo, scale, sculpt, sculpt === 'long' && p.slot === 'head' ? 0.35 : 1);
       }
     }
     const mesh = new Mesh(geo, this.material(p.color, p.finish, pat, sculpt));
@@ -2245,6 +2266,24 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
         tip.scale.set(m * 0.5, m * 0.42, m * 0.22);
         tip.position.set(0, -m * 0.3, m * 0.14);
         grin.add(rim, inside, tip);
+        // 내민 혀 (face.tongue): 입 아래로 늘어진 분홍 혀, 가운데 골. 입체로 빛을 받는다
+        if (f.tongue) {
+          const out = new Group();
+          out.position.set(0, -m * 0.25, m * 0.2);
+          out.rotation.x = 0.35;
+          const blade = new Mesh(sphere, this.material('#e8798a', 'soft'));
+          blade.scale.set(m * 0.95, m * 1.6, m * 0.32);
+          blade.position.y = -m * 1.1;
+          const groove = stroke(
+            [0, -m * 0.2],
+            [0, -m * 1.7],
+            m * 0.08,
+            new MeshBasicMaterial({ color: '#c4566a' }),
+          );
+          groove.position.z = m * 0.33;
+          out.add(blade, groove);
+          grin.add(out);
+        }
         mouth.smile = grin;
       } else if (f.mouth === 'tiny') {
         // 짧은 선 (인형의 박음질 입)
@@ -3584,7 +3623,7 @@ function decorate(
           float jjFade = clamp(1.7 - length(fwidth(vJjFur)) * ${curl ? '24.0' : '30.0'}, 0.0, 1.0);
           vec3 jjG = (jjS.y * vJjX + jjS.z * vJjY + jjS.w * vJjZ) * ${curl ? '0.013' : '0.006'} * jjFade;
           normal = normalize(normal - (jjG - dot(jjG, normal) * normal));
-          float jjAo = mix(1.0, ${curl ? '0.74 + 0.3' : '0.9 + 0.11'} * jjS.x, jjFade);`,
+          float jjAo = mix(1.0, ${curl ? '0.6 + 0.48' : '0.9 + 0.11'} * jjS.x, jjFade);`,
         )
         .replace(
           '#include <opaque_fragment>',
@@ -3681,12 +3720,19 @@ function taperY(geo: BufferGeometry, taper: number): void {
  * 관 (꼬리). 길을 따라 반지름 r 의 관을 만들고 양 끝을 공으로 막는다. 끝으로 갈수록 taper 배로 가늘어진다.
  * 길이 짧으면(점 둘) 직선
  */
-function tubeGeometry(path: readonly Vec3[], at: Vec3, r: number, taper: number): BufferGeometry {
+function tubeGeometry(
+  path: readonly Vec3[],
+  at: Vec3,
+  r: number,
+  taper: number,
+  fine = false,
+): BufferGeometry {
   const pts = path.map(([x, y, z]) => new Vector3(x - at[0], y - at[1], z - at[2]));
   if (pts.length < 2) pts.push(new Vector3(0, 0, 0), new Vector3(0, r * 4, 0));
   const curve = new CatmullRomCurve3(pts, false, 'centripetal');
-  const segs = 10 * pts.length;
-  const radial = 14;
+  // fine: 새긴 털 결로 가장자리를 울퉁불퉁하게 할 꼬리는 잘게 (sculptOutline)
+  const segs = (fine ? 24 : 10) * pts.length;
+  const radial = fine ? 32 : 14;
   const tube = new TubeGeometry(curve, segs, r, radial, false);
   const pos = tube.attributes.position;
   if (pos) {
@@ -3705,9 +3751,10 @@ function tubeGeometry(path: readonly Vec3[], at: Vec3, r: number, taper: number)
     pos.needsUpdate = true;
     tube.computeVertexNormals();
   }
-  const start = new SphereGeometry(r, 16, 12).translate(pts[0]?.x ?? 0, pts[0]?.y ?? 0, pts[0]?.z ?? 0);
+  const [cw, ch] = fine ? [32, 20] : [16, 12];
+  const start = new SphereGeometry(r, cw, ch).translate(pts[0]?.x ?? 0, pts[0]?.y ?? 0, pts[0]?.z ?? 0);
   const last = pts.at(-1) ?? new Vector3();
-  const end = new SphereGeometry(r * Math.max(0.05, taper), 16, 12).translate(last.x, last.y, last.z);
+  const end = new SphereGeometry(r * Math.max(0.05, taper), cw, ch).translate(last.x, last.y, last.z);
   const merged = mergeGeometries([tube, start, end]);
   tube.dispose();
   start.dispose();
@@ -3834,6 +3881,66 @@ export function pawGeometry(size: Vec3, toes: boolean): BufferGeometry {
     }
   geo.computeVertexNormals();
   return geo;
+}
+
+/**
+ * 새긴 털 결의 가장자리 (네 발로 선 몸의 피규어, 실사). 겉면을 털 뭉치 높이만큼 법선 쪽으로 밀어 실루엣이
+ * 곱슬 뭉치(curl, 초코)나 아래로 빗은 긴 털 다발(long, 밀크)로 울퉁불퉁하게 한다 (셰이더의 털 결은 빛만 바꿔
+ * 가장자리가 매끈한 고무 인형 같았다). 좌표는 jjFurP (세상 길이)라 무릎과 발목에서 이어진다. 법선은 그대로 둔다
+ * (빛은 셰이더 털 결이 맡는다. 다시 구하면 공 이음매가 보인다). 작은 부품(주둥이, 발)은 덜 민다
+ */
+function sculptOutline(geo: BufferGeometry, scale: Vector3, sculpt: 'curl' | 'long', k = 1): void {
+  const pos = geo.attributes.position;
+  const nor = geo.attributes.normal;
+  const fur = geo.getAttribute('jjFurP');
+  if (!pos || !nor || !fur) return;
+  geo.computeBoundingBox();
+  const half = geo.boundingBox?.getSize(new Vector3()).multiply(scale).multiplyScalar(0.5);
+  if (!half) return;
+  const curl = sculpt === 'curl';
+  const small = Math.min(1, Math.max(0.35, (Math.min(half.x, half.y, half.z) - 0.02) / 0.07));
+  const amp = (curl ? 0.034 : 0.03) * small * k;
+  // 뭉치 크기 (세상 길이): 곱슬은 동글동글, 긴 털은 가로로 좁고 세로로 긴 다발
+  const fx = curl ? 19 : 26;
+  const fy = curl ? 19 : 5;
+  const hash = (x: number, y: number, z: number, k: number) => {
+    let h = (x * 374761393 + y * 668265263 + z * 2147483647 + k * 1274126177) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  };
+  const n = new Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    const x = fur.getX(i) * fx;
+    const y = fur.getY(i) * fy;
+    const z = fur.getZ(i) * fx;
+    const cx = Math.floor(x);
+    const cy = Math.floor(y);
+    const cz = Math.floor(z);
+    let d = 9;
+    for (let a = -1; a <= 1; a++)
+      for (let b = -1; b <= 1; b++)
+        for (let c = -1; c <= 1; c++) {
+          const px = cx + a + hash(cx + a, cy + b, cz + c, 1);
+          const py = cy + b + hash(cx + a, cy + b, cz + c, 2);
+          const pz = cz + c + hash(cx + a, cy + b, cz + c, 3);
+          d = Math.min(d, Math.hypot(x - px, y - py, z - pz));
+        }
+    // 뭉치 가운데가 볼록, 골은 조금 들어간다 (평균 크기는 거의 그대로)
+    const h = (Math.max(0, 1 - d) ** 2 - 0.3) * amp;
+    // 법선을 세상 길이로 (늘린 모양이면 늘린 축으로 나눈다), 민 길이도 다시 모양 좌표로
+    n.set(nor.getX(i) / scale.x, nor.getY(i) / scale.y, nor.getZ(i) / scale.z).normalize();
+    // 긴 털 다발은 끝이 아래로 처진다 (배, 가슴 아래 가장자리에 늘어진 털끝)
+    const drop = curl ? 0 : Math.max(0, h) * 0.9 * (1 - Math.max(0, n.y));
+    pos.setXYZ(
+      i,
+      pos.getX(i) + (n.x * h) / scale.x,
+      pos.getY(i) + (n.y * h - drop) / scale.y,
+      pos.getZ(i) + (n.z * h) / scale.z,
+    );
+  }
+  pos.needsUpdate = true;
+  geo.computeBoundingBox();
+  geo.computeBoundingSphere();
 }
 
 /**
