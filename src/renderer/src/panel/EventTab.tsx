@@ -6,6 +6,7 @@ import type { PanelState } from '../../../shared/ipc.ts';
 import { localDay, type Todo } from '../../../shared/todo-store.ts';
 import { CalendarView } from './CalendarView.tsx';
 import { dayHeading, timeOf, toInputValue } from './format.ts';
+import { gcalBadge } from './gcal-badge.ts';
 import { PinIcon } from './icons.tsx';
 import { PinButton, usePinMenu } from './pin.tsx';
 import { RemindButton, RemindSheet } from './RemindPicker.tsx';
@@ -160,6 +161,7 @@ export function EventTab({
                     today={s.today}
                     onRemoved={onRemoved}
                     clash={clashing.has(e.id)}
+                    gcal={s.gcal}
                     showDay
                   />
                 ))}
@@ -178,6 +180,7 @@ export function EventTab({
                     today={s.today}
                     onRemoved={onRemoved}
                     clash={clashing.has(e.id)}
+                    gcal={s.gcal}
                   />
                 ))}
               </ul>
@@ -195,6 +198,7 @@ export function EventRow({
   today,
   onRemoved,
   clash,
+  gcal,
   showDay,
 }: {
   e: CalEvent;
@@ -203,6 +207,8 @@ export function EventRow({
   onRemoved: (id: number) => void;
   /** 다른 일정과 시간이 겹친다 */
   clash?: boolean;
+  /** 구글 캘린더 표식 (연결했을 때만) */
+  gcal?: PanelState['gcal'];
   /** 날짜 칸 밖(맨 위 고정 칸)이라 제목 옆에 날을 쓴다 */
   showDay?: boolean;
 }) {
@@ -217,6 +223,7 @@ export function EventRow({
   // 끝난 일정(달력에서 지난 날을 볼 때)은 "지금" 이 아니다. 끝 판단은 목록의 upcoming 과 같다
   const ended = span ? span.last < today : (e.endAt ?? e.startAt + 30 * 60_000) < now;
   const started = !ended && (span ? span.first <= today : e.startAt <= now);
+  const badge = gcalBadge(e.source, gcal?.marks[e.id], gcal?.problem);
 
   /** 종일과 시각 일정 사이를 바꾼다. 시각으로 바꾸면 첫날 오전 9시 (오늘이면 다음 정시) */
   const toggleAllDay = () => {
@@ -314,6 +321,12 @@ export function EventRow({
           </button>
         )}
         <span className="tools">
+          {badge && (
+            <span className={`gcal-badge ${badge.kind}`} title={badge.tip} data-gcal={badge.kind}>
+              {badge.label}
+              <span className="sr-only">: {badge.tip}</span>
+            </span>
+          )}
           {clash && (
             <span className="clash-badge" title={t('assist.clash.title')}>
               {t('assist.clash.badge')}

@@ -382,7 +382,7 @@ function DayList({
       {evs.length > 0 && (
         <ul className="events">
           {evs.map((e) => (
-            <EventRow key={e.id} e={e} now={now} today={s.today} onRemoved={onRemoved} />
+            <EventRow key={e.id} e={e} now={now} today={s.today} onRemoved={onRemoved} gcal={s.gcal} />
           ))}
         </ul>
       )}

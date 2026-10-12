@@ -22,6 +22,7 @@ import {
   parseQuickEventInfo,
 } from '../shared/event-store.ts';
 import { type FocusState, focusCoins, isFocusLength } from '../shared/focus.ts';
+import type { PanelGcal } from '../shared/gcal.ts';
 import { t } from '../shared/i18n/index.ts';
 import {
   type EventClash,
@@ -89,6 +90,8 @@ export interface PanelOptions {
   stopFocus: () => void;
   /** 일정이 바뀌었다 (곧 시작하는 일정이면 바로 알림) */
   onEventsChanged: () => void;
+  /** 일정 줄의 구글 표식 (구글 캘린더에 연결했을 때만) */
+  gcalMarks?: (ids: readonly number[]) => PanelGcal | undefined;
   /** 채팅 창을 열고 묻는다. 답을 기다리는 중이면 false */
   askAi: (prompt: string) => boolean;
   /** 채팅 창 없이 글만 한 번 묻는다 (메모 다듬기). 실패면 undefined */
@@ -174,6 +177,8 @@ export function createPanel(o: PanelOptions) {
   function state(): PanelState {
     const now = Date.now();
     const { open, doneToday } = o.store.list(now);
+    const events = o.events.between(startOfDay(now), startOfDayAfter(now, 14));
+    const pinnedEvents = o.events.pinned(now);
     return {
       petName: o.petName(),
       today: localDay(now),
@@ -191,10 +196,11 @@ export function createPanel(o: PanelOptions) {
         updatedAt: n.updatedAt,
         pinnedAt: n.pinnedAt,
       })),
-      events: o.events.between(startOfDay(now), startOfDayAfter(now, 14)),
+      events,
       // 안 끝난 시각 일정끼리 (어제부터 이어지는 것 포함). 일정 탭이 보이는 것과 같은 범위
       eventClash: [...clashIds(o.events.timedOverlapping(now, startOfDayAfter(now, 14)))],
-      pinnedEvents: o.events.pinned(now),
+      pinnedEvents,
+      ...gcalOf(events, pinnedEvents),
       focus: o.focus(),
       focusMin: o.focusMin(),
       focusCoins: focusCoins(o.focusMin()),
@@ -209,6 +215,18 @@ export function createPanel(o: PanelOptions) {
       },
       ...(week(now, open) ?? {}),
     };
+  }
+
+  /** 일정 줄의 구글 표식. 못 읽어도 패널은 뜨게 (표식만 빠진다) */
+  function gcalOf(events: readonly CalEvent[], pinned: readonly CalEvent[]): { gcal?: PanelGcal } {
+    if (!o.gcalMarks) return {};
+    try {
+      const g = o.gcalMarks([...events, ...pinned].filter((e) => e.source === 'local').map((e) => e.id));
+      return g ? { gcal: g } : {};
+    } catch (err) {
+      o.log('panel', '구글 표식 못 읽음', err instanceof Error ? err.name : 'error');
+      return {};
+    }
   }
 
   /** 이번 주 돌아보기. 기록을 못 읽어도 패널은 뜨게 */

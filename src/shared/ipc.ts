@@ -14,6 +14,7 @@ import type { CarryToy } from './fetch.ts';
 import type { FocusState } from './focus.ts';
 import type { GalleryList } from './gallery.ts';
 import type { Gaze } from './gaze.ts';
+import type { PanelGcal } from './gcal.ts';
 import type { Point } from './geometry.ts';
 import type { GestureEvent } from './gesture.ts';
 import type { HouseStyle } from './house-art.ts';
@@ -873,6 +874,8 @@ export interface PanelState {
   eventClash: number[];
   /** 고정한 일정 가운데 안 끝난 것, 고정한 순서대로 (14일 밖도). 일정 탭 목록 맨 위 "고정" 칸 */
   pinnedEvents: CalEvent[];
+  /** 일정 줄의 구글 표식. 구글 캘린더에 연결하지 않았으면 없다 */
+  gcal?: PanelGcal;
   focus: FocusState;
   /** 집중 코인과 오늘 받은 집중 횟수 */
   focusCoins: number;

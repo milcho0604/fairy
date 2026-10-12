@@ -928,6 +928,7 @@ ready
         gcal.kick();
         journey.tried('event');
       },
+      gcalMarks: (ids) => gcal.marks(ids),
       askAi: (prompt) => chat.askInWindow(prompt, pet.bounds()),
       askOnce: (text, system) => chat.textOnce(text, system),
       aiLocked: () => updates.locked(),
@@ -1261,6 +1262,7 @@ ready
           })
           .then(openCalendarSettings);
       },
+      onMarks: () => panel.refresh(),
       log,
     });
     // ---- 하루 도구: 습관, 아침 계획, 알림 미루기, 내보내기 (main/day-tools.ts) ----

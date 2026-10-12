@@ -5,6 +5,8 @@ export const ko = {
   'gcal.title': '구글 캘린더로 보내기',
   'gcal.intro':
     '페어리에서 넣은 일정을 내 구글 캘린더에도 넣어. 페어리에서 고치거나 지우면 구글에서도 바뀌어. 캘린더에서 가져온 일정은 다시 보내지 않아.',
+  'gcal.oneWay':
+    '보내기만 해. 구글 캘린더에 원래 있던 일정은 페어리에 나오지 않아. 구글 일정도 보려면 위 "캘린더 가져오기"에 구글 캘린더의 iCal 비공개 주소를 넣어 줘.',
   'gcal.connect': '구글 계정 연결',
   'gcal.connecting':
     '브라우저에서 허락을 기다리는 중이야. 구글 화면에서 캘린더 일정 권한을 체크하고 계속을 눌러 줘.',
@@ -38,12 +40,27 @@ export const ko = {
   'gcal.page.failTitle': '연결하지 못했어',
   'gcal.page.failBody': '페어리 설정에서 다시 연결해 줘. 이 창은 닫아도 돼.',
   'gcal.lost': '구글 캘린더 연결이 끊겼어. 설정에서 다시 연결해 줄래?',
+  // 일정 줄의 표식 (패널 일정 탭)
+  'gcal.mark.sent': '구글',
+  'gcal.mark.sentTip': '구글 캘린더에 보낸 일정이야',
+  'gcal.mark.pending': '보내는 중',
+  'gcal.mark.pendingTip': '구글 캘린더로 보낼 차례를 기다리는 중이야',
+  'gcal.mark.offlineTip': '인터넷이 안 돼서 아직 못 보냈어. 되면 구글 캘린더로 보낼게',
+  'gcal.mark.stuckTip': '구글 캘린더로 보내지 못하고 있어. 설정의 "구글 캘린더로 보내기"를 봐 줘',
+  'gcal.mark.failed': '못 보냄',
+  'gcal.mark.failedTip': '구글이 이 일정을 받지 않았어. 일정을 고치면 다시 보내 볼게',
+  'gcal.mark.local': '페어리만',
+  'gcal.mark.localTip': '페어리에만 있는 일정이야. 구글 캘린더로 보내기가 꺼져 있어',
+  'gcal.mark.imported': '가져옴',
+  'gcal.mark.importedTip': '"캘린더 가져오기"로 들어온 일정이야. 구글 캘린더로 다시 보내지 않아',
 };
 
 export const en: Translation<typeof ko> = {
   'gcal.title': 'Send to Google Calendar',
   'gcal.intro':
     'Adds events you create in fairy to your Google Calendar too. Edits and deletions in fairy follow. Events imported from a calendar are never sent back.',
+  'gcal.oneWay':
+    'It only sends. Events already in your Google Calendar don\'t show up in fairy. To see them too, paste your Google Calendar\'s secret iCal address into "Import calendar" above.',
   'gcal.connect': 'Connect Google account',
   'gcal.connecting':
     'Waiting for you in the browser. On the Google screen, check the calendar events permission and press Continue.',
@@ -81,4 +98,17 @@ export const en: Translation<typeof ko> = {
   'gcal.page.failTitle': "Couldn't connect",
   'gcal.page.failBody': 'Try again from fairy settings. You can close this tab.',
   'gcal.lost': 'Google Calendar got disconnected. Could you reconnect it in settings?',
+  'gcal.mark.sent': 'Google',
+  'gcal.mark.sentTip': 'Sent to your Google Calendar',
+  'gcal.mark.pending': 'Sending',
+  'gcal.mark.pendingTip': 'Waiting its turn to go to Google Calendar',
+  'gcal.mark.offlineTip':
+    "No internet, so it isn't sent yet. I'll send it to Google Calendar once you're back online",
+  'gcal.mark.stuckTip': 'Sending to Google Calendar is stuck. Check "Send to Google Calendar" in settings',
+  'gcal.mark.failed': 'Not sent',
+  'gcal.mark.failedTip': "Google didn't accept this event. Edit it and I'll try again",
+  'gcal.mark.local': 'Fairy only',
+  'gcal.mark.localTip': 'This event is only in fairy. Sending to Google Calendar is off',
+  'gcal.mark.imported': 'Imported',
+  'gcal.mark.importedTip': 'Came in through "Import calendar". It is never sent back to Google Calendar',
 };

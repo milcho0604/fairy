@@ -4,7 +4,7 @@
 // 다음에 그대로 이어서 보내고, 패널, 빠른 입력, 펫 MCP 서버(다른 프로세스) 어디서 고쳐도 똑같이 따라간다.
 import type { Db } from './db-schema.ts';
 import type { EventStore } from './event-store.ts';
-import { GCAL_DELETED, type GcalBody, gcalHash, toGoogle } from './gcal.ts';
+import { GCAL_DELETED, type GcalBody, type GcalMark, gcalHash, toGoogle } from './gcal.ts';
 
 const DAY_MS = 86_400_000;
 /** 한 번에 보낼 수 (많으면 다음 차례에) */
@@ -117,6 +117,48 @@ export class GcalStore {
         hash,
       });
     }
+  }
+
+  /**
+   * 일정 줄의 구글 표식 (패널). 짝꿍이 넣은 일정(source = local)만 돌려준다.
+   * - 지금 내용 지문이 마지막으로 보낸 지문과 같고 구글이 받았음을 확인했고 지금 고른 캘린더에 있으면 sent
+   * - 보내기가 켜져 있고 보낼 것(pending 과 같은 기준)이면 pending
+   * - 그 밖에는 local (보내기를 꺼 두었거나, 처음 보내기에 들지 않는 지난 일정)
+   * 구글이 받지 않은 것(failed)은 메인이 다시 하기 기록으로 덧씌운다
+   */
+  marks(
+    ids: readonly number[],
+    o: { calendarId: string; tz: string; now: number; push: boolean },
+  ): Record<number, GcalMark> {
+    const out: Record<number, GcalMark> = {};
+    if (ids.length === 0) return out;
+    const stmt = this.#db.prepare(
+      `select id, end_at, start_at, google_id, google_cal, google_hash, google_uid from event
+       where id = ? and source = 'local' and deleted_at is null`,
+    );
+    for (const id of new Set(ids)) {
+      const r = stmt.get(id) as (Row & { end_at: number | null }) | undefined;
+      if (!r) continue;
+      const e = this.#events.get(id);
+      if (!e) continue;
+      const hash = gcalHash(toGoogle(e, o.tz));
+      const sent =
+        !!r.google_id &&
+        r.google_uid !== null &&
+        r.google_hash === hash &&
+        (r.google_cal ?? o.calendarId) === o.calendarId;
+      if (sent) out[id] = 'sent';
+      else if (o.push && (!!r.google_id || Number(r.end_at ?? r.start_at) >= o.now - DAY_MS))
+        out[id] = 'pending';
+      else out[id] = 'local';
+    }
+    return out;
+  }
+
+  /** 일정의 지금 내용 지문 (구글이 받지 않았을 때와 같은지 보려고). 없으면 undefined */
+  hashOf(eventId: number, tz: string): string | undefined {
+    const e = this.#events.get(eventId);
+    return e ? gcalHash(toGoogle(e, tz)) : undefined;
   }
 
   /** 옮겼다: 이제 이 캘린더의 일정 */

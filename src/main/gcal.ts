@@ -19,9 +19,11 @@ import {
   GCAL,
   GCAL_PRIMARY,
   GcalBackoff,
+  type GcalMark,
   type GcalProblem,
   type GcalStatus,
   newGoogleId,
+  type PanelGcal,
 } from '../shared/gcal.ts';
 import type { GcalStore } from '../shared/gcal-store.ts';
 import { t } from '../shared/i18n/index.ts';
@@ -105,6 +107,8 @@ export function createGcal(o: {
   /** 연결이 끝났다 (구글에서 거둠, 시험판 앱 7일). 펫이 알린다 */
   onLost: () => void;
   log: (tag: string, ...rest: unknown[]) => void;
+  /** 일정 줄의 구글 표식이 바뀌었을 수 있다 (보냄, 못 보냄). 패널을 다시 그린다 */
+  onMarks?: () => void;
   /** 시험용 */
   fetch?: FetchLike;
 }) {
@@ -116,6 +120,8 @@ export function createGcal(o: {
   let problem: GcalProblem | null = null;
   let pending = 0;
   const backoff = new GcalBackoff();
+  /** 구글이 받지 않은 일정 id → 그때 내용 지문 (내용이 바뀌면 다시 보낼 차례라 못 보냄 표시를 내린다) */
+  const rejected = new Map<number, string>();
 
   const connected = () => !!token.get();
 
@@ -153,9 +159,11 @@ export function createGcal(o: {
     problem = why;
     pending = 0;
     backoff.clear();
+    rejected.clear();
     // 다시 연결하는 계정이 다를 수 있다: 보낸 기록을 "확인 전"으로 (같은 계정이면 겹치지 않고, 다른 계정이면 새로 들어간다)
     o.store.resetSent();
     broadcast();
+    o.onMarks?.();
     o.onLost();
   }
 
@@ -190,6 +198,7 @@ export function createGcal(o: {
   // ---- 보내기 ----
   let running = false;
   let again = false;
+  let marksChanged = false;
   let timer: NodeJS.Timeout | undefined;
 
   const active = () => !!client && prefs.push && connected();
@@ -219,6 +228,12 @@ export function createGcal(o: {
       throw err;
     }
     pending = r.pending;
+    for (const id of r.accepted) if (rejected.delete(id)) marksChanged = true;
+    for (const x of r.rejected) {
+      if (rejected.get(x.eventId) !== x.hash) marksChanged = true;
+      rejected.set(x.eventId, x.hash);
+    }
+    if (r.sent) marksChanged = true;
     if (r.again) again = true;
     if (r.sent) o.log('gcal', '보냄', r.sent);
     if (r.stop === 'scope') {
@@ -231,6 +246,8 @@ export function createGcal(o: {
     }
     // 보낸 것이 있으면 적는다 (5분마다 파일을 쓰지 않게. 구글이 받지 않는 일정 하나가 기다려도 멈추지 않게)
     if (r.sent) setPrefs({ lastSyncAt: Date.now() });
+    if (r.stop !== problem && (r.stop || problem === 'offline' || problem === 'calendar'))
+      marksChanged = true;
     if (r.stop) problem = r.stop;
     else if (r.waiting === 0 && (problem === 'offline' || problem === 'calendar')) problem = null;
   }
@@ -252,6 +269,10 @@ export function createGcal(o: {
     } finally {
       running = false;
       broadcast();
+      if (marksChanged) {
+        marksChanged = false;
+        o.onMarks?.();
+      }
       schedule();
     }
   }
@@ -330,6 +351,7 @@ export function createGcal(o: {
           // 연결하는 것이 곧 보내겠다는 것: 켠다 (설정 창에서 끌 수 있다)
           setPrefs({ push: true });
           o.log('gcal', '연결됨');
+          o.onMarks?.();
           kick();
         }
       } catch (err) {
@@ -350,6 +372,7 @@ export function createGcal(o: {
     problem = null;
     pending = 0;
     backoff.clear();
+    rejected.clear();
     clearTimeout(timer);
     // 구글에서도 권한을 거둔다. 인터넷이 안 되면 이 컴퓨터에서만 지운다 (구글 계정 > 보안 > 서드 파티 앱에서 거둘 수 있다)
     if (refresh)
@@ -360,6 +383,7 @@ export function createGcal(o: {
     o.store.resetSent();
     o.log('gcal', '연결 끊음');
     broadcast();
+    o.onMarks?.();
     return status();
   }
 
@@ -383,6 +407,7 @@ export function createGcal(o: {
         pending = 0;
         if (problem !== 'expired' && problem !== 'relink' && problem !== 'scope') problem = null;
       }
+      o.onMarks?.();
     }
     return refreshed();
   });
@@ -393,6 +418,7 @@ export function createGcal(o: {
       setPrefs({ calendarId: id });
       if (problem === 'calendar') problem = null;
       backoff.clear();
+      o.onMarks?.();
       kick();
     }
     return refreshed();
@@ -433,9 +459,30 @@ export function createGcal(o: {
     connecting?.cancel();
   });
 
+  /**
+   * 일정 줄의 구글 표식 (패널). 연결이 없으면 undefined: 표식을 하나도 붙이지 않는다.
+   * 구글이 받지 않은 일정은 내용이 그때와 같을 때만 failed (고쳤으면 다시 보낼 차례라 pending)
+   */
+  function marks(ids: readonly number[]): PanelGcal | undefined {
+    if (!client || !connected()) return undefined;
+    let m: Record<number, GcalMark>;
+    try {
+      m = o.store.marks(ids, { calendarId: prefs.calendarId, tz: tz(), now: Date.now(), push: prefs.push });
+    } catch {
+      return undefined;
+    }
+    if (prefs.push)
+      for (const [id, hash] of rejected) {
+        if (m[id] !== 'pending') continue;
+        if (o.store.hashOf(id, tz()) === hash) m[id] = 'failed';
+      }
+    return { marks: m, problem };
+  }
+
   return {
     kick,
     status,
+    marks,
     /** 캘린더 가져오기(.ics)가 거를 iCalUID: 짝꿍이 보낸 일정이 되돌아온 것 */
     sentUids: () => o.store.sentUids(),
   };

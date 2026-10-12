@@ -77,6 +77,7 @@ export function GoogleCalendarBox({ onMsg }: { onMsg: (m: string) => void }) {
       <h2>{t('gcal.title')}</h2>
       <div className="card">
         <small>{t('gcal.intro')}</small>
+        <small className="gcal-one-way">{t('gcal.oneWay')}</small>
         {!s.connected ? (
           <>
             <div className="action-row">

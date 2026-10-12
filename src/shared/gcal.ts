@@ -238,3 +238,34 @@ export class GcalBackoff {
     this.#m.clear();
   }
 }
+
+/**
+ * 일정 줄에 붙는 구글 표식 (패널 일정 탭). 구글 연결이 없으면 붙이지 않는다.
+ * - sent: 지금 내용 그대로 구글에 들어가 있다
+ * - pending: 보낼 차례를 기다린다 (방금 넣거나 고침, 인터넷이 안 됨)
+ * - failed: 구글이 받지 않았다 (고치면 다시 보내 본다)
+ * - local: 페어리에만 있다 (보내기를 꺼 두었거나, 보내기를 켜기 전의 지난 일정)
+ * 캘린더 가져오기(.ics)로 들어온 일정은 표식 대신 일정의 source 로 따로 보인다
+ */
+export type GcalMark = 'sent' | 'pending' | 'failed' | 'local';
+
+/** 패널에 주는 구글 상태 */
+export interface PanelGcal {
+  /** 일정 id → 표식 (짝꿍이 넣은 일정만) */
+  marks: Record<number, GcalMark>;
+  /** 보내기를 멈춘 까닭 (pending 툴팁에 쓴다) */
+  problem: GcalProblem | null;
+}
+
+/**
+ * 고치기(PATCH)에 보낼 일정. 구글 PATCH 는 안쪽 객체(start, end)를 합쳐서, 종일과 시각 일정 사이를 바꾸면
+ * 옛 칸(date 나 dateTime)이 남아 둘 다 있는 일정이 되고 구글이 받지 않는다(400). 반대쪽 칸을 null 로 지운다
+ */
+export function toGooglePatch(b: GcalBody): Omit<GcalBody, 'start' | 'end'> & {
+  start: Record<string, string | null>;
+  end: Record<string, string | null>;
+} {
+  const clear = (v: GcalTime): Record<string, string | null> =>
+    'date' in v ? { ...v, dateTime: null, timeZone: null } : { ...v, date: null };
+  return { ...b, start: clear(b.start), end: clear(b.end) };
+}

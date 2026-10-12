@@ -335,3 +335,36 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* 일정 줄의 구글 표식 (gcal-badge.ts). 겹침 표식과 같은 크기 */
+.gcal-badge {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 18px;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.gcal-badge.sent {
+  background: color-mix(in srgb, var(--ok) 10%, transparent);
+  color: var(--ok);
+}
+
+.gcal-badge.pending {
+  border: 1px dashed color-mix(in srgb, var(--muted) 60%, transparent);
+  color: var(--muted);
+  line-height: 16px;
+}
+
+.gcal-badge.failed {
+  background: color-mix(in srgb, var(--error) 12%, transparent);
+  color: var(--error);
+}
+
+.gcal-badge.local,
+.gcal-badge.imported {
+  background: color-mix(in srgb, var(--muted) 12%, transparent);
+  color: var(--muted);
+}
