@@ -171,7 +171,7 @@ nsis:
   deleteAppDataOnUninstall: false
   installerLanguages: [en_US, ko_KR]
   include: build/installer.nsh
-# dmg 창: 왼쪽 페어리를 오른쪽 응용 프로그램 폴더로 끌어 넣는다. 바탕은 앱 창의 밝은 바탕색(--bg #fbf8f4, 새 그림 없이 색만).
+# dmg 창: 왼쪽 페어리를 오른쪽 응용 프로그램 폴더로 끌어 넣는다. 아래 가운데는 설치 안내 웹 링크. 바탕은 앱 창의 밝은 바탕색(--bg #fbf8f4, 새 그림 없이 색만).
 # ULFO(lzfse) 압축은 기본(UDZO, zlib)보다 작고 빨리 열린다. macOS 10.11 부터 열려서 페어리(macOS 12 이상)는 괜찮다
 dmg:
   title: 페어리 ${version}
@@ -180,7 +180,7 @@ dmg:
   iconSize: 96
   window:
     width: 540
-    height: 380
+    height: 440
   contents:
     - x: 150
       y: 180
@@ -189,6 +189,14 @@ dmg:
       y: 180
       type: link
       path: /Applications
+    # 처음 열 때 "악성 코드가 없음을 확인할 수 없습니다" 창에서 막힌 사람이 누르는 웹 링크 (애플 개발자 서명과 공증 전).
+    # 앱이 열리기 전이라 앱 안에서는 안내할 수 없어 dmg 안에 둔다. 주소는 src/shared/update-policy.ts INSTALL_HELP_URL.darwin
+    # 과 같다 (update-policy.test.ts). 이름은 dmg 하나를 두 언어가 같이 써서 한국어와 영어를 같이 적는다
+    - x: 270
+      y: 340
+      type: file
+      path: build/mac/install-help.webloc
+      name: 열리지 않으면 여기 (If it won't open).webloc
 # 자동 설치(electron-updater)가 읽을 latest.yml(윈도우), latest-mac.yml(맥)과 차이 받기용 .blockmap 을 같이 만든다.
 # 레포는 공개 레포 fairy-releases = src/shared/update-policy.ts 의 RELEASE_REPO (다르면 시험이 깨진다).
 # 소스 레포가 아니다: 소스 레포는 비공개가 될 수 있다 (docs/release.md "두 레포").

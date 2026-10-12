@@ -7,6 +7,7 @@ import {
   canAutoInstall,
   confirmedForce,
   decideUpdate,
+  manualInstallUrl,
   nagDelayMs,
   notifyPlan,
   RELEASE_REPO,
@@ -129,9 +130,14 @@ export function watchUpdates(o: { say: Say; log: Log }) {
         restarting = undefined;
         downloaded = undefined;
         downloadFailedAt = Date.now();
-        void shell.openExternal(url);
+        // 손으로 설치하게 홈페이지 설치 안내를 연다 (맥은 처음 열 때 경고 넘기는 법이 거기 있다)
+        void getManually(url);
         // 잠겨 있으면 안내를 다시 띄운다 (이번엔 받으러 가기 단추)
         if (lock) void nag();
+        else
+          void o
+            .say({ kind: 'answer', text: t('main.update.installFailed'), ttlMs: 30_000 })
+            .catch(() => undefined);
       });
       updater = u;
       return u;
@@ -174,6 +180,11 @@ export function watchUpdates(o: { say: Say; log: Log }) {
       downloadFailedAt = Date.now();
       return undefined;
     }
+  }
+
+  /** 손으로 받으러 간다. 맥과 윈도우는 홈페이지 설치 안내, 리눅스는 릴리스 페이지 (manualInstallUrl) */
+  function getManually(releaseUrl: string): Promise<void> {
+    return shell.openExternal(manualInstallUrl(process.platform, releaseUrl));
   }
 
   function restartAndInstall(url: string) {
@@ -255,7 +266,7 @@ export function watchUpdates(o: { say: Say; log: Log }) {
           restartAndInstall(lock.url);
           break;
         }
-        if (answer === 'get') await shell.openExternal(lock.url);
+        if (answer === 'get') await getManually(lock.url);
         // 눌러 닫으면 곧바로 다시 (닫을 수 없는 안내). 다른 말에 밀렸거나 못 띄웠으면 그 말을 읽을 틈만 주고 다시 (nagDelayMs)
         o.log('update', '강제 안내 닫힘', answer ?? '못 띄움');
         await new Promise<void>((resolve) => {
@@ -311,7 +322,7 @@ export function watchUpdates(o: { say: Say; log: Log }) {
       ],
       ttlMs: 30_000,
     });
-    if (answer === 'get') await shell.openExternal(url);
+    if (answer === 'get') await getManually(url);
     if (answer === 'skip') settings.set({ skipVersion: version });
   }
 

@@ -42,6 +42,9 @@ export const ko = {
   'main.update.readyRestart': (v: { version: string }) =>
     `새 버전 ${withParticle(v.version, '을')} 받아 뒀어. 다시 켜면 바로 바뀌어.`,
   'main.update.restart': '다시 켜서 업데이트',
+  // 다시 켜서 업데이트가 거절됐다 (맥 서명 확인 실패 등). 홈페이지 설치 안내를 연 뒤 말한다 (main/update.ts)
+  'main.update.installFailed':
+    '자동으로 설치하지 못해서 설치 안내를 열었어. 거기서 받아 설치해 줘. 처음 열 때 경고 창이 뜨면 안내대로 넘기면 돼.',
   'main.backup.exportTitle': '백업을 둘 폴더',
   'main.backup.importTitle': '가져올 백업 폴더',
   'main.backup.notBackup': '페어리 백업 폴더가 아니야',
@@ -193,6 +196,8 @@ export const en: Translation<typeof ko> = {
   'main.update.readyRestart': (v: { version: string }) =>
     `Version ${v.version} is downloaded. Restart to switch to it.`,
   'main.update.restart': 'Restart to update',
+  'main.update.installFailed':
+    "Couldn't install it automatically, so I opened the install guide. Download it there. If a warning shows the first time you open it, follow the guide.",
   'main.backup.exportTitle': 'Folder for the backup',
   'main.backup.importTitle': 'Backup folder to import',
   'main.backup.notBackup': "That's not a fairy backup folder",

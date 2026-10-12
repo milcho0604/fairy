@@ -7,6 +7,8 @@ import {
   canAutoInstall,
   confirmedForce,
   decideUpdate,
+  INSTALL_HELP_URL,
+  manualInstallUrl,
   NAG_DISMISSED_MS,
   NAG_PUSHED_MS,
   nagDelayMs,
@@ -17,6 +19,7 @@ import {
   readMinVersion,
   readSavedLock,
   SAVED_LOCK_MAX_AGE_MS,
+  SITE_URL,
   SOURCE_REPO,
 } from './update-policy.ts';
 
@@ -196,4 +199,39 @@ test('강제 안내가 밀리면 10초 안에 다시 띄운다', () => {
   for (const a of ['replaced', 'cleared', 'timeout', undefined]) assert.equal(nagDelayMs(a), NAG_PUSHED_MS);
   assert.ok(NAG_PUSHED_MS <= 10_000, '밀린 안내가 10초 넘게 사라지면 안 된다');
   assert.ok(NAG_DISMISSED_MS < NAG_PUSHED_MS);
+});
+
+test('손으로 받으러 가면 맥과 윈도우는 홈페이지 설치 안내, 리눅스는 릴리스 페이지', () => {
+  const rel = 'https://github.com/milcho0604/fairy-releases/releases/tag/v1.5.0';
+  assert.equal(manualInstallUrl('darwin', rel), 'https://fairy.moilga.com/download/#mac-t');
+  assert.equal(manualInstallUrl('win32', rel), 'https://fairy.moilga.com/download/#win-t');
+  assert.equal(manualInstallUrl('linux', rel), rel);
+  assert.equal(manualInstallUrl('freebsd', rel), rel);
+});
+
+test('설치 안내 주소가 홈페이지와 맞는다 (사이트 주소, 받기 페이지의 앵커)', () => {
+  const config = readFileSync(new URL('../../site/config.js', import.meta.url), 'utf8');
+  assert.equal(/siteUrl:\s*'([^']+)'/.exec(config)?.[1], SITE_URL);
+  const page = readFileSync(new URL('../../site/download/index.html', import.meta.url), 'utf8');
+  for (const url of Object.values(INSTALL_HELP_URL)) {
+    assert.ok(url.startsWith(`${SITE_URL}/download/#`), url);
+    const id = url.split('#')[1];
+    assert.ok(page.includes(`id="${id}"`), `site/download/index.html 에 id="${id}" 가 없다`);
+  }
+});
+
+test('맥 dmg 에 설치 안내 웹 링크를 넣는다 (앱이 열리기 전에 볼 수 있게)', () => {
+  const yml = readFileSync(new URL('../../electron-builder.yml', import.meta.url), 'utf8');
+  const dmg = /^dmg:\s*\n((?:[ \t]+.*\n?|\s*\n)+?)^\S/m.exec(yml)?.[1] ?? '';
+  assert.match(dmg, /path:\s*build\/mac\/install-help\.webloc\s*$/m);
+  assert.match(dmg, /name:\s*.+\.webloc\s*$/m);
+  const webloc = readFileSync(new URL('../../build/mac/install-help.webloc', import.meta.url), 'utf8');
+  const url = /<key>URL<\/key>\s*<string>([^<]+)<\/string>/.exec(webloc)?.[1];
+  assert.equal(url, INSTALL_HELP_URL.darwin);
+});
+
+test('업데이트에서 브라우저로 여는 곳은 모두 manualInstallUrl 을 거친다 (릴리스 페이지를 바로 열지 않는다)', () => {
+  const src = readFileSync(new URL('../main/update.ts', import.meta.url), 'utf8');
+  const opens = [...src.matchAll(/shell\.openExternal\(([^)]*\))?/g)].map((m) => m[0]);
+  assert.deepEqual(opens, ['shell.openExternal(manualInstallUrl(process.platform, releaseUrl)']);
 });
