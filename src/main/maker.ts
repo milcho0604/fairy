@@ -835,6 +835,34 @@ export function createMaker(
     return r;
   }
 
+  /** 설계도 정면 그림을 그려 줄 곳 (펫 화면, pet-window.ts shot). index 가 펫 창을 만든 뒤 넣는다 */
+  let shot: ((model: Blueprint) => Promise<string | undefined>) | undefined;
+
+  /**
+   * 걸음새로 다시 만든 말로 만든 펫의 펫 그림을 새 몸으로 바꾼다. 만들기 창에서 저장할 때와 같은 PNG(바탕 없이 둘레를
+   * 자른 512px)를 펫 화면에서 받아, 형식과 크기를 보고 새 파일로 한 번에 쓴다. 그사이 펫이 바뀌었거나 못 그리면 옛 그림 그대로
+   */
+  async function redrawFlat(model: Blueprint, modelFile: string, oldImage: string): Promise<void> {
+    const png = await shot?.(model).catch(() => undefined);
+    const prefix = 'data:image/png;base64,';
+    if (!png?.startsWith(prefix)) return log('maker', 'remake picture', 'none');
+    const bytes = Buffer.from(png.slice(prefix.length), 'base64');
+    if (kindOf(bytes) !== 'png' || bytes.length > MAX_PNG_BYTES || !sizeOk(bytes))
+      return log('maker', 'remake picture', 'bad');
+    const now = settings.get();
+    if (now.petModel !== modelFile || now.petImage !== oldImage)
+      return log('maker', 'remake picture', 'changed');
+    const file = `pet-${Date.now()}.png`;
+    try {
+      writeFileAtomic(join(petsDir(), file), bytes);
+    } catch (err) {
+      return log('maker', 'remake picture save failed', err instanceof Error ? err.message : String(err));
+    }
+    settings.set({ petImage: file });
+    library.cleanup([oldImage]);
+    log('maker', 'remake picture', file, `${Math.round(bytes.length / 1024)}KB`);
+  }
+
   /** 몸 다시 만들기 (설정 창). 하나만 돈다: 새로 부르면 앞의 것을 멈춘다 */
   let remaking: AbortController | undefined;
 
@@ -927,6 +955,9 @@ export function createMaker(
       ...(desc ? { petTexts: { ...now.petTexts, [file]: desc } } : {}),
     });
     library.cleanup([oldModel]);
+    // 말로 만든 펫의 펫 그림은 설계도를 그린 것이라 옛 몸 그대로 남았다 (평면 보기, 보관함). 새 몸으로 다시 그린다.
+    // 사진 펫은 펫 그림이 사진 자체라(몸은 그 사진에서 만든다) 그대로 둔다
+    if (desc) await redrawFlat(model, file, s.petImage);
     return { ok: true };
   }
 
@@ -1013,6 +1044,10 @@ export function createMaker(
             ask: async (prompt) => ({ ok: true, text: await answer(prompt), provider: 'stub' }),
           }
         : ai?.text;
+    },
+    /** 펫 화면의 설계도 정면 그림 (걸음새로 다시 만든 말로 만든 펫의 새 펫 그림) */
+    useShot(fn: (model: Blueprint) => Promise<string | undefined>) {
+      shot = fn;
     },
     /** 다시 만들기를 멈춘다 (설정 창의 그만두기, 창 닫기) */
     cancelRemake: () => remaking?.abort(),
