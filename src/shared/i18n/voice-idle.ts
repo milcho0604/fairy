@@ -6,7 +6,7 @@ import type { Translation } from './types.ts';
 // 존댓말 비서의 혼잣말 (2026-10-11, shared/persona-voice.ts). 혼잣말(idle.*)은 반말이라 존댓말 비서로 고르면
 // 인사와 브리핑만 존댓말이고 혼잣말은 반말이었다. 같은 뜻을 존댓말로. 츤데레, 차분한 선생님은 반말이라 원래 말을 같이 쓴다.
 // 영어는 반말, 존댓말 구분이 없어 원래 말 그대로 (키 모양만 맞춘다)
-type N = { name: string; open?: number; eventMin?: number; workedH?: number };
+type N = { name: string; open?: number; eventMin?: number; workedH?: number; done?: number };
 /** 기억하는 혼잣말 값 (i18n/companion.ts) */
 type M = {
   name: string;
@@ -39,7 +39,7 @@ export const ko = {
   'voice.polite.idle.late.2': (v: N) => `${withParticle(v.name, '은')} 눈이 감겨요. 얼른 주무세요.`,
   'voice.polite.idle.praise.1': (v: N) => `벌써 하나 끝내셨네요. ${withParticle(v.name, '이')} 다 봤어요.`,
   'voice.polite.idle.praise.3': (v: N) =>
-    `오늘 세 개 넘게 끝내셨어요! ${withParticle(v.name, '은')} 뿌듯해요.`,
+    `오늘 벌써 ${v.done ?? 3}개나 끝내셨어요! ${withParticle(v.name, '은')} 뿌듯해요.`,
   'voice.polite.idle.praise.5': () => '오늘 정말 날아다니시네요. 대단해요!',
   'voice.polite.idle.any.6': (v: N) => `${withParticle(v.name, '은')} 오늘도 든든한 편이 되어 드릴게요.`,
   'voice.polite.idle.any.7': () => '잠깐 창밖을 보고 오세요. 눈이 쉬어요.',

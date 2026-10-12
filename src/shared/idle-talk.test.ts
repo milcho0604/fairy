@@ -482,3 +482,17 @@ test('하루 한 번 대사를 띄우지 못해 되돌리면 그날 다시 할 �
     'idle.together.1',
   );
 });
+
+test('셋 넘게 끝낸 칭찬은 실제로 끝낸 수를 말한다 (3개일 때 "세 개 넘게"라고 하지 않는다)', () => {
+  setLang('ko');
+  const three = idleVars({ now: at(6, 15), doneToday: 3 });
+  assert.equal(three.done, 3);
+  assert.equal(t('idle.praise.3', { name: '콩', ...three }), '오늘 벌써 3개나 끝냈어! 콩은 뿌듯해.');
+  assert.equal(
+    t('voice.polite.idle.praise.3', { name: '콩', ...idleVars({ now: at(6, 15), doneToday: 4 }) }),
+    '오늘 벌써 4개나 끝내셨어요! 콩은 뿌듯해요.',
+  );
+  setLang('en');
+  assert.equal(t('idle.praise.3', { name: 'Bean', ...three }), '3 done today already! Bean is so proud.');
+  setLang('ko');
+});

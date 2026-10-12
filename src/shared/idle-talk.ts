@@ -176,6 +176,7 @@ export function idleCandidates(f: IdleFacts): { now: IdleKey[]; fit: IdleKey[]; 
 
 /** 대사에 넣는 값 (펫 이름은 부르는 쪽이 넣는다) */
 export function idleVars(f: IdleFacts): {
+  done: number;
   open: number;
   eventMin: number;
   workedH: number;
@@ -187,6 +188,7 @@ export function idleVars(f: IdleFacts): {
   hour: number;
 } {
   return {
+    done: f.doneToday,
     open: f.openToday ?? 0,
     eventMin: Math.max(1, Math.round(f.nextEventMin ?? 0)),
     workedH: Math.max(1, Math.floor((f.workedMin ?? 0) / 60)),
