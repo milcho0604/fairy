@@ -22,6 +22,7 @@ import { unlocked, WAVE_AWAY_SEC } from '../shared/pet-life.ts';
 import { starterFigureOf, starterModelOf } from '../shared/pet3d/starters.ts';
 import { restDaysOf } from '../shared/routine.ts';
 import { pickedGait, pickedStand } from '../shared/settings.ts';
+import { ownedCount } from '../shared/shop.ts';
 import { shortcutsChanged } from '../shared/shortcut.ts';
 import { FULLNESS, localDay } from '../shared/todo-store.ts';
 import { admitUrl, panelTabOf, parseJjUrl } from '../shared/url-scheme.ts';
@@ -1250,6 +1251,30 @@ ready
       remakeBody: (gait) => maker.remake(gait),
       cancelRemake: () => maker.cancelRemake(),
       stats,
+      coins: {
+        state: () => ({ balance: store.balance(), items: ownedCount(shop.state()) }),
+        reset: (scope, expect) => {
+          const r = shop.resetCoins(scope, Date.now(), expect);
+          if (!r.ok) {
+            log('coins', '초기화 안 함, 잔액이 바뀜');
+            return r;
+          }
+          log('coins', '초기화', scope, r.coins, r.items);
+          panel.refresh();
+          // 집이 없어졌으면 집 창을 맞추고, 안에서 쉬던 페어리는 걸어 나온다 (상점에서 집을 바꿀 때와 같다)
+          if (r.house) {
+            house.show(houseLook(), pet.bounds());
+            if (!house.bounds()) rest.houseGone();
+          }
+          pet.react();
+          void pet.say({
+            kind: 'answer',
+            text: voiced(scope === 'all' && r.items > 0 ? 'pet.coinReset.all' : 'pet.coinReset.coins'),
+            ttlMs: 5000,
+          });
+          return r;
+        },
+      },
       checkUpdate: () => updates.check(true),
       openOnboarding: () => onboarding.open(),
       log,

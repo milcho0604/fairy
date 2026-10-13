@@ -1279,3 +1279,32 @@ textarea.rules {
     border-radius: 12px 12px 0 0;
   }
 }
+
+/* ---- 코인 초기화 (설정 > 데이터, CoinReset.tsx) ---- */
+.coin-reset {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.coin-reset .coin-now {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.coin-reset .coin-ask {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-color: color-mix(in srgb, var(--error) 45%, transparent);
+  background: color-mix(in srgb, var(--error) 8%, var(--panel));
+}
+
+.coin-reset .coin-ask .warn {
+  color: var(--muted);
+}
+
+.coin-reset .danger {
+  border-color: var(--error);
+  color: var(--error);
+}

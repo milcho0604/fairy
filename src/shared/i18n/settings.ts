@@ -235,6 +235,27 @@ export const ko = {
   'settings.aiHistory.sure': '정말 지울까?',
   'settings.aiHistory.cleared': 'AI 기록을 지웠어. 다음 질문부터 새 대화로 시작해.',
   'settings.aiHistory.failed': '일부는 못 지웠어. AI가 답하는 중이면 끝난 뒤 다시 해 줘.',
+  'settings.coinReset': '코인 초기화',
+  'settings.coinReset.hint': '코인을 0개로 되돌려. 할 일, 기록, 업적, 친밀도는 그대로야.',
+  'settings.coinReset.now': (v: { n: number; items: number }) => `지금 코인 ${v.n}개, 산 물건 ${v.items}개`,
+  'settings.coinReset.scope': '무엇을 되돌릴까',
+  'settings.coinReset.coins': '코인만',
+  'settings.coinReset.all': '산 물건도 함께',
+  'settings.coinReset.allHint': '집, 집 모양, 장난감도 처음으로 돌아가. 직접 만든 먹이는 남겨 둬.',
+  'settings.coinReset.start': '코인 초기화하기',
+  'settings.coinReset.confirmCoins': (v: { n: number }) => `코인 ${v.n}개가 0개가 돼.`,
+  'settings.coinReset.confirmAll': (v: { n: number; items: number }) =>
+    `코인 ${v.n}개가 0개가 되고, 산 물건 ${v.items}개도 처음으로 돌아가.`,
+  'settings.coinReset.warn':
+    '한 번 하면 되돌릴 수 없어. 오늘 이미 받은 몫(하루 상한)도 다시 차지 않아. 나중에 되돌리고 싶으면 위에서 먼저 백업해 둬.',
+  'settings.coinReset.sure': '초기화할게',
+  'settings.coinReset.cancel': '그만두기',
+  'settings.coinReset.done': '코인을 0개로 되돌렸어.',
+  'settings.coinReset.doneAll': '코인과 산 물건을 처음으로 되돌렸어.',
+  'settings.coinReset.changed': '그새 코인이 바뀌었어. 바뀐 숫자를 보고 다시 눌러 줘.',
+  'settings.coinReset.nothing': '코인이 이미 0개야.',
+  'settings.coinReset.nothingAll': '되돌릴 코인도 산 물건도 없어.',
+  'settings.coinReset.failed': '초기화하지 못했어. 다시 해 줘.',
   'settings.storage.hint': (v: { total: string }) =>
     `모두 ${v.total}. 지워도 그 기능을 다시 쓰면 그때 다시 받아.`,
   'settings.models.hint':
@@ -645,6 +666,28 @@ export const en: Translation<typeof ko> = {
   'settings.aiHistory.cleared': 'AI history cleared. Your next question starts a new chat.',
   'settings.aiHistory.failed':
     "Some of it couldn't be deleted. If the AI is answering, try again when it's done.",
+  'settings.coinReset': 'Reset coins',
+  'settings.coinReset.hint': 'Sets your coins back to 0. To-dos, stats, achievements and affection stay.',
+  'settings.coinReset.now': (v) => `${v.n} coins and ${v.items} bought items now`,
+  'settings.coinReset.scope': 'What to reset',
+  'settings.coinReset.coins': 'Coins only',
+  'settings.coinReset.all': 'Bought items too',
+  'settings.coinReset.allHint':
+    'Your house, house looks and toys go back to the start too. Foods you made yourself stay.',
+  'settings.coinReset.start': 'Reset coins',
+  'settings.coinReset.confirmCoins': (v) => `Your ${v.n} coins will go to 0.`,
+  'settings.coinReset.confirmAll': (v) =>
+    `Your ${v.n} coins will go to 0 and ${v.items} bought items go back to the start.`,
+  'settings.coinReset.warn':
+    "This can't be undone. Coins you already earned today still count toward the daily limits. To be able to go back, export a backup above first.",
+  'settings.coinReset.sure': 'Reset now',
+  'settings.coinReset.cancel': 'Cancel',
+  'settings.coinReset.done': 'Coins reset to 0.',
+  'settings.coinReset.doneAll': 'Coins and bought items reset.',
+  'settings.coinReset.changed': 'Your coins just changed. Check the new numbers and try again.',
+  'settings.coinReset.nothing': 'You already have 0 coins.',
+  'settings.coinReset.nothingAll': 'No coins or bought items to reset.',
+  'settings.coinReset.failed': "Couldn't reset. Please try again.",
   'settings.storage.hint': (v) =>
     `${v.total} in total. Deleted models download again when you use that feature.`,
   'settings.models.hint':
