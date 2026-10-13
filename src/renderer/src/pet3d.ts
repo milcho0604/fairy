@@ -114,7 +114,7 @@ import {
   trotLeg,
   walkEnvelopeOf,
 } from './pet3d-gait.ts';
-import { bounced, type EyeState, restingEye } from './pet3d-motion.ts';
+import { bounced, type EyeState, faceDepth, keepsFaceDepth, restingEye } from './pet3d-motion.ts';
 import { filletSphere, neckPair } from './pet3d-neck.ts';
 import { type FootOut, FootPlanter } from './pet3d-plant.ts';
 import {
@@ -2569,6 +2569,8 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
         if (this.real) this.addFur(tuft, part);
         if (this.game) this.addOutline(tuft);
         g.add(tuft);
+        // 볼 털은 일부러 실루엣 밖으로 뻗는다: 비스듬히 볼 때 납작하게 하지 않는다 (hideHiddenFace)
+        g.userData.tuft = true;
       }
     }
     if (muzzle) {
@@ -3033,12 +3035,14 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
         const nose = !!this.stance && g2 === this.face.noseAt;
         const beak = g2 === this.face.mouthAt && this.face.style === 'beak';
         g2.visible = facing > (nose ? -0.15 : 0.25) || beak;
-        // 겉면에 칠한 것처럼: 비스듬히 보일수록 눈, 입을 겉면 쪽으로 납작하게 한다. 도톰한 눈알이 그대로면 3/4 와 옆에서
-        // 머리 가장자리에 붙은 먼 눈과 입이 실루엣 밖으로 삐져나왔다. 정면 가까이(facing 0.75 넘게)는 그대로다.
-        // 솟은 것(코, 부리)은 제 두께를 지킨다
-        const solid = beak || g2 === this.face.noseAt;
-        const k = solid ? 1 : Math.min(1, Math.max(0, (facing - 0.25) / 0.5));
-        g2.scale.z = 0.2 + 0.8 * k * k * (3 - 2 * k);
+        // 비스듬히 보일수록 눈, 입을 겉면 쪽으로 납작하게 (먼 눈과 입이 실루엣 밖으로 삐져나왔다. pet3d-motion.ts faceDepth)
+        const keep = keepsFaceDepth({
+          nose: g2 === this.face.noseAt,
+          beak,
+          tuft: g2.userData.tuft === true,
+          stance: !!this.stance,
+        });
+        g2.scale.z = faceDepth(facing, keep);
       }
     }
   }
@@ -3960,7 +3964,6 @@ vec4 jjLong(vec3 p) {
 }
 `;
 
-/** y 축 모양(캡슐)의 위쪽 반지름을 taper 배로 (아래 -1 에서 1, 위 +1 에서 taper 로 선형) */
 /** 길게 선 귀로 볼 만큼: 반길이가 반지름의 이 배 넘게 */
 const LONG_EAR = 2.5;
 
@@ -3985,6 +3988,7 @@ function earLeaf(geo: BufferGeometry, zScale: number): void {
   geo.computeVertexNormals();
 }
 
+/** y 축 모양(캡슐)의 위쪽 반지름을 taper 배로 (아래 -1 에서 1, 위 +1 에서 taper 로 선형) */
 function taperY(geo: BufferGeometry, taper: number): void {
   geo.computeBoundingBox();
   const b = geo.boundingBox;
