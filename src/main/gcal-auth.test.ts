@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
 import { test } from 'node:test';
-import { GCAL_SCOPE } from '../shared/gcal.ts';
+import { GCAL_LIST_SCOPE, GCAL_SCOPE } from '../shared/gcal.ts';
 import {
   AUTH_URL,
   authUrl,
@@ -65,7 +65,7 @@ test('state: 길이 32 의 무작위, 시간이 새지 않게 맞춰 본다', ()
   assert.ok(!sameState('', ''));
 });
 
-test('허락 주소: 일정 권한 하나, S256, offline, consent, 루프백 주소', () => {
+test('허락 주소: 일정 권한과 캘린더 목록 보기 권한, S256, offline, consent, 루프백 주소', () => {
   const u = new URL(
     authUrl({ clientId: CLIENT.id, redirectUri: 'http://127.0.0.1:53111', challenge: 'CH', state: 'ST' }),
   );
@@ -75,7 +75,7 @@ test('허락 주소: 일정 권한 하나, S256, offline, consent, 루프백 주
     client_id: CLIENT.id,
     redirect_uri: 'http://127.0.0.1:53111',
     response_type: 'code',
-    scope: GCAL_SCOPE,
+    scope: `${GCAL_SCOPE} ${GCAL_LIST_SCOPE}`,
     code_challenge: 'CH',
     code_challenge_method: 'S256',
     state: 'ST',
@@ -112,15 +112,24 @@ test('토큰 대답 읽기: 만료 1분 전, refresh token, 권한 확인, 오�
       access_token: 'ya29.A',
       expires_in: 3599,
       refresh_token: '1//R',
-      scope: GCAL_SCOPE,
+      scope: `${GCAL_SCOPE} ${GCAL_LIST_SCOPE}`,
       token_type: 'Bearer',
     },
     now,
   );
   assert.deepEqual(ok, {
     ok: true,
-    tokens: { accessToken: 'ya29.A', expiresAt: now + 3539_000, refreshToken: '1//R', scopeOk: true },
+    tokens: {
+      accessToken: 'ya29.A',
+      expiresAt: now + 3539_000,
+      refreshToken: '1//R',
+      scopeOk: true,
+      listScope: true,
+    },
   });
+  // 예전 연결(일정 권한만): 일정은 되지만 캘린더 목록은 못 본다. 다시 연결해 달라고 한다
+  const old = parseTokenResponse(200, { access_token: 'A', expires_in: 3600, scope: GCAL_SCOPE }, now);
+  assert.ok(old.ok && old.tokens.scopeOk && !old.tokens.listScope);
   // 허락 화면에서 캘린더 칸을 풀면 다른 권한만 온다
   const noCal = parseTokenResponse(200, { access_token: 'A', expires_in: 3600, scope: 'openid' }, now);
   assert.ok(noCal.ok && !noCal.tokens.scopeOk && noCal.tokens.refreshToken === undefined);

@@ -246,6 +246,8 @@ if (kind === 'settings') {
     removeSavedPet: (id: string) => ipcRenderer.invoke(SETTINGS.removeSavedPet, id),
     deleteModel: (id: string) => ipcRenderer.invoke(SETTINGS.deleteModel, id),
     clearAiHistory: () => ipcRenderer.invoke(SETTINGS.clearAiHistory),
+    coinState: () => ipcRenderer.invoke(SETTINGS.coinState),
+    resetCoins: (scope, expect) => ipcRenderer.invoke(SETTINGS.resetCoins, scope, expect),
     remakeBody: (gait) => ipcRenderer.invoke(SETTINGS.remakeBody, gait),
     cancelRemake: () => ipcRenderer.send(SETTINGS.cancelRemake),
     rememberTab: (tab) => ipcRenderer.send(SETTINGS.tab, tab),
@@ -267,7 +269,10 @@ if (kind === 'settings') {
     cancel: () => ipcRenderer.send(GCAL.cancel),
     disconnect: () => ipcRenderer.invoke(GCAL.disconnect),
     setPush: (on: boolean) => ipcRenderer.invoke(GCAL.setPush, on),
-    setCalendar: (id: string) => ipcRenderer.invoke(GCAL.setCalendar, id),
+    setPull: (on: boolean) => ipcRenderer.invoke(GCAL.setPull, on),
+    setAi: (on: boolean) => ipcRenderer.invoke(GCAL.setAi, on),
+    setCalendars: (c) => ipcRenderer.invoke(GCAL.setCalendars, c),
+    listCalendars: () => ipcRenderer.invoke(GCAL.listCalendars),
     syncNow: () => ipcRenderer.invoke(GCAL.syncNow),
     onChanged: (listener) => {
       const h = (_e: unknown, s: GcalStatus) => listener(s);

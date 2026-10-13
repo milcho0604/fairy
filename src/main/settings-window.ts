@@ -17,6 +17,7 @@ import type { GalleryList } from '../shared/gallery.ts';
 import { t } from '../shared/i18n/index.ts';
 import {
   type CalSync,
+  type CoinState,
   type MakerTarget,
   SETTINGS,
   type SettingsSection,
@@ -26,6 +27,7 @@ import {
 import type { Gait } from '../shared/pet3d/blueprint.ts';
 import { isGait, type Settings } from '../shared/settings.ts';
 import { isSettingsTab, type SettingsTab } from '../shared/settings-tabs.ts';
+import { type CoinResetResult, type CoinResetScope, isCoinResetScope } from '../shared/shop.ts';
 import { parsePetChoice } from '../shared/starter-pets.ts';
 import { PUBLIC_REPO } from '../shared/update-policy.ts';
 import { localModelReady } from './ai/local.ts';
@@ -50,6 +52,11 @@ export interface SettingsWindowOptions {
   remakeBody: (gait: Gait) => Promise<{ ok: true } | { ok: false; error: string; noAi?: boolean }>;
   cancelRemake: () => void;
   stats: StatStore;
+  /** 코인 초기화 (index.ts 가 장부, 집 창, 패널, 펫 한마디까지 맞춘다) */
+  coins: {
+    state: () => CoinState;
+    reset: (scope: CoinResetScope, expect: number) => CoinResetResult;
+  };
   checkUpdate: () => Promise<UpdateStatus>;
   openOnboarding: () => void;
   log: (tag: string, ...rest: unknown[]) => void;
@@ -94,6 +101,7 @@ export function createSettingsWindow({
   remakeBody,
   cancelRemake,
   stats,
+  coins,
   checkUpdate,
   openOnboarding,
   log,
@@ -158,6 +166,20 @@ export function createSettingsWindow({
     log('settings', 'AI 기록 지움', n);
     const bytes = aiHistoryBytes(historyDirs());
     return { ok: bytes === 0, bytes };
+  });
+  // 코인 초기화 (설정 > 데이터). 값은 여기서 다시 검사한다: 범위가 아니거나 잔액이 수가 아니면 하지 않는다
+  ipcMain.handle(SETTINGS.coinState, (e): CoinState | undefined =>
+    fromSettings(e) ? coins.state() : undefined,
+  );
+  ipcMain.handle(SETTINGS.resetCoins, (e, scope: unknown, expect: unknown) => {
+    if (
+      !fromSettings(e) ||
+      !isCoinResetScope(scope) ||
+      typeof expect !== 'number' ||
+      !Number.isFinite(expect)
+    )
+      return { result: { ok: false, changed: true }, state: coins.state() };
+    return { result: coins.reset(scope, expect), state: coins.state() };
   });
   ipcMain.handle(SETTINGS.remakeBody, (e, gait: unknown) =>
     fromSettings(e) && isGait(gait) ? remakeBody(gait) : { ok: false, error: t('main.maker.reopen') },
