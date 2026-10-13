@@ -45,6 +45,11 @@ export function walkSpan(
   return { left: leftN ? leftN.x : area.x, right: rightN ? rightN.x + rightN.width : area.x + area.width };
 }
 
+/** 걷는 중 펫 왼쪽 x 를 걸을 수 있는 범위(walkSpan) 안으로. 걷다가 펫이 커져도 화면 밖으로 나가지 않게 */
+export function clampWalkX(x: number, width: number, span: { left: number; right: number }): number {
+  return Math.max(span.left, Math.min(span.right - width, x));
+}
+
 /**
  * 옆 모니터로 넘어가는 걷기가 두 모니터에 걸쳐 멈추지 않게 거리를 고친다. 걸쳐 멈추면 걷기가 끝난 뒤 한 모니터 안으로
  * 끌어 넣느라(clampIntoAreas) 펫이 툭 튀었다. 경계를 다 넘을 자리가 있으면 넘어가고, 없으면 경계 앞에서 선다.

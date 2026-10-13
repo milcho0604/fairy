@@ -1,4 +1,6 @@
 // 할 일, 코인 장부, 배부름 (P2-03, P2-05, P2-06). 기획서 "게임 규칙".
+
+import { cutText } from './cut-text.ts';
 import { plusDays, weekdayOf as weekday } from './day.ts';
 import type { Db } from './db-schema.ts';
 import { FOCUS, focusCoins } from './focus.ts';
@@ -258,7 +260,7 @@ export class TodoStore {
 
   /** 단계 더하기 (맨 아래). 할 일이 없거나 끝났거나 단계가 꽉 찼거나 제목이 비면 undefined */
   addStep(todoId: number, title: string, now: number): TodoStep | undefined {
-    const text = title.trim().slice(0, STEP_TITLE_MAX);
+    const text = cutText(title.trim(), STEP_TITLE_MAX);
     const todo = this.get(todoId);
     if (!text || !todo || todo.doneAt !== null || todo.steps.length >= STEP_MAX) return undefined;
     const ord =
@@ -297,7 +299,7 @@ export class TodoStore {
 
   /** 단계 제목 고치기. 비우면 그대로 둔다 */
   renameStep(stepId: number, title: string): void {
-    const text = title.trim().slice(0, STEP_TITLE_MAX);
+    const text = cutText(title.trim(), STEP_TITLE_MAX);
     if (text) this.#db.prepare('update todo_step set title = ? where id = ?').run(text, stepId);
   }
 
@@ -339,7 +341,7 @@ export class TodoStore {
       .prepare(
         'insert into todo (title, due, important, created_at, repeat, repeat_of, due_min) values (?, ?, ?, ?, ?, ?, ?)',
       )
-      .run(title.slice(0, 200), due, input.important ? 1 : 0, now, repeat, repeatOf, dueMin);
+      .run(cutText(title, 200), due, input.important ? 1 : 0, now, repeat, repeatOf, dueMin);
     const id = Number(r.lastInsertRowid);
     // 매달 반복은 날을 기억한다 (repeat_anchor 에 "31"). 2월 28일 회차를 끝내도 3월은 31일로
     const monthDay =
@@ -428,7 +430,7 @@ export class TodoStore {
   ): Todo | undefined {
     const t = this.get(id);
     if (!t) return undefined;
-    const title = patch.title === undefined ? t.title : patch.title.trim().slice(0, 200) || t.title;
+    const title = patch.title === undefined ? t.title : cutText(patch.title.trim(), 200) || t.title;
     const important = patch.important === undefined ? t.important : patch.important;
     const repeat = patch.repeat === undefined ? t.repeat : isRepeat(patch.repeat) ? patch.repeat : null;
     const asked = patch.due === undefined ? t.due : patch.due;

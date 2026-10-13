@@ -125,7 +125,7 @@ AI가 연결돼 있으면 사진 없이 **말로 만들기**도 돼요. 만들�
 | 내 컴퓨터에서 | 제한 없음. 처음 한 번 준비가 필요해요 | 나가지 않아요 |
 
 - **Gemini 앱(무료)에서 만들기**: 단추를 누르면 요청문이 복사되고 Gemini가 열려요. 고른 사진과 요청문을 보내고, 나온 그림을 페어리 만들기 창에 끌어다 놓으면 이어서 만들어요. 구글 계정만 있으면 돼요.
-- **내 컴퓨터에서 그리기**: Apple 칩 Mac(macOS 14 이상)은 mflux로, 윈도우 x64와 인텔 Mac, macOS 12~13 Apple 칩 Mac은 sd.cpp로 그려요. 메모리 8GB 이상이 필요하고, 처음 한 번 mflux는 약 16GB를 받아 약 5GB를 남기고, sd.cpp는 약 5.2GB를 받아요. 그래픽 칩 없이 CPU로 그리면 한 장에 꽤 오래 걸려요.
+- **내 컴퓨터에서 그리기**: Apple 칩 Mac(macOS 14 이상)은 mflux로, 윈도우 x64와 인텔 Mac, macOS 13 Apple 칩 Mac은 sd.cpp로 그려요. 메모리 8GB 이상이 필요하고, 처음 한 번 mflux는 약 16GB를 받아 약 5GB를 남기고, sd.cpp는 약 5.2GB를 받아요. 그래픽 칩 없이 CPU로 그리면 한 장에 꽤 오래 걸려요.
 - **Hugging Face 토큰**: huggingface.co/settings/tokens에서 무료로 만들 수 있어요. 토큰은 그림 서버에도 같이 가니 권한을 가장 적게 준 Fine-grained 토큰을 추천해요. 이 컴퓨터에만 저장하고(운영체제 열쇠로 암호화할 수 있으면 암호화) 백업에도 넣지 않아요.
 
 <p align="center">
@@ -174,7 +174,7 @@ AI가 연결돼 있으면 사진 없이 **말로 만들기**도 돼요. 만들�
 
 | | 내용 |
 | --- | --- |
-| 운영체제 | macOS 12 이상(애플 실리콘, 인텔), Windows 10 이상 x64, 리눅스 x64(시험판) |
+| 운영체제 | macOS 13 이상(애플 실리콘, 인텔), Windows 10 이상 x64, 리눅스 x64(시험판) |
 | AI 대화 | Claude Code, Codex, Cursor, Gemini CLI 중 하나를 설치하고 로그인해 두거나, 무료 AI 모델(Qwen3 1.7B 약 940MB, 0.6B 약 400MB)을 받아요 |
 | 설치 파일 크기 | 리눅스 0.1.0 실측(2026-10-11): `tar.xz` 약 86MB, `AppImage` 약 100MB, 풀면 약 294MB. 맥과 윈도우 설치 파일은 릴리스 페이지에 크기가 보여요. 무료 AI 를 처음 쓸 때 엔진(5~11MB)을 모델과 함께 한 번 받아요 |
 | 처음 쓸 때 받는 것 | 사진 페어리 배경 지우기 모델 약 170MB와 사진 AI 엔진 약 17MB, 2.5D 깊이 모델 약 27MB(쓸 때만) |
@@ -336,7 +336,7 @@ npm run dist:linux # 리눅스 tar.xz, AppImage
 
 ## English summary
 
-**fairy** (페어리, formerly Jjakkung) is a desktop app for macOS 12+ and Windows 10+ (Linux x64 builds are experimental) where a little fairy, a small creature like a puppy or a kitten, lives on your screen and doubles as a personal assistant. Site: [fairy.moilga.com](https://fairy.moilga.com).
+**fairy** (페어리, formerly Jjakkung) is a desktop app for macOS 13+ and Windows 10+ (Linux x64 builds are experimental) where a little fairy, a small creature like a puppy or a kitten, lives on your screen and doubles as a personal assistant. Site: [fairy.moilga.com](https://fairy.moilga.com).
 
 - **Fairy**: five built-in 3D fairies (Bean, Kitty, Chick, Puppy, Bunny) plus two illustrated ones (Milk, Choco). Drag, throw, pet it, feed it with coins earned from finished to-dos, or make your own fairy from a photo (background removal runs locally; optional 3D figure, 2.5D depth, or AI illustration via a free Hugging Face Space, the Gemini app, or on-device drawing).
 - **Assistant**: click the fairy for a panel with Today, To-dos, Notes, Events and Shop. Natural-language quick add ("meeting tomorrow 3pm", Korean and English), repeating to-dos, reminders, a focus timer, daily review, `.ics` calendar import.

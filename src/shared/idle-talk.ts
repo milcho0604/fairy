@@ -176,6 +176,7 @@ export function idleCandidates(f: IdleFacts): { now: IdleKey[]; fit: IdleKey[]; 
 
 /** 대사에 넣는 값 (펫 이름은 부르는 쪽이 넣는다) */
 export function idleVars(f: IdleFacts): {
+  done: number;
   open: number;
   eventMin: number;
   workedH: number;
@@ -187,6 +188,7 @@ export function idleVars(f: IdleFacts): {
   hour: number;
 } {
   return {
+    done: f.doneToday,
     open: f.openToday ?? 0,
     eventMin: Math.max(1, Math.round(f.nextEventMin ?? 0)),
     workedH: Math.max(1, Math.floor((f.workedMin ?? 0) / 60)),
@@ -202,17 +204,59 @@ export function idleVars(f: IdleFacts): {
 /** 대사 묶음 이름 (idle.todo.left.2 → todo). 같은 묶음이 연달아 나오지 않게 */
 const groupOf = (k: IdleKey) => k.split('.')[1] ?? '';
 
+/**
+ * 하루 동안 바뀌지 않는 사실을 말하는 묶음: 함께한 날, 연속 기록, 어제 일, 이번 주, 특별한 날, 철, 친밀도.
+ * 하루에 한 번만 한다. 최근 말(IDLE_RECENT)만 피하면 수다쟁이(시간당 12번쯤)에서 한 시간마다 되풀이돼
+ * "같이 지낸 지 9일째야"가 하루 여덟 번, 연속 기록이 열두 번, "우리 꽤 친해졌지?"가 아홉 번 나왔다 (2026-10-13 하루 돌려 보기)
+ */
+export const ONCE_A_DAY = ['together', 'streak', 'memory', 'week', 'special', 'season', 'friend'] as const;
+const onceADay = (k: IdleKey) => (ONCE_A_DAY as readonly string[]).includes(groupOf(k));
+const dayOf = (ms: number) => {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+};
+
+/**
+ * 상황이 하루 내내 이어져 되풀이되던 대사: 남은 할 일, 오래 일함, 배고픔. 수다쟁이(시간당 12번쯤)에서 최근 말만 피하면
+ * 하루 5~6번 같은 말을 했다 (이슈 #65). 하루 perDay 번까지, 앞에 한 뒤 gapMs 가 지나야 다시 한다
+ */
+export const SITUATION_CAP = { perDay: 2, gapMs: 2 * 60 * 60_000 } as const;
+/** 횟수를 세는 묶음 (idle.todo.left.2 → todo.left. 다 끝냄 todo.clear 는 세지 않는다) */
+const situationOf = (k: IdleKey): string | undefined => {
+  const [, a, b] = k.split('.');
+  if (a === 'todo' && b === 'left') return 'todo.left';
+  if (a === 'work' || a === 'hungry') return a;
+  return undefined;
+};
+
 /** 대사 고르기. 한 번만 할 일을 먼저, 그다음 상황에 맞는 말(10번에 7번), 최근에 한 말과 바로 앞 묶음은 건너뛴다 */
 export class IdleTalk {
   #recent: IdleKey[] = [];
   /** 이미 칭찬한 할 일 끝낸 때, 이미 반긴 돌아온 때 */
   #doneSaid: number | undefined;
   #backSaid: number | undefined;
+  /** 하루 한 번 묶음(ONCE_A_DAY)을 말한 날 */
+  #daySaid = new Map<string, string>();
+  /** 상황 대사(SITUATION_CAP)를 말한 날, 그날 횟수, 마지막 때 */
+  #situSaid = new Map<string, { day: string; n: number; at: number }>();
   #undo: (() => void) | undefined;
 
   pick(f: IdleFacts, rand: () => number = Math.random): IdleKey | undefined {
     const { now, fit, any } = idleCandidates(f);
-    const fresh = (list: IdleKey[]) => list.filter((k) => !this.#recent.includes(k));
+    const today = dayOf(f.now);
+    const capped = (k: IdleKey) => {
+      const g = situationOf(k);
+      const said = g ? this.#situSaid.get(g) : undefined;
+      if (!said || said.day !== today) return false;
+      return said.n >= SITUATION_CAP.perDay || f.now - said.at < SITUATION_CAP.gapMs;
+    };
+    const fresh = (list: IdleKey[]) =>
+      list.filter(
+        (k) =>
+          !this.#recent.includes(k) &&
+          !(onceADay(k) && this.#daySaid.get(groupOf(k)) === today) &&
+          !capped(k),
+      );
     const nowFresh = fresh(now).filter((k) =>
       groupOf(k) === 'done' ? f.lastDoneAt !== this.#doneSaid : f.backAt !== this.#backSaid,
     );
@@ -232,14 +276,28 @@ export class IdleTalk {
     }
     const key = pool[Math.floor(rand() * pool.length)] ?? pool[0];
     if (!key) return undefined;
-    const before = { recent: [...this.#recent], done: this.#doneSaid, back: this.#backSaid };
+    const before = {
+      recent: [...this.#recent],
+      done: this.#doneSaid,
+      back: this.#backSaid,
+      daySaid: new Map(this.#daySaid),
+      situSaid: new Map(this.#situSaid),
+    };
     this.#undo = () => {
       this.#recent = before.recent;
       this.#doneSaid = before.done;
       this.#backSaid = before.back;
+      this.#daySaid = before.daySaid;
+      this.#situSaid = before.situSaid;
     };
     if (groupOf(key) === 'done') this.#doneSaid = f.lastDoneAt;
     if (groupOf(key) === 'back') this.#backSaid = f.backAt;
+    if (onceADay(key)) this.#daySaid.set(groupOf(key), today);
+    const situ = situationOf(key);
+    if (situ) {
+      const prev = this.#situSaid.get(situ);
+      this.#situSaid.set(situ, { day: today, n: prev?.day === today ? prev.n + 1 : 1, at: f.now });
+    }
     this.#recent.push(key);
     if (this.#recent.length > IDLE_RECENT) this.#recent.shift();
     return key;

@@ -6,6 +6,7 @@ import type { AiProvider, AiStatus, ImageAttachment } from './ai/types.ts';
 import type { Activity } from './behavior.ts';
 import type { BetaReport } from './beta-stats.ts';
 import type { BubbleLayout } from './bubble-layout.ts';
+import type { ChatLookView } from './chat-look.ts';
 import type { ChatImage, ChatState } from './chat-state.ts';
 import type { BubbleKind } from './chatter.ts';
 import type { EnergyLook } from './energy.ts';
@@ -191,6 +192,14 @@ export const CHAT = {
   planAction: 'chat:plan-action',
   // v2 무료 AI
   downloadModel: 'chat:download-model',
+  // 같이 보기 (shared/chat-look.ts)
+  look: 'chat:look',
+  setLook: 'chat:set-look',
+  lookShot: 'chat:look-shot',
+  lookPick: 'chat:look-pick',
+  lookSettings: 'chat:look-settings',
+  /** 메인 → 채팅 창: 같이 보기 상태가 바뀌었다 */
+  lookState: 'chat:look-state',
 } as const;
 
 export const ONBOARD = {
@@ -298,6 +307,12 @@ export interface CoinState {
   items: number;
 }
 
+/** 캘린더 가져오기 결과 글과 잘 됐는지 (못 가져왔으면 설정 창이 빨간 글씨로 알린다) */
+export interface CalSync {
+  text: string;
+  ok: boolean;
+}
+
 export interface SettingsSnapshot {
   settings: Settings;
   scale: number;
@@ -310,7 +325,7 @@ export interface SettingsSnapshot {
   /** 내 claude 에 연결된 MCP 서버 (v2, 하루 한 번 읽어 둔 것) */
   myMcpServers: string[];
   /** 마지막 캘린더 가져오기 결과 */
-  calendarLast: string;
+  calendarLast: CalSync;
   /** 모델 목록 (v2)과 무료 AI 모델을 받았는지 (id 별) */
   models: { catalog: Catalog; localReady: Record<string, boolean> };
   /** 만든 펫 보관함 (6단계). thumb 는 그림 data URL */
@@ -392,7 +407,8 @@ export interface SettingsBridge {
   openOnboarding(): void;
   /** 백업 폴더 만들기. 만든 경로 (그만두면 빈 글) */
   exportData(): Promise<string>;
-  importData(): Promise<string>;
+  /** 백업 가져오기. 못 가져왔으면 ok 가 거짓 (그만두면 빈 message) */
+  importData(): Promise<{ ok: boolean; message: string }>;
   exportPet(): Promise<string>;
   reveal(path: string): void;
   importPet(): Promise<{ ok: boolean; message: string }>;
@@ -403,7 +419,7 @@ export interface SettingsBridge {
   galleryAdopt(id: string, asFriend: boolean): Promise<{ ok: boolean; message: string }>;
   /** 지금 펫을 친구에게 보낼 판 2 .jjpet 으로 저장한다 (만든 사람은 선택). 그만두면 빈 message */
   galleryShare(meta: { author?: string; license: PetLicense }): Promise<{ ok: boolean; message: string }>;
-  syncCalendar(): Promise<string>;
+  syncCalendar(): Promise<CalSync>;
   refreshMcp(): Promise<string[]>;
   /** 앱을 다시 켠다. 창은 열릴 때 말을 읽어서 말을 바꾸면 다시 켜야 한다 */
   relaunch(): void;
@@ -488,6 +504,17 @@ export interface ChatBridge {
   planAction(kind: 'focus' | 'panel', todoId?: number): void;
   /** 무료 AI 모델 받기 (v2). 다 받으면 마지막 질문을 무료 AI 로 다시 묻는다 */
   downloadModel(): void;
+  /** 같이 보기 상태 (권한은 물을 때마다 다시 본다) */
+  look(): Promise<ChatLookView>;
+  /** 같이 보기 켜기, 끄기. agree 는 처음 켤 때 안내를 보고 켰다 */
+  setLook(on: boolean, agree?: boolean): void;
+  /** 채팅 창이 있는 모니터 화면을 지금 찍는다 (채팅 창과 펫은 빼고). 못 찍으면 까닭 */
+  lookShot(): Promise<OutgoingImage | 'denied' | 'failed'>;
+  /** 화면 한 곳을 골라 찍기 (펫 메뉴의 같이 보기와 같다. 찍은 그림은 입력칸에 붙는다) */
+  lookPick(): void;
+  /** 화면 기록 권한 설정 열기 (맥) */
+  lookSettings(): void;
+  onLook(listener: (view: ChatLookView) => void): void;
 }
 
 export interface PetEnv {
@@ -934,7 +961,8 @@ export interface NoteSummary {
 
 /** 한 줄 입력(PANEL.add) 결과. 어디에 언제로 넣었는지 알려 준다 */
 /** 메모 저장 답 */
-export type NoteSaveResult = { ok: true } | { ok: false; error?: string };
+/** 메모 저장 답. body 는 저장된 본문이 보낸 것과 다를 때만 (다른 곳이 덧붙인 것과 합쳤거나 상한에서 잘랐다) */
+export type NoteSaveResult = { ok: true; body?: string } | { ok: false; error?: string };
 
 export type PanelAddResult =
   | { ok: false; error?: string }
@@ -980,7 +1008,8 @@ export interface NoteHit {
 export type PanelTab = 'today' | 'todo' | 'note' | 'event' | 'shop';
 
 /** 놀이: 공, 산책, 숨바꼭질과 짧은 놀이 (shared/minigames.ts) */
-export type PlayKind = 'ball' | 'walk' | 'seek' | MiniGame;
+/** wordchain: 끝말잇기 (채팅 창에서 AI 없이, main/fun.ts) */
+export type PlayKind = 'ball' | 'walk' | 'seek' | 'wordchain' | MiniGame;
 
 export type NoteAiKind = 'todos' | 'summary';
 
@@ -1024,7 +1053,12 @@ export interface PanelBridge {
   /**
    * 메모 저장. 못 저장하면(디스크 가득, 읽기 전용) ok: false 와 안내 글 (버그잡이 4: 예전에는 보내기만 해서 실패를 몰랐다)
    */
-  noteUpdate(id: number, patch: { title?: string; body?: string }): Promise<NoteSaveResult>;
+  /** base 는 메모 창이 마지막으로 받은 저장된 본문 (그사이 다른 곳이 바꾼 것과 합치려고) */
+  noteUpdate(
+    id: number,
+    patch: { title?: string; body?: string },
+    base?: { body: string },
+  ): Promise<NoteSaveResult>;
   noteRemove(id: number): void;
   noteRestore(id: number): void;
   /** 메모 찾기: 제목과 본문 전체. composing 이면 마지막 글자는 아직 조합 중이라 넓게 찾는다 */

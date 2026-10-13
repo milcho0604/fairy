@@ -1,4 +1,6 @@
 // 상점 (v1). 기획서 "게임 규칙": 먹이, 장난감, 집 업그레이드, 커스텀 먹이. 코인은 일을 끝낼 때만 생기고 펫을 돌보는 데만 쓴다.
+
+import { cutText } from './cut-text.ts';
 import type { Db } from './db-schema.ts';
 import { HOUSE_STYLES, type HouseStyle, isHouseStyle } from './house-art.ts';
 import { type I18nKey, t } from './i18n/index.ts';
@@ -242,7 +244,7 @@ export class ItemStore {
 
   /** 커스텀 먹이 만들기 (그림 파일은 부르는 쪽이 저장해 두고 이름만 준다). 코인이 모자라면 실패 */
   makeCustomFood(name: string, image: string, now: number): BuyResult & { key?: string } {
-    const clean = name.replace(/\s+/g, ' ').trim().slice(0, 20);
+    const clean = cutText(name.replace(/\s+/g, ' ').trim(), 20);
     if (!clean) return { ok: false, error: t('shop.err.foodName') };
     if (this.state().customFoods.length >= CUSTOM_FOOD_MAX)
       return { ok: false, error: t('shop.err.foodMax', { n: CUSTOM_FOOD_MAX }) };

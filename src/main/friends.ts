@@ -4,9 +4,12 @@ import { friendTalk } from '../shared/companion.ts';
 import { t } from '../shared/i18n/index.ts';
 import { IPC, type PetImages, type PetStatus } from '../shared/ipc.ts';
 import { MEET_CHANCE, MEET_COOLDOWN_MS, MEET_EVERY_MS, meetPlan } from '../shared/meet.ts';
+import { voiced } from '../shared/persona-voice.ts';
 import { type Blueprint, parseBlueprint } from '../shared/pet3d/blueprint.ts';
 import { starterFigureOf } from '../shared/pet3d/starters.ts';
-import type { Friend } from '../shared/settings.ts';
+import { friendSpot } from '../shared/placement.ts';
+import { HideReasons } from '../shared/presence.ts';
+import { type Friend, pickedStand } from '../shared/settings.ts';
 import { starterOf } from '../shared/starter-pets.ts';
 import type { WearLook } from '../shared/wear.ts';
 import { saverNow } from './battery.ts';
@@ -17,13 +20,13 @@ import { readFileIn } from './safe-file.ts';
 import { settings } from './settings.ts';
 import { removeJson } from './store.ts';
 
-/** 인사 (지금 말로) */
+/** 인사 (지금 말로, 고른 성격 말투로: 존댓말 비서면 존댓말, 이슈 #65) */
 const hello = () => [
-  t('pet.hello.1'),
-  t('pet.hello.2'),
-  t('pet.hello.3'),
-  t('pet.hello.4'),
-  t('pet.hello.5'),
+  voiced('pet.hello.1'),
+  voiced('pet.hello.2'),
+  voiced('pet.hello.3'),
+  voiced('pet.hello.4'),
+  voiced('pet.hello.5'),
 ];
 
 /** pets/ 안 일반 파일만 읽는다 (링크를 따라 폴더 밖을 읽지 않게, safe-file.ts) */
@@ -31,6 +34,9 @@ const petFile = (file: string | undefined) => readFileIn(join(app.getPath('userD
 
 /** 설계도 파일 상한 (maker.ts 와 같다). 넘으면 읽지 않고 사진으로 */
 const MAX_MODEL_BYTES = 256 * 1024;
+
+/** 처음 오는 친구 펫 크기 (pet-window 의 기본 크기, 배율 1) */
+const FRIEND_SIZE = 160;
 
 /** 만났을 때 수다를 떨 확률 (수다쟁이만) */
 const FRIEND_TALK_CHANCE = 0.5;
@@ -91,6 +97,8 @@ export function createFriends(o: {
   log: (tag: string, ...rest: unknown[]) => void;
 }) {
   const live = new Map<string, { pet: PetWindow; friend: Friend }>();
+  /** 지금 친구들이 숨은 까닭 (숨긴 동안 새로 온 친구도 숨어서 온다) */
+  const hiddenFor = new HideReasons();
 
   // ---- 친구 펫끼리 놀기 ----
   // 가끔 친구 하나가 기본 펫 옆으로 걸어가 서로 마주 보고 하트를 띄운다. 둘 다 한가할 때만.
@@ -164,6 +172,15 @@ export function createFriends(o: {
       boost: boostOn(),
       saver: saverNow(),
       ...(f.gait ? { gait: f.gait } : {}),
+      // 네 발로 선 피규어 (기본 페어리였을 때 고른 값이 몸을 따라온다, friend-swap.ts)
+      ...(pickedStand({
+        petImage: f.image,
+        petModel: f.model,
+        petKind: f.kind,
+        petStands: settings.get().petStands,
+      })
+        ? { stand: true }
+        : {}),
       ...(o.wear ? { wear: o.wear() } : {}),
     };
   }
@@ -195,7 +212,8 @@ export function createFriends(o: {
     const pet: PetWindow = createPetWindow({
       ...(win ? { win } : {}),
       id: f.id,
-      initial: { x: main.x - (index + 1) * 140, y: main.y },
+      // 기본 펫과 같은 바닥에, 왼쪽에 자리가 없으면 오른쪽에 (처음 올 때만. 옮긴 뒤에는 저장한 자리)
+      initial: friendSpot(main, index, FRIEND_SIZE, screen.getDisplayMatching(main).workArea),
       petName: () => live.get(f.id)?.friend.name ?? f.name,
       log: o.log,
       actions: {
@@ -253,6 +271,8 @@ export function createFriends(o: {
       pet.win.webContents.send(IPC.status, status(now));
       pet.win.webContents.send(IPC.image, imageOf(now));
     });
+    // 숨긴 동안(숨기기, 발표 중) 데려온 친구는 혼자 보이지 않고 같이 숨어 있다가 같이 나온다
+    for (const reason of hiddenFor.list()) pet.setHidden(reason, true, false);
     live.set(f.id, { pet, friend: f });
     o.log('friends', '왔어', f.id);
   }
@@ -264,7 +284,12 @@ export function createFriends(o: {
       if (!want.some((f) => f.id === id)) {
         l.pet.win.destroy();
         live.delete(id);
-        library.cleanup([l.friend.image, l.friend.model, l.friend.depth]);
+        library.cleanup([
+          l.friend.image,
+          l.friend.model,
+          l.friend.depth,
+          ...Object.values(l.friend.poses ?? {}),
+        ]);
         // 그 친구의 위치 파일도 지운다 (pet-window 의 pet-position-<id>). 남으면 쌓이기만 한다
         removeJson(`pet-position-${id}`);
         o.log('friends', '갔어', id);
@@ -285,6 +310,7 @@ export function createFriends(o: {
 
   /** 기본 펫이 숨으면(발표, 숨기기) 친구도 같이 */
   function setHidden(reason: 'user' | 'presentation', on: boolean) {
+    hiddenFor.set(reason, on);
     for (const { pet } of live.values()) pet.setHidden(reason, on, false);
   }
 

@@ -22,6 +22,7 @@ import { IPC } from '../shared/ipc.ts';
 import { MOVE_SPECS } from '../shared/moves.ts';
 import { voiced } from '../shared/persona-voice.ts';
 import { type Body, bounce, GRAVITY } from '../shared/throw.ts';
+import { KEEP_APP_TYPE } from './active-space.ts';
 import { onDisplaysChanged as watchDisplays } from './display-watch.ts';
 import type { PetWindow } from './pet-window.ts';
 import { readJson, removeJson, writeJson } from './store.ts';
@@ -54,7 +55,7 @@ function makeSprite(
   });
   win.setAlwaysOnTop(true, 'floating');
   win.setIgnoreMouseEvents(true);
-  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false, ...KEEP_APP_TYPE });
   // 그림(SVG)과 모양(CSS)만 있는 창이라 다른 것은 다 막는다. CSP 가 없으면 개발 실행에서 Electron 보안 경고가 창마다 뜬다.
   // 들기, 착지 모양은 메인이 executeJavaScript 로 바꾸는데 그것은 페이지 CSP 를 따르지 않아 스크립트는 열지 않는다.
   // 그림은 data: 만 (집 안의 펫 그림은 펫 화면이 그린 PNG data URL 이다)

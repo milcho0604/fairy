@@ -179,6 +179,14 @@ if (kind === 'chat') {
     retryWith: (provider) => ipcRenderer.send(CHAT.retryWith, provider),
     planAction: (kind, todoId) => ipcRenderer.send(CHAT.planAction, kind, todoId),
     downloadModel: () => ipcRenderer.send(CHAT.downloadModel),
+    look: () => ipcRenderer.invoke(CHAT.look),
+    setLook: (on, agree) => ipcRenderer.send(CHAT.setLook, on, agree),
+    lookShot: () => ipcRenderer.invoke(CHAT.lookShot),
+    lookPick: () => ipcRenderer.send(CHAT.lookPick),
+    lookSettings: () => ipcRenderer.send(CHAT.lookSettings),
+    onLook: (listener) => {
+      ipcRenderer.on(CHAT.lookState, (_e, view) => listener(view));
+    },
   };
   contextBridge.exposeInMainWorld('jjakkungChat', chat);
 }
@@ -331,7 +339,7 @@ if (kind === 'panel' || kind === 'quick') {
     },
     noteGet: (id: number) => ipcRenderer.invoke(PANEL.noteGet, id),
     noteAdd: (text?: string) => ipcRenderer.invoke(PANEL.noteAdd, text),
-    noteUpdate: (id, patch) => ipcRenderer.invoke(PANEL.noteUpdate, id, patch),
+    noteUpdate: (id, patch, base) => ipcRenderer.invoke(PANEL.noteUpdate, id, patch, base),
     noteRemove: (id: number) => ipcRenderer.send(PANEL.noteRemove, id),
     noteRestore: (id: number) => ipcRenderer.send(PANEL.noteRestore, id),
     noteSearch: (query: string, composing: boolean) => ipcRenderer.invoke(PANEL.noteSearch, query, composing),

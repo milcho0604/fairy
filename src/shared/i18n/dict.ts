@@ -8,6 +8,7 @@ import * as bond from './bond.ts';
 import * as briefing from './briefing.ts';
 import * as calendar from './calendar.ts';
 import * as chat from './chat.ts';
+import * as chatLook from './chat-look.ts';
 import * as common from './common.ts';
 import * as companion from './companion.ts';
 import * as day from './day.ts';
@@ -15,6 +16,7 @@ import * as diary from './diary.ts';
 import * as ease from './ease.ts';
 import * as feedback from './feedback.ts';
 import * as first from './first.ts';
+import * as fun from './fun.ts';
 import * as gallery from './gallery.ts';
 import * as gcal from './gcal.ts';
 import * as gemini from './gemini.ts';
@@ -40,6 +42,7 @@ import * as tray from './tray.ts';
 import type { Translation } from './types.ts';
 import * as voice from './voice.ts';
 import * as voiceIdle from './voice-idle.ts';
+import * as voicePlay from './voice-play.ts';
 
 export const ko = {
   ...common.ko,
@@ -51,6 +54,7 @@ export const ko = {
   ...achieve.ko,
   ...briefing.ko,
   ...chat.ko,
+  ...chatLook.ko,
   ...ai.ko,
   ...settings.ko,
   ...maker.ko,
@@ -75,9 +79,11 @@ export const ko = {
   ...polish.ko,
   ...petmeta.ko,
   ...first.ko,
+  ...fun.ko,
   ...together.ko,
   ...voice.ko,
   ...voiceIdle.ko,
+  ...voicePlay.ko,
   ...speech.ko,
   ...calendar.ko,
   ...pin.ko,
@@ -93,6 +99,7 @@ export const en: Translation<typeof ko> = {
   ...achieve.en,
   ...briefing.en,
   ...chat.en,
+  ...chatLook.en,
   ...ai.en,
   ...settings.en,
   ...maker.en,
@@ -117,9 +124,11 @@ export const en: Translation<typeof ko> = {
   ...polish.en,
   ...petmeta.en,
   ...first.en,
+  ...fun.en,
   ...together.en,
   ...voice.en,
   ...voiceIdle.en,
+  ...voicePlay.en,
   ...speech.en,
   ...calendar.en,
   ...pin.en,

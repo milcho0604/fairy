@@ -8,6 +8,7 @@ import {
   energyFace,
   excitedBounce,
   gazeOf,
+  heartSpots,
   lidOf,
   trickOf,
   waveSwing,
@@ -125,4 +126,16 @@ test('축하 색종이: 머리 위로 솟았다가 양옆으로 흩어지며 떨
   for (let ms = 0; ms <= CONFETTI_MS; ms += 100)
     for (const p of confettiAt(ms, 4))
       assert.ok(p.x >= 4 && p.x <= 156 && p.y >= 4, `${ms} ${JSON.stringify(p)}`);
+});
+
+test('자거나 졸 때 하트는 Zz 가 뜨는 머리 오른쪽 위를 피한다 (이슈 #65)', () => {
+  // Zz 는 머리 가운데에서 오른쪽 38~64px 에 뜬다. 하트는 반지름 10 안팎, 좌우로 16px 쯤 퍼진다
+  const clearOfZz = (spots: readonly (readonly [number, number])[]) => spots.every(([dx]) => dx + 16 < 38);
+  for (const mood of ['sleeping', 'dozing'] as const)
+    assert.ok(clearOfZz(heartSpots({ ...base, mood })), mood);
+  // 졸린 기운(사진 펫의 작은 z)일 때도
+  assert.ok(clearOfZz(heartSpots({ ...base, energy: { stage: 'sleepy' } } as DrawState)));
+  // 깨어 있으면 예전처럼 머리 양옆에서
+  assert.ok(heartSpots(base).some(([dx]) => dx > 0));
+  assert.ok(heartSpots(base).some(([dx]) => dx < 0));
 });

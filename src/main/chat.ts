@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { BrowserWindow, type IpcMainEvent, ipcMain, type Rectangle, screen } from 'electron';
 import { type Catalog, pickCli, pickLocal } from '../shared/ai/catalog.ts';
+import { finalAnswer } from '../shared/ai/empty-answer.ts';
 import {
   extractTodos,
   noteTitleFromQuestion,
@@ -23,6 +24,7 @@ import {
   addQuestion,
   applyEvent,
   applyUsage,
+  type ChatMessage,
   type ChatState,
   historyFor,
   initialChat,
@@ -51,7 +53,7 @@ import { downloadLocalModel, localModelReady, mb, runLocal } from './ai/local.ts
 import { type AiRun, checkStatus, readCodexUsage, runAi } from './ai/runner.ts';
 import { getShellEnv } from './ai/shell-env.ts';
 import { devRendererUrl } from './dev-url.ts';
-import { focusWindow, showWindow, stealFocus } from './focus.ts';
+import { focusWindow, showWindow } from './focus.ts';
 import { langArg } from './lang.ts';
 import { jjMcpLaunch } from './mcp-launch.ts';
 import { openLink } from './open-link.ts';
@@ -114,6 +116,11 @@ export interface ChatOptions {
   locked?: () => boolean;
   /** 잠긴 대화를 쓰려 했다 (펫이 까닭을 말한다) */
   onLocked?: () => void;
+  /**
+   * AI 없이 하는 말놀이 (끝말잇기, main/fun.ts). turn 이 글을 돌려주면 AI 에 보내지 않고 그 글로 바로 답한다.
+   * undefined 면 보통 대화. 새 대화를 열면 reset
+   */
+  localGame?: { turn: (text: string) => string | undefined; reset: () => void };
   log: (tag: string, ...rest: unknown[]) => void;
 }
 
@@ -274,6 +281,12 @@ export function createChat(o: ChatOptions) {
     if (state.pendingId) return false;
     const question = text.trim();
     if (!question && images.length === 0) return false;
+    // 끝말잇기 (main/fun.ts): 하자는 말이나 노는 중의 말이면 AI 를 부르지 않고 바로 답한다 (AI 가 없어도 된다)
+    const local = images.length === 0 ? o.localGame?.turn(question) : undefined;
+    if (local !== undefined) {
+      answerLocal(question, local);
+      return true;
+    }
     const ids = { user: randomUUID(), pet: randomUUID() };
     const provider = state.provider;
     const spec = specOf(provider);
@@ -360,7 +373,11 @@ export function createChat(o: ChatOptions) {
         // 고른 모델 (v2). 목록에 없으면 그 AI 의 기본
         model: pickCli(o.catalog(), provider, o.aiModels()[provider]),
       };
-      const onEvent = (event: AiEvent) => {
+      const onEvent = (raw: AiEvent) => {
+        // 글 없이 끝났으면 빈 말풍선 대신 안내 말 (이슈 #65). 대화 창 답에만: 일기 다듬기 같은 한 번 묻기는 빈 답을 그대로 받는다
+        const streamed = () => state.messages.find((m) => m.id === ids.pet)?.text ?? '';
+        const event =
+          raw.type === 'done' ? { ...raw, text: finalAnswer(raw.text, streamed(), !!raw.tools) } : raw;
         state = applyEvent(state, ids.pet, event, randomUUID());
         if (event.type === 'usage') writeJson(USAGE_FILE, state.usage);
         // 기록을 안 남긴 세션은 이어 갈 수 없다. 받아 두지 않는다. 그림 때문에 이번만 안 남겼으면 전 세션을 그대로 둔다
@@ -369,10 +386,11 @@ export function createChat(o: ChatOptions) {
             ...state,
             sessions: { ...state.sessions, [provider]: state.ephemeral ? undefined : sessionBefore },
           };
-        if (ephemeral && !state.ephemeral && event.type === 'done' && event.text)
+        // 안내 말(빈 답)은 이어 붙이지 않는다
+        if (ephemeral && !state.ephemeral && raw.type === 'done' && raw.text.trim())
           carry.set(
             provider,
-            [...(carry.get(provider) ?? []), { question: base, answer: event.text }].slice(-3),
+            [...(carry.get(provider) ?? []), { question: base, answer: raw.text }].slice(-3),
           );
         if (event.type === 'delta') {
           const msg = state.messages.find((m) => m.id === ids.pet);
@@ -408,6 +426,19 @@ export function createChat(o: ChatOptions) {
             })
           : runAi(req, onEvent);
     }
+  }
+
+  /**
+   * 말놀이 답을 바로 단다 (AI 를 부르지 않는다). question 이 없으면 펫 말만 (메뉴에서 시작).
+   * 펫 메시지에 AI 이름을 달지 않아 AI 대화 기록(historyFor)에 섞이지 않는다
+   */
+  function answerLocal(question: string | undefined, text: string) {
+    const pet: ChatMessage = { id: randomUUID(), role: 'pet', text, status: 'done', game: true };
+    const user: ChatMessage[] = question ? [{ id: randomUUID(), role: 'user', text: question }] : [];
+    state = { ...state, messages: [...state.messages, ...user, pet] };
+    log('chat', 'local-game');
+    save();
+    push();
   }
 
   /** 질문과 규칙 답을 바로 (AI 를 부르지 않는다) */
@@ -562,6 +593,7 @@ export function createChat(o: ChatOptions) {
     if (state.messages.length > 0) cleared = { state, at: Date.now() };
     state = resetChat(state);
     carry.clear();
+    o.localGame?.reset();
     save(true);
     push();
   });
@@ -593,8 +625,7 @@ export function createChat(o: ChatOptions) {
       o.onLocked?.();
       return;
     }
-    // 펫 앱은 Dock 없이 떠 있어서 창만 앞으로 부르면 키보드가 다른 앱에 남는다. 사용자가 부른 것이니 앱을 앞으로.
-    stealFocus();
+    // 앱을 앞으로 가져오는 것은 창을 띄울 때 한다 (focus.ts. 먼저 하면 맥이 다른 데스크톱으로 넘어간다)
     if (win && !win.isDestroyed()) {
       // 화면 프로세스가 죽었으면 빈 창만 남는다. 다시 부를 때 새로 읽는다 (대화 내용은 메인에 있다)
       if (win.webContents.isCrashed()) win.webContents.reload();
@@ -680,6 +711,12 @@ export function createChat(o: ChatOptions) {
     open,
     toggle,
     attach,
+    /** 말놀이 펫 말을 채팅에 단다 (펫 메뉴에서 끝말잇기 시작). 답을 기다리는 중이면 false */
+    sayLocal: (text: string): boolean => {
+      if (state.pendingId || o.locked?.()) return false;
+      answerLocal(undefined, text);
+      return true;
+    },
     /** 말로 만들기를 쓸 AI 가 있는지 (만들기 창이 탭을 보일지) */
     hasTextAi: async () => !!(await textSpec()),
     /**

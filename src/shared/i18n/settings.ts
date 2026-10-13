@@ -117,6 +117,11 @@ export const ko = {
     `${withParticle(v.name, '을')} 정말 집에 보내기 (한 번 더 누르면 보내)`,
   'settings.friends.photoGone': (v: { name: string }) =>
     `${withParticle(v.name, '은')} 사진 친구라 보내면 그림도 지워져. 다시 보려면 .fairy 파일로 다시 초대해야 해.`,
+  'settings.friends.makeMain': '기본 페어리로',
+  'settings.friends.makeMainAria': (v: { name: string; main: string }) =>
+    `${withParticle(v.name, '을')} 기본 페어리로 (${withParticle(v.main, '은')} 친구 자리로)`,
+  'settings.friends.madeMain': (v: { name: string; main: string }) =>
+    `${withParticle(v.name, '이')} 기본 페어리가 됐어. ${withParticle(v.main, '은')} 친구로 같이 놀아.`,
 
   // 삐짐
   'settings.sulk': '삐짐',
@@ -306,6 +311,7 @@ export const ko = {
     '구글 캘린더: 설정 > 내 캘린더 > 캘린더 통합 > "iCal 형식의 비공개 주소"를 붙여 넣어. 30분마다 앞으로 60일 일정을 가져와서 페어리가 알려 줘. 이 주소는 이 컴퓨터에만 둬. (읽기만 해. 페어리에서 넣은 일정을 구글로 보내려면 아래 "구글 캘린더로 보내기"를 켜.)',
   'settings.cal.fetch': '지금 가져오기',
   'settings.cal.clear': '지우기',
+  'settings.cal.bad': 'https로 시작하는 .ics 주소만 돼. 저장하지 않았어',
 
   // 백업
   'settings.backup': '백업과 옮기기',
@@ -544,6 +550,10 @@ export const en: Translation<typeof ko> = {
   'settings.friends.sendHomeSureAria': (v) => `Really send ${v.name} home (press again to send)`,
   'settings.friends.photoGone': (v) =>
     `${v.name} is a photo friend, so their picture goes too. To see them again, invite them back from the .fairy file.`,
+  'settings.friends.makeMain': 'Make main',
+  'settings.friends.makeMainAria': (v) =>
+    `Make ${v.name} your main fairy (${v.main} takes their spot as a friend)`,
+  'settings.friends.madeMain': (v) => `${v.name} is now your main fairy. ${v.main} stays on as a friend.`,
 
   'settings.sulk': 'Sulking',
   'settings.restDays': 'Days off (no sulking if you skip these)',
@@ -729,6 +739,7 @@ export const en: Translation<typeof ko> = {
     'Google Calendar: Settings > My calendars > Integrate calendar > paste the "Secret address in iCal format". Every 30 minutes it fetches the next 60 days and your fairy reminds you. The address stays on this computer. (Read only. To send events you add in fairy to Google, use "Send to Google Calendar" below.)',
   'settings.cal.fetch': 'Fetch now',
   'settings.cal.clear': 'Clear',
+  'settings.cal.bad': "Only an .ics address starting with https works. Didn't save it",
 
   'settings.backup': 'Backup and transfer',
   'settings.backupHint':
