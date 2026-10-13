@@ -16,6 +16,19 @@ import type { PetKind } from '../../shared/settings.ts';
 import type { PhotoEyes } from '../../shared/starter-pets.ts';
 import type { NoteLook } from '../../shared/together.ts';
 import type { Outfit } from '../../shared/wear.ts';
+import {
+  ART_CX,
+  ART_GROUND,
+  ART_SCALE,
+  artTop,
+  cutePose,
+  FACE_CUT,
+  HEAD_R,
+  headOf,
+  isCuteKind,
+  SCARF_DROP,
+} from './cute2d.ts';
+import { cuteArt, loadCuteArt } from './cute2d-art.ts';
 import { drawMagnifier } from './magnifier.ts';
 import { Eased } from './motion-ease.ts';
 import {
@@ -547,6 +560,12 @@ function drawPetBody(ctx: CanvasRenderingContext2D, s: DrawState): Point | undef
       drawExtras(ctx, s, top, lift);
       return ball;
     }
+  }
+  // 냥이와 곰돌이는 손그림 (cute2d.ts). 그림이 아직 안 풀렸으면 불러오기를 걸고 이번 틀은 예전 코드 그림으로
+  if (isCuteKind(kind)) {
+    const pics = cuteArt(kind);
+    if (pics) return drawCute(ctx, s, pics, act, lift, sx, sy, mv);
+    void loadCuteArt(kind);
   }
   // 공을 물 때 고개를 숙인다: 2D 는 몸이 곧 머리라 몸을 조금 눌러 얼굴을 내린다
   const dip = s.carry?.dip ?? 0;
@@ -1584,6 +1603,101 @@ function drawYawn(ctx: CanvasRenderingContext2D, x: number) {
   ctx.fill();
 }
 
+/**
+ * 손그림 냥이, 곰돌이 (cute2d.ts). 상태에 맞는 자세 그림 한 장을 바닥선에 맞춰 그리고, 그림에 없는 움직임(신남 튀기,
+ * 들림 늘이기, 제자리 몸짓의 뛰기와 기울기)만 몸 전체에 얹는다. 걷기는 그림 여섯 장을 걸음에 맞춰 넘기고 가는 쪽으로 뒤집는다.
+ * 같이 지내는 표시(키보드, 쪽지, 돋보기, 문 공)와 머리 위 표시는 사진 펫처럼 그림 위에. 공을 물었으면 공 가운데를 돌려준다
+ */
+function drawCute(
+  ctx: CanvasRenderingContext2D,
+  s: DrawState,
+  pics: NonNullable<ReturnType<typeof cuteArt>>,
+  act: DrawState['activity'],
+  lift: number,
+  sx: number,
+  sy: number,
+  mv: MovePose | undefined,
+): Point | undefined {
+  const trick = trickOf(s);
+  // 얼굴 아이콘은 서 있는 머리 (집 안 침대의 자는 얼굴은 눈 감은 졸기 머리)
+  const pick = s.face
+    ? {
+        pose: s.mood === 'sleeping' || s.mood === 'dozing' ? ('doze' as const) : ('idle' as const),
+        flip: false,
+      }
+    : cutePose({ mood: s.mood, elapsed: s.elapsed, hungry: s.hungry, stage: sulkStage(s), act, trick });
+  // 그림 속 몸이 이미 걷고 앉아 있으니 코드 그림의 걸음 들썩임과 앉기 눌림은 빼고, 지침 처짐만 남긴다
+  if (act?.type === 'walk' || act?.type === 'sit' || pick.pose === 'back') {
+    const tired = droop(s, act);
+    if (act?.type === 'walk') lift = 0;
+    if (!mv) {
+      sx = tired.sx;
+      sy = tired.sy;
+    }
+  }
+  const k = ART_SCALE;
+  // 뛰어도 그림 꼭대기(귀, 별)가 캔버스 위로 잘리지 않게
+  const tall = (ART_GROUND - artTop(pick.pose)) * k;
+  lift = Math.min(lift, GROUND - 2 - tall * sy);
+  if (mv) lift += 8 * Math.abs(Math.sin(mv.turn * 0.7));
+  const bottom = GROUND - lift;
+  const top = bottom - tall * sy;
+  const dx = mv?.dx ?? 0;
+  // 몸 기울기: 몸짓(뒹굴기는 반쯤, 갸웃), 빙글 춤, 두리번
+  const tilt =
+    (mv ? mv.turn * 0.5 + mv.twist * 0.3 + mv.tilt * 0.5 + mv.pitch * 0.2 : 0) +
+    (trick?.type === 'dance' ? danceTilt(trick.t) : 0) +
+    (act?.type === 'look' ? act.dir * 0.08 : 0);
+  ctx.save();
+  // 기울기는 몸 가운데(바닥에서 키의 40%)를 축으로
+  const pivot = bottom - tall * sy * 0.4;
+  ctx.translate(CX + dx, pivot);
+  ctx.rotate(ease.to('ctilt', tilt, PHOTO_TILT_TAU));
+  ctx.translate(0, bottom - pivot);
+  ctx.scale((pick.flip ? -1 : 1) * sx * k, sy * k);
+  ctx.translate(-ART_CX, -ART_GROUND);
+  if (s.face) {
+    // 얼굴 아이콘은 머리와 귀만 (pet-face.ts 가 그린 데를 잘라 쓴다). 머리 자리와 기울기에 맞춘 머리 좌표에서 자른다
+    const h = headOf(pick.pose);
+    ctx.save();
+    ctx.translate(h.x, h.y);
+    ctx.rotate((h.rot * Math.PI) / 180);
+    ctx.beginPath();
+    ctx.rect(FACE_CUT.x0 - ART_CX, -FACE_CUT.up, FACE_CUT.x1 - FACE_CUT.x0, FACE_CUT.up);
+    ctx.moveTo(FACE_CUT.rx, 0);
+    ctx.ellipse(0, 0, FACE_CUT.rx, FACE_CUT.ry, 0, 0, Math.PI * 2);
+    ctx.restore();
+    ctx.clip();
+  }
+  ctx.drawImage(pics[pick.pose], 0, 0, 512, 512);
+  // 철마다 옷: 코드 그림의 몸(반지름 58x50)을 그림 속 머리에 맞춘다. 등 돌린 그림은 뒷모습 옷
+  if (s.wear && !s.face) {
+    const h = headOf(pick.pose);
+    ctx.translate(h.x, h.y);
+    ctx.rotate((h.rot * Math.PI) / 180);
+    ctx.scale(HEAD_R.x / RX, HEAD_R.y / RY);
+    // 목도리는 코드 그림에서 입 아래(몸 가운데 조금 아래)라 머리에 맞추면 입을 가린다. 머리 아래 목으로 내린다
+    if (s.wear === 'scarf') ctx.translate(0, SCARF_DROP);
+    drawWear2D(ctx, s.wear, pick.pose === 'back');
+  }
+  ctx.restore();
+  // 그림 속 머리와 눈, 입 자리 (그림 좌표를 캔버스로. 기울기는 작아서 뺀다)
+  const head = headOf(pick.pose);
+  const at = (x: number, y: number): Point => ({
+    x: CX + dx + (pick.flip ? -1 : 1) * (x - ART_CX) * k * sx,
+    y: bottom + (y - ART_GROUND) * k * sy,
+  });
+  const ball = drawCarry(ctx, s.carry, at(head.x, head.y + 56));
+  const eyes: Model3D = {
+    draw: () => undefined,
+    eye: (side) => at(head.x + side * 58, head.y + 24),
+  };
+  drawPeer(ctx, s, top, bottom, PHOTO_EYE_AT, eyes);
+  drawTogetherOver(ctx, s, act, top, bottom);
+  drawExtras(ctx, s, top, lift, true);
+  return ball;
+}
+
 /** 사진 펫을 그리고 머리 꼭대기 y 를 돌려준다. 사진은 얼굴을 바꿀 수 없어 몸짓(튀기, 늘이기, 기울이기)으로 기분을 보인다. */
 function drawPhoto(
   ctx: CanvasRenderingContext2D,
@@ -1937,12 +2051,13 @@ function drawMouth(ctx: CanvasRenderingContext2D, mood: PetMood, look: number) {
  * 몸 밖에 붙는 것들: 생각 중 점, 잠 Zz, 바쁨 땀과 이름표, 삐짐 막대, 하트. top 은 머리 꼭대기 y.
  * lift 는 몸이 뛰어오른 높이: 색종이는 바닥 기준(top + lift)에서 터져 펫이 통통 튀어도 따라 튀지 않는다
  */
-function drawExtras(ctx: CanvasRenderingContext2D, s: DrawState, top: number, lift = 0) {
+function drawExtras(ctx: CanvasRenderingContext2D, s: DrawState, top: number, lift = 0, art = false) {
   // 머리 오른쪽 위에 꽂은 꽃. 사진은 머리가 가운데 쪽이라 조금 안으로
   if (s.flower && s.wear !== 'flower') drawFlower(ctx, CX + (s.photo ? 14 : 24), top + 8);
   if ((s.sulk ?? 0) > 0 && s.mood === 'sulky') drawSulkGauge(ctx, s.sulk ?? 0, top);
   const pouting = sulkStage(s);
-  if (pouting >= 2) drawHuff(ctx, top, pouting >= 3);
+  // 손그림 삐진 그림(2단계까지)은 그림 속에 김이 있다
+  if (pouting >= 2 && (!art || pouting >= 3)) drawHuff(ctx, top, pouting >= 3);
   if (pouting >= 3) drawCross(ctx, CX - 40, Math.max(12, top + 10));
   if ((s.hearts ?? -1) >= 0 && (s.hearts ?? 0) < HEARTS_MS) drawHearts(ctx, s, s.hearts ?? 0, top);
   if ((s.confetti ?? -1) >= 0 && (s.confetti ?? 0) < CONFETTI_MS)
@@ -1954,7 +2069,8 @@ function drawExtras(ctx: CanvasRenderingContext2D, s: DrawState, top: number, li
   // 사진 펫은 오른쪽 위에 기운 반짝이가 있어 왼쪽 위에
   if (work !== undefined && s.mood !== 'thinking')
     drawWorkSparkle(ctx, CX + (s.photo ? -46 : 42), Math.max(10, top + 4), work, s.calm);
-  if (s.photo) drawPhotoEnergy(ctx, s, top);
+  // 사진과 손그림은 눈을 바꿀 수 없어 기운을 머리 옆 표시로
+  if (s.photo || art) drawPhotoEnergy(ctx, s, top);
   ctx.fillStyle = INK;
   if (s.mood === 'thinking') {
     const step = Math.floor(s.elapsed / 400) % 4; // 점이 하나씩 늘어난다
@@ -1965,7 +2081,8 @@ function drawExtras(ctx: CanvasRenderingContext2D, s: DrawState, top: number, li
       ctx.fill();
     }
     ctx.globalAlpha = 1;
-  } else if (s.mood === 'sleeping' && !s.face) {
+  } else if (s.mood === 'sleeping' && !s.face && !art) {
+    // 손그림 잠 그림은 그림 속에 z 가 있다
     // 얼굴 그림(집 안 침대의 자는 얼굴)에는 Zz 를 넣지 않는다: 집 그림이 따로 올린다
     ctx.font = 'bold 14px -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
     ctx.fillText('z', CX + 40, top + 2);
