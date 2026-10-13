@@ -85,6 +85,25 @@ test('모습마다 설계도: 피규어, 게임은 동그란 몸, 실사와 복�
   for (const kind of FIVE) assert.ok(parseBlueprint(JSON.parse(JSON.stringify(REAL_BLUEPRINTS[kind]))), kind);
 });
 
+test('덧털(이슈 #68): 실사 냥이와 곰돌이만, 털 길이는 그대로 (0.6 아래라 윤곽에 털 다발을 새기지 않는다)', () => {
+  for (const kind of PET_KIND_IDS) {
+    const fur = defaultBlueprint(kind, 'real').fur;
+    if (kind === 'cat' || kind === 'bear') {
+      assert.ok((fur?.ruff ?? 0) >= 0.5 && (fur?.ruff ?? 0) <= 1, `${kind} 덧털 ${fur?.ruff}`);
+      assert.ok((fur?.length ?? 0) < 0.6, `${kind} 털 길이 ${fur?.length}`);
+    } else assert.equal(fur?.ruff, undefined, kind);
+    // 피규어, 게임 설계도에는 덧털이 없다
+    assert.equal(DEFAULT_BLUEPRINTS[kind].fur?.ruff, undefined, kind);
+  }
+  assert.equal(REAL_BLUEPRINTS.cat.fur?.length, 0.5);
+  assert.equal(REAL_BLUEPRINTS.bear.fur?.length, 0.45);
+  // 설계도 검사가 덧털 칸을 지킨다 (0~1 로 자른다)
+  assert.equal(
+    parseBlueprint(JSON.parse(JSON.stringify(REAL_BLUEPRINTS.cat)))?.fur?.ruff,
+    REAL_BLUEPRINTS.cat.fur?.ruff,
+  );
+});
+
 test('피규어, 게임: 콩이, 삐약이처럼 동그란 몸 하나가 곧 얼굴 (토순이만 피규어): 머리 따로 없이 몸이 캔버스를 채운다', () => {
   const kong = DEFAULT_BLUEPRINTS.kong.parts.find((p) => p.slot === 'body');
   assert.ok(kong);

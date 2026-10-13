@@ -116,6 +116,7 @@ import {
 } from './pet3d-gait.ts';
 import { bounced, type EyeState, restingEye } from './pet3d-motion.ts';
 import { type FootOut, FootPlanter } from './pet3d-plant.ts';
+import { RUFF_LAYERS, ruffAttributes, ruffShellMaterial, ruffTexture } from './pet3d-ruff.ts';
 import {
   type BodyPose,
   blendPose,
@@ -308,6 +309,11 @@ export class Pet3D implements Model3D {
   private stance: StanceRig | undefined;
   /** 실사 털 길이 배율 (네 발로 선 몸은 설계도 털 길이를 따른다) */
   private furK = 1;
+  /**
+   * 실사 네 발로 선 몸의 덧털 (설계도 fur.ruff, 0~1). 0 보다 크면 털 껍질을 가는 결, 반투명 끝, 부위별 방향으로 그리고
+   * 가슴, 볼, 꼬리에만 털을 더한다 (addFur). 0 이면 예전 털 그대로
+   */
+  private ruff = 0;
   /** 네 발로 선 몸이 고양이인지 (고양이 입이나 수염): 발가락이 보이는 발, 고양이다운 신남 */
   private stanceToes = false;
   /** 네 발로 선 몸: 마지막으로 걸은 때와 쪽 (걷고 나서 잠깐 서 있다가 앉는다, 몸을 그쪽으로 조금 돌린다) */
@@ -392,6 +398,8 @@ export class Pet3D implements Model3D {
   private toonRamp: DataTexture | undefined;
   /** 털 무늬(가닥 높이)와 얼룩 그림. 실사로 처음 그릴 때 한 번 만든다 */
   private furTex: { strands: Texture; mottle: Texture } | undefined;
+  /** 덧털 가닥 덮임 그림 (pet3d-ruff.ts). 처음 쓸 때 만든다 */
+  private ruffTex: DataTexture | undefined;
   /** 얼굴 부품을 털 끝 위로 띄울 거리 (실사일 때 얼굴 슬롯 털 길이) */
   private faceLift = 0;
   private readonly lights: { hemi: HemisphereLight; key: DirectionalLight; rim: DirectionalLight };
@@ -533,6 +541,7 @@ export class Pet3D implements Model3D {
     for (const m of this.materials.values()) m.dispose();
     this.furTex?.strands.dispose();
     this.furTex?.mottle.dispose();
+    this.ruffTex?.dispose();
     this.toonRamp?.dispose();
     this.fluffTex?.dispose();
     this.scene.environment?.dispose();
@@ -672,6 +681,7 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
             : undefined
         : undefined;
     this.furK = bp.stance ? 0.75 + 0.75 * (fur?.length ?? 0.5) : 1;
+    this.ruff = this.real && bp.stance ? (fur?.ruff ?? 0) : 0;
     const meshes = parts.map((p) => ({ part: p, mesh: this.partMesh(p) }));
 
     // 슬롯마다 부품이 차지하는 상자로 관절 자리를 정한다
@@ -1927,9 +1937,16 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
     return this.furTex;
   }
 
+  /** 덧털 가닥 덮임 그림 (실사 네 발로 선 몸의 fur.ruff). 한 번 만들어 같이 쓴다 */
+  private ruffStrands(): DataTexture {
+    this.ruffTex ??= ruffTexture();
+    return this.ruffTex;
+  }
+
   /**
    * 털 (실사). 같은 모양을 조금씩 크게 겹쳐(껍질) 가닥 그림으로 구멍을 뚫는다. 바깥 껍질일수록 가닥이 가늘고
    * 밝아서 끝이 빛을 받는다. 반투명 섞기가 아니라 자르기(alphaTest)라 그리는 순서와 상관없다.
+   * 덧털(설계도 fur.ruff)은 그 바깥에 섞어 그리는 껍질을 더 쌓는다 (pet3d-ruff.ts).
    * 털 크기가 부품 크기와 상관없이 같도록 UV 를 부품 크기만큼 늘린다
    */
   private addFur(mesh: Mesh, p: Part, pat?: PatternAt) {
@@ -1959,9 +1976,19 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
       uv.needsUpdate = true;
     }
     const layers = p.finish === 'fuzzy' ? 16 : 8;
-    for (let i = 1; i <= layers; i++) {
-      const t = i / layers;
-      const shell = new Mesh(geo, this.furShell(p.color, p.finish ?? 'soft', i, layers, pat));
+    const ruff = this.ruff > 0;
+    if (ruff) ruffAttributes(mesh, p.slot, len, this.ruff, Math.min(ext.x, ext.y, ext.z));
+    // 덧털(ruff)은 기본 껍질은 그대로 두고 그 바깥에 반투명 껍질을 더 쌓는다 (털이 많은 곳에서만 보인다)
+    const extra = ruff ? RUFF_LAYERS : 0;
+    for (let i = 1; i <= layers + extra; i++) {
+      const outer = i > layers;
+      const t = outer ? 1 : i / layers;
+      const shell = new Mesh(
+        geo,
+        outer
+          ? this.furShell(p.color, p.finish ?? 'soft', i - layers, extra, pat, true)
+          : this.furShell(p.color, p.finish ?? 'soft', i, layers, pat),
+      );
       const grow = len * t;
       shell.scale.set(1 + grow / ext.x, 1 + grow / ext.y, 1 + grow / ext.z);
       // 끝으로 갈수록 살짝 아래로 눕는다 (무게)
@@ -1980,7 +2007,8 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
    * 자세를 잡은 뒤 부른다 (다리 마디는 붙인 뒤에 자리와 털 결이 정해진다)
    */
   private mergeFurShells() {
-    const keep = new Set(['position', 'normal', 'uv']);
+    // 덧털(ruff)의 털 결 밀기(jjFurN, jjFurF)는 모양 좌표의 방향이라 자리와 같이 옮긴다
+    const keep = new Set(['position', 'normal', 'uv', 'jjFurN', 'jjFurF', 'jjFurW']);
     const byJoint = new Map<Object3D, Map<Material, Mesh[]>>();
     this.root.traverse((o) => {
       const part = o.parent;
@@ -2011,6 +2039,10 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
           if (!g.attributes.uv) g.setAttribute('uv', new BufferAttribute(new Float32Array(n * 2), 2));
           if (!g.index) g.setIndex(Array.from({ length: n }, (_, i) => i));
           g.applyMatrix4(rel);
+          for (const k of ['jjFurN', 'jjFurF']) {
+            const a = g.getAttribute(k);
+            if (a instanceof BufferAttribute) a.applyMatrix3(new Matrix3().setFromMatrix4(rel));
+          }
           geos.push(g);
           used.push(s);
         }
@@ -2026,14 +2058,29 @@ transformed.xy = vec2(0.0, uNeck) + vec2(jjQ.x * cos(jjA) - jjQ.y * sin(jjA), jj
   }
 
   /** 털 껍질 재질. 색과 겉 느낌, 층마다 하나 (같은 색 부품끼리 같이 쓴다) */
-  private furShell(color: string, finish: Finish, i: number, layers: number, pat?: PatternAt): Material {
-    const key = `${color}/${finish}/shell${i}of${layers}${pat ? `/${patternKey(pat)}` : ''}`;
+  private furShell(
+    color: string,
+    finish: Finish,
+    i: number,
+    layers: number,
+    pat?: PatternAt,
+    ruff = false,
+  ): Material {
+    const key = `${color}/${finish}/shell${i}of${layers}${pat ? `/${patternKey(pat)}` : ''}${ruff ? '/ruff' : ''}`;
     let m = this.materials.get(key);
     if (!m) {
       const t = i / layers;
       // 뿌리는 그늘져 어둡고 끝은 빛을 받아 밝다
       const shade = new Color(color).multiplyScalar(0.8 + 0.2 * t);
       if (t > 0.6) shade.lerp(new Color('#ffffff'), (t - 0.6) * 0.25);
+      // 덧털은 기본 껍질 끝 바깥이라 끝 색에 가깝게. 끝만큼 밝히면 겹쳐 쌓여 바랜 듯하고, 털 색 그대로면 띠처럼 어둡다
+      if (ruff) shade.set(color).lerp(new Color('#ffffff'), 0.05);
+      if (ruff) {
+        m = ruffShellMaterial(shade, this.ruffStrands(), t);
+        decorate(m, { pattern: pat });
+        this.materials.set(key, m);
+        return m;
+      }
       m = new MeshStandardMaterial({
         color: shade,
         alphaMap: this.fur().strands,

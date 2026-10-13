@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { expandMirrors, inFace, MAX_PARTS, parseBlueprint, patternOf, SLOTS } from './blueprint.ts';
+import { expandMirrors, furOf, inFace, MAX_PARTS, parseBlueprint, patternOf, SLOTS } from './blueprint.ts';
 import { DEFAULT_BLUEPRINTS } from './defaults.ts';
 import { blueprintPrompt, cleanWish, extractBlueprint, WISH_MAX } from './prompt.ts';
 
@@ -478,4 +478,10 @@ test('가르마(notch)는 위, 아래 나누기에만 0~1 로 읽는다', () => 
   assert.equal(pat({ side: 'front', notch: 0.5 })?.notch, undefined);
   assert.equal(pat({ notch: 0.5 })?.notch, undefined);
   assert.equal(patternOf({ type: 'spots', color: '#000000', side: 'top', notch: 0.5 })?.notch, undefined);
+});
+
+test('털 느낌의 덧털(ruff) 칸: 0~1 로 자르고 숫자가 아니면 뺀다', () => {
+  assert.deepEqual(furOf({ length: 0.5, ruff: 2 }), { length: 0.5, ruff: 1 });
+  assert.deepEqual(furOf({ length: 0.5, ruff: -1 }), { length: 0.5, ruff: 0 });
+  assert.deepEqual(furOf({ length: 0.5, ruff: 'many' }), { length: 0.5 });
 });
