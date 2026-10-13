@@ -990,6 +990,7 @@ function view(p: ProviderSpec): ProviderView {
     installHint: p.installHint,
     loginHint: p.loginHint,
     command: p.command,
+    bin: p.custom ? p.bin : undefined,
     ephemeral: p.adapter === 'claude' || p.adapter === 'codex',
   };
 }

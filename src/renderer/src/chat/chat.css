@@ -1162,3 +1162,28 @@ header .picker {
   font-size: 12.5px;
   background: var(--code);
 }
+
+/* 대화 안에서 펼치는 설치, 로그인 안내 (#29). 말풍선 아래에 같은 단계를 그대로 */
+.inline-guide {
+  margin-top: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.inline-guide-title {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.inline-guide .guide-steps {
+  margin-bottom: 8px;
+}
+
+/* 맨 아래 단추 줄 (공식 안내, 다시 확인): 글자는 꺾지 않고, 좁은 창에서 줄이 나뉘면 둘 다 왼쪽 끝에 맞춘다 */
+.inline-guide > button {
+  margin: 4px 4px 0 0;
+  white-space: nowrap;
+}

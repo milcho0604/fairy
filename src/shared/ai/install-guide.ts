@@ -12,6 +12,11 @@
 //   짝꿍은 cursor-agent 를 찾으므로 안내도 cursor-agent 로 쓴다)
 // - Gemini CLI: https://github.com/google-gemini/gemini-cli README 와 docs/get-started/installation.mdx, authentication.mdx
 //   (npm, Homebrew, MacPorts, Node.js 20 이상, `gemini` 를 실행해 Sign in with Google)
+// - 로그인 상태 확인 명령: Claude 는 https://code.claude.com/docs/en/cli-reference (`claude auth status`, 로그인이면 0 으로 끝남),
+//   Codex 는 https://learn.chatgpt.com/docs/developer-commands?surface=cli (`codex login status`, 소스
+//   https://github.com/openai/codex/blob/main/codex-rs/cli/src/login.rs 의 run_login_status: 로그인이면 0, 아니면 1 로 끝남),
+//   Cursor 는 위 authentication 문서 (`agent status`, 짝꿍은 별칭 cursor-agent 로). Gemini 는 공식 문서에 상태 명령이 없어 쓰지 않는다
+//   (2026-10-12 다시 확인)
 //
 // "깔았는데도 못 찾음" 안내는 main/ai/shell-env.ts 가 찾는 방식에 맞춘다: 맥, 리눅스는 로그인 셸($SHELL -lic)의 PATH 를 읽어
 // 저장해 두고 "다시 확인"이 다시 읽는다. 윈도우는 앱이 켜질 때 받은 PATH 를 그대로 써서 앱을 다시 켜야 새 PATH 가 보인다.
@@ -40,6 +45,8 @@ export interface InstallGuide {
   needsNode?: string;
   /** 못 찾을 때 터미널에서 확인할 명령 */
   check: string;
+  /** 로그인 상태를 터미널에서 볼 명령 (공식 문서에 있을 때만) */
+  status?: string;
   /** 공식 설치 문서 (https 만) */
   docs: string;
 }
@@ -63,12 +70,14 @@ const GUIDES: Record<GuideProvider, Record<GuideOs, Omit<InstallGuide, 'docs'>> 
       login: 'claude',
       binDir: '~/.local/bin',
       check: 'claude --version',
+      status: 'claude auth status',
     },
     linux: {
       install: [{ command: CLAUDE_SH }],
       login: 'claude',
       binDir: '~/.local/bin',
       check: 'claude --version',
+      status: 'claude auth status',
     },
     win: {
       install: [
@@ -77,6 +86,7 @@ const GUIDES: Record<GuideProvider, Record<GuideOs, Omit<InstallGuide, 'docs'>> 
       ],
       login: 'claude',
       check: 'claude --version',
+      status: 'claude auth status',
     },
   },
   codex: {
@@ -86,12 +96,14 @@ const GUIDES: Record<GuideProvider, Record<GuideOs, Omit<InstallGuide, 'docs'>> 
       login: 'codex',
       pick: 'Sign in with ChatGPT',
       check: 'codex --version',
+      status: 'codex login status',
     },
     linux: {
       install: [{ command: CODEX_SH }, { via: 'npm', command: 'npm install -g @openai/codex' }],
       login: 'codex',
       pick: 'Sign in with ChatGPT',
       check: 'codex --version',
+      status: 'codex login status',
     },
     win: {
       install: [
@@ -103,6 +115,7 @@ const GUIDES: Record<GuideProvider, Record<GuideOs, Omit<InstallGuide, 'docs'>> 
       login: 'codex',
       pick: 'Sign in with ChatGPT',
       check: 'codex --version',
+      status: 'codex login status',
     },
   },
   cursor: {
@@ -112,17 +125,20 @@ const GUIDES: Record<GuideProvider, Record<GuideOs, Omit<InstallGuide, 'docs'>> 
       login: 'cursor-agent login',
       binDir: '~/.local/bin',
       check: 'cursor-agent --version',
+      status: 'cursor-agent status',
     },
     linux: {
       install: [{ command: CURSOR_SH }],
       login: 'cursor-agent login',
       binDir: '~/.local/bin',
       check: 'cursor-agent --version',
+      status: 'cursor-agent status',
     },
     win: {
       install: [{ via: 'PowerShell', command: "irm 'https://cursor.com/install?win32=true' | iex" }],
       login: 'cursor-agent login',
       check: 'cursor-agent --version',
+      status: 'cursor-agent status',
     },
   },
   gemini: {
@@ -161,6 +177,43 @@ const GUIDES: Record<GuideProvider, Record<GuideOs, Omit<InstallGuide, 'docs'>> 
 export const NODE_DOWNLOAD = 'https://nodejs.org/en/download';
 
 export const isGuideProvider = (id: string): id is GuideProvider => Object.hasOwn(GUIDES, id);
+
+/** 안내를 펼칠 AI. 사용자 추가 AI 는 실행 파일 이름(bin)이 있어야 경로 찾기 명령을 보여 줄 수 있다 */
+export interface GuideSubject {
+  id: string;
+  label: string;
+  custom?: boolean;
+  bin?: string;
+}
+
+/** install: 못 찾음 (설치부터 로그인까지), login: 깔려 있지만 로그인 안 됨 */
+export type GuideMode = 'install' | 'login';
+
+/** 오류 종류나 상태에서 펼칠 안내. 안내할 게 없으면(한도, 시간 초과, 준비됨) undefined */
+export function guideModeOf(
+  input: { kind?: string } | { installed: boolean; loggedIn?: boolean } | undefined,
+): GuideMode | undefined {
+  if (!input) return undefined;
+  if ('kind' in input) {
+    if (input.kind === 'not-installed') return 'install';
+    if (input.kind === 'not-logged-in') return 'login';
+    return undefined;
+  }
+  if (!('installed' in input)) return undefined;
+  if (!input.installed) return 'install';
+  if (input.loggedIn === false) return 'login';
+  return undefined;
+}
+
+/** 이 AI 에 펼칠 안내가 있는지. 기본 제공 4개와 사용자 추가 AI (무료 AI 는 앱 안에 있어 없다) */
+export function hasGuide(s: Pick<GuideSubject, 'id' | 'custom' | 'bin'>): boolean {
+  return isGuideProvider(s.id) || (!!s.custom && !!s.bin);
+}
+
+/** 사용자 추가 AI 의 실행 파일 전체 경로를 알아내는 명령 (터미널에서는 되는데 짝꿍만 못 찾을 때) */
+export function whereCommand(bin: string, platform: string): string {
+  return guideOs(platform) === 'win' ? `where.exe ${bin}` : `command -v ${bin}`;
+}
 
 /** 이 AI 의 이 운영체제 설치 안내. 안내가 없는 AI(무료 AI, 사용자 추가)면 undefined */
 export function installGuide(id: string, platform: string): InstallGuide | undefined {

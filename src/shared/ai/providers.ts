@@ -106,6 +106,9 @@ export const BUILTIN_PROVIDERS: readonly ProviderSpec[] = [
     get installHint() {
       return t('ai.install.gemini');
     },
+    get loginHint() {
+      return t('ai.login.gemini');
+    },
     usage: false,
   },
 ];

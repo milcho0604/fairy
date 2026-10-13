@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { isGuideProvider } from '../../../shared/ai/install-guide.ts';
+import { type GuideSubject, guideModeOf, hasGuide } from '../../../shared/ai/install-guide.ts';
 import type { AiProvider, AiStatus } from '../../../shared/ai/types.ts';
 import type { ChatMessage, ChatState } from '../../../shared/chat-state.ts';
 import { t } from '../../../shared/i18n/index.ts';
@@ -15,7 +15,7 @@ import type { OutgoingImage, ProviderView } from '../../../shared/ipc.ts';
 import { PetFace } from '../PetFace.tsx';
 import { AiManager } from './AiManager.tsx';
 import { ChatList } from './ChatList.tsx';
-import { InstallGuide } from './InstallGuide.tsx';
+import { InlineGuide, InstallGuide } from './InstallGuide.tsx';
 import { toOutgoing } from './images.ts';
 import { chatKey, lastQuestion } from './keys.ts';
 import { Markdown } from './Markdown.tsx';
@@ -268,6 +268,15 @@ export function App() {
   const current = status[state.provider];
   const spec = providers.find((p) => p.id === state.provider);
   const guideSpec = providers.find((p) => p.id === guideFor);
+  const subjectOf = (id?: AiProvider): GuideSubject | undefined => {
+    const p = providers.find((x) => x.id === id);
+    if (!p || !hasGuide(p)) return undefined;
+    return { id: p.id, label: p.label, custom: p.custom, bin: p.bin };
+  };
+  const guideSubject = subjectOf(guideFor);
+  // 머리 안내 줄: 못 찾음이면 설치, 로그인 안 됨이면 로그인 안내
+  const bannerMode = guideModeOf(current);
+  const bannerSubject = bannerMode ? subjectOf(state.provider) : undefined;
   const labelOf = (id?: AiProvider) => providers.find((p) => p.id === id)?.label ?? id ?? '';
   const imagesBlocked = !!spec && !spec.images && images.length > 0;
   // 한도에 걸리면 바로 물어볼 수 있는 다른 AI (설치, 로그인 확인된 것)
@@ -468,10 +477,10 @@ export function App() {
           download={state.modelDownload}
         />
       )}
-      {guideFor && (
+      {guideFor && guideSubject && (
         <InstallGuide
-          provider={guideFor}
-          label={labelOf(guideFor)}
+          subject={guideSubject}
+          mode={guideModeOf(status[guideFor]) ?? 'install'}
           platform={bridge.platform}
           checking={checking}
           statusLine={guideSpec ? statusText(guideSpec, status[guideFor]) : undefined}
@@ -494,9 +503,9 @@ export function App() {
       {spec && current && !isReady(current) && (
         <div className="banner action-row" role="status">
           <span className="grow">{statusText(spec, current)}</span>
-          {!current.installed && isGuideProvider(spec.id) && (
+          {bannerSubject && (
             <button type="button" className="ghost" onClick={() => setGuideFor(spec.id)}>
-              {t('ai.guide.show')}
+              {bannerMode === 'login' ? t('ai.guide.showLogin') : t('ai.guide.show')}
             </button>
           )}
           <button type="button" className="ghost" disabled={checking} onClick={() => refreshStatus(true)}>
@@ -564,7 +573,15 @@ export function App() {
               download={m.id === state.messages.at(-1)?.id ? state.modelDownload : undefined}
               isLast={m.id === state.messages.at(-1)?.id}
               freeModelMb={freeModelMb(m)}
-              onGuide={setGuideFor}
+              guide={{
+                subject: subjectOf(m.provider),
+                checking,
+                statusLine: (() => {
+                  const p = providers.find((x) => x.id === m.provider);
+                  return p ? statusText(p, status[p.id]) : undefined;
+                })(),
+                onRecheck: () => refreshStatus(true),
+              }}
             />
           ))}
         </div>
@@ -706,8 +723,14 @@ interface MessageProps {
   /** 받을 모델 크기 (오류 문구에서 읽는다) */
   freeModelMb?: string;
   isLast: boolean;
-  /** 설치 방법 시트 열기 (못 찾음 오류 아래 단추) */
-  onGuide: (id: AiProvider) => void;
+  /** 못 찾음, 로그인 안 됨 오류 아래에 펼칠 안내 (#29). subject 가 없으면(무료 AI 등) 단추를 두지 않는다 */
+  guide: {
+    subject?: GuideSubject;
+    checking: boolean;
+    /** 지금 상태 한 줄 (다시 확인하면 바뀐다) */
+    statusLine?: string;
+    onRecheck: () => void;
+  };
 }
 
 /** 무료 AI 오류 문구의 "(397MB)" 에서 크기를 읽는다. 단추에 같이 적는다 */
@@ -722,8 +745,9 @@ function Message({
   download,
   freeModelMb: mb,
   isLast,
-  onGuide,
+  guide,
 }: MessageProps) {
+  const guideMode = m.status === 'error' ? guideModeOf(m.error) : undefined;
   if (m.role === 'notice') return <p className="system">{m.text}</p>;
   if (m.role === 'user') {
     return (
@@ -821,17 +845,18 @@ function Message({
             )}
           </div>
         )}
-        {/* 못 찾음: 말풍선은 짧게, 자세한 설치와 로그인은 시트로 (#29) */}
-        {m.status === 'error' &&
-          m.error?.kind === 'not-installed' &&
-          m.provider &&
-          isGuideProvider(m.provider) && (
-            <div className="retry action-row">
-              <button type="button" className="ghost" onClick={() => m.provider && onGuide(m.provider)}>
-                {t('ai.guide.show')}
-              </button>
-            </div>
-          )}
+        {/* 못 찾음, 로그인 안 됨: 말풍선은 짧게, 설치와 로그인 단계는 그 자리에 펼친다 (#29) */}
+        {guideMode && guide.subject && (
+          <InlineGuide
+            subject={guide.subject}
+            mode={guideMode}
+            platform={bridge.platform}
+            checking={guide.checking}
+            statusLine={guide.statusLine}
+            onRecheck={guide.onRecheck}
+            onLink={bridge.openLink}
+          />
+        )}
         {/* 한도, 설치 안 됨, 로그인 안 됨: 바로 물어볼 수 있는 다른 AI (무료 AI 포함) */}
         {m.status === 'error' &&
           (m.error?.kind === 'rate-limit' ||
