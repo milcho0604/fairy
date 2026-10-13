@@ -1,6 +1,6 @@
 // 구글 캘린더에 쓰기: 한 차례 보내기. 일렉트론 없이 돈다 (시험에서 API 를 흉내 낸다).
 // 보낼 것은 저장 파일에서 고르고(GcalStore.pending), 일정마다 다시 하기 간격(GcalBackoff)을 지킨다.
-import { type GcalBackoff, type GcalProblem, isGoogleId } from '../shared/gcal.ts';
+import { type GcalBackoff, type GcalProblem, isGoogleId, toGooglePatch } from '../shared/gcal.ts';
 import type { GcalOp, GcalStore } from '../shared/gcal-store.ts';
 import type { ApiResult } from './gcal-auth.ts';
 
@@ -77,7 +77,7 @@ export async function applyOp(
     }
     if (r.kind !== 'conflict') return outcomeOf(r.kind);
   }
-  const r = await d.api('PATCH', eventsPath(op.calendarId, id), op.body);
+  const r = await d.api('PATCH', eventsPath(op.calendarId, id), toGooglePatch(op.body));
   if (r.kind === 'ok') {
     d.store.markSent(op.eventId, op.hash, uidOf(r.json));
     return 'ok';
@@ -99,6 +99,17 @@ export interface PassResult {
   stop: GcalProblem | 'scope' | null;
   /** 바로 한 차례 더 (버린 id 로 새로 넣기) */
   again: boolean;
+  /** 구글이 받지 않은 일정과 그때 내용 지문 (패널에 "못 보냄"으로 보인다. 고치면 지문이 바뀌어 풀린다) */
+  rejected: { eventId: number; hash: string }[];
+  /** 받아 준 일정 (못 보냄 표시를 푼다) */
+  accepted: number[];
+}
+
+/** 구글 오류 대답에서 까닭 이름만 (invalid, timeRangeEmpty 같은 것. 글 본문은 일정 제목을 담을 수 있어 남기지 않는다) */
+export function reasonOf(json: unknown): string {
+  const errs = (json as { error?: { errors?: { reason?: unknown }[] } } | undefined)?.error?.errors;
+  const r = Array.isArray(errs) ? errs[0]?.reason : undefined;
+  return typeof r === 'string' && /^[A-Za-z]{1,40}$/.test(r) ? r : '-';
 }
 
 /**
@@ -116,7 +127,21 @@ export async function syncPass(d: {
   log?: (tag: string, ...rest: unknown[]) => void;
 }): Promise<PassResult> {
   const ops = d.store.pending(d.now(), d.calendarId, d.tz);
-  const out: PassResult = { pending: ops.length, sent: 0, waiting: 0, stop: null, again: false };
+  const out: PassResult = {
+    pending: ops.length,
+    sent: 0,
+    waiting: 0,
+    stop: null,
+    again: false,
+    rejected: [],
+    accepted: [],
+  };
+  // 마지막 대답 (구글이 받지 않을 때 까닭을 기록에 남긴다. 예전에는 "받지 않음"만 남아 까닭을 알 수 없었다)
+  let last: ApiResult | undefined;
+  const api: GcalApi = async (method, path, body) => {
+    last = await d.api(method, path, body);
+    return last;
+  };
   for (const op of ops) {
     const key = String(op.eventId);
     const hash = op.kind === 'upsert' ? op.hash : 'delete';
@@ -126,7 +151,8 @@ export async function syncPass(d: {
     }
     let r: Outcome;
     try {
-      r = await applyOp(op, d);
+      last = undefined;
+      r = await applyOp(op, { store: d.store, api, newId: d.newId });
     } catch (err) {
       if (err instanceof GcalLost) throw err;
       d.log?.('gcal', '보내기 실패', err instanceof Error ? err.name : 'error');
@@ -134,13 +160,15 @@ export async function syncPass(d: {
     }
     if (r === 'ok') {
       d.backoff.ok(key);
+      out.accepted.push(op.eventId);
       out.sent++;
       out.pending--;
     } else if (r === 'again') {
       out.again = true;
     } else if (r === 'bad') {
       d.backoff.fail(key, d.now(), { bad: true, hash });
-      d.log?.('gcal', '구글이 받지 않음', op.kind);
+      out.rejected.push({ eventId: op.eventId, hash });
+      d.log?.('gcal', '구글이 받지 않음', op.kind, last?.status ?? '-', reasonOf(last?.json));
     } else {
       d.backoff.fail(key, d.now(), { hash });
       out.stop = r === 'calendar' ? 'calendar' : r === 'scope' ? 'scope' : 'offline';

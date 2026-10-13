@@ -1,6 +1,6 @@
 // "오늘 뭐부터 할까?" 규칙 답 (2026-10-11). 셈과 글은 shared/what-first.ts, 여기는 저장 파일에서 오늘 할 일, 습관, 일정을 읽는다.
 // 채팅(AI 가 없거나 무료 AI 일 때 바로 답, 클라우드 AI 면 자료로)과 펫 우클릭 메뉴 "오늘 뭐부터?" 가 같이 쓴다.
-import type { EventStore } from '../shared/event-store.ts';
+import { aiEventFilter, type EventStore } from '../shared/event-store.ts';
 import type { HabitStore } from '../shared/habit.ts';
 import { localDay, type TodoStore } from '../shared/todo-store.ts';
 import { type FirstPlan, firstAnswer, firstBubble, firstContext, planFirst } from '../shared/what-first.ts';
@@ -13,16 +13,21 @@ export interface WhatFirstOptions {
   restDays: () => number[];
   /** 하루 마무리 시각 (분). 빈 시간을 찾는 끝 */
   dayEndMinute: () => number;
+  /** 설정 구글 칸의 "AI가 구글 일정도 볼 수 있게"를 켰는지 (main/gcal.ts gcalAiAllowed) */
+  googleForAi: () => boolean;
 }
 
 export type WhatFirst = ReturnType<typeof createWhatFirst>;
 
 export function createWhatFirst(o: WhatFirstOptions) {
-  function plan(now: number): { today: string; plan: FirstPlan } {
+  /** ai: AI 에 보낼 자료면 구글에서 읽어 온 일정은 사용자가 켠 경우에만 넣는다 (aiEventFilter) */
+  function plan(now: number, ai = false): { today: string; plan: FirstPlan } {
     const today = localDay(now);
     const dayStart = startOfDay(now);
+    const aiSees = aiEventFilter(!ai || o.googleForAi());
     const events = o.events
       .between(dayStart, startOfDayAfter(now, 1))
+      .filter(aiSees)
       .map((ev) => ({ title: ev.title, startAt: ev.startAt, endAt: ev.endAt, allDay: ev.allDay }));
     const habits = o.habits
       .list(now, o.restDays())
@@ -61,7 +66,7 @@ export function createWhatFirst(o: WhatFirstOptions) {
     },
     /** 클라우드 AI 에 보낼 자료 (할 일 같이 보내기를 켰을 때만 부른다) */
     context(now = Date.now()): string {
-      const r = plan(now);
+      const r = plan(now, true);
       return firstContext(r.plan, r.today);
     },
   };

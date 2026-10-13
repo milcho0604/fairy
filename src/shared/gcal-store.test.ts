@@ -187,3 +187,43 @@ test('보낸 기록 되돌리기(연결 끊기, 다른 계정, 백업): id 는 �
   assert.ok(again?.kind === 'upsert');
   assert.deepEqual([again.googleId, again.confirmed], ['jjkabc12345', false]);
 });
+
+test('일정 줄 표식: 보냄, 보내는 중, 고친 뒤 다시 보내는 중, 보내기 끔이면 페어리만, 가져온 일정과 지운 일정은 없음', () => {
+  const { events, links } = fresh();
+  const o = { calendarId: 'primary', tz: TZ, now: NOW, push: true };
+  const a = events.add({ title: '보낸 것', startAt: NOW + 2 * HOUR }, NOW);
+  const b = events.add({ title: '새 것', startAt: NOW + 3 * HOUR }, NOW);
+  const old = events.add({ title: '지난주', startAt: NOW - 7 * 24 * HOUR }, NOW);
+  const gone = events.add({ title: '지움', startAt: NOW + 4 * HOUR }, NOW);
+  events.remove(gone.id, NOW);
+  events.syncExternal(
+    'ics',
+    [{ uid: 'x@google.com', title: '가져옴', startAt: NOW + HOUR, endAt: null, allDay: false }],
+    NOW - 24 * HOUR,
+    NOW + 60 * 24 * HOUR,
+    NOW,
+  );
+  const ics = events.between(NOW - 24 * HOUR, NOW + 24 * HOUR).find((e) => e.source === 'ics');
+  assert.ok(ics);
+  // a 를 보냈다
+  const op = links.pending(NOW, 'primary', TZ).find((x) => x.eventId === a.id);
+  assert.ok(op?.kind === 'upsert');
+  links.assignId(a.id, 'jjk00001', 'primary');
+  links.markSent(a.id, op.hash, 'jjk00001@google.com');
+
+  const ids = [a.id, b.id, old.id, gone.id, ics.id];
+  assert.deepEqual(links.marks(ids, o), { [a.id]: 'sent', [b.id]: 'pending', [old.id]: 'local' });
+  // 고치면 다시 보낼 차례
+  events.update(a.id, { title: '보낸 것 (고침)' }, NOW);
+  assert.equal(links.marks([a.id], o)[a.id], 'pending');
+  // 보내기를 끄면 안 보낸 것은 페어리만
+  assert.deepEqual(links.marks([a.id, b.id], { ...o, push: false }), { [a.id]: 'local', [b.id]: 'local' });
+  // 지문이 같아도 다른 캘린더를 고르면 아직 옮기기 전이라 보내는 중
+  events.update(a.id, { title: '보낸 것' }, NOW);
+  assert.equal(links.marks([a.id], o)[a.id], 'sent');
+  assert.equal(links.marks([a.id], { ...o, calendarId: 'me@example.com' })[a.id], 'pending');
+  // 확인 전으로 되돌리면(연결 끊기) 보내는 중
+  links.resetSent();
+  assert.equal(links.marks([a.id], o)[a.id], 'pending');
+  assert.deepEqual(links.marks([], o), {});
+});

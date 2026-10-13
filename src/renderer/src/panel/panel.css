@@ -1011,6 +1011,12 @@ li.pin-end {
   cursor: pointer;
 }
 
+/* 구글에서 읽어 온 일정 (읽기 전용): 시각과 제목을 눌러도 고치지 않는다 */
+:is(.events-list, .cal-day) .time input:disabled,
+.event .title[aria-disabled="true"] {
+  cursor: default;
+}
+
 .remind {
   position: relative;
   flex: none;
