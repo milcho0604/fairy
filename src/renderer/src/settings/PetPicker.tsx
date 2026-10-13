@@ -6,6 +6,8 @@ import { LICENSE_LABEL } from '../../../shared/pet-share.ts';
 import { DEFAULT_BLUEPRINTS } from '../../../shared/pet3d/defaults.ts';
 import { PET_KINDS, type PetKind } from '../../../shared/settings.ts';
 import { isCurrentStarter, type PetChoice, starterOf } from '../../../shared/starter-pets.ts';
+import { CUTE_KINDS } from '../cute2d.ts';
+import { loadCuteArt } from '../cute2d-art.ts';
 import { CANVAS_SIZE, drawPet } from '../draw.ts';
 import { Pet3D } from '../pet3d.ts';
 
@@ -27,7 +29,16 @@ export function PetPicker({
   const [thumbs, setThumbs] = useState<Partial<Record<PetKind, string>>>({});
   const [confirm, setConfirm] = useState('');
   useEffect(() => {
-    setThumbs(kindThumbs(s.pet3d));
+    if (s.pet3d) {
+      setThumbs(kindThumbs(true));
+      return;
+    }
+    // 2D 는 손그림 냥이, 곰돌이 그림이 풀린 뒤에 찍는다 (먼저 찍으면 예전 코드 그림이 찍힌다. 못 풀면 그 그림 그대로)
+    let alive = true;
+    void Promise.all(CUTE_KINDS.map(loadCuteArt)).then(() => alive && setThumbs(kindThumbs(false)));
+    return () => {
+      alive = false;
+    };
   }, [s.pet3d]);
   // 만든 펫도 펫 화면과 같은 모습으로: 입체로 보기면 figure 는 3D, relief 는 2.5D, 아니면 사진
   const [, setDrawn] = useState(0);

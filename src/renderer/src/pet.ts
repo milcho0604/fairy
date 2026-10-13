@@ -39,6 +39,8 @@ import { NO_TOGETHER, type TogetherLook } from '../../shared/together.ts';
 import { dressBlueprint, GROW_LOOK, type WearLook } from '../../shared/wear.ts';
 import { AnimatedImage, frameSide, loadPetImage } from './animated.ts';
 import { shotOf } from './blueprint-shot.ts';
+import { isCuteKind, TALK_FPS } from './cute2d.ts';
+import { cuteArt, loadCuteArt } from './cute2d-art.ts';
 import {
   CANVAS_SIZE,
   type CarryDraw,
@@ -199,6 +201,15 @@ function frame() {
   // 입체 그리기 모듈을 불러오는 중이면 기다린다 (불러오면 다시 그린다). 2D 를 먼저 그리면 깜빡인다
   if (m3d === 'loading') return;
   const img = m3d ? undefined : pickImage(mood, inputs.hungry);
+  // 손그림 냥이, 곰돌이(2D)는 그림이 다 풀린 뒤에 그린다 (먼저 그리면 예전 코드 그림이 한 번 비친다). 못 풀면 예전 그림으로
+  const cute = !m3d && !img && !photo && isCuteKind(petKind) ? petKind : undefined;
+  if (cute && !cuteArt(cute) && !cuteBroken.has(cute)) {
+    void loadCuteArt(cute).then((ok) => {
+      if (!ok) cuteBroken.add(cute);
+      requestFrame();
+    });
+    return;
+  }
   // 밀크, 초코를 사진 모습으로 보면 걸을 때 옆모습 걷기 그림을 넘긴다 (photo-walk.ts)
   const walkPic = img ? walkPhoto(now) : undefined;
   drawLayer(!!m3d);
@@ -322,12 +333,17 @@ function frame() {
       (looking?.fps ?? 0) * k,
       motionSettling() || blend.active ? 30 * k : 0,
       togetherFps(now) * k,
+      // 손그림은 말하는 동안 입 그림 둘을 번갈아 넘긴다 (cute2d.ts)
+      cute && mood === 'talking' ? TALK_FPS : 0,
     ),
     saver,
   );
   frameTimer = all > 0 ? setTimeout(frame, 1000 / all) : undefined;
   nextFrameMs = all > 0 ? 1000 / all : 0;
 }
+
+/** 손그림을 못 푼 모양 (예전 코드 그림으로 그린다) */
+const cuteBroken = new Set<PetKind>();
 
 /** 다음 틀까지 기다리는 시간 (ms, 멈춘 그림이면 0). 점검용 debugFrame */
 let nextFrameMs = 0;

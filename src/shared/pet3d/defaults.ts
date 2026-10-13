@@ -7,8 +7,14 @@ import type { PetKind, PetStyle } from '../settings.ts';
 import type { Blueprint, Finish, Part, Vec3 } from './blueprint.ts';
 
 const KONG = '#ffd8a8';
-const CAT = '#e1e7f3';
-const CAT_POINT = '#a9b2c9';
+// 냥이: 새 2D 손그림(2026-10-13, scripts/cute2d/cat/gen.py)과 같은 크림 몸, 흰 배와 주둥이, 분홍 귀 안과 코, 호박색 눈.
+// 예전 하늘빛 회색 몸과 이마 줄무늬는 뺐다
+const CAT = '#fdf6ee';
+const CAT_WHITE = '#ffffff';
+const CAT_EAR = '#f6b3bd';
+const CAT_NOSE = '#f29aa8';
+const CAT_EYE = '#e8a23a';
+const CAT_WHISKER = '#8f7c74';
 const CHICK = '#ffe27a';
 const DOG = '#fff1de';
 const DOG_SPOT = '#e3a66a';
@@ -88,27 +94,7 @@ const ROUND: Record<PetKind, Blueprint> = {
         size: [0.55, 0.45, 0.47],
         color: CAT,
         finish: 'fuzzy',
-        pattern: { type: 'split', side: 'bottom', color: WHITE, amount: 0.32 },
-      },
-      // 이마 줄무늬: 가운데 하나와 양옆 짧은 둘 (2D 그림처럼)
-      {
-        slot: 'body',
-        shape: 'capsule',
-        at: [0, 0.74, 0.355],
-        size: [0.03, 0.075, 0.02],
-        rot: [-40, 0, 0],
-        color: CAT_POINT,
-        finish: 'fuzzy',
-      },
-      {
-        slot: 'body',
-        shape: 'capsule',
-        at: [-0.095, 0.725, 0.345],
-        size: [0.026, 0.056, 0.02],
-        rot: [-38, 0, 16],
-        color: CAT_POINT,
-        finish: 'fuzzy',
-        mirror: true,
+        pattern: { type: 'split', side: 'bottom', color: CAT_WHITE, amount: 0.32 },
       },
       {
         slot: 'earL',
@@ -118,7 +104,7 @@ const ROUND: Record<PetKind, Blueprint> = {
         rot: [0, 0, 24],
         color: CAT,
         finish: 'fuzzy',
-        inner: '#ffb3c4',
+        inner: CAT_EAR,
         mirror: true,
       },
       {
@@ -127,7 +113,7 @@ const ROUND: Record<PetKind, Blueprint> = {
         at: [-0.52, 0.37, 0.07],
         size: [0.085, 0.125, 0.085],
         rot: [0, 0, 25],
-        color: WHITE,
+        color: CAT_WHITE,
         finish: 'fuzzy',
         mirror: true,
       },
@@ -136,7 +122,7 @@ const ROUND: Record<PetKind, Blueprint> = {
         shape: 'sphere',
         at: [-0.21, 0.06, 0.17],
         size: [0.12, 0.07, 0.14],
-        color: WHITE,
+        color: CAT_WHITE,
         finish: 'fuzzy',
         mirror: true,
       },
@@ -149,18 +135,20 @@ const ROUND: Record<PetKind, Blueprint> = {
         color: CAT,
         finish: 'fuzzy',
       },
-      { slot: 'tail', shape: 'sphere', at: [0, 0.51, -0.62], size: [0.065, 0.065, 0.065], color: CAT_POINT },
+      { slot: 'tail', shape: 'sphere', at: [0, 0.51, -0.62], size: [0.065, 0.065, 0.065], color: CAT },
     ],
     face: {
       slot: 'body',
       eyeY: 0.52,
       eyeGap: 0.19,
       eyeSize: 0.052,
+      eyeColor: CAT_EYE,
+      pupil: 'round',
       mouth: 'cat',
       mouthY: 0.42,
       blush: '#ffa0b4',
-      whiskers: '#a3aac0',
-      nose: { shape: 'triangle', color: '#f39aac' },
+      whiskers: CAT_WHISKER,
+      nose: { shape: 'triangle', color: CAT_NOSE },
     },
     // 두 발로 선다: 팔은 흔들고 뒷발로 걷는다 (네 발 걷기는 설정에서 고를 수 있다)
     gait: 'biped',
@@ -637,7 +625,7 @@ function onLegs(
 /** 피규어, 게임 모습의 기본 펫 설계도 */
 export const DEFAULT_BLUEPRINTS: Record<PetKind, Blueprint> = {
   ...ROUND,
-  cat: onLegs(ROUND.cat, { lift: 0.09, x: 0.2, z: 0.12, leg: CAT, foot: WHITE, finish: 'fuzzy' }),
+  cat: onLegs(ROUND.cat, { lift: 0.09, x: 0.2, z: 0.12, leg: CAT, foot: CAT_WHITE, finish: 'fuzzy' }),
   dog: onLegs(ROUND.dog, { lift: 0.09, x: 0.2, z: 0.12, leg: DOG, foot: CREAM, finish: 'fuzzy' }),
   hamster: onLegs(ROUND.hamster, {
     lift: 0.09,
@@ -760,10 +748,10 @@ type RealKind = 'cat' | 'dog' | 'hamster' | 'penguin' | 'bear';
 
 /**
  * 실사, 복슬복슬 모습의 냥이, 멍멍이, 햄찌, 뒤뚱이, 곰돌이: 실제 동물 비율. 색과 특징은 동그란 몸과 같다
- * (냥이 이마 줄무늬, 멍멍이 늘어진 귀와 눈 얼룩, 햄찌 앞니와 볼, 뒤뚱이 흰 얼굴, 곰돌이 둥근 귀와 주둥이)
+ * (냥이 세모 귀와 흰 배, 멍멍이 늘어진 귀와 눈 얼룩, 햄찌 앞니와 볼, 뒤뚱이 흰 얼굴, 곰돌이 둥근 귀와 주둥이)
  */
 export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
-  // 고양이: 밀크 뼈대에 짧은 털, 하늘빛 회색, 흰 가슴과 발, 끝이 진한 긴 꼬리
+  // 고양이: 밀크 뼈대에 짧은 털, 크림 몸(새 2D 냥이 색), 흰 가슴과 발과 주둥이, 긴 꼬리
   cat: {
     v: 2,
     stance: 'stand',
@@ -788,7 +776,7 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
         size: [0.18, 0.2, 0.145],
         color: CAT,
         finish: 'fuzzy',
-        pattern: { type: 'split', side: 'front', color: WHITE, amount: 0.35 },
+        pattern: { type: 'split', side: 'front', color: CAT_WHITE, amount: 0.35 },
       },
       {
         slot: 'head',
@@ -813,28 +801,8 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
         shape: 'sphere',
         at: [0, 0.535, 0.45],
         size: [0.065, 0.045, 0.04],
-        color: WHITE,
+        color: CAT_WHITE,
         finish: 'fuzzy',
-      },
-      // 이마 줄무늬 셋
-      {
-        slot: 'head',
-        shape: 'capsule',
-        at: [0, 0.677, 0.44],
-        size: [0.014, 0.034, 0.01],
-        rot: [-55, 0, 0],
-        color: CAT_POINT,
-        finish: 'fuzzy',
-      },
-      {
-        slot: 'head',
-        shape: 'capsule',
-        at: [-0.034, 0.669, 0.437],
-        size: [0.012, 0.027, 0.01],
-        rot: [-55, 0, 18],
-        color: CAT_POINT,
-        finish: 'fuzzy',
-        mirror: true,
       },
       {
         slot: 'earL',
@@ -844,7 +812,7 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
         rot: [-8, 0, 24],
         color: CAT,
         finish: 'fuzzy',
-        inner: '#ffb3c4',
+        inner: CAT_EAR,
         mirror: true,
       },
       ...quadLegs({
@@ -856,7 +824,7 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
         t: 1.25,
         p: 1.05,
         color: CAT,
-        paw: WHITE,
+        paw: CAT_WHITE,
         finish: 'fuzzy',
       }),
       {
@@ -879,7 +847,7 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
         shape: 'sphere',
         at: [0, 0.775, -0.445],
         size: [0.04, 0.045, 0.04],
-        color: CAT_POINT,
+        color: CAT,
         finish: 'fuzzy',
       },
     ],
@@ -888,13 +856,13 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
       eyeY: 0.61,
       eyeGap: 0.062,
       eyeSize: 0.036,
-      eyeColor: '#a8bf6a',
+      eyeColor: CAT_EYE,
       pupil: 'round',
       catchlight: 'big',
       mouth: 'cat',
       mouthY: 0.525,
-      nose: { shape: 'triangle', color: '#f39aac', y: 0.557, size: 0.85 },
-      whiskers: '#a3aac0',
+      nose: { shape: 'triangle', color: CAT_NOSE, y: 0.557, size: 0.85 },
+      whiskers: CAT_WHISKER,
       blush: '#ffa0b4',
       fluff: CAT,
     },

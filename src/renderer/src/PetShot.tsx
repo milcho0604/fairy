@@ -1,6 +1,8 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { defaultBlueprint } from '../../shared/pet3d/defaults.ts';
 import type { PetKind, PetStyle } from '../../shared/settings.ts';
+import { isCuteKind } from './cute2d.ts';
+import { cuteArt, loadCuteArt } from './cute2d-art.ts';
 import { CANVAS_SIZE, drawPet } from './draw.ts';
 import { Pet3D } from './pet3d.ts';
 
@@ -45,9 +47,21 @@ export function PetShot(o: {
   side: number;
   className?: string;
 }) {
+  // 2D 손그림 냥이, 곰돌이는 그림이 풀린 뒤에 찍는다 (그동안은 빈 칸. 못 풀면 예전 코드 그림)
+  const cute = !o.use3d && isCuteKind(o.kind) ? o.kind : undefined;
+  const [ready, setReady] = useState(() => !cute || !!cuteArt(cute));
+  useEffect(() => {
+    if (!cute) return;
+    let alive = true;
+    void loadCuteArt(cute).then(() => alive && setReady(true));
+    return () => {
+      alive = false;
+    };
+  }, [cute]);
+  const wait = !!cute && !ready && !cuteArt(cute);
   const url = useMemo(
-    () => basicPetShot(o.kind, { use3d: o.use3d, style: o.style, side: o.side }),
-    [o.kind, o.use3d, o.style, o.side],
+    () => (wait ? undefined : basicPetShot(o.kind, { use3d: o.use3d, style: o.style, side: o.side })),
+    [o.kind, o.use3d, o.style, o.side, wait],
   );
   return url ? (
     <img className={o.className} src={url} alt="" draggable={false} />

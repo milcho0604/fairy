@@ -191,7 +191,7 @@ test('실사: 펭귄은 서서 뒤뚱 걷는다 (네 발 아님), 날개와 몸 
   );
 });
 
-test('종류마다 특징이 모든 입체 모습에 있다: 냥이 이마 줄무늬, 멍멍이 늘어진 귀와 눈 얼룩, 햄찌 앞니와 볼, 뒤뚱이 흰 얼굴과 날개, 곰돌이 둥근 귀와 주둥이', () => {
+test('종류마다 특징이 모든 입체 모습에 있다: 냥이 크림 몸에 흰 배(줄무늬 없음), 멍멍이 늘어진 귀와 눈 얼룩, 햄찌 앞니와 볼, 뒤뚱이 흰 얼굴과 날개, 곰돌이 둥근 귀와 주둥이', () => {
   for (const [look, set] of [
     ['동그란 몸', DEFAULT_BLUEPRINTS],
     ['실사', REAL_BLUEPRINTS],
@@ -200,13 +200,19 @@ test('종류마다 특징이 모든 입체 모습에 있다: 냥이 이마 줄�
       const bp = set[kind];
       return { bp, ...faceOf(bp), unit: faceOf(bp).base.size[1] };
     };
-    // 냥이: 눈 위 이마에 바탕과 다른 색 줄 셋, 세모 귀
+    // 냥이: 새 2D 손그림과 같은 크림 몸, 흰 배, 호박색 눈. 이마 줄무늬는 없다 (2026-10-13), 세모 귀
     {
       const { bp, parts, base, unit } = at('cat');
       const stripes = parts.filter(
         (p) => p.at[1] > bp.face.eyeY + unit * 0.15 && p.color !== base.color && p.shape === 'capsule',
       );
-      assert.equal(stripes.length, 3, `${look} 냥이 이마 줄무늬`);
+      assert.equal(stripes.length, 0, `${look} 냥이 이마 줄무늬 없음`);
+      assert.equal(base.color, '#fdf6ee', `${look} 냥이 크림 몸`);
+      assert.ok(
+        bp.parts.some((p) => p.pattern?.type === 'split' && p.pattern.color === '#ffffff'),
+        `${look} 냥이 흰 배`,
+      );
+      assert.equal(bp.face.eyeColor, '#e8a23a', `${look} 냥이 호박색 눈`);
       assert.ok(
         bp.parts.some((p) => p.slot === 'earL' && p.shape === 'cone'),
         `${look} 냥이 세모 귀`,
