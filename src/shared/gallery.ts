@@ -15,6 +15,7 @@ import {
   SHARE_VERSION,
   type SharedPet,
 } from './pet-share.ts';
+import { SPRITE_NAMES } from './pet-sprites.ts';
 import { cleanPetName, isPetKind, type PetKind } from './settings.ts';
 import { PUBLIC_REPO } from './update-policy.ts';
 
@@ -27,7 +28,7 @@ export const INDEX_VERSION = 1;
 export const INDEX_MAX_BYTES = 256 * 1024;
 /** 목록에 보일 펫 수 상한 */
 export const GALLERY_MAX_PETS = 300;
-/** 갤러리 펫 파일 하나 상한 (공유 파일 상한 48MB 보다 작게: 받는 사람 데이터를 아낀다) */
+/** 갤러리 펫 파일 하나 상한 (공유 파일 상한 56MB 보다 작게: 받는 사람 데이터를 아낀다) */
 export const GALLERY_PET_MAX_BYTES = 16 * 1024 * 1024;
 /** 기다리는 시간 (목록, 작은 그림 / 펫 파일) */
 export const INDEX_TIMEOUT_MS = 15_000;
@@ -169,7 +170,8 @@ const MANIFEST_KEYS = new Set([
   'age',
   'personalOnly',
 ]);
-const IMAGE_KEYS = new Set(['main', 'poses', 'thumbnail']);
+const IMAGE_KEYS = new Set(['main', 'poses', 'thumbnail', 'sprites']);
+const SPRITE_KEYS = new Set<string>(SPRITE_NAMES);
 const POSE_KEYS = new Set(['happy', 'sleepy', 'hungry']);
 
 /**
@@ -204,6 +206,7 @@ export function validateSubmission(
   extra(raw.images, IMAGE_KEYS, 'images');
   const images = (raw.images ?? {}) as Record<string, unknown>;
   if (images.poses !== undefined) extra(images.poses, POSE_KEYS, 'images.poses');
+  if (images.sprites !== undefined) extra(images.sprites, SPRITE_KEYS, 'images.sprites');
   const pet = decodePet(text);
   if ('error' in pet) return { problems: [...problems, `app rejects it: ${pet.error}`] };
   const manifest = (raw.manifest ?? {}) as Record<string, unknown>;
@@ -216,6 +219,11 @@ export function validateSubmission(
   for (const k of Object.keys(poses))
     if (POSE_KEYS.has(k) && !pet.poses[k as keyof SharedPet['poses']])
       problems.push(`images.poses.${k} is broken`);
+  // 2D 그림 세트: 앱은 틀린 장이나 세트를 조용히 버린다. 갤러리는 버려지는 것이 없어야 받는다
+  const sprites = typeof images.sprites === 'object' && images.sprites !== null ? images.sprites : {};
+  for (const k of Object.keys(sprites))
+    if (SPRITE_KEYS.has(k) && !pet.sprites?.[k as keyof NonNullable<SharedPet['sprites']>])
+      problems.push(`images.sprites.${k} is broken (PNG only, same size as idle, see docs/pet-format.md)`);
   if (raw.blueprint !== undefined && !pet.model) problems.push('blueprint is broken');
   if (raw.depth !== undefined && !pet.depth) problems.push('depth is broken or used together with blueprint');
   if (manifest.age !== undefined && !pet.age) problems.push('manifest.age is not a known age stage');

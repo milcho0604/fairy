@@ -29,6 +29,7 @@ import {
   TALK_MS,
   wanders,
 } from '../../shared/pet-mood.ts';
+import { fillSprites } from '../../shared/pet-sprites.ts';
 import { type Blueprint, type Gait, parseBlueprint } from '../../shared/pet3d/blueprint.ts';
 import { defaultBlueprint } from '../../shared/pet3d/defaults.ts';
 import { standingBlueprint } from '../../shared/pet3d/stand.ts';
@@ -39,7 +40,7 @@ import { NO_TOGETHER, type TogetherLook } from '../../shared/together.ts';
 import { dressBlueprint, GROW_LOOK, type WearLook } from '../../shared/wear.ts';
 import { AnimatedImage, frameSide, loadPetImage } from './animated.ts';
 import { shotOf } from './blueprint-shot.ts';
-import { isCuteKind, TALK_FPS } from './cute2d.ts';
+import { type CuteGeom, type CutePose, isCuteKind, TALK_FPS } from './cute2d.ts';
 import { cuteArt, loadCuteArt } from './cute2d-art.ts';
 import {
   CANVAS_SIZE,
@@ -62,6 +63,7 @@ import { IMPACT_MS } from './photo-motion.ts';
 import { walkFrameIndex } from './photo-walk.ts';
 import { PoseBlend, type PoseKey, shouldBlend } from './pose-blend.ts';
 import { playSound } from './sound.ts';
+import { type AlphaBox, alphaBox, spriteGeom } from './sprite-geom.ts';
 import { TAP_FPS, TAP_IN_MS, TAP_OUT_MS } from './together-draw.ts';
 import { continueSeg, segSpeed, stepsAt, strideLen, type WalkSeg } from './walk-pace.ts';
 
@@ -200,7 +202,11 @@ function frame() {
   const m3d = current3d();
   // 입체 그리기 모듈을 불러오는 중이면 기다린다 (불러오면 다시 그린다). 2D 를 먼저 그리면 깜빡인다
   if (m3d === 'loading') return;
-  const img = m3d ? undefined : pickImage(mood, inputs.hungry);
+  // 가져온 페어리의 2D 그림 세트가 다 풀렸으면 사진 대신 그것으로 (기본 페어리 손그림과 같은 길, draw.ts drawCute).
+  // 푸는 동안은 기다린다 (사진이 한 번 비쳤다 바뀌지 않게. 풀리면 다시 그린다)
+  if (!m3d && sheetPending) return;
+  const sheetArt = m3d ? undefined : sheetNow();
+  const img = m3d || sheetArt ? undefined : pickImage(mood, inputs.hungry);
   // 손그림 냥이, 곰돌이(2D)는 그림이 다 풀린 뒤에 그린다 (먼저 그리면 예전 코드 그림이 한 번 비친다). 못 풀면 예전 그림으로
   const cute = !m3d && !img && !photo && isCuteKind(petKind) ? petKind : undefined;
   if (cute && !cuteArt(cute) && !cuteBroken.has(cute)) {
@@ -230,6 +236,7 @@ function frame() {
     activity: activityPose(now) ?? (backTurned() ? { type: 'sit' as const } : undefined),
     hungry: inputs.hungry,
     photo: walkPic?.img ?? (img instanceof AnimatedImage ? img.frameAt(now) : img),
+    ...(sheetArt ? { sprites: sheetArt } : {}),
     ...(walkPic ? { photoWalk: walkPic.dir } : {}),
     photoScale,
     // 눈 자리는 원래 그림 것이다 (포즈 그림이면 눈이 다른 데 있다). 입체 판(2.5D)도 원래 그림이라 같이 준다
@@ -290,7 +297,7 @@ function frame() {
     syncFace(m3d);
     syncSprites(m3d);
   } else afterFirstShown();
-  syncBody(m3d, img);
+  syncBody(m3d, img ?? (sheetArt ? photo : undefined));
 
   const walking = activity?.type === 'walk';
   // 제자리 몸짓(하품, 기지개, 꼬리 흔들기 등)은 하는 동안 20~30fps (moveFps), 앉기는 앉고 일어나는 동안만 20fps
@@ -334,12 +341,61 @@ function frame() {
       motionSettling() || blend.active ? 30 * k : 0,
       togetherFps(now) * k,
       // 손그림은 말하는 동안 입 그림 둘을 번갈아 넘긴다 (cute2d.ts)
-      cute && mood === 'talking' ? TALK_FPS : 0,
+      (cute || sheetArt) && mood === 'talking' ? TALK_FPS : 0,
     ),
     saver,
   );
   frameTimer = all > 0 ? setTimeout(frame, 1000 / all) : undefined;
   nextFrameMs = all > 0 ? 1000 / all : 0;
+}
+
+// ---- 가져온 페어리의 2D 그림 세트 (shared/pet-sprites.ts, sprite-geom.ts) ----
+/** 다 풀고 잰 그림 세트 (빠진 자세는 가까운 그림으로 채웠다). 없거나 아직 푸는 중이면 undefined (그동안은 사진) */
+let sheet: { pics: Record<CutePose, HTMLImageElement>; geom: CuteGeom } | undefined;
+/** 세트를 푸는 중 */
+let sheetPending = false;
+/** 나이 배율을 곱한 세트 (같은 배율이면 같은 것) */
+let sheetScaled: { from: typeof sheet; k: number; v: NonNullable<typeof sheet> } | undefined;
+function sheetNow(): typeof sheet {
+  if (!sheet || photoScale === 1) return sheet;
+  if (sheetScaled?.from !== sheet || sheetScaled.k !== photoScale)
+    sheetScaled = {
+      from: sheet,
+      k: photoScale,
+      v: { pics: sheet.pics, geom: { ...sheet.geom, scale: sheet.geom.scale * photoScale } },
+    };
+  return sheetScaled.v;
+}
+/** 그림 한 장의 불투명한 상자를 잰다 (작은 캔버스에 그려 알파를 읽는다) */
+function measureBox(img: HTMLImageElement): AlphaBox | undefined {
+  const w = img.naturalWidth;
+  const h = img.naturalHeight;
+  if (!w || !h) return undefined;
+  const c = new OffscreenCanvas(w, h);
+  const g = c.getContext('2d', { willReadFrequently: true });
+  if (!g) return undefined;
+  g.drawImage(img, 0, 0);
+  return alphaBox(g.getImageData(0, 0, w, h).data, w, h);
+}
+/** 세트를 풀고 잰다. 서기를 못 풀면 undefined (사진으로 보인다) */
+async function loadSheet(urls: PetImages['sprites']): Promise<typeof sheet> {
+  const full = urls ? fillSprites(urls) : undefined;
+  if (!full) return undefined;
+  const byUrl = new Map<string, Promise<HTMLImageElement | undefined>>();
+  for (const url of Object.values(full)) if (!byUrl.has(url)) byUrl.set(url, loadPlain(url));
+  const pics = {} as Record<CutePose, HTMLImageElement>;
+  const boxes: Partial<Record<CutePose, AlphaBox>> = {};
+  const measured = new Map<HTMLImageElement, AlphaBox | undefined>();
+  for (const [pose, url] of Object.entries(full) as [CutePose, string][]) {
+    const img = await byUrl.get(url);
+    if (!img) return undefined;
+    pics[pose] = img;
+    if (!measured.has(img)) measured.set(img, measureBox(img));
+    const box = measured.get(img);
+    if (box) boxes[pose] = box;
+  }
+  const geom = spriteGeom(boxes, { w: pics.idle.naturalWidth, h: pics.idle.naturalHeight });
+  return geom ? { pics, geom } : undefined;
 }
 
 /** 손그림을 못 푼 모양 (예전 코드 그림으로 그린다) */
@@ -799,6 +855,18 @@ bridge.onImage(async (images: PetImages) => {
   if (!photoDepth) release(depthImg);
   photoScale = ageScale(images.age);
   photoEyes = images.starter ? STARTER_EYES[images.starter] : undefined;
+  sheet = undefined;
+  sheetPending = !!images.sprites?.idle;
+  if (images.sprites?.idle)
+    void loadSheet(images.sprites)
+      .catch(() => undefined)
+      .then((v) => {
+        // 그사이 펫이 바뀌었으면 버린다. 못 풀었으면 사진으로
+        if (mine !== imageLoad) return;
+        sheetPending = false;
+        sheet = v;
+        requestFrame();
+      });
   walkImgs = [];
   if (images.walk?.length)
     void Promise.all(images.walk.map(loadPlain)).then((all) => {
@@ -1588,6 +1656,8 @@ Object.assign(window, {
           kind: petKind,
           model3d: m3d,
           photoEyes,
+          // 가져온 페어리의 2D 그림 세트 (입체가 아닐 때, 다 풀렸으면)
+          ...(!m3d && sheetNow() ? { sprites: sheetNow() } : {}),
           ...st,
         });
         return c.toDataURL('image/png');

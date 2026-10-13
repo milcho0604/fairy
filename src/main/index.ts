@@ -1511,6 +1511,7 @@ ready
         next.petDepth !== prev.petDepth ||
         next.petAge !== prev.petAge ||
         JSON.stringify(next.petPoses) !== JSON.stringify(prev.petPoses) ||
+        JSON.stringify(next.petSprites) !== JSON.stringify(prev.petSprites) ||
         // 밀크, 초코의 네 발로 선 피규어 켜고 끄기 (사진과 피규어가 바뀐다)
         starterFigureOf(next.petImage, next.petStands) !== starterFigureOf(prev.petImage, prev.petStands)
       ) {

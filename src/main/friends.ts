@@ -5,6 +5,7 @@ import { t } from '../shared/i18n/index.ts';
 import { IPC, type PetImages, type PetStatus } from '../shared/ipc.ts';
 import { MEET_CHANCE, MEET_COOLDOWN_MS, MEET_EVERY_MS, meetPlan } from '../shared/meet.ts';
 import { voiced } from '../shared/persona-voice.ts';
+import { spriteFiles } from '../shared/pet-sprites.ts';
 import { type Blueprint, parseBlueprint } from '../shared/pet3d/blueprint.ts';
 import { starterFigureOf } from '../shared/pet3d/starters.ts';
 import { friendSpot } from '../shared/placement.ts';
@@ -14,7 +15,7 @@ import { starterOf } from '../shared/starter-pets.ts';
 import type { WearLook } from '../shared/wear.ts';
 import { saverNow } from './battery.ts';
 import { boostOn } from './boost.ts';
-import { library } from './pet-library.ts';
+import { library, spriteUrls } from './pet-library.ts';
 import { createPetWindow, openPetWindowIn, type PetWindow } from './pet-window.ts';
 import { readFileIn } from './safe-file.ts';
 import { settings } from './settings.ts';
@@ -71,6 +72,7 @@ function imageOf(f: Friend): PetImages {
     const bytes = petFile(f.image);
     if (!bytes) return none;
     const b64 = bytes.toString('base64');
+    const sprites = spriteUrls(f.sprites);
     return {
       main: `data:${mime};base64,${b64}`,
       model: modelOf(f.model) ?? starterFigureOf(f.image, settings.get().petStands),
@@ -78,6 +80,7 @@ function imageOf(f: Friend): PetImages {
       poses: {},
       ...(f.age ? { age: f.age } : {}),
       ...(starterOf(f.image) ? { starter: starterOf(f.image) } : {}),
+      ...(sprites ? { sprites } : {}),
     };
   } catch {
     return none;
@@ -289,6 +292,7 @@ export function createFriends(o: {
           l.friend.model,
           l.friend.depth,
           ...Object.values(l.friend.poses ?? {}),
+          ...spriteFiles(l.friend.sprites),
         ]);
         // 그 친구의 위치 파일도 지운다 (pet-window 의 pet-position-<id>). 남으면 쌓이기만 한다
         removeJson(`pet-position-${id}`);

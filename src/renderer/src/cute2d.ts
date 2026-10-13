@@ -87,6 +87,13 @@ export interface CuteGeom {
   faceShape?(pose: CutePose): CuteBlob;
   /** 목도리를 코드 그림 몸 좌표에서 이만큼 내려 그림 속 목에 두른다 */
   scarfDrop: number;
+  /**
+   * 가져온 그림 세트(sprite-geom.ts)만: 그림 크기와 가운데 x, 자세마다 바닥선 y. 없으면 손그림 값
+   * (512x512, ART_CX, ART_GROUND)
+   */
+  size?: { w: number; h: number };
+  cx?: number;
+  ground?(pose: CutePose): number;
 }
 
 /** 찹쌀떡 모양 (scripts/cute2d/bear/gen.py blob): 가운데, 위 반지름(가로 rx, 세로 ryT), 아래(가로 rxB, 세로 ryB), 휨 kT, kB */

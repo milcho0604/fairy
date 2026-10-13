@@ -19,9 +19,11 @@ import type { Outfit } from '../../shared/wear.ts';
 import {
   ART_CX,
   ART_GROUND,
+  ART_SIDE,
   blobCurves,
   CUTE_GEOM,
-  type CuteKind,
+  type CuteGeom,
+  type CutePose,
   cuteEyes,
   cutePose,
   isCuteKind,
@@ -98,6 +100,11 @@ export interface DrawState {
   photo?: CanvasImageSource & { width: number; height: number };
   /** 사진 크기 배율 (AI 일러스트 아기, 청소년은 작게). 없으면 1. 발은 바닥에 그대로 */
   photoScale?: number;
+  /**
+   * 가져온 페어리의 2D 그림 세트 (shared/pet-sprites.ts, sprite-geom.ts). 있으면 사진 대신 기본 페어리처럼
+   * 자세 그림을 바꿔 그린다 (빠진 자세는 가까운 그림으로 채운 것)
+   */
+  sprites?: { pics: Record<CutePose, CanvasImageSource>; geom: CuteGeom };
   /** photo 가 옆모습 걷기 그림이면 가는 방향 (그림은 오른쪽을 본다). 기울이지 않고 방향대로 뒤집는다 */
   photoWalk?: -1 | 1;
   /** 사진 속 눈 자리 (밀크, 초코). 있으면 잠, 졸음, 깜빡임에 사진 눈을 감긴다 (photo-eyes.ts). 2.5D 판도 쓴다 */
@@ -539,6 +546,8 @@ function drawPetBody(ctx: CanvasRenderingContext2D, s: DrawState): Point | undef
 
   if (s.cushion && (act?.type === 'sit' || s.mood === 'sleeping' || s.mood === 'dozing')) drawCushion(ctx);
 
+  // 가져온 페어리의 2D 그림 세트 (sprite-geom.ts): 기본 페어리 손그림과 같은 길로 자세마다 그림을 바꾼다
+  if (s.sprites) return drawCute(ctx, s, s.sprites.geom, s.sprites.pics, act, lift, sx, sy, mv);
   if (s.photo) {
     const top = drawPhoto(ctx, s, s.photo, lift, sx, sy, act);
     const ball = drawCarry(ctx, s.carry, guessMouth(top, GROUND - lift));
@@ -562,7 +571,7 @@ function drawPetBody(ctx: CanvasRenderingContext2D, s: DrawState): Point | undef
   // 냥이와 곰돌이는 손그림 (cute2d.ts). 그림이 아직 안 풀렸으면 불러오기를 걸고 이번 틀은 예전 코드 그림으로
   if (isCuteKind(kind)) {
     const pics = cuteArt(kind);
-    if (pics) return drawCute(ctx, s, kind, pics, act, lift, sx, sy, mv);
+    if (pics) return drawCute(ctx, s, CUTE_GEOM[kind], pics, act, lift, sx, sy, mv);
     void loadCuteArt(kind);
   }
   // 공을 물 때 고개를 숙인다: 2D 는 몸이 곧 머리라 몸을 조금 눌러 얼굴을 내린다
@@ -1609,8 +1618,8 @@ function drawYawn(ctx: CanvasRenderingContext2D, x: number) {
 function drawCute(
   ctx: CanvasRenderingContext2D,
   s: DrawState,
-  kind: CuteKind,
-  pics: NonNullable<ReturnType<typeof cuteArt>>,
+  geom: CuteGeom,
+  pics: Record<CutePose, CanvasImageSource>,
   act: DrawState['activity'],
   lift: number,
   sx: number,
@@ -1636,10 +1645,12 @@ function drawCute(
       sy = tired.sy;
     }
   }
-  const geom = CUTE_GEOM[kind];
   const k = geom.scale;
+  // 가져온 그림 세트는 그림마다 잰 바닥선과 가운데 (sprite-geom.ts). 손그림은 모두 512 그림의 470, 256
+  const gnd = geom.ground?.(pick.pose) ?? ART_GROUND;
+  const acx = geom.cx ?? ART_CX;
   // 뛰어도 그림 꼭대기(귀, 별)가 캔버스 위로 잘리지 않게
-  const tall = (ART_GROUND - geom.top(pick.pose)) * k;
+  const tall = (gnd - geom.top(pick.pose)) * k;
   lift = Math.min(lift, GROUND - 2 - tall * sy);
   if (mv) lift += 8 * Math.abs(Math.sin(mv.turn * 0.7));
   const bottom = GROUND - lift;
@@ -1657,7 +1668,7 @@ function drawCute(
   ctx.rotate(ease.to('ctilt', tilt, PHOTO_TILT_TAU));
   ctx.translate(0, bottom - pivot);
   ctx.scale((pick.flip ? -1 : 1) * sx * k, sy * k);
-  ctx.translate(-ART_CX, -ART_GROUND);
+  ctx.translate(-acx, -gnd);
   if (s.face) {
     // 얼굴 아이콘은 머리와 귀만 (pet-face.ts 가 그린 데를 잘라 쓴다). 머리 자리와 기울기에 맞춘 머리 좌표에서 자른다
     const h = geom.head(pick.pose);
@@ -1676,14 +1687,14 @@ function drawCute(
       ctx.translate(h.x, h.y);
       ctx.rotate((h.rot * Math.PI) / 180);
       const cut = geom.faceCut;
-      ctx.rect(cut.x0 - ART_CX, -cut.up, cut.x1 - cut.x0, cut.up);
+      ctx.rect(cut.x0 - acx, -cut.up, cut.x1 - cut.x0, cut.up);
       ctx.moveTo(cut.rx, 0);
       ctx.ellipse(0, 0, cut.rx, cut.ry, 0, 0, Math.PI * 2);
       ctx.restore();
     }
     ctx.clip();
   }
-  ctx.drawImage(pics[pick.pose], 0, 0, 512, 512);
+  ctx.drawImage(pics[pick.pose], 0, 0, geom.size?.w ?? ART_SIDE, geom.size?.h ?? ART_SIDE);
   // 철마다 옷: 코드 그림의 몸(반지름 58x50)을 그림 속 머리에 맞춘다. 등 돌린 그림은 뒷모습 옷
   if (s.wear && !s.face) {
     const h = geom.head(pick.pose);
@@ -1698,8 +1709,8 @@ function drawCute(
   // 그림 속 머리와 눈, 입 자리 (그림 좌표를 캔버스로. 기울기는 작아서 뺀다)
   const head = geom.head(pick.pose);
   const at = (x: number, y: number): Point => ({
-    x: CX + dx + (pick.flip ? -1 : 1) * (x - ART_CX) * k * sx,
-    y: bottom + (y - ART_GROUND) * k * sy,
+    x: CX + dx + (pick.flip ? -1 : 1) * (x - acx) * k * sx,
+    y: bottom + (y - gnd) * k * sy,
   });
   const ball = drawCarry(ctx, s.carry, at(head.x, head.y + geom.mouthDy));
   const eyes: Model3D = {
