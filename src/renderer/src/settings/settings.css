@@ -1115,6 +1115,171 @@ textarea.rules {
   align-self: flex-start;
 }
 
+/* 구글 캘린더 칸: 고른 캘린더 요약과 "캘린더 고르기" */
+.gcal-pick .gcal-pick-summary {
+  color: var(--ink);
+}
+
+/* 구글 캘린더 옵션 창 (GcalCalendarsSheet): 설정 창 위에 뜨는 시트. 좁은 창에서는 아래에서 올라오는 판 */
+.gcal-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.gcal-sheet {
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 480px);
+  max-height: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.25);
+  outline: none;
+}
+
+.gcal-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.gcal-sheet-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  padding: 12px 14px 14px;
+}
+
+.gcal-relink {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--warn) 8%, var(--bg));
+}
+
+.gcal-cals {
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  min-width: 0;
+}
+
+.gcal-cal-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 56px 48px;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--line);
+}
+
+.gcal-cal-row:first-of-type {
+  border-top: 0;
+}
+
+.gcal-cell {
+  justify-self: center;
+  display: flex;
+}
+
+.gcal-check {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.gcal-check:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.gcal-cal-head {
+  min-height: 0;
+  padding-top: 8px;
+  padding-bottom: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.gcal-cal-head > span:not(:first-child) {
+  justify-self: center;
+  text-align: center;
+}
+
+.gcal-cal-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.gcal-cal-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.gcal-cal-text .name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.gcal-cal-text .warn {
+  color: var(--warn);
+}
+
+.gcal-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.gcal-no-push {
+  cursor: pointer;
+}
+
+.gcal-id-add {
+  flex: none;
+  white-space: nowrap;
+}
+
+.gcal-no-push > .gcal-cell {
+  grid-column: 3;
+}
+
+@media (max-width: 420px) {
+  .gcal-sheet-backdrop {
+    align-items: flex-end;
+    padding: 8px 0 0;
+  }
+
+  .gcal-sheet {
+    width: 100%;
+    border-radius: 12px 12px 0 0;
+  }
+}
+
 /* ---- 코인 초기화 (설정 > 데이터, CoinReset.tsx) ---- */
 .coin-reset {
   display: flex;

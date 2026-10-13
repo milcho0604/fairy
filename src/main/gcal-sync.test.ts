@@ -6,7 +6,7 @@ import { EventStore } from '../shared/event-store.ts';
 import { GcalBackoff } from '../shared/gcal.ts';
 import { GcalStore } from '../shared/gcal-store.ts';
 import { type ApiResult, classifyApi } from './gcal-auth.ts';
-import { type GcalApi, GcalLost, syncPass } from './gcal-sync.ts';
+import { type GcalApi, GcalLost, reasonOf, syncPass } from './gcal-sync.ts';
 
 const HOUR = 3_600_000;
 const NOW = Date.UTC(2026, 9, 10, 0);
@@ -53,7 +53,29 @@ function fakeGoogle() {
     const ev = id ? cal.get(id) : undefined;
     if (!ev || !id) return res(404, {});
     if (method === 'PATCH') {
-      const next = { ...ev, ...(body as object) };
+      // 구글 PATCH 처럼: 안쪽 객체는 합치고(null 이면 그 칸을 지운다), 배열과 값은 바꾼다
+      const next: Record<string, unknown> = { ...ev };
+      for (const [k, v] of Object.entries(body as Record<string, unknown>)) {
+        const was = next[k];
+        if (v && typeof v === 'object' && !Array.isArray(v)) {
+          const merged: Record<string, unknown> =
+            was && typeof was === 'object' ? { ...(was as Record<string, unknown>) } : {};
+          for (const [k2, v2] of Object.entries(v)) {
+            if (v2 === null) delete merged[k2];
+            else merged[k2] = v2;
+          }
+          next[k] = merged;
+        } else if (v === null) delete next[k];
+        else next[k] = v;
+      }
+      // 구글은 date 와 dateTime 이 같이 있는 시작, 끝을 받지 않는다
+      for (const k of ['start', 'end']) {
+        const tm = next[k] as Record<string, unknown> | undefined;
+        if (tm && 'date' in tm && 'dateTime' in tm)
+          return res(400, {
+            error: { code: 400, errors: [{ reason: 'invalid', message: 'Invalid start time.' }] },
+          });
+      }
       cal.set(id, next);
       return res(200, next);
     }
@@ -100,7 +122,15 @@ test('넣고, 고치고, 지우기가 구글로 간다. 안 바뀌면 다시 안
   const { events, g, pass, store } = setup();
   const e = events.add({ title: '회의', startAt: NOW + 2 * HOUR, reminds: [10, 60] }, NOW);
   const r1 = await pass();
-  assert.deepEqual(r1, { pending: 0, sent: 1, waiting: 0, stop: null, again: false });
+  assert.deepEqual(r1, {
+    pending: 0,
+    sent: 1,
+    waiting: 0,
+    stop: null,
+    again: false,
+    rejected: [],
+    accepted: [e.id],
+  });
   const sent = g.cals.get('primary')?.get('jjk00001');
   assert.equal(sent?.summary, '회의');
   assert.deepEqual(sent?.reminders, {
@@ -254,4 +284,53 @@ test('옛 캘린더에 남은 일정을 지울 때 그 캘린더를 못 쓰면(4
   events.remove(d.id, NOW);
   g.forced.push(g.res(403, { error: { code: 403, errors: [{ reason: 'forbidden' }] } }));
   assert.equal((await pass('primary')).stop, 'calendar');
+});
+
+test('종일과 시각 일정 사이를 바꿔도 구글이 받는다 (PATCH 가 옛 date, dateTime 칸을 지운다)', async () => {
+  const { events, g, pass } = setup();
+  const e = events.add({ title: '워크숍', startAt: NOW + 2 * HOUR }, NOW);
+  await pass();
+  // 패널의 종일 단추와 같은 바꾸기: 시각 → 종일
+  events.update(e.id, { startAt: NOW, endAt: null, allDay: true }, NOW);
+  const r1 = await pass();
+  assert.deepEqual([r1.sent, r1.rejected], [1, []]);
+  const allDay = g.cals.get('primary')?.get('jjk00001') as { start: Record<string, unknown> };
+  assert.deepEqual(Object.keys(allDay.start), ['date']);
+  // 종일 → 시각
+  events.update(e.id, { startAt: NOW + 3 * HOUR, endAt: null, allDay: false }, NOW);
+  const r2 = await pass();
+  assert.deepEqual([r2.sent, r2.rejected], [1, []]);
+  const timed = g.cals.get('primary')?.get('jjk00001') as { start: Record<string, unknown> };
+  assert.deepEqual(Object.keys(timed.start).sort(), ['dateTime', 'timeZone']);
+});
+
+test('구글이 받지 않으면 그 일정과 지문을 돌려주고 기록에 상태와 까닭 이름을 남긴다 (일정 글은 남기지 않는다)', async () => {
+  const { events, g, store, backoff } = setup();
+  const e = events.add({ title: '비밀 회의', startAt: NOW + 2 * HOUR }, NOW);
+  const lines: unknown[][] = [];
+  g.forced.push(
+    g.res(400, { error: { code: 400, errors: [{ reason: 'invalid', message: '비밀 회의 is bad' }] } }),
+  );
+  const r = await syncPass({
+    store,
+    backoff,
+    api: g.api,
+    newId: () => 'jjk00001',
+    now: () => NOW,
+    calendarId: 'primary',
+    tz: 'Asia/Seoul',
+    log: (...a) => lines.push(a),
+  });
+  assert.equal(r.rejected.length, 1);
+  assert.equal(r.rejected[0]?.eventId, e.id);
+  assert.equal(r.rejected[0]?.hash, store.hashOf(e.id, 'Asia/Seoul'));
+  assert.deepEqual(lines, [['gcal', '구글이 받지 않음', 'upsert', 400, 'invalid']]);
+  assert.ok(!JSON.stringify(lines).includes('비밀'));
+});
+
+test('까닭 이름: 모양이 이상하면 - 로', () => {
+  assert.equal(reasonOf({ error: { errors: [{ reason: 'timeRangeEmpty' }] } }), 'timeRangeEmpty');
+  assert.equal(reasonOf({ error: { errors: [{ reason: 'a b <script>' }] } }), '-');
+  assert.equal(reasonOf(undefined), '-');
+  assert.equal(reasonOf('x'), '-');
 });

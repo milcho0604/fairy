@@ -308,7 +308,7 @@ export const ko = {
   'settings.calendar': '캘린더 가져오기',
   'settings.cal.url': '캘린더 주소 (.ics)',
   'settings.cal.hint':
-    '구글 캘린더: 설정 > 내 캘린더 > 캘린더 통합 > "iCal 형식의 비공개 주소"를 붙여 넣어. 30분마다 앞으로 60일 일정을 가져와서 페어리가 알려 줘. 이 주소는 이 컴퓨터에만 둬. (읽기만 해. 페어리에서 넣은 일정을 구글로 보내려면 아래 "구글 캘린더로 보내기"를 켜.)',
+    '구글 캘린더: 설정 > 내 캘린더 > 캘린더 통합 > "iCal 형식의 비공개 주소"를 붙여 넣어. 30분마다 앞으로 60일 일정을 가져와서 페어리가 알려 줘. 이 주소는 이 컴퓨터에만 둬. (읽기만 해. 구글 계정을 바로 연결하려면 아래 "구글 캘린더"를 써. 둘 다 켜도 같은 일정은 한 번만 보여.)',
   'settings.cal.fetch': '지금 가져오기',
   'settings.cal.clear': '지우기',
   'settings.cal.bad': 'https로 시작하는 .ics 주소만 돼. 저장하지 않았어',
@@ -736,7 +736,7 @@ export const en: Translation<typeof ko> = {
   'settings.calendar': 'Import calendar',
   'settings.cal.url': 'Calendar address (.ics)',
   'settings.cal.hint':
-    'Google Calendar: Settings > My calendars > Integrate calendar > paste the "Secret address in iCal format". Every 30 minutes it fetches the next 60 days and your fairy reminds you. The address stays on this computer. (Read only. To send events you add in fairy to Google, use "Send to Google Calendar" below.)',
+    'Google Calendar: Settings > My calendars > Integrate calendar > paste the "Secret address in iCal format". Every 30 minutes it fetches the next 60 days and your fairy reminds you. The address stays on this computer. (Read only. To connect your Google account directly, use "Google Calendar" below. With both on, each event shows up once.)',
   'settings.cal.fetch': 'Fetch now',
   'settings.cal.clear': 'Clear',
   'settings.cal.bad': "Only an .ics address starting with https works. Didn't save it",

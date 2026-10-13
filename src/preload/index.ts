@@ -265,7 +265,10 @@ if (kind === 'settings') {
     cancel: () => ipcRenderer.send(GCAL.cancel),
     disconnect: () => ipcRenderer.invoke(GCAL.disconnect),
     setPush: (on: boolean) => ipcRenderer.invoke(GCAL.setPush, on),
-    setCalendar: (id: string) => ipcRenderer.invoke(GCAL.setCalendar, id),
+    setPull: (on: boolean) => ipcRenderer.invoke(GCAL.setPull, on),
+    setAi: (on: boolean) => ipcRenderer.invoke(GCAL.setAi, on),
+    setCalendars: (c) => ipcRenderer.invoke(GCAL.setCalendars, c),
+    listCalendars: () => ipcRenderer.invoke(GCAL.listCalendars),
     syncNow: () => ipcRenderer.invoke(GCAL.syncNow),
     onChanged: (listener) => {
       const h = (_e: unknown, s: GcalStatus) => listener(s);

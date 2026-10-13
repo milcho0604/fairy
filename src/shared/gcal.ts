@@ -1,17 +1,35 @@
 // 구글 캘린더에 쓰기 (6단계 남은 것). 짝꿍에서 넣은 일정을 사용자의 구글 캘린더로 보낸다.
+// 고른 캘린더의 원래 일정을 읽어 오기도 한다 (이슈 #54, shared/gcal-pull.ts, main/gcal-pull.ts).
 // 여기는 화면, 메인, 시험이 같이 쓰는 순수한 것만: 설정 창과 주고받는 모양, 일정 → 구글 일정 바꾸기, 지문, 다시 하기 간격.
 // 네트워크와 토큰은 메인(main/gcal.ts, main/gcal-auth.ts)에만 있다. 창은 상태만 받는다.
 import { plusDays } from './day.ts';
 import { NO_END_MIN } from './event-overlap.ts';
+import type { CalChoice, GcalCalendar } from './gcal-cals.ts';
 
-/** 쓰는 권한: 일정 읽기 쓰기만 (캘린더 목록, 설정, 공유는 못 본다) */
+/**
+ * 쓰는 권한: 일정 읽기 쓰기 (보내기와 읽어 오기 events.list). 이것이 없으면 아무것도 못 한다
+ */
 export const GCAL_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+/**
+ * 캘린더 목록 보기만 (구글 캘린더 옵션 창, calendarList.list). calendarList.list 를 부를 수 있는 가장 좁은 범위다
+ * (calendar, calendar.readonly, calendar.calendarlist 는 더 넓다). 캘린더 설정, 공유는 못 본다.
+ * 예전에 일정 권한만으로 연결한 사람은 이것이 없다: 옵션 창이 다시 연결해 달라고 하고, 그동안은 직접 넣은 캘린더 ID 로 돈다
+ */
+export const GCAL_LIST_SCOPE = 'https://www.googleapis.com/auth/calendar.calendarlist.readonly';
 
 /** 기본 캘린더 (로그인한 계정의 기본 캘린더) */
 export const GCAL_PRIMARY = 'primary';
 
 /** 짝꿍이 정해 보내는 구글 일정 id 머리. 구글 id 는 base32hex 소문자(0-9, a-v) 5~1024자 */
 export const GCAL_ID_PREFIX = 'jjk';
+
+/** 구글 캘린더 켜고 끄기를 두는 파일 (데이터 폴더, 비밀 아님). 펫 MCP 서버도 "AI가 구글 일정도 보기"를 여기서 읽는다 */
+export const GCAL_PREFS_FILE = 'google-calendar.json';
+
+/** 그 파일 내용에서 "AI가 구글 일정도 볼 수 있게". 켠 것(ai: true)만 켬. 없거나 깨졌거나 다른 값이면 꺼짐 */
+export function gcalAiOn(raw: unknown): boolean {
+  return typeof raw === 'object' && raw !== null && (raw as { ai?: unknown }).ai === true;
+}
 
 /** 설정 창 ↔ 메인 */
 export const GCAL = {
@@ -20,7 +38,10 @@ export const GCAL = {
   cancel: 'gcal:cancel',
   disconnect: 'gcal:disconnect',
   setPush: 'gcal:set-push',
-  setCalendar: 'gcal:set-calendar',
+  setPull: 'gcal:set-pull',
+  setAi: 'gcal:set-ai',
+  setCalendars: 'gcal:set-calendars',
+  listCalendars: 'gcal:list-calendars',
   syncNow: 'gcal:sync-now',
   /** 메인 → 설정 창: 상태가 바뀌었다 */
   changed: 'gcal:changed',
@@ -59,6 +80,24 @@ export interface GcalStatus {
   calendarId: string;
   /** 마지막으로 다 보낸 때 (ms) */
   lastSyncAt: number | null;
+  /** 고른 캘린더의 원래 일정을 페어리로 읽어 오기 (이슈 #54) */
+  pull: boolean;
+  /** 가져온 구글 일정도 AI(대화 자료, 오늘 뭐부터, 계획 다듬기, 펫 MCP 도구)에 보이기. 기본 꺼짐 */
+  ai: boolean;
+  /** 가져올 캘린더들 (구글 캘린더 옵션 창) */
+  pullCals: string[];
+  /** 내 캘린더 목록 (이름, 색, 권한). 아직 못 읽었으면 null */
+  calendars: GcalCalendar[] | null;
+  /** 연결에 캘린더 목록 권한이 있는지. 예전 연결이면 false (다시 연결 안내), 모르면 null */
+  listScope: boolean | null;
+  /** 캘린더 목록을 읽는 중 */
+  listing: boolean;
+  /** 지난번에 다 못 읽은 캘린더 */
+  pullFailed: string[];
+  /** 마지막으로 다 읽어 온 때 (ms) */
+  lastPullAt: number | null;
+  /** 마지막으로 읽어 온 일정 수 */
+  pulled: number;
   /** 아직 못 보낸 일정 수 */
   pending: number;
   problem: GcalProblem | null;
@@ -71,8 +110,12 @@ export interface GcalBridge {
   cancel(): void;
   disconnect(): Promise<GcalStatus>;
   setPush(on: boolean): Promise<GcalStatus>;
-  /** 틀린 모양이면 그대로 둔다 */
-  setCalendar(id: string): Promise<GcalStatus>;
+  setPull(on: boolean): Promise<GcalStatus>;
+  setAi(on: boolean): Promise<GcalStatus>;
+  /** 옵션 창에서 고른 것. 틀렸거나 읽기만 캘린더로 보내기면 그대로 둔다 */
+  setCalendars(c: CalChoice): Promise<GcalStatus>;
+  /** 내 캘린더 목록 다시 읽기 */
+  listCalendars(): Promise<GcalStatus>;
   syncNow(): Promise<GcalStatus>;
   /** 듣기를 그만두는 함수를 돌려준다 (탭을 오갈 때 듣는 것이 쌓이지 않게) */
   onChanged(listener: (s: GcalStatus) => void): () => void;
@@ -87,7 +130,8 @@ export function cleanCalendarId(raw: unknown): string | undefined {
   const v = raw.trim();
   if (!v || v.toLowerCase() === GCAL_PRIMARY) return GCAL_PRIMARY;
   if (v.length > 254) return undefined;
-  return /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(v) ? v : undefined;
+  // 공휴일 같은 구독 캘린더 id 에는 # 가 든다 (ko.south_korea#holiday@group.v.calendar.google.com). 경로에는 encodeURIComponent 로 넣는다
+  return /^[A-Za-z0-9._%+#-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(v) ? v : undefined;
 }
 
 /** 구글에 보내는 일정 (Calendar API v3 Event 의 쓰는 칸만) */
@@ -237,4 +281,41 @@ export class GcalBackoff {
   clear(): void {
     this.#m.clear();
   }
+}
+
+/**
+ * 일정 줄에 붙는 구글 표식 (패널 일정 탭). 구글 연결이 없으면 붙이지 않는다.
+ * - sent: 지금 내용 그대로 구글에 들어가 있다
+ * - pending: 보낼 차례를 기다린다 (방금 넣거나 고침, 인터넷이 안 됨)
+ * - failed: 구글이 받지 않았다 (고치면 다시 보내 본다)
+ * - local: 페어리에만 있다 (보내기를 꺼 두었거나, 보내기를 켜기 전의 지난 일정)
+ * 캘린더 가져오기(.ics)로 들어온 일정은 표식 대신 일정의 source 로 따로 보인다
+ */
+export type GcalMark = 'sent' | 'pending' | 'failed' | 'local';
+
+/** 패널에 주는 구글 상태 */
+export interface PanelGcal {
+  /** 일정 id → 표식 (짝꿍이 넣은 일정만) */
+  marks: Record<number, GcalMark>;
+  /** 보내기를 멈춘 까닭 (pending 툴팁에 쓴다) */
+  problem: GcalProblem | null;
+}
+
+/** 구글에서 읽어 온 일정이 든 캘린더 (일정 줄의 이름과 색 점) */
+export interface GcalCalLabel {
+  name: string;
+  color: string | null;
+}
+
+/**
+ * 고치기(PATCH)에 보낼 일정. 구글 PATCH 는 안쪽 객체(start, end)를 합쳐서, 종일과 시각 일정 사이를 바꾸면
+ * 옛 칸(date 나 dateTime)이 남아 둘 다 있는 일정이 되고 구글이 받지 않는다(400). 반대쪽 칸을 null 로 지운다
+ */
+export function toGooglePatch(b: GcalBody): Omit<GcalBody, 'start' | 'end'> & {
+  start: Record<string, string | null>;
+  end: Record<string, string | null>;
+} {
+  const clear = (v: GcalTime): Record<string, string | null> =>
+    'date' in v ? { ...v, dateTime: null, timeZone: null } : { ...v, date: null };
+  return { ...b, start: clear(b.start), end: clear(b.end) };
 }

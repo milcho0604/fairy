@@ -5,6 +5,7 @@ import {
   dayIn,
   GCAL_PRIMARY,
   GcalBackoff,
+  gcalAiOn,
   gcalHash,
   isGoogleId,
   newGoogleId,
@@ -163,4 +164,10 @@ test('다시 하기 간격: 30초부터 두 배씩 30분까지, 받지 않는 �
   const j = new GcalBackoff(() => 0.999);
   const at = j.fail('x', 0);
   assert.ok(at > 30_000 && at <= 36_000);
+});
+
+test('AI 가 구글 일정도 보기: 설정 파일에 ai 가 true 일 때만 켬 (없거나 깨졌거나 다른 값이면 꺼짐)', () => {
+  assert.equal(gcalAiOn({ ai: true }), true);
+  for (const v of [undefined, null, '{', 1, [], {}, { ai: false }, { ai: 'true' }, { ai: 1 }])
+    assert.equal(gcalAiOn(v), false);
 });
