@@ -768,7 +768,8 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
     v: 2,
     stance: 'stand',
     gait: 'quadruped',
-    fur: { length: 0.5, clump: 0.3 },
+    // 실사 털을 조금 더 (2026-10-13 사용자): 0.6 을 넘겨 윤곽에 털 다발이 새겨지고(pet3d.ts sculptOutline long) 털 껍질도 조금 길다
+    fur: { length: 0.62, clump: 0.3 },
     motion: { bounce: 0.55, tailWag: 0.8, earWiggle: 1 },
     parts: [
       {
@@ -1149,7 +1150,8 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
     v: 2,
     stance: 'stand',
     gait: 'quadruped',
-    fur: { length: 0.45, clump: 0.3 },
+    // 실사 털을 조금 더 (2026-10-13 사용자): 0.6 을 넘겨 윤곽에 털 다발이 새겨지고(pet3d.ts sculptOutline long) 털 껍질도 조금 길다
+    fur: { length: 0.62, clump: 0.3 },
     motion: { bounce: 0.7, tailWag: 0.4, earWiggle: 0.8 },
     parts: [
       {
@@ -1231,9 +1233,18 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
   },
 };
 
+/**
+ * 복슬복슬 모습: 실사와 같은 몸에 털을 덮는다. 냥이, 곰돌이의 실사 털을 늘린 것(2026-10-13)은 복슬복슬에 넣지 않는다
+ * (이미 털이 많아 더 늘리면 다리 윤곽이 뭉개진다)
+ */
+const FLUFFY_BLUEPRINTS: Record<RealKind, Blueprint> = {
+  ...REAL_BLUEPRINTS,
+  cat: { ...REAL_BLUEPRINTS.cat, fur: { length: 0.5, clump: 0.3 } },
+  bear: { ...REAL_BLUEPRINTS.bear, fur: { length: 0.45, clump: 0.3 } },
+};
+
 /** 모습에 맞는 기본 펫 설계도: 피규어, 게임은 동그란 몸, 실사와 복슬복슬(실사 위에 털을 덮는다)은 실제 동물 몸 */
 export function defaultBlueprint(kind: PetKind, style: PetStyle): Blueprint {
-  if (style === 'real' || style === 'fluffy')
-    return (REAL_BLUEPRINTS as Partial<Record<PetKind, Blueprint>>)[kind] ?? DEFAULT_BLUEPRINTS[kind];
-  return DEFAULT_BLUEPRINTS[kind];
+  const set = style === 'real' ? REAL_BLUEPRINTS : style === 'fluffy' ? FLUFFY_BLUEPRINTS : undefined;
+  return (set as Partial<Record<PetKind, Blueprint>> | undefined)?.[kind] ?? DEFAULT_BLUEPRINTS[kind];
 }
