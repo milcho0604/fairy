@@ -1,52 +1,26 @@
-// 손그림 2D 냥이, 곰돌이 그림 불러오기 (cute2d.ts). 그림 자리는 빌드가 알도록 하나씩 적는다 (new URL 은 글자 그대로여야
-// 빌드가 파일을 같이 낸다). 시험(node)에서는 Image 가 없어 불러오지 않는다: 그때 draw.ts 는 예전 코드 그림을 그린다
+// 손그림 2D 기본 펫 그림 불러오기 (cute2d.ts). 그림 자리는 빌드가 art/cute2d/<모양>/<자세>.svg 를 모아 준다
+// (import.meta.glob: 새 모양 폴더를 두면 따로 적지 않아도 같이 나간다). 시험(node)에는 import.meta.glob 도 Image 도 없어
+// 불러오지 않는다: 그때 draw.ts 는 예전 코드 그림을 그린다
 
 import { CUTE_POSES, type CuteKind, type CutePose } from './cute2d.ts';
 
-const URLS: Record<CuteKind, Record<CutePose, string>> = {
-  cat: {
-    idle: new URL('./art/cute2d/cat/idle.svg', import.meta.url).href,
-    sit: new URL('./art/cute2d/cat/sit.svg', import.meta.url).href,
-    sleep: new URL('./art/cute2d/cat/sleep.svg', import.meta.url).href,
-    happy: new URL('./art/cute2d/cat/happy.svg', import.meta.url).href,
-    hungry: new URL('./art/cute2d/cat/hungry.svg', import.meta.url).href,
-    grab: new URL('./art/cute2d/cat/grab.svg', import.meta.url).href,
-    sulky: new URL('./art/cute2d/cat/sulky.svg', import.meta.url).href,
-    doze: new URL('./art/cute2d/cat/doze.svg', import.meta.url).href,
-    wave: new URL('./art/cute2d/cat/wave.svg', import.meta.url).href,
-    yawn: new URL('./art/cute2d/cat/yawn.svg', import.meta.url).href,
-    'talk-0': new URL('./art/cute2d/cat/talk-0.svg', import.meta.url).href,
-    'talk-1': new URL('./art/cute2d/cat/talk-1.svg', import.meta.url).href,
-    back: new URL('./art/cute2d/cat/back.svg', import.meta.url).href,
-    'walk-0': new URL('./art/cute2d/cat/walk-0.svg', import.meta.url).href,
-    'walk-1': new URL('./art/cute2d/cat/walk-1.svg', import.meta.url).href,
-    'walk-2': new URL('./art/cute2d/cat/walk-2.svg', import.meta.url).href,
-    'walk-3': new URL('./art/cute2d/cat/walk-3.svg', import.meta.url).href,
-    'walk-4': new URL('./art/cute2d/cat/walk-4.svg', import.meta.url).href,
-    'walk-5': new URL('./art/cute2d/cat/walk-5.svg', import.meta.url).href,
-  },
-  bear: {
-    idle: new URL('./art/cute2d/bear/idle.svg', import.meta.url).href,
-    sit: new URL('./art/cute2d/bear/sit.svg', import.meta.url).href,
-    sleep: new URL('./art/cute2d/bear/sleep.svg', import.meta.url).href,
-    happy: new URL('./art/cute2d/bear/happy.svg', import.meta.url).href,
-    hungry: new URL('./art/cute2d/bear/hungry.svg', import.meta.url).href,
-    grab: new URL('./art/cute2d/bear/grab.svg', import.meta.url).href,
-    sulky: new URL('./art/cute2d/bear/sulky.svg', import.meta.url).href,
-    doze: new URL('./art/cute2d/bear/doze.svg', import.meta.url).href,
-    wave: new URL('./art/cute2d/bear/wave.svg', import.meta.url).href,
-    yawn: new URL('./art/cute2d/bear/yawn.svg', import.meta.url).href,
-    'talk-0': new URL('./art/cute2d/bear/talk-0.svg', import.meta.url).href,
-    'talk-1': new URL('./art/cute2d/bear/talk-1.svg', import.meta.url).href,
-    back: new URL('./art/cute2d/bear/back.svg', import.meta.url).href,
-    'walk-0': new URL('./art/cute2d/bear/walk-0.svg', import.meta.url).href,
-    'walk-1': new URL('./art/cute2d/bear/walk-1.svg', import.meta.url).href,
-    'walk-2': new URL('./art/cute2d/bear/walk-2.svg', import.meta.url).href,
-    'walk-3': new URL('./art/cute2d/bear/walk-3.svg', import.meta.url).href,
-    'walk-4': new URL('./art/cute2d/bear/walk-4.svg', import.meta.url).href,
-    'walk-5': new URL('./art/cute2d/bear/walk-5.svg', import.meta.url).href,
-  },
-};
+declare global {
+  interface ImportMeta {
+    glob(pattern: string, o: { eager: true; query: '?url'; import: 'default' }): Record<string, string>;
+  }
+}
+
+/** 빌드가 넣어 준 그림 주소 (열쇠는 ./art/cute2d/<모양>/<자세>.svg). node 에서는 빈 것 */
+function artFiles(): Record<string, string> {
+  try {
+    return import.meta.glob('./art/cute2d/*/*.svg', { eager: true, query: '?url', import: 'default' });
+  } catch {
+    return {};
+  }
+}
+const FILES = artFiles();
+const urlOf = (kind: CuteKind, pose: CutePose): string | undefined =>
+  FILES[`./art/cute2d/${kind}/${pose}.svg`];
 
 type Art = Record<CutePose, HTMLImageElement>;
 const art: Partial<Record<CuteKind, Art>> = {};
@@ -61,11 +35,12 @@ export function cuteArt(kind: CuteKind): Art | undefined {
 /** 그림 묶음을 불러온다. 다 풀리면 true (못 풀면 false: 예전 코드 그림으로 그린다) */
 export function loadCuteArt(kind: CuteKind): Promise<boolean> {
   if (art[kind]) return Promise.resolve(true);
-  if (typeof Image === 'undefined') return Promise.resolve(false);
+  // 한 장이라도 빠진 모양은 쓰지 않는다 (예전 코드 그림)
+  if (typeof Image === 'undefined' || CUTE_POSES.some((p) => !urlOf(kind, p))) return Promise.resolve(false);
   loading[kind] ??= Promise.all(
     CUTE_POSES.map(async (p) => {
       const img = new Image();
-      img.src = URLS[kind][p];
+      img.src = urlOf(kind, p) ?? '';
       await img.decode();
       return [p, img] as const;
     }),

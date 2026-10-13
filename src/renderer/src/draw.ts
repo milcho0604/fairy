@@ -16,18 +16,7 @@ import type { PetKind } from '../../shared/settings.ts';
 import type { PhotoEyes } from '../../shared/starter-pets.ts';
 import type { NoteLook } from '../../shared/together.ts';
 import type { Outfit } from '../../shared/wear.ts';
-import {
-  ART_CX,
-  ART_GROUND,
-  ART_SCALE,
-  artTop,
-  cutePose,
-  FACE_CUT,
-  HEAD_R,
-  headOf,
-  isCuteKind,
-  SCARF_DROP,
-} from './cute2d.ts';
+import { ART_CX, ART_GROUND, CUTE_GEOM, type CuteKind, cutePose, isCuteKind } from './cute2d.ts';
 import { cuteArt, loadCuteArt } from './cute2d-art.ts';
 import { drawMagnifier } from './magnifier.ts';
 import { Eased } from './motion-ease.ts';
@@ -564,7 +553,7 @@ function drawPetBody(ctx: CanvasRenderingContext2D, s: DrawState): Point | undef
   // 냥이와 곰돌이는 손그림 (cute2d.ts). 그림이 아직 안 풀렸으면 불러오기를 걸고 이번 틀은 예전 코드 그림으로
   if (isCuteKind(kind)) {
     const pics = cuteArt(kind);
-    if (pics) return drawCute(ctx, s, pics, act, lift, sx, sy, mv);
+    if (pics) return drawCute(ctx, s, kind, pics, act, lift, sx, sy, mv);
     void loadCuteArt(kind);
   }
   // 공을 물 때 고개를 숙인다: 2D 는 몸이 곧 머리라 몸을 조금 눌러 얼굴을 내린다
@@ -1611,6 +1600,7 @@ function drawYawn(ctx: CanvasRenderingContext2D, x: number) {
 function drawCute(
   ctx: CanvasRenderingContext2D,
   s: DrawState,
+  kind: CuteKind,
   pics: NonNullable<ReturnType<typeof cuteArt>>,
   act: DrawState['activity'],
   lift: number,
@@ -1635,9 +1625,10 @@ function drawCute(
       sy = tired.sy;
     }
   }
-  const k = ART_SCALE;
+  const geom = CUTE_GEOM[kind];
+  const k = geom.scale;
   // 뛰어도 그림 꼭대기(귀, 별)가 캔버스 위로 잘리지 않게
-  const tall = (ART_GROUND - artTop(pick.pose)) * k;
+  const tall = (ART_GROUND - geom.top(pick.pose)) * k;
   lift = Math.min(lift, GROUND - 2 - tall * sy);
   if (mv) lift += 8 * Math.abs(Math.sin(mv.turn * 0.7));
   const bottom = GROUND - lift;
@@ -1658,39 +1649,40 @@ function drawCute(
   ctx.translate(-ART_CX, -ART_GROUND);
   if (s.face) {
     // 얼굴 아이콘은 머리와 귀만 (pet-face.ts 가 그린 데를 잘라 쓴다). 머리 자리와 기울기에 맞춘 머리 좌표에서 자른다
-    const h = headOf(pick.pose);
+    const h = geom.head(pick.pose);
     ctx.save();
     ctx.translate(h.x, h.y);
     ctx.rotate((h.rot * Math.PI) / 180);
     ctx.beginPath();
-    ctx.rect(FACE_CUT.x0 - ART_CX, -FACE_CUT.up, FACE_CUT.x1 - FACE_CUT.x0, FACE_CUT.up);
-    ctx.moveTo(FACE_CUT.rx, 0);
-    ctx.ellipse(0, 0, FACE_CUT.rx, FACE_CUT.ry, 0, 0, Math.PI * 2);
+    const cut = geom.faceCut;
+    ctx.rect(cut.x0 - ART_CX, -cut.up, cut.x1 - cut.x0, cut.up);
+    ctx.moveTo(cut.rx, 0);
+    ctx.ellipse(0, 0, cut.rx, cut.ry, 0, 0, Math.PI * 2);
     ctx.restore();
     ctx.clip();
   }
   ctx.drawImage(pics[pick.pose], 0, 0, 512, 512);
   // 철마다 옷: 코드 그림의 몸(반지름 58x50)을 그림 속 머리에 맞춘다. 등 돌린 그림은 뒷모습 옷
   if (s.wear && !s.face) {
-    const h = headOf(pick.pose);
+    const h = geom.head(pick.pose);
     ctx.translate(h.x, h.y);
     ctx.rotate((h.rot * Math.PI) / 180);
-    ctx.scale(HEAD_R.x / RX, HEAD_R.y / RY);
+    ctx.scale(geom.headR.x / RX, geom.headR.y / RY);
     // 목도리는 코드 그림에서 입 아래(몸 가운데 조금 아래)라 머리에 맞추면 입을 가린다. 머리 아래 목으로 내린다
-    if (s.wear === 'scarf') ctx.translate(0, SCARF_DROP);
+    if (s.wear === 'scarf') ctx.translate(0, geom.scarfDrop);
     drawWear2D(ctx, s.wear, pick.pose === 'back');
   }
   ctx.restore();
   // 그림 속 머리와 눈, 입 자리 (그림 좌표를 캔버스로. 기울기는 작아서 뺀다)
-  const head = headOf(pick.pose);
+  const head = geom.head(pick.pose);
   const at = (x: number, y: number): Point => ({
     x: CX + dx + (pick.flip ? -1 : 1) * (x - ART_CX) * k * sx,
     y: bottom + (y - ART_GROUND) * k * sy,
   });
-  const ball = drawCarry(ctx, s.carry, at(head.x, head.y + 56));
+  const ball = drawCarry(ctx, s.carry, at(head.x, head.y + geom.mouthDy));
   const eyes: Model3D = {
     draw: () => undefined,
-    eye: (side) => at(head.x + side * 58, head.y + 24),
+    eye: (side) => at(head.x + side * geom.eye.dx, head.y + geom.eye.dy),
   };
   drawPeer(ctx, s, top, bottom, PHOTO_EYE_AT, eyes);
   drawTogetherOver(ctx, s, act, top, bottom);

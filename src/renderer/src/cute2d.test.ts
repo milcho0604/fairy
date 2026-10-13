@@ -6,14 +6,12 @@ import type { PetMood } from '../../shared/pet-mood.ts';
 import { PET_KIND_IDS } from '../../shared/settings.ts';
 import {
   ART_GROUND,
-  ART_SCALE,
-  artTop,
+  CUTE_GEOM,
   CUTE_KINDS,
   CUTE_POSES,
   type CuteInput,
   type CutePose,
   cutePose,
-  headOf,
   isCuteKind,
   TALK_FLIP_MS,
 } from './cute2d.ts';
@@ -128,10 +126,12 @@ test('그림 파일이 자세마다 있고 512 판, 이름표가 붙어 있다',
 });
 
 test('가장 큰 그림도 바닥(154)에 서서 펫 캔버스(160) 안에 든다', () => {
-  for (const pose of CUTE_POSES) {
-    const tall = (ART_GROUND - artTop(pose)) * ART_SCALE;
-    assert.ok(tall <= 150, `${pose} ${tall}`);
-    const h = headOf(pose as CutePose);
-    assert.ok(h.y > artTop(pose) && h.y < ART_GROUND, pose);
-  }
+  for (const kind of CUTE_KINDS)
+    for (const pose of CUTE_POSES) {
+      const g = CUTE_GEOM[kind];
+      const tall = (ART_GROUND - g.top(pose)) * g.scale;
+      assert.ok(tall <= 150, `${kind} ${pose} ${tall}`);
+      const h = g.head(pose as CutePose);
+      assert.ok(h.y > g.top(pose) && h.y < ART_GROUND, `${kind} ${pose}`);
+    }
 });
