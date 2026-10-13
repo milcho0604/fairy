@@ -228,7 +228,7 @@ test('걸음새: 네 발, 두 발만 받고 모르는 값은 버린다. 요청�
   assert.equal(parseBlueprint({ ...base, gait: 'biped' })?.gait, 'biped');
   assert.equal(parseBlueprint({ ...base, gait: 'hexapod' })?.gait, undefined);
   assert.equal(parseBlueprint({ ...base, gait: 4 })?.gait, undefined);
-  // 기본 펫: 토순이는 네 발, 냥이와 멍멍이는 팔이 있어 두 발로 적고, 콩이와 삐약이는 적지 않는다(두 발)
+  // 기본 펫: 토순이는 네 발, 냥이와 멍멍이는 팔이 있어 두 발로 적고, 콩이, 삐약이, 햄찌, 뒤뚱이, 곰돌이는 적지 않는다(두 발)
   assert.deepEqual(
     Object.entries(DEFAULT_BLUEPRINTS).map(([k, bp]) => [k, bp.gait]),
     [
@@ -237,6 +237,9 @@ test('걸음새: 네 발, 두 발만 받고 모르는 값은 버린다. 요청�
       ['chick', undefined],
       ['dog', 'biped'],
       ['bunny', 'quadruped'],
+      ['hamster', undefined],
+      ['penguin', undefined],
+      ['bear', undefined],
     ],
   );
   // 모든 기본 펫에 손(팔이나 날개)이 있다 (2026-10-11 사용자 규칙)

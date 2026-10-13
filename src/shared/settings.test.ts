@@ -289,16 +289,16 @@ test('이름 글자 수: 사람이 보는 글자로 센다 (이모지 묶음, �
   assert.ok([...(cleanPetName(zalgo.repeat(3)) ?? '')].length <= PET_NAME_MAX * 8);
 });
 
-test('기본 이름은 모습을 따른다: 콩이, 냥이, 삐약이, 멍멍이, 토순이 (영어도)', () => {
+test('기본 이름은 모습을 따른다: 콩이, 냥이, 삐약이, 멍멍이, 토순이, 햄찌, 뒤뚱이, 곰돌이 (영어도)', () => {
   assert.deepEqual(
     PET_KINDS.map((k) => defaultPetName(k.id)),
-    ['콩이', '냥이', '삐약이', '멍멍이', '토순이'],
+    ['콩이', '냥이', '삐약이', '멍멍이', '토순이', '햄찌', '뒤뚱이', '곰돌이'],
   );
   setLang('en');
   try {
     assert.deepEqual(
       PET_KINDS.map((k) => defaultPetName(k.id)),
-      ['Kongi', 'Kitty', 'Peeps', 'Buddy', 'Bunbun'],
+      ['Kongi', 'Kitty', 'Peeps', 'Buddy', 'Bunbun', 'Nibbles', 'Waddles', 'Teddy'],
     );
   } finally {
     setLang('ko');

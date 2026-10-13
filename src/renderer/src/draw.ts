@@ -1,4 +1,7 @@
-// 코드로 그린 기본 펫. 콩, 냥이, 삐약이 세 가지 (v1, D6 그림 대신). 사진 펫(P1-08)이면 몸통 대신 사진.
+// 코드로 그린 기본 펫 (v1, D6 그림 대신). 사진 펫(P1-08)이면 몸통 대신 사진.
+// 콩이와 삐약이가 귀여운 까닭을 모든 기본 펫에 지킨다 (2026-10-12 사용자 요청 "콩이, 삐약이처럼 귀엽게"):
+// 동그란 몸 하나가 곧 얼굴이고 캔버스를 채운다, 눈은 작고 멀찍이 떨어져 얼굴 가운데보다 아래, 얼굴 위 선은 적게
+// (특징은 하나만: 콩이 새싹, 삐약이 깃털과 부리), 맑고 따뜻한 파스텔 한 색. 몸 테두리 밖으로 크게 삐져나온 것은 귀뿐
 
 import type { EnergyLook } from '../../shared/energy.ts';
 import { heldAt } from '../../shared/fetch.ts';
@@ -50,11 +53,23 @@ const HEART = '#ff6b8a';
 /** 기본 펫 색 */
 const COLORS: Record<PetKind, { body: string; line: string }> = {
   kong: { body: '#ffd8a8', line: '#c4854a' },
-  cat: { body: '#ece6df', line: '#8d8178' },
+  // 냥이: 옅은 하늘빛 회색 (예전 잿빛 베이지는 탁해 보였다)
+  cat: { body: '#e3e8f3', line: '#8a91aa' },
   chick: { body: '#ffe27a', line: '#d29d00' },
-  dog: { body: '#f0cfa0', line: '#a8743f' },
+  // 멍멍이: 크림빛 흰 강아지에 캐러멜 귀와 한쪽 눈 얼룩 (예전 갈색 몸은 콩이와 비슷하고 귀가 헤드폰처럼 보였다)
+  dog: { body: '#fff3e2', line: '#b48b62' },
   bunny: { body: '#f6f0f2', line: '#a3949a' },
+  // 햄찌: 위는 노릇한 황금색, 볼과 배는 흰색
+  hamster: { body: '#f6c88e', line: '#c48a4d' },
+  // 뒤뚱이: 남색 몸에 흰 얼굴과 배
+  penguin: { body: '#56668a', line: '#3a4562' },
+  // 곰돌이: 밀크초코 몸에 크림 주둥이
+  bear: { body: '#cf9f72', line: '#8e6140' },
 };
+/** 멍멍이 귀, 눈 얼룩, 꼬리 색 */
+const DOG_SPOT = '#e3a66a';
+/** 몸 아래쪽을 덮는 흰 털 (햄찌 볼과 배, 뒤뚱이 얼굴과 배) */
+const WHITE_FUR = '#fffaf3';
 let BODY = COLORS.kong.body;
 let LINE = COLORS.kong.line;
 
@@ -363,7 +378,16 @@ const MIN_SIZE_FOR_TEXT = 120;
 
 const CX = 80;
 /** 몸 꼭대기 위로 귀나 깃털이 나온 높이 (2D) */
-const EAR_TOP: Record<PetKind, number> = { kong: 0, cat: 14, chick: 14, dog: 0, bunny: 44 };
+const EAR_TOP: Record<PetKind, number> = {
+  kong: 0,
+  cat: 12,
+  chick: 14,
+  dog: 0,
+  bunny: 44,
+  hamster: 6,
+  penguin: 0,
+  bear: 10,
+};
 const GROUND = 154;
 const RX = 58;
 const RY = 50;
@@ -567,7 +591,7 @@ function drawPetBody(ctx: CanvasRenderingContext2D, s: DrawState): Point | undef
     const footLift = act?.type === 'walk' ? 0 : lift;
     if (act?.type === 'walk' && quadKind(kind, s.gait))
       drawHindFeet(ctx, act.dir, step, footLift, [slide(0.5), slide(0)]);
-    ctx.fillStyle = BODY;
+    ctx.fillStyle = FEET[kind] ?? BODY;
     ctx.strokeStyle = LINE;
     ctx.lineWidth = 2;
     for (const [side, up, dx] of [
@@ -593,6 +617,7 @@ function drawPetBody(ctx: CanvasRenderingContext2D, s: DrawState): Point | undef
   // 꼬리는 평소 몸 뒤에 숨어 있다가 흔들 때 옆으로 나온다 (냥이, 멍멍이)
   if (mv && mv.tailOut > 0 && (kind === 'cat' || kind === 'dog')) drawTail(ctx, kind, mv.tail, mv.tailOut);
   if (kind === 'cat') drawCatEars(ctx, mv?.ears);
+  if (kind === 'hamster' || kind === 'bear') drawRoundEars(ctx, kind, mv?.ears);
   if (kind === 'bunny') {
     // 폴짝 뛰는 동안은 귀를 양옆으로 젖힌다 (hopEars)
     const a = mv && act && 't' in act ? hopEars(act.type, mv.legs[0] / 0.6) : 0;
@@ -604,6 +629,12 @@ function drawPetBody(ctx: CanvasRenderingContext2D, s: DrawState): Point | undef
   ctx.ellipse(0, 0, RX, RY, 0, 0, Math.PI * 2);
   ctx.fillStyle = BODY;
   ctx.fill();
+  // 몸 무늬 (햄찌 흰 배, 뒤뚱이 흰 얼굴, 냥이 이마 줄무늬): 테두리 전에 몸 안에만 칠한다. 등을 돌리면 안 보인다
+  if (sulkStage(s) < 3 && drawCoat(ctx, kind)) {
+    // 무늬가 길을 새로 그렸으니 테두리 길을 다시 잡는다
+    ctx.beginPath();
+    ctx.ellipse(0, 0, RX, RY, 0, 0, Math.PI * 2);
+  }
   ctx.lineWidth = 2;
   ctx.strokeStyle = LINE;
   ctx.stroke();
@@ -661,6 +692,8 @@ function drawPetBody(ctx: CanvasRenderingContext2D, s: DrawState): Point | undef
 
   if (kind === 'chick') drawTuft(ctx);
   if (kind === 'cat') drawWhiskers(ctx, look);
+  if (kind === 'dog') drawEyeSpot(ctx, look, g);
+  if (kind === 'bear') drawMuzzle(ctx, look);
 
   const yawning = act?.type === 'yawn' && act.t > 0.15 && act.t < 0.85;
   // 몸짓 눈: 질끈(잠든 눈), 웃는 눈(신남), 반쯤(졸음), 동그랗게(조금 크게)
@@ -689,11 +722,26 @@ function drawPetBody(ctx: CanvasRenderingContext2D, s: DrawState): Point | undef
   if (workOf(s) !== undefined && !yawning && !mv?.eyes && s.mood !== 'excited')
     for (const side of [-1, 1] as const)
       drawBrow(ctx, side * 20 + look + (g ? g.x * 3 : 0), -6 + (g ? g.y * 2.5 : 0), side);
-  if (kind === 'chick') drawBeak(ctx, s.mood, look, yawning || mv?.mouth === 'open' || mv?.mouth === 'o');
-  else if (yawning) drawYawn(ctx, look);
-  else if (mv?.mouth) drawMouth(ctx, mv.mouth === 'o' ? 'sleeping' : 'talking', look);
-  else if (s.hungry && s.mood === 'idle') drawHungryMouth(ctx, look);
-  else drawMouth(ctx, s.mood, look);
+  if (kind === 'chick' || kind === 'penguin')
+    drawBeak(
+      ctx,
+      s.mood,
+      look,
+      yawning || mv?.mouth === 'open' || mv?.mouth === 'o',
+      kind === 'penguin' ? 0.8 : 1,
+    );
+  else {
+    // 코 (냥이 분홍 세모, 멍멍이와 곰돌이 까만 코, 햄찌 분홍 점): 입 위
+    drawNose(ctx, kind, look);
+    if (yawning) drawYawn(ctx, look);
+    else if (mv?.mouth) drawMouth(ctx, mv.mouth === 'o' ? 'sleeping' : 'talking', look);
+    else if (s.hungry && s.mood === 'idle') drawHungryMouth(ctx, look);
+    else if ((kind === 'cat' || kind === 'hamster') && (s.mood === 'idle' || s.mood === 'excited')) {
+      // 냥이와 햄찌는 웃을 때 ω 입. 햄찌는 그 아래 앞니 둘
+      drawCatMouth(ctx, look);
+      if (kind === 'hamster') drawTeeth(ctx, look);
+    } else drawMouth(ctx, s.mood, look);
+  }
   ctx.restore();
   // 철마다 옷: 얼굴 다음, 손 전에 (든 손과 쉬는 손이 늘 옷 위에 보이게)
   if (s.wear && !s.face) drawWear2D(ctx, s.wear);
@@ -865,11 +913,18 @@ function drawHindFeet(
  */
 const HAND: Record<PetKind, { color: string; pad: boolean; wing?: boolean }> = {
   kong: { color: COLORS.kong.body, pad: true },
-  cat: { color: '#fbf8f4', pad: true },
-  dog: { color: '#fbefdc', pad: true },
+  cat: { color: '#fbfcff', pad: true },
+  dog: { color: '#fffaf2', pad: true },
   bunny: { color: '#fffafa', pad: true },
   chick: { color: '#ffd24d', pad: false, wing: true },
+  hamster: { color: '#ffe3dc', pad: true },
+  // 뒤뚱이는 날개(지느러미) 손
+  penguin: { color: '#475674', pad: false, wing: true },
+  bear: { color: COLORS.bear.body, pad: true },
 };
+
+/** 발 색. 없으면 몸 색 (뒤뚱이는 주황 발, 햄찌는 분홍 발) */
+const FEET: Partial<Record<PetKind, string>> = { penguin: '#ffad4d', hamster: '#ffd9d0' };
 
 /**
  * 손을 드는 정도 0~1 (양손 [왼, 오른], 화면 기준). 신나면(밥 먹기, 큰 축하도) 통통 흔들며 들고, 빙글 춤과 기지개는 활짝,
@@ -1171,22 +1226,181 @@ function drawCushion(ctx: CanvasRenderingContext2D) {
   ctx.restore();
 }
 
-/** 멍멍이: 옆으로 처진 갈색 귀 (몸 위에 겹쳐 그린다) */
+/**
+ * 멍멍이: 머리 위 양옆에서 늘어진 캐러멜 귀 (몸 위에 겹쳐 그린다). 밑동은 몸 테두리 안 머리 위에 붙고 끝은 몸 옆으로
+ * 살짝만 나온다 (예전에는 몸 양옆에 큰 타원이 붙어 헤드폰처럼 보이고 동그란 몸 윤곽이 깨졌다)
+ */
 function drawDogEars(ctx: CanvasRenderingContext2D, flick: readonly [number, number] = [0, 0]) {
   for (const side of [-1, 1] as const) {
-    // 처진 귀는 윗부분을 축으로 바깥쪽으로 펄럭
-    const a = earAngle(flick, side) * -side;
+    // 처진 귀는 밑동을 축으로 바깥쪽으로 펄럭
     ctx.save();
-    ctx.translate(side * 44, -RY + 14);
-    ctx.rotate(a);
-    ctx.translate(-side * 44, RY - 14);
+    earTurn(ctx, side * 30, -RY + 6, side, -earAngle(flick, side));
     ctx.beginPath();
-    ctx.ellipse(side * 50, -RY + 34, 13, 24, side * 0.35, 0, Math.PI * 2);
-    ctx.fillStyle = '#b9824c';
+    // 물방울 모양: 밑동은 좁고 끝은 둥글다
+    ctx.moveTo(side * 20, -RY + 6);
+    ctx.bezierCurveTo(side * 40, -RY - 6, side * 64, -RY + 10, side * 60, -RY + 36);
+    ctx.bezierCurveTo(side * 57, -RY + 50, side * 42, -RY + 48, side * 40, -RY + 34);
+    ctx.bezierCurveTo(side * 38, -RY + 22, side * 30, -RY + 14, side * 20, -RY + 6);
+    ctx.closePath();
+    ctx.fillStyle = DOG_SPOT;
     ctx.fill();
     ctx.lineWidth = 2;
     ctx.strokeStyle = LINE;
     ctx.stroke();
+    ctx.restore();
+  }
+}
+
+/** 멍멍이 한쪽(보는 사람 왼쪽) 눈의 캐러멜 얼룩 (눈 밑에 깐다. 눈 자리는 drawEyes 와 같은 계산) */
+function drawEyeSpot(ctx: CanvasRenderingContext2D, look: number, g?: Gaze) {
+  ctx.save();
+  ctx.fillStyle = DOG_SPOT;
+  ctx.globalAlpha = 0.75;
+  ctx.beginPath();
+  ctx.ellipse(-21 + look + (g ? g.x * 1.5 : 0), -7, 13, 11, -0.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+/** 곰돌이 크림 주둥이 (코와 입이 여기 얹힌다) */
+function drawMuzzle(ctx: CanvasRenderingContext2D, look: number) {
+  ctx.save();
+  ctx.fillStyle = '#f6e3c9';
+  ctx.beginPath();
+  ctx.ellipse(look, 9, 17, 12.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+/** 코: 냥이 분홍 세모, 멍멍이와 곰돌이 까만 타원, 햄찌 분홍 점. 콩이와 토순이는 없다 */
+function drawNose(ctx: CanvasRenderingContext2D, kind: PetKind, x: number) {
+  ctx.save();
+  ctx.beginPath();
+  if (kind === 'cat') {
+    ctx.moveTo(x - 3.2, 3.6);
+    ctx.lineTo(x + 3.2, 3.6);
+    ctx.lineTo(x, 6.6);
+    ctx.closePath();
+    ctx.fillStyle = '#f39aac';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#f39aac';
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+  } else if (kind === 'dog' || kind === 'bear') {
+    ctx.ellipse(x, 4.5, kind === 'bear' ? 5.5 : 5, 3.6, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#3a2c28';
+  } else if (kind === 'hamster') {
+    ctx.ellipse(x, 5, 2.6, 2, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#f08aa0';
+  } else {
+    ctx.restore();
+    return;
+  }
+  ctx.fill();
+  ctx.restore();
+}
+
+/** ω 입 (냥이, 햄찌가 웃을 때): 코 밑에서 두 작은 호 */
+function drawCatMouth(ctx: CanvasRenderingContext2D, x: number) {
+  ctx.save();
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  for (const dx of [-3.6, 3.6]) {
+    ctx.beginPath();
+    ctx.arc(x + dx, 8, 3.6, 0.05 * Math.PI, 0.95 * Math.PI);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/** 햄찌 앞니 둘 (ω 입 가운데 밑) */
+function drawTeeth(ctx: CanvasRenderingContext2D, x: number) {
+  ctx.save();
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 1.2;
+  for (const dx of [-2.4, 2.4]) {
+    ctx.beginPath();
+    ctx.roundRect(x + dx - 2.2, 11.6, 4.4, 4.6, [0, 0, 1.4, 1.4]);
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/**
+ * 몸 무늬 (몸 안에만, 테두리 전에): 햄찌는 볼과 배가 흰 털, 뒤뚱이는 하트 모양 흰 얼굴과 배,
+ * 냥이는 이마에 짧은 줄무늬 셋 (삐약이 깃털처럼 한 가지 특징)
+ */
+function drawCoat(ctx: CanvasRenderingContext2D, kind: PetKind): boolean {
+  if (kind !== 'hamster' && kind !== 'penguin' && kind !== 'cat') return false;
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(0, 0, RX, RY, 0, 0, Math.PI * 2);
+  ctx.clip();
+  if (kind === 'cat') {
+    ctx.strokeStyle = 'rgba(138, 145, 170, 0.55)';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    for (const [x, len] of [
+      [-9, 9],
+      [0, 12],
+      [9, 9],
+    ] as const) {
+      ctx.beginPath();
+      ctx.moveTo(x, -RY + 1);
+      ctx.lineTo(x * 0.85, -RY + 1 + len);
+      ctx.stroke();
+    }
+  } else {
+    ctx.fillStyle = WHITE_FUR;
+    ctx.beginPath();
+    if (kind === 'hamster') {
+      // 볼에서 배까지 흰 털: 아래쪽 넓은 둥근 판에 볼 두 개가 위로 솟는다
+      ctx.ellipse(0, 30, 56, 34, 0, 0, Math.PI * 2);
+      ctx.moveTo(0, 8);
+      ctx.ellipse(-22, 8, 22, 15, 0, 0, Math.PI * 2);
+      ctx.moveTo(44, 8);
+      ctx.ellipse(22, 8, 22, 15, 0, 0, Math.PI * 2);
+    } else {
+      // 뒤뚱이: 눈 둘을 감싼 하트 모양 얼굴이 배까지 이어진다
+      ctx.ellipse(-19, -2, 25, 24, 0, 0, Math.PI * 2);
+      ctx.moveTo(19 + 25, -2);
+      ctx.ellipse(19, -2, 25, 24, 0, 0, Math.PI * 2);
+      ctx.moveTo(44, 26);
+      ctx.ellipse(0, 26, 44, 34, 0, 0, Math.PI * 2);
+    }
+    ctx.fill('nonzero');
+  }
+  ctx.restore();
+  return true;
+}
+
+/** 햄찌와 곰돌이: 머리 위 동그란 귀 (몸 뒤에 그린다). 햄찌는 작고 안쪽 분홍, 곰돌이는 크고 안쪽 크림 */
+function drawRoundEars(
+  ctx: CanvasRenderingContext2D,
+  kind: 'hamster' | 'bear',
+  flick: readonly [number, number] = [0, 0],
+) {
+  const bear = kind === 'bear';
+  const r = bear ? 15 : 11.5;
+  for (const side of [-1, 1] as const) {
+    const x = side * (bear ? 36 : 33);
+    const y = -RY + (bear ? 7 : 9);
+    ctx.save();
+    earTurn(ctx, x, y + r, side, earAngle(flick, side) * 0.6);
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = BODY;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = LINE;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(x, y + 1, r * 0.55, 0, Math.PI * 2);
+    ctx.fillStyle = bear ? '#f3dcc0' : 'rgba(255, 150, 165, 0.6)';
+    ctx.fill();
     ctx.restore();
   }
 }
@@ -1234,7 +1448,7 @@ function drawTail(ctx: CanvasRenderingContext2D, kind: 'cat' | 'dog', swing: num
   ctx.strokeStyle = LINE;
   ctx.lineWidth = width + 4;
   ctx.stroke();
-  ctx.strokeStyle = cat ? BODY : '#b9824c';
+  ctx.strokeStyle = cat ? BODY : DOG_SPOT;
   ctx.lineWidth = width;
   ctx.stroke();
   if (cat) {
@@ -1267,14 +1481,16 @@ function drawBunnyEars(ctx: CanvasRenderingContext2D, flick: readonly [number, n
   }
 }
 
+/** 냥이: 끝이 둥근 세모 귀, 안쪽 분홍 (몸 뒤에 그린다). 예전 뾰족 귀보다 낮고 둥글게 (아기 고양이 비율) */
 function drawCatEars(ctx: CanvasRenderingContext2D, flick: readonly [number, number] = [0, 0]) {
   for (const side of [-1, 1] as const) {
     ctx.save();
     earTurn(ctx, side * 36, -RY + 18, side, earAngle(flick, side));
     ctx.beginPath();
-    ctx.moveTo(side * 22, -RY + 14);
-    ctx.lineTo(side * 40, -RY - 14);
-    ctx.lineTo(side * 48, -RY + 22);
+    ctx.moveTo(side * 18, -RY + 12);
+    ctx.lineTo(side * 34, -RY - 8);
+    ctx.quadraticCurveTo(side * 40, -RY - 14, side * 43, -RY - 6);
+    ctx.lineTo(side * 50, -RY + 22);
     ctx.closePath();
     ctx.fillStyle = BODY;
     ctx.fill();
@@ -1282,28 +1498,31 @@ function drawCatEars(ctx: CanvasRenderingContext2D, flick: readonly [number, num
     ctx.strokeStyle = LINE;
     ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(side * 29, -RY + 14);
-    ctx.lineTo(side * 39, -RY - 4);
-    ctx.lineTo(side * 43, -RY + 17);
+    ctx.moveTo(side * 27, -RY + 12);
+    ctx.quadraticCurveTo(side * 39, -RY - 6, side * 44, -RY + 16);
     ctx.closePath();
-    ctx.fillStyle = 'rgba(255, 150, 160, 0.55)';
+    ctx.fillStyle = 'rgba(255, 150, 170, 0.6)';
     ctx.fill();
     ctx.restore();
   }
 }
 
+/** 냥이 수염: 볼 바깥에 짧고 옅게 두 가닥씩 (예전에는 몸 끝까지 길게 뻗어 얼굴이 어수선했다) */
 function drawWhiskers(ctx: CanvasRenderingContext2D, look: number) {
+  ctx.save();
   ctx.strokeStyle = LINE;
-  ctx.lineWidth = 1.4;
+  ctx.globalAlpha = 0.6;
+  ctx.lineWidth = 1.3;
   ctx.lineCap = 'round';
   for (const side of [-1, 1]) {
-    for (const dy of [-3, 3]) {
+    for (const dy of [-2.5, 2.5]) {
       ctx.beginPath();
-      ctx.moveTo(side * 40 + look, 6 + dy);
-      ctx.lineTo(side * 56 + look, 4 + dy * 2);
+      ctx.moveTo(side * 44 + look, 7 + dy);
+      ctx.lineTo(side * 53 + look, 6 + dy * 1.8);
       ctx.stroke();
     }
   }
+  ctx.restore();
 }
 
 function drawTuft(ctx: CanvasRenderingContext2D) {
@@ -1323,9 +1542,14 @@ function drawTuft(ctx: CanvasRenderingContext2D) {
 }
 
 /** 삐약이 부리: 말하거나 놀라면 벌린다 */
-function drawBeak(ctx: CanvasRenderingContext2D, mood: PetMood, look: number, open: boolean) {
+function drawBeak(ctx: CanvasRenderingContext2D, mood: PetMood, look: number, open: boolean, k = 1) {
   const x = look;
   const gap = open || mood === 'talking' || mood === 'grabbed' ? 5 : 0;
+  // 뒤뚱이는 조금 작은 부리 (가운데 높이 8 을 축으로 줄인다)
+  ctx.save();
+  ctx.translate(x, 8);
+  ctx.scale(k, k);
+  ctx.translate(-x, -8);
   ctx.fillStyle = '#ff9f43';
   ctx.strokeStyle = '#d97a1e';
   ctx.lineWidth = 1.5;
@@ -1343,6 +1567,7 @@ function drawBeak(ctx: CanvasRenderingContext2D, mood: PetMood, look: number, op
   ctx.closePath();
   ctx.fill();
   ctx.stroke();
+  ctx.restore();
 }
 
 function drawYawn(ctx: CanvasRenderingContext2D, x: number) {
@@ -1619,6 +1844,15 @@ function drawBack(ctx: CanvasRenderingContext2D, kind: PetKind) {
     ctx.stroke();
     ctx.lineWidth = kind === 'cat' ? 4 : 6;
     ctx.strokeStyle = BODY;
+    ctx.stroke();
+  } else if (kind === 'penguin') {
+    // 뒤뚱이: 짧은 세모 꽁지
+    ctx.beginPath();
+    ctx.moveTo(-8, RY * 0.66);
+    ctx.lineTo(0, RY * 0.9);
+    ctx.lineTo(8, RY * 0.66);
+    ctx.closePath();
+    ctx.fill();
     ctx.stroke();
   } else if (kind === 'chick') {
     for (const a of [-0.5, 0, 0.5]) {

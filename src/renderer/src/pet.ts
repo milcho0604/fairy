@@ -30,7 +30,7 @@ import {
   wanders,
 } from '../../shared/pet-mood.ts';
 import { type Blueprint, type Gait, parseBlueprint } from '../../shared/pet3d/blueprint.ts';
-import { DEFAULT_BLUEPRINTS } from '../../shared/pet3d/defaults.ts';
+import { defaultBlueprint } from '../../shared/pet3d/defaults.ts';
 import { standingBlueprint } from '../../shared/pet3d/stand.ts';
 import type { PetKind, PetStyle, PoseKind } from '../../shared/settings.ts';
 import { canPlay, type SoundKind } from '../../shared/sound.ts';
@@ -602,7 +602,7 @@ let activityWake: ReturnType<typeof setTimeout> | undefined;
 
 /**
  * 메인이 제자리 몸짓을 고를 때 쓸 펫 몸과 상태 (shared/moves.ts). 꼬리와 귀는 그려지는 몸에 있을 때만:
- * 입체는 설계도에 그 부위가 있을 때, 2D 는 냥이와 멍멍이 꼬리, 냥이, 토순이, 멍멍이 귀. 사진 펫은 몸 전체만
+ * 입체는 설계도에 그 부위가 있을 때, 2D 는 냥이와 멍멍이 꼬리, 냥이, 토순이, 멍멍이, 햄찌, 곰돌이 귀. 사진 펫은 몸 전체만
  */
 function moveAsk(): MoveAsk {
   const calm = reducedMotion.matches;
@@ -617,7 +617,12 @@ function moveAsk(): MoveAsk {
   if (photo) return { tail: false, ears: false, photo: true, calm, hungry, ...more };
   return {
     tail: petKind === 'cat' || petKind === 'dog',
-    ears: petKind === 'cat' || petKind === 'bunny' || petKind === 'dog',
+    ears:
+      petKind === 'cat' ||
+      petKind === 'bunny' ||
+      petKind === 'dog' ||
+      petKind === 'hamster' ||
+      petKind === 'bear',
     photo: false,
     calm,
     hungry,
@@ -645,12 +650,12 @@ let flower = false;
 let wear: WearLook | undefined;
 /** 입체 모습마다 옷을 털 밖으로 내는 길이 (실사, 복슬복슬은 털이 길다) */
 const WEAR_PUFF: Record<PetStyle, number> = { figure: 0, game: 0.006, real: 0.018, fluffy: 0.07 };
-/** 기본 펫 설계도에 성장과 옷을 입힌 것. 같은 값이면 같은 것을 돌려줘 다시 조립하지 않는다 */
+/** 기본 펫 설계도(모습마다 다르다: 피규어, 게임은 동그란 몸, 실사, 복슬복슬은 실제 동물 몸)에 성장과 옷을 입힌 것. 같은 값이면 같은 것을 돌려줘 다시 조립하지 않는다 */
 let dressed: { key: string; bp: Blueprint } | undefined;
 function builtinBlueprint(): Blueprint {
   const key = `${petKind}|${style3d}|${wear?.stage ?? ''}|${wear?.outfit ?? ''}`;
   if (dressed?.key !== key)
-    dressed = { key, bp: dressBlueprint(DEFAULT_BLUEPRINTS[petKind], wear, WEAR_PUFF[style3d]) };
+    dressed = { key, bp: dressBlueprint(defaultBlueprint(petKind, style3d), wear, WEAR_PUFF[style3d]) };
   return dressed.bp;
 }
 /** 효과음 (설정) */

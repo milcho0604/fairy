@@ -85,3 +85,24 @@ test('지금 펫 모습 열쇠 (#28): 밀크, 초코의 네 발 피규어를 켜
   const kong = parseSettings({ petKind: 'kong' });
   assert.equal(lookKey(applyPatch(kong, gaitPatch(kong, 'quadruped'))), lookKey(kong));
 });
+
+test('걸음새 칸 (#53): 기본 펫도 실사, 복슬복슬에서 네 발로 선 몸(냥이, 멍멍이, 햄찌, 곰돌이)은 고를 수 없이 네 발이 켜진다', () => {
+  for (const petStyle of ['real', 'fluffy'] as const) {
+    for (const petKind of ['cat', 'dog', 'hamster', 'bear'] as const) {
+      const s = parseSettings({ petKind, petStyle });
+      assert.deepEqual(gaitView(s, undefined), {
+        shape: undefined,
+        stands: true,
+        picked: undefined,
+        on: 'quadruped',
+      });
+      // 2D 로 보면 다시 고를 수 있다 (동그란 몸 기준)
+      assert.equal(gaitView({ ...s, pet3d: false }, undefined).stands, false);
+    }
+    // 펭귄은 서서 걷는다
+    assert.equal(gaitView(parseSettings({ petKind: 'penguin', petStyle }), undefined).shape, 'biped');
+  }
+  // 피규어, 게임은 동그란 몸이라 고를 수 있다
+  for (const petStyle of ['figure', 'game'] as const)
+    assert.equal(gaitView(parseSettings({ petKind: 'cat', petStyle }), undefined).on, 'auto');
+});

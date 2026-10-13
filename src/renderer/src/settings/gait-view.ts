@@ -1,5 +1,5 @@
 import type { Blueprint, Gait } from '../../../shared/pet3d/blueprint.ts';
-import { DEFAULT_BLUEPRINTS } from '../../../shared/pet3d/defaults.ts';
+import { defaultBlueprint } from '../../../shared/pet3d/defaults.ts';
 import { canStand } from '../../../shared/pet3d/stand.ts';
 import { type GaitPick, pickedGait, pickedStand, type Settings } from '../../../shared/settings.ts';
 import { shapeOf } from '../pet3d-gait.ts';
@@ -16,7 +16,10 @@ export interface GaitView {
   on?: GaitPick;
 }
 
-type GaitSettings = Pick<Settings, 'petImage' | 'petModel' | 'petKind' | 'petGaits' | 'petStands' | 'pet3d'>;
+type GaitSettings = Pick<
+  Settings,
+  'petImage' | 'petModel' | 'petKind' | 'petGaits' | 'petStands' | 'pet3d' | 'petStyle'
+>;
 
 /**
  * 걸음새 칸의 상태. figure 는 지금 펫의 입체 설계도 (사진 펫이 피규어로 보일 때만, 밀크와 초코는 피규어를 켰을 때만).
@@ -24,10 +27,16 @@ type GaitSettings = Pick<Settings, 'petImage' | 'petModel' | 'petKind' | 'petGai
  * 예전에는 아무 단추도 켜지 않아 "네 발"을 눌러도 안 골라지는 것처럼 보였다 (#28)
  */
 export function gaitView(s: GaitSettings, figure: Blueprint | undefined): GaitView {
-  const stands = !!figure && s.pet3d && (!!figure.stance || (pickedStand(s) && canStand(figure)));
+  // 기본 펫은 모습마다 설계도가 다르다: 실사, 복슬복슬의 냥이, 멍멍이, 햄찌, 곰돌이는 네 발로 선 몸 (defaults.ts)
+  const builtin = s.petImage ? undefined : defaultBlueprint(s.petKind, s.pet3d ? s.petStyle : 'figure');
+  const stands =
+    s.pet3d &&
+    (builtin ? !!builtin.stance : !!figure && (!!figure.stance || (pickedStand(s) && canStand(figure))));
   // 몸 모양: 기본 펫은 기본 설계도, 사진 펫은 그 설계도 (고른 값을 덮기 전)
-  const shape: Gait | undefined = !s.petImage
-    ? shapeOf(DEFAULT_BLUEPRINTS[s.petKind])
+  const shape: Gait | undefined = builtin
+    ? stands
+      ? undefined
+      : shapeOf(builtin)
     : figure && s.pet3d && !stands
       ? shapeOf(figure)
       : undefined;
