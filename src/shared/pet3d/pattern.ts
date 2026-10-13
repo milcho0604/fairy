@@ -13,6 +13,13 @@ const SPLIT_EDGE = 0.035;
 /** 가르마(notch) 세모 너비 배율과 앞쪽으로 들어오는 폭 (모양 공간) */
 const NOTCH_WIDTH = 0.5;
 const NOTCH_FRONT = 0.35;
+/**
+ * 가르마 세모 꼭짓점 높이 (모양 공간, 1 이 꼭대기). 꼭대기(1)까지 가면 좁은 세모 끝이 정수리를 넘어 뒤로 이어져
+ * 3/4 와 옆에서 머리 위를 가르는 흰 띠로 보였다. 이마 위에서 끝나게 한다 (아래쪽 너비는 예전과 같다)
+ */
+const NOTCH_APEX = 0.65;
+/** 높이 n 에서 세모 반너비 = notch × NOTCH_SLOPE × (꼭짓점 - n). 머리 가운데 높이(n = 0)에서 예전 너비 (notch × 0.5) */
+const NOTCH_SLOPE = NOTCH_WIDTH / NOTCH_APEX;
 
 /** 정수 셋의 해시 0~1 (GLSL jjHash 와 같은 값) */
 export function hash3(x: number, y: number, z: number): number {
@@ -105,14 +112,14 @@ function rawMask(pat: Pattern, p: Vec3, half: Vec3, scale: Vec3): number {
 }
 
 /**
- * 가르마(Pattern.notch): split 이 top 이면 이마 가운데에서 위로 뾰족해지는 세모(ㅅ 모양)를, bottom 이면 아래로 뾰족한 세모를
+ * 가르마(Pattern.notch): split 이 top 이면 이마 가운데에서 위로 뾰족해지는 세모(ㅅ 모양, 꼭짓점은 이마 위 NOTCH_APEX)를, bottom 이면 아래로 뾰족한 세모를
  * 바탕색으로 비운다. 앞(+z) 쪽에만 (뒤통수는 그대로)
  */
 function notchMask(pat: Pattern, p: Vec3, half: Vec3): number {
   const notch = pat.notch ?? 0;
   if (notch <= 0 || (pat.side !== 'top' && pat.side !== 'bottom')) return 0;
   const n = pat.side === 'top' ? p[1] / half[1] : -p[1] / half[1];
-  const v = Math.abs(p[0] / half[0]) - notch * NOTCH_WIDTH * (1 - n);
+  const v = Math.abs(p[0] / half[0]) - notch * NOTCH_SLOPE * (NOTCH_APEX - n);
   return (1 - smooth(-SPLIT_EDGE, SPLIT_EDGE, v)) * smooth(0, NOTCH_FRONT, p[2] / half[2]);
 }
 
@@ -195,7 +202,7 @@ float jjRaw(vec3 p) {
   float m = jjSide(p, uPatAmount);
   if (uPatNotch <= 0.0) return m;
   float n = uPatSide == 0 ? p.y / uPatHalf.y : -p.y / uPatHalf.y;
-  float v = abs(p.x / uPatHalf.x) - uPatNotch * ${NOTCH_WIDTH} * (1.0 - n);
+  float v = abs(p.x / uPatHalf.x) - uPatNotch * ${NOTCH_SLOPE.toFixed(6)} * (${NOTCH_APEX} - n);
   return m * (1.0 - (1.0 - smoothstep(-${SPLIT_EDGE}, ${SPLIT_EDGE}, v)) * smoothstep(0.0, ${NOTCH_FRONT}, p.z / uPatHalf.z));
 }
 float jjPattern(vec3 p) {

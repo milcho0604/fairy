@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { bounced, restingEye } from './pet3d-motion.ts';
+import { bounced, faceDepth, keepsFaceDepth, restingEye } from './pet3d-motion.ts';
 
 test('쉬는 눈 모양은 뜬 눈 자리에만, 없으면 지금 눈 그대로', () => {
   assert.equal(restingEye('open', undefined), 'open');
@@ -53,4 +53,23 @@ test('기운: 둥근 눈만 지침은 눈꺼풀(heavy), 졸림은 감기 직전 
   assert.equal(restingEye('open', 'sleepy', 'tired'), 'drowsy');
   assert.equal(restingEye('up', 'round', 'sleepy'), 'up');
   assert.equal(restingEye('down', undefined, 'tired'), 'down');
+});
+
+test('얼굴 두께: 정면 가까이는 그대로, 비스듬할수록 납작하게, 지킬 부품은 그대로', () => {
+  assert.equal(faceDepth(1, false), 1);
+  assert.equal(faceDepth(0.75, false), 1);
+  assert.equal(faceDepth(0.25, false), 0.2);
+  assert.equal(faceDepth(0, false), 0.2);
+  const mid = faceDepth(0.5, false);
+  assert.ok(mid > 0.2 && mid < 1);
+  assert.equal(faceDepth(0.1, true), 1);
+});
+
+test('솟은 것(코, 부리, 볼 털)과 네 발로 선 몸의 얼굴은 납작하게 하지 않는다, 두 발 몸의 눈과 입은 납작하게', () => {
+  const part = { nose: false, beak: false, tuft: false, stance: false };
+  assert.equal(keepsFaceDepth(part), false);
+  assert.equal(keepsFaceDepth({ ...part, stance: true }), true);
+  assert.equal(keepsFaceDepth({ ...part, tuft: true }), true);
+  assert.equal(keepsFaceDepth({ ...part, nose: true }), true);
+  assert.equal(keepsFaceDepth({ ...part, beak: true }), true);
 });

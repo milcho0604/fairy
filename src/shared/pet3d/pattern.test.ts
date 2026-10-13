@@ -79,8 +79,13 @@ test('가르마(notch): 머리 위 색을 앞 가운데에서 세모로 비우�
   assert.equal(patternMask(parted, [0.6, 0.4, 0.75], unit, unit), 1);
   assert.equal(patternMask(parted, [0, 0.4, -0.9], unit, unit), 1);
   // 위로 갈수록 좁아진다 (ㅅ 모양): 같은 x 라도 높으면 무늬 색
-  assert.ok(patternMask(parted, [0.2, 0.3, 0.9], unit, unit) < 0.5);
+  assert.ok(patternMask(parted, [0.1, 0.3, 0.9], unit, unit) < 0.5);
+  assert.ok(patternMask(parted, [0.25, 0.1, 0.95], unit, unit) < 0.5);
   assert.ok(patternMask(parted, [0.2, 0.85, 0.45], unit, unit) > 0.5);
+  // 세모 끝은 이마 위에서 끝난다: 정수리 앞쪽 가운데는 무늬 색 (꼭대기까지 가면 3/4 와 옆에서 머리 위를 가르는 띠로 보였다)
+  assert.equal(patternMask(parted, [0, 0.8, 0.6], unit, unit), 1);
+  assert.equal(patternMask(parted, [0, 0.9, 0.42], unit, unit), 1);
+  assert.equal(patternMask(parted, [0, 0.45, 0.88], unit, unit), 0);
   // 가르마 0 이나 없음은 예전과 같은 값, 셰이더도 0 을 받는다
   for (const p of [
     [0.1, 0.5, 0.8],

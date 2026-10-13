@@ -233,3 +233,26 @@ test('파스텔 표시가 있으면 너무 진한 밝은 색만 옅게, 어두�
   assert.equal(pale.bp.parts[0]?.color, '#f6ecc4');
   assert.ok(pale.fixes.includes('pastel'));
 });
+
+test('파스텔: 안쪽 색(귀 안)은 겉색 쪽으로 섞어 옅게, 파스텔이 아니면 그대로', () => {
+  const ear = {
+    slot: 'earL' as const,
+    shape: 'capsule' as const,
+    at: [-0.2, 1.35, 0] as [number, number, number],
+    size: [0.09, 0.33, 0.07] as [number, number, number],
+    color: '#f5eab8',
+    inner: '#f4b7b9',
+    mirror: true,
+  };
+  const pale = readTextAnswer(answerOf([bodyPart, ear], { pastel: true }));
+  const vivid = readTextAnswer(answerOf([bodyPart, ear], { pastel: false }));
+  assert.ok(pale.ok && vivid.ok);
+  const innerOf = (r: typeof pale) => (r.ok ? r.bp.parts.find((p) => p.slot === 'earL')?.inner : undefined);
+  assert.equal(innerOf(vivid), '#f4b7b9');
+  // 붉은 채널은 그대로, 초록과 파랑이 겉색(크림) 쪽으로 올라 덜 진한 분홍
+  const got = innerOf(pale) ?? '';
+  const n = Number.parseInt(got.slice(1), 16);
+  assert.equal(n >> 16, 0xf4);
+  assert.ok(((n >> 8) & 255) > 0xb7 && ((n >> 8) & 255) < 0xea);
+  assert.ok(pale.ok && pale.fixes.includes('pastel'));
+});

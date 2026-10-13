@@ -65,11 +65,11 @@ function textRules(webSearch: boolean): string {
 - Add "namedCharacter": true as an extra top-level key when the description names a specific existing character; otherwise "namedCharacter": false. Generic words like "a white cat with a red scarf" are not a named character.
 - Do not put any character name, logo or text on the figure. Use only shapes and colors.
 - Keep it cute and simple: a chibi collectible figure, 8 to ${MAX_PARTS} parts, everything rounded. Keep everything within x and z of -0.7..0.7 and y of 0..1.3.
-- Proportions: a big head (as wide as the body or up to 1.3 times wider, and taller than the body), a short round body, small stubby limbs. A character drawn with a tiny body under a huge head keeps that.
+- Proportions: a big head (as wide as the body or up to 1.3 times wider, and taller than the body), a short round body, small stubby limbs. A character drawn with a tiny body under a huge head keeps that. When head and body read as one soft blob (a rice-cake or mochi shape with no neck), sink the head deep into the body (the head's lower quarter inside the body): the app rounds the joint into one piece.
 - Pick the body type: "gait": "biped" for characters that stand on two feet (people, birds, plush toys, most mascots), with armL/armR (a bird gets wingL/wingR). "gait": "quadruped" only for an animal that should walk on all fours: then put two front paws in legL/legR at z > 0 and two hind paws in legL/legR at z < 0, at least 0.3 apart, all touching y=0, and no armL/armR.
 - Colors: use the described or known colors as hex values, at their real lightness. Soft cartoon and kawaii characters are drawn in soft, slightly grayish pastels: pick light, low-saturation tones (a pale blue-gray like #a9bfd6 rather than a sky blue like #7fb6e0, a cream like #f6ecc4 rather than a bright yellow like #f8e27a, a dusty pink rather than a hot pink). Use strong saturated colors only when the character really has them. Avoid pure white (#ffffff) and pure black (#000000) for big parts.
 - Add "pastel": true as an extra top-level key when the figure should stay in soft pastel tones (a soft cartoon, kawaii art, a plush, or the owner asks for pale or pastel colors); otherwise "pastel": false. The app then softens any color that came out too vivid.
-- Ears are what tells similar characters apart, so match their shape and size: long upright ears (rabbits, bunnies, any "long ears") are tall narrow capsules on top of the head, each sticking out above the head about as tall as the head itself (ry 0.3 to 0.38, rx about a quarter of ry, only the bottom end sunk into the head), with a slight outward tilt (rot z about 10 on the left ear, mirror for the right); small round ears are small flattened spheres half sunk into the top of the head; pointed ears are cones. Color the ear like the head part it sits on, with "inner" when the inside differs.
+- Ears are what tells similar characters apart, so match their shape and size: long upright ears (rabbits, bunnies, any "long ears") are tall narrow capsules on top of the head, each sticking out above the head about as tall as the head itself (ry 0.3 to 0.38, rx about a quarter of ry, only the bottom end sunk into the head), with a slight outward tilt (rot z about 10 on the left ear, mirror for the right); small round ears are small flattened spheres half sunk into the top of the head; pointed ears are cones. Color the ear like the head part it sits on, with "inner" when the inside differs (usually a pale tint close to the ear color, not a strong pink).
 - Head markings use "pattern" on the head part instead of extra parts: a colored cap is "split" with side "top" (amount 0.4 to 0.55 so it ends just above the eyes); a cap parted at the front center by a pointed wedge of the face color adds "notch" (0.4 to 0.8); a pale face or muzzle on a darker head is "split" with side "front". Other markings and accessories (hat, ribbon, scarf, glasses, collar, cape) are separate parts in a fitting slot that overlap the surface. A bow uses "shape": "bow".
 - The eyes and mouth are drawn by the app from "face", so do not model them. Copy the character's usual expression: "grin" for a wide open smiling mouth, "tiny" for a small calm mouth, "cat" for a w mouth, "smile" for a closed smile; "blush" when it has rosy cheeks; "nose": { "shape": "none" } when it is drawn without a nose. Use "nose" for an animal nose, "beak" only for birds.
 - Parts must overlap so the figure is one solid piece, and the lowest feet touch y=0.
@@ -171,7 +171,30 @@ export function pastel(hex: string): string {
     .join('')}`;
 }
 
-/** 부품 색(겉, 안쪽, 무늬)을 파스텔로. 얼굴 색(눈, 볼, 코)은 그대로. 바뀐 것이 없으면 같은 설계도 */
+/** 안쪽 색을 겉색 쪽으로 섞는 만큼 (파스텔 모습). 귀 안 분홍이 크림색 귀 위에서 진한 띠로 떴다 */
+const PASTEL_INNER = 0.3;
+
+/** 두 색을 k 만큼 섞는다 (a → b) */
+function mixHex(a: string, b: string, k: number): string {
+  const ch = (hex: string) => {
+    const n = Number.parseInt(hex.slice(1), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  };
+  const x = ch(a);
+  const y = ch(b);
+  return `#${x
+    .map((v, i) =>
+      Math.round(v + ((y[i] ?? v) - v) * k)
+        .toString(16)
+        .padStart(2, '0'),
+    )
+    .join('')}`;
+}
+
+/**
+ * 부품 색(겉, 안쪽, 무늬)을 파스텔로. 안쪽 색(귀 안, 발바닥)은 겉색 쪽으로 조금 섞어 옅게 한다.
+ * 얼굴 색(눈, 볼, 코)은 그대로. 바뀐 것이 없으면 같은 설계도
+ */
 export function softenColors(bp: Blueprint): Blueprint {
   let changed = false;
   const soft = (c: string) => {
@@ -181,7 +204,11 @@ export function softenColors(bp: Blueprint): Blueprint {
   };
   const parts = bp.parts.map((p): Part => {
     const out: Part = { ...p, color: soft(p.color) };
-    if (p.inner) out.inner = soft(p.inner);
+    if (p.inner) {
+      const inner = soft(mixHex(p.inner, out.color, PASTEL_INNER));
+      if (inner !== p.inner) changed = true;
+      out.inner = inner;
+    }
     if (p.pattern) out.pattern = { ...p.pattern, color: soft(p.pattern.color) };
     return out;
   });

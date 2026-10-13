@@ -34,3 +34,24 @@ export function bounced(
   const squash = Math.min(1, k);
   return { lift: lift * k, sx: 1 + (sx - 1) * squash, sy: 1 + (sy - 1) * squash };
 }
+
+/**
+ * 얼굴 부품의 두께 배율 (z). 겉면에 칠한 것처럼 비스듬히 보일수록 겉면 쪽으로 납작하게 한다: 도톰한 눈알이 그대로면
+ * 3/4 와 옆에서 머리 가장자리에 붙은 먼 눈과 입이 실루엣 밖으로 삐져나왔다. facing 은 부품 겉면이 카메라를 향한 정도
+ * (1 정면, 0 옆). 0.75 넘게는 그대로, 0.25 아래는 0.2 까지. keep 이면 제 두께 그대로
+ */
+export function faceDepth(facing: number, keep: boolean): number {
+  if (keep) return 1;
+  const k = Math.min(1, Math.max(0, (facing - 0.25) / 0.5));
+  return 0.2 + 0.8 * k * k * (3 - 2 * k);
+}
+
+/**
+ * 납작하게 하지 않고 제 두께를 지킬 얼굴 부품: 솟은 것(코, 부리, 볼 털 뭉치)과 네 발로 선 몸의 얼굴 전부.
+ * 볼 털은 일부러 실루엣 밖으로 뻗게 붙인 것이다. 네 발로 선 몸(실사 냥이, 멍멍이, 햄찌, 곰돌이와 네 발로 세운 사진 펫)은
+ * 2026-10-13 전후 비교에서 입을 납작하게 하면 3/4 에서 입 끝이 주둥이 아래로 삐져나왔고(실사 멍멍이), 복슬복슬 햄찌는
+ * 털 결이 통째로 달라져서 그 몸의 얼굴은 예전대로 둔다
+ */
+export function keepsFaceDepth(o: { nose: boolean; beak: boolean; tuft: boolean; stance: boolean }): boolean {
+  return o.nose || o.beak || o.tuft || o.stance;
+}
