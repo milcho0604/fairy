@@ -38,10 +38,10 @@ const walk = (steps: number, dir: -1 | 1 = 1): CuteInput['act'] => ({
   steps,
 });
 
-test('손그림은 냥이와 곰돌이만, 나머지 여섯은 예전 코드 그림 그대로', () => {
+test('기본 페어리 여덟 모두 손그림 (2026-10-13)', () => {
   assert.deepEqual(
     PET_KIND_IDS.filter((k) => isCuteKind(k)),
-    ['cat', 'bear'],
+    [...PET_KIND_IDS],
   );
   assert.equal(isCuteKind(undefined), false);
 });

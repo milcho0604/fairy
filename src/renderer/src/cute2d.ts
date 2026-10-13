@@ -8,8 +8,17 @@ import type { PetMood } from '../../shared/pet-mood.ts';
 import type { PetKind } from '../../shared/settings.ts';
 import { walkFrameIndex } from './photo-walk.ts';
 
-/** 손그림을 쓰는 기본 펫 모양. 여기 없는 모양은 예전 코드 그림(draw.ts) 그대로 */
-export const CUTE_KINDS = ['cat', 'bear'] as const satisfies readonly PetKind[];
+/** 손그림을 쓰는 기본 펫 모양 (2026-10-13 여덟 모두). 여기 없는 모양은 예전 코드 그림(draw.ts) 그대로 */
+export const CUTE_KINDS = [
+  'kong',
+  'cat',
+  'chick',
+  'dog',
+  'bunny',
+  'hamster',
+  'penguin',
+  'bear',
+] as const satisfies readonly PetKind[];
 export type CuteKind = (typeof CUTE_KINDS)[number];
 export const isCuteKind = (k: PetKind | undefined): k is CuteKind =>
   (CUTE_KINDS as readonly (PetKind | undefined)[]).includes(k);
@@ -106,8 +115,80 @@ export const BEAR_GEOM: CuteGeom = {
   scarfDrop: 20,
 };
 
-/** 모양마다 그림 자리 값. 곰돌이 골격과 다른 모양만 따로 둔다 */
-export const CUTE_GEOM: Record<CuteKind, CuteGeom> = { cat: BEAR_GEOM, bear: BEAR_GEOM };
+/** 자세 이름에서 걷기 여섯 장은 하나로 (꼭대기 표) */
+type TopKey = Exclude<CutePose, `walk-${number}`> | 'walk';
+/** 그림에서 잰 꼭대기 표(자세마다 불투명한 맨 위 y)로 곰돌이 골격 값을 덮는다 */
+function measured(top: Record<TopKey, number>, more: Partial<CuteGeom> = {}): CuteGeom {
+  return {
+    ...BEAR_GEOM,
+    top: (pose) => top[pose.startsWith('walk-') ? 'walk' : (pose as TopKey)],
+    ...more,
+  };
+}
+/** 귀 없는 머리 (삐약이 깃털, 멍멍이 늘어진 귀, 햄찌 작은 귀, 뒤뚱이): 꼭대기만 다르고 머리 자리는 곰돌이와 같다 */
+const EARLESS_TOP = { sit: 151, sleep: 180, happy: 105, grab: 84, doze: 150, walk: 91 } as const;
+const flat = (base: number, o: Partial<Record<TopKey, number>>): Record<TopKey, number> => ({
+  idle: base,
+  hungry: base,
+  sulky: base,
+  wave: base,
+  yawn: base,
+  'talk-0': base,
+  'talk-1': base,
+  back: base,
+  sit: base,
+  sleep: base,
+  happy: base,
+  grab: base,
+  doze: base,
+  walk: base,
+  ...o,
+});
+
+/**
+ * 모양마다 그림 자리 값. 모두 곰돌이 골격(scripts/cute2d/bear/gen.py)이라 머리 자리는 같고, 꼭대기는 그림에서 쟀다
+ * (scratchpad 측정, 냥이와 곰돌이는 둘 중 높은 쪽). 토순이는 긴 귀가 걷기에서 y 8 까지 올라와 조금 작게(0.32) 그린다.
+ * 콩이는 머리와 몸이 한 덩어리 콩이라 머리 자리를 콩 가운데(곰 머리보다 84 아래), 반지름을 콩(136x148)으로,
+ * 얼굴(눈, 입)은 곰 얼굴보다 12 아래 (scripts/cute2d/kong/gen.py FACE_DY), 얼굴 아이콘은 발만 뺀 콩 전체
+ */
+export const CUTE_GEOM: Record<CuteKind, CuteGeom> = {
+  cat: BEAR_GEOM,
+  bear: BEAR_GEOM,
+  chick: measured(flat(89, { sit: 111, sleep: 180, happy: 67, grab: 49, doze: 129, walk: 51 })),
+  dog: measured(flat(129, EARLESS_TOP)),
+  hamster: measured(
+    flat(125, { hungry: 131, sit: 147, sleep: 180, happy: 103, grab: 85, doze: 143, walk: 87 }),
+  ),
+  penguin: measured(flat(129, { ...EARLESS_TOP, grab: 89, happy: 107 })),
+  bunny: measured(
+    flat(23, {
+      hungry: 31,
+      sulky: 36,
+      yawn: 25,
+      sit: 45,
+      sleep: 170,
+      happy: 16,
+      grab: 19,
+      doze: 47,
+      walk: 8,
+    }),
+    { scale: 0.32 },
+  ),
+  kong: measured(
+    flat(165, { back: 168, sulky: 156, sit: 187, sleep: 180, happy: 114, grab: 123, doze: 150, walk: 127 }),
+    {
+      head: (pose) => {
+        const h = BEAR_GEOM.head(pose);
+        return { ...h, y: h.y + 84 };
+      },
+      headR: { x: 136, y: 148 },
+      eye: { dx: 58, dy: 24 + 12 - 84 },
+      mouthDy: 56 + 12 - 84,
+      faceCut: { x0: 100, x1: 412, up: 320, rx: 150, ry: 124 },
+      scarfDrop: 0,
+    },
+  ),
+};
 
 /** 그림을 고르는 데 쓰는 상태 (draw.ts DrawState 의 일부) */
 export interface CuteInput {
