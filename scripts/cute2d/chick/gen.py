@@ -161,6 +161,8 @@ def _save(name, svg):
 if __name__ == '__main__':
     for k, f in POSES.items():
         _save(f'{k}', recolor(f()))
+    for k in B.EYE_VARIANTS:
+        _save(k, recolor(B.idle_eyes(POSES['idle'], k)))
     for i in range(6):
         _save(f'walk-{i}', walk(i))
     print('ok')

@@ -136,12 +136,32 @@ def svg(body, extra_under=''):
 
 
 # ---------- 정면 얼굴 공통 ----------
+# 서기 그림의 눈 바꾸기 (앱이 깜빡임과 커서 바라보기에 쓴다): EYE_MODE 'blink' 면 뜬 눈을 감은 눈으로,
+# LOOK 은 눈동자를 옆으로 옮기는 거리 (그림 좌표, 음수는 왼쪽). idle_eyes() 가 잠깐 바꿨다 되돌린다
+EYE_MODE = ['open']
+LOOK = [0]
+LOOK_PX = 9
+EYE_VARIANTS = {'blink': ('blink', 0), 'look-l': ('open', -LOOK_PX), 'look-r': ('open', LOOK_PX)}
+
+
+def idle_eyes(fn, name):
+    """서기 그림 fn 을 눈만 바꿔 그린다 (name 은 EYE_VARIANTS 열쇠)"""
+    EYE_MODE[0], LOOK[0] = EYE_VARIANTS[name]
+    try:
+        return fn()
+    finally:
+        EYE_MODE[0], LOOK[0] = 'open', 0
+
+
 def face(cx, cy, eyes='open', mouth_kind='w', dx=0):
     """cx, cy = 머리 중심. 눈은 얼굴 아래쪽, 간격 넓게"""
     ey = cy + 24
     s = ''
+    if eyes == 'open' and EYE_MODE[0] == 'blink':
+        eyes = 'closed'
     if eyes == 'open':
-        s += eye(cx - 58 + dx, ey) + eye(cx + 58 + dx, ey)
+        lk = LOOK[0]
+        s += eye(cx - 58 + dx + lk, ey) + eye(cx + 58 + dx + lk, ey)
     elif eyes == 'big':
         s += eye(cx - 58 + dx, ey, 1.12) + eye(cx + 58 + dx, ey, 1.12)
     elif eyes == 'happy':
@@ -373,17 +393,20 @@ def back():
 
 
 # ---------- 걷기: 정면 몸 그대로 뒤뚱 걸음. 굵고 둥근 짧은 다리가 몸 아래 양옆에서 번갈아 들린다 ----------
+# 머리는 서기(idle)와 같은 높이에 둔다 (예전엔 다리를 보이려고 몸을 26 올려 걷기 시작할 때 머리가 툭 올라갔다).
+# 대신 몸 아래쪽을 WALK_LEG 만큼 줄여 그 자리에 다리를 보인다. 발은 늘 바닥선(451)
 WALK_TAIL = lambda ph, dy: ''   # 고양이가 꼬리를 끼워 넣는 자리
+WALK_LEG = 30                   # 몸 아래를 줄여 다리를 보이는 길이
+WALK_BOB = 4                    # 두 발이 다 땅에 있을 때 머리가 올라가는 높이 (서기보다)
+WALK_BELLY = (392, 46, 28)      # 줄인 몸에 맞춘 배 패치 (가운데 y, 가로, 세로 반지름)
 
 
 def walk(i, n=6):
     ph = 2 * math.pi * i / n
     sn = math.sin(ph)
-    lift = {-1: 20 * max(0, sn), 1: 20 * max(0, -sn)}     # 왼발, 오른발 번갈아 들기
-    bob = -12 * abs(math.cos(ph))                          # 두 발이 다 땅에 있을 때 가장 높다
-    rise = 26                                              # 다리가 보이게 몸을 올린다
-    tilt = 5 * sn                                          # 딛는 발 쪽으로 기울기
-    dy = -rise + bob
+    lift = {-1: 18 * max(0, sn), 1: 18 * max(0, -sn)}     # 왼발, 오른발 번갈아 들기
+    dy = -WALK_BOB * abs(math.cos(ph))                     # 두 발이 다 땅에 있을 때 살짝 높다
+    tilt = 4 * sn                                          # 딛는 발 쪽으로 기울기
     cx, hy = 256, 236 + dy
     s = shadow(rx=104)
     g = WALK_TAIL(ph, dy)
@@ -393,7 +416,7 @@ def walk(i, n=6):
         fwd = max(0, sn) if sx == 1 else max(0, -sn)      # 반대쪽 다리가 들릴 때 이 팔이 앞으로
         ang = sx * (50 + 50 * fwd)
         g += capsule(cx + sx * 62, 356 + dy, ang, 38, 19)[0]
-    body_bottom = 456 + dy
+    body_bottom = 456 - WALK_LEG + dy
     legs, feet = [], ''
     for sx in (-1, 1):
         x = cx + sx * 34
@@ -402,9 +425,10 @@ def walk(i, n=6):
         top = body_bottom - 18
         legs.append(E((x + fx) / 2, (top + fy) / 2, 23, (fy - top) / 2 + 4))
         feet += E(fx, fy, 30, 17)
-    g += union([P(blob(cx, 386 + dy, 80, 86, 70)), P(head_front(cx, hy))] + legs)
+    g += union([P(blob(cx, 386 + dy, 80, 86, 70 - WALK_LEG)), P(head_front(cx, hy))] + legs)
     g += feet
-    g += E(cx, 404 + dy, 50, 40, CR, None)
+    by, brx, bry = WALK_BELLY
+    g += E(cx, by + dy, brx, bry, CR, None)
     g += tuft(cx - 4, hy - 100)
     g += face(cx, hy, 'open', 'w', dx=6)
     s += f'<g transform="rotate({tilt:.2f} {cx} 451)">{g}</g>'
@@ -419,6 +443,8 @@ if __name__ == '__main__':
     os.makedirs(out, exist_ok=True)
     for k, f in poses.items():
         open(os.path.join(out, f'{k}.svg'), 'w').write(titled(f(), f'bear {k}'))
+    for k in EYE_VARIANTS:
+        open(os.path.join(out, f'{k}.svg'), 'w').write(titled(idle_eyes(poses['idle'], k), f'bear {k}'))
     for i in range(6):
         open(os.path.join(out, f'walk-{i}.svg'), 'w').write(titled(walk(i), f'bear walk-{i}'))
     print('ok')

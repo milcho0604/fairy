@@ -7,9 +7,9 @@ spec = importlib.util.spec_from_file_location('bear_base', os.path.join(D, '../b
 B = importlib.util.module_from_spec(spec); spec.loader.exec_module(B)
 OL, W, E, P, union, blob = B.OL, B.W, B.E, B.P, B.union, B.blob
 
-BODY = '#fdf6ee'    # 크림 몸 (반 단계 따뜻하게)
+BODY = '#f9ede1'    # 크림 몸 (흰 배와 주둥이가 보이게 반 단계 더 따뜻하게)
 PATCH = '#ffffff'   # 배, 주둥이
-FAR = '#efe5da'     # 먼 쪽 팔다리
+FAR = '#ecdccd'     # 먼 쪽 팔다리
 EAR_PK = '#f6b3bd'
 NOSE_PK = '#f29aa8'
 PAD_PK = '#f8c3c9'
@@ -130,10 +130,8 @@ def back():
 
 # ---------- 걷기: 곰과 같은 뒤뚱 걸음(bear_base.walk). 꼬리만 몸 뒤 왼쪽에 끼운다 ----------
 def walk_tail(ph, dy):
-    sw = 10 * math.sin(ph)
-    # 엉덩이 아래 왼쪽으로 나와 끝이 위로 말린다 (팔과 겹치지 않게 낮게)
-    return union([E(200, 446 + dy, 22, 18), E(162, 454 + dy, 26, 22), E(122, 444 + dy, 28, 26),
-                  E(98 + sw * 0.6, 410 + dy, 26, 28, rot=20)])
+    # 서기처럼 몸 뒤 왼쪽에서 위로 말린 꼬리 (예전엔 바닥에 깔려 애벌레처럼 보였다). 걸음에 맞춰 끝이 살랑
+    return tail_up(dy=dy, side=-1, sway=10 * math.sin(ph))
 
 B.WALK_TAIL = walk_tail
 
@@ -162,6 +160,8 @@ if __name__ == '__main__':
     os.makedirs(out, exist_ok=True)
     for k, f in POSES.items():
         open(os.path.join(out, f'{k}.svg'), 'w').write(B.titled(f(), f'cat {k}'))
+    for k in B.EYE_VARIANTS:
+        open(os.path.join(out, f'{k}.svg'), 'w').write(B.titled(B.idle_eyes(POSES['idle'], k), f'cat {k}'))
     for i in range(6):
         open(os.path.join(out, f'walk-{i}.svg'), 'w').write(B.titled(walk(i), f'cat walk-{i}'))
     print('ok')

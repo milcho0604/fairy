@@ -1,6 +1,8 @@
-import { statfsSync } from 'node:fs';
+import { readFileSync, statfsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { arch, cpus, freemem, homedir, totalmem, uptime } from 'node:os';
+import { join } from 'node:path';
+import { gunzipSync } from 'node:zlib';
 import {
   app,
   type MenuItemConstructorOptions,
@@ -11,8 +13,15 @@ import {
   type Tray,
 } from 'electron';
 import { t } from '../shared/i18n/index.ts';
-import { RUNNER_COUNTS, RUNNER_MAC_PT, RUNNER_STATES, runnerAlpha } from '../shared/menu-runner.ts';
-import type { PetKind } from '../shared/settings.ts';
+import {
+  RUNNER_COUNTS,
+  RUNNER_MAC_PT,
+  RUNNER_STATES,
+  type RunnerLook,
+  runnerAlpha,
+  runnerArtAlpha,
+  runnerIndex,
+} from '../shared/menu-runner.ts';
 import { sumCpuTimes } from '../shared/system-load.ts';
 import {
   canReadMacMemory,
@@ -33,8 +42,8 @@ export interface SystemMonitor {
   setEnabled(on: boolean): void;
   /** 꺼져 있을 때 쓸 아이콘 (윈도우는 펫 얼굴). 켜져 있으면 다음에 끌 때 쓴다 */
   setBaseIcon(icon: NativeImage): void;
-  /** 메뉴 막대에서 달릴 펫 모습 (menu-runner.ts runnerKindOf). 바뀌면 그림을 새로 그려 지금 장을 바꿔 끼운다 */
-  setKind(kind: PetKind): void;
+  /** 메뉴 막대에서 달릴 펫 모습 (menu-runner.ts runnerLookOf). 바뀌면 그림을 새로 그려 지금 장을 바꿔 끼운다 */
+  setKind(look: RunnerLook): void;
   /** 발표, 전체 화면처럼 펫을 숨길 때는 메뉴 막대 펫도 세운다 */
   setPaused(reason: PauseReason, on: boolean): void;
   /** 메뉴의 "컴퓨터 상태" 칸 */
@@ -60,7 +69,7 @@ export function createSystemMonitor(
   let base = baseIcon;
   let frames: NativeImage[] | undefined;
   let framesDark: boolean | undefined;
-  let kind: PetKind = 'kong';
+  let look: RunnerLook = { kind: 'kong', art: false };
   let shownFrame: number | undefined;
   let gpu: string | undefined;
 
@@ -72,6 +81,18 @@ export function createSystemMonitor(
       gpu = gpuName(aux?.glRenderer);
     })
     .catch(() => {});
+
+  /** 손그림 실루엣 파일 (resources/runner/<종>.alpha.gz, scripts/cute2d/runner.mjs 가 굽는다). 못 읽으면 undefined */
+  const artOf = (kind: string): Uint8Array | undefined => {
+    try {
+      return new Uint8Array(
+        gunzipSync(readFileSync(join(app.getAppPath(), 'resources/runner', `${kind}.alpha.gz`))),
+      );
+    } catch (e) {
+      log('system', '메뉴 막대 실루엣을 못 읽음', kind, String(e));
+      return undefined;
+    }
+  };
 
   const runnerFrames = (): NativeImage[] => {
     // 윈도우는 알림 영역 색(밝음, 어두움)에 맞춰 칠한다. 맥은 흑백 템플릿이라 운영체제가 칠한다
@@ -85,6 +106,8 @@ export function createSystemMonitor(
           { w: 16, h: 16, scale: 1 },
           { w: 32, h: 32, scale: 2 },
         ];
+    // 손그림 실루엣 (2D 기본 펫). 파일을 못 읽으면 도형 옆모습으로
+    const art = look.art ? artOf(look.kind) : undefined;
     // 모든 상태의 장을 한 줄로 (monitor-core 가 주는 번호 순서). 종류나 알림 영역 색이 바뀔 때만 다시 그린다
     const list = RUNNER_STATES.flatMap((state) =>
       Array.from({ length: RUNNER_COUNTS[state] }, (_, f) => ({ state, f })),
@@ -92,7 +115,8 @@ export function createSystemMonitor(
     frames = list.map(({ state, f }) => {
       const img = nativeImage.createEmpty();
       for (const { w, h, scale } of sizes) {
-        const a = runnerAlpha(kind, state, f, w, h);
+        const a =
+          (art && runnerArtAlpha(art, runnerIndex(state, f), w, h)) || runnerAlpha(look.kind, state, f, w, h);
         const bgra = Buffer.alloc(w * h * 4);
         for (let k = 0; k < a.length; k++) {
           const alpha = a[k] ?? 0;
@@ -236,8 +260,8 @@ export function createSystemMonitor(
       if (!core.enabled() && alive()) tray.setImage(icon);
     },
     setKind(next) {
-      if (next === kind) return;
-      kind = next;
+      if (next.kind === look.kind && next.art === look.art) return;
+      look = next;
       frames = undefined;
       // 지금 보이는 장을 새 모습으로 바로 바꿔 끼운다 (꺼져 있으면 다음에 켤 때 그린다)
       if (shownFrame !== undefined && alive()) {

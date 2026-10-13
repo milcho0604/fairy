@@ -27,6 +27,10 @@ export const isCuteKind = (k: PetKind | undefined): k is CuteKind =>
 export const CUTE_WALK_FRAMES = 6;
 export const CUTE_POSES = [
   'idle',
+  // 서기 그림에서 눈만 바꾼 장: 깜빡임(감은 눈), 커서 바라보기(눈동자를 왼쪽, 오른쪽으로). cuteEyes 가 고른다
+  'blink',
+  'look-l',
+  'look-r',
   'sit',
   'sleep',
   'happy',
@@ -76,35 +80,93 @@ export interface CuteGeom {
    * x0..x1(그림 좌표) 상자, 그 아래는 머리 테두리를 따라 둥근 턱 (가로 rx, 세로 ry)
    */
   faceCut: { x0: number; x1: number; up: number; rx: number; ry: number };
+  /**
+   * 머리와 몸이 한 덩어리인 모양(콩이)은 머리 상자 대신 이 찹쌀떡 모양(그림 좌표)과 그 위 상자(새싹)로 자른다.
+   * 상자와 둥근 턱으로는 콩의 넓은 아랫배 가장자리가 잘렸다
+   */
+  faceShape?(pose: CutePose): CuteBlob;
   /** 목도리를 코드 그림 몸 좌표에서 이만큼 내려 그림 속 목에 두른다 */
   scarfDrop: number;
 }
 
+/** 찹쌀떡 모양 (scripts/cute2d/bear/gen.py blob): 가운데, 위 반지름(가로 rx, 세로 ryT), 아래(가로 rxB, 세로 ryB), 휨 kT, kB */
+export interface CuteBlob {
+  cx: number;
+  cy: number;
+  rx: number;
+  rxB: number;
+  ryT: number;
+  ryB: number;
+  kT: number;
+  kB: number;
+}
+
+/** 찹쌀떡 모양 테두리를 그리는 베지어 네 조각 (blob 과 같은 순서): 시작점과 [제어1, 제어2, 끝] 넷 */
+export function blobCurves(b: CuteBlob): { start: [number, number]; curves: number[][] } {
+  const { cx, cy, rx, rxB, ryT, ryB, kT, kB } = b;
+  const t = cy - ryT;
+  const bt = cy + ryB;
+  return {
+    start: [cx, t],
+    curves: [
+      [cx + rx * kT, t, cx + rx, cy - ryT * kT, cx + rx, cy],
+      [cx + rx, cy + ryB * kB, cx + rxB * kB, bt, cx, bt],
+      [cx - rxB * kB, bt, cx - rx, cy + ryB * kB, cx - rx, cy],
+      [cx - rx, cy - ryT * kT, cx - rx * kT, t, cx, t],
+    ],
+  };
+}
+
+/**
+ * 콩이 콩 한 덩어리 (scripts/cute2d/kong/gen.py bean): 곰 몸 자리(가운데 y, 가로 반지름, 아래 반지름)에서 머리까지 덮는다.
+ * grow 만큼 바깥으로 (테두리 두께 반과 손그림 흔들림)
+ */
+export function kongBean(cy: number, rx: number, ryB: number, grow = 0): CuteBlob {
+  const top = cy - 214;
+  const bot = cy + ryB;
+  const c = top + (bot - top) * 0.52;
+  const R = 136 + (rx - 80) * 0.6;
+  return {
+    cx: ART_CX,
+    cy: c,
+    rx: R + grow,
+    rxB: R * 1.04 + grow,
+    ryT: c - top + grow,
+    ryB: bot - c + grow,
+    kT: 0.57,
+    kB: 0.66,
+  };
+}
+
+/** 걷기 그림에서 두 발이 다 땅에 있을 때 머리가 서기보다 올라가는 높이 (scripts/cute2d/bear/gen.py WALK_BOB) */
+export const WALK_BOB = 4;
+
 /**
  * 곰돌이 골격 (scripts/cute2d/bear/gen.py. 냥이도 이 골격에 귀, 코입, 꼬리, 색만 바꿨다).
- * 배율 0.34: 가장 키 큰 그림(걷기, 꼭대기 y 64)이 바닥 154 에서 캔버스 안에 들고, 신나서 18 뛰는 기쁨 그림(꼭대기 y 80)도
+ * 배율 0.34: 가장 키 큰 그림(들림, 꼭대기 y 62)이 바닥 154 에서 캔버스 안에 들고, 신나서 18 뛰는 기쁨 그림(꼭대기 y 80)도
  * 잘리지 않는 값. 예전 코드 그림(몸 높이 약 110)과 키가 비슷하다. 머리는 head_front(가로 126, 위 100, 아래 94),
- * 걷기는 몸을 올린 만큼(26 + 걸음마다 0~12) 위. 얼굴 자르기 가로는 귀 바깥(곰 귀 160 - 35 - 테두리, 냥이 귀 끝 122)까지,
- * 옆에 올라온 냥이 꼬리 끝은 빠진다
+ * 걷기도 서기와 같은 높이 (몸 아래를 줄여 다리를 보인다. 걸음마다 0~4 위). 얼굴 자르기 가로는 귀 바깥(곰 귀 160 - 35 - 테두리,
+ * 냥이 귀 끝 122)까지, 옆에 올라온 냥이 꼬리 끝은 빠진다
  */
 export const BEAR_GEOM: CuteGeom = {
   scale: 0.34,
   top(pose) {
-    if (pose.startsWith('walk-')) return 64;
+    if (pose.startsWith('walk-')) return 94;
     const top: Partial<Record<CutePose, number>> = { sit: 124, sleep: 180, happy: 80, grab: 62, doze: 118 };
     return top[pose] ?? 102;
   },
   head(pose) {
     if (pose.startsWith('walk-')) {
       const ph = (2 * Math.PI * Number(pose.slice(5))) / CUTE_WALK_FRAMES;
-      return { x: 256, y: 236 - 26 - 12 * Math.abs(Math.cos(ph)), rot: 0 };
+      return { x: 256, y: 236 - WALK_BOB * Math.abs(Math.cos(ph)), rot: 0 };
     }
     const at: Partial<Record<CutePose, { x: number; y: number; rot: number }>> = {
       sit: { x: 256, y: 258, rot: 0 },
       sleep: { x: 236, y: 338, rot: -6 },
       happy: { x: 256, y: 214, rot: 0 },
       grab: { x: 256, y: 196, rot: 0 },
-      doze: { x: 256, y: 262, rot: 12 },
+      // 졸기는 머리를 (256, 322) 축으로 12도 기울이고 10 내린다 (bear/gen.py doze): 머리 가운데가 오른쪽 아래로 간다
+      doze: { x: 266, y: 273, rot: 12 },
     };
     return at[pose] ?? { x: 256, y: 236, rot: 0 };
   },
@@ -115,18 +177,21 @@ export const BEAR_GEOM: CuteGeom = {
   scarfDrop: 20,
 };
 
-/** 자세 이름에서 걷기 여섯 장은 하나로 (꼭대기 표) */
-type TopKey = Exclude<CutePose, `walk-${number}`> | 'walk';
+/** 눈만 바꾼 서기 그림 (꼭대기와 머리 자리는 서기와 같다) */
+const IDLE_EYES = ['blink', 'look-l', 'look-r'] as const satisfies readonly CutePose[];
+const isIdleEyes = (pose: CutePose): boolean => (IDLE_EYES as readonly CutePose[]).includes(pose);
+/** 자세 이름에서 걷기 여섯 장은 하나로, 눈만 바꾼 서기는 서기로 (꼭대기 표) */
+type TopKey = Exclude<CutePose, `walk-${number}` | (typeof IDLE_EYES)[number]> | 'walk';
 /** 그림에서 잰 꼭대기 표(자세마다 불투명한 맨 위 y)로 곰돌이 골격 값을 덮는다 */
 function measured(top: Record<TopKey, number>, more: Partial<CuteGeom> = {}): CuteGeom {
   return {
     ...BEAR_GEOM,
-    top: (pose) => top[pose.startsWith('walk-') ? 'walk' : (pose as TopKey)],
+    top: (pose) => top[pose.startsWith('walk-') ? 'walk' : isIdleEyes(pose) ? 'idle' : (pose as TopKey)],
     ...more,
   };
 }
 /** 귀 없는 머리 (삐약이 깃털, 멍멍이 늘어진 귀, 햄찌 작은 귀, 뒤뚱이): 꼭대기만 다르고 머리 자리는 곰돌이와 같다 */
-const EARLESS_TOP = { sit: 151, sleep: 180, happy: 105, grab: 84, doze: 150, walk: 91 } as const;
+const EARLESS_TOP = { sit: 151, sleep: 180, happy: 105, grab: 83, doze: 149, walk: 125 } as const;
 const flat = (base: number, o: Partial<Record<TopKey, number>>): Record<TopKey, number> => ({
   idle: base,
   hungry: base,
@@ -147,17 +212,17 @@ const flat = (base: number, o: Partial<Record<TopKey, number>>): Record<TopKey, 
 
 /**
  * 모양마다 그림 자리 값. 모두 곰돌이 골격(scripts/cute2d/bear/gen.py)이라 머리 자리는 같고, 꼭대기는 그림에서 쟀다
- * (scratchpad 측정, 냥이와 곰돌이는 둘 중 높은 쪽). 토순이는 긴 귀가 걷기에서 y 8 까지 올라와 조금 작게(0.32) 그린다.
+ * (scratchpad 측정, 냥이와 곰돌이는 둘 중 높은 쪽). 토순이는 긴 귀가 y 16 까지 올라와 조금 작게(0.32) 그린다.
  * 콩이는 머리와 몸이 한 덩어리 콩이라 머리 자리를 콩 가운데(곰 머리보다 84 아래), 반지름을 콩(136x148)으로,
  * 얼굴(눈, 입)은 곰 얼굴보다 12 아래 (scripts/cute2d/kong/gen.py FACE_DY), 얼굴 아이콘은 발만 뺀 콩 전체
  */
 export const CUTE_GEOM: Record<CuteKind, CuteGeom> = {
   cat: BEAR_GEOM,
   bear: BEAR_GEOM,
-  chick: measured(flat(89, { sit: 111, sleep: 180, happy: 67, grab: 49, doze: 129, walk: 51 })),
+  chick: measured(flat(89, { sit: 111, sleep: 180, happy: 67, grab: 49, doze: 129, walk: 85 })),
   dog: measured(flat(129, EARLESS_TOP)),
   hamster: measured(
-    flat(125, { hungry: 131, sit: 147, sleep: 180, happy: 103, grab: 85, doze: 143, walk: 87 }),
+    flat(125, { hungry: 131, sit: 147, sleep: 180, happy: 103, grab: 85, doze: 143, walk: 119 }),
   ),
   penguin: measured(flat(129, { ...EARLESS_TOP, grab: 89, happy: 107 })),
   bunny: measured(
@@ -169,18 +234,32 @@ export const CUTE_GEOM: Record<CuteKind, CuteGeom> = {
       sleep: 170,
       happy: 16,
       grab: 19,
-      doze: 47,
-      walk: 8,
+      doze: 46,
+      walk: 17,
     }),
     { scale: 0.32 },
   ),
+  // 콩이는 머리 위 새싹까지 (자세마다 새싹이 서고 눕는다)
   kong: measured(
-    flat(165, { back: 168, sulky: 156, sit: 187, sleep: 180, happy: 114, grab: 123, doze: 150, walk: 127 }),
+    flat(119, {
+      hungry: 131,
+      sulky: 144,
+      wave: 101,
+      sit: 141,
+      sleep: 180,
+      happy: 79,
+      grab: 62,
+      doze: 149,
+      walk: 112,
+    }),
     {
       head: (pose) => {
         const h = BEAR_GEOM.head(pose);
         return { ...h, y: h.y + 84 };
       },
+      // 얼굴 아이콘은 서기(콩 386, 80, 70)와 졸기(앉은 콩 408, 98, 56) 두 장만 쓴다
+      faceShape: (pose) =>
+        pose === 'doze' || pose === 'sit' ? kongBean(408, 98, 56, 4) : kongBean(386, 80, 70, 4),
       headR: { x: 136, y: 148 },
       eye: { dx: 58, dy: 24 + 12 - 84 },
       mouthDy: 56 + 12 - 84,
@@ -258,4 +337,20 @@ export function cutePose(s: CuteInput): CutePick {
   if (act?.type === 'stretch') return still('happy');
   if (s.hungry) return still('hungry');
   return still('idle');
+}
+
+/** 커서가 이만큼 옆(gazeOf 의 x, -1~1)이면 눈동자를 그쪽으로 옮긴 그림 */
+export const LOOK_SIDE = 0.35;
+
+/**
+ * 서기 그림의 눈: 깜빡이는 중이면 감은 눈, 아니면 커서 쪽을 보는 눈 (예전 2D 펫처럼: 깜빡임은 pet.ts 가 주는 blink 0~1,
+ * 커서 방향은 draw.ts gazeOf 가 기본 상태에서만 준다). 깜빡임은 네 틀(반쯤 감음, 감음, 반쯤 뜸, 뜸) 가운데 앞 셋을 감은 눈으로.
+ * 서기가 아닌 자세는 그대로
+ */
+export function cuteEyes(pose: CutePose, blink: number, gazeX: number | undefined): CutePose {
+  if (pose !== 'idle') return pose;
+  if (blink > 0.15 && blink < 0.85) return 'blink';
+  if (gazeX !== undefined && gazeX <= -LOOK_SIDE) return 'look-l';
+  if (gazeX !== undefined && gazeX >= LOOK_SIDE) return 'look-r';
+  return pose;
 }

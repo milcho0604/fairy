@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { gunzipSync } from 'node:zlib';
 import {
+  RUNNER_ART_BYTES,
+  RUNNER_ART_SIZES,
   RUNNER_BANDS,
   RUNNER_COUNTS,
   RUNNER_FAST_MS,
@@ -9,9 +13,11 @@ import {
   RUNNER_TOTAL,
   type RunnerState,
   runnerAlpha,
+  runnerArtAlpha,
   runnerFrameMs,
   runnerIndex,
   runnerKindOf,
+  runnerLookOf,
   runnerState,
 } from './menu-runner.ts';
 import { DEFAULT_BLUEPRINTS } from './pet3d/defaults.ts';
@@ -195,4 +201,69 @@ test('그림: 종류 하나의 모든 장(맥 크기)을 그리는 데 오래 �
   const ms = Math.min(once(), once(), once());
   // 이 맥에서 약 30ms. 느린 컴퓨터와 같이 도는 시험을 생각해 아주 넉넉히 (그림이 몇십 배 느려진 것만 잡는다)
   assert.ok(ms < 2000, `${ms.toFixed(0)}ms`);
+});
+
+// ---- 손그림 실루엣 (2D 기본 펫, 2026-10-13) ----
+
+const artFile = (kind: PetKind) =>
+  new Uint8Array(
+    gunzipSync(readFileSync(new URL(`../../resources/runner/${kind}.alpha.gz`, import.meta.url))),
+  );
+
+test('손그림 실루엣은 2D 로 보는 기본 펫만 (입체, 사진 펫은 도형 옆모습)', () => {
+  const basic = { petImage: undefined, petModel: undefined, petGaits: {} };
+  for (const kind of PET_KIND_IDS) {
+    assert.deepEqual(runnerLookOf({ ...basic, petKind: kind, pet3d: false }), { kind, art: true });
+    assert.deepEqual(runnerLookOf({ ...basic, petKind: kind, pet3d: true }), { kind, art: false });
+  }
+  assert.equal(runnerLookOf({ ...basic, petKind: 'cat', pet3d: false, petImage: 'p.png' }, null).art, false);
+});
+
+test('손그림 실루엣 파일: 종류마다 크기 셋 x 24장, 비지 않고 발이 바닥에 닿고 잘리지 않는다', () => {
+  for (const kind of PET_KIND_IDS) {
+    const data = artFile(kind);
+    assert.equal(data.length, RUNNER_ART_BYTES, kind);
+    for (const { w, h } of RUNNER_ART_SIZES)
+      for (let i = 0; i < RUNNER_TOTAL; i++) {
+        const a = runnerArtAlpha(data, i, w, h);
+        assert.ok(a && a.length === w * h, `${kind} ${i} ${w}`);
+        const fill = ink(a) / (w * h);
+        assert.ok(fill > 0.12 && fill < 0.6, `${kind} ${i} ${w}px 채운 양 ${fill.toFixed(2)}`);
+        let edge = 0;
+        for (let y = 0; y < h; y++) edge = Math.max(edge, a[y * w] ?? 0, a[y * w + w - 1] ?? 0);
+        assert.ok(edge < 128, `${kind} ${i} ${w}px 옆 가장자리에 걸림`);
+      }
+    // 쉬기와 걷기는 발이 바닥(맨 아래 두 줄)에 닿는다
+    const { w, h } = RUNNER_ART_SIZES[0];
+    for (let i = 0; i < 12; i++) {
+      const a = runnerArtAlpha(data, i, w, h) as Uint8Array;
+      assert.ok(
+        a.subarray((h - 2) * w).some((v) => v > 128),
+        `${kind} ${i} 발이 떠 있다`,
+      );
+    }
+  }
+  assert.equal(runnerArtAlpha(new Uint8Array(3), 0, 44, 36), undefined);
+  assert.equal(runnerArtAlpha(artFile('kong'), 0, 20, 20), undefined);
+});
+
+test('손그림 실루엣: 걷기 장마다 움직이고, 질주는 땀방울이 더해지고, 종류끼리 구별된다 (맥 크기)', () => {
+  const { w, h } = RUNNER_ART_SIZES[0];
+  const at = (kind: PetKind, state: RunnerState, f: number) =>
+    runnerArtAlpha(artFile(kind), runnerIndex(state, f), w, h) as Uint8Array;
+  for (const kind of PET_KIND_IDS) {
+    for (let f = 0; f < RUNNER_COUNTS.walk; f++)
+      assert.ok(diff(at(kind, 'walk', f), at(kind, 'walk', f + 1)) > 3, `${kind} 걷기 ${f}`);
+    for (let f = 0; f < RUNNER_COUNTS.run; f++)
+      assert.ok(ink(at(kind, 'sprint', f)) > ink(at(kind, 'run', f)) + 1, `${kind} ${f} 땀방울`);
+  }
+  for (const state of RUNNER_STATES) {
+    const all = PET_KIND_IDS.map((k) => at(k, state, 1));
+    for (let i = 0; i < all.length; i++)
+      for (let j = i + 1; j < all.length; j++)
+        assert.ok(
+          diff(all[i] as Uint8Array, all[j] as Uint8Array) > 30,
+          `${state}: ${PET_KIND_IDS[i]} 와 ${PET_KIND_IDS[j]} 가 거의 같다`,
+        );
+  }
 });

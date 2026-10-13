@@ -773,3 +773,53 @@ export function runnerAlpha(kind: PetKind, state: RunnerState, frame: number, w:
   }
   return out;
 }
+
+// ---- 손그림 실루엣 (2D 기본 펫) ----
+
+/**
+ * 손그림 2D 기본 펫(art/cute2d, 2026-10-13)을 쓰는 사람은 메뉴 막대에서도 그 그림의 실루엣이 달린다
+ * (사용자 요청: 옛 옆모습 도형이 새 그림과 달라 보였다). 정면 뒤뚱 걷기 그림을 그대로 줄여 흑백으로 (눈과 코는 구멍).
+ * 입체로 보는 사람과 사진 펫은 펫 화면이 옆으로 걷는 몸이라 지금 도형 옆모습이 더 가깝다 (입체만 쓰는 사람이 어색하지 않게)
+ */
+export interface RunnerLook {
+  kind: PetKind;
+  /** true 면 손그림 실루엣 (resources/runner/<kind>.alpha.gz), false 면 도형 옆모습 (runnerAlpha) */
+  art: boolean;
+}
+
+/** 지금 설정의 메뉴 막대 펫 모습 */
+export function runnerLookOf(
+  s: Pick<Settings, 'petImage' | 'petModel' | 'petKind' | 'petGaits' | 'pet3d'>,
+  model?: Pick<Blueprint, 'parts' | 'face' | 'gait'> | null,
+): RunnerLook {
+  return { kind: runnerKindOf(s, model), art: !s.petImage && !s.pet3d };
+}
+
+/**
+ * 손그림 실루엣 파일의 크기 순서 (scripts/cute2d/runner.mjs 가 이 순서로 굽는다). 크기마다 RUNNER_TOTAL 장이
+ * 한 줄로 (runnerIndex 순서), 한 장은 w*h 바이트 불투명도. 맥은 44x36(22x18 점의 두 배), 윈도우는 16, 32
+ */
+export const RUNNER_ART_SIZES = [
+  { w: RUNNER_MAC_PT.w * 2, h: RUNNER_MAC_PT.h * 2 },
+  { w: 32, h: 32 },
+  { w: 16, h: 16 },
+] as const;
+
+/** 실루엣 파일 전체 바이트 수 (풀린 것) */
+export const RUNNER_ART_BYTES = RUNNER_ART_SIZES.reduce((n, { w, h }) => n + w * h * RUNNER_TOTAL, 0);
+
+/** 풀린 실루엣 파일에서 i 번째 장(runnerIndex)의 w x h 불투명도. 크기가 없거나 파일이 모자라면 undefined */
+export function runnerArtAlpha(
+  data: Uint8Array,
+  index: number,
+  w: number,
+  h: number,
+): Uint8Array | undefined {
+  if (data.length !== RUNNER_ART_BYTES || index < 0 || index >= RUNNER_TOTAL) return undefined;
+  let at = 0;
+  for (const s of RUNNER_ART_SIZES) {
+    if (s.w === w && s.h === h) return data.subarray(at + index * w * h, at + (index + 1) * w * h);
+    at += s.w * s.h * RUNNER_TOTAL;
+  }
+  return undefined;
+}
