@@ -672,6 +672,8 @@ export interface PetImages {
   age?: AgeStage;
   /** 앱에 든 캐릭터(밀크, 초코) 그림이면 그 이름. 사진에 감은 눈을 그릴 눈 자리를 안다 (starter-pets.ts STARTER_EYES) */
   starter?: StarterId;
+  /** 밀크, 초코의 옆모습 걷기 그림 (오른쪽을 보는 한 주기, data URL). 있으면 사진 모습으로 걸을 때 넘겨 보인다 */
+  walk?: string[];
 }
 
 export const MAKER = {
