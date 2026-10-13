@@ -16,7 +16,16 @@ import type { PetKind } from '../../shared/settings.ts';
 import type { PhotoEyes } from '../../shared/starter-pets.ts';
 import type { NoteLook } from '../../shared/together.ts';
 import type { Outfit } from '../../shared/wear.ts';
-import { ART_CX, ART_GROUND, CUTE_GEOM, type CuteKind, cutePose, isCuteKind } from './cute2d.ts';
+import {
+  ART_CX,
+  ART_GROUND,
+  blobCurves,
+  CUTE_GEOM,
+  type CuteKind,
+  cuteEyes,
+  cutePose,
+  isCuteKind,
+} from './cute2d.ts';
 import { cuteArt, loadCuteArt } from './cute2d-art.ts';
 import { drawMagnifier } from './magnifier.ts';
 import { Eased } from './motion-ease.ts';
@@ -1610,12 +1619,14 @@ function drawCute(
 ): Point | undefined {
   const trick = trickOf(s);
   // 얼굴 아이콘은 서 있는 머리 (집 안 침대의 자는 얼굴은 눈 감은 졸기 머리)
-  const pick = s.face
+  const posed = s.face
     ? {
         pose: s.mood === 'sleeping' || s.mood === 'dozing' ? ('doze' as const) : ('idle' as const),
         flip: false,
       }
     : cutePose({ mood: s.mood, elapsed: s.elapsed, hungry: s.hungry, stage: sulkStage(s), act, trick });
+  // 서기 그림은 깜빡이고 커서 쪽을 본다 (얼굴 아이콘은 뜬 눈 정면 그대로)
+  const pick = s.face ? posed : { ...posed, pose: cuteEyes(posed.pose, s.blink, gazeOf(s, act)?.x) };
   // 그림 속 몸이 이미 걷고 앉아 있으니 코드 그림의 걸음 들썩임과 앉기 눌림은 빼고, 지침 처짐만 남긴다
   if (act?.type === 'walk' || act?.type === 'sit' || pick.pose === 'back') {
     const tired = droop(s, act);
@@ -1650,15 +1661,26 @@ function drawCute(
   if (s.face) {
     // 얼굴 아이콘은 머리와 귀만 (pet-face.ts 가 그린 데를 잘라 쓴다). 머리 자리와 기울기에 맞춘 머리 좌표에서 자른다
     const h = geom.head(pick.pose);
-    ctx.save();
-    ctx.translate(h.x, h.y);
-    ctx.rotate((h.rot * Math.PI) / 180);
+    const shape = geom.faceShape?.(pick.pose);
     ctx.beginPath();
-    const cut = geom.faceCut;
-    ctx.rect(cut.x0 - ART_CX, -cut.up, cut.x1 - cut.x0, cut.up);
-    ctx.moveTo(cut.rx, 0);
-    ctx.ellipse(0, 0, cut.rx, cut.ry, 0, 0, Math.PI * 2);
-    ctx.restore();
+    if (shape) {
+      // 몸이 곧 머리 (콩이): 콩 모양 그대로, 그 위(새싹)는 콩 너비 상자
+      const { start, curves } = blobCurves(shape);
+      ctx.moveTo(start[0], start[1]);
+      for (const [a, b, c, d, e, f] of curves)
+        ctx.bezierCurveTo(a ?? 0, b ?? 0, c ?? 0, d ?? 0, e ?? 0, f ?? 0);
+      ctx.closePath();
+      ctx.rect(shape.cx - shape.rx, 0, shape.rx * 2, shape.cy);
+    } else {
+      ctx.save();
+      ctx.translate(h.x, h.y);
+      ctx.rotate((h.rot * Math.PI) / 180);
+      const cut = geom.faceCut;
+      ctx.rect(cut.x0 - ART_CX, -cut.up, cut.x1 - cut.x0, cut.up);
+      ctx.moveTo(cut.rx, 0);
+      ctx.ellipse(0, 0, cut.rx, cut.ry, 0, 0, Math.PI * 2);
+      ctx.restore();
+    }
     ctx.clip();
   }
   ctx.drawImage(pics[pick.pose], 0, 0, 512, 512);

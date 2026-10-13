@@ -14,7 +14,7 @@ import { locale, t } from '../shared/i18n/index.ts';
 import { IPC, type PetStatus, type PlayKind } from '../shared/ipc.ts';
 import { type FactKind, factsForAi } from '../shared/knows.ts';
 import { ownsLoginItem } from '../shared/login-item.ts';
-import { runnerKindOf } from '../shared/menu-runner.ts';
+import { runnerLookOf } from '../shared/menu-runner.ts';
 import { isMiniGame, PLAY_COIN } from '../shared/minigames.ts';
 import { noteTitle } from '../shared/note-store.ts';
 import { setSpeechSource, setVoiceSource, voiced } from '../shared/persona-voice.ts';
@@ -454,7 +454,7 @@ ready
     const runnerKindNow = () => {
       const s = settings.get();
       // 밀크, 초코 그림은 앱에 든 설계도로 (펫 화면과 같은 몸, maker.ts petImages)
-      return runnerKindOf(s, s.petImage ? (modelOf(s.petModel) ?? starterModelOf(s.petImage)) : null);
+      return runnerLookOf(s, s.petImage ? (modelOf(s.petModel) ?? starterModelOf(s.petImage)) : null);
     };
     sysMonitor.setKind(runnerKindNow());
     sysMonitor.setEnabled(settings.get().sysMonitor);
@@ -1491,6 +1491,7 @@ ready
         next.petKind !== prev.petKind ||
         next.petImage !== prev.petImage ||
         next.petModel !== prev.petModel ||
+        next.pet3d !== prev.pet3d ||
         JSON.stringify(next.petGaits) !== JSON.stringify(prev.petGaits)
       )
         sysMonitor.setKind(runnerKindNow());

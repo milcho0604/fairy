@@ -96,7 +96,7 @@ def orange_feet(svg):
 def big_belly(svg):
     """배 흰 판을 곰보다 크게"""
     for a, b in (('rx="50" ry="40"', 'rx="60" ry="50"'), ('rx="54" ry="36"', 'rx="70" ry="44"'),
-                 ('rx="48" ry="38"', 'rx="58" ry="48"')):
+                 ('rx="48" ry="38"', 'rx="58" ry="48"'), ('rx="46" ry="28"', 'rx="56" ry="32"')):
         svg = svg.replace(f'{a} fill="{B.CR}"', f'{b} fill="{B.CR}"')
     return svg
 
@@ -139,6 +139,8 @@ def _save(name, svg):
 if __name__ == '__main__':
     for k, f in POSES.items():
         _save(f'{k}', fix(f()))
+    for k in B.EYE_VARIANTS:
+        _save(k, fix(B.idle_eyes(POSES['idle'], k)))
     for i in range(6):
         _save(f'walk-{i}', fix(B.walk(i)))
     print('ok')

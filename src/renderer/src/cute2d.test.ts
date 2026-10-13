@@ -11,8 +11,10 @@ import {
   CUTE_POSES,
   type CuteInput,
   type CutePose,
+  cuteEyes,
   cutePose,
   isCuteKind,
+  LOOK_SIDE,
   TALK_FLIP_MS,
 } from './cute2d.ts';
 
@@ -134,4 +136,61 @@ test('가장 큰 그림도 바닥(154)에 서서 펫 캔버스(160) 안에 든�
       const h = g.head(pose as CutePose);
       assert.ok(h.y > g.top(pose) && h.y < ART_GROUND, `${kind} ${pose}`);
     }
+});
+
+test('서기 그림은 깜빡이고(감은 눈 장) 커서 쪽을 본다 (눈동자 옮긴 장). 다른 자세는 그대로', () => {
+  assert.equal(cuteEyes('idle', -1, undefined), 'idle');
+  // pet.ts 깜빡임 네 틀(0.25, 0.5, 0.75, 1) 가운데 앞 셋은 감은 눈
+  for (const b of [0.25, 0.5, 0.75]) assert.equal(cuteEyes('idle', b, 1), 'blink');
+  assert.equal(cuteEyes('idle', 1, undefined), 'idle');
+  assert.equal(cuteEyes('idle', -1, -1), 'look-l');
+  assert.equal(cuteEyes('idle', -1, 0.5), 'look-r');
+  assert.equal(cuteEyes('idle', -1, LOOK_SIDE / 2), 'idle');
+  for (const pose of ['sit', 'walk-2', 'happy', 'sleep'] as const) {
+    assert.equal(cuteEyes(pose, 0.5, 1), pose);
+  }
+});
+
+test('눈 바꾼 서기 그림은 서기와 눈만 다르다 (그림 파일)', () => {
+  for (const kind of CUTE_KINDS) {
+    const read = (p: string) =>
+      readFileSync(new URL(`./art/cute2d/${kind}/${p}.svg`, import.meta.url), 'utf8');
+    const idle = read('idle');
+    for (const p of ['blink', 'look-l', 'look-r']) {
+      const v = read(p);
+      assert.notEqual(v, idle, `${kind} ${p}`);
+      assert.equal(v.length > idle.length * 0.8 && v.length < idle.length * 1.2, true, `${kind} ${p}`);
+    }
+  }
+});
+
+test('걷기 그림의 머리와 꼭대기는 서기와 같은 높이 (걷기 시작할 때 머리가 튀지 않게)', () => {
+  for (const kind of CUTE_KINDS) {
+    const g = CUTE_GEOM[kind];
+    for (let i = 0; i < 6; i++) {
+      const pose = `walk-${i}` as CutePose;
+      assert.ok(Math.abs(g.head(pose).y - g.head('idle').y) <= 4, `${kind} ${pose} 머리`);
+      assert.ok(Math.abs(g.top(pose) - g.top('idle')) <= 12, `${kind} ${pose} 꼭대기 ${g.top(pose)}`);
+    }
+  }
+});
+
+test('콩이는 모든 자세에 머리 위 새싹이 있고, 서기에는 얼룩 같던 배 패치가 없다', () => {
+  for (const pose of CUTE_POSES) {
+    const svg = readFileSync(new URL(`./art/cute2d/kong/${pose}.svg`, import.meta.url), 'utf8');
+    assert.match(svg, /fill="#b4dc78"/, `kong ${pose} 새싹`);
+  }
+  const idle = readFileSync(new URL('./art/cute2d/kong/idle.svg', import.meta.url), 'utf8');
+  assert.doesNotMatch(idle, /rx="50" ry="40"/);
+});
+
+test('얼굴 아이콘: 콩이는 콩 모양으로 자르고, 졸기 머리 자리는 기울인 머리 가운데', () => {
+  assert.ok(CUTE_GEOM.kong.faceShape, '콩 모양 자르기');
+  const bean = CUTE_GEOM.kong.faceShape?.('idle');
+  // 콩 그림(곰 몸 386, 80, 70): 꼭대기 172, 바닥 456, 아래 가로 141.4. 테두리 바깥까지 들어간다
+  assert.ok(
+    bean && bean.cy - bean.ryT <= 172 - 3.5 && bean.cy + bean.ryB >= 456 + 3.5 && bean.rxB >= 141.4 + 3.5,
+  );
+  const d = CUTE_GEOM.bunny.head('doze');
+  assert.ok(Math.abs(d.x - 266) <= 1 && Math.abs(d.y - 273) <= 1, `${d.x} ${d.y}`);
 });

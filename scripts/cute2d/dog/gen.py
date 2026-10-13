@@ -32,7 +32,7 @@ _face = B.face
 
 def dog_face(cx, cy, eyes='open', mouth_kind='w', dx=0):
     ey = cy + 24
-    spot = E(cx - 60 + dx, ey - 3, 29, 26, SPOT, None, rot=-12)
+    spot = E(cx - 60 + dx + (B.LOOK[0] if eyes == 'open' else 0), ey - 3, 29, 26, SPOT, None, rot=-12)
     s = spot + _face(cx, cy, eyes, mouth_kind, dx)
     s += flop_ear(cx, cy, -1, EAR_FLAP[0]) + flop_ear(cx, cy, 1, EAR_FLAP[0])
     return s
@@ -71,7 +71,8 @@ def tail(dx=0, dy=0, side=1, wag=0):
 
 
 def hanging_tail(dy=0):
-    return union([E(312, 420 + dy, 15, 24, BODY, rot=-15)]) + E(316, 438 + dy, 11, 10, SPOT, None)
+    """들려서 버둥댈 때: 엉덩이 옆에서 바깥 아래로 뻗은 꼬리 (몸 안쪽에 두면 몸에 가려 안 보였다)"""
+    return tail(dx=0, dy=dy, side=1, wag=78)
 
 
 def recolor(svg):
@@ -106,9 +107,10 @@ def back():
     s += B.capsule(196, 360, -52, 30, 19)[0] + B.capsule(316, 360, 52, 30, 19)[0]
     s += union([P(blob(cx, 386, 80, 86, 70)), P(B.head_front(cx, hy))])
     s += flop_ear(cx, hy, -1) + flop_ear(cx, hy, 1)
-    # 등 가운데 솟은 꼬리
-    s += union([E(cx + 4, 414, 18, 26, rot=14), E(cx + 14, 384, 16, 22, rot=20), E(cx + 24, 358, 14, 17, rot=24)])
-    s += E(cx + 26, 355, 11, 13, SPOT, None, rot=24)
+    # 등 가운데 솟은 꼬리: 밑동이 굵고 끝으로 가늘어지는 한 획 (타원을 이으면 땅콩처럼 잘록했다)
+    s += P(f'M{cx-22},{436} C{cx-30},{396} {cx-8},{362} {cx+16},{344} C{cx+32},{332} {cx+54},{342} {cx+46},{364} '
+           f'C{cx+36},{388} {cx+20},{410} {cx+22},{436} Z', BODY)
+    s += E(cx + 32, 350, 14, 11, SPOT, None, rot=-35)
     return B.svg(s)
 
 
@@ -149,6 +151,8 @@ def _save(name, svg):
 if __name__ == '__main__':
     for k, f in POSES.items():
         _save(f'{k}', f())
+    for k in B.EYE_VARIANTS:
+        _save(k, B.idle_eyes(POSES['idle'], k))
     for i in range(6):
         _save(f'walk-{i}', walk(i))
     print('ok')

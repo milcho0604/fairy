@@ -7,9 +7,9 @@ spec = importlib.util.spec_from_file_location('bear_base', os.path.join(D, '../b
 B = importlib.util.module_from_spec(spec); spec.loader.exec_module(B)
 OL, W, E, P, union, blob = B.OL, B.W, B.E, B.P, B.union, B.blob
 
-BODY = '#fbf6f4'    # 흰 몸 (아주 살짝 따뜻하게)
+BODY = '#f8efec'    # 흰 몸 (흰 배가 보이게 아주 살짝 분홍빛 크림)
 PATCH = '#ffffff'   # 배
-FAR = '#efe6e4'     # 먼 쪽 팔다리
+FAR = '#ebdfdc'     # 먼 쪽 팔다리
 EAR_PK = '#f7b9c3'
 NOSE_PK = '#f29aa8'
 PAD_PK = '#f8c3c9'
@@ -188,8 +188,8 @@ B.WALK_TAIL = walk_tail
 def walk(i):
     # 걸을 때 귀가 박자에 맞춰 살짝 흔들린다
     ph = 2 * math.pi * i / 6
-    # 몸이 올라간 걷기에서도 귀 길이가 프레임마다 바뀌지 않게: 끝을 접어 높이를 줄이고 박자에 맞춰 까딱
-    EAR_SPLAY[0], EAR_DROOP[0], EAR_BOTH[0] = 26, 34 + 10 * math.sin(ph), True
+    # 걷기도 머리가 서기 높이라 귀를 서기처럼 세운다 (걷기 시작할 때 귀 모양이 바뀌지 않게). 박자에 맞춰 살짝 벌어졌다 모인다
+    EAR_SPLAY[0], EAR_DROOP[0], EAR_BOTH[0] = 12 + 4 * math.sin(ph), 0.0, False
     out = recolor(B.walk(i))
     EAR_SPLAY[0], EAR_DROOP[0], EAR_BOTH[0] = 12.0, 0.0, False
     return out
@@ -201,7 +201,7 @@ POSES = {
     'sleep': lambda: run(sleep),
     'happy': lambda: run(B.happy, side_tail(dy=-22), splay=24, droop=14, both=True),
     'hungry': lambda: run(B.hungry, side_tail(side=-1), splay=16, droop=50),
-    'grab': lambda: run(B.grab, puff(300, 400, 18), splay=30, droop=40, both=True),
+    'grab': lambda: run(B.grab, puff(356, 404, 21), splay=30, droop=40, both=True),
     'sulky': lambda: run(B.sulky, side_tail(side=-1), splay=30, droop=60),
     'doze': lambda: pads(run(B.doze, side_tail(dx=10, dy=8))).replace('<text x="396" y="168"', '<text x="440" y="250"'),
     'wave': lambda: run(B.wave, side_tail(side=-1)),
@@ -221,6 +221,8 @@ def _save(name, svg):
 if __name__ == '__main__':
     for k, f in POSES.items():
         _save(f'{k}', f())
+    for k in B.EYE_VARIANTS:
+        _save(k, B.idle_eyes(POSES['idle'], k))
     for i in range(6):
         _save(f'walk-{i}', walk(i))
     print('ok')
