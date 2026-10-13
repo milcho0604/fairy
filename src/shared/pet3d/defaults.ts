@@ -768,7 +768,8 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
     v: 2,
     stance: 'stand',
     gait: 'quadruped',
-    fur: { length: 0.5, clump: 0.3 },
+    // 덧털 (이슈 #68): 길이는 그대로, 가슴, 볼, 꼬리에만 가는 결로 더한다 (실사만. 복슬복슬은 ruff 를 쓰지 않는다)
+    fur: { length: 0.5, clump: 0.3, ruff: 0.85 },
     motion: { bounce: 0.55, tailWag: 0.8, earWiggle: 1 },
     parts: [
       {
@@ -1149,7 +1150,8 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
     v: 2,
     stance: 'stand',
     gait: 'quadruped',
-    fur: { length: 0.45, clump: 0.3 },
+    // 덧털 (이슈 #68): 길이는 그대로, 가슴, 볼, 꼬리에만 가는 결로 더한다
+    fur: { length: 0.45, clump: 0.3, ruff: 0.7 },
     motion: { bounce: 0.7, tailWag: 0.4, earWiggle: 0.8 },
     parts: [
       {

@@ -244,12 +244,15 @@ export type Stance = (typeof STANCES)[number];
 
 /**
  * 털 느낌. 모두 0~1. length 짧은 솜털(0)~긴 털(1), curl 곧은 털(0)~곱슬(1, 푸들),
- * clump 고르게 흩어진 털(0)~뭉쳐 갈라진 털(1, 긴 털 고양이)
+ * clump 고르게 흩어진 털(0)~뭉쳐 갈라진 털(1, 긴 털 고양이).
+ * ruff 는 털이 원래 많은 곳(가슴, 볼, 꼬리)에만 더하는 털 (네 발로 선 몸의 실사 모습). 0 이거나 없으면 예전 털 그대로,
+ * 있으면 실사 털 껍질을 가는 결, 반투명 끝, 부위별 방향으로 그린다 (renderer pet3d.ts addFur)
  */
 export interface Fur {
   length?: number;
   curl?: number;
   clump?: number;
+  ruff?: number;
 }
 
 export const MAX_PARTS = 40;
@@ -512,7 +515,7 @@ export function furOf(raw: unknown): Fur | undefined {
   const r = obj(raw);
   if (!r) return undefined;
   const out: Fur = {};
-  for (const key of ['length', 'curl', 'clump'] as const) {
+  for (const key of ['length', 'curl', 'clump', 'ruff'] as const) {
     const v = r[key];
     if (typeof v === 'number' && Number.isFinite(v)) out[key] = clamp(v, 0, 1);
   }
