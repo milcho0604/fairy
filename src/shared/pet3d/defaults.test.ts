@@ -76,22 +76,12 @@ test('모습마다 설계도: 피규어, 게임은 동그란 몸, 실사와 복�
   for (const kind of PET_KIND_IDS) {
     assert.equal(defaultBlueprint(kind, 'figure'), DEFAULT_BLUEPRINTS[kind], kind);
     assert.equal(defaultBlueprint(kind, 'game'), DEFAULT_BLUEPRINTS[kind], kind);
-    // 복슬복슬은 실사 위에 털을 덮는 모습이라 실사와 같은 몸이다 (털 값만 다를 수 있다)
-    const { fur: _f, ...fluffy } = defaultBlueprint(kind, 'fluffy');
-    const { fur: _r, ...real } = defaultBlueprint(kind, 'real');
-    assert.deepEqual(fluffy, real, kind);
+    // 복슬복슬은 실사 위에 털을 덮는 모습이라 실사를 따른다
+    assert.equal(defaultBlueprint(kind, 'fluffy'), defaultBlueprint(kind, 'real'), kind);
     const five = (FIVE as readonly string[]).includes(kind);
     assert.equal(defaultBlueprint(kind, 'real') !== DEFAULT_BLUEPRINTS[kind], five, kind);
   }
   assert.deepEqual([...PET_STYLES], ['figure', 'game', 'real', 'fluffy']);
-  // 실사 털을 조금 더한 것은 냥이와 곰돌이뿐 (0.6 을 넘겨 윤곽에 털 다발, 0.7 아래로 조금만), 복슬복슬 털은 그대로
-  for (const kind of FIVE) {
-    const real = defaultBlueprint(kind, 'real').fur?.length ?? 0;
-    const fluffy = defaultBlueprint(kind, 'fluffy').fur?.length ?? 0;
-    if (kind === 'cat' || kind === 'bear')
-      assert.ok(real > fluffy && real >= 0.6 && real < 0.7, `${kind} 실사 털 ${real}`);
-    else assert.equal(real, fluffy, kind);
-  }
   for (const kind of FIVE) assert.ok(parseBlueprint(JSON.parse(JSON.stringify(REAL_BLUEPRINTS[kind]))), kind);
 });
 
