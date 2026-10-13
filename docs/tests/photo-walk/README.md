@@ -22,12 +22,14 @@
 
 같은 방법으로 만든 밀크 영상은 돌아서는 데 3초 넘게 쓰고, 걷는 구간 대부분에서 머리를 돌려 얼굴(호박색 눈)이 안 보이며 몸을 웅크린다. 이음새도 이웃 장 평균의 2배(0.090 대 0.040). [milk-compare.webp](milk-compare.webp), [milk-video-sheet.webp](milk-video-sheet.webp). 다시 뽑으려 했지만 무료 사용량이 끝나 오류가 났다. 밀크는 지금처럼 사진 한 장으로 걷는다.
 
+2026-10-13 다시 시도: 원본 `resources/pets/milk.png` 를 첫 장으로 "처음 1초 안에 일어나 몸 전체를 오른쪽으로 돌리고, 그 뒤로는 옆모습으로 머리를 들고 곧게 걷기"(웅크림, 고개 돌림을 부정 지시에) 를 보냈지만 Space 가 "ZeroGPU quota exceeded"(로그인 없는 사용량 끝)로 거절했다. LoRA 없는 5B Space(`KingNish/wan2-2-fast`)도 같은 오류였다(무료 사용량은 Space 마다가 아니라 함께 깎인다). 밀크는 여전히 넣지 않았다.
+
 ## 쓴 모델과 라이선스 (2026-10-13 원문 확인)
 
 | 모델 | 라이선스 | 생성물 | 무료 배포 앱 | 나중에 유료, 후원 | 판정 |
 |---|---|---|---|---|---|
 | Wan 2.2 I2V A14B (Wan-AI) | Apache-2.0 | README: "We claim no rights over the your generated contents." | 허용 | 허용(수익 상한 조항 없음) | 사용 |
-| lightx2v 증류 LoRA (Space 가 4~6단계로 빠르게 돌리려 섞음) | 원본 `lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v` 는 Apache-2.0. Space 가 받는 `Kijai/WanVideo_comfy` 의 rank128 추출본은 라이선스 표기 없음 | 조항 없음 | Apache 원본 기준 허용 | 같음 | 사용, 추출본 표기는 미확정으로 적어 둔다 |
+| lightx2v 증류 LoRA (Space 가 6단계로 빠르게 돌리려 섞음) | 원본 `lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v` 는 Apache-2.0. Space 가 받는 파일은 `Kijai/WanVideo_comfy` 의 `Lightx2v/lightx2v_I2V_14B_480p_cfg_step_distill_rank128_bf16.safetensors` 이고, 이 저장소 안내에 원본에서 추출했다고 적혀 있다(아래). 추출본에 따로 붙은 라이선스나 조건은 없다 | 원본 README: "We claim no rights over the your generate contents" | 허용 | 허용 | 사용 (아래 판단) |
 | isnet-general-use (DIS, 배경 지우기) | Apache-2.0 | 조항 없음 | 허용 | 허용 | 사용 |
 | rembg (isnet 받은 곳) | MIT | 해당 없음 | 허용 | 허용 | 모델 파일 받기만 |
 | LTX-Video | LTX Open Weights License | "Licensor claims no rights in the Output" | 사용 제한(Attachment A)을 따라야 하고 기계 생성 표시 요구 | 연 매출 1천만 달러 이상은 별도 상업 계약 | 안 씀 |
@@ -35,9 +37,20 @@
 | HunyuanVideo-I2V | Tencent Hunyuan Community | "Tencent claims no rights in Outputs" | Territory 가 "excluding ... European Union, United Kingdom and South Korea" | 같은 이유로 불가 | 안 씀 |
 | FLUX.1 Kontext [dev] (PR #25 가 쓴 것) | FLUX.1 [dev] Non-Commercial | 2(d) 와 4(a)(i) 가 엇갈림 | 회색 | 불가에 가까움 | 안 씀, PR #25 그림 재사용 안 함 |
 
+### 속도용 LoRA 판단 (2026-10-13)
+
+- Space 코드(`app.py` 51~65줄)는 `Kijai/WanVideo_comfy` 에서 위 rank128 파일을 받아 두 변환기에 합친다(`fuse_lora`, 높은 잡음 쪽 3배, 낮은 잡음 쪽 1배).
+- Kijai 저장소 `Lightx2v/README.md`: I2V 480P 파일은 "Extracted from: https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v/tree/main/distill_models". 즉 lightx2v 의 증류 모델에서 원래 Wan 2.1 과의 차이를 LoRA 로 뽑아낸 것이다.
+- 원본 저장소는 `LICENSE.txt`, `distill_models/LICENSE.txt` 모두 Apache-2.0 이고, README 의 License Agreement 에 "We claim no rights over the your generate contents" 가 있다.
+- Kijai 저장소에는 라이선스 표기도 LICENSE 파일도 없다. 추출본은 원본의 2차 저작물이라 Apache-2.0 4절의 재배포 의무("give any other recipients ... a copy of this License")를 지킬 쪽은 Kijai 이고, Kijai 가 더한 조건이 없으니 생성물에 붙는 제한도 없다. 우리는 LoRA 파일을 배포하지 않고 생성물만 쓴다.
+- 판단: 생성물 사용은 원본 Apache-2.0 기준으로 허용. 남는 것은 Kijai 저장소의 표기 누락이며, 추출에 쓰인 원본과 조항이 원문으로 확인돼 미확정으로 두지 않는다.
+- 더 깔끔히 하려면 lightx2v 가 직접 낸 LoRA(`lightx2v/Wan2.1-Distill-Loras`, `lightx2v/Wan2.2-Lightning`, 둘 다 Apache-2.0)를 쓰는 길이 있다. 지금 공개 Space 중 이걸 그대로 받는 곳은 찾지 못했다.
+- LoRA 없이 만들려면: Wan 2.2 I2V A14B 공식 설정은 40단계에 CFG 3.5(`wan/configs/wan_i2v_A14B.py`)라 한 단계에 두 번 돌고, 지금 Space(6단계, CFG 1)보다 계산이 약 13배다. 이 Space 의 GPU 시간 식(`get_duration`)으로 832x480 5초가 약 70초이니 LoRA 없이는 같은 식으로 약 14분(80번 x 약 10초)이 되어 무료 사용량으로는 어렵다(추정). LoRA 없이 빠른 공개 Space 로는 `KingNish/wan2-2-fast`(FastVideo 의 `FastWan2.2-TI2V-5B-FullAttn`, Apache-2.0, 증류된 5B 전체 모델이라 LoRA 없음, 4단계)가 있으나 14B 보다 작은 모델이다.
+
 출처:
 - Wan 2.2: https://huggingface.co/Wan-AI/Wan2.2-I2V-A14B , https://github.com/Wan-Video/Wan2.2/blob/main/LICENSE.txt
-- lightx2v: https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v , https://huggingface.co/Kijai/WanVideo_comfy
+- lightx2v: https://huggingface.co/lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v , Kijai 추출본 안내: https://huggingface.co/Kijai/WanVideo_comfy/blob/main/Lightx2v/README.md , lightx2v 직접 배포 LoRA: https://huggingface.co/lightx2v/Wan2.2-Lightning
+- Wan 2.2 기본 설정: https://github.com/Wan-Video/Wan2.2/blob/main/wan/configs/wan_i2v_A14B.py , LoRA 없는 5B Space: https://huggingface.co/spaces/KingNish/wan2-2-fast
 - Space 코드: https://huggingface.co/spaces/zerogpu-aoti/wan2-2-fp8da-aoti-faster/blob/main/app.py
 - DIS: https://github.com/xuebinqin/DIS/blob/main/LICENSE.md , rembg: https://github.com/danielgatis/rembg/blob/main/LICENSE.txt
 - LTX-Video: https://huggingface.co/Lightricks/LTX-Video/blob/main/LTX-Video-Open-Weights-License-0.X.txt
