@@ -23,6 +23,28 @@ export const RELEASE_REPO = PUBLIC_REPO;
 
 export const RELEASES_API = `https://api.github.com/repos/${RELEASE_REPO.owner}/${RELEASE_REPO.repo}/releases/latest`;
 
+/** 홈페이지 (site/config.js 의 siteUrl 과 같아야 한다, update-policy.test.ts) */
+export const SITE_URL = 'https://fairy.moilga.com';
+
+/**
+ * 손으로 설치할 때 여는 홈페이지 설치 안내 (받기 단추와 처음 열 때 경고 넘기는 법이 같이 있다).
+ * 맥은 애플 개발자 서명과 공증 전이라 새로 받은 dmg 를 열 때마다 "악성 코드가 없음을 확인할 수 없습니다" 창이 뜨고,
+ * 윈도우는 SmartScreen 이 뜬다. 릴리스 페이지에는 그 안내가 없어서 사용자가 거기서 막혔다 (2026-10-12).
+ * 같은 안내를 dmg 안의 웹 링크(build/mac/install-help.webloc)도 가리킨다. 앵커는 site/download/index.html 의 id.
+ */
+export const INSTALL_HELP_URL: Readonly<Record<string, string>> = {
+  darwin: `${SITE_URL}/download/#mac-t`,
+  win32: `${SITE_URL}/download/#win-t`,
+};
+
+/**
+ * "받으러 가기"와 자동 설치가 거절됐을 때 여는 곳. 맥과 윈도우는 홈페이지 설치 안내,
+ * 그 밖(리눅스)은 릴리스 페이지 (리눅스는 경고 창이 없고 파일 고르기가 릴리스 페이지에서 바로 된다).
+ */
+export function manualInstallUrl(platform: string, releaseUrl: string): string {
+  return INSTALL_HELP_URL[platform] ?? releaseUrl;
+}
+
 /**
  * 스스로 받아 설치하는 운영체제. 둘 다 받아 두고 "다시 켜서 업데이트"를 누를 때만 설치한다 (main/update.ts installOnQuit).
  * 맥(Squirrel.Mac)은 새 앱의 서명이 지금 앱의 서명 조건(앱 ID + 자체 인증서, scripts/mac-sign.mjs)을

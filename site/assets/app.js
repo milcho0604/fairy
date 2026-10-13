@@ -609,6 +609,30 @@
     show(0, false);
   }
 
+  /* ---------------- right after a Mac or Windows download: show how to get past the first warning ---------------- */
+  // The app isn't signed by an Apple developer account (or a Windows code-signing certificate) yet, so the first launch
+  // shows a warning that stops people. The file downloads in the background, so we open the guide on this page right away.
+  // Home: open the FAQ answer. Download page: scroll to the install steps.
+  var GUIDE = { home: { macArm: 'faq-mac', macIntel: 'faq-mac', win: 'faq-win' }, download: { macArm: 'mac-t', macIntel: 'mac-t', win: 'win-t' } };
+  function guideFor(href) {
+    if (REL.state !== 'ok' || !href) return null;
+    var ids = GUIDE[page];
+    if (!ids) return null;
+    for (var k in ids) {
+      if (REL.assets[k] && REL.assets[k].url === href) return document.getElementById(ids[k]);
+    }
+    return null;
+  }
+  document.addEventListener('click', function (e) {
+    var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+    var el = a && guideFor(a.href);
+    if (!el) return;
+    setTimeout(function () {
+      if (el.tagName === 'DETAILS') el.open = true;
+      el.scrollIntoView({ behavior: reduceMQ.matches ? 'auto' : 'smooth', block: 'start' });
+    }, 400);
+  });
+
   /* ---------------- go ---------------- */
   // Jua never came (blocked, offline): let the hero title wrap again in the fallback font
   if (document.fonts && document.fonts.check) setTimeout(function () { if (!document.fonts.check('1em Jua', '화')) root.classList.add('no-jua'); }, 3500);
