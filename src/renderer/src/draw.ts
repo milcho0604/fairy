@@ -30,7 +30,7 @@ import {
 } from './move-pose.ts';
 import { quadKind, walkEnvelopeOf } from './pet3d-gait.ts';
 import { eyedPhoto, photoEyeOpen } from './photo-eyes.ts';
-import { impactSquash, photoStep, TurnWatch, turnSquash } from './photo-motion.ts';
+import { fitTilt, impactSquash, photoStep, TurnWatch, turnSquash } from './photo-motion.ts';
 import {
   drawBrow,
   drawHeldNote,
@@ -1625,6 +1625,8 @@ function drawPhoto(
   if (trick?.type === 'wave') tilt = waveSwing(trick.t) * 0.1;
   if (trick?.type === 'dance') tilt = danceTilt(trick.t);
   tilt += rock + lean;
+  // 걸을 때 넓은 사진의 위 모서리가 캔버스 밖으로 나가 잘리지 않게 (이슈 #65, photo-motion.ts fitTilt)
+  if (walking) tilt = fitTilt(tilt, (w / 2) * Math.abs(sx) * turn.sx * 1.025, h * sy, CX - 1);
   // 제자리 몸짓: 사진은 관절이 없어 몸 전체를 기울이고 옮긴다 (뒹굴기는 사진 펫이 고르지 않는다)
   const mv = movePoseOf(act, s.calm);
   let shift = 0;
@@ -1931,7 +1933,7 @@ function drawExtras(ctx: CanvasRenderingContext2D, s: DrawState, top: number, li
   const pouting = sulkStage(s);
   if (pouting >= 2) drawHuff(ctx, top, pouting >= 3);
   if (pouting >= 3) drawCross(ctx, CX - 40, Math.max(12, top + 10));
-  if ((s.hearts ?? -1) >= 0 && (s.hearts ?? 0) < HEARTS_MS) drawHearts(ctx, s.hearts ?? 0, top);
+  if ((s.hearts ?? -1) >= 0 && (s.hearts ?? 0) < HEARTS_MS) drawHearts(ctx, s, s.hearts ?? 0, top);
   if ((s.confetti ?? -1) >= 0 && (s.confetti ?? 0) < CONFETTI_MS)
     drawConfetti(ctx, s.confetti ?? 0, top + lift);
   drawMoveMark(ctx, s, top);
@@ -2125,17 +2127,31 @@ function heart(ctx: CanvasRenderingContext2D, x: number, y: number, r: number) {
   ctx.fill();
 }
 
-function drawHearts(ctx: CanvasRenderingContext2D, ms: number, top: number) {
+/** 하트가 떠오르는 자리 (머리 가운데에서 dx, 머리 꼭대기에서 dy). 머리 양옆에서 (가운데 위는 삐짐 막대 자리라 비운다) */
+const HEARTS_BOTH: readonly (readonly [number, number])[] = [
+  [-52, 26],
+  [50, 18],
+  [-40, 0],
+];
+/** 자거나 졸 때: 머리 오른쪽 위는 Zz 자리라 하트를 모두 왼쪽에서 (이슈 #65: 자는 중 쓰다듬으면 하트가 Zz 와 겹쳤다) */
+const HEARTS_LEFT: readonly (readonly [number, number])[] = [
+  [-52, 26],
+  [-62, 4],
+  [-36, -2],
+];
+
+/** 오른쪽 위에 Zz(잠, 졸음 z)가 뜨는 때 */
+const zzShown = (s: DrawState) =>
+  s.mood === 'sleeping' || s.mood === 'dozing' || energyFace(s)?.stage === 'sleepy';
+
+/** 하트 자리. 오른쪽 위에 Zz 가 뜨면 왼쪽에서만 */
+export const heartSpots = (s: DrawState): readonly (readonly [number, number])[] =>
+  zzShown(s) ? HEARTS_LEFT : HEARTS_BOTH;
+
+function drawHearts(ctx: CanvasRenderingContext2D, s: DrawState, ms: number, top: number) {
   const t = ms / HEARTS_MS;
   ctx.fillStyle = HEART;
-  // 머리 양옆에서 떠올라 사라진다 (가운데 위는 삐짐 막대 자리라 비운다).
-  for (const [i, [dx, dy]] of (
-    [
-      [-52, 26],
-      [50, 18],
-      [-40, 0],
-    ] as const
-  ).entries()) {
+  for (const [i, [dx, dy]] of heartSpots(s).entries()) {
     const k = Math.max(0, Math.min(1, t * 1.3 - i * 0.18));
     if (k <= 0) continue;
     ctx.globalAlpha = 1 - k * k;

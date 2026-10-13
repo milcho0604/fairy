@@ -7,19 +7,21 @@ import {
   useRef,
   useState,
 } from 'react';
-import { isGuideProvider } from '../../../shared/ai/install-guide.ts';
+import { type GuideSubject, guideModeOf, hasGuide } from '../../../shared/ai/install-guide.ts';
 import type { AiProvider, AiStatus } from '../../../shared/ai/types.ts';
 import type { ChatMessage, ChatState } from '../../../shared/chat-state.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { OutgoingImage, ProviderView } from '../../../shared/ipc.ts';
 import { PetFace } from '../PetFace.tsx';
 import { AiManager } from './AiManager.tsx';
-import { InstallGuide } from './InstallGuide.tsx';
+import { ChatList } from './ChatList.tsx';
+import { InlineGuide, InstallGuide } from './InstallGuide.tsx';
 import { toOutgoing } from './images.ts';
 import { chatKey, lastQuestion } from './keys.ts';
 import { Markdown } from './Markdown.tsx';
 import { ProviderPicker } from './ProviderPicker.tsx';
 import { isReady, statusText } from './providerStatus.ts';
+import { LookStatus, LookToggle, useChatLook } from './ScreenLook.tsx';
 import { contentKey, conversationChanged, isNearBottom, jumpBehavior, scrollDecision } from './scroll.ts';
 import { singleFlight } from './single-flight.ts';
 import { UsageBar } from './UsageBar.tsx';
@@ -40,9 +42,11 @@ export function App() {
   const [managing, setManaging] = useState(false);
   /** 설치 방법 시트를 연 AI (#29) */
   const [guideFor, setGuideFor] = useState<AiProvider>();
+  /** 지난 대화 목록 */
+  const [listing, setListing] = useState(false);
   // 덮개(AI 관리, 그림 크게 보기)가 열려 있으면 입력칸으로 포커스를 옮기지 않는다 (가려진 입력칸에 붙여 넣고 보내졌다)
   const overlayRef = useRef(false);
-  overlayRef.current = managing || !!zoom || !!guideFor;
+  overlayRef.current = managing || !!zoom || !!guideFor || listing;
   const focusInput = useCallback(() => {
     if (!overlayRef.current) inputRef.current?.focus();
   }, []);
@@ -127,7 +131,7 @@ export function App() {
   }, [addImages, refreshStatus, focusInput]);
 
   // 덮개를 닫으면 입력칸으로 돌아온다
-  const covered = managing || !!zoom || !!guideFor;
+  const covered = managing || !!zoom || !!guideFor || listing;
   const wasCovered = useRef(false);
   useEffect(() => {
     if (wasCovered.current && !covered) focusInput();
@@ -237,6 +241,11 @@ export function App() {
     for (const child of el.children) ro.observe(child);
   });
 
+  // 같이 보기 (ScreenLook.tsx). 처음 그릴 때는 대화 상태가 없어 AI 를 모른다
+  const lookSpec = providers.find((p) => p.id === state?.provider);
+  const lookStatus = state && status[state.provider];
+  const look = useChatLook(lookSpec, !!lookStatus && isReady(lookStatus));
+
   const jumpToBottom = () => {
     const el = listRef.current;
     if (!el) return;
@@ -259,6 +268,15 @@ export function App() {
   const current = status[state.provider];
   const spec = providers.find((p) => p.id === state.provider);
   const guideSpec = providers.find((p) => p.id === guideFor);
+  const subjectOf = (id?: AiProvider): GuideSubject | undefined => {
+    const p = providers.find((x) => x.id === id);
+    if (!p || !hasGuide(p)) return undefined;
+    return { id: p.id, label: p.label, custom: p.custom, bin: p.bin };
+  };
+  const guideSubject = subjectOf(guideFor);
+  // 머리 안내 줄: 못 찾음이면 설치, 로그인 안 됨이면 로그인 안내
+  const bannerMode = guideModeOf(current);
+  const bannerSubject = bannerMode ? subjectOf(state.provider) : undefined;
   const labelOf = (id?: AiProvider) => providers.find((p) => p.id === id)?.label ?? id ?? '';
   const imagesBlocked = !!spec && !spec.images && images.length > 0;
   // 한도에 걸리면 바로 물어볼 수 있는 다른 AI (설치, 로그인 확인된 것)
@@ -269,6 +287,7 @@ export function App() {
 
   // 새 대화: 바로 지우되 몇 초 동안 되돌릴 수 있다 (메인이 지운 대화를 잠깐 들고 있다, UNDO_RESET_MS)
   const newChat = () => {
+    setListing(false);
     bridge.reset();
     setUndoShown(true);
     clearTimeout(undoTimer.current);
@@ -281,9 +300,12 @@ export function App() {
     if (await bridge.undoReset()) following.current = true;
   };
 
-  const send = () => {
-    if (pending || (!text.trim() && images.length === 0)) return;
-    bridge.send(text, images);
+  // screen: 화면도 찍어 보낼지 (같이 보기 묻는 줄에서 고름). 없으면 같이 보기 켬 상태를 따른다
+  const send = async (screen?: boolean) => {
+    if (pending || look.shooting || (!text.trim() && images.length === 0)) return;
+    const out = await look.prepare(text, images, screen);
+    if (!out) return;
+    bridge.send(text, out);
     setText('');
     setImages([]);
     setNotice('');
@@ -294,7 +316,7 @@ export function App() {
     // 한글 조합 중 Enter 는 글자를 확정하는 키라 보내지 않는다.
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
       e.preventDefault();
-      send();
+      void send();
       return;
     }
     // 빈 입력칸에서 ↑: 마지막 질문을 다시 불러온다 (고쳐서 다시 묻기)
@@ -318,7 +340,11 @@ export function App() {
       // 답을 기다리면 멈춘다. 아무것도 없고 쓰던 글도 없으면 창을 닫는다 (패널, 설정 창과 같게. 쓰던 글은 Esc 하나로 잃지 않게 둔다)
       if (zoom) setZoom(undefined);
       else if (guideFor) setGuideFor(undefined);
-      else if (managing) setManaging(false);
+      else if (listing) {
+        // 이름 바꾸기 칸의 Esc 는 그 칸만 닫는다 (ChatList 가 막는다)
+        if (!e.defaultPrevented) setListing(false);
+        return;
+      } else if (managing) setManaging(false);
       else if (pending) bridge.cancel();
       else if (!text.trim() && !e.defaultPrevented) window.close();
       else return;
@@ -371,11 +397,39 @@ export function App() {
         />
         <button
           type="button"
-          className="ghost"
+          className="ghost icon-btn"
+          title={t('chat.list.open')}
+          aria-label={t('chat.list.open')}
+          onClick={() => setListing(true)}
+        >
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <path
+              d="M2.5 4h11M2.5 8h11M2.5 12h7"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
+        <button
+          type="button"
+          className="ghost new-chat"
+          title={t('chat.newChat')}
           disabled={pending || state.messages.length === 0}
           onClick={newChat}
         >
-          {t('chat.newChat')}
+          {/* 맥 좁은 창에서는 글 대신 + 그림 (chat-list.css) */}
+          <svg className="new-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <path
+              d="M8 3v10M3 8h10"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+            />
+          </svg>
+          <span className="new-label">{t('chat.newChat')}</span>
         </button>
       </header>
       <UsageBar
@@ -384,6 +438,19 @@ export function App() {
         hidden={!!current && !current.installed}
         asked={state.messages.length > 0}
       />
+      {listing && (
+        <ChatList
+          pending={pending}
+          ephemeral={!!state.ephemeral}
+          version={`${state.messages.length}:${state.messages.at(-1)?.id ?? ''}:${state.pendingId ?? ''}`}
+          labelOf={labelOf}
+          onOpened={() => {
+            setListing(false);
+            following.current = true;
+          }}
+          onClose={() => setListing(false)}
+        />
+      )}
       {managing && (
         <AiManager
           providers={providers}
@@ -410,10 +477,10 @@ export function App() {
           download={state.modelDownload}
         />
       )}
-      {guideFor && (
+      {guideFor && guideSubject && (
         <InstallGuide
-          provider={guideFor}
-          label={labelOf(guideFor)}
+          subject={guideSubject}
+          mode={guideModeOf(status[guideFor]) ?? 'install'}
           platform={bridge.platform}
           checking={checking}
           statusLine={guideSpec ? statusText(guideSpec, status[guideFor]) : undefined}
@@ -436,9 +503,9 @@ export function App() {
       {spec && current && !isReady(current) && (
         <div className="banner action-row" role="status">
           <span className="grow">{statusText(spec, current)}</span>
-          {!current.installed && isGuideProvider(spec.id) && (
+          {bannerSubject && (
             <button type="button" className="ghost" onClick={() => setGuideFor(spec.id)}>
-              {t('ai.guide.show')}
+              {bannerMode === 'login' ? t('ai.guide.showLogin') : t('ai.guide.show')}
             </button>
           )}
           <button type="button" className="ghost" disabled={checking} onClick={() => refreshStatus(true)}>
@@ -506,7 +573,15 @@ export function App() {
               download={m.id === state.messages.at(-1)?.id ? state.modelDownload : undefined}
               isLast={m.id === state.messages.at(-1)?.id}
               freeModelMb={freeModelMb(m)}
-              onGuide={setGuideFor}
+              guide={{
+                subject: subjectOf(m.provider),
+                checking,
+                statusLine: (() => {
+                  const p = providers.find((x) => x.id === m.provider);
+                  return p ? statusText(p, status[p.id]) : undefined;
+                })(),
+                onRecheck: () => refreshStatus(true),
+              }}
             />
           ))}
         </div>
@@ -586,6 +661,8 @@ export function App() {
               {t('chat.ephemeralUnsupported', { label: spec.label })}
             </small>
           )}
+          <LookToggle look={look} />
+          <LookStatus look={look} petName={petName} spec={spec} onSend={(screen) => void send(screen)} />
         </div>
         <div className="composer">
           <label className="ghost icon" title={t('chat.attach')}>
@@ -622,8 +699,8 @@ export function App() {
             <button
               type="button"
               className="primary"
-              disabled={!text.trim() && images.length === 0}
-              onClick={send}
+              disabled={look.shooting || (!text.trim() && images.length === 0)}
+              onClick={() => void send()}
             >
               {t('chat.send')}
             </button>
@@ -646,8 +723,14 @@ interface MessageProps {
   /** 받을 모델 크기 (오류 문구에서 읽는다) */
   freeModelMb?: string;
   isLast: boolean;
-  /** 설치 방법 시트 열기 (못 찾음 오류 아래 단추) */
-  onGuide: (id: AiProvider) => void;
+  /** 못 찾음, 로그인 안 됨 오류 아래에 펼칠 안내 (#29). subject 가 없으면(무료 AI 등) 단추를 두지 않는다 */
+  guide: {
+    subject?: GuideSubject;
+    checking: boolean;
+    /** 지금 상태 한 줄 (다시 확인하면 바뀐다) */
+    statusLine?: string;
+    onRecheck: () => void;
+  };
 }
 
 /** 무료 AI 오류 문구의 "(397MB)" 에서 크기를 읽는다. 단추에 같이 적는다 */
@@ -662,8 +745,9 @@ function Message({
   download,
   freeModelMb: mb,
   isLast,
-  onGuide,
+  guide,
 }: MessageProps) {
+  const guideMode = m.status === 'error' ? guideModeOf(m.error) : undefined;
   if (m.role === 'notice') return <p className="system">{m.text}</p>;
   if (m.role === 'user') {
     return (
@@ -761,17 +845,18 @@ function Message({
             )}
           </div>
         )}
-        {/* 못 찾음: 말풍선은 짧게, 자세한 설치와 로그인은 시트로 (#29) */}
-        {m.status === 'error' &&
-          m.error?.kind === 'not-installed' &&
-          m.provider &&
-          isGuideProvider(m.provider) && (
-            <div className="retry action-row">
-              <button type="button" className="ghost" onClick={() => m.provider && onGuide(m.provider)}>
-                {t('ai.guide.show')}
-              </button>
-            </div>
-          )}
+        {/* 못 찾음, 로그인 안 됨: 말풍선은 짧게, 설치와 로그인 단계는 그 자리에 펼친다 (#29) */}
+        {guideMode && guide.subject && (
+          <InlineGuide
+            subject={guide.subject}
+            mode={guideMode}
+            platform={bridge.platform}
+            checking={guide.checking}
+            statusLine={guide.statusLine}
+            onRecheck={guide.onRecheck}
+            onLink={bridge.openLink}
+          />
+        )}
         {/* 한도, 설치 안 됨, 로그인 안 됨: 바로 물어볼 수 있는 다른 AI (무료 AI 포함) */}
         {m.status === 'error' &&
           (m.error?.kind === 'rate-limit' ||

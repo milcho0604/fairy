@@ -23,6 +23,7 @@ import {
   parseQuickEventInfo,
 } from '../shared/event-store.ts';
 import { type FocusState, focusCoins, isFocusLength } from '../shared/focus.ts';
+import type { GcalCalLabel, PanelGcal } from '../shared/gcal.ts';
 import { t } from '../shared/i18n/index.ts';
 import {
   type EventClash,
@@ -64,7 +65,7 @@ import { parseRemindIn, remindInAt } from '../shared/snooze.ts';
 import { COIN, FULLNESS, localDay, STEP_MAX, type TodoStore } from '../shared/todo-store.ts';
 import { weekSummary } from '../shared/week.ts';
 import { devRendererUrl } from './dev-url.ts';
-import { focusWindow, stealFocus } from './focus.ts';
+import { focusWindow } from './focus.ts';
 import { langArg } from './lang.ts';
 import { localTime, minuteOfDay, startOfDay, startOfDayAfter } from './planner.ts';
 import { readJson, removeJson, writeJson } from './store.ts';
@@ -93,6 +94,10 @@ export interface PanelOptions {
   stopFocus: () => void;
   /** 일정이 바뀌었다 (곧 시작하는 일정이면 바로 알림) */
   onEventsChanged: () => void;
+  /** 일정 줄의 구글 표식 (구글 캘린더에 연결했을 때만) */
+  gcalMarks?: (ids: readonly number[]) => PanelGcal | undefined;
+  /** 구글에서 읽어 온 일정의 캘린더 이름과 색 (main/gcal.ts calLabels) */
+  gcalCals?: (ids: readonly number[]) => Record<number, GcalCalLabel>;
   /** 채팅 창을 열고 묻는다. 답을 기다리는 중이면 false */
   askAi: (prompt: string) => boolean;
   /** 채팅 창 없이 글만 한 번 묻는다 (메모 다듬기). 실패면 undefined */
@@ -178,6 +183,8 @@ export function createPanel(o: PanelOptions) {
   function state(): PanelState {
     const now = Date.now();
     const { open, doneToday } = o.store.list(now);
+    const events = withCals(o.events.between(startOfDay(now), startOfDayAfter(now, 14)));
+    const pinnedEvents = withCals(o.events.pinned(now));
     dayTurn.seen(localDay(now));
     return {
       petName: o.petName(),
@@ -196,10 +203,11 @@ export function createPanel(o: PanelOptions) {
         updatedAt: n.updatedAt,
         pinnedAt: n.pinnedAt,
       })),
-      events: o.events.between(startOfDay(now), startOfDayAfter(now, 14)),
+      events,
       // 안 끝난 시각 일정끼리 (어제부터 이어지는 것 포함). 일정 탭이 보이는 것과 같은 범위
       eventClash: [...clashIds(o.events.timedOverlapping(now, startOfDayAfter(now, 14)))],
-      pinnedEvents: o.events.pinned(now),
+      pinnedEvents,
+      ...gcalOf(events, pinnedEvents),
       focus: o.focus(),
       focusMin: o.focusMin(),
       focusCoins: focusCoins(o.focusMin()),
@@ -214,6 +222,30 @@ export function createPanel(o: PanelOptions) {
       },
       ...(week(now, open) ?? {}),
     };
+  }
+
+  /** 일정 줄의 구글 표식. 못 읽어도 패널은 뜨게 (표식만 빠진다) */
+  /** 구글에서 읽어 온 일정에 캘린더 이름과 색을 붙인다 (일정 줄, 달력). 못 읽으면 그대로 */
+  function withCals(list: CalEvent[]): CalEvent[] {
+    const ids = list.filter((e) => e.source === 'google').map((e) => e.id);
+    if (!o.gcalCals || ids.length === 0) return list;
+    try {
+      const cals = o.gcalCals(ids);
+      return list.map((e) => (cals[e.id] ? { ...e, gcalCal: cals[e.id] } : e));
+    } catch {
+      return list;
+    }
+  }
+
+  function gcalOf(events: readonly CalEvent[], pinned: readonly CalEvent[]): { gcal?: PanelGcal } {
+    if (!o.gcalMarks) return {};
+    try {
+      const g = o.gcalMarks([...events, ...pinned].filter((e) => e.source === 'local').map((e) => e.id));
+      return g ? { gcal: g } : {};
+    } catch (err) {
+      o.log('panel', '구글 표식 못 읽음', err instanceof Error ? err.name : 'error');
+      return {};
+    }
   }
 
   /** 이번 주 돌아보기. 기록을 못 읽어도 패널은 뜨게 */
@@ -600,7 +632,7 @@ export function createPanel(o: PanelOptions) {
     const byId = new Map<number, CalEvent>();
     for (const ev of [...o.events.between(from, to), ...o.events.timedOverlapping(from, to)])
       byId.set(ev.id, ev);
-    return [...byId.values()].sort((a, b) => a.startAt - b.startAt || a.id - b.id);
+    return withCals([...byId.values()].sort((a, b) => a.startAt - b.startAt || a.id - b.id));
   });
   ipcMain.on(PANEL.eventUpdate, (e, id: number, patch) => {
     if (!ours(e) || typeof patch !== 'object' || patch === null) return;
@@ -815,10 +847,7 @@ export function createPanel(o: PanelOptions) {
     const devUrl = devRendererUrl();
     if (devUrl) win.loadURL(`${devUrl}/${kind}.html${tab ? `#${tab}` : ''}`);
     else win.loadFile(join(import.meta.dirname, `../renderer/${kind}.html`), { hash: tab });
-    win.once('ready-to-show', () => {
-      stealFocus();
-      focusWindow(win);
-    });
+    win.once('ready-to-show', () => focusWindow(win));
     // 다른 곳을 누르면 닫힌다 (팝오버처럼). 머리를 잡고 끄는 것은 이 창을 누른 것이라 닫히지 않는다.
     win.on('blur', () => {
       // 저장 창(주간 회고 카드)을 띄운 동안은 닫지 않는다 (hold)

@@ -759,6 +759,29 @@ export class TodoStore {
     return true;
   }
 
+  /**
+   * 코인 초기화 (설정 > 데이터). 잔액만큼 빼는 'reset' 한 줄을 장부에 더해 0 으로 만든다. 장부를 지우지 않는 까닭:
+   * 하루 상한(할 일 20개, 집중 40, 놀이 6 등)과 기록(업적의 집중 횟수, 베타 기록의 밥 준 횟수)이 장부를 세서,
+   * 지우면 같은 날 상한이 다시 차 코인을 또 받고 기록도 사라진다.
+   * 끝낸 할 일이 기억한 받은 코인(todo.coins)도 0 으로: 초기화로 이미 없어진 코인을 되돌리기가 또 회수하지 않게.
+   * 그 할 일을 되돌려 다시 끝내도 예전에 받은 몫은 다시 주지 않는다 (complete 의 kept).
+   * alsoInside: 같은 묶음 안에서 할 일 (산 물건 지우기). 실패하면 코인도 그대로다. 뺀 코인 수를 돌려준다
+   */
+  resetCoins(now: number, alsoInside?: () => void): number {
+    this.#db.exec('begin immediate');
+    try {
+      const before = this.balance();
+      if (before !== 0) this.#log(-before, 'reset', null, now);
+      this.#db.prepare('update todo set coins = 0 where coins != 0').run();
+      alsoInside?.();
+      this.#db.exec('commit');
+      return before;
+    } catch (err) {
+      this.#db.exec('rollback');
+      throw err;
+    }
+  }
+
   /** 그 밖의 보상 (화해 보너스, 휴식 권유 따르기). 상한은 부르는 쪽이 본다 */
   reward(amount: number, reason: string, now: number): void {
     if (amount > 0) this.#log(amount, reason, null, now);

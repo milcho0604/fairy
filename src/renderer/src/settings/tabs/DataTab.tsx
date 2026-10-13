@@ -3,12 +3,18 @@ import { formatBytes } from '../../../../shared/bytes.ts';
 import { t } from '../../../../shared/i18n/index.ts';
 import type { SettingsSnapshot } from '../../../../shared/ipc.ts';
 import { isPersonalPet } from '../../../../shared/settings.ts';
+import { CoinReset } from '../CoinReset.tsx';
 import { ExportBox, ExportedRow } from '../ExportBox.tsx';
+import { exportFlash, type Flash, importFlash, storageFlash } from '../flash-of.ts';
 import { bridge, Section, type TabProps } from '../ui.tsx';
 
-/** 데이터 탭: 백업과 옮기기, 저장 공간 */
+/** 데이터 탭: 백업과 옮기기, 코인 초기화, 저장 공간 */
 export function DataTab({ snap, setSnap, flash }: TabProps) {
   const [exported, setExported] = useState<string>();
+  /** 실패는 빨간 글씨로 (이슈 #65: 못 했다는 말도 초록이었다) */
+  const show = (f: Flash | undefined) => {
+    if (f) flash(f.text, f.error);
+  };
   return (
     <>
       <Section title={t('settings.backup')}>
@@ -20,11 +26,8 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
             onClick={async () => {
               // 실패하면(쓰기 권한, 디스크 등) 아무 표시 없이 끝나지 않게 상태줄에 알린다
               const r = await bridge.exportData().catch(() => undefined);
-              if (r === undefined) flash(t('settings.exportFailed'));
-              else if (r) {
-                flash(t('settings.exported'));
-                setExported(r);
-              }
+              show(exportFlash(r));
+              if (r) setExported(r);
             }}
           >
             {t('settings.export')}
@@ -33,9 +36,7 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
             type="button"
             className="ghost"
             onClick={async () => {
-              const r = await bridge.importData().catch(() => undefined);
-              if (r === undefined) flash(t('settings.importFailed'));
-              else if (r) flash(r);
+              show(importFlash(await bridge.importData().catch(() => undefined)));
             }}
           >
             {t('settings.import')}
@@ -63,7 +64,7 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
             className="ghost"
             onClick={async () => {
               const r = await bridge.importPet();
-              if (r.message) flash(r.message);
+              if (r.message) flash(r.message, !r.ok);
             }}
           >
             {t('settings.importPet')}
@@ -74,6 +75,9 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
         <ExportedRow path={exported} />
       </Section>
       <ExportBox flash={flash} />
+      <Section title={t('settings.coinReset')}>
+        <CoinReset flash={flash} />
+      </Section>
       <Section title={t('settings.storage')}>
         <Storage
           list={snap.storage}
@@ -83,18 +87,9 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
               setSnap(
                 (v) => v && { ...v, storage: r.storage, models: { ...v.models, localReady: r.localReady } },
               );
-              const copy = id.startsWith('copy:');
-              flash(
-                t(
-                  r.ok
-                    ? copy
-                      ? 'settings.storage.copyDeleted'
-                      : 'settings.storage.deleted'
-                    : 'settings.storage.busy',
-                ),
-              );
+              show(storageFlash(r.ok, id.startsWith('copy:')));
             } catch {
-              flash(t('settings.storage.busy'));
+              show(storageFlash(undefined, false));
             }
           }}
         />

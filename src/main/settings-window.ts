@@ -16,6 +16,8 @@ import { issueUrl } from '../shared/feedback.ts';
 import type { GalleryList } from '../shared/gallery.ts';
 import { t } from '../shared/i18n/index.ts';
 import {
+  type CalSync,
+  type CoinState,
   type MakerTarget,
   SETTINGS,
   type SettingsSection,
@@ -25,6 +27,7 @@ import {
 import type { Gait } from '../shared/pet3d/blueprint.ts';
 import { isGait, type Settings } from '../shared/settings.ts';
 import { isSettingsTab, type SettingsTab } from '../shared/settings-tabs.ts';
+import { type CoinResetResult, type CoinResetScope, isCoinResetScope } from '../shared/shop.ts';
 import { parsePetChoice } from '../shared/starter-pets.ts';
 import { PUBLIC_REPO } from '../shared/update-policy.ts';
 import { localModelReady } from './ai/local.ts';
@@ -32,7 +35,7 @@ import { aiHistoryBytes, clearAiHistory } from './ai-history.ts';
 import { devRendererUrl } from './dev-url.ts';
 import { createDiagnostics } from './diagnostics.ts';
 import { rememberExport, wasExported } from './exported.ts';
-import { focusWindow, showWindow, stealFocus } from './focus.ts';
+import { focusWindow, showWindow } from './focus.ts';
 import { langArg } from './lang.ts';
 import { mcpScriptPath } from './mcp-launch.ts';
 import { openLink } from './open-link.ts';
@@ -49,6 +52,11 @@ export interface SettingsWindowOptions {
   remakeBody: (gait: Gait) => Promise<{ ok: true } | { ok: false; error: string; noAi?: boolean }>;
   cancelRemake: () => void;
   stats: StatStore;
+  /** 코인 초기화 (index.ts 가 장부, 집 창, 패널, 펫 한마디까지 맞춘다) */
+  coins: {
+    state: () => CoinState;
+    reset: (scope: CoinResetScope, expect: number) => CoinResetResult;
+  };
   checkUpdate: () => Promise<UpdateStatus>;
   openOnboarding: () => void;
   log: (tag: string, ...rest: unknown[]) => void;
@@ -58,12 +66,12 @@ export interface SettingsWindowOptions {
   privateWords: () => string[];
   v2: {
     exportData: (win?: BrowserWindow) => Promise<string>;
-    importData: (win?: BrowserWindow) => Promise<string>;
+    importData: (win?: BrowserWindow) => Promise<{ ok: boolean; message: string }>;
     exportPet: (win?: BrowserWindow) => Promise<string>;
     importPet: (win?: BrowserWindow) => Promise<{ ok: boolean; message: string }>;
     importFriend: (win?: BrowserWindow) => Promise<{ ok: boolean; message: string }>;
-    syncCalendar: () => Promise<string>;
-    calendarLast: () => string;
+    syncCalendar: () => Promise<CalSync>;
+    calendarLast: () => CalSync;
     mcpServers: () => string[];
     refreshMcp: () => Promise<string[]>;
     catalog: () => Catalog;
@@ -93,6 +101,7 @@ export function createSettingsWindow({
   remakeBody,
   cancelRemake,
   stats,
+  coins,
   checkUpdate,
   openOnboarding,
   log,
@@ -137,6 +146,7 @@ export function createSettingsWindow({
     if (!c) return library.view();
     if ('kind' in c) library.toDefault(c.kind);
     else if ('starter' in c) library.fromStarter(c.starter);
+    else if ('friend' in c) library.fromFriend(c.friend);
     else library.restore(c.id);
     return library.view();
   });
@@ -156,6 +166,20 @@ export function createSettingsWindow({
     log('settings', 'AI 기록 지움', n);
     const bytes = aiHistoryBytes(historyDirs());
     return { ok: bytes === 0, bytes };
+  });
+  // 코인 초기화 (설정 > 데이터). 값은 여기서 다시 검사한다: 범위가 아니거나 잔액이 수가 아니면 하지 않는다
+  ipcMain.handle(SETTINGS.coinState, (e): CoinState | undefined =>
+    fromSettings(e) ? coins.state() : undefined,
+  );
+  ipcMain.handle(SETTINGS.resetCoins, (e, scope: unknown, expect: unknown) => {
+    if (
+      !fromSettings(e) ||
+      !isCoinResetScope(scope) ||
+      typeof expect !== 'number' ||
+      !Number.isFinite(expect)
+    )
+      return { result: { ok: false, changed: true }, state: coins.state() };
+    return { result: coins.reset(scope, expect), state: coins.state() };
   });
   ipcMain.handle(SETTINGS.remakeBody, (e, gait: unknown) =>
     fromSettings(e) && isGait(gait) ? remakeBody(gait) : { ok: false, error: t('main.maker.reopen') },
@@ -228,7 +252,9 @@ export function createSettingsWindow({
   ipcMain.on(SETTINGS.reveal, (e, path: unknown) => {
     if (fromSettings(e) && wasExported(path)) shell.showItemInFolder(path);
   });
-  ipcMain.handle(SETTINGS.importData, (e) => (fromSettings(e) ? v2.importData(win) : ''));
+  ipcMain.handle(SETTINGS.importData, (e) =>
+    fromSettings(e) ? v2.importData(win) : { ok: true, message: '' },
+  );
   ipcMain.handle(SETTINGS.exportPet, async (e) => {
     if (!fromSettings(e)) return '';
     const path = await v2.exportPet(win);
@@ -250,7 +276,9 @@ export function createSettingsWindow({
   ipcMain.handle(SETTINGS.galleryShare, (e, meta: unknown) =>
     fromSettings(e) ? gallery.share(meta, win) : { ok: false, message: '' },
   );
-  ipcMain.handle(SETTINGS.syncCalendar, (e) => (fromSettings(e) ? v2.syncCalendar() : ''));
+  ipcMain.handle(SETTINGS.syncCalendar, (e) =>
+    fromSettings(e) ? v2.syncCalendar() : { text: '', ok: true },
+  );
   ipcMain.handle(SETTINGS.refreshMcp, (e) => (fromSettings(e) ? v2.refreshMcp() : []));
   ipcMain.on(SETTINGS.relaunch, (e) => {
     if (!fromSettings(e)) return;
@@ -273,7 +301,6 @@ export function createSettingsWindow({
 
   /** section 을 주면 그 칸을 바로 보여 준다 (메뉴 막대 "의견 보내기" → 베타 기록). */
   function open(section?: SettingsSection) {
-    stealFocus();
     if (win && !win.isDestroyed()) {
       // 화면 프로세스가 죽었으면(메모리 부족, 강제 종료) 빈 창만 남는다. 같은 창에 다시 읽는다
       if (win.webContents.isCrashed()) load(win, section);

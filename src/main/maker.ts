@@ -57,7 +57,7 @@ import { starterOf } from '../shared/starter-pets.ts';
 import { BG_MODEL, ensureModel, modelReady, verifiedModelUrl } from './bg-model.ts';
 import { DEPTH_MODEL, depthReady, ensureDepthModel, verifiedDepthUrl } from './depth-model.ts';
 import { devRendererUrl } from './dev-url.ts';
-import { focusWindow, showWindow, stealFocus } from './focus.ts';
+import { focusWindow, showWindow } from './focus.ts';
 import {
   IllustError,
   type IllustErrorKind,
@@ -975,7 +975,6 @@ export function createMaker(
 
   /** 펫 본 그림(main)이나 상태별 포즈를 만든다. 다른 것을 만드는 창이 열려 있으면 다시 연다 */
   function open(next: MakerTarget = 'main') {
-    stealFocus();
     if (win && !win.isDestroyed()) {
       if (target === next) {
         focusWindow(win);

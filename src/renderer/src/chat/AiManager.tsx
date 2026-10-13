@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react';
-import { isGuideProvider } from '../../../shared/ai/install-guide.ts';
+import { guideModeOf, hasGuide } from '../../../shared/ai/install-guide.ts';
 import type { AiProvider, AiStatus } from '../../../shared/ai/types.ts';
 import type { ChatState } from '../../../shared/chat-state.ts';
 import { t } from '../../../shared/i18n/index.ts';
@@ -108,10 +108,10 @@ export function AiManager({
                 </span>
                 {p.command && <code className="detail command">{p.command}</code>}
                 <span className="detail">{statusText(p, s)}</span>
-                {s && !s.installed && isGuideProvider(p.id) && (
+                {guideModeOf(s) && hasGuide(p) && (
                   <span className="detail action-row">
                     <button type="button" className="ghost small" onClick={() => onGuide(p.id)}>
-                      {t('ai.guide.show')}
+                      {guideModeOf(s) === 'login' ? t('ai.guide.showLogin') : t('ai.guide.show')}
                     </button>
                   </span>
                 )}

@@ -7,6 +7,7 @@ import { pickLocal } from '../shared/ai/catalog.ts';
 import { contextEvents, todayRange } from '../shared/ai/context-events.ts';
 import { persona, setMemorySource, setStyleSource, todoContext } from '../shared/ai/persona.ts';
 import { cutText } from '../shared/cut-text.ts';
+import { aiEventFilter } from '../shared/event-store.ts';
 import { HIDE_SEEK, pickHideSpot } from '../shared/hide-seek.ts';
 import { houseMenuKey, houseNewsKey, stowSayKey, stowStep } from '../shared/house-stow.ts';
 import { locale, t } from '../shared/i18n/index.ts';
@@ -21,6 +22,7 @@ import { unlocked, WAVE_AWAY_SEC } from '../shared/pet-life.ts';
 import { starterFigureOf, starterModelOf } from '../shared/pet3d/starters.ts';
 import { restDaysOf } from '../shared/routine.ts';
 import { pickedGait, pickedStand } from '../shared/settings.ts';
+import { ownedCount } from '../shared/shop.ts';
 import { shortcutsChanged } from '../shared/shortcut.ts';
 import { FULLNESS, localDay } from '../shared/todo-store.ts';
 import { admitUrl, panelTabOf, parseJjUrl } from '../shared/url-scheme.ts';
@@ -34,6 +36,7 @@ import { watchBetaStats } from './beta.ts';
 import { boostOn, onBoostChange } from './boost.ts';
 import { watchCalendar } from './calendar.ts';
 import { createChat } from './chat.ts';
+import { createChatLook } from './chat-look.ts';
 import { createCompanion } from './companion.ts';
 import { createDailyNotes } from './daily-note.ts';
 import { chooseDataDir, DATA_DIR_NAME, oldAppBlocks } from './data-move.ts';
@@ -44,7 +47,7 @@ import { confineTestDisplay } from './focus.ts';
 import { createFriends } from './friends.ts';
 import { CHAIN_FILE, createTickle, createWordChain } from './fun.ts';
 import { galleryHandlers } from './gallery-app.ts';
-import { createGcal } from './gcal.ts';
+import { createGcal, gcalAiAllowed } from './gcal.ts';
 import { createHouseRest } from './house-rest.ts';
 import { createJourney } from './journey.ts';
 import { pruneCopies } from './keep-copies.ts';
@@ -263,7 +266,8 @@ ready
         return todoContext({
           today: localDay(now),
           todos: store.list(now).open,
-          events: contextEvents(events.between(day.from, day.to), now),
+          // 구글에서 읽어 온 일정은 "AI가 구글 일정도 볼 수 있게"를 켰을 때만 AI 로 보낸다 (기본 꺼짐)
+          events: contextEvents(events.between(day.from, day.to).filter(aiEventFilter(gcalAiAllowed())), now),
         });
       },
       saveNote: (title, body) => {
@@ -397,6 +401,8 @@ ready
       },
       log,
     });
+    // 채팅 창의 같이 보기: 켜고 끄기, 보낼 때 지금 화면 찍기 (main/chat-look.ts)
+    createChatLook({ chatWindow: () => chat.window, look, log });
     // ---- 방해 금지 (P1-10) ----
     // 친구 펫(v2)도 기본 펫과 같이 숨고 나온다
     const friends = createFriends({
@@ -483,6 +489,7 @@ ready
       events,
       restDays: () => restDaysOf(settings.get()),
       dayEndMinute: () => settings.get().reviewMinute,
+      googleForAi: gcalAiAllowed,
     });
     /** 펫 우클릭 메뉴 "오늘 뭐부터?": 규칙 답을 말풍선으로, 단추는 집중 시작과 패널 열기 */
     const sayWhatFirst = () => {
@@ -862,8 +869,8 @@ ready
         const w = settingsWindow.window;
         return !!w && !w.isDestroyed() && w.isVisible();
       },
-      // 구글 캘린더로 보낸 짝꿍 일정이 같은 캘린더를 가져올 때 되돌아오면 거른다 (둘씩 보이지 않게)
-      skipUids: () => gcalLinks.sentUids(),
+      // 구글 캘린더로 보낸 짝꿍 일정, 구글에서 이미 읽어 온 일정이 같은 캘린더를 가져올 때 또 오면 거른다 (둘씩 보이지 않게)
+      skipUids: () => gcal.skipUids(),
       log,
     });
     function openCalendarSettings(a: string | undefined) {
@@ -963,6 +970,8 @@ ready
         gcal.kick();
         journey.tried('event');
       },
+      gcalMarks: (ids) => gcal.marks(ids),
+      gcalCals: (ids) => gcal.calLabels(ids),
       askAi: (prompt) => chat.askInWindow(prompt, pet.bounds()),
       askOnce: (text, system) => chat.textOnce(text, system),
       aiLocked: () => updates.locked(),
@@ -1242,6 +1251,30 @@ ready
       remakeBody: (gait) => maker.remake(gait),
       cancelRemake: () => maker.cancelRemake(),
       stats,
+      coins: {
+        state: () => ({ balance: store.balance(), items: ownedCount(shop.state()) }),
+        reset: (scope, expect) => {
+          const r = shop.resetCoins(scope, Date.now(), expect);
+          if (!r.ok) {
+            log('coins', '초기화 안 함, 잔액이 바뀜');
+            return r;
+          }
+          log('coins', '초기화', scope, r.coins, r.items);
+          panel.refresh();
+          // 집이 없어졌으면 집 창을 맞추고, 안에서 쉬던 페어리는 걸어 나온다 (상점에서 집을 바꿀 때와 같다)
+          if (r.house) {
+            house.show(houseLook(), pet.bounds());
+            if (!house.bounds()) rest.houseGone();
+          }
+          pet.react();
+          void pet.say({
+            kind: 'answer',
+            text: voiced(scope === 'all' && r.items > 0 ? 'pet.coinReset.all' : 'pet.coinReset.coins'),
+            ttlMs: 5000,
+          });
+          return r;
+        },
+      },
       checkUpdate: () => updates.check(true),
       openOnboarding: () => onboarding.open(),
       log,
@@ -1280,6 +1313,11 @@ ready
     // ---- 구글 캘린더에 쓰기 (6단계): 짝꿍 일정을 구글로. 설정 창에서 연결한다 ----
     const gcal = createGcal({
       store: gcalLinks,
+      events,
+      onEvents: () => {
+        panel.refresh();
+        planner.check();
+      },
       isSettings: (wc) => {
         const w = settingsWindow.window;
         return !!w && !w.isDestroyed() && w.webContents === wc;
@@ -1296,6 +1334,7 @@ ready
           })
           .then(openCalendarSettings);
       },
+      onMarks: () => panel.refresh(),
       log,
     });
     // ---- 하루 도구: 습관, 아침 계획, 알림 미루기, 내보내기 (main/day-tools.ts) ----
@@ -1307,6 +1346,7 @@ ready
       exportTodos,
       restDays: () => restDaysOf(settings.get()),
       dayEndMinute: () => settings.get().reviewMinute,
+      googleForAi: gcalAiAllowed,
       isPanel: (wc) => panel.owns(wc),
       panelWindow: () => panel.window,
       openToday: () => panel.openTab('today'),

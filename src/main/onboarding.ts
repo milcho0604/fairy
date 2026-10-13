@@ -12,7 +12,7 @@ import { ONBOARD, type OnboardAi, type OnboardSnapshot } from '../shared/ipc.ts'
 import type { Settings } from '../shared/settings.ts';
 import { isStarterId } from '../shared/starter-pets.ts';
 import { devRendererUrl } from './dev-url.ts';
-import { focusWindow, showWindow, stealFocus } from './focus.ts';
+import { focusWindow, showWindow } from './focus.ts';
 import { langArg } from './lang.ts';
 import { library } from './pet-library.ts';
 import { settings } from './settings.ts';
@@ -78,7 +78,6 @@ export function createOnboarding(o: {
   });
 
   function open() {
-    stealFocus();
     if (win && !win.isDestroyed()) {
       focusWindow(win);
       return;

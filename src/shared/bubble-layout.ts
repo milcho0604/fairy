@@ -54,3 +54,43 @@ export function layoutBubble(
     },
   };
 }
+
+/**
+ * 크기를 재기 전 말풍선 자리를 어림할 때 쓰는 크기. pet.css #bubble 의 가장 넓은 폭(240)에 여백,
+ * 두세 줄 높이. 두 펫이 같이 말할 때 겹치는지 미리 볼 때만 쓴다
+ */
+export const BUBBLE_GUESS = { width: 260, height: 96 } as const;
+
+/** 화면 좌표의 말풍선 사각형 (layoutBubble 의 창 위치 + 창 안 말풍선 위치) */
+export function bubbleRectOf(pet: Rect, size: { width: number; height: number }, area: Rect): Rect {
+  const l = layoutBubble(pet, size, area);
+  return {
+    x: l.window.x + (l.bubble?.x ?? 0),
+    y: l.window.y + (l.bubble?.y ?? 0),
+    width: Math.ceil(size.width),
+    height: Math.ceil(size.height),
+  };
+}
+
+/** 두 말풍선 사이에 이만큼은 띄운다 (붙어 있어도 한 덩어리로 읽힌다) */
+export const BUBBLE_APART = 6;
+
+/**
+ * 이 펫이 지금 말하면 다른 펫의 떠 있는 말풍선(others, 화면 좌표)과 겹치는지 (이슈 #65: 기본 펫과 친구 펫이 같이
+ * 말하면 말풍선이 포개졌다). 이 펫 말풍선은 아직 크기를 모르니 가장 클 때(BUBBLE_GUESS)로 어림한다
+ */
+export function bubbleClashes(
+  pet: Rect,
+  area: Rect,
+  others: readonly Rect[],
+  size: { width: number; height: number } = BUBBLE_GUESS,
+): boolean {
+  const mine = bubbleRectOf(pet, size, area);
+  return others.some(
+    (o) =>
+      mine.x < o.x + o.width + BUBBLE_APART &&
+      o.x < mine.x + mine.width + BUBBLE_APART &&
+      mine.y < o.y + o.height + BUBBLE_APART &&
+      o.y < mine.y + mine.height + BUBBLE_APART,
+  );
+}

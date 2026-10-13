@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { BUBBLE_GAP, layoutBubble } from './bubble-layout.ts';
+import { BUBBLE_GAP, bubbleClashes, bubbleRectOf, layoutBubble } from './bubble-layout.ts';
 import { ChatterGate, LATER_LIMIT, MAX_PER_HOUR, quieter } from './chatter.ts';
 
 const area = { x: -1512, y: 33, width: 1512, height: 949 }; // 개발 맥 내장 화면
@@ -72,4 +72,21 @@ test(`"나중에"를 ${LATER_LIMIT}번 연달아 누르면 조용히 할지 묻�
   assert.equal(g.closed('later'), false);
   assert.equal(new ChatterGate('quiet').closed('later') || new ChatterGate('quiet').closed('later'), false);
   assert.deepEqual([quieter('chatty'), quieter('normal'), quieter('quiet')], ['normal', 'quiet', 'quiet']);
+});
+
+test('두 펫이 나란히 서서 같이 말하면 말풍선이 겹친다고 본다 (이슈 #65)', () => {
+  const friend = { x: pet.x + 170, y: pet.y, width: 160, height: 160 };
+  const friendBubble = bubbleRectOf(friend, { width: 200, height: 60 }, area);
+  assert.equal(bubbleClashes(pet, area, [friendBubble]), true);
+  // 멀리 떨어진 친구 말풍선과는 겹치지 않는다
+  const far = { ...friend, x: pet.x + 700 };
+  assert.equal(bubbleClashes(pet, area, [bubbleRectOf(far, { width: 200, height: 60 }, area)]), false);
+  // 떠 있는 말풍선이 없으면 겹치지 않는다
+  assert.equal(bubbleClashes(pet, area, []), false);
+});
+
+test('말풍선 사각형은 화면 좌표로, 펫 가운데 위', () => {
+  const r = bubbleRectOf(pet, { width: 120, height: 40 }, area);
+  assert.equal(r.x + r.width / 2, pet.x + pet.width / 2);
+  assert.equal(r.y + r.height + BUBBLE_GAP, pet.y);
 });

@@ -4,11 +4,12 @@ import { friendTalk } from '../shared/companion.ts';
 import { t } from '../shared/i18n/index.ts';
 import { IPC, type PetImages, type PetStatus } from '../shared/ipc.ts';
 import { MEET_CHANCE, MEET_COOLDOWN_MS, MEET_EVERY_MS, meetPlan } from '../shared/meet.ts';
+import { voiced } from '../shared/persona-voice.ts';
 import { type Blueprint, parseBlueprint } from '../shared/pet3d/blueprint.ts';
 import { starterFigureOf } from '../shared/pet3d/starters.ts';
 import { friendSpot } from '../shared/placement.ts';
 import { HideReasons } from '../shared/presence.ts';
-import type { Friend } from '../shared/settings.ts';
+import { type Friend, pickedStand } from '../shared/settings.ts';
 import { starterOf } from '../shared/starter-pets.ts';
 import type { WearLook } from '../shared/wear.ts';
 import { saverNow } from './battery.ts';
@@ -19,13 +20,13 @@ import { readFileIn } from './safe-file.ts';
 import { settings } from './settings.ts';
 import { removeJson } from './store.ts';
 
-/** 인사 (지금 말로) */
+/** 인사 (지금 말로, 고른 성격 말투로: 존댓말 비서면 존댓말, 이슈 #65) */
 const hello = () => [
-  t('pet.hello.1'),
-  t('pet.hello.2'),
-  t('pet.hello.3'),
-  t('pet.hello.4'),
-  t('pet.hello.5'),
+  voiced('pet.hello.1'),
+  voiced('pet.hello.2'),
+  voiced('pet.hello.3'),
+  voiced('pet.hello.4'),
+  voiced('pet.hello.5'),
 ];
 
 /** pets/ 안 일반 파일만 읽는다 (링크를 따라 폴더 밖을 읽지 않게, safe-file.ts) */
@@ -171,6 +172,15 @@ export function createFriends(o: {
       boost: boostOn(),
       saver: saverNow(),
       ...(f.gait ? { gait: f.gait } : {}),
+      // 네 발로 선 피규어 (기본 페어리였을 때 고른 값이 몸을 따라온다, friend-swap.ts)
+      ...(pickedStand({
+        petImage: f.image,
+        petModel: f.model,
+        petKind: f.kind,
+        petStands: settings.get().petStands,
+      })
+        ? { stand: true }
+        : {}),
       ...(o.wear ? { wear: o.wear() } : {}),
     };
   }
@@ -274,7 +284,12 @@ export function createFriends(o: {
       if (!want.some((f) => f.id === id)) {
         l.pet.win.destroy();
         live.delete(id);
-        library.cleanup([l.friend.image, l.friend.model, l.friend.depth]);
+        library.cleanup([
+          l.friend.image,
+          l.friend.model,
+          l.friend.depth,
+          ...Object.values(l.friend.poses ?? {}),
+        ]);
         // 그 친구의 위치 파일도 지운다 (pet-window 의 pet-position-<id>). 남으면 쌓이기만 한다
         removeJson(`pet-position-${id}`);
         o.log('friends', '갔어', id);

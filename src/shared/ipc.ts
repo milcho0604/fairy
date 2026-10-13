@@ -6,7 +6,9 @@ import type { AiProvider, AiStatus, ImageAttachment } from './ai/types.ts';
 import type { Activity } from './behavior.ts';
 import type { BetaReport } from './beta-stats.ts';
 import type { BubbleLayout } from './bubble-layout.ts';
+import type { ChatLookView } from './chat-look.ts';
 import type { ChatImage, ChatState } from './chat-state.ts';
+import type { ThreadMeta } from './chat-threads.ts';
 import type { BubbleKind } from './chatter.ts';
 import type { EnergyLook } from './energy.ts';
 import type { CalEvent } from './event-store.ts';
@@ -14,6 +16,7 @@ import type { CarryToy } from './fetch.ts';
 import type { FocusState } from './focus.ts';
 import type { GalleryList } from './gallery.ts';
 import type { Gaze } from './gaze.ts';
+import type { PanelGcal } from './gcal.ts';
 import type { Point } from './geometry.ts';
 import type { GestureEvent } from './gesture.ts';
 import type { HouseStyle } from './house-art.ts';
@@ -31,7 +34,7 @@ import type { Blueprint, Gait } from './pet3d/blueprint.ts';
 import type { PinKind } from './pin.ts';
 import type { PetKind, PetStyle, PoseKind, Settings } from './settings.ts';
 import type { SettingsTab } from './settings-tabs.ts';
-import type { BuyResult, ShopState } from './shop.ts';
+import type { BuyResult, CoinResetResult, CoinResetScope, ShopState } from './shop.ts';
 import type { SoundKind } from './sound.ts';
 import type { PetChoice, StarterId } from './starter-pets.ts';
 import type { Repeat, Todo } from './todo-store.ts';
@@ -191,6 +194,19 @@ export const CHAT = {
   planAction: 'chat:plan-action',
   // v2 무료 AI
   downloadModel: 'chat:download-model',
+  /** 지난 대화 목록 (찾는 말) → ThreadList */
+  threads: 'chat:threads',
+  openThread: 'chat:open-thread',
+  renameThread: 'chat:rename-thread',
+  deleteThread: 'chat:delete-thread',
+  // 같이 보기 (shared/chat-look.ts)
+  look: 'chat:look',
+  setLook: 'chat:set-look',
+  lookShot: 'chat:look-shot',
+  lookPick: 'chat:look-pick',
+  lookSettings: 'chat:look-settings',
+  /** 메인 → 채팅 창: 같이 보기 상태가 바뀌었다 */
+  lookState: 'chat:look-state',
 } as const;
 
 export const ONBOARD = {
@@ -275,6 +291,10 @@ export const SETTINGS = {
   deleteModel: 'settings:delete-model',
   /** AI 기록 지우기: AI CLI 가 짝꿍 대화를 저장한 짝꿍 전용 폴더만 (ai-history.ts). 남은 크기를 돌려준다 */
   clearAiHistory: 'settings:clear-ai-history',
+  /** 코인 초기화 확인 화면이 보여 줄 지금 잔액과 산 물건 수 */
+  coinState: 'settings:coin-state',
+  /** 코인 초기화 (범위, 확인 화면이 본 잔액). 결과와 새 상태를 돌려준다 */
+  resetCoins: 'settings:reset-coins',
   /** 지금 사진 펫의 몸을 고른 걸음새에 맞게 다시 만든다 (같은 사진, 같은 요청사항). 그만두기는 cancelRemake */
   remakeBody: 'settings:remake-body',
   cancelRemake: 'settings:cancel-remake',
@@ -288,6 +308,18 @@ export const SETTINGS = {
   power: 'settings:power',
 } as const;
 
+/** 설정 > 데이터 > 코인 초기화가 보여 주는 지금 상태: 잔액과 되돌릴 산 물건 수 */
+export interface CoinState {
+  balance: number;
+  items: number;
+}
+
+/** 캘린더 가져오기 결과 글과 잘 됐는지 (못 가져왔으면 설정 창이 빨간 글씨로 알린다) */
+export interface CalSync {
+  text: string;
+  ok: boolean;
+}
+
 export interface SettingsSnapshot {
   settings: Settings;
   scale: number;
@@ -300,7 +332,7 @@ export interface SettingsSnapshot {
   /** 내 claude 에 연결된 MCP 서버 (v2, 하루 한 번 읽어 둔 것) */
   myMcpServers: string[];
   /** 마지막 캘린더 가져오기 결과 */
-  calendarLast: string;
+  calendarLast: CalSync;
   /** 모델 목록 (v2)과 무료 AI 모델을 받았는지 (id 별) */
   models: { catalog: Catalog; localReady: Record<string, boolean> };
   /** 만든 펫 보관함 (6단계). thumb 는 그림 data URL */
@@ -382,7 +414,8 @@ export interface SettingsBridge {
   openOnboarding(): void;
   /** 백업 폴더 만들기. 만든 경로 (그만두면 빈 글) */
   exportData(): Promise<string>;
-  importData(): Promise<string>;
+  /** 백업 가져오기. 못 가져왔으면 ok 가 거짓 (그만두면 빈 message) */
+  importData(): Promise<{ ok: boolean; message: string }>;
   exportPet(): Promise<string>;
   reveal(path: string): void;
   importPet(): Promise<{ ok: boolean; message: string }>;
@@ -393,7 +426,7 @@ export interface SettingsBridge {
   galleryAdopt(id: string, asFriend: boolean): Promise<{ ok: boolean; message: string }>;
   /** 지금 펫을 친구에게 보낼 판 2 .jjpet 으로 저장한다 (만든 사람은 선택). 그만두면 빈 message */
   galleryShare(meta: { author?: string; license: PetLicense }): Promise<{ ok: boolean; message: string }>;
-  syncCalendar(): Promise<string>;
+  syncCalendar(): Promise<CalSync>;
   refreshMcp(): Promise<string[]>;
   /** 앱을 다시 켠다. 창은 열릴 때 말을 읽어서 말을 바꾸면 다시 켜야 한다 */
   relaunch(): void;
@@ -404,6 +437,10 @@ export interface SettingsBridge {
   ): Promise<{ ok: boolean; storage: StoredModel[]; localReady: Record<string, boolean> }>;
   /** AI 기록 지우기. 지운 뒤 남은 크기 */
   clearAiHistory(): Promise<{ ok: boolean; bytes: number }>;
+  /** 코인 초기화 확인 화면이 보여 줄 지금 상태 */
+  coinState(): Promise<CoinState>;
+  /** 코인 초기화. expect 는 확인 화면이 본 잔액 (그새 바뀌었으면 하지 않고 changed) */
+  resetCoins(scope: CoinResetScope, expect: number): Promise<{ result: CoinResetResult; state: CoinState }>;
   /** 몸 다시 만들기. 끝나면(성공이면 설정이 바뀐 뒤) 결과. AI 가 없으면 noAi */
   remakeBody(gait: Gait): Promise<{ ok: true } | { ok: false; error: string; noAi?: boolean }>;
   cancelRemake(): void;
@@ -432,6 +469,8 @@ export interface ProviderView {
   loginHint?: string;
   /** 사용자 추가 AI 의 명령 한 줄 (보여 주기용) */
   command?: string;
+  /** 사용자 추가 AI 의 실행 파일 (못 찾을 때 경로 찾기 안내에 쓴다). 기본 제공 AI 는 비운다 */
+  bin?: string;
   /** 기록 남기지 않기를 할 수 있는지 (claude, codex) */
   ephemeral: boolean;
 }
@@ -441,6 +480,12 @@ export interface ChatSnapshot {
   state: ChatState;
   /** 같이 보기로 들어와 아직 입력칸에 안 붙은 그림. */
   draft: OutgoingImage[];
+}
+
+/** 지난 대화 목록. current 는 지금 채팅 창에 열린 대화 */
+export interface ThreadList {
+  threads: ThreadMeta[];
+  current?: string;
 }
 
 export interface ChatBridge {
@@ -474,6 +519,25 @@ export interface ChatBridge {
   planAction(kind: 'focus' | 'panel', todoId?: number): void;
   /** 무료 AI 모델 받기 (v2). 다 받으면 마지막 질문을 무료 AI 로 다시 묻는다 */
   downloadModel(): void;
+  /** 지난 대화 목록 (최근 것부터, 찾는 말이 있으면 제목과 첫 질문에서) */
+  threads(query?: string): Promise<ThreadList>;
+  /** 지난 대화를 열어 이어 말한다. 답을 기다리는 중이거나 기록 안 남김 중이면 false */
+  openThread(id: string): Promise<boolean>;
+  /** 비우면 첫 질문 제목으로 돌아간다 */
+  renameThread(id: string, title: string): Promise<boolean>;
+  /** 목록과 파일에서 진짜 지운다 */
+  deleteThread(id: string): Promise<boolean>;
+  /** 같이 보기 상태 (권한은 물을 때마다 다시 본다) */
+  look(): Promise<ChatLookView>;
+  /** 같이 보기 켜기, 끄기. agree 는 처음 켤 때 안내를 보고 켰다 */
+  setLook(on: boolean, agree?: boolean): void;
+  /** 채팅 창이 있는 모니터 화면을 지금 찍는다 (채팅 창과 펫은 빼고). 못 찍으면 까닭 */
+  lookShot(): Promise<OutgoingImage | 'denied' | 'failed'>;
+  /** 화면 한 곳을 골라 찍기 (펫 메뉴의 같이 보기와 같다. 찍은 그림은 입력칸에 붙는다) */
+  lookPick(): void;
+  /** 화면 기록 권한 설정 열기 (맥) */
+  lookSettings(): void;
+  onLook(listener: (view: ChatLookView) => void): void;
 }
 
 export interface PetEnv {
@@ -873,6 +937,8 @@ export interface PanelState {
   eventClash: number[];
   /** 고정한 일정 가운데 안 끝난 것, 고정한 순서대로 (14일 밖도). 일정 탭 목록 맨 위 "고정" 칸 */
   pinnedEvents: CalEvent[];
+  /** 일정 줄의 구글 표식. 구글 캘린더에 연결하지 않았으면 없다 */
+  gcal?: PanelGcal;
   focus: FocusState;
   /** 집중 코인과 오늘 받은 집중 횟수 */
   focusCoins: number;

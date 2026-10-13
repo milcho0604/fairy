@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -375,4 +375,45 @@ test('serverInfo 판은 앱 판 (예전에는 0.1.0 으로 박혀 있었다)', (
     version: string;
   };
   assert.equal(info.version, pkg.version);
+});
+
+test('구글에서 읽어 온 일정: "AI가 구글 일정도 볼 수 있게"를 꺼 두면(기본) 안 보이고, 켜면 목록, 한눈에, 고치기에 보인다', () => {
+  const now = new Date();
+  const at = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 50).getTime();
+  const db = new DatabaseSync(join(dir, 'jjakkung.db'));
+  new EventStore(db as unknown as Db).syncExternal(
+    'google',
+    [{ uid: 'g1', title: '구글 저녁 약속', startAt: at, endAt: null, allDay: false }],
+    at - 86_400_000,
+    at + 86_400_000,
+    Date.now(),
+  );
+  const gid = Number(
+    (db.prepare("select id from event where source = 'google'").get() as { id: number } | undefined)?.id,
+  );
+  db.close();
+  const prefs = join(dir, 'google-calendar.json');
+  try {
+    // 설정 파일이 없으면 꺼짐
+    assert.doesNotMatch(text(tool('list_events', { days: 2 })), /구글 저녁 약속/);
+    assert.doesNotMatch(text(tool('today_overview', {})), /구글 저녁 약속/);
+    assert.equal(tool('update_event', { id: gid, title: '바꿈' }).result?.isError, true);
+    writeFileSync(prefs, JSON.stringify({ push: true, pull: true, ai: false }));
+    assert.doesNotMatch(text(tool('list_events', { days: 2 })), /구글 저녁 약속/);
+    // 켜면 보인다 (서버를 다시 띄우지 않아도 다음 부르기부터)
+    writeFileSync(prefs, JSON.stringify({ push: true, pull: true, ai: true }));
+    assert.match(text(tool('list_events', { days: 2 })), /23:50 구글 저녁 약속 \(구글 캘린더, 읽기 전용\)/);
+    assert.match(text(tool('today_overview', {})), /구글 저녁 약속/);
+    // 보여도 페어리에서는 읽기 전용: 고치기, 지우기는 거절
+    for (const r of [tool('update_event', { id: gid, title: '바꿈' }), tool('delete_event', { id: gid })]) {
+      assert.equal(r.result?.isError, true);
+      assert.match(text(r), /구글 캘린더에서 가져온 일정/);
+    }
+    assert.match(text(tool('list_events', { days: 2 })), /23:50 구글 저녁 약속/);
+    // 깨진 파일은 꺼짐
+    writeFileSync(prefs, '{');
+    assert.doesNotMatch(text(tool('list_events', { days: 2 })), /구글 저녁 약속/);
+  } finally {
+    rmSync(prefs, { force: true });
+  }
 });
