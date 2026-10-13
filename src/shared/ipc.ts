@@ -8,6 +8,7 @@ import type { BetaReport } from './beta-stats.ts';
 import type { BubbleLayout } from './bubble-layout.ts';
 import type { ChatLookView } from './chat-look.ts';
 import type { ChatImage, ChatState } from './chat-state.ts';
+import type { ThreadMeta } from './chat-threads.ts';
 import type { BubbleKind } from './chatter.ts';
 import type { EnergyLook } from './energy.ts';
 import type { CalEvent } from './event-store.ts';
@@ -193,6 +194,11 @@ export const CHAT = {
   planAction: 'chat:plan-action',
   // v2 무료 AI
   downloadModel: 'chat:download-model',
+  /** 지난 대화 목록 (찾는 말) → ThreadList */
+  threads: 'chat:threads',
+  openThread: 'chat:open-thread',
+  renameThread: 'chat:rename-thread',
+  deleteThread: 'chat:delete-thread',
   // 같이 보기 (shared/chat-look.ts)
   look: 'chat:look',
   setLook: 'chat:set-look',
@@ -474,6 +480,12 @@ export interface ChatSnapshot {
   draft: OutgoingImage[];
 }
 
+/** 지난 대화 목록. current 는 지금 채팅 창에 열린 대화 */
+export interface ThreadList {
+  threads: ThreadMeta[];
+  current?: string;
+}
+
 export interface ChatBridge {
   platform: NodeJS.Platform;
   snapshot(): Promise<ChatSnapshot>;
@@ -505,6 +517,14 @@ export interface ChatBridge {
   planAction(kind: 'focus' | 'panel', todoId?: number): void;
   /** 무료 AI 모델 받기 (v2). 다 받으면 마지막 질문을 무료 AI 로 다시 묻는다 */
   downloadModel(): void;
+  /** 지난 대화 목록 (최근 것부터, 찾는 말이 있으면 제목과 첫 질문에서) */
+  threads(query?: string): Promise<ThreadList>;
+  /** 지난 대화를 열어 이어 말한다. 답을 기다리는 중이거나 기록 안 남김 중이면 false */
+  openThread(id: string): Promise<boolean>;
+  /** 비우면 첫 질문 제목으로 돌아간다 */
+  renameThread(id: string, title: string): Promise<boolean>;
+  /** 목록과 파일에서 진짜 지운다 */
+  deleteThread(id: string): Promise<boolean>;
   /** 같이 보기 상태 (권한은 물을 때마다 다시 본다) */
   look(): Promise<ChatLookView>;
   /** 같이 보기 켜기, 끄기. agree 는 처음 켤 때 안내를 보고 켰다 */
