@@ -38,7 +38,8 @@
   "images": {
     "main": "data:image/png;base64,...",
     "poses": { "happy": "data:image/png;base64,..." },
-    "thumbnail": "data:image/png;base64,..."
+    "thumbnail": "data:image/png;base64,...",
+    "sprites": { "idle": "data:image/png;base64,...", "walk-0": "data:image/png;base64,..." }
   },
   "blueprint": { "parts": [], "face": {} },
   "depth": "data:image/png;base64,..."
@@ -69,8 +70,31 @@
 | `main` | 페어리 그림. 없으면 `species` 의 기본 페어리 | PNG, GIF, WebP data URL. 파일 8MB, 한 변 4096px, 1600만 화소 |
 | `poses` | `happy`, `sleepy`, `hungry` 기분 그림. `main` 이 있을 때만 쓴다 | 그림마다 위와 같음 |
 | `thumbnail` | 갤러리 목록의 작은 그림. 앱이 내보낼 때 긴 쪽 256px 로 만든다 | PNG 만, 긴 쪽 512px, 256KB |
+| `sprites` | 2D 그림 세트 (선택, 아래). `main` 이 있을 때만 쓴다 | PNG 만, 한 장 512KB, 한 변 1024px, 합 4MB |
 
 모든 그림은 data URL 의 형식(`image/png` 등)과 실제 파일 머리말(PNG 서명, `GIF8`, `RIFF....WEBP`)이 맞아야 하고, 머리말의 가로세로가 터무니없으면(작은 파일인데 풀면 몇 GB) 받지 않아요. `main` 이 깨졌으면 파일을 받지 않고, 깨진 포즈는 그 포즈만 버려요.
+
+### sprites (2D 그림 세트, 선택)
+
+가져온 페어리도 기본 페어리처럼 자세마다 그림을 바꿔 그리게 하는 칸이에요 (2026-10-13). 이름은 기본 페어리 손그림과 같아요.
+
+| 이름 | 언제 |
+| --- | --- |
+| `idle` | **꼭**. 서 있기. 없으면 세트 전체를 버린다 |
+| `blink`, `look-l`, `look-r` | 서 있을 때 깜빡임, 커서 쪽(왼쪽, 오른쪽) 보기 |
+| `sit`, `sleep`, `doze`, `yawn` | 앉기, 자기, 졸기, 하품 |
+| `happy`, `hungry`, `grab`, `wave` | 신남(춤, 기지개도), 배고픔, 들림, 손 흔들기 |
+| `sulky`, `back` | 삐짐, 많이 토라짐(등 돌림, 집 문으로 들어가기) |
+| `talk-0`, `talk-1` | 말하기 (두 장을 번갈아) |
+| `walk-0` ~ `walk-5` | 걷기 한 주기 (오른쪽으로 가는 모습. 왼쪽으로 갈 때는 뒤집는다) |
+
+- **PNG 만** 받아요. SVG 는 받지 않아요: 글로 된 그림이라 밖 주소나 글꼴, 아주 무거운 필터를 품을 수 있고, 머리말로 크기를 미리 잴 수 없어서예요. 움직이는 PNG(APNG), GIF, WebP 도 받지 않아요 (한 장이 한 자세).
+- 한 장 512KB, 한 변 1024px, 모든 장이 `idle` 과 같은 크기. 세트 합 4MB.
+- 틀린 장은 그 장만 버리고, `idle` 이 틀렸거나 합이 넘으면 세트를 통째로 버려요 (그래도 `main` 과 `poses` 로 데려와요). 갤러리는 버려지는 장이 있으면 받지 않아요.
+- 빠진 자세는 가까운 그림으로 채워요 (`sleep` 이 없으면 `doze`, `talk-1` 이 없으면 `talk-0`, 걷기는 있는 장 수로 한 주기, 끝은 `idle`).
+- 그리는 자리는 앱이 그림의 불투명한 상자를 재서 정해요: 자세마다 상자 아래가 바닥선, 가운데는 `idle` 상자 가운데, 크기는 `idle` 키가 기본 페어리 키쯤 되게. 그래서 배경은 투명하게, 발은 그림 속 불투명한 부분의 맨 아래에 두면 돼요.
+- 입체로 보기를 켜면 지금처럼 `blueprint` 로 그려요 (그림 세트는 2D 에서만).
+- 옛 앱은 이 칸을 모르고 `main` 과 `poses` 로 보여요. 판 번호는 2 그대로예요: 판 번호는 옛 앱이 못 읽는 바뀜에만 올려요 (올리면 옛 앱이 "더 새 페어리" 라며 아예 받지 않는다).
 
 ### blueprint, depth (선택)
 
@@ -80,7 +104,7 @@
 
 ### 크기
 
-- 파일 하나 48MB (앱 가져오기). 갤러리는 16MB.
+- 파일 하나 56MB (앱 가져오기). 갤러리는 16MB. 그림 세트를 넣으며 48MB 에서 올렸어요 (그림 네 장, 깊이 그림, 작은 그림, 그림 세트를 다 꽉 채우면 49.7MB 쯤). 0.4.2 까지의 앱은 48MB 까지 읽어요.
 - 앱은 파일을 열기 전에 크기부터 보고, 넘으면 읽지 않아요.
 
 ## 3. 판 1 (읽기만)
@@ -113,10 +137,11 @@ gallery/
 
 ## English summary
 
-- A `.fairy` file (formerly `.jjpet`, same contents; both are read) is a single UTF-8 JSON document (not a zip), at most 48 MiB (16 MiB in the gallery). Version 2 is what the app writes; version 1 files are still read.
+- A `.fairy` file (formerly `.jjpet`, same contents; both are read) is a single UTF-8 JSON document (not a zip), at most 56 MiB (16 MiB in the gallery; apps up to 0.4.2 read up to 48 MiB). Version 2 is what the app writes; version 1 files are still read.
 - Version 2 layout: `{ format: "jjakkung-pet", version: 2, manifest, images, blueprint?, depth? }`. The `format` value keeps the old app name on purpose so old and new apps can read each other's files.
   - `manifest`: `name` (1-12 letters), `species` (`kong|cat|chick|dog|bunny`), optional `author` (display name, max 40 chars, control and bidi characters stripped; required in the gallery), `license` (`CC-BY-4.0` default, `CC-BY-SA-4.0`, `CC-BY-NC-4.0`, `CC0-1.0`), `created` (ISO 8601 date or UTC date-time), `appVersion` (semver), optional `age` (`baby|teen|adult`), optional `personalOnly: true` (a personal-use fairy made to look like someone else's character; the gallery rejects it).
   - `images`: optional `main` and `poses.{happy,sleepy,hungry}` (PNG/GIF/WebP data URLs, decoded at most 8 MiB, 4096 px per side and 16 megapixels, magic bytes must match), optional `thumbnail` (PNG, longest side at most 512 px, at most 256 KiB).
+  - `images.sprites` (optional): a 2D sprite set keyed by the built-in fairy pose names (`idle` required; `blink`, `look-l`, `look-r`, `sit`, `sleep`, `doze`, `yawn`, `happy`, `hungry`, `grab`, `wave`, `sulky`, `back`, `talk-0`, `talk-1`, `walk-0`..`walk-5`). PNG only (SVG is refused because it is text that can reference outside URLs and fonts and cannot be size-checked from its header; animated PNG, GIF and WebP are refused too), each at most 512 KiB and 1024 px per side, all the same size as `idle`, at most 4 MiB in total. Broken sprites are dropped one by one; a set without a valid `idle` or over the total is dropped whole. Missing poses fall back to a close one, then `idle`. The app measures each sprite's opaque box to place it (bottom edge on the ground line). Used in 2D only; old apps ignore it and show `main` and `poses`. The version stays 2 because this is an additive optional field.
   - `blueprint` (3D figure) and `depth` (grayscale relief PNG, at most 1 MiB) are optional and only read when `images.main` exists.
 - Validation is strict: a broken manifest or main image rejects the file; broken poses or blueprints are dropped by the app but rejected by the gallery check.
 - Version 1 is the flat layout `{ format, version: 1, name, kind, image, poses, model, depth, age }` without manifest or thumbnail.

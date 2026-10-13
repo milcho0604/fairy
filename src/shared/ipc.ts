@@ -30,6 +30,7 @@ import type { PolishReply } from './note-polish.ts';
 import type { Note, NoteSource } from './note-store.ts';
 import type { PetKey } from './pet-keys.ts';
 import type { PetLicense } from './pet-share.ts';
+import type { PetSprites } from './pet-sprites.ts';
 import type { Blueprint, Gait } from './pet3d/blueprint.ts';
 import type { PinKind } from './pin.ts';
 import type { PetKind, PetStyle, PoseKind, Settings } from './settings.ts';
@@ -674,6 +675,11 @@ export interface PetImages {
   starter?: StarterId;
   /** 밀크, 초코의 옆모습 걷기 그림 (오른쪽을 보는 한 주기, data URL). 있으면 사진 모습으로 걸을 때 넘겨 보인다 */
   walk?: string[];
+  /**
+   * 펫 파일에서 데려온 2D 그림 세트 (자세 이름 -> PNG data URL, shared/pet-sprites.ts). 서기가 꼭 있다.
+   * 있으면 2D 에서 사진 대신 기본 페어리처럼 자세 그림을 바꿔 그린다 (renderer/src/sprite-geom.ts)
+   */
+  sprites?: PetSprites;
 }
 
 export const MAKER = {

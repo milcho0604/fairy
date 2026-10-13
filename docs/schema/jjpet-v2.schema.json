@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/milcho0604/fairy/blob/main/docs/schema/jjpet-v2.schema.json",
   "title": "fairy file (.fairy, formerly .jjpet) version 2",
-  "description": "One UTF-8 JSON file, at most 48 MiB (gallery: 16 MiB). See docs/pet-format.md. The app (src/shared/pet-share.ts) is the reference validator; it also checks image magic bytes and pixel dimensions, which JSON Schema cannot.",
+  "description": "One UTF-8 JSON file, at most 56 MiB (gallery: 16 MiB; apps up to 0.4.2 read up to 48 MiB). See docs/pet-format.md. The app (src/shared/pet-share.ts) is the reference validator; it also checks image magic bytes and pixel dimensions, which JSON Schema cannot.",
   "type": "object",
   "required": ["format", "version", "manifest", "images"],
   "properties": {
@@ -35,7 +35,37 @@
           },
           "description": "Mood pictures. Only used with images.main. A broken pose is dropped by the app (rejected by the gallery)."
         },
-        "thumbnail": { "$ref": "#/$defs/png", "description": "PNG, longest side at most 512 px, at most 256 KiB. Required in the gallery." }
+        "thumbnail": { "$ref": "#/$defs/png", "description": "PNG, longest side at most 512 px, at most 256 KiB. Required in the gallery." },
+        "sprites": {
+          "type": "object",
+          "required": ["idle"],
+          "additionalProperties": false,
+          "properties": {
+            "idle": { "$ref": "#/$defs/png" },
+            "blink": { "$ref": "#/$defs/png" },
+            "look-l": { "$ref": "#/$defs/png" },
+            "look-r": { "$ref": "#/$defs/png" },
+            "sit": { "$ref": "#/$defs/png" },
+            "sleep": { "$ref": "#/$defs/png" },
+            "happy": { "$ref": "#/$defs/png" },
+            "hungry": { "$ref": "#/$defs/png" },
+            "grab": { "$ref": "#/$defs/png" },
+            "sulky": { "$ref": "#/$defs/png" },
+            "doze": { "$ref": "#/$defs/png" },
+            "wave": { "$ref": "#/$defs/png" },
+            "yawn": { "$ref": "#/$defs/png" },
+            "talk-0": { "$ref": "#/$defs/png" },
+            "talk-1": { "$ref": "#/$defs/png" },
+            "back": { "$ref": "#/$defs/png" },
+            "walk-0": { "$ref": "#/$defs/png" },
+            "walk-1": { "$ref": "#/$defs/png" },
+            "walk-2": { "$ref": "#/$defs/png" },
+            "walk-3": { "$ref": "#/$defs/png" },
+            "walk-4": { "$ref": "#/$defs/png" },
+            "walk-5": { "$ref": "#/$defs/png" }
+          },
+          "description": "Optional 2D sprite set, same pose names as the built-in fairies (src/renderer/src/cute2d.ts). PNG only (no SVG, no animated PNG), each at most 512 KiB and 1024 px per side, all the same size as idle, at most 4 MiB in total. Pose order on the canvas: transparent background, feet on the bottom edge of the opaque area, facing right for walk-0..5. Only used with images.main. Missing poses fall back to a close one, then idle. A broken sprite is dropped by the app (rejected by the gallery); a set without a valid idle or over 4 MiB is dropped whole."
+        }
       }
     },
     "blueprint": { "type": "object", "description": "Optional 3D figure blueprint (parts + face), as made by the app. Only with images.main. Parsed and clamped by src/shared/pet3d/blueprint.ts." },

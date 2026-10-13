@@ -8,6 +8,7 @@ import { sizeOk } from '../shared/image-head.ts';
 import type { PetLookView, SavedPetView, StarterView } from '../shared/ipc.ts';
 import { swapIn } from '../shared/pet-order.ts';
 import type { PetMeta } from '../shared/pet-share.ts';
+import { type PetSprites, SPRITE_MAX_BYTES, SPRITE_NAMES, spriteFiles } from '../shared/pet-sprites.ts';
 import { type Blueprint, parseBlueprint } from '../shared/pet3d/blueprint.ts';
 import { starterFigureOf } from '../shared/pet3d/starters.ts';
 import { LIBRARY_MAX, type PetKind, type SavedPet, type Settings } from '../shared/settings.ts';
@@ -29,21 +30,44 @@ const MAX_DEPTH_BYTES = 1024 * 1024;
 /** 설계도 파일 상한. 부품 40개면 10KB 안팎이라 넉넉하다 */
 const MAX_MODEL_BYTES = 256 * 1024;
 
-type PetFiles = Pick<SavedPet, 'image' | 'model' | 'depth' | 'poses'>;
+type PetFiles = Pick<SavedPet, 'image' | 'model' | 'depth' | 'poses' | 'sprites'>;
 
+/** 펫 하나가 쓰는 pets/ 파일 (그림, 설계도, 깊이 그림, 포즈, 2D 그림 세트) */
 function files(p: Partial<PetFiles>): string[] {
-  return [p.image, p.model, p.depth, ...Object.values(p.poses ?? {})].filter((f): f is string => !!f);
+  return [p.image, p.model, p.depth, ...Object.values(p.poses ?? {}), ...spriteFiles(p.sprites)].filter(
+    (f): f is string => !!f,
+  );
 }
 
 /** 설정이 아직 가리키는 파일 (지금 펫, 보관함, 친구) */
 function inUse(s: Settings, lib: SavedPet[]): Set<string> {
   const used = new Set<string>([
-    ...files({ image: s.petImage, model: s.petModel, depth: s.petDepth, poses: s.petPoses }),
+    ...files({
+      image: s.petImage,
+      model: s.petModel,
+      depth: s.petDepth,
+      poses: s.petPoses,
+      sprites: s.petSprites,
+    }),
     ...lib.flatMap(files),
   ]);
-  for (const f of s.friends)
-    for (const x of [f.image, f.model, f.depth, ...Object.values(f.poses ?? {})]) if (x) used.add(x);
+  for (const f of s.friends) for (const x of files(f)) used.add(x);
   return used;
+}
+
+/**
+ * 2D 그림 세트를 화면에 보낼 data URL 로 (펫 화면, 친구 창, 다시 내보내기). pets/ 안 PNG 만, 한 장 상한까지.
+ * 서기 그림을 못 읽으면 세트 없이 (사진 펫으로 보인다)
+ */
+export function spriteUrls(sprites: PetSprites | undefined): PetSprites | undefined {
+  if (!sprites) return undefined;
+  const out: PetSprites = {};
+  for (const name of SPRITE_NAMES) {
+    const bytes = readFileIn(petsDir(), sprites[name], SPRITE_MAX_BYTES);
+    if (bytes && bytes.length > 12 && bytes.readUInt32BE(0) === 0x89504e47 && sizeOk(bytes))
+      out[name] = `data:image/png;base64,${bytes.toString('base64')}`;
+  }
+  return out.idle ? out : undefined;
 }
 
 /** 아무도 안 쓰는 파일만 지운다. 설정을 바꾼 뒤에 부른다 */
@@ -73,6 +97,7 @@ function archiveCurrent(skip?: string): { list: SavedPet[]; dropped: SavedPet[] 
     ...(s.petAge ? { age: s.petAge } : {}),
     poses: { ...s.petPoses },
     ...(s.petMeta ? { meta: s.petMeta } : {}),
+    ...(s.petSprites ? { sprites: s.petSprites } : {}),
   };
   const next = swapIn(s.petLibrary, saved, skip);
   return { list: next.slice(0, LIBRARY_MAX), dropped: next.slice(LIBRARY_MAX) };
@@ -80,10 +105,11 @@ function archiveCurrent(skip?: string): { list: SavedPet[]; dropped: SavedPet[] 
 
 const NO_POSES = { happy: null, sleepy: null, hungry: null };
 
-/** 지금 펫이 고른 그대로의 밀크, 초코인지: 이름, 입체 피규어, 깊이 그림, 포즈 어느 것도 손대지 않았다 */
+/** 지금 펫이 고른 그대로의 밀크, 초코인지: 이름, 입체 피규어, 깊이 그림, 포즈, 그림 세트 어느 것도 손대지 않았다 */
 function untouchedStarter(s: Settings): boolean {
   const id = starterOf(s.petImage);
-  if (!id || s.petModel || s.petDepth || Object.values(s.petPoses).some(Boolean)) return false;
+  if (!id || s.petModel || s.petDepth || s.petSprites || Object.values(s.petPoses).some(Boolean))
+    return false;
   return isStarterName(id, s.petName);
 }
 
@@ -94,23 +120,29 @@ export const library = {
    * 새 펫 설정과 한 번에 저장한다 (두 번 나눠 쓰다 둘째가 실패하면 보관함만 바뀌고 포즈는 지워진 채 남았다)
    */
   newPhotoPatch(): {
-    patch: { petLibrary: Settings['petLibrary']; petPoses: typeof NO_POSES; petMeta: null };
+    patch: {
+      petLibrary: Settings['petLibrary'];
+      petPoses: typeof NO_POSES;
+      petMeta: null;
+      petSprites: null;
+    };
     cleanup: () => void;
   } {
-    const old = settings.get().petPoses;
+    const s = settings.get();
+    const old = [...Object.values(s.petPoses), ...spriteFiles(s.petSprites)];
     const { list, dropped } = archiveCurrent();
     return {
-      // 새 펫은 직접 만든 것: 옛 펫 이름표(만든 사람, 허락)는 보관함으로만 간다 (펫 파일에서 데려오면 adoptPet 이 다시 채운다)
-      patch: { petLibrary: list, petPoses: NO_POSES, petMeta: null },
-      cleanup: () =>
-        removeUnused([...dropped.flatMap(files), ...Object.values(old).filter((f): f is string => !!f)]),
+      // 새 펫은 직접 만든 것: 옛 펫 이름표(만든 사람, 허락)와 그림 세트는 보관함으로만 간다
+      // (펫 파일에서 데려오면 adoptPet 이 다시 채운다)
+      patch: { petLibrary: list, petPoses: NO_POSES, petMeta: null, petSprites: null },
+      cleanup: () => removeUnused([...dropped.flatMap(files), ...old.filter((f): f is string => !!f)]),
     };
   },
 
   /** 기본 펫으로: 지금 사진 펫은 보관하고 고른 모양으로 */
   toDefault(kind: PetKind): void {
     const s = settings.get();
-    const old = files({ image: s.petImage, model: s.petModel, depth: s.petDepth });
+    const old = files({ image: s.petImage, model: s.petModel, depth: s.petDepth, sprites: s.petSprites });
     const oldPoses = Object.values(s.petPoses).filter((f): f is string => !!f);
     const { list, dropped } = archiveCurrent();
     settings.set({
@@ -122,6 +154,7 @@ export const library = {
       petAge: null,
       petMeta: null,
       petPoses: NO_POSES,
+      petSprites: null,
     });
     removeUnused([...dropped.flatMap(files), ...old, ...oldPoses]);
   },
@@ -139,6 +172,7 @@ export const library = {
       petDepth: pick.depth ?? null,
       petAge: pick.age ?? null,
       petMeta: pick.meta ?? null,
+      petSprites: pick.sprites ?? null,
       petPoses: {
         happy: pick.poses.happy ?? null,
         sleepy: pick.poses.sleepy ?? null,

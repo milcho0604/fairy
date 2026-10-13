@@ -70,7 +70,7 @@ import { langArg } from './lang.ts';
 import { illustrateLocal, localDrawInfo, localDrawSupport, setupLocalDraw } from './local-draw.ts';
 import { LocalDrawError, type LocalDrawErrorKind } from './local-draw-core.ts';
 import { ensureOrtWasm, ORT_WASM, ortWasmReady, verifiedOrtWasmUrl } from './ort-wasm.ts';
-import { library } from './pet-library.ts';
+import { library, spriteUrls } from './pet-library.ts';
 import { readFileIn, writeFileAtomic } from './safe-file.ts';
 import { settings } from './settings.ts';
 import { readStarterWalk } from './starter-copy.ts';
@@ -124,6 +124,7 @@ function dataUrlOf(file: string | undefined): string | null {
 /** 지금 펫 그림들 (data URL). 사진 펫이 없으면 main 이 null 이고 포즈도 쓰지 않는다. */
 export function petImages(): PetImages {
   const s = settings.get();
+  const sprites = s.petImage ? spriteUrls(s.petSprites) : undefined;
   const poses: PetImages['poses'] = {};
   for (const { id } of POSE_KINDS) {
     const url = dataUrlOf(s.petPoses[id]);
@@ -138,6 +139,7 @@ export function petImages(): PetImages {
     ...(s.petImage && s.petAge ? { age: s.petAge } : {}),
     ...(starterOf(s.petImage) ? { starter: starterOf(s.petImage) } : {}),
     ...walkOf(s.petImage),
+    ...(sprites ? { sprites } : {}),
   };
 }
 

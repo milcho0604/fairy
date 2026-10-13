@@ -3,10 +3,19 @@
 // 파일 형식 판 2 (2026-10-11, 펫 갤러리): 이름표(manifest: 이름, 종류, 만든 사람, 사용 허락, 만든 날, 앱 판)와
 // 그림 묶음(images: 본 그림, 포즈, 작은 그림)으로 나눈다. 판 1 파일도 그대로 읽는다. 쓰기는 판 2 만.
 // 형식 설명: docs/pet-format.md, JSON 스키마: docs/schema/jjpet-v2.schema.json
+// 판 번호는 옛 앱이 못 읽는 바뀜에만 올린다. 선택 칸을 더하는 것(age, personalOnly, images.sprites)은 판 2 그대로:
+// 옛 앱은 모르는 칸을 버리고 읽어서, 판을 올리면 오히려 "더 새 페어리" 라며 통째로 못 받는다
 
 import { t } from './i18n/index.ts';
 import { type AgeStage, isAgeStage } from './illustrate.ts';
 import { imageSize, sizeOk } from './image-head.ts';
+import {
+  type PetSprites,
+  SPRITE_MAX_BYTES,
+  SPRITE_MAX_SIDE,
+  SPRITE_NAMES,
+  SPRITES_MAX_BYTES,
+} from './pet-sprites.ts';
 import { type Blueprint, parseBlueprint } from './pet3d/blueprint.ts';
 import { cleanPetName, isPetKind, type PetKind, type PoseKind } from './settings.ts';
 import { PET_FILE_EXT } from './url-scheme.ts';
@@ -14,8 +23,12 @@ import { PET_FILE_EXT } from './url-scheme.ts';
 export const SHARE_FORMAT = 'jjakkung-pet';
 /** 쓰는 판. 읽기는 1, 2 둘 다 */
 export const SHARE_VERSION = 2;
-/** 파일 하나 상한 (그림 네 장, 움직이는 그림 8MB 를 base64 로) */
-export const SHARE_MAX_BYTES = 48 * 1024 * 1024;
+/**
+ * 파일 하나 상한. 그림 네 장(본 그림, 포즈 셋, 각 8MB)과 깊이 그림, 작은 그림을 base64 로 하면 44.4MB 쯤이고,
+ * 2D 그림 세트(SPRITES_MAX_BYTES 4MB, base64 로 5.4MB)를 더하면 49.8MB 쯤이라 48MB 에서 56MB 로 올렸다 (2026-10-13).
+ * 옛 앱은 48MB 가 넘는 파일만 "너무 크다" 고 받지 않는다 (보통 파일은 1MB 안팎)
+ */
+export const SHARE_MAX_BYTES = 56 * 1024 * 1024;
 export const IMAGE_MAX_BYTES = 8 * 1024 * 1024;
 /** 갤러리 작은 그림 상한 (PNG, 긴 쪽 512 아래) */
 export const THUMB_MAX_BYTES = 256 * 1024;
@@ -63,6 +76,11 @@ export interface SharedPet {
    * 공식 갤러리는 이 표시가 있는 파일을 받지 않는다 (gallery.ts validateSubmission). 옛 앱은 이 칸을 모르고 그냥 읽는다
    */
   personalOnly?: boolean;
+  /**
+   * 2D 그림 세트 (이름 -> PNG data URL, pet-sprites.ts). 본 그림이 있을 때만, 서기(idle)가 꼭 있다.
+   * 있으면 2D 에서 기본 페어리처럼 자세마다 그림을 바꿔 그린다. 옛 앱은 이 칸을 모르고 본 그림과 포즈로 보인다
+   */
+  sprites?: PetSprites;
 }
 
 /** 판 2 이름표에서 이름, 종류 말고 나머지 */
@@ -128,6 +146,7 @@ export function encodePet(p: SharedPet, meta?: Partial<PetMeta>): string {
     ...(p.image ? { main: p.image } : {}),
     poses: p.image ? p.poses : {},
     ...(p.thumbnail ? { thumbnail: p.thumbnail } : {}),
+    ...(p.image && p.sprites?.idle ? { sprites: p.sprites } : {}),
   };
   return JSON.stringify({
     format: SHARE_FORMAT,
@@ -190,6 +209,45 @@ function cleanImage(v: unknown): string | undefined {
     (m[1] === 'webp' && head.startsWith('RIFF') && head.slice(8, 12) === 'WEBP');
   // 머리말 크기도 본다: 2MB PNG 가 23000x23000 이면 펼칠 때 메인이 몇 초 멈추고 2GB 를 썼다
   return ok && sizeOk(bytes) ? v : undefined;
+}
+
+/** PNG 가 움직이는 그림(APNG)인지: 첫 그림 조각(IDAT) 앞에 acTL 조각이 있으면 */
+function isAnimatedPng(bytes: Buffer): boolean {
+  let at = 8;
+  while (at + 8 <= bytes.length) {
+    const len = bytes.readUInt32BE(at);
+    const type = bytes.toString('latin1', at + 4, at + 8);
+    if (type === 'acTL') return true;
+    if (type === 'IDAT' || type === 'IEND') return false;
+    at += 12 + len;
+  }
+  return false;
+}
+
+/**
+ * 2D 그림 세트 검사. 아는 이름의 PNG 만 (SVG 는 받지 않는다: 글로 된 그림이라 밖 주소, 글꼴, 거대한 필터를 품을 수 있고
+ * 머리말로 크기를 미리 잴 수 없다. 움직이는 PNG, GIF, WebP 도 받지 않는다: 한 장이 한 자세다).
+ * 한 장 512KB, 한 변 1024px, 모두 서기 그림과 같은 크기. 틀린 장은 그 장만 버리고, 서기가 없거나 합이 4MB 를 넘으면 세트를 버린다
+ */
+export function cleanSprites(v: unknown): PetSprites | undefined {
+  const raw = objOf(v);
+  const out: PetSprites = {};
+  let total = 0;
+  let size: { w: number; h: number } | undefined;
+  for (const name of SPRITE_NAMES) {
+    const img = cleanImage(raw[name]);
+    if (!img?.startsWith('data:image/png;')) continue;
+    const bytes = Buffer.from(img.slice(img.indexOf(',') + 1), 'base64');
+    const wh = imageSize(bytes);
+    if (!wh || bytes.length > SPRITE_MAX_BYTES || Math.max(wh.w, wh.h) > SPRITE_MAX_SIDE) continue;
+    if (isAnimatedPng(bytes)) continue;
+    // 서기가 먼저 온다 (SPRITE_NAMES 순서): 서기와 크기가 다른 장은 바닥선과 가운데가 어긋나서 버린다
+    size ??= name === 'idle' ? wh : undefined;
+    if (!size || size.w !== wh.w || size.h !== wh.h) continue;
+    total += bytes.length;
+    out[name] = img;
+  }
+  return out.idle && total <= SPRITES_MAX_BYTES ? out : undefined;
 }
 
 /** .jjpet 글을 읽는다 (판 1, 2). 틀리면 이유를 담은 오류 */
@@ -255,6 +313,8 @@ function fromV2(raw: Record<string, unknown>): SharedPet | { error: string } {
     age: manifest.age,
   });
   if ('error' in base) return base;
+  // 2D 그림 세트는 본 그림이 있을 때만 (포즈처럼). 틀리면 세트만 버리고 본 그림과 포즈로 데려온다
+  const sprites = base.image && images.sprites !== undefined ? cleanSprites(images.sprites) : undefined;
   const thumbnail = images.thumbnail === undefined ? undefined : cleanThumbnail(images.thumbnail);
   if (images.thumbnail !== undefined && !thumbnail) return { error: t('pet.share.badImage') };
   const author = cleanAuthor(manifest.author);
@@ -262,6 +322,7 @@ function fromV2(raw: Record<string, unknown>): SharedPet | { error: string } {
     ...base,
     ...(thumbnail ? { thumbnail } : {}),
     ...(manifest.personalOnly === true ? { personalOnly: true } : {}),
+    ...(sprites ? { sprites } : {}),
     meta: { ...(author ? { author } : {}), license, created, appVersion },
   };
 }

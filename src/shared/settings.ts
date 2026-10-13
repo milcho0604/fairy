@@ -11,6 +11,7 @@ import { cleanFacts, cleanMeta, type MemMeta, type PetFact } from './knows.ts';
 import { type IllustEngine, illustEngineOf } from './local-draw.ts';
 import { cleanMemory, cleanPending } from './pet-memory.ts';
 import { cleanPetMeta, type PetMeta } from './pet-share.ts';
+import { cleanSpriteFiles, type PetSprites } from './pet-sprites.ts';
 import { GAITS, type Gait } from './pet3d/blueprint.ts';
 import { cleanWish } from './pet3d/prompt.ts';
 import { DEFAULT_ROUTINE, parseRoutine, type Routine } from './routine.ts';
@@ -80,6 +81,11 @@ export interface Settings {
   petMeta?: PetMeta;
   /** 상태별 포즈 그림 (v1). 기쁨, 졸림, 배고픔. pets/ 안 파일 이름 */
   petPoses: Partial<Record<PoseKind, string>>;
+  /**
+   * 펫 파일에서 데려온 2D 그림 세트 (2026-10-13, pet-sprites.ts). 자세 이름 -> pets/ 안 sprite-*.png.
+   * 사진 펫에만 있다. 있으면 2D 에서 기본 페어리처럼 자세마다 그림을 바꾼다 (입체로 보기에서는 설계도 그대로)
+   */
+  petSprites?: PetSprites;
   /** 삐짐 게이지를 세지 않는 요일 (0 일 ~ 6 토). 기본 토, 일. 만나는 시간을 켜면 쓰지 않는다 (restDaysOf) */
   restDays: number[];
   /** 매운맛: 삐짐이 4칸에서 멈추지 않고 7칸까지 (v1) */
@@ -215,6 +221,8 @@ export interface SavedPet {
   poses: Partial<Record<PoseKind, string>>;
   /** 펫 파일에서 데려온 펫의 이름표 (Settings.petMeta) */
   meta?: PetMeta;
+  /** 2D 그림 세트 (Settings.petSprites) */
+  sprites?: PetSprites;
 }
 
 export const LIBRARY_MAX = 12;
@@ -238,6 +246,8 @@ export interface Friend {
   poses?: Partial<Record<PoseKind, string>>;
   /** 기본 페어리였을 때의 이름표 (Settings.petMeta). 다시 기본 페어리로 바꾸면 돌아간다 */
   meta?: PetMeta;
+  /** 2D 그림 세트 (Settings.petSprites, pets/ 안). 친구 창도 이것으로 그린다 */
+  sprites?: PetSprites;
 }
 
 export const FRIENDS_MAX = 3;
@@ -413,8 +423,9 @@ const PET_FILE = /^(pet|pose)-[\w-]+\.(png|gif|webp)$/;
 
 /** 바꿀 값만. 사진 펫은 null 이면 지운다 (기본 펫으로). */
 export type SettingsPatch = Partial<
-  Omit<Settings, 'petImage' | 'petPoses' | 'petModel' | 'petDepth' | 'petAge' | 'petMeta'>
+  Omit<Settings, 'petImage' | 'petPoses' | 'petModel' | 'petDepth' | 'petAge' | 'petMeta' | 'petSprites'>
 > & {
+  petSprites?: PetSprites | null;
   petImage?: string | null;
   petAge?: AgeStage | null;
   petMeta?: PetMeta | null;
@@ -630,6 +641,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     ...petAgeOf(r, base),
     ...petMetaOf(r.petMeta, base.petMeta),
     petPoses: posesOf(r.petPoses, base.petPoses),
+    ...petSpritesOf(r, base),
     restDays: Array.isArray(r.restDays)
       ? [...new Set(r.restDays.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 6))].sort()
       : base.restDays,
@@ -822,6 +834,14 @@ function petAgeOf(r: Record<string, unknown>, base: Settings): { petAge?: AgeSta
   return base.petAge ? { petAge: base.petAge } : {};
 }
 
+/** 2D 그림 세트: 사진 펫이 있을 때만. null 이면 지운다. 틀린 값은 지금 것 그대로 */
+function petSpritesOf(r: Record<string, unknown>, base: Settings): { petSprites?: PetSprites } {
+  if (!petImageOf(r.petImage, base.petImage).petImage || r.petSprites === null) return {};
+  const sprites =
+    r.petSprites === undefined ? base.petSprites : (cleanSpriteFiles(r.petSprites) ?? base.petSprites);
+  return sprites ? { petSprites: sprites } : {};
+}
+
 const MODEL_FILE = /^model-[\w-]+\.json$/;
 const DEPTH_FILE = /^depth-[\w-]+\.png$/;
 function petDepthOf(v: unknown, current: string | undefined): { petDepth?: string } {
@@ -849,6 +869,7 @@ function libraryOf(list: unknown[]): SavedPet[] {
     const model = typeof f.model === 'string' && MODEL_FILE.test(f.model) ? f.model : undefined;
     const depth = typeof f.depth === 'string' && DEPTH_FILE.test(f.depth) ? f.depth : undefined;
     const meta = cleanPetMeta(f.meta);
+    const sprites = cleanSpriteFiles(f.sprites);
     out.push({
       id,
       name,
@@ -858,6 +879,7 @@ function libraryOf(list: unknown[]): SavedPet[] {
       ...(isAgeStage(f.age) ? { age: f.age } : {}),
       poses: posesOf(f.poses, {}),
       ...(meta ? { meta } : {}),
+      ...(sprites ? { sprites } : {}),
     });
     if (out.length >= LIBRARY_MAX) break;
   }
@@ -890,6 +912,7 @@ function friendsOf(list: unknown[]): Friend[] {
     const depth = image && typeof f.depth === 'string' && DEPTH_FILE.test(f.depth) ? f.depth : undefined;
     const poses = image ? posesOf(f.poses, {}) : undefined;
     const meta = image ? cleanPetMeta(f.meta) : undefined;
+    const sprites = image ? cleanSpriteFiles(f.sprites) : undefined;
     out.push({
       id,
       name,
@@ -901,6 +924,7 @@ function friendsOf(list: unknown[]): Friend[] {
       ...(image && isAgeStage(f.age) ? { age: f.age } : {}),
       ...(poses && Object.keys(poses).length > 0 ? { poses } : {}),
       ...(meta ? { meta } : {}),
+      ...(sprites ? { sprites } : {}),
     });
     if (out.length >= FRIENDS_MAX) break;
   }

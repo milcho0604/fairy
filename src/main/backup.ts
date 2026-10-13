@@ -21,6 +21,7 @@ import {
   shareFileName,
   THUMB_MAX_BYTES,
 } from '../shared/pet-share.ts';
+import type { PetSprites } from '../shared/pet-sprites.ts';
 import type { Blueprint } from '../shared/pet3d/blueprint.ts';
 import { FRIENDS_MAX, isPersonalPet, POSE_KINDS } from '../shared/settings.ts';
 import { PET_FILE_EXT, PET_FILE_EXTS_READ } from '../shared/url-scheme.ts';
@@ -281,10 +282,13 @@ function checkpoint(file: string): void {
 
 // ---- 펫 공유 (v2) ----
 
+/** 한 번에 여러 장(그림 세트 22장)을 써도 이름이 겹치지 않게 붙이는 차례 번호 */
+let fileSeq = 0;
 function dataUrlToFile(dataUrl: string, prefix: string): string {
   const m = /^data:image\/(png|gif|webp);base64,(.+)$/.exec(dataUrl);
   if (!m) throw new Error('그림 형식');
-  const file = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.${m[1]}`;
+  fileSeq = (fileSeq + 1) % 1000;
+  const file = `${prefix}-${Date.now()}-${fileSeq}${Math.random().toString(36).slice(2, 6)}.${m[1]}`;
   mkdirSync(join(app.getPath('userData'), 'pets'), { recursive: true });
   writeFileAtomic(join(app.getPath('userData'), 'pets', file), Buffer.from(m[2] ?? '', 'base64'));
   return file;
@@ -332,6 +336,8 @@ export function currentSharedPet(): SharedPet {
     ...(thumbnail ? { thumbnail } : {}),
     // 이미 있는 캐릭터로 말로 만든 펫 (이름표에 적혀 공식 갤러리가 받지 않는다)
     ...(imgs.model && isPersonalPet(s) ? { personalOnly: true } : {}),
+    // 데려온 2D 그림 세트도 다시 담는다 (친구에게 보내도 자세 그림이 같이 간다)
+    ...(imgs.main && imgs.sprites ? { sprites: imgs.sprites } : {}),
   };
 }
 
@@ -414,7 +420,16 @@ export async function adoptPet(
     made.push(f);
     return f;
   };
+  // 2D 그림 세트 (사진 펫에만). 장마다 pets/ 안 sprite-*.png 로
+  const spritesToFiles = (sprites: PetSprites | undefined): PetSprites | undefined => {
+    if (!pet.image || !sprites?.idle) return undefined;
+    const out: PetSprites = {};
+    for (const [name, url] of Object.entries(sprites) as [keyof PetSprites, string][])
+      out[name] = keep(dataUrlToFile(url, 'sprite'));
+    return out;
+  };
   try {
+    const sprites = spritesToFiles(pet.sprites);
     if (asFriend) {
       const friend = {
         id: `f-${Date.now().toString(36)}`,
@@ -424,6 +439,7 @@ export async function adoptPet(
         ...(pet.model ? { model: keep(modelToFile(pet.model)) } : {}),
         ...(pet.depth ? { depth: keep(dataUrlToFile(pet.depth, 'depth')) } : {}),
         ...(pet.age ? { age: pet.age } : {}),
+        ...(sprites ? { sprites } : {}),
       };
       settings.set({ friends: [...settings.get().friends, friend] });
       return { ok: true, message: t('main.pet.friendCame', { name: pet.name }) };
@@ -448,6 +464,8 @@ export async function adoptPet(
       petAge: pet.age ?? null,
       // 만든 사람, 사용 허락, 만든 날, 앱 판 (판 2 파일). 다시 내보낼 때 그대로 넘긴다. 판 1 이면 지운다
       petMeta: pet.meta ?? null,
+      // 2D 그림 세트 (없으면 지운다: 옛 펫 그림이 새 펫에 남지 않게)
+      petSprites: sprites ?? null,
     };
     // 지금 사진 펫은 보관함으로 (6단계)
     const prep = library.newPhotoPatch();
