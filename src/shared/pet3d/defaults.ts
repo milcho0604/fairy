@@ -22,7 +22,7 @@ const PENGUIN_WING = '#475674';
 const BEAR = '#b98559';
 const BEAR_MUZZLE = '#f6e3c9';
 const BEAR_PAW = '#e9c49c';
-const BEAR_SOLE = '#6e4a30';
+const BEAR_SOLE = '#8b5e3c';
 const PENGUIN_FEET = '#ffad4d';
 
 /** 다리를 달기 전 동그란 몸 (피규어, 게임). 냥이, 멍멍이, 햄찌, 뒤뚱이, 곰돌이는 아래 onLegs 로 다리를 단다 */
@@ -659,9 +659,11 @@ export const DEFAULT_BLUEPRINTS: Record<PetKind, Blueprint> = {
 };
 
 /**
- * 네 발로 선 몸의 네 다리 (밀크 뼈대를 본뜬다, starters.ts). 앞다리는 어깨 윗마디, 팔꿈치 공, 아랫마디, 발.
+ * 네 발로 선 몸의 네 다리 (밀크 뼈대를 본뜬다, starters.ts). 앞다리는 어깨 살, 윗마디, 팔꿈치 공, 아랫마디, 발.
  * 뒷다리는 넓적다리, 무릎 공, 정강이, 발. knee 칸이 있는 것이 무릎 아래 마디다 (pet3d.ts buildStance 가 다리를 다시 짠다).
- * k 는 다리 높이 배율(발은 그대로 바닥에), t 는 굵기 배율
+ * k 는 다리 높이 배율(발은 그대로 바닥에), t 는 굵기 배율, p 는 발 크기 배율.
+ * 고양이, 강아지, 곰 새끼는 몸 높이에 비해 다리가 짧고 굵으며, 위쪽은 어깨와 허벅지 살에 묻혀 두툼하게 이어지고
+ * 끝은 둥글고 넓은 발이다 (2026-10-13 사용자: 가늘고 긴 막대 다리에 높이 뜬 몸은 말 같았다)
  */
 function quadLegs(o: {
   x: number;
@@ -670,24 +672,36 @@ function quadLegs(o: {
   zb: number;
   k: number;
   t: number;
+  p?: number;
   color: string;
   paw: string;
   finish?: Finish;
 }): Part[] {
   const { k, t, color } = o;
-  const leg = (p: Omit<Part, 'slot' | 'mirror'>): Part => ({
+  const p = o.p ?? 1;
+  // 어깨와 허벅지 살은 굵기만큼 높이도 키운다 (다리를 줄인 만큼만 줄이면 납작한 원반이 되었다)
+  const bulk = (k + t) / 2;
+  const deep = (1 + t) / 2;
+  const leg = (q: Omit<Part, 'slot' | 'mirror'>): Part => ({
     slot: 'legL',
-    ...p,
+    ...q,
     ...fin(o.finish),
     mirror: true,
   });
   return [
+    // 어깨 살: 윗마디 위를 몸에 두툼하게 잇는다 (다리와 같이 돈다)
+    leg({
+      shape: 'sphere',
+      at: [-o.x, 0.32 * k, o.zf - 0.01],
+      size: [0.07 * t, 0.1 * bulk, 0.08 * deep],
+      color,
+    }),
     leg({
       shape: 'capsule',
       at: [-o.x, 0.31 * k, o.zf],
       size: [0.062 * t, 0.11 * k, 0.062 * t],
       rot: [0, 0, 180],
-      taper: 0.76,
+      taper: 0.8,
       color,
     }),
     leg({
@@ -706,12 +720,17 @@ function quadLegs(o: {
     }),
     leg({
       shape: 'sphere',
-      at: [-o.x, 0.04, o.zf + 0.025],
-      size: [0.053 * t, 0.04, 0.065 * t],
+      at: [-o.x, 0.045, o.zf + 0.025],
+      size: [0.053 * t * p, 0.045, 0.065 * t * p],
       color: o.paw,
       knee: true,
     }),
-    leg({ shape: 'sphere', at: [-o.xb, 0.35 * k, o.zb], size: [0.085 * t, 0.13 * k, 0.115 * t], color }),
+    leg({
+      shape: 'sphere',
+      at: [-o.xb, 0.35 * k, o.zb],
+      size: [0.085 * t, 0.13 * bulk, 0.115 * deep],
+      color,
+    }),
     leg({
       shape: 'sphere',
       at: [-o.xb, 0.21 * k, o.zb + 0.05],
@@ -729,8 +748,8 @@ function quadLegs(o: {
     }),
     leg({
       shape: 'sphere',
-      at: [-o.xb, 0.04, o.zb - 0.035],
-      size: [0.053 * t, 0.04, 0.066 * t],
+      at: [-o.xb, 0.045, o.zb - 0.035],
+      size: [0.053 * t * p, 0.045, 0.066 * t * p],
       color: o.paw,
       knee: true,
     }),
@@ -755,7 +774,7 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
       {
         slot: 'body',
         shape: 'capsule',
-        at: [0, 0.42, -0.03],
+        at: [0, 0.345, -0.03],
         size: [0.18, 0.3, 0.19],
         rot: [90, 0, 0],
         color: CAT,
@@ -764,7 +783,7 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
       {
         slot: 'body',
         shape: 'sphere',
-        at: [0, 0.46, 0.19],
+        at: [0, 0.385, 0.19],
         size: [0.18, 0.2, 0.145],
         color: CAT,
         finish: 'fuzzy',
@@ -773,7 +792,7 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
       {
         slot: 'head',
         shape: 'sphere',
-        at: [0, 0.66, 0.35],
+        at: [0, 0.585, 0.35],
         size: [0.15, 0.135, 0.13],
         color: CAT,
         finish: 'fuzzy',
@@ -782,7 +801,7 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
       {
         slot: 'head',
         shape: 'sphere',
-        at: [0, 0.61, 0.36],
+        at: [0, 0.535, 0.36],
         size: [0.16, 0.085, 0.105],
         color: CAT,
         finish: 'fuzzy',
@@ -791,7 +810,7 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
       {
         slot: 'head',
         shape: 'sphere',
-        at: [0, 0.61, 0.45],
+        at: [0, 0.535, 0.45],
         size: [0.065, 0.045, 0.04],
         color: WHITE,
         finish: 'fuzzy',
@@ -800,7 +819,7 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
       {
         slot: 'head',
         shape: 'capsule',
-        at: [0, 0.752, 0.44],
+        at: [0, 0.677, 0.44],
         size: [0.014, 0.034, 0.01],
         rot: [-55, 0, 0],
         color: CAT_POINT,
@@ -809,7 +828,7 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
       {
         slot: 'head',
         shape: 'capsule',
-        at: [-0.034, 0.744, 0.437],
+        at: [-0.034, 0.669, 0.437],
         size: [0.012, 0.027, 0.01],
         rot: [-55, 0, 18],
         color: CAT_POINT,
@@ -819,7 +838,7 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
       {
         slot: 'earL',
         shape: 'cone',
-        at: [-0.085, 0.79, 0.33],
+        at: [-0.085, 0.715, 0.33],
         size: [0.055, 0.075, 0.032],
         rot: [-8, 0, 24],
         color: CAT,
@@ -828,12 +847,13 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
         mirror: true,
       },
       ...quadLegs({
-        x: 0.085,
+        x: 0.092,
         xb: 0.1,
         zf: 0.19,
         zb: -0.2,
-        k: 1,
-        t: 1,
+        k: 0.84,
+        t: 1.25,
+        p: 1.05,
         color: CAT,
         paw: WHITE,
         finish: 'fuzzy',
@@ -841,13 +861,13 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
       {
         slot: 'tail',
         shape: 'tube',
-        at: [0, 0.47, -0.33],
+        at: [0, 0.395, -0.33],
         size: [0.056, 0.056, 0.056],
         path: [
-          [0, 0.47, -0.33],
-          [0, 0.56, -0.45],
-          [0, 0.72, -0.5],
-          [0, 0.84, -0.45],
+          [0, 0.395, -0.33],
+          [0, 0.485, -0.45],
+          [0, 0.645, -0.5],
+          [0, 0.765, -0.45],
         ],
         taper: 0.7,
         color: CAT,
@@ -856,7 +876,7 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
       {
         slot: 'tail',
         shape: 'sphere',
-        at: [0, 0.85, -0.445],
+        at: [0, 0.775, -0.445],
         size: [0.04, 0.045, 0.04],
         color: CAT_POINT,
         finish: 'fuzzy',
@@ -864,15 +884,15 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
     ],
     face: {
       slot: 'head',
-      eyeY: 0.685,
+      eyeY: 0.61,
       eyeGap: 0.062,
       eyeSize: 0.036,
       eyeColor: '#a8bf6a',
       pupil: 'round',
       catchlight: 'big',
       mouth: 'cat',
-      mouthY: 0.6,
-      nose: { shape: 'triangle', color: '#f39aac', y: 0.632, size: 0.85 },
+      mouthY: 0.525,
+      nose: { shape: 'triangle', color: '#f39aac', y: 0.557, size: 0.85 },
       whiskers: '#a3aac0',
       blush: '#ffa0b4',
       fluff: CAT,
@@ -889,7 +909,7 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
       {
         slot: 'body',
         shape: 'capsule',
-        at: [0, 0.44, 0],
+        at: [0, 0.355, 0],
         size: [0.158, 0.25, 0.168],
         rot: [90, 0, 0],
         color: DOG,
@@ -898,7 +918,7 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
       {
         slot: 'body',
         shape: 'sphere',
-        at: [0, 0.47, 0.16],
+        at: [0, 0.385, 0.16],
         size: [0.145, 0.165, 0.12],
         color: DOG,
         finish: 'fuzzy',
@@ -907,7 +927,7 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
       {
         slot: 'body',
         shape: 'capsule',
-        at: [0, 0.64, 0.17],
+        at: [0, 0.555, 0.17],
         size: [0.105, 0.15, 0.095],
         rot: [50, 0, 0],
         color: DOG,
@@ -916,7 +936,7 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
       {
         slot: 'head',
         shape: 'sphere',
-        at: [0, 0.7, 0.3],
+        at: [0, 0.615, 0.3],
         size: [0.15, 0.145, 0.14],
         color: DOG,
         finish: 'fuzzy',
@@ -924,7 +944,7 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
       {
         slot: 'head',
         shape: 'sphere',
-        at: [0, 0.79, 0.27],
+        at: [0, 0.705, 0.27],
         size: [0.12, 0.08, 0.11],
         color: DOG,
         finish: 'fuzzy',
@@ -933,7 +953,7 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
       {
         slot: 'head',
         shape: 'sphere',
-        at: [0, 0.64, 0.42],
+        at: [0, 0.555, 0.42],
         size: [0.08, 0.065, 0.075],
         color: CREAM,
         finish: 'fuzzy',
@@ -942,7 +962,7 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
       {
         slot: 'head',
         shape: 'sphere',
-        at: [-0.07, 0.715, 0.4],
+        at: [-0.07, 0.63, 0.4],
         size: [0.055, 0.047, 0.03],
         rot: [0, 0, -12],
         color: DOG_SPOT,
@@ -951,7 +971,7 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
       {
         slot: 'earL',
         shape: 'capsule',
-        at: [-0.152, 0.64, 0.26],
+        at: [-0.152, 0.555, 0.26],
         size: [0.062, 0.13, 0.075],
         rot: [0, 0, -10],
         color: DOG_SPOT,
@@ -959,12 +979,13 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
         mirror: true,
       },
       ...quadLegs({
-        x: 0.08,
-        xb: 0.09,
+        x: 0.095,
+        xb: 0.1,
         zf: 0.15,
         zb: -0.17,
-        k: 1,
-        t: 1,
+        k: 0.75,
+        t: 1.35,
+        p: 1.0,
         color: DOG,
         paw: CREAM,
         finish: 'fuzzy',
@@ -972,12 +993,12 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
       {
         slot: 'tail',
         shape: 'tube',
-        at: [0, 0.5, -0.26],
+        at: [0, 0.415, -0.26],
         size: [0.04, 0.04, 0.04],
         path: [
-          [0, 0.5, -0.26],
-          [0, 0.6, -0.34],
-          [0, 0.69, -0.33],
+          [0, 0.415, -0.26],
+          [0, 0.515, -0.34],
+          [0, 0.605, -0.33],
         ],
         taper: 0.65,
         color: DOG_SPOT,
@@ -986,14 +1007,14 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
     ],
     face: {
       slot: 'head',
-      eyeY: 0.71,
+      eyeY: 0.625,
       eyeGap: 0.07,
       eyeSize: 0.034,
       catchlight: 'big',
       pupil: 'round',
       mouth: 'smile',
-      mouthY: 0.605,
-      nose: { shape: 'oval', color: '#3a2c28', y: 0.648, size: 1.35 },
+      mouthY: 0.52,
+      nose: { shape: 'oval', color: '#3a2c28', y: 0.563, size: 1.35 },
     },
   },
   // 햄스터: 둥글고 낮은 몸에 아주 짧은 네 다리, 머리가 몸에 붙어 있다. 흰 배와 볼, 앞니, 분홍 발
@@ -1134,7 +1155,7 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
       {
         slot: 'body',
         shape: 'capsule',
-        at: [0, 0.42, -0.02],
+        at: [0, 0.345, -0.02],
         size: [0.19, 0.24, 0.2],
         rot: [90, 0, 0],
         color: BEAR,
@@ -1143,7 +1164,7 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
       {
         slot: 'body',
         shape: 'sphere',
-        at: [0, 0.44, 0.17],
+        at: [0, 0.365, 0.17],
         size: [0.18, 0.19, 0.15],
         color: BEAR,
         finish: 'fuzzy',
@@ -1151,7 +1172,7 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
       {
         slot: 'head',
         shape: 'sphere',
-        at: [0, 0.56, 0.34],
+        at: [0, 0.485, 0.34],
         size: [0.155, 0.145, 0.145],
         color: BEAR,
         finish: 'fuzzy',
@@ -1160,7 +1181,7 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
       {
         slot: 'head',
         shape: 'sphere',
-        at: [0, 0.52, 0.46],
+        at: [0, 0.445, 0.46],
         size: [0.075, 0.06, 0.07],
         color: BEAR_MUZZLE,
         finish: 'fuzzy',
@@ -1168,7 +1189,7 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
       {
         slot: 'earL',
         shape: 'sphere',
-        at: [-0.11, 0.68, 0.3],
+        at: [-0.11, 0.605, 0.3],
         size: [0.05, 0.05, 0.025],
         color: BEAR,
         finish: 'fuzzy',
@@ -1176,12 +1197,13 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
         mirror: true,
       },
       ...quadLegs({
-        x: 0.11,
-        xb: 0.12,
+        x: 0.13,
+        xb: 0.14,
         zf: 0.17,
         zb: -0.2,
-        k: 0.95,
-        t: 1.35,
+        k: 0.72,
+        t: 1.5,
+        p: 1.15,
         color: BEAR,
         paw: BEAR_SOLE,
         finish: 'fuzzy',
@@ -1189,7 +1211,7 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
       {
         slot: 'tail',
         shape: 'sphere',
-        at: [0, 0.45, -0.27],
+        at: [0, 0.375, -0.27],
         size: [0.045, 0.045, 0.045],
         color: BEAR,
         finish: 'fuzzy',
@@ -1197,14 +1219,14 @@ export const REAL_BLUEPRINTS: Record<RealKind, Blueprint> = {
     ],
     face: {
       slot: 'head',
-      eyeY: 0.6,
+      eyeY: 0.525,
       eyeGap: 0.068,
       eyeSize: 0.032,
       catchlight: 'big',
       pupil: 'round',
       mouth: 'smile',
-      mouthY: 0.495,
-      nose: { shape: 'oval', color: '#3a2c28', y: 0.535, size: 1.3 },
+      mouthY: 0.42,
+      nose: { shape: 'oval', color: '#3a2c28', y: 0.46, size: 1.3 },
     },
   },
 };

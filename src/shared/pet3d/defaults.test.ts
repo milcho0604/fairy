@@ -52,6 +52,11 @@ function spanY(parts: readonly Part[]): [number, number] {
   ];
 }
 
+/** 부품의 위아래 반 높이 (옆으로 눕힌(x 축 90도) 캡슐은 z 크기가 위아래다) */
+function halfY(p: Part): number {
+  return p.rot && Math.abs(Math.abs(p.rot[0]) - 90) < 1 ? p.size[2] : p.size[1];
+}
+
 /** 타원체 부품의 (x, z) 자리 아래쪽 겉 높이. 그 자리가 부품 밖이면 undefined */
 function underside(p: Part, x: number, z: number): number | undefined {
   const k = 1 - ((x - p.at[0]) / p.size[0]) ** 2 - ((z - p.at[2]) / p.size[2]) ** 2;
@@ -139,8 +144,18 @@ test('실사: 고양이, 강아지, 햄스터, 곰은 밀크, 초코처럼 네 �
     const head = bp.parts.find((p) => p.slot === 'head');
     const body = bp.parts.find((p) => p.slot === 'body');
     assert.ok(head && body && head.at[2] > body.at[2] + 0.15, `${kind} 머리가 앞에`);
-    // 몸 아래로 다리가 보인다
-    assert.ok(spanY(bp.parts.filter((p) => p.slot === 'body'))[0] >= 0.07, `${kind} 몸이 다리 위에`);
+    // 몸 아래로 다리가 보이지만 몸은 낮다: 다리는 짧고 굵다 (2026-10-13 사용자: 가늘고 긴 다리에 높이 뜬 몸은 말 같았다.
+    // 그때 몸 아래가 0.22~0.27, 다리 굵기가 그 높이의 0.23~0.38 이었다)
+    const bottom = Math.min(...bp.parts.filter((p) => p.slot === 'body').map((p) => p.at[1] - halfY(p)));
+    assert.ok(bottom >= 0.06 && bottom <= 0.2, `${kind} 몸 아래 높이 ${bottom}`);
+    const upper = legs.find((p) => p.shape === 'capsule' && !p.knee);
+    assert.ok(
+      upper && upper.size[0] / bottom >= 0.42,
+      `${kind} 다리 굵기 비율 ${upper && upper.size[0] / bottom}`,
+    );
+    // 뒷다리 위는 큰 허벅지 살, 앞다리 위는 어깨 살 (몸에 두툼하게 이어진다)
+    const top = legs.filter((p) => !p.knee && p.shape === 'sphere');
+    assert.ok(top.some((p) => p.at[2] > 0) && top.some((p) => p.at[2] < 0), `${kind} 어깨와 허벅지 살`);
   }
 });
 
