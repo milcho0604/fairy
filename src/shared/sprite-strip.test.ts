@@ -305,3 +305,14 @@ test('서기 줄이 없으면 지금 페어리 그림을 받은 칸 키에 맞�
   );
   assert.deepEqual(setFrames({}, own), []);
 });
+
+test('크로마키: 밝은 털 테두리의 알파는 가까운 캐릭터 색 쪽으로 잰다 (거리만 쓰면 덜 지워져 초록 테두리)', () => {
+  const CREAM: Rgb = [252, 222, 180];
+  // 배경, 크림 50% + 초록 50%, 크림, 크림
+  const img = blank(4, 1, GREEN);
+  img.data.set([126, 239, 90, 255], 4);
+  img.data.set([...CREAM, 255], 8);
+  img.data.set([...CREAM, 255], 12);
+  const a = px(chromaKey(img, GREEN), 1, 0)[3] ?? 0;
+  assert.ok(Math.abs(a - 128) < 26, `알파 ${a}`);
+});
