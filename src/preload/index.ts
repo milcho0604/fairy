@@ -43,6 +43,7 @@ import {
 import type { LookMotion } from '../shared/look-motion.ts';
 import type { MoveAsk } from '../shared/moves.ts';
 import { NOTES, type NoteBox, type NoteBridge } from '../shared/note-ipc.ts';
+import { NOTICE, type NoticeBridge, type NoticeView } from '../shared/notice-ipc.ts';
 import type { Settings } from '../shared/settings.ts';
 import type { SoundKind } from '../shared/sound.ts';
 import type { TogetherLook } from '../shared/together.ts';
@@ -213,6 +214,19 @@ if (kind === 'onboarding') {
     pickStarter: (id) => ipcRenderer.invoke(ONBOARD.pickStarter, id),
   };
   contextBridge.exposeInMainWorld('jjakkungOnboard', onboard);
+}
+
+// 공지 창 (main/notice-window.ts): 보일 공지를 받고 단추 id 만 돌려준다
+if (kind === 'notice') {
+  const notice: NoticeBridge = {
+    get: () => ipcRenderer.invoke(NOTICE.get),
+    onChange: (listener) => {
+      ipcRenderer.on(NOTICE.changed, (_e, view: NoticeView) => listener(view));
+    },
+    act: (id: string) => ipcRenderer.send(NOTICE.act, id),
+    size: (height: number) => ipcRenderer.send(NOTICE.size, height),
+  };
+  contextBridge.exposeInMainWorld('jjakkungNotice', notice);
 }
 
 if (kind === 'settings') {

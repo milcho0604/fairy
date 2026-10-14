@@ -14,6 +14,7 @@ import {
   nagDelayMs,
   notifyPlan,
   PUBLIC_REPO,
+  pickMinVersion,
   RELEASE_REPO,
   RELEASES_API,
   readMinVersion,
@@ -74,6 +75,42 @@ test('잘못된 응답으로는 잠그지 않는다', () => {
   assert.equal(decideUpdate('min-version: 1.4.0', '1.0.0').kind, 'none');
   // 지금 버전을 못 읽으면
   assert.equal(decideUpdate(release(body), '개발판').kind, 'none');
+});
+
+test('공지 파일의 최소 버전: 릴리스 본문 값과 높은 쪽, 최신 릴리스 이하만 (server-plan 23절)', () => {
+  // 공지 파일만 있어도 잠근다
+  assert.deepEqual(decideUpdate(release('그냥'), '1.3.9', '1.4.0'), {
+    kind: 'force',
+    version: '1.5.0',
+    url: 'https://github.com/a/b/releases/tag/v1.5.0',
+    minVersion: '1.4.0',
+  });
+  // 둘 다 있으면 높은 쪽
+  assert.equal(
+    (decideUpdate(release('min-version: 1.2.0'), '1.0.0', '1.4.0') as { minVersion: string }).minVersion,
+    '1.4.0',
+  );
+  assert.equal(
+    (decideUpdate(release('min-version: 1.4.0'), '1.0.0', '1.2.0') as { minVersion: string }).minVersion,
+    '1.4.0',
+  );
+  // 공지 파일 값이 최신 릴리스보다 높으면 버리고 릴리스 본문 값만
+  assert.equal(
+    (decideUpdate(release('min-version: 1.2.0'), '1.0.0', '9.0.0') as { minVersion: string }).minVersion,
+    '1.2.0',
+  );
+  assert.equal(decideUpdate(release('min-version: 1.2.0'), '1.3.0', '9.0.0').kind, 'notify');
+  assert.equal(decideUpdate(release('그냥'), '1.0.0', '9.0.0').kind, 'notify');
+  // 최신 릴리스와 같은 값은 쓴다
+  assert.equal(decideUpdate(release('그냥'), '1.4.9', '1.5.0').kind, 'force');
+  // 이상한 값은 없는 것으로
+  assert.equal(decideUpdate(release('그냥'), '1.0.0', '아무거나').kind, 'notify');
+  // 이미 최신이면 공지 파일 값이 있어도 아무것도
+  assert.equal(decideUpdate(release('그냥'), '1.5.0', '1.5.0').kind, 'none');
+  assert.equal(pickMinVersion(undefined, undefined, '1.5.0'), undefined);
+  assert.equal(pickMinVersion('1.4.0', undefined, '1.5.0'), '1.4.0');
+  assert.equal(pickMinVersion(undefined, '1.4.0', '1.5.0'), '1.4.0');
+  assert.equal(pickMinVersion('1.6.0', '1.7.0', '1.5.0'), undefined);
 });
 
 test('두 번 다 같은 최소 버전으로 강제여야 잠근다', () => {
@@ -157,7 +194,7 @@ test('새 버전 알림을 꺼도 강제 업데이트는 확인한다 (말풍선
   // 확인 자체를 꺼짐으로 건너뛰면 강제 업데이트도 잠금 풀기도 오지 않는다 (2026-10-12 점검의 빈틈 1)
   const src = readFileSync(new URL('../main/update.ts', import.meta.url), 'utf8');
   const check = src.slice(
-    src.indexOf('async function check('),
+    src.indexOf('async function checkOnce('),
     src.indexOf('const first = await fetchDecision()'),
   );
   assert.ok(

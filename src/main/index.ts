@@ -66,6 +66,7 @@ import {
   removeFoodImage,
 } from './maker.ts';
 import { createMiniGames } from './minigames.ts';
+import { watchNotices } from './notices.ts';
 import { createOnboarding } from './onboarding.ts';
 import { type Incoming, listenEarly, registerScheme, startIncoming, takeArgv } from './open-handler.ts';
 import { openLink } from './open-link.ts';
@@ -300,7 +301,10 @@ ready
       },
       // 강제 업데이트 전이면 AI 대화를 잠그고 펫이 까닭을 말한다 (updates 는 아래에서 만든다. 부를 때는 있다)
       locked: () => updates.locked(),
-      onLocked: () => updates.remind(),
+      onLocked: () => {
+        updates.remind();
+        notices.raise();
+      },
       localGame: { turn: (text) => wordChain.turn(text), reset: () => wordChain.reset() },
       log,
     });
@@ -1548,7 +1552,16 @@ ready
 
     // 짝꿍을 한 번 더 실행하면(앱 아이콘을 다시 누르는 등) 숨은 펫을 다시 부른다. 메뉴 막대 아이콘이 가려져도 돌아올 길.
     // ---- 새 버전 알림, 첫 실행 안내 (v1) ----
-    const updates = watchUpdates({ say: (o) => pet.say(o), log });
+    // 공지 창과 공지 파일의 최소 버전 (docs/server-plan.md 23절). 강제 업데이트 안내도 공지 창으로 띄운다
+    const notices = watchNotices({
+      log,
+      focusing: () => planner.focus.phase === 'focus',
+      locked: () => updates.locked(),
+      newerAvailable: () => updates.newerAvailable(),
+      setMinVersion: (min) => updates.setNoticeMin(min),
+      install: () => void updates.install(),
+    });
+    const updates = watchUpdates({ say: (o) => pet.say(o), log, askForce: notices.askForce });
     const onboarding = createOnboarding({
       openMaker: () => maker.open(),
       ai: async () => ({
@@ -1742,6 +1755,7 @@ ready
           toggleHidden,
           play,
           updates,
+          notices,
           onboarding,
           calendar,
           backup,
