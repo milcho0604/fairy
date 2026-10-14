@@ -1,15 +1,20 @@
 import { resolve } from 'node:path';
 import { app } from 'electron';
+import { backupFileFromArgv, isBackupFileName } from '../shared/backup-file.ts';
 import { isPetFileName, petFileFromArgv, URL_SCHEMES, urlFromArgv } from '../shared/url-scheme.ts';
 
 /**
- * 밖에서 페어리에 넘겨주는 것: fairy:// 주소(단축어, Raycast 등, 예전 jjakkung:// 도)와 .fairy 파일(두 번 눌러 열기, 예전 .jjpet 도).
+ * 밖에서 페어리에 넘겨주는 것: fairy:// 주소(단축어, Raycast 등, 예전 jjakkung:// 도)와 .fairy 파일(두 번 눌러 열기, 예전 .jjpet 도),
+ * 백업 파일 .fairybackup (두 번 눌러 복원, 이슈 #90).
  * - 맥: open-url, open-file 사건. 앱이 꺼져 있다가 이것으로 켜지면 ready 전에 오므로 이 파일을 불러올 때 바로 듣고 모아 둔다
  * - 윈도우, 리눅스: 명령줄 인자. 처음 켤 때는 process.argv, 이미 떠 있으면 second-instance 의 argv
  * 받는 쪽(index.ts)이 준비되면 start 로 넘겨 모아 둔 것을 차례로 처리한다.
  * 운영체제에 주소를 등록하는 것은 설치판만 한다: 개발, 시험 실행(JJ_USER_DATA)이 설치한 페어리의 주소를 가로채지 않게
  */
-export type Incoming = { kind: 'url'; url: string } | { kind: 'petFile'; path: string };
+export type Incoming =
+  | { kind: 'url'; url: string }
+  | { kind: 'petFile'; path: string }
+  | { kind: 'backupFile'; path: string };
 
 let sink: ((item: Incoming) => void) | undefined;
 const waiting: Incoming[] = [];
@@ -33,6 +38,11 @@ export function takeArgv(argv: readonly string[], cwd?: string): boolean {
     deliver({ kind: 'petFile', path: cwd ? resolve(cwd, file) : resolve(file) });
     return true;
   }
+  const backupFile = backupFileFromArgv(argv);
+  if (backupFile) {
+    deliver({ kind: 'backupFile', path: cwd ? resolve(cwd, backupFile) : resolve(backupFile) });
+    return true;
+  }
   return false;
 }
 
@@ -45,6 +55,7 @@ export function listenEarly(): void {
   app.on('open-file', (e, path) => {
     e.preventDefault();
     if (isPetFileName(path)) deliver({ kind: 'petFile', path });
+    else if (isBackupFileName(path)) deliver({ kind: 'backupFile', path });
   });
 }
 

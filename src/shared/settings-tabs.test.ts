@@ -18,8 +18,10 @@ test('설정 탭: 여섯, 겹치지 않는다', () => {
   assert.equal(isSettingsTab('toString'), false);
 });
 
-test('바로 보여 줄 칸: 베타 기록(의견 보내기)은 정보 탭', () => {
+test('바로 보여 줄 칸: 베타 기록(의견 보내기)은 정보 탭, 두 번 눌러 연 백업의 확인 칸은 데이터 탭', () => {
   assert.equal(tabOfSection('stats'), 'about');
+  assert.equal(tabOfSection('restore'), 'data');
+  assert.equal(tabFromHash('#restore'), 'data');
 });
 
 test('창 주소 #: 칸 이름이면 그 칸의 탭, 탭 이름이면 그 탭, 모르면 첫 탭', () => {
