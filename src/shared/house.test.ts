@@ -6,6 +6,8 @@ import {
   houseChange,
   houseDoorSprite,
   houseHit,
+  houseOffScreen,
+  houseRepair,
   houseSize,
   parseHouseSpot,
   rectAtSpot,
@@ -147,6 +149,39 @@ test('집 창 맞추기: 0 단계면 없애고, 같은 그림이면 자리만, �
   assert.equal(houseChange(shown, { level: 3, style: 'wood' }), 'rebuild');
   assert.equal(houseChange(shown, { level: 2, style: 'castle' }), 'rebuild');
   assert.equal(houseChange({ ...shown, alive: false }, { level: 2, style: 'wood' }), 'rebuild');
+});
+
+test('집이 사라지면 살린다 (#74): 창이 없거나 그림이 죽으면 새로, 내려가 있으면 다시 띄우고, 화면 밖이면 바닥으로', () => {
+  const ok = {
+    level: 2,
+    alive: true,
+    crashed: false,
+    wantVisible: true,
+    isVisible: true,
+    bounds: { x: -1500, y: 862, width: 120, height: 120 },
+  };
+  assert.equal(houseRepair(ok, areas), 'none');
+  // 재부팅이나 잠자기 뒤 창이 닫혔다, 그림 화면(렌더러)이 죽어 빈 창만 남았다
+  assert.equal(houseRepair({ ...ok, alive: false, isVisible: false, bounds: undefined }, areas), 'rebuild');
+  assert.equal(houseRepair({ ...ok, crashed: true }, areas), 'rebuild');
+  // 숨겨 둔 집도 창은 살려 둔다 (다시 보이기를 누르면 바로 나오게). 띄우지는 않는다
+  assert.equal(houseRepair({ ...ok, crashed: true, wantVisible: false }, areas), 'rebuild');
+  assert.equal(houseRepair({ ...ok, wantVisible: false, isVisible: false }, areas), 'none');
+  // 감출 까닭이 없는데 창이 내려가 있다
+  assert.equal(houseRepair({ ...ok, isVisible: false }, areas), 'show');
+  // 맥이 내장 화면 아래로 밀어 32px 만 보인다
+  assert.equal(houseRepair({ ...ok, bounds: { x: -1500, y: 950, width: 120, height: 120 } }, areas), 'place');
+  // 집이 없으면(0 단계) 아무것도 안 한다
+  assert.equal(houseRepair({ ...ok, level: 0, alive: false }, areas), 'none');
+});
+
+test('화면 밖 판정: 반 넘게 어느 화면에도 없을 때만. 두 화면에 걸친 집은 화면 안', () => {
+  const r = (x: number, y: number) => ({ x, y, width: 120, height: 120 });
+  assert.equal(houseOffScreen(r(-1500, 862), areas), false);
+  assert.equal(houseOffScreen(r(-60, 900), areas), false);
+  assert.equal(houseOffScreen(r(-1500, 950), areas), true);
+  assert.equal(houseOffScreen(r(6000, 3000), areas), true);
+  assert.equal(houseOffScreen(r(6000, 3000), []), false);
 });
 
 test('문간 펫 그림 자리는 보이는 집의 모양과 단계를 따른다', () => {

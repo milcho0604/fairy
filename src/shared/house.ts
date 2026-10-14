@@ -94,6 +94,42 @@ export function houseChange(
   return 'rebuild';
 }
 
+/** 집 창이 보이는 화면 밖에 반 넘게 나가 있다 (모니터가 바뀌는 사이 맥이 화면 아래로 밀어 둔 경우). 화면 목록이 비면 모른다 */
+export function houseOffScreen(rect: Rect, areas: readonly Rect[]): boolean {
+  if (areas.length === 0 || rect.width <= 0 || rect.height <= 0) return false;
+  let seen = 0;
+  for (const a of areas) {
+    const w = Math.min(rect.x + rect.width, a.x + a.width) - Math.max(rect.x, a.x);
+    const h = Math.min(rect.y + rect.height, a.y + a.height) - Math.max(rect.y, a.y);
+    if (w > 0 && h > 0) seen += w * h;
+  }
+  return seen * 2 < rect.width * rect.height;
+}
+
+/**
+ * 집이 있어야 하는데 사라졌을 때 살리는 법 (#74). rebuild 창이 없거나 그림 화면이 죽어 새로 만든다,
+ * show 감출 까닭이 없는데 창이 내려가 있어 다시 띄운다, place 화면 밖이라 보이는 바닥으로, none 그대로.
+ * 감춰 둔 집(사용자가 숨김, 펫과 같이 숨음)은 창만 살리고 띄우지 않는다
+ */
+export function houseRepair(
+  s: {
+    level: number;
+    alive: boolean;
+    crashed: boolean;
+    wantVisible: boolean;
+    isVisible: boolean;
+    bounds?: Rect;
+  },
+  areas: readonly Rect[],
+): 'none' | 'rebuild' | 'show' | 'place' {
+  if (s.level <= 0) return 'none';
+  if (!s.alive || s.crashed) return 'rebuild';
+  if (!s.wantVisible) return 'none';
+  if (!s.isVisible) return 'show';
+  if (s.bounds && houseOffScreen(s.bounds, areas)) return 'place';
+  return 'none';
+}
+
 /** 지금 보이는 집(화면 자리 house, 모양, 단계)의 문간 펫 그림 자리 (화면 좌표) */
 export function houseDoorSprite(house: Rect, style: HouseStyle, level: number): Rect {
   return artToScreen(house, doorSprite(houseLayout(style, level).door), ART);
