@@ -22,6 +22,8 @@ import {
   isBackupFileName,
 } from '../shared/backup-file.ts';
 import {
+  BACKUP_FILE_ITEMS,
+  BACKUP_READ_TOP,
   customAiCount,
   IMPORT_FILES,
   importedChatSettings,
@@ -68,8 +70,8 @@ const stamp = () => {
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
 };
 
-/** 맨 위에 두는 파일 (저장 파일과 작은 설정 파일). 백업 파일을 풀 때 이 밖의 맨 위 이름은 받지 않는다 */
-const TOP_LEVEL: readonly string[] = ['jjakkung.db', ...FILES];
+/** 백업 파일을 풀 때 받는 맨 위 파일 (저장 파일, 작은 설정 파일, 예전 파일의 ai-custom.json). 이 밖은 받지 않는다 */
+const TOP_LEVEL = BACKUP_READ_TOP;
 /**
  * 예전 폴더 백업과 가져오기 전 보관 폴더의 표시 파일. 이름은 예전 그대로 둔다:
  * 예전 판 짝꿍과 새 판이 서로의 폴더 백업을 가져올 수 있게 (앱 안쪽 이름이라 사용자에게는 안 보인다)
@@ -132,7 +134,11 @@ export function createBackup(o: {
         target,
         [
           { name: 'jjakkung.db', path: join(making, 'jjakkung.db') },
-          ...FILES.filter((f) => plainFile(join(dir(), f))).map((f) => ({ name: f, path: join(dir(), f) })),
+          // 사용자 AI(ai-custom.json)는 담지 않는다: 복원에 쓰지 않는다
+          ...BACKUP_FILE_ITEMS.filter((f) => plainFile(join(dir(), f))).map((f) => ({
+            name: f,
+            path: join(dir(), f),
+          })),
           ...petSources(),
         ],
         { app: app.getVersion(), at: Date.now() },

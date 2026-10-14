@@ -15,9 +15,11 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { crc32, deflateRawSync } from 'node:zlib';
 import { BACKUP_FORMAT, BACKUP_HEADER, BACKUP_LIMITS, makeHeader } from '../shared/backup-file.ts';
+import { BACKUP_READ_TOP } from '../shared/backup-import.ts';
 import { BackupReadError, extractBackupZip, writeBackupZip } from './backup-zip.ts';
 
-const TOP = ['jjakkung.db', 'settings.json', 'grow.json'];
+// 앱이 실제로 쓰는 맨 위 목록 (예전 파일의 ai-custom.json 포함)
+const TOP = BACKUP_READ_TOP;
 
 function tmp(): string {
   return mkdtempSync(join(tmpdir(), 'fairy-backup-zip-'));
@@ -202,11 +204,7 @@ test('믿지 않는 입력: 백업이 아닌 것, 더 새 판, 경로, 수, 크�
       ['pets 안 ..', zipWithHeader([db, { name: 'pets/../../evil', data: Buffer.from('x') }]), 'unsafe'],
       ['절대 경로', zipWithHeader([db, { name: '/tmp/evil', data: Buffer.from('x') }]), 'unsafe'],
       ['역슬래시', zipWithHeader([db, { name: 'pets\\..\\evil', data: Buffer.from('x') }]), 'unsafe'],
-      [
-        '모르는 맨 위 파일',
-        zipWithHeader([db, { name: 'ai-custom.json', data: Buffer.from('[]') }]),
-        'unsafe',
-      ],
+      ['모르는 맨 위 파일', zipWithHeader([db, { name: 'other.json', data: Buffer.from('[]') }]), 'unsafe'],
       ['폴더 항목', zipWithHeader([db, { name: 'pets/', data: Buffer.alloc(0) }]), 'unsafe'],
       [
         '같은 이름 두 번 (대소문자만 다름)',
@@ -314,6 +312,21 @@ test('파일이 아닌 것(폴더)과 없는 파일은 백업이 아니다', asy
     mkdirSync(join(root, 'o'));
     assert.equal(await reason(root, join(root, 'o')), 'notBackup');
     assert.equal(await reason(join(root, 'none.fairybackup'), join(root, 'o')), 'notBackup');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('이 규칙 전에 만든 파일에 든 ai-custom.json 은 거절하지 않고 푼다 (개수 세기에만 쓴다)', async () => {
+  const root = tmp();
+  try {
+    const db = { name: 'jjakkung.db', data: randomBytes(500) };
+    const ai = { name: 'ai-custom.json', data: Buffer.from('[{"id":"custom-x"}]') };
+    writeFileSync(join(root, 'old.fairybackup'), zipWithHeader([db, ai]));
+    const out = join(root, 'o');
+    mkdirSync(out);
+    assert.equal(await reason(join(root, 'old.fairybackup'), out), 'ok');
+    assert.ok(readFileSync(join(out, 'ai-custom.json')).equals(ai.data));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
