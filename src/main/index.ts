@@ -48,6 +48,7 @@ import { createFriends } from './friends.ts';
 import { CHAIN_FILE, createTickle, createWordChain } from './fun.ts';
 import { galleryHandlers } from './gallery-app.ts';
 import { createGcal, gcalAiAllowed } from './gcal.ts';
+import { watchReopen } from './hide-hint.ts';
 import { createHouseRest } from './house-rest.ts';
 import { createJourney } from './journey.ts';
 import { pruneCopies } from './keep-copies.ts';
@@ -1567,12 +1568,17 @@ ready
     if (!settings.get().onboarded)
       pet.win.webContents.once('did-finish-load', () => setTimeout(() => onboarding.open(), 1500));
 
-    app.on('second-instance', (_e, argv, cwd) => {
-      // 주소나 .jjpet 파일을 넘기며 다시 실행한 것(윈도우, 리눅스)이면 그것만 처리한다
-      if (takeArgv(argv, cwd)) return;
-      pet.setHidden('user', false);
-      friends.setHidden('user', false);
-      void rest.call();
+    // 앱을 다시 열면 숨은 펫이 나온다. 윈도우와 리눅스는 다시 실행(second-instance, 주소나 .jjpet 파일을 넘긴 것이면
+    // 그것만 처리), 맥은 이미 떠 있는 앱을 Spotlight 나 Finder 로 다시 열기(activate). 단축키를 까먹고 메뉴 막대
+    // 아이콘이 노치에 가려져도 돌아오는 길이다 (hide-hint.ts)
+    watchReopen(app, process.platform, {
+      takeArgv,
+      bringBack: (why) => {
+        log('pet', '다시 열기로 부름', why);
+        pet.setHidden('user', false);
+        friends.setHidden('user', false);
+        void rest.call();
+      },
     });
     pet.win.webContents.once('did-finish-load', () => friends.sync());
     // ---- 다른 앱에서 부르기: jjakkung:// 주소, .jjpet 두 번 눌러 열기 ----

@@ -82,6 +82,7 @@ import { watchCursor } from './cursor-watch.ts';
 import { devRendererUrl } from './dev-url.ts';
 import { onDisplaysChanged as watchDisplays } from './display-watch.ts';
 import { focusWindow, stealFocus } from './focus.ts';
+import { hideHintFor } from './hide-hint.ts';
 import { langArg } from './lang.ts';
 import { settings } from './settings.ts';
 import { readJson, writeJson } from './store.ts';
@@ -1205,25 +1206,25 @@ export function createPetWindow({
     roomMaybe();
   }
 
-  /** 숨기기 전에 다시 부르는 법을 알려 준다. 메뉴 막대가 붐비면 아이콘이 안 보일 수 있어서다. 처음 3번만. */
-  const HIDE_HINT_TIMES = 3;
   /**
    * 숨기기는 바로 한다 (예전엔 말풍선 안내 2.5초를 보이고 숨어 굼떴고, 그사이 또 누르면 두 번 숨었다).
-   * 다시 부르는 키 안내는 처음 3번만 운영체제 알림으로
+   * 다시 부르는 법(단축키, 앱 다시 열기)은 처음 몇 번만 운영체제 알림으로. 메뉴 막대가 붐비면 아이콘이 안 보일 수 있어서다.
+   * 단축키를 꺼 두었어도 앱을 다시 열면 돌아오니 안내는 나온다 (hide-hint.ts)
    */
   function hideWithHint() {
     const shown = settings.get().hideHints;
     setHidden('user', true, false);
-    if (
-      shown >= HIDE_HINT_TIMES ||
-      !hideShortcut() ||
-      !settings.get().osNotify ||
-      !Notification.isSupported()
-    )
-      return;
+    const accel = hideShortcut();
+    const hint = hideHintFor({
+      shown,
+      keys: accel ? acceleratorLabel(accel, process.platform === 'darwin').join('+') : '',
+      osNotify: settings.get().osNotify,
+      supported: Notification.isSupported(),
+    });
+    if (!hint) return;
     settings.set({ hideHints: shown + 1 });
-    const keys = acceleratorLabel(hideShortcut(), process.platform === 'darwin').join('+');
-    new Notification({ title: petName(), body: voiced('pet.hideHint', { keys }), silent: true }).show();
+    const body = hint.key === 'pet.hideHint' ? voiced(hint.key, { keys: hint.keys }) : voiced(hint.key);
+    new Notification({ title: petName(), body, silent: true }).show();
   }
 
   function setHidden(reason: HideReason, on: boolean, hint = true) {

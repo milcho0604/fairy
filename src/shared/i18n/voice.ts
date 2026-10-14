@@ -202,7 +202,9 @@ export const ko = {
   'voice.polite.pet.calendarBroken': '캘린더를 못 읽고 있어요. 주소가 바뀌었는지 한번 봐 주시겠어요?',
   'voice.polite.pet.tooChatty': '제가 좀 시끄러웠죠? 말을 줄일까요?',
   'voice.polite.pet.busyCpu': '컴퓨터가 바빠 보여서 잠깐 가만히 있을게요.',
-  'voice.polite.pet.hideHint': (v: { keys: string }) => `잠깐 숨을게요. ${v.keys} 누르시면 다시 나올게요.`,
+  'voice.polite.pet.hideHint': (v: { keys: string }) =>
+    `잠깐 숨을게요. ${v.keys} 누르시거나 앱을 다시 여시면 돌아올게요.`,
+  'voice.polite.pet.hideHintNoKey': '잠깐 숨을게요. 앱을 다시 여시면 돌아올게요.',
   'voice.polite.pet.sulk.1': '...오셨어요?',
   'voice.polite.pet.sulk.2': '어제도 안 오셨더라고요. 흥',
   'voice.polite.pet.sulk.3': '저 혼자 밥 먹었어요',
@@ -564,7 +566,8 @@ export const en: Translation<typeof ko> = {
   'voice.polite.pet.tooChatty': 'Was I talking too much? Shall I talk less?',
   'voice.polite.pet.busyCpu': "Your computer looks busy, so I'll keep still for a moment.",
   'voice.polite.pet.hideHint': (v: { keys: string }) =>
-    `I'll hide for a moment. Press ${v.keys} and I'll come right back.`,
+    `I'll hide for a moment. Press ${v.keys} or open the app again, and I'll come right back.`,
+  'voice.polite.pet.hideHintNoKey': "I'll hide for a moment. Open the app again, and I'll come right back.",
   'voice.polite.pet.sulk.1': '...Oh, you came?',
   'voice.polite.pet.sulk.2': "You didn't come yesterday either. Hmph",
   'voice.polite.pet.sulk.3': 'I had my meal alone',
