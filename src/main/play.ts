@@ -1,4 +1,5 @@
-import { BrowserWindow, Menu, screen } from 'electron';
+import { app, BrowserWindow, Menu, screen } from 'electron';
+import { CrashGuard } from '../shared/crash-guard.ts';
 import { BALL, BALL_SVG, canPick, dropVelocity, PICK_MS } from '../shared/fetch.ts';
 import type { Point, Rect } from '../shared/geometry.ts';
 import {
@@ -8,6 +9,7 @@ import {
   houseChange,
   houseDoorSprite,
   houseHit,
+  houseRepair,
   houseSize,
   parseHouseSpot,
   rectAtSpot,
@@ -286,6 +288,17 @@ export function createHouse({ onMoved, onClick, restItem, onStow, log }: HouseOp
   const stowed = () => hiddenBy.has('stowed');
 
   const alive = () => !!win && !win.isDestroyed();
+  /** 그림 화면(렌더러)이 죽으면 창은 남고 그림만 사라진다. 빈 창은 없는 집과 같다 */
+  const crashed = () => alive() && !!win?.webContents.isCrashed();
+  /** 마지막으로 보이라고 한 단계와 모양. 처음 show 전에는 살리지 않는다 (펫 화면을 다 불러온 뒤에 나온다) */
+  let wanted: { level: number; style: HouseStyle } | undefined;
+  /** 끄는 중에는 닫힌 창을 다시 만들지 않는다 */
+  let quitting = false;
+  app.once('before-quit', () => {
+    quitting = true;
+  });
+  /** 그림 화면이 1분에 네 번 넘게 죽으면 원인이 그대로라 보고 다시 만들지 않는다 (펫 화면과 같은 규칙) */
+  const crashes = new CrashGuard();
   const areas = () => screen.getAllDisplays().map((d) => d.workArea);
 
   /** 이 단계 집이 설 자리 */
@@ -467,6 +480,13 @@ export function createHouse({ onMoved, onClick, restItem, onStow, log }: HouseOp
       else if (m.type === 'mouseDown' && m.button === 'left' && over) startDrag();
     });
     w.webContents.on('context-menu', () => menu());
+    // 잠자기나 메모리 부족으로 그림 화면이 죽으면 창은 그대로라 집이 영영 안 보였다 (#74): 새로 만든다
+    w.webContents.on('render-process-gone', (_e, d) => {
+      if (w !== win || d.reason === 'clean-exit' || quitting) return;
+      const next = crashes.crashed(Date.now());
+      log?.('house', 'render-process-gone', d.reason, d.exitCode, next);
+      if (next === 'reload') heal();
+    });
     w.webContents.once('did-finish-load', () => {
       applySprites();
       land();
@@ -477,6 +497,8 @@ export function createHouse({ onMoved, onClick, restItem, onStow, log }: HouseOp
   const replace = () => {
     if (!alive() || drag || glideTimer || !win) return;
     win.setBounds(target(houseSize(shownLevel)));
+    // 모니터를 다시 꽂는 사이 맥이 창을 내려 두기도 한다
+    heal();
   };
   // 값이 실제로 바뀐 때만 온다 (맥이 변화 없이 몰아 보내는 알림은 display-watch.ts 가 거른다)
   const stopDisplayWatch = watchDisplays(replace);
@@ -484,10 +506,14 @@ export function createHouse({ onMoved, onClick, restItem, onStow, log }: HouseOp
   /** 단계와 모양에 맞는 집을 보인다. 같은 모습이면 자리만 맞춘다 */
   function show({ level, style }: { level: number; style: HouseStyle }, near: Rect) {
     lastNear = near;
-    const plan = houseChange({ alive: alive(), level: shownLevel, style: shownStyle }, { level, style });
+    wanted = { level, style };
+    // 그림이 죽은 창은 같은 모습이어도 새로 만든다 (자리만 맞추면 빈 창이 남는다)
+    const plan = houseChange(
+      { alive: alive() && !crashed(), level: shownLevel, style: shownStyle },
+      { level, style },
+    );
     if (plan === 'remove') {
-      win?.destroy();
-      win = undefined;
+      drop();
       shownLevel = 0;
       return;
     }
@@ -497,12 +523,50 @@ export function createHouse({ onMoved, onClick, restItem, onStow, log }: HouseOp
     }
     endDrag();
     stopGlide();
-    win?.destroy();
+    drop();
     shownLevel = level;
     shownStyle = style;
     const size = houseSize(level);
     win = makeSprite(houseSvg(style, level), size, target(size), HOUSE_CSS, visible);
     wire(win);
+  }
+
+  /** 지금 창을 없앤다. 먼저 놓아야 닫힘 알림이 이 창을 지금 집으로 보지 않는다 */
+  function drop() {
+    const old = win;
+    win = undefined;
+    old?.destroy();
+  }
+
+  /**
+   * 집이 있어야 하는데 안 보이면 살린다 (#74). 재부팅, 잠자기, 모니터 바꾸기 뒤에 창이 닫히거나, 그림이 죽거나,
+   * 내려가 있거나, 화면 밖에 남으면 다시 볼 길이 상점에서 집을 바꾸는 것뿐이었다. 단계와 모양은 마지막 show 그대로.
+   * 메인이 2초마다, 모니터가 바뀔 때, 그림이 죽었을 때 부른다. 앱을 끄는 중이면 그만두고, 끌거나 미끄러지는 중이면 다음 차례로 미룬다
+   */
+  function heal() {
+    if (!wanted || quitting || drag || glideTimer) return;
+    const plan = houseRepair(
+      {
+        level: wanted.level,
+        alive: alive(),
+        crashed: crashed(),
+        wantVisible: visible(),
+        isVisible: alive() && !!win?.isVisible(),
+        bounds: alive() ? win?.getBounds() : undefined,
+      },
+      areas(),
+    );
+    if (plan === 'none') return;
+    if (plan === 'rebuild' && crashed() && crashes.stopped) return;
+    log?.('house', 'repair', plan);
+    if (plan === 'rebuild') {
+      drop();
+      show(wanted, lastNear ?? screen.getPrimaryDisplay().workArea);
+      return;
+    }
+    if (!win) return;
+    win.setBounds(target(houseSize(shownLevel)));
+    if (plan === 'show') win.showInactive();
   }
 
   /**
@@ -527,6 +591,7 @@ export function createHouse({ onMoved, onClick, restItem, onStow, log }: HouseOp
 
   return {
     show,
+    heal,
     /** 펫과 같이 숨는다 (발표, 펫 숨기기) */
     hide: () => setHiddenBy('pet', true),
     unhide: () => setHiddenBy('pet', false),
@@ -604,7 +669,8 @@ export function createHouse({ onMoved, onClick, restItem, onStow, log }: HouseOp
       stopGlide();
       clearInterval(restTimer);
       stopDisplayWatch();
-      win?.destroy();
+      wanted = undefined;
+      drop();
     },
   };
 }

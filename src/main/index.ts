@@ -1661,7 +1661,8 @@ ready
     });
     titleHook.refresh = trayTitle.refresh;
     // 집은 펫과 같이 숨고 나온다 (발표, 숨기기). 2초마다 맞춘다. 펫이 집 안에서 쉬는 동안은 집이 보인다
-    pet.win.webContents.once('did-finish-load', () => house.show(houseLook(), pet.bounds()));
+    // 펫 화면을 다시 불러와도(새로고침, 죽어서 다시) 집을 맞춘다 (#74)
+    pet.win.webContents.on('did-finish-load', () => house.show(houseLook(), pet.bounds()));
     // 자리를 4분쯤 비우면 펫이 집 앞으로 가서 존다 (5분부터 졸고 10분부터 잔다). 자리 비울 때마다 한 번.
     let wentHome = false;
     setInterval(() => {
@@ -1674,6 +1675,8 @@ ready
     }, 20_000).unref();
     let houseHidden = false;
     setInterval(() => {
+      // 집이 있어야 하는데 사라졌으면(창이 닫힘, 그림이 죽음, 내려감, 화면 밖) 살린다 (#74)
+      house.heal();
       const hidden = pet.isHidden('user') || pet.isHidden('presentation');
       if (hidden === houseHidden) return;
       houseHidden = hidden;
