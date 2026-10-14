@@ -149,7 +149,7 @@ test('코인 초기화(코인만): 잔액 0, 산 물건은 그대로, 장부는 
   todos.rewardFocus(T0, 25);
   const rows = (db.prepare('select count(*) as n from coin_log').get() as { n: number }).n;
   const r = shop.resetCoins('coins', T0 + 1);
-  assert.deepEqual(r, { ok: true, coins: 77 + 5, house: false, items: 0 });
+  assert.deepEqual(r, { ok: true, coins: 77 + 10, house: false, items: 0 });
   assert.equal(todos.balance(), 0);
   const st = shop.state();
   assert.equal(st.houseLevel, 1);
@@ -159,7 +159,7 @@ test('코인 초기화(코인만): 잔액 0, 산 물건은 그대로, 장부는 
   assert.equal((db.prepare('select count(*) as n from coin_log').get() as { n: number }).n, rows + 1);
   assert.equal(
     (db.prepare(`select amount from coin_log where reason = 'reset'`).get() as { amount: number }).amount,
-    -82,
+    -87,
   );
   assert.equal(
     (db.prepare('select coalesce(sum(amount), 0) as s from coin_log').get() as { s: number }).s,

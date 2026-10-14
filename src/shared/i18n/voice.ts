@@ -109,6 +109,7 @@ export const ko = {
   'voice.polite.routine.coins': (v: N) => `만난 기념으로 코인 ${v.n}개를 드려요!`,
   'voice.polite.routine.coinsBonus': (v: { days: number; n: number }) =>
     `${v.days}일 연속 만난 기념으로 코인 ${v.n}개를 드려요!`,
+  'voice.polite.routine.weekly': (v: N) => `이번 주 첫 만남 선물로 코인 ${v.n}개를 더 드려요!`,
   'voice.polite.routine.cue': '시작할 시간이에요! 오늘도 같이 힘내요.',
   'voice.polite.routine.bye.head': (v: I) =>
     one(['오늘 수고하셨어요!', '오늘도 고생 많으셨어요!', '오늘 하루도 끝났어요!'], v.i),
@@ -284,6 +285,7 @@ export const ko = {
   'voice.tsundere.routine.coins': (v: N) => `만난 기념 코인 ${v.n}개. 그냥 주는 거야.`,
   'voice.tsundere.routine.coinsBonus': (v: { days: number; n: number }) =>
     `${v.days}일 연속이니까 코인 ${v.n}개. 특별히 주는 거야.`,
+  'voice.tsundere.routine.weekly': (v: N) => `이번 주 선물 코인 ${v.n}개. 매주 주는 거니까 착각하지 마.`,
   'voice.tsundere.routine.cue': '시작할 시간이야. 꾸물대지 말고.',
   'voice.tsundere.routine.bye.head': (v: I) =>
     one(['오늘은 이만. ...수고했어.', '끝이야? 흥, 꽤 했네.', '오늘 하루 끝. 잘한 걸로 쳐 줄게.'], v.i),
@@ -346,6 +348,7 @@ export const ko = {
   'voice.calm.routine.coins': (v: N) => `만난 기념으로 코인 ${v.n}개를 줄게.`,
   'voice.calm.routine.coinsBonus': (v: { days: number; n: number }) =>
     `${v.days}일 연속으로 만났어. 코인 ${v.n}개를 줄게.`,
+  'voice.calm.routine.weekly': (v: N) => `이번 주 첫 만남이니 선물로 코인 ${v.n}개를 더 줄게.`,
   'voice.calm.routine.cue': '시작할 시간이야. 하나씩 차근차근 해 보자.',
   'voice.calm.routine.bye.head': (v: I) =>
     one(['오늘도 수고했어.', '오늘 하루 잘 보냈어.', '오늘은 여기까지 하자.'], v.i),
@@ -470,6 +473,7 @@ export const en: Translation<typeof ko> = {
   'voice.polite.routine.coins': (v: N) => `Here are ${v.n} coins for coming by.`,
   'voice.polite.routine.coinsBonus': (v: { days: number; n: number }) =>
     `${v.days} days in a row, so here are ${v.n} coins.`,
+  'voice.polite.routine.weekly': (v: N) => `Your first visit this week, so here is a gift of ${v.n} coins.`,
   'voice.polite.routine.cue': "It's time to begin. Let's make it a good day.",
   'voice.polite.routine.bye.head': (v: I) =>
     one(['Thank you for your hard work today.', 'You worked hard today.', "That's all for today."], v.i),
@@ -610,6 +614,8 @@ export const en: Translation<typeof ko> = {
   'voice.tsundere.routine.coins': (v: N) => `${v.n} coins for showing up. Just because.`,
   'voice.tsundere.routine.coinsBonus': (v: { days: number; n: number }) =>
     `${v.days} days in a row, so ${v.n} coins. Special, just this once.`,
+  'voice.tsundere.routine.weekly': (v: N) =>
+    `Weekly gift, ${v.n} coins. It's every week, so don't get ideas.`,
   'voice.tsundere.routine.cue': "Time to start. Don't dawdle.",
   'voice.tsundere.routine.bye.head': (v: I) =>
     one(
@@ -685,6 +691,7 @@ export const en: Translation<typeof ko> = {
   'voice.calm.routine.coins': (v: N) => `${v.n} coins for coming by.`,
   'voice.calm.routine.coinsBonus': (v: { days: number; n: number }) =>
     `${v.days} days in a row. Here are ${v.n} coins.`,
+  'voice.calm.routine.weekly': (v: N) => `Your first visit this week. Here are ${v.n} more coins as a gift.`,
   'voice.calm.routine.cue': "It's time to start. One thing at a time.",
   'voice.calm.routine.bye.head': (v: I) =>
     one(['Good work today.', 'You spent the day well.', "Let's stop here for today."], v.i),

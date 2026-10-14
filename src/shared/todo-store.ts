@@ -10,18 +10,18 @@ import { type Anchor, atLocal, DEFAULT_REMINDS, normalizeReminds, REMIND_MAX_MIN
 import { ReminderStore } from './reminder-store.ts';
 
 export const COIN = {
-  /** 할 일 하나 */
-  todo: 10,
+  /** 할 일 하나 (사용자 결정 2026-10-14, #75: 10 에서 15) */
+  todo: 15,
   /** 마감 전(마감일 당일 포함)에 끝냄 */
   early: 5,
   /** 하루에 코인을 받는 할 일 수 */
   dailyTodoLimit: 20,
   /** 기본 먹이 */
   food: 5,
-  /** 집중 타이머 한 번 (v1, 25분 기준. 길이를 고르면 분에 비례: focusCoins) */
-  focus: 5,
-  /** 하루에 코인을 받는 집중 횟수 (25분 기준). 하루 집중 코인 상한 = focus x 이 값 = 40 */
-  dailyFocusLimit: 8,
+  /** 집중 타이머 한 번 (25분 기준. 길이를 고르면 길수록 보너스: focusCoins) */
+  focus: 10,
+  /** 하루에 코인을 받는 집중 횟수 (25분 기준). 하루 집중 코인 상한 = focus x 이 값 = 100 (#76: 40 에서 100) */
+  dailyFocusLimit: 10,
 } as const;
 
 /** 반복: 매일, 평일(월~금), 매주 같은 요일, 매달 같은 날 (매달은 2026-10-11) */
@@ -740,6 +740,17 @@ export class TodoStore {
     );
   }
 
+  /** 그 날짜와 그 뒤 날짜에 남은 그 이유의 코인 기록 수 (매주 선물: 시계를 앞 주로 되돌려도 다시 주지 않게) */
+  coinCountFrom(reason: string, fromDay: string): number {
+    return Number(
+      (
+        this.#db
+          .prepare('select count(*) as n from coin_log where day >= ? and reason = ?')
+          .get(fromDay, reason) as { n: number }
+      ).n,
+    );
+  }
+
   /** 그날 이 이유로 받은 코인 합 (짧은 놀이처럼 코인 수로 하루 상한을 세는 것). 한 번에 여럿 받아도 한 행이다 */
   coinSum(reason: string, day: string): number {
     return Number(
@@ -788,7 +799,7 @@ export class TodoStore {
   }
 
   /** 집중 타이머 한 번 끝. 받은 코인 수 (하루 상한을 넘으면 0). */
-  /** 집중을 끝냈다. 분에 비례한 코인, 하루 집중 코인 상한(40)을 넘지 않게 */
+  /** 집중을 끝냈다. 길이에 맞는 코인(focusCoins), 하루 집중 코인 상한(100)을 넘지 않게 */
   rewardFocus(now: number, minutes: number = FOCUS.focusMin): number {
     const got = Number(
       (

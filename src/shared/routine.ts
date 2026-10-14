@@ -40,10 +40,15 @@ export const REST_FROM = 5 * 60;
 /** 기운(하루 리듬, shared/energy.ts)은 9시 출근을 기준으로 짠 표다. 만나는 시간을 이 시각으로 옮겨 읽는다 */
 export const BODY_ANCHOR = 9 * 60;
 
-/** 만난 날 코인: 하루 한 번만. 연속 기록이 STREAK_EVERY 의 배수인 날은 STREAK_BONUS 를 더한다 */
-export const MEET_COINS = 3;
-export const STREAK_EVERY = 5;
-export const STREAK_BONUS = 5;
+/**
+ * 만난 날 코인: 하루 한 번만. 연속 기록이 STREAK_EVERY 의 배수인 날은 STREAK_BONUS 를 더한다
+ * (사용자 결정 2026-10-14, #75: 하루 3 에서 10, 5일마다 +5 를 7일 연속마다 +50 으로)
+ */
+export const MEET_COINS = 10;
+export const STREAK_EVERY = 7;
+export const STREAK_BONUS = 50;
+/** 매주 선물: 한 주(월요일 시작, 현지 날짜)의 첫 출석 때 만난 날 코인과 함께 한 번 (#75) */
+export const WEEKLY_COINS = 50;
 
 const DAY_MIN = 1440;
 const isMinute = (v: unknown): v is number =>
@@ -294,11 +299,20 @@ export function nextStreak(
 
 /**
  * 만난 날 코인. 하루 한 번: 오늘 처음 센 연속 기록이고, 오늘 'meet' 코인 기록이 없을 때만
- * (설정을 껐다 켜거나, 요일을 바꾸거나, 시계를 돌려도 하루 상한을 넘지 않는다). 연속 5, 10, 15일에는 보너스
+ * (설정을 껐다 켜거나, 요일을 바꾸거나, 시계를 돌려도 하루 상한을 넘지 않는다). 연속 7, 14, 21일에는 보너스
  */
 export function meetCoins(streak: { n: number; fresh: boolean }, givenToday: number): number {
   if (!streak.fresh || givenToday > 0) return 0;
   return MEET_COINS + (streak.n % STREAK_EVERY === 0 ? STREAK_BONUS : 0);
+}
+
+/**
+ * 매주 선물 코인. 오늘 만난 날 코인을 받았고(그 주 출석), 이번 주 월요일부터 'weekly' 코인 기록이 없을 때만.
+ * givenThisWeek 는 이번 주 월요일 이후(그 뒤 날짜 포함) 장부의 'weekly' 줄 수다: 설정을 껐다 켜도, 시계를
+ * 앞 주로 되돌려도 이미 받은 주 뒤로는 다시 주지 않는다
+ */
+export function weeklyCoins(meetGiven: number, givenThisWeek: number): number {
+  return meetGiven > 0 && givenThisWeek === 0 ? WEEKLY_COINS : 0;
 }
 
 // ---- 기운(하루 리듬)이 쓰는 것 ----

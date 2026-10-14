@@ -1,4 +1,4 @@
-// 집중 타이머 (v1). 기본 25분 집중, 5분 쉬기. 집중 중엔 펫이 자고, 끝내면 코인 (5분에 1개, 하루 40개까지).
+// 집중 타이머 (v1). 기본 25분 집중, 5분 쉬기. 집중 중엔 펫이 자고, 끝내면 코인 (15분 5, 25분 10, 50분 25, 하루 100개까지).
 // 길이는 15, 25, 50분 중에 고른다 (설정 focusMin, 마지막에 고른 것을 기억).
 
 export const FOCUS = {
@@ -15,9 +15,30 @@ export function breakFor(focusMin: number): number {
   return focusMin >= 50 ? 10 : FOCUS.breakMin;
 }
 
-/** 집중을 끝내면 받는 코인. 분에 비례한다 (5분에 1개: 15분 3, 25분 5, 50분 10) */
+/**
+ * 집중 코인의 기준점 [분, 코인]. 사이는 직선으로 잇는다. 1분당 코인이 15분까지 1/3, 25분까지 1/2, 50분까지 3/5 로
+ * 늘어 길게 집중할수록 보너스가 붙는다 (사용자 결정 2026-10-14, #76: 25분 두 번보다 50분 한 번이 낫게)
+ */
+const FOCUS_COIN_POINTS: readonly (readonly [number, number])[] = [
+  [0, 0],
+  [15, 5],
+  [25, 10],
+  [50, 25],
+];
+
+/** 집중을 끝내면 받는 코인 (15분 5, 25분 10, 50분 25). 50분 넘게 집중한 시간은 50분까지의 비율(3/5)로 더한다 */
 export function focusCoins(focusMin: number): number {
-  return Math.max(0, Math.round(focusMin / 5));
+  if (!Number.isFinite(focusMin) || focusMin <= 0) return 0;
+  let prev = FOCUS_COIN_POINTS[0] as readonly [number, number];
+  for (const p of FOCUS_COIN_POINTS) {
+    if (focusMin <= p[0]) {
+      const coins = prev[1] + ((focusMin - prev[0]) * (p[1] - prev[1])) / (p[0] - prev[0]);
+      return Math.round(coins);
+    }
+    prev = p;
+  }
+  const [m1, c1] = FOCUS_COIN_POINTS[FOCUS_COIN_POINTS.length - 2] as readonly [number, number];
+  return Math.round(prev[1] + ((focusMin - prev[0]) * (prev[1] - c1)) / (prev[0] - m1));
 }
 
 export type FocusPhase = 'idle' | 'focus' | 'break';

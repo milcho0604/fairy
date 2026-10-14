@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { plusDays } from './day.ts';
 import { setLang, t } from './i18n/index.ts';
 import { sulkLevel } from './pet-life.ts';
 import {
@@ -21,6 +22,7 @@ import {
   restDaysOf,
   routineDue,
   routineTurns,
+  weeklyCoins,
 } from './routine.ts';
 import {
   type FarewellInput,
@@ -202,15 +204,19 @@ test('연속 기록: 쉬는 날은 건너뛰고, 만나는 날을 놓치면 1 �
   );
 });
 
-test('만난 날 코인은 하루 한 번, 5일마다 보너스', () => {
-  assert.equal(meetCoins({ n: 1, fresh: true }, 0), 3);
-  assert.equal(meetCoins({ n: 4, fresh: true }, 0), 3);
-  assert.equal(meetCoins({ n: 5, fresh: true }, 0), 8);
-  assert.equal(meetCoins({ n: 10, fresh: true }, 0), 8);
+test('만난 날 코인은 하루 한 번 10, 7일 연속마다 +50 (#75)', () => {
+  assert.equal(meetCoins({ n: 1, fresh: true }, 0), 10);
+  // 5일 보너스는 없앴다
+  assert.equal(meetCoins({ n: 5, fresh: true }, 0), 10);
+  assert.equal(meetCoins({ n: 6, fresh: true }, 0), 10);
+  assert.equal(meetCoins({ n: 7, fresh: true }, 0), 60);
+  assert.equal(meetCoins({ n: 8, fresh: true }, 0), 10);
+  assert.equal(meetCoins({ n: 10, fresh: true }, 0), 10);
+  assert.equal(meetCoins({ n: 14, fresh: true }, 0), 60);
   // 오늘 이미 받았다 (껐다 켜기, 요일 바꾸기, 시계 돌리기)
-  assert.equal(meetCoins({ n: 5, fresh: true }, 1), 0);
+  assert.equal(meetCoins({ n: 7, fresh: true }, 1), 0);
   assert.equal(meetCoins({ n: 2, fresh: false }, 0), 0);
-  // 한 주 내내 매일 만나도 상한: 5일 기준 3*4 + 8 = 20
+  // 평일만 만나는 한 주 내내 하루 세 번씩 맞이해도 상한: 10*5 = 50
   let streak: RoutineMemo['streak'];
   let total = 0;
   for (const day of [MON, TUE, '2026-10-07', '2026-10-08', FRI]) {
@@ -220,7 +226,27 @@ test('만난 날 코인은 하루 한 번, 5일마다 보너스', () => {
       streak = { day: s.day, n: s.n };
     }
   }
-  assert.equal(total, 20);
+  assert.equal(total, 50);
+  // 매일 만나면 7일째 보너스: 10*6 + 60 = 120
+  const daily = { on: true, week: Array.from({ length: 7 }, () => ({ start: H(9), end: H(18) })) };
+  streak = undefined;
+  total = 0;
+  for (let i = 0; i < 7; i++) {
+    const s = nextStreak(daily, streak, plusDays(MON, i));
+    total += meetCoins(s, 0);
+    streak = { day: s.day, n: s.n };
+  }
+  assert.equal(streak?.n, 7);
+  assert.equal(total, 120);
+});
+
+test('매주 선물 50은 그 주 출석이 있고 이번 주 기록이 없을 때만 (#75)', () => {
+  assert.equal(weeklyCoins(10, 0), 50);
+  assert.equal(weeklyCoins(60, 0), 50);
+  // 이번 주에 이미 받았다
+  assert.equal(weeklyCoins(10, 1), 0);
+  // 오늘 출석 코인을 못 받았으면(같은 날 두 번째 맞이) 선물도 없다
+  assert.equal(weeklyCoins(0, 0), 0);
 });
 
 test('회고와 마감 알림: 만난 날은 헤어짐이 회고를 맡고, 마감 알림은 헤어지는 시간까지', () => {
@@ -278,23 +304,30 @@ test('말: 맞이, 헤어짐, 쉬는 날 (한국어, 영어)', () => {
     day: MON,
     first: false,
     streak: 1,
-    coins: 3,
+    coins: 10,
     briefing: '오늘 일정은 오전 10:00 회의 하나야.',
     quiet: false,
   };
   const early = greetText({ ...base, arrival: 'early' });
   assert.match(early, /일찍|벌써/);
-  assert.match(early, /만난 기념 코인 3개!/);
+  assert.match(early, /만난 기념 코인 10개!/);
   assert.match(early, /오전 10:00 회의/);
   assert.match(greetText({ ...base, arrival: 'late', streak: 3 }), /3일째 만나는 중!/);
   assert.match(
-    greetText({ ...base, arrival: 'onTime', streak: 5, coins: 8 }),
-    /5일 연속 만난 기념으로 코인 8개!/,
+    greetText({ ...base, arrival: 'onTime', streak: 7, coins: 60 }),
+    /7일 연속 만난 기념으로 코인 60개!/,
   );
+  // 매주 선물은 만난 날 코인 뒤, 브리핑 앞에 한 문장
+  assert.match(
+    greetText({ ...base, arrival: 'late', weekly: 50 }),
+    /만난 기념 코인 10개! 이번 주 첫 만남 선물로 코인 50개 더! 오늘 일정은/,
+  );
+  assert.equal(greetText({ ...base, arrival: 'late', weekly: 0 }).includes('선물'), false);
+  assert.equal(greetText({ ...base, arrival: 'late', weekly: 50, quiet: true }).includes('선물'), false);
   assert.equal(greetText({ ...base, arrival: 'late', quiet: true }).includes('코인'), false);
   assert.equal(
     greetText({ ...base, arrival: 'early', first: true }),
-    `${t('routine.hi.first')} 만난 기념 코인 3개! ${base.briefing}`,
+    `${t('routine.hi.first')} 만난 기념 코인 10개! ${base.briefing}`,
   );
   // 같은 날은 같은 말, 날마다 바뀔 수 있다
   assert.equal(variant(MON, 6), variant(MON, 6));
@@ -356,7 +389,11 @@ test('말: 맞이, 헤어짐, 쉬는 날 (한국어, 영어)', () => {
   assert.equal(t('routine.onb.title', { name: '밤' }), '밤과 만나는 시간');
 
   setLang('en');
-  assert.match(greetText({ ...base, briefing: '', arrival: 'late' }), /\+3 coins for showing up!$/);
+  assert.match(greetText({ ...base, briefing: '', arrival: 'late' }), /\+10 coins for showing up!$/);
+  assert.match(
+    greetText({ ...base, briefing: '', arrival: 'late', weekly: 50 }),
+    /\+10 coins for showing up! First visit this week, so here's a \+50 coin gift!$/,
+  );
   assert.equal(weekdayName(NEXT_MON), 'Monday');
   assert.match(
     farewellText({

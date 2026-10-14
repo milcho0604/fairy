@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { type Db, MIGRATIONS, migrate, SCHEMA_VERSION, schemaVersion } from './db-schema.ts';
+import { weeklyCoins } from './routine.ts';
 import { COIN, FULLNESS, nextDue, TodoStore } from './todo-store.ts';
+import { weekStart } from './week.ts';
 
 const HOUR = 3_600_000;
 // 시험은 시간대와 상관없게 날짜를 UTC 로 자른다.
@@ -41,7 +43,7 @@ test('화면 체크로 끝내기: 안 끝낸 할 일만 코인, 이미 끝냈거
   assert.equal(typeof store.completeOpen(a.id, T0 + 30), 'number');
 });
 
-test('할 일 하나 끝내면 10코인, 마감 전이면 15코인, 두 번 끝내도 한 번만', () => {
+test('할 일 하나 끝내면 15코인, 마감 전이면 20코인, 두 번 끝내도 한 번만', () => {
   const { store } = fresh();
   const a = store.add({ title: '보고서' }, T0);
   const b = store.add({ title: '마감 있는 일', due: '2026-10-02' }, T0);
@@ -50,7 +52,7 @@ test('할 일 하나 끝내면 10코인, 마감 전이면 15코인, 두 번 끝�
   assert.equal(store.complete(a.id, T0), 0);
   assert.equal(store.complete(b.id, T0), COIN.todo + COIN.early);
   assert.equal(store.complete(late.id, T0), COIN.todo);
-  assert.equal(store.balance(), 35);
+  assert.equal(store.balance(), 50);
 });
 
 test(`하루 ${COIN.dailyTodoLimit}개까지만 코인, 다음 날 다시`, () => {
@@ -65,16 +67,16 @@ test(`하루 ${COIN.dailyTodoLimit}개까지만 코인, 다음 날 다시`, () =
 test('되돌리면 받은 코인을 회수하고, 이미 썼으면 0 에서 멈춘다', () => {
   const { store } = fresh();
   const a = store.add({ title: 'a', due: '2026-10-05' }, T0);
-  store.complete(a.id, T0); // +15
-  assert.equal(store.undo(a.id, T0), 15);
+  store.complete(a.id, T0); // +20
+  assert.equal(store.undo(a.id, T0), 20);
   assert.equal(store.balance(), 0);
   assert.equal(store.get(a.id)?.doneAt, null);
   assert.equal(store.undo(a.id, T0), 0); // 안 끝난 것은 그대로
 
-  store.complete(a.id, T0); // +15
+  store.complete(a.id, T0); // +20
   store.feed(T0);
-  store.feed(T0 + 24 * HOUR); // 배가 꺼진 뒤 한 번 더. -10 → 잔액 5
-  assert.equal(store.undo(a.id, T0), 5);
+  store.feed(T0 + 24 * HOUR); // 배가 꺼진 뒤 한 번 더. -10 → 잔액 10
+  assert.equal(store.undo(a.id, T0), 10);
   assert.equal(store.balance(), 0);
 });
 
@@ -151,9 +153,9 @@ test('밥 주기: 5코인에 20, 100 을 안 넘고, 코인이 모자라면 안 
   store.fullness(T0);
   assert.deepEqual(store.feed(T0), { ok: false, fullness: 80, balance: 0 });
   store.complete(store.add({ title: 'a' }, T0).id, T0);
-  assert.deepEqual(store.feed(T0), { ok: true, fullness: 100, balance: 5 });
+  assert.deepEqual(store.feed(T0), { ok: true, fullness: 100, balance: 10 });
   assert.equal(store.feed(T0 + 5 * HOUR).fullness, 100); // 90 + 20 → 100
-  assert.equal(store.balance(), 0);
+  assert.equal(store.balance(), 5);
 });
 
 test('다음 회차 마감: 매일은 내일, 평일은 주말을 건너뛰고, 매주는 같은 요일. 밀린 것은 한 번만', () => {
@@ -186,24 +188,68 @@ test('반복 할 일을 끝내면 다음 회차가 생기고, 되돌리면 그 �
   );
 });
 
-test('집중 보상은 한 번에 5코인, 하루 8번까지', () => {
+test('집중 보상은 25분 한 번에 10코인, 하루 10번(100코인)까지', () => {
+  assert.equal(COIN.focus, 10);
+  assert.equal(COIN.focus * COIN.dailyFocusLimit, 100);
   const { store } = fresh();
   let total = 0;
-  for (let i = 0; i < 10; i++) total += store.rewardFocus(T0 + i);
+  for (let i = 0; i < 12; i++) total += store.rewardFocus(T0 + i);
   assert.equal(total, COIN.focus * COIN.dailyFocusLimit);
   assert.equal(store.rewardFocus(T0 + 24 * HOUR), COIN.focus);
 });
 
-test('집중 길이를 고르면 코인은 분에 비례하고, 하루 집중 코인 상한(40)은 그대로', () => {
+test('집중 길이를 고르면 길수록 보너스(15분 5, 50분 25), 하루 집중 코인 상한은 100', () => {
   const { store } = fresh();
-  assert.equal(store.rewardFocus(T0, 15), 3);
-  assert.equal(store.rewardFocus(T0 + 1, 50), 10);
-  assert.equal(store.rewardFocus(T0 + 2, 50), 10);
-  assert.equal(store.rewardFocus(T0 + 3, 50), 10);
-  // 지금 33. 남은 7 만 준다
-  assert.equal(store.rewardFocus(T0 + 4, 50), 7);
-  assert.equal(store.rewardFocus(T0 + 5, 15), 0);
-  assert.equal(store.balance(), COIN.focus * COIN.dailyFocusLimit);
+  assert.equal(store.rewardFocus(T0, 15), 5);
+  assert.equal(store.rewardFocus(T0 + 1, 50), 25);
+  assert.equal(store.rewardFocus(T0 + 2, 50), 25);
+  assert.equal(store.rewardFocus(T0 + 3, 50), 25);
+  // 지금 80. 25분은 10 그대로, 그다음 50분은 남은 10 만 준다
+  assert.equal(store.rewardFocus(T0 + 4, 25), 10);
+  assert.equal(store.rewardFocus(T0 + 5, 50), 10);
+  assert.equal(store.rewardFocus(T0 + 6, 15), 0);
+  assert.equal(store.balance(), 100);
+  // 다음 날은 다시
+  assert.equal(store.rewardFocus(T0 + 24 * HOUR, 50), 25);
+});
+
+test('할 일 하나는 15코인, 마감 전이면 +5 (#75)', () => {
+  const { store } = fresh();
+  assert.equal(COIN.todo, 15);
+  assert.equal(COIN.early, 5);
+  assert.equal(store.complete(store.add({ title: '보고서' }, T0).id, T0), 15);
+  assert.equal(store.complete(store.add({ title: '마감', due: '2026-10-03' }, T0).id, T0), 20);
+});
+
+test('매주 선물은 장부로 한 주(월요일 시작)에 한 번: 껐다 켜기, 시계 되돌리기에도 다시 안 준다 (#75)', () => {
+  const { store } = fresh();
+  // 플래너 맞이와 같은 순서: 만난 날 코인, 이번 주 기록 수로 선물
+  const greet = (ms: number, meetGiven = 10) => {
+    const day = utcDay(ms);
+    const w = weeklyCoins(meetGiven, store.coinCountFrom('weekly', weekStart(day)));
+    store.reward(w, 'weekly', ms);
+    return w;
+  };
+  const day = (d: string, h = 9) => Date.parse(`${d}T${String(h).padStart(2, '0')}:00:00Z`);
+  // 2026-10-07 (수) 그 주 첫 출석
+  assert.equal(greet(day('2026-10-07')), 50);
+  // 같은 날 설정을 껐다 켜 다시 맞이해도(만난 날 코인이 다시 나왔다고 쳐도) 없다
+  assert.equal(greet(day('2026-10-07', 10)), 0);
+  // 같은 주 다른 날 (일요일까지)
+  assert.equal(greet(day('2026-10-08')), 0);
+  assert.equal(greet(day('2026-10-11')), 0);
+  // 다음 주 월요일은 새 주
+  assert.equal(greet(day('2026-10-12')), 50);
+  // 시계를 앞 주(이미 받은 주)로, 더 앞 주로 되돌려도 뒤 날짜 기록이 있어 다시 주지 않는다
+  assert.equal(greet(day('2026-10-09')), 0);
+  assert.equal(greet(day('2026-09-30')), 0);
+  // 출석 코인이 없는 맞이(같은 날 두 번째)는 선물도 없다
+  assert.equal(greet(day('2026-10-19'), 0), 0);
+  assert.equal(greet(day('2026-10-20')), 50);
+  // 코인을 초기화해도 장부의 선물 기록은 남아 같은 주에 다시 주지 않는다
+  store.resetCoins(day('2026-10-21'));
+  assert.equal(greet(day('2026-10-22')), 0);
+  assert.equal(store.coinCountFrom('weekly', '2026-01-01'), 3);
 });
 
 test('배가 꽉 차면 밥을 주지 않고 코인도 안 가져간다', () => {
