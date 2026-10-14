@@ -1,7 +1,9 @@
 import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { CODEX_ZIP_MAX_BYTES } from '../../../shared/codex-pet.ts';
 import { saveErrorText } from '../../../shared/download-error.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { SettingsSnapshot } from '../../../shared/ipc.ts';
+import { SHARE_MAX_BYTES } from '../../../shared/pet-share.ts';
 import { lookKey, type Settings } from '../../../shared/settings.ts';
 import { groupRows, type RowKind, searchSettings } from '../../../shared/settings-search.ts';
 import {
@@ -13,6 +15,7 @@ import {
   tabKeyStep,
   tabOfSection,
 } from '../../../shared/settings-tabs.ts';
+import { isCodexPetFileName, isImportFileName } from '../../../shared/url-scheme.ts';
 import { escClosesWindow } from '../panel/keys.ts';
 import { AboutTab } from './tabs/AboutTab.tsx';
 import { AiTab } from './tabs/AiTab.tsx';
@@ -182,6 +185,39 @@ export function SettingsApp() {
       setQuery('');
       setTabState(tabOfSection(section));
     });
+  }, []);
+
+  // 페어리 파일(.fairy, .jjpet)이나 Codex 펫 파일(.codex-pet.zip)을 창에 끌어 놓으면 페어리 가져오기와 같이 데려온다.
+  // 다른 파일(그림, 글)은 그냥 둔다 (창이 그 파일을 열어 페이지가 바뀌지 않게 놓기만 막는다)
+  useEffect(() => {
+    const say = (message: string, error: boolean) => {
+      setSaved(message);
+      setSavedError(error);
+      clearTimeout(flashTimer.current);
+      flashTimer.current = setTimeout(() => setSaved(''), 2400);
+    };
+    const over = (e: DragEvent) => e.preventDefault();
+    const drop = async (e: DragEvent) => {
+      e.preventDefault();
+      const f = [...(e.dataTransfer?.files ?? [])].find((x) => isImportFileName(x.name));
+      if (!f) return;
+      if (f.size > (isCodexPetFileName(f.name) ? CODEX_ZIP_MAX_BYTES : SHARE_MAX_BYTES)) {
+        say(t('pet.share.tooBig'), true);
+        return;
+      }
+      try {
+        const r = await bridge.importPetDrop(f.name, await f.arrayBuffer());
+        if (r.message) say(r.message, !r.ok);
+      } catch {
+        say(t('main.pet.unreadable'), true);
+      }
+    };
+    window.addEventListener('dragover', over);
+    window.addEventListener('drop', drop);
+    return () => {
+      window.removeEventListener('dragover', over);
+      window.removeEventListener('drop', drop);
+    };
   }, []);
 
   if (!snap) return <div className="loading">{t('settings.loading')}</div>;

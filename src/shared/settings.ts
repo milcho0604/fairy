@@ -315,9 +315,13 @@ export function lookKey(
   ]);
 }
 
-/** 지금 펫이 개인 용도 페어리인지 (이미 있는 캐릭터 이름으로 말로 만들기, petPersonal) */
+/**
+ * 지금 펫이 개인 용도 페어리인지 (petPersonal). 열쇠는 설계도 파일(말로 만들기)이나 그림 파일(Codex 펫처럼 설계도 없이
+ * 그림 세트로 데려온 펫. 나중에 입체 몸을 만들어도 그림은 같아서 표시가 남는다)
+ */
 export function isPersonalPet(s: Pick<Settings, 'petImage' | 'petModel' | 'petPersonal'>): boolean {
-  return !!s.petImage && !!s.petModel && s.petPersonal[s.petModel] === true;
+  if (!s.petImage) return false;
+  return s.petPersonal[s.petImage] === true || (!!s.petModel && s.petPersonal[s.petModel] === true);
 }
 
 /** 지금 사진 펫의 네 발로 서기를 바꾸는 값. 고를 수 없는 펫(설계도 없음)이면 undefined */
@@ -737,6 +741,12 @@ function bodiesOf(
   // 친구 자리로 간 기본 페어리의 몸도 (네 발로 서기, 요청사항, 개인 용도가 다시 기본으로 바꿀 때까지 남게, friend-swap.ts)
   const friends = Array.isArray(r.friends) ? friendsOf(r.friends) : base.friends;
   for (const f of friends) if (f.model) models.add(f.model);
+  // 개인 용도 표시는 그림 파일 열쇠도 받는다 (설계도 없는 그림 세트 펫, isPersonalPet)
+  const images = new Set<string>([
+    ...lib.map((p) => p.image),
+    ...friends.flatMap((f) => (f.image ? [f.image] : [])),
+  ]);
+  if (image) images.add(image);
   const kindKey = (k: string) => isPetKind(KIND_KEY.exec(k)?.[1]);
   const pick = <T>(
     v: unknown,
@@ -774,11 +784,11 @@ function bodiesOf(
       (k) => models.has(k) || STARTER_STAND.test(k),
       (x) => (x === true ? true : undefined),
     ),
-    // 개인 용도 표시는 입체 사진 펫(설계도)에만, 켠 것만 남긴다
+    // 개인 용도 표시는 사진 펫(설계도나 그림 파일 열쇠)에만, 켠 것만 남긴다
     petPersonal: pick(
       r.petPersonal,
       base.petPersonal,
-      (k) => models.has(k),
+      (k) => models.has(k) || images.has(k),
       (x) => (x === true ? true : undefined),
     ),
     // 말로 만든 처음 글도 입체 사진 펫(설계도)에만. 다듬기는 저장할 때(maker.ts cleanDescribe) 하고 여기는 모양과 길이만

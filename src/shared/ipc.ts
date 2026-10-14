@@ -276,6 +276,8 @@ export const SETTINGS = {
   reveal: 'settings:reveal',
   importPet: 'settings:import-pet',
   importFriend: 'settings:import-friend',
+  /** 설정 창에 끌어 놓은 페어리 파일, Codex 펫 파일 (이름과 바이트) */
+  importPetDrop: 'settings:import-pet-drop',
   /** 펫 갤러리 (P1 #11): 공식 펫 목록 받기, 고른 펫 데려오기, 친구에게 보낼 펫 파일 저장 */
   galleryList: 'settings:gallery-list',
   galleryAdopt: 'settings:gallery-adopt',
@@ -421,6 +423,8 @@ export interface SettingsBridge {
   reveal(path: string): void;
   importPet(): Promise<{ ok: boolean; message: string }>;
   importFriend(): Promise<{ ok: boolean; message: string }>;
+  /** 끌어 놓은 파일을 지금 페어리로 (.fairy, .jjpet, .codex-pet.zip). 크기와 형식은 메인이 다시 본다. 그만두면 빈 message */
+  importPetDrop(name: string, bytes: ArrayBuffer): Promise<{ ok: boolean; message: string }>;
   /** 펫 갤러리 목록 (메인이 raw.githubusercontent.com 에서 받아 검사한 것) */
   galleryList(): Promise<GalleryList>;
   /** 목록의 펫을 받아 데려온다 (asFriend 면 친구 펫으로). 그만두면 빈 message */

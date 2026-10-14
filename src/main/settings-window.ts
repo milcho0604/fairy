@@ -30,6 +30,7 @@ import { isSettingsTab, type SettingsTab } from '../shared/settings-tabs.ts';
 import { type CoinResetResult, type CoinResetScope, isCoinResetScope } from '../shared/shop.ts';
 import { parsePetChoice } from '../shared/starter-pets.ts';
 import { PUBLIC_REPO } from '../shared/update-policy.ts';
+import { isImportFileName } from '../shared/url-scheme.ts';
 import { localModelReady } from './ai/local.ts';
 import { aiHistoryBytes, clearAiHistory } from './ai-history.ts';
 import { devRendererUrl } from './dev-url.ts';
@@ -70,6 +71,7 @@ export interface SettingsWindowOptions {
     exportPet: (win?: BrowserWindow) => Promise<string>;
     importPet: (win?: BrowserWindow) => Promise<{ ok: boolean; message: string }>;
     importFriend: (win?: BrowserWindow) => Promise<{ ok: boolean; message: string }>;
+    importPetDrop: (name: string, bytes: Buffer) => Promise<{ ok: boolean; message: string }>;
     syncCalendar: () => Promise<CalSync>;
     calendarLast: () => CalSync;
     mcpServers: () => string[];
@@ -267,6 +269,16 @@ export function createSettingsWindow({
   ipcMain.handle(SETTINGS.importFriend, (e) =>
     fromSettings(e) ? v2.importFriend(win) : { ok: false, message: '' },
   );
+  // 끌어 놓은 파일: 이름은 확장자만 보고(읽개 고르기), 바이트는 메인이 상한과 형식을 다시 본다
+  ipcMain.handle(SETTINGS.importPetDrop, (e, name: unknown, bytes: unknown) => {
+    if (!fromSettings(e) || typeof name !== 'string' || !isImportFileName(name.slice(-64)))
+      return { ok: false, message: '' };
+    if (!(bytes instanceof ArrayBuffer) && !ArrayBuffer.isView(bytes)) return { ok: false, message: '' };
+    const buf = ArrayBuffer.isView(bytes)
+      ? Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+      : Buffer.from(bytes);
+    return v2.importPetDrop(name.slice(-64), buf);
+  });
   ipcMain.handle(SETTINGS.galleryList, (e) =>
     fromSettings(e) ? gallery.list() : { ok: false, reason: 'bad' },
   );
