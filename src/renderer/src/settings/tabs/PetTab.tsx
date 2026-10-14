@@ -148,6 +148,18 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
           </div>
         )}
 
+        {s.petImage && (
+          <div className="field">
+            <span>{t('settings.makeSprites')}</span>
+            <div className="action-row">
+              <button type="button" className="ghost" onClick={() => bridge.openMaker('sprites')}>
+                {s.petSprites ? t('settings.remakeSprites') : t('settings.makeSprites')}
+              </button>
+            </div>
+            <small>{t('settings.spritesHint')}</small>
+          </div>
+        )}
+
         <label className="field">
           <span>
             {t('settings.size')} <b>{Math.round(scale * 100)}%</b>

@@ -100,6 +100,16 @@ export const ko = {
   'main.illust.bad': '그림 서버가 새 그림을 주지 않았어. 다시 그려 보거나 사진 그대로 해 줘.',
   'main.illust.down': '무료 그림 서버가 지금 바쁘거나 쉬는 중이야. 조금 있다가 다시 해 줘.',
   'main.illust.tokenShape': '토큰 모양이 이상해. hf_로 시작하는 토큰을 붙여 넣어 줘.',
+  'main.sprites.quota':
+    "오늘 무료 그림 횟수를 다 썼어. 여기까지 만든 동작은 그대로 저장할 수 있어 (빠진 자세는 가까운 그림으로 채워져). 횟수는 네 인터넷 연결마다 따로 세고 하루가 지나면 다시 채워져. 더 만들려면 '사진으로 페어리 만들기'의 'AI 일러스트로 다시 그리기'에서 무료 Hugging Face 토큰을 넣어 줘.",
+  'main.sprites.quotaToken':
+    '이 토큰의 오늘 무료 사용량을 다 썼어. 여기까지 만든 동작은 그대로 저장할 수 있고, 하루가 지나면 남은 동작을 다시 만들 수 있어.',
+  'main.sprites.refused':
+    '그림 서버가 이유 없이 거절했어. 대개 오늘 무료 횟수(네 인터넷 연결마다 따로, 하루면 다시 채워져)를 다 썼을 때 이래. 여기까지 만든 동작은 그대로 저장할 수 있어.',
+  'main.sprites.refusedToken':
+    '그림 서버가 이유 없이 거절했어. 대개 이 토큰의 오늘 무료 사용량을 다 썼을 때 이래. 여기까지 만든 동작은 그대로 저장할 수 있어.',
+  'main.sprites.changed': '그사이 페어리가 바뀌었어. 창을 닫고 지금 페어리로 다시 만들어 줘.',
+  'main.sprites.bad': '그림 세트가 규칙에 맞지 않아 저장하지 못했어. 다시 만들어 줘.',
   // 내 컴퓨터에서 그리기 (2026-10-10)
   'main.localDraw.unsupported':
     '이 컴퓨터에서는 그릴 수 없어. 메모리 8GB 이상에 x64(인텔/AMD) Windows나 macOS 12 이상이 필요해.',
@@ -256,6 +266,17 @@ export const en: Translation<typeof ko> = {
   'main.illust.bad': "The drawing server didn't send a new picture. Draw again, or use the photo as is.",
   'main.illust.down': 'The free drawing server is busy or resting right now. Try again in a bit.',
   'main.illust.tokenShape': "That doesn't look like a token. Paste one that starts with hf_.",
+  'main.sprites.quota':
+    "You've used up today's free drawings. You can still save the moves made so far (missing poses borrow the closest picture). The limit is counted per internet connection and refills after a day. To make more now, add a free Hugging Face token under 'Redraw as an AI illustration' in 'Make a fairy from a photo'.",
+  'main.sprites.quotaToken':
+    "This token has used up today's free drawings. You can still save the moves made so far, and make the rest after a day.",
+  'main.sprites.refused':
+    "The drawing server said no without a reason. That usually means today's free drawings (counted per internet connection, refilled after a day) are used up. You can still save the moves made so far.",
+  'main.sprites.refusedToken':
+    "The drawing server said no without a reason. That usually means this token's free use for today is used up. You can still save the moves made so far.",
+  'main.sprites.changed':
+    'Your fairy changed in the meantime. Close this window and make the set again for the current fairy.',
+  'main.sprites.bad': "The picture set didn't pass the checks, so it wasn't saved. Please make it again.",
   'main.localDraw.unsupported':
     "This computer can't draw locally. It needs 8 GB of memory or more and x64 (Intel/AMD) Windows or macOS 12 or later.",
   'main.localDraw.rosetta':

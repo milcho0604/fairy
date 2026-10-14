@@ -19,6 +19,10 @@ export const ko = {
   'settings.nameMax': '이름은 {max}자까지야',
   'settings.look': '모습',
   'settings.makePhotoPet': '사진으로 페어리 만들기',
+  'settings.makeSprites': '2D 그림 세트 만들기',
+  'settings.remakeSprites': '2D 그림 세트 다시 만들기',
+  'settings.spritesHint':
+    '지금 페어리 그림으로 서기, 걷기, 쉬기 같은 자세 그림을 무료 그림 서버에서 그려. 2D 모습에서 그 그림으로 움직여.',
   'settings.poses': '상태별 포즈',
   'settings.poseChange': '{label} 바꾸기',
   'settings.posePhoto': '{label} 사진',
@@ -453,6 +457,10 @@ export const en: Translation<typeof ko> = {
   'settings.nameMax': 'Names can be up to {max} characters',
   'settings.look': 'Look',
   'settings.makePhotoPet': 'Make a fairy from a photo',
+  'settings.makeSprites': 'Make a 2D picture set',
+  'settings.remakeSprites': 'Remake the 2D picture set',
+  'settings.spritesHint':
+    'Draws pose pictures (stand, walk, rest and more) from your fairy picture on a free drawing server. Your fairy moves with them in 2D.',
   'settings.poses': 'Poses by mood',
   'settings.poseChange': '{label}: change',
   'settings.posePhoto': '{label}: add photo',

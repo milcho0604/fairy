@@ -811,6 +811,8 @@ export function MakerApp() {
   // 입체 피규어는 AI 를 쓰니 알아서 만들지 않고 안내만 한다
   const buildFirst = step === 'name' && !shaping && !chosen && look === 'relief';
   const needFigure = step === 'name' && !shaping && !chosen && look === 'figure';
+  /** 다 된 뒤 창을 닫는 타이머 (2D 그림 세트 만들기로 넘어가면 멈춘다) */
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const saveAfterShape = useRef(false);
 
   const save = async () => {
@@ -834,7 +836,8 @@ export function MakerApp() {
       return;
     }
     setStep('done');
-    setTimeout(() => bridge.close(), 1400);
+    // 펫 본 그림이면 "2D 그림 세트도 만들기" 를 누를 틈을 조금 더 준다 (#89)
+    closeTimer.current = setTimeout(() => bridge.close(), isMain ? 5000 : 1400);
   };
 
   // "이 펫으로 할게" 로 2.5D 를 만들었으면 다 되자마자 저장한다. 실패하거나 다른 모양을 고르면 그만둔다
@@ -1526,15 +1529,32 @@ export function MakerApp() {
               </div>
             )}
             {step === 'done' ? (
-              <p className="done">
-                {isFood
-                  ? t('maker.done.food', { name: name.trim() })
-                  : isPose
-                    ? t('maker.done.pose', { pose: poseLabel })
-                    : t('maker.done.pet', {
-                        name: cleanPetName(name) || info?.newPetName || t('common.appName'),
-                      })}
-              </p>
+              <>
+                <p className="done">
+                  {isFood
+                    ? t('maker.done.food', { name: name.trim() })
+                    : isPose
+                      ? t('maker.done.pose', { pose: poseLabel })
+                      : t('maker.done.pet', {
+                          name: cleanPetName(name) || info?.newPetName || t('common.appName'),
+                        })}
+                </p>
+                {/* 사진, 말로 만든 페어리 다음 걸음: 같은 창에서 2D 그림 세트 만들기로 (#89) */}
+                {isMain && (
+                  <div className="actions">
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={() => {
+                        clearTimeout(closeTimer.current);
+                        bridge.openSprites();
+                      }}
+                    >
+                      {t('maker.done.sprites')}
+                    </button>
+                  </div>
+                )}
+              </>
             ) : (
               <>
                 {isFood ? (

@@ -745,3 +745,121 @@ section {
   border: 1px solid var(--line);
   border-radius: 10px;
 }
+
+/* 2D 그림 세트 만들기 (#89, SpriteMakerApp.tsx) */
+.sprite-top {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.sprite-top p {
+  margin: 0 0 6px;
+}
+
+.sprite-own {
+  width: 96px;
+  height: 96px;
+  flex: none;
+  object-fit: contain;
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.sprite-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sprite-row {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 4px 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.sprite-row-name {
+  font-weight: 600;
+}
+
+.sprite-row-state {
+  color: var(--muted);
+}
+
+.sprite-row.ok .sprite-row-state {
+  color: var(--accent);
+}
+
+.sprite-row.bad .sprite-row-state,
+.sprite-row.fail .sprite-row-state {
+  color: var(--warn);
+}
+
+.sprite-row-why {
+  grid-column: 1 / -1;
+  color: var(--muted);
+}
+
+.sprite-strip {
+  grid-column: 1 / -1;
+  width: 100%;
+  border-radius: 6px;
+}
+
+.sprite-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.sprite-progress progress {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+.sprite-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sprite-walk {
+  width: 160px;
+  height: 160px;
+  align-self: center;
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.sprite-sheet {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 6px;
+}
+
+.sprite-sheet figure {
+  margin: 0;
+  text-align: center;
+}
+
+.sprite-pic {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  /* 투명한 곳이 보이게 체크 무늬 */
+  background: repeating-conic-gradient(var(--panel) 0 25%, transparent 0 50%) 0 0 / 12px 12px;
+}
+
+.sprite-sheet figcaption {
+  font-size: 11px;
+  color: var(--muted);
+}

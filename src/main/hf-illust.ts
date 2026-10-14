@@ -266,6 +266,8 @@ export async function illustrate(
       const started = Date.now();
       try {
         const r = await runSpace(space, photo, mime, prompt, opt, ac.signal);
+        // 그만둔 뒤 끝난 답은 쓰지 않는다 (fetch 가 signal 을 모르고 끝까지 받아 온 경우, 2026-10-15 그림 세트 시험)
+        if (ac.signal.aborted) throw stopped();
         if (sameBytes(r.bytes, photo)) throw new IllustError('same', 'echoed input');
         opt.log?.('illust', space.id, 'ok', `${Math.round((Date.now() - started) / 1000)}s`, r.kind);
         return { ...r, space: space.id };

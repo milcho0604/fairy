@@ -26,8 +26,12 @@ import {
   MODEL_URL,
   ORT_WASM_URL,
   type PetImages,
+  type SpriteRowResult,
+  type SpriteSource,
 } from '../shared/ipc.ts';
 import { illustEngineOf, LOCAL_DRAW_GB } from '../shared/local-draw.ts';
+import { cleanSprites } from '../shared/pet-share.ts';
+import { type PetSprites, spriteFiles } from '../shared/pet-sprites.ts';
 import { type Blueprint, type Gait, parseBlueprint } from '../shared/pet3d/blueprint.ts';
 import {
   BLUEPRINT_SYSTEM,
@@ -53,12 +57,14 @@ import {
 } from '../shared/pet3d/text-prompt.ts';
 import { cleanPetName, isGait, POSE_KINDS, photoPetName } from '../shared/settings.ts';
 import { CUSTOM_FOOD_COST } from '../shared/shop.ts';
+import { isRowId, KEY_COLORS, keyHex, rowOf } from '../shared/sprite-strip.ts';
 import { starterOf } from '../shared/starter-pets.ts';
 import { BG_MODEL, ensureModel, modelReady, verifiedModelUrl } from './bg-model.ts';
 import { DEPTH_MODEL, depthReady, ensureDepthModel, verifiedDepthUrl } from './depth-model.ts';
 import { devRendererUrl } from './dev-url.ts';
 import { focusWindow, showWindow } from './focus.ts';
 import {
+  type FetchLike,
   IllustError,
   type IllustErrorKind,
   type ImageKind,
@@ -73,6 +79,7 @@ import { ensureOrtWasm, ORT_WASM, ortWasmReady, verifiedOrtWasmUrl } from './ort
 import { library, spriteUrls } from './pet-library.ts';
 import { readFileIn, writeFileAtomic } from './safe-file.ts';
 import { settings } from './settings.ts';
+import { drawStrip } from './sprite-gen.ts';
 import { readStarterWalk } from './starter-copy.ts';
 import { rememberBounds, savedBounds } from './window-bounds.ts';
 
@@ -262,7 +269,11 @@ export function createMaker(
             petName: settings.get().petName,
             newPetName: newPhotoName(),
             hasPhotoPet: !!settings.get().petImage,
-            hasPose: target !== 'main' && target !== 'food' && !!settings.get().petPoses[target],
+            hasPose:
+              target !== 'main' &&
+              target !== 'food' &&
+              target !== 'sprites' &&
+              !!settings.get().petPoses[target],
             foodCost: CUSTOM_FOOD_COST,
             modelReady: modelReady() && ortWasmReady(),
             modelMB: toMb(BG_MODEL.bytes + engineBytes()),
@@ -734,7 +745,7 @@ export function createMaker(
   });
 
   ipcMain.handle(MAKER.save, (e, dataUrl: string | null, name: string, lookRaw?: unknown) => {
-    if (!fromMaker(e)) return { ok: false };
+    if (!fromMaker(e) || target === 'sprites') return { ok: false };
     // 디스크가 차거나 폴더에 쓸 수 없으면 쓰기가 던진다. 던진 채 두면 창이 "저장하는 중"에서 멈춰서 안내 글로 돌려준다
     try {
       return target === 'food' ? saveFood(dataUrl, name) : savePet(target, dataUrl, name, lookRaw);
@@ -751,7 +762,7 @@ export function createMaker(
   }
 
   function savePet(
-    to: Exclude<MakerTarget, 'food'>,
+    to: Exclude<MakerTarget, 'food' | 'sprites'>,
     dataUrl: string | null,
     name: string,
     lookRaw?: unknown,
@@ -983,6 +994,125 @@ export function createMaker(
     if (fromMaker(e)) win?.close();
   });
 
+  // 2D 그림 세트 만들기 (#89). 그림 세트는 이 그림(petImage)의 것: 만드는 사이 페어리가 바뀌면 저장하지 않는다
+  let spriteFor: string | undefined;
+  /** 개발 시험은 __jj.maker.debugSpriteFetch 로 가짜 Space 를 넣는다 (진짜 무료 횟수를 쓰지 않게) */
+  let spriteFetch: FetchLike | undefined;
+  ipcMain.handle(MAKER.spriteSource, (e): SpriteSource | undefined => {
+    if (!fromMaker(e) || target !== 'sprites') return undefined;
+    const s = settings.get();
+    spriteFor = s.petImage ?? undefined;
+    return {
+      image: s.petImage ? dataUrlOf(s.petImage) : null,
+      name: s.petName,
+      hasSprites: !!s.petSprites,
+      hfToken: hfToken.has(),
+    };
+  });
+
+  // 동작 하나 = 무료 Space 한 번. 기준 그림(지금 페어리 그림을 배경색 위에 놓은 PNG)만 보낸다. 그림, 요청문, 토큰은 기록에 남기지 않는다
+  ipcMain.handle(
+    MAKER.spriteRow,
+    async (e, rowRaw: unknown, refRaw: unknown, keyRaw: unknown): Promise<SpriteRowResult> => {
+      const failed = (kind: IllustErrorKind | 'reopen' | 'format'): SpriteRowResult => ({
+        ok: false,
+        kind,
+        error:
+          kind === 'reopen'
+            ? t('main.maker.reopen')
+            : kind === 'format'
+              ? t('main.maker.badFormat')
+              : spriteText(kind),
+      });
+      if (!fromMaker(e) || target !== 'sprites') return failed('reopen');
+      const key = KEY_COLORS.find((k) => keyHex(k) === keyRaw);
+      const row = isRowId(rowRaw) ? rowOf(rowRaw) : undefined;
+      const prefix = 'data:image/png;base64,';
+      if (!row || !key || typeof refRaw !== 'string' || !refRaw.startsWith(prefix)) return failed('format');
+      const ref = Buffer.from(refRaw.slice(prefix.length), 'base64');
+      if (kindOf(ref) !== 'png' || ref.length > MAX_PNG_BYTES || !sizeOk(ref)) return failed('format');
+      drawing?.abort();
+      const abort = new AbortController();
+      drawing = abort;
+      const started = Date.now();
+      try {
+        const r = await drawStrip(ref, row, key, {
+          fetch: spriteFetch ?? ((url, init) => net.fetch(url, init)),
+          token: hfToken.get(),
+          signal: abort.signal,
+          log,
+        });
+        log(
+          'maker',
+          'sprite row',
+          row.id,
+          `${Math.round((Date.now() - started) / 1000)}s`,
+          `${Math.round(r.bytes.length / 1024)}KB`,
+        );
+        return { ok: true, image: dataUrlFrom(r.bytes, r.kind) };
+      } catch (err) {
+        const k = err instanceof IllustError ? err.kind : 'busy';
+        log(
+          'maker',
+          'sprite row',
+          row.id,
+          k,
+          err instanceof IllustError ? '' : err instanceof Error ? err.message : String(err),
+        );
+        return failed(k);
+      } finally {
+        if (drawing === abort) drawing = undefined;
+      }
+    },
+  );
+
+  ipcMain.handle(MAKER.saveSprites, (e, raw: unknown) => {
+    if (!fromMaker(e) || target !== 'sprites') return { ok: false, error: t('main.maker.reopen') };
+    const s = settings.get();
+    if (!s.petImage || s.petImage !== spriteFor) return { ok: false, error: t('main.sprites.changed') };
+    // .fairy 가져오기와 같은 검사 (PNG 만, 한 장 512KB, 같은 크기, 합 4MB, 서기 꼭)
+    const clean = cleanSprites(raw);
+    if (!clean) return { ok: false, error: t('main.sprites.bad') };
+    try {
+      return saveSpriteSet(clean);
+    } catch (err) {
+      log('maker', 'sprites save failed', err instanceof Error ? err.message : String(err));
+      return { ok: false, error: saveErrorText(err) };
+    }
+  });
+
+  ipcMain.on(MAKER.openSprites, (e) => {
+    if (fromMaker(e) && target === 'main' && settings.get().petImage) open('sprites');
+  });
+
+  /** 검사한 그림 세트(data URL)를 pets/ 의 sprite-*.png 로 쓰고 지금 페어리 것으로. 옛 세트 파일은 쓰는 곳이 없으면 지운다 */
+  function saveSpriteSet(sprites: PetSprites) {
+    mkdirSync(petsDir(), { recursive: true });
+    const stamp = Date.now();
+    const files: PetSprites = {};
+    const written: string[] = [];
+    try {
+      for (const [name, url] of Object.entries(sprites) as [keyof PetSprites, string][]) {
+        const file = `sprite-${stamp}-${name}.png`;
+        writeFileAtomic(join(petsDir(), file), Buffer.from(url.slice(url.indexOf(',') + 1), 'base64'));
+        written.push(file);
+        files[name] = file;
+      }
+      const old = spriteFiles(settings.get().petSprites);
+      settings.set({ petSprites: files });
+      try {
+        library.cleanup(old);
+      } catch (err) {
+        log('maker', '옛 그림 세트 치우기 실패', err instanceof Error ? err.name : 'error');
+      }
+    } catch (err) {
+      for (const f of written) rmSync(join(petsDir(), f), { force: true });
+      throw err;
+    }
+    log('maker', 'sprites saved', `${written.length}`);
+    return { ok: true };
+  }
+
   // 진행 표시의 그만두기: 받는 중인 모델과 AI 에 묻는 중인 입체를 멈춘다. 멈춘 일은 각자 실패로 끝난다
   ipcMain.on(MAKER.cancel, (e) => {
     if (!fromMaker(e)) return;
@@ -1062,6 +1192,10 @@ export function createMaker(
           }
         : ai?.text;
     },
+    /** 개발용 (__jj): 2D 그림 세트 띠를 받을 가짜 fetch. undefined 면 진짜 Space 로. 설치한 앱에서는 부를 수 없다 */
+    debugSpriteFetch(fetch?: FetchLike) {
+      spriteFetch = fetch;
+    },
     /** 펫 화면의 설계도 정면 그림 (걸음새로 다시 만든 말로 만든 펫의 새 펫 그림) */
     useShot(fn: (model: Blueprint) => Promise<string | undefined>) {
       shot = fn;
@@ -1104,6 +1238,13 @@ function illustText(kind: IllustErrorKind): string {
     default:
       return t('main.illust.down');
   }
+}
+
+/** 2D 그림 세트 띠 실패 종류마다 화면 글. 무료 횟수 안내는 그림 세트 창에 맞게 (Gemini, 내 컴퓨터 길은 없다) */
+function spriteText(kind: IllustErrorKind): string {
+  if (kind === 'quota') return t(hfToken.has() ? 'main.sprites.quotaToken' : 'main.sprites.quota');
+  if (kind === 'refused') return t(hfToken.has() ? 'main.sprites.refusedToken' : 'main.sprites.refused');
+  return illustText(kind);
 }
 
 /** 내 컴퓨터에서 그리기 실패 종류마다 화면 글. 준비와 그리기에서 멈춤 글만 다르다. gb 는 이번 준비에 필요한 빈 공간 */

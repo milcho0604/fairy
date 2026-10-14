@@ -430,6 +430,11 @@ if (kind === 'maker') {
     onProgress: (listener) => {
       ipcRenderer.on(MAKER.progress, (_e, ratio: number) => listener(ratio));
     },
+    spriteSource: () => ipcRenderer.invoke(MAKER.spriteSource),
+    spriteRow: (row: string, reference: string, key: string) =>
+      ipcRenderer.invoke(MAKER.spriteRow, row, reference, key),
+    saveSprites: (sprites: Record<string, string>) => ipcRenderer.invoke(MAKER.saveSprites, sprites),
+    openSprites: () => ipcRenderer.send(MAKER.openSprites),
   };
   contextBridge.exposeInMainWorld('jjakkungMaker', maker);
 }

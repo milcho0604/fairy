@@ -197,7 +197,7 @@ export function createSettingsWindow({
     if (fromSettings(e) && typeof next === 'number') setScale(next);
   });
   ipcMain.on(SETTINGS.openMaker, (e, target: unknown) => {
-    const ok = target === 'happy' || target === 'sleepy' || target === 'hungry';
+    const ok = target === 'happy' || target === 'sleepy' || target === 'hungry' || target === 'sprites';
     if (fromSettings(e)) openMaker(ok ? target : 'main');
   });
   ipcMain.handle(SETTINGS.stats, (e): BetaReport | undefined =>
