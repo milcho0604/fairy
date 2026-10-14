@@ -121,7 +121,7 @@ export const STARTER_EYES: Record<StarterId, PhotoEyes> = {
  * 배경을 지워 한 주기를 고른다. 출처와 라이선스는 docs/tests/photo-walk/README.md.
  * 없는 캐릭터는 예전처럼 사진 한 장을 기울이며 걷는다
  */
-export const STARTER_WALK_FRAMES: Partial<Record<StarterId, number>> = { choco: 8 };
+export const STARTER_WALK_FRAMES: Partial<Record<StarterId, number>> = { choco: 8, milk: 8 };
 
 /** 걷기 그림 파일 이름 (resources/pets/ 안) */
 export const starterWalkResource = (id: StarterId, i: number): string => `${id}-walk-${i}.webp`;

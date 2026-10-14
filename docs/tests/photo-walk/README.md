@@ -1,6 +1,6 @@
 # 사진 모습 걷기 그림 (이슈 #24)
 
-`resources/pets/choco-walk-0~7.webp` 를 만든 방법, 쓴 모델과 라이선스, 검사 결과.
+`resources/pets/choco-walk-0~7.webp`, `resources/pets/milk-walk-0~7.webp` 를 만든 방법, 쓴 모델과 라이선스, 검사 결과.
 
 ## 만든 순서
 
@@ -18,11 +18,30 @@
 | 앱에서 | 시험 인스턴스에서 좌우로 걷는 모습 CDP 캡처: [오른쪽](choco-app-walk-right.webp), [왼쪽](choco-app-walk-left.webp) |
 | 영상 전체 | [choco-video-sheet.webp](choco-video-sheet.webp), 고른 8장 [choco-walk-frames.webp](choco-walk-frames.webp) |
 
-## 밀크는 넣지 않았다
+## 밀크 (2026-10-14)
 
-같은 방법으로 만든 밀크 영상은 돌아서는 데 3초 넘게 쓰고, 걷는 구간 대부분에서 머리를 돌려 얼굴(호박색 눈)이 안 보이며 몸을 웅크린다. 이음새도 이웃 장 평균의 2배(0.090 대 0.040). [milk-compare.webp](milk-compare.webp), [milk-video-sheet.webp](milk-video-sheet.webp). 다시 뽑으려 했지만 무료 사용량이 끝나 오류가 났다. 밀크는 지금처럼 사진 한 장으로 걷는다.
+초코와 같은 순서로 만들었다. 다른 점만 적는다.
 
-2026-10-13 다시 시도: 원본 `resources/pets/milk.png` 를 첫 장으로 "처음 1초 안에 일어나 몸 전체를 오른쪽으로 돌리고, 그 뒤로는 옆모습으로 머리를 들고 곧게 걷기"(웅크림, 고개 돌림을 부정 지시에) 를 보냈지만 Space 가 "ZeroGPU quota exceeded"(로그인 없는 사용량 끝)로 거절했다. LoRA 없는 5B Space(`KingNish/wan2-2-fast`)도 같은 오류였다(무료 사용량은 Space 마다가 아니라 함께 깎인다). 밀크는 여전히 넣지 않았다.
+1. 원본: `resources/pets/milk.png` 를 832x480 흰 바탕에 그대로 얹었다(크기만 바꿈).
+2. 영상: 같은 Space, 같은 설정(6단계, 5초 81장). 지시: "처음 1초 안에 일어나 몸을 오른쪽으로 돌리고, 몸은 옆모습으로 곧게 서서 걷되 고개를 살짝 이쪽으로 돌려 얼굴과 호박색 두 눈이 내내 보이게". 부정 지시에 웅크림, 낮은 몸, 고개 돌림 반복, 얼굴 숨김. seed 33.
+3. 배경 지우기: 같은 isnet.
+4. 한 주기: 영상 56~77장(24장, 1.5초)에서 3장 간격으로 8장. 다리 마스크 차이가 가장 작은 주기다. 자르기 상자는 불투명(알파 128 이상) 기준으로 잡았다. 흐린 바닥 그림자 기운까지 넣으면 발 밑에 23px 빈 줄이 생겨 앱에서 발이 그림자 위로 떠 보였다. 320x222 webp, 합계 약 113KB.
+
+| 항목 | 결과 |
+|---|---|
+| 원본과 같은 개체인가 | 흰 긴 털, 분홍 귀 안쪽, 분홍 코, 호박색 눈, 가슴 털이 유지된다. 걷는 동안 고개를 이쪽으로 돌려 얼굴이 보인다. [milk-compare.webp](milk-compare.webp), 앱 크기(160pt) 그대로 원본 옆에 8장: [milk-160.webp](milk-160.webp) |
+| 루프 이음새 | 이웃 장 차이 평균 0.126(최대 0.184), 8장째에서 1장째 0.172. 이웃 장 범위 안. 꼬리가 말렸다 펴지는 움직임이 커서 이웃 장 차이 자체가 초코보다 들쭉날쭉하다 |
+| 앱에서 | 시험 인스턴스(JJ_NO_FOCUS=1, CDP 캡처): [오른쪽](milk-app-walk-right.webp), [왼쪽](milk-app-walk-left.webp). 왼쪽은 뒤집혀서 얼굴이 그대로 이쪽을 본다 |
+| 영상 전체 | [milk-video-sheet.webp](milk-video-sheet.webp), 고른 8장 [milk-walk-frames.webp](milk-walk-frames.webp) |
+
+시도 기록:
+- 1번째(seed 21, "옆모습으로 머리 들고 곧게 걷기"): 일어나 옆으로 걷지만 걷는 구간 앞쪽은 옆얼굴(눈 하나만 살짝), 끝에서 고개를 이쪽으로 돌려 한 주기 안에서 얼굴이 바뀐다. 쓰지 않았다.
+- 2번째(위 지시, seed 33): Space 가 내용 없는 오류(`event: error`, `data: null`)를 돌려줬다.
+- 3번째(같은 요청을 queue 로 다시, 오류 문구를 보려고): 정상 완성. 이것을 썼다.
+
+### 예전에 넣지 않은 밀크 (2026-10-12, 10-13)
+
+같은 방법으로 처음 만든 밀크 영상은 돌아서는 데 3초 넘게 쓰고, 걷는 구간 대부분에서 머리를 돌려 얼굴(호박색 눈)이 안 보이며 몸을 웅크렸다. 이음새도 이웃 장 평균의 2배(0.090 대 0.040). [milk-compare-rejected.webp](milk-compare-rejected.webp), [milk-video-sheet-rejected.webp](milk-video-sheet-rejected.webp). 10-13 다시 뽑기는 "ZeroGPU quota exceeded"(로그인 없는 사용량 끝)로 거절됐다. LoRA 없는 5B Space(`KingNish/wan2-2-fast`)도 같은 오류였다(무료 사용량은 Space 마다가 아니라 함께 깎인다).
 
 ## 쓴 모델과 라이선스 (2026-10-13 원문 확인)
 
