@@ -77,7 +77,7 @@ test('할 일 넣고 보고 끝내기', () => {
   const added = text(tool('add_todo', { title: '보고서', due: '2099-01-02', important: true }));
   assert.match(added, /넣었어 \(id 1\): 보고서, 마감 2099-01-02/);
   assert.match(text(tool('list_todos', {})), /\[1\] \(중요\) 보고서 \(마감 2099-01-02\)/);
-  assert.match(text(tool('complete_todo', { id: 1 })), /끝냈어: 보고서 \(코인 15개\)/);
+  assert.match(text(tool('complete_todo', { id: 1 })), /끝냈어: 보고서 \(코인 20개\)/);
   assert.match(text(tool('complete_todo', { id: 1 })), /이미 끝낸/);
 });
 

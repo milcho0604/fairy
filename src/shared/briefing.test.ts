@@ -99,8 +99,14 @@ test('오늘 마감 알림 글: 제목은 셋까지, 나머지는 개수로', ()
   setLang('ko');
 });
 
-test('집중 길이: 코인은 5분에 1개, 50분이면 쉬기 10분', () => {
-  assert.deepEqual([15, 25, 50].map(focusCoins), [3, 5, 10]);
+test('집중 길이: 코인은 15분 5, 25분 10, 50분 25 (길수록 보너스, #76), 50분이면 쉬기 10분', () => {
+  assert.deepEqual([15, 25, 50].map(focusCoins), [5, 10, 25]);
+  // 50분 한 번이 25분 두 번보다 많다
+  assert.ok(focusCoins(50) > 2 * focusCoins(25));
+  assert.ok(focusCoins(25) > focusCoins(15) * (25 / 15));
+  // 그 사이와 바깥 (잠자기로 줄어든 집중 분도 받는다): 0 이하와 숫자 아님은 0, 길수록 늘기만 한다
+  assert.deepEqual([0, -5, Number.NaN, 1, 3, 20, 40, 60].map(focusCoins), [0, 0, 0, 0, 1, 8, 19, 31]);
+  for (let m = 1; m <= 120; m++) assert.ok(focusCoins(m) >= focusCoins(m - 1), `${m}분`);
   assert.deepEqual([15, 25, 50].map(breakFor), [5, 5, 10]);
   const s = startFocus(0, 50);
   const r = tickFocus(s, 50 * MIN);

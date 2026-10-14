@@ -44,10 +44,11 @@ import {
   routineDue,
   routineTurns,
   spanEnd,
+  weeklyCoins,
 } from '../shared/routine.ts';
 import { farewellNext, farewellText, greetText, restText } from '../shared/routine-text.ts';
 import { localDay, type TodoStore } from '../shared/todo-store.ts';
-import { weekSummary } from '../shared/week.ts';
+import { weekStart, weekSummary } from '../shared/week.ts';
 import type { SayOptions } from './pet-window.ts';
 import { createReminders } from './reminders.ts';
 import { settings } from './settings.ts';
@@ -378,6 +379,8 @@ export function createPlanner(o: PlannerOptions) {
     const first = !memo.streak;
     const streak = nextStreak(routine, memo.streak, due.day);
     const coins = meetCoins(streak, o.todos.coinCount('meet', day));
+    // 매주 선물: 그 주(월요일 시작) 첫 출석 때 한 번. 장부로 판정해 껐다 켜기, 시계 되돌리기에도 한 주 한 번
+    const weekly = weeklyCoins(coins, o.todos.coinCountFrom('weekly', weekStart(day)));
     // 오늘 예전 브리핑을 이미 했으면(오늘 처음 켠 설정) 인사만
     const withBriefing = !quiet && briefedDay !== day;
     memo = { ...memo, greeted: due.day, streak: { day: streak.day, n: streak.n } };
@@ -385,10 +388,11 @@ export function createPlanner(o: PlannerOptions) {
     store();
     if (coins > 0) {
       o.todos.reward(coins, 'meet', now);
+      o.todos.reward(weekly, 'weekly', now);
       o.onReward();
       o.onChange();
     }
-    o.log('planner', '맞이', due.arrival, streak.n, coins);
+    o.log('planner', '맞이', due.arrival, streak.n, coins, weekly);
     briefing = true;
     void o
       .say({
@@ -399,6 +403,7 @@ export function createPlanner(o: PlannerOptions) {
           first,
           streak: streak.n,
           coins,
+          weekly,
           briefing: withBriefing ? briefingBody(todayFacts(now)) : '',
           quiet,
         }),

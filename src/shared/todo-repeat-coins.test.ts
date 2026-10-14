@@ -83,8 +83,8 @@ test('다 되받았으면 다시 끝낼 때 다시 받고, 일부만 되받았�
   assert.equal(store.complete(a.id, now), COIN.todo + COIN.early);
   assert.equal(store.undo(a.id, now), COIN.todo + COIN.early);
   assert.equal(store.complete(a.id, now), COIN.todo + COIN.early, '되받은 만큼 다시 준다');
-  // 일부를 쓴다: 15 중 10 을 쓰면 되돌릴 때 5 만 되받는다
-  store.spend(10, 'toy', now);
+  // 일부를 쓴다: 20 중 15 를 쓰면 되돌릴 때 5 만 되받는다
+  store.spend(15, 'toy', now);
   assert.equal(store.undo(a.id, now), 5);
   assert.equal(store.complete(a.id, now), 5, '되받은 5 만 다시 준다');
   assert.equal(store.get(a.id)?.coins, 5);

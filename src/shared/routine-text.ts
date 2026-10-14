@@ -24,6 +24,8 @@ export interface GreetInput {
   first: boolean;
   streak: number;
   coins: number;
+  /** 매주 선물 코인 (그 주 첫 출석 때만 0 보다 크다). 만난 날 코인과 따로 한 문장 */
+  weekly?: number;
   /** 오늘 브리핑 (briefingBody). 조용히면 빈 글 */
   briefing: string;
   /** 조용히: 인사 한 줄만 */
@@ -48,6 +50,7 @@ export function greetText(g: GreetInput): string {
     if (g.streak >= 2) parts.push(voiced('routine.streak', { n: g.streak }));
     if (g.coins > 0) parts.push(voiced('routine.coins', { n: g.coins }));
   }
+  if (g.weekly && g.weekly > 0) parts.push(voiced('routine.weekly', { n: g.weekly }));
   if (g.briefing) parts.push(g.briefing);
   return parts.join(' ');
 }

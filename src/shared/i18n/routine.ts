@@ -15,6 +15,7 @@ export const ko = {
   'routine.streak': (v: { n: number }) => `${v.n}일째 만나는 중!`,
   'routine.coins': (v: { n: number }) => `만난 기념 코인 ${v.n}개!`,
   'routine.coinsBonus': (v: { days: number; n: number }) => `${v.days}일 연속 만난 기념으로 코인 ${v.n}개!`,
+  'routine.weekly': (v: { n: number }) => `이번 주 첫 만남 선물로 코인 ${v.n}개 더!`,
   'routine.cue': '시작할 시간이야! 오늘도 같이 힘내자.',
   'routine.bye.head': (v: { i: number }) =>
     one(['오늘 수고했어!', '오늘도 고생 많았어!', '오늘 하루 끝!'], v.i),
@@ -86,6 +87,7 @@ export const en: Translation<typeof ko> = {
   'routine.streak': (v: { n: number }) => `Day ${v.n} in a row!`,
   'routine.coins': (v: { n: number }) => `+${v.n} coins for showing up!`,
   'routine.coinsBonus': (v: { days: number; n: number }) => `${v.days} days in a row, so +${v.n} coins!`,
+  'routine.weekly': (v: { n: number }) => `First visit this week, so here's a +${v.n} coin gift!`,
   'routine.cue': "Time to start! Let's make today a good one.",
   'routine.bye.head': (v: { i: number }) =>
     one(['Great work today!', 'You did a lot today!', "That's a wrap!"], v.i),
