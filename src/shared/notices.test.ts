@@ -169,6 +169,7 @@ const ctx = (over: Partial<PickContext> = {}): PickContext => ({
   seen: { done: [], shownDay: {} },
   shownThisRun: new Set(),
   newerAvailable: true,
+  recommendVersion: '0.5.0',
   focusing: false,
   ...over,
 });
@@ -216,8 +217,21 @@ test('알림은 한 번, 알림과 권장은 합쳐 하루 한 번', () => {
   assert.equal(pickNotice(list, ctx({ seen, today: '2026-10-22', newerAvailable: false }))?.id, 'b');
 });
 
-test('권장은 받을 새 버전이 있을 때만', () => {
-  assert.equal(pickNotice([notice({ kind: 'update' })], ctx({ newerAvailable: false })), undefined);
+test('권장은 받을 새 버전이 있고 앱이 권장 버전보다 낮을 때만', () => {
+  const list = [notice({ kind: 'update' })];
+  assert.equal(pickNotice(list, ctx({ newerAvailable: false })), undefined);
+  assert.equal(pickNotice(list, ctx({ recommendVersion: undefined })), undefined);
+  // 앱은 0.4.3: 권장 0.4.3 과 같거나 0.4.0 보다 높으면 안 뜬다
+  assert.equal(pickNotice(list, ctx({ recommendVersion: '0.4.3' })), undefined);
+  assert.equal(pickNotice(list, ctx({ recommendVersion: '0.4.0' })), undefined);
+  assert.equal(pickNotice(list, ctx({ recommendVersion: '0.4.4' }))?.kind, 'update');
+});
+
+test('파일의 권장 버전은 x.y.z 일 때만 읽는다', () => {
+  const file = (v: unknown) => parseNotices(JSON.stringify({ version: 1, recommendVersion: v, notices: [] }));
+  assert.equal(file('0.5.0')?.recommendVersion, '0.5.0');
+  assert.equal(file('0.5')?.recommendVersion, undefined);
+  assert.equal(file(5)?.recommendVersion, undefined);
 });
 
 test('중요는 확인을 누를 때까지 켤 때마다 한 번, 하루 상한과 상관없다', () => {

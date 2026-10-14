@@ -154,13 +154,14 @@
 }
 ```
 
-- `kind`: `info`(알림, 한 번), `important`(중요, 켤 때마다 확인을 누를 때까지), `update`(업데이트 권장, 새 버전이 있을 때 하루 한 번, 나중에 가능), `force`(잠긴 동안 강제 창에 쓸 글. 잠금은 `minVersion` 이 정한다).
+- `kind`: `info`(알림, 한 번), `important`(중요, 켤 때마다 확인을 누를 때까지), `update`(업데이트 권장. 앱이 `recommendVersion` 보다 낮고 받을 새 버전이 있을 때 하루 한 번, 나중에 가능. `recommendVersion` 이 없으면 안 뜬다), `force`(잠긴 동안 강제 창에 쓸 글. 잠금은 `minVersion` 이 정한다).
 - `title`, `body` 는 ko 와 en 둘 다, 글자만(HTML 아님). 제목 80자, 본문 1000자까지. `id` 는 영문, 숫자, `.`, `_`, `-` 로 80자까지.
 - 알림과 권장은 합쳐 하루 한 번까지, 집중 중에는 강제 말고 미룬다. 한 번에 하나, 중요, 권장, 알림 순.
 - 이미 닫은 알림은 다시 안 뜬다. 고칠 때는 새 `id` 로 올린다.
 - `link` 는 `https://fairy.moilga.com` 과 `https://github.com/milcho0604/` 아래만 남고 나머지는 버린다(공지는 남는다).
 - `versions` 는 `<0.5.0`, `>=0.4.0 <0.5.0`, `0.4.3` 처럼. `platforms` 는 `darwin`, `win32`, `linux`. 비우면 모두.
 - 깨진 공지, 모르는 `kind` 는 그것만 버린다. 파일이 JSON 이 아니거나 64KB 를 넘거나 `version` 이 1 이 아니면 아무것도 띄우지 않고 잠그지도 않는다.
+- `recommendVersion` 은 권장 버전이다. 이보다 낮은 앱에 `update` 공지를 띄우고 잠그지는 않는다. 보통 `minVersion` 보다 높게 둔다.
 - `minVersion` 은 10초 간격으로 두 번 받아 같아야 쓰고, 최신 릴리스보다 높으면 무시, 못 받으면(오프라인) 잠그지 않는다. 내리려면 줄을 지운다.
 - 시험: `npm run build && OUT=<폴더> LANG_UNDER_TEST=ko node scripts/dev/notices.mjs` (이 컴퓨터 http 서버로 공지와 릴리스를 내주고 종류 넷을 찍는다, `scripts/dev/README.md`).
 

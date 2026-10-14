@@ -41,6 +41,8 @@ export interface Notice {
 export interface NoticeFile {
   /** 이보다 낮은 앱은 잠근다. 다만 최신 릴리스 이하일 때만 쓴다 (update-policy.ts pickMinVersion) */
   minVersion?: string;
+  /** 이보다 낮은 앱에 업데이트 권장 공지를 띄운다 (잠그지는 않는다) */
+  recommendVersion?: string;
   notices: Notice[];
 }
 
@@ -199,6 +201,8 @@ export function parseNotices(text: unknown): NoticeFile | undefined {
   }
   const file: NoticeFile = { notices };
   if (typeof r.minVersion === 'string' && VERSION.test(r.minVersion)) file.minVersion = r.minVersion;
+  if (typeof r.recommendVersion === 'string' && VERSION.test(r.recommendVersion))
+    file.recommendVersion = r.recommendVersion;
   return file;
 }
 
@@ -257,6 +261,8 @@ export interface PickContext extends NoticeTarget {
   shownThisRun: ReadonlySet<string>;
   /** 업데이트 확인이 새 버전을 찾았는지. 없으면 권장 공지를 띄우지 않는다 (받을 것이 없다) */
   newerAvailable: boolean;
+  /** 공지 파일의 권장 버전. 앱이 이보다 낮을 때만 권장 공지를 띄운다. 없으면 권장 공지를 띄우지 않는다 */
+  recommendVersion?: string;
   /** 집중 중이면 강제 말고는 끝난 뒤로 미룬다 */
   focusing: boolean;
 }
@@ -272,9 +278,11 @@ export function pickNotice(notices: readonly Notice[], ctx: PickContext): Notice
   const important = notices.find((n) => n.kind === 'important' && ok(n) && !ctx.seen.done.includes(n.id));
   if (important) return important;
   if (!dailyLeft) return undefined;
-  const update = ctx.newerAvailable
-    ? notices.find((n) => n.kind === 'update' && ok(n) && ctx.seen.shownDay[n.id] !== ctx.today)
-    : undefined;
+  const below = !!ctx.recommendVersion && isNewer(ctx.recommendVersion, ctx.version);
+  const update =
+    ctx.newerAvailable && below
+      ? notices.find((n) => n.kind === 'update' && ok(n) && ctx.seen.shownDay[n.id] !== ctx.today)
+      : undefined;
   if (update) return update;
   return notices.find((n) => n.kind === 'info' && ok(n) && !ctx.seen.done.includes(n.id));
 }

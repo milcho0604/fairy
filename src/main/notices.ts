@@ -192,6 +192,7 @@ export function watchNotices(o: {
       seen,
       shownThisRun,
       newerAvailable: o.newerAvailable(),
+      recommendVersion: file.recommendVersion,
       focusing: o.focusing(),
     });
     if (!n) return;
