@@ -1,7 +1,8 @@
 # 페어리 서버 밖 감시: 10분마다 https://fairy-api.moilga.com/health. 맥미니 전체가 꺼진 경우를 잡는다
 # (맥미니 안의 fairy-monitor.sh 는 맥미니가 꺼지면 같이 꺼진다).
-# 세 번 시도해도 실패하면 private 레포 milcho0604/fairy-alerts 에 이슈를 열고, 되살아나면 닫는다.
-# 변수 FAIRY_API_LIVE=true (터널 연결 뒤)와 시크릿 ALERTS_TOKEN (fairy-alerts 이슈 쓰기 권한만 가진 토큰)이 있어야 돈다.
+# 세 번 시도해도 실패하면 이 레포에 uptime-down 이슈를 열고, 되살아나면 닫는다 (모일까 daypoll uptime.yml 과 같은 방식).
+# 자세한 장애 이력은 맥미니 안 감시가 private 레포 milcho0604/fairy-alerts 에 쓴다.
+# 공개 레포 Actions 라 무료, 기본 GITHUB_TOKEN 만 쓴다. 변수 FAIRY_API_LIVE=true (터널 연결 뒤)일 때만 돈다.
 name: server-uptime
 
 on:
@@ -10,7 +11,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  issues: write
 
 concurrency:
   group: server-uptime
@@ -23,8 +24,6 @@ jobs:
     timeout-minutes: 5
     env:
       URL: https://fairy-api.moilga.com/health
-      ALERTS_REPO: milcho0604/fairy-alerts
-      HAS_TOKEN: ${{ secrets.ALERTS_TOKEN != '' }}
     steps:
       - id: ping
         run: |
@@ -36,20 +35,15 @@ jobs:
           done
           echo "code=$code" >> "$GITHUB_OUTPUT"
           [ "$code" = 200 ] && echo "ok=true" >> "$GITHUB_OUTPUT" || echo "ok=false" >> "$GITHUB_OUTPUT"
-      - name: 알림 토큰 확인
-        if: env.HAS_TOKEN != 'true'
-        run: echo "::warning::ALERTS_TOKEN 이 없어 fairy-alerts 에 이슈를 쓰지 못한다 (상태 ${{ steps.ping.outputs.code }})"
       - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        if: env.HAS_TOKEN == 'true'
         env:
           OK: ${{ steps.ping.outputs.ok }}
           CODE: ${{ steps.ping.outputs.code }}
         with:
-          github-token: ${{ secrets.ALERTS_TOKEN }}
           script: |
-            const [owner, repo] = process.env.ALERTS_REPO.split('/');
+            const { owner, repo } = context.repo;
             const label = 'uptime-down';
-            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const run = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
             const now = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
             const open = await github.paginate(github.rest.issues.listForRepo, { owner, repo, state: 'open', labels: label });
             if (process.env.OK === 'true') {
@@ -69,7 +63,7 @@ jobs:
               body: [
                 `GitHub Actions 가 밖에서 ${process.env.URL} 을 세 번 시도했지만 200 이 아니었습니다 (상태 ${process.env.CODE}).`,
                 '',
-                '맥미니 안의 감시(fairy-monitor)가 같은 때 이슈를 열지 않았다면 맥미니 자체, 전기, 집 인터넷, cloudflared 를 먼저 보세요.',
+                '맥미니 안 감시(private fairy-alerts)에 같은 때 이슈가 없다면 맥미니 자체, 전기, 집 인터넷, cloudflared 를 먼저 보세요.',
                 '',
                 '- `docker ps -a --filter name=fairy-`',
                 '- `curl -s http://127.0.0.1:3002/health`',
