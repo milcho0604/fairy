@@ -199,7 +199,12 @@ export function createServer(o: {
   });
 
   const ok = (e: IpcMainInvokeEvent) => o.isSettings(e.sender);
-  ipcMain.handle(SERVER.status, (e) => (ok(e) ? core.status() : undefined));
+  ipcMain.handle(SERVER.status, (e) => {
+    if (!ok(e)) return undefined;
+    // 설정 창을 열 때 로그인 서비스와 기능 키를 다시 묻는다 (운영자가 바꾼 스위치, 바뀌면 상태를 다시 보낸다)
+    void core.refreshProviders().catch(() => undefined);
+    return core.status();
+  });
   ipcMain.handle(SERVER.setAge, (e, age: unknown, nickname: unknown) =>
     ok(e) ? core.setAge(age, nickname) : undefined,
   );

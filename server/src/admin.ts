@@ -915,7 +915,8 @@ function secure(res: AdminRes) {
   );
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Referrer-Policy', 'no-referrer');
+  // no-referrer 면 Chromium 이 같은 곳의 폼 POST 에도 Origin: null 을 보내 로그인이 막혔다 (QA #112). 같은 곳에만 보낸다
+  res.setHeader('Referrer-Policy', 'same-origin');
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
   res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
@@ -933,11 +934,17 @@ const header = (req: AdminReq, name: string): string | undefined => {
   return Array.isArray(v) ? v[0] : v;
 };
 
-/** 다른 사이트에서 온 요청은 받지 않는다 (SameSite 쿠키와 CSRF 토큰 위에 한 겹 더) */
-function sameOrigin(req: AdminReq, publicUrl: string): boolean {
+/**
+ * 다른 사이트에서 온 요청은 받지 않는다 (SameSite 쿠키와 CSRF 토큰 위에 한 겹 더. CSRF 토큰은 따로 늘 본다).
+ * - Origin 이 있으면 그것이 이 서버여야 한다
+ * - Origin 이 "null" 이면(브라우저가 출처를 숨김) Sec-Fetch-Site 가 same-origin 이어야 한다
+ * - Origin 이 없으면(브라우저 밖 도구) Sec-Fetch-Site 가 없거나 same-origin, none 이어야 한다
+ */
+export function sameOrigin(req: AdminReq, publicUrl: string): boolean {
   const origin = header(req, 'origin');
-  if (origin !== undefined && origin !== new URL(publicUrl).origin) return false;
   const site = header(req, 'sec-fetch-site');
+  if (origin === 'null') return site === 'same-origin';
+  if (origin !== undefined && origin !== new URL(publicUrl).origin) return false;
   return site === undefined || site === 'same-origin' || site === 'none';
 }
 

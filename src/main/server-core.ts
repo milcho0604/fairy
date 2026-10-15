@@ -238,8 +238,11 @@ export interface ServerCoreDeps {
 }
 
 const b64url = (b: Uint8Array) => Buffer.from(b).toString('base64url');
-/** 서버에 로그인 서비스 목록을 다시 묻는 간격 (기능 키가 바뀌면 이 안에 단추가 바뀐다) */
-const PROVIDERS_EVERY_MS = 30 * 60_000;
+/**
+ * 로그인 서비스와 기능 키를 다시 묻는 가장 짧은 간격. 맞추기마다(몇 분), "지금 맞추기", 설정 창을 열 때 묻는다:
+ * 운영자가 바꾼 스위치가 다음 맞추기에 보이게 (QA #112). 설정 창 칸 여럿이 한꺼번에 열어도 한 번만
+ */
+export const PROVIDERS_EVERY_MS = 5_000;
 
 export function createServerCore(d: ServerCoreDeps) {
   const random = d.random ?? ((n: number) => randomBytes(n));
@@ -687,8 +690,9 @@ export function createServerCore(d: ServerCoreDeps) {
   async function refreshProviders(force = false): Promise<void> {
     const t = token();
     if (!d.api || !allowed()) return;
-    // 맞추기마다 묻지 않는다: 처음, 로그인이 바뀐 뒤(force), 그 밖은 30분에 한 번
+    // 바로 앞(5초 안)에 물었으면 건너뛴다. 로그인이 바뀐 뒤는 force
     if (!force && providers && d.now() - providersAt < PROVIDERS_EVERY_MS) return;
+    const before = JSON.stringify([providers, features]);
     const r = await d.api.providers(t);
     if (r.ok) {
       providers = r.data;
@@ -697,6 +701,8 @@ export function createServerCore(d: ServerCoreDeps) {
     const f = await d.api.features(t);
     if (f.ok) features = f.data;
     else d.log('server', '기능 키를 못 받음', f.status, f.error);
+    // 바뀌었으면 설정 창에 바로 (맞추기 밖에서 불렸을 때: 설정 창을 열 때)
+    if (JSON.stringify([providers, features]) !== before) changed();
   }
 
   // ---- 서버 백업 (#102, 기획서 7절) ----
@@ -733,15 +739,17 @@ export function createServerCore(d: ServerCoreDeps) {
     if (backupBusy) return { ok: false, error: 'busy', status: status() };
     backupBusy = kind;
     changed();
+    let out: ServerBackupResult;
     try {
-      return { ...(await fn(s)), status: status() };
+      out = await fn(s);
     } catch (err) {
       d.log('server', '서버 백업 오류', err instanceof Error ? err.message : String(err));
-      return { ok: false, error: 'failed', status: status() };
-    } finally {
-      backupBusy = null;
-      changed();
+      out = { ok: false, error: 'failed' };
     }
+    // busy 를 푼 뒤의 상태를 돌려준다 (QA #112: 푸기 전 상태를 돌려줘 화면이 "받는 중"에 멈췄다)
+    backupBusy = null;
+    changed();
+    return { ...out, status: status() };
   }
 
   /** 서버에 백업 올리기: 따로 동의한 뒤에만. 개인 백업 파일과 같은 것을 만든다 */

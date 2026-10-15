@@ -1043,11 +1043,20 @@ test('로그인 서비스는 서버가 알려 준 것만: 카카오는 목록에
   assert.deepEqual(x.server.begins, [{ service: 'kakao', auth: googleSession }]);
   assert.equal(new URL(x.opened.at(-1) ?? '').host, 'kauth.example');
   assert.deepEqual(x.core.status().logins, ['google', 'kakao']);
-  // 맞추기마다 묻지 않는다 (30분에 한 번)
+  // 맞추기마다 다시 묻는다 (운영자가 바꾼 스위치가 다음 맞추기에 보이게). 5초 안의 연달은 맞추기는 한 번만
   const n = x.server.providerCalls;
   await x.core.run();
   await x.core.run();
-  assert.equal(x.server.providerCalls, n + 1, '로그인 뒤 처음 맞추기에서 한 번');
+  assert.equal(x.server.providerCalls, n + 1, '5초 안에는 한 번');
+  x.tick(6_000);
+  x.server.providers = { login: ['google'], link: ['google'] };
+  await x.core.run();
+  assert.equal(x.server.providerCalls, n + 2);
+  assert.deepEqual(
+    x.core.status().providers?.link,
+    ['google'],
+    '운영자가 끈 카카오가 다음 맞추기에 사라진다',
+  );
   await x.core.logout();
   assert.deepEqual(x.core.status().logins, []);
 });
@@ -1150,4 +1159,24 @@ test('서버 백업: 전체 상한이면 full, 로그아웃과 탈퇴하면 동�
   x.core.agreeBackup(true);
   await x.core.remove();
   assert.equal(x.saved()?.backupAgreed, false, '탈퇴하면 동의를 거둔다');
+});
+
+test('서버 백업: 올리기와 받기가 끝나 돌려준 상태는 busy 가 풀린 것이다 (QA #112: 화면이 "받는 중"에 멈춤)', async () => {
+  const x = setup({ coins: 10 });
+  x.core.setAge('adult');
+  await x.core.run();
+  x.setLoop({ kind: 'code', code: 'g' });
+  await x.core.login();
+  x.core.agreeBackup(true);
+  const up = await x.core.backupUpload();
+  assert.equal(up.ok, true);
+  assert.equal(up.status?.backup?.busy, null);
+  const id = up.status?.backup?.list?.[0]?.id ?? 0;
+  const down = await x.core.backupDownload(id);
+  assert.equal(down.ok, true);
+  assert.equal(down.status?.backup?.busy, null);
+  x.server.down = true;
+  const fail = await x.core.backupUpload();
+  assert.equal(fail.error, 'offline');
+  assert.equal(fail.status?.backup?.busy, null);
 });

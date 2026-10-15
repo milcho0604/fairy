@@ -17,7 +17,7 @@ export const ko = {
   'server.off': '서버 모드가 꺼져 있어. 다시 켜면 지금 코인과 산 물건을 서버로 한 번 옮겨.',
   'server.turnOn': '서버 모드 켜기',
   'server.what':
-    '서버에는 나이 구분, 닉네임, 코인과 산 물건 기록, 쪽지함이 가. 구글로 로그인하면 구글 계정 고유 번호(sub)만, 채팅 이용권을 쓰면 질문 글이 가(서버는 저장하지 않아). 이름, 이메일, 할 일은 보내지 않아.',
+    '서버에는 나이 구분, 닉네임, 코인과 산 물건 기록, 쪽지함이 가. 구글이나 카카오 계정으로 로그인하면 그 계정을 알아보는 번호(구글 계정 번호, 카카오 회원번호)만, 채팅 이용권을 쓰면 질문 글이 가(서버는 저장하지 않아). 이름, 이메일, 할 일은 보내지 않아.',
   'server.balance': '서버 코인 {n}',
   'server.balanceNone': '서버 코인을 아직 못 받았어',
   'server.lastSync': '{time}에 맞춤',
@@ -151,7 +151,7 @@ export const en: Translation<typeof ko> = {
   'server.off': 'Server mode is off. Turning it on moves your current coins and items to the server once.',
   'server.turnOn': 'Turn on server mode',
   'server.what':
-    "The server gets your age group, nickname, coin and item records, and note box. If you sign in with Google, only the account identifier (sub); if you use chat passes, your question text (the server doesn't store it). No name, email or to-dos.",
+    "The server gets your age group, nickname, coin and item records, and note box. If you sign in with Google or Kakao, only the number that identifies that account (Google account number, Kakao member number); if you use chat passes, your question text (the server doesn't store it). No name, email or to-dos.",
   'server.balance': 'Server coins {n}',
   'server.balanceNone': 'No server coins yet',
   'server.lastSync': 'synced {time}',
