@@ -1,0 +1,36 @@
+{
+  "name": "fairy-server",
+  "private": true,
+  "version": "0.0.0",
+  "description": "페어리 서버: 계정, 서버 코인, AI 대화권, 운영자 이벤트 (docs/server-plan.md)",
+  "license": "MIT",
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "migrate": "node scripts/migrate.mjs",
+    "start": "node scripts/migrate.mjs && node dist/main.js",
+    "test": "tsc -p tsconfig.json && node --test \"dist-test/src/**/*.test.js\"",
+    "test:integration": "tsc -p tsconfig.json && node --test --test-concurrency=1 \"dist-test/test/**/*.test.js\"",
+    "check": "npm run lint && npm run typecheck && npm test"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.2.7",
+    "@nestjs/core": "^11.2.7",
+    "@nestjs/platform-express": "^11.2.7",
+    "pg": "^8.23.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
+    "@types/node": "^24.19.2",
+    "@types/pg": "^8.23.1",
+    "typescript": "^5.9.3"
+  }
+}

@@ -38,6 +38,8 @@ export default defineConfig({
       __JJ_APP_VERSION__: JSON.stringify(pkgVersion),
       __JJ_GOOGLE_CLIENT_ID__: JSON.stringify(process.env.JJ_GOOGLE_CLIENT_ID ?? ''),
       __JJ_GOOGLE_CLIENT_SECRET__: JSON.stringify(process.env.JJ_GOOGLE_CLIENT_SECRET ?? ''),
+      // 페어리 서버 주소 (docs/server-plan.md). 없으면 빈 글 (서버 기능이 모두 꺼진 채로 앱이 돈다)
+      __JJ_SERVER_URL__: JSON.stringify(process.env.JJ_SERVER_URL ?? ''),
     },
     // 펫 MCP 서버(v1)를 따로 낸다. AI 도구가 짝꿍 실행 파일을 Node 로 돌려 이 파일을 연다.
     build: {

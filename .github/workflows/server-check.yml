@@ -1,0 +1,40 @@
+# 페어리 서버(server/) 검사: 린트, 타입, 단위 시험, 시험용 Postgres 컨테이너로 통합 시험, 이미지 빌드.
+# 앱 검사(check.yml)는 server/ 만 바뀐 것을 돌지 않는다. 시크릿은 쓰지 않는다.
+name: server-check
+
+on:
+  push:
+    branches: [main]
+    paths: ['server/**', '.github/workflows/server-*.yml']
+  pull_request:
+    paths: ['server/**', '.github/workflows/server-*.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: server-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npm run test:integration
+      - run: docker build -t fairy-api:ci .
+      - name: 배포 스크립트 문법
+        run: bash -n ops/deploy.sh && bash -n ops/fairy-monitor.sh && bash -n ops/install-monitor.sh
