@@ -1,11 +1,17 @@
 import { resolve } from 'node:path';
 import { app } from 'electron';
 import { backupFileFromArgv, isBackupFileName } from '../shared/backup-file.ts';
-import { isPetFileName, petFileFromArgv, URL_SCHEMES, urlFromArgv } from '../shared/url-scheme.ts';
+import {
+  isImportFileName,
+  isZipFileName,
+  petFileFromArgv,
+  URL_SCHEMES,
+  urlFromArgv,
+} from '../shared/url-scheme.ts';
 
 /**
  * 밖에서 페어리에 넘겨주는 것: fairy:// 주소(단축어, Raycast 등, 예전 jjakkung:// 도)와 .fairy 파일(두 번 눌러 열기, 예전 .jjpet 도),
- * 백업 파일 .fairybackup (두 번 눌러 복원, 이슈 #90).
+ * Codex 펫 파일(.codex-pet.zip, 맥은 zip 을 "다음으로 열기" 로 고른 것도), 백업 파일 .fairybackup (두 번 눌러 복원, 이슈 #90).
  * - 맥: open-url, open-file 사건. 앱이 꺼져 있다가 이것으로 켜지면 ready 전에 오므로 이 파일을 불러올 때 바로 듣고 모아 둔다
  * - 윈도우, 리눅스: 명령줄 인자. 처음 켤 때는 process.argv, 이미 떠 있으면 second-instance 의 argv
  * 받는 쪽(index.ts)이 준비되면 start 로 넘겨 모아 둔 것을 차례로 처리한다.
@@ -54,7 +60,8 @@ export function listenEarly(): void {
   });
   app.on('open-file', (e, path) => {
     e.preventDefault();
-    if (isPetFileName(path)) deliver({ kind: 'petFile', path });
+    // zip 은 맥에서 "다음으로 열기" 목록에만 올린다(electron-builder.yml, 기본 앱은 그대로). 고른 zip 은 안을 보고 판단한다
+    if (isImportFileName(path) || isZipFileName(path)) deliver({ kind: 'petFile', path });
     else if (isBackupFileName(path)) deliver({ kind: 'backupFile', path });
   });
 }

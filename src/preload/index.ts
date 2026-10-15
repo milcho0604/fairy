@@ -248,6 +248,7 @@ if (kind === 'settings') {
     reveal: (path: string) => ipcRenderer.send(SETTINGS.reveal, path),
     importPet: () => ipcRenderer.invoke(SETTINGS.importPet),
     importFriend: () => ipcRenderer.invoke(SETTINGS.importFriend),
+    importPetDrop: (name, bytes) => ipcRenderer.invoke(SETTINGS.importPetDrop, name, bytes),
     galleryList: () => ipcRenderer.invoke(SETTINGS.galleryList),
     galleryAdopt: (id, asFriend) => ipcRenderer.invoke(SETTINGS.galleryAdopt, id, asFriend),
     galleryShare: (meta) => ipcRenderer.invoke(SETTINGS.galleryShare, meta),

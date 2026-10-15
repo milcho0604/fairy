@@ -631,6 +631,21 @@ test('개인 용도 페어리 표시(petPersonal): 설계도 펫에만, 켠 것�
   assert.equal(isPersonalPet(DEFAULT_SETTINGS), false);
 });
 
+test('개인 용도 표시는 그림 파일 열쇠도 받는다 (설계도 없는 Codex 펫, 이슈 #88)', () => {
+  const s = parseSettings({
+    petImage: 'pet-1.png',
+    petLibrary: [{ id: 'p-a', name: '구름', image: 'pet-2.png', poses: {} }],
+    friends: [{ id: 'f-a', name: '친구', kind: 'kong', image: 'pet-3.png' }],
+    petPersonal: { 'pet-1.png': true, 'pet-2.png': true, 'pet-3.png': true, 'pet-9.png': true },
+  });
+  assert.deepEqual(s.petPersonal, { 'pet-1.png': true, 'pet-2.png': true, 'pet-3.png': true });
+  assert.equal(isPersonalPet(s), true);
+  // 나중에 입체 몸을 만들어도(설계도가 생겨도) 그림이 같으면 표시가 남는다
+  assert.equal(isPersonalPet(applyPatch(s, { petModel: 'model-1.json' })), true);
+  // 다른 그림이면 아니다
+  assert.equal(isPersonalPet(applyPatch(s, { petImage: 'pet-4.png' })), false);
+});
+
 test('말로 만든 처음 글(petTexts): 설계도 펫에만, 글만, 없던 판의 설정은 빈 칸으로', () => {
   const s = parseSettings({
     petImage: 'pet-1.png',

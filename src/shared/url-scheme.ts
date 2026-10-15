@@ -150,9 +150,21 @@ export const isPetFileName = (name: string): boolean => {
   return low.endsWith(PET_FILE_EXT) || low.endsWith(LEGACY_PET_FILE_EXT);
 };
 
+/** Codex 펫 파일 확장자 (Codex 앱의 펫 묶음 zip, shared/codex-pet.ts) */
+export const CODEX_PET_EXT = '.codex-pet.zip';
+/** Codex 펫 파일로 읽을 이름인지 (.codex-pet.zip, 대소문자 무시) */
+export const isCodexPetFileName = (name: string): boolean => name.toLowerCase().endsWith(CODEX_PET_EXT);
+/** 가져오기로 받는 파일 이름인지 (페어리 파일과 Codex 펫 파일). 끌어 놓기, 명령줄 */
+export const isImportFileName = (name: string): boolean => isPetFileName(name) || isCodexPetFileName(name);
+/**
+ * zip 이면 Codex 펫 파일로 읽는다 (가져오기 창에서 고른 것, 맥 "다음으로 열기"). 이름이 .codex-pet.zip 이 아니어도
+ * 사용자가 페어리로 열겠다고 고른 것이라 안을 보고 판단한다
+ */
+export const isZipFileName = (name: string): boolean => name.toLowerCase().endsWith('.zip');
+
 /**
  * 명령줄에서 페어리 파일 경로 (파일 연결로 두 번 눌러 연 것). 첫 인자(실행 파일)와 스위치는 빼고,
- * 확장자가 정확히 .fairy 나 .jjpet 인 것만. 읽기와 검사는 페어리 가져오기(backup.ts importPet)가 한다
+ * 확장자가 정확히 .fairy 나 .jjpet, .codex-pet.zip 인 것만. 읽기와 검사는 페어리 가져오기(backup.ts importPet)가 한다
  */
 export function petFileFromArgv(argv: readonly string[]): string | undefined {
   return argv
@@ -163,7 +175,7 @@ export function petFileFromArgv(argv: readonly string[]): string | undefined {
         !a.startsWith('-') &&
         a.length < 4096 &&
         !a.includes('\0') &&
-        isPetFileName(a),
+        isImportFileName(a),
     );
 }
 
