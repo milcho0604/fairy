@@ -20,6 +20,8 @@ const LANG = process.env.LANG_UNDER_TEST === 'en' ? 'en' : 'ko';
 const INSPECT = Number(process.env.JJ_INSPECT_PORT ?? 9861);
 const PAGE = Number(process.env.JJ_PAGE_PORT ?? 9862);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** CDP 부름 하나의 상한. 가장 긴 refresh 가 두 번 받기(10초)와 받기 상한(20초씩)이라 넉넉히 */
+const SEND_MS = 90_000;
 mkdirSync(OUT, { recursive: true });
 
 // ---- 가짜 홈페이지와 릴리스 ----
@@ -149,17 +151,34 @@ async function connect(url) {
     ws.onerror = j;
   });
   let id = 0;
-  const send = (method, params = {}) =>
-    new Promise((r) => {
+  // 답이 안 오면 무한정 기다리지 않는다 (앱이 죽어 연결이 끊기거나 약속이 끝나지 않을 때). 무엇을 부르다 멈췄는지 남긴다
+  const send = (method, params = {}, ms = SEND_MS) =>
+    new Promise((r, j) => {
       const i = ++id;
+      const what = `${method} ${String(params.expression ?? '').slice(0, 80)}`;
+      const done = () => {
+        clearTimeout(timer);
+        ws.removeEventListener('message', h);
+        ws.removeEventListener('close', closed);
+      };
       const h = (e) => {
         const m = JSON.parse(e.data);
         if (m.id === i) {
-          ws.removeEventListener('message', h);
+          done();
           r(m);
         }
       };
+      const closed = () => {
+        done();
+        j(new Error(`CDP 연결 끊김: ${what}`));
+      };
+      const timer = setTimeout(() => {
+        done();
+        j(new Error(`CDP 답 없음 ${ms / 1000}초: ${what}`));
+      }, ms);
       ws.addEventListener('message', h);
+      ws.addEventListener('close', closed);
+      if (ws.readyState !== WebSocket.OPEN) return closed();
       ws.send(JSON.stringify({ id: i, method, params }));
     });
   return { ws, send };
@@ -285,9 +304,9 @@ try {
     p.close();
   }
 
-  // 3. 업데이트 권장: 받을 새 버전이 있어야 뜬다
+  // 3. 업데이트 권장: 앱이 권장 버전보다 낮고 받을 새 버전이 있어야 뜬다
   await main('__jj.notices.debugForget()');
-  state.notices = { version: 1, notices: [NOTICES.update] };
+  state.notices = { version: 1, recommendVersion: '0.5.0', notices: [NOTICES.update] };
   await main('__jj.notices.refresh()');
   await sleep(1000);
   check('권장: 새 버전을 모르면 안 뜸', (await current()) === null);
@@ -336,10 +355,11 @@ try {
     await sleep(800);
     check('강제: 닫으려 해도 남음', (await current())?.kind === 'force');
     check('강제: 잠금 저장(update-lock.json)', JSON.parse(readFileSync(join(data, 'update-lock.json'), 'utf8')).minVersion === '0.4.4');
-    // 백업 만들기 길: 설정 데이터 탭의 내보내기 단추가 살아 있다 (누르면 폴더 고르기 창이 떠서 누르지는 않는다)
+    // 백업 만들기 길: 설정 데이터 탭의 백업 파일 만들기 단추가 살아 있다 (누르면 저장 창이 떠서 누르지는 않는다).
+    // 글은 i18n settings.export 와 같아야 한다 (#92 에서 "내보내기"가 "백업 파일 만들기"로 바뀌었다)
     await main("__jj.settingsWindow.open('data')");
     const sp = await page('settings');
-    const label = LANG === 'ko' ? '내보내기' : 'Export';
+    const label = LANG === 'ko' ? '백업 파일 만들기' : 'Create backup file';
     const find = `[...document.querySelectorAll('button')].filter((b) => b.textContent === ${JSON.stringify(label)})`;
     await until('데이터 탭', async () => (await sp.ev(`${find}.length`)) > 0);
     const exp = await sp.ev(`JSON.stringify(${find}.map((b) => ({ t: b.textContent, d: b.disabled })))`);
@@ -437,6 +457,13 @@ if (!appExited) {
   if (!appExited) app.kill('SIGKILL');
 }
 server.close();
+// 실패하면 앱 기록 끝부분을 남긴다 (시험 폴더는 곧 지운다)
+if (failed || results.some((r) => !r.ok)) {
+  try {
+    const lines = readFileSync(join(data, 'logs', 'main.log'), 'utf8').trimEnd().split('\n');
+    console.log(`---- 앱 기록 끝 ----\n${lines.slice(-40).join('\n')}`);
+  } catch {}
+}
 for (let i = 0; i < 3; i++) {
   await sleep(1000);
   rmSync(scratch, { recursive: true, force: true });
