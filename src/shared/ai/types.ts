@@ -44,7 +44,9 @@ export type AiErrorKind =
   | 'cancelled'
   | 'failed'
   /** 무료 AI 모델을 아직 안 받음 (v2). 화면이 받기 단추를 보여 준다 */
-  | 'needs-model';
+  | 'needs-model'
+  /** 대화권을 다 썼다 (#100). 화면이 내 컴퓨터 AI 로 다시 묻기 단추를 보여 준다 */
+  | 'no-tickets';
 
 export interface AiError {
   kind: AiErrorKind;

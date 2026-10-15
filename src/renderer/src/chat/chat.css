@@ -1187,3 +1187,86 @@ header .picker {
   margin: 4px 4px 0 0;
   white-space: nowrap;
 }
+
+/* AI 대화권 머리 줄 (#100): "AI 와 대화 중" 은 늘 보인다 */
+.ticket-bar {
+  display: grid;
+  gap: 4px;
+  padding: 6px 12px 8px;
+  border-bottom: 1px solid var(--line);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.ticket-bar p {
+  margin: 0;
+}
+
+.ticket-ai {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink);
+}
+
+.ticket-badge {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 16px;
+}
+
+.ticket-notice {
+  display: grid;
+  gap: 6px;
+  margin-top: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  line-height: 1.5;
+}
+
+.ticket-notice button {
+  justify-self: start;
+}
+
+.ticket-report-open {
+  align-self: flex-start;
+  margin-top: 14px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.ticket-report-open:hover {
+  color: var(--accent);
+}
+
+.ticket-report {
+  margin-top: 12px;
+  font-size: 12px;
+}
+
+.ticket-report p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.ticket-report-done {
+  margin: 12px 0 0;
+  font-size: 11.5px;
+  color: var(--ok);
+}
+
+.ticket-report-done.failed {
+  color: var(--warn);
+}

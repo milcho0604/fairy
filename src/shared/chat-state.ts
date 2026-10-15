@@ -41,6 +41,8 @@ export interface ChatState {
   knowsTodos?: boolean;
   /** 무료 AI 모델 받기 (v2): 받는 중이면 진행률(0~100), 실패하면 failed 와 안내 글(오류 원문이 아니다) */
   modelDownload?: { pct: number; failed?: boolean; message?: string };
+  /** AI 대화권 (#100, 쓸 수 있을 때만): 남은 수(아직 모르면 null)와 국외 이전 안내를 읽었는지. 파일에 남기지 않는다 */
+  ticket?: { tickets: number | null; agreed: boolean };
 }
 
 /** 대화가 이만큼 길어지면 새 대화를 권한다. 이어갈수록 입력 토큰이 쌓인다(L8: codex 2번째에 54K). */

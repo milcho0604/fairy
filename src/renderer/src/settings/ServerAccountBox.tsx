@@ -264,6 +264,8 @@ export function ServerAccountBox({ flash }: { flash: (message: string, error?: b
         ) : s.signedIn ? (
           <>
             <small>{t('server.signedIn')}</small>
+            {/* AI 대화권 (#100): 만 18세 이상 로그인일 때만. 14~17 이나 서버 주소가 없으면 보이지 않는다 */}
+            {s.ai && s.tickets !== null && <small>{t('ticket.settings', { n: s.tickets })}</small>}
             <div className="action-row">
               <button
                 type="button"

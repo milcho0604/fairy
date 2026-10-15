@@ -16,6 +16,8 @@ import {
   type CustomProviderInput,
   customProvider,
   type ProviderSpec,
+  TICKET_PROVIDER,
+  TICKET_PROVIDER_ID,
 } from '../shared/ai/providers.ts';
 import { type Exchange, withHistory } from '../shared/ai/text.ts';
 import type { AiEvent, AiProvider, ImageAttachment } from '../shared/ai/types.ts';
@@ -55,6 +57,7 @@ import { prepareCodexHome } from './ai/codex-home.ts';
 import { downloadLocalModel, localModelReady, mb, runLocal } from './ai/local.ts';
 import { type AiRun, checkStatus, readCodexUsage, runAi } from './ai/runner.ts';
 import { getShellEnv } from './ai/shell-env.ts';
+import { runTicket, type TicketHooks } from './ai/ticket.ts';
 import { createThreadStore } from './chat-threads.ts';
 import { devRendererUrl } from './dev-url.ts';
 import { focusWindow, showWindow } from './focus.ts';
@@ -125,6 +128,11 @@ export interface ChatOptions {
    * undefined 면 보통 대화. 새 대화를 열면 reset
    */
   localGame?: { turn: (text: string) => string | undefined; reset: () => void };
+  /**
+   * AI 대화권 (#100, main/server.ts). 서버 모드, 만 18세 이상, 구글 로그인일 때만 "대화권 Claude" 가 목록에 들어간다.
+   * 서버 주소가 비거나 14~17 이면 목록에도 화면에도 없다
+   */
+  ticket?: TicketHooks;
   log: (tag: string, ...rest: unknown[]) => void;
 }
 
@@ -145,6 +153,7 @@ export function createChat(o: ChatOptions) {
       c.input !== null,
   );
   const providers = (): ProviderSpec[] => [
+    ...(o.ticket?.available() ? [TICKET_PROVIDER] : []),
     ...BUILTIN_PROVIDERS,
     ...customInputs.flatMap((c) => {
       try {
@@ -180,7 +189,15 @@ export function createChat(o: ChatOptions) {
   const carry = new Map<AiProvider, Exchange[]>();
 
   const push = () => {
-    state = { ...state, knowsTodos: o.knowsTodos() };
+    const ticketOn = !!o.ticket?.available();
+    // 대화권을 고른 채 로그아웃하거나 나이를 바꾸면 쓸 수 없다: 기본 AI 로 돌린다
+    if (!ticketOn && state.provider === TICKET_PROVIDER_ID && !state.pendingId)
+      state = switchProvider(state, 'claude');
+    state = {
+      ...state,
+      knowsTodos: o.knowsTodos(),
+      ticket: ticketOn && o.ticket ? { tickets: o.ticket.tickets(), agreed: o.ticket.agreed() } : undefined,
+    };
     win?.webContents.send(CHAT.state, state);
   };
   const fromChat = (e: IpcMainEvent | Electron.IpcMainInvokeEvent) => !!win && e.sender === win.webContents;
@@ -233,6 +250,8 @@ export function createChat(o: ChatOptions) {
 
   ipcMain.handle(CHAT.status, async (e, refresh: boolean) => {
     if (!fromChat(e)) return [];
+    // 대화권 남은 수는 창을 열 때 서버에서 다시 받는다 (기다리지 않는다)
+    if (o.ticket?.available() && o.ticket.refresh) void o.ticket.refresh().then(push, () => {});
     // codex 는 질문 없이도 최근 대화 기록에서 사용량을 읽을 수 있다. 창을 열 때 한 번 갱신한다.
     // 파일에서 읽은 값은 기준 시각이 "지금"이 되므로 저장해 둔 값이 없을 때만 쓴다.
     if (!state.usage.codex) {
@@ -308,6 +327,8 @@ export function createChat(o: ChatOptions) {
     const provider = state.provider;
     const spec = specOf(provider);
     if (!spec) return false;
+    // 대화권은 국외 이전 안내를 읽고 쓰기로 한 뒤에만 보낸다 (화면도 그때까지 보내기를 막는다)
+    if (spec.adapter === 'server' && !o.ticket?.agreed()) return false;
     const history = historyFor(state, provider);
     // 기록 남기지 않기: 이어가기 대신 최근 대화를 붙여 보낸다 (claude, codex 만 켤 수 있다).
     const canSkipSave = spec.adapter === 'claude' || spec.adapter === 'codex';
@@ -434,14 +455,16 @@ export function createChat(o: ChatOptions) {
         push();
       };
       run =
-        spec.adapter === 'local'
-          ? runLocal(req, pickLocal(o.catalog(), o.aiModels().local), onEvent, log, {
-              // 한국어이고 존댓말 성격이 아니면 반말 예시와 어미 고치기
-              banmal: getLang() === 'ko' && isBanmal(o.personaId()),
-              petName: petName(),
-              rules: o.rules(),
-            })
-          : runAi(req, onEvent);
+        spec.adapter === 'server' && o.ticket
+          ? runTicket({ history, text: prompt, persona: req.persona, lang: getLang() }, o.ticket, onEvent)
+          : spec.adapter === 'local'
+            ? runLocal(req, pickLocal(o.catalog(), o.aiModels().local), onEvent, log, {
+                // 한국어이고 존댓말 성격이 아니면 반말 예시와 어미 고치기
+                banmal: getLang() === 'ko' && isBanmal(o.personaId()),
+                petName: petName(),
+                rules: o.rules(),
+              })
+            : runAi(req, onEvent);
     }
   }
 
@@ -587,6 +610,23 @@ export function createChat(o: ChatOptions) {
     writeJson(SETTINGS_FILE, { provider: state.provider });
     push();
     if (lastUser?.text) ask(lastUser.text);
+  });
+
+  // AI 대화권 (#100): 국외 이전 안내를 읽고 쓰기로 함, 답 신고 (화면에서 따로 확인한 뒤)
+  ipcMain.on(CHAT.agreeTicket, (e) => {
+    if (!fromChat(e) || !o.ticket?.available()) return;
+    o.ticket.agree();
+    log('chat', 'ticket agreed');
+    push();
+  });
+  ipcMain.handle(CHAT.reportTicket, async (e, id: unknown) => {
+    if (!fromChat(e) || typeof id !== 'string' || !o.ticket?.available()) return false;
+    const msg = state.messages.find((m) => m.id === id);
+    const r = answerOf(id);
+    if (!r || msg?.provider !== TICKET_PROVIDER_ID) return false;
+    const ok = await o.ticket.report(r.question, r.answer);
+    log('chat', 'ticket report', ok ? 'sent' : 'failed');
+    return ok;
   });
 
   ipcMain.on(CHAT.cancel, (e) => {
@@ -791,7 +831,8 @@ export function createChat(o: ChatOptions) {
   async function textSpec(): Promise<ProviderSpec | undefined> {
     for (const id of textAiOrder(state.provider)) {
       const s = specOf(id);
-      if (!s || s.custom) continue;
+      // 대화권은 사용자가 채팅에서 묻는 질문에만 쓴다 (말로 만들기 같은 일에 대화권을 쓰지 않는다)
+      if (!s || s.custom || s.adapter === 'server') continue;
       const st = await checkStatus(s);
       if (st.installed && st.loggedIn !== false) return s;
     }
@@ -802,6 +843,8 @@ export function createChat(o: ChatOptions) {
     open,
     toggle,
     attach,
+    /** 대화권 상태(남은 수, 쓸 수 있는지)가 바뀌었다. 열린 창에 다시 보낸다 */
+    ticketChanged: () => push(),
     /** 말놀이 펫 말을 채팅에 단다 (펫 메뉴에서 끝말잇기 시작). 답을 기다리는 중이면 false */
     sayLocal: (text: string): boolean => {
       if (state.pendingId || o.locked?.()) return false;
@@ -927,7 +970,8 @@ export function createChat(o: ChatOptions) {
       if (o.locked?.()) return Promise.resolve(undefined);
       const provider = state.provider;
       const spec = specOf(provider);
-      if (!spec) return Promise.resolve(undefined);
+      // 대화권은 채팅 질문에만 쓴다 (일기 다듬기에 대화권을 쓰지 않는다)
+      if (!spec || spec.adapter === 'server') return Promise.resolve(undefined);
       log('chat', 'text-once', provider);
       return new Promise((resolve) => {
         const req = {
@@ -992,6 +1036,7 @@ function view(p: ProviderSpec): ProviderView {
     command: p.command,
     bin: p.custom ? p.bin : undefined,
     ephemeral: p.adapter === 'claude' || p.adapter === 'codex',
+    ...(p.adapter === 'server' ? { ticket: true } : {}),
   };
 }
 

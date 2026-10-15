@@ -14,10 +14,13 @@ import {
   Query,
   Redirect,
   Req,
+  Res,
   ServiceUnavailableException,
   UseGuards,
 } from '@nestjs/common';
 import { Accounts, isAge } from './accounts';
+import { Ai, type StreamRes } from './ai';
+import { parseChatRequest, parseReport } from './ai-rules';
 import { CONFIG } from './app.tokens';
 import { Auth, AuthGuard, type AuthInfo, type HttpReq } from './auth.guard';
 import { Coins, parseEntries, parseMigrate } from './coins';
@@ -167,5 +170,41 @@ export class LoginController {
       merged: out.merged,
       linked: out.linked,
     };
+  }
+}
+
+/** AI 대화권 (8절, #100). 세션(로그인) 토큰과 만 18세 이상만. 대화 내용은 저장하지 않는다 */
+@Controller('v1/ai')
+@UseGuards(AuthGuard)
+export class AiController {
+  constructor(
+    private readonly ai: Ai,
+    private readonly limiter: RateLimiter,
+  ) {}
+
+  /** 남은 대화권, 하루 상한과 오늘 쓴 수. 첫 로그인 선물(10개)도 여기서 받는다 */
+  @Get()
+  async status(@Auth() auth: AuthInfo) {
+    return this.ai.status(auth);
+  }
+
+  /** 대화권 하나로 질문 하나. 스트리밍(SSE)으로 답한다 (ai.ts relay) */
+  @Post('chat')
+  async chat(@Auth() auth: AuthInfo, @Body() body: unknown, @Res() res: StreamRes): Promise<void> {
+    this.limiter.check(`ai:${auth.accountId}`, LIMITS.aiByAccount);
+    const req = parseChatRequest(body);
+    if ('error' in req) throw new BadRequestException({ error: req.error });
+    await this.ai.relay(auth, req, res);
+  }
+
+  /** 신고: 사용자가 따로 동의한(consent: true) 질문과 답 하나. 30일 뒤 지운다 */
+  @Post('report')
+  @HttpCode(201)
+  async report(@Auth() auth: AuthInfo, @Body() body: unknown) {
+    this.limiter.check(`ai:${auth.accountId}`, LIMITS.aiByAccount);
+    const r = parseReport(body);
+    if ('error' in r) throw new BadRequestException({ error: r.error });
+    await this.ai.report(auth, r);
+    return { ok: true };
   }
 }

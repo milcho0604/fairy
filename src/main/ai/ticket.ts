@@ -1,0 +1,120 @@
+// AI 대화권으로 묻기 (기획서 8절, 이슈 #100). 앱은 API 키를 모르고 페어리 서버가 Claude 를 중계한다.
+// 이어가기 세션이 없어 최근 문답 몇 개를 붙여 보낸다(서버 상한 안으로). Electron 없이 돌아 시험에서 그대로 부른다.
+import type { Exchange } from '../../shared/ai/text.ts';
+import type { AiError, AiEvent } from '../../shared/ai/types.ts';
+import { type Lang, t } from '../../shared/i18n/index.ts';
+import type { AiChatBody, AiChatOutcome } from '../server-api.ts';
+
+/** 붙여 보낼 최근 문답 수 */
+export const TICKET_HISTORY = 4;
+/** 서버 상한(메시지 하나 4000자, 전체 8000자, 성격 2000자) 안으로 자른다 */
+const MAX_MESSAGE = 4000;
+const MAX_HISTORY_PART = 1500;
+const MAX_TOTAL = 7500;
+const MAX_PERSONA = 2000;
+
+/** 채팅이 쓰는 대화권 손잡이 (main/server.ts 가 server-core 를 붙인다) */
+export interface TicketHooks {
+  /** 서버 모드, 만 18세 이상, 구글 로그인 */
+  available(): boolean;
+  tickets(): number | null;
+  /** 국외 이전 안내를 읽고 쓰기로 했다 */
+  agreed(): boolean;
+  agree(): void;
+  ask(body: AiChatBody, onText: (text: string) => void, signal?: AbortSignal): Promise<AiChatOutcome>;
+  report(question: string, answer: string): Promise<boolean>;
+  /** 남은 수를 서버에서 다시 받는다 (채팅 창을 열 때) */
+  refresh?(): Promise<void>;
+}
+
+/** 질문과 최근 문답을 서버에 보낼 메시지로. 오래된 문답부터 빼서 전체 상한 안으로 */
+export function ticketMessages(history: readonly Exchange[], question: string): AiChatBody['messages'] {
+  const q = question.slice(0, MAX_MESSAGE);
+  const pairs = history
+    .slice(-TICKET_HISTORY)
+    .filter((x) => x.question.trim() && x.answer.trim())
+    .map((x) => [x.question.slice(0, MAX_HISTORY_PART), x.answer.slice(0, MAX_HISTORY_PART)] as const);
+  let total = q.length + pairs.reduce((n, [a, b]) => n + a.length + b.length, 0);
+  while (pairs.length > 0 && total > MAX_TOTAL) {
+    const [a, b] = pairs.shift() as readonly [string, string];
+    total -= a.length + b.length;
+  }
+  return [
+    ...pairs.flatMap(([a, b]) => [
+      { role: 'user' as const, content: a },
+      { role: 'assistant' as const, content: b },
+    ]),
+    { role: 'user' as const, content: q },
+  ];
+}
+
+/** 서버의 실패 까닭을 채팅 오류로. got: 끊기기 전에 받은 글이 있다 */
+export function ticketError(r: Extract<AiChatOutcome, { ok: false }>, got: boolean): AiError {
+  switch (r.error) {
+    case 'no_tickets':
+      return { kind: 'no-tickets', message: t('ticket.empty') };
+    case 'daily_limit':
+      return { kind: 'rate-limit', message: t('ticket.daily') };
+    case 'budget':
+      return { kind: 'rate-limit', message: t('ticket.budget') };
+    case 'rate_limited':
+      return { kind: 'rate-limit', message: t('ai.error.rateLimit', { label: t('ticket.label') }) };
+    case 'timeout':
+      return { kind: 'timeout', message: t('ticket.timeout') };
+    case 'cancelled':
+      return { kind: 'cancelled', message: t('ai.error.cancelled') };
+    case 'ai_off':
+      return { kind: 'failed', message: t('ticket.off') };
+    case 'login':
+    case 'age':
+    case 'token':
+      return { kind: 'not-logged-in', message: t('ticket.login') };
+    case 'too_long':
+    case 'messages':
+      return { kind: 'failed', message: t('ticket.tooLong') };
+    case 'offline':
+      return { kind: 'failed', message: got ? t('ticket.cut') : t('ticket.offline') };
+    default:
+      return { kind: 'failed', message: t('ticket.failed') };
+  }
+}
+
+export interface TicketRun {
+  cancel(): void;
+  finished: Promise<void>;
+}
+
+/** 대화권 질문 하나. 사건은 다른 AI 와 같은 모양(delta, done, error)으로 */
+export function runTicket(
+  req: { history: readonly Exchange[]; text: string; persona: string; lang: Lang },
+  hooks: TicketHooks,
+  onEvent: (e: AiEvent) => void,
+): TicketRun {
+  const ac = new AbortController();
+  let text = '';
+  const finished = hooks
+    .ask(
+      {
+        messages: ticketMessages(req.history, req.text),
+        lang: req.lang,
+        persona: req.persona.slice(0, MAX_PERSONA),
+      },
+      (piece) => {
+        text += piece;
+        onEvent({ type: 'delta', text: piece });
+      },
+      ac.signal,
+    )
+    .then(
+      (r) => {
+        if (r.ok) onEvent({ type: 'done', text });
+        else
+          onEvent({
+            type: 'error',
+            error: ticketError(ac.signal.aborted ? { ...r, error: 'cancelled' } : r, !!text),
+          });
+      },
+      () => onEvent({ type: 'error', error: { kind: 'failed', message: t('ticket.failed') } }),
+    );
+  return { cancel: () => ac.abort(), finished };
+}

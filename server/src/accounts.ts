@@ -106,6 +106,7 @@ export class Accounts {
    * - 코인: 더한다. from 의 잔액을 'merge' 한 줄로 into 에 적는다. 다만 두 계정이 옮기기로 받은 합이
    *   MIGRATE_MAX_BALANCE 를 넘으면 넘는 만큼은 버린다(기기마다 옮겨 합쳐 코인을 찍어 내지 못하게)
    * - 산 물건: 집 단계는 큰 쪽, 집 모양은 합친 모음, 장난감은 종류마다 큰 쪽 (모두 이름마다 큰 쪽이라 한 규칙)
+   * - AI 대화권: 더한다
    * - 로그인, 기기 토큰, 세션: into 를 가리키게 바꾼다
    * - from 은 닫고(closed_at, merged_into) 장부는 남긴다: 다른 기기가 옛 기록을 다시 보내도 한 번만 반영된다
    * - 하루 상한: 합친 날은 두 계정 몫을 넘어도 그대로 둔다 (장부를 옮기지 않으므로 저절로 그렇다)
@@ -144,6 +145,14 @@ export class Accounts {
       [from.id, into.id],
     );
     await c.query('DELETE FROM owned_item WHERE account_id = $1', [from.id]);
+    // AI 대화권은 더한다 (21절). 선물 기록(ai_gift)은 닫힌 계정에 남아 같은 로그인으로 다시 받지 못한다
+    await c.query(
+      `INSERT INTO ai_ticket (account_id, remaining)
+       SELECT $2, remaining FROM ai_ticket WHERE account_id = $1
+       ON CONFLICT (account_id) DO UPDATE SET remaining = ai_ticket.remaining + EXCLUDED.remaining, updated_at = now()`,
+      [from.id, into.id],
+    );
+    await c.query('DELETE FROM ai_ticket WHERE account_id = $1', [from.id]);
     for (const table of ['login', 'device', 'session'])
       await c.query(`UPDATE ${table} SET account_id = $2 WHERE account_id = $1`, [from.id, into.id]);
     // 앞서 from 에 합쳐진 계정들도 남는 쪽을 따라가게 (탈퇴하면 함께 지워진다)

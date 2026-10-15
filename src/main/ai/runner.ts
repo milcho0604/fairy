@@ -351,6 +351,9 @@ export function readCodexUsage(codexHome: string, threadId?: string) {
  * cursor-agent status 는 종료 코드가 늘 0 이라 출력 글로 본다. 로그인 확인 방법이 없는 AI 는 모름(undefined).
  */
 export function checkStatus(spec: ProviderSpec, refresh = false): Promise<AiStatus> {
+  // AI 대화권 (#100): 실행 파일이 없고 서버가 중계한다. 목록에 있으면(쓸 수 있을 때만 넣는다) 준비된 것
+  if (spec.adapter === 'server')
+    return Promise.resolve({ provider: spec.id, installed: true, loggedIn: true });
   // 채팅 창을 열 때마다 AI 마다 명령 두 개(버전, 로그인)를 띄우지 않게 잠깐 기억한다. 새로고침이면 다시 본다
   const key = JSON.stringify([spec.id, spec.bin, spec.statusArgs]);
   const hit = statusCache.get(key);

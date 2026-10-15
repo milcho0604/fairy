@@ -61,6 +61,8 @@ export function createServer(o: {
   /** 맞추기로 잔액이나 물건이 바뀌었다 */
   onCoins: () => void;
   onReverted: (text: string) => void;
+  /** 칸 상태가 바뀌었다 (로그인, 나이, 대화권 남은 수). 채팅 창의 대화권 표시를 고친다 */
+  onStatus?: () => void;
   log: (tag: string, ...rest: unknown[]) => void;
 }) {
   const url = appServerUrl();
@@ -81,13 +83,14 @@ export function createServer(o: {
     }
     return sealedSecret(join(dir, `${name}.json`), () => osCrypto);
   };
+  const sessionSecret = secret('server-session');
   const core = createServerCore({
     api: url ? serverApi(url, (u, init) => net.fetch(u, init)) : undefined,
     coins: new ServerCoins(o.db, o.todos, o.shop, localDay),
     load: () => readJson(STATE),
     save: (s) => writeJson(STATE, s),
     device: secret('server-device'),
-    session: secret('server-session'),
+    session: sessionSecret,
     secure: () => memory || osCrypto.available(),
     loopback: (x) => startLoopback(x),
     openExternal: (u) => shell.openExternal(u),
@@ -108,6 +111,7 @@ export function createServer(o: {
   function send(s: ServerStatus) {
     const w = o.target();
     if (w && !w.isDestroyed()) w.webContents.send(SERVER.changed, s);
+    o.onStatus?.();
   }
 
   // 백업을 되살리고 켰으면 되살린 장부의 코인을 서버 사본으로 맞춘다 (기획서 7절)
@@ -157,5 +161,15 @@ export function createServer(o: {
     /** 서버 모드라 코인이 서버 정본을 따른다 (백업 되살리기 안내, 코인 초기화) */
     serverCoins: () => core.allowed(),
     beforeRestore: () => core.beforeRestore(),
+    /**
+     * 시험용 (JJ_TEST_SECRETS=memory 일 때만): 시험이 DB 에 만든 세션을 넣는다. 시험 서버는 구글 값이 비어
+     * 진짜 브라우저 로그인을 하지 않는다 (scripts/dev/server-ai.mjs)
+     */
+    debugSetSession(token: string): boolean {
+      if (!memory || !/^fs_[A-Za-z0-9_-]{43}$/.test(token)) return false;
+      sessionSecret.set(token);
+      void core.run();
+      return true;
+    },
   };
 }

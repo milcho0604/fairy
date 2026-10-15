@@ -191,6 +191,9 @@ export const CHAT = {
   toNote: 'chat:to-note',
   toTodos: 'chat:to-todos',
   retryWith: 'chat:retry-with',
+  /** AI 대화권 (#100): 국외 이전 안내를 읽고 쓰기로 함, 답 신고 (따로 확인한 뒤) */
+  agreeTicket: 'chat:agree-ticket',
+  reportTicket: 'chat:report-ticket',
   /** 규칙 답("오늘 뭐부터") 아래 단추: 'focus' | 'panel' 과 할 일 id */
   planAction: 'chat:plan-action',
   // v2 무료 AI
@@ -513,6 +516,8 @@ export interface ProviderView {
   bin?: string;
   /** 기록 남기지 않기를 할 수 있는지 (claude, codex) */
   ephemeral: boolean;
+  /** AI 대화권 (#100): 서버가 중계하는 Claude. "AI 와 대화 중" 과 남은 수, 신고 단추를 보인다 */
+  ticket?: boolean;
 }
 
 export interface ChatSnapshot {
@@ -555,6 +560,10 @@ export interface ChatBridge {
   toTodos(messageId: string): Promise<number>;
   /** 마지막 질문을 다른 AI 로 다시 (한도에 걸렸을 때) */
   retryWith(provider: AiProvider): void;
+  /** AI 대화권: 국외 이전 안내를 읽고 쓰기로 했다 (#100) */
+  agreeTicket(): void;
+  /** AI 대화권 답 신고 (화면에서 따로 확인한 뒤). 보냈으면 true */
+  reportTicket(messageId: string): Promise<boolean>;
   /** 규칙 답 단추: 집중 시작(그 할 일로), 패널 열기 */
   planAction(kind: 'focus' | 'panel', todoId?: number): void;
   /** 무료 AI 모델 받기 (v2). 다 받으면 마지막 질문을 무료 AI 로 다시 묻는다 */

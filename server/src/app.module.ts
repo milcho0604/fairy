@@ -1,10 +1,11 @@
 import { type DynamicModule, Module } from '@nestjs/common';
 import { Accounts } from './accounts';
+import { Ai } from './ai';
 import { CONFIG, GOOGLE_API } from './app.tokens';
 import { AuthGuard } from './auth.guard';
 import { Coins } from './coins';
 import type { Config } from './config';
-import { AccountController, CoinController, LoginController } from './controllers';
+import { AccountController, AiController, CoinController, LoginController } from './controllers';
 import { Db } from './db';
 import { type GoogleApi, realGoogleApi } from './google';
 import { HealthController } from './health.controller';
@@ -23,13 +24,14 @@ export interface AppDeps {
 export function appModule(config: Config, deps: AppDeps = {}): DynamicModule {
   return {
     module: AppModule,
-    controllers: [HealthController, AccountController, CoinController, LoginController],
+    controllers: [HealthController, AccountController, CoinController, LoginController, AiController],
     providers: [
       { provide: CONFIG, useValue: config },
       { provide: GOOGLE_API, useFactory: () => deps.google ?? realGoogleApi() },
       { provide: Db, useFactory: () => new Db(config.databaseUrl) },
       { provide: RateLimiter, useFactory: () => new RateLimiter() },
       Accounts,
+      Ai,
       Coins,
       Login,
       AuthGuard,

@@ -2,7 +2,8 @@
 // 기본 제공 AI 는 어댑터가 따로 있고, 그 밖의 CLI 는 사용자가 명령을 적어 추가한다(custom).
 import { t } from '../i18n/index.ts';
 
-export type AdapterKind = 'claude' | 'codex' | 'cursor' | 'text' | 'local';
+/** server: 페어리 서버의 AI 대화권 (#100). 실행 파일 없이 서버가 Claude 를 중계한다 */
+export type AdapterKind = 'claude' | 'codex' | 'cursor' | 'text' | 'local' | 'server';
 
 export interface ProviderSpec {
   id: string;
@@ -112,6 +113,24 @@ export const BUILTIN_PROVIDERS: readonly ProviderSpec[] = [
     usage: false,
   },
 ];
+
+/** AI 대화권 (#100). 서버 모드, 만 18세 이상, 구글 로그인일 때만 목록에 들어간다 (main/chat.ts) */
+export const TICKET_PROVIDER_ID = 'fairy-ticket';
+
+export const TICKET_PROVIDER: ProviderSpec = {
+  id: TICKET_PROVIDER_ID,
+  get label() {
+    return t('ticket.label');
+  },
+  bin: '',
+  adapter: 'server',
+  images: false,
+  verified: true,
+  get installHint() {
+    return t('ticket.login');
+  },
+  usage: false,
+};
 
 export interface CustomProviderInput {
   label: string;

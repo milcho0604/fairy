@@ -22,6 +22,8 @@ export const LIMITS = {
   loginByIp: { max: 30, windowMs: 600_000 },
   /** 토큰을 든 요청: 계정마다 1분 120번 (맞추기는 몇 분에 한 번) */
   account: { max: 120, windowMs: 60_000 },
+  /** AI 대화권 질문과 신고: 계정마다 1분 10번 (하루 상한은 따로 DB 로 센다) */
+  aiByAccount: { max: 10, windowMs: 60_000 },
   /** 토큰이 틀린 요청: 같은 곳에서 1분 30번 */
   badTokenByIp: { max: 30, windowMs: 60_000 },
 } as const satisfies Record<string, Limit>;

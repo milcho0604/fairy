@@ -58,6 +58,33 @@ export const ko = {
   'server.page.okBody': '페어리로 돌아가도 돼. 이 창은 닫아도 돼.',
   'server.page.failTitle': '로그인하지 못했어',
   'server.page.failBody': '페어리 설정에서 다시 해 줘.',
+  // AI 대화권 (기획서 8절, 이슈 #100). 만 18세 이상, 로그인한 서버 모드에서만 보인다
+  'ticket.label': '대화권 Claude',
+  'ticket.count': '대화권 {n}개 남음',
+  'ticket.countUnknown': '대화권 남은 수를 아직 못 받았어',
+  'ticket.settings': 'AI 대화권 {n}개. 채팅 창에서 "대화권 Claude"를 고르면 질문 하나에 하나씩 써.',
+  'ticket.aiNow': 'AI와 대화 중이야. 답은 사람이 아니라 AI(Anthropic의 Claude)가 써.',
+  'ticket.notice':
+    '대화권으로 물으면 질문, 최근 대화 몇 개, 페어리 이름과 성격("내 할 일 같이 보내기"를 켰으면 할 일도)이 Anthropic(미국)으로 암호화되어 가. Anthropic은 정책상 최대 30일 보관할 수 있어(정책 위반 조사 등은 예외). 페어리 서버는 대화 내용을 저장하지 않고 사용량 숫자만 남겨. 싫으면 대화권을 쓰지 말고 내 컴퓨터 AI로 대화하면 돼.',
+  'ticket.agree': '알겠어, 대화권 쓰기',
+  'ticket.needAgree': '먼저 위 안내를 읽고 "알겠어"를 눌러 줘.',
+  'ticket.empty': '대화권을 다 썼어. 내 컴퓨터의 AI로 이어서 할까?',
+  'ticket.daily': '오늘 대화권 질문은 여기까지야. 내일 다시 하거나 내 컴퓨터의 AI로 이어서 하자.',
+  'ticket.budget': '이번 달 대화권 AI가 쉬는 중이야. 내 컴퓨터의 AI로 이어서 할까?',
+  'ticket.failed': '대화권 AI가 답하지 못했어. 대화권은 돌려놓았어. 조금 뒤에 다시 물어봐 줘.',
+  'ticket.timeout': '대화권 AI가 너무 오래 걸려서 멈췄어. 대화권은 돌려놓았어.',
+  'ticket.off': '서버의 대화권 AI가 아직 열리지 않았어. 내 컴퓨터의 AI로 대화해 줘.',
+  'ticket.offline': '서버에 닿지 않아. 대화권은 쓰지 않았어. 인터넷을 확인하고 다시 물어봐 줘.',
+  'ticket.login': '대화권은 만 18세 이상이고 구글로 로그인했을 때만 쓸 수 있어. 설정 > 데이터에서 확인해 줘.',
+  'ticket.tooLong': '질문이 너무 길어. 조금 줄여서 다시 물어봐 줘.',
+  'ticket.cut': '답을 받다가 연결이 끊겼어. 받은 데까지만 보여 줄게.',
+  'ticket.report': '신고',
+  'ticket.reportTitle': '이 답을 운영자에게 신고하기',
+  'ticket.reportAsk':
+    '이 질문과 답을 운영자에게 보낼까? 건강이나 가족 이야기 같은 민감한 내용이 들어 있을 수 있어. 운영자만 보고 30일 안에 지워.',
+  'ticket.reportSend': '보내기',
+  'ticket.reportSent': '신고했어. 고마워.',
+  'ticket.reportFailed': '신고를 보내지 못했어.',
 };
 
 export const en: Translation<typeof ko> = {
@@ -123,4 +150,32 @@ export const en: Translation<typeof ko> = {
   'server.page.okBody': 'You can go back to fairy and close this window.',
   'server.page.failTitle': "Couldn't sign in",
   'server.page.failBody': 'Please try again in fairy settings.',
+  'ticket.label': 'Ticket AI',
+  'ticket.count': '{n} tickets left',
+  'ticket.countUnknown': "Haven't got your ticket count yet",
+  'ticket.settings': '{n} AI chat tickets. Pick "Ticket AI" in the chat window; each question uses one.',
+  'ticket.aiNow':
+    "You're talking with an AI. Answers are written by an AI (Anthropic's Claude), not a person.",
+  'ticket.notice':
+    'When you ask with a ticket, your question, a few recent messages, and your fairy\'s name and personality (plus to-dos if "Share my to-dos" is on) are sent encrypted to Anthropic (USA). Under its policy Anthropic may keep them for up to 30 days (with exceptions such as policy-violation reviews). The fairy server stores no chat text, only usage numbers. If you prefer not to, skip tickets and chat with the AI on your computer.',
+  'ticket.agree': 'Got it, use tickets',
+  'ticket.needAgree': 'Please read the note above and press "Got it" first.',
+  'ticket.empty': "You've used all your tickets. Continue with the AI on your computer?",
+  'ticket.daily':
+    "That's all the ticket questions for today. Try again tomorrow or continue with the AI on your computer.",
+  'ticket.budget': 'Ticket AI is resting for the rest of this month. Continue with the AI on your computer?',
+  'ticket.failed': "Ticket AI couldn't answer. Your ticket is back. Please ask again in a bit.",
+  'ticket.timeout': 'Ticket AI took too long, so it stopped. Your ticket is back.',
+  'ticket.off': "The server's ticket AI isn't open yet. Please chat with the AI on your computer.",
+  'ticket.offline': "Can't reach the server. No ticket was used. Check your connection and ask again.",
+  'ticket.login': 'Tickets are only for 18+ users signed in with Google. Check Settings > Data.',
+  'ticket.tooLong': 'That question is too long. Please shorten it and ask again.',
+  'ticket.cut': 'The connection dropped mid-answer. Showing what arrived.',
+  'ticket.report': 'Report',
+  'ticket.reportTitle': 'Report this answer to the operator',
+  'ticket.reportAsk':
+    'Send this question and answer to the operator? They may contain sensitive things like health or family matters. Only the operator sees it, and it is deleted within 30 days.',
+  'ticket.reportSend': 'Send',
+  'ticket.reportSent': 'Reported. Thank you.',
+  'ticket.reportFailed': "Couldn't send the report.",
 };
