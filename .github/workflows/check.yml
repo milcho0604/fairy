@@ -1,15 +1,17 @@
 # 올릴 때마다: 타입 검사, 린트(biome), 테스트, 앱 빌드를 리눅스, 윈도우, 맥에서 (`npm run check` + `npm run build`).
 # 그리고 리눅스 설치판을 실제로 묶어(electron-builder --dir) xvfb 에서 켜 본다 (scripts/dev/smoke-packaged.mjs).
-# 문서나 홈페이지(site/), 서버(server/)만 바뀐 것은 돌지 않는다 (홈페이지는 site.yml, 서버는 server-check.yml 이 따로 본다). 같은 브랜치에 새로 올리면 돌던 것은 멈춘다.
+# 문서나 홈페이지(site/)만 바뀐 것은 돌지 않는다 (홈페이지는 site.yml 이 따로 본다).
+# 서버(server/)만 바뀐 것은 돌되 changes 가 보고 앱 검사를 건너뛴다 (서버는 server-check.yml).
+# 아예 안 돌면 브랜치 보호의 필수 검사(check (os))가 생기지 않아 서버 PR 이 머지되지 않는다. 건너뛴 작업은 통과로 친다. 같은 브랜치에 새로 올리면 돌던 것은 멈춘다.
 # 액션은 커밋 SHA 로 고정한다 (태그는 옮길 수 있다). 올릴 때는 주석의 태그와 SHA 를 같이 바꾼다.
 name: check
 
 on:
   push:
     branches: [main]
-    paths-ignore: ['docs/**', '**/*.md', 'LICENSE', '.github/ISSUE_TEMPLATE/**', 'site/**', '.github/workflows/site.yml', 'server/**', '.github/workflows/server-*.yml']
+    paths-ignore: ['docs/**', '**/*.md', 'LICENSE', '.github/ISSUE_TEMPLATE/**', 'site/**', '.github/workflows/site.yml']
   pull_request:
-    paths-ignore: ['docs/**', '**/*.md', 'LICENSE', '.github/ISSUE_TEMPLATE/**', 'site/**', '.github/workflows/site.yml', 'server/**', '.github/workflows/server-*.yml']
+    paths-ignore: ['docs/**', '**/*.md', 'LICENSE', '.github/ISSUE_TEMPLATE/**', 'site/**', '.github/workflows/site.yml']
 
 permissions:
   contents: read
@@ -19,7 +21,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # 앱에 닿는 파일이 바뀌었나. 서버, 문서, 홈페이지만 바뀌었으면 app=false
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      app: ${{ steps.diff.outputs.app }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: diff
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if ! files=$(git diff --name-only "$BASE...$HEAD" 2>/dev/null); then
+            echo "app=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          app=$(printf '%s\n' "$files" | grep -vE '^(server/|docs/|site/|\.github/workflows/(server-[^/]*|site)\.yml$|\.github/ISSUE_TEMPLATE/|LICENSE$)|\.md$' | grep -c . || true)
+          echo "앱에 닿는 파일 $app 개"
+          [ "$app" -gt 0 ] && echo "app=true" >> "$GITHUB_OUTPUT" || echo "app=false" >> "$GITHUB_OUTPUT"
+
   check:
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -44,6 +71,8 @@ jobs:
       - run: npm run build
 
   package-linux:
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
