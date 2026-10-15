@@ -4,6 +4,7 @@
 // 순수 함수만 둔다. 저장(daily-note.json)과 배달은 main/daily-note.ts.
 import type { PersonaId } from './ai/persona.ts';
 import { dataLine, isPersona } from './ai/persona.ts';
+import { milestoneCoins } from './coin-rules.ts';
 import { isBirthday, type PetFact } from './knows.ts';
 import { basePersonaOf } from './persona-voice.ts';
 import type { NoteLook } from './together.ts';
@@ -22,13 +23,8 @@ const TITLE_MAX = 24;
 
 export const NOTE_REASON = 'note-gift';
 
-/** 특별한 편지에 넣는 코인 */
-export function milestoneCoins(day: number): number {
-  if (day >= 365) return 30;
-  if (day >= 100) return 20;
-  if (day >= 30) return 10;
-  return 5;
-}
+/** 특별한 편지에 넣는 코인 (coin-rules.ts 한 곳에) */
+export { milestoneCoins };
 
 /** 쪽지 한 줄: 사전 키와 값. 화면 말을 바꿔도 다시 읽으면 그 말로 보인다 */
 export interface NoteLine {

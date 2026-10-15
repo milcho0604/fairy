@@ -1,5 +1,5 @@
 import { Injectable, type OnApplicationShutdown } from '@nestjs/common';
-import { Pool, type QueryConfig } from 'pg';
+import { Pool, type PoolClient, type QueryConfig } from 'pg';
 
 // Postgres 연결 하나를 앱 전체가 같이 쓴다.
 @Injectable()
@@ -27,6 +27,22 @@ export class Db implements OnApplicationShutdown {
       return r.rows[0]?.ok === 1;
     } catch {
       return false;
+    }
+  }
+
+  /** 트랜잭션 하나. fn 이 던지면 되돌리고 다시 던진다 */
+  async tx<T>(fn: (c: PoolClient) => Promise<T>): Promise<T> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const out = await fn(client);
+      await client.query('COMMIT');
+      return out;
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
     }
   }
 

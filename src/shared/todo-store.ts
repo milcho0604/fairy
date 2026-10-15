@@ -1,5 +1,6 @@
 // 할 일, 코인 장부, 배부름 (P2-03, P2-05, P2-06). 기획서 "게임 규칙".
 
+import { COIN } from './coin-rules.ts';
 import { cutText } from './cut-text.ts';
 import { plusDays, weekdayOf as weekday } from './day.ts';
 import type { Db } from './db-schema.ts';
@@ -9,20 +10,8 @@ import { pinAt } from './pin.ts';
 import { type Anchor, atLocal, DEFAULT_REMINDS, normalizeReminds, REMIND_MAX_MIN } from './remind.ts';
 import { ReminderStore } from './reminder-store.ts';
 
-export const COIN = {
-  /** 할 일 하나 (사용자 결정 2026-10-14, #75: 10 에서 15) */
-  todo: 15,
-  /** 마감 전(마감일 당일 포함)에 끝냄 */
-  early: 5,
-  /** 하루에 코인을 받는 할 일 수 */
-  dailyTodoLimit: 20,
-  /** 기본 먹이 */
-  food: 5,
-  /** 집중 타이머 한 번 (25분 기준. 길이를 고르면 길수록 보너스: focusCoins) */
-  focus: 10,
-  /** 하루에 코인을 받는 집중 횟수 (25분 기준). 하루 집중 코인 상한 = focus x 이 값 = 100 (#76: 40 에서 100) */
-  dailyFocusLimit: 10,
-} as const;
+/** 코인 값과 하루 상한은 coin-rules.ts 한 곳에 (서버도 같은 값을 쓴다) */
+export { COIN };
 
 /** 반복: 매일, 평일(월~금), 매주 같은 요일, 매달 같은 날 (매달은 2026-10-11) */
 export type Repeat = 'daily' | 'weekdays' | 'weekly' | 'monthly';

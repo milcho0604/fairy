@@ -85,7 +85,13 @@ test('마이그레이션은 한 번만 적용되고 다시 돌려도 그대로',
 });
 
 test('/health: DB 가 살아 있으면 200, 멈추면 503, 다시 켜면 200', async () => {
-  app = await createApp({ port: 0, databaseUrl });
+  app = await createApp({
+    port: 0,
+    databaseUrl,
+    publicUrl: 'http://127.0.0.1:1',
+    googleClientId: '',
+    googleClientSecret: '',
+  });
   await app.listen(0, '127.0.0.1');
   const addr = app.getHttpServer().address();
   base = `http://127.0.0.1:${typeof addr === 'object' && addr ? addr.port : 0}`;

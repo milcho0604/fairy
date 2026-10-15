@@ -1,5 +1,12 @@
 // 상점 (v1). 기획서 "게임 규칙": 먹이, 장난감, 집 업그레이드, 커스텀 먹이. 코인은 일을 끝낼 때만 생기고 펫을 돌보는 데만 쓴다.
 
+import {
+  CUSTOM_FOOD_COST,
+  FOOD_COSTS,
+  HOUSE_COSTS,
+  HOUSE_STYLE_COSTS as STYLE_COSTS,
+  TOY_COSTS,
+} from './coin-rules.ts';
 import { cutText } from './cut-text.ts';
 import type { Db } from './db-schema.ts';
 import { HOUSE_STYLES, type HouseStyle, isHouseStyle } from './house-art.ts';
@@ -26,9 +33,9 @@ function named<T extends object>(item: T, nameKey: I18nKey): T & { readonly name
 }
 
 export const FOODS: readonly Food[] = [
-  named({ key: 'basic', cost: COIN.food, gain: FULLNESS.perFood, mood: 0 }, 'shop.food.basic'),
-  named({ key: 'snack', cost: 12, gain: 35, mood: 5 }, 'shop.food.snack'),
-  named({ key: 'cake', cost: 30, gain: 100, mood: 15 }, 'shop.food.cake'),
+  named({ key: 'basic', cost: FOOD_COSTS.basic, gain: FULLNESS.perFood, mood: 0 }, 'shop.food.basic'),
+  named({ key: 'snack', cost: FOOD_COSTS.snack, gain: 35, mood: 5 }, 'shop.food.snack'),
+  named({ key: 'cake', cost: FOOD_COSTS.cake, gain: 100, mood: 15 }, 'shop.food.cake'),
 ];
 
 export interface Toy {
@@ -52,16 +59,14 @@ function toy(key: string, cost: number, nameKey: I18nKey, hintKey: I18nKey): Toy
 }
 
 export const TOYS: readonly Toy[] = [
-  toy('ball', 30, 'shop.toy.ball', 'shop.toy.ballHint'),
-  toy('yarn', 60, 'shop.toy.yarn', 'shop.toy.yarnHint'),
-  toy('cushion', 100, 'shop.toy.cushion', 'shop.toy.cushionHint'),
+  toy('ball', TOY_COSTS.ball, 'shop.toy.ball', 'shop.toy.ballHint'),
+  toy('yarn', TOY_COSTS.yarn, 'shop.toy.yarn', 'shop.toy.yarnHint'),
+  toy('cushion', TOY_COSTS.cushion, 'shop.toy.cushion', 'shop.toy.cushionHint'),
 ];
 
-/**
- * 집 단계 값: 200, 500, 1,000, 1,800, 3,000. 하루 코인은 할 일 몇 개와 집중으로 50~100 쯤이라
- * 3단계까지 2~3주, 5단계는 두어 달 걸린다
- */
-export const HOUSE_COSTS = [200, 500, 1000, 1800, 3000] as const;
+/** 집 단계 값 (coin-rules.ts 한 곳에, 서버도 같은 값을 쓴다) */
+export { HOUSE_COSTS };
+
 const HOUSE_KEYS = ['shop.house.1', 'shop.house.2', 'shop.house.3', 'shop.house.4', 'shop.house.5'] as const;
 /** 집 이름 (단계 0 ~ 4). 지금 말로 읽는다 */
 export const houseName = (index: number): string | undefined => {
@@ -70,12 +75,7 @@ export const houseName = (index: number): string | undefined => {
 };
 
 /** 집 모양 값 (한 번 사면 언제든 공짜로 바꾼다. 단계는 그대로). 나무집은 처음부터 있다 */
-export const HOUSE_STYLE_COSTS: Readonly<Record<HouseStyle, number>> = {
-  wood: 0,
-  mushroom: 300,
-  igloo: 400,
-  castle: 600,
-};
+export const HOUSE_STYLE_COSTS: Readonly<Record<HouseStyle, number>> = STYLE_COSTS;
 const STYLE_KEYS = {
   wood: 'shop.style.wood',
   mushroom: 'shop.style.mushroom',
@@ -94,7 +94,7 @@ export function parseHouseStyle(saved: unknown, owned: (style: HouseStyle) => bo
 }
 
 /** 커스텀 먹이 만들기 값 (한 번). 먹일 때는 기본 먹이 값 */
-export const CUSTOM_FOOD_COST = 50;
+export { CUSTOM_FOOD_COST };
 export const CUSTOM_FOOD_MAX = 6;
 
 export interface ShopState {

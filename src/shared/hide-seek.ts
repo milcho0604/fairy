@@ -1,11 +1,12 @@
 // 숨바꼭질 (v2 미니 게임): 펫이 화면 가장자리에 몸을 반쯤 숨긴다. 30초 안에 눌러서 찾으면 코인.
+import { HIDE_SEEK_COIN } from './coin-rules.ts';
 import type { Rect } from './geometry.ts';
 
 export const HIDE_SEEK = {
   seconds: 30,
-  coins: 3,
+  coins: HIDE_SEEK_COIN.coins,
   /** 하루에 코인을 받는 판 수 */
-  dailyLimit: 3,
+  dailyLimit: HIDE_SEEK_COIN.dailyLimit,
   /** 화면 밖으로 숨기는 몸 비율 (나머지가 빼꼼 보인다) */
   hiddenRatio: 0.6,
 } as const;

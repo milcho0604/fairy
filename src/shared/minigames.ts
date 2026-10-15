@@ -2,6 +2,7 @@
 // 여기에는 규칙과 계산만 둔다 (시험할 수 있게). 창과 타이머는 main/minigames.ts.
 // 일을 방해하지 않게: 다 짧고(30초 안), 입력을 뺏지 않고(비눗방울만 방울 위에서 누름을 받는다), 펫을 누르거나 우클릭 "그만 놀기"로 끝난다.
 // 두더지 잡기만 펫 누르기가 잡기라, 그만두기는 우클릭 "그만 놀기"로 한다.
+import { PLAY_COIN } from './coin-rules.ts';
 import type { Point, Rect } from './geometry.ts';
 
 /** joke(웃겨 줘), highfive(하이파이브)는 말풍선만 쓰는 짧은 놀이 (shared/fun.ts) */
@@ -20,7 +21,7 @@ export const MINI_GAMES: readonly MiniGame[] = [
 export const isMiniGame = (v: unknown): v is MiniGame => MINI_GAMES.includes(v as MiniGame);
 
 /** 놀이 코인: 한 번 받은 만큼 한 행에 'play' 로 적는다 (예전 기록은 한 행에 1코인). 놀이를 다 합쳐 하루 이만큼까지 (기본 먹이 5코인 남짓) */
-export const PLAY_COIN = { reason: 'play', dailyLimit: 6 } as const;
+export { PLAY_COIN };
 /** 새 놀이가 친밀도(play 활동)를 올리는 하루 판 수. 가위바위보를 연달아 눌러 친밀도를 쌓지 못하게 */
 export const PLAY_AFFECTION_DAILY = 10;
 
