@@ -193,9 +193,9 @@ export function createServer(o: {
     return core.adminOverview(typeof q === 'string' ? q.slice(0, 40) : undefined);
   });
   ipcMain.handle(SERVER.adminAction, async (e, action: unknown, fields: unknown) => {
-    if (!ok(e) || !core.isAdmin()) return { ok: false, text: 'not_admin' };
+    if (!ok(e) || !core.isAdmin()) return { ok: false, text: 'not_admin', code: 'not_admin' };
     if (typeof action !== 'string' || !/^[a-z]+(\/[a-z]+)?$/.test(action))
-      return { ok: false, text: 'action' };
+      return { ok: false, text: 'action', code: 'invalid' };
     return core.adminAction(action, adminFields(fields));
   });
   ipcMain.handle(SERVER.turnOn, (e) => (ok(e) ? core.turnOn() : undefined));

@@ -3,8 +3,8 @@
 // 쪽지, 이벤트, 쿠폰, 공지와 최소/권장 버전, 운영 기록. 위험한 동작(모드 바꾸기, 회수, 최소 버전 올리기, 강제 업데이트 글)은
 // 두 번 눌러야 한다. 세션 토큰은 화면에 오지 않는다: 메인이 대신 부르고 서버가 요청마다 운영자인지 다시 본다.
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
-import { t } from '../../../shared/i18n/index.ts';
-import type { ServerBridge } from '../../../shared/server-account.ts';
+import { getLang, t } from '../../../shared/i18n/index.ts';
+import type { AdminActionResult, ServerBridge } from '../../../shared/server-account.ts';
 import { useServerStatus } from './ServerAccountBox.tsx';
 import { Section } from './ui.tsx';
 
@@ -13,6 +13,40 @@ type View = any;
 type Fields = Record<string, string | string[] | boolean | number>;
 
 const usd = (micros: number) => `$${(micros / 1e6).toFixed(2)}`;
+
+const ERRORS = [
+  'confirm',
+  'no_account',
+  'over_cap',
+  'over_remaining',
+  'no_seat',
+  'age',
+  'live',
+  'no_subscription',
+  'too_high',
+  'no_latest',
+  'not_admin',
+] as const;
+
+/**
+ * 서버 결과를 지금 말로. 한국어면 서버가 쓴 글 그대로 (자세한 까닭이 들어 있다), 영어면 코드로 고른 글.
+ * 만든 쿠폰 코드는 어느 말이든 붙인다
+ */
+export function resultText(r: AdminActionResult): string {
+  if (getLang() === 'ko') return r.text;
+  const coupon =
+    typeof r.data?.coupon === 'string' ? ` ${t('admin.couponCode', { code: r.data.coupon })}` : '';
+  const mode = typeof r.data?.mode === 'string' ? ` ${t('admin.ai.mode')}: ${r.data.mode}` : '';
+  if (r.ok) return `${t('admin.done')}${mode}${coupon}`;
+  const code = (ERRORS as readonly string[]).includes(r.code ?? '')
+    ? (r.code as (typeof ERRORS)[number])
+    : 'invalid';
+  return t(`admin.err.${code}`);
+}
+
+/** 언어에 맞는 글, 없으면 다른 말 */
+const pick = (ko: string | undefined, en: string | undefined) =>
+  (getLang() === 'en' ? en || ko : ko || en) ?? '';
 
 /** 두 번 눌러야 하는 단추 (위험한 동작) */
 function Sure(o: { label: string; onGo: () => void; disabled?: boolean }) {
@@ -88,7 +122,7 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
     setBusy(true);
     try {
       const r = await b.adminAction(action, fields);
-      flash(r.text, !r.ok);
+      flash(resultText(r), !r.ok);
       if (r.ok) await load();
     } finally {
       setBusy(false);
@@ -326,7 +360,7 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
             {view.events.slice(0, 10).map((e: View) => (
               <li key={e.id}>
                 <small>
-                  {e.id} {e.kind} {e.title_ko}
+                  {e.id} {e.kind} {pick(e.title_ko, e.title_en)}
                 </small>
                 {Date.now() < Number(e.ends) && (
                   <Sure
@@ -426,7 +460,7 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
             {(view.notices?.notices ?? []).map((n: View) => (
               <li key={n.id}>
                 <small>
-                  {n.id} {n.kind} {n.title.ko}
+                  {n.id} {n.kind} {pick(n.title?.ko, n.title?.en)}
                 </small>
                 <Sure
                   label={t('admin.notices.delete')}

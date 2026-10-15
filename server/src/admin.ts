@@ -67,13 +67,29 @@ export interface AdminRes {
 }
 
 /** 운영자에게 보일 까닭. 트랜잭션을 되돌리고 화면에 빨갛게 보인다 */
-export class Refused extends Error {}
+export class Refused extends Error {
+  /** 앱이 글로 바꿀 까닭 코드 (confirm, no_account, over_cap, over_remaining, no_seat, age, live, ...). 없으면 invalid */
+  constructor(
+    message: string,
+    readonly code = 'invalid',
+  ) {
+    super(message);
+  }
+}
+
+/** 쓰기 하나의 결과: 운영자 화면 글(한국어), 앱이 말에 맞게 바꿀 코드(운영 기록의 행동 이름), 덧붙일 값 */
+export interface AdminDone {
+  text: string;
+  code: string;
+  data?: Record<string, string | number>;
+}
 
 /** ai-admin.ts 가 던진 400 { text } 를 Refused 로 */
 function refusedFrom(err: unknown): Error {
   if (err instanceof HttpException) {
-    const r = err.getResponse() as { text?: unknown };
-    if (typeof r.text === 'string') return new Refused(r.text);
+    const r = err.getResponse() as { text?: unknown; error?: unknown };
+    if (typeof r.text === 'string')
+      return new Refused(r.text, typeof r.error === 'string' ? r.error : 'invalid');
   }
   return err as Error;
 }
@@ -115,6 +131,8 @@ interface AccountRow {
 interface Written {
   text: string;
   log: [string, string | null, Record<string, unknown>?];
+  /** 앱에 넘길 값 (쿠폰 코드) */
+  data?: Record<string, string | number>;
 }
 
 /** 정수 칸 (빈 칸은 0) */
@@ -308,15 +326,15 @@ export class AdminService {
   }
 
   /** 쓰기 하나: 트랜잭션 안에서 일하고 운영 기록을 남긴다. 운영자에게 보일 결과 글을 돌려준다 */
-  private write(actor: string, fn: (c: PoolClient) => Promise<Written>): Promise<string> {
+  private write(actor: string, fn: (c: PoolClient) => Promise<Written>): Promise<AdminDone> {
     return this.db.tx(async (c) => {
       const out = await fn(c);
       await adminLog(c, actor, out.log[0], out.log[1], out.log[2]);
-      return out.text;
+      return { text: out.text, code: out.log[0], ...(out.data ? { data: out.data } : {}) };
     });
   }
 
-  async createEvent(actor: string, f: FormFields, now = Date.now()): Promise<string> {
+  async createEvent(actor: string, f: FormFields, now = Date.now()): Promise<AdminDone> {
     const from = parseKstInput(f.from);
     const until = parseKstInput(f.until);
     if (from === undefined || until === undefined || Number.isNaN(from) || Number.isNaN(until))
@@ -369,7 +387,7 @@ export class AdminService {
   }
 
   /** 이벤트 끝내기: 시작했으면 지금 끝내고, 시작 전이면 지운다 (받은 사람이 없다) */
-  async endEvent(actor: string, id: string): Promise<string> {
+  async endEvent(actor: string, id: string): Promise<AdminDone> {
     return this.write(actor, async (c) => {
       const r = await c.query<{ started: boolean; ended: boolean }>(
         'SELECT starts_at <= now() AS started, ends_at <= now() AS ended FROM event WHERE id = $1 FOR UPDATE',
@@ -387,7 +405,7 @@ export class AdminService {
     });
   }
 
-  async createCoupon(actor: string, f: FormFields): Promise<string> {
+  async createCoupon(actor: string, f: FormFields): Promise<AdminDone> {
     const label = cleanText(f.label);
     if (!label || label.length > 80) throw new Refused('메모는 80자까지');
     const coins = int(f.coins, 0, 1000, '코인');
@@ -410,6 +428,7 @@ export class AdminService {
       return {
         // 코드는 여기서 한 번만 보인다 (서버는 해시만 둔다). 기록에도 앞 4자만
         text: `쿠폰 #${id} 코드: ${formatCoupon(code)} (지금만 보여요. 따로 적어 두세요)`,
+        data: { coupon: formatCoupon(code) },
         log: [
           'coupon.create',
           `#${id}`,
@@ -427,7 +446,7 @@ export class AdminService {
     });
   }
 
-  async disableCoupon(actor: string, id: string): Promise<string> {
+  async disableCoupon(actor: string, id: string): Promise<AdminDone> {
     if (!/^\d{1,18}$/.test(id)) throw new Refused('쿠폰 번호가 이상해요');
     return this.write(actor, async (c) => {
       const r = await c.query(
@@ -443,7 +462,7 @@ export class AdminService {
    * 쪽지 보내기 (개인 지급, 알림). 코인과 채팅 이용권은 바로 주지 않고 쪽지에 붙여, 사용자가 열 때 준다.
    * 채팅 이용권은 만 18세 이상 계정에만. 만료는 1~365일 (기본 30일)
    */
-  async sendNote(actor: string, f: FormFields): Promise<string> {
+  async sendNote(actor: string, f: FormFields): Promise<AdminDone> {
     const ref = (f.account ?? '').trim();
     const coins = int(f.coins, 0, 10000, '코인');
     const passes = int(f.chat_passes, 0, 1000, '채팅 이용권');
@@ -453,11 +472,12 @@ export class AdminService {
     const days = int(f.days, 1, 365, '만료 날수') || 30;
     return this.write(actor, async (c) => {
       const id = await findAccount(c, ref);
-      if (!id) throw new Refused('없는 계정이에요 (계정 번호나 기기 코드)');
+      if (!id) throw new Refused('없는 계정이에요 (계정 번호나 기기 코드)', 'no_account');
       const a = await lockAccount(c, id);
       if (passes > 0) {
         const age = await c.query<{ age: string }>('SELECT age FROM account WHERE id = $1', [a.id]);
-        if (age.rows[0]?.age !== '18+') throw new Refused('채팅 이용권은 만 18세 이상 계정에만 줄 수 있어요');
+        if (age.rows[0]?.age !== '18+')
+          throw new Refused('채팅 이용권은 만 18세 이상 계정에만 줄 수 있어요', 'age');
       }
       const noteId = await sendInbox(c, a.id, {
         kind: coins + passes > 0 ? 'grant' : 'notice',
@@ -480,8 +500,8 @@ export class AdminService {
   // ---- 채팅 이용권 (AI 대화권) 관리 ----
 
   /** 접근 모드 (off, allowlist, everyone). 바꾸기는 확인 칸이 있어야 한다 */
-  async aiMode(actor: string, f: FormFields): Promise<string> {
-    if (f.confirm !== 'yes') throw new Refused('확인 칸을 체크해 주세요 (모드 바꾸기)');
+  async aiMode(actor: string, f: FormFields): Promise<AdminDone> {
+    if (f.confirm !== 'yes') throw new Refused('확인 칸을 체크해 주세요 (모드 바꾸기)', 'confirm');
     const mode = (f.mode ?? '') as AiMode;
     if (!AI_MODES.includes(mode)) throw new Refused('모드는 off, allowlist, everyone');
     return this.write(actor, async (c) => {
@@ -489,12 +509,13 @@ export class AdminService {
       return {
         text: `채팅 이용권 접근 모드: ${r.before.mode} → ${mode}`,
         log: ['ai.mode', null, { before: r.before.mode, after: mode }],
+        data: { mode: `${r.before.mode} → ${mode}` },
       };
     });
   }
 
   /** 선물과 쿠폰을 로그인 계정만 받기 (기본 켬) */
-  async rewardsPolicy(actor: string, f: FormFields): Promise<string> {
+  async rewardsPolicy(actor: string, f: FormFields): Promise<AdminDone> {
     const on = f.login_only === '1' || f.login_only === 'true';
     return this.write(actor, async (c) => {
       const before = await this.rewards.setLoginOnly(c, on);
@@ -506,7 +527,7 @@ export class AdminService {
   }
 
   /** 정책: 자동 정기 지급 장수(매달 N장까지), 자리 수(정기 지급 계정 상한), 첫 로그인 선물 켜기 */
-  async aiPolicy(actor: string, f: FormFields): Promise<string> {
+  async aiPolicy(actor: string, f: FormFields): Promise<AdminDone> {
     const autoMonthly = (f.auto_monthly ?? '').trim() === '' ? undefined : Number(f.auto_monthly);
     const seatLimit = (f.seat_limit ?? '').trim() === '' ? undefined : Number(f.seat_limit);
     const firstGift =
@@ -535,7 +556,7 @@ export class AdminService {
   }
 
   /** 월 예산(달러)과 하루 상한. 빈 칸은 .env 상한 그대로 */
-  async aiLimits(actor: string, f: FormFields): Promise<string> {
+  async aiLimits(actor: string, f: FormFields): Promise<AdminDone> {
     const b = (f.budget_usd ?? '').trim();
     const d = (f.daily_limit ?? '').trim();
     const usd = b === '' ? null : Number(b);
@@ -568,8 +589,8 @@ export class AdminService {
   }
 
   /** 채팅 이용권 회수 (남은 장수까지만). 확인 칸이 있어야 한다. 주기는 쪽지로 (sendNote) */
-  async aiRevoke(actor: string, f: FormFields): Promise<string> {
-    if (f.confirm !== 'yes') throw new Refused('확인 칸을 체크해 주세요 (회수)');
+  async aiRevoke(actor: string, f: FormFields): Promise<AdminDone> {
+    if (f.confirm !== 'yes') throw new Refused('확인 칸을 체크해 주세요 (회수)', 'confirm');
     const n = int(f.count, 1, 1000, '회수 장수');
     if (n === 0) throw new Refused('회수할 장수를 넣어 주세요');
     return this.write(actor, async (c) => {
@@ -586,7 +607,7 @@ export class AdminService {
     });
   }
 
-  async aiSubscribe(actor: string, f: FormFields): Promise<string> {
+  async aiSubscribe(actor: string, f: FormFields): Promise<AdminDone> {
     const monthly = int(f.monthly, 1, 1000, '매달 장수');
     const mode = f.mode === 'add' ? 'add' : 'fill';
     return this.write(actor, async (c) => {
@@ -618,7 +639,7 @@ export class AdminService {
     });
   }
 
-  async aiCancel(actor: string, f: FormFields): Promise<string> {
+  async aiCancel(actor: string, f: FormFields): Promise<AdminDone> {
     return this.write(actor, async (c) => {
       let r: { id: string; subscription: number };
       try {
@@ -633,7 +654,7 @@ export class AdminService {
     });
   }
 
-  async aiBlock(actor: string, f: FormFields): Promise<string> {
+  async aiBlock(actor: string, f: FormFields): Promise<AdminDone> {
     const on = f.blocked === '1' || f.blocked === 'true';
     return this.write(actor, async (c) => {
       let id: string;
@@ -649,7 +670,7 @@ export class AdminService {
     });
   }
 
-  async aiAllow(actor: string, f: FormFields): Promise<string> {
+  async aiAllow(actor: string, f: FormFields): Promise<AdminDone> {
     const on = f.allowed === '1' || f.allowed === 'true';
     try {
       return await this.aiAllowTx(actor, f, on);
@@ -663,7 +684,7 @@ export class AdminService {
     }
   }
 
-  private async aiAllowTx(actor: string, f: FormFields, on: boolean): Promise<string> {
+  private async aiAllowTx(actor: string, f: FormFields, on: boolean): Promise<AdminDone> {
     return this.write(actor, async (c) => {
       let id: string;
       try {
@@ -681,7 +702,7 @@ export class AdminService {
   }
 
   /** 쓰기 하나를 이름으로 (웹 폼과 앱의 /v1/admin/* 가 같이 쓴다) */
-  run(action: AdminAction, actor: string, f: FormFields): Promise<string> {
+  run(action: AdminAction, actor: string, f: FormFields): Promise<AdminDone> {
     const id = () => (f.id ?? '').trim();
     switch (action) {
       case 'events':
@@ -727,7 +748,7 @@ export class AdminService {
     fn: (
       doc: NoticeDoc,
     ) => Promise<{ text: string; action: string; target: string | null; detail: Record<string, unknown> }>,
-  ): Promise<string> {
+  ): Promise<AdminDone> {
     return this.write(actor, async (c) => {
       await c.query(
         `INSERT INTO site_doc (name, body) VALUES ('notices', $1) ON CONFLICT (name) DO NOTHING`,
@@ -751,11 +772,11 @@ export class AdminService {
   }
 
   /** 공지 넣기. 같은 id 가 있으면 바꾼다 (이미 닫은 알림은 다시 안 뜨므로 정정은 새 id 로) */
-  async saveNotice(actor: string, f: FormFields): Promise<string> {
+  async saveNotice(actor: string, f: FormFields): Promise<AdminDone> {
     const n = noticeFromForm(f);
     if (typeof n === 'string') throw new Refused(n);
     if (n.kind === 'force' && f.confirm !== 'yes')
-      throw new Refused('확인 칸을 체크해 주세요 (강제 업데이트 글)');
+      throw new Refused('확인 칸을 체크해 주세요 (강제 업데이트 글)', 'confirm');
     return this.editDoc(actor, async (doc) => {
       const i = doc.notices.findIndex((x) => x.id === n.id);
       if (i >= 0) doc.notices[i] = n;
@@ -776,7 +797,7 @@ export class AdminService {
     });
   }
 
-  async deleteNotice(actor: string, id: string): Promise<string> {
+  async deleteNotice(actor: string, id: string): Promise<AdminDone> {
     return this.editDoc(actor, async (doc) => {
       const before = doc.notices.length;
       doc.notices = doc.notices.filter((x) => x.id !== id);
@@ -789,7 +810,7 @@ export class AdminService {
    * 최소 버전과 권장 버전. 빈 칸은 지운다. 올릴 때는 지금 최신 릴리스 이하여야 한다 (23절: 없는 버전을 요구하면
    * 앱이 풀 수 없다). 최신 릴리스를 못 읽으면 올리기를 막는다 (내리기와 지우기는 된다)
    */
-  async saveVersions(actor: string, f: FormFields): Promise<string> {
+  async saveVersions(actor: string, f: FormFields): Promise<AdminDone> {
     const min = (f.minVersion ?? '').trim();
     const rec = (f.recommendVersion ?? '').trim();
     for (const [v, name] of [
@@ -807,10 +828,14 @@ export class AdminService {
       ] as const) {
         if (!raises(next, prev)) continue;
         if (name === '최소 버전' && f.confirm !== 'yes')
-          throw new Refused('확인 칸을 체크해 주세요 (최소 버전 올리기: 낮은 앱이 잠겨요)');
-        if (!latest) throw new Refused(`최신 릴리스를 읽지 못해 ${name}을 올리지 않았어요. 잠시 뒤 다시`);
+          throw new Refused('확인 칸을 체크해 주세요 (최소 버전 올리기: 낮은 앱이 잠겨요)', 'confirm');
+        if (!latest)
+          throw new Refused(`최신 릴리스를 읽지 못해 ${name}을 올리지 않았어요. 잠시 뒤 다시`, 'no_latest');
         if (compareVersion(next, latest) > 0)
-          throw new Refused(`${name} ${next} 는 최신 릴리스 ${latest} 보다 높아요 (앱이 풀 수 없어요)`);
+          throw new Refused(
+            `${name} ${next} 는 최신 릴리스 ${latest} 보다 높아요 (앱이 풀 수 없어요)`,
+            'too_high',
+          );
       }
       const before = { minVersion: doc.minVersion ?? null, recommendVersion: doc.recommendVersion ?? null };
       if (min) doc.minVersion = min;
@@ -963,7 +988,7 @@ export class AdminController {
     await this.guarded(
       req,
       res,
-      (s, f) => this.admin.run(name, actorOf(s), f),
+      async (s, f) => (await this.admin.run(name, actorOf(s), f)).text,
       (f) => (f.account ? `/admin?q=${encodeURIComponent(f.account.trim())}` : '/admin'),
     );
   }
@@ -1062,9 +1087,10 @@ export class AdminApiController {
     const name = (req.path ?? '').replace(/^\/v1\/admin\//, '');
     if (!isAdminAction(name)) throw new NotFoundException({ error: 'action' });
     try {
-      return { ok: true, text: await this.admin.run(name, actor, fieldsOf(req.body)) };
+      return { ok: true, ...(await this.admin.run(name, actor, fieldsOf(req.body))) };
     } catch (err) {
-      if (err instanceof Refused) throw new BadRequestException({ error: 'refused', text: err.message });
+      if (err instanceof Refused)
+        throw new BadRequestException({ error: 'refused', code: err.code, text: err.message });
       throw err;
     }
   }

@@ -408,11 +408,24 @@ export function serverApi(base: string, f: FetchLike) {
       action: string,
       fields: Record<string, string | string[] | boolean | number>,
     ) =>
-      call<{ text: string }>('POST', `/v1/admin/${action}`, {
-        token,
-        body: fields,
-        read: (j) => (typeof j.text === 'string' ? { text: j.text } : undefined),
-      }),
+      call<{ text: string; code?: string; data?: Record<string, string | number> }>(
+        'POST',
+        `/v1/admin/${action}`,
+        {
+          token,
+          body: fields,
+          read: (j) =>
+            typeof j.text === 'string'
+              ? {
+                  text: j.text,
+                  ...(typeof j.code === 'string' ? { code: j.code.slice(0, 40) } : {}),
+                  ...(j.data && typeof j.data === 'object'
+                    ? { data: j.data as Record<string, string | number> }
+                    : {}),
+                }
+              : undefined,
+        },
+      ),
     /** 브라우저로 여는 구글 로그인 주소 */
     startUrl: (port: number, state: string, challenge: string) => {
       const u = new URL(`${base}/auth/google/start`);

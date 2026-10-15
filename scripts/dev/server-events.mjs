@@ -275,8 +275,8 @@ const typeInto = (p, selector, value) =>
     `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return false; const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`,
   );
 const T = {
-  ko: { ticket: '채팅 이용권 Claude', adult: '만 18세 이상', start: '서버 모드 시작', claim: '선물 받기', coupon: '쿠폰 쓰기', from: '운영자', admin: '운영자' },
-  en: { ticket: 'Chat pass AI', adult: '18 or older', start: 'Start server mode', claim: 'Get gift', coupon: 'Use coupon', from: 'Operator', admin: 'Operator' },
+  ko: { ticket: '채팅 이용권', adult: '만 18세 이상', start: '서버 모드 시작', claim: '선물 받기', coupon: '쿠폰 쓰기', from: '운영자', admin: '운영자' },
+  en: { ticket: 'Chat pass', adult: '18 or older', start: 'Start server mode', claim: 'Get gift', coupon: 'Use coupon', from: 'Operator', admin: 'Operator' },
 }[LANG];
 const NICK = LANG === 'ko' ? '시험친구' : 'Tester';
 

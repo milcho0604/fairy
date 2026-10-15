@@ -601,7 +601,7 @@ const T = {
   ko: {
     adult: '만 18세 이상', teen: '만 14세 이상 18세 미만', under14: '만 14세 미만', change: '나이 바꾸기', syncNow: '지금 맞추기',
     login: '구글로 로그인', logout: '로그아웃', remove: '서버 계정 지우기', sure: '정말 지우기', turnOn: '서버 모드 켜기',
-    mergeYes: '합치기', mergeNo: '합치지 않기', ticket: '채팅 이용권 Claude', agree: '알겠어, 채팅 이용권 쓰기', send: '보내기',
+    mergeYes: '합치기', mergeNo: '합치지 않기', ticket: '채팅 이용권', agree: '알겠어, 채팅 이용권 쓰기', send: '보내기',
     report: '신고', offline: '서버에 닿지 않아', signedIn: '구글로 로그인했어', tickets10: 'AI 채팅 이용권 10장', ticketsWord: 'AI 채팅 이용권', appMode: '앱 안 모드야',
     daily: '오늘 채팅 이용권 질문은 여기까지야', budget: '이번 달 채팅 이용권 AI가 쉬는 중이야', empty: '채팅 이용권을 다 썼어', failed: '채팅 이용권은 돌려놓았어',
     count: (n) => `채팅 이용권 ${n}장 남음`, restoreServer: '코인과 산 물건은 서버 것을 따라', serverTitle: '서버 계정과 코인', reverted: '되돌렸어', resetStart: '코인 초기화하기', resetSure: '초기화할게',
@@ -609,8 +609,8 @@ const T = {
   en: {
     adult: '18 or older', teen: '14 to 17', under14: 'Under 14', change: 'Change age', syncNow: 'Sync now',
     login: 'Sign in with Google', logout: 'Sign out', remove: 'Delete server account', sure: 'Really delete', turnOn: 'Turn on server mode',
-    mergeYes: 'Merge', mergeNo: "Don't merge", ticket: 'Chat pass AI', agree: 'Got it, use chat passes', send: 'Send',
-    report: 'Report', offline: "Can't reach the server", signedIn: 'Signed in with Google', tickets10: '10 chat passes', ticketsWord: 'chat pass', appMode: 'App-only mode',
+    mergeYes: 'Merge', mergeNo: "Don't merge", ticket: 'Chat pass', agree: 'Got it, use chat passes', send: 'Send',
+    report: 'Report', offline: "Can't reach the server", signedIn: 'Signed in with Google', tickets10: '10 chat passes', ticketsWord: 'Pick "Chat pass"', appMode: 'App-only mode',
     daily: "That's all the chat pass questions for today", budget: 'Chat pass AI is resting', empty: 'used all your chat passes', failed: 'Your chat pass is back',
     count: (n) => `${n} ${n === 1 ? 'chat pass' : 'chat passes'} left`, restoreServer: 'Coins and items follow the server', serverTitle: 'Server account and coins', reverted: 'undone', resetStart: 'Reset coins', resetSure: 'Reset now',
   },

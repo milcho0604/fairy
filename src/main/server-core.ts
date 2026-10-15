@@ -10,6 +10,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { checkNickname, DEVICE_CODE } from '../shared/account-profile.ts';
 import {
   type AccountSummary,
+  type AdminActionResult,
   type AgeAnswer,
   ageClass,
   isAgeAnswer,
@@ -592,9 +593,11 @@ export function createServerCore(d: ServerCoreDeps) {
         if (!(await ensureMigrated())) return;
         await ensureAge();
         await ensureNickname();
-        await syncAll();
+        // 운영자인지, 채팅 이용권 자리와 이번 달 정기 지급 쪽지를 먼저 (QA #113: 허용 직후 쪽지가 첫 맞추기 대답의
+        // 쪽지 수에 들게). 맞추기는 그 뒤
         await refreshMe();
         await refreshTickets();
+        await syncAll();
       } catch (err) {
         problem = 'server';
         d.log('server', '맞추기 중 오류', err instanceof Error ? err.message : String(err));
@@ -807,18 +810,25 @@ export function createServerCore(d: ServerCoreDeps) {
         }
         return r?.ok ? r.data : undefined;
       }),
-    adminAction: async (action: string, fields: Record<string, string | string[] | boolean | number>) =>
+    adminAction: async (
+      action: string,
+      fields: Record<string, string | string[] | boolean | number>,
+    ): Promise<AdminActionResult> =>
       (await adminCall(async (t) => {
         const r = await d.api?.adminAction(t, action, fields);
         if (!r) return { ok: false, text: '' };
-        if (r.ok) return { ok: true, text: r.data.text };
+        if (r.ok) return { ok: true, ...r.data };
         if (r.status === 403) {
           st.admin = false;
           save();
           changed();
         }
-        return { ok: false, text: typeof r.body.text === 'string' ? r.body.text : r.error };
-      })) ?? { ok: false, text: 'not_admin' },
+        return {
+          ok: false,
+          text: typeof r.body.text === 'string' ? r.body.text : r.error,
+          code: typeof r.body.code === 'string' ? r.body.code.slice(0, 40) : r.error,
+        };
+      })) ?? { ok: false, text: 'not_admin', code: 'not_admin' },
     setAge(age: unknown, nickname?: unknown): ServerStatus {
       if (!isAgeAnswer(age) || !enabled()) return status();
       if (nickname !== undefined && age !== 'under14') {

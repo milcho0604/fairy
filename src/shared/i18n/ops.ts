@@ -165,6 +165,20 @@ export const ko = {
   'admin.notices.save': '공지 저장',
   'admin.notices.delete': '지우기',
   'admin.log.title': '운영 기록',
+  'admin.done': '저장했어.',
+  'admin.couponCode': (v: { code: string }) => `쿠폰 코드 ${v.code} (지금만 보여)`,
+  'admin.err.confirm': '확인 단계가 필요해.',
+  'admin.err.no_account': '없는 계정이야.',
+  'admin.err.over_cap': '.env 상한보다 커.',
+  'admin.err.over_remaining': '남은 장수보다 많이 회수할 수 없어.',
+  'admin.err.no_seat': '자리가 없어 대기 목록에 넣었어.',
+  'admin.err.age': '채팅 이용권은 만 18세 이상 계정에만 줄 수 있어.',
+  'admin.err.live': '이미 정기 지급이 있어. 해지하고 다시 걸어 줘.',
+  'admin.err.no_subscription': '걸린 정기 지급이 없어.',
+  'admin.err.too_high': '최신 릴리스보다 높아서 올리지 않았어.',
+  'admin.err.no_latest': '최신 릴리스를 읽지 못해 올리지 않았어.',
+  'admin.err.not_admin': '운영자 계정이 아니야.',
+  'admin.err.invalid': '서버가 받지 않았어. 값을 확인해 줘.',
 } as const;
 
 export const en: Translation<typeof ko> = {
@@ -244,7 +258,7 @@ export const en: Translation<typeof ko> = {
   'server.code.why':
     "Share this code when you ask the operator something. It isn't a password, so it's fine to show.",
   'server.inbox': (v: N) =>
-    `${v.n} unopened notes from the operator. Open them in the note box on the panel's Today tab.`,
+    `${v.n} unopened ${v.n === 1 ? 'note' : 'notes'} from the operator. Open ${v.n === 1 ? 'it' : 'them'} in the note box on the panel's Today tab.`,
 
   'admin.title': 'Operator',
   'admin.hint': 'You see this because this is an operator account. Every action goes into the server log.',
@@ -326,4 +340,18 @@ export const en: Translation<typeof ko> = {
   'admin.notices.save': 'Save notice',
   'admin.notices.delete': 'Delete',
   'admin.log.title': 'Operator log',
+  'admin.done': 'Saved.',
+  'admin.couponCode': (v: { code: string }) => `Coupon code ${v.code} (shown only now)`,
+  'admin.err.confirm': 'This needs the confirm step.',
+  'admin.err.no_account': 'No such account.',
+  'admin.err.over_cap': 'That is over the .env cap.',
+  'admin.err.over_remaining': "Can't take back more than what's left.",
+  'admin.err.no_seat': 'No seat left; added to the waiting list.',
+  'admin.err.age': 'Chat passes can only go to accounts 18 or older.',
+  'admin.err.live': 'A subscription already exists. Cancel it first.',
+  'admin.err.no_subscription': 'No subscription to cancel.',
+  'admin.err.too_high': 'Higher than the latest release, so not saved.',
+  'admin.err.no_latest': "Couldn't read the latest release, so not raised.",
+  'admin.err.not_admin': 'Not an operator account.',
+  'admin.err.invalid': "The server didn't accept it. Check the values.",
 };

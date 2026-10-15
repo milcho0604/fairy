@@ -89,6 +89,17 @@ export interface ServerStatus {
 /** 닉네임 검사 실패의 까닭 (shared/account-profile.ts) 과 서버에 닿지 않음 */
 export type NicknameProblem = 'length' | 'chars' | 'url' | 'at' | 'offline' | 'server';
 
+/**
+ * 운영자 쓰기 결과 (#101). text 는 서버가 쓴 한국어 글, code 는 앱이 말에 맞게 바꿀 코드
+ * (성공이면 운영 기록의 행동 이름, 실패면 까닭), data 는 덧붙일 값 (만든 쿠폰 코드)
+ */
+export interface AdminActionResult {
+  ok: boolean;
+  text: string;
+  code?: string;
+  data?: Record<string, string | number>;
+}
+
 /** 선물 받기, 쿠폰 결과 (#101) */
 export type RewardOutcome = { ok: true; coins: number; tickets: number } | { ok: false; error: string };
 
@@ -141,7 +152,7 @@ export interface ServerBridge {
   adminAction(
     action: string,
     fields: Record<string, string | string[] | boolean | number>,
-  ): Promise<{ ok: boolean; text: string }>;
+  ): Promise<AdminActionResult>;
   /** 탈퇴 뒤 서버 모드를 다시 켠다 */
   turnOn(): Promise<ServerStatus | undefined>;
   syncNow(): Promise<ServerStatus | undefined>;

@@ -16,7 +16,8 @@ export const ko = {
   'server.leftover': '서버에 예전 계정이 남아 있어. 지우려면 아래 "서버 계정 지우기"를 눌러.',
   'server.off': '서버 모드가 꺼져 있어. 다시 켜면 지금 코인과 산 물건을 서버로 한 번 옮겨.',
   'server.turnOn': '서버 모드 켜기',
-  'server.what': '서버에는 나이 구분과 코인, 산 물건 기록만 가. 이름, 이메일, 할 일은 보내지 않아.',
+  'server.what':
+    '서버에는 나이 구분, 닉네임, 코인과 산 물건 기록, 쪽지함이 가. 구글로 로그인하면 구글 계정 고유 번호(sub)만, 채팅 이용권을 쓰면 질문 글이 가(서버는 저장하지 않아). 이름, 이메일, 할 일은 보내지 않아.',
   'server.balance': '서버 코인 {n}',
   'server.balanceNone': '서버 코인을 아직 못 받았어',
   'server.lastSync': '{time}에 맞춤',
@@ -59,11 +60,12 @@ export const ko = {
   'server.page.failTitle': '로그인하지 못했어',
   'server.page.failBody': '페어리 설정에서 다시 해 줘.',
   // AI 대화권 (기획서 8절, 이슈 #100. 화면 이름은 "채팅 이용권", #101). 만 18세 이상, 로그인한 서버 모드에서만 보인다
-  'ticket.label': '채팅 이용권 Claude',
+  'ticket.label': '채팅 이용권',
+  'ticket.detail': 'Claude, 운영자가 중계',
   'ticket.count': (v: { n: number }) => `채팅 이용권 ${v.n}장 남음`,
   'ticket.countUnknown': '채팅 이용권 남은 수를 아직 못 받았어',
   'ticket.settings': (v: { n: number }) =>
-    `AI 채팅 이용권 ${v.n}장. 채팅 창에서 "채팅 이용권 Claude"를 고르면 질문 하나에 한 장씩 써.`,
+    `AI 채팅 이용권 ${v.n}장. 채팅 창에서 "채팅 이용권"을 고르면 질문 하나에 한 장씩 써.`,
   'ticket.aiNow': 'AI와 대화 중이야. 답은 사람이 아니라 AI(Anthropic의 Claude)가 써.',
   'ticket.notice':
     '채팅 이용권으로 물으면 질문(지금 시각 포함), 이 대화의 최근 문답 몇 개, 페어리 이름과 말투 설명이 Anthropic(미국)으로 암호화되어 가. "내 할 일 같이 보내기"를 켰으면 오늘 할 일도 같이 가. 페어리 규칙과 페어리가 기억하는 것은 보내지 않아. Anthropic은 정책상 최대 30일 보관할 수 있어(정책 위반 조사 등은 예외). 페어리 서버는 대화 내용을 저장하지 않고 사용량 숫자만 남겨. 싫으면 채팅 이용권을 쓰지 말고 내 컴퓨터 AI로 대화하면 돼.',
@@ -112,7 +114,8 @@ export const en: Translation<typeof ko> = {
     'An old server account is still there. To delete it, press "Delete server account" below.',
   'server.off': 'Server mode is off. Turning it on moves your current coins and items to the server once.',
   'server.turnOn': 'Turn on server mode',
-  'server.what': 'The server only gets your age group and coin and item records. No name, email or to-dos.',
+  'server.what':
+    "The server gets your age group, nickname, coin and item records, and note box. If you sign in with Google, only the account identifier (sub); if you use chat passes, your question text (the server doesn't store it). No name, email or to-dos.",
   'server.balance': 'Server coins {n}',
   'server.balanceNone': 'No server coins yet',
   'server.lastSync': 'synced {time}',
@@ -161,11 +164,12 @@ export const en: Translation<typeof ko> = {
   'server.page.okBody': 'You can go back to fairy and close this window.',
   'server.page.failTitle': "Couldn't sign in",
   'server.page.failBody': 'Please try again in fairy settings.',
-  'ticket.label': 'Chat pass AI',
+  'ticket.label': 'Chat pass',
+  'ticket.detail': 'Claude, relayed by the operator',
   'ticket.count': (v: { n: number }) => `${v.n} ${v.n === 1 ? 'chat pass' : 'chat passes'} left`,
   'ticket.countUnknown': "Haven't got your chat pass count yet",
   'ticket.settings': (v: { n: number }) =>
-    `${v.n} ${v.n === 1 ? 'chat pass' : 'chat passes'}. Pick "Chat pass AI" in the chat window; each question uses one.`,
+    `${v.n} ${v.n === 1 ? 'chat pass' : 'chat passes'}. Pick "Chat pass" in the chat window; each question uses one.`,
   'ticket.aiNow':
     "You're talking with an AI. Answers are written by an AI (Anthropic's Claude), not a person.",
   'ticket.notice':

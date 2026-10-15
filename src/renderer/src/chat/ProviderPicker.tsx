@@ -38,7 +38,7 @@ export function ProviderPicker({ providers, status, current, disabled, onPick, o
   );
 
   return (
-    <div className="picker" ref={ref}>
+    <div className={`picker${selected?.ticket ? ' ticket' : ''}`} ref={ref}>
       <button
         type="button"
         className="picker-button"
@@ -73,6 +73,7 @@ export function ProviderPicker({ providers, status, current, disabled, onPick, o
               >
                 <span className={`dot ${dotOf(s)}`} aria-hidden="true" />
                 <span className="name">{p.label}</span>
+                {p.detail && <span className="detail">{p.detail}</span>}
                 {!p.verified && (
                   <span className="tag" title={t('chat.notVerifiedTitle')}>
                     {t('chat.notVerified')}

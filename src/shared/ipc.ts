@@ -518,6 +518,8 @@ export interface ProviderView {
   ephemeral: boolean;
   /** AI 대화권 (#100): 서버가 중계하는 Claude. "AI 와 대화 중" 과 남은 수, 신고 단추를 보인다 */
   ticket?: boolean;
+  /** 목록 안에서 이름 아래 작게 보이는 설명 (채팅 이용권: 어떤 AI 가 답하는지) */
+  detail?: string;
 }
 
 export interface ChatSnapshot {

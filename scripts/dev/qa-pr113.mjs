@@ -458,7 +458,7 @@ async function apiLayer() {
   {
     const st0 = sql(`SELECT mode FROM feature_flag WHERE key = 'ai_chat'`);
     check(A5, '기본 모드 allowlist, 첫 선물 끔', st0 === 'allowlist' && sql('SELECT first_gift FROM ai_setting WHERE id = 1') === 'f', `${st0}`);
-    const u = await newUser('이용권');
+    const u = await newUser(Q('이용권', 'PassUser'));
     const g = () => api('GET', '/v1/ai', { token: u.session });
     const na = await g();
     check(A5, 'allowlist + 목록에 없음 → 403 not_allowed', na.status === 403 && na.json?.error === 'not_allowed', `${na.status} ${JSON.stringify(na.json)}`);
@@ -826,7 +826,7 @@ const T = {
     errLength: '2자에서 12자 사이로 써 줘.', errAt: '@ 는 쓸 수 없어.', errUrl: '주소는 닉네임으로 쓸 수 없어.', errChars: '줄바꿈이나 보이지 않는 글자는 쓸 수 없어.',
     claim: '선물 받기', claimed: '받았어', couponUse: '쿠폰 쓰기', loginReq: '로그인하면 받을 수 있어', claimOk: '선물 코인 30개를 받았어!',
     cpShape: '코드 모양이 맞지 않아', cpNone: '없거나 꺼진 쿠폰이야.', cpUsed: '이미 쓴 쿠폰이야.', cpSold: '다 쓰인 쿠폰이야.', cpEnded: '기한이 지난 쿠폰이야.', cpOk: '쿠폰을 썼어!',
-    ticket: '채팅 이용권 Claude', agree: '알겠어, 채팅 이용권 쓰기', send: '보내기', refusal: '답하지 않기로 했어', rules: '페어리 규칙', oldRules: '짝꿍 규칙',
+    ticket: '채팅 이용권', agree: '알겠어, 채팅 이용권 쓰기', send: '보내기', refusal: '답하지 않기로 했어', rules: '페어리 규칙', oldRules: '짝꿍 규칙',
     count: (n) => `채팅 이용권 ${n}장 남음`, waitlisted: '채팅 이용권 자리가 다 찼어', sub: '구독 중: 매달 100장',
     from: '운영자', openNow: '펼쳐 보기', got: '받았어: 코인 15개', inboxLine: '열지 않은 운영자 쪽지 1통', newBadge: '새 쪽지',
     mergeYes: '합치기', mergeOne: ['코인 1,', '산 물건 1개'],
@@ -841,7 +841,7 @@ const T = {
     errLength: 'Use 2 to 12 characters.', errAt: "@ isn't allowed.", errUrl: "Web addresses can't be nicknames.", errChars: "Line breaks and invisible characters aren't allowed.",
     claim: 'Get gift', claimed: 'Received', couponUse: 'Use coupon', loginReq: 'Sign in to get gifts', claimOk: 'You got 30 gift coins!',
     cpShape: "That code doesn't look right", cpNone: 'No such coupon, or it was turned off.', cpUsed: 'You already used this coupon.', cpSold: 'This coupon has run out.', cpEnded: 'This coupon has expired.', cpOk: 'Coupon used!',
-    ticket: 'Chat pass AI', agree: 'Got it, use chat passes', send: 'Send', refusal: 'chose not to answer', rules: "Your fairy's rules", oldRules: 'jjakkung',
+    ticket: 'Chat pass', agree: 'Got it, use chat passes', send: 'Send', refusal: 'chose not to answer', rules: "Your fairy's rules", oldRules: 'jjakkung',
     count: (n) => `${n} ${n === 1 ? 'chat pass' : 'chat passes'} left`, waitlisted: 'All chat pass seats are taken', sub: 'Subscribed: 100 a month',
     from: 'Operator', openNow: 'Open', got: 'Received: 15 coins', inboxLine: '1 unopened note from the operator', newBadge: 'New',
     mergeYes: 'Merge', mergeOne: ['1 coin,', '1 item'],
@@ -1466,7 +1466,7 @@ async function appC() {
       await clearFlash(p);
       await adminSure(p, T.gNotice, T.saveVersions);
       const tooHigh = await flashOf('9.9.9');
-      check(F, '최소 버전 9.9.9 → 거절 글 (최신 릴리스보다 높음)', /최신 릴리스/.test(tooHigh) && !sql(`SELECT body::text FROM site_doc WHERE name = 'notices'`).includes('9.9.9'), tooHigh);
+      check(F, '최소 버전 9.9.9 → 거절 글 (최신 릴리스보다 높음)', /최신 릴리스|latest release/i.test(tooHigh) && !sql(`SELECT body::text FROM site_doc WHERE name = 'notices'`).includes('9.9.9'), tooHigh);
       await adminType(p, T.gNotice, T.lMin, LATEST);
       await adminType(p, T.gNotice, T.lRec, LATEST);
       const r = await adminSure(p, T.gNotice, T.saveVersions, () => !sql(`SELECT body::text FROM site_doc WHERE name = 'notices'`).includes(`"minVersion": "${LATEST}"`) && !sql(`SELECT body::text FROM site_doc WHERE name = 'notices'`).includes(`"minVersion":"${LATEST}"`));
