@@ -44,24 +44,54 @@ export interface MergeNeeded {
   other: AccountSummary;
 }
 
-const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+/** 대답 본문 상한 (대기열 500개 결과도 100KB 남짓) */
+export const REPLY_MAX_BYTES = 1_000_000;
+
+const num = (v: unknown): number => (typeof v === 'number' && Number.isSafeInteger(v) ? v : 0);
+/** 0 이상의 안전한 정수만 (잔액, 옮긴 양, 물건 수) */
+export const nat = (v: unknown): number | undefined =>
+  typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 ? v : undefined;
+
+/** 본문을 상한까지만 읽는다. content-length 가 넘거나 읽다가 넘으면 undefined (읽기를 멈춘다) */
+async function readCapped(res: Response, max: number): Promise<string | undefined> {
+  const len = Number(res.headers.get('content-length') ?? '');
+  if (Number.isFinite(len) && len > max) {
+    await res.body?.cancel().catch(() => {});
+    return undefined;
+  }
+  if (!res.body) return '';
+  const reader = res.body.getReader();
+  const parts: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel().catch(() => {});
+      return undefined;
+    }
+    parts.push(value);
+  }
+  return Buffer.concat(parts).toString('utf8');
+}
 
 function items(v: unknown): Items {
   const out: Items = {};
   if (typeof v !== 'object' || v === null || Array.isArray(v)) return out;
   for (const [k, n] of Object.entries(v))
-    if (typeof n === 'number' && Number.isInteger(n) && n > 0) out[k] = n;
+    if (typeof n === 'number' && Number.isSafeInteger(n) && n > 0 && k.length <= 64) out[k] = n;
   return out;
 }
 
 export const summary = (v: unknown): AccountSummary => {
   const o = (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>;
-  return { balance: num(o.balance), items: items(o.items) };
+  return { balance: nat(o.balance) ?? 0, items: items(o.items) };
 };
 
 export function serverApi(base: string, f: FetchLike) {
   async function call<T>(
-    method: 'GET' | 'POST' | 'DELETE',
+    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
     path: string,
     o: { token?: string; body?: unknown; read: (json: Record<string, unknown>) => T | undefined },
   ): Promise<ApiResult<T>> {
@@ -78,9 +108,10 @@ export function serverApi(base: string, f: FetchLike) {
         ...(o.body === undefined ? {} : { body: JSON.stringify(o.body) }),
         signal: ac.signal,
       });
-      const text = res.status === 204 ? '' : await res.text();
+      const text = res.status === 204 ? '' : await readCapped(res, REPLY_MAX_BYTES);
+      if (text === undefined) return { ok: false, status: res.status || 500, error: 'too_big', body: {} };
       let json: Record<string, unknown> = {};
-      if (text && text.length <= 2_000_000) {
+      if (text) {
         try {
           const v = JSON.parse(text) as unknown;
           if (typeof v === 'object' && v !== null && !Array.isArray(v)) json = v as Record<string, unknown>;
@@ -124,9 +155,9 @@ export function serverApi(base: string, f: FetchLike) {
           })),
         },
         read: (j) =>
-          typeof j.balance === 'number' && Array.isArray(j.results)
+          nat(j.balance) !== undefined && Array.isArray(j.results)
             ? {
-                balance: j.balance,
+                balance: nat(j.balance) as number,
                 items: items(j.items),
                 results: (j.results as unknown[]).flatMap((r) => {
                   const x = (typeof r === 'object' && r !== null ? r : {}) as Record<string, unknown>;
@@ -152,11 +183,11 @@ export function serverApi(base: string, f: FetchLike) {
         token,
         body,
         read: (j) =>
-          typeof j.balance === 'number'
+          nat(j.balance) !== undefined && nat(j.applied ?? 0) !== undefined
             ? {
-                balance: j.balance,
+                balance: nat(j.balance) as number,
                 items: items(j.items),
-                applied: num(j.applied),
+                applied: nat(j.applied ?? 0) as number,
                 status: j.status === 'capped' ? 'capped' : 'ok',
               }
             : undefined,
@@ -176,6 +207,11 @@ export function serverApi(base: string, f: FetchLike) {
               }
             : undefined,
       }),
+    /** 나이 구분 바꾸기 */
+    setAge: (token: string, age: '14+' | '18+') =>
+      call('PATCH', '/v1/account', { token, body: { age }, read: () => true }),
+    /** 로그아웃: 이 세션을 서버에서도 지운다 (세션 토큰으로만) */
+    logout: (token: string) => call('DELETE', '/v1/session', { token, read: () => true }),
     /** 탈퇴 */
     remove: (token: string) => call('DELETE', '/v1/account', { token, read: () => true }),
     /** 브라우저로 여는 구글 로그인 주소 */
@@ -193,6 +229,6 @@ export type ServerApi = ReturnType<typeof serverApi>;
 
 /** 409 merge_needed 의 몸 읽기 */
 export function mergeNeeded(body: Record<string, unknown>): MergeNeeded | undefined {
-  if (typeof body.code !== 'string' || !body.code) return undefined;
+  if (typeof body.code !== 'string' || !body.code || body.code.length > 128) return undefined;
   return { code: body.code, current: summary(body.current), other: summary(body.other) };
 }

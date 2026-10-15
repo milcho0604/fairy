@@ -88,6 +88,7 @@ import { settings } from './settings.ts';
 import { createSettingsWindow } from './settings-window.ts';
 import { onJsonTrouble, readJson, writeJson } from './store.ts';
 import { createSystemMonitor } from './system-monitor.ts';
+import { testKeychainSwitches } from './test-keychain.ts';
 import { createTogether } from './together.ts';
 import { baseTrayIcon, createTray } from './tray.ts';
 import { watchTrayTitle } from './tray-title.ts';
@@ -106,6 +107,11 @@ app.setPath(
   'userData',
   process.env.JJ_USER_DATA || (dataChoice?.dir ?? join(app.getPath('appData'), DATA_DIR_NAME)),
 );
+
+// 시험 실행(JJ_NO_FOCUS, JJ_USER_DATA)은 진짜 열쇠고리를 건드리지 않는다: 사용자 화면에 키체인 접근 창이 떴다 (test-keychain.ts).
+// 설치판에서는 붙지 않는다
+for (const [name, value] of testKeychainSwitches(app.isPackaged, process.env, process.platform))
+  app.commandLine.appendSwitch(name, value);
 
 // 진단 기록: 설치판도 userData/logs/main.log 에 남긴다(1MB 넘으면 main.old.log 로 돌려 두 개만). 개발 실행은 콘솔에도.
 // 질문, 답, 할 일과 일정 제목은 넘기지 않고, 경로 속 사용자 이름은 log-file.ts 가 가린다
@@ -1263,11 +1269,8 @@ ready
         state: () => ({
           balance: store.balance(),
           items: ownedCount(shop.state()),
-          ...(server.serverCoins() ? { serverCoins: true } : {}),
         }),
-        reset: (asked, expect) => {
-          // 서버 모드에서는 산 물건을 지우지 않는다: 서버에 남아 다음 맞추기 때 돌아온다
-          const scope = server.serverCoins() ? 'coins' : asked;
+        reset: (scope, expect) => {
           const r = shop.resetCoins(scope, Date.now(), expect);
           if (!r.ok) {
             log('coins', '초기화 안 함, 잔액이 바뀜');

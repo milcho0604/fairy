@@ -322,8 +322,6 @@ export const SETTINGS = {
 export interface CoinState {
   balance: number;
   items: number;
-  /** 서버 모드라 코인이 서버 정본을 따른다: 산 물건 초기화는 하지 않는다 (서버에 남는다) */
-  serverCoins?: boolean;
 }
 
 /** 캘린더 가져오기 결과 글과 잘 됐는지 (못 가져왔으면 설정 창이 빨간 글씨로 알린다) */

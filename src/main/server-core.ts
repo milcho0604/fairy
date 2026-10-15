@@ -33,6 +33,8 @@ export interface ServerState {
   /** 서버 정본의 마지막 사본 */
   copy: AccountSummary | null;
   lastSyncAt: number | null;
+  /** 바꾼 나이 구분을 아직 서버에 못 알렸다 (PATCH /v1/account, 다음 맞추기 때 다시) */
+  agePending: boolean;
 }
 
 export function freshState(): ServerState {
@@ -45,6 +47,7 @@ export function freshState(): ServerState {
     coins: emptyQueue(),
     copy: null,
     lastSyncAt: null,
+    agePending: false,
   };
 }
 
@@ -97,12 +100,16 @@ export function parseState(raw: unknown): ServerState {
   }
   if (isObj(raw.copy) && isCount(raw.copy.balance)) s.copy = summary(raw.copy);
   if (isCount(raw.lastSyncAt)) s.lastSyncAt = raw.lastSyncAt;
+  s.agePending = raw.agePending === true;
   return s;
 }
 
 export interface Secret {
   get(): string | undefined;
+  /** 운영체제 열쇠로만 쓴다. 못 쓰면 던진다 (평문 저장 금지) */
   set(value: string | null): void;
+  /** 파일은 있는데 지금 열쇠로 풀지 못한다 (열쇠가 바뀜). 덮어쓰지 않는다 */
+  unreadable(): boolean;
 }
 
 export interface LoopbackLike {
@@ -126,6 +133,7 @@ export interface CoinsLike {
     server: AccountSummary,
     rejected: readonly QueueEntry[],
     now: number,
+    keepLocalItems?: boolean,
   ): { delta: number; itemsChanged: boolean };
 }
 
@@ -137,6 +145,8 @@ export interface ServerCoreDeps {
   save: (s: ServerState) => void;
   device: Secret;
   session: Secret;
+  /** 운영체제 열쇠(safeStorage)로 암호화할 수 있다. 못 하면 서버 모드를 켜지 않는다 */
+  secure: () => boolean;
   loopback: (o: {
     state: string;
     path: string;
@@ -167,8 +177,13 @@ export function createServerCore(d: ServerCoreDeps) {
   let merge: { code: string; verifier: string; current: AccountSummary; other: AccountSummary } | null = null;
 
   const enabled = () => d.api !== undefined;
-  /** 서버로 무엇이든 보내도 되는가 (탈퇴 말고) */
-  const allowed = () => enabled() && ageClass(st.age) !== undefined && st.on;
+  /** 서버 모드를 켰다 (나이 답과 켬. 열쇠 문제는 blocked) */
+  const wanted = () => enabled() && ageClass(st.age) !== undefined && st.on;
+  /** 서버 모드인데 토큰을 다룰 수 없다: 열쇠를 못 씀(평문 저장 금지), 토큰 파일을 못 풂(덮어쓰지 않음) */
+  const blocked = (): ServerProblem | null =>
+    !d.secure() ? 'noSecure' : d.device.unreadable() ? 'keyLost' : null;
+  /** 서버로 무엇이든 보내도 되는가 (탈퇴, 로그아웃 말고). 요청마다 다시 본다 */
+  const allowed = () => wanted() && blocked() === null;
 
   function status(): ServerStatus {
     const device = !!d.device.get();
@@ -183,7 +198,7 @@ export function createServerCore(d: ServerCoreDeps) {
       balance: st.copy?.balance ?? null,
       pending: st.coins.queue.length,
       lastSyncAt: st.lastSyncAt,
-      problem,
+      problem: (wanted() && blocked()) || problem,
       merge: merge ? { current: merge.current, other: merge.other } : null,
       leftover: st.age === 'under14' && (device || !!d.session.get()),
     };
@@ -231,22 +246,52 @@ export function createServerCore(d: ServerCoreDeps) {
   async function ensureDevice(): Promise<boolean> {
     if (d.device.get()) return true;
     const age = ageClass(st.age);
-    if (!d.api || !age) return false;
+    if (!d.api || !age || !allowed()) return false;
     const r = await d.api.device(age);
+    // 기다리는 사이 만 14세 미만으로 바꾸거나 껐으면 받은 토큰을 버린다 (더 보내지 않는다)
+    if (!allowed()) {
+      d.log('server', '기기 계정을 받았지만 서버 모드가 꺼져 버림');
+      return false;
+    }
     if (!r.ok) {
       problem = failProblem(r);
       d.log('server', '기기 계정 못 만듦', r.status, r.error);
       return false;
     }
-    d.device.set(r.data.token);
+    // 새 기기 계정은 빈 계정이다: 옮기기부터 다시 (지금 장부의 잔액과 물건을 옮긴다).
+    // 옛 계정의 사본, 대기열, 세션은 이 계정 것이 아니다
+    st = { ...st, migrated: false, migrate: null, copy: null, lastSyncAt: null, agePending: false };
+    st.coins.queue = [];
+    try {
+      d.session.set(null);
+      d.device.set(r.data.token);
+    } catch (err) {
+      problem = 'noSecure';
+      d.log('server', '기기 토큰 저장 실패', err instanceof Error ? err.message : String(err));
+      return false;
+    }
+    save();
     d.log('server', '기기 계정 만듦');
     return true;
+  }
+
+  /** 바꾼 나이 구분을 서버에 알린다 (실패하면 다음 맞추기 때 다시) */
+  async function ensureAge(): Promise<void> {
+    const age = ageClass(st.age);
+    const t = token();
+    if (!st.agePending || !d.api || !age || !t || !allowed()) return;
+    const r = await d.api.setAge(t, age);
+    if (r.ok) {
+      st.agePending = false;
+      save();
+      d.log('server', '나이 구분 알림', age);
+    } else d.log('server', '나이 구분 못 알림', r.status, r.error);
   }
 
   async function ensureMigrated(): Promise<boolean> {
     if (st.migrated) return true;
     const device = d.device.get();
-    if (!d.api || !device) return false;
+    if (!d.api || !device || !allowed()) return false;
     if (!st.migrate) {
       // 이 시점까지의 장부는 옮기기에 든다. 대기열은 그 뒤 줄부터
       const snap = d.coins.snapshot();
@@ -281,7 +326,8 @@ export function createServerCore(d: ServerCoreDeps) {
   /** 서버 정본을 받아 사본과 앱 장부를 맞춘다 */
   function apply(server: AccountSummary, rejected: QueueEntry[]) {
     const now = d.now();
-    const r = d.coins.reconcile(st.coins, server, rejected, now);
+    // 서버 사본이 아직 없으면(처음 맞추기) 서버 대답만으로 로컬 물건을 빼지 않는다
+    const r = d.coins.reconcile(st.coins, server, rejected, now, st.copy === null);
     st.copy = { balance: server.balance, items: server.items };
     st.lastSyncAt = now;
     save();
@@ -293,7 +339,7 @@ export function createServerCore(d: ServerCoreDeps) {
     if (!d.api) return;
     for (let round = 0; round < 20; round++) {
       const t = token();
-      if (!t) return;
+      if (!t || !allowed()) return;
       const batch = st.coins.queue.slice(0, SYNC_BATCH);
       const r = await d.api.sync(t, batch);
       if (!r.ok) {
@@ -329,7 +375,10 @@ export function createServerCore(d: ServerCoreDeps) {
 
   /** 켤 때, 몇 분마다, 지금 맞추기: 기기 계정 → 옮기기 → 맞추기. 한 번에 하나만 */
   function run(): Promise<void> {
-    if (!allowed()) return Promise.resolve();
+    if (!allowed()) {
+      changed();
+      return Promise.resolve();
+    }
     if (running) return running;
     running = (async () => {
       syncing = true;
@@ -338,6 +387,7 @@ export function createServerCore(d: ServerCoreDeps) {
         scan();
         if (!(await ensureDevice())) return;
         if (!(await ensureMigrated())) return;
+        await ensureAge();
         await syncAll();
       } catch (err) {
         problem = 'server';
@@ -361,11 +411,16 @@ export function createServerCore(d: ServerCoreDeps) {
 
   async function exchange(code: string, verifier: string, yes: boolean): Promise<void> {
     const t = token();
-    if (!d.api || !t) return;
+    if (!d.api || !t || !allowed()) return;
     const r: ApiResult<unknown> = await d.api.session(t, code, verifier, yes);
     if (r.ok) {
       const data = r.data as { session: string; merged: boolean; linked: boolean };
-      d.session.set(data.session);
+      try {
+        d.session.set(data.session);
+      } catch {
+        problem = 'noSecure';
+        return;
+      }
       problem = null;
       d.log('server', '로그인함', data.merged ? '합침' : '', data.linked ? '이음' : '');
       // 합쳤으면 잔액과 물건이 바뀌었다
@@ -467,6 +522,9 @@ export function createServerCore(d: ServerCoreDeps) {
       if (!isAgeAnswer(age) || !enabled()) return status();
       const was = st.age;
       st.age = age;
+      // 14+ 와 18+ 사이를 바꿨으면 서버에도 알린다 (기기 계정이 있을 때. 없으면 만들 때 지금 값을 보낸다)
+      if (ageClass(was) && ageClass(age) && ageClass(was) !== ageClass(age) && d.device.get())
+        st.agePending = true;
       if (age === 'under14') {
         // 앱 안 모드: 아무것도 보내지 않는다. 남은 서버 계정은 칸이 탈퇴를 안내한다
         st.on = false;
@@ -493,9 +551,15 @@ export function createServerCore(d: ServerCoreDeps) {
     },
     login: startLogin,
     cancelLogin,
-    logout(): ServerStatus {
-      d.session.set(null);
+    /** 로그아웃: 서버의 세션도 지운다 (실패해도 이 컴퓨터에서는 지운다). 기기 토큰은 같은 계정 그대로 */
+    async logout(): Promise<ServerStatus> {
+      const t = d.session.get();
       merge = null;
+      d.session.set(null);
+      if (t && d.api) {
+        const r = await d.api.logout(t);
+        if (!r.ok) d.log('server', '서버 세션 못 지움', r.status, r.error);
+      }
       d.log('server', '로그아웃');
       changed();
       return status();
@@ -511,7 +575,15 @@ export function createServerCore(d: ServerCoreDeps) {
      * 되살린 장부 줄은 보내지 않고, 잔액과 물건은 서버 사본으로 바로 맞춘다 (서버에 닿으면 다시 맞춘다)
      */
     afterRestore() {
-      if (!st.migrated) return;
+      if (!st.migrated) {
+        // 옮기기 전: 잡아 둔 한 시점은 옛 장부 것이다. 버리고 되살린 장부에서 다시 잡는다
+        if (st.migrate) {
+          st.migrate = null;
+          d.coins.restart(st.coins);
+          save();
+        }
+        return;
+      }
       d.coins.restart(st.coins);
       save();
       if (st.copy && allowed()) {

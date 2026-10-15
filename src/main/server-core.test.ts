@@ -36,6 +36,12 @@ function fakeServer() {
     sessions: new Set<string>(),
     deleted: false,
     sessionOtherAccount: false,
+    age: '',
+    /** 다음 대답 대신 줄 것 (응답 검사 시험) */
+    raw: undefined as Response | undefined,
+    /** 기기 계정 대답을 이 약속이 끝날 때까지 미룬다 */
+    hold: undefined as Promise<void> | undefined,
+    patchFail: false,
   };
   const reply = (status: number, body?: unknown) =>
     new Response(body === undefined ? null : JSON.stringify(body), {
@@ -48,9 +54,17 @@ function fakeServer() {
     const auth = (init.headers as Record<string, string>).authorization?.slice(7);
     s.calls.push({ method: init.method ?? 'GET', path: u.pathname, ...(auth ? { auth } : {}), body });
     if (s.down) throw new TypeError('fetch failed');
+    if (s.raw) {
+      const r = s.raw;
+      s.raw = undefined;
+      return r;
+    }
     const authed = () => !s.deleted && auth !== undefined && (auth === s.deviceToken || s.sessions.has(auth));
     let out: Response;
     if (u.pathname === '/v1/device') {
+      if (s.hold) await s.hold;
+      s.age = String(body?.age);
+      s.migrated = false;
       s.deviceToken = `fd_${s.calls.length}abcdefgh`;
       s.deleted = false;
       out = reply(201, { token: s.deviceToken, account: { id: 1 } });
@@ -74,7 +88,10 @@ function fakeServer() {
         }
         let r: { id: string; status: string; applied: number; error?: string };
         const rule = spendRule(e.reason);
-        if (e.amount > 0) r = { id: e.id, status: 'ok', applied: e.amount };
+        if (e.reason === 'reset-items') {
+          s.items = {};
+          r = { id: e.id, status: 'ok', applied: 0 };
+        } else if (e.amount > 0) r = { id: e.id, status: 'ok', applied: e.amount };
         else if (rule?.kind === 'takeBack') {
           const applied = -Math.min(-e.amount, s.balance);
           r = { id: e.id, status: applied === e.amount ? 'ok' : 'capped', applied };
@@ -91,7 +108,7 @@ function fakeServer() {
         results.push(r);
       }
       out = reply(200, { balance: s.balance, items: s.items, results });
-    } else if (u.pathname === '/v1/session') {
+    } else if (u.pathname === '/v1/session' && init.method === 'POST') {
       const b = body as { code: string; verifier?: string; merge?: boolean };
       if (!b.verifier) out = reply(400, { error: 'verifier' });
       else if (s.sessionOtherAccount && !b.merge)
@@ -107,6 +124,15 @@ function fakeServer() {
         s.sessions.add(tok);
         out = reply(200, { session: tok, account: { id: 1 }, merged: !!b.merge, linked: !b.merge });
       }
+    } else if (u.pathname === '/v1/account' && init.method === 'PATCH') {
+      if (s.patchFail) out = reply(503, { error: 'down' });
+      else {
+        s.age = String(body?.age);
+        out = reply(200, { account: { id: 1, age: s.age } });
+      }
+    } else if (u.pathname === '/v1/session' && init.method === 'DELETE') {
+      s.sessions.delete(auth ?? '');
+      out = new Response(null, { status: 204 });
     } else if (u.pathname === '/v1/account' && init.method === 'DELETE') {
       s.deleted = true;
       s.balance = 0;
@@ -128,7 +154,12 @@ function setup(o: { url?: string; coins?: number; state?: Partial<ServerState> }
   if (o.coins) todos.reward(o.coins, 'meet', T0);
   const server = fakeServer();
   let saved: ServerState | undefined = o.state ? (o.state as ServerState) : undefined;
-  const secrets = { device: undefined as string | undefined, session: undefined as string | undefined };
+  const secrets = {
+    device: undefined as string | undefined,
+    session: undefined as string | undefined,
+    deviceLocked: false,
+    secure: true,
+  };
   const reverted: { reason: string; amount: number }[][] = [];
   const opened: string[] = [];
   let loopResult: LoopbackLike['result'] = Promise.resolve({ kind: 'cancelled' });
@@ -142,8 +173,21 @@ function setup(o: { url?: string; coins?: number; state?: Partial<ServerState> }
     save: (st) => {
       saved = JSON.parse(JSON.stringify(st)) as ServerState;
     },
-    device: { get: () => secrets.device, set: (v) => (secrets.device = v ?? undefined) },
-    session: { get: () => secrets.session, set: (v) => (secrets.session = v ?? undefined) },
+    device: {
+      get: () => (secrets.deviceLocked ? undefined : secrets.device),
+      set: (v) => {
+        secrets.device = v ?? undefined;
+      },
+      unreadable: () => secrets.deviceLocked,
+    },
+    session: {
+      get: () => secrets.session,
+      set: (v) => {
+        secrets.session = v ?? undefined;
+      },
+      unreadable: () => false,
+    },
+    secure: () => secrets.secure,
     loopback: async (x) => {
       assert.equal(x.path, '/done');
       return { redirectUri: 'http://127.0.0.1:45678', result: loopResult, cancel: () => {} };
@@ -472,4 +516,169 @@ test('상태 파일 검사: 모르는 값은 처음 값으로', () => {
   assert.equal(t.on, true);
   assert.equal(t.coins.queue.length, 1);
   assert.equal(t.coins.queue[0]?.ref, undefined);
+});
+
+// ---- 검토 결함 (PR #108 검토) ----
+
+test('기기 토큰 파일이 없어져 새 기기 계정을 만들면 지금 장부를 다시 옮긴다 (잔액, 집, 물건을 지우지 않는다)', async () => {
+  const x = setup({ coins: 2000 });
+  x.shop.buyHouse(T0);
+  x.shop.buyToy('ball', T0);
+  x.core.setAge('adult');
+  await x.core.run();
+  const before = { balance: x.todos.balance(), items: x.shop.ownedItems() };
+  // 토큰 파일이 사라지고 서버도 새 계정 (빈 잔액, 빈 물건)
+  x.secrets.device = undefined;
+  x.server.balance = 0;
+  x.server.items = {};
+  await x.core.run();
+  const paths = x.server.calls.map((c) => c.path).slice(-3);
+  assert.deepEqual(paths, ['/v1/device', '/v1/migrate', '/v1/sync']);
+  assert.equal(x.todos.balance(), before.balance);
+  assert.deepEqual(x.shop.ownedItems(), before.items);
+  assert.equal(x.server.balance, before.balance);
+});
+
+test('기기 토큰 파일을 못 풀면 서버 모드를 멈추고 덮어쓰지 않는다', async () => {
+  const x = setup({ coins: 100 });
+  x.core.setAge('adult');
+  await x.core.run();
+  const token = x.secrets.device;
+  x.secrets.deviceLocked = true;
+  const n = x.server.calls.length;
+  await x.core.run();
+  assert.equal(x.server.calls.length, n, '요청 없음');
+  assert.equal(x.core.status().problem, 'keyLost');
+  assert.equal(x.secrets.device, token, '덮어쓰지 않음');
+  assert.equal(x.todos.balance(), 100);
+});
+
+test('첫 맞추기에서 서버가 빈 물건을 줘도 로컬 물건을 통째로 비우지 않는다', async () => {
+  const x = setup({ coins: 300 });
+  x.shop.buyToy('ball', T0);
+  x.core.setAge('adult');
+  // 옮기기에서 물건이 빠진 서버 (이상한 대답)
+  x.server.migrated = true;
+  await x.core.run();
+  assert.equal(x.shop.owns('ball'), true);
+});
+
+test('로그아웃은 서버 세션도 지운다 (실패해도 이 컴퓨터에서는 지운다)', async () => {
+  const x = setup({ coins: 10 });
+  x.core.setAge('adult');
+  await x.core.run();
+  x.setLoop({ kind: 'code', code: 'c' });
+  await x.core.login();
+  const tok = x.secrets.session;
+  await x.core.logout();
+  const last = x.server.calls.find((c) => c.method === 'DELETE');
+  assert.deepEqual([last?.method, last?.path, last?.auth], ['DELETE', '/v1/session', tok]);
+  assert.equal(x.core.status().signedIn, false);
+  x.setLoop({ kind: 'code', code: 'c' });
+  await x.core.login();
+  x.server.down = true;
+  await x.core.logout();
+  assert.equal(x.core.status().signedIn, false);
+});
+
+test('나이 구분을 바꾸면 서버에도 알리고, 실패하면 다음 맞추기 때 다시', async () => {
+  const x = setup({ coins: 10 });
+  x.core.setAge('teen');
+  await x.core.run();
+  assert.equal(x.server.age, '14+');
+  x.server.patchFail = true;
+  x.core.setAge('adult');
+  await x.core.run();
+  assert.equal(x.server.age, '14+');
+  x.server.patchFail = false;
+  await x.core.run();
+  assert.equal(x.server.age, '18+');
+  const n = x.server.calls.filter((c) => c.method === 'PATCH').length;
+  await x.core.run();
+  assert.equal(x.server.calls.filter((c) => c.method === 'PATCH').length, n, '한 번만');
+});
+
+test('서버 모드에서 산 물건 초기화는 reset-items 로 보내 서버에서도 비운다', async () => {
+  const x = setup({ coins: 300 });
+  x.shop.buyToy('ball', T0);
+  x.core.setAge('adult');
+  await x.core.run();
+  await x.core.run();
+  assert.deepEqual(x.server.items, { 'toy:ball': 1 });
+  const r = x.shop.resetCoins('all', T0 + 1);
+  assert.equal(r.ok, true);
+  await x.core.run();
+  assert.deepEqual(x.server.items, {});
+  assert.equal(x.shop.owns('ball'), false, '다음 맞추기에서 돌아오지 않는다');
+  assert.equal(x.todos.balance(), 0);
+});
+
+test('운영체제 열쇠(safeStorage)를 못 쓰면 서버 모드를 켜지 않는다 (토큰 평문 저장 금지)', async () => {
+  const x = setup({ coins: 10 });
+  x.secrets.secure = false;
+  x.core.setAge('adult');
+  await x.core.run();
+  assert.equal(x.server.calls.length, 0);
+  assert.equal(x.core.status().problem, 'noSecure');
+  assert.equal(x.secrets.device, undefined);
+});
+
+test('기기 계정을 만드는 중 만 14세 미만으로 바꾸면 받은 토큰을 버리고 더 보내지 않는다', async () => {
+  const x = setup({ coins: 10 });
+  let release = () => {};
+  x.server.hold = new Promise<void>((r) => {
+    release = r;
+  });
+  x.core.setAge('adult');
+  const running = x.core.run();
+  await new Promise((r) => setTimeout(r, 5));
+  x.core.setAge('under14');
+  release();
+  await running;
+  assert.equal(x.secrets.device, undefined);
+  assert.deepEqual(
+    x.server.calls.map((c) => c.path),
+    ['/v1/device'],
+  );
+});
+
+test('대답 검사: 큰 본문, 음수나 소수 잔액은 받지 않는다', async () => {
+  const x = setup({ coins: 10 });
+  x.core.setAge('adult');
+  await x.core.run();
+  const balance = x.todos.balance();
+  x.server.raw = new Response('{"balance":5,"items":{},"results":[]}', {
+    status: 200,
+    headers: { 'content-length': String(50_000_000) },
+  });
+  await x.core.run();
+  assert.equal(x.core.status().problem, 'server');
+  x.server.raw = new Response(JSON.stringify({ balance: -5, items: {}, results: [] }), { status: 200 });
+  await x.core.run();
+  assert.equal(x.core.status().problem, 'server');
+  x.server.raw = new Response(JSON.stringify({ balance: 1.5, items: {}, results: [] }), { status: 200 });
+  await x.core.run();
+  assert.equal(x.core.status().problem, 'server');
+  x.server.raw = new Response(`{"balance":5,"pad":"${'x'.repeat(3_000_000)}"}`, { status: 200 });
+  await x.core.run();
+  assert.equal(x.core.status().problem, 'server');
+  assert.equal(x.todos.balance(), balance);
+});
+
+test('옮기기 전에 백업을 되살리면 옮길 한 시점을 버리고 새로 잡는다', async () => {
+  const x = setup({ coins: 100 });
+  x.core.setAge('adult');
+  x.server.down = true;
+  await x.core.run();
+  // 기기 계정 전이라 스냅샷 없음. 기기 계정만 만들고 옮기기에서 끊긴 상태를 만든다
+  x.server.down = false;
+  x.server.raw = undefined;
+  await x.core.run();
+  // 이미 옮겼으면 이 시험은 볼 것이 없다: 옮기기 전 상태를 직접 만든다
+  const st = x.core.state();
+  st.migrated = false;
+  st.migrate = { balance: 100, items: {}, maxId: 1 };
+  x.todos.reward(50, 'meet', T0);
+  x.core.afterRestore();
+  assert.equal(x.core.state().migrate, null);
 });

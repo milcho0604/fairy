@@ -127,6 +127,8 @@ const app = spawn(electronPath, [`--inspect=${INSPECT}`, '.', `--remote-debuggin
     JJ_NO_FOCUS: '1',
     JJ_USER_DATA: data,
     JJ_SERVER_URL_OVERRIDE: apiUrl,
+    // 진짜 키체인을 건드리지 않는다: 서버 토큰은 메모리에만, Chromium 은 가짜 열쇠고리 (test-keychain.ts)
+    JJ_TEST_SECRETS: 'memory',
   },
   stdio: 'ignore',
 });
@@ -307,6 +309,26 @@ try {
     bought === true && (await main(`__jj.shop.owns('cushion')`)) === false && (await localBalance()) === 20 && serverBalance() === 20,
     `앱 ${await localBalance()}`,
   );
+
+  // 산 물건 초기화도 서버로 (reset-items): 다음 맞추기에서 돌아오지 않는다
+  await main(`__jj.shop.buyToy('ball', Date.now()).ok || __jj.shop.ownedItems()['toy:ball'] === 1`);
+  await syncNow();
+  const hadItems = Number(sql('SELECT count(*) FROM owned_item'));
+  await main(`__jj.shop.resetCoins('all', Date.now()).ok`);
+  await syncNow();
+  await syncNow();
+  check(
+    '산 물건 초기화: 서버 물건도 비고 앱에 돌아오지 않는다',
+    hadItems > 0 &&
+      sql('SELECT count(*) FROM owned_item') === '0' &&
+      (await main(`Object.keys(__jj.shop.ownedItems()).length`)) === 0,
+    `전 ${hadItems}`,
+  );
+
+  // 나이 구분을 바꾸면 서버에도 (PATCH /v1/account)
+  await main(`__jj.server.core.setAge('teen')`);
+  await syncNow();
+  check('나이 구분 바꾸기: 서버도 14+', sql('SELECT age FROM account WHERE closed_at IS NULL') === '14+');
 
   // 만 14세 미만으로 바꾸면: 서버 모드 끔, 탈퇴 안내, 요청 없음
   check('나이 바꾸기', await press(p, T.change));

@@ -9,7 +9,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { spendRule } from '../shared/coin-rules.ts';
 import type { Db } from '../shared/db-schema.ts';
 import type { Items } from '../shared/server-account.ts';
-import type { ItemStore } from '../shared/shop.ts';
+import { type ItemStore, RESET_ITEMS } from '../shared/shop.ts';
 import type { TodoStore } from '../shared/todo-store.ts';
 
 /** 맞추기로 적는 줄의 까닭. 서버로 보내지 않는다 */
@@ -100,7 +100,7 @@ export class ServerCoins {
     let added = 0;
     for (const r of rows) {
       q.scanned = Math.max(q.scanned, Number(r.id));
-      if (r.reason === SYNC_REASON || Number(r.amount) === 0) continue;
+      if (r.reason === SYNC_REASON || (Number(r.amount) === 0 && r.reason !== RESET_ITEMS)) continue;
       q.queue.push({
         id: `${q.salt}-${r.id}`,
         logId: Number(r.id),
@@ -153,6 +153,8 @@ export class ServerCoins {
     server: { balance: number; items: Items },
     rejected: readonly QueueEntry[],
     now: number,
+    /** 서버 사본이 아직 없다 (처음 맞추기): 서버 대답만으로 로컬 물건을 빼지 않는다 */
+    keepLocalItems = false,
   ): { delta: number; itemsChanged: boolean } {
     this.#db.exec('begin immediate');
     try {
@@ -166,7 +168,8 @@ export class ServerCoins {
           .run(delta, SYNC_REASON, this.#day(now), now);
         q.scanned = Math.max(q.scanned, Number(r.lastInsertRowid));
       }
-      const items = withPending(server.items, q.queue);
+      let items = withPending(server.items, q.queue);
+      if (keepLocalItems) items = mergeItems(this.#shop.ownedItems(), items);
       const itemsChanged = this.#shop.setOwnedItems(items, now);
       for (const e of rejected)
         if (e.reason === 'custom-food')
@@ -182,10 +185,21 @@ export class ServerCoins {
   }
 }
 
-/** 서버 물건에 아직 안 보낸 구매를 더한다 (집은 큰 단계) */
+/** 둘을 합친다 (이름마다 큰 쪽) */
+export function mergeItems(a: Items, b: Items): Items {
+  const out: Items = { ...a };
+  for (const [k, n] of Object.entries(b)) out[k] = Math.max(out[k] ?? 0, n);
+  return out;
+}
+
+/** 서버 물건에 아직 안 보낸 구매를 더한다 (집은 큰 단계). 안 보낸 물건 초기화가 있으면 그 앞은 비운다 */
 export function withPending(server: Items, queue: readonly QueueEntry[]): Items {
-  const out: Items = { ...server };
+  let out: Items = { ...server };
   for (const e of queue) {
+    if (e.reason === RESET_ITEMS) {
+      out = {};
+      continue;
+    }
     const rule = spendRule(e.reason);
     if (rule?.kind !== 'buy') continue;
     const count = rule.level ?? 1;

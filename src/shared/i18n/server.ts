@@ -30,6 +30,10 @@ export const ko = {
   'server.problem.denied': '로그인을 허락하지 않았어.',
   'server.problem.timeout': '로그인을 기다리다 시간이 지났어.',
   'server.problem.failed': '로그인하지 못했어. 다시 해 줘.',
+  'server.problem.noSecure':
+    '이 컴퓨터의 열쇠고리(키체인)를 쓸 수 없어서 서버 모드를 켜지 않았어. 토큰을 암호화 없이 두지 않아. 코인은 이 컴퓨터에서 그대로 써.',
+  'server.problem.keyLost':
+    '저장해 둔 서버 열쇠를 풀 수 없어서 서버 모드를 멈췄어. 열쇠고리가 바뀌었을 수 있어. 코인은 이 컴퓨터에서 그대로 써.',
   'server.noLoginHint': '로그인하지 않으면 다시 설치하거나 기기를 바꿀 때 코인과 산 물건을 되찾을 수 없어.',
   'server.login': '구글로 로그인',
   'server.loggingIn': '브라우저에서 로그인을 기다리는 중이야.',
@@ -54,7 +58,6 @@ export const ko = {
   'server.page.okBody': '페어리로 돌아가도 돼. 이 창은 닫아도 돼.',
   'server.page.failTitle': '로그인하지 못했어',
   'server.page.failBody': '페어리 설정에서 다시 해 줘.',
-  'server.coinResetNote': '서버 모드에서는 코인만 초기화할 수 있어. 산 물건은 서버에 남아.',
 };
 
 export const en: Translation<typeof ko> = {
@@ -88,6 +91,10 @@ export const en: Translation<typeof ko> = {
   'server.problem.denied': 'Sign-in was not allowed.',
   'server.problem.timeout': 'Sign-in timed out.',
   'server.problem.failed': "Couldn't sign in. Please try again.",
+  'server.problem.noSecure':
+    "This computer's keychain isn't available, so server mode stays off. Tokens are never stored unencrypted. Your coins keep working here.",
+  'server.problem.keyLost':
+    "The saved server key can't be unlocked, so server mode is paused. The keychain may have changed. Your coins keep working here.",
   'server.noLoginHint':
     "Without signing in, you can't get your coins and items back after reinstalling or switching computers.",
   'server.login': 'Sign in with Google',
@@ -116,5 +123,4 @@ export const en: Translation<typeof ko> = {
   'server.page.okBody': 'You can go back to fairy and close this window.',
   'server.page.failTitle': "Couldn't sign in",
   'server.page.failBody': 'Please try again in fairy settings.',
-  'server.coinResetNote': 'In server mode you can only reset coins. Bought items stay on the server.',
 };

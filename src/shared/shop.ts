@@ -110,6 +110,9 @@ export interface ShopState {
 
 export type BuyResult = { ok: true } | { ok: false; error: string };
 
+/** 산 물건을 비우는 장부 줄의 까닭 (양 0, 서버 coins.ts 와 같은 이름) */
+export const RESET_ITEMS = 'reset-items';
+
 /** 코인 초기화 범위: 코인만(기본), 코인과 산 물건 */
 export type CoinResetScope = 'coins' | 'all';
 export const isCoinResetScope = (v: unknown): v is CoinResetScope => v === 'coins' || v === 'all';
@@ -265,7 +268,11 @@ export class ItemStore {
     if (expect !== undefined && expect !== before.balance) return { ok: false, changed: true };
     const items = scope === 'all';
     const coins = this.#todos.resetCoins(now, () => {
-      if (items) this.#db.prepare(`delete from item where kind in ('house', 'house-style', 'toy')`).run();
+      if (items) {
+        this.#db.prepare(`delete from item where kind in ('house', 'house-style', 'toy')`).run();
+        // 서버 모드면 이 줄이 서버의 산 물건도 비운다 (server-coins.ts). 앱 안 모드에서는 잔액에 영향 없는 표시
+        this.#todos.mark(RESET_ITEMS, now);
+      }
     });
     return {
       ok: true,

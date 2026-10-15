@@ -21,13 +21,14 @@ import { houseName, houseStyleName, type ItemStore, TOYS } from '../shared/shop.
 import { localDay, type TodoStore } from '../shared/todo-store.ts';
 import { startLoopback } from './gcal-auth.ts';
 import { osCrypto } from './os-crypto.ts';
-import { secretFile } from './secret-file.ts';
 import { serverApi } from './server-api.ts';
 import { type Reverted, ServerCoins } from './server-coins.ts';
-import { createServerCore } from './server-core.ts';
+import { createServerCore, type Secret } from './server-core.ts';
 import { SERVER_RESTORE_MARK } from './server-mark.ts';
+import { sealedSecret } from './server-secret.ts';
 import { appServerUrl } from './server-url.ts';
 import { readJson, writeJson } from './store.ts';
+import { memorySecrets } from './test-keychain.ts';
 
 /** 켤 때 처음 맞추기까지, 그 뒤로 이만큼마다 */
 const FIRST_SYNC_MS = 5_000;
@@ -64,12 +65,21 @@ export function createServer(o: {
 }) {
   const url = appServerUrl();
   const dir = app.getPath('userData');
-  const secret = (name: string): { get(): string | undefined; set(v: string | null): void } => {
-    const file = secretFile(join(dir, `${name}.json`), 'token', () => osCrypto);
-    return {
-      get: () => file.read(),
-      set: (v) => (v === null ? file.remove() : file.write(v)),
-    };
+  // 서버 토큰은 운영체제 열쇠로 암호화해서만 둔다 (평문 저장 금지, server-secret.ts)
+  // 시험 실행(JJ_TEST_SECRETS=memory, 설치판 아님)은 열쇠고리도 파일도 쓰지 않고 메모리에만 둔다 (test-keychain.ts)
+  const memory = memorySecrets(app.isPackaged, process.env);
+  const secret = (name: string): Secret => {
+    if (memory) {
+      let v: string | undefined;
+      return {
+        get: () => v,
+        set: (x) => {
+          v = x ?? undefined;
+        },
+        unreadable: () => false,
+      };
+    }
+    return sealedSecret(join(dir, `${name}.json`), () => osCrypto);
   };
   const core = createServerCore({
     api: url ? serverApi(url, (u, init) => net.fetch(u, init)) : undefined,
@@ -78,6 +88,7 @@ export function createServer(o: {
     save: (s) => writeJson(STATE, s),
     device: secret('server-device'),
     session: secret('server-session'),
+    secure: () => memory || osCrypto.available(),
     loopback: (x) => startLoopback(x),
     openExternal: (u) => shell.openExternal(u),
     page: (ok) => ({

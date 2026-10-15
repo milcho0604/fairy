@@ -31,8 +31,19 @@ export interface AccountSummary {
  * - gone: 서버 계정이 없어짐 (다른 기기에서 탈퇴)
  * - loginOff: 서버가 로그인을 아직 열지 않음
  * - denied, timeout, failed: 로그인을 못 함
+ * - noSecure: 운영체제 열쇠(safeStorage)를 못 써 토큰을 안전하게 둘 수 없음 (평문으로 두지 않고 서버 모드를 쉰다)
+ * - keyLost: 토큰 파일을 지금 열쇠로 풀지 못함 (덮어쓰지 않고 서버 모드를 쉰다)
  */
-export type ServerProblem = 'offline' | 'server' | 'gone' | 'loginOff' | 'denied' | 'timeout' | 'failed';
+export type ServerProblem =
+  | 'offline'
+  | 'server'
+  | 'gone'
+  | 'loginOff'
+  | 'denied'
+  | 'timeout'
+  | 'failed'
+  | 'noSecure'
+  | 'keyLost';
 
 export interface ServerStatus {
   /** 서버 주소가 있다. 없으면 칸을 통째로 숨긴다 */
