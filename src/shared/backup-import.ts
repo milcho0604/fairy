@@ -26,6 +26,17 @@ export const IMPORT_FILES = [
   ...PET_STATE_FILES,
 ] as const;
 
+/**
+ * 새 백업 파일(.fairybackup)에 담는 작은 파일: 가져오는 것만. 사용자 AI(ai-custom.json)는 복원에 쓰지 않으니 담지 않는다 (이슈 #90)
+ */
+export const BACKUP_FILE_ITEMS: readonly string[] = IMPORT_FILES;
+
+/**
+ * 백업 파일을 풀 때 받는 맨 위 파일. 담는 것에 더해, 이 규칙 전에 만든 파일에 든 ai-custom.json 도 받는다
+ * (복원하지 않고 옮기지 않는다고 알릴 개수 세기에만 쓴다). 이 밖의 맨 위 이름은 거절한다
+ */
+export const BACKUP_READ_TOP: readonly string[] = ['jjakkung.db', ...IMPORT_FILES, 'ai-custom.json'];
+
 /** 가져온 채팅 설정: 고른 AI 가 사용자 AI(custom-)면 기본으로 되돌린다 (그 AI 는 가져오지 않으니까) */
 export function importedChatSettings(raw: unknown): { provider?: string } {
   const p = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
