@@ -1,6 +1,14 @@
 // 페어리 서버 API 부르기 (기획서 11절, 서버 PR #106). Electron 없이 돌아 시험에서 fetch 를 바꿔 끼운다.
 // 토큰과 코드는 기록에 남기지 않는다. 실패 대답은 { error: '<까닭>' }.
-import type { AccountSummary, Items } from '../shared/server-account.ts';
+import { createHash } from 'node:crypto';
+import {
+  type AccountSummary,
+  type Items,
+  isLoginService,
+  type LoginProviders,
+  type LoginService,
+  type ServerBackupItem,
+} from '../shared/server-account.ts';
 import type { QueueEntry } from './server-coins.ts';
 
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
@@ -74,7 +82,21 @@ export interface SessionResult {
   account: { id: number };
   merged: boolean;
   linked: boolean;
+  /** 남는 계정에 붙은 로그인 서비스 (#102) */
+  logins: LoginService[];
 }
+
+/** 서버 백업 목록 (GET /v1/backup, #102) */
+export interface BackupList {
+  backups: ServerBackupItem[];
+  keep: number;
+  maxBytes: number;
+}
+
+/** 서버 백업 올리기와 받기의 시간 상한 (20MB) */
+export const BACKUP_TIMEOUT_MS = 180_000;
+/** 서버가 말하지 않을 때의 서버 백업 크기 상한 */
+export const BACKUP_MAX_BYTES = 20 * 1024 * 1024;
 
 /** 409 merge_needed 의 몸: 확인 코드와 두 계정 */
 export interface MergeNeeded {
@@ -189,6 +211,28 @@ function items(v: unknown): Items {
   for (const [k, n] of Object.entries(v))
     if (typeof n === 'number' && Number.isSafeInteger(n) && n > 0 && k.length <= 64) out[k] = n;
   return out;
+}
+
+const services = (v: unknown): LoginService[] =>
+  Array.isArray(v) ? [...new Set(v.filter(isLoginService))] : [];
+
+function backupItem(v: unknown): ServerBackupItem | undefined {
+  if (typeof v !== 'object' || v === null) return undefined;
+  const o = v as Record<string, unknown>;
+  const id = nat(o.id);
+  const size = nat(o.size);
+  if (
+    id === undefined ||
+    size === undefined ||
+    typeof o.sha256 !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(o.sha256)
+  )
+    return undefined;
+  const date = (x: unknown) => (typeof x === 'string' && !Number.isNaN(Date.parse(x)) ? x : undefined);
+  const createdAt = date(o.createdAt);
+  const expiresAt = date(o.expiresAt);
+  if (!createdAt || !expiresAt) return undefined;
+  return { id, size, sha256: o.sha256, createdAt, expiresAt, soon: o.soon === true };
 }
 
 export const summary = (v: unknown): AccountSummary => {
@@ -313,9 +357,55 @@ export function serverApi(base: string, f: FetchLike) {
                 account: { id: num((j.account as Record<string, unknown> | undefined)?.id) },
                 merged: j.merged === true,
                 linked: j.linked === true,
+                logins: services(j.logins),
               }
             : undefined,
       }),
+    /** 지금 쓸 수 있는 로그인 서비스 (토큰을 주면 그 계정 기준, #102) */
+    providers: (token?: string) =>
+      call<LoginProviders>('GET', '/v1/auth/providers', {
+        ...(token ? { token } : {}),
+        read: (j) =>
+          Array.isArray(j.login) ? { login: services(j.login), link: services(j.link) } : undefined,
+      }),
+    /** 이 계정에 켜진 기능 키 (토큰 기준, #102). 모르는 값은 false */
+    features: (token?: string) =>
+      call<Record<string, boolean>>('GET', '/v1/features', {
+        ...(token ? { token } : {}),
+        read: (j) => {
+          if (typeof j.features !== 'object' || j.features === null) return undefined;
+          const out: Record<string, boolean> = {};
+          for (const [k, v] of Object.entries(j.features as Record<string, unknown>))
+            if (/^[a-z][a-z0-9_]{1,39}$/.test(k)) out[k] = v === true;
+          return out;
+        },
+      }),
+    /** 토큰을 들고 로그인을 연다: 서비스 로그인 주소를 받는다 (카카오 allowlist 는 이 길로만) */
+    begin: (token: string, service: LoginService, port: number, state: string, challenge: string) =>
+      call<{ url: string }>('POST', `/v1/auth/${service}/begin`, {
+        token,
+        body: { port: String(port), state, challenge },
+        read: (j) => (typeof j.url === 'string' && /^https?:\/\//.test(j.url) ? { url: j.url } : undefined),
+      }),
+    /** 서버 백업 목록 (세션 토큰) */
+    backupList: (token: string) =>
+      call<BackupList>('GET', '/v1/backup', {
+        token,
+        read: (j) =>
+          Array.isArray(j.backups)
+            ? {
+                backups: (j.backups as unknown[]).flatMap((x) => backupItem(x) ?? []),
+                keep: nat(j.keep) ?? 2,
+                maxBytes: nat(j.maxBytes) ?? BACKUP_MAX_BYTES,
+              }
+            : undefined,
+      }),
+    /** 서버 백업 올리기 (.fairybackup 그대로, 따로 동의한 뒤에만 부른다) */
+    backupUpload: (token: string, bytes: Uint8Array) => backupUpload(base, f, token, bytes),
+    /** 서버 백업 받기. 크기와 sha256 이 목록 값과 다르면 bad_reply */
+    backupDownload: (token: string, item: ServerBackupItem) => backupDownload(base, f, token, item),
+    backupDelete: (token: string, id: number) =>
+      call('DELETE', `/v1/backup/${id}`, { token, read: () => true }),
     /** 나이 구분 바꾸기 */
     setAge: (token: string, age: '14+' | '18+') =>
       call('PATCH', '/v1/account', { token, body: { age }, read: () => true }),
@@ -438,6 +528,94 @@ export function serverApi(base: string, f: FetchLike) {
 }
 
 export type ServerApi = ReturnType<typeof serverApi>;
+
+const errorOf = (status: number, text: string): string => {
+  try {
+    const v = JSON.parse(text) as { error?: unknown };
+    if (typeof v.error === 'string') return v.error.slice(0, 64);
+  } catch {}
+  return `http_${status}`;
+};
+
+async function backupUpload(
+  base: string,
+  f: FetchLike,
+  token: string,
+  bytes: Uint8Array,
+): Promise<ApiResult<{ backup: ServerBackupItem }>> {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), BACKUP_TIMEOUT_MS);
+  try {
+    const res = await f(`${base}/v1/backup?consent=yes`, {
+      method: 'PUT',
+      headers: {
+        accept: 'application/json',
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/octet-stream',
+      },
+      body: bytes as BodyInit,
+      signal: ac.signal,
+    });
+    const text = (await readCapped(res, REPLY_MAX_BYTES)) ?? '';
+    if (res.status < 200 || res.status >= 300)
+      return { ok: false, status: res.status, error: errorOf(res.status, text), body: {} };
+    let item: ServerBackupItem | undefined;
+    try {
+      item = backupItem((JSON.parse(text) as { backup?: unknown }).backup);
+    } catch {}
+    if (!item) return { ok: false, status: res.status, error: 'bad_reply', body: {} };
+    return { ok: true, status: res.status, data: { backup: item } };
+  } catch {
+    return { ok: false, status: 0, error: 'offline', body: {} };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function backupDownload(
+  base: string,
+  f: FetchLike,
+  token: string,
+  item: ServerBackupItem,
+): Promise<ApiResult<Buffer>> {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), BACKUP_TIMEOUT_MS);
+  try {
+    const res = await f(`${base}/v1/backup/${item.id}`, {
+      method: 'GET',
+      headers: { authorization: `Bearer ${token}` },
+      signal: ac.signal,
+    });
+    if (res.status !== 200) {
+      const text = (await readCapped(res, REPLY_MAX_BYTES)) ?? '';
+      return { ok: false, status: res.status, error: errorOf(res.status, text), body: {} };
+    }
+    if (!res.body) return { ok: false, status: 0, error: 'offline', body: {} };
+    // 목록의 크기까지만 받는다 (넘으면 그만둔다)
+    const reader = res.body.getReader();
+    const parts: Uint8Array[] = [];
+    let size = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > item.size) {
+        await reader.cancel().catch(() => {});
+        return { ok: false, status: 200, error: 'bad_reply', body: {} };
+      }
+      parts.push(value);
+    }
+    const buf = Buffer.concat(parts);
+    // 끊겼거나(서버가 tag 를 못 맞춰 끊음) 바뀐 파일
+    if (buf.length !== item.size || createHash('sha256').update(buf).digest('hex') !== item.sha256)
+      return { ok: false, status: 200, error: 'bad_reply', body: {} };
+    return { ok: true, status: 200, data: buf };
+  } catch {
+    return { ok: false, status: 0, error: 'offline', body: {} };
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /** SSE 한 덩이 ("event: x\ndata: {...}") */
 function sseBlock(block: string): { event: string; data: Record<string, unknown> } | undefined {

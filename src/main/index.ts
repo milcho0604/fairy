@@ -1412,6 +1412,8 @@ ready
       onStatus: () => chat.ticketChanged(),
       onInbox: () => void serverInbox?.deliver(),
       onClaimed: (id) => siteEvents.markClaimed(id),
+      // 서버 백업 (#102): 개인 백업 파일과 같은 것을 올리고, 받으면 같은 되살리기 확인 칸을 연다
+      backup: { exportFile: (p) => backup.exportFile(p), inspect: (p) => backup.inspect(p, 'file') },
       log,
     });
     serverCore = server.core;

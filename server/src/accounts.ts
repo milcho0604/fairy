@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import type { PoolClient } from 'pg';
+import { backupFilesOf, keepRecent } from './backup';
 import { Db } from './db';
 import { deviceCodeFrom } from './shared/account-profile';
 import { newToken, sha256 } from './tokens';
@@ -124,11 +125,16 @@ export class Accounts {
     return row;
   }
 
-  /** 탈퇴: 계정과 코인 내역, 기기, 로그인, 세션, 산 물건, 이 계정에 합쳐진 닫힌 계정까지 바로 지운다 */
-  async delete(accountId: string): Promise<void> {
-    await this.db.tx(async (c) => {
+  /**
+   * 탈퇴: 계정과 코인 내역, 기기, 로그인, 세션, 산 물건, 서버 백업 줄, 이 계정에 합쳐진 닫힌 계정까지 바로 지운다.
+   * 지운 백업의 파일 이름을 돌려준다 (부르는 쪽이 디스크에서 바로 지운다, backup.ts removeFiles)
+   */
+  async delete(accountId: string): Promise<string[]> {
+    return this.db.tx(async (c) => {
       const a = await lockAccount(c, accountId);
+      const files = await backupFilesOf(c, a.id);
       await c.query('DELETE FROM account WHERE id = $1', [a.id]);
+      return files;
     });
   }
 
@@ -162,7 +168,13 @@ export class Accounts {
    * - from 은 닫고(closed_at, merged_into) 장부는 남긴다: 다른 기기가 옛 기록을 다시 보내도 한 번만 반영된다
    * - 하루 상한: 합친 날은 두 계정 몫을 넘어도 그대로 둔다 (장부를 옮기지 않으므로 저절로 그렇다)
    */
-  async merge(c: PoolClient, from: LockedAccount, into: LockedAccount): Promise<number> {
+  async merge(
+    c: PoolClient,
+    from: LockedAccount,
+    into: LockedAccount,
+    /** 최근 2개 밖으로 빠진 서버 백업 파일 이름을 여기 담는다 (커밋 뒤 부르는 쪽이 바로 지운다) */
+    dropped: string[] = [],
+  ): Promise<number> {
     if (from.id === into.id) return into.balance;
     const over = Math.max(0, from.migrated + into.migrated - MIGRATE_MAX_BALANCE);
     const drop = Math.min(from.balance, over);
@@ -223,6 +235,15 @@ export class Accounts {
     await c.query('UPDATE ai_subscription SET account_id = $2 WHERE account_id = $1', [from.id, into.id]);
     for (const table of ['login', 'device', 'session'])
       await c.query(`UPDATE ${table} SET account_id = $2 WHERE account_id = $1`, [from.id, into.id]);
+    // 서버 백업은 남는 쪽으로 옮기고 두 계정 것 중 최근 2개만 (21절). 빠진 파일 이름은 dropped 로 돌려준다
+    await c.query('UPDATE backup SET account_id = $2 WHERE account_id = $1', [from.id, into.id]);
+    // 계정 활동은 둘 중 늦은 쪽 (1년 정리 기준)
+    await c.query(
+      `UPDATE account SET last_active_at = GREATEST(last_active_at, (SELECT last_active_at FROM account WHERE id = $1))
+        WHERE id = $2`,
+      [from.id, into.id],
+    );
+    dropped.push(...(await keepRecent(c, into.id)));
     // 앞서 from 에 합쳐진 계정들도 남는 쪽을 따라가게 (탈퇴하면 함께 지워진다)
     await c.query('UPDATE account SET merged_into = $2 WHERE merged_into = $1', [from.id, into.id]);
     await c.query('UPDATE account SET balance = 0, closed_at = now(), merged_into = $2 WHERE id = $1', [

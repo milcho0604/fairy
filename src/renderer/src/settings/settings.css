@@ -1457,6 +1457,30 @@ textarea.rules {
   color: var(--error);
 }
 
+/* 서버 백업 (ServerBackupBox.tsx, 이슈 #102) */
+.server-backup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.server-backup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.server-backup-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .server-merge {
   display: flex;
   flex-direction: column;

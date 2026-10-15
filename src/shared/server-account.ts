@@ -15,6 +15,49 @@ export function ageClass(age: AgeAnswer | null): '14+' | '18+' | undefined {
   return undefined;
 }
 
+/** 로그인 서비스. 어느 것을 보일지는 서버가 알려 준다 (GET /v1/auth/providers, 앱에 박아 두지 않는다) */
+export type LoginService = 'google' | 'kakao';
+export const isLoginService = (v: unknown): v is LoginService => v === 'google' || v === 'kakao';
+
+/** 서버가 알려 준, 지금 쓸 수 있는 로그인. login: 로그인 전, link: 로그인한 뒤 더 이을 수 있는 것 */
+export interface LoginProviders {
+  login: LoginService[];
+  link: LoginService[];
+}
+
+/** 서버 백업 하나 (#102). 날짜는 ISO 글 */
+export interface ServerBackupItem {
+  id: number;
+  size: number;
+  sha256: string;
+  createdAt: string;
+  expiresAt: string;
+  /** 30일 안에 지워진다 (1년 동안 올리지도 받지도 않음) */
+  soon: boolean;
+}
+
+/** 설정 칸의 서버 백업 (로그인했을 때만) */
+export interface ServerBackupView {
+  /** 서버가 백업을 열지 않았다 (503 backup_off) */
+  off: boolean;
+  /** 민감정보가 섞일 수 있다는 안내에 따로 동의했다 (이 컴퓨터에서) */
+  agreed: boolean;
+  /** 아직 목록을 못 받았으면 null */
+  list: ServerBackupItem[] | null;
+  keep: number;
+  maxBytes: number;
+  busy: 'up' | 'down' | null;
+}
+
+/** 서버 백업 단추의 결과. error 는 화면 글 키 끝 (backup.<error>) */
+export interface ServerBackupResult {
+  ok: boolean;
+  error?: 'off' | 'offline' | 'tooBig' | 'full' | 'failed' | 'consent' | 'login' | 'busy' | 'open';
+  /** 되살리기 확인 칸을 열지 못한 까닭 (백업 파일 검사 글) */
+  message?: string;
+  status?: ServerStatus;
+}
+
 /** 산 물건 (서버 owned_item 모양): house 는 단계, toy:<이름>, house-style:<모양> 은 1 */
 export type Items = Record<string, number>;
 
@@ -84,6 +127,25 @@ export interface ServerStatus {
   inbox: number;
   /** 운영자 계정이다 (#101, 서버가 정한다). 아니면 운영자 칸을 그리지 않는다 */
   admin: boolean;
+  /** 서버가 알려 준 로그인 서비스. 아직 모르면 null (그때는 구글 단추만 예전처럼 보인다) */
+  providers: LoginProviders | null;
+  /** 이 계정에 이은 로그인 서비스 (세션을 받을 때 서버가 알려 준 것) */
+  logins: LoginService[];
+  /** 서버 백업 (로그인했을 때만, 아니면 null) */
+  backup: ServerBackupView | null;
+  /** 서버가 알려 준 이 계정의 기능 키 (GET /v1/features). 서버 모드가 아니거나 아직 모르면 null */
+  features: Record<string, boolean> | null;
+}
+
+/** 앱이 서버에 묻는 기능 키 (server/src/features.ts 와 같은 이름) */
+export type AppFeature = 'coin_reset';
+
+/**
+ * 기능 키가 켜졌나. 앱의 기본값은 여기 한 곳: 서버 주소가 없거나, 만 14세 미만(앱 안 모드)이거나, 서버 모드를 껐거나,
+ * 서버에 아직 닿지 않았으면 꺼짐(숨김). 서버가 켜졌다고 알려 줄 때만 켠다
+ */
+export function featureOn(s: Pick<ServerStatus, 'features'> | null | undefined, key: AppFeature): boolean {
+  return s?.features?.[key] === true;
 }
 
 /** 닉네임 검사 실패의 까닭 (shared/account-profile.ts) 과 서버에 닿지 않음 */
@@ -131,6 +193,11 @@ export const SERVER = {
   /** 운영자 칸 (#101): 운영자 계정일 때만 메인이 받는다 */
   adminOverview: 'server:admin-overview',
   adminAction: 'server:admin-action',
+  backupList: 'server:backup-list',
+  backupAgree: 'server:backup-agree',
+  backupUpload: 'server:backup-upload',
+  backupDownload: 'server:backup-download',
+  backupDelete: 'server:backup-delete',
 } as const;
 
 /** 설정 창이 부르는 것 (preload 가 window.jjakkungServer 로 연다) */
@@ -156,7 +223,8 @@ export interface ServerBridge {
   /** 탈퇴 뒤 서버 모드를 다시 켠다 */
   turnOn(): Promise<ServerStatus | undefined>;
   syncNow(): Promise<ServerStatus | undefined>;
-  login(): Promise<ServerStatus | undefined>;
+  /** 서비스로 로그인 (로그인했으면 그 서비스를 더 잇는다). 비우면 구글 */
+  login(service?: LoginService): Promise<ServerStatus | undefined>;
   cancelLogin(): void;
   logout(): Promise<ServerStatus | undefined>;
   /** 합치기 확인 창의 답 */
@@ -164,4 +232,12 @@ export interface ServerBridge {
   /** 탈퇴: 서버 계정을 지운다 (앱 안 데이터는 남는다) */
   remove(): Promise<{ ok: boolean; status: ServerStatus | undefined }>;
   onChanged(listener: (s: ServerStatus) => void): () => void;
+  /** 서버 백업 목록을 다시 받는다 */
+  backupList(): Promise<ServerStatus | undefined>;
+  /** 민감정보 안내에 따로 동의 (false 면 거둔다) */
+  backupAgree(yes: boolean): Promise<ServerStatus | undefined>;
+  backupUpload(): Promise<ServerBackupResult>;
+  /** 받아서 되살리기 확인 칸을 연다 (바꾸기는 그 칸에서) */
+  backupDownload(id: number): Promise<ServerBackupResult>;
+  backupDelete(id: number): Promise<ServerBackupResult>;
 }

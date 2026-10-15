@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { formatBytes } from '../../../../shared/bytes.ts';
 import { locale, t } from '../../../../shared/i18n/index.ts';
 import type { RestoreOffer, RestoreState, SettingsSnapshot } from '../../../../shared/ipc.ts';
-import { serverView } from '../../../../shared/server-account.ts';
+import { featureOn, serverView } from '../../../../shared/server-account.ts';
 import { isPersonalPet } from '../../../../shared/settings.ts';
 import { AdminBox } from '../AdminBox.tsx';
 import { CoinReset } from '../CoinReset.tsx';
@@ -15,6 +15,8 @@ import { bridge, Section, type TabProps } from '../ui.tsx';
 /** 데이터 탭: 백업과 옮기기, 코인 초기화, 저장 공간 */
 export function DataTab({ snap, setSnap, flash }: TabProps) {
   const [exported, setExported] = useState<string>();
+  // 코인 초기화는 기능 키 coin_reset 이 켜졌다고 서버가 알려 줄 때만 보인다 (기본 숨김, #102). 코드는 그대로 둔다
+  const [server] = useServerStatus();
   /** 실패는 빨간 글씨로 (이슈 #65: 못 했다는 말도 초록이었다) */
   const show = (f: Flash | undefined) => {
     if (f) flash(f.text, f.error);
@@ -94,9 +96,11 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
       <EventsBox flash={flash} />
       <AdminBox flash={flash} />
       <ExportBox flash={flash} />
-      <Section title={t('settings.coinReset')}>
-        <CoinReset flash={flash} />
-      </Section>
+      {featureOn(server, 'coin_reset') && (
+        <Section title={t('settings.coinReset')}>
+          <CoinReset flash={flash} />
+        </Section>
+      )}
       <Section title={t('settings.storage')}>
         <Storage
           list={snap.storage}

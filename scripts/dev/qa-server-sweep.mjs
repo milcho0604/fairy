@@ -120,6 +120,8 @@ const baseEnv = {
   ANTHROPIC_API_KEY: 'sk-test-fake',
   ANTHROPIC_BASE_URL: fake.url,
   GIFT_HMAC_KEY: randomBytes(32).toString('hex'),
+  // 코인 초기화는 기능 키 coin_reset (기본 off, #102). 이 훑기는 초기화까지 보므로 켠다
+  FEATURE_COIN_RESET: 'everyone',
 };
 /** 서버가 받은 요청 (방법 경로) */
 const seen = [];
@@ -649,11 +651,13 @@ async function noUrlPhase() {
     check(F, '메인 상태 enabled=false, 대화권 없음', st.enabled === false && st.ai === false && st.tickets === null);
     await h.main("__jj.settingsWindow.open('restore')");
     const p = await h.page('settings');
-    await until('데이터 칸', () => p.ev(`!!document.querySelector('.coin-reset')`));
+    await until('데이터 칸', () => p.ev(`!!document.querySelector('.restore-undo, section .card')`));
     await sleep(500);
+    // 서버 주소가 없으면 기능 키를 알 수 없어 코인 초기화 칸은 숨는다 (#102, 앱 기본 off)
+    check(F, '코인 초기화 칸 없음 (기능 키 기본 off)', !(await p.ev(`!!document.querySelector('.coin-reset')`)));
     const dom = await p.ev(`({ box: !!document.querySelector('.server-box, .server-ask, .server-merge'), title: document.body.innerText.includes(${JSON.stringify(T.serverTitle)}), login: document.body.innerText.includes(${JSON.stringify(T.login)}) })`);
     check(F, '설정 > 데이터에 서버 칸, 제목, 로그인 단추 없음', !dom.box && !dom.title && !dom.login, JSON.stringify(dom));
-    await p.shots('nourl-1-data', '.coin-reset');
+    await p.shots('nourl-1-data', 'section .card');
     await h.main('__jj.chat.open(__jj.pet.bounds()); 1');
     const c = await h.page('chat');
     await until('채팅', () => c.ev(`!!document.querySelector('.picker-button')`));

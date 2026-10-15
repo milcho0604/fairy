@@ -112,7 +112,7 @@ describe('운영자 로그인 (웹)', () => {
       ['x-frame-options', 'DENY'],
       ['x-content-type-options', 'nosniff'],
       ['cache-control', 'no-store'],
-      ['referrer-policy', 'no-referrer'],
+      ['referrer-policy', 'same-origin'],
     ] as const)
       assert.equal(anon.headers.get(k), v, k);
     const csp = anon.headers.get('content-security-policy') ?? '';

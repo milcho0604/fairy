@@ -91,6 +91,8 @@ async function startApi() {
       PUBLIC_URL: apiUrl,
       GOOGLE_CLIENT_ID: '',
       GOOGLE_CLIENT_SECRET: '',
+      // 산 물건 초기화 시험이 있어 코인 초기화 기능 키를 켠다 (기본 off, #102)
+      FEATURE_COIN_RESET: 'everyone',
     },
     stdio: 'ignore',
   });

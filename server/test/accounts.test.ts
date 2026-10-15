@@ -179,6 +179,8 @@ before(async () => {
     publicUrl: 'http://127.0.0.1:1',
     googleClientId: CLIENT_ID,
     googleClientSecret: 'test-secret',
+    // 코인 초기화 시험이 있어 기능 키 coin_reset 을 켠다 (기본 off, #102)
+    features: { coin_reset: 'everyone' },
   };
   app = await createApp(config, { google: fakeGoogle });
   await app.listen(0, '127.0.0.1');

@@ -94,7 +94,8 @@ export const ko = {
   'admin.stats': (v: { accounts: number; coins: number; passes: number; cost: string; budget: string }) =>
     `계정 ${v.accounts}, 코인 합 ${v.coins}, 채팅 이용권 합 ${v.passes}장, 이번 달 ${v.cost} / ${v.budget}`,
   'admin.features': '기능 스위치',
-  'admin.features.kakao': '카카오 로그인 (kakao_login): 준비 중',
+  'admin.features.kakao':
+    '카카오 로그인(kakao_login)과 코인 초기화(coin_reset)는 웹 운영자 화면(/admin)의 기능 스위치에서 모드와 허용 계정을 바꿔.',
   'admin.ai.title': '채팅 이용권',
   'admin.ai.mode': '접근 모드',
   'admin.ai.mode.off': '끔 (아무도)',
@@ -269,7 +270,8 @@ export const en: Translation<typeof ko> = {
   'admin.stats': (v: { accounts: number; coins: number; passes: number; cost: string; budget: string }) =>
     `${v.accounts} accounts, ${v.coins} coins total, ${v.passes} chat passes total, this month ${v.cost} / ${v.budget}`,
   'admin.features': 'Feature switches',
-  'admin.features.kakao': 'Kakao login (kakao_login): coming later',
+  'admin.features.kakao':
+    'Kakao login (kakao_login) and coin reset (coin_reset) are switched, with their allowed accounts, in the web admin page (/admin).',
   'admin.ai.title': 'Chat passes',
   'admin.ai.mode': 'Access mode',
   'admin.ai.mode.off': 'Off (nobody)',

@@ -22,12 +22,62 @@ export type Config = {
    * /v1/admin/* 를 쓴다. 비면 운영자 계정 없음 (웹 /admin 의 ADMIN_TOKEN 로그인은 따로)
    */
   adminSubs?: string[];
+  /**
+   * 카카오 로그인 (6단계, OIDC scope openid 만). 키 둘 중 하나라도 비면 카카오 경로는 503 login_off.
+   * 키가 있어도 기능 키 kakao_login(features.ts) 이 off 면 503 feature_off
+   */
+  kakaoRestApiKey?: string;
+  kakaoClientSecret?: string;
+  /** 카카오 인증 서버 주소. 운영은 https://kauth.kakao.com, 시험은 이 컴퓨터의 가짜 카카오 */
+  kakaoAuthUrl?: string;
+  /** 서버 백업 (5단계, 7절). 키가 없으면 백업 경로만 503 backup_off */
+  backup?: BackupConfig;
+  /** 기능 키의 기본값 (env FEATURE_*). DB(feature_flag)에 값이 있으면 DB 가 이긴다 (features.ts) */
+  features?: Partial<Record<string, FeatureMode>>;
 };
 
 /** 운영자 토큰 최소 길이 (openssl rand -hex 24 = 48자) */
 export const ADMIN_TOKEN_MIN = 32;
 /** 최신 릴리스를 읽는 곳 (앱 update-policy.ts RELEASES_API 와 같다) */
 export const DEFAULT_RELEASES_API = 'https://api.github.com/repos/milcho0604/fairy-releases/releases/latest';
+
+export type FeatureMode = 'off' | 'allowlist' | 'everyone';
+export const isFeatureMode = (v: unknown): v is FeatureMode =>
+  v === 'off' || v === 'allowlist' || v === 'everyone';
+
+/** 서버 백업 설정 */
+export interface BackupConfig {
+  /** AES-256-GCM 키 32바이트 (BACKUP_ENC_KEY, hex 64자). 비면 undefined */
+  key: Buffer | undefined;
+  /** 암호화한 백업 파일을 두는 곳 (compose 볼륨 fairy_backups) */
+  dir: string;
+  /** 서버 백업 전체 크기 상한 (바이트, BACKUP_TOTAL_MAX_GB 기본 80). 넘으면 새 올리기는 507 */
+  totalMaxBytes?: number;
+  /** 올리는 중 바이트가 이만큼(ms) 멈추면 끊는다. 비면 60초 (시험이 줄인다) */
+  stallMs?: number;
+}
+
+export const DEFAULT_BACKUP_TOTAL_MAX_GB = 80;
+
+export const DEFAULT_KAKAO_AUTH_URL = 'https://kauth.kakao.com';
+export const DEFAULT_BACKUP_DIR = '/data/backups';
+
+/** BACKUP_ENC_KEY: 비면 undefined (백업만 끈다), 모양이 틀리면 뜨지 않는다 */
+export function readBackupKey(raw: string | undefined): Buffer | undefined {
+  const v = (raw ?? '').trim();
+  if (!v) return undefined;
+  if (!/^[0-9a-fA-F]{64}$/.test(v))
+    throw new Error('BACKUP_ENC_KEY 는 hex 64자(32바이트)여야 한다 (openssl rand -hex 32)');
+  return Buffer.from(v, 'hex');
+}
+
+/** FEATURE_<이름>: off, allowlist, everyone. 비면 off */
+export function readFeature(name: string, raw: string | undefined): FeatureMode {
+  const v = (raw ?? '').trim().toLowerCase();
+  if (!v) return 'off';
+  if (!isFeatureMode(v)) throw new Error(`${name} 는 off, allowlist, everyone 중 하나여야 한다: ${raw}`);
+  return v;
+}
 
 /** AI 대화권 설정. 키가 비면 대화는 503 ai_off (남은 수 보기는 된다) */
 export interface AiConfig {
@@ -124,6 +174,21 @@ export function readConfig(env: NodeJS.ProcessEnv): Config {
     adminToken: (env.ADMIN_TOKEN ?? '').trim(),
     releasesApi: checkUrl('RELEASES_API', (env.RELEASES_API ?? '').trim() || DEFAULT_RELEASES_API),
     adminSubs: readSubs(env.ADMIN_GOOGLE_SUBS),
+    kakaoRestApiKey: (env.KAKAO_REST_API_KEY ?? '').trim(),
+    kakaoClientSecret: (env.KAKAO_CLIENT_SECRET ?? '').trim(),
+    kakaoAuthUrl: checkUrl('KAKAO_AUTH_URL', (env.KAKAO_AUTH_URL ?? '').trim() || DEFAULT_KAKAO_AUTH_URL),
+    backup: {
+      key: readBackupKey(env.BACKUP_ENC_KEY),
+      dir: (env.BACKUP_DIR ?? '').trim() || DEFAULT_BACKUP_DIR,
+      totalMaxBytes: Math.round(
+        nonNegative('BACKUP_TOTAL_MAX_GB', env.BACKUP_TOTAL_MAX_GB, DEFAULT_BACKUP_TOTAL_MAX_GB, false) *
+          1024 ** 3,
+      ),
+    },
+    features: {
+      kakao_login: readFeature('FEATURE_KAKAO_LOGIN', env.FEATURE_KAKAO_LOGIN),
+      coin_reset: readFeature('FEATURE_COIN_RESET', env.FEATURE_COIN_RESET),
+    },
   };
 }
 
@@ -156,3 +221,6 @@ export const adminEnabled = (c: Config): boolean => (c.adminToken ?? '').length 
 
 /** 구글 로그인을 켤 수 있는지 (클라이언트 번호와 비밀이 둘 다 있다) */
 export const googleEnabled = (c: Config): boolean => c.googleClientId !== '' && c.googleClientSecret !== '';
+
+/** 카카오 키가 둘 다 있다 (기능 키는 따로 본다) */
+export const kakaoConfigured = (c: Config): boolean => !!c.kakaoRestApiKey && !!c.kakaoClientSecret;

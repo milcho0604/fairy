@@ -39,10 +39,7 @@ export class AuthGuard implements CanActivate {
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest<HttpReq>();
-    const raw = req.headers.authorization;
-    const header = Array.isArray(raw) ? raw[0] : raw;
-    const token = header?.startsWith('Bearer ') ? header.slice(7).trim() : '';
-    const auth = await this.resolve(token);
+    const auth = await this.identify(req);
     if (!auth) {
       this.limiter.check(`bad:${ipKey(req)}`, LIMITS.badTokenByIp);
       throw new UnauthorizedException({ error: 'token' });
@@ -50,6 +47,17 @@ export class AuthGuard implements CanActivate {
     this.limiter.check(`acct:${auth.accountId}`, LIMITS.account);
     req.auth = auth;
     return true;
+  }
+
+  /**
+   * 토큰이 있으면 누구인지 (없거나 틀리면 undefined, 던지지 않는다). 토큰 없이도 되는 경로(GET /v1/auth/providers)가
+   * 요청자에 맞춰 답할 때 쓴다
+   */
+  async identify(req: HttpReq): Promise<AuthInfo | undefined> {
+    const raw = req.headers.authorization;
+    const header = Array.isArray(raw) ? raw[0] : raw;
+    const token = header?.startsWith('Bearer ') ? header.slice(7).trim() : '';
+    return this.resolve(token);
   }
 
   /** 토큰을 계정으로 (모양이 틀리거나 모르는 토큰이면 undefined). 운영자 API 도 쓴다 (admin.ts) */
@@ -69,9 +77,11 @@ export class AuthGuard implements CanActivate {
       token_hash: Buffer;
       account_id: string;
       stale: boolean;
+      idle: boolean;
     }>(
       `SELECT t.id, t.token_hash, COALESCE(a.merged_into, a.id) AS account_id,
-              ${kind === 'session' ? "t.last_used_at < now() - interval '1 day'" : 'false'} AS stale
+              ${kind === 'session' ? "t.last_used_at < now() - interval '1 day'" : 'false'} AS stale,
+              a.last_active_at < now() - interval '1 day' AS idle
          FROM ${table} t JOIN account a ON a.id = t.account_id
         WHERE t.token_hash = $1 ${alive}`,
       [hash],
@@ -79,6 +89,9 @@ export class AuthGuard implements CanActivate {
     const row = r.rows[0];
     if (!row || !sameBytes(row.token_hash, hash)) return undefined;
     // 쓴 때는 하루 한 번만 적는다 (요청마다 쓰지 않게)
+    // 계정 활동(서버 백업 1년 정리의 기준, backup.ts)도 하루 한 번만 적는다. 기기 토큰이든 세션이든 요청이 오면 활동이다
+    if (row.idle)
+      await this.db.pool.query('UPDATE account SET last_active_at = now() WHERE id = $1', [row.account_id]);
     if (row.stale)
       await this.db.pool.query('UPDATE session SET last_used_at = now() WHERE id = $1', [row.id]);
     return {

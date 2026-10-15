@@ -1,7 +1,8 @@
 // 페어리 서버 계정 (이슈 #99): server-core.ts 에 Electron 을 붙인다. 설정 창 IPC, 토큰 파일(safeStorage),
 // 브라우저 열기, 몇 분마다 맞추기, 장부가 바뀌면 대기열에 넣기, 백업 되살리기 표시.
 // 서버 주소(server-url.ts)가 비면 서버 기능이 모두 꺼진다: 칸이 숨고 어떤 요청도 나가지 않는다.
-import { existsSync, rmSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   app,
@@ -17,7 +18,7 @@ import { spendRule } from '../shared/coin-rules.ts';
 import type { Db } from '../shared/db-schema.ts';
 import { isHouseStyle } from '../shared/house-art.ts';
 import { t } from '../shared/i18n/index.ts';
-import { type RewardOutcome, SERVER, type ServerStatus } from '../shared/server-account.ts';
+import { isLoginService, type RewardOutcome, SERVER, type ServerStatus } from '../shared/server-account.ts';
 import { houseName, houseStyleName, type ItemStore, TOYS } from '../shared/shop.ts';
 import { EVENT_ID, normalizeCoupon } from '../shared/site-events.ts';
 import { localDay, type TodoStore } from '../shared/todo-store.ts';
@@ -83,6 +84,11 @@ export function createServer(o: {
   onInbox?: () => void;
   /** 선물을 받았다 (#101, 이벤트 목록의 단추를 "받았어" 로) */
   onClaimed?: (eventId: string) => void;
+  /** 서버 백업 (#102): 개인 백업 파일 만들기와 되살리기 확인 칸 열기 (backup.ts) */
+  backup?: {
+    exportFile: (target: string) => Promise<string>;
+    inspect: (path: string) => Promise<{ ok: boolean; message: string; offer?: unknown }>;
+  };
   log: (tag: string, ...rest: unknown[]) => void;
 }) {
   const url = appServerUrl();
@@ -113,7 +119,12 @@ export function createServer(o: {
     session: sessionSecret,
     secure: () => memory || osCrypto.available(),
     loopback: (x) => startLoopback(x),
-    openExternal: (u) => shell.openExternal(u),
+    // 시험 실행(JJ_TEST_SECRETS=memory, 설치판 아님)에서 JJ_TEST_BROWSER=fetch 면 시스템 브라우저 대신 메인이 주소를 따라간다:
+    // 가짜 카카오 → 서버 콜백 → 루프백. 사용자 화면에 브라우저 창을 띄우지 않는다 (scripts/dev/server-backup.mjs)
+    openExternal: (u) =>
+      memory && process.env.JJ_TEST_BROWSER === 'fetch'
+        ? fetch(u).then((r) => void r.body?.cancel())
+        : shell.openExternal(u),
     page: (ok) => ({
       title: t(ok ? 'server.page.okTitle' : 'server.page.failTitle'),
       body: t(ok ? 'server.page.okBody' : 'server.page.failBody'),
@@ -127,6 +138,33 @@ export function createServer(o: {
       const names = [...new Set(list.map((e) => revertedName(e.reason)))];
       o.onReverted(t('server.reverted', { what: names.join(', ') }));
     },
+    // 서버 백업 파일은 데이터 폴더 안 임시 이름으로 잠깐 두고 바로 지운다 (백업 목록에 들지 않는 이름)
+    ...(o.backup
+      ? {
+          backupFile: {
+            async make() {
+              const p = join(dir, `server-backup-up-${randomBytes(6).toString('hex')}.fairybackup`);
+              try {
+                await o.backup?.exportFile(p);
+                return readFileSync(p);
+              } finally {
+                rmSync(p, { force: true });
+              }
+            },
+            async open(bytes: Uint8Array) {
+              // 받을 때마다 다른 이름: 같은 이름이면 inspect 가 앞서 연 확인 칸을 그대로 보인다
+              const p = join(dir, `server-backup-down-${randomBytes(6).toString('hex')}.fairybackup`);
+              try {
+                writeFileSync(p, bytes, { mode: 0o600 });
+                const r = await o.backup?.inspect(p);
+                return { ok: !!r?.offer, message: r?.message ?? '' };
+              } finally {
+                rmSync(p, { force: true });
+              }
+            },
+          },
+        }
+      : {}),
   });
 
   function send(s: ServerStatus) {
@@ -161,7 +199,12 @@ export function createServer(o: {
   });
 
   const ok = (e: IpcMainInvokeEvent) => o.isSettings(e.sender);
-  ipcMain.handle(SERVER.status, (e) => (ok(e) ? core.status() : undefined));
+  ipcMain.handle(SERVER.status, (e) => {
+    if (!ok(e)) return undefined;
+    // 설정 창을 열 때 로그인 서비스와 기능 키를 다시 묻는다 (운영자가 바꾼 스위치, 바뀌면 상태를 다시 보낸다)
+    void core.refreshProviders().catch(() => undefined);
+    return core.status();
+  });
   ipcMain.handle(SERVER.setAge, (e, age: unknown, nickname: unknown) =>
     ok(e) ? core.setAge(age, nickname) : undefined,
   );
@@ -204,13 +247,32 @@ export function createServer(o: {
     await core.run();
     return core.status();
   });
-  ipcMain.handle(SERVER.login, (e) => (ok(e) ? core.login() : undefined));
+  ipcMain.handle(SERVER.login, (e, service: unknown) =>
+    ok(e) ? core.login(isLoginService(service) ? service : 'google') : undefined,
+  );
   ipcMain.on(SERVER.cancelLogin, (e) => {
     if (o.isSettings(e.sender)) core.cancelLogin();
   });
   ipcMain.handle(SERVER.logout, (e) => (ok(e) ? core.logout() : undefined));
   ipcMain.handle(SERVER.merge, (e, yes: unknown) => (ok(e) ? core.merge(yes === true) : undefined));
   ipcMain.handle(SERVER.remove, async (e) => (ok(e) ? core.remove() : { ok: false, status: undefined }));
+  // 서버 백업 (#102)
+  const backupId = (v: unknown) => (typeof v === 'number' && Number.isSafeInteger(v) && v > 0 ? v : 0);
+  ipcMain.handle(SERVER.backupList, async (e) => {
+    if (!ok(e)) return undefined;
+    await core.backupList();
+    return core.status();
+  });
+  ipcMain.handle(SERVER.backupAgree, (e, yes: unknown) =>
+    ok(e) ? core.agreeBackup(yes === true) : undefined,
+  );
+  ipcMain.handle(SERVER.backupUpload, (e) => (ok(e) ? core.backupUpload() : { ok: false }));
+  ipcMain.handle(SERVER.backupDownload, (e, id: unknown) =>
+    ok(e) ? core.backupDownload(backupId(id)) : { ok: false },
+  );
+  ipcMain.handle(SERVER.backupDelete, (e, id: unknown) =>
+    ok(e) ? core.backupDelete(backupId(id)) : { ok: false },
+  );
 
   return {
     core,

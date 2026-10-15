@@ -64,6 +64,19 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       PUBLIC_URL: ${PUBLIC_URL:-https://fairy-api.moilga.com}
+      # 카카오 로그인 (6단계). 기능 키 FEATURE_KAKAO_LOGIN 이 off(기본)면 키가 있어도 꺼진다
+      KAKAO_REST_API_KEY: ${KAKAO_REST_API_KEY:-}
+      KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET:-}
+      FEATURE_KAKAO_LOGIN: ${FEATURE_KAKAO_LOGIN:-off}
+      # 서버 백업 (5단계). 비면 백업 경로만 503. 파일은 아래 fairy_backups 볼륨에 암호화해 둔다
+      BACKUP_ENC_KEY: ${BACKUP_ENC_KEY:-}
+      BACKUP_DIR: /data/backups
+      # 서버 백업 전체 상한 (GB, 비우면 80). 넘으면 새 올리기는 507
+      BACKUP_TOTAL_MAX_GB: ${BACKUP_TOTAL_MAX_GB:-}
+      # 설정의 코인 초기화 (off 기본: 앱이 단추를 숨기고 서버도 초기화 기록을 거절)
+      FEATURE_COIN_RESET: ${FEATURE_COIN_RESET:-off}
+    volumes:
+      - fairy_backups:/data/backups
     ports:
       - '127.0.0.1:3002:3002'
 
@@ -89,5 +102,20 @@ services:
     volumes:
       - ${FAIRY_BACKUP_DIR:-/Volumes/milcho_ex/fairy-backups}:/backups
 
+  # 서버 백업 파일(암호문)을 매일 06:00 UTC 에 외장 디스크로 (${FAIRY_BACKUP_DIR}/files). 지운 것도 맞춘다 (ops/backup-files)
+  backup-files:
+    build:
+      context: ./ops/backup-files
+    image: fairy-backup-files
+    container_name: fairy-backup-files
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    logging: *logging
+    volumes:
+      - fairy_backups:/src:ro
+      - ${FAIRY_BACKUP_DIR:-/Volumes/milcho_ex/fairy-backups}:/dst
+
 volumes:
   pgdata:
+  # 서버 백업 파일 (AES-256-GCM 암호문). 매일 DB 백업(fairy-backup)에는 들지 않는다
+  fairy_backups:

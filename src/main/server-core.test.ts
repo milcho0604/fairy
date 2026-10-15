@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { spendRule } from '../shared/coin-rules.ts';
 import { type Db, migrate } from '../shared/db-schema.ts';
-import { serverView } from '../shared/server-account.ts';
+import { featureOn, serverView } from '../shared/server-account.ts';
 import { ItemStore } from '../shared/shop.ts';
 import { TodoStore } from '../shared/todo-store.ts';
 import { type FetchLike, serverApi } from './server-api.ts';
@@ -52,6 +52,18 @@ function fakeServer() {
     inbox: 0,
     aiAccess: 'ok' as string,
     claimed: new Set<string>(),
+    /** 로그인 서비스 (#102). 이 경로는 calls 에 적지 않는다 (맞추기 순서 시험을 흐리지 않게) */
+    providers: { login: ['google'], link: ['google'] } as { login: string[]; link: string[] },
+    providerCalls: 0,
+    begins: [] as { service: string; auth?: string }[],
+    /** 서버 백업 (#102) */
+    backups: [] as { id: number; bytes: Uint8Array; sha256: string; createdAt: string }[],
+    backupOff: false,
+    lastUploadConsent: '',
+    /** 서버 백업 전체 상한에 찼다 (507) */
+    backupFull: false,
+    /** 기능 키 coin_reset (#102) */
+    coinReset: false,
   };
   const reply = (status: number, body?: unknown) =>
     new Response(body === undefined ? null : JSON.stringify(body), {
@@ -60,8 +72,21 @@ function fakeServer() {
     });
   const fetch: FetchLike = async (url, init) => {
     const u = new URL(url);
-    const body = init.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : undefined;
+    const json = (init.headers as Record<string, string>)['content-type'] === 'application/json';
+    const body = init.body && json ? (JSON.parse(String(init.body)) as Record<string, unknown>) : undefined;
     const auth = (init.headers as Record<string, string>).authorization?.slice(7);
+    if (u.pathname === '/v1/features') {
+      if (s.down) throw new TypeError('fetch failed');
+      return reply(200, { features: { coin_reset: s.coinReset, kakao_login: false } });
+    }
+    if (u.pathname === '/v1/auth/providers') {
+      s.providerCalls++;
+      if (s.down) throw new TypeError('fetch failed');
+      return reply(200, {
+        login: s.providers.login,
+        link: s.sessions.has(auth ?? '') ? s.providers.link : [],
+      });
+    }
     s.calls.push({ method: init.method ?? 'GET', path: u.pathname, ...(auth ? { auth } : {}), body });
     if (s.down) throw new TypeError('fetch failed');
     if (s.raw) {
@@ -162,7 +187,13 @@ function fakeServer() {
         if (b.merge) s.balance += 40;
         const tok = `fs_session${s.sessions.size}`;
         s.sessions.add(tok);
-        out = reply(200, { session: tok, account: { id: 1 }, merged: !!b.merge, linked: !b.merge });
+        out = reply(200, {
+          session: tok,
+          account: { id: 1 },
+          merged: !!b.merge,
+          linked: !b.merge,
+          logins: s.begins.length ? ['google', 'kakao'] : ['google'],
+        });
       }
     } else if (u.pathname === '/v1/account' && init.method === 'PATCH') {
       if (s.patchFail) out = reply(503, { error: 'down' });
@@ -180,6 +211,36 @@ function fakeServer() {
       s.items = {};
       s.migrated = false;
       out = new Response(null, { status: 204 });
+    } else if (u.pathname.startsWith('/v1/auth/') && u.pathname.endsWith('/begin')) {
+      const service = u.pathname.split('/')[3] ?? '';
+      s.begins.push({ service, ...(auth ? { auth } : {}) });
+      out = reply(200, { url: `https://kauth.example/oauth/authorize?state=${String(body?.state)}` });
+    } else if (u.pathname.startsWith('/v1/backup')) {
+      const id = Number(u.pathname.split('/')[3] ?? 0);
+      if (s.backupOff) out = reply(503, { error: 'backup_off' });
+      else if (!s.sessions.has(auth ?? '')) out = reply(403, { error: 'login' });
+      else if (init.method === 'PUT' && s.backupFull) out = reply(507, { error: 'storage_full' });
+      else if (init.method === 'PUT') {
+        s.lastUploadConsent = u.searchParams.get('consent') ?? '';
+        const bytes = new Uint8Array(init.body as Uint8Array);
+        const { createHash } = await import('node:crypto');
+        const item = {
+          id: s.backups.length ? Math.max(...s.backups.map((b) => b.id)) + 1 : 1,
+          bytes,
+          sha256: createHash('sha256').update(bytes).digest('hex'),
+          createdAt: new Date(T0 + s.backups.length * 1000).toISOString(),
+        };
+        s.backups = [item, ...s.backups].slice(0, 2);
+        out = reply(201, { backup: view(item) });
+      } else if (init.method === 'DELETE') {
+        s.backups = s.backups.filter((b) => b.id !== id);
+        out = new Response(null, { status: 204 });
+      } else if (id) {
+        const b = s.backups.find((x) => x.id === id);
+        out = b
+          ? new Response(b.bytes as BodyInit, { status: 200, headers: { 'x-backup-sha256': b.sha256 } })
+          : reply(404, { error: 'not_found' });
+      } else out = reply(200, { backups: s.backups.map(view), keep: 2, maxBytes: 20 * 1024 * 1024 });
     } else if (u.pathname.startsWith('/v1/ai')) {
       // 서버처럼: 세션 토큰과 만 18세 이상만
       if (!s.sessions.has(auth ?? '')) out = reply(403, { error: 'login' });
@@ -220,6 +281,15 @@ function fakeServer() {
     if (s.loseReply) throw new TypeError('connection reset');
     return out;
   };
+  const view = (b: { id: number; bytes: Uint8Array; sha256: string; createdAt: string }) => ({
+    id: b.id,
+    size: b.bytes.length,
+    sha256: b.sha256,
+    createdAt: b.createdAt,
+    lastAccessAt: b.createdAt,
+    expiresAt: new Date(Date.parse(b.createdAt) + 365 * 86_400_000).toISOString(),
+    soon: false,
+  });
   return { s, fetch };
 }
 
@@ -240,6 +310,9 @@ function setup(o: { url?: string; coins?: number; state?: Partial<ServerState> }
   const reverted: { reason: string; amount: number }[][] = [];
   const inboxCalls: number[] = [];
   const opened: string[] = [];
+  /** 서버 백업 (#102): 받은 파일로 연 되살리기 확인 칸 */
+  const restored: Uint8Array[] = [];
+  let backupBytes: Uint8Array = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 1, 2, 3]);
   let loopResult: LoopbackLike['result'] = Promise.resolve({ kind: 'cancelled' });
   let now = T0;
   const url = o.url ?? 'http://127.0.0.1:9999';
@@ -280,8 +353,19 @@ function setup(o: { url?: string; coins?: number; state?: Partial<ServerState> }
     onCoins: () => {},
     onReverted: (list) => reverted.push(list),
     onInbox: (n) => inboxCalls.push(n),
+    backupFile: {
+      make: async () => backupBytes,
+      open: async (bytes) => {
+        restored.push(bytes);
+        return { ok: true, message: '' };
+      },
+    },
   });
   return {
+    restored,
+    setBackupBytes: (b: Uint8Array) => {
+      backupBytes = b;
+    },
     db,
     todos,
     shop,
@@ -934,4 +1018,165 @@ test('채팅 이용권: 허용 목록에 없거나 대기 중이면 칸을 숨�
   await x.core.run();
   assert.equal(x.core.status().ai, true);
   assert.equal(x.core.status().aiWaitlisted, false);
+});
+
+test('로그인 서비스는 서버가 알려 준 것만: 카카오는 목록에 있을 때만, 로그인한 뒤 잇기는 토큰으로 begin (#102)', async () => {
+  const x = setup({ coins: 10 });
+  x.core.setAge('adult');
+  await x.core.run();
+  assert.deepEqual(x.core.status().providers, { login: ['google'], link: [] });
+  // 목록에 없으면 카카오 로그인은 아무것도 열지 않는다 (앱에 박아 두지 않는다)
+  await x.core.login('kakao');
+  assert.equal(x.opened.length, 0);
+  assert.equal(x.server.begins.length, 0);
+  // 구글로 로그인
+  x.setLoop({ kind: 'code', code: 'g' });
+  await x.core.login('google');
+  assert.deepEqual(x.core.status().logins, ['google']);
+  // 서버가 이 계정에 카카오 잇기를 허락했다 (allowlist)
+  x.server.providers = { login: ['google'], link: ['google', 'kakao'] };
+  await x.core.refreshProviders(true);
+  assert.deepEqual(x.core.status().providers?.link, ['google', 'kakao']);
+  x.setLoop({ kind: 'code', code: 'k' });
+  const googleSession = x.secrets.session;
+  await x.core.login('kakao');
+  assert.deepEqual(x.server.begins, [{ service: 'kakao', auth: googleSession }]);
+  assert.equal(new URL(x.opened.at(-1) ?? '').host, 'kauth.example');
+  assert.deepEqual(x.core.status().logins, ['google', 'kakao']);
+  // 맞추기마다 다시 묻는다 (운영자가 바꾼 스위치가 다음 맞추기에 보이게). 5초 안의 연달은 맞추기는 한 번만
+  const n = x.server.providerCalls;
+  await x.core.run();
+  await x.core.run();
+  assert.equal(x.server.providerCalls, n + 1, '5초 안에는 한 번');
+  x.tick(6_000);
+  x.server.providers = { login: ['google'], link: ['google'] };
+  await x.core.run();
+  assert.equal(x.server.providerCalls, n + 2);
+  assert.deepEqual(
+    x.core.status().providers?.link,
+    ['google'],
+    '운영자가 끈 카카오가 다음 맞추기에 사라진다',
+  );
+  await x.core.logout();
+  assert.deepEqual(x.core.status().logins, []);
+});
+
+test('서버 백업: 로그인과 따로 동의 뒤에만 올리고, 받으면 되살리기 확인 칸을 연다 (#102)', async () => {
+  const x = setup({ coins: 10 });
+  x.core.setAge('teen');
+  await x.core.run();
+  assert.equal(x.core.status().backup, null, '로그인 전에는 칸이 없다');
+  assert.equal((await x.core.backupUpload()).error, 'consent');
+  x.setLoop({ kind: 'code', code: 'g' });
+  await x.core.login();
+  const v = x.core.status().backup;
+  assert.equal(v?.agreed, false);
+  assert.equal((await x.core.backupUpload()).error, 'consent');
+  assert.equal(x.server.backups.length, 0);
+  x.core.agreeBackup(true);
+  assert.equal(x.saved()?.backupAgreed, true);
+  const up = await x.core.backupUpload();
+  assert.equal(up.ok, true, JSON.stringify(up));
+  assert.equal(x.server.lastUploadConsent, 'yes');
+  assert.equal(x.core.status().backup?.list?.length, 1);
+  // 세 번 올려도 서버가 2개만 둔다 (목록을 다시 받는다)
+  await x.core.backupUpload();
+  await x.core.backupUpload();
+  const list = x.core.status().backup?.list ?? [];
+  assert.equal(list.length, 2);
+  // 받기: 같은 바이트로 확인 칸을 연다
+  const got = await x.core.backupDownload(list[0]?.id ?? 0);
+  assert.equal(got.ok, true);
+  assert.deepEqual([...(x.restored[0] ?? [])], [0x50, 0x4b, 0x03, 0x04, 1, 2, 3]);
+  // 서버가 바뀐 바이트를 주면(크기, sha256) 열지 않는다
+  const first = x.server.backups[0];
+  if (first) first.bytes = new Uint8Array([9, 9, 9, 9, 9, 9, 9]);
+  assert.equal((await x.core.backupDownload(first?.id ?? 0)).error, 'failed');
+  assert.equal(x.restored.length, 1);
+  // 지우기
+  assert.equal((await x.core.backupDelete(list[1]?.id ?? 0)).ok, true);
+  assert.equal(x.core.status().backup?.list?.length, 1);
+  // 너무 큰 파일은 보내지 않는다
+  x.setBackupBytes(new Uint8Array(20 * 1024 * 1024 + 1));
+  const calls = x.server.calls.length;
+  assert.equal((await x.core.backupUpload()).error, 'tooBig');
+  assert.equal(x.server.calls.length, calls);
+  // 서버가 백업을 열지 않았다
+  x.setBackupBytes(new Uint8Array([0x50, 0x4b, 0x03, 0x04]));
+  x.server.backupOff = true;
+  assert.equal((await x.core.backupUpload()).error, 'off');
+  assert.equal(x.core.status().backup?.off, true);
+  // 서버에 닿지 않음
+  x.server.backupOff = false;
+  x.server.down = true;
+  assert.equal((await x.core.backupUpload()).error, 'offline');
+  x.server.down = false;
+  // 로그아웃하면 칸이 사라진다
+  await x.core.logout();
+  assert.equal(x.core.status().backup, null);
+});
+
+test('기능 키 coin_reset: 서버 모드에서 서버가 켜졌다고 알려 줄 때만 켜진다, 그 밖은 모두 꺼짐 (#102)', async () => {
+  // 서버 주소 없음
+  const none = setup({ url: '' });
+  none.core.setAge('adult');
+  assert.equal(featureOn(none.core.status(), 'coin_reset'), false);
+  // 만 14세 미만
+  const kid = setup();
+  kid.core.setAge('under14');
+  await kid.core.run();
+  assert.equal(featureOn(kid.core.status(), 'coin_reset'), false);
+  // 서버 모드, 서버가 꺼 둠(기본) / 서버에 닿지 않음 / 켬
+  const x = setup();
+  x.server.down = true;
+  x.core.setAge('adult');
+  await x.core.run();
+  assert.equal(featureOn(x.core.status(), 'coin_reset'), false, '서버에 닿기 전');
+  x.server.down = false;
+  await x.core.run();
+  assert.equal(featureOn(x.core.status(), 'coin_reset'), false, '서버 기본 off');
+  x.server.coinReset = true;
+  await x.core.refreshProviders(true);
+  assert.equal(featureOn(x.core.status(), 'coin_reset'), true);
+  // 만 14세 미만으로 바꾸면 다시 꺼짐
+  x.core.setAge('under14');
+  assert.equal(featureOn(x.core.status(), 'coin_reset'), false);
+});
+
+test('서버 백업: 전체 상한이면 full, 로그아웃과 탈퇴하면 동의를 거둔다 (#102)', async () => {
+  const x = setup({ coins: 10 });
+  x.core.setAge('adult');
+  await x.core.run();
+  x.setLoop({ kind: 'code', code: 'g' });
+  await x.core.login();
+  x.core.agreeBackup(true);
+  x.server.backupFull = true;
+  assert.equal((await x.core.backupUpload()).error, 'full');
+  x.server.backupFull = false;
+  await x.core.logout();
+  assert.equal(x.saved()?.backupAgreed, false, '로그아웃하면 동의를 거둔다');
+  await x.core.login();
+  x.core.agreeBackup(true);
+  await x.core.remove();
+  assert.equal(x.saved()?.backupAgreed, false, '탈퇴하면 동의를 거둔다');
+});
+
+test('서버 백업: 올리기와 받기가 끝나 돌려준 상태는 busy 가 풀린 것이다 (QA #112: 화면이 "받는 중"에 멈춤)', async () => {
+  const x = setup({ coins: 10 });
+  x.core.setAge('adult');
+  await x.core.run();
+  x.setLoop({ kind: 'code', code: 'g' });
+  await x.core.login();
+  x.core.agreeBackup(true);
+  const up = await x.core.backupUpload();
+  assert.equal(up.ok, true);
+  assert.equal(up.status?.backup?.busy, null);
+  const id = up.status?.backup?.list?.[0]?.id ?? 0;
+  const down = await x.core.backupDownload(id);
+  assert.equal(down.ok, true);
+  assert.equal(down.status?.backup?.busy, null);
+  x.server.down = true;
+  const fail = await x.core.backupUpload();
+  assert.equal(fail.error, 'offline');
+  assert.equal(fail.status?.backup?.busy, null);
 });
