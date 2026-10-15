@@ -23,6 +23,7 @@ import * as gemini from './gemini.ts';
 import * as idle from './idle.ts';
 import * as main from './main.ts';
 import * as maker from './maker.ts';
+import * as notice from './notice.ts';
 import * as onboarding from './onboarding.ts';
 import * as panel from './panel.ts';
 import * as pet from './pet.ts';
@@ -87,6 +88,7 @@ export const ko = {
   ...speech.ko,
   ...calendar.ko,
   ...pin.ko,
+  ...notice.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -132,4 +134,5 @@ export const en: Translation<typeof ko> = {
   ...speech.en,
   ...calendar.en,
   ...pin.en,
+  ...notice.en,
 };

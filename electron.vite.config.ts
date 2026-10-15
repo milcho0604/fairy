@@ -77,6 +77,8 @@ export default defineConfig({
           onboarding: resolve('src/renderer/onboarding.html'),
           // 짝꿍이 아는 것 (main/knows.ts)
           knows: resolve('src/renderer/knows.html'),
+          // 공지 창 (main/notice-window.ts)
+          notice: resolve('src/renderer/notice.html'),
         },
       },
       minify: true,

@@ -1,0 +1,123 @@
+/* 공지 창. 색은 tokens.css 만 쓴다 (밝은 모드, 어두운 모드) */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font:
+    14px / 1.55 -apple-system,
+    BlinkMacSystemFont,
+    "Apple SD Gothic Neo",
+    "Malgun Gothic",
+    sans-serif;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  overflow-x: hidden;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+.notice-box {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 0 22px 18px;
+}
+
+/* 맥은 제목 막대를 숨겨 신호등 단추가 이 자리에 온다. 끌어 옮길 수 있게 */
+.drag {
+  align-self: stretch;
+  height: 30px;
+  -webkit-app-region: drag;
+}
+
+.badge {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--kind) 12%, var(--panel));
+  color: var(--kind-ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.kind-info {
+  --kind: var(--accent);
+  --kind-ink: var(--accent);
+}
+
+.kind-important {
+  --kind: var(--warn);
+  --kind-ink: var(--warn);
+}
+
+.kind-update {
+  --kind: var(--ok);
+  --kind-ink: var(--ok);
+}
+
+.kind-force {
+  --kind: var(--error);
+  --kind-ink: var(--error);
+}
+
+h1 {
+  margin: 10px 0 6px;
+  font-size: 17px;
+  line-height: 1.4;
+}
+
+.body {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.note {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-self: stretch;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.ghost {
+  padding: 7px 16px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.ghost:hover {
+  border-color: var(--accent);
+}
+
+.primary {
+  padding: 7px 20px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primary:hover {
+  background: color-mix(in srgb, var(--accent) 88%, var(--ink));
+}

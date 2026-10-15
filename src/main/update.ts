@@ -42,20 +42,38 @@ const LOCK_FILE = 'update-lock';
 type Say = (s: SayOptions) => Promise<string | undefined>;
 type Log = (tag: string, ...rest: unknown[]) => void;
 type Lock = SavedLock;
+/**
+ * 강제 업데이트 안내를 공지 창으로 띄운다 (main/notices.ts askForce). 누른 단추(restart, get)를 돌려주고,
+ * 창을 못 띄웠으면 undefined. signal 이 끊기면(잠금 풀림) 창을 닫는다. 없으면 예전처럼 펫 말풍선
+ */
+export type AskForce = (o: {
+  version: string;
+  min: string;
+  ready: boolean;
+  signal: AbortSignal;
+}) => Promise<string | undefined>;
 
 /**
  * 새 버전 알림 (v1), 강제 업데이트, 자동 설치. 켜고 1분 뒤, 그 뒤 하루에 한 번 GitHub Releases 를 본다.
  * - 새 버전: 펫이 말풍선으로 알린다. 설치판은 미리 받아 두고 "다시 켜서 업데이트". 윈도우와 맥 모두
  *   누를 때만 설치한다 (끝낼 때 저절로 설치하지 않는다). 받지 못했거나 개발 실행이면 "받으러 가기"(릴리스 페이지).
- * - 강제(릴리스 본문의 min-version 보다 낮음): 건너뛰기 없이, 시간 끝 없이 알리고 AI 대화를 잠근다.
+ * - 강제(릴리스 본문의 min-version 이나 공지 파일 minVersion 중 높은 쪽보다 낮음): 건너뛰기 없이, 시간 끝 없이 알리고
+ *   AI 대화를 잠근다. 안내는 닫을 수 없는 공지 창(askForce, main/notices.ts), 없으면 펫 말풍선.
  *   두 번 따로 받은 응답이 같아야 잠그고, 확인이 실패하면 풀린다. 오프라인이면 잠그지 않는다.
  *   잠금은 저장해 두고 다음에 켤 때 바로 잠근다. 다음 확인이 강제가 아니라고 답하면 지우고, 확인이 실패하면
  *   이번 실행만 풀고 저장은 남긴다 (실패는 강제가 아니라는 답이 아니다).
  * - 설정 "새 버전 알림"을 꺼도 확인은 한다. 강제가 아닌 새 버전 말풍선만 생략한다 (notifyPlan).
  * 사용자 정보는 보내지 않는다(앱 이름과 버전만). 토큰도 없다.
  */
-export function watchUpdates(o: { say: Say; log: Log }) {
+export function watchUpdates(o: { say: Say; log: Log; askForce?: AskForce }) {
   let lock: Lock | undefined;
+  /**
+   * 공지 파일(notices.json)의 최소 버전. 공지 쪽이 두 번 받아 같을 때만 넣는다 (main/notices.ts).
+   * 릴리스 본문 값과 높은 쪽을 쓰되 최신 릴리스 이하일 때만 (update-policy.ts pickMinVersion)
+   */
+  let noticeMin: string | undefined;
+  /** 마지막 확인에서 본 새 버전 (공지 창의 업데이트 권장과 업데이트 단추가 쓴다) */
+  let newer: { version: string; url: string } | undefined;
   let nagging = false;
   /** 안내가 밀려 기다리는 중이면 기다림을 끝낸다 */
   let wake: (() => void) | undefined;
@@ -100,7 +118,7 @@ export function watchUpdates(o: { say: Say; log: Log }) {
         o.log('update', '응답을 읽지 못함');
         return { kind: 'failed', bad: true };
       }
-      return decideUpdate(json, app.getVersion());
+      return decideUpdate(json, app.getVersion(), noticeMin);
     } catch (err) {
       o.log('update', '확인 실패', err instanceof Error ? err.message : String(err));
       return { kind: 'failed' };
@@ -251,16 +269,24 @@ export function watchUpdates(o: { say: Say; log: Log }) {
         // 전에 이 버전을 건너뛰었어도 강제면 끝낼 때 설치한다 (installOnQuit 이 켜진 운영체제만)
         if (ready) setInstallOnQuit(true);
         nagAbort = new AbortController();
-        const answer = await o.say({
-          kind: 'answer',
-          signal: nagAbort.signal,
-          text: t('main.update.forced', { version: l.version, min: l.minVersion }),
-          buttons: ready
-            ? [{ id: 'restart', label: t('main.update.restart') }]
-            : [{ id: 'get', label: t('main.update.get') }],
-          // 0 이면 시간이 지나도 닫히지 않는다
-          ttlMs: 0,
-        });
+        // 공지 창이 있으면 닫기 없는 창으로 (업데이트 단추만), 없으면 시간 끝 없는 말풍선으로
+        const answer = o.askForce
+          ? await o.askForce({
+              version: l.version,
+              min: l.minVersion,
+              ready: !!ready,
+              signal: nagAbort.signal,
+            })
+          : await o.say({
+              kind: 'answer',
+              signal: nagAbort.signal,
+              text: t('main.update.forced', { version: l.version, min: l.minVersion }),
+              buttons: ready
+                ? [{ id: 'restart', label: t('main.update.restart') }]
+                : [{ id: 'get', label: t('main.update.get') }],
+              // 0 이면 시간이 지나도 닫히지 않는다
+              ttlMs: 0,
+            });
         if (!lock) break;
         if (answer === 'restart') {
           restartAndInstall(lock.url);
@@ -326,11 +352,20 @@ export function watchUpdates(o: { say: Say; log: Log }) {
     if (answer === 'skip') settings.set({ skipVersion: version });
   }
 
-  async function check(manual = false): Promise<UpdateStatus> {
+  /** 확인을 겹쳐 돌리지 않는다 (켜고 1분 뒤 확인과 공지 파일의 최소 버전이 바뀌어 다시 보는 것이 겹칠 수 있다) */
+  let queue: Promise<unknown> = Promise.resolve();
+  function check(manual = false): Promise<UpdateStatus> {
+    const run = queue.then(() => checkOnce(manual));
+    queue = run.catch(() => undefined);
+    return run;
+  }
+
+  async function checkOnce(manual: boolean): Promise<UpdateStatus> {
     // 설정을 꺼도 확인은 한다: 강제 업데이트 잠금과 풀기는 꺼짐과 상관없다. 꺼지면 아래에서 새 버전 말풍선만 생략
     const first = await fetchDecision();
     if (first.kind === 'failed') {
       // 확인을 못 하면 잠그지 않는다 (잠겨 있었으면 푼다)
+      newer = undefined;
       setLock(undefined);
       // 404 는 레포가 비공개이거나 릴리스가 아직 없을 때다: 최신이라고 하지 않고 확인할 수 없다고만 (중립)
       if (first.status === 404) return { text: t('main.update.unavailable'), tone: 'info' };
@@ -341,10 +376,12 @@ export function watchUpdates(o: { say: Say; log: Log }) {
       return { text, tone: 'error' };
     }
     if (first.kind === 'none') {
+      newer = undefined;
       setLock(undefined);
       forget();
       return { text: t('main.update.latest'), tone: 'ok' };
     }
+    newer = { version: first.version, url: first.url };
     // 더 새 버전이 나왔으면 받아 둔 것과 실패 기록을 잊고 새로 받는다
     if (downloaded && downloaded !== first.version) {
       downloaded = undefined;
@@ -392,6 +429,29 @@ export function watchUpdates(o: { say: Say; log: Log }) {
     check,
     /** 강제 업데이트로 핵심 기능(AI 대화)이 잠겼는지 */
     locked: () => !!lock,
+    /** 마지막 확인에서 새 버전을 찾았는지 (공지 창의 업데이트 권장은 받을 것이 있을 때만 띄운다) */
+    newerAvailable: () => !!newer,
+    /**
+     * 공지 파일의 최소 버전을 넣는다 (두 번 받아 같은 값, 못 받았으면 undefined). 바뀌었으면 바로 다시 확인해
+     * 잠그거나 푼다. 다시 확인도 지금처럼 두 번 받아 같아야 잠그고, 오프라인이면 잠그지 않는다
+     */
+    setNoticeMin(min: string | undefined) {
+      if (min === noticeMin) return;
+      o.log('update', '공지 파일 최소 버전', min ?? '없음');
+      noticeMin = min;
+      void check();
+    },
+    /**
+     * 공지 창의 업데이트 단추 (권장 공지). 받아 둘 수 있으면 받아 두고 다시 켜서 설치, 안 되면 설치 안내를 연다.
+     * 새 버전을 아직 모르면 아무것도 하지 않는다
+     */
+    async install() {
+      const n = newer;
+      if (!n) return;
+      const ready = await download();
+      if (ready) restartAndInstall(n.url);
+      else await getManually(n.url);
+    },
     /** 잠긴 기능을 쓰려 했다. 펫이 까닭을 말하고 업데이트 단추를 다시 띄운다 */
     remind() {
       if (!lock) return;

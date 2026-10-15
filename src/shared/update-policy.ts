@@ -86,20 +86,39 @@ export type UpdateDecision =
   | { kind: 'force'; version: string; url: string; minVersion: string };
 
 /**
+ * 최소 버전 두 곳(릴리스 본문, 공지 파일 notices.json 의 minVersion) 중 높은 쪽. 다만 최신 릴리스보다 높은 값은
+ * 버린다 (없는 버전을 요구하면 업데이트해도 못 푼다). 공지 파일 값이 너무 높으면 릴리스 본문 값만 쓴다 (docs/server-plan.md 23절)
+ */
+export function pickMinVersion(
+  releaseMin: string | undefined,
+  noticeMin: string | undefined,
+  latest: string,
+): string | undefined {
+  const ok = [releaseMin, noticeMin].filter(
+    (m): m is string => !!m && !!parseVersion(m) && !isNewer(m, latest),
+  );
+  return ok.reduce<string | undefined>((a, b) => (a && !isNewer(b, a) ? a : b), undefined);
+}
+
+/**
  * GitHub 최신 릴리스 응답과 지금 버전으로 할 일을 정한다.
  * 잠그는(force) 조건은 모두 맞아야 한다. 하나라도 어긋나면 잠그지 않는 쪽으로 떨어진다.
  * - 응답이 정상 릴리스(초안, 미리보기 아님, github.com 주소, 읽히는 태그)
  * - 최신 버전이 지금보다 새것 (받을 것이 있어야 잠근다)
- * - 최소 버전 표시가 정확히 하나
+ * - 최소 버전 표시가 정확히 하나 (공지 파일의 minVersion 이 있으면 둘 중 높은 쪽, pickMinVersion)
  * - 최소 버전이 최신 버전 이하 (없는 버전을 요구하면 업데이트해도 못 푼다)
  * - 지금 버전이 최소 버전보다 낮음
  */
-export function decideUpdate(json: unknown, current: string): UpdateDecision {
+export function decideUpdate(json: unknown, current: string, noticeMin?: string): UpdateDecision {
   if (!parseVersion(current)) return { kind: 'none' };
   const latest = readRelease(json);
   if (!latest || !isNewer(latest.version, current)) return { kind: 'none' };
-  const min = readMinVersion((json as Record<string, unknown>).body);
-  if (min && isNewer(min, current) && !isNewer(min, latest.version))
+  const min = pickMinVersion(
+    readMinVersion((json as Record<string, unknown>).body),
+    noticeMin,
+    latest.version,
+  );
+  if (min && isNewer(min, current))
     return { kind: 'force', version: latest.version, url: latest.url, minVersion: min };
   return { kind: 'notify', version: latest.version, url: latest.url };
 }

@@ -127,6 +127,43 @@
 - 앱은 최신 릴리스 하나만 본다. 파일에 값이 남아 있는 동안은 다음 릴리스에도 계속 붙는다. 풀려면 값 줄을 지운다.
 - 잠그려면 따로 받은 두 응답(10초 간격)이 같은 최소 버전을 말해야 한다. 확인에 실패하거나 오프라인이면 잠그지 않으니 잠금은 보안 장치가 아니라 안내다.
 - 앱이 읽는 규칙(본문을 손으로 고칠 때): 줄 전체가 `min-version: 1.4.0` 또는 `<!-- min-version: 1.4.0 -->` 여야 하고, 값이 최신 릴리스보다 높거나, 서로 다른 값이 둘이거나, 코드 블록(```) 안이면 무시된다.
+- 릴리스 없이 최소 버전을 올리려면 아래 공지 파일의 `minVersion` 을 쓴다. 앱은 두 값 중 높은 쪽을 쓴다(최신 릴리스 이하인 값만).
+- 잠긴 동안 안내는 닫을 수 없는 공지 창(업데이트 단추 하나)으로 뜬다. 설정의 백업 내보내기와 메뉴 막대 아이콘의 끝내기는 그대로 된다.
+
+## 공지 올리기 (site/notices.json)
+
+앱 자체 공지 창과 릴리스 없는 최소 버전 (`docs/server-plan.md` 23절). 레포의 `site/notices.json` 을 고쳐 main 에 머지하면 홈페이지 배포로 나가고, 앱은 켤 때(5초 뒤)와 4시간마다 `https://fairy.moilga.com/notices.json` 을 받는다. 지금 파일은 빈 목록이라 아무것도 띄우지 않는다.
+
+```json
+{
+  "version": 1,
+  "minVersion": "0.4.4",
+  "notices": [
+    {
+      "id": "2026-10-event-1",
+      "kind": "info",
+      "title": { "ko": "이번 주 선물", "en": "Gift this week" },
+      "body": { "ko": "할 일을 끝내면 코인을 두 배로 받아.", "en": "Double coins for finished to-dos." },
+      "link": "https://fairy.moilga.com/news/1",
+      "from": "2026-10-20T00:00:00+09:00",
+      "until": "2026-10-27T00:00:00+09:00",
+      "versions": "<0.5.0",
+      "platforms": ["darwin", "win32"]
+    }
+  ]
+}
+```
+
+- `kind`: `info`(알림, 한 번), `important`(중요, 켤 때마다 확인을 누를 때까지), `update`(업데이트 권장. 앱이 `recommendVersion` 보다 낮고 받을 새 버전이 있을 때 하루 한 번, 나중에 가능. `recommendVersion` 이 없으면 안 뜬다), `force`(잠긴 동안 강제 창에 쓸 글. 잠금은 `minVersion` 이 정한다).
+- `title`, `body` 는 ko 와 en 둘 다, 글자만(HTML 아님). 제목 80자, 본문 1000자까지. `id` 는 영문, 숫자, `.`, `_`, `-` 로 80자까지.
+- 알림과 권장은 합쳐 하루 한 번까지, 집중 중에는 강제 말고 미룬다. 한 번에 하나, 중요, 권장, 알림 순.
+- 이미 닫은 알림은 다시 안 뜬다. 고칠 때는 새 `id` 로 올린다.
+- `link` 는 `https://fairy.moilga.com` 과 `https://github.com/milcho0604/` 아래만 남고 나머지는 버린다(공지는 남는다).
+- `versions` 는 `<0.5.0`, `>=0.4.0 <0.5.0`, `0.4.3` 처럼. `platforms` 는 `darwin`, `win32`, `linux`. 비우면 모두.
+- 깨진 공지, 모르는 `kind` 는 그것만 버린다. 파일이 JSON 이 아니거나 64KB 를 넘거나 `version` 이 1 이 아니면 아무것도 띄우지 않고 잠그지도 않는다.
+- `recommendVersion` 은 권장 버전이다. 이보다 낮은 앱에 `update` 공지를 띄우고 잠그지는 않는다. 보통 `minVersion` 보다 높게 둔다.
+- `minVersion` 은 10초 간격으로 두 번 받아 같아야 쓰고, 최신 릴리스보다 높으면 무시, 못 받으면(오프라인) 잠그지 않는다. 내리려면 줄을 지운다.
+- 시험: `npm run build && OUT=<폴더> LANG_UNDER_TEST=ko node scripts/dev/notices.mjs` (이 컴퓨터 http 서버로 공지와 릴리스를 내주고 종류 넷을 찍는다, `scripts/dev/README.md`).
 
 ## 공개 전환 체크리스트
 
