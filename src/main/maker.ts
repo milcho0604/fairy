@@ -1372,11 +1372,19 @@ function illustText(kind: IllustErrorKind): string {
   }
 }
 
-/** 2D 그림 세트 띠 실패 종류마다 화면 글. 무료 횟수 안내는 그림 세트 창에 맞게 (내 컴퓨터, Gemini 로 이어 가기는 창이 따로 권한다) */
+/**
+ * 2D 그림 세트 띠 실패 종류마다 화면 글. 무료 횟수가 끝났으면 이어 갈 길을 붙인다:
+ * 내 컴퓨터에서 그리기는 이 컴퓨터가 될 때만, Gemini 는 늘, 토큰은 아직 없을 때만
+ */
 function spriteText(kind: IllustErrorKind): string {
-  if (kind === 'quota') return t(hfToken.has() ? 'main.sprites.quotaToken' : 'main.sprites.quota');
-  if (kind === 'refused') return t(hfToken.has() ? 'main.sprites.refusedToken' : 'main.sprites.refused');
-  return illustText(kind);
+  if (kind !== 'quota' && kind !== 'refused') return illustText(kind);
+  const token = hfToken.has();
+  const head =
+    kind === 'quota'
+      ? t(token ? 'main.sprites.quotaToken' : 'main.sprites.quota')
+      : t(token ? 'main.sprites.refusedToken' : 'main.sprites.refused');
+  const next = t(localDrawInfo().supported ? 'main.sprites.nextLocal' : 'main.sprites.nextGemini');
+  return token ? `${head} ${next}` : `${head} ${next} ${t('main.sprites.nextToken')}`;
 }
 
 /** 내 컴퓨터에서 그리기 실패 종류마다 화면 글. 준비와 그리기에서 멈춤 글만 다르다. gb 는 이번 준비에 필요한 빈 공간 */

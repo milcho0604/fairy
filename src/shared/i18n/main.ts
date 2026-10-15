@@ -117,7 +117,12 @@ export const ko = {
   'main.illust.down': '무료 그림 서버가 지금 바쁘거나 쉬는 중이야. 조금 있다가 다시 해 줘.',
   'main.illust.tokenShape': '토큰 모양이 이상해. hf_로 시작하는 토큰을 붙여 넣어 줘.',
   'main.sprites.quota':
-    "오늘 무료 그림 횟수를 다 썼어. 여기까지 만든 동작은 그대로 저장할 수 있어 (빠진 자세는 가까운 그림으로 채워져). 횟수는 네 인터넷 연결마다 따로 세고 하루가 지나면 다시 채워져. 더 만들려면 '사진으로 페어리 만들기'의 'AI 일러스트로 다시 그리기'에서 무료 Hugging Face 토큰을 넣어 줘.",
+    '오늘 무료 그림 횟수를 다 썼어. 여기까지 만든 동작은 그대로 저장할 수 있어 (빠진 자세는 가까운 그림으로 채워져). 횟수는 네 인터넷 연결마다 따로 세고 하루가 지나면 다시 채워져.',
+  'main.sprites.nextLocal':
+    "지금 더 만들려면 아래에서 남은 동작을 내 컴퓨터에서 그리거나, 동작마다 'Gemini로' 단추로 받아 와.",
+  'main.sprites.nextGemini': "지금 더 만들려면 동작마다 'Gemini로' 단추로 무료 Gemini 앱에서 받아 와.",
+  'main.sprites.nextToken':
+    "무료 Hugging Face 토큰을 넣어도 돼('사진으로 페어리 만들기'의 'AI 일러스트로 다시 그리기').",
   'main.sprites.quotaToken':
     '이 토큰의 오늘 무료 사용량을 다 썼어. 여기까지 만든 동작은 그대로 저장할 수 있고, 하루가 지나면 남은 동작을 다시 만들 수 있어.',
   'main.sprites.refused':
@@ -297,7 +302,13 @@ export const en: Translation<typeof ko> = {
   'main.illust.down': 'The free drawing server is busy or resting right now. Try again in a bit.',
   'main.illust.tokenShape': "That doesn't look like a token. Paste one that starts with hf_.",
   'main.sprites.quota':
-    "You've used up today's free drawings. You can still save the moves made so far (missing poses borrow the closest picture). The limit is counted per internet connection and refills after a day. To make more now, add a free Hugging Face token under 'Redraw as an AI illustration' in 'Make a fairy from a photo'.",
+    "You've used up today's free drawings. You can still save the moves made so far (missing poses borrow the closest picture). The limit is counted per internet connection and refills after a day.",
+  'main.sprites.nextLocal':
+    "To make more now, draw the rest on this computer below, or bring each move in with its 'Gemini' button.",
+  'main.sprites.nextGemini':
+    "To make more now, bring each move in from the free Gemini app with its 'Gemini' button.",
+  'main.sprites.nextToken':
+    "A free Hugging Face token works too ('Redraw as an AI illustration' in 'Make a fairy from a photo').",
   'main.sprites.quotaToken':
     "This token has used up today's free drawings. You can still save the moves made so far, and make the rest after a day.",
   'main.sprites.refused':
