@@ -10,7 +10,14 @@ import { app } from 'electron';
 import { type LocalDrawInfo, SD_DRAW_GB, SD_SETUP_STAGES, setupRatio } from '../shared/local-draw.ts';
 import { ensureVerified, forgetVerified } from './download.ts';
 import type { ImageKind } from './hf-illust.ts';
-import { checkDrawn, DRAW_FREE_BYTES, LocalDrawError, tail } from './local-draw-core.ts';
+import {
+  checkDrawn,
+  DRAW_FREE_BYTES,
+  type DrawShape,
+  fixedDrawSize,
+  LocalDrawError,
+  tail,
+} from './local-draw-core.ts';
 import {
   dirBytesAsync,
   downloadKind,
@@ -371,7 +378,7 @@ async function drawOnce(
   inputKind: ImageKind,
   prompt: string,
   pass: 0 | 1,
-  o: { signal: AbortSignal; children: Set<ChildProcess>; onProgress: (r: number) => void },
+  o: { signal: AbortSignal; children: Set<ChildProcess>; onProgress: (r: number) => void; size?: DrawShape },
 ): Promise<{ bytes: Uint8Array; kind: ImageKind; ranOnCpu: boolean }> {
   mkdirSync(l.tmp, { recursive: true });
   const tmp = mkdtempSync(join(l.tmp, 'jj-draw-'));
@@ -384,13 +391,18 @@ async function drawOnce(
     const outPath = join(tmp, 'out.png');
     writeFileSync(inPath, input);
     const tier = tierOf(backend);
-    const want = sdDrawSize(input, tier);
+    // 크기를 정해 그리면(그림 세트 띠) 넣는 그림 비율을 따르지 않는다. 1024x256 은 CPU 에서도 768 판보다 작다
+    const want = o.size ? fixedDrawSize(o.size) : sdDrawSize(input, tier);
     const seed = Math.floor(Math.random() * 2 ** 31);
     o.onProgress(sdDrawRatio(pass));
     const bin = binaryPath(l, backend);
     const text = await run(
       bin,
-      sdDrawArgs(l, { input: inPath, output: outPath, prompt, ...want, seed, backend }, l.root),
+      sdDrawArgs(
+        l,
+        { input: inPath, output: outPath, prompt, width: want.width, height: want.height, seed, backend },
+        l.root,
+      ),
       {
         env: sdEnv(),
         signal: o.signal,
@@ -436,7 +448,7 @@ export function illustrateSd(
   photo: Uint8Array,
   kind: 'jpeg' | 'png',
   prompt: string,
-  o: { signal: AbortSignal; onProgress: (r: number) => void; log: Log },
+  o: { signal: AbortSignal; onProgress: (r: number) => void; log: Log; size?: DrawShape },
 ): Promise<{
   bytes: Uint8Array;
   kind: ImageKind;
@@ -452,7 +464,7 @@ export function illustrateSd(
       if (free < DRAW_FREE_BYTES) throw new LocalDrawError('disk', `free ${GB(free)}GB`);
       const state = readState(l);
       let backend = backendOf(pick, state);
-      const opt = { signal: ac.signal, children, onProgress: o.onProgress };
+      const opt = { signal: ac.signal, children, onProgress: o.onProgress, size: o.size };
       /** 다음부터 CPU 로 (state.json). CPU 로 실제로 그려진 뒤에만 부른다 */
       const toCpu = () => {
         backend = 'cpu';

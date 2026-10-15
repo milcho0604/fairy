@@ -757,6 +757,18 @@ export const MAKER = {
   /** 받기(모델), 입체 만들기(AI), 일러스트 그리기를 멈춘다 (진행 표시의 그만두기) */
   cancel: 'maker:cancel',
   close: 'maker:close',
+  /** 2D 그림 세트 만들기 (#89): 지금 페어리 그림과 이름 */
+  spriteSource: 'maker:sprite-source',
+  /** 2D 그림 세트 만들기: 기준 그림과 동작 하나로 가로 띠 한 장을 무료 그림 Space 나 내 컴퓨터에서 받는다 */
+  spriteRow: 'maker:sprite-row',
+  /** 2D 그림 세트 만들기: 동작 하나의 Gemini 요청문을 복사하고 Gemini 앱을 연다 (2026-10-15) */
+  spriteGemini: 'maker:sprite-gemini',
+  /** 2D 그림 세트 만들기: Gemini 에 올릴 기준 그림을 임시 폴더에 두고 파일 관리자로 보여 준다 */
+  revealSpriteRef: 'maker:reveal-sprite-ref',
+  /** 2D 그림 세트 만들기: 다 만든 그림들(PNG data URL)을 지금 페어리의 그림 세트로 저장한다 */
+  saveSprites: 'maker:save-sprites',
+  /** 펫을 저장한 뒤 같은 창에서 2D 그림 세트 만들기로 넘어간다 */
+  openSprites: 'maker:open-sprites',
 } as const;
 
 /**
@@ -790,7 +802,7 @@ export type TextShapeResult =
   | { ok: false; error: string; noAi?: boolean };
 
 /** 펫 만들기 창이 만드는 것: 펫 본 그림, 또는 상태별 포즈 (v1) */
-export type MakerTarget = 'main' | PoseKind | 'food';
+export type MakerTarget = 'main' | PoseKind | 'food' | 'sprites';
 
 export interface MakerInfo {
   target: MakerTarget;
@@ -893,7 +905,42 @@ export interface MakerBridge {
   cancel(): void;
   close(): void;
   onProgress(listener: (ratio: number) => void): void;
+  /** 2D 그림 세트 만들기: 지금 페어리 그림(data URL). 사진 펫이 아니면 image 가 null */
+  spriteSource(): Promise<SpriteSource>;
+  /**
+   * 2D 그림 세트 만들기: 기준 그림(PNG data URL, 배경색 위)과 동작 이름, 배경색(#RRGGBB, KEY_COLORS 중 하나)으로 띠 한 장.
+   * engine 이 local 이면 내 컴퓨터에서 (준비가 끝났을 때만). 성공이면 받은 그림 data URL (webp, png, jpeg).
+   * 그만두기와 창 닫기로 멈춘다
+   */
+  spriteRow(row: string, reference: string, key: string, engine?: IllustEngine): Promise<SpriteRowResult>;
+  /** 2D 그림 세트 만들기: 동작 하나의 Gemini 요청문을 클립보드에 넣고 Gemini 앱을 연다 */
+  spriteGemini(row: string, key: string): Promise<{ copied: boolean; opened: boolean }>;
+  /** 2D 그림 세트 만들기: Gemini 에 올릴 기준 그림(PNG data URL)을 파일로 두고 보여 준다 */
+  revealSpriteRef(reference: string): Promise<boolean>;
+  /** 2D 그림 세트 저장 (이름 -> PNG data URL, 서기 꼭). 메인이 .fairy 와 같은 규칙으로 다시 본다 */
+  saveSprites(sprites: Record<string, string>): Promise<{ ok: boolean; error?: string }>;
+  /** 펫을 저장한 뒤 2D 그림 세트 만들기로 */
+  openSprites(): void;
 }
+
+export interface SpriteSource {
+  image: string | null;
+  name: string;
+  /** 이미 그림 세트가 있는지 (다시 만들면 바뀐다) */
+  hasSprites: boolean;
+  /** 무료 Hugging Face 토큰을 넣었는지 */
+  hfToken: boolean;
+  /** 내 컴퓨터에서 그리기: 되는 컴퓨터인지, 준비가 끝났는지 (준비는 사진으로 만들기 창에서 한다) */
+  localDraw: LocalDrawInfo;
+}
+
+/**
+ * kind 는 서버면 hf-illust.ts IllustErrorKind, 내 컴퓨터면 local-draw-core.ts LocalDrawErrorKind.
+ * 멈출지는 sprite-strip.ts stopsQueue(kind, engine). localDraw 는 내 컴퓨터 실패 뒤 새 상태 (준비가 깨졌을 수 있다)
+ */
+export type SpriteRowResult =
+  | { ok: true; image: string }
+  | { ok: false; kind: string; error: string; localDraw?: LocalDrawInfo };
 
 export const PANEL = {
   snapshot: 'panel:snapshot',

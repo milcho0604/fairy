@@ -26,8 +26,12 @@ import {
   MODEL_URL,
   ORT_WASM_URL,
   type PetImages,
+  type SpriteRowResult,
+  type SpriteSource,
 } from '../shared/ipc.ts';
-import { illustEngineOf, LOCAL_DRAW_GB } from '../shared/local-draw.ts';
+import { illustEngineOf, LOCAL_DRAW_GB, type LocalDrawInfo } from '../shared/local-draw.ts';
+import { cleanSprites } from '../shared/pet-share.ts';
+import { type PetSprites, spriteFiles } from '../shared/pet-sprites.ts';
 import { type Blueprint, type Gait, parseBlueprint } from '../shared/pet3d/blueprint.ts';
 import {
   BLUEPRINT_SYSTEM,
@@ -53,12 +57,14 @@ import {
 } from '../shared/pet3d/text-prompt.ts';
 import { cleanPetName, isGait, POSE_KINDS, photoPetName } from '../shared/settings.ts';
 import { CUSTOM_FOOD_COST } from '../shared/shop.ts';
+import { geminiStripPrompt, isRowId, KEY_COLORS, keyHex, rowOf } from '../shared/sprite-strip.ts';
 import { starterOf } from '../shared/starter-pets.ts';
 import { BG_MODEL, ensureModel, modelReady, verifiedModelUrl } from './bg-model.ts';
 import { DEPTH_MODEL, depthReady, ensureDepthModel, verifiedDepthUrl } from './depth-model.ts';
 import { devRendererUrl } from './dev-url.ts';
 import { focusWindow, showWindow } from './focus.ts';
 import {
+  type FetchLike,
   IllustError,
   type IllustErrorKind,
   type ImageKind,
@@ -73,6 +79,7 @@ import { ensureOrtWasm, ORT_WASM, ortWasmReady, verifiedOrtWasmUrl } from './ort
 import { library, spriteUrls } from './pet-library.ts';
 import { readFileIn, writeFileAtomic } from './safe-file.ts';
 import { settings } from './settings.ts';
+import { drawStrip, drawStripLocal, type LocalStripDraw } from './sprite-gen.ts';
 import { readStarterWalk } from './starter-copy.ts';
 import { rememberBounds, savedBounds } from './window-bounds.ts';
 
@@ -262,7 +269,11 @@ export function createMaker(
             petName: settings.get().petName,
             newPetName: newPhotoName(),
             hasPhotoPet: !!settings.get().petImage,
-            hasPose: target !== 'main' && target !== 'food' && !!settings.get().petPoses[target],
+            hasPose:
+              target !== 'main' &&
+              target !== 'food' &&
+              target !== 'sprites' &&
+              !!settings.get().petPoses[target],
             foodCost: CUSTOM_FOOD_COST,
             modelReady: modelReady() && ortWasmReady(),
             modelMB: toMb(BG_MODEL.bytes + engineBytes()),
@@ -734,7 +745,7 @@ export function createMaker(
   });
 
   ipcMain.handle(MAKER.save, (e, dataUrl: string | null, name: string, lookRaw?: unknown) => {
-    if (!fromMaker(e)) return { ok: false };
+    if (!fromMaker(e) || target === 'sprites') return { ok: false };
     // 디스크가 차거나 폴더에 쓸 수 없으면 쓰기가 던진다. 던진 채 두면 창이 "저장하는 중"에서 멈춰서 안내 글로 돌려준다
     try {
       return target === 'food' ? saveFood(dataUrl, name) : savePet(target, dataUrl, name, lookRaw);
@@ -751,7 +762,7 @@ export function createMaker(
   }
 
   function savePet(
-    to: Exclude<MakerTarget, 'food'>,
+    to: Exclude<MakerTarget, 'food' | 'sprites'>,
     dataUrl: string | null,
     name: string,
     lookRaw?: unknown,
@@ -983,6 +994,244 @@ export function createMaker(
     if (fromMaker(e)) win?.close();
   });
 
+  // 2D 그림 세트 만들기 (#89). 그림 세트는 이 그림(petImage)의 것: 만드는 사이 페어리가 바뀌면 저장하지 않는다
+  let spriteFor: string | undefined;
+  /** 개발 시험은 __jj.maker.debugSpriteFetch 로 가짜 Space 를 넣는다 (진짜 무료 횟수를 쓰지 않게) */
+  let spriteFetch: FetchLike | undefined;
+  /**
+   * 개발 시험은 __jj.maker.debugSpriteLocal 로 가짜 내 컴퓨터 엔진(준비 상태와 그리기)을 넣는다.
+   * 진짜 mflux, sd.cpp 를 돌리거나 모델을 받지 않게
+   */
+  let spriteLocal: { info?: LocalDrawInfo; draw?: LocalStripDraw } | undefined;
+  /** 개발 시험은 __jj.maker.debugSpriteOut 으로 클립보드, 브라우저 열기, 파일 관리자 보이기를 가로챈다 */
+  let spriteOut:
+    | {
+        copy?: (text: string) => void;
+        open?: (url: string) => Promise<void>;
+        reveal?: (file: string) => void;
+      }
+    | undefined;
+  const spriteLocalInfo = (): LocalDrawInfo => spriteLocal?.info ?? localDrawInfo();
+  ipcMain.handle(MAKER.spriteSource, (e): SpriteSource | undefined => {
+    if (!fromMaker(e) || target !== 'sprites') return undefined;
+    const s = settings.get();
+    spriteFor = s.petImage ?? undefined;
+    return {
+      image: s.petImage ? dataUrlOf(s.petImage) : null,
+      name: s.petName,
+      hasSprites: !!s.petSprites,
+      hfToken: hfToken.has(),
+      localDraw: spriteLocalInfo(),
+    };
+  });
+
+  /** 창이 보낸 기준 그림 (배경색 위 PNG data URL) 검사. 안 맞으면 undefined */
+  function spriteRef(refRaw: unknown): Buffer | undefined {
+    const prefix = 'data:image/png;base64,';
+    if (typeof refRaw !== 'string' || !refRaw.startsWith(prefix)) return undefined;
+    const ref = Buffer.from(refRaw.slice(prefix.length), 'base64');
+    if (kindOf(ref) !== 'png' || ref.length > MAX_PNG_BYTES || !sizeOk(ref)) return undefined;
+    return ref;
+  }
+
+  // 동작 하나 = 무료 Space 한 번, 또는 내 컴퓨터에서 한 번 (2026-10-15). 기준 그림(지금 페어리 그림을 배경색 위에 놓은 PNG)만 보낸다.
+  // 그림, 요청문, 토큰은 기록에 남기지 않는다
+  ipcMain.handle(
+    MAKER.spriteRow,
+    async (
+      e,
+      rowRaw: unknown,
+      refRaw: unknown,
+      keyRaw: unknown,
+      engineRaw?: unknown,
+    ): Promise<SpriteRowResult> => {
+      const failed = (kind: IllustErrorKind | 'reopen' | 'format'): SpriteRowResult => ({
+        ok: false,
+        kind,
+        error:
+          kind === 'reopen'
+            ? t('main.maker.reopen')
+            : kind === 'format'
+              ? t('main.maker.badFormat')
+              : spriteText(kind),
+      });
+      if (!fromMaker(e) || target !== 'sprites') return failed('reopen');
+      const key = KEY_COLORS.find((k) => keyHex(k) === keyRaw);
+      const row = isRowId(rowRaw) ? rowOf(rowRaw) : undefined;
+      const engine = engineRaw == null ? 'cloud' : illustEngineOf(engineRaw);
+      if (!row || !key || !engine) return failed('format');
+      const ref = spriteRef(refRaw);
+      if (!ref) return failed('format');
+      drawing?.abort();
+      const abort = new AbortController();
+      drawing = abort;
+      const started = Date.now();
+      if (engine === 'local') {
+        try {
+          // 준비가 안 됐으면 그리지 않는다 (준비는 사진으로 만들기 창에서. 여기서 새로 받지 않는다)
+          if (!spriteLocalInfo().ready) throw new LocalDrawError('notReady');
+          const r = await drawStripLocal(
+            spriteLocal?.draw ?? ((photo, kind, prompt, o) => illustrateLocal(photo, kind, prompt, o)),
+            ref,
+            row,
+            key,
+            {
+              signal: abort.signal,
+              onProgress: (ratio) => {
+                if (win && !win.isDestroyed()) win.webContents.send(MAKER.progress, ratio);
+              },
+              log,
+            },
+          );
+          // 그만둔 뒤 끝난 그림은 쓰지 않는다 (hf-illust.ts 와 같다)
+          if (abort.signal.aborted) throw new LocalDrawError('cancelled');
+          log(
+            'maker',
+            'sprite row',
+            row.id,
+            'local',
+            `${Math.round((Date.now() - started) / 1000)}s`,
+            `${Math.round(r.bytes.length / 1024)}KB`,
+          );
+          return { ok: true, image: dataUrlFrom(r.bytes, r.kind) };
+        } catch (err) {
+          // 그만두기로 멈췄으면 엔진이 무엇을 던졌든 그만두기 (남은 동작을 기다림으로 둔다)
+          const k: LocalDrawErrorKind = abort.signal.aborted
+            ? 'cancelled'
+            : err instanceof LocalDrawError
+              ? err.kind
+              : 'failed';
+          log(
+            'maker',
+            'sprite row',
+            row.id,
+            'local',
+            k,
+            err instanceof LocalDrawError ? '' : err instanceof Error ? err.message : String(err),
+          );
+          return { ok: false, kind: k, error: localDrawText(k, 'draw'), localDraw: spriteLocalInfo() };
+        } finally {
+          if (drawing === abort) drawing = undefined;
+        }
+      }
+      try {
+        const r = await drawStrip(ref, row, key, {
+          fetch: spriteFetch ?? ((url, init) => net.fetch(url, init)),
+          token: hfToken.get(),
+          signal: abort.signal,
+          log,
+        });
+        log(
+          'maker',
+          'sprite row',
+          row.id,
+          `${Math.round((Date.now() - started) / 1000)}s`,
+          `${Math.round(r.bytes.length / 1024)}KB`,
+        );
+        return { ok: true, image: dataUrlFrom(r.bytes, r.kind) };
+      } catch (err) {
+        const k = err instanceof IllustError ? err.kind : 'busy';
+        log(
+          'maker',
+          'sprite row',
+          row.id,
+          k,
+          err instanceof IllustError ? '' : err instanceof Error ? err.message : String(err),
+        );
+        return failed(k);
+      } finally {
+        if (drawing === abort) drawing = undefined;
+      }
+    },
+  );
+
+  // 동작 하나만 Gemini 앱으로 (2026-10-15): 요청문은 메인이 동작과 배경색으로 만들어 클립보드에 넣는다 (창이 보낸 글을 넣지 않는다).
+  // 여는 주소는 gemini.google.com/app 하나뿐. 기준 그림은 사용자가 올리고, 받은 그림은 창이 자르고 검사한다
+  ipcMain.handle(MAKER.spriteGemini, async (e, rowRaw: unknown, keyRaw: unknown) => {
+    if (!fromMaker(e) || target !== 'sprites') return { copied: false, opened: false };
+    const key = KEY_COLORS.find((k) => keyHex(k) === keyRaw);
+    const row = isRowId(rowRaw) ? rowOf(rowRaw) : undefined;
+    if (!row || !key) return { copied: false, opened: false };
+    try {
+      (spriteOut?.copy ?? ((text: string) => clipboard.writeText(text)))(geminiStripPrompt(row, key));
+    } catch {
+      return { copied: false, opened: false };
+    }
+    if (!isGeminiUrl(GEMINI_URL)) return { copied: true, opened: false };
+    try {
+      await (spriteOut?.open ?? ((url: string) => shell.openExternal(url)))(GEMINI_URL);
+      log('maker', 'gemini', 'sprite row', row.id);
+      return { copied: true, opened: true };
+    } catch (err) {
+      log('maker', 'gemini', 'open failed', err instanceof Error ? err.message : String(err));
+      return { copied: true, opened: false };
+    }
+  });
+
+  // Gemini 에 올릴 기준 그림: 창이 보낸 PNG(배경색 위 지금 페어리 그림)를 임시 폴더에 두고 파일 관리자로 보여 준다. 창을 닫으면 지운다
+  ipcMain.handle(MAKER.revealSpriteRef, (e, refRaw: unknown) => {
+    if (!fromMaker(e) || target !== 'sprites') return false;
+    const ref = spriteRef(refRaw);
+    if (!ref) return false;
+    try {
+      mkdirSync(geminiDir(), { recursive: true });
+      const file = join(geminiDir(), GEMINI_SPRITE_REF);
+      writeFileAtomic(file, ref);
+      (spriteOut?.reveal ?? ((f: string) => shell.showItemInFolder(f)))(file);
+      return true;
+    } catch (err) {
+      log('maker', 'gemini sprite ref', err instanceof Error ? err.message : String(err));
+      return false;
+    }
+  });
+
+  ipcMain.handle(MAKER.saveSprites, (e, raw: unknown) => {
+    if (!fromMaker(e) || target !== 'sprites') return { ok: false, error: t('main.maker.reopen') };
+    const s = settings.get();
+    if (!s.petImage || s.petImage !== spriteFor) return { ok: false, error: t('main.sprites.changed') };
+    // .fairy 가져오기와 같은 검사 (PNG 만, 한 장 512KB, 같은 크기, 합 4MB, 서기 꼭)
+    const clean = cleanSprites(raw);
+    if (!clean) return { ok: false, error: t('main.sprites.bad') };
+    try {
+      return saveSpriteSet(clean);
+    } catch (err) {
+      log('maker', 'sprites save failed', err instanceof Error ? err.message : String(err));
+      return { ok: false, error: saveErrorText(err) };
+    }
+  });
+
+  ipcMain.on(MAKER.openSprites, (e) => {
+    if (fromMaker(e) && target === 'main' && settings.get().petImage) open('sprites');
+  });
+
+  /** 검사한 그림 세트(data URL)를 pets/ 의 sprite-*.png 로 쓰고 지금 페어리 것으로. 옛 세트 파일은 쓰는 곳이 없으면 지운다 */
+  function saveSpriteSet(sprites: PetSprites) {
+    mkdirSync(petsDir(), { recursive: true });
+    const stamp = Date.now();
+    const files: PetSprites = {};
+    const written: string[] = [];
+    try {
+      for (const [name, url] of Object.entries(sprites) as [keyof PetSprites, string][]) {
+        const file = `sprite-${stamp}-${name}.png`;
+        writeFileAtomic(join(petsDir(), file), Buffer.from(url.slice(url.indexOf(',') + 1), 'base64'));
+        written.push(file);
+        files[name] = file;
+      }
+      const old = spriteFiles(settings.get().petSprites);
+      settings.set({ petSprites: files });
+      try {
+        library.cleanup(old);
+      } catch (err) {
+        log('maker', '옛 그림 세트 치우기 실패', err instanceof Error ? err.name : 'error');
+      }
+    } catch (err) {
+      for (const f of written) rmSync(join(petsDir(), f), { force: true });
+      throw err;
+    }
+    log('maker', 'sprites saved', `${written.length}`);
+    return { ok: true };
+  }
+
   // 진행 표시의 그만두기: 받는 중인 모델과 AI 에 묻는 중인 입체를 멈춘다. 멈춘 일은 각자 실패로 끝난다
   ipcMain.on(MAKER.cancel, (e) => {
     if (!fromMaker(e)) return;
@@ -1062,6 +1311,21 @@ export function createMaker(
           }
         : ai?.text;
     },
+    /** 개발용 (__jj): 2D 그림 세트 띠를 받을 가짜 fetch. undefined 면 진짜 Space 로. 설치한 앱에서는 부를 수 없다 */
+    debugSpriteFetch(fetch?: FetchLike) {
+      spriteFetch = fetch;
+    },
+    /**
+     * 개발용 (__jj): 2D 그림 세트의 내 컴퓨터 엔진을 가짜로. info 는 준비 상태(없으면 진짜 값), draw 는 그리기
+     * (없으면 진짜 엔진). undefined 면 둘 다 진짜로. 진짜 mflux, sd.cpp 를 돌리지 않고 경우를 시험한다
+     */
+    debugSpriteLocal(fake?: { info?: LocalDrawInfo; draw?: LocalStripDraw }) {
+      spriteLocal = fake;
+    },
+    /** 개발용 (__jj): 그림 세트 Gemini 길의 클립보드, 브라우저 열기, 파일 보이기를 가로챈다 (시험이 진짜 브라우저를 열지 않게) */
+    debugSpriteOut(fake?: typeof spriteOut) {
+      spriteOut = fake;
+    },
     /** 펫 화면의 설계도 정면 그림 (걸음새로 다시 만든 말로 만든 펫의 새 펫 그림) */
     useShot(fn: (model: Blueprint) => Promise<string | undefined>) {
       shot = fn;
@@ -1077,6 +1341,8 @@ export function createMaker(
 /** Gemini 에 올릴 사진을 잠깐 두는 폴더와 이름 */
 const geminiDir = () => join(app.getPath('temp'), 'jjakkung-gemini');
 const GEMINI_PHOTO = 'jjakkung-pet-photo.jpg';
+/** 그림 세트 Gemini 길에 올릴 기준 그림 이름 */
+const GEMINI_SPRITE_REF = 'jjakkung-fairy-reference.png';
 
 /** 일러스트 실패 종류마다 화면 글 */
 function illustText(kind: IllustErrorKind): string {
@@ -1104,6 +1370,21 @@ function illustText(kind: IllustErrorKind): string {
     default:
       return t('main.illust.down');
   }
+}
+
+/**
+ * 2D 그림 세트 띠 실패 종류마다 화면 글. 무료 횟수가 끝났으면 이어 갈 길을 붙인다:
+ * 내 컴퓨터에서 그리기는 이 컴퓨터가 될 때만, Gemini 는 늘, 토큰은 아직 없을 때만
+ */
+function spriteText(kind: IllustErrorKind): string {
+  if (kind !== 'quota' && kind !== 'refused') return illustText(kind);
+  const token = hfToken.has();
+  const head =
+    kind === 'quota'
+      ? t(token ? 'main.sprites.quotaToken' : 'main.sprites.quota')
+      : t(token ? 'main.sprites.refusedToken' : 'main.sprites.refused');
+  const next = t(localDrawInfo().supported ? 'main.sprites.nextLocal' : 'main.sprites.nextGemini');
+  return token ? `${head} ${next}` : `${head} ${next} ${t('main.sprites.nextToken')}`;
 }
 
 /** 내 컴퓨터에서 그리기 실패 종류마다 화면 글. 준비와 그리기에서 멈춤 글만 다르다. gb 는 이번 준비에 필요한 빈 공간 */

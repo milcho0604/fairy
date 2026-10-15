@@ -32,6 +32,84 @@ export const ko = {
   'maker.pick.resetPet': '기본 페어리로 돌아가기',
   // AI 일러스트로 다시 그리기 (Hugging Face 무료 Space, 2026-10-09). 사진은 이걸 고를 때만 밖으로 나간다
   'maker.how.label': '만드는 방법',
+  // 2D 그림 세트 만들기 (#89)
+  'sprites.title': '2D 그림 세트 만들기',
+  'sprites.intro':
+    '지금 페어리 그림을 기준으로 서기, 걷기, 쉬기, 기분, 말하기 다섯 동작을 동작마다 네 장씩 한 줄로 그려. 다 되면 2D 모습에서 그 그림으로 걷고 쉬어.',
+  'sprites.privacy':
+    '지금 페어리 그림이 Hugging Face 무료 그림 서버(FLUX.2 klein)로 가. 동작 하나에 한 번씩 쓰고, 토큰 없이는 하루 몇 번만 돼서 서기와 걷기부터 만들어.',
+  'sprites.noPet': '사진이나 말로 만든 페어리일 때만 그림 세트를 만들 수 있어. 먼저 페어리를 만들어 줘.',
+  'sprites.replace': '이미 그림 세트가 있어. 새로 저장하면 바뀌어.',
+  'sprites.start': '만들기 시작',
+  'sprites.retry': '안 된 동작만 다시 만들기',
+  'sprites.save': '이 그림 세트 쓰기',
+  'sprites.done': '그림 세트를 바꿨어! 2D 모습에서 걷고 쉬는 모습이 보여.',
+  'sprites.preview': '미리보기',
+  'sprites.partial': '안 된 동작의 자세는 가까운 그림으로 채워져.',
+  'sprites.noIdle': '서기를 못 만들어서 서 있는 모습은 지금 페어리 그림을 써.',
+  'sprites.progress': (v: { done: number; total: number; row: string }) =>
+    `${v.row} 그리는 중 (${v.done}/${v.total} 됨)`,
+  'sprites.row.stand': '서기',
+  'sprites.row.walk': '걷기',
+  'sprites.row.rest': '쉬기',
+  'sprites.row.feel': '기분',
+  'sprites.row.talk': '말하기',
+  'sprites.state.wait': '기다리는 중',
+  'sprites.state.run': (v: { n: number }) => `그리는 중 (${v.n}초째)`,
+  'sprites.state.ok': '됐어',
+  'sprites.state.bad': '검사에서 걸렸어',
+  'sprites.state.fail': '못 그렸어',
+  'sprites.issue.empty': '빈 칸',
+  'sprites.issue.clipped': '잘림',
+  'sprites.issue.key': '배경색 남음',
+  'sprites.issue.jump': '크기 튐',
+  'sprites.issue.count': '칸 수가 달라',
+  'sprites.err.read': '받은 그림을 읽지 못했어. 다시 해 줘.',
+  // 그림 세트를 내 컴퓨터에서, 동작 하나만 Gemini 앱에서 (2026-10-15)
+  'sprites.engine.label': '그리는 곳',
+  'sprites.engine.localTime': (v: { min: number; max: number }) =>
+    v.min === v.max
+      ? `내 컴퓨터에서는 동작 하나에 ${v.min}분쯤, 다섯 동작이면 ${v.min * 5}분쯤 걸려.`
+      : `내 컴퓨터에서는 동작 하나에 ${v.min}~${v.max}분쯤, 다섯 동작이면 ${v.min * 5}~${v.max * 5}분쯤 걸려.`,
+  'sprites.engine.localPrivacy': '내 컴퓨터에서 그리면 페어리 그림이 이 컴퓨터 밖으로 나가지 않아.',
+  'sprites.engine.needSetup':
+    "이 컴퓨터에서도 그릴 수 있어. 먼저 '사진으로 페어리 만들기'의 'AI 일러스트로 다시 그리기'에서 그리는 곳을 '내 컴퓨터에서'로 고르고 '준비하기'를 한 번 해 줘. 준비가 끝나면 이 창을 다시 열면 돼.",
+  'sprites.engine.broken':
+    "내 컴퓨터의 그림 도구가 준비되지 않았어. '사진으로 페어리 만들기'의 'AI 일러스트로 다시 그리기'에서 '준비하기'를 다시 해 줘. 그동안은 무료 서버나 Gemini로 만들 수 있어.",
+  'sprites.stuck.local':
+    '남은 동작은 내 컴퓨터에서 이어 그릴 수 있어. 횟수 제한이 없고 그림이 밖으로 나가지 않아.',
+  'sprites.stuck.localGo': '남은 동작 내 컴퓨터에서 그리기',
+  'sprites.stuck.gemini': "동작마다 있는 'Gemini로' 단추로 무료 Gemini 앱에서 하나씩 받아 올 수도 있어.",
+  'sprites.from.local': '내 컴퓨터',
+  'sprites.from.gemini': 'Gemini',
+  'sprites.gemini.button': 'Gemini로',
+  'sprites.gemini.buttonLabel': (v: { row: string }) => `${v.row} 동작만 Gemini 앱에서 받아 오기`,
+  'sprites.gemini.title': (v: { row: string }) => `${v.row} 동작만 Gemini 앱에서 받아 오기`,
+  'sprites.gemini.step1': '아래 단추로 이 동작의 요청문을 복사하고 Gemini를 열어.',
+  'sprites.gemini.step2':
+    '기준 그림(지금 페어리를 배경색 위에 놓은 그림)을 Gemini에 올리고 요청문을 붙여 넣어.',
+  'sprites.gemini.step3':
+    '받은 그림을 내려받아 여기에 끌어 놓거나 골라 줘. 앱이 배경을 지우고 네 칸으로 잘라 검사해.',
+  'sprites.gemini.open': '요청문 복사하고 Gemini 열기',
+  'sprites.gemini.reveal.mac': 'Finder에서 기준 그림 보기',
+  'sprites.gemini.reveal.win': '탐색기에서 기준 그림 보기',
+  'sprites.gemini.reveal.other': '기준 그림 파일 보기',
+  'sprites.gemini.revealFailed': '기준 그림 파일을 보여 주지 못했어. 위 그림을 저장해서 올려 줘.',
+  'sprites.gemini.drop': '받은 그림을 여기에 끌어 놓거나 눌러서 골라 줘',
+  'sprites.gemini.close': '닫기',
+  'sprites.gemini.privacy': '앱은 그림을 보내지 않아. Gemini에는 네가 직접 올려.',
+  'sprites.gemini.working': '받은 그림을 자르고 검사하는 중이야.',
+  'sprites.gemini.done': (v: { row: string }) => `${v.row} 동작을 받은 그림으로 바꿨어.`,
+  'sprites.gemini.fitted': (v: { w: number; h: number }) =>
+    `받은 그림 크기(${v.w}x${v.h})를 띠 비율(4:1)에 맞췄어.`,
+  'sprites.gemini.bad': '받은 그림이 검사에서 걸려서 이 동작은 그대로 뒀어. Gemini에서 다시 받아 넣어 줘.',
+  'sprites.gemini.badNew': '받은 그림이 검사에서 걸렸어. Gemini에서 다시 받아 넣어 줘.',
+  'sprites.gemini.err.key': (v: { color: string }) =>
+    `배경이 한 가지 색(${v.color})이 아니라서 자를 수 없어. 요청문을 그대로 붙여 넣어 다시 받아 줘.`,
+  'sprites.gemini.err.shape':
+    '네 장이 가로 한 줄로 놓인 그림이 아니야 (두 줄로 그렸거나 한 장만 그렸을 때 이래). 요청문을 그대로 붙여 넣어 다시 받아 줘.',
+  'sprites.gemini.err.empty': '그림에서 캐릭터를 찾지 못했어. 다른 그림을 골라 줘.',
+  'maker.done.sprites': '2D 그림 세트도 만들기',
   'maker.how.photo': '사진 그대로',
   'maker.how.illust': 'AI 일러스트로 다시 그리기',
   'maker.illust.hint':
@@ -294,6 +372,84 @@ export const en: Translation<typeof ko> = {
   'maker.pick.privacy':
     'Your photo stays on this computer. Background removal happens here too, nothing is sent out.',
   'maker.how.label': 'How to make it',
+  'sprites.title': 'Make a 2D picture set',
+  'sprites.intro':
+    'Using your fairy picture as the model, this draws five moves (stand, walk, rest, feelings, talk), four frames in one row each. When done, your fairy walks and rests with these pictures in 2D.',
+  'sprites.privacy':
+    "Your fairy picture goes to Hugging Face's free drawing server (FLUX.2 klein), once per move. Without a token it only works a few times a day, so stand and walk come first.",
+  'sprites.noPet':
+    'You can make a picture set only for a fairy made from a photo or a description. Make a fairy first.',
+  'sprites.replace': 'This fairy already has a picture set. Saving a new one replaces it.',
+  'sprites.start': 'Start',
+  'sprites.retry': 'Make only the missing moves',
+  'sprites.save': 'Use this picture set',
+  'sprites.done': 'Picture set updated! Your fairy walks and rests with it in 2D.',
+  'sprites.preview': 'Preview',
+  'sprites.partial': 'Poses from missing moves borrow the closest picture.',
+  'sprites.noIdle': "Standing didn't work, so your fairy picture is used for standing.",
+  'sprites.progress': (v) => `Drawing ${v.row.toLowerCase()} (${v.done}/${v.total} done)`,
+  'sprites.row.stand': 'Stand',
+  'sprites.row.walk': 'Walk',
+  'sprites.row.rest': 'Rest',
+  'sprites.row.feel': 'Feelings',
+  'sprites.row.talk': 'Talk',
+  'sprites.state.wait': 'Waiting',
+  'sprites.state.run': (v) => `Drawing (${v.n}s)`,
+  'sprites.state.ok': 'Done',
+  'sprites.state.bad': 'Failed the check',
+  'sprites.state.fail': "Couldn't draw",
+  'sprites.issue.empty': 'empty frame',
+  'sprites.issue.clipped': 'cut off',
+  'sprites.issue.key': 'background left',
+  'sprites.issue.jump': 'size jumps',
+  'sprites.issue.count': 'wrong frame count',
+  'sprites.err.read': "Couldn't read the picture. Please try again.",
+  'sprites.engine.label': 'Where to draw',
+  'sprites.engine.localTime': (v) =>
+    v.min === v.max
+      ? `On this computer each move takes about ${v.min} min, about ${v.min * 5} min for all five.`
+      : `On this computer each move takes about ${v.min}-${v.max} min, about ${v.min * 5}-${v.max * 5} min for all five.`,
+  'sprites.engine.localPrivacy': 'Drawing on this computer keeps your fairy picture on this computer.',
+  'sprites.engine.needSetup':
+    "This computer can draw too. First, in 'Make a fairy from a photo', open 'Redraw as an AI illustration', choose 'On this computer' and press 'Set up' once. When it's done, open this window again.",
+  'sprites.engine.broken':
+    "The drawing tools on this computer aren't ready. Press 'Set up' again under 'Redraw as an AI illustration' in 'Make a fairy from a photo'. Meanwhile you can use the free server or Gemini.",
+  'sprites.stuck.local':
+    'You can draw the remaining moves on this computer. There is no daily limit and the picture stays here.',
+  'sprites.stuck.localGo': 'Draw the rest on this computer',
+  'sprites.stuck.gemini':
+    "You can also bring moves in one by one from the free Gemini app with each move's 'Gemini' button.",
+  'sprites.from.local': 'this computer',
+  'sprites.from.gemini': 'Gemini',
+  'sprites.gemini.button': 'Gemini',
+  'sprites.gemini.buttonLabel': (v) => `Get only the ${v.row.toLowerCase()} move from the Gemini app`,
+  'sprites.gemini.title': (v) => `Get only the ${v.row.toLowerCase()} move from the Gemini app`,
+  'sprites.gemini.step1': "Copy this move's prompt and open Gemini with the button below.",
+  'sprites.gemini.step2':
+    'Add the reference picture (your fairy on the background color) to Gemini and paste the prompt.',
+  'sprites.gemini.step3':
+    'Download the picture you get and drop it here or pick it. The app removes the background, cuts it into four and checks it.',
+  'sprites.gemini.open': 'Copy prompt and open Gemini',
+  'sprites.gemini.reveal.mac': 'Show reference picture in Finder',
+  'sprites.gemini.reveal.win': 'Show reference picture in File Explorer',
+  'sprites.gemini.reveal.other': 'Show reference picture file',
+  'sprites.gemini.revealFailed':
+    "Couldn't show the reference picture file. Save the picture above and add it.",
+  'sprites.gemini.drop': 'Drop the picture here, or click to pick it',
+  'sprites.gemini.close': 'Close',
+  'sprites.gemini.privacy': "The app doesn't send the picture. You add it to Gemini yourself.",
+  'sprites.gemini.working': 'Cutting and checking the picture.',
+  'sprites.gemini.done': (v) => `Replaced the ${v.row.toLowerCase()} move with your picture.`,
+  'sprites.gemini.fitted': (v) => `Fitted the ${v.w}x${v.h} picture to the strip shape (4:1).`,
+  'sprites.gemini.bad':
+    "The picture didn't pass the checks, so this move stays as it was. Get it from Gemini again.",
+  'sprites.gemini.badNew': "The picture didn't pass the checks. Get it from Gemini again.",
+  'sprites.gemini.err.key': (v) =>
+    `The background isn't a single color (${v.color}), so it can't be cut. Paste the prompt as is and try again.`,
+  'sprites.gemini.err.shape':
+    "The picture isn't four drawings in one row (this happens with two rows or a single drawing). Paste the prompt as is and try again.",
+  'sprites.gemini.err.empty': "Couldn't find the character in the picture. Pick another one.",
+  'maker.done.sprites': 'Also make a 2D picture set',
   'maker.how.photo': 'Photo as is',
   'maker.how.illust': 'Redraw as an AI illustration',
   'maker.illust.hint':
