@@ -26,7 +26,9 @@ jobs:
     steps:
       - name: 준비 확인
         if: env.HAS_SECRETS != 'true'
-        run: echo "::notice::배포 시크릿이나 FAIRY_REPO_DIR 이 아직 없어 건너뛴다 (운영자 준비, 이슈 #97)"
+        # 따옴표 밖 " #" 은 YAML 주석이 되므로 블록으로 쓴다
+        run: |
+          echo "::notice::배포 시크릿이나 FAIRY_REPO_DIR 이 아직 없어 건너뛴다 (운영자 준비, 이슈 #97)"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: env.HAS_SECRETS == 'true'
         with:
