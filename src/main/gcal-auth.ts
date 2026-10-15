@@ -118,6 +118,8 @@ export function parseRedirect(
   method: string | undefined,
   rawUrl: string | undefined,
   state: string,
+  /** 돌아오는 경로 (구글 캘린더는 '/', 페어리 서버 로그인은 '/done') */
+  path = '/',
 ): RedirectResult {
   if (method !== 'GET' || !rawUrl) return { kind: 'ignore' };
   let u: URL;
@@ -126,7 +128,7 @@ export function parseRedirect(
   } catch {
     return { kind: 'ignore' };
   }
-  if (u.pathname !== '/') return { kind: 'ignore' };
+  if (u.pathname !== path) return { kind: 'ignore' };
   const got = u.searchParams.get('state');
   const code = u.searchParams.get('code');
   const error = u.searchParams.get('error');
@@ -332,6 +334,8 @@ export type LoopbackResult =
 export async function startLoopback(o: {
   state: string;
   timeoutMs?: number;
+  /** 돌아오는 경로 (기본 '/') */
+  path?: string;
   page: (ok: boolean) => { title: string; body: string };
 }): Promise<{ redirectUri: string; result: Promise<LoopbackResult>; cancel: () => void }> {
   let finish: (r: LoopbackResult) => void = () => {};
@@ -340,7 +344,7 @@ export async function startLoopback(o: {
   });
   let done = false;
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
-    const r = done ? ({ kind: 'ignore' } as const) : parseRedirect(req.method, req.url, o.state);
+    const r = done ? ({ kind: 'ignore' } as const) : parseRedirect(req.method, req.url, o.state, o.path);
     if (r.kind === 'ignore' || r.kind === 'badState') {
       res.writeHead(404, {
         'content-type': 'text/plain; charset=utf-8',

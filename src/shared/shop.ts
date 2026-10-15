@@ -275,6 +275,57 @@ export class ItemStore {
     };
   }
 
+  /**
+   * 산 물건을 서버 모양으로 (기획서 6절 기존 사용자 옮기기, 서버 owned_item): house 는 단계, toy:<이름>, house-style:<모양>.
+   * 처음부터 있는 나무집 모양과 직접 만든 먹이(값만 쓰는 물건)는 넣지 않는다
+   */
+  ownedItems(): Record<string, number> {
+    const s = this.state();
+    const out: Record<string, number> = {};
+    if (s.houseLevel > 0) out.house = s.houseLevel;
+    for (const toy of TOYS) if (s.toys[toy.key]) out[`toy:${toy.key}`] = 1;
+    for (const style of HOUSE_STYLES) if (style !== 'wood' && s.houseStyles[style]) out[styleRow(style)] = 1;
+    return out;
+  }
+
+  /**
+   * 산 물건을 이 모양에 맞춘다 (서버 정본 맞추기, 거절된 구매 되돌리기). 집 단계, 장난감, 집 모양만 바꾸고
+   * 모르는 이름은 넘긴다. 고른 집 모양을 잃으면 나무집으로. 바뀐 것이 있으면 true
+   */
+  setOwnedItems(items: Readonly<Record<string, number>>, now: number): boolean {
+    const before = this.ownedItems();
+    let changed = false;
+    const level = Math.max(0, Math.min(HOUSE_COSTS.length, Math.floor(items.house ?? 0)));
+    if (level !== (before.house ?? 0)) {
+      changed = true;
+      if (level > 0)
+        this.#put('house', 'house', houseName(level - 1) ?? t('shop.house.generic'), null, level, now);
+      else this.#db.prepare(`delete from item where key = 'house'`).run();
+    }
+    for (const toy of TOYS) {
+      const key = `toy:${toy.key}`;
+      const want = (items[key] ?? 0) > 0;
+      if (want === (before[key] ?? 0) > 0) continue;
+      changed = true;
+      if (want) this.#put('toy', toy.key, toy.name, null, 1, now);
+      else this.#db.prepare('delete from item where key = ?').run(toy.key);
+    }
+    for (const style of HOUSE_STYLES) {
+      if (style === 'wood') continue;
+      const key = styleRow(style);
+      const want = (items[key] ?? 0) > 0;
+      if (want === (before[key] ?? 0) > 0) continue;
+      changed = true;
+      if (want) this.#put('house-style', key, houseStyleName(style), null, 1, now);
+      else this.#db.prepare('delete from item where key = ?').run(key);
+    }
+    // 고른 모양을 더 갖지 않으면 나무집으로 (parseHouseStyle 도 그렇게 읽지만 저장 값도 맞춘다)
+    const chosen = this.state().houseStyle;
+    const row = this.#rows().find((r) => r.key === STYLE_ROW);
+    if (row && row.name !== chosen) this.#put('house-style', STYLE_ROW, chosen, null, 1, now);
+    return changed;
+  }
+
   /** 커스텀 먹이 지우기. 지운 그림 파일 이름을 돌려준다 (부르는 쪽이 파일을 지운다). 코인은 돌려주지 않는다 */
   removeCustomFood(key: string): string | undefined {
     const row = this.#rows().find((r) => r.key === key && r.kind === 'food');

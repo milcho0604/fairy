@@ -19,6 +19,8 @@ export function CoinReset({ flash }: { flash: (message: string, error?: boolean)
   const refresh = useCallback(async () => {
     const s = await bridge.coinState().catch(() => undefined);
     if (s) setView(s);
+    // 서버 모드에서는 코인만 (산 물건은 서버에 남아 다음 맞추기 때 돌아온다)
+    if (s?.serverCoins) setScope('coins');
     return s;
   }, []);
   useEffect(() => {
@@ -76,7 +78,7 @@ export function CoinReset({ flash }: { flash: (message: string, error?: boolean)
       <div className="field">
         <span id="coin-reset-scope">{t('settings.coinReset.scope')}</span>
         <fieldset className="segmented" aria-labelledby="coin-reset-scope" disabled={busy}>
-          {(['coins', 'all'] as const).map((s) => (
+          {(view?.serverCoins ? (['coins'] as const) : (['coins', 'all'] as const)).map((s) => (
             <button
               key={s}
               type="button"
@@ -89,6 +91,7 @@ export function CoinReset({ flash }: { flash: (message: string, error?: boolean)
           ))}
         </fieldset>
         {scope === 'all' && <small>{t('settings.coinReset.allHint')}</small>}
+        {view?.serverCoins && <small>{t('server.coinResetNote')}</small>}
       </div>
       {ask ? (
         <div

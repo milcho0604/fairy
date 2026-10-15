@@ -45,6 +45,7 @@ import type { LookMotion } from '../shared/look-motion.ts';
 import type { MoveAsk } from '../shared/moves.ts';
 import { NOTES, type NoteBox, type NoteBridge } from '../shared/note-ipc.ts';
 import { NOTICE, type NoticeBridge, type NoticeView } from '../shared/notice-ipc.ts';
+import { SERVER, type ServerBridge, type ServerStatus } from '../shared/server-account.ts';
 import type { Settings } from '../shared/settings.ts';
 import type { SoundKind } from '../shared/sound.ts';
 import type { TogetherLook } from '../shared/together.ts';
@@ -310,6 +311,26 @@ if (kind === 'settings') {
     },
   };
   contextBridge.exposeInMainWorld('jjakkungGcal', gcal);
+  // 페어리 서버 계정 (이슈 #99): 상태만 오간다. 토큰은 메인에만 있다
+  const server: ServerBridge = {
+    status: () => ipcRenderer.invoke(SERVER.status),
+    setAge: (age) => ipcRenderer.invoke(SERVER.setAge, age),
+    turnOn: () => ipcRenderer.invoke(SERVER.turnOn),
+    syncNow: () => ipcRenderer.invoke(SERVER.syncNow),
+    login: () => ipcRenderer.invoke(SERVER.login),
+    cancelLogin: () => ipcRenderer.send(SERVER.cancelLogin),
+    logout: () => ipcRenderer.invoke(SERVER.logout),
+    merge: (yes) => ipcRenderer.invoke(SERVER.merge, yes),
+    remove: () => ipcRenderer.invoke(SERVER.remove),
+    onChanged: (listener) => {
+      const h = (_e: unknown, s: ServerStatus) => listener(s);
+      ipcRenderer.on(SERVER.changed, h);
+      return () => {
+        ipcRenderer.removeListener(SERVER.changed, h);
+      };
+    },
+  };
+  contextBridge.exposeInMainWorld('jjakkungServer', server);
   // 내보내기 (메모 .md, 할 일 .csv/.md, 일정 .ics). 저장 대화상자와 쓰기는 메인이 한다
   const exporter: ExportBridge = { run: (kind) => ipcRenderer.invoke(DATA_EXPORT.run, kind) };
   contextBridge.exposeInMainWorld('jjakkungExport', exporter);

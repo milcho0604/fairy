@@ -249,3 +249,16 @@ test('되돌릴 것이 없는지와 산 물건 수', () => {
     4,
   );
 });
+
+test('산 물건을 서버 모양으로 읽고 맞춘다 (서버 코인 맞추기)', () => {
+  const { shop } = fresh(2000);
+  shop.buyToy('ball', T0);
+  shop.buyHouse(T0);
+  shop.buyHouseStyle('igloo', T0);
+  assert.deepEqual(shop.ownedItems(), { house: 1, 'toy:ball': 1, 'house-style:igloo': 1 });
+  // 이글루를 잃으면 고른 모양도 나무집으로, 모르는 이름은 넘긴다
+  assert.equal(shop.setOwnedItems({ house: 2, 'toy:yarn': 1, 'rocket:1': 1 }, T0), true);
+  assert.deepEqual(shop.ownedItems(), { house: 2, 'toy:yarn': 1 });
+  assert.equal(shop.state().houseStyle, 'wood');
+  assert.equal(shop.setOwnedItems({ house: 2, 'toy:yarn': 1 }, T0), false);
+});

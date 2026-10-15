@@ -11,7 +11,7 @@ function pathOf(name: string): string {
 }
 
 /** 잘 읽은 마지막 내용을 <이름>.json.bak 으로 남기는 파일 (깨지면 그것으로 되살린다) */
-const KEEP_BAK = new Set(['settings', 'planner', 'chat-settings', 'ai-custom']);
+const KEEP_BAK = new Set(['settings', 'planner', 'chat-settings', 'ai-custom', 'server-state']);
 
 /** 깨진 파일을 만난 일. 듣는 쪽(펫 말풍선)이 붙기 전에 생긴 것은 모아 뒀다 붙을 때 준다 */
 const troubles: JsonTrouble[] = [];

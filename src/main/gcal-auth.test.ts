@@ -300,3 +300,12 @@ test('루프백 서버: 시간이 지나면, 그만두면 끝난다. 거절도 �
   assert.deepEqual(await no.result, { kind: 'error', error: 'access_denied' });
   assert.ok(pageHtml('<x>', '"y"').includes('&lt;x&gt;'));
 });
+
+test('돌아오는 경로를 정할 수 있다 (페어리 서버 로그인은 /done)', () => {
+  assert.deepEqual(parseRedirect('GET', '/done?code=c1&state=s1', 's1', '/done'), {
+    kind: 'code',
+    code: 'c1',
+  });
+  assert.deepEqual(parseRedirect('GET', '/?code=c1&state=s1', 's1', '/done'), { kind: 'ignore' });
+  assert.deepEqual(parseRedirect('GET', '/done?code=c1&state=zz', 's1', '/done'), { kind: 'badState' });
+});

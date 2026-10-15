@@ -46,6 +46,8 @@ export function openStore(log: (tag: string, ...rest: unknown[]) => void): {
   onWrite: (listener: (sql: string) => void) => void;
   /** 저장 파일을 그대로 쓰지 못했으면 그 까닭 */
   trouble?: StoreTrouble;
+  /** 저장 파일 연결 (서버 코인 맞추기가 장부를 읽는다, server-coins.ts) */
+  db: Db;
 } {
   const dir = app.getPath('userData');
   mkdirSync(dir, { recursive: true });
@@ -96,6 +98,7 @@ export function openStore(log: (tag: string, ...rest: unknown[]) => void): {
     dataVersion: () =>
       open ? Number((d.prepare('pragma data_version').get() as { data_version: number }).data_version) : -1,
     onWrite: (listener) => writes.add(listener),
+    db: d,
     ...(trouble ? { trouble } : {}),
   };
 }

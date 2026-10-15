@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { formatBytes } from '../../../../shared/bytes.ts';
 import { locale, t } from '../../../../shared/i18n/index.ts';
 import type { RestoreOffer, RestoreState, SettingsSnapshot } from '../../../../shared/ipc.ts';
+import { serverView } from '../../../../shared/server-account.ts';
 import { isPersonalPet } from '../../../../shared/settings.ts';
 import { CoinReset } from '../CoinReset.tsx';
 import { ExportBox, ExportedRow } from '../ExportBox.tsx';
 import { exportFlash, type Flash, importFlash, storageFlash } from '../flash-of.ts';
+import { ServerAccountBox, useServerStatus } from '../ServerAccountBox.tsx';
 import { bridge, Section, type TabProps } from '../ui.tsx';
 
 /** 데이터 탭: 백업과 옮기기, 코인 초기화, 저장 공간 */
@@ -86,6 +88,7 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
         {isPersonalPet(snap.settings) && <small>{t('pet.share.personalHint')}</small>}
         <ExportedRow path={exported} />
       </Section>
+      <ServerAccountBox flash={flash} />
       <ExportBox flash={flash} />
       <Section title={t('settings.coinReset')}>
         <CoinReset flash={flash} />
@@ -142,6 +145,9 @@ function madeLine(o: RestoreOffer): string {
 function Restore({ flash }: { flash: (message: string, error?: boolean) => void }) {
   const [state, setState] = useState<RestoreState>({});
   const [busy, setBusy] = useState(false);
+  // 서버 모드에서는 백업에서 코인과 산 물건을 되살리지 않는다 (기획서 7절)
+  const [server] = useServerStatus();
+  const serverCoins = serverView(server) === 'server';
   const boxRef = useRef<HTMLDivElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -212,7 +218,13 @@ function Restore({ flash }: { flash: (message: string, error?: boolean) => void 
       </small>
       {offer.kind !== 'undo' && offer.at > 0 && <small className="restore-name">{offer.name}</small>}
       <small id="restore-ask-what">
-        {t(offer.kind === 'undo' ? 'settings.restore.whatUndo' : 'settings.restore.what')}
+        {t(
+          serverCoins
+            ? 'settings.restore.whatServer'
+            : offer.kind === 'undo'
+              ? 'settings.restore.whatUndo'
+              : 'settings.restore.what',
+        )}
       </small>
       {offer.customAi > 0 && <small>{t('settings.restore.customAi', { n: offer.customAi })}</small>}
       <small>{t('settings.restore.keep')}</small>

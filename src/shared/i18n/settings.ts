@@ -336,6 +336,8 @@ export const ko = {
   'settings.restore.keptAt': '{date}에 보관한 데이터',
   'settings.restore.what':
     '설정, 성장, 쪽지, 페어리 규칙, 캘린더 주소, 코인과 산 물건도 백업 때 것으로 바뀌어.',
+  'settings.restore.whatServer':
+    '설정, 성장, 쪽지, 페어리 규칙, 캘린더 주소는 백업 때 것으로 바뀌어. 코인과 산 물건은 서버 것을 따라.',
   'settings.restore.whatUndo': '설정, 코인과 산 물건까지 모두 보관했던 때 것으로 돌아가.',
   'settings.restore.keep':
     '지금 데이터는 따로 보관해 둬. 마음에 안 들면 이 칸의 "되돌리기"로 돌아올 수 있어.',
@@ -785,6 +787,8 @@ export const en: Translation<typeof ko> = {
   'settings.restore.keptAt': 'Data kept {date}',
   'settings.restore.what':
     'Settings, growth, notes from your fairy, fairy rules, calendar address, coins and bought items switch to the backup too.',
+  'settings.restore.whatServer':
+    'Settings, growth, notes, fairy rules and calendar address go back to the backup. Coins and items follow the server.',
   'settings.restore.whatUndo':
     'Everything, including settings, coins and bought items, goes back to when it was kept.',
   'settings.restore.keep':

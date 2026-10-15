@@ -83,6 +83,7 @@ import { createHouse, playBall, visitHouse } from './play.ts';
 import { createPout } from './pout.ts';
 import { watchPresentation } from './presence-watch.ts';
 import { writableDir } from './safe-file.ts';
+import { createServer } from './server.ts';
 import { settings } from './settings.ts';
 import { createSettingsWindow } from './settings-window.ts';
 import { onJsonTrouble, readJson, writeJson } from './store.ts';
@@ -479,6 +480,7 @@ ready
       dataVersion,
       onWrite,
       trouble,
+      db,
     } = openStore(log);
     // 내 말투와 직접 쓴 말의 {name}, {todo} (shared/persona-voice.ts). 채팅 AI 성격 지시도 내 말투를 읽는다
     setSpeechSource({
@@ -881,7 +883,8 @@ ready
     function openCalendarSettings(a: string | undefined) {
       if (a === 'settings') settingsWindow.open();
     }
-    const backup = createBackup({ vacuumInto, log });
+    // 백업을 되살리기 전에 지금 코인 장부를 서버 대기열에 넣어 둔다 (서버 모드, server.ts)
+    const backup = createBackup({ vacuumInto, log, beforeSwap: () => server.beforeRestore() });
     // 펫 MCP 서버(다른 프로세스)가 할 일, 메모, 일정을 넣으면 저장 파일 판 번호가 바뀐다. 3초마다 보고 다시 그린다.
     let seenVersion = dataVersion();
     setInterval(() => {
@@ -1257,8 +1260,14 @@ ready
       cancelRemake: () => maker.cancelRemake(),
       stats,
       coins: {
-        state: () => ({ balance: store.balance(), items: ownedCount(shop.state()) }),
-        reset: (scope, expect) => {
+        state: () => ({
+          balance: store.balance(),
+          items: ownedCount(shop.state()),
+          ...(server.serverCoins() ? { serverCoins: true } : {}),
+        }),
+        reset: (asked, expect) => {
+          // 서버 모드에서는 산 물건을 지우지 않는다: 서버에 남아 다음 맞추기 때 돌아온다
+          const scope = server.serverCoins() ? 'coins' : asked;
           const r = shop.resetCoins(scope, Date.now(), expect);
           if (!r.ok) {
             log('coins', '초기화 안 함, 잔액이 바뀜');
@@ -1349,6 +1358,26 @@ ready
           .then(openCalendarSettings);
       },
       onMarks: () => panel.refresh(),
+      log,
+    });
+    // ---- 페어리 서버 계정 (이슈 #99): 나이 확인, 기기 계정, 코인 맞추기, 구글 로그인, 탈퇴. 주소가 없으면 모두 꺼진다 ----
+    const server = createServer({
+      db,
+      todos: store,
+      shop,
+      isSettings: (wc) => {
+        const w = settingsWindow.window;
+        return !!w && !w.isDestroyed() && w.webContents === wc;
+      },
+      target: () => settingsWindow.window,
+      onWrite,
+      onCoins: () => {
+        panel.refresh();
+        // 집 단계가 바뀌었을 수 있다 (거절된 집 사기, 다른 기기에서 산 집)
+        house.show(houseLook(), pet.bounds());
+        if (!house.bounds()) rest.houseGone();
+      },
+      onReverted: (text) => void pet.say({ kind: 'answer', text, ttlMs: 8000 }),
       log,
     });
     // ---- 하루 도구: 습관, 아침 계획, 알림 미루기, 내보내기 (main/day-tools.ts) ----
@@ -1761,6 +1790,7 @@ ready
           settings,
           settingsWindow,
           gcal,
+          server,
           panel,
           store,
           stats,

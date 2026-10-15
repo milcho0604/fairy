@@ -104,6 +104,8 @@ jobs:
           # 구글 캘린더에 쓰기 (docs/google-calendar.md). 없으면 그 기능만 숨는다
           JJ_GOOGLE_CLIENT_ID: ${{ secrets.JJ_GOOGLE_CLIENT_ID }}
           JJ_GOOGLE_CLIENT_SECRET: ${{ secrets.JJ_GOOGLE_CLIENT_SECRET }}
+          # 페어리 서버 주소 (docs/server-plan.md, 저장소 변수). 비어 있으면 서버 기능이 모두 꺼진 채로 낸다
+          JJ_SERVER_URL: ${{ vars.JJ_SERVER_URL }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fairy-${{ runner.os }}
