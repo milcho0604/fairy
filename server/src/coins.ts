@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import type { PoolClient } from 'pg';
-import { type Items, lockAccount, MIGRATE_MAX_BALANCE, readItems, utcDay } from './accounts';
+import { familyIds, type Items, lockAccount, MIGRATE_MAX_BALANCE, readItems, utcDay } from './accounts';
 import { Db } from './db';
 import {
   EARN_RULES,
@@ -12,6 +12,7 @@ import {
   spendRule,
   TODO_RULE,
 } from './shared/coin-rules';
+import { boostDays } from './shared/site-events';
 
 // 코인 정본과 맞추기 (기획서 6절). 규칙 값은 앱과 같은 shared/coin-rules.ts 에서 온다.
 
@@ -52,12 +53,26 @@ export interface EntryResult {
   error?: string;
   /** 전에 이미 받은 기록이다 (처음 결과를 그대로 돌려준다) */
   duplicate?: true;
+  /** 배수 이벤트로 더 받은 코인 ('boost:<기록 번호>' 한 줄로 따로 적는다) */
+  bonus?: number;
 }
 
 export interface SyncResult {
+  /** 계정: 번호(내부), 기기 코드와 닉네임 (앱 설정에 보이는 것은 코드와 닉네임) */
+  account: { id: number; code: string; nickname: string | null };
   balance: number;
   items: Items;
   results: EntryResult[];
+  /** 아직 열지 않은 쪽지 수 (쪽지함, GET /v1/inbox). 0 보다 크면 앱이 쪽지함을 받는다 */
+  inbox: number;
+}
+
+/** 배수 이벤트 하나 (기록의 날짜 first..last 에 걸린다) */
+interface Boost {
+  reasons: string[];
+  times: number;
+  first: string;
+  last: string;
 }
 
 /** 요청 모양 검사. 모양이 틀리면 묶음 전체를 400 으로 (앱 버그라 고쳐 보내야 한다). 양의 범위는 기록마다 본다 */
@@ -171,6 +186,8 @@ export class Coins {
         ...(await this.todoState(c, fam, entries, from, latest)),
       };
 
+      const boosts = await this.boosts(c, oldest, latest);
+
       const results: EntryResult[] = [];
       for (const e of entries) {
         const prev = seen.get(e.id);
@@ -210,6 +227,26 @@ export class Coins {
           continue;
         }
         this.apply(st, e, out.applied);
+        // 배수 이벤트 (9절): 반영한 버는 코인에 (배수 - 1) 만큼을 'boost' 한 줄로 더한다. 상한은 원래 양으로 센다
+        // (boost 는 EARN_RULES 의 까닭이 아니라 하루 상한 합에 들지 않는다)
+        let bonus = 0;
+        if (out.applied > 0 && EARN_RULES[e.reason] && !TODO_RULE.reasons.includes(e.reason)) {
+          const times = Math.max(
+            1,
+            ...boosts
+              .filter((b) => b.reasons.includes(e.reason) && b.first <= e.day && e.day <= b.last)
+              .map((b) => b.times),
+          );
+          if (times > 1) {
+            bonus = out.applied * (times - 1);
+            await c.query(
+              `INSERT INTO coin_entry (entry_id, account_id, reason, asked, amount, status, day)
+               VALUES ($1, $2, 'boost', $3, $3, 'ok', $4) ON CONFLICT (entry_id) DO NOTHING`,
+              [`boost:${e.id}`, acct.id, bonus, e.day],
+            );
+            st.balance += bonus;
+          }
+        }
         if (out.clearItems) {
           for (const k of Object.keys(items)) delete items[k];
           await c.query('DELETE FROM owned_item WHERE account_id = $1', [acct.id]);
@@ -227,14 +264,43 @@ export class Coins {
           status: out.status,
           applied: out.applied,
           ...(out.error ? { error: out.error } : {}),
+          ...(bonus > 0 ? { bonus } : {}),
         };
         seen.set(e.id, res);
         results.push(res);
       }
       if (st.balance !== acct.balance)
         await c.query('UPDATE account SET balance = $2 WHERE id = $1', [acct.id, st.balance]);
-      return { balance: st.balance, items, results };
+      const prof = await c.query<{ code: string; nickname: string | null; inbox: number }>(
+        `SELECT code, nickname, (SELECT count(*)::int FROM inbox WHERE account_id = ANY($2::bigint[])
+                  AND opened_at IS NULL AND (expires_at IS NULL OR expires_at > now())) AS inbox
+           FROM account WHERE id = $1`,
+        [acct.id, fam],
+      );
+      const p = prof.rows[0];
+      return {
+        account: { id: Number(acct.id), code: p?.code ?? '', nickname: p?.nickname ?? null },
+        balance: st.balance,
+        items,
+        results,
+        inbox: p?.inbox ?? 0,
+      };
     });
+  }
+
+  /** 기록 날짜 from..to 와 겹치는 배수 이벤트 (한국 날짜로 본다, shared/site-events.ts boostDays) */
+  private async boosts(c: PoolClient, from: string, to: string): Promise<Boost[]> {
+    const r = await c.query<{ reasons: string[]; times: number; starts: string; ends: string }>(
+      `SELECT boost_reasons AS reasons, boost_times AS times,
+              (extract(epoch FROM starts_at) * 1000)::bigint AS starts, (extract(epoch FROM ends_at) * 1000)::bigint AS ends
+         FROM event WHERE kind = 'boost' AND ends_at > ($1::date - 1) AND starts_at < ($2::date + 2)`,
+      [from, to],
+    );
+    return r.rows.map((b) => ({
+      reasons: b.reasons,
+      times: b.times,
+      ...boostDays({ from: Number(b.starts), until: Number(b.ends) }),
+    }));
   }
 
   /** 반영한 기록을 판정 상태에 더한다 */
@@ -466,18 +532,6 @@ type Sums = Map<string, number>;
 const sumKey = (reason: string, day: string) => `${reason}|${day}`;
 const addSum = (sums: Sums, reason: string, day: string, n: number) =>
   sums.set(sumKey(reason, day), (sums.get(sumKey(reason, day)) ?? 0) + n);
-
-/** 계정과, 그 계정에 직접이든 사슬로든 합쳐진 모든 계정의 번호 */
-async function familyIds(c: PoolClient, id: string): Promise<string[]> {
-  const r = await c.query<{ id: string }>(
-    `WITH RECURSIVE fam(id) AS (
-       SELECT $1::bigint
-       UNION SELECT a.id FROM account a JOIN fam ON a.merged_into = fam.id
-     ) SELECT id FROM fam`,
-    [id],
-  );
-  return r.rows.map((row) => row.id);
-}
 
 /** start 부터 n 일의 합 */
 function rangeSum(sums: Sums, reason: string, start: string, n: number): number {

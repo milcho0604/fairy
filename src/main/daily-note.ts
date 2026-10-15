@@ -59,8 +59,18 @@ export interface DailyNoteOptions {
 
 const looseT = t as unknown as (key: string, vars?: Record<string, string | number>) => string;
 
+/** 다른 곳의 쪽지 (서버 쪽지함, main/server-inbox.ts). 같은 쪽지함과 같은 펫 손에 섞인다 */
+export interface ExtraNotes {
+  views(): NoteView[];
+  holding(): boolean;
+  openNext(): Promise<void>;
+  open(key: string): Promise<void>;
+  isKey(key: string): boolean;
+}
+
 export function createDailyNotes(o: DailyNoteOptions) {
   let state: NoteState = parseNotes(readJson(FILE));
+  let extra: ExtraNotes | undefined;
   const save = () => {
     try {
       writeJson(FILE, state);
@@ -74,7 +84,8 @@ export function createDailyNotes(o: DailyNoteOptions) {
   /** 펫이 들고 있을 쪽지를 맞춘다 (오늘 받은 것을 안 펼쳤으면 든다) */
   function syncHold(now = Date.now()) {
     const n = settings.get().dailyNotes ? heldNote(state, today(now)) : undefined;
-    o.hold(n?.look);
+    // 운영자 쪽지는 매일 쪽지 설정과 상관없이 든다 (지급이 들어 있을 수 있다)
+    o.hold(n?.look ?? (extra?.holding() ? 'note' : undefined));
   }
 
   function view(n: DailyNote): NoteView {
@@ -91,14 +102,21 @@ export function createDailyNotes(o: DailyNoteOptions) {
       ...(n.coins ? { coins: n.coins } : {}),
     };
   }
-  const box = (): NoteBox => ({ on: settings.get().dailyNotes, notes: state.box.map(view) });
+  const box = (): NoteBox => ({
+    on: settings.get().dailyNotes,
+    notes: [...(extra?.views() ?? []), ...state.box.map(view)],
+  });
   const push = () => {
     const w = o.panel();
     if (w && !w.isDestroyed()) w.webContents.send(NOTES.changed, box());
   };
 
-  /** 읽었다. 특별한 편지는 처음 펼칠 때 코인을 준다 */
+  /** 읽었다. 특별한 편지는 처음 펼칠 때 코인을 준다. 서버 쪽지면 서버에서 연다 (첨부를 받는다) */
   function read(day: string, now = Date.now()) {
+    if (extra?.isKey(day)) {
+      void extra.open(day);
+      return undefined;
+    }
     const n = state.box.find((x) => x.day === day);
     if (!n || n.read) return n;
     state = markRead(state, day);
@@ -113,10 +131,13 @@ export function createDailyNotes(o: DailyNoteOptions) {
     return n;
   }
 
-  /** 펼친다 (펫을 누르거나 "펼쳐 보기"). 쪽지 모양 말풍선으로 */
+  /** 펼친다 (펫을 누르거나 "펼쳐 보기"). 쪽지 모양 말풍선으로. 오늘 쪽지가 없으면 서버 쪽지 */
   async function open(day = today()): Promise<void> {
     const n = state.box.find((x) => x.day === day);
-    if (!n) return;
+    if (!n || (n.read && extra?.holding())) {
+      if (extra?.holding()) await extra.openNext();
+      return;
+    }
     const fresh = !n.read;
     read(day);
     const v = view(n);
@@ -213,7 +234,16 @@ export function createDailyNotes(o: DailyNoteOptions) {
 
   return {
     /** 펫이 쪽지를 들고 있다 (펫 누르기가 쪽지 펼치기가 된다) */
-    holding: () => settings.get().dailyNotes && !!heldNote(state, today()),
+    holding: () => (settings.get().dailyNotes && !!heldNote(state, today())) || !!extra?.holding(),
+    /** 서버 쪽지함을 붙인다 (서버 계정이 생긴 뒤) */
+    attach(x: ExtraNotes) {
+      extra = x;
+    },
+    /** 다른 곳의 쪽지가 바뀌었다: 패널과 펫 손을 다시 맞춘다 */
+    changed() {
+      syncHold();
+      push();
+    },
     open,
     check,
     read,

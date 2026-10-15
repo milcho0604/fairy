@@ -132,6 +132,8 @@
 
 ## 공지 올리기 (site/notices.json)
 
+서버 4단계(#101)부터는 운영자 화면(`https://fairy-api.moilga.com/admin` 이나 앱 설정의 운영자 칸)에서 공지와 최소/권장 버전을 고친다. 서버가 `GET /v1/notices.json` 으로 내보내고 Actions `site-feeds.yml` 이 10분마다 받아 검사한 뒤 `site/notices.json` 을 main 에 올린다(막히면 `bot/site-feeds` PR, 머지하면 배포). 운영자 화면에서 한 번 저장하면 그 뒤로는 레포 파일을 손으로 고치지 않는다(다음 실행이 서버 내용으로 덮는다). 아래는 손으로 고칠 때와 파일 형식이다.
+
 앱 자체 공지 창과 릴리스 없는 최소 버전 (`docs/server-plan.md` 23절). 레포의 `site/notices.json` 을 고쳐 main 에 머지하면 홈페이지 배포로 나가고, 앱은 켤 때(5초 뒤)와 4시간마다 `https://fairy.moilga.com/notices.json` 을 받는다. 지금 파일은 빈 목록이라 아무것도 띄우지 않는다.
 
 ```json

@@ -46,6 +46,12 @@ function fakeServer() {
     tickets: 10,
     aiMode: 'ok' as string,
     reports: [] as unknown[],
+    /** #101: 닉네임, 운영자, 쪽지 수, 채팅 이용권 접근 */
+    nickname: null as string | null,
+    admin: false,
+    inbox: 0,
+    aiAccess: 'ok' as string,
+    claimed: new Set<string>(),
   };
   const reply = (status: number, body?: unknown) =>
     new Response(body === undefined ? null : JSON.stringify(body), {
@@ -68,10 +74,14 @@ function fakeServer() {
     if (u.pathname === '/v1/device') {
       if (s.hold) await s.hold;
       s.age = String(body?.age);
+      s.nickname = typeof body?.nickname === 'string' ? body.nickname : null;
       s.migrated = false;
       s.deviceToken = `fd_${s.calls.length}abcdefgh`;
       s.deleted = false;
-      out = reply(201, { token: s.deviceToken, account: { id: 1 } });
+      out = reply(201, {
+        token: s.deviceToken,
+        account: { id: 1, code: 'F-ABCD-1234', nickname: s.nickname },
+      });
     } else if (!authed()) out = reply(401, { error: 'token' });
     else if (u.pathname === '/v1/migrate') {
       if (s.migrated) out = reply(409, { error: 'already_migrated' });
@@ -111,7 +121,33 @@ function fakeServer() {
         s.seen.set(e.id, r);
         results.push(r);
       }
-      out = reply(200, { balance: s.balance, items: s.items, results });
+      out = reply(200, {
+        balance: s.balance,
+        items: s.items,
+        results,
+        account: { id: 1, code: 'F-ABCD-1234', nickname: s.nickname },
+        inbox: s.inbox,
+      });
+    } else if (u.pathname === '/v1/me') {
+      out = reply(200, {
+        account: { code: 'F-ABCD-1234', nickname: s.nickname },
+        admin: s.admin && s.sessions.has(auth ?? ''),
+      });
+    } else if (u.pathname === '/v1/claim') {
+      const id = String(body?.event);
+      if (s.claimed.has(id)) out = reply(409, { error: 'already_claimed' });
+      else {
+        s.claimed.add(id);
+        s.balance += 30;
+        out = reply(200, { balance: s.balance, coins: 30, tickets: 0 });
+      }
+    } else if (u.pathname === '/v1/coupon') {
+      out = reply(404, { error: 'no_coupon' });
+    } else if (u.pathname === '/v1/admin/overview') {
+      out =
+        s.admin && s.sessions.has(auth ?? '')
+          ? reply(200, { ai: { mode: 'allowlist' } })
+          : reply(403, { error: 'not_admin' });
     } else if (u.pathname === '/v1/session' && init.method === 'POST') {
       const b = body as { code: string; verifier?: string; merge?: boolean };
       if (!b.verifier) out = reply(400, { error: 'verifier' });
@@ -131,8 +167,9 @@ function fakeServer() {
     } else if (u.pathname === '/v1/account' && init.method === 'PATCH') {
       if (s.patchFail) out = reply(503, { error: 'down' });
       else {
-        s.age = String(body?.age);
-        out = reply(200, { account: { id: 1, age: s.age } });
+        if (body?.age !== undefined) s.age = String(body?.age);
+        if (typeof body?.nickname === 'string') s.nickname = body.nickname;
+        out = reply(200, { account: { id: 1, age: s.age, code: 'F-ABCD-1234', nickname: s.nickname } });
       }
     } else if (u.pathname === '/v1/session' && init.method === 'DELETE') {
       s.sessions.delete(auth ?? '');
@@ -147,6 +184,7 @@ function fakeServer() {
       // 서버처럼: 세션 토큰과 만 18세 이상만
       if (!s.sessions.has(auth ?? '')) out = reply(403, { error: 'login' });
       else if (s.age !== '18+') out = reply(403, { error: 'age' });
+      else if (s.aiAccess !== 'ok') out = reply(s.aiAccess === 'ai_off' ? 503 : 403, { error: s.aiAccess });
       else if (u.pathname === '/v1/ai')
         out = reply(200, { tickets: s.tickets, dailyLimit: 20, usedToday: 0 });
       else if (u.pathname === '/v1/ai/report') {
@@ -200,6 +238,7 @@ function setup(o: { url?: string; coins?: number; state?: Partial<ServerState> }
     secure: true,
   };
   const reverted: { reason: string; amount: number }[][] = [];
+  const inboxCalls: number[] = [];
   const opened: string[] = [];
   let loopResult: LoopbackLike['result'] = Promise.resolve({ kind: 'cancelled' });
   let now = T0;
@@ -240,6 +279,7 @@ function setup(o: { url?: string; coins?: number; state?: Partial<ServerState> }
     onChange: () => {},
     onCoins: () => {},
     onReverted: (list) => reverted.push(list),
+    onInbox: (n) => inboxCalls.push(n),
   });
   return {
     db,
@@ -250,6 +290,7 @@ function setup(o: { url?: string; coins?: number; state?: Partial<ServerState> }
     server: server.s,
     secrets,
     reverted,
+    inboxCalls,
     opened,
     saved: () => saved,
     setLoop: (r: Awaited<LoopbackLike['result']>) => {
@@ -801,4 +842,96 @@ test('대화권 질문: 조각을 넘기고 남은 수를 고친다. 다 쓰면 
 
   assert.equal(await x.core.reportAi('질문', '답'), true);
   assert.deepEqual(x.server.reports, [{ question: '질문', answer: '답', consent: true }]);
+});
+
+// ---- #101: 닉네임, 기기 코드, 운영자, 선물, 쪽지, 채팅 이용권 접근 ----
+
+/** 서버 모드로 켜고 구글 로그인까지 */
+async function signedIn(x: ReturnType<typeof setup>, age: 'adult' | 'teen' = 'adult') {
+  x.core.setAge(age, '짝꿍친구');
+  await x.core.run();
+  x.setLoop({ kind: 'code', code: 'one-time' });
+  await x.core.login();
+  await x.core.run();
+}
+
+test('닉네임은 기기 계정을 만들 때 같이 보내고, 바꾸면 PATCH. 틀린 닉네임은 보내지 않는다', async () => {
+  const x = setup({ coins: 10 });
+  x.core.setAge('adult', '  짝꿍친구 ');
+  await x.core.run();
+  const dev = x.server.calls.find((c) => c.path === '/v1/device');
+  assert.deepEqual(dev?.body, { age: '18+', nickname: '짝꿍친구' });
+  const st = x.core.status();
+  assert.equal(st.nickname, '짝꿍친구');
+  assert.equal(st.code, 'F-ABCD-1234');
+  const bad = await x.core.setNickname('me@home');
+  assert.deepEqual([bad.ok, bad.problem], [false, 'at']);
+  const ok = await x.core.setNickname('새이름');
+  assert.equal(ok.ok, true);
+  assert.equal(x.server.nickname, '새이름');
+  assert.equal(x.saved()?.nicknamePending, false);
+});
+
+test('만 14세 미만이면 닉네임을 받아도 보내지 않는다', async () => {
+  const x = setup();
+  x.core.setAge('under14', '아이이름');
+  await x.core.run();
+  assert.equal(x.server.calls.length, 0);
+  assert.equal(x.core.status().nickname, null);
+});
+
+test('운영자: 서버가 세션에 admin true 라고 할 때만, 기기 토큰만이면 아니다', async () => {
+  const x = setup();
+  x.server.admin = true;
+  x.core.setAge('adult', '운영자');
+  await x.core.run();
+  assert.equal(x.core.status().admin, false);
+  assert.equal(await x.core.adminOverview(), undefined);
+  x.setLoop({ kind: 'code', code: 'one-time' });
+  await x.core.login();
+  await x.core.run();
+  assert.equal(x.core.status().admin, true);
+  assert.deepEqual(await x.core.adminOverview(), { ai: { mode: 'allowlist' } });
+  // 서버가 운영자 지정을 빼면 다음 맞추기에서 바로 사라진다
+  x.server.admin = false;
+  await x.core.run();
+  assert.equal(x.core.status().admin, false);
+  assert.equal((await x.core.adminAction('ai/mode', { mode: 'off' })).ok, false);
+});
+
+test('선물 받기는 한 번, 받으면 맞추기로 잔액이 들어온다. 쿠폰 실패는 까닭 그대로', async () => {
+  const x = setup({ coins: 10 });
+  x.core.setAge('teen', '선물받이');
+  await x.core.run();
+  const r = await x.core.claim('ev-1');
+  assert.deepEqual(r, { ok: true, coins: 30, tickets: 0 });
+  assert.equal(x.todos.balance(), 40);
+  assert.deepEqual(await x.core.claim('ev-1'), { ok: false, error: 'already_claimed' });
+  assert.deepEqual(await x.core.coupon('ABCDEFGHJKMN'), { ok: false, error: 'no_coupon' });
+  x.server.down = true;
+  assert.deepEqual(await x.core.claim('ev-2'), { ok: false, error: 'offline' });
+});
+
+test('열지 않은 쪽지가 있으면 맞추기 뒤 onInbox, 상태에 수', async () => {
+  const x = setup();
+  x.core.setAge('teen', '쪽지');
+  x.server.inbox = 2;
+  await x.core.run();
+  assert.deepEqual(x.inboxCalls, [2]);
+  assert.equal(x.core.status().inbox, 2);
+});
+
+test('채팅 이용권: 허용 목록에 없거나 대기 중이면 칸을 숨기고 대기 안내', async () => {
+  const x = setup();
+  x.server.aiAccess = 'not_allowed';
+  await signedIn(x);
+  assert.equal(x.core.status().ai, false);
+  assert.equal(x.core.aiAvailable(), false);
+  x.server.aiAccess = 'waitlisted';
+  await x.core.run();
+  assert.equal(x.core.status().aiWaitlisted, true);
+  x.server.aiAccess = 'ok';
+  await x.core.run();
+  assert.equal(x.core.status().ai, true);
+  assert.equal(x.core.status().aiWaitlisted, false);
 });

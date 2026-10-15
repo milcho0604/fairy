@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import {
   app,
   type BrowserWindow,
+  clipboard,
   type IpcMainInvokeEvent,
   ipcMain,
   net,
@@ -16,8 +17,9 @@ import { spendRule } from '../shared/coin-rules.ts';
 import type { Db } from '../shared/db-schema.ts';
 import { isHouseStyle } from '../shared/house-art.ts';
 import { t } from '../shared/i18n/index.ts';
-import { SERVER, type ServerStatus } from '../shared/server-account.ts';
+import { type RewardOutcome, SERVER, type ServerStatus } from '../shared/server-account.ts';
 import { houseName, houseStyleName, type ItemStore, TOYS } from '../shared/shop.ts';
+import { EVENT_ID, normalizeCoupon } from '../shared/site-events.ts';
 import { localDay, type TodoStore } from '../shared/todo-store.ts';
 import { startLoopback } from './gcal-auth.ts';
 import { osCrypto } from './os-crypto.ts';
@@ -51,6 +53,20 @@ export function revertedName(reason: string): string {
   return reason;
 }
 
+/** 운영자 칸 폼 값: 글자, 수, 참거짓, 글자 목록만 (각 2000자, 칸 40개까지) */
+export function adminFields(raw: unknown): Record<string, string | string[] | boolean | number> {
+  const out: Record<string, string | string[] | boolean | number> = {};
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return out;
+  for (const [k, v] of Object.entries(raw).slice(0, 40)) {
+    if (!/^[a-zA-Z_]{1,30}$/.test(k)) continue;
+    if (typeof v === 'string') out[k] = v.slice(0, 2000);
+    else if (typeof v === 'number' && Number.isFinite(v)) out[k] = v;
+    else if (typeof v === 'boolean') out[k] = v;
+    else if (Array.isArray(v)) out[k] = v.filter((x): x is string => typeof x === 'string').slice(0, 10);
+  }
+  return out;
+}
+
 export function createServer(o: {
   db: Db;
   todos: TodoStore;
@@ -63,6 +79,10 @@ export function createServer(o: {
   onReverted: (text: string) => void;
   /** 칸 상태가 바뀌었다 (로그인, 나이, 대화권 남은 수). 채팅 창의 대화권 표시를 고친다 */
   onStatus?: () => void;
+  /** 열지 않은 서버 쪽지가 있다 (#101, main/server-inbox.ts 가 받아 펫이 건넨다) */
+  onInbox?: () => void;
+  /** 선물을 받았다 (#101, 이벤트 목록의 단추를 "받았어" 로) */
+  onClaimed?: (eventId: string) => void;
   log: (tag: string, ...rest: unknown[]) => void;
 }) {
   const url = appServerUrl();
@@ -102,6 +122,7 @@ export function createServer(o: {
     log: o.log,
     onChange: (s) => send(s),
     onCoins: o.onCoins,
+    onInbox: () => o.onInbox?.(),
     onReverted: (list: Reverted[]) => {
       const names = [...new Set(list.map((e) => revertedName(e.reason)))];
       o.onReverted(t('server.reverted', { what: names.join(', ') }));
@@ -141,7 +162,42 @@ export function createServer(o: {
 
   const ok = (e: IpcMainInvokeEvent) => o.isSettings(e.sender);
   ipcMain.handle(SERVER.status, (e) => (ok(e) ? core.status() : undefined));
-  ipcMain.handle(SERVER.setAge, (e, age: unknown) => (ok(e) ? core.setAge(age) : undefined));
+  ipcMain.handle(SERVER.setAge, (e, age: unknown, nickname: unknown) =>
+    ok(e) ? core.setAge(age, nickname) : undefined,
+  );
+  ipcMain.handle(SERVER.setNickname, async (e, nickname: unknown) =>
+    ok(e) ? core.setNickname(nickname) : { ok: false, status: undefined },
+  );
+  ipcMain.handle(SERVER.copyCode, (e) => {
+    const code = ok(e) ? core.status().code : null;
+    if (!code) return false;
+    clipboard.writeText(code);
+    return true;
+  });
+  // 선물과 쿠폰 (#101): 모양은 여기서 한 번 더 보고 서버에 보낸다
+  ipcMain.handle(SERVER.claim, async (e, id: unknown): Promise<RewardOutcome> => {
+    if (!ok(e) || typeof id !== 'string' || !EVENT_ID.test(id)) return { ok: false, error: 'event' };
+    const r = await core.claim(id);
+    if (r.ok || r.error === 'already_claimed') o.onClaimed?.(id);
+    return r;
+  });
+  ipcMain.handle(SERVER.coupon, async (e, code: unknown): Promise<RewardOutcome> => {
+    if (!ok(e)) return { ok: false, error: 'code' };
+    const norm = normalizeCoupon(code);
+    if (!norm) return { ok: false, error: 'code' };
+    return core.coupon(norm);
+  });
+  // 운영자 칸 (#101): 설정 창에서, 운영자 계정일 때만. 세션 토큰은 메인에만 있고 서버가 요청마다 다시 본다
+  ipcMain.handle(SERVER.adminOverview, async (e, q: unknown) => {
+    if (!ok(e) || !core.isAdmin()) return undefined;
+    return core.adminOverview(typeof q === 'string' ? q.slice(0, 40) : undefined);
+  });
+  ipcMain.handle(SERVER.adminAction, async (e, action: unknown, fields: unknown) => {
+    if (!ok(e) || !core.isAdmin()) return { ok: false, text: 'not_admin', code: 'not_admin' };
+    if (typeof action !== 'string' || !/^[a-z]+(\/[a-z]+)?$/.test(action))
+      return { ok: false, text: 'action', code: 'invalid' };
+    return core.adminAction(action, adminFields(fields));
+  });
   ipcMain.handle(SERVER.turnOn, (e) => (ok(e) ? core.turnOn() : undefined));
   ipcMain.handle(SERVER.syncNow, async (e) => {
     if (!ok(e)) return undefined;

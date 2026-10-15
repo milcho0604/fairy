@@ -1042,7 +1042,7 @@ function view(p: ProviderSpec): ProviderView {
     command: p.command,
     bin: p.custom ? p.bin : undefined,
     ephemeral: p.adapter === 'claude' || p.adapter === 'codex',
-    ...(p.adapter === 'server' ? { ticket: true } : {}),
+    ...(p.adapter === 'server' ? { ticket: true, detail: t('ticket.detail') } : {}),
   };
 }
 

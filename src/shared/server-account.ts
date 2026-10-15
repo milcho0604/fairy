@@ -68,11 +68,40 @@ export interface ServerStatus {
   merge: { current: AccountSummary; other: AccountSummary } | null;
   /** 만 14세 미만으로 바꿨는데 서버에 계정이 남아 있다 (탈퇴 안내) */
   leftover: boolean;
-  /** AI 대화권을 쓸 수 있다 (#100): 서버 모드, 만 18세 이상, 구글 로그인 */
+  /** 채팅 이용권(AI 대화권)을 쓸 수 있다 (#100, #101): 서버 모드, 만 18세 이상, 구글 로그인, 운영자가 열어 둠 */
   ai: boolean;
-  /** 남은 대화권의 사본. 쓸 수 없거나 아직 못 받았으면 null */
+  /** 남은 채팅 이용권의 사본. 쓸 수 없거나 아직 못 받았으면 null */
   tickets: number | null;
+  /** 채팅 이용권 자리가 차서 대기 중이다 (#101) */
+  aiWaitlisted: boolean;
+  /** 운영자가 건 정기 지급 (#101). 없으면 null */
+  subscription: { monthly: number; nextFill: string | null } | null;
+  /** 닉네임 (#101). 아직 정하지 않았으면 null */
+  nickname: string | null;
+  /** 서버가 준 기기 코드 F-XXXX-XXXX (#101). 계정이 없으면 null */
+  code: string | null;
+  /** 아직 열지 않은 서버 쪽지 수 (#101) */
+  inbox: number;
+  /** 운영자 계정이다 (#101, 서버가 정한다). 아니면 운영자 칸을 그리지 않는다 */
+  admin: boolean;
 }
+
+/** 닉네임 검사 실패의 까닭 (shared/account-profile.ts) 과 서버에 닿지 않음 */
+export type NicknameProblem = 'length' | 'chars' | 'url' | 'at' | 'offline' | 'server';
+
+/**
+ * 운영자 쓰기 결과 (#101). text 는 서버가 쓴 한국어 글, code 는 앱이 말에 맞게 바꿀 코드
+ * (성공이면 운영 기록의 행동 이름, 실패면 까닭), data 는 덧붙일 값 (만든 쿠폰 코드)
+ */
+export interface AdminActionResult {
+  ok: boolean;
+  text: string;
+  code?: string;
+  data?: Record<string, string | number>;
+}
+
+/** 선물 받기, 쿠폰 결과 (#101) */
+export type RewardOutcome = { ok: true; coins: number; tickets: number } | { ok: false; error: string };
 
 /** 칸 모양: 숨김, 나이 묻기, 앱 안 모드, 서버 모드 꺼짐(탈퇴 뒤 등), 서버 모드 */
 export type ServerView = 'hidden' | 'askAge' | 'appMode' | 'serverOff' | 'server';
@@ -95,12 +124,35 @@ export const SERVER = {
   merge: 'server:merge',
   remove: 'server:remove',
   changed: 'server:changed',
+  setNickname: 'server:set-nickname',
+  copyCode: 'server:copy-code',
+  claim: 'server:claim',
+  coupon: 'server:coupon',
+  /** 운영자 칸 (#101): 운영자 계정일 때만 메인이 받는다 */
+  adminOverview: 'server:admin-overview',
+  adminAction: 'server:admin-action',
 } as const;
 
 /** 설정 창이 부르는 것 (preload 가 window.jjakkungServer 로 연다) */
 export interface ServerBridge {
   status(): Promise<ServerStatus | undefined>;
-  setAge(age: AgeAnswer): Promise<ServerStatus | undefined>;
+  /** 나이 답. 서버 모드를 처음 켤 때는 닉네임도 같이 (만 14세 미만은 보내지 않는다) */
+  setAge(age: AgeAnswer, nickname?: string): Promise<ServerStatus | undefined>;
+  setNickname(
+    nickname: string,
+  ): Promise<{ ok: boolean; problem?: NicknameProblem; status: ServerStatus | undefined }>;
+  /** 기기 코드를 클립보드로 */
+  copyCode(): Promise<boolean>;
+  /** 이벤트 선물 받기 */
+  claim(eventId: string): Promise<RewardOutcome>;
+  /** 쿠폰 쓰기 */
+  coupon(code: string): Promise<RewardOutcome>;
+  /** 운영자 칸 (운영자가 아니면 undefined) */
+  adminOverview(q?: string): Promise<Record<string, unknown> | undefined>;
+  adminAction(
+    action: string,
+    fields: Record<string, string | string[] | boolean | number>,
+  ): Promise<AdminActionResult>;
   /** 탈퇴 뒤 서버 모드를 다시 켠다 */
   turnOn(): Promise<ServerStatus | undefined>;
   syncNow(): Promise<ServerStatus | undefined>;

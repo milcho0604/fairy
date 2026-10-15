@@ -232,7 +232,10 @@ describe('기기 계정', () => {
       assert.deepEqual(r.body, { error: 'token' });
     }
     const ok = await sync(token, []);
-    assert.deepEqual(ok.body, { balance: 0, items: {}, results: [] });
+    const { account, ...rest } = ok.body;
+    assert.deepEqual(rest, { balance: 0, items: {}, results: [], inbox: 0 });
+    assert.match(account.code, /^F-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/);
+    assert.equal(account.nickname, null);
   });
 
   test('같은 곳에서 기기 계정을 너무 많이 만들면 429', async () => {

@@ -163,6 +163,13 @@
 - **국외 이전 고지:** 대화권 질문은 Anthropic(미국)으로 간다. 처리방침과 대화권 첫 사용 화면에 이전 항목(질문과 함께 보낸 최근 대화), 국가(미국), 시기와 방법(질문할 때 암호화 전송), 받는 자(Anthropic PBC), 보유기간(Anthropic API 정책상 최대 30일, 정책 위반 조사 등 예외), 거부 방법과 효과(대화권을 쓰지 않으면 이전 없음, 내 컴퓨터 AI 로 대화 가능)를 적는다(제28조의8). Anthropic DPA 상 Anthropic 은 처리자(위탁)다.
 - **신고된 대화:** 신고할 때 무엇이 운영자에게 가는지 보여 주고 따로 확인을 받는다. 건강, 가족 이야기 같은 민감정보가 섞일 수 있어 별도 동의로 받는다(제23조). 운영자가 처리하면 30일 안에 지운다. 탈퇴하면 바로 지운다.
 
+### 운영 정책 (2026-10-15, #101 사용자 결정)
+- 모델은 Claude Haiku 5.5(`claude-haiku-5-5`, $0.10 / $0.50 per 1M, 10만 토큰 넘는 프롬프트는 $0.50 / $2.50). 채팅이라 thinking 은 끄고(disabled) effort low, max_tokens 600. 거절(`stop_reason: refusal`)은 서버 폴백이 없어 이용권을 되돌리고 안내한다.
+- 화면 이름은 "채팅 이용권"(en Chat pass). 1장 = 질문 1번.
+- 사람마다 한 달 100번: 허용된 계정에는 매달 1일(한국) "100장까지 채우기"(이월 없음) 정기 지급이 저절로 걸리고 쪽지로 간다. 운영자가 계정마다 바꾸거나 해지한다(해지한 계정에는 다시 걸지 않는다).
+- 정기 지급 계정은 100명까지(운영자 화면에서 바꿈). 차면 새 사용자는 403 waitlisted 와 대기 목록.
+- 첫 로그인 선물 10장은 기본 꺼짐(운영자가 켤 수 있다). 월 예산은 .env 상한(80달러)을 넘지 못하고, 운영자 화면이 50%, 80% 에서 경고한다.
+
 ## 9. 이벤트, 쿠폰, 개인 지급
 - 이벤트 종류: 선물(모두에게 코인 n), 배수(기간 동안 출석 또는 집중 코인 x배).
 - 이벤트 목록은 운영자 화면에서 만들고, 서버가 홈페이지 정적 파일(`events.json`)로 내보낸다. 앱은 정적 파일만 읽으므로 홈서버 부담이 없고 홈서버가 꺼져도 목록은 보인다.
@@ -170,10 +177,19 @@
 - 쿠폰: 코드, 코인 또는 대화권 수, 기간, 전체 사용 상한, 계정당 한 번.
 - 개인 지급: 운영자가 계정을 골라 코인이나 대화권을 준다. 앱은 다음 맞추기 때 받고 펫이 알린다. 계정은 설정에 보이는 짧은 계정 번호로 찾는다.
 
+### 4단계 구현 (2026-10-15, #101)
+- 이벤트는 운영자 화면에서 만들고 서버가 `GET /v1/events.json` 으로 내보낸다. 공개 레포 Actions(`.github/workflows/site-feeds.yml`, 10분마다, 기본 GITHUB_TOKEN 만)가 받아 앱 읽기 코드로 검사(`scripts/site-feeds.mjs`, 하나라도 버리면 실패)하고 바뀌었으면 `site/events.json` 을 main 에 커밋한다. main 보호로 직접 push 가 막히면 `bot/site-feeds` PR 을 연다. 앱은 정적 파일만 읽는다(`src/main/site-events.ts`). 형식과 판단은 `src/shared/site-events.ts`(앱과 서버가 함께 씀).
+- 선물 받기 `POST /v1/claim`, 쿠폰 `POST /v1/coupon`: 계정 행 잠금 + 유일 제약(event_claim, coupon_use, coin_entry.entry_id), 쿠폰은 쿠폰 행도 잠가 전체 상한을 지킨다. 합쳐진 계정은 가족 전체로 한 번. 쿠폰 코드는 서버가 만든 12자(30^12)만, 원문 없이 sha256, 틀린 코드 계정당 시간 5번.
+- 배수는 맞추기 때 반영한 버는 코인에 (배수 - 1) 만큼을 `boost:<기록 번호>` 한 줄로 더한다. 기록의 날짜(한국 날짜)가 이벤트 기간 안일 때. 하루 상한은 원래 양으로 센다.
+- 개인 지급은 쪽지(inbox)로 간다: 보낼 때가 아니라 사용자가 열 때(`POST /v1/inbox/:id/open`) 첨부를 준다. 쪽지는 서버 DB 에 두고 연 쪽지도 이력으로 남긴다(1년 뒤 정리, 탈퇴 시 삭제). `GET /v1/inbox` 는 최근 순 20개, `?before=` 커서.
+- 계정의 닉네임(2~12자, `src/shared/account-profile.ts`)과 기기 코드(F-XXXX-XXXX, 무작위, 유일). 운영자는 계정 번호, 기기 코드, 닉네임으로 찾는다.
+
 ## 10. 운영자
 - 서버의 `/admin` 화면. 운영자 토큰(`x-admin-token`, 상수 시간 비교, daypoll 과 같음).
 - 할 수 있는 것: 이벤트, 쿠폰, 개인 지급, 공지와 최소 버전(23절), 계정 찾기(짧은 계정 번호), 코인과 대화권 사용량, 이번 달 AI 비용과 남은 상한.
 - 운영자 작업은 모두 기록(누가, 언제, 무엇을)으로 남긴다.
+- 구현 (#101): 웹 `/admin` 은 ADMIN_TOKEN 로그인 폼 → `__Host-fairy_admin` 쿠키(HttpOnly, Secure, SameSite=Strict, 30분), 쓰기마다 CSRF 토큰과 같은 출처 검사, 틀린 시도 같은 곳 15분 5번과 전체 20번, CSP `default-src 'none'`, 스크립트 없는 HTML. 앱 안 운영자 칸은 `ADMIN_GOOGLE_SUBS` 의 구글 sub 로그인이 붙은 계정의 세션만(`GET /v1/me` 의 admin, 요청마다 다시 확인). 같은 일을 하는 JSON API `/v1/admin/*` 는 두 인증(쿠키 + x-csrf-token, 운영자 세션 Bearer) 중 하나만 받는다. 모든 쓰기는 같은 트랜잭션에서 `admin_log`.
+- 기능 스위치(`feature_flag`, `feature_allow`): 첫 항목 `ai_chat`(off, allowlist, everyone, 기본 allowlist + 운영자 계정). 다음 자리 `kakao_login`.
 
 ## 11. API (초안)
 | 경로 | 쓰는 쪽 | 하는 일 |
@@ -185,6 +201,10 @@
 | `POST /v1/session` | 앱 | 일회용 코드를 세션으로, 기기 계정 합치기 |
 | `POST /v1/claim` | 앱 | 이벤트 선물 받기 |
 | `POST /v1/coupon` | 앱 | 쿠폰 쓰기 |
+| `GET /v1/me`, `PATCH /v1/account` | 앱 | 기기 코드, 닉네임, 운영자인지 / 닉네임과 나이 바꾸기 |
+| `GET /v1/inbox`, `POST /v1/inbox/:id/open` | 앱 | 쪽지함, 쪽지 열기(첨부 받기) |
+| `GET /v1/events.json`, `GET /v1/notices.json` | Actions | 홈페이지 정적 파일로 내보내기 |
+| `/v1/admin/*` | 앱 운영자 칸, 웹 | 운영자 JSON API |
 | `POST /v1/ai/chat` | 앱 | 대화권 차감 후 Claude 중계(스트리밍) |
 | `PUT /v1/backup`, `GET /v1/backup` | 앱 | 서버 백업 올리기, 받기 |
 | `DELETE /v1/account` | 앱 | 탈퇴 |
@@ -198,7 +218,7 @@
 - `coin_entry`: 계정, 앱이 만든 기록 번호(유일), 양, 까닭, 날짜
 - `owned_item`: 계정, 물건, 개수
 - `ai_ticket`: 계정, 남은 수 / `ai_usage`: 계정, 날짜, 토큰, 비용
-- `event`, `event_claim`(계정과 이벤트 유일), `coupon`, `coupon_use`(계정과 쿠폰 유일), `grant`
+- `event`, `event_claim`(계정과 이벤트 유일), `coupon`, `coupon_use`(계정과 쿠폰 유일), `inbox`(쪽지, 개인 지급), `site_doc`(공지 문서), `feature_flag`, `feature_allow`, `ai_setting`, `ai_block`, `ai_waitlist`, `ai_subscription`, `ai_subscription_fill` (0004, #101). `account` 에 `nickname`, `code`
 - `backup`: 계정, 파일 위치, 크기, 만든 때 (최근 2개)
 - `admin_log`
 - IP 는 저장하지 않는다(레이트리밋에만 메모리로 씀).
@@ -390,6 +410,7 @@
 - 공지 만들기, 미리 보기(ko, en, 창 모양), 기간, 대상 버전과 운영체제, 최소 버전 올리기와 내리기.
 - 최소 버전을 올릴 때는 지금 최신 릴리스 번호를 보여 주고 그보다 높으면 막는다. 모든 변경은 운영 기록에 남긴다.
 - 저장하면 서버가 `notices.json` 을 홈페이지 정적 파일로 내보낸다(이벤트 목록과 같은 길).
+- 구현 (#101): 서버 `GET /v1/notices.json`(한 번도 저장하지 않았으면 404 라 레포 파일을 덮지 않는다) → Actions `site-feeds.yml` → `site/notices.json`. 최소 버전을 올리거나 강제 업데이트 글을 넣을 때는 확인 칸(앱은 두 번 누르기)이 있어야 하고, 최신 릴리스보다 높거나 최신 릴리스를 못 읽으면 올리지 않는다.
 
 ## 근거
 - API 크레딧: https://platform.claude.com/docs/en/about-claude/api-credits-for-subscribers

@@ -42,8 +42,7 @@ export class AuthGuard implements CanActivate {
     const raw = req.headers.authorization;
     const header = Array.isArray(raw) ? raw[0] : raw;
     const token = header?.startsWith('Bearer ') ? header.slice(7).trim() : '';
-    const kind = tokenKind(token);
-    const auth = kind ? await this.lookup(kind, token) : undefined;
+    const auth = await this.resolve(token);
     if (!auth) {
       this.limiter.check(`bad:${ipKey(req)}`, LIMITS.badTokenByIp);
       throw new UnauthorizedException({ error: 'token' });
@@ -51,6 +50,12 @@ export class AuthGuard implements CanActivate {
     this.limiter.check(`acct:${auth.accountId}`, LIMITS.account);
     req.auth = auth;
     return true;
+  }
+
+  /** 토큰을 계정으로 (모양이 틀리거나 모르는 토큰이면 undefined). 운영자 API 도 쓴다 (admin.ts) */
+  async resolve(token: string): Promise<AuthInfo | undefined> {
+    const kind = tokenKind(token);
+    return kind ? this.lookup(kind, token) : undefined;
   }
 
   private async lookup(kind: 'device' | 'session', token: string): Promise<AuthInfo | undefined> {

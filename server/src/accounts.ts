@@ -1,6 +1,8 @@
+import { randomBytes } from 'node:crypto';
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import { Db } from './db';
+import { deviceCodeFrom } from './shared/account-profile';
 import { newToken, sha256 } from './tokens';
 
 // 계정: 이름 없는 기기 계정 만들기, 계정 잠금, 합치기(21절), 탈퇴.
@@ -54,6 +56,18 @@ export async function readItems(c: PoolClient | Db['pool'], accountId: string): 
   return out;
 }
 
+/** 계정과, 그 계정에 직접이든 사슬로든 합쳐진 모든 계정의 번호 */
+export async function familyIds(c: PoolClient, id: string): Promise<string[]> {
+  const r = await c.query<{ id: string }>(
+    `WITH RECURSIVE fam(id) AS (
+       SELECT $1::bigint
+       UNION SELECT a.id FROM account a JOIN fam ON a.merged_into = fam.id
+     ) SELECT id FROM fam`,
+    [id],
+  );
+  return r.rows.map((row) => row.id);
+}
+
 /** 오늘 날짜 (UTC, YYYY-MM-DD). 서버가 만드는 줄(합치기, 옮기기)의 날짜 */
 export const utcDay = (now = Date.now()): string => new Date(now).toISOString().slice(0, 10);
 
@@ -61,16 +75,53 @@ export const utcDay = (now = Date.now()): string => new Date(now).toISOString().
 export class Accounts {
   constructor(private readonly db: Db) {}
 
-  /** 기기 계정과 기기 토큰. 토큰은 여기서만 한 번 나간다 */
-  async createDevice(age: Age): Promise<{ token: string; accountId: string }> {
+  /**
+   * 기기 계정과 기기 토큰. 토큰은 여기서만 한 번 나간다. 기기 코드(F-XXXX-XXXX)는 무작위로 만들고, 드물게 겹치면
+   * 다시 뽑는다 (유일 제약). 닉네임은 검사한 값만 (없어도 된다)
+   */
+  async createDevice(
+    age: Age,
+    nickname: string | null = null,
+  ): Promise<{ token: string; accountId: string; code: string }> {
     const token = newToken('device');
-    const accountId = await this.db.tx(async (c) => {
-      const a = await c.query<{ id: string }>('INSERT INTO account (age) VALUES ($1) RETURNING id', [age]);
-      const id = a.rows[0]?.id as string;
-      await c.query('INSERT INTO device (account_id, token_hash) VALUES ($1, $2)', [id, sha256(token)]);
-      return id;
+    for (let attempt = 0; ; attempt++) {
+      const code = deviceCodeFrom(randomBytes(8));
+      try {
+        const accountId = await this.db.tx(async (c) => {
+          const a = await c.query<{ id: string }>(
+            'INSERT INTO account (age, code, nickname) VALUES ($1, $2, $3) RETURNING id',
+            [age, code, nickname],
+          );
+          const id = a.rows[0]?.id as string;
+          await c.query('INSERT INTO device (account_id, token_hash) VALUES ($1, $2)', [id, sha256(token)]);
+          return id;
+        });
+        return { token, accountId, code };
+      } catch (err) {
+        const pg = err as { code?: string; constraint?: string };
+        if (attempt < 5 && pg.code === '23505' && pg.constraint === 'account_code_key') continue;
+        throw err;
+      }
+    }
+  }
+
+  /** 닉네임 바꾸기 (검사한 값) */
+  async setNickname(accountId: string, nickname: string): Promise<void> {
+    await this.db.tx(async (c) => {
+      const a = await lockAccount(c, accountId);
+      await c.query('UPDATE account SET nickname = $2 WHERE id = $1', [a.id, nickname]);
     });
-    return { token, accountId };
+  }
+
+  /** 앱에 보이는 계정 정보: 기기 코드와 닉네임 (계정 번호는 보이지 않는다) */
+  async profile(accountId: string): Promise<{ code: string; nickname: string | null }> {
+    const r = await this.db.pool.query<{ code: string; nickname: string | null }>(
+      'SELECT code, nickname FROM account WHERE id = $1',
+      [accountId],
+    );
+    const row = r.rows[0];
+    if (!row) throw new HttpException({ error: 'token' }, HttpStatus.UNAUTHORIZED);
+    return row;
   }
 
   /** 탈퇴: 계정과 코인 내역, 기기, 로그인, 세션, 산 물건, 이 계정에 합쳐진 닫힌 계정까지 바로 지운다 */
@@ -153,6 +204,23 @@ export class Accounts {
       [from.id, into.id],
     );
     await c.query('DELETE FROM ai_ticket WHERE account_id = $1', [from.id]);
+    // 운영자의 AI 차단, 허용 목록, 정기 지급 (#101): 어느 한쪽이라도 막혔거나 허용됐으면 남는 쪽도 그렇다. 정기 지급은 남는 쪽에
+    // 살아 있는 것이 없을 때만 옮기고, 있으면 옮겨 오는 쪽 것을 해지한다 (계정마다 하나)
+    await c.query(
+      `INSERT INTO ai_block (account_id) SELECT $2 FROM ai_block WHERE account_id = $1 ON CONFLICT DO NOTHING`,
+      [from.id, into.id],
+    );
+    await c.query(
+      `INSERT INTO feature_allow (key, account_id) SELECT key, $2 FROM feature_allow WHERE account_id = $1
+       ON CONFLICT DO NOTHING`,
+      [from.id, into.id],
+    );
+    await c.query(
+      `UPDATE ai_subscription SET canceled_at = now() WHERE account_id = $1 AND canceled_at IS NULL
+          AND EXISTS (SELECT 1 FROM ai_subscription WHERE account_id = $2 AND canceled_at IS NULL)`,
+      [from.id, into.id],
+    );
+    await c.query('UPDATE ai_subscription SET account_id = $2 WHERE account_id = $1', [from.id, into.id]);
     for (const table of ['login', 'device', 'session'])
       await c.query(`UPDATE ${table} SET account_id = $2 WHERE account_id = $1`, [from.id, into.id]);
     // 앞서 from 에 합쳐진 계정들도 남는 쪽을 따라가게 (탈퇴하면 함께 지워진다)

@@ -10,14 +10,31 @@ export type Config = {
   googleClientSecret: string;
   /** AI 대화권 (3단계, 8절). 없으면 AI 경로가 503 ai_off */
   ai?: AiConfig;
+  /**
+   * 운영자 토큰 (ADMIN_TOKEN, 4단계 10절). 운영자 화면(/admin) 로그인에 쓴다. 비었거나 ADMIN_TOKEN_MIN 자보다 짧으면
+   * 운영자 화면이 503 admin_off 로 꺼진다
+   */
+  adminToken?: string;
+  /** 최소 버전을 올릴 때 보는 최신 릴리스 (GitHub API). 시험은 이 컴퓨터의 가짜 서버 */
+  releasesApi?: string;
+  /**
+   * 운영자 구글 계정의 sub (ADMIN_GOOGLE_SUBS, 쉼표로 여럿). 이 sub 의 로그인이 붙은 계정의 세션만 앱 안 운영자 화면과
+   * /v1/admin/* 를 쓴다. 비면 운영자 계정 없음 (웹 /admin 의 ADMIN_TOKEN 로그인은 따로)
+   */
+  adminSubs?: string[];
 };
+
+/** 운영자 토큰 최소 길이 (openssl rand -hex 24 = 48자) */
+export const ADMIN_TOKEN_MIN = 32;
+/** 최신 릴리스를 읽는 곳 (앱 update-policy.ts RELEASES_API 와 같다) */
+export const DEFAULT_RELEASES_API = 'https://api.github.com/repos/milcho0604/fairy-releases/releases/latest';
 
 /** AI 대화권 설정. 키가 비면 대화는 503 ai_off (남은 수 보기는 된다) */
 export interface AiConfig {
   apiKey: string;
   /** Anthropic API 주소. 운영은 공식 주소, 시험은 이 컴퓨터의 가짜 서버 */
   baseUrl: string;
-  /** 모델 ID. 기획서의 "Haiku 5.5" 는 없는 이름이라 지금 가장 싼 Haiku 를 기본으로 둔다 (#100) */
+  /** 모델 ID. 기본은 Claude Haiku 5.5 (#101 사용자 결정, 입력 $0.10 / 출력 $0.50 per 1M) */
   model: string;
   /** 서버 전체 한 달(UTC 달력) 추정 비용 상한, 백만분의 1달러 */
   monthlyBudgetMicros: number;
@@ -34,7 +51,7 @@ export interface AiConfig {
 }
 
 export const DEFAULT_ANTHROPIC_BASE_URL = 'https://api.anthropic.com';
-export const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5';
+export const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-5-5';
 export const DEFAULT_AI_MONTHLY_USD = 80;
 export const DEFAULT_AI_DAILY_LIMIT = 20;
 const MODEL_ID = /^[a-z0-9][a-z0-9.@_-]{1,79}$/;
@@ -103,9 +120,39 @@ export function readConfig(env: NodeJS.ProcessEnv): Config {
     publicUrl,
     googleClientId: (env.GOOGLE_CLIENT_ID ?? '').trim(),
     googleClientSecret: (env.GOOGLE_CLIENT_SECRET ?? '').trim(),
-    ai: readAiConfig(env),
+    ai: requireGiftKey(env, readAiConfig(env)),
+    adminToken: (env.ADMIN_TOKEN ?? '').trim(),
+    releasesApi: checkUrl('RELEASES_API', (env.RELEASES_API ?? '').trim() || DEFAULT_RELEASES_API),
+    adminSubs: readSubs(env.ADMIN_GOOGLE_SUBS),
   };
 }
+
+/**
+ * 운영(NODE_ENV=production)에서는 GIFT_HMAC_KEY 가 있어야 뜬다 (버그잡이 #113). 없으면 하루 질문 수를 계정 번호로
+ * 세게 되어, 탈퇴하고 다시 가입하면 하루 수와 첫 선물이 되살아난다. 개발과 시험은 계정 번호로 (가족 전체 합산)
+ */
+function requireGiftKey(env: NodeJS.ProcessEnv, ai: AiConfig): AiConfig {
+  if (env.NODE_ENV === 'production' && !ai.giftKey)
+    throw new Error(
+      'GIFT_HMAC_KEY 가 비어 있다: 운영에서는 openssl rand -hex 32 로 만들어 .env.prod 에 넣어야 뜬다',
+    );
+  return ai;
+}
+
+/** 구글 sub 목록 (숫자와 영문 255자까지만, 나머지는 버린다) */
+export function readSubs(raw: string | undefined): string[] {
+  return [
+    ...new Set(
+      (raw ?? '')
+        .split(',')
+        .map((x) => x.trim())
+        .filter((x) => /^[A-Za-z0-9_-]{1,255}$/.test(x)),
+    ),
+  ];
+}
+
+/** 운영자 화면을 켤 수 있는지 (토큰이 충분히 길다) */
+export const adminEnabled = (c: Config): boolean => (c.adminToken ?? '').length >= ADMIN_TOKEN_MIN;
 
 /** 구글 로그인을 켤 수 있는지 (클라이언트 번호와 비밀이 둘 다 있다) */
 export const googleEnabled = (c: Config): boolean => c.googleClientId !== '' && c.googleClientSecret !== '';

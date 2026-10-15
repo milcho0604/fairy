@@ -26,7 +26,7 @@ test('서버 실패를 채팅 오류로 (다 씀은 no-tickets, 상한은 rate-l
   const f = (error: string): Extract<AiChatOutcome, { ok: false }> => ({ ok: false, status: 400, error });
   assert.deepEqual(ticketError(f('no_tickets'), false), {
     kind: 'no-tickets',
-    message: '대화권을 다 썼어. 내 컴퓨터의 AI로 이어서 할까?',
+    message: '채팅 이용권을 다 썼어. 내 컴퓨터의 AI로 이어서 할까?',
   });
   assert.equal(ticketError(f('daily_limit'), false).kind, 'rate-limit');
   assert.equal(ticketError(f('budget'), false).kind, 'rate-limit');
@@ -38,7 +38,7 @@ test('서버 실패를 채팅 오류로 (다 씀은 no-tickets, 상한은 rate-l
   setLang('en');
   assert.equal(
     ticketError(f('no_tickets'), false).message,
-    "You've used all your tickets. Continue with the AI on your computer?",
+    "You've used all your chat passes. Continue with the AI on your computer?",
   );
   setLang('ko');
 });

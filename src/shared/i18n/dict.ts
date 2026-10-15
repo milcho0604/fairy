@@ -25,6 +25,7 @@ import * as main from './main.ts';
 import * as maker from './maker.ts';
 import * as notice from './notice.ts';
 import * as onboarding from './onboarding.ts';
+import * as ops from './ops.ts';
 import * as panel from './panel.ts';
 import * as pet from './pet.ts';
 import * as petmeta from './petmeta.ts';
@@ -91,6 +92,7 @@ export const ko = {
   ...pin.ko,
   ...notice.ko,
   ...server.ko,
+  ...ops.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -138,4 +140,5 @@ export const en: Translation<typeof ko> = {
   ...pin.en,
   ...notice.en,
   ...server.en,
+  ...ops.en,
 };

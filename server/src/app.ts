@@ -15,6 +15,8 @@ export async function createApp(config: Config, deps: AppDeps = {}): Promise<Nes
   app.disable('x-powered-by');
   // 요청 본문 상한. 서버 백업(5단계)만 따로 크게 받는다.
   app.useBodyParser('json', { limit: '256kb' });
+  // 운영자 화면(/admin)의 폼. 스크립트 없이 폼만 쓴다 (admin.ts)
+  app.useBodyParser('urlencoded', { limit: '64kb', extended: false });
   app.enableShutdownHooks();
   return app;
 }

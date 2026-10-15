@@ -85,8 +85,10 @@ import { watchPresentation } from './presence-watch.ts';
 import { writableDir } from './safe-file.ts';
 import { createServer } from './server.ts';
 import type { ServerCore } from './server-core.ts';
+import { createServerInbox, type ServerInbox } from './server-inbox.ts';
 import { settings } from './settings.ts';
 import { createSettingsWindow } from './settings-window.ts';
+import { watchSiteEvents } from './site-events.ts';
 import { onJsonTrouble, readJson, writeJson } from './store.ts';
 import { createSystemMonitor } from './system-monitor.ts';
 import { testKeychainSwitches } from './test-keychain.ts';
@@ -1378,6 +1380,17 @@ ready
       onMarks: () => panel.refresh(),
       log,
     });
+    // ---- 이벤트 목록 (#101): 홈페이지 정적 파일 events.json. 서버가 꺼져도 목록은 보인다 ----
+    const siteEvents = watchSiteEvents({
+      isSettings: (wc) => {
+        const w = settingsWindow.window;
+        return !!w && !w.isDestroyed() && w.webContents === wc;
+      },
+      target: () => settingsWindow.window,
+      log,
+    });
+    /** 서버 쪽지함 (#101). 매일 쪽지가 생긴 뒤 붙는다 */
+    let serverInbox: ServerInbox | undefined;
     // ---- 페어리 서버 계정 (이슈 #99): 나이 확인, 기기 계정, 코인 맞추기, 구글 로그인, 탈퇴. 주소가 없으면 모두 꺼진다 ----
     const server = createServer({
       db,
@@ -1397,6 +1410,8 @@ ready
       },
       onReverted: (text) => void pet.say({ kind: 'answer', text, ttlMs: 8000 }),
       onStatus: () => chat.ticketChanged(),
+      onInbox: () => void serverInbox?.deliver(),
+      onClaimed: (id) => siteEvents.markClaimed(id),
       log,
     });
     serverCore = server.core;
@@ -1527,6 +1542,19 @@ ready
       onChange: () => panel.refresh(),
       log,
     });
+    // 서버 쪽지함 (#101): 운영자 쪽지와 정기 지급 쪽지. 매일 쪽지와 같은 펫 손, 같은 쪽지함에 섞인다
+    serverInbox = createServerInbox({
+      core: () => server.core,
+      say: (o) => pet.say(o),
+      react: (kind) => pet.react(kind),
+      canTalk,
+      onChange: () => dailyNotes.changed(),
+      onGot: () => panel.refresh(),
+      log,
+    });
+    dailyNotes.attach(serverInbox);
+    // 연 쪽지 이력도 쪽지함에 보이게 켤 때 한 번 받는다 (새 쪽지는 맞추기 때 onInbox 로)
+    setTimeout(() => void serverInbox?.refresh(), 20_000).unref();
     settings.onChange((next, prev) => {
       // 단축키를 다 본다 (대화, 같이 보기 키를 바꿔도 다시 켜야 반영되던 문제, 리뷰 HIGH)
       if (shortcutsChanged(next.shortcuts, prev.shortcuts)) {
@@ -1811,6 +1839,10 @@ ready
           settingsWindow,
           gcal,
           server,
+          siteEvents,
+          get serverInbox() {
+            return serverInbox;
+          },
           panel,
           store,
           stats,

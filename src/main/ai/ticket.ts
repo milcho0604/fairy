@@ -65,6 +65,14 @@ export function ticketError(r: Extract<AiChatOutcome, { ok: false }>, got: boole
       return { kind: 'cancelled', message: t('ai.error.cancelled') };
     case 'ai_off':
       return { kind: 'failed', message: t('ticket.off') };
+    case 'not_allowed':
+      return { kind: 'failed', message: t('ticket.notAllowed') };
+    case 'blocked':
+      return { kind: 'failed', message: t('ticket.blocked') };
+    case 'waitlisted':
+      return { kind: 'failed', message: t('ticket.waitlisted') };
+    case 'refusal':
+      return { kind: 'failed', message: t('ticket.refusal') };
     case 'login':
     case 'age':
     case 'token':

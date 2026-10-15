@@ -51,6 +51,8 @@ services:
       PORT: 3002
       DATABASE_URL: postgres://${POSTGRES_USER:-fairy}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-fairy}
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      # 앱 안 운영자 화면을 쓸 구글 계정 sub (쉼표). 비면 운영자 계정 없음
+      ADMIN_GOOGLE_SUBS: ${ADMIN_GOOGLE_SUBS:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       # 비우면 공식 주소, Haiku 4.5, 월 80달러, 하루 20번 (server/src/config.ts)
       ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}

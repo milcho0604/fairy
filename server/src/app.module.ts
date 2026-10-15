@@ -1,16 +1,31 @@
 import { type DynamicModule, Module } from '@nestjs/common';
 import { Accounts } from './accounts';
+import { AdminApiController, AdminController, AdminService } from './admin';
+import { AdminAccess } from './admin-access';
+import { AdminAuth } from './admin-auth';
 import { Ai } from './ai';
-import { CONFIG, GOOGLE_API } from './app.tokens';
+import { AiAdmin } from './ai-admin';
+import { CLOCK, CONFIG, GOOGLE_API } from './app.tokens';
 import { AuthGuard } from './auth.guard';
 import { Coins } from './coins';
 import type { Config } from './config';
-import { AccountController, AiController, CoinController, LoginController } from './controllers';
+import {
+  AccountController,
+  AiController,
+  CoinController,
+  FeedController,
+  InboxController,
+  LoginController,
+  RewardController,
+} from './controllers';
 import { Db } from './db';
+import { Feeds } from './feeds';
 import { type GoogleApi, realGoogleApi } from './google';
 import { HealthController } from './health.controller';
+import { Inbox } from './inbox';
 import { Login } from './login';
 import { RateLimiter } from './rate-limit';
+import { Rewards } from './rewards';
 
 @Module({})
 export class AppModule {}
@@ -18,20 +33,45 @@ export class AppModule {}
 /** 바꿔 끼울 수 있는 것. 시험은 가짜 구글을 넣어 진짜 구글을 부르지 않는다 */
 export interface AppDeps {
   google?: GoogleApi;
+  /** 지금 시각 (정기 지급의 달). 시험이 바꿔 끼운다 */
+  now?: () => number;
 }
 
 /** 설정을 받아 앱 모듈을 만든다. 기능 모듈은 단계마다 여기 더한다. */
 export function appModule(config: Config, deps: AppDeps = {}): DynamicModule {
   return {
     module: AppModule,
-    controllers: [HealthController, AccountController, CoinController, LoginController, AiController],
+    controllers: [
+      HealthController,
+      AccountController,
+      CoinController,
+      LoginController,
+      AiController,
+      RewardController,
+      FeedController,
+      AdminController,
+      AdminApiController,
+      InboxController,
+    ],
     providers: [
       { provide: CONFIG, useValue: config },
+      { provide: CLOCK, useValue: deps.now ?? Date.now },
       { provide: GOOGLE_API, useFactory: () => deps.google ?? realGoogleApi() },
       { provide: Db, useFactory: () => new Db(config.databaseUrl) },
       { provide: RateLimiter, useFactory: () => new RateLimiter() },
+      {
+        provide: AdminAuth,
+        useFactory: (c: Config, l: RateLimiter) => new AdminAuth(c, l),
+        inject: [CONFIG, RateLimiter],
+      },
       Accounts,
+      AdminAccess,
+      AdminService,
       Ai,
+      AiAdmin,
+      Inbox,
+      Feeds,
+      Rewards,
       Coins,
       Login,
       AuthGuard,

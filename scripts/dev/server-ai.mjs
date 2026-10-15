@@ -79,6 +79,9 @@ execFileSync(process.execPath, [join(root, 'server', 'scripts', 'migrate.mjs')],
   env: { ...process.env, DATABASE_URL: databaseUrl },
   stdio: 'ignore',
 });
+// #101: 채팅 이용권은 기본 allowlist, 첫 로그인 선물은 기본 꺼짐. 이 시험은 #100 흐름(모두, 선물 10장)을 본다
+sql(`UPDATE feature_flag SET mode = 'everyone' WHERE key = 'ai_chat'`);
+sql('UPDATE ai_setting SET first_gift = true');
 
 // ---- 가짜 Anthropic 과 페어리 서버 (구글 값 비움) ----
 const fake = await startFakeAnthropic();
@@ -228,8 +231,8 @@ const findAnywhere = (needle) =>
     .filter(Boolean)
     .filter((t) => sql(`SELECT count(*) FROM "${t}" x WHERE x::text LIKE '%${needle}%'`) !== '0');
 const T = {
-  ko: { agree: '알겠어, 대화권 쓰기', report: '신고', send: '보내기', aiNow: 'AI와 대화 중', empty: '대화권을 다 썼어' },
-  en: { agree: 'Got it, use tickets', report: 'Report', send: 'Send', aiNow: 'talking with an AI', empty: 'used all your tickets' },
+  ko: { agree: '알겠어, 채팅 이용권 쓰기', report: '신고', send: '보내기', aiNow: 'AI와 대화 중', empty: '채팅 이용권을 다 썼어' },
+  en: { agree: 'Got it, use chat passes', report: 'Report', send: 'Send', aiNow: 'talking with an AI', empty: 'used all your chat passes' },
 }[LANG];
 
 let failed = false;

@@ -74,6 +74,16 @@
   font-weight: 700;
 }
 
+/* 서버 쪽지 (운영자가 보냄, #101) 출처 표 */
+.note-from {
+  flex: none;
+  font-size: 11px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+}
+
 .note-new {
   flex: none;
   font-size: 11px;

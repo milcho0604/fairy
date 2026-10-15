@@ -82,6 +82,19 @@ export function App() {
     setChecking(false);
   }, []);
 
+  // 채팅 이용권을 쓸 수 있게 되거나 못 쓰게 되면(나이 바꾸기, 로그아웃, 운영자가 끄거나 허용 해제, #101) AI 목록을
+  // 다시 받는다. 고른 것이 채팅 이용권이었으면 메인이 이미 기본 AI 로 돌려놓았다 (main/chat.ts push)
+  const ticketOn = !!state?.ticket;
+  const firstTicket = useRef(true);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 채팅 이용권을 쓸 수 있는지가 바뀔 때만 다시 받는다
+  useEffect(() => {
+    if (firstTicket.current) {
+      firstTicket.current = false;
+      return;
+    }
+    void bridge.providers().then((list) => setProviders(list));
+  }, [ticketOn]);
+
   // 무료 AI 받기가 끝나면(AI 관리에서 받았을 때) 상태를 다시 읽어 "받기" 를 "준비됐어" 로
   const downloadingModel = !!state?.modelDownload && !state.modelDownload.failed;
   useEffect(() => {

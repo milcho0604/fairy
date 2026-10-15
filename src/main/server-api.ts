@@ -21,6 +21,45 @@ export interface SyncResult {
   balance: number;
   items: Items;
   results: { id: string; status: EntryStatus; applied: number; error?: string; duplicate?: boolean }[];
+  /** 기기 코드와 닉네임 (#101). 옛 서버면 없다 */
+  profile?: ProfileInfo;
+  /** 아직 열지 않은 쪽지 수 (#101) */
+  inbox: number;
+}
+
+/** 앱에 보이는 계정 정보: 기기 코드(F-XXXX-XXXX)와 닉네임 (#101). 계정 번호는 보이지 않는다 */
+export interface ProfileInfo {
+  code: string;
+  nickname: string | null;
+}
+
+/** 선물 받기와 쿠폰의 결과 (#101) */
+export interface RewardResult {
+  balance: number;
+  coins: number;
+  /** 받은 채팅 이용권 */
+  tickets: number;
+}
+
+/** 서버 쪽지함의 쪽지 하나 (#101, server/src/inbox.ts) */
+export interface InboxItem {
+  id: number;
+  kind: 'grant' | 'notice' | 'subscription';
+  message: string | null;
+  coins: number;
+  chatPasses: number;
+  fillTo: number | null;
+  sentAt: string;
+  expiresAt: string | null;
+  openedAt: string | null;
+  opened: { coins: number; chatPasses: number } | null;
+  expired: boolean;
+}
+
+export interface InboxPage {
+  items: InboxItem[];
+  next: number | null;
+  unopened: number;
 }
 
 export interface MigrateResult {
@@ -49,6 +88,8 @@ export interface AiTicketStatus {
   tickets: number;
   dailyLimit: number;
   usedToday: number;
+  /** 운영자가 건 정기 지급 (#101). 없으면 null */
+  subscription: { monthly: number; mode: 'fill' | 'add'; nextFill: string | null } | null;
 }
 
 /** 대화권 질문 (POST /v1/ai/chat). 서버가 최근 대화와 펫 성격을 받아 Claude 에 중계한다 */
@@ -103,6 +144,44 @@ async function readCapped(res: Response, max: number): Promise<string | undefine
   }
   return Buffer.concat(parts).toString('utf8');
 }
+
+const obj = (v: unknown): Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+const str = (v: unknown, max = 200): string | null => (typeof v === 'string' && v.length <= max ? v : null);
+
+/** 기기 코드와 닉네임. 코드 모양이 틀리면 undefined */
+export function profileOf(v: unknown): ProfileInfo | undefined {
+  const o = obj(v);
+  const code = str(o.code, 20);
+  if (!code || !/^F-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/.test(code)) return undefined;
+  return { code, nickname: str(o.nickname, 40) };
+}
+
+export function inboxItemOf(v: unknown): InboxItem | undefined {
+  const o = obj(v);
+  const id = nat(o.id);
+  const kind = o.kind;
+  if (!id || (kind !== 'grant' && kind !== 'notice' && kind !== 'subscription')) return undefined;
+  const opened = o.opened === null || o.opened === undefined ? null : obj(o.opened);
+  return {
+    id,
+    kind,
+    message: str(o.message, 400),
+    coins: nat(o.coins) ?? 0,
+    chatPasses: nat(o.chatPasses) ?? 0,
+    fillTo: nat(o.fillTo) ?? null,
+    sentAt: str(o.sentAt, 40) ?? '',
+    expiresAt: str(o.expiresAt, 40),
+    openedAt: str(o.openedAt, 40),
+    opened: opened ? { coins: nat(opened.coins) ?? 0, chatPasses: nat(opened.chatPasses) ?? 0 } : null,
+    expired: o.expired === true,
+  };
+}
+
+const rewardOf = (j: Record<string, unknown>): RewardResult | undefined =>
+  nat(j.balance) !== undefined
+    ? { balance: nat(j.balance) as number, coins: nat(j.coins) ?? 0, tickets: nat(j.tickets) ?? 0 }
+    : undefined;
 
 function items(v: unknown): Items {
   const out: Items = {};
@@ -164,9 +243,9 @@ export function serverApi(base: string, f: FetchLike) {
   return {
     base,
     /** 이름 없는 기기 계정 (나이 구분만 보낸다) */
-    device: (age: '14+' | '18+') =>
+    device: (age: '14+' | '18+', nickname?: string | null) =>
       call('POST', '/v1/device', {
-        body: { age },
+        body: { age, ...(nickname ? { nickname } : {}) },
         read: (j) => (typeof j.token === 'string' && j.token ? { token: j.token } : undefined),
       }),
     /** 코인 기록 묶음 (최대 500) */
@@ -187,6 +266,8 @@ export function serverApi(base: string, f: FetchLike) {
             ? {
                 balance: nat(j.balance) as number,
                 items: items(j.items),
+                ...(profileOf(j.account) ? { profile: profileOf(j.account) } : {}),
+                inbox: nat(j.inbox) ?? 0,
                 results: (j.results as unknown[]).flatMap((r) => {
                   const x = (typeof r === 'object' && r !== null ? r : {}) as Record<string, unknown>;
                   if (typeof x.id !== 'string') return [];
@@ -252,6 +333,14 @@ export function serverApi(base: string, f: FetchLike) {
                 tickets: nat(j.tickets) as number,
                 dailyLimit: nat(j.dailyLimit) ?? 0,
                 usedToday: nat(j.usedToday) ?? 0,
+                subscription:
+                  j.subscription && nat(obj(j.subscription).monthly)
+                    ? {
+                        monthly: nat(obj(j.subscription).monthly) as number,
+                        mode: obj(j.subscription).mode === 'add' ? 'add' : 'fill',
+                        nextFill: str(obj(j.subscription).nextFill, 10),
+                      }
+                    : null,
               }
             : undefined,
       }),
@@ -265,6 +354,78 @@ export function serverApi(base: string, f: FetchLike) {
     /** 대화권 질문 하나. 답 조각마다 onText. signal 로 멈춘다 */
     aiChat: (token: string, body: AiChatBody, onText: (text: string) => void, signal?: AbortSignal) =>
       aiChat(base, f, token, body, onText, signal),
+    /** 내 계정: 기기 코드, 닉네임, 운영자인지 (#101). 서버가 매번 다시 본다 */
+    me: (token: string) =>
+      call<{ profile: ProfileInfo; admin: boolean }>('GET', '/v1/me', {
+        token,
+        read: (j) => {
+          const profile = profileOf(j.account);
+          return profile ? { profile, admin: j.admin === true } : undefined;
+        },
+      }),
+    /** 닉네임 바꾸기 (#101). 틀리면 400 nickname 과 reason */
+    setNickname: (token: string, nickname: string) =>
+      call('PATCH', '/v1/account', { token, body: { nickname }, read: (j) => profileOf(j.account) ?? true }),
+    /** 이벤트 선물 받기 (#101) */
+    claim: (token: string, event: string) =>
+      call<RewardResult>('POST', '/v1/claim', { token, body: { event }, read: rewardOf }),
+    /** 쿠폰 쓰기 (#101) */
+    coupon: (token: string, code: string) =>
+      call<RewardResult>('POST', '/v1/coupon', { token, body: { code }, read: rewardOf }),
+    /** 쪽지함 한 쪽 (#101). before 로 다음 쪽 */
+    inbox: (token: string, before?: number) =>
+      call<InboxPage>('GET', `/v1/inbox${before ? `?before=${before}` : ''}`, {
+        token,
+        read: (j) =>
+          Array.isArray(j.items)
+            ? {
+                items: (j.items as unknown[]).flatMap((x) => inboxItemOf(x) ?? []),
+                next: nat(j.next) ?? null,
+                unopened: nat(j.unopened) ?? 0,
+              }
+            : undefined,
+      }),
+    /** 쪽지 열기 (#101): 첨부를 받는다 (한 번만) */
+    openInbox: (token: string, id: number) =>
+      call<{ item: InboxItem; balance: number; chatPasses: number }>('POST', `/v1/inbox/${id}/open`, {
+        token,
+        read: (j) => {
+          const item = inboxItemOf(j.item);
+          return item && nat(j.balance) !== undefined
+            ? { item, balance: nat(j.balance) as number, chatPasses: nat(j.chatPasses) ?? 0 }
+            : undefined;
+        },
+      }),
+    /** 운영자 화면 (#101, 운영자 계정의 세션만). 화면에 그릴 것을 통째로 */
+    adminOverview: (token: string, q?: string) =>
+      call<Record<string, unknown>>('GET', `/v1/admin/overview${q ? `?q=${encodeURIComponent(q)}` : ''}`, {
+        token,
+        read: (j) => j,
+      }),
+    /** 운영자 쓰기 하나 (#101). 거절은 400 refused 와 text */
+    adminAction: (
+      token: string,
+      action: string,
+      fields: Record<string, string | string[] | boolean | number>,
+    ) =>
+      call<{ text: string; code?: string; data?: Record<string, string | number> }>(
+        'POST',
+        `/v1/admin/${action}`,
+        {
+          token,
+          body: fields,
+          read: (j) =>
+            typeof j.text === 'string'
+              ? {
+                  text: j.text,
+                  ...(typeof j.code === 'string' ? { code: j.code.slice(0, 40) } : {}),
+                  ...(j.data && typeof j.data === 'object'
+                    ? { data: j.data as Record<string, string | number> }
+                    : {}),
+                }
+              : undefined,
+        },
+      ),
     /** 브라우저로 여는 구글 로그인 주소 */
     startUrl: (port: number, state: string, challenge: string) => {
       const u = new URL(`${base}/auth/google/start`);

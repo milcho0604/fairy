@@ -49,6 +49,7 @@ export function NoteBox() {
                 <span className="note-title" dir="auto">
                   {n.title}
                 </span>
+                {n.source === 'server' && <span className="note-from">{t('inbox.from')}</span>}
                 {!n.read && <span className="note-new">{t('note.new')}</span>}
               </button>
               {open === n.day && (

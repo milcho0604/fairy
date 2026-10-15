@@ -79,6 +79,10 @@ for (let i = 0; i < 20; i++) {
   }
 }
 
+// #101 (PR #113): 채팅 이용권 기본 allowlist, 첫 로그인 선물 기본 꺼짐. 이 훑기는 #99/#100 흐름(모두, 선물 10)을 본다
+sql(`UPDATE feature_flag SET mode = 'everyone' WHERE key = 'ai_chat'`);
+sql('UPDATE ai_setting SET first_gift = true');
+
 // ---- 가짜 구글 ----
 const CLIENT_ID = 'qa-client.apps.googleusercontent.com';
 const key = generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -597,18 +601,18 @@ const T = {
   ko: {
     adult: '만 18세 이상', teen: '만 14세 이상 18세 미만', under14: '만 14세 미만', change: '나이 바꾸기', syncNow: '지금 맞추기',
     login: '구글로 로그인', logout: '로그아웃', remove: '서버 계정 지우기', sure: '정말 지우기', turnOn: '서버 모드 켜기',
-    mergeYes: '합치기', mergeNo: '합치지 않기', ticket: '대화권 Claude', agree: '알겠어, 대화권 쓰기', send: '보내기',
-    report: '신고', offline: '서버에 닿지 않아', signedIn: '구글로 로그인했어', tickets10: 'AI 대화권 10개', ticketsWord: 'AI 대화권', appMode: '앱 안 모드야',
-    daily: '오늘 대화권 질문은 여기까지야', budget: '이번 달 대화권 AI가 쉬는 중이야', empty: '대화권을 다 썼어', failed: '대화권은 돌려놓았어',
-    count: (n) => `대화권 ${n}개 남음`, restoreServer: '코인과 산 물건은 서버 것을 따라', serverTitle: '서버 계정과 코인', reverted: '되돌렸어', resetStart: '코인 초기화하기', resetSure: '초기화할게',
+    mergeYes: '합치기', mergeNo: '합치지 않기', ticket: '채팅 이용권', agree: '알겠어, 채팅 이용권 쓰기', send: '보내기',
+    report: '신고', offline: '서버에 닿지 않아', signedIn: '구글로 로그인했어', tickets10: 'AI 채팅 이용권 10장', ticketsWord: 'AI 채팅 이용권', appMode: '앱 안 모드야',
+    daily: '오늘 채팅 이용권 질문은 여기까지야', budget: '이번 달 채팅 이용권 AI가 쉬는 중이야', empty: '채팅 이용권을 다 썼어', failed: '채팅 이용권은 돌려놓았어',
+    count: (n) => `채팅 이용권 ${n}장 남음`, restoreServer: '코인과 산 물건은 서버 것을 따라', serverTitle: '서버 계정과 코인', reverted: '되돌렸어', resetStart: '코인 초기화하기', resetSure: '초기화할게',
   },
   en: {
     adult: '18 or older', teen: '14 to 17', under14: 'Under 14', change: 'Change age', syncNow: 'Sync now',
     login: 'Sign in with Google', logout: 'Sign out', remove: 'Delete server account', sure: 'Really delete', turnOn: 'Turn on server mode',
-    mergeYes: 'Merge', mergeNo: "Don't merge", ticket: 'Ticket AI', agree: 'Got it, use tickets', send: 'Send',
-    report: 'Report', offline: "Can't reach the server", signedIn: 'Signed in with Google', tickets10: '10 AI chat tickets', ticketsWord: 'AI chat tickets', appMode: 'App-only mode',
-    daily: "That's all the ticket questions for today", budget: 'Ticket AI is resting', empty: 'used all your tickets', failed: 'Your ticket is back',
-    count: (n) => `${n} tickets left`, restoreServer: 'Coins and items follow the server', serverTitle: 'Server account and coins', reverted: 'undone', resetStart: 'Reset coins', resetSure: 'Reset now',
+    mergeYes: 'Merge', mergeNo: "Don't merge", ticket: 'Chat pass', agree: 'Got it, use chat passes', send: 'Send',
+    report: 'Report', offline: "Can't reach the server", signedIn: 'Signed in with Google', tickets10: '10 chat passes', ticketsWord: 'Pick "Chat pass"', appMode: 'App-only mode',
+    daily: "That's all the chat pass questions for today", budget: 'Chat pass AI is resting', empty: 'used all your chat passes', failed: 'Your chat pass is back',
+    count: (n) => `${n} ${n === 1 ? 'chat pass' : 'chat passes'} left`, restoreServer: 'Coins and items follow the server', serverTitle: 'Server account and coins', reverted: 'undone', resetStart: 'Reset coins', resetSure: 'Reset now',
   },
 }[LANG];
 
@@ -627,6 +631,13 @@ const press = async (p, scope, text) => {
 };
 const pressSel = (p, sel) => p.ev(`(() => { const b = document.querySelector(${JSON.stringify(sel)}); if (!b || b.disabled) return false; b.click(); return true; })()`);
 const boxText = (p) => p.ev(`document.querySelector('.server-box')?.innerText ?? ''`);
+/** #101: 나이 답 다음 닉네임 단계가 뜨면 닉네임을 넣고 "서버 모드 시작" */
+async function nicknameStep(p) {
+  const shown = await until('닉네임 칸', () => p.ev(`!!document.querySelector('.server-nickname-step input')`), 5000).catch(() => false);
+  if (!shown) return false;
+  await p.ev(`(() => { const el = document.querySelector('.server-nickname-step input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ${JSON.stringify(LANG === 'en' ? 'Sweeper' : '훑기')}); el.dispatchEvent(new Event('input', { bubbles: true })); return 1; })()`);
+  return press(p, '.server-nickname-step', LANG === 'en' ? 'Start server mode' : '서버 모드 시작');
+}
 
 // ================= 2. 서버 주소 없음 =================
 async function noUrlPhase() {
@@ -733,6 +744,7 @@ async function appPhase() {
       check(F, '"나이 바꾸기" 누르기', await press(p, '.server-box', T.change));
       await sleep(200);
       check(F, '"만 18세 이상" 누르기', await press(p, '.server-box', T.adult));
+      check(F, '(#101) 닉네임 넣고 "서버 모드 시작"', await nicknameStep(p));
       await until('기기 계정과 첫 맞추기', async () => {
         const s = await status();
         return s.device && s.balance !== null && !s.syncing;

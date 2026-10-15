@@ -5,6 +5,7 @@
 //   [[cut]]        글 두 조각을 보내고 연결을 끊는다
 //   [[sse-error]]  글 한 조각 뒤 SSE error 사건 (overloaded_error)
 //   [[slow]]       아무것도 보내지 않고 기다린다 (시간 넘김)
+//   [[refusal]]    글 한 조각 뒤 stop_reason refusal (안전 분류기 거절, Haiku 5.5 는 서버 폴백 없음)
 //   그 밖          "안녕! 나는 AI 야." 를 세 조각으로, 사용량 input 120 / output 30
 import { createServer } from 'node:http';
 
@@ -68,6 +69,22 @@ export async function startFakeAnthropic() {
         delta('안녕! ');
         delta('나는 ');
         setTimeout(() => req.socket.destroy(), 50);
+        return;
+      }
+      if (text.includes('[[refusal]]')) {
+        delta('음... ');
+        send('content_block_stop', { type: 'content_block_stop', index: 0 });
+        send('message_delta', {
+          type: 'message_delta',
+          delta: {
+            stop_reason: 'refusal',
+            stop_sequence: null,
+            stop_details: { type: 'refusal', category: null },
+          },
+          usage: { output_tokens: 3 },
+        });
+        send('message_stop', { type: 'message_stop' });
+        res.end();
         return;
       }
       if (text.includes('[[sse-error]]')) {

@@ -4,7 +4,9 @@ import { locale, t } from '../../../../shared/i18n/index.ts';
 import type { RestoreOffer, RestoreState, SettingsSnapshot } from '../../../../shared/ipc.ts';
 import { serverView } from '../../../../shared/server-account.ts';
 import { isPersonalPet } from '../../../../shared/settings.ts';
+import { AdminBox } from '../AdminBox.tsx';
 import { CoinReset } from '../CoinReset.tsx';
+import { EventsBox } from '../EventsBox.tsx';
 import { ExportBox, ExportedRow } from '../ExportBox.tsx';
 import { exportFlash, type Flash, importFlash, storageFlash } from '../flash-of.ts';
 import { ServerAccountBox, useServerStatus } from '../ServerAccountBox.tsx';
@@ -89,6 +91,8 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
         <ExportedRow path={exported} />
       </Section>
       <ServerAccountBox flash={flash} />
+      <EventsBox flash={flash} />
+      <AdminBox flash={flash} />
       <ExportBox flash={flash} />
       <Section title={t('settings.coinReset')}>
         <CoinReset flash={flash} />
