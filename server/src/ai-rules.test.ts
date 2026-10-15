@@ -66,6 +66,9 @@ test('요청: 처음과 끝은 사용자 말, 같은 쪽이 이어지면 합친�
 test('비용: Haiku 4.5 는 100만 토큰당 1, 5 달러, 모르는 모델은 가장 비싼 값', () => {
   assert.equal(costMicros('claude-haiku-4-5', 2000, 300), 3500);
   assert.equal(costMicros('claude-unknown', 1, 1), 60);
+  // Haiku 5.5 (#101): $0.10 / $0.50, 프롬프트가 10만 토큰을 넘으면 $0.50 / $2.50
+  assert.equal(costMicros('claude-haiku-5-5', 2000, 600), 500);
+  assert.equal(costMicros('claude-haiku-5-5', 100_001, 600), Math.ceil(100_001 * 0.5 + 600 * 2.5));
   const req = {
     messages: [{ role: 'user' as const, content: '가'.repeat(100) }],
     lang: 'ko' as const,

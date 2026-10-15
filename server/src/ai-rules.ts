@@ -29,10 +29,12 @@ export interface AiChatRequest {
 }
 
 /**
- * 100만 토큰당 달러 (입력, 출력). claude-api 스킬의 모델 표(2026-09-25) 기준.
+ * 100만 토큰당 달러 (입력, 출력). claude-api 스킬의 모델 표(2026-10-06) 기준. Haiku 5.5 는 프롬프트가 10만 토큰을
+ * 넘으면 $0.50 / $2.50 (LONG_PROMPT). 대화권 질문은 짧아 넘지 않지만 셈은 맞춰 둔다.
  * 모르는 모델은 가장 비싼 값으로 세어 월 상한이 늦게 걸리지 않게 한다
  */
 const PRICES: Record<string, { input: number; output: number }> = {
+  'claude-haiku-5-5': { input: 0.1, output: 0.5 },
   'claude-haiku-4-5': { input: 1, output: 5 },
   'claude-sonnet-5-5': { input: 2, output: 10 },
   'claude-sonnet-5': { input: 2, output: 10 },
@@ -45,8 +47,13 @@ const UNKNOWN_PRICE = { input: 10, output: 50 };
 export const priceOf = (model: string) => PRICES[model] ?? UNKNOWN_PRICE;
 
 /** 추정 비용 (백만분의 1달러). 100만 토큰당 1달러 = 토큰당 1 */
+const LONG_PROMPT: Record<string, { over: number; input: number; output: number }> = {
+  'claude-haiku-5-5': { over: 100_000, input: 0.5, output: 2.5 },
+};
+
 export function costMicros(model: string, inputTokens: number, outputTokens: number): number {
-  const p = priceOf(model);
+  const long = LONG_PROMPT[model];
+  const p = long && inputTokens > long.over ? long : priceOf(model);
   return Math.ceil(inputTokens * p.input + outputTokens * p.output);
 }
 

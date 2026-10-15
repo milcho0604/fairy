@@ -5,6 +5,7 @@ import { BOND, type BondBridge } from '../shared/bond-ipc.ts';
 import type { BubbleLayout } from '../shared/bubble-layout.ts';
 import type { ChatState } from '../shared/chat-state.ts';
 import { DATA_EXPORT, DAY, type DayBridge, type ExportBridge } from '../shared/day-ipc.ts';
+import { EVENTS, type EventList, type EventsBridge } from '../shared/events-ipc.ts';
 import type { Gaze } from '../shared/gaze.ts';
 import { GCAL, type GcalBridge, type GcalStatus } from '../shared/gcal.ts';
 import type { Point } from '../shared/geometry.ts';
@@ -316,7 +317,14 @@ if (kind === 'settings') {
   // 페어리 서버 계정 (이슈 #99): 상태만 오간다. 토큰은 메인에만 있다
   const server: ServerBridge = {
     status: () => ipcRenderer.invoke(SERVER.status),
-    setAge: (age) => ipcRenderer.invoke(SERVER.setAge, age),
+    setAge: (age, nickname) => ipcRenderer.invoke(SERVER.setAge, age, nickname),
+    setNickname: (nickname) => ipcRenderer.invoke(SERVER.setNickname, nickname),
+    copyCode: () => ipcRenderer.invoke(SERVER.copyCode),
+    claim: (eventId) => ipcRenderer.invoke(SERVER.claim, eventId),
+    coupon: (code) => ipcRenderer.invoke(SERVER.coupon, code),
+    // 운영자 칸 (#101): 메인이 운영자 계정인지 다시 보고, 서버도 요청마다 본다. 세션 토큰은 화면에 오지 않는다
+    adminOverview: (q) => ipcRenderer.invoke(SERVER.adminOverview, q),
+    adminAction: (action, fields) => ipcRenderer.invoke(SERVER.adminAction, action, fields),
     turnOn: () => ipcRenderer.invoke(SERVER.turnOn),
     syncNow: () => ipcRenderer.invoke(SERVER.syncNow),
     login: () => ipcRenderer.invoke(SERVER.login),
@@ -333,6 +341,18 @@ if (kind === 'settings') {
     },
   };
   contextBridge.exposeInMainWorld('jjakkungServer', server);
+  // 이벤트 목록 (#101): 홈페이지 정적 파일이라 서버 없이도 보인다
+  const siteEvents: EventsBridge = {
+    list: () => ipcRenderer.invoke(EVENTS.list),
+    onChanged: (listener) => {
+      const h = (_e: unknown, l: EventList) => listener(l);
+      ipcRenderer.on(EVENTS.changed, h);
+      return () => {
+        ipcRenderer.removeListener(EVENTS.changed, h);
+      };
+    },
+  };
+  contextBridge.exposeInMainWorld('jjakkungEvents', siteEvents);
   // 내보내기 (메모 .md, 할 일 .csv/.md, 일정 .ics). 저장 대화상자와 쓰기는 메인이 한다
   const exporter: ExportBridge = { run: (kind) => ipcRenderer.invoke(DATA_EXPORT.run, kind) };
   contextBridge.exposeInMainWorld('jjakkungExport', exporter);

@@ -7,11 +7,14 @@
 //   옮기기가 끝나기 전에는 맞추기를 보내지 않는다.
 // - 서버가 꺼져 있어도 앱은 사본 잔액(앱 장부)으로 돈다. 대기열은 파일에 남아 살아나면 보낸다.
 import { createHash, randomBytes } from 'node:crypto';
+import { checkNickname, DEVICE_CODE } from '../shared/account-profile.ts';
 import {
   type AccountSummary,
   type AgeAnswer,
   ageClass,
   isAgeAnswer,
+  type NicknameProblem,
+  type RewardOutcome,
   type ServerProblem,
   type ServerStatus,
 } from '../shared/server-account.ts';
@@ -39,7 +42,25 @@ export interface ServerState {
   tickets: number | null;
   /** 대화권 국외 이전 안내를 읽고 쓰기로 했다 (이 컴퓨터에서 한 번) */
   aiAgreed: boolean;
+  /** 닉네임 (#101). 서버 모드를 처음 켤 때 정한다 */
+  nickname: string | null;
+  /** 바꾼 닉네임을 아직 서버에 못 알렸다 (다음 맞추기 때 다시) */
+  nicknamePending: boolean;
+  /** 서버가 준 기기 코드의 사본 */
+  code: string | null;
+  /** 운영자 계정인지 (서버 /v1/me 가 정한다. 세션일 때만 true) */
+  admin: boolean;
+  /** 아직 열지 않은 서버 쪽지 수 */
+  inbox: number;
+  /** 채팅 이용권 접근 (운영자 스위치). 모르면 null */
+  aiAccess: AiAccess | null;
+  /** 운영자가 건 정기 지급 */
+  subscription: { monthly: number; nextFill: string | null } | null;
 }
+
+/** 채팅 이용권 접근: 됨, 전체 꺼짐, 허용 목록에 없음, 이 계정만 막힘 */
+export type AiAccess = 'ok' | 'off' | 'not_allowed' | 'blocked' | 'waitlisted';
+const AI_ACCESS: readonly AiAccess[] = ['ok', 'off', 'not_allowed', 'blocked', 'waitlisted'];
 
 export function freshState(): ServerState {
   return {
@@ -54,6 +75,13 @@ export function freshState(): ServerState {
     agePending: false,
     tickets: null,
     aiAgreed: false,
+    nickname: null,
+    nicknamePending: false,
+    code: null,
+    admin: false,
+    inbox: 0,
+    aiAccess: null,
+    subscription: null,
   };
 }
 
@@ -109,6 +137,19 @@ export function parseState(raw: unknown): ServerState {
   s.agePending = raw.agePending === true;
   if (isCount(raw.tickets)) s.tickets = raw.tickets;
   s.aiAgreed = raw.aiAgreed === true;
+  const nick = checkNickname(raw.nickname);
+  if (nick.ok) s.nickname = nick.value;
+  s.nicknamePending = raw.nicknamePending === true && s.nickname !== null;
+  if (typeof raw.code === 'string' && DEVICE_CODE.test(raw.code)) s.code = raw.code;
+  s.admin = raw.admin === true;
+  if (isCount(raw.inbox)) s.inbox = raw.inbox;
+  if (AI_ACCESS.includes(raw.aiAccess as AiAccess)) s.aiAccess = raw.aiAccess as AiAccess;
+  const sub = raw.subscription;
+  if (isObj(sub) && isCount(sub.monthly))
+    s.subscription = {
+      monthly: sub.monthly,
+      nextFill: typeof sub.nextFill === 'string' ? sub.nextFill : null,
+    };
   return s;
 }
 
@@ -170,6 +211,8 @@ export interface ServerCoreDeps {
   onCoins: () => void;
   /** 서버가 거절해 되돌린 쓰기 (펫이 알린다) */
   onReverted: (list: Reverted[]) => void;
+  /** 열지 않은 서버 쪽지가 있다 (#101, 메인이 쪽지함을 받아 펫이 건넨다) */
+  onInbox?: (unopened: number) => void;
   random?: (n: number) => Uint8Array;
 }
 
@@ -192,8 +235,12 @@ export function createServerCore(d: ServerCoreDeps) {
     !d.secure() ? 'noSecure' : d.device.unreadable() ? 'keyLost' : null;
   /** 서버로 무엇이든 보내도 되는가 (탈퇴, 로그아웃 말고). 요청마다 다시 본다 */
   const allowed = () => wanted() && blocked() === null;
-  /** AI 대화권을 쓸 수 있는가 (#100): 서버 모드, 만 18세 이상, 구글 로그인(세션) */
-  const aiAvailable = () => allowed() && st.age === 'adult' && !!d.session.get();
+  /** 채팅 이용권을 물어볼 수 있는가 (#100): 서버 모드, 만 18세 이상, 구글 로그인(세션) */
+  const aiEligible = () => allowed() && st.age === 'adult' && !!d.session.get();
+  /** 채팅 이용권을 쓸 수 있는가: 위에 더해 운영자가 열어 두었다 (#101, 모르면 아직 아님) */
+  const aiAvailable = () => aiEligible() && st.aiAccess === 'ok';
+  /** 운영자 계정인가 (#101): 세션이 있고 서버가 운영자라고 했다 */
+  const isAdmin = () => allowed() && !!d.session.get() && st.admin;
 
   function status(): ServerStatus {
     const device = !!d.device.get();
@@ -213,6 +260,12 @@ export function createServerCore(d: ServerCoreDeps) {
       leftover: st.age === 'under14' && (device || !!d.session.get()),
       ai: aiAvailable(),
       tickets: aiAvailable() ? st.tickets : null,
+      subscription: aiAvailable() ? st.subscription : null,
+      aiWaitlisted: aiEligible() && st.aiAccess === 'waitlisted',
+      nickname: st.nickname,
+      code: wanted() ? st.code : null,
+      inbox: wanted() ? st.inbox : 0,
+      admin: isAdmin(),
     };
   }
 
@@ -234,7 +287,21 @@ export function createServerCore(d: ServerCoreDeps) {
     login?.cancel();
     login = null;
     merge = null;
-    st = { ...st, on: false, migrated: false, migrate: null, copy: null, lastSyncAt: null, tickets: null };
+    st = {
+      ...st,
+      on: false,
+      migrated: false,
+      migrate: null,
+      copy: null,
+      lastSyncAt: null,
+      tickets: null,
+      code: null,
+      admin: false,
+      inbox: 0,
+      aiAccess: null,
+      subscription: null,
+      nicknamePending: false,
+    };
     st.coins.queue = [];
     save();
   }
@@ -259,7 +326,7 @@ export function createServerCore(d: ServerCoreDeps) {
     if (d.device.get()) return true;
     const age = ageClass(st.age);
     if (!d.api || !age || !allowed()) return false;
-    const r = await d.api.device(age);
+    const r = await d.api.device(age, st.nickname);
     // 기다리는 사이 만 14세 미만으로 바꾸거나 껐으면 받은 토큰을 버린다 (더 보내지 않는다)
     if (!allowed()) {
       d.log('server', '기기 계정을 받았지만 서버 모드가 꺼져 버림');
@@ -272,7 +339,18 @@ export function createServerCore(d: ServerCoreDeps) {
     }
     // 새 기기 계정은 빈 계정이다: 옮기기부터 다시 (지금 장부의 잔액과 물건을 옮긴다).
     // 옛 계정의 사본, 대기열, 세션은 이 계정 것이 아니다
-    st = { ...st, migrated: false, migrate: null, copy: null, lastSyncAt: null, agePending: false };
+    st = {
+      ...st,
+      migrated: false,
+      migrate: null,
+      copy: null,
+      lastSyncAt: null,
+      agePending: false,
+      nicknamePending: false,
+      code: null,
+      admin: false,
+      inbox: 0,
+    };
     st.coins.queue = [];
     try {
       d.session.set(null);
@@ -298,6 +376,39 @@ export function createServerCore(d: ServerCoreDeps) {
       save();
       d.log('server', '나이 구분 알림', age);
     } else d.log('server', '나이 구분 못 알림', r.status, r.error);
+  }
+
+  /** 바꾼 닉네임을 서버에 알린다 (실패하면 다음 맞추기 때 다시) */
+  async function ensureNickname(): Promise<void> {
+    const t = token();
+    if (!st.nicknamePending || !st.nickname || !d.api || !t || !allowed()) return;
+    const r = await d.api.setNickname(t, st.nickname);
+    if (r.ok || r.status === 400) {
+      // 400 이면 서버 규칙에 안 맞는 옛 값이다: 다시 보내지 않는다
+      st.nicknamePending = false;
+      save();
+    } else d.log('server', '닉네임 못 알림', r.status, r.error);
+  }
+
+  /** 운영자인지 서버에 묻는다 (세션일 때만. 기기 토큰은 언제나 아니다) */
+  async function refreshMe(): Promise<void> {
+    const s = d.session.get();
+    if (!d.api || !s || !allowed()) {
+      if (st.admin) {
+        st.admin = false;
+        save();
+      }
+      return;
+    }
+    const r = await d.api.me(s);
+    if (r.ok) {
+      const was = st.admin;
+      st.admin = r.data.admin;
+      st.code = r.data.profile.code;
+      if (!st.nicknamePending) st.nickname = r.data.profile.nickname ?? st.nickname;
+      save();
+      if (was !== st.admin) d.log('server', '운영자', st.admin);
+    } else if (r.status === 401) onUnauthorized();
   }
 
   async function ensureMigrated(): Promise<boolean> {
@@ -380,7 +491,13 @@ export function createServerCore(d: ServerCoreDeps) {
           d.log('server', '기록', x.status, e.reason, e.amount, x.applied, x.error ?? '');
       }
       st.coins.queue = st.coins.queue.filter((e) => !res.has(e.id));
+      if (r.data.profile) {
+        st.code = r.data.profile.code;
+        if (!st.nicknamePending && r.data.profile.nickname) st.nickname = r.data.profile.nickname;
+      }
+      st.inbox = r.data.inbox;
       apply({ balance: r.data.balance, items: r.data.items }, rejected);
+      if (st.inbox > 0) d.onInbox?.(st.inbox);
       if (st.coins.queue.length === 0 || batch.length < SYNC_BATCH) return;
     }
   }
@@ -393,14 +510,37 @@ export function createServerCore(d: ServerCoreDeps) {
     save();
   }
 
-  /** 남은 대화권을 받는다 (처음이면 서버가 첫 로그인 선물 10개를 준다) */
+  function setAccess(a: AiAccess | null) {
+    if (st.aiAccess === a) return;
+    st.aiAccess = a;
+    if (a !== 'ok') st.subscription = null;
+    save();
+  }
+
+  /**
+   * 남은 채팅 이용권을 받는다 (처음이면 서버가 첫 로그인 선물 10장을 준다). 운영자 스위치도 여기서 안다:
+   * 꺼짐(503 ai_off), 허용 목록에 없음(403 not_allowed), 막힘(403 blocked)이면 채팅 이용권 칸을 숨긴다
+   */
   async function refreshTickets(): Promise<void> {
     const s = d.session.get();
-    if (!d.api || !s || !aiAvailable()) return;
+    if (!d.api || !s || !aiEligible()) return;
     const r = await d.api.aiStatus(s);
-    if (r.ok) setTickets(r.data.tickets);
-    else if (r.status === 401) onUnauthorized();
-    else d.log('server', '대화권 수를 못 받음', r.status, r.error);
+    if (r.ok) {
+      setAccess('ok');
+      setTickets(r.data.tickets);
+      const sub = r.data.subscription
+        ? { monthly: r.data.subscription.monthly, nextFill: r.data.subscription.nextFill }
+        : null;
+      if (JSON.stringify(sub) !== JSON.stringify(st.subscription)) {
+        st.subscription = sub;
+        save();
+      }
+    } else if (r.status === 401) onUnauthorized();
+    else if (r.error === 'ai_off') setAccess('off');
+    else if (r.error === 'not_allowed') setAccess('not_allowed');
+    else if (r.error === 'blocked') setAccess('blocked');
+    else if (r.error === 'waitlisted') setAccess('waitlisted');
+    else d.log('server', '채팅 이용권 수를 못 받음', r.status, r.error);
   }
 
   /** 대화권으로 질문 하나 (글은 기록에 남기지 않는다) */
@@ -417,6 +557,10 @@ export function createServerCore(d: ServerCoreDeps) {
       if (r.tickets !== undefined) setTickets(r.tickets);
       else if (r.error === 'no_tickets') setTickets(0);
       if (r.status === 401) onUnauthorized();
+      if (r.error === 'ai_off') setAccess('off');
+      else if (r.error === 'not_allowed') setAccess('not_allowed');
+      else if (r.error === 'blocked') setAccess('blocked');
+      else if (r.error === 'waitlisted') setAccess('waitlisted');
       d.log('server', '대화권 질문 실패', r.status, r.error, r.refunded ? '되돌림' : '');
     }
     changed();
@@ -447,7 +591,9 @@ export function createServerCore(d: ServerCoreDeps) {
         if (!(await ensureDevice())) return;
         if (!(await ensureMigrated())) return;
         await ensureAge();
+        await ensureNickname();
         await syncAll();
+        await refreshMe();
         await refreshTickets();
       } catch (err) {
         problem = 'server';
@@ -573,13 +719,115 @@ export function createServerCore(d: ServerCoreDeps) {
     return { ok: false, status: status() };
   }
 
+  // ---- 선물, 쿠폰, 쪽지, 운영자 (#101) ----
+
+  /** 서버에 보낼 수 있을 때의 토큰 (기기 계정까지 만든다) */
+  async function ready(): Promise<string | undefined> {
+    if (!d.api || !allowed()) return undefined;
+    if (!d.device.get()) await run();
+    return token();
+  }
+
+  async function reward(kind: 'claim' | 'coupon', arg: string): Promise<RewardOutcome> {
+    const t = await ready();
+    if (!d.api || !t) return { ok: false, error: 'off' };
+    const r = kind === 'claim' ? await d.api.claim(t, arg) : await d.api.coupon(t, arg);
+    if (!r.ok) {
+      if (r.status === 401) onUnauthorized();
+      d.log('server', kind === 'claim' ? '선물 못 받음' : '쿠폰 못 씀', r.status, r.error);
+      return { ok: false, error: r.status === 0 ? 'offline' : r.error };
+    }
+    d.log('server', kind === 'claim' ? '선물 받음' : '쿠폰 씀', r.data.coins, r.data.tickets);
+    // 잔액과 채팅 이용권은 맞추기로 받는다 (앱 장부에 'server-sync' 한 줄)
+    await run();
+    return { ok: true, coins: r.data.coins, tickets: r.data.tickets };
+  }
+
+  /** 쪽지 하나를 연다. 받은 것을 맞추기로 앱에 들인다 */
+  async function openInbox(id: number) {
+    const t = await ready();
+    if (!d.api || !t) return { ok: false as const, status: 0, error: 'off', body: {} };
+    const r = await d.api.openInbox(t, id);
+    if (r.ok || r.status === 409) await run();
+    return r;
+  }
+
+  async function adminCall<T>(f: (t: string) => Promise<T>): Promise<T | undefined> {
+    const s = d.session.get();
+    if (!d.api || !s || !isAdmin()) return undefined;
+    return f(s);
+  }
+
   return {
     status,
     run,
     scan,
     allowed,
-    setAge(age: unknown): ServerStatus {
+    isAdmin,
+    /** 닉네임 바꾸기 (규칙에 맞는 것만. 서버에는 지금이나 다음 맞추기 때) */
+    async setNickname(
+      raw: unknown,
+    ): Promise<{ ok: boolean; problem?: NicknameProblem; status: ServerStatus }> {
+      const c = checkNickname(raw);
+      if (!c.ok) return { ok: false, problem: c.error, status: status() };
+      st.nickname = c.value;
+      st.nicknamePending = true;
+      save();
+      if (allowed() && token()) await ensureNickname();
+      changed();
+      return { ok: true, status: status() };
+    },
+    claim: (eventId: string) => reward('claim', eventId),
+    coupon: (code: string) => reward('coupon', code),
+    /** 쪽지함 한 쪽 (서버 DB). 서버 모드가 아니면 undefined */
+    async inbox(before?: number) {
+      const t = await ready();
+      if (!d.api || !t) return undefined;
+      const r = await d.api.inbox(t, before);
+      if (!r.ok) {
+        if (r.status === 401) onUnauthorized();
+        return undefined;
+      }
+      if (before === undefined && st.inbox !== r.data.unopened) {
+        st.inbox = r.data.unopened;
+        save();
+        changed();
+      }
+      return r.data;
+    },
+    openInbox,
+    /** 운영자 화면 (운영자가 아니면 undefined. 서버가 요청마다 다시 본다) */
+    adminOverview: (q?: string) =>
+      adminCall(async (t) => {
+        const r = await d.api?.adminOverview(t, q);
+        if (r && !r.ok && r.status === 403) {
+          st.admin = false;
+          save();
+          changed();
+        }
+        return r?.ok ? r.data : undefined;
+      }),
+    adminAction: async (action: string, fields: Record<string, string | string[] | boolean | number>) =>
+      (await adminCall(async (t) => {
+        const r = await d.api?.adminAction(t, action, fields);
+        if (!r) return { ok: false, text: '' };
+        if (r.ok) return { ok: true, text: r.data.text };
+        if (r.status === 403) {
+          st.admin = false;
+          save();
+          changed();
+        }
+        return { ok: false, text: typeof r.body.text === 'string' ? r.body.text : r.error };
+      })) ?? { ok: false, text: 'not_admin' },
+    setAge(age: unknown, nickname?: unknown): ServerStatus {
       if (!isAgeAnswer(age) || !enabled()) return status();
+      if (nickname !== undefined && age !== 'under14') {
+        const c = checkNickname(nickname);
+        if (c.ok) {
+          st.nickname = c.value;
+          st.nicknamePending = !!d.device.get();
+        }
+      }
       const was = st.age;
       st.age = age;
       // 14+ 와 18+ 사이를 바꿨으면 서버에도 알린다 (기기 계정이 있을 때. 없으면 만들 때 지금 값을 보낸다)
@@ -588,6 +836,7 @@ export function createServerCore(d: ServerCoreDeps) {
       if (age === 'under14') {
         // 앱 안 모드: 아무것도 보내지 않는다. 남은 서버 계정은 칸이 탈퇴를 안내한다
         st.on = false;
+        st.admin = false;
         login?.cancel();
         login = null;
         merge = null;
@@ -629,6 +878,8 @@ export function createServerCore(d: ServerCoreDeps) {
       merge = null;
       d.session.set(null);
       setTickets(null);
+      st.admin = false;
+      setAccess(null);
       if (t && d.api) {
         const r = await d.api.logout(t);
         if (!r.ok) d.log('server', '서버 세션 못 지움', r.status, r.error);

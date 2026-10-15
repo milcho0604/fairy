@@ -79,6 +79,9 @@ execFileSync(process.execPath, [join(root, 'server', 'scripts', 'migrate.mjs')],
   env: { ...process.env, DATABASE_URL: databaseUrl },
   stdio: 'ignore',
 });
+// #101: 채팅 이용권은 기본 allowlist, 첫 로그인 선물은 기본 꺼짐. 이 시험은 #100 흐름(모두, 선물 10장)을 본다
+sql(`UPDATE feature_flag SET mode = 'everyone' WHERE key = 'ai_chat'`);
+sql('UPDATE ai_setting SET first_gift = true');
 
 // ---- 가짜 Anthropic 과 페어리 서버 (구글 값 비움) ----
 const fake = await startFakeAnthropic();

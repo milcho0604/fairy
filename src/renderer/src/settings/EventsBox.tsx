@@ -1,0 +1,161 @@
+// 이벤트와 쿠폰 (이슈 #101, 기획서 9절): 설정 > 데이터. 목록은 홈페이지 정적 파일 events.json 이라 서버 없이도 보인다.
+// 선물 받기와 쿠폰 쓰기는 서버 모드(만 14세 이상, 서버 주소 있음)에서만 단추가 보인다.
+import { useEffect, useState } from 'react';
+import type { EventList, EventsBridge } from '../../../shared/events-ipc.ts';
+import { getLang, locale, t } from '../../../shared/i18n/index.ts';
+import { serverView } from '../../../shared/server-account.ts';
+import { eventPhase, normalizeCoupon, type SiteEvent } from '../../../shared/site-events.ts';
+import { useServerStatus } from './ServerAccountBox.tsx';
+import { Section } from './ui.tsx';
+
+declare global {
+  interface Window {
+    jjakkungEvents?: EventsBridge;
+  }
+}
+
+const when = (ms: number) =>
+  new Date(ms).toLocaleString(locale(), {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+
+function what(e: SiteEvent): string {
+  if (e.kind === 'gift') return t('events.gift', { n: e.coins ?? 0 });
+  const names = (e.boost?.reasons ?? []).map((r) => t(`events.reason.${r}`)).join(t('events.and'));
+  return t('events.boost', { what: names, n: e.boost?.times ?? 1 });
+}
+
+const claimError = (e: string) =>
+  ['already_claimed', 'not_started', 'ended', 'no_event', 'offline', 'rate_limited'].includes(e)
+    ? t(`events.err.${e as 'already_claimed'}`)
+    : t('events.err.other');
+const couponError = (e: string) =>
+  ['code', 'no_coupon', 'already_used', 'sold_out', 'not_started', 'ended'].includes(e)
+    ? t(`coupon.err.${e as 'code'}`)
+    : e === 'offline' || e === 'rate_limited'
+      ? t(`events.err.${e}`)
+      : t('events.err.other');
+
+export function EventsBox({ flash }: { flash: (message: string, error?: boolean) => void }) {
+  const [list, setList] = useState<EventList>();
+  const [s] = useServerStatus();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [code, setCode] = useState('');
+  useEffect(() => {
+    const b = window.jjakkungEvents;
+    if (!b) return;
+    let live = true;
+    void b.list().then((l) => live && l && setList(l));
+    const off = b.onChanged((l) => live && setList(l));
+    return () => {
+      live = false;
+      off();
+    };
+  }, []);
+  const server = window.jjakkungServer;
+  const serverMode = serverView(s) === 'server' && !!server;
+  if (!list) return null;
+  const lang = getLang();
+  const now = Date.now();
+
+  const claim = async (id: string) => {
+    if (!server) return;
+    setBusy(id);
+    try {
+      const r = await server.claim(id);
+      if (r.ok) flash(t('events.claimOk', { n: r.coins }));
+      else flash(claimError(r.error), r.error !== 'already_claimed');
+    } finally {
+      setBusy(null);
+    }
+  };
+  const applyCoupon = async () => {
+    if (!server) return;
+    const norm = normalizeCoupon(code);
+    if (!norm) return flash(t('coupon.err.code'), true);
+    setBusy('coupon');
+    try {
+      const r = await server.coupon(norm);
+      if (r.ok) {
+        setCode('');
+        flash(t('coupon.ok', { coins: r.coins, passes: r.tickets }));
+      } else flash(couponError(r.error), true);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <Section title={t('events.title')}>
+      <div className="events-box">
+        {list.events.length === 0 ? (
+          <small>{t('events.empty')}</small>
+        ) : (
+          <ul className="event-list">
+            {list.events.map((e) => {
+              const phase = eventPhase(e, now);
+              const got = list.claimed.includes(e.id);
+              return (
+                <li key={e.id} className={`event-item ${phase}`}>
+                  <div className="event-head">
+                    <strong dir="auto">{e.title[lang]}</strong>
+                    <small className="event-what">{what(e)}</small>
+                  </div>
+                  <small dir="auto">{e.body[lang]}</small>
+                  <small className="event-when">
+                    {phase === 'soon'
+                      ? t('events.soon', { when: when(e.from) })
+                      : phase === 'live'
+                        ? t('events.live', { when: when(e.until) })
+                        : t('events.ended')}
+                  </small>
+                  {e.kind === 'boost' && phase !== 'ended' && <small>{t('events.boostNote')}</small>}
+                  {serverMode && e.kind === 'gift' && phase === 'live' && (
+                    <div className="action-row">
+                      <button
+                        type="button"
+                        className="ghost small"
+                        disabled={got || busy !== null}
+                        onClick={() => void claim(e.id)}
+                      >
+                        {got ? t('events.claimed') : t('events.claim')}
+                      </button>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {serverMode ? (
+          <div className="action-row coupon-row">
+            <input
+              className="plain-input coupon-input"
+              aria-label={t('coupon.label')}
+              placeholder={t('coupon.placeholder')}
+              maxLength={20}
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing) void applyCoupon();
+              }}
+            />
+            <button
+              type="button"
+              className="ghost"
+              disabled={busy !== null}
+              onClick={() => void applyCoupon()}
+            >
+              {t('coupon.use')}
+            </button>
+          </div>
+        ) : (
+          s?.enabled && <small>{t('events.serverOnly')}</small>
+        )}
+      </div>
+    </Section>
+  );
+}

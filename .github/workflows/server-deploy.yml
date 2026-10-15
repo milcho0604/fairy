@@ -7,7 +7,7 @@ name: server-deploy
 on:
   push:
     branches: [main]
-    paths: ['server/**', 'src/shared/coin-rules.ts', '.github/workflows/server-deploy.yml']
+    paths: ['server/**', 'src/shared/coin-rules.ts', 'src/shared/site-events.ts', 'src/shared/account-profile.ts', '.github/workflows/server-deploy.yml']
   workflow_dispatch:
 
 permissions:

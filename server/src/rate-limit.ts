@@ -26,6 +26,20 @@ export const LIMITS = {
   aiByAccount: { max: 10, windowMs: 60_000 },
   /** 토큰이 틀린 요청: 같은 곳에서 1분 30번 */
   badTokenByIp: { max: 30, windowMs: 60_000 },
+  /** 선물 받기: 계정마다 1분 20번 */
+  claimByAccount: { max: 20, windowMs: 60_000 },
+  /** 쿠폰 쓰기 시도: 계정마다 10분 10번, 같은 곳에서 한 시간 30번 (코드 추측을 막는다) */
+  couponByAccount: { max: 10, windowMs: 600_000 },
+  couponByIp: { max: 30, windowMs: 3_600_000 },
+  /** 없는 쿠폰 코드: 계정마다 한 시간 5번까지 틀릴 수 있다. 넘으면 그 시간 동안 쿠폰을 받지 않는다 */
+  couponMissByAccount: { max: 5, windowMs: 3_600_000 },
+  /** 운영자 로그인 실패: 같은 곳에서 15분 5번, 서버 전체 15분 20번 (넘으면 맞는 토큰도 받지 않는다) */
+  adminFailByIp: { max: 5, windowMs: 900_000 },
+  adminFailAll: { max: 20, windowMs: 900_000 },
+  /** 운영자 화면 요청: 세션마다 1분 120번 */
+  adminBySession: { max: 120, windowMs: 60_000 },
+  /** 공개 정적 파일 내보내기 (Actions 가 10분마다 읽는다): 같은 곳에서 1분 30번 */
+  feedByIp: { max: 30, windowMs: 60_000 },
 } as const satisfies Record<string, Limit>;
 
 type Window = { start: number; n: number; windowMs: number };
@@ -50,6 +64,12 @@ export class RateLimiter implements OnModuleDestroy {
     }
     w.n += 1;
     return w.n <= limit.max;
+  }
+
+  /** 세지 않고 본다: 창 안에서 이미 max 번을 썼으면 true */
+  over(key: string, limit: Limit): boolean {
+    const w = this.#windows.get(key);
+    return !!w && this.now() - w.start < w.windowMs && w.n >= limit.max;
   }
 
   /** take 가 false 면 429 */

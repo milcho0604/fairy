@@ -1342,6 +1342,86 @@ textarea.rules {
   align-items: center;
 }
 
+/* ---- 이벤트와 쿠폰, 닉네임과 기기 코드, 운영자 칸 (EventsBox.tsx, ServerProfile.tsx, AdminBox.tsx, 이슈 #101) ---- */
+.events-box,
+.server-profile,
+.admin-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.event-list,
+.admin-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.event-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.event-item.ended {
+  opacity: 0.6;
+}
+
+.event-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.event-what,
+.event-when {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.plain-input {
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  min-width: 0;
+}
+
+.coupon-input {
+  flex: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.server-code {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-group {
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.admin-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-wrap {
+  flex-wrap: wrap;
+}
+
 /* ---- 서버 계정과 코인 (설정 > 데이터, ServerAccountBox.tsx, 이슈 #99) ---- */
 .server-box {
   display: flex;

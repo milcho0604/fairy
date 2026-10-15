@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { googleEnabled, readConfig } from './config';
+import { adminEnabled, DEFAULT_RELEASES_API, googleEnabled, readConfig, readSubs } from './config';
 
 test('DATABASE_URL 이 없으면 뜨지 않는다', () => {
   assert.throws(() => readConfig({}), /DATABASE_URL/);
@@ -41,7 +41,7 @@ test('AI 대화권: 기본은 공식 주소와 Haiku, 월 80달러, 하루 20번
   assert.deepEqual(readConfig({ DATABASE_URL: 'postgres://x' }).ai, {
     apiKey: '',
     baseUrl: 'https://api.anthropic.com',
-    model: 'claude-haiku-4-5',
+    model: 'claude-haiku-5-5',
     monthlyBudgetMicros: 80_000_000,
     dailyLimit: 20,
     giftKey: '',
@@ -70,4 +70,26 @@ test('AI 대화권: 기본은 공식 주소와 Haiku, 월 80달러, 하루 20번
   assert.throws(() => readConfig({ ...env, ANTHROPIC_MODEL: 'bad model' }), /ANTHROPIC_MODEL/);
   assert.throws(() => readConfig({ ...env, AI_DAILY_LIMIT: '1.5' }), /AI_DAILY_LIMIT/);
   assert.throws(() => readConfig({ ...env, AI_MONTHLY_BUDGET_USD: '-1' }), /AI_MONTHLY_BUDGET_USD/);
+});
+
+test('운영자 화면은 ADMIN_TOKEN 이 32자 이상일 때만, 최신 릴리스 주소는 https 만', () => {
+  const base = { DATABASE_URL: 'postgres://x' };
+  assert.equal(adminEnabled(readConfig(base)), false);
+  assert.equal(adminEnabled(readConfig({ ...base, ADMIN_TOKEN: 'short' })), false);
+  assert.equal(adminEnabled(readConfig({ ...base, ADMIN_TOKEN: 'a'.repeat(32) })), true);
+  assert.equal(readConfig(base).releasesApi, DEFAULT_RELEASES_API);
+  assert.equal(
+    readConfig({ ...base, RELEASES_API: 'http://127.0.0.1:9/latest' }).releasesApi,
+    'http://127.0.0.1:9/latest',
+  );
+  assert.throws(() => readConfig({ ...base, RELEASES_API: 'http://a.example/latest' }), /https/);
+});
+
+test('ADMIN_GOOGLE_SUBS: 쉼표로 여럿, 빈 값과 이상한 값은 버린다', () => {
+  assert.deepEqual(readSubs(undefined), []);
+  assert.deepEqual(readSubs(' 123 , ,456,123,bad sub,'), ['123', '456']);
+  assert.deepEqual(readConfig({ DATABASE_URL: 'postgres://x', ADMIN_GOOGLE_SUBS: '1,2' }).adminSubs, [
+    '1',
+    '2',
+  ]);
 });

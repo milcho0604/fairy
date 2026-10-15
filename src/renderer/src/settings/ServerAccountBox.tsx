@@ -10,6 +10,7 @@ import {
   type ServerStatus,
   serverView,
 } from '../../../shared/server-account.ts';
+import { NicknameStep, ProfileRows } from './ServerProfile.tsx';
 import { Section } from './ui.tsx';
 
 declare global {
@@ -57,6 +58,8 @@ export function ServerAccountBox({ flash }: { flash: (message: string, error?: b
   const [busy, setBusy] = useState(false);
   const [changingAge, setChangingAge] = useState(false);
   const [sureRemove, setSureRemove] = useState(false);
+  /** 나이 답을 고르고 닉네임을 기다리는 중 (서버 모드를 처음 켤 때, #101) */
+  const [nickFor, setNickFor] = useState<AgeAnswer | null>(null);
   const mergeRef = useRef<HTMLButtonElement>(null);
   const view = serverView(s);
   // 합치기 확인이 뜨면 "합치지 않기"에 초점 (Enter 를 잘못 눌러도 합치지 않게)
@@ -79,6 +82,8 @@ export function ServerAccountBox({ flash }: { flash: (message: string, error?: b
   };
   const pickAge = (age: AgeAnswer) => {
     setChangingAge(false);
+    // 만 14세 이상으로 서버 모드를 처음 켤 때는 닉네임부터 (만 14세 미만은 서버로 보내지 않는다)
+    if (age !== 'under14' && !s.nickname && (view === 'askAge' || view === 'appMode')) return setNickFor(age);
     void run(() => b.setAge(age));
   };
   const remove = async () => {
@@ -117,6 +122,21 @@ export function ServerAccountBox({ flash }: { flash: (message: string, error?: b
       )}
     </div>
   );
+
+  if (nickFor)
+    return (
+      <Section title={t('server.title')}>
+        <NicknameStep
+          busy={busy}
+          onBack={() => setNickFor(null)}
+          onStart={(nickname) => {
+            const age = nickFor;
+            setNickFor(null);
+            void run(() => b.setAge(age, nickname));
+          }}
+        />
+      </Section>
+    );
 
   if (view === 'askAge')
     return (
@@ -219,6 +239,7 @@ export function ServerAccountBox({ flash }: { flash: (message: string, error?: b
           </button>
         </div>
         <small>{t('server.what')}</small>
+        <ProfileRows s={s} b={b} setS={setS} flash={flash} />
         {s.merge ? (
           <div className="notice server-merge" role="alertdialog" aria-labelledby="server-merge-ask">
             <small id="server-merge-ask" className="server-ask">

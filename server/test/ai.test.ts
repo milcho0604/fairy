@@ -14,7 +14,7 @@ import { after, before, describe, test } from 'node:test';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Pool } from 'pg';
 import { Ai } from '../src/ai';
-import { AI_GIFT, systemPrompt } from '../src/ai-rules';
+import { AI_GIFT, reserveMicros, systemPrompt } from '../src/ai-rules';
 import { createApp } from '../src/app';
 import type { AiConfig, Config } from '../src/config';
 import type { GoogleApi } from '../src/google';
@@ -34,7 +34,10 @@ let fake: {
   url: string;
   calls: {
     apiKey: unknown;
-    body: { model?: string; max_tokens?: number; system?: string; messages?: unknown[] };
+    body: { model?: string; max_tokens?: number; system?: string; messages?: unknown[] } & Record<
+      string,
+      unknown
+    >;
   }[];
   close: () => Promise<void>;
 };
@@ -170,6 +173,10 @@ before(async () => {
   stopPg = pg.stop;
   await runMigrations(pg.databaseUrl);
   pool = new Pool({ connectionString: pg.databaseUrl, max: 2 });
+  // 운영자 스위치 (#101): 기본은 allowlist 라 이 시험은 모두에게 연다 (모드 시험은 admin-ai.test.ts)
+  await pool.query(`UPDATE feature_flag SET mode = 'everyone' WHERE key = 'ai_chat'`);
+  // 첫 로그인 선물은 기본 꺼짐 (#101 정책). 이 시험은 #100 의 선물 흐름을 보므로 켠다
+  await pool.query('UPDATE ai_setting SET first_gift = true');
   // @ts-expect-error: .mjs 스크립트를 그대로 가져온다
   const { startFakeAnthropic } = (await import('../../scripts/fake-anthropic.mjs')) as {
     startFakeAnthropic: () => Promise<typeof fake>;
@@ -178,7 +185,7 @@ before(async () => {
   ai = {
     apiKey: API_KEY,
     baseUrl: fake.url,
-    model: 'claude-haiku-4-5',
+    model: 'claude-haiku-5-5',
     monthlyBudgetMicros: 1_000_000,
     dailyLimit: 5,
     giftKey: GIFT_KEY,
@@ -254,7 +261,10 @@ describe('첫 로그인 선물', () => {
     );
     for (const r of all) {
       assert.equal(r.status, 200, r.text);
-      assert.deepEqual(r.body, { tickets: AI_GIFT, dailyLimit: 5, usedToday: 0 });
+      assert.deepEqual(
+        { ...r.body, subscription: undefined },
+        { tickets: AI_GIFT, dailyLimit: 5, usedToday: 0, subscription: undefined },
+      );
     }
     // 같은 기기에서 다시 로그인, 다른 기기 계정으로 같은 구글 계정 (묻지 않고 합친다)
     const again = await login(a.device, a.sub);
@@ -285,7 +295,10 @@ describe('첫 로그인 선물', () => {
     const again = await login(await newDevice('18+'), a.sub);
     assert.equal(again.status, 200, again.text);
     const st = await api('GET', '/v1/ai', { token: again.body.session });
-    assert.deepEqual(st.body, { tickets: 0, dailyLimit: 5, usedToday: 1 });
+    assert.deepEqual(
+      { ...st.body, subscription: undefined },
+      { tickets: 0, dailyLimit: 5, usedToday: 1, subscription: undefined },
+    );
     // 대화권을 받아도 그날 상한은 이어서 센다 (시험 5번: 하나 썼으니 4번 더)
     await setTickets(again.body.session, 10);
     for (let i = 0; i < 4; i++)
@@ -378,8 +391,12 @@ describe('질문 하나', () => {
     assert.equal(fake.calls.length, before + 1);
     const call = fake.calls.at(-1);
     assert.equal(call?.apiKey, API_KEY);
-    assert.equal(call?.body.model, 'claude-haiku-4-5');
+    assert.equal(call?.body.model, 'claude-haiku-5-5');
     assert.equal(call?.body.max_tokens, 600);
+    // Haiku 5.5 (#101): 생각을 끄고 effort low, 샘플링 값은 보내지 않는다
+    assert.deepEqual(call?.body.thinking, { type: 'disabled' });
+    assert.deepEqual(call?.body.output_config, { effort: 'low' });
+    for (const k of ['temperature', 'top_p', 'top_k']) assert.equal(call?.body[k], undefined, k);
     assert.match(String(call?.body.system), /사람이 아니라 AI/);
     // system 은 서버 고정 문구 그대로, 앱이 보낸 말투는 첫 사용자 차례 앞의 참고 자료 블록에만
     assert.equal(call?.body.system, systemPrompt('ko'));
@@ -388,8 +405,24 @@ describe('질문 하나', () => {
       'SELECT status, input_tokens, output_tokens, cost_micros FROM ai_usage WHERE account_id = $1',
       [await accountOf(a.session)],
     );
-    assert.deepEqual(u.rows, [{ status: 'ok', input_tokens: 120, output_tokens: 30, cost_micros: '270' }]);
+    assert.deepEqual(u.rows, [{ status: 'ok', input_tokens: 120, output_tokens: 30, cost_micros: '27' }]);
     assert.deepEqual((await api('GET', '/v1/ai', { token: a.session })).body.usedToday, 1);
+  });
+
+  test('거절(refusal): 받은 글이 있어도 이용권을 되돌리고 error refusal', async () => {
+    const a = await adult();
+    const r = await api('POST', '/v1/ai/chat', { token: a.session, body: ask('[[refusal]] 위험한 것') });
+    assert.equal(r.status, 200, r.text);
+    const ev = events(r.text);
+    assert.deepEqual(ev.at(-1), {
+      event: 'error',
+      data: { error: 'refusal', tickets: AI_GIFT, refunded: true },
+    });
+    assert.equal(await tickets(a.session), AI_GIFT);
+    const u = await pool.query('SELECT status FROM ai_usage WHERE account_id = $1', [
+      await accountOf(a.session),
+    ]);
+    assert.deepEqual(u.rows, [{ status: 'refunded' }]);
   });
 
   test('말투(persona) 주입 시도: system 은 고정 문구 그대로, 말투는 600자 참고 자료 블록으로 감싸 첫 차례 앞에', async () => {
@@ -552,8 +585,13 @@ describe('상한', () => {
     const used = await pool.query<{ total: string }>(
       "SELECT COALESCE(sum(cost_micros), 0) AS total FROM ai_usage WHERE created_at >= date_trunc('month', now(), 'UTC')",
     );
-    // 질문 하나의 잡는 값은 대략 3,000 남짓. 두 개쯤만 들어갈 자리를 남긴다
-    const room = 7000;
+    // 질문 하나가 잡는 값의 두 개 반쯤 자리를 남긴다 (Haiku 5.5 는 하나에 몇백)
+    const one = reserveMicros(ai.model, {
+      messages: [{ role: 'user', content: '[[slow]] 동시에' }],
+      lang: 'ko',
+      persona: '',
+    });
+    const room = Math.floor(one * 2.5);
     const fill = await pool.query<{ id: string }>(
       `INSERT INTO ai_usage (account_id, day, model, status, cost_micros) VALUES (NULL, CURRENT_DATE, 'x', 'ok', $1)
        RETURNING id`,

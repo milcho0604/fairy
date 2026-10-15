@@ -19,6 +19,8 @@ export interface NoteView {
   lines: string[];
   read: boolean;
   coins?: number;
+  /** 서버 쪽지함의 쪽지 (#101, 운영자가 보냄). 없으면 이 컴퓨터의 매일 쪽지. day 자리에 'inbox:<번호>' */
+  source?: 'server';
 }
 
 export interface NoteBox {
