@@ -136,6 +136,52 @@ gallery/
 
 개발 중에는 `JJ_GALLERY_URL=http://127.0.0.1:<포트>/` 로 내 컴퓨터에서 내려 주는 갤러리를 볼 수 있어요. 이 값은 패키지 안 된 앱(개발 실행)에서만, 그리고 `127.0.0.1`, `localhost` 의 `http` 주소만 받아요.
 
+## 5. Codex 펫 파일 (.codex-pet.zip) 가져오기
+
+Codex 앱의 펫 묶음(`pet.json` 과 그림 한 장)을 페어리로 데려와요 (이슈 #88). 형식은 openai/skills 의 `hatch-pet` 설명(SKILL.md, references/animation-rows.md, codex-pet-contract.md)을 읽고 따랐어요. 코드는 가져오지 않았어요.
+
+- 받는 곳: 설정 → 데이터 → **페어리 가져오기**, 친구 페어리 칸의 가져오기(고르기 창에서 zip), 설정 창에 **끌어 놓기**, `.codex-pet.zip` 을 **두 번 눌러 열기**(명령줄 인자, 맥 열기 사건). 맥은 zip 을 "다음으로 열기" 목록에만 올리고(기본 앱은 그대로), 윈도우와 리눅스는 zip 을 연결하지 않아요 (zip 기본 앱을 빼앗아서). 구현: `src/main/codex-pet.ts`, `src/main/unzip.ts`, `src/main/codex-atlas.ts`, `src/shared/codex-pet.ts`
+- 원본 설명은 폴더(`~/.codex/pets/<이름>/pet.json`, `spritesheet.webp`)만 정해요. zip 은 그 폴더를 묶은 것으로 보고, `pet.json` 은 맨 위나 폴더 하나 안에 딱 하나여야 해요. 맥이 넣는 `__MACOSX/`, `._이름`, `.DS_Store` 는 지나쳐요.
+- `pet.json`: 이름은 `displayName`(없으면 `id`, 12자에서 자름), 그림은 `spritesheetPath`(같은 폴더의 `.webp` 나 `.png` 이름만, 없으면 `spritesheet.webp`), 설명 `description` 은 글자만(제어 문자와 방향 바꾸기 문자를 빼고 200자에서 자름) 바꿀지 묻는 창에만 보이고 저장하지 않아요.
+- 그림: PNG 나 WebP, 꼭 1536x1872 (한 칸 192x208, 가로 8칸 세로 9줄). 머리말 크기가 다르면 풀지 않아요. Electron `nativeImage` 가 WebP 를 풀지 못해서, 보이지 않는 창(샌드박스, Node 없음, 빈 페이지)의 Chromium 으로 풀고 칸을 잘라요. 새 의존성은 없어요.
+- 빈 칸: 칸 안 알파가 모두 8 아래면 빈 칸으로 보고 버려요. 줄마다 쓰는 장 수 밖의 칸은 보지 않아요.
+- 자른 칸은 PNG 로 다시 만들어 `images.sprites` 와 같은 검사를 거쳐요 (PNG, 한 장 512KB, 모두 `idle` 과 같은 크기, 합 4MB). 본 그림(`main`)은 `idle` 이에요.
+- 늘 **개인 용도**(`personalOnly`)로 데려와요: 남이 만든 그림일 수 있어서요. 다시 `.fairy` 로 내보내도 이름표에 남고 갤러리는 받지 않아요. 설계도가 없는 펫이라 표시는 그림 파일 이름으로 기억해요 (`petPersonal`, `isPersonalPet`).
+
+### 상한
+
+| 무엇 | 상한 | 넘으면 |
+| --- | --- | --- |
+| zip 파일 | 16MB | "너무 커" |
+| 항목 수 | 64 | "너무 커" |
+| 한 항목 풀었을 때 | 16MB (목록에 적힌 크기 + 1 바이트에서 풀기를 끊는다) | "너무 커" |
+| 모든 항목 풀었을 때 합 | 32MB | "너무 커" |
+| 경로 | `..`, `.`, 절대 경로, 드라이브, 역슬래시, 널이 하나라도 있으면 | 통째로 "이상한 경로" |
+| 형식 | 저장, deflate 만. 암호, ZIP64 는 받지 않고 CRC 와 크기를 맞춰 본다 | "zip 으로 읽을 수 없어" |
+| pet.json | 64KB, 깨졌거나 둘이거나 이름이 없으면 | "pet.json 이 없거나 깨졌어" |
+| 그림 | 1536x1872 PNG, WebP 가 아니면 | "Codex 펫 그림이 아니야" |
+| 서기 | `idle` 줄에 그림이 하나도 없으면 | "서 있는 그림이 비어 있어" |
+
+### 줄을 자세로 나누기
+
+Codex 줄 순서와 줄마다 쓰는 장 수는 원본 그대로예요. "가운데 장" 은 그 줄에서 그림이 있는 장들 가운데(`floor(n/2)`).
+
+| 줄 | Codex 상태 | 쓰는 장 | 페어리 자세 |
+| --- | --- | --- | --- |
+| 0 | idle | 6 | `idle` = 첫 장, `blink` = 셋째 장 (짧게 지나가는 장, 장이 적으면 마지막) |
+| 1 | running-right | 8 | `walk-0` ~ `walk-5` = 여섯 장을 고르게 (8장이면 0, 1, 2, 4, 5, 6번째). 적으면 있는 만큼, 앱이 한 주기로 돈다 |
+| 2 | running-left | 8 | 쓰지 않음 (왼쪽 걷기는 오른쪽을 뒤집는다) |
+| 3 | waving | 4 | `wave` = 가운데 장 (손을 든 장) |
+| 4 | jumping | 5 | `happy` = 가운데 장 (꼭대기) |
+| 5 | failed | 8 | `sulky` = 가운데 장 |
+| 6 | waiting | 6 | `hungry` = 가운데 장 (조르는 모습이 가장 가깝다) |
+| 7 | running | 6 | 쓰지 않음 (일하는 중 상태라 맞는 자세가 없다) |
+| 8 | review | 6 | `talk-0` = 첫 장, `talk-1` = 가운데 장 |
+
+나머지(`sit`, `sleep`, `doze`, `yawn`, `grab`, `back`, `look-l`, `look-r`)는 Codex 에 없어서 그리는 쪽이 가까운 그림으로 채워요 (위 sprites 설명, 끝은 `idle`).
+
+시험용 파일은 `node scripts/dev/codex-pet-fixture.mjs <나갈.codex-pet.zip> [--webp] [--rows 0,3]` 로 도형만 그려 만들어요 (남의 펫을 쓰지 않는다).
+
 ## English summary
 
 - A `.fairy` file (formerly `.jjpet`, same contents; both are read) is a single UTF-8 JSON document (not a zip), at most 56 MiB (16 MiB in the gallery; apps up to 0.4.2 read up to 48 MiB). Version 2 is what the app writes; version 1 files are still read.
@@ -149,3 +195,4 @@ gallery/
 - The gallery is the `gallery/` folder of this repository and holds **official fairies only**, curated by the repository owner (currently Milk and Choco). There is no community submission flow. The owner adds `gallery/pets/<id>.jjpet`, runs `node scripts/gallery-index.mjs` to regenerate `index.json` and `thumbs/`, and `node scripts/gallery-validate.mjs` to check format, sizes and sha256.
 - People share fairies peer to peer by sending `.fairy` files: Settings → Fairy → Fairy gallery → **Export as a fairy file (send to a friend)** writes a version 2 file with an optional author name and a license; the friend imports it with the normal `.fairy` import.
 - The app fetches only from `https://raw.githubusercontent.com/milcho0604/fairy-releases/main/gallery/` with size caps, timeouts, no redirects, and sha256 verification, then imports through the same validator as a local `.fairy` file.
+- Codex pet files (`.codex-pet.zip`: `pet.json` + a 1536x1872 PNG or WebP sheet of 8x9 cells of 192x208, per openai/skills `hatch-pet`) are imported too: unzipped in memory with entry, size and path limits, decoded in a hidden sandboxed window, empty cells dropped, rows mapped to the `images.sprites` poses (table in section 5), always marked `personalOnly`.

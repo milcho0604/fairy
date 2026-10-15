@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { formatBytes } from '../../../../shared/bytes.ts';
-import { t } from '../../../../shared/i18n/index.ts';
-import type { SettingsSnapshot } from '../../../../shared/ipc.ts';
+import { locale, t } from '../../../../shared/i18n/index.ts';
+import type { RestoreOffer, RestoreState, SettingsSnapshot } from '../../../../shared/ipc.ts';
 import { isPersonalPet } from '../../../../shared/settings.ts';
 import { CoinReset } from '../CoinReset.tsx';
 import { ExportBox, ExportedRow } from '../ExportBox.tsx';
@@ -27,7 +27,7 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
               // 실패하면(쓰기 권한, 디스크 등) 아무 표시 없이 끝나지 않게 상태줄에 알린다
               const r = await bridge.exportData().catch(() => undefined);
               show(exportFlash(r));
-              if (r) setExported(r);
+              if (r?.path) setExported(r.path);
             }}
           >
             {t('settings.export')}
@@ -36,12 +36,24 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
             type="button"
             className="ghost"
             onClick={async () => {
-              show(importFlash(await bridge.importData().catch(() => undefined)));
+              // 가져올 수 있으면 아래 확인 칸이 뜬다 (메인이 보내는 복원 상태). 못 하면 까닭만
+              show(importFlash(await bridge.importData('file').catch(() => undefined)));
             }}
           >
             {t('settings.import')}
           </button>
+          <button
+            type="button"
+            className="ghost small"
+            title={t('settings.importFolderHint')}
+            onClick={async () => {
+              show(importFlash(await bridge.importData('folder').catch(() => undefined)));
+            }}
+          >
+            {t('settings.importFolder')}
+          </button>
         </div>
+        <Restore flash={flash} />
         <small>{t('settings.petOnlyHint')}</small>
         <div className="action-row">
           <button
@@ -109,6 +121,111 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
         />
       </Section>
     </>
+  );
+}
+
+const dateText = (at: number) =>
+  new Date(at).toLocaleString(locale(), { dateStyle: 'medium', timeStyle: 'short' });
+
+/** 확인 칸 맨 위 줄 아래: 언제 만든(보관한) 것인지 */
+function madeLine(o: RestoreOffer): string {
+  if (!o.at) return o.name;
+  const date = dateText(o.at);
+  if (o.kind === 'undo') return t('settings.restore.keptAt', { date });
+  return o.app ? t('settings.restore.madeApp', { date, app: o.app }) : t('settings.restore.made', { date });
+}
+
+/**
+ * 백업 복원 확인 칸과 되돌리기 (이슈 #90). 바꿀지는 OS 창 없이 이 칸에서 묻는다 (코인 초기화와 같은 꼴).
+ * 백업 파일을 두 번 눌러 열거나 가져오기로 고르면 메인이 검사한 뒤 상태를 보내 이 칸이 뜬다
+ */
+function Restore({ flash }: { flash: (message: string, error?: boolean) => void }) {
+  const [state, setState] = useState<RestoreState>({});
+  const [busy, setBusy] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    bridge
+      .restoreState()
+      .then(setState)
+      .catch(() => undefined);
+    return bridge.onRestoreChanged(setState);
+  }, []);
+  const offer = state.offer;
+  // 확인 칸이 뜨면 보이게 내리고 "그만두기"에 초점 (Enter 를 잘못 눌러도 바꾸지 않게)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 새 확인 칸(id)이 뜰 때만
+  useEffect(() => {
+    if (!offer) return;
+    boxRef.current?.scrollIntoView({ block: 'nearest' });
+    cancelRef.current?.focus();
+  }, [offer?.id]);
+
+  const sure = async () => {
+    if (!offer || busy) return;
+    setBusy(true);
+    try {
+      const r = await bridge.restoreConfirm(offer.id);
+      if (r.message) flash(r.message, !r.ok);
+    } catch {
+      flash(t('settings.importFailed'), true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const cancel = () => {
+    if (offer && !busy) bridge.restoreCancel(offer.id);
+  };
+
+  if (!offer)
+    return state.undoAt ? (
+      <div className="action-row restore-undo">
+        <small>{t('settings.restore.undoHint', { date: dateText(state.undoAt) })}</small>
+        <button
+          type="button"
+          className="ghost small"
+          onClick={async () => {
+            const r = await bridge.restoreUndo().catch(() => undefined);
+            if (!r) flash(t('settings.importFailed'), true);
+            else if (!r.ok && r.message) flash(r.message, true);
+          }}
+        >
+          {t('settings.restore.undo')}
+        </button>
+      </div>
+    ) : null;
+  return (
+    <div
+      ref={boxRef}
+      className="notice restore-ask"
+      role="alertdialog"
+      aria-labelledby="restore-ask-text"
+      aria-describedby="restore-ask-what"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') cancel();
+      }}
+    >
+      <small id="restore-ask-text" className="restore-title">
+        {t(offer.kind === 'undo' ? 'settings.restore.askUndo' : 'settings.restore.ask')}
+      </small>
+      <small className="restore-from" title={offer.name}>
+        {madeLine(offer)}
+      </small>
+      {offer.kind !== 'undo' && offer.at > 0 && <small className="restore-name">{offer.name}</small>}
+      <small id="restore-ask-what">
+        {t(offer.kind === 'undo' ? 'settings.restore.whatUndo' : 'settings.restore.what')}
+      </small>
+      {offer.customAi > 0 && <small>{t('settings.restore.customAi', { n: offer.customAi })}</small>}
+      <small>{t('settings.restore.keep')}</small>
+      <small className="restore-note">{t('settings.restore.restart')}</small>
+      <div className="action-row">
+        <button type="button" className="ghost danger" disabled={busy} onClick={() => void sure()}>
+          {t('settings.restore.sure')}
+        </button>
+        <button type="button" className="ghost" ref={cancelRef} disabled={busy} onClick={cancel}>
+          {t('settings.restore.cancel')}
+        </button>
+      </div>
+    </div>
   );
 }
 

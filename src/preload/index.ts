@@ -36,6 +36,7 @@ import {
   type PetImages,
   type PetStatus,
   type ReactKind,
+  type RestoreState,
   SETTINGS,
   type SettingsBridge,
   type SettingsSection,
@@ -231,11 +232,23 @@ if (kind === 'settings') {
     checkUpdate: () => ipcRenderer.invoke(SETTINGS.checkUpdate),
     openOnboarding: () => ipcRenderer.send(SETTINGS.openOnboarding),
     exportData: () => ipcRenderer.invoke(SETTINGS.exportData),
-    importData: () => ipcRenderer.invoke(SETTINGS.importData),
+    importData: (kind) => ipcRenderer.invoke(SETTINGS.importData, kind),
+    restoreState: () => ipcRenderer.invoke(SETTINGS.restoreState),
+    restoreUndo: () => ipcRenderer.invoke(SETTINGS.restoreUndo),
+    restoreConfirm: (id) => ipcRenderer.invoke(SETTINGS.restoreConfirm, id),
+    restoreCancel: (id) => ipcRenderer.send(SETTINGS.restoreCancel, id),
+    onRestoreChanged: (listener) => {
+      const on = (_e: unknown, state: RestoreState) => listener(state);
+      ipcRenderer.on(SETTINGS.restoreChanged, on);
+      return () => {
+        ipcRenderer.removeListener(SETTINGS.restoreChanged, on);
+      };
+    },
     exportPet: () => ipcRenderer.invoke(SETTINGS.exportPet),
     reveal: (path: string) => ipcRenderer.send(SETTINGS.reveal, path),
     importPet: () => ipcRenderer.invoke(SETTINGS.importPet),
     importFriend: () => ipcRenderer.invoke(SETTINGS.importFriend),
+    importPetDrop: (name, bytes) => ipcRenderer.invoke(SETTINGS.importPetDrop, name, bytes),
     galleryList: () => ipcRenderer.invoke(SETTINGS.galleryList),
     galleryAdopt: (id, asFriend) => ipcRenderer.invoke(SETTINGS.galleryAdopt, id, asFriend),
     galleryShare: (meta) => ipcRenderer.invoke(SETTINGS.galleryShare, meta),

@@ -81,6 +81,10 @@ export interface SharedPet {
    * 있으면 2D 에서 기본 페어리처럼 자세마다 그림을 바꿔 그린다. 옛 앱은 이 칸을 모르고 본 그림과 포즈로 보인다
    */
   sprites?: PetSprites;
+  /**
+   * 가져오기 확인 창에 보이는 한 줄 설명 (Codex 펫 파일의 description, codex-pet.ts). 저장하지 않고 .fairy 로 내보내지도 않는다
+   */
+  description?: string;
 }
 
 /** 판 2 이름표에서 이름, 종류 말고 나머지 */
