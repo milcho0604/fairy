@@ -180,6 +180,8 @@ if (kind === 'chat') {
     toNote: (id: string) => ipcRenderer.invoke(CHAT.toNote, id),
     toTodos: (id: string) => ipcRenderer.invoke(CHAT.toTodos, id),
     retryWith: (provider) => ipcRenderer.send(CHAT.retryWith, provider),
+    agreeTicket: () => ipcRenderer.send(CHAT.agreeTicket),
+    reportTicket: (id) => ipcRenderer.invoke(CHAT.reportTicket, id),
     planAction: (kind, todoId) => ipcRenderer.send(CHAT.planAction, kind, todoId),
     downloadModel: () => ipcRenderer.send(CHAT.downloadModel),
     threads: (query) => ipcRenderer.invoke(CHAT.threads, query ?? ''),

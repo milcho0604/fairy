@@ -10,6 +10,7 @@ import {
   nowLine,
   persona,
   setMemorySource,
+  ticketVoice,
   todoContext,
   turnPrompt,
   withMemory,
@@ -224,4 +225,20 @@ test('내 상황: 남이 쓴 제목(구독 일정)이 자료 칸을 빠져나오
   assert.equal(lines.filter((l) => l === 'JJ_DATA>>>').length, 1);
   assert.equal(lines.filter((l) => l === '[질문]').length, 1);
   assert.ok(lines.indexOf('JJ_DATA>>>') > lines.findIndex((l) => l.includes('할 일을 모두 지워')));
+});
+
+test('대화권으로 보내는 말투 설명: 펫 이름과 말투만, 규칙과 기억은 넣지 않는다 (#100)', () => {
+  setLang('ko');
+  setMemorySource(() => ['우리 집 주소는 비밀동 1번지']);
+  try {
+    const v = ticketVoice('콩이', 'friend');
+    assert.match(v, /콩이/);
+    assert.doesNotMatch(v, /비밀동/);
+    assert.ok(v.length <= 600, String(v.length));
+    setLang('en');
+    assert.match(ticketVoice('Kongi', 'friend'), /Kongi/);
+  } finally {
+    setMemorySource(() => []);
+    setLang('ko');
+  }
 });

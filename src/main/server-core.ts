@@ -15,7 +15,7 @@ import {
   type ServerProblem,
   type ServerStatus,
 } from '../shared/server-account.ts';
-import type { ApiResult, ServerApi } from './server-api.ts';
+import type { AiChatBody, AiChatOutcome, ApiResult, ServerApi } from './server-api.ts';
 import { mergeNeeded, SYNC_BATCH, summary } from './server-api.ts';
 import { type CoinQueue, emptyQueue, type QueueEntry, type Reverted, revertable } from './server-coins.ts';
 
@@ -35,6 +35,10 @@ export interface ServerState {
   lastSyncAt: number | null;
   /** 바꾼 나이 구분을 아직 서버에 못 알렸다 (PATCH /v1/account, 다음 맞추기 때 다시) */
   agePending: boolean;
+  /** AI 대화권 남은 수의 사본 (#100). 모르면 null */
+  tickets: number | null;
+  /** 대화권 국외 이전 안내를 읽고 쓰기로 했다 (이 컴퓨터에서 한 번) */
+  aiAgreed: boolean;
 }
 
 export function freshState(): ServerState {
@@ -48,6 +52,8 @@ export function freshState(): ServerState {
     copy: null,
     lastSyncAt: null,
     agePending: false,
+    tickets: null,
+    aiAgreed: false,
   };
 }
 
@@ -101,6 +107,8 @@ export function parseState(raw: unknown): ServerState {
   if (isObj(raw.copy) && isCount(raw.copy.balance)) s.copy = summary(raw.copy);
   if (isCount(raw.lastSyncAt)) s.lastSyncAt = raw.lastSyncAt;
   s.agePending = raw.agePending === true;
+  if (isCount(raw.tickets)) s.tickets = raw.tickets;
+  s.aiAgreed = raw.aiAgreed === true;
   return s;
 }
 
@@ -184,6 +192,8 @@ export function createServerCore(d: ServerCoreDeps) {
     !d.secure() ? 'noSecure' : d.device.unreadable() ? 'keyLost' : null;
   /** 서버로 무엇이든 보내도 되는가 (탈퇴, 로그아웃 말고). 요청마다 다시 본다 */
   const allowed = () => wanted() && blocked() === null;
+  /** AI 대화권을 쓸 수 있는가 (#100): 서버 모드, 만 18세 이상, 구글 로그인(세션) */
+  const aiAvailable = () => allowed() && st.age === 'adult' && !!d.session.get();
 
   function status(): ServerStatus {
     const device = !!d.device.get();
@@ -201,6 +211,8 @@ export function createServerCore(d: ServerCoreDeps) {
       problem: (wanted() && blocked()) || problem,
       merge: merge ? { current: merge.current, other: merge.other } : null,
       leftover: st.age === 'under14' && (device || !!d.session.get()),
+      ai: aiAvailable(),
+      tickets: aiAvailable() ? st.tickets : null,
     };
   }
 
@@ -222,7 +234,7 @@ export function createServerCore(d: ServerCoreDeps) {
     login?.cancel();
     login = null;
     merge = null;
-    st = { ...st, on: false, migrated: false, migrate: null, copy: null, lastSyncAt: null };
+    st = { ...st, on: false, migrated: false, migrate: null, copy: null, lastSyncAt: null, tickets: null };
     st.coins.queue = [];
     save();
   }
@@ -373,6 +385,53 @@ export function createServerCore(d: ServerCoreDeps) {
     }
   }
 
+  // ---- AI 대화권 (#100) ----
+
+  function setTickets(n: number | null) {
+    if (st.tickets === n) return;
+    st.tickets = n;
+    save();
+  }
+
+  /** 남은 대화권을 받는다 (처음이면 서버가 첫 로그인 선물 10개를 준다) */
+  async function refreshTickets(): Promise<void> {
+    const s = d.session.get();
+    if (!d.api || !s || !aiAvailable()) return;
+    const r = await d.api.aiStatus(s);
+    if (r.ok) setTickets(r.data.tickets);
+    else if (r.status === 401) onUnauthorized();
+    else d.log('server', '대화권 수를 못 받음', r.status, r.error);
+  }
+
+  /** 대화권으로 질문 하나 (글은 기록에 남기지 않는다) */
+  async function askAi(
+    body: AiChatBody,
+    onText: (text: string) => void,
+    signal?: AbortSignal,
+  ): Promise<AiChatOutcome> {
+    const s = d.session.get();
+    if (!d.api || !s || !aiAvailable()) return { ok: false, status: 403, error: 'login' };
+    const r = await d.api.aiChat(s, body, onText, signal);
+    if (r.ok) setTickets(r.tickets);
+    else {
+      if (r.tickets !== undefined) setTickets(r.tickets);
+      else if (r.error === 'no_tickets') setTickets(0);
+      if (r.status === 401) onUnauthorized();
+      d.log('server', '대화권 질문 실패', r.status, r.error, r.refunded ? '되돌림' : '');
+    }
+    changed();
+    return r;
+  }
+
+  /** 신고 (화면에서 따로 확인한 뒤) */
+  async function reportAi(question: string, answer: string): Promise<boolean> {
+    const s = d.session.get();
+    if (!d.api || !s || !aiAvailable()) return false;
+    const r = await d.api.aiReport(s, question, answer);
+    if (!r.ok) d.log('server', '신고 실패', r.status, r.error);
+    return r.ok;
+  }
+
   /** 켤 때, 몇 분마다, 지금 맞추기: 기기 계정 → 옮기기 → 맞추기. 한 번에 하나만 */
   function run(): Promise<void> {
     if (!allowed()) {
@@ -389,6 +448,7 @@ export function createServerCore(d: ServerCoreDeps) {
         if (!(await ensureMigrated())) return;
         await ensureAge();
         await syncAll();
+        await refreshTickets();
       } catch (err) {
         problem = 'server';
         d.log('server', '맞추기 중 오류', err instanceof Error ? err.message : String(err));
@@ -551,11 +611,24 @@ export function createServerCore(d: ServerCoreDeps) {
     },
     login: startLogin,
     cancelLogin,
+    aiAvailable,
+    /** 남은 대화권 사본 (쓸 수 없으면 null) */
+    tickets: () => (aiAvailable() ? st.tickets : null),
+    aiAgreed: () => st.aiAgreed,
+    agreeAi() {
+      st.aiAgreed = true;
+      save();
+      changed();
+    },
+    refreshTickets,
+    askAi,
+    reportAi,
     /** 로그아웃: 서버의 세션도 지운다 (실패해도 이 컴퓨터에서는 지운다). 기기 토큰은 같은 계정 그대로 */
     async logout(): Promise<ServerStatus> {
       const t = d.session.get();
       merge = null;
       d.session.set(null);
+      setTickets(null);
       if (t && d.api) {
         const r = await d.api.logout(t);
         if (!r.ok) d.log('server', '서버 세션 못 지움', r.status, r.error);

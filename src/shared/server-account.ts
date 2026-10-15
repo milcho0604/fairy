@@ -68,6 +68,10 @@ export interface ServerStatus {
   merge: { current: AccountSummary; other: AccountSummary } | null;
   /** 만 14세 미만으로 바꿨는데 서버에 계정이 남아 있다 (탈퇴 안내) */
   leftover: boolean;
+  /** AI 대화권을 쓸 수 있다 (#100): 서버 모드, 만 18세 이상, 구글 로그인 */
+  ai: boolean;
+  /** 남은 대화권의 사본. 쓸 수 없거나 아직 못 받았으면 null */
+  tickets: number | null;
 }
 
 /** 칸 모양: 숨김, 나이 묻기, 앱 안 모드, 서버 모드 꺼짐(탈퇴 뒤 등), 서버 모드 */

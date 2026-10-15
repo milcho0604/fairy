@@ -8,6 +8,7 @@ import {
   useState,
 } from 'react';
 import { type GuideSubject, guideModeOf, hasGuide } from '../../../shared/ai/install-guide.ts';
+import { TICKET_PROVIDER_ID } from '../../../shared/ai/providers.ts';
 import type { AiProvider, AiStatus } from '../../../shared/ai/types.ts';
 import type { ChatMessage, ChatState } from '../../../shared/chat-state.ts';
 import { t } from '../../../shared/i18n/index.ts';
@@ -24,6 +25,7 @@ import { isReady, statusText } from './providerStatus.ts';
 import { LookStatus, LookToggle, useChatLook } from './ScreenLook.tsx';
 import { contentKey, conversationChanged, isNearBottom, jumpBehavior, scrollDecision } from './scroll.ts';
 import { singleFlight } from './single-flight.ts';
+import { TicketBar, TicketReport } from './TicketBar.tsx';
 import { UsageBar } from './UsageBar.tsx';
 
 const bridge = window.jjakkungChat;
@@ -301,8 +303,14 @@ export function App() {
   };
 
   // screen: 화면도 찍어 보낼지 (같이 보기 묻는 줄에서 고름). 없으면 같이 보기 켬 상태를 따른다
+  /** 대화권을 골랐는데 국외 이전 안내에 아직 "알겠어" 를 누르지 않았다 (보내지 않는다) */
+  const ticketBlocked = !!spec?.ticket && !state.ticket?.agreed;
   const send = async (screen?: boolean) => {
     if (pending || look.shooting || (!text.trim() && images.length === 0)) return;
+    if (ticketBlocked) {
+      setNotice(t('ticket.needAgree'));
+      return;
+    }
     const out = await look.prepare(text, images, screen);
     if (!out) return;
     bridge.send(text, out);
@@ -432,12 +440,16 @@ export function App() {
           <span className="new-label">{t('chat.newChat')}</span>
         </button>
       </header>
-      <UsageBar
-        usage={state.usage[state.provider]}
-        spec={spec}
-        hidden={!!current && !current.installed}
-        asked={state.messages.length > 0}
-      />
+      {spec?.ticket && state.ticket ? (
+        <TicketBar ticket={state.ticket} />
+      ) : (
+        <UsageBar
+          usage={state.usage[state.provider]}
+          spec={spec}
+          hidden={!!current && !current.installed}
+          asked={state.messages.length > 0}
+        />
+      )}
       {listing && (
         <ChatList
           pending={pending}
@@ -572,6 +584,7 @@ export function App() {
               alternatives={m.id === state.messages.at(-1)?.id && !pending ? alternatives : []}
               download={m.id === state.messages.at(-1)?.id ? state.modelDownload : undefined}
               isLast={m.id === state.messages.at(-1)?.id}
+              ticket={m.provider === TICKET_PROVIDER_ID && !!state.ticket}
               freeModelMb={freeModelMb(m)}
               guide={{
                 subject: subjectOf(m.provider),
@@ -699,7 +712,7 @@ export function App() {
             <button
               type="button"
               className="primary"
-              disabled={look.shooting || (!text.trim() && images.length === 0)}
+              disabled={look.shooting || ticketBlocked || (!text.trim() && images.length === 0)}
               onClick={() => void send()}
             >
               {t('chat.send')}
@@ -723,6 +736,8 @@ interface MessageProps {
   /** 받을 모델 크기 (오류 문구에서 읽는다) */
   freeModelMb?: string;
   isLast: boolean;
+  /** 대화권 답이고 지금 대화권을 쓸 수 있다: 신고 단추 (#100) */
+  ticket?: boolean;
   /** 못 찾음, 로그인 안 됨 오류 아래에 펼칠 안내 (#29). subject 가 없으면(무료 AI 등) 단추를 두지 않는다 */
   guide: {
     subject?: GuideSubject;
@@ -745,6 +760,7 @@ function Message({
   download,
   freeModelMb: mb,
   isLast,
+  ticket,
   guide,
 }: MessageProps) {
   const guideMode = m.status === 'error' ? guideModeOf(m.error) : undefined;
@@ -799,6 +815,8 @@ function Message({
             {m.status === 'done' && !m.game && <AnswerActions id={m.id} text={m.text} />}
           </div>
         )}
+        {/* 대화권 답마다 신고 (따로 확인한 뒤 그 대화만 운영자에게) */}
+        {m.status === 'done' && ticket && m.text && <TicketReport id={m.id} />}
         {/* 규칙 답 아래: 맨 위 할 일로 집중 시작, 패널 열기 */}
         {m.status === 'done' && m.plan && (
           <div className="retry action-row">
@@ -860,6 +878,7 @@ function Message({
         {/* 한도, 설치 안 됨, 로그인 안 됨: 바로 물어볼 수 있는 다른 AI (무료 AI 포함) */}
         {m.status === 'error' &&
           (m.error?.kind === 'rate-limit' ||
+            m.error?.kind === 'no-tickets' ||
             m.error?.kind === 'not-installed' ||
             m.error?.kind === 'not-logged-in') &&
           alternatives.length > 0 && (

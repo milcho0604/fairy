@@ -84,6 +84,7 @@ import { createPout } from './pout.ts';
 import { watchPresentation } from './presence-watch.ts';
 import { writableDir } from './safe-file.ts';
 import { createServer } from './server.ts';
+import type { ServerCore } from './server-core.ts';
 import { settings } from './settings.ts';
 import { createSettingsWindow } from './settings-window.ts';
 import { onJsonTrouble, readJson, writeJson } from './store.ts';
@@ -251,7 +252,21 @@ ready
       save: (v) => writeJson(CHAIN_FILE, v),
       log,
     });
+    // AI 대화권 (#100): 서버 계정(아래 createServer)이 생긴 뒤 붙는다. 그 전에는 쓸 수 없음으로 본다
+    let serverCore: ServerCore | undefined;
     const chat = createChat({
+      ticket: {
+        available: () => !!serverCore?.aiAvailable(),
+        tickets: () => serverCore?.tickets() ?? null,
+        agreed: () => !!serverCore?.aiAgreed(),
+        agree: () => serverCore?.agreeAi(),
+        ask: (body, onText, signal) =>
+          serverCore
+            ? serverCore.askAi(body, onText, signal)
+            : Promise.resolve({ ok: false, status: 403, error: 'login' }),
+        report: (q, a) => serverCore?.reportAi(q, a) ?? Promise.resolve(false),
+        refresh: () => serverCore?.refreshTickets() ?? Promise.resolve(),
+      },
       catalog: catalog.get,
       aiModels: () => settings.get().aiModels,
       petName,
@@ -1381,8 +1396,10 @@ ready
         if (!house.bounds()) rest.houseGone();
       },
       onReverted: (text) => void pet.say({ kind: 'answer', text, ttlMs: 8000 }),
+      onStatus: () => chat.ticketChanged(),
       log,
     });
+    serverCore = server.core;
     // ---- 하루 도구: 습관, 아침 계획, 알림 미루기, 내보내기 (main/day-tools.ts) ----
     const dayTools = createDayTools({
       todos: store,

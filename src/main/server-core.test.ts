@@ -42,6 +42,10 @@ function fakeServer() {
     /** 기기 계정 대답을 이 약속이 끝날 때까지 미룬다 */
     hold: undefined as Promise<void> | undefined,
     patchFail: false,
+    /** AI 대화권 (#100): 남은 수와 다음 질문의 흉내 (ok, cut: 조각 뒤 끊김, 그 밖은 그 까닭의 JSON 실패) */
+    tickets: 10,
+    aiMode: 'ok' as string,
+    reports: [] as unknown[],
   };
   const reply = (status: number, body?: unknown) =>
     new Response(body === undefined ? null : JSON.stringify(body), {
@@ -139,6 +143,41 @@ function fakeServer() {
       s.items = {};
       s.migrated = false;
       out = new Response(null, { status: 204 });
+    } else if (u.pathname.startsWith('/v1/ai')) {
+      // 서버처럼: 세션 토큰과 만 18세 이상만
+      if (!s.sessions.has(auth ?? '')) out = reply(403, { error: 'login' });
+      else if (s.age !== '18+') out = reply(403, { error: 'age' });
+      else if (u.pathname === '/v1/ai')
+        out = reply(200, { tickets: s.tickets, dailyLimit: 20, usedToday: 0 });
+      else if (u.pathname === '/v1/ai/report') {
+        s.reports.push(body);
+        out = reply(201, { ok: true });
+      } else if (s.aiMode === 'ok' || s.aiMode === 'cut') {
+        if (s.tickets <= 0) out = reply(409, { error: 'no_tickets', tickets: 0 });
+        else {
+          s.tickets -= 1;
+          const sse = (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+          const parts = [sse('text', { text: '안녕! ' }), sse('text', { text: '나는 AI 야.' })];
+          if (s.aiMode === 'ok') parts.push(sse('done', { tickets: s.tickets, stop: 'end_turn' }));
+          else s.tickets += 1; // 서버가 되돌린다
+          // 조각이 덩이 경계에 걸려도 읽는지 보려고 일부러 잘게 나눈다
+          const bytes = new TextEncoder().encode(parts.join(''));
+          out = new Response(
+            new ReadableStream({
+              start(c) {
+                for (let i = 0; i < bytes.length; i += 7) c.enqueue(bytes.slice(i, i + 7));
+                c.close();
+              },
+            }),
+            { status: 200, headers: { 'content-type': 'text/event-stream; charset=utf-8' } },
+          );
+        }
+      } else
+        out = reply(s.aiMode === 'budget' ? 503 : 502, {
+          error: s.aiMode,
+          tickets: s.tickets,
+          refunded: true,
+        });
     } else out = reply(404, { error: 'not_found' });
     if (s.loseReply) throw new TypeError('connection reset');
     return out;
@@ -681,4 +720,85 @@ test('옮기기 전에 백업을 되살리면 옮길 한 시점을 버리고 새
   x.todos.reward(50, 'meet', T0);
   x.core.afterRestore();
   assert.equal(x.core.state().migrate, null);
+});
+
+test('대화권: 만 18세 이상이고 구글 로그인일 때만 쓸 수 있고, 맞출 때 남은 수를 받는다 (14~17, 로그아웃이면 숨김)', async () => {
+  const teen = setup();
+  teen.core.setAge('teen');
+  await teen.core.run();
+  teen.setLoop({ kind: 'code', code: 'one-time' });
+  await teen.core.login();
+  assert.equal(teen.core.status().signedIn, true);
+  assert.equal(teen.core.status().ai, false);
+  assert.equal(teen.core.status().tickets, null);
+  assert.ok(!teen.server.calls.some((c) => c.path.startsWith('/v1/ai')), '14~17 은 대화권을 묻지도 않는다');
+  const r = await teen.core.askAi(
+    { messages: [{ role: 'user', content: '안녕' }], lang: 'ko', persona: '' },
+    () => {},
+  );
+  assert.deepEqual(r, { ok: false, status: 403, error: 'login' });
+
+  const x = setup();
+  x.core.setAge('adult');
+  await x.core.run();
+  assert.equal(x.core.status().ai, false, '기기 계정만으로는 안 된다');
+  x.setLoop({ kind: 'code', code: 'one-time' });
+  await x.core.login();
+  await x.core.run();
+  assert.deepEqual([x.core.status().ai, x.core.status().tickets], [true, 10]);
+  assert.equal(x.core.aiAgreed(), false);
+  x.core.agreeAi();
+  assert.equal(x.saved()?.aiAgreed, true);
+  await x.core.logout();
+  assert.deepEqual([x.core.status().ai, x.core.status().tickets], [false, null]);
+});
+
+test('대화권 질문: 조각을 넘기고 남은 수를 고친다. 다 쓰면 0, 끊기면 offline, 서버 실패는 까닭과 되돌린 수', async () => {
+  const x = setup();
+  x.core.setAge('adult');
+  await x.core.run();
+  x.setLoop({ kind: 'code', code: 'one-time' });
+  await x.core.login();
+  await x.core.run();
+  const body = {
+    messages: [{ role: 'user' as const, content: '안녕' }],
+    lang: 'ko' as const,
+    persona: '고양이',
+  };
+  let got = '';
+  const ok = await x.core.askAi(body, (t) => {
+    got += t;
+  });
+  assert.deepEqual(ok, { ok: true, tickets: 9 });
+  assert.equal(got, '안녕! 나는 AI 야.');
+  assert.equal(x.core.status().tickets, 9);
+  const sent = x.server.calls.find((c) => c.path === '/v1/ai/chat');
+  assert.deepEqual(sent?.body, body);
+  assert.match(sent?.auth ?? '', /^fs_/);
+
+  x.server.aiMode = 'cut';
+  got = '';
+  const cut = await x.core.askAi(body, (t) => {
+    got += t;
+  });
+  assert.deepEqual(cut, { ok: false, status: 0, error: 'offline' });
+  assert.equal(got, '안녕! 나는 AI 야.');
+
+  x.server.aiMode = 'budget';
+  assert.deepEqual(await x.core.askAi(body, () => {}), {
+    ok: false,
+    status: 503,
+    error: 'budget',
+    tickets: 9,
+    refunded: true,
+  });
+
+  x.server.aiMode = 'ok';
+  x.server.tickets = 0;
+  const empty = await x.core.askAi(body, () => {});
+  assert.deepEqual(empty, { ok: false, status: 409, error: 'no_tickets', tickets: 0 });
+  assert.equal(x.core.status().tickets, 0);
+
+  assert.equal(await x.core.reportAi('질문', '답'), true);
+  assert.deepEqual(x.server.reports, [{ question: '질문', answer: '답', consent: true }]);
 });

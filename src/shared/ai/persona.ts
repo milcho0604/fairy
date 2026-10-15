@@ -138,6 +138,16 @@ export function persona(
   );
 }
 
+/**
+ * AI 대화권(#100)으로 서버에 보내는 말투 설명: 펫 이름, 말투, 이모지 지시만. 짝꿍 규칙과 기억(petFacts, petMemory)은
+ * 보내지 않는다. 서버는 이 글을 system 이 아니라 참고 자료 블록으로 넣는다 (600자 상한)
+ */
+export function ticketVoice(petName: string, id: PersonaId = 'friend'): string {
+  const en = getLang() === 'en';
+  const head = en ? `The pet's name is "${petName}".` : `펫 이름은 "${petName}".`;
+  return `${head} ${voiceLine(id, en)} ${emojiLine(id, en)}`.slice(0, 600);
+}
+
 const KO_WD = ['일', '월', '화', '수', '목', '금', '토'];
 const EN_WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const EN_MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
