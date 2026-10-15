@@ -9,7 +9,7 @@ import {
   type OnModuleInit,
 } from '@nestjs/common';
 import type { PoolClient } from 'pg';
-import { lockAccount } from './accounts';
+import { familyIds, lockAccount } from './accounts';
 import { AdminAccess } from './admin-access';
 import { AiAdmin, type SubscriptionInfo } from './ai-admin';
 import {
@@ -143,7 +143,13 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
       [accountId],
     );
     const keys = logins.rows.flatMap((r) => this.loginKey(r.service, r.sub) ?? []);
-    return keys.length > 0 ? keys : [createHash('sha256').update(`account:${accountId}`).digest()];
+    if (keys.length > 0) return keys;
+    // GIFT_HMAC_KEY 가 없는 개발, 시험 서버: 계정 번호로 센다. 합쳐진 계정 것도 더해 합치기로 하루 수가 초기화되지 않게
+    // (첫 키가 남는 쪽이라 새 질문은 그 키에 센다. 운영은 GIFT_HMAC_KEY 가 없으면 뜨지 않는다, config.ts)
+    const fam = await familyIds(c, accountId);
+    return [accountId, ...fam.filter((id) => id !== accountId)].map((id) =>
+      createHash('sha256').update(`account:${id}`).digest(),
+    );
   }
 
   /**
@@ -327,10 +333,7 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
       if (!row?.account_id) return undefined;
       const a = await lockAccount(c, row.account_id).catch(() => undefined);
       if (!a) return undefined;
-      await c.query(
-        'UPDATE ai_daily SET used = used - 1 WHERE key_hmac = ANY($1) AND day = $2 AND used > 0',
-        [(await this.dailyKeys(c, a.id)).slice(0, 1), row.day],
-      );
+      // 하루 사용 수는 되돌리지 않는다 (버그잡이 #113): 실패도 업스트림을 부른 것이라 하루 상한이 막아야 한다
       const t = await c.query<{ remaining: number }>(
         `INSERT INTO ai_ticket (account_id, remaining) VALUES ($1, 1)
          ON CONFLICT (account_id) DO UPDATE SET remaining = ai_ticket.remaining + 1, updated_at = now()

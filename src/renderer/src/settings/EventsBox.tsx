@@ -29,13 +29,21 @@ function what(e: SiteEvent): string {
 }
 
 const claimError = (e: string) =>
-  ['already_claimed', 'not_started', 'ended', 'no_event', 'offline', 'rate_limited'].includes(e)
+  [
+    'already_claimed',
+    'not_started',
+    'ended',
+    'no_event',
+    'offline',
+    'rate_limited',
+    'login_required',
+  ].includes(e)
     ? t(`events.err.${e as 'already_claimed'}`)
     : t('events.err.other');
 const couponError = (e: string) =>
   ['code', 'no_coupon', 'already_used', 'sold_out', 'not_started', 'ended'].includes(e)
     ? t(`coupon.err.${e as 'code'}`)
-    : e === 'offline' || e === 'rate_limited'
+    : e === 'offline' || e === 'rate_limited' || e === 'login_required'
       ? t(`events.err.${e}`)
       : t('events.err.other');
 

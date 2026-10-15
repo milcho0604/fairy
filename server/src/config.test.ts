@@ -93,3 +93,10 @@ test('ADMIN_GOOGLE_SUBS: 쉼표로 여럿, 빈 값과 이상한 값은 버린다
     '2',
   ]);
 });
+
+test('운영(NODE_ENV=production)에서는 GIFT_HMAC_KEY 가 없으면 뜨지 않는다 (하루 수를 계정 번호로 세면 합치기로 초기화된다)', () => {
+  const env = { DATABASE_URL: 'postgres://x', NODE_ENV: 'production' };
+  assert.throws(() => readConfig(env), /GIFT_HMAC_KEY/);
+  assert.equal(readConfig({ ...env, GIFT_HMAC_KEY: 'g' }).ai?.giftKey, 'g');
+  assert.equal(readConfig({ DATABASE_URL: 'postgres://x' }).ai?.giftKey, '');
+});

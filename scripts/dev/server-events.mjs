@@ -323,6 +323,9 @@ try {
   pullFeeds();
   await main('__jj.siteEvents.refresh()');
   await until('이벤트 목록', () => p.ev(`!!document.querySelector('.event-item')`));
+  // 기본은 로그인 계정만 (버그잡이 #113): 기기 계정은 login_required 와 안내. 이 뒤로는 운영자가 꺼 둔다
+  check('로그인 전에는 선물 403 login_required', (await main(`__jj.server.core.claim(${JSON.stringify(evId)}).then((r) => r.error)`)) === 'login_required');
+  check('로그인 계정만 끄기 (운영자)', (await adminPost('/admin/rewards/policy', { login_only: 0 })).includes('기기 계정도'));
   const before = await localBalance();
   check('선물 받기 누르기', await press(p, '.events-box', T.claim));
   await until('선물 반영', async () => (await localBalance()) === before + 30);

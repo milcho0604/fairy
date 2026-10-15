@@ -40,6 +40,7 @@ import {
   VERSION,
 } from './notice-doc';
 import { ipKey, LIMITS, RateLimiter } from './rate-limit';
+import { Rewards } from './rewards';
 import { COUPON_ALPHABET, COUPON_LENGTH, formatCoupon, kstIso, parseEvent } from './shared/site-events';
 import { sha256 } from './tokens';
 
@@ -95,6 +96,7 @@ export const ADMIN_ACTIONS = [
   'ai/block',
   'ai/allow',
   'ai/policy',
+  'rewards/policy',
 ] as const;
 export type AdminAction = (typeof ADMIN_ACTIONS)[number];
 export const isAdminAction = (v: string): v is AdminAction =>
@@ -153,6 +155,7 @@ export class AdminService {
   constructor(
     private readonly db: Db,
     private readonly feeds: Feeds,
+    private readonly rewards: Rewards,
     private readonly aiAdmin: AiAdmin,
     private readonly access: AdminAccess,
     @Inject(CONFIG) private readonly config: Config,
@@ -246,6 +249,7 @@ export class AdminService {
       noticesUpdated: doc.rows[0] ? Number(doc.rows[0].updated) : undefined,
       latest: await this.feeds.latestRelease(),
       log: log.rows,
+      rewardsLoginOnly: await this.rewards.loginOnly(),
     };
   }
 
@@ -489,6 +493,18 @@ export class AdminService {
     });
   }
 
+  /** 선물과 쿠폰을 로그인 계정만 받기 (기본 켬) */
+  async rewardsPolicy(actor: string, f: FormFields): Promise<string> {
+    const on = f.login_only === '1' || f.login_only === 'true';
+    return this.write(actor, async (c) => {
+      const before = await this.rewards.setLoginOnly(c, on);
+      return {
+        text: `선물과 쿠폰: ${on ? '로그인 계정만' : '기기 계정도'} 받아요`,
+        log: ['rewards.policy', null, { before, after: on }],
+      };
+    });
+  }
+
   /** 정책: 자동 정기 지급 장수(매달 N장까지), 자리 수(정기 지급 계정 상한), 첫 로그인 선물 켜기 */
   async aiPolicy(actor: string, f: FormFields): Promise<string> {
     const autoMonthly = (f.auto_monthly ?? '').trim() === '' ? undefined : Number(f.auto_monthly);
@@ -700,6 +716,8 @@ export class AdminService {
         return this.aiAllow(actor, f);
       case 'ai/policy':
         return this.aiPolicy(actor, f);
+      case 'rewards/policy':
+        return this.rewardsPolicy(actor, f);
     }
   }
 

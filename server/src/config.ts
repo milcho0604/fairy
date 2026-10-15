@@ -120,11 +120,23 @@ export function readConfig(env: NodeJS.ProcessEnv): Config {
     publicUrl,
     googleClientId: (env.GOOGLE_CLIENT_ID ?? '').trim(),
     googleClientSecret: (env.GOOGLE_CLIENT_SECRET ?? '').trim(),
-    ai: readAiConfig(env),
+    ai: requireGiftKey(env, readAiConfig(env)),
     adminToken: (env.ADMIN_TOKEN ?? '').trim(),
     releasesApi: checkUrl('RELEASES_API', (env.RELEASES_API ?? '').trim() || DEFAULT_RELEASES_API),
     adminSubs: readSubs(env.ADMIN_GOOGLE_SUBS),
   };
+}
+
+/**
+ * 운영(NODE_ENV=production)에서는 GIFT_HMAC_KEY 가 있어야 뜬다 (버그잡이 #113). 없으면 하루 질문 수를 계정 번호로
+ * 세게 되어, 탈퇴하고 다시 가입하면 하루 수와 첫 선물이 되살아난다. 개발과 시험은 계정 번호로 (가족 전체 합산)
+ */
+function requireGiftKey(env: NodeJS.ProcessEnv, ai: AiConfig): AiConfig {
+  if (env.NODE_ENV === 'production' && !ai.giftKey)
+    throw new Error(
+      'GIFT_HMAC_KEY 가 비어 있다: 운영에서는 openssl rand -hex 32 로 만들어 .env.prod 에 넣어야 뜬다',
+    );
+  return ai;
 }
 
 /** 구글 sub 목록 (숫자와 영문 255자까지만, 나머지는 버린다) */

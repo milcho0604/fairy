@@ -72,6 +72,8 @@ export interface AdminView {
   notices: NoticeDoc | undefined;
   noticesUpdated: number | undefined;
   latest: string | undefined;
+  /** 선물과 쿠폰은 로그인 계정만 */
+  rewardsLoginOnly: boolean;
   log: Array<{ at: string; actor: string; action: string; target: string | null; detail: unknown }>;
 }
 
@@ -338,6 +340,10 @@ ${
 <button type="submit">이벤트 만들기</button>
 </form></section>`,
     `<section><h2>쿠폰</h2>
+<form method="post" action="/admin/rewards/policy" class="row">${hidden(csrf)}
+<label>선물과 쿠폰 받는 계정 <select name="login_only"><option value="1"${v.rewardsLoginOnly ? ' selected' : ''}>로그인 계정만 (기본)</option><option value="0"${v.rewardsLoginOnly ? '' : ' selected'}>기기 계정도</option></select></label>
+<button type="submit">저장</button>
+</form>
 <p class="hint">코드는 서버가 12자로 만들고 만들 때 한 번만 보여요 (서버에는 해시만). 계정마다 한 번, 채팅 이용권은 만 18세 이상 계정에만 가요.</p>
 <table><thead><tr><th>#</th><th>코드 앞</th><th>메모</th><th>주는 것</th><th>기간</th><th>사용</th><th></th></tr></thead><tbody>
 ${

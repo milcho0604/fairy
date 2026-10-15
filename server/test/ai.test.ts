@@ -419,6 +419,7 @@ describe('질문 하나', () => {
       data: { error: 'refusal', tickets: AI_GIFT, refunded: true },
     });
     assert.equal(await tickets(a.session), AI_GIFT);
+    assert.equal((await api('GET', '/v1/ai', { token: a.session })).body.usedToday, 1);
     const u = await pool.query('SELECT status FROM ai_usage WHERE account_id = $1', [
       await accountOf(a.session),
     ]);
@@ -466,8 +467,23 @@ describe('질문 하나', () => {
       await accountOf(a.session),
     ]);
     assert.deepEqual(u.rows, [{ status: 'refunded' }]);
-    // 되돌린 질문은 하루 상한에 세지 않는다
-    assert.equal((await api('GET', '/v1/ai', { token: a.session })).body.usedToday, 0);
+    // 이용권은 돌려주지만 하루 사용 수는 남긴다 (실패도 업스트림 호출이라 하루 상한이 막아야 한다, 버그잡이 #113)
+    assert.equal((await api('GET', '/v1/ai', { token: a.session })).body.usedToday, 1);
+  });
+
+  test('실패만 되풀이해도 하루 상한(5번)에서 멈춘다 (업스트림을 더 부르지 않는다)', async () => {
+    const a = await adult();
+    for (let i = 0; i < 5; i++)
+      assert.equal(
+        (await api('POST', '/v1/ai/chat', { token: a.session, body: ask('[[fail]] 또') })).status,
+        502,
+      );
+    const before = fake.calls.length;
+    const r = await api('POST', '/v1/ai/chat', { token: a.session, body: ask('[[fail]] 또') });
+    assert.equal(r.status, 429, r.text);
+    assert.equal(r.body.error, 'daily_limit');
+    assert.equal(fake.calls.length, before);
+    assert.equal(await tickets(a.session), AI_GIFT);
   });
 
   test('답 중간에 끊기거나 SSE 오류가 오면 받은 조각 뒤에 error 사건, 되돌린다', async () => {

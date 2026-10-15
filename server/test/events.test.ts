@@ -16,7 +16,7 @@ const ADMIN_TOKEN = 'a'.repeat(20) + randomUUID().replaceAll('-', '');
 let h: Harness;
 let releases: Server;
 let latestTag = 'v0.4.3';
-const { api, newDevice, secondDevice, balanceOf, ledgerSum, lastLog } = client(() => h);
+const { api, newDevice, secondDevice, session, balanceOf, ledgerSum, lastLog } = client(() => h);
 const browser = () =>
   new AdminBrowser(
     () => h,
@@ -93,6 +93,8 @@ before(async () => {
   admin = browser();
   assert.equal((await admin.login()).status, 303);
   await admin.page();
+  // 선물과 쿠폰은 기본이 로그인 계정만. 이 파일의 다른 시험은 기기 계정으로 보므로 끈다 (켠 경우는 아래 시험)
+  assert.ok((await admin.act('/admin/rewards/policy', { login_only: '0' })).ok);
 });
 
 after(async () => {
@@ -275,6 +277,32 @@ describe('선물 받기', () => {
   });
 });
 
+describe('선물과 쿠폰은 로그인 계정만 (rewards_login_only, 버그잡이 #113)', () => {
+  test('켜면 기기 토큰은 403 login_required, 세션은 된다. 운영자 쪽지는 기기 계정에도 간다', async () => {
+    assert.ok((await admin.act('/admin/rewards/policy', { login_only: '1' })).ok);
+    assert.deepEqual((await lastLog('rewards.policy'))?.detail, { before: false, after: true });
+    try {
+      const id = await makeEvent({ coins: 7 });
+      const code = await makeCoupon({ coins: 9 });
+      const d = await newDevice('18+');
+      for (const [path, body] of [
+        ['/v1/claim', { event: id }],
+        ['/v1/coupon', { code }],
+      ] as const) {
+        const r = await api('POST', path, { token: d.token, body });
+        assert.deepEqual([r.status, r.body], [403, { error: 'login_required' }], path);
+      }
+      const s = await session(d.id);
+      assert.equal((await api('POST', '/v1/claim', { token: s, body: { event: id } })).status, 200);
+      assert.equal((await api('POST', '/v1/coupon', { token: s, body: { code } })).status, 200);
+      assert.equal(await balanceOf(d.id), 16);
+      assert.ok((await admin.act('/admin/notes', { account: d.code, coins: '1' })).ok);
+    } finally {
+      assert.ok((await admin.act('/admin/rewards/policy', { login_only: '0' })).ok);
+    }
+  });
+});
+
 describe('배수 이벤트', () => {
   test('출석 x2: 기간 안 날짜만, 상한은 원래 양으로, 까닭이 다르면 그대로', async () => {
     await makeEvent({
@@ -389,7 +417,10 @@ describe('쿠폰', () => {
     assert.equal((await api('POST', '/v1/coupon', { token: d.token, body: { code: 'short' } })).status, 400);
     assert.equal((await api('POST', '/v1/coupon', { token: d.token, body: { code: good } })).status, 429);
     const other = await newDevice();
-    assert.equal((await api('POST', '/v1/coupon', { token: other.token, body: { code: good } })).status, 200);
+    assert.equal(
+      (await api('POST', '/v1/coupon', { token: other.token, body: { code: good }, ip: ip() })).status,
+      200,
+    );
   });
 });
 

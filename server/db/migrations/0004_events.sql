@@ -100,6 +100,15 @@ CREATE TABLE site_doc (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- 서버 설정 (한 키 한 값). rewards_login_only: 선물 받기와 쿠폰은 로그인(구글, 카카오 세션) 계정만 (기본 켬,
+-- 버그잡이 #113: 기기 계정을 계속 만들어 선물을 모으는 길을 막는다). 운영자 쪽지 지급은 기기 계정에도 간다
+CREATE TABLE server_setting (
+  key TEXT PRIMARY KEY CHECK (key ~ '^[a-z][a-z0-9_]{0,39}$'),
+  value JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+INSERT INTO server_setting (key, value) VALUES ('rewards_login_only', 'true');
+
 -- 운영 기록 (10절: 누가, 언제, 무엇을). 운영자는 한 사람이라 누가는 운영자 세션 번호 앞 8자. IP 는 두지 않는다.
 -- 1년 뒤 지운다 (13절)
 CREATE TABLE admin_log (

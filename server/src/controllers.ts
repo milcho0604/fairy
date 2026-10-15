@@ -257,11 +257,18 @@ export class RewardController {
     private readonly limiter: RateLimiter,
   ) {}
 
+  /** 로그인(세션) 계정만 받는 설정이면 기기 토큰은 403 login_required */
+  private async needLogin(auth: AuthInfo): Promise<void> {
+    if (auth.via !== 'session' && (await this.rewards.loginOnly()))
+      throw new HttpException({ error: 'login_required' }, HttpStatus.FORBIDDEN);
+  }
+
   /** 선물 받기: { event: '<이벤트 id>' }. 계정당 이벤트당 한 번 */
   @Post('claim')
   @HttpCode(200)
   async claim(@Auth() auth: AuthInfo, @Body() body: unknown) {
     this.limiter.check(`claim:${auth.accountId}`, LIMITS.claimByAccount);
+    await this.needLogin(auth);
     const id = (body as { event?: unknown } | null)?.event;
     if (typeof id !== 'string' || !EVENT_ID.test(id)) throw new BadRequestException({ error: 'event' });
     return this.rewards.claim(auth.accountId, id);
@@ -276,6 +283,7 @@ export class RewardController {
       throw new HttpException({ error: 'rate_limited' }, HttpStatus.TOO_MANY_REQUESTS);
     this.limiter.check(`coupon:${auth.accountId}`, LIMITS.couponByAccount);
     this.limiter.check(`coupon:${ipKey(req)}`, LIMITS.couponByIp);
+    await this.needLogin(auth);
     const code = normalizeCoupon((body as { code?: unknown } | null)?.code);
     if (!code) {
       this.limiter.take(missKey, LIMITS.couponMissByAccount);

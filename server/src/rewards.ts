@@ -50,6 +50,24 @@ export async function creditCoins(
 export class Rewards {
   constructor(private readonly db: Db) {}
 
+  /** 선물과 쿠폰을 로그인 계정만 받는지 (server_setting.rewards_login_only, 기본 켬) */
+  async loginOnly(q: Pick<PoolClient, 'query'> = this.db.pool): Promise<boolean> {
+    const r = await q.query<{ value: unknown }>(
+      `SELECT value FROM server_setting WHERE key = 'rewards_login_only'`,
+    );
+    return r.rows[0]?.value !== false;
+  }
+
+  async setLoginOnly(c: PoolClient, on: boolean): Promise<boolean> {
+    const before = await this.loginOnly(c);
+    await c.query(
+      `INSERT INTO server_setting (key, value) VALUES ('rewards_login_only', $1::jsonb)
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+      [JSON.stringify(on)],
+    );
+    return before;
+  }
+
   /**
    * 이벤트 선물 받기 (POST /v1/claim). 계정당 이벤트당 한 번.
    * 404 no_event, 409 not_gift(배수 이벤트), not_started, ended, already_claimed
