@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- install-monitor.sh 가 __HOME__, __EXT__ 를 바꿔 ~/Library/LaunchAgents 에 넣는다 -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.milcho.fairy-monitor</string>
+  <key>ProgramArguments</key>
+  <array><string>__HOME__/fairy-monitor.sh</string></array>
+  <key>EnvironmentVariables</key>
+  <dict><key>FAIRY_EXT_CHECK</key><string>__EXT__</string></dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardErrorPath</key><string>__HOME__/fairy-monitor.err</string>
+</dict>
+</plist>

@@ -1,0 +1,82 @@
+# 홈서버(맥미니) 운영용. 모일까(compose 이름 moilga, 3001)와 같은 Docker 에 나란히 뜬다.
+# 이름, 포트, 볼륨, 백업 경로는 모두 fairy 전용이라 moilga 를 건드리지 않는다.
+#
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+#
+# 밖으로는 API 만 127.0.0.1:3002 에 연다. Cloudflare Tunnel 이 fairy-api.moilga.com 을 여기로 보낸다.
+name: fairy
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fairy-postgres
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    logging: *logging
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fairy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 를 .env.prod 에 넣어야 한다}
+      POSTGRES_DB: ${POSTGRES_DB:-fairy}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-fairy} -d ${POSTGRES_DB:-fairy}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: fairy-api
+    container_name: fairy-api
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs: [/tmp]
+    logging: *logging
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: 3002
+      DATABASE_URL: postgres://${POSTGRES_USER:-fairy}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-fairy}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+    ports:
+      - '127.0.0.1:3002:3002'
+
+  # 매일 DB 를 외장 디스크로. 모일까 백업(04:30 UTC)과 한 시간 엇갈린다 (05:30 UTC = 14:30 KST).
+  backup:
+    image: prodrigestivill/postgres-backup-local:16
+    container_name: fairy-backup
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    logging: *logging
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-fairy}
+      POSTGRES_USER: ${POSTGRES_USER:-fairy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      SCHEDULE: '30 5 * * *'
+      BACKUP_KEEP_DAYS: 14
+      BACKUP_KEEP_WEEKS: 4
+      BACKUP_KEEP_MONTHS: 0
+    volumes:
+      - ${FAIRY_BACKUP_DIR:-/Volumes/milcho_ex/fairy-backups}:/backups
+
+volumes:
+  pgdata:

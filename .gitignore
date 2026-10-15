@@ -21,3 +21,5 @@ resources-bin/
 
 # 설치 파일에 넣는 오픈소스 고지 (scripts/third-party-notices.mjs 가 만든다)
 build/THIRD_PARTY_NOTICES.txt
+!.env.*.example
+dist-test/
