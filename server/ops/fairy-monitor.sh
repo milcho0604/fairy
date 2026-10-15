@@ -2,7 +2,8 @@
 # 페어리 서버 다운 감시 (맥미니 launchd, com.milcho.fairy-monitor). 모일까 감시(moilga-monitor.sh)와 같은 방식.
 # 30초마다 홈서버 127.0.0.1:3002 와 밖(fairy-api.moilga.com)의 /health 를 본다.
 # 두 번 연속 실패하면 private 레포 milcho0604/fairy-alerts 에 이슈를 열고(메일 알림), 되살아나면 복구 댓글과 함께 닫는다.
-# 밖 주소가 아직 DNS 에 없으면(터널 연결 전) 밖 검사는 건너뛴다.
+# 밖 검사는 FAIRY_EXT_CHECK=1 일 때만 한다 (터널 연결 뒤 install-monitor.sh --ext).
+# 그 전에는 *.moilga.com 와일드카드가 Vercel 로 가서 인증서 오류가 나므로 켜면 거짓 알림이 된다.
 LOG="$HOME/fairy-monitor.log"
 STATE="$HOME/.fairy-monitor.open-issue"
 REPO="${FAIRY_ALERTS_REPO:-milcho0604/fairy-alerts}"
@@ -22,11 +23,8 @@ check_local() {
 }
 
 check_ext() {
-  local body code
-  body=$(curl -s -m8 "$EXT_URL" 2>/dev/null); code=$?
-  # 6 = 주소를 못 찾음 (터널에 아직 fairy-api 가 없다)
-  [ "$code" -eq 6 ] && { echo SKIP; return; }
-  echo "$body" | grep -q '"db":"ok"' && echo OK || echo DOWN
+  [ "${FAIRY_EXT_CHECK:-0}" = 1 ] || { echo SKIP; return; }
+  curl -s -m8 "$EXT_URL" 2>/dev/null | grep -q '"db":"ok"' && echo OK || echo DOWN
 }
 
 check_inner() {
@@ -44,7 +42,7 @@ open_issue() {
 close_issue() {
   [ -f "$STATE" ] || return
   local num; num=$(cat "$STATE")
-  gh issue comment "$num" --repo "$REPO" --body "✅ 복구 확인 — $(date '+%Y-%m-%d %H:%M:%S') 홈서버와 밖 모두 정상." >/dev/null 2>&1
+  gh issue comment "$num" --repo "$REPO" --body "✅ 복구 확인 — $(date '+%Y-%m-%d %H:%M:%S') 홈서버 정상, 밖 $1." >/dev/null 2>&1
   gh issue close "$num" --repo "$REPO" >/dev/null 2>&1
   echo "        → 이슈 #$num 복구 댓글과 닫기" >> "$LOG"
   rm -f "$STATE"
@@ -58,7 +56,7 @@ while true; do
   es=$(check_ext)
   if [ "$ls_" = OK ] && [ "$es" != DOWN ]; then
     fails=0
-    close_issue
+    close_issue "$es"
     tick=$((tick + 1))
     [ $((tick % 120)) -eq 1 ] && { rotate_log; echo "$ts  local=OK ext=$es (정상)" >> "$LOG"; }
   else
