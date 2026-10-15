@@ -5,6 +5,7 @@
 // 시각은 모두 사용자 컴퓨터의 현지 날짜(YYYY-MM-DD)와 하루 안의 분(0~1439)으로 받는다. ms 를 받지 않아
 // 시험이 시간대와 무관하고, 시간대를 옮기거나 서머타임이 바뀌어도 벽시계 그대로 따른다.
 // 헤어지는 시간이 만나는 시간보다 이르면 다음 날 헤어진다(밤 근무). 그 일과는 시작한 날짜의 것이다.
+import { MEET_COINS, STREAK_BONUS, STREAK_EVERY, WEEKLY_COINS } from './coin-rules.ts';
 import { plusDays, weekdayOf } from './day.ts';
 
 /** 하루의 만나는 시간과 헤어지는 시간 (분). end 가 start 보다 이르면 다음 날 end */
@@ -40,15 +41,8 @@ export const REST_FROM = 5 * 60;
 /** 기운(하루 리듬, shared/energy.ts)은 9시 출근을 기준으로 짠 표다. 만나는 시간을 이 시각으로 옮겨 읽는다 */
 export const BODY_ANCHOR = 9 * 60;
 
-/**
- * 만난 날 코인: 하루 한 번만. 연속 기록이 STREAK_EVERY 의 배수인 날은 STREAK_BONUS 를 더한다
- * (사용자 결정 2026-10-14, #75: 하루 3 에서 10, 5일마다 +5 를 7일 연속마다 +50 으로)
- */
-export const MEET_COINS = 10;
-export const STREAK_EVERY = 7;
-export const STREAK_BONUS = 50;
-/** 매주 선물: 한 주(월요일 시작, 현지 날짜)의 첫 출석 때 만난 날 코인과 함께 한 번 (#75) */
-export const WEEKLY_COINS = 50;
+/** 만난 날 코인, 7일 연속 보너스, 매주 선물 값은 coin-rules.ts 한 곳에 (서버도 같은 값을 쓴다) */
+export { MEET_COINS, STREAK_BONUS, STREAK_EVERY, WEEKLY_COINS };
 
 const DAY_MIN = 1440;
 const isMinute = (v: unknown): v is number =>

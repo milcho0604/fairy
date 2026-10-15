@@ -1,3 +1,5 @@
 node_modules/
 dist/
 dist-test/
+# 레포 루트 src/shared/ 에서 복사해 오는 공유 규칙 (scripts/sync-shared.mjs). 원본만 올린다
+src/shared/

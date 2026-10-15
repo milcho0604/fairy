@@ -1,5 +1,6 @@
 // 펫의 하루 (v1): 삐짐 게이지, 기분, 친밀도. 기획서 "삐짐 게이지", "게임 규칙 > 펫 상태 수치".
 // 잃는 것은 없다: 코인, 친밀도는 줄지 않고 삐짐은 모습과 대사뿐이다.
+import { MAKEUP_PER_LEVEL, SULK_MAX } from './coin-rules.ts';
 import { plusDays, weekdayOf as weekday } from './day.ts';
 import type { Db } from './db-schema.ts';
 import { voiced } from './persona-voice.ts';
@@ -7,9 +8,8 @@ import { FULLNESS, localDay } from './todo-store.ts';
 
 /** 순한맛은 4칸에서 멈추고, 매운맛은 7칸까지 */
 export const SULK_MILD_MAX = 4;
-export const SULK_MAX = 7;
 /** 화해 보너스: 한 칸에 4코인, 최대 28. 7일에 한 번 */
-export const MAKEUP_PER_LEVEL = 4;
+export { MAKEUP_PER_LEVEL, SULK_MAX };
 export const MAKEUP_COOLDOWN_MS = 7 * 86_400_000;
 /** 친밀도 단계: 넘을 때마다 새 행동이 열린다 (기획서: 100, 300, 600마다 새 동작이나 대사) */
 export const AFFECTION_STEPS = [100, 300, 600] as const;

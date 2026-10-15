@@ -19,7 +19,8 @@ git fetch origin --prune --quiet
 [ -f "$REPO/server/.env.prod" ] || { echo "[deploy] $REPO/server/.env.prod 가 없다"; exit 1; }
 
 rm -rf "$SRC"; mkdir -p "$SRC"
-git archive "$REF" server | tar -x -C "$SRC"
+# 서버와, 서버가 앱과 함께 쓰는 규칙 파일(src/shared/coin-rules.ts)만 꺼낸다. compose 빌드 맥락이 레포 루트(..)다
+git archive "$REF" server src/shared/coin-rules.ts | tar -x -C "$SRC"
 cp "$REPO/server/.env.prod" "$SRC/server/.env.prod"
 chmod 600 "$SRC/server/.env.prod"
 echo "[deploy] $(git rev-parse --short "$REF") 빌드"

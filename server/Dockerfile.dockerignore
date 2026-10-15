@@ -1,0 +1,16 @@
+# 빌드 맥락(레포 루트)에서 서버 이미지에 들어갈 것만 연다. 앱 코드, 비밀값, 의존성 폴더는 들어가지 않는다.
+# BuildKit 은 Dockerfile 옆의 <Dockerfile 이름>.dockerignore 를 맥락 루트의 .dockerignore 보다 먼저 쓴다.
+*
+!server/package.json
+!server/package-lock.json
+!server/tsconfig.json
+!server/tsconfig.build.json
+!server/scripts
+!server/src
+!server/db
+!src/shared/coin-rules.ts
+server/src/shared
+**/*.test.ts
+**/node_modules
+**/.env
+**/.env.*

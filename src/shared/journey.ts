@@ -2,13 +2,14 @@
 // 빠른 입력, 집중 25분, 메모, 일정, 펫 만들기, 같이 보기, 주간 돌아보기. 해 보면 작은 코인을 준다.
 // 건너뛸 수 있고, 펫이 먼저 권하는 말은 하루에 한 번까지다(안 해도 아무 벌이 없다). 진행은 패널 오늘 탭에 보인다.
 // 모두 순수 함수다. 저장, 말풍선, 해 봤는지 보기는 main/journey.ts.
+import { JOURNEY_COINS } from './coin-rules.ts';
 import { plusDays } from './day.ts';
 
 export const JOURNEY_STEPS = ['quick', 'focus', 'note', 'event', 'maker', 'look', 'week'] as const;
 export type JourneyStep = (typeof JOURNEY_STEPS)[number];
 export const JOURNEY_DAYS = JOURNEY_STEPS.length;
 /** 하나 해 볼 때마다 주는 코인 (밥 한 번 값쯤) */
-export const JOURNEY_COINS = 3;
+export { JOURNEY_COINS };
 /** 코인 기록 까닭 (coin_log.reason) */
 export const JOURNEY_REASON = 'journey';
 

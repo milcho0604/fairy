@@ -33,8 +33,9 @@ services:
 
   api:
     build:
-      context: .
-      dockerfile: Dockerfile
+      # 빌드 맥락은 레포 루트. 서버와 공유 규칙 src/shared/coin-rules.ts 만 들어간다 (server/Dockerfile.dockerignore)
+      context: ..
+      dockerfile: server/Dockerfile
     image: fairy-api
     container_name: fairy-api
     restart: unless-stopped
@@ -53,6 +54,7 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      PUBLIC_URL: ${PUBLIC_URL:-https://fairy-api.moilga.com}
     ports:
       - '127.0.0.1:3002:3002'
 

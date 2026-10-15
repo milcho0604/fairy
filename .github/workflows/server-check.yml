@@ -5,9 +5,9 @@ name: server-check
 on:
   push:
     branches: [main]
-    paths: ['server/**', '.github/workflows/server-*.yml']
+    paths: ['server/**', 'src/shared/coin-rules.ts', '.github/workflows/server-*.yml']
   pull_request:
-    paths: ['server/**', '.github/workflows/server-*.yml']
+    paths: ['server/**', 'src/shared/coin-rules.ts', '.github/workflows/server-*.yml']
 
 permissions:
   contents: read
@@ -35,6 +35,7 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run test:integration
-      - run: docker build -t fairy-api:ci .
+      # 빌드 맥락은 레포 루트 (공유 규칙 src/shared/coin-rules.ts 를 함께 넣는다)
+      - run: docker build -f Dockerfile -t fairy-api:ci ..
       - name: 배포 스크립트 문법
         run: bash -n ops/deploy.sh && bash -n ops/fairy-monitor.sh && bash -n ops/install-monitor.sh
