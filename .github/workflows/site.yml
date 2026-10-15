@@ -35,4 +35,4 @@ jobs:
           node site/tools/build.mjs
           git diff --exit-code -- site ':!site/sitemap.xml'
       - name: HTML 검사
-        run: npx --yes html-validate@11.16.0 site/index.html site/download/index.html site/privacy/index.html site/404.html
+        run: npx --yes html-validate@11.16.0 site/index.html site/download/index.html site/privacy/index.html site/terms/index.html site/404.html

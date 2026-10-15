@@ -11,6 +11,8 @@ site/
 ├── updates.json        ← the "새로 생긴 것 / What's new" strip under the hero (first three items)
 ├── index.html          ← landing page
 ├── download/index.html ← all files + install steps per OS
+├── privacy/index.html  ← privacy policy (short version box on top)
+├── terms/index.html    ← terms of use for the server features (short version box on top)
 ├── 404.html
 ├── assets/
 │   ├── site.css        ← source stylesheet; build.mjs inlines it into each page

@@ -24,6 +24,7 @@ const PAGES = [
   { file: 'index.html', path: '/', base: './', titleKey: 'meta.title', descKey: null, sitemap: true },
   { file: 'download/index.html', path: '/download/', base: '../', titleKey: 'meta.dlTitle', descKey: 'meta.dlDesc', sitemap: true },
   { file: 'privacy/index.html', path: '/privacy/', base: '../', titleKey: 'meta.pvTitle', descKey: 'meta.pvDesc', sitemap: true },
+  { file: 'terms/index.html', path: '/terms/', base: '../', titleKey: 'meta.tmTitle', descKey: 'meta.tmDesc', sitemap: true },
   { file: '404.html', path: '/404.html', base: '/', titleKey: 'nf.title', descKey: null, sitemap: false, noindex: true },
 ];
 
@@ -77,6 +78,7 @@ function footer(b) {
         <li><a data-href="releases" data-i18n="footer.releases"></a></li>
         <li><a data-href="contact" data-i18n="footer.contact"></a></li>
         <li><a href="${b}privacy/" data-i18n="footer.policy"></a></li>
+        <li><a href="${b}terms/" data-i18n="footer.terms"></a></li>
       </ul>
     </nav>
     <div class="foot-bottom">
@@ -126,7 +128,7 @@ function inlineCss(b) {
 }
 
 // ---- Jua is only used for headings: ask Google Fonts for just those characters ----
-const DISPLAY_KEYS = /^(hero\.title|[a-z]+\.title|about\.(pet|biz|ai)T|more\.\dt|maker\.o\dt|looks\.\dt|steps\.s\dt|dlp\.(title|macT|winT|linuxT|aiT)|nf\.title)$/;
+const DISPLAY_KEYS = /^(hero\.title|[a-z]+\.title|about\.(pet|biz|ai)T|more\.\dt|maker\.o\dt|looks\.\dt|steps\.s\dt|dlp\.(title|macT|winT|linuxT|aiT)|nf\.title|(pv|tm)\.sumT)$/;
 function fontHref() {
   let chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!?&’\'"–-():;/';
   for (const l of Object.keys(D)) {
