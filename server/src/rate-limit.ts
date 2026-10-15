@@ -14,6 +14,8 @@ export interface Limit {
 export const LIMITS = {
   /** 기기 계정 만들기: 같은 곳에서 한 시간 20개 */
   deviceByIp: { max: 20, windowMs: 3_600_000 },
+  /** 기기 계정 만들기: 같은 곳에서 하루 40개 (한 시간 상한을 하루 내내 채우지 못하게) */
+  deviceByIpDay: { max: 40, windowMs: 86_400_000 },
   /** 기기 계정 만들기 전체: 한 시간 500개 (cf-connecting-ip 가 없는 요청이 한 곳으로 몰려도 서버를 지킨다) */
   deviceAll: { max: 500, windowMs: 3_600_000 },
   /** 구글 로그인 시작, 돌아오기, 세션 바꾸기: 같은 곳에서 10분 30번 */

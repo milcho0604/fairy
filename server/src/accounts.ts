@@ -13,7 +13,17 @@ export type Items = Record<string, number>;
 export interface LockedAccount {
   id: string;
   balance: number;
+  /** 기존 잔액 옮기기로 받은 합 (합친 계정 몫 포함) */
+  migrated: number;
 }
+
+/**
+ * 기존 잔액 옮기기 상한 (계정마다, 합쳐도). 기획서에 값이 없어 정했다: 상점 물건을 모두 사는 값
+ * (집 6,500 + 모양 1,300 + 장난감 190 = 7,990)을 조금 넘는 10,000. 하루에 실제로 버는 코인이 50~100 쯤
+ * (shop 의 집 값 주석)이라 100일 넘게 모은 양이다. 앱 장부는 사용자 컴퓨터의 sqlite 라 고쳐 올릴 수 있으므로,
+ * 옮기기로 생길 수 있는 코인을 이 안으로 묶는다.
+ */
+export const MIGRATE_MAX_BALANCE = 10_000;
 
 /**
  * 계정 행을 잠근다(SELECT ... FOR UPDATE). 같은 계정의 맞추기, 옮기기, 합치기가 한 줄로 선다.
@@ -22,13 +32,13 @@ export interface LockedAccount {
 export async function lockAccount(c: PoolClient, id: string): Promise<LockedAccount> {
   let cur = id;
   for (let hop = 0; hop < 10; hop++) {
-    const r = await c.query<{ id: string; balance: string; merged_into: string | null }>(
-      'SELECT id, balance, merged_into FROM account WHERE id = $1 FOR UPDATE',
+    const r = await c.query<{ id: string; balance: string; migrated: number; merged_into: string | null }>(
+      'SELECT id, balance, migrated, merged_into FROM account WHERE id = $1 FOR UPDATE',
       [cur],
     );
     const row = r.rows[0];
     if (!row) throw new HttpException({ error: 'token' }, HttpStatus.UNAUTHORIZED);
-    if (row.merged_into === null) return { id: row.id, balance: Number(row.balance) };
+    if (row.merged_into === null) return { id: row.id, balance: Number(row.balance), migrated: row.migrated };
     cur = row.merged_into;
   }
   throw new Error(`계정 ${id} 의 합치기 사슬이 너무 길다`);
@@ -79,7 +89,8 @@ export class Accounts {
 
   /**
    * from 계정을 into 계정에 합친다 (21절). 두 계정은 이미 잠겨 있어야 한다.
-   * - 코인: 더한다. from 의 잔액을 'merge' 한 줄로 into 에 적는다
+   * - 코인: 더한다. from 의 잔액을 'merge' 한 줄로 into 에 적는다. 다만 두 계정이 옮기기로 받은 합이
+   *   MIGRATE_MAX_BALANCE 를 넘으면 넘는 만큼은 버린다(기기마다 옮겨 합쳐 코인을 찍어 내지 못하게)
    * - 산 물건: 집 단계는 큰 쪽, 집 모양은 합친 모음, 장난감은 종류마다 큰 쪽 (모두 이름마다 큰 쪽이라 한 규칙)
    * - 로그인, 기기 토큰, 세션: into 를 가리키게 바꾼다
    * - from 은 닫고(closed_at, merged_into) 장부는 남긴다: 다른 기기가 옛 기록을 다시 보내도 한 번만 반영된다
@@ -87,15 +98,31 @@ export class Accounts {
    */
   async merge(c: PoolClient, from: LockedAccount, into: LockedAccount): Promise<number> {
     if (from.id === into.id) return into.balance;
+    const over = Math.max(0, from.migrated + into.migrated - MIGRATE_MAX_BALANCE);
+    const drop = Math.min(from.balance, over);
+    const moved = from.balance - drop;
     if (from.balance > 0) {
       await c.query(
-        `INSERT INTO coin_entry (entry_id, account_id, reason, asked, amount, status, day)
-         VALUES ($1, $2, 'merge', $3, $3, 'ok', $4)`,
-        [`merge:${from.id}`, into.id, from.balance, utcDay()],
+        `INSERT INTO coin_entry (entry_id, account_id, reason, asked, amount, status, error, day)
+         VALUES ($1, $2, 'merge', $3, $4, $5, $6, $7)`,
+        [
+          `merge:${from.id}`,
+          into.id,
+          from.balance,
+          moved,
+          drop > 0 ? 'capped' : 'ok',
+          drop > 0 ? 'migrate_cap' : null,
+          utcDay(),
+        ],
       );
     }
-    const balance = into.balance + from.balance;
-    await c.query('UPDATE account SET balance = $2 WHERE id = $1', [into.id, balance]);
+    const balance = into.balance + moved;
+    const migrated = Math.min(MIGRATE_MAX_BALANCE, from.migrated + into.migrated);
+    await c.query('UPDATE account SET balance = $2, migrated = $3 WHERE id = $1', [
+      into.id,
+      balance,
+      migrated,
+    ]);
     await c.query(
       `INSERT INTO owned_item (account_id, item, count)
        SELECT $2, item, count FROM owned_item WHERE account_id = $1
@@ -114,7 +141,10 @@ export class Accounts {
     return balance;
   }
 
-  /** 두 계정을 번호 순으로 잠근다 (서로 다른 순서로 잠가 막히지 않게) */
+  /**
+   * 두 계정을 번호 순으로 잠근다 (서로 다른 순서로 잠가 막히지 않게). 둘 중 어느 것도 이 트랜잭션에서
+   * 먼저 잠겨 있으면 안 된다. 그사이 합쳐졌으면 두 결과의 id 가 같을 수 있다
+   */
   async lockPair(c: PoolClient, a: string, b: string): Promise<[LockedAccount, LockedAccount]> {
     if (BigInt(a) < BigInt(b)) {
       const la = await lockAccount(c, a);

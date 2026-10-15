@@ -41,3 +41,14 @@ test('서명, 알고리즘, 키, aud, iss, exp, nonce, sub 가 틀리면 던진�
   ];
   for (const [t, why] of bad) await assert.rejects(verifyIdToken(t, opts), new RegExp(why), why);
 });
+
+test('kid 를 못 찾으면 공개 키를 한 번 다시 받는다', async () => {
+  const calls: (boolean | undefined)[] = [];
+  const jwks = async (refresh?: boolean) => {
+    calls.push(refresh);
+    return refresh ? [jwk] : [];
+  };
+  assert.equal(await verifyIdToken(token(good), { ...opts, jwks }), '1234');
+  assert.deepEqual(calls, [undefined, true]);
+  await assert.rejects(verifyIdToken(token(good), { ...opts, jwks: async () => [] }), /키/);
+});

@@ -8,6 +8,8 @@ CREATE TABLE account (
   age TEXT NOT NULL CHECK (age IN ('14+', '18+')),
   -- 정본 잔액. coin_entry 의 이 계정 amount 합과 같다 (같은 트랜잭션에서 고친다)
   balance BIGINT NOT NULL DEFAULT 0 CHECK (balance >= 0),
+  -- 기존 잔액 옮기기로 받은 합. 합쳐도 계정마다 상한(10,000)을 넘지 않게 센다
+  migrated INTEGER NOT NULL DEFAULT 0 CHECK (migrated >= 0),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   -- 다른 계정에 합쳐져 닫힌 때와 남는 쪽 (21절). 닫힌 계정의 장부는 같은 기록을 다시 받지 않게 남긴다
   closed_at TIMESTAMPTZ,
@@ -53,12 +55,15 @@ CREATE TABLE coin_entry (
   asked INTEGER NOT NULL,
   amount INTEGER NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('ok', 'capped', 'rejected')),
+  -- 할 일 기록(todo, early, undo)의 할 일 번호. 앱이 만든 값(할 일 id 의 해시 등)이라 서버는 같은지만 본다
+  ref TEXT CHECK (length(ref) BETWEEN 1 AND 64),
   error TEXT,
   -- 앱의 현지 날짜 (하루 상한을 세는 날)
   day DATE NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX coin_entry_day ON coin_entry (account_id, reason, day);
+CREATE INDEX coin_entry_ref ON coin_entry (account_id, ref) WHERE ref IS NOT NULL;
 
 -- 산 물건. 집은 item='house', count=단계. 장난감과 집 모양은 'toy:ball', 'house-style:igloo' 처럼, count=1
 CREATE TABLE owned_item (
@@ -68,9 +73,13 @@ CREATE TABLE owned_item (
   PRIMARY KEY (account_id, item)
 );
 
--- 기존 잔액 옮기기는 기기 계정(기기 토큰)마다 한 번 (6절). 합치기로 계정이 바뀌어도 기기는 그대로라 두 번 옮기지 못한다
+-- 기존 잔액 옮기기는 한 번씩만 (6절): 로그인 없는 기기 계정마다 한 번('account:<번호>'), 로그인(sub)마다 한 번
+-- ('login:<서비스>:<sub>'). 옮길 때 계정의 키와 그 계정 로그인의 키를 모두 적고, 하나라도 있으면 거절한다.
+-- 합쳐도 키는 남아(닫힌 계정 것) 같은 기기나 로그인으로 다시 옮기지 못한다. 탈퇴하면 함께 지워진다
 CREATE TABLE migration_done (
-  device_id BIGINT PRIMARY KEY REFERENCES device (id) ON DELETE CASCADE,
-  balance INTEGER NOT NULL,
+  key TEXT PRIMARY KEY CHECK (length(key) BETWEEN 1 AND 300),
+  account_id BIGINT NOT NULL REFERENCES account (id) ON DELETE CASCADE,
+  amount INTEGER NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE INDEX migration_done_account ON migration_done (account_id);

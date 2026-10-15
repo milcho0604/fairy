@@ -1,7 +1,15 @@
 // 통합 시험: 기기 계정, 코인 맞추기, 기존 잔액 옮기기, 구글 로그인(가짜 구글), 합치기, 탈퇴, 레이트리밋.
 // 시험용 Postgres 컨테이너를 무작위 이름으로 띄우고 끝나면 지운다. 진짜 구글은 부르지 않는다(키 쌍을 만들어 id_token 을 직접 서명).
 import assert from 'node:assert/strict';
-import { generateKeyPairSync, type JsonWebKey, type KeyObject, randomUUID, sign } from 'node:crypto';
+import {
+  createHash,
+  generateKeyPairSync,
+  type JsonWebKey,
+  type KeyObject,
+  randomBytes,
+  randomUUID,
+  sign,
+} from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Pool } from 'pg';
@@ -28,12 +36,18 @@ const jwk = {
 };
 let nextIdToken: (nonce: string) => string = () => '';
 let lastNonce = '';
+// 공개 키 목록. 키 바꾸기 시험은 처음 받을 때는 옛 목록, 다시 받으면 새 목록을 준다
+let jwksNow: () => JsonWebKey[] = () => [jwk];
+let jwksRefreshed: (() => JsonWebKey[]) | undefined;
+let jwksCalls = 0;
 const fakeGoogle: GoogleApi = {
   async exchangeCode() {
     return nextIdToken(lastNonce);
   },
-  async fetchJwks() {
-    return [jwk];
+  async fetchJwks(o) {
+    jwksCalls++;
+    if (o?.refresh && jwksRefreshed) jwksNow = jwksRefreshed;
+    return jwksNow();
   },
 };
 
@@ -89,12 +103,14 @@ async function newDevice(age = '14+'): Promise<string> {
   return r.body.token;
 }
 
-type Entry = { id: string; reason: string; amount: number; day: string };
-const entry = (reason: string, amount: number, day = today()): Entry => ({
+type Entry = { id: string; reason: string; amount: number; day: string; ref?: string };
+/** 할 일 기록(todo, early, undo)은 할 일 번호 ref 가 필요하다. 주지 않으면 새 할 일 */
+const entry = (reason: string, amount: number, day = today(), ref?: string): Entry => ({
   id: randomUUID(),
   reason,
   amount,
   day,
+  ...(ref !== undefined ? { ref } : ['todo', 'early', 'undo'].includes(reason) ? { ref: randomUUID() } : {}),
 });
 
 async function sync(token: string, entries: Entry[]): Promise<Res> {
@@ -103,15 +119,29 @@ async function sync(token: string, entries: Entry[]): Promise<Res> {
   return r;
 }
 
+/** 앱의 로컬 PKCE: verifier 는 앱만 갖고 start 에는 그 sha256 만 보낸다 */
+const newVerifier = () => randomBytes(32).toString('base64url');
+const challengeOf = (v: string) => createHash('sha256').update(v).digest('base64url');
+
 /** 구글 로그인 한 바퀴: start → (가짜 구글) → callback → 루프백 → 일회용 코드 */
-async function googleCode(sub: string, claims?: (nonce: string) => Record<string, unknown>): Promise<URL> {
+async function googleCode(
+  sub: string,
+  claims?: (nonce: string) => Record<string, unknown>,
+  verifier = newVerifier(),
+  signWith: { key: KeyObject; kid: string } = { key: key.privateKey, kid: 'k1' },
+): Promise<URL> {
   const from = ip();
   const appState = randomUUID().replaceAll('-', '');
-  const start = await api('GET', `/auth/google/start?port=53682&state=${appState}`, { ip: from });
+  const start = await api(
+    'GET',
+    `/auth/google/start?port=53682&state=${appState}&challenge=${challengeOf(verifier)}`,
+    { ip: from },
+  );
   assert.equal(start.status, 302);
   const google = new URL(start.headers.get('location') ?? '');
   lastNonce = google.searchParams.get('nonce') ?? '';
-  nextIdToken = (nonce) => idToken(claims ? claims(nonce) : goodClaims(sub, nonce));
+  nextIdToken = (nonce) =>
+    idToken(claims ? claims(nonce) : goodClaims(sub, nonce), signWith.key, signWith.kid);
   const cb = await api(
     'GET',
     `/auth/google/callback?state=${google.searchParams.get('state')}&code=google-code`,
@@ -125,11 +155,17 @@ async function googleCode(sub: string, claims?: (nonce: string) => Record<string
   return done;
 }
 
-async function login(token: string, sub: string, merge?: boolean): Promise<Res> {
-  const done = await googleCode(sub);
+async function login(token: string, sub: string, merge?: boolean): Promise<Res & { verifier: string }> {
+  const verifier = newVerifier();
+  const done = await googleCode(sub, undefined, verifier);
   const code = done.searchParams.get('code');
   assert.ok(code, done.toString());
-  return api('POST', '/v1/session', { token, body: { code, ...(merge ? { merge } : {}) }, ip: ip() });
+  const r = await api('POST', '/v1/session', {
+    token,
+    body: { code, verifier, ...(merge ? { merge } : {}) },
+    ip: ip(),
+  });
+  return { ...r, verifier };
 }
 
 before(async () => {
@@ -323,7 +359,7 @@ describe('코인 맞추기', () => {
       duplicate: true,
     });
     assert.equal(again.body.balance, 60);
-    const undo = await sync(token, [entry('undo', -100), entry('food', -5)]);
+    const undo = await sync(token, [entry('reset', -100), entry('food', -5)]);
     assert.deepEqual(undo.body.results[0].applied, -60);
     assert.equal(undo.body.results[0].status, 'capped');
     assert.deepEqual(undo.body.results[1].error, 'insufficient');
@@ -378,10 +414,22 @@ describe('구글 로그인', () => {
       'port=5000&state=a',
       'port=5000',
     ]) {
-      const r = await api('GET', `/auth/google/start?${q}`, { ip: ip() });
+      const r = await api('GET', `/auth/google/start?${q}&challenge=${challengeOf(newVerifier())}`, {
+        ip: ip(),
+      });
       assert.equal(r.status, 400, q);
     }
-    const r = await api('GET', '/auth/google/start?port=5000&state=abcdefgh', { ip: ip() });
+    // 앱의 challenge 가 없거나 모양이 틀리면 400
+    for (const c of ['', '&challenge=short', `&challenge=${'A'.repeat(42)}!`]) {
+      const r = await api('GET', `/auth/google/start?port=5000&state=abcdefgh${c}`, { ip: ip() });
+      assert.equal(r.status, 400, c);
+      assert.deepEqual(r.body, { error: 'challenge' });
+    }
+    const r = await api(
+      'GET',
+      `/auth/google/start?port=5000&state=abcdefgh&challenge=${challengeOf(newVerifier())}`,
+      { ip: ip() },
+    );
     assert.equal(r.status, 302);
     const u = new URL(r.headers.get('location') ?? '');
     assert.equal(u.origin + u.pathname, 'https://accounts.google.com/o/oauth2/v2/auth');
@@ -409,7 +457,11 @@ describe('구글 로그인', () => {
     }
     // 다른 키로 서명
     const from = ip();
-    const start = await api('GET', '/auth/google/start?port=5000&state=abcdefgh', { ip: from });
+    const start = await api(
+      'GET',
+      `/auth/google/start?port=5000&state=abcdefgh&challenge=${challengeOf(newVerifier())}`,
+      { ip: from },
+    );
     const g = new URL(start.headers.get('location') ?? '');
     lastNonce = g.searchParams.get('nonce') ?? '';
     nextIdToken = (n) => idToken(goodClaims('s', n), otherKey.privateKey);
@@ -427,21 +479,23 @@ describe('구글 로그인', () => {
   test('처음 보는 로그인은 기기 계정에 붙고, 일회용 코드는 한 번만, 세션 토큰으로도 맞춘다', async () => {
     const token = await newDevice();
     await sync(token, [entry('todo', 15)]);
-    const done = await googleCode('sub-first');
+    const verifier = newVerifier();
+    const done = await googleCode('sub-first', undefined, verifier);
     const code = done.searchParams.get('code');
-    const r = await api('POST', '/v1/session', { token, body: { code }, ip: ip() });
+    const r = await api('POST', '/v1/session', { token, body: { code, verifier }, ip: ip() });
     assert.equal(r.status, 200);
     assert.match(r.body.session, /^fs_/);
     assert.equal(r.body.merged, false);
     assert.equal(r.body.linked, true);
-    const reuse = await api('POST', '/v1/session', { token, body: { code }, ip: ip() });
+    const reuse = await api('POST', '/v1/session', { token, body: { code, verifier }, ip: ip() });
     assert.equal(reuse.status, 400);
     assert.deepEqual(reuse.body, { error: 'code' });
     const viaSession = await sync(r.body.session, []);
     assert.equal(viaSession.body.balance, 15);
-    // 세션으로는 옮기기를 하지 않는다 (기기마다 한 번이라)
+    // 옮기기는 계정(과 그 로그인)마다 한 번: 세션으로 했으면 기기 토큰으로 다시 못 한다
     const m = await api('POST', '/v1/migrate', { token: r.body.session, body: { balance: 1 } });
-    assert.equal(m.status, 400);
+    assert.equal(m.status, 200);
+    assert.equal((await api('POST', '/v1/migrate', { token, body: { balance: 1 } })).status, 409);
     // 로그인 표에는 sub 만
     const row = await pool.query("SELECT * FROM login WHERE sub = 'sub-first'");
     assert.deepEqual(Object.keys(row.rows[0]).sort(), ['account_id', 'created_at', 'service', 'sub']);
@@ -535,7 +589,7 @@ describe('구글 로그인', () => {
 
     const yes = await api('POST', '/v1/session', {
       token: f,
-      body: { code: ask.body.code, merge: true },
+      body: { code: ask.body.code, verifier: ask.verifier, merge: true },
       ip: ip(),
     });
     assert.equal(yes.status, 200);
@@ -588,7 +642,12 @@ describe('구글 설정이 비면', () => {
     try {
       const addr = off.getHttpServer().address();
       const b = `http://127.0.0.1:${typeof addr === 'object' && addr ? addr.port : 0}`;
-      const start = await fetch(`${b}/auth/google/start?port=5000&state=abcdefgh`, { redirect: 'manual' });
+      const start = await fetch(
+        `${b}/auth/google/start?port=5000&state=abcdefgh&challenge=${challengeOf(newVerifier())}`,
+        {
+          redirect: 'manual',
+        },
+      );
       assert.equal(start.status, 503);
       const cb = await fetch(`${b}/auth/google/callback?state=x&code=y`, { redirect: 'manual' });
       assert.equal(cb.status, 503);
@@ -606,6 +665,203 @@ describe('구글 설정이 비면', () => {
       assert.equal(session.status, 503);
     } finally {
       await off.close();
+    }
+  });
+});
+
+describe('검토 고침 (#106)', () => {
+  test('1. 잔액이 3,000 을 넘어도 초기화와 되돌리기는 잔액까지 뺀다', async () => {
+    const t = await newDevice();
+    const m = await api('POST', '/v1/migrate', { token: t, body: { balance: 5000 } });
+    assert.equal(m.body.balance, 5000);
+    const r = await sync(t, [entry('reset', -5000)]);
+    assert.deepEqual([r.body.results[0].status, r.body.results[0].applied], ['ok', -5000]);
+    assert.equal(r.body.balance, 0);
+  });
+
+  test('2. 할 일 상한은 그날 코인 받은 서로 다른 할 일 수(20)로 센다, 되돌리기는 실제로 받은 만큼만', async () => {
+    const t = await newDevice();
+    // 같은 할 일을 끝내고 되돌리기를 25번 되풀이해도 그날 새 할 일은 막히지 않는다
+    for (let i = 0; i < 25; i++)
+      await sync(t, [entry('todo', 15, today(), 'same'), entry('undo', -15, today(), 'same')]);
+    const fresh = await sync(t, [entry('todo', 15)]);
+    assert.deepEqual([fresh.body.results[0].status, fresh.body.results[0].applied], ['ok', 15]);
+    // 서로 다른 할 일은 그날 20개까지 (same 과 fresh 로 둘을 이미 셌다)
+    const many = await sync(
+      t,
+      Array.from({ length: 19 }, () => entry('todo', 15)),
+    );
+    const statuses = many.body.results.map((x: { status: string }) => x.status);
+    assert.equal(statuses.filter((s: string) => s === 'capped').length, 1);
+    const balance = many.body.balance;
+    // 상한에 걸려 0 을 받은 할 일을 되돌리면 아무것도 빼지 않는다
+    const capRef = randomUUID();
+    const c2 = await sync(t, [entry('todo', 15, today(), capRef)]);
+    assert.equal(c2.body.results[0].applied, 0);
+    const u = await sync(t, [entry('undo', -15, today(), capRef)]);
+    assert.equal(u.body.results[0].applied, 0);
+    assert.equal(u.body.balance, balance);
+    // 할 일 기록에는 ref 가 있어야 한다
+    const noRef = await sync(t, [{ id: randomUUID(), reason: 'todo', amount: 15, day: today() }]);
+    assert.deepEqual([noRef.body.results[0].status, noRef.body.results[0].error], ['rejected', 'ref']);
+  });
+
+  test('3. 범위를 넘는 양은 그 기록만 거절, 옮기기는 상한까지 (500 이 아니다)', async () => {
+    const t = await newDevice();
+    const r = await sync(t, [entry('focus', 1e15), entry('food', -1e15), entry('focus', 10)]);
+    assert.deepEqual(
+      r.body.results.map((x: { status: string; error?: string }) => [x.status, x.error]),
+      [
+        ['rejected', 'amount'],
+        ['rejected', 'amount'],
+        ['ok', undefined],
+      ],
+    );
+    const m = await api('POST', '/v1/migrate', { token: t, body: { balance: 1e20 } });
+    assert.equal(m.status, 200);
+    assert.deepEqual([m.body.applied, m.body.status], [10_000, 'capped']);
+  });
+
+  test('4. 옮기기는 합쳐도 계정에 10,000 까지, 계정이 생기기 전 날짜는 받지 않는다', async () => {
+    const a = await newDevice();
+    assert.equal((await api('POST', '/v1/migrate', { token: a, body: { balance: 8000 } })).status, 200);
+    assert.equal((await login(a, 'sub-mint')).status, 200);
+    const b = await newDevice();
+    assert.equal((await api('POST', '/v1/migrate', { token: b, body: { balance: 5000 } })).status, 200);
+    const r = await login(b, 'sub-mint');
+    assert.equal(r.body.merged, true);
+    assert.equal((await sync(a, [])).body.balance, 10_000);
+    // 합친 뒤에는 어느 기기로도 다시 옮기지 못한다
+    assert.equal((await api('POST', '/v1/migrate', { token: b, body: { balance: 1 } })).status, 409);
+    assert.equal(
+      (await api('POST', '/v1/migrate', { token: r.body.session, body: { balance: 1 } })).status,
+      409,
+    );
+    // 새 기기 계정은 만든 날(시간대 여유 하루) 전 날짜를 받지 않는다
+    const n = await newDevice();
+    const old = await sync(n, [entry('focus', 25, daysAgo(5)), entry('focus', 25, daysAgo(1))]);
+    assert.deepEqual(
+      old.body.results.map((x: { status: string; error?: string }) => [x.status, x.error]),
+      [
+        ['rejected', 'day'],
+        ['ok', undefined],
+      ],
+    );
+  });
+
+  test('5. 서로의 로그인으로 동시에 합쳐도 교착 없이 끝난다', async () => {
+    const x = await newDevice();
+    const y = await newDevice();
+    await sync(x, [entry('todo', 15)]);
+    await sync(y, [entry('todo', 15), entry('todo', 15)]);
+    assert.equal((await login(x, 'sub-x')).status, 200);
+    assert.equal((await login(y, 'sub-y')).status, 200);
+    const askX = await login(x, 'sub-y');
+    const askY = await login(y, 'sub-x');
+    assert.equal(askX.status, 409);
+    assert.equal(askY.status, 409);
+    const body = (a: typeof askX) => ({ code: a.body.code, verifier: a.verifier, merge: true });
+    const [rx, ry] = await Promise.all([
+      api('POST', '/v1/session', { token: x, body: body(askX), ip: ip() }),
+      api('POST', '/v1/session', { token: y, body: body(askY), ip: ip() }),
+    ]);
+    assert.ok(rx.status < 500 && ry.status < 500, JSON.stringify([rx.status, rx.body, ry.status, ry.body]));
+    assert.equal((await sync(x, [])).body.balance, 45);
+    assert.equal((await sync(y, [])).body.balance, 45);
+  });
+
+  test('6. 처음 보는 sub 로 두 기기가 동시에 로그인해도 한쪽은 합쳐진다 (500 이 아니다)', async () => {
+    const p = await newDevice();
+    const q = await newDevice();
+    await sync(p, [entry('todo', 15)]);
+    await sync(q, [entry('todo', 15)]);
+    const vp = newVerifier();
+    const vq = newVerifier();
+    const cp = (await googleCode('sub-same-time', undefined, vp)).searchParams.get('code');
+    const cq = (await googleCode('sub-same-time', undefined, vq)).searchParams.get('code');
+    const [rp, rq] = await Promise.all([
+      api('POST', '/v1/session', { token: p, body: { code: cp, verifier: vp }, ip: ip() }),
+      api('POST', '/v1/session', { token: q, body: { code: cq, verifier: vq }, ip: ip() }),
+    ]);
+    assert.deepEqual([rp.status, rq.status], [200, 200], JSON.stringify([rp.body, rq.body]));
+    assert.deepEqual([rp.body.merged, rq.body.merged].sort(), [false, true]);
+    assert.equal((await sync(p, [])).body.balance, 30);
+  });
+
+  test('7. 같은 곳에서 대기 로그인을 너무 많이 열면 429', async () => {
+    const from = ip();
+    const codes: number[] = [];
+    for (let i = 0; i < 21; i++) {
+      const q = `port=5000&state=abcdefgh&challenge=${challengeOf(newVerifier())}`;
+      codes.push((await api('GET', `/auth/google/start?${q}`, { ip: from })).status);
+    }
+    assert.deepEqual(codes.slice(0, 20), Array(20).fill(302));
+    assert.equal(codes[20], 429);
+  });
+
+  test('8. 화해는 7일에 한 번, 만난 날은 7일 120, 여정은 계정 평생 21', async () => {
+    const t = await newDevice();
+    const mk = await sync(t, [entry('makeup', 28, daysAgo(1)), entry('makeup', 28)]);
+    assert.deepEqual(
+      mk.body.results.map((x: { applied: number }) => x.applied),
+      [28, 0],
+    );
+    const meet = await sync(t, [entry('meet', 60, daysAgo(1)), entry('meet', 60)]);
+    assert.deepEqual(
+      meet.body.results.map((x: { applied: number }) => x.applied),
+      [60, 60],
+    );
+    // 7일 안에 120 을 다 받았다 (내일 날짜로 보내도)
+    const meet3 = await sync(t, [entry('meet', 10, daysAgo(-1))]);
+    assert.equal(meet3.body.results[0].applied, 0);
+    const j = await sync(t, [
+      ...Array.from({ length: 4 }, () => entry('journey', 3, daysAgo(1))),
+      ...Array.from({ length: 4 }, () => entry('journey', 3)),
+    ]);
+    assert.equal(
+      j.body.results.reduce((n: number, x: { applied: number }) => n + x.applied, 0),
+      21,
+    );
+  });
+
+  test('9. 세션 바꾸기는 start 때 보낸 challenge 의 verifier 가 맞아야 한다 (틀리면 코드도 버린다)', async () => {
+    const t = await newDevice();
+    const code = (await googleCode('sub-pkce')).searchParams.get('code');
+    const none = await api('POST', '/v1/session', { token: t, body: { code }, ip: ip() });
+    assert.deepEqual([none.status, none.body], [400, { error: 'verifier' }]);
+    const v2 = newVerifier();
+    const code2 = (await googleCode('sub-pkce', undefined, v2)).searchParams.get('code');
+    const wrong = await api('POST', '/v1/session', {
+      token: t,
+      body: { code: code2, verifier: newVerifier() },
+      ip: ip(),
+    });
+    assert.deepEqual([wrong.status, wrong.body], [400, { error: 'verifier' }]);
+    const late = await api('POST', '/v1/session', {
+      token: t,
+      body: { code: code2, verifier: v2 },
+      ip: ip(),
+    });
+    assert.deepEqual([late.status, late.body], [400, { error: 'code' }]);
+  });
+
+  test('10. 구글이 키를 바꿨으면(kid 없음) 공개 키를 한 번 다시 받는다', async () => {
+    const newKey = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const jwk2 = { ...(newKey.publicKey.export({ format: 'jwk' }) as JsonWebKey), kid: 'k2', alg: 'RS256' };
+    jwksRefreshed = () => [jwk, jwk2];
+    jwksCalls = 0;
+    try {
+      const t = await newDevice();
+      const v = newVerifier();
+      const done = await googleCode('sub-rotate', undefined, v, { key: newKey.privateKey, kid: 'k2' });
+      assert.equal(done.searchParams.get('error'), null, done.toString());
+      assert.equal(jwksCalls, 2);
+      const code = done.searchParams.get('code');
+      const r = await api('POST', '/v1/session', { token: t, body: { code, verifier: v }, ip: ip() });
+      assert.equal(r.status, 200);
+    } finally {
+      jwksNow = () => [jwk];
+      jwksRefreshed = undefined;
     }
   });
 });

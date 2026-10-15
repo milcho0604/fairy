@@ -19,11 +19,14 @@ export interface GoogleApi {
     clientId: string;
     clientSecret: string;
   }): Promise<string>;
-  /** 구글 공개 키 (JWKS) */
-  fetchJwks(): Promise<JsonWebKey[]>;
+  /** 구글 공개 키 (JWKS). refresh 면 담아 둔 것을 버리고 다시 받는다 (최소 간격은 구현이 지킨다) */
+  fetchJwks(o?: { refresh?: boolean }): Promise<JsonWebKey[]>;
 }
 
-/** 진짜 구글. 공개 키는 한 시간 담아 둔다 */
+/** 다시 받기의 최소 간격: kid 를 못 찾는 토큰을 마구 보내 구글을 두드리지 못하게 */
+export const JWKS_REFRESH_MIN_MS = 60_000;
+
+/** 진짜 구글. 공개 키는 한 시간 담아 두고, 구글이 키를 바꿨으면(kid 없음) 1분에 한 번까지 다시 받는다 */
 export function realGoogleApi(): GoogleApi {
   let cache: { at: number; keys: JsonWebKey[] } | undefined;
   return {
@@ -46,8 +49,9 @@ export function realGoogleApi(): GoogleApi {
       if (typeof body.id_token !== 'string') throw new Error('구글 응답에 id_token 이 없다');
       return body.id_token;
     },
-    async fetchJwks() {
-      if (cache && Date.now() - cache.at < 3_600_000) return cache.keys;
+    async fetchJwks(o) {
+      const age = cache ? Date.now() - cache.at : Number.POSITIVE_INFINITY;
+      if (cache && (o?.refresh ? age < JWKS_REFRESH_MIN_MS : age < 3_600_000)) return cache.keys;
       const res = await fetch(JWKS_URL, { signal: AbortSignal.timeout(10_000) });
       if (!res.ok) throw new Error(`구글 공개 키 ${res.status}`);
       const body = (await res.json()) as { keys?: JsonWebKey[] };
@@ -59,18 +63,19 @@ export function realGoogleApi(): GoogleApi {
 
 /**
  * id_token 을 검증하고 sub 를 돌려준다. 서명(RS256, 구글 JWKS 의 kid), aud=클라이언트 번호, iss, exp, nonce 를 본다.
- * 하나라도 틀리면 던진다.
+ * kid 가 담아 둔 키에 없으면 구글이 키를 바꾼 것일 수 있어 한 번 다시 받는다. 하나라도 틀리면 던진다.
  */
 export async function verifyIdToken(
   idToken: string,
-  o: { clientId: string; nonce: string; jwks: () => Promise<JsonWebKey[]>; now?: number },
+  o: { clientId: string; nonce: string; jwks: (refresh?: boolean) => Promise<JsonWebKey[]>; now?: number },
 ): Promise<string> {
   const parts = idToken.split('.');
   if (parts.length !== 3) throw new Error('id_token 모양');
   const [h, p, s] = parts as [string, string, string];
   const header = parseJson(h) as { alg?: unknown; kid?: unknown };
   if (header.alg !== 'RS256' || typeof header.kid !== 'string') throw new Error('id_token 머리');
-  const jwk = (await o.jwks()).find((k) => (k as { kid?: unknown }).kid === header.kid);
+  const byKid = (keys: JsonWebKey[]) => keys.find((k) => (k as { kid?: unknown }).kid === header.kid);
+  const jwk = byKid(await o.jwks()) ?? byKid(await o.jwks(true));
   if (!jwk) throw new Error('id_token 키를 찾지 못했다');
   const key = createPublicKey({ key: jwk, format: 'jwk' });
   const ok = verify('RSA-SHA256', Buffer.from(`${h}.${p}`), key, Buffer.from(s, 'base64url'));

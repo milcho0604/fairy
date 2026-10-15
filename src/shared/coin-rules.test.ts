@@ -12,6 +12,7 @@ import {
   mondayOf,
   ownedItemOk,
   spendRule,
+  TODO_RULE,
 } from './coin-rules.ts';
 import { HOUSE_STYLES } from './house-art.ts';
 import { JOURNEY_STEPS } from './journey.ts';
@@ -24,7 +25,10 @@ test('서버가 이 파일만 복사해 쓰므로 아무것도 가져오지 않�
 });
 
 test('하루 상한은 앱 규칙에서 나온다', () => {
-  assert.equal(EARN_RULES.todo?.perDay, COIN.todo * COIN.dailyTodoLimit);
+  assert.equal(TODO_RULE.refsPerDay, COIN.dailyTodoLimit);
+  assert.equal(TODO_RULE.perRef, COIN.todo + COIN.early);
+  assert.equal(EARN_RULES.meet?.per7Days, 120);
+  assert.equal(EARN_RULES.journey?.perLife, 21);
   assert.equal(EARN_RULES.focus?.perDay, 100);
   assert.equal(EARN_RULES.focus?.perEntry, focusCoins(50));
   assert.equal(EARN_RULES.meet?.perEntry, 60);
@@ -34,12 +38,15 @@ test('하루 상한은 앱 규칙에서 나온다', () => {
 
 test('earnAllowed: 상한까지만, 한 기록 최대를 넘으면 0', () => {
   const rule = { perEntry: 25, perDay: 100 };
-  assert.equal(earnAllowed(rule, 25, 0, 0), 25);
-  assert.equal(earnAllowed(rule, 25, 90, 0), 10);
-  assert.equal(earnAllowed(rule, 25, 100, 0), 0);
-  assert.equal(earnAllowed(rule, 26, 0, 0), 0);
-  assert.equal(earnAllowed(rule, 1.5, 0, 0), 0);
-  assert.equal(earnAllowed({ perEntry: 50, perWeek: 50 }, 50, 0, 50), 0);
+  const e = (day = 0, week = 0, days7 = 0, life = 0) => ({ day, week, days7, life });
+  assert.equal(earnAllowed(rule, 25, e()), 25);
+  assert.equal(earnAllowed(rule, 25, e(90)), 10);
+  assert.equal(earnAllowed(rule, 25, e(100)), 0);
+  assert.equal(earnAllowed(rule, 26, e()), 0);
+  assert.equal(earnAllowed(rule, 1.5, e()), 0);
+  assert.equal(earnAllowed({ perEntry: 50, perWeek: 50 }, 50, e(0, 50)), 0);
+  assert.equal(earnAllowed({ perEntry: 28, per7Days: 28 }, 28, e(0, 0, 28)), 0);
+  assert.equal(earnAllowed({ perEntry: 3, perLife: 21 }, 3, e(0, 0, 0, 20)), 1);
 });
 
 test('spendRule: 상점 물건은 값과 이름표, 모르는 까닭은 없음', () => {

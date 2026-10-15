@@ -96,32 +96,52 @@ export const CUSTOM_FOOD_COST = 50;
 // ---- 서버가 다시 확인하는 규칙 (기획서 6절: 같은 규칙으로 확인, 하루 상한을 넘으면 상한까지만) ----
 
 /**
- * 버는 기록의 까닭(coin_log.reason)마다: 한 기록의 최대(perEntry), 하루 합 상한(perDay), 한 주(월요일 시작) 합 상한(perWeek).
- * 앱 코드에 하루 상한이 따로 없는 것(rest, journey, makeup, note-gift)은 앱이 하루에 줄 수 있는 만큼으로 잡았다.
+ * 버는 기록의 까닭(coin_log.reason)마다 상한. 한 기록의 최대(perEntry), 하루 합(perDay), 한 주(월요일 시작) 합(perWeek),
+ * 그날까지 7일 합(per7Days), 계정 평생 합(perLife).
+ * 앱 코드에 하루 상한이 따로 없는 것(rest, note-gift)은 앱이 하루에 줄 수 있는 만큼으로 잡았다.
+ * 할 일(todo, early, undo)은 할 일 번호(ref)로 센다: TODO_RULE.
  */
 export interface EarnRule {
   perEntry: number;
   perDay?: number;
   perWeek?: number;
+  per7Days?: number;
+  perLife?: number;
 }
 
 export const EARN_RULES: Readonly<Record<string, EarnRule>> = {
-  todo: { perEntry: COIN.todo, perDay: COIN.todo * COIN.dailyTodoLimit },
+  todo: { perEntry: COIN.todo },
   early: { perEntry: COIN.early, perDay: COIN.early * COIN.dailyTodoLimit },
   focus: { perEntry: focusCoins(50), perDay: COIN.focus * COIN.dailyFocusLimit },
-  meet: { perEntry: MEET_COINS + STREAK_BONUS, perDay: MEET_COINS + STREAK_BONUS },
+  // 하루 한 번, 7일 연속인 날만 보너스: 어느 7일이든 10 x 6 + 60 = 120 을 넘지 않는다
+  meet: {
+    perEntry: MEET_COINS + STREAK_BONUS,
+    perDay: MEET_COINS + STREAK_BONUS,
+    per7Days: MEET_COINS * (STREAK_EVERY - 1) + MEET_COINS + STREAK_BONUS,
+  },
   weekly: { perEntry: WEEKLY_COINS, perWeek: WEEKLY_COINS },
   play: { perEntry: PLAY_COIN.dailyLimit, perDay: PLAY_COIN.dailyLimit },
   'hide-seek': { perEntry: HIDE_SEEK_COIN.coins, perDay: HIDE_SEEK_COIN.coins * HIDE_SEEK_COIN.dailyLimit },
   // 휴식 권유는 수다쟁이도 1시간에 한 번이라 하루 10번이면 넉넉하다
   rest: { perEntry: REST_COINS, perDay: REST_COINS * 10 },
-  // 여정 일곱 걸음을 하루에 다 해도 21
-  journey: { perEntry: JOURNEY_COINS, perDay: JOURNEY_COINS * JOURNEY_STEP_COUNT },
-  // 화해 보너스는 7일에 한 번 최대 28
-  makeup: { perEntry: SULK_MAX * MAKEUP_PER_LEVEL, perDay: SULK_MAX * MAKEUP_PER_LEVEL },
+  // 여정은 일곱 걸음 한 번뿐이라 계정 평생 21
+  journey: { perEntry: JOURNEY_COINS, perLife: JOURNEY_COINS * JOURNEY_STEP_COUNT },
+  // 화해 보너스는 7일에 한 번 최대 28 (pet-life MAKEUP_COOLDOWN_MS)
+  makeup: { perEntry: SULK_MAX * MAKEUP_PER_LEVEL, per7Days: SULK_MAX * MAKEUP_PER_LEVEL },
   // 특별한 편지는 하루 하나, 최대 30
   'note-gift': { perEntry: milestoneCoins(365), perDay: milestoneCoins(365) },
 };
+
+/**
+ * 할 일 코인 (todo-store complete, undo). 앱은 그날 코인을 받은 서로 다른 할 일 수로 상한을 세고(dailyTodoLimit),
+ * 같은 할 일을 되돌렸다 다시 끝내면 아직 되받지 않은 만큼(kept)을 빼고 준다. 서버도 할 일 번호(ref)로 같게 센다:
+ * 한 할 일이 지금 가진 코인(todo + early + undo 합)은 perRef 를 넘지 않고, 되돌리기는 그만큼만 뺀다.
+ */
+export const TODO_RULE = {
+  reasons: ['todo', 'early', 'undo'] as readonly string[],
+  refsPerDay: COIN.dailyTodoLimit,
+  perRef: COIN.todo + COIN.early,
+} as const;
 
 /**
  * 쓰는 기록의 까닭마다 서버가 하는 일.
@@ -163,15 +183,25 @@ function splitOnce(s: string): [string, string | undefined] {
   return i < 0 ? [s, undefined] : [s.slice(0, i), s.slice(i + 1)];
 }
 
+/** 이미 반영한 합: 그날, 그 주(월요일 시작), 그날까지 7일, 계정 평생 */
+export interface Earned {
+  day: number;
+  week: number;
+  days7: number;
+  life: number;
+}
+
 /**
- * 상한 안에서 반영할 양 (0 이상, amount 이하). earnedDay 와 earnedWeek 는 그날, 그 주에 그 까닭으로 이미 반영한 합.
+ * 상한 안에서 반영할 양 (0 이상, amount 이하).
  * 한 기록이 perEntry 를 넘으면 앱 규칙에 없는 값이라 0 (부르는 쪽이 거절한다).
  */
-export function earnAllowed(rule: EarnRule, amount: number, earnedDay: number, earnedWeek: number): number {
+export function earnAllowed(rule: EarnRule, amount: number, earned: Earned): number {
   if (!Number.isInteger(amount) || amount <= 0 || amount > rule.perEntry) return 0;
   let room = amount;
-  if (rule.perDay !== undefined) room = Math.min(room, rule.perDay - earnedDay);
-  if (rule.perWeek !== undefined) room = Math.min(room, rule.perWeek - earnedWeek);
+  if (rule.perDay !== undefined) room = Math.min(room, rule.perDay - earned.day);
+  if (rule.perWeek !== undefined) room = Math.min(room, rule.perWeek - earned.week);
+  if (rule.per7Days !== undefined) room = Math.min(room, rule.per7Days - earned.days7);
+  if (rule.perLife !== undefined) room = Math.min(room, rule.perLife - earned.life);
   return Math.max(0, room);
 }
 

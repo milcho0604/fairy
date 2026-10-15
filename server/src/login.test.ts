@@ -1,8 +1,47 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import test from 'node:test';
-import { doneUrl, parseAppState, parsePort } from './login';
+import type { Accounts } from './accounts';
+import type { Config } from './config';
+import type { Db } from './db';
+import type { GoogleApi } from './google';
+import {
+  doneUrl,
+  Login,
+  MAX_PENDING,
+  PENDING_PER_IP,
+  parseAppState,
+  parseChallenge,
+  parsePort,
+  verifierMatches,
+} from './login';
 import { RateLimiter } from './rate-limit';
 import { tokenKind } from './tokens';
+
+test('대기 로그인: 같은 곳은 PENDING_PER_IP 까지, 전체가 차면 가장 오래된 것을 밀어낸다 (던지지 않는다)', () => {
+  const config = { publicUrl: 'https://x.example', googleClientId: 'c', googleClientSecret: 's' } as Config;
+  const login = new Login(config, {} as GoogleApi, {} as Db, {} as Accounts);
+  const ch = 'A'.repeat(43);
+  for (let i = 0; i < PENDING_PER_IP; i++) assert.ok(login.start(5000, 'abcdefgh', ch, 'ip:a', 0));
+  assert.equal(login.start(5000, 'abcdefgh', ch, 'ip:a', 0), undefined);
+  const first = new URL(login.start(5000, 'abcdefgh', ch, 'ip:0', 0) ?? '').searchParams.get('state');
+  for (let i = 1; login.pendingCount < MAX_PENDING; i++) login.start(5000, 'abcdefgh', ch, `ip:${i}`, 0);
+  assert.ok(login.start(5000, 'abcdefgh', ch, 'ip:new', 0));
+  assert.equal(login.pendingCount, MAX_PENDING);
+  // 가장 먼저 연 것(ip:a 의 첫 것)이 밀려났다. ip:0 은 아직 있다
+  assert.ok(login.takePending(first, 0));
+});
+
+test('로컬 PKCE: challenge 는 43자, verifier 의 sha256 이 맞아야 한다', () => {
+  const v = 'v'.repeat(43);
+  const ch = createHash('sha256').update(v).digest('base64url');
+  assert.equal(parseChallenge(ch), ch);
+  assert.equal(parseChallenge('short'), undefined);
+  assert.ok(verifierMatches(v, ch));
+  assert.ok(!verifierMatches('w'.repeat(43), ch));
+  assert.ok(!verifierMatches('v'.repeat(42), ch));
+  assert.ok(!verifierMatches(undefined, ch));
+});
 
 test('루프백 포트는 1024~65535 숫자만', () => {
   assert.equal(parsePort('53682'), 53682);
