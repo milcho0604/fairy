@@ -25,10 +25,12 @@ import {
   classifyFailure,
   DRAW_FREE_BYTES,
   DRAW_TIMEOUT_MS,
+  type DrawShape,
   drawArgs,
   drawRatio,
   drawSize,
   drawTmpBase,
+  fixedDrawSize,
   installArgs,
   installRatio,
   isSetupDone,
@@ -376,7 +378,7 @@ async function drawOnce(
   inputKind: ImageKind,
   prompt: string,
   pass: 0 | 1,
-  o: { signal: AbortSignal; children: Set<ChildProcess>; onProgress: (r: number) => void },
+  o: { signal: AbortSignal; children: Set<ChildProcess>; onProgress: (r: number) => void; size?: DrawShape },
 ): Promise<{ bytes: Uint8Array; kind: ImageKind }> {
   // 사진 사본을 local-draw 안에 둔다: 앱이 꺼져 남아도 다음 일을 시작할 때 비우고, 지우기 한 번에 사라진다.
   // 경로에 중괄호가 있으면 mflux 의 output.format 이 깨져 시스템 임시 폴더로 (drawTmpBase)
@@ -388,21 +390,26 @@ async function drawOnce(
     const inPath = join(tmp, `in.${ext}`);
     const outPath = join(tmp, 'out.png');
     writeFileSync(inPath, input);
-    const size = drawSize(input);
+    // 크기를 정해 그리면(그림 세트 띠) 넣는 그림 비율을 따르지 않는다
+    const size = o.size ? fixedDrawSize(o.size) : drawSize(input);
     const seed = Math.floor(Math.random() * 2 ** 31);
     o.onProgress(drawRatio(pass));
-    const text = await run(l.python, drawArgs(l, { input: inPath, output: outPath, prompt, ...size, seed }), {
-      env: toolEnv(process.env, l, { offline: true }),
-      signal: o.signal,
-      phase: 'draw',
-      timeoutMs: DRAW_TIMEOUT_MS,
-      children: o.children,
-      l,
-      onText: (t) => {
-        const f = lastFraction(t);
-        if (f && f.total === 4) o.onProgress(drawRatio(pass, f));
+    const text = await run(
+      l.python,
+      drawArgs(l, { input: inPath, output: outPath, prompt, width: size.width, height: size.height, seed }),
+      {
+        env: toolEnv(process.env, l, { offline: true }),
+        signal: o.signal,
+        phase: 'draw',
+        timeoutMs: DRAW_TIMEOUT_MS,
+        children: o.children,
+        l,
+        onText: (t) => {
+          const f = lastFraction(t);
+          if (f && f.total === 4) o.onProgress(drawRatio(pass, f));
+        },
       },
-    });
+    );
     let bytes: Uint8Array;
     try {
       bytes = new Uint8Array(await readFile(outPath));
@@ -428,7 +435,7 @@ export function illustrateLocal(
   photo: Uint8Array,
   kind: 'jpeg' | 'png',
   prompt: string,
-  o: { signal: AbortSignal; onProgress: (r: number) => void; log: Log },
+  o: { signal: AbortSignal; onProgress: (r: number) => void; log: Log; size?: DrawShape },
 ): Promise<{
   bytes: Uint8Array;
   kind: ImageKind;
@@ -445,7 +452,7 @@ export function illustrateLocal(
       const l = L();
       const free = Math.min(freeBytes(drawTmpBase(l, os.tmpdir())), freeBytes(l.root));
       if (free < DRAW_FREE_BYTES) throw new LocalDrawError('disk', `free ${GB(free)}GB`);
-      const opt = { signal: ac.signal, children, onProgress: o.onProgress };
+      const opt = { signal: ac.signal, children, onProgress: o.onProgress, size: o.size };
       const started = Date.now();
       try {
         // 한 번만 그린다: klein 이 처음부터 다리 털까지 그려 털 다듬기가 필요 없다 (sdcpp-core LOCAL_PASSES)

@@ -6,7 +6,14 @@
 // klein Space 는 입력 그림을 갤러리로 받아 기준 그림을 넣을 수 있고, 결과 크기를 정할 수 있다 (한 변 1024 까지)
 
 import { type Rgb, type SpriteRow, STRIP_H, STRIP_W, stripPrompt } from '../shared/sprite-strip.ts';
-import { type IllustOptions, type IllustResult, type IllustSpace, illustrate, KLEIN } from './hf-illust.ts';
+import {
+  type IllustOptions,
+  type IllustResult,
+  type IllustSpace,
+  type ImageKind,
+  illustrate,
+  KLEIN,
+} from './hf-illust.ts';
 
 /** klein 으로 정한 크기의 띠를 그린다 (prompt, input_images, mode, seed, randomize_seed, width, height, steps, guidance, upsampling) */
 export function stripSpace(w = STRIP_W, h = STRIP_H): IllustSpace {
@@ -46,5 +53,45 @@ export function drawStrip(
     timeoutMs: STRIP_TIMEOUT_MS,
     ...opt,
     spaces: [stripSpace()],
+  });
+}
+
+/**
+ * 내 컴퓨터에서 띠 그리기의 하한 바이트 (2026-10-15). local-draw-core.ts MIN_DRAWN_BYTES(40KB)는 768x1024 쯤 그림의 값이라
+ * 넓이가 1/3 인 띠(1024x256, 단색 배경)에는 너무 크다. 넓이만큼 줄인다 (거의 한 색인 판은 몇 KB 라 여전히 걸린다)
+ */
+export const STRIP_MIN_BYTES = Math.round((40 * 1024 * STRIP_W * STRIP_H) / (768 * 1024));
+
+/** 내 컴퓨터에서 그리는 함수 (local-draw.ts illustrateLocal 과 같은 모양). 시험은 가짜를 넣는다 */
+export type LocalStripDraw = (
+  photo: Uint8Array,
+  kind: 'png',
+  prompt: string,
+  o: {
+    signal: AbortSignal;
+    onProgress: (ratio: number) => void;
+    log: (tag: string, ...rest: unknown[]) => void;
+    size: { width: number; height: number; minBytes?: number };
+  },
+) => Promise<{ bytes: Uint8Array; kind: ImageKind }>;
+
+/**
+ * 같은 띠를 내 컴퓨터에서 (mflux 또는 sd.cpp 의 FLUX.2 klein 4B, 서버와 같은 모델). 요청문과 기준 그림은 서버와 같고,
+ * 크기는 넣는 그림 비율 대신 1024x256 으로 정한다 (local-draw-core.ts fixedDrawSize). 실패는 LocalDrawError 그대로
+ */
+export function drawStripLocal(
+  draw: LocalStripDraw,
+  reference: Uint8Array,
+  row: SpriteRow,
+  key: Rgb,
+  o: {
+    signal: AbortSignal;
+    onProgress: (ratio: number) => void;
+    log: (tag: string, ...rest: unknown[]) => void;
+  },
+): Promise<{ bytes: Uint8Array; kind: ImageKind }> {
+  return draw(reference, 'png', stripPrompt(row, key), {
+    ...o,
+    size: { width: STRIP_W, height: STRIP_H, minBytes: STRIP_MIN_BYTES },
   });
 }

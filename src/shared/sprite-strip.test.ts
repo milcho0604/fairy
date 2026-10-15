@@ -8,6 +8,9 @@ import {
   colorDist,
   dropSpecks,
   FOOT_PAD,
+  fitStrip,
+  geminiStripPrompt,
+  isQuotaKind,
   keyHex,
   measureKey,
   onKey,
@@ -315,4 +318,112 @@ test('크로마키: 밝은 털 테두리의 알파는 가까운 캐릭터 색 �
   img.data.set([...CREAM, 255], 12);
   const a = px(chromaKey(img, GREEN), 1, 0)[3] ?? 0;
   assert.ok(Math.abs(a - 128) < 26, `알파 ${a}`);
+});
+
+test('내 컴퓨터에서 그릴 때 멈추는 실패: 준비 깨짐, 다른 그리기 중, 공간, 메모리, 배터리, 그만두기', () => {
+  for (const k of ['notReady', 'unsupported', 'busy', 'disk', 'memory', 'battery', 'cancelled'])
+    assert.ok(stopsQueue(k, 'local'), k);
+  for (const k of ['timeout', 'bad', 'failed']) assert.ok(!stopsQueue(k, 'local'), k);
+  // 같은 busy 라도 서버(붐빔)는 다음 동작으로 간다
+  assert.ok(!stopsQueue('busy', 'cloud'));
+  assert.ok(!stopsQueue('busy'));
+  assert.ok(isQuotaKind('quota') && isQuotaKind('refused') && !isQuotaKind('busy'));
+});
+
+test('Gemini 띠 요청문: 그림을 만들라는 말이 먼저, 붙인 그림이 기준, 띠 요청문과 배경색, 4:1 한 줄', () => {
+  const p = geminiStripPrompt(ROW, [255, 0, 255]);
+  assert.match(p, /^Generate an image\./);
+  assert.match(p, /attached picture is the reference/);
+  assert.ok(p.includes(stripPrompt(ROW, [255, 0, 255])));
+  assert.match(p, /#FF00FF/);
+  assert.match(p, /4 times wider than tall/);
+  assert.match(p, /single row/);
+});
+
+/** 크기와 비율이 다른 그림에 주황 상자 넷을 한 줄로 (Gemini 그림 흉내) */
+function wide(w: number, h: number, o: { bg?: Rgb; alpha?: number; top?: number; box?: number } = {}): Rgba {
+  const img = blank(w, h, o.bg ?? GREEN, o.alpha ?? 255);
+  const box = o.box ?? Math.round(w / 10);
+  const top = o.top ?? Math.round((h - box * 1.3) / 2);
+  for (let i = 0; i < 4; i++)
+    rect(img, Math.round(w * 0.1 + i * w * 0.22), top, box, Math.round(box * 1.3), ORANGE);
+  return img;
+}
+
+test('fitStrip: 16:9 그림을 1024x256 띠로 맞추면 서버 띠와 같은 검사를 통과한다', () => {
+  const fit = fitStrip(wide(1600, 900), GREEN);
+  assert.ok(fit.ok);
+  if (!fit.ok) return;
+  assert.equal(fit.img.width, STRIP_W);
+  assert.equal(fit.img.height, STRIP_H);
+  const r = processStrip(fit.img, ROW, GREEN);
+  assert.deepEqual(r.issues, []);
+  assert.equal(r.frames.length, 4);
+});
+
+test('fitStrip: 이미 1024x256 이거나 더 넓은 그림, 큰 그림도 맞춘다', () => {
+  for (const [w, h] of [
+    [1024, 256],
+    [2048, 512],
+    [3000, 500],
+    [2048, 2048 / 3],
+  ] as const) {
+    const fit = fitStrip(wide(Math.round(w), Math.round(h)), GREEN);
+    assert.ok(fit.ok, `${w}x${h}`);
+    if (fit.ok) assert.deepEqual(processStrip(fit.img, ROW, GREEN).issues, [], `${w}x${h}`);
+  }
+});
+
+test('fitStrip: 투명 PNG 는 배경색 위에 놓고 맞춘다', () => {
+  const img = wide(1200, 600, { bg: [0, 0, 0], alpha: 0 });
+  const fit = fitStrip(img, GREEN);
+  assert.ok(fit.ok);
+  if (fit.ok) assert.deepEqual(processStrip(fit.img, ROW, GREEN).issues, []);
+});
+
+test('fitStrip: JPEG 처럼 배경이 조금씩 흔들려도 맞춘다', () => {
+  const img = wide(1600, 900, { bg: [22, 228, 30] });
+  let seed = 7;
+  for (let i = 0; i < img.data.length; i += 4) {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    const n = (seed % 13) - 6;
+    for (let c = 0; c < 3; c++) img.data[i + c] = Math.max(0, Math.min(255, (img.data[i + c] ?? 0) + n));
+  }
+  const fit = fitStrip(img, GREEN);
+  assert.ok(fit.ok);
+  if (fit.ok) assert.deepEqual(processStrip(fit.img, ROW, GREEN).issues, []);
+});
+
+test('fitStrip: 배경이 요청한 색이 아니면 key, 캐릭터가 없으면 empty, 한 줄이 아니면 shape', () => {
+  assert.deepEqual(fitStrip(wide(1600, 900, { bg: [255, 255, 255] }), GREEN), { ok: false, why: 'key' });
+  assert.deepEqual(fitStrip(blank(1600, 900, GREEN), GREEN), { ok: false, why: 'empty' });
+  // 2x2 로 그린 그림 (상자 비가 1:1 쯤)
+  const grid = blank(1024, 1024, GREEN);
+  for (const [x, y] of [
+    [150, 150],
+    [600, 150],
+    [150, 600],
+    [600, 600],
+  ] as const)
+    rect(grid, x, y, 250, 300, ORANGE);
+  assert.deepEqual(fitStrip(grid, GREEN), { ok: false, why: 'shape' });
+  // 한 장만 그린 그림
+  const one = blank(1024, 1024, GREEN);
+  rect(one, 300, 200, 400, 600, ORANGE);
+  assert.deepEqual(fitStrip(one, GREEN), { ok: false, why: 'shape' });
+});
+
+test('fitStrip: 그림 위끝에 닿은 캐릭터는 닿은 채로 둬서 잘림으로 잡힌다', () => {
+  const fit = fitStrip(wide(1600, 900, { top: 0 }), GREEN);
+  assert.ok(fit.ok);
+  if (fit.ok) assert.ok(processStrip(fit.img, ROW, GREEN).issues.includes('clipped'));
+});
+
+test('fitStrip: 오른쪽 아래 Gemini 반짝이 표시는 덮어서 상자를 늘리지 않는다', () => {
+  const img = wide(2000, 1000);
+  // 칸 크기의 몇 % 인 흰 점 (Gemini 무료 그림의 표시 자리)
+  rect(img, 1900, 920, 30, 30, [250, 250, 250]);
+  const fit = fitStrip(img, GREEN);
+  assert.ok(fit.ok);
+  if (fit.ok) assert.deepEqual(processStrip(fit.img, ROW, GREEN).issues, []);
 });

@@ -257,6 +257,22 @@ export function drawArgs(
   ];
 }
 
+/**
+ * 크기를 정해 그릴 때 (2D 그림 세트 띠 1024x256, 2026-10-15). 넣는 그림 비율과 상관없이 이 크기로 그린다.
+ * minBytes 는 거의 한 색인 판을 거르는 하한 (그림이 작으면 PNG 도 작아 MIN_DRAWN_BYTES 를 그대로 쓰면 멀쩡한 띠를 버린다)
+ */
+export interface DrawShape {
+  width: number;
+  height: number;
+  minBytes?: number;
+}
+
+/** 정한 크기를 klein 규칙(16 의 배수, 한 변 256~1024)에 맞춘다. 1024x256 은 그대로다 */
+export function fixedDrawSize(s: DrawShape): DrawShape {
+  const out = kleinSize(s.width, s.height);
+  return { width: out.w, height: out.h, ...(s.minBytes === undefined ? {} : { minBytes: s.minBytes }) };
+}
+
 /** 그릴 크기: 사진 비율 그대로 긴 변 1024, 16 의 배수 (서버 klein 과 같은 규칙). 모르면 세로 3:4 */
 export function drawSize(photo: Uint8Array): { width: number; height: number } {
   const s = imageSize(photo);
@@ -484,11 +500,12 @@ export function drawTmpBase(l: Layout, fallback: string): string {
  */
 export function checkDrawn(
   bytes: Uint8Array,
-  want: { width: number; height: number },
+  want: { width: number; height: number; minBytes?: number },
 ): { ok: true; kind: ImageKind } | { ok: false; why: string } {
   const kind = imageKind(bytes);
   if (!kind) return { ok: false, why: 'not an image' };
-  if (bytes.length < MIN_DRAWN_BYTES) return { ok: false, why: `too small ${bytes.length}` };
+  if (bytes.length < (want.minBytes ?? MIN_DRAWN_BYTES))
+    return { ok: false, why: `too small ${bytes.length}` };
   const s = imageSize(bytes);
   if (s && (Math.abs(s.w - want.width) > 16 || Math.abs(s.h - want.height) > 16))
     return { ok: false, why: `size ${s.w}x${s.h}` };

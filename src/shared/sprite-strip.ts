@@ -10,6 +10,7 @@
 // 를 하고, 모든 동작이 끝나면 assembleSprites 가 한 배율, 한 바닥선으로 같은 크기 캔버스에 놓는다.
 // 방식은 OpenAI hatch-pet 스킬(기준 그림 하나, 동작마다 가로 띠, 크로마키, 자동 검사, 실패한 줄만 다시)을 참고했고 코드는 따로 썼다
 
+import { markCorner } from './gemini.ts';
 import type { SpriteName } from './pet-sprites.ts';
 
 /** RGBA 바이트 그림 (ImageData 와 같은 모양이라 화면에서 그대로 넣는다) */
@@ -654,6 +655,112 @@ export function stripPrompt(row: SpriteRow, key: Rgb): string {
   );
 }
 
+/**
+ * Gemini 앱에 붙여 넣을 띠 요청문 (2026-10-15). 띠 요청문 앞에 "그림을 만들어" 를 둬야 Gemini 가 글로만 답하지 않고,
+ * 기준 그림은 사용자가 올리므로 "붙인 그림" 이라고 부른다. Gemini 는 4:1 을 잘 안 지켜 받은 그림은 fitStrip 이 맞춘다
+ */
+export function geminiStripPrompt(row: SpriteRow, key: Rgb): string {
+  return (
+    'Generate an image. The attached picture is the reference character. ' +
+    stripPrompt(row, key) +
+    ' Make the whole image one wide banner, about 4 times wider than tall (for example 2048x512), ' +
+    `with the ${row.names.length} drawings side by side in a single row.`
+  );
+}
+
+/** 받은 그림이 띠로 쓸 수 없는 까닭: key 배경이 단색 배경색이 아님, shape 한 줄로 놓이지 않음(너무 좁음), empty 캐릭터가 없음 */
+export type FitWhy = 'key' | 'shape' | 'empty';
+/** 캐릭터들이 차지한 상자의 가로세로 비가 이보다 작으면 한 줄이 아니다 (2x2 로 그렸거나 한 장만) */
+export const FIT_MIN_RATIO = 2;
+/** 상자 둘레 여백 (상자 키에 대한 몫). 그림 끝에 닿은 쪽은 여백 없이 닿은 채로 둬서 processStrip 이 잘림을 잡는다 */
+const FIT_MARGIN = 0.08;
+/** 캐릭터로 볼 배경색과의 거리, 세로줄과 가로줄에 이만큼 있어야 상자에 넣는다 (JPEG 잡티를 넘긴다) */
+const FIT_NEAR = 0.3;
+const FIT_MIN_PX = 3;
+
+/** 가장자리 화소 가운데 거의 투명한 몫 (투명 PNG 로 받았는지) */
+function clearEdgeFrac(img: Rgba): number {
+  const { width: w, height: h, data: d } = img;
+  let clear = 0;
+  let all = 0;
+  const take = (x: number, y: number) => {
+    all++;
+    if ((d[(y * w + x) * 4 + 3] ?? 255) < 16) clear++;
+  };
+  for (let x = 0; x < w; x++) {
+    take(x, 0);
+    take(x, h - 1);
+  }
+  for (let y = 0; y < h; y++) {
+    take(0, y);
+    take(w - 1, y);
+  }
+  return all ? clear / all : 0;
+}
+
+/**
+ * 크기나 비율이 다른 그림(Gemini 앱에서 받은 그림)을 1024x256 띠로 맞춘다. 순서:
+ *   1. 투명 PNG 면 요청한 배경색 위에 놓는다 (가장자리 절반 넘게 투명할 때). Gemini 반짝이 표시는 덮는다
+ *   2. 가장자리로 배경색을 잰다 (measureKey). 단색이 아니면 key
+ *   3. 배경색과 먼 화소가 든 상자를 찾는다. 없으면 empty, 상자가 2:1 보다 좁으면 shape
+ *   4. 상자에 여백을 두고 자른 뒤, 모자란 쪽(4:1 보다 좁으면 좌우, 넓으면 위아래)을 배경색으로 채워 4:1 로 만들고 1024x256 으로 줄인다.
+ *      그림 끝에 닿은 캐릭터는 그 쪽 여백 없이 닿은 채로 둔다
+ * 그 뒤 자르기, 배경 지우기, 검사는 processStrip 이 서버 띠와 똑같이 한다
+ */
+export function fitStrip(img: Rgba, asked: Rgb): { ok: true; img: Rgba } | { ok: false; why: FitWhy } {
+  const src =
+    clearEdgeFrac(img) > 0.5 ? onKey(img, asked) : { ...img, data: new Uint8ClampedArray(img.data) };
+  // Gemini 무료 그림의 오른쪽 아래 반짝이 표시는 둘레 바탕색으로 덮는다 (남기면 상자가 구석까지 늘어난다)
+  const mark = markCorner(src.data, src.width, src.height);
+  if (mark)
+    for (let y = mark.y; y < mark.y + mark.height; y++)
+      for (let x = mark.x; x < mark.x + mark.width; x++)
+        src.data.set([...mark.color, 255], (y * src.width + x) * 4);
+  const key = measureKey(src, asked);
+  if (!key) return { ok: false, why: 'key' };
+  const { width: w, height: h, data: d } = src;
+  const cols = new Array<number>(w).fill(0);
+  const rows = new Array<number>(h).fill(0);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      if (colorDist(d[i] ?? 0, d[i + 1] ?? 0, d[i + 2] ?? 0, key) > FIT_NEAR) {
+        cols[x] = (cols[x] ?? 0) + 1;
+        rows[y] = (rows[y] ?? 0) + 1;
+      }
+    }
+  const first = (a: number[]) => a.findIndex((v) => v >= FIT_MIN_PX);
+  const last = (a: number[]) => a.length - 1 - [...a].reverse().findIndex((v) => v >= FIT_MIN_PX);
+  const left = first(cols);
+  const top = first(rows);
+  if (left < 0 || top < 0) return { ok: false, why: 'empty' };
+  const right = last(cols) + 1;
+  const bottom = last(rows) + 1;
+  const bw = right - left;
+  const bh = bottom - top;
+  if (bw / Math.max(1, bh) < FIT_MIN_RATIO) return { ok: false, why: 'shape' };
+  const m = Math.round(bh * FIT_MARGIN);
+  const x0 = Math.max(0, left - m);
+  const y0 = Math.max(0, top - m);
+  const part = crop(src, x0, y0, Math.min(w, right + m) - x0, Math.min(h, bottom + m) - y0);
+  const cw = part.width;
+  const ch = part.height;
+  const W = cw / ch < STRIP_W / STRIP_H ? Math.round((ch * STRIP_W) / STRIP_H) : cw;
+  const H = cw / ch < STRIP_W / STRIP_H ? ch : Math.round((cw * STRIP_H) / STRIP_W);
+  const canvas: Rgba = { width: W, height: H, data: new Uint8ClampedArray(W * H * 4) };
+  for (let i = 0; i < canvas.data.length; i += 4) {
+    canvas.data[i] = key[0];
+    canvas.data[i + 1] = key[1];
+    canvas.data[i + 2] = key[2];
+    canvas.data[i + 3] = 255;
+  }
+  // 그림 끝에 닿은 쪽은 채우지 않고 닿은 채로 (그 쪽이 잘린 그림이면 processStrip 이 clipped 로 잡게)
+  const place = (room: number, startTouch: boolean, endTouch: boolean) =>
+    startTouch && !endTouch ? 0 : endTouch && !startTouch ? room : Math.round(room / 2);
+  paste(canvas, part, place(W - cw, left === 0, right === w), place(H - ch, top === 0, bottom === h));
+  return { ok: true, img: resize(canvas, STRIP_W, STRIP_H) };
+}
+
 /** 기준 그림을 배경색 위에 놓는다 (Space 에 넣을 그림. 투명 PNG 를 넣으면 배경을 제멋대로 칠했다) */
 export function onKey(img: Rgba, key: Rgb): Rgba {
   const d = new Uint8ClampedArray(img.data.length);
@@ -672,7 +779,26 @@ export function onKey(img: Rgba, key: Rgb): Rgba {
  * 그만두기(cancelled). 다른 실패(바쁨, 시간 초과, 이상한 답)는 그 동작만 실패로 두고 다음 동작으로 간다
  */
 export const STOP_KINDS: readonly string[] = ['quota', 'refused', 'auth', 'limit', 'cancelled', 'reopen'];
-export const stopsQueue = (kind: string): boolean => STOP_KINDS.includes(kind);
+/**
+ * 내 컴퓨터에서 그릴 때 멈추는 실패 (local-draw-core.ts LocalDrawErrorKind): 준비가 깨짐(notReady, unsupported),
+ * 다른 그리기가 도는 중(busy), 빈 공간, 메모리, 배터리, 그만두기. 다음 동작도 똑같이 막힌다.
+ * 시간 초과, 이상한 그림(bad), 그 밖의 실패(failed)는 그 동작만 실패로 두고 다음으로 간다.
+ * 서버의 busy(붐빔)는 다음으로 가지만 내 컴퓨터의 busy 는 멈춘다: 같은 이름이라 엔진으로 가른다
+ */
+export const LOCAL_STOP_KINDS: readonly string[] = [
+  'notReady',
+  'unsupported',
+  'busy',
+  'disk',
+  'memory',
+  'battery',
+  'cancelled',
+  'reopen',
+];
+export const stopsQueue = (kind: string, engine: 'cloud' | 'local' = 'cloud'): boolean =>
+  (engine === 'local' ? LOCAL_STOP_KINDS : STOP_KINDS).includes(kind);
+/** 서버 무료 횟수가 끝난 실패 (남은 동작을 내 컴퓨터나 Gemini 로 이어 가자고 권한다) */
+export const isQuotaKind = (kind: string): boolean => kind === 'quota' || kind === 'refused';
 
 /** 동작 하나의 상태 (창이 보이는 것) */
 export type RowState =

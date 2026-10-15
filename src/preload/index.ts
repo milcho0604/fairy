@@ -444,8 +444,10 @@ if (kind === 'maker') {
       ipcRenderer.on(MAKER.progress, (_e, ratio: number) => listener(ratio));
     },
     spriteSource: () => ipcRenderer.invoke(MAKER.spriteSource),
-    spriteRow: (row: string, reference: string, key: string) =>
-      ipcRenderer.invoke(MAKER.spriteRow, row, reference, key),
+    spriteRow: (row: string, reference: string, key: string, engine?: string) =>
+      ipcRenderer.invoke(MAKER.spriteRow, row, reference, key, engine),
+    spriteGemini: (row: string, key: string) => ipcRenderer.invoke(MAKER.spriteGemini, row, key),
+    revealSpriteRef: (reference: string) => ipcRenderer.invoke(MAKER.revealSpriteRef, reference),
     saveSprites: (sprites: Record<string, string>) => ipcRenderer.invoke(MAKER.saveSprites, sprites),
     openSprites: () => ipcRenderer.send(MAKER.openSprites),
   };

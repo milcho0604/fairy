@@ -65,6 +65,53 @@
 | 기본 페어리 | 만들기 대신 안내 | 앱 화면 |
 | 배경색 고르기 | 캐릭터에 가장 덜 쓰인 초록, 자홍, 파랑 | `sprite-strip.test.ts` |
 
+## 그리는 길 두 개 더: 내 컴퓨터, 동작 하나만 Gemini (2026-10-15)
+
+사용자 결정(2026-10-15) "둘 다 두자". 기본 흐름은 자동 다섯 동작(무료 서버 또는 내 컴퓨터) 뒤 마음에 안 드는 동작만 Gemini 로.
+
+**먼저 알 것: 진짜 엔진은 하나도 부르지 않았다.** 무료 Space 는 가짜 fetch(`__jj.maker.debugSpriteFetch`), 내 컴퓨터 엔진은 가짜 그리기와 가짜 준비 상태(`__jj.maker.debugSpriteLocal`), 클립보드와 Gemini 열기와 Finder 보이기는 가로채기(`__jj.maker.debugSpriteOut`)로 바꿨다. 이 맥의 mflux 는 실행하지도 설치하지도 않았다. 띠와 Gemini 그림은 직접 그린 합성 고양이다. 그래서 진짜 klein 이 1024x256 띠를 네 칸으로 잘 그리는지, 진짜 Gemini 가 요청문대로 한 줄 그림을 주는지는 아직 못 봤다.
+
+내 컴퓨터 길은 새 엔진을 만들지 않고 AI 일러스트의 엔진(`illustrateLocal`, mflux 또는 sd.cpp)을 그대로 쓴다. 바뀐 것은 크기 하나: 그 엔진은 넣은 그림 비율로 그리는데(`drawSize`), 띠는 `size` 로 1024x256 을 정해 넘긴다(`fixedDrawSize`, klein 규칙 16 의 배수 256~1024 를 지나도 그대로). CPU 판(sd.cpp, 긴 변 768)도 1024x256 은 768 판보다 넓이가 작아 그대로 둔다. 그린 그림 하한 40KB 는 768x1024 쯤 그림의 값이라 넓이가 1/3 인 띠에는 13.3KB(`STRIP_MIN_BYTES`)로 줄였다.
+
+Gemini 길은 받은 그림을 `fitStrip` 이 먼저 맞춘다: 투명 PNG 면 배경색 위에, 오른쪽 아래 Gemini 표시는 덮고, 가장자리로 배경색을 잰 뒤(단색이 아니면 거절), 캐릭터 상자를 여백 두고 잘라 4:1 로 채우고 1024x256 으로 줄인다. 그 뒤는 서버 띠와 같은 `processStrip`. 그림 끝에 닿은 캐릭터는 닿은 채로 둬서 잘림 검사가 그대로 잡는다.
+
+| 상황 | 동작 | 확인 |
+| --- | --- | --- |
+| 내 컴퓨터 준비됨 (Apple 칩 mflux) | 그리는 곳 고르기가 보인다. 걸리는 시간 안내, 그림이 밖으로 안 나간다는 안내 | 앱 화면 |
+| 무료 횟수가 중간에 끝남 | 남은 동작을 멈추고, 준비됐으면 **남은 동작 내 컴퓨터에서 그리기**. 누르면 남은 동작만 내 컴퓨터로 (부름 `local:rest local:feel local:talk`, 크기 1024x256) | 앱 화면 |
+| 내 컴퓨터 준비 전 | 고르기 없이 준비하는 곳만 안내. 횟수 끝 칸에도 같은 안내와 Gemini | 앱 화면 |
+| 인텔 Mac, 칩이 안 됨 | 내 컴퓨터 이야기를 하지 않는다. 횟수 끝 칸에 Gemini 만 | 앱 화면 |
+| 인텔 Mac sd.cpp CPU 준비됨 | 고를 수 있고 시간이 길게 (동작 하나 10~25분) | 앱 화면 |
+| 내 컴퓨터 실패 (엔진이 멈춤, 시간 초과, 이상한 그림) | 그 동작만 실패, 다음 동작으로. 동작 아래에 까닭 | 앱 화면, `sprite-strip.test.ts` |
+| 그리다 준비가 깨짐 (모델 지워짐 등) | 다음 동작에서 notReady 로 멈추고 그리는 곳을 서버로 돌리고 준비 안내 | 앱 화면 |
+| 다른 그리기 중, 공간, 메모리, 배터리 | 남은 동작을 멈춘다 (서버의 바쁨은 다음으로 가지만 내 컴퓨터의 busy 는 멈춘다) | `sprite-strip.test.ts` |
+| 내 컴퓨터로 그리다 그만두기 | 그리던 동작은 기다림으로. 엔진이 무엇을 던졌든 그만두기로 본다 | 앱 화면 |
+| Gemini: 요청문, 열기, 기준 그림 | 동작과 배경색이 든 요청문을 복사(메인이 만든다), 여는 주소는 `https://gemini.google.com/app` 하나, 기준 그림 PNG 를 임시 폴더에 두고 보인다 | 앱 화면 (가로챈 값) |
+| Gemini 그림 16:9 PNG, 2048x512 JPEG, 투명 PNG | 띠 비율에 맞추고 통과, 그 동작만 바뀐다. 크기를 맞췄다고 알린다 | 앱 화면, `sprite-strip.test.ts` |
+| Gemini 그림 배경이 흰색 | 배경이 한 가지 색이 아니라고, 요청문 그대로 다시 | 앱 화면 |
+| Gemini 그림 2x2 또는 한 장 | 네 장이 한 줄이 아니라고 | 앱 화면 |
+| Gemini 그림 너무 큼 (5000px) | 4096px, 20MB 안으로 | 앱 화면 |
+| 그림이 아닌 파일 | PNG, JPEG, WebP 만 | 앱 화면 |
+| 잘린 Gemini 그림 | 이미 된 동작은 그대로 두고 까닭, 안 된 동작이면 검사 실패로 보인다 | 앱 화면 |
+| 끌어 놓기 | 칸에 놓은 파일로 같은 처리 (창 안에서 만든 끌기 이벤트로 시험, 진짜 마우스 끌기는 아님) | 앱 화면 |
+| 취소 | 칸 **닫기**: 아무 동작도 바뀌지 않는다 | 앱 화면 |
+
+| 상태 | 화면 |
+| --- | --- |
+| 무료 횟수 끝, 내 컴퓨터로 이어 가기 권함 | ![](both-quota-offer-ko.webp) ![](both-quota-offer-en.webp) |
+| 내 컴퓨터로 이어 그린 뒤 (한 동작은 엔진 실패) | ![](both-local-done-ko.webp) |
+| 내 컴퓨터 준비 전, 횟수 끝 | ![](both-local-notready-ko.webp) |
+| 칩이 안 되는 인텔 Mac | ![](both-local-unsupported-ko.webp) |
+| 인텔 Mac CPU, 내 컴퓨터 고름 | ![](both-local-cpu-ko.webp) |
+| 그리다 준비가 깨짐 | ![](both-local-broken-ko.webp) |
+| 내 컴퓨터로 그리다 그만두기 | ![](both-local-stopped-ko.webp) |
+| 걷기만 Gemini 로 (펼친 칸) | ![](both-gemini-panel-ko.webp) ![](both-gemini-panel-en.webp) |
+| 배경이 단색이 아닌 그림 | ![](both-gemini-err-key-ko.webp) |
+| 잘린 그림: 된 동작은 그대로 | ![](both-gemini-bad-keeps-ko.webp) |
+| 바뀐 뒤 (전: 서버 띠, 후: Gemini 띠) | ![](both-gemini-replaced-ko.webp) ![](both-gemini-after-ko.webp) |
+
+단위 시험은 고친 코드를 되돌리면 실패하는지 하나씩 봤다: 내 컴퓨터 멈춤 종류, 끝에 닿은 쪽 여백 없음, Gemini 표시 덮기, 투명 PNG, 띠 하한 바이트, 띠 크기 넘기기 모두 되돌리면 1건씩 실패.
+
 ## 다시 해 보기
 
-순수 함수는 `node --test src/shared/sprite-strip.test.ts src/main/sprite-gen.test.ts`. 앱 화면은 시험 앱을 띄우고 메인 디버거에서 `__jj.maker.debugSpriteFetch(가짜 fetch)` 로 Space 를 바꾼 뒤 `__jj.maker.open('sprites')`.
+순수 함수는 `node --test src/shared/sprite-strip.test.ts src/main/sprite-gen.test.ts`. 앱 화면은 시험 앱을 띄우고 메인 디버거에서 `__jj.maker.debugSpriteFetch(가짜 fetch)` 로 Space 를, `__jj.maker.debugSpriteLocal({ info, draw })` 로 내 컴퓨터 엔진을, `__jj.maker.debugSpriteOut({ copy, open, reveal })` 로 클립보드와 브라우저를 바꾼 뒤 `__jj.maker.open('sprites')`.
