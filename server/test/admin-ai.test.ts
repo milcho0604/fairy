@@ -339,3 +339,41 @@ describe('닉네임과 기기 코드', () => {
     assert.deepEqual(me.body.account, { code: b.code, nickname: '찾을이름' });
   });
 });
+
+describe('기능 스위치 kakao_login, coin_reset (#102)', () => {
+  test('운영자가 모드와 허용 계정을 바꾸면 GET /v1/features 가 그 계정에만 켜진다, 기록과 확인 칸', async () => {
+    const u = await newDevice('14+', '초기화');
+    const other = await newDevice('14+', '다른');
+    const features = async (token: string) => (await api('GET', '/v1/features', { token })).body.features;
+    assert.equal((await features(u.token)).coin_reset, false);
+    assert.equal((await adminApi('features/mode', { key: 'coin_reset', mode: 'allowlist' })).status, 400);
+    assert.equal(
+      (await adminApi('features/mode', { key: 'nope', mode: 'allowlist', confirm: 'yes' })).status,
+      400,
+    );
+    const m = await adminApi('features/mode', { key: 'coin_reset', mode: 'allowlist', confirm: 'yes' });
+    assert.equal(m.status, 200, m.text);
+    assert.ok(await lastLog('feature.mode'));
+    const a = await adminApi('features/allow', { key: 'coin_reset', account: u.code, allowed: true });
+    assert.equal(a.status, 200, a.text);
+    assert.equal((await lastLog('feature.allow'))?.target, `account:${u.id}`);
+    assert.equal((await features(u.token)).coin_reset, true);
+    assert.equal((await features(other.token)).coin_reset, false);
+    await adminApi('features/allow', { key: 'coin_reset', account: u.code, allowed: false });
+    assert.equal((await features(u.token)).coin_reset, false);
+    await adminApi('features/mode', { key: 'coin_reset', mode: 'everyone', confirm: 'yes' });
+    assert.equal((await features(other.token)).coin_reset, true);
+    await adminApi('features/mode', { key: 'coin_reset', mode: 'off', confirm: 'yes' });
+    assert.equal((await features(other.token)).coin_reset, false);
+    // 카카오도 같은 칸에서 (키가 없어 실제 로그인은 꺼져 있다)
+    assert.equal(
+      (await adminApi('features/mode', { key: 'kakao_login', mode: 'allowlist', confirm: 'yes' })).status,
+      200,
+    );
+    assert.equal(
+      (await adminApi('features/allow', { key: 'kakao_login', account: u.code, allowed: true })).status,
+      200,
+    );
+    assert.equal((await features(u.token)).kakao_login, true);
+  });
+});

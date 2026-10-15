@@ -24,6 +24,10 @@ export const LIMITS = {
   account: { max: 120, windowMs: 60_000 },
   /** AI 대화권 질문과 신고: 계정마다 1분 10번 (하루 상한은 따로 DB 로 센다) */
   aiByAccount: { max: 10, windowMs: 60_000 },
+  /** 서버 백업 올리기: 계정마다 한 시간 10번 (누를 때만, 한 번에 20MB 까지) */
+  backupPut: { max: 10, windowMs: 3_600_000 },
+  /** 서버 백업 받기: 계정마다 한 시간 20번 */
+  backupGet: { max: 20, windowMs: 3_600_000 },
   /** 토큰이 틀린 요청: 같은 곳에서 1분 30번 */
   badTokenByIp: { max: 30, windowMs: 60_000 },
   /** 선물 받기: 계정마다 1분 20번 */

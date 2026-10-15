@@ -2,6 +2,7 @@
 // 사용자가 넣은 글(공지, 이벤트, 닉네임, 기록)은 모두 esc 로 바꿔 넣는다. 사용자에게 보이는 이름은 "채팅 이용권"
 // (서버 코드와 표 이름은 ai_ticket 그대로).
 import type { AiSettings, SubscriptionInfo } from './ai-admin';
+import type { FeatureView } from './features';
 import type { EventRow } from './feeds';
 import type { DocNotice, NoticeDoc } from './notice-doc';
 import { kstIso } from './shared/site-events';
@@ -74,6 +75,8 @@ export interface AdminView {
   latest: string | undefined;
   /** 선물과 쿠폰은 로그인 계정만 */
   rewardsLoginOnly: boolean;
+  /** 기능 스위치 (#102, features.ts): kakao_login, coin_reset */
+  features: FeatureView[];
   log: Array<{ at: string; actor: string; action: string; target: string | null; detail: unknown }>;
 }
 
@@ -254,14 +257,47 @@ export function budgetWarn(cost: number, budget: number): string {
   return '';
 }
 
+const FEATURE_MODE_KO: Record<string, string> = {
+  off: '끔 (아무도)',
+  allowlist: '허용 목록만',
+  everyone: '모두',
+};
+
+const FEATURE_KO: Record<string, string> = {
+  kakao_login: '카카오 로그인',
+  coin_reset: '코인 초기화 (설정의 코인, 산 물건 초기화)',
+};
+
+const FEATURE_HINT: Record<string, string> = {
+  kakao_login:
+    '허용 목록 모드에서는 이미 구글로 로그인한 허용 계정이 앱에서 "카카오도 연결"하는 것만 돼요. 모두 모드면 누구나 카카오로 로그인, 가입. 카카오 키가 없으면 켜도 꺼져 있어요.',
+  coin_reset: '꺼짐이면 앱이 초기화 칸을 숨기고, 서버도 초기화 기록을 받지 않아요.',
+};
+
+/** 기능 하나의 모드 바꾸기와 허용 계정 (#102) */
+function featureForms(x: FeatureView, csrf: string): string {
+  return `<h3>${esc(FEATURE_KO[x.key] ?? x.key)} <code>${esc(x.key)}</code></h3>
+<p class="hint">${esc(FEATURE_HINT[x.key] ?? '')}</p>
+<form method="post" action="/admin/features/mode" class="grid">${hidden(csrf)}<input type="hidden" name="key" value="${esc(x.key)}">
+<label>모드 <select name="mode">${(['off', 'allowlist', 'everyone'] as const).map((m) => `<option value="${m}"${m === x.mode ? ' selected' : ''}>${esc(FEATURE_MODE_KO[m] ?? m)}</option>`).join('')}</select></label>
+${confirmBox('모드를 바꿀게요')}
+<button type="submit" class="danger">모드 바꾸기</button>
+</form>
+<form method="post" action="/admin/features/allow" class="row">${hidden(csrf)}<input type="hidden" name="key" value="${esc(x.key)}"><input type="hidden" name="allowed" value="1">
+<label>허용할 계정 번호나 기기 코드 <input name="account" required maxlength="20"></label><button type="submit">허용 목록에 넣기</button>
+</form>
+<ul class="plain">${x.accounts.map((id) => `<li><a href="/admin?q=${id}">#${id}</a> ${postButton(csrf, '/admin/features/allow', { key: x.key, account: String(id), allowed: '0' }, '빼기', true)}</li>`).join('') || '<li>허용 목록이 비었어요</li>'}</ul>`;
+}
+
 function aiSection(v: AdminView): string {
   const ai = v.ai;
   const csrf = v.csrf;
   return `<section><h2>기능 스위치</h2>
 <table><thead><tr><th>기능</th><th>키</th><th>모드</th></tr></thead><tbody>
 <tr><td>채팅 이용권 (AI 대화권)</td><td><code>ai_chat</code></td><td>${esc(MODE_KO[ai.mode])}</td></tr>
-<tr class="off"><td>카카오 로그인 (준비 중)</td><td><code>kakao_login</code></td><td>아직 없음</td></tr>
+${v.features.map((x) => `<tr><td>${esc(FEATURE_KO[x.key] ?? x.key)}</td><td><code>${esc(x.key)}</code></td><td>${esc(FEATURE_MODE_KO[x.mode] ?? x.mode)}${x.from === 'env' ? ' (서버 설정 기본값)' : ''}</td></tr>`).join('\n')}
 </tbody></table>
+${v.features.map((x) => featureForms(x, csrf)).join('\n')}
 <h3>채팅 이용권 (운영자 API 키)</h3>
 <p class="hint">지금 모드: <strong>${esc(MODE_KO[ai.mode])}</strong>. 1장 = 질문 1번. 허용 목록 모드에서는 목록의 계정과 운영자 계정(ADMIN_GOOGLE_SUBS)만 써요. 첫 로그인 선물 10장은 허용된 계정이 처음 물을 때 한 번.</p>
 <form method="post" action="/admin/ai/mode" class="grid">${hidden(csrf)}

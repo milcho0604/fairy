@@ -6,10 +6,12 @@ import { locale, t } from '../../../shared/i18n/index.ts';
 import {
   AGE_ANSWERS,
   type AgeAnswer,
+  type LoginService,
   type ServerBridge,
   type ServerStatus,
   serverView,
 } from '../../../shared/server-account.ts';
+import { ServerBackupBox } from './ServerBackupBox.tsx';
 import { NicknameStep, ProfileRows } from './ServerProfile.tsx';
 import { Section } from './ui.tsx';
 
@@ -52,6 +54,18 @@ export function useServerStatus(): [ServerStatus | undefined, (s: ServerStatus |
 }
 
 const itemCount = (items: Record<string, number>) => Object.keys(items).length;
+
+const LOGIN_KEY = { google: 'server.login', kakao: 'server.login.kakao' } as const;
+const LINK_KEY = { google: 'server.link.google', kakao: 'server.link.kakao' } as const;
+const VIA_KEY = { google: 'server.via.google', kakao: 'server.via.kakao' } as const;
+
+/** 이은 서비스 이름 ("구글", "구글, 카카오"). 모르면 구글 (예전 판이 남긴 세션) */
+function viaText(logins: readonly LoginService[]): string {
+  const names = (logins.length ? logins : (['google'] as const)).map((s) => t(VIA_KEY[s]));
+  return names.length === 2
+    ? t('server.via.and', { a: names[0] ?? '', b: names[1] ?? '' })
+    : (names[0] ?? '');
+}
 
 export function ServerAccountBox({ flash }: { flash: (message: string, error?: boolean) => void }) {
   const [s, setS] = useServerStatus();
@@ -159,6 +173,16 @@ export function ServerAccountBox({ flash }: { flash: (message: string, error?: b
       )}
     </div>
   );
+  // 브라우저 로그인은 몇 분 걸릴 수 있다: 칸을 막지 않는다 (그만두기는 메인이 보내는 상태로 뜬다)
+  const loginWith = (service: LoginService) => {
+    void b
+      .login(service)
+      .then(setS)
+      .catch(() => undefined);
+  };
+  // 서버가 알려 준 서비스만 보인다. 아직 모르면(서버에 닿기 전) 구글만 예전처럼
+  const loginServices: readonly LoginService[] = s.providers?.login ?? ['google'];
+  const linkServices = (s.providers?.link ?? []).filter((x) => !s.logins.includes(x));
   const removeRow = (
     <>
       <small>{t('server.removeHint')}</small>
@@ -284,10 +308,16 @@ export function ServerAccountBox({ flash }: { flash: (message: string, error?: b
           </div>
         ) : s.signedIn ? (
           <>
-            <small>{t('server.signedIn')}</small>
+            <small>{t('server.signedIn', { via: viaText(s.logins) })}</small>
             {/* AI 대화권 (#100): 만 18세 이상 로그인일 때만. 14~17 이나 서버 주소가 없으면 보이지 않는다 */}
             {s.ai && s.tickets !== null && <small>{t('ticket.settings', { n: s.tickets })}</small>}
             <div className="action-row">
+              {/* 다른 서비스도 잇기 (21절). 서버가 이 계정에 허락한 것만 (카카오는 기능 키) */}
+              {linkServices.map((x) => (
+                <button key={x} type="button" className="ghost" disabled={busy} onClick={() => loginWith(x)}>
+                  {t(LINK_KEY[x])}
+                </button>
+              ))}
               <button
                 type="button"
                 className="ghost"
@@ -297,25 +327,23 @@ export function ServerAccountBox({ flash }: { flash: (message: string, error?: b
                 {t('server.logout')}
               </button>
             </div>
+            {s.backup && <ServerBackupBox b={b} view={s.backup} setS={setS} flash={flash} />}
           </>
         ) : (
           <>
             <small>{t('server.noLoginHint')}</small>
             <div className="action-row">
-              <button
-                type="button"
-                className="ghost"
-                disabled={busy || !s.device}
-                onClick={() => {
-                  // 브라우저 로그인은 몇 분 걸릴 수 있다: 칸을 막지 않는다 (그만두기는 메인이 보내는 상태로 뜬다)
-                  void b
-                    .login()
-                    .then(setS)
-                    .catch(() => undefined);
-                }}
-              >
-                {t('server.login')}
-              </button>
+              {loginServices.map((x) => (
+                <button
+                  key={x}
+                  type="button"
+                  className="ghost"
+                  disabled={busy || !s.device}
+                  onClick={() => loginWith(x)}
+                >
+                  {t(LOGIN_KEY[x])}
+                </button>
+              ))}
             </div>
           </>
         )}

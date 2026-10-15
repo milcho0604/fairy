@@ -52,3 +52,11 @@ test('kid 를 못 찾으면 공개 키를 한 번 다시 받는다', async () =>
   assert.deepEqual(calls, [undefined, true]);
   await assert.rejects(verifyIdToken(token(good), { ...opts, jwks: async () => [] }), /키/);
 });
+
+test('카카오 id_token: iss 를 넘기면 그것만 받는다 (구글 iss 는 거절)', async () => {
+  const kakao = new Set(['https://kauth.kakao.com']);
+  const k = { ...good, iss: 'https://kauth.kakao.com' };
+  assert.equal(await verifyIdToken(token(k), { ...opts, issuers: kakao }), '1234');
+  await assert.rejects(verifyIdToken(token(good), { ...opts, issuers: kakao }), /iss/);
+  await assert.rejects(verifyIdToken(token(k), opts), /iss/);
+});

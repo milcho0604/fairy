@@ -327,7 +327,7 @@ if (kind === 'settings') {
     adminAction: (action, fields) => ipcRenderer.invoke(SERVER.adminAction, action, fields),
     turnOn: () => ipcRenderer.invoke(SERVER.turnOn),
     syncNow: () => ipcRenderer.invoke(SERVER.syncNow),
-    login: () => ipcRenderer.invoke(SERVER.login),
+    login: (service) => ipcRenderer.invoke(SERVER.login, service),
     cancelLogin: () => ipcRenderer.send(SERVER.cancelLogin),
     logout: () => ipcRenderer.invoke(SERVER.logout),
     merge: (yes) => ipcRenderer.invoke(SERVER.merge, yes),
@@ -339,6 +339,12 @@ if (kind === 'settings') {
         ipcRenderer.removeListener(SERVER.changed, h);
       };
     },
+    // 서버 백업 (#102)
+    backupList: () => ipcRenderer.invoke(SERVER.backupList),
+    backupAgree: (yes) => ipcRenderer.invoke(SERVER.backupAgree, yes),
+    backupUpload: () => ipcRenderer.invoke(SERVER.backupUpload),
+    backupDownload: (id) => ipcRenderer.invoke(SERVER.backupDownload, id),
+    backupDelete: (id) => ipcRenderer.invoke(SERVER.backupDelete, id),
   };
   contextBridge.exposeInMainWorld('jjakkungServer', server);
   // 이벤트 목록 (#101): 홈페이지 정적 파일이라 서버 없이도 보인다

@@ -128,6 +128,8 @@
 - 서버 백업에는 할 일, 메모 같은 개인 내용이 들어간다. 서버는 디스크에 암호화해 저장하고, 탈퇴하면 바로 지운다. 개인정보처리방침에 적는다.
 - 나중 선택: 사용자가 정한 비밀번호로 앱에서 잠가 올리기(서버도 못 읽음, 비밀번호를 잊으면 복구 불가).
 - 크기 감: 운영자 데이터 기준 DB 약 128KB, 캐릭터 그림 약 1MB.
+- 구현(#102): `PUT /v1/backup?consent=yes`(세션만, octet-stream, 20MB, 흘려 받아 AES-256-GCM 으로 볼륨 `fairy_backups` 에), `GET /v1/backup`(목록, 30일 전 `soon`), `GET /v1/backup/:id`, `DELETE /v1/backup/:id`. 키 `BACKUP_ENC_KEY` 가 비면 503 `backup_off`. "1년 미사용"은 마지막으로 올리거나 받은 때로 센다(목록 보기는 치지 않는다). 쪽지함 알림은 #101 뒤에 잇는다.
+- 카카오 로그인(#102)은 기능 키 `kakao_login`(off, allowlist, everyone. 기본 off)을 따른다. allowlist 면 이미 로그인한 허용 계정이 앱에서 "카카오도 연결"하는 것만 된다(`POST /v1/auth/kakao/begin`, 세션). 앱은 `GET /v1/auth/providers` 가 알려 준 단추만 보인다.
 
 ## 8. AI 대화권
 ### 확인한 사실

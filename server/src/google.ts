@@ -67,7 +67,14 @@ export function realGoogleApi(): GoogleApi {
  */
 export async function verifyIdToken(
   idToken: string,
-  o: { clientId: string; nonce: string; jwks: (refresh?: boolean) => Promise<JsonWebKey[]>; now?: number },
+  o: {
+    clientId: string;
+    nonce: string;
+    jwks: (refresh?: boolean) => Promise<JsonWebKey[]>;
+    now?: number;
+    /** 받는 iss. 비우면 구글 (카카오는 kakao.ts 가 넘긴다) */
+    issuers?: ReadonlySet<string>;
+  },
 ): Promise<string> {
   const parts = idToken.split('.');
   if (parts.length !== 3) throw new Error('id_token 모양');
@@ -85,7 +92,8 @@ export async function verifyIdToken(
   const aud = claims.aud;
   if (!(aud === o.clientId || (Array.isArray(aud) && aud.includes(o.clientId))))
     throw new Error('id_token aud');
-  if (typeof claims.iss !== 'string' || !ISSUERS.has(claims.iss)) throw new Error('id_token iss');
+  if (typeof claims.iss !== 'string' || !(o.issuers ?? ISSUERS).has(claims.iss))
+    throw new Error('id_token iss');
   if (typeof claims.exp !== 'number' || claims.exp + SKEW_SEC < now) throw new Error('id_token 만료');
   if (typeof claims.iat === 'number' && claims.iat - SKEW_SEC > now) throw new Error('id_token iat');
   if (claims.nonce !== o.nonce) throw new Error('id_token nonce');

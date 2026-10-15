@@ -27,11 +27,21 @@ import { AiAdmin } from './ai-admin';
 import { parseChatRequest, parseReport } from './ai-rules';
 import { CONFIG } from './app.tokens';
 import { Auth, AuthGuard, type AuthInfo, type HttpReq } from './auth.guard';
+import { Backups } from './backup';
 import { Coins, parseEntries, parseMigrate } from './coins';
-import { type Config, googleEnabled } from './config';
+import { type Config, googleEnabled, kakaoConfigured } from './config';
+import { Features } from './features';
 import { Feeds } from './feeds';
 import { Inbox } from './inbox';
-import { doneUrl, Login, parseAppState, parseChallenge, parsePort } from './login';
+import {
+  doneUrl,
+  isLoginService,
+  Login,
+  type LoginService,
+  parseAppState,
+  parseChallenge,
+  parsePort,
+} from './login';
 import { ipKey, LIMITS, RateLimiter } from './rate-limit';
 import { Rewards } from './rewards';
 import { checkNickname } from './shared/account-profile';
@@ -55,6 +65,7 @@ export class AccountController {
     private readonly accounts: Accounts,
     private readonly limiter: RateLimiter,
     private readonly access: AdminAccess,
+    private readonly backups: Backups,
   ) {}
 
   /** 이름 없는 기기 계정 + 기기 토큰. 나이 구분은 '14+' 또는 '18+' 만 (만 14세 미만은 앱이 보내지 않는다) */
@@ -109,12 +120,13 @@ export class AccountController {
     await this.accounts.deleteSession(auth.sessionId);
   }
 
-  /** 탈퇴: 바로 지운다 */
+  /** 탈퇴: 바로 지운다 (서버 백업 파일도) */
   @Delete('account')
   @UseGuards(AuthGuard)
   @HttpCode(204)
   async remove(@Auth() auth: AuthInfo): Promise<void> {
-    await this.accounts.delete(auth.accountId);
+    const files = await this.accounts.delete(auth.accountId);
+    await this.backups.removeFiles(files);
   }
 }
 
@@ -143,34 +155,120 @@ export class LoginController {
     @Inject(CONFIG) private readonly config: Config,
     private readonly login: Login,
     private readonly limiter: RateLimiter,
+    private readonly guard: AuthGuard,
+    private readonly features: Features,
+    private readonly backups: Backups,
   ) {}
 
-  private on(req: HttpReq) {
-    if (!googleEnabled(this.config)) throw new ServiceUnavailableException({ error: 'login_off' });
+  /** 서비스 키가 있는가 (카카오 기능 키는 따로 kakaoGate 로 본다) */
+  private configured(service: LoginService): boolean {
+    return service === 'google' ? googleEnabled(this.config) : kakaoConfigured(this.config);
+  }
+
+  private on(req: HttpReq, service?: LoginService) {
+    const ok = service ? this.configured(service) : this.configured('google') || this.configured('kakao');
+    if (!ok) throw new ServiceUnavailableException({ error: 'login_off' });
     this.limiter.check(`login:${ipKey(req)}`, LIMITS.loginByIp);
   }
 
-  @Get('auth/google/start')
-  @Redirect()
-  start(@Query() q: Record<string, unknown>, @Req() req: HttpReq) {
-    this.on(req);
+  /** 카카오 기능 키가 막으면 던진다 (off 는 503 feature_off, allowlist 인데 허용 계정의 세션이 아니면 403) */
+  private async kakaoOk(auth: AuthInfo | null): Promise<string | null> {
+    const g = await this.login.kakaoGate(auth);
+    if (!g.ok) throw new HttpException({ error: g.error }, g.status);
+    return g.accountId;
+  }
+
+  /** start 와 begin 이 같이 쓰는 검사와 주소 만들기 */
+  private open(service: LoginService, q: Record<string, unknown>, req: HttpReq, accountId: string | null) {
     const p = parsePort(q.port);
     const s = parseAppState(q.state);
     const challenge = parseChallenge(q.challenge);
     if (p === undefined) throw new BadRequestException({ error: 'port' });
     if (s === undefined) throw new BadRequestException({ error: 'state' });
     if (challenge === undefined) throw new BadRequestException({ error: 'challenge' });
-    const url = this.login.start(p, s, challenge, ipKey(req));
+    const url = this.login.startWith(service, accountId, p, s, challenge, ipKey(req));
     if (!url) throw new HttpException({ error: 'rate_limited' }, HttpStatus.TOO_MANY_REQUESTS);
-    return { url, statusCode: 302 };
+    return url;
+  }
+
+  @Get('auth/google/start')
+  @Redirect()
+  start(@Query() q: Record<string, unknown>, @Req() req: HttpReq) {
+    this.on(req, 'google');
+    return { url: this.open('google', q, req, null), statusCode: 302 };
+  }
+
+  /**
+   * 카카오 로그인 시작 (브라우저). 브라우저는 Bearer 를 못 보내므로 기능 키가 everyone 일 때만 된다.
+   * allowlist 면 앱이 POST /v1/auth/kakao/begin 을 세션으로 불러 받은 주소를 연다
+   */
+  @Get('auth/kakao/start')
+  @Redirect()
+  async kakaoStart(@Query() q: Record<string, unknown>, @Req() req: HttpReq) {
+    await this.kakaoOk(null);
+    this.on(req, 'kakao');
+    return { url: this.open('kakao', q, req, null), statusCode: 302 };
+  }
+
+  /**
+   * 앱이 토큰을 들고 로그인을 연다: 서비스 로그인 주소를 돌려주면 앱이 그 주소를 브라우저로 연다.
+   * 카카오 allowlist 는 이 길로만 된다 (세션의 계정이 허용됐는지 보고, 그 계정에 묶는다)
+   */
+  @Post('v1/auth/:service/begin')
+  @UseGuards(AuthGuard)
+  @HttpCode(200)
+  async begin(
+    @Param('service') service: string,
+    @Auth() auth: AuthInfo,
+    @Body() body: unknown,
+    @Req() req: HttpReq,
+  ) {
+    if (!isLoginService(service)) throw new NotFoundException({ error: 'service' });
+    const bound = service === 'kakao' ? await this.kakaoOk(auth) : null;
+    this.on(req, service);
+    return { url: this.open(service, (body ?? {}) as Record<string, unknown>, req, bound) };
+  }
+
+  /**
+   * 요청자가 지금 쓸 수 있는 로그인 (#102). 앱은 이것만 보고 단추를 보인다 (앱에 서비스를 박아 두지 않는다).
+   * - login: 로그인 전(기기 토큰이나 토큰 없음)에 쓸 수 있는 서비스
+   * - link: 로그인한 세션이 더 연결할 수 있는 서비스 (카카오 allowlist 는 허용 계정만)
+   */
+  @Get('v1/auth/providers')
+  async providers(@Req() req: HttpReq) {
+    this.limiter.check(`providers:${ipKey(req)}`, LIMITS.loginByIp);
+    const auth = (await this.guard.identify(req)) ?? null;
+    const google = this.configured('google');
+    const kakao = this.configured('kakao');
+    const kakaoMode = kakao ? await this.features.featureMode('kakao_login') : 'off';
+    const login: LoginService[] = [];
+    if (google) login.push('google');
+    if (kakao && kakaoMode === 'everyone') login.push('kakao');
+    const link: LoginService[] = [];
+    if (auth?.via === 'session') {
+      if (google) link.push('google');
+      if (kakao && (await this.features.featureAllowed('kakao_login', auth.accountId))) link.push('kakao');
+    }
+    return { login, link };
   }
 
   /** 구글이 돌려보내는 곳. 결과는 언제나 앱의 루프백(127.0.0.1:<port>/done)으로 넘긴다 */
   @Get('auth/google/callback')
   @Redirect()
   async callback(@Query() q: Record<string, unknown>, @Req() req: HttpReq) {
-    this.on(req);
-    const pending = this.login.takePending(q.state);
+    return this.back('google', q, req);
+  }
+
+  /** 카카오가 돌려보내는 곳 (<PUBLIC_URL>/auth/kakao/callback, 카카오 앱에 등록한 값과 완전히 같아야 한다) */
+  @Get('auth/kakao/callback')
+  @Redirect()
+  async kakaoCallback(@Query() q: Record<string, unknown>, @Req() req: HttpReq) {
+    return this.back('kakao', q, req);
+  }
+
+  private async back(service: LoginService, q: Record<string, unknown>, req: HttpReq) {
+    this.on(req, service);
+    const pending = this.login.takePending(q.state, Date.now(), service);
     if (!pending) throw new BadRequestException({ error: 'state' });
     const back = (params: Record<string, string>) => ({
       url: doneUrl(pending.port, { ...params, state: pending.appState }),
@@ -182,7 +280,7 @@ export class LoginController {
     try {
       return back({ code: await this.login.finish(pending, q.code) });
     } catch (err) {
-      console.warn('[login] 구글 로그인 확인 실패:', (err as Error).message);
+      console.warn(`[login] ${service} 로그인 확인 실패:`, (err as Error).message);
       return back({ error: 'login' });
     }
   }
@@ -194,8 +292,16 @@ export class LoginController {
   async session(@Auth() auth: AuthInfo, @Body() body: unknown, @Req() req: HttpReq) {
     this.on(req);
     const b = (body ?? {}) as { code?: unknown; verifier?: unknown; merge?: unknown };
-    const out = await this.login.exchange(b.code, b.verifier, auth.accountId, b.merge === true);
+    const out = await this.login.exchange(
+      b.code,
+      b.verifier,
+      auth.accountId,
+      b.merge === true,
+      Date.now(),
+      auth.via,
+    );
     if (out.kind === 'error') throw new BadRequestException({ error: out.error });
+    if (out.kind === 'denied') throw new HttpException({ error: out.error }, out.status);
     if (out.kind === 'confirm')
       throw new ConflictException({
         error: 'merge_needed',
@@ -203,11 +309,14 @@ export class LoginController {
         current: out.current,
         other: out.other,
       });
+    // 합쳐서 줄이 빠진 서버 백업 파일(두 계정 것 중 최근 2개 밖)을 커밋 뒤 바로 지운다
+    if (out.dropped.length > 0) await this.backups.removeFiles(out.dropped);
     return {
       session: out.token,
       account: { id: Number(out.accountId) },
       merged: out.merged,
       linked: out.linked,
+      logins: out.logins,
     };
   }
 }

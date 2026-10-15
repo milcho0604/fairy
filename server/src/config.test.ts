@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { adminEnabled, DEFAULT_RELEASES_API, googleEnabled, readConfig, readSubs } from './config';
+import {
+  adminEnabled,
+  DEFAULT_RELEASES_API,
+  googleEnabled,
+  kakaoConfigured,
+  readConfig,
+  readSubs,
+} from './config';
 
 test('DATABASE_URL 이 없으면 뜨지 않는다', () => {
   assert.throws(() => readConfig({}), /DATABASE_URL/);
@@ -99,4 +106,28 @@ test('운영(NODE_ENV=production)에서는 GIFT_HMAC_KEY 가 없으면 뜨지 �
   assert.throws(() => readConfig(env), /GIFT_HMAC_KEY/);
   assert.equal(readConfig({ ...env, GIFT_HMAC_KEY: 'g' }).ai?.giftKey, 'g');
   assert.equal(readConfig({ DATABASE_URL: 'postgres://x' }).ai?.giftKey, '');
+});
+
+test('서버 백업 키: 비면 끔, hex 64자만. 카카오 주소는 https 만, 기능 키는 off 가 기본', () => {
+  const env = { DATABASE_URL: 'postgres://x' };
+  const c = readConfig(env);
+  assert.equal(c.backup?.key, undefined);
+  assert.equal(c.backup?.dir, '/data/backups');
+  assert.equal(c.kakaoAuthUrl, 'https://kauth.kakao.com');
+  assert.deepEqual(c.features, { kakao_login: 'off', coin_reset: 'off' });
+  assert.equal(c.backup?.totalMaxBytes, 80 * 1024 ** 3);
+  assert.equal(readConfig({ ...env, BACKUP_TOTAL_MAX_GB: '0.5' }).backup?.totalMaxBytes, 512 * 1024 ** 2);
+  assert.throws(() => readConfig({ ...env, BACKUP_TOTAL_MAX_GB: '-1' }), /BACKUP_TOTAL_MAX_GB/);
+  assert.equal(readConfig({ ...env, FEATURE_COIN_RESET: 'everyone' }).features?.coin_reset, 'everyone');
+  assert.equal(kakaoConfigured(c), false);
+  const k = 'ab'.repeat(32);
+  assert.equal(readConfig({ ...env, BACKUP_ENC_KEY: k }).backup?.key?.toString('hex'), k);
+  assert.throws(() => readConfig({ ...env, BACKUP_ENC_KEY: 'short' }), /BACKUP_ENC_KEY/);
+  assert.throws(() => readConfig({ ...env, KAKAO_AUTH_URL: 'http://kauth.example' }), /https/);
+  assert.equal(readConfig({ ...env, FEATURE_KAKAO_LOGIN: 'Allowlist' }).features?.kakao_login, 'allowlist');
+  assert.throws(() => readConfig({ ...env, FEATURE_KAKAO_LOGIN: 'on' }), /FEATURE_KAKAO_LOGIN/);
+  assert.equal(
+    kakaoConfigured(readConfig({ ...env, KAKAO_REST_API_KEY: 'a', KAKAO_CLIENT_SECRET: 'b' })),
+    true,
+  );
 });

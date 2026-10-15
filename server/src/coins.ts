@@ -1,7 +1,8 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Optional } from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import { familyIds, type Items, lockAccount, MIGRATE_MAX_BALANCE, readItems, utcDay } from './accounts';
 import { Db } from './db';
+import { Features } from './features';
 import {
   EARN_RULES,
   earnAllowed,
@@ -135,7 +136,10 @@ const askedOf = (n: number) => Math.max(-AMOUNT_MAX - 1, Math.min(AMOUNT_MAX + 1
 
 @Injectable()
 export class Coins {
-  constructor(private readonly db: Db) {}
+  constructor(
+    private readonly db: Db,
+    @Optional() private readonly features?: Features,
+  ) {}
 
   /**
    * 기록 묶음을 정본에 반영한다. 계정 행을 잠가 두 기기가 동시에 보내도 한 줄로 선다.
@@ -184,6 +188,10 @@ export class Coins {
         sums: await this.earnedSums(c, fam, from, latest),
         life: await this.lifeSums(c, fam),
         ...(await this.todoState(c, fam, entries, from, latest)),
+        // 초기화는 기능 키 coin_reset 이 켜진 계정만 (기본 off). 초기화 기록이 있을 때만 묻는다
+        resetAllowed: entries.some((e) => e.reason === 'reset' || e.reason === RESET_ITEMS)
+          ? ((await this.features?.featureAllowed('coin_reset', acct.id)) ?? false)
+          : false,
       };
 
       const boosts = await this.boosts(c, oldest, latest);
@@ -324,6 +332,7 @@ export class Coins {
   private judge(e: SyncEntry, s: State): Judged {
     const reject = (error: string): Judged => ({ status: 'rejected', applied: 0, error });
     if (!isDay(e.day) || e.day > s.latest || e.day < s.oldest) return reject('day');
+    if ((e.reason === 'reset' || e.reason === RESET_ITEMS) && !s.resetAllowed) return reject('feature_off');
     // 산 물건 초기화 (앱 설정의 '코인과 산 물건'): 양 0, 물건을 비운다
     if (e.reason === RESET_ITEMS)
       return e.amount === 0 ? { status: 'ok', applied: 0, clearItems: true } : reject('amount');
@@ -517,6 +526,8 @@ interface State {
   life: Map<string, number>;
   refNet: Map<string, number>;
   todoRefs: Map<string, Set<string>>;
+  /** 기능 키 coin_reset 이 이 계정에 켜졌다 */
+  resetAllowed: boolean;
 }
 
 type Judged = {

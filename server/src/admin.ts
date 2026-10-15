@@ -25,6 +25,7 @@ import { CONFIG } from './app.tokens';
 import { AuthGuard } from './auth.guard';
 import type { Config } from './config';
 import { Db } from './db';
+import { type FeatureKey, Features, isFeatureKey } from './features';
 import { EVENT_COLUMNS, type EventRow, Feeds } from './feeds';
 import { sendInbox } from './inbox';
 import {
@@ -113,6 +114,9 @@ export const ADMIN_ACTIONS = [
   'ai/allow',
   'ai/policy',
   'rewards/policy',
+  // 기능 스위치 (#102): kakao_login, coin_reset 의 모드와 허용 계정 (ai_chat 은 ai/mode, ai/allow)
+  'features/mode',
+  'features/allow',
 ] as const;
 export type AdminAction = (typeof ADMIN_ACTIONS)[number];
 export const isAdminAction = (v: string): v is AdminAction =>
@@ -177,6 +181,7 @@ export class AdminService {
     private readonly aiAdmin: AiAdmin,
     private readonly access: AdminAccess,
     @Inject(CONFIG) private readonly config: Config,
+    private readonly features: Features,
   ) {}
 
   onModuleInit(): void {
@@ -268,6 +273,7 @@ export class AdminService {
       latest: await this.feeds.latestRelease(),
       log: log.rows,
       rewardsLoginOnly: await this.rewards.loginOnly(),
+      features: await this.features.listFeatures(),
     };
   }
 
@@ -514,6 +520,47 @@ export class AdminService {
     });
   }
 
+  // ---- 기능 스위치 (#102): kakao_login, coin_reset ----
+
+  private featureKey(f: FormFields): FeatureKey {
+    const key = (f.key ?? '').trim();
+    if (!isFeatureKey(key)) throw new Refused('모르는 기능이에요');
+    return key;
+  }
+
+  /** 기능 모드 (off, allowlist, everyone). 바꾸기는 확인 칸이 있어야 한다 */
+  async featureMode(actor: string, f: FormFields): Promise<AdminDone> {
+    if (f.confirm !== 'yes') throw new Refused('확인 칸을 체크해 주세요 (모드 바꾸기)', 'confirm');
+    const key = this.featureKey(f);
+    const mode = (f.mode ?? '') as AiMode;
+    if (!AI_MODES.includes(mode)) throw new Refused('모드는 off, allowlist, everyone');
+    const before = await this.features.featureMode(key);
+    return this.write(actor, async (c) => {
+      await this.features.setFeatureMode(key, mode, c);
+      return {
+        text: `${key} 모드: ${before} → ${mode}`,
+        log: ['feature.mode', null, { key, before, after: mode }],
+      };
+    });
+  }
+
+  /** 기능 허용 목록에 계정 넣기, 빼기 (allowlist 모드에서 쓴다) */
+  async featureAllow(actor: string, f: FormFields): Promise<AdminDone> {
+    const key = this.featureKey(f);
+    const on = f.allowed === '1' || f.allowed === 'true';
+    return this.write(actor, async (c) => {
+      const id = await findAccount(c, (f.account ?? '').trim());
+      if (!id) throw new Refused('없는 계정이에요 (계정 번호나 기기 코드)');
+      const live = (await lockAccount(c, id)).id;
+      if (on) await this.features.allowAccount(key, live, c);
+      else await this.features.disallowAccount(key, live, c);
+      return {
+        text: `계정 #${live} 를 ${key} 허용 목록에 ${on ? '넣었어요' : '뺐어요'}`,
+        log: [on ? 'feature.allow' : 'feature.disallow', `account:${live}`, { key }],
+      };
+    });
+  }
+
   /** 선물과 쿠폰을 로그인 계정만 받기 (기본 켬) */
   async rewardsPolicy(actor: string, f: FormFields): Promise<AdminDone> {
     const on = f.login_only === '1' || f.login_only === 'true';
@@ -739,6 +786,10 @@ export class AdminService {
         return this.aiPolicy(actor, f);
       case 'rewards/policy':
         return this.rewardsPolicy(actor, f);
+      case 'features/mode':
+        return this.featureMode(actor, f);
+      case 'features/allow':
+        return this.featureAllow(actor, f);
     }
   }
 

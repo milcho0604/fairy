@@ -14,13 +14,17 @@ import {
   type AgeAnswer,
   ageClass,
   isAgeAnswer,
+  isLoginService,
+  type LoginProviders,
+  type LoginService,
   type NicknameProblem,
   type RewardOutcome,
+  type ServerBackupResult,
   type ServerProblem,
   type ServerStatus,
 } from '../shared/server-account.ts';
-import type { AiChatBody, AiChatOutcome, ApiResult, ServerApi } from './server-api.ts';
-import { mergeNeeded, SYNC_BATCH, summary } from './server-api.ts';
+import type { AiChatBody, AiChatOutcome, ApiResult, BackupList, ServerApi } from './server-api.ts';
+import { BACKUP_MAX_BYTES, mergeNeeded, SYNC_BATCH, summary } from './server-api.ts';
 import { type CoinQueue, emptyQueue, type QueueEntry, type Reverted, revertable } from './server-coins.ts';
 
 /** 파일에 두는 상태 (server-state.json, 백업에 넣지 않는다: 나이 답은 이 컴퓨터의 것) */
@@ -57,6 +61,10 @@ export interface ServerState {
   aiAccess: AiAccess | null;
   /** 운영자가 건 정기 지급 */
   subscription: { monthly: number; nextFill: string | null } | null;
+  /** 이 계정에 이은 로그인 서비스 (세션을 받을 때 서버가 알려 준 것, #102) */
+  logins: LoginService[];
+  /** 서버 백업의 민감정보 안내에 따로 동의했다 (이 컴퓨터에서, #102) */
+  backupAgreed: boolean;
 }
 
 /** 채팅 이용권 접근: 됨, 전체 꺼짐, 허용 목록에 없음, 이 계정만 막힘 */
@@ -83,6 +91,8 @@ export function freshState(): ServerState {
     inbox: 0,
     aiAccess: null,
     subscription: null,
+    logins: [],
+    backupAgreed: false,
   };
 }
 
@@ -151,6 +161,8 @@ export function parseState(raw: unknown): ServerState {
       monthly: sub.monthly,
       nextFill: typeof sub.nextFill === 'string' ? sub.nextFill : null,
     };
+  if (Array.isArray(raw.logins)) s.logins = [...new Set(raw.logins.filter(isLoginService))];
+  s.backupAgreed = raw.backupAgreed === true;
   return s;
 }
 
@@ -215,9 +227,19 @@ export interface ServerCoreDeps {
   /** 열지 않은 서버 쪽지가 있다 (#101, 메인이 쪽지함을 받아 펫이 건넨다) */
   onInbox?: (unopened: number) => void;
   random?: (n: number) => Uint8Array;
+  /**
+   * 서버 백업 (#102): 개인 백업 파일(.fairybackup)을 만들고, 받은 파일로 되살리기 확인 칸을 연다 (backup.ts).
+   * 없으면 서버 백업 단추가 failed 를 돌려준다
+   */
+  backupFile?: {
+    make(): Promise<Uint8Array>;
+    open(bytes: Uint8Array): Promise<{ ok: boolean; message: string }>;
+  };
 }
 
 const b64url = (b: Uint8Array) => Buffer.from(b).toString('base64url');
+/** 서버에 로그인 서비스 목록을 다시 묻는 간격 (기능 키가 바뀌면 이 안에 단추가 바뀐다) */
+const PROVIDERS_EVERY_MS = 30 * 60_000;
 
 export function createServerCore(d: ServerCoreDeps) {
   const random = d.random ?? ((n: number) => randomBytes(n));
@@ -225,8 +247,18 @@ export function createServerCore(d: ServerCoreDeps) {
   let problem: ServerProblem | null = null;
   let syncing = false;
   let running: Promise<void> | null = null;
+  let next: Promise<void> | null = null;
   let login: { cancel: () => void } | null = null;
   let merge: { code: string; verifier: string; current: AccountSummary; other: AccountSummary } | null = null;
+  /** 서버가 알려 준 로그인 서비스 (#102). 모르면 null */
+  let providers: LoginProviders | null = null;
+  let providersAt = 0;
+  /** 서버가 알려 준 기능 키 (#102). 모르면 null: 앱은 꺼진 것으로 본다 (featureOn) */
+  let features: Record<string, boolean> | null = null;
+  /** 서버 백업 목록 (로그인한 동안만). 모르면 null */
+  let backups: BackupList | null = null;
+  let backupOff = false;
+  let backupBusy: 'up' | 'down' | null = null;
 
   const enabled = () => d.api !== undefined;
   /** 서버 모드를 켰다 (나이 답과 켬. 열쇠 문제는 blocked) */
@@ -267,6 +299,20 @@ export function createServerCore(d: ServerCoreDeps) {
       code: wanted() ? st.code : null,
       inbox: wanted() ? st.inbox : 0,
       admin: isAdmin(),
+      providers,
+      features: allowed() ? features : null,
+      logins: d.session.get() ? st.logins : [],
+      backup:
+        allowed() && d.session.get()
+          ? {
+              off: backupOff,
+              agreed: st.backupAgreed,
+              list: backups?.backups ?? null,
+              keep: backups?.keep ?? 2,
+              maxBytes: backups?.maxBytes ?? BACKUP_MAX_BYTES,
+              busy: backupBusy,
+            }
+          : null,
     };
   }
 
@@ -288,6 +334,8 @@ export function createServerCore(d: ServerCoreDeps) {
     login?.cancel();
     login = null;
     merge = null;
+    backups = null;
+    features = null;
     st = {
       ...st,
       on: false,
@@ -302,6 +350,9 @@ export function createServerCore(d: ServerCoreDeps) {
       aiAccess: null,
       subscription: null,
       nicknamePending: false,
+      logins: [],
+      // 서버 백업 동의는 그 계정에 준 것이다: 탈퇴하면 거둔다
+      backupAgreed: false,
     };
     st.coins.queue = [];
     save();
@@ -315,6 +366,7 @@ export function createServerCore(d: ServerCoreDeps) {
     if (d.session.get()) {
       d.log('server', '세션이 끝남');
       d.session.set(null);
+      backups = null;
       return 'retry';
     }
     d.log('server', '기기 계정이 없어짐');
@@ -583,7 +635,8 @@ export function createServerCore(d: ServerCoreDeps) {
       changed();
       return Promise.resolve();
     }
-    if (running) return running;
+    // 로그인 뒤 다시 맞추기가 줄을 서 있으면 그것까지 기다린다 (runAgain)
+    if (running) return next ?? running;
     running = (async () => {
       syncing = true;
       changed();
@@ -598,6 +651,7 @@ export function createServerCore(d: ServerCoreDeps) {
         await refreshMe();
         await refreshTickets();
         await syncAll();
+        await refreshProviders();
       } catch (err) {
         problem = 'server';
         d.log('server', '맞추기 중 오류', err instanceof Error ? err.message : String(err));
@@ -610,20 +664,151 @@ export function createServerCore(d: ServerCoreDeps) {
     return running;
   }
 
+  /**
+   * 도는 중이면 끝난 뒤 한 번 더 (로그인, 합치기 직후의 맞추기가 이미 지나간 단계에 묻히지 않게). 줄은 하나만 세운다.
+   * 로그인 서비스와 기능 키를 묻는 단계가 생겨 앞의 맞추기가 길어졌다 (#102)
+   */
+  function runAgain(): Promise<void> {
+    if (!running) return run();
+    next ??= running.then(() => {
+      next = null;
+      return run();
+    });
+    return next;
+  }
+
   /** 새 장부 줄을 대기열로 (서버로 보내지는 않는다) */
   function scan() {
     if (!allowed() || !st.migrated) return;
     if (d.coins.scan(st.coins) > 0) save();
   }
 
-  // ---- 로그인 (구글, 루프백 + 로컬 PKCE) ----
+  /** 지금 쓸 수 있는 로그인 서비스를 서버에 묻는다 (#102, 기능 키에 따라 카카오가 들고 난다) */
+  async function refreshProviders(force = false): Promise<void> {
+    const t = token();
+    if (!d.api || !allowed()) return;
+    // 맞추기마다 묻지 않는다: 처음, 로그인이 바뀐 뒤(force), 그 밖은 30분에 한 번
+    if (!force && providers && d.now() - providersAt < PROVIDERS_EVERY_MS) return;
+    const r = await d.api.providers(t);
+    if (r.ok) {
+      providers = r.data;
+      providersAt = d.now();
+    } else d.log('server', '로그인 서비스 목록을 못 받음', r.status, r.error);
+    const f = await d.api.features(t);
+    if (f.ok) features = f.data;
+    else d.log('server', '기능 키를 못 받음', f.status, f.error);
+  }
+
+  // ---- 서버 백업 (#102, 기획서 7절) ----
+
+  const backupError = (r: { status: number; error: string }): ServerBackupResult['error'] => {
+    if (r.status === 0) return 'offline';
+    if (r.status === 413 || r.error === 'too_big') return 'tooBig';
+    if (r.status === 507) return 'full';
+    if (r.status === 503 && r.error === 'backup_off') return 'off';
+    if (r.status === 401 || r.status === 403) return 'login';
+    return 'failed';
+  };
+
+  /** 서버 백업 목록을 받는다 (로그인했을 때만) */
+  async function backupList(): Promise<void> {
+    const s = d.session.get();
+    if (!d.api || !s || !allowed()) return;
+    const r = await d.api.backupList(s);
+    if (r.ok) {
+      backups = r.data;
+      backupOff = false;
+    } else if (r.status === 503 && r.error === 'backup_off') backupOff = true;
+    else if (r.status === 401) onUnauthorized();
+    else d.log('server', '서버 백업 목록을 못 받음', r.status, r.error);
+    changed();
+  }
+
+  async function backupStep(
+    kind: 'up' | 'down',
+    fn: (session: string) => Promise<ServerBackupResult>,
+  ): Promise<ServerBackupResult> {
+    const s = d.session.get();
+    if (!d.api || !s || !allowed()) return { ok: false, error: 'login', status: status() };
+    if (backupBusy) return { ok: false, error: 'busy', status: status() };
+    backupBusy = kind;
+    changed();
+    try {
+      return { ...(await fn(s)), status: status() };
+    } catch (err) {
+      d.log('server', '서버 백업 오류', err instanceof Error ? err.message : String(err));
+      return { ok: false, error: 'failed', status: status() };
+    } finally {
+      backupBusy = null;
+      changed();
+    }
+  }
+
+  /** 서버에 백업 올리기: 따로 동의한 뒤에만. 개인 백업 파일과 같은 것을 만든다 */
+  function backupUpload(): Promise<ServerBackupResult> {
+    if (!st.backupAgreed) return Promise.resolve({ ok: false, error: 'consent', status: status() });
+    return backupStep('up', async (s) => {
+      if (!d.api || !d.backupFile) return { ok: false, error: 'failed' };
+      const bytes = await d.backupFile.make();
+      if (bytes.length > (backups?.maxBytes ?? BACKUP_MAX_BYTES)) return { ok: false, error: 'tooBig' };
+      const r = await d.api.backupUpload(s, bytes);
+      if (!r.ok) {
+        if (r.status === 503 && r.error === 'backup_off') backupOff = true;
+        if (r.status === 401) onUnauthorized();
+        d.log('server', '서버 백업 못 올림', r.status, r.error);
+        return { ok: false, error: backupError(r) };
+      }
+      d.log('server', '서버 백업 올림', bytes.length);
+      await backupList();
+      return { ok: true };
+    });
+  }
+
+  /** 서버 백업 받기: 받은 파일로 되살리기 확인 칸을 연다. 되살린 뒤 코인과 산 물건은 서버 정본을 따른다 (afterRestore) */
+  function backupDownload(id: number): Promise<ServerBackupResult> {
+    return backupStep('down', async (s) => {
+      if (!d.api || !d.backupFile) return { ok: false, error: 'failed' };
+      let item = backups?.backups.find((b) => b.id === id);
+      if (!item) {
+        await backupList();
+        item = backups?.backups.find((b) => b.id === id);
+      }
+      if (!item) return { ok: false, error: 'failed' };
+      const r = await d.api.backupDownload(s, item);
+      if (!r.ok) {
+        if (r.status === 401) onUnauthorized();
+        d.log('server', '서버 백업 못 받음', r.status, r.error);
+        return { ok: false, error: backupError(r) };
+      }
+      const opened = await d.backupFile.open(r.data);
+      // 받으면 서버가 마지막 쓴 때를 고친다 (곧 지워짐이 풀린다)
+      await backupList();
+      if (!opened.ok) return { ok: false, error: 'open', message: opened.message };
+      d.log('server', '서버 백업 받음');
+      return { ok: true };
+    });
+  }
+
+  async function backupDelete(id: number): Promise<ServerBackupResult> {
+    const s = d.session.get();
+    if (!d.api || !s || !allowed()) return { ok: false, error: 'login', status: status() };
+    const r = await d.api.backupDelete(s, id);
+    if (!r.ok && r.status !== 404) {
+      if (r.status === 401) onUnauthorized();
+      return { ok: false, error: backupError(r), status: status() };
+    }
+    await backupList();
+    return { ok: true, status: status() };
+  }
+
+  // ---- 로그인 (구글, 카카오. 루프백 + 로컬 PKCE) ----
 
   async function exchange(code: string, verifier: string, yes: boolean): Promise<void> {
     const t = token();
     if (!d.api || !t || !allowed()) return;
     const r: ApiResult<unknown> = await d.api.session(t, code, verifier, yes);
     if (r.ok) {
-      const data = r.data as { session: string; merged: boolean; linked: boolean };
+      const data = r.data as { session: string; merged: boolean; linked: boolean; logins: LoginService[] };
       try {
         d.session.set(data.session);
       } catch {
@@ -631,9 +816,13 @@ export function createServerCore(d: ServerCoreDeps) {
         return;
       }
       problem = null;
+      st.logins = data.logins;
+      backups = null;
+      providers = null;
+      save();
       d.log('server', '로그인함', data.merged ? '합침' : '', data.linked ? '이음' : '');
       // 합쳤으면 잔액과 물건이 바뀌었다
-      void run();
+      void runAgain();
       return;
     }
     if (r.status === 409 && r.error === 'merge_needed') {
@@ -649,10 +838,17 @@ export function createServerCore(d: ServerCoreDeps) {
     d.log('server', '로그인 실패', r.status, r.error);
   }
 
-  async function startLogin(): Promise<ServerStatus> {
+  /**
+   * 로그인 (로그인했으면 그 서비스를 더 잇는다). 서버가 알려 준 서비스만 (providers). 아직 모르면 구글만 예전처럼.
+   * 구글은 브라우저로 /auth/google/start 를, 카카오는 토큰을 들고 /v1/auth/kakao/begin 으로 받은 주소를 연다
+   * (카카오 allowlist 는 로그인한 허용 계정만 되므로 서버가 토큰으로 계정을 본다)
+   */
+  async function startLogin(service: LoginService = 'google'): Promise<ServerStatus> {
     if (!allowed() || !d.api) return status();
     if (!d.device.get()) await run();
     if (!d.device.get()) return status();
+    const offered = d.session.get() ? providers?.link : providers?.login;
+    if (offered ? !offered.includes(service) : service !== 'google') return status();
     login?.cancel();
     merge = null;
     problem = null;
@@ -665,7 +861,22 @@ export function createServerCore(d: ServerCoreDeps) {
     changed();
     const port = Number(new URL(lb.redirectUri).port);
     try {
-      await d.openExternal(d.api.startUrl(port, state, challenge));
+      let url = d.api.startUrl(port, state, challenge);
+      if (service !== 'google') {
+        const r = await d.api.begin(token() as string, service, port, state, challenge);
+        if (!r.ok) {
+          d.log('server', '로그인을 열지 못함', service, r.status, r.error);
+          lb.cancel();
+          if (login === mine) login = null;
+          problem = r.status === 0 ? 'offline' : r.status === 503 ? 'loginOff' : 'failed';
+          // 기능 키가 바뀌었을 수 있다: 단추를 다시 맞춘다
+          await refreshProviders(true);
+          changed();
+          return status();
+        }
+        url = r.data.url;
+      }
+      await d.openExternal(url);
     } catch (err) {
       d.log('server', '브라우저 열기 실패', err instanceof Error ? err.name : 'error');
       lb.cancel();
@@ -890,16 +1101,35 @@ export function createServerCore(d: ServerCoreDeps) {
       setTickets(null);
       st.admin = false;
       setAccess(null);
+      backups = null;
+      providers = null;
+      st.logins = [];
+      // 로그아웃하면 서버 백업 동의도 거둔다 (다음 로그인 때 다시 묻는다)
+      st.backupAgreed = false;
+      save();
       if (t && d.api) {
         const r = await d.api.logout(t);
         if (!r.ok) d.log('server', '서버 세션 못 지움', r.status, r.error);
       }
       d.log('server', '로그아웃');
+      // 로그인 전에 쓸 수 있는 서비스를 다시 받는다 (기기 토큰 기준)
+      await refreshProviders(true);
       changed();
       return status();
     },
     merge: answerMerge,
     remove,
+    refreshProviders,
+    backupList,
+    agreeBackup(yes: boolean): ServerStatus {
+      st.backupAgreed = yes;
+      save();
+      changed();
+      return status();
+    },
+    backupUpload,
+    backupDownload,
+    backupDelete,
     /** 백업을 되살리기 전: 지금 장부 줄을 대기열에 넣어 둔다 (되살린 뒤에는 옛 장부가 없다) */
     beforeRestore() {
       scan();
