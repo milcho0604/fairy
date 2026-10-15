@@ -101,6 +101,15 @@ fileAssociations:
     role: Viewer
 mac:
   category: public.app-category.productivity
+  # Codex 펫 파일(.codex-pet.zip, 이슈 #88). 운영체제는 끝 확장자(zip)만 봐서 zip 전체를 연결하게 되므로 기본 앱은 되지 않고
+  # "다음으로 열기" 목록에만 오른다(Alternate). 고른 zip 은 앱이 안을 보고 판단한다(open-handler.ts). 윈도우, 리눅스는 연결하지 않는다
+  # (zip 기본 앱을 빼앗는다). 그쪽은 가져오기 창이나 설정 창에 끌어 놓기로 받는다
+  fileAssociations:
+    - ext: zip
+      name: Codex pet file
+      description: Codex 펫 파일
+      role: Viewer
+      rank: Alternate
   target:
     # dmg 는 처음 설치용, zip 과 latest-mac.yml 은 자동 업데이트(electron-updater, Squirrel.Mac)가 받는다
     - target: dmg

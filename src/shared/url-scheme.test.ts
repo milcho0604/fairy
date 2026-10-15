@@ -3,7 +3,10 @@ import { test } from 'node:test';
 import {
   ADD_TEXT_MAX,
   admitUrl,
+  isCodexPetFileName,
+  isImportFileName,
   isPetFileName,
+  isZipFileName,
   MEMO_TEXT_MAX,
   PET_FILE_EXTS_READ,
   panelTabOf,
@@ -128,6 +131,13 @@ test('명령줄에서 주소와 .fairy (예전 .jjpet) 파일 찾기', () => {
   assert.equal(petFileFromArgv(['/x/evil.fairy']), undefined);
   assert.equal(petFileFromArgv(['/app', '/tmp/fairy']), undefined);
   assert.equal(petFileFromArgv(['/app', '/tmp/a.json']), undefined);
+  // Codex 펫 파일 (이슈 #88). 그냥 zip 은 명령줄로 받지 않는다 (zip 연결은 맥 "다음으로 열기" 만)
+  assert.equal(petFileFromArgv(['/app', '/home/me/dot.codex-pet.zip']), '/home/me/dot.codex-pet.zip');
+  assert.equal(petFileFromArgv(['/app', '/home/me/Dot.CODEX-PET.ZIP']), '/home/me/Dot.CODEX-PET.ZIP');
+  assert.equal(petFileFromArgv(['/app', '/home/me/photos.zip']), undefined);
+  assert.ok(isCodexPetFileName('a.codex-pet.zip') && !isCodexPetFileName('a.codex-pet.zip.exe'));
+  assert.ok(isImportFileName('a.fairy') && isImportFileName('a.codex-pet.zip') && !isImportFileName('a.zip'));
+  assert.ok(isZipFileName('a.ZIP') && !isZipFileName('a.zipx'));
 });
 
 test('연달아 온 주소는 10초에 8개까지', () => {

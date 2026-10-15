@@ -30,7 +30,7 @@ import { watchCatalog } from './ai/catalog.ts';
 import { stopLocal } from './ai/local.ts';
 import { cachedMcpServers, mcpServers, refreshMcpServers } from './ai/mcp-list.ts';
 import { stopAllAi } from './ai/runner.ts';
-import { applyPendingImport, createBackup, exportPet, importPet } from './backup.ts';
+import { applyPendingImport, createBackup, exportPet, importPet, importPetBytes } from './backup.ts';
 import { debugBattery, onSaverChange, powerFacts, saverNow, watchPower } from './battery.ts';
 import { watchBetaStats } from './beta.ts';
 import { boostOn, onBoostChange } from './boost.ts';
@@ -1311,6 +1311,7 @@ ready
         exportPet: (w) => exportPet(w),
         importPet: (w) => importPet(w, false, log),
         importFriend: (w) => importPet(w, true, log),
+        importPetDrop: (name, bytes) => importPetBytes(name, bytes, false, log),
         syncCalendar: () => calendar.sync(true),
         calendarLast: () => calendar.last,
         catalog: catalog.get,
@@ -1662,7 +1663,7 @@ ready
       }
       panel.openTab(panelTabOf(a.tab));
     }
-    /** .fairy (예전 .jjpet) 을 두 번 눌러 열었다: 펫 가져오기와 같은 검사, 같은 확인 창을 거친다 (backup.ts importPet) */
+    /** .fairy (예전 .jjpet), .codex-pet.zip 을 두 번 눌러 열었다: 펫 가져오기와 같은 검사, 같은 확인 창을 거친다 (backup.ts importPet) */
     async function importPetFile(path: string) {
       log('pet', '페어리 파일 열기');
       const r = await importPet(undefined, false, log, path);
@@ -1749,6 +1750,8 @@ ready
       Object.assign(globalThis, {
         __jj: {
           look,
+          // 확인 창(showMessageBox)을 시험에서 바꿔 끼워 진짜 창을 띄우지 않는다 (Codex 펫 가져오기 시험 등)
+          dialog,
           chat,
           pet,
           globalShortcut,

@@ -29,6 +29,7 @@ import {
   importedChatSettings,
   PET_STATE_FILES,
 } from '../shared/backup-import.ts';
+import { CODEX_ZIP_MAX_BYTES } from '../shared/codex-pet.ts';
 import { SCHEMA_VERSION } from '../shared/db-schema.ts';
 import { saveErrorText } from '../shared/download-error.ts';
 import { t } from '../shared/i18n/index.ts';
@@ -46,8 +47,10 @@ import {
 import type { PetSprites } from '../shared/pet-sprites.ts';
 import type { Blueprint } from '../shared/pet3d/blueprint.ts';
 import { FRIENDS_MAX, isPersonalPet, POSE_KINDS } from '../shared/settings.ts';
-import { PET_FILE_EXT, PET_FILE_EXTS_READ } from '../shared/url-scheme.ts';
+import { isZipFileName, PET_FILE_EXT, PET_FILE_EXTS_READ } from '../shared/url-scheme.ts';
 import { BackupReadError, extractBackupZip, writeBackupZip, type ZipSource } from './backup-zip.ts';
+import { decodeAtlas } from './codex-atlas.ts';
+import { readCodexPet } from './codex-pet.ts';
 import { importableDbVersion } from './db-open.ts';
 import { petImages } from './maker.ts';
 import { library } from './pet-library.ts';
@@ -643,7 +646,8 @@ export function currentSharedPet(): SharedPet {
     ...(imgs.main && s.petAge ? { age: s.petAge } : {}),
     ...(thumbnail ? { thumbnail } : {}),
     // 이미 있는 캐릭터로 말로 만든 펫 (이름표에 적혀 공식 갤러리가 받지 않는다)
-    ...(imgs.model && isPersonalPet(s) ? { personalOnly: true } : {}),
+    // (설계도 없는 그림 세트 펫은 그림 파일이 열쇠다: Codex 펫)
+    ...(imgs.main && isPersonalPet(s) ? { personalOnly: true } : {}),
     // 데려온 2D 그림 세트도 다시 담는다 (친구에게 보내도 자세 그림이 같이 간다)
     ...(imgs.main && imgs.sprites ? { sprites: imgs.sprites } : {}),
   };
@@ -682,8 +686,12 @@ export async function importPet(
   const opts = {
     title: t('main.pet.importTitle'),
     properties: ['openFile' as const],
-    // 새 .fairy 와 예전 이름(짝꿍) 때 .jjpet 을 같이 고를 수 있다
-    filters: [{ name: t('main.pet.fileType'), extensions: [...PET_FILE_EXTS_READ] }],
+    // 새 .fairy 와 예전 이름(짝꿍) 때 .jjpet, Codex 펫 파일(.codex-pet.zip)을 같이 고를 수 있다.
+    // 고르기 창 거르개는 끝 확장자만 봐서 zip 으로 둔다 (고른 zip 은 안을 보고 판단한다)
+    filters: [
+      { name: t('main.pet.fileType'), extensions: [...PET_FILE_EXTS_READ, 'zip'] },
+      { name: t('main.codex.fileType'), extensions: ['zip'] },
+    ],
   };
   const r = picked
     ? { canceled: false, filePaths: [picked] }
@@ -693,12 +701,32 @@ export async function importPet(
   // 읽기 전에 크기를 본다: 큰 파일을 통째로 메모리에 올리지 않게 (버그잡이 7차)
   // 고른 뒤 지워졌거나 읽을 권한이 없으면 읽기가 던진다. 던진 채 두면 설정 창에 아무 말도 안 뜬다
   // 일반 파일만, 상한까지만 읽는다 (장치 파일이나 파이프를 가리키는 .fairy 에 앱이 멈추지 않게. 버그잡이 4)
-  const bytes = readPlainCapped(file, SHARE_MAX_BYTES);
-  if (bytes === 'tooBig') return { ok: false, message: t('pet.share.tooBig') };
+  const zip = isZipFileName(file);
+  const bytes = readPlainCapped(file, zip ? CODEX_ZIP_MAX_BYTES : SHARE_MAX_BYTES);
+  if (bytes === 'tooBig') return { ok: false, message: t(zip ? 'main.codex.tooBig' : 'pet.share.tooBig') };
   if (!bytes) return { ok: false, message: t('main.pet.unreadable') };
-  const pet = decodePet(bytes.toString('utf8'));
-  if ('error' in pet) return { ok: false, message: pet.error };
-  return adoptPet(pet, asFriend, log);
+  return importPetBytes(file, bytes, asFriend, log);
+}
+
+/**
+ * 읽어 둔 파일 바이트로 가져온다 (가져오기 창, 두 번 눌러 열기, 설정 창에 끌어 놓기). 이름의 확장자로 읽개를 고른다:
+ * zip 이면 Codex 펫 파일, 아니면 .fairy. 크기 상한은 부르는 쪽이 먼저 본다
+ */
+export async function importPetBytes(
+  name: string,
+  bytes: Buffer,
+  asFriend: boolean,
+  log?: (tag: string, ...rest: unknown[]) => void,
+): Promise<{ ok: boolean; message: string }> {
+  const zip = isZipFileName(name);
+  if (bytes.length > (zip ? CODEX_ZIP_MAX_BYTES : SHARE_MAX_BYTES))
+    return { ok: false, message: t(zip ? 'main.codex.tooBig' : 'pet.share.tooBig') };
+  const pet = zip ? await readCodexPet(bytes, decodeAtlas) : decodePet(bytes.toString('utf8'));
+  if ('error' in pet) {
+    if (zip) log?.('backup', 'Codex 펫 가져오기 실패', pet.error);
+    return { ok: false, message: pet.error };
+  }
+  return adoptPet(pet, asFriend, log, zip ? t('main.codex.personal') : undefined);
 }
 
 /**
@@ -709,12 +737,15 @@ export async function adoptPet(
   pet: SharedPet,
   asFriend: boolean,
   log?: (tag: string, ...rest: unknown[]) => void,
+  /** 바꿀지 묻는 창에 더할 안내 한 줄 (Codex 펫: 개인 용도) */
+  note?: string,
 ): Promise<{ ok: boolean; message: string }> {
   if (!asFriend) {
     const ask = await dialog.showMessageBox({
       type: 'question',
       message: t('main.pet.replaceAsk', { name: pet.name }),
-      detail: t('main.pet.replaceDetail'),
+      // Codex 펫은 설명 한 줄과 개인 용도 안내를 같이 (설명은 저장하지 않는다)
+      detail: [pet.description, t('main.pet.replaceDetail'), note].filter(Boolean).join('\n\n'),
       buttons: [t('main.backup.replace'), t('main.backup.cancel')],
       defaultId: 0,
       cancelId: 1,
@@ -739,17 +770,24 @@ export async function adoptPet(
   try {
     const sprites = spritesToFiles(pet.sprites);
     if (asFriend) {
+      const image = pet.image ? keep(dataUrlToFile(pet.image, 'pet')) : undefined;
+      const model = pet.model ? keep(modelToFile(pet.model)) : undefined;
       const friend = {
         id: `f-${Date.now().toString(36)}`,
         name: pet.name,
         kind: pet.kind,
-        ...(pet.image ? { image: keep(dataUrlToFile(pet.image, 'pet')) } : {}),
-        ...(pet.model ? { model: keep(modelToFile(pet.model)) } : {}),
+        ...(image ? { image } : {}),
+        ...(model ? { model } : {}),
         ...(pet.depth ? { depth: keep(dataUrlToFile(pet.depth, 'depth')) } : {}),
         ...(pet.age ? { age: pet.age } : {}),
         ...(sprites ? { sprites } : {}),
       };
-      settings.set({ friends: [...settings.get().friends, friend] });
+      // 개인 용도 표시도 같이 (친구를 지금 페어리로 바꾼 뒤 내보내도 이름표에 남게)
+      const personalKey = pet.personalOnly && image ? (model ?? image) : undefined;
+      settings.set({
+        friends: [...settings.get().friends, friend],
+        ...(personalKey ? { petPersonal: { ...settings.get().petPersonal, [personalKey]: true } } : {}),
+      });
       return { ok: true, message: t('main.pet.friendCame', { name: pet.name }) };
     }
     const poses: Record<string, string | null> = {};
@@ -757,16 +795,19 @@ export async function adoptPet(
     for (const { id } of POSE_KINDS)
       poses[id] = pet.image && pet.poses[id] ? keep(dataUrlToFile(pet.poses[id] as string, 'pose')) : null;
     const model = pet.model ? keep(modelToFile(pet.model)) : null;
+    const image = pet.image ? keep(dataUrlToFile(pet.image, 'pet')) : null;
+    // 개인 용도 표시의 열쇠: 설계도가 있으면 설계도, 없으면(Codex 펫 같은 그림 세트 펫) 그림 파일 (settings.ts isPersonalPet)
+    const personalKey = pet.personalOnly && image ? (model ?? image) : null;
     const next = {
       petName: pet.name,
       petKind: pet.kind,
-      petImage: pet.image ? keep(dataUrlToFile(pet.image, 'pet')) : null,
+      petImage: image,
       petModel: model,
       petDepth: pet.depth ? keep(dataUrlToFile(pet.depth, 'depth')) : null,
       petPoses: poses,
       // 개인 용도 표시는 데려와도 그대로 (다시 내보낼 때도 이름표에 남는다)
-      ...(model && pet.personalOnly
-        ? { petPersonal: { ...settings.get().petPersonal, [model]: true as const } }
+      ...(personalKey
+        ? { petPersonal: { ...settings.get().petPersonal, [personalKey]: true as const } }
         : {}),
       // 나이 단계는 파일에 있을 때만 (없으면 지운다: 옛 펫 나이가 남지 않게)
       petAge: pet.age ?? null,
