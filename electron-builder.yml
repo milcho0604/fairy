@@ -93,6 +93,12 @@ fileAssociations:
     description: 페어리 파일 (예전 .jjpet)
     mimeType: application/x-jjakkung-pet
     role: Viewer
+  # 개인 백업 파일 (이슈 #90). 두 번 누르면 설정 > 데이터의 복원 확인 칸이 열린다
+  - ext: fairybackup
+    name: fairy backup
+    description: 페어리 백업
+    mimeType: application/x-fairy-backup
+    role: Viewer
 mac:
   category: public.app-category.productivity
   # Codex 펫 파일(.codex-pet.zip, 이슈 #88). 운영체제는 끝 확장자(zip)만 봐서 zip 전체를 연결하게 되므로 기본 앱은 되지 않고

@@ -1297,7 +1297,13 @@ ready
       },
       v2: {
         exportData: (w) => backup.exportTo(w),
-        importData: (w) => backup.importFrom(w),
+        importData: (w, kind) => backup.importFrom(w, kind),
+        restore: {
+          state: () => backup.state(),
+          undo: () => backup.offerUndo(),
+          confirm: (id) => backup.confirm(id),
+          cancel: (id) => backup.cancel(id),
+        },
         exportPet: (w) => exportPet(w),
         importPet: (w) => importPet(w, false, log),
         importFriend: (w) => importPet(w, true, log),
@@ -1312,6 +1318,8 @@ ready
       },
       gallery: galleryHandlers(log),
     });
+    // 두 번 눌러 연 백업 파일을 검사하면 열린 설정 창의 확인 칸을 새로 그린다
+    backup.onChange(() => settingsWindow.sendRestore());
     // ---- 구글 캘린더에 쓰기 (6단계): 짝꿍 일정을 구글로. 설정 창에서 연결한다 ----
     const gcal = createGcal({
       store: gcalLinks,
@@ -1648,8 +1656,19 @@ ready
       const r = await importPet(undefined, false, log, path);
       if (r.message) sayShort(r.message);
     }
+    /**
+     * .fairybackup 을 두 번 눌러 열었다 (이슈 #90): 설정의 가져오기와 같은 검사를 하고, 되면 설정 > 데이터의 확인 칸을 연다.
+     * 바꾸기는 사용자가 그 칸에서 누를 때만. 못 열면(깨짐, 새 판, 다른 파일) 펫이 까닭을 말한다
+     */
+    async function openBackupFile(path: string) {
+      log('backup', '백업 파일 열기');
+      const r = await backup.inspect(path, 'file');
+      if (r.offer) settingsWindow.open('restore');
+      else if (r.message) sayShort(r.message);
+    }
     const handleIncoming = (item: Incoming) => {
       if (item.kind === 'petFile') void importPetFile(item.path);
+      else if (item.kind === 'backupFile') void openBackupFile(item.path);
       else handleUrl(item.url);
     };
     // 펫 화면이 뜬 뒤에 받는다 (확인 말풍선이 보이게)
@@ -1763,6 +1782,7 @@ ready
           sayWhatFirst,
           handleUrl,
           handleIncoming,
+          openBackupFile,
           saverNow,
           debugBattery,
           trayTitle,
