@@ -275,8 +275,8 @@ const typeInto = (p, selector, value) =>
     `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return false; const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`,
   );
 const T = {
-  ko: { adult: '만 18세 이상', start: '서버 모드 시작', claim: '선물 받기', coupon: '쿠폰 쓰기', from: '운영자', admin: '운영자' },
-  en: { adult: '18 or older', start: 'Start server mode', claim: 'Get gift', coupon: 'Use coupon', from: 'Operator', admin: 'Operator' },
+  ko: { ticket: '채팅 이용권 Claude', adult: '만 18세 이상', start: '서버 모드 시작', claim: '선물 받기', coupon: '쿠폰 쓰기', from: '운영자', admin: '운영자' },
+  en: { ticket: 'Chat pass AI', adult: '18 or older', start: 'Start server mode', claim: 'Get gift', coupon: 'Use coupon', from: 'Operator', admin: 'Operator' },
 }[LANG];
 const NICK = LANG === 'ko' ? '시험친구' : 'Tester';
 
@@ -373,6 +373,26 @@ try {
   check('운영자 칸이 보인다', (await p.ev(`document.querySelector('.admin-box') !== null`)) === true);
   check('운영자 칸에 세션 토큰이 없다', (await p.ev(`document.body.innerHTML.includes(${JSON.stringify(session)})`)) === false);
   await p.shot('events-6-admin', '.admin-box');
+
+  // 채팅 창을 연 채 나이를 14~17 로 바꾸면 채팅 이용권 항목이 목록에서 사라진다 (QA, #101)
+  await until('채팅 이용권 열림', async () => (await status()).ai === true, 20_000);
+  await main(`__jj.chat.open(__jj.pet.bounds()); 1`);
+  const c = await page('chat');
+  await until('채팅 화면', () => c.ev(`!!document.querySelector('.picker-button')`));
+  const menuHas = async () => {
+    await c.ev(`(() => { if (!document.querySelector('.picker-menu')) document.querySelector('.picker-button').click(); })()`);
+    await sleep(200);
+    const has = await c.ev(`[...document.querySelectorAll('.picker-menu .name')].some((x) => x.textContent === ${JSON.stringify(T.ticket)})`);
+    await c.ev(`document.querySelector('.picker-button').click()`);
+    return has;
+  };
+  check('채팅 이용권 항목이 목록에 있다 (운영자 계정, 허용)', await menuHas());
+  await c.ev(`window.jjakkungChat.setProvider('fairy-ticket'); 1`);
+  await main(`__jj.server.core.setAge('teen'); 1`);
+  await until('항목 사라짐', async () => !(await menuHas()), 15_000).catch(() => false);
+  check('14~17 로 바꾸면 열린 채팅 창 목록에서도 사라진다', !(await menuHas()));
+  check('골라 둔 것은 내 컴퓨터 AI 로 돌아간다', (await main(`__jj.chat.debugState.provider`)) !== 'fairy-ticket');
+  c.close();
 
   // 공지: 웹에서 고친 공지가 정적 파일로 → 앱 공지 창
   const nid = `n-${randomBytes(3).toString('hex')}`;

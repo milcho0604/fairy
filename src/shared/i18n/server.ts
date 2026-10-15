@@ -41,8 +41,8 @@ export const ko = {
   'server.signedIn': '구글로 로그인했어. 다른 컴퓨터에서 같은 계정으로 로그인하면 코인과 산 물건이 따라가.',
   'server.logout': '로그아웃',
   'server.merge.ask': '이 구글 계정은 다른 페어리 계정에 붙어 있어. 두 계정을 합칠까?',
-  'server.merge.current': '지금 계정: 코인 {n}, 산 물건 {items}개',
-  'server.merge.other': '다른 계정: 코인 {n}, 산 물건 {items}개',
+  'server.merge.current': (v: { n: number; items: number }) => `지금 계정: 코인 ${v.n}, 산 물건 ${v.items}개`,
+  'server.merge.other': (v: { n: number; items: number }) => `다른 계정: 코인 ${v.n}, 산 물건 ${v.items}개`,
   'server.merge.note': '합치면 코인은 더하고 물건은 큰 쪽을 남겨. 되돌릴 수 없어.',
   'server.merge.yes': '합치기',
   'server.merge.no': '합치지 않기',
@@ -60,13 +60,13 @@ export const ko = {
   'server.page.failBody': '페어리 설정에서 다시 해 줘.',
   // AI 대화권 (기획서 8절, 이슈 #100. 화면 이름은 "채팅 이용권", #101). 만 18세 이상, 로그인한 서버 모드에서만 보인다
   'ticket.label': '채팅 이용권 Claude',
-  'ticket.count': '채팅 이용권 {n}장 남음',
+  'ticket.count': (v: { n: number }) => `채팅 이용권 ${v.n}장 남음`,
   'ticket.countUnknown': '채팅 이용권 남은 수를 아직 못 받았어',
-  'ticket.settings':
-    'AI 채팅 이용권 {n}장. 채팅 창에서 "채팅 이용권 Claude"를 고르면 질문 하나에 한 장씩 써.',
+  'ticket.settings': (v: { n: number }) =>
+    `AI 채팅 이용권 ${v.n}장. 채팅 창에서 "채팅 이용권 Claude"를 고르면 질문 하나에 한 장씩 써.`,
   'ticket.aiNow': 'AI와 대화 중이야. 답은 사람이 아니라 AI(Anthropic의 Claude)가 써.',
   'ticket.notice':
-    '채팅 이용권으로 물으면 질문(지금 시각 포함), 이 대화의 최근 문답 몇 개, 페어리 이름과 말투 설명이 Anthropic(미국)으로 암호화되어 가. "내 할 일 같이 보내기"를 켰으면 오늘 할 일도 같이 가. 짝꿍 규칙과 페어리가 기억하는 것은 보내지 않아. Anthropic은 정책상 최대 30일 보관할 수 있어(정책 위반 조사 등은 예외). 페어리 서버는 대화 내용을 저장하지 않고 사용량 숫자만 남겨. 싫으면 채팅 이용권을 쓰지 말고 내 컴퓨터 AI로 대화하면 돼.',
+    '채팅 이용권으로 물으면 질문(지금 시각 포함), 이 대화의 최근 문답 몇 개, 페어리 이름과 말투 설명이 Anthropic(미국)으로 암호화되어 가. "내 할 일 같이 보내기"를 켰으면 오늘 할 일도 같이 가. 페어리 규칙과 페어리가 기억하는 것은 보내지 않아. Anthropic은 정책상 최대 30일 보관할 수 있어(정책 위반 조사 등은 예외). 페어리 서버는 대화 내용을 저장하지 않고 사용량 숫자만 남겨. 싫으면 채팅 이용권을 쓰지 말고 내 컴퓨터 AI로 대화하면 돼.',
   'ticket.agree': '알겠어, 채팅 이용권 쓰기',
   'ticket.needAgree': '먼저 위 안내를 읽고 "알겠어"를 눌러 줘.',
   'ticket.empty': '채팅 이용권을 다 썼어. 내 컴퓨터의 AI로 이어서 할까?',
@@ -140,8 +140,10 @@ export const en: Translation<typeof ko> = {
     'Signed in with Google. Sign in with the same account on another computer and your coins and items follow.',
   'server.logout': 'Sign out',
   'server.merge.ask': 'This Google account belongs to another fairy account. Merge the two?',
-  'server.merge.current': 'This account: {n} coins, {items} items',
-  'server.merge.other': 'Other account: {n} coins, {items} items',
+  'server.merge.current': (v: { n: number; items: number }) =>
+    `This account: ${v.n} ${v.n === 1 ? 'coin' : 'coins'}, ${v.items} ${v.items === 1 ? 'item' : 'items'}`,
+  'server.merge.other': (v: { n: number; items: number }) =>
+    `Other account: ${v.n} ${v.n === 1 ? 'coin' : 'coins'}, ${v.items} ${v.items === 1 ? 'item' : 'items'}`,
   'server.merge.note': "Merging adds the coins and keeps the bigger item of each kind. It can't be undone.",
   'server.merge.yes': 'Merge',
   'server.merge.no': "Don't merge",
@@ -160,9 +162,10 @@ export const en: Translation<typeof ko> = {
   'server.page.failTitle': "Couldn't sign in",
   'server.page.failBody': 'Please try again in fairy settings.',
   'ticket.label': 'Chat pass AI',
-  'ticket.count': '{n} chat passes left',
+  'ticket.count': (v: { n: number }) => `${v.n} ${v.n === 1 ? 'chat pass' : 'chat passes'} left`,
   'ticket.countUnknown': "Haven't got your chat pass count yet",
-  'ticket.settings': '{n} chat passes. Pick "Chat pass AI" in the chat window; each question uses one.',
+  'ticket.settings': (v: { n: number }) =>
+    `${v.n} ${v.n === 1 ? 'chat pass' : 'chat passes'}. Pick "Chat pass AI" in the chat window; each question uses one.`,
   'ticket.aiNow':
     "You're talking with an AI. Answers are written by an AI (Anthropic's Claude), not a person.",
   'ticket.notice':
