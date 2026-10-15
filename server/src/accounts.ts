@@ -81,6 +81,20 @@ export class Accounts {
     });
   }
 
+  /** 나이 구분 바꾸기 (내리기도 된다: 대화권은 18+ 만) */
+  async setAge(accountId: string, age: Age): Promise<{ id: string; age: Age }> {
+    return this.db.tx(async (c) => {
+      const a = await lockAccount(c, accountId);
+      await c.query('UPDATE account SET age = $2 WHERE id = $1', [a.id, age]);
+      return { id: a.id, age };
+    });
+  }
+
+  /** 세션 하나만 지운다 (로그아웃) */
+  async deleteSession(sessionId: string): Promise<void> {
+    await this.db.pool.query('DELETE FROM session WHERE id = $1', [sessionId]);
+  }
+
   /** 계정의 잔액과 산 물건 (합치기 확인 화면) */
   async summary(c: PoolClient, accountId: string): Promise<{ balance: number; items: Items }> {
     const r = await c.query<{ balance: string }>('SELECT balance FROM account WHERE id = $1', [accountId]);

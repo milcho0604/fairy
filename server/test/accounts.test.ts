@@ -921,3 +921,80 @@ describe('재검토 고침 (#106)', () => {
     );
   });
 });
+
+describe('앱이 찾은 빈 곳 (#108)', () => {
+  test('DELETE /v1/session: 그 세션만 지운다, 기기 토큰으로는 400', async () => {
+    const d = await newDevice();
+    const s1 = (await login(d, 'sub-logout')).body.session;
+    const s2 = (await login(d, 'sub-logout')).body.session;
+    assert.deepEqual((await api('DELETE', '/v1/session', { token: d })).body, { error: 'session_token' });
+    const r = await api('DELETE', '/v1/session', { token: s1 });
+    assert.equal(r.status, 204);
+    assert.equal((await api('POST', '/v1/sync', { token: s1, body: { entries: [] } })).status, 401);
+    assert.equal((await api('POST', '/v1/sync', { token: s2, body: { entries: [] } })).status, 200);
+    assert.equal((await api('POST', '/v1/sync', { token: d, body: { entries: [] } })).status, 200);
+  });
+
+  test('세션은 마지막 사용 뒤 180일이 지나면 무효, 쓸 때 하루 한 번 last_used 를 고친다', async () => {
+    const d = await newDevice();
+    const s = (await login(d, 'sub-expire')).body.session;
+    const hash = createHash('sha256').update(s).digest();
+    await pool.query("UPDATE session SET last_used_at = now() - interval '2 days' WHERE token_hash = $1", [
+      hash,
+    ]);
+    await sync(s, []);
+    const fresh = await pool.query(
+      "SELECT last_used_at > now() - interval '1 minute' AS ok FROM session WHERE token_hash = $1",
+      [hash],
+    );
+    assert.equal(fresh.rows[0].ok, true);
+    await pool.query("UPDATE session SET last_used_at = now() - interval '2 hours' WHERE token_hash = $1", [
+      hash,
+    ]);
+    await sync(s, []);
+    const kept = await pool.query(
+      "SELECT last_used_at < now() - interval '1 hour' AS ok FROM session WHERE token_hash = $1",
+      [hash],
+    );
+    assert.equal(kept.rows[0].ok, true);
+    await pool.query("UPDATE session SET last_used_at = now() - interval '181 days' WHERE token_hash = $1", [
+      hash,
+    ]);
+    assert.equal((await api('POST', '/v1/sync', { token: s, body: { entries: [] } })).status, 401);
+  });
+
+  test('PATCH /v1/account: 나이 구분을 바꾼다 (내리기도), 14세 미만 값은 400', async () => {
+    const d = await newDevice('18+');
+    const down = await api('PATCH', '/v1/account', { token: d, body: { age: '14+' } });
+    assert.equal(down.status, 200);
+    assert.equal(down.body.account.age, '14+');
+    const s = (await login(d, 'sub-age')).body.session;
+    const up = await api('PATCH', '/v1/account', { token: s, body: { age: '18+' } });
+    assert.deepEqual([up.status, up.body.account.age], [200, '18+']);
+    for (const age of ['under14', '13', undefined])
+      assert.deepEqual((await api('PATCH', '/v1/account', { token: d, body: { age } })).body, {
+        error: 'age',
+      });
+    const row = await pool.query('SELECT age FROM account WHERE id = $1', [up.body.account.id]);
+    assert.equal(row.rows[0].age, '18+');
+  });
+
+  test('reset-items: 산 물건을 비운다, 같은 기록은 한 번만', async () => {
+    const d = await newDevice();
+    await api('POST', '/v1/migrate', {
+      token: d,
+      body: { balance: 100, items: { house: 2, 'toy:ball': 1 } },
+    });
+    const r = entry('reset-items', 0);
+    const out = await sync(d, [r]);
+    assert.deepEqual(out.body.results[0], { id: r.id, status: 'ok', applied: 0 });
+    assert.deepEqual(out.body.items, {});
+    assert.equal(out.body.balance, 100);
+    await sync(d, [entry('toy:yarn', -60)]);
+    const again = await sync(d, [r]);
+    assert.equal(again.body.results[0].duplicate, true);
+    assert.deepEqual(again.body.items, { 'toy:yarn': 1 });
+    const bad = await sync(d, [entry('reset-items', 5)]);
+    assert.deepEqual([bad.body.results[0].status, bad.body.results[0].error], ['rejected', 'amount']);
+  });
+});

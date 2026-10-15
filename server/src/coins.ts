@@ -25,6 +25,9 @@ export const ENTRY_MAX_ABS = Math.max(...HOUSE_COSTS);
 export const AMOUNT_MAX = 1_000_000;
 export { MIGRATE_MAX_BALANCE };
 
+/** 산 물건을 비우는 기록의 까닭 (양 0) */
+export const RESET_ITEMS = 'reset-items';
+
 const ENTRY_ID = /^[A-Za-z0-9_-]{8,64}$/;
 const REASON = /^[a-z0-9:_-]{1,40}$/;
 const REF = /^[A-Za-z0-9_-]{1,64}$/;
@@ -207,6 +210,10 @@ export class Coins {
           continue;
         }
         this.apply(st, e, out.applied);
+        if (out.clearItems) {
+          for (const k of Object.keys(items)) delete items[k];
+          await c.query('DELETE FROM owned_item WHERE account_id = $1', [acct.id]);
+        }
         if (out.item) {
           items[out.item.key] = out.item.count;
           await c.query(
@@ -251,6 +258,9 @@ export class Coins {
   private judge(e: SyncEntry, s: State): Judged {
     const reject = (error: string): Judged => ({ status: 'rejected', applied: 0, error });
     if (!isDay(e.day) || e.day > s.latest || e.day < s.oldest) return reject('day');
+    // 산 물건 초기화 (앱 설정의 '코인과 산 물건'): 양 0, 물건을 비운다
+    if (e.reason === RESET_ITEMS)
+      return e.amount === 0 ? { status: 'ok', applied: 0, clearItems: true } : reject('amount');
     if (e.amount === 0 || Math.abs(e.amount) > AMOUNT_MAX) return reject('amount');
     const result = (applied: number, why: string): Judged =>
       applied === e.amount ? { status: 'ok', applied } : { status: 'capped', applied, error: why };
@@ -448,6 +458,7 @@ type Judged = {
   applied: number;
   error?: string;
   item?: { key: string; count: number };
+  clearItems?: true;
 };
 type StoredRow = { entry_id: string; status: EntryStatus; amount: number; error: string | null };
 

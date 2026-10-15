@@ -17,6 +17,8 @@ export interface AuthInfo {
   via: 'device' | 'session';
   /** 기기 토큰으로 왔을 때의 기기 번호 */
   deviceId: string | null;
+  /** 세션으로 왔을 때의 세션 번호 */
+  sessionId: string | null;
 }
 
 export interface HttpReq {
@@ -24,6 +26,9 @@ export interface HttpReq {
   socket?: { remoteAddress?: string | undefined };
   auth?: AuthInfo;
 }
+
+/** 세션을 마지막으로 쓴 뒤 이만큼 지나면 무효 */
+export const SESSION_IDLE_DAYS = 180;
 
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -51,15 +56,32 @@ export class AuthGuard implements CanActivate {
   private async lookup(kind: 'device' | 'session', token: string): Promise<AuthInfo | undefined> {
     const hash = sha256(token);
     const table = kind === 'device' ? 'device' : 'session';
-    const r = await this.db.pool.query<{ id: string; token_hash: Buffer; account_id: string }>(
-      `SELECT t.id, t.token_hash, COALESCE(a.merged_into, a.id) AS account_id
+    // 세션은 마지막으로 쓴 뒤 SESSION_IDLE_DAYS 가 지나면 무효
+    const alive =
+      kind === 'session' ? `AND t.last_used_at > now() - interval '${SESSION_IDLE_DAYS} days'` : '';
+    const r = await this.db.pool.query<{
+      id: string;
+      token_hash: Buffer;
+      account_id: string;
+      stale: boolean;
+    }>(
+      `SELECT t.id, t.token_hash, COALESCE(a.merged_into, a.id) AS account_id,
+              ${kind === 'session' ? "t.last_used_at < now() - interval '1 day'" : 'false'} AS stale
          FROM ${table} t JOIN account a ON a.id = t.account_id
-        WHERE t.token_hash = $1`,
+        WHERE t.token_hash = $1 ${alive}`,
       [hash],
     );
     const row = r.rows[0];
     if (!row || !sameBytes(row.token_hash, hash)) return undefined;
-    return { accountId: row.account_id, via: kind, deviceId: kind === 'device' ? row.id : null };
+    // 쓴 때는 하루 한 번만 적는다 (요청마다 쓰지 않게)
+    if (row.stale)
+      await this.db.pool.query('UPDATE session SET last_used_at = now() WHERE id = $1', [row.id]);
+    return {
+      accountId: row.account_id,
+      via: kind,
+      deviceId: kind === 'device' ? row.id : null,
+      sessionId: kind === 'session' ? row.id : null,
+    };
   }
 }
 

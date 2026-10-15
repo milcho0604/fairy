@@ -35,12 +35,13 @@ CREATE TABLE login (
 );
 CREATE INDEX login_account ON login (account_id);
 
--- 로그인으로 받은 세션 (POST /v1/session)
+-- 로그인으로 받은 세션 (POST /v1/session). 마지막으로 쓴 뒤 180일이 지나면 무효 (쓸 때 하루 한 번 last_used_at 을 고친다)
 CREATE TABLE session (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   account_id BIGINT NOT NULL REFERENCES account (id) ON DELETE CASCADE,
   token_hash BYTEA NOT NULL UNIQUE CHECK (octet_length(token_hash) = 32),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_used_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX session_account ON session (account_id);
 

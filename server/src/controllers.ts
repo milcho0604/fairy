@@ -9,6 +9,7 @@ import {
   HttpException,
   HttpStatus,
   Inject,
+  Patch,
   Post,
   Query,
   Redirect,
@@ -44,6 +45,26 @@ export class AccountController {
     if (!isAge(age)) throw new BadRequestException({ error: 'age' });
     const { token, accountId } = await this.accounts.createDevice(age);
     return { token, account: { id: Number(accountId) } };
+  }
+
+  /** 나이 구분 바꾸기. 기기 토큰과 세션 모두. 14세 미만 값은 400 (앱은 탈퇴를 안내한다) */
+  @Patch('account')
+  @UseGuards(AuthGuard)
+  @HttpCode(200)
+  async age(@Auth() auth: AuthInfo, @Body() body: unknown) {
+    const age = (body as { age?: unknown } | null)?.age;
+    if (!isAge(age)) throw new BadRequestException({ error: 'age' });
+    const a = await this.accounts.setAge(auth.accountId, age);
+    return { account: { id: Number(a.id), age: a.age } };
+  }
+
+  /** 로그아웃: 이 세션만 지운다. 세션 토큰으로만 */
+  @Delete('session')
+  @UseGuards(AuthGuard)
+  @HttpCode(204)
+  async logout(@Auth() auth: AuthInfo): Promise<void> {
+    if (!auth.sessionId) throw new BadRequestException({ error: 'session_token' });
+    await this.accounts.deleteSession(auth.sessionId);
   }
 
   /** 탈퇴: 바로 지운다 */
