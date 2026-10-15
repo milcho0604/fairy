@@ -34,6 +34,7 @@ import * as polish from './polish.ts';
 import * as pout from './pout.ts';
 import * as remind from './remind.ts';
 import * as routine from './routine.ts';
+import * as server from './server.ts';
 import * as settings from './settings.ts';
 import * as shop from './shop.ts';
 import * as speech from './speech.ts';
@@ -89,6 +90,7 @@ export const ko = {
   ...calendar.ko,
   ...pin.ko,
   ...notice.ko,
+  ...server.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -135,4 +137,5 @@ export const en: Translation<typeof ko> = {
   ...calendar.en,
   ...pin.en,
   ...notice.en,
+  ...server.en,
 };

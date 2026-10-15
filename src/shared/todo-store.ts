@@ -782,6 +782,11 @@ export class TodoStore {
     }
   }
 
+  /** 양 0 인 장부 줄 (산 물건 초기화 'reset-items': 서버 코인 맞추기가 서버에도 알린다) */
+  mark(reason: string, now: number): void {
+    this.#log(0, reason, null, now);
+  }
+
   /** 그 밖의 보상 (화해 보너스, 휴식 권유 따르기). 상한은 부르는 쪽이 본다 */
   reward(amount: number, reason: string, now: number): void {
     if (amount > 0) this.#log(amount, reason, null, now);

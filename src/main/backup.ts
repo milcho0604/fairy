@@ -55,6 +55,7 @@ import { importableDbVersion } from './db-open.ts';
 import { petImages } from './maker.ts';
 import { library } from './pet-library.ts';
 import { freePath, plainEntry, plainFile, readPlainCapped, writeFileAtomic } from './safe-file.ts';
+import { SERVER_RESTORE_MARK } from './server-mark.ts';
 import { settings } from './settings.ts';
 
 /**
@@ -99,6 +100,8 @@ type Offer = RestoreOffer & { dir: string; source: string };
 export function createBackup(o: {
   vacuumInto: (file: string) => void;
   log: (tag: string, ...rest: unknown[]) => void;
+  /** 바꿔 끼우기 전 (서버 모드: 지금 코인 장부를 서버 대기열에 넣어 둔다, server.ts) */
+  beforeSwap?: () => void;
 }) {
   const dir = () => app.getPath('userData');
   /** 확인을 기다리는 복원. 하나만 둔다 (새로 열면 앞의 것은 치운다) */
@@ -425,6 +428,11 @@ export function createBackup(o: {
         o.log('backup', '가져오기 실패', err instanceof Error ? err.message : String(err));
         return { ok: false, message: saveErrorText(err) };
       }
+      try {
+        o.beforeSwap?.();
+      } catch (err) {
+        o.log('backup', '서버 대기열 못 남김', err instanceof Error ? err.message : String(err));
+      }
       o.log('backup', '가져옴, 다시 켠다', offer.kind, skipped ? `사용자 AI ${skipped}개 뺌` : '');
       // 풀어 둔 것은 이제 필요 없다 (켤 때도 치운다)
       dropOffer();
@@ -565,6 +573,13 @@ export function applyPendingImport(): void {
     writeFileSync(join(dir, 'google-calendar-reset'), '');
   } catch {
     // 표시를 못 남기면 바뀐 일정만 보낸다
+  }
+  // 서버 모드면 되살린 코인 장부를 보내지 않고 서버 사본으로 맞추게 표시해 둔다 (기획서 7절, server.ts).
+  // 표시를 못 남겨도 장부 줄 번호가 줄었으면 server-coins.ts 가 알아챈다
+  try {
+    writeFileSync(join(dir, SERVER_RESTORE_MARK), '');
+  } catch {
+    // 다음 맞추기가 서버 정본으로 다시 맞춘다
   }
   for (const f of IMPORT_FILES) {
     try {

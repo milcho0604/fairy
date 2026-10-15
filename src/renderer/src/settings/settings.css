@@ -1341,3 +1341,46 @@ textarea.rules {
 .restore-undo {
   align-items: center;
 }
+
+/* ---- 서버 계정과 코인 (설정 > 데이터, ServerAccountBox.tsx, 이슈 #99) ---- */
+.server-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.server-box .server-ask {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.server-box .server-sync {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.server-box .server-ages {
+  flex-wrap: wrap;
+}
+
+.server-box .server-ages .on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.server-box .server-age-line {
+  align-items: center;
+}
+
+.server-box .danger {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.server-merge {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-color: color-mix(in srgb, var(--error) 45%, transparent);
+  background: color-mix(in srgb, var(--error) 8%, var(--panel));
+}
