@@ -1,8 +1,9 @@
 # 올릴 때마다: 타입 검사, 린트(biome), 테스트, 앱 빌드를 리눅스, 윈도우, 맥에서 (`npm run check` + `npm run build`).
 # 그리고 리눅스 설치판을 실제로 묶어(electron-builder --dir) xvfb 에서 켜 본다 (scripts/dev/smoke-packaged.mjs).
 # 문서나 홈페이지(site/)만 바뀐 것은 돌지 않는다 (홈페이지는 site.yml 이 따로 본다).
-# 서버(server/)만 바뀐 것은 돌되 changes 가 보고 앱 검사를 건너뛴다 (서버는 server-check.yml).
-# 아예 안 돌면 브랜치 보호의 필수 검사(check (os))가 생기지 않아 서버 PR 이 머지되지 않는다. 건너뛴 작업은 통과로 친다. 같은 브랜치에 새로 올리면 돌던 것은 멈춘다.
+# 서버(server/)만 바뀐 것은 돌되 changes 가 보고 앱 검사 단계들을 건너뛴다 (서버는 server-check.yml).
+# 브랜치 보호의 필수 검사는 OS 별 이름(check (ubuntu-latest) 등)이다. 작업 전체를 건너뛰면 matrix 가 펼쳐지지 않아
+# 그 이름이 생기지 않으므로, 작업은 늘 띄우고 단계마다 건너뛴다. 같은 브랜치에 새로 올리면 돌던 것은 멈춘다.
 # 액션은 커밋 SHA 로 고정한다 (태그는 옮길 수 있다). 올릴 때는 주석의 태그와 SHA 를 같이 바꾼다.
 name: check
 
@@ -46,7 +47,6 @@ jobs:
 
   check:
     needs: changes
-    if: needs.changes.outputs.app == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -55,36 +55,45 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.changes.outputs.app == 'true'
         with:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: needs.changes.outputs.app == 'true'
         with:
           node-version-file: .nvmrc
           cache: npm
       # Electron 본체는 검사와 빌드(electron-vite)에 필요 없어 받지 않는다
       - run: npm ci
+        if: needs.changes.outputs.app == 'true'
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
       - run: npm run typecheck
+        if: needs.changes.outputs.app == 'true'
       - run: npx biome ci .
+        if: needs.changes.outputs.app == 'true'
       - run: npm test
+        if: needs.changes.outputs.app == 'true'
       - run: npm run build
+        if: needs.changes.outputs.app == 'true'
 
   package-linux:
     needs: changes
-    if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.changes.outputs.app == 'true'
         with:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: needs.changes.outputs.app == 'true'
         with:
           node-version-file: .nvmrc
           cache: npm
       # Electron 과 electron-builder 가 받는 것 (Electron zip, AppImage 도구)
       - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        if: needs.changes.outputs.app == 'true'
         with:
           path: |
             ~/.cache/electron
@@ -92,11 +101,17 @@ jobs:
           key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
           restore-keys: electron-${{ runner.os }}-
       - run: npm ci
+        if: needs.changes.outputs.app == 'true'
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libnss3 libgbm1 libasound2t64
+        if: needs.changes.outputs.app == 'true'
       - run: node scripts/third-party-notices.mjs
+        if: needs.changes.outputs.app == 'true'
       - run: npm run build
+        if: needs.changes.outputs.app == 'true'
       # 설치 파일 없이 풀린 앱만 만든다 (퓨즈, 네이티브 정리, 고지 파일까지 실제와 같다)
       - run: npx electron-builder --linux --dir --publish never
+        if: needs.changes.outputs.app == 'true'
       # 빈 데이터 폴더, JJ_NO_FOCUS=1 로 켜서 페어리 창이 file:// 에서 그려지는지, --inspect 가 막혔는지 본다
       - run: xvfb-run -a node scripts/dev/smoke-packaged.mjs dist/linux-unpacked/fairy
+        if: needs.changes.outputs.app == 'true'
         timeout-minutes: 5
