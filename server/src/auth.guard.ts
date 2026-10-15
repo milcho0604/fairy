@@ -21,6 +21,7 @@ export interface AuthInfo {
 
 export interface HttpReq {
   headers: Record<string, string | string[] | undefined>;
+  socket?: { remoteAddress?: string | undefined };
   auth?: AuthInfo;
 }
 
@@ -39,7 +40,7 @@ export class AuthGuard implements CanActivate {
     const kind = tokenKind(token);
     const auth = kind ? await this.lookup(kind, token) : undefined;
     if (!auth) {
-      this.limiter.check(`bad:${ipKey(req.headers)}`, LIMITS.badTokenByIp);
+      this.limiter.check(`bad:${ipKey(req)}`, LIMITS.badTokenByIp);
       throw new UnauthorizedException({ error: 'token' });
     }
     this.limiter.check(`acct:${auth.accountId}`, LIMITS.account);

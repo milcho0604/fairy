@@ -865,3 +865,59 @@ describe('검토 고침 (#106)', () => {
     }
   });
 });
+
+describe('재검토 고침 (#106)', () => {
+  test('1. 7일 상한은 그 날짜를 품은 모든 7일 창에서 본다 (날짜를 거꾸로 보내도)', async () => {
+    const t = await newDevice();
+    const meet = await sync(t, [
+      entry('meet', 60, daysAgo(-1)),
+      entry('meet', 60),
+      entry('meet', 60, daysAgo(1)),
+    ]);
+    assert.deepEqual(
+      meet.body.results.map((x: { applied: number }) => x.applied),
+      [60, 60, 0],
+    );
+    const mk = await sync(t, [entry('makeup', 28, daysAgo(-1)), entry('makeup', 28, daysAgo(1))]);
+    assert.deepEqual(
+      mk.body.results.map((x: { applied: number }) => x.applied),
+      [28, 0],
+    );
+  });
+
+  test('2. 마감 전 보너스 하루 상한은 서로 다른 할 일 수로 센다', async () => {
+    const t = await newDevice();
+    for (let i = 0; i < 25; i++)
+      await sync(t, [
+        entry('todo', 15, today(), 'loop'),
+        entry('early', 5, today(), 'loop'),
+        entry('undo', -20, today(), 'loop'),
+      ]);
+    const b = randomUUID();
+    const r = await sync(t, [entry('todo', 15, today(), b), entry('early', 5, today(), b)]);
+    assert.deepEqual(
+      r.body.results.map((x: { applied: number }) => x.applied),
+      [15, 5],
+    );
+  });
+
+  test('3. 합친 계정의 기록도 하루, 할 일, 평생 상한에 센다', async () => {
+    const x = await newDevice();
+    assert.equal((await login(x, 'sub-family')).status, 200);
+    const y = await newDevice();
+    await sync(y, [
+      ...Array.from({ length: 20 }, () => entry('todo', 15)),
+      ...Array.from({ length: 7 }, () => entry('journey', 3)),
+      entry('focus', 25),
+      entry('focus', 25),
+      entry('focus', 25),
+      entry('focus', 25),
+    ]);
+    assert.equal((await login(y, 'sub-family')).body.merged, true);
+    const r = await sync(x, [entry('todo', 15), entry('journey', 3), entry('focus', 25)]);
+    assert.deepEqual(
+      r.body.results.map((v: { applied: number }) => v.applied),
+      [0, 0, 0],
+    );
+  });
+});

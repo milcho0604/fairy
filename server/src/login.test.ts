@@ -15,8 +15,23 @@ import {
   parsePort,
   verifierMatches,
 } from './login';
-import { RateLimiter } from './rate-limit';
+import { ipKey, RateLimiter } from './rate-limit';
 import { tokenKind } from './tokens';
+
+test('레이트리밋 키: cf-connecting-ip 가 없으면 소켓 원격 주소로 (한 키로 몰지 않는다)', () => {
+  const a = ipKey({ headers: {}, socket: { remoteAddress: '192.0.2.1' } });
+  const b = ipKey({ headers: {}, socket: { remoteAddress: '192.0.2.2' } });
+  assert.notEqual(a, b);
+  assert.doesNotMatch(a, /192/);
+  const cf = ipKey({
+    headers: { 'cf-connecting-ip': '198.51.100.7' },
+    socket: { remoteAddress: '127.0.0.1' },
+  });
+  assert.equal(
+    cf,
+    ipKey({ headers: { 'cf-connecting-ip': '198.51.100.7' }, socket: { remoteAddress: '::1' } }),
+  );
+});
 
 test('대기 로그인: 같은 곳은 PENDING_PER_IP 까지, 전체가 차면 가장 오래된 것을 밀어낸다 (던지지 않는다)', () => {
   const config = { publicUrl: 'https://x.example', googleClientId: 'c', googleClientSecret: 's' } as Config;

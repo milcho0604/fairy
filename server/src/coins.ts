@@ -147,10 +147,12 @@ export class Coins {
       const today = utcDay(now);
       // 시간대 차이: 앱의 현지 날짜는 UTC 보다 하루 앞서거나 늦을 수 있다
       const latest = plusDaysUtc(today, 1);
+      // 남는 계정과 그 계정에 직, 간접으로 합쳐진 모든 계정: 상한과 생성일은 이 장부 전체로 센다
+      const fam = await familyIds(c, acct.id);
       const born = await c.query<{ d: string | null }>(
         `SELECT to_char(min(created_at) AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS d FROM account
-          WHERE id = $1 OR merged_into = $1`,
-        [acct.id],
+          WHERE id = ANY($1::bigint[])`,
+        [fam],
       );
       const bornDay = plusDaysUtc(born.rows[0]?.d ?? today, -1);
       const thirty = plusDaysUtc(today, -SYNC_MAX_AGE_DAYS);
@@ -161,9 +163,9 @@ export class Coins {
         items,
         oldest,
         latest,
-        sums: await this.earnedSums(c, acct.id, from, latest),
-        life: await this.lifeSums(c, acct.id),
-        ...(await this.todoState(c, acct.id, entries, from, latest)),
+        sums: await this.earnedSums(c, fam, from, latest),
+        life: await this.lifeSums(c, fam),
+        ...(await this.todoState(c, fam, entries, from, latest)),
       };
 
       const results: EntryResult[] = [];
@@ -304,18 +306,21 @@ export class Coins {
     return {
       day: s.sums.get(sumKey(e.reason, e.day)) ?? 0,
       week: rangeSum(s.sums, e.reason, mondayOf(e.day), 7),
-      days7: rangeSum(s.sums, e.reason, plusDaysUtc(e.day, -6), 7),
+      days7: Math.max(
+        ...[0, 1, 2, 3, 4, 5, 6].map((k) => rangeSum(s.sums, e.reason, plusDaysUtc(e.day, k - 6), 7)),
+      ),
       life: s.life.get(e.reason) ?? 0,
     };
   }
 
   /** 그날 그 까닭으로 이미 반영한 버는 코인 합 (from ~ to) */
-  private async earnedSums(c: PoolClient, accountId: string, from: string, to: string): Promise<Sums> {
+  private async earnedSums(c: PoolClient, accountIds: string[], from: string, to: string): Promise<Sums> {
     const r = await c.query<{ reason: string; day: string; s: string }>(
       `SELECT reason, to_char(day, 'YYYY-MM-DD') AS day, SUM(amount) AS s FROM coin_entry
-        WHERE account_id = $1 AND day BETWEEN $2 AND $3 AND amount > 0 AND reason = ANY($4::text[])
+        WHERE account_id = ANY($1::bigint[]) AND day BETWEEN $2 AND $3 AND amount > 0
+          AND reason = ANY($4::text[])
         GROUP BY reason, day`,
-      [accountId, from, to, Object.keys(EARN_RULES)],
+      [accountIds, from, to, Object.keys(EARN_RULES)],
     );
     const sums: Sums = new Map();
     for (const row of r.rows) sums.set(sumKey(row.reason, row.day), Number(row.s));
@@ -323,14 +328,14 @@ export class Coins {
   }
 
   /** 계정 평생 상한이 있는 까닭의 합 */
-  private async lifeSums(c: PoolClient, accountId: string): Promise<Map<string, number>> {
+  private async lifeSums(c: PoolClient, accountIds: string[]): Promise<Map<string, number>> {
     const reasons = Object.entries(EARN_RULES)
       .filter(([, r]) => r.perLife !== undefined)
       .map(([k]) => k);
     const r = await c.query<{ reason: string; s: string }>(
       `SELECT reason, SUM(amount) AS s FROM coin_entry
-        WHERE account_id = $1 AND amount > 0 AND reason = ANY($2::text[]) GROUP BY reason`,
-      [accountId, reasons],
+        WHERE account_id = ANY($1::bigint[]) AND amount > 0 AND reason = ANY($2::text[]) GROUP BY reason`,
+      [accountIds, reasons],
     );
     return new Map(r.rows.map((row) => [row.reason, Number(row.s)]));
   }
@@ -338,7 +343,7 @@ export class Coins {
   /** 할 일마다 지금 가진 코인(todo + early + undo 순합)과, 날마다 코인을 받은 할 일 번호 */
   private async todoState(
     c: PoolClient,
-    accountId: string,
+    accountIds: string[],
     entries: SyncEntry[],
     from: string,
     to: string,
@@ -348,17 +353,18 @@ export class Coins {
     if (refs.length > 0) {
       const r = await c.query<{ ref: string; s: string }>(
         `SELECT ref, SUM(amount) AS s FROM coin_entry
-          WHERE account_id = $1 AND ref = ANY($2::text[]) AND reason = ANY($3::text[]) GROUP BY ref`,
-        [accountId, refs, TODO_RULE.reasons],
+          WHERE account_id = ANY($1::bigint[]) AND ref = ANY($2::text[]) AND reason = ANY($3::text[])
+          GROUP BY ref`,
+        [accountIds, refs, TODO_RULE.reasons],
       );
       for (const row of r.rows) refNet.set(row.ref, Number(row.s));
     }
     const todoRefs = new Map<string, Set<string>>();
     const r = await c.query<{ day: string; ref: string }>(
       `SELECT DISTINCT to_char(day, 'YYYY-MM-DD') AS day, ref FROM coin_entry
-        WHERE account_id = $1 AND reason = 'todo' AND amount > 0 AND ref IS NOT NULL
+        WHERE account_id = ANY($1::bigint[]) AND reason = 'todo' AND amount > 0 AND ref IS NOT NULL
           AND day BETWEEN $2 AND $3`,
-      [accountId, from, to],
+      [accountIds, from, to],
     );
     for (const row of r.rows) {
       const set = todoRefs.get(row.day) ?? new Set<string>();
@@ -449,6 +455,18 @@ type Sums = Map<string, number>;
 const sumKey = (reason: string, day: string) => `${reason}|${day}`;
 const addSum = (sums: Sums, reason: string, day: string, n: number) =>
   sums.set(sumKey(reason, day), (sums.get(sumKey(reason, day)) ?? 0) + n);
+
+/** 계정과, 그 계정에 직접이든 사슬로든 합쳐진 모든 계정의 번호 */
+async function familyIds(c: PoolClient, id: string): Promise<string[]> {
+  const r = await c.query<{ id: string }>(
+    `WITH RECURSIVE fam(id) AS (
+       SELECT $1::bigint
+       UNION SELECT a.id FROM account a JOIN fam ON a.merged_into = fam.id
+     ) SELECT id FROM fam`,
+    [id],
+  );
+  return r.rows.map((row) => row.id);
+}
 
 /** start 부터 n 일의 합 */
 function rangeSum(sums: Sums, reason: string, start: string, n: number): number {

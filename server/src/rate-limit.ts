@@ -66,10 +66,16 @@ export class RateLimiter implements OnModuleDestroy {
   }
 }
 
-/** 요청을 보낸 곳의 키. cf-connecting-ip 를 해시로만 쓴다. 없으면 모두 한 키 */
-export function ipKey(headers: Record<string, string | string[] | undefined>): string {
-  const raw = headers['cf-connecting-ip'];
-  const ip = (Array.isArray(raw) ? raw[0] : raw)?.trim();
+/**
+ * 요청을 보낸 곳의 키. cf-connecting-ip 를, 없으면 소켓 원격 주소를 해시로만 쓴다(한 키로 몰지 않는다).
+ * 둘 다 없을 때만 'ip:none'
+ */
+export function ipKey(req: {
+  headers: Record<string, string | string[] | undefined>;
+  socket?: { remoteAddress?: string | undefined };
+}): string {
+  const raw = req.headers['cf-connecting-ip'];
+  const ip = (Array.isArray(raw) ? raw[0] : raw)?.trim() || req.socket?.remoteAddress;
   if (!ip) return 'ip:none';
   return `ip:${createHash('sha256').update(ip).digest('base64url').slice(0, 16)}`;
 }

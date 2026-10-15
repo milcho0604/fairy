@@ -97,7 +97,7 @@ export const CUSTOM_FOOD_COST = 50;
 
 /**
  * 버는 기록의 까닭(coin_log.reason)마다 상한. 한 기록의 최대(perEntry), 하루 합(perDay), 한 주(월요일 시작) 합(perWeek),
- * 그날까지 7일 합(per7Days), 계정 평생 합(perLife).
+ * 그 날짜를 품은 어느 7일 창의 합(per7Days), 계정 평생 합(perLife).
  * 앱 코드에 하루 상한이 따로 없는 것(rest, note-gift)은 앱이 하루에 줄 수 있는 만큼으로 잡았다.
  * 할 일(todo, early, undo)은 할 일 번호(ref)로 센다: TODO_RULE.
  */
@@ -111,7 +111,8 @@ export interface EarnRule {
 
 export const EARN_RULES: Readonly<Record<string, EarnRule>> = {
   todo: { perEntry: COIN.todo },
-  early: { perEntry: COIN.early, perDay: COIN.early * COIN.dailyTodoLimit },
+  // 마감 전 보너스는 그날 코인을 받은 할 일에만 붙어 서로 다른 할 일 수(20)로 묶인다 (TODO_RULE)
+  early: { perEntry: COIN.early },
   focus: { perEntry: focusCoins(50), perDay: COIN.focus * COIN.dailyFocusLimit },
   // 하루 한 번, 7일 연속인 날만 보너스: 어느 7일이든 10 x 6 + 60 = 120 을 넘지 않는다
   meet: {
@@ -183,7 +184,10 @@ function splitOnce(s: string): [string, string | undefined] {
   return i < 0 ? [s, undefined] : [s.slice(0, i), s.slice(i + 1)];
 }
 
-/** 이미 반영한 합: 그날, 그 주(월요일 시작), 그날까지 7일, 계정 평생 */
+/**
+ * 이미 반영한 합: 그날, 그 주(월요일 시작), 그 날짜를 품은 7일 창 7개(d-6..d ~ d..d+6) 중 가장 큰 합, 계정 평생.
+ * 7일 창을 하나만 보면 날짜를 거꾸로 보내거나 지난 날을 나중에 채워 매일 상한을 받을 수 있다
+ */
 export interface Earned {
   day: number;
   week: number;

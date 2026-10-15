@@ -37,8 +37,8 @@ export class AccountController {
   @Post('device')
   @HttpCode(201)
   async device(@Body() body: unknown, @Req() req: HttpReq) {
-    this.limiter.check(`device:${ipKey(req.headers)}`, LIMITS.deviceByIp);
-    this.limiter.check(`device-day:${ipKey(req.headers)}`, LIMITS.deviceByIpDay);
+    this.limiter.check(`device:${ipKey(req)}`, LIMITS.deviceByIp);
+    this.limiter.check(`device-day:${ipKey(req)}`, LIMITS.deviceByIpDay);
     this.limiter.check('device:all', LIMITS.deviceAll);
     const age = (body as { age?: unknown } | null)?.age;
     if (!isAge(age)) throw new BadRequestException({ error: 'age' });
@@ -84,7 +84,7 @@ export class LoginController {
 
   private on(req: HttpReq) {
     if (!googleEnabled(this.config)) throw new ServiceUnavailableException({ error: 'login_off' });
-    this.limiter.check(`login:${ipKey(req.headers)}`, LIMITS.loginByIp);
+    this.limiter.check(`login:${ipKey(req)}`, LIMITS.loginByIp);
   }
 
   @Get('auth/google/start')
@@ -97,7 +97,7 @@ export class LoginController {
     if (p === undefined) throw new BadRequestException({ error: 'port' });
     if (s === undefined) throw new BadRequestException({ error: 'state' });
     if (challenge === undefined) throw new BadRequestException({ error: 'challenge' });
-    const url = this.login.start(p, s, challenge, ipKey(req.headers));
+    const url = this.login.start(p, s, challenge, ipKey(req));
     if (!url) throw new HttpException({ error: 'rate_limited' }, HttpStatus.TOO_MANY_REQUESTS);
     return { url, statusCode: 302 };
   }
