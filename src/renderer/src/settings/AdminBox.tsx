@@ -73,7 +73,7 @@ function useForm(init: Record<string, string>) {
   const [v, setV] = useState(init);
   const input = (name: string, label: string, type = 'text') => (
     <label className="field admin-field">
-      <span>{label}</span>
+      <span className="admin-field-name">{label}</span>
       <input
         className="plain-input"
         type={type}
@@ -192,7 +192,7 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
 
         <Group title={`${t('admin.features')}: ${t('admin.ai.title')}`}>
           <label className="field admin-field">
-            <span>{t('admin.ai.mode')} (ai_chat)</span>
+            <span className="admin-field-name">{t('admin.ai.mode')} (ai_chat)</span>
             <select className="plain-input" value={mode} onChange={(e) => setMode(e.target.value)}>
               {(['off', 'allowlist', 'everyone'] as const).map((m) => (
                 <option key={m} value={m}>
@@ -359,7 +359,7 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
           <ul className="admin-list">
             {view.events.slice(0, 10).map((e: View) => (
               <li key={e.id}>
-                <small>
+                <small className="admin-item">
                   {e.id} {e.kind} {pick(e.title_ko, e.title_en)}
                 </small>
                 {Date.now() < Number(e.ends) && (
@@ -415,7 +415,7 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
           <ul className="admin-list">
             {view.coupons.slice(0, 10).map((c: View) => (
               <li key={c.id}>
-                <small>
+                <small className="admin-item">
                   #{c.id} {c.hint} {c.label} {t('admin.coupons.used', { used: c.used, max: c.max_uses })}
                 </small>
                 {!c.disabled && (
@@ -459,7 +459,7 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
           <ul className="admin-list">
             {(view.notices?.notices ?? []).map((n: View) => (
               <li key={n.id}>
-                <small>
+                <small className="admin-item">
                   {n.id} {n.kind} {pick(n.title?.ko, n.title?.en)}
                 </small>
                 <Sure
@@ -471,7 +471,7 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
             ))}
           </ul>
           <label className="field admin-field">
-            <span>{t('admin.notices.kind')}</span>
+            <span className="admin-field-name">{t('admin.notices.kind')}</span>
             <select className="plain-input" value={ntKind} onChange={(e) => setNtKind(e.target.value)}>
               {['info', 'important', 'update', 'force'].map((k) => (
                 <option key={k} value={k}>

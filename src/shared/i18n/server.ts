@@ -9,15 +9,26 @@ export const ko = {
   'server.age.under14': '만 14세 미만',
   'server.age.teen': '만 14세 이상 18세 미만',
   'server.age.adult': '만 18세 이상',
-  'server.age.line': '나이 답: {age}',
+  'server.age.label': '나이',
   'server.age.change': '나이 바꾸기',
   'server.age.keep': '그대로 두기',
   'server.appMode': '앱 안 모드야. 코인과 산 물건은 이 컴퓨터에만 있고 서버로 아무것도 보내지 않아.',
   'server.leftover': '서버에 예전 계정이 남아 있어. 지우려면 아래 "서버 계정 지우기"를 눌러.',
   'server.off': '서버 모드가 꺼져 있어. 다시 켜면 지금 코인과 산 물건을 서버로 한 번 옮겨.',
   'server.turnOn': '서버 모드 켜기',
-  'server.what':
-    '서버에는 나이 구분, 닉네임, 코인과 산 물건 기록, 쪽지함이 가. 구글이나 카카오 계정으로 로그인하면 그 계정을 알아보는 번호(구글 계정 번호, 카카오 회원번호)만, 채팅 이용권을 쓰면 질문 글이 가(서버는 저장하지 않아). 이름, 이메일, 할 일은 보내지 않아.',
+  // 칸 묶음 이름 (설정 > 데이터 > 서버 계정과 코인)
+  'server.group.me': '내 정보',
+  'server.group.login': '로그인',
+  'server.group.sync': '코인 맞추기',
+  'server.group.danger': '되돌릴 수 없는 일',
+  // 서버로 가는 것: 한 줄과 펼치는 자세히 (처리방침의 "서버 기능을 켰을 때"와 같은 뜻)
+  'server.what': '서버에는 나이 구분, 닉네임, 코인 기록 같은 것만 가. 이름, 이메일, 할 일은 보내지 않아.',
+  'server.what.more': '자세히',
+  'server.what.basic': '나이 구분(만 14세 이상인지 18세 이상인지), 닉네임, 코인과 산 물건 기록, 쪽지함.',
+  'server.what.login':
+    '구글이나 카카오로 로그인하면 그 계정을 알아보는 번호(구글 계정 번호, 카카오 회원번호)만. 이름, 이메일, 사진은 받지 않아.',
+  'server.what.chat': '채팅 이용권을 쓰면 질문 글. 서버는 저장하지 않아.',
+  'server.what.backup': '서버 백업은 올리기를 누를 때만 가.',
   'server.balance': '서버 코인 {n}',
   'server.balanceNone': '서버 코인을 아직 못 받았어',
   'server.lastSync': '{time}에 맞춤',
@@ -45,7 +56,8 @@ export const ko = {
   'server.via.and': '{a}, {b}',
   'server.loggingIn': '브라우저에서 로그인을 기다리는 중이야.',
   'server.cancel': '그만두기',
-  'server.signedIn': '{via}로 로그인했어. 다른 컴퓨터에서 같은 계정으로 로그인하면 코인과 산 물건이 따라가.',
+  'server.signedIn':
+    '{via}로 로그인했어. 다른 컴퓨터에서도 같은 계정으로 로그인하면 코인과 산 물건이 따라가.',
   'server.logout': '로그아웃',
   'server.merge.ask': '이 로그인 계정은 다른 페어리 계정에 붙어 있어. 두 계정을 합칠까?',
   'server.merge.current': (v: { n: number; items: number }) => `지금 계정: 코인 ${v.n}, 산 물건 ${v.items}개`,
@@ -55,7 +67,7 @@ export const ko = {
   'server.merge.no': '합치지 않기',
   'server.remove': '서버 계정 지우기',
   'server.removeSure': '정말 지우기',
-  'server.removeHint': '서버의 계정과 코인 기록을 바로 지워. 이 컴퓨터의 할 일, 코인, 페어리는 그대로 남아.',
+  'server.removeHint': '서버의 계정과 코인 기록을 바로 지워. 이 컴퓨터의 할 일, 코인, 페어리는 남아.',
   'server.removed': '서버 계정을 지웠어.',
   'server.removeFailed': '지우지 못했어. 서버에 닿으면 다시 해 줘.',
   'server.reverted': '다른 기기에서 먼저 코인을 써서 {what} 사기를 되돌렸어. 코인은 돌려받았어.',
@@ -68,8 +80,8 @@ export const ko = {
   // 서버 백업 (기획서 7절, 이슈 #102). 로그인했을 때만 보인다
   'backup.title': '서버 백업',
   'backup.what':
-    '할 일, 메모, 일정, 페어리, 설정을 개인 백업 파일과 같은 모양으로 서버에 올려. 누를 때만 올리고, 서버는 암호화해 두고, 탈퇴하면 바로 지워.',
-  'backup.keep': '계정마다 최근 {n}개만 둬. 새로 올리면 가장 오래된 것이 지워져. 파일 하나는 {mb}MB까지.',
+    '할 일, 메모, 일정, 페어리, 설정을 백업 파일 모양 그대로 올려. 누를 때만 올리고, 서버는 암호화해 두고, 탈퇴하면 바로 지워.',
+  'backup.keep': '최근 {n}개까지 두고, 새로 올리면 가장 오래된 것을 지워. 파일 하나는 {mb}MB까지.',
   'backup.consent':
     '할 일, 메모, 일정에 건강이나 가족 이야기 같은 민감한 내용이 들어 있을 수 있어. 이 내용을 서버에 올리는 데 따로 동의해.',
   'backup.consentLabel': '서버 백업에 따로 동의',
@@ -142,7 +154,7 @@ export const en: Translation<typeof ko> = {
   'server.age.under14': 'Under 14',
   'server.age.teen': '14 to 17',
   'server.age.adult': '18 or older',
-  'server.age.line': 'Age answer: {age}',
+  'server.age.label': 'Age',
   'server.age.change': 'Change age',
   'server.age.keep': 'Keep',
   'server.appMode': 'App-only mode. Coins and items stay on this computer and nothing is sent to the server.',
@@ -150,8 +162,18 @@ export const en: Translation<typeof ko> = {
     'An old server account is still there. To delete it, press "Delete server account" below.',
   'server.off': 'Server mode is off. Turning it on moves your current coins and items to the server once.',
   'server.turnOn': 'Turn on server mode',
+  'server.group.me': 'About me',
+  'server.group.login': 'Sign-in',
+  'server.group.sync': 'Coin sync',
+  'server.group.danger': "Can't be undone",
   'server.what':
-    "The server gets your age group, nickname, coin and item records, and note box. If you sign in with Google or Kakao, only the number that identifies that account (Google account number, Kakao member number); if you use chat passes, your question text (the server doesn't store it). No name, email or to-dos.",
+    'The server only gets things like your age group, nickname and coin records. No name, email or to-dos.',
+  'server.what.more': 'Details',
+  'server.what.basic': 'Age group (14+ or 18+), nickname, coin and item records, note box.',
+  'server.what.login':
+    'If you sign in with Google or Kakao, only the number that identifies that account (Google account number, Kakao member number). No name, email or photo.',
+  'server.what.chat': "If you use chat passes, your question text. The server doesn't store it.",
+  'server.what.backup': 'Server backups go only when you press upload.',
   'server.balance': 'Server coins {n}',
   'server.balanceNone': 'No server coins yet',
   'server.lastSync': 'synced {time}',
@@ -208,9 +230,8 @@ export const en: Translation<typeof ko> = {
   'server.page.failBody': 'Please try again in fairy settings.',
   'backup.title': 'Server backup',
   'backup.what':
-    'Uploads your to-dos, notes, events, fairy and settings to the server, in the same form as a backup file. Only when you press the button. The server keeps it encrypted and deletes it right away if you delete your account.',
-  'backup.keep':
-    'Only the latest {n} are kept per account. A new upload deletes the oldest. Up to {mb}MB per file.',
+    'Uploads your to-dos, notes, events, fairy and settings, just like a backup file. Only when you press the button; the server keeps it encrypted and deletes it when you delete your account.',
+  'backup.keep': 'Keeps the latest {n}; a new upload deletes the oldest. Up to {mb}MB per file.',
   'backup.consent':
     'Your to-dos, notes and events may contain sensitive things like health or family matters. I separately agree to upload them to the server.',
   'backup.consentLabel': 'Separate consent for server backup',
