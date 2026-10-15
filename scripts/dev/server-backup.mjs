@@ -304,6 +304,8 @@ try {
 
   // ---- 카카오: allowlist 인데 허용 전 ----
   check('허용 전에는 "카카오도 연결"이 없다', (await button(p, T.link)) === null);
+  // 0004 의 feature_allow 는 feature_flag 줄을 가리킨다: 운영자 화면처럼 모드 줄(allowlist)부터
+  sql(`INSERT INTO feature_flag (key, mode) VALUES ('kakao_login', 'allowlist') ON CONFLICT (key) DO NOTHING`);
   sql(`INSERT INTO feature_allow (key, account_id) VALUES ('kakao_login', ${id})`);
   await sleep(5_300); // 서버가 담아 둔 기능 키 (5초)
   await main('__jj.server.core.refreshProviders(true).then(() => __jj.server.core.run())');
@@ -357,7 +359,7 @@ try {
   );
 
   // ---- 기능 키 off: 카카오 단추가 사라지고 연결도 막힌다 ----
-  sql(`INSERT INTO feature_flag (key, mode) VALUES ('kakao_login', 'off')`);
+  sql(`UPDATE feature_flag SET mode = 'off' WHERE key = 'kakao_login'`);
   sql(`DELETE FROM login WHERE account_id = ${id} AND service = 'kakao'`);
   await sleep(5_300);
   await main('__jj.server.core.refreshProviders(true)');
