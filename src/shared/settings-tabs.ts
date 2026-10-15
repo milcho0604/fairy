@@ -9,8 +9,8 @@ export type SettingsTab = (typeof SETTINGS_TABS)[number];
 export const isSettingsTab = (v: unknown): v is SettingsTab =>
   typeof v === 'string' && (SETTINGS_TABS as readonly string[]).includes(v);
 
-/** 바로 보여 줄 칸이 든 탭 (메뉴 막대 "의견 보내기" → 베타 기록은 정보 탭) */
-const SECTION_TAB: Record<SettingsSection, SettingsTab> = { stats: 'about' };
+/** 바로 보여 줄 칸이 든 탭 (메뉴 막대 "의견 보내기" → 베타 기록은 정보 탭, 두 번 눌러 연 백업 파일 → 데이터 탭) */
+const SECTION_TAB: Record<SettingsSection, SettingsTab> = { stats: 'about', restore: 'data' };
 
 export const tabOfSection = (section: SettingsSection): SettingsTab => SECTION_TAB[section];
 

@@ -271,6 +271,13 @@ export const SETTINGS = {
   // v2
   exportData: 'settings:export-data',
   importData: 'settings:import-data',
+  /** 백업 복원 (이슈 #90): 기다리는 복원과 되돌리기, 확인 칸의 바꾸기와 그만두기 */
+  restoreState: 'settings:restore-state',
+  restoreUndo: 'settings:restore-undo',
+  restoreConfirm: 'settings:restore-confirm',
+  restoreCancel: 'settings:restore-cancel',
+  /** 메인 → 설정 창: 기다리는 복원이 바뀌었다 (두 번 눌러 연 백업 파일) */
+  restoreChanged: 'settings:restore-changed',
   exportPet: 'settings:export-pet',
   /** 방금 내보낸 파일이나 폴더를 파일 관리자에서 보인다 */
   reveal: 'settings:reveal',
@@ -391,7 +398,27 @@ export interface StoredModel {
 }
 
 /** 설정 창에서 바로 보여 줄 칸 */
-export type SettingsSection = 'stats';
+export type SettingsSection = 'stats' | 'restore';
+
+/**
+ * 확인을 기다리는 복원 (설정 > 데이터 확인 칸). file 은 백업 파일, folder 는 예전 폴더 백업,
+ * undo 는 마지막 가져오기 전 보관해 둔 데이터. at 은 만든 때(ms, 모르면 0), app 은 만든 앱 판(모르면 빈 글)
+ */
+export interface RestoreOffer {
+  id: string;
+  kind: 'file' | 'folder' | 'undo';
+  name: string;
+  at: number;
+  app: string;
+  /** 백업에 있지만 옮기지 않는 사용자 AI 수 */
+  customAi: number;
+}
+
+/** 설정 창이 보이는 복원 상태. undoAt 은 되돌릴 보관 데이터가 있을 때 그 때 */
+export interface RestoreState {
+  offer?: RestoreOffer;
+  undoAt?: number;
+}
 
 export interface SettingsBridge {
   get(): Promise<SettingsSnapshot>;
@@ -413,10 +440,18 @@ export interface SettingsBridge {
   openNotices(): Promise<boolean>;
   checkUpdate(): Promise<UpdateStatus>;
   openOnboarding(): void;
-  /** 백업 폴더 만들기. 만든 경로 (그만두면 빈 글) */
-  exportData(): Promise<string>;
-  /** 백업 가져오기. 못 가져왔으면 ok 가 거짓 (그만두면 빈 message) */
-  importData(): Promise<{ ok: boolean; message: string }>;
+  /** 백업 파일 만들기. 만든 경로 (그만두면 빈 path, 못 만들면 ok 거짓과 까닭) */
+  exportData(): Promise<{ ok: boolean; path: string; message: string }>;
+  /** 백업 파일(또는 예전 폴더)을 골라 검사한다. 가져올 수 있으면 offer (확인 칸), 아니면 ok 거짓 (그만두면 빈 message) */
+  importData(kind: 'file' | 'folder'): Promise<{ ok: boolean; message: string; offer?: RestoreOffer }>;
+  restoreState(): Promise<RestoreState>;
+  /** 마지막 가져오기 전으로 되돌리기: 보관 데이터를 확인 칸에 */
+  restoreUndo(): Promise<{ ok: boolean; message: string; offer?: RestoreOffer }>;
+  /** 확인 칸의 바꾸기. 되면 앱이 다시 켜진다 */
+  restoreConfirm(id: string): Promise<{ ok: boolean; message: string }>;
+  restoreCancel(id: string): void;
+  /** 기다리는 복원이 바뀌면. 그만 들을 함수를 돌려준다 */
+  onRestoreChanged(listener: (state: RestoreState) => void): () => void;
   exportPet(): Promise<string>;
   reveal(path: string): void;
   importPet(): Promise<{ ok: boolean; message: string }>;

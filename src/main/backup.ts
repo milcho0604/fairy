@@ -1,8 +1,29 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { randomBytes } from 'node:crypto';
+import {
+  cpSync,
+  type Dirent,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { basename, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { app, type BrowserWindow, dialog, nativeImage } from 'electron';
 import {
+  BACKUP_FILE_EXT,
+  type BackupHeader,
+  backupDate,
+  entryNameOk,
+  isBackupFileName,
+} from '../shared/backup-file.ts';
+import {
+  BACKUP_FILE_ITEMS,
+  BACKUP_READ_TOP,
   customAiCount,
   IMPORT_FILES,
   importedChatSettings,
@@ -11,6 +32,7 @@ import {
 import { SCHEMA_VERSION } from '../shared/db-schema.ts';
 import { saveErrorText } from '../shared/download-error.ts';
 import { t } from '../shared/i18n/index.ts';
+import type { RestoreOffer, RestoreState } from '../shared/ipc.ts';
 import {
   decodePet,
   encodePet,
@@ -25,6 +47,7 @@ import type { PetSprites } from '../shared/pet-sprites.ts';
 import type { Blueprint } from '../shared/pet3d/blueprint.ts';
 import { FRIENDS_MAX, isPersonalPet, POSE_KINDS } from '../shared/settings.ts';
 import { PET_FILE_EXT, PET_FILE_EXTS_READ } from '../shared/url-scheme.ts';
+import { BackupReadError, extractBackupZip, writeBackupZip, type ZipSource } from './backup-zip.ts';
 import { importableDbVersion } from './db-open.ts';
 import { petImages } from './maker.ts';
 import { library } from './pet-library.ts';
@@ -47,128 +70,394 @@ const stamp = () => {
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
 };
 
+/** 백업 파일을 풀 때 받는 맨 위 파일 (저장 파일, 작은 설정 파일, 예전 파일의 ai-custom.json). 이 밖은 받지 않는다 */
+const TOP_LEVEL = BACKUP_READ_TOP;
 /**
- * 백업과 옮기기 (v2): 할 일, 메모, 일정, 코인, 펫, 설정을 폴더 하나로 내보내고 다른 컴퓨터에서 가져온다.
+ * 예전 폴더 백업과 가져오기 전 보관 폴더의 표시 파일. 이름은 예전 그대로 둔다:
+ * 예전 판 짝꿍과 새 판이 서로의 폴더 백업을 가져올 수 있게 (앱 안쪽 이름이라 사용자에게는 안 보인다)
+ */
+const FOLDER_MARK = 'jjakkung-backup.json';
+/** 백업 파일을 풀어 확인 창의 답을 기다리는 폴더 (데이터 폴더 안이라 같은 디스크) */
+const STAGING = 'restore-staging';
+/** 백업 파일을 만드는 동안 저장 파일 사본을 두는 폴더 앞이름 */
+const MAKING = 'backup-making-';
+/** 가져오기 전 지금 데이터를 남기는 폴더 앞이름 (되돌리기가 가장 최근 것을 쓴다) */
+const KEEP = 'before-import-';
+
+type Offer = RestoreOffer & { dir: string; source: string };
+
+/**
+ * 백업과 옮기기 (v2, 이슈 #90 부터 파일 하나): 할 일, 메모, 일정, 코인, 펫, 설정을 백업 파일(.fairybackup) 하나로 만들고
+ * 다른 컴퓨터에서 가져오거나 파일을 두 번 눌러 복원한다. 예전 폴더 백업도 계속 읽는다.
  * 저장 파일은 SQLite VACUUM INTO 로 쓰는 중에도 한 시점 그대로 복사한다.
+ * 복원은 두 걸음이다: 먼저 풀어 검사하고(inspect) 설정 창 안 확인 칸에 보인 뒤, 사용자가 누르면(confirm) 바꾼다.
+ * 확인은 OS 창이 아니라 설정 창 안에서 묻는다 (코인 초기화와 같은 꼴, 시험에서도 CDP 로 누를 수 있다)
  */
 export function createBackup(o: {
   vacuumInto: (file: string) => void;
   log: (tag: string, ...rest: unknown[]) => void;
 }) {
   const dir = () => app.getPath('userData');
+  /** 확인을 기다리는 복원. 하나만 둔다 (새로 열면 앞의 것은 치운다) */
+  let offer: Offer | undefined;
+  /** 풀기나 바꾸기 중 (같은 파일을 연달아 두 번 열어도 한 번만) */
+  let busy = false;
+  let changed: () => void = () => {};
 
-  async function exportTo(parent?: BrowserWindow): Promise<string> {
-    const pick = await (parent
-      ? dialog.showOpenDialog(parent, {
-          title: t('main.backup.exportTitle'),
-          properties: ['openDirectory', 'createDirectory'],
-        })
-      : dialog.showOpenDialog({
-          title: t('main.backup.exportTitle'),
-          properties: ['openDirectory', 'createDirectory'],
-        }));
-    const base = pick.filePaths[0];
-    if (pick.canceled || !base) return '';
-    // 같은 분에 두 번 내보내도 겹치지 않게 (VACUUM INTO 는 있는 파일에 못 쓴다)
-    // 폴더 이름은 새 이름(fairy-backup-…). 안의 표시 파일(jjakkung-backup.json)과 저장 파일 이름은 예전 그대로 둔다:
-    // 예전 판 짝꿍과 새 판이 서로의 백업을 가져올 수 있게 (앱 안쪽 이름이라 사용자에게는 안 보인다)
-    let out = join(base, `fairy-backup-${stamp()}`);
-    for (let i = 2; existsSync(out); i++) out = join(base, `fairy-backup-${stamp()}-${i}`);
-    mkdirSync(out, { recursive: true });
-    o.vacuumInto(join(out, 'jjakkung.db'));
-    for (const f of FILES) if (existsSync(join(dir(), f))) cpSync(join(dir(), f), join(out, f));
-    // 링크는 따라가지 않고 일반 파일만 (버그잡이 7차)
-    if (existsSync(join(dir(), 'pets')))
-      cpSync(join(dir(), 'pets'), join(out, 'pets'), { recursive: true, filter: plainEntry });
-    writeFileAtomic(
-      join(out, 'jjakkung-backup.json'),
-      JSON.stringify({ app: 'jjakkung', version: app.getVersion(), at: Date.now() }),
-    );
-    o.log('backup', '내보냄');
+  /** pets/ 아래 일반 파일 (링크, 숨은 파일, 경로로 못 쓸 이름은 뺀다) */
+  function petSources(): ZipSource[] {
+    const out: ZipSource[] = [];
+    const walk = (abs: string, rel: string) => {
+      let list: Dirent[];
+      try {
+        list = readdirSync(abs, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const d of list) {
+        const name = `${rel}/${d.name}`;
+        if (d.isDirectory()) walk(join(abs, d.name), name);
+        else if (d.isFile() && entryNameOk(name, TOP_LEVEL)) out.push({ name, path: join(abs, d.name) });
+      }
+    };
+    walk(join(dir(), 'pets'), 'pets');
     return out;
   }
 
-  /** 백업 폴더를 골라 지금 데이터를 바꾼다. 바꾸기 전 지금 것을 한 벌 남기고, 끝나면 다시 켠다 */
-  async function importFrom(parent?: BrowserWindow): Promise<{ ok: boolean; message: string }> {
-    const pick = await (parent
-      ? dialog.showOpenDialog(parent, { title: t('main.backup.importTitle'), properties: ['openDirectory'] })
-      : dialog.showOpenDialog({ title: t('main.backup.importTitle'), properties: ['openDirectory'] }));
-    const from = pick.filePaths[0];
-    if (pick.canceled || !from) return { ok: true, message: '' };
-    // 저장 파일과 설정은 링크가 아닌 일반 파일만 (버그잡이 4). cpSync 는 링크를 링크 그대로 복사해, 링크로 된
-    // jjakkung.db 를 가져오면 앱 저장 파일이 데이터 폴더 밖(백업 폴더, USB)을 가리킨 채 거기에 계속 썼다
-    if (!existsSync(join(from, 'jjakkung-backup.json')) || !plainFile(join(from, 'jjakkung.db')))
-      return { ok: false, message: t('main.backup.notBackup') };
-    // 새 판 짝꿍이 만든 백업은 이 판이 못 연다. 지금 데이터를 덮어쓰기 전에 거른다
-    const version = importableDbVersion(join(from, 'jjakkung.db'));
-    if (version === undefined) return { ok: false, message: t('main.backup.notBackup') };
-    if (version > SCHEMA_VERSION) return { ok: false, message: t('main.backup.newer') };
-    const ok = await dialog.showMessageBox({
-      type: 'warning',
-      message: t('main.backup.confirm'),
-      detail: t('main.backup.confirmDetail'),
-      buttons: [t('main.backup.replace'), t('main.backup.cancel')],
-      defaultId: 1,
-      cancelId: 1,
-    });
-    if (ok.response !== 0) return { ok: true, message: '' };
-    // 사용자 AI 를 뺐다는 안내는 파일을 바꾸기 전에 띄운다. 바꾼 뒤에 기다리면 그사이 돌던 플래너, 설정 저장이
-    // 가져온 planner.json, settings.json 을 지금 것으로 도로 덮어썼다. 바꾸고 나서 끝내기까지는 기다림 없이 한 번에
-    const skipped = customAiCount(readJsonFile(join(from, 'ai-custom.json')));
-    if (skipped > 0)
-      await dialog.showMessageBox({
-        type: 'info',
-        message: t('main.backup.customAiSkipped', { n: skipped }),
-        detail: t('main.backup.customAiSkippedDetail'),
-        buttons: [t('common.ok')],
-      });
-    // 같은 분에 두 번 가져와도 겹치지 않게 (freePath)
-    const keep = freePath(join(dir(), `before-import-${stamp()}`));
-    mkdirSync(keep, { recursive: true });
-    o.vacuumInto(join(keep, 'jjakkung.db'));
-    for (const f of FILES) if (existsSync(join(dir(), f))) cpSync(join(dir(), f), join(keep, f));
-    // 펫 그림과 설계도도 남긴다: 가져오기가 같은 이름의 파일을 덮을 수 있다
-    if (existsSync(join(dir(), 'pets')))
-      cpSync(join(dir(), 'pets'), join(keep, 'pets'), { recursive: true, filter: plainEntry });
-    // 설정 파일도 저장 파일처럼 다음에 켤 때 바꾼다. 지금 덮으면 끄기 전까지 도는 앱(펫 자리 저장, 플래너,
-    // 설정 바꾸기, 끄면서 하는 저장)이 가져온 것을 다시 덮는다. 앞서 하다 만 가져오기의 것은 먼저 치운다
-    for (const f of IMPORT_FILES) rmSync(join(dir(), staged(f)), { force: true });
-    rmSync(join(dir(), PENDING_PETS), { recursive: true, force: true });
-    // 사용자 AI(ai-custom.json)는 옮기지 않는다: 실행할 명령이라 그 컴퓨터 것이 아니다. 채팅 설정은 고른 AI 만,
-    // 사용자 AI 를 골랐으면 기본으로 (버그잡이 7차)
-    for (const f of IMPORT_FILES) {
-      if (!plainFile(join(from, f))) continue;
-      if (f === 'chat-settings.json')
-        writeFileAtomic(
-          join(dir(), staged(f)),
-          JSON.stringify(importedChatSettings(readJsonFile(join(from, f)))),
-        );
-      else cpSync(join(from, f), join(dir(), staged(f)));
-    }
-    // 저장 파일은 앱이 연 채라 다음에 켤 때 바꾼다: 자리만 마련하고 다시 켠다.
-    // 맨 끝에 놓는다: 켤 때 이것이 있어야 설정 파일도 바꿔 끼우므로, 중간에 실패하면 반쪽만 바뀌지 않는다
-    // pets/ 도 저장 파일과 같이 기다렸다가 다음에 켤 때 넣는다 (저장 파일을 못 바꾸면 펫 파일도 그대로).
-    // 링크를 빼고 일반 파일만 (링크로 사용자 데이터 폴더 밖 파일을 읽게 하지 못하게). 저장 파일보다 먼저 둔다
+  /** 백업 파일을 target 에 만든다 (고르기 창 없이. 시험 손잡이도 이것을 쓴다) */
+  async function exportFile(target: string): Promise<string> {
+    const making = join(dir(), `${MAKING}${randomBytes(4).toString('hex')}`);
+    mkdirSync(making, { recursive: true });
     try {
-      if (existsSync(join(from, 'pets')))
-        cpSync(join(from, 'pets'), join(dir(), PENDING_PETS), { recursive: true, filter: plainEntry });
-      cpSync(join(from, 'jjakkung.db'), join(dir(), PENDING_DB));
-    } catch (err) {
-      // 디스크가 차서 반만 복사됐으면 다음에 켤 때 반쪽 저장 파일로 바꿔 끼웠다. 기다리던 것을 모두 치운다
-      rmSync(join(dir(), PENDING_DB), { force: true });
-      rmSync(join(dir(), PENDING_PETS), { recursive: true, force: true });
-      for (const f of IMPORT_FILES) rmSync(join(dir(), staged(f)), { force: true });
-      o.log('backup', '가져오기 실패', err instanceof Error ? err.message : String(err));
-      throw err;
+      o.vacuumInto(join(making, 'jjakkung.db'));
+      await writeBackupZip(
+        target,
+        [
+          { name: 'jjakkung.db', path: join(making, 'jjakkung.db') },
+          // 사용자 AI(ai-custom.json)는 담지 않는다: 복원에 쓰지 않는다
+          ...BACKUP_FILE_ITEMS.filter((f) => plainFile(join(dir(), f))).map((f) => ({
+            name: f,
+            path: join(dir(), f),
+          })),
+          ...petSources(),
+        ],
+        { app: app.getVersion(), at: Date.now() },
+      );
+    } finally {
+      rmSync(making, { recursive: true, force: true });
     }
-    o.log('backup', '가져옴, 다시 켠다', skipped ? `사용자 AI ${skipped}개 뺌` : '');
-    // exit 대신 quit: will-quit 정리(실행 표시 지우기, AI 끝내기, 저장 파일 닫기, 단축키 풀기)가 돌게 한다
-    app.relaunch();
-    app.quit();
-    return { ok: true, message: t('main.backup.restarting') };
+    o.log('backup', '백업 파일 만듦');
+    return target;
   }
 
-  return { exportTo, importFrom };
+  /** 저장 창을 띄워 백업 파일을 만든다. 그만두면 빈 path */
+  async function exportTo(parent?: BrowserWindow): Promise<{ ok: boolean; path: string; message: string }> {
+    const opts = {
+      title: t('main.backup.saveTitle'),
+      defaultPath: join(
+        app.getPath('documents'),
+        `${t('main.backup.fileName', { date: backupDate(new Date()) })}${BACKUP_FILE_EXT}`,
+      ),
+      filters: [{ name: t('main.backup.fileType'), extensions: [BACKUP_FILE_EXT.slice(1)] }],
+    };
+    const r = await (parent ? dialog.showSaveDialog(parent, opts) : dialog.showSaveDialog(opts));
+    if (r.canceled || !r.filePath) return { ok: true, path: '', message: '' };
+    // 확장자를 지웠으면 붙인다 (두 번 눌러 열리게). 붙인 이름이 이미 있으면 저장 창이 묻지 않았으니 덮지 않는다
+    let target = r.filePath;
+    if (!isBackupFileName(target)) {
+      const base = target;
+      target = `${base}${BACKUP_FILE_EXT}`;
+      for (let i = 2; existsSync(target); i++) target = `${base} (${i})${BACKUP_FILE_EXT}`;
+    }
+    try {
+      return { ok: true, path: await exportFile(target), message: '' };
+    } catch (err) {
+      o.log('backup', '백업 파일 못 만듦', err instanceof Error ? err.message : String(err));
+      const message =
+        err instanceof BackupReadError && err.reason === 'tooBig'
+          ? t('main.backup.exportTooBig')
+          : saveErrorText(err);
+      return { ok: false, path: '', message };
+    }
+  }
+
+  /** 가져올 것을 고르는 창. 파일(.fairybackup) 이나 예전 백업 폴더 */
+  async function importFrom(
+    parent: BrowserWindow | undefined,
+    kind: 'file' | 'folder',
+  ): Promise<{ ok: boolean; message: string; offer?: RestoreOffer }> {
+    const opts =
+      kind === 'file'
+        ? {
+            title: t('main.backup.importTitle'),
+            properties: ['openFile' as const],
+            filters: [{ name: t('main.backup.fileType'), extensions: [BACKUP_FILE_EXT.slice(1)] }],
+          }
+        : { title: t('main.backup.importFolderTitle'), properties: ['openDirectory' as const] };
+    const pick = await (parent ? dialog.showOpenDialog(parent, opts) : dialog.showOpenDialog(opts));
+    const from = pick.filePaths[0];
+    if (pick.canceled || !from) return { ok: true, message: '' };
+    return inspect(from, kind);
+  }
+
+  /** 폴더가 가져올 수 있는 백업인지. 아니면 화면 글 */
+  function checkFolder(from: string, needMark: boolean): string | undefined {
+    // 저장 파일과 설정은 링크가 아닌 일반 파일만 (버그잡이 4). cpSync 는 링크를 링크 그대로 복사해, 링크로 된
+    // jjakkung.db 를 가져오면 앱 저장 파일이 데이터 폴더 밖(백업 폴더, USB)을 가리킨 채 거기에 계속 썼다
+    if ((needMark && !plainFile(join(from, FOLDER_MARK))) || !plainFile(join(from, 'jjakkung.db')))
+      return t('main.backup.notBackup');
+    // 새 판 페어리가 만든 백업은 이 판이 못 연다. 지금 데이터를 덮어쓰기 전에 거른다
+    const version = importableDbVersion(join(from, 'jjakkung.db'));
+    if (version === undefined) return t('main.backup.notBackup');
+    if (version > SCHEMA_VERSION) return t('main.backup.newer');
+    return undefined;
+  }
+
+  /** 폴더 표시 파일의 만든 때와 앱 판 (없거나 깨졌으면 폴더 시각) */
+  function folderInfo(from: string): { at: number; app: string } {
+    const m = readJsonFile(join(from, FOLDER_MARK)) as { at?: unknown; version?: unknown } | undefined;
+    let at = typeof m?.at === 'number' && Number.isFinite(m.at) ? m.at : 0;
+    if (!at)
+      try {
+        at = statSync(from).mtimeMs;
+      } catch {
+        at = 0;
+      }
+    return { at, app: typeof m?.version === 'string' ? m.version.slice(0, 40) : '' };
+  }
+
+  const view = (x: Offer): RestoreOffer => ({
+    id: x.id,
+    kind: x.kind,
+    name: x.name,
+    at: x.at,
+    app: x.app,
+    customAi: x.customAi,
+  });
+
+  /** 기다리던 복원을 치운다 (풀어 둔 것도) */
+  function dropOffer() {
+    if (offer?.kind === 'file') rmSync(offer.dir, { recursive: true, force: true });
+    offer = undefined;
+  }
+
+  function setOffer(next: Omit<Offer, 'id' | 'customAi'>): RestoreOffer {
+    offer = {
+      ...next,
+      id: randomBytes(6).toString('hex'),
+      customAi: customAiCount(readJsonFile(join(next.dir, 'ai-custom.json'))),
+    };
+    changed();
+    return view(offer);
+  }
+
+  /**
+   * 백업 파일이나 폴더를 검사해 확인을 기다리는 복원으로 둔다 (아직 아무것도 바꾸지 않는다).
+   * 설정의 가져오기, 두 번 눌러 열기, 시험 손잡이가 모두 이것을 거친다
+   */
+  async function inspect(
+    path: string,
+    kind: 'file' | 'folder',
+  ): Promise<{ ok: boolean; message: string; offer?: RestoreOffer }> {
+    if (busy) return { ok: false, message: t('main.backup.busy') };
+    const source = resolve(path);
+    // 같은 파일을 또 열었다: 다시 풀지 않고 기다리던 확인을 그대로 보인다
+    if (offer && offer.source === source && offer.kind === kind) {
+      changed();
+      return { ok: true, message: '', offer: view(offer) };
+    }
+    busy = true;
+    try {
+      if (kind === 'folder') {
+        const bad = checkFolder(source, true);
+        if (bad) return { ok: false, message: bad };
+        dropOffer();
+        return {
+          ok: true,
+          message: '',
+          offer: setOffer({ kind, dir: source, source, name: basename(source), ...folderInfo(source) }),
+        };
+      }
+      dropOffer();
+      const out = join(dir(), STAGING);
+      rmSync(out, { recursive: true, force: true });
+      mkdirSync(out, { recursive: true });
+      let header: BackupHeader;
+      try {
+        header = await extractBackupZip(source, out, TOP_LEVEL);
+      } catch (err) {
+        rmSync(out, { recursive: true, force: true });
+        o.log('backup', '백업 파일 거절', err instanceof Error ? err.message : String(err));
+        changed();
+        return { ok: false, message: readErrorText(err) };
+      }
+      // 풀린 저장 파일이 우리 것인지, 이 앱이 여는 판인지
+      const bad = checkFolder(out, false);
+      if (bad) {
+        rmSync(out, { recursive: true, force: true });
+        changed();
+        return { ok: false, message: bad };
+      }
+      o.log('backup', '백업 파일 확인', header.entries.length);
+      return {
+        ok: true,
+        message: '',
+        offer: setOffer({ kind, dir: out, source, name: basename(source), at: header.at, app: header.app }),
+      };
+    } finally {
+      busy = false;
+    }
+  }
+
+  /** 가장 최근 가져오기 전 보관 폴더 (되돌리기) */
+  function latestKeep(): { dir: string; at: number } | undefined {
+    let best: { dir: string; at: number } | undefined;
+    let list: Dirent[];
+    try {
+      list = readdirSync(dir(), { withFileTypes: true });
+    } catch {
+      return undefined;
+    }
+    for (const d of list) {
+      if (!d.isDirectory() || !d.name.startsWith(KEEP)) continue;
+      const p = join(dir(), d.name);
+      if (!plainFile(join(p, 'jjakkung.db'))) continue;
+      const { at } = folderInfo(p);
+      if (!best || at > best.at) best = { dir: p, at };
+    }
+    return best;
+  }
+
+  /** 되돌리기: 가장 최근 보관 폴더를 확인을 기다리는 복원으로 */
+  async function offerUndo(): Promise<{ ok: boolean; message: string; offer?: RestoreOffer }> {
+    if (busy) return { ok: false, message: t('main.backup.busy') };
+    const keep = latestKeep();
+    if (!keep) return { ok: false, message: t('main.backup.noUndo') };
+    const bad = checkFolder(keep.dir, false);
+    if (bad) return { ok: false, message: bad };
+    dropOffer();
+    return {
+      ok: true,
+      message: '',
+      offer: setOffer({
+        kind: 'undo',
+        dir: keep.dir,
+        source: keep.dir,
+        name: basename(keep.dir),
+        at: keep.at,
+        app: '',
+      }),
+    };
+  }
+
+  function cancel(id: string) {
+    if (offer?.id !== id || busy) return;
+    dropOffer();
+    changed();
+  }
+
+  /** 설정 창이 보일 것: 기다리는 복원과 되돌릴 수 있는지 */
+  function state(): RestoreState {
+    const keep = latestKeep();
+    return { ...(offer ? { offer: view(offer) } : {}), ...(keep ? { undoAt: keep.at } : {}) };
+  }
+
+  /** 확인 칸에서 "바꾸기"를 눌렀다. 바꾸기 전 지금 것을 한 벌 남기고, 끝나면 다시 켠다 */
+  async function confirm(id: string): Promise<{ ok: boolean; message: string }> {
+    if (busy) return { ok: false, message: t('main.backup.busy') };
+    if (!offer || offer.id !== id) return { ok: false, message: t('main.backup.offerGone') };
+    const from = offer.dir;
+    // 확인을 기다리는 사이 폴더가 바뀌었을 수 있다 (예전 폴더 백업, 보관 폴더). 한 번 더 본다
+    const bad = checkFolder(from, false);
+    if (bad) {
+      dropOffer();
+      changed();
+      return { ok: false, message: bad };
+    }
+    busy = true;
+    try {
+      const skipped = offer.customAi;
+      // 같은 분에 두 번 가져와도 겹치지 않게 (freePath)
+      const keep = freePath(join(dir(), `${KEEP}${stamp()}`));
+      mkdirSync(keep, { recursive: true });
+      o.vacuumInto(join(keep, 'jjakkung.db'));
+      for (const f of FILES) if (existsSync(join(dir(), f))) cpSync(join(dir(), f), join(keep, f));
+      // 펫 그림과 설계도도 남긴다: 가져오기가 같은 이름의 파일을 덮을 수 있다
+      if (existsSync(join(dir(), 'pets')))
+        cpSync(join(dir(), 'pets'), join(keep, 'pets'), { recursive: true, filter: plainEntry });
+      // 표시 파일을 남겨 보관 폴더도 예전 폴더 백업처럼 가져올 수 있게 (되돌리기가 만든 때를 읽는다)
+      writeFileAtomic(
+        join(keep, FOLDER_MARK),
+        JSON.stringify({ app: 'jjakkung', version: app.getVersion(), at: Date.now() }),
+      );
+      // 설정 파일도 저장 파일처럼 다음에 켤 때 바꾼다. 지금 덮으면 끄기 전까지 도는 앱(펫 자리 저장, 플래너,
+      // 설정 바꾸기, 끄면서 하는 저장)이 가져온 것을 다시 덮는다. 앞서 하다 만 가져오기의 것은 먼저 치운다
+      dropStaged(dir());
+      // 사용자 AI(ai-custom.json)는 옮기지 않는다: 실행할 명령이라 그 컴퓨터 것이 아니다. 채팅 설정은 고른 AI 만,
+      // 사용자 AI 를 골랐으면 기본으로 (버그잡이 7차)
+      try {
+        for (const f of IMPORT_FILES) {
+          if (!plainFile(join(from, f))) continue;
+          if (f === 'chat-settings.json')
+            writeFileAtomic(
+              join(dir(), staged(f)),
+              JSON.stringify(importedChatSettings(readJsonFile(join(from, f)))),
+            );
+          else cpSync(join(from, f), join(dir(), staged(f)));
+        }
+        // 저장 파일은 앱이 연 채라 다음에 켤 때 바꾼다: 자리만 마련하고 다시 켠다.
+        // 맨 끝에 놓는다: 켤 때 이것이 있어야 설정 파일도 바꿔 끼우므로, 중간에 실패하면 반쪽만 바뀌지 않는다
+        // pets/ 도 저장 파일과 같이 기다렸다가 다음에 켤 때 넣는다 (저장 파일을 못 바꾸면 펫 파일도 그대로).
+        // 링크를 빼고 일반 파일만 (링크로 사용자 데이터 폴더 밖 파일을 읽게 하지 못하게). 저장 파일보다 먼저 둔다
+        if (existsSync(join(from, 'pets')))
+          cpSync(join(from, 'pets'), join(dir(), PENDING_PETS), { recursive: true, filter: plainEntry });
+        // 옆 이름에 다 복사한 뒤 이름을 바꾼다: 복사 중에 앱이 꺼지면 반쪽 저장 파일이 다음에 켤 때 끼워지지 않게
+        cpSync(join(from, 'jjakkung.db'), join(dir(), `${PENDING_DB}.part`));
+        renameSync(join(dir(), `${PENDING_DB}.part`), join(dir(), PENDING_DB));
+      } catch (err) {
+        // 디스크가 차서 반만 복사됐으면 다음에 켤 때 반쪽 저장 파일로 바꿔 끼웠다. 기다리던 것을 모두 치운다
+        rmSync(join(dir(), PENDING_DB), { force: true });
+        rmSync(join(dir(), `${PENDING_DB}.part`), { force: true });
+        dropStaged(dir());
+        o.log('backup', '가져오기 실패', err instanceof Error ? err.message : String(err));
+        return { ok: false, message: saveErrorText(err) };
+      }
+      o.log('backup', '가져옴, 다시 켠다', offer.kind, skipped ? `사용자 AI ${skipped}개 뺌` : '');
+      // 풀어 둔 것은 이제 필요 없다 (켤 때도 치운다)
+      dropOffer();
+      // exit 대신 quit: will-quit 정리(실행 표시 지우기, AI 끝내기, 저장 파일 닫기, 단축키 풀기)가 돌게 한다
+      app.relaunch();
+      app.quit();
+      return { ok: true, message: t('main.backup.restarting') };
+    } catch (err) {
+      // 보관 폴더를 못 만들었다(디스크 가득 등): 아무것도 바꾸지 않았다
+      o.log('backup', '가져오기 전 보관 실패', err instanceof Error ? err.message : String(err));
+      return { ok: false, message: saveErrorText(err) };
+    } finally {
+      busy = false;
+    }
+  }
+
+  return {
+    exportTo,
+    exportFile,
+    importFrom,
+    inspect,
+    offerUndo,
+    confirm,
+    cancel,
+    state,
+    /** 기다리는 복원이 바뀌면 (설정 창에 다시 보낸다) */
+    onChange(fn: () => void) {
+      changed = fn;
+    },
+  };
+}
+
+/** 백업 읽기 실패를 화면 글로 (디스크 가득, 권한은 파일 저장과 같은 글) */
+function readErrorText(err: unknown): string {
+  if (err instanceof BackupReadError) return t(`main.backup.${err.reason}`);
+  return saveErrorText(err);
 }
 
 /** 백업 폴더의 JSON. 없거나 깨졌으면 undefined */
@@ -187,6 +476,28 @@ const PENDING_PETS = 'pets.import';
 /** 가져온 설정 파일이 다음에 켤 때까지 기다리는 이름 */
 const staged = (f: string) => `${f}.import`;
 
+/** 기다리던 설정 파일과 펫 그림을 치운다 (하다 만 가져오기) */
+function dropStaged(dir: string) {
+  for (const f of IMPORT_FILES) rmSync(join(dir, staged(f)), { force: true });
+  rmSync(join(dir, PENDING_PETS), { recursive: true, force: true });
+}
+
+/**
+ * 켤 때: 지난번에 하다 만 것을 치운다. 확인을 기다리며 풀어 둔 백업 파일(복원 중에 앱을 끈 경우),
+ * 백업 파일을 만들다 남은 저장 파일 사본, 다 복사하지 못한 저장 파일 (.part)
+ */
+function dropLeftovers(dir: string) {
+  rmSync(join(dir, 'restore-staging'), { recursive: true, force: true });
+  rmSync(join(dir, `${PENDING_DB}.part`), { force: true });
+  try {
+    for (const d of readdirSync(dir, { withFileTypes: true }))
+      if (d.isDirectory() && d.name.startsWith('backup-making-'))
+        rmSync(join(dir, d.name), { recursive: true, force: true });
+  } catch {
+    // 못 치우면 다음에 켤 때 다시
+  }
+}
+
 /**
  * 켤 때: 가져온 저장 파일과 설정 파일이 기다리고 있으면 바꿔 끼운다.
  * 저장 파일을 열기 전, 설정을 처음 읽기 전에 부른다 (설정은 처음 읽은 것을 기억해 두고 그 위에 쓴다)
@@ -194,20 +505,17 @@ const staged = (f: string) => `${f}.import`;
 export function applyPendingImport(): void {
   const dir = app.getPath('userData');
   const pending = join(dir, PENDING_DB);
-  const dropStaged = () => {
-    for (const f of IMPORT_FILES) rmSync(join(dir, staged(f)), { force: true });
-    rmSync(join(dir, PENDING_PETS), { recursive: true, force: true });
-  };
+  dropLeftovers(dir);
   // 저장 파일 없이 남은 설정 파일은 하다 만 가져오기다: 반쪽만 바꾸지 않는다
   if (!existsSync(pending)) {
-    dropStaged();
+    dropStaged(dir);
     return;
   }
   // 못 여는 판이면 지금 저장 파일을 그대로 둔다 (가져오기에서 걸렀지만 한 번 더)
   const version = importableDbVersion(pending);
   if (version === undefined || version > SCHEMA_VERSION) {
     rmSync(pending, { force: true });
-    dropStaged();
+    dropStaged(dir);
     return;
   }
   // 복사하지 않고 이름을 바꾼다: 켜는 중에 디스크가 차면 복사가 지금 저장 파일을 반쯤 덮은 채 던졌고,
@@ -234,7 +542,7 @@ export function applyPendingImport(): void {
         // 되돌리지 못하면 옆 이름 그대로 둔다 (지우지 않는다)
       }
     for (const f of ['', '-wal', '-shm']) rmSync(pending + f, { force: true });
-    dropStaged();
+    dropStaged(dir);
     return;
   }
   for (const [, moved] of aside) rmSync(moved, { force: true });

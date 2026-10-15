@@ -7,10 +7,16 @@ export interface Flash {
   error: boolean;
 }
 
-/** 백업 내보내기: undefined 는 던짐(쓰기 권한, 디스크), 빈 글은 그만둠(안내 없음), 그 밖은 만든 폴더 */
-export function exportFlash(r: string | undefined): Flash | undefined {
+/**
+ * 백업 파일 만들기: undefined 는 던짐, ok 가 거짓이면 메인이 고른 까닭(디스크 가득, 권한, 너무 큼),
+ * 빈 path 는 그만둠(안내 없음), 그 밖은 만든 파일
+ */
+export function exportFlash(
+  r: { ok: boolean; path: string; message: string } | undefined,
+): Flash | undefined {
   if (r === undefined) return { text: t('settings.exportFailed'), error: true };
-  return r ? { text: t('settings.exported'), error: false } : undefined;
+  if (!r.ok) return { text: r.message || t('settings.exportFailed'), error: true };
+  return r.path ? { text: t('settings.exported'), error: false } : undefined;
 }
 
 /** 백업 가져오기: undefined 는 던짐, 빈 message 는 그만둠 */

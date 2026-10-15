@@ -19,6 +19,8 @@ import {
   type CalSync,
   type CoinState,
   type MakerTarget,
+  type RestoreOffer,
+  type RestoreState,
   SETTINGS,
   type SettingsSection,
   type SettingsSnapshot,
@@ -65,8 +67,18 @@ export interface SettingsWindowOptions {
   /** 진단 기록에서 글자 그대로 가릴 사용자 글 (할 일, 일정, 메모 제목, 캘린더 주소) */
   privateWords: () => string[];
   v2: {
-    exportData: (win?: BrowserWindow) => Promise<string>;
-    importData: (win?: BrowserWindow) => Promise<{ ok: boolean; message: string }>;
+    exportData: (win?: BrowserWindow) => Promise<{ ok: boolean; path: string; message: string }>;
+    importData: (
+      win: BrowserWindow | undefined,
+      kind: 'file' | 'folder',
+    ) => Promise<{ ok: boolean; message: string; offer?: RestoreOffer }>;
+    /** 백업 복원 확인 칸 (backup.ts) */
+    restore: {
+      state: () => RestoreState;
+      undo: () => Promise<{ ok: boolean; message: string; offer?: RestoreOffer }>;
+      confirm: (id: string) => Promise<{ ok: boolean; message: string }>;
+      cancel: (id: string) => void;
+    };
     exportPet: (win?: BrowserWindow) => Promise<string>;
     importPet: (win?: BrowserWindow) => Promise<{ ok: boolean; message: string }>;
     importFriend: (win?: BrowserWindow) => Promise<{ ok: boolean; message: string }>;
@@ -243,18 +255,28 @@ export function createSettingsWindow({
   });
   ipcMain.handle(SETTINGS.checkUpdate, (e) => (fromSettings(e) ? checkUpdate() : { text: '', tone: 'info' }));
   ipcMain.handle(SETTINGS.exportData, async (e) => {
-    if (!fromSettings(e)) return '';
-    const path = await v2.exportData(win);
-    rememberExport(path);
-    return path;
+    if (!fromSettings(e)) return { ok: true, path: '', message: '' };
+    const r = await v2.exportData(win);
+    rememberExport(r.path);
+    return r;
   });
   // 방금 내보낸 것을 파일 관리자에서 보인다 (내보낸 경로만)
   ipcMain.on(SETTINGS.reveal, (e, path: unknown) => {
     if (fromSettings(e) && wasExported(path)) shell.showItemInFolder(path);
   });
-  ipcMain.handle(SETTINGS.importData, (e) =>
-    fromSettings(e) ? v2.importData(win) : { ok: true, message: '' },
+  ipcMain.handle(SETTINGS.importData, (e, kind: unknown) =>
+    fromSettings(e) ? v2.importData(win, kind === 'folder' ? 'folder' : 'file') : { ok: true, message: '' },
   );
+  ipcMain.handle(SETTINGS.restoreState, (e): RestoreState => (fromSettings(e) ? v2.restore.state() : {}));
+  ipcMain.handle(SETTINGS.restoreUndo, (e) =>
+    fromSettings(e) ? v2.restore.undo() : { ok: false, message: '' },
+  );
+  ipcMain.handle(SETTINGS.restoreConfirm, (e, id: unknown) =>
+    fromSettings(e) && typeof id === 'string' ? v2.restore.confirm(id) : { ok: false, message: '' },
+  );
+  ipcMain.on(SETTINGS.restoreCancel, (e, id: unknown) => {
+    if (fromSettings(e) && typeof id === 'string') v2.restore.cancel(id);
+  });
   ipcMain.handle(SETTINGS.exportPet, async (e) => {
     if (!fromSettings(e)) return '';
     const path = await v2.exportPet(win);
@@ -347,8 +369,14 @@ export function createSettingsWindow({
     else w.loadFile(join(import.meta.dirname, '../renderer/settings.html'), { hash });
   }
 
+  /** 기다리는 복원이 바뀌었다 (두 번 눌러 연 백업 파일, 그만두기): 열린 설정 창에 새 상태를 보낸다 */
+  function sendRestore() {
+    if (win && !win.isDestroyed()) win.webContents.send(SETTINGS.restoreChanged, v2.restore.state());
+  }
+
   return {
     open,
+    sendRestore,
     get window() {
       return win;
     },
