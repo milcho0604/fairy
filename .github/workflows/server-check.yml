@@ -37,5 +37,16 @@ jobs:
       - run: npm run test:integration
       # 빌드 맥락은 레포 루트 (공유 규칙 src/shared/coin-rules.ts 를 함께 넣는다)
       - run: docker build -f Dockerfile -t fairy-api:ci ..
+      # 배포(ops/deploy.sh)와 똑같이 커밋된 것에서 server/ 와 Dockerfile 이 COPY 하는 공용 파일만 꺼내 빌드한다.
+      # 레포 전체로 빌드하면 꺼내는 목록에서 빠진 파일을 못 잡는다 (2026-10-15 #113 배포 실패).
+      - name: 배포와 같은 방식으로 빌드
+        working-directory: .
+        run: |
+          SRC=$(mktemp -d)
+          SHARED=$(git show "HEAD:server/Dockerfile" | sed -n 's#^COPY \(src/shared/[^ ]*\) .*#\1#p')
+          test -n "$SHARED"
+          # shellcheck disable=SC2086
+          git archive HEAD server $SHARED | tar -x -C "$SRC"
+          docker build -f "$SRC/server/Dockerfile" -t fairy-api:deploy-like "$SRC"
       - name: 배포 스크립트 문법
         run: bash -n ops/deploy.sh && bash -n ops/fairy-monitor.sh && bash -n ops/install-monitor.sh

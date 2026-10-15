@@ -19,8 +19,12 @@ git fetch origin --prune --quiet
 [ -f "$REPO/server/.env.prod" ] || { echo "[deploy] $REPO/server/.env.prod 가 없다"; exit 1; }
 
 rm -rf "$SRC"; mkdir -p "$SRC"
-# 서버와, 서버가 앱과 함께 쓰는 규칙 파일(src/shared/coin-rules.ts)만 꺼낸다. compose 빌드 맥락이 레포 루트(..)다
-git archive "$REF" server src/shared/coin-rules.ts | tar -x -C "$SRC"
+# 서버와, 서버가 앱과 함께 쓰는 공용 파일만 꺼낸다. compose 빌드 맥락이 레포 루트(..)다.
+# 공용 파일 목록은 server/Dockerfile 의 `COPY src/shared/...` 줄이 원본이다 (목록을 두 곳에 두지 않는다).
+SHARED=$(git show "$REF:server/Dockerfile" | sed -n 's#^COPY \(src/shared/[^ ]*\) .*#\1#p')
+[ -n "$SHARED" ] || { echo "[deploy] Dockerfile 에서 공용 파일 목록을 못 읽었다"; exit 1; }
+# shellcheck disable=SC2086
+git archive "$REF" server $SHARED | tar -x -C "$SRC"
 cp "$REPO/server/.env.prod" "$SRC/server/.env.prod"
 chmod 600 "$SRC/server/.env.prod"
 echo "[deploy] $(git rev-parse --short "$REF") 빌드"
