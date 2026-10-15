@@ -76,7 +76,7 @@ test('runTicket: 조각은 delta, 끝은 done(모은 글), 실패는 error, 멈�
   ]);
   const body = h.bodies[0] as { messages: unknown[]; lang: string; persona: string };
   assert.equal(body.lang, 'en');
-  assert.equal(body.persona.length, 2000);
+  assert.equal(body.persona.length, 600);
   assert.equal(body.messages.length, 3);
 
   const errs: AiEvent[] = [];

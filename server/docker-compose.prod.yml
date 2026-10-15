@@ -57,6 +57,8 @@ services:
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
       AI_MONTHLY_BUDGET_USD: ${AI_MONTHLY_BUDGET_USD:-}
       AI_DAILY_LIMIT: ${AI_DAILY_LIMIT:-}
+      # 첫 로그인 선물과 하루 수를 세는 HMAC 비밀. 비면 선물만 꺼진다
+      GIFT_HMAC_KEY: ${GIFT_HMAC_KEY:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       PUBLIC_URL: ${PUBLIC_URL:-https://fairy-api.moilga.com}

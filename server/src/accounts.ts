@@ -145,7 +145,7 @@ export class Accounts {
       [from.id, into.id],
     );
     await c.query('DELETE FROM owned_item WHERE account_id = $1', [from.id]);
-    // AI 대화권은 더한다 (21절). 선물 기록(ai_gift)은 닫힌 계정에 남아 같은 로그인으로 다시 받지 못한다
+    // AI 대화권은 더한다 (21절). 선물 기록(ai_gift_seen)은 계정에 묶이지 않아 같은 로그인으로 다시 받지 못한다
     await c.query(
       `INSERT INTO ai_ticket (account_id, remaining)
        SELECT $2, remaining FROM ai_ticket WHERE account_id = $1

@@ -9,6 +9,7 @@ import {
   noteTitleFromQuestion,
   type PersonaId,
   persona,
+  ticketVoice,
   turnPrompt,
 } from '../shared/ai/persona.ts';
 import {
@@ -456,7 +457,12 @@ export function createChat(o: ChatOptions) {
       };
       run =
         spec.adapter === 'server' && o.ticket
-          ? runTicket({ history, text: prompt, persona: req.persona, lang: getLang() }, o.ticket, onEvent)
+          ? runTicket(
+              // 대화권은 펫 이름과 말투만 보낸다 (짝꿍 규칙과 기억은 빼고, #100)
+              { history, text: prompt, persona: ticketVoice(petName(), o.personaId()), lang: getLang() },
+              o.ticket,
+              onEvent,
+            )
           : spec.adapter === 'local'
             ? runLocal(req, pickLocal(o.catalog(), o.aiModels().local), onEvent, log, {
                 // 한국어이고 존댓말 성격이 아니면 반말 예시와 어미 고치기

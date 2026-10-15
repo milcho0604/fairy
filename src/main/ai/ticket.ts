@@ -7,11 +7,11 @@ import type { AiChatBody, AiChatOutcome } from '../server-api.ts';
 
 /** 붙여 보낼 최근 문답 수 */
 export const TICKET_HISTORY = 4;
-/** 서버 상한(메시지 하나 4000자, 전체 8000자, 성격 2000자) 안으로 자른다 */
+/** 서버 상한(메시지 하나 4000자, 전체 8000자, 말투 600자) 안으로 자른다 */
 const MAX_MESSAGE = 4000;
 const MAX_HISTORY_PART = 1500;
 const MAX_TOTAL = 7500;
-const MAX_PERSONA = 2000;
+const MAX_PERSONA = 600;
 
 /** 채팅이 쓰는 대화권 손잡이 (main/server.ts 가 server-core 를 붙인다) */
 export interface TicketHooks {

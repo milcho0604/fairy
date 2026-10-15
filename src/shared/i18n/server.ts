@@ -65,7 +65,7 @@ export const ko = {
   'ticket.settings': 'AI 대화권 {n}개. 채팅 창에서 "대화권 Claude"를 고르면 질문 하나에 하나씩 써.',
   'ticket.aiNow': 'AI와 대화 중이야. 답은 사람이 아니라 AI(Anthropic의 Claude)가 써.',
   'ticket.notice':
-    '대화권으로 물으면 질문, 최근 대화 몇 개, 페어리 이름과 성격("내 할 일 같이 보내기"를 켰으면 할 일도)이 Anthropic(미국)으로 암호화되어 가. Anthropic은 정책상 최대 30일 보관할 수 있어(정책 위반 조사 등은 예외). 페어리 서버는 대화 내용을 저장하지 않고 사용량 숫자만 남겨. 싫으면 대화권을 쓰지 말고 내 컴퓨터 AI로 대화하면 돼.',
+    '대화권으로 물으면 질문(지금 시각 포함), 이 대화의 최근 문답 몇 개, 페어리 이름과 말투 설명이 Anthropic(미국)으로 암호화되어 가. "내 할 일 같이 보내기"를 켰으면 오늘 할 일도 같이 가. 짝꿍 규칙과 페어리가 기억하는 것은 보내지 않아. Anthropic은 정책상 최대 30일 보관할 수 있어(정책 위반 조사 등은 예외). 페어리 서버는 대화 내용을 저장하지 않고 사용량 숫자만 남겨. 싫으면 대화권을 쓰지 말고 내 컴퓨터 AI로 대화하면 돼.',
   'ticket.agree': '알겠어, 대화권 쓰기',
   'ticket.needAgree': '먼저 위 안내를 읽고 "알겠어"를 눌러 줘.',
   'ticket.empty': '대화권을 다 썼어. 내 컴퓨터의 AI로 이어서 할까?',
@@ -157,7 +157,7 @@ export const en: Translation<typeof ko> = {
   'ticket.aiNow':
     "You're talking with an AI. Answers are written by an AI (Anthropic's Claude), not a person.",
   'ticket.notice':
-    'When you ask with a ticket, your question, a few recent messages, and your fairy\'s name and personality (plus to-dos if "Share my to-dos" is on) are sent encrypted to Anthropic (USA). Under its policy Anthropic may keep them for up to 30 days (with exceptions such as policy-violation reviews). The fairy server stores no chat text, only usage numbers. If you prefer not to, skip tickets and chat with the AI on your computer.',
+    "When you ask with a ticket, your question (with the current time), a few recent messages from this chat, and your fairy's name and voice description are sent encrypted to Anthropic (USA). If \"Share my to-dos\" is on, today's to-dos go too. Your fairy's rules and what it remembers are not sent. Under its policy Anthropic may keep them for up to 30 days (with exceptions such as policy-violation reviews). The fairy server stores no chat text, only usage numbers. If you prefer not to, skip tickets and chat with the AI on your computer.",
   'ticket.agree': 'Got it, use tickets',
   'ticket.needAgree': 'Please read the note above and press "Got it" first.',
   'ticket.empty': "You've used all your tickets. Continue with the AI on your computer?",

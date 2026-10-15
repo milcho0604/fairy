@@ -8,15 +8,24 @@ CREATE TABLE ai_ticket (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 첫 로그인 선물(10개)을 받은 로그인. 키는 'login:<서비스>:<sub>'. 계정의 로그인 중 하나라도 여기 있으면 다시 주지 않는다.
--- 합쳐 닫힌 계정의 키도 남아 같은 로그인으로 두 번 받지 못한다. 탈퇴하면 함께 지워진다
-CREATE TABLE ai_gift (
-  key TEXT PRIMARY KEY CHECK (length(key) BETWEEN 1 AND 300),
-  account_id BIGINT NOT NULL REFERENCES account (id) ON DELETE CASCADE,
-  amount INTEGER NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+-- 첫 로그인 선물(10개)을 받은 로그인. 계정에 묶지 않는다: 탈퇴해도 남아 같은 구글 계정으로 다시 가입해 또 받지 못한다.
+-- 키는 HMAC-SHA256(GIFT_HMAC_KEY, 'google:<sub>') 라 서버 비밀 없이는 누구의 것인지 알 수 없다. 1년 뒤 지운다 (정리 작업)
+CREATE TABLE ai_gift_seen (
+  key_hmac BYTEA PRIMARY KEY CHECK (octet_length(key_hmac) = 32),
+  first_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT now() + interval '1 year'
 );
-CREATE INDEX ai_gift_account ON ai_gift (account_id);
+CREATE INDEX ai_gift_seen_expires ON ai_gift_seen (expires_at);
+
+-- 사람별 하루 질문 수. 키는 위와 같은 HMAC 이라 탈퇴하고 다시 가입해도 그날 수가 이어진다
+-- (GIFT_HMAC_KEY 가 없으면 계정 번호로 센다). 이틀 지난 줄은 지운다
+CREATE TABLE ai_daily (
+  key_hmac BYTEA NOT NULL CHECK (octet_length(key_hmac) = 32),
+  day DATE NOT NULL,
+  used INTEGER NOT NULL DEFAULT 0 CHECK (used >= 0),
+  PRIMARY KEY (key_hmac, day)
+);
+CREATE INDEX ai_daily_day ON ai_daily (day);
 
 -- 질문 한 번의 사용량. 글은 없다: 토큰 수와 추정 비용(백만분의 1달러)만.
 -- pending: 대화권을 뺐고 답을 받는 중 (cost_micros 는 그 질문이 쓸 수 있는 가장 큰 값으로 잡아 둔다)

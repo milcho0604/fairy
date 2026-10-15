@@ -23,6 +23,11 @@ export interface AiConfig {
   monthlyBudgetMicros: number;
   /** 사람(계정)마다 하루(한국 날짜) 질문 수 상한 */
   dailyLimit: number;
+  /**
+   * 첫 로그인 선물과 하루 수를 세는 HMAC 비밀 (GIFT_HMAC_KEY). 탈퇴해도 남는 표(ai_gift_seen, ai_daily)의 키를
+   * 이것으로 만들어 sub 원문을 두지 않는다. 비면 선물만 끈다
+   */
+  giftKey: string;
   /** 시험용: 첫 글자를 기다리는 시간과 답 전체 시간 (ms). 없으면 ai.ts 의 기본값 */
   firstTextMs?: number;
   totalMs?: number;
@@ -70,6 +75,7 @@ export function readAiConfig(env: NodeJS.ProcessEnv): AiConfig {
     model,
     monthlyBudgetMicros: Math.round(usd * 1_000_000),
     dailyLimit: nonNegative('AI_DAILY_LIMIT', env.AI_DAILY_LIMIT, DEFAULT_AI_DAILY_LIMIT, true),
+    giftKey: (env.GIFT_HMAC_KEY ?? '').trim(),
   };
 }
 

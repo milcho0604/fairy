@@ -95,6 +95,7 @@ const api = spawn(process.execPath, [join(root, 'server', 'dist', 'main.js')], {
     GOOGLE_CLIENT_SECRET: '',
     ANTHROPIC_API_KEY: 'sk-test-fake',
     ANTHROPIC_BASE_URL: fake.url,
+    GIFT_HMAC_KEY: randomBytes(32).toString('hex'),
   },
   stdio: 'ignore',
 });
@@ -280,6 +281,14 @@ try {
   const answer = (await chatState()).messages.at(-1)?.text;
   check('대화권 답이 오고 하나 빠진다', answer === '안녕! 나는 AI 야.' && (await status()).tickets === 9, `${answer}`);
   check('서버가 가짜 Anthropic 을 한 번 불렀다 (시스템 프롬프트에 AI 고지)', fake.calls.length === calls0 + 1 && /AI/.test(String(fake.calls.at(-1)?.body.system)));
+  {
+    const body = fake.calls.at(-1)?.body ?? {};
+    const first = JSON.stringify(body.messages?.[0] ?? '');
+    check(
+      '말투는 system 이 아니라 첫 차례 앞 참고 자료 블록에 (system 에는 펫 이름 없음)',
+      /말투 참고 자료|Voice reference/.test(first) && !/콩이|Kongi/.test(String(body.system)),
+    );
+  }
   await until('남은 수 표시', async () => (await c.ev(`document.querySelector('.ticket-count').innerText`)).includes('9'));
   await c.shot('ai-2-answer');
 

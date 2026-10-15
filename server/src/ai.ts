@@ -1,3 +1,4 @@
+import { createHash, createHmac } from 'node:crypto';
 import Anthropic from '@anthropic-ai/sdk';
 import {
   HttpException,
@@ -18,6 +19,7 @@ import {
   reserveMicros,
   seoulDay,
   systemPrompt,
+  withPersona,
 } from './ai-rules';
 import { CONFIG } from './app.tokens';
 import type { AuthInfo } from './auth.guard';
@@ -25,7 +27,7 @@ import type { AiConfig, Config } from './config';
 import { Db } from './db';
 
 // AI 대화권 (기획서 8절, 이슈 #100). 서버가 차감과 Claude 중계를 같이 한다. 앱은 API 키를 모른다.
-// - 만 18세 이상이고 로그인한 세션만. 첫 로그인 계정에 10개를 한 번 준다 (로그인마다 ai_gift 키, 계정 잠금 안에서)
+// - 만 18세 이상이고 로그인한 세션만. 첫 로그인 계정에 10개를 한 번 준다 (로그인마다 HMAC 키를 ai_gift_seen 에, 탈퇴해도 남는다)
 // - 차감(pending) → 중계(스트리밍) → 끝나면 ok, 실패(업스트림 오류, 끊김, 시간 넘김)하면 되돌림(refunded)
 // - 대화 내용은 어디에도 저장하지 않는다. 사용량 숫자(토큰, 추정 비용)만 ai_usage 에. 기록에도 글을 남기지 않는다
 // - 사람별 하루 상한, 서버 전체 월 추정 비용 상한 (넘으면 503 budget, 앱은 내 컴퓨터 AI 로 안내)
@@ -83,6 +85,10 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleInit(): void {
+    if (this.ai && !this.ai.giftKey)
+      console.warn(
+        '[ai] GIFT_HMAC_KEY 가 비어 첫 로그인 선물을 끈다 (대화는 된다, 하루 상한은 계정 번호로 센다)',
+      );
     void this.sweep().catch((err) => console.warn('[ai] 정리 실패:', (err as Error).message));
     this.#sweep = setInterval(() => {
       void this.sweep().catch((err) => console.warn('[ai] 정리 실패:', (err as Error).message));
@@ -105,46 +111,79 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
     return this.#client;
   }
 
+  /** 선물과 하루 수를 세는 키: HMAC-SHA256(GIFT_HMAC_KEY, '<서비스>:<sub>'). 비밀이 없으면 undefined */
+  private loginKey(service: string, sub: string): Buffer | undefined {
+    const key = this.ai?.giftKey;
+    return key ? createHmac('sha256', key).update(`${service}:${sub}`).digest() : undefined;
+  }
+
+  /**
+   * 하루 수를 세는 키 (계정의 첫 로그인). 탈퇴하고 같은 구글 계정으로 다시 가입해도 같은 키라 그날 수가 이어진다.
+   * GIFT_HMAC_KEY 가 없으면 계정 번호로 센다
+   */
+  private async dailyKeys(c: PoolClient, accountId: string): Promise<Buffer[]> {
+    const logins = await c.query<{ service: string; sub: string }>(
+      'SELECT service, sub FROM login WHERE account_id = $1 ORDER BY service, sub',
+      [accountId],
+    );
+    const keys = logins.rows.flatMap((r) => this.loginKey(r.service, r.sub) ?? []);
+    return keys.length > 0 ? keys : [createHash('sha256').update(`account:${accountId}`).digest()];
+  }
+
   /**
    * 쓸 수 있는 계정인지 보고 계정을 잠근다. 세션(로그인) 토큰만, 만 18세 이상만.
-   * 처음이면 선물 10개를 준다: 계정의 로그인 중 하나라도 선물 기록이 있으면 주지 않는다.
-   * 계정 행을 잠근 뒤라 같은 계정의 동시 요청도 한 번만 준다
+   * 처음이면 선물 10개를 준다: 계정의 로그인 중 하나라도 ai_gift_seen 에 있으면(탈퇴한 옛 계정 것이어도) 주지 않는다.
+   * GIFT_HMAC_KEY 가 없으면 선물만 끈다. 계정 행을 잠근 뒤라 같은 계정의 동시 요청도 한 번만 준다
    */
-  private async gate(c: PoolClient, auth: AuthInfo): Promise<{ id: string; remaining: number }> {
+  private async gate(
+    c: PoolClient,
+    auth: AuthInfo,
+  ): Promise<{ id: string; remaining: number; keys: Buffer[] }> {
     if (auth.via !== 'session') throw fail(HttpStatus.FORBIDDEN, { error: 'login' });
     const a = await lockAccount(c, auth.accountId);
     const age = (await c.query<{ age: string }>('SELECT age FROM account WHERE id = $1', [a.id])).rows[0]
       ?.age;
     if (age !== '18+') throw fail(HttpStatus.FORBIDDEN, { error: 'age' });
-    const logins = await c.query<{ key: string }>(
-      "SELECT 'login:' || service || ':' || sub AS key FROM login WHERE account_id = $1 ORDER BY key",
+    const logins = await c.query<{ service: string; sub: string }>(
+      'SELECT service, sub FROM login WHERE account_id = $1 ORDER BY service, sub',
       [a.id],
     );
-    const keys = logins.rows.map((r) => r.key);
-    if (keys.length === 0) throw fail(HttpStatus.FORBIDDEN, { error: 'login' });
-    const had = await c.query<{ n: number }>('SELECT count(*)::int AS n FROM ai_gift WHERE key = ANY($1)', [
-      keys,
-    ]);
-    const first = (had.rows[0]?.n ?? 0) === 0;
-    for (const [i, key] of keys.entries())
-      await c.query(
-        'INSERT INTO ai_gift (key, account_id, amount) VALUES ($1, $2, $3) ON CONFLICT (key) DO NOTHING',
-        [key, a.id, first && i === 0 ? AI_GIFT : 0],
+    if (logins.rows.length === 0) throw fail(HttpStatus.FORBIDDEN, { error: 'login' });
+    const giftKeys = logins.rows.flatMap((r) => this.loginKey(r.service, r.sub) ?? []);
+    let gift = 0;
+    if (giftKeys.length > 0) {
+      const had = await c.query<{ n: number }>(
+        'SELECT count(*)::int AS n FROM ai_gift_seen WHERE key_hmac = ANY($1)',
+        [giftKeys],
       );
+      if ((had.rows[0]?.n ?? 0) === 0) {
+        // 처음 넣은 쪽만 선물 (다른 트랜잭션이 같은 키를 먼저 넣었으면 0줄)
+        const ins = await c.query(
+          'INSERT INTO ai_gift_seen (key_hmac) SELECT unnest($1::bytea[]) ON CONFLICT (key_hmac) DO NOTHING',
+          [giftKeys],
+        );
+        if (ins.rowCount === giftKeys.length) gift = AI_GIFT;
+      } else
+        await c.query(
+          'INSERT INTO ai_gift_seen (key_hmac) SELECT unnest($1::bytea[]) ON CONFLICT (key_hmac) DO NOTHING',
+          [giftKeys],
+        );
+    }
     const r = await c.query<{ remaining: number }>(
       `INSERT INTO ai_ticket (account_id, remaining) VALUES ($1, $2)
        ON CONFLICT (account_id) DO UPDATE SET remaining = ai_ticket.remaining + EXCLUDED.remaining,
          updated_at = CASE WHEN EXCLUDED.remaining > 0 THEN now() ELSE ai_ticket.updated_at END
        RETURNING remaining`,
-      [a.id, first ? AI_GIFT : 0],
+      [a.id, gift],
     );
-    return { id: a.id, remaining: r.rows[0]?.remaining ?? 0 };
+    return { id: a.id, remaining: r.rows[0]?.remaining ?? 0, keys: await this.dailyKeys(c, a.id) };
   }
 
-  private async usedToday(c: PoolClient, accountId: string): Promise<number> {
+  /** 오늘(한국 날짜) 쓴 수: 계정의 로그인 키마다 센 수의 합 */
+  private async usedToday(c: PoolClient, keys: Buffer[]): Promise<number> {
     const r = await c.query<{ n: number }>(
-      "SELECT count(*)::int AS n FROM ai_usage WHERE account_id = $1 AND day = $2 AND status <> 'refunded'",
-      [accountId, seoulDay()],
+      'SELECT COALESCE(sum(used), 0)::int AS n FROM ai_daily WHERE key_hmac = ANY($1) AND day = $2',
+      [keys, seoulDay()],
     );
     return r.rows[0]?.n ?? 0;
   }
@@ -156,7 +195,7 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
       return {
         tickets: g.remaining,
         dailyLimit: this.ai?.dailyLimit ?? 0,
-        usedToday: await this.usedToday(c, g.id),
+        usedToday: await this.usedToday(c, g.keys),
       };
     });
   }
@@ -168,7 +207,7 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
     return this.db.tx(async (c) => {
       const g = await this.gate(c, auth);
       if (g.remaining <= 0) throw fail(HttpStatus.CONFLICT, { error: 'no_tickets', tickets: 0 });
-      if ((await this.usedToday(c, g.id)) >= ai.dailyLimit)
+      if ((await this.usedToday(c, g.keys)) >= ai.dailyLimit)
         throw fail(HttpStatus.TOO_MANY_REQUESTS, { error: 'daily_limit', tickets: g.remaining });
       const reserve = reserveMicros(ai.model, req);
       await c.query('SELECT pg_advisory_xact_lock($1)', [BUDGET_LOCK]);
@@ -181,6 +220,11 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
       const t = await c.query<{ remaining: number }>(
         'UPDATE ai_ticket SET remaining = remaining - 1, updated_at = now() WHERE account_id = $1 RETURNING remaining',
         [g.id],
+      );
+      await c.query(
+        `INSERT INTO ai_daily (key_hmac, day, used) VALUES ($1, $2, 1)
+         ON CONFLICT (key_hmac, day) DO UPDATE SET used = ai_daily.used + 1`,
+        [g.keys[0], seoulDay()],
       );
       const u = await c.query<{ id: string }>(
         `INSERT INTO ai_usage (account_id, day, model, status, cost_micros)
@@ -202,22 +246,32 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * 실패: 대화권을 돌려준다. 실제로 쓴 토큰이 있으면 비용은 남긴다(월 상한에 센다).
+   * 실패: 대화권과 그날 수를 돌려준다. 실제로 쓴 토큰이 있으면 비용은 남긴다(월 상한에 센다).
+   * usage 를 모르면(서버가 중간에 죽어 정리 때) 잡아 둔 예약금을 비용으로 그대로 남긴다.
    * 그사이 합쳐졌으면 남는 쪽에, 탈퇴했으면(계정 번호가 비었다) 돌려줄 곳이 없다. 돌려준 뒤 남은 수
    */
-  async refund(usageId: string, usage: Usage = { input: 0, output: 0 }): Promise<number | undefined> {
+  async refund(usageId: string, usage?: Usage): Promise<number | undefined> {
     const model = this.ai?.model ?? '';
     return this.db.tx(async (c) => {
-      const r = await c.query<{ account_id: string | null }>(
-        `UPDATE ai_usage SET status = 'refunded', input_tokens = $2, output_tokens = $3, cost_micros = $4,
-                finished_at = now()
-          WHERE id = $1 AND status = 'pending' RETURNING account_id`,
-        [usageId, usage.input, usage.output, costMicros(model, usage.input, usage.output)],
+      const r = await c.query<{ account_id: string | null; day: string }>(
+        `UPDATE ai_usage SET status = 'refunded', input_tokens = $2, output_tokens = $3,
+                cost_micros = COALESCE($4, cost_micros), finished_at = now()
+          WHERE id = $1 AND status = 'pending' RETURNING account_id, to_char(day, 'YYYY-MM-DD') AS day`,
+        [
+          usageId,
+          usage?.input ?? 0,
+          usage?.output ?? 0,
+          usage ? costMicros(model, usage.input, usage.output) : null,
+        ],
       );
-      const accountId = r.rows[0]?.account_id;
-      if (!accountId) return undefined;
-      const a = await lockAccount(c, accountId).catch(() => undefined);
+      const row = r.rows[0];
+      if (!row?.account_id) return undefined;
+      const a = await lockAccount(c, row.account_id).catch(() => undefined);
       if (!a) return undefined;
+      await c.query(
+        'UPDATE ai_daily SET used = used - 1 WHERE key_hmac = ANY($1) AND day = $2 AND used > 0',
+        [(await this.dailyKeys(c, a.id)).slice(0, 1), row.day],
+      );
       const t = await c.query<{ remaining: number }>(
         `INSERT INTO ai_ticket (account_id, remaining) VALUES ($1, 1)
          ON CONFLICT (account_id) DO UPDATE SET remaining = ai_ticket.remaining + 1, updated_at = now()
@@ -268,8 +322,9 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
         {
           model: ai.model,
           max_tokens: AI_MAX_OUTPUT_TOKENS,
-          system: systemPrompt(req.lang, req.persona),
-          messages: req.messages,
+          // system 은 서버 고정 문구만. 앱이 보낸 말투는 첫 사용자 차례 앞의 참고 자료 블록으로
+          system: systemPrompt(req.lang),
+          messages: withPersona(req.messages, req.lang, req.persona),
         },
         { signal: ac.signal },
       );
@@ -342,6 +397,8 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
         ORDER BY id LIMIT 500`,
     );
     for (const row of stale.rows) await this.refund(row.id);
+    await this.db.pool.query('DELETE FROM ai_gift_seen WHERE expires_at < now()');
+    await this.db.pool.query("DELETE FROM ai_daily WHERE day < (now() AT TIME ZONE 'Asia/Seoul')::date - 2");
     await this.db.pool.query(
       `DELETE FROM ai_report WHERE created_at < now() - interval '${AI_REPORT_KEEP_DAYS} days'`,
     );

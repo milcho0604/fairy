@@ -44,6 +44,7 @@ test('AI 대화권: 기본은 공식 주소와 Haiku, 월 80달러, 하루 20번
     model: 'claude-haiku-4-5',
     monthlyBudgetMicros: 80_000_000,
     dailyLimit: 20,
+    giftKey: '',
   });
   assert.deepEqual(
     readConfig({
@@ -53,6 +54,7 @@ test('AI 대화권: 기본은 공식 주소와 Haiku, 월 80달러, 하루 20번
       ANTHROPIC_MODEL: 'claude-sonnet-5-5',
       AI_MONTHLY_BUDGET_USD: '0.5',
       AI_DAILY_LIMIT: '3',
+      GIFT_HMAC_KEY: ' g ',
     }).ai,
     {
       apiKey: 'k',
@@ -60,6 +62,7 @@ test('AI 대화권: 기본은 공식 주소와 Haiku, 월 80달러, 하루 20번
       model: 'claude-sonnet-5-5',
       monthlyBudgetMicros: 500_000,
       dailyLimit: 3,
+      giftKey: 'g',
     },
   );
   const env = { DATABASE_URL: 'postgres://x' };
