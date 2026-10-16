@@ -292,10 +292,16 @@ try {
   console.log('시험 데이터', J({ open: open0, coins, now }));
 
   // 끝낸 할 일 때문에 업적 같은 말풍선이 먼저 올 수 있다: 올 만큼 기다렸다 눌러 치운다
-  await sleep(7000);
-  for (let i = 0; i < 6 && (await bubbleText(pet)) !== null; i++) {
-    await pet.click('#bubble');
-    await sleep(1500);
+  // 6초 동안 말풍선이 없을 때까지 눌러 치운다 (늦게 오는 것도 있다)
+  for (let quiet = 0, n = 0; quiet < 6 && n < 60; n++) {
+    if ((await bubbleText(pet)) === null) {
+      quiet++;
+      await sleep(1000);
+    } else {
+      quiet = 0;
+      await pet.click('#bubble');
+      await sleep(1200);
+    }
   }
   // ===== 1. 질문 칩 =====
   // 우클릭 메뉴에 "물어보기"가 있다 (메뉴는 받아 두기만 한다)
@@ -358,7 +364,12 @@ try {
 
   // ===== 2. 진행 중 말풍선 =====
   check('처음에는 상태 말풍선이 없다', (await bubbleText(pet)) === null);
-  await tapPet(pet); // 클릭 = 패널
+  // 클릭 = 패널. 말풍선이 막 닫히는 사이에는 눌림이 묻힐 수 있어 안 열리면 다시 누른다
+  for (let tries = 0; tries < 4; tries++) {
+    await tapPet(pet);
+    const opened = await until('패널', () => main('!!__jj.panel.window && __jj.panel.window.isVisible()'), 4000).catch(() => false);
+    if (opened) break;
+  }
   await until('패널', () => main('!!__jj.panel.window && __jj.panel.window.isVisible()'));
   await main(`__jj.panel.window.removeAllListeners('blur'); 1`);
   let panel = await page('panel');
@@ -384,8 +395,14 @@ try {
     await panel.mouse('mouseReleased', btn.x, btn.y);
     return btn.on;
   }
-  await pressDoing('보고서 쓰기');
-  await until('진행 중 말풍선', async () => (await bubbleText(pet)) === TXT.doing('보고서 쓰기'));
+  // 누름이 묻히면(줄 위로 마우스가 올라오기 전) 한 번 더
+  for (let tries = 0; tries < 3; tries++) {
+    await pressDoing('보고서 쓰기');
+    if (await until('표시', async () => (await main('__jj.doing.ids().length')) > 0, 3000).catch(() => false)) break;
+  }
+  await until('진행 중 말풍선', async () => (await bubbleText(pet)) === TXT.doing('보고서 쓰기')).catch(async (e) => {
+    throw new Error(`${e.message} / 지금 말풍선 ${J(await bubbleText(pet))}, 표시 ${await main('JSON.stringify(__jj.doing.ids())')}`);
+  });
   check('▶ 를 누르면 펫 머리 위에 "진행 중 제목"', true, await bubbleText(pet));
   const ambient = await pet.ev(`document.getElementById('bubble').hasAttribute('data-ambient')`);
   check('상태 말풍선은 조용한 모양(ambient)', ambient === true);
