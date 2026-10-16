@@ -1,4 +1,5 @@
 import { type DynamicModule, Module } from '@nestjs/common';
+import { AccountCleanup } from './account-cleanup';
 import { Accounts } from './accounts';
 import { AdminApiController, AdminController, AdminService } from './admin';
 import { AdminAccess } from './admin-access';
@@ -83,6 +84,7 @@ export function appModule(config: Config, deps: AppDeps = {}): DynamicModule {
         inject: [CONFIG, RateLimiter],
       },
       Accounts,
+      AccountCleanup,
       AdminAccess,
       AdminService,
       Ai,

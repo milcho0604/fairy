@@ -24,13 +24,14 @@ const PAGES = [
   { file: 'index.html', path: '/', base: './', titleKey: 'meta.title', descKey: null, sitemap: true },
   { file: 'download/index.html', path: '/download/', base: '../', titleKey: 'meta.dlTitle', descKey: 'meta.dlDesc', sitemap: true },
   { file: 'privacy/index.html', path: '/privacy/', base: '../', titleKey: 'meta.pvTitle', descKey: 'meta.pvDesc', sitemap: true },
+  { file: 'terms/index.html', path: '/terms/', base: '../', titleKey: 'meta.tmTitle', descKey: 'meta.tmDesc', sitemap: true },
   { file: '404.html', path: '/404.html', base: '/', titleKey: 'nf.title', descKey: null, sitemap: false, noindex: true },
   // 친구 초대 링크 (/f/<코드>/, #110). vercel.json 이 /f/<코드> 를 이 페이지로 보낸다
   { file: 'f/index.html', path: '/f/', base: '/', titleKey: 'fr.title', descKey: 'fr.desc', sitemap: false, noindex: true },
 ];
 
 function vars(base) {
-  return { name: S.name[LANG], tagline: S.tagline[LANG], file: S.filePrefix, app: S.appBundleName, license: S.license, petFileExt: S.petFileExt, home: base };
+  return { name: S.name[LANG], tagline: S.tagline[LANG], file: S.filePrefix, app: S.appBundleName, license: S.license, petFileExt: S.petFileExt, email: S.contactEmail, home: base };
 }
 
 // ---- shared header and footer (one copy for every page) ----
@@ -79,6 +80,7 @@ function footer(b) {
         <li><a data-href="releases" data-i18n="footer.releases"></a></li>
         <li><a data-href="contact" data-i18n="footer.contact"></a></li>
         <li><a href="${b}privacy/" data-i18n="footer.policy"></a></li>
+        <li><a href="${b}terms/" data-i18n="footer.terms"></a></li>
       </ul>
     </nav>
     <div class="foot-bottom">
@@ -128,7 +130,7 @@ function inlineCss(b) {
 }
 
 // ---- Jua is only used for headings: ask Google Fonts for just those characters ----
-const DISPLAY_KEYS = /^(hero\.title|[a-z]+\.title|about\.(pet|biz|ai)T|more\.\dt|maker\.o\dt|looks\.\dt|steps\.s\dt|dlp\.(title|macT|winT|linuxT|aiT)|nf\.title)$/;
+const DISPLAY_KEYS = /^(hero\.title|[a-z]+\.title|about\.(pet|biz|ai)T|more\.\dt|maker\.o\dt|looks\.\dt|steps\.s\dt|dlp\.(title|macT|winT|linuxT|aiT)|nf\.title|(pv|tm)\.sumT)$/;
 function fontHref() {
   let chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!?&’\'"–-():;/';
   for (const l of Object.keys(D)) {
@@ -282,3 +284,6 @@ writeFileSync(join(SITE_DIR, 'site.webmanifest'), JSON.stringify({
   ],
 }, null, 2) + '\n');
 console.log('wrote sitemap.xml, robots.txt, site.webmanifest');
+
+// 문의 이메일이 config.js 한 곳에만 있는지 (다른 곳에 적어 두면 여기서 빌드가 멈춘다)
+await import('./contact-check.mjs');

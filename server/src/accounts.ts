@@ -168,7 +168,19 @@ export class Accounts {
    * 탈퇴: 계정과 코인 내역, 기기, 로그인, 세션, 산 물건, 서버 백업 줄, 이 계정에 합쳐진 닫힌 계정까지 바로 지운다.
    * 지운 백업의 파일 이름을 돌려준다 (부르는 쪽이 디스크에서 바로 지운다, backup.ts removeFiles)
    */
-  async delete(accountId: string): Promise<string[]> {
+  async delete(accountId: string): Promise<string[]>;
+  /**
+   * onlyIf 가 false 를 돌려주면 지우지 않고 null (오래 안 쓴 계정 정리, account-cleanup.ts). 계정을 잠근 뒤에 다시 따져 보므로,
+   * 후보를 읽은 뒤 그 계정이 로그인하거나 요청을 보냈으면 지우지 않는다
+   */
+  async delete(
+    accountId: string,
+    onlyIf: (c: PoolClient, a: LockedAccount) => Promise<boolean>,
+  ): Promise<string[] | null>;
+  async delete(
+    accountId: string,
+    onlyIf?: (c: PoolClient, a: LockedAccount) => Promise<boolean>,
+  ): Promise<string[] | null> {
     return this.db.tx(async (c) => {
       // 아직 열지 않은 친구 선물은 보낸 사람에게 돌려준다 (#110, 사용자 결정 2026-10-16). 받는 사람과 그 보낸 사람들을
       // 번호 순으로 먼저 잠근다 (정리 작업, 쪽지 열기와 같은 순서: 계정 → 선물 줄 → 쪽지 줄)
@@ -181,6 +193,7 @@ export class Accounts {
       );
       await lockAccountsOrdered(c, [accountId, ...senders.rows.map((r) => r.id)]);
       const a = await lockAccount(c, accountId);
+      if (onlyIf && !(await onlyIf(c, a))) return null;
       const files = await backupFilesOf(c, a.id);
       const fam = await familyIds(c, a.id);
       // 500개씩 끝날 때까지 (하루 받기 상한 500 이라도 이틀이면 500개를 넘는다: 남기면 계정과 함께 사라진다)
