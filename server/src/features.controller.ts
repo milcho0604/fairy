@@ -5,7 +5,7 @@ import { ipKey, LIMITS, RateLimiter } from './rate-limit';
 
 // 요청자가 지금 쓸 수 있는 기능 (#102). 토큰이 있으면 그 계정 기준(allowlist), 없으면 everyone 인 것만 true.
 // 앱은 이것만 보고 단추를 보이거나 숨긴다 (앱에 기능 값을 박아 두지 않는다).
-//   GET /v1/features → { features: { kakao_login: false, coin_reset: false } }
+//   GET /v1/features → { features: { kakao_login: false, coin_reset: false, calendar_link_hint: false } }
 @Controller('v1/features')
 export class FeaturesController {
   constructor(

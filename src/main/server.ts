@@ -89,6 +89,8 @@ export function createServer(o: {
     exportFile: (target: string) => Promise<string>;
     inspect: (path: string) => Promise<{ ok: boolean; message: string; offer?: unknown }>;
   };
+  /** 이 기기가 구글 일정을 연결했나 (#115, main/gcal.ts). 바뀌면 core.calendarChanged() */
+  calendarLinked?: () => boolean;
   log: (tag: string, ...rest: unknown[]) => void;
 }) {
   const url = appServerUrl();
@@ -110,6 +112,8 @@ export function createServer(o: {
     return sealedSecret(join(dir, `${name}.json`), () => osCrypto);
   };
   const sessionSecret = secret('server-session');
+  /** 시험용 (JJ_TEST_SECRETS=memory 일 때만): 구글을 부르지 않고 이 기기의 구글 일정 연결 상태만 흉내 낸다 */
+  let calendarOverride: boolean | undefined;
   const core = createServerCore({
     api: url ? serverApi(url, (u, init) => net.fetch(u, init)) : undefined,
     coins: new ServerCoins(o.db, o.todos, o.shop, localDay),
@@ -131,6 +135,7 @@ export function createServer(o: {
     }),
     now: Date.now,
     log: o.log,
+    ...(o.calendarLinked ? { calendarLinked: () => calendarOverride ?? o.calendarLinked?.() ?? false } : {}),
     onChange: (s) => send(s),
     onCoins: o.onCoins,
     onInbox: () => o.onInbox?.(),
@@ -273,6 +278,8 @@ export function createServer(o: {
   ipcMain.handle(SERVER.backupDelete, (e, id: unknown) =>
     ok(e) ? core.backupDelete(backupId(id)) : { ok: false },
   );
+  // 다른 기기의 구글 일정 연결 안내 거절 (#115)
+  ipcMain.handle(SERVER.calendarHintNo, (e) => (ok(e) ? core.calendarHintNo() : undefined));
 
   return {
     core,
@@ -287,6 +294,16 @@ export function createServer(o: {
       if (!memory || !/^fs_[A-Za-z0-9_-]{43}$/.test(token)) return false;
       sessionSecret.set(token);
       void core.run();
+      return true;
+    },
+    /**
+     * 시험용 (JJ_TEST_SECRETS=memory 일 때만, #115): 이 기기의 구글 일정 연결 상태를 흉내 낸다 (undefined 면 진짜 상태로).
+     * 진짜 구글은 부르지 않는다 (scripts/dev/calendar-link.mjs)
+     */
+    async debugCalendarLinked(linked: boolean | undefined): Promise<boolean> {
+      if (!memory) return false;
+      calendarOverride = linked;
+      await core.calendarChanged();
       return true;
     },
   };

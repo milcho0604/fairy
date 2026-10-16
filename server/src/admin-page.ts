@@ -75,7 +75,7 @@ export interface AdminView {
   latest: string | undefined;
   /** 선물과 쿠폰은 로그인 계정만 */
   rewardsLoginOnly: boolean;
-  /** 기능 스위치 (#102, features.ts): kakao_login, coin_reset */
+  /** 기능 스위치 (#102, features.ts): kakao_login, coin_reset, calendar_link_hint (#115) */
   features: FeatureView[];
   log: Array<{ at: string; actor: string; action: string; target: string | null; detail: unknown }>;
 }
@@ -266,12 +266,15 @@ const FEATURE_MODE_KO: Record<string, string> = {
 const FEATURE_KO: Record<string, string> = {
   kakao_login: '카카오 로그인',
   coin_reset: '코인 초기화 (설정의 코인, 산 물건 초기화)',
+  calendar_link_hint: '다른 기기의 구글 일정 연결 안내',
 };
 
 const FEATURE_HINT: Record<string, string> = {
   kakao_login:
     '허용 목록 모드에서는 이미 구글로 로그인한 허용 계정이 앱에서 "카카오도 연결"하는 것만 돼요. 모두 모드면 누구나 카카오로 로그인, 가입. 카카오 키가 없으면 켜도 꺼져 있어요.',
   coin_reset: '꺼짐이면 앱이 초기화 칸을 숨기고, 서버도 초기화 기록을 받지 않아요.',
+  calendar_link_hint:
+    '같은 계정의 다른 기기에서 구글 일정을 연결했으면 새 기기에 "이 기기도 연결할까?"를 보여 줘요. 서버에는 연결 표시만 두고 구글 토큰은 두지 않아요. 허용 목록 모드에서는 운영자 계정도 켜져요.',
 };
 
 /** 기능 하나의 모드 바꾸기와 허용 계정 (#102) */

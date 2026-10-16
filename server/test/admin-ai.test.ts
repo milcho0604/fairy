@@ -49,7 +49,12 @@ describe('운영자 판정과 운영자 API', () => {
   test('/v1/me: 운영자 sub 의 세션만 admin true, 다른 구글 계정과 기기 토큰은 false', async () => {
     const me = await api('GET', '/v1/me', { token: adminSession });
     assert.equal(me.status, 200);
-    assert.deepEqual(me.body, { account: { code: adminAccount.code, nickname: '운영자' }, admin: true });
+    // calendar (#115): 기능 키 calendar_link_hint 는 allowlist 기본이라 운영자 계정은 켜져 있다
+    assert.deepEqual(me.body, {
+      account: { code: adminAccount.code, nickname: '운영자' },
+      admin: true,
+      calendar: { linked: false, devices: 0 },
+    });
     assert.equal((await api('GET', '/v1/me', { token: adminAccount.token })).body.admin, false);
     const other = await newDevice('18+');
     const otherSession = await session(other.id);

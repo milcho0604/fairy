@@ -18,7 +18,19 @@ export const FEATURES = {
   kakao_login: { env: 'FEATURE_KAKAO_LOGIN' },
   /** 설정의 코인 초기화와 산 물건 초기화. off 면 맞추기의 reset, reset-items 기록을 feature_off 로 거절하고 앱은 단추를 숨긴다 */
   coin_reset: { env: 'FEATURE_COIN_RESET' },
-} as const;
+  /**
+   * 같은 계정의 다른 기기에서 구글 일정을 연결했다는 안내 (#115). 기본 allowlist 이고, 운영자 계정(ADMIN_GOOGLE_SUBS 의
+   * 구글 로그인이 붙은 계정)은 허용 목록에 넣지 않아도 켜진다. off 면 앱이 연결 표시를 올리지도 안내하지도 않는다
+   */
+  calendar_link_hint: { env: 'FEATURE_CALENDAR_LINK_HINT', fallback: 'allowlist', admins: true },
+} as const satisfies Record<string, FeatureDef>;
+
+/** 기능 하나: 기본값을 읽는 env, env 가 비었을 때의 값(없으면 off), allowlist 에서 운영자 계정도 켜지는가 */
+interface FeatureDef {
+  env: string;
+  fallback?: FeatureMode;
+  admins?: boolean;
+}
 export type FeatureKey = keyof typeof FEATURES;
 export const isFeatureKey = (v: unknown): v is FeatureKey => typeof v === 'string' && v in FEATURES;
 
@@ -50,7 +62,20 @@ export class Features {
   private readonly clock: () => number;
 
   private envMode(key: FeatureKey): FeatureMode {
-    return this.config.features?.[key] ?? 'off';
+    const f: FeatureDef = FEATURES[key] as FeatureDef;
+    return this.config.features?.[key] ?? f.fallback ?? 'off';
+  }
+
+  /** allowlist 모드에서도 운영자 계정은 켜지는 기능인가 (calendar_link_hint) */
+  private async adminAllowed(key: FeatureKey, accountId: string): Promise<boolean> {
+    const f: FeatureDef = FEATURES[key] as FeatureDef;
+    const subs = this.config.adminSubs ?? [];
+    if (!f.admins || subs.length === 0) return false;
+    const r = await this.db.pool.query(
+      `SELECT 1 FROM login WHERE account_id = $1 AND service = 'google' AND sub = ANY($2::text[]) LIMIT 1`,
+      [accountId, subs],
+    );
+    return (r.rowCount ?? 0) > 0;
   }
 
   private async dbModes(): Promise<Map<string, FeatureMode>> {
@@ -68,7 +93,9 @@ export class Features {
     return (await this.dbModes()).get(key) ?? this.envMode(key);
   }
 
-  /** 이 계정이 기능을 쓸 수 있는가. allowlist 면 그 계정만, 계정이 없으면(로그인 전) false */
+  /**
+   * 이 계정이 기능을 쓸 수 있는가. allowlist 면 그 계정만(admins 인 기능은 운영자 계정도), 계정이 없으면(로그인 전) false
+   */
   async featureAllowed(key: FeatureKey, accountId: string | null): Promise<boolean> {
     const mode = await this.featureMode(key);
     if (mode === 'everyone') return true;
@@ -81,7 +108,7 @@ export class Features {
       key,
       accountId,
     ]);
-    const ok = (r.rowCount ?? 0) > 0;
+    const ok = (r.rowCount ?? 0) > 0 || (await this.adminAllowed(key, accountId));
     if (this.#allow.size > 10_000) this.#allow.clear();
     this.#allow.set(k, { at: now, ok });
     return ok;

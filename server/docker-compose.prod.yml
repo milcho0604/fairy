@@ -75,6 +75,8 @@ services:
       BACKUP_TOTAL_MAX_GB: ${BACKUP_TOTAL_MAX_GB:-}
       # 설정의 코인 초기화 (off 기본: 앱이 단추를 숨기고 서버도 초기화 기록을 거절)
       FEATURE_COIN_RESET: ${FEATURE_COIN_RESET:-off}
+      # 다른 기기의 구글 일정 연결 안내 (#115, allowlist 기본: 허용 계정과 운영자 계정만)
+      FEATURE_CALENDAR_LINK_HINT: ${FEATURE_CALENDAR_LINK_HINT:-allowlist}
     volumes:
       - fairy_backups:/data/backups
     ports:

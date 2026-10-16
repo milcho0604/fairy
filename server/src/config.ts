@@ -71,10 +71,14 @@ export function readBackupKey(raw: string | undefined): Buffer | undefined {
   return Buffer.from(v, 'hex');
 }
 
-/** FEATURE_<이름>: off, allowlist, everyone. 비면 off */
-export function readFeature(name: string, raw: string | undefined): FeatureMode {
+/** FEATURE_<이름>: off, allowlist, everyone. 비면 fallback (기본 off) */
+export function readFeature(
+  name: string,
+  raw: string | undefined,
+  fallback: FeatureMode = 'off',
+): FeatureMode {
   const v = (raw ?? '').trim().toLowerCase();
-  if (!v) return 'off';
+  if (!v) return fallback;
   if (!isFeatureMode(v)) throw new Error(`${name} 는 off, allowlist, everyone 중 하나여야 한다: ${raw}`);
   return v;
 }
@@ -188,6 +192,12 @@ export function readConfig(env: NodeJS.ProcessEnv): Config {
     features: {
       kakao_login: readFeature('FEATURE_KAKAO_LOGIN', env.FEATURE_KAKAO_LOGIN),
       coin_reset: readFeature('FEATURE_COIN_RESET', env.FEATURE_COIN_RESET),
+      // 다른 기기의 구글 일정 연결 안내 (#115): 비면 allowlist (허용 계정과 운영자 계정만)
+      calendar_link_hint: readFeature(
+        'FEATURE_CALENDAR_LINK_HINT',
+        env.FEATURE_CALENDAR_LINK_HINT,
+        'allowlist',
+      ),
     },
   };
 }

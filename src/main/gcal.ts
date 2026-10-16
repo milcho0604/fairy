@@ -156,6 +156,8 @@ export function createGcal(o: {
   log: (tag: string, ...rest: unknown[]) => void;
   /** 일정 줄의 구글 표식이 바뀌었을 수 있다 (보냄, 못 보냄). 패널을 다시 그린다 */
   onMarks?: () => void;
+  /** 이 기기의 구글 연결이 생기거나 없어졌다 (#115, 서버에 연결 표시만 올린다. 토큰은 보내지 않는다) */
+  onLinked?: () => void;
   /** 시험용 */
   fetch?: FetchLike;
 }) {
@@ -249,6 +251,7 @@ export function createGcal(o: {
     o.store.resetSent();
     broadcast();
     o.onMarks?.();
+    o.onLinked?.();
     o.onLost();
   }
 
@@ -303,6 +306,7 @@ export function createGcal(o: {
     o.store.resetSent();
     dropPulled();
     if (refresh) void revokeToken(f, refresh).catch(() => {});
+    o.onLinked?.();
   }
 
   async function pass(): Promise<void> {
@@ -532,6 +536,7 @@ export function createGcal(o: {
           setPrefs({ push: true, pull: true, listScope: got.tokens.listScope, cals: null });
           o.log('gcal', '연결됨', got.tokens.listScope ? '목록' : '목록 권한 없음');
           o.onMarks?.();
+          o.onLinked?.();
           kick();
           kickPull();
           // 옵션 창이 곧 열린다: 목록을 미리 읽는다
@@ -570,6 +575,7 @@ export function createGcal(o: {
     o.log('gcal', '연결 끊음');
     broadcast();
     o.onMarks?.();
+    o.onLinked?.();
     return status();
   }
 

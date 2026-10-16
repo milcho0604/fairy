@@ -126,6 +126,31 @@ export class Accounts {
   }
 
   /**
+   * 이 기기가 구글 일정을 연결했는지 적는다 (#115). 토큰은 받지 않는다: 표시만. 같은 값을 다시 보내도 된다
+   */
+  async setCalendarLinked(deviceId: string, linked: boolean): Promise<void> {
+    if (linked)
+      await this.db.pool.query(
+        'INSERT INTO calendar_link (device_id) VALUES ($1) ON CONFLICT (device_id) DO NOTHING',
+        [deviceId],
+      );
+    else await this.db.pool.query('DELETE FROM calendar_link WHERE device_id = $1', [deviceId]);
+  }
+
+  /**
+   * 계정의 구글 일정 연결 표시 (#115): 연결한 기기 수와 하나라도 있는가. 합쳐진 닫힌 계정의 기기는 이미 남는 쪽으로
+   * 옮겨 왔으므로 이 계정의 기기만 센다
+   */
+  async calendarOf(accountId: string): Promise<{ linked: boolean; devices: number }> {
+    const r = await this.db.pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM calendar_link l JOIN device d ON d.id = l.device_id WHERE d.account_id = $1`,
+      [accountId],
+    );
+    const devices = r.rows[0]?.n ?? 0;
+    return { linked: devices > 0, devices };
+  }
+
+  /**
    * 탈퇴: 계정과 코인 내역, 기기, 로그인, 세션, 산 물건, 서버 백업 줄, 이 계정에 합쳐진 닫힌 계정까지 바로 지운다.
    * 지운 백업의 파일 이름을 돌려준다 (부르는 쪽이 디스크에서 바로 지운다, backup.ts removeFiles)
    */

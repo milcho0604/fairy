@@ -1378,6 +1378,8 @@ ready
           .then(openCalendarSettings);
       },
       onMarks: () => panel.refresh(),
+      // 같은 계정의 다른 기기에 "구글 일정을 연결했다" 표시만 올린다 (#115, 토큰은 서버에 두지 않는다)
+      onLinked: () => void serverCore?.calendarChanged(),
       log,
     });
     // ---- 이벤트 목록 (#101): 홈페이지 정적 파일 events.json. 서버가 꺼져도 목록은 보인다 ----
@@ -1414,6 +1416,11 @@ ready
       onClaimed: (id) => siteEvents.markClaimed(id),
       // 서버 백업 (#102): 개인 백업 파일과 같은 것을 올리고, 받으면 같은 되살리기 확인 칸을 연다
       backup: { exportFile: (p) => backup.exportFile(p), inspect: (p) => backup.inspect(p, 'file') },
+      // 이 기기의 구글 일정 연결 (#115): 다른 기기에서 연결했으면 캘린더 칸이 "이 기기도 연결할까?"를 보인다
+      calendarLinked: () => {
+        const g = gcal.status();
+        return g.configured && g.connected;
+      },
       log,
     });
     serverCore = server.core;
