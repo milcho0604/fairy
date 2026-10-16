@@ -49,15 +49,15 @@ export function ServerBackupBox({
 
   if (view.off)
     return (
-      <div className="server-backup">
-        <small className="server-ask">{t('backup.title')}</small>
+      <div className="server-group server-backup">
+        <h3 className="server-group-title">{t('backup.title')}</h3>
         <small>{t('backup.off')}</small>
       </div>
     );
 
   return (
-    <div className="server-backup">
-      <small className="server-ask">{t('backup.title')}</small>
+    <div className="server-group server-backup">
+      <h3 className="server-group-title">{t('backup.title')}</h3>
       <small>{t('backup.what')}</small>
       <small>{t('backup.keep', { n: view.keep, mb: Math.round(view.maxBytes / 1024 / 1024) })}</small>
       <Toggle
@@ -96,9 +96,10 @@ export function ServerBackupBox({
         <ul className="server-backup-list">
           {view.list.map((x) => (
             <li key={x.id}>
-              <small>{t('backup.item', { date: day(x.createdAt), size: sizeText(x.size) })}</small>
-              {x.soon && <small className="warn">{t('backup.soon', { date: day(x.expiresAt) })}</small>}
-              <div className="action-row">
+              <small className="server-backup-item">
+                {t('backup.item', { date: day(x.createdAt), size: sizeText(x.size) })}
+              </small>
+              <div className="action-row item-actions">
                 <button
                   type="button"
                   className="ghost small"
@@ -126,6 +127,12 @@ export function ServerBackupBox({
                   {t('backup.delete')}
                 </button>
               </div>
+              {/* 지워질 날 안내는 줄 아래 전체 폭에 (단추 옆 좁은 칸에서 여러 줄로 꺾이지 않게) */}
+              {x.soon && (
+                <small className="warn server-backup-soon">
+                  {t('backup.soon', { date: day(x.expiresAt) })}
+                </small>
+              )}
             </li>
           ))}
         </ul>

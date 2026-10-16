@@ -108,21 +108,24 @@ export function EventsBox({ flash }: { flash: (message: string, error?: boolean)
               const got = list.claimed.includes(e.id);
               return (
                 <li key={e.id} className={`event-item ${phase}`}>
-                  <div className="event-head">
+                  <div className="event-text">
                     <strong dir="auto">{e.title[lang]}</strong>
-                    <small className="event-what">{what(e)}</small>
+                    <div className="event-meta">
+                      <small className="event-what">{what(e)}</small>
+                      <small className="event-when">
+                        {phase === 'soon'
+                          ? t('events.soon', { when: when(e.from) })
+                          : phase === 'live'
+                            ? t('events.live', { when: when(e.until) })
+                            : t('events.ended')}
+                      </small>
+                    </div>
+                    <small dir="auto">{e.body[lang]}</small>
+                    {e.kind === 'boost' && phase !== 'ended' && <small>{t('events.boostNote')}</small>}
                   </div>
-                  <small dir="auto">{e.body[lang]}</small>
-                  <small className="event-when">
-                    {phase === 'soon'
-                      ? t('events.soon', { when: when(e.from) })
-                      : phase === 'live'
-                        ? t('events.live', { when: when(e.until) })
-                        : t('events.ended')}
-                  </small>
-                  {e.kind === 'boost' && phase !== 'ended' && <small>{t('events.boostNote')}</small>}
+                  {/* 선물 받기: 줄 끝 동작이라 작은 단추, 글 오른쪽에 */}
                   {serverMode && e.kind === 'gift' && phase === 'live' && (
-                    <div className="action-row">
+                    <div className="action-row item-actions">
                       <button
                         type="button"
                         className="ghost small"
@@ -139,26 +142,29 @@ export function EventsBox({ flash }: { flash: (message: string, error?: boolean)
           </ul>
         )}
         {serverMode ? (
-          <div className="action-row coupon-row">
-            <input
-              className="plain-input coupon-input"
-              aria-label={t('coupon.label')}
-              placeholder={t('coupon.placeholder')}
-              maxLength={20}
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.nativeEvent.isComposing) void applyCoupon();
-              }}
-            />
-            <button
-              type="button"
-              className="ghost"
-              disabled={busy !== null}
-              onClick={() => void applyCoupon()}
-            >
-              {t('coupon.use')}
-            </button>
+          <div className="server-group coupon-box">
+            <h3 className="server-group-title">{t('coupon.label')}</h3>
+            <div className="action-row coupon-row">
+              <input
+                className="plain-input coupon-input"
+                aria-label={t('coupon.label')}
+                placeholder={t('coupon.placeholder')}
+                maxLength={20}
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.nativeEvent.isComposing) void applyCoupon();
+                }}
+              />
+              <button
+                type="button"
+                className="ghost"
+                disabled={busy !== null}
+                onClick={() => void applyCoupon()}
+              >
+                {t('coupon.use')}
+              </button>
+            </div>
           </div>
         ) : (
           s?.enabled && <small>{t('events.serverOnly')}</small>
