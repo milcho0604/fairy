@@ -1496,6 +1496,9 @@ async function appC() {
       check(F, '운영 기록 칸: ai.mode, ai.cancel, ai.subscribe, note.send, ai.revoke, ai.block, notice.create, versions', ['ai.mode', 'ai.cancel', 'ai.subscribe', 'note.send', 'ai.revoke', 'ai.block', 'notice.create', 'versions'].every((x) => log.includes(x)), log.replace(/\n/g, ' / ').slice(0, 300));
       await p.shots('c05-admin-log', '.admin-box');
       // 앱(0.4.3)이 최소 0.4.4 를 받으면 강제 창
+      // 서버가 (최소 판을 저장하기 전에) 받아 둔 "없음"이 공지 파일 값을 덮는다 (update.ts effectiveMin: 서버 값 우선).
+      // 계정을 다시 맞춰 서버의 새 기준을 받은 뒤 공지 파일을 받는다
+      await soft(h.main('__jj.server.core.run().then(() => 1)'));
       await h.main('__jj.notices.refresh().then(() => 1)');
       const fp = await soft(h.page('notice', 160));
       let ftitle = '';
