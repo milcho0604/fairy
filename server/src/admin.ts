@@ -610,37 +610,56 @@ export class AdminService {
     });
   }
 
-  /** 월 예산(달러)과 하루 상한. 빈 칸은 .env 상한 그대로 */
+  /**
+   * 월 예산(달러), 하루 상한, 질문 글자 수 상한. 빈 칸은 .env 상한으로 되돌리고(NULL),
+   * 칸이 아예 없으면(undefined) 저장된 값을 그대로 둔다 (앱 운영자 칸이 일부 칸만 보내도 나머지를 지우지 않게)
+   */
   async aiLimits(actor: string, f: FormFields): Promise<AdminDone> {
-    const b = (f.budget_usd ?? '').trim();
-    const d = (f.daily_limit ?? '').trim();
-    const usd = b === '' ? null : Number(b);
-    if (usd !== null && (!Number.isFinite(usd) || usd < 0)) throw new Refused('월 예산은 0 이상의 달러');
-    const daily = d === '' ? null : Number(d);
-    if (daily !== null && (!Number.isInteger(daily) || daily < 0))
-      throw new Refused('하루 상한은 0 이상의 정수');
+    const usd = this.limitField(f.budget_usd, '월 예산은 0 이상의 달러 (보통 숫자만)', true);
+    const daily = this.limitField(f.daily_limit, '하루 상한은 0 이상의 정수 (보통 숫자만)');
+    const chars = this.limitField(f.input_chars, '질문 글자 수는 1 이상의 정수 (보통 숫자만)');
+    if (chars != null && chars < 1) throw new Refused('질문 글자 수는 1 이상의 정수');
     return this.write(actor, async (c) => {
       let r: Awaited<ReturnType<AiAdmin['setSettings']>>;
       try {
         r = await this.aiAdmin.setSettings(c, {
-          monthlyBudgetMicros: usd === null ? null : Math.round(usd * 1_000_000),
+          monthlyBudgetMicros: usd == null ? usd : Math.round(usd * 1_000_000),
           dailyLimit: daily,
+          inputChars: chars,
         });
       } catch (err) {
         throw refusedFrom(err);
       }
       return {
-        text: `월 예산 $${(r.after.monthlyBudgetMicros / 1e6).toFixed(2)}, 하루 ${r.after.dailyLimit}번으로 저장했어요`,
+        text: `월 예산 $${(r.after.monthlyBudgetMicros / 1e6).toFixed(2)}, 하루 ${r.after.dailyLimit}번, 질문 ${r.after.inputChars}자로 저장했어요`,
         log: [
           'ai.limits',
           null,
           {
-            before: { budget: r.before.setBudgetMicros, daily: r.before.setDailyLimit },
-            after: { budget: r.after.setBudgetMicros, daily: r.after.setDailyLimit },
+            before: {
+              budget: r.before.setBudgetMicros,
+              daily: r.before.setDailyLimit,
+              inputChars: r.before.setInputChars,
+            },
+            after: {
+              budget: r.after.setBudgetMicros,
+              daily: r.after.setDailyLimit,
+              inputChars: r.after.setInputChars,
+            },
           },
         ],
       };
     });
+  }
+
+  /** 한도 칸 하나: 없으면 undefined(그대로), 빈 칸이면 null(상한으로), 아니면 숫자 */
+  private limitField(raw: string | undefined, what: string, decimal = false): number | null | undefined {
+    if (raw === undefined) return undefined;
+    const v = raw.trim();
+    if (v === '') return null;
+    // 보통 10진수만 (Number 는 0x10, 1e2, 공백 섞인 값도 받아 준다)
+    if (!(decimal ? /^[0-9]+(\.[0-9]+)?$/ : /^[0-9]+$/).test(v)) throw new Refused(what);
+    return Number(v);
   }
 
   /** 채팅 이용권 회수 (남은 장수까지만). 확인 칸이 있어야 한다. 주기는 쪽지로 (sendNote) */

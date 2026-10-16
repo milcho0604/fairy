@@ -34,7 +34,8 @@ export type AiEvent =
   | { type: 'delta'; text: string }
   /** tools: 도구를 불렀다 (글 없이 끝나도 도구만 쓴 정상 경우, empty-answer.ts) */
   | { type: 'done'; text: string; tools?: boolean }
-  | { type: 'error'; error: AiError };
+  /** dropText: 그때까지 받은 글은 답이 아니었다 (안전 분류기 거절). 말풍선의 글을 지우고 안내만 보인다 */
+  | { type: 'error'; error: AiError; dropText?: boolean };
 
 export type AiErrorKind =
   | 'not-installed'

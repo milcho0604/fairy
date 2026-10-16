@@ -319,9 +319,10 @@ ${confirmBox('모드를 바꿀게요')}
 <form method="post" action="/admin/ai/limits" class="grid">${hidden(csrf)}
 <label>월 예산 달러 (.env 상한 ${usd(ai.capBudgetMicros)} 이하, 비우면 상한) <input name="budget_usd" inputmode="decimal" value="${ai.setBudgetMicros === null ? '' : (ai.setBudgetMicros / 1e6).toString()}"></label>
 <label>사람마다 하루 질문 (.env 상한 ${ai.capDailyLimit} 이하, 비우면 상한) <input name="daily_limit" type="number" min="0" value="${ai.setDailyLimit ?? ''}"></label>
+<label>질문 한 번에 쓸 글자 수 (.env 상한 ${ai.capInputChars} 이하, 비우면 상한) <input name="input_chars" type="number" min="1" max="${ai.capInputChars}" value="${ai.setInputChars ?? ''}"></label>
 <button type="submit">예산 저장</button>
 </form>
-<p class="hint">지금 쓰는 값: 월 ${usd(ai.monthlyBudgetMicros)}, 하루 ${ai.dailyLimit}번. 이번 달 ${usd(v.summary.aiCostMicros)} 썼어요.</p>
+<p class="hint">지금 쓰는 값: 월 ${usd(ai.monthlyBudgetMicros)}, 하루 ${ai.dailyLimit}번, 질문 ${ai.inputChars}자 이하. 이번 달 ${usd(v.summary.aiCostMicros)} 썼어요.</p>
 ${budgetWarn(v.summary.aiCostMicros, ai.monthlyBudgetMicros)}
 <form method="post" action="/admin/ai/policy" class="grid">${hidden(csrf)}
 <p class="wide">정책: 허용된 계정은 매달 1일(한국) N장까지 채우기 정기 지급이 저절로 걸려요 (쪽지로, 이월 없음). 자리는 ${ai.seatsUsed}/${ai.seatLimit}.</p>

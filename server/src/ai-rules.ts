@@ -9,8 +9,21 @@ export const AI_MAX_OUTPUT_TOKENS = 600;
 export const AI_MAX_MESSAGES = 12;
 /** 메시지 하나의 글자 수 상한 */
 export const AI_MAX_MESSAGE_CHARS = 4000;
-/** 메시지 전체 글자 수 상한 (입력 토큰 상한. 한글은 한 글자가 대략 한 토큰 안팎이다) */
+/**
+ * 메시지 전체 글자 수 상한의 기본값 (입력 토큰 상한. 한글은 한 글자가 대략 한 토큰 안팎이다).
+ * 운영자는 .env AI_MAX_INPUT_CHARS 로 이보다 낮게 정할 수 있고, 운영자 화면에서 그 안에서 더 낮출 수 있다
+ */
 export const AI_MAX_TOTAL_CHARS = 8000;
+/**
+ * 요청 전체(앞서 나눈 말 + 앱이 붙인 시각, 머리글, 할 일 목록 + 질문)의 안전 상한. 질문 글자 수 상한과는 별개로
+ * 입력 비용이 이 안에 묶이게 한다. 앱이 질문 본문(question)을 따로 보내는 요청에만 쓴다
+ */
+export const AI_MAX_PAYLOAD_CHARS = 12000;
+/**
+ * 앱이 질문 앞에 붙이는 글(시각 줄 + 오늘 상황 목록 + "[질문]" 머리글)의 안전 상한. 할 일 20개와 오늘 일정을 다 담아도
+ * 이 안이다 (앱은 이보다 길면 할 일 목록 가운데를 줄인다). question 이 있는 요청에서 질문 아닌 앞 글이 이를 넘으면 거절한다
+ */
+export const AI_MAX_PREFIX_CHARS = 3000;
 /** 앱이 보내는 펫 성격 글 상한 */
 /** 앱이 보내는 말투 설명 상한. 넘으면 자른다 (system 이 아니라 참고 자료 블록에 들어간다) */
 export const AI_MAX_PERSONA_CHARS = 600;
@@ -42,9 +55,43 @@ const PRICES: Record<string, { input: number; output: number }> = {
   'claude-opus-5-5': { input: 4, output: 20 },
   'claude-opus-5': { input: 5, output: 25 },
 };
-const UNKNOWN_PRICE = { input: 10, output: 50 };
+/**
+ * 모르는 모델 (서버 폴백이 고른 모델은 공개되지 않는다, 환경 변수로 고른 낯선 모델 포함): 알려진 가장 비싼 값 이상으로 센다
+ * (Claude Fable 5.1 $10 / $50 보다 위). 이 값으로 셈하면 월 상한이 늦게 걸리지 않는다
+ */
+const UNKNOWN_PRICE = { input: 15, output: 75 };
+/** 모르는 모델을 나타내는 이름 (요금표에 없는 이름이면 모두 UNKNOWN_PRICE) */
+export const UNKNOWN_MODEL = '';
 
-export const priceOf = (model: string) => PRICES[model] ?? UNKNOWN_PRICE;
+/**
+ * 요금표의 모델 이름으로 접는다: 같은 이름이거나 날짜 접미사(-20261001, @20261001)가 붙은 이름.
+ * 이름만 닮은 다른 모델 (claude-haiku-5-50)은 접지 않는다. requestShape 와 요금이 같은 길을 쓴다
+ */
+export function baseModel(model: string): string | undefined {
+  return Object.keys(PRICES)
+    .filter((k) => model === k || new RegExp(`^${k}[-@]\\d{8}$`).test(model))
+    .sort((a, b) => b.length - a.length)[0];
+}
+
+export const priceOf = (model: string) => PRICES[baseModel(model) ?? ''] ?? UNKNOWN_PRICE;
+
+/**
+ * 모델마다 다른 요청 칸. 모델을 바꾸면 여기만 고친다 (ai.ts 는 이것을 그대로 붙인다).
+ * - Haiku 5.5: 생각이 기본으로 켜진다. disabled 는 effort high 이하에서 받는다. 서버 폴백 없음 (fallbacks 를 보내면 400,
+ *   "default" 를 보내도 거절된 요청은 그대로 거절이라 쓸모없다)
+ * - 그 밖(환경 변수로 고른 다른 모델): 아무것도 보내지 않는다 (그 모델의 기본)
+ * 샘플링 값(temperature, top_p, top_k)은 어떤 모델에도 보내지 않는다 (기본값이 아니면 400)
+ */
+export interface RequestShape {
+  thinking?: { type: 'disabled' };
+  output_config?: { effort: 'low' };
+}
+
+export function requestShape(model: string): RequestShape {
+  if (baseModel(model) === 'claude-haiku-5-5')
+    return { thinking: { type: 'disabled' }, output_config: { effort: 'low' } };
+  return {};
+}
 
 /** 추정 비용 (백만분의 1달러). 100만 토큰당 1달러 = 토큰당 1 */
 const LONG_PROMPT: Record<string, { over: number; input: number; output: number }> = {
@@ -52,9 +99,35 @@ const LONG_PROMPT: Record<string, { over: number; input: number; output: number 
 };
 
 export function costMicros(model: string, inputTokens: number, outputTokens: number): number {
-  const long = LONG_PROMPT[model];
+  const long = LONG_PROMPT[baseModel(model) ?? ''];
   const p = long && inputTokens > long.over ? long : priceOf(model);
   return Math.ceil(inputTokens * p.input + outputTokens * p.output);
+}
+
+/** 응답의 홉 하나 (usage.iterations 의 항목). model 을 모르면 undefined */
+export interface Hop {
+  model?: string;
+  input: number;
+  output: number;
+}
+
+/**
+ * 응답 usage.iterations 를 홉 목록으로. 항목마다 model 이 없으면 요청한 모델(fallbackTo), 그래도 없으면 모르는 모델.
+ * iterations 가 없거나 배열이 아니면 undefined (맨 위 usage 를 쓴다)
+ */
+export function hopsOf(iterations: unknown, fallbackTo?: string): Hop[] | undefined {
+  if (!Array.isArray(iterations) || iterations.length === 0) return undefined;
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0);
+  return iterations.map((raw) => {
+    const o = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
+    const model = typeof o.model === 'string' && o.model ? o.model : fallbackTo;
+    return { model, input: num(o.input_tokens), output: num(o.output_tokens) };
+  });
+}
+
+/** 홉마다 그 모델의 요금으로 센 비용 합 (백만분의 1달러). 홉이 여럿이면 홉마다 청구된다 */
+export function billedMicros(hops: readonly Hop[]): number {
+  return hops.reduce((n, h) => n + costMicros(h.model ?? UNKNOWN_MODEL, h.input, h.output), 0);
 }
 
 /**
@@ -66,7 +139,8 @@ export function reserveMicros(model: string, req: AiChatRequest): number {
     systemPrompt(req.lang).length +
     withPersona(req.messages, req.lang, req.persona).reduce((n, m) => n + m.content.length, 0);
   // 글자 하나가 토큰 셋까지 될 수 있다고 보수적으로 센다 (메시지마다 머리 몫 50)
-  return costMicros(model, chars * 3 + 50 * req.messages.length, AI_MAX_OUTPUT_TOKENS);
+  const input = chars * 3 + 50 * req.messages.length;
+  return costMicros(model, input, AI_MAX_OUTPUT_TOKENS);
 }
 
 /**
@@ -109,27 +183,54 @@ const clean = (s: string) =>
     })
     .join('');
 
-/** 요청 검사. 틀리면 까닭(400 의 error) */
-export function parseChatRequest(body: unknown): AiChatRequest | { error: string } {
+/**
+ * 요청 검사. 틀리면 까닭(400 의 error). inputLimit 은 질문 글자 수 상한 (운영자 설정, 기본 AI_MAX_TOTAL_CHARS).
+ *
+ * 질문 글자 수는 사용자가 직접 친 마지막 질문만 센다. 앱은 그 글을 question 칸에 따로 보낸다
+ * (messages 의 마지막 말에는 시각 줄, "[질문]" 머리글, 할 일 목록이 앞에 붙어 있어 거기서는 가를 수 없다).
+ * question 이 있으면 그 글자 수를 inputLimit 과 견주고, 마지막 말이 그 글로 끝나는지(앞 글은 AI_MAX_PREFIX_CHARS 이하),
+ * 요청 전체는 안전 상한(AI_MAX_PAYLOAD_CHARS)인지 본다. 앞 문답은 전체 상한 안에서 사용자의 이전 차례다.
+ * question 이 없는 옛 앱은 예전처럼 메시지 전체 글자 수를 inputLimit 과 견준다
+ */
+export function parseChatRequest(
+  body: unknown,
+  inputLimit: number = AI_MAX_TOTAL_CHARS,
+): AiChatRequest | { error: string } {
   const b = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
   const raw = b.messages;
   if (!Array.isArray(raw) || raw.length === 0 || raw.length > AI_MAX_MESSAGES) return { error: 'messages' };
+  let question: string | undefined;
+  if (b.question !== undefined) {
+    if (typeof b.question !== 'string') return { error: 'messages' };
+    question = clean(b.question).trim();
+    if (!question) return { error: 'messages' };
+    if (question.length > inputLimit) return { error: 'too_long' };
+  }
+  if (question !== undefined) {
+    // 마지막 말은 앞 글 + question 이어야 한다. 아니면 짧은 question 으로 상한을 비켜 긴 글을 넣는 것이다
+    const lastRaw = (raw[raw.length - 1] ?? {}) as Record<string, unknown>;
+    const lastText = typeof lastRaw.content === 'string' ? clean(lastRaw.content).trim() : '';
+    if (!lastText.endsWith(question) || lastText.length - question.length > AI_MAX_PREFIX_CHARS)
+      return { error: 'too_long' };
+  }
   const messages: AiMessage[] = [];
   let total = 0;
-  for (const m of raw) {
-    const o = (typeof m === 'object' && m !== null ? m : {}) as Record<string, unknown>;
+  for (let i = 0; i < raw.length; i++) {
+    const o = (typeof raw[i] === 'object' && raw[i] !== null ? raw[i] : {}) as Record<string, unknown>;
     if ((o.role !== 'user' && o.role !== 'assistant') || typeof o.content !== 'string')
       return { error: 'messages' };
     const content = clean(o.content).trim();
     if (!content) return { error: 'messages' };
-    if (content.length > AI_MAX_MESSAGE_CHARS) return { error: 'too_long' };
+    // 질문을 따로 받았으면 마지막 말은 앞에 붙은 글까지 커질 수 있어 전체 안전 상한에 맡긴다
+    const cap = question !== undefined && i === raw.length - 1 ? AI_MAX_PAYLOAD_CHARS : AI_MAX_MESSAGE_CHARS;
+    if (content.length > cap) return { error: 'too_long' };
     total += content.length;
     // 같은 쪽이 이어지면 한 차례로 합친다 (API 는 user, assistant 가 번갈아야 한다)
     const last = messages[messages.length - 1];
     if (last && last.role === o.role) last.content += `\n\n${content}`;
     else messages.push({ role: o.role, content });
   }
-  if (total > AI_MAX_TOTAL_CHARS) return { error: 'too_long' };
+  if (total > (question === undefined ? inputLimit : AI_MAX_PAYLOAD_CHARS)) return { error: 'too_long' };
   // 처음과 끝은 사용자 말이어야 한다 (끝이 답이면 미리 채우기라 요즘 모델은 받지 않는다)
   if (messages[0]?.role !== 'user' || messages[messages.length - 1]?.role !== 'user')
     return { error: 'messages' };

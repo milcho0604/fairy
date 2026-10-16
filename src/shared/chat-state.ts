@@ -115,7 +115,10 @@ export function applyEvent(s: ChatState, petId: string, e: AiEvent, noticeId: st
       return next;
     }
     case 'error':
-      return update({ status: 'error', error: e.error }, { pendingId: undefined });
+      return update(
+        { status: 'error', error: e.error, ...(e.dropText ? { text: '' } : {}) },
+        { pendingId: undefined },
+      );
   }
 }
 

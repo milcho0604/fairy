@@ -460,7 +460,13 @@ export function createChat(o: ChatOptions) {
         spec.adapter === 'server' && o.ticket
           ? runTicket(
               // 대화권은 펫 이름과 말투만 보낸다 (짝꿍 규칙과 기억은 빼고, #100)
-              { history, text: prompt, persona: ticketVoice(petName(), o.personaId()), lang: getLang() },
+              {
+                history,
+                text: prompt,
+                question: base,
+                persona: ticketVoice(petName(), o.personaId()),
+                lang: getLang(),
+              },
               o.ticket,
               onEvent,
             )
