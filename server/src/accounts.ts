@@ -154,9 +154,22 @@ export class Accounts {
    * 탈퇴: 계정과 코인 내역, 기기, 로그인, 세션, 산 물건, 서버 백업 줄, 이 계정에 합쳐진 닫힌 계정까지 바로 지운다.
    * 지운 백업의 파일 이름을 돌려준다 (부르는 쪽이 디스크에서 바로 지운다, backup.ts removeFiles)
    */
-  async delete(accountId: string): Promise<string[]> {
+  async delete(accountId: string): Promise<string[]>;
+  /**
+   * onlyIf 가 false 를 돌려주면 지우지 않고 null (오래 안 쓴 계정 정리, account-cleanup.ts). 계정을 잠근 뒤에 다시 따져 보므로,
+   * 후보를 읽은 뒤 그 계정이 로그인하거나 요청을 보냈으면 지우지 않는다
+   */
+  async delete(
+    accountId: string,
+    onlyIf: (c: PoolClient, a: LockedAccount) => Promise<boolean>,
+  ): Promise<string[] | null>;
+  async delete(
+    accountId: string,
+    onlyIf?: (c: PoolClient, a: LockedAccount) => Promise<boolean>,
+  ): Promise<string[] | null> {
     return this.db.tx(async (c) => {
       const a = await lockAccount(c, accountId);
+      if (onlyIf && !(await onlyIf(c, a))) return null;
       const files = await backupFilesOf(c, a.id);
       await c.query('DELETE FROM account WHERE id = $1', [a.id]);
       return files;
