@@ -16,10 +16,17 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import type { PoolClient } from 'pg';
-import { lockAccount } from './accounts';
+import { lockAccount, lockAccountsOrdered } from './accounts';
 import { AdminAccess } from './admin-access';
 import { AdminAuth, type AdminSession, actorOf, clearCookie } from './admin-auth';
-import { type AdminView, adminCss, loginPage, mainPage } from './admin-page';
+import {
+  type AdminTab,
+  type AdminUsersPage,
+  type AdminView,
+  adminCss,
+  loginPage,
+  mainPage,
+} from './admin-page';
 import { AI_MODES, AiAdmin, type AiMode, type AiSettings, findAccount } from './ai-admin';
 import { CONFIG } from './app.tokens';
 import { AuthGuard } from './auth.guard';
@@ -103,6 +110,7 @@ export const ADMIN_ACTIONS = [
   'coupons',
   'coupons/disable',
   'notes',
+  'grants/batch',
   'notices',
   'notices/delete',
   'versions',
@@ -132,6 +140,9 @@ interface AccountRow {
   merged_into: string | null;
 }
 
+const USER_PAGE_SIZE = 50;
+const GRANT_MAX_RECIPIENTS = 20;
+
 /** 쓰기의 결과 글과 운영 기록 (행동, 대상, 자세히) */
 interface Written {
   text: string;
@@ -147,6 +158,35 @@ function int(v: string | undefined, min: number, max: number, what: string): num
   const n = Number(s);
   if (!Number.isInteger(n) || n < min || n > max) throw new Refused(`${what}: ${min}~${max}`);
   return n;
+}
+
+export interface GrantInput {
+  refs: string[];
+  coins: number;
+  passes: number;
+  reason: string;
+  days: number;
+}
+
+/** DB 작업과 분리한 지급 폼 검사. 웹과 단위 시험이 같은 상한을 쓴다. */
+export function grantInput(f: FormFields): GrantInput {
+  if (f.confirm !== 'yes') throw new Refused('확인 칸을 체크해 주세요 (지급)', 'confirm');
+  const raw = (f.accounts ?? f.account ?? '').trim();
+  const refs = raw
+    .split(/[\s,]+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+  if (refs.length === 0) throw new Refused('받을 계정 번호나 기기 코드를 넣어 주세요');
+  if (refs.length > GRANT_MAX_RECIPIENTS)
+    throw new Refused(`한 번에 ${GRANT_MAX_RECIPIENTS}명까지만 지급할 수 있어요`, 'over_cap');
+  const coins = int(f.coins, 0, 10000, '코인');
+  const passes = int(f.chat_passes, 0, 1000, '채팅 이용권');
+  if (coins + passes === 0) throw new Refused('코인이나 채팅 이용권 중 하나는 넣어 주세요');
+  const reason = cleanText(f.reason ?? f.message);
+  if (!reason) throw new Refused('지급 사유를 넣어 주세요');
+  if (reason.length > 200) throw new Refused('지급 사유는 200자까지');
+  const days = int(f.days, 1, 365, '만료 날수') || 30;
+  return { refs, coins, passes, reason, days };
 }
 
 export function newCouponCode(): string {
@@ -200,7 +240,11 @@ export class AdminService {
   }
 
   /** 화면에 그릴 것 모두 */
-  async view(query: string | undefined): Promise<Omit<AdminView, 'csrf' | 'flash'>> {
+  async view(
+    query: string | undefined,
+    tab: AdminTab = 'overview',
+    userOptions: { page?: string; sort?: string; direction?: string } = {},
+  ): Promise<Omit<AdminView, 'csrf' | 'flash'>> {
     const q = this.db.pool;
     const sum = await q.query<{ accounts: string; coins: string; tickets: string }>(
       `SELECT (SELECT count(*) FROM account WHERE closed_at IS NULL) AS accounts,
@@ -256,6 +300,7 @@ export class AdminService {
         ORDER BY id DESC LIMIT 50`,
     );
     return {
+      tab,
       summary: {
         accounts: Number(sum.rows[0]?.accounts ?? 0),
         coins: Number(sum.rows[0]?.coins ?? 0),
@@ -267,6 +312,7 @@ export class AdminService {
         aiBudgetMicros: this.config.ai?.monthlyBudgetMicros ?? 0,
       },
       ...(await this.search(query)),
+      users: await this.users(query, userOptions),
       query,
       ai: {
         ...(await this.aiAdmin.settings()),
@@ -282,6 +328,80 @@ export class AdminService {
       rewardsLoginOnly: await this.rewards.loginOnly(),
       features: await this.features.listFeatures(),
       versions: versionStats(dist.rows),
+    };
+  }
+
+  /** 개인정보와 비밀값을 고르지 않는 운영자용 이용자 목록 */
+  private async users(
+    query: string | undefined,
+    options: { page?: string; sort?: string; direction?: string },
+  ): Promise<AdminUsersPage> {
+    const text = (query ?? '').trim().slice(0, 40);
+    const pageRaw = Number(options.page ?? '1');
+    const page = Number.isSafeInteger(pageRaw) && pageRaw > 0 ? Math.min(pageRaw, 100_000) : 1;
+    const sort = ['active', 'coins', 'created'].includes(options.sort ?? '')
+      ? (options.sort as AdminUsersPage['sort'])
+      : 'active';
+    const direction: AdminUsersPage['direction'] = options.direction === 'asc' ? 'asc' : 'desc';
+    const order = {
+      active: 'a.last_active_at',
+      coins: 'a.balance',
+      created: 'a.created_at',
+    }[sort];
+    const escaped = text.replace(/[\\%_]/g, '\\$&');
+    const where = `a.closed_at IS NULL AND a.merged_into IS NULL
+      AND ($1 = '' OR a.id::text = $1 OR a.nickname ILIKE '%' || $2 || '%' ESCAPE '\\'
+        OR a.code ILIKE '%' || $2 || '%' ESCAPE '\\')`;
+    const count = await this.db.pool.query<{ n: string }>(
+      `SELECT count(*) AS n FROM account a WHERE ${where}`,
+      [text, escaped],
+    );
+    const total = Number(count.rows[0]?.n ?? 0);
+    const pages = Math.max(1, Math.ceil(total / USER_PAGE_SIZE));
+    const current = Math.min(page, pages);
+    const rows = await this.db.pool.query<{
+      id: string;
+      code: string;
+      nickname: string | null;
+      logins: string[] | null;
+      age: string;
+      balance: string;
+      tickets: number;
+      last_active: string;
+      created: string;
+      app_version: string | null;
+    }>(
+      `SELECT a.id, a.code, a.nickname, a.age, a.balance::text AS balance,
+              COALESCE(t.remaining, 0) AS tickets,
+              (extract(epoch FROM a.last_active_at) * 1000)::bigint AS last_active,
+              (extract(epoch FROM a.created_at) * 1000)::bigint AS created,
+              a.app_version,
+              (SELECT array_agg(DISTINCT l.service ORDER BY l.service) FROM login l WHERE l.account_id = a.id) AS logins
+         FROM account a LEFT JOIN ai_ticket t ON t.account_id = a.id
+        WHERE ${where}
+        ORDER BY ${order} ${direction === 'asc' ? 'ASC' : 'DESC'}, a.id DESC
+        LIMIT $3 OFFSET $4`,
+      [text, escaped, USER_PAGE_SIZE, (current - 1) * USER_PAGE_SIZE],
+    );
+    return {
+      rows: rows.rows.map((x) => ({
+        id: x.id,
+        code: x.code,
+        nickname: x.nickname,
+        logins: x.logins ?? [],
+        age: x.age,
+        balance: Number(x.balance),
+        tickets: x.tickets,
+        lastActive: Number(x.last_active),
+        created: Number(x.created),
+        appVersion: x.app_version,
+      })),
+      total,
+      page: current,
+      pages,
+      query: text,
+      sort,
+      direction,
     };
   }
 
@@ -507,6 +627,62 @@ export class AdminService {
           `account:${a.id}`,
           { note: Number(noteId), coins, chatPasses: passes, days, message: message || undefined },
         ],
+      };
+    });
+  }
+
+  /** 여러 기기 코드에 같은 지급 쪽지를 보낸다. 전부 확인된 뒤 한 트랜잭션에서 넣는다. */
+  async sendGrantBatch(actor: string, f: FormFields): Promise<AdminDone> {
+    const { refs, coins, passes, reason, days } = grantInput(f);
+
+    return this.db.tx(async (c) => {
+      const found: string[] = [];
+      for (const ref of refs) {
+        const id = await findAccount(c, ref);
+        if (!id) throw new Refused(`없는 계정이에요: ${ref}`, 'no_account');
+        found.push(id);
+      }
+      const locked = await lockAccountsOrdered(c, found);
+      const accounts = [...new Set(locked.map((x) => x.id))];
+      if (passes > 0) {
+        const ages = await c.query<{ id: string; age: string }>(
+          'SELECT id, age FROM account WHERE id = ANY($1::bigint[])',
+          [accounts],
+        );
+        const under = ages.rows.find((x) => x.age !== '18+');
+        if (under)
+          throw new Refused(`계정 #${under.id} 는 만 18세 이상이 아니라 채팅 이용권을 줄 수 없어요`, 'age');
+      }
+      const noteIds: number[] = [];
+      for (const accountId of accounts) {
+        const noteId = await sendInbox(c, accountId, {
+          kind: 'grant',
+          message: reason,
+          coins,
+          chatPasses: passes,
+          expiresAt: Date.now() + days * 86_400_000,
+        });
+        noteIds.push(Number(noteId));
+        await adminLog(c, actor, 'note.send', `account:${accountId}`, {
+          note: Number(noteId),
+          coins,
+          chatPasses: passes,
+          days,
+          message: reason,
+          batch: true,
+        });
+      }
+      await adminLog(c, actor, 'grant.batch', null, {
+        recipients: accounts.length,
+        coins,
+        chatPasses: passes,
+        days,
+        notes: noteIds,
+      });
+      return {
+        text: `${accounts.length}명에게 지급 쪽지를 보냈어요 (코인 ${coins}, 채팅 이용권 ${passes}장). 사용자가 열 때 받아요`,
+        code: 'grant.batch',
+        data: { recipients: accounts.length },
       };
     });
   }
@@ -789,6 +965,8 @@ export class AdminService {
         return this.disableCoupon(actor, id());
       case 'notes':
         return this.sendNote(actor, f);
+      case 'grants/batch':
+        return this.sendGrantBatch(actor, f);
       case 'notices':
         return this.saveNotice(actor, f);
       case 'notices/delete':
@@ -1003,6 +1181,45 @@ const header = (req: AdminReq, name: string): string | undefined => {
   return Array.isArray(v) ? v[0] : v;
 };
 
+const TAB_PATHS: Record<AdminTab, string> = {
+  overview: '/admin',
+  users: '/admin/users',
+  grants: '/admin/grants',
+  notices: '/admin/notices',
+  events: '/admin/events',
+  features: '/admin/features',
+  ai: '/admin/ai',
+  log: '/admin/log',
+};
+
+export function tabFromPath(path: string | undefined): AdminTab | undefined {
+  const found = (Object.entries(TAB_PATHS) as Array<[AdminTab, string]>).find(([, value]) => value === path);
+  return found?.[0];
+}
+
+const ACTION_TABS: Record<AdminAction, AdminTab> = {
+  events: 'events',
+  'events/end': 'events',
+  coupons: 'events',
+  'coupons/disable': 'events',
+  notes: 'grants',
+  'grants/batch': 'grants',
+  notices: 'notices',
+  'notices/delete': 'notices',
+  versions: 'notices',
+  'ai/mode': 'ai',
+  'ai/limits': 'ai',
+  'ai/revoke': 'users',
+  'ai/subscribe': 'users',
+  'ai/cancel': 'users',
+  'ai/block': 'users',
+  'ai/allow': 'ai',
+  'ai/policy': 'ai',
+  'rewards/policy': 'events',
+  'features/mode': 'features',
+  'features/allow': 'features',
+};
+
 /**
  * 다른 사이트에서 온 요청은 받지 않는다 (SameSite 쿠키와 CSRF 토큰 위에 한 겹 더. CSRF 토큰은 따로 늘 본다).
  * - Origin 이 있으면 그것이 이 서버여야 한다
@@ -1058,15 +1275,22 @@ export class AdminController {
     res.status(200).send(adminCss);
   }
 
-  @Get()
-  async page(@Req() req: AdminReq, @Res() res: AdminRes, @Query('q') q?: string) {
+  @Get(['', 'users', 'grants', 'notices', 'events', 'features', 'ai', 'log'])
+  async page(@Req() req: AdminReq, @Res() res: AdminRes, @Query() query: Record<string, unknown>) {
     if (this.off(res)) return;
     const s = this.auth.session(req.headers.cookie);
     if (!s) return html(res, 200, loginPage({}));
     this.limiter.check(`admin:${s.key}`, LIMITS.adminBySession);
     const flash = s.flash;
     s.flash = undefined;
-    const view = await this.admin.view(typeof q === 'string' && q.trim() ? q.trim() : undefined);
+    const legacyQuery = typeof query.q === 'string' && query.q.trim() ? query.q.trim() : undefined;
+    const tab = req.path === '/admin' && legacyQuery ? 'users' : (tabFromPath(req.path) ?? 'overview');
+    const selected = tab === 'grants' && typeof query.account === 'string' ? query.account : legacyQuery;
+    const view = await this.admin.view(selected, tab, {
+      page: typeof query.page === 'string' ? query.page : undefined,
+      sort: typeof query.sort === 'string' ? query.sort : undefined,
+      direction: typeof query.direction === 'string' ? query.direction : undefined,
+    });
     html(res, 200, mainPage({ ...view, csrf: s.csrf, flash }));
   }
 
@@ -1116,8 +1340,26 @@ export class AdminController {
       req,
       res,
       async (s, f) => (await this.admin.run(name, actorOf(s), f)).text,
-      (f) => (f.account ? `/admin?q=${encodeURIComponent(f.account.trim())}` : '/admin'),
+      (f) => {
+        const base = TAB_PATHS[ACTION_TABS[name]];
+        return ACTION_TABS[name] === 'users' && f.account
+          ? `${base}?q=${encodeURIComponent(f.account.trim())}`
+          : base;
+      },
     );
+  }
+
+  /** 같은 운영자 화면에서 제출한 폼이면 그 탭과 안전한 조회 문자열로 돌아간다. */
+  private returnTo(req: AdminReq, fallback: string): string {
+    const referer = header(req, 'referer');
+    if (!referer) return fallback;
+    try {
+      const url = new URL(referer, this.config.publicUrl);
+      if (url.origin !== new URL(this.config.publicUrl).origin || !tabFromPath(url.pathname)) return fallback;
+      return `${url.pathname}${url.search}`.slice(0, 300);
+    } catch {
+      return fallback;
+    }
   }
 
   /**
@@ -1139,11 +1381,10 @@ export class AdminController {
       await adminLog(this.db.pool, actorOf(s), 'csrf.fail', null).catch(() => undefined);
       return html(res, 403, loginPage({ error: '요청을 확인하지 못했어요 (CSRF). 화면을 다시 열어 주세요' }));
     }
-    let to = '/admin';
+    const to = this.returnTo(req, back(f));
     try {
       const text = await fn(s, f);
       if (text !== undefined) s.flash = { text, error: false };
-      to = back(f);
     } catch (err) {
       if (err instanceof Refused) s.flash = { text: err.message, error: true };
       else {

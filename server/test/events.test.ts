@@ -188,7 +188,7 @@ describe('운영자 로그인 (웹)', () => {
       body_en: 'body',
     });
     assert.ok(r.ok, r.text);
-    const p = await admin.page();
+    const p = await admin.page('/notices');
     assert.doesNotMatch(p.text, /<script>alert/);
     assert.match(p.text, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
     assert.ok((await admin.act('/admin/notices/delete', { id: 'xss-test' })).ok);
