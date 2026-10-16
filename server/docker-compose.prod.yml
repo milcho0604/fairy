@@ -99,8 +99,10 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-fairy}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       SCHEDULE: '30 5 * * *'
-      BACKUP_KEEP_DAYS: 14
-      BACKUP_KEEP_WEEKS: 4
+      # 처리방침: 탈퇴한 사람의 DB 사본은 최대 7일. 이 이미지는 find -mtime +N 이라 N=6 이면 7일이 된 사본부터 지운다 (7이면 8일)
+      # 주간, 월간 사본은 0 이어도 이미지가 하루 더 둔다 (이틀 안에 지워짐). 일 사본 7개가 전부다
+      BACKUP_KEEP_DAYS: 6
+      BACKUP_KEEP_WEEKS: 0
       BACKUP_KEEP_MONTHS: 0
     volumes:
       - ${FAIRY_BACKUP_DIR:-/Volumes/milcho_ex/fairy-backups}:/backups
