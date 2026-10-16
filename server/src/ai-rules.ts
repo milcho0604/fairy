@@ -9,8 +9,13 @@ export const AI_MAX_OUTPUT_TOKENS = 600;
 export const AI_MAX_MESSAGES = 12;
 /** 메시지 하나의 글자 수 상한 */
 export const AI_MAX_MESSAGE_CHARS = 4000;
-/** 메시지 전체 글자 수 상한 (입력 토큰 상한. 한글은 한 글자가 대략 한 토큰 안팎이다) */
+/**
+ * 메시지 전체 글자 수 상한의 기본값 (입력 토큰 상한. 한글은 한 글자가 대략 한 토큰 안팎이다).
+ * 운영자는 .env AI_MAX_INPUT_CHARS 로 이보다 낮게 정할 수 있고, 운영자 화면에서 그 안에서 더 낮출 수 있다
+ */
 export const AI_MAX_TOTAL_CHARS = 8000;
+/** 서버 거절 폴백 베타 (fallbacks: "default" 형태). Claude API 에서만 받는다 */
+export const SERVER_FALLBACK_BETA = 'server-side-fallback-2026-07-01';
 /** 앱이 보내는 펫 성격 글 상한 */
 /** 앱이 보내는 말투 설명 상한. 넘으면 자른다 (system 이 아니라 참고 자료 블록에 들어간다) */
 export const AI_MAX_PERSONA_CHARS = 600;
@@ -45,6 +50,33 @@ const PRICES: Record<string, { input: number; output: number }> = {
 const UNKNOWN_PRICE = { input: 10, output: 50 };
 
 export const priceOf = (model: string) => PRICES[model] ?? UNKNOWN_PRICE;
+
+/**
+ * 모델마다 다른 요청 칸. 모델을 바꾸면 여기만 고친다 (ai.ts 는 이것을 그대로 붙인다).
+ * - Haiku 5.5: 생각이 기본으로 켜진다. disabled 는 effort high 이하에서 받는다. 서버 폴백 없음 (fallbacks 를 보내면 400)
+ * - Sonnet 5.5: disabled 는 400. 생각을 끄는 방법은 between_tools (effort high 이하, 다른 칸 없음). 서버 폴백 기본 켬
+ * - 그 밖(환경 변수로 고른 다른 모델): 아무것도 보내지 않는다 (그 모델의 기본)
+ * 샘플링 값(temperature, top_p, top_k)은 어떤 모델에도 보내지 않는다 (기본값이 아니면 400)
+ */
+export interface RequestShape {
+  thinking?: { type: 'disabled' } | { type: 'between_tools' };
+  output_config?: { effort: 'low' };
+  fallbacks?: 'default';
+  betas?: string[];
+}
+
+export function requestShape(model: string): RequestShape {
+  if (/^claude-haiku-5-5/.test(model))
+    return { thinking: { type: 'disabled' }, output_config: { effort: 'low' } };
+  if (/^claude-sonnet-5-5/.test(model))
+    return {
+      thinking: { type: 'between_tools' },
+      output_config: { effort: 'low' },
+      fallbacks: 'default',
+      betas: [SERVER_FALLBACK_BETA],
+    };
+  return {};
+}
 
 /** 추정 비용 (백만분의 1달러). 100만 토큰당 1달러 = 토큰당 1 */
 const LONG_PROMPT: Record<string, { over: number; input: number; output: number }> = {
@@ -109,8 +141,13 @@ const clean = (s: string) =>
     })
     .join('');
 
-/** 요청 검사. 틀리면 까닭(400 의 error) */
-export function parseChatRequest(body: unknown): AiChatRequest | { error: string } {
+/**
+ * 요청 검사. 틀리면 까닭(400 의 error). totalLimit 은 메시지 전체 글자 수 상한 (운영자 설정, 기본 AI_MAX_TOTAL_CHARS)
+ */
+export function parseChatRequest(
+  body: unknown,
+  totalLimit: number = AI_MAX_TOTAL_CHARS,
+): AiChatRequest | { error: string } {
   const b = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
   const raw = b.messages;
   if (!Array.isArray(raw) || raw.length === 0 || raw.length > AI_MAX_MESSAGES) return { error: 'messages' };
@@ -129,7 +166,7 @@ export function parseChatRequest(body: unknown): AiChatRequest | { error: string
     if (last && last.role === o.role) last.content += `\n\n${content}`;
     else messages.push({ role: o.role, content });
   }
-  if (total > AI_MAX_TOTAL_CHARS) return { error: 'too_long' };
+  if (total > totalLimit) return { error: 'too_long' };
   // 처음과 끝은 사용자 말이어야 한다 (끝이 답이면 미리 채우기라 요즘 모델은 받지 않는다)
   if (messages[0]?.role !== 'user' || messages[messages.length - 1]?.role !== 'user')
     return { error: 'messages' };

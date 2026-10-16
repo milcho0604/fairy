@@ -18,6 +18,7 @@ import {
   AI_REPORT_KEEP_DAYS,
   type AiChatRequest,
   costMicros,
+  requestShape,
   reserveMicros,
   seoulDay,
   systemPrompt,
@@ -73,16 +74,6 @@ export interface StreamRes {
 }
 
 const fail = (status: HttpStatus, body: Record<string, unknown>) => new HttpException(body, status);
-
-/** 모델마다 다른 요청 칸. Haiku 5.5 (와 같은 5.x 줄): 생각 끄기, effort low */
-export function requestShape(model: string): {
-  thinking?: { type: 'disabled' };
-  output_config?: { effort: 'low' };
-} {
-  return /^claude-haiku-5/.test(model)
-    ? { thinking: { type: 'disabled' }, output_config: { effort: 'low' } }
-    : {};
-}
 
 @Injectable()
 export class Ai implements OnModuleInit, OnModuleDestroy {
@@ -256,6 +247,11 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  /** 질문 글자 수 상한: 운영자 설정 (.env 상한 이하). 요청을 검사하기 전에 부른다 */
+  async inputLimit(): Promise<number> {
+    return (await this.admin.settings()).inputChars;
+  }
+
   /** 질문 하나를 시작한다: 검사 → 대화권 하나 빼기 → 사용량 줄(pending, 가장 큰 비용을 잡아 둠) */
   async begin(auth: AuthInfo, req: AiChatRequest): Promise<{ usageId: string; tickets: number }> {
     const ai = this.ai;
@@ -380,12 +376,12 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
     const usage: Usage = { input: 0, output: 0 };
     let delivered = false;
     try {
-      const stream = this.client(ai).messages.stream(
+      // 모델별 요청 칸(생각 끄기, effort, 서버 폴백, 베타 머리)은 ai-rules.ts requestShape 한 곳에서 고른다.
+      // 샘플링 값(temperature 등)은 보내지 않는다 (기본값이 아니면 400)
+      const stream = this.client(ai).beta.messages.stream(
         {
           model: ai.model,
           max_tokens: AI_MAX_OUTPUT_TOKENS,
-          // Haiku 5.5 는 생각이 기본으로 켜지고(adaptive) 그 토큰도 max_tokens 에 든다. 짧은 채팅이라 끄고 effort low
-          // (disabled 는 effort high 이하에서만 받는다). 샘플링 값(temperature 등)은 보내지 않는다 (기본값 아니면 400)
           ...requestShape(ai.model),
           // system 은 서버 고정 문구만. 앱이 보낸 말투는 첫 사용자 차례 앞의 참고 자료 블록으로
           system: systemPrompt(req.lang),
@@ -410,7 +406,7 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
       usage.input = final.usage.input_tokens;
       usage.output = final.usage.output_tokens;
       if (why) throw new Error(why);
-      // 안전 분류기 거절 (Haiku 5.5 는 서버 폴백이 없다): 이용권을 되돌리고 앱이 안내한다. 쓴 토큰 비용은 남긴다
+      // 안전 분류기 거절 (서버 폴백으로도 못 넘었거나 폴백이 없는 모델): 이용권을 되돌리고 앱이 안내한다. 쓴 토큰 비용은 남긴다
       if (final.stop_reason === 'refusal') {
         const tickets = await this.refund(started.usageId, usage).catch(() => undefined);
         console.warn('[ai] 거절됨 (되돌림)');

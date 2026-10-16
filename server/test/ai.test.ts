@@ -38,6 +38,8 @@ let fake: {
       string,
       unknown
     >;
+    beta: string | null;
+    violations: string[];
   }[];
   close: () => Promise<void>;
 };
@@ -185,9 +187,10 @@ before(async () => {
   ai = {
     apiKey: API_KEY,
     baseUrl: fake.url,
-    model: 'claude-haiku-5-5',
+    model: 'claude-sonnet-5-5',
     monthlyBudgetMicros: 1_000_000,
     dailyLimit: 5,
+    maxInputChars: 8000,
     giftKey: GIFT_KEY,
     firstTextMs: 2500,
     totalMs: 5000,
@@ -391,11 +394,14 @@ describe('질문 하나', () => {
     assert.equal(fake.calls.length, before + 1);
     const call = fake.calls.at(-1);
     assert.equal(call?.apiKey, API_KEY);
-    assert.equal(call?.body.model, 'claude-haiku-5-5');
+    assert.equal(call?.body.model, 'claude-sonnet-5-5');
     assert.equal(call?.body.max_tokens, 600);
-    // Haiku 5.5 (#101): 생각을 끄고 effort low, 샘플링 값은 보내지 않는다
-    assert.deepEqual(call?.body.thinking, { type: 'disabled' });
+    // Sonnet 5.5 (#103): 생각은 between_tools (끄기), effort low, 서버 거절 폴백 기본, 베타 머리, 샘플링 값 없음
+    assert.deepEqual(call?.body.thinking, { type: 'between_tools' });
     assert.deepEqual(call?.body.output_config, { effort: 'low' });
+    assert.equal(call?.body.fallbacks, 'default');
+    assert.equal(call?.beta, 'server-side-fallback-2026-07-01');
+    assert.deepEqual(call?.violations, []);
     for (const k of ['temperature', 'top_p', 'top_k']) assert.equal(call?.body[k], undefined, k);
     assert.match(String(call?.body.system), /사람이 아니라 AI/);
     // system 은 서버 고정 문구 그대로, 앱이 보낸 말투는 첫 사용자 차례 앞의 참고 자료 블록에만
@@ -405,8 +411,40 @@ describe('질문 하나', () => {
       'SELECT status, input_tokens, output_tokens, cost_micros FROM ai_usage WHERE account_id = $1',
       [await accountOf(a.session)],
     );
-    assert.deepEqual(u.rows, [{ status: 'ok', input_tokens: 120, output_tokens: 30, cost_micros: '27' }]);
+    // Sonnet 5.5: 입력 120 × 2 + 출력 30 × 10 = 540 (백만분의 1달러)
+    assert.deepEqual(u.rows, [{ status: 'ok', input_tokens: 120, output_tokens: 30, cost_micros: '540' }]);
     assert.deepEqual((await api('GET', '/v1/ai', { token: a.session })).body.usedToday, 1);
+  });
+
+  test('서버 폴백 블록이 섞인 답도 글만 보여 주고 차감한다 (fallback 블록은 글이 아니다)', async () => {
+    const a = await adult();
+    const before = fake.calls.length;
+    const r = await api('POST', '/v1/ai/chat', { token: a.session, body: ask('[[fallback]] 질문') });
+    assert.equal(r.status, 200, r.text);
+    const ev = events(r.text);
+    assert.equal(
+      ev
+        .filter((e) => e.event === 'text')
+        .map((e) => e.data.text)
+        .join(''),
+      '안녕! 나는 AI 야.',
+    );
+    assert.deepEqual(ev.at(-1), { event: 'done', data: { tickets: AI_GIFT - 1, stop: 'end_turn' } });
+    assert.equal(fake.calls.length, before + 1);
+    assert.deepEqual(fake.calls.at(-1)?.violations, []);
+  });
+
+  test('운영자가 줄인 질문 글자 수를 넘으면 400 too_long, 대화권은 그대로 (상한은 원래 값으로 되돌린다)', async () => {
+    const a = await adult();
+    await pool.query('UPDATE ai_setting SET input_chars = 50 WHERE id = 1');
+    try {
+      const r = await api('POST', '/v1/ai/chat', { token: a.session, body: ask('가'.repeat(60)) });
+      assert.equal(r.status, 400, r.text);
+      assert.equal(r.body.error, 'too_long');
+      assert.equal(await tickets(a.session), AI_GIFT);
+    } finally {
+      await pool.query('UPDATE ai_setting SET input_chars = NULL WHERE id = 1');
+    }
   });
 
   test('거절(refusal): 받은 글이 있어도 이용권을 되돌리고 error refusal', async () => {

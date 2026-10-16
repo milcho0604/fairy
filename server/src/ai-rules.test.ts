@@ -4,10 +4,13 @@ import {
   AI_MAX_MESSAGE_CHARS,
   AI_MAX_MESSAGES,
   AI_MAX_OUTPUT_TOKENS,
+  AI_MAX_TOTAL_CHARS,
   costMicros,
   parseChatRequest,
   parseReport,
+  requestShape,
   reserveMicros,
+  SERVER_FALLBACK_BETA,
   seoulDay,
   systemPrompt,
   withPersona,
@@ -63,9 +66,37 @@ test('요청: 처음과 끝은 사용자 말, 같은 쪽이 이어지면 합친�
   );
 });
 
+test('요청 모양: Sonnet 5.5 는 between_tools + effort low + 서버 폴백, Haiku 5.5 는 disabled + effort low 폴백 없음', () => {
+  assert.deepEqual(requestShape('claude-sonnet-5-5'), {
+    thinking: { type: 'between_tools' },
+    output_config: { effort: 'low' },
+    fallbacks: 'default',
+    betas: [SERVER_FALLBACK_BETA],
+  });
+  assert.deepEqual(requestShape('claude-haiku-5-5'), {
+    thinking: { type: 'disabled' },
+    output_config: { effort: 'low' },
+  });
+  // 환경 변수로 고른 다른 모델은 아무것도 더하지 않는다 (샘플링 값은 어디에도 없다)
+  assert.deepEqual(requestShape('claude-haiku-4-5'), {});
+  for (const m of ['claude-sonnet-5-5', 'claude-haiku-5-5']) {
+    assert.equal('temperature' in requestShape(m), false);
+  }
+});
+
+test('질문 글자 수 상한: 운영자 설정 값으로 검사한다 (기본 8000)', () => {
+  const body = { messages: [{ role: 'user', content: '가'.repeat(60) }], lang: 'ko' };
+  assert.deepEqual(parseChatRequest(body, 50), { error: 'too_long' });
+  assert.ok(!('error' in parseChatRequest(body, 60)));
+  assert.ok(!('error' in parseChatRequest(body)));
+  assert.equal(AI_MAX_TOTAL_CHARS, 8000);
+});
+
 test('비용: Haiku 4.5 는 100만 토큰당 1, 5 달러, 모르는 모델은 가장 비싼 값', () => {
   assert.equal(costMicros('claude-haiku-4-5', 2000, 300), 3500);
   assert.equal(costMicros('claude-unknown', 1, 1), 60);
+  // Sonnet 5.5 (#103): $2 / $10
+  assert.equal(costMicros('claude-sonnet-5-5', 2000, 600), 10000);
   // Haiku 5.5 (#101): $0.10 / $0.50, 프롬프트가 10만 토큰을 넘으면 $0.50 / $2.50
   assert.equal(costMicros('claude-haiku-5-5', 2000, 600), 500);
   assert.equal(costMicros('claude-haiku-5-5', 100_001, 600), Math.ceil(100_001 * 0.5 + 600 * 2.5));

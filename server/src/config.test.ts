@@ -44,13 +44,14 @@ test('구글 로그인은 클라이언트 번호와 비밀이 둘 다 있어야 
   );
 });
 
-test('AI 대화권: 기본은 공식 주소와 Haiku, 월 80달러, 하루 20번. 주소는 https 만, 모델 이름 검사', () => {
+test('AI 대화권: 기본은 공식 주소와 Sonnet 5.5, 월 80달러, 하루 20번, 질문 8000자. 주소는 https 만, 모델 이름 검사', () => {
   assert.deepEqual(readConfig({ DATABASE_URL: 'postgres://x' }).ai, {
     apiKey: '',
     baseUrl: 'https://api.anthropic.com',
-    model: 'claude-haiku-5-5',
+    model: 'claude-sonnet-5-5',
     monthlyBudgetMicros: 80_000_000,
     dailyLimit: 20,
+    maxInputChars: 8000,
     giftKey: '',
   });
   assert.deepEqual(
@@ -61,6 +62,7 @@ test('AI 대화권: 기본은 공식 주소와 Haiku, 월 80달러, 하루 20번
       ANTHROPIC_MODEL: 'claude-sonnet-5-5',
       AI_MONTHLY_BUDGET_USD: '0.5',
       AI_DAILY_LIMIT: '3',
+      AI_MAX_INPUT_CHARS: '1200',
       GIFT_HMAC_KEY: ' g ',
     }).ai,
     {
@@ -69,6 +71,7 @@ test('AI 대화권: 기본은 공식 주소와 Haiku, 월 80달러, 하루 20번
       model: 'claude-sonnet-5-5',
       monthlyBudgetMicros: 500_000,
       dailyLimit: 3,
+      maxInputChars: 1200,
       giftKey: 'g',
     },
   );
@@ -77,6 +80,8 @@ test('AI 대화권: 기본은 공식 주소와 Haiku, 월 80달러, 하루 20번
   assert.throws(() => readConfig({ ...env, ANTHROPIC_MODEL: 'bad model' }), /ANTHROPIC_MODEL/);
   assert.throws(() => readConfig({ ...env, AI_DAILY_LIMIT: '1.5' }), /AI_DAILY_LIMIT/);
   assert.throws(() => readConfig({ ...env, AI_MONTHLY_BUDGET_USD: '-1' }), /AI_MONTHLY_BUDGET_USD/);
+  assert.throws(() => readConfig({ ...env, AI_MAX_INPUT_CHARS: '0' }), /AI_MAX_INPUT_CHARS/);
+  assert.throws(() => readConfig({ ...env, AI_MAX_INPUT_CHARS: '2.5' }), /AI_MAX_INPUT_CHARS/);
 });
 
 test('운영자 화면은 ADMIN_TOKEN 이 32자 이상일 때만, 최신 릴리스 주소는 https 만', () => {
