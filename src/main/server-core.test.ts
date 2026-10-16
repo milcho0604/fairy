@@ -64,7 +64,21 @@ function fakeServer() {
     backupFull: false,
     /** 기능 키 coin_reset (#102) */
     coinReset: false,
+    /** 기능 키 calendar_link_hint 와 구글 일정 연결 표시 (#115): 이 기기가 올린 값, 다른 기기에서 연결한 수 */
+    calendarHint: true,
+    calendarHere: false,
+    calendarOthers: 0,
+    calendarDelayMs: 0,
+    calendarInFlight: 0,
+    calendarMaxInFlight: 0,
   };
+  const calendarBody = () =>
+    s.calendarHint
+      ? {
+          linked: s.calendarOthers + (s.calendarHere ? 1 : 0) > 0,
+          devices: s.calendarOthers + (s.calendarHere ? 1 : 0),
+        }
+      : null;
   const reply = (status: number, body?: unknown) =>
     new Response(body === undefined ? null : JSON.stringify(body), {
       status,
@@ -77,7 +91,9 @@ function fakeServer() {
     const auth = (init.headers as Record<string, string>).authorization?.slice(7);
     if (u.pathname === '/v1/features') {
       if (s.down) throw new TypeError('fetch failed');
-      return reply(200, { features: { coin_reset: s.coinReset, kakao_login: false } });
+      return reply(200, {
+        features: { coin_reset: s.coinReset, kakao_login: false, calendar_link_hint: s.calendarHint },
+      });
     }
     if (u.pathname === '/v1/auth/providers') {
       s.providerCalls++;
@@ -157,6 +173,7 @@ function fakeServer() {
       out = reply(200, {
         account: { code: 'F-ABCD-1234', nickname: s.nickname },
         admin: s.admin && s.sessions.has(auth ?? ''),
+        calendar: calendarBody(),
       });
     } else if (u.pathname === '/v1/claim') {
       const id = String(body?.event);
@@ -197,7 +214,19 @@ function fakeServer() {
       }
     } else if (u.pathname === '/v1/account' && init.method === 'PATCH') {
       if (s.patchFail) out = reply(503, { error: 'down' });
-      else {
+      else if (typeof body?.calendarLinked === 'boolean') {
+        if (auth !== s.deviceToken) out = reply(400, { error: 'device_token' });
+        else if (body.calendarLinked && !s.calendarHint) out = reply(403, { error: 'feature_off' });
+        else {
+          // 빠른 되풀이 시험: 동시에 들어온 수를 세고, 대답을 잠깐 미룬다
+          s.calendarInFlight++;
+          s.calendarMaxInFlight = Math.max(s.calendarMaxInFlight, s.calendarInFlight);
+          await new Promise((r) => setTimeout(r, s.calendarDelayMs));
+          s.calendarInFlight--;
+          s.calendarHere = body.calendarLinked;
+          out = reply(200, { account: { id: 1, code: 'F-ABCD-1234' }, calendar: calendarBody() });
+        }
+      } else {
         if (body?.age !== undefined) s.age = String(body?.age);
         if (typeof body?.nickname === 'string') s.nickname = body.nickname;
         out = reply(200, { account: { id: 1, age: s.age, code: 'F-ABCD-1234', nickname: s.nickname } });
@@ -293,7 +322,9 @@ function fakeServer() {
   return { s, fetch };
 }
 
-function setup(o: { url?: string; coins?: number; state?: Partial<ServerState> } = {}) {
+function setup(
+  o: { url?: string; coins?: number; state?: Partial<ServerState>; calendar?: { linked: boolean } } = {},
+) {
   const db = new DatabaseSync(':memory:') as unknown as Db;
   migrate(db);
   const todos = new TodoStore(db, day);
@@ -353,6 +384,7 @@ function setup(o: { url?: string; coins?: number; state?: Partial<ServerState> }
     onCoins: () => {},
     onReverted: (list) => reverted.push(list),
     onInbox: (n) => inboxCalls.push(n),
+    ...(o.calendar ? { calendarLinked: () => o.calendar?.linked ?? false } : {}),
     backupFile: {
       make: async () => backupBytes,
       open: async (bytes) => {
@@ -1179,4 +1211,193 @@ test('서버 백업: 올리기와 받기가 끝나 돌려준 상태는 busy 가 
   const fail = await x.core.backupUpload();
   assert.equal(fail.error, 'offline');
   assert.equal(fail.status?.backup?.busy, null);
+});
+
+// ---- #115: 같은 계정의 기기끼리 구글 일정 연결 이어 주기 ----
+
+const calendarPatches = (x: ReturnType<typeof setup>) =>
+  x.server.calls.filter(
+    (c) => c.path === '/v1/account' && (c.body as { calendarLinked?: unknown })?.calendarLinked !== undefined,
+  );
+
+test('다른 기기에서 연결했고 이 기기는 아직이면 안내, 거절하면 이 기기에서는 다시 묻지 않는다 (#115)', async () => {
+  const cal = { linked: false };
+  const x = setup({ calendar: cal });
+  x.server.calendarOthers = 1;
+  x.core.setAge('adult');
+  await x.core.run();
+  assert.equal(x.core.status().calendarHint, false, '로그인 전에는 안내하지 않는다');
+  assert.equal(calendarPatches(x).length, 0, '로그인 전에는 올리지 않는다');
+  await signedIn(x);
+  assert.equal(x.core.status().calendarHint, true);
+  // 연결하지 않은 기기는 거짓을 올리지 않아도 된다 (처음 값이 거짓이라 한 번만 올린다)
+  assert.equal(calendarPatches(x).length, 1);
+  assert.equal(x.server.calendarHere, false);
+  await x.core.run();
+  assert.equal(calendarPatches(x).length, 1, '같은 값은 다시 보내지 않는다');
+  x.core.calendarHintNo();
+  assert.equal(x.core.status().calendarHint, false);
+  assert.equal(x.saved()?.calendarHintNo, true);
+  await x.core.run();
+  assert.equal(x.core.status().calendarHint, false, '다시 묻지 않는다');
+});
+
+test('이 기기가 연결하면 기기 토큰으로 참을 올리고 안내가 사라진다, 끊으면 거짓 (#115)', async () => {
+  const cal = { linked: false };
+  const x = setup({ calendar: cal });
+  x.server.calendarOthers = 1;
+  await signedIn(x);
+  assert.equal(x.core.status().calendarHint, true);
+  cal.linked = true;
+  await x.core.calendarChanged();
+  const last = calendarPatches(x).at(-1);
+  assert.deepEqual(last?.body, { calendarLinked: true });
+  assert.equal(last?.auth, x.secrets.device, '기기 토큰으로 (서버가 기기마다 센다)');
+  assert.equal(x.server.calendarHere, true);
+  assert.equal(x.core.status().calendarHint, false);
+  // 다른 기기가 모두 끊고 이 기기만 남아도 안내는 없다 (이 기기 몫은 뺀다)
+  x.server.calendarOthers = 0;
+  cal.linked = false;
+  await x.core.calendarChanged();
+  assert.equal(x.server.calendarHere, false);
+  assert.equal(x.core.status().calendarHint, false);
+});
+
+test('이 기기 몫만 남은 서버 수로는 안내하지 않는다 (올린 참을 아직 못 고쳤을 때) (#115)', async () => {
+  const cal = { linked: true };
+  const x = setup({ calendar: cal });
+  await signedIn(x);
+  assert.equal(x.server.calendarHere, true);
+  // 끊었는데 서버가 내려가 거짓을 못 올렸다: 서버 수 1 은 이 기기 몫이다
+  x.server.patchFail = true;
+  cal.linked = false;
+  await x.core.calendarChanged();
+  assert.equal(x.core.status().calendarHint, false);
+  x.server.patchFail = false;
+  await x.core.run();
+  assert.equal(x.server.calendarHere, false, '다음 맞추기 때 다시 올린다');
+});
+
+test('기능 키가 꺼져 있으면 참을 올리지도 안내하지도 않는다, 끄기는 올린다 (#115)', async () => {
+  const cal = { linked: true };
+  const x = setup({ calendar: cal });
+  x.server.calendarHint = false;
+  x.server.calendarOthers = 1;
+  await signedIn(x);
+  assert.equal(calendarPatches(x).length, 0);
+  assert.equal(x.core.status().calendarHint, false);
+  // 켜져 있을 때 올린 참은 기능 키가 꺼져도 끊으면 거짓으로 고친다
+  x.server.calendarHint = true;
+  await x.core.refreshProviders(true);
+  await x.core.calendarChanged();
+  assert.equal(x.server.calendarHere, true);
+  x.server.calendarHint = false;
+  await x.core.refreshProviders(true);
+  cal.linked = false;
+  await x.core.calendarChanged();
+  assert.equal(x.server.calendarHere, false);
+  assert.equal(x.core.status().calendarHint, false);
+});
+
+test('만 14세 미만, 서버 주소 없음, 로그아웃이면 아무것도 하지 않는다 (#115)', async () => {
+  const none = setup({ url: '', calendar: { linked: true } });
+  none.core.setAge('adult');
+  await none.core.calendarChanged();
+  assert.equal(none.server.calls.length, 0);
+  assert.equal(none.core.status().calendarHint, false);
+  const x = setup({ calendar: { linked: false } });
+  x.server.calendarOthers = 1;
+  await signedIn(x);
+  assert.equal(x.core.status().calendarHint, true);
+  await x.core.logout();
+  assert.equal(x.core.status().calendarHint, false, '로그아웃하면 안내도 없다');
+  const before = calendarPatches(x).length;
+  await x.core.calendarChanged();
+  assert.equal(calendarPatches(x).length, before);
+  const y = setup({ calendar: { linked: false } });
+  y.server.calendarOthers = 1;
+  await signedIn(y);
+  y.core.setAge('under14');
+  assert.equal(y.core.status().calendarHint, false);
+  const n = y.server.calls.length;
+  await y.core.calendarChanged();
+  await y.core.run();
+  assert.equal(y.server.calls.length, n, '만 14세 미만으로 바꾼 뒤에는 보내지 않는다');
+});
+
+test('상태 파일: 거절과 올린 값은 남고, 모양이 틀리면 처음 값 (#115)', () => {
+  assert.equal(parseState({ calendarSent: true, calendarHintNo: true }).calendarSent, true);
+  assert.equal(parseState({ calendarHintNo: true }).calendarHintNo, true);
+  assert.equal(parseState({ calendarSent: 'yes', calendarHintNo: 1 }).calendarSent, null);
+  assert.equal(parseState({ calendarHintNo: 1 }).calendarHintNo, false);
+});
+
+test('로그아웃한 뒤 끊어도 기기 토큰으로 거짓을 올린다 (QA #122: 다른 기기에 안내가 남았다) (#115)', async () => {
+  const cal = { linked: true };
+  const x = setup({ calendar: cal });
+  await signedIn(x);
+  assert.equal(x.server.calendarHere, true);
+  await x.core.logout();
+  assert.equal(x.server.calendarHere, true, '로그아웃만으로는 표시를 지우지 않는다 (같은 계정의 기기)');
+  cal.linked = false;
+  await x.core.calendarChanged();
+  await x.core.run();
+  assert.equal(x.server.calendarHere, false);
+  // 로그아웃한 동안 다시 연결해도 켜기는 로그인한 뒤에만
+  cal.linked = true;
+  await x.core.calendarChanged();
+  assert.equal(x.server.calendarHere, false);
+});
+
+test('세션이 끝난(401) 뒤 끊어도 거짓을 올린다 (QA #122) (#115)', async () => {
+  const cal = { linked: true };
+  const x = setup({ calendar: cal });
+  await signedIn(x);
+  x.server.sessions.clear();
+  await x.core.run();
+  cal.linked = false;
+  await x.core.calendarChanged();
+  await x.core.run();
+  assert.equal(x.server.calendarHere, false);
+});
+
+test('연결과 끊기를 빠르게 되풀이해도 한 번에 하나만 보내고 마지막 값이 남는다 (QA #122) (#115)', async () => {
+  const cal = { linked: false };
+  const x = setup({ calendar: cal });
+  await signedIn(x);
+  x.server.calendarDelayMs = 20;
+  const runs: Promise<void>[] = [];
+  for (const v of [true, false, true, false, true]) {
+    cal.linked = v;
+    runs.push(x.core.calendarChanged());
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  await Promise.all(runs);
+  await x.core.calendarChanged();
+  assert.equal(x.server.calendarMaxInFlight, 1, '동시에 둘 이상 보내지 않는다');
+  assert.equal(x.server.calendarHere, true, '마지막 값');
+  assert.equal(x.saved()?.calendarSent, true);
+  cal.linked = false;
+  const a = x.core.calendarChanged();
+  cal.linked = true;
+  const b = x.core.calendarChanged();
+  cal.linked = false;
+  await Promise.all([a, b, x.core.calendarChanged()]);
+  assert.equal(x.server.calendarHere, false);
+  assert.equal(x.server.calendarMaxInFlight, 1);
+});
+
+test('만 14세 미만으로 바꾸면 끄기 전에 거짓을 올리고, 그 뒤로는 보내지 않는다 (#115)', async () => {
+  const cal = { linked: true };
+  const x = setup({ calendar: cal });
+  await signedIn(x);
+  assert.equal(x.server.calendarHere, true);
+  x.core.setAge('under14');
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(x.server.calendarHere, false, '끄기 전에 보낸 거짓');
+  const n = x.server.calls.length;
+  cal.linked = false;
+  await x.core.calendarChanged();
+  await x.core.run();
+  assert.equal(x.server.calls.length, n, '끈 뒤에는 보내지 않는다');
 });

@@ -412,7 +412,7 @@ async function apiLayer() {
   const kb = await newUser();
   const begin = (token) => api('POST', '/v1/auth/kakao/begin', { token, body: { port: '5000', state: appState(), challenge: challengeOf(verifierNew()) } });
   check(KK, 'off: begin(세션) → 503 feature_off', ((r) => r.status === 503 && r.json?.error === 'feature_off')(await begin(ka.session)));
-  check(KK, 'off: GET /v1/features → kakao_login false, coin_reset false', JSON.stringify((await api('GET', '/v1/features', { token: ka.session })).json) === '{"features":{"kakao_login":false,"coin_reset":false}}');
+  check(KK, 'off: GET /v1/features → kakao_login false, coin_reset false', JSON.stringify((await api('GET', '/v1/features', { token: ka.session })).json) === '{"features":{"kakao_login":false,"coin_reset":false,"calendar_link_hint":false}}');
   // allowlist (운영자 폼)
   const fm = await setFeature('kakao_login', 'allowlist');
   const fa = await allowFeature('kakao_login', ka.id);

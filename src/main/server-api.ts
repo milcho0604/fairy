@@ -41,6 +41,21 @@ export interface ProfileInfo {
   nickname: string | null;
 }
 
+/** 같은 계정 기기들의 구글 일정 연결 표시 (#115). 서버에는 토큰 없이 연결한 기기 수만 있다 */
+export interface CalendarLinkInfo {
+  linked: boolean;
+  devices: number;
+}
+
+/** 서버의 calendar 칸. 기능 키가 꺼져 있으면 서버가 null 을 준다 (모르는 모양도 null) */
+export function calendarOf(v: unknown): CalendarLinkInfo | null {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  const devices = nat(o.devices);
+  if (typeof o.linked !== 'boolean' || devices === undefined) return null;
+  return { linked: o.linked, devices };
+}
+
 /** 선물 받기와 쿠폰의 결과 (#101) */
 export interface RewardResult {
   balance: number;
@@ -446,12 +461,22 @@ export function serverApi(base: string, f: FetchLike) {
       aiChat(base, f, token, body, onText, signal),
     /** 내 계정: 기기 코드, 닉네임, 운영자인지 (#101). 서버가 매번 다시 본다 */
     me: (token: string) =>
-      call<{ profile: ProfileInfo; admin: boolean }>('GET', '/v1/me', {
+      call<{ profile: ProfileInfo; admin: boolean; calendar: CalendarLinkInfo | null }>('GET', '/v1/me', {
         token,
         read: (j) => {
           const profile = profileOf(j.account);
-          return profile ? { profile, admin: j.admin === true } : undefined;
+          return profile ? { profile, admin: j.admin === true, calendar: calendarOf(j.calendar) } : undefined;
         },
+      }),
+    /**
+     * 이 기기가 구글 일정을 연결했나 (#115). 기기마다 세므로 기기 토큰으로만. 켜기는 기능 키가 켜진 계정만
+     * (아니면 403 feature_off). 대답은 계정의 연결 표시 (기능 키가 꺼져 있으면 null)
+     */
+    setCalendarLinked: (deviceToken: string, linked: boolean) =>
+      call<{ calendar: CalendarLinkInfo | null }>('PATCH', '/v1/account', {
+        token: deviceToken,
+        body: { calendarLinked: linked },
+        read: (j) => ({ calendar: calendarOf(j.calendar) }),
       }),
     /** 닉네임 바꾸기 (#101). 틀리면 400 nickname 과 reason */
     setNickname: (token: string, nickname: string) =>

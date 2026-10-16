@@ -66,7 +66,14 @@ export class AccountController {
     private readonly limiter: RateLimiter,
     private readonly access: AdminAccess,
     private readonly backups: Backups,
+    private readonly features: Features,
   ) {}
+
+  /** 구글 일정 연결 표시 (#115). 기능 키 calendar_link_hint 가 이 계정에 꺼져 있으면 null (앱은 안내하지 않는다) */
+  private async calendar(accountId: string) {
+    if (!(await this.features.featureAllowed('calendar_link_hint', accountId))) return null;
+    return this.accounts.calendarOf(accountId);
+  }
 
   /** 이름 없는 기기 계정 + 기기 토큰. 나이 구분은 '14+' 또는 '18+' 만 (만 14세 미만은 앱이 보내지 않는다) */
   @Post('device')
@@ -83,32 +90,52 @@ export class AccountController {
   }
 
   /**
-   * 나이 구분이나 닉네임 바꾸기 (둘 중 하나 이상). 기기 토큰과 세션 모두. 14세 미만 값은 400 (앱은 탈퇴를 안내한다).
-   * 닉네임은 2~12자, 제어 문자, @, 주소 금지 (400 nickname, reason)
+   * 나이 구분, 닉네임, 구글 일정 연결 표시 바꾸기 (하나 이상). 기기 토큰과 세션 모두. 14세 미만 값은 400 (앱은 탈퇴를 안내한다).
+   * 닉네임은 2~12자, 제어 문자, @, 주소 금지 (400 nickname, reason).
+   * calendarLinked (#115): 이 기기가 구글 일정을 연결했나 (true/false). 기기마다 세므로 기기 토큰으로만 (세션은 400 device_token).
+   * 켜기(true)는 기능 키 calendar_link_hint 가 켜진 계정만 (아니면 403 feature_off), 끄기(false)는 언제나 받는다:
+   * 기능을 끈 뒤에 연결을 끊어도 표시가 남지 않게. 대답의 calendar 는 /v1/me 와 같다
    */
   @Patch('account')
   @UseGuards(AuthGuard)
   @HttpCode(200)
   async age(@Auth() auth: AuthInfo, @Body() body: unknown) {
-    const b = (body ?? {}) as { age?: unknown; nickname?: unknown };
-    if (b.age === undefined && b.nickname === undefined) throw new BadRequestException({ error: 'age' });
+    const b = (body ?? {}) as { age?: unknown; nickname?: unknown; calendarLinked?: unknown };
+    if (b.age === undefined && b.nickname === undefined && b.calendarLinked === undefined)
+      throw new BadRequestException({ error: 'age' });
     if (b.age !== undefined && !isAge(b.age)) throw new BadRequestException({ error: 'age' });
+    if (b.calendarLinked !== undefined) {
+      if (typeof b.calendarLinked !== 'boolean') throw new BadRequestException({ error: 'calendar' });
+      if (!auth.deviceId) throw new BadRequestException({ error: 'device_token' });
+      if (b.calendarLinked && !(await this.features.featureAllowed('calendar_link_hint', auth.accountId)))
+        throw new HttpException({ error: 'feature_off' }, HttpStatus.FORBIDDEN);
+    }
     const nickname = b.nickname === undefined ? undefined : readNickname(b.nickname, false);
     if (nickname) await this.accounts.setNickname(auth.accountId, nickname);
     const a = isAge(b.age) ? await this.accounts.setAge(auth.accountId, b.age) : undefined;
+    if (typeof b.calendarLinked === 'boolean' && auth.deviceId)
+      await this.accounts.setCalendarLinked(auth.deviceId, b.calendarLinked);
     const p = await this.accounts.profile(auth.accountId);
-    return { account: { id: Number(a?.id ?? auth.accountId), ...(a ? { age: a.age } : {}), ...p } };
+    return {
+      account: { id: Number(a?.id ?? auth.accountId), ...(a ? { age: a.age } : {}), ...p },
+      calendar: await this.calendar(auth.accountId),
+    };
   }
 
   /**
    * 내 계정: 기기 코드, 닉네임, 운영자인지. 운영자는 ADMIN_GOOGLE_SUBS 의 구글 로그인이 붙은 계정의 세션만
-   * (기기 토큰은 언제나 false). 매번 DB 로 다시 본다
+   * (기기 토큰은 언제나 false). 매번 DB 로 다시 본다.
+   * calendar (#115): 이 계정의 기기 중 구글 일정을 연결한 기기가 있나 { linked, devices }. 기능 키가 꺼져 있으면 null
    */
   @Get('me')
   @UseGuards(AuthGuard)
   async me(@Auth() auth: AuthInfo) {
     const p = await this.accounts.profile(auth.accountId);
-    return { account: p, admin: await this.access.isAdmin(auth) };
+    return {
+      account: p,
+      admin: await this.access.isAdmin(auth),
+      calendar: await this.calendar(auth.accountId),
+    };
   }
 
   /** 로그아웃: 이 세션만 지운다. 세션 토큰으로만 */

@@ -716,6 +716,7 @@ describe('코인 초기화 기능 키와 서버 백업 전체 상한', () => {
     assert.deepEqual((await api('GET', '/v1/features', { token: d })).body.features, {
       kakao_login: false,
       coin_reset: false,
+      calendar_link_hint: false,
     });
   });
 

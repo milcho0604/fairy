@@ -345,6 +345,7 @@ if (kind === 'settings') {
     backupUpload: () => ipcRenderer.invoke(SERVER.backupUpload),
     backupDownload: (id) => ipcRenderer.invoke(SERVER.backupDownload, id),
     backupDelete: (id) => ipcRenderer.invoke(SERVER.backupDelete, id),
+    calendarHintNo: () => ipcRenderer.invoke(SERVER.calendarHintNo),
   };
   contextBridge.exposeInMainWorld('jjakkungServer', server);
   // 이벤트 목록 (#101): 홈페이지 정적 파일이라 서버 없이도 보인다

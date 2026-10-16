@@ -19,6 +19,24 @@ export function GoogleCalendarBox({ onMsg }: { onMsg: (m: string) => void }) {
   const [busy, setBusy] = useState(false);
   // 구글 캘린더 옵션 창 (연결 직후 자동으로, "캘린더 고르기"로)
   const [picking, setPicking] = useState(false);
+  // 같은 계정의 다른 기기에서 구글 일정을 연결했다는 안내 (#115). 서버 칸 상태에서 온다 (서버 주소가 없으면 늘 false)
+  const [hint, setHint] = useState(false);
+
+  useEffect(() => {
+    const srv = window.jjakkungServer;
+    if (!srv) return;
+    let live = true;
+    void srv.status().then((v) => {
+      if (live && v) setHint(v.calendarHint);
+    });
+    const off = srv.onChanged((v) => {
+      if (live) setHint(v.calendarHint);
+    });
+    return () => {
+      live = false;
+      off();
+    };
+  }, []);
 
   useEffect(() => {
     let live = true;
@@ -100,10 +118,24 @@ export function GoogleCalendarBox({ onMsg }: { onMsg: (m: string) => void }) {
         <small className="gcal-one-way">{t(twoWay ? 'gcal.twoWay' : 'gcal.oneWay')}</small>
         {!s.connected ? (
           <>
+            {hint && <small className="toggle-note gcal-link-hint">{t('gcal.linkHint')}</small>}
             <div className="action-row">
               <button type="button" className="ghost" disabled={s.connecting || busy} onClick={connect}>
                 {t('gcal.connect')}
               </button>
+              {hint && !s.connecting && (
+                <button
+                  type="button"
+                  className="link gcal-link-hint-no"
+                  onClick={() =>
+                    void window.jjakkungServer
+                      ?.calendarHintNo()
+                      .then((v) => setHint(v?.calendarHint ?? false))
+                  }
+                >
+                  {t('gcal.linkHintNo')}
+                </button>
+              )}
               {s.connecting && (
                 <button type="button" className="link" onClick={() => gcal().cancel()}>
                   {t('gcal.cancel')}

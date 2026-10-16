@@ -135,10 +135,15 @@ export interface ServerStatus {
   backup: ServerBackupView | null;
   /** 서버가 알려 준 이 계정의 기능 키 (GET /v1/features). 서버 모드가 아니거나 아직 모르면 null */
   features: Record<string, boolean> | null;
+  /**
+   * 같은 계정의 다른 기기에서 구글 일정을 연결했는데 이 기기는 아직이다 (#115): 캘린더 칸에 "이 기기도 연결할까?"를 보인다.
+   * 로그인, 서버 모드, 기능 키 calendar_link_hint 가 켜졌을 때만. 이 기기에서 거절했으면 다시 묻지 않는다
+   */
+  calendarHint: boolean;
 }
 
 /** 앱이 서버에 묻는 기능 키 (server/src/features.ts 와 같은 이름) */
-export type AppFeature = 'coin_reset';
+export type AppFeature = 'coin_reset' | 'calendar_link_hint';
 
 /**
  * 기능 키가 켜졌나. 앱의 기본값은 여기 한 곳: 서버 주소가 없거나, 만 14세 미만(앱 안 모드)이거나, 서버 모드를 껐거나,
@@ -198,6 +203,8 @@ export const SERVER = {
   backupUpload: 'server:backup-upload',
   backupDownload: 'server:backup-download',
   backupDelete: 'server:backup-delete',
+  /** 다른 기기의 구글 일정 연결 안내를 이 기기에서 거절 (#115) */
+  calendarHintNo: 'server:calendar-hint-no',
 } as const;
 
 /** 설정 창이 부르는 것 (preload 가 window.jjakkungServer 로 연다) */
@@ -240,4 +247,6 @@ export interface ServerBridge {
   /** 받아서 되살리기 확인 칸을 연다 (바꾸기는 그 칸에서) */
   backupDownload(id: number): Promise<ServerBackupResult>;
   backupDelete(id: number): Promise<ServerBackupResult>;
+  /** 다른 기기의 구글 일정 연결 안내: 이 기기에서는 다시 묻지 않는다 (#115) */
+  calendarHintNo(): Promise<ServerStatus | undefined>;
 }

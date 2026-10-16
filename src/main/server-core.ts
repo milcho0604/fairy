@@ -23,7 +23,14 @@ import {
   type ServerProblem,
   type ServerStatus,
 } from '../shared/server-account.ts';
-import type { AiChatBody, AiChatOutcome, ApiResult, BackupList, ServerApi } from './server-api.ts';
+import type {
+  AiChatBody,
+  AiChatOutcome,
+  ApiResult,
+  BackupList,
+  CalendarLinkInfo,
+  ServerApi,
+} from './server-api.ts';
 import { BACKUP_MAX_BYTES, mergeNeeded, SYNC_BATCH, summary } from './server-api.ts';
 import { type CoinQueue, emptyQueue, type QueueEntry, type Reverted, revertable } from './server-coins.ts';
 
@@ -65,6 +72,13 @@ export interface ServerState {
   logins: LoginService[];
   /** 서버 백업의 민감정보 안내에 따로 동의했다 (이 컴퓨터에서, #102) */
   backupAgreed: boolean;
+  /**
+   * 이 기기의 구글 일정 연결 표시를 서버가 받은 값 (#115). 모르면(아직 안 보냄, 새 기기 계정) null.
+   * 토큰은 보내지 않는다: 연결했나 참거짓만
+   */
+  calendarSent: boolean | null;
+  /** 다른 기기의 구글 일정 연결 안내를 이 기기에서 거절했다 (다시 묻지 않는다, 기기 단위) */
+  calendarHintNo: boolean;
 }
 
 /** 채팅 이용권 접근: 됨, 전체 꺼짐, 허용 목록에 없음, 이 계정만 막힘 */
@@ -93,6 +107,8 @@ export function freshState(): ServerState {
     subscription: null,
     logins: [],
     backupAgreed: false,
+    calendarSent: null,
+    calendarHintNo: false,
   };
 }
 
@@ -163,6 +179,8 @@ export function parseState(raw: unknown): ServerState {
     };
   if (Array.isArray(raw.logins)) s.logins = [...new Set(raw.logins.filter(isLoginService))];
   s.backupAgreed = raw.backupAgreed === true;
+  if (typeof raw.calendarSent === 'boolean') s.calendarSent = raw.calendarSent;
+  s.calendarHintNo = raw.calendarHintNo === true;
   return s;
 }
 
@@ -235,6 +253,11 @@ export interface ServerCoreDeps {
     make(): Promise<Uint8Array>;
     open(bytes: Uint8Array): Promise<{ ok: boolean; message: string }>;
   };
+  /**
+   * 이 기기가 구글 일정을 연결했나 (#115, main/gcal.ts). 없으면 연결 표시를 올리지도 안내하지도 않는다.
+   * 연결이 바뀌면 메인이 calendarChanged() 를 부른다
+   */
+  calendarLinked?: () => boolean;
 }
 
 const b64url = (b: Uint8Array) => Buffer.from(b).toString('base64url');
@@ -262,6 +285,8 @@ export function createServerCore(d: ServerCoreDeps) {
   let backups: BackupList | null = null;
   let backupOff = false;
   let backupBusy: 'up' | 'down' | null = null;
+  /** 서버가 알려 준 이 계정의 구글 일정 연결 표시 (#115, 이 기기 몫 포함). 모르거나 기능 키가 꺼져 있으면 null */
+  let calendar: CalendarLinkInfo | null = null;
 
   const enabled = () => d.api !== undefined;
   /** 서버 모드를 켰다 (나이 답과 켬. 열쇠 문제는 blocked) */
@@ -277,6 +302,20 @@ export function createServerCore(d: ServerCoreDeps) {
   const aiAvailable = () => aiEligible() && st.aiAccess === 'ok';
   /** 운영자 계정인가 (#101): 세션이 있고 서버가 운영자라고 했다 */
   const isAdmin = () => allowed() && !!d.session.get() && st.admin;
+
+  /**
+   * 다른 기기에서 구글 일정을 연결했는데 이 기기는 아직인가 (#115). 서버 수에서 이 기기 몫(올린 값이 참이면 1)을 뺀다.
+   * 로그인(세션), 서버 모드, 기능 키, 이 기기에서 거절하지 않음이 모두 맞을 때만
+   */
+  const calendarHint = (): boolean =>
+    allowed() &&
+    !!d.session.get() &&
+    !!d.calendarLinked &&
+    features?.calendar_link_hint === true &&
+    !st.calendarHintNo &&
+    !d.calendarLinked() &&
+    !!calendar &&
+    calendar.devices - (st.calendarSent === true ? 1 : 0) > 0;
 
   function status(): ServerStatus {
     const device = !!d.device.get();
@@ -316,6 +355,7 @@ export function createServerCore(d: ServerCoreDeps) {
               busy: backupBusy,
             }
           : null,
+      calendarHint: calendarHint(),
     };
   }
 
@@ -356,7 +396,10 @@ export function createServerCore(d: ServerCoreDeps) {
       logins: [],
       // 서버 백업 동의는 그 계정에 준 것이다: 탈퇴하면 거둔다
       backupAgreed: false,
+      // 기기 계정이 없어졌다: 연결 표시는 새 기기 계정에 다시 올린다 (거절은 기기 단위라 그대로)
+      calendarSent: null,
     };
+    calendar = null;
     st.coins.queue = [];
     save();
   }
@@ -406,7 +449,9 @@ export function createServerCore(d: ServerCoreDeps) {
       code: null,
       admin: false,
       inbox: 0,
+      calendarSent: null,
     };
+    calendar = null;
     st.coins.queue = [];
     try {
       d.session.set(null);
@@ -461,10 +506,66 @@ export function createServerCore(d: ServerCoreDeps) {
       const was = st.admin;
       st.admin = r.data.admin;
       st.code = r.data.profile.code;
+      calendar = r.data.calendar;
       if (!st.nicknamePending) st.nickname = r.data.profile.nickname ?? st.nickname;
       save();
       if (was !== st.admin) d.log('server', '운영자', st.admin);
     } else if (r.status === 401) onUnauthorized();
+  }
+
+  /**
+   * 이 기기의 구글 일정 연결 표시를 서버에 올린다 (#115). 기기 토큰으로 (서버가 기기마다 센다).
+   * - 켜기: 로그인(세션)했고 기능 키가 켜졌을 때만
+   * - 끄기: 올린 참이 있으면 기기 토큰만으로 (로그아웃, 세션 만료 뒤에 끊어도, 기능 키가 꺼져도 표시가 남지 않게.
+   *   QA #122: 남은 참 때문에 다른 기기에 안내가 계속 떴다). 처음 값(null)을 거짓으로 맞추는 것은 로그인했을 때만
+   * 보낼 것이 있었으면 true
+   */
+  async function calendarStep(): Promise<boolean> {
+    const dev = d.device.get();
+    if (!d.api || !dev || !allowed() || !d.calendarLinked) return false;
+    const here = d.calendarLinked();
+    const signed = !!d.session.get();
+    const on = features?.calendar_link_hint === true;
+    const send = here
+      ? signed && on && st.calendarSent !== true
+      : st.calendarSent === true || (signed && on && st.calendarSent === null);
+    if (!send) return false;
+    const r = await d.api.setCalendarLinked(dev, here);
+    if (r.ok) {
+      st.calendarSent = here;
+      calendar = r.data.calendar;
+      save();
+      d.log('server', '구글 일정 연결 표시 올림', here);
+      return true;
+    }
+    if (r.status === 401) onUnauthorized();
+    else d.log('server', '구글 일정 연결 표시 못 올림', r.status, r.error);
+    return false;
+  }
+
+  /** 도는 연결 표시 올리기 (한 번에 하나), 그사이 다시 보라는 요청이 왔다 */
+  let calendarRun: Promise<void> | null = null;
+  let calendarDirty = false;
+
+  /**
+   * 연결 표시 올리기를 한 줄로 세운다: 연결과 끊기를 빠르게 되풀이해도 한 번에 하나만 보내고, 보내는 사이 값이 바뀌었으면
+   * 끝난 뒤 지금 값으로 다시 본다 (늦게 도착한 옛 값이 마지막이 되지 않게)
+   */
+  function ensureCalendar(): Promise<void> {
+    calendarDirty = true;
+    if (calendarRun) return calendarRun;
+    calendarRun = (async () => {
+      try {
+        for (let i = 0; calendarDirty && i < 10; i++) {
+          calendarDirty = false;
+          // 보냈으면 그사이 바뀌었을 수 있다: 한 번 더 본다 (같으면 보내지 않고 끝난다)
+          if (await calendarStep()) calendarDirty = true;
+        }
+      } finally {
+        calendarRun = null;
+      }
+    })();
+    return calendarRun;
   }
 
   async function ensureMigrated(): Promise<boolean> {
@@ -655,6 +756,8 @@ export function createServerCore(d: ServerCoreDeps) {
         await refreshTickets();
         await syncAll();
         await refreshProviders();
+        // 기능 키를 안 뒤에 (#115)
+        await ensureCalendar();
       } catch (err) {
         problem = 'server';
         d.log('server', '맞추기 중 오류', err instanceof Error ? err.message : String(err));
@@ -1058,11 +1161,25 @@ export function createServerCore(d: ServerCoreDeps) {
         }
       }
       const was = st.age;
+      // 바꾸기 전에 서버로 보낼 수 있었나 (만 14세 미만으로 바꿀 때 연결 표시 거두기, #115)
+      const couldSend = allowed();
       st.age = age;
       // 14+ 와 18+ 사이를 바꿨으면 서버에도 알린다 (기기 계정이 있을 때. 없으면 만들 때 지금 값을 보낸다)
       if (ageClass(was) && ageClass(age) && ageClass(was) !== ageClass(age) && d.device.get())
         st.agePending = true;
       if (age === 'under14') {
+        // 서버 모드를 끄기 전에 이 기기의 구글 일정 연결 표시를 거둔다 (#115): 끈 뒤에는 어떤 요청도 보내지 않으므로
+        // 끊은 뒤 남은 참이 다른 기기에 안내를 띄우지 않게. 끄기 전에 보내기 시작하고 결과만 적는다
+        const dev = d.device.get();
+        if (d.api && dev && st.calendarSent === true && couldSend)
+          void d.api
+            .setCalendarLinked(dev, false)
+            .then((r) => {
+              if (!r.ok) return;
+              st.calendarSent = false;
+              save();
+            })
+            .catch(() => undefined);
         // 앱 안 모드: 아무것도 보내지 않는다. 남은 서버 계정은 칸이 탈퇴를 안내한다
         st.on = false;
         st.admin = false;
@@ -1114,6 +1231,8 @@ export function createServerCore(d: ServerCoreDeps) {
       st.logins = [];
       // 로그아웃하면 서버 백업 동의도 거둔다 (다음 로그인 때 다시 묻는다)
       st.backupAgreed = false;
+      // 다른 기기의 구글 일정 연결 안내는 로그인한 동안만 (이 기기 표시는 기기 계정에 남는다)
+      calendar = null;
       save();
       if (t && d.api) {
         const r = await d.api.logout(t);
@@ -1167,6 +1286,25 @@ export function createServerCore(d: ServerCoreDeps) {
           d.log('server', '되살린 뒤 맞추기 실패', err instanceof Error ? err.message : String(err));
         }
       }
+    },
+    /**
+     * 이 기기의 구글 일정 연결이 바뀌었다 (#115, main/gcal.ts 가 연결, 끊기, 끝남 때 부른다): 표시를 올리고 칸을 고친다.
+     * 맞추기가 도는 중이어도 같이 돌아도 된다 (같은 값이면 보내지 않는다)
+     */
+    async calendarChanged(): Promise<void> {
+      try {
+        await ensureCalendar();
+      } catch (err) {
+        d.log('server', '구글 일정 연결 표시 오류', err instanceof Error ? err.message : String(err));
+      }
+      changed();
+    },
+    /** 다른 기기의 구글 일정 연결 안내 거절: 이 기기에서는 다시 묻지 않는다 */
+    calendarHintNo(): ServerStatus {
+      st.calendarHintNo = true;
+      save();
+      changed();
+      return status();
     },
     /** 시험용 */
     state: () => st,

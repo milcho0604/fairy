@@ -13,6 +13,9 @@ export const ko = {
   'gcal.connecting':
     '브라우저에서 허락을 기다리는 중이야. 구글 화면에서 캘린더 일정과 캘린더 목록 권한을 체크하고 계속을 눌러 줘.',
   'gcal.cancel': '그만두기',
+  // 같은 계정의 다른 기기에서 연결했을 때 (#115)
+  'gcal.linkHint': '다른 기기에서 구글 일정을 연결했어. 이 기기도 연결할까?',
+  'gcal.linkHintNo': '괜찮아, 다시 묻지 마',
   'gcal.disconnect': '연결 끊기',
   'gcal.disconnected': '구글 연결을 끊었어',
   'gcal.connected': '구글 캘린더에 연결됐어',
@@ -121,6 +124,8 @@ export const en: Translation<typeof ko> = {
   'gcal.connecting':
     'Waiting for you in the browser. On the Google screen, check the calendar events and calendar list permissions and press Continue.',
   'gcal.cancel': 'Cancel',
+  'gcal.linkHint': 'You connected Google Calendar on another device. Connect this one too?',
+  'gcal.linkHintNo': "No thanks, don't ask again",
   'gcal.disconnect': 'Disconnect',
   'gcal.disconnected': 'Disconnected from Google',
   'gcal.connected': 'Connected to Google Calendar',
