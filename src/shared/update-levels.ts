@@ -104,6 +104,8 @@ export function exempt(method: string, rawPath: string): boolean {
     return method === 'GET' && path === '/v1/me';
   }
   if (method === 'POST') return path === '/v1/session';
-  if (method === 'DELETE') return path === '/v1/session' || path === '/v1/account';
+  // 친구에게 보여 준 바쁜 시간 모두 끄고 지우기 (#110): 지우는 길은 업데이트 전에도 막지 않는다
+  if (method === 'DELETE')
+    return path === '/v1/session' || path === '/v1/account' || path === '/v1/friends/calendar';
   return false;
 }

@@ -1,4 +1,5 @@
 import { type DynamicModule, Module } from '@nestjs/common';
+import { AccountCleanup } from './account-cleanup';
 import { Accounts } from './accounts';
 import { AdminApiController, AdminController, AdminService } from './admin';
 import { AdminAccess } from './admin-access';
@@ -24,6 +25,7 @@ import { Db } from './db';
 import { Features } from './features';
 import { FeaturesController } from './features.controller';
 import { Feeds } from './feeds';
+import { Friends, FriendsController } from './friends';
 import { type GoogleApi, realGoogleApi } from './google';
 import { HealthController } from './health.controller';
 import { Inbox } from './inbox';
@@ -61,6 +63,7 @@ export function appModule(config: Config, deps: AppDeps = {}): DynamicModule {
       InboxController,
       BackupController,
       FeaturesController,
+      FriendsController,
     ],
     providers: [
       { provide: CONFIG, useValue: config },
@@ -81,11 +84,13 @@ export function appModule(config: Config, deps: AppDeps = {}): DynamicModule {
         inject: [CONFIG, RateLimiter],
       },
       Accounts,
+      AccountCleanup,
       AdminAccess,
       AdminService,
       Ai,
       AiAdmin,
       Inbox,
+      Friends,
       Feeds,
       Rewards,
       Coins,

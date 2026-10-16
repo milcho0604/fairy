@@ -96,6 +96,8 @@ describe('예외 경로 (exempt)', () => {
     assert.ok(exempt('POST', '/v1/admin/versions'));
     assert.ok(exempt('DELETE', '/v1/session'));
     assert.ok(exempt('DELETE', '/v1/account'));
+    // 친구에게 보여 준 바쁜 시간 모두 지우기 (#110)
+    assert.ok(exempt('DELETE', '/v1/friends/calendar'));
   });
 
   test('나머지 서버 기능은 막힌다 (맞추기, 기기 만들기, 백업, 쪽지, 기능 키 보기)', () => {
@@ -106,5 +108,8 @@ describe('예외 경로 (exempt)', () => {
     assert.equal(exempt('GET', '/v1/features'), false);
     assert.equal(exempt('PUT', '/v1/backup'), false);
     assert.equal(exempt('DELETE', '/v1/account/x'), false);
+    assert.equal(exempt('GET', '/v1/friends'), false);
+    assert.equal(exempt('POST', '/v1/friends/gifts'), false);
+    assert.equal(exempt('PUT', '/v1/friends/calendar/busy'), false);
   });
 });

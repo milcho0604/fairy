@@ -216,6 +216,15 @@ export function readConfig(env: NodeJS.ProcessEnv): Config {
         env.FEATURE_CALENDAR_LINK_HINT,
         'allowlist',
       ),
+      // 친구 (#110): 비면 모두 allowlist(허용 계정과 운영자 계정)
+      friends: readFeature('FEATURE_FRIENDS', env.FEATURE_FRIENDS, 'allowlist'),
+      friend_gifts: readFeature('FEATURE_FRIEND_GIFTS', env.FEATURE_FRIEND_GIFTS, 'allowlist'),
+      friend_calendar: readFeature('FEATURE_FRIEND_CALENDAR', env.FEATURE_FRIEND_CALENDAR, 'allowlist'),
+      friend_gift_passes: readFeature(
+        'FEATURE_FRIEND_GIFT_PASSES',
+        env.FEATURE_FRIEND_GIFT_PASSES,
+        'allowlist',
+      ),
     },
   };
 }
