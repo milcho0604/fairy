@@ -45,8 +45,10 @@ window.SITE = {
   // 페어리를 친구에게 보내는 파일의 확장자 (앱이 .fairy 로 내보낸다. 예전 .jjpet 도 열린다)
   petFileExt: '.fairy',
 
-  // 연락처 (자리표시). 진짜 주소로 바꿔요.
-  contactEmail: '', // 비우면 문의는 GitHub 이슈로 간다
+  // 연락처 이메일: 사이트 글(개인정보처리방침, 이용약관, FAQ)과 바닥글 "문의"가 모두 여기서만 읽어요.
+  // 바꾸려면 이 한 줄을 고치고 `node site/tools/build.mjs` 를 돌려 커밋해요 (다른 곳에 주소를 쓰면 build.mjs 가 막아요).
+  // The only place the contact email is written. Change this line, run the build, commit.
+  contactEmail: 'admin@moilga.com', // 비우면 문의는 GitHub 이슈로만 간다
 
   // 변경 이력 링크. 비워 두면 릴리스 페이지로 가요.
   changelogUrl: '',
