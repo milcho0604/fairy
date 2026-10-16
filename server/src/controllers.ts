@@ -67,6 +67,7 @@ export class AccountController {
     private readonly access: AdminAccess,
     private readonly backups: Backups,
     private readonly features: Features,
+    private readonly feeds: Feeds,
   ) {}
 
   /** 구글 일정 연결 표시 (#115). 기능 키 calendar_link_hint 가 이 계정에 꺼져 있으면 null (앱은 안내하지 않는다) */
@@ -131,10 +132,13 @@ export class AccountController {
   @UseGuards(AuthGuard)
   async me(@Auth() auth: AuthInfo) {
     const p = await this.accounts.profile(auth.accountId);
+    // 업데이트 세 기준 (이슈 #120). 앱은 이것으로 서버 칸 안내와 강제 잠금을 맞춘다 (정하지 않은 것은 null)
+    const l = await this.feeds.levels();
     return {
       account: p,
       admin: await this.access.isAdmin(auth),
       calendar: await this.calendar(auth.accountId),
+      update: { recommend: l.recommend ?? null, restrict: l.restrict ?? null, min: l.min ?? null },
     };
   }
 

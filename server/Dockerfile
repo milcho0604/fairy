@@ -13,6 +13,7 @@ COPY server/src ./src
 COPY src/shared/coin-rules.ts ./src/shared/coin-rules.ts
 COPY src/shared/site-events.ts ./src/shared/site-events.ts
 COPY src/shared/account-profile.ts ./src/shared/account-profile.ts
+COPY src/shared/update-levels.ts ./src/shared/update-levels.ts
 RUN npm run build && npm prune --omit=dev
 
 FROM node:24-slim AS runner

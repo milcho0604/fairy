@@ -52,7 +52,7 @@ export interface ServerBackupView {
 /** 서버 백업 단추의 결과. error 는 화면 글 키 끝 (backup.<error>) */
 export interface ServerBackupResult {
   ok: boolean;
-  error?: 'off' | 'offline' | 'tooBig' | 'full' | 'failed' | 'consent' | 'login' | 'busy' | 'open';
+  error?: 'off' | 'offline' | 'tooBig' | 'full' | 'failed' | 'consent' | 'login' | 'busy' | 'open' | 'update';
   /** 되살리기 확인 칸을 열지 못한 까닭 (백업 파일 검사 글) */
   message?: string;
   status?: ServerStatus;
@@ -76,10 +76,12 @@ export interface AccountSummary {
  * - denied, timeout, failed: 로그인을 못 함
  * - noSecure: 운영체제 열쇠(safeStorage)를 못 써 토큰을 안전하게 둘 수 없음 (평문으로 두지 않고 서버 모드를 쉰다)
  * - keyLost: 토큰 파일을 지금 열쇠로 풀지 못함 (덮어쓰지 않고 서버 모드를 쉰다)
+ * - update: 서버가 앱이 낡았다고 막음 (426, 이슈 #120). 서버 기능을 멈추고 업데이트 단추를 보인다 (대기열은 쌓아 둔다)
  */
 export type ServerProblem =
   | 'offline'
   | 'server'
+  | 'update'
   | 'gone'
   | 'loginOff'
   | 'denied'
@@ -184,6 +186,7 @@ export const SERVER = {
   status: 'server:status',
   setAge: 'server:set-age',
   turnOn: 'server:turn-on',
+  updateNow: 'server:update-now',
   syncNow: 'server:sync-now',
   login: 'server:login',
   cancelLogin: 'server:cancel-login',
@@ -229,6 +232,8 @@ export interface ServerBridge {
   ): Promise<AdminActionResult>;
   /** 탈퇴 뒤 서버 모드를 다시 켠다 */
   turnOn(): Promise<ServerStatus | undefined>;
+  /** 업데이트 단추 (이슈 #120): 서버가 낡은 앱이라고 막았을 때. 기존 업데이트 흐름을 연다 */
+  updateNow(): Promise<ServerStatus | undefined>;
   syncNow(): Promise<ServerStatus | undefined>;
   /** 서비스로 로그인 (로그인했으면 그 서비스를 더 잇는다). 비우면 구글 */
   login(service?: LoginService): Promise<ServerStatus | undefined>;

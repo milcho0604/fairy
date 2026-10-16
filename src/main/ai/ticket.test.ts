@@ -28,6 +28,11 @@ test('서버 실패를 채팅 오류로 (다 씀은 no-tickets, 상한은 rate-l
     kind: 'no-tickets',
     message: '채팅 이용권을 다 썼어. 내 컴퓨터의 AI로 이어서 할까?',
   });
+  // 업데이트 관문(426, 이슈 #120): 이용권은 쓰지 않았으니 "업데이트하면 다시 쓸 수 있어" 로
+  assert.deepEqual(ticketError(f('update_required'), false), {
+    kind: 'failed',
+    message: '앱을 업데이트하면 채팅 이용권을 다시 쓸 수 있어. 이번에는 이용권을 쓰지 않았어.',
+  });
   assert.equal(ticketError(f('daily_limit'), false).kind, 'rate-limit');
   assert.equal(ticketError(f('budget'), false).kind, 'rate-limit');
   assert.equal(ticketError(f('age'), false).kind, 'not-logged-in');

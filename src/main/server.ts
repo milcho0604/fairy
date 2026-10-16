@@ -22,6 +22,7 @@ import { isLoginService, type RewardOutcome, SERVER, type ServerStatus } from '.
 import { houseName, houseStyleName, type ItemStore, TOYS } from '../shared/shop.ts';
 import { EVENT_ID, normalizeCoupon } from '../shared/site-events.ts';
 import { localDay, type TodoStore } from '../shared/todo-store.ts';
+import { isVersion } from '../shared/update-levels.ts';
 import { startLoopback } from './gcal-auth.ts';
 import { osCrypto } from './os-crypto.ts';
 import { serverApi } from './server-api.ts';
@@ -82,6 +83,10 @@ export function createServer(o: {
   onStatus?: () => void;
   /** 열지 않은 서버 쪽지가 있다 (#101, main/server-inbox.ts 가 받아 펫이 건넨다) */
   onInbox?: () => void;
+  /** 서버가 정한 강제 최소 판 (이슈 #120, server-core.ts onServerMin). 업데이트 확인이 쓴다 */
+  onServerMin?: (min: string | null | undefined) => void;
+  /** 업데이트 단추 (이슈 #120): 서버가 낡은 앱이라고 막았을 때 설정 칸에서 누른다 (main/update.ts install) */
+  installUpdate?: () => void;
   /** 선물을 받았다 (#101, 이벤트 목록의 단추를 "받았어" 로) */
   onClaimed?: (eventId: string) => void;
   /** 서버 백업 (#102): 개인 백업 파일 만들기와 되살리기 확인 칸 열기 (backup.ts) */
@@ -114,8 +119,14 @@ export function createServer(o: {
   const sessionSecret = secret('server-session');
   /** 시험용 (JJ_TEST_SECRETS=memory 일 때만): 구글을 부르지 않고 이 기기의 구글 일정 연결 상태만 흉내 낸다 */
   let calendarOverride: boolean | undefined;
+  // 앱 판은 머리로 보낸다 (이슈 #120). 시험 실행(JJ_TEST_SECRETS=memory, 설치판 아님)만 JJ_TEST_APP_VERSION 으로 낮춰 보낼 수 있다
+  const testVersion = process.env.JJ_TEST_APP_VERSION;
+  const appVersion = memory && testVersion && isVersion(testVersion) ? testVersion : app.getVersion();
   const core = createServerCore({
-    api: url ? serverApi(url, (u, init) => net.fetch(u, init)) : undefined,
+    api: url
+      ? serverApi(url, (u, init) => net.fetch(u, init), { appVersion, onGate: (g) => core.gate(g) })
+      : undefined,
+    onServerMin: (m) => o.onServerMin?.(m),
     coins: new ServerCoins(o.db, o.todos, o.shop, localDay),
     load: () => readJson(STATE),
     save: (s) => writeJson(STATE, s),
@@ -247,6 +258,12 @@ export function createServer(o: {
     return core.adminAction(action, adminFields(fields));
   });
   ipcMain.handle(SERVER.turnOn, (e) => (ok(e) ? core.turnOn() : undefined));
+  // 업데이트 단추 (이슈 #120): 기존 업데이트 흐름을 쓴다 (받아 두고 다시 켜서 설치, 안 되면 설치 안내)
+  ipcMain.handle(SERVER.updateNow, (e) => {
+    if (!ok(e)) return undefined;
+    o.installUpdate?.();
+    return core.status();
+  });
   ipcMain.handle(SERVER.syncNow, async (e) => {
     if (!ok(e)) return undefined;
     await core.run();

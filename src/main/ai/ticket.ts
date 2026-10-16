@@ -73,6 +73,9 @@ export function ticketError(r: Extract<AiChatOutcome, { ok: false }>, got: boole
       return { kind: 'failed', message: t('ticket.waitlisted') };
     case 'refusal':
       return { kind: 'failed', message: t('ticket.refusal') };
+    // 426: 서버 관문이 낡은 앱이라고 막았다 (이슈 #120). 이용권은 쓰지 않았다
+    case 'update_required':
+      return { kind: 'failed', message: t('ticket.update') };
     case 'login':
     case 'age':
     case 'token':

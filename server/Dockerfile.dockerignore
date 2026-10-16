@@ -11,6 +11,7 @@
 !src/shared/coin-rules.ts
 !src/shared/site-events.ts
 !src/shared/account-profile.ts
+!src/shared/update-levels.ts
 server/src/shared
 **/*.test.ts
 **/node_modules

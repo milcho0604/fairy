@@ -43,6 +43,7 @@ import {
 import { ipKey, LIMITS, RateLimiter } from './rate-limit';
 import { Rewards } from './rewards';
 import { COUPON_ALPHABET, COUPON_LENGTH, formatCoupon, kstIso, parseEvent } from './shared/site-events';
+import { levelsOrder, normalVersion } from './shared/update-levels';
 import { sha256 } from './tokens';
 
 // 운영자 화면 /admin (기획서 10, 23절, 이슈 #101). 서버가 그리는 HTML 한 장(외부 CDN 없음, 스크립트 없음)과 폼 POST.
@@ -238,6 +239,12 @@ export class AdminService {
     const doc = await q.query<{ body: unknown; updated: string }>(
       `SELECT body, (extract(epoch FROM updated_at) * 1000)::bigint AS updated FROM site_doc WHERE name = 'notices'`,
     );
+    // 앱 판 분포 (이슈 #120): 최근 30일 활동 계정. 판을 모르는 계정은 따로 센다 (앱이 머리를 보낸 적이 없는 옛 앱)
+    const dist = await q.query<{ v: string | null; n: string }>(
+      `SELECT app_version AS v, count(*) AS n FROM account
+        WHERE closed_at IS NULL AND merged_into IS NULL AND last_active_at > now() - interval '30 days'
+        GROUP BY app_version`,
+    );
     const log = await q.query<{
       at: string;
       actor: string;
@@ -274,6 +281,7 @@ export class AdminService {
       log: log.rows,
       rewardsLoginOnly: await this.rewards.loginOnly(),
       features: await this.features.listFeatures(),
+      versions: versionStats(dist.rows),
     };
   }
 
@@ -800,7 +808,8 @@ export class AdminService {
       doc: NoticeDoc,
     ) => Promise<{ text: string; action: string; target: string | null; detail: Record<string, unknown> }>,
   ): Promise<AdminDone> {
-    return this.write(actor, async (c) => {
+    // 쓰고 나면 업데이트 기준 담아 두기를 비운다 (관문이 바로 새 값을 본다, feeds.ts levels)
+    const done = await this.write(actor, async (c) => {
       await c.query(
         `INSERT INTO site_doc (name, body) VALUES ('notices', $1) ON CONFLICT (name) DO NOTHING`,
         [JSON.stringify(emptyDoc())],
@@ -820,6 +829,8 @@ export class AdminService {
         log: [out.action, out.target, out.detail],
       };
     });
+    this.feeds.forgetLevels();
+    return done;
   }
 
   /** 공지 넣기. 같은 id 가 있으면 바꾼다 (이미 닫은 알림은 다시 안 뜨므로 정정은 새 id 로) */
@@ -858,28 +869,42 @@ export class AdminService {
   }
 
   /**
-   * 최소 버전과 권장 버전. 빈 칸은 지운다. 올릴 때는 지금 최신 릴리스 이하여야 한다 (23절: 없는 버전을 요구하면
-   * 앱이 풀 수 없다). 최신 릴리스를 못 읽으면 올리기를 막는다 (내리기와 지우기는 된다)
+   * 업데이트 세 기준: 강제(최소), 기능 제한, 권장. 빈 칸은 지운다. 올릴 때는 지금 최신 릴리스 이하여야 한다 (23절: 없는 버전을
+   * 요구하면 앱이 풀 수 없다). 최신 릴리스를 못 읽으면 올리기를 막는다 (내리기와 지우기는 된다). 강제와 기능 제한을 올릴 때는
+   * 확인 칸을 체크해야 한다 (낮은 앱이 잠기거나 서버 기능이 막힌다). 세 값의 순서는 강제 ≤ 기능 제한 ≤ 권장 (issue #120)
    */
   async saveVersions(actor: string, f: FormFields): Promise<AdminDone> {
-    const min = (f.minVersion ?? '').trim();
-    const rec = (f.recommendVersion ?? '').trim();
-    for (const [v, name] of [
-      [min, '최소 버전'],
-      [rec, '권장 버전'],
-    ] as const)
-      if (v && !VERSION.test(v)) throw new Refused(`${name}은 0.4.3 처럼`);
+    // 판은 숫자로 맞춘다 (0000.0005.0000 → 0.5.0). 기능 제한 칸이 아예 없으면(undefined) 그 값을 그대로 둔다
+    // (옛 폼은 이 칸이 없었다). 칸이 있고 비었으면 지운다
+    const norm = (raw: string | undefined, name: string): string => {
+      const v = (raw ?? '').trim();
+      if (!v) return '';
+      if (!VERSION.test(v)) throw new Refused(`${name}은 0.4.3 처럼`);
+      return normalVersion(v);
+    };
+    const min = norm(f.minVersion, '최소 버전');
+    const restrictGiven =
+      f.restrictVersion === undefined ? undefined : norm(f.restrictVersion, '기능 제한 버전');
+    const rec = norm(f.recommendVersion, '권장 버전');
     const latest = await this.feeds.latestRelease();
     return this.editDoc(actor, async (doc) => {
+      const restrict = restrictGiven ?? doc.restrictVersion ?? '';
+      // 순서는 실제로 저장될 세 값으로 본다 (기능 제한을 그대로 둔 때도)
+      const order = levelsOrder({ min, restrict, recommend: rec });
+      if (order) throw new Refused(order, 'order');
       const raises = (next: string, prev: string | undefined) =>
         !!next && (!prev || compareVersion(next, prev) > 0);
-      for (const [next, prev, name] of [
-        [min, doc.minVersion, '최소 버전'],
-        [rec, doc.recommendVersion, '권장 버전'],
+      for (const [next, prev, name, sure] of [
+        [min, doc.minVersion, '최소 버전', true],
+        [restrict, doc.restrictVersion, '기능 제한 버전', true],
+        [rec, doc.recommendVersion, '권장 버전', false],
       ] as const) {
         if (!raises(next, prev)) continue;
-        if (name === '최소 버전' && f.confirm !== 'yes')
-          throw new Refused('확인 칸을 체크해 주세요 (최소 버전 올리기: 낮은 앱이 잠겨요)', 'confirm');
+        if (sure && f.confirm !== 'yes')
+          throw new Refused(
+            `확인 칸을 체크해 주세요 (${name} 올리기: ${name === '최소 버전' ? '낮은 앱이 잠겨요' : '낮은 앱의 서버 기능이 막혀요'})`,
+            'confirm',
+          );
         if (!latest)
           throw new Refused(`최신 릴리스를 읽지 못해 ${name}을 올리지 않았어요. 잠시 뒤 다시`, 'no_latest');
         if (compareVersion(next, latest) > 0)
@@ -888,23 +913,48 @@ export class AdminService {
             'too_high',
           );
       }
-      const before = { minVersion: doc.minVersion ?? null, recommendVersion: doc.recommendVersion ?? null };
+      const before = {
+        minVersion: doc.minVersion ?? null,
+        restrictVersion: doc.restrictVersion ?? null,
+        recommendVersion: doc.recommendVersion ?? null,
+      };
       if (min) doc.minVersion = min;
       else delete doc.minVersion;
+      if (restrict) doc.restrictVersion = restrict;
+      else delete doc.restrictVersion;
       if (rec) doc.recommendVersion = rec;
       else delete doc.recommendVersion;
       return {
-        text: `최소 버전 ${min || '없음'}, 권장 버전 ${rec || '없음'} 으로 저장했어요`,
+        text: `강제 ${min || '없음'}, 기능 제한 ${restrict || '없음'}, 권장 ${rec || '없음'} 으로 저장했어요`,
         action: 'versions',
         target: null,
         detail: {
           before,
-          after: { minVersion: min || null, recommendVersion: rec || null },
+          after: {
+            minVersion: min || null,
+            restrictVersion: restrict || null,
+            recommendVersion: rec || null,
+          },
           latest: latest ?? null,
         },
       };
     });
   }
+}
+
+/** 앱 판 분포 (최근 30일 활동 계정). 판은 높은 순, 모르는 계정은 unknown */
+export function versionStats(rows: { v: string | null; n: string }[]): AdminView['versions'] {
+  let active = 0;
+  let unknown = 0;
+  const list: { version: string; count: number }[] = [];
+  for (const r of rows) {
+    const n = Number(r.n);
+    active += n;
+    if (r.v === null) unknown += n;
+    else list.push({ version: r.v, count: n });
+  }
+  list.sort((a, b) => compareVersion(b.version, a.version));
+  return { active, unknown, rows: list };
 }
 
 /** 운영자 화면 응답의 보안 머리 */

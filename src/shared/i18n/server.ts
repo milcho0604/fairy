@@ -36,6 +36,8 @@ export const ko = {
   'server.syncing': '맞추는 중',
   'server.syncNow': '지금 맞추기',
   'server.problem.offline': '서버에 닿지 않아. 코인은 이 컴퓨터에서 계속 쓰고, 다시 닿으면 맞출게.',
+  'server.problem.update': '업데이트하면 다시 쓸 수 있어. 그동안 코인 기록은 이 컴퓨터에 쌓아 둘게.',
+  'server.updateNow': '업데이트',
   'server.problem.server': '서버가 지금 받지 않아. 조금 뒤에 다시 맞출게.',
   'server.problem.gone': '서버 계정이 없어졌어. 다른 기기에서 지웠을 수 있어. 서버 모드를 다시 켤 수 있어.',
   'server.problem.loginOff': '서버가 아직 로그인을 열지 않았어.',
@@ -128,6 +130,8 @@ export const ko = {
   'ticket.timeout': '채팅 이용권 AI가 너무 오래 걸려서 멈췄어. 채팅 이용권은 돌려놓았어.',
   'ticket.off': '서버의 채팅 이용권 AI가 아직 열리지 않았어. 내 컴퓨터의 AI로 대화해 줘.',
   'ticket.offline': '서버에 닿지 않아. 채팅 이용권은 쓰지 않았어. 인터넷을 확인하고 다시 물어봐 줘.',
+  'ticket.update': '앱을 업데이트하면 채팅 이용권을 다시 쓸 수 있어. 이번에는 이용권을 쓰지 않았어.',
+  'backup.update': '앱을 업데이트하면 서버 백업을 다시 쓸 수 있어.',
   'ticket.login':
     '채팅 이용권은 만 18세 이상이고 구글로 로그인했을 때만 쓸 수 있어. 설정 > 데이터에서 확인해 줘.',
   'ticket.tooLong': '질문이 너무 길어. 조금 줄여서 다시 물어봐 줘.',
@@ -183,6 +187,8 @@ export const en: Translation<typeof ko> = {
   'server.syncing': 'syncing',
   'server.syncNow': 'Sync now',
   'server.problem.offline': "Can't reach the server. Keep using coins here; they'll sync when it's back.",
+  'server.problem.update': 'Update the app to use this again. Coin records wait on this computer until then.',
+  'server.updateNow': 'Update',
   'server.problem.server': "The server isn't accepting right now. We'll try again soon.",
   'server.problem.gone':
     'The server account is gone. It may have been deleted on another device. You can turn server mode on again.',
@@ -283,6 +289,8 @@ export const en: Translation<typeof ko> = {
   'ticket.timeout': 'Chat pass AI took too long, so it stopped. Your chat pass is back.',
   'ticket.off': "The server's chat pass AI isn't open yet. Please chat with the AI on your computer.",
   'ticket.offline': "Can't reach the server. No chat pass was used. Check your connection and ask again.",
+  'ticket.update': 'Update the app to use chat passes again. No chat pass was used this time.',
+  'backup.update': 'Update the app to use server backups again.',
   'ticket.login': 'Chat passes are only for 18+ users signed in with Google. Check Settings > Data.',
   'ticket.tooLong': 'That question is too long. Please shorten it and ask again.',
   'ticket.notAllowed':

@@ -145,7 +145,7 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
   });
   const cp = useForm({ label: '', coins: '50', tickets: '0', max_uses: '100', until: '' });
   const nt = useForm({ id: '', title_ko: '', title_en: '', body_ko: '', body_en: '', link: '' });
-  const ver = useForm({ minVersion: '', recommendVersion: '' });
+  const ver = useForm({ minVersion: '', restrictVersion: '', recommendVersion: '' });
   const [evKind, setEvKind] = useState<'gift' | 'boost'>('gift');
   const [ntKind, setNtKind] = useState('info');
   const [mode, setMode] = useState('');
@@ -156,6 +156,7 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
     setMode(view.ai.mode);
     ver.setV({
       minVersion: view.notices?.minVersion ?? '',
+      restrictVersion: view.notices?.restrictVersion ?? '',
       recommendVersion: view.notices?.recommendVersion ?? '',
     });
   }, [view]);
@@ -448,7 +449,9 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
         <Group title={t('admin.notices.title')}>
           <small>{t('admin.notices.latest', { v: view.latest ?? '?' })}</small>
           {ver.input('minVersion', t('admin.notices.min'))}
+          {ver.input('restrictVersion', t('admin.notices.restrict'))}
           {ver.input('recommendVersion', t('admin.notices.rec'))}
+          <small>{t('admin.notices.order')}</small>
           <div className="action-row">
             <Sure
               label={t('admin.notices.saveVersions')}
@@ -456,6 +459,21 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
               onGo={() => void act('versions', { ...ver.v, confirm: 'yes' })}
             />
           </div>
+          <small>{t('admin.versions.title', { n: view.versions?.active ?? 0 })}</small>
+          <ul className="admin-list">
+            {(view.versions?.rows ?? []).map((r: { version: string; count: number }) => (
+              <li key={r.version}>
+                <small>
+                  {r.version} · {r.count}
+                </small>
+              </li>
+            ))}
+            <li>
+              <small>
+                {t('admin.versions.unknown')} · {view.versions?.unknown ?? 0}
+              </small>
+            </li>
+          </ul>
           <ul className="admin-list">
             {(view.notices?.notices ?? []).map((n: View) => (
               <li key={n.id}>

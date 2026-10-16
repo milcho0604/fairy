@@ -9,9 +9,38 @@ import {
   type LoginService,
   type ServerBackupItem,
 } from '../shared/server-account.ts';
+import {
+  APP_VERSION_HEADER,
+  exempt,
+  type GateNeed,
+  isVersion,
+  type UpdateLevels,
+} from '../shared/update-levels.ts';
 import type { QueueEntry } from './server-coins.ts';
 
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
+
+/** /v1/me 의 업데이트 기준 (이슈 #120). 정하지 않은 칸은 빠지고, 모양이 틀린 칸도 빠진다 */
+export function levelsOf(v: unknown): UpdateLevels {
+  const o = obj(v);
+  const pick = (x: unknown) => (isVersion(x) ? x : undefined);
+  const out: UpdateLevels = {};
+  if (pick(o.recommend)) out.recommend = o.recommend as string;
+  if (pick(o.restrict)) out.restrict = o.restrict as string;
+  if (pick(o.min)) out.min = o.min as string;
+  return out;
+}
+
+/** 서버 호출 옵션 (이슈 #120) */
+export interface ServerApiOpts {
+  /** 앱 판. 모든 요청의 X-Fairy-Version 머리로 간다 (서버 관문이 기준과 비교한다) */
+  appVersion?: string;
+  /**
+   * 관문 결과. 426 을 받았으면 단계와 필요한 판, 관문을 건너는 요청이 통과했으면 null.
+   * 설정 칸의 "업데이트하면 다시 쓸 수 있어" 안내와 강제 잠금이 쓴다 (server-core.ts)
+   */
+  onGate?: (g: GateNeed | null) => void;
+}
 
 /** 요청 하나에 이만큼 넘으면 그만둔다 */
 export const SERVER_TIMEOUT_MS = 20_000;
@@ -255,7 +284,39 @@ export const summary = (v: unknown): AccountSummary => {
   return { balance: nat(o.balance) ?? 0, items: items(o.items) };
 };
 
-export function serverApi(base: string, f: FetchLike) {
+/**
+ * 서버로 나가는 모든 요청이 지나는 한 곳 (이슈 #120). 앱 판 머리를 붙이고, 관문 결과를 알린다:
+ * 426 이면 단계와 필요한 판, 관문을 건너는 호출이 통과했으면 null (막힌 것을 푼다).
+ * serverApi 의 요청 함수는 전부 이 감싸개만 쓴다. 그래서 머리가 빠진 요청이 생길 수 없다.
+ */
+export function gated(
+  raw: FetchLike,
+  appVersion: string | undefined,
+  onGate?: (g: GateNeed | null) => void,
+): FetchLike {
+  return async (url, init) => {
+    const headers = { ...((init.headers ?? {}) as Record<string, string>) };
+    if (appVersion) headers[APP_VERSION_HEADER] = appVersion;
+    const res = await raw(url, { ...init, headers });
+    if (!onGate) return res;
+    if (res.status === 426) {
+      // 몸이 작다. 못 읽으면 단계를 모르는 것으로 두고 막힌 것만 알린다
+      const json = (await res
+        .clone()
+        .json()
+        .catch(() => undefined)) as Record<string, unknown> | undefined;
+      const level = json?.level === 'force' || json?.level === 'restrict' ? json.level : undefined;
+      if (level && isVersion(json?.need)) onGate({ level, need: json.need });
+    } else if (res.status >= 200 && res.status < 300) {
+      const path = new URL(url).pathname;
+      if (!exempt(init.method ?? 'GET', path)) onGate(null);
+    }
+    return res;
+  };
+}
+
+export function serverApi(base: string, raw: FetchLike, opts: ServerApiOpts = {}) {
+  const f = gated(raw, opts.appVersion, opts.onGate);
   async function call<T>(
     method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
     path: string,
@@ -461,13 +522,24 @@ export function serverApi(base: string, f: FetchLike) {
       aiChat(base, f, token, body, onText, signal),
     /** 내 계정: 기기 코드, 닉네임, 운영자인지 (#101). 서버가 매번 다시 본다 */
     me: (token: string) =>
-      call<{ profile: ProfileInfo; admin: boolean; calendar: CalendarLinkInfo | null }>('GET', '/v1/me', {
-        token,
-        read: (j) => {
-          const profile = profileOf(j.account);
-          return profile ? { profile, admin: j.admin === true, calendar: calendarOf(j.calendar) } : undefined;
+      call<{ profile: ProfileInfo; admin: boolean; calendar: CalendarLinkInfo | null; update: UpdateLevels }>(
+        'GET',
+        '/v1/me',
+        {
+          token,
+          read: (j) => {
+            const profile = profileOf(j.account);
+            return profile
+              ? {
+                  profile,
+                  admin: j.admin === true,
+                  calendar: calendarOf(j.calendar),
+                  update: levelsOf(j.update),
+                }
+              : undefined;
+          },
         },
-      }),
+      ),
     /**
      * 이 기기가 구글 일정을 연결했나 (#115). 기기마다 세므로 기기 토큰으로만. 켜기는 기능 키가 켜진 계정만
      * (아니면 403 feature_off). 대답은 계정의 연결 표시 (기능 키가 꺼져 있으면 null)

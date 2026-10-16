@@ -23,6 +23,7 @@ import {
   type ServerProblem,
   type ServerStatus,
 } from '../shared/server-account.ts';
+import type { GateNeed } from '../shared/update-levels.ts';
 import type {
   AiChatBody,
   AiChatOutcome,
@@ -244,6 +245,11 @@ export interface ServerCoreDeps {
   onReverted: (list: Reverted[]) => void;
   /** 열지 않은 서버 쪽지가 있다 (#101, 메인이 쪽지함을 받아 펫이 건넨다) */
   onInbox?: (unopened: number) => void;
+  /**
+   * 서버가 정한 강제 최소 판 (이슈 #120). 서버가 답했으면 그 값(없으면 null), 서버를 쓰지 않거나 닿지 않으면 undefined
+   * (그때는 홈페이지 notices.json 의 값을 쓴다). 업데이트 확인(main/update.ts)에 넘긴다
+   */
+  onServerMin?: (min: string | null | undefined) => void;
   random?: (n: number) => Uint8Array;
   /**
    * 서버 백업 (#102): 개인 백업 파일(.fairybackup)을 만들고, 받은 파일로 되살리기 확인 칸을 연다 (backup.ts).
@@ -287,6 +293,8 @@ export function createServerCore(d: ServerCoreDeps) {
   let backupBusy: 'up' | 'down' | null = null;
   /** 서버가 알려 준 이 계정의 구글 일정 연결 표시 (#115, 이 기기 몫 포함). 모르거나 기능 키가 꺼져 있으면 null */
   let calendar: CalendarLinkInfo | null = null;
+  /** 서버가 426 으로 막은 단계 (이슈 #120). 통과한 호출이 오면 푼다. 없으면 null */
+  let gate: GateNeed | null = null;
 
   const enabled = () => d.api !== undefined;
   /** 서버 모드를 켰다 (나이 답과 켬. 열쇠 문제는 blocked) */
@@ -368,7 +376,24 @@ export function createServerCore(d: ServerCoreDeps) {
   };
   const changed = () => d.onChange(status());
 
-  const failProblem = (r: { status: number }): ServerProblem => (r.status === 0 ? 'offline' : 'server');
+  /** 426 (업데이트 단계, 이슈 #120) 은 'update': 서버 기능을 멈추고 업데이트 안내를 띄운다 (대기열은 그대로 둔다) */
+  const failProblem = (r: { status: number }): ServerProblem =>
+    r.status === 426 ? 'update' : r.status === 0 ? 'offline' : 'server';
+
+  /**
+   * 관문 결과 (server-api.ts onGate). 426 이면 단계와 필요한 판을 기억하고 안내를 띄운다, 통과한 호출이면 푼다.
+   * 강제 단계면 서버가 말한 최소 판을 업데이트 확인에 넘겨 잠금 창도 같이 띄운다 (main/update.ts setServerMin)
+   */
+  function gateSeen(g: GateNeed | null) {
+    if (JSON.stringify(g) === JSON.stringify(gate)) return;
+    gate = g;
+    if (g) {
+      problem = 'update';
+      if (g.level === 'force') d.onServerMin?.(g.need);
+      d.log('server', '업데이트 단계', g.level, g.need);
+    } else if (problem === 'update') problem = null;
+    changed();
+  }
 
   /** 서버 계정이 없어졌다 (기기 토큰을 서버가 모른다): 서버 모드를 끄고 처음으로 */
   function forgetAccount() {
@@ -491,18 +516,22 @@ export function createServerCore(d: ServerCoreDeps) {
     } else d.log('server', '닉네임 못 알림', r.status, r.error);
   }
 
-  /** 운영자인지 서버에 묻는다 (세션일 때만. 기기 토큰은 언제나 아니다) */
+  /**
+   * 내 계정을 서버에 묻는다: 운영자인지(세션만 true, 기기 토큰은 언제나 아니다), 업데이트 기준(이슈 #120).
+   * 관문을 건너는 호출이라 맞추기의 맨 앞에서 부른다. 기기 토큰으로도 된다 (없으면 건너뛴다)
+   */
   async function refreshMe(): Promise<void> {
-    const s = d.session.get();
-    if (!d.api || !s || !allowed()) {
+    const t = token();
+    if (!d.api || !t || !allowed()) {
       if (st.admin) {
         st.admin = false;
         save();
       }
       return;
     }
-    const r = await d.api.me(s);
+    const r = await d.api.me(t);
     if (r.ok) {
+      d.onServerMin?.(r.data.update.min ?? null);
       const was = st.admin;
       st.admin = r.data.admin;
       st.code = r.data.profile.code;
@@ -511,6 +540,7 @@ export function createServerCore(d: ServerCoreDeps) {
       save();
       if (was !== st.admin) d.log('server', '운영자', st.admin);
     } else if (r.status === 401) onUnauthorized();
+    else if (r.status === 0) d.onServerMin?.(undefined);
   }
 
   /**
@@ -736,6 +766,8 @@ export function createServerCore(d: ServerCoreDeps) {
   /** 켤 때, 몇 분마다, 지금 맞추기: 기기 계정 → 옮기기 → 맞추기. 한 번에 하나만 */
   function run(): Promise<void> {
     if (!allowed()) {
+      // 서버를 쓰지 않으면 강제 최소 판은 홈페이지 공지 파일의 것을 쓴다 (이슈 #120)
+      d.onServerMin?.(undefined);
       changed();
       return Promise.resolve();
     }
@@ -746,13 +778,13 @@ export function createServerCore(d: ServerCoreDeps) {
       changed();
       try {
         scan();
+        // 업데이트 기준과 운영자인지 먼저 (이슈 #120: 서버 기준이 맞추기 전에 와야 강제 잠금이 맞는다).
+        // 채팅 이용권 자리와 이번 달 정기 지급 쪽지도 맞추기 전에 (QA #113: 허용 직후 쪽지가 첫 맞추기 대답의 쪽지 수에 들게)
+        await refreshMe();
         if (!(await ensureDevice())) return;
         if (!(await ensureMigrated())) return;
         await ensureAge();
         await ensureNickname();
-        // 운영자인지, 채팅 이용권 자리와 이번 달 정기 지급 쪽지를 먼저 (QA #113: 허용 직후 쪽지가 첫 맞추기 대답의
-        // 쪽지 수에 들게). 맞추기는 그 뒤
-        await refreshMe();
         await refreshTickets();
         await syncAll();
         await refreshProviders();
@@ -812,6 +844,8 @@ export function createServerCore(d: ServerCoreDeps) {
 
   const backupError = (r: { status: number; error: string }): ServerBackupResult['error'] => {
     if (r.status === 0) return 'offline';
+    // 426: 서버 관문이 낡은 앱이라고 막았다 (이슈 #120)
+    if (r.status === 426) return 'update';
     if (r.status === 413 || r.error === 'too_big') return 'tooBig';
     if (r.status === 507) return 'full';
     if (r.status === 503 && r.error === 'backup_off') return 'off';
@@ -1306,6 +1340,8 @@ export function createServerCore(d: ServerCoreDeps) {
       changed();
       return status();
     },
+    /** 관문 결과 (server-api.ts onGate, 이슈 #120). 426 이면 업데이트 안내, 통과하면 푼다 */
+    gate: gateSeen,
     /** 시험용 */
     state: () => st,
   };

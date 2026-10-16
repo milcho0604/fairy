@@ -77,6 +77,8 @@ export interface AdminView {
   rewardsLoginOnly: boolean;
   /** 기능 스위치 (#102, features.ts): kakao_login, coin_reset, calendar_link_hint (#115) */
   features: FeatureView[];
+  /** 앱 판 분포 (이슈 #120): 최근 30일 활동 계정의 마지막 앱 판 */
+  versions: { active: number; unknown: number; rows: { version: string; count: number }[] };
   log: Array<{ at: string; actor: string; action: string; target: string | null; detail: unknown }>;
 }
 
@@ -421,6 +423,15 @@ ${v.log.map((l) => `<tr><td>${when(l.at)}</td><td>${esc(l.actor)}</td><td>${esc(
   return doc('페어리 운영자', `<main>${sections.join('\n')}</main>`);
 }
 
+/** 앱 판 분포 표 (최근 30일 활동 계정) */
+function versionTable(v: AdminView): string {
+  const x = v.versions;
+  if (x.active === 0) return `<h3>앱 판 분포</h3><p class="hint">최근 30일 활동한 계정이 없어요.</p>`;
+  const rows = x.rows.map((r) => `<tr><td>${esc(r.version)}</td><td>${r.count}</td></tr>`).join('');
+  return `<h3>앱 판 분포 (최근 30일 활동 ${x.active}명)</h3>
+<table><tr><th>앱 판</th><th>계정</th></tr>${rows}<tr><td>판 없음 (옛 앱)</td><td>${x.unknown}</td></tr></table>`;
+}
+
 function noticesSection(v: AdminView): string {
   const d = v.notices;
   const csrf = v.csrf;
@@ -434,10 +445,13 @@ function noticesSection(v: AdminView): string {
 <form method="post" action="/admin/versions" class="grid">${hidden(csrf)}
 <p class="wide">최신 릴리스: <strong>${esc(v.latest ?? '읽지 못함')}</strong>. 올리는 값은 이보다 높을 수 없어요. 내리거나 지우기는 언제나 돼요.</p>
 <label>최소 버전 (이보다 낮으면 잠금) <input name="minVersion" pattern="\\d{1,4}\\.\\d{1,4}\\.\\d{1,4}" value="${esc(d?.minVersion ?? '')}" placeholder="비우면 없음"></label>
+<label>기능 제한 버전 (이보다 낮으면 서버 기능 거절, 앱은 업데이트 안내) <input name="restrictVersion" pattern="\\d{1,4}\\.\\d{1,4}\\.\\d{1,4}" value="${esc(d?.restrictVersion ?? '')}" placeholder="비우면 없음"></label>
 <label>권장 버전 (업데이트 권장 공지) <input name="recommendVersion" pattern="\\d{1,4}\\.\\d{1,4}\\.\\d{1,4}" value="${esc(d?.recommendVersion ?? '')}" placeholder="비우면 없음"></label>
-<label class="confirm"><input type="checkbox" name="confirm" value="yes"> 최소 버전을 올리면 낮은 앱이 잠겨요. 올릴 때만 체크</label>
+<p class="wide hint">순서: 최소 ≤ 기능 제한 ≤ 권장. 올린 값은 다음 맞추기(3분 안)에 서버에 바로 적용돼요.</p>
+<label class="confirm"><input type="checkbox" name="confirm" value="yes"> 최소 버전이나 기능 제한 버전을 올리면 낮은 앱이 잠기거나 서버 기능이 막혀요. 올릴 때만 체크</label>
 <button type="submit">버전 저장</button>
 </form>
+${versionTable(v)}
 ${list
   .map(
     (n) => `<article class="notice">

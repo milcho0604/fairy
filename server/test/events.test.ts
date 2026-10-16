@@ -585,6 +585,7 @@ describe('정적 파일 내보내기', () => {
       assert.ok(v.ok, v.text);
       assert.deepEqual((await lastLog('versions'))?.detail?.after, {
         minVersion: '0.4.2',
+        restrictVersion: null,
         recommendVersion: '0.4.3',
       });
       const link = await admin.act('/admin/notices', {

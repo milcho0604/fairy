@@ -1393,6 +1393,8 @@ ready
     });
     /** 서버 쪽지함 (#101). 매일 쪽지가 생긴 뒤 붙는다 */
     let serverInbox: ServerInbox | undefined;
+    // 업데이트 확인 쪽 (이슈 #120): 서버의 강제 최소 판과 업데이트 단추. updates 는 아래에서 만들어 채운다
+    let updateSink: { min: (m: string | null | undefined) => void; install: () => void } | undefined;
     // ---- 페어리 서버 계정 (이슈 #99): 나이 확인, 기기 계정, 코인 맞추기, 구글 로그인, 탈퇴. 주소가 없으면 모두 꺼진다 ----
     const server = createServer({
       db,
@@ -1413,6 +1415,8 @@ ready
       onReverted: (text) => void pet.say({ kind: 'answer', text, ttlMs: 8000 }),
       onStatus: () => chat.ticketChanged(),
       onInbox: () => void serverInbox?.deliver(),
+      onServerMin: (m) => updateSink?.min(m),
+      installUpdate: () => updateSink?.install(),
       onClaimed: (id) => siteEvents.markClaimed(id),
       // 서버 백업 (#102): 개인 백업 파일과 같은 것을 올리고, 받으면 같은 되살리기 확인 칸을 연다
       backup: { exportFile: (p) => backup.exportFile(p), inspect: (p) => backup.inspect(p, 'file') },
@@ -1657,6 +1661,7 @@ ready
       install: () => void updates.install(),
     });
     const updates = watchUpdates({ say: (o) => pet.say(o), log, askForce: notices.askForce });
+    updateSink = { min: (m) => updates.setServerMin(m), install: () => void updates.install() };
     const onboarding = createOnboarding({
       openMaker: () => maker.open(),
       ai: async () => ({
