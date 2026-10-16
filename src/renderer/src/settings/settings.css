@@ -1434,6 +1434,12 @@ textarea.rules {
   font-variant-numeric: tabular-nums;
 }
 
+/* 채팅 이용권 묶음의 남은 장수 줄: 값이라 14px, 아래 고르는 법 설명은 12px 흐리게 (#121) */
+.server-box .server-pass-count {
+  color: var(--ink);
+  font-size: 14px;
+}
+
 .server-box .server-ages .on {
   border-color: var(--accent);
   color: var(--accent);

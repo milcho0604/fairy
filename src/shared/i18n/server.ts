@@ -112,8 +112,10 @@ export const ko = {
   'ticket.detail': 'Claude, 운영자가 중계',
   'ticket.count': (v: { n: number }) => `채팅 이용권 ${v.n}장 남음`,
   'ticket.countUnknown': '채팅 이용권 남은 수를 아직 못 받았어',
-  'ticket.settings': (v: { n: number }) =>
-    `AI 채팅 이용권 ${v.n}장. 채팅 창에서 "채팅 이용권"을 고르면 질문 하나에 한 장씩 써.`,
+  /** 설정 채팅 이용권 묶음의 남은 장수 (값 줄) */
+  'ticket.passCount': (v: { n: number }) => `AI 채팅 이용권 ${v.n}장`,
+  /** 설정 채팅 이용권 묶음의 고르는 법 (설명 줄) */
+  'ticket.passHow': '채팅 창에서 "채팅 이용권"을 고르면 질문 하나에 한 장씩 써.',
   'ticket.aiNow': 'AI와 대화 중이야. 답은 사람이 아니라 AI(Anthropic의 Claude)가 써.',
   'ticket.notice':
     '채팅 이용권으로 물으면 질문(지금 시각 포함), 이 대화의 최근 문답 몇 개, 페어리 이름과 말투 설명이 Anthropic(미국)으로 암호화되어 가. "내 할 일 같이 보내기"를 켰으면 오늘 할 일도 같이 가. 페어리 규칙과 페어리가 기억하는 것은 보내지 않아. Anthropic은 정책상 최대 30일 보관할 수 있어(정책 위반 조사 등은 예외). 페어리 서버는 대화 내용을 저장하지 않고 사용량 숫자만 남겨. 싫으면 채팅 이용권을 쓰지 말고 내 컴퓨터 AI로 대화하면 돼.',
@@ -262,8 +264,10 @@ export const en: Translation<typeof ko> = {
   'ticket.detail': 'Claude, relayed by the operator',
   'ticket.count': (v: { n: number }) => `${v.n} ${v.n === 1 ? 'chat pass' : 'chat passes'} left`,
   'ticket.countUnknown': "Haven't got your chat pass count yet",
-  'ticket.settings': (v: { n: number }) =>
-    `${v.n} ${v.n === 1 ? 'chat pass' : 'chat passes'}. Pick "Chat pass" in the chat window; each question uses one.`,
+  /** Chat passes group in settings: the count line (value) */
+  'ticket.passCount': (v: { n: number }) => `${v.n} ${v.n === 1 ? 'chat pass' : 'chat passes'}`,
+  /** Chat passes group in settings: how to pick them (description) */
+  'ticket.passHow': 'Pick "Chat pass" in the chat window; each question uses one.',
   'ticket.aiNow':
     "You're talking with an AI. Answers are written by an AI (Anthropic's Claude), not a person.",
   'ticket.notice':
