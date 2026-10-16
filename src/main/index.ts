@@ -1468,6 +1468,8 @@ ready
         const g = gcal.status();
         return g.configured && g.connected;
       },
+      // 친구 일정 공유 1차 (#110): 시각 일정의 시작과 끝만 올린다 (제목 없음). 구글 일정은 빼고 직접 넣은 일정만
+      friendEvents: (from, to) => events.timedOverlapping(from, to),
       log,
     });
     serverCore = server.core;
@@ -1615,6 +1617,7 @@ ready
       canTalk,
       onChange: () => dailyNotes.changed(),
       onGot: () => panel.refresh(),
+      openFriends: () => settingsWindow.open('friends'),
       log,
     });
     dailyNotes.attach(serverInbox);
@@ -1795,6 +1798,12 @@ ready
         const note = notes.add({ body: a.text, source: 'me' }, Date.now());
         panel.refresh();
         sayShort(t('pet.url.memo', { title: noteTitle(note) }));
+        return;
+      }
+      if (a.action === 'friend') {
+        // 친구 초대 링크 (#110): 설정의 친구 칸에 코드를 넣어 두고 연다. 신청은 사용자가 그 칸에서 누른다
+        server.friends.prefill(a.code);
+        settingsWindow.open('friends');
         return;
       }
       if (a.action === 'focus') {

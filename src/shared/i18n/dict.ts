@@ -17,6 +17,7 @@ import * as diary from './diary.ts';
 import * as ease from './ease.ts';
 import * as feedback from './feedback.ts';
 import * as first from './first.ts';
+import * as friends from './friends.ts';
 import * as fun from './fun.ts';
 import * as gallery from './gallery.ts';
 import * as gcal from './gcal.ts';
@@ -99,6 +100,7 @@ export const ko = {
   ...ops.ko,
   ...records.ko,
   ...chips.ko,
+  ...friends.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -150,4 +152,5 @@ export const en: Translation<typeof ko> = {
   ...ops.en,
   ...records.en,
   ...chips.en,
+  ...friends.en,
 };

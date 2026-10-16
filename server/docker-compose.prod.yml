@@ -78,6 +78,12 @@ services:
       FEATURE_COIN_RESET: ${FEATURE_COIN_RESET:-off}
       # 다른 기기의 구글 일정 연결 안내 (#115, allowlist 기본: 허용 계정과 운영자 계정만)
       FEATURE_CALENDAR_LINK_HINT: ${FEATURE_CALENDAR_LINK_HINT:-allowlist}
+      # 친구 (#110). 비면 allowlist(허용 계정과 운영자 계정). 운영자 화면 기능 스위치가 이긴다
+      FEATURE_FRIENDS: ${FEATURE_FRIENDS:-allowlist}
+      FEATURE_FRIEND_GIFTS: ${FEATURE_FRIEND_GIFTS:-allowlist}
+      FEATURE_FRIEND_CALENDAR: ${FEATURE_FRIEND_CALENDAR:-allowlist}
+      # 친구에게 채팅 이용권 선물 (보내는 사람, 받는 사람 모두 허용돼야 한다)
+      FEATURE_FRIEND_GIFT_PASSES: ${FEATURE_FRIEND_GIFT_PASSES:-allowlist}
     volumes:
       - fairy_backups:/data/backups
     ports:
