@@ -615,14 +615,10 @@ export class AdminService {
    * 칸이 아예 없으면(undefined) 저장된 값을 그대로 둔다 (앱 운영자 칸이 일부 칸만 보내도 나머지를 지우지 않게)
    */
   async aiLimits(actor: string, f: FormFields): Promise<AdminDone> {
-    const usd = this.limitField(f.budget_usd, Number);
-    if (usd != null && (!Number.isFinite(usd) || usd < 0)) throw new Refused('월 예산은 0 이상의 달러');
-    const daily = this.limitField(f.daily_limit, Number);
-    if (daily != null && (!Number.isInteger(daily) || daily < 0))
-      throw new Refused('하루 상한은 0 이상의 정수');
-    const chars = this.limitField(f.input_chars, Number);
-    if (chars != null && (!Number.isInteger(chars) || chars < 1))
-      throw new Refused('질문 글자 수는 1 이상의 정수');
+    const usd = this.limitField(f.budget_usd, '월 예산은 0 이상의 달러 (보통 숫자만)', true);
+    const daily = this.limitField(f.daily_limit, '하루 상한은 0 이상의 정수 (보통 숫자만)');
+    const chars = this.limitField(f.input_chars, '질문 글자 수는 1 이상의 정수 (보통 숫자만)');
+    if (chars != null && chars < 1) throw new Refused('질문 글자 수는 1 이상의 정수');
     return this.write(actor, async (c) => {
       let r: Awaited<ReturnType<AiAdmin['setSettings']>>;
       try {
@@ -657,10 +653,13 @@ export class AdminService {
   }
 
   /** 한도 칸 하나: 없으면 undefined(그대로), 빈 칸이면 null(상한으로), 아니면 숫자 */
-  private limitField(raw: string | undefined, num: (s: string) => number): number | null | undefined {
+  private limitField(raw: string | undefined, what: string, decimal = false): number | null | undefined {
     if (raw === undefined) return undefined;
     const v = raw.trim();
-    return v === '' ? null : num(v);
+    if (v === '') return null;
+    // 보통 10진수만 (Number 는 0x10, 1e2, 공백 섞인 값도 받아 준다)
+    if (!(decimal ? /^[0-9]+(\.[0-9]+)?$/ : /^[0-9]+$/).test(v)) throw new Refused(what);
+    return Number(v);
   }
 
   /** 채팅 이용권 회수 (남은 장수까지만). 확인 칸이 있어야 한다. 주기는 쪽지로 (sendNote) */

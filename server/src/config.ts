@@ -131,10 +131,10 @@ function checkUrl(name: string, raw: string): string {
 
 function nonNegative(name: string, raw: string | undefined, fallback: number, integer: boolean): number {
   if (raw === undefined || raw.trim() === '') return fallback;
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n < 0 || (integer && !Number.isInteger(n)))
-    throw new Error(`${name} 가 이상하다: ${raw}`);
-  return n;
+  // 보통 10진수만 (Number 는 0x10, 1e2, Infinity 도 받아 준다)
+  const v = raw.trim();
+  if (!(integer ? /^[0-9]+$/ : /^[0-9]+(\.[0-9]+)?$/).test(v)) throw new Error(`${name} 가 이상하다: ${raw}`);
+  return Number(v);
 }
 
 /**

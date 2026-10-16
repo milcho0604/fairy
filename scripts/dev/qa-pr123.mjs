@@ -975,6 +975,7 @@ async function appA() {
       const us = lastUsage(id);
       await sleep(400);
       check(F, `${tag}: 안내 "${MSG[kind]}", 이용권 ${t0} 그대로 (DB, 줄), ai_usage refunded`, m.includes(MSG[kind]) && tickets(id) === t0 && (await count()).includes(T.count(t0)) && us.status === 'refunded', `${tickets(id)} ${await count()} ${us.status} | ${m.replace(/\n/g, ' ').slice(0, 160)}`);
+      if (kind === 'refusal') check(F, '[[refusal]]: 받았던 앞부분 글 "음..." 은 말풍선에서 지워지고 안내만 남음', !m.includes('음...'), m.replace(/\n/g, ' ').slice(0, 160));
       await c.shots(`a05-${tag.replace(/\W/g, '')}`);
     }
     // 4) 웹 /admin 에서 글자 수 상한 클릭으로 바꾸기

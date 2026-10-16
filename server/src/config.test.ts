@@ -143,3 +143,15 @@ test('서버 백업 키: 비면 끔, hex 64자만. 카카오 주소는 https 만
     true,
   );
 });
+
+test('AI_MONTHLY_BUDGET_USD, AI_DAILY_LIMIT: 보통 10진수만 (0x10, 1e2, 공백 섞인 값은 기동 오류)', () => {
+  const env = { DATABASE_URL: 'postgres://x' };
+  assert.equal(readConfig({ ...env, AI_MONTHLY_BUDGET_USD: '90' }).ai?.monthlyBudgetMicros, 90_000_000);
+  assert.equal(readConfig({ ...env, AI_MONTHLY_BUDGET_USD: '0.5' }).ai?.monthlyBudgetMicros, 500_000);
+  assert.equal(readConfig({ ...env, AI_MONTHLY_BUDGET_USD: '0' }).ai?.monthlyBudgetMicros, 0);
+  for (const bad of ['0x10', '1e2', '-1', '1,5', '.5', '1 2', 'Infinity'])
+    assert.throws(() => readConfig({ ...env, AI_MONTHLY_BUDGET_USD: bad }), /AI_MONTHLY_BUDGET_USD/, bad);
+  for (const bad of ['0x10', '1e2', '1.5', '-1'])
+    assert.throws(() => readConfig({ ...env, AI_DAILY_LIMIT: bad }), /AI_DAILY_LIMIT/, bad);
+  assert.equal(readConfig({ ...env, AI_DAILY_LIMIT: '7' }).ai?.dailyLimit, 7);
+});

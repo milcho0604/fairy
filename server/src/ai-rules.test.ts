@@ -5,12 +5,14 @@ import {
   AI_MAX_MESSAGES,
   AI_MAX_OUTPUT_TOKENS,
   AI_MAX_PAYLOAD_CHARS,
+  AI_MAX_PREFIX_CHARS,
   AI_MAX_TOTAL_CHARS,
   billedMicros,
   costMicros,
   hopsOf,
   parseChatRequest,
   parseReport,
+  priceOf,
   requestShape,
   reserveMicros,
   seoulDay,
@@ -176,29 +178,23 @@ test('질문 글자 수는 question 만 센다: 앞에 붙은 글과 앞 문답�
   const lead = '지금은 오후 3시\n[질문]\n';
   const q = '가'.repeat(100);
   const body = (question: unknown, extra: object = {}) => ({
-    messages: [user(lead + 'x'.repeat(3000) + q)],
+    messages: [user(`${lead}${'x'.repeat(2000)}${question}`)],
     question,
     ...extra,
   });
-  // 질문 100자 = 상한 100 은 통과, 101 은 too_long. 앞에 붙은 3000자는 세지 않는다
+  // 질문 100자 = 상한 100 은 통과, 101 은 too_long. 앞에 붙은 2000자는 세지 않는다
   assert.ok(!('error' in parseChatRequest(body(q), 100)));
   assert.deepEqual(parseChatRequest(body(`${q}가`), 100), { error: 'too_long' });
   // 앞 문답 4쌍(2000자씩)이 있어도 질문만 센다
   const turns = Array.from({ length: 4 }, () => [user('a'.repeat(1000)), assistant('b'.repeat(1000))]).flat();
   assert.ok(!('error' in parseChatRequest({ messages: [...turns, user(lead + q)], question: q }, 100)));
-  // 마지막 말은 4000자를 넘어도 되지만 (앞에 붙은 글) 전체 안전 상한은 넘지 못한다
-  assert.ok(!('error' in parseChatRequest({ messages: [user('p'.repeat(6000) + q)], question: q }, 100)));
-  assert.deepEqual(
-    parseChatRequest({ messages: [user('p'.repeat(AI_MAX_PAYLOAD_CHARS + 1))], question: q }, 100),
-    { error: 'too_long' },
-  );
-  assert.deepEqual(
-    parseChatRequest(
-      { messages: [...turns, user('p'.repeat(AI_MAX_PAYLOAD_CHARS - 8000 + 1))], question: q },
-      100,
-    ),
-    { error: 'too_long' },
-  );
+  // 마지막 말은 4000자를 넘어도 되지만 (앞에 붙은 글, 3000자 안) 전체 안전 상한은 넘지 못한다
+  assert.ok(!('error' in parseChatRequest({ messages: [user('p'.repeat(2900) + q)], question: q }, 100)));
+  const heavy = Array.from({ length: 4 }, () => [user('a'.repeat(1400)), assistant('b'.repeat(1400))]).flat();
+  assert.ok(!('error' in parseChatRequest({ messages: [...heavy, user(q)], question: q }, 100)));
+  assert.deepEqual(parseChatRequest({ messages: [...heavy, user('p'.repeat(2900) + q)], question: q }, 100), {
+    error: 'too_long',
+  });
   // 질문 칸이 틀리면 messages 오류 (숫자, 빈 글, 제어 글자만)
   for (const bad of [3, '', '   ', '\u0007'])
     assert.deepEqual(parseChatRequest(body(bad), 100), { error: 'messages' }, JSON.stringify(bad));
@@ -206,4 +202,49 @@ test('질문 글자 수는 question 만 센다: 앞에 붙은 글과 앞 문답�
   assert.deepEqual(parseChatRequest({ messages: [user('가'.repeat(60))] }, 50), { error: 'too_long' });
   assert.deepEqual(parseChatRequest({ messages: [user('가'.repeat(4001))] }, 8000), { error: 'too_long' });
   assert.ok(AI_MAX_PAYLOAD_CHARS > AI_MAX_TOTAL_CHARS);
+});
+
+test('question 우회 막기: 마지막 말이 question 으로 끝나야 하고, 앞에 붙은 글은 상한이 있다 (버그잡이 #123)', () => {
+  const limit = 100;
+  // 마지막 말에 question 이 없으면 거절 (짧은 question 으로 12000자를 통째로 넣는 우회)
+  assert.deepEqual(
+    parseChatRequest({ messages: [user('ㄱ'.repeat(11_000))], question: '안녕', lang: 'ko' }, limit),
+    { error: 'too_long' },
+  );
+  assert.deepEqual(
+    parseChatRequest({ messages: [user('x'.repeat(500))], question: '전혀 다른 글', lang: 'ko' }, limit),
+    { error: 'too_long' },
+  );
+  // question 으로 끝나지만 앞에 붙은 글이 상한(AI_MAX_PREFIX_CHARS)을 넘으면 거절
+  assert.deepEqual(
+    parseChatRequest(
+      { messages: [user('p'.repeat(AI_MAX_PREFIX_CHARS + 1) + '안녕')], question: '안녕', lang: 'ko' },
+      limit,
+    ),
+    { error: 'too_long' },
+  );
+  // 정확히 상한이면 받는다. 제어 글자가 섞여도 같은 글로 본다
+  const ok = parseChatRequest(
+    { messages: [user('p'.repeat(AI_MAX_PREFIX_CHARS) + '안\u0007녕')], question: '안녕', lang: 'ko' },
+    limit,
+  );
+  assert.ok(!('error' in ok), JSON.stringify(ok).slice(0, 80));
+});
+
+test('요금표: 날짜가 붙은 모델 이름도 같은 요금 (모르는 모델로 세지 않는다)', () => {
+  for (const [dated, base] of [
+    ['claude-haiku-5-5-20261001', 'claude-haiku-5-5'],
+    ['claude-sonnet-5-5-20261001', 'claude-sonnet-5-5'],
+    ['claude-sonnet-5-20261001', 'claude-sonnet-5'],
+  ] as const)
+    assert.deepEqual(priceOf(dated), priceOf(base), dated);
+  assert.equal(costMicros('claude-haiku-5-5-20261001', 2000, 600), 500);
+  // 10만 토큰 넘는 긴 프롬프트 요금도 같이 따른다
+  assert.equal(
+    costMicros('claude-haiku-5-5-20261001', 100_001, 600),
+    costMicros('claude-haiku-5-5', 100_001, 600),
+  );
+  // 이름만 닮은 낯선 모델은 가장 비싼 값
+  assert.deepEqual(priceOf('claude-haiku-5-50'), priceOf('claude-unknown'));
+  assert.deepEqual(requestShape('claude-haiku-5-5-20261001'), requestShape('claude-haiku-5-5'));
 });

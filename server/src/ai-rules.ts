@@ -19,6 +19,11 @@ export const AI_MAX_TOTAL_CHARS = 8000;
  * 입력 비용이 이 안에 묶이게 한다. 앱이 질문 본문(question)을 따로 보내는 요청에만 쓴다
  */
 export const AI_MAX_PAYLOAD_CHARS = 12000;
+/**
+ * 앱이 질문 앞에 붙이는 글(시각 줄 + 오늘 상황 목록 + "[질문]" 머리글)의 안전 상한. 할 일 20개와 오늘 일정을 다 담아도
+ * 이 안이다 (앱은 이보다 길면 할 일 목록 가운데를 줄인다). question 이 있는 요청에서 질문 아닌 앞 글이 이를 넘으면 거절한다
+ */
+export const AI_MAX_PREFIX_CHARS = 3000;
 /** 앱이 보내는 펫 성격 글 상한 */
 /** 앱이 보내는 말투 설명 상한. 넘으면 자른다 (system 이 아니라 참고 자료 블록에 들어간다) */
 export const AI_MAX_PERSONA_CHARS = 600;
@@ -58,7 +63,17 @@ const UNKNOWN_PRICE = { input: 15, output: 75 };
 /** 모르는 모델을 나타내는 이름 (요금표에 없는 이름이면 모두 UNKNOWN_PRICE) */
 export const UNKNOWN_MODEL = '';
 
-export const priceOf = (model: string) => PRICES[model] ?? UNKNOWN_PRICE;
+/**
+ * 요금표의 모델 이름으로 접는다: 같은 이름이거나 날짜 접미사(-20261001, @20261001)가 붙은 이름.
+ * 이름만 닮은 다른 모델 (claude-haiku-5-50)은 접지 않는다. requestShape 와 요금이 같은 길을 쓴다
+ */
+export function baseModel(model: string): string | undefined {
+  return Object.keys(PRICES)
+    .filter((k) => model === k || new RegExp(`^${k}[-@]\\d{8}$`).test(model))
+    .sort((a, b) => b.length - a.length)[0];
+}
+
+export const priceOf = (model: string) => PRICES[baseModel(model) ?? ''] ?? UNKNOWN_PRICE;
 
 /**
  * 모델마다 다른 요청 칸. 모델을 바꾸면 여기만 고친다 (ai.ts 는 이것을 그대로 붙인다).
@@ -73,7 +88,7 @@ export interface RequestShape {
 }
 
 export function requestShape(model: string): RequestShape {
-  if (/^claude-haiku-5-5/.test(model))
+  if (baseModel(model) === 'claude-haiku-5-5')
     return { thinking: { type: 'disabled' }, output_config: { effort: 'low' } };
   return {};
 }
@@ -84,7 +99,7 @@ const LONG_PROMPT: Record<string, { over: number; input: number; output: number 
 };
 
 export function costMicros(model: string, inputTokens: number, outputTokens: number): number {
-  const long = LONG_PROMPT[model];
+  const long = LONG_PROMPT[baseModel(model) ?? ''];
   const p = long && inputTokens > long.over ? long : priceOf(model);
   return Math.ceil(inputTokens * p.input + outputTokens * p.output);
 }
@@ -173,7 +188,8 @@ const clean = (s: string) =>
  *
  * 질문 글자 수는 사용자가 직접 친 마지막 질문만 센다. 앱은 그 글을 question 칸에 따로 보낸다
  * (messages 의 마지막 말에는 시각 줄, "[질문]" 머리글, 할 일 목록이 앞에 붙어 있어 거기서는 가를 수 없다).
- * question 이 있으면 그 글자 수를 inputLimit 과 견주고, 요청 전체는 안전 상한(AI_MAX_PAYLOAD_CHARS)으로만 묶는다.
+ * question 이 있으면 그 글자 수를 inputLimit 과 견주고, 마지막 말이 그 글로 끝나는지(앞 글은 AI_MAX_PREFIX_CHARS 이하),
+ * 요청 전체는 안전 상한(AI_MAX_PAYLOAD_CHARS)인지 본다. 앞 문답은 전체 상한 안에서 사용자의 이전 차례다.
  * question 이 없는 옛 앱은 예전처럼 메시지 전체 글자 수를 inputLimit 과 견준다
  */
 export function parseChatRequest(
@@ -189,6 +205,13 @@ export function parseChatRequest(
     question = clean(b.question).trim();
     if (!question) return { error: 'messages' };
     if (question.length > inputLimit) return { error: 'too_long' };
+  }
+  if (question !== undefined) {
+    // 마지막 말은 앞 글 + question 이어야 한다. 아니면 짧은 question 으로 상한을 비켜 긴 글을 넣는 것이다
+    const lastRaw = (raw[raw.length - 1] ?? {}) as Record<string, unknown>;
+    const lastText = typeof lastRaw.content === 'string' ? clean(lastRaw.content).trim() : '';
+    if (!lastText.endsWith(question) || lastText.length - question.length > AI_MAX_PREFIX_CHARS)
+      return { error: 'too_long' };
   }
   const messages: AiMessage[] = [];
   let total = 0;

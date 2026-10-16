@@ -184,6 +184,20 @@ describe('채팅 이용권 접근 모드', () => {
     );
     assert.equal((await adminApi('overview')).body.ai.inputChars, 8000);
 
+    // 숫자는 보통 10진수만: 0x10, 1e2 는 거절하고 저장값은 그대로
+    for (const [k, v] of [
+      ['budget_usd', '0x10'],
+      ['budget_usd', '1e1'],
+      ['daily_limit', '0x2'],
+      ['daily_limit', '1e1'],
+      ['input_chars', '0x10'],
+      ['input_chars', '1e2'],
+    ] as const) {
+      const bad = await adminApi('ai/limits', { budget_usd: '', daily_limit: '', input_chars: '', [k]: v });
+      assert.equal(bad.status, 400, `${k} ${v}`);
+    }
+    assert.equal((await adminApi('overview')).body.ai.monthlyBudgetMicros, 90_000_000);
+
     // 칸이 아예 없는 저장 (앱 운영자 칸 등): 저장된 값은 그대로, 빈 칸일 때만 상한으로 되돌린다
     assert.equal(
       (await adminApi('ai/limits', { budget_usd: '1', daily_limit: '2', input_chars: '120' })).status,
