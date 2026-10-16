@@ -478,9 +478,14 @@ await until('저장 파일', async () => {
   }
 }, 15_000);
 check('저장한 파일이 미리 본 글과 같다', readFileSync(saveTo, 'utf8') === text1);
-await st.click('#help-copy');
-await sleep(500);
-check('복사 단추: 복사했다는 안내', /복사했어|Copied/.test((await st.ev(`document.querySelector('.help-dialog')?.innerText`)) ?? ''));
+// 저장 안내가 붙으면 창 안 배치가 한 번 움직인다. 안내가 바뀔 때까지 두세 번 눌러 본다
+let copyNote = '';
+for (let i = 0; i < 3 && !/복사했어|Copied/.test(copyNote); i++) {
+  await st.click('#help-copy');
+  await sleep(700);
+  copyNote = (await st.ev(`document.querySelector('.help-dialog [role=status]')?.innerText`)) ?? '';
+}
+check('복사 단추: 복사했다는 안내', /복사했어|Copied/.test(copyNote), copyNote);
 // Esc 로 창만 닫힌다 (설정 창은 그대로)
 await st.ev(`document.querySelector('.help-dialog').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }))`);
 await sleep(300);

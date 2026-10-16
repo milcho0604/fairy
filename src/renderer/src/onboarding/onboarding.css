@@ -352,12 +352,17 @@ footer .ghost,
 }
 
 .ai-found ul {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 20px;
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+/* 긴 글(내 컴퓨터 AI 의 "모델을 아직 안 받았어")은 한 줄을 다 쓴다 */
+.ai-found li:last-child {
+  grid-column: 1 / -1;
 }
 
 .ai-found li {
