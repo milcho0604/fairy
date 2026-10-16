@@ -610,24 +610,24 @@ export class AdminService {
     });
   }
 
-  /** 월 예산(달러), 하루 상한, 질문 글자 수 상한. 빈 칸은 .env 상한 그대로 */
+  /**
+   * 월 예산(달러), 하루 상한, 질문 글자 수 상한. 빈 칸은 .env 상한으로 되돌리고(NULL),
+   * 칸이 아예 없으면(undefined) 저장된 값을 그대로 둔다 (앱 운영자 칸이 일부 칸만 보내도 나머지를 지우지 않게)
+   */
   async aiLimits(actor: string, f: FormFields): Promise<AdminDone> {
-    const b = (f.budget_usd ?? '').trim();
-    const d = (f.daily_limit ?? '').trim();
-    const ic = (f.input_chars ?? '').trim();
-    const usd = b === '' ? null : Number(b);
-    if (usd !== null && (!Number.isFinite(usd) || usd < 0)) throw new Refused('월 예산은 0 이상의 달러');
-    const daily = d === '' ? null : Number(d);
-    if (daily !== null && (!Number.isInteger(daily) || daily < 0))
+    const usd = this.limitField(f.budget_usd, Number);
+    if (usd != null && (!Number.isFinite(usd) || usd < 0)) throw new Refused('월 예산은 0 이상의 달러');
+    const daily = this.limitField(f.daily_limit, Number);
+    if (daily != null && (!Number.isInteger(daily) || daily < 0))
       throw new Refused('하루 상한은 0 이상의 정수');
-    const chars = ic === '' ? null : Number(ic);
-    if (chars !== null && (!Number.isInteger(chars) || chars < 1))
+    const chars = this.limitField(f.input_chars, Number);
+    if (chars != null && (!Number.isInteger(chars) || chars < 1))
       throw new Refused('질문 글자 수는 1 이상의 정수');
     return this.write(actor, async (c) => {
       let r: Awaited<ReturnType<AiAdmin['setSettings']>>;
       try {
         r = await this.aiAdmin.setSettings(c, {
-          monthlyBudgetMicros: usd === null ? null : Math.round(usd * 1_000_000),
+          monthlyBudgetMicros: usd == null ? usd : Math.round(usd * 1_000_000),
           dailyLimit: daily,
           inputChars: chars,
         });
@@ -654,6 +654,13 @@ export class AdminService {
         ],
       };
     });
+  }
+
+  /** 한도 칸 하나: 없으면 undefined(그대로), 빈 칸이면 null(상한으로), 아니면 숫자 */
+  private limitField(raw: string | undefined, num: (s: string) => number): number | null | undefined {
+    if (raw === undefined) return undefined;
+    const v = raw.trim();
+    return v === '' ? null : num(v);
   }
 
   /** 채팅 이용권 회수 (남은 장수까지만). 확인 칸이 있어야 한다. 주기는 쪽지로 (sendNote) */

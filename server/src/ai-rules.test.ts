@@ -4,6 +4,7 @@ import {
   AI_MAX_MESSAGE_CHARS,
   AI_MAX_MESSAGES,
   AI_MAX_OUTPUT_TOKENS,
+  AI_MAX_PAYLOAD_CHARS,
   AI_MAX_TOTAL_CHARS,
   billedMicros,
   costMicros,
@@ -171,4 +172,40 @@ test('신고는 따로 동의해야 받는다', () => {
 test('하루는 한국 날짜', () => {
   assert.equal(seoulDay(Date.UTC(2026, 9, 14, 15, 0)), '2026-10-15');
   assert.equal(seoulDay(Date.UTC(2026, 9, 14, 14, 59)), '2026-10-14');
+});
+
+test('질문 글자 수는 question 만 센다: 앞에 붙은 글과 앞 문답은 안전 상한(12000)으로만 묶는다', () => {
+  const lead = '지금은 오후 3시\n[질문]\n';
+  const q = '가'.repeat(100);
+  const body = (question: unknown, extra: object = {}) => ({
+    messages: [user(lead + 'x'.repeat(3000) + q)],
+    question,
+    ...extra,
+  });
+  // 질문 100자 = 상한 100 은 통과, 101 은 too_long. 앞에 붙은 3000자는 세지 않는다
+  assert.ok(!('error' in parseChatRequest(body(q), 100)));
+  assert.deepEqual(parseChatRequest(body(`${q}가`), 100), { error: 'too_long' });
+  // 앞 문답 4쌍(2000자씩)이 있어도 질문만 센다
+  const turns = Array.from({ length: 4 }, () => [user('a'.repeat(1000)), assistant('b'.repeat(1000))]).flat();
+  assert.ok(!('error' in parseChatRequest({ messages: [...turns, user(lead + q)], question: q }, 100)));
+  // 마지막 말은 4000자를 넘어도 되지만 (앞에 붙은 글) 전체 안전 상한은 넘지 못한다
+  assert.ok(!('error' in parseChatRequest({ messages: [user('p'.repeat(6000) + q)], question: q }, 100)));
+  assert.deepEqual(
+    parseChatRequest({ messages: [user('p'.repeat(AI_MAX_PAYLOAD_CHARS + 1))], question: q }, 100),
+    { error: 'too_long' },
+  );
+  assert.deepEqual(
+    parseChatRequest(
+      { messages: [...turns, user('p'.repeat(AI_MAX_PAYLOAD_CHARS - 8000 + 1))], question: q },
+      100,
+    ),
+    { error: 'too_long' },
+  );
+  // 질문 칸이 틀리면 messages 오류 (숫자, 빈 글, 제어 글자만)
+  for (const bad of [3, '', '   ', '\u0007'])
+    assert.deepEqual(parseChatRequest(body(bad), 100), { error: 'messages' }, JSON.stringify(bad));
+  // 질문 칸이 없는 옛 앱은 예전처럼 메시지 전체 글자 수를 상한과 견준다 (메시지 하나 4000자도 그대로)
+  assert.deepEqual(parseChatRequest({ messages: [user('가'.repeat(60))] }, 50), { error: 'too_long' });
+  assert.deepEqual(parseChatRequest({ messages: [user('가'.repeat(4001))] }, 8000), { error: 'too_long' });
+  assert.ok(AI_MAX_PAYLOAD_CHARS > AI_MAX_TOTAL_CHARS);
 });

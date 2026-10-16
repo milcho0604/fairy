@@ -14,6 +14,11 @@ export const AI_MAX_MESSAGE_CHARS = 4000;
  * 운영자는 .env AI_MAX_INPUT_CHARS 로 이보다 낮게 정할 수 있고, 운영자 화면에서 그 안에서 더 낮출 수 있다
  */
 export const AI_MAX_TOTAL_CHARS = 8000;
+/**
+ * 요청 전체(앞서 나눈 말 + 앱이 붙인 시각, 머리글, 할 일 목록 + 질문)의 안전 상한. 질문 글자 수 상한과는 별개로
+ * 입력 비용이 이 안에 묶이게 한다. 앱이 질문 본문(question)을 따로 보내는 요청에만 쓴다
+ */
+export const AI_MAX_PAYLOAD_CHARS = 12000;
 /** 서버 거절 폴백 베타 (fallbacks: "default" 형태). Claude API 에서만 받는다 */
 export const SERVER_FALLBACK_BETA = 'server-side-fallback-2026-07-01';
 /** 앱이 보내는 펫 성격 글 상한 */
@@ -177,31 +182,45 @@ const clean = (s: string) =>
     .join('');
 
 /**
- * 요청 검사. 틀리면 까닭(400 의 error). totalLimit 은 메시지 전체 글자 수 상한 (운영자 설정, 기본 AI_MAX_TOTAL_CHARS)
+ * 요청 검사. 틀리면 까닭(400 의 error). inputLimit 은 질문 글자 수 상한 (운영자 설정, 기본 AI_MAX_TOTAL_CHARS).
+ *
+ * 질문 글자 수는 사용자가 직접 친 마지막 질문만 센다. 앱은 그 글을 question 칸에 따로 보낸다
+ * (messages 의 마지막 말에는 시각 줄, "[질문]" 머리글, 할 일 목록이 앞에 붙어 있어 거기서는 가를 수 없다).
+ * question 이 있으면 그 글자 수를 inputLimit 과 견주고, 요청 전체는 안전 상한(AI_MAX_PAYLOAD_CHARS)으로만 묶는다.
+ * question 이 없는 옛 앱은 예전처럼 메시지 전체 글자 수를 inputLimit 과 견준다
  */
 export function parseChatRequest(
   body: unknown,
-  totalLimit: number = AI_MAX_TOTAL_CHARS,
+  inputLimit: number = AI_MAX_TOTAL_CHARS,
 ): AiChatRequest | { error: string } {
   const b = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
   const raw = b.messages;
   if (!Array.isArray(raw) || raw.length === 0 || raw.length > AI_MAX_MESSAGES) return { error: 'messages' };
+  let question: string | undefined;
+  if (b.question !== undefined) {
+    if (typeof b.question !== 'string') return { error: 'messages' };
+    question = clean(b.question).trim();
+    if (!question) return { error: 'messages' };
+    if (question.length > inputLimit) return { error: 'too_long' };
+  }
   const messages: AiMessage[] = [];
   let total = 0;
-  for (const m of raw) {
-    const o = (typeof m === 'object' && m !== null ? m : {}) as Record<string, unknown>;
+  for (let i = 0; i < raw.length; i++) {
+    const o = (typeof raw[i] === 'object' && raw[i] !== null ? raw[i] : {}) as Record<string, unknown>;
     if ((o.role !== 'user' && o.role !== 'assistant') || typeof o.content !== 'string')
       return { error: 'messages' };
     const content = clean(o.content).trim();
     if (!content) return { error: 'messages' };
-    if (content.length > AI_MAX_MESSAGE_CHARS) return { error: 'too_long' };
+    // 질문을 따로 받았으면 마지막 말은 앞에 붙은 글까지 커질 수 있어 전체 안전 상한에 맡긴다
+    const cap = question !== undefined && i === raw.length - 1 ? AI_MAX_PAYLOAD_CHARS : AI_MAX_MESSAGE_CHARS;
+    if (content.length > cap) return { error: 'too_long' };
     total += content.length;
     // 같은 쪽이 이어지면 한 차례로 합친다 (API 는 user, assistant 가 번갈아야 한다)
     const last = messages[messages.length - 1];
     if (last && last.role === o.role) last.content += `\n\n${content}`;
     else messages.push({ role: o.role, content });
   }
-  if (total > totalLimit) return { error: 'too_long' };
+  if (total > (question === undefined ? inputLimit : AI_MAX_PAYLOAD_CHARS)) return { error: 'too_long' };
   // 처음과 끝은 사용자 말이어야 한다 (끝이 답이면 미리 채우기라 요즘 모델은 받지 않는다)
   if (messages[0]?.role !== 'user' || messages[messages.length - 1]?.role !== 'user')
     return { error: 'messages' };

@@ -785,7 +785,19 @@ async function apiLayer() {
     const edge = await chat(w, 'x'.repeat(30));
     check(AL, '30자 질문 (경계) → 200 done, 차감', edge.status === 200 && sse(edge.text).at(-1)?.ev === 'done' && tickets(w.id) === t0 - 1, `${edge.status} ${(edge.text ?? '').slice(-60)}`);
     const hist = await api('POST', '/v1/ai/chat', { token: w.session, body: { messages: [{ role: 'user', content: 'x'.repeat(10) }, { role: 'assistant', content: 'y'.repeat(15) }, { role: 'user', content: 'z'.repeat(10) }], lang: LANG }, raw: true });
-    check(AL, '상한은 메시지 전체 (기록 포함) 글자 수: 10+15+10 = 35 > 30 → 400 too_long', hist.status === 400 && /too_long/.test(hist.text ?? ''), `${hist.status} ${hist.text}`);
+    check(AL, '옛 앱(question 칸 없음)은 예전처럼 메시지 전체 글자 수: 10+15+10 = 35 > 30 → 400 too_long', hist.status === 400 && /too_long/.test(hist.text ?? ''), `${hist.status} ${hist.text}`);
+    // 새 앱: 사용자가 친 마지막 질문(question)만 센다. 앞에 붙은 글과 앞 문답은 안전 상한(12000)으로만 묶인다
+    const lead = 'x'.repeat(200);
+    const pre = [{ role: 'user', content: 'a'.repeat(100) }, { role: 'assistant', content: 'b'.repeat(100) }];
+    const qOk = await api('POST', '/v1/ai/chat', { token: w.session, body: { messages: [...pre, { role: 'user', content: `${lead}${'z'.repeat(10)}` }], question: 'z'.repeat(10), lang: LANG }, raw: true });
+    check(AL, 'question 10자 + 앞 문답 + 앞에 붙은 글 200자 (전체 410 > 30) → 200 done', qOk.status === 200 && sse(qOk.text).at(-1)?.ev === 'done', `${qOk.status} ${(qOk.text ?? '').slice(-60)}`);
+    const qEdge = await api('POST', '/v1/ai/chat', { token: w.session, body: { messages: [{ role: 'user', content: `${lead}${'z'.repeat(30)}` }], question: 'z'.repeat(30), lang: LANG }, raw: true });
+    check(AL, 'question 30자 (경계) → 200 done', qEdge.status === 200 && sse(qEdge.text).at(-1)?.ev === 'done', `${qEdge.status} ${(qEdge.text ?? '').slice(-60)}`);
+    const nq = fake.calls.length;
+    const qLong = await api('POST', '/v1/ai/chat', { token: w.session, body: { messages: [{ role: 'user', content: `${lead}${'z'.repeat(31)}` }], question: 'z'.repeat(31), lang: LANG }, raw: true });
+    check(AL, 'question 31자 → 400 too_long, 업스트림 0건', qLong.status === 400 && /too_long/.test(qLong.text ?? '') && fake.calls.length === nq, `${qLong.status} ${qLong.text}`);
+    const qHuge = await api('POST', '/v1/ai/chat', { token: w.session, body: { messages: [{ role: 'user', content: 'x'.repeat(12001) }], question: 'z', lang: LANG }, raw: true });
+    check(AL, 'question 1자여도 요청 전체 12001자 → 400 too_long (안전 상한), 업스트림 0건', qHuge.status === 400 && /too_long/.test(qHuge.text ?? '') && fake.calls.length === nq, `${qHuge.status} ${qHuge.text}`);
     for (const [v, why] of [['8001', '.env 상한 넘음'], ['0', '0'], ['-5', '음수'], ['1.5', '소수'], ['abc', '글자']]) {
       const before = inputCharsDb();
       const r = await adminJson('ai/limits', { budget_usd: '', daily_limit: '', input_chars: v });
@@ -1024,12 +1036,13 @@ async function appA() {
       const b0 = chatBodies.at(-1);
       const overhead = (b0?.total ?? 0) - q0.length;
       note(F, `앱이 보낸 첫 질문: 메시지 ${b0?.n}개, 글자 ${b0?.total} (사용자 글 ${q0.length}, 덧붙인 글 ${overhead}: ${JSON.stringify(b0?.last.slice(0, 80))})`);
-      check(F, '앱은 질문 앞에 지금 시각 줄과 머리를 붙여 보낸다 (상한은 이 글까지 센다)', overhead > 0, overhead);
+      check(F, '앱은 질문 앞에 지금 시각 줄과 머리를 붙여 보낸다 (상한은 이 글을 세지 않는다)', overhead > 0, overhead);
       check(F, '"새 대화" 누르기 (둘째)', await pressSel(c, '.new-chat'));
       await soft(until('비움', async () => (await c.ev(`document.querySelectorAll('.msg').length`)) === 0, 5000));
-      const cap = overhead + 30;
+      // 상한은 사용자가 친 글만 센다: 앱이 덧붙인 글(overhead)은 세지 않는다
+      const cap = 30;
       const r = await webSetInputChars(w, String(cap));
-      check(W, `웹 /admin 글자 수 ${cap} (덧붙인 글 + 30) 클릭 저장`, inputCharsDb() === String(cap), JSON.stringify(r));
+      check(W, `웹 /admin 글자 수 ${cap} 클릭 저장 (덧붙인 글 ${overhead}자보다 작다)`, inputCharsDb() === String(cap), JSON.stringify(r));
       const t0 = tickets(id);
       const n0 = fake.calls.length;
       await sendQ(Q('가', 'a').repeat(31));
@@ -1043,7 +1056,7 @@ async function appA() {
       await sendQ(Q('나', 'b').repeat(10));
       const m3 = await lastMsg();
       const tooLong3 = m3.includes(Q('질문이 너무 길어', 'too long'));
-      check(F, `상한 ${cap}, 사용자 글 10자 + 앞 문답 1개 → 질문은 상한 안이니 답해야 함 (앱이 기록을 덜어 맞춰야)`, !tooLong3 && m3.includes('안녕! 나는 AI 야.'), `${tooLong3 ? '실제: "질문이 너무 길어" 안내' : 'ok'}, 서버가 받은 ${JSON.stringify({ n: chatBodies.at(-1)?.n, total: chatBodies.at(-1)?.total, status: chatBodies.at(-1)?.status })}, 이용권 ${t1} → ${tickets(id)}`);
+      check(F, `상한 ${cap}, 사용자 글 10자 + 앞 문답 2개 + 덧붙인 글 → 질문은 상한 안이니 답해야 함`, !tooLong3 && m3.includes('안녕! 나는 AI 야.'), `${tooLong3 ? '실제: "질문이 너무 길어" 안내' : 'ok'}, 서버가 받은 ${JSON.stringify({ n: chatBodies.at(-1)?.n, total: chatBodies.at(-1)?.total, status: chatBodies.at(-1)?.status })}, 이용권 ${t1} → ${tickets(id)}`);
       await c.shots('a07-too-long-history');
       const r2 = await webSetInputChars(w, '');
       check(W, '빈 칸 → "예산 저장" 클릭 → DB NULL, 안내 줄 "질문 8000자 이하"', inputCharsDb() === 'NULL' && r2.hint.includes('질문 8000자 이하'), JSON.stringify(r2));

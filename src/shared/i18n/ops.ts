@@ -104,6 +104,7 @@ export const ko = {
   'admin.ai.modeSave': '모드 바꾸기',
   'admin.ai.budget': (v: { cap: string }) => `월 예산 달러 (상한 ${v.cap})`,
   'admin.ai.daily': (v: { cap: number }) => `하루 질문 (상한 ${v.cap})`,
+  'admin.ai.inputChars': (v: { cap: number }) => `질문 글자 수 (직접 친 글만, 상한 ${v.cap})`,
   'admin.ai.limitsSave': '예산 저장',
   'admin.ai.allow': (v: N) => `허용 목록 ${v.n}`,
   'admin.find': '계정 찾기 (번호, 기기 코드, 닉네임)',
@@ -284,6 +285,8 @@ export const en: Translation<typeof ko> = {
   'admin.ai.modeSave': 'Change mode',
   'admin.ai.budget': (v: { cap: string }) => `Monthly budget USD (cap ${v.cap})`,
   'admin.ai.daily': (v: { cap: number }) => `Daily questions (cap ${v.cap})`,
+  'admin.ai.inputChars': (v: { cap: number }) =>
+    `Question length in characters (typed text only, cap ${v.cap})`,
   'admin.ai.limitsSave': 'Save budget',
   'admin.ai.allow': (v: N) => `Allowlist ${v.n}`,
   'admin.find': 'Find account (number, device code, nickname)',

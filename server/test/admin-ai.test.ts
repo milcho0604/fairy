@@ -181,6 +181,28 @@ describe('채팅 이용권 접근 모드', () => {
     );
     assert.equal((await adminApi('overview')).body.ai.inputChars, 8000);
 
+    // 칸이 아예 없는 저장 (앱 운영자 칸 등): 저장된 값은 그대로, 빈 칸일 때만 상한으로 되돌린다
+    assert.equal(
+      (await adminApi('ai/limits', { budget_usd: '1', daily_limit: '2', input_chars: '120' })).status,
+      200,
+    );
+    assert.equal((await adminApi('ai/limits', { budget_usd: '2' })).status, 200);
+    const kept = (await adminApi('overview')).body.ai;
+    assert.equal(kept.inputChars, 120);
+    assert.equal(kept.setInputChars, 120);
+    assert.equal(kept.monthlyBudgetMicros, 2_000_000);
+    assert.equal(kept.dailyLimit, 2);
+    assert.equal((await adminApi('ai/limits', {})).status, 200);
+    assert.equal((await adminApi('overview')).body.ai.setInputChars, 120);
+    assert.equal((await adminApi('overview')).body.ai.monthlyBudgetMicros, 2_000_000);
+    assert.equal(
+      (await adminApi('ai/limits', { budget_usd: '', daily_limit: '', input_chars: '' })).status,
+      200,
+    );
+    const reset = (await adminApi('overview')).body.ai;
+    assert.equal(reset.setInputChars, null);
+    assert.equal(reset.inputChars, 8000);
+
     const left = (await api('GET', '/v1/ai', { token: adminSession })).body.tickets;
     assert.equal((await adminApi('ai/revoke', { account: adminAccount.code, count: 1 })).status, 400);
     const tooMany = await adminApi('ai/revoke', {

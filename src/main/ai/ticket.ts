@@ -7,10 +7,13 @@ import type { AiChatBody, AiChatOutcome, AiPiece } from '../server-api.ts';
 
 /** 붙여 보낼 최근 문답 수 */
 export const TICKET_HISTORY = 4;
-/** 서버 상한(메시지 하나 4000자, 전체 8000자, 말투 600자) 안으로 자른다 */
-const MAX_MESSAGE = 4000;
+/**
+ * 서버 상한 안으로 자른다. 질문 글자 수는 사용자가 친 마지막 질문만 센다 (서버 .env 상한 AI_MAX_TOTAL_CHARS 8000 이하,
+ * 운영자가 더 낮추면 서버가 too_long). 요청 전체(앞 문답 + 앱이 붙인 글 + 질문)는 서버 안전 상한 12000 보다 낮은 11500 으로 묶는다
+ */
+export const MAX_QUESTION = 8000;
 const MAX_HISTORY_PART = 1500;
-const MAX_TOTAL = 7500;
+const MAX_TOTAL = 11500;
 const MAX_PERSONA = 600;
 
 /** 채팅이 쓰는 대화권 손잡이 (main/server.ts 가 server-core 를 붙인다) */
@@ -27,24 +30,34 @@ export interface TicketHooks {
   refresh?(): Promise<void>;
 }
 
-/** 질문과 최근 문답을 서버에 보낼 메시지로. 오래된 문답부터 빼서 전체 상한 안으로 */
-export function ticketMessages(history: readonly Exchange[], question: string): AiChatBody['messages'] {
-  const q = question.slice(0, MAX_MESSAGE);
+/**
+ * 질문과 최근 문답을 서버에 보낼 메시지로. prompt 는 질문 앞에 시각 줄, 머리글, 할 일 목록을 붙인 글이고
+ * question 은 사용자가 친 글 그대로다 (질문 글자 수는 이것만 센다). 오래된 문답부터 빼서 전체 상한 안으로.
+ * 그래도 넘으면 질문이 아니라 앞에 붙인 글을 자른다
+ */
+export function ticketMessages(
+  history: readonly Exchange[],
+  prompt: string,
+  question: string = prompt,
+): AiChatBody['messages'] {
   const pairs = history
     .slice(-TICKET_HISTORY)
     .filter((x) => x.question.trim() && x.answer.trim())
     .map((x) => [x.question.slice(0, MAX_HISTORY_PART), x.answer.slice(0, MAX_HISTORY_PART)] as const);
-  let total = q.length + pairs.reduce((n, [a, b]) => n + a.length + b.length, 0);
+  const lead = prompt.endsWith(question) ? prompt.slice(0, prompt.length - question.length) : '';
+  const body = lead ? question : prompt;
+  let total = lead.length + body.length + pairs.reduce((n, [a, b]) => n + a.length + b.length, 0);
   while (pairs.length > 0 && total > MAX_TOTAL) {
     const [a, b] = pairs.shift() as readonly [string, string];
     total -= a.length + b.length;
   }
+  const last = lead.slice(0, Math.max(0, MAX_TOTAL - (total - lead.length))) + body;
   return [
     ...pairs.flatMap(([a, b]) => [
       { role: 'user' as const, content: a },
       { role: 'assistant' as const, content: b },
     ]),
-    { role: 'user' as const, content: q },
+    { role: 'user' as const, content: last },
   ];
 }
 
@@ -97,16 +110,22 @@ export interface TicketRun {
 
 /** 대화권 질문 하나. 사건은 다른 AI 와 같은 모양(delta, done, error)으로 */
 export function runTicket(
-  req: { history: readonly Exchange[]; text: string; persona: string; lang: Lang },
+  req: { history: readonly Exchange[]; text: string; question: string; persona: string; lang: Lang },
   hooks: TicketHooks,
   onEvent: (e: AiEvent) => void,
 ): TicketRun {
   const ac = new AbortController();
   let text = '';
+  // 질문이 서버 최대(8000자)를 넘으면 보내지 않는다 (서버의 too_long 과 같은 안내, 이용권은 쓰지 않는다)
+  if (req.question.length > MAX_QUESTION) {
+    const error = ticketError({ ok: false, status: 400, error: 'too_long' }, false);
+    return { cancel: () => {}, finished: Promise.resolve().then(() => onEvent({ type: 'error', error })) };
+  }
   const finished = hooks
     .ask(
       {
-        messages: ticketMessages(req.history, req.text),
+        messages: ticketMessages(req.history, req.text, req.question),
+        question: req.question,
         lang: req.lang,
         persona: req.persona.slice(0, MAX_PERSONA),
       },

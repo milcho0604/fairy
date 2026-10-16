@@ -15,8 +15,9 @@ test('보낼 메시지: 최근 문답 몇 개와 질문, 오래된 것부터 빼
   const long = Array.from({ length: 4 }, () => ({ question: 'q'.repeat(2000), answer: 'a'.repeat(2000) }));
   const cut = ticketMessages(long, 'x'.repeat(4500));
   const total = cut.reduce((n, x) => n + x.content.length, 0);
-  assert.ok(total <= 7500, String(total));
-  assert.equal(cut.at(-1)?.content.length, 4000);
+  assert.ok(total <= 11500, String(total));
+  // 질문은 자르지 않는다
+  assert.equal(cut.at(-1)?.content.length, 4500);
   // 빈 답(안내 말 등)은 붙이지 않는다
   assert.equal(ticketMessages([{ question: 'q', answer: ' ' }], 'z').length, 1);
 });
@@ -73,7 +74,13 @@ test('runTicket: 조각은 delta, 끝은 done(모은 글), 실패는 error, 멈�
   const events: AiEvent[] = [];
   const h = hooks({ ok: true, tickets: 2 }, ['안녕', '!']);
   await runTicket(
-    { history: [{ question: 'q', answer: 'a' }], text: '질문', persona: 'p'.repeat(3000), lang: 'en' },
+    {
+      history: [{ question: 'q', answer: 'a' }],
+      text: '질문',
+      question: '질문',
+      persona: 'p'.repeat(3000),
+      lang: 'en',
+    },
     h,
     (e) => events.push(e),
   ).finished;
@@ -90,7 +97,7 @@ test('runTicket: 조각은 delta, 끝은 done(모은 글), 실패는 error, 멈�
   // 서버 폴백: 앞의 글은 reset 으로 지워지고, 완료 글은 이어진 글만
   const fb: AiEvent[] = [];
   await runTicket(
-    { history: [], text: 'x', persona: '', lang: 'ko' },
+    { history: [], text: 'x', question: 'x', persona: '', lang: 'ko' },
     hooks({ ok: true, tickets: 1 }, ['[A의 앞부분] ', 'reset', '새 ', '답']),
     (e) => fb.push(e),
   ).finished;
@@ -104,7 +111,7 @@ test('runTicket: 조각은 delta, 끝은 done(모은 글), 실패는 error, 멈�
 
   const errs: AiEvent[] = [];
   await runTicket(
-    { history: [], text: 'x', persona: '', lang: 'ko' },
+    { history: [], text: 'x', question: 'x', persona: '', lang: 'ko' },
     hooks({ ok: false, status: 409, error: 'no_tickets', tickets: 0 }),
     (e) => errs.push(e),
   ).finished;
@@ -113,11 +120,67 @@ test('runTicket: 조각은 delta, 끝은 done(모은 글), 실패는 error, 멈�
 
   const stopped: AiEvent[] = [];
   const run = runTicket(
-    { history: [], text: 'x', persona: '', lang: 'ko' },
+    { history: [], text: 'x', question: 'x', persona: '', lang: 'ko' },
     hooks({ ok: true, tickets: 1 }),
     (e) => stopped.push(e),
   );
   run.cancel();
   await run.finished;
   assert.equal((stopped.at(-1) as Extract<AiEvent, { type: 'error' }>).error.kind, 'cancelled');
+});
+
+test('질문 글자 수는 사용자가 친 글만: 앞에 붙인 글(시각, 머리글, 할 일)은 세지 않고, 서버에 question 으로 따로 보낸다', async () => {
+  const lead = '지금은 오후 3시\n[할 일]\n- 빨래\n[질문]\n';
+  const q = '가'.repeat(200);
+  const m = ticketMessages([], lead + q, q);
+  assert.equal(m.length, 1);
+  assert.equal(m[0]?.content, lead + q);
+  // 전체가 안전 상한을 넘으면 질문이 아니라 앞에 붙인 글을 자른다
+  const hugeLead = 'L'.repeat(20000);
+  const big = ticketMessages([], hugeLead + q, q);
+  assert.equal(big[0]?.content.length, 11500);
+  assert.ok(big[0]?.content.endsWith(q));
+  // 앞 문답이 있으면 오래된 것부터 빼서 질문과 앞에 붙인 글을 살린다
+  const hist = Array.from({ length: 4 }, () => ({ question: 'q'.repeat(1500), answer: 'a'.repeat(1500) }));
+  const withHist = ticketMessages(hist, 'P'.repeat(3000) + q, q);
+  assert.ok(withHist.reduce((n, x) => n + x.content.length, 0) <= 11500);
+  assert.ok(withHist.at(-1)?.content.endsWith(q));
+  assert.equal(withHist.at(-1)?.content.length, 3200);
+
+  const bodies: { question?: string; messages: { content: string }[] }[] = [];
+  const hooks: TicketHooks = {
+    available: () => true,
+    tickets: () => 1,
+    agreed: () => true,
+    agree: () => {},
+    report: async () => true,
+    ask: async (body) => {
+      bodies.push(body);
+      return { ok: true, tickets: 0 };
+    },
+  };
+  await runTicket({ history: [], text: lead + q, question: q, persona: '', lang: 'ko' }, hooks, () => {})
+    .finished;
+  assert.equal(bodies[0]?.question, q);
+  assert.equal(bodies[0]?.messages.at(-1)?.content, lead + q);
+
+  // 서버 최대(8000자)를 넘는 질문은 보내지 않고 같은 안내를 낸다
+  setLang('ko');
+  const ev: AiEvent[] = [];
+  await runTicket(
+    { history: [], text: lead + 'z'.repeat(8001), question: 'z'.repeat(8001), persona: '', lang: 'ko' },
+    hooks,
+    (e) => ev.push(e),
+  ).finished;
+  assert.equal(bodies.length, 1);
+  const last = ev.at(-1) as Extract<AiEvent, { type: 'error' }>;
+  assert.equal(last.type, 'error');
+  assert.match(last.error.message, /너무 길어/);
+  // 8000자 딱 맞으면 보낸다
+  await runTicket(
+    { history: [], text: 'z'.repeat(8000), question: 'z'.repeat(8000), persona: '', lang: 'ko' },
+    hooks,
+    () => {},
+  ).finished;
+  assert.equal(bodies.length, 2);
 });

@@ -456,6 +456,55 @@ describe('질문 하나', () => {
     }
   });
 
+  test('질문 글자 수는 question 만 센다: 앞에 붙은 글이 길어도 짧은 질문은 통과, 질문이 길면 too_long, 전체 안전 상한도 지킨다', async () => {
+    const a = await adult();
+    await pool.query('UPDATE ai_setting SET input_chars = 50 WHERE id = 1');
+    try {
+      const lead = `지금은 오후 3시\n[할 일]\n${'- 빨래\n'.repeat(100)}[질문]\n`;
+      const n0 = fake.calls.length;
+      const ok = await api('POST', '/v1/ai/chat', {
+        token: a.session,
+        body: {
+          messages: [{ role: 'user', content: `${lead}안녕` }],
+          question: '안녕',
+          lang: 'ko',
+          persona: '',
+        },
+      });
+      assert.equal(ok.status, 200, ok.text);
+      assert.equal(fake.calls.length, n0 + 1);
+      assert.equal(await tickets(a.session), AI_GIFT - 1);
+      // 질문 칸이 상한을 넘으면 앞에 붙은 글이 짧아도 too_long, 업스트림에 안 간다
+      const long = await api('POST', '/v1/ai/chat', {
+        token: a.session,
+        body: {
+          messages: [{ role: 'user', content: `[질문]\n${'가'.repeat(60)}` }],
+          question: '가'.repeat(60),
+          lang: 'ko',
+          persona: '',
+        },
+      });
+      assert.equal(long.status, 400, long.text);
+      assert.equal(long.body.error, 'too_long');
+      // 질문은 짧아도 요청 전체가 안전 상한(12000)을 넘으면 too_long
+      const huge = await api('POST', '/v1/ai/chat', {
+        token: a.session,
+        body: {
+          messages: [{ role: 'user', content: '가'.repeat(12001) }],
+          question: '안녕',
+          lang: 'ko',
+          persona: '',
+        },
+      });
+      assert.equal(huge.status, 400, huge.text);
+      assert.equal(huge.body.error, 'too_long');
+      assert.equal(fake.calls.length, n0 + 1);
+      assert.equal(await tickets(a.session), AI_GIFT - 1);
+    } finally {
+      await pool.query('UPDATE ai_setting SET input_chars = NULL WHERE id = 1');
+    }
+  });
+
   test('거절(refusal): 받은 글이 있어도 이용권을 되돌리고 error refusal', async () => {
     const a = await adult();
     const r = await api('POST', '/v1/ai/chat', { token: a.session, body: ask('[[refusal]] 위험한 것') });

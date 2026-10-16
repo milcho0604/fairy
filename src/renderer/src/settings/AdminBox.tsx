@@ -85,6 +85,15 @@ function useForm(init: Record<string, string>) {
   return { v, setV, input };
 }
 
+/** 운영자 설정 세 칸을 서버가 알려 준 저장값으로 (비어 있으면 .env 상한을 쓰는 중이라 빈 칸) */
+function limitsOf(ai: View): Record<string, string> {
+  return {
+    budget_usd: ai.setBudgetMicros == null ? '' : String(ai.setBudgetMicros / 1_000_000),
+    daily_limit: ai.setDailyLimit == null ? '' : String(ai.setDailyLimit),
+    input_chars: ai.setInputChars == null ? '' : String(ai.setInputChars),
+  };
+}
+
 function Group(o: { title: string; children: ReactNode }) {
   return (
     <div className="admin-group">
@@ -132,7 +141,7 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
   const note = useForm({ message: '', coins: '0', chat_passes: '0', days: '30' });
   const sub = useForm({ monthly: '100', starts_on: '', ends_on: '' });
   const revoke = useForm({ count: '1' });
-  const limits = useForm({ budget_usd: '', daily_limit: '' });
+  const limits = useForm({ budget_usd: '', daily_limit: '', input_chars: '' });
   const ev = useForm({
     id: '',
     title_ko: '',
@@ -154,6 +163,7 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
   useEffect(() => {
     if (!view) return;
     setMode(view.ai.mode);
+    limits.setV(limitsOf(view.ai));
     ver.setV({
       minVersion: view.notices?.minVersion ?? '',
       restrictVersion: view.notices?.restrictVersion ?? '',
@@ -211,12 +221,20 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
           </div>
           {limits.input('budget_usd', t('admin.ai.budget', { cap: usd(ai.capBudgetMicros) }))}
           {limits.input('daily_limit', t('admin.ai.daily', { cap: ai.capDailyLimit }), 'number')}
+          {limits.input('input_chars', t('admin.ai.inputChars', { cap: ai.capInputChars }), 'number')}
           <div className="action-row">
             <button
               type="button"
               className="ghost small"
               disabled={busy}
-              onClick={() => void act('ai/limits', limits.v)}
+              onClick={() => {
+                // 손댄 칸만 보낸다: 그대로인 칸은 서버가 저장된 값을 지키고, 비운 칸만 상한으로 되돌린다
+                const saved = limitsOf(ai);
+                void act(
+                  'ai/limits',
+                  Object.fromEntries(Object.entries(limits.v).filter(([k, x]) => x !== saved[k])),
+                );
+              }}
             >
               {t('admin.ai.limitsSave')}
             </button>
