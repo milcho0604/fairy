@@ -324,6 +324,9 @@ const body = async () => {
           check(`${tag} 낱말 중간 줄바꿈, 넘침, 잘림 없음 (${rows.length}개 검사)`, bad.length === 0, JSON.stringify(bad).slice(0, 300));
           const seg = rows.filter((r) => r.sel === '.lines-bar .segmented button');
           check(`${tag} 언어 단추 둘이 한 줄, 높이 같음`, seg.length === 2 && seg.every((r) => r.lines === 1) && seg[0].h === seg[1].h, JSON.stringify(seg.map((r) => [r.text, r.lines, r.h])));
+          // 언어 단추 묶음과 찾기 칸: 높이 2px 안, 둥근 정도와 테두리 색 같음
+          const bar = await st.ev(`(() => { const g = document.querySelector('.lines-bar .segmented'); const i = document.querySelector('.lines-bar .lines-find'); const a = g.getBoundingClientRect(); const b = i.getBoundingClientRect(); const cg = getComputedStyle(g); const ci = getComputedStyle(i); return { gh: a.height, ih: b.height, gr: cg.borderTopLeftRadius, ir: ci.borderTopLeftRadius, gc: cg.borderTopColor, ic: ci.borderTopColor, sameRow: Math.abs(a.top - b.top) < 40 }; })()`);
+          check(`${tag} 찾기 칸 높이, 둥근 정도, 테두리 색이 언어 단추 묶음과 같음`, !bar.sameRow || (Math.abs(bar.gh - bar.ih) <= 2 && bar.gr === bar.ir && bar.gc === bar.ic), JSON.stringify(bar));
           const links = rows.filter((r) => r.sel === '.lines-edited button' || r.sel === '.lines-count button' || r.sel === '.lines-confirm button');
           check(`${tag} 되돌리기류 링크 단추 한 줄`, links.every((r) => r.lines <= 1 || !r.text.trim().includes(' ') ) , JSON.stringify(links.filter((r) => r.lines > 1).map((r) => [r.text, r.lines])));
           const png = await st.send('Page.captureScreenshot', { format: 'png' });
