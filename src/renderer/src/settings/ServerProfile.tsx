@@ -82,7 +82,7 @@ export function NicknameStep(o: { onStart: (nickname: string) => void; onBack: (
 
 /**
  * "내 정보" 묶음: 닉네임, 기기 코드(복사), 그리고 children 으로 받는 나이 줄. 줄마다 이름, 값, 작은 단추.
- * 아래에 기기 코드 안내, 정기 지급, 대기, 쪽지 한 줄씩
+ * 아래에 기기 코드 안내 한 줄. 채팅 이용권 글과 운영자 쪽지 안내는 각자 자리(ServerAccountBox.tsx)에 있다 (#121)
  */
 export function ProfileRows(o: {
   s: ServerStatus;
@@ -188,13 +188,6 @@ export function ProfileRows(o: {
       </div>
       {o.after}
       {s.code && <small>{t('server.code.why')}</small>}
-      {s.subscription && (
-        <small>
-          {t('ticket.subscription', { n: s.subscription.monthly, day: s.subscription.nextFill ?? '-' })}
-        </small>
-      )}
-      {s.aiWaitlisted && <small className="warn">{t('ticket.waitlisted')}</small>}
-      {s.inbox > 0 && <small className="server-inbox">{t('server.inbox', { n: s.inbox })}</small>}
     </div>
   );
 }

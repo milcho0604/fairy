@@ -1,7 +1,8 @@
 // 페어리 서버 계정 (이슈 #99, 기획서 5, 6, 21절): 설정 > 데이터 칸. 나이 확인과 두 모드, 서버 코인, 구글 로그인,
 // 합치기 확인, 탈퇴. 창은 상태(ServerStatus)만 받는다. 토큰과 네트워크는 메인(main/server.ts)에만 있다.
 // 서버 주소 없이 만든 판에서는 칸을 통째로 숨긴다 (serverView 'hidden').
-// 칸은 뜻 묶음 차례로: 내 정보, 로그인, 코인 맞추기, 서버 백업, 서버로 가는 것, 맨 아래 따로 둔 되돌릴 수 없는 일.
+// 칸은 뜻 묶음 차례로: 내 정보, 로그인, 채팅 이용권(쓸 수 있을 때만), 코인 맞추기, 서버 백업, 서버로 가는 것, 맨 아래 따로 둔 되돌릴 수 없는 일.
+// 운영자 쪽지 안내는 묶음 밖 한 줄이다 (코인 맞추기 아래).
 // 단추는 두 크기: 줄 끝 동작(복사, 바꾸기, 지금 맞추기)은 작은 것, 묶음 동작(로그인, 올리기)은 보통. 위험한 것은 빨간 테두리
 // 하나 (줄 격자와 간격은 settings.css "서버 계정과 코인").
 import { useEffect, useRef, useState } from 'react';
@@ -247,6 +248,8 @@ export function ServerAccountBox({ flash }: { flash: (message: string, error?: b
       </Section>
     );
 
+  /** 채팅 이용권 묶음을 보인다: 쓸 수 있거나 (남은 장수를 받았을 때), 자리가 차서 대기 중일 때 (#100, #101 와 같은 조건) */
+  const passOn = (s.ai && s.tickets !== null) || s.aiWaitlisted;
   const syncLine = [
     s.balance === null ? t('server.balanceNone') : t('server.balance', { n: s.balance }),
     s.syncing
@@ -318,8 +321,6 @@ export function ServerAccountBox({ flash }: { flash: (message: string, error?: b
           ) : s.signedIn ? (
             <>
               <small>{t('server.signedIn', { via: viaText(s.logins) })}</small>
-              {/* AI 대화권 (#100): 만 18세 이상 로그인일 때만. 14~17 이나 서버 주소가 없으면 보이지 않는다 */}
-              {s.ai && s.tickets !== null && <small>{t('ticket.settings', { n: s.tickets })}</small>}
               <div className="action-row">
                 {/* 다른 서비스도 잇기 (21절). 서버가 이 계정에 허락한 것만 (카카오는 기능 키) */}
                 {linkServices.map((x) => (
@@ -363,6 +364,25 @@ export function ServerAccountBox({ flash }: { flash: (message: string, error?: b
           )}
         </div>
 
+        {/* 채팅 이용권 묶음 (#121): 남은 장수, 구독과 다음 채움일, 대기 안내, 고르는 법. 쓸 수 없는 계정은 묶음을 통째로 숨긴다 */}
+        {passOn && (
+          <div className="server-group server-pass">
+            <h3 className="server-group-title">{t('ticket.label')}</h3>
+            {s.ai && s.tickets !== null && (
+              <>
+                <span className="server-pass-count">{t('ticket.passCount', { n: s.tickets })}</span>
+                <small>{t('ticket.passHow')}</small>
+              </>
+            )}
+            {s.subscription && (
+              <small>
+                {t('ticket.subscription', { n: s.subscription.monthly, day: s.subscription.nextFill ?? '-' })}
+              </small>
+            )}
+            {s.aiWaitlisted && <small className="warn">{t('ticket.waitlisted')}</small>}
+          </div>
+        )}
+
         <div className="server-group">
           <h3 className="server-group-title">{t('server.group.sync')}</h3>
           <div className="server-line">
@@ -377,6 +397,9 @@ export function ServerAccountBox({ flash }: { flash: (message: string, error?: b
             </button>
           </div>
         </div>
+
+        {/* 운영자 쪽지 안내: 묶음 밖 한 줄 (패널 쪽지함에서 연다) */}
+        {s.inbox > 0 && <small className="server-inbox">{t('server.inbox', { n: s.inbox })}</small>}
 
         {!s.merge && !s.loggingIn && s.signedIn && s.backup && (
           <ServerBackupBox b={b} view={s.backup} setS={setS} flash={flash} />
