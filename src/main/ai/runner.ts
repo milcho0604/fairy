@@ -151,7 +151,9 @@ export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
 
     if (spec.adapter === 'claude') {
       const sessionId = req.sessionId ?? randomUUID();
-      args = claudeArgs({ ...req, sessionId, resume: !!req.sessionId, guard: guardLaunch() });
+      // 윈도우는 훅을 PowerShell 이 읽을 수 있고 그러면 막는 줄이 안 먹는다: 훅을 못 믿는 곳에서는 내 MCP 를 열지 않는다
+      const guard = process.platform === 'win32' ? undefined : guardLaunch();
+      args = claudeArgs({ ...req, sessionId, resume: !!req.sessionId, guard });
       stdin = claudeInput(req);
       parse = parseClaudeLine;
     } else if (spec.adapter === 'cursor') {

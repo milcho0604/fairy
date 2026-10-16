@@ -67,7 +67,7 @@ export function AiSupportBox() {
                 {chip(cap.mcp, t('support.ai.col.mcp'))}
                 <li className="on">{t(`support.ai.cost.${cap.cost}`)}</li>
                 <li className="on">
-                  {t('support.ai.col.safe')} {t(`support.ai.safe.${cap.readOnly}`)}
+                  {t('support.ai.safeChip', { state: t(`support.ai.safe.${cap.readOnly}`) })}
                 </li>
               </ul>
             </li>

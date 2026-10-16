@@ -66,26 +66,41 @@ const WRITE_WORDS = new Set([
   ...['download', 'save', 'sign', 'toggle', 'enable', 'disable', 'rotate', 'extend', 'resolve', 'react'],
   ...['comment', 'convert', 'spawn', 'unpin', 'pin', 'hover', 'resize', 'close', 'open', 'upgrade'],
   ...['stage', 'unstage', 'invalidate', 'record', 'verify', 'test', 'rebase', 'unlock', 'lock', 'attach'],
+  ...[
+    'replace',
+    'clear',
+    'purge',
+    'change',
+    'modify',
+    'schedule',
+    'draft',
+    'wipe',
+    'erase',
+    'flush',
+    'order',
+  ],
+  ...['book', 'subscribe', 'follow', 'accept', 'decline', 'transition', 'select', 'swap', 'fix', 'refactor'],
 ]);
 
-/** 읽기만 하는 동사 (쓰는 동사가 없을 때 하나라도 있으면 통과) */
+/**
+ * 읽기만 하는 동사. 명사(status, history, schema, symbol 같은 것)는 넣지 않는다: replace_symbol_body, change_status 처럼
+ * 쓰는 동사 옆에 붙어 통과시키는 틈이 된다
+ */
 const READ_WORDS = new Set([
   ...['get', 'list', 'search', 'find', 'read', 'query', 'fetch', 'describe', 'show', 'view', 'count'],
-  ...['lookup', 'check', 'status', 'info', 'browse', 'analyze', 'explain', 'diff', 'history', 'blame'],
-  ...['outline', 'retrieve', 'preview', 'inspect', 'snapshot', 'screenshot', 'whoami', 'schema'],
-  ...['schemas', 'tree', 'dependencies', 'references', 'symbol', 'endpoints', 'logs', 'metrics'],
-  ...['price', 'availability'],
+  ...['lookup', 'check', 'browse', 'analyze', 'explain', 'diff', 'retrieve', 'preview', 'inspect'],
+  ...['snapshot', 'screenshot', 'whoami'],
 ]);
 
 export type ToolVerdict = { allow: true } | { allow: false; reason: string };
 
 /**
- * MCP 도구 이름(mcp__서버__도구)을 읽기 전용인지 가른다.
- * 페어리 자신의 서버(mcp__fairy__)는 통과: 지우기, 고치기는 이미 앱이 사용자 확인을 거친다 (shared/pet-actions.ts).
- * 그 밖의 서버는 쓰는 동사가 하나라도 있으면 막고, 읽는 동사가 하나도 없으면(모르는 이름) 그것도 막는다 (모르면 닫는다).
+ * MCP 도구 이름(mcp__서버__도구)을 읽기 전용인지 가른다 (허용 목록 방식: 읽는 동사가 확실할 때만 통과).
+ * - 서버 이름이 정확히 fairy 이고 이번 실행이 페어리 서버를 직접 싣는 경우(allowFairy)만 통과: 지우기, 고치기는 앱이 사용자 확인을 거친다
+ *   (shared/pet-actions.ts, JJ_MCP_CONFIRM). 사용자가 직접 등록한 fairy 는 그 확인이 없어서 allowFairy 가 아니면 다른 서버와 같이 본다
+ * - 그 밖은 낱말로 쪼개 쓰는 동사가 하나라도 있으면 막고, 읽는 동사가 이름 앞쪽(첫 낱말이나 서버 머리 하나 뒤)에 없으면 막는다
  */
-export function mcpToolVerdict(toolName: string): ToolVerdict {
-  if (toolName.startsWith(`mcp__${JJ_MCP_NAME}__`)) return { allow: true };
+export function mcpToolVerdict(toolName: string, allowFairy = false): ToolVerdict {
   const m = /^mcp__(.+?)__(.+)$/.exec(toolName);
   if (!m) {
     // mcp__ 로 시작하지 않는 이름(내장 도구)은 쓰기 도구 목록만 본다. 훅은 MCP 만 받지만 다른 곳에서 불러도 안전하게
@@ -93,10 +108,13 @@ export function mcpToolVerdict(toolName: string): ToolVerdict {
       ? { allow: false, reason: `${toolName} 는 펫 대화에서 쓸 수 없어` }
       : { allow: true };
   }
-  const words = toolWords(m[2] as string);
+  const server = m[1] as string;
+  const tool = m[2] as string;
+  if (allowFairy && server === JJ_MCP_NAME && !tool.startsWith('_')) return { allow: true };
+  const words = toolWords(tool);
   const write = words.find((w) => WRITE_WORDS.has(w));
   if (write) return { allow: false, reason: `쓰기 도구라 막았어 (${write})` };
-  if (!words.some((w) => READ_WORDS.has(w)))
+  if (!words.slice(0, 2).some((w) => READ_WORDS.has(w)))
     return { allow: false, reason: '읽기 전용인지 알 수 없어 막았어' };
   return { allow: true };
 }
@@ -105,11 +123,11 @@ export function mcpToolVerdict(toolName: string): ToolVerdict {
  * 훅이 표준 출력으로 내는 PreToolUse 결정. 막을 때만 글을 낸다: 통과를 뜻하는 allow 는 내지 않는다
  * (훅의 allow 는 권한 확인을 건너뛰게 해서, 허락한 적 없는 도구까지 열어 줄 수 있다). toolName 이 없으면 막는다
  */
-export function hookDecision(toolName: string | undefined): string {
+export function hookDecision(toolName: string | undefined, allowFairy = false): string {
   const v: ToolVerdict =
     toolName === undefined
       ? { allow: false, reason: '도구 이름을 읽지 못해 막았어' }
-      : mcpToolVerdict(toolName);
+      : mcpToolVerdict(toolName, allowFairy);
   if (v.allow) return '';
   return JSON.stringify({
     hookSpecificOutput: {
@@ -135,38 +153,48 @@ function shq(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`;
 }
 
+/** 훅 스크립트에 넘기는 표시: 이번 실행이 페어리 서버를 직접 싣는다 (mcp__fairy__ 를 통과시킨다) */
+export const ALLOW_FAIRY_FLAG = '--allow-fairy';
+
 /**
  * claude 훅 명령 한 줄: 페어리 실행 파일을 Node 로 돌려 ai-guard.js 를 띄운다.
- * 윈도우의 claude 는 Git Bash 로 훅을 돌리니 역슬래시를 슬래시로 바꾼다.
+ * 훅은 0 과 2 말고는 "실패했지만 계속 진행"이라(스크립트 경로가 없거나 죽으면 도구가 그대로 돈다) 열린 채로 실패한다.
+ * 그래서 스크립트가 0 으로 끝나지 않으면 이 줄이 2 와 이유로 끝내 도구를 막는다 (실패하면 막기).
+ * 변수=값 앞붙임과 || 는 POSIX 셸 문법이다. 윈도우에서 claude 가 PowerShell 로 훅을 읽으면 안 먹으니
+ * 부르는 쪽이 윈도우에서는 훅 없이 내 MCP 를 열지 않는다 (main/ai/runner.ts)
  */
-export function guardHookCommand(launch: McpLaunch, platform: NodeJS.Platform = process.platform): string {
+export function guardHookCommand(
+  launch: McpLaunch,
+  platform: NodeJS.Platform = process.platform,
+  allowFairy = false,
+): string {
   const p = (s: string) => (platform === 'win32' ? s.replace(/\\/g, '/') : s);
   const env = Object.entries(launch.env).map(([k, v]) => `${k}=${shq(v)}`);
-  return [...env, shq(p(launch.command)), ...launch.args.map((a) => shq(p(a)))].join(' ');
+  const run = [
+    ...env,
+    shq(p(launch.command)),
+    ...launch.args.map((a) => shq(p(a))),
+    ...(allowFairy ? [ALLOW_FAIRY_FLAG] : []),
+  ].join(' ');
+  return `${run} || { echo ${shq('페어리 읽기 전용 훅이 실행되지 않아 막았어')} >&2; exit 2; }`;
 }
 
-/** claude --settings 에 넘길 JSON: 모든 MCP 도구 호출 앞에 읽기 전용 훅 */
-export function guardSettings(launch: McpLaunch, platform?: NodeJS.Platform): string {
+/**
+ * claude --settings 에 넘길 JSON: 모든 MCP 도구 호출 앞에 읽기 전용 훅.
+ * disableAllHooks 를 명시적으로 false 로: 다른 설정 층이 훅을 끄지 못하게 (관리 설정이 끄는 것은 못 막는다)
+ */
+export function guardSettings(launch: McpLaunch, platform?: NodeJS.Platform, allowFairy = false): string {
   return JSON.stringify({
+    disableAllHooks: false,
     hooks: {
       PreToolUse: [
         {
           matcher: 'mcp__.*',
-          hooks: [{ type: 'command', command: guardHookCommand(launch, platform), timeout: 10 }],
+          hooks: [{ type: 'command', command: guardHookCommand(launch, platform, allowFairy), timeout: 10 }],
         },
       ],
     },
   });
-}
-
-/** codex 설정 파일의 [mcp_servers.이름] 머리에서 서버 이름들. 이름에 점이 있으면 따옴표로 묶여 온다 */
-export function codexMcpNames(toml: string): string[] {
-  const names = new Set<string>();
-  for (const m of toml.matchAll(/^\s*\[mcp_servers\.("[^"]+"|[A-Za-z0-9_-]+)(?:\.[^\]]*)?\]\s*$/gm)) {
-    const raw = m[1] as string;
-    names.add(raw.startsWith('"') ? raw.slice(1, -1) : raw);
-  }
-  return [...names];
 }
 
 /** codex -c 키 한 조각. 영문, 숫자, _, - 말고는 따옴표로 묶는다 */

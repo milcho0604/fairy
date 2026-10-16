@@ -459,6 +459,8 @@ const checkPreview = (label, text) => {
   check(`${label}: 기록 속 기기 코드는 남는다`, text.includes('F-ABCD-2345'));
   check(`${label}: 가린 자리 표시가 있다`, /<secret>/.test(text) && /<email>/.test(text) && /<private>/.test(text));
 };
+// 복사 단추가 진짜 시스템 클립보드를 쓰지 않게 메인의 clipboard.writeText 를 바꿔 끼운다
+await main(`(() => { const e = process.getBuiltinModule('module').createRequire(process.cwd() + '/')('electron'); globalThis.__aiClip = []; e.clipboard.writeText = (t) => { globalThis.__aiClip.push(t); }; return true; })()`);
 await st.click('#help-open');
 await until('미리 보기', async () => !!(await previewText()), 30_000);
 let text1 = await previewText();
@@ -486,6 +488,7 @@ for (let i = 0; i < 3 && !/복사했어|Copied/.test(copyNote); i++) {
   copyNote = (await st.ev(`document.querySelector('.help-dialog [role=status]')?.innerText`)) ?? '';
 }
 check('복사 단추: 복사했다는 안내', /복사했어|Copied/.test(copyNote), copyNote);
+check('복사 단추: 미리 본 글 그대로 복사됨', (await main('JSON.stringify(globalThis.__aiClip)')) === JSON.stringify([text1]));
 // Esc 로 창만 닫힌다 (설정 창은 그대로)
 await st.ev(`document.querySelector('.help-dialog').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }))`);
 await sleep(300);

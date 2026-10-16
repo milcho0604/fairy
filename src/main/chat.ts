@@ -919,10 +919,16 @@ export function createChat(o: ChatOptions) {
      * 기록에는 원래 안 남지만 오류 글에 섞여 와도 새지 않게
      */
     privateTexts(): string[] {
-      return state.messages
-        .slice(-60)
-        .map((m) => m.text)
-        .filter((x): x is string => typeof x === 'string' && x.trim().length > 0);
+      // 대화 전체(글 하나는 2000자까지)와 그 글의 줄들: 기록 한 줄에 글 일부만 들어 있어도 줄 단위로 찾아 지운다
+      const out: string[] = [];
+      for (const m of state.messages) {
+        const text = typeof m.text === 'string' ? m.text.slice(0, 2000) : '';
+        if (!text.trim()) continue;
+        out.push(text);
+        for (const line of text.split('\n')) if (line.trim().length >= 8) out.push(line);
+        if (out.length > 3000) break;
+      }
+      return out;
     },
     get window() {
       return win;

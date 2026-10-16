@@ -7,12 +7,12 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { claudeArgs } from './claude.ts';
 import { codexArgs } from './codex.ts';
+import { codexMcpNames } from './codex-config.ts';
 import { cursorArgs } from './cursor.ts';
 import {
   CLAUDE_WRITE_TOOLS,
   CODEX_OFF_FEATURES,
   codexGuardArgs,
-  codexMcpNames,
   guardHookCommand,
   guardSettings,
   hookDecision,
@@ -169,6 +169,11 @@ test('codex 설정 파일에서 MCP 서버 이름 읽기', () => {
     '[projects."/a/b"]',
   ].join('\n');
   assert.deepEqual(codexMcpNames(toml).sort(), ['fairy', 'my.server', 'notion']);
+  // 점 키 모양은 표 머리와 섞어 쓸 수 없어(TOML 규칙) 따로
+  assert.deepEqual(codexMcpNames('mcp_servers.github.command = "npx"\nmcp_servers.x.url = "u"').sort(), [
+    'github',
+    'x',
+  ]);
   assert.deepEqual(codexMcpNames(''), []);
 });
 
@@ -202,8 +207,6 @@ test('직접 추가한 AI 는 막을 방법이 없어 사용자가 적은 인자
 
 test('MCP 도구 이름으로 읽기와 쓰기를 가른다', () => {
   const allow = [
-    'mcp__fairy__add_todo', // 페어리 자신의 서버
-    'mcp__fairy__delete_todo',
     'mcp__claude_ai_Gmail__search_threads',
     'mcp__claude_ai_Gmail__get_message',
     'mcp__claude_ai_Notion__notion-fetch',
@@ -238,6 +241,11 @@ test('MCP 도구 이름으로 읽기와 쓰기를 가른다', () => {
     'mcp__x__frobnicate', // 모르는 이름은 닫는다
     'mcp__x__setup_qa', // setup 은 set 이 아니어도 읽는 말이 없어 막힌다
   ];
+  // 페어리 서버는 이번 실행이 직접 실을 때만 통과 (사용자가 직접 등록한 fairy 는 확인 단계가 없다)
+  for (const n of ['mcp__fairy__add_todo', 'mcp__fairy__delete_todo']) {
+    assert.deepEqual(mcpToolVerdict(n, true), { allow: true }, n);
+    assert.equal(mcpToolVerdict(n).allow, false, n);
+  }
   for (const n of allow) assert.deepEqual(mcpToolVerdict(n), { allow: true }, n);
   for (const n of deny) assert.equal(mcpToolVerdict(n).allow, false, n);
   // 내장 쓰기 도구 이름도 막는다
@@ -271,8 +279,17 @@ test('훅 스크립트(out/main/ai-guard 의 원본)를 실제 프로세스로 �
   const ok = run('{"tool_name":"mcp__claude_ai_Gmail__get_message"}');
   assert.equal(ok.status, 0, ok.stderr);
   assert.equal(ok.stdout, '');
-  const own = run('{"tool_name":"mcp__fairy__add_todo"}');
+  // 페어리 서버는 이번 실행이 직접 실을 때(--allow-fairy)만 통과
+  const own = spawnSync(process.execPath, [script, '--allow-fairy'], {
+    input: '{"tool_name":"mcp__fairy__add_todo"}',
+    encoding: 'utf8',
+    timeout: 15_000,
+  });
   assert.equal(own.stdout, '');
+  assert.equal(
+    JSON.parse(run('{"tool_name":"mcp__fairy__delete_todo"}').stdout).hookSpecificOutput.permissionDecision,
+    'deny',
+  );
   const broken = run('not json');
   assert.equal(JSON.parse(broken.stdout).hookSpecificOutput.permissionDecision, 'deny');
 });
@@ -286,7 +303,12 @@ test('훅 명령은 셸에서 띄어쓰기와 따옴표가 있는 경로도 한 
     },
     'darwin',
   );
-  assert.equal(cmd, `ELECTRON_RUN_AS_NODE='1' '/Applications/My App/It'\\''s.app/Fairy' '/a b/ai-guard.js'`);
+  assert.ok(
+    cmd.startsWith(
+      `ELECTRON_RUN_AS_NODE='1' '/Applications/My App/It'\\''s.app/Fairy' '/a b/ai-guard.js' || {`,
+    ),
+    cmd,
+  );
   // 윈도우는 Git Bash 가 읽으니 역슬래시를 슬래시로
   const win = guardHookCommand(
     {
@@ -296,8 +318,132 @@ test('훅 명령은 셸에서 띄어쓰기와 따옴표가 있는 경로도 한 
     },
     'win32',
   );
-  assert.equal(win, `'C:/Program Files/Fairy/Fairy.exe' 'C:/Program Files/Fairy/resources/ai-guard.js'`);
+  assert.ok(
+    win.startsWith(`'C:/Program Files/Fairy/Fairy.exe' 'C:/Program Files/Fairy/resources/ai-guard.js' || {`),
+    win,
+  );
   assert.ok(
     JSON.parse(guardSettings(guard, 'darwin')).hooks.PreToolUse[0].hooks[0].command.includes('ai-guard.js'),
   );
+});
+
+// ---- 버그잡이 PR #131 ----
+
+test('사용자가 직접 등록한 fairy 는 페어리 도구를 싣지 않는 실행에서 통째로 열리지 않는다 (B1)', () => {
+  const turn = { ...base, resume: false, isolate: false, mcpServers: ['fairy', 'notion'], guard };
+  const none = claudeArgs(turn);
+  const allowed = after(none, '--allowedTools')?.split(',') ?? [];
+  assert.deepEqual(allowed, ['mcp__notion']);
+  const hook = JSON.parse(after(none, '--settings') ?? '{}').hooks.PreToolUse[0].hooks[0].command as string;
+  assert.equal(hook.includes('--allow-fairy'), false);
+  assert.equal(mcpToolVerdict('mcp__fairy__delete_todo').allow, false);
+  // 이번 실행이 페어리 서버를 싣는 경우는 훅도 fairy 를 통과시킨다
+  const own = claudeArgs({ ...turn, jjServer: jj });
+  assert.ok(after(own, '--allowedTools')?.split(',').includes('mcp__fairy'));
+  assert.ok(
+    (JSON.parse(after(own, '--settings') ?? '{}').hooks.PreToolUse[0].hooks[0].command as string).includes(
+      '--allow-fairy',
+    ),
+  );
+});
+
+test('서버 이름이 fairy_ 로 시작해도 접두사로 통과하지 않는다 (B2)', () => {
+  for (const allowFairy of [false, true]) {
+    assert.equal(mcpToolVerdict('mcp__fairy___send_email', allowFairy).allow, false);
+    assert.equal(mcpToolVerdict('mcp__fairy_x__add_todo', allowFairy).allow, false);
+  }
+});
+
+test('목록에 없는 쓰기 동사도 읽는 낱말이 섞여 통과하지 못한다 (B3, 허용 목록)', () => {
+  for (const n of [
+    'mcp__serena__replace_symbol_body',
+    'mcp__x__clear_history',
+    'mcp__x__purge_logs',
+    'mcp__jira__change_status',
+    'mcp__x__modify_schema',
+    'mcp__x__schedule_from_availability',
+    'mcp__x__wipe_cache',
+    'mcp__x__subscribe_events',
+    'mcp__x__select_option',
+    'mcp__x__transition_issue',
+    'mcp__x__history_rewrite', // 읽는 동사가 없다
+  ])
+    assert.equal(mcpToolVerdict(n).allow, false, n);
+  // 읽는 동사가 앞에 있으면 통과
+  for (const n of [
+    'mcp__serena__find_symbol',
+    'mcp__x__get_status',
+    'mcp__x__list_logs',
+    'mcp__x__browser_snapshot',
+  ])
+    assert.equal(mcpToolVerdict(n).allow, true, n);
+});
+
+test('훅 스크립트가 없거나 죽으면 막는 줄이 2 로 끝낸다 (B4, 실패하면 막기)', () => {
+  const cmd = guardHookCommand(
+    {
+      command: process.execPath,
+      args: ['/nonexistent/out/main/ai-guard.js'],
+      env: { ELECTRON_RUN_AS_NODE: '1' },
+    },
+    'darwin',
+  );
+  const r = spawnSync('/bin/sh', ['-c', cmd], {
+    input: JSON.stringify({ tool_name: 'mcp__gmail__send_email' }),
+    encoding: 'utf8',
+  });
+  assert.equal(r.status, 2, `exit=${r.status} stdout=${JSON.stringify(r.stdout)}`);
+  assert.match(r.stderr, /막았어/);
+  // 실행 파일이 아예 없어도(127) 마찬가지
+  const gone = guardHookCommand({ command: '/nonexistent/Fairy', args: ['x.js'], env: {} }, 'darwin');
+  assert.equal(spawnSync('/bin/sh', ['-c', gone], { input: '{}', encoding: 'utf8' }).status, 2);
+  // 스크립트가 잘 돌면 그 결과 그대로 (읽기 도구는 0, 출력 없음)
+  const script = fileURLToPath(new URL('../../main/ai-guard.ts', import.meta.url));
+  const ok = guardHookCommand({ command: process.execPath, args: [script], env: {} }, 'darwin');
+  const good = spawnSync('/bin/sh', ['-c', ok], {
+    input: '{"tool_name":"mcp__x__get_thing"}',
+    encoding: 'utf8',
+  });
+  assert.equal(good.status, 0);
+  assert.equal(good.stdout, '');
+  // 설정에 훅 끄기 해제 표시
+  assert.equal(JSON.parse(guardSettings(guard, 'darwin')).disableAllHooks, false);
+});
+
+test('codex 설정의 MCP 서버를 TOML 의 모든 모양에서 읽는다 (B5)', () => {
+  const toml = [
+    '[mcp_servers.gmail] # 메일',
+    "[mcp_servers.'slack.bot']",
+    '[ mcp_servers.notion ]',
+    'command = "npx"',
+    '[mcp_servers]',
+    'linear = { command = "npx" }',
+    '[mcp_servers."esc\\"aped"]',
+    '[mcp_servers.fairy.env]',
+    'A = "1"',
+    '# [mcp_servers.commented]',
+    '[projects."/a/b"]',
+  ].join('\n');
+  assert.deepEqual(codexMcpNames(toml).sort(), [
+    'esc"aped',
+    'fairy',
+    'gmail',
+    'linear',
+    'notion',
+    'slack.bot',
+  ]);
+  // 점 키 모양은 표 머리와 섞어 쓸 수 없어(TOML 규칙) 따로
+  assert.deepEqual(codexMcpNames('mcp_servers.hub.command = "npx"\nmcp_servers.x.url = "u"').sort(), [
+    'hub',
+    'x',
+  ]);
+  assert.deepEqual(codexMcpNames(''), []);
+  assert.deepEqual(codexMcpNames('깨진 [[['), []);
+  assert.deepEqual(codexMcpNames('mcp_servers = 3'), []);
+});
+
+test('gemini 는 내 MCP 서버를 허용 목록 밖으로 둔다', () => {
+  const spec = BUILTIN_PROVIDERS.find((p) => p.id === 'gemini');
+  const a = fillArgs(spec?.args ?? [], 'q');
+  assert.ok(a.includes('--allowed-mcp-server-names=fairy-none'));
 });

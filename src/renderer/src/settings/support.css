@@ -51,6 +51,8 @@
 }
 
 .ai-chips li {
+  /* 숨은 글(.sr-or-text, position: absolute)이 설정 창 전체를 늘리지 않게 칩이 기준이 된다 */
+  position: relative;
   padding: 1px 8px;
   border: 1px solid var(--line);
   border-radius: 999px;

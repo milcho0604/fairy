@@ -52,7 +52,8 @@ export function jjMcpConfig(server: McpLaunch | undefined): string {
 export function claudeArgs(turn: ClaudeTurn): string[] {
   // 허락할 MCP: 격리를 껐을 때 내 MCP 서버들(읽기 전용 훅이 있을 때만), 그리고 짝꿍 도구. 기본 도구(--tools '')는 그대로 끈다
   const allowed = [
-    ...(turn.isolate === false && turn.guard ? (turn.mcpServers ?? []) : []),
+    // 사용자가 직접 등록해 둔 fairy 는 앱의 확인 단계(JJ_MCP_CONFIRM)가 없어 열지 않는다. 이번 실행이 페어리 서버를 싣는 경우는 jjServer 가 따로 허락한다
+    ...(turn.isolate === false && turn.guard ? (turn.mcpServers ?? []).filter((n) => n !== JJ_MCP_NAME) : []),
     ...(turn.jjServer ? [JJ_MCP_NAME] : []),
   ];
   const search = turn.webSearch ? ['WebSearch'] : [];
@@ -88,7 +89,9 @@ export function claudeArgs(turn: ClaudeTurn): string[] {
     CLAUDE_WRITE_TOOLS.join(','),
     '--permission-mode',
     'dontAsk',
-    ...(turn.isolate === false && turn.guard ? ['--settings', guardSettings(turn.guard)] : []),
+    ...(turn.isolate === false && turn.guard
+      ? ['--settings', guardSettings(turn.guard, undefined, !!turn.jjServer)]
+      : []),
     ...(turn.model ? ['--model', turn.model] : []),
     '--append-system-prompt',
     turn.persona,

@@ -103,7 +103,9 @@ export const BUILTIN_PROVIDERS: readonly ProviderSpec[] = [
     adapter: 'text',
     // 읽기 전용 강제 (이슈 #126): 승인 방식을 default 로 박는다. 사용자 설정이 yolo, auto_edit 여도 이번 실행은 확인이 필요한 도구(파일 쓰기,
     // 명령)를 헤드리스에서 거절한다 (Gemini CLI 문서: 정책 엔진의 ask_user 는 비대화형에서 deny)
-    args: ['--approval-mode', 'default', '-p', '{prompt}'],
+    //    + 내 MCP 서버 끄기: 허용 목록에 없는 이름 하나만 넘겨 사용자 설정의 서버가 하나도 안 뜨게 한다 (--allowed-mcp-server-names, 공식 문서 CLI 옵션).
+    // 페어리는 gemini 에 MCP 서버를 싣지 않는다
+    args: ['--approval-mode', 'default', '--allowed-mcp-server-names=fairy-none', '-p', '{prompt}'],
     images: false,
     verified: false,
     get installHint() {

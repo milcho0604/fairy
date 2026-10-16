@@ -2,7 +2,7 @@ import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, s
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { app } from 'electron';
-import { codexMcpNames } from '../../shared/ai/guard.ts';
+import { codexMcpNames } from '../../shared/ai/codex-config.ts';
 import { returnCodexAuth } from './codex-auth.ts';
 
 /** 사용자 쪽 codex 로그인 파일. 추측하지 않고 CODEX_HOME, ~/.codex 순서로 찾는다 */
