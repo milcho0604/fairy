@@ -55,6 +55,7 @@ import { createJourney } from './journey.ts';
 import { pruneCopies } from './keep-copies.ts';
 import { createKnows } from './knows.ts';
 import { initLang } from './lang.ts';
+import { debugLines, initLines, registerLines } from './lines.ts';
 import { stopLocalDrawNow, sweepLocalDraw } from './local-draw.ts';
 import { createLogFile } from './log-file.ts';
 import { createLookTogether } from './look-together.ts';
@@ -214,6 +215,8 @@ registerModelScheme();
 // 화면 말은 메뉴와 창을 만들기 전에 정한다 (v2 다국어). 시각 입력칸 같은 기본 칸은 Chromium 말을 따라서
 // 준비 전에 같은 말로 맞춘다
 initLang();
+// 사용자가 고친 펫 대사를 말풍선과 창이 쓰게 한다 (#125, main/lines.ts). 창을 만들기 전에
+initLines(log);
 app.commandLine.appendSwitch('lang', locale());
 
 // 모든 창(펫, 같이 보기, 놀이 창 포함): 새 창을 열거나 다른 주소로 옮겨 가지 못하게 한다. 링크는 메인이 따로 연다
@@ -507,6 +510,13 @@ ready
       trouble,
       db,
     } = openStore(log);
+    // 휴지통에 30일이 지난 할 일은 켤 때 영구 삭제한다 (#125). 패널에서 휴지통을 열 때도 한 번 더 지운다
+    try {
+      const gone = store.purgeExpired(Date.now());
+      if (gone > 0) log('todo', '휴지통 30일 지난 것 영구 삭제', gone);
+    } catch (err) {
+      log('todo', '휴지통 정리 못 함', err instanceof Error ? err.message : String(err));
+    }
     // 내 말투와 직접 쓴 말의 {name}, {todo} (shared/persona-voice.ts). 채팅 AI 성격 지시도 내 말투를 읽는다
     setSpeechSource({
       style: () => settings.get().speech,
@@ -1435,6 +1445,15 @@ ready
       log,
     });
     serverCore = server.core;
+    // ---- 펫 대사 고치기 (#125, main/lines.ts) ----
+    registerLines({
+      isSettings: (wc) => {
+        const w = settingsWindow.window;
+        return !!w && !w.isDestroyed() && w.webContents === wc;
+      },
+      petName,
+      log,
+    });
     // ---- 하루 도구: 습관, 아침 계획, 알림 미루기, 내보내기 (main/day-tools.ts) ----
     const dayTools = createDayTools({
       todos: store,
@@ -1895,6 +1914,8 @@ ready
           diary,
           companion,
           dayTools,
+          // 고친 펫 대사 (#125)
+          lines: debugLines(),
           habits,
           whatFirst,
           sayWhatFirst,

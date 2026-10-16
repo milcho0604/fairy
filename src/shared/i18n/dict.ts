@@ -33,6 +33,7 @@ import * as pin from './pin.ts';
 import * as play from './play.ts';
 import * as polish from './polish.ts';
 import * as pout from './pout.ts';
+import * as records from './records.ts';
 import * as remind from './remind.ts';
 import * as routine from './routine.ts';
 import * as server from './server.ts';
@@ -95,6 +96,7 @@ export const ko = {
   ...notice.ko,
   ...server.ko,
   ...ops.ko,
+  ...records.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -144,4 +146,5 @@ export const en: Translation<typeof ko> = {
   ...notice.en,
   ...server.en,
   ...ops.en,
+  ...records.en,
 };

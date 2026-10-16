@@ -1,0 +1,277 @@
+/* 기록 (#125): 할 일 휴지통(TrashBox.tsx)과 집중 월간 잔디(FocusMonth.tsx) */
+
+/* ---- 휴지통 ---- */
+.trash {
+  flex: none;
+  border-top: 1px solid var(--line);
+}
+
+.trash-toggle {
+  display: block;
+}
+
+.trash-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: 0 14px 10px;
+}
+
+.trash-hint,
+.trash-note {
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.trash-note {
+  color: var(--ok);
+}
+
+.trash-empty {
+  margin: 4px 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.trash-list {
+  padding: 0;
+}
+
+.trash-item {
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 4px;
+}
+
+.trash-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.trash-text .title {
+  flex: none;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+
+.trash-text small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.trash-actions {
+  display: flex;
+  flex: none;
+  gap: 10px;
+}
+
+.trash-empty-all {
+  align-self: flex-start;
+}
+
+.trash-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--error) 45%, var(--line));
+  border-radius: 8px;
+}
+
+/* ---- 집중 월간 잔디 ---- */
+.focus-month {
+  --fm-cell: 40px;
+}
+
+.fm-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+
+.fm-month {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.fm-step {
+  min-width: 30px;
+  padding: 2px 8px;
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.fm-grid {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.fm-dow {
+  text-align: center;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.fm-blank {
+  min-height: var(--fm-cell);
+}
+
+/* 칸: 날짜 숫자(위)와 집중한 분(아래, 있을 때만). 색은 다섯 단계이고 숫자와 툴팁이 같이 있어 색만으로 구분하지 않는다 */
+.fm-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--fm-cell);
+  padding: 3px 2px 2px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--line) 55%, transparent);
+  color: var(--muted);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.fm-cell .fm-d {
+  font-size: 10.5px;
+  line-height: 1.1;
+}
+
+.fm-cell .fm-m {
+  font-size: 11.5px;
+  line-height: 1.1;
+}
+
+.fm-cell.lv1,
+.fm-swatches i.lv1 {
+  background: color-mix(in srgb, var(--panel) 78%, var(--ok));
+}
+
+.fm-cell.lv2,
+.fm-swatches i.lv2 {
+  background: color-mix(in srgb, var(--panel) 58%, var(--ok));
+}
+
+.fm-cell.lv3,
+.fm-swatches i.lv3 {
+  background: color-mix(in srgb, var(--panel) 34%, var(--ok));
+}
+
+.fm-cell.lv4,
+.fm-swatches i.lv4 {
+  background: var(--ok);
+}
+
+.fm-cell.lv1,
+.fm-cell.lv2,
+.fm-cell.lv3 {
+  color: var(--ink);
+}
+
+.fm-cell.lv4 {
+  color: var(--ok-ink);
+}
+
+.fm-cell.future {
+  background: none;
+  border: 1px dashed var(--line);
+  cursor: default;
+}
+
+/* 오늘은 날짜 숫자에 밑줄(색 말고 모양으로도) */
+.fm-cell.today .fm-d {
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.fm-cell.picked {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 1px var(--ink);
+}
+
+.fm-cell:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.fm-detail {
+  min-height: 2.8em;
+  margin: 8px 0 4px;
+  color: var(--ink);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.fm-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.fm-legend small,
+.fm-note {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.fm-note {
+  display: block;
+  margin-top: 4px;
+  line-height: 1.45;
+}
+
+.fm-swatches {
+  display: flex;
+  gap: 6px;
+}
+
+.fm-swatches > span {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.fm-swatches i {
+  display: block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--line) 55%, transparent);
+}
+
+/* 어두운 모드: 밝은 초록 위에 밝은 글자는 대비가 모자라서(3.3:1) 3단계까지 초록을 덜 섞어 글자가 읽히게 한다. 시험: records-contrast.test.ts */
+@media (prefers-color-scheme: dark) {
+  .fm-cell.lv1,
+  .fm-swatches i.lv1 {
+    background: color-mix(in srgb, var(--panel) 85%, var(--ok));
+  }
+
+  .fm-cell.lv2,
+  .fm-swatches i.lv2 {
+    background: color-mix(in srgb, var(--panel) 68%, var(--ok));
+  }
+
+  .fm-cell.lv3,
+  .fm-swatches i.lv3 {
+    background: color-mix(in srgb, var(--panel) 52%, var(--ok));
+  }
+}

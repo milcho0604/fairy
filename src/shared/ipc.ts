@@ -15,6 +15,7 @@ import type { EnergyLook } from './energy.ts';
 import type { CalEvent } from './event-store.ts';
 import type { CarryToy } from './fetch.ts';
 import type { FocusState } from './focus.ts';
+import type { FocusDay } from './focus-month.ts';
 import type { GalleryList } from './gallery.ts';
 import type { Gaze } from './gaze.ts';
 import type { PanelGcal } from './gcal.ts';
@@ -39,7 +40,7 @@ import type { SettingsTab } from './settings-tabs.ts';
 import type { BuyResult, CoinResetResult, CoinResetScope, ShopState } from './shop.ts';
 import type { SoundKind } from './sound.ts';
 import type { PetChoice, StarterId } from './starter-pets.ts';
-import type { Repeat, Todo } from './todo-store.ts';
+import type { Repeat, Todo, TrashItem } from './todo-store.ts';
 import type { NoteLook, TogetherLook } from './together.ts';
 import type { WearLook } from './wear.ts';
 import type { WeekSummary } from './week.ts';
@@ -969,6 +970,13 @@ export const PANEL = {
   remove: 'panel:remove',
   /** 지운 할 일 되살리기 (되돌리기) */
   restore: 'panel:restore',
+  /** 할 일 휴지통 (#125): 목록, 되살리기, 영구 삭제, 비우기 */
+  trashList: 'panel:trash-list',
+  trashRestore: 'panel:trash-restore',
+  trashPurge: 'panel:trash-purge',
+  trashEmpty: 'panel:trash-empty',
+  /** 집중 월간 잔디 (#125): 한 달의 날마다 집중 기록 */
+  focusMonth: 'panel:focus-month',
   /** 한 줄 입력이 일정으로 들어간 것을 할 일로 옮기기 */
   eventToTodo: 'panel:event-to-todo',
   feed: 'panel:feed',
@@ -1074,6 +1082,16 @@ export interface PanelState {
   shop: ShopState & { foodImages: Record<string, string>; houseHidden: boolean };
   /** 이번 주 돌아보기 (shared/week.ts). 기록을 못 읽으면 없다 */
   week?: WeekSummary;
+  /** 휴지통에 있는 할 일 수 (#125). 목록은 trashList 로 따로 묻는다 */
+  trashCount: number;
+}
+
+/** 월간 잔디 한 달 (#125). days 는 집중한 날만 */
+export interface FocusMonthView {
+  month: string;
+  days: FocusDay[];
+  /** 집중 기록이 처음 있는 달. 이보다 앞으로는 못 간다. 기록이 없으면 이번 달 */
+  firstMonth: string;
 }
 
 /** 짝꿍 일기 한 날 */
@@ -1174,6 +1192,15 @@ export interface PanelBridge {
   remove(id: number): void;
   /** 지운 할 일 되살리기 */
   restore(id: number): void;
+  /** 할 일 휴지통 (#125). 30일이 지난 것은 열 때 영구 삭제된다 */
+  trashList(): Promise<TrashItem[]>;
+  /** 되살리기. gone 은 이미 되살렸거나 영구 삭제됨, dup 은 같은 반복 할 일이 이미 열려 있어 되살리지 않음. 코인은 움직이지 않는다 */
+  trashRestore(id: number): Promise<'ok' | 'gone' | 'dup'>;
+  /** 영구 삭제. 지운 수 */
+  trashPurge(id: number): Promise<number>;
+  trashEmpty(): Promise<number>;
+  /** 집중 월간 잔디. month 는 YYYY-MM */
+  focusMonth(month: string): Promise<FocusMonthView>;
   /** 한 줄 입력이 일정(id)으로 들어간 것을 지우고 같은 글(text)을 할 일로 넣는다 */
   eventToTodo(id: number, text: string): Promise<PanelAddResult>;
   feed(): Promise<{ ok: boolean }>;

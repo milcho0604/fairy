@@ -1676,3 +1676,150 @@ textarea.rules {
 .admin-wrap {
   flex-wrap: wrap;
 }
+
+/* ---- 펫 대사 고치기 (LinesEditor.tsx, #125) ---- */
+.lines-sheet {
+  width: min(100%, 560px);
+  max-height: 100%;
+}
+
+.lines-sheet .lines-token {
+  white-space: nowrap;
+}
+
+.lines-help {
+  color: var(--muted);
+}
+
+.lines-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.lines-sheet .lines-bar .segmented button {
+  padding: 6px 12px;
+  white-space: nowrap;
+}
+
+/* 찾기 칸: 설정의 다른 글 칸(.field input)과 같은 테두리, 바탕, 안쪽 여백, 포커스. 높이는 옆 언어 단추 묶음과 같게(한 줄이 되면 가운데) */
+.lines-sheet .lines-bar .lines-find {
+  box-sizing: border-box;
+  flex: 1 1 140px;
+  min-width: 0;
+  align-self: stretch;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.lines-sheet .lines-bar .lines-find:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: -1px;
+}
+
+.lines-count {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.lines-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.lines-group {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.lines-group > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 600;
+}
+
+.lines-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.lines-group > summary::before {
+  content: "▸";
+  color: var(--muted);
+}
+
+.lines-group[open] > summary::before {
+  content: "▾";
+}
+
+.lines-sheet .lines-group > summary small {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.lines-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.lines-group > summary + .lines-row {
+  margin-top: 8px;
+}
+
+.lines-sheet .lines-row textarea {
+  width: 100%;
+  min-height: 3em;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  resize: vertical;
+}
+
+.lines-sheet .lines-row textarea:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.lines-sheet .lines-row textarea[aria-invalid="true"] {
+  border-color: var(--error);
+}
+
+.lines-sheet .lines-row.edited textarea {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--line));
+}
+
+.lines-error {
+  color: var(--error);
+}
+
+.lines-preview,
+.lines-vars {
+  color: var(--muted);
+}
+
+.lines-edited {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+}

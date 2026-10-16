@@ -99,6 +99,31 @@ export const FULLNESS = {
   hungry: 30,
 } as const;
 
+/** 지운 할 일을 휴지통에 두는 날 수 (#125). 지난 것은 영구 삭제 */
+export const TRASH_DAYS = 30;
+const DAY_MS = 86_400_000;
+/** 마지막 기록 날에서 이만큼 넘게 뛴 시계는 믿지 않고 휴지통을 비우지 않는다 */
+const CLOCK_JUMP_DAYS = 90;
+
+/** 휴지통의 할 일 한 줄 */
+export interface TrashItem {
+  id: number;
+  title: string;
+  due: string | null;
+  /** 끝낸 할 일이었으면 끝낸 시각 (되살려도 그대로 끝낸 채다) */
+  doneAt: number | null;
+  /** 지운 시각(ms) */
+  deletedAt: number;
+  /** 영구 삭제까지 남은 날 (0 이면 오늘 안에 지워진다) */
+  daysLeft: number;
+}
+
+/** 휴지통에서 영구 삭제까지 남은 날. 시계를 되돌려 지운 때가 미래여도 TRASH_DAYS 를 넘기지 않는다 */
+export function trashDaysLeft(deletedAt: number, now: number): number {
+  const left = Math.ceil((deletedAt + TRASH_DAYS * DAY_MS - now) / DAY_MS);
+  return Math.max(0, Math.min(TRASH_DAYS, left));
+}
+
 export interface Todo {
   id: number;
   title: string;
@@ -173,6 +198,7 @@ interface Row {
   important: number;
   created_at: number;
   done_at: number | null;
+  deleted_at?: number | null;
   coins: number;
   repeat: string | null;
   due_min?: number | null;
@@ -326,9 +352,17 @@ export class TodoStore {
     // 반복 할 일은 마감이 있어야 다음 회차를 셀 수 있다. 없으면 오늘.
     const due = input.due ?? (repeat ? this.#day(now) : null);
     const dueMin = due && isDueMin(input.dueMin) ? input.dueMin : null;
+    // 번호는 지금 있는 가장 큰 번호나 코인 장부가 기억하는 가장 큰 번호 다음으로 정한다. 영구 삭제로 맨 끝 할 일이 사라진 뒤
+    // 같은 번호가 다시 쓰이면 서버 맞추기의 ref(소금 + 번호)가 옛 할 일 것과 겹치고, 새 할 일 코인이 옛 코인만큼 깎인다 (#125)
     const r = this.#db
       .prepare(
-        'insert into todo (title, due, important, created_at, repeat, repeat_of, due_min) values (?, ?, ?, ?, ?, ?, ?)',
+        `insert into todo (id, title, due, important, created_at, repeat, repeat_of, due_min)
+         values (
+           max(
+             coalesce((select max(id) from todo), 0),
+             coalesce((select hi from todo_hi where id = 1), 0),
+             coalesce((select max(ref_id) from coin_log where reason in ('todo', 'early', 'undo')), 0)
+           ) + 1, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(cutText(title, 200), due, input.important ? 1 : 0, now, repeat, repeatOf, dueMin);
     const id = Number(r.lastInsertRowid);
@@ -543,9 +577,137 @@ export class TodoStore {
     this.#db.prepare('update todo set deleted_at = ? where id = ?').run(now, id);
   }
 
-  /** 지운 것 되살리기 (지우고 몇 초 안에 되돌리기) */
+  /** 지운 것 되살리기 (지우고 몇 초 안에 되돌리기, 휴지통 되살리기). 코인은 건드리지 않는다 */
   restore(id: number): void {
-    this.#db.prepare('update todo set deleted_at = null where id = ?').run(id);
+    this.#db.prepare('update todo set deleted_at = null, auto_removed = 0 where id = ?').run(id);
+  }
+
+  /**
+   * 휴지통 (#125): 사람이 지운 할 일, 최근 지운 것부터. 되돌리기가 걷어 낸 다음 회차는 보이지 않는다.
+   * 코인은 지울 때도 되살릴 때도 움직이지 않는다 (받은 코인은 지운다고 회수되지 않으니 되살려도 다시 주지 않는다)
+   */
+  trash(now: number): TrashItem[] {
+    const rows = this.#db
+      .prepare(
+        `select id, title, due, done_at, deleted_at from todo
+         where deleted_at is not null and auto_removed = 0 order by deleted_at desc, id desc`,
+      )
+      .all() as Row[];
+    return rows.map((r) => ({
+      id: Number(r.id),
+      title: r.title,
+      due: r.due,
+      doneAt: r.done_at === null ? null : Number(r.done_at),
+      deletedAt: Number(r.deleted_at),
+      daysLeft: trashDaysLeft(Number(r.deleted_at), now),
+    }));
+  }
+
+  trashCount(): number {
+    return Number(
+      (
+        this.#db
+          .prepare('select count(*) as n from todo where deleted_at is not null and auto_removed = 0')
+          .get() as { n: number }
+      ).n,
+    );
+  }
+
+  /**
+   * 휴지통에서 되살릴 수 있는지. gone 은 휴지통에 없다(이미 되살림, 영구 삭제).
+   * dup 은 반복 할 일의 다음 회차인데 앞 회차가 다시 열렸거나 같은 앞 회차의 다른 회차가 이미 열려 있다:
+   * 되살리면 같은 반복이 두 벌이 되어 끝낼 때마다 둘씩 늘어난다
+   */
+  restoreCheck(id: number): 'ok' | 'gone' | 'dup' {
+    const r = this.#db
+      .prepare('select repeat_of from todo where id = ? and deleted_at is not null and auto_removed = 0')
+      .get(id) as { repeat_of: number | null } | undefined;
+    if (!r) return 'gone';
+    if (r.repeat_of === null) return 'ok';
+    const open = this.#db
+      .prepare(
+        `select 1 from todo where deleted_at is null and done_at is null and id != ?1
+         and (id = ?2 or repeat_of = ?2)`,
+      )
+      .get(id, r.repeat_of);
+    return open ? 'dup' : 'ok';
+  }
+
+  /** 휴지통에서 되살리기. 휴지통에 없거나(restoreCheck 가 gone) 반복이 겹치면(dup) undefined */
+  restoreFromTrash(id: number): Todo | undefined {
+    if (this.restoreCheck(id) !== 'ok') return undefined;
+    this.restore(id);
+    return this.get(id);
+  }
+
+  /** 영구 삭제 (휴지통에 있는 것만). 단계와 알림 줄도 지운다. 코인 장부는 그대로 둔다. 지운 수 */
+  purge(ids: readonly number[]): number {
+    let n = 0;
+    this.#db.exec('begin');
+    try {
+      const ok = ids.filter((id) => Number.isInteger(id) && id > 0);
+      if (ok.length > 0) n = this.#purgeRow(`id in (${ok.join(',')})`);
+      this.#db.exec('commit');
+    } catch (err) {
+      this.#db.exec('rollback');
+      throw err;
+    }
+    return n;
+  }
+
+  /** 휴지통 비우기. 지운 수 */
+  emptyTrash(): number {
+    this.#db.exec('begin');
+    try {
+      const n = this.#purgeRow('auto_removed = 0');
+      this.#db.exec('commit');
+      return n;
+    } catch (err) {
+      this.#db.exec('rollback');
+      throw err;
+    }
+  }
+
+  /** 30일이 지난 것을 영구 삭제한다 (되돌리기가 걷어 낸 다음 회차도 같은 날수). 지운 수 */
+  purgeExpired(now: number): number {
+    // 켤 때 시계가 크게 앞서 있으면(배터리가 나간 컴퓨터, 잘못 맞춘 시계) 휴지통 전체가 한 번에 지워진다.
+    // 마지막으로 앱이 켜 있던 날(하루 기록)에서 90일 넘게 뛰었으면 비우지 않는다
+    const seen = (
+      this.#db.prepare('select max(day) as d from daily_stat').get() as { d: string | null } | undefined
+    )?.d;
+    if (seen && now - Date.parse(`${seen}T00:00:00Z`) > CLOCK_JUMP_DAYS * DAY_MS) return 0;
+    const before = now - TRASH_DAYS * DAY_MS;
+    this.#db.exec('begin');
+    try {
+      // 지운 때가 미래(틀린 시계, 다른 컴퓨터에서 가져온 백업)면 지금으로 맞춘다
+      this.#db
+        .prepare('update todo set deleted_at = ? where deleted_at > ?')
+        .run(Math.floor(now), Math.floor(now));
+      const n = this.#purgeRow(`deleted_at <= ${Math.floor(before)}`, true);
+      this.#db.exec('commit');
+      return n;
+    } catch (err) {
+      this.#db.exec('rollback');
+      throw err;
+    }
+  }
+
+  /** where 는 이 파일이 만든 숫자 조건뿐이다 (사용자 글을 이어 붙이지 않는다). 지운 것만 대상 */
+  #purgeRow(where: string, anyKind = false): number {
+    const kind = anyKind ? '' : ' and auto_removed = 0';
+    const ids = (
+      this.#db.prepare(`select id from todo where deleted_at is not null${kind} and ${where}`).all() as {
+        id: number;
+      }[]
+    ).map((r) => Number(r.id));
+    for (let i = 0; i < ids.length; i += 500) {
+      const part = ids.slice(i, i + 500);
+      const marks = part.map(() => '?').join(',');
+      this.#db.prepare(`delete from todo_step where todo_id in (${marks})`).run(...part);
+      this.#db.prepare(`delete from reminder where kind = 'todo' and ref_id in (${marks})`).run(...part);
+      this.#db.prepare(`delete from todo where id in (${marks})`).run(...part);
+    }
+    return ids.length;
   }
 
   /** 지난 마감 옮기기가 기억한 매주 할 일의 원래 마감, 매달 할 일의 날 ("31") */
@@ -655,7 +817,7 @@ export class TodoStore {
       // 끝내서 생긴 다음 회차는 걷어 낸다 (아직 손대지 않은 것만. 단계를 하나라도 체크했으면 손댄 것이라 둔다).
       this.#db
         .prepare(
-          `update todo set deleted_at = ? where repeat_of = ? and done_at is null and deleted_at is null
+          `update todo set deleted_at = ?, auto_removed = 1 where repeat_of = ? and done_at is null and deleted_at is null
            and not exists (select 1 from todo_step where todo_step.todo_id = todo.id and todo_step.done = 1)`,
         )
         .run(now, id);

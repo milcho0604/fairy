@@ -7,6 +7,7 @@ import type { PanelState } from '../../../shared/ipc.ts';
 import { stepProgress, type Todo } from '../../../shared/todo-store.ts';
 import type { WeekSummary } from '../../../shared/week.ts';
 import './bond.css';
+import { FocusMonth } from './FocusMonth.tsx';
 import { dayHeading, timeOf } from './format.ts';
 import { HabitBox } from './HabitBox.tsx';
 import { JourneyCard } from './JourneyCard.tsx';
@@ -327,6 +328,7 @@ export function TodayTab({
             <WeekCardButton s={s} />
           </WeekBox>
         )}
+        <FocusMonth s={s} />
 
         <details className="achieve">
           <summary>

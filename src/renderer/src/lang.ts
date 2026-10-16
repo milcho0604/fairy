@@ -1,9 +1,10 @@
-import { getLang, type I18nKey, isLang, setLang, t } from '../../shared/i18n/index.ts';
+import { getLang, type I18nKey, isLang, setLang, setLineOverrides, t } from '../../shared/i18n/index.ts';
 
 // 화면 말 (v2 다국어). preload 가 실행 인자에서 읽어 둔 말을 받는다. 그리기 전에 부른다.
 declare global {
   interface Window {
     jjakkungLang?: string;
+    jjakkungLineOverrides?: { ko?: Record<string, string>; en?: Record<string, string> };
   }
 }
 
@@ -11,6 +12,8 @@ declare global {
 export function initLang(titleKey?: I18nKey): void {
   const lang = window.jjakkungLang;
   setLang(isLang(lang) ? lang : 'ko');
+  const mine = window.jjakkungLineOverrides;
+  setLineOverrides({ ko: mine?.ko ?? {}, en: mine?.en ?? {} });
   document.documentElement.lang = getLang();
   if (titleKey) document.title = t(titleKey);
 }

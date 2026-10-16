@@ -42,6 +42,7 @@ import {
   type SettingsBridge,
   type SettingsSection,
 } from '../shared/ipc.ts';
+import { LINES, type LinesBridge } from '../shared/lines-ipc.ts';
 import type { LookMotion } from '../shared/look-motion.ts';
 import type { MoveAsk } from '../shared/moves.ts';
 import { NOTES, type NoteBox, type NoteBridge } from '../shared/note-ipc.ts';
@@ -57,6 +58,14 @@ const kind = process.argv.find((a) => a.startsWith('--jj-window='))?.split('=')[
 // 화면 말 (v2 다국어). 모든 창이 같은 이름으로 읽는다. 모르는 값이면 한국어
 const lang = process.argv.find((a) => a.startsWith('--jj-lang='))?.split('=')[1] === 'en' ? 'en' : 'ko';
 contextBridge.exposeInMainWorld('jjakkungLang', lang);
+// 사용자가 고친 펫 대사 (#125): 화면의 t() 도 같은 글을 쓰게 창이 뜰 때 받는다. 못 받으면 기본 대사
+let lineOverrides: unknown;
+try {
+  lineOverrides = ipcRenderer.sendSync(LINES.sync);
+} catch {
+  lineOverrides = undefined;
+}
+contextBridge.exposeInMainWorld('jjakkungLineOverrides', lineOverrides);
 
 if (kind === 'pet') {
   const pet: PetBridge = {
@@ -365,6 +374,13 @@ if (kind === 'settings') {
   // 내보내기 (메모 .md, 할 일 .csv/.md, 일정 .ics). 저장 대화상자와 쓰기는 메인이 한다
   const exporter: ExportBridge = { run: (kind) => ipcRenderer.invoke(DATA_EXPORT.run, kind) };
   contextBridge.exposeInMainWorld('jjakkungExport', exporter);
+  // 펫 대사 고치기 (#125)
+  const lines: LinesBridge = {
+    state: (lang) => ipcRenderer.invoke(LINES.state, lang),
+    save: (lang, key, text) => ipcRenderer.invoke(LINES.save, lang, key, text),
+    reset: (lang, key) => ipcRenderer.invoke(LINES.reset, lang, key),
+  };
+  contextBridge.exposeInMainWorld('jjakkungLines', lines);
 }
 
 // 짝꿍이 아는 것, 첫 7일 여정, 성장과 옷, 주간 회고 카드 (shared/bond-ipc.ts). 메인이 창마다 보낸 곳을 본다
@@ -413,6 +429,11 @@ if (kind === 'panel' || kind === 'quick') {
     update: (id, patch) => ipcRenderer.send(PANEL.update, id, patch),
     remove: (id: number) => ipcRenderer.send(PANEL.remove, id),
     restore: (id: number) => ipcRenderer.send(PANEL.restore, id),
+    trashList: () => ipcRenderer.invoke(PANEL.trashList),
+    trashRestore: (id: number) => ipcRenderer.invoke(PANEL.trashRestore, id),
+    trashPurge: (id: number) => ipcRenderer.invoke(PANEL.trashPurge, id),
+    trashEmpty: () => ipcRenderer.invoke(PANEL.trashEmpty),
+    focusMonth: (month: string) => ipcRenderer.invoke(PANEL.focusMonth, month),
     eventToTodo: (id: number, text: string) => ipcRenderer.invoke(PANEL.eventToTodo, id, text),
     feed: () => ipcRenderer.invoke(PANEL.feed),
     openChat: () => ipcRenderer.send(PANEL.openChat),
