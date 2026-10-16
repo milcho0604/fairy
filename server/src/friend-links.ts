@@ -1,4 +1,5 @@
 import type { PoolClient } from 'pg';
+import { sendInbox } from './inbox';
 
 // 친구 관계를 계정 변화에 맞추기 (#110). accounts.ts 의 합치기와 나이 바꾸기가 같은 트랜잭션에서 부른다.
 // 이 파일은 accounts.ts 를 가져오지 않는다 (서로 가져오지 않게).
@@ -137,67 +138,102 @@ export async function mergeFriends(c: PoolClient, from: string, into: string): P
 export const GIFT_KEEP_DAYS = 30;
 
 /**
- * 열지 않은 선물을 보낸 사람에게 돌려준다 (#110, 사용자 결정 2026-10-16). 두 경우:
- * - expired: 받는 쪽지의 기한(30일)이 지났다. Friends.sweep 이 시간마다 부른다 (정리 작업 방식, 읽을 때 하지 않는다)
- * - toAccounts: 받는 사람이 탈퇴한다. accounts.ts delete 가 계정을 지우기 전 같은 트랜잭션에서 부른다
- * 선물 줄과 쪽지 줄을 잠그고(FOR UPDATE) returned_at, opened_at 을 보므로 쪽지 열기와 겹쳐도 한쪽만 된다.
- * 보낸 사람 장부 'gift-back:<선물>'(까닭 gift_back)은 기록 번호가 유일해 두 번 들어가지 않는다.
+ * 선물 하나를 보낸 사람에게 돌려준다 (#110, 사용자 결정 2026-10-16). 돌려주는 길은 이 함수 하나다:
+ * - expired: 받는 쪽지의 기한(30일)이 지났다. Friends.sweep 이 선물마다 트랜잭션 하나로 부른다 (정리 작업 방식, 읽을 때 하지 않는다)
+ * - receiver_left: 받는 사람이 탈퇴한다 (accounts.ts delete, 계정을 지우는 같은 트랜잭션)
+ * - underage: 보낸 뒤 받는 사람이 만 18세 미만으로 바꿔 열었다 (inbox.ts open): 이용권만 돌려주고 코인은 받는 사람이 받는다
+ *
+ * 잠금 순서는 어디서나 같다 (교착 방지, 버그잡이 #135 2차): 계정(번호 작은 것부터) → 선물 줄 → 쪽지 줄.
+ * 부르는 쪽이 보낸 사람 계정을 이미 잠가 두어야 한다 (lockAccountsOrdered). 선물 줄을 잠근 뒤 returned_at 과 열림을 다시 보므로
+ * 정리 작업 둘, 쪽지 열기, 탈퇴가 겹쳐도 한 번만 된다. 보낸 사람 장부 'gift-back:<선물>'(까닭 gift_back)은 기록 번호가 유일하다.
  * 보낸 사람에게는 gift_back 쪽지를 남긴다 (양은 이미 넣었으니 열어도 더 주지 않는다). 보낸 사람이 탈퇴했으면 표시만 한다.
- * 돌려준 수를 돌려준다
+ * 돌려줬으면 true
  */
-export async function returnGifts(
+export async function returnGift(
   c: PoolClient,
-  o: { expired: true } | { toAccounts: string[] },
+  giftId: string,
+  why: 'expired' | 'receiver_left' | 'underage',
   now = Date.now(),
-): Promise<number> {
-  const expired = 'expired' in o;
-  const where = expired
-    ? 'i.expires_at IS NOT NULL AND i.expires_at <= now()'
-    : 'g.to_account = ANY($1::bigint[])';
-  const r = await c.query<{
-    id: string;
-    from_live: string | null;
-    to_account: string | null;
-    coins: number;
-    passes: number;
-    inbox_id: string;
-  }>(
-    `SELECT g.id, (SELECT COALESCE(a.merged_into, a.id) FROM account a WHERE a.id = g.from_account) AS from_live,
-            g.to_account, g.coins, g.passes, g.inbox_id
-       FROM friend_gift g JOIN inbox i ON i.id = g.inbox_id
-      WHERE g.returned_at IS NULL AND i.opened_at IS NULL AND ${where}
-      ORDER BY g.id LIMIT 500
-        FOR UPDATE OF g, i`,
-    expired ? [] : [o.toAccounts],
-  );
-  const day = new Date(now).toISOString().slice(0, 10);
-  for (const g of r.rows) {
-    await c.query('UPDATE friend_gift SET returned_at = now() WHERE id = $1', [g.id]);
+): Promise<boolean> {
+  const g = (
+    await c.query<{
+      id: string;
+      from_live: string | null;
+      to_account: string | null;
+      coins: number;
+      passes: number;
+      inbox_id: string | null;
+      returned: boolean;
+    }>(
+      `SELECT g.id, (SELECT COALESCE(a.merged_into, a.id) FROM account a WHERE a.id = g.from_account) AS from_live,
+              g.to_account, g.coins, g.passes, g.inbox_id, g.returned_at IS NOT NULL AS returned
+         FROM friend_gift g WHERE g.id = $1 FOR UPDATE`,
+      [giftId],
+    )
+  ).rows[0];
+  if (!g || g.returned || !g.inbox_id) return false;
+  const note = (
+    await c.query<{ opened: boolean; late: boolean }>(
+      `SELECT opened_at IS NOT NULL AS opened, (expires_at IS NOT NULL AND expires_at <= clock_timestamp()) AS late
+         FROM inbox WHERE id = $1 FOR UPDATE`,
+      [g.inbox_id],
+    )
+  ).rows[0];
+  if (!note) return false;
+  // 열기에서 부르면(underage) 쪽지는 지금 열리는 중이라 열림 표시가 아직 없다. 나머지는 안 연 쪽지만
+  if (why !== 'underage' && note.opened) return false;
+  if (why === 'expired' && !note.late) return false;
+  const coins = why === 'underage' ? 0 : g.coins;
+  await c.query('UPDATE friend_gift SET returned_at = now() WHERE id = $1', [g.id]);
+  if (why !== 'underage')
     // 받는 쪽 쪽지는 더 열지 못하게 (탈퇴면 곧 함께 지워진다)
-    await c.query('UPDATE inbox SET expires_at = LEAST(COALESCE(expires_at, now()), now()) WHERE id = $1', [
-      g.inbox_id,
-    ]);
-    if (!g.from_live) continue;
-    if (g.coins > 0) {
-      const ins = await c.query(
-        `INSERT INTO coin_entry (entry_id, account_id, reason, asked, amount, status, day)
-         VALUES ($1, $2, 'gift_back', $3, $3, 'ok', $4) ON CONFLICT (entry_id) DO NOTHING RETURNING id`,
-        [`gift-back:${g.id}`, g.from_live, g.coins, day],
-      );
-      if ((ins.rowCount ?? 0) > 0)
-        await c.query('UPDATE account SET balance = balance + $2 WHERE id = $1', [g.from_live, g.coins]);
-    }
-    if (g.passes > 0)
-      await c.query(
-        `INSERT INTO ai_ticket (account_id, remaining) VALUES ($1, $2)
-         ON CONFLICT (account_id) DO UPDATE SET remaining = ai_ticket.remaining + EXCLUDED.remaining, updated_at = now()`,
-        [g.from_live, g.passes],
-      );
-    // 받는 사람이 기한을 넘겼으면 그 친구를 보인다. 탈퇴했으면 비운다 ("떠난 친구")
     await c.query(
-      `INSERT INTO inbox (account_id, kind, coins, chat_passes, from_account) VALUES ($1, 'gift_back', $2, $3, $4)`,
-      [g.from_live, g.coins, g.passes, expired ? g.to_account : null],
+      'UPDATE inbox SET expires_at = LEAST(COALESCE(expires_at, now()), clock_timestamp()) WHERE id = $1',
+      [g.inbox_id],
     );
+  if (!g.from_live) return true;
+  if (coins > 0) {
+    const ins = await c.query(
+      `INSERT INTO coin_entry (entry_id, account_id, reason, asked, amount, status, day)
+       VALUES ($1, $2, 'gift_back', $3, $3, 'ok', $4) ON CONFLICT (entry_id) DO NOTHING RETURNING id`,
+      [`gift-back:${g.id}`, g.from_live, coins, new Date(now).toISOString().slice(0, 10)],
+    );
+    if ((ins.rowCount ?? 0) > 0)
+      await c.query('UPDATE account SET balance = balance + $2 WHERE id = $1', [g.from_live, coins]);
   }
-  return r.rows.length;
+  if (g.passes > 0)
+    await c.query(
+      `INSERT INTO ai_ticket (account_id, remaining) VALUES ($1, $2)
+       ON CONFLICT (account_id) DO UPDATE SET remaining = ai_ticket.remaining + EXCLUDED.remaining, updated_at = now()`,
+      [g.from_live, g.passes],
+    );
+  // 받는 사람 이름은 이 쪽지를 만들 때의 것만 남긴다 (스냅샷, sendInbox). 탈퇴로 돌아온 것은 비운다 ("떠난 친구")
+  const who = why === 'receiver_left' || !g.to_account ? null : g.to_account;
+  await sendInbox(c, g.from_live, { kind: 'gift_back', coins, chatPasses: g.passes, fromAccount: who });
+  return true;
+}
+
+/** 받는 사람 가족에게 간 아직 안 돌려준 선물 번호 (한 번에 limit 개) */
+export async function unreturnedTo(c: PoolClient, toAccounts: string[], limit = 500): Promise<string[]> {
+  const r = await c.query<{ id: string }>(
+    `SELECT g.id FROM friend_gift g JOIN inbox i ON i.id = g.inbox_id
+      WHERE g.to_account = ANY($1::bigint[]) AND g.returned_at IS NULL AND i.opened_at IS NULL ORDER BY g.id LIMIT $2`,
+    [toAccounts, limit],
+  );
+  return r.rows.map((x) => x.id);
+}
+
+/** 기한(30일)이 지난 안 돌려준 선물 번호와 그 보낸 사람 (잠그지 않고 훑는다. 돌려줄 때 다시 본다) */
+export async function expiredGifts(
+  c: PoolClient,
+  limit = 500,
+): Promise<{ id: string; fromLive: string | null }[]> {
+  const r = await c.query<{ id: string; from_live: string | null }>(
+    `SELECT g.id, (SELECT COALESCE(a.merged_into, a.id) FROM account a WHERE a.id = g.from_account) AS from_live
+       FROM friend_gift g JOIN inbox i ON i.id = g.inbox_id
+      WHERE g.returned_at IS NULL AND i.opened_at IS NULL AND i.expires_at IS NOT NULL AND i.expires_at <= clock_timestamp()
+      ORDER BY g.id LIMIT $1`,
+    [limit],
+  );
+  return r.rows.map((x) => ({ id: x.id, fromLive: x.from_live }));
 }

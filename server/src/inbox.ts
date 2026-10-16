@@ -6,8 +6,9 @@ import {
   type OnModuleInit,
 } from '@nestjs/common';
 import type { PoolClient } from 'pg';
-import { familyIds, lockAccount } from './accounts';
+import { familyIds, lockAccount, lockAccountsOrdered } from './accounts';
 import { Db } from './db';
+import { returnGift } from './friend-links';
 import { addTickets, creditCoins } from './rewards';
 
 // 쪽지함 (이슈 #101 범위 추가 4). 운영자가 보내는 쪽지(개인 지급, 알림)와 정기 지급의 달마다 쪽지를 서버 DB 에 둔다.
@@ -62,16 +63,33 @@ interface Row {
   opened_passes: number | null;
   expired: boolean;
   from_account: string | null;
-  sender: { code: string; nickname: string | null } | null;
+  sender_code: string | null;
+  sender_nickname: string | null;
+  /** 열 때 지금 시각(clock_timestamp)으로 본 만료 (트랜잭션 시작 시각이 아니라, 기한 직전에 시작한 열기가 정리 작업 뒤에 통과하지 않게) */
+  expired_now?: boolean;
 }
 
-// 보낸 친구는 합쳐졌으면 남는 쪽 코드와 닉네임으로 보인다
+// 보낸 친구의 코드와 닉네임은 쪽지를 만들 때 담아 둔 것 (스냅샷)
 const COLUMNS = `id, kind, message, coins, chat_passes, fill_to, created_at, expires_at, opened_at, opened_coins,
-  opened_passes, (expires_at IS NOT NULL AND expires_at <= now()) AS expired, from_account,
-  (SELECT json_build_object('code', s.code, 'nickname', s.nickname) FROM account s
-    WHERE s.id = (SELECT COALESCE(m.merged_into, m.id) FROM account m WHERE m.id = inbox.from_account)) AS sender`;
+  opened_passes, (expires_at IS NOT NULL AND expires_at <= now()) AS expired, from_account, sender_code, sender_nickname`;
+
+/** 열기를 보낸 사람 계정도 잠그고 다시 하라는 신호 (트랜잭션은 되돌려진다) */
+const NEED_SENDER = Symbol('need-sender');
 
 const FRIEND_KINDS: readonly InboxKind[] = ['gift', 'friend', 'gift_back'];
+
+/** 보낸 친구의 코드와 닉네임을 그때 것으로 (없으면 null) */
+async function snapshot(
+  c: PoolClient,
+  accountId: string | null | undefined,
+): Promise<{ code: string | null; nickname: string | null }> {
+  if (!accountId) return { code: null, nickname: null };
+  const r = await c.query<{ code: string; nickname: string | null }>(
+    'SELECT code, nickname FROM account WHERE id = $1',
+    [accountId],
+  );
+  return { code: r.rows[0]?.code ?? null, nickname: r.rows[0]?.nickname ?? null };
+}
 
 function item(r: Row): InboxItem {
   return {
@@ -79,9 +97,7 @@ function item(r: Row): InboxItem {
     kind: r.kind,
     message: r.message,
     from: FRIEND_KINDS.includes(r.kind) ? 'friend' : 'admin',
-    sender: FRIEND_KINDS.includes(r.kind)
-      ? { code: r.sender?.code ?? null, nickname: r.sender?.nickname ?? null }
-      : null,
+    sender: FRIEND_KINDS.includes(r.kind) ? { code: r.sender_code, nickname: r.sender_nickname } : null,
     coins: r.coins,
     chatPasses: r.chat_passes,
     fillTo: r.fill_to,
@@ -111,11 +127,12 @@ export async function sendInbox(
     friendRequestId?: string | null;
   },
 ): Promise<string> {
+  const who = await snapshot(c, o.fromAccount);
   const r = await c.query<{ id: string }>(
     `INSERT INTO inbox (account_id, kind, message, coins, chat_passes, fill_to, expires_at, from_account,
-                        friend_request_id)
+                        friend_request_id, sender_code, sender_nickname)
      VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $7::float8 IS NULL THEN NULL ELSE to_timestamp($7 / 1000.0) END,
-             $8, $9)
+             $8, $9, $10, $11)
      RETURNING id`,
     [
       accountId,
@@ -127,6 +144,8 @@ export async function sendInbox(
       o.expiresAt ?? null,
       o.fromAccount ?? null,
       o.friendRequestId ?? null,
+      who.code,
+      who.nickname,
     ],
   );
   return r.rows[0]?.id as string;
@@ -188,17 +207,60 @@ export class Inbox implements OnModuleInit, OnModuleDestroy {
     id: number,
     now = Date.now(),
   ): Promise<{ item: InboxItem; balance: number; chatPasses: number }> {
+    try {
+      return await this.openOnce(accountId, id, now, false);
+    } catch (err) {
+      // 받는 사람 계정만 잠그고 시작했는데 그사이 만 18세 미만이 되어 보낸 사람 계정도 필요해졌다: 순서대로 다시
+      if (err === NEED_SENDER) return this.openOnce(accountId, id, now, true);
+      throw err;
+    }
+  }
+
+  private async openOnce(
+    accountId: string,
+    id: number,
+    now: number,
+    withSender: boolean,
+  ): Promise<{ item: InboxItem; balance: number; chatPasses: number }> {
     return this.db.tx(async (c) => {
+      // 잠금 순서: 계정(번호 작은 것부터) → 선물 줄 → 쪽지 줄. 정리 작업, 탈퇴와 같다 (friend-links.ts returnGift).
+      // 친구 선물이면 보낸 사람 계정도 먼저 잠근다 (이용권을 돌려줄 수 있어서)
+      const peek = await c.query<{ gid: string; from_live: string | null }>(
+        `SELECT g.id AS gid, (SELECT COALESCE(s.merged_into, s.id) FROM account s WHERE s.id = g.from_account) AS from_live
+           FROM friend_gift g WHERE g.inbox_id = $1`,
+        [id],
+      );
+      const gift = peek.rows[0];
+      // 보낸 사람 계정은 이용권을 돌려줄 때만 잠근다 (만 18세 미만이 된 받는 사람이 이용권이 든 선물을 열 때).
+      // 보통은 받는 사람 계정만이라 정리 작업(보낸 사람 계정만 잠금)과 서로 기다리지 않는다
+      await lockAccountsOrdered(c, [accountId, ...(withSender && gift?.from_live ? [gift.from_live] : [])]);
       const a = await lockAccount(c, accountId);
       const fam = await familyIds(c, a.id);
+      const mine = await c.query('SELECT 1 FROM inbox WHERE id = $1 AND account_id = ANY($2::bigint[])', [
+        id,
+        fam,
+      ]);
+      if ((mine.rowCount ?? 0) === 0) throw fail(HttpStatus.NOT_FOUND, { error: 'no_note' });
+      // 선물 줄을 쪽지 줄보다 먼저 잠그고 이미 돌려줬으면 410: 기한 직전에 시작한 열기가 정리 작업 뒤에 통과해 두 번 주지 않게
+      if (gift) {
+        const g = await c.query<{ returned: boolean }>(
+          'SELECT returned_at IS NOT NULL AS returned FROM friend_gift WHERE id = $1 FOR UPDATE',
+          [gift.gid],
+        );
+        if (g.rows[0]?.returned) {
+          const gone = await c.query<Row>(`SELECT ${COLUMNS} FROM inbox WHERE id = $1`, [id]);
+          throw fail(HttpStatus.GONE, { error: 'expired', item: item(gone.rows[0] as Row) });
+        }
+      }
       const r = await c.query<Row>(
-        `SELECT ${COLUMNS} FROM inbox WHERE id = $1 AND account_id = ANY($2::bigint[]) FOR UPDATE`,
+        `SELECT ${COLUMNS}, (expires_at IS NOT NULL AND expires_at <= clock_timestamp()) AS expired_now
+           FROM inbox WHERE id = $1 AND account_id = ANY($2::bigint[]) FOR UPDATE`,
         [id, fam],
       );
       const row = r.rows[0];
       if (!row) throw fail(HttpStatus.NOT_FOUND, { error: 'no_note' });
       if (row.opened_at) throw fail(HttpStatus.CONFLICT, { error: 'already_opened', item: item(row) });
-      if (row.expired) throw fail(HttpStatus.GONE, { error: 'expired', item: item(row) });
+      if (row.expired || row.expired_now) throw fail(HttpStatus.GONE, { error: 'expired', item: item(row) });
       // 알림만 있는 쪽지: 친구 신청, 돌아온 선물 (양은 돌려줄 때 이미 넣었다)
       if (row.kind === 'friend' || row.kind === 'gift_back') {
         const u = await c.query<Row>(
@@ -223,13 +285,9 @@ export class Inbox implements OnModuleInit, OnModuleDestroy {
         const age = (await c.query<{ age: string }>('SELECT age FROM account WHERE id = $1', [a.id])).rows[0]
           ?.age;
         if (age !== '18+') {
-          if (row.from_account) {
-            const back = await c.query<{ id: string }>(
-              'SELECT COALESCE(merged_into, id) AS id FROM account WHERE id = $1',
-              [row.from_account],
-            );
-            if (back.rows[0]) await addTickets(c, back.rows[0].id, passes);
-          }
+          if (gift && !withSender) throw NEED_SENDER;
+          // 같은 돌려주기 함수로: 보낸 사람에게 이용권, gift_back 쪽지, 선물 줄 returned_at (한 번만). 코인은 받는 사람이 받는다
+          if (gift) await returnGift(c, gift.gid, 'underage');
           passes = 0;
         }
       }

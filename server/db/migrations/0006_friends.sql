@@ -74,6 +74,10 @@ ALTER TABLE inbox ADD CONSTRAINT inbox_kind_check
   CHECK (kind IN ('grant', 'notice', 'subscription', 'gift', 'friend', 'gift_back'));
 ALTER TABLE inbox ADD COLUMN from_account BIGINT REFERENCES account (id) ON DELETE SET NULL;
 ALTER TABLE inbox ADD COLUMN friend_request_id BIGINT REFERENCES friend_request (id) ON DELETE SET NULL;
+-- 보낸 친구의 코드와 닉네임은 쪽지를 만들 때의 것을 담아 둔다 (스냅샷). 지금 닉네임을 따라가면 나를 막은 사람이 바꾼 이름이
+-- 쪽지함에 계속 보이고, 합친 계정은 남는 쪽 코드가 보였다 (버그잡이 #135 2차). 보낸 친구가 탈퇴하면 비운다 (accounts.ts delete)
+ALTER TABLE inbox ADD COLUMN sender_code TEXT;
+ALTER TABLE inbox ADD COLUMN sender_nickname TEXT;
 ALTER TABLE inbox ADD CONSTRAINT inbox_gift_check CHECK (kind <> 'gift' OR coins > 0 OR chat_passes > 0);
 ALTER TABLE inbox ADD CONSTRAINT inbox_friend_check CHECK (kind <> 'friend' OR (coins = 0 AND chat_passes = 0));
 CREATE INDEX inbox_from_account ON inbox (from_account) WHERE from_account IS NOT NULL;

@@ -16,13 +16,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { PoolClient } from 'pg';
-import { Accounts, familyIds, lockAccount, utcDay } from './accounts';
+import { Accounts, familyIds, lockAccount, lockAccountsOrdered, utcDay } from './accounts';
 import { AdminAccess } from './admin-access';
 import { AiAdmin } from './ai-admin';
 import { Auth, AuthGuard, type AuthInfo, type HttpReq } from './auth.guard';
 import { Db } from './db';
 import { type FeatureKey, Features } from './features';
-import { dropUnsharedBusy, GIFT_KEEP_DAYS, returnGifts } from './friend-links';
+import { dropUnsharedBusy, expiredGifts, GIFT_KEEP_DAYS, returnGift } from './friend-links';
 import { sendInbox } from './inbox';
 import { ipKey, LIMITS, RateLimiter } from './rate-limit';
 import { normalizeDeviceCode } from './shared/account-profile';
@@ -151,7 +151,15 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
   async sweep(): Promise<number> {
     await this.db.pool.query('DELETE FROM friend_request WHERE expires_at <= now()');
     await this.db.pool.query('DELETE FROM busy_block WHERE ends_at <= now()');
-    return this.db.tx((c) => returnGifts(c, { expired: true }));
+    // 선물마다 트랜잭션 하나: 보낸 사람 계정 → 선물 줄 → 쪽지 줄 순으로 잠근다 (쪽지 열기, 탈퇴와 같은 순서, 교착 없음).
+    // 받는 사람 계정은 잠그지 않는다: 열기와는 선물 줄 잠금이 막아 준다 (돌려준 선물은 열기가 410)
+    let n = 0;
+    for (const g of await this.db.tx((c) => expiredGifts(c)))
+      n += await this.db.tx(async (c) => {
+        if (g.fromLive) await lockAccountsOrdered(c, [g.fromLive]);
+        return (await returnGift(c, g.id, 'expired')) ? 1 : 0;
+      });
+    return n;
   }
 
   /** 로그인 세션이고 기능을 쓸 수 있는가 (친구 기능은 늘 함께 본다) */

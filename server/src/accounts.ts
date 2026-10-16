@@ -3,7 +3,7 @@ import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import { backupFilesOf, keepRecent } from './backup';
 import { Db } from './db';
-import { mergeFriends, pruneFriends, returnGifts } from './friend-links';
+import { mergeFriends, pruneFriends, returnGift, unreturnedTo } from './friend-links';
 import { deviceCodeFrom } from './shared/account-profile';
 import { newToken, sha256 } from './tokens';
 
@@ -46,6 +46,19 @@ export async function lockAccount(c: PoolClient, id: string): Promise<LockedAcco
     cur = row.merged_into;
   }
   throw new Error(`계정 ${id} 의 합치기 사슬이 너무 길다`);
+}
+
+/**
+ * 계정 여럿을 번호 작은 것부터 잠근다. 두 계정 이상을 잠글 때는 어디서나 이 순서를 쓴다 (서로 다른 순서로 잠가 막히지 않게).
+ * 합쳐져 닫혔으면 남는 쪽을 잠그므로 같은 계정이 겹쳐도 된다 (이미 잠근 것은 그대로 지나간다)
+ */
+export async function lockAccountsOrdered(c: PoolClient, ids: string[]): Promise<LockedAccount[]> {
+  const sorted = [...new Set(ids)].sort((x, y) =>
+    BigInt(x) < BigInt(y) ? -1 : BigInt(x) > BigInt(y) ? 1 : 0,
+  );
+  const out: LockedAccount[] = [];
+  for (const id of sorted) out.push(await lockAccount(c, id));
+  return out;
 }
 
 export async function readItems(c: PoolClient | Db['pool'], accountId: string): Promise<Items> {
@@ -157,10 +170,30 @@ export class Accounts {
    */
   async delete(accountId: string): Promise<string[]> {
     return this.db.tx(async (c) => {
+      // 아직 열지 않은 친구 선물은 보낸 사람에게 돌려준다 (#110, 사용자 결정 2026-10-16). 받는 사람과 그 보낸 사람들을
+      // 번호 순으로 먼저 잠근다 (정리 작업, 쪽지 열기와 같은 순서: 계정 → 선물 줄 → 쪽지 줄)
+      const peek = await familyIds(c, accountId);
+      const senders = await c.query<{ id: string }>(
+        `SELECT DISTINCT COALESCE(s.merged_into, s.id) AS id FROM friend_gift g JOIN inbox i ON i.id = g.inbox_id
+           JOIN account s ON s.id = g.from_account
+          WHERE g.to_account = ANY($1::bigint[]) AND g.returned_at IS NULL AND i.opened_at IS NULL`,
+        [peek],
+      );
+      await lockAccountsOrdered(c, [accountId, ...senders.rows.map((r) => r.id)]);
       const a = await lockAccount(c, accountId);
       const files = await backupFilesOf(c, a.id);
-      // 아직 열지 않은 친구 선물은 보낸 사람에게 돌려준다 (#110, 사용자 결정 2026-10-16)
-      await returnGifts(c, { toAccounts: await familyIds(c, a.id) });
+      const fam = await familyIds(c, a.id);
+      // 500개씩 끝날 때까지 (하루 받기 상한 500 이라도 이틀이면 500개를 넘는다: 남기면 계정과 함께 사라진다)
+      for (;;) {
+        const ids = await unreturnedTo(c, fam);
+        if (ids.length === 0) break;
+        for (const id of ids) await returnGift(c, id, 'receiver_left');
+      }
+      // 이 계정 이름이 담긴 쪽지의 보낸 사람 표시는 비운다 (탈퇴하면 "떠난 친구")
+      await c.query(
+        'UPDATE inbox SET sender_code = NULL, sender_nickname = NULL WHERE from_account = ANY($1::bigint[])',
+        [fam],
+      );
       await c.query('DELETE FROM account WHERE id = $1', [a.id]);
       return files;
     });

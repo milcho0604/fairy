@@ -14,7 +14,7 @@
     "migrate": "node scripts/migrate.mjs",
     "start": "node scripts/migrate.mjs && node dist/main.js",
     "test": "npm run sync-shared && tsc -p tsconfig.json && node --test \"dist-test/src/**/*.test.js\"",
-    "test:integration": "npm run sync-shared && tsc -p tsconfig.json && node --test --test-concurrency=1 \"dist-test/test/**/*.test.js\"",
+    "test:integration": "npm run sync-shared && tsc -p tsconfig.json && node --test --test-concurrency=1 --test-timeout=180000 \"dist-test/test/**/*.test.js\"",
     "check": "npm run lint && npm run typecheck && npm test"
   },
   "engines": {
