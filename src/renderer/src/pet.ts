@@ -1369,7 +1369,12 @@ function startPeekPress() {
     .peek(true, reducedMotion.matches)
     .then((ok) => {
       if (!ok) {
+        // 지금은 못 키운다(끌기 중 등): 누르기는 보통 클릭으로 친다. 이미 놓았으면 그 클릭을 지금 보낸다
         peekState = 'none';
+        if (peekReleased) {
+          bridge.gesture({ type: 'click' });
+          setInputs({ excitedUntil: performance.now() + EXCITED_MS });
+        }
         return;
       }
       if (peekReleased) {

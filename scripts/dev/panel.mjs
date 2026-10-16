@@ -6,6 +6,9 @@ for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased'])
   await pet.send('Input.dispatchMouseEvent', { type, x: 80, y: 110, button: type === 'mouseMoved' ? 'none' : 'left', buttons: type === 'mousePressed' ? 1 : 0, clickCount: 1 });
 await sleep(2000);
 const p = await page('panel');
+// 패널은 "오늘" 탭으로 열린다. 할 일 입력칸(.add input)과 목록은 "할 일" 탭에 있다
+await main("__jj.panel.openTab('todo'); 1");
+await sleep(600);
 await p.shot('panel-empty');
 const type = async (text) => {
   await p.ev(`document.querySelector('.add input').focus()`);

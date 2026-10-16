@@ -1,10 +1,16 @@
 // 펫 머리 위에 늘 떠 있는 말풍선 (이슈 #124): 집중 중이면 남은 시간, 아니면 진행 중인 할 일.
-// 진행 중 표시(▶)는 할 일 줄의 단추가 켜고 끈다. 끝내거나 지우면 저절로 풀린다 (열린 할 일에 없는 것은 버린다).
+// 진행 중 표시(▶)는 할 일 줄의 단추가 켜고 끈다. 끝내거나 지우면 보이지 않고(열려 있는 것만 보인다), 되돌리면 돌아온다.
 import type { FocusState } from './focus.ts';
 import { t } from './i18n/index.ts';
 import { shortTitle } from './pet-chips.ts';
 
-/** 진행 중으로 표시한 할 일 id 들, 표시한 순서대로. 저장은 부르는 쪽이 넘겨 준 save 가 한다 */
+/**
+ * 표시를 이만큼까지만 기억한다 (오래된 것부터 버린다). 끝내거나 지운 할 일의 표시는 일부러 지우지 않는다:
+ * 말풍선과 패널은 열려 있는 할 일만 보이고, 되돌리기로 살리면 표시도 돌아온다
+ */
+export const DOING_KEEP = 100;
+
+/** 진행 중으로 표시한 할 일 id 들, 표시한 순서대로. 저장은 부르는 쪽이 넘겨 준 save 가 한다. 끝내거나 지운 것은 보이지 않을 뿐 남는다 */
 export class DoingSet {
   #ids: number[];
   #save: (ids: number[]) => void;
@@ -26,16 +32,7 @@ export class DoingSet {
   /** 켜거나 끈다. 바뀌었으면 true */
   set(id: number, on: boolean): boolean {
     if (!Number.isInteger(id) || id <= 0 || this.has(id) === on) return false;
-    this.#ids = on ? [...this.#ids, id] : this.#ids.filter((x) => x !== id);
-    this.#save(this.ids());
-    return true;
-  }
-
-  /** 열린 할 일이 아닌 것(끝냈거나 지운 것)을 푼다. 푼 것이 있으면 true */
-  prune(isOpen: (id: number) => boolean): boolean {
-    const keep = this.#ids.filter(isOpen);
-    if (keep.length === this.#ids.length) return false;
-    this.#ids = keep;
+    this.#ids = on ? [...this.#ids, id].slice(-DOING_KEEP) : this.#ids.filter((x) => x !== id);
     this.#save(this.ids());
     return true;
   }

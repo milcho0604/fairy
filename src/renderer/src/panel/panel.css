@@ -421,6 +421,11 @@ p.empty {
   color: var(--accent);
 }
 
+/* 켠 ▶ 는 지우기(×) 바로 옆이라 잘못 눌러 지우지 않게 띄운다 */
+.doing-btn.on {
+  margin-left: 8px;
+}
+
 .pin.on,
 .pin-mark {
   color: var(--accent);

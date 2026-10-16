@@ -628,6 +628,7 @@ export function createPetWindow({
   };
 
   function resize(next: number) {
+    endPeek(true);
     if (next === scale) return;
     scale = next;
     const areas = screen.getAllDisplays().map((d) => d.workArea);
@@ -947,6 +948,7 @@ export function createPetWindow({
   let walkFrom = 0;
 
   function startWalk(walk: Extract<Activity, { type: 'walk' }>) {
+    endPeek(true);
     walkFrom = pet.x;
     const started = Date.now();
     // 걸을 수 있는 가로 범위 (맞붙은 옆 모니터까지, shared/behavior.ts)
@@ -1140,6 +1142,7 @@ export function createPetWindow({
   }
 
   function hopTo(to: { x: number; y: number }, done: (finished: boolean) => void) {
+    endPeek(true);
     clearInterval(hopTimer);
     // 뛰던 중에 다시 뛰면 앞 것은 끊긴 것으로 알린다 (기다리던 쪽이 멈추지 않게)
     const before = hopDone;
@@ -1169,6 +1172,7 @@ export function createPetWindow({
   let flightTimer: NodeJS.Timeout | undefined;
 
   function startFlight(vx0: number, vy0: number) {
+    endPeek(true);
     let vx = Math.max(-THROW_MAX_SPEED, Math.min(THROW_MAX_SPEED, vx0));
     let vy = Math.max(-THROW_MAX_SPEED, Math.min(THROW_MAX_SPEED, vy0));
     let x = pet.x;
@@ -1354,7 +1358,6 @@ export function createPetWindow({
 
   function startPeek(calm: boolean): boolean {
     if (!peekReady()) return false;
-    closeBubble('cleared');
     stopWalk();
     const base = { ...pet };
     const state = {
@@ -1384,7 +1387,7 @@ export function createPetWindow({
       if (peek !== state) return;
       peek = undefined;
       pet = { ...state.base };
-      if (!win.isDestroyed()) applyLayout();
+      if (!win.isDestroyed()) keepOnScreen();
       statusSoon(500);
     };
     if (instant || state.calm || win.isDestroyed()) {
@@ -1698,6 +1701,7 @@ export function createPetWindow({
    * 걷는 모습은 펫 화면이 그리고 창은 여기서 옮긴다
    */
   function animateDoor(stand: Rect, end: Rect, inward: boolean, ms: number): Promise<boolean> {
+    endPeek(true);
     stopDoor();
     stopWalk();
     leavePerch();
@@ -1872,6 +1876,7 @@ export function createPetWindow({
   }
 
   function unburrow(at?: Point) {
+    endPeek(true);
     if (moleSize === undefined) return;
     stopDoor();
     const size = moleSize;
@@ -1910,6 +1915,8 @@ export function createPetWindow({
 
   // 값이 실제로 바뀐 때만 온다. 맥이 변화 없이 몰아 보내는 알림은 display-watch.ts 가 거른다 (2026-10-08 로그 폭주)
   const stopDisplayWatch = watchDisplays((displays) => {
+    // 커진 동안 모니터가 바뀌면 옛 자리는 화면 밖일 수 있다: 먼저 돌려 놓고 화면 안으로
+    endPeek(true);
     keepOnScreen();
     const areas = displays.map((d) => d.workArea);
     log('display', 'changed', JSON.stringify({ areas, pet: win.getBounds() }));
@@ -2197,6 +2204,7 @@ export function createPetWindow({
     isHidden: (reason?: HideReason) => (reason ? hideReasons.has(reason) : hideReasons.hidden),
     // 개발용: 디자인 점검 때 위치와 크기를 바로 바꾼다 (메인 디버거의 __jj 에서만 부른다).
     debugMoveTo(x: number, y: number) {
+      endPeek(true);
       pet = { ...pet, x, y };
       keepOnScreen();
     },
@@ -2254,6 +2262,7 @@ export function createPetWindow({
     unburrow,
     /** 숨바꼭질 (v2): 화면 가장자리 밖으로 반쯤 나간 자리로 순간이동 (안 보이게 숨겼다가 나타난다) */
     peekAt(x: number, y: number) {
+      endPeek(true);
       stopWalk();
       stopFlight();
       leavePerch();
@@ -2268,6 +2277,7 @@ export function createPetWindow({
     },
     /** 숨바꼭질이 끝나면 원래 자리로 */
     comeBack(to: { x: number; y: number }) {
+      endPeek(true);
       pet = { ...pet, x: to.x, y: to.y };
       keepOnScreen();
       save();

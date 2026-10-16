@@ -76,11 +76,9 @@ export function createPetChips(o: PetChipsOptions) {
     }
   }
 
-  /** 머리 위 상태 말풍선 글: 집중 중이면 집중, 아니면 진행 중인 할 일. 끝내거나 지운 할 일은 여기서 푼다 */
+  /** 머리 위 상태 말풍선 글: 집중 중이면 집중, 아니면 진행 중인 할 일. 끝내거나 지운 할 일은 안 보인다 */
   function statusNow(now = Date.now()): string | null {
     const { open } = o.store.list(now);
-    const ids = new Set(open.map((todo) => todo.id));
-    o.doing.prune((id) => ids.has(id));
     const titles = o.doing
       .ids()
       .map((id) => open.find((todo) => todo.id === id)?.title)

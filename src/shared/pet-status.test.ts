@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { IDLE, startFocus } from './focus.ts';
 import { setLang } from './i18n/index.ts';
-import { DoingSet, statusText } from './pet-status.ts';
+import { DOING_KEEP, DoingSet, statusText } from './pet-status.ts';
 
 afterEach(() => setLang('ko'));
 
@@ -33,13 +33,11 @@ test('저장된 값이 깨졌으면 걸러 읽는다 (다시 켜도 유지)', ()
   assert.deepEqual(again.doing.ids(), [4, 9]);
 });
 
-test('끝내거나 지운 할 일은 prune 이 푼다', () => {
-  const { doing, writes } = set([1, 2, 3]);
-  assert.ok(!doing.prune(() => true));
-  assert.deepEqual(writes, []);
-  assert.ok(doing.prune((id) => id !== 2));
-  assert.deepEqual(doing.ids(), [1, 3]);
-  assert.deepEqual(writes, [[1, 3]]);
+test('표시는 오래된 것부터 DOING_KEEP 개까지만 기억한다', () => {
+  const { doing } = set();
+  for (let id = 1; id <= DOING_KEEP + 5; id++) doing.set(id, true);
+  assert.equal(doing.ids().length, DOING_KEEP);
+  assert.ok(!doing.has(1) && doing.has(DOING_KEEP + 5));
 });
 
 test('말풍선 글: 하나, 여럿, 없음', () => {

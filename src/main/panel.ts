@@ -185,11 +185,10 @@ export function createPanel(o: PanelOptions) {
     };
   }
 
-  /** 진행 중 표시 가운데 아직 열려 있는 것만 (끝내거나 지운 할 일은 여기서 풀린다) */
+  /** 진행 중 표시 가운데 아직 열려 있는 것만 (끝내거나 지운 할 일은 안 보이고, 되돌리면 돌아온다) */
   function openDoing(open: readonly { id: number }[]): number[] {
     const ids = new Set(open.map((todo) => todo.id));
-    o.doing.prune((id) => ids.has(id));
-    return o.doing.ids();
+    return o.doing.ids().filter((id) => ids.has(id));
   }
 
   function state(): PanelState {

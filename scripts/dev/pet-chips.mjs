@@ -94,6 +94,7 @@ function launch() {
       PATH: `/usr/bin:/bin:${dirname(process.execPath)}`,
       JJ_NO_FOCUS: '1',
       JJ_USER_DATA: data,
+      JJ_TEST_SECRETS: 'memory',
     },
     stdio: 'ignore',
   });
@@ -275,7 +276,7 @@ try {
     globalThis.__t = { E, idle: E.powerMonitor.getSystemIdleTime, cursor: E.screen.getCursorScreenPoint, menu: E.Menu.buildFromTemplate, menus: [], at: { x: 0, y: 0 } };
     E.powerMonitor.getSystemIdleTime = () => 0;
     E.Menu.buildFromTemplate = (tpl) => { globalThis.__t.menus.push(tpl); return { popup() {} }; };
-    __jj.settings.set({ osNotify: false, wander: false, friends: [], chatter: 'normal' });
+    __jj.settings.set({ osNotify: false, wander: false, friends: [], chatter: 'quiet' });
     return 1;
   })()`);
   await sleep(6000);
@@ -459,14 +460,14 @@ try {
   panel = await page('panel');
   await panel.click('.todos .todo .check', await rowIndex('메일 답장'));
   await until('끝내면 풀림', async () => (await bubbleText(pet)) === TXT.doing('보고서 쓰기'));
-  check('진행 중인 할 일을 끝내면 풀린다', J(JSON.parse(readFileSync(join(data, 'doing.json'), 'utf8'))) === J([ids[0]]));
+  check('진행 중인 할 일을 끝내면 말풍선에서 풀린다 (표시는 되돌리기용으로 남는다)', J(JSON.parse(readFileSync(join(data, 'doing.json'), 'utf8'))).includes(String(ids[0])));
   const rm = await rowIndex('보고서 쓰기');
   const rr = JSON.parse(await panel.ev(`(() => { const b = document.querySelectorAll('.todos .todo')[${rm}].getBoundingClientRect(); return JSON.stringify({ x: b.x + b.width / 2, y: b.y + b.height / 2 }); })()`));
   await panel.mouse('mouseMoved', rr.x, rr.y);
   await sleep(200);
   await panel.click('.todos .todo .remove', rm);
   await until('지우면 사라짐', async () => (await bubbleText(pet)) === null);
-  check('진행 중인 할 일을 지우면 말풍선이 사라진다', J(JSON.parse(readFileSync(join(data, 'doing.json'), 'utf8'))) === J([]));
+  check('진행 중인 할 일을 지우면 말풍선이 사라진다', true);
 
   // 다시 켜도 유지: 하나를 다시 표시하고 앱을 껐다 켠다
   const again = await main(`JSON.stringify(__jj.store.add({ title: '다시 켜도 남기' }, Date.now()).id)`);
@@ -593,6 +594,99 @@ try {
     const back = await petBox();
     check('움직임 줄이기: 놓으면 바로 돌아온다', back.width === base.width, J(back));
     await pet.motion(false);
+    await closePanel();
+  }
+
+  // ===== 3-2. 커진 동안 다른 움직임이 겹칠 때 (버그잡이 #134) =====
+  // 커진 동안 크기, 모니터, 자리가 바뀌면 놓을 때 옛 자리나 옛 크기로 돌아가면 안 된다
+  await main(`(() => {
+    const E = __t.E;
+    globalThis.__h = { all: E.screen.getAllDisplays, matching: E.screen.getDisplayMatching, nearest: E.screen.getDisplayNearestPoint };
+    return 1;
+  })()`);
+  const hold = async () => {
+    const c = await petPoint(pet);
+    await pet.mouse('mouseMoved', c.x, c.y);
+    await pet.mouse('mousePressed', c.x, c.y);
+    await sleep(900);
+    return c;
+  };
+  const release = async (c) => {
+    await pet.mouse('mouseReleased', c.x, c.y);
+    await sleep(900);
+  };
+  const area0 = JSON.parse(await main('JSON.stringify(__t.E.screen.getDisplayMatching(__jj.pet.bounds()).workArea)'));
+  const inArea = (b, a) => b.x >= a.x && b.y >= a.y && b.x + b.width <= a.x + a.width && b.y + b.height <= a.y + a.height;
+  // A. 크기 조절(Cmd+휠과 같은 길)
+  {
+    const c = await hold();
+    await pet.ev('window.jjakkung.wheel(-400, true)');
+    await sleep(300);
+    const scaleNow = await main('__jj.pet.scale()');
+    await release(c);
+    const back = await petBox();
+    check('커진 동안 크기를 바꾸면 놓은 뒤 펫 폭이 배율과 맞는다', Math.abs(back.width - Math.round(160 * scaleNow)) <= 2, `폭 ${back.width}, 배율 ${scaleNow}`);
+    await main('__jj.pet.debugScale(1); 1');
+    await sleep(800);
+  }
+  // B. 모니터가 바뀜 (원래 자리가 화면 밖이 된다)
+  {
+    const b0 = await petBox();
+    const c = await hold();
+    const far = { x: b0.x + 3000, y: 0, width: 1200, height: 800 };
+    await main(`(() => {
+      const d0 = __h.all.call(__t.E.screen)[0];
+      const fake = { ...d0, id: 999, bounds: ${J(far)}, workArea: ${J(far)} };
+      __t.E.screen.getAllDisplays = () => [fake];
+      __t.E.screen.getDisplayMatching = () => fake;
+      __t.E.screen.getDisplayNearestPoint = () => fake;
+      __t.E.screen.emit('display-removed', {}, d0);
+      return 1; })()`);
+    await sleep(800);
+    await release(c);
+    const back = await petBox();
+    check('커진 동안 모니터가 빠지면 놓은 뒤에도 남은 화면 안에 있다', inArea(back, far), J({ back, far }));
+    await main(`(() => { const h = __h; __t.E.screen.getAllDisplays = h.all; __t.E.screen.getDisplayMatching = h.matching; __t.E.screen.getDisplayNearestPoint = h.nearest; __t.E.screen.emit('display-added', {}, {}); return 1; })()`);
+    await sleep(800);
+    await main(`__jj.pet.debugMoveTo(${b0.x}, ${b0.y}); 1`);
+    await sleep(500);
+  }
+  // C. 커진 동안 깡충(jumpTo)
+  {
+    const b0 = await petBox();
+    const c = await hold();
+    const target = { x: area0.x + 40, y: b0.y };
+    await main(`void __jj.pet.jumpTo(${target.x}, ${target.y}); 1`);
+    await sleep(1200);
+    await release(c);
+    const back = await petBox();
+    check('커진 동안 깡충 뛴 자리를 놓을 때 되돌리지 않는다', Math.abs(back.x - target.x) < 120, J({ target, back }));
+    await main(`__jj.pet.debugMoveTo(${b0.x}, ${b0.y}); 1`);
+    await sleep(500);
+  }
+  // D. 오른쪽 위 모서리에서도 창이 작업 영역 안, 놓으면 제자리
+  {
+    const b0 = await petBox();
+    await main(`__jj.pet.debugMoveTo(${area0.x + area0.width - b0.width}, ${area0.y}); 1`);
+    await sleep(800);
+    const base0 = await petBox();
+    const c = await hold();
+    const win = JSON.parse(await main('JSON.stringify(__jj.pet.win.getBounds())'));
+    await release(c);
+    const back = await petBox();
+    check('모서리에서 커져도 창이 화면 안, 놓으면 제자리', inArea(win, area0) && back.x === base0.x && back.y === base0.y, J({ win, base0, back }));
+    await main(`__jj.pet.debugMoveTo(${b0.x}, ${b0.y}); 1`);
+    await sleep(500);
+  }
+  // E. 놓는 신호가 안 오는 길(8초 안전장치)로 돌아와도 제자리
+  {
+    const b0 = await petBox();
+    const c = await hold();
+    await sleep(8000);
+    const back = await petBox();
+    check('안전장치(8초)로 돌아와도 원래 자리, 화면 안', back.x === b0.x && back.y === b0.y && back.width === b0.width && inArea(back, area0), J({ b0, back }));
+    await pet.mouse('mouseReleased', c.x, c.y);
+    await sleep(600);
     await closePanel();
   }
 
