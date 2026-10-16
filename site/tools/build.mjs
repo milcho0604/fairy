@@ -31,7 +31,7 @@ const PAGES = [
 ];
 
 function vars(base) {
-  return { name: S.name[LANG], tagline: S.tagline[LANG], file: S.filePrefix, app: S.appBundleName, license: S.license, petFileExt: S.petFileExt, email: S.contactEmail, home: base };
+  return { name: S.name[LANG], tagline: S.tagline[LANG], file: S.filePrefix, app: S.appBundleName, version: S.releaseVersion, license: S.license, petFileExt: S.petFileExt, email: S.contactEmail, home: base };
 }
 
 // ---- shared header and footer (one copy for every page) ----

@@ -2,6 +2,17 @@
   "_comment": "홈페이지 '새로 생긴 것' 띠. 맨 위 셋만 보여요. 바꾼 뒤 node site/tools/build.mjs. Latest first; only the first three show.",
   "items": [
     {
+      "date": "2026-10-16",
+      "ko": {
+        "title": "0.5.0 기록과 페어리 도구",
+        "text": "지운 할 일을 30일 동안 되살리고, 집중 시간을 월간 잔디로 봐요. 페어리 질문 칩, 진행 중 말풍선, 대사 고치기와 도움 보내기도 생겼어요."
+      },
+      "en": {
+        "title": "0.5.0 records and fairy tools",
+        "text": "Restore deleted to-dos for 30 days and see focus time on a monthly grid. Fairy question chips, current-task bubbles, line editing and support reports are new too."
+      }
+    },
+    {
       "date": "2026-10-12",
       "ko": {
         "title": "밀크와 초코 네 발 피규어",

@@ -30,7 +30,7 @@ Preview locally: `python3 -m http.server -d site 8080` → http://localhost:8080
 
 ## How the config works
 
-`config.js` sets `window.SITE`. The browser reads it directly, and `tools/build.mjs` reads the same file in Node.
+`config.js` sets `window.SITE`. The browser reads it directly, and `tools/build.mjs` reads the same file in Node. `releaseVersion` is the version named on the download page and in its fallback file names.
 
 - **Visible text** comes from `i18n.js`. Placeholders like `{name}`, `{name|은는}` (name + the right Korean
   particle, picked from the final sound, so it still works when the name becomes English), `{file}`, `{app}` are
@@ -58,7 +58,7 @@ To change it, edit that one line, run `node site/tools/build.mjs`, commit, and d
 
 ### Changing names later
 
-1. Edit `config.js`: `name` (ko 페어리 / en fairy), `tagline`, `siteUrl`, `releases.repo`, `filePrefix` (start of the
+1. Edit `config.js`: `name` (ko 페어리 / en fairy), `tagline`, `siteUrl`, `releases.repo`, `releaseVersion`, `filePrefix` (start of the
    installer names, `fairy-<version>-mac-arm64.dmg`), `appBundleName` (`fairy.app`, also used for the data folder
    paths in the FAQ), `petFileExt` (the share-a-fairy file extension, `.fairy`; the app still opens old `.jjpet` files).
 2. `node site/tools/build.mjs`

@@ -42,6 +42,7 @@
       tagline: S.tagline[lang] || S.tagline.ko,
       file: S.filePrefix,
       app: S.appBundleName,
+      version: S.releaseVersion,
       license: S.license,
       petFileExt: S.petFileExt,
       email: S.contactEmail,
