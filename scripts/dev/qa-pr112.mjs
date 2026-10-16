@@ -412,7 +412,9 @@ async function apiLayer() {
   const kb = await newUser();
   const begin = (token) => api('POST', '/v1/auth/kakao/begin', { token, body: { port: '5000', state: appState(), challenge: challengeOf(verifierNew()) } });
   check(KK, 'off: begin(세션) → 503 feature_off', ((r) => r.status === 503 && r.json?.error === 'feature_off')(await begin(ka.session)));
-  check(KK, 'off: GET /v1/features → kakao_login false, coin_reset false', JSON.stringify((await api('GET', '/v1/features', { token: ka.session })).json) === '{"features":{"kakao_login":false,"coin_reset":false,"calendar_link_hint":false}}');
+  // 친구 기능 키(#110)가 같은 목록에 더해졌다: 이 둘만 본다 (#115 의 calendar_link_hint 도 있다)
+  const offFeatures = (await api('GET', '/v1/features', { token: ka.session })).json?.features ?? {};
+  check(KK, 'off: GET /v1/features → kakao_login false, coin_reset false', offFeatures.kakao_login === false && offFeatures.coin_reset === false, JSON.stringify(offFeatures));
   // allowlist (운영자 폼)
   const fm = await setFeature('kakao_login', 'allowlist');
   const fa = await allowFeature('kakao_login', ka.id);

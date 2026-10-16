@@ -21,15 +21,18 @@ export const INBOX_PAGE = 20;
 const KEEP_OPENED_DAYS = 365;
 const SWEEP_MS = 6 * 3_600_000;
 
-export type InboxKind = 'grant' | 'notice' | 'subscription';
+/** gift: 친구 선물 (#110, 첨부는 열 때), friend: 친구 신청 알림 (첨부 없음, 수락과 거절은 친구 칸에서) */
+export type InboxKind = 'grant' | 'notice' | 'subscription' | 'gift' | 'friend';
 
 export interface InboxItem {
   id: number;
   kind: InboxKind;
   /** 운영자가 쓴 글 (정기 지급은 없음: 앱이 "이번 달 채팅 이용권" 글을 쓴다) */
   message: string | null;
-  /** 보낸 쪽: 지금은 운영자뿐 */
-  from: 'admin';
+  /** 보낸 쪽: 운영자, 또는 친구 (#110) */
+  from: 'admin' | 'friend';
+  /** 보낸 친구의 기기 코드와 닉네임. 운영자 쪽지는 null, 친구가 탈퇴했으면 code 도 null */
+  sender: { code: string | null; nickname: string | null } | null;
   coins: number;
   chatPasses: number;
   /** 정기 지급 "N장까지 채우기" */
@@ -55,17 +58,27 @@ interface Row {
   opened_coins: number | null;
   opened_passes: number | null;
   expired: boolean;
+  from_account: string | null;
+  sender: { code: string; nickname: string | null } | null;
 }
 
+// 보낸 친구는 합쳐졌으면 남는 쪽 코드와 닉네임으로 보인다
 const COLUMNS = `id, kind, message, coins, chat_passes, fill_to, created_at, expires_at, opened_at, opened_coins,
-  opened_passes, (expires_at IS NOT NULL AND expires_at <= now()) AS expired`;
+  opened_passes, (expires_at IS NOT NULL AND expires_at <= now()) AS expired, from_account,
+  (SELECT json_build_object('code', s.code, 'nickname', s.nickname) FROM account s
+    WHERE s.id = (SELECT COALESCE(m.merged_into, m.id) FROM account m WHERE m.id = inbox.from_account)) AS sender`;
+
+const FRIEND_KINDS: readonly InboxKind[] = ['gift', 'friend'];
 
 function item(r: Row): InboxItem {
   return {
     id: Number(r.id),
     kind: r.kind,
     message: r.message,
-    from: 'admin',
+    from: FRIEND_KINDS.includes(r.kind) ? 'friend' : 'admin',
+    sender: FRIEND_KINDS.includes(r.kind)
+      ? { code: r.sender?.code ?? null, nickname: r.sender?.nickname ?? null }
+      : null,
     coins: r.coins,
     chatPasses: r.chat_passes,
     fillTo: r.fill_to,
@@ -90,11 +103,16 @@ export async function sendInbox(
     chatPasses?: number;
     fillTo?: number | null;
     expiresAt?: number | null;
+    /** 보낸 친구 (#110 선물과 친구 신청) */
+    fromAccount?: string | null;
+    friendRequestId?: string | null;
   },
 ): Promise<string> {
   const r = await c.query<{ id: string }>(
-    `INSERT INTO inbox (account_id, kind, message, coins, chat_passes, fill_to, expires_at)
-     VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $7::float8 IS NULL THEN NULL ELSE to_timestamp($7 / 1000.0) END)
+    `INSERT INTO inbox (account_id, kind, message, coins, chat_passes, fill_to, expires_at, from_account,
+                        friend_request_id)
+     VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $7::float8 IS NULL THEN NULL ELSE to_timestamp($7 / 1000.0) END,
+             $8, $9)
      RETURNING id`,
     [
       accountId,
@@ -104,6 +122,8 @@ export async function sendInbox(
       o.chatPasses ?? 0,
       o.fillTo ?? null,
       o.expiresAt ?? null,
+      o.fromAccount ?? null,
+      o.friendRequestId ?? null,
     ],
   );
   return r.rows[0]?.id as string;
@@ -181,12 +201,28 @@ export class Inbox implements OnModuleInit, OnModuleDestroy {
         [a.id],
       );
       const remaining = have.rows[0]?.remaining ?? 0;
-      const passes = row.fill_to !== null ? Math.max(0, row.fill_to - remaining) : row.chat_passes;
+      let passes = row.fill_to !== null ? Math.max(0, row.fill_to - remaining) : row.chat_passes;
+      // 친구가 보낸 채팅 이용권 (#110): 보낸 뒤 받는 사람이 만 18세 미만으로 바꿨으면 이용권은 주지 않고 보낸 사람에게
+      // 돌려준다 (이용권은 18세 이상만 쓴다). 코인은 그대로 준다
+      if (row.kind === 'gift' && passes > 0) {
+        const age = (await c.query<{ age: string }>('SELECT age FROM account WHERE id = $1', [a.id])).rows[0]
+          ?.age;
+        if (age !== '18+') {
+          if (row.from_account) {
+            const back = await c.query<{ id: string }>(
+              'SELECT COALESCE(merged_into, id) AS id FROM account WHERE id = $1',
+              [row.from_account],
+            );
+            if (back.rows[0]) await addTickets(c, back.rows[0].id, passes);
+          }
+          passes = 0;
+        }
+      }
       if (row.coins > 0) {
         const ok = await creditCoins(c, {
           entryId: `inbox:${row.id}`,
           accountId: a.id,
-          reason: 'inbox',
+          reason: row.kind === 'gift' ? 'gift_in' : 'inbox',
           coins: row.coins,
           balance: a.balance,
           now,

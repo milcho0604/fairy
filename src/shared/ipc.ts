@@ -413,7 +413,7 @@ export interface StoredModel {
 }
 
 /** 설정 창에서 바로 보여 줄 칸 */
-export type SettingsSection = 'stats' | 'restore';
+export type SettingsSection = 'stats' | 'restore' | 'friends';
 
 /**
  * 확인을 기다리는 복원 (설정 > 데이터 확인 칸). file 은 백업 파일, folder 는 예전 폴더 백업,

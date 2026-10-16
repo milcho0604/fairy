@@ -48,6 +48,7 @@ import type { MoveAsk } from '../shared/moves.ts';
 import { NOTES, type NoteBox, type NoteBridge } from '../shared/note-ipc.ts';
 import { NOTICE, type NoticeBridge, type NoticeView } from '../shared/notice-ipc.ts';
 import { SERVER, type ServerBridge, type ServerStatus } from '../shared/server-account.ts';
+import { FRIENDS, type FriendsBridge, type FriendsState } from '../shared/server-friends.ts';
 import type { Settings } from '../shared/settings.ts';
 import type { SoundKind } from '../shared/sound.ts';
 import type { TogetherLook } from '../shared/together.ts';
@@ -361,6 +362,32 @@ if (kind === 'settings') {
     calendarHintNo: () => ipcRenderer.invoke(SERVER.calendarHintNo),
   };
   contextBridge.exposeInMainWorld('jjakkungServer', server);
+  // 서버 친구 (#110): 상태만 오간다. 토큰은 메인에만 있다
+  const friends: FriendsBridge = {
+    state: () => ipcRenderer.invoke(FRIENDS.state),
+    refresh: () => ipcRenderer.invoke(FRIENDS.refresh),
+    request: (text) => ipcRenderer.invoke(FRIENDS.request, text),
+    accept: (id) => ipcRenderer.invoke(FRIENDS.accept, id),
+    decline: (id) => ipcRenderer.invoke(FRIENDS.decline, id),
+    cancel: (id) => ipcRenderer.invoke(FRIENDS.cancel, id),
+    remove: (code) => ipcRenderer.invoke(FRIENDS.remove, code),
+    block: (code) => ipcRenderer.invoke(FRIENDS.block, code),
+    unblock: (code) => ipcRenderer.invoke(FRIENDS.unblock, code),
+    gift: (code, coins, passes) => ipcRenderer.invoke(FRIENDS.gift, code, coins, passes),
+    share: (code, on) => ipcRenderer.invoke(FRIENDS.share, code, on),
+    busy: (code) => ipcRenderer.invoke(FRIENDS.busy, code),
+    copyCode: () => ipcRenderer.invoke(FRIENDS.copyCode),
+    copyLink: () => ipcRenderer.invoke(FRIENDS.copyLink),
+    clearPrefill: () => ipcRenderer.send(FRIENDS.clearPrefill),
+    onChanged: (listener) => {
+      const h = (_e: unknown, s: FriendsState) => listener(s);
+      ipcRenderer.on(FRIENDS.changed, h);
+      return () => {
+        ipcRenderer.removeListener(FRIENDS.changed, h);
+      };
+    },
+  };
+  contextBridge.exposeInMainWorld('jjakkungFriends', friends);
   // 이벤트 목록 (#101): 홈페이지 정적 파일이라 서버 없이도 보인다
   const siteEvents: EventsBridge = {
     list: () => ipcRenderer.invoke(EVENTS.list),

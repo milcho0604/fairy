@@ -3,6 +3,7 @@ import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import { backupFilesOf, keepRecent } from './backup';
 import { Db } from './db';
+import { mergeFriends, pruneFriends } from './friend-links';
 import { deviceCodeFrom } from './shared/account-profile';
 import { newToken, sha256 } from './tokens';
 
@@ -168,6 +169,8 @@ export class Accounts {
     return this.db.tx(async (c) => {
       const a = await lockAccount(c, accountId);
       await c.query('UPDATE account SET age = $2 WHERE id = $1', [a.id, age]);
+      // 친구는 같은 나이 구분끼리만 (#110): 바뀐 구분과 다른 친구, 신청은 걷는다
+      await pruneFriends(c, [a.id]);
       return { id: a.id, age };
     });
   }
@@ -192,6 +195,7 @@ export class Accounts {
    * - 로그인, 기기 토큰, 세션: into 를 가리키게 바꾼다
    * - from 은 닫고(closed_at, merged_into) 장부는 남긴다: 다른 기기가 옛 기록을 다시 보내도 한 번만 반영된다
    * - 하루 상한: 합친 날은 두 계정 몫을 넘어도 그대로 둔다 (장부를 옮기지 않으므로 저절로 그렇다)
+   * - 친구 (#110): 남는 쪽으로 옮긴다 (friend-links.ts mergeFriends)
    */
   async merge(
     c: PoolClient,
@@ -269,6 +273,8 @@ export class Accounts {
       [from.id, into.id],
     );
     dropped.push(...(await keepRecent(c, into.id)));
+    // 친구, 신청, 차단은 남는 쪽으로 (#110, friend-links.ts). 서로 친구였으면 그 관계는 없어진다
+    await mergeFriends(c, from.id, into.id);
     // 앞서 from 에 합쳐진 계정들도 남는 쪽을 따라가게 (탈퇴하면 함께 지워진다)
     await c.query('UPDATE account SET merged_into = $2 WHERE merged_into = $1', [from.id, into.id]);
     await c.query('UPDATE account SET balance = 0, closed_at = now(), merged_into = $2 WHERE id = $1', [

@@ -275,6 +275,10 @@ const FEATURE_KO: Record<string, string> = {
   kakao_login: '카카오 로그인',
   coin_reset: '코인 초기화 (설정의 코인, 산 물건 초기화)',
   calendar_link_hint: '다른 기기의 구글 일정 연결 안내',
+  friends: '친구 맺기',
+  friend_gifts: '친구 선물 (코인, 채팅 이용권)',
+  friend_calendar: '친구에게 바쁜 시간 보여 주기',
+  friend_gift_admin_passes: '운영자가 준 채팅 이용권도 선물',
 };
 
 const FEATURE_HINT: Record<string, string> = {
@@ -283,6 +287,14 @@ const FEATURE_HINT: Record<string, string> = {
   coin_reset: '꺼짐이면 앱이 초기화 칸을 숨기고, 서버도 초기화 기록을 받지 않아요.',
   calendar_link_hint:
     '같은 계정의 다른 기기에서 구글 일정을 연결했으면 새 기기에 "이 기기도 연결할까?"를 보여 줘요. 서버에는 연결 표시만 두고 구글 토큰은 두지 않아요. 허용 목록 모드에서는 운영자 계정도 켜져요.',
+  friends:
+    '허용 목록 모드에서는 목록의 계정과 운영자 계정만 써요. 신청을 받는 사람도 쓸 수 있어야 해요. 로그인한 계정끼리, 만 14~17세끼리와 성인끼리만 친구가 돼요.',
+  friend_gifts:
+    '보내는 사람 기준이에요. 하루 코인 500, 채팅 이용권 5장 (보내기, 받기 각각). 이용권은 받는 사람이 만 18세 이상이고 둘 다 채팅 이용권을 쓸 수 있을 때만.',
+  friend_calendar:
+    '보여 주는 사람과 보는 사람 모두 켜져 있어야 해요. 바쁜 시간대(시작, 끝)만 올라오고 제목은 없어요. 끄면 바로 지워요.',
+  friend_gift_admin_passes:
+    '꺼짐(기본)이면 정기 지급, 쪽지 지급, 쿠폰으로 받은 채팅 이용권은 본인만 써요. 지금은 이용권이 모두 운영자 지급분이라 꺼짐이면 이용권 선물이 막혀요.',
 };
 
 /** 기능 하나의 모드 바꾸기와 허용 계정 (#102) */

@@ -1111,6 +1111,23 @@ export function createServerCore(d: ServerCoreDeps) {
     return r;
   }
 
+  /**
+   * 로그인 세션으로 부르기 (친구, #110). 서버 모드가 아니거나 로그인하지 않았으면 부르지 않고 login 으로 답한다.
+   * 401 이면 세션을 버린다 (onUnauthorized)
+   */
+  async function sessionCall<T>(
+    f: (api: ServerApi, session: string) => Promise<ApiResult<T>>,
+  ): Promise<ApiResult<T>> {
+    const s = d.session.get();
+    if (!d.api || !s || !allowed()) return { ok: false, status: 403, error: 'login', body: {} };
+    const r = await f(d.api, s);
+    if (!r.ok && r.status === 401) {
+      onUnauthorized();
+      changed();
+    }
+    return r;
+  }
+
   async function adminCall<T>(f: (t: string) => Promise<T>): Promise<T | undefined> {
     const s = d.session.get();
     if (!d.api || !s || !isAdmin()) return undefined;
@@ -1155,6 +1172,7 @@ export function createServerCore(d: ServerCoreDeps) {
       return r.data;
     },
     openInbox,
+    sessionCall,
     /** 운영자 화면 (운영자가 아니면 undefined. 서버가 요청마다 다시 본다) */
     adminOverview: (q?: string) =>
       adminCall(async (t) => {

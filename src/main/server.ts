@@ -19,6 +19,7 @@ import type { Db } from '../shared/db-schema.ts';
 import { isHouseStyle } from '../shared/house-art.ts';
 import { t } from '../shared/i18n/index.ts';
 import { isLoginService, type RewardOutcome, SERVER, type ServerStatus } from '../shared/server-account.ts';
+import { FRIENDS, type FriendsState, inviteLink } from '../shared/server-friends.ts';
 import { houseName, houseStyleName, type ItemStore, TOYS } from '../shared/shop.ts';
 import { EVENT_ID, normalizeCoupon } from '../shared/site-events.ts';
 import { localDay, type TodoStore } from '../shared/todo-store.ts';
@@ -28,6 +29,7 @@ import { osCrypto } from './os-crypto.ts';
 import { serverApi } from './server-api.ts';
 import { type Reverted, ServerCoins } from './server-coins.ts';
 import { createServerCore, type Secret } from './server-core.ts';
+import { createServerFriends } from './server-friends.ts';
 import { SERVER_RESTORE_MARK } from './server-mark.ts';
 import { sealedSecret } from './server-secret.ts';
 import { appServerUrl } from './server-url.ts';
@@ -96,6 +98,11 @@ export function createServer(o: {
   };
   /** 이 기기가 구글 일정을 연결했나 (#115, main/gcal.ts). 바뀌면 core.calendarChanged() */
   calendarLinked?: () => boolean;
+  /** 친구 일정 공유 (#110): 구글 일정이 연결돼 있는지와 [from, to) 의 시각 일정 */
+  calendar?: {
+    linked: () => boolean;
+    events: (from: number, to: number) => { startAt: number; endAt: number | null }[];
+  };
   log: (tag: string, ...rest: unknown[]) => void;
 }) {
   const url = appServerUrl();
@@ -183,10 +190,34 @@ export function createServer(o: {
       : {}),
   });
 
+  // 친구 (#110): 서버 모드, 로그인, 서버가 켠 친구 기능일 때만
+  const friends = createServerFriends({
+    core: () => core,
+    calendarLinked: () => o.calendar?.linked() ?? false,
+    events: (from, to) => o.calendar?.events(from, to) ?? [],
+    now: Date.now,
+    onChange: (s) => sendFriends(s),
+    log: o.log,
+  });
+  let friendsWas = false;
+
+  function sendFriends(s: FriendsState) {
+    const w = o.target();
+    if (w && !w.isDestroyed()) w.webContents.send(FRIENDS.changed, s);
+  }
+
   function send(s: ServerStatus) {
     const w = o.target();
     if (w && !w.isDestroyed()) w.webContents.send(SERVER.changed, s);
     o.onStatus?.();
+    // 친구 칸이 새로 보이게 됐으면(로그인, 기능 켬) 목록을 받는다. 숨게 됐으면 칸에 알린다
+    const now = friends.available();
+    if (now !== friendsWas) {
+      friendsWas = now;
+      if (now) void friends.refresh();
+    }
+    // 잔액, 채팅 이용권, 기능 키가 친구 칸(선물 칸)에도 보이게 같이 보낸다
+    sendFriends(friends.state());
   }
 
   // 백업을 되살리고 켰으면 되살린 장부의 코인을 서버 사본으로 맞춘다 (기획서 7절)
@@ -201,6 +232,15 @@ export function createServer(o: {
   const every = setInterval(() => void core.run(), SYNC_EVERY_MS);
   first.unref?.();
   every.unref?.();
+  // 친구 목록과 바쁜 시간대 (#110): 맞추기와 같은 간격. 공유하는 친구가 없으면 일정은 올리지 않는다
+  const friendsEvery = setInterval(() => {
+    if (!friends.available()) return;
+    void friends
+      .refresh()
+      .then(() => friends.uploadBusy())
+      .catch((err) => o.log('friends', '오류', err instanceof Error ? err.message : String(err)));
+  }, SYNC_EVERY_MS);
+  friendsEvery.unref?.();
   // 장부에 쓰면 조금 뒤 대기열에 넣고 보낸다 (묶음 안에서 바로 읽지 않는다: 되돌려질 수 있다)
   let soon: ReturnType<typeof setTimeout> | undefined;
   o.onWrite((sql) => {
@@ -211,6 +251,7 @@ export function createServer(o: {
   app.on('will-quit', () => {
     clearTimeout(first);
     clearInterval(every);
+    clearInterval(friendsEvery);
     clearTimeout(soon);
   });
 
@@ -298,8 +339,60 @@ export function createServer(o: {
   // 다른 기기의 구글 일정 연결 안내 거절 (#115)
   ipcMain.handle(SERVER.calendarHintNo, (e) => (ok(e) ? core.calendarHintNo() : undefined));
 
+  // 친구 (#110): 설정 창에서만. 코드 모양은 메인이 한 번 더 본다
+  const code = (v: unknown) =>
+    typeof v === 'string' && /^F-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/.test(v) ? v : '';
+  const id = (v: unknown) => (typeof v === 'number' && Number.isSafeInteger(v) && v > 0 ? v : 0);
+  const amount = (v: unknown, max: number) =>
+    typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= max ? v : -1;
+  const refused = { ok: false as const, error: 'invalid' };
+  ipcMain.handle(FRIENDS.state, (e) => {
+    if (!ok(e)) return undefined;
+    void friends.refresh();
+    return friends.state();
+  });
+  ipcMain.handle(FRIENDS.refresh, async (e) => {
+    if (!ok(e)) return undefined;
+    await friends.refresh();
+    return friends.state();
+  });
+  ipcMain.handle(FRIENDS.request, (e, text: unknown) => (ok(e) ? friends.request(text) : refused));
+  ipcMain.handle(FRIENDS.accept, (e, v: unknown) => (ok(e) && id(v) ? friends.accept(id(v)) : refused));
+  ipcMain.handle(FRIENDS.decline, (e, v: unknown) => (ok(e) && id(v) ? friends.decline(id(v)) : refused));
+  ipcMain.handle(FRIENDS.cancel, (e, v: unknown) => (ok(e) && id(v) ? friends.cancel(id(v)) : refused));
+  ipcMain.handle(FRIENDS.remove, (e, v: unknown) => (ok(e) && code(v) ? friends.remove(code(v)) : refused));
+  ipcMain.handle(FRIENDS.block, (e, v: unknown) => (ok(e) && code(v) ? friends.block(code(v)) : refused));
+  ipcMain.handle(FRIENDS.unblock, (e, v: unknown) => (ok(e) && code(v) ? friends.unblock(code(v)) : refused));
+  ipcMain.handle(FRIENDS.gift, (e, to: unknown, coins: unknown, passes: unknown) => {
+    const c = amount(coins, 500);
+    const p = amount(passes, 5);
+    if (!ok(e) || !code(to) || c < 0 || p < 0 || c + p === 0) return refused;
+    return friends.gift(code(to), c, p);
+  });
+  ipcMain.handle(FRIENDS.share, (e, to: unknown, on: unknown) =>
+    ok(e) && code(to) && typeof on === 'boolean' ? friends.share(code(to), on) : refused,
+  );
+  ipcMain.handle(FRIENDS.busy, (e, to: unknown) => (ok(e) && code(to) ? friends.busy(code(to)) : refused));
+  ipcMain.handle(FRIENDS.copyCode, (e) => {
+    const me = ok(e) ? friends.state().list?.me.code : undefined;
+    if (!me) return false;
+    clipboard.writeText(me);
+    return true;
+  });
+  ipcMain.handle(FRIENDS.copyLink, (e) => {
+    const me = ok(e) ? friends.state().list?.me.code : undefined;
+    if (!me) return false;
+    clipboard.writeText(inviteLink(me));
+    return true;
+  });
+  ipcMain.on(FRIENDS.clearPrefill, (e) => {
+    if (o.isSettings(e.sender)) friends.clearPrefill();
+  });
+
   return {
     core,
+    // 시험 손잡이 debugLinked(구글 연결 여부 바꿔 끼우기)는 시험 실행(JJ_TEST_SECRETS=memory, 설치판 아님)에서만
+    friends: { ...friends, debugLinked: memory ? friends.debugLinked : () => {} },
     /** 서버 모드라 코인이 서버 정본을 따른다 (백업 되살리기 안내, 코인 초기화) */
     serverCoins: () => core.allowed(),
     beforeRestore: () => core.beforeRestore(),

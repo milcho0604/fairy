@@ -9,6 +9,13 @@ import {
   type LoginService,
   type ServerBackupItem,
 } from '../shared/server-account.ts';
+import type {
+  BusyBlock,
+  FriendItem,
+  FriendPerson,
+  FriendRequestItem,
+  FriendsList,
+} from '../shared/server-friends.ts';
 import {
   APP_VERSION_HEADER,
   exempt,
@@ -96,7 +103,10 @@ export interface RewardResult {
 /** 서버 쪽지함의 쪽지 하나 (#101, server/src/inbox.ts) */
 export interface InboxItem {
   id: number;
-  kind: 'grant' | 'notice' | 'subscription';
+  /** gift: 친구 선물, friend: 친구 신청 알림 (#110) */
+  kind: 'grant' | 'notice' | 'subscription' | 'gift' | 'friend';
+  /** 친구가 보낸 쪽지면 보낸 친구 (탈퇴했으면 code 가 null). 운영자 쪽지는 null */
+  sender: { code: string | null; nickname: string | null } | null;
   message: string | null;
   coins: number;
   chatPasses: number;
@@ -225,15 +235,22 @@ export function profileOf(v: unknown): ProfileInfo | undefined {
   return { code, nickname: str(o.nickname, 40) };
 }
 
+const INBOX_KINDS: readonly InboxItem['kind'][] = ['grant', 'notice', 'subscription', 'gift', 'friend'];
+
 export function inboxItemOf(v: unknown): InboxItem | undefined {
   const o = obj(v);
   const id = nat(o.id);
   const kind = o.kind;
-  if (!id || (kind !== 'grant' && kind !== 'notice' && kind !== 'subscription')) return undefined;
+  if (!id || !INBOX_KINDS.includes(kind as InboxItem['kind'])) return undefined;
   const opened = o.opened === null || o.opened === undefined ? null : obj(o.opened);
+  const friendKind = kind === 'gift' || kind === 'friend';
+  const sender = obj(o.sender);
   return {
     id,
-    kind,
+    kind: kind as InboxItem['kind'],
+    sender: friendKind
+      ? { code: profileOf({ code: sender.code })?.code ?? null, nickname: str(sender.nickname, 40) }
+      : null,
     message: str(o.message, 400),
     coins: nat(o.coins) ?? 0,
     chatPasses: nat(o.chatPasses) ?? 0,
@@ -245,6 +262,64 @@ export function inboxItemOf(v: unknown): InboxItem | undefined {
     expired: o.expired === true,
   };
 }
+
+// ---- 친구 (#110) ----
+
+const personOf = (v: unknown): FriendPerson | undefined => {
+  const p = profileOf(v);
+  return p ? { code: p.code, nickname: p.nickname } : undefined;
+};
+const iso = (v: unknown): string | null => (typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? v : null);
+
+function friendItemOf(v: unknown): FriendItem | undefined {
+  const o = obj(v);
+  const p = personOf(o);
+  const since = iso(o.since);
+  if (!p || !since) return undefined;
+  return { ...p, since, iShare: o.iShare === true, theyShare: o.theyShare === true, busyAt: iso(o.busyAt) };
+}
+
+function requestOf(v: unknown): FriendRequestItem | undefined {
+  const o = obj(v);
+  const p = personOf(o);
+  const id = nat(o.id);
+  const sentAt = iso(o.sentAt);
+  const expiresAt = iso(o.expiresAt);
+  if (!p || !id || !sentAt || !expiresAt) return undefined;
+  return { ...p, id, sentAt, expiresAt };
+}
+
+const listOf = <T>(v: unknown, f: (x: unknown) => T | undefined, max = 200): T[] =>
+  Array.isArray(v) ? v.slice(0, max).flatMap((x) => f(x) ?? []) : [];
+
+export function friendsListOf(j: Record<string, unknown>): FriendsList | undefined {
+  const me = personOf(j.me);
+  if (!me || !Array.isArray(j.friends)) return undefined;
+  const l = obj(j.limits);
+  const today = obj(j.today);
+  return {
+    me,
+    friends: listOf(j.friends, friendItemOf),
+    incoming: listOf(j.incoming, requestOf),
+    outgoing: listOf(j.outgoing, requestOf),
+    blocked: listOf(j.blocked, personOf),
+    limits: {
+      friends: nat(l.friends) ?? 100,
+      giftCoinsPerDay: nat(l.giftCoinsPerDay) ?? 500,
+      giftPassesPerDay: nat(l.giftPassesPerDay) ?? 5,
+      requestDays: nat(l.requestDays) ?? 14,
+      busyDays: nat(l.busyDays) ?? 14,
+    },
+    today: { coins: nat(today.coins) ?? 0, passes: nat(today.passes) ?? 0 },
+  };
+}
+
+const busyOf = (v: unknown): BusyBlock | undefined => {
+  const o = obj(v);
+  const start = nat(o.start);
+  const end = nat(o.end);
+  return start && end && end > start ? { start, end } : undefined;
+};
 
 const rewardOf = (j: Record<string, unknown>): RewardResult | undefined =>
   nat(j.balance) !== undefined
@@ -320,7 +395,7 @@ export function gated(
 export function serverApi(base: string, raw: FetchLike, opts: ServerApiOpts = {}) {
   const f = gated(raw, opts.appVersion, opts.onGate);
   async function call<T>(
-    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+    method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
     path: string,
     o: { token?: string; body?: unknown; read: (json: Record<string, unknown>) => T | undefined },
   ): Promise<ApiResult<T>> {
@@ -612,6 +687,73 @@ export function serverApi(base: string, raw: FetchLike, opts: ServerApiOpts = {}
                     ? { data: j.data as Record<string, string | number> }
                     : {}),
                 }
+              : undefined,
+        },
+      ),
+    // ---- 친구 (#110, 세션 토큰) ----
+    friends: (token: string) => call<FriendsList>('GET', '/v1/friends', { token, read: friendsListOf }),
+    friendRequest: (token: string, code: string) =>
+      call<{ accepted: boolean }>('POST', '/v1/friends/requests', {
+        token,
+        body: { code },
+        read: (j) => ({ accepted: j.accepted === true }),
+      }),
+    friendAccept: (token: string, id: number) =>
+      call('POST', `/v1/friends/requests/${id}/accept`, { token, read: () => true }),
+    friendDecline: (token: string, id: number) =>
+      call('POST', `/v1/friends/requests/${id}/decline`, { token, read: () => true }),
+    friendCancel: (token: string, id: number) =>
+      call('DELETE', `/v1/friends/requests/${id}`, { token, read: () => true }),
+    friendRemove: (token: string, code: string) =>
+      call('DELETE', `/v1/friends/${encodeURIComponent(code)}`, { token, read: () => true }),
+    friendBlock: (token: string, code: string) =>
+      call('POST', '/v1/friends/blocks', { token, body: { code }, read: () => true }),
+    friendUnblock: (token: string, code: string) =>
+      call('DELETE', `/v1/friends/blocks/${encodeURIComponent(code)}`, { token, read: () => true }),
+    /** 선물: requestId 가 같으면 서버가 처음 결과를 돌려준다 (두 번 눌러도 한 번) */
+    friendGift: (token: string, o: { to: string; coins: number; passes: number; requestId: string }) =>
+      call<{ balance: number; chatPasses: number; coins: number; passes: number }>(
+        'POST',
+        '/v1/friends/gifts',
+        {
+          token,
+          body: o,
+          read: (j) => {
+            const g = obj(j.gift);
+            return nat(j.balance) !== undefined
+              ? {
+                  balance: nat(j.balance) as number,
+                  chatPasses: nat(j.chatPasses) ?? 0,
+                  coins: nat(g.coins) ?? 0,
+                  passes: nat(g.passes) ?? 0,
+                }
+              : undefined;
+          },
+        },
+      ),
+    friendShare: (token: string, code: string, share: boolean) =>
+      call<{ sharing: number }>('PUT', `/v1/friends/${encodeURIComponent(code)}/calendar`, {
+        token,
+        body: { share },
+        read: (j) => ({ sharing: nat(j.sharing) ?? 0 }),
+      }),
+    /** 바쁜 시간대 올리기 (시작, 끝만. 제목은 보내지 않는다) */
+    busyUpload: (token: string, blocks: readonly BusyBlock[]) =>
+      call<{ stored: number }>('PUT', '/v1/friends/calendar/busy', {
+        token,
+        body: { blocks: blocks.map((b) => ({ start: b.start, end: b.end })) },
+        read: (j) => ({ stored: nat(j.stored) ?? 0 }),
+      }),
+    busyStop: (token: string) => call('DELETE', '/v1/friends/calendar', { token, read: () => true }),
+    friendBusy: (token: string, code: string) =>
+      call<{ blocks: BusyBlock[]; updatedAt: string | null }>(
+        'GET',
+        `/v1/friends/${encodeURIComponent(code)}/busy`,
+        {
+          token,
+          read: (j) =>
+            Array.isArray(j.blocks)
+              ? { blocks: listOf(j.blocks, busyOf, 1000), updatedAt: iso(j.updatedAt) }
               : undefined,
         },
       ),

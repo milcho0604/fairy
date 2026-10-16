@@ -1,0 +1,537 @@
+// 서버 친구 (이슈 #110 1부): 설정 > 데이터의 친구 칸. 친구 맺기(코드, 초대 링크), 받은 신청, 선물, 바쁜 시간 공유.
+// 칸은 서버 모드(만 14세 이상, 서버 주소 있음), 로그인, 서버가 켠 친구 기능일 때만 보인다 (아니면 아무것도 그리지 않는다).
+// 다른 서버 칸(ServerAccountBox 등)과 따로 둔다: 그 칸들의 마크업은 건드리지 않는다. 모양은 friends.css 에만.
+import { useEffect, useRef, useState } from 'react';
+import { type I18nKey, locale, t } from '../../../shared/i18n/index.ts';
+import {
+  type BusyBlock,
+  busyByDay,
+  type FriendItem,
+  type FriendPerson,
+  type FriendResult,
+  type FriendsBridge,
+  type FriendsState,
+} from '../../../shared/server-friends.ts';
+import './friends.css';
+
+declare global {
+  interface Window {
+    jjakkungFriends?: FriendsBridge;
+  }
+}
+
+const bridge = () => window.jjakkungFriends;
+
+const ERRORS = [
+  'code',
+  'no_user',
+  'self',
+  'already_friends',
+  'already_requested',
+  'blocked_by_you',
+  'unavailable',
+  'limit',
+  'rate_limited',
+  'offline',
+  'not_friend',
+  'balance',
+  'no_passes',
+  'passes_age',
+  'passes_not_allowed',
+  'passes_not_giftable',
+  'daily_send_limit',
+  'daily_receive_limit',
+  'feature_off',
+  'expired',
+  'no_request',
+  'not_linked',
+  'not_shared',
+];
+const errorText = (e: string) =>
+  t((ERRORS.includes(e) ? `friends.err.${e}` : 'friends.err.other') as I18nKey);
+
+const nameOf = (p: FriendPerson) => p.nickname ?? (p.code || t('friends.left'));
+const dayText = (iso: string) =>
+  new Date(iso).toLocaleDateString(locale(), { month: 'short', day: 'numeric' });
+const clock = (dayStart: number, minute: number) =>
+  new Date(dayStart + minute * 60_000).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' });
+
+/** 상태를 받아 두고 바뀌면 다시 그린다 */
+function useFriends(): [FriendsState | undefined, (s: FriendsState | undefined) => void] {
+  const [s, setS] = useState<FriendsState>();
+  useEffect(() => {
+    const b = bridge();
+    if (!b) return;
+    let live = true;
+    void b
+      .state()
+      .then((v) => live && v && setS(v))
+      .catch(() => undefined);
+    const off = b.onChanged((v) => live && setS(v));
+    return () => {
+      live = false;
+      off();
+    };
+  }, []);
+  return [s, (v) => v && setS(v)];
+}
+
+export function FriendsBox({ flash }: { flash: (message: string, error?: boolean) => void }) {
+  const [s] = useFriends();
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
+  const [sure, setSure] = useState<string | null>(null);
+  const [giftTo, setGiftTo] = useState<string | null>(null);
+  const [busyOf, setBusyOf] = useState<{ code: string; blocks: BusyBlock[]; at: string | null } | null>(null);
+  const boxRef = useRef<HTMLElement>(null);
+  const b = bridge();
+
+  // 초대 링크(fairy://friend/<코드>)로 열었으면 코드를 칸에 넣고 이 칸이 보이게 내린다
+  useEffect(() => {
+    if (!s?.prefill) return;
+    setText(s.prefill);
+    boxRef.current?.scrollIntoView({ block: 'start' });
+    b?.clearPrefill();
+  }, [s?.prefill, b]);
+
+  if (!b || !s?.available) return null;
+  const list = s.list;
+
+  /** 단추 하나: 누르는 동안 다른 단추를 막고, 결과를 상태줄에 */
+  async function run<T>(
+    key: string,
+    f: () => Promise<FriendResult<T>>,
+    ok: string,
+  ): Promise<FriendResult<T>> {
+    setBusy(key);
+    setSure(null);
+    try {
+      const r = await f();
+      if (r.ok) flash(ok);
+      else flash(errorText(r.error), true);
+      return r;
+    } catch {
+      flash(t('friends.err.other'), true);
+      return { ok: false, error: 'other' };
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** 두 번 눌러 하는 단추 (끊기, 차단) */
+  const twice = (key: string, go: () => void) => () => {
+    if (sure !== key) return setSure(key);
+    go();
+  };
+
+  const send = async () => {
+    const r = await run('send', () => b.request(text), t('friends.sent'));
+    if (r.ok) {
+      setText('');
+      if (r.data.accepted) flash(t('friends.acceptedNow'));
+    }
+  };
+
+  const showBusy = async (f: FriendItem) => {
+    if (busyOf?.code === f.code) return setBusyOf(null);
+    setBusy(`busy:${f.code}`);
+    try {
+      const r = await b.busy(f.code);
+      if (r.ok) setBusyOf({ code: f.code, blocks: r.data.blocks, at: r.data.updatedAt });
+      else flash(errorText(r.error), true);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const off = busy !== null;
+  return (
+    <section ref={boxRef} id="friends" className="friends-box">
+      <h2>{t('friends.title')}</h2>
+      <div className="card">
+        <small>{t('friends.hint')}</small>
+        {list && (
+          <div className="action-row friends-me">
+            <small className="friends-code">{t('friends.myCode', { code: list.me.code })}</small>
+            <button
+              type="button"
+              className="ghost small"
+              onClick={() => void b.copyCode().then((ok) => ok && flash(t('friends.copiedCode')))}
+            >
+              {t('friends.copyCode')}
+            </button>
+            <button
+              type="button"
+              className="ghost small"
+              onClick={() => void b.copyLink().then((ok) => ok && flash(t('friends.copiedLink')))}
+            >
+              {t('friends.copyLink')}
+            </button>
+          </div>
+        )}
+        <div className="action-row friends-add">
+          <input
+            className="plain-input friends-input"
+            aria-label={t('friends.paste')}
+            placeholder={t('friends.paste')}
+            maxLength={300}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing && text.trim()) void send();
+            }}
+          />
+          <button type="button" className="ghost" disabled={off || !text.trim()} onClick={() => void send()}>
+            {t('friends.send')}
+          </button>
+        </div>
+        {s.problem && !list && <small className="warn">{errorText(s.problem)}</small>}
+
+        {list && list.incoming.length > 0 && (
+          <div className="friends-group">
+            <small className="friends-head">{t('friends.incoming')}</small>
+            <ul className="friends-list">
+              {list.incoming.map((r) => (
+                <li key={r.id}>
+                  <span className="friends-name">{nameOf(r)}</span>
+                  <small className="friends-sub">{r.code}</small>
+                  <span className="friends-actions">
+                    <button
+                      type="button"
+                      className="ghost small"
+                      disabled={off}
+                      onClick={() => void run('accept', () => b.accept(r.id), t('friends.accepted'))}
+                    >
+                      {t('friends.accept')}
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost small"
+                      disabled={off}
+                      onClick={() => void run('decline', () => b.decline(r.id), t('friends.declined'))}
+                    >
+                      {t('friends.decline')}
+                    </button>
+                    <button
+                      type="button"
+                      className={`ghost small${sure === `block:${r.code}` ? ' danger' : ''}`}
+                      disabled={off}
+                      onBlur={() => setSure(null)}
+                      onClick={twice(
+                        `block:${r.code}`,
+                        () => void run('block', () => b.block(r.code), t('friends.blockedOk')),
+                      )}
+                    >
+                      {sure === `block:${r.code}` ? t('friends.blockSure') : t('friends.block')}
+                    </button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {list && list.outgoing.length > 0 && (
+          <div className="friends-group">
+            <small className="friends-head">{t('friends.outgoing')}</small>
+            <ul className="friends-list">
+              {list.outgoing.map((r) => (
+                <li key={r.id}>
+                  <span className="friends-name">{nameOf(r)}</span>
+                  <small className="friends-sub">{t('friends.until', { when: dayText(r.expiresAt) })}</small>
+                  <span className="friends-actions">
+                    <button
+                      type="button"
+                      className="ghost small"
+                      disabled={off}
+                      onClick={() => void run('cancel', () => b.cancel(r.id), t('friends.cancel'))}
+                    >
+                      {t('friends.cancel')}
+                    </button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {list && (
+          <div className="friends-group">
+            <small className="friends-head">
+              {t('friends.list', { n: list.friends.length, max: list.limits.friends })}
+            </small>
+            {list.friends.length === 0 ? (
+              <small className="below">{t('friends.none')}</small>
+            ) : (
+              <ul className="friends-list">
+                {list.friends.map((f) => (
+                  <FriendRow
+                    key={f.code}
+                    f={f}
+                    s={s}
+                    off={off}
+                    sure={sure}
+                    setSure={setSure}
+                    giftOpen={giftTo === f.code}
+                    onGift={() => setGiftTo(giftTo === f.code ? null : f.code)}
+                    busyView={busyOf?.code === f.code ? busyOf : null}
+                    onBusy={() => void showBusy(f)}
+                    run={run}
+                    twice={twice}
+                    b={b}
+                    closeGift={() => setGiftTo(null)}
+                  />
+                ))}
+              </ul>
+            )}
+            {s.calendar && !s.calendarLinked && list.friends.length > 0 && (
+              <small className="below">{t('friends.shareNeedsGcal')}</small>
+            )}
+          </div>
+        )}
+
+        {list && list.blocked.length > 0 && (
+          <div className="friends-group">
+            <small className="friends-head">{t('friends.blocked')}</small>
+            <ul className="friends-list">
+              {list.blocked.map((p) => (
+                <li key={p.code}>
+                  <span className="friends-name">{nameOf(p)}</span>
+                  <small className="friends-sub">{p.code}</small>
+                  <span className="friends-actions">
+                    <button
+                      type="button"
+                      className="ghost small"
+                      disabled={off}
+                      onClick={() => void run('unblock', () => b.unblock(p.code), t('friends.unblock'))}
+                    >
+                      {t('friends.unblock')}
+                    </button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function FriendRow(o: {
+  f: FriendItem;
+  s: FriendsState;
+  off: boolean;
+  sure: string | null;
+  setSure: (v: string | null) => void;
+  giftOpen: boolean;
+  onGift: () => void;
+  closeGift: () => void;
+  busyView: { blocks: BusyBlock[]; at: string | null } | null;
+  onBusy: () => void;
+  run: <T>(key: string, f: () => Promise<FriendResult<T>>, ok: string) => Promise<FriendResult<T>>;
+  twice: (key: string, go: () => void) => () => void;
+  b: FriendsBridge;
+}) {
+  const { f, s, b } = o;
+  return (
+    <li className="friends-friend">
+      <div className="friends-line">
+        <span className="friends-name">{nameOf(f)}</span>
+        <small className="friends-sub">{f.code}</small>
+        {f.theyShare && <small className="friends-tag">{t('friends.theyShare')}</small>}
+        <span className="friends-actions">
+          {s.gifts && (
+            <button type="button" className="ghost small" disabled={o.off} onClick={o.onGift}>
+              {t('friends.gift')}
+            </button>
+          )}
+          {s.calendar && f.theyShare && (
+            <button type="button" className="ghost small" disabled={o.off} onClick={o.onBusy}>
+              {o.busyView ? t('friends.busyClose') : t('friends.busy')}
+            </button>
+          )}
+          <button
+            type="button"
+            className={`ghost small${o.sure === `remove:${f.code}` ? ' danger' : ''}`}
+            disabled={o.off}
+            onBlur={() => o.setSure(null)}
+            onClick={o.twice(
+              `remove:${f.code}`,
+              () => void o.run('remove', () => b.remove(f.code), t('friends.removed')),
+            )}
+          >
+            {o.sure === `remove:${f.code}` ? t('friends.removeSure') : t('friends.remove')}
+          </button>
+          <button
+            type="button"
+            className={`ghost small${o.sure === `block:${f.code}` ? ' danger' : ''}`}
+            disabled={o.off}
+            onBlur={() => o.setSure(null)}
+            onClick={o.twice(
+              `block:${f.code}`,
+              () => void o.run('block', () => b.block(f.code), t('friends.blockedOk')),
+            )}
+          >
+            {o.sure === `block:${f.code}` ? t('friends.blockSure') : t('friends.block')}
+          </button>
+        </span>
+      </div>
+      {s.calendar && s.calendarLinked && (
+        <label className="friends-share">
+          <input
+            type="checkbox"
+            checked={f.iShare}
+            disabled={o.off}
+            onChange={(e) => {
+              const on = e.target.checked;
+              void o.run('share', () => b.share(f.code, on), t(on ? 'friends.shareOn' : 'friends.shareOff'));
+            }}
+          />
+          <span>{t('friends.share')}</span>
+        </label>
+      )}
+      {s.calendar && s.calendarLinked && f.iShare && (
+        <small className="friends-note">{t('friends.shareHint')}</small>
+      )}
+      {o.giftOpen && <GiftForm f={f} s={s} off={o.off} run={o.run} b={b} close={o.closeGift} />}
+      {o.busyView && <BusyWeek name={nameOf(f)} blocks={o.busyView.blocks} at={o.busyView.at} />}
+    </li>
+  );
+}
+
+function GiftForm(o: {
+  f: FriendItem;
+  s: FriendsState;
+  off: boolean;
+  run: <T>(key: string, f: () => Promise<FriendResult<T>>, ok: string) => Promise<FriendResult<T>>;
+  b: FriendsBridge;
+  close: () => void;
+}) {
+  const { s } = o;
+  const [coins, setCoins] = useState('');
+  const [passes, setPasses] = useState('');
+  const limits = s.list?.limits;
+  const today = s.list?.today ?? { coins: 0, passes: 0 };
+  const leftCoins = Math.max(0, (limits?.giftCoinsPerDay ?? 500) - today.coins);
+  const leftPasses = Math.max(0, (limits?.giftPassesPerDay ?? 5) - today.passes);
+  const c = Number(coins || 0);
+  const p = s.passGifts ? Number(passes || 0) : 0;
+  const valid = Number.isInteger(c) && Number.isInteger(p) && c >= 0 && p >= 0 && c + p > 0;
+  const go = async () => {
+    if (!valid) return;
+    const r = await o.run(
+      'gift',
+      () => o.b.gift(o.f.code, c, p),
+      t('friends.giftOk', { coins: c, passes: p }),
+    );
+    if (r.ok) o.close();
+  };
+  return (
+    <div className="friends-gift">
+      <div className="action-row">
+        <label className="friends-amount">
+          <span>{t('friends.giftCoins')}</span>
+          <input
+            className="plain-input"
+            type="number"
+            min={0}
+            max={leftCoins}
+            inputMode="numeric"
+            aria-label={t('friends.giftCoins')}
+            value={coins}
+            onChange={(e) => setCoins(e.target.value)}
+          />
+        </label>
+        {s.passGifts && (
+          <label className="friends-amount">
+            <span>{t('friends.giftPasses')}</span>
+            <input
+              className="plain-input"
+              type="number"
+              min={0}
+              max={leftPasses}
+              inputMode="numeric"
+              aria-label={t('friends.giftPasses')}
+              value={passes}
+              onChange={(e) => setPasses(e.target.value)}
+            />
+          </label>
+        )}
+        <button type="button" className="ghost small" disabled={o.off || !valid} onClick={() => void go()}>
+          {t('friends.giftSend')}
+        </button>
+        <button type="button" className="ghost small" disabled={o.off} onClick={o.close}>
+          {t('friends.giftClose')}
+        </button>
+      </div>
+      <small className="friends-note">
+        {s.passGifts
+          ? t('friends.giftHint', {
+              coins: limits?.giftCoinsPerDay ?? 500,
+              passes: limits?.giftPassesPerDay ?? 5,
+              leftCoins,
+              leftPasses,
+            })
+          : t('friends.giftCoinsOnly', { coins: limits?.giftCoinsPerDay ?? 500, left: leftCoins })}
+      </small>
+      {s.balance !== null && (
+        <small className="friends-note">
+          {s.passGifts && s.passes !== null
+            ? t('friends.havePasses', { coins: s.balance, passes: s.passes })
+            : t('friends.have', { coins: s.balance })}
+        </small>
+      )}
+    </div>
+  );
+}
+
+/** 친구의 이번 주(오늘부터 7일) 바쁜 시간. 날마다 막대와 시간 글 */
+function BusyWeek(o: { name: string; blocks: BusyBlock[]; at: string | null }) {
+  const days = busyByDay(o.blocks, Date.now(), 7);
+  const any = days.some((d) => d.spans.length > 0);
+  return (
+    <section className="friends-busy" aria-label={t('friends.busyTitle', { name: o.name })}>
+      <small className="friends-head">{t('friends.busyTitle', { name: o.name })}</small>
+      {!any && <small className="below">{t('friends.busyNone')}</small>}
+      <ul>
+        {days.map((d) => (
+          <li key={d.day}>
+            <small className="friends-day">
+              {new Date(d.day).toLocaleDateString(locale(), {
+                weekday: 'short',
+                month: 'numeric',
+                day: 'numeric',
+              })}
+            </small>
+            <span className="friends-bar" aria-hidden="true">
+              {d.spans.map((x) => (
+                <i
+                  key={`${x.from}-${x.to}`}
+                  style={{ left: `${(x.from / 1440) * 100}%`, width: `${((x.to - x.from) / 1440) * 100}%` }}
+                />
+              ))}
+            </span>
+            <small className="friends-times">
+              {d.spans.length === 0
+                ? t('friends.busyFree')
+                : d.spans.map((x) => `${clock(d.day, x.from)}~${clock(d.day, x.to)}`).join(', ')}
+            </small>
+          </li>
+        ))}
+      </ul>
+      {o.at && (
+        <small className="friends-note">
+          {t('friends.busyAt', {
+            when: new Date(o.at).toLocaleString(locale(), {
+              month: 'short',
+              day: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit',
+            }),
+          })}
+        </small>
+      )}
+    </section>
+  );
+}
