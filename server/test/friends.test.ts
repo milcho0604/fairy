@@ -803,7 +803,7 @@ describe('기능 스위치 세 모드', () => {
       () => ADMIN_TOKEN,
     );
     assert.equal((await browser.login()).status, 303);
-    const page = await browser.page();
+    const page = await browser.page('/features');
     for (const key of ['friends', 'friend_gifts', 'friend_calendar', 'friend_gift_passes'])
       assert.ok(page.text.includes(`<code>${key}</code>`), key);
     const r = await browser.act('/admin/features/mode', { key: 'friend_gifts', mode: 'off', confirm: 'yes' });
