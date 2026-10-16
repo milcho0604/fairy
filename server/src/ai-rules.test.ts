@@ -5,7 +5,9 @@ import {
   AI_MAX_MESSAGES,
   AI_MAX_OUTPUT_TOKENS,
   AI_MAX_TOTAL_CHARS,
+  billedMicros,
   costMicros,
+  hopsOf,
   parseChatRequest,
   parseReport,
   requestShape,
@@ -94,7 +96,8 @@ test('질문 글자 수 상한: 운영자 설정 값으로 검사한다 (기본 
 
 test('비용: Haiku 4.5 는 100만 토큰당 1, 5 달러, 모르는 모델은 가장 비싼 값', () => {
   assert.equal(costMicros('claude-haiku-4-5', 2000, 300), 3500);
-  assert.equal(costMicros('claude-unknown', 1, 1), 60);
+  // 모르는 모델은 알려진 가장 비싼 값 이상 ($15 / $75)
+  assert.equal(costMicros('claude-unknown', 1, 1), 90);
   // Sonnet 5.5 (#103): $2 / $10
   assert.equal(costMicros('claude-sonnet-5-5', 2000, 600), 10000);
   // Haiku 5.5 (#101): $0.10 / $0.50, 프롬프트가 10만 토큰을 넘으면 $0.50 / $2.50
@@ -109,6 +112,32 @@ test('비용: Haiku 4.5 는 100만 토큰당 1, 5 달러, 모르는 모델은 �
   // 출력 상한 전체와 입력(시스템 프롬프트 포함, 글자 수 × 3)을 넉넉히 잡는다
   const chars = systemPrompt('ko').length + 100;
   assert.ok(reserve >= AI_MAX_OUTPUT_TOKENS * 5 + chars * 3, String(reserve));
+});
+
+test('폴백 장부: 홉마다 그 모델 요금, 모델을 모르면 가장 비싼 값, iterations 가 없으면 맨 위 usage 한 홉', () => {
+  // 거절한 Sonnet 5.5 홉 640 + 답한 Opus 5 홉 1350
+  const hops = hopsOf([
+    { type: 'message', model: 'claude-sonnet-5-5', input_tokens: 120, output_tokens: 40 },
+    { type: 'fallback_message', model: 'claude-opus-5', input_tokens: 120, output_tokens: 30 },
+  ]);
+  assert.equal(billedMicros(hops ?? []), 1990);
+  // 항목에 model 이 없으면 fallback 블록의 to.model, 그래도 없으면 모르는 모델
+  assert.equal(billedMicros(hopsOf([{ input_tokens: 1, output_tokens: 1 }], 'claude-opus-5') ?? []), 30);
+  assert.equal(billedMicros(hopsOf([{ input_tokens: 1, output_tokens: 1 }]) ?? []), 90);
+  assert.equal(hopsOf(undefined), undefined);
+  assert.equal(hopsOf([]), undefined);
+});
+
+test('예약금: 서버 폴백이면 두 홉 최악 (거절한 홉 + 모르는 폴백 모델)', () => {
+  const req = {
+    messages: [{ role: 'user' as const, content: '가'.repeat(100) }],
+    lang: 'ko' as const,
+    persona: '',
+  };
+  const one = reserveMicros('claude-sonnet-5-5', req);
+  const two = reserveMicros('claude-sonnet-5-5', req, true);
+  // 모르는 폴백 홉 ($15/$75) 이 Sonnet 홉 ($2/$10) 보다 7.5배 비싸니 두 홉 합은 한 홉의 다섯 배를 넘는다
+  assert.ok(two > one * 5, `${one} ${two}`);
 });
 
 test('시스템 프롬프트: AI 임을 알리고 안전 규칙이 펫 성격보다 앞선다 (ko, en)', () => {

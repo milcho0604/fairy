@@ -49,7 +49,10 @@ test('서버 실패를 채팅 오류로 (다 씀은 no-tickets, 상한은 rate-l
 });
 
 test('runTicket: 조각은 delta, 끝은 done(모은 글), 실패는 error, 멈추면 cancelled', async () => {
-  const hooks = (r: AiChatOutcome, pieces: string[] = []): TicketHooks & { bodies: unknown[] } => {
+  const hooks = (
+    r: AiChatOutcome,
+    pieces: Array<string | 'reset'> = [],
+  ): TicketHooks & { bodies: unknown[] } => {
     const bodies: unknown[] = [];
     return {
       bodies,
@@ -61,7 +64,7 @@ test('runTicket: 조각은 delta, 끝은 done(모은 글), 실패는 error, 멈�
       ask: async (body, onText, signal) => {
         bodies.push(body);
         await Promise.resolve();
-        for (const p of pieces) onText(p);
+        for (const p of pieces) onText(p === 'reset' ? { type: 'reset' } : { type: 'text', text: p });
         if (signal?.aborted) return { ok: false, status: 0, error: 'offline' };
         return r;
       },
@@ -83,6 +86,21 @@ test('runTicket: 조각은 delta, 끝은 done(모은 글), 실패는 error, 멈�
   assert.equal(body.lang, 'en');
   assert.equal(body.persona.length, 600);
   assert.equal(body.messages.length, 3);
+
+  // 서버 폴백: 앞의 글은 reset 으로 지워지고, 완료 글은 이어진 글만
+  const fb: AiEvent[] = [];
+  await runTicket(
+    { history: [], text: 'x', persona: '', lang: 'ko' },
+    hooks({ ok: true, tickets: 1 }, ['[A의 앞부분] ', 'reset', '새 ', '답']),
+    (e) => fb.push(e),
+  ).finished;
+  assert.deepEqual(fb, [
+    { type: 'delta', text: '[A의 앞부분] ' },
+    { type: 'reset' },
+    { type: 'delta', text: '새 ' },
+    { type: 'delta', text: '답' },
+    { type: 'done', text: '새 답' },
+  ]);
 
   const errs: AiEvent[] = [];
   await runTicket(

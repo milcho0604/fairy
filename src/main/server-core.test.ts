@@ -292,13 +292,23 @@ function fakeServer() {
       else if (u.pathname === '/v1/ai/report') {
         s.reports.push(body);
         out = reply(201, { ok: true });
-      } else if (s.aiMode === 'ok' || s.aiMode === 'cut') {
+      } else if (s.aiMode === 'ok' || s.aiMode === 'cut' || s.aiMode === 'fallback') {
         if (s.tickets <= 0) out = reply(409, { error: 'no_tickets', tickets: 0 });
         else {
           s.tickets -= 1;
           const sse = (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-          const parts = [sse('text', { text: '안녕! ' }), sse('text', { text: '나는 AI 야.' })];
-          if (s.aiMode === 'ok') parts.push(sse('done', { tickets: s.tickets, stop: 'end_turn' }));
+          // fallback: 거절한 홉의 앞부분 글, 서버 폴백 reset, 새 답
+          const parts =
+            s.aiMode === 'fallback'
+              ? [
+                  sse('text', { text: '[A의 앞부분] ' }),
+                  sse('reset', {}),
+                  sse('text', { text: '안녕! ' }),
+                  sse('text', { text: '나는 AI 야.' }),
+                ]
+              : [sse('text', { text: '안녕! ' }), sse('text', { text: '나는 AI 야.' })];
+          if (s.aiMode === 'ok' || s.aiMode === 'fallback')
+            parts.push(sse('done', { tickets: s.tickets, stop: 'end_turn' }));
           else s.tickets += 1; // 서버가 되돌린다
           // 조각이 덩이 경계에 걸려도 읽는지 보려고 일부러 잘게 나눈다
           const bytes = new TextEncoder().encode(parts.join(''));
@@ -981,8 +991,8 @@ test('대화권 질문: 조각을 넘기고 남은 수를 고친다. 다 쓰면 
     persona: '고양이',
   };
   let got = '';
-  const ok = await x.core.askAi(body, (t) => {
-    got += t;
+  const ok = await x.core.askAi(body, (p) => {
+    if (p.type === 'text') got += p.text;
   });
   assert.deepEqual(ok, { ok: true, tickets: 9 });
   assert.equal(got, '안녕! 나는 AI 야.');
@@ -993,11 +1003,22 @@ test('대화권 질문: 조각을 넘기고 남은 수를 고친다. 다 쓰면 
 
   x.server.aiMode = 'cut';
   got = '';
-  const cut = await x.core.askAi(body, (t) => {
-    got += t;
+  const cut = await x.core.askAi(body, (p) => {
+    if (p.type === 'text') got += p.text;
   });
   assert.deepEqual(cut, { ok: false, status: 0, error: 'offline' });
   assert.equal(got, '안녕! 나는 AI 야.');
+
+  // 서버 폴백: 앞에서 받은 글은 reset 으로 지운다 (앱의 말풍선은 새 답만 남는다)
+  x.server.aiMode = 'fallback';
+  let shown = '';
+  const fb = await x.core.askAi(body, (p) => {
+    if (p.type === 'reset') shown = '';
+    else shown += p.text;
+  });
+  assert.deepEqual(fb, { ok: true, tickets: 8 });
+  assert.equal(shown, '안녕! 나는 AI 야.');
+  x.server.tickets = 9; // 뒤 시험의 수를 맞춘다
 
   x.server.aiMode = 'budget';
   assert.deepEqual(await x.core.askAi(body, () => {}), {

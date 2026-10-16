@@ -416,22 +416,31 @@ describe('질문 하나', () => {
     assert.deepEqual((await api('GET', '/v1/ai', { token: a.session })).body.usedToday, 1);
   });
 
-  test('서버 폴백 블록이 섞인 답도 글만 보여 주고 차감한다 (fallback 블록은 글이 아니다)', async () => {
+  test('서버 폴백: 거절한 홉의 앞부분 글은 reset 으로 지우고 새 답만 남는다, 비용은 홉마다 (Sonnet 640 + Opus 1350)', async () => {
     const a = await adult();
     const before = fake.calls.length;
     const r = await api('POST', '/v1/ai/chat', { token: a.session, body: ask('[[fallback]] 질문') });
     assert.equal(r.status, 200, r.text);
     const ev = events(r.text);
-    assert.equal(
-      ev
-        .filter((e) => e.event === 'text')
-        .map((e) => e.data.text)
-        .join(''),
-      '안녕! 나는 AI 야.',
+    // 앱이 받는 순서대로 맞춘다: reset 뒤에 온 글만 답이다
+    let got = '';
+    for (const e of ev) {
+      if (e.event === 'reset') got = '';
+      if (e.event === 'text') got += e.data.text;
+    }
+    assert.ok(
+      ev.some((e) => e.event === 'reset'),
+      'reset 사건이 있어야 한다',
     );
+    assert.equal(got, '안녕! 나는 AI 야.');
     assert.deepEqual(ev.at(-1), { event: 'done', data: { tickets: AI_GIFT - 1, stop: 'end_turn' } });
     assert.equal(fake.calls.length, before + 1);
     assert.deepEqual(fake.calls.at(-1)?.violations, []);
+    // 장부: 거절한 Sonnet 5.5 홉 120x2 + 40x10 = 640, 답한 Opus 5 홉 120x5 + 30x25 = 1350
+    const u = await pool.query('SELECT cost_micros FROM ai_usage WHERE account_id = $1', [
+      await accountOf(a.session),
+    ]);
+    assert.deepEqual(u.rows, [{ cost_micros: '1990' }]);
   });
 
   test('운영자가 줄인 질문 글자 수를 넘으면 400 too_long, 대화권은 그대로 (상한은 원래 값으로 되돌린다)', async () => {
@@ -639,12 +648,16 @@ describe('상한', () => {
     const used = await pool.query<{ total: string }>(
       "SELECT COALESCE(sum(cost_micros), 0) AS total FROM ai_usage WHERE created_at >= date_trunc('month', now(), 'UTC')",
     );
-    // 질문 하나가 잡는 값의 두 개 반쯤 자리를 남긴다 (Haiku 5.5 는 하나에 몇백)
-    const one = reserveMicros(ai.model, {
-      messages: [{ role: 'user', content: '[[slow]] 동시에' }],
-      lang: 'ko',
-      persona: '',
-    });
+    // 질문 하나가 잡는 값(서버 폴백이라 두 홉 최악)의 두 개 반쯤 자리를 남긴다
+    const one = reserveMicros(
+      ai.model,
+      {
+        messages: [{ role: 'user', content: '[[slow]] 동시에' }],
+        lang: 'ko',
+        persona: '',
+      },
+      true,
+    );
     const room = Math.floor(one * 2.5);
     const fill = await pool.query<{ id: string }>(
       `INSERT INTO ai_usage (account_id, day, model, status, cost_micros) VALUES (NULL, CURRENT_DATE, 'x', 'ok', $1)

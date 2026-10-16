@@ -32,6 +32,8 @@ export type AiEvent =
   | { type: 'session'; id: string }
   | { type: 'usage'; usage: AiUsage }
   | { type: 'delta'; text: string }
+  /** 서버 폴백으로 앞에서 받은 글이 답이 아니었다: 그때까지 받은 글을 지우고 이어지는 글을 새 답으로 */
+  | { type: 'reset' }
   /** tools: 도구를 불렀다 (글 없이 끝나도 도구만 쓴 정상 경우, empty-answer.ts) */
   | { type: 'done'; text: string; tools?: boolean }
   | { type: 'error'; error: AiError };
