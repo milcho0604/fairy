@@ -3,6 +3,8 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { type AppDeps, appModule } from './app.module';
 import type { Config } from './config';
+import { Feeds } from './feeds';
+import { updateGate } from './update-gate';
 
 /**
  * 요청 하나를 다 받는 시간. Node 기본(300초)은 느린 회선의 20MB 서버 백업 올리기를 끊는다.
@@ -33,6 +35,9 @@ export async function createApp(config: Config, deps: AppDeps = {}): Promise<Nes
   app.useBodyParser('json', { limit: '256kb' });
   // 운영자 화면(/admin)의 폼. 스크립트 없이 폼만 쓴다 (admin.ts)
   app.useBodyParser('urlencoded', { limit: '64kb', extended: false });
+  // 업데이트 단계 관문 (이슈 #120): /v1/* 를 앱 판 머리와 기준으로 거른다. 기준은 공지 문서에서 매번 읽는다
+  const feeds = app.get(Feeds);
+  app.use(updateGate(() => feeds.levels()));
   const server = app.getHttpServer() as { requestTimeout: number };
   server.requestTimeout = UPLOAD_REQUEST_MS;
   app.use((req: RawReq, _res: unknown, next: () => void) => {

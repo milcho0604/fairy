@@ -72,6 +72,14 @@ export function watchUpdates(o: { say: Say; log: Log; askForce?: AskForce }) {
    * 릴리스 본문 값과 높은 쪽을 쓰되 최신 릴리스 이하일 때만 (update-policy.ts pickMinVersion)
    */
   let noticeMin: string | undefined;
+  /**
+   * 서버가 정한 강제 최소 판 (이슈 #120). undefined 면 서버가 답한 적이 없다 (그때는 공지 파일의 값을 쓴다),
+   * null 이면 서버가 최소 판을 두지 않았다 (공지 파일의 값보다 우선한다: 운영자가 내린 것이 바로 반영되게)
+   */
+  let serverMin: string | null | undefined;
+  /** 확인에 넘기는 강제 최소 판: 서버가 답했으면 서버 값, 아니면 공지 파일 값 */
+  const effectiveMin = (): string | undefined =>
+    serverMin !== undefined ? (serverMin ?? undefined) : noticeMin;
   /** 마지막 확인에서 본 새 버전 (공지 창의 업데이트 권장과 업데이트 단추가 쓴다) */
   let newer: { version: string; url: string } | undefined;
   let nagging = false;
@@ -118,7 +126,7 @@ export function watchUpdates(o: { say: Say; log: Log; askForce?: AskForce }) {
         o.log('update', '응답을 읽지 못함');
         return { kind: 'failed', bad: true };
       }
-      return decideUpdate(json, app.getVersion(), noticeMin);
+      return decideUpdate(json, app.getVersion(), effectiveMin());
     } catch (err) {
       o.log('update', '확인 실패', err instanceof Error ? err.message : String(err));
       return { kind: 'failed' };
@@ -435,6 +443,18 @@ export function watchUpdates(o: { say: Say; log: Log; askForce?: AskForce }) {
      * 공지 파일의 최소 버전을 넣는다 (두 번 받아 같은 값, 못 받았으면 undefined). 바뀌었으면 바로 다시 확인해
      * 잠그거나 푼다. 다시 확인도 지금처럼 두 번 받아 같아야 잠그고, 오프라인이면 잠그지 않는다
      */
+    /**
+     * 서버가 정한 강제 최소 판 (이슈 #120, server-core.ts onServerMin). 서버가 답하면 그 값이 공지 파일의 값을 대신한다.
+     * 바뀌었으면 바로 다시 확인한다 (두 번 받아 같아야 잠근다, 같은 규칙)
+     */
+    setServerMin(min: string | null | undefined) {
+      // 실제로 쓰는 최소 판이 바뀔 때만 다시 확인한다 (맞추기마다 확인하면 새 버전 말풍선이 다른 말풍선을 덮는다)
+      const before = effectiveMin();
+      serverMin = min;
+      if (effectiveMin() === before) return;
+      o.log('update', '서버 최소 버전', min === undefined ? '서버 안 씀' : (min ?? '없음'));
+      void check();
+    },
     setNoticeMin(min: string | undefined) {
       if (min === noticeMin) return;
       o.log('update', '공지 파일 최소 버전', min ?? '없음');

@@ -54,6 +54,7 @@ describe('운영자 판정과 운영자 API', () => {
       account: { code: adminAccount.code, nickname: '운영자' },
       admin: true,
       calendar: { linked: false, devices: 0 },
+      update: { recommend: null, restrict: null, min: null },
     });
     assert.equal((await api('GET', '/v1/me', { token: adminAccount.token })).body.admin, false);
     const other = await newDevice('18+');

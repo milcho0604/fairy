@@ -326,6 +326,7 @@ if (kind === 'settings') {
     adminOverview: (q) => ipcRenderer.invoke(SERVER.adminOverview, q),
     adminAction: (action, fields) => ipcRenderer.invoke(SERVER.adminAction, action, fields),
     turnOn: () => ipcRenderer.invoke(SERVER.turnOn),
+    updateNow: () => ipcRenderer.invoke(SERVER.updateNow),
     syncNow: () => ipcRenderer.invoke(SERVER.syncNow),
     login: (service) => ipcRenderer.invoke(SERVER.login, service),
     cancelLogin: () => ipcRenderer.send(SERVER.cancelLogin),

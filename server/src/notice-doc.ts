@@ -32,7 +32,11 @@ export interface DocNotice {
 
 export interface NoticeDoc {
   version: 1;
+  /** 강제 (앱 잠금, 서버 거절) */
   minVersion?: string;
+  /** 기능 제한 (서버 기능 거절, 426). 이슈 #120 */
+  restrictVersion?: string;
+  /** 권장 (알림) */
   recommendVersion?: string;
   notices: DocNotice[];
 }
@@ -47,6 +51,8 @@ export function readDoc(raw: unknown): NoticeDoc {
   if (typeof r.minVersion === 'string' && VERSION.test(r.minVersion)) doc.minVersion = r.minVersion;
   if (typeof r.recommendVersion === 'string' && VERSION.test(r.recommendVersion))
     doc.recommendVersion = r.recommendVersion;
+  if (typeof r.restrictVersion === 'string' && VERSION.test(r.restrictVersion))
+    doc.restrictVersion = r.restrictVersion;
   if (Array.isArray(r.notices)) doc.notices = r.notices as DocNotice[];
   return doc;
 }
@@ -169,6 +175,7 @@ export function checkDoc(doc: NoticeDoc): string | undefined {
 export function exportDoc(doc: NoticeDoc): NoticeDoc {
   const out: NoticeDoc = { version: NOTICES_FORMAT, notices: [] };
   if (doc.minVersion) out.minVersion = doc.minVersion;
+  if (doc.restrictVersion) out.restrictVersion = doc.restrictVersion;
   if (doc.recommendVersion) out.recommendVersion = doc.recommendVersion;
   out.notices = doc.notices.map((n) => {
     const o: DocNotice = { id: n.id, kind: n.kind, title: n.title, body: n.body };

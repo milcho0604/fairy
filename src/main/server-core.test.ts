@@ -39,6 +39,9 @@ function fakeServer() {
     age: '',
     /** 다음 대답 대신 줄 것 (응답 검사 시험) */
     raw: undefined as Response | undefined,
+    /** 업데이트 관문 (이슈 #120): 이 단계로 막는다 (/v1/me 는 막지 않는다). 서버가 말하는 강제 최소 판 */
+    gate: undefined as { level: 'restrict' | 'force'; need: string } | undefined,
+    meMin: undefined as string | undefined,
     /** 기기 계정 대답을 이 약속이 끝날 때까지 미룬다 */
     hold: undefined as Promise<void> | undefined,
     patchFail: false,
@@ -105,11 +108,19 @@ function fakeServer() {
     }
     s.calls.push({ method: init.method ?? 'GET', path: u.pathname, ...(auth ? { auth } : {}), body });
     if (s.down) throw new TypeError('fetch failed');
-    if (s.raw) {
+    if (s.raw && u.pathname !== '/v1/me') {
       const r = s.raw;
       s.raw = undefined;
       return r;
     }
+    if (s.gate && u.pathname !== '/v1/me')
+      return new Response(
+        JSON.stringify({ error: 'update_required', need: s.gate.need, level: s.gate.level }),
+        {
+          status: 426,
+          headers: { 'content-type': 'application/json' },
+        },
+      );
     const authed = () => !s.deleted && auth !== undefined && (auth === s.deviceToken || s.sessions.has(auth));
     let out: Response;
     if (u.pathname === '/v1/device') {
@@ -174,6 +185,7 @@ function fakeServer() {
         account: { code: 'F-ABCD-1234', nickname: s.nickname },
         admin: s.admin && s.sessions.has(auth ?? ''),
         calendar: calendarBody(),
+        update: { recommend: null, restrict: null, min: s.meMin ?? null },
       });
     } else if (u.pathname === '/v1/claim') {
       const id = String(body?.event);
@@ -343,6 +355,8 @@ function setup(
   const opened: string[] = [];
   /** 서버 백업 (#102): 받은 파일로 연 되살리기 확인 칸 */
   const restored: Uint8Array[] = [];
+  /** 업데이트 관문이 알린 서버 최소 판 (이슈 #120) */
+  const serverMins: (string | null | undefined)[] = [];
   let backupBytes: Uint8Array = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 1, 2, 3]);
   let loopResult: LoopbackLike['result'] = Promise.resolve({ kind: 'cancelled' });
   let now = T0;
@@ -382,6 +396,7 @@ function setup(
     log: () => {},
     onChange: () => {},
     onCoins: () => {},
+    onServerMin: (m) => serverMins.push(m),
     onReverted: (list) => reverted.push(list),
     onInbox: (n) => inboxCalls.push(n),
     ...(o.calendar ? { calendarLinked: () => o.calendar?.linked ?? false } : {}),
@@ -395,6 +410,7 @@ function setup(
   });
   return {
     restored,
+    serverMins,
     setBackupBytes: (b: Uint8Array) => {
       backupBytes = b;
     },
@@ -836,6 +852,48 @@ test('기기 계정을 만드는 중 만 14세 미만으로 바꾸면 받은 토
     x.server.calls.map((c) => c.path),
     ['/v1/device'],
   );
+});
+
+test('업데이트 관문 (이슈 #120): 426 이면 업데이트 안내로 멈추고, 통과한 호출이 오면 푼다. 대기열은 그대로', async () => {
+  const x = setup({ coins: 10 });
+  x.core.setAge('adult');
+  x.server.gate = { level: 'restrict', need: '0.4.4' };
+  await x.core.run();
+  assert.equal(x.core.status().problem, 'update');
+  assert.equal(x.core.status().device, false);
+  x.server.gate = undefined;
+  await x.core.run();
+  assert.equal(x.core.status().problem, null);
+  assert.equal(x.core.status().device, true);
+});
+
+test('업데이트 관문 (이슈 #120): 강제 단계면 서버가 말한 최소 판을 알리고, 서버가 없다고 하면 null, 안 닿으면 undefined', async () => {
+  const x = setup({ coins: 0 });
+  x.core.setAge('adult');
+  x.server.meMin = '0.4.0';
+  // 처음에는 계정이 없어 묻지 않는다 (기기 계정을 만든 뒤 두 번째 맞추기부터)
+  await x.core.run();
+  await x.core.run();
+  assert.deepEqual(x.serverMins.at(-1), '0.4.0');
+  x.server.meMin = undefined;
+  await x.core.run();
+  assert.equal(x.serverMins.at(-1), null);
+  x.server.gate = { level: 'force', need: '0.4.2' };
+  x.server.down = true;
+  await x.core.run();
+  assert.equal(x.serverMins.at(-1), undefined);
+  x.server.down = false;
+  x.server.gate = undefined;
+});
+
+test('업데이트 관문 (이슈 #120): 서버를 끄면 서버 최소 판을 놓는다 (홈페이지 공지 파일을 쓴다)', async () => {
+  const x = setup({ coins: 0 });
+  x.core.setAge('adult');
+  x.server.meMin = '0.4.0';
+  await x.core.run();
+  x.core.setAge('under14');
+  await x.core.run();
+  assert.equal(x.serverMins.at(-1), undefined);
 });
 
 test('대답 검사: 큰 본문, 음수나 소수 잔액은 받지 않는다', async () => {

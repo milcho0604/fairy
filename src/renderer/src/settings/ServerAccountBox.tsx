@@ -218,6 +218,20 @@ export function ServerAccountBox({ flash }: { flash: (message: string, error?: b
       {t(`server.problem.${s.problem}`)}
     </small>
   ) : null;
+  // 업데이트 단추 (이슈 #120): 서버가 낡은 앱이라고 막았을 때만 (다시 쓰려면 업데이트)
+  const updateNow =
+    s.problem === 'update' ? (
+      <div className="action-row">
+        <button
+          type="button"
+          className="ghost small"
+          disabled={busy}
+          onClick={() => void run(() => b.updateNow())}
+        >
+          {t('server.updateNow')}
+        </button>
+      </div>
+    ) : null;
 
   if (view === 'appMode' || view === 'serverOff')
     return (
@@ -226,6 +240,7 @@ export function ServerAccountBox({ flash }: { flash: (message: string, error?: b
           <div className="server-group">
             <small>{t(view === 'appMode' ? 'server.appMode' : 'server.off')}</small>
             {problem}
+            {updateNow}
             {view === 'serverOff' && (
               <div className="action-row">
                 <button
@@ -268,6 +283,7 @@ export function ServerAccountBox({ flash }: { flash: (message: string, error?: b
     <Section title={t('server.title')}>
       <div className="server-box">
         {problem}
+        {updateNow}
         <ProfileRows s={s} b={b} setS={setS} flash={flash} after={changingAge && ageButtons('ghost small')}>
           {ageRow}
         </ProfileRows>

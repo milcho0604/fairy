@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Db } from './db';
 import { ipKey, LIMITS, RateLimiter } from './rate-limit';
+import { APP_VERSION_HEADER, appVersionOf } from './shared/update-levels';
 import { sameBytes, sha256, tokenKind } from './tokens';
 
 // Authorization: Bearer <기기 토큰 또는 세션 토큰>. 토큰 해시로 찾고 해시를 상수 시간으로 한 번 더 비교한다.
@@ -57,16 +58,20 @@ export class AuthGuard implements CanActivate {
     const raw = req.headers.authorization;
     const header = Array.isArray(raw) ? raw[0] : raw;
     const token = header?.startsWith('Bearer ') ? header.slice(7).trim() : '';
-    return this.resolve(token);
+    return this.resolve(token, appVersionOf(req.headers[APP_VERSION_HEADER]));
   }
 
   /** 토큰을 계정으로 (모양이 틀리거나 모르는 토큰이면 undefined). 운영자 API 도 쓴다 (admin.ts) */
-  async resolve(token: string): Promise<AuthInfo | undefined> {
+  async resolve(token: string, appVersion?: string): Promise<AuthInfo | undefined> {
     const kind = tokenKind(token);
-    return kind ? this.lookup(kind, token) : undefined;
+    return kind ? this.lookup(kind, token, appVersion) : undefined;
   }
 
-  private async lookup(kind: 'device' | 'session', token: string): Promise<AuthInfo | undefined> {
+  private async lookup(
+    kind: 'device' | 'session',
+    token: string,
+    appVersion: string | undefined,
+  ): Promise<AuthInfo | undefined> {
     const hash = sha256(token);
     const table = kind === 'device' ? 'device' : 'session';
     // 세션은 마지막으로 쓴 뒤 SESSION_IDLE_DAYS 가 지나면 무효
@@ -78,11 +83,18 @@ export class AuthGuard implements CanActivate {
       account_id: string;
       stale: boolean;
       idle: boolean;
+      app_version: string | null;
+      ver_stale: boolean;
     }>(
+      // 남는 쪽 계정(합쳐졌으면 merged_into)의 활동과 앱 판을 읽는다
       `SELECT t.id, t.token_hash, COALESCE(a.merged_into, a.id) AS account_id,
               ${kind === 'session' ? "t.last_used_at < now() - interval '1 day'" : 'false'} AS stale,
-              a.last_active_at < now() - interval '1 day' AS idle
-         FROM ${table} t JOIN account a ON a.id = t.account_id
+              tgt.last_active_at < now() - interval '1 day' AS idle,
+              tgt.app_version AS app_version,
+              (tgt.app_version_at IS NULL OR tgt.app_version_at < now() - interval '1 day') AS ver_stale
+         FROM ${table} t
+         JOIN account a ON a.id = t.account_id
+         JOIN account tgt ON tgt.id = COALESCE(a.merged_into, a.id)
         WHERE t.token_hash = $1 ${alive}`,
       [hash],
     );
@@ -90,8 +102,18 @@ export class AuthGuard implements CanActivate {
     if (!row || !sameBytes(row.token_hash, hash)) return undefined;
     // 쓴 때는 하루 한 번만 적는다 (요청마다 쓰지 않게)
     // 계정 활동(서버 백업 1년 정리의 기준, backup.ts)도 하루 한 번만 적는다. 기기 토큰이든 세션이든 요청이 오면 활동이다
-    if (row.idle)
-      await this.db.pool.query('UPDATE account SET last_active_at = now() WHERE id = $1', [row.account_id]);
+    // 앱 판도 같이 적되 하루 한 번만 (이슈 #120: 운영자 화면의 분포). 판이 바뀌어도 하루 안에는 다시 쓰지 않는다.
+    // 첫 판은 app_version_at 이 비어 있으니 바로 적힌다. 머리가 없으면 판은 건드리지 않는다
+    const versionWrite = appVersion !== undefined && appVersion !== row.app_version && row.ver_stale;
+    if (row.idle || versionWrite)
+      await this.db.pool.query(
+        `UPDATE account SET
+           last_active_at = CASE WHEN $3 THEN now() ELSE last_active_at END,
+           app_version = CASE WHEN $4 THEN $2 ELSE app_version END,
+           app_version_at = CASE WHEN $4 THEN now() ELSE app_version_at END
+         WHERE id = $1`,
+        [row.account_id, appVersion ?? null, row.idle, versionWrite],
+      );
     if (row.stale)
       await this.db.pool.query('UPDATE session SET last_used_at = now() WHERE id = $1', [row.id]);
     return {
