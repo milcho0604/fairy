@@ -22,6 +22,17 @@ export function mcpServers(log: (tag: string, ...rest: unknown[]) => void): stri
   return cache?.servers ?? [];
 }
 
+/**
+ * 읽기 전용 강제가 보는 목록 (이슈 #126). 신선한 저장본이 없으면(처음, 하루가 지남) undefined: 사용자가 fairy 를 직접 등록했는지 모르니
+ * 부르는 쪽이 내 MCP 를 열지 않는다. 뒤에서 새로 읽어 다음 질문부터는 안다
+ */
+export function knownMcpServers(log: (tag: string, ...rest: unknown[]) => void): string[] | undefined {
+  cache ??= readJson(FILE) as typeof cache;
+  if (cache && fresh(cache.at, Date.now(), FRESH_MS + 1)) return cache.servers;
+  void refreshMcpServers(log);
+  return undefined;
+}
+
 /** 저장해 둔 목록만 (새로 읽지 않는다). 내 MCP 쓰기를 끈 사람의 claude 는 건드리지 않는다 */
 export function cachedMcpServers(): string[] {
   cache ??= readJson(FILE) as typeof cache;

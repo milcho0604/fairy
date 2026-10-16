@@ -1,6 +1,7 @@
 // codex CLI 의 exec --json 명령을 만들고 출력을 읽는다. 0단계 검증 X1~X8, L4, L5.
 import { t } from '../i18n/index.ts';
 import { classifyError } from './errors.ts';
+import { codexGuardArgs } from './guard.ts';
 import { argText } from './text.ts';
 import { type AiEvent, JJ_MCP_NAME, type McpLaunch } from './types.ts';
 
@@ -24,6 +25,8 @@ export interface CodexTurn {
   model?: string;
   /** 짝꿍 도구 쓰기: 펫 MCP 서버. 샌드박스(읽기만)는 그대로 둔다 */
   jjServer?: McpLaunch;
+  /** 사용자 codex 설정(config.toml)에 있는 MCP 서버 이름들. 격리를 껐을 때만 넘긴다. 페어리 것 말고는 끈다 (읽기 전용 강제, 이슈 #126) */
+  userMcpNames?: readonly string[];
 }
 
 /** 짝꿍 MCP 서버를 codex 설정(-c, TOML 값)으로. JSON 문자열은 TOML 기본 문자열로도 맞다 */
@@ -51,8 +54,8 @@ export function codexArgs(turn: CodexTurn): string[] {
   const common = [
     '--json',
     '--skip-git-repo-check',
-    '-c',
-    'sandbox_mode="read-only"',
+    // 읽기 전용 강제 (이슈 #126): 샌드박스 읽기만, 승인 안 묻고 거절, 앱 연결, 브라우저, 컴퓨터 조작 끔, 내 MCP 끔
+    ...codexGuardArgs(turn.userMcpNames, !!turn.jjServer),
     '-c',
     `developer_instructions=${JSON.stringify(turn.persona)}`,
     ...(turn.model ? ['-m', turn.model] : []),

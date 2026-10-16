@@ -14,6 +14,9 @@ export interface CursorTurn {
   persona: string;
 }
 
+/**
+ * --mode ask 가 읽기 전용이다. 쓰기를 여는 --force(--yolo), MCP 를 자동 승인하는 --approve-mcps 는 넣지 않는다 (이슈 #126, ai.test.ts 가 지킨다)
+ */
 export function cursorArgs(turn: CursorTurn): string[] {
   // 성격 지시를 따로 받는 옵션이 없어 첫 질문 앞에 붙인다. 이어서 물을 때는 이미 대화에 있다.
   const prompt = turn.sessionId ? turn.text : `${turn.persona}\n\n${turn.text}`;

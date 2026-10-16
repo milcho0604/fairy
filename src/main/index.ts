@@ -27,8 +27,9 @@ import { shortcutsChanged } from '../shared/shortcut.ts';
 import { FULLNESS, localDay } from '../shared/todo-store.ts';
 import { admitUrl, panelTabOf, parseJjUrl } from '../shared/url-scheme.ts';
 import { watchCatalog } from './ai/catalog.ts';
-import { stopLocal } from './ai/local.ts';
-import { cachedMcpServers, mcpServers, refreshMcpServers } from './ai/mcp-list.ts';
+import { detectAi } from './ai/detect.ts';
+import { localModelReady, stopLocal } from './ai/local.ts';
+import { cachedMcpServers, knownMcpServers, mcpServers, refreshMcpServers } from './ai/mcp-list.ts';
 import { stopAllAi } from './ai/runner.ts';
 import { applyPendingImport, createBackup, exportPet, importPet, importPetBytes } from './backup.ts';
 import { debugBattery, onSaverChange, powerFacts, saverNow, watchPower } from './battery.ts';
@@ -300,7 +301,8 @@ ready
         notes.add({ title, body, source: 'ai' }, Date.now());
         panel.refresh();
       },
-      mcpServers: () => (settings.get().myMcp ? mcpServers(log) : []),
+      // 내 MCP 를 안 쓰거나 목록을 아직 모르면 undefined: 격리를 꺼도 내 MCP 는 열지 않는다 (claude.ts openUser)
+      mcpServers: () => (settings.get().myMcp ? knownMcpServers(log) : undefined),
       addTodos: (titles) => addAnswerTodos(titles).length,
       // "오늘 뭐부터 할까?" 규칙 답과 답 아래 단추 (main/what-first.ts)
       whatFirst: { answer: () => whatFirst.answer(), context: () => whatFirst.context() },
@@ -1322,11 +1324,16 @@ ready
           ...[...open, ...doneToday].flatMap((x) => [x.title, ...x.steps.map((st) => st.title)]),
           ...events.between(now - 90 * 86_400_000, now + 180 * 86_400_000).map((e) => e.title),
           ...notes.list().map((n) => n.title),
+          ...chat.privateTexts(),
           ...(s.icsUrl ? [s.icsUrl] : []),
           ...s.petMemory,
           ...s.petFacts.map((f) => f.value),
           ...s.petRules.split('\n'),
         ];
+      },
+      help: {
+        provider: () => chat.provider(),
+        server: () => serverCore?.status(),
       },
       v2: {
         exportData: (w) => backup.exportTo(w),
@@ -1666,6 +1673,7 @@ ready
       openMaker: () => maker.open(),
       ai: async () => ({
         hasCli: await chat.hasCliAi(),
+        detect: await detectAi(catalog.get().local.some(localModelReady)),
         freeModelBytes: pickLocal(catalog.get(), settings.get().aiModels.local).bytes,
       }),
       // 첫 할 일 유도: 안내를 마친 뒤 처음 펫을 누르면 오늘 탭 대신 할 일 탭(입력칸에 커서)으로 연다. 할 일이 하나도 없을 때만, 한 번만.

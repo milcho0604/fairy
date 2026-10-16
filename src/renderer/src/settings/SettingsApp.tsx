@@ -17,6 +17,7 @@ import {
 } from '../../../shared/settings-tabs.ts';
 import { isCodexPetFileName, isImportFileName } from '../../../shared/url-scheme.ts';
 import { escClosesWindow } from '../panel/keys.ts';
+import { HELP_OPEN_EVENT, isHelpKey } from './HelpBox.tsx';
 import { AboutTab } from './tabs/AboutTab.tsx';
 import { AiTab } from './tabs/AiTab.tsx';
 import { AssistTab } from './tabs/AssistTab.tsx';
@@ -157,6 +158,8 @@ export function SettingsApp() {
   searchingNow.current = searching;
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
+      // 안쪽이 이미 쓴 키는 건드리지 않는다 (편의 탭의 단축키 정하기가 누른 조합을 받는 중일 때 Cmd/Ctrl+Shift+H 가 창을 열지 않게)
+      if (e.defaultPrevented) return;
       const mod = navigator.userAgent.includes('Mac') ? e.metaKey : e.ctrlKey;
       if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'f') {
         e.preventDefault();
@@ -165,6 +168,14 @@ export function SettingsApp() {
         return;
       }
       if (e.isComposing) return;
+      // Cmd/Ctrl+Shift+H: 정보 탭으로 가서 도움 보내기 창을 연다 (이슈 #126)
+      if (isHelpKey(e, mod)) {
+        e.preventDefault();
+        if (searchingNow.current) setQuery('');
+        setTabState('about');
+        window.dispatchEvent(new Event(HELP_OPEN_EVENT));
+        return;
+      }
       const next = globalTabKey(
         { key: e.key, code: e.code, mod, altKey: e.altKey, shiftKey: e.shiftKey },
         tabNow.current,
