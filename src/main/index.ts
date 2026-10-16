@@ -29,7 +29,7 @@ import { admitUrl, panelTabOf, parseJjUrl } from '../shared/url-scheme.ts';
 import { watchCatalog } from './ai/catalog.ts';
 import { detectAi } from './ai/detect.ts';
 import { localModelReady, stopLocal } from './ai/local.ts';
-import { cachedMcpServers, mcpServers, refreshMcpServers } from './ai/mcp-list.ts';
+import { cachedMcpServers, knownMcpServers, mcpServers, refreshMcpServers } from './ai/mcp-list.ts';
 import { stopAllAi } from './ai/runner.ts';
 import { applyPendingImport, createBackup, exportPet, importPet, importPetBytes } from './backup.ts';
 import { debugBattery, onSaverChange, powerFacts, saverNow, watchPower } from './battery.ts';
@@ -301,7 +301,8 @@ ready
         notes.add({ title, body, source: 'ai' }, Date.now());
         panel.refresh();
       },
-      mcpServers: () => (settings.get().myMcp ? mcpServers(log) : []),
+      // 내 MCP 를 안 쓰거나 목록을 아직 모르면 undefined: 격리를 꺼도 내 MCP 는 열지 않는다 (claude.ts openUser)
+      mcpServers: () => (settings.get().myMcp ? knownMcpServers(log) : undefined),
       addTodos: (titles) => addAnswerTodos(titles).length,
       // "오늘 뭐부터 할까?" 규칙 답과 답 아래 단추 (main/what-first.ts)
       whatFirst: { answer: () => whatFirst.answer(), context: () => whatFirst.context() },

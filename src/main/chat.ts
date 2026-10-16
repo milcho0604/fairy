@@ -103,7 +103,8 @@ export interface ChatOptions {
   /** 답을 할 일로. 넣은 개수 */
   addTodos: (titles: string[]) => number;
   /** 내 MCP 도구를 쓸 서버 이름 (v2). 안 쓰면 빈 목록 */
-  mcpServers: () => readonly string[];
+  /** 내 claude 의 MCP 서버 이름들. 모르면(목록이 없거나 오래됨) undefined */
+  mcpServers: () => readonly string[] | undefined;
   /** 펫에게 AI 상태를 알린다 (생각 중, 답함). */
   onPetAi: (state: PetAiState) => void;
   /** 사용자가 채팅 창에서 보낸 말 (매운맛: 칭찬이나 사과면 토라진 펫이 풀린다). 보내졌을 때만 */

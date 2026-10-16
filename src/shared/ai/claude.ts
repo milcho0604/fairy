@@ -52,9 +52,10 @@ export function jjMcpConfig(server: McpLaunch | undefined): string {
 export function claudeArgs(turn: ClaudeTurn): string[] {
   // 내 MCP 를 여는 조건 (이슈 #126): 격리를 껐고, 읽기 전용 훅이 실리고, 내 MCP 에 fairy 가 없다.
   // 훅이 없으면(윈도우 등) 쓰기를 막을 길이 이름 검사뿐이라 열지 않는다: 내 settings.json 의 permissions.allow 가 mcp__gmail 같은 서버를
-  // 허락해 두었으면 dontAsk 에서도 보내기 도구가 돌기 때문이다. 내 MCP 에 fairy 가 있으면 우리 서버와 이름이 같아 어느 쪽이 뜰지 몰라
+  // 허락해 두었으면 dontAsk 에서도 보내기 도구가 돌기 때문이다. 내 MCP 목록을 모르거나(undefined) 거기에 fairy 가 있으면 우리 서버와 이름이 같을 수 있어 어느 쪽이 뜰지 몰라
   // (사용자 것은 확인 단계 JJ_MCP_CONFIRM 이 없다) 이번 실행은 내 MCP 를 모두 닫는다. 닫을 때는 격리와 같이 엄격한 설정으로 우리 서버만 싣는다
-  const openUser = turn.isolate === false && !!turn.guard && !(turn.mcpServers ?? []).includes(JJ_MCP_NAME);
+  const openUser =
+    turn.isolate === false && !!turn.guard && !!turn.mcpServers && !turn.mcpServers.includes(JJ_MCP_NAME);
   // 허락할 MCP: 내 MCP 서버들(openUser 일 때만), 그리고 짝꿍 도구. 기본 도구(--tools '')는 그대로 끈다
   const allowed = [...(openUser ? (turn.mcpServers ?? []) : []), ...(turn.jjServer ? [JJ_MCP_NAME] : [])];
   const search = turn.webSearch ? ['WebSearch'] : [];

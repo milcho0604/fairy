@@ -61,7 +61,7 @@ const WRITE_WORDS = new Set([
   ...['cancel', 'kill', 'stop', 'start', 'restart', 'pause', 'unpause', 'approve', 'reject', 'reply'],
   ...['forward', 'label', 'unlabel', 'mark', 'unmark', 'trash', 'untrash', 'archive', 'spam', 'assign'],
   ...['invite', 'share', 'grant', 'revoke', 'upload', 'import', 'sync', 'reindex', 'index', 'backup'],
-  ...['buy', 'pay', 'transfer', 'issue', 'activate', 'install', 'uninstall', 'click', 'type', 'press'],
+  ...['buy', 'pay', 'transfer', 'activate', 'install', 'uninstall', 'click', 'type', 'press'],
   ...['drag', 'fill', 'navigate', 'evaluate', 'submit', 'generate', 'authenticate', 'complete'],
   ...['download', 'save', 'sign', 'toggle', 'enable', 'disable', 'rotate', 'extend', 'resolve', 'react'],
   ...['comment', 'convert', 'spawn', 'unpin', 'pin', 'hover', 'resize', 'close', 'open', 'upgrade'],
@@ -98,8 +98,12 @@ const READ_NAMES = new Set(['resolve-library-id']);
 /** 읽는 동사 앞에 올 수 있는 낱말: 서버 이름 조각 말고는 도구 묶음 머리 (browser_take_screenshot, directory_tree) */
 const PREFIX_WORDS = new Set(['browser', 'take', 'directory']);
 
-/** 읽는 동사 뒤에서 "그리고 또 이것도"를 잇는 낱말: 이 뒤는 새 동사로 다시 본다 (get_or_create_branch, search_and_replace) */
-const JOINERS = new Set(['and', 'or', 'then']);
+/**
+ * 읽는 동사 바로 뒤에 와도 쓰는 동사로 보지 않는 대상 낱말 (get_commit, get_record, get_schedule). 낱말을 하나씩 적은 목록이고
+ * 동사는 넣지 않는다 (snapshot_restore, list_create, find_replace, view_drop 같은 "대상_동사" 이름이 통과하지 않게).
+ * run 은 대상 뒤의 이름 끝에서만(get_workflow_run): 읽는 동사 바로 뒤의 run 은 query_run 처럼 실행일 수 있다
+ */
+const NOUNS_AFTER_VERB = new Set(['commit', 'record', 'schedule', 'order', 'book', 'draft', 'select']);
 
 /** 페어리 서버의 도구 이름 모양: 소문자와 숫자, 낱말 사이 밑줄 하나 (밑줄 둘 이상이나 밑줄로 시작하면 다른 서버 이름이 섞인 것) */
 const OWN_TOOL_RE = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
@@ -112,8 +116,8 @@ export type ToolVerdict = { allow: true } | { allow: false; reason: string };
  *   (shared/pet-actions.ts, JJ_MCP_CONFIRM). 사용자가 직접 등록한 fairy 는 그 확인이 없어서 allowFairy 가 아니면 다른 서버와 같이 본다.
  *   도구 이름에 밑줄 둘이 또 있으면(mcp__fairy__mail__send_email) 서버 이름이 fairy__mail 인 다른 서버라 통과시키지 않는다
  * - 그 밖: 낱말로 쪼개 첫 읽는 동사를 찾는다. 그 앞에는 서버 이름 조각이나 묶음 머리(browser 등)만 올 수 있고(terminate_query 같은
- *   목록에 없는 쓰는 동사를 거른다), 그 뒤는 그 동사의 대상(get_issue, get_commit, get_workflow_run)이라 쓰는 동사로 보지 않되
- *   and, or, then 뒤는 새 동사로 다시 본다. 읽는 동사가 없으면 막는다
+ *   목록에 없는 쓰는 동사를 거른다), 그 뒤에 쓰는 동사가 하나라도 있으면 막는다(snapshot_delete, find_replace, read_modify_write).
+ *   get_issue, get_commit, get_workflow_run 같은 대상 낱말만 좁게 봐준다. 읽는 동사가 없으면 막는다
  */
 export function mcpToolVerdict(toolName: string, allowFairy = false): ToolVerdict {
   const m = /^mcp__(.+?)__(.+)$/.exec(toolName);
@@ -133,9 +137,11 @@ export function mcpToolVerdict(toolName: string, allowFairy = false): ToolVerdic
   const heads = new Set([...toolWords(server), ...PREFIX_WORDS]);
   const odd = words.slice(0, at).find((w) => !heads.has(w));
   if (odd) return { allow: false, reason: `읽는 동사 앞에 ${odd} 가 있어 막았어` };
+  // 읽는 동사 뒤에 쓰는 동사가 하나라도 있으면 막는다 (거짓 음성보다 거짓 양성이 낫다). 대상 낱말만 좁게 봐준다
   const rest = words.slice(at + 1);
-  const join = rest.findIndex((w) => JOINERS.has(w));
-  const write = join < 0 ? undefined : rest.slice(join + 1).find((w) => WRITE_WORDS.has(w));
+  const write = rest.find(
+    (w, i) => WRITE_WORDS.has(w) && !(i === 0 && NOUNS_AFTER_VERB.has(w)) && !(i >= 1 && w === 'run'),
+  );
   if (write) return { allow: false, reason: `쓰기 도구라 막았어 (${write})` };
   return { allow: true };
 }
@@ -181,6 +187,8 @@ export const ALLOW_FAIRY_FLAG = '--allow-fairy';
  * claude 훅 명령 한 줄: 페어리 실행 파일을 Node 로 돌려 ai-guard.js 를 띄운다.
  * 훅은 0 과 2 말고는 "실패했지만 계속 진행"이라(스크립트 경로가 없거나 죽으면 도구가 그대로 돈다) 열린 채로 실패한다.
  * 그래서 스크립트가 0 으로 끝나지 않으면 이 줄이 2 와 이유로 끝내 도구를 막는다 (실패하면 막기).
+ * 한계: 훅 제한 시간(30초) 안에 Electron 이 뜨지 못하면(아주 느린 컴퓨터) claude 는 실패로 보고 도구를 그대로 진행한다. 스크립트의 5초 타이머는
+ * 모듈을 불러온 뒤에야 시작해서 이 경우를 막지 못한다. 셸에 맞는 timeout 명령이 없어(맥에는 기본이 없다) 제한 시간을 넉넉히만 잡았다.
  * 변수=값 앞붙임과 || 는 POSIX 셸 문법이다. 윈도우에서 claude 가 PowerShell 로 훅을 읽으면 안 먹으니
  * 부르는 쪽이 윈도우에서는 훅 없이 내 MCP 를 열지 않는다 (main/ai/runner.ts)
  */

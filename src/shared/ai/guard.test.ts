@@ -544,10 +544,11 @@ test('목록에 없는 쓰는 동사 뒤에 읽는 동사가 와도 통과하지
 test('gemini: 관리자 층 정책이 명령 실행, 파일 쓰기, 기억 저장과 모든 MCP 도구를 막는다 (G1)', () => {
   const t = GEMINI_POLICY_TOML;
   // 규칙 모양: [[rule]] 둘, 모두 deny 이고 우선순위는 층 안 최댓값
-  assert.equal((t.match(/^\[\[rule\]\]$/gm) ?? []).length, 2);
-  assert.equal((t.match(/^decision = "deny"$/gm) ?? []).length, 2);
-  assert.equal((t.match(/^priority = 999$/gm) ?? []).length, 2);
-  assert.match(t, /toolName = \["run_shell_command", "write_file", "replace", "save_memory"\]/);
+  assert.equal((t.match(/^\[\[rule\]\]$/gm) ?? []).length, 3);
+  assert.equal((t.match(/^decision = "deny"$/gm) ?? []).length, 3);
+  assert.equal((t.match(/^priority = 999$/gm) ?? []).length, 3);
+  assert.match(t, /toolName = \["run_shell_command", "write_file", "replace", "save_memory", "web_fetch"\]/);
+  assert.match(t, /toolName = "discovered_tool_\*"/);
   assert.match(t, /toolName = "\*"\nmcpName = "\*"/);
   // 허락하는 규칙은 없다
   assert.equal(/decision = "(allow|ask_user)"/.test(t), false);
@@ -555,4 +556,44 @@ test('gemini: 관리자 층 정책이 명령 실행, 파일 쓰기, 기억 저�
   const a = fillArgs(spec?.args ?? [], 'q');
   assert.equal(after(a, '--admin-policy'), GEMINI_POLICY_SLOT);
   assert.ok(a.includes('--allowed-mcp-server-names=fairy-none'));
+});
+
+// ---- 버그잡이 PR #131 세 번째 ----
+
+test('"대상_동사" 이름은 읽는 낱말이 앞에 있어도 쓰는 동사가 뒤에 있으면 막는다 (R1)', () => {
+  for (const n of [
+    'mcp__do__snapshot_delete',
+    'mcp__do__snapshot_restore',
+    'mcp__trello__list_create',
+    'mcp__mailchimp__list_delete',
+    'mcp__pg__view_drop',
+    'mcp__vcs__diff_apply',
+    'mcp__x__find_replace',
+    'mcp__x__search_replace',
+    'mcp__x__query_execute',
+    'mcp__x__read_modify_write',
+    'mcp__x__query_run', // 읽는 동사 바로 뒤의 run 은 실행일 수 있다
+    'mcp__x__get_commit_push',
+  ])
+    assert.equal(mcpToolVerdict(n).allow, false, n);
+  // 대상 낱말만 좁게 봐준다
+  for (const n of [
+    'mcp__hub__get_commit',
+    'mcp__airtable__get_record',
+    'mcp__gcal__get_schedule',
+    'mcp__hub__get_workflow_run',
+    'mcp__hub__get_issue',
+  ])
+    assert.equal(mcpToolVerdict(n).allow, true, n);
+});
+
+test('내 MCP 목록을 모르면(undefined) 격리를 꺼도 내 MCP 를 열지 않는다 (목록 캐시)', () => {
+  const a = claudeArgs({ ...base, resume: false, isolate: false, guard, jjServer: jj });
+  assert.ok(a.includes('--strict-mcp-config'));
+  assert.deepEqual(Object.keys(JSON.parse(after(a, '--mcp-config') ?? '{}').mcpServers), ['fairy']);
+  assert.equal(a.includes('--settings'), false);
+  // 목록을 알고 fairy 가 없으면 열린다
+  const known = claudeArgs({ ...base, resume: false, isolate: false, guard, mcpServers: ['notion'] });
+  assert.equal(known.includes('--strict-mcp-config'), false);
+  assert.ok(after(known, '--allowedTools')?.includes('mcp__notion'));
 });

@@ -1,6 +1,6 @@
 import { type ChildProcess, execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { app } from 'electron';
@@ -169,7 +169,10 @@ export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
         const dir = join(app.getPath('userData'), 'ai-policy');
         mkdirSync(dir, { recursive: true });
         const file = join(dir, GEMINI_POLICY_FILE);
-        writeFileSync(file, GEMINI_POLICY_TOML);
+        // 실행이 겹쳐도 읽는 쪽이 반쯤 쓴 파일을 보지 않게: 실행마다 다른 임시 파일에 쓰고 이름을 바꾼다 (같은 내용이라 덮어도 된다)
+        const tmpFile = `${file}.${randomUUID()}.tmp`;
+        writeFileSync(tmpFile, GEMINI_POLICY_TOML);
+        renameSync(tmpFile, file);
         args = args.map((a) => (a === GEMINI_POLICY_SLOT ? file : a));
       }
       childEnv.NO_COLOR = '1';

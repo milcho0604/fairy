@@ -157,6 +157,7 @@ test('claude 명령: "내 AI 설정 그대로"면 격리 옵션은 빼되 도구
     isolate: false,
     // 읽기 전용 훅이 실릴 때만 내 MCP 가 열린다 (없으면 엄격한 설정으로 닫는다, guard.test.ts)
     guard: { command: 'node', args: ['ai-guard.js'], env: { ELECTRON_RUN_AS_NODE: '1' } },
+    mcpServers: [],
   });
   for (const flag of [
     '--setting-sources',
