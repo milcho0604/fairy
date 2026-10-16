@@ -394,7 +394,9 @@ test('목록에 없는 쓰기 동사도 읽는 낱말이 섞여 통과하지 못
     assert.equal(mcpToolVerdict(n).allow, true, n);
 });
 
-test('훅 스크립트가 없거나 죽으면 막는 줄이 2 로 끝낸다 (B4, 실패하면 막기)', () => {
+test('훅 스크립트가 없거나 죽으면 막는 줄이 2 로 끝낸다 (B4, 실패하면 막기)', {
+  skip: process.platform === 'win32' && '윈도우는 훅을 쓰지 않는다(sh 가 없다): 엄격한 MCP 설정으로 닫는다',
+}, () => {
   const cmd = guardHookCommand(
     {
       command: process.execPath,
@@ -423,6 +425,15 @@ test('훅 스크립트가 없거나 죽으면 막는 줄이 2 로 끝낸다 (B4,
   assert.equal(good.stdout, '');
   // 설정에 훅 끄기 해제 표시
   assert.equal(JSON.parse(guardSettings(guard, 'darwin')).disableAllHooks, false);
+});
+
+test('윈도우 경로: 훅을 쓰지 않고(guard 없음) 엄격한 MCP 설정만 적용한다', () => {
+  // runner 가 win32 에서 guard 를 넘기지 않는다. 격리를 꺼도 내 MCP 는 열리지 않고 훅 설정도 없다
+  const a = claudeArgs({ ...base, resume: false, isolate: false, mcpServers: ['notion'], jjServer: jj });
+  assert.ok(a.includes('--strict-mcp-config'));
+  assert.equal(a.includes('--settings'), false);
+  assert.deepEqual(Object.keys(JSON.parse(after(a, '--mcp-config') ?? '{}').mcpServers), ['fairy']);
+  assert.equal((after(a, '--allowedTools') ?? '').includes('notion'), false);
 });
 
 test('codex 설정의 MCP 서버를 TOML 의 모든 모양에서 읽는다 (B5)', () => {
