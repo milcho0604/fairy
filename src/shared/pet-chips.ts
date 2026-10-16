@@ -90,7 +90,8 @@ export function minutesLabel(min: number): string {
 /** 제목을 말풍선에 넣기 좋게 자른다 */
 export const shortTitle = (title: string, max = 24): string => {
   const one = title.replace(/\s+/g, ' ').trim();
-  return one.length <= max ? one : `${cutText(one, max - 1)}…`;
+  // 자른 끝의 공백은 떼고 붙인다 ("보내기 전에 …" 처럼 보이지 않게)
+  return one.length <= max ? one : `${cutText(one, max - 1).trimEnd()}…`;
 };
 
 /** 칩 하나의 답 */

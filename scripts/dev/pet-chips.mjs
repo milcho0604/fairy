@@ -415,6 +415,16 @@ try {
   await until('여럿', async () => (await bubbleText(pet)) === TXT.doingMore('보고서 쓰기', 1));
   check('여러 개면 "제목 외 n개"', true, await bubbleText(pet));
   await capture(pet, 'doing');
+  // 줄 위에 마우스를 올린 채 지우기(×)와 켠 ▶ 의 누르는 자리가 6px 넘게 떨어져 있다 (잘못 눌러 지우지 않게)
+  {
+    const i = await rowIndex('메일 답장');
+    const r = JSON.parse(await panel.ev(`(() => { const b = document.querySelectorAll('.todos .todo')[${i}].getBoundingClientRect(); return JSON.stringify({ x: b.x + b.width / 2, y: b.y + b.height / 2 }); })()`));
+    await panel.mouse('mouseMoved', r.x, r.y);
+    await sleep(300);
+    const gap = await panel.ev(`(() => { const li = document.querySelectorAll('.todos .todo')[${i}]; const a = li.querySelector('.remove')?.getBoundingClientRect(); const b = li.querySelector('.doing-btn.on')?.getBoundingClientRect(); return a && b ? Math.round(Math.max(b.left - a.right, a.left - b.right)) : null; })()`);
+    const rects = await panel.ev(`(() => { const li = document.querySelectorAll('.todos .todo')[${i}]; return JSON.stringify([...li.querySelectorAll('.remove, .doing-btn, .tools')].map((e) => [e.className, Math.round(e.getBoundingClientRect().left), Math.round(e.getBoundingClientRect().right)])); })()`);
+    check('지우기(×)와 켠 ▶ 의 누르는 자리가 6px 이상 떨어져 있다', gap !== null && gap >= 6, `간격 ${gap}px ${rects}`);
+  }
   // 패널 할 일 줄의 ▶ (켠 줄은 늘 보이고, 안 켠 줄은 마우스를 올리면 보인다)
   for (const dark of [false, true]) {
     await panel.dark(dark);

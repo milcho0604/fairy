@@ -70,6 +70,13 @@ test('긴 제목은 잘라 보이고 줄바꿈은 한 줄로', () => {
   assert.equal(shortTitle('두 줄\n제목'), '두 줄 제목');
 });
 
+test('자른 끝이 공백이면 떼고 말줄임표를 붙인다', () => {
+  const t = shortTitle('보내기 전에 한 번 더 확인하기 아주 길게', 7);
+  assert.equal(t, '보내기 전에…');
+  assert.ok(!/\s…$/.test(t));
+  assert.equal(shortTitle('가나다 라마바사', 5), '가나다…');
+});
+
 test('다음 일정: 가장 가까운 것, 끝난 것은 건너뛴다', () => {
   const events = [
     ev('어제 회의', at(15, 10)),

@@ -423,7 +423,7 @@ p.empty {
 
 /* 켠 ▶ 는 지우기(×) 바로 옆이라 잘못 눌러 지우지 않게 띄운다 */
 .doing-btn.on {
-  margin-left: 8px;
+  margin-left: 16px;
 }
 
 .pin.on,
