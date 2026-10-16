@@ -1683,6 +1683,10 @@ textarea.rules {
   max-height: 100%;
 }
 
+.lines-sheet .lines-token {
+  white-space: nowrap;
+}
+
 .lines-help {
   color: var(--muted);
 }
@@ -1692,6 +1696,11 @@ textarea.rules {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+
+.lines-sheet .lines-bar .segmented button {
+  padding: 6px 12px;
+  white-space: nowrap;
 }
 
 .lines-bar .lines-find {
@@ -1722,6 +1731,7 @@ textarea.rules {
 
 .lines-group > summary {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: 8px;
   cursor: pointer;

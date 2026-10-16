@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { cleanCalendarId, type GcalStatus } from '../../../shared/gcal.ts';
 import { type CalRow, calendarRows, listState } from '../../../shared/gcal-cals.ts';
 import { t } from '../../../shared/i18n/index.ts';
+import { isEsc, takeEsc } from '../panel/keys.ts';
 
 const gcal = () => window.jjakkungGcal;
 
@@ -39,11 +40,14 @@ export function GcalCalendarsSheet({
       .then((v) => v && onStatus(v));
   }, []);
   useEffect(() => {
+    // 창 전체 Esc(설정 창 닫기)보다 먼저 받아 시트만 닫는다
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (!isEsc(e)) return;
+      takeEsc(e);
+      onClose();
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [onClose]);
 
   const state = listState({ connected: s.connected, listScope: s.listScope, calendars: s.calendars });

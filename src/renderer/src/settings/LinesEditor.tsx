@@ -7,6 +7,8 @@ import { LINE_TEXT_MAX, renderTemplate } from '../../../shared/line-template.ts'
 import type { LineGroupId, LineLang } from '../../../shared/lines.ts';
 import type { LineSaveResult, LinesState, LineView } from '../../../shared/lines-ipc.ts';
 
+import { isEsc, takeEsc } from '../panel/keys.ts';
+
 const lines = () => window.jjakkungLines;
 
 /** 틀 미리 보기: 펫 이름은 지금 이름으로, 그 밖의 값은 예시 숫자 3 */
@@ -57,11 +59,15 @@ export function LinesEditor({ onClose, onMsg }: { onClose: () => void; onMsg: (m
     void load(lang);
   }, [lang, load]);
   useEffect(() => {
+    // 창 전체 Esc(설정 창 닫기)보다 먼저 받아 먹는다: 시트만 닫는다. 쓰던 칸은 벗어나게 해(blur) 저장하고 닫는다
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (!isEsc(e)) return;
+      takeEsc(e);
+      (document.activeElement as HTMLElement | null)?.blur();
+      onClose();
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [onClose]);
 
   const save = async (line: LineView) => {
@@ -125,7 +131,21 @@ export function LinesEditor({ onClose, onMsg }: { onClose: () => void; onMsg: (m
         <div className="gcal-sheet-body">
           <small>{t('records.lines.hint')}</small>
           <small>{t('records.lines.persona')}</small>
-          <small className="lines-help">{t('records.lines.varsHelp')}</small>
+          <small className="lines-help">
+            {/* {name:은} 같은 값 자리는 좁은 창에서도 중간에 끊기지 않게 한 덩어리로 */}
+            {t('records.lines.varsHelp')
+              .split(/(\{[^}]+\})/)
+              .map((part, i) =>
+                part.startsWith('{') ? (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: 글 조각 자리가 정해져 있다
+                  <span key={i} className="lines-token">
+                    {part}
+                  </span>
+                ) : (
+                  part
+                ),
+              )}
+          </small>
           <div className="lines-bar">
             <fieldset className="segmented" aria-label={t('records.lines.lang')}>
               {(['ko', 'en'] as const).map((l) => (
