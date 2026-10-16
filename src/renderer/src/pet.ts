@@ -742,6 +742,8 @@ let boost = false;
 let saver = false;
 /** 말풍선 읽어 주기 (설정 편의). 친구 펫은 끔 */
 let readAloud = false;
+/** 꾹 누르면 커지기 (설정, 이슈 #124) */
+let clickGrow = false;
 /** 친밀도로 열린 몸짓. 끝나면 지운다 */
 let trick: { type: 'wave' | 'dance'; start: number } | undefined;
 const TRICK_MS = { wave: 1800, dance: 1400 } as const;
@@ -1066,6 +1068,8 @@ bridge.onStatus((status) => {
   sounds = status.sounds;
   boost = status.boost;
   readAloud = status.readAloud === true;
+  clickGrow = status.clickGrow === true;
+  if (!clickGrow) cancelPeekPress();
   if ((status.saver === true) !== saver) {
     saver = status.saver === true;
     scheduleActivity();
@@ -1341,29 +1345,117 @@ document.addEventListener('mouseleave', () => {
   if (!gesture.dragging) setOverPet(false);
 });
 
+// 꾹 눌러 커지기 (이슈 #124): 가만히 PEEK_HOLD_MS 눌러 두면 메인이 펫 창을 키우고, 놓으면 돌린다.
+// 짧게 누르면 그대로 클릭, 누른 채 움직이면 끌기(키운 것은 끌기 시작 때 메인이 돌린다).
+// 오래 누른 뒤 놓은 것은 클릭으로 치지 않는다 (키웠다 돌아오는 것이 그 누르기의 답이라서)
+const PEEK_HOLD_MS = 500;
+let peekTimer: ReturnType<typeof setTimeout> | undefined;
+/** none: 아님, asking: 메인에 키워 달라고 물어 답을 기다림, on: 커진 중 */
+let peekState: 'none' | 'asking' | 'on' = 'none';
+let peekReleased = false;
+/** 버튼을 누르고 있는 동안 (pointerdown 부터 pointerup 까지) */
+let pressing = false;
+/** 커진 것을 돌려놓은 때. 창 크기가 바뀌면 브라우저가 잡고 있던 포인터를 놓을 수 있어 바로 다시 잡는다 */
+let peekEndedAt = -1e9;
+/** 누른 자리 (창 안, 화면). 커지면 창이 움직여 창 안 좌표가 바뀌므로 화면 좌표로 끌기를 가른다 */
+let pressAt: { x: number; y: number; sx: number; sy: number; px: number; py: number } | undefined;
+
+function startPeekPress() {
+  peekTimer = undefined;
+  if (!clickGrow || gesture.dragging || peekState !== 'none') return;
+  peekState = 'asking';
+  peekReleased = false;
+  void bridge
+    .peek(true, reducedMotion.matches)
+    .then((ok) => {
+      if (!ok) {
+        peekState = 'none';
+        return;
+      }
+      if (peekReleased) {
+        peekState = 'none';
+        void bridge.peek(false);
+        return;
+      }
+      peekState = 'on';
+    })
+    .catch(() => {
+      peekState = 'none';
+    });
+}
+
+/** 누름이 끝났다(놓음, 끌기 시작, 포인터 잃음). 커졌거나 묻는 중이었으면 true */
+function cancelPeekPress(): boolean {
+  clearTimeout(peekTimer);
+  peekTimer = undefined;
+  if (peekState === 'on') {
+    peekState = 'none';
+    peekEndedAt = performance.now();
+    void bridge.peek(false);
+    return true;
+  }
+  if (peekState === 'asking') {
+    peekReleased = true;
+    return true;
+  }
+  return false;
+}
+
 canvas.addEventListener('pointerdown', (e) => {
   if (e.button !== 0 || !hitTest(e.clientX, e.clientY)) return;
   canvas.setPointerCapture(e.pointerId);
   gesture.down(e.button, e.clientX, e.clientY);
+  pressAt = { x: e.clientX, y: e.clientY, sx: e.screenX, sy: e.screenY, px: petBox.x, py: petBox.y };
+  pressing = true;
+  clearTimeout(peekTimer);
+  if (clickGrow) peekTimer = setTimeout(startPeekPress, PEEK_HOLD_MS);
 });
 
 canvas.addEventListener('pointermove', (e) => {
-  const event = gesture.move(e.clientX, e.clientY);
+  // 커진 동안은 창이 움직여 clientX 가 흔들리니 누른 자리에서 화면 기준으로 움직인 만큼으로 가른다
+  const from = peekState !== 'none' ? pressAt : undefined;
+  const event = from
+    ? gesture.move(from.x + (e.screenX - from.sx), from.y + (e.screenY - from.sy))
+    : gesture.move(e.clientX, e.clientY);
   if (!event) return;
+  // 끌기가 시작된다: 커진 것을 먼저 돌려 달라 (메인이 끌기 시작 때도 돌려 놓는다).
+  // 커지면서 말풍선이 닫혀 창 안 펫 자리가 바뀌므로, 잡은 자리는 누를 때 펫 기준으로 알린다 (돌아온 창에서 펫은 왼쪽 위 모서리)
+  cancelPeekPress();
   setInputs({ grabbed: true });
-  bridge.gesture(event);
+  if (from && event.type === 'drag-start')
+    bridge.gesture({
+      type: 'drag-start',
+      offset: { x: from.x - from.px, y: from.y - from.py },
+      petRelative: true,
+    });
+  else bridge.gesture(event);
 });
 
 canvas.addEventListener('pointerup', (e) => {
+  pressing = false;
+  const grew = cancelPeekPress();
   const event = gesture.up(e.button);
   if (!event) return;
+  // 꾹 눌러 키웠다 놓은 것은 클릭이 아니다
+  if (event.type === 'click' && grew) return;
   bridge.gesture(event);
   if (event.type === 'drag-end') setInputs({ grabbed: false });
   // 클릭하면 메인이 채팅 창을 연다(패널은 2단계). 펫은 반가워서 잠깐 신난다.
   else setInputs({ excitedUntil: performance.now() + EXCITED_MS });
 });
 
-canvas.addEventListener('lostpointercapture', () => {
+canvas.addEventListener('lostpointercapture', (e) => {
+  // 커진 창이 원래 크기로 돌아오는 바람에 놓친 것이면 끌기를 끊지 않고 다시 잡는다
+  if (pressing && performance.now() - peekEndedAt < 500) {
+    try {
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    } catch {
+      // 이미 버튼을 뗐으면 아래에서 끝낸다
+    }
+  }
+  pressing = false;
+  cancelPeekPress();
   const event = gesture.cancel();
   if (!event) return;
   bridge.gesture(event);
@@ -1451,10 +1543,13 @@ bridge.onBubble((b) => {
   bubbleLeft = b.ttlMs;
   if (b.kind === 'schedule') sound('bell');
   bubbleText.textContent = b.text;
+  // 늘 떠 있는 상태 말풍선 (진행 중, 집중): 조용히 뜬다
+  if (b.ambient) bubbleEl.dataset.ambient = '';
+  else delete bubbleEl.dataset.ambient;
   // 펼친 쪽지는 종이 모양 (pet.css)
   if (b.paper) bubbleEl.dataset.paper = b.paper;
   else delete bubbleEl.dataset.paper;
-  if (readAloud) announce(b.text);
+  if (readAloud && !b.ambient) announce(b.text);
   bubbleImage.hidden = !b.image;
   if (b.image) bubbleImage.src = b.image;
   else bubbleImage.removeAttribute('src');
@@ -1476,7 +1571,7 @@ bridge.onBubble((b) => {
   bubbleEl.classList.remove('shown');
   const r = bubbleEl.getBoundingClientRect();
   bridge.bubbleSize(b.id, r.width + BUBBLE_MARGIN * 2, r.height + BUBBLE_MARGIN * 2);
-  setInputs({ talkingUntil: performance.now() + b.ttlMs + 60_000 });
+  if (!b.ambient) setInputs({ talkingUntil: performance.now() + b.ttlMs + 60_000 });
 });
 
 bridge.onLayout((layout) => {

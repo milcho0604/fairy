@@ -9,6 +9,7 @@ import * as briefing from './briefing.ts';
 import * as calendar from './calendar.ts';
 import * as chat from './chat.ts';
 import * as chatLook from './chat-look.ts';
+import * as chips from './chips.ts';
 import * as common from './common.ts';
 import * as companion from './companion.ts';
 import * as day from './day.ts';
@@ -96,7 +97,11 @@ export const ko = {
   ...notice.ko,
   ...server.ko,
   ...ops.ko,
+<<<<<<< HEAD
   ...records.ko,
+=======
+  ...chips.ko,
+>>>>>>> 786430b (펫 반응: 질문 칩, 진행 중 말풍선, 꾹 눌러 커지기 (#124))
 };
 
 export const en: Translation<typeof ko> = {
@@ -146,5 +151,9 @@ export const en: Translation<typeof ko> = {
   ...notice.en,
   ...server.en,
   ...ops.en,
+<<<<<<< HEAD
   ...records.en,
+=======
+  ...chips.en,
+>>>>>>> 786430b (펫 반응: 질문 칩, 진행 중 말풍선, 꾹 눌러 커지기 (#124))
 };

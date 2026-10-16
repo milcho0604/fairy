@@ -73,6 +73,8 @@ if (kind === 'pet') {
     hover: (overPet: boolean) => ipcRenderer.send(IPC.hover, overPet),
     gesture: (event: GestureEvent) => ipcRenderer.send(IPC.gesture, event),
     contextMenu: () => ipcRenderer.send(IPC.contextMenu),
+    peek: (on: boolean, calm?: boolean) =>
+      ipcRenderer.invoke(IPC.peek, on, calm === true) as Promise<boolean>,
     wheel: (deltaY: number, zoom: boolean) => ipcRenderer.send(IPC.wheel, deltaY, zoom),
     onEnv: (listener: (env: PetEnv) => void) => {
       ipcRenderer.on(IPC.env, (_e, env: PetEnv) => listener(env));
@@ -464,6 +466,7 @@ if (kind === 'panel' || kind === 'quick') {
     stepRename: (stepId: number, title: string) => ipcRenderer.send(PANEL.stepRename, stepId, title),
     stepRemove: (stepId: number) => ipcRenderer.send(PANEL.stepRemove, stepId),
     pin: (kind, id, on) => ipcRenderer.send(PANEL.pin, kind, id, on),
+    doing: (id, on) => ipcRenderer.send(PANEL.doing, id, on),
     moveOverdue: () => ipcRenderer.invoke(PANEL.moveOverdue),
     undoMoveOverdue: () => ipcRenderer.send(PANEL.undoMoveOverdue),
     focusStart: (minutes?: number, todoId?: number) => ipcRenderer.send(PANEL.focusStart, minutes, todoId),

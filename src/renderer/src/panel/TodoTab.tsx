@@ -15,7 +15,7 @@ import {
   type TodoStep,
 } from '../../../shared/todo-store.ts';
 import './assist.css';
-import { CheckIcon, RepeatIcon, SearchIcon, StarIcon, StepsIcon } from './icons.tsx';
+import { CheckIcon, PlayIcon, RepeatIcon, SearchIcon, StarIcon, StepsIcon } from './icons.tsx';
 import { isEsc, takeEsc } from './keys.ts';
 import { MoreRow } from './more.tsx';
 import { pageOf } from './paging.ts';
@@ -238,6 +238,7 @@ export function TodoTab({
             todo={todo}
             today={s.today}
             pinEnd={todo.id === lastPinned && shown.length > 1 && shown.at(-1)?.id !== todo.id}
+            doing={s.doing.includes(todo.id)}
             onComplete={() => onComplete(todo)}
             onRemoved={() => onRemoved(todo)}
           />
@@ -288,9 +289,12 @@ export function TodoRow({
   onRemoved,
   compact,
   pinEnd,
+  doing,
 }: {
   todo: Todo;
   today: string;
+  /** 진행 중으로 표시한 할 일 (펫 머리 위 말풍선, 이슈 #124) */
+  doing?: boolean;
   onComplete: () => void;
   /** 지웠다 (되돌리기 알림) */
   onRemoved?: () => void;
@@ -301,6 +305,21 @@ export function TodoRow({
 }) {
   const pinned = todo.pinnedAt !== null;
   const pinMenu = usePinMenu('todo', todo.id, todo.title, pinned);
+  // 진행 중 표시(▶). 안 켠 줄은 마우스를 올리거나 키보드로 오면 보이고, 켠 줄은 늘 강조색으로 보인다
+  const doingButton = (on: boolean) => (
+    <button
+      type="button"
+      className={`pin doing-btn ${on ? 'on' : ''}`}
+      aria-pressed={on}
+      aria-label={
+        on ? t('chips.doingStopFor', { title: todo.title }) : t('chips.doingStartFor', { title: todo.title })
+      }
+      title={on ? t('chips.doingStop') : t('chips.doingStart')}
+      onClick={() => bridge.doing(todo.id, !on)}
+    >
+      <PlayIcon filled={on} />
+    </button>
+  );
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(todo.title);
   const dateRef = useRef<HTMLInputElement>(null);
@@ -450,6 +469,7 @@ export function TodoRow({
         <span className="tools">
           {(!compact || !todo.due) && (
             <span className="extra">
+              {!compact && !doing && doingButton(false)}
               {!compact && !pinned && (
                 <PinButton kind="todo" id={todo.id} title={todo.title} pinned={false} />
               )}
@@ -471,6 +491,17 @@ export function TodoRow({
               )}
             </span>
           )}
+          {compact && doing && (
+            <span
+              className="pin-mark"
+              role="img"
+              aria-label={t('chips.doingMark')}
+              title={t('chips.doingMark')}
+            >
+              <PlayIcon filled />
+            </span>
+          )}
+          {!compact && doing && doingButton(true)}
           {compact && pinned && <PinMark />}
           {!compact && pinned && <PinButton kind="todo" id={todo.id} title={todo.title} pinned />}
           {progress && stepsButton}

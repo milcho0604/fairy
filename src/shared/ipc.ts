@@ -58,6 +58,8 @@ export const IPC = {
   gesture: 'pet:gesture',
   /** 펫 화면 → 메인: 우클릭. */
   contextMenu: 'pet:context-menu',
+  /** 펫 화면 → 메인: 꾹 누르는 동안 펫을 키워 달라 / 원래대로 (이슈 #124) */
+  peek: 'pet:peek',
   /** 펫 화면 → 메인: 펫 위 휠. zoom 이면 크기 조절, 아니면 아래 창으로 넘긴다. */
   wheel: 'pet:wheel',
   /** 메인 → 펫 화면: 컴퓨터가 바쁜지, 사용자가 자리를 비웠는지. 바뀔 때만 보낸다. */
@@ -149,6 +151,8 @@ export interface BubbleMessage {
   kind?: BubbleKind;
   /** 펼친 쪽지 모양 (매일 쪽지는 종이, 특별한 편지는 분홍 편지지). 없으면 보통 말풍선 */
   paper?: NoteLook;
+  /** 늘 떠 있는 상태 말풍선 (진행 중, 집중 남은 시간, 이슈 #124): 효과음, 읽어 주기, 말하는 동작이 없고 저절로 닫히지 않는다 */
+  ambient?: boolean;
 }
 
 export interface PetAiState {
@@ -613,6 +617,8 @@ export interface PetBridge {
   hover(overPet: boolean): void;
   gesture(event: GestureEvent): void;
   contextMenu(): void;
+  /** 꾹 눌러 커지기 (이슈 #124). on 이면 키워 달라(calm: 움직임 줄이기라 부드럽게 키우지 않는다), 아니면 원래대로. 키웠으면 true */
+  peek(on: boolean, calm?: boolean): Promise<boolean>;
   wheel(deltaY: number, zoom: boolean): void;
   onEnv(listener: (env: PetEnv) => void): void;
   onAi(listener: (state: PetAiState) => void): void;
@@ -715,6 +721,8 @@ export interface PetStatus {
   saver?: boolean;
   /** 말풍선을 화면 읽기 프로그램에 읽어 준다 (설정 읽어 주기). 친구 펫은 끔 (같은 말을 두 번 읽지 않게) */
   readAloud?: boolean;
+  /** 꾹 누르면 커지기 (설정 clickGrow, 이슈 #124). 없으면 끔 */
+  clickGrow?: boolean;
   /** 성장 단계와 오늘 옷 (기본 펫만 그린다, shared/wear.ts). 없으면 예전 모습 그대로 */
   wear?: WearLook;
 }
@@ -1027,6 +1035,8 @@ export const PANEL = {
   stepRemove: 'panel:step-remove',
   /** 고정과 풀기 (메모, 할 일, 일정. shared/pin.ts) */
   pin: 'panel:pin',
+  /** 할 일 진행 중 표시와 풀기 (펫 머리 위 말풍선, 이슈 #124) */
+  doing: 'panel:doing',
   /** 지난 마감을 오늘로 */
   moveOverdue: 'panel:move-overdue',
   undoMoveOverdue: 'panel:undo-move-overdue',
@@ -1042,6 +1052,8 @@ export interface PanelState {
   today: string;
   open: Todo[];
   doneToday: Todo[];
+  /** 진행 중으로 표시한 할 일 id (열려 있는 것만, 표시한 순서. 이슈 #124) */
+  doing: number[];
   balance: number;
   fullness: number;
   hungryBelow: number;
@@ -1270,6 +1282,8 @@ export interface PanelBridge {
   stepRemove(stepId: number): void;
   /** 고정(on)과 풀기. 메모, 할 일, 일정 (shared/pin.ts) */
   pin(kind: PinKind, id: number, on: boolean): void;
+  /** 진행 중 표시(▶)와 풀기. 끝내거나 지우면 저절로 풀린다 */
+  doing(id: number, on: boolean): void;
   /** 지난 마감을 오늘로. 옮긴 것과 원래 마감 (되돌리기는 update 로) */
   moveOverdue(): Promise<{ id: number; due: string | null }[]>;
   /** 방금 한 지난 마감 오늘로 되돌리기 */

@@ -3,7 +3,7 @@
 
 export type GestureEvent =
   | { type: 'click' }
-  | { type: 'drag-start'; offset: { x: number; y: number } }
+  | { type: 'drag-start'; offset: { x: number; y: number }; petRelative?: boolean }
   | { type: 'drag-end' };
 
 /** 이만큼(px) 움직이면 클릭이 아니라 드래그로 본다. */

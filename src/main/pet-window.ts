@@ -146,6 +146,8 @@ export interface PetActions {
   menuNote?(): string | undefined;
   /** 짝꿍이 아는 것 창 (main/knows.ts). 없으면 메뉴에 안 보인다 */
   openKnows?(): void;
+  /** 질문 칩 (main/pet-chips.ts, 이슈 #124). 없으면 메뉴에 안 보인다 */
+  askChips?(): void;
   /** "오늘 뭐부터?" 규칙 답을 말풍선으로 (main/what-first.ts). 없으면 메뉴에 안 보인다 */
   whatFirst?(): void;
   /** 집 숨기기, 다시 보이기 (shared/house-stow.ts). 집이 없으면 undefined 라 메뉴에 안 보인다 */
@@ -186,6 +188,16 @@ const talkers = new Set<() => Rect | undefined>();
 const roomWaiters = new Set<() => void>();
 /** 다른 펫 말풍선이 닫히기를 이만큼까지 기다린다. 넘으면 그냥 띄운다 (놓치면 안 되는 말을 오래 붙잡지 않게) */
 const BUBBLE_WAIT_MAX_MS = 6000;
+/** 꾹 눌러 커지기 요청 처리기, 펫 창(webContents id)마다 하나 (이슈 #124) */
+const peekHandlers = new Map<number, (on: boolean, calm: boolean) => boolean>();
+let peekHandlerSet = false;
+function registerPeekHandler() {
+  if (peekHandlerSet) return;
+  peekHandlerSet = true;
+  ipcMain.handle(IPC.peek, (e, on: unknown, calm: unknown) =>
+    (peekHandlers.get(e.sender.id) ?? (() => false))(on === true, calm === true),
+  );
+}
 const roomMaybe = () => {
   for (const w of [...roomWaiters]) w();
 };
@@ -193,6 +205,11 @@ const roomMaybe = () => {
 export interface PetWindow {
   /** 펫 화면만 다시 불러온다 (우클릭 새로고침) */
   reload: () => void;
+  /**
+   * 머리 위에 늘 떠 있는 상태 말풍선 (진행 중, 집중 남은 시간, 이슈 #124). null 이면 치운다.
+   * 다른 말풍선이 뜨면 비켜 주고 닫히면 돌아온다. 누르면 onClick
+   */
+  setStatus(status: { text: string; onClick: () => void } | null): void;
   win: BrowserWindow;
   /** 화면 좌표의 펫 사각형 (말풍선 자리를 뺀 것) */
   bounds(): Rect;
@@ -431,7 +448,7 @@ export function createPetWindow({
   if (prebuilt) win.setBounds(pet);
   /** 지금 말풍선의 화면 사각형. 크기를 재기 전이면 어림 크기로 */
   const bubbleRect = (): Rect | undefined =>
-    bubble && !win.isDestroyed() && win.isVisible()
+    bubble && !bubble.ambient && !win.isDestroyed() && win.isVisible()
       ? bubbleRectOf(pet, bubble.size ?? BUBBLE_GUESS, screen.getDisplayMatching(pet).workArea)
       : undefined;
   talkers.add(bubbleRect);
@@ -498,8 +515,21 @@ export function createPetWindow({
   let walkTimer: NodeJS.Timeout | undefined;
   /** 지금 떠 있는 말풍선. size 는 화면이 재서 알려 준 크기 */
   let bubble:
-    | { id: string; size?: { width: number; height: number }; done: (action: string) => void }
+    | {
+        id: string;
+        size?: { width: number; height: number };
+        done: (action: string) => void;
+        /** 늘 떠 있는 상태 말풍선 (setStatus). 말하는 말풍선이 아니라서 걷기, 혼잣말, 모은 알림을 막지 않는다 */
+        ambient?: { text: string };
+      }
     | undefined;
+  /** 꾹 눌러 커진 동안: 원래 사각형과 끝낼 타이머 (이슈 #124) */
+  let peek:
+    | { base: Rect; timer?: NodeJS.Timeout; guard: NodeJS.Timeout; calm: boolean; k: number }
+    | undefined;
+  /** 머리 위 상태 말풍선 (setStatus) */
+  let status: { text: string; onClick: () => void } | undefined;
+  let statusTimer: NodeJS.Timeout | undefined;
 
   const shortcuts: [string, () => void][] = [
     [SIZE_SHORTCUTS.bigger, () => resize(scaleByStep(scale, 1))],
@@ -537,10 +567,15 @@ export function createPetWindow({
       actions.click(pet);
     } else if (event.type === 'drag-start') {
       if (looking) return;
+      // 꾹 눌러 커진 채 움직이면 끌기다: 원래 크기로 돌려 놓고 그 크기로 잡는다 (이슈 #124)
+      endPeek(true);
       actions.grabbed?.();
       // 들어 옮기는 동안은 말풍선을 치운다. 창 안 펫 자리가 바뀌므로 오프셋은 펫 기준으로 바꿔 둔다.
       const inWindow = win.getBounds();
-      let offset = { x: event.offset.x - (pet.x - inWindow.x), y: event.offset.y - (pet.y - inWindow.y) };
+      // petRelative: 꾹 눌러 커졌다 끌기로 바뀐 것. 화면이 펫 기준으로 알린다 (커지며 말풍선이 닫혀 창 안 자리가 바뀌었다)
+      let offset = event.petRelative
+        ? { x: event.offset.x, y: event.offset.y }
+        : { x: event.offset.x - (pet.x - inWindow.x), y: event.offset.y - (pet.y - inWindow.y) };
       // 두더지 잡기 중 구멍 속 작은 펫을 끌면 원래 크기로 돌려 가운데를 잡는다 (놀이는 들림을 보고 끝난다)
       if (moleSize !== undefined) {
         unburrow();
@@ -607,7 +642,7 @@ export function createPetWindow({
 
   function save() {
     clearTimeout(saveTimer);
-    const { x, y } = pet;
+    const { x, y } = peek?.base ?? pet;
     // 휠은 반올림 안 한 작업 배율로 굴린다(size.ts scaleByWheel). 저장은 0.01 단위로
     const kept = { x, y, scale: clampScale(scale) };
     writeJson(positionFile, kept);
@@ -646,6 +681,9 @@ export function createPetWindow({
         click: () => actions.quickAdd(),
       },
       ...(actions.whatFirst ? [{ label: t('first.menu'), click: () => actions.whatFirst?.() }] : []),
+      ...(actions.askChips && settings.get().petChips
+        ? [{ label: t('chips.menu'), click: () => actions.askChips?.() }]
+        : []),
       { label: t('pet.menu.feed'), click: () => actions.feed() },
       {
         label: t('pet.menu.play'),
@@ -803,7 +841,8 @@ export function createPetWindow({
       hopTimer ||
       doorTimer ||
       moleSize !== undefined ||
-      bubble ||
+      (bubble && !bubble.ambient) ||
+      peek ||
       walkTimer ||
       carrying ||
       !win.isVisible() ||
@@ -1204,7 +1243,165 @@ export function createPetWindow({
     current.done(action);
     // 이 말풍선이 닫히기를 기다리던 다른 펫의 말 (이슈 #65)
     roomMaybe();
+    if (!current.ambient) statusSoon();
   }
+
+  // ---- 머리 위 상태 말풍선 (진행 중, 집중 남은 시간, 이슈 #124) ----
+  // 말풍선 자리 하나를 다른 말과 나눠 쓴다: 말하는 말풍선이 뜨면 비켜 주고, 닫히거나 끌기, 걷기, 숨기기가 끝나면 돌아온다.
+  function statusBlocked(): boolean {
+    return (
+      win.isDestroyed() ||
+      !win.isVisible() ||
+      hideReasons.hidden ||
+      screenLocked ||
+      !!dragTimer ||
+      !!flightTimer ||
+      !!hopTimer ||
+      !!doorTimer ||
+      moleSize !== undefined ||
+      !!looking ||
+      !!peek
+    );
+  }
+
+  function showStatus() {
+    if (win.isDestroyed()) return;
+    if (!status) {
+      if (bubble?.ambient) closeBubble('status-off');
+      return;
+    }
+    // 말하는 말풍선이 먼저
+    if (bubble && !bubble.ambient) return;
+    if (statusBlocked()) return;
+    if (bubble?.ambient?.text === status.text) return;
+    const keep = bubble?.size;
+    const text = status.text;
+    const id = `s${Date.now().toString(36)}${(++bubbleSeq).toString(36)}`;
+    bubble = {
+      id,
+      ...(keep ? { size: keep } : {}),
+      ambient: { text },
+      done: (action) => {
+        if (action !== 'dismiss') return;
+        // 누르면 할 일 탭. 눌러서 사라진 말풍선은 잠시 뒤 돌아온다
+        status?.onClick();
+        statusSoon(900);
+      },
+    };
+    win.webContents.send(IPC.bubble, { id, text, buttons: [], ttlMs: 0, kind: 'system', ambient: true });
+  }
+
+  /** 잠시 뒤 상태 말풍선을 다시 본다 (말하던 말풍선이 막 닫혔을 때 바로 겹쳐 깜빡이지 않게) */
+  function statusSoon(ms = 700) {
+    clearTimeout(statusTimer);
+    statusTimer = setTimeout(showStatus, ms);
+    statusTimer.unref?.();
+  }
+
+  // ---- 꾹 눌러 커지기 (이슈 #124) ----
+  // 펫을 가만히 누르고 있으면(화면이 0.5초 뒤 알려 준다) 펫 창이 아래 가운데를 기준으로 커졌다가 놓으면 돌아온다.
+  // 짧게 누르면 그대로 클릭(패널), 누른 채 움직이면 끌기: 둘 다 이 보기와 겹치지 않는다.
+  // 움직임 줄이기(calm)면 부드럽게 키우지 않고 바로 바꾼다. 저장하는 자리와 크기는 그대로(save 는 원래 사각형)
+  const PEEK_SCALE = 1.4;
+  const PEEK_EASE_MS = 160;
+  /** 놓는 신호가 안 와도 이만큼 지나면 돌린다 */
+  const PEEK_MAX_MS = 8000;
+  const easeOut = (u: number) => 1 - (1 - u) ** 3;
+
+  function peekRect(base: Rect, k: number): Rect {
+    const areas = screen.getAllDisplays().map((d) => d.workArea);
+    return clampIntoAreas(resizeFromBottomCenter(base, Math.round(base.width * k)), areas);
+  }
+
+  /** 지금 키울 수 있는 때인지 */
+  function peekReady(): boolean {
+    return (
+      settings.get().clickGrow &&
+      !peek &&
+      !win.isDestroyed() &&
+      win.isVisible() &&
+      !hideReasons.hidden &&
+      !screenLocked &&
+      !dragTimer &&
+      !flightTimer &&
+      !hopTimer &&
+      !doorTimer &&
+      !perchTimer &&
+      !carrying &&
+      moleSize === undefined &&
+      !looking
+    );
+  }
+
+  function animatePeek(from: number, to: number, ms: number, done?: () => void) {
+    const state = peek;
+    if (!state) return;
+    clearInterval(state.timer);
+    const start = Date.now();
+    state.timer = setInterval(() => {
+      if (peek !== state || win.isDestroyed()) return;
+      const u = Math.min(1, (Date.now() - start) / ms);
+      state.k = from + (to - from) * easeOut(u);
+      pet = peekRect(state.base, state.k);
+      applyLayout();
+      if (u >= 1) {
+        clearInterval(state.timer);
+        state.timer = undefined;
+        done?.();
+      }
+    }, 16);
+  }
+
+  function startPeek(calm: boolean): boolean {
+    if (!peekReady()) return false;
+    closeBubble('cleared');
+    stopWalk();
+    const base = { ...pet };
+    const state = {
+      base,
+      calm,
+      k: 1,
+      guard: setTimeout(() => endPeek(false), PEEK_MAX_MS),
+    };
+    peek = state;
+    log('pet', 'peek', calm ? 'calm' : 'ease');
+    if (calm) {
+      state.k = PEEK_SCALE;
+      pet = peekRect(base, PEEK_SCALE);
+      applyLayout();
+    } else animatePeek(1, PEEK_SCALE, PEEK_EASE_MS);
+    return true;
+  }
+
+  /** 원래 크기로. instant 면 바로 (끌기 시작, 숨기기). 아니면 부드럽게 (움직임 줄이기면 바로) */
+  function endPeek(instant: boolean) {
+    const state = peek;
+    if (!state) return;
+    clearTimeout(state.guard);
+    clearInterval(state.timer);
+    state.timer = undefined;
+    const restore = () => {
+      if (peek !== state) return;
+      peek = undefined;
+      pet = { ...state.base };
+      if (!win.isDestroyed()) applyLayout();
+      statusSoon(500);
+    };
+    if (instant || state.calm || win.isDestroyed()) {
+      restore();
+      return;
+    }
+    animatePeek(state.k, 1, PEEK_EASE_MS, restore);
+  }
+
+  // invoke 길은 채널 하나에 처리기 하나만 걸 수 있어, 펫 창(친구 펫 포함)마다 걸지 못한다. 창 번호로 나눠 준다
+  const peekKey = win.webContents.id;
+  peekHandlers.set(peekKey, (on, calm) => {
+    if (on) return startPeek(calm);
+    endPeek(false);
+    return false;
+  });
+  registerPeekHandler();
 
   /**
    * 숨기기는 바로 한다 (예전엔 말풍선 안내 2.5초를 보이고 숨어 굼떴고, 그사이 또 누르면 두 번 숨었다).
@@ -1235,6 +1432,7 @@ export function createPetWindow({
     if (win.isDestroyed() || !hideReasons.set(reason, on)) return;
     log('pet', hideReasons.hidden ? 'hidden' : 'shown', reason);
     if (hideReasons.hidden) {
+      endPeek(true);
       closeBubble('cleared');
       stopWalk();
       stopHop();
@@ -1353,7 +1551,7 @@ export function createPetWindow({
   /** 모아 둔 것을 꺼낸다: 시작이 한참 지난 일정은 놓친 알림에만, 나머지는 말풍선 하나로 */
   function releaseHeld() {
     // 집 문을 드나드는 중(작은 펫)에는 꺼내지 않는다. 2초마다 다시 본다
-    if (held.size === 0 || blocked() || away() || bubble || doorTimer) return;
+    if (held.size === 0 || blocked() || away() || (bubble && !bubble.ambient) || doorTimer) return;
     const { fresh, stale } = held.flush(Date.now());
     for (const h of stale) addMissed(h);
     if (fresh.length === 0) return;
@@ -1374,6 +1572,7 @@ export function createPetWindow({
   const releaseTimer = setInterval(() => {
     releaseDragAnswer();
     releaseHeld();
+    showStatus();
   }, 2000);
 
   /** 끄는 동안 온 답 알림을 놓고(던졌으면 다 떨어지고) 나서 띄운다. 숨은 동안 붙잡은 것은 다시 나올 때 setHidden 이 띄운다 */
@@ -1426,7 +1625,7 @@ export function createPetWindow({
       }
     }
     // 혼잣말은 떠 있는 다른 말을 밀어내지 않는다
-    if (kind === 'idle-talk' && bubble) return Promise.resolve(undefined);
+    if (kind === 'idle-talk' && bubble && !bubble.ambient) return Promise.resolve(undefined);
     // 옆 펫이 말하는 중이라 말풍선이 포개질 자리면: 혼잣말은 건너뛰고, 다른 말은 그 말풍선이 닫힐 때까지 미룬다
     if (!win.isDestroyed() && win.isVisible() && clashing()) {
       if (kind === 'idle-talk') return Promise.resolve(undefined);
@@ -1969,6 +2168,12 @@ export function createPetWindow({
     ipcMain.off(IPC.hover, onHover);
     ipcMain.off(IPC.gesture, onGesture);
     ipcMain.off(IPC.contextMenu, onContextMenu);
+    peekHandlers.delete(peekKey);
+    clearTimeout(statusTimer);
+    if (peek) {
+      clearTimeout(peek.guard);
+      clearInterval(peek.timer);
+    }
     ipcMain.off(IPC.petKey, onPetKey);
     stopDisplayWatch();
   });
@@ -1976,6 +2181,11 @@ export function createPetWindow({
   return {
     win,
     reload,
+    setStatus(next) {
+      const same = next?.text === status?.text;
+      status = next ?? undefined;
+      if (!same || !status) showStatus();
+    },
     bounds: () => ({ ...pet }),
     say,
     setHidden: (reason: HideReason, on: boolean, hint?: boolean) => setHidden(reason, on, hint),
@@ -2074,7 +2284,8 @@ export function createPetWindow({
       !hopTimer &&
       !perch &&
       !looking &&
-      !bubble,
+      !peek &&
+      !(bubble && !bubble.ambient),
     look: setLooking,
     veil,
     greet(dir: -1 | 1) {
