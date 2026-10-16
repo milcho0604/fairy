@@ -407,7 +407,15 @@ row('펫 대화', 'Codex 격리', codexOk(c), JSON.stringify(cfg(c.argv)));
 c = await ask('cursor');
 row('펫 대화', 'Cursor', flag(c.argv, '--mode') === 'ask' && !['--force', '--yolo', '--approve-mcps', '-f'].some((x) => c.argv.includes(x)), JSON.stringify(c.argv));
 c = await ask('gemini');
-row('펫 대화', 'Gemini', flag(c.argv, '--approval-mode') === 'default' && !c.argv.includes('--yolo') && !c.argv.includes('-y'), JSON.stringify(c.argv));
+const policyPath = flag(c.argv, '--admin-policy');
+const policyText = (() => {
+  try {
+    return readFileSync(policyPath, 'utf8');
+  } catch {
+    return '';
+  }
+})();
+row('펫 대화', 'Gemini', flag(c.argv, '--approval-mode') === 'default' && !c.argv.includes('--yolo') && !c.argv.includes('-y') && c.argv.includes('--allowed-mcp-server-names=fairy-none') && /run_shell_command/.test(policyText) && /mcpName = "\*"/.test(policyText) && !/allow/.test(policyText.replace(/#.*$/gm, '')), JSON.stringify(c.argv));
 // 환경: 짝꿍 내부 값이 AI 로 새지 않는다
 check('환경: ELECTRON_RUN_AS_NODE, JJ_ 값이 AI 프로그램에 안 넘어감', !('ELECTRON_RUN_AS_NODE' in c.env) && !Object.keys(c.env).some((k) => k.startsWith('JJ_')), Object.keys(c.env).join(','));
 
@@ -428,6 +436,10 @@ check('claude 훅 명령: 읽기 도구와 페어리 도구는 막지 않음', r
 c = await ask('codex');
 const k = cfg(c.argv);
 row('펫 대화', 'Codex 격리 끔(사용자 설정 MCP)', codexOk(c) && k.includes('mcp_servers.notion.enabled=false') && k.includes('mcp_servers."my.server".enabled=false') && k.some((x) => x.startsWith('mcp_servers.fairy.command=')) && !k.includes('mcp_servers.fairy.enabled=false'), JSON.stringify(k));
+// 사용자 codex 설정을 해석하지 못하는 모양(윤초 시각)이면 켜진 서버를 모르니 이번 실행은 격리한다 (열린 채 실패하지 않게)
+writeFileSync(join(codexHome, 'config.toml'), '[mcp_servers.gmail]\ncommand = "echo"\nat = 1979-05-27T00:00:60Z\n');
+c = await ask('codex');
+check('펫 대화 / Codex 설정을 못 읽으면 격리한 폴더로 부른다', codexOk(c) && String(c.env.CODEX_HOME).endsWith('codex-home') && !String(c.env.CODEX_HOME).includes(codexHome), String(c.env.CODEX_HOME));
 await main(`__jj.settings.set({ aiIsolation: true }); 1`);
 
 // 다른 경로: 일기 다듬기(textOnce), 말로 만들기(textShot, 웹 검색), 그림 설계도(oneShot)

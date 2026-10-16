@@ -47,13 +47,15 @@ export function prepareCodexHome(userCodexHome: string | undefined): string | un
 
 /**
  * 격리를 껐을 때 codex 가 읽을 사용자 설정(config.toml)에 든 MCP 서버 이름들. 읽기 전용 강제(이슈 #126)가 이번 실행에서 끈다.
- * 설정 파일이 없거나 못 읽으면 빈 목록 (끌 것이 없다)
+ * 설정 파일이 없으면 빈 목록(끌 것이 없다). 파일은 있는데 읽거나 해석하지 못하면 undefined: 부르는 쪽이 사용자 설정을 싣지 않는다
  */
-export function readCodexMcpNames(userCodexHome: string | undefined): string[] {
+export function readCodexMcpNames(userCodexHome: string | undefined): string[] | undefined {
   const home = userCodexHome ?? process.env.CODEX_HOME ?? join(homedir(), '.codex');
+  let text: string;
   try {
-    return codexMcpNames(readFileSync(join(home, 'config.toml'), 'utf8'));
-  } catch {
-    return [];
+    text = readFileSync(join(home, 'config.toml'), 'utf8');
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'ENOENT' ? [] : undefined;
   }
+  return codexMcpNames(text);
 }

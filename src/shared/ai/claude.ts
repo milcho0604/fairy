@@ -50,12 +50,13 @@ export function jjMcpConfig(server: McpLaunch | undefined): string {
  * 빈 MCP 설정을 엄격하게 지정해 늘 빼 둔다.
  */
 export function claudeArgs(turn: ClaudeTurn): string[] {
-  // 허락할 MCP: 격리를 껐을 때 내 MCP 서버들(읽기 전용 훅이 있을 때만), 그리고 짝꿍 도구. 기본 도구(--tools '')는 그대로 끈다
-  const allowed = [
-    // 사용자가 직접 등록해 둔 fairy 는 앱의 확인 단계(JJ_MCP_CONFIRM)가 없어 열지 않는다. 이번 실행이 페어리 서버를 싣는 경우는 jjServer 가 따로 허락한다
-    ...(turn.isolate === false && turn.guard ? (turn.mcpServers ?? []).filter((n) => n !== JJ_MCP_NAME) : []),
-    ...(turn.jjServer ? [JJ_MCP_NAME] : []),
-  ];
+  // 내 MCP 를 여는 조건 (이슈 #126): 격리를 껐고, 읽기 전용 훅이 실리고, 내 MCP 에 fairy 가 없다.
+  // 훅이 없으면(윈도우 등) 쓰기를 막을 길이 이름 검사뿐이라 열지 않는다: 내 settings.json 의 permissions.allow 가 mcp__gmail 같은 서버를
+  // 허락해 두었으면 dontAsk 에서도 보내기 도구가 돌기 때문이다. 내 MCP 에 fairy 가 있으면 우리 서버와 이름이 같아 어느 쪽이 뜰지 몰라
+  // (사용자 것은 확인 단계 JJ_MCP_CONFIRM 이 없다) 이번 실행은 내 MCP 를 모두 닫는다. 닫을 때는 격리와 같이 엄격한 설정으로 우리 서버만 싣는다
+  const openUser = turn.isolate === false && !!turn.guard && !(turn.mcpServers ?? []).includes(JJ_MCP_NAME);
+  // 허락할 MCP: 내 MCP 서버들(openUser 일 때만), 그리고 짝꿍 도구. 기본 도구(--tools '')는 그대로 끈다
+  const allowed = [...(openUser ? (turn.mcpServers ?? []) : []), ...(turn.jjServer ? [JJ_MCP_NAME] : [])];
   const search = turn.webSearch ? ['WebSearch'] : [];
   return [
     '-p',
@@ -68,18 +69,22 @@ export function claudeArgs(turn: ClaudeTurn): string[] {
     // 도구는 격리 여부와 상관없이 끈다 (기획서 AI 연동 규칙 2: 펫 채팅의 AI 는 파일을 고치거나 명령을 실행하지 않는다)
     '--tools',
     search.join(','),
-    ...(turn.isolate === false
-      ? []
-      : [
+    ...(turn.isolate !== false
+      ? [
           '--setting-sources',
           '',
           '--strict-mcp-config',
           '--mcp-config',
           jjMcpConfig(turn.jjServer),
           '--disable-slash-commands',
-        ]),
-    // 격리를 껐으면 내 MCP 설정 위에 짝꿍 서버만 더한다
-    ...(turn.isolate === false && turn.jjServer ? ['--mcp-config', jjMcpConfig(turn.jjServer)] : []),
+        ]
+      : openUser
+        ? // 격리를 껐으면 내 MCP 설정 위에 짝꿍 서버만 더한다
+          turn.jjServer
+          ? ['--mcp-config', jjMcpConfig(turn.jjServer)]
+          : []
+        : // 내 MCP 를 닫는다: 내 훅, 스킬은 그대로 두고 MCP 만 우리 서버 하나로
+          ['--strict-mcp-config', '--mcp-config', jjMcpConfig(turn.jjServer)]),
     ...(allowed.length || search.length
       ? ['--allowedTools', [...allowed.map(mcpToolPrefix), ...search].join(',')]
       : []),
@@ -89,9 +94,7 @@ export function claudeArgs(turn: ClaudeTurn): string[] {
     CLAUDE_WRITE_TOOLS.join(','),
     '--permission-mode',
     'dontAsk',
-    ...(turn.isolate === false && turn.guard
-      ? ['--settings', guardSettings(turn.guard, undefined, !!turn.jjServer)]
-      : []),
+    ...(openUser && turn.guard ? ['--settings', guardSettings(turn.guard, undefined, !!turn.jjServer)] : []),
     ...(turn.model ? ['--model', turn.model] : []),
     '--append-system-prompt',
     turn.persona,

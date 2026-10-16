@@ -84,21 +84,36 @@ const WRITE_WORDS = new Set([
 
 /**
  * 읽기만 하는 동사. 명사(status, history, schema, symbol 같은 것)는 넣지 않는다: replace_symbol_body, change_status 처럼
- * 쓰는 동사 옆에 붙어 통과시키는 틈이 된다
+ * 쓰는 동사 옆에 붙어 통과시키는 틈이 된다. screenshot, snapshot, tree 는 이름 자체가 읽는 일이다
  */
 const READ_WORDS = new Set([
   ...['get', 'list', 'search', 'find', 'read', 'query', 'fetch', 'describe', 'show', 'view', 'count'],
   ...['lookup', 'check', 'browse', 'analyze', 'explain', 'diff', 'retrieve', 'preview', 'inspect'],
-  ...['snapshot', 'screenshot', 'whoami'],
+  ...['snapshot', 'screenshot', 'whoami', 'tree'],
 ]);
+
+/** 이름이 통째로 읽기인 것 (읽는 동사가 아닌 낱말로 시작하지만 읽기만 한다) */
+const READ_NAMES = new Set(['resolve-library-id']);
+
+/** 읽는 동사 앞에 올 수 있는 낱말: 서버 이름 조각 말고는 도구 묶음 머리 (browser_take_screenshot, directory_tree) */
+const PREFIX_WORDS = new Set(['browser', 'take', 'directory']);
+
+/** 읽는 동사 뒤에서 "그리고 또 이것도"를 잇는 낱말: 이 뒤는 새 동사로 다시 본다 (get_or_create_branch, search_and_replace) */
+const JOINERS = new Set(['and', 'or', 'then']);
+
+/** 페어리 서버의 도구 이름 모양: 소문자와 숫자, 낱말 사이 밑줄 하나 (밑줄 둘 이상이나 밑줄로 시작하면 다른 서버 이름이 섞인 것) */
+const OWN_TOOL_RE = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 
 export type ToolVerdict = { allow: true } | { allow: false; reason: string };
 
 /**
  * MCP 도구 이름(mcp__서버__도구)을 읽기 전용인지 가른다 (허용 목록 방식: 읽는 동사가 확실할 때만 통과).
  * - 서버 이름이 정확히 fairy 이고 이번 실행이 페어리 서버를 직접 싣는 경우(allowFairy)만 통과: 지우기, 고치기는 앱이 사용자 확인을 거친다
- *   (shared/pet-actions.ts, JJ_MCP_CONFIRM). 사용자가 직접 등록한 fairy 는 그 확인이 없어서 allowFairy 가 아니면 다른 서버와 같이 본다
- * - 그 밖은 낱말로 쪼개 쓰는 동사가 하나라도 있으면 막고, 읽는 동사가 이름 앞쪽(첫 낱말이나 서버 머리 하나 뒤)에 없으면 막는다
+ *   (shared/pet-actions.ts, JJ_MCP_CONFIRM). 사용자가 직접 등록한 fairy 는 그 확인이 없어서 allowFairy 가 아니면 다른 서버와 같이 본다.
+ *   도구 이름에 밑줄 둘이 또 있으면(mcp__fairy__mail__send_email) 서버 이름이 fairy__mail 인 다른 서버라 통과시키지 않는다
+ * - 그 밖: 낱말로 쪼개 첫 읽는 동사를 찾는다. 그 앞에는 서버 이름 조각이나 묶음 머리(browser 등)만 올 수 있고(terminate_query 같은
+ *   목록에 없는 쓰는 동사를 거른다), 그 뒤는 그 동사의 대상(get_issue, get_commit, get_workflow_run)이라 쓰는 동사로 보지 않되
+ *   and, or, then 뒤는 새 동사로 다시 본다. 읽는 동사가 없으면 막는다
  */
 export function mcpToolVerdict(toolName: string, allowFairy = false): ToolVerdict {
   const m = /^mcp__(.+?)__(.+)$/.exec(toolName);
@@ -110,12 +125,18 @@ export function mcpToolVerdict(toolName: string, allowFairy = false): ToolVerdic
   }
   const server = m[1] as string;
   const tool = m[2] as string;
-  if (allowFairy && server === JJ_MCP_NAME && !tool.startsWith('_')) return { allow: true };
+  if (allowFairy && server === JJ_MCP_NAME && OWN_TOOL_RE.test(tool)) return { allow: true };
+  if (READ_NAMES.has(tool)) return { allow: true };
   const words = toolWords(tool);
-  const write = words.find((w) => WRITE_WORDS.has(w));
+  const at = words.findIndex((w) => READ_WORDS.has(w));
+  if (at < 0) return { allow: false, reason: '읽기 전용인지 알 수 없어 막았어' };
+  const heads = new Set([...toolWords(server), ...PREFIX_WORDS]);
+  const odd = words.slice(0, at).find((w) => !heads.has(w));
+  if (odd) return { allow: false, reason: `읽는 동사 앞에 ${odd} 가 있어 막았어` };
+  const rest = words.slice(at + 1);
+  const join = rest.findIndex((w) => JOINERS.has(w));
+  const write = join < 0 ? undefined : rest.slice(join + 1).find((w) => WRITE_WORDS.has(w));
   if (write) return { allow: false, reason: `쓰기 도구라 막았어 (${write})` };
-  if (!words.slice(0, 2).some((w) => READ_WORDS.has(w)))
-    return { allow: false, reason: '읽기 전용인지 알 수 없어 막았어' };
   return { allow: true };
 }
 
@@ -190,7 +211,7 @@ export function guardSettings(launch: McpLaunch, platform?: NodeJS.Platform, all
       PreToolUse: [
         {
           matcher: 'mcp__.*',
-          hooks: [{ type: 'command', command: guardHookCommand(launch, platform, allowFairy), timeout: 10 }],
+          hooks: [{ type: 'command', command: guardHookCommand(launch, platform, allowFairy), timeout: 30 }],
         },
       ],
     },

@@ -9,6 +9,7 @@ import { claudeArgs } from './claude.ts';
 import { codexArgs } from './codex.ts';
 import { codexMcpNames } from './codex-config.ts';
 import { cursorArgs } from './cursor.ts';
+import { GEMINI_POLICY_SLOT, GEMINI_POLICY_TOML } from './gemini-policy.ts';
 import {
   CLAUDE_WRITE_TOOLS,
   CODEX_OFF_FEATURES,
@@ -168,9 +169,9 @@ test('codex 설정 파일에서 MCP 서버 이름 읽기', () => {
     '# [mcp_servers.commented]',
     '[projects."/a/b"]',
   ].join('\n');
-  assert.deepEqual(codexMcpNames(toml).sort(), ['fairy', 'my.server', 'notion']);
+  assert.deepEqual(codexMcpNames(toml)?.sort(), ['fairy', 'my.server', 'notion']);
   // 점 키 모양은 표 머리와 섞어 쓸 수 없어(TOML 규칙) 따로
-  assert.deepEqual(codexMcpNames('mcp_servers.github.command = "npx"\nmcp_servers.x.url = "u"').sort(), [
+  assert.deepEqual(codexMcpNames('mcp_servers.github.command = "npx"\nmcp_servers.x.url = "u"')?.sort(), [
     'github',
     'x',
   ]);
@@ -193,6 +194,7 @@ test('gemini: 승인 방식을 default 로 박고 yolo 계열은 없다', () => 
   assert.ok(spec?.args);
   const a = fillArgs(spec.args, '질문');
   assert.equal(after(a, '--approval-mode'), 'default');
+  assert.equal(after(a, '--admin-policy'), GEMINI_POLICY_SLOT);
   assert.equal(after(a, '-p'), '질문');
   for (const bad of ['--yolo', '-y', 'yolo', 'auto_edit']) assert.equal(a.includes(bad), false, bad);
 });
@@ -329,21 +331,34 @@ test('훅 명령은 셸에서 띄어쓰기와 따옴표가 있는 경로도 한 
 
 // ---- 버그잡이 PR #131 ----
 
-test('사용자가 직접 등록한 fairy 는 페어리 도구를 싣지 않는 실행에서 통째로 열리지 않는다 (B1)', () => {
+test('사용자가 직접 등록한 fairy 가 있으면 내 MCP 를 이번 실행에서 모두 닫고 우리 서버만 싣는다 (B1)', () => {
   const turn = { ...base, resume: false, isolate: false, mcpServers: ['fairy', 'notion'], guard };
-  const none = claudeArgs(turn);
-  const allowed = after(none, '--allowedTools')?.split(',') ?? [];
-  assert.deepEqual(allowed, ['mcp__notion']);
-  const hook = JSON.parse(after(none, '--settings') ?? '{}').hooks.PreToolUse[0].hooks[0].command as string;
-  assert.equal(hook.includes('--allow-fairy'), false);
+  for (const jjServer of [undefined, jj]) {
+    const a = claudeArgs({ ...turn, jjServer });
+    // 엄격한 설정으로 우리 서버(없으면 빈 설정)만. 내 서버는 허락 목록에도 훅 예외에도 없다
+    assert.ok(a.includes('--strict-mcp-config'));
+    assert.deepEqual(
+      Object.keys(JSON.parse(after(a, '--mcp-config') ?? '{}').mcpServers),
+      jjServer ? ['fairy'] : [],
+    );
+    assert.equal(a.includes('--settings'), false);
+    assert.equal((after(a, '--allowedTools') ?? '').includes('notion'), false);
+  }
   assert.equal(mcpToolVerdict('mcp__fairy__delete_todo').allow, false);
-  // 이번 실행이 페어리 서버를 싣는 경우는 훅도 fairy 를 통과시킨다
-  const own = claudeArgs({ ...turn, jjServer: jj });
-  assert.ok(after(own, '--allowedTools')?.split(',').includes('mcp__fairy'));
+  // fairy 가 없으면 내 MCP 가 열리고, 우리 서버를 실으면 훅도 fairy 를 통과시킨다
+  const open = claudeArgs({ ...turn, mcpServers: ['notion'], jjServer: jj });
+  assert.ok(after(open, '--allowedTools')?.split(',').includes('mcp__fairy'));
   assert.ok(
-    (JSON.parse(after(own, '--settings') ?? '{}').hooks.PreToolUse[0].hooks[0].command as string).includes(
+    (JSON.parse(after(open, '--settings') ?? '{}').hooks.PreToolUse[0].hooks[0].command as string).includes(
       '--allow-fairy',
     ),
+  );
+  const noPet = claudeArgs({ ...turn, mcpServers: ['notion'] });
+  assert.equal(
+    (JSON.parse(after(noPet, '--settings') ?? '{}').hooks.PreToolUse[0].hooks[0].command as string).includes(
+      '--allow-fairy',
+    ),
+    false,
   );
 });
 
@@ -424,7 +439,7 @@ test('codex 설정의 MCP 서버를 TOML 의 모든 모양에서 읽는다 (B5)'
     '# [mcp_servers.commented]',
     '[projects."/a/b"]',
   ].join('\n');
-  assert.deepEqual(codexMcpNames(toml).sort(), [
+  assert.deepEqual(codexMcpNames(toml)?.sort(), [
     'esc"aped',
     'fairy',
     'gmail',
@@ -433,17 +448,111 @@ test('codex 설정의 MCP 서버를 TOML 의 모든 모양에서 읽는다 (B5)'
     'slack.bot',
   ]);
   // 점 키 모양은 표 머리와 섞어 쓸 수 없어(TOML 규칙) 따로
-  assert.deepEqual(codexMcpNames('mcp_servers.hub.command = "npx"\nmcp_servers.x.url = "u"').sort(), [
+  assert.deepEqual(codexMcpNames('mcp_servers.hub.command = "npx"\nmcp_servers.x.url = "u"')?.sort(), [
     'hub',
     'x',
   ]);
   assert.deepEqual(codexMcpNames(''), []);
-  assert.deepEqual(codexMcpNames('깨진 [[['), []);
+  assert.equal(codexMcpNames('깨진 [[['), undefined);
   assert.deepEqual(codexMcpNames('mcp_servers = 3'), []);
 });
 
 test('gemini 는 내 MCP 서버를 허용 목록 밖으로 둔다', () => {
   const spec = BUILTIN_PROVIDERS.find((p) => p.id === 'gemini');
   const a = fillArgs(spec?.args ?? [], 'q');
+  assert.ok(a.includes('--allowed-mcp-server-names=fairy-none'));
+});
+
+// ---- 버그잡이 PR #131 두 번째 ----
+
+test('codex 설정을 못 읽으면 undefined 라 부르는 쪽이 격리한다: BOM 은 벗겨 읽고 윤초 시각 같은 해석 실패는 열린 채 두지 않는다 (N1)', () => {
+  assert.deepEqual(codexMcpNames('\uFEFF[mcp_servers.gmail]\ncommand = "echo"\n'), ['gmail']);
+  // smol-toml 이 못 읽는 시각(윤초). codex 는 읽어 서버를 켜므로 [] 가 아니라 undefined
+  assert.equal(
+    codexMcpNames('[mcp_servers.gmail]\ncommand = "echo"\nat = 1979-05-27T00:00:60Z\n'),
+    undefined,
+  );
+  assert.equal(codexMcpNames('깨진 [[['), undefined);
+  // 서버가 없으면 빈 목록
+  assert.deepEqual(codexMcpNames('model = "x"'), []);
+});
+
+test('도구 이름에 밑줄 둘이 또 있으면 fairy 로 보지 않는다 (N2)', () => {
+  for (const allowFairy of [false, true]) {
+    assert.equal(mcpToolVerdict('mcp__fairy__mail__send_email', allowFairy).allow, false);
+    assert.equal(mcpToolVerdict('mcp__fairy___send_email', allowFairy).allow, false);
+  }
+  assert.equal(mcpToolVerdict('mcp__fairy__add_todo', true).allow, true);
+  assert.equal(mcpToolVerdict('mcp__fairy__list_notes', true).allow, true);
+});
+
+test('훅이 없으면(윈도우) 격리를 껐어도 내 MCP 를 싣지 않는다: 엄격한 설정에 우리 서버만 (N3)', () => {
+  const a = claudeArgs({
+    ...base,
+    resume: false,
+    isolate: false,
+    mcpServers: ['gmail'],
+    guard: undefined,
+    jjServer: jj,
+  });
+  assert.ok(a.includes('--strict-mcp-config'));
+  assert.deepEqual(Object.keys(JSON.parse(after(a, '--mcp-config') ?? '{}').mcpServers), ['fairy']);
+  assert.equal(a.includes('--settings'), false);
+  assert.equal((after(a, '--allowedTools') ?? '').includes('gmail'), false);
+  // 내 훅과 스킬은 그대로 둔다 (격리가 아니다)
+  assert.equal(a.includes('--setting-sources'), false);
+  const none = claudeArgs({ ...base, resume: false, isolate: false, mcpServers: ['gmail'] });
+  assert.equal(after(none, '--mcp-config'), '{"mcpServers":{}}');
+});
+
+test('정상 읽기 도구는 이름 속 명사 때문에 막히지 않는다 (N4)', () => {
+  for (const n of [
+    'mcp__github__get_issue',
+    'mcp__github__get_commit',
+    'mcp__linear__get_issue',
+    'mcp__sentry__get_issue_details',
+    'mcp__context7__resolve-library-id',
+    'mcp__airtable__get_record',
+    'mcp__gcal__get_schedule',
+    'mcp__github__get_workflow_run',
+    'mcp__playwright__browser_take_screenshot',
+    'mcp__playwright__browser_snapshot',
+    'mcp__filesystem__directory_tree',
+    'mcp__filesystem__read_text_file',
+  ])
+    assert.equal(mcpToolVerdict(n).allow, true, n);
+  // 읽는 동사 뒤라도 and, or, then 뒤의 쓰는 동사는 막는다
+  for (const n of ['mcp__x__get_or_create_branch', 'mcp__x__search_and_replace', 'mcp__x__read_then_delete'])
+    assert.equal(mcpToolVerdict(n).allow, false, n);
+});
+
+test('목록에 없는 쓰는 동사 뒤에 읽는 동사가 와도 통과하지 못한다 (N5)', () => {
+  for (const n of [
+    'mcp__pg__terminate_query',
+    'mcp__pg__abort_query',
+    'mcp__pg__refresh_view',
+    'mcp__x__unsubscribe_list',
+    'mcp__x__destroy_view',
+    'mcp__x__flush_get_cache',
+  ])
+    assert.equal(mcpToolVerdict(n).allow, false, n);
+  // 서버 이름 조각이 앞에 오는 이름은 통과 (flow_get_..., notion-fetch)
+  assert.equal(mcpToolVerdict('mcp__claude_ai_flow__flow_get_my_worklist').allow, true);
+  assert.equal(mcpToolVerdict('mcp__claude_ai_Notion__notion-fetch').allow, true);
+});
+
+test('gemini: 관리자 층 정책이 명령 실행, 파일 쓰기, 기억 저장과 모든 MCP 도구를 막는다 (G1)', () => {
+  const t = GEMINI_POLICY_TOML;
+  // 규칙 모양: [[rule]] 둘, 모두 deny 이고 우선순위는 층 안 최댓값
+  assert.equal((t.match(/^\[\[rule\]\]$/gm) ?? []).length, 2);
+  assert.equal((t.match(/^decision = "deny"$/gm) ?? []).length, 2);
+  assert.equal((t.match(/^priority = 999$/gm) ?? []).length, 2);
+  assert.match(t, /toolName = \["run_shell_command", "write_file", "replace", "save_memory"\]/);
+  assert.match(t, /toolName = "\*"\nmcpName = "\*"/);
+  // 허락하는 규칙은 없다
+  assert.equal(/decision = "(allow|ask_user)"/.test(t), false);
+  const spec = BUILTIN_PROVIDERS.find((p) => p.id === 'gemini');
+  const a = fillArgs(spec?.args ?? [], 'q');
+  assert.equal(after(a, '--admin-policy'), GEMINI_POLICY_SLOT);
   assert.ok(a.includes('--allowed-mcp-server-names=fairy-none'));
 });
