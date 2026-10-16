@@ -3,6 +3,7 @@
 // 파일 경로, 다른 주소로 옮겨 가기 같은 동작은 아예 없다. 글은 할 일, 메모, 일정 제목으로만 쓰인다.
 // 무엇을 할 수 있는지와 예시는 docs/integrations.md
 
+import { normalizeDeviceCode } from './account-profile.ts';
 import { FOCUS_LENGTHS, type FocusLength } from './focus.ts';
 
 export const URL_SCHEME = 'fairy';
@@ -30,7 +31,9 @@ export type UrlAction =
   | { action: 'add'; text: string }
   | { action: 'memo'; text: string }
   | { action: 'focus'; min?: FocusLength }
-  | { action: 'open'; tab: UrlTab };
+  | { action: 'open'; tab: UrlTab }
+  /** 친구 초대 링크 (#110, 홈페이지 /f/<코드> 가 연다): fairy://friend/F-XXXX-XXXX. 신청은 사용자가 설정에서 누른다 */
+  | { action: 'friend'; code: string };
 
 export type UrlReason =
   | 'scheme'
@@ -50,6 +53,7 @@ const PARAMS: Record<UrlAction['action'], readonly string[]> = {
   memo: ['text'],
   focus: ['min'],
   open: ['tab'],
+  friend: [],
 };
 
 const fail = (reason: UrlReason): UrlParse => ({ ok: false, reason });
@@ -93,6 +97,21 @@ export function parseJjUrl(raw: unknown): UrlParse {
   if (url.username || url.password || url.port || url.hash) return fail('malformed');
   // fairy://add?… 는 host 가 동작, fairy:add?… (슬래시 없이)는 pathname 이 동작
   const name = (url.host || url.pathname.replace(/^\/+/, '')).replace(/\/+$/, '').toLowerCase();
+  // 친구 초대만 경로에 값이 있다: fairy://friend/<코드> (fairy:friend/<코드> 도)
+  const friend = /^\/{0,2}friend\/([^/?#]{1,20})\/?$/i.exec(
+    url.host ? `${url.host}${url.pathname}` : url.pathname,
+  );
+  if (friend) {
+    if ([...url.searchParams].length > 0) return fail('param');
+    let raw = '';
+    try {
+      raw = decodeURIComponent(friend[1] ?? '');
+    } catch {
+      return fail('value');
+    }
+    const code = normalizeDeviceCode(raw);
+    return code ? { ok: true, value: { action: 'friend', code } } : fail('value');
+  }
   if (url.host && url.pathname && url.pathname !== '/') return fail('malformed');
   if (!Object.hasOwn(PARAMS, name)) return fail('action');
   const action = name as UrlAction['action'];
@@ -104,6 +123,9 @@ export function parseJjUrl(raw: unknown): UrlParse {
     seen.set(key, value);
   }
   switch (action) {
+    // 코드 없는 fairy://friend 는 받지 않는다 (코드는 경로에만)
+    case 'friend':
+      return fail('value');
     case 'add':
     case 'memo': {
       const given = seen.get('text');

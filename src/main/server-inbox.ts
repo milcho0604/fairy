@@ -16,14 +16,29 @@ const idOf = (key: string): number | undefined => {
   return m ? Number(m[1]) : undefined;
 };
 
+/** 친구가 보낸 쪽지의 보낸 사람 이름 (닉네임, 없으면 기기 코드, 탈퇴했으면 "떠난 친구") */
+const senderName = (i: InboxItem): string => i.sender?.nickname ?? i.sender?.code ?? t('inbox.leftFriend');
+
 /** 쪽지 제목 */
 export function inboxTitle(i: InboxItem): string {
+  if (i.kind === 'gift') return t('inbox.giftTitle');
+  if (i.kind === 'friend') return t('inbox.friendTitle');
+  if (i.kind === 'gift_back') return t('inbox.giftBackTitle');
   return i.kind === 'subscription' ? t('inbox.subTitle') : t('inbox.title');
 }
 
-/** 쪽지 줄: 운영자 글, 첨부, 열었으면 받은 것 */
+/** 쪽지 줄: 운영자 글, 첨부, 열었으면 받은 것. 친구 쪽지는 보낸 친구 (#110) */
 export function inboxLines(i: InboxItem): string[] {
   const lines: string[] = [];
+  if (i.kind === 'friend') {
+    lines.push(t('inbox.friendLine', { name: senderName(i) }));
+    if (i.expired) lines.push(t('inbox.expired'));
+    return lines;
+  }
+  // 돌아온 선물: 양은 돌려줄 때 이미 넣었다 (열어도 더 받지 않는다)
+  if (i.kind === 'gift_back')
+    return [t('inbox.giftBackLine', { name: senderName(i), coins: i.coins, passes: i.chatPasses })];
+  if (i.kind === 'gift') lines.push(t('inbox.fromFriend', { name: senderName(i) }));
   if (i.message) lines.push(i.message);
   if (i.kind === 'subscription')
     lines.push(i.fillTo ? t('inbox.subFill', { n: i.fillTo }) : t('inbox.subAdd', { n: i.chatPasses }));
@@ -55,6 +70,8 @@ export function createServerInbox(o: {
   onChange: () => void;
   /** 받은 코인이나 채팅 이용권이 생겼다 */
   onGot: () => void;
+  /** 친구 신청 쪽지를 열었다 (#110): 설정의 친구 칸을 연다 */
+  openFriends?: () => void;
   log: (tag: string, ...rest: unknown[]) => void;
 }) {
   let items: InboxItem[] = [];
@@ -66,7 +83,7 @@ export function createServerInbox(o: {
 
   async function refresh(): Promise<void> {
     if (refreshing) return refreshing;
-    refreshing = (async () => {
+    const run = async () => {
       try {
         const core = o.core();
         if (!core?.allowed()) {
@@ -82,10 +99,13 @@ export function createServerInbox(o: {
         o.onChange();
       } catch (err) {
         o.log('inbox', '받기 실패', err instanceof Error ? err.message : String(err));
-      } finally {
-        refreshing = null;
       }
-    })();
+    };
+    // 바로 끝나도(서버 모드가 아닌 때) 대입이 먼저다 (#110 에서 찾음): finally 를 IIFE 안에 두면 끝난 약속이 refreshing 에
+    // 남아, 서버 모드를 켜기 전에 한 번 불린 뒤로는 쪽지함을 다시 받지 않았다
+    refreshing = run().finally(() => {
+      refreshing = null;
+    });
     return refreshing;
   }
 
@@ -102,6 +122,7 @@ export function createServerInbox(o: {
       o.react('happy');
       o.log('inbox', '열림', id, r.data.item.opened?.coins ?? 0, r.data.item.opened?.chatPasses ?? 0);
       const v = inboxView(r.data.item);
+      if (r.data.item.kind === 'friend') o.openFriends?.();
       await o.say({
         kind: 'answer',
         text: `${v.title}\n\n${v.lines.join('\n')}`,

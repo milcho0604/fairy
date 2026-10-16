@@ -32,6 +32,7 @@ import { Coins, parseEntries, parseMigrate } from './coins';
 import { type Config, googleEnabled, kakaoConfigured } from './config';
 import { Features } from './features';
 import { Feeds } from './feeds';
+import { Friends } from './friends';
 import { Inbox } from './inbox';
 import {
   doneUrl,
@@ -68,6 +69,7 @@ export class AccountController {
     private readonly backups: Backups,
     private readonly features: Features,
     private readonly feeds: Feeds,
+    private readonly friends: Friends,
   ) {}
 
   /** 구글 일정 연결 표시 (#115). 기능 키 calendar_link_hint 가 이 계정에 꺼져 있으면 null (앱은 안내하지 않는다) */
@@ -149,6 +151,8 @@ export class AccountController {
   async logout(@Auth() auth: AuthInfo): Promise<void> {
     if (!auth.sessionId) throw new BadRequestException({ error: 'session_token' });
     await this.accounts.deleteSession(auth.sessionId);
+    // 로그아웃하면 친구에게 보여 주던 바쁜 시간도 모두 끄고 지운다 (#110, 버그잡이 #135): 로그인해야 쓰는 기능이라
+    await this.friends.stopSharing(auth.accountId);
   }
 
   /** 탈퇴: 바로 지운다 (서버 백업 파일도) */

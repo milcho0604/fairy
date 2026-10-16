@@ -713,10 +713,15 @@ describe('코인 초기화 기능 키와 서버 백업 전체 상한', () => {
       ],
     );
     assert.equal(r.body.balance, 10);
+    // 친구 기능 (#110) 넷도 같은 목록에 있다 (기본 allowlist 와 off: 이 계정은 목록에 없다)
     assert.deepEqual((await api('GET', '/v1/features', { token: d })).body.features, {
       kakao_login: false,
       coin_reset: false,
       calendar_link_hint: false,
+      friends: false,
+      friend_gifts: false,
+      friend_calendar: false,
+      friend_gift_passes: false,
     });
   });
 
