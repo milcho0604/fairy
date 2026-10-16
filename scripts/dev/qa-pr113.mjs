@@ -487,7 +487,7 @@ async function apiLayer() {
     const evs = sse(q.text);
     check(A5, '질문 → done tickets 99', evs.at(-1)?.ev === 'done' && evs.at(-1).data.tickets === 99, q.text?.slice(-80));
     const body = fake.calls[n0]?.body ?? {};
-    check(A5, '업스트림 본문: model claude-haiku-5-5, thinking disabled, effort low, max_tokens 600, 샘플링 값 없음', body.model === 'claude-haiku-5-5' && body.thinking?.type === 'disabled' && body.output_config?.effort === 'low' && body.max_tokens === 600 && body.stream === true && !('temperature' in body) && !('top_p' in body) && !('top_k' in body), JSON.stringify({ model: body.model, thinking: body.thinking, oc: body.output_config, max: body.max_tokens, keys: Object.keys(body) }));
+    check(A5, '업스트림 본문: model claude-sonnet-5-5, thinking between_tools, effort low, fallbacks default, max_tokens 600, 샘플링 값 없음', body.model === 'claude-sonnet-5-5' && body.thinking?.type === 'between_tools' && body.output_config?.effort === 'low' && body.fallbacks === 'default' && body.max_tokens === 600 && body.stream === true && !('temperature' in body) && !('top_p' in body) && !('top_k' in body), JSON.stringify({ model: body.model, thinking: body.thinking, oc: body.output_config, max: body.max_tokens, keys: Object.keys(body) }));
     const rf = await chat('[[refusal]] x');
     const re = sse(rf.text);
     check(A5, '거절(refusal) → SSE error refusal, refunded, 99 그대로', re.at(-1)?.ev === 'error' && re.at(-1).data.error === 'refusal' && re.at(-1).data.refunded === true && Number(sql(`SELECT remaining FROM ai_ticket WHERE account_id = ${u.id}`)) === 99, rf.text?.slice(-160));
@@ -1231,7 +1231,7 @@ async function appA() {
       check(F, '질문 쓰고 "보내기" 누름', await sendQ(Q('안녕', 'hello')));
       check(F, '답 화면, 차감 99 (DB, 줄)', (await lastMsg()).includes('안녕! 나는 AI 야.') && remain() === 99 && (await c.ev(`document.querySelector('.ticket-count')?.innerText ?? ''`)).includes(T.count(99)), `${remain()} ${await c.ev(`document.querySelector('.ticket-count')?.innerText ?? ''`)}`);
       const body = fake.calls[n0]?.body ?? {};
-      check(F, '앱 질문이 서버를 거쳐 간 본문: model claude-haiku-5-5, thinking disabled, effort low', body.model === 'claude-haiku-5-5' && body.thinking?.type === 'disabled' && body.output_config?.effort === 'low' && !('temperature' in body), JSON.stringify({ m: body.model, t: body.thinking, o: body.output_config }));
+      check(F, '앱 질문이 서버를 거쳐 간 본문: model claude-sonnet-5-5, thinking between_tools, effort low', body.model === 'claude-sonnet-5-5' && body.thinking?.type === 'between_tools' && body.output_config?.effort === 'low' && !('temperature' in body), JSON.stringify({ m: body.model, t: body.thinking, o: body.output_config }));
       await sendQ(`[[refusal]] ${Q('이상한 질문', 'odd question')}`);
       const rmsg = await lastMsg();
       check(F, '거절: 안내 글, 이용권 되돌림 (99)', rmsg.includes(T.refusal) && remain() === 99, rmsg.slice(-120));

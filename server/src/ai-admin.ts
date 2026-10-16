@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import { lockAccount } from './accounts';
+import { AI_MAX_TOTAL_CHARS } from './ai-rules';
 import { CLOCK, CONFIG } from './app.tokens';
 import type { Config } from './config';
 import { Db } from './db';
@@ -39,12 +40,16 @@ export interface AiSettings {
   /** 실제로 쓰는 값 (설정과 .env 상한 중 작은 쪽) */
   monthlyBudgetMicros: number;
   dailyLimit: number;
+  /** 질문 글자 수 상한 (실제로 쓰는 값: 설정과 .env 상한 중 작은 쪽) */
+  inputChars: number;
   /** .env 상한 */
   capBudgetMicros: number;
   capDailyLimit: number;
+  capInputChars: number;
   /** 운영자가 넣은 값 (없으면 상한 그대로) */
   setBudgetMicros: number | null;
   setDailyLimit: number | null;
+  setInputChars: number | null;
   /** 허용된 계정에 저절로 거는 정기 지급 (매달 N장까지 채우기) */
   autoMonthly: number;
   /** 정기 지급 계정 상한 (자리). 차면 대기 */
@@ -126,10 +131,11 @@ export class AiAdmin implements OnModuleInit, OnModuleDestroy {
       seats: number;
       used: number;
       gift: boolean;
+      ic: number | null;
     }>(
       `SELECT (SELECT mode FROM feature_flag WHERE key = '${AI_FEATURE}') AS mode,
               monthly_budget_micros AS b, daily_limit AS d, auto_monthly AS auto, seat_limit AS seats,
-              first_gift AS gift, (SELECT count(*)::int FROM ai_subscription WHERE canceled_at IS NULL) AS used
+              first_gift AS gift, input_chars AS ic, (SELECT count(*)::int FROM ai_subscription WHERE canceled_at IS NULL) AS used
          FROM ai_setting WHERE id = 1`,
     );
     const row = r.rows[0];
@@ -137,14 +143,19 @@ export class AiAdmin implements OnModuleInit, OnModuleDestroy {
     const capDaily = this.config.ai?.dailyLimit ?? 0;
     const setB = row?.b === null || row?.b === undefined ? null : Number(row.b);
     const setD = row?.d ?? null;
+    const capInput = this.config.ai?.maxInputChars ?? AI_MAX_TOTAL_CHARS;
+    const setI = row?.ic ?? null;
     return {
       mode: row?.mode ?? 'off',
       monthlyBudgetMicros: Math.min(capBudget, setB ?? capBudget),
       dailyLimit: Math.min(capDaily, setD ?? capDaily),
+      inputChars: Math.min(capInput, setI ?? capInput),
       capBudgetMicros: capBudget,
       capDailyLimit: capDaily,
+      capInputChars: capInput,
       setBudgetMicros: setB,
       setDailyLimit: setD,
+      setInputChars: setI,
       autoMonthly: row?.auto ?? 100,
       seatLimit: row?.seats ?? 100,
       seatsUsed: row?.used ?? 0,
@@ -215,11 +226,20 @@ export class AiAdmin implements OnModuleInit, OnModuleDestroy {
   /** 접근 모드와 예산, 하루 상한. 상한(.env)을 넘는 값은 거절한다. 바뀌기 전과 뒤를 돌려준다 (운영 기록) */
   async setSettings(
     c: PoolClient,
-    o: { mode?: AiMode; monthlyBudgetMicros?: number | null; dailyLimit?: number | null },
+    o: {
+      mode?: AiMode;
+      monthlyBudgetMicros?: number | null;
+      dailyLimit?: number | null;
+      inputChars?: number | null;
+    },
   ): Promise<{ before: AiSettings; after: AiSettings }> {
     if (o.mode !== undefined && !AI_MODES.includes(o.mode))
       throw refused('mode', '모드는 off, allowlist, everyone');
     const before = await this.settings(c);
+    if (o.inputChars != null && (!Number.isInteger(o.inputChars) || o.inputChars < 1))
+      throw refused('input_chars', '질문 글자 수는 1 이상의 정수');
+    if (o.inputChars != null && o.inputChars > before.capInputChars)
+      throw refused('over_cap', `질문 글자 수는 .env 상한 ${before.capInputChars} 이하만`);
     if (o.monthlyBudgetMicros != null && o.monthlyBudgetMicros > before.capBudgetMicros)
       throw refused('over_cap', `월 예산은 .env 상한 $${(before.capBudgetMicros / 1e6).toFixed(2)} 이하만`);
     if (o.dailyLimit != null && o.dailyLimit > before.capDailyLimit)
@@ -232,13 +252,16 @@ export class AiAdmin implements OnModuleInit, OnModuleDestroy {
       );
     await c.query(
       `UPDATE ai_setting SET monthly_budget_micros = CASE WHEN $1 THEN $2::bigint ELSE monthly_budget_micros END,
-              daily_limit = CASE WHEN $3 THEN $4::int ELSE daily_limit END, updated_at = now()
+              daily_limit = CASE WHEN $3 THEN $4::int ELSE daily_limit END,
+              input_chars = CASE WHEN $5 THEN $6::int ELSE input_chars END, updated_at = now()
         WHERE id = 1`,
       [
         o.monthlyBudgetMicros !== undefined,
         o.monthlyBudgetMicros ?? null,
         o.dailyLimit !== undefined,
         o.dailyLimit ?? null,
+        o.inputChars !== undefined,
+        o.inputChars ?? null,
       ],
     );
     return { before, after: await this.settings(c) };

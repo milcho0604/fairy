@@ -29,9 +29,10 @@ before(async () => {
       ai: {
         apiKey: '',
         baseUrl: 'http://127.0.0.1:9',
-        model: 'claude-haiku-5-5',
+        model: 'claude-sonnet-5-5',
         monthlyBudgetMicros: 5_000_000,
         dailyLimit: 20,
+        maxInputChars: 8000,
         giftKey: `gift-${randomUUID()}`,
       },
     },
@@ -157,6 +158,22 @@ describe('채팅 이용권 접근 모드', () => {
     assert.equal(o.body.ai.dailyLimit, 3);
     assert.equal((await api('GET', '/v1/ai', { token: adminSession })).body.dailyLimit, 3);
     assert.equal((await adminApi('ai/limits', { budget_usd: '', daily_limit: '' })).status, 200);
+
+    // 질문 글자 수: .env 상한(8000) 이하만, 빈 칸은 상한 그대로
+    const big = await adminApi('ai/limits', { budget_usd: '', daily_limit: '', input_chars: '9000' });
+    assert.equal(big.status, 400);
+    assert.match(big.body.text, /상한/);
+    assert.equal(
+      (await adminApi('ai/limits', { budget_usd: '', daily_limit: '', input_chars: '100' })).status,
+      200,
+    );
+    assert.equal((await adminApi('overview')).body.ai.inputChars, 100);
+    assert.equal((await adminApi('overview')).body.ai.capInputChars, 8000);
+    assert.equal(
+      (await adminApi('ai/limits', { budget_usd: '', daily_limit: '', input_chars: '' })).status,
+      200,
+    );
+    assert.equal((await adminApi('overview')).body.ai.inputChars, 8000);
 
     const left = (await api('GET', '/v1/ai', { token: adminSession })).body.tickets;
     assert.equal((await adminApi('ai/revoke', { account: adminAccount.code, count: 1 })).status, 400);

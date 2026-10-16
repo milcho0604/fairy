@@ -602,33 +602,46 @@ export class AdminService {
     });
   }
 
-  /** 월 예산(달러)과 하루 상한. 빈 칸은 .env 상한 그대로 */
+  /** 월 예산(달러), 하루 상한, 질문 글자 수 상한. 빈 칸은 .env 상한 그대로 */
   async aiLimits(actor: string, f: FormFields): Promise<AdminDone> {
     const b = (f.budget_usd ?? '').trim();
     const d = (f.daily_limit ?? '').trim();
+    const ic = (f.input_chars ?? '').trim();
     const usd = b === '' ? null : Number(b);
     if (usd !== null && (!Number.isFinite(usd) || usd < 0)) throw new Refused('월 예산은 0 이상의 달러');
     const daily = d === '' ? null : Number(d);
     if (daily !== null && (!Number.isInteger(daily) || daily < 0))
       throw new Refused('하루 상한은 0 이상의 정수');
+    const chars = ic === '' ? null : Number(ic);
+    if (chars !== null && (!Number.isInteger(chars) || chars < 1))
+      throw new Refused('질문 글자 수는 1 이상의 정수');
     return this.write(actor, async (c) => {
       let r: Awaited<ReturnType<AiAdmin['setSettings']>>;
       try {
         r = await this.aiAdmin.setSettings(c, {
           monthlyBudgetMicros: usd === null ? null : Math.round(usd * 1_000_000),
           dailyLimit: daily,
+          inputChars: chars,
         });
       } catch (err) {
         throw refusedFrom(err);
       }
       return {
-        text: `월 예산 $${(r.after.monthlyBudgetMicros / 1e6).toFixed(2)}, 하루 ${r.after.dailyLimit}번으로 저장했어요`,
+        text: `월 예산 $${(r.after.monthlyBudgetMicros / 1e6).toFixed(2)}, 하루 ${r.after.dailyLimit}번, 질문 ${r.after.inputChars}자로 저장했어요`,
         log: [
           'ai.limits',
           null,
           {
-            before: { budget: r.before.setBudgetMicros, daily: r.before.setDailyLimit },
-            after: { budget: r.after.setBudgetMicros, daily: r.after.setDailyLimit },
+            before: {
+              budget: r.before.setBudgetMicros,
+              daily: r.before.setDailyLimit,
+              inputChars: r.before.setInputChars,
+            },
+            after: {
+              budget: r.after.setBudgetMicros,
+              daily: r.after.setDailyLimit,
+              inputChars: r.after.setInputChars,
+            },
           },
         ],
       };

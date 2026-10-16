@@ -340,7 +340,7 @@ export class AiController {
   @Post('chat')
   async chat(@Auth() auth: AuthInfo, @Body() body: unknown, @Res() res: StreamRes): Promise<void> {
     this.limiter.check(`ai:${auth.accountId}`, LIMITS.aiByAccount);
-    const req = parseChatRequest(body);
+    const req = parseChatRequest(body, await this.ai.inputLimit());
     if ('error' in req) throw new BadRequestException({ error: req.error });
     await this.ai.relay(auth, req, res);
   }
