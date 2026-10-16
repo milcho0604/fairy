@@ -16,6 +16,8 @@ export const PET_STATE_FILES = [
   'pet-memory.json',
   'diary.json',
   'knows.json',
+  // 사용자가 고친 펫 대사 (#125). 고친 칸만 든다. 읽을 때 사전에 맞춰 정리한다 (main/lines.ts)
+  'speech-lines.json',
 ] as const;
 
 export const IMPORT_FILES = [

@@ -2,7 +2,7 @@
 // 츤데레, 차분한 선생님) 말투로. 다정한 친구는 원래 말 그대로이고, 나머지는 사전의 voice.<성격>.<원래 키> 를 쓴다.
 // AI 없이 정해진 말이다. 메인이 시작할 때 setVoiceSource 로 지금 성격을 읽는 곳을 정한다 (안 정하면 다정한 친구)
 import type { PersonaId } from './ai/persona.ts';
-import { dicts, getLang, type I18nKey, t } from './i18n/index.ts';
+import { dicts, getLang, hasLineOverride, type I18nKey, t } from './i18n/index.ts';
 import {
   applyStyle,
   callWord,
@@ -178,7 +178,8 @@ export function voiced(
   }
   const base = basePersonaOf(persona, custom ?? customSource());
   let text = looseT(key, vars);
-  if (base !== 'friend') {
+  // 사용자가 직접 고친 대사는 말투와 상관없이 그 글을 쓴다 (말투 변형이 고친 글을 가리지 않게, #125)
+  if (base !== 'friend' && !hasLineOverride(key)) {
     const alt = `voice.${base}.${key}`;
     const dict = (getLang() === 'en' ? dicts.en : dicts.ko) as Record<string, unknown>;
     if (alt in dict) text = looseT(alt, vars);

@@ -1,0 +1,172 @@
+import { useEffect, useState } from 'react';
+import { FOCUS_STEPS, monthCells, monthOf, monthTotals, shiftMonth } from '../../../shared/focus-month.ts';
+import { locale, t } from '../../../shared/i18n/index.ts';
+import type { FocusMonthView, PanelState } from '../../../shared/ipc.ts';
+import './records.css';
+
+const bridge = window.jjakkungPanel;
+
+/** 분을 "1시간 15분" / "1h 15m" 로 */
+export function fmtMinutes(min: number): string {
+  return min >= 60
+    ? t('bond.week.hm', { h: Math.floor(min / 60), m: min % 60 })
+    : t('bond.week.m', { m: min });
+}
+
+const dateLabel = (day: string): string => {
+  const [y = 2000, m = 1, d = 1] = day.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(locale(), {
+    month: 'long',
+    day: 'numeric',
+    weekday: 'short',
+  });
+};
+
+const monthLabel = (ym: string): string => {
+  const [y = 2000, m = 1] = ym.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString(locale(), { year: 'numeric', month: 'long' });
+};
+
+/**
+ * 집중 월간 잔디 (#125, shared/focus-month.ts). 이번 주 칸 옆에서 달을 넘겨 가며 날마다 집중한 양을 색 다섯 단계로 본다.
+ * 색만으로 구분하지 않게 칸에 분 숫자를 쓰고 칸마다 툴팁(title)과 읽기 글(aria-label)이 있다.
+ * 날짜를 누르면 그날 총 시간과 가장 길게 이어 간 집중이 아래에 나온다
+ */
+export function FocusMonth({ s }: { s: PanelState }) {
+  const thisMonth = monthOf(s.today);
+  const [month, setMonth] = useState(thisMonth);
+  // 패널을 연 채 달이 바뀌면(자정) 이번 달을 보고 있던 사람은 새 달로 따라간다
+  const [seenMonth, setSeenMonth] = useState(thisMonth);
+  if (seenMonth !== thisMonth) {
+    setSeenMonth(thisMonth);
+    if (month === seenMonth) setMonth(thisMonth);
+  }
+  const [view, setView] = useState<FocusMonthView>();
+  const [pick, setPick] = useState<string>();
+  // 집중이 끝나거나 멈추면(단계가 바뀜) 오늘 칸이 바뀐다
+  const refresh = `${s.focus.phase}:${s.week?.focusMin ?? 0}`;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refresh 는 다시 읽을 때를 알리는 값이다
+  useEffect(() => {
+    let alive = true;
+    void bridge.focusMonth(month).then((v) => {
+      if (alive && v) setView(v);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [month, refresh]);
+
+  const days = view?.month === month ? view.days : [];
+  const weeks = monthCells(month, days, s.today);
+  const totals = monthTotals(days);
+  const labels = t('assist.week.days').split(',');
+  const first = view?.firstMonth ?? thisMonth;
+  const canPrev = month > first;
+  const canNext = month < thisMonth;
+  const go = (delta: number) => {
+    setMonth(shiftMonth(month, delta));
+    setPick(undefined);
+  };
+  const picked = pick ? weeks.flat().find((c) => c.day === pick) : undefined;
+
+  return (
+    <details className="achieve focus-month">
+      <summary>
+        {t('records.month.title')}
+        <small>{t('records.month.summary', { min: fmtMinutes(totals.min), days: totals.days })}</small>
+      </summary>
+      <div className="fm-nav">
+        <button
+          type="button"
+          className="ghost fm-step"
+          disabled={!canPrev}
+          aria-label={t('records.month.prev')}
+          title={t('records.month.prev')}
+          onClick={() => go(-1)}
+        >
+          ‹
+        </button>
+        <strong className="fm-month" aria-live="polite">
+          {monthLabel(month)}
+        </strong>
+        <button
+          type="button"
+          className="ghost fm-step"
+          disabled={!canNext}
+          aria-label={t('records.month.next')}
+          title={t('records.month.next')}
+          onClick={() => go(1)}
+        >
+          ›
+        </button>
+      </div>
+      <fieldset className="fm-grid" aria-label={t('records.month.grid', { month: monthLabel(month) })}>
+        {labels.map((l) => (
+          <span key={l} className="fm-dow" aria-hidden="true">
+            {l}
+          </span>
+        ))}
+        {weeks.flat().map((c) => {
+          const day = c.day;
+          if (!day) return <span key={c.key} className="fm-blank" aria-hidden="true" />;
+          const date = dateLabel(day);
+          const label = c.future
+            ? t('records.month.cellFuture', { date })
+            : c.min > 0
+              ? t('records.month.cell', { date, min: fmtMinutes(c.min) })
+              : t('records.month.cellNone', { date });
+          return (
+            <button
+              key={day}
+              type="button"
+              className={`fm-cell lv${c.level}${c.future ? ' future' : ''}${day === s.today ? ' today' : ''}${pick === day ? ' picked' : ''}`}
+              title={label}
+              aria-label={label}
+              aria-pressed={pick === day}
+              disabled={c.future}
+              data-day={day}
+              onClick={() => setPick(pick === day ? undefined : day)}
+            >
+              <span className="fm-d">{Number(day.slice(8, 10))}</span>
+              {c.min > 0 && <b className="fm-m">{c.min}</b>}
+            </button>
+          );
+        })}
+      </fieldset>
+      <p className="fm-detail" role="status" aria-live="polite">
+        {picked?.day
+          ? picked.min === 0
+            ? t('records.month.detailNone', { date: dateLabel(picked.day) })
+            : picked.longest > 0
+              ? t('records.month.detail', {
+                  date: dateLabel(picked.day),
+                  total: fmtMinutes(picked.min),
+                  longest: fmtMinutes(picked.longest),
+                })
+              : t('records.month.detailNoLongest', {
+                  date: dateLabel(picked.day),
+                  total: fmtMinutes(picked.min),
+                })
+          : totals.days === 0
+            ? t('records.month.empty')
+            : t('records.month.pick')}
+      </p>
+      <div className="fm-legend" aria-hidden="true">
+        <small>{t('records.month.legend')}</small>
+        <span className="fm-swatches">
+          <span>
+            <i className="lv0" />
+            <small>0</small>
+          </span>
+          {FOCUS_STEPS.map((min, i) => (
+            <span key={min} title={t('records.month.legendStep', { min })}>
+              <i className={`lv${i + 1}`} />
+              <small>{min}+</small>
+            </span>
+          ))}
+        </span>
+      </div>
+      <small className="fm-note">{t('records.month.note')}</small>
+    </details>
+  );
+}

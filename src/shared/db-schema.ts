@@ -210,6 +210,22 @@ export const MIGRATIONS: readonly string[] = [
   alter table note add column pinned_at integer;
   alter table event add column pinned_at integer;
   `,
+  // 14판: 기록 (#125). 할 일 휴지통 30일과 집중 월간 잔디.
+  // 지운 할 일은 deleted_at 으로 이미 목록에서만 빠져 있었다. 이제 30일 휴지통에서 되살리거나 영구 삭제한다.
+  // auto_removed 는 사람이 지운 게 아니라 되돌리기가 걷어 낸 다음 회차(1)라 휴지통에 보이지 않는다.
+  // focus_session 은 집중 한 번(끝까지 했거나 중간에 그만둔)마다 한 줄: 날마다 가장 길게 이어 간 집중을 보여 주려고.
+  // minutes 는 실제 집중한 분이라 잠자기나 시계 점프로 건너뛴 시간은 들지 않는다. day 는 끝난 날 (daily_stat 과 같은 기준)
+  `
+  alter table todo add column auto_removed integer not null default 0;
+  create index todo_trash on todo(deleted_at) where deleted_at is not null;
+  create table focus_session (
+    id integer primary key,
+    day text not null,         -- 끝난 날 YYYY-MM-DD (현지)
+    at integer not null,       -- 끝난 시각(ms)
+    minutes integer not null
+  );
+  create index focus_session_day on focus_session(day);
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

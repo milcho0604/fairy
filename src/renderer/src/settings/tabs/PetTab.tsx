@@ -15,6 +15,7 @@ import { PetNameInput } from '../../PetNameInput.tsx';
 import { Friends } from '../Friends.tsx';
 import { GaitPicker } from '../GaitPicker.tsx';
 import { Gallery } from '../Gallery.tsx';
+import { LinesEditor } from '../LinesEditor.tsx';
 import { PetPicker } from '../PetPicker.tsx';
 import { bridge, isMac, Section, type TabProps, Toggle } from '../ui.tsx';
 import { WearBox } from '../WearBox.tsx';
@@ -34,6 +35,7 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
   const mod = mac ? 'Cmd' : 'Ctrl';
   const [name, setName] = useState(s.petName);
   const [scale, setScale] = useState(snap.scale);
+  const [linesOpen, setLinesOpen] = useState(false);
   // 이름 칸에서 나가지 않고 창을 닫아도 고친 이름을 잃지 않게 (닫을 때 저장).
   // 사용자가 칸을 고쳤을 때만 저장한다. 다른 곳(펫 만들기, 가져오기)에서 바뀐 이름은 칸에 받아 온다
   const nameEdited = useRef(false);
@@ -287,6 +289,16 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
 
       <Section title={t('settings.gallery')}>
         <Gallery onMsg={flash} meta={snap.current?.meta} personal={isPersonalPet(snap.settings)} />
+      </Section>
+
+      <Section title={t('records.lines.title')}>
+        <small>{t('records.lines.hint')}</small>
+        <div className="action-row">
+          <button type="button" className="ghost" onClick={() => setLinesOpen(true)}>
+            {t('records.lines.open')}
+          </button>
+        </div>
+        {linesOpen && <LinesEditor onClose={() => setLinesOpen(false)} onMsg={flash} />}
       </Section>
 
       <Section title={t('settings.sulk')}>

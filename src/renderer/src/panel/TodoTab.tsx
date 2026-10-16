@@ -21,6 +21,7 @@ import { MoreRow } from './more.tsx';
 import { pageOf } from './paging.ts';
 import { PinButton, PinMark, usePinMenu } from './pin.tsx';
 import { RemindButton, RemindSheet } from './RemindPicker.tsx';
+import { TrashBox } from './TrashBox.tsx';
 
 const bridge = window.jjakkungPanel;
 /** 쓰다 만 한 줄. 다른 곳을 눌러 패널이 닫혀도 다음에 열면 그대로 있다 */
@@ -275,6 +276,7 @@ export function TodoTab({
           )}
         </div>
       )}
+      <TrashBox s={s} />
     </>
   );
 }

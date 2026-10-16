@@ -3,6 +3,7 @@
 import { plusDays } from './day.ts';
 import type { Db } from './db-schema.ts';
 import type { DiaryFacts } from './diary.ts';
+import type { FocusDay } from './focus-month.ts';
 import { t } from './i18n/index.ts';
 import { localDay } from './todo-store.ts';
 
@@ -114,9 +115,46 @@ export class StatStore {
     return r?.day ?? null;
   }
 
-  /** 집중 타이머로 집중한 분 (v1) */
+  /**
+   * 집중 타이머로 집중한 분 (v1). 한 번(끝까지 했거나 중간에 그만둔)마다 focus_session 에도 한 줄 남긴다 (#125 월간 잔디의
+   * "가장 길게 이어 간 집중"). minutes 는 실제 집중한 분이라 잠자기와 시계 점프로 건너뛴 시간은 들지 않는다 (shared/focus.ts skipGap).
+   * 자정을 넘긴 집중은 끝난 날에 통째로 센다 (daily_stat 의 하루 합과 같은 기준이라 한 날의 긴 집중이 총 분을 넘지 않는다)
+   */
   addFocus(now: number, minutes: number): void {
-    if (minutes > 0) this.#add(now, 'focus_min', Math.round(minutes));
+    const min = Math.round(minutes);
+    if (!(min > 0)) return;
+    this.#add(now, 'focus_min', min);
+    this.#db
+      .prepare('insert into focus_session (day, at, minutes) values (?, ?, ?)')
+      .run(this.#day(now), Math.floor(now), min);
+  }
+
+  /** 그 달(YYYY-MM)의 날마다 집중 기록. 기록이 있는 날만, 날짜 순 */
+  focusMonth(ym: string): FocusDay[] {
+    const like = `${ym}-%`;
+    const totals = this.#db
+      .prepare('select day, focus_min from daily_stat where day like ? and focus_min > 0 order by day')
+      .all(like) as { day: string; focus_min: number }[];
+    const longest = new Map(
+      (
+        this.#db
+          .prepare('select day, max(minutes) as m from focus_session where day like ? group by day')
+          .all(like) as { day: string; m: number }[]
+      ).map((r) => [r.day, Number(r.m)]),
+    );
+    return totals.map((r) => ({
+      day: r.day,
+      min: Number(r.focus_min),
+      longest: Math.min(Number(r.focus_min), longest.get(r.day) ?? 0),
+    }));
+  }
+
+  /** 집중 기록이 처음 있는 날 (월간 잔디가 거슬러 갈 수 있는 끝). 없으면 null */
+  firstFocusDay(): string | null {
+    const r = this.#db.prepare('select min(day) as day from daily_stat where focus_min > 0').get() as {
+      day: string | null;
+    };
+    return r?.day ?? null;
   }
 
   /**

@@ -23,10 +23,12 @@ import {
   parseQuickEventInfo,
 } from '../shared/event-store.ts';
 import { type FocusState, focusCoins, isFocusLength } from '../shared/focus.ts';
+import { isMonth, monthOf } from '../shared/focus-month.ts';
 import type { GcalCalLabel, PanelGcal } from '../shared/gcal.ts';
 import { t } from '../shared/i18n/index.ts';
 import {
   type EventClash,
+  type FocusMonthView,
   type NoteAiKind,
   type NoteSaveResult,
   PANEL,
@@ -221,6 +223,7 @@ export function createPanel(o: PanelOptions) {
         houseHidden: o.houseHidden(),
       },
       ...(week(now, open) ?? {}),
+      trashCount: o.store.trashCount(),
     };
   }
 
@@ -774,6 +777,55 @@ export function createPanel(o: PanelOptions) {
     if (!ours(e) || typeof id !== 'number') return;
     o.store.restore(id);
     push();
+  });
+  // 할 일 휴지통 (#125): 열 때 30일이 지난 것을 영구 삭제하고 목록을 준다. 코인은 지울 때도 되살릴 때도 움직이지 않는다
+  ipcMain.handle(PANEL.trashList, (e) => {
+    if (!ours(e)) return [];
+    const now = Date.now();
+    const gone = o.store.purgeExpired(now);
+    if (gone > 0) {
+      log('todo', '휴지통 30일 지난 것 영구 삭제', gone);
+      push();
+    }
+    return o.store.trash(now);
+  });
+  ipcMain.handle(PANEL.trashRestore, (e, id: unknown) => {
+    if (!ours(e) || typeof id !== 'number') return undefined;
+    const todo = o.store.restoreFromTrash(id);
+    if (todo) log('todo', '휴지통에서 되살림', id);
+    push();
+    return todo;
+  });
+  ipcMain.handle(PANEL.trashPurge, (e, id: unknown) => {
+    if (!ours(e) || typeof id !== 'number') return 0;
+    const n = o.store.purge([id]);
+    if (n > 0) log('todo', '영구 삭제', id);
+    push();
+    return n;
+  });
+  ipcMain.handle(PANEL.trashEmpty, (e) => {
+    if (!ours(e)) return 0;
+    const n = o.store.emptyTrash();
+    log('todo', '휴지통 비움', n);
+    push();
+    return n;
+  });
+  // 집중 월간 잔디 (#125)
+  ipcMain.handle(PANEL.focusMonth, (e, month: unknown): FocusMonthView | undefined => {
+    if (!ours(e) || !isMonth(month)) return undefined;
+    const thisMonth = monthOf(localDay(Date.now()));
+    const stats = o.stats;
+    try {
+      const first = stats?.firstFocusDay();
+      return {
+        month,
+        days: stats?.focusMonth(month) ?? [],
+        firstMonth: first ? monthOf(first) : thisMonth,
+      };
+    } catch (err) {
+      log('panel', '집중 기록 못 읽음', err instanceof Error ? err.message : String(err));
+      return { month, days: [], firstMonth: thisMonth };
+    }
   });
   ipcMain.handle(PANEL.feed, (e) => {
     if (!ours(e)) return { ok: false };
