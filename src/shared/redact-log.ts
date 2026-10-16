@@ -42,6 +42,16 @@ function longEnough(s: string): boolean {
 /** 토큰 머리 (서비스가 정한 꼴) */
 const TOKEN_RES: RegExp[] = [
   /\bhf_[A-Za-z0-9]{8,}/g, // Hugging Face
+  /\bf[ds]_[A-Za-z0-9_-]{20,}/g, // 페어리 서버의 기기 토큰(fd_), 세션 토큰(fs_) (이슈 #126). 기기 코드는 토큰이 아니라 둔다
+  /\btskey-[A-Za-z0-9-]{8,}/g, // Tailscale
+  /\bGOCSPX-[A-Za-z0-9_-]{8,}/g, // 구글 클라이언트 보안 비밀
+  /\b[rsp]k_(?:live|test)_[A-Za-z0-9]{8,}/g, // Stripe
+  /\bnpm_[A-Za-z0-9]{20,}/g,
+  /\b(?:ntn|secret)_[A-Za-z0-9]{30,}/g, // Notion
+  /\bsbp_[A-Za-z0-9]{20,}/g, // Supabase
+  /\bdop_v1_[A-Za-z0-9]{20,}/g, // DigitalOcean
+  /\bSG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}/g, // SendGrid
+  /\bshp(?:at|ss|ca)_[A-Za-z0-9]{16,}/g, // Shopify
   /\bsk-[A-Za-z0-9_-]{8,}/g, // Anthropic, OpenAI (sk-ant-, sk-proj-)
   /\bgh[pousr]_[A-Za-z0-9]{8,}/g, // GitHub
   /\bgithub_pat_[A-Za-z0-9_]{8,}/g,

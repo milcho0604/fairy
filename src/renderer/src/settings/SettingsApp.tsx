@@ -17,6 +17,7 @@ import {
 } from '../../../shared/settings-tabs.ts';
 import { isCodexPetFileName, isImportFileName } from '../../../shared/url-scheme.ts';
 import { escClosesWindow } from '../panel/keys.ts';
+import { HELP_OPEN_EVENT, isHelpKey } from './HelpBox.tsx';
 import { AboutTab } from './tabs/AboutTab.tsx';
 import { AiTab } from './tabs/AiTab.tsx';
 import { AssistTab } from './tabs/AssistTab.tsx';
@@ -165,6 +166,14 @@ export function SettingsApp() {
         return;
       }
       if (e.isComposing) return;
+      // Cmd/Ctrl+Shift+H: 정보 탭으로 가서 도움 보내기 창을 연다 (이슈 #126)
+      if (isHelpKey(e, mod)) {
+        e.preventDefault();
+        if (searchingNow.current) setQuery('');
+        setTabState('about');
+        window.dispatchEvent(new Event(HELP_OPEN_EVENT));
+        return;
+      }
       const next = globalTabKey(
         { key: e.key, code: e.code, mod, altKey: e.altKey, shiftKey: e.shiftKey },
         tabNow.current,

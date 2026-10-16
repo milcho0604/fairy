@@ -101,7 +101,9 @@ export const BUILTIN_PROVIDERS: readonly ProviderSpec[] = [
     label: 'Gemini',
     bin: 'gemini',
     adapter: 'text',
-    args: ['-p', '{prompt}'],
+    // 읽기 전용 강제 (이슈 #126): 승인 방식을 default 로 박는다. 사용자 설정이 yolo, auto_edit 여도 이번 실행은 확인이 필요한 도구(파일 쓰기,
+    // 명령)를 헤드리스에서 거절한다 (Gemini CLI 문서: 정책 엔진의 ask_user 는 비대화형에서 deny)
+    args: ['--approval-mode', 'default', '-p', '{prompt}'],
     images: false,
     verified: false,
     get installHint() {

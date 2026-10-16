@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { isUsable } from '../../../shared/ai/capability.ts';
 import { formatBytes } from '../../../shared/bytes.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { OnboardAi, OnboardSnapshot } from '../../../shared/ipc.ts';
@@ -291,11 +292,40 @@ export function OnboardingApp() {
                 <strong>{t('onboarding.look.windows')}</strong>
               </div>
             )}
-            <p className="hint">
-              {ai && !ai.hasCli
-                ? t('onboarding.look.aiFree', { size: formatBytes(ai.freeModelBytes) })
-                : t('onboarding.look.ai')}
-            </p>
+            {/* 이 컴퓨터에서 찾은 AI (이슈 #126): 설치와 로그인만 가볍게 본 결과. 확인이 끝나기 전에는 원래 안내 한 줄 */}
+            {ai?.detect ? (
+              <div className="ai-found">
+                <strong>{t('support.onb.title')}</strong>
+                <ul>
+                  {ai.detect.map((r) => (
+                    <li
+                      key={r.id}
+                      data-ai={r.id}
+                      data-state={r.state}
+                      className={isUsable(r.state) ? 'ok' : ''}
+                    >
+                      <span>{t(`support.ai.name.${r.id}`)}</span>
+                      <span>
+                        {r.id === 'local' && r.state === 'missing'
+                          ? t('support.ai.state.localMissing')
+                          : t(
+                              r.state === 'found-unchecked'
+                                ? 'support.ai.state.found'
+                                : `support.ai.state.${r.state}`,
+                            )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                {!ai.hasCli && (
+                  <p className="hint">
+                    {t('onboarding.look.aiFree', { size: formatBytes(ai.freeModelBytes) })}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="hint">{t('onboarding.look.ai')}</p>
+            )}
           </section>
         )}
 

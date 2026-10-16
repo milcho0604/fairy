@@ -17,7 +17,8 @@ import { codexUsage, lastCodexLimits } from '../../shared/ai/usage.ts';
 import { aiTempImageName, isAiTempImage } from '../../shared/capture.ts';
 import { t } from '../../shared/i18n/index.ts';
 import { aiWorkDir } from '../ai-history.ts';
-import { finishCodexHome, prepareCodexHome } from './codex-home.ts';
+import { guardLaunch } from '../mcp-launch.ts';
+import { finishCodexHome, prepareCodexHome, readCodexMcpNames } from './codex-home.ts';
 import { getShellEnv, launchOf, resolveBin } from './shell-env.ts';
 
 /** 이 시간 동안 출력이 하나도 없으면 멈춘 것으로 본다. */
@@ -150,7 +151,7 @@ export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
 
     if (spec.adapter === 'claude') {
       const sessionId = req.sessionId ?? randomUUID();
-      args = claudeArgs({ ...req, sessionId, resume: !!req.sessionId });
+      args = claudeArgs({ ...req, sessionId, resume: !!req.sessionId, guard: guardLaunch() });
       stdin = claudeInput(req);
       parse = parseClaudeLine;
     } else if (spec.adapter === 'cursor') {
@@ -174,6 +175,8 @@ export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
         ephemeral: req.ephemeral,
         model: req.model,
         jjServer: req.jjServer,
+        // 격리를 껐으면 사용자 설정의 MCP 서버를 이번 실행에서 끈다 (읽기 전용 강제, 이슈 #126)
+        userMcpNames: req.isolate ? [] : readCodexMcpNames(env.codexHome),
       });
       // 격리하면 짝꿍 전용 폴더(auth.json 만 연결), 아니면 사용자의 codex 설정 폴더 그대로.
       codexHome = req.isolate ? prepareCodexHome(env.codexHome) : env.codexHome;

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { type BetaReport, goalsMet, TARGET } from '../../../shared/beta-stats.ts';
 import { t } from '../../../shared/i18n/index.ts';
-import { FeedbackBox } from './FeedbackBox.tsx';
 import { bridge } from './ui.tsx';
 
 /**
@@ -109,7 +108,6 @@ export function Stats({ onCopied }: { onCopied: (ok: boolean) => void }) {
           </button>
         </div>
         <small>{t('settings.stats.privacy')}</small>
-        <FeedbackBox />
       </div>
     </section>
   );

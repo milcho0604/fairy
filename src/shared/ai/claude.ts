@@ -1,6 +1,7 @@
 // claude CLI 의 stream-json 입력을 만들고 출력을 읽는다. 0단계 검증 C1~C6, L5, L13.
 import { t } from '../i18n/index.ts';
 import { classifyError } from './errors.ts';
+import { CLAUDE_WRITE_TOOLS, guardSettings } from './guard.ts';
 import { type AiEvent, type ImageAttachment, JJ_MCP_NAME, type McpLaunch } from './types.ts';
 import { claudeUsage } from './usage.ts';
 
@@ -31,6 +32,11 @@ export interface ClaudeTurn {
   jjServer?: McpLaunch;
   /** 웹 검색 도구(WebSearch) 하나만 켠다 (말로 만들기). 파일, 명령 도구는 그대로 끈다 */
   webSearch?: boolean;
+  /**
+   * 읽기 전용 훅을 띄우는 명령 (shared/ai/guard.ts, 이슈 #126). 격리를 껐을 때 내 MCP 서버의 쓰기 도구(메일 보내기 등)를 막는다.
+   * 이게 없으면 내 MCP 서버는 하나도 허락하지 않는다 (훅 없이는 못 막으니 닫는다)
+   */
+  guard?: McpLaunch;
 }
 
 /** 짝꿍 MCP 서버 하나만 담은 --mcp-config 값 */
@@ -44,9 +50,9 @@ export function jjMcpConfig(server: McpLaunch | undefined): string {
  * 빈 MCP 설정을 엄격하게 지정해 늘 빼 둔다.
  */
 export function claudeArgs(turn: ClaudeTurn): string[] {
-  // 허락할 MCP: 격리를 껐을 때 내 MCP 서버들, 그리고 짝꿍 도구. 기본 도구(--tools '')는 그대로 끈다
+  // 허락할 MCP: 격리를 껐을 때 내 MCP 서버들(읽기 전용 훅이 있을 때만), 그리고 짝꿍 도구. 기본 도구(--tools '')는 그대로 끈다
   const allowed = [
-    ...(turn.isolate === false ? (turn.mcpServers ?? []) : []),
+    ...(turn.isolate === false && turn.guard ? (turn.mcpServers ?? []) : []),
     ...(turn.jjServer ? [JJ_MCP_NAME] : []),
   ];
   const search = turn.webSearch ? ['WebSearch'] : [];
@@ -76,6 +82,13 @@ export function claudeArgs(turn: ClaudeTurn): string[] {
     ...(allowed.length || search.length
       ? ['--allowedTools', [...allowed.map(mcpToolPrefix), ...search].join(',')]
       : []),
+    // 읽기 전용 강제 (이슈 #126). 사용자 설정(허용 목록, 우회 모드)과 상관없이: 쓰기 도구는 명시 거부(거부가 허용보다 먼저),
+    // 허락하지 않은 도구는 묻지 않고 거절(dontAsk), 내 MCP 도구는 PreToolUse 훅이 이름으로 읽기만 통과
+    '--disallowedTools',
+    CLAUDE_WRITE_TOOLS.join(','),
+    '--permission-mode',
+    'dontAsk',
+    ...(turn.isolate === false && turn.guard ? ['--settings', guardSettings(turn.guard)] : []),
     ...(turn.model ? ['--model', turn.model] : []),
     '--append-system-prompt',
     turn.persona,

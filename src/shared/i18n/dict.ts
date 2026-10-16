@@ -39,6 +39,7 @@ import * as server from './server.ts';
 import * as settings from './settings.ts';
 import * as shop from './shop.ts';
 import * as speech from './speech.ts';
+import * as support from './support.ts';
 import * as tabs from './tabs.ts';
 import * as together from './together.ts';
 import * as tray from './tray.ts';
@@ -72,6 +73,7 @@ export const ko = {
   ...ease.ko,
   ...companion.ko,
   ...feedback.ko,
+  ...support.ko,
   ...tabs.ko,
   ...gcal.ko,
   ...gemini.ko,
@@ -120,6 +122,7 @@ export const en: Translation<typeof ko> = {
   ...ease.en,
   ...companion.en,
   ...feedback.en,
+  ...support.en,
   ...tabs.en,
   ...gcal.en,
   ...gemini.en,

@@ -1,7 +1,8 @@
-import { copyFileSync, existsSync, lstatSync, mkdirSync, rmSync, symlinkSync } from 'node:fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { app } from 'electron';
+import { codexMcpNames } from '../../shared/ai/guard.ts';
 import { returnCodexAuth } from './codex-auth.ts';
 
 /** 사용자 쪽 codex 로그인 파일. 추측하지 않고 CODEX_HOME, ~/.codex 순서로 찾는다 */
@@ -42,4 +43,17 @@ export function prepareCodexHome(userCodexHome: string | undefined): string | un
     copyFileSync(auth, link);
   }
   return home;
+}
+
+/**
+ * 격리를 껐을 때 codex 가 읽을 사용자 설정(config.toml)에 든 MCP 서버 이름들. 읽기 전용 강제(이슈 #126)가 이번 실행에서 끈다.
+ * 설정 파일이 없거나 못 읽으면 빈 목록 (끌 것이 없다)
+ */
+export function readCodexMcpNames(userCodexHome: string | undefined): string[] {
+  const home = userCodexHome ?? process.env.CODEX_HOME ?? join(homedir(), '.codex');
+  try {
+    return codexMcpNames(readFileSync(join(home, 'config.toml'), 'utf8'));
+  } catch {
+    return [];
+  }
 }

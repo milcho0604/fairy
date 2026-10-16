@@ -912,6 +912,18 @@ export function createChat(o: ChatOptions) {
       );
       return found.some(Boolean);
     },
+    /** 지금 고른 AI 의 id (도움 보내기 머리) */
+    provider: (): string => state.provider,
+    /**
+     * 대화 글(내가 쓴 것과 AI 답) 최근 것들. 도움 보내기의 가리기가 글자 그대로 찾아 지운다 (이슈 #126).
+     * 기록에는 원래 안 남지만 오류 글에 섞여 와도 새지 않게
+     */
+    privateTexts(): string[] {
+      return state.messages
+        .slice(-60)
+        .map((m) => m.text)
+        .filter((x): x is string => typeof x === 'string' && x.trim().length > 0);
+    },
     get window() {
       return win;
     },

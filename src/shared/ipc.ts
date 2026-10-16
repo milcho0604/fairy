@@ -1,5 +1,6 @@
 // 메인과 화면(펫, 채팅) 사이 IPC 채널 이름과 실어 보내는 값.
 
+import type { DetectRow } from './ai/capability.ts';
 import type { Catalog } from './ai/catalog.ts';
 import type { CustomProviderInput } from './ai/providers.ts';
 import type { AiProvider, AiStatus, ImageAttachment } from './ai/types.ts';
@@ -228,6 +229,8 @@ export const ONBOARD = {
 export interface OnboardAi {
   /** 설치되고 로그인된 AI 프로그램(Claude Code, Codex 등)이 있다 */
   hasCli: boolean;
+  /** AI 마다 찾았는지 (Claude Code, Codex, Cursor, Gemini CLI, 내 컴퓨터 AI). 시작 안내가 "찾았어 ✓" 표를 그린다 (이슈 #126) */
+  detect: DetectRow[];
   /** 무료 AI 가 처음 한 번 받는 모델 크기 (모델 목록의 기본 모델) */
   freeModelBytes: number;
 }
@@ -264,6 +267,8 @@ export const SETTINGS = {
   /** 의견 보내기: 가린 진단 기록 미리 보기, 그 글 그대로 복사, 파일로 저장, GitHub 문제 알리기 */
   diagnostics: 'settings:diagnostics',
   copyDiagnostics: 'settings:copy-diagnostics',
+  /** AI 자동 감지 (설정의 AI 탭 능력표). 인자 true 면 저장해 둔 확인을 무시하고 다시 본다 */
+  aiDetect: 'settings:ai-detect',
   saveDiagnostics: 'settings:save-diagnostics',
   reportIssue: 'settings:report-issue',
   /** 오픈소스 고지(THIRD_PARTY_NOTICES.txt)를 연다. 못 열면 false */
@@ -440,6 +445,8 @@ export interface SettingsBridge {
   copyDiagnostics(): Promise<boolean>;
   /** 마지막 diagnostics() 글 그대로 파일로. 그만두면 ok false, 빈 message */
   saveDiagnostics(): Promise<{ ok: boolean; message: string }>;
+  /** AI 자동 감지: 설치, 로그인 여부와 내 컴퓨터 AI 모델 (질문은 하지 않는다) */
+  aiDetect(refresh?: boolean): Promise<DetectRow[]>;
   /** GitHub 새 이슈 (판, 운영체제만 채움) */
   reportIssue(): void;
   openNotices(): Promise<boolean>;

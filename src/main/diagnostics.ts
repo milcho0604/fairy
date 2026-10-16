@@ -1,13 +1,12 @@
-// 의견 보내기에 진단 기록 붙이기 (설정의 베타 기록 칸, 사용자가 켤 때만).
+// 도움 보내기 (설정 정보 탭, 이슈 #126; 전에는 베타 기록 칸의 의견 보내기).
 // 기록을 읽어 가리는 일은 모두 여기(메인)에서 한다. 화면에는 가린 글만 넘기고,
 // 복사와 저장은 화면이 보여 준 바로 그 글(마지막 미리 보기)을 쓴다: 미리 본 것과 나가는 것이 같다.
 import { readFileSync } from 'node:fs';
 import { homedir, hostname, userInfo } from 'node:os';
 import { join } from 'node:path';
 import { app, type BrowserWindow, clipboard, dialog } from 'electron';
-import { feedbackText } from '../shared/feedback.ts';
+import { buildHelpPack } from '../shared/help-pack.ts';
 import { t } from '../shared/i18n/index.ts';
-import { DIAG_MAX_BYTES, DIAG_MAX_LINES, redactLogDetail, tailLines } from '../shared/redact-log.ts';
 import { localDay } from '../shared/todo-store.ts';
 import { writeFileAtomic } from './safe-file.ts';
 
@@ -38,32 +37,35 @@ export function createDiagnostics(o: {
   logDir: string;
   /** 베타 기록 글 (reportText) */
   statsText: () => string;
-  /** 글자 그대로 가릴 사용자 글: 할 일, 일정, 메모 제목, 캘린더 주소 */
+  /** 도움 보내기 머리 줄들: 판, 운영체제, 켜진 기능, 서버 연결 상태, AI 감지 (shared/help-pack.ts) */
+  summary: () => Promise<string[]>;
+  /** 글자 그대로 가릴 사용자 글: 할 일, 일정, 메모 제목, 대화 글, 캘린더 주소 */
   secrets: () => string[];
   log: (tag: string, ...rest: unknown[]) => void;
 }) {
   let last: DiagnosticsPreview | undefined;
 
-  function preview(): DiagnosticsPreview {
+  async function preview(): Promise<DiagnosticsPreview> {
     // 돌린 앞 파일(main.old.log) 다음에 지금 파일: 끝 쪽 줄만 쓰니 둘을 이어 붙여 자른다
-    const raw = readOr(join(o.logDir, 'main.old.log')) + readOr(join(o.logDir, 'main.log'));
+    const rawLog = readOr(join(o.logDir, 'main.old.log')) + readOr(join(o.logDir, 'main.log'));
     let secrets: string[] = [];
     try {
       secrets = o.secrets();
     } catch {
       // 저장 파일을 못 읽어도 나머지 규칙으로 가린다
     }
-    // 줄 단위로 넉넉히(줄 수 두 배, 바이트 네 배) 먼저 잘라 가리는 양을 묶는다 (2MB 를 통째로 가리면 메인이 오래 멈출 수 있다).
-    // 줄 단위라 토큰 반쪽이 남지 않는다. 가린 뒤 정해진 상한으로 다시 자른다
-    const near = tailLines(raw, DIAG_MAX_LINES * 2, DIAG_MAX_BYTES * 4).join('\n');
-    const r = redactLogDetail(near, { home: homedir(), user: safeUser(), host: hostname(), secrets });
-    const lines = tailLines(r.text);
-    // 가린 곳 수는 남긴 줄 안에서 다시 센다 (잘려 나간 줄의 것은 빼고)
-    const hidden = lines.reduce(
-      (n, l) => n + (l.match(/<(?:private|user|host|secret|redacted|calendar|id|email|ip)>/g)?.length ?? 0),
-      0,
-    );
-    last = { text: feedbackText(o.statsText(), lines, hidden), lines: lines.length, hidden };
+    let summary: string[] = [];
+    try {
+      summary = await o.summary();
+    } catch (err) {
+      o.log('feedback', '머리 만들기 실패', err instanceof Error ? err.message : String(err));
+    }
+    last = buildHelpPack({
+      summary,
+      stats: o.statsText(),
+      rawLog,
+      redact: { home: homedir(), user: safeUser(), host: hostname(), secrets },
+    });
     return last;
   }
 

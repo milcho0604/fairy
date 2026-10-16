@@ -12,6 +12,19 @@ export function mcpScriptPath(): string {
   );
 }
 
+/** 읽기 전용 훅 스크립트 경로 (mcpScriptPath 와 같은 폴더) */
+export function guardScriptPath(): string {
+  return join(app.getAppPath(), 'out', 'main', 'ai-guard.js').replace(
+    `app.asar${sep}`,
+    `app.asar.unpacked${sep}`,
+  );
+}
+
+/** claude 가 MCP 도구를 부르기 전에 쓰기 도구를 막는 훅을 띄우는 명령 (shared/ai/guard.ts) */
+export function guardLaunch(): McpLaunch {
+  return { command: process.execPath, args: [guardScriptPath()], env: { ELECTRON_RUN_AS_NODE: '1' } };
+}
+
 /**
  * 짝꿍 실행 파일을 Node 로 돌려 서버를 띄운다. 데이터 폴더를 같이 넘겨
  * 시험 인스턴스(JJ_USER_DATA)도 자기 저장 파일만 만지게 한다

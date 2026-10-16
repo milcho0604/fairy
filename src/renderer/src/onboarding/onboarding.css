@@ -337,3 +337,36 @@ footer .ghost,
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* 이 컴퓨터에서 찾은 AI (OnboardingApp.tsx, 이슈 #126) */
+.ai-found {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 14px;
+  font-size: 13px;
+}
+
+.ai-found .hint {
+  margin: 4px 0 0;
+}
+
+.ai-found ul {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ai-found li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.ai-found li.ok {
+  color: var(--ink);
+}
