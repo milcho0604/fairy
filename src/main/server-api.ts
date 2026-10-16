@@ -103,8 +103,8 @@ export interface RewardResult {
 /** 서버 쪽지함의 쪽지 하나 (#101, server/src/inbox.ts) */
 export interface InboxItem {
   id: number;
-  /** gift: 친구 선물, friend: 친구 신청 알림 (#110) */
-  kind: 'grant' | 'notice' | 'subscription' | 'gift' | 'friend';
+  /** gift: 친구 선물, friend: 친구 신청 알림, gift_back: 열지 않아 돌아온 선물 알림 (#110) */
+  kind: 'grant' | 'notice' | 'subscription' | 'gift' | 'friend' | 'gift_back';
   /** 친구가 보낸 쪽지면 보낸 친구 (탈퇴했으면 code 가 null). 운영자 쪽지는 null */
   sender: { code: string | null; nickname: string | null } | null;
   message: string | null;
@@ -235,7 +235,14 @@ export function profileOf(v: unknown): ProfileInfo | undefined {
   return { code, nickname: str(o.nickname, 40) };
 }
 
-const INBOX_KINDS: readonly InboxItem['kind'][] = ['grant', 'notice', 'subscription', 'gift', 'friend'];
+const INBOX_KINDS: readonly InboxItem['kind'][] = [
+  'grant',
+  'notice',
+  'subscription',
+  'gift',
+  'friend',
+  'gift_back',
+];
 
 export function inboxItemOf(v: unknown): InboxItem | undefined {
   const o = obj(v);
@@ -243,7 +250,7 @@ export function inboxItemOf(v: unknown): InboxItem | undefined {
   const kind = o.kind;
   if (!id || !INBOX_KINDS.includes(kind as InboxItem['kind'])) return undefined;
   const opened = o.opened === null || o.opened === undefined ? null : obj(o.opened);
-  const friendKind = kind === 'gift' || kind === 'friend';
+  const friendKind = kind === 'gift' || kind === 'friend' || kind === 'gift_back';
   const sender = obj(o.sender);
   return {
     id,

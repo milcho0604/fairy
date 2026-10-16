@@ -1,7 +1,7 @@
 // 서버 친구의 앱 쪽 흐름 (이슈 #110 1부). Electron 없이 돌아 시험에서 그대로 부른다. main/server.ts 가 IPC 와 타이머를 붙인다.
 // - 서버 모드(만 14세 이상, 서버 주소 있음), 로그인 세션, 서버가 켜 준 친구 기능(friends)일 때만 무엇이든 보낸다.
-// - 일정 공유 1차: 내가 바쁜 시간을 보여 주는 친구가 하나라도 있고 구글 일정이 연결돼 있으면, 몇 분마다 앞으로 14일의
-//   바쁜 시간대(시작, 끝)만 올린다. 제목, 장소, 메모는 보내지 않는다. 구글 연결을 끊으면 서버에 "모두 끄기"를 보내 지운다.
+// - 일정 공유 1차: 내가 바쁜 시간을 보여 주는 친구가 하나라도 있으면, 몇 분마다 앞으로 14일의 바쁜 시간대(시작, 끝)만 올린다.
+//   제목, 장소, 메모는 보내지 않는다. 구글 Limited Use 확인 전이라 직접 넣은 일정만 쓴다 (shareableEvent).
 // - 토큰은 server-core 의 sessionCall 안에만 있다.
 import { randomBytes } from 'node:crypto';
 import {
@@ -21,12 +21,27 @@ export const BUSY_DAYS = 14;
 /** 끝이 없는 일정은 30분으로 본다 (event-overlap.ts 와 같다) */
 const NO_END_MS = 30 * 60_000;
 
+/** 바쁜 시간대를 만드는 일정 하나 (시작, 끝, 어디서 왔나). 제목은 받지도 않는다 */
+export interface BusySource {
+  startAt: number;
+  endAt: number | null;
+  source: 'local' | 'ics' | 'google';
+}
+
+/**
+ * 친구에게 보여 줄 일정인가 (사용자 결정 2026-10-16). 구글 Limited Use 확인 전에는 사용자가 페어리에 직접 넣은 일정만:
+ * 구글에서 읽어 온 일정(google)과 캘린더 주소로 가져온 일정(ics)은 보내지 않는다.
+ * TODO(#110 2차): Limited Use 확인 뒤 구글 일정은 따로 켜는 설정(기본 꺼짐, 사용자가 직접 켬)으로 연다. 그 설정이 생기기
+ * 전까지 SHARE_GOOGLE_EVENTS 는 false 그대로 둔다
+ */
+export const SHARE_GOOGLE_EVENTS = false;
+export const shareableEvent = (e: Pick<BusySource, 'source'>, google = SHARE_GOOGLE_EVENTS): boolean =>
+  e.source === 'local' || (google && e.source === 'google');
+
 export interface ServerFriendsDeps {
   core: () => ServerCore | undefined;
-  /** 이 컴퓨터에 구글 일정이 연결돼 있다 */
-  calendarLinked: () => boolean;
-  /** [from, to) 와 겹치는 시각 일정의 시작과 끝 (종일 일정은 뺀다). 끝이 없으면 null */
-  events: (from: number, to: number) => { startAt: number; endAt: number | null }[];
+  /** [from, to) 와 겹치는 시각 일정 (종일 일정은 뺀다). 끝이 없으면 null */
+  events: (from: number, to: number) => BusySource[];
   now: () => number;
   onChange: (s: FriendsState) => void;
   log: (tag: string, ...rest: unknown[]) => void;
@@ -68,11 +83,8 @@ export function createServerFriends(d: ServerFriendsDeps) {
   let refreshing: Promise<void> | null = null;
   let lastUpload: { key: string; at: number } | null = null;
   let uploading = false;
-  /** 시험용: 구글 연결 여부를 바꿔 끼운다 (JJ_TEST_SECRETS=memory 일 때만 server.ts 가 연다) */
-  let linkedOverride: boolean | null = null;
 
   const status = () => d.core()?.status();
-  const linked = () => linkedOverride ?? d.calendarLinked();
 
   /** 칸을 보이나: 서버 모드, 로그인, 친구 기능 */
   function available(): boolean {
@@ -91,11 +103,10 @@ export function createServerFriends(d: ServerFriendsDeps) {
       passGifts:
         on &&
         s?.features?.friend_gifts === true &&
-        s?.features?.friend_gift_admin_passes === true &&
+        s?.features?.friend_gift_passes === true &&
         s.age === 'adult' &&
         s.ai,
       calendar: on && s?.features?.friend_calendar === true,
-      calendarLinked: linked(),
       balance: s?.balance ?? null,
       passes: s?.tickets ?? null,
       prefill: on ? prefill : null,
@@ -166,17 +177,12 @@ export function createServerFriends(d: ServerFriendsDeps) {
     }
     uploading = true;
     try {
-      // 구글 연결을 끊었으면 서버에서도 모두 끄고 지운다
-      if (!s.calendarLinked) {
-        const r = await call((api, t) => api.busyStop(t));
-        d.log('friends', '구글 연결이 없어 일정 공유를 모두 끔', r.ok ? 'ok' : r.error);
-        lastUpload = null;
-        await refresh();
-        return;
-      }
       if (!s.calendar) return;
       const now = d.now();
-      const blocks = busyBlocks(d.events(now, now + BUSY_DAYS * 86_400_000), now);
+      const blocks = busyBlocks(
+        d.events(now, now + BUSY_DAYS * 86_400_000).filter((e) => shareableEvent(e)),
+        now,
+      );
       const key = JSON.stringify(blocks);
       if (!force && lastUpload && lastUpload.key === key && now - lastUpload.at < BUSY_REFRESH_MS) return;
       const r = await call<{ stored: number }>((api, t) => api.busyUpload(t, blocks));
@@ -251,9 +257,8 @@ export function createServerFriends(d: ServerFriendsDeps) {
       await refresh();
       return { ok: true, data: { coins: r.data.coins, passes: r.data.passes } };
     },
-    /** 이 친구에게 바쁜 시간 보여 주기. 켜면 바로 올린다 (구글 일정이 연결돼 있을 때만 켤 수 있다) */
+    /** 이 친구에게 바쁜 시간 보여 주기. 켜면 바로 올린다 (직접 넣은 일정만, shareableEvent) */
     async share(code: string, on: boolean): Promise<FriendResult> {
-      if (on && !linked()) return { ok: false, error: 'not_linked' };
       const r = await act(on ? '일정 공유 켬' : '일정 공유 끔', (api, t) => api.friendShare(t, code, on));
       if (r.ok && on) await uploadBusy(true);
       return r;
@@ -264,11 +269,6 @@ export function createServerFriends(d: ServerFriendsDeps) {
       );
       if (!r.ok) return { ok: false, error: errorOf(r) };
       return { ok: true, data: r.data };
-    },
-    /** 시험용 */
-    debugLinked(v: boolean | null) {
-      linkedOverride = v;
-      changed();
     },
   };
 }

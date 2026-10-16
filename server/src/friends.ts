@@ -22,7 +22,7 @@ import { AiAdmin } from './ai-admin';
 import { Auth, AuthGuard, type AuthInfo, type HttpReq } from './auth.guard';
 import { Db } from './db';
 import { type FeatureKey, Features } from './features';
-import { dropUnsharedBusy } from './friend-links';
+import { dropUnsharedBusy, GIFT_KEEP_DAYS, returnGifts } from './friend-links';
 import { sendInbox } from './inbox';
 import { ipKey, LIMITS, RateLimiter } from './rate-limit';
 import { normalizeDeviceCode } from './shared/account-profile';
@@ -144,10 +144,14 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
     clearInterval(this.#sweep);
   }
 
-  /** 만료된 신청과 끝난 바쁜 시간대를 지운다 */
-  async sweep(): Promise<void> {
+  /**
+   * 정리 작업 (시간마다): 만료된 신청, 끝난 바쁜 시간대, 기한(30일)이 지난 안 연 선물 돌려주기. 선물 돌려주기는 읽을 때가 아니라
+   * 이 작업이 한다 (쪽지함을 열지 않는 사람의 선물도 제때 돌아가게). 한 번에 500개씩, 남으면 다음 차례에 이어서
+   */
+  async sweep(): Promise<number> {
     await this.db.pool.query('DELETE FROM friend_request WHERE expires_at <= now()');
     await this.db.pool.query('DELETE FROM busy_block WHERE ends_at <= now()');
+    return this.db.tx((c) => returnGifts(c, { expired: true }));
   }
 
   /** 로그인 세션이고 기능을 쓸 수 있는가 (친구 기능은 늘 함께 본다) */
@@ -228,7 +232,7 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
       const outgoing = await req(
         `SELECT r.id, a.code, a.nickname, r.created_at, r.expires_at FROM friend_request r
            JOIN account a ON a.id = r.to_account
-          WHERE r.from_account = $1 AND r.expires_at > now() ORDER BY r.id DESC`,
+          WHERE r.from_account = $1 AND r.expires_at > now() AND NOT r.withdrawn ORDER BY r.id DESC`,
       );
       const blocked = await c.query<Person>(
         `SELECT a.code, a.nickname FROM friend_block k JOIN account a ON a.id = k.blocked
@@ -427,16 +431,24 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  /** 보낸 신청 거두기. 상대가 아직 열지 않은 신청 쪽지도 지운다 */
+  /**
+   * 보낸 신청 거두기. 상대가 아직 열지 않은 신청 쪽지도 지운다. 이미 거절된 신청은 지우지 않고 보낸 목록에서만 뺀다:
+   * 지우면 바로 다시 보내 쪽지함을 채울 수 있었다 (버그잡이 #135). 만료까지 남아 다시 보내기를 막는다
+   */
   async cancel(accountId: string, id: number): Promise<void> {
     await this.db.tx(async (c) => {
       const me = await lockAccount(c, accountId);
       const fam = await familyIds(c, me.id);
-      const r = await c.query(
-        'SELECT 1 FROM friend_request WHERE id = $1 AND from_account = ANY($2::bigint[])',
+      const r = await c.query<{ status: string }>(
+        'SELECT status FROM friend_request WHERE id = $1 AND from_account = ANY($2::bigint[]) AND NOT withdrawn FOR UPDATE',
         [id, fam],
       );
-      if ((r.rowCount ?? 0) === 0) throw fail(HttpStatus.NOT_FOUND, { error: 'no_request' });
+      const row = r.rows[0];
+      if (!row) throw fail(HttpStatus.NOT_FOUND, { error: 'no_request' });
+      if (row.status === 'declined') {
+        await c.query('UPDATE friend_request SET withdrawn = true WHERE id = $1', [id]);
+        return;
+      }
       await c.query('DELETE FROM inbox WHERE friend_request_id = $1 AND opened_at IS NULL', [id]);
       await c.query('DELETE FROM friend_request WHERE id = $1', [id]);
     });
@@ -456,8 +468,11 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  /** 차단: 친구면 끊고, 둘 사이 신청과 그 쪽지를 지운다. 막힌 쪽에는 알리지 않는다 */
-  async block(accountId: string, code: unknown): Promise<Person> {
+  /**
+   * 차단: 친구면 끊고, 둘 사이 신청과 그 쪽지를 지운다. 막힌 쪽에는 알리지 않는다. 대답은 코드만: 닉네임을 돌려주면
+   * 친구가 아니고 나이 구분이 달라도 아무 코드의 닉네임을 읽을 수 있었다 (버그잡이 #135)
+   */
+  async block(accountId: string, code: unknown): Promise<{ code: string }> {
     return this.db.tx(async (c) => {
       const [me, other] = await this.pairByCode(c, accountId, code);
       await c.query('INSERT INTO friend_block (blocker, blocked) VALUES ($1, $2) ON CONFLICT DO NOTHING', [
@@ -479,7 +494,7 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
       );
       await dropUnsharedBusy(c, me);
       await dropUnsharedBusy(c, other);
-      return person(c, other);
+      return { code: (await person(c, other)).code };
     });
   }
 
@@ -558,11 +573,15 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
       if (o.passes > 0) {
         const age = await c.query<{ age: string }>('SELECT age FROM account WHERE id = $1', [other]);
         if (age.rows[0]?.age !== '18+') throw fail(HttpStatus.CONFLICT, { error: 'passes_age' });
-        if (!(await this.aiUsable(c, me)) || !(await this.aiUsable(c, other)))
+        // 이용권 선물 스위치는 보내는 사람과 받는 사람 모두 (사용자 결정 2026-10-16). 지금 이용권은 모두 운영자
+        // 지급분이라 이 스위치가 운영자 지급분 선물 여부까지 맡는다. 두 사람 모두 채팅 이용권도 쓸 수 있어야 한다
+        if (
+          !(await this.features.featureAllowed('friend_gift_passes', me)) ||
+          !(await this.features.featureAllowed('friend_gift_passes', other)) ||
+          !(await this.aiUsable(c, me)) ||
+          !(await this.aiUsable(c, other))
+        )
           throw fail(HttpStatus.CONFLICT, { error: 'passes_not_allowed' });
-        // 지금 이용권은 모두 운영자 지급분이다 (정기 지급, 쪽지, 쿠폰, 첫 선물). 기능 키가 켜졌을 때만 선물할 수 있다
-        if (!(await this.features.featureAllowed('friend_gift_admin_passes', me)))
-          throw fail(HttpStatus.CONFLICT, { error: 'passes_not_giftable' });
         if ((await passesLeft()) < o.passes) throw fail(HttpStatus.CONFLICT, { error: 'no_passes' });
       }
       const have = await balance();
@@ -604,6 +623,8 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
         coins: o.coins,
         chatPasses: o.passes,
         fromAccount: me,
+        // 30일 안에 열지 않으면 정리 작업이 보낸 사람에게 돌려준다 (friend-links.ts returnGifts)
+        expiresAt: now + GIFT_KEEP_DAYS * DAY,
       });
       await c.query('UPDATE friend_gift SET inbox_id = $2 WHERE id = $1', [g.id, note]);
       return {
@@ -838,14 +859,15 @@ export class FriendsController {
   async block(@Auth() auth: AuthInfo, @Body() body: unknown) {
     this.limiter.check(`friend:${auth.accountId}`, LIMITS.friendByAccount);
     await this.friends.gate(auth);
-    return { blocked: await this.friends.block(auth.accountId, (body as { code?: unknown } | null)?.code) };
+    const code = (body as { code?: unknown } | null)?.code;
+    return { blocked: await this.coded(auth, () => this.friends.block(auth.accountId, code)) };
   }
 
   @Delete('blocks/:code')
   @HttpCode(204)
   async unblock(@Auth() auth: AuthInfo, @Param('code') code: string): Promise<void> {
     await this.friends.gate(auth);
-    await this.friends.unblock(auth.accountId, code);
+    await this.coded(auth, () => this.friends.unblock(auth.accountId, code));
   }
 
   /** 선물: { to, coins, passes, requestId } */
@@ -854,7 +876,8 @@ export class FriendsController {
   async gift(@Auth() auth: AuthInfo, @Body() body: unknown) {
     this.limiter.check(`gift:${auth.accountId}`, LIMITS.giftByAccount);
     await this.friends.gate(auth, 'friend_gifts');
-    return this.friends.gift(auth.accountId, parseGift(body));
+    const g = parseGift(body);
+    return this.coded(auth, () => this.friends.gift(auth.accountId, g));
   }
 
   /** 바쁜 시간대 올리기: { blocks: [{ start, end }] } (ms). 제목은 받지 않는다 */
@@ -866,29 +889,35 @@ export class FriendsController {
     return this.friends.upload(auth.accountId, parseBlocks(body));
   }
 
-  /** 모두에게 보여 주기 끄고 올린 것 지우기. 기능 키와 상관없이 언제나 된다 (지우는 길은 막지 않는다) */
+  /**
+   * 모두에게 보여 주기 끄고 올린 것 지우기. 기능 키, 로그인과 상관없이 언제나 된다: 기기 토큰도 일부러 받는다
+   * (자기 것을 지우는 길이라 막지 않는다. calendar_link 끄기와 같다, 버그잡이 #135 7번)
+   */
   @Delete('calendar')
   @HttpCode(204)
   async stop(@Auth() auth: AuthInfo): Promise<void> {
     await this.friends.stopSharing(auth.accountId);
   }
 
-  /** 이 친구에게 바쁜 시간 보여 주기: { share: true | false }. 끄기는 기능 키와 상관없이 된다 */
+  /**
+   * 이 친구에게 바쁜 시간 보여 주기: { share: true | false }. 켜기는 friends 와 friend_calendar, 끄기는 friends 기능 키를 본다.
+   * 기능 키가 꺼졌을 때 지우는 길은 DELETE /v1/friends/calendar (늘 된다)
+   */
   @Put(':code/calendar')
   @HttpCode(200)
   async share(@Auth() auth: AuthInfo, @Param('code') code: string, @Body() body: unknown) {
     const on = (body as { share?: unknown } | null)?.share;
     if (typeof on !== 'boolean') throw fail(HttpStatus.BAD_REQUEST, { error: 'share' });
     if (on) await this.friends.gate(auth, 'friend_calendar');
-    else if (auth.via !== 'session') throw fail(HttpStatus.FORBIDDEN, { error: 'login_required' });
-    return this.friends.share(auth.accountId, code, on);
+    else await this.friends.gate(auth);
+    return this.coded(auth, () => this.friends.share(auth.accountId, code, on));
   }
 
   /** 친구의 바쁜 시간대 (그 친구가 나에게 켰을 때만) */
   @Get(':code/busy')
   async busy(@Auth() auth: AuthInfo, @Param('code') code: string) {
     await this.friends.gate(auth, 'friend_calendar');
-    return this.friends.busy(auth.accountId, code);
+    return this.coded(auth, () => this.friends.busy(auth.accountId, code));
   }
 
   /** 친구 끊기 */
@@ -896,6 +925,27 @@ export class FriendsController {
   @HttpCode(204)
   async unfriend(@Auth() auth: AuthInfo, @Param('code') code: string): Promise<void> {
     await this.friends.gate(auth);
-    await this.friends.unfriend(auth.accountId, code);
+    await this.coded(auth, () => this.friends.unfriend(auth.accountId, code));
+  }
+
+  /**
+   * 기기 코드를 받는 경로 하나. 없는 코드(404 no_user)는 신청과 같은 "없는 코드" 제한(계정마다 한 시간 5번)으로 센다:
+   * 차단, 차단 풀기, 끊기, 공유, 선물, 일정 보기로 코드가 있는지 가려 신청 제한을 우회하지 못하게 (버그잡이 #135)
+   */
+  private async coded<T>(auth: AuthInfo, fn: () => Promise<T>): Promise<T> {
+    const missKey = `friend-miss:${auth.accountId}`;
+    if (this.limiter.over(missKey, LIMITS.friendMissByAccount))
+      throw new HttpException({ error: 'rate_limited' }, HttpStatus.TOO_MANY_REQUESTS);
+    try {
+      return await fn();
+    } catch (err) {
+      if (
+        err instanceof HttpException &&
+        err.getStatus() === HttpStatus.NOT_FOUND &&
+        (err.getResponse() as { error?: string }).error === 'no_user'
+      )
+        this.limiter.take(missKey, LIMITS.friendMissByAccount);
+      throw err;
+    }
   }
 }

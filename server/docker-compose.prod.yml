@@ -82,8 +82,8 @@ services:
       FEATURE_FRIENDS: ${FEATURE_FRIENDS:-allowlist}
       FEATURE_FRIEND_GIFTS: ${FEATURE_FRIEND_GIFTS:-allowlist}
       FEATURE_FRIEND_CALENDAR: ${FEATURE_FRIEND_CALENDAR:-allowlist}
-      # 운영자가 준 채팅 이용권도 친구에게 선물 (off 기본: 구독, 운영자 지급분은 본인만)
-      FEATURE_FRIEND_GIFT_ADMIN_PASSES: ${FEATURE_FRIEND_GIFT_ADMIN_PASSES:-off}
+      # 친구에게 채팅 이용권 선물 (보내는 사람, 받는 사람 모두 허용돼야 한다)
+      FEATURE_FRIEND_GIFT_PASSES: ${FEATURE_FRIEND_GIFT_PASSES:-allowlist}
     volumes:
       - fairy_backups:/data/backups
     ports:

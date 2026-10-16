@@ -30,10 +30,11 @@ export const FEATURES = {
   /** 친구에게 바쁜 시간 보여 주기 (#110 일정 공유 1차). 보여 주는 사람과 보는 사람 모두 */
   friend_calendar: { env: 'FEATURE_FRIEND_CALENDAR', fallback: 'allowlist', admins: true },
   /**
-   * 운영자가 준 채팅 이용권(정기 지급, 쪽지 지급, 쿠폰, 첫 선물)도 친구에게 선물할 수 있나 (#110). 기본 off: 지금 이용권은
-   * 모두 운영자 지급분이라 off 면 이용권 선물이 막힌다 (사서 받은 이용권이 생기면 그것만 따로 센다). 보내는 사람 기준
+   * 친구에게 채팅 이용권 선물 (#110, 사용자 결정 2026-10-16). 보내는 사람과 받는 사람이 모두 허용돼야 한다. 지금 이용권은
+   * 모두 운영자 지급분(정기 지급, 쪽지, 쿠폰, 첫 선물)이라 "운영자 지급분도 선물" 스위치를 따로 두면 기능이 비어 버려서,
+   * 이 스위치의 허용 목록이 그 판단까지 맡는다. 사서 받은 이용권이 생기면 그 몫을 따로 센다
    */
-  friend_gift_admin_passes: { env: 'FEATURE_FRIEND_GIFT_ADMIN_PASSES', fallback: 'off', admins: true },
+  friend_gift_passes: { env: 'FEATURE_FRIEND_GIFT_PASSES', fallback: 'allowlist', admins: true },
 } as const satisfies Record<string, FeatureDef>;
 
 /** 기능 하나: 기본값을 읽는 env, env 가 비었을 때의 값(없으면 off), allowlist 에서 운영자 계정도 켜지는가 */

@@ -7,6 +7,7 @@ import { after, before, describe, test } from 'node:test';
 import { Accounts } from '../src/accounts';
 import { Db } from '../src/db';
 import { type FeatureKey, Features } from '../src/features';
+import { Friends } from '../src/friends';
 import { AdminBrowser, client, type Harness, ip, startHarness } from './helpers';
 
 const ADMIN_SUB = `admin-${randomUUID()}`;
@@ -396,7 +397,7 @@ describe('친구 선물', () => {
     );
   });
 
-  test('채팅 이용권: 18+ 끼리, 둘 다 이용권 허용, 운영자 지급분 선물 스위치, 남은 수', async () => {
+  test('채팅 이용권: 18+ 끼리, 둘 다 채팅 이용권 허용, 둘 다 이용권 선물 스위치 허용, 남은 수', async () => {
     const t1 = await user('14+');
     const t2 = await user('14+');
     await befriend(t1, t2);
@@ -416,9 +417,15 @@ describe('친구 선물', () => {
       '받는 사람도 허용돼야 한다',
     );
     await h.pool.query(`INSERT INTO feature_allow (key, account_id) VALUES ('ai_chat', $1)`, [b.id]);
-    // 운영자 지급분 선물은 기본 off
-    assert.equal((await gift(a, b, { passes: 1 })).body.error, 'passes_not_giftable');
-    await setMode('friend_gift_admin_passes', 'everyone');
+    // 이용권 선물 스위치 friend_gift_passes 는 기본 allowlist: 보내는 사람, 받는 사람 모두 목록에 있어야 한다
+    assert.equal((await gift(a, b, { passes: 1 })).body.error, 'passes_not_allowed');
+    await h.app.get(Features).allowAccount('friend_gift_passes', a.id);
+    assert.equal(
+      (await gift(a, b, { passes: 1 })).body.error,
+      'passes_not_allowed',
+      '받는 사람도 스위치 허용',
+    );
+    await h.app.get(Features).allowAccount('friend_gift_passes', b.id);
     try {
       assert.equal((await gift(a, b, { passes: 4 })).body.error, 'no_passes');
       const r = await gift(a, b, { passes: 2, coins: 0 });
@@ -439,7 +446,7 @@ describe('친구 선물', () => {
       assert.equal((await gift(a, b, { passes: 3 })).status, 200);
       assert.equal((await gift(a, b, { passes: 1 })).body.error, 'daily_send_limit');
     } finally {
-      await setMode('friend_gift_admin_passes', null);
+      await setMode('friend_gift_passes', null);
     }
   });
 
@@ -448,7 +455,7 @@ describe('친구 선물', () => {
     const b = await user();
     await befriend(a, b);
     await h.pool.query(`UPDATE feature_flag SET mode = 'everyone' WHERE key = 'ai_chat'`);
-    await setMode('friend_gift_admin_passes', 'everyone');
+    await setMode('friend_gift_passes', 'everyone');
     try {
       await setPasses(a, 2);
       await setBalance(a, 10);
@@ -465,8 +472,101 @@ describe('친구 선물', () => {
       assert.equal(await passesOf(a), 2);
     } finally {
       await h.pool.query(`UPDATE feature_flag SET mode = 'allowlist' WHERE key = 'ai_chat'`);
-      await setMode('friend_gift_admin_passes', null);
+      await setMode('friend_gift_passes', null);
     }
+  });
+});
+
+describe('열지 않은 선물 돌려주기 (30일, 받는 사람 탈퇴)', () => {
+  const sweep = () => h.app.get(Friends).sweep();
+  const expire = (noteId: number) =>
+    h.pool.query(`UPDATE inbox SET expires_at = now() - interval '1 minute' WHERE id = $1`, [noteId]);
+
+  test('선물 쪽지 기한은 30일', async () => {
+    const a = await user();
+    const b = await user();
+    await befriend(a, b);
+    await setBalance(a, 10);
+    assert.equal((await gift(a, b, { coins: 3 })).status, 200);
+    const note = (await inboxOf(b)).find((i: { kind: string }) => i.kind === 'gift');
+    const days = (new Date(note.expiresAt).getTime() - new Date(note.sentAt).getTime()) / 86_400_000;
+    assert.ok(Math.abs(days - 30) < 0.01, String(days));
+  });
+
+  test('30일 지나면 정리 작업이 보낸 사람에게 돌려주고 쪽지로 알린다. 두 번 돌려도, 동시에 돌려도 한 번', async () => {
+    const a = await user();
+    const b = await user();
+    await befriend(a, b);
+    await setBalance(a, 100);
+    await setPasses(a, 0);
+    await h.pool.query(`UPDATE feature_flag SET mode = 'everyone' WHERE key = 'ai_chat'`);
+    await setMode('friend_gift_passes', 'everyone');
+    try {
+      await setPasses(a, 2);
+      assert.equal((await gift(a, b, { coins: 40, passes: 2 })).status, 200);
+      assert.equal(await balanceOf(a.id), 60);
+      const note = (await inboxOf(b)).find((i: { kind: string }) => i.kind === 'gift');
+      await expire(note.id);
+      const n = await Promise.all([sweep(), sweep(), sweep()]);
+      assert.ok(n.reduce((x, y) => x + y, 0) >= 1, String(n));
+      await sweep();
+      assert.equal(await balanceOf(a.id), 100);
+      assert.equal(await passesOf(a), 2);
+      const back = await h.pool.query(
+        `SELECT count(*)::int AS n, sum(amount)::int AS s FROM coin_entry WHERE account_id = $1 AND reason = 'gift_back'`,
+        [a.id],
+      );
+      assert.deepEqual(back.rows[0], { n: 1, s: 40 });
+      const notes = (await inboxOf(a)).filter((i: { kind: string }) => i.kind === 'gift_back');
+      assert.equal(notes.length, 1);
+      assert.equal(notes[0].coins, 40);
+      assert.equal(notes[0].chatPasses, 2);
+      assert.equal(notes[0].sender.code, b.code);
+      // 알림 쪽지는 열어도 더 주지 않는다
+      const o = await call(a, 'POST', `/v1/inbox/${notes[0].id}/open`);
+      assert.equal(o.status, 200, o.text);
+      assert.equal(await balanceOf(a.id), 100);
+      assert.equal(await passesOf(a), 2);
+      // 받는 사람은 이제 열 수 없다
+      assert.equal((await call(b, 'POST', `/v1/inbox/${note.id}/open`)).status, 410);
+      assert.equal(await balanceOf(b.id), 0);
+    } finally {
+      await h.pool.query(`UPDATE feature_flag SET mode = 'allowlist' WHERE key = 'ai_chat'`);
+      await setMode('friend_gift_passes', null);
+    }
+  });
+
+  test('연 선물은 돌려주지 않는다 (열기와 정리가 겹쳐도 한쪽만)', async () => {
+    const a = await user();
+    const b = await user();
+    await befriend(a, b);
+    await setBalance(a, 50);
+    assert.equal((await gift(a, b, { coins: 20 })).status, 200);
+    const note = (await inboxOf(b)).find((i: { kind: string }) => i.kind === 'gift');
+    const [o] = await Promise.all([call(b, 'POST', `/v1/inbox/${note.id}/open`), sweep()]);
+    assert.equal(o.status, 200, o.text);
+    await expire(note.id);
+    await sweep();
+    assert.equal(await balanceOf(b.id), 20);
+    assert.equal(await balanceOf(a.id), 30);
+  });
+
+  test('받는 사람이 탈퇴하면 열지 않은 선물은 보낸 사람에게 돌아간다', async () => {
+    const a = await user();
+    const b = await user();
+    await befriend(a, b);
+    await setBalance(a, 100);
+    assert.equal((await gift(a, b, { coins: 25 })).status, 200);
+    assert.equal((await gift(a, b, { coins: 5 })).status, 200);
+    const first = (await inboxOf(b)).find(
+      (i: { kind: string; coins: number }) => i.kind === 'gift' && i.coins === 5,
+    );
+    assert.equal((await call(b, 'POST', `/v1/inbox/${first.id}/open`)).status, 200);
+    assert.equal((await call(b, 'DELETE', '/v1/account')).status, 204);
+    assert.equal(await balanceOf(a.id), 95, '열지 않은 25 만 돌아온다');
+    const notes = (await inboxOf(a)).filter((i: { kind: string }) => i.kind === 'gift_back');
+    assert.equal(notes.length, 1);
+    assert.equal(notes[0].sender.code, null, '떠난 친구');
   });
 });
 
@@ -704,7 +804,7 @@ describe('기능 스위치 세 모드', () => {
     );
     assert.equal((await browser.login()).status, 303);
     const page = await browser.page();
-    for (const key of ['friends', 'friend_gifts', 'friend_calendar', 'friend_gift_admin_passes'])
+    for (const key of ['friends', 'friend_gifts', 'friend_calendar', 'friend_gift_passes'])
       assert.ok(page.text.includes(`<code>${key}</code>`), key);
     const r = await browser.act('/admin/features/mode', { key: 'friend_gifts', mode: 'off', confirm: 'yes' });
     assert.ok(r.ok, r.text);

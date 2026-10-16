@@ -125,7 +125,7 @@ test('서버 백업 키: 비면 끔, hex 64자만. 카카오 주소는 https 만
   assert.equal(c.backup?.key, undefined);
   assert.equal(c.backup?.dir, '/data/backups');
   assert.equal(c.kakaoAuthUrl, 'https://kauth.kakao.com');
-  // 친구 (#110) 셋은 allowlist(허용 계정과 운영자 계정)가 기본, 운영자 지급 이용권 선물은 off
+  // 친구 (#110) 넷은 allowlist(허용 계정과 운영자 계정)가 기본
   assert.deepEqual(c.features, {
     kakao_login: 'off',
     coin_reset: 'off',
@@ -133,7 +133,7 @@ test('서버 백업 키: 비면 끔, hex 64자만. 카카오 주소는 https 만
     friends: 'allowlist',
     friend_gifts: 'allowlist',
     friend_calendar: 'allowlist',
-    friend_gift_admin_passes: 'off',
+    friend_gift_passes: 'allowlist',
   });
   assert.equal(readConfig({ ...env, FEATURE_FRIENDS: 'off' }).features?.friends, 'off');
   assert.throws(() => readConfig({ ...env, FEATURE_FRIEND_GIFTS: 'maybe' }), /FEATURE_FRIEND_GIFTS/);

@@ -6,7 +6,13 @@ import { busyByDay, friendCodeFrom, inviteLink } from '../shared/server-friends.
 import { parseJjUrl } from '../shared/url-scheme.ts';
 import { friendsListOf, inboxItemOf } from './server-api.ts';
 import type { ServerCore } from './server-core.ts';
-import { busyBlocks, createServerFriends } from './server-friends.ts';
+import {
+  type BusySource,
+  busyBlocks,
+  createServerFriends,
+  SHARE_GOOGLE_EVENTS,
+  shareableEvent,
+} from './server-friends.ts';
 import { createServerInbox, inboxLines, inboxTitle } from './server-inbox.ts';
 
 const H = 3_600_000;
@@ -181,7 +187,6 @@ test('친구 기능이 꺼졌거나 로그인하지 않았으면 칸을 숨기�
   for (const f of [fakeCore({ features: { friends: false } }), fakeCore({ signedIn: false })]) {
     const friends = createServerFriends({
       core: () => f.core,
-      calendarLinked: () => true,
       events: () => [],
       now: () => T0,
       onChange: () => {},
@@ -195,13 +200,17 @@ test('친구 기능이 꺼졌거나 로그인하지 않았으면 칸을 숨기�
   }
 });
 
-test('신청은 모양이 맞는 코드만 보내고, 일정은 공유하는 친구가 있을 때 시작과 끝만 올린다', async () => {
+test('신청은 모양이 맞는 코드만 보내고, 일정은 공유하는 친구가 있을 때 직접 넣은 일정의 시작과 끝만 올린다', async () => {
   const f = fakeCore({ replies: { friends: LIST } });
-  let linked = true;
+  const list: BusySource[] = [
+    { startAt: T0 + H, endAt: T0 + 2 * H, source: 'local' },
+    // 구글에서 읽어 온 일정과 캘린더 주소로 가져온 일정은 보내지 않는다 (Limited Use 확인 전)
+    { startAt: T0 + 5 * H, endAt: T0 + 6 * H, source: 'google' },
+    { startAt: T0 + 8 * H, endAt: T0 + 9 * H, source: 'ics' },
+  ];
   const friends = createServerFriends({
     core: () => f.core,
-    calendarLinked: () => linked,
-    events: () => [{ startAt: T0 + H, endAt: T0 + 2 * H }],
+    events: () => list,
     now: () => T0,
     onChange: () => {},
     log: () => {},
@@ -213,17 +222,19 @@ test('신청은 모양이 맞는 코드만 보내고, 일정은 공유하는 친
   const up = f.calls.find((c) => c.startsWith('busyUpload'));
   assert.ok(up, f.calls.join('\n'));
   assert.ok(up.includes(`"start":${T0 + H}`));
+  assert.ok(!up.includes(`${T0 + 5 * H}`), '구글 일정은 빠진다');
+  assert.ok(!up.includes(`${T0 + 8 * H}`), '가져온 일정은 빠진다');
   assert.ok(!/title/.test(up));
   // 같은 내용이면 다시 올리지 않는다
   const n = f.calls.length;
   await friends.uploadBusy();
   assert.equal(f.calls.length, n);
-  // 구글 연결을 끊으면 서버에 모두 끄기를 보낸다
-  linked = false;
+  // 구글 일정만 바뀌면 보낼 것이 같아 다시 올리지 않는다
+  list.push({ startAt: T0 + 10 * H, endAt: T0 + 11 * H, source: 'google' });
   await friends.uploadBusy();
-  assert.ok(f.calls.some((c) => c.startsWith('busyStop')));
-  // 연결이 없으면 공유를 켜지 않는다
-  assert.deepEqual(await friends.share('F-0000-1111', true), { ok: false, error: 'not_linked' });
+  assert.equal(f.calls.length, n);
+  assert.equal(SHARE_GOOGLE_EVENTS, false);
+  assert.equal(shareableEvent({ source: 'google' }, true), true, '나중에 따로 켜는 설정이 생기면');
 });
 
 test('선물: 끊겨 답을 못 받으면 같은 요청 번호로 한 번 더, 되면 맞추기', async () => {
@@ -249,7 +260,6 @@ test('선물: 끊겨 답을 못 받으면 같은 요청 번호로 한 번 더, �
     );
   const friends = createServerFriends({
     core: () => f.core,
-    calendarLinked: () => false,
     events: () => [],
     now: () => T0,
     onChange: () => {},
@@ -266,7 +276,6 @@ test('칸이 숨은 때 받기가 바로 끝나도 다음 받기는 돈다 (끝�
   const f = fakeCore({ features: { friends: false }, replies: { friends: LIST } });
   const friends = createServerFriends({
     core: () => f.core,
-    calendarLinked: () => false,
     events: () => [],
     now: () => T0,
     onChange: () => {},

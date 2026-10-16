@@ -5,8 +5,8 @@
 //   npm run build && (cd server && npm run build) && OUT=<레포 밖 폴더> LANG_UNDER_TEST=ko node scripts/dev/friends.mjs
 //
 // - CLAUDE.md 시험 창 규칙: JJ_NO_FOCUS=1, 빈 JJ_USER_DATA(끝나면 지운다), JJ_TEST_SECRETS=memory(키체인 안 씀), 입력은 CDP 로만
-// - 진짜 구글은 부르지 않는다: 서버 로그인은 시험 RSA 키로 서명한 id_token(가짜 구글), 앱의 구글 일정 연결은
-//   __jj.server.friends.debugLinked(true) (시험 실행에서만 열리는 손잡이)로 바꿔 끼우고 일정은 앱 일정 저장소에 넣는다
+// - 진짜 구글은 부르지 않는다: 서버 로그인은 시험 RSA 키로 서명한 id_token(가짜 구글). 일정 공유는 직접 넣은 일정만 보내므로
+//   (구글 Limited Use 확인 전) 일정은 앱 일정 저장소에 넣는다
 // - 브라우저 열기와 클립보드는 메인에서 바꿔 끼운다 (진짜 브라우저, 진짜 클립보드를 건드리지 않는다)
 // - 홈페이지 정적 파일(events.json, notices.json, 최신 릴리스)은 이 컴퓨터의 http 서버가 내준다
 // - 컨테이너는 jj-friends-pg-<무작위> 이름으로만 만들고 지운다. 포트는 모두 무작위
@@ -138,10 +138,10 @@ const nest = await createApp(
     GOOGLE_CLIENT_ID: CLIENT_ID,
     GOOGLE_CLIENT_SECRET: 'qa-secret',
     // 친구 기능은 기본 allowlist 그대로 두고 시험 중에 모두로 바꾼다 (기본이면 칸이 숨는지 본다).
-    // 선물과 일정은 처음부터 모두, 운영자 지급 이용권 선물도 켠다 (이용권 선물 칸까지 보려고)
+    // 선물과 일정, 이용권 선물은 처음부터 모두 (이용권 선물 칸까지 보려고)
     FEATURE_FRIEND_GIFTS: 'everyone',
     FEATURE_FRIEND_CALENDAR: 'everyone',
-    FEATURE_FRIEND_GIFT_ADMIN_PASSES: 'everyone',
+    FEATURE_FRIEND_GIFT_PASSES: 'everyone',
   }),
   { google: fakeGoogle },
 );
@@ -560,9 +560,8 @@ async function flow() {
       day.setHours(10, 0, 0, 0);
       const start = day.getTime();
       await a.main(`(__jj.events.add({ title: ${JSON.stringify(secret)}, startAt: ${start}, endAt: ${start + 90 * 60_000}, reminds: [] }, Date.now()), 1)`);
-      await a.main('(__jj.server.friends.debugLinked(true), 1)');
       await soft(until('공유 칸', () => pa.ev(`!!document.querySelector('.friends-share input')`), 8000));
-      check(F, '구글 일정 연결(시험 손잡이) 뒤 "내 바쁜 시간 보여 주기" 칸', await pa.ev(`!!document.querySelector('.friends-share input')`));
+      check(F, '"내 바쁜 시간 보여 주기" 칸', await pa.ev(`!!document.querySelector('.friends-share input')`));
       check(F, '기본 꺼짐', (await pa.ev(`document.querySelector('.friends-share input')?.checked`)) === false);
       await pa.ev(`(document.querySelector('.friends-share input').click(), 1)`);
       const f = await waitFlash(pa, t('friends.shareOn'));

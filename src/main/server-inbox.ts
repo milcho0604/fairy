@@ -23,6 +23,7 @@ const senderName = (i: InboxItem): string => i.sender?.nickname ?? i.sender?.cod
 export function inboxTitle(i: InboxItem): string {
   if (i.kind === 'gift') return t('inbox.giftTitle');
   if (i.kind === 'friend') return t('inbox.friendTitle');
+  if (i.kind === 'gift_back') return t('inbox.giftBackTitle');
   return i.kind === 'subscription' ? t('inbox.subTitle') : t('inbox.title');
 }
 
@@ -34,6 +35,9 @@ export function inboxLines(i: InboxItem): string[] {
     if (i.expired) lines.push(t('inbox.expired'));
     return lines;
   }
+  // 돌아온 선물: 양은 돌려줄 때 이미 넣었다 (열어도 더 받지 않는다)
+  if (i.kind === 'gift_back')
+    return [t('inbox.giftBackLine', { name: senderName(i), coins: i.coins, passes: i.chatPasses })];
   if (i.kind === 'gift') lines.push(t('inbox.fromFriend', { name: senderName(i) }));
   if (i.message) lines.push(i.message);
   if (i.kind === 'subscription')

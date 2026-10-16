@@ -22,6 +22,8 @@ CREATE TABLE friend_request (
   from_account BIGINT NOT NULL REFERENCES account (id) ON DELETE CASCADE,
   to_account BIGINT NOT NULL REFERENCES account (id) ON DELETE CASCADE,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'declined')),
+  -- 거절된 신청을 보낸 쪽이 거뒀다: 보낸 목록에서는 빼지만 만료까지 남겨 다시 보내지 못하게 한다 (버그잡이 #135)
+  withdrawn BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   expires_at TIMESTAMPTZ NOT NULL,
   UNIQUE (from_account, to_account),
@@ -53,6 +55,8 @@ CREATE TABLE friend_gift (
   passes INTEGER NOT NULL DEFAULT 0 CHECK (passes BETWEEN 0 AND 5),
   day DATE NOT NULL,
   inbox_id BIGINT REFERENCES inbox (id) ON DELETE SET NULL,
+  -- 받는 사람이 30일 안에 열지 않았거나 탈퇴해 보낸 사람에게 돌려준 때 (장부 'gift-back:<선물>')
+  returned_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CHECK (coins > 0 OR passes > 0)
 );
@@ -60,12 +64,14 @@ CREATE TABLE friend_gift (
 CREATE UNIQUE INDEX friend_gift_request ON friend_gift (from_account, request_id);
 CREATE INDEX friend_gift_from_day ON friend_gift (from_account, day);
 CREATE INDEX friend_gift_to_day ON friend_gift (to_account, day);
+CREATE INDEX friend_gift_open ON friend_gift (inbox_id) WHERE returned_at IS NULL;
 
--- 쪽지함에 친구가 보낸 쪽지 두 가지: gift(선물, 첨부는 열 때), friend(친구 신청 알림, 첨부 없음).
+-- 쪽지함에 친구 쪽지 세 가지: gift(선물, 첨부는 열 때, 30일 기한), friend(친구 신청 알림, 첨부 없음),
+-- gift_back(열지 않은 선물이 돌아왔다는 알림. coins, chat_passes 는 돌려준 양이고 돌려줄 때 이미 넣었다: 열어도 더 주지 않는다).
 -- from_account: 보낸 친구 (운영자 쪽지는 NULL). 탈퇴하면 NULL 로 두고 "떠난 친구"로 보인다
 ALTER TABLE inbox DROP CONSTRAINT inbox_kind_check;
 ALTER TABLE inbox ADD CONSTRAINT inbox_kind_check
-  CHECK (kind IN ('grant', 'notice', 'subscription', 'gift', 'friend'));
+  CHECK (kind IN ('grant', 'notice', 'subscription', 'gift', 'friend', 'gift_back'));
 ALTER TABLE inbox ADD COLUMN from_account BIGINT REFERENCES account (id) ON DELETE SET NULL;
 ALTER TABLE inbox ADD COLUMN friend_request_id BIGINT REFERENCES friend_request (id) ON DELETE SET NULL;
 ALTER TABLE inbox ADD CONSTRAINT inbox_gift_check CHECK (kind <> 'gift' OR coins > 0 OR chat_passes > 0);
@@ -89,6 +95,6 @@ CREATE TABLE busy_upload (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 기능 키 friends, friend_gifts, friend_calendar, friend_gift_admin_passes 는 0004 의 기능 스위치 표를 같이 쓴다
+-- 기능 키 friends, friend_gifts, friend_gift_passes, friend_calendar 는 0004 의 기능 스위치 표를 같이 쓴다
 -- (server/src/features.ts). 줄을 넣지 않는다: 줄이 없으면 서버 설정(env FEATURE_*) 을 따르고, 그 기본은
--- 앞의 셋이 allowlist(허용 계정과 운영자 계정), friend_gift_admin_passes 가 off 다
+-- 모두 allowlist(허용 계정과 운영자 계정)다

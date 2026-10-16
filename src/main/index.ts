@@ -1468,11 +1468,8 @@ ready
         const g = gcal.status();
         return g.configured && g.connected;
       },
-      // 친구 일정 공유 1차 (#110): 구글 일정을 이은 사람만 켤 수 있고, 시각 일정의 시작과 끝만 올린다 (제목 없음)
-      calendar: {
-        linked: () => gcal.status().connected,
-        events: (from, to) => events.timedOverlapping(from, to),
-      },
+      // 친구 일정 공유 1차 (#110): 시각 일정의 시작과 끝만 올린다 (제목 없음). 구글 일정은 빼고 직접 넣은 일정만
+      friendEvents: (from, to) => events.timedOverlapping(from, to),
       log,
     });
     serverCore = server.core;

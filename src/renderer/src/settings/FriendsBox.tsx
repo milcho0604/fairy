@@ -44,7 +44,6 @@ const ERRORS = [
   'feature_off',
   'expired',
   'no_request',
-  'not_linked',
   'not_shared',
 ];
 const errorText = (e: string) =>
@@ -284,9 +283,6 @@ export function FriendsBox({ flash }: { flash: (message: string, error?: boolean
                 ))}
               </ul>
             )}
-            {s.calendar && !s.calendarLinked && list.friends.length > 0 && (
-              <small className="below">{t('friends.shareNeedsGcal')}</small>
-            )}
           </div>
         )}
 
@@ -377,7 +373,7 @@ function FriendRow(o: {
           </button>
         </span>
       </div>
-      {s.calendar && s.calendarLinked && (
+      {s.calendar && (
         <label className="friends-share">
           <input
             type="checkbox"
@@ -391,9 +387,7 @@ function FriendRow(o: {
           <span>{t('friends.share')}</span>
         </label>
       )}
-      {s.calendar && s.calendarLinked && f.iShare && (
-        <small className="friends-note">{t('friends.shareHint')}</small>
-      )}
+      {s.calendar && f.iShare && <small className="friends-note">{t('friends.shareHint')}</small>}
       {o.giftOpen && <GiftForm f={f} s={s} off={o.off} run={o.run} b={b} close={o.closeGift} />}
       {o.busyView && <BusyWeek name={nameOf(f)} blocks={o.busyView.blocks} at={o.busyView.at} />}
     </li>

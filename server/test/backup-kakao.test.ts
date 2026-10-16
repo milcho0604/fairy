@@ -721,7 +721,7 @@ describe('코인 초기화 기능 키와 서버 백업 전체 상한', () => {
       friends: false,
       friend_gifts: false,
       friend_calendar: false,
-      friend_gift_admin_passes: false,
+      friend_gift_passes: false,
     });
   });
 

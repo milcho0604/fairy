@@ -3,7 +3,7 @@ import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import { backupFilesOf, keepRecent } from './backup';
 import { Db } from './db';
-import { mergeFriends, pruneFriends } from './friend-links';
+import { mergeFriends, pruneFriends, returnGifts } from './friend-links';
 import { deviceCodeFrom } from './shared/account-profile';
 import { newToken, sha256 } from './tokens';
 
@@ -159,6 +159,8 @@ export class Accounts {
     return this.db.tx(async (c) => {
       const a = await lockAccount(c, accountId);
       const files = await backupFilesOf(c, a.id);
+      // 아직 열지 않은 친구 선물은 보낸 사람에게 돌려준다 (#110, 사용자 결정 2026-10-16)
+      await returnGifts(c, { toAccounts: await familyIds(c, a.id) });
       await c.query('DELETE FROM account WHERE id = $1', [a.id]);
       return files;
     });

@@ -42,9 +42,9 @@ export const ko = {
   'friends.giftSend': '보내기',
   'friends.giftClose': '그만두기',
   'friends.giftHint': (v: { coins: number; passes: number; leftCoins: number; leftPasses: number }) =>
-    `하루에 코인 ${v.coins}개, 채팅 이용권 ${v.passes}장까지 보낼 수 있어 (오늘 남은 양: 코인 ${v.leftCoins}개, 이용권 ${v.leftPasses}장). 친구가 쪽지를 열면 들어가.`,
+    `하루에 코인 ${v.coins}개, 채팅 이용권 ${v.passes}장까지 보낼 수 있어 (오늘 남은 양: 코인 ${v.leftCoins}개, 이용권 ${v.leftPasses}장). 친구가 쪽지를 열면 들어가고, 30일 안에 안 열면 돌아와.`,
   'friends.giftCoinsOnly': (v: { coins: number; left: number }) =>
-    `하루에 코인 ${v.coins}개까지 보낼 수 있어 (오늘 남은 양 ${v.left}개). 친구가 쪽지를 열면 들어가.`,
+    `하루에 코인 ${v.coins}개까지 보낼 수 있어 (오늘 남은 양 ${v.left}개). 친구가 쪽지를 열면 들어가고, 30일 안에 안 열면 돌아와.`,
   'friends.giftOk': (v: CP) => `선물을 보냈어: 코인 ${v.coins}개, 채팅 이용권 ${v.passes}장`,
   'friends.have': (v: { coins: number }) => `내 코인 ${v.coins}개`,
   'friends.havePasses': (v: { coins: number; passes: number }) =>
@@ -57,8 +57,7 @@ export const ko = {
   'friends.busyAt': (v: { when: string }) => `${v.when}에 고침`,
   'friends.share': '내 바쁜 시간 보여 주기',
   'friends.shareHint':
-    '구글 일정에서 앞으로 14일의 바쁜 시간대(시작과 끝)만 이 친구에게 보여. 제목, 장소, 메모는 보내지 않고, 끄면 서버에서 바로 지워.',
-  'friends.shareNeedsGcal': '구글 일정을 연결하면 친구에게 바쁜 시간을 보여 줄 수 있어 (설정 > 비서).',
+    '페어리에 직접 넣은 일정에서 앞으로 14일의 바쁜 시간대(시작과 끝)만 이 친구에게 보여. 제목, 장소, 메모는 보내지 않고, 구글에서 가져온 일정은 아직 보내지 않아. 끄거나 로그아웃하면 서버에서 바로 지워.',
   'friends.theyShare': '나에게 바쁜 시간을 보여 줘',
   'friends.shareOn': '이 친구에게 바쁜 시간을 보여 줄게.',
   'friends.shareOff': '바쁜 시간 보여 주기를 껐어. 올린 시간은 서버에서 지웠어.',
@@ -78,13 +77,11 @@ export const ko = {
   'friends.err.no_passes': '채팅 이용권이 모자라.',
   'friends.err.passes_age': '채팅 이용권은 만 18세 이상 친구에게만 보낼 수 있어.',
   'friends.err.passes_not_allowed': '이 친구에게는 채팅 이용권을 보낼 수 없어.',
-  'friends.err.passes_not_giftable': '운영자가 준 채팅 이용권은 선물할 수 없어.',
   'friends.err.daily_send_limit': '오늘 보낼 수 있는 선물을 다 보냈어. 내일 다시 해 줘.',
   'friends.err.daily_receive_limit': '이 친구는 오늘 받을 수 있는 선물을 다 받았어.',
   'friends.err.feature_off': '지금은 쓸 수 없는 기능이야.',
   'friends.err.expired': '기한이 지난 신청이야.',
   'friends.err.no_request': '이미 처리된 신청이야.',
-  'friends.err.not_linked': '구글 일정을 먼저 연결해 줘.',
   'friends.err.not_shared': '이 친구가 바쁜 시간을 보여 주지 않아.',
   'friends.err.other': '하지 못했어. 잠시 뒤에 다시 해 줘.',
   // ---- 친구 쪽지 (쪽지함, 펫이 건네는 쪽지) ----
@@ -94,6 +91,9 @@ export const ko = {
     `${v.name} 님이 친구가 되고 싶대. 설정 > 데이터의 친구 칸에서 받을지 정해 줘.`,
   'inbox.fromFriend': (v: Name) => `보낸 친구: ${v.name}`,
   'inbox.leftFriend': '떠난 친구',
+  'inbox.giftBackTitle': '돌아온 선물',
+  'inbox.giftBackLine': (v: Name & CP) =>
+    `${v.name}에게 보낸 선물(코인 ${v.coins}개, 채팅 이용권 ${v.passes}장)을 열지 않아서 돌려받았어. 이미 넣어 뒀어.`,
 };
 
 export const en: Translation<typeof ko> = {
@@ -135,9 +135,9 @@ export const en: Translation<typeof ko> = {
   'friends.giftSend': 'Send',
   'friends.giftClose': 'Cancel',
   'friends.giftHint': (v: { coins: number; passes: number; leftCoins: number; leftPasses: number }) =>
-    `You can send up to ${v.coins} coins and ${v.passes} chat passes a day (left today: ${v.leftCoins} coins, ${v.leftPasses} passes). Your friend gets them when they open the note.`,
+    `You can send up to ${v.coins} coins and ${v.passes} chat passes a day (left today: ${v.leftCoins} coins, ${v.leftPasses} passes). Your friend gets them when they open the note, and they come back if it stays unopened for 30 days.`,
   'friends.giftCoinsOnly': (v: { coins: number; left: number }) =>
-    `You can send up to ${v.coins} coins a day (${v.left} left today). Your friend gets them when they open the note.`,
+    `You can send up to ${v.coins} coins a day (${v.left} left today). Your friend gets them when they open the note, and they come back if it stays unopened for 30 days.`,
   'friends.giftOk': (v: CP) => `Gift sent: ${v.coins} coins, ${v.passes} chat passes`,
   'friends.have': (v: { coins: number }) => `You have ${v.coins} coins`,
   'friends.havePasses': (v: { coins: number; passes: number }) =>
@@ -150,8 +150,7 @@ export const en: Translation<typeof ko> = {
   'friends.busyAt': (v: { when: string }) => `Updated ${v.when}`,
   'friends.share': 'Show my busy times',
   'friends.shareHint':
-    'Only the busy time slots (start and end) for the next 14 days from Google Calendar are shown to this friend. Titles, places and notes are never sent, and turning this off deletes them from the server right away.',
-  'friends.shareNeedsGcal': 'Connect Google Calendar to show your busy times to friends (Settings > Assist).',
+    'Only the busy time slots (start and end) for the next 14 days from events you added in fairy are shown to this friend. Titles, places and notes are never sent, and events from Google Calendar are not shared yet. Turning this off or signing out deletes them from the server right away.',
   'friends.theyShare': 'Shows you their busy times',
   'friends.shareOn': 'Your busy times are now shown to this friend.',
   'friends.shareOff': 'Stopped showing your busy times. They were deleted from the server.',
@@ -172,13 +171,11 @@ export const en: Translation<typeof ko> = {
   'friends.err.no_passes': 'Not enough chat passes.',
   'friends.err.passes_age': 'Chat passes can only go to friends who are 18 or older.',
   'friends.err.passes_not_allowed': 'You cannot send chat passes to this friend.',
-  'friends.err.passes_not_giftable': 'Chat passes from the operator cannot be gifted.',
   'friends.err.daily_send_limit': 'You have sent all the gifts you can today. Try again tomorrow.',
   'friends.err.daily_receive_limit': 'This friend has received all the gifts they can today.',
   'friends.err.feature_off': 'This is not available right now.',
   'friends.err.expired': 'This request has expired.',
   'friends.err.no_request': 'This request was already handled.',
-  'friends.err.not_linked': 'Connect Google Calendar first.',
   'friends.err.not_shared': 'This friend is not showing busy times.',
   'friends.err.other': "Couldn't do that. Try again in a bit.",
   'inbox.giftTitle': 'Gift from a friend',
@@ -187,4 +184,7 @@ export const en: Translation<typeof ko> = {
     `${v.name} wants to be friends. Decide in the Friends box under Settings > Data.`,
   'inbox.fromFriend': (v: Name) => `From: ${v.name}`,
   'inbox.leftFriend': 'Former friend',
+  'inbox.giftBackTitle': 'Gift returned',
+  'inbox.giftBackLine': (v: Name & CP) =>
+    `Your gift to ${v.name} (${v.coins} coins, ${v.passes} chat passes) was not opened, so it came back to you. It is already added.`,
 };

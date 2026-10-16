@@ -21,8 +21,11 @@ export const INBOX_PAGE = 20;
 const KEEP_OPENED_DAYS = 365;
 const SWEEP_MS = 6 * 3_600_000;
 
-/** gift: 친구 선물 (#110, 첨부는 열 때), friend: 친구 신청 알림 (첨부 없음, 수락과 거절은 친구 칸에서) */
-export type InboxKind = 'grant' | 'notice' | 'subscription' | 'gift' | 'friend';
+/**
+ * gift: 친구 선물 (#110, 첨부는 열 때, 30일 기한), friend: 친구 신청 알림 (첨부 없음, 수락과 거절은 친구 칸에서),
+ * gift_back: 열지 않은 선물이 돌아왔다는 알림 (coins, chatPasses 는 돌려준 양. 돌려줄 때 넣었으니 열어도 더 주지 않는다)
+ */
+export type InboxKind = 'grant' | 'notice' | 'subscription' | 'gift' | 'friend' | 'gift_back';
 
 export interface InboxItem {
   id: number;
@@ -68,7 +71,7 @@ const COLUMNS = `id, kind, message, coins, chat_passes, fill_to, created_at, exp
   (SELECT json_build_object('code', s.code, 'nickname', s.nickname) FROM account s
     WHERE s.id = (SELECT COALESCE(m.merged_into, m.id) FROM account m WHERE m.id = inbox.from_account)) AS sender`;
 
-const FRIEND_KINDS: readonly InboxKind[] = ['gift', 'friend'];
+const FRIEND_KINDS: readonly InboxKind[] = ['gift', 'friend', 'gift_back'];
 
 function item(r: Row): InboxItem {
   return {
@@ -196,6 +199,18 @@ export class Inbox implements OnModuleInit, OnModuleDestroy {
       if (!row) throw fail(HttpStatus.NOT_FOUND, { error: 'no_note' });
       if (row.opened_at) throw fail(HttpStatus.CONFLICT, { error: 'already_opened', item: item(row) });
       if (row.expired) throw fail(HttpStatus.GONE, { error: 'expired', item: item(row) });
+      // 알림만 있는 쪽지: 친구 신청, 돌아온 선물 (양은 돌려줄 때 이미 넣었다)
+      if (row.kind === 'friend' || row.kind === 'gift_back') {
+        const u = await c.query<Row>(
+          `UPDATE inbox SET opened_at = now(), opened_coins = 0, opened_passes = 0 WHERE id = $1 RETURNING ${COLUMNS}`,
+          [row.id],
+        );
+        const t = await c.query<{ remaining: number }>(
+          'SELECT remaining FROM ai_ticket WHERE account_id = $1',
+          [a.id],
+        );
+        return { item: item(u.rows[0] as Row), balance: a.balance, chatPasses: t.rows[0]?.remaining ?? 0 };
+      }
       const have = await c.query<{ remaining: number }>(
         'SELECT remaining FROM ai_ticket WHERE account_id = $1',
         [a.id],

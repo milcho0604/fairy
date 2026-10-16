@@ -58,12 +58,10 @@ export interface FriendsState {
   problem: string | null;
   /** 선물 단추 (friend_gifts) */
   gifts: boolean;
-  /** 채팅 이용권 선물 칸 (만 18세 이상, 채팅 이용권을 쓸 수 있고, 운영자 지급분 선물 스위치가 켜졌다) */
+  /** 채팅 이용권 선물 칸 (만 18세 이상, 채팅 이용권을 쓸 수 있고, 이용권 선물 스위치 friend_gift_passes 가 켜졌다) */
   passGifts: boolean;
   /** 서버가 일정 공유를 켜 줬다 (friend_calendar) */
   calendar: boolean;
-  /** 이 컴퓨터에 구글 일정이 연결돼 있다 (공유 켜기는 이때만) */
-  calendarLinked: boolean;
   /** 지금 코인 잔액과 채팅 이용권 (서버 사본). 모르면 null */
   balance: number | null;
   passes: number | null;

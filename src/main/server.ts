@@ -29,7 +29,7 @@ import { osCrypto } from './os-crypto.ts';
 import { serverApi } from './server-api.ts';
 import { type Reverted, ServerCoins } from './server-coins.ts';
 import { createServerCore, type Secret } from './server-core.ts';
-import { createServerFriends } from './server-friends.ts';
+import { type BusySource, createServerFriends } from './server-friends.ts';
 import { SERVER_RESTORE_MARK } from './server-mark.ts';
 import { sealedSecret } from './server-secret.ts';
 import { appServerUrl } from './server-url.ts';
@@ -98,11 +98,8 @@ export function createServer(o: {
   };
   /** 이 기기가 구글 일정을 연결했나 (#115, main/gcal.ts). 바뀌면 core.calendarChanged() */
   calendarLinked?: () => boolean;
-  /** 친구 일정 공유 (#110): 구글 일정이 연결돼 있는지와 [from, to) 의 시각 일정 */
-  calendar?: {
-    linked: () => boolean;
-    events: (from: number, to: number) => { startAt: number; endAt: number | null }[];
-  };
+  /** 친구 일정 공유 (#110): [from, to) 의 시각 일정 (어느 것을 보낼지는 server-friends.ts shareableEvent) */
+  friendEvents?: (from: number, to: number) => BusySource[];
   log: (tag: string, ...rest: unknown[]) => void;
 }) {
   const url = appServerUrl();
@@ -193,8 +190,7 @@ export function createServer(o: {
   // 친구 (#110): 서버 모드, 로그인, 서버가 켠 친구 기능일 때만
   const friends = createServerFriends({
     core: () => core,
-    calendarLinked: () => o.calendar?.linked() ?? false,
-    events: (from, to) => o.calendar?.events(from, to) ?? [],
+    events: (from, to) => o.friendEvents?.(from, to) ?? [],
     now: Date.now,
     onChange: (s) => sendFriends(s),
     log: o.log,
@@ -391,8 +387,7 @@ export function createServer(o: {
 
   return {
     core,
-    // 시험 손잡이 debugLinked(구글 연결 여부 바꿔 끼우기)는 시험 실행(JJ_TEST_SECRETS=memory, 설치판 아님)에서만
-    friends: { ...friends, debugLinked: memory ? friends.debugLinked : () => {} },
+    friends,
     /** 서버 모드라 코인이 서버 정본을 따른다 (백업 되살리기 안내, 코인 초기화) */
     serverCoins: () => core.allowed(),
     beforeRestore: () => core.beforeRestore(),
