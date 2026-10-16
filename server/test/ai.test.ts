@@ -38,6 +38,8 @@ let fake: {
       string,
       unknown
     >;
+    beta: string | null;
+    violations: string[];
   }[];
   close: () => Promise<void>;
 };
@@ -188,6 +190,7 @@ before(async () => {
     model: 'claude-haiku-5-5',
     monthlyBudgetMicros: 1_000_000,
     dailyLimit: 5,
+    maxInputChars: 8000,
     giftKey: GIFT_KEY,
     firstTextMs: 2500,
     totalMs: 5000,
@@ -393,9 +396,12 @@ describe('질문 하나', () => {
     assert.equal(call?.apiKey, API_KEY);
     assert.equal(call?.body.model, 'claude-haiku-5-5');
     assert.equal(call?.body.max_tokens, 600);
-    // Haiku 5.5 (#101): 생각을 끄고 effort low, 샘플링 값은 보내지 않는다
+    // Haiku 5.5: 생각은 disabled (끄기), effort low, 서버 폴백과 베타 머리 없음, 샘플링 값 없음
     assert.deepEqual(call?.body.thinking, { type: 'disabled' });
     assert.deepEqual(call?.body.output_config, { effort: 'low' });
+    assert.equal(call?.body.fallbacks, undefined);
+    assert.equal(call?.beta, null);
+    assert.deepEqual(call?.violations, []);
     for (const k of ['temperature', 'top_p', 'top_k']) assert.equal(call?.body[k], undefined, k);
     assert.match(String(call?.body.system), /사람이 아니라 AI/);
     // system 은 서버 고정 문구 그대로, 앱이 보낸 말투는 첫 사용자 차례 앞의 참고 자료 블록에만
@@ -405,8 +411,71 @@ describe('질문 하나', () => {
       'SELECT status, input_tokens, output_tokens, cost_micros FROM ai_usage WHERE account_id = $1',
       [await accountOf(a.session)],
     );
+    // Haiku 5.5: 입력 120 × 0.1 + 출력 30 × 0.5 = 27 (백만분의 1달러)
     assert.deepEqual(u.rows, [{ status: 'ok', input_tokens: 120, output_tokens: 30, cost_micros: '27' }]);
     assert.deepEqual((await api('GET', '/v1/ai', { token: a.session })).body.usedToday, 1);
+  });
+
+  test('운영자가 줄인 질문 글자 수를 넘으면 400 too_long, 대화권은 그대로 (상한은 원래 값으로 되돌린다)', async () => {
+    const a = await adult();
+    await pool.query('UPDATE ai_setting SET input_chars = 50 WHERE id = 1');
+    try {
+      const r = await api('POST', '/v1/ai/chat', { token: a.session, body: ask('가'.repeat(60)) });
+      assert.equal(r.status, 400, r.text);
+      assert.equal(r.body.error, 'too_long');
+      assert.equal(await tickets(a.session), AI_GIFT);
+    } finally {
+      await pool.query('UPDATE ai_setting SET input_chars = NULL WHERE id = 1');
+    }
+  });
+
+  test('질문 글자 수는 question 만 센다: 앞에 붙은 글이 길어도 짧은 질문은 통과, 질문이 길면 too_long, 전체 안전 상한도 지킨다', async () => {
+    const a = await adult();
+    await pool.query('UPDATE ai_setting SET input_chars = 50 WHERE id = 1');
+    try {
+      const lead = `지금은 오후 3시\n[할 일]\n${'- 빨래\n'.repeat(100)}[질문]\n`;
+      const n0 = fake.calls.length;
+      const ok = await api('POST', '/v1/ai/chat', {
+        token: a.session,
+        body: {
+          messages: [{ role: 'user', content: `${lead}안녕` }],
+          question: '안녕',
+          lang: 'ko',
+          persona: '',
+        },
+      });
+      assert.equal(ok.status, 200, ok.text);
+      assert.equal(fake.calls.length, n0 + 1);
+      assert.equal(await tickets(a.session), AI_GIFT - 1);
+      // 질문 칸이 상한을 넘으면 앞에 붙은 글이 짧아도 too_long, 업스트림에 안 간다
+      const long = await api('POST', '/v1/ai/chat', {
+        token: a.session,
+        body: {
+          messages: [{ role: 'user', content: `[질문]\n${'가'.repeat(60)}` }],
+          question: '가'.repeat(60),
+          lang: 'ko',
+          persona: '',
+        },
+      });
+      assert.equal(long.status, 400, long.text);
+      assert.equal(long.body.error, 'too_long');
+      // 질문은 짧아도 요청 전체가 안전 상한(12000)을 넘으면 too_long
+      const huge = await api('POST', '/v1/ai/chat', {
+        token: a.session,
+        body: {
+          messages: [{ role: 'user', content: '가'.repeat(12001) }],
+          question: '안녕',
+          lang: 'ko',
+          persona: '',
+        },
+      });
+      assert.equal(huge.status, 400, huge.text);
+      assert.equal(huge.body.error, 'too_long');
+      assert.equal(fake.calls.length, n0 + 1);
+      assert.equal(await tickets(a.session), AI_GIFT - 1);
+    } finally {
+      await pool.query('UPDATE ai_setting SET input_chars = NULL WHERE id = 1');
+    }
   });
 
   test('거절(refusal): 받은 글이 있어도 이용권을 되돌리고 error refusal', async () => {
@@ -601,7 +670,7 @@ describe('상한', () => {
     const used = await pool.query<{ total: string }>(
       "SELECT COALESCE(sum(cost_micros), 0) AS total FROM ai_usage WHERE created_at >= date_trunc('month', now(), 'UTC')",
     );
-    // 질문 하나가 잡는 값의 두 개 반쯤 자리를 남긴다 (Haiku 5.5 는 하나에 몇백)
+    // 질문 하나가 잡는 값(예약금)의 두 개 반쯤 자리를 남긴다
     const one = reserveMicros(ai.model, {
       messages: [{ role: 'user', content: '[[slow]] 동시에' }],
       lang: 'ko',

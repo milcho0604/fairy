@@ -161,6 +161,8 @@ export interface AiTicketStatus {
 /** 대화권 질문 (POST /v1/ai/chat). 서버가 최근 대화와 펫 성격을 받아 Claude 에 중계한다 */
 export interface AiChatBody {
   messages: { role: 'user' | 'assistant'; content: string }[];
+  /** 사용자가 직접 친 마지막 질문 글만 (messages 마지막 말에서 앞에 붙인 시각, 머리글, 할 일 목록을 뺀 것). 서버가 질문 글자 수 상한을 이걸로 잰다 */
+  question?: string;
   lang: 'ko' | 'en';
   persona: string;
 }

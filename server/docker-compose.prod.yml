@@ -54,11 +54,12 @@ services:
       # 앱 안 운영자 화면을 쓸 구글 계정 sub (쉼표). 비면 운영자 계정 없음
       ADMIN_GOOGLE_SUBS: ${ADMIN_GOOGLE_SUBS:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      # 비우면 공식 주소, Haiku 4.5, 월 80달러, 하루 20번 (server/src/config.ts)
+      # 비우면 공식 주소, Haiku 5.5, 월 90달러, 하루 20번, 질문 8000자 (server/src/config.ts)
       ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
       AI_MONTHLY_BUDGET_USD: ${AI_MONTHLY_BUDGET_USD:-}
       AI_DAILY_LIMIT: ${AI_DAILY_LIMIT:-}
+      AI_MAX_INPUT_CHARS: ${AI_MAX_INPUT_CHARS:-}
       # 첫 로그인 선물과 하루 수를 세는 HMAC 비밀. 비면 선물만 꺼진다
       GIFT_HMAC_KEY: ${GIFT_HMAC_KEY:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}

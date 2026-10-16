@@ -6,11 +6,45 @@
 //   [[sse-error]]  글 한 조각 뒤 SSE error 사건 (overloaded_error)
 //   [[slow]]       아무것도 보내지 않고 기다린다 (시간 넘김)
 //   [[refusal]]    글 한 조각 뒤 stop_reason refusal (안전 분류기 거절, Haiku 5.5 는 서버 폴백 없음)
-//   그 밖          "안녕! 나는 AI 야." 를 세 조각으로, 사용량 input 120 / output 30
+//
+// 요청 모양 검사: 서버가 보낸 본문이 모델별 규칙(server/src/ai-rules.ts requestShape)과 맞지 않으면
+// 진짜 API 처럼 400 invalid_request_error 를 준다 (calls 에도 violations 로 남는다).
+//   claude-haiku-5-5:  thinking {type:"disabled"}, output_config {effort:"low"}, fallbacks 와 폴백 베타 없음
+//   모든 모델: 날짜 접미사 없는 모델 이름, 샘플링 값 없음(temperature, top_p, top_k), budget_tokens 없음,
+//              강제 tool_choice(any, tool) 없음, 마지막 차례는 사용자 (미리 채우기 없음)
 import { createServer } from 'node:http';
 
+const SAMPLING = ['temperature', 'top_p', 'top_k'];
+const FALLBACK_BETA = 'server-side-fallback-2026-07-01';
+const DATED = /-\d{8}$/;
+
+/** 모델별 요청 모양 위반 목록 (빈 배열이면 맞다) */
+export function shapeViolations(body, betaHeader) {
+  const v = [];
+  const model = String(body.model ?? '');
+  const betas = String(betaHeader ?? '')
+    .split(',')
+    .map((x) => x.trim());
+  if (!/^claude-[a-z]+-[0-9][0-9.-]*$/.test(model) || DATED.test(model)) v.push(`model: ${model}`);
+  for (const k of SAMPLING) if (k in body) v.push(`${k} 는 보내지 않는다`);
+  if (body.thinking && 'budget_tokens' in body.thinking) v.push('budget_tokens 는 보내지 않는다');
+  const tc = body.tool_choice?.type;
+  if (tc === 'any' || tc === 'tool') v.push(`tool_choice ${tc} 는 이 모델에서 400`);
+  const last = Array.isArray(body.messages) ? body.messages.at(-1) : undefined;
+  if (last?.role !== 'user') v.push('마지막 차례는 사용자여야 한다 (미리 채우기 금지)');
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  if (model.startsWith('claude-haiku-5-5')) {
+    if (!same(body.thinking, { type: 'disabled' })) v.push('haiku 5.5: thinking 은 disabled');
+    if (!same(body.output_config, { effort: 'low' })) v.push('haiku 5.5: output_config 은 effort low');
+    if ('fallbacks' in body) v.push('haiku 5.5: fallbacks 를 보내면 400');
+    if (betas.includes(FALLBACK_BETA)) v.push('haiku 5.5: 폴백 베타 머리 없음');
+  }
+  return v;
+}
+
 export async function startFakeAnthropic() {
-  /** 받은 요청 (머리의 키 확인, 시스템 프롬프트와 모델 확인). 글은 시험 안에서만 본다 */
+  /** 받은 요청 (머리의 키, 베타 머리, 본문, 모양 위반). 글은 시험 안에서만 본다 */
+  /** @type {Array<{ apiKey: unknown, beta: string | null, body: any, violations: string[] }>} */
   const calls = [];
   const sockets = new Set();
   const server = createServer((req, res) => {
@@ -29,7 +63,23 @@ export async function startFakeAnthropic() {
       try {
         body = JSON.parse(raw);
       } catch {}
-      calls.push({ apiKey: req.headers['x-api-key'], body });
+      const violations = shapeViolations(body, req.headers['anthropic-beta']);
+      calls.push({
+        apiKey: req.headers['x-api-key'],
+        beta: req.headers['anthropic-beta'] ?? null,
+        body,
+        violations,
+      });
+      if (violations.length > 0) {
+        res.writeHead(400, { 'content-type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            type: 'error',
+            error: { type: 'invalid_request_error', message: violations.join('; ') },
+          }),
+        );
+        return;
+      }
       const msgs = Array.isArray(body.messages) ? body.messages : [];
       const last = msgs[msgs.length - 1];
       const text = typeof last?.content === 'string' ? last.content : JSON.stringify(last?.content ?? '');
@@ -54,15 +104,16 @@ export async function startFakeAnthropic() {
           usage: { input_tokens: 120, output_tokens: 1 },
         },
       });
+      const index = 0;
       send('content_block_start', {
         type: 'content_block_start',
-        index: 0,
+        index,
         content_block: { type: 'text', text: '' },
       });
       const delta = (t) =>
         send('content_block_delta', {
           type: 'content_block_delta',
-          index: 0,
+          index,
           delta: { type: 'text_delta', text: t },
         });
       if (text.includes('[[cut]]')) {
@@ -73,7 +124,7 @@ export async function startFakeAnthropic() {
       }
       if (text.includes('[[refusal]]')) {
         delta('음... ');
-        send('content_block_stop', { type: 'content_block_stop', index: 0 });
+        send('content_block_stop', { type: 'content_block_stop', index });
         send('message_delta', {
           type: 'message_delta',
           delta: {
@@ -101,7 +152,7 @@ export async function startFakeAnthropic() {
           setTimeout(tick, 10);
           return;
         }
-        send('content_block_stop', { type: 'content_block_stop', index: 0 });
+        send('content_block_stop', { type: 'content_block_stop', index });
         send('message_delta', {
           type: 'message_delta',
           delta: { stop_reason: 'end_turn', stop_sequence: null },
