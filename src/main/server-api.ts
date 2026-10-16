@@ -126,6 +126,9 @@ export interface AiChatBody {
  * too_long, rate_limited) 그대로이거나 offline(닿지 않음, 끊김), cancelled(사용자가 멈춤), bad_reply.
  * tickets 는 서버가 알려 준 남은 수, refunded 는 서버가 차감을 되돌렸다는 뜻
  */
+/** 대화권 답의 한 조각: 글, 또는 앞의 글을 지우라는 신호 (서버 폴백) */
+export type AiPiece = { type: 'text'; text: string } | { type: 'reset' };
+
 export type AiChatOutcome =
   | { ok: true; tickets: number }
   | { ok: false; status: number; error: string; tickets?: number; refunded?: boolean };
@@ -441,9 +444,9 @@ export function serverApi(base: string, f: FetchLike) {
         body: { question: question.slice(0, 4000), answer: answer.slice(0, 8000), consent: true },
         read: () => true,
       }),
-    /** 대화권 질문 하나. 답 조각마다 onText. signal 로 멈춘다 */
-    aiChat: (token: string, body: AiChatBody, onText: (text: string) => void, signal?: AbortSignal) =>
-      aiChat(base, f, token, body, onText, signal),
+    /** 대화권 질문 하나. 답 조각마다 onPiece (서버 폴백이면 reset). signal 로 멈춘다 */
+    aiChat: (token: string, body: AiChatBody, onPiece: (piece: AiPiece) => void, signal?: AbortSignal) =>
+      aiChat(base, f, token, body, onPiece, signal),
     /** 내 계정: 기기 코드, 닉네임, 운영자인지 (#101). 서버가 매번 다시 본다 */
     me: (token: string) =>
       call<{ profile: ProfileInfo; admin: boolean }>('GET', '/v1/me', {
@@ -645,7 +648,7 @@ async function aiChat(
   f: FetchLike,
   token: string,
   body: AiChatBody,
-  onText: (text: string) => void,
+  onPiece: (piece: AiPiece) => void,
   signal?: AbortSignal,
 ): Promise<AiChatOutcome> {
   const ac = new AbortController();
@@ -701,7 +704,10 @@ async function aiChat(
         const ev = sseBlock(buf.slice(0, i));
         buf = buf.slice(i + 2);
         if (!ev) continue;
-        if (ev.event === 'text' && typeof ev.data.text === 'string') onText(ev.data.text);
+        if (ev.event === 'text' && typeof ev.data.text === 'string')
+          onPiece({ type: 'text', text: ev.data.text });
+        // 서버 폴백: 앞에서 받은 글은 거절된 답이었다. 앱은 그 글을 지우고 이어 받는다
+        else if (ev.event === 'reset') onPiece({ type: 'reset' });
         else if (ev.event === 'done') {
           await reader.cancel().catch(() => {});
           return { ok: true, tickets: nat(ev.data.tickets) ?? 0 };

@@ -6,7 +6,9 @@
 //   [[sse-error]]  글 한 조각 뒤 SSE error 사건 (overloaded_error)
 //   [[slow]]       아무것도 보내지 않고 기다린다 (시간 넘김)
 //   [[refusal]]    글 한 조각 뒤 stop_reason refusal (안전 분류기 거절, 폴백도 못 넘은 것)
-//   [[fallback]]   서버 폴백: 맨 앞 fallback 블록(from 요청 모델, to 다른 모델) 뒤에 글 (실제 응답 모양)
+//   [[fallback]]   서버 폴백 (실제 모양): 거절한 홉의 앞부분 글 "[A의 앞부분] " → fallback 블록(from 요청 모델, to
+//                  claude-opus-5) → 폴백 홉의 새 답 "안녕! 나는 AI 야.". 맨 위 usage 는 답한 홉, usage.iterations 는
+//                  홉마다 (거절한 홉 message, 답한 홉 fallback_message). 비용 장부 시험이 이 숫자를 쓴다
 //   그 밖          "안녕! 나는 AI 야." 를 세 조각으로, 사용량 input 120 / output 30
 //
 // 요청 모양 검사: 서버가 보낸 본문이 모델별 규칙(server/src/ai-rules.ts requestShape)과 맞지 않으면
@@ -109,28 +111,83 @@ export async function startFakeAnthropic() {
           type: 'message',
           role: 'assistant',
           // 서버 폴백이 일어나면 응답의 model 은 폴백 모델 이름이다
-          model: fallen ? 'claude-sonnet-5' : body.model,
+          model: body.model,
           content: [],
           stop_reason: null,
           stop_sequence: null,
           usage: { input_tokens: 120, output_tokens: 1 },
         },
       });
-      let index = 0;
       if (fallen) {
-        // 실제 모양: 맨 앞 fallback 블록은 ordinary content_block_start 로 온다 (전용 사건 종류 없음)
+        // 실제 모양: 블록은 순서대로, 전용 사건 종류 없이 content_block_start 로 온다 (fallback 블록은 글 사이에 낀다)
         send('content_block_start', {
           type: 'content_block_start',
           index: 0,
+          content_block: { type: 'text', text: '' },
+        });
+        send('content_block_delta', {
+          type: 'content_block_delta',
+          index: 0,
+          delta: { type: 'text_delta', text: '[A의 앞부분] ' },
+        });
+        send('content_block_stop', { type: 'content_block_stop', index: 0 });
+        send('content_block_start', {
+          type: 'content_block_start',
+          index: 1,
           content_block: {
             type: 'fallback',
             from: { model: body.model },
-            to: { model: 'claude-sonnet-5' },
+            to: { model: 'claude-opus-5' },
+            trigger: { type: 'refusal', category: null },
           },
         });
-        send('content_block_stop', { type: 'content_block_stop', index: 0 });
-        index = 1;
+        send('content_block_stop', { type: 'content_block_stop', index: 1 });
+        send('content_block_start', {
+          type: 'content_block_start',
+          index: 2,
+          content_block: { type: 'text', text: '' },
+        });
+        for (const t of ['안녕! ', '나는 AI ', '야.']) {
+          send('content_block_delta', {
+            type: 'content_block_delta',
+            index: 2,
+            delta: { type: 'text_delta', text: t },
+          });
+        }
+        send('content_block_stop', { type: 'content_block_stop', index: 2 });
+        send('message_delta', {
+          type: 'message_delta',
+          delta: { stop_reason: 'end_turn', stop_sequence: null },
+          usage: {
+            input_tokens: 120,
+            output_tokens: 30,
+            iterations: [
+              {
+                type: 'message',
+                model: body.model,
+                input_tokens: 120,
+                output_tokens: 40,
+                cache_creation_input_tokens: 0,
+                cache_read_input_tokens: 0,
+                cache_creation: null,
+              },
+              {
+                type: 'fallback_message',
+                model: 'claude-opus-5',
+                input_tokens: 120,
+                output_tokens: 30,
+                cache_creation_input_tokens: 0,
+                cache_read_input_tokens: 0,
+                cache_creation: null,
+              },
+            ],
+          },
+        });
+        send('message_stop', { type: 'message_stop' });
+        res.end();
+        return;
       }
+      const index = 0;
       send('content_block_start', {
         type: 'content_block_start',
         index,

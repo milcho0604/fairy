@@ -23,7 +23,7 @@ import {
   type ServerProblem,
   type ServerStatus,
 } from '../shared/server-account.ts';
-import type { AiChatBody, AiChatOutcome, ApiResult, BackupList, ServerApi } from './server-api.ts';
+import type { AiChatBody, AiChatOutcome, AiPiece, ApiResult, BackupList, ServerApi } from './server-api.ts';
 import { BACKUP_MAX_BYTES, mergeNeeded, SYNC_BATCH, summary } from './server-api.ts';
 import { type CoinQueue, emptyQueue, type QueueEntry, type Reverted, revertable } from './server-coins.ts';
 
@@ -602,12 +602,12 @@ export function createServerCore(d: ServerCoreDeps) {
   /** 대화권으로 질문 하나 (글은 기록에 남기지 않는다) */
   async function askAi(
     body: AiChatBody,
-    onText: (text: string) => void,
+    onPiece: (piece: AiPiece) => void,
     signal?: AbortSignal,
   ): Promise<AiChatOutcome> {
     const s = d.session.get();
     if (!d.api || !s || !aiAvailable()) return { ok: false, status: 403, error: 'login' };
-    const r = await d.api.aiChat(s, body, onText, signal);
+    const r = await d.api.aiChat(s, body, onPiece, signal);
     if (r.ok) setTickets(r.tickets);
     else {
       if (r.tickets !== undefined) setTickets(r.tickets);

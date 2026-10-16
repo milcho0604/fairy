@@ -82,6 +82,12 @@ test('AI 대화권: 기본은 공식 주소와 Sonnet 5.5, 월 80달러, 하루 
   assert.throws(() => readConfig({ ...env, AI_MONTHLY_BUDGET_USD: '-1' }), /AI_MONTHLY_BUDGET_USD/);
   assert.throws(() => readConfig({ ...env, AI_MAX_INPUT_CHARS: '0' }), /AI_MAX_INPUT_CHARS/);
   assert.throws(() => readConfig({ ...env, AI_MAX_INPUT_CHARS: '2.5' }), /AI_MAX_INPUT_CHARS/);
+  // 8000 을 넘는 값, 16진수, 지수 표기는 기동 오류 (Number 가 받아 주는 값도 거절한다)
+  for (const v of ['8001', '0x10', '1e3', ' ', '-5']) {
+    if (v.trim() === '') continue;
+    assert.throws(() => readConfig({ ...env, AI_MAX_INPUT_CHARS: v }), /AI_MAX_INPUT_CHARS/, v);
+  }
+  assert.equal(readConfig({ ...env, AI_MAX_INPUT_CHARS: '8000' }).ai?.maxInputChars, 8000);
 });
 
 test('운영자 화면은 ADMIN_TOKEN 이 32자 이상일 때만, 최신 릴리스 주소는 https 만', () => {

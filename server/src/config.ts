@@ -92,7 +92,7 @@ export interface AiConfig {
   monthlyBudgetMicros: number;
   /** 사람(계정)마다 하루(한국 날짜) 질문 수 상한 */
   dailyLimit: number;
-  /** 질문 하나의 메시지 전체 글자 수 상한 (AI_MAX_INPUT_CHARS, 기본 8000). 운영자 화면에서 이보다 낮출 수 있다 */
+  /** 질문 하나의 메시지 전체 글자 수 상한 (AI_MAX_INPUT_CHARS, 1~8000, 기본 8000). 운영자 화면에서 이보다 낮출 수 있다 */
   maxInputChars: number;
   /**
    * 첫 로그인 선물과 하루 수를 세는 HMAC 비밀 (GIFT_HMAC_KEY). 탈퇴해도 남는 표(ai_gift_seen, ai_daily)의 키를
@@ -133,10 +133,16 @@ function nonNegative(name: string, raw: string | undefined, fallback: number, in
   return n;
 }
 
-/** 질문 글자 수 상한 (1 이상 정수). 0 이면 모든 질문이 too_long 이라 막는다 */
+/**
+ * 질문 글자 수 상한: 1 이상 8000 이하의 10진 정수만 (기동 오류). 8000 은 기본이자 최대이고 운영자는 이보다 낮게만 정한다.
+ * 16진수 (0x10), 소수, 지수 표기, 공백 섞인 값은 Number 가 받아 주더라도 거절한다
+ */
 function readMaxInputChars(raw: string | undefined): number {
-  const n = nonNegative('AI_MAX_INPUT_CHARS', raw, AI_MAX_TOTAL_CHARS, true);
-  if (n < 1) throw new Error(`AI_MAX_INPUT_CHARS 는 1 이상이어야 한다: ${raw}`);
+  const v = (raw ?? '').trim();
+  if (v === '') return AI_MAX_TOTAL_CHARS;
+  const n = /^[0-9]+$/.test(v) ? Number(v) : Number.NaN;
+  if (!Number.isInteger(n) || n < 1 || n > AI_MAX_TOTAL_CHARS)
+    throw new Error(`AI_MAX_INPUT_CHARS 는 1~${AI_MAX_TOTAL_CHARS} 사이의 정수여야 한다: ${raw}`);
   return n;
 }
 

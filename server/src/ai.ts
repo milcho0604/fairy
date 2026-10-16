@@ -17,7 +17,8 @@ import {
   AI_MAX_OUTPUT_TOKENS,
   AI_REPORT_KEEP_DAYS,
   type AiChatRequest,
-  costMicros,
+  billedMicros,
+  hopsOf,
   requestShape,
   reserveMicros,
   seoulDay,
@@ -55,9 +56,11 @@ export interface AiStatus {
   subscription: Pick<SubscriptionInfo, 'monthly' | 'mode' | 'nextFill'> | null;
 }
 
+/** 한 질문의 사용량: 맨 위 토큰(답을 낸 홉), 홉별로 센 비용 (백만분의 1달러) */
 interface Usage {
   input: number;
   output: number;
+  micros: number;
 }
 
 /** 스트리밍 응답에 쓰는 express 응답의 일부 */
@@ -270,7 +273,8 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
       if (g.remaining <= 0) throw fail(HttpStatus.CONFLICT, { error: 'no_tickets', tickets: 0 });
       if ((await this.usedToday(c, g.keys)) >= limits.dailyLimit)
         throw fail(HttpStatus.TOO_MANY_REQUESTS, { error: 'daily_limit', tickets: g.remaining });
-      const reserve = reserveMicros(ai.model, req);
+      // 서버 폴백이 켜진 모델은 두 홉 최악으로 잡는다 (requestShape 가 정한다)
+      const reserve = reserveMicros(ai.model, req, requestShape(ai.model).fallbacks !== undefined);
       await c.query('SELECT pg_advisory_xact_lock($1)', [BUDGET_LOCK]);
       const month = await c.query<{ total: string }>(
         `SELECT COALESCE(sum(cost_micros), 0) AS total FROM ai_usage
@@ -298,11 +302,10 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
 
   /** 답을 다 받았다: 실제 토큰과 비용을 적는다 */
   async finish(usageId: string, usage: Usage): Promise<void> {
-    const model = this.ai?.model ?? '';
     await this.db.pool.query(
       `UPDATE ai_usage SET status = 'ok', input_tokens = $2, output_tokens = $3, cost_micros = $4, finished_at = now()
         WHERE id = $1 AND status = 'pending'`,
-      [usageId, usage.input, usage.output, costMicros(model, usage.input, usage.output)],
+      [usageId, usage.input, usage.output, usage.micros],
     );
   }
 
@@ -312,18 +315,12 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
    * 그사이 합쳐졌으면 남는 쪽에, 탈퇴했으면(계정 번호가 비었다) 돌려줄 곳이 없다. 돌려준 뒤 남은 수
    */
   async refund(usageId: string, usage?: Usage): Promise<number | undefined> {
-    const model = this.ai?.model ?? '';
     return this.db.tx(async (c) => {
       const r = await c.query<{ account_id: string | null; day: string }>(
         `UPDATE ai_usage SET status = 'refunded', input_tokens = $2, output_tokens = $3,
                 cost_micros = COALESCE($4, cost_micros), finished_at = now()
           WHERE id = $1 AND status = 'pending' RETURNING account_id, to_char(day, 'YYYY-MM-DD') AS day`,
-        [
-          usageId,
-          usage?.input ?? 0,
-          usage?.output ?? 0,
-          usage ? costMicros(model, usage.input, usage.output) : null,
-        ],
+        [usageId, usage?.input ?? 0, usage?.output ?? 0, usage ? usage.micros : null],
       );
       const row = r.rows[0];
       if (!row?.account_id) return undefined;
@@ -343,6 +340,7 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
   /**
    * 질문 하나를 Claude 에 중계한다 (Server-Sent Events).
    *   event: text  data: {"text": "..."}     (답 조각, 여러 번)
+   *   event: reset data: {}                  (서버 폴백: 그때까지 보낸 글은 거절된 답이었다. 앱은 지우고 이어 받는다)
    *   event: done  data: {"tickets": n, "stop": "end_turn"}
    *   event: error data: {"error": "upstream" | "timeout", "tickets": n, "refunded": true}
    * 첫 조각 전에 실패하면 SSE 대신 502 upstream / 504 timeout JSON. 앱이 연결을 끊으면 업스트림도 멈추고,
@@ -373,8 +371,19 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
       }
       res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     };
-    const usage: Usage = { input: 0, output: 0 };
-    let delivered = false;
+    // 맨 위 토큰 (답을 낸 홉)과 응답의 홉 목록. 장부는 bill() 로 홉마다 그 모델 요금으로 센다
+    const top = { input: 0, output: 0 };
+    /** 앱에 보낸 글 (거절된 홉의 글은 reset 뒤 지운다) */
+    let shown = '';
+    /** 서버 폴백 블록이 알려 준 대신 답한 모델 (없으면 undefined) */
+    let fallbackTo: string | undefined;
+    let iterations: unknown;
+    const bill = (): Usage => {
+      const hops = hopsOf(iterations, fallbackTo) ?? [
+        { model: fallbackTo ?? ai.model, input: top.input, output: top.output },
+      ];
+      return { input: top.input, output: top.output, micros: billedMicros(hops) };
+    };
     try {
       // 모델별 요청 칸(생각 끄기, effort, 서버 폴백, 베타 머리)은 ai-rules.ts requestShape 한 곳에서 고른다.
       // 샘플링 값(temperature 등)은 보내지 않는다 (기본값이 아니면 400)
@@ -391,37 +400,47 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
       );
       for await (const ev of stream) {
         if (ev.type === 'message_start') {
-          usage.input = ev.message.usage.input_tokens;
-          usage.output = ev.message.usage.output_tokens;
+          top.input = ev.message.usage.input_tokens;
+          top.output = ev.message.usage.output_tokens;
         } else if (ev.type === 'message_delta') {
-          usage.output = ev.usage.output_tokens;
-          if (typeof ev.usage.input_tokens === 'number') usage.input = ev.usage.input_tokens;
+          top.output = ev.usage.output_tokens;
+          if (typeof ev.usage.input_tokens === 'number') top.input = ev.usage.input_tokens;
+          iterations = (ev.usage as { iterations?: unknown }).iterations ?? iterations;
+        } else if (
+          ev.type === 'content_block_start' &&
+          (ev.content_block as { type: string }).type === 'fallback'
+        ) {
+          // 서버 폴백: 앞에서 거절된 홉이 쓴 글은 답이 아니다. 앱에 reset 을 보내 말풍선을 비우고 새 답을 이어 받게 한다
+          fallbackTo = (ev.content_block as { to?: { model?: string } }).to?.model ?? fallbackTo;
+          shown = '';
+          send('reset', {});
         } else if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta' && ev.delta.text) {
           clearTimeout(firstTimer);
-          delivered = true;
+          shown += ev.delta.text;
           send('text', { text: ev.delta.text });
         }
       }
       const final = await stream.finalMessage();
-      usage.input = final.usage.input_tokens;
-      usage.output = final.usage.output_tokens;
+      top.input = final.usage.input_tokens;
+      top.output = final.usage.output_tokens;
+      iterations = (final.usage as { iterations?: unknown }).iterations ?? iterations;
       if (why) throw new Error(why);
       // 안전 분류기 거절 (서버 폴백으로도 못 넘었거나 폴백이 없는 모델): 이용권을 되돌리고 앱이 안내한다. 쓴 토큰 비용은 남긴다
       if (final.stop_reason === 'refusal') {
-        const tickets = await this.refund(started.usageId, usage).catch(() => undefined);
+        const tickets = await this.refund(started.usageId, bill()).catch(() => undefined);
         console.warn('[ai] 거절됨 (되돌림)');
         send('error', { error: 'refusal', tickets: tickets ?? started.tickets + 1, refunded: true });
         res.end();
         return;
       }
       // max_tokens 로 끊긴 답은 받은 데까지 보여 주고 차감은 그대로
-      await this.finish(started.usageId, usage);
+      await this.finish(started.usageId, bill());
       send('done', { tickets: started.tickets, stop: final.stop_reason ?? 'end_turn' });
       res.end();
     } catch (err) {
-      const kept = why === 'client' && delivered;
-      const tickets = kept ? undefined : await this.refund(started.usageId, usage).catch(() => undefined);
-      if (kept) await this.finish(started.usageId, usage).catch(() => {});
+      const kept = why === 'client' && shown !== '';
+      const tickets = kept ? undefined : await this.refund(started.usageId, bill()).catch(() => undefined);
+      if (kept) await this.finish(started.usageId, bill()).catch(() => {});
       // 글은 남기지 않는다: 까닭의 종류와 상태 번호만
       console.warn(
         '[ai] 중계 실패:',

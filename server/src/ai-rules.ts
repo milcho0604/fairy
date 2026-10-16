@@ -47,7 +47,13 @@ const PRICES: Record<string, { input: number; output: number }> = {
   'claude-opus-5-5': { input: 4, output: 20 },
   'claude-opus-5': { input: 5, output: 25 },
 };
-const UNKNOWN_PRICE = { input: 10, output: 50 };
+/**
+ * 모르는 모델 (서버 폴백이 고른 모델은 공개되지 않는다, 환경 변수로 고른 낯선 모델 포함): 알려진 가장 비싼 값 이상으로 센다
+ * (Claude Fable 5.1 $10 / $50 보다 위). 이 값으로 셈하면 월 상한이 늦게 걸리지 않는다
+ */
+const UNKNOWN_PRICE = { input: 15, output: 75 };
+/** 모르는 모델을 나타내는 이름 (요금표에 없는 이름이면 모두 UNKNOWN_PRICE) */
+export const UNKNOWN_MODEL = '';
 
 export const priceOf = (model: string) => PRICES[model] ?? UNKNOWN_PRICE;
 
@@ -89,16 +95,45 @@ export function costMicros(model: string, inputTokens: number, outputTokens: num
   return Math.ceil(inputTokens * p.input + outputTokens * p.output);
 }
 
+/** 응답의 홉 하나 (usage.iterations 의 항목). model 을 모르면 undefined */
+export interface Hop {
+  model?: string;
+  input: number;
+  output: number;
+}
+
+/**
+ * 응답 usage.iterations 를 홉 목록으로. 항목마다 model 이 없으면 fallback 블록의 to.model (fallbackTo), 그래도 없으면 모르는 모델.
+ * iterations 가 없거나 배열이 아니면 undefined (맨 위 usage 를 쓴다)
+ */
+export function hopsOf(iterations: unknown, fallbackTo?: string): Hop[] | undefined {
+  if (!Array.isArray(iterations) || iterations.length === 0) return undefined;
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0);
+  return iterations.map((raw) => {
+    const o = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
+    const model = typeof o.model === 'string' && o.model ? o.model : fallbackTo;
+    return { model, input: num(o.input_tokens), output: num(o.output_tokens) };
+  });
+}
+
+/** 홉마다 그 모델의 요금으로 센 비용 합 (백만분의 1달러). 홉이 여럿이면 거절한 홉도 청구된다 */
+export function billedMicros(hops: readonly Hop[]): number {
+  return hops.reduce((n, h) => n + costMicros(h.model ?? UNKNOWN_MODEL, h.input, h.output), 0);
+}
+
 /**
  * 이 질문이 쓸 수 있는 가장 큰 비용. 질문을 시작할 때 이만큼을 월 사용량에 잡아 두어
- * 동시에 여러 질문이 와도 월 상한을 넘지 않게 한다. 입력은 글자 하나를 한 토큰으로 넉넉히 센다
+ * 동시에 여러 질문이 와도 월 상한을 넘지 않게 한다. 입력은 글자 하나를 한 토큰으로 넉넉히 센다.
+ * fallback 이면 두 홉 (거절한 첫 홉 + 서버 폴백 홉, 폴백 모델은 모르니 가장 비싼 값) 의 최악을 잡는다
  */
-export function reserveMicros(model: string, req: AiChatRequest): number {
+export function reserveMicros(model: string, req: AiChatRequest, fallback = false): number {
   const chars =
     systemPrompt(req.lang).length +
     withPersona(req.messages, req.lang, req.persona).reduce((n, m) => n + m.content.length, 0);
   // 글자 하나가 토큰 셋까지 될 수 있다고 보수적으로 센다 (메시지마다 머리 몫 50)
-  return costMicros(model, chars * 3 + 50 * req.messages.length, AI_MAX_OUTPUT_TOKENS);
+  const input = chars * 3 + 50 * req.messages.length;
+  const first = costMicros(model, input, AI_MAX_OUTPUT_TOKENS);
+  return fallback ? first + costMicros(UNKNOWN_MODEL, input, AI_MAX_OUTPUT_TOKENS) : first;
 }
 
 /**
