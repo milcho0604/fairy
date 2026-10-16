@@ -4,6 +4,7 @@ import { t } from '../../../../shared/i18n/index.ts';
 import type { SettingsSnapshot } from '../../../../shared/ipc.ts';
 import { addMemory, approvePending, MEMORY_ITEM_MAX, MEMORY_MAX } from '../../../../shared/pet-memory.ts';
 import { RULES_MAX, type Settings } from '../../../../shared/settings.ts';
+import { AiSupportBox } from '../AiSupportBox.tsx';
 import { Section, type TabProps, Toggle } from '../ui.tsx';
 import { SpeechEditor, SpeechPreview } from './SpeechEditor.tsx';
 
@@ -72,6 +73,11 @@ export function AiTab({ snap, update, flash }: TabProps) {
           disabled={s.aiIsolation}
           onChange={(v) => update({ myMcp: v })}
         />
+      </Section>
+
+      {/* 이 컴퓨터에서 찾은 AI와 AI마다 되는 일, 읽기 전용 안내 (이슈 #126) */}
+      <Section title={t('support.ai.title')}>
+        <AiSupportBox />
       </Section>
 
       <Section title={t('settings.rules')}>

@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { t } from '../../../../shared/i18n/index.ts';
 import type { UpdateStatus } from '../../../../shared/ipc.ts';
+import { HelpBox } from '../HelpBox.tsx';
 import { Stats } from '../Stats.tsx';
-import { bridge, Section, type TabProps, Toggle } from '../ui.tsx';
+import { bridge, isMac, Section, type TabProps, Toggle } from '../ui.tsx';
 
-/** 정보 탭: 업데이트, 내 기록(베타, 의견 보내기), 판 */
+/** 정보 탭: 업데이트, 내 기록(베타), 도움 보내기, 판 */
 export function AboutTab({ snap, update, flash, searching }: TabProps & { searching: boolean }) {
   const s = snap.settings;
   // 확인 결과는 단추 옆에 남긴다. 위 저장 알림(초록)으로 띄우면 "확인할 수 없어" 도 잘된 것처럼 보였다
@@ -45,6 +46,10 @@ export function AboutTab({ snap, update, flash, searching }: TabProps & { search
         </div>
       </Section>
       <Stats onCopied={(ok) => flash(ok ? t('settings.statsCopied') : t('settings.copyFailed'), !ok)} />
+      {/* 도움 보내기 (이슈 #126): 진단 묶음을 가려서 미리 보여 주고, 복사나 저장은 사용자가 직접 */}
+      <Section title={t('help.title')}>
+        <HelpBox shortcut={isMac(snap) ? '⌘⇧H' : 'Ctrl+Shift+H'} />
+      </Section>
       <Section title={t('settings.licenses')}>
         <small>{t('settings.licensesHint')}</small>
         <div className="action-row">

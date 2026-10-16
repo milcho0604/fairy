@@ -47,6 +47,8 @@ export default defineConfig({
         input: {
           index: resolve('src/main/index.ts'),
           'mcp-server': resolve('src/main/mcp-server.ts'),
+          // 펫 대화 AI 를 읽기 전용으로 묶는 claude 훅 (이슈 #126). 같은 방식으로 Node 로 띄운다
+          'ai-guard': resolve('src/main/ai-guard.ts'),
           // 무료 AI 일꾼 (v2). utilityProcess 로 따로 띄운다
           'llm-worker': resolve('src/main/llm-worker.ts'),
         },

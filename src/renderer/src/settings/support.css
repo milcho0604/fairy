@@ -1,0 +1,76 @@
+/* AI 찾기와 능력표 (AiSupportBox.tsx), 도움 보내기 창 (HelpBox.tsx). 이슈 #126 */
+.ai-caps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ai-cap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.ai-cap-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+
+.ai-cap-head .ai-state {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.ai-cap-head .ai-state.ok {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.ai-unverified {
+  font-size: 11px;
+  font-style: normal;
+  color: var(--muted);
+}
+
+.ai-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ai-chips li {
+  /* 숨은 글(.sr-or-text, position: absolute)이 설정 창 전체를 늘리지 않게 칩이 기준이 된다 */
+  position: relative;
+  padding: 1px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--ink);
+}
+
+.ai-chips li.off {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+/* 됨, 안 됨 글자는 화면에서는 숨기고 읽어 주는 도구에만 */
+.sr-or-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

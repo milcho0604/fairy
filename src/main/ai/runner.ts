@@ -1,6 +1,6 @@
 import { type ChildProcess, execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { app } from 'electron';
@@ -10,6 +10,7 @@ import { codexArgs, parseCodexLine } from '../../shared/ai/codex.ts';
 import { cursorArgs, cursorParser } from '../../shared/ai/cursor.ts';
 import { lineUsedTool } from '../../shared/ai/empty-answer.ts';
 import { classifyError, notInstalled, timedOut } from '../../shared/ai/errors.ts';
+import { GEMINI_POLICY_FILE, GEMINI_POLICY_SLOT, GEMINI_POLICY_TOML } from '../../shared/ai/gemini-policy.ts';
 import { fillArgs, type ProviderSpec } from '../../shared/ai/providers.ts';
 import { type Exchange, stripAnsi, textPrompt } from '../../shared/ai/text.ts';
 import type { AiEvent, AiStatus, ImageAttachment, McpLaunch } from '../../shared/ai/types.ts';
@@ -17,7 +18,8 @@ import { codexUsage, lastCodexLimits } from '../../shared/ai/usage.ts';
 import { aiTempImageName, isAiTempImage } from '../../shared/capture.ts';
 import { t } from '../../shared/i18n/index.ts';
 import { aiWorkDir } from '../ai-history.ts';
-import { finishCodexHome, prepareCodexHome } from './codex-home.ts';
+import { guardLaunch } from '../mcp-launch.ts';
+import { finishCodexHome, prepareCodexHome, readCodexMcpNames } from './codex-home.ts';
 import { getShellEnv, launchOf, resolveBin } from './shell-env.ts';
 
 /** 이 시간 동안 출력이 하나도 없으면 멈춘 것으로 본다. */
@@ -146,11 +148,15 @@ export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
     /** 줄 단위 JSON 해석기. 없으면 표준 출력을 그대로 답으로 본다 (text 어댑터). */
     let parse: ((line: string) => AiEvent[]) | undefined;
     let codexHome: string | undefined;
+    /** codex 를 짝꿍 전용 폴더로 불렀다 (끝나면 새 토큰을 사용자 쪽에 되돌린다) */
+    let isolatedHome = false;
     let sessionId = req.sessionId;
 
     if (spec.adapter === 'claude') {
       const sessionId = req.sessionId ?? randomUUID();
-      args = claudeArgs({ ...req, sessionId, resume: !!req.sessionId });
+      // 윈도우는 훅을 PowerShell 이 읽을 수 있고 그러면 막는 줄이 안 먹는다: 훅을 못 믿는 곳에서는 내 MCP 를 열지 않는다
+      const guard = process.platform === 'win32' ? undefined : guardLaunch();
+      args = claudeArgs({ ...req, sessionId, resume: !!req.sessionId, guard });
       stdin = claudeInput(req);
       parse = parseClaudeLine;
     } else if (spec.adapter === 'cursor') {
@@ -158,6 +164,17 @@ export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
       parse = cursorParser();
     } else if (spec.adapter === 'text') {
       args = fillArgs(spec.args ?? ['{prompt}'], textPrompt(req.persona, req.history, req.text));
+      // 읽기 전용 정책 파일 (gemini). 못 쓰면 던져서 질문을 보내지 않는다 (열린 채 실패하지 않게)
+      if (args.includes(GEMINI_POLICY_SLOT)) {
+        const dir = join(app.getPath('userData'), 'ai-policy');
+        mkdirSync(dir, { recursive: true });
+        const file = join(dir, GEMINI_POLICY_FILE);
+        // 실행이 겹쳐도 읽는 쪽이 반쯤 쓴 파일을 보지 않게: 실행마다 다른 임시 파일에 쓰고 이름을 바꾼다 (같은 내용이라 덮어도 된다)
+        const tmpFile = `${file}.${randomUUID()}.tmp`;
+        writeFileSync(tmpFile, GEMINI_POLICY_TOML);
+        renameSync(tmpFile, file);
+        args = args.map((a) => (a === GEMINI_POLICY_SLOT ? file : a));
+      }
       childEnv.NO_COLOR = '1';
     } else {
       // codex 는 이미지를 파일로만 받는다. 끝나면 바로 지운다 (P3-07: 캡처를 디스크에 남기지 않는다).
@@ -166,6 +183,9 @@ export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
         writeFileSync(file, Buffer.from(img.data, 'base64'), { mode: 0o600 });
         tempFiles.push(file);
       }
+      // 사용자 설정(config.toml)을 읽지 못하면 켜진 서버를 모르니 이번 실행은 격리한다 (열린 채 실패하지 않게)
+      const userNames = req.isolate ? [] : readCodexMcpNames(env.codexHome);
+      isolatedHome = req.isolate || userNames === undefined;
       args = codexArgs({
         text: req.text,
         imagePaths: tempFiles,
@@ -174,9 +194,11 @@ export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
         ephemeral: req.ephemeral,
         model: req.model,
         jjServer: req.jjServer,
+        // 격리를 껐으면 사용자 설정의 MCP 서버를 이번 실행에서 끈다 (읽기 전용 강제, 이슈 #126)
+        userMcpNames: userNames ?? [],
       });
-      // 격리하면 짝꿍 전용 폴더(auth.json 만 연결), 아니면 사용자의 codex 설정 폴더 그대로.
-      codexHome = req.isolate ? prepareCodexHome(env.codexHome) : env.codexHome;
+      // 격리하면 짝꿍 전용 폴더(auth.json 만 연결), 아니면 사용자의 codex 설정 폴더 그대로. 설정을 못 읽으면 격리한다
+      codexHome = isolatedHome ? prepareCodexHome(env.codexHome) : env.codexHome;
       if (codexHome) childEnv.CODEX_HOME = codexHome;
       parse = parseCodexLine;
     }
@@ -257,7 +279,7 @@ export function runAi(reqIn: AiRequest, onEvent: (e: AiEvent) => void): AiRun {
           });
         else emit({ type: 'done', text: answer.trim(), ...(usedTool ? { tools: true } : {}) });
         // 격리한 codex 가 토큰을 새로 받았으면 사용자 쪽 로그인 파일에 되돌려 쓴다 (윈도우 복사본)
-        if (codexHome && req.isolate) finishCodexHome(env.codexHome);
+        if (codexHome && isolatedHome) finishCodexHome(env.codexHome);
         // codex 사용량은 대화 기록 파일에 남는다. 끝난 뒤 읽는다. 기록을 안 남겼으면 읽을 것도 없다.
         if (codexHome && sessionId && !req.ephemeral) {
           const usage = readCodexUsage(codexHome, sessionId);

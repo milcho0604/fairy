@@ -155,6 +155,9 @@ test('claude 명령: "내 AI 설정 그대로"면 격리 옵션은 빼되 도구
     persona: 'p',
     resume: false,
     isolate: false,
+    // 읽기 전용 훅이 실릴 때만 내 MCP 가 열린다 (없으면 엄격한 설정으로 닫는다, guard.test.ts)
+    guard: { command: 'node', args: ['ai-guard.js'], env: { ELECTRON_RUN_AS_NODE: '1' } },
+    mcpServers: [],
   });
   for (const flag of [
     '--setting-sources',
@@ -181,7 +184,10 @@ test('claude 명령: "내 AI 설정 그대로"면 격리 옵션은 빼되 도구
 
 test('내 MCP 도구: 격리를 껐을 때만 서버를 허락하고, 기본 도구는 여전히 끈다', () => {
   const base = { text: 'q', images: [], sessionId: 's', persona: 'p', resume: false };
-  const on = claudeArgs({ ...base, isolate: false, mcpServers: ['claude.ai Notion', 'my-server'] });
+  // 읽기 전용 훅(guard)이 실릴 때만 허락한다 (shared/ai/guard.test.ts). 훅이 없으면 내 MCP 는 하나도 열지 않는다
+  const guard = { command: 'node', args: ['ai-guard.js'], env: { ELECTRON_RUN_AS_NODE: '1' } };
+  assert.equal(claudeArgs({ ...base, isolate: false, mcpServers: ['x'] }).includes('--allowedTools'), false);
+  const on = claudeArgs({ ...base, isolate: false, mcpServers: ['claude.ai Notion', 'my-server'], guard });
   const i = on.indexOf('--allowedTools');
   assert.equal(on[i + 1], 'mcp__claude_ai_Notion,mcp__my-server');
   assert.equal(on[on.indexOf('--tools') + 1], '');
@@ -229,7 +235,8 @@ test('짝꿍 도구: 격리해도 펫 MCP 서버 하나만 싣고 그 도구만 
 
 test('짝꿍 도구: 격리를 끄면 내 MCP 위에 짝꿍 서버를 더하고 둘 다 허락한다', () => {
   const base = { text: 'q', images: [], sessionId: 's', persona: 'p', resume: false, isolate: false };
-  const on = claudeArgs({ ...base, mcpServers: ['claude.ai Notion'], jjServer: jj });
+  const guard = { command: 'node', args: ['ai-guard.js'], env: { ELECTRON_RUN_AS_NODE: '1' } };
+  const on = claudeArgs({ ...base, mcpServers: ['claude.ai Notion'], jjServer: jj, guard });
   assert.ok(!on.includes('--strict-mcp-config'));
   assert.equal(on.filter((a) => a === '--mcp-config').length, 1);
   assert.equal(on[on.indexOf('--allowedTools') + 1], 'mcp__claude_ai_Notion,mcp__fairy');

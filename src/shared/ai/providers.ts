@@ -101,7 +101,18 @@ export const BUILTIN_PROVIDERS: readonly ProviderSpec[] = [
     label: 'Gemini',
     bin: 'gemini',
     adapter: 'text',
-    args: ['-p', '{prompt}'],
+    // 읽기 전용 강제 (이슈 #126): 승인 방식을 default 로 박고(확인이 필요한 도구는 헤드리스에서 거절), 사용자가 허용해 둔 도구까지
+    // 관리자 층 정책(--admin-policy, 명령 실행, 파일 쓰기, 기억 저장, 모든 MCP 도구 거부)으로 막는다 (shared/ai/gemini-policy.ts).
+    // 내 MCP 서버는 허용 목록에 없는 이름 하나만 넘겨 아예 띄우지 않는다 (--allowed-mcp-server-names). 정책 파일 경로는 실행 직전에 채운다
+    args: [
+      '--approval-mode',
+      'default',
+      '--admin-policy',
+      '{policy}',
+      '--allowed-mcp-server-names=fairy-none',
+      '-p',
+      '{prompt}',
+    ],
     images: false,
     verified: false,
     get installHint() {

@@ -245,6 +245,7 @@ if (kind === 'settings') {
     diagnostics: () => ipcRenderer.invoke(SETTINGS.diagnostics),
     copyDiagnostics: () => ipcRenderer.invoke(SETTINGS.copyDiagnostics),
     saveDiagnostics: () => ipcRenderer.invoke(SETTINGS.saveDiagnostics),
+    aiDetect: (refresh) => ipcRenderer.invoke(SETTINGS.aiDetect, refresh === true),
     reportIssue: () => ipcRenderer.send(SETTINGS.reportIssue),
     openNotices: () => ipcRenderer.invoke(SETTINGS.openNotices),
     checkUpdate: () => ipcRenderer.invoke(SETTINGS.checkUpdate),

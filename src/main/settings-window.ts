@@ -14,7 +14,8 @@ import type { Catalog } from '../shared/ai/catalog.ts';
 import { type BetaReport, reportText, type StatStore } from '../shared/beta-stats.ts';
 import { issueUrl } from '../shared/feedback.ts';
 import type { GalleryList } from '../shared/gallery.ts';
-import { t } from '../shared/i18n/index.ts';
+import { helpSummary } from '../shared/help-pack.ts';
+import { getLang, t } from '../shared/i18n/index.ts';
 import {
   type CalSync,
   type CoinState,
@@ -27,12 +28,14 @@ import {
   type UpdateStatus,
 } from '../shared/ipc.ts';
 import type { Gait } from '../shared/pet3d/blueprint.ts';
+import type { ServerStatus } from '../shared/server-account.ts';
 import { isGait, type Settings } from '../shared/settings.ts';
 import { isSettingsTab, type SettingsTab } from '../shared/settings-tabs.ts';
 import { type CoinResetResult, type CoinResetScope, isCoinResetScope } from '../shared/shop.ts';
 import { parsePetChoice } from '../shared/starter-pets.ts';
 import { PUBLIC_REPO } from '../shared/update-policy.ts';
 import { isImportFileName } from '../shared/url-scheme.ts';
+import { detectAi } from './ai/detect.ts';
 import { localModelReady } from './ai/local.ts';
 import { aiHistoryBytes, clearAiHistory } from './ai-history.ts';
 import { devRendererUrl } from './dev-url.ts';
@@ -67,6 +70,13 @@ export interface SettingsWindowOptions {
   logDir: string;
   /** 진단 기록에서 글자 그대로 가릴 사용자 글 (할 일, 일정, 메모 제목, 캘린더 주소) */
   privateWords: () => string[];
+  /** 도움 보내기 머리에 들어가는, 설정 밖의 상태 (이슈 #126). 비밀은 받지 않는다 */
+  help: {
+    /** 지금 채팅이 고른 AI 의 id */
+    provider: () => string;
+    /** 서버 연결 상태 (서버 주소가 없는 판이면 undefined) */
+    server: () => ServerStatus | undefined;
+  };
   v2: {
     exportData: (win?: BrowserWindow) => Promise<{ ok: boolean; path: string; message: string }>;
     importData: (
@@ -121,6 +131,7 @@ export function createSettingsWindow({
   log,
   logDir,
   privateWords,
+  help,
   v2,
   gallery,
 }: SettingsWindowOptions) {
@@ -229,11 +240,32 @@ export function createSettingsWindow({
   });
   // 의견 보내기에 진단 기록 붙이기: 가린 글을 미리 보이고, 복사와 저장은 그 글 그대로 (diagnostics.ts)
   const statsText = () => reportText(stats.report(Date.now()), { version: app.getVersion(), os: osLabel() });
-  const diagnostics = createDiagnostics({ logDir, statsText, secrets: privateWords, log });
-  ipcMain.handle(SETTINGS.diagnostics, (e) => {
+  // 머리: 판, 운영체제, 켜진 기능, AI 감지, 서버 연결 상태 (shared/help-pack.ts). AI 감지는 오래 걸릴 수 있어 6초까지만 기다린다
+  const summary = async () => {
+    const detect = await Promise.race([
+      detectAi(v2.catalog().local.some(localModelReady)),
+      new Promise<[]>((resolve) => setTimeout(() => resolve([]), 6000).unref()),
+    ]);
+    const server = help.server();
+    return helpSummary({
+      version: app.getVersion(),
+      packaged: app.isPackaged,
+      os: osLabel(),
+      arch: process.arch,
+      lang: getLang(),
+      electron: process.versions.electron ?? '',
+      provider: help.provider(),
+      settings: settings.get(),
+      detect,
+      ...(server ? { server } : {}),
+      now: Date.now(),
+    });
+  };
+  const diagnostics = createDiagnostics({ logDir, statsText, summary, secrets: privateWords, log });
+  ipcMain.handle(SETTINGS.diagnostics, async (e) => {
     if (!fromSettings(e)) return undefined;
     try {
-      return diagnostics.preview();
+      return await diagnostics.preview();
     } catch (err) {
       log('feedback', '미리 보기 실패', err instanceof Error ? err.message : String(err));
       return undefined;
@@ -242,6 +274,10 @@ export function createSettingsWindow({
   ipcMain.handle(SETTINGS.copyDiagnostics, (e) => fromSettings(e) && diagnostics.copy());
   ipcMain.handle(SETTINGS.saveDiagnostics, (e) =>
     fromSettings(e) ? diagnostics.save(win) : { ok: false, message: '' },
+  );
+  // AI 자동 감지 (이슈 #126): 설치, 로그인, 내 컴퓨터 AI 모델 유무
+  ipcMain.handle(SETTINGS.aiDetect, (e, refresh: unknown) =>
+    fromSettings(e) ? detectAi(v2.catalog().local.some(localModelReady), refresh === true) : [],
   );
   ipcMain.on(SETTINGS.reportIssue, (e) => {
     if (fromSettings(e)) openLink(issueUrl(PUBLIC_REPO, { version: app.getVersion(), os: osLabel() }), log);

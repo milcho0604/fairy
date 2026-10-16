@@ -103,7 +103,8 @@ export interface ChatOptions {
   /** 답을 할 일로. 넣은 개수 */
   addTodos: (titles: string[]) => number;
   /** 내 MCP 도구를 쓸 서버 이름 (v2). 안 쓰면 빈 목록 */
-  mcpServers: () => readonly string[];
+  /** 내 claude 의 MCP 서버 이름들. 모르면(목록이 없거나 오래됨) undefined */
+  mcpServers: () => readonly string[] | undefined;
   /** 펫에게 AI 상태를 알린다 (생각 중, 답함). */
   onPetAi: (state: PetAiState) => void;
   /** 사용자가 채팅 창에서 보낸 말 (매운맛: 칭찬이나 사과면 토라진 펫이 풀린다). 보내졌을 때만 */
@@ -911,6 +912,24 @@ export function createChat(o: ChatOptions) {
         }),
       );
       return found.some(Boolean);
+    },
+    /** 지금 고른 AI 의 id (도움 보내기 머리) */
+    provider: (): string => state.provider,
+    /**
+     * 대화 글(내가 쓴 것과 AI 답) 최근 것들. 도움 보내기의 가리기가 글자 그대로 찾아 지운다 (이슈 #126).
+     * 기록에는 원래 안 남지만 오류 글에 섞여 와도 새지 않게
+     */
+    privateTexts(): string[] {
+      // 대화 전체(글 하나는 2000자까지)와 그 글의 줄들: 기록 한 줄에 글 일부만 들어 있어도 줄 단위로 찾아 지운다
+      const out: string[] = [];
+      for (const m of state.messages) {
+        const text = typeof m.text === 'string' ? m.text.slice(0, 2000) : '';
+        if (!text.trim()) continue;
+        out.push(text);
+        for (const line of text.split('\n')) if (line.trim().length >= 8) out.push(line);
+        if (out.length > 3000) break;
+      }
+      return out;
     },
     get window() {
       return win;
