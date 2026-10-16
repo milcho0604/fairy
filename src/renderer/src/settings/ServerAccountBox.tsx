@@ -1,6 +1,10 @@
 // 페어리 서버 계정 (이슈 #99, 기획서 5, 6, 21절): 설정 > 데이터 칸. 나이 확인과 두 모드, 서버 코인, 구글 로그인,
 // 합치기 확인, 탈퇴. 창은 상태(ServerStatus)만 받는다. 토큰과 네트워크는 메인(main/server.ts)에만 있다.
 // 서버 주소 없이 만든 판에서는 칸을 통째로 숨긴다 (serverView 'hidden').
+// 칸은 뜻 묶음 차례로: 내 정보, 로그인, 채팅 이용권(쓸 수 있을 때만), 코인 맞추기, 서버 백업, 서버로 가는 것, 맨 아래 따로 둔 되돌릴 수 없는 일.
+// 운영자 쪽지 안내는 묶음 밖 한 줄이다 (코인 맞추기 아래).
+// 단추는 두 크기: 줄 끝 동작(복사, 바꾸기, 지금 맞추기)은 작은 것, 묶음 동작(로그인, 올리기)은 보통. 위험한 것은 빨간 테두리
+// 하나 (줄 격자와 간격은 settings.css "서버 계정과 코인").
 import { useEffect, useRef, useState } from 'react';
 import { locale, t } from '../../../shared/i18n/index.ts';
 import {
@@ -12,7 +16,7 @@ import {
   serverView,
 } from '../../../shared/server-account.ts';
 import { ServerBackupBox } from './ServerBackupBox.tsx';
-import { NicknameStep, ProfileRows } from './ServerProfile.tsx';
+import { NicknameStep, ProfileRows, Row } from './ServerProfile.tsx';
 import { Section } from './ui.tsx';
 
 declare global {
@@ -115,13 +119,14 @@ export function ServerAccountBox({ flash }: { flash: (message: string, error?: b
     }
   };
 
-  const ageButtons = (
+  /** 나이 고르기 단추. 처음 묻는 칸은 보통 크기, 내 정보 줄 아래에서 바꿀 때는 그 묶음의 작은 크기 */
+  const ageButtons = (size: 'ghost' | 'ghost small') => (
     <div className="action-row server-ages">
       {AGE_ANSWERS.map((a) => (
         <button
           key={a}
           type="button"
-          className={`ghost${s.age === a ? ' on' : ''}`}
+          className={`${size}${s.age === a ? ' on' : ''}`}
           aria-pressed={s.age === a}
           disabled={busy}
           onClick={() => pickAge(a)}
@@ -130,7 +135,7 @@ export function ServerAccountBox({ flash }: { flash: (message: string, error?: b
         </button>
       ))}
       {changingAge && (
-        <button type="button" className="ghost small" onClick={() => setChangingAge(false)}>
+        <button type="button" className={size} onClick={() => setChangingAge(false)}>
           {t('server.age.keep')}
         </button>
       )}
@@ -156,22 +161,28 @@ export function ServerAccountBox({ flash }: { flash: (message: string, error?: b
     return (
       <Section title={t('server.title')}>
         <div className="server-box">
-          <small className="server-ask">{t('server.ask.title')}</small>
-          <small>{t('server.ask.why')}</small>
-          {ageButtons}
+          <div className="server-group">
+            <h3 className="server-group-title server-ask">{t('server.ask.title')}</h3>
+            <small>{t('server.ask.why')}</small>
+            {ageButtons('ghost')}
+          </div>
         </div>
       </Section>
     );
 
-  const ageLine = (
-    <div className="action-row server-age-line">
-      <small>{t('server.age.line', { age: t(AGE_KEY[s.age ?? 'adult']) })}</small>
-      {!changingAge && (
-        <button type="button" className="ghost small" disabled={busy} onClick={() => setChangingAge(true)}>
-          {t('server.age.change')}
-        </button>
-      )}
-    </div>
+  const ageRow = (
+    <Row
+      label={t('server.age.label')}
+      action={
+        !changingAge && (
+          <button type="button" className="ghost small" disabled={busy} onClick={() => setChangingAge(true)}>
+            {t('server.age.change')}
+          </button>
+        )
+      }
+    >
+      {t(AGE_KEY[s.age ?? 'adult'])}
+    </Row>
   );
   // 브라우저 로그인은 몇 분 걸릴 수 있다: 칸을 막지 않는다 (그만두기는 메인이 보내는 상태로 뜬다)
   const loginWith = (service: LoginService) => {
@@ -183,13 +194,16 @@ export function ServerAccountBox({ flash }: { flash: (message: string, error?: b
   // 서버가 알려 준 서비스만 보인다. 아직 모르면(서버에 닿기 전) 구글만 예전처럼
   const loginServices: readonly LoginService[] = s.providers?.login ?? ['google'];
   const linkServices = (s.providers?.link ?? []).filter((x) => !s.logins.includes(x));
-  const removeRow = (
-    <>
+  /** 맨 아래 따로 둔 칸: 서버 계정 지우기 (두 번 눌러 지운다) */
+  const dangerZone = (note?: string) => (
+    <div className="server-danger">
+      <h3 className="server-group-title">{t('server.group.danger')}</h3>
+      {note && <small className="warn">{note}</small>}
       <small>{t('server.removeHint')}</small>
       <div className="action-row">
         <button
           type="button"
-          className={`ghost${sureRemove ? ' danger' : ''}`}
+          className="ghost danger"
           disabled={busy}
           onClick={() => void remove()}
           onBlur={() => setSureRemove(false)}
@@ -197,42 +211,45 @@ export function ServerAccountBox({ flash }: { flash: (message: string, error?: b
           {sureRemove ? t('server.removeSure') : t('server.remove')}
         </button>
       </div>
-    </>
+    </div>
   );
   const problem = s.problem ? (
-    <small className="warn server-problem">{t(`server.problem.${s.problem}`)}</small>
+    <small className="warn server-problem" role="status">
+      {t(`server.problem.${s.problem}`)}
+    </small>
   ) : null;
 
   if (view === 'appMode' || view === 'serverOff')
     return (
       <Section title={t('server.title')}>
         <div className="server-box">
-          <small>{t(view === 'appMode' ? 'server.appMode' : 'server.off')}</small>
-          {problem}
-          {ageLine}
-          {changingAge && ageButtons}
-          {view === 'serverOff' && (
-            <div className="action-row">
-              <button
-                type="button"
-                className="ghost"
-                disabled={busy}
-                onClick={() => void run(() => b.turnOn())}
-              >
-                {t('server.turnOn')}
-              </button>
-            </div>
-          )}
-          {s.leftover && (
-            <>
-              <small className="warn">{t('server.leftover')}</small>
-              {removeRow}
-            </>
-          )}
+          <div className="server-group">
+            <small>{t(view === 'appMode' ? 'server.appMode' : 'server.off')}</small>
+            {problem}
+            {view === 'serverOff' && (
+              <div className="action-row">
+                <button
+                  type="button"
+                  className="ghost"
+                  disabled={busy}
+                  onClick={() => void run(() => b.turnOn())}
+                >
+                  {t('server.turnOn')}
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="server-group">
+            <div className="server-rows">{ageRow}</div>
+            {changingAge && ageButtons('ghost small')}
+          </div>
+          {s.leftover && dangerZone(t('server.leftover'))}
         </div>
       </Section>
     );
 
+  /** 채팅 이용권 묶음을 보인다: 쓸 수 있거나 (남은 장수를 받았을 때), 자리가 차서 대기 중일 때 (#100, #101 와 같은 조건) */
+  const passOn = (s.ai && s.tickets !== null) || s.aiWaitlisted;
   const syncLine = [
     s.balance === null ? t('server.balanceNone') : t('server.balance', { n: s.balance }),
     s.syncing
@@ -250,106 +267,158 @@ export function ServerAccountBox({ flash }: { flash: (message: string, error?: b
   return (
     <Section title={t('server.title')}>
       <div className="server-box">
-        <small className="server-sync">{syncLine}</small>
         {problem}
-        <div className="action-row">
-          <button
-            type="button"
-            className="ghost small"
-            disabled={busy || s.syncing}
-            onClick={() => void run(() => b.syncNow())}
-          >
-            {t('server.syncNow')}
-          </button>
-        </div>
-        <small>{t('server.what')}</small>
-        <ProfileRows s={s} b={b} setS={setS} flash={flash} />
-        {s.merge ? (
-          <div className="notice server-merge" role="alertdialog" aria-labelledby="server-merge-ask">
-            <small id="server-merge-ask" className="server-ask">
-              {t('server.merge.ask')}
-            </small>
-            <small>
-              {t('server.merge.current', {
-                n: s.merge.current.balance,
-                items: itemCount(s.merge.current.items),
-              })}
-            </small>
-            <small>
-              {t('server.merge.other', { n: s.merge.other.balance, items: itemCount(s.merge.other.items) })}
-            </small>
-            <small className="warn">{t('server.merge.note')}</small>
-            <div className="action-row">
-              <button
-                type="button"
-                className="ghost danger"
-                disabled={busy}
-                onClick={() => void run(() => b.merge(true))}
-              >
-                {t('server.merge.yes')}
-              </button>
-              <button
-                type="button"
-                className="ghost"
-                ref={mergeRef}
-                disabled={busy}
-                onClick={() => void run(() => b.merge(false))}
-              >
-                {t('server.merge.no')}
-              </button>
-            </div>
-          </div>
-        ) : s.loggingIn ? (
-          <div className="action-row">
-            <small>{t('server.loggingIn')}</small>
-            <button type="button" className="ghost small" onClick={() => b.cancelLogin()}>
-              {t('server.cancel')}
-            </button>
-          </div>
-        ) : s.signedIn ? (
-          <>
-            <small>{t('server.signedIn', { via: viaText(s.logins) })}</small>
-            {/* AI 대화권 (#100): 만 18세 이상 로그인일 때만. 14~17 이나 서버 주소가 없으면 보이지 않는다 */}
-            {s.ai && s.tickets !== null && <small>{t('ticket.settings', { n: s.tickets })}</small>}
-            <div className="action-row">
-              {/* 다른 서비스도 잇기 (21절). 서버가 이 계정에 허락한 것만 (카카오는 기능 키) */}
-              {linkServices.map((x) => (
-                <button key={x} type="button" className="ghost" disabled={busy} onClick={() => loginWith(x)}>
-                  {t(LINK_KEY[x])}
-                </button>
-              ))}
-              <button
-                type="button"
-                className="ghost"
-                disabled={busy}
-                onClick={() => void run(() => b.logout())}
-              >
-                {t('server.logout')}
-              </button>
-            </div>
-            {s.backup && <ServerBackupBox b={b} view={s.backup} setS={setS} flash={flash} />}
-          </>
-        ) : (
-          <>
-            <small>{t('server.noLoginHint')}</small>
-            <div className="action-row">
-              {loginServices.map((x) => (
+        <ProfileRows s={s} b={b} setS={setS} flash={flash} after={changingAge && ageButtons('ghost small')}>
+          {ageRow}
+        </ProfileRows>
+
+        <div className="server-group">
+          <h3 className="server-group-title">{t('server.group.login')}</h3>
+          {s.merge ? (
+            <div className="notice server-merge" role="alertdialog" aria-labelledby="server-merge-ask">
+              <small id="server-merge-ask" className="server-ask">
+                {t('server.merge.ask')}
+              </small>
+              <small>
+                {t('server.merge.current', {
+                  n: s.merge.current.balance,
+                  items: itemCount(s.merge.current.items),
+                })}
+              </small>
+              <small>
+                {t('server.merge.other', { n: s.merge.other.balance, items: itemCount(s.merge.other.items) })}
+              </small>
+              <small className="warn">{t('server.merge.note')}</small>
+              <div className="action-row">
                 <button
-                  key={x}
+                  type="button"
+                  className="ghost danger"
+                  disabled={busy}
+                  onClick={() => void run(() => b.merge(true))}
+                >
+                  {t('server.merge.yes')}
+                </button>
+                <button
                   type="button"
                   className="ghost"
-                  disabled={busy || !s.device}
-                  onClick={() => loginWith(x)}
+                  ref={mergeRef}
+                  disabled={busy}
+                  onClick={() => void run(() => b.merge(false))}
                 >
-                  {t(LOGIN_KEY[x])}
+                  {t('server.merge.no')}
                 </button>
-              ))}
+              </div>
             </div>
-          </>
+          ) : s.loggingIn ? (
+            <>
+              <small>{t('server.loggingIn')}</small>
+              <div className="action-row">
+                <button type="button" className="ghost" onClick={() => b.cancelLogin()}>
+                  {t('server.cancel')}
+                </button>
+              </div>
+            </>
+          ) : s.signedIn ? (
+            <>
+              <small>{t('server.signedIn', { via: viaText(s.logins) })}</small>
+              <div className="action-row">
+                {/* 다른 서비스도 잇기 (21절). 서버가 이 계정에 허락한 것만 (카카오는 기능 키) */}
+                {linkServices.map((x) => (
+                  <button
+                    key={x}
+                    type="button"
+                    className="ghost"
+                    disabled={busy}
+                    onClick={() => loginWith(x)}
+                  >
+                    {t(LINK_KEY[x])}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="ghost"
+                  disabled={busy}
+                  onClick={() => void run(() => b.logout())}
+                >
+                  {t('server.logout')}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <small>{t('server.noLoginHint')}</small>
+              <div className="action-row">
+                {loginServices.map((x) => (
+                  <button
+                    key={x}
+                    type="button"
+                    className="ghost"
+                    disabled={busy || !s.device}
+                    onClick={() => loginWith(x)}
+                  >
+                    {t(LOGIN_KEY[x])}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* 채팅 이용권 묶음 (#121): 남은 장수, 구독과 다음 채움일, 대기 안내, 고르는 법. 쓸 수 없는 계정은 묶음을 통째로 숨긴다 */}
+        {passOn && (
+          <div className="server-group server-pass">
+            <h3 className="server-group-title">{t('ticket.label')}</h3>
+            {s.ai && s.tickets !== null && (
+              <>
+                <span className="server-pass-count">{t('ticket.passCount', { n: s.tickets })}</span>
+                <small>{t('ticket.passHow')}</small>
+              </>
+            )}
+            {s.subscription && (
+              <small>
+                {t('ticket.subscription', { n: s.subscription.monthly, day: s.subscription.nextFill ?? '-' })}
+              </small>
+            )}
+            {s.aiWaitlisted && <small className="warn">{t('ticket.waitlisted')}</small>}
+          </div>
         )}
-        {ageLine}
-        {changingAge && ageButtons}
-        {removeRow}
+
+        <div className="server-group">
+          <h3 className="server-group-title">{t('server.group.sync')}</h3>
+          <div className="server-line">
+            <small className="server-sync">{syncLine}</small>
+            <button
+              type="button"
+              className="ghost small"
+              disabled={busy || s.syncing}
+              onClick={() => void run(() => b.syncNow())}
+            >
+              {t('server.syncNow')}
+            </button>
+          </div>
+        </div>
+
+        {/* 운영자 쪽지 안내: 묶음 밖 한 줄 (패널 쪽지함에서 연다) */}
+        {s.inbox > 0 && <small className="server-inbox">{t('server.inbox', { n: s.inbox })}</small>}
+
+        {!s.merge && !s.loggingIn && s.signedIn && s.backup && (
+          <ServerBackupBox b={b} view={s.backup} setS={setS} flash={flash} />
+        )}
+
+        <details className="server-what">
+          <summary>
+            <small className="server-what-short">{t('server.what')}</small>
+            <span className="server-more">{t('server.what.more')}</span>
+          </summary>
+          <ul>
+            <li>{t('server.what.basic')}</li>
+            <li>{t('server.what.login')}</li>
+            <li>{t('server.what.chat')}</li>
+            <li>{t('server.what.backup')}</li>
+          </ul>
+        </details>
+
+        {dangerZone()}
       </div>
     </Section>
   );

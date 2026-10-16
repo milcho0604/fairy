@@ -66,7 +66,7 @@ export const ko = {
   'server.nickname.placeholder': '닉네임',
   'server.nickname.start': '서버 모드 시작',
   'server.nickname.back': '나이 다시 고르기',
-  'server.nickname.line': (v: { name: string }) => `닉네임: ${v.name}`,
+  'server.nickname.label': '닉네임',
   'server.nickname.none': '닉네임을 아직 정하지 않았어.',
   'server.nickname.change': '닉네임 바꾸기',
   'server.nickname.save': '저장',
@@ -78,10 +78,10 @@ export const ko = {
   'server.nickname.err.at': '@ 는 쓸 수 없어.',
   'server.nickname.err.offline': '서버에 닿지 않아. 다음 맞추기 때 다시 보낼게.',
   'server.nickname.err.server': '서버가 받지 않았어.',
-  'server.code.line': (v: { code: string }) => `내 기기 코드: ${v.code}`,
+  'server.code.label': '내 기기 코드',
   'server.code.copy': '복사',
   'server.code.copied': '기기 코드를 복사했어.',
-  'server.code.why': '운영자에게 물어볼 때 이 코드를 알려 줘. 비밀번호가 아니라서 보여 줘도 괜찮아.',
+  'server.code.why': '운영자에게 물어볼 때 기기 코드를 알려 줘. 비밀번호가 아니라 보여 줘도 괜찮아.',
   'server.inbox': (v: N) => `열지 않은 운영자 쪽지 ${v.n}통. 패널 오늘 탭 쪽지함에서 열 수 있어.`,
 
   // ---- 운영자 칸 (운영자 계정일 때만 보인다) ----
@@ -241,7 +241,7 @@ export const en: Translation<typeof ko> = {
   'server.nickname.placeholder': 'Nickname',
   'server.nickname.start': 'Start server mode',
   'server.nickname.back': 'Pick age again',
-  'server.nickname.line': (v: { name: string }) => `Nickname: ${v.name}`,
+  'server.nickname.label': 'Nickname',
   'server.nickname.none': 'No nickname yet.',
   'server.nickname.change': 'Change nickname',
   'server.nickname.save': 'Save',
@@ -253,11 +253,11 @@ export const en: Translation<typeof ko> = {
   'server.nickname.err.at': "@ isn't allowed.",
   'server.nickname.err.offline': "Can't reach the server. It'll be sent on the next sync.",
   'server.nickname.err.server': "The server didn't take it.",
-  'server.code.line': (v: { code: string }) => `My device code: ${v.code}`,
+  'server.code.label': 'My device code',
   'server.code.copy': 'Copy',
   'server.code.copied': 'Device code copied.',
   'server.code.why':
-    "Share this code when you ask the operator something. It isn't a password, so it's fine to show.",
+    "Share your device code when asking the operator. It isn't a password, so it's fine to show.",
   'server.inbox': (v: N) =>
     `${v.n} unopened ${v.n === 1 ? 'note' : 'notes'} from the operator. Open ${v.n === 1 ? 'it' : 'them'} in the note box on the panel's Today tab.`,
 

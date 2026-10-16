@@ -1243,8 +1243,10 @@ async function appA() {
       const cnt = await c.ev(`document.querySelector('.ticket-count')?.innerText ?? ''`);
       check(F, `남은 1장 줄 "${T.count(1)}"`, remain() === 1 && cnt.includes(T.count(1)), cnt);
       await c.shots('a16-ticket-one');
-      await soft(until('설정 1장', async () => (await boxText(p)).includes(Q('AI 채팅 이용권 1장', '1 chat pass.')), 8000));
-      check(F, '설정 이용권 글도 1장 (en 단수)', (await boxText(p)).includes(Q('AI 채팅 이용권 1장', '1 chat pass.')), (await boxText(p)).slice(0, 400));
+      // 설정 chat pass 묶음의 장수는 한 줄 (#121): 줄 전체가 단수 글이어야 한다 (1 chat passes 는 안 됨)
+      const oneLine = (txt) => txt.split('\n').some((x) => x.trim() === Q('AI 채팅 이용권 1장', '1 chat pass'));
+      await soft(until('설정 1장', async () => oneLine(await boxText(p)), 8000));
+      check(F, '설정 이용권 글도 1장 (en 단수)', oneLine(await boxText(p)), (await boxText(p)).slice(0, 400));
       // 차단 → 목록에서 사라짐
       await adminJson('ai/block', { account: (await h.status()).code, blocked: true });
       await clickSync(h, p);
