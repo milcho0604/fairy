@@ -51,6 +51,11 @@ Preview locally: `python3 -m http.server -d site 8080` → http://localhost:8080
 - **Language**: Korean by default; `navigator.language` picks English for non-Korean browsers; the header button
   switches and remembers the choice in `localStorage`; `?lang=en|ko` forces one.
 
+### Changing the contact email
+
+The contact email is written in one place: `contactEmail` in `config.js`. The privacy policy, the terms, the FAQ and the footer "문의" link all read it (strings use `{email}`).
+To change it, edit that one line, run `node site/tools/build.mjs`, commit, and deploy the site as usual (no server involved, so it stays readable when the server is down). The build and `src/shared/contact-source.test.ts` fail if the address is hardcoded anywhere else.
+
 ### Changing names later
 
 1. Edit `config.js`: `name` (ko 페어리 / en fairy), `tagline`, `siteUrl`, `releases.repo`, `filePrefix` (start of the

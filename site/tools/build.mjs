@@ -29,7 +29,7 @@ const PAGES = [
 ];
 
 function vars(base) {
-  return { name: S.name[LANG], tagline: S.tagline[LANG], file: S.filePrefix, app: S.appBundleName, license: S.license, petFileExt: S.petFileExt, home: base };
+  return { name: S.name[LANG], tagline: S.tagline[LANG], file: S.filePrefix, app: S.appBundleName, license: S.license, petFileExt: S.petFileExt, email: S.contactEmail, home: base };
 }
 
 // ---- shared header and footer (one copy for every page) ----
@@ -282,3 +282,6 @@ writeFileSync(join(SITE_DIR, 'site.webmanifest'), JSON.stringify({
   ],
 }, null, 2) + '\n');
 console.log('wrote sitemap.xml, robots.txt, site.webmanifest');
+
+// 문의 이메일이 config.js 한 곳에만 있는지 (다른 곳에 적어 두면 여기서 빌드가 멈춘다)
+await import('./contact-check.mjs');

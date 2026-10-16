@@ -44,6 +44,7 @@
       app: S.appBundleName,
       license: S.license,
       petFileExt: S.petFileExt,
+      email: S.contactEmail,
       home: base,
     };
     if (extra) for (var k in extra) v[k] = extra[k];
