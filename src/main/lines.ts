@@ -28,6 +28,8 @@ function apply(): void {
 }
 
 /** 시작할 때 한 번: 파일을 읽어 정리하고 말풍선에 쓰게 한다. 버린 칸이 있으면 파일도 고쳐 쓴다 */
+let syncRegistered = false;
+
 export function initLines(log?: (tag: string, ...rest: unknown[]) => void): void {
   try {
     const raw = parseOverrides(readJson(FILE));
@@ -45,6 +47,13 @@ export function initLines(log?: (tag: string, ...rest: unknown[]) => void): void
     current = { ko: {}, en: {} };
   }
   apply();
+  // 창(preload)이 뜰 때 동기로 묻는다. 창을 만들기 전에 등록해야 하니 시작할 때 한 번만
+  if (!syncRegistered) {
+    syncRegistered = true;
+    ipcMain.on(LINES.sync, (e) => {
+      e.returnValue = current;
+    });
+  }
 }
 
 /** 백업 되살리기 등으로 파일이 바뀐 뒤 다시 읽는다 */

@@ -529,6 +529,10 @@ const body = async () => {
   await main('__jj.settingsWindow.open(); 1');
   await sleep(1800);
   const st2 = await page('settings');
+  check(
+    '새로 연 설정 창의 화면도 고친 대사를 받음 (preload 동기 전달)',
+    (await st2.ev(`JSON.stringify(window.jjakkungLineOverrides ?? null)`)).includes('idle.any.1'),
+  );
   await st2.click(`[...document.querySelectorAll('button')].find((b) => b.innerText.trim() === ${JSON.stringify(tx('대사 고치기', 'Edit lines'))})`);
   await st2.until(() => st2.ev(`document.querySelectorAll('.lines-group').length > 5`));
   check('다시 열어도 고친 칸이 남아 있음', (await st2.ev(`document.querySelector('.lines-count small')?.innerText ?? ''`)).includes('2'));

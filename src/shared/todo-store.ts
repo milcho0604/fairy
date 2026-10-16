@@ -102,6 +102,8 @@ export const FULLNESS = {
 /** 지운 할 일을 휴지통에 두는 날 수 (#125). 지난 것은 영구 삭제 */
 export const TRASH_DAYS = 30;
 const DAY_MS = 86_400_000;
+/** 마지막 기록 날에서 이만큼 넘게 뛴 시계는 믿지 않고 휴지통을 비우지 않는다 */
+const CLOCK_JUMP_DAYS = 90;
 
 /** 휴지통의 할 일 한 줄 */
 export interface TrashItem {
@@ -358,6 +360,7 @@ export class TodoStore {
          values (
            max(
              coalesce((select max(id) from todo), 0),
+             coalesce((select hi from todo_hi where id = 1), 0),
              coalesce((select max(ref_id) from coin_log where reason in ('todo', 'early', 'undo')), 0)
            ) + 1, ?, ?, ?, ?, ?, ?, ?)`,
       )
@@ -610,12 +613,29 @@ export class TodoStore {
     );
   }
 
-  /** 휴지통에서 되살리기. 휴지통에 없는 번호(이미 되살림, 영구 삭제)면 undefined */
-  restoreFromTrash(id: number): Todo | undefined {
+  /**
+   * 휴지통에서 되살릴 수 있는지. gone 은 휴지통에 없다(이미 되살림, 영구 삭제).
+   * dup 은 반복 할 일의 다음 회차인데 앞 회차가 다시 열렸거나 같은 앞 회차의 다른 회차가 이미 열려 있다:
+   * 되살리면 같은 반복이 두 벌이 되어 끝낼 때마다 둘씩 늘어난다
+   */
+  restoreCheck(id: number): 'ok' | 'gone' | 'dup' {
     const r = this.#db
-      .prepare('select id from todo where id = ? and deleted_at is not null and auto_removed = 0')
-      .get(id);
-    if (!r) return undefined;
+      .prepare('select repeat_of from todo where id = ? and deleted_at is not null and auto_removed = 0')
+      .get(id) as { repeat_of: number | null } | undefined;
+    if (!r) return 'gone';
+    if (r.repeat_of === null) return 'ok';
+    const open = this.#db
+      .prepare(
+        `select 1 from todo where deleted_at is null and done_at is null and id != ?1
+         and (id = ?2 or repeat_of = ?2)`,
+      )
+      .get(id, r.repeat_of);
+    return open ? 'dup' : 'ok';
+  }
+
+  /** 휴지통에서 되살리기. 휴지통에 없거나(restoreCheck 가 gone) 반복이 겹치면(dup) undefined */
+  restoreFromTrash(id: number): Todo | undefined {
+    if (this.restoreCheck(id) !== 'ok') return undefined;
     this.restore(id);
     return this.get(id);
   }
@@ -650,9 +670,19 @@ export class TodoStore {
 
   /** 30일이 지난 것을 영구 삭제한다 (되돌리기가 걷어 낸 다음 회차도 같은 날수). 지운 수 */
   purgeExpired(now: number): number {
+    // 켤 때 시계가 크게 앞서 있으면(배터리가 나간 컴퓨터, 잘못 맞춘 시계) 휴지통 전체가 한 번에 지워진다.
+    // 마지막으로 앱이 켜 있던 날(하루 기록)에서 90일 넘게 뛰었으면 비우지 않는다
+    const seen = (
+      this.#db.prepare('select max(day) as d from daily_stat').get() as { d: string | null } | undefined
+    )?.d;
+    if (seen && now - Date.parse(`${seen}T00:00:00Z`) > CLOCK_JUMP_DAYS * DAY_MS) return 0;
     const before = now - TRASH_DAYS * DAY_MS;
     this.#db.exec('begin');
     try {
+      // 지운 때가 미래(틀린 시계, 다른 컴퓨터에서 가져온 백업)면 지금으로 맞춘다
+      this.#db
+        .prepare('update todo set deleted_at = ? where deleted_at > ?')
+        .run(Math.floor(now), Math.floor(now));
       const n = this.#purgeRow(`deleted_at <= ${Math.floor(before)}`, true);
       this.#db.exec('commit');
       return n;

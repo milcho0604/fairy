@@ -1194,8 +1194,8 @@ export interface PanelBridge {
   restore(id: number): void;
   /** 할 일 휴지통 (#125). 30일이 지난 것은 열 때 영구 삭제된다 */
   trashList(): Promise<TrashItem[]>;
-  /** 되살리기. 이미 되살렸거나 영구 삭제됐으면 undefined. 코인은 움직이지 않는다 */
-  trashRestore(id: number): Promise<Todo | undefined>;
+  /** 되살리기. gone 은 이미 되살렸거나 영구 삭제됨, dup 은 같은 반복 할 일이 이미 열려 있어 되살리지 않음. 코인은 움직이지 않는다 */
+  trashRestore(id: number): Promise<'ok' | 'gone' | 'dup'>;
   /** 영구 삭제. 지운 수 */
   trashPurge(id: number): Promise<number>;
   trashEmpty(): Promise<number>;

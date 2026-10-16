@@ -37,8 +37,12 @@ export function TrashBox({ s }: { s: PanelState }) {
   if (s.trashCount === 0 && !open) return null;
 
   const restore = async (item: TrashItem) => {
-    const todo = await bridge.trashRestore(item.id);
-    setNote(todo ? t('records.trash.restored', { title: item.title }) : t('records.trash.gone'));
+    const res = await bridge.trashRestore(item.id);
+    setNote(
+      res === 'ok'
+        ? t('records.trash.restored', { title: item.title })
+        : t(res === 'dup' ? 'records.trash.dup' : 'records.trash.gone'),
+    );
     await load();
   };
   const purge = async (item: TrashItem) => {

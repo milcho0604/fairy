@@ -58,6 +58,14 @@ const kind = process.argv.find((a) => a.startsWith('--jj-window='))?.split('=')[
 // 화면 말 (v2 다국어). 모든 창이 같은 이름으로 읽는다. 모르는 값이면 한국어
 const lang = process.argv.find((a) => a.startsWith('--jj-lang='))?.split('=')[1] === 'en' ? 'en' : 'ko';
 contextBridge.exposeInMainWorld('jjakkungLang', lang);
+// 사용자가 고친 펫 대사 (#125): 화면의 t() 도 같은 글을 쓰게 창이 뜰 때 받는다. 못 받으면 기본 대사
+let lineOverrides: unknown;
+try {
+  lineOverrides = ipcRenderer.sendSync(LINES.sync);
+} catch {
+  lineOverrides = undefined;
+}
+contextBridge.exposeInMainWorld('jjakkungLineOverrides', lineOverrides);
 
 if (kind === 'pet') {
   const pet: PetBridge = {

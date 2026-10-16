@@ -218,6 +218,20 @@ export const MIGRATIONS: readonly string[] = [
   `
   alter table todo add column auto_removed integer not null default 0;
   create index todo_trash on todo(deleted_at) where deleted_at is not null;
+  -- 13판까지 되돌리기가 걷어 낸 다음 회차(앞 회차가 안 끝난 채 지워진 것)는 사람이 지운 게 아니다
+  update todo set auto_removed = 1
+    where repeat_of is not null and done_at is null and deleted_at is not null
+      and exists (select 1 from todo p where p.id = todo.repeat_of and p.done_at is null);
+  -- 지금까지 쓴 가장 큰 할 일 번호. 영구 삭제로 맨 끝 번호가 비어도 다시 쓰지 않는다
+  -- (알림 미루기, 집중 끝 연결, 하루 계획이 번호로 할 일을 가리킨다)
+  create table todo_hi (
+    id integer primary key check (id = 1),
+    hi integer not null
+  );
+  insert into todo_hi (id, hi) select 1, coalesce(max(id), 0) from todo;
+  create trigger todo_hi_insert after insert on todo begin
+    update todo_hi set hi = max(hi, new.id) where id = 1;
+  end;
   create table focus_session (
     id integer primary key,
     day text not null,         -- 끝난 날 YYYY-MM-DD (현지)

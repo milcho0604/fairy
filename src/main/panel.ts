@@ -790,11 +790,14 @@ export function createPanel(o: PanelOptions) {
     return o.store.trash(now);
   });
   ipcMain.handle(PANEL.trashRestore, (e, id: unknown) => {
-    if (!ours(e) || typeof id !== 'number') return undefined;
-    const todo = o.store.restoreFromTrash(id);
-    if (todo) log('todo', '휴지통에서 되살림', id);
+    if (!ours(e) || typeof id !== 'number') return 'gone';
+    const res = o.store.restoreCheck(id);
+    if (res === 'ok') {
+      o.store.restoreFromTrash(id);
+      log('todo', '휴지통에서 되살림', id);
+    } else if (res === 'dup') log('todo', '같은 반복이 열려 있어 되살리지 않음', id);
     push();
-    return todo;
+    return res;
   });
   ipcMain.handle(PANEL.trashPurge, (e, id: unknown) => {
     if (!ours(e) || typeof id !== 'number') return 0;

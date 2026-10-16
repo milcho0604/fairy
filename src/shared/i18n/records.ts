@@ -20,6 +20,7 @@ export const ko = {
   'records.trash.confirmNo': '그만두기',
   'records.trash.restored': (v: { title: string }) => `"${v.title}" 되살렸어.`,
   'records.trash.gone': '이미 없는 할 일이야.',
+  'records.trash.dup': '같은 반복 할 일이 이미 열려 있어서 되살리지 않았어. 필요 없으면 영구 삭제해 줘.',
 
   // ---- 집중 월간 잔디 ----
   'records.month.title': '집중 달력',
@@ -107,6 +108,8 @@ export const en: Translation<typeof ko> = {
   'records.trash.confirmNo': 'Cancel',
   'records.trash.restored': (v: { title: string }) => `Restored "${v.title}".`,
   'records.trash.gone': 'That to-do is already gone.',
+  'records.trash.dup':
+    'The same repeating to-do is already open, so this one was not restored. Delete it forever if you do not need it.',
 
   // ---- Focus calendar ----
   'records.month.title': 'Focus calendar',

@@ -5,6 +5,8 @@ export const LINES = {
   state: 'lines:state',
   save: 'lines:save',
   reset: 'lines:reset',
+  /** 창이 뜰 때 고친 대사를 동기로 받는다 (화면의 t() 도 고친 대사를 쓰게) */
+  sync: 'lines:sync',
 } as const;
 
 /** 화면에 보일 대사 한 줄 */

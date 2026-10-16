@@ -215,6 +215,8 @@ registerModelScheme();
 // 화면 말은 메뉴와 창을 만들기 전에 정한다 (v2 다국어). 시각 입력칸 같은 기본 칸은 Chromium 말을 따라서
 // 준비 전에 같은 말로 맞춘다
 initLang();
+// 사용자가 고친 펫 대사를 말풍선과 창이 쓰게 한다 (#125, main/lines.ts). 창을 만들기 전에
+initLines(log);
 app.commandLine.appendSwitch('lang', locale());
 
 // 모든 창(펫, 같이 보기, 놀이 창 포함): 새 창을 열거나 다른 주소로 옮겨 가지 못하게 한다. 링크는 메인이 따로 연다
@@ -515,8 +517,6 @@ ready
     } catch (err) {
       log('todo', '휴지통 정리 못 함', err instanceof Error ? err.message : String(err));
     }
-    // 사용자가 고친 펫 대사를 말풍선이 쓰게 한다 (#125, main/lines.ts)
-    initLines(log);
     // 내 말투와 직접 쓴 말의 {name}, {todo} (shared/persona-voice.ts). 채팅 AI 성격 지시도 내 말투를 읽는다
     setSpeechSource({
       style: () => settings.get().speech,
