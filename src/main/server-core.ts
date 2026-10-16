@@ -27,7 +27,6 @@ import type { GateNeed } from '../shared/update-levels.ts';
 import type {
   AiChatBody,
   AiChatOutcome,
-  AiPiece,
   ApiResult,
   BackupList,
   CalendarLinkInfo,
@@ -734,12 +733,12 @@ export function createServerCore(d: ServerCoreDeps) {
   /** 대화권으로 질문 하나 (글은 기록에 남기지 않는다) */
   async function askAi(
     body: AiChatBody,
-    onPiece: (piece: AiPiece) => void,
+    onText: (text: string) => void,
     signal?: AbortSignal,
   ): Promise<AiChatOutcome> {
     const s = d.session.get();
     if (!d.api || !s || !aiAvailable()) return { ok: false, status: 403, error: 'login' };
-    const r = await d.api.aiChat(s, body, onPiece, signal);
+    const r = await d.api.aiChat(s, body, onText, signal);
     if (r.ok) setTickets(r.tickets);
     else {
       if (r.tickets !== undefined) setTickets(r.tickets);

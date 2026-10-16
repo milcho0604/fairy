@@ -13,7 +13,6 @@ import {
   parseReport,
   requestShape,
   reserveMicros,
-  SERVER_FALLBACK_BETA,
   seoulDay,
   systemPrompt,
   withPersona,
@@ -69,21 +68,17 @@ test('요청: 처음과 끝은 사용자 말, 같은 쪽이 이어지면 합친�
   );
 });
 
-test('요청 모양: Sonnet 5.5 는 between_tools + effort low + 서버 폴백, Haiku 5.5 는 disabled + effort low 폴백 없음', () => {
-  assert.deepEqual(requestShape('claude-sonnet-5-5'), {
-    thinking: { type: 'between_tools' },
-    output_config: { effort: 'low' },
-    fallbacks: 'default',
-    betas: [SERVER_FALLBACK_BETA],
-  });
+test('요청 모양: Haiku 5.5 는 disabled + effort low, 서버 폴백과 베타 머리 없음 (보내면 400)', () => {
   assert.deepEqual(requestShape('claude-haiku-5-5'), {
     thinking: { type: 'disabled' },
     output_config: { effort: 'low' },
   });
   // 환경 변수로 고른 다른 모델은 아무것도 더하지 않는다 (샘플링 값은 어디에도 없다)
   assert.deepEqual(requestShape('claude-haiku-4-5'), {});
+  assert.deepEqual(requestShape('claude-sonnet-5-5'), {});
   for (const m of ['claude-sonnet-5-5', 'claude-haiku-5-5']) {
     assert.equal('temperature' in requestShape(m), false);
+    assert.equal('fallbacks' in requestShape(m), false);
   }
 });
 
@@ -115,30 +110,33 @@ test('비용: Haiku 4.5 는 100만 토큰당 1, 5 달러, 모르는 모델은 �
   assert.ok(reserve >= AI_MAX_OUTPUT_TOKENS * 5 + chars * 3, String(reserve));
 });
 
-test('폴백 장부: 홉마다 그 모델 요금, 모델을 모르면 가장 비싼 값, iterations 가 없으면 맨 위 usage 한 홉', () => {
-  // 거절한 Sonnet 5.5 홉 640 + 답한 Opus 5 홉 1350
+test('홉별 장부: 홉마다 그 모델 요금, 모델을 모르면 가장 비싼 값, iterations 가 없으면 맨 위 usage 한 홉', () => {
+  // 홉이 하나뿐이어도 같은 길 (Haiku 5.5: 120 × 0.1 + 30 × 0.5 = 27)
+  const one = hopsOf([{ type: 'message', model: 'claude-haiku-5-5', input_tokens: 120, output_tokens: 30 }]);
+  assert.equal(billedMicros(one ?? []), 27);
+  // 여러 홉이면 합 (Sonnet 5.5 120x2 + 40x10 = 640, Opus 5 120x5 + 30x25 = 1350)
   const hops = hopsOf([
     { type: 'message', model: 'claude-sonnet-5-5', input_tokens: 120, output_tokens: 40 },
-    { type: 'fallback_message', model: 'claude-opus-5', input_tokens: 120, output_tokens: 30 },
+    { type: 'message', model: 'claude-opus-5', input_tokens: 120, output_tokens: 30 },
   ]);
   assert.equal(billedMicros(hops ?? []), 1990);
-  // 항목에 model 이 없으면 fallback 블록의 to.model, 그래도 없으면 모르는 모델
+  // 항목에 model 이 없으면 요청한 모델, 그래도 없으면 모르는 모델 ($15 / $75)
   assert.equal(billedMicros(hopsOf([{ input_tokens: 1, output_tokens: 1 }], 'claude-opus-5') ?? []), 30);
   assert.equal(billedMicros(hopsOf([{ input_tokens: 1, output_tokens: 1 }]) ?? []), 90);
   assert.equal(hopsOf(undefined), undefined);
   assert.equal(hopsOf([]), undefined);
 });
 
-test('예약금: 서버 폴백이면 두 홉 최악 (거절한 홉 + 모르는 폴백 모델)', () => {
+test('월 예산 90달러: 운영 값으로 정해도 가장 큰 질문 하나(예약금)가 달러 몇 센트 안이다', () => {
+  // 질문 하나의 최악 비용 (Haiku 5.5, 전체 안전 상한 12000자 * 3 토큰, 출력 600): 입력 $0.10 / 출력 $0.50 per 1M
   const req = {
-    messages: [{ role: 'user' as const, content: '가'.repeat(100) }],
+    messages: [{ role: 'user' as const, content: '가'.repeat(AI_MAX_PAYLOAD_CHARS) }],
     lang: 'ko' as const,
     persona: '',
   };
-  const one = reserveMicros('claude-sonnet-5-5', req);
-  const two = reserveMicros('claude-sonnet-5-5', req, true);
-  // 모르는 폴백 홉 ($15/$75) 이 Sonnet 홉 ($2/$10) 보다 7.5배 비싸니 두 홉 합은 한 홉의 다섯 배를 넘는다
-  assert.ok(two > one * 5, `${one} ${two}`);
+  const worst = reserveMicros('claude-haiku-5-5', req);
+  assert.ok(worst < 6000, String(worst)); // $0.006 안
+  assert.ok(90_000_000 / worst > 10_000);
 });
 
 test('시스템 프롬프트: AI 임을 알리고 안전 규칙이 펫 성격보다 앞선다 (ko, en)', () => {

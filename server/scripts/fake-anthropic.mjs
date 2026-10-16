@@ -5,16 +5,10 @@
 //   [[cut]]        글 두 조각을 보내고 연결을 끊는다
 //   [[sse-error]]  글 한 조각 뒤 SSE error 사건 (overloaded_error)
 //   [[slow]]       아무것도 보내지 않고 기다린다 (시간 넘김)
-//   [[refusal]]    글 한 조각 뒤 stop_reason refusal (안전 분류기 거절, 폴백도 못 넘은 것)
-//   [[fallback]]   서버 폴백 (실제 모양): 거절한 홉의 앞부분 글 "[A의 앞부분] " → fallback 블록(from 요청 모델, to
-//                  claude-opus-5) → 폴백 홉의 새 답 "안녕! 나는 AI 야.". 맨 위 usage 는 답한 홉, usage.iterations 는
-//                  홉마다 (거절한 홉 message, 답한 홉 fallback_message). 비용 장부 시험이 이 숫자를 쓴다
-//   그 밖          "안녕! 나는 AI 야." 를 세 조각으로, 사용량 input 120 / output 30
+//   [[refusal]]    글 한 조각 뒤 stop_reason refusal (안전 분류기 거절, Haiku 5.5 는 서버 폴백 없음)
 //
 // 요청 모양 검사: 서버가 보낸 본문이 모델별 규칙(server/src/ai-rules.ts requestShape)과 맞지 않으면
 // 진짜 API 처럼 400 invalid_request_error 를 준다 (calls 에도 violations 로 남는다).
-//   claude-sonnet-5-5: thinking {type:"between_tools"} 만, output_config {effort:"low"} 만, fallbacks "default",
-//                      베타 머리 server-side-fallback-2026-07-01
 //   claude-haiku-5-5:  thinking {type:"disabled"}, output_config {effort:"low"}, fallbacks 와 폴백 베타 없음
 //   모든 모델: 날짜 접미사 없는 모델 이름, 샘플링 값 없음(temperature, top_p, top_k), budget_tokens 없음,
 //              강제 tool_choice(any, tool) 없음, 마지막 차례는 사용자 (미리 채우기 없음)
@@ -44,12 +38,6 @@ export function shapeViolations(body, betaHeader) {
     if (!same(body.output_config, { effort: 'low' })) v.push('haiku 5.5: output_config 은 effort low');
     if ('fallbacks' in body) v.push('haiku 5.5: fallbacks 를 보내면 400');
     if (betas.includes(FALLBACK_BETA)) v.push('haiku 5.5: 폴백 베타 머리 없음');
-  }
-  if (model.startsWith('claude-sonnet-5-5')) {
-    if (!same(body.thinking, { type: 'between_tools' })) v.push('sonnet 5.5: thinking 은 between_tools 만');
-    if (!same(body.output_config, { effort: 'low' })) v.push('sonnet 5.5: output_config 은 effort low');
-    if (body.fallbacks !== 'default') v.push('sonnet 5.5: fallbacks 는 "default"');
-    if (!betas.includes(FALLBACK_BETA)) v.push(`sonnet 5.5: 베타 머리 ${FALLBACK_BETA} 필요`);
   }
   return v;
 }
@@ -103,14 +91,12 @@ export async function startFakeAnthropic() {
       if (text.includes('[[slow]]')) return; // 끊길 때까지 답하지 않는다
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
       const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-      const fallen = text.includes('[[fallback]]');
       send('message_start', {
         type: 'message_start',
         message: {
           id: `msg_fake_${calls.length}`,
           type: 'message',
           role: 'assistant',
-          // 서버 폴백이 일어나면 응답의 model 은 폴백 모델 이름이다
           model: body.model,
           content: [],
           stop_reason: null,
@@ -118,75 +104,6 @@ export async function startFakeAnthropic() {
           usage: { input_tokens: 120, output_tokens: 1 },
         },
       });
-      if (fallen) {
-        // 실제 모양: 블록은 순서대로, 전용 사건 종류 없이 content_block_start 로 온다 (fallback 블록은 글 사이에 낀다)
-        send('content_block_start', {
-          type: 'content_block_start',
-          index: 0,
-          content_block: { type: 'text', text: '' },
-        });
-        send('content_block_delta', {
-          type: 'content_block_delta',
-          index: 0,
-          delta: { type: 'text_delta', text: '[A의 앞부분] ' },
-        });
-        send('content_block_stop', { type: 'content_block_stop', index: 0 });
-        send('content_block_start', {
-          type: 'content_block_start',
-          index: 1,
-          content_block: {
-            type: 'fallback',
-            from: { model: body.model },
-            to: { model: 'claude-opus-5' },
-            trigger: { type: 'refusal', category: null },
-          },
-        });
-        send('content_block_stop', { type: 'content_block_stop', index: 1 });
-        send('content_block_start', {
-          type: 'content_block_start',
-          index: 2,
-          content_block: { type: 'text', text: '' },
-        });
-        for (const t of ['안녕! ', '나는 AI ', '야.']) {
-          send('content_block_delta', {
-            type: 'content_block_delta',
-            index: 2,
-            delta: { type: 'text_delta', text: t },
-          });
-        }
-        send('content_block_stop', { type: 'content_block_stop', index: 2 });
-        send('message_delta', {
-          type: 'message_delta',
-          delta: { stop_reason: 'end_turn', stop_sequence: null },
-          usage: {
-            input_tokens: 120,
-            output_tokens: 30,
-            iterations: [
-              {
-                type: 'message',
-                model: body.model,
-                input_tokens: 120,
-                output_tokens: 40,
-                cache_creation_input_tokens: 0,
-                cache_read_input_tokens: 0,
-                cache_creation: null,
-              },
-              {
-                type: 'fallback_message',
-                model: 'claude-opus-5',
-                input_tokens: 120,
-                output_tokens: 30,
-                cache_creation_input_tokens: 0,
-                cache_read_input_tokens: 0,
-                cache_creation: null,
-              },
-            ],
-          },
-        });
-        send('message_stop', { type: 'message_stop' });
-        res.end();
-        return;
-      }
       const index = 0;
       send('content_block_start', {
         type: 'content_block_start',

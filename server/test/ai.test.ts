@@ -187,7 +187,7 @@ before(async () => {
   ai = {
     apiKey: API_KEY,
     baseUrl: fake.url,
-    model: 'claude-sonnet-5-5',
+    model: 'claude-haiku-5-5',
     monthlyBudgetMicros: 1_000_000,
     dailyLimit: 5,
     maxInputChars: 8000,
@@ -394,13 +394,13 @@ describe('질문 하나', () => {
     assert.equal(fake.calls.length, before + 1);
     const call = fake.calls.at(-1);
     assert.equal(call?.apiKey, API_KEY);
-    assert.equal(call?.body.model, 'claude-sonnet-5-5');
+    assert.equal(call?.body.model, 'claude-haiku-5-5');
     assert.equal(call?.body.max_tokens, 600);
-    // Sonnet 5.5 (#103): 생각은 between_tools (끄기), effort low, 서버 거절 폴백 기본, 베타 머리, 샘플링 값 없음
-    assert.deepEqual(call?.body.thinking, { type: 'between_tools' });
+    // Haiku 5.5: 생각은 disabled (끄기), effort low, 서버 폴백과 베타 머리 없음, 샘플링 값 없음
+    assert.deepEqual(call?.body.thinking, { type: 'disabled' });
     assert.deepEqual(call?.body.output_config, { effort: 'low' });
-    assert.equal(call?.body.fallbacks, 'default');
-    assert.equal(call?.beta, 'server-side-fallback-2026-07-01');
+    assert.equal(call?.body.fallbacks, undefined);
+    assert.equal(call?.beta, null);
     assert.deepEqual(call?.violations, []);
     for (const k of ['temperature', 'top_p', 'top_k']) assert.equal(call?.body[k], undefined, k);
     assert.match(String(call?.body.system), /사람이 아니라 AI/);
@@ -411,36 +411,9 @@ describe('질문 하나', () => {
       'SELECT status, input_tokens, output_tokens, cost_micros FROM ai_usage WHERE account_id = $1',
       [await accountOf(a.session)],
     );
-    // Sonnet 5.5: 입력 120 × 2 + 출력 30 × 10 = 540 (백만분의 1달러)
-    assert.deepEqual(u.rows, [{ status: 'ok', input_tokens: 120, output_tokens: 30, cost_micros: '540' }]);
+    // Haiku 5.5: 입력 120 × 0.1 + 출력 30 × 0.5 = 27 (백만분의 1달러)
+    assert.deepEqual(u.rows, [{ status: 'ok', input_tokens: 120, output_tokens: 30, cost_micros: '27' }]);
     assert.deepEqual((await api('GET', '/v1/ai', { token: a.session })).body.usedToday, 1);
-  });
-
-  test('서버 폴백: 거절한 홉의 앞부분 글은 reset 으로 지우고 새 답만 남는다, 비용은 홉마다 (Sonnet 640 + Opus 1350)', async () => {
-    const a = await adult();
-    const before = fake.calls.length;
-    const r = await api('POST', '/v1/ai/chat', { token: a.session, body: ask('[[fallback]] 질문') });
-    assert.equal(r.status, 200, r.text);
-    const ev = events(r.text);
-    // 앱이 받는 순서대로 맞춘다: reset 뒤에 온 글만 답이다
-    let got = '';
-    for (const e of ev) {
-      if (e.event === 'reset') got = '';
-      if (e.event === 'text') got += e.data.text;
-    }
-    assert.ok(
-      ev.some((e) => e.event === 'reset'),
-      'reset 사건이 있어야 한다',
-    );
-    assert.equal(got, '안녕! 나는 AI 야.');
-    assert.deepEqual(ev.at(-1), { event: 'done', data: { tickets: AI_GIFT - 1, stop: 'end_turn' } });
-    assert.equal(fake.calls.length, before + 1);
-    assert.deepEqual(fake.calls.at(-1)?.violations, []);
-    // 장부: 거절한 Sonnet 5.5 홉 120x2 + 40x10 = 640, 답한 Opus 5 홉 120x5 + 30x25 = 1350
-    const u = await pool.query('SELECT cost_micros FROM ai_usage WHERE account_id = $1', [
-      await accountOf(a.session),
-    ]);
-    assert.deepEqual(u.rows, [{ cost_micros: '1990' }]);
   });
 
   test('운영자가 줄인 질문 글자 수를 넘으면 400 too_long, 대화권은 그대로 (상한은 원래 값으로 되돌린다)', async () => {
@@ -697,16 +670,12 @@ describe('상한', () => {
     const used = await pool.query<{ total: string }>(
       "SELECT COALESCE(sum(cost_micros), 0) AS total FROM ai_usage WHERE created_at >= date_trunc('month', now(), 'UTC')",
     );
-    // 질문 하나가 잡는 값(서버 폴백이라 두 홉 최악)의 두 개 반쯤 자리를 남긴다
-    const one = reserveMicros(
-      ai.model,
-      {
-        messages: [{ role: 'user', content: '[[slow]] 동시에' }],
-        lang: 'ko',
-        persona: '',
-      },
-      true,
-    );
+    // 질문 하나가 잡는 값(예약금)의 두 개 반쯤 자리를 남긴다
+    const one = reserveMicros(ai.model, {
+      messages: [{ role: 'user', content: '[[slow]] 동시에' }],
+      lang: 'ko',
+      persona: '',
+    });
     const room = Math.floor(one * 2.5);
     const fill = await pool.query<{ id: string }>(
       `INSERT INTO ai_usage (account_id, day, model, status, cost_micros) VALUES (NULL, CURRENT_DATE, 'x', 'ok', $1)

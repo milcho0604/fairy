@@ -45,17 +45,6 @@ test('같은 세션이면 턴이 쌓이고, 끝난 뒤 늦게 온 사건은 무�
   assert.equal(after, s);
 });
 
-test('서버 폴백 reset: 말풍선의 앞 글을 비우고 이어 받은 글만 답으로 남는다', () => {
-  let s = ask(initialChat('claude'), 1);
-  s = applyEvent(s, 'p1', { type: 'delta', text: '[거절된 앞부분] ' }, 'n');
-  s = applyEvent(s, 'p1', { type: 'reset' }, 'n');
-  assert.equal(s.messages[1]?.text, '');
-  assert.equal(s.messages[1]?.status, 'streaming');
-  s = applyEvent(s, 'p1', { type: 'delta', text: '새 답' }, 'n');
-  s = applyEvent(s, 'p1', { type: 'done', text: '새 답' }, 'n');
-  assert.equal(s.messages[1]?.text, '새 답');
-});
-
 test('오류는 메시지에 남고 다시 보낼 수 있다', () => {
   let s = ask(initialChat(), 1);
   s = applyEvent(

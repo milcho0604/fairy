@@ -398,9 +398,9 @@ async function apiLayer() {
     const none = await q();
     check(A, '다 씀 → 409 no_tickets {tickets:0}', none.status === 409 && none.json?.error === 'no_tickets' && none.json.tickets === 0, `${none.status} ${none.text?.slice(0, 80)}`);
     sql(`UPDATE ai_ticket SET remaining = 5 WHERE account_id = ${d.account.id}`);
-    const big = sql(`INSERT INTO ai_usage (account_id, day, model, status, cost_micros) VALUES (${d.account.id}, current_date, 'claude-haiku-4-5', 'ok', 80000000) RETURNING id`).split('\n')[0];
+    const big = sql(`INSERT INTO ai_usage (account_id, day, model, status, cost_micros) VALUES (${d.account.id}, current_date, 'claude-haiku-4-5', 'ok', 90000000) RETURNING id`).split('\n')[0];
     const budget = await q();
-    check(A, '월 80달러 넘음 → 503 budget, 대화권 안 뺌', budget.status === 503 && budget.json?.error === 'budget' && sql(`SELECT remaining FROM ai_ticket WHERE account_id = ${d.account.id}`) === '5', `${budget.status} ${budget.text?.slice(0, 80)}`);
+    check(A, '월 90달러 넘음 → 503 budget, 대화권 안 뺌', budget.status === 503 && budget.json?.error === 'budget' && sql(`SELECT remaining FROM ai_ticket WHERE account_id = ${d.account.id}`) === '5', `${budget.status} ${budget.text?.slice(0, 80)}`);
     sql(`DELETE FROM ai_usage WHERE id = ${big}`);
     await api('PATCH', '/v1/account', { token: s, body: { age: '14+' } });
     const teen = await q();
@@ -879,7 +879,7 @@ async function appPhase() {
       check(F, '하루 20번: 오늘은 여기까지 안내, 대화권 그대로', (await lastMsg()).includes(T.daily) && remain() === 9, (await lastMsg()).slice(-80));
       sql(`UPDATE ai_daily SET used = 1 WHERE used > 0`);
       // 월 상한
-      const big = sql(`INSERT INTO ai_usage (account_id, day, model, status, cost_micros) VALUES (${acct}, current_date, 'claude-haiku-4-5', 'ok', 80000000) RETURNING id`).split('\n')[0];
+      const big = sql(`INSERT INTO ai_usage (account_id, day, model, status, cost_micros) VALUES (${acct}, current_date, 'claude-haiku-4-5', 'ok', 90000000) RETURNING id`).split('\n')[0];
       await sendQ(Q('월 상한', 'monthly cap'));
       check(F, '월 상한: 쉬는 중 안내, 대화권 그대로', (await lastMsg()).includes(T.budget) && remain() === 9, (await lastMsg()).slice(-80));
       sql(`DELETE FROM ai_usage WHERE id = ${big}`);

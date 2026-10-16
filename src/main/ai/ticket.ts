@@ -3,7 +3,7 @@
 import type { Exchange } from '../../shared/ai/text.ts';
 import type { AiError, AiEvent } from '../../shared/ai/types.ts';
 import { type Lang, t } from '../../shared/i18n/index.ts';
-import type { AiChatBody, AiChatOutcome, AiPiece } from '../server-api.ts';
+import type { AiChatBody, AiChatOutcome } from '../server-api.ts';
 
 /** 붙여 보낼 최근 문답 수 */
 export const TICKET_HISTORY = 4;
@@ -24,7 +24,7 @@ export interface TicketHooks {
   /** 국외 이전 안내를 읽고 쓰기로 했다 */
   agreed(): boolean;
   agree(): void;
-  ask(body: AiChatBody, onPiece: (piece: AiPiece) => void, signal?: AbortSignal): Promise<AiChatOutcome>;
+  ask(body: AiChatBody, onText: (text: string) => void, signal?: AbortSignal): Promise<AiChatOutcome>;
   report(question: string, answer: string): Promise<boolean>;
   /** 남은 수를 서버에서 다시 받는다 (채팅 창을 열 때) */
   refresh?(): Promise<void>;
@@ -130,14 +130,8 @@ export function runTicket(
         persona: req.persona.slice(0, MAX_PERSONA),
       },
       (piece) => {
-        // 서버 폴백이면 그때까지 받은 글은 답이 아니다: 지우고 이어지는 글을 새 답으로
-        if (piece.type === 'reset') {
-          text = '';
-          onEvent({ type: 'reset' });
-          return;
-        }
-        text += piece.text;
-        onEvent({ type: 'delta', text: piece.text });
+        text += piece;
+        onEvent({ type: 'delta', text: piece });
       },
       ac.signal,
     )

@@ -90,7 +90,7 @@ export interface AiConfig {
   apiKey: string;
   /** Anthropic API 주소. 운영은 공식 주소, 시험은 이 컴퓨터의 가짜 서버 */
   baseUrl: string;
-  /** 모델 ID. 기본은 Claude Sonnet 5.5 (#103 사용자 결정, 입력 $2 / 출력 $10 per 1M) */
+  /** 모델 ID. 기본은 Claude Haiku 5.5 (#101 사용자 결정, 입력 $0.10 / 출력 $0.50 per 1M) */
   model: string;
   /** 서버 전체 한 달(UTC 달력) 추정 비용 상한, 백만분의 1달러 */
   monthlyBudgetMicros: number;
@@ -109,8 +109,8 @@ export interface AiConfig {
 }
 
 export const DEFAULT_ANTHROPIC_BASE_URL = 'https://api.anthropic.com';
-export const DEFAULT_ANTHROPIC_MODEL = 'claude-sonnet-5-5';
-export const DEFAULT_AI_MONTHLY_USD = 80;
+export const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-5-5';
+export const DEFAULT_AI_MONTHLY_USD = 90;
 export const DEFAULT_AI_DAILY_LIMIT = 20;
 const MODEL_ID = /^[a-z0-9][a-z0-9.@_-]{1,79}$/;
 

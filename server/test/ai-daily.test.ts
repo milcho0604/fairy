@@ -14,7 +14,7 @@ before(async () => {
     ai: {
       apiKey: '',
       baseUrl: 'http://127.0.0.1:9',
-      model: 'claude-sonnet-5-5',
+      model: 'claude-haiku-5-5',
       monthlyBudgetMicros: 1_000_000,
       dailyLimit: 5,
       maxInputChars: 8000,

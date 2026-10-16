@@ -44,12 +44,12 @@ test('구글 로그인은 클라이언트 번호와 비밀이 둘 다 있어야 
   );
 });
 
-test('AI 대화권: 기본은 공식 주소와 Sonnet 5.5, 월 80달러, 하루 20번, 질문 8000자. 주소는 https 만, 모델 이름 검사', () => {
+test('AI 대화권: 기본은 공식 주소와 Haiku 5.5, 월 90달러, 하루 20번, 질문 8000자. 주소는 https 만, 모델 이름 검사', () => {
   assert.deepEqual(readConfig({ DATABASE_URL: 'postgres://x' }).ai, {
     apiKey: '',
     baseUrl: 'https://api.anthropic.com',
-    model: 'claude-sonnet-5-5',
-    monthlyBudgetMicros: 80_000_000,
+    model: 'claude-haiku-5-5',
+    monthlyBudgetMicros: 90_000_000,
     dailyLimit: 20,
     maxInputChars: 8000,
     giftKey: '',
@@ -59,7 +59,7 @@ test('AI 대화권: 기본은 공식 주소와 Sonnet 5.5, 월 80달러, 하루 
       DATABASE_URL: 'postgres://x',
       ANTHROPIC_API_KEY: ' k ',
       ANTHROPIC_BASE_URL: 'http://127.0.0.1:9/',
-      ANTHROPIC_MODEL: 'claude-sonnet-5-5',
+      ANTHROPIC_MODEL: 'claude-haiku-5-5',
       AI_MONTHLY_BUDGET_USD: '0.5',
       AI_DAILY_LIMIT: '3',
       AI_MAX_INPUT_CHARS: '1200',
@@ -68,7 +68,7 @@ test('AI 대화권: 기본은 공식 주소와 Sonnet 5.5, 월 80달러, 하루 
     {
       apiKey: 'k',
       baseUrl: 'http://127.0.0.1:9',
-      model: 'claude-sonnet-5-5',
+      model: 'claude-haiku-5-5',
       monthlyBudgetMicros: 500_000,
       dailyLimit: 3,
       maxInputChars: 1200,

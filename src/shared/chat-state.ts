@@ -96,8 +96,6 @@ export function applyEvent(s: ChatState, petId: string, e: AiEvent, noticeId: st
     }
     case 'delta':
       return update({ text: msg.text + e.text, status: 'streaming' });
-    case 'reset':
-      return update({ text: '', status: 'streaming' });
     case 'done': {
       const session = s.sessions[provider];
       const turns = (session?.turns ?? 0) + 1;

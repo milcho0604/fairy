@@ -1,10 +1,9 @@
-// PR #123 QA: 채팅 이용권 모델 claude-sonnet-5-5, 서버 폴백(reset), 홉별 비용, 질문 글자 수 상한(input_chars).
+// PR #123 QA: 채팅 이용권 모델 claude-haiku-5-5 유지(서버 폴백 없음), 비용 장부, 질문 글자 수 상한(input_chars, 사용자가 친 글만).
 // 세 층(API, 화면 클릭, 화면 모양)을 PASS/FAIL 로 본다. 진짜 Anthropic 은 부르지 않는다 (server/scripts/fake-anthropic.mjs).
 //
 //   npm run build && (cd server && npm run build) && OUT=<레포 밖 폴더> LANG_UNDER_TEST=ko node scripts/dev/qa-pr123.mjs
 //
 // - 서버는 이 프로세스 안에서 server/dist 의 createApp 으로 띄운다 (가짜 구글: 시험 RSA 키, 운영자 토큰과 운영자 sub)
-// - 가짜 Anthropic 앞에 느린 중계를 끼워 [[fallback]] 응답만 사건마다 늦춘다 (화면의 중간 글을 보려고, QA_FALLBACK_SLOW_MS)
 // - 앱 둘: A(허용된 18+ 사용자, 채팅 창 클릭, 숨은 창의 웹 /admin 클릭), C(운영자 칸)
 // - CLAUDE.md 시험 창 규칙: JJ_NO_FOCUS=1, 빈 JJ_USER_DATA(끝나면 지운다), JJ_TEST_SECRETS=memory, 입력은 CDP 로만
 // - 컨테이너는 jj-qa123-pg-<무작위> 이름으로만 만들고 지운다. 포트는 모두 무작위
@@ -119,13 +118,13 @@ const serverReq = createRequire(join(root, 'server', 'package.json'));
 const { createApp } = serverReq('./dist/app.js');
 const { readConfig } = serverReq('./dist/config.js');
 const fake = await startFakeAnthropic();
-// 가짜 Anthropic 앞에 끼우는 느린 중계: [[fallback]] 응답의 SSE 사건을 하나씩 늦춰 보내 화면의 중간 상태(앞부분 글 → reset)를 볼 수 있게 한다
-const SLOW_MS = Number(process.env.QA_FALLBACK_SLOW_MS ?? 450);
+// 가짜 Anthropic 앞에 끼우는 중계 (업스트림 요청을 그대로 넘긴다)
+const SLOW_MS = 0;
 const relay = httpServer((req, res) => {
   let raw = '';
   req.on('data', (c) => (raw += c));
   req.on('end', async () => {
-    const slow = raw.includes('[[fallback]]');
+    const slow = false;
     const up = httpRequest(`${fake.url}${req.url}`, { method: req.method, headers: req.headers }, (ur) => {
       res.writeHead(ur.statusCode ?? 502, ur.headers);
       let buf = '';
@@ -642,12 +641,10 @@ async function openPanel(h) {
 const note = (area, text) => console.log(`NOTE [${area}] ${text}`);
 const ELECTRON = "process.getBuiltinModule('module').createRequire(process.cwd() + '/')('electron')";
 const rules = serverReq('./dist/ai-rules.js');
-const SONNET = 'claude-sonnet-5-5';
-const BETA = 'server-side-fallback-2026-07-01';
-/** 가짜 서버 숫자로 센 비용 (백만분의 1달러): Sonnet 120/30 = 540, 폴백 Sonnet 120/40 + Opus 5 120/30 = 640 + 1350 */
-const COST_OK = 120 * 2 + 30 * 10;
-const COST_FALLBACK = 120 * 2 + 40 * 10 + (120 * 5 + 30 * 25);
-const COST_REFUSAL = 120 * 2 + 3 * 10;
+const MODEL = 'claude-haiku-5-5';
+/** 가짜 서버 숫자로 센 비용 (백만분의 1달러): Haiku 5.5 $0.10 / $0.50 per 1M, 120/30 */
+const COST_OK = rules.costMicros(MODEL, 120, 30);
+const COST_REFUSAL = rules.costMicros(MODEL, 120, 3);
 const lastUsage = (id) => {
   const [status, model, input, output, cost] = sql(`SELECT status, model, input_tokens, output_tokens, cost_micros FROM ai_usage WHERE account_id = ${id} ORDER BY id DESC LIMIT 1`).split('|');
   return { status, model, input: Number(input), output: Number(output), cost: Number(cost) };
@@ -671,11 +668,11 @@ const bodyShape = (call) => {
   };
 };
 const shapeOk = (s) =>
-  s.model === SONNET &&
-  JSON.stringify(s.thinking) === '{"type":"between_tools"}' &&
+  s.model === MODEL &&
+  JSON.stringify(s.thinking) === '{"type":"disabled"}' &&
   JSON.stringify(s.oc) === '{"effort":"low"}' &&
-  s.fallbacks === 'default' &&
-  String(s.beta ?? '').split(',').map((x) => x.trim()).includes(BETA) &&
+  s.fallbacks === undefined &&
+  !String(s.beta ?? '').includes('server-side-fallback') &&
   s.max === 600 &&
   s.stream === true &&
   s.sampling.length === 0 &&
@@ -708,41 +705,25 @@ async function apiLayer() {
     check(A, '정상 질문 → 200 SSE text 3조각 + done tickets 9', r.status === 200 && texts === '안녕! 나는 AI 야.' && evs.at(-1)?.ev === 'done' && evs.at(-1).data.tickets === 9 && evs.at(-1).data.stop === 'end_turn', `${r.status} ${r.text?.slice(-90)}`);
     check(A, '이용권 10 → 9 (DB)', tickets(u.id) === 9, tickets(u.id));
     const us = lastUsage(u.id);
-    check(A, `ai_usage: ok, model ${SONNET}, 120/30, 비용 ${COST_OK} (입력 $2, 출력 $10 per 1M)`, us.status === 'ok' && us.model === SONNET && us.input === 120 && us.output === 30 && us.cost === COST_OK, JSON.stringify(us));
+    check(A, `ai_usage: ok, model ${MODEL}, 120/30, 비용 ${COST_OK} (입력 $0.10, 출력 $0.50 per 1M)`, us.status === 'ok' && us.model === MODEL && us.input === 120 && us.output === 30 && us.cost === COST_OK, JSON.stringify(us));
     const s = bodyShape(fake.calls[n0]);
-    check(A, '가짜 서버가 받은 본문: model, thinking between_tools, effort low, fallbacks default, 베타 머리, max_tokens 600, stream, 샘플링 없음, 위반 0', fake.calls.length === n0 + 1 && shapeOk(s), JSON.stringify(s));
+    check(A, '가짜 서버가 받은 본문: model haiku, thinking disabled, effort low, fallbacks 와 베타 머리 없음, max_tokens 600, stream, 샘플링 없음, 위반 0', fake.calls.length === n0 + 1 && shapeOk(s), JSON.stringify(s));
     const b = fake.calls[n0]?.body ?? {};
     check(A, '본문에 미리 채우기 없음 (마지막은 user), 날짜 붙은 모델 이름 아님, system 은 문자열', b.messages?.at(-1)?.role === 'user' && !/-\d{8}$/.test(b.model) && typeof b.system === 'string', JSON.stringify(Object.keys(b)));
   }
-  // 예약금: 두 홉 최악 (Sonnet + 모르는 모델 $15/$75)
+  // 예약금: 한 홉 최악 (서버 폴백이 없다)
   {
     const req = { messages: [{ role: 'user', content: `[[slow]] ${Q('기다려', 'wait')}` }], lang: LANG, persona: '' };
     const ac = new AbortController();
     const p = fetch(`${apiUrl}/v1/ai/chat`, { method: 'POST', signal: ac.signal, headers: { authorization: `Bearer ${u.session}`, 'content-type': 'application/json', 'cf-connecting-ip': ip() }, body: JSON.stringify(req) }).catch(() => undefined);
     await soft(until('pending', () => lastUsage(u.id).status === 'pending', 8000));
     const pend = lastUsage(u.id);
-    const want = rules.reserveMicros(SONNET, req, true);
-    const single = rules.reserveMicros(SONNET, req, false);
-    check(A, `질문 중 예약금 = 두 홉 최악 (${want}, 한 홉이면 ${single})`, pend.status === 'pending' && pend.cost === want && want > single, JSON.stringify(pend));
+    const want = rules.reserveMicros(MODEL, req);
+    check(A, `질문 중 예약금 = 한 홉 최악 (${want})`, pend.status === 'pending' && pend.cost === want, JSON.stringify(pend));
     ac.abort();
     await p;
     await soft(until('되돌림', () => lastUsage(u.id).status !== 'pending', 10_000));
     check(A, '[[slow]] 연결을 끊으면 (글 없음) 되돌림, 9 그대로', lastUsage(u.id).status === 'refunded' && tickets(u.id) === 9, JSON.stringify(lastUsage(u.id)));
-  }
-  // 서버 폴백
-  {
-    const n0 = fake.calls.length;
-    const r = await chat(u, `[[fallback]] ${Q('곤란한 질문', 'tricky one')}`);
-    const evs = sse(r.text);
-    const order = evs.map((e) => (e.ev === 'text' ? `text:${e.data.text}` : e.ev)).join(' | ');
-    const iReset = evs.findIndex((e) => e.ev === 'reset');
-    const before = evs.slice(0, iReset).filter((e) => e.ev === 'text').map((e) => e.data.text).join('');
-    const after = evs.slice(iReset + 1).filter((e) => e.ev === 'text').map((e) => e.data.text).join('');
-    check(A, '[[fallback]] → text "[A의 앞부분] " → reset {} → text 새 답 → done', iReset > 0 && before === '[A의 앞부분] ' && JSON.stringify(evs[iReset].data) === '{}' && after === '안녕! 나는 AI 야.' && evs.at(-1)?.ev === 'done', order);
-    check(A, '[[fallback]] 이용권 1장 차감 (9 → 8)', tickets(u.id) === 8 && evs.at(-1)?.data?.tickets === 8, tickets(u.id));
-    const us = lastUsage(u.id);
-    check(A, `[[fallback]] 장부 비용 = 홉별 합 Sonnet 640 + Opus 5 1350 = ${COST_FALLBACK}, ok`, us.status === 'ok' && us.cost === COST_FALLBACK && us.model === SONNET, JSON.stringify(us));
-    check(A, '[[fallback]] 본문 모양도 같음 (위반 0)', shapeOk(bodyShape(fake.calls[n0])), JSON.stringify(bodyShape(fake.calls[n0])));
   }
   // 실패들: 되돌림
   for (const [tag, want] of [
@@ -815,6 +796,19 @@ async function apiLayer() {
     // 빈 칸 → 상한
     const blank = await adminJson('ai/limits', { budget_usd: '', daily_limit: '', input_chars: '' });
     check(AL, '빈 칸 → NULL (상한 8000 그대로 씀)', blank.json?.ok === true && inputCharsDb() === 'NULL' && /질문 8000자/.test(blank.json.text), `${JSON.stringify(blank.json)} ${inputCharsDb()}`);
+    // 월 예산 출시 값 90달러: 상한(.env 기본 90)과 같은 값은 받고 91 은 거절. 꼭대기에서 질문 하나는 멈춘다 (503 budget)
+    const b90 = await adminJson('ai/limits', { budget_usd: '90', daily_limit: '', input_chars: '' });
+    const b91 = await adminJson('ai/limits', { budget_usd: '91', daily_limit: '', input_chars: '' });
+    check(AL, '월 예산 90 → ok (DB 90000000), 91 → 400 거절', b90.json?.ok === true && sql('SELECT monthly_budget_micros FROM ai_setting WHERE id = 1') === '90000000' && b91.status === 400, `${JSON.stringify(b90.json)} ${b91.status}`);
+    {
+      const wb = await mk();
+      const fill = sql(`INSERT INTO ai_usage (account_id, day, model, status, cost_micros) VALUES (NULL, current_date, 'x', 'ok', 90000000) RETURNING id`).split('\n')[0];
+      const nb = fake.calls.length;
+      const stop = await chat(wb, 'x');
+      sql(`DELETE FROM ai_usage WHERE id = ${fill}`);
+      check(AL, '이번 달 90달러를 다 쓰면 질문 → 503 budget, 업스트림 0건, 이용권 그대로', stop.status === 503 && /budget/.test(stop.text ?? '') && fake.calls.length === nb && tickets(wb.id) === 10, `${stop.status} ${stop.text}`);
+    }
+    await adminJson('ai/limits', { budget_usd: '', daily_limit: '', input_chars: '' });
     // 운영자 화면을 거치지 않고 input_chars 를 빼고 보내면? (앱 운영자 칸은 이 칸을 보내지 않는다)
     await adminJson('ai/limits', { budget_usd: '', daily_limit: '', input_chars: '500' });
     const noField = await adminJson('ai/limits', { budget_usd: '', daily_limit: '' });
@@ -834,10 +828,10 @@ async function apiLayer() {
     };
     const got = Object.fromEntries(['', '1', '8000', '2000', '0', '8001', '0x10', '1.5', '1e3', '-1', 'abc'].map((v) => [v, tryCfg(v)]));
     check(AC, 'AI_MAX_INPUT_CHARS: 빈 값 8000, 1, 8000, 2000 은 받고 0, 8001, 0x10, 1.5, 1e3, -1, abc 는 기동 오류', got[''] === 8000 && got['1'] === 1 && got['8000'] === 8000 && got['2000'] === 2000 && ['0', '8001', '0x10', '1.5', '1e3', '-1', 'abc'].every((k) => got[k] === 'throw'), JSON.stringify(got));
-    check(AC, `기본 모델 ${SONNET} (ANTHROPIC_MODEL 비움)`, readConfig({ ...base }).ai?.model === SONNET);
+    check(AC, `기본 모델 ${MODEL} (ANTHROPIC_MODEL 비움)`, readConfig({ ...base }).ai?.model === MODEL);
     const hk = rules.requestShape('claude-haiku-5-5');
     const other = rules.requestShape('claude-opus-5');
-    check(AC, 'requestShape: haiku 는 disabled/low/폴백 없음, 그 밖 모델은 빈 칸', hk.thinking?.type === 'disabled' && !('fallbacks' in hk) && !hk.betas && Object.keys(other).length === 0, JSON.stringify({ hk, other }));
+    check(AC, 'requestShape: haiku 는 disabled/low/폴백 없음, 그 밖 모델은 빈 칸', hk.thinking?.type === 'disabled' && !('fallbacks' in hk) && !('betas' in hk) && Object.keys(other).length === 0, JSON.stringify({ hk, other }));
   }
   // env 상한을 낮춘 서버: 운영자 값이 그보다 크면 거절
   {
@@ -949,43 +943,18 @@ async function appA() {
       await soft(until('줄 4', async () => (await count()).includes(T.count(4)), 5000));
       check(F, '답 "안녕! 나는 AI 야." 화면, 남은 장수 5 → 4 (DB, 이용권 줄)', m.includes('안녕! 나는 AI 야.') && tickets(id) === 4 && (await count()).includes(T.count(4)), `${tickets(id)} ${await count()} | ${m.slice(0, 80)}`);
       const us = lastUsage(id);
-      check(F, `ai_usage 비용 ${COST_OK} (Sonnet $2/$10, 120/30)`, us.status === 'ok' && us.model === SONNET && us.cost === COST_OK, JSON.stringify(us));
+      check(F, `ai_usage 비용 ${COST_OK} (Haiku $0.10/$0.50, 120/30)`, us.status === 'ok' && us.model === MODEL && us.cost === COST_OK, JSON.stringify(us));
       const s = bodyShape(fake.calls[n0]);
       check(F, '앱 질문이 서버를 거쳐 간 본문 모양 (가짜 서버 위반 0)', shapeOk(s), JSON.stringify(s));
       await c.shots('a02-ticket-answer');
     }
-    // 2) 서버 폴백: 중간 글 → reset → 새 답
+    // 2) 두 번째 질문 (앞 문답이 붙는다)
     {
-      let midShot = false;
-      let midText = '';
-      const ok = await sendQ(`[[fallback]] ${Q('이거 대답해 줄래?', 'Will you answer this?')}`, async () => {
-        await soft(until('앞부분 글', async () => (midText = (await seq()).find((t) => t.includes('[A의 앞부분]')) ?? '') !== '', 8000));
-        if (midText) {
-          // 아직 지워지기 전이면 찍는다
-          const now = await c.ev(`[...document.querySelectorAll('.msg.pet')].at(-1)?.innerText ?? ''`);
-          if (now.includes('[A의 앞부분]')) {
-            await c.shots('a03-fallback-mid');
-            midShot = true;
-          }
-        }
-      });
-      check(F, '[[fallback]] 질문 보내기 클릭', ok);
-      const all = await seq();
-      const iMid = all.findIndex((t) => t.includes('[A의 앞부분]'));
-      const iAfter = all.findIndex((t, i) => i > iMid && !t.includes('[A의 앞부분]'));
+      check(F, '두 번째 질문 보내기 클릭', await sendQ(Q('이거 대답해 줄래?', 'Will you answer this?')));
       const final = await lastMsg();
-      check(F, '중간 상태: 앞부분 글 "[A의 앞부분]" 이 잠깐 보임', iMid >= 0, JSON.stringify(all).slice(0, 300));
-      check(F, '중간 상태: reset 뒤 앞부분이 지워지고 새 답이 앞에 아무것도 없이 이어짐', iAfter > iMid && all.slice(iAfter).every((t) => !t.includes('[A의 앞부분]')) && all.slice(iAfter).some((t) => t.includes('안녕!')) && !all[iAfter].includes('안녕!'), JSON.stringify(all).slice(0, 400));
-      check(F, '최종 화면: 새 답만 "안녕! 나는 AI 야.", 앞부분 없음', final.includes('안녕! 나는 AI 야.') && !final.includes('[A의'), final.slice(0, 100));
-      const st = JSON.parse(await h.main('JSON.stringify(__jj.chat.debugState)'));
-      const lastPet = st.messages.at(-1);
-      check(F, '저장되는 대화 상태도 새 답만 (status done)', lastPet?.status === 'done' && lastPet.text === '안녕! 나는 AI 야.', JSON.stringify({ s: lastPet?.status, t: lastPet?.text }));
       await soft(until('줄 3', async () => (await count()).includes(T.count(3)), 5000));
-      check(F, '[[fallback]] 이용권 1장 차감 (4 → 3, DB와 줄)', tickets(id) === 3 && (await count()).includes(T.count(3)), `${tickets(id)} ${await count()}`);
-      const us = lastUsage(id);
-      check(F, `[[fallback]] 장부 비용 홉별 합 ${COST_FALLBACK}`, us.status === 'ok' && us.cost === COST_FALLBACK, JSON.stringify(us));
-      if (!midShot) note(F, '중간 상태 스크린샷은 못 찍음 (너무 빨리 지나감)');
-      await c.shots('a04-fallback-final');
+      check(F, '답 "안녕! 나는 AI 야." 화면, 이용권 1장 차감 (4 → 3, DB와 줄)', final.includes('안녕! 나는 AI 야.') && tickets(id) === 3 && (await count()).includes(T.count(3)), `${tickets(id)} ${await count()}`);
+      await c.shots('a03-second-answer');
     }
     // 3) 실패들
     const fails = [
@@ -1090,7 +1059,7 @@ async function appC() {
     // 운영자가 웹에서 500 으로 정해 둔 뒤 앱 칸에서 예산만 저장하면?
     await adminJson('ai/limits', { budget_usd: '', daily_limit: '', input_chars: '500' });
     await clearFlash(p);
-    check(F, '앱 칸 "예산 저장" 클릭 (월 예산 칸 50)', (await adminType(p, T.gFeat, Q('월 예산 달러 (상한 $80.00)', 'Monthly budget USD (cap $80.00)'), '50')) && (await adminPress(p, T.gFeat, Q('예산 저장', 'Save budget'))));
+    check(F, '앱 칸 "예산 저장" 클릭 (월 예산 칸 50)', (await adminType(p, T.gFeat, Q('월 예산 달러 (상한 $90.00)', 'Monthly budget USD (cap $90.00)'), '50')) && (await adminPress(p, T.gFeat, Q('예산 저장', 'Save budget'))));
     const fl = await waitFlash(p, Q('저장', 'saved'));
     await soft(until('예산', () => sql('SELECT COALESCE(monthly_budget_micros::text, \'NULL\') FROM ai_setting WHERE id = 1') === '50000000', 8000));
     check(F, '앱 칸 예산 저장: 월 예산 50 (DB), 운영자가 정한 글자 수 500 은 그대로여야 함', sql('SELECT monthly_budget_micros FROM ai_setting WHERE id = 1') === '50000000' && inputCharsDb() === '500', `budget=${sql('SELECT COALESCE(monthly_budget_micros::text, \'NULL\') FROM ai_setting WHERE id = 1')} input_chars=${inputCharsDb()} 결과 글 "${fl}"`);

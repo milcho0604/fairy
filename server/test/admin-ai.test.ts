@@ -29,8 +29,8 @@ before(async () => {
       ai: {
         apiKey: '',
         baseUrl: 'http://127.0.0.1:9',
-        model: 'claude-sonnet-5-5',
-        monthlyBudgetMicros: 5_000_000,
+        model: 'claude-haiku-5-5',
+        monthlyBudgetMicros: 90_000_000,
         dailyLimit: 20,
         maxInputChars: 8000,
         giftKey: `gift-${randomUUID()}`,
@@ -155,7 +155,7 @@ describe('채팅 이용권 접근 모드', () => {
     assert.equal((await adminApi('ai/block', { account: adminAccount.code, blocked: false })).status, 200);
     assert.equal((await api('GET', '/v1/ai', { token: adminSession })).status, 200);
 
-    const over = await adminApi('ai/limits', { budget_usd: '6', daily_limit: '5' });
+    const over = await adminApi('ai/limits', { budget_usd: '91', daily_limit: '5' });
     assert.equal(over.status, 400);
     assert.match(over.body.text, /상한/);
     assert.equal((await adminApi('ai/limits', { budget_usd: '1.5', daily_limit: '3' })).status, 200);
@@ -163,6 +163,9 @@ describe('채팅 이용권 접근 모드', () => {
     assert.equal(o.body.ai.monthlyBudgetMicros, 1_500_000);
     assert.equal(o.body.ai.dailyLimit, 3);
     assert.equal((await api('GET', '/v1/ai', { token: adminSession })).body.dailyLimit, 3);
+    // 출시 값 월 90달러: 꼭대기(.env 상한)와 같은 값은 받는다
+    assert.equal((await adminApi('ai/limits', { budget_usd: '90', daily_limit: '' })).status, 200);
+    assert.equal((await adminApi('overview')).body.ai.monthlyBudgetMicros, 90_000_000);
     assert.equal((await adminApi('ai/limits', { budget_usd: '', daily_limit: '' })).status, 200);
 
     // 질문 글자 수: .env 상한(8000) 이하만, 빈 칸은 상한 그대로

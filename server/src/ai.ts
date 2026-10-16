@@ -273,8 +273,7 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
       if (g.remaining <= 0) throw fail(HttpStatus.CONFLICT, { error: 'no_tickets', tickets: 0 });
       if ((await this.usedToday(c, g.keys)) >= limits.dailyLimit)
         throw fail(HttpStatus.TOO_MANY_REQUESTS, { error: 'daily_limit', tickets: g.remaining });
-      // 서버 폴백이 켜진 모델은 두 홉 최악으로 잡는다 (requestShape 가 정한다)
-      const reserve = reserveMicros(ai.model, req, requestShape(ai.model).fallbacks !== undefined);
+      const reserve = reserveMicros(ai.model, req);
       await c.query('SELECT pg_advisory_xact_lock($1)', [BUDGET_LOCK]);
       const month = await c.query<{ total: string }>(
         `SELECT COALESCE(sum(cost_micros), 0) AS total FROM ai_usage
@@ -340,7 +339,6 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
   /**
    * 질문 하나를 Claude 에 중계한다 (Server-Sent Events).
    *   event: text  data: {"text": "..."}     (답 조각, 여러 번)
-   *   event: reset data: {}                  (서버 폴백: 그때까지 보낸 글은 거절된 답이었다. 앱은 지우고 이어 받는다)
    *   event: done  data: {"tickets": n, "stop": "end_turn"}
    *   event: error data: {"error": "upstream" | "timeout", "tickets": n, "refunded": true}
    * 첫 조각 전에 실패하면 SSE 대신 502 upstream / 504 timeout JSON. 앱이 연결을 끊으면 업스트림도 멈추고,
@@ -373,21 +371,19 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
     };
     // 맨 위 토큰 (답을 낸 홉)과 응답의 홉 목록. 장부는 bill() 로 홉마다 그 모델 요금으로 센다
     const top = { input: 0, output: 0 };
-    /** 앱에 보낸 글 (거절된 홉의 글은 reset 뒤 지운다) */
+    /** 앱에 보낸 글 (끊겼을 때 받은 글이 있었는지 보려고) */
     let shown = '';
-    /** 서버 폴백 블록이 알려 준 대신 답한 모델 (없으면 undefined) */
-    let fallbackTo: string | undefined;
     let iterations: unknown;
     const bill = (): Usage => {
-      const hops = hopsOf(iterations, fallbackTo) ?? [
-        { model: fallbackTo ?? ai.model, input: top.input, output: top.output },
+      const hops = hopsOf(iterations, ai.model) ?? [
+        { model: ai.model, input: top.input, output: top.output },
       ];
       return { input: top.input, output: top.output, micros: billedMicros(hops) };
     };
     try {
-      // 모델별 요청 칸(생각 끄기, effort, 서버 폴백, 베타 머리)은 ai-rules.ts requestShape 한 곳에서 고른다.
+      // 모델별 요청 칸(생각 끄기, effort)은 ai-rules.ts requestShape 한 곳에서 고른다.
       // 샘플링 값(temperature 등)은 보내지 않는다 (기본값이 아니면 400)
-      const stream = this.client(ai).beta.messages.stream(
+      const stream = this.client(ai).messages.stream(
         {
           model: ai.model,
           max_tokens: AI_MAX_OUTPUT_TOKENS,
@@ -406,14 +402,6 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
           top.output = ev.usage.output_tokens;
           if (typeof ev.usage.input_tokens === 'number') top.input = ev.usage.input_tokens;
           iterations = (ev.usage as { iterations?: unknown }).iterations ?? iterations;
-        } else if (
-          ev.type === 'content_block_start' &&
-          (ev.content_block as { type: string }).type === 'fallback'
-        ) {
-          // 서버 폴백: 앞에서 거절된 홉이 쓴 글은 답이 아니다. 앱에 reset 을 보내 말풍선을 비우고 새 답을 이어 받게 한다
-          fallbackTo = (ev.content_block as { to?: { model?: string } }).to?.model ?? fallbackTo;
-          shown = '';
-          send('reset', {});
         } else if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta' && ev.delta.text) {
           clearTimeout(firstTimer);
           shown += ev.delta.text;
@@ -425,7 +413,7 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
       top.output = final.usage.output_tokens;
       iterations = (final.usage as { iterations?: unknown }).iterations ?? iterations;
       if (why) throw new Error(why);
-      // 안전 분류기 거절 (서버 폴백으로도 못 넘었거나 폴백이 없는 모델): 이용권을 되돌리고 앱이 안내한다. 쓴 토큰 비용은 남긴다
+      // 안전 분류기 거절 (Haiku 5.5 는 서버 폴백이 없다): 이용권을 되돌리고 앱이 안내한다. 쓴 토큰 비용은 남긴다
       if (final.stop_reason === 'refusal') {
         const tickets = await this.refund(started.usageId, bill()).catch(() => undefined);
         console.warn('[ai] 거절됨 (되돌림)');

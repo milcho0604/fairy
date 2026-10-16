@@ -19,8 +19,6 @@ export const AI_MAX_TOTAL_CHARS = 8000;
  * 입력 비용이 이 안에 묶이게 한다. 앱이 질문 본문(question)을 따로 보내는 요청에만 쓴다
  */
 export const AI_MAX_PAYLOAD_CHARS = 12000;
-/** 서버 거절 폴백 베타 (fallbacks: "default" 형태). Claude API 에서만 받는다 */
-export const SERVER_FALLBACK_BETA = 'server-side-fallback-2026-07-01';
 /** 앱이 보내는 펫 성격 글 상한 */
 /** 앱이 보내는 말투 설명 상한. 넘으면 자른다 (system 이 아니라 참고 자료 블록에 들어간다) */
 export const AI_MAX_PERSONA_CHARS = 600;
@@ -64,28 +62,19 @@ export const priceOf = (model: string) => PRICES[model] ?? UNKNOWN_PRICE;
 
 /**
  * 모델마다 다른 요청 칸. 모델을 바꾸면 여기만 고친다 (ai.ts 는 이것을 그대로 붙인다).
- * - Haiku 5.5: 생각이 기본으로 켜진다. disabled 는 effort high 이하에서 받는다. 서버 폴백 없음 (fallbacks 를 보내면 400)
- * - Sonnet 5.5: disabled 는 400. 생각을 끄는 방법은 between_tools (effort high 이하, 다른 칸 없음). 서버 폴백 기본 켬
+ * - Haiku 5.5: 생각이 기본으로 켜진다. disabled 는 effort high 이하에서 받는다. 서버 폴백 없음 (fallbacks 를 보내면 400,
+ *   "default" 를 보내도 거절된 요청은 그대로 거절이라 쓸모없다)
  * - 그 밖(환경 변수로 고른 다른 모델): 아무것도 보내지 않는다 (그 모델의 기본)
  * 샘플링 값(temperature, top_p, top_k)은 어떤 모델에도 보내지 않는다 (기본값이 아니면 400)
  */
 export interface RequestShape {
-  thinking?: { type: 'disabled' } | { type: 'between_tools' };
+  thinking?: { type: 'disabled' };
   output_config?: { effort: 'low' };
-  fallbacks?: 'default';
-  betas?: string[];
 }
 
 export function requestShape(model: string): RequestShape {
   if (/^claude-haiku-5-5/.test(model))
     return { thinking: { type: 'disabled' }, output_config: { effort: 'low' } };
-  if (/^claude-sonnet-5-5/.test(model))
-    return {
-      thinking: { type: 'between_tools' },
-      output_config: { effort: 'low' },
-      fallbacks: 'default',
-      betas: [SERVER_FALLBACK_BETA],
-    };
   return {};
 }
 
@@ -108,7 +97,7 @@ export interface Hop {
 }
 
 /**
- * 응답 usage.iterations 를 홉 목록으로. 항목마다 model 이 없으면 fallback 블록의 to.model (fallbackTo), 그래도 없으면 모르는 모델.
+ * 응답 usage.iterations 를 홉 목록으로. 항목마다 model 이 없으면 요청한 모델(fallbackTo), 그래도 없으면 모르는 모델.
  * iterations 가 없거나 배열이 아니면 undefined (맨 위 usage 를 쓴다)
  */
 export function hopsOf(iterations: unknown, fallbackTo?: string): Hop[] | undefined {
@@ -121,24 +110,22 @@ export function hopsOf(iterations: unknown, fallbackTo?: string): Hop[] | undefi
   });
 }
 
-/** 홉마다 그 모델의 요금으로 센 비용 합 (백만분의 1달러). 홉이 여럿이면 거절한 홉도 청구된다 */
+/** 홉마다 그 모델의 요금으로 센 비용 합 (백만분의 1달러). 홉이 여럿이면 홉마다 청구된다 */
 export function billedMicros(hops: readonly Hop[]): number {
   return hops.reduce((n, h) => n + costMicros(h.model ?? UNKNOWN_MODEL, h.input, h.output), 0);
 }
 
 /**
  * 이 질문이 쓸 수 있는 가장 큰 비용. 질문을 시작할 때 이만큼을 월 사용량에 잡아 두어
- * 동시에 여러 질문이 와도 월 상한을 넘지 않게 한다. 입력은 글자 하나를 한 토큰으로 넉넉히 센다.
- * fallback 이면 두 홉 (거절한 첫 홉 + 서버 폴백 홉, 폴백 모델은 모르니 가장 비싼 값) 의 최악을 잡는다
+ * 동시에 여러 질문이 와도 월 상한을 넘지 않게 한다. 입력은 글자 하나를 한 토큰으로 넉넉히 센다
  */
-export function reserveMicros(model: string, req: AiChatRequest, fallback = false): number {
+export function reserveMicros(model: string, req: AiChatRequest): number {
   const chars =
     systemPrompt(req.lang).length +
     withPersona(req.messages, req.lang, req.persona).reduce((n, m) => n + m.content.length, 0);
   // 글자 하나가 토큰 셋까지 될 수 있다고 보수적으로 센다 (메시지마다 머리 몫 50)
   const input = chars * 3 + 50 * req.messages.length;
-  const first = costMicros(model, input, AI_MAX_OUTPUT_TOKENS);
-  return fallback ? first + costMicros(UNKNOWN_MODEL, input, AI_MAX_OUTPUT_TOKENS) : first;
+  return costMicros(model, input, AI_MAX_OUTPUT_TOKENS);
 }
 
 /**
