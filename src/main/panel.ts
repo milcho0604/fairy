@@ -51,6 +51,7 @@ import {
   parsePanelOffset,
   placePanel,
 } from '../shared/panel-place.ts';
+import type { DoingSet } from '../shared/pet-status.ts';
 import { isPinKind } from '../shared/pin.ts';
 import { hasDeadlineWord } from '../shared/quick-add.ts';
 import { quickHeight } from '../shared/quick-fit.ts';
@@ -86,6 +87,8 @@ const MOVE_SAVE_MS = 400;
 
 export interface PanelOptions {
   store: TodoStore;
+  /** 진행 중으로 표시한 할 일 (펫 머리 위 말풍선, 이슈 #124) */
+  doing: DoingSet;
   notes: NoteStore;
   events: EventStore;
   focus: () => FocusState;
@@ -182,6 +185,12 @@ export function createPanel(o: PanelOptions) {
     };
   }
 
+  /** 진행 중 표시 가운데 아직 열려 있는 것만 (끝내거나 지운 할 일은 안 보이고, 되돌리면 돌아온다) */
+  function openDoing(open: readonly { id: number }[]): number[] {
+    const ids = new Set(open.map((todo) => todo.id));
+    return o.doing.ids().filter((id) => ids.has(id));
+  }
+
   function state(): PanelState {
     const now = Date.now();
     const { open, doneToday } = o.store.list(now);
@@ -193,6 +202,7 @@ export function createPanel(o: PanelOptions) {
       today: localDay(now),
       open,
       doneToday,
+      doing: openDoing(open),
       balance: o.store.balance(),
       fullness: Math.round(o.store.fullness(now)),
       hungryBelow: FULLNESS.hungry,
@@ -676,6 +686,15 @@ export function createPanel(o: PanelOptions) {
     if (kind === 'todo') o.store.pin(id, on, now);
     else if (kind === 'note') o.notes.pin(id, on, now);
     else o.events.pin(id, on, now);
+    push();
+  });
+  // ---- 진행 중 표시 (펫 머리 위 말풍선) ----
+  ipcMain.on(PANEL.doing, (e, id: unknown, on: unknown) => {
+    if (!ours(e) || typeof id !== 'number' || typeof on !== 'boolean') return;
+    // 열려 있는 할 일에만 켠다 (끝낸 할 일에 켜지지 않게)
+    const todo = on ? o.store.get(id) : undefined;
+    if (on && (!todo || todo.doneAt !== null)) return;
+    o.doing.set(id, on);
     push();
   });
   // ---- 상점과 놀이 (v1) ----

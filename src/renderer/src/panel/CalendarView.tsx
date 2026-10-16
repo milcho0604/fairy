@@ -394,6 +394,7 @@ function DayList({
               key={todo.id}
               todo={todo}
               today={s.today}
+              doing={s.doing.includes(todo.id)}
               onComplete={() => onComplete(todo)}
               onRemoved={() => onTodoRemoved(todo)}
             />

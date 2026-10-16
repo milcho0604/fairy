@@ -141,6 +141,12 @@ export interface Settings {
   batterySaver: SaverMode;
   /** 말풍선을 화면 읽기 프로그램이 읽어 준다 (편의, 기본 켬) */
   readAloud: boolean;
+  /** 펫 우클릭 "물어보기" 질문 칩 (이슈 #124, 기본 켬) */
+  petChips: boolean;
+  /** 펫 머리 위에 진행 중인 할 일과 집중 남은 시간을 늘 띄운다 (이슈 #124, 기본 켬) */
+  doingBubble: boolean;
+  /** 펫을 꾹 누르면 잠깐 커졌다 돌아온다 (이슈 #124, 기본 켬) */
+  clickGrow: boolean;
   /** 맥 메뉴 막대 아이콘 옆에 다음 일정이나 집중 남은 시간 (편의, 기본 끔: 제목이 화면에 늘 보인다) */
   trayTitle: boolean;
   /** 집 숨기기 (2026-10-12, shared/house-stow.ts): 화면의 집을 숨겨 둔다. 자리, 단계, 모양은 그대로 */
@@ -479,6 +485,9 @@ export const DEFAULT_SETTINGS: Settings = {
   urlScheme: true,
   batterySaver: 'auto',
   readAloud: true,
+  petChips: true,
+  doingBubble: true,
+  clickGrow: true,
   trayTitle: false,
   houseHidden: false,
   saverTold: false,
@@ -681,6 +690,9 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     urlScheme: bool(r.urlScheme, base.urlScheme),
     batterySaver: isSaverMode(r.batterySaver) ? r.batterySaver : base.batterySaver,
     readAloud: bool(r.readAloud, base.readAloud),
+    petChips: bool(r.petChips, base.petChips),
+    doingBubble: bool(r.doingBubble, base.doingBubble),
+    clickGrow: bool(r.clickGrow, base.clickGrow),
     trayTitle: bool(r.trayTitle, base.trayTitle),
     houseHidden: bool(r.houseHidden, base.houseHidden),
     saverTold: bool(r.saverTold, base.saverTold),

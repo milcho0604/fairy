@@ -71,6 +71,15 @@ body {
   visibility: visible;
 }
 
+/* 늘 떠 있는 상태 말풍선 (진행 중, 집중 남은 시간): 말하는 말풍선보다 작고 조용하게. 누르면 할 일 탭 */
+#bubble[data-ambient] {
+  padding: 5px 10px;
+  border-width: 1px;
+  font-size: 12px;
+  cursor: pointer;
+  max-width: 220px;
+}
+
 #bubble p {
   margin: 0;
   /* 묶인 알림(숨어 있다 나온 뒤)은 줄마다 하나 */

@@ -219,6 +219,24 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
           onChange={(v) => update({ wander: v })}
         />
         <Toggle
+          label={t('settings.petChips')}
+          hint={t('settings.petChipsHint')}
+          on={s.petChips}
+          onChange={(v) => update({ petChips: v })}
+        />
+        <Toggle
+          label={t('settings.doingBubble')}
+          hint={t('settings.doingBubbleHint')}
+          on={s.doingBubble}
+          onChange={(v) => update({ doingBubble: v })}
+        />
+        <Toggle
+          label={t('settings.clickGrow')}
+          hint={t('settings.clickGrowHint')}
+          on={s.clickGrow}
+          onChange={(v) => update({ clickGrow: v })}
+        />
+        <Toggle
           label={t('settings.lookAtCursor')}
           hint={t('settings.lookAtCursorHint')}
           on={s.lookAtCursor}

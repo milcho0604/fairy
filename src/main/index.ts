@@ -19,6 +19,7 @@ import { isMiniGame, PLAY_COIN } from '../shared/minigames.ts';
 import { noteTitle } from '../shared/note-store.ts';
 import { setSpeechSource, setVoiceSource, voiced } from '../shared/persona-voice.ts';
 import { unlocked, WAVE_AWAY_SEC } from '../shared/pet-life.ts';
+import { DoingSet } from '../shared/pet-status.ts';
 import { starterFigureOf, starterModelOf } from '../shared/pet3d/starters.ts';
 import { restDaysOf } from '../shared/routine.ts';
 import { pickedGait, pickedStand } from '../shared/settings.ts';
@@ -74,6 +75,7 @@ import { type Incoming, listenEarly, registerScheme, startIncoming, takeArgv } f
 import { openLink } from './open-link.ts';
 import { createPanel } from './panel.ts';
 import { denyPermissionsByDefault } from './permissions.ts';
+import { createPetChips } from './pet-chips.ts';
 import { createPetConfirm } from './pet-confirm.ts';
 import { createPetFace, trayImageOf } from './pet-face.ts';
 import { library } from './pet-library.ts';
@@ -337,6 +339,8 @@ ready
       localGame: { turn: (text) => wordChain.turn(text), reset: () => wordChain.reset() },
       log,
     });
+    // 펫 질문 칩과 상태 말풍선 글 (펫과 패널이 만들어진 뒤에 채운다, 이슈 #124)
+    let petChips: ReturnType<typeof createPetChips> | undefined;
     const pet = createPetWindow({
       petName,
       actions: {
@@ -383,6 +387,7 @@ ready
         toggleFocus: () => (planner.focus.phase === 'idle' ? planner.startFocus() : planner.stopFocus()),
         openKnows: () => knows.open(),
         whatFirst: () => sayWhatFirst(),
+        askChips: () => void petChips?.ask(),
         // 집 숨기기, 다시 보이기 (shared/house-stow.ts). 집을 숨기면 집 우클릭을 못 하니 펫 메뉴에 둔다
         houseItem: () => {
           const hidden = settings.get().houseHidden;
@@ -1000,8 +1005,20 @@ ready
     onWrite((sql) => {
       if (/\b(todo|event|reminder)\b/i.test(sql)) planner.soon();
     });
+    // 진행 중 표시(▶)와 펫 질문 칩, 머리 위 상태 말풍선 (이슈 #124). 진행 중 표시는 doing.json 에 남는다
+    const doing = new DoingSet(readJson('doing'), (ids) => writeJson('doing', ids));
+    petChips = createPetChips({
+      say: (o) => pet.say(o),
+      store,
+      events,
+      stats,
+      doing,
+      focus: () => planner.focus,
+      doingOn: () => settings.get().doingBubble,
+    });
     const panel = createPanel({
       store,
+      doing,
       notes,
       events,
       focus: () => planner.focus,
@@ -1116,9 +1133,17 @@ ready
       }
       panel.refresh();
     }
+    // 머리 위 상태 말풍선: 집중 중이면 남은 시간, 아니면 진행 중인 할 일 (shared/pet-status.ts). 저장소가 바뀔 때와 10초마다 맞춘다
+    function refreshStatusBubble() {
+      if (!petChips) return;
+      const text = petChips.statusNow();
+      pet.setStatus(text ? { text, onClick: () => panel.openTab('todo') } : null);
+    }
+    setInterval(refreshStatusBubble, 10_000).unref();
     // 펫 표정에 쓰는 상태: 배고픔(배부름은 시간이 흐르면 준다, 5분마다 본다), 집중 중(잠).
     let lastStatus = '';
     function sendStatus() {
+      refreshStatusBubble();
       const status: PetStatus = {
         hungry: store.fullness(Date.now()) < FULLNESS.hungry,
         focus: planner.focus.phase === 'focus',
@@ -1137,6 +1162,7 @@ ready
         energy: petLife.energy,
         saver: saverNow(),
         readAloud: settings.get().readAloud,
+        clickGrow: settings.get().clickGrow,
         wear: wear.look(),
       };
       const key = JSON.stringify(status);
@@ -1627,7 +1653,8 @@ ready
         sysMonitor.setKind(runnerKindNow());
       if (next.sysMonitor !== prev.sysMonitor) sysMonitor.setEnabled(next.sysMonitor);
       if (next.trayTitle !== prev.trayTitle) trayTitle.refresh();
-      if (next.readAloud !== prev.readAloud) sendStatus();
+      if (next.readAloud !== prev.readAloud || next.clickGrow !== prev.clickGrow) sendStatus();
+      if (next.doingBubble !== prev.doingBubble) refreshStatusBubble();
       if (next.petName !== prev.petName) {
         chat.petNameChanged();
         panel.refresh();
@@ -1885,6 +1912,10 @@ ready
             return serverInbox;
           },
           panel,
+          doing,
+          get petChips() {
+            return petChips;
+          },
           store,
           stats,
           notes,

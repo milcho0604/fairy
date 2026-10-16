@@ -28,6 +28,7 @@ import {
   IMPORT_FILES,
   importedChatSettings,
   PET_STATE_FILES,
+  STALE_AFTER_RESTORE,
 } from '../shared/backup-import.ts';
 import { CODEX_ZIP_MAX_BYTES } from '../shared/codex-pet.ts';
 import { SCHEMA_VERSION } from '../shared/db-schema.ts';
@@ -558,6 +559,8 @@ export function applyPendingImport(): void {
   }
   for (const [, moved] of aside) rmSync(moved, { force: true });
   for (const f of ['-wal', '-shm']) rmSync(pending + f, { force: true });
+  // 옛 저장 파일의 할 일 번호를 가리키는 파일은 복원한 저장 파일에서는 다른 할 일을 가리킨다
+  for (const f of STALE_AFTER_RESTORE) rmSync(join(dir, f), { force: true });
   // 펫 그림은 지금 것 위에 더한다 (같은 이름이면 가져온 것. 지금 것은 before-import 폴더에 있다)
   const pets = join(dir, PENDING_PETS);
   if (existsSync(pets)) {

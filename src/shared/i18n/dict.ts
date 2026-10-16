@@ -9,6 +9,7 @@ import * as briefing from './briefing.ts';
 import * as calendar from './calendar.ts';
 import * as chat from './chat.ts';
 import * as chatLook from './chat-look.ts';
+import * as chips from './chips.ts';
 import * as common from './common.ts';
 import * as companion from './companion.ts';
 import * as day from './day.ts';
@@ -97,6 +98,7 @@ export const ko = {
   ...server.ko,
   ...ops.ko,
   ...records.ko,
+  ...chips.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -147,4 +149,5 @@ export const en: Translation<typeof ko> = {
   ...server.en,
   ...ops.en,
   ...records.en,
+  ...chips.en,
 };

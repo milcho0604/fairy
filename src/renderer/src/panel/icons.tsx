@@ -109,6 +109,21 @@ export function GearIcon() {
 }
 
 /** 고정(핀). 고정하면 몸통을 채운다 (.pin.on) */
+/** 진행 중 표시(▶). 켜면 속을 채운다 */
+export function PlayIcon({ filled }: { filled?: boolean }) {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M5 3.2v9.6L12.6 8z"
+        fill={filled ? 'currentColor' : 'none'}
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function PinIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">

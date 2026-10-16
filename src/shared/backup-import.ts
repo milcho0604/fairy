@@ -20,6 +20,12 @@ export const PET_STATE_FILES = [
   'speech-lines.json',
 ] as const;
 
+/**
+ * 복원하면 지우는 파일: 저장 파일(jjakkung.db)의 할 일 번호를 가리켜서, 복원한 저장 파일의 다른 할 일을
+ * 가리키게 된다 (진행 중 표시 doing.json, 이슈 #124). 백업에는 담지 않는다
+ */
+export const STALE_AFTER_RESTORE = ['doing.json'] as const;
+
 export const IMPORT_FILES = [
   'settings.json',
   'chat-settings.json',
