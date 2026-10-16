@@ -37,6 +37,15 @@ export const LIMITS = {
   couponByIp: { max: 30, windowMs: 3_600_000 },
   /** 없는 쿠폰 코드: 계정마다 한 시간 5번까지 틀릴 수 있다. 넘으면 그 시간 동안 쿠폰을 받지 않는다 */
   couponMissByAccount: { max: 5, windowMs: 3_600_000 },
+  /** 친구 신청과 차단 (#110): 계정마다 10분 10번, 같은 곳에서 한 시간 60번 (기기 코드 추측을 막는다) */
+  friendByAccount: { max: 10, windowMs: 600_000 },
+  friendByIp: { max: 60, windowMs: 3_600_000 },
+  /** 없는 기기 코드로 신청: 계정마다 한 시간 5번까지. 넘으면 그 시간 동안 신청을 받지 않는다 */
+  friendMissByAccount: { max: 5, windowMs: 3_600_000 },
+  /** 친구 선물: 계정마다 1분 20번 (하루 상한은 따로 DB 로 센다) */
+  giftByAccount: { max: 20, windowMs: 60_000 },
+  /** 바쁜 시간대 올리기: 계정마다 한 시간 30번 (앱은 몇 분마다, 바뀌었을 때만) */
+  busyByAccount: { max: 30, windowMs: 3_600_000 },
   /** 운영자 로그인 실패: 같은 곳에서 15분 5번, 서버 전체 15분 20번 (넘으면 맞는 토큰도 받지 않는다) */
   adminFailByIp: { max: 5, windowMs: 900_000 },
   adminFailAll: { max: 20, windowMs: 900_000 },

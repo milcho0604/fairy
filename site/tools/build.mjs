@@ -25,6 +25,8 @@ const PAGES = [
   { file: 'download/index.html', path: '/download/', base: '../', titleKey: 'meta.dlTitle', descKey: 'meta.dlDesc', sitemap: true },
   { file: 'privacy/index.html', path: '/privacy/', base: '../', titleKey: 'meta.pvTitle', descKey: 'meta.pvDesc', sitemap: true },
   { file: '404.html', path: '/404.html', base: '/', titleKey: 'nf.title', descKey: null, sitemap: false, noindex: true },
+  // 친구 초대 링크 (/f/<코드>/, #110). vercel.json 이 /f/<코드> 를 이 페이지로 보낸다
+  { file: 'f/index.html', path: '/f/', base: '/', titleKey: 'fr.title', descKey: 'fr.desc', sitemap: false, noindex: true },
 ];
 
 function vars(base) {
