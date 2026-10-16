@@ -28,6 +28,10 @@ window.SITE = {
   // The PUBLIC GitHub repo whose releases hold the installers. If it is private the site shows "coming soon".
   releases: { owner: 'milcho0604', repo: 'fairy-releases' },
 
+  // 이 홈페이지가 안내하는 릴리스 판. 설치 파일 이름의 버전 자리에도 써요.
+  // The release described by this site. Also used in the fallback installer names.
+  releaseVersion: '0.5.0',
+
   // 설치 파일 고르기 (릴리스 파일 이름 끝을 정규식으로). electron-builder.yml 의 artifactName
   // `<이름>-${version}-${os}-${arch}.${ext}` 기준이라 앱 이름이 바뀌어도 그대로 맞아요.
   assets: {
