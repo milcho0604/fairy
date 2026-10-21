@@ -11,7 +11,7 @@ import type { StatStore } from '../shared/beta-stats.ts';
 import { undoMoved } from '../shared/briefing.ts';
 import { dayWatch } from '../shared/day-watch.ts';
 import { saveErrorText } from '../shared/download-error.ts';
-import { isDraftTextKind } from '../shared/draft-store.ts';
+import { isPanelDraftKind } from '../shared/draft-store.ts';
 import { findSameEvent } from '../shared/event-dup.ts';
 import { clashIds, overlapping, spanEnd } from '../shared/event-overlap.ts';
 import {
@@ -27,6 +27,7 @@ import { type FocusState, focusCoins, isFocusLength } from '../shared/focus.ts';
 import { isMonth, monthOf } from '../shared/focus-month.ts';
 import type { GcalCalLabel, PanelGcal } from '../shared/gcal.ts';
 import { t } from '../shared/i18n/index.ts';
+import { createIdleWatch } from '../shared/idle-watch.ts';
 import {
   type EventClash,
   type FocusMonthView,
@@ -95,6 +96,11 @@ const MOVE_SAVE_MS = 400;
 const RESIZE_GAP_MS = 17;
 /** 크기가 멈춘 뒤 이만큼 지나면 적는다 */
 const RESIZE_SAVE_MS = 400;
+/**
+ * 끄는 중에 크기 소식이 이만큼 안 오면 끝 알림이 끊긴 것으로 보고 "끄는 중"을 푼다
+ * (화면 새로 고침, 충돌, 포인터 유실). 손잡이는 잡고 있는 동안 이보다 짧은 간격으로 소식을 다시 보낸다 (ResizeGrips.tsx)
+ */
+const RESIZE_IDLE_MS = 2000;
 
 /** 한 줄 넣기 옵션 (빠른 입력, 분류 바꾸기) */
 interface AddOpts {
@@ -968,14 +974,27 @@ export function createPanel(o: PanelOptions) {
     if (want) applyResize(want);
   }
 
+  /** "끄는 중"을 푼다 (끝 알림, 감시 기한, 창 닫힘) */
+  function stopResizing() {
+    resizeIdle.stop();
+    resizing = false;
+    if (process.platform === 'linux' && panel && !panel.isDestroyed()) panel.setResizable(false);
+  }
+  const resizeIdle = createIdleWatch(RESIZE_IDLE_MS, () => {
+    flushResize();
+    stopResizing();
+  });
+
   ipcMain.on(PANEL.resizeStart, (e) => {
     if (!isPanel(e)) return;
     resizing = true;
+    resizeIdle.poke();
     // 리눅스 일부 창 관리자는 크기 고정 창의 setBounds 를 무시한다. 끄는 동안만 푼다
     if (process.platform === 'linux') panel?.setResizable(true);
   });
   ipcMain.on(PANEL.resize, (e, width: unknown, height: unknown) => {
     if (!isPanel(e) || !resizing) return;
+    resizeIdle.poke();
     // 화면은 CSS px 로 보내니 창 확대 배율(큰 글씨)을 곱해 창 크기로 바꾼다
     const zoom = panel?.webContents.getZoomFactor() ?? 1;
     const dip = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v * zoom : undefined);
@@ -985,8 +1004,7 @@ export function createPanel(o: PanelOptions) {
   ipcMain.on(PANEL.resizeEnd, (e) => {
     if (!isPanel(e) || !resizing) return;
     flushResize();
-    resizing = false;
-    if (process.platform === 'linux') panel?.setResizable(false);
+    stopResizing();
   });
   // 처음 크기로 (손잡이 두 번 누르기)
   ipcMain.on(PANEL.resizeReset, (e) => {
@@ -996,10 +1014,11 @@ export function createPanel(o: PanelOptions) {
 
   // 쓰던 글, 보던 위치 (#145). 창이 뜨며 바로 읽으니 읽기는 동기
   ipcMain.on(PANEL.draftGet, (e, kind: unknown) => {
-    e.returnValue = ours(e) && isDraftTextKind(kind) ? drafts.text(kind) : '';
+    e.returnValue = ours(e) && isPanelDraftKind(kind) ? drafts.text(kind) : '';
   });
   ipcMain.on(PANEL.draftSet, (e, kind: unknown, text: unknown) => {
-    if (ours(e)) drafts.setText(kind, text);
+    // 채팅 칸은 채팅 창 몫이라 패널에서는 쓰지 못한다
+    if (ours(e) && isPanelDraftKind(kind)) drafts.setText(kind, text);
   });
   ipcMain.on(PANEL.viewGet, (e) => {
     e.returnValue = ours(e) ? getView() : emptyViewKeep();
@@ -1166,7 +1185,14 @@ export function createPanel(o: PanelOptions) {
     panel = win;
     // 옛 창이 늦게 닫혀도 새 창 참조를 지우지 않게 (빨리 닫았다 열면 빈 패널이 남았다)
     win.on('closed', () => {
-      if (panel === win) panel = undefined;
+      // 끄는 중이던 것이 이 창 것일 때만 푼다 (옛 창이 늦게 닫히며 새 패널의 끌기를 지우지 않게)
+      if (panel === win) {
+        panel = undefined;
+        stopResizing();
+        resizeWant = undefined;
+        clearTimeout(resizeFlushTimer);
+        resizeFlushTimer = undefined;
+      }
       dropEmptyNotes();
     });
     rememberMoves(win, placed);
@@ -1176,13 +1202,6 @@ export function createPanel(o: PanelOptions) {
       clearTimeout(resizeSaveTimer);
       resizeSaveTimer = undefined;
       saveBounds(win, 'panel', false);
-    });
-    // 끄는 중에 창이 닫히면 다음 패널이 닫히지 않는 상태로 남지 않게
-    win.on('closed', () => {
-      resizing = false;
-      resizeWant = undefined;
-      clearTimeout(resizeFlushTimer);
-      resizeFlushTimer = undefined;
     });
   }
 

@@ -413,6 +413,80 @@ try {
   await p.shot('pr144-big-todo-dark');
   await p.dark(false);
 
+  // 10b. 머지 전 점검 후속: 끝 알림이 안 오는 끌기, 옛 창 닫힘, 키보드로 처음 크기
+  // (a) 끌다가 끝 알림 없이 렌더러가 새로 고쳐져도 2초쯤 뒤 풀려서 blur 로 닫힌다
+  await closePanel();
+  p = await openPanel('today');
+  {
+    const g2 = await gripPoint(p, '.grip-se');
+    await p.mouse('mouseMoved', g2.x, g2.y);
+    await p.mouse('mousePressed', g2.x, g2.y, { buttons: 1 });
+    await p.mouse('mouseMoved', g2.x - 10, g2.y - 10, { buttons: 1 });
+    await sleep(150);
+    await pageConns.get('panel').send('Page.reload');
+    await sleep(1000);
+    await main('__jj.panel.window.emit("blur"); 1');
+    await sleep(300);
+    const still = await isOpen();
+    await sleep(2600);
+    await main('__jj.panel.window.emit("blur"); 1');
+    await sleep(500);
+    const after = await isOpen();
+    check('끌기 끝 알림이 없으면 (창을 새로 고침) 잠시 안 닫히다가 풀려서 닫힌다', still && !after, `blur 직후 열림 ${still}, 3.9초 뒤 열림 ${after}`);
+    await closePanel();
+  }
+  // (a') 끌기 도중 가만히 3초 넘게 잡고 있어도 (움직임이 없어도) 안 풀리고, 다시 움직이면 크기가 따라온다
+  p = await openPanel('today');
+  await p.ev('window.jjakkungPanel.resizeReset()');
+  await waitSize({ width: 360, height: 540 });
+  {
+    const g3 =await drag(p, '.grip-se', 40, 30, {
+      hold: true,
+      whileDragging: async () => {
+        await sleep(3200);
+        await main('__jj.panel.window.emit("blur"); 1');
+        await sleep(300);
+        check('가만히 잡고 있는 동안에는 blur 가 와도 닫히지 않는다', await isOpen());
+      },
+    });
+    await p.mouse('mouseMoved', g3.x + 80, g3.y + 60, { buttons: 1 });
+    b = await waitSize({ width: 440, height: 600 });
+    await p.mouse('mouseReleased', g3.x + 80, g3.y + 60, { buttons: 0 });
+    await sleep(300);
+    check('가만히 있다가 다시 움직여도 크기가 따라온다 (360x540 에서 +80 x +60)', b.width === 440 && b.height === 600, JSON.stringify(b));
+  }
+  await closePanel();
+  // (b) 옛 창의 closed 가 늦게 와도 새 패널의 끌기 상태를 지우지 않는다
+  p = await openPanel('today');
+  await main('globalThis.__old = __jj.panel.window; 1');
+  await closePanel();
+  p = await openPanel('today');
+  await p.ev('window.jjakkungPanel.resizeStart()');
+  await sleep(150);
+  await main('globalThis.__old.emit("closed"); 1');
+  await sleep(150);
+  await main('__jj.panel.window.emit("blur"); 1');
+  await sleep(400);
+  check('옛 창의 closed 가 늦게 와도 새 패널 끌기 중에는 blur 로 닫히지 않는다', await isOpen());
+  await p.ev('window.jjakkungPanel.resizeEnd()');
+  await sleep(200);
+  await closePanel();
+  // (c) 손잡이에 포커스를 두고 Enter 를 누르면 처음 크기. 안내 문구에도 적혀 있다
+  p = await openPanel('today');
+  await p.ev('window.jjakkungPanel.resizeStart(); window.jjakkungPanel.resize(450, 600); window.jjakkungPanel.resizeEnd()');
+  b = await waitSize({ width: 450, height: 600 });
+  check('(준비) 450x600 으로 키웠다', b.width === 450 && b.height === 600, JSON.stringify(b));
+  await p.ev("document.querySelector('.grip-se').focus()");
+  await p.key('keyDown', 'Enter');
+  await p.key('keyUp', 'Enter');
+  b = await waitSize({ width: 360, height: 540 });
+  check('손잡이에서 Enter 를 누르면 처음 크기 360x540', b.width === 360 && b.height === 540, JSON.stringify(b));
+  const hint = await p.ev("document.querySelector('.grip-se').title");
+  check('손잡이 안내에 Enter 가 있다', /Enter/.test(String(hint)), String(hint));
+  await p.ev("document.querySelector('.grip-se').blur()");
+  await closePanel();
+  p = await openPanel('today');
+
   // 11. 다른 창 회귀: 설정, 채팅 창이 크기를 기억하고 설정 최소 높이 520
   await main('__jj.settingsWindow.open(); 1');
   await sleep(1500);

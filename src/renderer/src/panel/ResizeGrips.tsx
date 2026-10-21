@@ -1,4 +1,4 @@
-import { type KeyboardEvent, type PointerEvent, useRef } from 'react';
+import { type KeyboardEvent, type PointerEvent, useEffect, useRef } from 'react';
 import { t } from '../../../shared/i18n/index.ts';
 
 // 패널 크기 손잡이 (오른쪽 아래 모서리, 아래 가장자리, 오른쪽 가장자리). 투명한 틀 없는 창이라 운영체제 크기 조절은
@@ -8,6 +8,8 @@ import { t } from '../../../shared/i18n/index.ts';
 const bridge = window.jjakkungPanel;
 const KEY_STEP = 10;
 const KEY_STEP_BIG = 50;
+/** 잡고 있는 동안 가만히 있어도 이 간격으로 바라는 크기를 다시 보낸다 (메인이 끝 알림이 끊겼는지 보는 기한보다 짧게) */
+const KEEPALIVE_MS = 700;
 
 type Edge = 'se' | 's' | 'e';
 
@@ -16,6 +18,10 @@ export function ResizeGrips() {
   const drag = useRef<{ edge: Edge; gx: number; gy: number; id: number }>(undefined);
   const frame = useRef<number>(undefined);
   const want = useRef<{ w?: number; h?: number }>({});
+  const keepalive = useRef<ReturnType<typeof setInterval>>(undefined);
+
+  // 끄는 중에 이 화면이 사라지면 다시 보내기를 멈춘다
+  useEffect(() => () => clearInterval(keepalive.current), []);
 
   const flush = () => {
     frame.current = undefined;
@@ -34,6 +40,8 @@ export function ResizeGrips() {
     };
     want.current = {};
     bridge.resizeStart();
+    clearInterval(keepalive.current);
+    keepalive.current = setInterval(() => bridge.resize(want.current.w, want.current.h), KEEPALIVE_MS);
   };
 
   const move = (e: PointerEvent<HTMLElement>) => {
@@ -51,6 +59,8 @@ export function ResizeGrips() {
     const d = drag.current;
     if (!d || e.pointerId !== d.id) return;
     drag.current = undefined;
+    clearInterval(keepalive.current);
+    keepalive.current = undefined;
     if (frame.current !== undefined) {
       cancelAnimationFrame(frame.current);
       flush();
@@ -59,6 +69,12 @@ export function ResizeGrips() {
   };
 
   const key = (e: KeyboardEvent<HTMLButtonElement>) => {
+    // Enter 는 처음 크기로 (손잡이를 두 번 누르는 것과 같다)
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      bridge.resizeReset();
+      return;
+    }
     const step = e.shiftKey ? KEY_STEP_BIG : KEY_STEP;
     const dx = e.key === 'ArrowRight' ? step : e.key === 'ArrowLeft' ? -step : 0;
     const dy = e.key === 'ArrowDown' ? step : e.key === 'ArrowUp' ? -step : 0;
@@ -74,6 +90,7 @@ export function ResizeGrips() {
     onPointerMove: move,
     onPointerUp: end,
     onPointerCancel: end,
+    onLostPointerCapture: end,
     onDoubleClick: () => bridge.resizeReset(),
   });
 

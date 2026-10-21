@@ -671,6 +671,19 @@ try {
   check('전체 되돌리기: 6개가 다 지워지고 붙여 넣기 목록이 다시 보인다', (await todoTitles()).length === beforeTodos && !!(await q.ev("!!document.querySelector('.quick-paste')")));
   await q.press('Escape', 27);
   await sleep(300);
+  // 51줄 이상은 넣기가 실패한다. 실패하면 붙인 글이 사라지지 않고 목록이 그대로 남아 줄여서 다시 할 수 있다
+  {
+    const nowTodos = (await todoTitles()).length;
+    await paste(Array.from({ length: 60 }, (_, i) => `BIG_줄${i}`));
+    await sleep(500);
+    await clickBtn(q, L('넣기', 'Add'));
+    await sleep(900);
+    check('51줄 이상 넣기가 실패해도 아무것도 들어가지 않는다', (await todoTitles()).length === nowTodos);
+    check('51줄 이상 넣기가 실패하면 붙인 목록이 그대로 남는다', !!(await q.ev("!!document.querySelector('.quick-paste')")));
+    check('51줄 이상 넣기가 실패하면 오류 글이 보인다', ((await q.ev("document.querySelector('.quick-error, .quick [role=alert]')?.textContent")) ?? '').length > 0);
+    await q.press('Escape', 27);
+    await sleep(300);
+  }
   // Enter 로 확인
   await paste(pasteLines.slice(0, 2));
   await sleep(300);
@@ -797,6 +810,24 @@ try {
   await until('답이 옴', async () => !!(await c.ev("[...document.querySelectorAll('.msg.pet .bubble')].some((b) => b.textContent.includes('가짜 답'))")), 15_000);
   check('다시 묻기 뒤 입력칸은 비워진다 (되돌려 놓은 글을 안 고쳤으니)', (await c.ev("document.querySelector('textarea').value")) === '');
   check('답이 오면 다시 묻기 단추는 없다', !(await c.ev("!!document.querySelector('.ask-again')")));
+  // 마지막 줄이 오류가 아니면 AI 를 지정하지 않은 다시 묻기는 아무것도 안 한다 (잘 받은 답을 지우고 다시 묻지 않는다)
+  {
+    const n0 = readFileSync(calls, 'utf8').split('\n').filter(Boolean).length;
+    const users0 = await c.ev("document.querySelectorAll('.msg.user').length");
+    await c.ev('window.jjakkungChat.retryWith()');
+    await sleep(2000);
+    const n1 = readFileSync(calls, 'utf8').split('\n').filter(Boolean).length;
+    check('잘 받은 답 뒤에 AI 지정 없는 다시 묻기는 claude 를 부르지 않는다', n1 === n0, `${n0} -> ${n1}`);
+    check('잘 받은 답 뒤에 AI 지정 없는 다시 묻기는 질문 말풍선을 늘리지 않는다', (await c.ev("document.querySelectorAll('.msg.user').length")) === users0);
+  }
+  // 패널 창은 채팅 쓰던 글 칸을 읽고 쓰지 못한다 (채팅 창 몫)
+  {
+    const pp = await openPanel('today');
+    const leak = await pp.ev("(() => { const b = window.jjakkungPanel; b.draftSet('chat', 'PANEL_LEAK_CHAT'); return b.draftGet('chat'); })()");
+    check('패널이 채팅 쓰던 글 칸에 쓰지 못한다', leak === '', JSON.stringify(leak));
+    await closePanel();
+    check('패널이 쓰려던 글이 채팅 입력칸에 새지 않았다', (await c.ev("document.querySelector('textarea').value")) !== 'PANEL_LEAK_CHAT');
+  }
 
   // 멈춤: 느린 답을 멈추면 질문이 돌아온다
   writeFileSync(modeFile, 'slow');

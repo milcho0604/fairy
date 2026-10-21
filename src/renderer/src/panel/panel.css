@@ -980,6 +980,7 @@ li.pin-end {
 
 .focus-len {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   min-width: 0;
   margin: 6px 0 0;

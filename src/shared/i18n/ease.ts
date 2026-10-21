@@ -17,7 +17,8 @@ export const ko = {
   // 패널
   'panel.openSettings': '설정 열기',
   'panel.resize.label': '패널 크기 조절',
-  'panel.resize.hint': '끌어서 크기 바꾸기, 두 번 누르면 처음 크기',
+  'panel.resize.hint':
+    '끌어서 크기 바꾸기, 두 번 누르거나 Enter 키를 누르면 처음 크기, 방향키로 10씩(Shift 키와 함께면 50씩)',
   'panel.tabKey': '{tab} ({keys})',
 
   // 대화 창 첫 질문 예시 (누르면 입력칸에 채운다. 바로 보내지 않는다)
@@ -53,7 +54,8 @@ export const en: Translation<typeof ko> = {
 
   'panel.openSettings': 'Open settings',
   'panel.resize.label': 'Resize panel',
-  'panel.resize.hint': 'Drag to resize, double-click for the original size',
+  'panel.resize.hint':
+    'Drag to resize. Double-click or press Enter for the original size, arrow keys to nudge by 10 (Shift for 50)',
   'panel.tabKey': '{tab} ({keys})',
 
   'chat.starters': 'You could ask',

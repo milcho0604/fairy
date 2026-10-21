@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createDraftBox, DRAFT_TEXT_MAX, isDraftTextKind } from './draft-store.ts';
+import { createDraftBox, DRAFT_TEXT_MAX, isDraftTextKind, isPanelDraftKind } from './draft-store.ts';
 
 test('종류별로 쓰던 글을 읽고 쓴다. 없으면 빈 글', () => {
   const box = createDraftBox<string>();
@@ -49,4 +49,12 @@ test('한 종류만 비우거나 전부 비운다', () => {
   assert.deepEqual(box.images(), []);
   box.clearAll();
   assert.equal(box.text('quick'), '');
+});
+
+test('패널 창이 쓸 수 있는 칸은 채팅을 뺀 셋', () => {
+  for (const k of ['todo', 'event', 'quick']) assert.equal(isPanelDraftKind(k), true, k);
+  assert.equal(isPanelDraftKind('chat'), false);
+  assert.equal(isPanelDraftKind('images'), false);
+  assert.equal(isPanelDraftKind('__proto__'), false);
+  assert.equal(isPanelDraftKind(undefined), false);
 });

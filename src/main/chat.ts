@@ -30,6 +30,7 @@ import {
   applyUsage,
   type ChatMessage,
   type ChatState,
+  endsWithError,
   historyFor,
   initialChat,
   parseChat,
@@ -643,6 +644,8 @@ export function createChat(o: ChatOptions) {
     // AI 를 안 주면 지금 AI 로 같은 질문을 다시 묻는다 ("다시 묻기", #145)
     const provider = (typeof picked === 'string' ? picked : state.provider) as AiProvider;
     if (!fromChat(e) || state.pendingId || !specOf(provider)) return;
+    // AI 를 안 준 다시 묻기는 마지막 줄이 오류일 때만 한다 (잘 받은 답 뒤에서는 아무 일도 안 한다)
+    if (typeof picked !== 'string' && !endsWithError(state)) return;
     userPicked = true;
     // 마지막 질문을 찾아 그 AI 로 다시 묻는다 (그림은 다시 보내지 않는다: 원본을 상태에 두지 않는다).
     const lastUser = [...state.messages].reverse().find((m) => m.role === 'user');

@@ -11,6 +11,14 @@ export function isDraftTextKind(v: unknown): v is DraftTextKind {
   return typeof v === 'string' && (DRAFT_TEXT_KINDS as readonly string[]).includes(v);
 }
 
+/** 패널 창이 읽고 쓸 수 있는 칸. 채팅 칸은 채팅 창 몫이라 뺀다 (패널에서 채팅 글을 덮거나 엿보지 못하게) */
+export const PANEL_DRAFT_KINDS = ['todo', 'event', 'quick'] as const;
+export type PanelDraftKind = (typeof PANEL_DRAFT_KINDS)[number];
+
+export function isPanelDraftKind(v: unknown): v is PanelDraftKind {
+  return typeof v === 'string' && (PANEL_DRAFT_KINDS as readonly string[]).includes(v);
+}
+
 /** 한 칸에 보관하는 글자 수 상한 (붙여 넣은 아주 긴 글이 메모리를 채우지 않게) */
 export const DRAFT_TEXT_MAX = 20_000;
 

@@ -11,7 +11,7 @@ import type { ChatLookView } from './chat-look.ts';
 import type { ChatImage, ChatState } from './chat-state.ts';
 import type { ThreadMeta } from './chat-threads.ts';
 import type { BubbleKind } from './chatter.ts';
-import type { DraftTextKind } from './draft-store.ts';
+import type { PanelDraftKind } from './draft-store.ts';
 import type { EnergyLook } from './energy.ts';
 import type { CalEvent } from './event-store.ts';
 import type { CarryToy } from './fetch.ts';
@@ -1270,8 +1270,8 @@ export interface PanelBridge {
   /** 빠른 입력 창: 내용 높이(CSS px)에 맞게 창 높이를 바꿔 달라 (큰 글씨에서 잘리지 않게, shared/quick-fit.ts) */
   quickFit(contentCss: number): void;
   /** 쓰던 글 (#145). 창을 닫았다 열어도 메인이 들고 있다가 돌려준다 */
-  draftGet(kind: DraftTextKind): string;
-  draftSet(kind: DraftTextKind, text: string): void;
+  draftGet(kind: PanelDraftKind): string;
+  draftSet(kind: PanelDraftKind, text: string): void;
   /** 보던 위치 (#145) */
   viewGet(): ViewKeep;
   viewSet(view: ViewKeep): void;
