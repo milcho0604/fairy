@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   app,
-  BrowserWindow,
+  type BrowserWindow,
   clipboard,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
@@ -48,7 +48,7 @@ import { openLink } from './open-link.ts';
 import { library } from './pet-library.ts';
 import { settings } from './settings.ts';
 import { removeModel, storedModels } from './storage.ts';
-import { rememberBounds, savedBounds } from './window-bounds.ts';
+import { openRemembered } from './window-bounds.ts';
 
 export interface SettingsWindowOptions {
   scale: () => number;
@@ -379,25 +379,21 @@ export function createSettingsWindow({
       return;
     }
     // 닫을 때 크기와 자리를 기억해 다음에 그대로 연다. 처음이면 화면 가운데 (window-bounds.ts)
-    const min = { width: 360, height: 420 };
-    const saved = savedBounds('settings', min);
-    win = new BrowserWindow({
-      width: 440,
-      height: 620,
-      ...saved,
-      minWidth: min.width,
-      minHeight: min.height,
-      title: t('common.title.settings'),
-      show: false,
-      ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
-      webPreferences: {
-        preload: join(import.meta.dirname, '../preload/index.cjs'),
-        additionalArguments: ['--jj-window=settings', langArg()],
-        sandbox: true,
-        contextIsolation: true,
+    win = openRemembered('settings', {
+      size: { width: 440, height: 620 },
+      min: { width: 360, height: 520 },
+      options: {
+        title: t('common.title.settings'),
+        show: false,
+        ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
+        webPreferences: {
+          preload: join(import.meta.dirname, '../preload/index.cjs'),
+          additionalArguments: ['--jj-window=settings', langArg()],
+          sandbox: true,
+          contextIsolation: true,
+        },
       },
     });
-    rememberBounds(win, 'settings', true);
     win.once('ready-to-show', () => showWindow(win));
     win.on('closed', () => {
       win = undefined;

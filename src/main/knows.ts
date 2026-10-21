@@ -1,7 +1,13 @@
 // 짝꿍이 아는 것 (2026-10-11): 펫 우클릭 메뉴와 설정 AI 탭에서 여는 창, 그리고 알려 준 것(생일, 좋아하는 것)으로 하는
 // AI 없는 한마디 (생일 인사는 그날 한 번, 좋아하는 것 한마디는 하루 한 번까지). 판단은 shared/knows.ts.
 import { join } from 'node:path';
-import { BrowserWindow, type IpcMainEvent, type IpcMainInvokeEvent, ipcMain, powerMonitor } from 'electron';
+import {
+  type BrowserWindow,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
+  ipcMain,
+  powerMonitor,
+} from 'electron';
 import { BOND, KNOWS_KEYS, type KnowsPatch, type KnowsSnapshot } from '../shared/bond-ipc.ts';
 import { t } from '../shared/i18n/index.ts';
 import type { ReactKind } from '../shared/ipc.ts';
@@ -13,7 +19,7 @@ import { langArg } from './lang.ts';
 import type { SayOptions } from './pet-window.ts';
 import { settings } from './settings.ts';
 import { readJson, writeJson } from './store.ts';
-import { rememberBounds, savedBounds } from './window-bounds.ts';
+import { openRemembered } from './window-bounds.ts';
 
 const FILE = 'knows';
 /** 알려 준 것 한마디를 볼 간격과, 켜고 나서 처음 볼 때 */
@@ -83,24 +89,21 @@ export function createKnows(o: KnowsOptions) {
       focusWindow(win);
       return;
     }
-    const min = { width: 340, height: 440 };
-    win = new BrowserWindow({
-      width: 420,
-      height: 620,
-      ...savedBounds('knows', min),
-      minWidth: min.width,
-      minHeight: min.height,
-      title: t('bond.knows.title', { name: o.petName() }),
-      show: false,
-      ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
-      webPreferences: {
-        preload: join(import.meta.dirname, '../preload/index.cjs'),
-        additionalArguments: ['--jj-window=knows', langArg()],
-        sandbox: true,
-        contextIsolation: true,
+    win = openRemembered('knows', {
+      size: { width: 420, height: 620 },
+      min: { width: 340, height: 440 },
+      options: {
+        title: t('bond.knows.title', { name: o.petName() }),
+        show: false,
+        ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
+        webPreferences: {
+          preload: join(import.meta.dirname, '../preload/index.cjs'),
+          additionalArguments: ['--jj-window=knows', langArg()],
+          sandbox: true,
+          contextIsolation: true,
+        },
       },
     });
-    rememberBounds(win, 'knows', true);
     win.once('ready-to-show', () => showWindow(win));
     win.on('closed', () => {
       win = undefined;

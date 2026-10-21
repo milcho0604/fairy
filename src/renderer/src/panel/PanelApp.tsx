@@ -11,6 +11,7 @@ import { escClosesWindow, tabByKey, tabStepByKey, undoByKey } from './keys.ts';
 import { PlanSheetHost } from './MorningPlan.tsx';
 import { NoteTab } from './NoteTab.tsx';
 import { planTodosKey } from './plan-refresh.ts';
+import { ResizeGrips } from './ResizeGrips.tsx';
 import { ShopTab } from './ShopTab.tsx';
 import { TodayTab } from './TodayTab.tsx';
 import { TodoTab } from './TodoTab.tsx';
@@ -387,6 +388,9 @@ export function PanelApp() {
         onSaved={(text) => showToast({ kind: 'added', text })}
         todosKey={planTodosKey(s.open)}
       />
+
+      {/* 크기 손잡이: 카드 안 오른쪽 아래. 다른 칸 위에 얹는다 */}
+      <ResizeGrips />
 
       {toast && (
         // 읽는 동안(마우스를 올린 동안)은 사라지지 않는다

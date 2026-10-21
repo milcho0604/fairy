@@ -1789,3 +1789,60 @@ li:is(.todo, .event) .tools .extra .due.none {
   border-radius: 6px;
   text-align: center;
 }
+
+/*
+ * 크기 손잡이 (ResizeGrips.tsx): 카드 안 오른쪽 아래 모서리와 아래, 오른쪽 가장자리.
+ * 투명 창 바깥 여백(6px)은 윈도우에서 눌러도 창이 못 받을 수 있어 카드 안에 둔다.
+ * 아래 단추 줄은 창 옮기기 자리라 손잡이는 끄는 자리에서 뺀다. 모서리는 단추 줄 안쪽 여백(오른쪽 14px, 아래 12px)에 들어간다.
+ */
+.grip {
+  position: absolute;
+  z-index: 40;
+  padding: 0;
+  border: 0;
+  background: none;
+  -webkit-app-region: no-drag;
+}
+
+.grip-se {
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+  opacity: 0.55;
+  cursor: nwse-resize;
+}
+
+.panel button.grip-se svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
+.grip-se:hover,
+.grip-se:focus-visible {
+  opacity: 1;
+}
+
+.grip-se:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
+.grip-s {
+  left: 0;
+  right: 14px;
+  bottom: 0;
+  height: 5px;
+  cursor: ns-resize;
+}
+
+.grip-e {
+  top: 52px;
+  right: 0;
+  bottom: 14px;
+  width: 4px;
+  cursor: ew-resize;
+}

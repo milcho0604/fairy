@@ -46,10 +46,14 @@ import {
 } from '../shared/note-polish.ts';
 import { NOTE_BODY_MAX, type NoteStore, notePreview, noteTitle, searchNotes } from '../shared/note-store.ts';
 import {
+  clampPanelSize,
   defaultPanelBounds,
+  PANEL_DEFAULT,
+  PANEL_MIN,
   panelOffsetAfterMove,
   parsePanelOffset,
   placePanel,
+  resizePanelRect,
 } from '../shared/panel-place.ts';
 import type { DoingSet } from '../shared/pet-status.ts';
 import { isPinKind } from '../shared/pin.ts';
@@ -72,11 +76,11 @@ import { focusWindow } from './focus.ts';
 import { langArg } from './lang.ts';
 import { localTime, minuteOfDay, startOfDay, startOfDayAfter } from './planner.ts';
 import { readJson, removeJson, writeJson } from './store.ts';
+import { saveBounds, savedBounds } from './window-bounds.ts';
 
 /** 날이 바뀌었는지 보는 간격. 자정 뒤 이만큼 안에 패널이 새 날로 바뀐다 */
 const DAY_CHECK_MS = 20_000;
 
-const PANEL_SIZE = { width: 360, height: 540 };
 /** 여러 줄 붙여 넣기는 한 번에 이만큼까지 */
 const ADD_MANY_MAX = 50;
 const QUICK_SIZE = { width: 480, height: 64 };
@@ -84,6 +88,10 @@ const QUICK_SIZE = { width: 480, height: 64 };
 const OFFSET_FILE = 'panel-position';
 /** 끄는 동안 'move' 가 계속 와서 멈춘 뒤에 한 번 저장한다 */
 const MOVE_SAVE_MS = 400;
+/** 크기 끌기 갱신 사이 최소 간격 (초당 60번을 넘지 않게) */
+const RESIZE_GAP_MS = 17;
+/** 크기가 멈춘 뒤 이만큼 지나면 적는다 */
+const RESIZE_SAVE_MS = 400;
 
 export interface PanelOptions {
   store: TodoStore;
@@ -879,6 +887,76 @@ export function createPanel(o: PanelOptions) {
     const b = quick.getBounds();
     if (b.height !== height) quick.setBounds({ ...b, height });
   });
+  // 크기 손잡이 (렌더러가 끌기를 알리고 바라는 크기를 CSS px 로 보낸다)
+  let resizeSaveTimer: ReturnType<typeof setTimeout> | undefined;
+  let resizeFlushTimer: ReturnType<typeof setTimeout> | undefined;
+  let resizeLast = 0;
+  let resizeWant: { width?: number; height?: number } | undefined;
+
+  const isPanel = (e: IpcMainEvent) =>
+    ours(e) && !!panel && !panel.isDestroyed() && e.sender === panel.webContents;
+
+  /** 지금 창 크기를 범위 안에서 바꾼다 (want 는 창 크기 DIP. 왼쪽 위는 그대로, 작업 영역을 넘으면 안쪽으로 민다) */
+  function applyResize(want: { width?: number; height?: number }) {
+    const win = panel;
+    if (!win || win.isDestroyed()) return;
+    const b = win.getBounds();
+    const area = screen.getDisplayMatching(b).workArea;
+    const next = resizePanelRect(b, { width: want.width ?? b.width, height: want.height ?? b.height }, area);
+    if (next.x !== b.x || next.y !== b.y || next.width !== b.width || next.height !== b.height)
+      win.setBounds(next);
+    resizeLast = Date.now();
+    clearTimeout(resizeSaveTimer);
+    resizeSaveTimer = setTimeout(() => {
+      resizeSaveTimer = undefined;
+      saveBounds(win, 'panel', false);
+    }, RESIZE_SAVE_MS);
+  }
+
+  /** 모인 요청을 적용한다. 간격이 모자라면 남은 만큼 기다렸다가 */
+  function scheduleResize() {
+    if (resizeFlushTimer) return;
+    const wait = Math.max(0, RESIZE_GAP_MS - (Date.now() - resizeLast));
+    resizeFlushTimer = setTimeout(() => {
+      resizeFlushTimer = undefined;
+      flushResize();
+    }, wait);
+  }
+
+  function flushResize() {
+    clearTimeout(resizeFlushTimer);
+    resizeFlushTimer = undefined;
+    const want = resizeWant;
+    resizeWant = undefined;
+    if (want) applyResize(want);
+  }
+
+  ipcMain.on(PANEL.resizeStart, (e) => {
+    if (!isPanel(e)) return;
+    resizing = true;
+    // 리눅스 일부 창 관리자는 크기 고정 창의 setBounds 를 무시한다. 끄는 동안만 푼다
+    if (process.platform === 'linux') panel?.setResizable(true);
+  });
+  ipcMain.on(PANEL.resize, (e, width: unknown, height: unknown) => {
+    if (!isPanel(e) || !resizing) return;
+    // 화면은 CSS px 로 보내니 창 확대 배율(큰 글씨)을 곱해 창 크기로 바꾼다
+    const zoom = panel?.webContents.getZoomFactor() ?? 1;
+    const dip = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v * zoom : undefined);
+    resizeWant = { width: dip(width), height: dip(height) };
+    scheduleResize();
+  });
+  ipcMain.on(PANEL.resizeEnd, (e) => {
+    if (!isPanel(e) || !resizing) return;
+    flushResize();
+    resizing = false;
+    if (process.platform === 'linux') panel?.setResizable(false);
+  });
+  // 처음 크기로 (손잡이 두 번 누르기)
+  ipcMain.on(PANEL.resizeReset, (e) => {
+    if (!isPanel(e)) return;
+    applyResize(PANEL_DEFAULT);
+  });
+
   ipcMain.on(PANEL.close, (e) => {
     if (!ours(e)) return;
     if (panel && e.sender === panel.webContents) closePanel();
@@ -891,6 +969,8 @@ export function createPanel(o: PanelOptions) {
 
   /** 패널에서 띄운 저장 창이 떠 있는 수. 그동안은 다른 곳을 눌러도 닫지 않는다 */
   let holding = 0;
+  /** 패널 크기 손잡이를 끄는 중 */
+  let resizing = false;
 
   function makeWindow(kind: 'panel' | 'quick', bounds: Rectangle, tab?: PanelTab) {
     const win = new BrowserWindow({
@@ -925,7 +1005,8 @@ export function createPanel(o: PanelOptions) {
     // 다른 곳을 누르면 닫힌다 (팝오버처럼). 머리를 잡고 끄는 것은 이 창을 누른 것이라 닫히지 않는다.
     win.on('blur', () => {
       // 저장 창(주간 회고 카드)을 띄운 동안은 닫지 않는다 (hold)
-      if (!win.isDestroyed() && holding === 0) win.close();
+      // 크기를 끄는 동안(손잡이)도 닫지 않는다
+      if (!win.isDestroyed() && holding === 0 && !(resizing && win === panel)) win.close();
     });
     keepFrame(win);
     return win;
@@ -939,12 +1020,15 @@ export function createPanel(o: PanelOptions) {
   function keepFrame(win: BrowserWindow) {
     let rest = win.getBounds();
     let timer: ReturnType<typeof setTimeout> | undefined;
-    win.on('move', () => {
+    const settle = () => {
       clearTimeout(timer);
       timer = setTimeout(() => {
         if (!win.isDestroyed()) rest = win.getBounds();
       }, MOVE_SAVE_MS);
-    });
+    };
+    win.on('move', settle);
+    // 크기를 바꾼 패널의 확대 되돌리기가 옛 크기로 돌려놓지 않게
+    win.on('resize', settle);
     const undoZoom = () => {
       clearTimeout(timer);
       if (!win.isDestroyed()) win.setBounds(rest);
@@ -1003,8 +1087,14 @@ export function createPanel(o: PanelOptions) {
   /** 지금 연결된 모든 화면 (모니터를 뺐으면 빠진다) */
   const allAreas = () => screen.getAllDisplays().map((d) => d.workArea);
 
+  /** 열 때 크기: 적어 둔 크기(없으면 처음 크기)를 범위 안으로. 작업 영역보다 크면 placePanel 이 한 번 더 줄인다 */
+  function panelSize() {
+    const saved = savedBounds('panel', PANEL_MIN);
+    return clampPanelSize(saved ?? PANEL_DEFAULT, petArea());
+  }
+
   function openPanel(tab?: PanelTab) {
-    const placed = placePanel(o.petBounds(), PANEL_SIZE, petArea(), allAreas(), offset);
+    const placed = placePanel(o.petBounds(), panelSize(), petArea(), allAreas(), offset);
     const win = makeWindow('panel', placed, tab);
     panel = win;
     // 옛 창이 늦게 닫혀도 새 창 참조를 지우지 않게 (빨리 닫았다 열면 빈 패널이 남았다)
@@ -1013,6 +1103,20 @@ export function createPanel(o: PanelOptions) {
       dropEmptyNotes();
     });
     rememberMoves(win, placed);
+    // 크기를 바꾸고 바로 닫으면 (적기 전에) 닫기 직전에 적는다
+    win.on('close', () => {
+      if (!resizeSaveTimer) return;
+      clearTimeout(resizeSaveTimer);
+      resizeSaveTimer = undefined;
+      saveBounds(win, 'panel', false);
+    });
+    // 끄는 중에 창이 닫히면 다음 패널이 닫히지 않는 상태로 남지 않게
+    win.on('closed', () => {
+      resizing = false;
+      resizeWant = undefined;
+      clearTimeout(resizeFlushTimer);
+      resizeFlushTimer = undefined;
+    });
   }
 
   /**
@@ -1028,7 +1132,7 @@ export function createPanel(o: PanelOptions) {
       const b = win.getBounds();
       if (b.x === placed.x && b.y === placed.y) return;
       const pet = o.petBounds();
-      const next = panelOffsetAfterMove(b, pet, defaultPanelBounds(pet, PANEL_SIZE, petArea()));
+      const next = panelOffsetAfterMove(b, pet, defaultPanelBounds(pet, b, petArea()));
       if (next?.x === offset?.x && next?.y === offset?.y) return;
       offset = next;
       try {

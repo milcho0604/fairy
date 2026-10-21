@@ -469,6 +469,10 @@ if (kind === 'panel' || kind === 'quick') {
     openSettings: () => ipcRenderer.send(PANEL.openSettings),
     lookTogether: () => ipcRenderer.send(PANEL.lookTogether),
     close: () => ipcRenderer.send(PANEL.close),
+    resizeStart: () => ipcRenderer.send(PANEL.resizeStart),
+    resize: (width, height) => ipcRenderer.send(PANEL.resize, width, height),
+    resizeEnd: () => ipcRenderer.send(PANEL.resizeEnd),
+    resizeReset: () => ipcRenderer.send(PANEL.resizeReset),
     quickFit: (contentCss: number) => ipcRenderer.send(PANEL.quickFit, contentCss),
     onState: (listener) => {
       ipcRenderer.on(PANEL.state, (_e, state: PanelState) => listener(state));
