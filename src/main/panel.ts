@@ -11,6 +11,7 @@ import type { StatStore } from '../shared/beta-stats.ts';
 import { undoMoved } from '../shared/briefing.ts';
 import { dayWatch } from '../shared/day-watch.ts';
 import { saveErrorText } from '../shared/download-error.ts';
+import { isDraftTextKind } from '../shared/draft-store.ts';
 import { findSameEvent } from '../shared/event-dup.ts';
 import { clashIds, overlapping, spanEnd } from '../shared/event-overlap.ts';
 import {
@@ -70,8 +71,10 @@ import {
 import { CUSTOM_FOOD_COST, CUSTOM_FOOD_MAX, type Food, type ItemStore } from '../shared/shop.ts';
 import { parseRemindIn, remindInAt } from '../shared/snooze.ts';
 import { COIN, FULLNESS, localDay, STEP_MAX, type TodoStore } from '../shared/todo-store.ts';
+import { emptyViewKeep } from '../shared/view-keep.ts';
 import { weekSummary } from '../shared/week.ts';
 import { devRendererUrl } from './dev-url.ts';
+import { drafts, getView, setView } from './drafts.ts';
 import { focusWindow } from './focus.ts';
 import { langArg } from './lang.ts';
 import { localTime, minuteOfDay, startOfDay, startOfDayAfter } from './planner.ts';
@@ -146,6 +149,9 @@ export interface PanelOptions {
   onChanged: () => void;
   openChat: () => void;
   openSettings: () => void;
+  /** 패널 고정 핀 (#145): 켜 두면 다른 곳을 눌러도 패널이 닫히지 않는다 */
+  panelPin: () => boolean;
+  setPanelPin: (on: boolean) => void;
   lookTogether: () => void;
   /** 오늘 놓친 알림 (펫이 숨어 있거나 자리에 없어 못 본 것) */
   missed: () => PanelState['missed'];
@@ -242,6 +248,7 @@ export function createPanel(o: PanelOptions) {
       },
       ...(week(now, open) ?? {}),
       trashCount: o.store.trashCount(),
+      keepOpen: o.panelPin(),
     };
   }
 
@@ -957,6 +964,23 @@ export function createPanel(o: PanelOptions) {
     applyResize(PANEL_DEFAULT);
   });
 
+  // 쓰던 글, 보던 위치 (#145). 창이 뜨며 바로 읽으니 읽기는 동기
+  ipcMain.on(PANEL.draftGet, (e, kind: unknown) => {
+    e.returnValue = ours(e) && isDraftTextKind(kind) ? drafts.text(kind) : '';
+  });
+  ipcMain.on(PANEL.draftSet, (e, kind: unknown, text: unknown) => {
+    if (ours(e)) drafts.setText(kind, text);
+  });
+  ipcMain.on(PANEL.viewGet, (e) => {
+    e.returnValue = ours(e) ? getView() : emptyViewKeep();
+  });
+  ipcMain.on(PANEL.viewSet, (e, view: unknown) => {
+    if (isPanel(e)) setView(view);
+  });
+  ipcMain.on(PANEL.setKeepOpen, (e, on: unknown) => {
+    if (isPanel(e) && typeof on === 'boolean') o.setPanelPin(on);
+  });
+
   ipcMain.on(PANEL.close, (e) => {
     if (!ours(e)) return;
     if (panel && e.sender === panel.webContents) closePanel();
@@ -1006,7 +1030,14 @@ export function createPanel(o: PanelOptions) {
     win.on('blur', () => {
       // 저장 창(주간 회고 카드)을 띄운 동안은 닫지 않는다 (hold)
       // 크기를 끄는 동안(손잡이)도 닫지 않는다
-      if (!win.isDestroyed() && holding === 0 && !(resizing && win === panel)) win.close();
+      // 패널 고정 핀(#145)이 켜져 있으면 패널은 닫지 않는다 (Esc, 펫 클릭, 단축키로만 닫힌다). 빠른 입력은 늘 닫힌다
+      if (
+        !win.isDestroyed() &&
+        holding === 0 &&
+        !(resizing && win === panel) &&
+        !(kind === 'panel' && o.panelPin())
+      )
+        win.close();
     });
     keepFrame(win);
     return win;

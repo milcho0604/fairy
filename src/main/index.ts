@@ -1108,6 +1108,10 @@ ready
       onChanged: () => sendStatus(),
       openChat: () => chat.open(pet.bounds()),
       openSettings: () => settingsWindow.open(),
+      panelPin: () => settings.get().panelPin,
+      setPanelPin: (on) => {
+        settings.set({ panelPin: on });
+      },
       lookTogether: () => look.start(),
       missed: () => pet.missed(),
       diary: () => diary.entries(Date.now()),
@@ -1658,6 +1662,8 @@ ready
       if (next.trayTitle !== prev.trayTitle) trayTitle.refresh();
       if (next.readAloud !== prev.readAloud || next.clickGrow !== prev.clickGrow) sendStatus();
       if (next.doingBubble !== prev.doingBubble) refreshStatusBubble();
+      // 설정 창에서 패널 고정을 바꾸면 열려 있는 패널의 핀 모양도 따라간다
+      if (next.panelPin !== prev.panelPin) panel.refresh();
       if (next.petName !== prev.petName) {
         chat.petNameChanged();
         panel.refresh();

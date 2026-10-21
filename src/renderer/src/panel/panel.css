@@ -1752,6 +1752,15 @@ li:is(.todo, .event) .tools .extra .due.none {
   height: 16px;
 }
 
+/* 패널 고정 핀: 켜졌을 때 색과 채움으로 알린다 (색만으로 알리지 않게 핀 몸통도 채운다) */
+.panel header .keep-pin.on {
+  color: var(--accent);
+}
+
+.panel header .keep-pin.on .pin-body {
+  fill: currentColor;
+}
+
 /* 찾는 메모가 없을 때 "이 내용으로 메모 만들기" (메모 줄 단추 모양을 덮어 가운데 작은 단추로) */
 .panel .notes li.empty > .note-make {
   display: inline-flex;

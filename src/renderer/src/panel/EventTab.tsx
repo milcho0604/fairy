@@ -4,12 +4,15 @@ import { allDayLabel, allDaySpan, type CalEvent, dayStartMs } from '../../../sha
 import { t } from '../../../shared/i18n/index.ts';
 import type { PanelState } from '../../../shared/ipc.ts';
 import { localDay, type Todo } from '../../../shared/todo-store.ts';
+import { restoredEventDay } from '../../../shared/view-keep.ts';
 import { CalendarView } from './CalendarView.tsx';
+import { useDraft } from './draft.ts';
 import { dayHeading, timeOf, toInputValue } from './format.ts';
 import { gcalBadge } from './gcal-badge.ts';
 import { PinIcon } from './icons.tsx';
 import { PinButton, usePinMenu } from './pin.tsx';
 import { RemindButton, RemindSheet } from './RemindPicker.tsx';
+import { updateView, useKeepScroll, viewNow } from './view-keep.ts';
 
 const bridge = window.jjakkungPanel;
 /** 목록과 달력 가운데 마지막에 본 것 (창을 열 때마다 새로 만들어 브라우저 저장소에 둔다) */
@@ -44,7 +47,11 @@ export function EventTab({
 }) {
   const [view, setViewState] = useState<View>(savedView);
   // 달력에서 고른 날. 입력칸이 이 날에 넣는다
-  const [day, setDay] = useState(s.today);
+  // (#145: 탭을 갔다 와도, 패널을 닫았다 열어도 고른 날이 그대로)
+  const [day, setDay] = useState(() => restoredEventDay(viewNow().event, s.today));
+  useEffect(() => {
+    updateView((v) => ({ ...v, event: { day, today: s.today } }));
+  }, [day, s.today]);
   // 자정을 넘기면 오늘을 고르고 있던 사람은 새 오늘로 따라간다 (다른 날을 골랐으면 그대로)
   const lastToday = useRef(s.today);
   useEffect(() => {
@@ -61,8 +68,12 @@ export function EventTab({
       // 못 적어도 이번에는 바뀐다
     }
   };
-  const [text, setText] = useState('');
+  // 쓰던 글 (#145): 패널을 닫았다 열어도 메인이 들고 있다가 돌려준다
+  const [text, setText] = useDraft('event');
   const [error, setError] = useState('');
+  const calScroll = useRef<HTMLDivElement>(null);
+  const listScroll = useRef<HTMLDivElement>(null);
+  useKeepScroll(calendar ? calScroll : listScroll, calendar ? 'eventCal' : 'eventList');
   // 방금 넣은 일정이 다른 일정과 시간이 겹친다 (넣기는 했다. 다음 글을 적으면 지운다)
   const [clash, setClash] = useState('');
   const now = Date.now();
@@ -130,7 +141,7 @@ export function EventTab({
       {error && <p className="hint error">{error}</p>}
       {clash && <p className="hint clash">{clash}</p>}
       {calendar ? (
-        <div className="scroll cal-scroll">
+        <div className="scroll cal-scroll" ref={calScroll}>
           <CalendarView
             s={s}
             day={day}
@@ -142,7 +153,7 @@ export function EventTab({
           />
         </div>
       ) : (
-        <div className="scroll events-list">
+        <div className="scroll events-list" ref={listScroll}>
           {days.size === 0 && pinned.length === 0 && <p className="empty">{t('panel.event.empty')}</p>}
           {pinned.length > 0 && (
             <section className="pinned-events" aria-label={t('pin.section')}>

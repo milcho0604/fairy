@@ -15,6 +15,7 @@ import {
   type TodoStep,
 } from '../../../shared/todo-store.ts';
 import './assist.css';
+import { useDraft } from './draft.ts';
 import { CheckIcon, PlayIcon, RepeatIcon, SearchIcon, StarIcon, StepsIcon } from './icons.tsx';
 import { isEsc, takeEsc } from './keys.ts';
 import { MoreRow } from './more.tsx';
@@ -22,25 +23,19 @@ import { pageOf } from './paging.ts';
 import { PinButton, PinMark, usePinMenu } from './pin.tsx';
 import { RemindButton, RemindSheet } from './RemindPicker.tsx';
 import { TrashBox } from './TrashBox.tsx';
+import { updateView, useKeepScroll, viewNow } from './view-keep.ts';
 
 const bridge = window.jjakkungPanel;
-/** 쓰다 만 한 줄. 다른 곳을 눌러 패널이 닫혀도 다음에 열면 그대로 있다 */
-const DRAFT_KEY = 'jj.panel.todoDraft';
+/** 예전 판이 브라우저 저장소에 두던 쓰다 만 한 줄. 지금은 메인이 메모리에 들고 있다 (draft.ts). 한 번 옮기고 지운다 */
+const LEGACY_DRAFT_KEY = 'jj.panel.todoDraft';
 
-function readDraft(): string {
+function takeLegacyDraft(): string {
   try {
-    return localStorage.getItem(DRAFT_KEY) ?? '';
+    const v = localStorage.getItem(LEGACY_DRAFT_KEY) ?? '';
+    if (v) localStorage.removeItem(LEGACY_DRAFT_KEY);
+    return v;
   } catch {
     return '';
-  }
-}
-
-function writeDraft(text: string) {
-  try {
-    if (text) localStorage.setItem(DRAFT_KEY, text);
-    else localStorage.removeItem(DRAFT_KEY);
-  } catch {
-    // 못 적으면 이번 창에서만 남는다
   }
 }
 
@@ -66,20 +61,26 @@ export function TodoTab({
   /** 지웠다 (되돌리기 알림) */
   onRemoved: (todo: Todo) => void;
 }) {
-  const [text, setTextState] = useState(readDraft);
-  const setText = (next: string) => {
-    setTextState(next);
-    writeDraft(next);
-  };
+  const [text, setText] = useDraft('todo');
+  // 예전 판이 저장소에 남긴 글은 한 번 가져온다 (이미 메인에 쓰던 글이 있으면 그것을 지킨다)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 처음 한 번만
+  useEffect(() => {
+    const legacy = takeLegacyDraft();
+    if (legacy && !text) setText(legacy);
+  }, []);
   const [error, setError] = useState('');
-  const [showDone, setShowDone] = useState(false);
+  // 보던 위치 (#145): 탭을 갔다 와도, 패널을 닫았다 열어도 찾는 말, 태그, 완료 목록, 쪽 수가 그대로
+  const [kept] = useState(() => viewNow().todo);
+  const [showDone, setShowDone] = useState(kept.showDone);
   // 찾기와 태그 (할 일이 많을 때 좁혀 보기)
-  const [finding, setFinding] = useState(false);
-  const [query, setQuery] = useState('');
+  const [finding, setFinding] = useState(kept.finding);
+  const [query, setQuery] = useState(kept.query);
   const [composing, setComposing] = useState(false);
-  const [tag, setTag] = useState<string | null>(null);
+  const [tag, setTag] = useState<string | null>(kept.tag);
   /** 그린 쪽 수 (찾는 말과 태그마다) */
-  const [paging, setPaging] = useState({ key: '', pages: 1 });
+  const [paging, setPaging] = useState({ key: kept.pageKey, pages: kept.pages });
+  const listRef = useRef<HTMLUListElement>(null);
+  useKeepScroll(listRef, 'todo');
   const findRef = useRef<HTMLInputElement>(null);
   const tags = allTags(s.open);
   // 고른 태그가 목록에서 사라지면(마지막 것을 끝냄) 모두로
@@ -91,6 +92,12 @@ export function TodoTab({
   // 앞에서부터 한 쪽씩 그린다 (paging.ts). 찾는 말이나 태그가 바뀌면 첫 쪽부터
   const pageKey = `${finding ? query : ''}\u0000${picked ?? ''}`;
   const pages = paging.key === pageKey ? paging.pages : 1;
+  useEffect(() => {
+    updateView((v) => ({
+      ...v,
+      todo: { finding, query, tag: picked, showDone, pageKey, pages },
+    }));
+  }, [finding, query, picked, showDone, pageKey, pages]);
   const page = pageOf(shown, pages);
   const canFind = s.open.length >= FIND_FROM || finding;
   const openFind = () => {
@@ -227,7 +234,7 @@ export function TodoTab({
         </fieldset>
       )}
 
-      <ul className="todos scroll">
+      <ul className="todos scroll" ref={listRef}>
         {s.open.length === 0 && <li className="empty">{t('panel.todo.empty')}</li>}
         {s.open.length > 0 && filtered && shown.length === 0 && (
           <li className="empty">{t('assist.find.none')}</li>

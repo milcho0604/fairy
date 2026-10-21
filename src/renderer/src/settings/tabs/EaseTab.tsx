@@ -68,6 +68,14 @@ export function EaseTab({ snap, update, flash }: TabProps) {
           </dd>
         </dl>
       </Section>
+      <Section title={t('settings.panelSection')}>
+        <Toggle
+          label={t('settings.panelPin')}
+          hint={t('settings.panelPinHint')}
+          on={s.panelPin}
+          onChange={(v) => update({ panelPin: v })}
+        />
+      </Section>
       <Section title={t('settings.lang')}>
         <fieldset className="segmented" aria-label={t('settings.langAria')}>
           {(['auto', 'ko', 'en'] as const).map((l) => (

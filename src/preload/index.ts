@@ -193,6 +193,8 @@ if (kind === 'chat') {
     toNote: (id: string) => ipcRenderer.invoke(CHAT.toNote, id),
     toTodos: (id: string) => ipcRenderer.invoke(CHAT.toTodos, id),
     retryWith: (provider) => ipcRenderer.send(CHAT.retryWith, provider),
+    draftText: (text) => ipcRenderer.send(CHAT.draftText, text),
+    draftImages: (images) => ipcRenderer.send(CHAT.draftImages, images),
     agreeTicket: () => ipcRenderer.send(CHAT.agreeTicket),
     reportTicket: (id) => ipcRenderer.invoke(CHAT.reportTicket, id),
     planAction: (kind, todoId) => ipcRenderer.send(CHAT.planAction, kind, todoId),
@@ -474,6 +476,15 @@ if (kind === 'panel' || kind === 'quick') {
     resizeEnd: () => ipcRenderer.send(PANEL.resizeEnd),
     resizeReset: () => ipcRenderer.send(PANEL.resizeReset),
     quickFit: (contentCss: number) => ipcRenderer.send(PANEL.quickFit, contentCss),
+    // 쓰던 글, 보던 위치: 창이 뜨며 처음 그릴 때 바로 필요해서 읽기는 동기 (작은 글 하나라 막히지 않는다)
+    draftGet: (kind) => {
+      const v: unknown = ipcRenderer.sendSync(PANEL.draftGet, kind);
+      return typeof v === 'string' ? v : '';
+    },
+    draftSet: (kind, text) => ipcRenderer.send(PANEL.draftSet, kind, text),
+    viewGet: () => ipcRenderer.sendSync(PANEL.viewGet),
+    viewSet: (view) => ipcRenderer.send(PANEL.viewSet, view),
+    setKeepOpen: (on) => ipcRenderer.send(PANEL.setKeepOpen, on),
     onState: (listener) => {
       ipcRenderer.on(PANEL.state, (_e, state: PanelState) => listener(state));
     },

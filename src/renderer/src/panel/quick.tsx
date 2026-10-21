@@ -6,6 +6,7 @@ import { t } from '../../../shared/i18n/index.ts';
 import { localDay } from '../../../shared/todo-store.ts';
 import { initLang } from '../lang.ts';
 import { PetFace } from '../PetFace.tsx';
+import { useDraft } from './draft.ts';
 import { addedText, timeOf, whenLabel } from './format.ts';
 import { escClosesWindow, isEsc, takeEsc } from './keys.ts';
 
@@ -18,7 +19,8 @@ const CLOSE_MS = 1500;
  * Enter 는 넣고 닫기, Shift+Enter 는 넣고 창을 남겨 다음 줄, Esc 는 쓰던 글 지우기 그다음 닫기.
  */
 function QuickAdd() {
-  const [text, setText] = useState('');
+  // 쓰던 글 (#145): 다른 곳을 눌러 닫혀도 메인이 들고 있다가 다시 열면 돌려준다
+  const [text, setText] = useDraft('quick');
   const [msg, setMsg] = useState('');
   const [failed, setFailed] = useState(false);
   /** 오후로 읽은 일정: 오전으로 바꾸는 단추 (shared/event-store.ts parseQuickEventInfo) */

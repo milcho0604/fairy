@@ -147,6 +147,8 @@ export interface Settings {
   doingBubble: boolean;
   /** 펫을 꾹 누르면 잠깐 커졌다 돌아온다 (이슈 #124, 기본 켬) */
   clickGrow: boolean;
+  /** 패널 고정 핀: 켜면 다른 곳을 눌러도 패널이 닫히지 않는다 (Esc, 펫 클릭, 단축키로만 닫힘. 이슈 #145, 기본 끔) */
+  panelPin: boolean;
   /** 맥 메뉴 막대 아이콘 옆에 다음 일정이나 집중 남은 시간 (편의, 기본 끔: 제목이 화면에 늘 보인다) */
   trayTitle: boolean;
   /** 집 숨기기 (2026-10-12, shared/house-stow.ts): 화면의 집을 숨겨 둔다. 자리, 단계, 모양은 그대로 */
@@ -488,6 +490,7 @@ export const DEFAULT_SETTINGS: Settings = {
   petChips: true,
   doingBubble: true,
   clickGrow: true,
+  panelPin: false,
   trayTitle: false,
   houseHidden: false,
   saverTold: false,
@@ -693,6 +696,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     petChips: bool(r.petChips, base.petChips),
     doingBubble: bool(r.doingBubble, base.doingBubble),
     clickGrow: bool(r.clickGrow, base.clickGrow),
+    panelPin: bool(r.panelPin, base.panelPin),
     trayTitle: bool(r.trayTitle, base.trayTitle),
     houseHidden: bool(r.houseHidden, base.houseHidden),
     saverTold: bool(r.saverTold, base.saverTold),

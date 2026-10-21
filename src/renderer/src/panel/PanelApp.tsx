@@ -6,7 +6,7 @@ import type { Todo } from '../../../shared/todo-store.ts';
 import { PetFace } from '../PetFace.tsx';
 import { EventTab } from './EventTab.tsx';
 import { addedText, timeOf, whenLabel } from './format.ts';
-import { CoinIcon, GearIcon } from './icons.tsx';
+import { CoinIcon, GearIcon, PinIcon } from './icons.tsx';
 import { escClosesWindow, tabByKey, tabStepByKey, undoByKey } from './keys.ts';
 import { PlanSheetHost } from './MorningPlan.tsx';
 import { NoteTab } from './NoteTab.tsx';
@@ -236,6 +236,17 @@ export function PanelApp() {
           <CoinIcon />
           {s.balance}
         </span>
+        {/* 패널 고정 핀 (#145): 켜면 다른 곳을 눌러도 닫히지 않는다. 설정에도 같은 칸 */}
+        <button
+          type="button"
+          className={`icon-btn keep-pin ${s.keepOpen ? 'on' : ''}`}
+          aria-pressed={s.keepOpen}
+          aria-label={t('keep.pin')}
+          title={s.keepOpen ? t('keep.unpin') : `${t('keep.pin')}: ${t('keep.pinHint')}`}
+          onClick={() => bridge.setKeepOpen(!s.keepOpen)}
+        >
+          <PinIcon />
+        </button>
         {/* 설정은 펫 우클릭과 메뉴 막대에만 있어 찾기 어려웠다 */}
         <button
           type="button"
