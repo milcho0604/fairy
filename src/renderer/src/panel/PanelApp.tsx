@@ -1,13 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import { type I18nKey, t } from '../../../shared/i18n/index.ts';
-import type { EventClash, PanelState, PanelTab } from '../../../shared/ipc.ts';
+import type { PanelState, PanelTab } from '../../../shared/ipc.ts';
 import { nextUnlock } from '../../../shared/pet-life.ts';
+import {
+  type KeptToast,
+  liveToasts,
+  splitToasts,
+  TOAST_KEEP_MAX,
+  type Toast,
+  undoable,
+} from '../../../shared/toast-keep.ts';
 import type { Todo } from '../../../shared/todo-store.ts';
 import { PetFace } from '../PetFace.tsx';
 import { EventTab } from './EventTab.tsx';
 import { addedText, timeOf, whenLabel } from './format.ts';
-import { CoinIcon, GearIcon } from './icons.tsx';
-import { escClosesWindow, tabByKey, tabStepByKey, undoByKey } from './keys.ts';
+import { CoinIcon, GearIcon, PinIcon } from './icons.tsx';
+import { escClosesWindow, tabByKey, tabStepByKey, undoByKey, undoFieldText } from './keys.ts';
 import { PlanSheetHost } from './MorningPlan.tsx';
 import { NoteTab } from './NoteTab.tsx';
 import { planTodosKey } from './plan-refresh.ts';
@@ -47,27 +55,6 @@ function savedTab(): PanelTab {
   }
 }
 
-type Toast =
-  | { kind: 'done'; id: number; coins: number }
-  | { kind: 'note-removed'; id: number }
-  | { kind: 'event-removed'; id: number }
-  | { kind: 'todo-removed'; id: number }
-  /** 할 일 칸에 적은 한 줄이 시각이 있어 일정으로 들어갔다. text 는 적은 글 그대로 (할 일로 옮길 때) */
-  /** am: 오전, 오후 없는 1~7시를 오후로 읽었다. 오전으로 바꾸면 이 시각으로 옮긴다 */
-  | {
-      kind: 'to-event';
-      id: number;
-      startAt: number;
-      text: string;
-      clash?: EventClash;
-      am?: { startAt: number; endAt: number | null };
-    }
-  /** 지난 마감을 오늘로 옮겼다. 되돌리면 원래 마감으로 */
-  | { kind: 'moved'; moved: { id: number; due: string | null }[] }
-  | { kind: 'added'; text: string }
-  /** 지난 날("어제")이나 매달("매달 25일")로 읽은 할 일: 알리고 되돌리기, 지난 날이면 오늘로 */
-  | { kind: 'flagged'; id: number; text: string; past: boolean };
-
 const UNLOCK_KEYS = {
   wave: 'panel.unlock.wave',
   dance: 'panel.unlock.dance',
@@ -93,11 +80,14 @@ function rememberTab(next: PanelTab) {
 export function PanelApp() {
   const [s, setS] = useState<PanelState>();
   const [tab, setTabState] = useState<PanelTab>(savedTab);
-  const [toast, setToast] = useState<Toast>();
+  // 되돌리기 알림 (#145): 여럿이 쌓이고, 메인이 들고 있어 패널을 벗어났다 다시 열어도 남은 시간 동안 보인다
+  const [toasts, setToasts] = useState<KeptToast[]>(() => liveToasts(bridge.toastsGet(), Date.now()));
+  const toastKey = useRef(toasts.reduce((m, k) => Math.max(m, k.key), 0) + 1);
   const [fed, setFed] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
-  const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const toastRef = useRef<HTMLDivElement>(null);
+  /** 가장 나중 알림이 뜬 때 (되돌리기 키가 입력칸 글 되돌리기와 겹칠 때 나중 일이 이긴다) */
+  const lastToastAt = useRef<number>(undefined);
   /** 지금 알림의 되돌리기 (Cmd/Ctrl+Z). 되돌렸으면 true */
   const undoRef = useRef<() => boolean>(() => false);
 
@@ -130,14 +120,14 @@ export function PanelApp() {
       const el = document.activeElement;
       const field =
         el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement
-          ? el.value || (typed.has(el) ? 'typed' : '')
+          ? undoFieldText(el.value, typed.get(el), lastToastAt.current)
           : undefined;
       if (undoByKey(e, MAC, field) && undoRef.current()) e.preventDefault();
     };
-    // 포커스를 받은 뒤 글을 고친 입력칸 (떠나면 잊는다)
-    const typed = new WeakSet<EventTarget>();
+    // 포커스를 받은 뒤 글을 고친 입력칸과 마지막으로 고친 때 (떠나면 잊는다)
+    const typed = new WeakMap<EventTarget, number>();
     const onInput = (e: Event) => {
-      if (e.target) typed.add(e.target);
+      if (e.target) typed.set(e.target, Date.now());
     };
     const onBlur = (e: FocusEvent) => {
       if (e.target) typed.delete(e.target);
@@ -164,33 +154,64 @@ export function PanelApp() {
     inputRef.current?.focus();
   }, [tab, !!s]);
 
+  // 알림이 사라질 때. 마우스가 올라가 있거나 키보드로 단추에 와 있으면 조금 더 둔다
+  useEffect(() => {
+    if (toasts.length === 0) return;
+    const wait = Math.max(0, Math.min(...toasts.map((k) => k.until)) - Date.now()) + 5;
+    const id = setTimeout(() => {
+      const el = toastRef.current;
+      const now = Date.now();
+      const holding = !!el && (el.matches(':hover') || el.contains(document.activeElement));
+      setToasts((prev) =>
+        holding
+          ? prev.map((k) => (k.until <= now ? { ...k, until: now + LINGER_MS } : k))
+          : liveToasts(prev, now),
+      );
+    }, wait);
+    return () => clearTimeout(id);
+  }, [toasts]);
+  // 알림을 메인에도 맡긴다 (패널을 벗어났다 다시 열어도 남은 시간 동안 보이게). 되돌리기 키가 입력칸 글 되돌리기와 겹칠 때 쓸 때도 적어 둔다
+  useEffect(() => {
+    bridge.toastsSet(toasts);
+    lastToastAt.current = undoable(toasts).at(-1)?.at;
+  }, [toasts]);
+
   if (!s) return <div className="card-window panel" />;
 
-  const hideToastIn = (ms: number) => {
-    clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => {
-      // 마우스가 처음부터 올라가 있었거나(mouseenter 가 안 온다) 키보드로 단추에 와 있으면 조금 더 둔다
-      const el = toastRef.current;
-      if (el && (el.matches(':hover') || el.contains(document.activeElement))) hideToastIn(LINGER_MS);
-      else setToast(undefined);
-    }, ms);
-  };
   const showToast = (next: Toast) => {
-    setToast(next);
-    hideToastIn(next.kind === 'to-event' ? CHOICE_MS : UNDO_MS);
+    const now = Date.now();
+    const key = toastKey.current++;
+    const until = now + (next.kind === 'to-event' ? CHOICE_MS : UNDO_MS);
+    setToasts((prev) =>
+      [
+        // 알리기만 하는 알림은 앞의 알리기 알림을 대신한다 (되돌릴 수 있는 알림은 덮지 않는다)
+        ...liveToasts(prev, now).filter((k) => !(next.kind === 'added' && k.toast.kind === 'added')),
+        { key, at: now, until, toast: next },
+      ].slice(-TOAST_KEEP_MAX),
+    );
   };
+  const dropToast = (key: number) => setToasts((prev) => prev.filter((k) => k.key !== key));
   /** 일정으로 들어간 한 줄을 할 일로 옮긴다 */
-  const toTodo = async (toast: Extract<Toast, { kind: 'to-event' }>) => {
-    const r = await bridge.eventToTodo(toast.id, toast.text);
+  const toTodo = async (item: KeptToast & { toast: Extract<Toast, { kind: 'to-event' }> }) => {
+    const r = await bridge.eventToTodo(item.toast.id, item.toast.text);
+    dropToast(item.key);
     showToast({ kind: 'added', text: r.ok ? addedText(r, s.today) : (r.error ?? t('panel.retry')) });
   };
 
   /** 오후로 읽은 일정을 오전으로 옮긴다 (알림은 남겨 옮긴 시각을 보인다) */
-  const toAm = (toast: Extract<Toast, { kind: 'to-event' }>) => {
+  const toAm = (item: KeptToast & { toast: Extract<Toast, { kind: 'to-event' }> }) => {
+    const { toast } = item;
     if (!toast.am) return;
     bridge.eventUpdate(toast.id, toast.am);
     const { am, clash: _clash, ...rest } = toast;
-    showToast({ ...rest, startAt: am.startAt });
+    const now = Date.now();
+    setToasts((prev) =>
+      prev.map((k) =>
+        k.key === item.key
+          ? { ...k, until: Math.max(k.until, now + UNDO_MS), toast: { ...rest, startAt: am.startAt } }
+          : k,
+      ),
+    );
   };
 
   const complete = async (todo: Todo) => {
@@ -209,7 +230,8 @@ export function PanelApp() {
   const hungry = s.fullness < s.hungryBelow;
 
   /** 알림의 되돌리기 (단추와 Cmd/Ctrl+Z 가 같이 쓴다) */
-  const undoToast = (toast: Toast) => {
+  const undoToast = (item: KeptToast) => {
+    const { toast } = item;
     if (toast.kind === 'done') bridge.undo(toast.id);
     if (toast.kind === 'note-removed') bridge.noteRestore(toast.id);
     if (toast.kind === 'event-removed') bridge.eventRestore(toast.id);
@@ -217,12 +239,71 @@ export function PanelApp() {
     if (toast.kind === 'to-event') bridge.eventRemove(toast.id);
     if (toast.kind === 'moved') bridge.undoMoveOverdue();
     if (toast.kind === 'flagged') bridge.remove(toast.id);
-    setToast(undefined);
+    dropToast(item.key);
   };
+  // Cmd/Ctrl+Z 는 가장 나중 알림부터 하나씩 되돌린다
   undoRef.current = () => {
-    if (!toast || toast.kind === 'added') return false;
-    undoToast(toast);
+    const last = undoable(toasts).at(-1);
+    if (!last) return false;
+    undoToast(last);
     return true;
+  };
+  const { folded, shown } = splitToasts(toasts);
+  const foldedUndoable = undoable(folded);
+
+  const renderToast = (item: KeptToast) => {
+    const { toast } = item;
+    return (
+      <div key={item.key} className="toast" role="status">
+        {toast.kind === 'to-event' ? (
+          // 언제로 넣었는지는 따로 한 줄 (좁아도 시각이 쪼개지지 않게)
+          <span>
+            {t('panel.toast.toEvent')}
+            <strong className="toast-when">
+              {whenLabel(toast.startAt, s.today)}
+              {toast.am && <small className="toast-guess"> {t('panel.toast.pmGuess')}</small>}
+            </strong>
+            {toast.clash && (
+              <small className="toast-clash">
+                {t('assist.clash', { time: timeOf(toast.clash.startAt), title: toast.clash.title })}
+              </small>
+            )}
+          </span>
+        ) : (
+          <span>{toastText(toast)}</span>
+        )}
+        {toast.kind !== 'added' && (
+          // 단추는 한 묶음: 좁으면 둘이 같이 글 아래로 내려간다
+          <div className="toast-actions">
+            <button type="button" className="undo" title={`${MOD}+Z`} onClick={() => undoToast(item)}>
+              {t('panel.undo')}
+            </button>
+            {toast.kind === 'flagged' && toast.past && (
+              <button
+                type="button"
+                className="undo"
+                onClick={() => {
+                  bridge.update(toast.id, { due: s.today });
+                  dropToast(item.key);
+                }}
+              >
+                {t('panel.toast.toToday')}
+              </button>
+            )}
+            {toast.kind === 'to-event' && toast.am && (
+              <button type="button" className="undo" onClick={() => toAm({ ...item, toast })}>
+                {t('panel.toast.toAm')}
+              </button>
+            )}
+            {toast.kind === 'to-event' && (
+              <button type="button" className="undo" onClick={() => toTodo({ ...item, toast })}>
+                {t('panel.toast.asTodo')}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -236,6 +317,17 @@ export function PanelApp() {
           <CoinIcon />
           {s.balance}
         </span>
+        {/* 패널 고정 핀 (#145): 켜면 다른 곳을 눌러도 닫히지 않는다. 설정에도 같은 칸 */}
+        <button
+          type="button"
+          className={`icon-btn keep-pin ${s.keepOpen ? 'on' : ''}`}
+          aria-pressed={s.keepOpen}
+          aria-label={t('keep.pin')}
+          title={s.keepOpen ? t('keep.unpin') : `${t('keep.pin')}: ${t('keep.pinHint')}`}
+          onClick={() => bridge.setKeepOpen(!s.keepOpen)}
+        >
+          <PinIcon />
+        </button>
         {/* 설정은 펫 우클릭과 메뉴 막대에만 있어 찾기 어려웠다 */}
         <button
           type="button"
@@ -392,62 +484,21 @@ export function PanelApp() {
       {/* 크기 손잡이: 카드 안 오른쪽 아래. 다른 칸 위에 얹는다 */}
       <ResizeGrips />
 
-      {toast && (
+      {toasts.length > 0 && (
+        // 알림이 여럿이면 쌓는다(최근 셋). 더 오래된 것은 "되돌릴 수 있는 것 N개 더" 한 줄로 합친다.
         // 읽는 동안(마우스를 올린 동안)은 사라지지 않는다
-        <div
-          ref={toastRef}
-          className="toast"
-          role="status"
-          onMouseEnter={() => clearTimeout(toastTimer.current)}
-          onMouseLeave={() => hideToastIn(LINGER_MS)}
-        >
-          {toast.kind === 'to-event' ? (
-            // 언제로 넣었는지는 따로 한 줄 (좁아도 시각이 쪼개지지 않게)
-            <span>
-              {t('panel.toast.toEvent')}
-              <strong className="toast-when">
-                {whenLabel(toast.startAt, s.today)}
-                {toast.am && <small className="toast-guess"> {t('panel.toast.pmGuess')}</small>}
-              </strong>
-              {toast.clash && (
-                <small className="toast-clash">
-                  {t('assist.clash', { time: timeOf(toast.clash.startAt), title: toast.clash.title })}
-                </small>
-              )}
-            </span>
-          ) : (
-            <span>{toastText(toast)}</span>
-          )}
-          {toast.kind !== 'added' && (
-            // 단추는 한 묶음: 좁으면 둘이 같이 글 아래로 내려간다
-            <div className="toast-actions">
-              <button type="button" className="undo" title={`${MOD}+Z`} onClick={() => undoToast(toast)}>
-                {t('panel.undo')}
-              </button>
-              {toast.kind === 'flagged' && toast.past && (
-                <button
-                  type="button"
-                  className="undo"
-                  onClick={() => {
-                    bridge.update(toast.id, { due: s.today });
-                    setToast(undefined);
-                  }}
-                >
-                  {t('panel.toast.toToday')}
+        <div ref={toastRef} className="toast-stack">
+          {foldedUndoable.length > 0 && (
+            <div className="toast toast-more" role="status">
+              <span>{t('keep.toast.more', { n: foldedUndoable.length })}</span>
+              <div className="toast-actions">
+                <button type="button" className="undo" onClick={() => foldedUndoable.forEach(undoToast)}>
+                  {t('keep.toast.undoAll')}
                 </button>
-              )}
-              {toast.kind === 'to-event' && toast.am && (
-                <button type="button" className="undo" onClick={() => toAm(toast)}>
-                  {t('panel.toast.toAm')}
-                </button>
-              )}
-              {toast.kind === 'to-event' && (
-                <button type="button" className="undo" onClick={() => toTodo(toast)}>
-                  {t('panel.toast.asTodo')}
-                </button>
-              )}
+              </div>
             </div>
           )}
+          {shown.map(renderToast)}
         </div>
       )}
     </div>

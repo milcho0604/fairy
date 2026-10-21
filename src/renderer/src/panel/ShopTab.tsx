@@ -14,6 +14,7 @@ import {
   TOYS,
 } from '../../../shared/shop.ts';
 import { CoinIcon } from './icons.tsx';
+import { useKeepScroll } from './view-keep.ts';
 
 const bridge = window.jjakkungPanel;
 
@@ -23,6 +24,8 @@ export function ShopTab({ s }: { s: PanelState }) {
   // 커스텀 먹이 지우기는 두 번 눌러야 한다 (설정의 저장 공간 지우기와 같은 방식). 처음 누르면 이 키
   const [sure, setSure] = useState('');
   const shop = s.shop;
+  const scroller = useRef<HTMLDivElement>(null);
+  useKeepScroll(scroller, 'shop');
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const flash = (text: string, bad = false) => {
     // 앞 메시지의 지우기 타이머가 새 메시지를 지우지 않게 하나만 둔다
@@ -50,7 +53,7 @@ export function ShopTab({ s }: { s: PanelState }) {
   const nextHouse = HOUSE_COSTS[level];
 
   return (
-    <div className="scroll shop">
+    <div className="scroll shop" ref={scroller}>
       {msg && (
         <p className={`shop-msg ${msg.bad ? 'bad' : ''}`} role="status">
           {msg.text}

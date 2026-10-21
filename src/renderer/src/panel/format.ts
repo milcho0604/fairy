@@ -47,7 +47,11 @@ export function whenLabel(startAt: number, today: string): string {
 
 /** 한 줄 입력이 어디에 언제로 들어갔는지: "내일 오후 3:00 일정에 넣었어", "할 일에 넣었어 (내일까지)" */
 export function addedText(r: Extract<PanelAddResult, { ok: true }>, today: string): string {
-  if (r.kind === 'many') return t('panel.add.many', { todos: r.todos, events: r.events });
+  if (r.kind === 'many')
+    return r.notes
+      ? t('keep.quick.manyNotes', { todos: r.todos, events: r.events, notes: r.notes })
+      : t('panel.add.many', { todos: r.todos, events: r.events });
+  if (r.kind === 'note') return t('keep.quick.note');
   if (r.kind === 'event') return t('panel.quick.event', { when: whenLabel(r.startAt, today) });
   if (r.remindAt !== undefined) return t('snooze.quick.added', { when: whenLabel(r.remindAt, today) });
   if (!r.due) return t('panel.quick.todo');

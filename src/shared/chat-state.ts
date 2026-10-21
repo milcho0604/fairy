@@ -122,6 +122,12 @@ export function applyEvent(s: ChatState, petId: string, e: AiEvent, noticeId: st
   }
 }
 
+/** 마지막 줄이 오류 답인가 ("다시 묻기"를 AI 지정 없이 부를 때 잘 받은 답을 지우고 다시 묻지 않게) */
+export function endsWithError(s: ChatState): boolean {
+  const last = s.messages.at(-1);
+  return last?.role === 'pet' && last.status === 'error';
+}
+
 /** AI 를 바꾼다. 대화 기록은 화면에 남기고, 각 AI 는 자기 세션을 이어간다. */
 export function switchProvider(s: ChatState, provider: AiProvider): ChatState {
   return s.pendingId ? s : { ...s, provider };

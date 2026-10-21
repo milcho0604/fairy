@@ -15,6 +15,7 @@ import { PlanCard } from './MorningPlan.tsx';
 import { NoteBox } from './NoteBox.tsx';
 import { RemindCard } from './RemindCard.tsx';
 import { TodoRow } from './TodoTab.tsx';
+import { useKeepScroll } from './view-keep.ts';
 import { WeekCardButton } from './WeekCard.tsx';
 
 const bridge = window.jjakkungPanel;
@@ -73,6 +74,7 @@ export function TodayTab({
   // 아래에 더 있음 (업적과 일기가 첫 화면 아래에 있어 모르고 지나쳤다). 다 내려가면 사라진다
   const scroller = useRef<HTMLDivElement>(null);
   const [more, setMore] = useState(false);
+  useKeepScroll(scroller, 'today');
   const checkMore = () => {
     const el = scroller.current;
     if (el) setMore(el.scrollHeight - el.scrollTop - el.clientHeight > MORE_SLACK);

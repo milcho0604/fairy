@@ -286,3 +286,10 @@ export function dueLabel(due: string, today: string): { text: string; overdue: b
   if (due < today) return { text: t('panel.due.past', date), overdue: true };
   return { text: t('panel.due.date', date), overdue: false };
 }
+
+/** 빠른 입력의 메모 머리말: "메모: 와이파이 비번 abc", "memo: wifi password". 머리말을 뗀 본문. 머리말이 없으면 undefined */
+const MEMO_HEAD = /^\s*(?:메모|memo)\s*[:：]\s*/i;
+export function memoBody(line: string): string | undefined {
+  const m = MEMO_HEAD.exec(line);
+  return m ? line.slice(m[0].length).trim() : undefined;
+}

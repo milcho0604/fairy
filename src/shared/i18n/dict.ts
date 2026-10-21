@@ -23,6 +23,7 @@ import * as gallery from './gallery.ts';
 import * as gcal from './gcal.ts';
 import * as gemini from './gemini.ts';
 import * as idle from './idle.ts';
+import * as keep from './keep.ts';
 import * as main from './main.ts';
 import * as maker from './maker.ts';
 import * as notice from './notice.ts';
@@ -101,6 +102,7 @@ export const ko = {
   ...records.ko,
   ...chips.ko,
   ...friends.ko,
+  ...keep.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -153,4 +155,5 @@ export const en: Translation<typeof ko> = {
   ...records.en,
   ...chips.en,
   ...friends.en,
+  ...keep.en,
 };

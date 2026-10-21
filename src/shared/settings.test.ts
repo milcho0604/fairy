@@ -658,3 +658,14 @@ test('말로 만든 처음 글(petTexts): 설계도 펫에만, 글만, 없던 �
   assert.deepEqual(parseSettings({ petImage: 'pet-1.png', petModel: 'model-1.json' }).petTexts, {});
   assert.deepEqual(parseSettings({ petTexts: { 'model-1.json': 'x'.repeat(5000) } }).petTexts, {});
 });
+
+test('패널 고정: 기본은 꺼짐, 켜고 끄고, 틀린 값은 지금 값', () => {
+  assert.equal(DEFAULT_SETTINGS.panelPin, false);
+  assert.equal(parseSettings({ panelPin: true }).panelPin, true);
+  assert.equal(parseSettings({ panelPin: 'yes' }).panelPin, false);
+  assert.equal(parseSettings({}).panelPin, false);
+  const on = applyPatch(DEFAULT_SETTINGS, { panelPin: true });
+  assert.equal(on.panelPin, true);
+  assert.equal(applyPatch(on, { panelPin: 1 }).panelPin, true);
+  assert.equal(applyPatch(on, { panelPin: false }).panelPin, false);
+});

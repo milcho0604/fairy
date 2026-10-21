@@ -30,6 +30,7 @@ import {
   applyUsage,
   type ChatMessage,
   type ChatState,
+  endsWithError,
   historyFor,
   initialChat,
   parseChat,
@@ -61,6 +62,7 @@ import { getShellEnv } from './ai/shell-env.ts';
 import { runTicket, type TicketHooks } from './ai/ticket.ts';
 import { createThreadStore } from './chat-threads.ts';
 import { devRendererUrl } from './dev-url.ts';
+import { drafts } from './drafts.ts';
 import { focusWindow, showWindow } from './focus.ts';
 import { langArg } from './lang.ts';
 import { jjMcpLaunch } from './mcp-launch.ts';
@@ -245,7 +247,11 @@ export function createChat(o: ChatOptions) {
   ipcMain.handle(CHAT.snapshot, (e): ChatSnapshot | undefined => {
     if (!fromChat(e)) return undefined;
     state = { ...state, knowsTodos: o.knowsTodos() };
-    const snapshot = { petName: petName(), state, draft };
+    // 쓰던 글과 붙인 그림 (#145). 기록 안 남김 중에는 돌려주지 않는다 (아래 draftText)
+    const saved = state.ephemeral
+      ? { text: '', images: [] }
+      : { text: drafts.text('chat'), images: [...drafts.images()] };
+    const snapshot = { petName: petName(), state, draft, saved };
     draft = [];
     return snapshot;
   });
@@ -304,7 +310,23 @@ export function createChat(o: ChatOptions) {
     if (!fromChat(e) || typeof text !== 'string') return;
     // 그림 형식은 codex 임시 파일 확장자가 되므로 메인에서 다시 본다
     const clean = cleanSendImages(images);
+    // 보냈으니 쓰던 글은 비운다 (못 보내고 돌려보내진 경우는 창이 다시 쓰던 글로 보낸다)
+    drafts.clear('chat');
+    drafts.clear('images');
     if (clean && ask(text, clean)) o.onUserSaid?.(text);
+  });
+
+  // 쓰던 글과 붙인 그림 보관 (#145). 메모리에만 두고 디스크에는 쓰지 않는다.
+  // 기록 안 남김(ephemeral) 중에는 아예 맡지 않는다: 켜기 전에 맡은 것도 버린다
+  ipcMain.on(CHAT.draftText, (e, text: unknown) => {
+    if (!fromChat(e)) return;
+    if (state.ephemeral) drafts.clear('chat');
+    else drafts.setText('chat', text);
+  });
+  ipcMain.on(CHAT.draftImages, (e, images: unknown) => {
+    if (!fromChat(e)) return;
+    const clean = state.ephemeral ? [] : cleanSendImages(images);
+    drafts.setImages(clean ?? []);
   });
 
   /** "오늘 뭐부터" 를 AI 에 보낼지 보려고 설치, 로그인을 확인 중인 펫 메시지 id (멈추기) */
@@ -575,6 +597,10 @@ export function createChat(o: ChatOptions) {
     if (!fromChat(e) || state.pendingId) return;
     // 켜고 끌 때 새 대화로: 안 남긴 대화는 이어 갈 수 없고, 남긴 대화를 안 남긴 채 이어 갈 수도 없다.
     state = { ...resetChat(state), ephemeral: !!on };
+    if (on) {
+      drafts.clear('chat');
+      drafts.clear('images');
+    }
     threads.detach();
     carry.clear();
     // 지운 대화를 되돌릴 거리도 버린다 (안 남긴 대화가 되돌리기로 기록 파일에 쓰이지 않게)
@@ -614,8 +640,12 @@ export function createChat(o: ChatOptions) {
     if (!fromChat(e) || (kind !== 'focus' && kind !== 'panel')) return;
     o.onPlanAction?.(kind, Number.isInteger(todoId) ? (todoId as number) : undefined);
   });
-  ipcMain.on(CHAT.retryWith, (e, provider: AiProvider) => {
+  ipcMain.on(CHAT.retryWith, (e, picked: unknown) => {
+    // AI 를 안 주면 지금 AI 로 같은 질문을 다시 묻는다 ("다시 묻기", #145)
+    const provider = (typeof picked === 'string' ? picked : state.provider) as AiProvider;
     if (!fromChat(e) || state.pendingId || !specOf(provider)) return;
+    // AI 를 안 준 다시 묻기는 마지막 줄이 오류일 때만 한다 (잘 받은 답 뒤에서는 아무 일도 안 한다)
+    if (typeof picked !== 'string' && !endsWithError(state)) return;
     userPicked = true;
     // 마지막 질문을 찾아 그 AI 로 다시 묻는다 (그림은 다시 보내지 않는다: 원본을 상태에 두지 않는다).
     const lastUser = [...state.messages].reverse().find((m) => m.role === 'user');

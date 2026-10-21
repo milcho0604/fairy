@@ -4,6 +4,7 @@ import {
   addQuestion,
   applyEvent,
   type ChatState,
+  endsWithError,
   historyFor,
   initialChat,
   LONG_CHAT_TURNS,
@@ -265,4 +266,18 @@ test('말놀이 답(끝말잇기)은 다시 켜도 놀이 꼬리표를 지키고
   // 꼬리표 값이 틀리면 버린다
   const odd = parseChat({ messages: [{ id: 'x', role: 'pet', text: 'a', status: 'done', game: 'yes' }] });
   assert.equal(odd.messages[0]?.game, undefined);
+});
+
+test('endsWithError: 마지막 줄이 오류 답일 때만 참 (잘 받은 답 뒤의 다시 묻기를 막는다)', () => {
+  assert.equal(endsWithError(initialChat('claude')), false);
+  let s = ask(initialChat('claude'), 1);
+  assert.equal(endsWithError(s), false); // 답을 기다리는 중
+  s = applyEvent(s, 'p1', { type: 'done', text: '답' }, 'n1');
+  assert.equal(endsWithError(s), false);
+  s = ask(s, 2);
+  s = applyEvent(s, 'p2', { type: 'error', error: { kind: 'cancelled', message: '멈춤' } }, 'n2');
+  assert.equal(endsWithError(s), true);
+  s = ask(s, 3);
+  s = applyEvent(s, 'p3', { type: 'done', text: '또 답' }, 'n3');
+  assert.equal(endsWithError(s), false);
 });

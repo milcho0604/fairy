@@ -11,6 +11,7 @@ import type { StatStore } from '../shared/beta-stats.ts';
 import { undoMoved } from '../shared/briefing.ts';
 import { dayWatch } from '../shared/day-watch.ts';
 import { saveErrorText } from '../shared/download-error.ts';
+import { isPanelDraftKind } from '../shared/draft-store.ts';
 import { findSameEvent } from '../shared/event-dup.ts';
 import { clashIds, overlapping, spanEnd } from '../shared/event-overlap.ts';
 import {
@@ -26,6 +27,7 @@ import { type FocusState, focusCoins, isFocusLength } from '../shared/focus.ts';
 import { isMonth, monthOf } from '../shared/focus-month.ts';
 import type { GcalCalLabel, PanelGcal } from '../shared/gcal.ts';
 import { t } from '../shared/i18n/index.ts';
+import { createIdleWatch } from '../shared/idle-watch.ts';
 import {
   type EventClash,
   type FocusMonthView,
@@ -57,7 +59,7 @@ import {
 } from '../shared/panel-place.ts';
 import type { DoingSet } from '../shared/pet-status.ts';
 import { isPinKind } from '../shared/pin.ts';
-import { hasDeadlineWord } from '../shared/quick-add.ts';
+import { hasDeadlineWord, memoBody } from '../shared/quick-add.ts';
 import { quickHeight } from '../shared/quick-fit.ts';
 import {
   parseTodoLine,
@@ -70,8 +72,10 @@ import {
 import { CUSTOM_FOOD_COST, CUSTOM_FOOD_MAX, type Food, type ItemStore } from '../shared/shop.ts';
 import { parseRemindIn, remindInAt } from '../shared/snooze.ts';
 import { COIN, FULLNESS, localDay, STEP_MAX, type TodoStore } from '../shared/todo-store.ts';
+import { emptyViewKeep } from '../shared/view-keep.ts';
 import { weekSummary } from '../shared/week.ts';
 import { devRendererUrl } from './dev-url.ts';
+import { drafts, getToasts, getView, setToasts, setView } from './drafts.ts';
 import { focusWindow } from './focus.ts';
 import { langArg } from './lang.ts';
 import { localTime, minuteOfDay, startOfDay, startOfDayAfter } from './planner.ts';
@@ -92,6 +96,17 @@ const MOVE_SAVE_MS = 400;
 const RESIZE_GAP_MS = 17;
 /** 크기가 멈춘 뒤 이만큼 지나면 적는다 */
 const RESIZE_SAVE_MS = 400;
+/**
+ * 끄는 중에 크기 소식이 이만큼 안 오면 끝 알림이 끊긴 것으로 보고 "끄는 중"을 푼다
+ * (화면 새로 고침, 충돌, 포인터 유실). 손잡이는 잡고 있는 동안 이보다 짧은 간격으로 소식을 다시 보낸다 (ResizeGrips.tsx)
+ */
+const RESIZE_IDLE_MS = 2000;
+
+/** 한 줄 넣기 옵션 (빠른 입력, 분류 바꾸기) */
+interface AddOpts {
+  quick?: boolean;
+  as?: 'todo';
+}
 
 export interface PanelOptions {
   store: TodoStore;
@@ -146,6 +161,9 @@ export interface PanelOptions {
   onChanged: () => void;
   openChat: () => void;
   openSettings: () => void;
+  /** 패널 고정 핀 (#145): 켜 두면 다른 곳을 눌러도 패널이 닫히지 않는다 */
+  panelPin: () => boolean;
+  setPanelPin: (on: boolean) => void;
   lookTogether: () => void;
   /** 오늘 놓친 알림 (펫이 숨어 있거나 자리에 없어 못 본 것) */
   missed: () => PanelState['missed'];
@@ -242,6 +260,7 @@ export function createPanel(o: PanelOptions) {
       },
       ...(week(now, open) ?? {}),
       trashCount: o.store.trashCount(),
+      keepOpen: o.panelPin(),
     };
   }
 
@@ -306,9 +325,14 @@ export function createPanel(o: PanelOptions) {
   ipcMain.handle(PANEL.snapshot, (e) => (ours(e) ? state() : undefined));
   ipcMain.handle(
     PANEL.add,
-    saving((e, text: string): PanelAddResult => {
+    saving((e, text: string, rawOpts?: unknown): PanelAddResult => {
       if (!ours(e) || typeof text !== 'string') return { ok: false };
       const now = Date.now();
+      const raw = (typeof rawOpts === 'object' && rawOpts !== null ? rawOpts : {}) as Record<string, unknown>;
+      const opts: AddOpts = {
+        quick: raw.quick === true,
+        ...(raw.as === 'todo' ? { as: 'todo' as const } : {}),
+      };
       // 여러 줄을 붙여 넣으면 줄마다 하나씩 (할 일이나 일정). 빈 줄은 건너뛴다
       const lines = text
         .split(/\r?\n/)
@@ -319,15 +343,21 @@ export function createPanel(o: PanelOptions) {
           return { ok: false, error: t('panel.add.tooMany', { n: ADD_MANY_MAX }) };
         let todos = 0;
         let events = 0;
+        let notes = 0;
+        const items: { kind: 'todo' | 'event' | 'note'; id: number }[] = [];
         for (const line of lines) {
-          const r = addLine(line, now);
-          if (r.ok && r.kind === 'event') events++;
-          else if (r.ok) todos++;
+          const r = addLine(line, now, opts);
+          if (!r.ok) continue;
+          if (r.kind === 'event') events++;
+          else if (r.kind === 'note') notes++;
+          else todos++;
+          if (r.kind === 'event' || r.kind === 'note' || r.kind === 'todo')
+            items.push({ kind: r.kind, id: r.id });
         }
-        if (todos + events === 0) return { ok: false, error: t('panel.add.empty') };
-        return { ok: true, kind: 'many', todos, events };
+        if (todos + events + notes === 0) return { ok: false, error: t('panel.add.empty') };
+        return { ok: true, kind: 'many', todos, events, ...(notes ? { notes } : {}), items };
       }
-      return addLine(text, now);
+      return addLine(text, now, opts);
     }),
   );
   /**
@@ -341,7 +371,20 @@ export function createPanel(o: PanelOptions) {
     if (!found) return undefined;
     return { ok: false as const, error: t('panel.event.duplicate', { title: found.title }) };
   }
-  function addLine(line: string, now: number): PanelAddResult {
+  /** 빠른 입력의 "메모:" 머리말: 메모로 넣는다 */
+  function addMemo(body: string, now: number): PanelAddResult {
+    if (!body) return { ok: false, error: t('panel.add.empty') };
+    const note = o.notes.add({ body, source: 'me' }, now);
+    push();
+    return { ok: true, kind: 'note', id: note.id };
+  }
+  function addLine(line: string, now: number, opts: AddOpts = {}): PanelAddResult {
+    // 분류 바꾸기("할 일로"): 시각이 있어도 할 일로 넣는다
+    if (opts.as === 'todo') return addTodo(line, now);
+    if (opts.quick) {
+      const memo = memoBody(line);
+      if (memo !== undefined) return addMemo(memo, now);
+    }
     // "30분 뒤 알려 줘", "in 30 minutes": 지금부터 N분 뒤에 울리는 알림 (마감 시각이 그때인 할 일, snooze.ts)
     const later = parseRemindIn(line);
     if (later) return addRemindIn(later.title || t('snooze.remindTitle'), later.minutes, now);
@@ -931,14 +974,27 @@ export function createPanel(o: PanelOptions) {
     if (want) applyResize(want);
   }
 
+  /** "끄는 중"을 푼다 (끝 알림, 감시 기한, 창 닫힘) */
+  function stopResizing() {
+    resizeIdle.stop();
+    resizing = false;
+    if (process.platform === 'linux' && panel && !panel.isDestroyed()) panel.setResizable(false);
+  }
+  const resizeIdle = createIdleWatch(RESIZE_IDLE_MS, () => {
+    flushResize();
+    stopResizing();
+  });
+
   ipcMain.on(PANEL.resizeStart, (e) => {
     if (!isPanel(e)) return;
     resizing = true;
+    resizeIdle.poke();
     // 리눅스 일부 창 관리자는 크기 고정 창의 setBounds 를 무시한다. 끄는 동안만 푼다
     if (process.platform === 'linux') panel?.setResizable(true);
   });
   ipcMain.on(PANEL.resize, (e, width: unknown, height: unknown) => {
     if (!isPanel(e) || !resizing) return;
+    resizeIdle.poke();
     // 화면은 CSS px 로 보내니 창 확대 배율(큰 글씨)을 곱해 창 크기로 바꾼다
     const zoom = panel?.webContents.getZoomFactor() ?? 1;
     const dip = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v * zoom : undefined);
@@ -948,13 +1004,36 @@ export function createPanel(o: PanelOptions) {
   ipcMain.on(PANEL.resizeEnd, (e) => {
     if (!isPanel(e) || !resizing) return;
     flushResize();
-    resizing = false;
-    if (process.platform === 'linux') panel?.setResizable(false);
+    stopResizing();
   });
   // 처음 크기로 (손잡이 두 번 누르기)
   ipcMain.on(PANEL.resizeReset, (e) => {
     if (!isPanel(e)) return;
     applyResize(PANEL_DEFAULT);
+  });
+
+  // 쓰던 글, 보던 위치 (#145). 창이 뜨며 바로 읽으니 읽기는 동기
+  ipcMain.on(PANEL.draftGet, (e, kind: unknown) => {
+    e.returnValue = ours(e) && isPanelDraftKind(kind) ? drafts.text(kind) : '';
+  });
+  ipcMain.on(PANEL.draftSet, (e, kind: unknown, text: unknown) => {
+    // 채팅 칸은 채팅 창 몫이라 패널에서는 쓰지 못한다
+    if (ours(e) && isPanelDraftKind(kind)) drafts.setText(kind, text);
+  });
+  ipcMain.on(PANEL.viewGet, (e) => {
+    e.returnValue = ours(e) ? getView() : emptyViewKeep();
+  });
+  ipcMain.on(PANEL.viewSet, (e, view: unknown) => {
+    if (isPanel(e)) setView(view);
+  });
+  ipcMain.on(PANEL.toastsGet, (e) => {
+    e.returnValue = isPanel(e) ? getToasts() : [];
+  });
+  ipcMain.on(PANEL.toastsSet, (e, list: unknown) => {
+    if (isPanel(e)) setToasts(list);
+  });
+  ipcMain.on(PANEL.setKeepOpen, (e, on: unknown) => {
+    if (isPanel(e) && typeof on === 'boolean') o.setPanelPin(on);
   });
 
   ipcMain.on(PANEL.close, (e) => {
@@ -1006,7 +1085,14 @@ export function createPanel(o: PanelOptions) {
     win.on('blur', () => {
       // 저장 창(주간 회고 카드)을 띄운 동안은 닫지 않는다 (hold)
       // 크기를 끄는 동안(손잡이)도 닫지 않는다
-      if (!win.isDestroyed() && holding === 0 && !(resizing && win === panel)) win.close();
+      // 패널 고정 핀(#145)이 켜져 있으면 패널은 닫지 않는다 (Esc, 펫 클릭, 단축키로만 닫힌다). 빠른 입력은 늘 닫힌다
+      if (
+        !win.isDestroyed() &&
+        holding === 0 &&
+        !(resizing && win === panel) &&
+        !(kind === 'panel' && o.panelPin())
+      )
+        win.close();
     });
     keepFrame(win);
     return win;
@@ -1099,7 +1185,14 @@ export function createPanel(o: PanelOptions) {
     panel = win;
     // 옛 창이 늦게 닫혀도 새 창 참조를 지우지 않게 (빨리 닫았다 열면 빈 패널이 남았다)
     win.on('closed', () => {
-      if (panel === win) panel = undefined;
+      // 끄는 중이던 것이 이 창 것일 때만 푼다 (옛 창이 늦게 닫히며 새 패널의 끌기를 지우지 않게)
+      if (panel === win) {
+        panel = undefined;
+        stopResizing();
+        resizeWant = undefined;
+        clearTimeout(resizeFlushTimer);
+        resizeFlushTimer = undefined;
+      }
       dropEmptyNotes();
     });
     rememberMoves(win, placed);
@@ -1109,13 +1202,6 @@ export function createPanel(o: PanelOptions) {
       clearTimeout(resizeSaveTimer);
       resizeSaveTimer = undefined;
       saveBounds(win, 'panel', false);
-    });
-    // 끄는 중에 창이 닫히면 다음 패널이 닫히지 않는 상태로 남지 않게
-    win.on('closed', () => {
-      resizing = false;
-      resizeWant = undefined;
-      clearTimeout(resizeFlushTimer);
-      resizeFlushTimer = undefined;
     });
   }
 

@@ -11,6 +11,7 @@ import { MoreRow } from './more.tsx';
 import { type NoteResume, parseResume, RESUME_KEY } from './note-resume.ts';
 import { pageOf } from './paging.ts';
 import { PinButton, usePinMenu } from './pin.tsx';
+import { useKeepScroll } from './view-keep.ts';
 
 const bridge = window.jjakkungPanel;
 const SAVE_MS = 400;
@@ -56,6 +57,9 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
   /** 본문까지 찾은 결과 (메인에서). 새 결과가 올 때까지 앞 결과를 둔다 */
   const [hits, setHits] = useState<NoteHit[]>();
   const searchSeq = useRef(0);
+  // 목록 스크롤 위치 (#145). 메모를 열었다 돌아와도, 탭을 갔다 와도 그 자리
+  const listRef = useRef<HTMLUListElement>(null);
+  useKeepScroll(listRef, open || resume ? 'noteEditor' : 'note');
   /** 그린 쪽 수 (찾는 말마다) */
   const [paging, setPaging] = useState({ q: '', pages: 1 });
   const now = Date.now();
@@ -161,7 +165,7 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
           {t('panel.note.new')}
         </button>
       </div>
-      <ul className="notes scroll">
+      <ul className="notes scroll" ref={listRef}>
         {list.length === 0 && (
           <li className="empty">
             {q && s.notes.length > 0 ? t('panel.note.notFound') : t('panel.note.empty.list')}

@@ -16,6 +16,7 @@ import type { OutgoingImage, ProviderView } from '../../../shared/ipc.ts';
 import { PetFace } from '../PetFace.tsx';
 import { AiManager } from './AiManager.tsx';
 import { ChatList } from './ChatList.tsx';
+import { useChatDraftSync } from './draft.ts';
 import { InlineGuide, InstallGuide } from './InstallGuide.tsx';
 import { toOutgoing } from './images.ts';
 import { chatKey, lastQuestion } from './keys.ts';
@@ -38,6 +39,12 @@ export function App() {
   const [checking, setChecking] = useState(false);
   const [text, setText] = useState('');
   const [images, setImages] = useState<OutgoingImage[]>([]);
+  /** 메인이 들고 있던 쓰던 글을 받아 입력칸에 채웠다 (그 전에는 빈 값을 메인에 보내지 않는다, #145) */
+  const [restored, setRestored] = useState(false);
+  /** 오류 뒤에 입력칸에 되돌려 놓은 질문. 안 고치고 "다시 묻기" 를 누르면 입력칸을 비운다 */
+  const putBack = useRef<string>(undefined);
+  /** 이 창이 처음 본 마지막 오류 메시지 id (이미 있던 오류는 질문을 되돌리지 않는다) */
+  const errSeen = useRef<string | null | undefined>(undefined);
   const [notice, setNotice] = useState('');
   const [zoom, setZoom] = useState<string>();
   const [providers, setProviders] = useState<ProviderView[]>([]);
@@ -118,7 +125,11 @@ export function App() {
     bridge.snapshot().then((snap) => {
       setPetName(snap.petName);
       setState(snap.state);
-      if (snap.draft.length) addImages(snap.draft);
+      // 쓰던 글과 붙인 그림 (#145). 그새 쓰기 시작한 글은 지키고 비어 있을 때만 채운다
+      if (snap.saved.text) setText((cur) => cur || snap.saved.text);
+      const back = [...snap.saved.images, ...snap.draft];
+      if (back.length) addImages(back);
+      setRestored(true);
       document.title = t('chat.title', { name: snap.petName });
     });
     bridge.onState(setState);
@@ -207,6 +218,29 @@ export function App() {
     const last = fresh.at(-1);
     if (last) setAnnounce(t('chat.a11yAnswered', { name: petName, text: last.text }));
   }, [state, petName]);
+
+  useChatDraftSync(text, images, restored);
+
+  // 오류로 끝난 질문은 입력칸으로 되돌린다 (빈 칸일 때만. 쓰던 글을 덮지 않는다). 다시 묻기 단추도 같은 질문을 쓴다 (#145)
+  useEffect(() => {
+    if (!state) return;
+    const last = state.messages.at(-1);
+    const errId = last?.role === 'pet' && last.status === 'error' ? last.id : null;
+    if (errSeen.current === undefined) {
+      errSeen.current = errId;
+      return;
+    }
+    if (errId === errSeen.current) return;
+    errSeen.current = errId;
+    if (!errId || last?.error?.kind === 'needs-model') return;
+    const q = state.messages.findLast((m) => m.role === 'user')?.text;
+    if (!q?.trim()) return;
+    setText((cur) => {
+      if (cur.trim()) return cur;
+      putBack.current = q;
+      return q;
+    });
+  }, [state]);
 
   // Esc, Cmd/Ctrl+N 은 입력칸 밖(답 단추 등)에 있어도 듣는다
   useEffect(() => {
@@ -331,6 +365,15 @@ export function App() {
     setImages([]);
     setNotice('');
     sentRef.current = true;
+  };
+
+  /** 같은 AI 로 마지막 질문을 다시 묻는다. 되돌려 놓은 질문을 안 고쳤으면 칸을 비운다 */
+  const askAgain = () => {
+    if (pending) return;
+    if (putBack.current !== undefined && text === putBack.current) setText('');
+    putBack.current = undefined;
+    sentRef.current = true;
+    bridge.retryWith();
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -597,6 +640,11 @@ export function App() {
               alternatives={m.id === state.messages.at(-1)?.id && !pending ? alternatives : []}
               download={m.id === state.messages.at(-1)?.id ? state.modelDownload : undefined}
               isLast={m.id === state.messages.at(-1)?.id}
+              onAskAgain={
+                m.id === state.messages.at(-1)?.id && !pending && canAskAgain(state.messages)
+                  ? askAgain
+                  : undefined
+              }
               ticket={m.provider === TICKET_PROVIDER_ID && !!state.ticket}
               freeModelMb={freeModelMb(m)}
               guide={{
@@ -690,6 +738,10 @@ export function App() {
           <LookToggle look={look} />
           <LookStatus look={look} petName={petName} spec={spec} onSend={(screen) => void send(screen)} />
         </div>
+        {/* 빈 칸에서 ↑ 로 마지막 질문이 돌아온다는 안내 (#145) */}
+        {!text && !pending && lastQuestion(state.messages) && (
+          <small className="recall-hint">{t('keep.recallHint')}</small>
+        )}
         <div className="composer">
           <label className="ghost icon" title={t('chat.attach')}>
             <input
@@ -749,6 +801,8 @@ interface MessageProps {
   /** 받을 모델 크기 (오류 문구에서 읽는다) */
   freeModelMb?: string;
   isLast: boolean;
+  /** 마지막 오류 아래 "다시 묻기": 같은 AI 로 같은 질문 (#145). 그림을 곁들인 질문은 다시 보낼 수 없어 없다 */
+  onAskAgain?: () => void;
   /** 대화권 답이고 지금 대화권을 쓸 수 있다: 신고 단추 (#100) */
   ticket?: boolean;
   /** 못 찾음, 로그인 안 됨 오류 아래에 펼칠 안내 (#29). subject 가 없으면(무료 AI 등) 단추를 두지 않는다 */
@@ -773,6 +827,7 @@ function Message({
   download,
   freeModelMb: mb,
   isLast,
+  onAskAgain,
   ticket,
   guide,
 }: MessageProps) {
@@ -874,6 +929,19 @@ function Message({
                 )}
               </>
             )}
+          </div>
+        )}
+        {/* 다시 묻기: 같은 AI, 같은 질문. 무료 AI 받기 안내(needs-model)는 받기가 먼저라 뺀다 */}
+        {m.status === 'error' && m.error?.kind !== 'needs-model' && onAskAgain && (
+          <div className="retry action-row">
+            <button
+              type="button"
+              className="ghost ask-again"
+              title={t('keep.retryTitle')}
+              onClick={onAskAgain}
+            >
+              {t('keep.retry')}
+            </button>
           </div>
         )}
         {/* 못 찾음, 로그인 안 됨: 말풍선은 짧게, 설치와 로그인 단계는 그 자리에 펼친다 (#29) */}
@@ -992,4 +1060,10 @@ function Thinking({ streams, label, petName }: { streams: boolean; label: string
       {slow && !streams && <span className="hint">{t('chat.thinkingSlow', { label })}</span>}
     </div>
   );
+}
+
+/** 마지막 질문을 같은 AI 로 다시 보낼 수 있나: 글이 있고 그림은 없다 (그림 원본은 상태에 두지 않는다) */
+function canAskAgain(messages: readonly ChatMessage[]): boolean {
+  const q = messages.findLast((m) => m.role === 'user');
+  return !!q?.text.trim() && !q.images?.length;
 }
