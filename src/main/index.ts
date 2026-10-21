@@ -1909,6 +1909,8 @@ ready
           chat,
           pet,
           globalShortcut,
+          // 화면 크기 점검(scripts/dev/panel-resize.mjs). 시험 실행에서는 내장 화면 하나만 보인다(focus.ts)
+          screen,
           tray,
           petFace,
           trayImageOf,

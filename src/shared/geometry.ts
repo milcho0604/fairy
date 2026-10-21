@@ -76,8 +76,9 @@ export function fitSavedBounds(
   const y = num(s.y);
   const probe = { x: x ?? 0, y: y ?? 0, width: w, height: h };
   const area = x !== undefined && y !== undefined ? nearestArea(probe, areas) : areas[0];
-  const width = Math.max(min.width, area ? Math.min(w, area.width) : w);
-  const height = Math.max(min.height, area ? Math.min(h, area.height) : h);
+  // 최소 크기로 올린 뒤 화면보다 크지 않게 (작은 화면에서는 화면이 이긴다: 창이 통째로 보이는 쪽이 먼저)
+  const width = area ? Math.min(area.width, Math.max(min.width, w)) : Math.max(min.width, w);
+  const height = area ? Math.min(area.height, Math.max(min.height, h)) : Math.max(min.height, h);
   if (x === undefined || y === undefined) return { width, height };
   return clampIntoAreas({ x, y, width, height }, areas);
 }

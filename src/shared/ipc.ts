@@ -971,6 +971,11 @@ export type SpriteRowResult =
 
 export const PANEL = {
   snapshot: 'panel:snapshot',
+  /** 크기 손잡이: 끌기 시작, 바라는 크기(CSS px), 끌기 끝, 처음 크기로 */
+  resizeStart: 'panel:resize-start',
+  resize: 'panel:resize',
+  resizeEnd: 'panel:resize-end',
+  resizeReset: 'panel:resize-reset',
   add: 'panel:add',
   complete: 'panel:complete',
   undo: 'panel:undo',
@@ -1220,6 +1225,12 @@ export interface PanelBridge {
   openSettings(): void;
   lookTogether(): void;
   close(): void;
+  /** 패널 크기 손잡이. 끌기 시작과 끝 사이에 바라는 창 크기(CSS px, 안 바꿀 쪽은 undefined)를 보낸다 */
+  resizeStart(): void;
+  resize(width: number | undefined, height: number | undefined): void;
+  resizeEnd(): void;
+  /** 처음 크기(360x540)로 */
+  resizeReset(): void;
   /** 빠른 입력 창: 내용 높이(CSS px)에 맞게 창 높이를 바꿔 달라 (큰 글씨에서 잘리지 않게, shared/quick-fit.ts) */
   quickFit(contentCss: number): void;
   onState(listener: (state: PanelState) => void): void;

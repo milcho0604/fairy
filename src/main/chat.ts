@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { statSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { app, BrowserWindow, type IpcMainEvent, ipcMain, type Rectangle, screen } from 'electron';
+import { app, type BrowserWindow, type IpcMainEvent, ipcMain, type Rectangle, screen } from 'electron';
 import { type Catalog, pickCli, pickLocal } from '../shared/ai/catalog.ts';
 import { finalAnswer } from '../shared/ai/empty-answer.ts';
 import {
@@ -66,7 +66,7 @@ import { langArg } from './lang.ts';
 import { jjMcpLaunch } from './mcp-launch.ts';
 import { openLink } from './open-link.ts';
 import { readJson, writeJson } from './store.ts';
-import { rememberBounds, savedBounds } from './window-bounds.ts';
+import { openRemembered } from './window-bounds.ts';
 
 const CHAT_SIZE = { width: 400, height: 600 };
 const CHAT_MIN = { width: 320, height: 360 };
@@ -777,25 +777,23 @@ export function createChat(o: ChatOptions) {
       return;
     }
     // 닫을 때 크기는 늘 기억한다. 자리는 사용자가 옮긴 적이 있을 때만 그 자리, 아니면 펫 옆 (window-bounds.ts)
-    const saved = savedBounds('chat', CHAT_MIN);
-    const size = saved ? { width: saved.width, height: saved.height } : CHAT_SIZE;
-    const placed = saved?.x !== undefined && saved.y !== undefined;
-    win = new BrowserWindow({
-      ...(placed ? saved : placeNear(near, size)),
-      title: t('chat.title', { name: petName() }),
-      minWidth: CHAT_MIN.width,
-      minHeight: CHAT_MIN.height,
-      show: false,
-      // 맥은 제목 표시줄을 내용과 합쳐 한 장처럼 보이게 한다. 창 이동은 머리줄을 잡고 한다.
-      ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
-      webPreferences: {
-        preload: join(import.meta.dirname, '../preload/index.cjs'),
-        additionalArguments: ['--jj-window=chat', langArg()],
-        sandbox: true,
-        contextIsolation: true,
+    win = openRemembered('chat', {
+      size: CHAT_SIZE,
+      min: CHAT_MIN,
+      place: (size) => placeNear(near, size),
+      options: {
+        title: t('chat.title', { name: petName() }),
+        show: false,
+        // 맥은 제목 표시줄을 내용과 합쳐 한 장처럼 보이게 한다. 창 이동은 머리줄을 잡고 한다.
+        ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
+        webPreferences: {
+          preload: join(import.meta.dirname, '../preload/index.cjs'),
+          additionalArguments: ['--jj-window=chat', langArg()],
+          sandbox: true,
+          contextIsolation: true,
+        },
       },
     });
-    rememberBounds(win, 'chat', placed);
     win.once('ready-to-show', () => showWindow(win));
     win.on('closed', () => {
       win = undefined;

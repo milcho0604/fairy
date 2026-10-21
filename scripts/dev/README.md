@@ -12,6 +12,7 @@ OUT=/tmp/jj-shots node scripts/dev/audit-pet.mjs    # 페어리와 말풍선 위
 node scripts/dev/pet-moves.mjs                     # 움직임과 입력이 겹칠 때: 뛰다 잡기, 걷다 크기 바꾸기, 끄는 동안 온 답, 친구 자리, 숨긴 동안 온 친구 (PASS/FAIL)
 OUT=/tmp/jj-shots node scripts/dev/panel.mjs        # 패널: 할 일 넣기, 끝내기, 되돌리기, 밥, 빠른 입력
 OUT=/tmp/jj-shots node scripts/dev/settings.mjs     # 설정 창: 이름, 크기, 돌아다니기
+OUT=<레포 밖 폴더> node scripts/dev/panel-resize.mjs  # 패널 크기 손잡이 (#144): 끌기, 범위, 기억, 화면 밖 값, 폭 320/360/560 넘침 (PASS/FAIL, 앱을 직접 띄우고 데이터 폴더를 지운다)
 OUT=/tmp/jj-shots PHOTO=<사진> node scripts/dev/maker.mjs  # 사진으로 페어리 만들기 전체
 ```
 

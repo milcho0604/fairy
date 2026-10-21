@@ -2,7 +2,7 @@ import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   app,
-  BrowserWindow,
+  type BrowserWindow,
   clipboard,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
@@ -81,7 +81,7 @@ import { readFileIn, writeFileAtomic } from './safe-file.ts';
 import { settings } from './settings.ts';
 import { drawStrip, drawStripLocal, type LocalStripDraw } from './sprite-gen.ts';
 import { readStarterWalk } from './starter-copy.ts';
-import { rememberBounds, savedBounds } from './window-bounds.ts';
+import { openRemembered } from './window-bounds.ts';
 
 /** 다듬은 펫 그림 크기 상한. 화면에서 512px 로 줄여 보내므로 이보다 크면 이상한 값이다. */
 const MAX_PNG_BYTES = 4 * 1024 * 1024;
@@ -1258,24 +1258,21 @@ export function createMaker(
     }
     target = next;
     // 닫을 때 크기와 자리를 기억해 다음에 그대로 연다. 처음이면 화면 가운데 (window-bounds.ts)
-    const min = { width: 460, height: 560 };
-    win = new BrowserWindow({
-      width: 560,
-      height: 660,
-      ...savedBounds('maker', min),
-      minWidth: min.width,
-      minHeight: min.height,
-      title: t('main.maker.title'),
-      show: false,
-      ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
-      webPreferences: {
-        preload: join(import.meta.dirname, '../preload/index.cjs'),
-        additionalArguments: ['--jj-window=maker', langArg()],
-        sandbox: true,
-        contextIsolation: true,
+    win = openRemembered('maker', {
+      size: { width: 560, height: 660 },
+      min: { width: 460, height: 560 },
+      options: {
+        title: t('main.maker.title'),
+        show: false,
+        ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
+        webPreferences: {
+          preload: join(import.meta.dirname, '../preload/index.cjs'),
+          additionalArguments: ['--jj-window=maker', langArg()],
+          sandbox: true,
+          contextIsolation: true,
+        },
       },
     });
-    rememberBounds(win, 'maker', true);
     win.once('ready-to-show', () => showWindow(win));
     win.on('closed', () => {
       download?.abort();
