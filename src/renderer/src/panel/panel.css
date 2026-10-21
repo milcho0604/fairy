@@ -615,11 +615,18 @@ li.pin-end {
   text-overflow: ellipsis;
 }
 
-.toast {
+/* 알림 쌓는 자리: 되돌릴 수 있는 알림이 여럿이면 아래(가장 나중 것)부터 위로 쌓는다 (#145) */
+.toast-stack {
   position: absolute;
   left: 12px;
   right: 12px;
   bottom: 56px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.toast {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -667,12 +674,20 @@ li.pin-end {
   cursor: pointer;
 }
 
-/* 빠른 입력 */
+/* 빠른 입력: 입력 줄 아래에 결과나 붙여 넣은 목록 줄이 붙는다 (창 높이는 줄 높이를 더해 맞춘다, quick.tsx) */
 .quick {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 14px;
+}
+
+.quick-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 14px;
+  min-width: 0;
 }
 
 .quick input {
@@ -699,14 +714,21 @@ li.pin-end {
     0 6px 20px rgba(0, 0, 0, 0.18);
 }
 
-.quick-msg {
-  /* 어디에 언제로 넣었는지. 길면 줄여서 입력칸 자리를 남긴다 (전체는 풀이에) */
-  flex: none;
-  max-width: 55%;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+/* 넣은 결과, 붙여 넣은 목록 (입력 줄 아래) */
+.quick-extra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
   font-size: 12.5px;
+}
+
+/* 어디에 언제로 넣었는지. 줄을 바꿔 다 보인다 (예전엔 말줄임으로 잘렸다) */
+.quick-msg {
+  flex: 1 1 160px;
+  min-width: 0;
+  overflow-wrap: anywhere;
   color: var(--ok);
 }
 
@@ -714,25 +736,86 @@ li.pin-end {
   color: var(--error);
 }
 
-/* 오후로 읽은 일정을 오전으로 (오전, 오후 없는 1~7시) */
-.quick-am {
+.quick-actions,
+.quick-move {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.quick-actions {
+  margin-left: auto;
+}
+
+.quick-move {
+  margin: 0;
+  min-width: 0;
+  padding: 0 0 0 8px;
+  border: 0;
+  border-left: 1px solid var(--line);
+}
+
+.quick-btn {
   flex: none;
-  padding: 3px 9px;
+  padding: 3px 10px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: transparent;
-  color: var(--accent);
+  color: var(--ink);
   font-size: 12px;
+  white-space: nowrap;
   cursor: pointer;
 }
 
-.quick-am:hover {
+.quick-btn:hover,
+.quick-btn:focus-visible {
   border-color: var(--accent);
 }
 
-/* 넣은 결과 글이 뜨면 칸이 좁아져 안내 글이 글자 중간에서 잘린다. 결과 글이 있는 동안은 안내 글을 감춘다 */
-.quick:has(.quick-msg) input::placeholder {
-  color: transparent;
+.quick-btn.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--bg);
+}
+
+/* 오후로 읽은 일정을 오전으로 (오전, 오후 없는 1~7시) */
+.quick-btn.quick-am {
+  color: var(--accent);
+}
+
+/* 붙여 넣은 여러 줄: 넣을 목록 */
+.quick-paste {
+  display: block;
+}
+
+.quick-paste-title {
+  margin: 0 0 4px;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.quick-paste ul {
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+}
+
+.quick-paste li {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.quick-paste .quick-paste-more {
+  font-style: italic;
+}
+
+.quick-paste .quick-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-left: 0;
 }
 
 /* ---- v1: 탭, 오늘, 메모, 일정 ---- */
@@ -1721,8 +1804,8 @@ li:is(.todo, .event) .tools .extra .due.none {
 .panel
   > :is(header, .fullness, .life, .hint, .tabs, footer)
   :is(button, input, select, textarea, a, [title], [tabindex]),
-.panel > .toast,
-.quick.card-window input {
+.panel > .toast-stack,
+.quick.card-window :is(input, button) {
   -webkit-app-region: no-drag;
 }
 

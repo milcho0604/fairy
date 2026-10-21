@@ -1,5 +1,6 @@
 import { createDraftBox } from '../shared/draft-store.ts';
 import type { OutgoingImage } from '../shared/ipc.ts';
+import { type KeptToast, liveToasts, parseToasts } from '../shared/toast-keep.ts';
 import { emptyViewKeep, freshViewKeep, parseViewKeep, type ViewKeep } from '../shared/view-keep.ts';
 
 // 쓰던 글과 보던 위치의 메모리 보관소 (이슈 #145). 패널, 빠른 입력, 채팅 창이 같이 쓴다.
@@ -21,8 +22,22 @@ export function setView(raw: unknown, now = Date.now()): void {
   view = parseViewKeep(raw, now);
 }
 
+let toasts: KeptToast[] = [];
+
+/** 되돌리기 알림 (패널을 벗어나도 남은 시간 동안). 사라질 때가 지난 것은 뺀다 */
+export function getToasts(now = Date.now()): KeptToast[] {
+  toasts = liveToasts(toasts, now);
+  return toasts;
+}
+
+/** 패널이 보낸 알림 목록을 다시 읽어 보관한다 */
+export function setToasts(raw: unknown, now = Date.now()): void {
+  toasts = parseToasts(raw, now);
+}
+
 /** 시험용: 모두 비운다 */
 export function clearKept(): void {
   drafts.clearAll();
   view = emptyViewKeep();
+  toasts = [];
 }

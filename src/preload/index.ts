@@ -454,7 +454,7 @@ if (kind === 'panel' || kind === 'quick') {
   const panel: PanelBridge = {
     platform: process.platform,
     snapshot: () => ipcRenderer.invoke(PANEL.snapshot),
-    add: (text: string) => ipcRenderer.invoke(PANEL.add, text),
+    add: (text, opts) => ipcRenderer.invoke(PANEL.add, text, opts),
     complete: (id: number) => ipcRenderer.invoke(PANEL.complete, id),
     undo: (id: number) => ipcRenderer.invoke(PANEL.undo, id),
     update: (id, patch) => ipcRenderer.send(PANEL.update, id, patch),
@@ -485,6 +485,8 @@ if (kind === 'panel' || kind === 'quick') {
     viewGet: () => ipcRenderer.sendSync(PANEL.viewGet),
     viewSet: (view) => ipcRenderer.send(PANEL.viewSet, view),
     setKeepOpen: (on) => ipcRenderer.send(PANEL.setKeepOpen, on),
+    toastsGet: () => ipcRenderer.sendSync(PANEL.toastsGet),
+    toastsSet: (list) => ipcRenderer.send(PANEL.toastsSet, list),
     onState: (listener) => {
       ipcRenderer.on(PANEL.state, (_e, state: PanelState) => listener(state));
     },

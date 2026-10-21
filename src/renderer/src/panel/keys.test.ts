@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { escClosesWindow, isEsc, type ModKeyLike, tabByKey, tabStepByKey, undoByKey } from './keys.ts';
+import {
+  escClosesWindow,
+  isEsc,
+  type ModKeyLike,
+  tabByKey,
+  tabStepByKey,
+  undoByKey,
+  undoFieldText,
+} from './keys.ts';
 
 test('한글 조합 중 Esc 는 아무것도 하지 않는다 (isComposing, keyCode 229 둘 다)', () => {
   assert.equal(isEsc({ key: 'Escape', isComposing: true, keyCode: 27 }), false);
@@ -60,4 +68,20 @@ test('패널 탭 줄 ← → Home End: 끝에서 돌아 들어가고, 다른 키
   assert.equal(tabStepByKey('ArrowDown', 1, 5), undefined);
   assert.equal(tabStepByKey('Enter', 1, 5), undefined);
   assert.equal(tabStepByKey('ArrowRight', 0, 0), undefined);
+});
+
+test('입력칸의 쓰던 글 판정: 가장 나중 일이 이긴다 (알림 되돌리기 vs 글 되돌리기)', () => {
+  // 알림이 없으면 예전 규칙: 글이 있거나 쓴 적이 있으면 글 되돌리기
+  assert.equal(undoFieldText('메일', undefined, undefined), '메일');
+  assert.equal(undoFieldText('', 100, undefined), 'typed');
+  assert.equal(undoFieldText('', undefined, undefined), '');
+  // 적고 Enter 로 넣었다: 칸은 비었고 알림이 글보다 나중 -> 알림 되돌리기
+  assert.equal(undoFieldText('', 100, 200), '');
+  // 알림 뒤에 다시 글을 적었다 -> 글 되돌리기
+  assert.equal(undoFieldText('새 글', 300, 200), '새 글');
+  assert.equal(undoFieldText('', 300, 200), 'typed');
+  // 칸에 글을 적은 적 없고 알림이 있다 -> 알림
+  assert.equal(undoFieldText('붙여 넣은 글', undefined, 200), '');
+  // 같은 밀리초면 글이 먼저(알림이 나중이 아니다)
+  assert.equal(undoFieldText('x', 200, 200), 'x');
 });

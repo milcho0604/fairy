@@ -1796,7 +1796,7 @@ ready
           sayShort(t('pet.url.event', { title: ev?.title ?? a.text, when }));
         } else if (added.kind === 'todo')
           sayShort(t('pet.url.todo', { title: store.get(added.id)?.title ?? a.text }));
-        else sayShort(t('pet.url.todos', { n: added.todos + added.events }));
+        else if (added.kind === 'many') sayShort(t('pet.url.todos', { n: added.todos + added.events }));
         if (added.ok) petLife.activity('todo');
         return;
       }

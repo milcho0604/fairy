@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { dueLabel, hasDeadlineWord, parseQuickTodo } from './quick-add.ts';
+import { dueLabel, hasDeadlineWord, memoBody, parseQuickTodo } from './quick-add.ts';
 
 const today = '2026-10-31';
 
@@ -241,4 +241,21 @@ test('반복 요일은 한국어와 영어가 같은 날: 오늘이 그 요일�
   assert.equal(parseQuickTodo('회의는 월요일마다 하기', today).repeat, null);
   // 요일 없는 "매주" 는 그대로 오늘
   assert.equal(parseQuickTodo('매주 주간 보고', today).due, today);
+});
+
+test('"메모:" 머리말은 메모 본문으로 (빠른 입력)', () => {
+  assert.equal(memoBody('메모: 와이파이 비번 abc'), '와이파이 비번 abc');
+  assert.equal(memoBody('메모:와이파이'), '와이파이');
+  assert.equal(memoBody('  메모 ： 전각 쌍점도'), '전각 쌍점도');
+  assert.equal(memoBody('memo: wifi password'), 'wifi password');
+  assert.equal(memoBody('MEMO:x'), 'x');
+  assert.equal(memoBody('메모:'), '');
+});
+
+test('머리말이 아닌 메모, memo 는 메모가 아니다', () => {
+  assert.equal(memoBody('내일 메모: 회의'), undefined);
+  assert.equal(memoBody('메모하기'), undefined);
+  assert.equal(memoBody('memo 정리하기'), undefined);
+  assert.equal(memoBody('note: call mom'), undefined);
+  assert.equal(memoBody('보고서 쓰기'), undefined);
 });

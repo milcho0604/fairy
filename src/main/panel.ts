@@ -58,7 +58,7 @@ import {
 } from '../shared/panel-place.ts';
 import type { DoingSet } from '../shared/pet-status.ts';
 import { isPinKind } from '../shared/pin.ts';
-import { hasDeadlineWord } from '../shared/quick-add.ts';
+import { hasDeadlineWord, memoBody } from '../shared/quick-add.ts';
 import { quickHeight } from '../shared/quick-fit.ts';
 import {
   parseTodoLine,
@@ -74,7 +74,7 @@ import { COIN, FULLNESS, localDay, STEP_MAX, type TodoStore } from '../shared/to
 import { emptyViewKeep } from '../shared/view-keep.ts';
 import { weekSummary } from '../shared/week.ts';
 import { devRendererUrl } from './dev-url.ts';
-import { drafts, getView, setView } from './drafts.ts';
+import { drafts, getToasts, getView, setToasts, setView } from './drafts.ts';
 import { focusWindow } from './focus.ts';
 import { langArg } from './lang.ts';
 import { localTime, minuteOfDay, startOfDay, startOfDayAfter } from './planner.ts';
@@ -95,6 +95,12 @@ const MOVE_SAVE_MS = 400;
 const RESIZE_GAP_MS = 17;
 /** 크기가 멈춘 뒤 이만큼 지나면 적는다 */
 const RESIZE_SAVE_MS = 400;
+
+/** 한 줄 넣기 옵션 (빠른 입력, 분류 바꾸기) */
+interface AddOpts {
+  quick?: boolean;
+  as?: 'todo';
+}
 
 export interface PanelOptions {
   store: TodoStore;
@@ -313,9 +319,14 @@ export function createPanel(o: PanelOptions) {
   ipcMain.handle(PANEL.snapshot, (e) => (ours(e) ? state() : undefined));
   ipcMain.handle(
     PANEL.add,
-    saving((e, text: string): PanelAddResult => {
+    saving((e, text: string, rawOpts?: unknown): PanelAddResult => {
       if (!ours(e) || typeof text !== 'string') return { ok: false };
       const now = Date.now();
+      const raw = (typeof rawOpts === 'object' && rawOpts !== null ? rawOpts : {}) as Record<string, unknown>;
+      const opts: AddOpts = {
+        quick: raw.quick === true,
+        ...(raw.as === 'todo' ? { as: 'todo' as const } : {}),
+      };
       // 여러 줄을 붙여 넣으면 줄마다 하나씩 (할 일이나 일정). 빈 줄은 건너뛴다
       const lines = text
         .split(/\r?\n/)
@@ -326,15 +337,21 @@ export function createPanel(o: PanelOptions) {
           return { ok: false, error: t('panel.add.tooMany', { n: ADD_MANY_MAX }) };
         let todos = 0;
         let events = 0;
+        let notes = 0;
+        const items: { kind: 'todo' | 'event' | 'note'; id: number }[] = [];
         for (const line of lines) {
-          const r = addLine(line, now);
-          if (r.ok && r.kind === 'event') events++;
-          else if (r.ok) todos++;
+          const r = addLine(line, now, opts);
+          if (!r.ok) continue;
+          if (r.kind === 'event') events++;
+          else if (r.kind === 'note') notes++;
+          else todos++;
+          if (r.kind === 'event' || r.kind === 'note' || r.kind === 'todo')
+            items.push({ kind: r.kind, id: r.id });
         }
-        if (todos + events === 0) return { ok: false, error: t('panel.add.empty') };
-        return { ok: true, kind: 'many', todos, events };
+        if (todos + events + notes === 0) return { ok: false, error: t('panel.add.empty') };
+        return { ok: true, kind: 'many', todos, events, ...(notes ? { notes } : {}), items };
       }
-      return addLine(text, now);
+      return addLine(text, now, opts);
     }),
   );
   /**
@@ -348,7 +365,20 @@ export function createPanel(o: PanelOptions) {
     if (!found) return undefined;
     return { ok: false as const, error: t('panel.event.duplicate', { title: found.title }) };
   }
-  function addLine(line: string, now: number): PanelAddResult {
+  /** 빠른 입력의 "메모:" 머리말: 메모로 넣는다 */
+  function addMemo(body: string, now: number): PanelAddResult {
+    if (!body) return { ok: false, error: t('panel.add.empty') };
+    const note = o.notes.add({ body, source: 'me' }, now);
+    push();
+    return { ok: true, kind: 'note', id: note.id };
+  }
+  function addLine(line: string, now: number, opts: AddOpts = {}): PanelAddResult {
+    // 분류 바꾸기("할 일로"): 시각이 있어도 할 일로 넣는다
+    if (opts.as === 'todo') return addTodo(line, now);
+    if (opts.quick) {
+      const memo = memoBody(line);
+      if (memo !== undefined) return addMemo(memo, now);
+    }
     // "30분 뒤 알려 줘", "in 30 minutes": 지금부터 N분 뒤에 울리는 알림 (마감 시각이 그때인 할 일, snooze.ts)
     const later = parseRemindIn(line);
     if (later) return addRemindIn(later.title || t('snooze.remindTitle'), later.minutes, now);
@@ -976,6 +1006,12 @@ export function createPanel(o: PanelOptions) {
   });
   ipcMain.on(PANEL.viewSet, (e, view: unknown) => {
     if (isPanel(e)) setView(view);
+  });
+  ipcMain.on(PANEL.toastsGet, (e) => {
+    e.returnValue = isPanel(e) ? getToasts() : [];
+  });
+  ipcMain.on(PANEL.toastsSet, (e, list: unknown) => {
+    if (isPanel(e)) setToasts(list);
   });
   ipcMain.on(PANEL.setKeepOpen, (e, on: unknown) => {
     if (isPanel(e) && typeof on === 'boolean') o.setPanelPin(on);

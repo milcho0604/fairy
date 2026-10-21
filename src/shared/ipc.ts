@@ -41,6 +41,7 @@ import type { SettingsTab } from './settings-tabs.ts';
 import type { BuyResult, CoinResetResult, CoinResetScope, ShopState } from './shop.ts';
 import type { SoundKind } from './sound.ts';
 import type { PetChoice, StarterId } from './starter-pets.ts';
+import type { KeptToast } from './toast-keep.ts';
 import type { Repeat, Todo, TrashItem } from './todo-store.ts';
 import type { NoteLook, TogetherLook } from './together.ts';
 import type { ViewKeep } from './view-keep.ts';
@@ -1017,6 +1018,9 @@ export const PANEL = {
   viewSet: 'panel:view-set',
   /** 패널 고정 핀 켜고 끄기 (#145) */
   setKeepOpen: 'panel:set-keep-open',
+  /** 되돌리기 알림 보관 (#145): 패널을 벗어나도 남은 시간 동안 다시 열면 보인다 */
+  toastsGet: 'panel:toasts-get',
+  toastsSet: 'panel:toasts-set',
   // 메모 (v1)
   noteGet: 'panel:note-get',
   noteAdd: 'panel:note-add',
@@ -1181,8 +1185,17 @@ export type PanelAddResult =
       past?: true;
       monthly?: number;
     }
-  /** 여러 줄을 붙여 넣어 줄마다 넣었다 */
-  | { ok: true; kind: 'many'; todos: number; events: number };
+  /** 빠른 입력의 "메모:" 머리말: 메모로 넣었다 */
+  | { ok: true; kind: 'note'; id: number }
+  /** 여러 줄을 붙여 넣어 줄마다 넣었다. items: 넣은 것들(전체 되돌리기), notes: 메모로 넣은 수 (빠른 입력만) */
+  | {
+      ok: true;
+      kind: 'many';
+      todos: number;
+      events: number;
+      notes?: number;
+      items: { kind: 'todo' | 'event' | 'note'; id: number }[];
+    };
 
 /** 새 일정과 시간이 겹치는 일정 (shared/event-overlap.ts) */
 export interface EventClash {
@@ -1208,8 +1221,11 @@ export type NoteAiKind = 'todos' | 'summary';
 export interface PanelBridge {
   platform: NodeJS.Platform;
   snapshot(): Promise<PanelState>;
-  /** 한 줄 입력(빠른 입력과 같은 규칙)으로 할 일을 더한다 */
-  add(text: string): Promise<PanelAddResult>;
+  /**
+   * 한 줄 입력(빠른 입력과 같은 규칙)으로 할 일을 더한다.
+   * opts.quick: 빠른 입력이다("메모:" 머리말은 메모로). opts.as: 'todo' 면 시각이 있어도 할 일로 (분류 바꾸기)
+   */
+  add(text: string, opts?: { quick?: boolean; as?: 'todo' }): Promise<PanelAddResult>;
   /** 받은 코인 수. 이미 끝냈거나 없는 할 일이면 null (빠르게 여러 번 누른 체크) */
   complete(id: number): Promise<number | null>;
   undo(id: number): Promise<number>;
@@ -1261,6 +1277,9 @@ export interface PanelBridge {
   viewSet(view: ViewKeep): void;
   /** 패널 고정 핀 (#145) */
   setKeepOpen(on: boolean): void;
+  /** 되돌리기 알림 (#145) */
+  toastsGet(): KeptToast[];
+  toastsSet(list: KeptToast[]): void;
   onState(listener: (state: PanelState) => void): void;
   noteGet(id: number): Promise<Note | undefined>;
   /** 새 메모. 만든 메모를 돌려준다. text 를 주면 그 글로 시작한다 (찾기 칸에 적은 글로 메모 만들기) */

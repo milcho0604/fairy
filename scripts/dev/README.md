@@ -13,7 +13,7 @@ node scripts/dev/pet-moves.mjs                     # 움직임과 입력이 겹�
 OUT=/tmp/jj-shots node scripts/dev/panel.mjs        # 패널: 할 일 넣기, 끝내기, 되돌리기, 밥, 빠른 입력
 OUT=/tmp/jj-shots node scripts/dev/settings.mjs     # 설정 창: 이름, 크기, 돌아다니기
 OUT=<레포 밖 폴더> node scripts/dev/panel-resize.mjs  # 패널 크기 손잡이 (#144): 끌기, 범위, 기억, 화면 밖 값, 폭 320/360/560 넘침 (PASS/FAIL, 앱을 직접 띄우고 데이터 폴더를 지운다)
-OUT=<레포 밖 폴더> node scripts/dev/keep-drafts.mjs  # 쓰던 글과 보던 위치 (#145): 패널 고정 핀, 일정, 빠른 입력, 할 일, 채팅 글과 그림의 보관과 복원, 채팅 실패 뒤 질문 복원과 다시 묻기(가짜 claude), 탭 전환 뒤 검색어, 날짜, 스크롤, 가로 넘침 (PASS/FAIL, ONLY=panel|chat 으로 한쪽만, 데이터 폴더와 HOME 은 임시 폴더라 끝나면 지운다)
+OUT=<레포 밖 폴더> node scripts/dev/keep-drafts.mjs  # 쓰던 글과 보던 위치 (#145): 패널 고정 핀, 일정, 빠른 입력, 할 일, 채팅 글과 그림의 보관과 복원, 채팅 실패 뒤 질문 복원과 다시 묻기(가짜 claude), 탭 전환 뒤 검색어, 날짜, 스크롤, 가로 넘침 (PASS/FAIL, ONLY=panel|quick|chat 으로 한쪽만, 데이터 폴더와 HOME 은 임시 폴더라 끝나면 지운다)
 OUT=/tmp/jj-shots PHOTO=<사진> node scripts/dev/maker.mjs  # 사진으로 페어리 만들기 전체
 ```
 

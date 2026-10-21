@@ -59,6 +59,21 @@ export function undoByKey(e: ModKeyLike, mac: boolean, fieldText: string | undef
 }
 
 /**
+ * 커서가 있는 입력칸의 "쓰던 글" 판정(undoByKey 의 fieldText). 가장 나중 일이 이긴다 (#145):
+ * 입력칸에서 Enter 로 넣어 알림이 떴으면(알림이 마지막 글자 입력보다 나중) 칸이 비었든 아니든 알림을 되돌린다.
+ * 알림 뒤에 다시 글을 적었으면 글 되돌리기(운영체제 몫). 알림이 없으면 예전처럼 글이 있거나 쓴 적이 있으면 글.
+ * typedAt: 이 칸에 마지막으로 글을 적은 때(포커스를 받은 뒤, 없으면 undefined), toastAt: 되돌릴 알림 중 가장 나중 것이 뜬 때
+ */
+export function undoFieldText(
+  value: string,
+  typedAt: number | undefined,
+  toastAt: number | undefined,
+): string {
+  if (toastAt !== undefined && (typedAt === undefined || toastAt > typedAt)) return '';
+  return value || (typedAt !== undefined ? 'typed' : '');
+}
+
+/**
  * 탭 줄에서 ← → Home End (aria tablist 관례, 설정 창 탭과 같다): 지금 탭 자리(i)에서 갈 자리. 탭 키가 아니면 undefined.
  * 끝에서는 반대 끝으로 돌아 들어간다
  */

@@ -21,7 +21,6 @@ export function useChatDraftSync(text: string, images: OutgoingImage[], ready: b
   /** 처음 받아 온 값은 다시 보내지 않는다 */
   const first = useRef(true);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: text 가 바뀔 때만
   useEffect(() => {
     if (!ready) return;
     dirty.current.text = true;
@@ -34,7 +33,6 @@ export function useChatDraftSync(text: string, images: OutgoingImage[], ready: b
     else textTimer.current = setTimeout(send, TEXT_MS);
   }, [text, ready]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: images 가 바뀔 때만
   useEffect(() => {
     if (!ready) return;
     if (first.current) {
