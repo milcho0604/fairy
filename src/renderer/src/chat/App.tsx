@@ -18,16 +18,32 @@ import { AiManager } from './AiManager.tsx';
 import { ChatList } from './ChatList.tsx';
 import { useChatDraftSync } from './draft.ts';
 import { InlineGuide, InstallGuide } from './InstallGuide.tsx';
-import { toOutgoing } from './images.ts';
+import { splitFiles, toOutgoing } from './images.ts';
 import { chatKey, lastQuestion } from './keys.ts';
 import { Markdown } from './Markdown.tsx';
 import { ProviderPicker } from './ProviderPicker.tsx';
 import { isReady, statusText } from './providerStatus.ts';
 import { LookStatus, LookToggle, useChatLook } from './ScreenLook.tsx';
-import { contentKey, conversationChanged, isNearBottom, jumpBehavior, scrollDecision } from './scroll.ts';
+import {
+  answerTopScroll,
+  arrivedWhole,
+  contentKey,
+  conversationChanged,
+  isLongAnswer,
+  isNearBottom,
+  jumpBehavior,
+  scrollDecision,
+} from './scroll.ts';
 import { singleFlight } from './single-flight.ts';
 import { TicketBar, TicketReport } from './TicketBar.tsx';
 import { UsageBar } from './UsageBar.tsx';
+import {
+  announceStep,
+  ELAPSED_ANNOUNCE_SEC,
+  ELAPSED_SHOW_AFTER_SEC,
+  elapsedOf,
+  WAIT_NOTE_MS,
+} from './wait.ts';
 
 const bridge = window.jjakkungChat;
 const MAX_IMAGES = 4;
@@ -66,13 +82,24 @@ export function App() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // 아래 따라가기 (scroll.ts). following: 사용자가 맨 아래를 보고 있다. unseen: 위를 읽는 사이 새것이 왔다
   const following = useRef(true);
-  const [unseen, setUnseen] = useState(false);
+  /** 아래에 볼 것이 있다: 'new' 위를 읽는 사이 새 메시지가 왔다, 'more' 긴 답이 한 번에 와서 위쪽에 맞췄다 */
+  const [unseen, setUnseen] = useState<false | 'new' | 'more'>(false);
+  /** 답을 기다리는 중 Enter 를 눌렀다는 안내 (잠깐만 보인다) */
+  const [waitNote, setWaitNote] = useState<false | 'text' | 'empty'>(false);
+  const waitNoteTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   /** 내가 막 보냈다: 읽던 자리와 상관없이 내 질문과 답을 보여 준다 */
   const sentRef = useRef(false);
   /** "새 메시지" 단추로 부드럽게 내려가는 중 (그사이 스크롤 사건으로 따라가기를 끄지 않게) */
   const jumping = useRef(false);
+  /** 위쪽에 맞춘 긴 답: 창 크기가 바뀌어 자리가 밀려도 답 위쪽을 지킨다 (사용자가 직접 굴리면 푼다) */
+  const pinned = useRef<{ id: string; set: number }>(undefined);
   const jumpTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const seen = useRef<{ messages?: ChatState['messages']; key: string; provider?: string }>({ key: '' });
+  const seen = useRef<{
+    messages?: ChatState['messages'];
+    key: string;
+    provider?: string;
+    last?: { id: string; status?: string };
+  }>({ key: '' });
   const readFilesRef = useRef<(files: FileList | File[]) => void>(() => {});
   /** 창 전체 단축키(Esc, Cmd/Ctrl+N)가 지금 화면 값을 보게 매번 바꿔 끼운다 */
   const globalKeyRef = useRef<(e: globalThis.KeyboardEvent) => void>(() => {});
@@ -108,17 +135,22 @@ export function App() {
     if (!downloadingModel) void refreshStatus(false);
   }, [downloadingModel, refreshStatus]);
 
+  /** 안내는 덮지 않고 이어 붙인다 (그림이 넘친 안내와 그림 아닌 파일 안내가 함께 나올 수 있다) */
+  const addNotice = useCallback((msg: string) => {
+    setNotice((cur) => (cur.includes(msg) ? cur : cur ? `${cur} ${msg}` : msg));
+  }, []);
+
   const addImages = useCallback(
     async (incoming: OutgoingImage[]) => {
       setImages((prev) => {
         const next = [...prev, ...incoming].slice(0, MAX_IMAGES);
         if (prev.length + incoming.length > MAX_IMAGES)
-          setNotice(t('chat.tooManyImages', { max: MAX_IMAGES }));
+          addNotice(t('chat.tooManyImages', { max: MAX_IMAGES }));
         return next;
       });
       focusInput();
     },
-    [focusInput],
+    [focusInput, addNotice],
   );
 
   useEffect(() => {
@@ -201,6 +233,7 @@ export function App() {
     () => () => {
       clearTimeout(undoTimer.current);
       clearTimeout(jumpTimer.current);
+      clearTimeout(waitNoteTimer.current);
     },
     [],
   );
@@ -242,6 +275,12 @@ export function App() {
     });
   }, [state]);
 
+  // 답이 끝나면 대기 중 Enter 안내를 거둔다
+  const hasPending = !!state?.pendingId;
+  useEffect(() => {
+    if (!hasPending) setWaitNote(false);
+  }, [hasPending]);
+
   // Esc, Cmd/Ctrl+N 은 입력칸 밖(답 단추 등)에 있어도 듣는다
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => globalKeyRef.current(e);
@@ -260,15 +299,41 @@ export function App() {
     const switched =
       (before.messages !== state.messages && conversationChanged(before.messages, state.messages)) ||
       (before.provider !== undefined && before.provider !== state.provider);
-    const decision = scrollDecision({ following: following.current, grew, sent: sentRef.current, switched });
+    const last = state.messages.at(-1);
+    // 한 번에 온 긴 답은 끝이 아니라 위쪽에 맞춘다 (스트리밍하지 않는 AI). 조각으로 오는 답과 짧은 답은 그대로 따라간다
+    const answerEl =
+      last && arrivedWhole(before.last, last)
+        ? el.querySelector<HTMLElement>(`[data-msg-id="${CSS.escape(last.id)}"]`)
+        : null;
+    const longAnswer = !!answerEl && isLongAnswer(answerEl.offsetHeight, el.clientHeight);
+    const decision = scrollDecision({
+      following: following.current,
+      grew,
+      sent: sentRef.current,
+      switched,
+      longAnswer,
+    });
     if (decision === 'follow') {
       following.current = true;
       jumping.current = false;
       el.scrollTop = el.scrollHeight;
       setUnseen(false);
-    } else if (decision === 'notify') setUnseen(true);
+    } else if (decision === 'top' && answerEl) {
+      following.current = false;
+      jumping.current = false;
+      const top = answerEl.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop;
+      el.scrollTop = answerTopScroll(el, top);
+      pinned.current = { id: answerEl.dataset.msgId ?? '', set: el.scrollTop };
+      setUnseen('more');
+    } else if (decision === 'notify') setUnseen((u) => u || 'new');
+    if (grew && decision !== 'top') pinned.current = undefined;
     if (grew) sentRef.current = false;
-    seen.current = { messages: state.messages, key, provider: state.provider };
+    seen.current = {
+      messages: state.messages,
+      key,
+      provider: state.provider,
+      last: last && { id: last.id, status: last.status },
+    };
   });
 
   // 다시 그리기 없이 크기만 바뀌어도(늦게 뜨는 그림, 5초 뒤 "오래 걸려" 안내, 창 크기) 아래를 보고 있었으면 아래에 둔다
@@ -278,6 +343,14 @@ export function App() {
       const el = listRef.current;
       // 단추로 내려가는 중이어도 갈 곳은 맨 아래라 바로 맞춘다 (창 크기가 바뀌면 부드러운 스크롤이 도중에 멈춘다)
       if (el && following.current) el.scrollTop = el.scrollHeight;
+      else if (el && pinned.current) {
+        const a = el.querySelector<HTMLElement>(`[data-msg-id="${CSS.escape(pinned.current.id)}"]`);
+        if (a) {
+          const top = a.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop;
+          el.scrollTop = answerTopScroll(el, top);
+          pinned.current.set = el.scrollTop;
+        }
+      }
     });
     resizeObs.current = ro;
     return () => ro.disconnect();
@@ -380,6 +453,13 @@ export function App() {
     // 한글 조합 중 Enter 는 글자를 확정하는 키라 보내지 않는다.
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
       e.preventDefault();
+      // 답을 기다리는 중의 Enter 는 말없이 사라지지 않게 이유를 알린다 (쓴 글은 그대로)
+      if (pending) {
+        setWaitNote(text.trim() ? 'text' : 'empty');
+        clearTimeout(waitNoteTimer.current);
+        waitNoteTimer.current = setTimeout(() => setWaitNote(false), WAIT_NOTE_MS);
+        return;
+      }
       void send();
       return;
     }
@@ -420,12 +500,18 @@ export function App() {
   };
 
   const readFiles = async (files: FileList | File[]) => {
-    const list = [...files].filter((f) => f.type.startsWith('image/'));
+    const { images: list, others } = splitFiles(files);
+    if (list.length === 0 && others.length === 0) return;
+    // 새로 놓은 것이 지난 안내를 대신한다 (정상으로 붙었는데 옛 안내가 남지 않게)
+    setNotice('');
+    // 그림이 아닌 파일은 말없이 버리지 않고 못 받는 까닭을 알린다 (그림이 섞여 있으면 그림은 붙인다)
+    if (others.length > 0)
+      addNotice(t('chat.notImage', { name: others[0]?.name ?? '', more: others.length - 1 }));
     if (list.length === 0) return;
     try {
       addImages(await Promise.all(list.map((f) => toOutgoing(f))));
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : String(err));
+      addNotice(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -434,6 +520,10 @@ export function App() {
   const onPaste = (e: ClipboardEvent) => {
     const files = [...e.clipboardData.files];
     if (files.some((f) => f.type.startsWith('image/'))) {
+      e.preventDefault();
+      readFiles(files);
+    } else if (files.length > 0 && !e.clipboardData.getData('text/plain')) {
+      // 파인더에서 복사한 문서 파일 같은 것: 글이 같이 없으면 아무 일도 안 일어나는 대신 까닭을 알린다
       e.preventDefault();
       readFiles(files);
     }
@@ -594,6 +684,8 @@ export function App() {
           aria-label={t('chat.a11yLog', { name: petName })}
           onScroll={(e) => {
             const near = isNearBottom(e.currentTarget);
+            if (pinned.current && Math.abs(e.currentTarget.scrollTop - pinned.current.set) > 2)
+              pinned.current = undefined;
             // 단추로 내려가는 중의 중간 자리는 사용자가 올린 것이 아니다
             if (jumping.current && !near) return;
             jumping.current = false;
@@ -668,9 +760,10 @@ export function App() {
             className="new-below"
             // 눌러도 입력칸의 커서를 뺏지 않는다
             onMouseDown={(e) => e.preventDefault()}
+            title={unseen === 'more' ? t('chat.moreBelowTitle') : undefined}
             onClick={jumpToBottom}
           >
-            {t('chat.newBelow')}
+            {unseen === 'more' ? t('chat.moreBelow') : t('chat.newBelow')}
             <span aria-hidden="true"> ↓</span>
           </button>
         </div>
@@ -690,6 +783,11 @@ export function App() {
           </div>
         )}
         {notice && <p className="notice">{notice}</p>}
+        {waitNote && pending && (
+          <p className="notice" role="status">
+            {waitNote === 'empty' ? t('chat.waitEnterEmpty') : t('chat.waitEnter')}
+          </p>
+        )}
         {imagesBlocked && <p className="notice">{t('chat.imagesBlocked', { label: spec.label })}</p>}
         {images.length > 0 && (
           <div className="attachments">
@@ -854,7 +952,7 @@ function Message({
     );
   }
   return (
-    <div className="msg pet">
+    <div className="msg pet" data-msg-id={m.id}>
       <PetFace />
       <div className="body">
         <span className="who">
@@ -874,15 +972,15 @@ function Message({
           )}
         </span>
         {m.status === 'waiting' && (
-          <Thinking streams={m.provider === 'claude'} label={label} petName={petName} />
+          <Thinking streams={m.provider === 'claude'} label={label} petName={petName} since={m.since} />
         )}
         {m.text && (
           // 오는 중인 답은 화면 읽기에서 숨긴다 (조각마다 읽지 않게). 끝나면 보이고 한 번 알린다
           <div className="bubble" dir="auto" aria-hidden={m.status === 'streaming' || undefined}>
             <Markdown text={m.text} onLink={bridge.openLink} />
-            {m.status === 'done' && !m.game && <AnswerActions id={m.id} text={m.text} />}
           </div>
         )}
+        {m.text && m.status === 'done' && !m.game && <AnswerActions id={m.id} text={m.text} />}
         {/* 대화권 답마다 신고 (따로 확인한 뒤 그 대화만 운영자에게) */}
         {m.status === 'done' && ticket && m.text && <TicketReport id={m.id} />}
         {/* 규칙 답 아래: 맨 위 할 일로 집중 시작, 패널 열기 */}
@@ -1043,12 +1141,34 @@ function snippet(text: string): string {
   return plain.length > 40 ? `${plain.slice(0, 40)}…` : plain;
 }
 
-function Thinking({ streams, label, petName }: { streams: boolean; label: string; petName: string }) {
+function Thinking({
+  streams,
+  label,
+  petName,
+  since,
+}: {
+  streams: boolean;
+  label: string;
+  petName: string;
+  /** 기다리기 시작한 시각 (메인 상태). 창을 다시 열어도 이어서 센다 */
+  since?: number;
+}) {
   const [slow, setSlow] = useState(false);
+  const [ms, setMs] = useState(() => (since ? Date.now() - since : 0));
   useEffect(() => {
     const t = setTimeout(() => setSlow(true), 5000);
-    return () => clearTimeout(t);
-  }, []);
+    const start = since ?? Date.now();
+    const tick = setInterval(() => setMs(Date.now() - start), 1000);
+    return () => {
+      clearTimeout(t);
+      clearInterval(tick);
+    };
+  }, [since]);
+  const { min, sec } = elapsedOf(ms);
+  const total = min * 60 + sec;
+  const elapsed = min > 0 ? t('chat.waitMin', { m: min, s: sec }) : t('chat.waitSec', { n: sec });
+  // 화면 읽기 프로그램에는 30초마다 한 번만 (매초 바뀌는 숫자를 읽지 않게)
+  const step = announceStep(ms);
   return (
     <div className="bubble thinking" aria-live="polite">
       <span className="dots" aria-hidden="true">
@@ -1057,6 +1177,18 @@ function Thinking({ streams, label, petName }: { streams: boolean; label: string
         <i />
       </span>
       {t('chat.thinking', { name: petName })}
+      {total >= ELAPSED_SHOW_AFTER_SEC && (
+        <span className="elapsed" aria-hidden="true">
+          {elapsed}
+        </span>
+      )}
+      {step >= ELAPSED_ANNOUNCE_SEC && (
+        <span className="sr-only">
+          {step >= 60
+            ? t('chat.waitMin', { m: Math.floor(step / 60), s: step % 60 })
+            : t('chat.waitSec', { n: step })}
+        </span>
+      )}
       {slow && !streams && <span className="hint">{t('chat.thinkingSlow', { label })}</span>}
     </div>
   );

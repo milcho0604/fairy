@@ -7,6 +7,15 @@ export const ko = {
   'chat.defaultPetName': '페어리',
   'chat.loading': '불러오는 중',
   'chat.tooManyImages': (v: { max: number }) => `그림은 한 번에 ${v.max}장까지 붙일 수 있어.`,
+  'chat.notImage': (v: { name: string; more: number }) =>
+    `${v.name}${v.more > 0 ? ` 외 ${v.more}개` : ''}는 그림이 아니라 붙일 수 없어. 그림(png, jpg 같은 파일)만 받아. 글이나 문서는 내용을 복사해서 입력칸에 붙여 넣어 줘.`,
+  'chat.waitEnter':
+    '답을 기다리는 중이라 아직 보내지 못해. 기다리거나 멈춤(Esc)을 누른 뒤에 보내 줘. 쓴 글은 그대로 있어.',
+  'chat.waitEnterEmpty': '답을 기다리는 중이야. 다음 질문은 답이 오거나 멈춤(Esc)을 누른 뒤에 보내 줘.',
+  'chat.waitSec': (v: { n: number }) => `${v.n}초째 기다리는 중`,
+  'chat.waitMin': (v: { m: number; s: number }) => `${v.m}분 ${v.s}초째 기다리는 중`,
+  'chat.moreBelow': '아래로',
+  'chat.moreBelowTitle': '긴 답이야. 아래로 내려서 이어 읽어',
   'chat.newChat': '새 대화',
   'chat.resetDone': '새 대화를 시작했어.',
   'chat.undo': '되돌리기',
@@ -133,6 +142,7 @@ export const ko = {
   'chat.list.ephemeralBlocked': '기록 안 남김을 켠 동안에는 지난 대화를 열 수 없어.',
   'chat.list.busy': '답을 기다리는 동안에는 다른 대화를 열 수 없어.',
   'chat.list.openFailed': '이 대화를 열지 못했어.',
+  'chat.list.renameFailed': '이름을 바꾸지 못했어. 그 대화가 없어졌거나 저장이 안 됐어. 이름은 그대로야.',
   'chat.list.today': '오늘',
   'chat.list.yesterday': '어제',
   'chat.list.more': '더 보기 ({n})',
@@ -143,6 +153,16 @@ export const en: Translation<typeof ko> = {
   'chat.defaultPetName': 'fairy',
   'chat.loading': 'Loading',
   'chat.tooManyImages': (v) => `You can attach up to ${v.max} images at once.`,
+  'chat.notImage': (v) =>
+    `${v.name}${v.more > 0 ? ` and ${v.more} more can't be attached because they aren't images` : " can't be attached because it isn't an image"}. Only images (png, jpg, and so on) are accepted. For text or documents, copy the content and paste it into the box.`,
+  'chat.waitEnter':
+    "Still waiting for the answer, so it can't be sent yet. Wait, or press Stop (Esc) first. What you typed is still there.",
+  'chat.waitEnterEmpty':
+    'Still waiting for the answer. Send your next question once it arrives, or press Stop (Esc) first.',
+  'chat.waitSec': (v) => `Waiting ${v.n}s`,
+  'chat.waitMin': (v) => `Waiting ${v.m}m ${v.s}s`,
+  'chat.moreBelow': 'Scroll down',
+  'chat.moreBelowTitle': "It's a long answer. Scroll down to keep reading",
   'chat.newChat': 'New chat',
   'chat.resetDone': 'Started a new chat.',
   'chat.undo': 'Undo',
@@ -259,6 +279,8 @@ export const en: Translation<typeof ko> = {
   'chat.list.ephemeralBlocked': "Turn off Don't save to open past chats.",
   'chat.list.busy': "You can't open another chat while waiting for an answer.",
   'chat.list.openFailed': "Couldn't open this chat.",
+  'chat.list.renameFailed':
+    "Couldn't rename this chat. It may be gone, or saving failed. The name is unchanged.",
   'chat.list.today': 'Today',
   'chat.list.yesterday': 'Yesterday',
   'chat.list.more': 'Show more ({n})',

@@ -281,3 +281,10 @@ test('endsWithError: 마지막 줄이 오류 답일 때만 참 (잘 받은 답 �
   s = applyEvent(s, 'p3', { type: 'done', text: '또 답' }, 'n3');
   assert.equal(endsWithError(s), false);
 });
+
+test('답을 기다리기 시작한 시각이 기다리는 답에 남고 끝나도 그대로 지워지지 않는다', () => {
+  let s = addQuestion(initialChat('claude'), { user: 'u1', pet: 'p1' }, '안녕', [], 1234);
+  assert.equal(s.messages.at(-1)?.since, 1234);
+  s = applyEvent(s, 'p1', { type: 'delta', text: '반' }, 'n');
+  assert.equal(s.messages.at(-1)?.since, 1234);
+});
