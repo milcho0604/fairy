@@ -751,8 +751,16 @@ describe('버그 사냥 뒤 보강 (#154)', () => {
     );
   });
 
-  test('강제 안내문은 하나만 남는다 (새로 넣으면 옛 force-* 가 지워진다)', async () => {
+  test('강제 안내문은 하나만 남는다 (버전 저장이 만든 옛 force-판만 지우고, 공지 폼으로 만든 강제 공지는 남긴다)', async () => {
     await fresh();
+    const manual = await admin.act('/admin/notices', {
+      ...noticeBody,
+      id: 'force-mac-security',
+      kind: 'force',
+      versions: '<0.4.0',
+      confirm: 'yes',
+    });
+    assert.ok(manual.ok, manual.text);
     const msg = {
       msg_kind: 'force',
       msg_title_ko: '강제',
@@ -767,6 +775,6 @@ describe('버그 사냥 뒤 보강 (#154)', () => {
       (await admin.act('/admin/versions', { ...lv({ minVersion: '0.5.0' }), ...msg, confirm: 'yes' })).ok,
     );
     const forces = ((await doc())?.notices ?? []).filter((n) => n.kind === 'force').map((n) => n.id);
-    assert.deepEqual(forces, ['force-0.5.0']);
+    assert.deepEqual(forces, ['force-mac-security', 'force-0.5.0']);
   });
 });
