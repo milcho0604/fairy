@@ -74,6 +74,8 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
   /** 본문까지 찾은 결과 (메인에서). 새 결과가 올 때까지 앞 결과를 둔다 */
   const [hits, setHits] = useState<NoteHit[]>();
   const searchSeq = useRef(0);
+  /** 목록에서 메모를 누른 차례 (onOpen) */
+  const openTurn = useRef(0);
   // 목록 스크롤 위치 (#145). 메모를 열었다 돌아와도, 탭을 갔다 와도 그 자리
   const listRef = useRef<HTMLUListElement>(null);
   useKeepScroll(listRef, !split && (open || resume) ? 'noteEditor' : 'note');
@@ -200,10 +202,12 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
             current={split && open?.id === n.id}
             onOpen={async () => {
               if (open?.id === n.id) return;
+              // 누를 때마다 번호를 매겨 마지막 누름만 연다 (빠르게 B, A, C 를 누르면 늦게 돌아온 A 가 C 를 덮지 않게)
+              const turn = ++openTurn.current;
               // 같은 메모의 앞 편집기가 아직 저장 중이면 끝난 뒤 읽는다 (방금 쓴 글이 보이게)
               await saveGate.settle(n.id);
               const full = await bridge.noteGet(n.id);
-              if (full) setOpen(full);
+              if (full && turn === openTurn.current) setOpen(full);
             }}
           />
         ))}

@@ -17,6 +17,7 @@ import {
 } from '../../../shared/todo-store.ts';
 import './assist.css';
 import { useDraft } from './draft.ts';
+import { dueToSend, minuteToSend } from './due-input.ts';
 import { CheckIcon, PlayIcon, RepeatIcon, SearchIcon, StarIcon, StepsIcon } from './icons.tsx';
 import { isEsc, takeEsc } from './keys.ts';
 import { MoreRow } from './more.tsx';
@@ -724,6 +725,18 @@ function TodoDetail({
 }) {
   const [title, setTitle] = useState(todo.title);
   const [reminding, setReminding] = useState(false);
+  // 날짜, 시각 칸은 React 가 값을 쥐지 않는다(비제어): 치는 도중에 값이 ''(덜 찬 칸)로 오면 제어 칸은 달, 일 조각까지 지워 버린다.
+  // 메인에서 돌아온 값은 칸을 쓰는 중이 아닐 때만 넣고, 칸을 떠날 때 저장된 값으로 맞춘다
+  const dateRef = useRef<HTMLInputElement>(null);
+  const timeRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const el = dateRef.current;
+    if (el && document.activeElement !== el) el.value = todo.due ?? '';
+  }, [todo.due]);
+  useEffect(() => {
+    const el = timeRef.current;
+    if (el && document.activeElement !== el) el.value = timeValue(todo.dueMin);
+  }, [todo.dueMin]);
   const sheetId = useId();
   const stepsId = useId();
   // 메인에서 제목이 바뀌면(다른 곳에서 고침) 쓰는 중이 아닐 때 따라간다
@@ -746,6 +759,16 @@ function TodoDetail({
   const commitRef = useRef(commit);
   commitRef.current = commit;
   useEffect(() => () => commitRef.current(), []);
+  // 0.5초 멈춤을 기다리는 사이 창을 닫거나(beforeunload) 숨겨도(메인이 알린다) 제목을 바로 보낸다
+  useEffect(() => {
+    const now = () => commitRef.current();
+    window.addEventListener('beforeunload', now);
+    const off = bridge.onHiding(now);
+    return () => {
+      window.removeEventListener('beforeunload', now);
+      off();
+    };
+  }, []);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
   const due = todo.due ? dueLabel(todo.due, today) : undefined;
@@ -782,22 +805,43 @@ function TodoDetail({
         <div className="detail-due">
           <input
             type="date"
+            ref={dateRef}
             className="detail-date"
             aria-label={t('panel.todo.dueDate')}
-            value={todo.due ?? ''}
-            onChange={(e) => bridge.update(todo.id, { due: e.target.value || null })}
+            defaultValue={todo.due ?? ''}
+            onChange={(e) => {
+              // 치는 도중 값('' , 0002-10-22)은 보내지 않는다. 지우기는 "마감 없애기" 단추로만
+              const v = dueToSend(e.target.value);
+              if (v !== undefined && v !== todo.due) bridge.update(todo.id, { due: v });
+            }}
+            onBlur={(e) => {
+              e.currentTarget.value = todo.due ?? '';
+            }}
           />
           {todo.due && (
             <input
               type="time"
+              ref={timeRef}
               className="detail-time"
               aria-label={t('remind.dueTime')}
-              value={timeValue(todo.dueMin)}
+              defaultValue={timeValue(todo.dueMin)}
               onChange={(e) => {
-                const m = /^(\d{2}):(\d{2})/.exec(e.target.value);
-                bridge.update(todo.id, { dueMin: m ? Number(m[1]) * 60 + Number(m[2]) : null });
+                const m = minuteToSend(e.target.value);
+                if (m !== undefined && m !== todo.dueMin) bridge.update(todo.id, { dueMin: m });
+              }}
+              onBlur={(e) => {
+                e.currentTarget.value = timeValue(todo.dueMin);
               }}
             />
+          )}
+          {todo.due && todo.dueMin !== null && (
+            <button
+              type="button"
+              className="ghost small"
+              onClick={() => bridge.update(todo.id, { dueMin: null })}
+            >
+              {t('remind.clearTime')}
+            </button>
           )}
           {todo.due && (
             <button

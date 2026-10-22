@@ -400,9 +400,14 @@ const body = async () => {
     const openOf = () => main(`JSON.stringify(__jj.store.list(Date.now()).open.map((t) => t.id))`).then((j) => JSON.parse(j));
     const rowTitle = (part) => `[...document.querySelectorAll('li.todo .title-text')].find((e) => e.textContent.includes(${JSON.stringify(part)}))`;
     const pickRow = async (part) => {
-      const ok = await wh.click(rowTitle(part));
+      // 제목 글자의 왼쪽 위 끝을 누른다 (제목이 두 줄로 접히면 가운데는 줄 사이 빈틈이다)
+      await wh.ev(`(() => { const e = ${rowTitle(part)}; e?.scrollIntoView({ block: 'center', behavior: 'instant' }); return !!e; })()`);
+      await sleep(150);
+      const at = await wh.ev(`(() => { const e = ${rowTitle(part)}; if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.x + 8, y: r.y + 8 }; })()`);
+      if (!at) return false;
+      await wh.clickAt(at.x, at.y);
       await sleep(250);
-      return ok;
+      return true;
     };
     const setValue = (sel, v) =>
       wh.ev(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return false; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(e, ${JSON.stringify(v)}); e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
@@ -541,6 +546,48 @@ const body = async () => {
     await key('Escape', 'Escape', 27);
     await sleep(250);
     check('키보드: Esc 가 목록의 그 줄로 돌아온다', (await wh.ev(`document.activeElement?.closest('li.todo')?.dataset.id`)) === firstId);
+
+    // 날짜, 시각 칸을 키보드로 고치는 도중 (버그잡이 163-1): 덜 찬 값이 마감, 시각, 알림을 지우면 안 된다
+    const keyUp = (k, code, vk, text) =>
+      wh.send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, windowsVirtualKeyCode: vk, ...(text ? { text } : {}) }).then(() =>
+        wh.send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code, windowsVirtualKeyCode: vk }),
+      );
+    await pickRow(tx('빨래', 'laundry'));
+    // 반복 할 일은 마감을 없앨 수 없다(저장소 규칙): 반복을 끄고 시험한다
+    await main(`__jj.store.update(${ids.laundry}, { dueMin: 600, repeat: null }, Date.now()); 1`);
+    await sleep(400);
+    const dBefore = await todoOf(ids.laundry);
+    await main(`(() => { globalThis.__dueLog = []; const s = __jj.store; if (!s.__upd) { s.__upd = s.update; s.update = (id, p, now) => { globalThis.__dueLog.push(JSON.stringify(p)); return s.__upd(id, p, now); }; } return 1; })()`);
+    await wh.ev(`document.querySelector('.detail-date').focus(); 1`);
+    await keyUp('Backspace', 'Backspace', 8);
+    await sleep(500);
+    const dMid = await todoOf(ids.laundry);
+    check('날짜 칸 연도를 Backspace 로 지운 도중에도 마감, 시각, 알림이 그대로다', dMid.due === dBefore.due && dMid.dueMin === 600 && dMid.reminds.length === dBefore.reminds.length && dBefore.reminds.length > 0, JSON.stringify([dMid.due, dMid.dueMin, dMid.reminds]));
+    // 칸 순서는 언어마다 다르다(en 은 월, 일, 연): 연도가 끝까지 찰 때까지 한 번 더 친다
+    for (const d of '20272027') await keyUp(d, `Digit${d}`, 48 + Number(d), d);
+    await sleep(800);
+    const dAfter = await todoOf(ids.laundry);
+    const sent = JSON.parse(await main('JSON.stringify(globalThis.__dueLog)'));
+    check('치는 도중 값(마감 null, 연도 1000 미만)은 메인에 한 번도 안 보낸다', !sent.some((x) => /"due":null/.test(x) || /"due":"0/.test(x)), JSON.stringify(sent));
+    check('칸을 다 치면(칸 순서는 언어마다 다르다) 그때 마감이 바뀌고 시각과 알림은 남는다', /^\d{4}-\d{2}-\d{2}$/.test(dAfter.due ?? '') && dAfter.due !== dBefore.due && dAfter.dueMin === 600, JSON.stringify([dAfter.due, dAfter.dueMin, dAfter.reminds, await wh.ev(`document.querySelector('.detail-date')?.value`), sent]));
+    check('치는 칸이 돌아온 값에 덮이지 않고 포커스가 남아 있다', (await wh.ev(`document.activeElement?.classList.contains('detail-date')`)) === true);
+    await wh.ev(`document.querySelector('.detail-time').focus(); 1`);
+    await keyUp('Backspace', 'Backspace', 8);
+    await sleep(500);
+    const tMid = await todoOf(ids.laundry);
+    const sent2 = JSON.parse(await main('JSON.stringify(globalThis.__dueLog)'));
+    check('시각 칸을 Backspace 로 비운 도중에도 시각이 안 지워진다 (null 을 보내지 않는다)', tMid.dueMin === 600 && tMid.due === dAfter.due && !sent2.some((x) => /"dueMin":null/.test(x)), JSON.stringify([tMid.due, tMid.dueMin]));
+    await wh.ev(`document.activeElement.blur(); 1`);
+    await sleep(300);
+    check('칸을 떠나면 저장된 값으로 돌아온다 (시각 10:00)', (await wh.ev(`document.querySelector('.detail-time').value`)) === '10:00');
+    await wh.click(`document.querySelector('.detail-due .ghost')`);
+    await sleep(500);
+    check('"시각 지우기" 단추로만 시각이 지워진다', (await todoOf(ids.laundry)).dueMin === null);
+    await wh.click(`[...document.querySelectorAll('.detail-due .ghost')].find((b) => b.textContent === ${JSON.stringify(tx('마감 없애기', 'Clear due date'))})`);
+    await sleep(500);
+    check('"마감 없애기" 단추로만 마감이 지워진다', (await todoOf(ids.laundry)).due === null, JSON.stringify(await todoOf(ids.laundry)).slice(0, 160));
+    await setValue('.detail-date', todayStr);
+    await sleep(400);
 
     // 끝내기: 상세에서 끝내면 끝난 일이 되고 상세는 안내로
     await pickRow(tx('책 반납', 'book'));
@@ -762,6 +809,42 @@ const body = async () => {
     await sleep(600);
     check('지운 메모를 되돌리면 돌아온다', (await countNotes()) === n0);
 
+    // 메인의 메모 저장이 늦게 반영될 때(느린 디스크): 저장 요청을 받아 0.4초 뒤에 반영한다. 메인은 막히지 않아 그동안 다른 요청(메모 읽기)은 바로 답한다
+    const slowNotes = (on) =>
+      main(`(() => { const { ipcMain } = process.mainModule.require('electron'); const h = ipcMain._invokeHandlers; const k = 'panel:note-update'; if (!h.get(k)) throw new Error('핸들러 없음: ' + k); if (${on}) { if (!globalThis.__origUpd) { globalThis.__origUpd = h.get(k); h.set(k, async (e, ...a) => { await new Promise((r) => setTimeout(r, 1000)); return globalThis.__origUpd(e, ...a); }); } } else if (globalThis.__origUpd) { h.set(k, globalThis.__origUpd); delete globalThis.__origUpd; } return 1; })()`);
+    const pt = (sel) => wh.ev(`(() => { const e = (${sel}); const r = e.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+    const editorTitle = () => wh.ev(`document.querySelector('.note-editor .note-title-input')?.value ?? null`);
+    const clickRow = async (part) => {
+      const at = await pt(rowBtn(part));
+      await wh.clickAt(at.x, at.y);
+    };
+    // (j) 쓴 글이 아직 메인에 반영되기 전에 다른 메모를 눌렀다 곧바로 돌아온다: 기다림(SaveGate) 없이는 옛 글로 열린다
+    await openNote(nA);
+    await slowNotes(true);
+    const baseJ = await noteBody(N.a);
+    await type(' +x');
+    await clickRow(nB);
+    for (let i = 0; i < 40 && (await editorTitle()) !== nB; i++) await sleep(25);
+    check('(j) 다른 메모를 누르면 저장이 늦어도 그 메모는 바로 열린다', (await editorTitle()) === nB);
+    await clickRow(nA);
+    await sleep(250);
+    const mid = { title: await editorTitle(), body: await editorBody() };
+    check('(j) 앞 저장이 반영되기 전에 돌아오면 옛 글로 열리지 않는다 (기다렸다 열거나 방금 쓴 글로 연다)', !(mid.title === nA && mid.body === baseJ), JSON.stringify(mid));
+    await sleep(2000);
+    check('(j) 결국 돌아온 편집기는 방금 쓴 글(+x)이고 저장된 글과 같다', (await editorTitle()) === nA && (await editorBody()) === (await noteBody(N.a)) && (await noteBody(N.a)) === `${baseJ} +x`, JSON.stringify([await editorTitle(), await editorBody(), await noteBody(N.a)]));
+    await slowNotes(false);
+    // (k) B, A, C 를 기다림 없이 연달아 누르면 마지막 C 가 열린다 (A 는 앞 저장을 기다리느라 늦게 읽힌다)
+    await slowNotes(true);
+    await type(' +z');
+    await clickRow(nB);
+    for (let i = 0; i < 40 && (await editorTitle()) !== nB; i++) await sleep(25);
+    await clickRow(nA);
+    await sleep(30);
+    await clickRow(nC);
+    await sleep(2400);
+    check('(k) B, A, C 를 연달아 누르면 마지막에 누른 C 가 열린다 (늦게 읽힌 A 가 덮지 않는다)', (await editorTitle()) === nC, `열린 것 ${await editorTitle()}`);
+    await slowNotes(false);
+
     // 폭을 줄이면 한 열: 열려 있는 편집기와 쓰던 글이 그대로
     await openNote(nB);
     await wh.ev(`window.__ed = document.querySelector('.note-editor textarea'); 1`);
@@ -804,6 +887,29 @@ const body = async () => {
       check(`글 크기 1.5배 폭 1440: ${id} 가로 넘침 없음`, over.length === 0, over.join(', '));
     }
     await main('__jj.home.window.webContents.setZoomFactor(1); 1');
+    await setBounds(1100);
+    // 상세 칸 제목을 치고 0.5초 멈춤 안에 큰 창을 숨기거나 닫아도 글이 남는다 (버그잡이 163-2)
+    await tab('todo');
+    await pickRow(tx('빨래', 'laundry'));
+    const tBase = (await todoOf(ids.laundry)).title;
+    const typeTitle = async (text) => {
+      await wh.ev(`(() => { const e = document.querySelector('.detail-title'); e.focus(); e.setSelectionRange(e.value.length, e.value.length); return true; })()`);
+      await wh.type(text);
+    };
+    await typeTitle('H');
+    await main('__jj.home.hide(); 1');
+    await sleep(250);
+    check('상세 칸 제목을 치고 곧바로 큰 창을 숨기면 0.5초를 기다리지 않고 저장된다', (await todoOf(ids.laundry)).title === `${tBase}H`, (await todoOf(ids.laundry)).title);
+    await main('__jj.home.open(); 1');
+    await sleep(700);
+    wh = await page('home');
+    await typeTitle('C');
+    await main('__jj.home.window.close(); 1');
+    await sleep(900);
+    check('상세 칸 제목을 치고 곧바로 큰 창을 닫아도 저장된다', (await todoOf(ids.laundry)).title === `${tBase}HC`, (await todoOf(ids.laundry)).title);
+    await main("__jj.home.open('todo'); 1");
+    await waitFor(homeAlive);
+    await sleep(1200);
     await closeHome();
 
     // ---- 작은 패널 회귀: 320/360 좁음, 560 보통. 예전 그대로 한 열 ----
