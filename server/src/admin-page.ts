@@ -105,6 +105,7 @@ export type FlowPreview =
   | {
       action: 'grants/batch';
       fields: Record<string, string | string[]>;
+      nonce: string;
       grant: {
         targets: GrantTarget[];
         people: number;
@@ -119,6 +120,7 @@ export type FlowPreview =
   | {
       action: 'notices';
       fields: Record<string, string | string[]>;
+      nonce: string;
       notice: DocNotice;
       /** 같은 id 의 공지가 이미 있으면 그 제목 (바꾸기) */
       replaces: string | null;
@@ -744,6 +746,9 @@ const carry = (fields: Record<string, string | string[]>) =>
     )
     .join('');
 
+/** 확정 폼이 싣는 한 번만 쓰는 번호 */
+const flowKey = (nonce: string) => `<input type="hidden" name="flow" value="${esc(nonce)}">`;
+
 /** "고치기": 미리보기를 닫고 쓰던 값이 채워진 작성 화면으로 */
 const editButton = (csrf: string, action: string) =>
   `<form method="post" action="/admin/flow/cancel" class="inline">${hidden(csrf)}<input type="hidden" name="action" value="${esc(action)}"><button type="submit" class="ghost">고치기</button></form>`;
@@ -762,8 +767,18 @@ function grantsSection(v: AdminView): string {
           }${t.duplicate ? ' <span class="tag">중복</span>' : ''}</td><td>${esc(t.age ?? '')}</td></tr>`,
       )
       .join('');
+    const other =
+      v.grantRef && !g.targets.some((t) => t.ref === v.grantRef || t.code === v.grantRef)
+        ? `<div class="flash warn" role="status"><p>쓰던 지급이 있어요 (${esc(
+            g.targets
+              .map((t) => t.ref)
+              .join(', ')
+              .slice(0, 80),
+          )}). 이어서 할까요, 버리고 <code>${esc(v.grantRef)}</code> 로 새로 쓸까요?</p>
+<div class="row"><a class="button-link" href="${placeHref('users/grants')}">이어서</a> <form method="post" action="/admin/flow/cancel" class="inline">${hidden(v.csrf)}<input type="hidden" name="action" value="grants/batch"><input type="hidden" name="discard" value="1"><button type="submit">버리고 ${esc(v.grantRef)} 로</button></form></div></div>`
+        : '';
     return `<section class="flow"><h2>코인과 채팅 이용권 지급</h2>
-${flowSteps(3)}
+${other}${flowSteps(3)}
 <p class="hint">아직 보내지 않았어요. 아래 대상과 양을 확인하고 확정해 주세요.</p>
 <dl class="stats">
 <div><dt>받는 사람</dt><dd>${g.people}명</dd></div>
@@ -772,9 +787,9 @@ ${flowSteps(3)}
 <div><dt>쪽지 만료</dt><dd>${g.days}일</dd></div>
 </dl>
 <p>지급 사유 (이용자에게 보여요): <q>${esc(g.reason)}</q></p>
-<div class="table-scroll"><table class="targets"><thead><tr><th>적은 말</th><th>대상</th><th>나이 구분</th></tr></thead><tbody>${rows}</tbody></table></div>
+<table class="targets"><thead><tr><th>적은 말</th><th>대상</th><th>나이 구분</th></tr></thead><tbody>${rows}</tbody></table>
 ${g.blocked ? `<p class="flash error" role="alert">${esc(g.blocked)}</p>` : ''}
-<form method="post" action="/admin/grants/batch" class="grid">${formErr(v, 'grants/batch')}${hidden(v.csrf)}${carry(pv.fields)}
+<form method="post" action="/admin/grants/batch" class="grid">${formErr(v, 'grants/batch')}${hidden(v.csrf)}${flowKey(pv.nonce)}${carry(pv.fields)}
 ${confirmBox(`위 ${g.people}명에게 지급할게요`)}
 <button type="submit"${g.blocked ? ' disabled' : ''}>확정하고 지급 쪽지 보내기</button></form>
 ${editButton(v.csrf, 'grants/batch')}</section>`;
@@ -905,7 +920,7 @@ ${flowSteps(3)}
 </dl>
 <div class="previews">${noticePreview(n, 'ko')}${noticePreview(n, 'en')}</div>
 ${n.link ? `<p class="hint">링크: ${esc(n.link)}</p>` : ''}
-<form method="post" action="/admin/notices" class="grid">${formErr(v, 'notices')}${hidden(v.csrf)}${carry(pv.fields)}
+<form method="post" action="/admin/notices" class="grid">${formErr(v, 'notices')}${hidden(v.csrf)}${flowKey(pv.nonce)}${carry(pv.fields)}
 ${n.kind === 'force' ? `<label class="confirm"><input type="checkbox" name="confirm" value="yes" required> 강제 업데이트 글이에요. 홈페이지에 올라가요</label>` : ''}
 <button type="submit">확정하고 공지 저장</button></form>
 ${editButton(v.csrf, 'notices')}</section>`;
@@ -1249,6 +1264,10 @@ code { font-size: 12px; word-break: break-all; }
   nav.cells { position: fixed; z-index: 10; inset: auto 0 0 0; flex-direction: row; gap: 4px; padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); background: var(--card); border-top: 1px solid var(--line); }
   nav.cells a { flex: 1 1 0; text-align: center; padding: 10px 2px; font-size: 14px; }
   .subnav a { flex: 1 1 auto; text-align: center; }
+  table.targets thead { display: none; }
+  table.targets tr { display: block; border-bottom: 1px solid var(--line); padding: 6px 0; }
+  table.targets td { display: block; border: 0; padding: 2px 6px; }
+  table.targets td:first-child { color: var(--muted); }
   input, select, textarea, button { min-height: 42px; }
 }
 `;

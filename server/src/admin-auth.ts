@@ -35,7 +35,13 @@ export interface AdminSession {
    * 발행과 지급 흐름에서 작성을 마치고 대상 확인과 미리보기 단계에 있는 것 (쓰기 전). 새로 고쳐도 남고
    * 확정, 고치기, 30분 지남이 지운다
    */
-  preview?: { action: 'grants/batch' | 'notices'; fields: Record<string, string | string[]>; at: number };
+  preview?: {
+    action: 'grants/batch' | 'notices';
+    fields: Record<string, string | string[]>;
+    at: number;
+    /** 이 미리보기를 확정하는 한 번만 쓰는 번호 (확정 폼이 싣고 오고, 쓰면 지운다) */
+    nonce: string;
+  };
 }
 
 const hash = (s: string) => createHash('sha256').update(s).digest();

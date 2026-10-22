@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { randomInt } from 'node:crypto';
+import { randomBytes, randomInt } from 'node:crypto';
 import {
   BadRequestException,
   Controller,
@@ -865,6 +865,7 @@ export class AdminService {
   async previewOf(
     action: FlowAction,
     fields: Record<string, string | string[]>,
+    nonce: string,
   ): Promise<FlowPreview | undefined> {
     const f = fieldsOf(fields);
     try {
@@ -878,7 +879,7 @@ export class AdminService {
         `SELECT body FROM site_doc WHERE name = 'notices'`,
       );
       const old = doc.rows[0] ? readDoc(doc.rows[0].body).notices.find((x) => x.id === n.id) : undefined;
-      return { action, fields, notice: n, replaces: old ? old.title.ko : null };
+      return { action, fields, nonce, notice: n, replaces: old ? old.title.ko : null };
     }
     const g = grantInput({ ...f, confirm: 'yes' });
     const targets: GrantTarget[] = [];
@@ -934,6 +935,7 @@ export class AdminService {
     return {
       action,
       fields,
+      nonce,
       grant: {
         targets,
         people: seen.size,
@@ -1626,7 +1628,9 @@ export class AdminController {
       webLogOptionsOf(query),
     );
     if (s.preview && Date.now() - s.preview.at > PREVIEW_MS) s.preview = undefined;
-    const preview = s.preview ? await this.admin.previewOf(s.preview.action, s.preview.fields) : undefined;
+    const preview = s.preview
+      ? await this.admin.previewOf(s.preview.action, s.preview.fields, s.preview.nonce)
+      : undefined;
     if (s.preview && !preview) s.preview = undefined;
     const formPlace = flash?.form && isAdminAction(flash.form) ? ACTION_PLACES[flash.form] : undefined;
     html(res, 200, mainPage({ ...view, csrf: s.csrf, flash, flashPlace: formPlace, preview, grantRef }));
@@ -1645,7 +1649,12 @@ export class AdminController {
       res,
       async (s, f) => {
         this.admin.checkFlow(name, f);
-        s.preview = { action: name, fields: draftOf(f), at: Date.now() };
+        s.preview = {
+          action: name,
+          fields: draftOf(f),
+          at: Date.now(),
+          nonce: randomBytes(16).toString('hex'),
+        };
         return undefined;
       },
       () => '/admin',
@@ -1663,7 +1672,7 @@ export class AdminController {
       async (s, f) => {
         const kept = s.preview;
         s.preview = undefined;
-        if (kept && (f.action === undefined || kept.action === f.action))
+        if (kept && f.discard !== '1' && (f.action === undefined || kept.action === f.action))
           s.flash = { text: '', error: false, edit: true, form: kept.action, fields: kept.fields };
         return undefined;
       },
@@ -1720,7 +1729,16 @@ export class AdminController {
       res,
       async (s, f) => {
         // 쓰기를 시도하면 쓰던 미리보기는 끝난 것이다 (성공이면 결과 확인, 실패면 오류와 쓴 값이 작성 화면에)
-        if (isFlowAction(name)) s.preview = undefined;
+        if (isFlowAction(name)) {
+          // 미리보기에서 온 확정은 그 미리보기의 번호와 맞아야 하고, 한 번 쓰면 지워서 같은 미리보기를 두 번 확정할 수 없다
+          // (번호 없이 직접 보낸 요청은 이전처럼 받는다)
+          if (typeof f.flow === 'string' && f.flow !== '') {
+            const ok = s.preview?.action === name && s.preview.nonce === f.flow;
+            s.preview = undefined;
+            if (!ok)
+              throw new Refused('이미 확정했거나 닫힌 미리보기예요. 운영 기록에서 확인하고 다시 써 주세요');
+          } else s.preview = undefined;
+        }
         return (await this.admin.run(name, actorOf(s), f)).text;
       },
       (f) =>

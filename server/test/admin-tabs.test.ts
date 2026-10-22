@@ -445,3 +445,138 @@ describe('홈의 할 일과 신고 칸, 앱 개요 API', () => {
     assert.ok(some.body.log.every((l: { action: string }) => l.action === 'grant.batch'));
   });
 });
+
+/** 미리보기 화면의 확정 폼이 보내는 값 그대로 (숨은 칸 전부, 확인 칸은 체크) */
+function confirmFormOf(html: string, action: 'grants/batch' | 'notices'): Record<string, string> {
+  const m = new RegExp(`<form method="post" action="/admin/${action}"[^>]*>([\\s\\S]*?)</form>`).exec(
+    cellOf(html, action === 'notices' ? 'announce' : 'users'),
+  );
+  assert.ok(m, 'confirm form');
+  const out: Record<string, string> = {};
+  for (const x of (m[1] ?? '').matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)">/g))
+    if (x[1] !== 'csrf') out[x[1] as string] = (x[2] as string).replaceAll('&#10;', '\n');
+  out.confirm = 'yes';
+  return out;
+}
+
+describe('미리보기는 한 번만 확정된다 (두 탭, 뒤로 가기)', () => {
+  const g = (accounts: string, reason = '한 번만') => ({
+    accounts,
+    coins: '500',
+    chat_passes: '0',
+    days: '30',
+    reason,
+  });
+  const notes = async (id: string) =>
+    Number((await h.pool.query('SELECT count(*) AS n FROM inbox WHERE account_id = $1', [id])).rows[0].n);
+
+  test('같은 미리보기를 두 탭에서 확정하면 한 번만 지급하고 두 번째는 폼 근처에 안내한다', async () => {
+    const d = await newDevice('18+', '두탭');
+    await admin.post('/admin/grants/preview', g(d.code));
+    const tabA = confirmFormOf((await admin.page()).text, 'grants/batch');
+    const tabB = confirmFormOf((await admin.page()).text, 'grants/batch');
+    assert.ok(tabA.flow && tabA.flow === tabB.flow);
+    assert.equal((await admin.post('/admin/grants/batch', tabA)).status, 303);
+    assert.equal(await notes(d.id), 1);
+    const r2 = await admin.post('/admin/grants/batch', tabB);
+    assert.equal(r2.status, 303);
+    assert.equal(await notes(d.id), 1, '두 번째 확정은 지급하지 않는다');
+    const page = await admin.page();
+    assert.match(
+      cellOf(page.text, 'users'),
+      /<p class="flash error wide" role="alert" id="form-error">이미 확정했거나 닫힌 미리보기예요/,
+    );
+  });
+
+  test('성공 뒤 뒤로 가기로 같은 확정을 다시 보내도, 고치기로 닫은 옛 미리보기도 지급하지 않는다', async () => {
+    const d = await newDevice('18+', '뒤로');
+    await admin.post('/admin/grants/preview', g(d.code));
+    const first = confirmFormOf((await admin.page()).text, 'grants/batch');
+    await admin.post('/admin/grants/batch', first);
+    await admin.post('/admin/grants/batch', first);
+    assert.equal(await notes(d.id), 1);
+    // 옛 미리보기의 번호는 새 미리보기가 생겨도 쓸 수 없다
+    await admin.post('/admin/grants/preview', g(d.code, '둘째'));
+    const second = confirmFormOf((await admin.page()).text, 'grants/batch');
+    assert.notEqual(second.flow, first.flow);
+    await admin.post('/admin/grants/batch', first);
+    assert.equal(await notes(d.id), 1);
+    // 그 시도가 둘째 미리보기까지 닫으므로 둘째도 다시 만들어야 한다
+    await admin.post('/admin/grants/preview', g(d.code, '셋째'));
+    const third = confirmFormOf((await admin.page()).text, 'grants/batch');
+    await admin.post('/admin/flow/cancel', { action: 'grants/batch' });
+    await admin.post('/admin/grants/batch', third);
+    assert.equal(await notes(d.id), 1, '고치기로 닫은 미리보기는 확정할 수 없다');
+    // 번호 없이 직접 보낸 요청(API 같은 쓰임)은 이전처럼 받는다
+    assert.ok((await admin.act('/admin/grants/batch', { ...g(d.code, '직접'), confirm: 'yes' })).ok);
+    assert.equal(await notes(d.id), 2);
+  });
+
+  test('공지도 같은 미리보기를 두 번 확정할 수 없다', async () => {
+    const form = {
+      id: 'once-notice',
+      kind: 'info',
+      title_ko: '한 번',
+      title_en: 'Once',
+      body_ko: '본문',
+      body_en: 'Body',
+    };
+    await admin.post('/admin/notices/preview', form);
+    const tab = confirmFormOf((await admin.page()).text, 'notices');
+    assert.ok(tab.flow);
+    await admin.post('/admin/notices', tab);
+    await admin.post('/admin/notices', tab);
+    const logs = await h.pool.query(
+      `SELECT action FROM admin_log WHERE target = 'once-notice' AND action IN ('notice.create', 'notice.update')`,
+    );
+    assert.deepEqual(
+      logs.rows.map((x) => x.action),
+      ['notice.create'],
+    );
+    assert.match(cellOf((await admin.page()).text, 'announce'), /이미 확정했거나 닫힌 미리보기예요/);
+    assert.ok((await admin.act('/admin/notices/delete', { id: 'once-notice', confirm: 'once-notice' })).ok);
+  });
+
+  test('미리보기가 떠 있는데 다른 이용자의 지급 링크로 오면 이어서, 버리고 새로 중에 고르게 한다', async () => {
+    const a = await newDevice('18+', '쓰던대상');
+    const b = await newDevice('18+', '새로운대상');
+    await admin.post('/admin/grants/preview', g(a.code));
+    const page = await admin.page(`?account=${encodeURIComponent(b.code)}`);
+    const users = cellOf(page.text, 'users');
+    assert.match(users, /쓰던 지급이 있어요/);
+    assert.match(users, new RegExp(`버리고 ${b.code} 로`));
+    assert.match(users, /쓰던대상/);
+    assert.match(users, /href="\/admin#users\/grants">이어서/);
+    // 같은 대상의 링크이면 안내 없이 그대로
+    const same = cellOf((await admin.page(`?account=${encodeURIComponent(a.code)}`)).text, 'users');
+    assert.doesNotMatch(same, /쓰던 지급이 있어요/);
+    // 버리고 새로: 미리보기는 닫히고 새 대상이 작성 칸에 들어온다
+    const r = await api('POST', '/admin/flow/cancel', {
+      body: new URLSearchParams({ csrf: admin.csrf, action: 'grants/batch', discard: '1' }).toString(),
+      ip: admin.from,
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        cookie: admin.cookie,
+        origin: h.base,
+        referer: `${h.base}/admin?account=${encodeURIComponent(b.code)}`,
+      },
+    });
+    assert.equal(r.status, 303);
+    assert.equal(r.headers.get('location'), `/admin?account=${encodeURIComponent(b.code)}#users/grants`);
+    const after = cellOf((await admin.page(`?account=${encodeURIComponent(b.code)}`)).text, 'users');
+    assert.match(after, new RegExp(`>${b.code}</textarea>`));
+    assert.doesNotMatch(after, /쓰던 지급이 있어요|쓰던대상/);
+  });
+
+  test('좁은 폭에서 대상 확인 표는 가로 스크롤 없이 줄을 카드로 접는다', async () => {
+    const d = await newDevice('18+', '카드');
+    await admin.post('/admin/grants/preview', g(d.code));
+    const users = cellOf((await admin.page()).text, 'users');
+    assert.match(users, /<table class="targets">/);
+    assert.doesNotMatch(users, /table-scroll"><table class="targets"/);
+    await admin.post('/admin/flow/cancel', { action: 'grants/batch', discard: '1' });
+    await admin.page();
+    const css = (await api('GET', '/admin/admin.css')).text;
+    assert.match(css, /table\.targets td \{ display: block;/);
+  });
+});

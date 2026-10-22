@@ -491,6 +491,8 @@ async function webPart() {
     await submitAndWait('form[action="/admin/grants/preview"]');
     const prev = await ev(`(() => { const s = document.querySelector('#sub-users-grants'); return { step: s.querySelector('li[aria-current=step]')?.textContent, rows: s.querySelectorAll('table.targets tbody tr').length, people: s.querySelector('dl.stats dd')?.textContent, btnDisabled: s.querySelector('form[action="/admin/grants/batch"] button[type=submit]').disabled, hash: location.hash, composeGone: !s.querySelector('form[action="/admin/grants/preview"]') }; })()`);
     check(`[${w}] 대상 확인: 3단계, 받는 사람 2명 표, 확정 단추 사용 가능, 칸 주소 유지`, prev.step === '3. 미리보기' && prev.rows === 2 && prev.people === '2명' && !prev.btnDisabled && prev.hash === '#users/grants' && prev.composeGone, JSON.stringify(prev));
+    const cells = await ev(`[...document.querySelectorAll('#sub-users-grants table.targets tbody tr')].map((tr) => [...tr.children].map((td) => { const r = td.getBoundingClientRect(); return { l: Math.round(r.left), r: Math.round(r.right), t: td.textContent.trim().slice(0, 20) }; }))`);
+    check(`[${w}] 대상 확인 표: 대상 이름과 나이 칸이 화면 폭 안에 모두 보인다`, cells.length === 2 && cells.every((row) => row.every((c) => c.l >= 0 && c.r <= w)) && cells[0][1].t.includes('고양이'), JSON.stringify(cells));
     check(`[${w}] 대상 확인까지는 아무것도 보내지 않았다`, sql(`SELECT count(*) FROM inbox`) === notesBefore);
     await shotEl(`ia-flow-2-preview-${w}`, '#sub-users-grants');
     await c.send('Page.reload');
@@ -527,6 +529,29 @@ async function webPart() {
     check(`[${w}] 서버에 쪽지 둘과 운영 기록이 남았다`, Number(sql(`SELECT count(*) FROM inbox`)) - Number(notesBefore) === 2 && sql(`SELECT count(*) FROM admin_log WHERE action = 'grant.batch'`) === String(w === 1280 ? 1 : 2));
     await shotEl(`ia-flow-4-result-${w}`, '#sub-users-grants');
   }
+  // 미리보기가 떠 있을 때 다른 이용자의 지급 링크: 이어서, 버리고 새로
+  await nav(`${apiUrl}/admin#users/grants`);
+  await fill('form[action="/admin/grants/preview"]', { ...grant, accounts: 'F-ABCD-0001' });
+  await submitAndWait('form[action="/admin/grants/preview"]');
+  await nav(`${apiUrl}/admin?account=F-ABCD-0002#users/grants`);
+  const askOther = await ev(`document.querySelector('#sub-users-grants .flash.warn')?.textContent ?? ''`);
+  check('미리보기 중 다른 대상으로 오면 "이어서 / 버리고 F-ABCD-0002 로" 안내', askOther.includes('쓰던 지급이 있어요') && askOther.includes('버리고 F-ABCD-0002 로'), askOther);
+  await clickAndWait('#sub-users-grants form[action="/admin/flow/cancel"]');
+  const swapped = await ev(`({ val: document.querySelector('form[action="/admin/grants/preview"] textarea[name=accounts]')?.value, warn: !!document.querySelector('#sub-users-grants .flash.warn') })`);
+  check('버리고 새로: 작성 칸에 새 대상, 안내와 옛 미리보기는 없다', swapped.val === 'F-ABCD-0002' && !swapped.warn, JSON.stringify(swapped));
+  // 같은 미리보기를 두 탭에서 확정: 한 번만 지급
+  await nav(`${apiUrl}/admin#users/grants`);
+  await fill('form[action="/admin/grants/preview"]', { ...grant, accounts: 'F-ABCD-0003', chat_passes: '0' });
+  await submitAndWait('form[action="/admin/grants/preview"]');
+  const staleForm = await ev(`new URLSearchParams(new FormData(document.querySelector('form[action="/admin/grants/batch"]'))).toString() + '&confirm=yes'`);
+  const inboxBefore = sql(`SELECT count(*) FROM inbox`);
+  await ev(`document.querySelector('form[action="/admin/grants/batch"] input[type=checkbox]').checked = true; true`);
+  await submitAndWait('form[action="/admin/grants/batch"]');
+  // 뒤로 가기로 되돌아온 옛 확정 폼을 그대로 다시 보낸다 (CSP 가 fetch 를 막으니 폼으로)
+  await ev(`(() => { const f = document.createElement('form'); f.method = 'post'; f.action = '/admin/grants/batch'; for (const [k, v] of new URLSearchParams(${JSON.stringify(staleForm)})) { const i = document.createElement('input'); i.type = 'hidden'; i.name = k; i.value = v; f.append(i); } document.body.append(f); window.__replay = f; return true; })()`);
+  await submitAndWait('form[action="/admin/grants/batch"]:last-of-type');
+  const twice = await ev(`document.querySelector('#sub-users-grants #form-error')?.textContent ?? ''`);
+  check('같은 미리보기의 두 번째 확정(두 탭, 뒤로 가기)은 지급하지 않고 폼 근처에 안내', Number(sql(`SELECT count(*) FROM inbox`)) - Number(inboxBefore) === 1 && twice.includes('이미 확정했거나'), twice);
   // 막힘: 찾지 못한 계정
   await size(1280);
   await nav(`${apiUrl}/admin#users/grants`);
@@ -537,6 +562,8 @@ async function webPart() {
   check('찾지 못한 계정이 있으면 확정 단추가 막힌다', blocked.disabled && blocked.miss === 1 && blocked.text.includes('찾지 못한 계정'), JSON.stringify(blocked));
   await submitAndWait('form[action="/admin/flow/cancel"]');
 
+  // 운영자 세션 요청 상한(분당 120)을 넘지 않게 한 번 쉰다
+  await sleep(61_000);
   // ---- 8. 공지 흐름 + 오류와 성공이 누른 자리 가까이 ----
   const notice = { id: 'ia-notice', kind: 'important', title_ko: '점검 안내', title_en: 'Maintenance', body_ko: '내일 새벽 점검이 있어요', body_en: 'Maintenance tomorrow' };
   await nav(`${apiUrl}/admin#announce/notices`);
