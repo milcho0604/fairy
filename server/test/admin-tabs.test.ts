@@ -414,7 +414,7 @@ describe('홈의 할 일과 신고 칸, 앱 개요 API', () => {
   test('신고가 없으면 빈 상태, 있으면 건수가 홈 카드와 신고 칸에 보인다', async () => {
     let page = await admin.page();
     assert.match(cellOf(page.text, 'reports'), /접수된 신고가 없어요/);
-    assert.doesNotMatch(cellOf(page.text, 'home'), /접수된 신고가/);
+    assert.doesNotMatch(cellOf(page.text, 'home'), /처리하지 않은 신고가/);
     assert.equal((await overview()).body.reports.total, 0);
 
     const d = await newDevice('18+', '신고자');
@@ -423,9 +423,9 @@ describe('홈의 할 일과 신고 칸, 앱 개요 API', () => {
       [d.id],
     );
     page = await admin.page();
-    assert.match(cellOf(page.text, 'reports'), /접수된 신고가 <strong>1건<\/strong>/);
-    assert.match(cellOf(page.text, 'home'), /<a href="#reports">접수된 신고가 1건 있어요<\/a>/);
-    // 대화 본문은 아직 어느 화면에도 나오지 않는다
+    assert.match(cellOf(page.text, 'reports'), /href="\/admin\?report=\d+#reports"/);
+    assert.match(cellOf(page.text, 'home'), /<a href="#reports">처리하지 않은 신고가 1건 있어요<\/a>/);
+    // 대화 본문은 열어 보기 전에는 어느 화면에도 나오지 않는다 (신고 처리: admin-reports.test.ts)
     assert.doesNotMatch(page.text, /비밀질문본문|비밀답변본문/);
     const ov = await overview();
     assert.equal(ov.status, 200);

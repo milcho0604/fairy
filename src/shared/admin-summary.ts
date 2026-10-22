@@ -89,7 +89,9 @@ export function adminSummaryOf(raw: unknown): AdminSummary | undefined {
       targetName: text(r.targetName),
     });
   }
-  const reports = num(obj(o.reports)?.total) ?? todo.find((x) => x.kind === 'reports')?.n ?? 0;
+  // 신고 대기는 처리하지 않은 건수(pending). 옛 서버는 total(받은 전체)만 주고, 그보다 낡으면 확인할 것의 신고 줄에서 읽는다
+  const rep = obj(o.reports);
+  const reports = num(rep?.pending) ?? num(rep?.total) ?? todo.find((x) => x.kind === 'reports')?.n ?? 0;
   return { accounts, coins, passes, costMicros, budgetMicros, reports, todo, recent };
 }
 
