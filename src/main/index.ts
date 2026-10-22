@@ -1811,10 +1811,8 @@ ready
       takeArgv,
       bringBack: (why) => {
         // Dock 아이콘을 눌렀다(맥 activate): 큰 창이 열려 있거나 내려가 있으면 그 창을 되살린다
-        if (home && reopenTarget(why, home.look()) === 'home') {
-          home.open();
-          return;
-        }
+        // 큰 창을 앞으로 한 다음 숨은 펫, 집에 들어간 펫도 부른다
+        if (home && reopenTarget(why, home.look()) === 'home') home.open();
         log('pet', '다시 열기로 부름', why);
         pet.setHidden('user', false);
         friends.setHidden('user', false);

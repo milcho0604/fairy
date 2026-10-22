@@ -234,15 +234,13 @@ function onScreen(pid) {
 const near = (a, b) => Math.abs(a - b) <= 2;
 /** 펫 창이 지금 데스크톱 화면 목록에 자기 크기, 자리 그대로 있다 */
 async function petInPlace() {
-  const b = JSON.parse(await main('JSON.stringify(__jj.pet.bounds())'));
+  // 펫 창의 진짜 모습(BrowserWindow.getBounds: 말풍선 자리까지 든 창)을 받아, 그 자리와 크기가 맞는 떠 있는(layer>0, 항상 위) 창을 찾는다.
+  // 닫은 창은 시험 모드(투명)에서 목록에 남으므로(패널, 설정 창도 같다) 자리와 크기가 맞아야만 센다
+  const b = JSON.parse(await main('JSON.stringify(__jj.pet.win.getBounds())'));
   const wins = onScreen(app.pid);
   if (!wins) return { ok: undefined, why: '창 목록을 못 읽음' };
-  // 펫 창은 펫 그림보다 크다(말풍선 자리, 처음에는 252x222): 펫 가운데를 품는 작은(<400) 떠 있는 창(layer>0)이면 제자리다.
-  // 닫은 창은 시험 모드(투명)에서 목록에 남으므로(패널, 설정 창도 같다) 큰 창(layer 0)은 세지 않는다
-  const cx = b.x + b.width / 2;
-  const cy = b.y + b.height / 2;
-  const hit = wins.find((w) => w.layer > 0 && w.w < 400 && w.h < 400 && w.x <= cx && cx <= w.x + w.w && w.y <= cy && cy <= w.y + w.h);
-  return { ok: !!hit, why: hit ? '' : `펫 ${JSON.stringify(b)} 가 목록에 없음 (${JSON.stringify(wins.map((w) => [w.layer, w.x, w.y, w.w, w.h]))})` };
+  const hit = wins.find((w) => w.layer > 0 && near(w.x, b.x) && near(w.y, b.y) && near(w.w, b.width) && near(w.h, b.height));
+  return { ok: !!hit, why: hit ? '' : `펫 창 ${JSON.stringify(b)} 와 맞는 창이 목록에 없음 (${JSON.stringify(wins.map((w) => [w.layer, w.x, w.y, w.w, w.h]))})` };
 }
 const dockStats = async () => JSON.parse(await main('JSON.stringify(__jj.dock.stats())'));
 const homeAlive = () => main('!!__jj.home.window && !__jj.home.window.isDestroyed()');
@@ -379,10 +377,9 @@ const body = async () => {
     await main('__jj.home.window.setFullScreen(true); 1');
     await sleep(2500);
     const sFull = activeSpace();
-    const pFull = onScreen(app.pid);
-    const petB = JSON.parse(await main('JSON.stringify(__jj.pet.bounds())'));
+    const pFull = await petInPlace();
     check('6.1 큰 창 전체 화면: 새 데스크톱이 생겼다 (번호가 바뀜)', sFull !== undefined && sFull !== space0, `처음 ${space0}, 지금 ${sFull}`);
-    check('6.1 그 데스크톱 위에도 펫 창이 떠 있다 (전체 화면 위에 같이 지냄)', !!pFull?.some((w) => near(w.w, petB.width) && near(w.h, petB.height)), `창 ${pFull?.length}개`);
+    check('6.1 그 데스크톱 위에도 펫 창이 떠 있다 (전체 화면 위에 같이 지냄, 펫 창의 자리와 크기가 맞는 창)', pFull.ok === true, pFull.why);
     await main('__jj.home.window.setFullScreen(false); 1');
     await sleep(2500);
     const sBack = activeSpace();
