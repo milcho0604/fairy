@@ -46,7 +46,14 @@ import {
   type PolishReply,
   polishRequest,
 } from '../shared/note-polish.ts';
-import { NOTE_BODY_MAX, type NoteStore, notePreview, noteTitle, searchNotes } from '../shared/note-store.ts';
+import {
+  NOTE_BODY_MAX,
+  type NoteStore,
+  notePreview,
+  noteTitle,
+  searchNotes,
+  staleNoteWrite,
+} from '../shared/note-store.ts';
 import {
   clampPanelSize,
   defaultPanelBounds,
@@ -80,6 +87,7 @@ import { focusWindow } from './focus.ts';
 import { langArg } from './lang.ts';
 import { localTime, minuteOfDay, startOfDay, startOfDayAfter } from './planner.ts';
 import { readJson, removeJson, writeJson } from './store.ts';
+import { closesPanelFor, originOf, pickSurface } from './surface.ts';
 import { saveBounds, savedBounds } from './window-bounds.ts';
 
 /** 날이 바뀌었는지 보는 간격. 자정 뒤 이만큼 안에 패널이 새 날로 바뀐다 */
@@ -181,6 +189,8 @@ export interface PanelOptions {
 export function createPanel(o: PanelOptions) {
   let panel: BrowserWindow | undefined;
   let quick: BrowserWindow | undefined;
+  /** 큰 창 (#159). 지금은 만드는 곳이 없고, 생기면 registerHome 으로 알린다 */
+  let home: BrowserWindow | undefined;
   /** 기억한 패널 자리 (펫 왼쪽 위에서 떨어진 거리). 없으면 펫 옆 기본 자리 */
   let offset = parsePanelOffset(readJson(OFFSET_FILE));
   /**
@@ -189,6 +199,9 @@ export function createPanel(o: PanelOptions) {
    */
   const senders = new Set<Electron.WebContents>();
   const ours = (e: IpcMainEvent | IpcMainInvokeEvent) => senders.has(e.sender);
+  const homeContents = () => (home && !home.isDestroyed() ? home.webContents : undefined);
+  /** 지금 보이는 면: 큰 창이 있으면 큰 창, 없으면 패널 (src/main/surface.ts) */
+  const activeSurface = () => pickSurface(home, panel, (w) => !w.isDestroyed());
   /** 이번에 "새 메모"로 만든 것. 패널이 닫힐 때 아직 비어 있으면 지운다 (빈 메모가 쌓이지 않게) */
   const freshNotes = new Set<number>();
   /** 메모 다듬기 (메모 id 마다 하나) */
@@ -309,7 +322,7 @@ export function createPanel(o: PanelOptions) {
 
   function push() {
     const s = state();
-    for (const w of [panel, quick]) if (w && !w.isDestroyed()) w.webContents.send(PANEL.state, s);
+    for (const w of [panel, home, quick]) if (w && !w.isDestroyed()) w.webContents.send(PANEL.state, s);
     o.onChanged();
   }
   // 자정을 넘기면 열려 있는 패널에 새 날 것을 보낸다 (오늘 끝낸 일, 오늘 마감, 오늘 일정이 어제 것으로 남았다)
@@ -317,7 +330,7 @@ export function createPanel(o: PanelOptions) {
     now: () => Date.now(),
     day: localDay,
     onTurn: () => {
-      if ([panel, quick].some((w) => w && !w.isDestroyed())) push();
+      if ([panel, home, quick].some((w) => w && !w.isDestroyed())) push();
     },
   });
   setInterval(() => dayTurn.check(), DAY_CHECK_MS).unref();
@@ -498,8 +511,21 @@ export function createPanel(o: PanelOptions) {
       if (!ours(e) || typeof id !== 'number' || typeof patch !== 'object' || patch === null)
         return { ok: false };
       const { title, body } = patch as { title?: unknown; body?: unknown };
-      const baseBody =
-        typeof base === 'object' && base !== null ? (base as { body?: unknown }).body : undefined;
+      const baseObj =
+        typeof base === 'object' && base !== null ? (base as { body?: unknown; at?: unknown }) : {};
+      const baseBody = baseObj.body;
+      const cur = o.notes.get(id);
+      // 두 곳에서 같은 메모를 고쳤고 이 쓰기가 먼저 본 글에서 온 것이면 덮지 않는다 (시각이 없는 옛 호출은 지금처럼 합친다)
+      if (
+        cur &&
+        staleNoteWrite(
+          cur,
+          typeof baseObj.at === 'number' ? baseObj.at : undefined,
+          typeof body === 'string' ? body : undefined,
+          typeof baseBody === 'string' ? baseBody : undefined,
+        )
+      )
+        return { ok: false, stale: true, error: t('panel.note.stale') };
       // 창이 연 뒤 다른 곳(append_note 등)이 덧붙였으면 덮지 않고 합친다 (note-store.ts mergeNoteText)
       const saved = o.notes.updateFrom(
         id,
@@ -511,9 +537,10 @@ export function createPanel(o: PanelOptions) {
         Date.now(),
       );
       push();
+      const at = (saved ?? o.notes.get(id))?.updatedAt;
       return saved && typeof body === 'string' && saved.body !== body
-        ? { ok: true, body: saved.body }
-        : { ok: true };
+        ? { ok: true, body: saved.body, ...(at !== undefined ? { updatedAt: at } : {}) }
+        : { ok: true, ...(at !== undefined ? { updatedAt: at } : {}) };
     }),
   );
   ipcMain.on(PANEL.noteRemove, (e, id: number) => {
@@ -909,17 +936,17 @@ export function createPanel(o: PanelOptions) {
   });
   ipcMain.on(PANEL.openSettings, (e) => {
     if (!ours(e)) return;
-    closePanel();
+    if (closesPanelFor(originOf(e.sender, homeContents()))) closePanel();
     o.openSettings();
   });
   ipcMain.on(PANEL.openChat, (e) => {
     if (!ours(e)) return;
-    closePanel();
+    if (closesPanelFor(originOf(e.sender, homeContents()))) closePanel();
     o.openChat();
   });
   ipcMain.on(PANEL.lookTogether, (e) => {
     if (!ours(e)) return;
-    closePanel();
+    if (closesPanelFor(originOf(e.sender, homeContents()))) closePanel();
     o.lookTogether();
   });
   // 빠른 입력 창 높이를 내용에 맞춘다 (큰 글씨에서 위아래가 잘렸다). 위 가장자리는 그대로 두고 아래로 늘린다
@@ -1273,6 +1300,22 @@ export function createPanel(o: PanelOptions) {
     owns: (wc: Electron.WebContents) => senders.has(wc),
     get window() {
       return panel;
+    },
+    activeSurface,
+    /**
+     * 큰 창을 면으로 알린다 (아직 만드는 곳이 없다). 이 창의 요청도 받고 상태를 같이 받는다.
+     * 큰 창에서 온 설정, 채팅 열기는 패널을 먼저 닫지 않는다. 돌려주는 함수로 뗀다
+     */
+    registerHome(win: BrowserWindow): () => void {
+      const sender = win.webContents;
+      home = win;
+      senders.add(sender);
+      const off = () => {
+        if (home === win) home = undefined;
+        senders.delete(sender);
+      };
+      win.once('closed', off);
+      return off;
     },
     get quickWindow() {
       return quick;

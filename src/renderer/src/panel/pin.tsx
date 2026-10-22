@@ -4,6 +4,7 @@ import { t } from '../../../shared/i18n/index.ts';
 import type { PinKind } from '../../../shared/pin.ts';
 import { PinIcon } from './icons.tsx';
 import { isEsc, takeEsc } from './keys.ts';
+import { Overlay } from './surface.tsx';
 
 const bridge = window.jjakkungPanel;
 
@@ -101,33 +102,35 @@ export function usePinMenu(kind: PinKind, id: number, title: string, pinned: boo
   };
 
   const menu = at ? (
-    <div
-      ref={ref}
-      className="pin-menu"
-      role="menu"
-      aria-label={t('pin.menu', { title })}
-      style={{ left: at.x, top: at.y }}
-      onKeyDown={(e) => {
-        if (isEsc(e)) {
-          takeEsc(e);
-          close(true);
-        }
-        if (e.key === 'Tab') close();
-      }}
-      onContextMenu={(e) => e.preventDefault()}
-    >
-      <button
-        type="button"
-        role="menuitem"
-        onClick={() => {
-          bridge.pin(kind, id, !pinned);
-          close(true);
+    <Overlay>
+      <div
+        ref={ref}
+        className="pin-menu"
+        role="menu"
+        aria-label={t('pin.menu', { title })}
+        style={{ left: at.x, top: at.y }}
+        onKeyDown={(e) => {
+          if (isEsc(e)) {
+            takeEsc(e);
+            close(true);
+          }
+          if (e.key === 'Tab') close();
         }}
+        onContextMenu={(e) => e.preventDefault()}
       >
-        <PinIcon />
-        {pinned ? t('pin.unpin') : t('pin.pin')}
-      </button>
-    </div>
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => {
+            bridge.pin(kind, id, !pinned);
+            close(true);
+          }}
+        >
+          <PinIcon />
+          {pinned ? t('pin.unpin') : t('pin.pin')}
+        </button>
+      </div>
+    </Overlay>
   ) : null;
 
   return { onContextMenu, menu };

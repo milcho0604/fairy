@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  escClosesSurface,
   escClosesWindow,
   isEsc,
   type ModKeyLike,
@@ -84,4 +85,13 @@ test('입력칸의 쓰던 글 판정: 가장 나중 일이 이긴다 (알림 되
   assert.equal(undoFieldText('붙여 넣은 글', undefined, 200), '');
   // 같은 밀리초면 글이 먼저(알림이 나중이 아니다)
   assert.equal(undoFieldText('x', 200, 200), 'x');
+});
+
+test('면에 건 Esc: 작은 패널만 창을 닫고 큰 창은 닫지 않는다', () => {
+  assert.equal(escClosesSurface({ key: 'Escape', keyCode: 27 }, 'panel'), true);
+  assert.equal(escClosesSurface({ key: 'Escape', keyCode: 27 }, 'home'), false);
+  // 입력칸이 먼저 먹은 Esc, 한글 조합 중 Esc 는 어느 면에서도 창을 닫지 않는다
+  assert.equal(escClosesSurface({ key: 'Escape', defaultPrevented: true }, 'panel'), false);
+  assert.equal(escClosesSurface({ key: 'Escape', isComposing: true }, 'panel'), false);
+  assert.equal(escClosesSurface({ key: 'Enter' }, 'panel'), false);
 });

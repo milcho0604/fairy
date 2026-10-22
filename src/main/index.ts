@@ -1550,13 +1550,13 @@ ready
         else if (step === 'look') void look.start();
         else panel.openTab('today');
       },
-      panel: () => panel.window,
+      surface: () => panel.activeSurface(),
       onChange: () => panel.refresh(),
       log,
     });
     const weekCard = createWeekCard({
       doneTitlesSince: (from) => store.doneTitlesSince(from),
-      panel: () => panel.window,
+      surface: () => panel.activeSurface(),
       hold: (work) => panel.hold(work),
       onSaved: () => journey.tried('week'),
       log,
@@ -1608,7 +1608,7 @@ ready
       react: (kind) => pet.react(kind),
       hold: (look) => together.setNote(look),
       reward: (coins, reason, now) => store.reward(coins, reason, now),
-      panel: () => panel.window,
+      surface: () => panel.activeSurface(),
       openToday: () => panel.openTab('today'),
       onChange: () => panel.refresh(),
       log,

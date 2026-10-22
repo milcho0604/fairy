@@ -10,7 +10,8 @@ import { cardFileName, cardRange, isPngDataUrl } from '../shared/week-card.ts';
 
 export interface WeekCardOptions {
   doneTitlesSince: (from: number) => string[];
-  panel: () => BrowserWindow | undefined;
+  /** 지금 보이는 패널 면 (작은 패널, 큰 창이 열려 있으면 큰 창) */
+  surface: () => BrowserWindow | undefined;
   /** 저장 창이 떠 있는 동안 패널을 닫지 않는다 (panel.ts hold) */
   hold: <T>(work: () => Promise<T>) => Promise<T>;
   /** 저장했다 (여정 "주간 돌아보기") */
@@ -20,7 +21,7 @@ export interface WeekCardOptions {
 
 export function createWeekCard(o: WeekCardOptions) {
   const fromPanel = (sender: Electron.WebContents) => {
-    const w = o.panel();
+    const w = o.surface();
     return !!w && !w.isDestroyed() && w.webContents === sender;
   };
 

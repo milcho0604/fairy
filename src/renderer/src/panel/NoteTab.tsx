@@ -290,6 +290,8 @@ function NoteEditor({
    * 창에 받아 오고, 저장할 때 같이 보내 메인이 덮지 않고 합친다. 예전에는 창이 처음 받은 글로 덮어 덧붙인 글이 사라졌다
    */
   const base = useRef(note.body);
+  /** base 를 받은 때의 저장 시각. 저장할 때 같이 보내, 다른 곳이 먼저 고친 글을 이 창의 옛 글로 덮지 않게 한다 */
+  const baseAt = useRef(note.updatedAt);
   const seen = useRef(note.updatedAt);
   const sending = useRef(false);
   /** S 를 바탕으로 쓰던 창 글에 저장된 글 M 을 합쳐 보여 준다. 합친 글이 저장된 글과 다르면 다시 저장한다 */
@@ -324,6 +326,7 @@ function NoteEditor({
       if (n.body === base.current) return;
       const S = base.current;
       base.current = n.body;
+      baseAt.current = n.updatedAt;
       takeStored(S, n.body);
     });
   }, [changedAt]);
@@ -444,11 +447,15 @@ function NoteEditor({
     if (Object.keys(pending.current).length === 0) return !failed.current;
     const sent = pending.current;
     pending.current = {};
-    let r: { ok: boolean; error?: string; body?: string };
+    let r: { ok: boolean; error?: string; body?: string; updatedAt?: number; stale?: boolean };
     const from = base.current;
     sending.current = true;
     try {
-      r = await bridge.noteUpdate(note.id, sent, sent.body !== undefined ? { body: from } : undefined);
+      r = await bridge.noteUpdate(
+        note.id,
+        sent,
+        sent.body !== undefined ? { body: from, at: baseAt.current } : undefined,
+      );
     } catch {
       r = { ok: false };
     } finally {
@@ -456,6 +463,7 @@ function NoteEditor({
     }
     if (r.ok) {
       failed.current = false;
+      if (r.updatedAt !== undefined) baseAt.current = r.updatedAt;
       if (alive.current) setSaveError('');
       if (sent.body !== undefined) {
         const stored = r.body ?? sent.body;
@@ -466,6 +474,14 @@ function NoteEditor({
     }
     failed.current = true;
     pending.current = { ...sent, ...pending.current };
+    // 다른 곳이 먼저 고쳤다: 안내를 보이고 글은 들고 있는다. 저장된 글을 새 바탕으로 받아 두면 다음 고침이나 뒤로 갈 때는 이 창의 글이 이긴다
+    if (r.stale) {
+      const n = await bridge.noteGet(note.id).catch(() => undefined);
+      if (n) {
+        base.current = n.body;
+        baseAt.current = n.updatedAt;
+      }
+    }
     if (alive.current) setSaveError(`${r.error ?? t('panel.retry')} ${t('panel.note.unsaved')}`);
     return false;
   };

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { notePreview, noteQuery, searchNotes } from './note-store.ts';
+import { notePreview, noteQuery, searchNotes, staleNoteWrite } from './note-store.ts';
 
 const note = (id: number, title: string, body: string) => ({ id, title, body });
 
@@ -88,4 +88,45 @@ test('미리보기는 80자가 차면 남은 줄을 다듬지 않는다: 긴 메
   for (let i = 0; i < 2000; i++) notePreview({ title: '긴 회의록', body });
   assert.ok(performance.now() - t0 < 1000);
   assert.equal(notePreview({ title: '긴 회의록', body }).length, 80);
+});
+
+// ---- 오래된 쓰기 거절 (같은 메모를 두 곳에서 고칠 때) ----
+
+test('오래된 쓰기: 시각이 없는 옛 호출은 거절하지 않는다', () => {
+  assert.equal(staleNoteWrite({ body: '다른 곳 글', updatedAt: 200 }, undefined, '내 글', '처음 글'), false);
+});
+
+test('오래된 쓰기: 그사이 아무도 안 고쳤으면(저장 시각이 같거나 이르면) 거절하지 않는다', () => {
+  assert.equal(staleNoteWrite({ body: '처음 글', updatedAt: 100 }, 100, '내 글', '처음 글'), false);
+  assert.equal(staleNoteWrite({ body: '처음 글', updatedAt: 90 }, 100, '내 글', '처음 글'), false);
+});
+
+test('오래된 쓰기: 다른 곳이 본문을 먼저 고쳤고 합칠 수 없으면 거절한다', () => {
+  assert.equal(staleNoteWrite({ body: '다른 곳이 바꾼 글', updatedAt: 200 }, 100, '내 글', '처음 글'), true);
+  // 처음 글을 몰라도(합칠 바탕이 없어도) 저장된 글과 다르면 거절한다
+  assert.equal(staleNoteWrite({ body: '다른 곳이 바꾼 글', updatedAt: 200 }, 100, '내 글', undefined), true);
+});
+
+test('오래된 쓰기: 합칠 수 있는 경우는 거절하지 않는다 (덧붙임, 한쪽만 고침, 같은 글)', () => {
+  // append_note 가 뒤에 덧붙였다: mergeNoteText 가 합친다
+  assert.equal(
+    staleNoteWrite({ body: '처음 글\n덧붙인 줄', updatedAt: 200 }, 100, '처음 글 고침', '처음 글'),
+    false,
+  );
+  // 본문은 그대로이고 제목만 다른 곳이 고쳤다
+  assert.equal(staleNoteWrite({ body: '처음 글', updatedAt: 200 }, 100, '내 글', '처음 글'), false);
+  // 이 창은 본문을 안 건드렸다
+  assert.equal(
+    staleNoteWrite({ body: '다른 곳이 바꾼 글', updatedAt: 200 }, 100, '처음 글', '처음 글'),
+    false,
+  );
+  // 둘이 같은 글로 고쳤다
+  assert.equal(staleNoteWrite({ body: '같은 글', updatedAt: 200 }, 100, '같은 글', '처음 글'), false);
+});
+
+test('오래된 쓰기: 제목만 보내는 쓰기는 거절하지 않는다', () => {
+  assert.equal(
+    staleNoteWrite({ body: '다른 곳이 바꾼 글', updatedAt: 200 }, 100, undefined, '처음 글'),
+    false,
+  );
 });

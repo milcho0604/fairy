@@ -125,8 +125,9 @@ p.journey-now.done {
 }
 
 .week-card-dim {
-  position: fixed;
-  inset: 6px;
+  /* 면(.surface) 기준. 작은 패널은 카드(6px 여백 안)를 덮는다 */
+  position: absolute;
+  inset: var(--surface-inset, 0px);
   z-index: 30;
   display: grid;
   place-items: center;
@@ -141,6 +142,8 @@ p.journey-now.done {
   flex-direction: column;
   gap: 8px;
   width: 100%;
+  /* 덮는 것은 면 위에 따로 올라앉는다 (surface.tsx Overlay): 탭 본문(.today)에서 물려받던 글자 크기를 스스로 갖는다 */
+  font-size: 12.5px;
   max-height: 100%;
   padding: 12px 14px 14px;
   border: 1px solid var(--line);
@@ -152,8 +155,12 @@ p.journey-now.done {
 }
 
 .week-card-dialog h2 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
   margin: 0;
   font-size: 13px;
+  font-weight: 600;
   color: var(--ink);
 }
 

@@ -92,16 +92,41 @@ export function notePreview(n: Pick<Note, 'title' | 'body'>): string {
  * 한쪽만 바뀌었으면 그쪽. 둘 다 바뀌었고 저장된 쪽이 끝에 덧붙인 것(append_note 는 끝 공백을 걷고 붙인다)이면
  * 창의 글 끝에 그 덧붙인 부분을 잇는다. 그 밖에 둘 다 고쳤으면 창의 글 (보고 있는 글이 남는다)
  */
+/** theirs 는 base 뒤에 덧붙인 글인가 (끝의 빈 칸은 무시) */
+function appendsTo(base: string, theirs: string): boolean {
+  const head = base.replace(/\s+$/, '');
+  return theirs.length > head.length && theirs.startsWith(head);
+}
+
 export function mergeNoteText(base: string, mine: string, theirs: string): string {
   if (theirs === base || theirs === mine) return mine;
   if (mine === base) return theirs;
   const head = base.replace(/\s+$/, '');
-  if (theirs.length > head.length && theirs.startsWith(head)) {
+  if (appendsTo(base, theirs)) {
     const tail = theirs.slice(head.length);
     const joined = /^\s/.test(tail) ? `${mine.replace(/\s+$/, '')}${tail}` : `${mine}${tail}`;
     return cutText(joined, NOTE_BODY_MAX);
   }
   return mine;
+}
+
+/**
+ * 오래된 쓰기인가 (같은 메모를 두 곳에서 고치는 경우). 쓰는 쪽이 마지막으로 본 저장 시각(baseAt)보다 저장된 메모가 나중에
+ * 바뀌었고, 쓰려는 본문이 저장된 본문과 다른데 합쳐서 살릴 수도 없으면 거절한다.
+ * 합칠 수 있는 경우(덧붙임, 한쪽만 고침)는 거절하지 않고 mergeNoteText 가 합친다.
+ * baseAt 가 없으면(옛 호출) 거절하지 않는다. body 가 없는 쓰기(제목만)도 거절하지 않는다
+ */
+export function staleNoteWrite(
+  stored: Pick<Note, 'body' | 'updatedAt'>,
+  baseAt: number | undefined,
+  body: string | undefined,
+  baseBody: string | undefined,
+): boolean {
+  if (baseAt === undefined || body === undefined) return false;
+  if (stored.updatedAt <= baseAt || body === stored.body) return false;
+  if (baseBody === undefined) return true;
+  if (stored.body === baseBody || body === baseBody || appendsTo(baseBody, stored.body)) return false;
+  return true;
 }
 
 export class NoteStore {

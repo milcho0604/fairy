@@ -1158,7 +1158,10 @@ export interface NoteSummary {
 /** 한 줄 입력(PANEL.add) 결과. 어디에 언제로 넣었는지 알려 준다 */
 /** 메모 저장 답 */
 /** 메모 저장 답. body 는 저장된 본문이 보낸 것과 다를 때만 (다른 곳이 덧붙인 것과 합쳤거나 상한에서 잘랐다) */
-export type NoteSaveResult = { ok: true; body?: string } | { ok: false; error?: string };
+export type NoteSaveResult =
+  | { ok: true; body?: string; updatedAt?: number }
+  /** stale: 다른 곳이 먼저 고쳐서 덮지 않았다 (글은 창에 남아 있다) */
+  | { ok: false; error?: string; stale?: boolean };
 
 export type PanelAddResult =
   | { ok: false; error?: string }
@@ -1287,11 +1290,11 @@ export interface PanelBridge {
   /**
    * 메모 저장. 못 저장하면(디스크 가득, 읽기 전용) ok: false 와 안내 글 (버그잡이 4: 예전에는 보내기만 해서 실패를 몰랐다)
    */
-  /** base 는 메모 창이 마지막으로 받은 저장된 본문 (그사이 다른 곳이 바꾼 것과 합치려고) */
+  /** base 는 메모 창이 마지막으로 받은 저장된 본문과 그 고친 시각 (그사이 다른 곳이 바꾼 것과 합치려고, 오래된 쓰기를 거절하려고) */
   noteUpdate(
     id: number,
     patch: { title?: string; body?: string },
-    base?: { body: string },
+    base?: { body: string; at?: number },
   ): Promise<NoteSaveResult>;
   noteRemove(id: number): void;
   noteRestore(id: number): void;

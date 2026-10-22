@@ -1,5 +1,7 @@
 // 패널과 빠른 입력의 Esc 순서: 입력칸이 먼저(비우기, 뒤로), 그다음 창 닫기. 한글 조합 중 Esc 는 조합만 끝낸다.
 
+import type { SurfaceKind } from '../../../shared/surface-kind.ts';
+
 interface KeyLike {
   key: string;
   isComposing?: boolean;
@@ -17,6 +19,14 @@ export function isEsc(e: KeyLike | { key: string; nativeEvent: KeyLike }): boole
 /** 창 전체에 건 Esc: 입력칸이 이미 처리했으면(preventDefault) 닫지 않는다 */
 export function escClosesWindow(e: KeyLike): boolean {
   return isEsc(e) && !e.defaultPrevented;
+}
+
+/**
+ * 면에 건 Esc: 작은 패널만 창을 닫는다. 큰 창은 일반 창이라 Esc 가 창을 닫지 않고
+ * (열려 있는 시트나 메뉴가 제 Esc 로 닫힌다)
+ */
+export function escClosesSurface(e: KeyLike, kind: SurfaceKind): boolean {
+  return kind === 'panel' && escClosesWindow(e);
 }
 
 /** 입력칸이 Esc 를 먹었다: 창 닫기까지 가지 않게 */

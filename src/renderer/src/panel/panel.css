@@ -49,6 +49,17 @@ input {
   overflow: hidden;
 }
 
+/* 면(surface): 패널 구성요소가 올라앉는 자리. 어두운 막, 줄 메뉴 같은 덮는 것은 이 자리 기준으로 깔린다 (surface.tsx Overlay).
+   껍데기마다 아래 값을 제 것으로 준다: 덮는 것이 면 가장자리에서 떨어지는 거리, 알림 쌓는 자리.
+   작은 패널은 창 가득 면 안에 6px 여백을 두고 카드가 앉는다 */
+.surface {
+  position: absolute;
+  inset: 0;
+  --surface-inset: 6px;
+  --toast-bottom: 56px;
+  --toast-side: 12px;
+}
+
 /* 펫 얼굴 (PetFace.tsx, 지금 모습 그림) */
 .face {
   flex: none;
@@ -201,6 +212,12 @@ input {
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+/* 본문 칸은 컨테이너: 안쪽 배치는 창이 아니라 이 칸의 폭으로 정한다.
+   구간은 좁음 <520, 보통 520~860, 넓음 >=860 (zone.ts 와 같은 값. 작은 패널은 560 까지 넓혀도 보통) */
+.panel-tabpanel {
+  container-type: inline-size;
 }
 
 .panel-tabpanel > .todos {
@@ -618,9 +635,9 @@ li.pin-end {
 /* 알림 쌓는 자리: 되돌릴 수 있는 알림이 여럿이면 아래(가장 나중 것)부터 위로 쌓는다 (#145) */
 .toast-stack {
   position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: 56px;
+  left: var(--toast-side);
+  right: var(--toast-side);
+  bottom: var(--toast-bottom);
   display: flex;
   flex-direction: column;
   gap: 6px;
