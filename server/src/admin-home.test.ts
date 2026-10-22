@@ -113,3 +113,10 @@ test('barChart: 막대마다 값 글, 오늘만 today, 0 은 얇은 바닥, 값�
   assert.doesNotMatch(evil, /<b>|<i>/);
   assert.doesNotMatch(evil, /\sstyle=|\sonload=/);
 });
+
+test('todoOf: 백업 상한 0 은 나쁨 카드 (n -1), 비율 줄은 없다 (#152)', () => {
+  const o = { reports: 0, costMicros: 0, budgetMicros: 1, events: [], coupons: [], now: 0 };
+  const t = todoOf({ ...o, backup: { bytes: 0, maxBytes: 0 } }).filter((x) => x.kind === 'backup');
+  assert.deepEqual(t, [{ kind: 'backup', level: 'bad', n: -1, place: 'settings/backup' }]);
+  assert.match(todoText(t[0] as never), /상한이 0/);
+});

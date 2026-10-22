@@ -386,7 +386,7 @@ export class AdminService {
     const settings = await this.aiAdmin.settings();
     const budgetMicros = settings.monthlyBudgetMicros;
     const backup = await this.backupStatus();
-    const trend = await this.trend();
+    const trend = await this.trendCached();
     // 잠기는 인원은 저장한 공지 문서의 기준으로 센다 (서버 관문의 캐시를 기다리지 않는다)
     const levels = levelsOf(readDoc(doc.rows[0]?.body));
     return {
@@ -404,7 +404,7 @@ export class AdminService {
           disabled: c.disabled,
         })),
         now: Date.now(),
-        backup,
+        backup: backup.enabled ? backup : undefined,
       }),
       trend,
       backup,
@@ -445,6 +445,21 @@ export class AdminService {
     };
   }
 
+  #trend?: { at: number; value: TrendView };
+
+  /**
+   * 추이는 운영자 화면을 열 때마다 계산하면 큰 표에서 0.1초 이상 든다. 이 프로세스 안에서 ADMIN_TREND_CACHE_MS(기본 2분)
+   * 동안 기억한다. 0 이거나 비면 기억하지 않는다 (시험 기본값). 서버가 여럿이면 프로세스마다 따로 기억한다.
+   */
+  private async trendCached(): Promise<TrendView> {
+    const ttl = this.config.adminTrendCacheMs ?? 0;
+    const now = Date.now();
+    if (ttl > 0 && this.#trend && now - this.#trend.at < ttl) return this.#trend.value;
+    const value = await this.trend();
+    if (ttl > 0) this.#trend = { at: now, value };
+    return value;
+  }
+
   /**
    * 최근 14일(한국 날짜) 일별 추이. 쿼리 셋 모두 시작 시각 이후만 읽는다. ai_usage 는 created_at 색인을 타고,
    * account 와 coin_entry 는 색인 없이 훑는다: 로컬 실측(계정 30만, 코인 기록 300만, 질문 100만)에서 합쳐 약 0.4초,
@@ -464,11 +479,12 @@ export class AdminService {
       [day],
     );
     const active = await q.query<{ day: string; n: string }>(
-      `SELECT day, count(DISTINCT account_id) AS n FROM (
+      // 합쳐진 계정은 남은 계정 하나로 센다 (같은 사람이 둘로 세어지지 않게)
+      `SELECT u.day, count(DISTINCT COALESCE(a.merged_into, u.account_id)) AS n FROM (
          SELECT ${kst('created_at')} AS day, account_id FROM coin_entry WHERE created_at >= ${start}
          UNION ALL
          SELECT ${kst('created_at')} AS day, account_id FROM ai_usage WHERE created_at >= ${start} AND account_id IS NOT NULL
-       ) u GROUP BY day`,
+       ) u JOIN account a ON a.id = u.account_id GROUP BY u.day`,
       [day],
     );
     const ai = await q.query<{ day: string; asks: string; cost: string }>(
@@ -505,7 +521,8 @@ export class AdminService {
       files: Number(x?.files ?? 0),
       accounts: Number(x?.accounts ?? 0),
       bytes: Number(x?.bytes ?? 0),
-      maxBytes: max !== undefined && Number.isFinite(max) && max > 0 ? max : null,
+      // 0 은 "상한 없음"이 아니라 모든 올리기가 막힌다 (507)
+      maxBytes: max !== undefined && Number.isFinite(max) && max >= 0 ? max : null,
       lastUploadAt: x?.last ? Number(x.last) : null,
       external: 'unknown',
     };

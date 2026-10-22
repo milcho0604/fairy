@@ -45,7 +45,7 @@ export interface BackupStatus {
 export const BACKUP_WARN_PERCENT = 80;
 export const BACKUP_BAD_PERCENT = 95;
 
-/** 상한 대비 사용 비율(%, 내림). 상한이 없거나 0 이면 null */
+/** 상한 대비 사용 비율(%, 내림). 상한이 없거나 0 이면 null (0 은 모두 막힘이라 따로 본다) */
 export function backupPercent(b: Pick<BackupStatus, 'bytes' | 'maxBytes'>): number | null {
   if (!b.maxBytes || b.maxBytes <= 0) return null;
   return Math.floor((b.bytes / b.maxBytes) * 100);

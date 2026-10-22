@@ -105,6 +105,7 @@ async function startApi() {
     env: {
       PATH: process.env.PATH, DATABASE_URL: databaseUrl, PORT: String(apiPort), PUBLIC_URL: apiUrl, ADMIN_TOKEN, ADMIN_GOOGLE_SUBS: ADMIN_SUB,
       RELEASES_API: `${staticUrl}/latest`, ANTHROPIC_API_KEY: 'fake-key-for-ia-test', ANTHROPIC_BASE_URL: 'http://127.0.0.1:1',
+      BACKUP_ENC_KEY: randomBytes(32).toString('hex'), BACKUP_DIR: join(scratch, 'backups'), BACKUP_TOTAL_MAX_GB: '0.001',
     },
     stdio: 'ignore',
   });
@@ -742,7 +743,7 @@ async function appPart() {
     check('단추는 새로 보기와 웹에서 열기 둘뿐', JSON.stringify(b.buttons.map((x) => x.t)) === JSON.stringify([tx('admin.refresh'), tx('admin.web.open')]), JSON.stringify(b.buttons));
     check('칸 높이가 크게 줄었다 (2543px → 600px 아래)', b.height < 600, String(b.height));
     // #152: 오늘 숫자 한 줄, 백업 줄(이 서버는 백업 키가 없어 꺼짐), 기준이 없으니 잠기는 줄은 없다
-    check('요약에 오늘 숫자 한 줄과 백업 꺼짐 줄이 있고 잠기는 줄은 없다 (#152)', b.text.includes(tx('admin.today', { signups: 0, active: 0, asks: 0, cost: '$0.00' }).split('0')[0]) && b.text.includes(tx('admin.backup.off')) && !b.text.includes(tx('admin.locked', { force: 0, restricted: 0 }).split('0')[0]), b.text);
+    check('요약에 오늘 숫자 한 줄과 서버 백업 없음 줄이 있고 잠기는 줄은 없다 (#152)', b.text.includes(tx('admin.today', { signups: 0, active: 0, asks: 0, cost: '$0.00' }).split('0')[0]) && b.text.includes(tx('admin.backup.none')) && !b.text.includes(tx('admin.locked', { force: 0, restricted: 0 }).split('0')[0]), b.text);
 
     // ---- 2. 자료가 쌓인 요약 ----
     await adminPost('/admin/login', { token: ADMIN_TOKEN });
@@ -751,11 +752,24 @@ async function appPart() {
     await adminPost('/admin/events', { id: 'ia-soon', kind: 'gift', title_ko: '곧 끝나는 선물', title_en: 'Ending soon', body_ko: '본문', body_en: 'Body', from: kstInput(Date.now() - 3_600_000), until: kstInput(Date.now() + 2 * 86_400_000), coins: 30 });
     await adminPost('/admin/coupons', { label: '곧 끝나는 쿠폰', coins: 5, tickets: 0, max_uses: 3, until: kstInput(Date.now() + 86_400_000) });
     await adminPost('/admin/notes', { account: 'F-ABCD-0009', coins: 3, chat_passes: 0, message: '기록', days: 30 });
+    // #152: 백업 여섯(상한 0.001GB 의 81%), 최소 0.5.0 과 기능 제한 0.5.1, 판이 다른 계정
+    mkdirSync(join(scratch, 'backups'), { recursive: true });
+    sql(`INSERT INTO account (age, nickname, code, app_version) SELECT '18+', 'v' || g, 'F-ABCD-1' || lpad(g::text, 3, '0'), CASE WHEN g <= 2 THEN '0.4.0' ELSE '0.5.0' END FROM generate_series(1, 4) g`);
+    sql(`INSERT INTO backup (account_id, file, size, sha256, created_at) SELECT (SELECT max(id) FROM account) - (g % 4), md5(g::text), 145000, decode(md5(g::text) || md5(g::text), 'hex'), now() - g * interval '9 hours' FROM generate_series(1, 6) g`);
+    sql(`INSERT INTO site_doc (name, body) VALUES ('notices', '{"minVersion":"0.5.0","restrictVersion":"0.5.1"}'::jsonb) ON CONFLICT (name) DO UPDATE SET body = EXCLUDED.body`);
     await press(p, '.admin-box', tx('admin.refresh'));
     await until('요약이 바뀜', async () => (await box(p)).text.includes(tx('admin.todo.reports', { n: 1 })), 15_000);
     b = await box(p);
     await p.shot('app-ia-2-filled', '.admin-box');
-    check('확인할 것: 신고 1건, 끝나는 이벤트 1개, 끝나는 쿠폰 1개, 개수 3', b.text.includes(tx('admin.todo.endingEvents', { n: 1 })) && b.text.includes(tx('admin.todo.endingCoupons', { n: 1 })) && b.text.includes(tx('admin.counts', { todo: 3, reports: 1 })), b.text);
+    check('확인할 것: 신고 1건, 끝나는 이벤트 1개, 끝나는 쿠폰 1개, 개수 3', b.text.includes(tx('admin.todo.endingEvents', { n: 1 })) && b.text.includes(tx('admin.todo.endingCoupons', { n: 1 })) && b.text.includes(tx('admin.counts', { todo: 4, reports: 1 })), b.text);
+    const lines = (txt) => ({
+      today: txt.includes(tx('admin.today', { signups: 0, active: 0, asks: 0, cost: '$0.00' }).split('0')[0]),
+      backup: txt.includes(tx('admin.backup.last', { at: 'X', files: 6 }).split('X')[0]),
+      unknown: txt.includes(tx('admin.backup.unknown')),
+      locked: txt.includes(tx('admin.locked', { force: 0, restricted: 0 }).split('0')[0]),
+      card: txt.includes(tx('admin.todo.backup', { n: 81 })),
+    });
+    check('요약 새 줄: 오늘 숫자, 백업 마지막 올라온 때와 파일 수, 서버가 모르는 것 안내, 잠기는 계정, 백업 81% 카드 (#152)', Object.values(lines(b.text)).every(Boolean), JSON.stringify(lines(b.text)) + b.text);
     check('최근 운영 기록 줄에 웹 운영자 이름과 동작 이름', b.text.includes(tx('admin.log.web')) && b.text.includes(tx('admin.act.note.send')), b.text);
     check('세션 토큰이 화면에 없다', !(await p.ev(`document.body.innerHTML.includes(${JSON.stringify(session)})`)));
     check('새로 보기가 끝나면 진행 표시는 사라진다', b.statuses.length === 0 && b.alerts.length === 0, JSON.stringify(b.statuses));
@@ -763,9 +777,9 @@ async function appPart() {
     // 신고를 조치로 바꾸면 신고 대기와 확인할 것에서 빠지고, 되돌리면 다시 (#151)
     sql(`UPDATE ai_report SET status = 'done'`);
     await press(p, '.admin-box', tx('admin.refresh'));
-    await until('신고 처리 반영', async () => (await box(p)).text.includes(tx('admin.counts', { todo: 2, reports: 0 })), 15_000);
+    await until('신고 처리 반영', async () => (await box(p)).text.includes(tx('admin.counts', { todo: 3, reports: 0 })), 15_000);
     b = await box(p);
-    check('신고를 조치로 바꾸면 신고 대기 0, 확인할 것에서 신고 줄이 빠진다', !b.text.includes(tx('admin.todo.reports', { n: 1 })) && b.text.includes(tx('admin.counts', { todo: 2, reports: 0 })), b.text);
+    check('신고를 조치로 바꾸면 신고 대기 0, 확인할 것에서 신고 줄이 빠진다', !b.text.includes(tx('admin.todo.reports', { n: 1 })) && b.text.includes(tx('admin.counts', { todo: 3, reports: 0 })), b.text);
     sql(`UPDATE ai_report SET status = 'pending'`);
     await press(p, '.admin-box', tx('admin.refresh'));
     await until('신고 되돌림 반영', async () => (await box(p)).text.includes(tx('admin.todo.reports', { n: 1 })), 15_000);
@@ -827,6 +841,7 @@ async function appPart() {
     await sleep(300);
     check('[320] 운영자 칸이 가로로 넘치지 않는다', (await p.ev(`document.documentElement.scrollWidth <= innerWidth + 1`)) === true);
     await p.shot('app-ia-6-320', '.admin-box');
+    check('[320] 새 줄이 모두 보이고 줄이 상자 밖으로 나가지 않는다 (#152)', Object.values(lines((await box(p)).text)).every(Boolean) && (await p.ev(`[...document.querySelectorAll('.admin-box small')].every((x) => x.getBoundingClientRect().right <= document.querySelector('.admin-box').getBoundingClientRect().right + 1)`)) === true);
     await p.send('Emulation.setDeviceMetricsOverride', { width: 960, height: 900, deviceScaleFactor: 1, mobile: false });
     await sleep(300);
     check('[960] 운영자 칸이 가로로 넘치지 않는다', (await p.ev(`document.documentElement.scrollWidth <= innerWidth + 1`)) === true);
@@ -834,6 +849,7 @@ async function appPart() {
     await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
     await sleep(300);
     await p.shot('app-ia-7-dark', '.admin-box');
+    check('[960] 새 줄이 모두 보인다 (#152)', Object.values(lines((await box(p)).text)).every(Boolean));
     await p.send('Emulation.setEmulatedMedia', { features: [] });
     await p.send('Emulation.clearDeviceMetricsOverride');
   }

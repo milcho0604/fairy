@@ -99,6 +99,7 @@ export const ko = {
   'admin.todo.endingEvents': (v: N) => `3일 안에 끝나는 이벤트 ${v.n}개`,
   'admin.todo.endingCoupons': (v: N) => `3일 안에 끝나는 쿠폰 ${v.n}개`,
   'admin.todo.backup': (v: N) => `서버 백업이 상한의 ${v.n}%`,
+  'admin.todo.backupZero': '서버 백업 상한이 0이라 새 백업 올리기가 모두 막혀',
   'admin.today': (v: { signups: number; active: number; asks: number; cost: string }) =>
     `오늘 가입 ${v.signups}, 활동 ${v.active}, 질문 ${v.asks}, 비용 ${v.cost}`,
   'admin.backup.last': (v: { at: string; files: number }) =>
@@ -250,6 +251,7 @@ export const en: Translation<typeof ko> = {
   'admin.todo.endingEvents': (v: N) => `Events ending within 3 days: ${v.n}`,
   'admin.todo.endingCoupons': (v: N) => `Coupons ending within 3 days: ${v.n}`,
   'admin.todo.backup': (v: N) => `Server backups use ${v.n}% of the limit`,
+  'admin.todo.backupZero': 'The server backup limit is 0, so every new backup upload is blocked',
   'admin.today': (v: { signups: number; active: number; asks: number; cost: string }) =>
     `Today: ${v.signups} sign-ups, ${v.active} active, ${v.asks} questions, ${v.cost}`,
   'admin.backup.last': (v: { at: string; files: number }) =>

@@ -136,6 +136,7 @@ test('백업 확인할 것 글은 ko, en 둘 다 (#152)', () => {
   const item = { kind: 'backup', level: 'warn', n: 83, place: 'settings/backup' } as const;
   setLang('ko');
   assert.equal(todoLabel(item), '서버 백업이 상한의 83%');
+  assert.equal(todoLabel({ ...item, n: -1 }), '서버 백업 상한이 0이라 새 백업 올리기가 모두 막혀');
   setLang('en');
   assert.equal(todoLabel(item), 'Server backups use 83% of the limit');
   setLang('ko');

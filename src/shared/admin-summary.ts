@@ -168,7 +168,7 @@ export function todoLabel(item: AdminTodoItem): string {
     case 'ending_coupons':
       return t('admin.todo.endingCoupons', { n: item.n });
     case 'backup':
-      return t('admin.todo.backup', { n: item.n });
+      return item.n < 0 ? t('admin.todo.backupZero') : t('admin.todo.backup', { n: item.n });
   }
 }
 

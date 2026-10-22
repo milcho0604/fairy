@@ -725,6 +725,8 @@ export function todoOf(o: {
   if (events > 0) out.push({ kind: 'ending_events', level: 'warn', n: events, place: 'announce/events' });
   const coupons = o.coupons.filter((c) => !c.disabled && soon(c.starts, c.ends)).length;
   if (coupons > 0) out.push({ kind: 'ending_coupons', level: 'warn', n: coupons, place: 'announce/coupons' });
+  // 상한 0 이면 서버는 모든 올리기를 507 로 막는다 (n 은 -1)
+  if (o.backup?.maxBytes === 0) out.push({ kind: 'backup', level: 'bad', n: -1, place: 'settings/backup' });
   const used = o.backup ? backupPercent(o.backup) : null;
   if (used !== null && used >= BACKUP_WARN_PERCENT)
     out.push({
@@ -749,7 +751,9 @@ export function todoText(t: AdminTodo): string {
     case 'ending_coupons':
       return `3일 안에 끝나는 쿠폰이 ${t.n}개 있어요`;
     case 'backup':
-      return `서버 백업이 상한의 ${t.n}%를 썼어요`;
+      return t.n < 0
+        ? '서버 백업 상한이 0 이라 새 백업 올리기가 모두 막혀요'
+        : `서버 백업이 상한의 ${t.n}%를 썼어요`;
   }
 }
 
@@ -863,15 +867,16 @@ function backupGlance(b: BackupStatus): string {
   if (!b.enabled)
     return `<p class="hint">서버 백업이 꺼져 있어요 (BACKUP_ENC_KEY 가 비었어요). <a href="#settings/backup">백업 현황</a></p>`;
   const used = backupPercent(b);
+  const blocked = b.maxBytes === 0;
   const last =
     b.lastUploadAt === null ? '아직 올라온 백업이 없어요' : `마지막으로 올라온 때 ${when(b.lastUploadAt)}`;
   const level =
-    used !== null && used >= BACKUP_BAD_PERCENT
+    blocked || (used !== null && used >= BACKUP_BAD_PERCENT)
       ? 'bad'
       : used !== null && used >= BACKUP_WARN_PERCENT
         ? 'warn'
         : '';
-  return `<ul class="todo"><li class="${level}"><a href="#settings/backup">${esc(last)}, 파일 ${b.files}개, ${bytesText(b.bytes)}${used === null ? '' : ` (상한의 ${used}%)`}</a></li></ul>`;
+  return `<ul class="todo"><li class="${level}"><a href="#settings/backup">${esc(last)}, 파일 ${b.files}개, ${bytesText(b.bytes)}${blocked ? ', 상한 0 (모두 막힘)' : used === null ? '' : ` (상한의 ${used}%)`}</a></li></ul>`;
 }
 
 /** 설정의 백업 현황: 서버가 아는 것만 보이고, 모르는 것은 모른다고 쓴다 */
@@ -885,11 +890,11 @@ function backupSection(v: AdminView): string {
 ${row('상태', b.enabled ? '켜짐' : '꺼짐 (BACKUP_ENC_KEY 가 비었어요)')}
 ${row('마지막으로 올라온 때', b.lastUploadAt === null ? '없어요' : esc(when(b.lastUploadAt)))}
 ${row('파일', `${b.files}개 (${b.accounts}명)`)}
-${row('총 크기', `${esc(bytesText(b.bytes))}${b.maxBytes ? ` / 상한 ${esc(bytesText(b.maxBytes))}` : ' (상한 없음)'}`)}
-${row('상한 사용', used === null ? '알 수 없어요' : `${used}%`)}
+${row('총 크기', `${esc(bytesText(b.bytes))}${b.maxBytes === 0 ? ' / 상한 0 (모두 막힘)' : b.maxBytes ? ` / 상한 ${esc(bytesText(b.maxBytes))}` : ' (상한 없음)'}`)}
+${row('상한 사용', b.maxBytes === 0 ? '0, 새 백업 올리기가 모두 막혀요 (507)' : used === null ? '알 수 없어요' : `${used}%`)}
 ${row('올리기 실패', '기록 없음 (서버가 실패를 남기지 않아요)')}
 </dl>
-<p class="hint">상한을 넘으면 새 백업 올리기가 막혀요(507). 올린 지 1년 지난 계정의 백업은 서버가 지워요.</p>
+<p class="hint">상한을 넘거나 상한이 0 이면 새 백업 올리기가 막혀요(507). 올린 지 1년 지난 계정의 백업은 서버가 지워요.</p>
 <h3>데이터베이스 덤프와 외장 디스크 사본</h3>
 <dl class="stats">
 ${row('마지막 성공', '알 수 없어요')}
@@ -1332,7 +1337,7 @@ function versionTable(v: AdminView): string {
   const l = x.locked;
   const lock =
     l.min || l.restrict
-      ? `<p class="${l.locked > 0 ? 'warn-text' : 'hint'}">지금 기준으로 ${l.min ? `최소 ${esc(l.min)} 보다 낮아 앱이 잠기는 계정 <strong>${l.locked}명</strong>` : '강제 기준 없음'}${l.restrict ? `, 기능 제한 ${esc(l.restrict)} 보다만 낮아 서버 기능이 거절되는 계정 <strong>${l.restricted}명</strong>` : ''}${l.unknown > 0 ? ` (판을 모르는 ${l.unknown}명 포함, 판 표시가 없으면 가장 낮은 판으로 봐요)` : ''}. <a href="#announce/notices">공지와 버전</a></p>`
+      ? `<p class="${l.locked > 0 ? 'warn-text' : 'hint'}">지금 기준으로 ${l.min ? `최소 ${esc(l.min)} 보다 낮아 앱이 잠기는 계정 <strong>${l.locked}명</strong>` : '강제 기준 없음'}${l.restrict ? `, 기능 제한 ${esc(l.restrict)} 보다만 낮아 서버 기능이 거절되는 계정 <strong>${l.restricted}명</strong>` : ''}${l.unknown > 0 ? ` (판을 모르는 ${l.unknown}명 포함, 판 표시가 없으면 가장 낮은 판으로 봐요)` : ''}. 판은 앱이 하루에 한 번 알려 줘서, 방금 업데이트한 계정은 최대 하루 동안 이전 판으로 남아 있어요. <a href="#announce/notices">공지와 버전</a></p>`
       : `<p class="hint">최소 버전과 기능 제한 버전이 없어서 잠기는 계정이 없어요. <a href="#announce/notices">공지와 버전</a></p>`;
   return `<h3>앱 판 분포 (최근 30일 활동 ${x.active}명)</h3>${lock}
 <table><tr><th>앱 판</th><th>계정</th></tr>${rows}<tr><td>판 없음 (옛 앱)</td><td>${x.unknown}</td></tr></table>`;
