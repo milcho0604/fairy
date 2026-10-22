@@ -34,3 +34,22 @@ test('저장하지 못한 글(draft)도 같이 적어 두고, 하루가 지나�
   // 모양이 틀린 draft 는 자리만 살린다
   assert.equal(parseResume(JSON.stringify({ ...base, draft: { title: 1 } }), at + 1000)?.draft, undefined);
 });
+
+test('거절 상태가 붙은 보관 글을 읽는다 (그때 저장돼 있던 글과 시각)', () => {
+  const kept = {
+    ...ok,
+    draft: { title: 't', body: '내 글' },
+    conflict: { body: '다른 곳 글', at: NOW - 5000, title: 'x' },
+  };
+  assert.deepEqual(parseResume(JSON.stringify(kept), NOW), kept);
+  // 보관 글이 없으면 거절 상태만 남지 않는다. 모양이 틀린 거절 상태는 버린다
+  assert.equal(parseResume(JSON.stringify({ ...ok, conflict: kept.conflict }), NOW)?.conflict, undefined);
+  assert.equal(
+    parseResume(JSON.stringify({ ...kept, conflict: { body: 1, at: 1 } }), NOW)?.conflict,
+    undefined,
+  );
+  assert.equal(
+    parseResume(JSON.stringify({ ...kept, conflict: { body: 'a', at: -1 } }), NOW)?.conflict,
+    undefined,
+  );
+});

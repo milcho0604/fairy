@@ -29,6 +29,7 @@ import type { IllustEngine, LocalDrawInfo } from './local-draw.ts';
 import type { LookMotion } from './look-motion.ts';
 import type { MiniGame } from './minigames.ts';
 import type { MoveAsk } from './moves.ts';
+import type { NoteKept } from './note-keep.ts';
 import type { PolishReply } from './note-polish.ts';
 import type { Note, NoteSource } from './note-store.ts';
 import type { PetKey } from './pet-keys.ts';
@@ -1013,6 +1014,10 @@ export const PANEL = {
   /** 쓰던 글 보관 (#145): 읽기는 창이 뜨자마자 필요해서 동기, 쓰기는 보내기만 */
   draftGet: 'panel:draft-get',
   draftSet: 'panel:draft-set',
+  /** 메모 편집의 보관 글 (#160): 메모 id 마다, 메인 메모리에만. 읽기는 편집기가 뜨며 바로 필요해서 동기 */
+  noteKeepGet: 'panel:note-keep-get',
+  noteKeepSet: 'panel:note-keep-set',
+  noteKeepLatest: 'panel:note-keep-latest',
   /** 보던 위치 보관 (#145): 할 일의 검색어와 쪽 수, 일정의 고른 날, 탭마다 스크롤 */
   viewGet: 'panel:view-get',
   viewSet: 'panel:view-set',
@@ -1158,7 +1163,10 @@ export interface NoteSummary {
 /** 한 줄 입력(PANEL.add) 결과. 어디에 언제로 넣었는지 알려 준다 */
 /** 메모 저장 답 */
 /** 메모 저장 답. body 는 저장된 본문이 보낸 것과 다를 때만 (다른 곳이 덧붙인 것과 합쳤거나 상한에서 잘랐다) */
-export type NoteSaveResult = { ok: true; body?: string } | { ok: false; error?: string };
+export type NoteSaveResult =
+  | { ok: true; body?: string; updatedAt?: number }
+  /** stale: 다른 곳이 먼저 고쳐서 덮지 않았다 (글은 창에 남아 있다) */
+  | { ok: false; error?: string; stale?: boolean };
 
 export type PanelAddResult =
   | { ok: false; error?: string }
@@ -1272,6 +1280,11 @@ export interface PanelBridge {
   /** 쓰던 글 (#145). 창을 닫았다 열어도 메인이 들고 있다가 돌려준다 */
   draftGet(kind: PanelDraftKind): string;
   draftSet(kind: PanelDraftKind, text: string): void;
+  /** 메모 편집의 보관 글 (#160). 값이 null 이면 그 메모의 보관 글을 지운다 */
+  noteKeepGet(id: number): NoteKept | null;
+  noteKeepSet(id: number, value: NoteKept | null): void;
+  /** 가장 나중에 적은 보관 글 (패널을 열 때 그 메모로 돌아간다) */
+  noteKeepLatest(): NoteKept | null;
   /** 보던 위치 (#145) */
   viewGet(): ViewKeep;
   viewSet(view: ViewKeep): void;
@@ -1287,11 +1300,11 @@ export interface PanelBridge {
   /**
    * 메모 저장. 못 저장하면(디스크 가득, 읽기 전용) ok: false 와 안내 글 (버그잡이 4: 예전에는 보내기만 해서 실패를 몰랐다)
    */
-  /** base 는 메모 창이 마지막으로 받은 저장된 본문 (그사이 다른 곳이 바꾼 것과 합치려고) */
+  /** base 는 메모 창이 마지막으로 받은 저장된 본문과 그 고친 시각 (그사이 다른 곳이 바꾼 것과 합치려고, 오래된 쓰기를 거절하려고) */
   noteUpdate(
     id: number,
     patch: { title?: string; body?: string },
-    base?: { body: string },
+    base?: { body: string; at?: number },
   ): Promise<NoteSaveResult>;
   noteRemove(id: number): void;
   noteRestore(id: number): void;

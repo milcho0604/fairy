@@ -11,6 +11,7 @@ import {
   hoursMinutes,
 } from '../../../shared/week-card.ts';
 import { useFaceUrl } from '../PetFace.tsx';
+import { Overlay } from './surface.tsx';
 
 // 주간 회고 카드 (shared/week-card.ts): 이번 주 숫자와 펫 얼굴을 귀여운 카드 한 장으로 그려 PNG 로 저장한다.
 // 할 일 제목은 "할 일 제목 넣기"를 골랐을 때만 메인에 묻고 넣는다. 카드는 늘 밝은 색 (어디에 올려도 같게)
@@ -113,39 +114,41 @@ export function WeekCardDialog({ s, onClose }: { s: PanelState; onClose: () => v
   };
 
   return (
-    <div className="week-card-dim">
-      <div className="week-card-dialog" role="dialog" aria-modal="true" aria-labelledby="week-card-title">
-        <h2 id="week-card-title">{t('bond.week.title')}</h2>
-        <canvas
-          ref={canvas}
-          width={CARD_W}
-          height={CARD_H}
-          className="week-card-preview"
-          role="img"
-          aria-label={t('bond.week.alt', { name: s.petName, done: data.done })}
-        />
-        <label className="week-card-check">
-          <input type="checkbox" checked={withTitles} onChange={(e) => setWithTitles(e.target.checked)} />
-          <span>{t('bond.week.withTitles')}</span>
-        </label>
-        <small className="week-card-hint">
-          {withTitles ? t('bond.week.titlesOn') : t('bond.week.titlesOff')}
-        </small>
-        {status && (
-          <small className={`week-card-status ${status.ok ? 'ok' : 'error'}`} role="status">
-            {status.text}
+    <Overlay>
+      <div className="week-card-dim">
+        <div className="week-card-dialog" role="dialog" aria-modal="true" aria-labelledby="week-card-title">
+          <h2 id="week-card-title">{t('bond.week.title')}</h2>
+          <canvas
+            ref={canvas}
+            width={CARD_W}
+            height={CARD_H}
+            className="week-card-preview"
+            role="img"
+            aria-label={t('bond.week.alt', { name: s.petName, done: data.done })}
+          />
+          <label className="week-card-check">
+            <input type="checkbox" checked={withTitles} onChange={(e) => setWithTitles(e.target.checked)} />
+            <span>{t('bond.week.withTitles')}</span>
+          </label>
+          <small className="week-card-hint">
+            {withTitles ? t('bond.week.titlesOn') : t('bond.week.titlesOff')}
           </small>
-        )}
-        <div className="week-card-actions">
-          <button type="button" className="ghost" onClick={onClose}>
-            {t('bond.week.close')}
-          </button>
-          <button type="button" className="primary" disabled={busy} onClick={() => void save()}>
-            {t('bond.week.save')}
-          </button>
+          {status && (
+            <small className={`week-card-status ${status.ok ? 'ok' : 'error'}`} role="status">
+              {status.text}
+            </small>
+          )}
+          <div className="week-card-actions">
+            <button type="button" className="ghost" onClick={onClose}>
+              {t('bond.week.close')}
+            </button>
+            <button type="button" className="primary" disabled={busy} onClick={() => void save()}>
+              {t('bond.week.save')}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </Overlay>
   );
 }
 

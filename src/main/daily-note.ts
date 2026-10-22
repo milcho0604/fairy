@@ -50,7 +50,8 @@ export interface DailyNoteOptions {
   /** 든 쪽지 모양 (main/together.ts). 없으면 내려놓는다 */
   hold: (look: NoteLook | undefined) => void;
   reward: (coins: number, reason: string, now: number) => void;
-  panel: () => BrowserWindow | undefined;
+  /** 지금 보이는 패널 면 (작은 패널, 큰 창이 열려 있으면 큰 창) */
+  surface: () => BrowserWindow | undefined;
   openToday: () => void;
   /** 코인이 바뀌었다 (패널 다시 그리기) */
   onChange: () => void;
@@ -107,7 +108,7 @@ export function createDailyNotes(o: DailyNoteOptions) {
     notes: [...(extra?.views() ?? []), ...state.box.map(view)],
   });
   const push = () => {
-    const w = o.panel();
+    const w = o.surface();
     if (w && !w.isDestroyed()) w.webContents.send(NOTES.changed, box());
   };
 
@@ -213,7 +214,7 @@ export function createDailyNotes(o: DailyNoteOptions) {
   }
 
   const fromPanel = (sender: Electron.WebContents) => {
-    const w = o.panel();
+    const w = o.surface();
     return !!w && !w.isDestroyed() && w.webContents === sender;
   };
   ipcMain.handle(NOTES.list, (e) => (fromPanel(e.sender) ? box() : undefined));

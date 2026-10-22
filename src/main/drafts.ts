@@ -1,5 +1,6 @@
 import { createDraftBox } from '../shared/draft-store.ts';
 import type { OutgoingImage } from '../shared/ipc.ts';
+import { createNoteKeep } from '../shared/note-keep.ts';
 import { type KeptToast, liveToasts, parseToasts } from '../shared/toast-keep.ts';
 import { emptyViewKeep, freshViewKeep, parseViewKeep, type ViewKeep } from '../shared/view-keep.ts';
 
@@ -8,6 +9,9 @@ import { emptyViewKeep, freshViewKeep, parseViewKeep, type ViewKeep } from '../s
 // 글 상한과 모양 확인은 shared/draft-store.ts, shared/view-keep.ts.
 
 export const drafts = createDraftBox<OutgoingImage>();
+
+/** 메모 편집의 보관 글 (#160). 메모 id 마다 (shared/note-keep.ts) */
+export const noteKeep = createNoteKeep();
 
 let view: ViewKeep = emptyViewKeep();
 
@@ -38,6 +42,7 @@ export function setToasts(raw: unknown, now = Date.now()): void {
 /** 시험용: 모두 비운다 */
 export function clearKept(): void {
   drafts.clearAll();
+  noteKeep.clearAll();
   view = emptyViewKeep();
   toasts = [];
 }
