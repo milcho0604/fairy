@@ -7,6 +7,7 @@ import {
   type HomeLook,
   homeClickAction,
   homeExpired,
+  promoteAction,
 } from '../shared/home-policy.ts';
 import { t } from '../shared/i18n/index.ts';
 import { PANEL, type PanelTab } from '../shared/ipc.ts';
@@ -39,12 +40,18 @@ export interface HomeOptions {
   log: (tag: string, ...rest: unknown[]) => void;
 }
 
+/** 승격 한 번의 시각 (밀리초). 패널은 큰 창이 보인 뒤에 닫히니 panelClosedAt >= shownAt */
+export interface PromoteLog {
+  requestedAt: number;
+  shownAt?: number;
+  panelClosedAt?: number;
+}
+
 export function createHome(o: HomeOptions) {
   let win: BrowserWindow | undefined;
   /** 숨겨 둔 때. 없으면 숨기지 않았다 */
   let hiddenAt: number | undefined;
   let keepTimer: ReturnType<typeof setTimeout> | undefined;
-  let unregister: (() => void) | undefined;
   /** 첫 화면을 그렸다 (그리기 전에는 띄우지 않는다. 흰 화면이 보이지 않게) */
   let ready = false;
   /** 숨기기 요청 차례. 전체 화면이 풀리기를 기다리는 동안 다시 열면 늦게 온 숨기기가 무시된다 */
@@ -67,13 +74,27 @@ export function createHome(o: HomeOptions) {
     focusWindow(w);
   }
 
+  /** 마지막 "크게 보기" 승격의 시각 기록 (시험이 빈 순간 없음을 확인한다: panelClosedAt >= shownAt) */
+  let lastPromote: PromoteLog | undefined;
+
   /** Dock 이 보인 뒤에 창을 띄우고 패널을 닫는다 (빈 순간 없이: 큰 창이 보인 뒤에 패널을 치운다) */
   function reveal(w: BrowserWindow) {
     void o.dock.ready().then(() => {
       if (w.isDestroyed()) return;
       if (w.isMinimized()) w.restore();
       bring(w);
+      // 보이는 것을 확인한 뒤에만 패널을 닫는다 (보이지 않으면 패널을 남겨 화면이 비지 않게)
+      const shownAt = Date.now();
+      if (!w.isVisible()) {
+        o.log('home', '큰 창이 아직 안 보여 패널을 닫지 않음');
+        return;
+      }
       o.closePanel();
+      if (lastPromote && lastPromote.shownAt === undefined) {
+        lastPromote.shownAt = shownAt;
+        lastPromote.panelClosedAt = Date.now();
+        o.log('home', 'promote', lastPromote.panelClosedAt - lastPromote.requestedAt, 'ms');
+      }
     });
   }
 
@@ -128,7 +149,7 @@ export function createHome(o: HomeOptions) {
       },
     });
     win = w;
-    unregister = o.registerSurface(w, () => hiddenAt !== undefined);
+    const unregister = o.registerSurface(w, () => hiddenAt !== undefined);
     ready = false;
     w.once('ready-to-show', () => {
       ready = true;
@@ -137,8 +158,7 @@ export function createHome(o: HomeOptions) {
     w.on('enter-full-screen', () => o.onFullScreen(true));
     w.on('leave-full-screen', () => o.onFullScreen(false));
     w.on('closed', () => {
-      unregister?.();
-      unregister = undefined;
+      unregister();
       if (win === w) {
         win = undefined;
         hiddenAt = undefined;
@@ -208,6 +228,32 @@ export function createHome(o: HomeOptions) {
     else showExisting(tab);
   }
 
+  /**
+   * 작은 패널의 "크게 보기" (이슈 #164): 이 탭 그대로 큰 창을 띄우고, 보인 뒤에 패널을 닫는다.
+   * 쓰던 글은 패널이 먼저 메인에 보내 놓았다. 숨겨 둔 큰 창은 처음 읽어 온 글이 낡았으니 없애고 새로 만든다
+   */
+  function promote(tab?: PanelTab) {
+    const action = promoteAction(look());
+    o.log('home', 'promote', action);
+    lastPromote = { requestedAt: Date.now() };
+    if (action === 'show') {
+      showExisting(tab);
+      return;
+    }
+    if (action === 'recreate') discard();
+    create(tab);
+  }
+
+  /** 숨겨 둔 큰 창을 바로 없앤다 (바로 새로 만들 때) */
+  function discard() {
+    const old = win;
+    win = undefined;
+    hiddenAt = undefined;
+    clearTimeout(keepTimer);
+    ready = false;
+    if (old && !old.isDestroyed()) old.destroy();
+  }
+
   function close() {
     if (alive()) win?.close();
   }
@@ -220,9 +266,12 @@ export function createHome(o: HomeOptions) {
   return {
     open,
     toggle,
+    promote,
     hide,
     close,
     look,
+    /** 마지막 승격의 시각 기록 (시험용) */
+    lastPromote: () => lastPromote,
     get window() {
       return win;
     },

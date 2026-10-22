@@ -346,6 +346,10 @@ ready
     let petChips: ReturnType<typeof createPetChips> | undefined;
     // 큰 창 (main/home.ts). 패널 뒤에 만든다. 펫 우클릭과 메뉴 막대가 부를 때까지 만들어졌다
     let home: ReturnType<typeof createHome> | undefined;
+    /** 트레이, 펫 메뉴의 "큰 창 열기": 작은 패널이 열려 있으면 쓰던 글을 보내게 한 뒤 넘기고(#164), 아니면 그냥 연다 */
+    const openHomeFromMenu = () => {
+      if (!panel.requestExpand()) home?.open();
+    };
     // 친구 칸이 보이는가 (서버 모드, 로그인, 기능 키). 큰 창 사이드바 "친구"에 쓴다
     let friendsAvailable = false;
     const pet = createPetWindow({
@@ -375,7 +379,7 @@ ready
         lookTogether: () => look.start(),
         openSettings: () => settingsWindow.open(),
         quickAdd: () => panel.openQuick(),
-        openHome: () => home?.open(),
+        openHome: openHomeFromMenu,
         feed: () => feedPet(),
         makePet: () => maker.open(),
         petted: () => {
@@ -480,7 +484,7 @@ ready
       openSettings: () => settingsWindow.open(),
       sendFeedback: () => settingsWindow.open('stats'),
       quickAdd: () => panel.openQuick(),
-      openHome: () => home?.open(),
+      openHome: openHomeFromMenu,
       openTodos: () => panel.openTab('todo'),
       togglePanel: () => panel.togglePanel(),
       reloadPet: () => {
@@ -1134,6 +1138,7 @@ ready
         else home.open(tab);
         return true;
       },
+      promoteHome: (tab) => home?.promote(tab),
       lookTogether: () => look.start(),
       missed: () => pet.missed(),
       diary: () => diary.entries(Date.now()),

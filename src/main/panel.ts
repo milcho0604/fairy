@@ -33,6 +33,7 @@ import { createIdleWatch } from '../shared/idle-watch.ts';
 import {
   type EventClash,
   type FocusMonthView,
+  isPanelTab,
   type NoteAiKind,
   type NoteSaveResult,
   PANEL,
@@ -106,6 +107,8 @@ const MOVE_SAVE_MS = 400;
 const RESIZE_GAP_MS = 17;
 /** 크기가 멈춘 뒤 이만큼 지나면 적는다 */
 const RESIZE_SAVE_MS = 400;
+/** 큰 창으로 넘겨 달라고 했는데 패널이 이만큼 답이 없으면 그냥 큰 창을 연다 */
+const EXPAND_ASK_MS = 1500;
 /**
  * 끄는 중에 크기 소식이 이만큼 안 오면 끝 알림이 끊긴 것으로 보고 "끄는 중"을 푼다
  * (화면 새로 고침, 충돌, 포인터 유실). 손잡이는 잡고 있는 동안 이보다 짧은 간격으로 소식을 다시 보낸다 (ResizeGrips.tsx)
@@ -186,6 +189,11 @@ export interface PanelOptions {
    * toggle 이면 펫 누르기, 단축키처럼 "열고 닫기", 아니면 이 탭을 보여 줘
    */
   routeHome?: (req: { tab?: PanelTab; toggle: boolean }) => boolean;
+  /**
+   * 작은 패널의 "크게 보기" (#164): 이 탭 그대로 큰 창을 띄운다. 큰 창이 보인 뒤에 패널을 닫는 일은 큰 창이 맡는다.
+   * tab 이 없으면 큰 창이 마지막으로 본 구역
+   */
+  promoteHome?: (tab?: PanelTab) => void;
   lookTogether: () => void;
   /** 오늘 놓친 알림 (펫이 숨어 있거나 자리에 없어 못 본 것) */
   missed: () => PanelState['missed'];
@@ -1142,6 +1150,39 @@ export function createPanel(o: PanelOptions) {
     o.openFriends();
   });
 
+  // "크게 볼까요?" 칩을 마지막으로 띄운 때 (메모리에만. 패널 창이 새로 떠도 간격이 이어진다)
+  let expandHintAt = 0;
+  ipcMain.on(PANEL.expandHintAt, (e) => {
+    // 패널이 아니면 방금 띄운 것으로 답해 칩이 안 뜨게 한다
+    e.returnValue = isPanel(e) ? expandHintAt : Date.now();
+  });
+  ipcMain.on(PANEL.expandHintShown, (e) => {
+    if (isPanel(e)) expandHintAt = Date.now();
+  });
+
+  // 크게 보기: 패널이 쓰던 글을 먼저 보낸 뒤 부른다 (같은 창에서 온 메시지는 순서대로 닿는다)
+  let expandAsked = false;
+  ipcMain.on(PANEL.expand, (e, tab: unknown) => {
+    if (!isPanel(e) || !isPanelTab(tab)) return;
+    expandAsked = true;
+    o.promoteHome?.(tab);
+  });
+
+  /**
+   * 패널이 열린 채 트레이, 펫 메뉴로 큰 창을 열 때: 패널에 쓰던 글을 보내고 넘겨 달라고 한다. 열려 있으면 true.
+   * 패널이 답이 없으면(멈춤) 잠시 뒤 그냥 큰 창을 연다
+   */
+  function requestExpand(): boolean {
+    const win = panel;
+    if (!win || win.isDestroyed()) return false;
+    expandAsked = false;
+    win.webContents.send(PANEL.expandNow);
+    setTimeout(() => {
+      if (!expandAsked && panel === win && !win.isDestroyed()) o.promoteHome?.();
+    }, EXPAND_ASK_MS);
+    return true;
+  }
+
   ipcMain.on(PANEL.close, (e) => {
     if (!ours(e)) return;
     if (panel && e.sender === panel.webContents) closePanel();
@@ -1379,6 +1420,11 @@ export function createPanel(o: PanelOptions) {
       nextTab = tab;
     },
     closePanel,
+    requestExpand,
+    /** 시험용: 칩 간격 기억을 비운다 */
+    resetExpandHint: () => {
+      expandHintAt = 0;
+    },
     openQuick,
     /** 빠른 입력 한 줄과 같게 넣는다 (jjakkung://add): 시각이 있으면 일정, 아니면 할 일 */
     addLine: (line: string): PanelAddResult => addLine(line, Date.now()),
