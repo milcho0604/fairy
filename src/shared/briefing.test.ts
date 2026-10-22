@@ -4,6 +4,7 @@ import {
   briefingText,
   deadlineText,
   dueSlot,
+  leftForTomorrow,
   type NextUpTodo,
   nextUp,
   PREPARE_MS,
@@ -212,4 +213,36 @@ test('브리핑 끝에 먼저 할 일 한 문장. 다른 게 없으면 그 문�
   } finally {
     setLang('ko');
   }
+});
+
+test('못 한 N개 내일로: 오늘 마감과 지난 마감만, 습관과 마감 없는 것과 내일 이후는 둔다', () => {
+  const open = [
+    { id: 1, due: '2026-10-09' },
+    { id: 2, due: '2026-10-10' },
+    { id: 3, due: '2026-10-11' },
+    { id: 4, due: null },
+    { id: 5, due: '2026-10-10', repeat: 'daily' },
+    { id: 6, due: '2026-10-08', repeat: null },
+  ];
+  assert.deepEqual(
+    leftForTomorrow(open, '2026-10-10').map((t) => t.id),
+    [1, 2, 6],
+  );
+  assert.deepEqual(leftForTomorrow([], '2026-10-10'), []);
+  // 넘긴 뒤(마감이 내일) 되돌리기는 마감이 그대로 내일인 것만 원래대로
+  const moved = [
+    { id: 1, due: '2026-10-09' },
+    { id: 2, due: '2026-10-10' },
+  ];
+  assert.deepEqual(
+    undoMoved(
+      moved,
+      [
+        { id: 1, due: '2026-10-11' },
+        { id: 2, due: '2026-10-12' },
+      ],
+      '2026-10-11',
+    ),
+    [{ id: 1, due: '2026-10-09' }],
+  );
 });

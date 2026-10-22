@@ -414,3 +414,105 @@
 .cal-week-start select {
   font-size: 11px;
 }
+
+/* 넓은 칸(큰 창, >=860): 큰 월 보기가 왼쪽, 고른 날 목록이 오른쪽 (큰 창 설계 #159, 이슈 #162).
+   칸 안에 일정 제목이 몇 개 보이고 넘치면 +N (CalendarView 가 줄 수를 정한다) */
+.panel-tabpanel[data-zone="wide"] .cal {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  grid-template-areas:
+    "bar days"
+    "grid days"
+    "keys days"
+    "start days";
+  grid-template-rows: auto auto auto 1fr;
+  column-gap: 28px;
+  align-items: start;
+  padding: 14px 24px 18px;
+}
+
+.panel-tabpanel[data-zone="wide"] .cal-bar {
+  grid-area: bar;
+  margin-bottom: 8px;
+}
+
+.panel-tabpanel[data-zone="wide"] .cal-title {
+  flex: 1;
+  padding-left: 6px;
+  font-size: 17px;
+  text-align: start;
+  order: -1;
+}
+
+.panel-tabpanel[data-zone="wide"] .cal-grid {
+  grid-area: grid;
+  border-spacing: 3px;
+}
+
+.panel-tabpanel[data-zone="wide"] .cal-grid th {
+  padding: 4px 0;
+  font-size: 12px;
+}
+
+.panel-tabpanel[data-zone="wide"] .cal-cell button {
+  height: 100px;
+  padding: 3px 4px 2px;
+}
+
+.panel-tabpanel[data-zone="wide"] .cal-cell:not(.on) button {
+  border-color: var(--line);
+}
+
+.panel-tabpanel[data-zone="wide"] .cal.week .cal-cell button {
+  height: 250px;
+}
+
+.panel-tabpanel[data-zone="wide"] .cal-num {
+  font-size: 12.5px;
+  line-height: 18px;
+}
+
+.panel-tabpanel[data-zone="wide"] .cal-lines {
+  gap: 2px;
+}
+
+.panel-tabpanel[data-zone="wide"] .cal-line {
+  padding: 0 4px 0 6px;
+  font-size: 11.5px;
+  line-height: 15px;
+  text-overflow: ellipsis;
+}
+
+.panel-tabpanel[data-zone="wide"] .cal-more {
+  padding-left: 6px;
+  font-size: 11.5px;
+  line-height: 14px;
+}
+
+.panel-tabpanel[data-zone="wide"] .cal-keys {
+  grid-area: keys;
+  margin-top: 8px;
+}
+
+.panel-tabpanel[data-zone="wide"] .cal-week-start {
+  grid-area: start;
+  justify-content: flex-start;
+}
+
+.panel-tabpanel[data-zone="wide"] .cal-days {
+  grid-area: days;
+  align-self: stretch;
+  margin-top: 0;
+  padding: 0 0 0 24px;
+  border-top: 0;
+  border-left: 1px solid var(--line);
+}
+
+.panel-tabpanel[data-zone="wide"] .cal-day h2 {
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.cal-add-here {
+  margin-top: 12px;
+}

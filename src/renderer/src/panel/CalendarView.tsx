@@ -21,6 +21,7 @@ import type { Todo } from '../../../shared/todo-store.ts';
 import { EventRow } from './EventTab.tsx';
 import { dayHeading } from './format.ts';
 import { RepeatIcon } from './icons.tsx';
+import { useSurface } from './surface.tsx';
 import { TodoRow } from './TodoTab.tsx';
 import './calendar.css';
 
@@ -31,6 +32,9 @@ const WEEK_START_KEY = 'jj.cal.weekStart';
 /** 칸에 그리는 줄 수. 넘으면 앞의 (줄 수 - 1)개와 "+N" */
 const MONTH_LINES = 2;
 const WEEK_LINES = 4;
+/** 넓은 칸(큰 창)은 칸이 커서 줄이 더 들어간다 */
+const WIDE_MONTH_LINES = 4;
+const WIDE_WEEK_LINES = 10;
 
 type Mode = 'month' | 'week';
 
@@ -99,6 +103,7 @@ export function CalendarView({
   onComplete: (todo: Todo) => void;
   onTodoRemoved: (todo: Todo) => void;
 }) {
+  const wide = useSurface().zone === 'wide';
   const [mode, setModeState] = useState<Mode>(() => remembered(MODE_KEY, isMode, 'month'));
   const [weekStart, setWeekStartState] = useState<WeekStart>(() =>
     remembered(WEEK_START_KEY, isWeekStart, 0),
@@ -189,7 +194,8 @@ export function CalendarView({
         });
   const short = t('cal.weekdays').split(' ');
   const full = t('cal.weekdaysFull').split(' ');
-  const lines = mode === 'month' ? MONTH_LINES : WEEK_LINES;
+  const lines =
+    mode === 'month' ? (wide ? WIDE_MONTH_LINES : MONTH_LINES) : wide ? WIDE_WEEK_LINES : WEEK_LINES;
   const month = monthOf(day);
   const listDays = mode === 'month' ? [day] : (weeks[0] ?? []);
 
@@ -318,6 +324,11 @@ export function CalendarView({
             onTodoRemoved={onTodoRemoved}
           />
         ))}
+        {wide && (
+          <button type="button" className="ghost small cal-add-here" onClick={onPick}>
+            {t('cal.addHere')}
+          </button>
+        )}
       </div>
 
       <label className="cal-week-start">

@@ -29,6 +29,8 @@ export const ko = {
   'assist.overdue.move': (v: { n: number }) => `지난 ${v.n}개 오늘로`,
   'assist.overdue.moved': (v: { n: number }) => `지난 마감 ${v.n}개를 오늘로 옮겼어`,
   'assist.overdue.brief': '지난 것 오늘로',
+  'assist.defer.move': (v: { n: number }) => `못 한 ${v.n}개 내일로`,
+  'assist.defer.moved': (v: { n: number }) => `못 한 ${v.n}개를 내일로 옮겼어`,
   'assist.week.title': '이번 주',
   'assist.week.summary': (v: { done: number; focus: number }) =>
     `끝낸 일 ${v.done}개${v.focus > 0 ? `, 집중 ${koMin(v.focus)}` : ''}`,
@@ -71,6 +73,9 @@ export const en: Translation<typeof ko> = {
   'assist.overdue.moved': (v: { n: number }) =>
     v.n === 1 ? 'Moved 1 overdue to-do to today' : `Moved ${v.n} overdue to-dos to today`,
   'assist.overdue.brief': 'Move overdue to today',
+  'assist.defer.move': (v: { n: number }) => `Push ${v.n} undone to tomorrow`,
+  'assist.defer.moved': (v: { n: number }) =>
+    v.n === 1 ? 'Pushed 1 to-do to tomorrow' : `Pushed ${v.n} to-dos to tomorrow`,
   'assist.week.title': 'This week',
   'assist.week.summary': (v: { done: number; focus: number }) =>
     `${v.done} done${v.focus > 0 ? `, ${enMin(v.focus)} focused` : ''}`,

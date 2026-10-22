@@ -62,8 +62,8 @@ test('숨긴 채 10분이 지나면 없앨 때', () => {
   assert.equal(homeExpired(1000, 1500, 500), true);
 });
 
-test('큰 창 크기: 기본 1040x720, 가장 작게 760x520, 기본이 최소보다 작지 않다', () => {
-  assert.deepEqual(HOME_SIZE, { width: 1040, height: 720 });
+test('큰 창 크기: 기본 1100x720, 가장 작게 760x520, 기본이 최소보다 작지 않다', () => {
+  assert.deepEqual(HOME_SIZE, { width: 1100, height: 720 });
   assert.deepEqual(HOME_MIN, { width: 760, height: 520 });
   assert.ok(HOME_SIZE.width >= HOME_MIN.width && HOME_SIZE.height >= HOME_MIN.height);
 });

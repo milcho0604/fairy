@@ -9,6 +9,7 @@ import {
 } from 'electron';
 import type { StatStore } from '../shared/beta-stats.ts';
 import { undoMoved } from '../shared/briefing.ts';
+import { plusDays } from '../shared/day.ts';
 import { dayWatch } from '../shared/day-watch.ts';
 import { saveErrorText } from '../shared/download-error.ts';
 import { isPanelDraftKind } from '../shared/draft-store.ts';
@@ -718,24 +719,56 @@ export function createPanel(o: PanelOptions) {
     o.store.removeStep(stepId);
     push();
   });
-  /** 마지막 "지난 마감 오늘로" (되돌리기는 메인이 지금 상태와 맞춰 한다) */
-  let lastMoved: { moved: { id: number; due: string | null }[]; today: string } | undefined;
-  ipcMain.handle(PANEL.moveOverdue, (e) => {
+  /** "지난 마감 오늘로"와 "못 한 N개 내일로"를 묶음마다 기억한다 (알림 둘이면 각자 자기 묶음만 되돌린다). 되돌리기는 메인이 지금 상태와 맞춰 한다 */
+  const movedKept = new Map<number, { moved: { id: number; due: string | null }[]; day: string }>();
+  let movedLast: number | undefined;
+  const keepMoved = (key: number | undefined, moved: { id: number; due: string | null }[], day: string) => {
+    // 0개면 기억을 덮지 않는다 (빠르게 두 번 불러 둘째가 0개여도 첫째 되돌리기가 남는다)
+    if (moved.length === 0) return;
+    const k = key ?? 0;
+    movedKept.delete(k);
+    movedKept.set(k, { moved, day });
+    movedLast = k;
+    // 오래된 묶음은 버린다 (알림은 몇 개 안 남는다)
+    while (movedKept.size > 20) movedKept.delete(movedKept.keys().next().value as number);
+  };
+  ipcMain.handle(PANEL.moveOverdue, (e, to: unknown, opts: unknown) => {
     if (!ours(e)) return [];
     const now = Date.now();
+    const o2 = typeof opts === 'object' && opts !== null ? (opts as Record<string, unknown>) : {};
+    const key = typeof o2.key === 'number' && Number.isFinite(o2.key) ? o2.key : undefined;
+    if (to === 'tomorrow') {
+      // "못 한 N개 내일로": 화면이 본 오늘(today)과 본 목록(ids)을 기준으로 옮긴다 (자정이 지나 새로 오늘이 된 것은 그대로)
+      // 화면이 본 날은 지금 날과 하루 차이 안에서만 받는다 (없는 날짜나 먼 날짜는 지금 날로)
+      const nowDay = localDay(now);
+      const near = [plusDays(nowDay, -1), nowDay, plusDays(nowDay, 1)];
+      const day = typeof o2.today === 'string' && near.includes(o2.today) ? o2.today : nowDay;
+      const ids = Array.isArray(o2.ids)
+        ? o2.ids.filter((n): n is number => typeof n === 'number')
+        : undefined;
+      const tomorrow = plusDays(day, 1);
+      const moved = o.store.deferTo(day, tomorrow, now, ids);
+      keepMoved(key, moved, tomorrow);
+      log('todo', 'defer-tomorrow', moved.length);
+      push();
+      return moved;
+    }
     const today = localDay(now);
     // 오늘 탭 링크가 센 것(습관 빼고)만 옮긴다. 습관의 지난 회차는 습관 칸에서 체크한다
     const moved = o.store.moveOverdue(today, now, { habits: false });
-    lastMoved = { moved, today };
+    keepMoved(key, moved, today);
     log('todo', 'move-overdue', moved.length);
     push();
     return moved;
   });
-  // 되돌리기: 아직 열려 있고 마감이 그대로 오늘인 것만 (그사이 끝냈거나 마감을 바꾼 것은 둔다. 회고 되돌리기와 같다)
-  ipcMain.on(PANEL.undoMoveOverdue, (e) => {
-    if (!ours(e) || !lastMoved) return;
-    const back = undoMoved(lastMoved.moved, o.store.list(Date.now()).open, lastMoved.today);
-    lastMoved = undefined;
+  // 되돌리기: 아직 열려 있고 마감이 그대로 옮긴 날인 것만 (그사이 끝냈거나 마감을 바꾼 것은 둔다. 회고 되돌리기와 같다)
+  ipcMain.on(PANEL.undoMoveOverdue, (e, key: unknown) => {
+    if (!ours(e)) return;
+    const k = typeof key === 'number' ? key : movedLast;
+    const kept = k === undefined ? undefined : movedKept.get(k);
+    if (k === undefined || !kept) return;
+    movedKept.delete(k);
+    const back = undoMoved(kept.moved, o.store.list(Date.now()).open, kept.day);
     const at = Date.now();
     for (const b of back) o.store.update(b.id, { due: b.due }, at);
     push();
