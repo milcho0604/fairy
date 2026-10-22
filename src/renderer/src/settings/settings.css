@@ -1651,8 +1651,16 @@ textarea.rules {
 
 .admin-list li {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 8px 12px;
+}
+
+/* 대상 이름이 적힌 두 번째 누르기 글은 길어서 줄을 바꿔 보인다 */
+.admin-list li > button.danger {
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
 }
 
 .admin-item {
@@ -1675,6 +1683,43 @@ textarea.rules {
 
 .admin-wrap {
   flex-wrap: wrap;
+}
+
+/* 폼 바로 아래 한 줄: 처리 중 표시와 이 폼의 오류 (#155) */
+.admin-working,
+.admin-err {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.admin-working {
+  color: var(--muted);
+}
+
+.admin-working::before {
+  content: "";
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  margin-right: 0.5em;
+  vertical-align: -0.1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: admin-spin 0.8s linear infinite;
+}
+
+@keyframes admin-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-working::before {
+    animation: none;
+    border-right-color: currentColor;
+  }
 }
 
 /* ---- 펫 대사 고치기 (LinesEditor.tsx, #125) ---- */

@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomInt } from 'node:crypto';
 import {
   BadRequestException,
@@ -24,6 +25,7 @@ import {
   type AdminUsersPage,
   type AdminView,
   adminCss,
+  adminJs,
   loginPage,
   mainPage,
 } from './admin-page';
@@ -49,6 +51,7 @@ import {
 } from './notice-doc';
 import { ipKey, LIMITS, RateLimiter } from './rate-limit';
 import { Rewards } from './rewards';
+import { normalizeDeviceCode } from './shared/account-profile';
 import { COUPON_ALPHABET, COUPON_LENGTH, formatCoupon, kstIso, parseEvent } from './shared/site-events';
 import { levelsOrder, normalVersion } from './shared/update-levels';
 import { sha256 } from './tokens';
@@ -141,7 +144,16 @@ interface AccountRow {
 }
 
 const USER_PAGE_SIZE = 50;
+const LOG_PAGE_SIZE = 50;
 const GRANT_MAX_RECIPIENTS = 20;
+
+/** 운영 기록 찾기 칸 (웹 /admin/log 와 앱의 /v1/admin/overview) */
+export interface LogOptions {
+  user?: string | undefined;
+  action?: string | undefined;
+  text?: string | undefined;
+  page?: string | undefined;
+}
 
 /** 쓰기의 결과 글과 운영 기록 (행동, 대상, 자세히) */
 interface Written {
@@ -195,6 +207,15 @@ export function newCouponCode(): string {
   return s;
 }
 
+/** 운영 기록의 "누가" 이름: 웹 세션은 "웹 운영자", 앱 운영자는 닉네임과 계정 번호. 모르면 null (옛 기록처럼 actor 를 보인다) */
+export async function actorName(c: PoolClient | Db['pool'], actor: string): Promise<string | null> {
+  if (actor.startsWith('admin:')) return '웹 운영자';
+  const m = /^account:(\d{1,18})$/.exec(actor);
+  if (!m) return null;
+  const r = await c.query<{ nickname: string | null }>('SELECT nickname FROM account WHERE id = $1', [m[1]]);
+  return `${r.rows[0]?.nickname ?? '닉네임 없음'} #${m[1]}`.slice(0, 80);
+}
+
 /** 운영 기록 한 줄 */
 export async function adminLog(
   c: PoolClient | Db['pool'],
@@ -203,12 +224,42 @@ export async function adminLog(
   target: string | null,
   detail?: Record<string, unknown>,
 ): Promise<void> {
-  await c.query('INSERT INTO admin_log (actor, action, target, detail) VALUES ($1, $2, $3, $4)', [
-    actor,
-    action,
-    target?.slice(0, 120) ?? null,
-    detail ? JSON.stringify(detail) : null,
-  ]);
+  await c.query(
+    'INSERT INTO admin_log (actor, actor_name, action, target, detail) VALUES ($1, $2, $3, $4, $5)',
+    [
+      actor,
+      await actorName(c, actor),
+      action,
+      target?.slice(0, 120) ?? null,
+      detail ? JSON.stringify(detail) : null,
+    ],
+  );
+}
+
+/** 되돌릴 수 없는 동작은 확인 칸이 있어야 한다 (웹은 대상 이름이 적힌 체크 칸, 앱은 두 번 누르기). 이름은 거절 글에 붙는다 */
+const confirmCtx = new AsyncLocalStorage<{ unconfirmed: boolean; legacyOk: boolean }>();
+
+/**
+ * 새 확인 (이벤트 끝내기, 쿠폰 끄기, 공지 지우기, 정기 지급 해지, 막기): 확인 칸 값이 대상 이름(id 나 계정)과 맞아야 한다.
+ * 확인이 아예 없는 요청은 앱 Bearer 경로(운영자 계정 주체 account:)에서만 옛 앱(0.5.0)이라 예전처럼 받고 운영 기록에
+ * "확인 없이(옛 앱)" 를 남긴다. 웹 폼과 쿠키 JSON 경로(주체 admin:)는 확인이 없으면 거절한다. 계정은 기기 코드 표기 차이를 맞춰 비교한다
+ */
+function softConfirm(f: FormFields, what: string, target: string): void {
+  const c = (f.confirm ?? '').trim();
+  if (!c) {
+    const ctx = confirmCtx.getStore();
+    if (!ctx?.legacyOk) throw new Refused(`확인 칸을 체크해 주세요 (${what})`, 'confirm');
+    ctx.unconfirmed = true;
+    return;
+  }
+  const t = target.trim();
+  const same =
+    c === t || (normalizeDeviceCode(c) !== undefined && normalizeDeviceCode(c) === normalizeDeviceCode(t));
+  if (!same) throw new Refused(`확인한 대상이 달라요 (${what})`, 'confirm');
+}
+
+function needConfirm(f: FormFields, what: string): void {
+  if (f.confirm !== 'yes') throw new Refused(`확인 칸을 체크해 주세요 (${what})`, 'confirm');
 }
 
 @Injectable()
@@ -244,6 +295,7 @@ export class AdminService {
     query: string | undefined,
     tab: AdminTab = 'overview',
     userOptions: { page?: string; sort?: string; direction?: string } = {},
+    logOptions: LogOptions = {},
   ): Promise<Omit<AdminView, 'csrf' | 'flash'>> {
     const q = this.db.pool;
     const sum = await q.query<{ accounts: string; coins: string; tickets: string }>(
@@ -289,16 +341,7 @@ export class AdminService {
         WHERE closed_at IS NULL AND merged_into IS NULL AND last_active_at > now() - interval '30 days'
         GROUP BY app_version`,
     );
-    const log = await q.query<{
-      at: string;
-      actor: string;
-      action: string;
-      target: string | null;
-      detail: unknown;
-    }>(
-      `SELECT (extract(epoch FROM at) * 1000)::bigint AS at, actor, action, target, detail FROM admin_log
-        ORDER BY id DESC LIMIT 50`,
-    );
+    const log = await this.logs(logOptions);
     return {
       tab,
       summary: {
@@ -325,9 +368,77 @@ export class AdminService {
       noticesUpdated: doc.rows[0] ? Number(doc.rows[0].updated) : undefined,
       latest: await this.feeds.latestRelease(),
       log: log.rows,
+      logPage: log.page,
       rewardsLoginOnly: await this.rewards.loginOnly(),
       features: await this.features.listFeatures(),
       versions: versionStats(dist.rows),
+    };
+  }
+
+  /** 찾는 말로 계정 번호들 (번호, 기기 코드, 닉네임 일부). 합쳐진 계정이면 남은 계정 번호도 */
+  private async accountIds(ref: string): Promise<string[]> {
+    const ids = new Set<string>();
+    const exact = await findAccount(this.db.pool, ref);
+    if (exact) {
+      ids.add(exact);
+      const m = await this.db.pool.query<{ merged_into: string | null }>(
+        'SELECT merged_into FROM account WHERE id = $1',
+        [exact],
+      );
+      if (m.rows[0]?.merged_into) ids.add(m.rows[0].merged_into);
+    }
+    const byName = await this.db.pool.query<{ id: string }>(
+      `SELECT id FROM account WHERE nickname ILIKE '%' || $1 || '%' ESCAPE '\\' ORDER BY id DESC LIMIT 20`,
+      [ref.replace(/[\\%_]/g, '\\$&')],
+    );
+    for (const r of byName.rows) ids.add(r.id);
+    return [...ids];
+  }
+
+  /** 운영 기록 한 쪽: 대상 이용자, 동작 종류, 글 검색으로 걸러 50건씩 (옛 기록은 actor_name 이 비어 있다) */
+  private async logs(o: LogOptions): Promise<{ rows: AdminView['log']; page: AdminView['logPage'] }> {
+    const user = (o.user ?? '').trim().slice(0, 40);
+    const action = (o.action ?? '').trim().slice(0, 40);
+    const text = (o.text ?? '').trim().slice(0, 60);
+    const ids = user ? await this.accountIds(user) : undefined;
+    const targets = ids ? ids.map((id) => `account:${id}`) : null;
+    const like = text.replace(/[\\%_]/g, '\\$&');
+    const pageRaw = Number(o.page ?? '1');
+    const want = Number.isSafeInteger(pageRaw) && pageRaw > 0 ? Math.min(pageRaw, 100_000) : 1;
+    const join = `FROM admin_log l LEFT JOIN account ac
+        ON ac.id = CASE WHEN l.target ~ '^account:[0-9]{1,18}$' THEN substr(l.target, 9)::bigint END`;
+    const where = `WHERE ($1::text[] IS NULL OR l.target = ANY($1::text[]))
+        AND ($2 = '' OR l.action = $2)
+        AND ($3 = '' OR l.actor_name ILIKE '%' || $4 || '%' ESCAPE '\\' OR l.actor ILIKE '%' || $4 || '%' ESCAPE '\\'
+          OR l.action ILIKE '%' || $4 || '%' ESCAPE '\\' OR l.target ILIKE '%' || $4 || '%' ESCAPE '\\'
+          OR ac.nickname ILIKE '%' || $4 || '%' ESCAPE '\\' OR l.detail::text ILIKE '%' || $4 || '%' ESCAPE '\\')`;
+    const args = [targets, action, text, like];
+    const count = await this.db.pool.query<{ n: string }>(`SELECT count(*) AS n ${join} ${where}`, args);
+    const total = Number(count.rows[0]?.n ?? 0);
+    const pages = Math.max(1, Math.ceil(total / LOG_PAGE_SIZE));
+    const page = Math.min(want, pages);
+    const rows = await this.db.pool.query<AdminView['log'][number]>(
+      `SELECT (extract(epoch FROM l.at) * 1000)::bigint AS at, l.actor, l.actor_name AS "actorName", l.action, l.target,
+              CASE WHEN ac.id IS NULL THEN NULL ELSE COALESCE(ac.nickname, '닉네임 없음') || ' #' || ac.id END AS "targetName",
+              l.detail
+         ${join} ${where} ORDER BY l.id DESC LIMIT $5 OFFSET $6`,
+      [...args, LOG_PAGE_SIZE, (page - 1) * LOG_PAGE_SIZE],
+    );
+    const actions = await this.db.pool.query<{ action: string }>(
+      'SELECT DISTINCT action FROM admin_log ORDER BY action',
+    );
+    return {
+      rows: rows.rows,
+      page: {
+        total,
+        page,
+        pages,
+        user,
+        action,
+        text,
+        actions: actions.rows.map((x) => x.action),
+        userMissing: ids !== undefined && ids.length === 0,
+      },
     };
   }
 
@@ -463,7 +574,14 @@ export class AdminService {
   private write(actor: string, fn: (c: PoolClient) => Promise<Written>): Promise<AdminDone> {
     return this.db.tx(async (c) => {
       const out = await fn(c);
-      await adminLog(c, actor, out.log[0], out.log[1], out.log[2]);
+      const old = confirmCtx.getStore()?.unconfirmed;
+      await adminLog(
+        c,
+        actor,
+        out.log[0],
+        out.log[1],
+        old ? { ...out.log[2], confirm: '확인 없이(옛 앱)' } : out.log[2],
+      );
       return { text: out.text, code: out.log[0], ...(out.data ? { data: out.data } : {}) };
     });
   }
@@ -521,7 +639,8 @@ export class AdminService {
   }
 
   /** 이벤트 끝내기: 시작했으면 지금 끝내고, 시작 전이면 지운다 (받은 사람이 없다) */
-  async endEvent(actor: string, id: string): Promise<AdminDone> {
+  async endEvent(actor: string, id: string, f: FormFields): Promise<AdminDone> {
+    softConfirm(f, `이벤트 ${id} 끝내기`, id);
     return this.write(actor, async (c) => {
       const r = await c.query<{ started: boolean; ended: boolean }>(
         'SELECT starts_at <= now() AS started, ends_at <= now() AS ended FROM event WHERE id = $1 FOR UPDATE',
@@ -580,8 +699,9 @@ export class AdminService {
     });
   }
 
-  async disableCoupon(actor: string, id: string): Promise<AdminDone> {
+  async disableCoupon(actor: string, id: string, f: FormFields): Promise<AdminDone> {
     if (!/^\d{1,18}$/.test(id)) throw new Refused('쿠폰 번호가 이상해요');
+    softConfirm(f, `쿠폰 #${id} 끄기`, id);
     return this.write(actor, async (c) => {
       const r = await c.query(
         'UPDATE coupon SET disabled_at = now() WHERE id = $1 AND disabled_at IS NULL RETURNING id',
@@ -691,7 +811,7 @@ export class AdminService {
 
   /** 접근 모드 (off, allowlist, everyone). 바꾸기는 확인 칸이 있어야 한다 */
   async aiMode(actor: string, f: FormFields): Promise<AdminDone> {
-    if (f.confirm !== 'yes') throw new Refused('확인 칸을 체크해 주세요 (모드 바꾸기)', 'confirm');
+    needConfirm(f, '접근 설정 바꾸기');
     const mode = (f.mode ?? '') as AiMode;
     if (!AI_MODES.includes(mode)) throw new Refused('모드는 off, allowlist, everyone');
     return this.write(actor, async (c) => {
@@ -714,7 +834,7 @@ export class AdminService {
 
   /** 기능 모드 (off, allowlist, everyone). 바꾸기는 확인 칸이 있어야 한다 */
   async featureMode(actor: string, f: FormFields): Promise<AdminDone> {
-    if (f.confirm !== 'yes') throw new Refused('확인 칸을 체크해 주세요 (모드 바꾸기)', 'confirm');
+    needConfirm(f, '접근 설정 바꾸기');
     const key = this.featureKey(f);
     const mode = (f.mode ?? '') as AiMode;
     if (!AI_MODES.includes(mode)) throw new Refused('모드는 off, allowlist, everyone');
@@ -840,7 +960,7 @@ export class AdminService {
 
   /** 채팅 이용권 회수 (남은 장수까지만). 확인 칸이 있어야 한다. 주기는 쪽지로 (sendNote) */
   async aiRevoke(actor: string, f: FormFields): Promise<AdminDone> {
-    if (f.confirm !== 'yes') throw new Refused('확인 칸을 체크해 주세요 (회수)', 'confirm');
+    needConfirm(f, '회수');
     const n = int(f.count, 1, 1000, '회수 장수');
     if (n === 0) throw new Refused('회수할 장수를 넣어 주세요');
     return this.write(actor, async (c) => {
@@ -890,6 +1010,7 @@ export class AdminService {
   }
 
   async aiCancel(actor: string, f: FormFields): Promise<AdminDone> {
+    softConfirm(f, '정기 지급 해지', f.account ?? '');
     return this.write(actor, async (c) => {
       let r: { id: string; subscription: number };
       try {
@@ -906,6 +1027,7 @@ export class AdminService {
 
   async aiBlock(actor: string, f: FormFields): Promise<AdminDone> {
     const on = f.blocked === '1' || f.blocked === 'true';
+    if (on) softConfirm(f, '채팅 이용권 막기', f.account ?? '');
     return this.write(actor, async (c) => {
       let id: string;
       try {
@@ -953,16 +1075,26 @@ export class AdminService {
 
   /** 쓰기 하나를 이름으로 (웹 폼과 앱의 /v1/admin/* 가 같이 쓴다) */
   run(action: AdminAction, actor: string, f: FormFields): Promise<AdminDone> {
+    // 칸은 글자 하나만 받는다 (같은 이름을 두 번 보내 배열이 되면 거절)
+    for (const k of ['id', 'account', 'key', 'confirm'])
+      if (typeof (f as Record<string, unknown>)[k] !== 'undefined' && typeof f[k] !== 'string')
+        return Promise.reject(new Refused(`${k} 칸은 값 하나만 받아요`));
+    return confirmCtx.run({ unconfirmed: false, legacyOk: actor.startsWith('account:') }, () =>
+      this.dispatch(action, actor, f),
+    );
+  }
+
+  private dispatch(action: AdminAction, actor: string, f: FormFields): Promise<AdminDone> {
     const id = () => (f.id ?? '').trim();
     switch (action) {
       case 'events':
         return this.createEvent(actor, f);
       case 'events/end':
-        return this.endEvent(actor, id());
+        return this.endEvent(actor, id(), f);
       case 'coupons':
         return this.createCoupon(actor, f);
       case 'coupons/disable':
-        return this.disableCoupon(actor, id());
+        return this.disableCoupon(actor, id(), f);
       case 'notes':
         return this.sendNote(actor, f);
       case 'grants/batch':
@@ -970,7 +1102,7 @@ export class AdminService {
       case 'notices':
         return this.saveNotice(actor, f);
       case 'notices/delete':
-        return this.deleteNotice(actor, id());
+        return this.deleteNotice(actor, id(), f);
       case 'versions':
         return this.saveVersions(actor, f);
       case 'ai/mode':
@@ -1056,7 +1188,8 @@ export class AdminService {
     });
   }
 
-  async deleteNotice(actor: string, id: string): Promise<AdminDone> {
+  async deleteNotice(actor: string, id: string, f: FormFields): Promise<AdminDone> {
+    softConfirm(f, `공지 ${id} 지우기`, id);
     return this.editDoc(actor, async (doc) => {
       const before = doc.notices.length;
       doc.notices = doc.notices.filter((x) => x.id !== id);
@@ -1158,7 +1291,7 @@ export function versionStats(rows: { v: string | null; n: string }[]): AdminView
 function secure(res: AdminRes) {
   res.setHeader(
     'Content-Security-Policy',
-    "default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+    "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
   );
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -1246,6 +1379,29 @@ export function fieldsOf(body: unknown): FormFields {
   return out;
 }
 
+/** 실패한 폼을 다시 그릴 때 채울 값: 확인 칸과 비밀값 칸은 빼고, 칸 수와 길이를 자른다 */
+export function draftOf(f: FormFields): Record<string, string | string[]> {
+  const out: Record<string, string | string[]> = {};
+  for (const [k, v] of Object.entries(f as Record<string, unknown>)) {
+    if (k === 'csrf' || k === 'confirm' || k === 'token' || Object.keys(out).length >= 40) continue;
+    if (Array.isArray(v)) out[k] = v.slice(0, 10).map((x) => String(x).slice(0, 200));
+    else if (typeof v === 'string') out[k] = v.slice(0, 2000);
+  }
+  return out;
+}
+
+/** 실패한 폼이 어느 대상의 것인지 (기능 키, 계정, id). 같은 모양의 폼이 여럿일 때 맞는 것만 채우려고 */
+export const scopeOf = (f: FormFields): string => {
+  const v = [f.key, f.account, f.id].find((x) => typeof x === 'string');
+  return typeof v === 'string' ? v.trim().slice(0, 40) : '';
+};
+
+/** 운영 기록 탭 주소의 찾기 칸 */
+function logOptionsOf(query: Record<string, unknown>): LogOptions {
+  const text = (k: string) => (typeof query[k] === 'string' ? (query[k] as string) : undefined);
+  return { user: text('user'), action: text('action'), text: text('text'), page: text('page') };
+}
+
 /** 운영자 화면 (웹): 로그인 폼, 화면, 폼 POST */
 @Controller('admin')
 export class AdminController {
@@ -1275,6 +1431,15 @@ export class AdminController {
     res.status(200).send(adminCss);
   }
 
+  /** 제출 중 단추 막기와 끊긴 제출 되살리기 (바깥 스크립트 한 장, 인라인 스크립트 없음) */
+  @Get('admin.js')
+  js(@Res() res: AdminRes) {
+    res.setHeader('Content-Type', 'text/javascript; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.status(200).send(adminJs);
+  }
+
   @Get(['', 'users', 'grants', 'notices', 'events', 'features', 'ai', 'log'])
   async page(@Req() req: AdminReq, @Res() res: AdminRes, @Query() query: Record<string, unknown>) {
     if (this.off(res)) return;
@@ -1286,11 +1451,16 @@ export class AdminController {
     const legacyQuery = typeof query.q === 'string' && query.q.trim() ? query.q.trim() : undefined;
     const tab = req.path === '/admin' && legacyQuery ? 'users' : (tabFromPath(req.path) ?? 'overview');
     const selected = tab === 'grants' && typeof query.account === 'string' ? query.account : legacyQuery;
-    const view = await this.admin.view(selected, tab, {
-      page: typeof query.page === 'string' ? query.page : undefined,
-      sort: typeof query.sort === 'string' ? query.sort : undefined,
-      direction: typeof query.direction === 'string' ? query.direction : undefined,
-    });
+    const view = await this.admin.view(
+      selected,
+      tab,
+      {
+        page: typeof query.page === 'string' ? query.page : undefined,
+        sort: typeof query.sort === 'string' ? query.sort : undefined,
+        direction: typeof query.direction === 'string' ? query.direction : undefined,
+      },
+      tab === 'log' ? logOptionsOf(query) : {},
+    );
     html(res, 200, mainPage({ ...view, csrf: s.csrf, flash }));
   }
 
@@ -1346,6 +1516,7 @@ export class AdminController {
           ? `${base}?q=${encodeURIComponent(f.account.trim())}`
           : base;
       },
+      name,
     );
   }
 
@@ -1371,6 +1542,7 @@ export class AdminController {
     res: AdminRes,
     fn: (s: AdminSession, f: FormFields) => Promise<string | undefined>,
     back: (f: FormFields) => string = () => '/admin',
+    form?: string,
   ): Promise<void> {
     if (this.off(res)) return;
     const s = this.auth.session(req.headers.cookie);
@@ -1386,14 +1558,16 @@ export class AdminController {
       const text = await fn(s, f);
       if (text !== undefined) s.flash = { text, error: false };
     } catch (err) {
-      if (err instanceof Refused) s.flash = { text: err.message, error: true };
+      // 실패하면 쓴 값을 세션에 한 번만 담아 두었다가 같은 폼을 채워 다시 그린다 (비밀값 칸과 확인 칸은 빼고)
+      const keep = form ? { form, scope: scopeOf(f), fields: draftOf(f) } : {};
+      if (err instanceof Refused) s.flash = { text: err.message, error: true, ...keep };
       else {
         console.warn('[admin] 쓰기 실패:', (err as Error).message);
-        s.flash = { text: '서버 오류로 저장하지 못했어요', error: true };
+        s.flash = { text: '서버 오류로 저장하지 못했어요', error: true, ...keep };
       }
     }
     secure(res);
-    res.redirect(303, to);
+    res.redirect(303, s.flash?.error ? `${to}#form-error` : to);
   }
 }
 
@@ -1443,9 +1617,15 @@ export class AdminApiController {
   }
 
   @Get('overview')
-  async overview(@Req() req: AdminReq, @Query('q') q?: string) {
+  async overview(@Req() req: AdminReq, @Query() query: Record<string, unknown>) {
     await this.who(req, false);
-    return this.admin.view(typeof q === 'string' && q.trim() ? q.trim() : undefined);
+    const q = query.q;
+    return this.admin.view(
+      typeof q === 'string' && q.trim() ? q.trim() : undefined,
+      'overview',
+      {},
+      logOptionsOf(query),
+    );
   }
 
   @Post([...ADMIN_ACTIONS])

@@ -210,6 +210,14 @@ export const SERVER = {
   calendarHintNo: 'server:calendar-hint-no',
 } as const;
 
+/** 운영 기록 찾기 (#155): 대상 이용자(번호, 기기 코드, 닉네임), 동작 종류, 글, 쪽 */
+export interface AdminLogFilter {
+  user?: string;
+  action?: string;
+  text?: string;
+  page?: number;
+}
+
 /** 설정 창이 부르는 것 (preload 가 window.jjakkungServer 로 연다) */
 export interface ServerBridge {
   status(): Promise<ServerStatus | undefined>;
@@ -225,7 +233,7 @@ export interface ServerBridge {
   /** 쿠폰 쓰기 */
   coupon(code: string): Promise<RewardOutcome>;
   /** 운영자 칸 (운영자가 아니면 undefined) */
-  adminOverview(q?: string): Promise<Record<string, unknown> | undefined>;
+  adminOverview(q?: string, log?: AdminLogFilter): Promise<Record<string, unknown> | undefined>;
   adminAction(
     action: string,
     fields: Record<string, string | string[] | boolean | number>,

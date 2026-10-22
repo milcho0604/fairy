@@ -2,7 +2,7 @@
 // 머리는 한 곳(gated)에서만 붙으므로, 요청 함수를 하나씩 불러 나간 요청을 모두 검사한다.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { gated, serverApi } from './server-api.ts';
+import { adminLogFilter, adminQuery, gated, serverApi } from './server-api.ts';
 
 const item = {
   id: 1,
@@ -92,4 +92,37 @@ test('426 은 단계와 필요한 판을 알리고, 통과한 요청은 막힌 �
   status = 200;
   await f('http://x/v1/me', { method: 'GET' });
   assert.equal(got.length, 3);
+});
+
+test('운영자 개요 주소: 계정 찾기와 운영 기록 찾기 칸만 붙고, 비면 붙지 않는다 (#155)', () => {
+  assert.equal(adminQuery(), '');
+  assert.equal(adminQuery('', {}), '');
+  assert.equal(adminQuery('F-1111-2222'), '?q=F-1111-2222');
+  assert.equal(
+    adminQuery(undefined, { user: '고양이', action: 'event.end', text: 'a b', page: 3 }),
+    '?user=%EA%B3%A0%EC%96%91%EC%9D%B4&action=event.end&text=a+b&page=3',
+  );
+  assert.equal(adminQuery(undefined, { page: 1 }), '');
+});
+
+test('운영 기록 찾기 칸은 글자만 받고 길이를 자른다 (#155)', () => {
+  assert.equal(adminLogFilter(undefined), undefined);
+  assert.equal(adminLogFilter([]), undefined);
+  assert.deepEqual(adminLogFilter({ user: ' 가나 ', action: 'x'.repeat(99), text: 5, page: 2.5 }), {
+    user: '가나',
+    action: 'x'.repeat(40),
+    text: '',
+  });
+  assert.deepEqual(adminLogFilter({ page: 4 }), { user: '', action: '', text: '', page: 4 });
+});
+
+test('운영자 개요 요청은 찾기 칸을 서버 주소에 싣는다 (#155)', async () => {
+  const urls: string[] = [];
+  const raw = async (url: string) => {
+    urls.push(url);
+    return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  const api = serverApi('http://x', raw, { appVersion: '0.5.0' });
+  await api.adminOverview('fs_t', 'q1', { user: 'u', action: 'ai.block' });
+  assert.equal(urls[0], 'http://x/v1/admin/overview?q=q1&user=u&action=ai.block');
 });

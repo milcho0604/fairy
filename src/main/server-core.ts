@@ -11,6 +11,7 @@ import { checkNickname, DEVICE_CODE } from '../shared/account-profile.ts';
 import {
   type AccountSummary,
   type AdminActionResult,
+  type AdminLogFilter,
   type AgeAnswer,
   ageClass,
   isAgeAnswer,
@@ -1174,9 +1175,9 @@ export function createServerCore(d: ServerCoreDeps) {
     openInbox,
     sessionCall,
     /** 운영자 화면 (운영자가 아니면 undefined. 서버가 요청마다 다시 본다) */
-    adminOverview: (q?: string) =>
+    adminOverview: (q?: string, log?: AdminLogFilter) =>
       adminCall(async (t) => {
-        const r = await d.api?.adminOverview(t, q);
+        const r = await d.api?.adminOverview(t, q, log);
         if (r && !r.ok && r.status === 403) {
           st.admin = false;
           save();
