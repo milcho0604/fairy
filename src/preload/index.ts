@@ -538,6 +538,12 @@ if (kind === 'panel' || kind === 'home' || kind === 'quick') {
       ipcRenderer.on(PANEL.hiding, on);
       return () => void ipcRenderer.removeListener(PANEL.hiding, on);
     },
+    expand: (tab) => ipcRenderer.send(PANEL.expand, tab),
+    expandHintAt: () => ipcRenderer.sendSync(PANEL.expandHintAt) as number,
+    expandHintShown: () => ipcRenderer.send(PANEL.expandHintShown),
+    onExpandNow: (listener) => {
+      ipcRenderer.on(PANEL.expandNow, () => listener());
+    },
   };
   contextBridge.exposeInMainWorld('jjakkungPanel', panel);
   // 하루 도구 (습관, 아침 계획, 방금 울린 알림 미루기, shared/day-ipc.ts)

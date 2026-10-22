@@ -1528,6 +1528,7 @@ li.pin-end {
 }
 
 .life {
+  position: relative;
   display: flex;
   gap: 12px;
   padding: 0 14px 6px;
@@ -2292,4 +2293,60 @@ li:is(.todo, .event) .tools .extra .due.none {
 
 .panel .notes li.note-row.current > button:first-child {
   background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+}
+
+/* 크게 볼까요? 칩: 눌리는 단추가 없는 기분, 친밀도 줄 오른쪽에 잠깐 (이슈 #164). 다른 단추를 덮지 않는다 */
+.expand-chip {
+  -webkit-app-region: no-drag;
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  z-index: 6;
+  max-width: calc(100% - 20px);
+  transform: translateY(-62%);
+}
+
+.expand-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 1px 9px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 18%);
+  animation: chip-in 160ms ease-out;
+}
+
+.expand-chip-btn :where(svg) {
+  flex: none;
+  width: 12px;
+  height: 12px;
+}
+
+.expand-chip-btn:hover,
+.expand-chip-btn:focus-visible {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+@keyframes chip-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .expand-chip-btn {
+    animation: none;
+  }
 }

@@ -1,5 +1,7 @@
 import { type KeyboardEvent, type PointerEvent, useEffect, useRef } from 'react';
+import { createExpandHint } from '../../../shared/expand-hint.ts';
 import { t } from '../../../shared/i18n/index.ts';
+import { PANEL_MAX_WIDTH } from '../../../shared/panel-place.ts';
 
 // 패널 크기 손잡이 (오른쪽 아래 모서리, 아래 가장자리, 오른쪽 가장자리). 투명한 틀 없는 창이라 운영체제 크기 조절은
 // 플랫폼마다 보장되지 않아 카드 안에 손잡이를 둔다. 끌기 시작과 끝을 메인에 알리면 그동안 다른 곳을 눌러도 닫히지 않는다.
@@ -13,7 +15,13 @@ const KEEPALIVE_MS = 700;
 
 type Edge = 'se' | 's' | 'e';
 
-export function ResizeGrips() {
+/** 가장 넓게 만든 채 더 넓히려 하면 "크게 볼까요?" 를 권한다 (shared/expand-hint.ts). 마지막으로 띄운 때는 메인이 들고 있어 패널을 닫았다 열어도 이어진다 */
+const hint = createExpandHint(PANEL_MAX_WIDTH, Date.now, {
+  get: () => bridge.expandHintAt(),
+  set: () => bridge.expandHintShown(),
+});
+
+export function ResizeGrips({ onPastMax }: { onPastMax: () => void }) {
   /** 끄는 중이면 잡을 때 모서리까지 거리 */
   const drag = useRef<{ edge: Edge; gx: number; gy: number; id: number }>(undefined);
   const frame = useRef<number>(undefined);
@@ -39,6 +47,7 @@ export function ResizeGrips() {
       id: e.pointerId,
     };
     want.current = {};
+    hint.start();
     bridge.resizeStart();
     clearInterval(keepalive.current);
     keepalive.current = setInterval(() => bridge.resize(want.current.w, want.current.h), KEEPALIVE_MS);
@@ -51,6 +60,10 @@ export function ResizeGrips() {
       ...(d.edge !== 's' ? { w: e.clientX + d.gx } : {}),
       ...(d.edge !== 'e' ? { h: e.clientY + d.gy } : {}),
     };
+    if (
+      hint.drag({ outerWidth: window.outerWidth, innerWidth: window.innerWidth, wantWidth: want.current.w })
+    )
+      onPastMax();
     // 화면 갱신마다 한 번만 (초당 60번 안쪽)
     if (frame.current === undefined) frame.current = requestAnimationFrame(flush);
   };
@@ -80,6 +93,15 @@ export function ResizeGrips() {
     const dy = e.key === 'ArrowDown' ? step : e.key === 'ArrowUp' ? -step : 0;
     if (!dx && !dy) return;
     e.preventDefault();
+    hint.start();
+    if (
+      hint.drag({
+        outerWidth: window.outerWidth,
+        innerWidth: window.innerWidth,
+        wantWidth: dx ? window.innerWidth + dx : undefined,
+      })
+    )
+      onPastMax();
     bridge.resizeStart();
     bridge.resize(window.innerWidth + dx, window.innerHeight + dy);
     bridge.resizeEnd();

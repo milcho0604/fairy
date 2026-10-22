@@ -124,6 +124,22 @@ export function PlayIcon({ filled }: { filled?: boolean }) {
   );
 }
 
+/** 크게 보기: 모서리 두 곳이 바깥으로 */
+export function ExpandIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M9.5 2.5h4v4M13.5 2.5L9 7M6.5 13.5h-4v-4M2.5 13.5L7 9"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function PinIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
