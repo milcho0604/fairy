@@ -15,6 +15,7 @@ import {
   type CarryMessage,
   CHAT,
   type ChatBridge,
+  type ChatKeyEvent,
   FACE,
   type FaceBridge,
   type GestureEvent,
@@ -532,6 +533,13 @@ if (kind === 'panel' || kind === 'home' || kind === 'quick') {
     play: (kind) => ipcRenderer.send(PANEL.play, kind),
     onTab: (listener) => {
       ipcRenderer.on(PANEL.tab, (_e, tab: PanelTab) => listener(tab));
+    },
+    homeChat: (rect) => ipcRenderer.send(PANEL.homeChat, rect),
+    onChatSection: (listener) => {
+      ipcRenderer.on(PANEL.chatSection, (_e, on: boolean) => listener(on));
+    },
+    onChatKey: (listener) => {
+      ipcRenderer.on(PANEL.chatKey, (_e, key: ChatKeyEvent) => listener(key));
     },
     onHiding: (listener) => {
       const on = () => listener();

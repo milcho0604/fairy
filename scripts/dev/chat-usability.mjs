@@ -7,6 +7,9 @@
 //   (전후 비교 재료만: COMPARE=before|after JJ_ROOT=<빌드한 체크아웃>. SKIP_MINUTE=1 이면 1분 넘는 대기 확인을 건너뛴다)
 //
 // 보는 것: 창 폭 320, 600 x 밝음, 어두움 x ko, en
+//
+// SURFACE=home 이면 같은 시험을 큰 창 안에 품은 채팅(이슈 #165)에서 돈다. 큰 창은 760 보다 좁아지지 않아 채팅 폭이 552 이상이다:
+// 창 폭 320 은 552 로, 600 은 그대로 (큰 창 폭 = 채팅 폭 + 사이드바 208). 닫기와 열기는 큰 창을 닫고 여는 것으로 한다
 import { spawn } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -18,6 +21,7 @@ const root = resolve(process.env.JJ_ROOT ?? resolve(import.meta.dirname, '..', '
 const OUT = resolve(process.env.OUT ?? '/tmp/fairy-chat-usability');
 const LANG = process.env.LANG_UNDER_TEST === 'en' ? 'en' : 'ko';
 const only = process.env.ONLY ?? '';
+const HOME = process.env.SURFACE === 'home';
 const run = (name) => !only || only === name;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 mkdirSync(OUT, { recursive: true });
@@ -214,7 +218,22 @@ async function until(what, fn, ms = 8000) {
 const panelOpen = () => main('!!__jj.panel.window && !__jj.panel.window.isDestroyed() && __jj.panel.window.isVisible()');
 const quickOpen = () =>
   main('!!__jj.panel.quickWindow && !__jj.panel.quickWindow.isDestroyed() && __jj.panel.quickWindow.isVisible()');
-const chatOpen = () => main('!!__jj.chat.window && !__jj.chat.window.isDestroyed() && __jj.chat.window.isVisible()');
+const chatOpen = () =>
+  HOME
+    ? main('!!__jj.home.window && !__jj.home.window.isDestroyed() && __jj.home.chatRect() !== null && __jj.home.window.isVisible()')
+    : main('!!__jj.chat.window && !__jj.chat.window.isDestroyed() && __jj.chat.window.isVisible()');
+/** 채팅을 연다. 큰 창이면 큰 창을 먼저 열어 두고 채팅 열기 요청이 그 안의 채팅 구역으로 가게 한다 */
+const openChatRaw = () =>
+  HOME
+    ? main(`(async () => {
+        if (!__jj.home.window || __jj.home.window.isDestroyed()) { __jj.settings.set({ panelView: 'window' }); __jj.home.open('today'); await new Promise((r) => setTimeout(r, 2500)); }
+        __jj.chat.open(__jj.pet.bounds()); return 1; })()`)
+    : main('__jj.chat.open(__jj.pet.bounds()); 1');
+/** 채팅 폭 w, 높이 h 로 (큰 창은 사이드바 208 과 머리줄 52 를 더하고 최소 크기를 지킨다) */
+const chatSize = (w, h) =>
+  HOME
+    ? main(`__jj.home.window.setSize(${Math.max(w + 208, 760)}, ${Math.max(h + 52, 520)}); 1`)
+    : main(`__jj.chat.window.setSize(${w}, ${h}); 1`);
 async function openPanel(tab = 'today') {
   if (!(await panelOpen())) await main('__jj.panel.togglePanel(); 1');
   await until('패널 열림', panelOpen);
@@ -243,7 +262,7 @@ async function closeQuick() {
   await sleep(250);
 }
 async function openChat() {
-  if (!(await chatOpen())) await main('__jj.chat.open(__jj.pet.bounds()); 1');
+  if (!(await chatOpen())) await openChatRaw();
   await until('채팅 열림', chatOpen);
   const c = await page('chat');
   await until('채팅 그려짐', async () => !!(await c.ev("!!document.querySelector('textarea')")));
@@ -251,7 +270,9 @@ async function openChat() {
   return c;
 }
 async function closeChat() {
-  await main('(() => { const w = __jj.chat.window; if (w && !w.isDestroyed()) w.close(); return 1; })()');
+  await main(
+    `(() => { const w = __jj.${HOME ? 'home' : 'chat'}.window; if (w && !w.isDestroyed()) w.close(); return 1; })()`,
+  );
   await until('채팅 닫힘', async () => !(await chatOpen()));
   await sleep(300);
 }
@@ -340,7 +361,7 @@ try {
   await main('1');
   await sleep(2500);
   await until('앱 손잡이', async () => (await main('typeof __jj'))?.toString() === 'object', 60_000);
-  await main('__jj.chat.open(__jj.pet.bounds()); 1');
+  await openChatRaw();
   await until('채팅 열림', chatOpen);
   const c = await page('chat');
   await until('채팅 그려짐', async () => !!(await c.ev("!!document.querySelector('textarea')")));
@@ -348,7 +369,7 @@ try {
 
   if (COMPARE) {
     // 전후 비교 그림 재료: 긴 답 자리, 기다리는 중, 답 아래 단추를 찍는다 (판정 없음)
-    await main('__jj.chat.window.setSize(400, 640); 1');
+    await chatSize(400, 640);
     await sleep(400);
     setMode('ok');
     await ask(c, '짧게 답해 줘');
@@ -371,7 +392,7 @@ try {
   } else {
     for (const [w, h] of SIZES) {
       const tag = `${w}`;
-      await main(`__jj.chat.window.setSize(${w}, ${h}); 1`);
+      await chatSize(w, h);
       await sleep(500);
       console.log(`\n== 창 ${w}x${h} (${LANG}) ==`);
       await newChat(c);
@@ -557,7 +578,7 @@ try {
       await sleep(300);
     }
     // ---- 버그 사냥 뒤 보강 (PR #177) ----
-    await main('__jj.chat.window.setSize(320, 520); 1');
+    await chatSize(320, 520);
     await sleep(500);
     console.log(`\n== 보강 시나리오 (${LANG}) ==`);
     await newChat(c);
@@ -585,7 +606,7 @@ try {
     const e1 = await c.ev("document.querySelector('.thinking .elapsed')?.textContent ?? ''");
     await closeChat();
     await sleep(500);
-    await main('__jj.chat.open(__jj.pet.bounds()); 1');
+    await openChatRaw();
     await until('채팅 열림', chatOpen);
     const c2 = await page('chat');
     await until('채팅 그려짐', async () => !!(await c2.ev("!!document.querySelector('textarea')")));
@@ -653,12 +674,12 @@ try {
     await ask(c2, '긴 답 뒤 창 키우기');
     await answered(c2, '40번째');
     await sleep(800);
-    await main('__jj.chat.window.setSize(600, 900); 1');
+    await chatSize(600, 900);
     await sleep(900);
     const g7 = await geo(c2);
     check('긴 답을 위쪽에 맞춘 뒤 창을 키워도 답 위쪽이 유지된다', g7.top >= -2 && g7.top <= 40 && g7.btn === X.more, JSON.stringify(g7));
     setMode('ok');
-    await main('__jj.chat.window.setSize(400, 640); 1');
+    await chatSize(400, 640);
   }
 } catch (err) {
   console.error('시험 중 오류', err);

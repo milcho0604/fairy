@@ -161,6 +161,13 @@ if (!process.env.JJ_GPU_PROCESS) app.commandLine.appendSwitch('in-process-gpu');
 // (캘린더, 업데이트 확인, 모델 받기) 따로 띄우면 프로세스 하나가 늘 떠 있다. footprint 132MB 에서 122MB, 프로세스 3개에서 2개
 // (2026-10-07 맥 측정, net.fetch 확인). 문제가 생기면 JJ_NET_PROCESS=1 로 끈다. enable-features 를 더 쓰면 한 줄에 쉼표로 모은다
 if (!process.env.JJ_NET_PROCESS) app.commandLine.appendSwitch('enable-features', 'NetworkServiceInProcess2');
+// 시험 실행(JJ_NO_FOCUS)은 창이 투명이라 맥이 "가려진 창"으로 보고, 큰 창처럼 BaseWindow 에 view 로 얹은 화면을 숨김으로 만들어
+// 첫 크기 바꿈 뒤로는 크기를 못 따라간다 (BrowserWindow 의 화면은 영향이 없었다). 시험에서만 가려짐 판정을 끈다. 설치판은 그대로
+if (process.env.JJ_NO_FOCUS) {
+  app.commandLine.appendSwitch('disable-features', 'MacWebContentsOcclusion,CalculateNativeWinOcclusion');
+  app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+  app.commandLine.appendSwitch('disable-renderer-backgrounding');
+}
 
 // 펫은 하나만 띄운다. 두 번째로 실행하면 그냥 끝난다.
 // quit() 은 바로 끝나지 않아 ready 가 와서 시작 일(저장 파일 열기, 가져온 백업 끼우기, 창과 아이콘)이 돈다.
@@ -414,11 +421,20 @@ ready
     const look = createLookTogether({
       petName,
       hideChat: () => {
-        const chatWin = chat.window;
-        const chatWasVisible = !!chatWin && !chatWin.isDestroyed() && chatWin.isVisible();
-        if (chatWasVisible) chatWin?.hide();
+        // 보이는 채팅 면을 가린다. 따로 창이면 숨겼다 보이고, 큰 창 안이면 큰 창이 숨지 않게 투명하게만 한다 (큰 창은 숨김 상태를 따로 든다)
+        const face = chat.faces().find((f) => f.shown());
+        const frame = face?.frame;
+        if (!face || !frame) return () => {};
+        if (face.embedded) {
+          const before = frame.getOpacity();
+          frame.setOpacity(0);
+          return () => {
+            if (!frame.isDestroyed()) frame.setOpacity(before);
+          };
+        }
+        frame.hide();
         return () => {
-          if (chatWasVisible && chatWin && !chatWin.isDestroyed()) chatWin.show();
+          if (!frame.isDestroyed()) frame.show();
         };
       },
       // 펫은 숨기지 않고 돋보기를 들고 같이 본다. 친구 펫은 같은 쪽만 본다. 찍는 순간에만 다 같이 가린다
@@ -453,7 +469,7 @@ ready
       log,
     });
     // 채팅 창의 같이 보기: 켜고 끄기, 보낼 때 지금 화면 찍기 (main/chat-look.ts)
-    createChatLook({ chatWindow: () => chat.window, look, log });
+    createChatLook({ chatFaces: () => chat.faces(), look, log });
     // ---- 방해 금지 (P1-10) ----
     // 친구 펫(v2)도 기본 펫과 같이 숨고 나온다
     const friends = createFriends({
@@ -1158,6 +1174,7 @@ ready
     app.on('before-quit', () => dock.quit());
     home = createHome({
       registerSurface: (win, hidden) => panel.registerHome(win, hidden),
+      chat,
       // 숨겨 둔 큰 창이 다시 보일 때 놓친 상태를 한 번 보낸다
       onShown: () => {
         panel.refresh();
@@ -1171,6 +1188,8 @@ ready
       keepMs: app.isPackaged ? undefined : Number(process.env.JJ_HOME_KEEP_MS) || undefined,
       log,
     });
+    // 큰 창이 보이는 중이면 채팅 열기 요청은 그 안의 채팅 구역이 받는다 (채팅 면은 한 번에 하나, 이슈 #165)
+    chat.setHost({ open: () => home?.openChat() ?? false });
     /** 패널 밖(펫 우클릭)에서 밥 주기 */
     function feedPet() {
       const r = store.feed(Date.now());

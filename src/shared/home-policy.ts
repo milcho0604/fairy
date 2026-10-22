@@ -1,4 +1,5 @@
 // 큰 창(home)을 언제 어떻게 열고 닫는지의 정함. 창 객체에 기대지 않는 순수 함수라 단위 시험이 된다 (큰 창 설계 #159, #161).
+import type { HomeChatRect } from './ipc.ts';
 
 /** 패널 보기: 펫 클릭과 패널 단축키, 메뉴 막대 "패널"이 여는 것. 작은 패널 또는 큰 창 */
 export type PanelView = 'compact' | 'window';
@@ -77,4 +78,28 @@ export function homeExpired(
   keepMs: number = HOME_KEEP_MS,
 ): boolean {
   return hiddenAt !== undefined && now - hiddenAt >= keepMs;
+}
+
+/** 채팅 view 가 받은 키 가운데 큰 창이 맡는 것: Cmd/Ctrl 하나 + W(닫기), 쉼표(설정), 1~9(구역). 나머지(복사, 붙이기 등)는 채팅이 그대로 쓴다 */
+export function isHomeChord(
+  input: { type: string; code: string; meta: boolean; control: boolean; alt: boolean; shift: boolean },
+  mac: boolean,
+): boolean {
+  if (input.type !== 'keyDown' || input.alt || input.shift) return false;
+  if (mac ? !input.meta || input.control : !input.control || input.meta) return false;
+  return input.code === 'KeyW' || input.code === 'Comma' || /^Digit[1-9]$/.test(input.code);
+}
+
+/** 채팅 자리 값을 믿을 수 있는 모양으로. 아니면 undefined (null 은 "채팅 구역이 아님"이라 따로 본다) */
+export function parseChatRect(raw: unknown): HomeChatRect | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const r = raw as Record<string, unknown>;
+  const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+  const x = n(r.x);
+  const y = n(r.y);
+  const width = n(r.width);
+  const height = n(r.height);
+  if (x === undefined || y === undefined || width === undefined || height === undefined) return undefined;
+  if (width < 1 || height < 1 || x < 0 || y < 0 || width > 20000 || height > 20000) return undefined;
+  return { x, y, width, height };
 }

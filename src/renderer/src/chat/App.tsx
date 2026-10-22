@@ -180,6 +180,8 @@ export function App() {
       document.title = t('chat.title', { name });
     });
     if (bridge.platform === 'darwin') document.body.classList.add('mac');
+    // 큰 창 안에 품은 채팅은 주소 끝에 #embed (main/chat.ts embed)
+    if (location.hash === '#embed') document.body.classList.add('embed');
     refreshStatus(false);
     inputRef.current?.focus();
     // 같이 보기로 창이 다시 앞에 오면 바로 질문을 쓸 수 있게 입력칸에 커서를 둔다.

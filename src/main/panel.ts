@@ -90,7 +90,7 @@ import { focusWindow } from './focus.ts';
 import { langArg } from './lang.ts';
 import { localTime, minuteOfDay, startOfDay, startOfDayAfter } from './planner.ts';
 import { readJson, removeJson, writeJson } from './store.ts';
-import { closesPanelFor, originOf, pickSurface } from './surface.ts';
+import { closesPanelFor, originOf, pickSurface, type SurfaceWin } from './surface.ts';
 import { saveBounds, savedBounds } from './window-bounds.ts';
 
 /** 날이 바뀌었는지 보는 간격. 자정 뒤 이만큼 안에 패널이 새 날로 바뀐다 */
@@ -212,7 +212,7 @@ export function createPanel(o: PanelOptions) {
   let panel: BrowserWindow | undefined;
   let quick: BrowserWindow | undefined;
   /** 큰 창 (#159). 지금은 만드는 곳이 없고, 생기면 registerHome 으로 알린다 */
-  let home: BrowserWindow | undefined;
+  let home: SurfaceWin | undefined;
   /** 기억한 패널 자리 (펫 왼쪽 위에서 떨어진 거리). 없으면 펫 옆 기본 자리 */
   let offset = parsePanelOffset(readJson(OFFSET_FILE));
   /**
@@ -226,7 +226,7 @@ export function createPanel(o: PanelOptions) {
   /** 큰 창을 숨겨 두었는가 (home.ts 가 알려 준다). 숨긴 큰 창은 보이는 면이 아니다 */
   let homeHidden: () => boolean = () => false;
   const activeSurface = () =>
-    pickSurface(home, panel, (w) => !w.isDestroyed() && !(w === home && homeHidden()));
+    pickSurface<SurfaceWin>(home, panel, (w) => !w.isDestroyed() && !(w === home && homeHidden()));
   /** 작은 패널이나 큰 창(숨겨 둔 것도)이 보낸 것인가. 요청은 두 면 모두 받는다 */
   const fromSurface = (wc: Electron.WebContents) =>
     (!!panel && !panel.isDestroyed() && panel.webContents === wc) || (!!home && homeContents() === wc);
@@ -1441,7 +1441,7 @@ export function createPanel(o: PanelOptions) {
      * 큰 창을 면으로 알린다 (아직 만드는 곳이 없다). 이 창의 요청도 받고 상태를 같이 받는다.
      * 큰 창에서 온 설정, 채팅 열기는 패널을 먼저 닫지 않는다. 돌려주는 함수로 뗀다
      */
-    registerHome(win: BrowserWindow, hidden: () => boolean = () => false): () => void {
+    registerHome(win: SurfaceWin, hidden: () => boolean = () => false): () => void {
       const sender = win.webContents;
       home = win;
       homeHidden = hidden;

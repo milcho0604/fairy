@@ -542,6 +542,25 @@ export interface ProviderView {
   detail?: string;
 }
 
+/** 큰 창 본문 칸 안 채팅 자리 (창 안 CSS 픽셀) */
+export interface HomeChatRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** 채팅 view 에서 큰 창 본문으로 넘기는 키 (수식키가 눌린 창 단축키만) */
+export interface ChatKeyEvent {
+  key: string;
+  code: string;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+  isComposing: boolean;
+}
+
 export interface ChatSnapshot {
   petName: string;
   state: ChatState;
@@ -1081,6 +1100,12 @@ export const PANEL = {
   state: 'panel:state',
   /** 메인 → 패널: 이 탭을 보여 줘 (펫 메뉴 "상점") */
   tab: 'panel:tab',
+  /** 큰 창 → 메인: 본문 칸 안 채팅 자리의 위치와 크기(창 안 CSS 픽셀). 메인이 그 자리에 채팅 view 를 얹는다. null 이면 채팅 구역이 아니다 (#165) */
+  homeChat: 'panel:home-chat',
+  /** 메인 → 큰 창: 채팅 구역을 열어(true) 달라고, 또는 닫아(false) 달라고 (채팅 열기 요청이 큰 창으로 온 때) */
+  chatSection: 'panel:chat-section',
+  /** 메인 → 큰 창: 채팅 view 가 받은 창 단축키(닫기, 설정, 구역 고르기)를 그대로 넘긴다. view 가 포커스를 쥐면 큰 창 본문이 키를 못 받는다 */
+  chatKey: 'panel:chat-key',
   /** 메인 → 큰 창: 곧 숨긴다 (숨겨도 창은 안 닫혀 beforeunload 가 없다. 쓰던 글을 바로 저장하라는 신호) */
   hiding: 'panel:hiding',
   /** 패널 → 메인: 지금 탭 그대로 큰 창으로 넘겨 줘 (패널 머리줄 "크게 보기", 크게 볼까요? 칩). 큰 창이 보인 뒤에 패널을 닫는다 */
@@ -1405,6 +1430,12 @@ export interface PanelBridge {
   removeFood(key: string): void;
   play(kind: PlayKind): void;
   onTab(listener: (tab: PanelTab) => void): void;
+  /** 큰 창 본문 칸 안 채팅 자리를 메인에 알린다 (null 이면 채팅 구역이 아니다). 자리가 바뀔 때마다 부른다 */
+  homeChat(rect: HomeChatRect | null): void;
+  /** 메인이 채팅 구역을 열고 닫아 달라고 한다 */
+  onChatSection(listener: (on: boolean) => void): void;
+  /** 채팅 view 가 받은 창 단축키가 넘어온다 */
+  onChatKey(listener: (key: ChatKeyEvent) => void): void;
   /** 큰 창이 곧 숨겨진다 (쓰던 글을 바로 저장한다). 돌려주는 함수로 듣기를 그친다 */
   onHiding(listener: () => void): () => void;
   /** 지금 탭을 큰 창으로 넘긴다 (쓰던 글은 먼저 메인에 보낸 뒤에 부른다) */
