@@ -1070,7 +1070,6 @@ test('운영자: 서버가 세션에 admin true 라고 할 때만, 기기 토큰
   x.server.admin = false;
   await x.core.run();
   assert.equal(x.core.status().admin, false);
-  assert.equal((await x.core.adminAction('ai/mode', { mode: 'off' })).ok, false);
 });
 
 test('선물 받기는 한 번, 받으면 맞추기로 잔액이 들어온다. 쿠폰 실패는 까닭 그대로', async () => {

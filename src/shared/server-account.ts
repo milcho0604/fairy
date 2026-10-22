@@ -1,6 +1,8 @@
 // 페어리 서버 계정 (기획서 5, 6, 21절, 이슈 #99): 나이 확인과 두 모드, 기기 계정, 코인 맞추기, 구글 로그인, 탈퇴.
 // 설정 창과 메인이 같이 쓰는 모양만 둔다. 토큰과 네트워크는 메인(main/server-core.ts)에만 있다.
 
+import type { AdminWebPlace } from './admin-web.ts';
+
 /** 나이 답 (생년월일은 받지 않는다). 만 14세 미만, 만 14세 이상 18세 미만, 만 18세 이상 */
 export const AGE_ANSWERS = ['under14', 'teen', 'adult'] as const;
 export type AgeAnswer = (typeof AGE_ANSWERS)[number];
@@ -158,17 +160,6 @@ export function featureOn(s: Pick<ServerStatus, 'features'> | null | undefined, 
 /** 닉네임 검사 실패의 까닭 (shared/account-profile.ts) 과 서버에 닿지 않음 */
 export type NicknameProblem = 'length' | 'chars' | 'url' | 'at' | 'offline' | 'server';
 
-/**
- * 운영자 쓰기 결과 (#101). text 는 서버가 쓴 한국어 글, code 는 앱이 말에 맞게 바꿀 코드
- * (성공이면 운영 기록의 행동 이름, 실패면 까닭), data 는 덧붙일 값 (만든 쿠폰 코드)
- */
-export interface AdminActionResult {
-  ok: boolean;
-  text: string;
-  code?: string;
-  data?: Record<string, string | number>;
-}
-
 /** 선물 받기, 쿠폰 결과 (#101) */
 export type RewardOutcome = { ok: true; coins: number; tickets: number } | { ok: false; error: string };
 
@@ -200,7 +191,8 @@ export const SERVER = {
   coupon: 'server:coupon',
   /** 운영자 칸 (#101): 운영자 계정일 때만 메인이 받는다 */
   adminOverview: 'server:admin-overview',
-  adminAction: 'server:admin-action',
+  /** 웹 운영자 화면을 기본 브라우저로 연다 (#150, 앱 운영자 칸은 요약만 있다) */
+  adminOpenWeb: 'server:admin-open-web',
   backupList: 'server:backup-list',
   backupAgree: 'server:backup-agree',
   backupUpload: 'server:backup-upload',
@@ -234,10 +226,8 @@ export interface ServerBridge {
   coupon(code: string): Promise<RewardOutcome>;
   /** 운영자 칸 (운영자가 아니면 undefined) */
   adminOverview(q?: string, log?: AdminLogFilter): Promise<Record<string, unknown> | undefined>;
-  adminAction(
-    action: string,
-    fields: Record<string, string | string[] | boolean | number>,
-  ): Promise<AdminActionResult>;
+  /** 웹 운영자 화면의 자리(칸)를 기본 브라우저로 연다. 연 주소를 돌려주고, 운영자가 아니거나 서버 주소가 없으면 undefined */
+  adminOpenWeb(place: AdminWebPlace): Promise<string | undefined>;
   /** 탈퇴 뒤 서버 모드를 다시 켠다 */
   turnOn(): Promise<ServerStatus | undefined>;
   /** 업데이트 단추 (이슈 #120): 서버가 낡은 앱이라고 막았을 때. 기존 업데이트 흐름을 연다 */

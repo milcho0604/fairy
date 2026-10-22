@@ -156,8 +156,32 @@ export class AdminBrowser {
     return r;
   }
 
-  async page(query = ''): Promise<Res> {
-    const r = await this.api('GET', `/admin${query}`, { headers: { cookie: this.cookie }, ip: this.from });
+  /**
+   * 운영자 화면 한 장 (다섯 칸이 한 문서). 옛 탭 이름('/users?q=..', '/log?user=..')을 주면 그 조건을 새 주소로 바꿔 부른다.
+   * 옛 주소 자체의 돌려보내기는 raw: true 로 본다
+   */
+  async page(query = '', raw = false): Promise<Res> {
+    let url = query;
+    const legacy = /^\/(users|grants|notices|events|features|ai|log)(\?.*)?$/.exec(query);
+    if (legacy && !raw) {
+      const p = new URLSearchParams(legacy[2] ?? '');
+      if (legacy[1] === 'log')
+        for (const [from, to] of [
+          ['user', 'lu'],
+          ['action', 'la'],
+          ['text', 'lt'],
+          ['page', 'lp'],
+        ] as const) {
+          const v = p.get(from);
+          if (v !== null) {
+            p.delete(from);
+            p.set(to, v);
+          }
+        }
+      const q = p.toString();
+      url = q ? `?${q}` : '';
+    }
+    const r = await this.api('GET', `/admin${url}`, { headers: { cookie: this.cookie }, ip: this.from });
     const m = /name="csrf" value="([^"]+)"/.exec(r.text);
     if (m?.[1]) this.csrf = m[1];
     return r;
@@ -180,13 +204,36 @@ export class AdminBrowser {
     });
   }
 
+  /**
+   * 지급과 공지의 확정은 미리보기를 거친 것만 받는다. 작성 값으로 미리보기를 만들고 확정 폼의 숨은 칸(번호 포함)에
+   * 호출한 칸을 덮어 보낸다. 미리보기가 거절되면(값이 틀림) 그 응답을 돌려준다 (결과 글은 다음 화면에 있다)
+   */
+  async confirmPost(
+    path: string,
+    fields: Record<string, string | string[]>,
+    csrf = true,
+    origin = this.h().base,
+  ): Promise<Res> {
+    const previewPath = path === '/admin/grants/batch' ? '/admin/grants/preview' : '/admin/notices/preview';
+    const first = await this.post(previewPath, fields, csrf, origin);
+    if (first.status !== 303) return first;
+    const page = await this.page();
+    const m = new RegExp(`<form method="post" action="${path}"[^>]*>([\\s\\S]*?)</form>`).exec(page.text);
+    if (!m) return this.post(previewPath, fields, csrf, origin);
+    const hidden: Record<string, string> = {};
+    for (const x of (m[1] ?? '').matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)">/g))
+      if (x[1] !== 'csrf') hidden[x[1] as string] = (x[2] as string).replaceAll('&#10;', '\n');
+    return this.post(path, { ...hidden, ...fields, flow: hidden.flow ?? '' }, csrf, origin);
+  }
+
   /** 쓰기 하나 뒤 화면의 결과 글 */
   async act(path: string, fields: Record<string, string | string[]>): Promise<{ ok: boolean; text: string }> {
-    const r = await this.post(path, fields);
+    const flow = path === '/admin/grants/batch' || path === '/admin/notices';
+    const r = flow ? await this.confirmPost(path, fields) : await this.post(path, fields);
     assert.equal(r.status, 303, r.text);
     const p = await this.page();
     const m =
-      /<p class="flash( error)?( wide)?" role="(?:status|alert)"(?: id="form-error")?>([^<]*)<\/p>/.exec(
+      /<p class="flash( error)?( wide)?" role="(?:status|alert)"(?: id="form-(?:error|ok)")?>([^<]*)<\/p>/.exec(
         p.text,
       );
     return { ok: !!m && !m[1], text: m?.[3] ?? '' };
