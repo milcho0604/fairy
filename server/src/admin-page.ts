@@ -62,6 +62,37 @@ export const LEGACY_PLACES: Record<string, string> = {
 /** 칸 안 자리 ("users/grants" 같은 해시 글) */
 export type AdminPlace = string;
 
+/** 신고 처리 상태 (미처리, 확인, 조치) */
+export const REPORT_STATES = ['pending', 'seen', 'done'] as const;
+export type ReportState = (typeof REPORT_STATES)[number];
+export type ReportFilter = ReportState | 'all';
+export const REPORT_STATE_KO: Record<ReportState, string> = { pending: '미처리', seen: '확인', done: '조치' };
+
+/** 신고 목록 한 줄. 대화 본문은 없다 (열어 봐야 보이고, 연 기록이 운영 기록에 남는다) */
+export interface ReportRow {
+  id: string;
+  at: number;
+  accountId: string;
+  code: string;
+  nickname: string | null;
+  status: ReportState;
+  handledBy: string | null;
+  handledName: string | null;
+  handledAt: number | null;
+  /** 이 이용자의 채팅 이용권이 지금 막혀 있다 */
+  blocked: boolean;
+  /** 이 이용자가 받은 신고 수 (지금 남아 있는 것) */
+  sameUser: number;
+}
+
+/** 본문을 연 신고 하나 */
+export interface ReportOpen extends ReportRow {
+  question: string;
+  answer: string;
+  /** 같은 이용자의 다른 신고 */
+  others: Array<{ id: string; at: number; status: ReportState }>;
+}
+
 export interface AdminUserRow {
   id: string;
   code: string;
@@ -157,8 +188,21 @@ export interface AdminView {
   preview?: FlowPreview | undefined;
   /** 지급 칸에 미리 채울 계정 (이용자 표의 지급 단추) */
   grantRef?: string | undefined;
-  /** 신고 건수 (신고 칸 목록은 신고 처리 이슈가 채운다) */
-  reports: { total: number };
+  /**
+   * 신고 (#151). total, pending, seen, done 은 건수(앱 요약도 읽는다), rows 와 open 은 웹 화면만 채운다
+   * (앱 API /v1/admin/overview 에는 대화 본문이 없다: rows 는 비고 open 은 없다)
+   */
+  reports: {
+    total: number;
+    pending: number;
+    seen: number;
+    done: number;
+    /** 보는 상태 (all, pending, seen, done) */
+    filter: ReportFilter;
+    rows: ReportRow[];
+    /** 본문을 연 신고 하나. 없는 신고(지워졌거나 번호가 틀림)면 null, 열지 않았으면 undefined */
+    open?: ReportOpen | null | undefined;
+  };
   todo: AdminTodo[];
   /** 최근 운영 기록 몇 줄 (찾기 조건과 상관없이) */
   recent: Array<{
@@ -191,6 +235,8 @@ export interface AdminView {
         claims: number;
         coupons: number;
         notes: number;
+        /** 이 이용자의 신고 (본문은 없다). total 은 남아 있는 전체 건수 */
+        reports: { total: number; rows: Array<{ id: string; at: number; status: ReportState }> };
         /** 운영자 구글 계정 (sub 는 보이지 않는다) */
         admin: boolean;
         ai: {
@@ -430,6 +476,11 @@ ${v.accounts.map((x) => `<tr><td><a href="${esc(placeHref('users/list', `?q=${en
 <div><dt>선물, 쿠폰, 쪽지</dt><dd>${a.claims}, ${a.coupons}, ${a.notes}</dd></div>
 <div><dt>채팅 이용권</dt><dd>${a.ai.remaining}장${a.ai.blocked ? ' <span class="tag ended">막힘</span>' : ''}${a.ai.allowed ? ' <span class="tag live">허용 목록</span>' : ''}</dd></div>
 <div><dt>이번 달 질문, 추정 비용</dt><dd>${a.ai.monthAsks}번, ${usd(a.ai.monthCostMicros)}</dd></div>
+<div><dt>신고</dt><dd>${
+        a.reports.total === 0
+          ? '없음'
+          : `${a.reports.total}건: ${a.reports.rows.map((x) => `<a href="${esc(reportHref(x.id))}">#${esc(x.id)}</a> ${reportTag(x.status)}`).join(' ')}`
+      }</dd></div>
 <div><dt>정기 지급</dt><dd>${a.ai.subscription ? `매달 ${a.ai.subscription.monthly}장 ${a.ai.subscription.mode === 'fill' ? '까지 채우기' : '더하기'}, ${esc(a.ai.subscription.startsOn)} ~ ${esc(a.ai.subscription.endsOn ?? '무기한')}, 다음 ${esc(a.ai.subscription.nextFill ?? '없음')}` : '없음'}</dd></div>
 </dl>
 <div class="row">
@@ -658,7 +709,7 @@ export function todoOf(o: {
 export function todoText(t: AdminTodo): string {
   switch (t.kind) {
     case 'reports':
-      return `접수된 신고가 ${t.n}건 있어요`;
+      return `처리하지 않은 신고가 ${t.n}건 있어요`;
     case 'budget':
       return t.n < 0
         ? '월 예산이 0 이라 채팅 이용권 질문이 모두 막혀요'
@@ -703,19 +754,95 @@ ${versionTable(v)}</section>
 <p><a class="button-link" href="#settings/log">운영 기록 모두 보기</a></p></section>`;
 }
 
+const reportTag = (st: ReportState) =>
+  `<span class="tag ${st === 'pending' ? 'bad' : st === 'seen' ? 'soon' : 'live'}">${REPORT_STATE_KO[st]}</span>`;
+const reportHref = (id: string) => placeHref('reports', `?report=${encodeURIComponent(id)}`);
+const userHref = (code: string) => placeHref('users/list', `?q=${encodeURIComponent(code)}`);
+const FILTER_KO: Record<ReportFilter, string> = {
+  all: '전체',
+  pending: '미처리',
+  seen: '확인',
+  done: '조치',
+};
+
+/** 신고 하나를 열었을 때: 질문과 답, 상태 바꾸기, 이용자로 가기, 막기. 열면 운영 기록에 남는다 */
+function reportDetail(v: AdminView, o: ReportOpen): string {
+  const nameText = `${o.nickname ?? '(닉네임 없음)'} ${o.code}`;
+  const move = (to: ReportState, label: string, ghost = false) =>
+    `<form method="post" action="/admin/reports/status" class="inline">${formErr(v, 'reports/status', o.id)}${hidden(v.csrf)}<input type="hidden" name="id" value="${esc(o.id)}"><input type="hidden" name="from" value="${o.status}"><input type="hidden" name="to" value="${to}"><button type="submit"${ghost ? ' class="ghost"' : ''}>${esc(label)}</button></form>`;
+  const moves =
+    o.status === 'pending'
+      ? move('seen', '확인했어요') + move('done', '조치했어요')
+      : o.status === 'seen'
+        ? move('done', '조치했어요') + move('pending', '미처리로 되돌리기', true)
+        : move('pending', '미처리로 되돌리기', true);
+  const block = o.blocked
+    ? `<span class="tag ended">채팅 이용권 막힘</span> ${postButton(v.csrf, '/admin/ai/block', { account: o.code, blocked: '0', ret: 'reports' }, '막기 풀기')}`
+    : sureForm(
+        v,
+        '/admin/ai/block',
+        { account: o.code, blocked: '1', ret: 'reports' },
+        `${nameText} 채팅 이용권 막을게요`,
+        '채팅 이용권 막기',
+      );
+  const others = o.others.length
+    ? `<p class="hint">이 이용자의 다른 신고: ${o.others.map((x) => `<a href="${esc(reportHref(x.id))}">#${esc(x.id)} (${REPORT_STATE_KO[x.status]})</a>`).join(', ')}</p>`
+    : '';
+  return `<div class="report-open" id="report-open">
+<h3>신고 #${esc(o.id)}</h3>
+<p class="hint">이 신고의 질문과 답을 열었어요. 연 기록이 운영 기록에 남아요 (누가, 언제, 어느 신고). 대화 글은 기록에 복사하지 않아요.</p>
+<dl class="stats">
+<div><dt>받은 때</dt><dd>${when(o.at)}</dd></div>
+<div><dt>이용자</dt><dd><a href="${esc(userHref(o.code))}">${esc(o.nickname ?? '(닉네임 없음)')} <code>${esc(o.code)}</code></a></dd></div>
+<div><dt>상태</dt><dd>${reportTag(o.status)}</dd></div>
+<div><dt>처리</dt><dd>${o.handledAt ? `${esc(o.handledName ?? o.handledBy ?? '')}, ${when(o.handledAt)}` : '아직 없어요'}</dd></div>
+</dl>
+<h3>질문</h3>
+<pre class="convo">${esc(o.question || '(질문 없이 신고했어요)')}</pre>
+<h3>답</h3>
+<pre class="convo">${esc(o.answer)}</pre>
+${others}
+<div class="row">${moves}<a class="button-link" href="${esc(userHref(o.code))}">이용자 보기</a></div>
+<div class="row">${block}</div>
+<p><a class="button-link" href="${esc(placeHref('reports'))}">목록으로</a></p>
+</div>`;
+}
+
 /**
- * 신고 칸. 신고 목록, 처리 상태, 이용자 이동은 신고 처리 이슈(#151)가 이 함수 안을 채운다.
- * 지금은 접수 건수와 빈 상태 안내만 있다.
+ * 신고 칸 (#151): 미처리부터 목록, 한 건을 열면 질문과 답, 처리 상태 바꾸기, 이용자로 가기, 채팅 이용권 막기.
+ * 목록에는 대화 글이 없고 열어 봐야 보인다 (연 기록은 운영 기록에 남는다)
  */
 function reportsSection(v: AdminView): string {
-  const n = v.reports.total;
+  const r = v.reports;
+  const open =
+    r.open === null
+      ? '<p class="flash error" role="alert">없는 신고예요. 받은 지 30일이 지나 지워졌거나 번호가 틀렸어요</p>'
+      : r.open
+        ? reportDetail(v, r.open)
+        : '';
+  const filters = (['all', 'pending', 'seen', 'done'] as const)
+    .map(
+      (f) =>
+        `<a class="button-link${r.filter === f ? ' current' : ''}" href="${esc(placeHref('reports', f === 'all' ? '' : `?rs=${f}`))}"${r.filter === f ? ' aria-current="true"' : ''}>${FILTER_KO[f]} ${f === 'all' ? r.total : r[f]}</a>`,
+    )
+    .join('');
+  const rows = r.rows
+    .map(
+      (x) =>
+        `<tr><td data-l="번호"><a href="${esc(reportHref(x.id))}">#${esc(x.id)}</a></td><td data-l="받은 때">${when(x.at)}</td>
+<td data-l="이용자"><a href="${esc(userHref(x.code))}">${esc(x.nickname ?? '(닉네임 없음)')} <code>${esc(x.code)}</code></a>${x.sameUser > 1 ? ` <span class="tag">신고 ${x.sameUser}건</span>` : ''}${x.blocked ? ' <span class="tag ended">막힘</span>' : ''}</td>
+<td data-l="상태">${reportTag(x.status)}</td><td data-l="처리">${x.handledAt ? `${esc(x.handledName ?? x.handledBy ?? '')}, ${when(x.handledAt)}` : ''}</td>
+<td><a class="button-link" href="${esc(reportHref(x.id))}">열어 보기</a></td></tr>`,
+    )
+    .join('');
+  const table = r.rows.length
+    ? `<table class="cards"><thead><tr><th>번호</th><th>받은 때</th><th>이용자</th><th>상태</th><th>처리</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
+    : `<p class="empty">${r.total === 0 ? '접수된 신고가 없어요' : `${FILTER_KO[r.filter]} 신고가 없어요`}</p>`;
   return `<section id="reports-list"><h2>신고</h2>
-<p class="hint">이용자가 따로 동의하고 신고한 AI 대화예요. 신고된 질문과 답 하나씩만 30일 보관하고 그 뒤 지워요.</p>
-${
-  n > 0
-    ? `<p class="flash warn">접수된 신고가 <strong>${n}건</strong> 있어요. 신고 목록 화면은 아직 준비 중이에요.</p>`
-    : '<p class="empty">접수된 신고가 없어요</p>'
-}
+<p class="hint">이용자가 따로 동의하고 신고한 AI 대화예요. 신고된 질문과 답 하나씩만 받은 날부터 30일 보관하고 그 뒤 지워요. 목록에는 대화 글이 없어요. 열어 보면 운영 기록에 남아요.</p>
+${open}
+<div class="row">${filters}</div>
+${table}
 </section>`;
 }
 
@@ -998,6 +1125,10 @@ const ACTION_KO: Record<string, string> = {
   'feature.allow': '기능 허용',
   'feature.disallow': '기능 허용 빼기',
   'rewards.policy': '선물과 쿠폰 받는 계정',
+  'report.view': '신고 대화 열어 봄',
+  'report.seen': '신고 확인',
+  'report.done': '신고 조치',
+  'report.reopen': '신고 미처리로 되돌림',
   login: '로그인',
   logout: '로그아웃',
   'login.fail': '로그인 실패',
@@ -1164,8 +1295,8 @@ function routerJs(): string {
 }
 
 export const adminCss = `${viewCss()}:root { color-scheme: light dark; --bg: #faf8f5; --fg: #2b2622; --muted: #6f655c; --line: #e2dbd2; --card: #fff;
-  --accent: #b5532f; --on-accent: #fff; --ok: #2f7a4a; --bad: #b3261e; }
-@media (prefers-color-scheme: dark) { :root { --bg: #1d1a17; --fg: #eee6dd; --muted: #a99e92; --line: #3a342e; --card: #26221e; --accent: #e58c63; --on-accent: #1d1a17; --ok: #6cc28a; --bad: #f2867c; } }
+  --accent: #b5532f; --on-accent: #fff; --ok: #2f7a4a; --bad: #b3261e; --warn: #8a5a00; }
+@media (prefers-color-scheme: dark) { :root { --bg: #1d1a17; --fg: #eee6dd; --muted: #a99e92; --line: #3a342e; --card: #26221e; --accent: #e58c63; --on-accent: #1d1a17; --ok: #6cc28a; --bad: #f2867c; --warn: #e0a84a; } }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif; }
 main { max-width: 1280px; margin: 0 auto; padding: 16px; }
@@ -1247,6 +1378,11 @@ code { font-size: 12px; word-break: break-all; }
 .tag { font-size: 11px; border-radius: 4px; padding: 1px 6px; border: 1px solid var(--line); }
 .tag.live { border-color: var(--ok); color: var(--ok); }
 .tag.ended { color: var(--muted); }
+.tag.bad { border-color: var(--bad); color: var(--bad); }
+.tag.soon { border-color: var(--warn); color: var(--warn); }
+.button-link.current { color: var(--on-accent); background: var(--accent); border-color: var(--accent); font-weight: 700; }
+pre.convo { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 4px 0 8px; font: inherit; max-height: 50vh; overflow: auto; }
+.report-open { border: 1px solid var(--accent); border-radius: 10px; padding: 12px; margin: 8px 0 14px; }
 .notice { border-top: 1px solid var(--line); padding: 12px 0; }
 .previews { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-top: 8px; }
 .preview { width: 100%; max-width: 360px; border: 1px solid var(--line); border-radius: 14px; padding: 14px; background: var(--bg); display: flex; flex-direction: column; gap: 6px; }
@@ -1268,6 +1404,11 @@ code { font-size: 12px; word-break: break-all; }
   table.targets tr { display: block; border-bottom: 1px solid var(--line); padding: 6px 0; }
   table.targets td { display: block; border: 0; padding: 2px 6px; }
   table.targets td:first-child { color: var(--muted); }
+  table.cards thead { display: none; }
+  table.cards tr { display: block; border-bottom: 1px solid var(--line); padding: 6px 0; }
+  table.cards td { display: block; border: 0; padding: 2px 6px; }
+  table.cards td[data-l]::before { content: attr(data-l) " "; color: var(--muted); font-size: 12px; }
+  table.cards td:empty { display: none; }
   input, select, textarea, button { min-height: 42px; }
 }
 `;
