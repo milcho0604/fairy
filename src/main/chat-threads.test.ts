@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {
-  chmodSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -193,12 +193,15 @@ test('이름 바꾸기 저장이 디스크 오류로 실패하면 false, 메모�
     const s = t.make();
     s.saveCurrent(chat('질문'), true);
     const id = s.current ?? '';
-    chmodSync(t.dir, 0o500);
+    // 목차 파일 자리에 폴더를 두어 쓰기를 실패시킨다 (권한 바꾸기는 윈도우에서 듣지 않는다)
+    const indexPath = join(t.dir, 'chat-threads.json');
+    rmSync(indexPath, { force: true });
+    mkdirSync(indexPath);
     let ok: boolean | undefined;
     try {
       ok = s.rename(id, '새 이름');
     } finally {
-      chmodSync(t.dir, 0o700);
+      rmSync(indexPath, { recursive: true, force: true });
     }
     assert.equal(ok, false);
     assert.equal(s.list()[0]?.title, '질문');
