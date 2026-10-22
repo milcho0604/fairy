@@ -9,6 +9,7 @@ import { ago } from './format.ts';
 import { isEsc, takeEsc } from './keys.ts';
 import { MoreRow } from './more.tsx';
 import { type NoteResume, parseResume, RESUME_KEY } from './note-resume.ts';
+import { NoteSaver } from './note-save.ts';
 import { pageOf } from './paging.ts';
 import { PinButton, usePinMenu } from './pin.tsx';
 import { useKeepScroll } from './view-keep.ts';
@@ -272,9 +273,7 @@ function NoteEditor({
   const [body, setBody] = useState(draft?.body ?? note.body);
   /** 마지막 저장이 실패했다 (디스크 가득 등). 글은 들고 있고 다음 고침이나 뒤로 갈 때 다시 보낸다 */
   const [saveError, setSaveError] = useState('');
-  const failed = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const pending = useRef<{ title?: string; body?: string }>({});
   const titleRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   /** 열 때 비어 있던 메모 ("새 메모"). 빈 채로 나가면 소리 없이 지운다 */
@@ -286,14 +285,44 @@ function NoteEditor({
   const gone = useRef(false);
   const isEmpty = () => !latest.current.title.trim() && !latest.current.body.trim();
   /**
-   * 마지막으로 받은 저장된 본문과 그 시각. 열어 둔 사이 다른 곳(Claude Code 의 append_note, 펫 실행)이 덧붙이면
-   * 창에 받아 오고, 저장할 때 같이 보내 메인이 덮지 않고 합친다. 예전에는 창이 처음 받은 글로 덮어 덧붙인 글이 사라졌다
+   * 저장 줄(note-save.ts): 마지막으로 받은 저장된 본문과 그 시각(base, baseAt)을 들고, 저장을 한 줄로 세운다.
+   * 열어 둔 사이 다른 곳(Claude Code 의 append_note, 펫 실행)이 덧붙이면 창에 받아 오고, 저장할 때 같이 보내
+   * 메인이 덮지 않고 합친다. 예전에는 창이 처음 받은 글로 덮어 덧붙인 글이 사라졌다
    */
-  const base = useRef(note.body);
-  /** base 를 받은 때의 저장 시각. 저장할 때 같이 보내, 다른 곳이 먼저 고친 글을 이 창의 옛 글로 덮지 않게 한다 */
-  const baseAt = useRef(note.updatedAt);
   const seen = useRef(note.updatedAt);
-  const sending = useRef(false);
+  const saverRef = useRef<NoteSaver>(undefined);
+  saverRef.current ??= new NoteSaver(
+    note.body,
+    note.updatedAt,
+    {
+      update: (patch, baseObj) => bridge.noteUpdate(note.id, patch, baseObj),
+      get: () =>
+        bridge.noteGet(note.id).then((n) => (n ? { body: n.body, updatedAt: n.updatedAt } : undefined)),
+    },
+    { saved() {}, failed() {}, blocked() {} },
+  );
+  const saver = saverRef.current;
+  /** 다른 곳이 먼저 고쳐 거절됐다: 그때 저장돼 있던 글. 사용자가 덮기를 고를 때까지 보내지 않는다 */
+  const [stored, setStored] = useState<{ body: string; shown: boolean }>();
+  saver.hooks = {
+    saved(sentBody, storedBody, merged) {
+      if (alive.current) setSaveError('');
+      if (sentBody !== undefined && merged) takeStored(sentBody, storedBody);
+    },
+    failed(r, conflict) {
+      if (alive.current) {
+        if (conflict) setStored({ body: saver.conflict?.body ?? '', shown: false });
+        setSaveError(
+          conflict
+            ? `${r.error ?? ''} ${t('panel.note.staleKeep')}`
+            : `${r.error ?? t('panel.retry')} ${t('panel.note.unsaved')}`,
+        );
+      } else keepDraft(); // 닫히는 중이라 안내를 볼 사람이 없다: 글을 보관 길에 남긴다
+    },
+    blocked() {
+      if (!alive.current) keepDraft();
+    },
+  };
   /** S 를 바탕으로 쓰던 창 글에 저장된 글 M 을 합쳐 보여 준다. 합친 글이 저장된 글과 다르면 다시 저장한다 */
   const takeStored = (S: string, M: string) => {
     const mine = latest.current.body;
@@ -320,13 +349,13 @@ function NoteEditor({
     if (changedAt === undefined || changedAt <= seen.current) return;
     seen.current = changedAt;
     // 보내는 중이거나 보낼 것이 있으면 그 저장이 메인에서 합친다
-    if (sending.current || pending.current.body !== undefined) return;
+    if (saver.sending || saver.pending.body !== undefined) return;
     void bridge.noteGet(note.id).then((n) => {
-      if (!n || !alive.current || sending.current || pending.current.body !== undefined) return;
-      if (n.body === base.current) return;
-      const S = base.current;
-      base.current = n.body;
-      baseAt.current = n.updatedAt;
+      if (!n || !alive.current || saver.sending || saver.pending.body !== undefined) return;
+      if (n.body === saver.base) return;
+      const S = saver.base;
+      saver.base = n.body;
+      saver.baseAt = n.updatedAt;
       takeStored(S, n.body);
     });
   }, [changedAt]);
@@ -442,52 +471,20 @@ function NoteEditor({
    * 남은 고침을 보낸다. 저장되면 true. 못 저장하면 보낸 것을 다시 모아(그 뒤에 쓴 것이 이긴다) 다음에 다시 보내고
    * 글 칸 아래에 안내를 띄운다 (버그잡이 4: 예전에는 보내기만 해서 디스크가 가득 차면 쓴 글이 말없이 사라졌다)
    */
-  const flush = async (): Promise<boolean> => {
+  const flush = (): Promise<boolean> => {
     clearTimeout(timer.current);
-    if (Object.keys(pending.current).length === 0) return !failed.current;
-    const sent = pending.current;
-    pending.current = {};
-    let r: { ok: boolean; error?: string; body?: string; updatedAt?: number; stale?: boolean };
-    const from = base.current;
-    sending.current = true;
-    try {
-      r = await bridge.noteUpdate(
-        note.id,
-        sent,
-        sent.body !== undefined ? { body: from, at: baseAt.current } : undefined,
-      );
-    } catch {
-      r = { ok: false };
-    } finally {
-      sending.current = false;
-    }
-    if (r.ok) {
-      failed.current = false;
-      if (r.updatedAt !== undefined) baseAt.current = r.updatedAt;
-      if (alive.current) setSaveError('');
-      if (sent.body !== undefined) {
-        const stored = r.body ?? sent.body;
-        base.current = stored;
-        if (r.body !== undefined) takeStored(sent.body, stored);
-      }
-      return true;
-    }
-    failed.current = true;
-    pending.current = { ...sent, ...pending.current };
-    // 다른 곳이 먼저 고쳤다: 안내를 보이고 글은 들고 있는다. 저장된 글을 새 바탕으로 받아 두면 다음 고침이나 뒤로 갈 때는 이 창의 글이 이긴다
-    if (r.stale) {
-      const n = await bridge.noteGet(note.id).catch(() => undefined);
-      if (n) {
-        base.current = n.body;
-        baseAt.current = n.updatedAt;
-      }
-    }
-    if (alive.current) setSaveError(`${r.error ?? t('panel.retry')} ${t('panel.note.unsaved')}`);
-    return false;
+    return saver.flush();
+  };
+  /** 다른 곳이 먼저 고친 뒤 사용자가 "내 글로 덮기"를 골랐다: 저장된 글을 바탕으로 삼아 다시 보낸다 */
+  const overwriteStored = () => {
+    saver.overwrite();
+    setStored(undefined);
+    setSaveError('');
+    void flush();
   };
   /** 저장하지 못한 글을 패널이 닫혀도 잃지 않게 적어 둔다 (다시 열면 이 글로 연다) */
   const keepDraft = (extra?: Partial<NoteResume>) => {
-    if (!failed.current) return;
+    if (!saver.failed) return;
     writeResume({
       id: note.id,
       field: 'body',
@@ -500,7 +497,7 @@ function NoteEditor({
     });
   };
   const save = (patch: { title?: string; body?: string }) => {
-    pending.current = { ...pending.current, ...patch };
+    saver.pending = { ...saver.pending, ...patch };
     clearTimeout(timer.current);
     timer.current = setTimeout(flush, SAVE_MS);
   };
@@ -513,7 +510,7 @@ function NoteEditor({
     if (isEmpty()) {
       gone.current = true;
       clearTimeout(timer.current);
-      pending.current = {};
+      saver.pending = {};
       if (!wasEmpty) {
         // 쓰던 것을 다 지우고 나갔다: 되돌리기로 살리면 빈 메모가 아니라 열 때 글이 돌아오게 그 글로 두고 지운다
         bridge.noteUpdate(note.id, { title: note.title, body: note.body });
@@ -542,7 +539,7 @@ function NoteEditor({
     // 창이 닫히기 전에(다른 곳을 눌러서) 남은 것을 저장하고 어디였는지 적어 둔다. 빈 새 메모는 지운다.
     const onUnload = () => {
       // 저장이 한 번이라도 실패한 채면 글도 적어 둔다 (닫히는 중이라 이번 저장의 답은 기다릴 수 없다)
-      const unsent = failed.current;
+      const unsent = saver.failed;
       void flush();
       if (gone.current) return;
       if (wasEmpty && isEmpty()) {
@@ -639,6 +636,24 @@ function NoteEditor({
         <p className="hint error" role="alert">
           {saveError}
         </p>
+      )}
+      {stored && (
+        <div className="note-stale">
+          <div className="note-polish-actions">
+            <button
+              type="button"
+              className="ghost small"
+              aria-expanded={stored.shown}
+              onClick={() => setStored({ ...stored, shown: !stored.shown })}
+            >
+              {stored.shown ? t('panel.note.staleHide') : t('panel.note.staleView')}
+            </button>
+            <button type="button" className="primary small" onClick={overwriteStored}>
+              {t('panel.note.staleOverwrite')}
+            </button>
+          </div>
+          {stored.shown && <div className="note-polish-text note-stale-text">{stored.body}</div>}
+        </div>
       )}
       {aiNote && <p className="hint error">{aiNote}</p>}
       {polish?.phase === 'busy' && (

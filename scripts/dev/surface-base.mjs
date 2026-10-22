@@ -467,6 +467,17 @@ const body = async () => {
   const gotNote = await p2.until(() => p2.ev(`!!document.querySelector('.hint.error[role="alert"]')`), 4000);
   check('편집 중 다른 곳이 먼저 고치면 안내가 뜬다', gotNote, await p2.ev(`document.querySelector('.hint.error[role="alert"]')?.textContent`));
   check('그 사이 저장된 글은 덮이지 않았다', (await main(`__jj.notes.get(${note1}).body`)) === 'replaced elsewhere');
+  // 거절 뒤 글자를 더 쳐도 다른 곳 글을 덮지 않는다. 고르는 단추 둘이 뜨고, 보기는 저장된 글을 보인다
+  check('거절 안내에 단추 둘(저장된 글 보기, 내 글로 덮기)', (await p2.ev(`document.querySelectorAll('.note-stale button').length`)) === 2);
+  await p2.ev(`document.querySelector('textarea')?.focus(); 1`);
+  await p2.type('!');
+  await sleep(1200);
+  check('거절 뒤 글자를 더 쳐도 다른 곳 글이 그대로 있다', (await main(`__jj.notes.get(${note1}).body`)) === 'replaced elsewhere');
+  await p2.click(`document.querySelector('.note-stale button')`);
+  check('저장된 글 보기가 다른 곳 글을 보인다', (await p2.ev(`document.querySelector('.note-stale-text')?.textContent`)) === 'replaced elsewhere');
+  await p2.click(`document.querySelector('.note-stale .primary')`);
+  check('내 글로 덮기를 고르면 내 글이 저장된다', await p2.until(async () => ((await main(`__jj.notes.get(${note1}).body`)) ?? '').includes('X')), await main(`__jj.notes.get(${note1}).body`));
+  check('덮은 뒤 안내와 단추가 사라진다', await p2.until(async () => !(await p2.ev(`!!document.querySelector('.note-stale, .hint.error[role="alert"]')`))));
 
   // ---- Esc 로 패널이 닫힌다 (작은 패널) ----
   await p2.ev(`document.activeElement?.blur?.(); 1`);
@@ -475,6 +486,45 @@ const body = async () => {
   await sleep(300);
   await p2.ev(esc('body'));
   check('작은 패널은 Esc 로 닫힌다', await p2.until(() => main('!__jj.panel.window || __jj.panel.window.isDestroyed()'), 4000));
+
+  // ---- 겹친 저장 (느린 디스크): 혼자 고쳐도 거절되지 않고 마지막 글이 저장된다 (esc: 뒤로, tab: 탭 이동) ----
+  await main(`(() => {
+    const req = process.mainModule ? process.mainModule.require : require;
+    const m = req('electron').ipcMain._invokeHandlers;
+    const orig = m.get('panel:note-update');
+    m.set('panel:note-update', async (e, ...a) => { await new Promise((r) => setTimeout(r, 300)); return orig(e, ...a); });
+    return 1;
+  })()`);
+  for (const variant of ['esc', 'tab']) {
+    const id = await main(`__jj.notes.add({ title: 'race-${variant}', body: 'line one\\nline two' }, Date.now() + 100000).id`);
+    await main("__jj.panel.refresh(); __jj.panel.openTab('note'); 1");
+    await sleep(1500);
+    const pr = await page('panel');
+    await main("__jj.panel.window.removeAllListeners('blur'); 1");
+    await pr.click(`[...document.querySelectorAll('.notes li.note-row > button:first-child')].find((b) => b.textContent.includes('race-${variant}'))`);
+    await sleep(600);
+    if (process.env.DEBUG) console.log('화면', variant, await pr.ev(`document.body.innerText.slice(0, 900).split('\\n').join(' | ')`));
+    await pr.ev(`(() => { const t = document.querySelector('textarea'); t.focus(); t.setSelectionRange(8, 8); return 1; })()`);
+    await pr.type(' X');
+    await sleep(450); // 400ms 저장 타이머가 돌아 첫 저장이 떠났다 (메인에서 300ms 걸림)
+    await pr.type(' Y');
+    if (variant === 'esc') await pr.ev(esc('textarea'));
+    else await main("__jj.panel.openTab('todo'); 1");
+    await sleep(1500);
+    const stored = await main(`__jj.notes.get(${id}).body`);
+    const alertText = await pr.ev(`document.querySelector('.hint.error[role="alert"]')?.textContent ?? ''`);
+    check(`겹친 저장(${variant}): 마지막에 쓴 글(Y)까지 저장됐다`, stored.includes('X') && stored.includes('Y'), JSON.stringify(stored));
+    check(`겹친 저장(${variant}): 혼자 고쳤는데 "먼저 고쳤어" 안내가 없다`, !/다른 곳|somewhere else/.test(alertText));
+    if (variant === 'tab') {
+      await main("__jj.panel.openTab('note'); 1");
+      await sleep(600);
+      check('겹친 저장(tab): 다시 열어도 글이 사라지지 않았다', ((await main(`__jj.notes.get(${id}).body`)) ?? '').includes('Y'));
+    }
+    if (await main('!!__jj.panel.window && !__jj.panel.window.isDestroyed()')) {
+      await pr.ev(`document.querySelector('.note-bar .back')?.click(); 1`);
+      await sleep(300);
+    }
+  }
 };
 
 try {

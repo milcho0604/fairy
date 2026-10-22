@@ -1426,6 +1426,19 @@ li.pin-end {
   user-select: text;
 }
 
+.note-stale {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0;
+}
+
+.note-stale-text {
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
 .note-polish-actions {
   display: flex;
   justify-content: flex-end;
