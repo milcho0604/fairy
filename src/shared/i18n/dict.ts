@@ -22,6 +22,7 @@ import * as fun from './fun.ts';
 import * as gallery from './gallery.ts';
 import * as gcal from './gcal.ts';
 import * as gemini from './gemini.ts';
+import * as home from './home.ts';
 import * as idle from './idle.ts';
 import * as keep from './keep.ts';
 import * as main from './main.ts';
@@ -103,6 +104,7 @@ export const ko = {
   ...chips.ko,
   ...friends.ko,
   ...keep.ko,
+  ...home.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -156,4 +158,5 @@ export const en: Translation<typeof ko> = {
   ...chips.en,
   ...friends.en,
   ...keep.en,
+  ...home.en,
 };

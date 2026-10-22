@@ -8,7 +8,7 @@ import { readJson, writeJson } from './store.ts';
 
 const FILE = 'window-bounds';
 
-export type WindowKey = 'chat' | 'settings' | 'maker' | 'knows' | 'panel';
+export type WindowKey = 'chat' | 'settings' | 'maker' | 'knows' | 'panel' | 'home';
 
 interface Saved {
   width: number;

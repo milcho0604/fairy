@@ -122,6 +122,8 @@ export interface PetActions {
   lookTogether(): void;
   openSettings(): void;
   quickAdd(): void;
+  /** 큰 창으로 열기 (큰 창 설계 #159). 없으면 우클릭 메뉴에 항목이 없다 */
+  openHome?(): void;
   feed(): void;
   makePet(): void;
   /** 집중 타이머가 도는지 (메뉴 글자를 바꾼다) */
@@ -351,6 +353,28 @@ function petWindowOptions(): BrowserWindowConstructorOptions {
   };
 }
 
+/** 모든 데스크톱에 보이게 걸어 둔 펫 창들 (기본 펫, 친구 펫). reassertSpaces 가 다시 건다 */
+const spaceWins = new Set<BrowserWindow>();
+/**
+ * 펫을 다른 앱의 전체 화면 위에도 올릴지. 평소 false (다른 앱을 크게 쓰는 중에 펫이 가리면 안 된다, 2026-10-02).
+ * 우리 큰 창이 전체 화면인 동안만 true (펫이 큰 창 위에서 같이 지낸다. 큰 창 설계 #159)
+ */
+let overFullScreen = false;
+
+/**
+ * 펫 창의 "모든 데스크톱, (전체 화면 위), 항상 위" 설정을 다시 건다. 맥 Dock 아이콘을 껐다 켜면(앱 종류가 바뀌면)
+ * 이 설정이 풀리는지 확실치 않아, 바꾼 뒤 늘 다시 건다 (main/dock.ts). 앱 종류는 건드리지 않는다(KEEP_APP_TYPE).
+ * over 를 주면 전체 화면 위 여부도 바꾼다
+ */
+export function reassertSpaces(over?: boolean): void {
+  if (over !== undefined) overFullScreen = over;
+  for (const w of spaceWins) {
+    if (w.isDestroyed()) continue;
+    w.setAlwaysOnTop(true, 'floating');
+    w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: overFullScreen, ...KEEP_APP_TYPE });
+  }
+}
+
 /** 한 번에 하나씩 연다 (여는 동안 host 의 새 창 처리기를 잠깐 바꾼다) */
 let opening: Promise<unknown> = Promise.resolve();
 
@@ -481,7 +505,9 @@ export function createPetWindow({
   win.setAlwaysOnTop(true, 'floating');
   // 모든 데스크톱(Space)에 보이되, 다른 앱의 전체 화면 위에는 올라가지 않는다.
   // (전체 화면 위에도 띄우면 다른 앱을 크게 쓰는 중에 펫이 가린다. 2026-10-02 사용자 지적)
-  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false, ...KEEP_APP_TYPE });
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: overFullScreen, ...KEEP_APP_TYPE });
+  spaceWins.add(win);
+  win.once('closed', () => spaceWins.delete(win));
   // 처음에는 모두 통과시킨다. 커서가 펫 위에 오면 화면이 알려 준다.
   win.setIgnoreMouseEvents(true, { forward: true });
   // 미리 만든 창은 빈 화면을 이미 그려 ready-to-show 가 지나갔을 수 있다: 펫 화면을 다 불러오면 보인다
@@ -681,6 +707,15 @@ export function createPetWindow({
         accelerator: quickAddShortcut() || undefined,
         click: () => actions.quickAdd(),
       },
+      ...(actions.openHome
+        ? [
+            {
+              label: t('pet.menu.openHome'),
+              accelerator: settings.get().shortcuts.home || undefined,
+              click: () => actions.openHome?.(),
+            },
+          ]
+        : []),
       ...(actions.whatFirst ? [{ label: t('first.menu'), click: () => actions.whatFirst?.() }] : []),
       ...(actions.askChips && settings.get().petChips
         ? [{ label: t('chips.menu'), click: () => actions.askChips?.() }]

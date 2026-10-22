@@ -22,6 +22,7 @@ import type { Gaze } from './gaze.ts';
 import type { PanelGcal } from './gcal.ts';
 import type { Point } from './geometry.ts';
 import type { GestureEvent } from './gesture.ts';
+import type { PanelView } from './home-policy.ts';
 import type { HouseStyle } from './house-art.ts';
 import type { HouseSprites } from './house-room.ts';
 import type { AgeStage } from './illustrate.ts';
@@ -1023,6 +1024,10 @@ export const PANEL = {
   viewSet: 'panel:view-set',
   /** 패널 고정 핀 켜고 끄기 (#145) */
   setKeepOpen: 'panel:set-keep-open',
+  /** 패널 보기 바꾸기 (큰 창 바닥의 "펫을 누르면 이 창으로 열기", #161) */
+  setPanelView: 'panel:set-panel-view',
+  /** 큰 창 사이드바 "친구": 설정의 친구 칸을 연다 */
+  openFriends: 'panel:open-friends',
   /** 되돌리기 알림 보관 (#145): 패널을 벗어나도 남은 시간 동안 다시 열면 보인다 */
   toastsGet: 'panel:toasts-get',
   toastsSet: 'panel:toasts-set',
@@ -1130,6 +1135,10 @@ export interface PanelState {
   trashCount: number;
   /** 패널 고정 핀이 켜져 있다 (#145): 다른 곳을 눌러도 닫히지 않는다 */
   keepOpen: boolean;
+  /** 패널 보기 (#161): 펫 클릭이 여는 것. 큰 창 바닥의 체크가 같은 값을 쓴다 */
+  panelView: PanelView;
+  /** 친구 기능이 켜져 있다 (서버 모드, 로그인, 기능 키). 큰 창 사이드바 "친구"가 보인다 */
+  friendsOn: boolean;
 }
 
 /** 월간 잔디 한 달 (#125). days 는 집중한 날만 */
@@ -1290,6 +1299,10 @@ export interface PanelBridge {
   viewSet(view: ViewKeep): void;
   /** 패널 고정 핀 (#145) */
   setKeepOpen(on: boolean): void;
+  /** 패널 보기 바꾸기 (#161) */
+  setPanelView(view: PanelView): void;
+  /** 설정의 친구 칸 열기 (#161) */
+  openFriends(): void;
   /** 되돌리기 알림 (#145) */
   toastsGet(): KeptToast[];
   toastsSet(list: KeptToast[]): void;

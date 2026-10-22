@@ -52,6 +52,8 @@ export interface DailyNoteOptions {
   reward: (coins: number, reason: string, now: number) => void;
   /** 지금 보이는 패널 면 (작은 패널, 큰 창이 열려 있으면 큰 창) */
   surface: () => BrowserWindow | undefined;
+  /** 작은 패널이나 큰 창이 보낸 요청인가 (숨겨 둔 큰 창이어도 받는다) */
+  fromSurface: (wc: Electron.WebContents) => boolean;
   openToday: () => void;
   /** 코인이 바뀌었다 (패널 다시 그리기) */
   onChange: () => void;
@@ -213,10 +215,7 @@ export function createDailyNotes(o: DailyNoteOptions) {
     }
   }
 
-  const fromPanel = (sender: Electron.WebContents) => {
-    const w = o.surface();
-    return !!w && !w.isDestroyed() && w.webContents === sender;
-  };
+  const fromPanel = (sender: Electron.WebContents) => o.fromSurface(sender);
   ipcMain.handle(NOTES.list, (e) => (fromPanel(e.sender) ? box() : undefined));
   ipcMain.on(NOTES.read, (e, day: unknown) => {
     if (fromPanel(e.sender) && typeof day === 'string') read(day);

@@ -1,0 +1,248 @@
+/* 큰 창 껍데기 (이슈 #161, 큰 창 설계 #159). 클래스 머리는 home-. 본문 칸은 작은 패널과 같은 것을 쓴다 (panel.css) */
+
+/* 불투명 창: 패널의 투명 바탕(panel.css)을 덮는다 */
+html.home-win,
+html.home-win body,
+html.home-win #root {
+  background: var(--panel);
+}
+
+html.home-win body {
+  /* 큰 창은 글을 고르고 복사할 수 있어야 한다 (패널은 끌기 때문에 막아 두었다) */
+  user-select: auto;
+}
+
+.surface.home {
+  display: grid;
+  grid-template-columns: 208px minmax(0, 1fr);
+  background: var(--panel);
+  /* 덮는 것은 창 가득, 알림은 본문 칸 아래 */
+  --surface-inset: 0px;
+  --toast-bottom: 20px;
+  --toast-side: 24px;
+}
+
+/* ---- 사이드바 ---- */
+.home-side {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  padding: 14px 10px 12px;
+  border-right: 1px solid var(--line);
+  background: var(--bg);
+}
+
+/* 맥은 신호등 단추(빨강, 노랑, 초록)가 사이드바 왼쪽 위에 얹힌다 */
+.home.mac .home-side {
+  padding-top: 40px;
+}
+
+.home-grab {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 38px;
+  -webkit-app-region: drag;
+}
+
+.home-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+}
+
+.home-head strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-fullness {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  padding: 0 4px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.home-fullness .track {
+  flex: 1;
+  min-width: 40px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--code);
+  overflow: hidden;
+}
+
+.home-fullness .track .fill {
+  display: block;
+  height: 100%;
+  background: var(--ok);
+}
+
+.home-fullness .track.low .fill {
+  background: var(--warn);
+}
+
+.home-fullness .ghost {
+  flex: none;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  margin-top: 4px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.home-nav button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.home-nav button:hover {
+  background: var(--code);
+}
+
+.home-nav button.on {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--chip-on-ink);
+  font-weight: 600;
+}
+
+.home-nav button:focus-visible,
+.home-check input:focus-visible,
+.home-settings:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.home-nav .name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-nav .out {
+  flex: none;
+  color: var(--muted);
+}
+
+.home-side kbd {
+  flex: none;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.home-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.home-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 0 4px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.home-check input {
+  flex: none;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+
+.home-settings {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+}
+
+.home-settings span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-settings svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+/* ---- 본문 ---- */
+.home-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--panel);
+}
+
+.home-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  height: 52px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--line);
+  -webkit-app-region: drag;
+}
+
+.home-bar h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+/* 본문 칸: 작은 패널의 .panel 이 하는 세로 쌓기를 그대로 쓰고, 알림과 시트의 기준이 된다 */
+.home-panel {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.home-panel > .panel-main {
+  flex: 1;
+  min-height: 0;
+}

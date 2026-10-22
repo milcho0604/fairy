@@ -50,6 +50,8 @@ export interface JourneyOptions {
   open: (step: JourneyStep) => void;
   /** 지금 보이는 패널 면 (작은 패널, 큰 창이 열려 있으면 큰 창) */
   surface: () => BrowserWindow | undefined;
+  /** 작은 패널이나 큰 창이 보낸 요청인가 (숨겨 둔 큰 창이어도 받는다) */
+  fromSurface: (wc: Electron.WebContents) => boolean;
   /** 코인과 칸이 바뀌었다 (패널 다시 그리기) */
   onChange: () => void;
   log: (tag: string, ...rest: unknown[]) => void;
@@ -77,10 +79,7 @@ export function createJourney(o: JourneyOptions) {
     if (w && !w.isDestroyed()) w.webContents.send(BOND.journeyChanged, journeyView(state, today()));
     o.onChange();
   };
-  const fromPanel = (sender: Electron.WebContents) => {
-    const w = o.surface();
-    return !!w && !w.isDestroyed() && w.webContents === sender;
-  };
+  const fromPanel = (sender: Electron.WebContents) => o.fromSurface(sender);
 
   /** 해 봤다. 여정 중 처음이면 코인과 한마디 */
   function tried(step: JourneyStep, now = Date.now()) {

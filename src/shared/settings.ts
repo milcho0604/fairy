@@ -4,6 +4,7 @@ import { isSaverMode, type SaverMode } from './battery.ts';
 import type { ChatterLevel } from './chatter.ts';
 import { cutText } from './cut-text.ts';
 import { type FocusLength, isFocusLength } from './focus.ts';
+import { isPanelView, type PanelView } from './home-policy.ts';
 import { type LangPref, t } from './i18n/index.ts';
 import { cleanIcsUrl } from './ics.ts';
 import { type AgeStage, isAgeStage } from './illustrate.ts';
@@ -149,6 +150,8 @@ export interface Settings {
   clickGrow: boolean;
   /** 패널 고정 핀: 켜면 다른 곳을 눌러도 패널이 닫히지 않는다 (Esc, 펫 클릭, 단축키로만 닫힘. 이슈 #145, 기본 끔) */
   panelPin: boolean;
+  /** 패널 보기 (큰 창 설계 #159): 펫 클릭, 패널 단축키, 메뉴 막대 "패널"이 여는 것. 작은 패널(compact) 또는 큰 창(window) */
+  panelView: PanelView;
   /** 맥 메뉴 막대 아이콘 옆에 다음 일정이나 집중 남은 시간 (편의, 기본 끔: 제목이 화면에 늘 보인다) */
   trayTitle: boolean;
   /** 집 숨기기 (2026-10-12, shared/house-stow.ts): 화면의 집을 숨겨 둔다. 자리, 단계, 모양은 그대로 */
@@ -491,6 +494,7 @@ export const DEFAULT_SETTINGS: Settings = {
   doingBubble: true,
   clickGrow: true,
   panelPin: false,
+  panelView: 'compact',
   trayTitle: false,
   houseHidden: false,
   saverTold: false,
@@ -697,6 +701,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     doingBubble: bool(r.doingBubble, base.doingBubble),
     clickGrow: bool(r.clickGrow, base.clickGrow),
     panelPin: bool(r.panelPin, base.panelPin),
+    panelView: isPanelView(r.panelView) ? r.panelView : base.panelView,
     trayTitle: bool(r.trayTitle, base.trayTitle),
     houseHidden: bool(r.houseHidden, base.houseHidden),
     saverTold: bool(r.saverTold, base.saverTold),
@@ -964,7 +969,7 @@ const HOST_MAC: boolean | undefined =
     : undefined;
 
 /** 나중 버전에 생긴 단축키. 새로 더하면 여기에도 적는다 (예전 설정 파일에는 이 id 가 없다) */
-const LATER_SHORTCUTS: readonly ShortcutId[] = ['chat', 'look', 'panel', 'pet'];
+const LATER_SHORTCUTS: readonly ShortcutId[] = ['chat', 'look', 'panel', 'pet', 'home'];
 
 function shortcutsOf(v: unknown, current: Record<ShortcutId, string>): Record<ShortcutId, string> {
   const r = (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>;

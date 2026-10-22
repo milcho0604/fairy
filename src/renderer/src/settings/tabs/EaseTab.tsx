@@ -75,6 +75,24 @@ export function EaseTab({ snap, update, flash }: TabProps) {
           on={s.panelPin}
           onChange={(v) => update({ panelPin: v })}
         />
+        {/* 패널 보기 (큰 창 설계 #159): 펫 클릭과 패널 단축키가 여는 것 */}
+        <div className="field">
+          <span>{t('settings.panelView')}</span>
+          <fieldset className="segmented" aria-label={t('settings.panelViewAria')}>
+            {(['compact', 'window'] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                aria-pressed={s.panelView === v}
+                className={s.panelView === v ? 'on' : ''}
+                onClick={() => update({ panelView: v })}
+              >
+                {t(`settings.panelView.${v}`)}
+              </button>
+            ))}
+          </fieldset>
+          <small className="below">{t('settings.panelViewHint')}</small>
+        </div>
       </Section>
       <Section title={t('settings.lang')}>
         <fieldset className="segmented" aria-label={t('settings.langAria')}>

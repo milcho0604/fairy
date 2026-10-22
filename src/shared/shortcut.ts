@@ -1,7 +1,7 @@
 // 단축키 바꾸기 (v2). 설정 창에서 키를 눌러 기록하면 Electron 단축키 글자(Accelerator)로 바꾼다.
 import { t } from './i18n/index.ts';
 
-export type ShortcutId = 'hide' | 'quickAdd' | 'chat' | 'look' | 'panel' | 'pet';
+export type ShortcutId = 'hide' | 'quickAdd' | 'chat' | 'look' | 'panel' | 'pet' | 'home';
 
 /** 모두 Cmd/Ctrl+Option/Alt+Shift 에 글자 하나 (시스템, 편집 조합과 겹치지 않는 자리) */
 export const SHORTCUT_DEFAULTS: Record<ShortcutId, string> = {
@@ -9,6 +9,8 @@ export const SHORTCUT_DEFAULTS: Record<ShortcutId, string> = {
   quickAdd: 'CommandOrControl+Alt+Shift+N',
   chat: 'CommandOrControl+Alt+Shift+J',
   look: 'CommandOrControl+Alt+Shift+L',
+  /** 큰 창 열기, 숨기기 (큰 창 설계 #159). 새 전역 키를 멋대로 잡지 않으려고 기본은 비어 있다. 설정에서 정한다 */
+  home: '',
   /** 패널 열고 닫기 (펫 누르기와 같다). T 는 오늘(Today) */
   panel: 'CommandOrControl+Alt+Shift+T',
   /** 키보드로 펫 고르기 (접근성): 펫에 포커스, Enter 패널, Shift+F10 메뉴, 화살표 걷기. P 는 펫(Pet) */
@@ -64,6 +66,9 @@ export const SHORTCUT_LABEL: Readonly<Record<ShortcutId, string>> = {
   },
   get pet() {
     return t('settings.shortcut.pet');
+  },
+  get home() {
+    return t('settings.shortcut.home');
   },
 };
 

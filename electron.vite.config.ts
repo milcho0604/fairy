@@ -76,6 +76,8 @@ export default defineConfig({
           overlay: resolve('src/renderer/overlay.html'),
           settings: resolve('src/renderer/settings.html'),
           panel: resolve('src/renderer/panel.html'),
+          // 큰 창 (main/home.ts)
+          home: resolve('src/renderer/home.html'),
           quick: resolve('src/renderer/quick.html'),
           maker: resolve('src/renderer/maker.html'),
           onboarding: resolve('src/renderer/onboarding.html'),

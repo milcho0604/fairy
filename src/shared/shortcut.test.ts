@@ -4,6 +4,7 @@ import {
   acceleratorLabel,
   isAccelerator,
   type KeyPress,
+  NO_SHORTCUT,
   reservedUse,
   SHORTCUT_DEFAULTS,
   SHORTCUT_IDS,
@@ -219,8 +220,10 @@ test('수식키 하나만이면 하나 더: Cmd 하나, 맥 Ctrl 하나, 윈도�
     accelerator: 'Alt+Shift+J',
   });
   // 기본값은 두 운영체제에서 다 된다
+  // 비어 있는 기본(큰 창 열기)은 등록하지 않으니 검사할 키가 없다
   for (const mac of [true, false])
-    for (const acc of Object.values(SHORTCUT_DEFAULTS)) assert.equal(shortcutProblem(acc, mac), undefined);
+    for (const acc of Object.values(SHORTCUT_DEFAULTS).filter((v) => v !== NO_SHORTCUT))
+      assert.equal(shortcutProblem(acc, mac), undefined);
 });
 
 test('대조: 막는 표에 없는 세 수식키 조합은 통과한다 (표가 너무 넓지 않게)', () => {
@@ -286,4 +289,17 @@ test('펫 고르기 단축키 (접근성): 기본 Cmd/Ctrl+Option/Alt+Shift+P, �
   assert.equal(shortcutClash(d), undefined);
   assert.equal(SHORTCUT_LABEL.pet, '페어리 고르기 (키보드로 페어리 다루기)');
   assert.equal(SHORTCUT_IDS.at(-1), 'pet');
+});
+
+test('큰 창 열기 단축키: 기본은 비어 있고, 정하면 다른 단축키와 겹침을 가린다', () => {
+  const d = SHORTCUT_DEFAULTS;
+  assert.equal(d.home, NO_SHORTCUT);
+  assert.equal(SHORTCUT_LABEL.home, '큰 창 열기, 숨기기');
+  // 기본이 비어 있어도 다른 단축키와 겹친 것으로 세지 않는다
+  assert.equal(shortcutClash(d), undefined);
+  // 정한 키가 다른 단축키와 같으면 겹친다
+  assert.deepEqual(shortcutClash({ ...d, home: d.chat }), ['chat', 'home']);
+  assert.equal(shortcutsChanged(d, { ...d, home: 'CommandOrControl+Alt+Shift+O' }), true);
+  // 보이는 순서: 패널, 펫 앞에 온다 (기존 순서 시험을 지킨다)
+  assert.ok(SHORTCUT_IDS.indexOf('home') < SHORTCUT_IDS.indexOf('panel'));
 });

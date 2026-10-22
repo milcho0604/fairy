@@ -9,6 +9,7 @@ import { persona, setMemorySource, setStyleSource, todoContext } from '../shared
 import { cutText } from '../shared/cut-text.ts';
 import { aiEventFilter } from '../shared/event-store.ts';
 import { HIDE_SEEK, pickHideSpot } from '../shared/hide-seek.ts';
+import { panelTarget, reopenTarget } from '../shared/home-policy.ts';
 import { houseMenuKey, houseNewsKey, stowSayKey, stowStep } from '../shared/house-stow.ts';
 import { locale, t } from '../shared/i18n/index.ts';
 import { IPC, type PetStatus, type PlayKind } from '../shared/ipc.ts';
@@ -45,12 +46,14 @@ import { chooseDataDir, DATA_DIR_NAME, oldAppBlocks } from './data-move.ts';
 import { createDayTools } from './day-tools.ts';
 import { announceJsonTrouble, announceStoreTrouble, openStore } from './db.ts';
 import { createDiary } from './diary.ts';
+import { createDock } from './dock.ts';
 import { confineTestDisplay } from './focus.ts';
 import { createFriends } from './friends.ts';
 import { CHAIN_FILE, createTickle, createWordChain } from './fun.ts';
 import { galleryHandlers } from './gallery-app.ts';
 import { createGcal, gcalAiAllowed } from './gcal.ts';
 import { watchReopen } from './hide-hint.ts';
+import { createHome } from './home.ts';
 import { createHouseRest } from './house-rest.ts';
 import { createJourney } from './journey.ts';
 import { pruneCopies } from './keep-copies.ts';
@@ -81,7 +84,7 @@ import { createPetFace, trayImageOf } from './pet-face.ts';
 import { library } from './pet-library.ts';
 import { createPetLife } from './pet-life.ts';
 import { drainMemoryInbox } from './pet-memory.ts';
-import { createPetWindow } from './pet-window.ts';
+import { createPetWindow, reassertSpaces } from './pet-window.ts';
 import { createPlanner } from './planner.ts';
 import { createHouse, playBall, visitHouse } from './play.ts';
 import { createPout } from './pout.ts';
@@ -341,6 +344,10 @@ ready
     });
     // 펫 질문 칩과 상태 말풍선 글 (펫과 패널이 만들어진 뒤에 채운다, 이슈 #124)
     let petChips: ReturnType<typeof createPetChips> | undefined;
+    // 큰 창 (main/home.ts). 패널 뒤에 만든다. 펫 우클릭과 메뉴 막대가 부를 때까지 만들어졌다
+    let home: ReturnType<typeof createHome> | undefined;
+    // 친구 칸이 보이는가 (서버 모드, 로그인, 기능 키). 큰 창 사이드바 "친구"에 쓴다
+    let friendsAvailable = false;
     const pet = createPetWindow({
       petName,
       actions: {
@@ -368,6 +375,7 @@ ready
         lookTogether: () => look.start(),
         openSettings: () => settingsWindow.open(),
         quickAdd: () => panel.openQuick(),
+        openHome: () => home?.open(),
         feed: () => feedPet(),
         makePet: () => maker.open(),
         petted: () => {
@@ -472,6 +480,7 @@ ready
       openSettings: () => settingsWindow.open(),
       sendFeedback: () => settingsWindow.open('stats'),
       quickAdd: () => panel.openQuick(),
+      openHome: () => home?.open(),
       openTodos: () => panel.openTab('todo'),
       togglePanel: () => panel.togglePanel(),
       reloadPet: () => {
@@ -1112,11 +1121,49 @@ ready
       setPanelPin: (on) => {
         settings.set({ panelPin: on });
       },
+      panelView: () => settings.get().panelView,
+      setPanelView: (view) => {
+        settings.set({ panelView: view });
+      },
+      friendsOn: () => friendsAvailable,
+      openFriends: () => settingsWindow.open('friends'),
+      // 큰 창이 열려 있거나 패널 보기가 큰 창이면 큰 창이 맡는다 (펫 누르기, 패널 단축키, 메뉴 막대 "패널", 탭을 정한 열기)
+      routeHome: ({ tab, toggle }) => {
+        if (!home || panelTarget(settings.get().panelView, home.look()) !== 'home') return false;
+        if (toggle) home.toggle(tab);
+        else home.open(tab);
+        return true;
+      },
       lookTogether: () => look.start(),
       missed: () => pet.missed(),
       diary: () => diary.entries(Date.now()),
       clearMissed: () => pet.clearMissed(),
       stats,
+      log,
+    });
+    // ---- 큰 창 (main/home.ts)과 맥 Dock (main/dock.ts) ----
+    // 큰 창이 열린 동안만 Dock 에 보인다. 시험 실행(JJ_NO_FOCUS)은 dock.show 를 부르지 않는다
+    // JJ_DOCK_PROBE=1 (scripts/dev/dock-probe.mjs 만): 시험 실행에서도 진짜로 부른다. 사용자의 Dock 에 아이콘이 뜬다
+    const dock = createDock({
+      test: !!process.env.JJ_NO_FOCUS && !process.env.JJ_DOCK_PROBE,
+      // 앱 종류가 바뀐 뒤에도 펫이 모든 데스크톱과 (큰 창이 전체 화면이면) 그 위에 남도록 다시 건다
+      reassert: () => reassertSpaces(),
+      log,
+    });
+    app.on('before-quit', () => dock.quit());
+    home = createHome({
+      registerSurface: (win, hidden) => panel.registerHome(win, hidden),
+      // 숨겨 둔 큰 창이 다시 보일 때 놓친 상태를 한 번 보낸다
+      onShown: () => {
+        panel.refresh();
+        dailyNotes.changed();
+      },
+      closePanel: () => panel.closePanel(),
+      petBounds: () => pet.bounds(),
+      dock,
+      onFullScreen: (on) => reassertSpaces(on),
+      // 시험 실행만: 숨긴 창을 없애는 때를 줄인다 (scripts/dev/home.mjs)
+      keepMs: app.isPackaged ? undefined : Number(process.env.JJ_HOME_KEEP_MS) || undefined,
       log,
     });
     /** 패널 밖(펫 우클릭)에서 밥 주기 */
@@ -1244,6 +1291,7 @@ ready
         look: lookKey,
         panel: panelKey,
         pet: petKey,
+        home: homeKey,
       } = settings.get().shortcuts;
       for (const [acc, run, name] of [
         [hide, toggleHidden, t('pet.shortcut.hide')],
@@ -1253,6 +1301,8 @@ ready
         [lookKey, () => void look.start(), t('pet.shortcut.look')],
         // 펫을 누른 것과 같다 (열려 있으면 닫는다). 펫을 찾아 누르지 않아도 패널을 연다
         [panelKey, () => panel.togglePanel(), t('pet.shortcut.panel')],
+        // 큰 창 열기, 숨기기 (기본은 비어 있다, 설정에서 정한다)
+        [homeKey, () => home?.toggle(), t('pet.shortcut.home')],
         // 키보드로 펫 다루기 (접근성): 숨겨 둔 펫이면 먼저 부른다
         [
           petKey,
@@ -1460,7 +1510,14 @@ ready
         if (!house.bounds()) rest.houseGone();
       },
       onReverted: (text) => void pet.say({ kind: 'answer', text, ttlMs: 8000 }),
-      onStatus: () => chat.ticketChanged(),
+      onStatus: () => {
+        chat.ticketChanged();
+        const on = server.friends.available();
+        if (on !== friendsAvailable) {
+          friendsAvailable = on;
+          panel.refresh();
+        }
+      },
       onInbox: () => void serverInbox?.deliver(),
       onServerMin: (m) => updateSink?.min(m),
       installUpdate: () => updateSink?.install(),
@@ -1551,12 +1608,14 @@ ready
         else panel.openTab('today');
       },
       surface: () => panel.activeSurface(),
+      fromSurface: (wc) => panel.fromSurface(wc),
       onChange: () => panel.refresh(),
       log,
     });
     const weekCard = createWeekCard({
       doneTitlesSince: (from) => store.doneTitlesSince(from),
       surface: () => panel.activeSurface(),
+      fromSurface: (wc) => panel.fromSurface(wc),
       hold: (work) => panel.hold(work),
       onSaved: () => journey.tried('week'),
       log,
@@ -1609,6 +1668,7 @@ ready
       hold: (look) => together.setNote(look),
       reward: (coins, reason, now) => store.reward(coins, reason, now),
       surface: () => panel.activeSurface(),
+      fromSurface: (wc) => panel.fromSurface(wc),
       openToday: () => panel.openTab('today'),
       onChange: () => panel.refresh(),
       log,
@@ -1663,7 +1723,7 @@ ready
       if (next.readAloud !== prev.readAloud || next.clickGrow !== prev.clickGrow) sendStatus();
       if (next.doingBubble !== prev.doingBubble) refreshStatusBubble();
       // 설정 창에서 패널 고정을 바꾸면 열려 있는 패널의 핀 모양도 따라간다
-      if (next.panelPin !== prev.panelPin) panel.refresh();
+      if (next.panelPin !== prev.panelPin || next.panelView !== prev.panelView) panel.refresh();
       if (next.petName !== prev.petName) {
         chat.petNameChanged();
         panel.refresh();
@@ -1750,6 +1810,9 @@ ready
     watchReopen(app, process.platform, {
       takeArgv,
       bringBack: (why) => {
+        // Dock 아이콘을 눌렀다(맥 activate): 큰 창이 열려 있거나 내려가 있으면 그 창을 되살린다
+        // 큰 창을 앞으로 한 다음 숨은 펫, 집에 들어간 펫도 부른다
+        if (home && reopenTarget(why, home.look()) === 'home') home.open();
         log('pet', '다시 열기로 부름', why);
         pet.setHidden('user', false);
         friends.setHidden('user', false);
@@ -1886,11 +1949,16 @@ ready
         if (unlocked(petLife.state.affection).has('wave') && !pet.isHidden() && !playing) pet.react('wave');
       }
     }, 2000).unref();
-    const stopPresence = watchPresentation((hide) => {
-      pet.setHidden('presentation', hide);
-      friends.setHidden('presentation', hide);
-      sysMonitor.setPaused('presentation', hide);
-    }, log);
+    const stopPresence = watchPresentation(
+      (hide) => {
+        pet.setHidden('presentation', hide);
+        friends.setHidden('presentation', hide);
+        sysMonitor.setPaused('presentation', hide);
+      },
+      log,
+      // 우리 큰 창이 전체 화면이면 다른 앱의 전체 화면으로 세지 않는다
+      () => !!home?.isFullScreen(),
+    );
     app.on('will-quit', () => {
       stopLocal();
       // 내 컴퓨터에서 그리기(파이썬, sd-cli)를 남겨 두지 않는다
@@ -1929,6 +1997,18 @@ ready
             return serverInbox;
           },
           panel,
+          // 큰 창과 Dock (scripts/dev/home.mjs). dock.stats() 의 triedShow 는 시험 실행에서 show 를 "부르려 했다"는 횟수
+          get home() {
+            return home;
+          },
+          dock,
+          // 모든 프로세스 CPU, 메모리 합 (scripts/dev/home-perf.mjs)
+          metrics: () => sumMetrics(app.getAppMetrics()),
+          // 친구 칸이 보이는 상태를 흉내 낸다 (큰 창 사이드바 "친구")
+          debugFriendsOn: (on: boolean) => {
+            friendsAvailable = on;
+            panel.refresh();
+          },
           doing,
           get petChips() {
             return petChips;
@@ -2017,12 +2097,19 @@ function logMetrics(seconds: number) {
   app.getAppMetrics(); // 첫 CPU 값은 기준점이라 버린다.
   setInterval(() => {
     const metrics = app.getAppMetrics();
-    // percentCPUUsage 는 모든 코어를 합친 100% 기준이라, 코어 하나 기준(ps, 활성 상태 보기)으로 맞춘다
-    const cpu = metrics.reduce((sum, m) => sum + m.cpu.percentCPUUsage, 0) * cpus().length;
-    const memMB = metrics.reduce((sum, m) => sum + m.memory.workingSetSize, 0) / 1024;
+    const { cpu, memMB } = sumMetrics(metrics);
     const detail = metrics.map((m) => `${m.type}:${Math.round(m.memory.workingSetSize / 1024)}`).join(' ');
     log('metrics', `cpu=${cpu.toFixed(2)}% mem=${memMB.toFixed(0)}MB procs=${metrics.length} (${detail})`);
   }, seconds * 1000);
+}
+
+/** 모든 프로세스의 CPU, 메모리 합 (렌더러만 따로). percentCPUUsage 는 모든 코어를 합친 100% 기준이라, 코어 하나 기준(ps, 활성 상태 보기)으로 맞춘다 */
+function sumMetrics(metrics: Electron.ProcessMetric[]) {
+  const cpu = metrics.reduce((sum, m) => sum + m.cpu.percentCPUUsage, 0) * cpus().length;
+  const memMB = metrics.reduce((sum, m) => sum + m.memory.workingSetSize, 0) / 1024;
+  const rendererMB =
+    metrics.filter((m) => m.type === 'Tab').reduce((sum, m) => sum + m.memory.workingSetSize, 0) / 1024;
+  return { cpu, memMB, rendererMB, procs: metrics.length };
 }
 
 app.on('window-all-closed', () => app.quit());

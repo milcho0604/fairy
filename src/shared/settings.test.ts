@@ -669,3 +669,33 @@ test('패널 고정: 기본은 꺼짐, 켜고 끄고, 틀린 값은 지금 값',
   assert.equal(applyPatch(on, { panelPin: 1 }).panelPin, true);
   assert.equal(applyPatch(on, { panelPin: false }).panelPin, false);
 });
+
+test('패널 보기: 기본은 작은 패널, 큰 창으로 바꾸고, 모르는 값은 지금 값', () => {
+  assert.equal(DEFAULT_SETTINGS.panelView, 'compact');
+  assert.equal(parseSettings({}).panelView, 'compact');
+  assert.equal(parseSettings({ panelView: 'window' }).panelView, 'window');
+  assert.equal(parseSettings({ panelView: 'compact' }).panelView, 'compact');
+  // 옛 설정 파일이나 손으로 고친 값: 작은 패널로
+  for (const bad of ['big', 'Window', '', 1, true, null, {}]) {
+    assert.equal(parseSettings({ panelView: bad }).panelView, 'compact', String(bad));
+  }
+  const win = applyPatch(DEFAULT_SETTINGS, { panelView: 'window' });
+  assert.equal(win.panelView, 'window');
+  // 틀린 값으로 고치려 하면 지금 값을 지킨다 (compact 로 돌아가지 않는다)
+  assert.equal(applyPatch(win, { panelView: 'huge' }).panelView, 'window');
+  assert.equal(applyPatch(win, { panelView: 'compact' }).panelView, 'compact');
+  // 다른 칸을 고쳐도 그대로
+  assert.equal(applyPatch(win, { panelPin: true }).panelView, 'window');
+});
+
+test('큰 창 열기 단축키: 기본은 비어 있다 (새 전역 키를 멋대로 잡지 않는다)', () => {
+  assert.equal(DEFAULT_SETTINGS.shortcuts.home, '');
+  assert.equal(parseSettings({}).shortcuts.home, '');
+  // 옛 설정 파일(home 이 없는 단축키)에서도 다른 단축키는 그대로
+  const old = parseSettings({ shortcuts: { hide: 'CommandOrControl+Alt+Shift+K' } });
+  assert.equal(old.shortcuts.hide, 'CommandOrControl+Alt+Shift+K');
+  assert.equal(old.shortcuts.home, '');
+  // 사용자가 정하면 받는다
+  const mine = parseSettings({ shortcuts: { home: 'CommandOrControl+Alt+Shift+O' } });
+  assert.equal(mine.shortcuts.home, 'CommandOrControl+Alt+Shift+O');
+});
