@@ -38,13 +38,21 @@ const state = {
   ],
 };
 
+// SURFACE=home 이면 큰 창 안에 품은 채팅(이슈 #165)에서 돈다: 큰 창을 열고 채팅 구역으로. 큰 창은 760 보다 좁아지지 않아 채팅 폭은 552 이상이다
+const HOME = process.env.SURFACE === 'home';
+const size = (w, h) =>
+  main(HOME ? `__jj.home.window.setSize(${Math.max(w + 208, 760)}, ${Math.max(h + 52, 520)}); 1` : `__jj.chat.window.setSize(${w}, ${h}); 1`);
+if (HOME) {
+  await main(`__jj.settings.set({ panelView: 'window' }); __jj.home.open('today'); 1`);
+  await sleep(2500);
+}
 await main(`__jj.chat.open(__jj.pet.bounds()); 1`);
 await sleep(2500);
 await main(`__jj.chat.debugSetState(() => (${JSON.stringify(state)})); 1`);
 const chat = await page('chat');
 await sleep(800);
 for (const [w, h] of [[400, 640], [320, 520]]) {
-  await main(`__jj.chat.window.setSize(${w}, ${h}); 1`);
+  await size(w, h);
   await sleep(500);
   await chat.ev(`document.querySelector('.messages').scrollTop = 0`);
   await chat.dark(false); await sleep(200); await chat.shot(`chat-${w}-top-light`);
@@ -58,7 +66,7 @@ for (const [w, h] of [[400, 640], [320, 520]]) {
   const over = await chat.ev(`[...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > innerWidth + 1 && !e.closest('pre')).map(e => e.tagName + '.' + e.className).slice(0, 8).join(', ')`);
   console.log(`${w}px 가로로 넘친 요소:`, over || '없음');
 }
-await main(`__jj.chat.window.setSize(400, 640); 1`);
+await size(400, 640);
 // 빈 화면, AI 고르기, 관리 화면
 await main(`__jj.chat.debugSetState((s) => ({ ...s, pendingId: undefined, messages: [] })); 1`);
 await sleep(400); await chat.shot('chat-empty-light');

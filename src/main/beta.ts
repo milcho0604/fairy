@@ -36,8 +36,9 @@ export function watchBetaStats(
   app.on('child-process-gone', (_e, d) => {
     if (BAD_EXIT.has(d.reason)) crash(`${d.type} ${d.reason}`);
   });
-  app.on('browser-window-created', (_e, win) => {
-    win.on('unresponsive', () => crash('창 응답 없음'));
+  // 창이 아니라 화면(webContents)마다 듣는다: 큰 창은 BaseWindow 라 browser-window-created 가 없고, 본문과 채팅이 view 다
+  app.on('web-contents-created', (_e, wc) => {
+    wc.on('unresponsive', () => crash('창 응답 없음'));
   });
 
   const timer = setInterval(() => {

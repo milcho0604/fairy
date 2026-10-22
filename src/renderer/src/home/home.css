@@ -235,6 +235,18 @@ html.home-win body {
   font-weight: 650;
 }
 
+/* 채팅 자리 (이슈 #165): 이 칸 위에 메인이 채팅 view 를 얹는다. 칸 자체는 비어 있다 */
+.home-chat-slot {
+  flex: 1;
+  min-height: 0;
+  background: var(--panel);
+}
+
+/* 채팅 구역 동안 가려 둔 본문. hidden 이 .panel 의 display 에 지지 않게 */
+.home-panel[hidden] {
+  display: none;
+}
+
 /* 본문 칸: 작은 패널의 .panel 이 하는 세로 쌓기를 그대로 쓰고, 알림과 시트의 기준이 된다 */
 .home-panel {
   position: relative;

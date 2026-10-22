@@ -1300,3 +1300,20 @@ header .picker.ticket {
 .ticket-report-done.failed {
   color: var(--warn);
 }
+
+/* 큰 창 안에 품은 채팅 (이슈 #165, 주소 끝 #embed): 창 단추와 창 끌기는 큰 창 사이드바와 머리줄이 맡는다.
+   위쪽 .mac 규칙(0,1,1)과 좁은 폭 규칙(0,1,2)보다 세게 body 와 두 클래스를 붙인다 */
+body.embed header,
+body.embed .sheet-head {
+  -webkit-app-region: no-drag;
+}
+
+body.embed.mac header {
+  padding-left: 12px;
+  min-height: 0;
+}
+
+body.embed.mac .sheet-head {
+  padding-left: 14px;
+  min-height: 0;
+}

@@ -1,4 +1,4 @@
-import { app, type BrowserWindow, type Display, screen } from 'electron';
+import { app, type BaseWindow, type Display, screen } from 'electron';
 import { onActiveSpace } from './active-space.ts';
 
 /**
@@ -16,7 +16,7 @@ export function stealFocus(): void {
  * 앱을 앞으로 가져오는 것(stealFocus)은 창을 지금 데스크톱에 띄운 뒤에 한다. 먼저 하면 맥이 이 앱 창이 있는 다른
  * 데스크톱(Space)으로 화면을 넘긴다 (2026-10-12: 다른 데스크톱에서 펫을 누르면 원래 데스크톱으로 돌아감, active-space.ts)
  */
-export function showWindow(win: BrowserWindow | undefined): void {
+export function showWindow(win: BaseWindow | undefined): void {
   if (!win || win.isDestroyed()) return;
   if (noFocus) win.showInactive();
   else
@@ -26,7 +26,7 @@ export function showWindow(win: BrowserWindow | undefined): void {
     });
 }
 
-export function focusWindow(win: BrowserWindow | undefined): void {
+export function focusWindow(win: BaseWindow | undefined): void {
   if (!win || win.isDestroyed()) return;
   if (noFocus) {
     win.showInactive();
@@ -52,6 +52,7 @@ export function confineTestDisplay(): void {
   const allDisplays = screen.getAllDisplays.bind(screen);
   const realCursor = screen.getCursorScreenPoint.bind(screen);
   const only = (): Display => allDisplays().find((d) => d.id === internal.id) ?? internal;
+  const confineWindow = confineWindowWith(only);
   Object.assign(screen, {
     getAllDisplays: () => allDisplays().filter((d) => d.id === internal.id),
     getPrimaryDisplay: only,
@@ -67,7 +68,19 @@ export function confineTestDisplay(): void {
     },
   });
   // 위치를 주지 않은 창(설정, 만들기, 시작 안내)은 운영체제가 주 화면 가운데에 놓는다. 만들어지는 순간 옮긴다
-  app.on('browser-window-created', (_e, win) => {
+  app.on('browser-window-created', (_e, win) => confineWindow(win));
+  confine = confineWindow;
+}
+
+/**
+ * 시험 인스턴스의 창 한 장을 숨기고 내장 화면 안으로 옮긴다. BrowserWindow 는 browser-window-created 가 불러 주지만
+ * BaseWindow 에는 그런 이벤트가 없어서, BaseWindow 로 만드는 창(큰 창)은 만든 곳이 직접 부른다 (confineTestWindow)
+ */
+let confine: ((win: BaseWindow) => void) | undefined;
+export const confineTestWindow = (win: BaseWindow): void => confine?.(win);
+
+function confineWindowWith(only: () => Display) {
+  return (win: BaseWindow) => {
     // 숨김 (사용자 요청 2026-10-06): 시험 창은 보이지도 않고 마우스도 가져가지 않는다. 화면은 CDP 로 찍고
     // 입력도 CDP 로 넣으니 시험에는 지장이 없다. 눈으로 봐야 하면 JJ_SHOW=1
     if (!process.env.JJ_SHOW) {
@@ -85,5 +98,5 @@ export function confineTestDisplay(): void {
       Math.round(a.x + Math.max(0, (a.width - b.width) / 2)),
       Math.round(a.y + Math.max(0, (a.height - b.height) / 2)),
     );
-  });
+  };
 }

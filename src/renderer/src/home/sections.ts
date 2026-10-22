@@ -1,13 +1,13 @@
 // 큰 창 사이드바의 구역과 창 안 단축키 (이슈 #161, 큰 창 설계 #159).
-// 구역은 본문 탭(오늘, 할 일, 일정, 메모, 상점)과 따로 창을 여는 것(채팅, 친구)이 섞여 있다. 순서가 곧 Cmd/Ctrl+1~ 단축키다.
+// 구역은 본문 탭(오늘, 할 일, 일정, 메모, 상점)과 채팅(창 안에 품음), 따로 창을 여는 것(친구)이 섞여 있다. 순서가 곧 Cmd/Ctrl+1~ 단축키다.
 import type { I18nKey } from '../../../shared/i18n/index.ts';
 import type { PanelTab } from '../../../shared/ipc.ts';
 import { type ModKeyLike, tabByKey } from '../panel/keys.ts';
 
 export interface HomeSection {
   id: PanelTab | 'chat' | 'friends';
-  /** tab: 본문 칸을 바꾼다. window: 따로 창을 연다 (채팅 창, 설정의 친구 칸) */
-  kind: 'tab' | 'window';
+  /** tab: 본문 칸을 바꾼다. chat: 본문 칸 자리에 채팅을 품는다 (#165). window: 따로 창을 연다 (설정의 친구 칸) */
+  kind: 'tab' | 'chat' | 'window';
   label: I18nKey;
 }
 
@@ -16,7 +16,7 @@ export const HOME_SECTIONS: readonly HomeSection[] = [
   { id: 'todo', kind: 'tab', label: 'panel.tab.todo' },
   { id: 'event', kind: 'tab', label: 'panel.tab.event' },
   { id: 'note', kind: 'tab', label: 'panel.tab.note' },
-  { id: 'chat', kind: 'window', label: 'home.nav.chat' },
+  { id: 'chat', kind: 'chat', label: 'home.nav.chat' },
   { id: 'shop', kind: 'tab', label: 'panel.tab.shop' },
   // 서버 모드, 로그인, 친구 기능이 켜졌을 때만
   { id: 'friends', kind: 'window', label: 'home.nav.friends' },

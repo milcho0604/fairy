@@ -180,6 +180,8 @@ export function App() {
       document.title = t('chat.title', { name });
     });
     if (bridge.platform === 'darwin') document.body.classList.add('mac');
+    // 큰 창 안에 품은 채팅은 주소 끝에 #embed (main/chat.ts embed)
+    if (location.hash === '#embed') document.body.classList.add('embed');
     refreshStatus(false);
     inputRef.current?.focus();
     // 같이 보기로 창이 다시 앞에 오면 바로 질문을 쓸 수 있게 입력칸에 커서를 둔다.
@@ -490,7 +492,9 @@ export function App() {
         return;
       } else if (managing) setManaging(false);
       else if (pending) bridge.cancel();
-      else if (!text.trim() && !e.defaultPrevented) window.close();
+      // 큰 창 안에 품은 채팅(#embed)은 닫을 창이 아니다: window.close() 가 채팅 화면을 없애 버린다
+      else if (!text.trim() && !e.defaultPrevented && !document.body.classList.contains('embed'))
+        window.close();
       else return;
       e.preventDefault();
     } else if (key === 'new-chat') {

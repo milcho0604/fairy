@@ -1,7 +1,7 @@
 // 이름 옆 펫 얼굴 (shared/face.ts). 내 펫 화면이 지금 모습으로 그려 보낸 얼굴을 기억했다가
 // 얼굴을 쓰는 창(채팅, 패널, 빠른 입력, 시작 안내, 설정)에 준다. 펫을 바꾸면 펫 화면이 다시 그려 보내고,
 // 여기서 열린 창 모두에 바로 알린다.
-import { BrowserWindow, ipcMain, nativeImage, type WebContents } from 'electron';
+import { ipcMain, nativeImage, type WebContents, webContents } from 'electron';
 import { isFaceUrl } from '../shared/face.ts';
 import { FACE } from '../shared/ipc.ts';
 
@@ -14,8 +14,9 @@ export function createPetFace(petContents: () => WebContents | undefined, onChan
   ipcMain.on(FACE.set, (e, url: unknown) => {
     if (e.sender !== petContents() || !isFaceUrl(url) || url === current) return;
     current = url;
-    for (const w of BrowserWindow.getAllWindows()) {
-      if (!w.isDestroyed() && w.webContents !== e.sender) w.webContents.send(FACE.changed, url);
+    // BrowserWindow 목록으로는 큰 창의 view(본문, 채팅)가 빠진다: 모든 화면에 보내고 듣지 않는 화면은 무시한다
+    for (const wc of webContents.getAllWebContents()) {
+      if (!wc.isDestroyed() && wc !== e.sender) wc.send(FACE.changed, url);
     }
     onChange?.(url);
   });

@@ -19,7 +19,7 @@ import { PetFace } from '../PetFace.tsx';
 import { EventTab } from './EventTab.tsx';
 import { addedText, timeOf, whenLabel } from './format.ts';
 import { CoinIcon, ExpandIcon, GearIcon, PinIcon } from './icons.tsx';
-import { escClosesSurface, tabStepByKey, undoByKey, undoFieldText } from './keys.ts';
+import { escClosesSurface, type ModKeyLike, tabStepByKey, undoByKey, undoFieldText } from './keys.ts';
 import { PlanSheetHost } from './MorningPlan.tsx';
 import { NoteTab } from './NoteTab.tsx';
 import { planTodosKey } from './plan-refresh.ts';
@@ -109,6 +109,8 @@ function focusFind() {
 export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
   const [s, setS] = useState<PanelState>();
   const [tab, setTabState] = useState<PanelTab>(() => savedTab(kind));
+  /** 큰 창만: 채팅 구역이 열려 있다 (채팅 화면은 메인이 이 칸 위에 얹는 별도 view, #165). 탭을 고르면 닫힌다 */
+  const [chatOn, setChatOn] = useState(false);
   // 되돌리기 알림 (#145): 여럿이 쌓이고, 메인이 들고 있어 패널을 벗어났다 다시 열어도 남은 시간 동안 보인다
   const [toasts, setToasts] = useState<KeptToast[]>(() => liveToasts(bridge.toastsGet(), Date.now()));
   const toastKey = useRef(toasts.reduce((m, k) => Math.max(m, k.key), 0) + 1);
@@ -130,6 +132,7 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
   const undoRef = useRef<() => boolean>(() => false);
 
   const setTab = (next: PanelTab) => {
+    setChatOn(false);
     setTabState(next);
     rememberTab(kind, next);
   };
@@ -157,34 +160,46 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
   useEffect(() => {
     bridge.snapshot().then(setS);
     bridge.onState(setS);
-    bridge.onTab((next) => setTabState(next));
+    bridge.onTab((next) => {
+      setChatOn(false);
+      setTabState(next);
+    });
+    if (kind === 'home') {
+      bridge.onChatSection(setChatOn);
+    }
     // 패널이 열린 채 트레이, 펫 메뉴로 큰 창을 열면 메인이 이 패널에 먼저 넘겨 달라고 한다
     if (kind === 'panel') bridge.onExpandNow(() => expandRef.current());
     // 입력칸이 먼저 Esc 를 처리한다(비우기, 메모 목록으로). 한글 조합 중 Esc 는 조합만 끝낸다
+    // 큰 창: Cmd/Ctrl+, 설정, W 닫기, F 찾기, 1~ 구역 (채팅은 창 안에 품고, 친구는 따로 창을 연다). 처리했으면 true.
+    // 채팅 view 가 포커스를 쥔 채 누른 같은 키도 메인이 넘겨 준다 (onChatKey)
+    const homeKey = (e: ModKeyLike): boolean => {
+      const act = homeKeyAction(e, MAC);
+      if (act) {
+        if (act === 'settings') bridge.openSettings();
+        else if (act === 'close') bridge.close();
+        else focusFind();
+        return true;
+      }
+      const sec = sectionForKey(e, MAC, friendsOnRef.current);
+      if (!sec) return false;
+      if (sec.id === 'chat') bridge.openChat();
+      else if (sec.id === 'friends') bridge.openFriends();
+      else {
+        setChatOn(false);
+        setTabState(sec.id);
+        rememberTab(kind, sec.id);
+      }
+      return true;
+    };
+    if (kind === 'home') bridge.onChatKey((k) => void homeKey(k));
     const onKey = (e: KeyboardEvent) => {
       if (escClosesSurface(e, kind)) {
         bridge.close();
         return;
       }
       if (kind === 'home') {
-        // 큰 창: Cmd/Ctrl+, 설정, W 닫기, F 찾기, 1~ 구역 (채팅과 친구는 따로 창을 연다)
-        const act = homeKeyAction(e, MAC);
-        if (act) {
+        if (homeKey(e)) {
           e.preventDefault();
-          if (act === 'settings') bridge.openSettings();
-          else if (act === 'close') bridge.close();
-          else focusFind();
-          return;
-        }
-        const sec = sectionForKey(e, MAC, friendsOnRef.current);
-        if (sec) {
-          e.preventDefault();
-          if (sec.id === 'chat') bridge.openChat();
-          else if (sec.id === 'friends') bridge.openFriends();
-          else {
-            setTabState(sec.id);
-            rememberTab(kind, sec.id);
-          }
           return;
         }
       } else {
@@ -483,6 +498,7 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
           s={s}
           tab={tab}
           setTab={setTab}
+          chatOn={chatOn}
           setOverlayRoot={setOverlayRoot}
           fed={fed}
           onFeed={feed}
