@@ -1,5 +1,13 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -174,6 +182,31 @@ test('대화 500개: 목차 하나로 목록을 그리고 찾기도 빠르다', 
     assert.equal(all[0]?.title, '질문 499 일');
     // 목차 하나 읽기 + 정렬. 느린 CI 에서도 넉넉한 상한
     assert.ok(ms < 500, `${ms}ms`);
+  } finally {
+    t.done();
+  }
+});
+
+test('이름 바꾸기 저장이 디스크 오류로 실패하면 false, 메모리 목록도 옛 이름 그대로', () => {
+  const t = setup();
+  try {
+    const s = t.make();
+    s.saveCurrent(chat('질문'), true);
+    const id = s.current ?? '';
+    // 목차 파일 자리에 폴더를 두어 쓰기를 실패시킨다 (권한 바꾸기는 윈도우에서 듣지 않는다)
+    const indexPath = join(t.dir, 'chat-threads.json');
+    rmSync(indexPath, { force: true });
+    mkdirSync(indexPath);
+    let ok: boolean | undefined;
+    try {
+      ok = s.rename(id, '새 이름');
+    } finally {
+      rmSync(indexPath, { recursive: true, force: true });
+    }
+    assert.equal(ok, false);
+    assert.equal(s.list()[0]?.title, '질문');
+    assert.ok(s.rename(id, '새 이름'));
+    assert.equal(s.list()[0]?.title, '새 이름');
   } finally {
     t.done();
   }

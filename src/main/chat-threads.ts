@@ -135,8 +135,16 @@ export function createThreadStore(
     },
     rename(id, title) {
       if (!index.threads.some((m) => m.id === id)) return false;
+      const prev = index;
       index = renameMeta(index, id, title, title.trim() ? undefined : read(id));
-      writeIndex();
+      try {
+        writeIndex();
+      } catch (err) {
+        // 디스크에 못 쓰면 메모리 목록도 옛 이름으로 되돌린다 (화면과 파일이 어긋나지 않게)
+        index = prev;
+        log('threads', 'rename save failed', err instanceof Error ? err.message : String(err));
+        return false;
+      }
       return true;
     },
     remove(id) {

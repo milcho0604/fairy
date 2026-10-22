@@ -47,9 +47,12 @@ export function conversationChanged(
  * 무엇이 바뀐 뒤 어떻게 할지.
  * - follow: 맨 아래로 (아래를 보고 있었거나, 내가 막 보냈거나, 대화가 바뀌었다)
  * - notify: 위를 읽는 중에 새것이 왔다. 끌어내리지 않고 "새 메시지" 단추
+ * - top: 긴 답이 한 번에 왔다. 답 말풍선 위쪽에 맞추고 "아래로" 단추만 띄운다
  * - stay: 그대로 (새것이 없다)
  */
 export function scrollDecision(o: {
+  /** 긴 답이 한 번에 왔다 (answerLanding 이 'top'). 따라가기 대신 답 위쪽에 맞춘다 */
+  longAnswer?: boolean;
   following: boolean;
   /** 내용 지문이 바뀌었다 (새 메시지, 답 조각, 생각 중 표시) */
   grew: boolean;
@@ -59,11 +62,34 @@ export function scrollDecision(o: {
   switched?: boolean;
   /** 크기만 바뀌었다 (그림이 늦게 뜸, 창 크기, "오래 걸려" 안내) */
   resized?: boolean;
-}): 'follow' | 'notify' | 'stay' {
+}): 'follow' | 'notify' | 'top' | 'stay' {
   if (o.sent || o.switched) return 'follow';
-  if (o.following) return o.grew || o.resized ? 'follow' : 'stay';
+  if (o.following) {
+    if (o.grew && o.longAnswer) return 'top';
+    return o.grew || o.resized ? 'follow' : 'stay';
+  }
   return o.grew ? 'notify' : 'stay';
 }
 
 /** 움직임 줄이기면 바로, 아니면 부드럽게 ("새 메시지" 단추로 내려갈 때). 따라가기는 늘 바로 (조각마다 출렁이지 않게) */
 export const jumpBehavior = (reducedMotion: boolean): ScrollBehavior => (reducedMotion ? 'auto' : 'smooth');
+
+/** 답이 조각으로 오지 않고 한 번에 왔나: 직전 마지막 메시지가 같은 답의 "오는 중"이 아니었고, 지금은 글이 있는 끝난 답이다 */
+export function arrivedWhole(
+  prev: { id: string; status?: string } | undefined,
+  last: { id: string; role: string; status?: string; text?: string } | undefined,
+): boolean {
+  if (last?.role !== 'pet' || last.status !== 'done' || !last.text) return false;
+  return !(prev?.id === last.id && prev.status === 'streaming');
+}
+
+/** 한 번에 온 답이 창 한 면보다 길면 위쪽에 맞춘다 (끝에 서면 처음 몇 줄을 읽으러 되올라가야 한다). 한 면 안이면 맨 아래 */
+export const LONG_ANSWER_MARGIN_PX = 24;
+export const isLongAnswer = (answerHeight: number, viewHeight: number): boolean =>
+  answerHeight > viewHeight - LONG_ANSWER_MARGIN_PX;
+
+/** 답 위쪽에 맞출 scrollTop: 답 위에 조금 여백을 남긴다. 맨 아래보다 더 내려가지 않는다 */
+export function answerTopScroll(box: ScrollBox, answerTopInContent: number, pad = 8): number {
+  const max = Math.max(0, box.scrollHeight - box.clientHeight);
+  return Math.min(max, Math.max(0, answerTopInContent - pad));
+}

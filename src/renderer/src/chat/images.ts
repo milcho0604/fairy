@@ -48,3 +48,13 @@ export async function toOutgoing(source: Blob | string): Promise<OutgoingImage> 
     if (typeof source !== 'string') URL.revokeObjectURL(url);
   }
 }
+
+/** 끌어다 놓거나 고른 파일을 그림과 그 밖으로 가른다 (그림만 받는다) */
+export function splitFiles<T extends { type: string; name: string }>(
+  files: Iterable<T>,
+): { images: T[]; others: T[] } {
+  const images: T[] = [];
+  const others: T[] = [];
+  for (const f of files) (f.type.startsWith('image/') ? images : others).push(f);
+  return { images, others };
+}
