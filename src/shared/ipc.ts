@@ -1368,8 +1368,8 @@ export interface PanelBridge {
   pin(kind: PinKind, id: number, on: boolean): void;
   /** 진행 중 표시(▶)와 풀기. 끝내거나 지우면 저절로 풀린다 */
   doing(id: number, on: boolean): void;
-  /** 지난 마감을 오늘로. 옮긴 것과 원래 마감 (되돌리기는 update 로) */
-  moveOverdue(): Promise<{ id: number; due: string | null }[]>;
+  /** 지난 마감을 오늘로. 옮긴 것과 원래 마감 (되돌리기는 update 로). 'tomorrow' 면 오늘 마감과 지난 마감을 내일로 */
+  moveOverdue(to?: 'tomorrow'): Promise<{ id: number; due: string | null }[]>;
   /** 방금 한 지난 마감 오늘로 되돌리기 */
   undoMoveOverdue(): void;
   /** 길이(15, 25, 50분)를 주면 그 길이로, 아니면 마지막에 고른 길이로. todoId 를 주면 그 할 일을 하는 집중 */

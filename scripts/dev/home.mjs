@@ -17,6 +17,9 @@
 //   화면: 폭 760/1040/1440 x 밝음/어두움 찍기와 가로 넘침, 구역마다, 사이드바(구역, 채팅과 친구는 따로 창, 설정), 단축키(Cmd+1~, Cmd+, Cmd+W),
 //     빠른 입력으로 넣은 할 일이 큰 창에 바로 보임, 사이드바 체크와 설정 칸이 같은 panelView 를 바꿈
 //   ko/en: 영어 화면에 한글 없음, "모드" 라는 낱말 없음
+//   오늘과 일정의 넓은 배치 (이슈 #162): 구간별(작은 패널 320/360/560, 큰 창 760/1040/1440) 찍기와 넘침, 오늘 첫 화면 순서(일정, 다음 할 일, 마감이 맨 위),
+//     넓음(>=860)에서만 두 열("할 것"/"나와 펫"), 못 한 N개 내일로(옮기고 되돌리기), 일정 큰 월 보기(칸 안 제목, 넘치면 +N)와 옆 날 목록
+//   WIDE_ONLY=1 이면 이 부분만 돈다. BASELINE=1 을 더하면 확인 없이 같은 자료로 찍기만 한다 (옛 판에서 전후 비교 그림 만들 때)
 import { spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -231,11 +234,11 @@ const mod = { metaKey: true };
  * 가로 넘침: 창 밖으로 나간 요소, 가로로 스크롤되는 칸(태그 칩 줄은 일부러 가로 스크롤), 쪽 가로 스크롤.
  * 오늘 탭 줄이 일부러 -6px 로 번지는 것처럼 칸 안에서 스크롤이 생기지 않는 번짐은 넘침이 아니다
  */
-const overflow = (p) =>
+const overflow = (p, root = '.surface.home') =>
   p
     .ev(`(() => {
     const out = [];
-    for (const e of document.querySelectorAll('.surface.home *')) {
+    for (const e of document.querySelectorAll('${root} *')) {
       if (e.closest('svg') || e.closest('.sr-only') || e.closest('[hidden]')) continue;
       const r = e.getBoundingClientRect();
       if (r.width === 0 || r.height === 0) continue;
@@ -312,6 +315,242 @@ const body = async () => {
   await main(
     `__jj.notes.add({ title: ${JSON.stringify(tx('장보기 목록', 'Shopping list'))}, body: ${JSON.stringify(tx('우유\n달걀\n식빵', 'Milk\nEggs\nBread'))} }, ${NOW}); 1`,
   );
+
+  if (process.env.WIDE_ONLY) {
+    await wideLayouts();
+    return;
+  }
+
+  /**
+   * 오늘과 일정의 넓은 배치 (이슈 #162). 큰 창 폭 760/1040/1440 과 작은 패널 320/360/560 을 같은 자료로 찍고 잰다.
+   * 본문 칸 폭 = 창 폭 - 사이드바 208 이라 큰 창은 760,1040 이 보통, 1440 이 넓음이다
+   */
+  async function wideLayouts() {
+    const dayMs = 86_400_000;
+    const dayStr = (ms) =>
+      main(`(() => { const d = new Date(${ms}); const p = (n) => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); })()`);
+    const yesterday = await dayStr(dayStart - dayMs);
+    const tomorrow = await dayStr(dayStart + dayMs);
+    const crowded = await dayStr(dayStart + 2 * dayMs);
+    // 어제 마감 둘(지난 마감), 오늘 마감 하나는 위에서 넣었다 -> 못 한 3개
+    for (const title of [tx('지난 보고 정리', 'Old report cleanup'), tx('세금 서류', 'Tax papers')])
+      await main(`__jj.store.add({ title: ${JSON.stringify(title)}, due: ${JSON.stringify(yesterday)} }, ${NOW}); 1`);
+    // 오늘 일정: 종일 둘과 시각 둘 (자정 가까이여도 오늘 안에 있게 끝에서 거꾸로 잡는다)
+    const lastMs = dayStart + dayMs - 45 * 60_000;
+    for (const [title, startAt, allDay] of [
+      [tx('가족 모임', 'Family dinner'), dayStart, true],
+      [tx('재택 근무', 'Remote day'), dayStart, true],
+      [tx('팀 스탠드업', 'Team standup'), Math.min(NOW + 10 * 60_000, lastMs - 30 * 60_000), false],
+      [tx('디자인 리뷰', 'Design review'), Math.min(NOW + 3 * 3_600_000, lastMs), false],
+    ])
+      await main(
+        `__jj.events.add({ title: ${JSON.stringify(title)}, startAt: ${startAt}, allDay: ${allDay}, reminds: [] }, ${NOW}); 1`,
+      );
+    // 모레는 일정이 많아 칸 안에 +N 이 나온다
+    const [cy, cm, cd] = crowded.split('-').map(Number);
+    for (let i = 1; i <= 6; i++)
+      await main(
+        `__jj.events.add({ title: ${JSON.stringify(tx(`모레 회의 ${i}`, `Meeting ${i}`))}, startAt: ${new Date(cy, cm - 1, cd, 8 + i, 0).getTime()}, reminds: [] }, ${NOW}); 1`,
+      );
+    await sleep(500);
+
+    await closeHome();
+    await closePanel();
+    await main("__jj.home.open('today'); 1");
+    await waitFor(homeAlive);
+    await sleep(1200);
+    let wh = await page('home');
+    const pos = (sel) =>
+      wh.ev(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, r: r.right, b: r.bottom, w: r.width }; })()`);
+    const hasText = (sel, re) =>
+      wh.ev(`(() => [...document.querySelectorAll(${JSON.stringify(sel)})].some((e) => ${re}.test(e.textContent)))()`);
+    const eventsHead = ".today-plan section:has(.events) h2";
+    const dueHead = ".today-plan section:has(.todos) h2";
+    const calTab = async (tab) => {
+      await wh.click(`document.getElementById('ptab-${tab}')`);
+      await sleep(450);
+    };
+    const showCalendar = async () => {
+      await calTab('event');
+      if (!(await wh.ev(`!!document.querySelector('.cal')`))) {
+        await wh.click(`[...document.querySelectorAll('.view-switch button')].find((b) => b.getAttribute('aria-pressed') === 'false')`);
+        await sleep(600);
+      }
+    };
+
+    if (process.env.BASELINE) {
+      // 옛 판(넓은 배치 전)에서 같은 자료로 찍기만 한다: 전후 비교 그림용
+      for (const w of [1040, 1440]) {
+        await main(`__jj.home.window.setBounds({ x: 20, y: 30, width: ${w}, height: 780 }); 1`);
+        await sleep(800);
+        await calTab('today');
+        await wh.shot(`wide-today-w${w}-light`);
+        await calTab('event');
+        if (!(await wh.ev(`!!document.querySelector('.cal')`))) {
+          await wh.click(`[...document.querySelectorAll('.view-switch button')].find((b) => b.getAttribute('aria-pressed') === 'false')`);
+          await sleep(600);
+        }
+        await wh.shot(`wide-calendar-w${w}-light`);
+      }
+      return;
+    }
+
+    for (const w of [760, 1040, 1440]) {
+      await main(`__jj.home.window.setBounds({ x: 20, y: 30, width: ${w}, height: 780 }); 1`);
+      await sleep(800);
+      const wideNow = (await wh.ev(`document.getElementById('ptab-panel').dataset.zone`)) === 'wide';
+      const mark = `폭 ${w}`;
+
+      // ---- 오늘 ----
+      await calTab('today');
+      const cols = await wh.ev(`getComputedStyle(document.querySelector('.today-cols')).display`);
+      check(`${mark}: 오늘은 ${wideNow ? '두 열(grid)' : '한 열(block)'}`, cols === (wideNow ? 'grid' : 'block'), cols);
+      const titleShown = await wh.ev(`[...document.querySelectorAll('.today-col-title')].filter((e) => e.offsetParent).map((e) => e.textContent).join('|')`);
+      check(
+        `${mark}: 열 제목은 넓을 때만 보인다`,
+        wideNow ? titleShown === tx('할 것|나와 펫', 'To do|You and your pet') : titleShown === '',
+        titleShown,
+      );
+      const ev = await pos(eventsHead);
+      const due = await pos(dueHead);
+      const next = await pos('.next-up');
+      const focus = await pos('.focus-card');
+      check(`${mark}: 첫 화면 순서 오늘 일정이 오늘 마감보다 위`, !!ev && !!due && ev.y < due.y, JSON.stringify({ ev: ev?.y, due: due?.y }));
+      check(`${mark}: 다음 할 일은 일정 아래, 마감 위`, !!next && next.y > ev.y && next.y < due.y, JSON.stringify({ next: next?.y }));
+      if (wideNow) {
+        check(`${mark}: 집중 카드는 오른쪽 열 (일정 열의 오른쪽, 위쪽)`, !!focus && focus.x > ev.r - 1 && focus.y < due.y, JSON.stringify(focus));
+        check(`${mark}: 오른쪽 열에 습관, 이번 주, 일기가 있다`, !!(await pos('.today-pet .habits')) && !!(await pos('.today-pet details.week')) && !!(await pos('.today-pet details.diary')));
+        check(`${mark}: 이번 주와 일기는 펼쳐져 있다`, await wh.ev(`!!document.querySelector('.today-pet details.week[open]') && !!document.querySelector('.today-pet details.diary[open]')`));
+        check(`${mark}: 못 한 N개 내일로 단추는 왼쪽 열`, !!(await pos('.today-plan .defer-tomorrow')));
+      } else {
+        check(`${mark}: 집중 카드는 마감 아래 (아래로만 옮겼다)`, !!focus && focus.y > due.y, JSON.stringify(focus));
+        check(`${mark}: 한 열이라 두 열의 왼쪽이 같다`, Math.abs((await pos('.today-pet .focus-card')).x - ev.x) < 2);
+      }
+      for (const [name, sel] of [['집중', '.focus-card'], ['다음 할 일', '.next-up'], ['습관', '.habits'], ['끝낸 수', '.done-count'], ['업적', 'details.achieve:not(.week):not(.diary)'], ['일기', 'details.diary'], ['이번 주', 'details.week']])
+        check(`${mark}: 익숙한 카드가 남아 있다: ${name}`, !!(await pos(sel)));
+      for (const dark of [false, true]) {
+        await wh.dark(dark);
+        await sleep(200);
+        await wh.shot(`wide-today-w${w}-${dark ? 'dark' : 'light'}`);
+        const over = await overflow(wh);
+        check(`${mark}: 오늘 가로 넘침 없음 ${dark ? '어두움' : '밝음'}`, over.length === 0, over.join(', '));
+      }
+      await wh.dark(false);
+
+      // ---- 못 한 N개 내일로 ----
+      const before = JSON.parse(await main(`JSON.stringify(__jj.store.list(Date.now()).open.filter((t) => t.due !== null && t.due <= ${JSON.stringify(todayStr)} && !t.repeat).map((t) => [t.id, t.due]))`));
+      const label = await wh.ev(`document.querySelector('.defer-tomorrow')?.textContent ?? ''`);
+      check(`${mark}: 단추 글에 개수 ${before.length}`, label === tx(`못 한 ${before.length}개 내일로`, `Push ${before.length} undone to tomorrow`), label);
+      await wh.click(`document.querySelector('.defer-tomorrow')`);
+      await sleep(700);
+      const after = JSON.parse(await main(`JSON.stringify(__jj.store.list(Date.now()).open.filter((t) => ${JSON.stringify(before.map((b) => b[0]))}.includes(t.id)).map((t) => [t.id, t.due]))`));
+      check(`${mark}: 누르면 ${before.length}개 모두 마감이 내일`, after.length === before.length && after.every((a) => a[1] === tomorrow), JSON.stringify(after));
+      const toast = await wh.ev(`document.querySelector('.toast')?.textContent ?? ''`);
+      check(`${mark}: 되돌리기 알림이 뜬다`, toast.includes(tx(`못 한 ${before.length}개를 내일로 옮겼어`, `Pushed ${before.length} to-dos to tomorrow`)), toast);
+      check(`${mark}: 옮긴 뒤 단추는 사라진다 (남은 마감 없음)`, !(await pos('.defer-tomorrow')));
+      await wh.shot(`wide-defer-w${w}`);
+      await wh.click(`document.querySelector('.toast .undo')`);
+      await sleep(700);
+      const back = JSON.parse(await main(`JSON.stringify(__jj.store.list(Date.now()).open.filter((t) => ${JSON.stringify(before.map((b) => b[0]))}.includes(t.id)).map((t) => [t.id, t.due]))`));
+      check(`${mark}: 되돌리면 원래 마감으로`, JSON.stringify(back.sort()) === JSON.stringify([...before].sort()), JSON.stringify(back));
+
+      // ---- 일정 (달력 보기) ----
+      await showCalendar();
+      const calDisplay = await wh.ev(`getComputedStyle(document.querySelector('.cal')).display`);
+      check(`${mark}: 일정은 ${wideNow ? '두 열(grid)' : '한 열(block)'}`, calDisplay === (wideNow ? 'grid' : 'block'), calDisplay);
+      const grid = await pos('.cal-grid');
+      const days = await pos('.cal-days');
+      if (wideNow) check(`${mark}: 고른 날 목록이 월 보기 오른쪽`, !!days && days.x >= grid.r - 1, JSON.stringify({ grid: grid.r, days: days?.x }));
+      else check(`${mark}: 고른 날 목록이 월 보기 아래`, !!days && days.y >= grid.b - 1, JSON.stringify({ grid: grid.b, days: days?.y }));
+      check(`${mark}: 일정 넣기 단추는 넓을 때만`, !!(await pos('.cal-add-here')) === wideNow);
+      const todayLines = await wh.ev(`document.querySelectorAll('.cal-cell.today .cal-line').length`);
+      check(`${mark}: 오늘 칸 안에 일정 제목이 보인다`, todayLines >= 1, String(todayLines));
+      const crowdedCell = `.cal-cell[data-day="${crowded}"]`;
+      // 모레 달이 다음 달로 넘어가는 날이면 칸이 다른 달에 있어 건너뛴다
+      if (await pos(crowdedCell)) {
+        const lines = await wh.ev(`document.querySelectorAll('${crowdedCell} .cal-line').length`);
+        const more = await wh.ev(`document.querySelector('${crowdedCell} .cal-more')?.textContent ?? ''`);
+        const want = wideNow ? 3 : 1;
+        check(`${mark}: 일정이 많은 칸은 제목 ${want}개와 +N`, lines === want && /\+\s?\d/.test(more), `${lines} ${more}`);
+        const cell = await pos(`${crowdedCell} button`);
+        const lastLine = await pos(`${crowdedCell} .cal-more`);
+        check(`${mark}: +N 이 칸 안에 들어 있다`, !!lastLine && lastLine.b <= cell.b + 1, JSON.stringify({ cell: cell.b, more: lastLine?.b }));
+        await wh.click(`document.querySelector('${crowdedCell} button')`);
+        await sleep(500);
+        const listed = await hasText('.cal-day h2 + ul, .cal-day ul', new RegExp(tx('모레 회의 6', 'Meeting 6')));
+        check(`${mark}: 칸을 누르면 그날 목록에 일정이 모두 보인다`, listed);
+      }
+      for (const dark of [false, true]) {
+        await wh.dark(dark);
+        await sleep(200);
+        await wh.shot(`wide-calendar-w${w}-${dark ? 'dark' : 'light'}`);
+        const over = await overflow(wh);
+        check(`${mark}: 일정 가로 넘침 없음 ${dark ? '어두움' : '밝음'}`, over.length === 0, over.join(', '));
+      }
+      await wh.dark(false);
+      // 주 보기도 깨지지 않는다
+      await wh.click(`[...document.querySelectorAll('.cal-mode button')].find((b) => b.getAttribute('aria-pressed') === 'false')`);
+      await sleep(500);
+      const overWeek = await overflow(wh);
+      check(`${mark}: 일정 주 보기 가로 넘침 없음`, overWeek.length === 0, overWeek.join(', '));
+      await wh.shot(`wide-calendar-week-w${w}`);
+      await wh.click(`[...document.querySelectorAll('.cal-mode button')].find((b) => b.getAttribute('aria-pressed') === 'false')`);
+      await sleep(300);
+    }
+    // 글 크기 1.5배, 폭 1440 (넓음)
+    await main('__jj.home.window.setBounds({ x: 20, y: 30, width: 1440, height: 780 }); 1');
+    await main('__jj.home.window.webContents.setZoomFactor(1.5); 1');
+    await sleep(700);
+    for (const tab of ['today', 'event']) {
+      await calTab(tab);
+      const over = await overflow(wh);
+      check(`글 크기 1.5배 폭 1440: ${tab} 가로 넘침 없음`, over.length === 0, over.join(', '));
+    }
+    await main('__jj.home.window.webContents.setZoomFactor(1); 1');
+    await closeHome();
+
+    // ---- 작은 패널 회귀: 320/360 은 좁음, 560 은 보통 ----
+    await setView('compact');
+    await main('__jj.panel.togglePanel(); 1');
+    await waitFor(panelAlive);
+    await sleep(1200);
+    await main("__jj.panel.window.removeAllListeners('blur'); 1");
+    const pp = await page('panel');
+    const ppos = (sel) =>
+      pp.ev(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, r: r.right, b: r.bottom }; })()`);
+    for (const w of [320, 360, 560]) {
+      await main(`__jj.panel.window.setBounds({ ...__jj.panel.window.getBounds(), width: ${w}, height: 680 }); 1`);
+      await sleep(600);
+      const mark = `작은 패널 ${w}`;
+      await main("__jj.panel.openTab('today'); 1");
+      await sleep(500);
+      const zone = await pp.ev(`document.getElementById('ptab-panel').dataset.zone`);
+      check(`${mark}: 구간은 ${w >= 520 ? '보통' : '좁음'}`, zone === (w >= 520 ? 'medium' : 'narrow'), zone);
+      const ev = await ppos(eventsHead);
+      const due = await ppos(dueHead);
+      const focus = await ppos('.focus-card');
+      check(`${mark}: 오늘 일정, 마감, 집중 순서로 쌓인다`, !!ev && !!due && !!focus && ev.y < due.y && due.y < focus.y, JSON.stringify({ ev: ev?.y, due: due?.y, focus: focus?.y }));
+      check(`${mark}: 오늘은 한 열 (열 제목 없음)`, (await pp.ev(`getComputedStyle(document.querySelector('.today-cols')).display`)) === 'block' && !(await pp.ev(`!!document.querySelector('.today-col-title')?.offsetParent`)));
+      check(`${mark}: 못 한 N개 내일로 단추가 있다`, !!(await ppos('.defer-tomorrow')));
+      let over = await overflow(pp, '.surface');
+      check(`${mark}: 오늘 가로 넘침 없음`, over.length === 0, over.join(', '));
+      await pp.shot(`wide-panel-today-w${w}`);
+      await main("__jj.panel.openTab('event'); 1");
+      await sleep(500);
+      if (!(await pp.ev(`!!document.querySelector('.cal')`))) {
+        await pp.click(`[...document.querySelectorAll('.view-switch button')].find((b) => b.getAttribute('aria-pressed') === 'false')`);
+        await sleep(600);
+      }
+      const calDisplay = await pp.ev(`getComputedStyle(document.querySelector('.cal')).display`);
+      check(`${mark}: 일정은 한 열 달력`, calDisplay === 'block', calDisplay);
+      const todayCell = await pp.ev(`document.querySelectorAll('.cal-cell.today .cal-line').length`);
+      check(`${mark}: 오늘 칸 줄 수가 예전 그대로 (최대 1개와 +N)`, w <= 300 || todayCell <= 1, String(todayCell));
+      over = await overflow(pp, '.surface');
+      check(`${mark}: 일정 가로 넘침 없음`, over.length === 0, over.join(', '));
+      await pp.shot(`wide-panel-calendar-w${w}`);
+    }
+    await closePanel();
+  }
 
   // ===================== 1. 처음 상태와 Dock =====================
   let st = await dockStats();
@@ -664,6 +903,12 @@ const body = async () => {
     const want = w >= 1068 ? 'wide' : 'medium';
     check(`본문 칸 구간: 폭 ${w} 은 ${want}`, zone === want, zone);
   }
+  await wideLayouts();
+  await closeHome();
+  await main("__jj.home.open('today'); 1");
+  await waitFor(homeAlive);
+  await sleep(1000);
+  h = await page('home');
   if (!ko) {
     const hangul = await h.ev(`/[\\u3131-\\u318e\\uac00-\\ud7a3]/.test(document.querySelector('.home-side').innerText) ? document.querySelector('.home-side').innerText : ''`);
     check('영어 화면 사이드바에 한글이 없다', hangul === '', hangul.slice(0, 40));

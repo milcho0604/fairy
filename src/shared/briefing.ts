@@ -195,6 +195,17 @@ export function undoMoved(
   return moved.filter((m) => now.get(m.id) === tomorrow);
 }
 
+/**
+ * 오늘 탭 "못 한 N개 내일로"가 넘길 것: 안 끝났고 마감이 오늘이거나 지난 할 일.
+ * 반복 할 일(습관)은 습관 칸에서 체크하므로 뺀다 (지난 마감 오늘로와 같다)
+ */
+export function leftForTomorrow<T extends { due: string | null; repeat?: unknown }>(
+  open: readonly T[],
+  today: string,
+): T[] {
+  return open.filter((t) => t.due !== null && t.due <= today && !t.repeat);
+}
+
 // ---- 오늘 마감 알림 (기획서 "수다 빈도" 마감 알림: 보통은 마감 당일 한 번, 수다쟁이는 오전과 오후) ----
 
 export type DueSlot = 'am' | 'pm';

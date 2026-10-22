@@ -19,8 +19,8 @@ export type Toast =
       clash?: EventClash;
       am?: { startAt: number; endAt: number | null };
     }
-  /** 지난 마감을 오늘로 옮겼다. 되돌리면 원래 마감으로 */
-  | { kind: 'moved'; moved: { id: number; due: string | null }[] }
+  /** 지난 마감을 오늘로(to 없음), 못 한 것을 내일로(to: 'tomorrow') 옮겼다. 되돌리면 원래 마감으로 */
+  | { kind: 'moved'; moved: { id: number; due: string | null }[]; to?: 'tomorrow' }
   | { kind: 'added'; text: string }
   /** 지난 날("어제")이나 매달("매달 25일")로 읽은 할 일: 알리고 되돌리기, 지난 날이면 오늘로 */
   | { kind: 'flagged'; id: number; text: string; past: boolean };

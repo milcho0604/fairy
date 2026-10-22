@@ -116,13 +116,13 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
   const toastRef = useRef<HTMLDivElement>(null);
   /** 덮개 자리: 본문 칸 위에 덮는 것(주간 카드, 줄 메뉴)을 면 기준으로 올린다 (surface.tsx) */
   const [overlayRoot, setOverlayRoot] = useState<HTMLElement | null>(null);
-  const surface = useMemo(
-    () => ({ kind, close: () => bridge.close(), overlayRoot }) as const,
-    [kind, overlayRoot],
-  );
   /** 본문 칸. 폭 구간은 data-zone 으로 단다 (use-wide.ts) */
   const [bodyEl, setBodyEl] = useState<HTMLElement | null>(null);
   const zone = useWide(bodyEl);
+  const surface = useMemo(
+    () => ({ kind, close: () => bridge.close(), overlayRoot, zone }) as const,
+    [kind, overlayRoot, zone],
+  );
   /** 가장 나중 알림이 뜬 때 (되돌리기 키가 입력칸 글 되돌리기와 겹칠 때 나중 일이 이긴다) */
   const lastToastAt = useRef<number>(undefined);
   /** 지금 알림의 되돌리기 (Cmd/Ctrl+Z). 되돌렸으면 true */
@@ -384,7 +384,7 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
             s={s}
             onComplete={complete}
             goTo={setTab}
-            onMoved={(moved) => showToast({ kind: 'moved', moved })}
+            onMoved={(moved, to) => showToast({ kind: 'moved', moved, ...(to ? { to } : {}) })}
           />
         )}
         {tab === 'todo' && (
@@ -614,6 +614,9 @@ function toastText(toast: Toast): string {
   if (toast.kind === 'event-removed') return t('panel.toast.eventRemoved');
   if (toast.kind === 'todo-removed') return t('panel.toast.todoRemoved');
   if (toast.kind === 'to-event') return t('panel.toast.toEvent');
-  if (toast.kind === 'moved') return t('assist.overdue.moved', { n: toast.moved.length });
+  if (toast.kind === 'moved')
+    return t(toast.to === 'tomorrow' ? 'assist.defer.moved' : 'assist.overdue.moved', {
+      n: toast.moved.length,
+    });
   return toast.text;
 }

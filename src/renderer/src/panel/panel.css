@@ -937,6 +937,74 @@ li.pin-end {
   color: var(--muted);
 }
 
+/* 오늘의 두 열: 좁음과 보통은 한 줄로 쌓는다 (오늘 일정, 다음 할 일, 오늘 마감이 맨 위).
+   넓음(>=860)은 왼쪽 "할 것", 오른쪽 "나와 펫" 두 열 (큰 창 설계 #159, 이슈 #162) */
+.today .today-col-title {
+  display: none;
+}
+
+.defer-tomorrow {
+  margin-top: 6px;
+}
+
+/* 보통 구간(520~860): 한 열이되 줄이 끝없이 길어지지 않게 묶고 가운데에 둔다 */
+@container (min-width: 520px) {
+  .today-cols {
+    max-width: 680px;
+    margin: 0 auto;
+  }
+}
+
+@container (min-width: 860px) {
+  .today {
+    padding: 18px 28px 22px;
+  }
+
+  .today-cols {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    gap: 0 36px;
+    align-items: start;
+    max-width: 1180px;
+  }
+
+  .today-col {
+    min-width: 0;
+  }
+
+  .today .today-col-title {
+    display: block;
+    margin: 0 0 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--line);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+
+  .today-col > * + * {
+    margin-top: 14px;
+  }
+
+  .today-plan .events li {
+    gap: 12px;
+    padding: 6px 0 6px 12px;
+    border-left: 2px solid var(--line);
+  }
+
+  .today-plan .events li.now {
+    border-left-color: var(--accent);
+  }
+
+  .today-plan .events .time {
+    min-width: 56px;
+  }
+
+  .today-pet .focus-card {
+    padding: 14px 16px;
+  }
+}
+
 /* 다음 할 일 (nextUp): 제목 하나와 "이거 25분 집중" */
 .next-row {
   display: flex;

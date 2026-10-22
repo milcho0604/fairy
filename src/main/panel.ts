@@ -8,7 +8,8 @@ import {
   screen,
 } from 'electron';
 import type { StatStore } from '../shared/beta-stats.ts';
-import { undoMoved } from '../shared/briefing.ts';
+import { leftForTomorrow, undoMoved } from '../shared/briefing.ts';
+import { plusDays } from '../shared/day.ts';
 import { dayWatch } from '../shared/day-watch.ts';
 import { saveErrorText } from '../shared/download-error.ts';
 import { isPanelDraftKind } from '../shared/draft-store.ts';
@@ -720,10 +721,21 @@ export function createPanel(o: PanelOptions) {
   });
   /** 마지막 "지난 마감 오늘로" (되돌리기는 메인이 지금 상태와 맞춰 한다) */
   let lastMoved: { moved: { id: number; due: string | null }[]; today: string } | undefined;
-  ipcMain.handle(PANEL.moveOverdue, (e) => {
+  ipcMain.handle(PANEL.moveOverdue, (e, to: unknown) => {
     if (!ours(e)) return [];
     const now = Date.now();
     const today = localDay(now);
+    if (to === 'tomorrow') {
+      // "못 한 N개 내일로": 오늘 마감과 지난 마감(습관 빼고)을 내일로. 되돌리기는 마감이 그대로 내일인 것만
+      const tomorrow = plusDays(today, 1);
+      const left = leftForTomorrow(o.store.list(now).open, today);
+      const moved = left.map((todo) => ({ id: todo.id, due: todo.due }));
+      for (const todo of left) o.store.update(todo.id, { due: tomorrow }, now);
+      lastMoved = { moved, today: tomorrow };
+      log('todo', 'defer-tomorrow', moved.length);
+      push();
+      return moved;
+    }
     // 오늘 탭 링크가 센 것(습관 빼고)만 옮긴다. 습관의 지난 회차는 습관 칸에서 체크한다
     const moved = o.store.moveOverdue(today, now, { habits: false });
     lastMoved = { moved, today };

@@ -3,6 +3,7 @@
 import { createContext, type ReactNode, useContext } from 'react';
 import { createPortal } from 'react-dom';
 import type { SurfaceKind } from '../../../shared/surface-kind.ts';
+import type { Zone } from './zone.ts';
 
 export interface SurfaceValue {
   kind: SurfaceKind;
@@ -10,9 +11,16 @@ export interface SurfaceValue {
   close: () => void;
   /** 본문 칸 위에 덮는 것(시트, 어두운 막, 줄 메뉴)을 올릴 자리. 없으면 그 자리에 그린다 */
   overlayRoot: HTMLElement | null;
+  /** 본문 칸 폭의 구간. 구조가 바뀌는 배치(CSS 만으로 안 되는 것)가 쓴다 (zone.ts) */
+  zone: Zone;
 }
 
-const SurfaceContext = createContext<SurfaceValue>({ kind: 'panel', close: () => {}, overlayRoot: null });
+const SurfaceContext = createContext<SurfaceValue>({
+  kind: 'panel',
+  close: () => {},
+  overlayRoot: null,
+  zone: 'narrow',
+});
 
 export const SurfaceProvider = SurfaceContext.Provider;
 

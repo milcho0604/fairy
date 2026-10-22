@@ -517,7 +517,7 @@ if (kind === 'panel' || kind === 'home' || kind === 'quick') {
     stepRemove: (stepId: number) => ipcRenderer.send(PANEL.stepRemove, stepId),
     pin: (kind, id, on) => ipcRenderer.send(PANEL.pin, kind, id, on),
     doing: (id, on) => ipcRenderer.send(PANEL.doing, id, on),
-    moveOverdue: () => ipcRenderer.invoke(PANEL.moveOverdue),
+    moveOverdue: (to) => ipcRenderer.invoke(PANEL.moveOverdue, to),
     undoMoveOverdue: () => ipcRenderer.send(PANEL.undoMoveOverdue),
     focusStart: (minutes?: number, todoId?: number) => ipcRenderer.send(PANEL.focusStart, minutes, todoId),
     focusStop: () => ipcRenderer.send(PANEL.focusStop),
