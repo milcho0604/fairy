@@ -53,7 +53,7 @@ describe('실패한 제출의 입력 보존', () => {
   test('허용 안 되는 링크로 공지를 내면 쓴 글이 그대로 남고 오류가 폼 가까이에 뜬다', async () => {
     const r = await admin.confirmPost('/admin/notices', noticeForm);
     assert.equal(r.status, 303);
-    assert.equal(r.headers.get('location'), '/admin#announce/notices');
+    assert.equal(r.headers.get('location'), '/admin#announce/new');
     const page = await admin.page('/notices');
     assert.match(page.text, /value="keep-me"/);
     assert.match(page.text, /value="보존될 제목"/);
@@ -62,7 +62,7 @@ describe('실패한 제출의 입력 보존', () => {
     assert.match(page.text, /value="https:\/\/evil\.example\.com\/x"/);
     assert.match(page.text, /<p class="flash error wide" role="alert" id="form-error">/);
     // 오류는 공지 폼 안(폼 여는 태그 바로 뒤)에 있고 맨 위 알림 줄에는 없다
-    const form = page.text.indexOf('action="/admin/notices/preview" class="grid"');
+    const form = page.text.indexOf('action="/admin/notices/preview" class="grid mk-f mk-notices"');
     assert.ok(form > 0);
     assert.ok(page.text.indexOf('id="form-error"') > form);
     assert.ok(page.text.indexOf('id="form-error"') < form + 200);
@@ -98,7 +98,7 @@ describe('실패한 제출의 입력 보존', () => {
   test('이벤트 폼은 종류, 배수 까닭 체크, 날짜까지 되살린다', async () => {
     const from = kstInput(Date.now() + 3_600_000);
     const until = kstInput(Date.now() - 3_600_000); // 끝이 지금보다 앞이라 거절
-    const r = await admin.post('/admin/events', {
+    const r = await admin.post('/admin/events/preview', {
       id: 'boost-keep',
       kind: 'boost',
       title_ko: '배수 제목',
@@ -113,7 +113,7 @@ describe('실패한 제출의 입력 보존', () => {
     assert.equal(r.status, 303);
     const page = await admin.page('/events');
     assert.match(page.text, /value="boost-keep"/);
-    assert.match(page.text, /<option value="boost" selected>/);
+    assert.match(page.text, /name="kind" value="boost" checked>/);
     assert.match(page.text, /<option value="3" selected>/);
     assert.match(page.text, /value="focus" checked>/);
     assert.doesNotMatch(page.text, /value="meet" checked>/);
@@ -134,7 +134,7 @@ describe('실패한 제출의 입력 보존', () => {
   });
 
   test('쿠폰 폼도 거절되면 쓴 값을 지키고 확인 칸은 다시 체크해야 한다', async () => {
-    const r = await admin.post('/admin/coupons', {
+    const r = await admin.post('/admin/coupons/preview', {
       label: '메모 보존',
       coins: '5',
       tickets: '0',
