@@ -136,6 +136,40 @@ export interface GrantTarget {
   age?: string | undefined;
   /** 같은 사람을 두 번 적었다 */
   duplicate?: boolean | undefined;
+  /** 적은 계정이 합쳐져 닫힌 것이라 남은 계정(id)이 대신 받는다. 이 값이 합쳐진 계정 번호 */
+  mergedFrom?: string | undefined;
+}
+
+/** 쪽지 하나의 받음 상태 (운영자가 보낸 지급, 알림, 정기 지급). 서버가 아는 것은 쪽지를 연 시각과 그때 실제로 받은 양 */
+export interface GrantTrail {
+  id: string;
+  kind: string;
+  message: string | null;
+  coins: number;
+  passes: number;
+  fillTo: number | null;
+  sentAt: number;
+  expiresAt: number | null;
+  openedAt: number | null;
+  openedCoins: number | null;
+  openedPasses: number | null;
+  expired: boolean;
+  accountId: string;
+  code: string;
+  nickname: string | null;
+}
+
+/** 이용자 상세의 내역 (합친 계정 묶음 기준, 최근 몇 건) */
+export interface UserHistory {
+  coins: Array<{ reason: string; amount: number; status: string; at: number }>;
+  notes: GrantTrail[];
+  log: Array<{
+    at: string;
+    actorName: string | null;
+    actor: string;
+    action: string;
+    detail: unknown;
+  }>;
 }
 
 /**
@@ -196,8 +230,14 @@ export interface AdminView {
   flashPlace?: AdminPlace | undefined;
   /** 쓰던 발행, 지급 흐름의 미리보기 (대상 확인까지 끝난 것) */
   preview?: FlowPreview | undefined;
-  /** 지급 칸에 미리 채울 계정 (이용자 표의 지급 단추) */
+  /** 지급 칸에 미리 채울 계정 (이용자 표의 지급 단추, 표에서 고른 사람들은 줄마다 하나) */
   grantRef?: string | undefined;
+  /** 표에서 고른 사람들 (지급 칸에 이름으로 보인다) */
+  picked?: Array<{ id: string; code: string; nickname: string | null }> | undefined;
+  /** 20명을 넘게 골라 지급 칸에 못 넣은 사람 수 */
+  pickedDropped?: number | undefined;
+  /** 최근 지급 쪽지와 받았는지 (웹 화면만) */
+  recentGrants?: GrantTrail[] | undefined;
   /**
    * 신고 (#151). total, pending, seen, done 은 건수(앱 요약도 읽는다), rows 와 open 은 웹 화면만 채운다
    * (앱 API /v1/admin/overview 에는 대화 본문이 없다: rows 는 비고 open 은 없다)
@@ -245,6 +285,10 @@ export interface AdminView {
         claims: number;
         coupons: number;
         notes: number;
+        /** 찾은 계정이 합쳐져 닫힌 것이라 남은 계정을 대신 보인다. 이 값이 합쳐진 계정 번호 */
+        mergedFrom?: string | undefined;
+        /** 코인, 쪽지, 운영 기록 내역 (웹 화면만 채운다) */
+        history?: UserHistory | undefined;
         /** 이 이용자의 신고 (본문은 없다). total 은 남아 있는 전체 건수 */
         reports: { total: number; rows: Array<{ id: string; at: number; status: ReportState }> };
         /** 운영자 구글 계정 (sub 는 보이지 않는다) */
@@ -475,34 +519,93 @@ const who = (a: { code: string; nickname: string | null }) =>
 /** 확인 칸 글에 쓰는 대상 이름 (태그 없이) */
 const plain = (a: { code: string; nickname: string | null }) => `${a.nickname ?? '(닉네임 없음)'} ${a.code}`;
 
-function accountSection(v: AdminView): string {
+const KIND_NOTE_KO: Record<string, string> = { grant: '지급', notice: '알림', subscription: '정기 지급' };
+
+/** 쪽지의 받음 상태: 서버가 아는 것은 연 시각(열면 첨부를 받는다)과 그때 실제로 받은 양뿐이다 */
+function trailState(t: GrantTrail): string {
+  if (t.openedAt !== null) {
+    const got =
+      t.kind === 'notice'
+        ? ''
+        : ` (받은 코인 ${t.openedCoins ?? 0}, 채팅 이용권 ${t.openedPasses ?? 0}장${
+            (t.openedCoins ?? 0) !== t.coins || (t.openedPasses ?? 0) !== t.passes ? ', 보낸 양과 달라요' : ''
+          })`;
+    return `<span class="tag live">${t.kind === 'notice' ? '읽음' : '받음'}</span> ${when(t.openedAt)}${esc(got)}`;
+  }
+  if (t.expired) return '<span class="tag bad">안 열고 기한이 지났어요</span>';
+  return `<span class="tag soon">아직 안 열었어요</span>${t.expiresAt ? ` <small>${when(t.expiresAt)} 까지</small>` : ''}`;
+}
+
+const trailGift = (t: GrantTrail): string =>
+  t.kind === 'notice'
+    ? ''
+    : [
+        t.fillTo ? `채팅 이용권 ${t.fillTo}장까지 채우기` : '',
+        t.coins ? `코인 ${t.coins}` : '',
+        t.passes && !t.fillTo ? `채팅 이용권 ${t.passes}장` : '',
+      ]
+        .filter(Boolean)
+        .join(', ');
+
+/** 이용자 상세 한 화면 (합친 계정 묶음 기준): 개요, 지급, 막기와 허용, 정기 지급, 회수, 신고, 코인과 쪽지 내역, 이 사람의 운영 기록 */
+function userDetail(v: AdminView, a: NonNullable<AdminView['account']>): string {
   const csrf = v.csrf;
-  const a = v.account;
-  const list =
-    v.accounts.length > 1
-      ? `<div class="table-scroll"><table><thead><tr><th>번호</th><th>닉네임, 기기 코드</th><th>나이</th><th>코인</th></tr></thead><tbody>
-${v.accounts.map((x) => `<tr><td><a href="${esc(placeHref('users/list', `?q=${encodeURIComponent(x.code)}`))}">${esc(x.id)}</a></td><td>${who(x)}${x.merged_into ? ` (합쳐짐, 남은 계정 #${esc(x.merged_into)})` : ''}</td><td>${esc(x.age)}</td><td>${x.balance}</td></tr>`).join('')}
-</tbody></table></div>`
-      : '';
-  const sub = a ? draftOf(v, 'ai/subscribe', a.code) : undefined;
-  const rev = a ? draftOf(v, 'ai/revoke', a.code) : undefined;
-  const detail = a
-    ? `<dl class="stats">
-<div><dt>계정</dt><dd>#${esc(a.id)} ${who(a)}${a.merged_into ? ` (합쳐짐 → #${esc(a.merged_into)})` : ''}${a.admin ? ' <span class="tag live">운영자</span>' : ''}</dd></div>
-<div><dt>나이 구분</dt><dd>${esc(a.age)}</dd></div>
+  const name = a.nickname ?? '(닉네임 없음)';
+  const sub = draftOf(v, 'ai/subscribe', a.code);
+  const rev = draftOf(v, 'ai/revoke', a.code);
+  const h = a.history;
+  const coinRows = (h?.coins ?? [])
+    .map(
+      (x) =>
+        `<tr><td data-l="때">${when(x.at)}</td><td data-l="까닭"><code>${esc(x.reason)}</code></td><td data-l="코인">${x.amount > 0 ? '+' : ''}${x.amount}</td><td data-l="상태">${x.status === 'ok' ? '반영' : x.status === 'capped' ? '상한에 걸려 줄었어요' : '거절'}</td></tr>`,
+    )
+    .join('');
+  const noteRows = (h?.notes ?? [])
+    .map(
+      (t) =>
+        `<tr><td data-l="보낸 때">${when(t.sentAt)}</td><td data-l="종류">${esc(KIND_NOTE_KO[t.kind] ?? t.kind)}</td><td data-l="내용">${esc(trailGift(t))}${t.message ? `${trailGift(t) ? ', ' : ''}${esc(t.message)}` : ''}</td><td data-l="받았는지">${trailState(t)}</td></tr>`,
+    )
+    .join('');
+  const logRows = (h?.log ?? [])
+    .map(
+      (l) =>
+        `<tr><td data-l="때">${when(l.at)}</td><td data-l="누가">${esc(l.actorName ?? l.actor)}</td><td data-l="무엇">${esc(actionKo(l.action))}</td><td data-l="자세히"><code>${esc(l.detail ? JSON.stringify(l.detail).slice(0, 120) : '')}</code></td></tr>`,
+    )
+    .join('');
+  const adminLink = placeHref('settings/log', `?lu=${encodeURIComponent(a.code)}`);
+  const d = draftOf(v, 'grants/batch');
+  const mine = d && val(d, 'accounts').trim() === a.code ? d : undefined;
+  return `<section class="detail" id="user-detail">
+<p><a class="button-link" href="${esc(placeHref('users/list'))}">이용자 목록으로</a></p>
+${a.mergedFrom ? `<p class="flash warn" role="status">찾은 계정 #${esc(a.mergedFrom)} 는 이 계정에 합쳐졌어요. 코인과 내역은 합친 계정을 한 묶음으로 보여요</p>` : ''}
+<h2>${esc(name)} <code>${esc(a.code)}</code> <small>#${esc(a.id)}</small>${a.admin ? ' <span class="tag live">운영자</span>' : ''}${a.ai.blocked ? ' <span class="tag ended">막힘</span>' : ''}${a.ai.allowed ? ' <span class="tag live">허용 목록</span>' : ''}</h2>
+<dl class="stats">
 <div><dt>코인</dt><dd>${a.balance}</dd></div>
-<div><dt>로그인</dt><dd>${esc(a.logins.join(', ') || '없음')}</dd></div>
+<div><dt>채팅 이용권</dt><dd>${a.ai.remaining}장</dd></div>
+<div><dt>나이 구분</dt><dd>${esc(a.age)}</dd></div>
+<div><dt>로그인</dt><dd>${esc(loginKo(a.logins))}</dd></div>
 <div><dt>만든 때</dt><dd>${when(a.created)}</dd></div>
 <div><dt>선물, 쿠폰, 쪽지</dt><dd>${a.claims}, ${a.coupons}, ${a.notes}</dd></div>
-<div><dt>채팅 이용권</dt><dd>${a.ai.remaining}장${a.ai.blocked ? ' <span class="tag ended">막힘</span>' : ''}${a.ai.allowed ? ' <span class="tag live">허용 목록</span>' : ''}</dd></div>
 <div><dt>이번 달 질문, 추정 비용</dt><dd>${a.ai.monthAsks}번, ${usd(a.ai.monthCostMicros)}</dd></div>
 <div><dt>신고</dt><dd>${
-        a.reports.total === 0
-          ? '없음'
-          : `${a.reports.total}건: ${a.reports.rows.map((x) => `<a href="${esc(reportHref(x.id))}">#${esc(x.id)}</a> ${reportTag(x.status)}`).join(' ')}`
-      }</dd></div>
+    a.reports.total === 0
+      ? '없음'
+      : `${a.reports.total}건: ${a.reports.rows.map((x) => `<a href="${esc(reportHref(x.id))}">#${esc(x.id)}</a> ${reportTag(x.status)}`).join(' ')}`
+  }</dd></div>
 <div><dt>정기 지급</dt><dd>${a.ai.subscription ? `매달 ${a.ai.subscription.monthly}장 ${a.ai.subscription.mode === 'fill' ? '까지 채우기' : '더하기'}, ${esc(a.ai.subscription.startsOn)} ~ ${esc(a.ai.subscription.endsOn ?? '무기한')}, 다음 ${esc(a.ai.subscription.nextFill ?? '없음')}` : '없음'}</dd></div>
 </dl>
+
+<h3>이 사람에게 지급</h3>
+<p class="hint">지급은 쪽지로 가고 이용자가 열 때 받아요. 아래 단추를 누르면 대상과 양을 한 번 더 확인하는 화면이 나와요.</p>
+<form method="post" action="/admin/grants/preview" class="grid grant-one">${formErr(v, 'grants/batch', undefined, true)}${hidden(csrf)}<input type="hidden" name="accounts" value="${esc(a.code)}">
+<p class="wide target">받는 사람: <strong>${esc(name)}</strong> <code>${esc(a.code)}</code> #${esc(a.id)}</p>
+<label>코인 수 <input name="coins" type="number" min="0" max="10000" value="${esc(val(mine, 'coins', '0'))}" required></label>
+<label>채팅 이용권 수${a.age === '18+' ? '' : ' (만 18세 미만은 줄 수 없어요)'} <input name="chat_passes" type="number" min="0" max="1000" value="${esc(val(mine, 'chat_passes', '0'))}" required></label>
+<label>만료 날수 <input name="days" type="number" min="1" max="365" value="${esc(val(mine, 'days', '30'))}" required></label>
+<label class="wide">지급 사유, 이용자에게 보여요 <textarea name="reason" required maxlength="200">${esc(val(mine, 'reason'))}</textarea></label>
+<button type="submit">${esc(name)} 에게 지급, 대상 확인하기</button></form>
+
+<h3>막기와 허용</h3>
 <div class="row">
 ${postButton(csrf, '/admin/ai/allow', { account: a.code, allowed: a.ai.allowed ? '0' : '1' }, a.ai.allowed ? '허용 목록에서 빼기' : '허용 목록에 넣기')}
 ${
@@ -524,25 +627,34 @@ ${a.ai.subscription ? sureForm(v, '/admin/ai/cancel', { account: a.code }, `${pl
 <label>방식 <select name="mode">${opt(sub, 'mode', 'fill', 'N장까지 채우기 (이월 없음)', 'fill')}${opt(sub, 'mode', 'add', 'N장 더하기', 'fill')}</select></label>
 <label>시작일 (비우면 오늘) <input name="starts_on" type="date" value="${esc(val(sub, 'starts_on'))}"></label>
 <label>끝일 (비우면 무기한) <input name="ends_on" type="date" value="${esc(val(sub, 'ends_on'))}"></label>
-<button type="submit">정기 지급 걸기</button>
+<button type="submit">${esc(name)} 정기 지급 걸기</button>
 </form>
 <form method="post" action="/admin/ai/revoke" class="grid">${formErr(v, 'ai/revoke', a.code)}${hidden(csrf)}<input type="hidden" name="account" value="${esc(a.code)}">
 <label>채팅 이용권 회수 (남은 장수까지) <input name="count" type="number" min="1" max="1000" required value="${esc(val(rev, 'count'))}"></label>
 ${confirmBox(`${plain(a)} 채팅 이용권 회수할게요 (되돌릴 수 없어요)`)}
 <button type="submit" class="danger">회수하기</button>
-</form>`
-    : a === null
-      ? '<p class="flash error">찾는 계정이 없어요</p>'
-      : '';
-  return `<section><h2>이용자 찾기와 자세히 보기</h2>
-<form method="get" action="/admin#users/list" class="row"><label>번호, 닉네임 또는 기기 코드 <input name="q" maxlength="40" value="${esc(v.query ?? '')}"></label><button type="submit">찾기</button></form>
-${list}${detail}</section>`;
+</form>
+
+<h3>받은 쪽지와 받았는지</h3>
+<p class="hint">쪽지를 열면 코인과 채팅 이용권을 받아요. 서버가 아는 것은 연 시각과 그때 실제로 받은 양이에요. 앱에서 알림을 봤는지는 알 수 없어요. 최근 15건.</p>
+${noteRows ? `<table class="cards"><thead><tr><th>보낸 때</th><th>종류</th><th>내용</th><th>받았는지</th></tr></thead><tbody>${noteRows}</tbody></table>` : '<p class="empty">보낸 쪽지가 없어요</p>'}
+
+<h3>코인 내역</h3>
+<p class="hint">합친 계정까지 한 묶음, 최근 15건. 지금 잔액은 ${a.balance}.</p>
+${coinRows ? `<table class="cards"><thead><tr><th>때</th><th>까닭</th><th>코인</th><th>상태</th></tr></thead><tbody>${coinRows}</tbody></table>` : '<p class="empty">코인 기록이 없어요</p>'}
+
+<h3>이 사람의 운영 기록</h3>
+${logRows ? `<table class="cards"><thead><tr><th>때</th><th>누가</th><th>무엇</th><th>자세히</th></tr></thead><tbody>${logRows}</tbody></table>` : '<p class="empty">이 사람에 대한 운영 기록이 없어요</p>'}
+<p><a class="button-link" href="${esc(adminLink)}">운영 기록에서 모두 보기</a></p>
+</section>`;
 }
 
 const loginKo = (services: string[]): string => {
   const names = services.map((x) => (x === 'google' ? '구글' : x === 'kakao' ? '카카오' : x));
   return names.join(', ') || '없음';
 };
+
+const userOpenHref = (id: string) => placeHref('users/list', `?user=${encodeURIComponent(id)}`);
 
 export function usersTable(v: AdminView): string {
   const u = v.users;
@@ -554,27 +666,32 @@ export function usersTable(v: AdminView): string {
     p.set('direction', u.direction);
     return placeHref('users/list', `?${p}`);
   };
-  const rows = u.rows
-    .map(
-      (
-        x,
-      ) => `<tr><td><a href="${esc(placeHref('users/list', `?q=${encodeURIComponent(x.code)}`))}">${esc(x.id)}</a></td>
-<td>${esc(x.nickname ?? '닉네임 없음')}</td><td><code>${esc(x.code)}</code></td><td>${esc(loginKo(x.logins))}</td>
-<td>${esc(x.age)}</td><td>${x.balance}</td><td>${x.tickets}</td><td>${when(x.lastActive)}</td><td>${when(x.created)}</td>
-<td>${esc(x.appVersion ?? '없음')}</td><td><a class="button-link" href="${esc(placeHref('users/grants', `?account=${encodeURIComponent(x.code)}`))}">지급</a></td></tr>`,
-    )
-    .join('');
-  return `<section><h2>이용자 ${u.total}명</h2>
-<form method="get" action="/admin#users/list" class="row">
+  // 찾는 칸은 하나다 (번호, 닉네임, 기기 코드). 하나로 좁혀지면 상세 한 화면이 표 자리에 열린다
+  const searchForm = `<form method="get" action="/admin#users/list" class="row">
 <label>번호, 닉네임 또는 기기 코드 <input name="q" maxlength="40" value="${esc(u.query)}"></label>
 <label>정렬 <select name="sort"><option value="active"${u.sort === 'active' ? ' selected' : ''}>최근 활동</option><option value="coins"${u.sort === 'coins' ? ' selected' : ''}>코인</option><option value="created"${u.sort === 'created' ? ' selected' : ''}>만든 날</option></select></label>
 <label>방향 <select name="direction"><option value="desc"${u.direction === 'desc' ? ' selected' : ''}>큰 값부터</option><option value="asc"${u.direction === 'asc' ? ' selected' : ''}>작은 값부터</option></select></label>
-<button type="submit">보기</button></form>
-<p class="hint">합쳐져서 닫힌 계정은 보이지 않아요. 한 쪽에 50명씩 보여요.</p>
-<div class="table-scroll"><table class="users"><thead><tr><th>번호</th><th>닉네임</th><th>기기 코드</th><th>로그인 여부</th><th>나이 구분</th><th>코인 잔액</th><th>채팅 이용권</th><th>마지막 활동</th><th>만든 날</th><th>앱 판</th><th></th></tr></thead>
-<tbody>${rows || '<tr><td colspan="11">찾은 이용자가 없어요</td></tr>'}</tbody></table></div>
+<button type="submit">찾기</button></form>`;
+  const a = v.account;
+  if (a) return `<section><h2>이용자 찾기</h2>${searchForm}</section>${userDetail(v, a)}`;
+  const rows = u.rows
+    .map((x) => {
+      const nm = x.nickname ?? '닉네임 없음';
+      return `<tr><td class="pick"><input type="checkbox" name="pick" value="${esc(x.id)}" form="pick-form" aria-label="${esc(nm)} 지급 대상으로 고르기"></td>
+<td class="opt" data-l="번호">${esc(x.id)}</td>
+<td class="name"><a href="${esc(userOpenHref(x.id))}">${esc(nm)}</a></td><td data-l="기기 코드"><code>${esc(x.code)}</code></td><td class="opt" data-l="로그인">${esc(loginKo(x.logins))}</td>
+<td class="opt" data-l="나이 구분">${esc(x.age)}</td><td data-l="코인">${x.balance}</td><td data-l="채팅 이용권">${x.tickets}</td><td data-l="마지막 활동">${when(x.lastActive)}</td><td class="opt" data-l="만든 날">${when(x.created)}</td>
+<td class="opt" data-l="앱 판">${esc(x.appVersion ?? '없음')}</td><td class="act"><a class="button-link" href="${esc(userOpenHref(x.id))}">${esc(nm)} 열기</a> <a class="button-link" href="${esc(placeHref('users/grants', `?account=${encodeURIComponent(x.id)}`))}">${esc(nm)} 지급</a></td></tr>`;
+    })
+    .join('');
+  return `<section><h2>이용자 ${u.total}명</h2>
+${searchForm}
+<p class="hint">합쳐져서 닫힌 계정은 목록에 없고, 적으면 남은 계정이 열려요. 한 쪽에 50명씩 보여요.</p>
+<form id="pick-form" method="get" action="/admin#users/grants" class="row"><button type="submit">고른 사람에게 지급 (한 번에 20명까지)</button><span class="hint">이름 앞 칸을 눌러 고르면 지급 칸에 받는 사람으로 채워져요. 보내기 전에 대상 확인 화면이 한 번 나와요.</span></form>
+<div class="table-scroll"><table class="users cards"><thead><tr><th>고르기</th><th>번호</th><th>닉네임</th><th>기기 코드</th><th>로그인 여부</th><th>나이 구분</th><th>코인 잔액</th><th>채팅 이용권</th><th>마지막 활동</th><th>만든 날</th><th>앱 판</th><th></th></tr></thead>
+<tbody>${rows || '<tr><td colspan="12">찾은 이용자가 없어요</td></tr>'}</tbody></table></div>
 <nav class="pager" aria-label="쪽 넘기기">${u.page > 1 ? `<a href="${esc(params(u.page - 1))}">이전</a>` : '<span>이전</span>'}<strong>${u.page} / ${u.pages}</strong>${u.page < u.pages ? `<a href="${esc(params(u.page + 1))}">다음</a>` : '<span>다음</span>'}</nav>
-</section>${v.query ? accountSection(v) : ''}`;
+</section>`;
 }
 
 /** 이번 달 추정 비용이 예산의 50%, 80% 를 넘으면 경고 */
@@ -1037,13 +1154,19 @@ function grantsSection(v: AdminView): string {
     const rows = g.targets
       .map(
         (t) =>
-          `<tr class="${t.found ? '' : 'bad'}"><td><code>${esc(t.ref)}</code></td><td>${
+          `<tr class="${t.found ? '' : 'bad'}"><td data-l="적은 말"><code>${esc(t.ref)}</code></td><td data-l="대상">${
             t.found
               ? `${who({ code: t.code ?? '', nickname: t.nickname ?? null })} #${esc(t.id)}`
-              : '<span class="tag ended">찾지 못함</span>'
-          }${t.duplicate ? ' <span class="tag">중복</span>' : ''}</td><td>${esc(t.age ?? '')}</td></tr>`,
+              : '<span class="tag bad">찾지 못함</span>'
+          }${t.duplicate ? ' <span class="tag">중복</span> <small>한 번만 보내요</small>' : ''}${t.mergedFrom ? ` <span class="tag soon">합쳐진 계정 #${esc(t.mergedFrom)}, 남은 계정이 받아요</span>` : ''}</td><td data-l="나이 구분">${esc(t.age ?? '')}</td></tr>`,
       )
       .join('');
+    const count = {
+      lines: g.targets.length,
+      missing: g.targets.filter((t) => !t.found).length,
+      dup: g.targets.filter((t) => t.duplicate).length,
+      merged: g.targets.filter((t) => t.mergedFrom).length,
+    };
     const other =
       v.grantRef && !g.targets.some((t) => t.ref === v.grantRef || t.code === v.grantRef)
         ? `<div class="flash warn" role="status"><p>쓰던 지급이 있어요 (${esc(
@@ -1063,18 +1186,24 @@ ${other}${flowSteps(3)}
 <div><dt>모두 합쳐</dt><dd>코인 ${g.coins * g.people}, 채팅 이용권 ${g.passes * g.people}장</dd></div>
 <div><dt>쪽지 만료</dt><dd>${g.days}일</dd></div>
 </dl>
+<p class="hint">적은 ${count.lines}줄: 찾지 못한 ${count.missing}, 중복 ${count.dup}, 합쳐진 계정 ${count.merged}.</p>
 <p>지급 사유 (이용자에게 보여요): <q>${esc(g.reason)}</q></p>
 <table class="targets"><thead><tr><th>적은 말</th><th>대상</th><th>나이 구분</th></tr></thead><tbody>${rows}</tbody></table>
 ${g.blocked ? `<p class="flash error" role="alert">${esc(g.blocked)}</p>` : ''}
 <form method="post" action="/admin/grants/batch" class="grid">${formErr(v, 'grants/batch')}${hidden(v.csrf)}${flowKey(pv.nonce)}${carry(pv.fields)}
+<label class="count wide">받는 사람 수를 숫자로 다시 적어 주세요 (위 표의 ${g.people}명) <input name="people" inputmode="numeric" pattern="${g.people}" title="${g.people}" autocomplete="off" required></label>
 ${confirmBox(`위 ${g.people}명에게 지급할게요`)}
 <button type="submit"${g.blocked ? ' disabled' : ''}>확정하고 지급 쪽지 보내기</button></form>
 ${editButton(v.csrf, 'grants/batch')}</section>`;
   }
-  const selected = v.account && !v.account.merged_into ? v.account : undefined;
+  const selected = v.account;
   const value = v.grantRef ?? '';
-  const chosen =
-    selected && v.grantRef
+  // 찾던 이용자와 칸에 채운 받는 사람이 같을 때만 "선택한 이용자" 로 이름을 보인다 (다르면 칸의 말만 믿는다)
+  const same = (x: string) =>
+    x.trim() === selected?.id || x.trim().toLowerCase() === selected?.code.toLowerCase();
+  const chosen = v.picked?.length
+    ? `<p class="selected">고른 ${v.picked.length}명${v.pickedDropped ? ` (한 번에 20명까지만 넣을 수 있어 ${v.pickedDropped}명은 빠졌어요)` : ''}: ${v.picked.map((x) => `${esc(x.nickname ?? '(닉네임 없음)')} <code>${esc(x.code)}</code>`).join(', ')}</p>`
+    : selected && value && same(value)
       ? `<p class="selected">선택한 이용자: #${esc(selected.id)} ${who(selected)}</p>`
       : '';
   const d = draftOf(v, 'grants/batch');
@@ -1083,12 +1212,26 @@ ${flowHead(v, 'grants/batch', 'grant.batch')}
 <p class="hint">지급은 쪽지함으로 보내며 이용자가 열 때 받아요. 먼저 대상을 확인하는 화면이 나오고, 그곳에서 확정해야 보내요. 한 번에 20명, 한 사람마다 코인 10000개와 채팅 이용권 1000장까지예요.</p>
 ${chosen}
 <form method="post" action="/admin/grants/preview" class="grid">${formErr(v, 'grants/batch', undefined, true)}${hidden(v.csrf)}
-<label class="wide">받을 계정 번호 또는 기기 코드, 한 줄에 하나씩 최대 20명 <textarea name="accounts" required maxlength="400">${esc(val(d, 'accounts', value))}</textarea></label>
+<label class="wide">받을 계정 번호 또는 기기 코드, 한 줄에 하나씩 최대 20명 (닉네임은 같은 이름이 있을 수 있어 쓸 수 없어요. 이용자 칸에서 찾아 고르면 채워져요) <textarea name="accounts" required maxlength="400">${esc(val(d, 'accounts', value))}</textarea></label>
 <label>코인 수 <input name="coins" type="number" min="0" max="10000" value="${esc(val(d, 'coins', '0'))}" required></label>
 <label>채팅 이용권 수 <input name="chat_passes" type="number" min="0" max="1000" value="${esc(val(d, 'chat_passes', '0'))}" required></label>
 <label>만료 날수 <input name="days" type="number" min="1" max="365" value="${esc(val(d, 'days', '30'))}" required></label>
 <label class="wide">지급 사유, 이용자에게 보여요 <textarea name="reason" required maxlength="200">${esc(val(d, 'reason'))}</textarea></label>
-<button type="submit">대상 확인하기</button></form></section>`;
+<button type="submit">대상 확인하기</button></form>
+${recentGrantsTable(v)}</section>`;
+}
+
+/** 최근 지급 쪽지와 받았는지 (열었는지) */
+function recentGrantsTable(v: AdminView): string {
+  const rows = (v.recentGrants ?? [])
+    .map(
+      (t) =>
+        `<tr><td data-l="보낸 때">${when(t.sentAt)}</td><td data-l="받는 사람"><a href="${esc(userOpenHref(t.accountId))}">${esc(t.nickname ?? '(닉네임 없음)')}</a> <code>${esc(t.code)}</code></td><td data-l="내용">${esc(trailGift(t))}</td><td data-l="받았는지">${trailState(t)}</td></tr>`,
+    )
+    .join('');
+  return `<h3>최근 지급과 받았는지</h3>
+<p class="hint">보낸 쪽지 20건. 이용자가 쪽지를 열면 받은 것으로 쳐요. 서버가 아는 것은 연 시각과 실제로 받은 양이에요.</p>
+${rows ? `<table class="cards"><thead><tr><th>보낸 때</th><th>받는 사람</th><th>내용</th><th>받았는지</th></tr></thead><tbody>${rows}</tbody></table>` : '<p class="empty">아직 보낸 지급이 없어요</p>'}`;
 }
 
 function eventsSection(v: AdminView): string {
@@ -1421,8 +1564,8 @@ function routerJs(): string {
       const q = new URLSearchParams(location.search);
       s = undefined;
       if (['lu', 'la', 'lt', 'lp'].some((k) => q.has(k))) { c = 'settings'; s = 'log'; }
-      else if (q.has('account')) { c = 'users'; s = 'grants'; }
-      else if (['q', 'page', 'sort', 'direction'].some((k) => q.has(k))) { c = 'users'; s = 'list'; }
+      else if (q.has('account') || q.has('pick')) { c = 'users'; s = 'grants'; }
+      else if (['q', 'page', 'sort', 'direction', 'user'].some((k) => q.has(k))) { c = 'users'; s = 'list'; }
       else c = 'home';
     }
     let place = c;
@@ -1563,8 +1706,24 @@ pre.convo { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg
 .preview .btns { display: flex; gap: 6px; justify-content: flex-end; }
 .preview .btns span { border: 1px solid var(--line); border-radius: 6px; padding: 3px 10px; font-size: 13px; }
 .preview .btns span.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+td.pick { width: 1%; }
+td.pick input { width: 18px; height: 18px; }
+.grant-one .target { margin: 0; padding: 8px 10px; border: 1px solid var(--ok); border-radius: 8px; overflow-wrap: anywhere; }
+.detail h3 { margin-top: 18px; }
+table.users td.name { font-weight: 600; }
+td.act { white-space: nowrap; }
 @media (max-width: 600px) {
   main { padding: 10px; }
+  .table-scroll table.cards { min-width: 0; }
+  table.users tr { border: 1px solid var(--line); border-radius: 8px; margin: 0 0 10px; padding: 8px 6px; }
+  table.cards td.opt { display: none; }
+  table.users tr { position: relative; }
+  table.cards td.pick { display: block; width: auto; position: absolute; top: 10px; right: 10px; }
+  table.users td.name { padding-right: 40px; }
+  table.users td.name { font-size: 16px; overflow-wrap: anywhere; }
+  table.cards td.act { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 8px; }
+  table.cards td.act .button-link { flex: 1 1 45%; text-align: center; min-height: 42px; display: flex; align-items: center; justify-content: center; overflow-wrap: anywhere; }
+  table.cards td { overflow-wrap: anywhere; }
   section { padding: 12px; }
   .tabs a { flex: 1 1 42%; text-align: center; }
   .shell { display: block; padding-bottom: 72px; }
