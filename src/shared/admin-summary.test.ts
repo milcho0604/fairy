@@ -83,7 +83,7 @@ test('확인할 것과 운영 기록 글은 ko, en 둘 다 나온다', () => {
   setLang('en');
   assert.equal(todoLabel(item), "This month's cost is 63% of the budget");
   assert.equal(
-    todoLabel({ kind: 'ending_coupons', level: 'warn', n: 2, place: 'announce/coupons' }),
+    todoLabel({ kind: 'ending_coupons', level: 'warn', n: 2, place: 'announce/posts' }),
     'Coupons ending within 3 days: 2',
   );
   assert.equal(whoName({ actor: 'admin:abc' }), 'Web operator');

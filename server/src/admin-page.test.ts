@@ -18,8 +18,8 @@ describe('운영자 다섯 칸과 지급 폼', () => {
     assert.equal(legacyPlace('/admin'), 'home');
     assert.equal(legacyPlace('/admin/users'), 'users/list');
     assert.equal(legacyPlace('/admin/grants'), 'users/grants');
-    assert.equal(legacyPlace('/admin/notices'), 'announce/notices');
-    assert.equal(legacyPlace('/admin/events'), 'announce/events');
+    assert.equal(legacyPlace('/admin/notices'), 'announce/posts');
+    assert.equal(legacyPlace('/admin/events'), 'announce/posts');
     assert.equal(legacyPlace('/admin/features'), 'settings/features');
     assert.equal(legacyPlace('/admin/ai'), 'settings/ai');
     assert.equal(legacyPlace('/admin/log'), 'settings/log');

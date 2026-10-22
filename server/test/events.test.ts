@@ -515,6 +515,9 @@ describe('쪽지 (운영자 지급)', () => {
 
 describe('정적 파일 내보내기', () => {
   test('events.json 과 notices.json 을 앱의 읽기 코드가 하나도 버리지 않는다 (scripts/site-feeds.mjs)', async () => {
+    // 미리보기를 거치면 쓰기 하나가 요청 넷이라, 앞 시험이 쓴 세션별 한 분 상한을 새 세션으로 비운다
+    await admin.login();
+    await admin.page();
     const dir = mkdtempSync(join(tmpdir(), 'fairy-feeds-'));
     const run = () =>
       new Promise<{ status: number; stdout: string; stderr: string }>((resolve) =>
