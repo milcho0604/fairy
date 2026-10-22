@@ -175,6 +175,22 @@ export type FlowAction = (typeof FLOW_ACTIONS)[number];
 const PREVIEW_MS = 30 * 60_000;
 const isFlowAction = (v: unknown): v is FlowAction => (FLOW_ACTIONS as readonly unknown[]).includes(v);
 
+/** 미리보기와 확정이 문서의 같은 부분을 보았는지 비교하는 글 (AdminService.flowBase) */
+function docBase(
+  action: 'notices' | 'versions',
+  doc: NoticeDoc,
+  id: string,
+  msgId: string | undefined,
+): string {
+  if (action === 'notices') return JSON.stringify(doc.notices.find((x) => x.id === id) ?? null);
+  return JSON.stringify([
+    doc.minVersion ?? '',
+    doc.restrictVersion ?? '',
+    doc.recommendVersion ?? '',
+    msgId ? (doc.notices.find((x) => x.id === msgId) ?? null) : null,
+  ]);
+}
+
 /** 초안을 둘 수 있는 폼 (알리기의 네 가지) */
 export const DRAFT_KINDS = ['notices', 'events', 'coupons', 'versions'] as const;
 export type DraftKind = (typeof DRAFT_KINDS)[number];
@@ -1204,6 +1220,23 @@ export class AdminService {
     return JSON.stringify(noticeFromForm(f));
   }
 
+  /**
+   * 미리보기 때 저장돼 있던 문서의 관련 부분 (공지는 같은 id 의 공지, 버전은 세 기준과 안내문 id 의 공지).
+   * 확정은 잠근 문서가 이것과 같을 때만 쓴다: 그사이 다른 곳(앱 API, 다른 운영자)이 바꾼 것을 조용히 되돌리지 않는다
+   */
+  async flowBase(action: FlowAction, f: FormFields): Promise<string | undefined> {
+    if (action !== 'notices' && action !== 'versions') return undefined;
+    let msgId: string | undefined;
+    if (action === 'versions') {
+      try {
+        msgId = this.versionFromForm(f).msg?.id;
+      } catch {
+        msgId = undefined;
+      }
+    }
+    return docBase(action, await this.currentDoc(), (f.id ?? '').trim(), msgId);
+  }
+
   /** 확정 폼의 값이 미리보기 때 검사한 값과 같은가. 확정 값이 검사를 못 넘으면 다르다고 본다 */
   sameFlow(action: Exclude<FlowAction, 'grants/batch'>, kept: string | undefined, f: FormFields): boolean {
     if (kept === undefined) return false;
@@ -1364,8 +1397,12 @@ export class AdminService {
         blocked = `${name} ${next} 는 최신 릴리스 ${latest} 보다 높아요 (앱이 풀 수 없어요)`;
       if (blocked) break;
     }
+    const same = v.msg ? doc.notices.find((x) => x.id === v.msg?.id) : undefined;
+    if (!blocked && same && v.msg && same.kind !== v.msg.kind)
+      blocked = `같은 id(${v.msg.id}) 의 다른 종류 공지가 있어 안내문을 넣을 수 없어요. 그 공지를 먼저 지우거나 바꿔 주세요`;
     return {
       action: 'versions',
+      replaces: same ? same.title.ko : null,
       fields,
       nonce,
       before,
@@ -2082,13 +2119,28 @@ export class AdminService {
       throw new Refused('확인 칸을 체크해 주세요 (강제 업데이트 글)', 'confirm');
     return this.editDoc(actor, async (doc) => {
       const i = doc.notices.findIndex((x) => x.id === first.id);
-      // 옛 앱이 빠뜨린 칸(기간, 대상 버전, 운영체제)은 기존 공지의 값을 지킨다
-      const n = noticeFromForm(keepOmitted(f, doc.notices[i]));
+      // 웹 확정은 미리보기 때 본 공지 그대로일 때만 쓴다 (그사이 다른 곳에서 바뀌었으면 거절)
+      if (f.expect_base !== undefined && f.expect_base !== docBase('notices', doc, first.id, undefined))
+        throw new Refused(
+          '그사이 이 공지가 바뀌었어요. 고치기로 돌아가 미리보기부터 다시 해 주세요',
+          'changed',
+        );
+      // 옛 앱(운영자 계정 Bearer)이 빠뜨린 칸(기간, 대상 버전, 운영체제)만 기존 공지의 값을 지킨다. 웹은 보낸 값 그대로
+      const legacyApp = actor.startsWith('account:');
+      const old = doc.notices[i];
+      const n = noticeFromForm(legacyApp ? keepOmitted(f, old) : f);
       if (typeof n === 'string') throw new Refused(n);
+      const kept: string[] = [];
+      if (legacyApp && old) {
+        if (n.from && f.from === undefined) kept.push(`시작 ${n.from}`);
+        if (n.until && f.until === undefined) kept.push(`끝 ${n.until}`);
+        if (n.versions && f.versions === undefined) kept.push(`대상 버전 ${n.versions}`);
+        if (n.platforms && f.platforms === undefined) kept.push(`운영체제 ${n.platforms.join(',')}`);
+      }
       if (i >= 0) doc.notices[i] = n;
       else doc.notices.push(n);
       return {
-        text: `공지 ${n.id} 를 ${i >= 0 ? '바꿨어요' : '넣었어요'}`,
+        text: `공지 ${n.id} 를 ${i >= 0 ? '바꿨어요' : '넣었어요'}${kept.length ? `. 기간, 대상은 기존 값을 지켰어요 (${kept.join(', ')})` : ''}`,
         action: i >= 0 ? 'notice.update' : 'notice.create',
         target: n.id,
         detail: {
@@ -2185,6 +2237,11 @@ export class AdminService {
     const latest = await this.feeds.latestRelease();
     return this.editDoc(actor, async (doc) => {
       const restrict = restrictGiven ?? doc.restrictVersion ?? '';
+      if (f.expect_base !== undefined && f.expect_base !== docBase('versions', doc, '', msg?.id))
+        throw new Refused(
+          '그사이 버전 기준이나 안내문이 바뀌었어요. 고치기로 돌아가 미리보기부터 다시 해 주세요',
+          'changed',
+        );
       // 순서는 실제로 저장될 세 값으로 본다 (기능 제한을 그대로 둔 때도)
       const order = levelsOrder({ min, restrict, recommend: rec });
       if (order) throw new Refused(order, 'order');
@@ -2216,7 +2273,18 @@ export class AdminService {
       };
       if (msg) {
         const i = doc.notices.findIndex((x) => x.id === msg.id);
-        if (i >= 0) doc.notices[i] = msg;
+        if (i >= 0 && doc.notices[i]?.kind !== msg.kind)
+          throw new Refused(
+            `같은 id(${msg.id}) 의 다른 종류 공지가 있어 안내문을 넣을 수 없어요. 그 공지를 먼저 지우거나 바꿔 주세요`,
+            'invalid',
+          );
+        // 강제 안내문은 하나만 둔다: 앱은 잠길 때 목록의 첫 강제 공지를 보이므로 옛 force-* 는 지운다
+        if (msg.kind === 'force')
+          doc.notices = doc.notices.filter(
+            (x) => !(x.kind === 'force' && x.id.startsWith('force-') && x.id !== msg.id),
+          );
+        const j = doc.notices.findIndex((x) => x.id === msg.id);
+        if (j >= 0) doc.notices[j] = msg;
         else doc.notices.push(msg);
       }
       if (min) doc.minVersion = min;
@@ -2546,7 +2614,7 @@ export class AdminController {
                 ids: await this.admin.grantLiveIds(f),
                 grant: normGrant(grantInput({ ...f, confirm: 'yes' })),
               }
-            : { norm: this.admin.flowNorm(name, f) }),
+            : { norm: this.admin.flowNorm(name, f), base: await this.admin.flowBase(name, f) }),
         };
         return undefined;
       },
@@ -2670,6 +2738,9 @@ export class AdminController {
           s.preview = undefined;
           if (!ok || !kept)
             throw new Refused('이미 확정했거나 닫힌 미리보기예요. 운영 기록에서 확인하고 다시 써 주세요');
+          // 클라이언트가 보낸 expect_base 는 믿지 않고 미리보기 때 세션에 둔 값으로 덮는다 (앱 API 는 이 칸을 안 쓴다)
+          delete f.expect_base;
+          if (kept.base !== undefined) f.expect_base = kept.base;
           if (name !== 'grants/batch' && !this.admin.sameFlow(name, kept.norm, f))
             throw new Refused(
               '미리보기와 다른 값이에요. 고치기로 돌아가 미리보기부터 다시 해 주세요',

@@ -587,3 +587,186 @@ describe('저장과 앱 반영', () => {
     assert.match((await admin.page()).text, /홈페이지 파일을 거치지 않아요/);
   });
 });
+
+describe('버그 사냥 뒤 보강 (#154)', () => {
+  const hiddenOf = async (path: string) => {
+    const page = await admin.page();
+    const m = new RegExp(`<form method="post" action="${path}"[^>]*>([\\s\\S]*?)</form>`).exec(page.text);
+    assert.ok(m, `${path} 확정 폼`);
+    const hidden: Record<string, string> = {};
+    for (const x of (m[1] ?? '').matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)">/g))
+      if (x[1] !== 'csrf') hidden[x[1] as string] = (x[2] as string).replaceAll('&#10;', '\n');
+    return { hidden, page: page.text };
+  };
+  const flashText = async () =>
+    /role="(?:status|alert)"[^>]*>([^<]*)/.exec((await admin.page()).text)?.[1] ?? '';
+  const lv = (o: Record<string, string> = {}) => ({
+    minVersion: '',
+    restrictVersion: '',
+    recommendVersion: '',
+    ...o,
+  });
+  const appVersions = (body: Record<string, string>) =>
+    api('POST', '/v1/admin/versions', { token: appSession, body: { restrictVersion: '', ...body } });
+
+  test('확정값 바꿔치기: 공지, 쿠폰, 버전도 숨은 칸을 바꿔 보내면 거절한다', async () => {
+    await fresh();
+    await admin.post('/admin/notices/preview', { ...noticeBody, id: 'swap-n' });
+    const n = await hiddenOf('/admin/notices');
+    await admin.post('/admin/notices', { ...n.hidden, title_ko: '바꿔치기' });
+    assert.match(await flashText(), /미리보기와 다른 값이에요/);
+    assert.equal(await noticeOf('swap-n'), undefined);
+
+    await fresh();
+    const cp = {
+      label: '바꿔치기 쿠폰',
+      coins: '5',
+      tickets: '0',
+      max_uses: '3',
+      until: kstInput(Date.now() + 24 * HOUR),
+    };
+    await admin.post('/admin/coupons/preview', cp);
+    const c = await hiddenOf('/admin/coupons');
+    await admin.post('/admin/coupons', { ...c.hidden, coins: '1000' });
+    assert.match(await flashText(), /미리보기와 다른 값이에요/);
+    assert.equal((await h.pool.query(`SELECT 1 FROM coupon WHERE label = '바꿔치기 쿠폰'`)).rowCount, 0);
+
+    await fresh();
+    await admin.post('/admin/versions/preview', lv({ recommendVersion: '0.4.3' }));
+    const v = await hiddenOf('/admin/versions');
+    await admin.post('/admin/versions', { ...v.hidden, minVersion: '0.5.0', confirm: 'yes' });
+    assert.match(await flashText(), /미리보기와 다른 값이에요/);
+    assert.notEqual((await doc())?.minVersion, '0.5.0');
+  });
+
+  test('R9: 미리보기 뒤 앱 API 가 올린 버전 기준을 확정이 되돌리지 않는다', async () => {
+    await fresh();
+    assert.ok(
+      (
+        await admin.act('/admin/versions', {
+          ...lv({ minVersion: '0.4.0', recommendVersion: '0.4.3' }),
+          confirm: 'yes',
+        })
+      ).ok,
+    );
+    await fresh();
+    await admin.post('/admin/versions/preview', lv({ minVersion: '0.4.0', recommendVersion: '0.4.3' }));
+    const { hidden } = await hiddenOf('/admin/versions');
+    assert.equal(
+      (await appVersions({ minVersion: '0.5.0', recommendVersion: '0.5.0', confirm: 'yes' })).status,
+      200,
+    );
+    await admin.post('/admin/versions', hidden);
+    assert.match(await flashText(), /그사이/);
+    assert.equal((await doc())?.minVersion, '0.5.0');
+  });
+
+  test('R9: 같은 id 공지가 미리보기 뒤 바뀌었으면 확정을 거절한다', async () => {
+    await fresh();
+    await admin.act('/admin/notices', { ...noticeBody, id: 'race-n' });
+    await fresh();
+    await admin.post('/admin/notices/preview', { ...noticeBody, id: 'race-n', title_ko: '내 수정' });
+    const { hidden } = await hiddenOf('/admin/notices');
+    await api('POST', '/v1/admin/notices', {
+      token: appSession,
+      body: {
+        id: 'race-n',
+        kind: 'important',
+        title_ko: '남이 수정',
+        title_en: 'x',
+        body_ko: 'a',
+        body_en: 'b',
+      },
+    });
+    await admin.post('/admin/notices', hidden);
+    assert.match(await flashText(), /그사이 이 공지가 바뀌었어요/);
+    assert.equal(((await noticeOf('race-n'))?.title as { ko: string } | undefined)?.ko, '남이 수정');
+  });
+
+  test('R3: 웹 확정에서 칸을 빼도 저장은 미리보기와 같다 (keepOmitted 는 옛 앱만)', async () => {
+    await fresh();
+    assert.ok(
+      (
+        await admin.act('/admin/notices', {
+          ...noticeBody,
+          id: 'r3',
+          platforms: 'darwin',
+          versions: '<0.9.0',
+        })
+      ).ok,
+    );
+    await fresh();
+    await admin.post('/admin/notices/preview', { ...noticeBody, id: 'r3', platforms: '', versions: '' });
+    const { hidden } = await hiddenOf('/admin/notices');
+    const { platforms: _p, versions: _v, ...rest } = hidden;
+    await admin.post('/admin/notices', rest);
+    const n = await noticeOf('r3');
+    assert.equal(n?.platforms, undefined);
+    assert.equal(n?.versions, undefined);
+  });
+
+  test('R4: 옛 앱이 같은 id 로 다시 쓰면 응답 글이 지킨 기간과 대상을 말한다', async () => {
+    await fresh();
+    await admin.act('/admin/notices', {
+      ...noticeBody,
+      id: 'r4',
+      until: kstInput(Date.now() + 48 * HOUR),
+      platforms: 'linux',
+    });
+    const r = await api('POST', '/v1/admin/notices', {
+      token: appSession,
+      body: { id: 'r4', kind: 'important', title_ko: '새 글', title_en: 'New', body_ko: 'a', body_en: 'b' },
+    });
+    assert.equal(r.status, 200);
+    assert.match(r.body.text, /기간, 대상은 기존 값을 지켰어요 \(.*끝 .*운영체제 linux\)/);
+    const added = await api('POST', '/v1/admin/notices', {
+      token: appSession,
+      body: { id: 'r4-new', kind: 'info', title_ko: 'a', title_en: 'a', body_ko: 'a', body_en: 'a' },
+    });
+    assert.doesNotMatch(added.body.text, /지켰어요/);
+  });
+
+  test('R5: 같은 id 의 다른 종류 공지는 안내문으로 덮지 않고 바꾼다고 알린다', async () => {
+    await fresh();
+    await admin.act('/admin/notices', { ...noticeBody, kind: 'info', id: 'force-0.5.0' });
+    await fresh();
+    const f = {
+      ...lv({ minVersion: '0.5.0' }),
+      msg_kind: 'force',
+      msg_title_ko: '강제',
+      msg_title_en: 'Force',
+      msg_body_ko: 'b',
+      msg_body_en: 'b',
+    };
+    await admin.post('/admin/versions/preview', f);
+    const { hidden, page } = await hiddenOf('/admin/versions');
+    assert.match(page, /같은 id 의 공지를 바꿔요/);
+    assert.match(page, /다른 종류 공지가 있어 안내문을 넣을 수 없어요/);
+    assert.doesNotMatch(page, /확정하고 버전 기준 저장/);
+    await admin.post('/admin/versions', { ...hidden, confirm: 'yes' });
+    assert.match(await flashText(), /다른 종류 공지/);
+    assert.equal((await noticeOf('force-0.5.0'))?.kind, 'info');
+    await h.pool.query(
+      `UPDATE site_doc SET body = jsonb_set(body, '{notices}', (SELECT coalesce(jsonb_agg(n), '[]'::jsonb) FROM jsonb_array_elements(body->'notices') n WHERE n->>'id' <> 'force-0.5.0'))`,
+    );
+  });
+
+  test('강제 안내문은 하나만 남는다 (새로 넣으면 옛 force-* 가 지워진다)', async () => {
+    await fresh();
+    const msg = {
+      msg_kind: 'force',
+      msg_title_ko: '강제',
+      msg_title_en: 'Force',
+      msg_body_ko: 'b',
+      msg_body_en: 'b',
+    };
+    assert.ok(
+      (await admin.act('/admin/versions', { ...lv({ minVersion: '0.4.0' }), ...msg, confirm: 'yes' })).ok,
+    );
+    assert.ok(
+      (await admin.act('/admin/versions', { ...lv({ minVersion: '0.5.0' }), ...msg, confirm: 'yes' })).ok,
+    );
+    const forces = ((await doc())?.notices ?? []).filter((n) => n.kind === 'force').map((n) => n.id);
+    assert.deepEqual(forces, ['force-0.5.0']);
+  });
+});

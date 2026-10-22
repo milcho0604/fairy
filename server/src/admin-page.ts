@@ -238,6 +238,8 @@ export type FlowPreview =
       latest: string | null;
       /** 같이 넣는 안내문 */
       message: DocNotice | null;
+      /** 같은 id 의 공지가 이미 있으면 그 제목 (바꿔요) */
+      replaces: string | null;
       /** 이 까닭이 있으면 확정할 수 없다 (최신 릴리스보다 높음, 최신 릴리스를 못 읽음) */
       blocked: string | null;
       needsConfirm: boolean;
@@ -1666,7 +1668,7 @@ ${row('최소 (강제)', pv.before.min, pv.after.min, pv.raises.min)}${row('기�
 <div><dt>최근 30일 활동 계정</dt><dd>${n1.active}명</dd></div>
 </dl>
 <p class="hint">순서(최소 &le; 기능 제한 &le; 권장)는 맞아요. 최신 릴리스는 ${esc(pv.latest ?? '읽지 못함')} 이에요.${n1.unknown > 0 ? ` 판을 모르는 ${n1.unknown}명은 가장 낮은 판으로 세요.` : ''} 판은 앱이 하루에 한 번 알려 줘서 방금 업데이트한 계정은 이전 판으로 남아 있을 수 있어요.</p>
-${pv.message ? `<h3>같이 넣는 안내문 (${esc(KIND_KO[pv.message.kind])}, id ${esc(pv.message.id)}, 대상 ${esc(pv.message.versions ?? '')})</h3><div class="previews">${noticePreview(pv.message, 'ko')}${noticePreview(pv.message, 'en')}</div>` : '<p class="hint">안내문은 같이 넣지 않아요.</p>'}
+${pv.message ? `<h3>같이 넣는 안내문 (${esc(KIND_KO[pv.message.kind])}, id ${esc(pv.message.id)}, 대상 ${esc(pv.message.versions ?? '')})</h3>${pv.replaces !== null ? `<p class="flash warn" role="note">같은 id 의 공지를 바꿔요 (지금 제목 ${esc(pv.replaces)})</p>` : ''}${pv.message.kind === 'force' ? '<p class="hint">강제 안내문은 하나만 두어서 이전 force- 안내문은 지워져요.</p>' : ''}<div class="previews">${noticePreview(pv.message, 'ko')}${noticePreview(pv.message, 'en')}</div>` : '<p class="hint">안내문은 같이 넣지 않아요.</p>'}
 ${reachBox('version')}
 ${confirmForm(v, pv, '/admin/versions', '확정하고 버전 기준 저장', pv.needsConfirm ? `<label class="confirm wide"><input type="checkbox" name="confirm" value="yes" required> ${esc(confirmLabel)}</label>` : '', pv.blocked)}</section>`;
 }

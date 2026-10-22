@@ -49,6 +49,8 @@ export interface AdminSession {
     grant?: string;
     /** 미리보기 때 검사를 거친 값(공지, 이벤트, 쿠폰, 버전)을 한 모양으로 만든 글. 확정 때 통째 비교한다 */
     norm?: string;
+    /** 미리보기 때 문서의 관련 부분 (공지는 같은 id 의 공지, 버전은 기준과 안내문). 확정이 잠근 문서와 비교한다 */
+    base?: string;
   };
 }
 
