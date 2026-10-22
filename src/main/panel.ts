@@ -739,8 +739,10 @@ export function createPanel(o: PanelOptions) {
     const key = typeof o2.key === 'number' && Number.isFinite(o2.key) ? o2.key : undefined;
     if (to === 'tomorrow') {
       // "못 한 N개 내일로": 화면이 본 오늘(today)과 본 목록(ids)을 기준으로 옮긴다 (자정이 지나 새로 오늘이 된 것은 그대로)
-      const day =
-        typeof o2.today === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(o2.today) ? o2.today : localDay(now);
+      // 화면이 본 날은 지금 날과 하루 차이 안에서만 받는다 (없는 날짜나 먼 날짜는 지금 날로)
+      const nowDay = localDay(now);
+      const near = [plusDays(nowDay, -1), nowDay, plusDays(nowDay, 1)];
+      const day = typeof o2.today === 'string' && near.includes(o2.today) ? o2.today : nowDay;
       const ids = Array.isArray(o2.ids)
         ? o2.ids.filter((n): n is number => typeof n === 'number')
         : undefined;

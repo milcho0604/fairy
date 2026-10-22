@@ -184,8 +184,12 @@ async function page(name) {
             await mouse('mouseReleased', x, y);
           },
           click: async (elExpr) => {
+            // 굴려서 보이게 한 뒤 배치가 자리 잡을 때까지 기다렸다가 자리를 다시 잰다 (굴린 직후 재면 빗나간다)
+            const shown = await ev(`(() => { const e = (${elExpr}); if (!e) return false; e.scrollIntoView({ block: 'center', behavior: 'instant' }); return true; })()`);
+            if (!shown) return false;
+            await sleep(150);
             const pos = await ev(
-              `(() => { const e = (${elExpr}); if (!e) return null; e.scrollIntoView({ block: 'center', behavior: 'instant' }); const r = e.getBoundingClientRect(); if (!r.width && !r.height) return null; return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`,
+              `(() => { const e = (${elExpr}); if (!e) return null; const r = e.getBoundingClientRect(); if (!r.width && !r.height) return null; return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`,
             );
             if (!pos) return false;
             await mouse('mouseMoved', pos.x, pos.y);
@@ -441,6 +445,13 @@ const body = async () => {
       const before = JSON.parse(await main(`JSON.stringify(__jj.store.list(Date.now()).open.filter((t) => t.due !== null && t.due <= ${JSON.stringify(todayStr)} && !t.repeat).map((t) => [t.id, t.due]))`));
       const label = await wh.ev(`document.querySelector('.defer-tomorrow')?.textContent ?? ''`);
       check(`${mark}: 단추 글에 개수 ${before.length}`, label === tx(`못 한 ${before.length}개 내일로`, `Push ${before.length} undone to tomorrow`), label);
+      // 폭을 바꾼 직후라 배치가 움직이는 중일 수 있다: 단추 자리가 멈춘 뒤 누른다
+      for (let i = 0, prev = ''; i < 20; i++) {
+        const cur = JSON.stringify(await pos('.defer-tomorrow'));
+        if (cur === prev) break;
+        prev = cur;
+        await sleep(100);
+      }
       await wh.click(`document.querySelector('.defer-tomorrow')`);
       await sleep(700);
       const after = JSON.parse(await main(`JSON.stringify(__jj.store.list(Date.now()).open.filter((t) => ${JSON.stringify(before.map((b) => b[0]))}.includes(t.id)).map((t) => [t.id, t.due]))`));
