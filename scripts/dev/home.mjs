@@ -19,6 +19,9 @@
 //   ko/en: 영어 화면에 한글 없음, "모드" 라는 낱말 없음
 //   오늘과 일정의 넓은 배치 (이슈 #162): 구간별(작은 패널 320/360/560, 큰 창 760/1100/1440) 찍기와 넘침, 오늘 첫 화면 순서(일정, 다음 할 일, 마감이 맨 위),
 //     넓음(>=860)에서만 두 열("할 것"/"나와 펫"), 못 한 N개 내일로(옮기고 되돌리기), 일정 큰 월 보기(칸 안 제목, 넘치면 +N)와 옆 날 목록
+//   할 일과 메모의 넓은 배치 (이슈 #163): 태그 칸, 목록, 상세 칸 세 열(고치면 목록에 바로 반영, 키보드 이동), 메모 목록과 편집기 나란히,
+//     편집기가 갈아 끼워지는 순간마다 저장된 글 세기(다른 메모 누르기, 곧바로 돌아오기, 숨기기, 탭 바꾸기, 창 닫기, 거절 상태), 760 미만 한 열 복귀,
+//     구역별 찍기와 넘침, 작은 패널 320/360/560 회귀. LISTS_ONLY=1 이면 이 부분만, LISTS_BASELINE=1 이면 옛 판 비교 그림용 찍기만
 //   WIDE_ONLY=1 이면 이 부분만 돈다. BASELINE=1 을 더하면 확인 없이 같은 자료로 찍기만 한다 (옛 판에서 전후 비교 그림 만들 때)
 import { spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -320,9 +323,524 @@ const body = async () => {
     `__jj.notes.add({ title: ${JSON.stringify(tx('장보기 목록', 'Shopping list'))}, body: ${JSON.stringify(tx('우유\n달걀\n식빵', 'Milk\nEggs\nBread'))} }, ${NOW}); 1`,
   );
 
+  if (process.env.LISTS_ONLY) {
+    await listsLayouts();
+    return;
+  }
   if (process.env.WIDE_ONLY) {
     await wideLayouts();
     return;
+  }
+
+  /**
+   * 할 일과 메모의 넓은 배치 (이슈 #163). 본문 칸이 넓음(>=860, 큰 창 폭 1068 이상)이면 할 일은 태그 칸, 목록, 상세 칸 세 열이고
+   * 메모는 목록과 편집기가 나란히다. 좁으면 지금처럼 한 열. 메모는 편집기가 "갈아 끼워지는" 순간(다른 메모 누르기, 곧바로 돌아오기,
+   * 큰 창 숨기기, 탭 바꾸기, 창 닫기, 다른 곳이 먼저 고친 상태)마다 저장된 글을 숫자로 센다.
+   * LISTS_ONLY=1 이면 이 부분만 돈다. LISTS_BASELINE=1 이면 확인 없이 같은 자료로 할 일 1100 만 찍는다 (옛 판 비교 그림용)
+   */
+  async function listsLayouts() {
+    const dayMs = 86_400_000;
+    const dayStr = (ms) =>
+      main(`(() => { const d = new Date(${ms}); const p = (n) => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); })()`);
+    const tomorrow = await dayStr(dayStart + dayMs);
+    const T = {
+      laundry: tx('#집 빨래 널기', '#home Hang laundry'),
+      report: tx('#일 분기 보고서 쓰기', '#work Write quarterly report'),
+      mail: tx('#일 메일 정리', '#work Clean inbox'),
+      groceries: tx('#집 장보기 목록 만들기', '#home Make a grocery list'),
+      book: tx('책 반납하기', 'Return the book'),
+    };
+    const addTodo = (title, extra = {}) =>
+      main(`__jj.store.add({ title: ${JSON.stringify(title)}, ...${JSON.stringify(extra)} }, ${NOW}).id`);
+    const ids = {
+      laundry: await addTodo(T.laundry, { due: tomorrow }),
+      report: await addTodo(T.report, { important: true, due: todayStr }),
+      mail: await addTodo(T.mail),
+      groceries: await addTodo(T.groceries),
+      book: await addTodo(T.book),
+    };
+    await main(`__jj.store.addSteps(${ids.laundry}, ${JSON.stringify([tx('세탁기 돌리기', 'Run the washer'), tx('건조대에 널기', 'Hang to dry')])}, ${NOW}); 1`);
+    const N = {};
+    for (const [key, title, body] of [
+      ['a', tx('독서 메모', 'Reading notes'), tx('1장 요약\n2장 요약', 'Chapter 1 summary\nChapter 2 summary')],
+      ['b', tx('회의록', 'Meeting minutes'), tx('안건 하나\n안건 둘', 'Agenda one\nAgenda two')],
+      ['c', tx('여행 계획', 'Trip plan'), tx('교토 3박\n오사카 1박', 'Kyoto 3 nights\nOsaka 1 night')],
+    ])
+      N[key] = await main(`__jj.notes.add({ title: ${JSON.stringify(title)}, body: ${JSON.stringify(body)} }, ${NOW}).id`);
+    await sleep(400);
+
+    await closeHome();
+    await closePanel();
+    await main("__jj.home.open('todo'); 1");
+    await waitFor(homeAlive);
+    await sleep(1200);
+    let wh = await page('home');
+    const setBounds = async (w, h = 780) => {
+      await main(`__jj.home.window.setBounds({ x: 20, y: 30, width: ${w}, height: ${h} }); 1`);
+      await sleep(700);
+    };
+    const tab = async (id) => {
+      await wh.click(`document.getElementById('ptab-${id}')`);
+      await sleep(450);
+    };
+    const pos = (sel) =>
+      wh.ev(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, r: r.right, b: r.bottom, w: r.width, h: r.height }; })()`);
+    const shown = (sel) => wh.ev(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); return !!e && getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().width > 0; })()`);
+
+    if (process.env.LISTS_BASELINE) {
+      await setBounds(1100);
+      await tab('todo');
+      await wh.dark(false);
+      await wh.ev(`(() => { const e = [...document.querySelectorAll('li.todo .title-text')].find((x) => x.textContent.includes(${JSON.stringify(tx('분기', 'quarterly'))})); e?.scrollIntoView(); return true; })()`);
+      await wh.shot('lists-todo-w1100-light');
+      return;
+    }
+
+    const todoOf = (id) => main(`JSON.stringify(__jj.store.get(${id}))`).then((j) => JSON.parse(j));
+    const openOf = () => main(`JSON.stringify(__jj.store.list(Date.now()).open.map((t) => t.id))`).then((j) => JSON.parse(j));
+    const rowTitle = (part) => `[...document.querySelectorAll('li.todo .title-text')].find((e) => e.textContent.includes(${JSON.stringify(part)}))`;
+    const pickRow = async (part) => {
+      const ok = await wh.click(rowTitle(part));
+      await sleep(250);
+      return ok;
+    };
+    const setValue = (sel, v) =>
+      wh.ev(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return false; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(e, ${JSON.stringify(v)}); e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+    const key = (k, code, vk) => wh.send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, windowsVirtualKeyCode: vk });
+
+    // =========================== 할 일 ===========================
+    for (const w of [760, 1100, 1440]) {
+      await setBounds(w);
+      await tab('todo');
+      const wideNow = (await wh.ev(`document.getElementById('ptab-panel').dataset.zone`)) === 'wide';
+      const mark = `폭 ${w}`;
+      const layout = await pos('.todo-layout');
+      check(`${mark} 할 일: ${wideNow ? '세 열' : '한 열'} (.wide ${wideNow ? '있음' : '없음'})`, !!layout && (await wh.ev(`document.querySelector('.todo-layout').classList.contains('wide')`)) === wideNow);
+      if (wideNow) {
+        const tags = await pos('.todo-tags');
+        const main_ = await pos('.todo-main');
+        const detail = await pos('.todo-detail');
+        check(`${mark} 할 일: 태그 칸, 목록, 상세 칸이 왼쪽부터 차례로 놓인다`, !!tags && !!main_ && !!detail && tags.r <= main_.x + 1 && main_.r <= detail.x + 1, JSON.stringify({ tags: tags?.x, main: main_?.x, detail: detail?.x }));
+        check(`${mark} 할 일: 목록 폭이 320 이상 (${Math.round(main_?.w ?? 0)})`, (main_?.w ?? 0) >= 320);
+        check(`${mark} 할 일: 태그 칩은 가로 줄이 아니라 왼쪽 세로 칸 (목록 위에 칩 줄 없음)`, !(await wh.ev(`!!document.querySelector('.todo-main > .tag-chips')`)) && (await wh.ev(`getComputedStyle(document.querySelector('.tag-col')).flexDirection`)) === 'column');
+      } else {
+        check(`${mark} 할 일: 태그 칸과 상세 칸이 안 보이고 태그 칩이 목록 위 가로 줄`, !(await shown('.todo-tags')) && !(await shown('.todo-detail')) && (await wh.ev(`!!document.querySelector('.todo-main > .tag-chips')`)) && (await wh.ev(`getComputedStyle(document.querySelector('.todo-main > .tag-chips')).flexDirection`)) === 'row');
+        check(`${mark} 할 일: 줄 끝 단추(.extra)가 예전 그대로 있다`, (await wh.ev(`document.querySelectorAll('li.todo .tools .extra').length`)) > 0);
+      }
+      for (const dark of [false, true]) {
+        await wh.dark(dark);
+        await sleep(200);
+        if (wideNow) await pickRow(tx('분기', 'quarterly'));
+        await wh.shot(`lists-todo-w${w}-${dark ? 'dark' : 'light'}`);
+        const over = await overflow(wh);
+        check(`${mark} 할 일: 가로 넘침 없음 ${dark ? '어두움' : '밝음'}`, over.length === 0, over.join(', '));
+      }
+      await wh.dark(false);
+    }
+
+    // ---- 넓음(1100) 할 일 동작 ----
+    await setBounds(1100);
+    await tab('todo');
+    const nTodoRows = await wh.ev(`document.querySelectorAll('li.todo').length`);
+    // 태그 칸
+    const tagTexts = await wh.ev(`JSON.stringify([...document.querySelectorAll('.tag-col .len-chip')].map((e) => e.textContent))`);
+    const homeTag = tx('집', 'home');
+    const chipOf = (name) => `[...document.querySelectorAll('.tag-col .len-chip')].find((e) => e.textContent.startsWith('#${name}'))`;
+    check('태그 칸에 모두와 #집(#home) #일(#work) 이 개수와 함께 있다', JSON.parse(tagTexts).length >= 3 && JSON.parse(tagTexts)[0] === tx('모두', 'All') && JSON.parse(tagTexts).some((x) => x.startsWith(`#${homeTag}`) && x.endsWith('2')), tagTexts);
+    await wh.click(chipOf(homeTag));
+    await sleep(300);
+    const homeRows = await wh.ev(`[...document.querySelectorAll('li.todo .title-text')].map((e) => e.textContent).join('|')`);
+    check('#집 태그를 누르면 목록이 그 태그 할 일 둘만 남는다', (await wh.ev(`document.querySelectorAll('li.todo').length`)) === 2 && homeRows.includes(tx('빨래', 'laundry')) && homeRows.includes(tx('장보기', 'grocery')), homeRows);
+    await wh.click(chipOf(homeTag));
+    await sleep(300);
+    check('같은 태그를 다시 누르면 전체로', (await wh.ev(`document.querySelectorAll('li.todo').length`)) === nTodoRows);
+
+    const pickHint = tx('할 일을 고르면 여기서 마감, 단계, 알림, 반복을 고칠 수 있어.', 'Pick a to-do to edit its due date, steps, reminders and repeat here.');
+    // 고르기
+    await pickRow(tx('빨래', 'laundry'));
+    const sel1 = await wh.ev(`JSON.stringify({ rows: document.querySelectorAll('li.todo.selected').length, title: document.querySelector('.detail-title')?.value, rowTitle: document.querySelector('li.todo.selected .title-text')?.textContent })`);
+    const s1 = JSON.parse(sel1);
+    check('줄을 누르면 그 줄만 선택 표시되고 상세 칸에 제목이 열린다', s1.rows === 1 && s1.title === T.laundry && s1.rowTitle === T.laundry, sel1);
+    check('줄을 눌러도 제목 고치기 칸이 줄 안에서 열리지 않는다 (고치기는 상세 칸)', !(await wh.ev(`!!document.querySelector('li.todo .title-edit')`)));
+    check('상세 칸에 마감, 단계, 알림, 반복, 끝내기, 지우기가 있다', await wh.ev(`!!document.querySelector('.detail-date') && !!document.querySelector('.detail .step-sheet') && !!document.querySelector('.detail .remind-btn') && document.querySelectorAll('.detail-repeat .len-chip').length === 5 && [...document.querySelectorAll('.detail-actions button')].some((b) => b.classList.contains('primary'))`));
+    check('상세 칸 단계에 이 할 일의 단계 둘이 보인다', (await wh.ev(`document.querySelectorAll('.detail .step').length`)) === 2);
+
+    // 상세에서 고치면 목록에 바로 반영: 마감
+    await setValue('.detail-date', tomorrow);
+    await sleep(500);
+    const d1 = await todoOf(ids.laundry);
+    check('상세 칸 마감 고치기: 저장소 마감이 바뀐다', d1.due === tomorrow, d1.due);
+    await setValue('.detail-date', todayStr);
+    await sleep(500);
+    check('상세 칸 마감 고치기: 목록 줄의 마감 칩이 바로 바뀐다 (오늘)', (await wh.ev(`document.querySelector('li.todo.selected .due-btn')?.textContent ?? ''`)).includes(tx('오늘', 'Today')) && (await todoOf(ids.laundry)).due === todayStr, await wh.ev(`document.querySelector('li.todo.selected .due-btn')?.textContent ?? ''`));
+    // 마감 시각
+    await setValue('.detail-time', '15:30');
+    await sleep(500);
+    check('상세 칸 마감 시각: 15:30 이 분(930)으로 저장된다', (await todoOf(ids.laundry)).dueMin === 930, String((await todoOf(ids.laundry)).dueMin));
+    // 알림
+    const remindsBefore = (await todoOf(ids.laundry)).reminds;
+    await wh.click(`document.querySelector('.detail .remind-btn')`);
+    await sleep(300);
+    await wh.click(`[...document.querySelectorAll('.detail .rs-chip')].find((c) => c.getAttribute('aria-pressed') === 'false')`);
+    await sleep(500);
+    const reminds = (await todoOf(ids.laundry)).reminds;
+    check('상세 칸 알림: 꺼진 칩을 누르면 알림이 하나 늘고 알림 단추 개수도 바뀐다', reminds.length === remindsBefore.length + 1 && (await wh.ev(`document.querySelector('.detail .remind-count')?.textContent ?? '1'`)) === String(reminds.length), `${JSON.stringify(remindsBefore)} -> ${JSON.stringify(reminds)}`);
+    await wh.click(`document.querySelector('.detail .rs-close')`);
+    await sleep(200);
+    // 반복
+    await wh.click(`[...document.querySelectorAll('.detail-repeat .len-chip')].find((b) => b.textContent === ${JSON.stringify(tx('매주', 'Weekly'))})`);
+    await sleep(500);
+    check('상세 칸 반복: 매주를 누르면 저장소 반복이 weekly, 목록 줄에 반복 표시', (await todoOf(ids.laundry)).repeat === 'weekly' && (await wh.ev(`!!document.querySelector('li.todo.selected .repeat-badge')`)));
+    check('반복 칩은 누른 하나만 눌림 표시', (await wh.ev(`document.querySelectorAll('.detail-repeat .len-chip[aria-pressed="true"]').length`)) === 1);
+    // 단계 더하기
+    await wh.ev(`document.querySelector('.detail .step-add').focus(); 1`);
+    await wh.type(tx('빨래집게 챙기기', 'Bring clothespins'));
+    await wh.enter();
+    await sleep(600);
+    const steps = (await todoOf(ids.laundry)).steps;
+    check('상세 칸 단계 더하기: 단계가 셋이 되고 목록 줄 표시가 0/3', steps.length === 3 && (await wh.ev(`document.querySelector('li.todo.selected .steps-badge')?.textContent ?? ''`)).includes('0/3'), `${steps.length} ${await wh.ev(`document.querySelector('li.todo.selected .steps-badge')?.textContent ?? ''`)}`);
+    // 제목 고치기 (멈추면 저장, 목록에 바로 반영)
+    await wh.ev(`(() => { const e = document.querySelector('.detail-title'); e.focus(); e.select(); return true; })()`);
+    await wh.type(tx('#집 빨래 널고 개기', '#home Hang and fold laundry'));
+    await sleep(900);
+    const t1 = (await todoOf(ids.laundry)).title;
+    check('상세 칸 제목 고치기: 멈추면 저장되고 목록 줄 제목이 바로 바뀐다', t1 === tx('#집 빨래 널고 개기', '#home Hang and fold laundry') && (await wh.ev(`document.querySelector('li.todo.selected .title-text')?.textContent ?? ''`)).includes(tx('개기', 'fold')), t1);
+    // 중요
+    await wh.click(`document.querySelector('.detail-actions .star')`);
+    await sleep(400);
+    check('상세 칸 별: 중요가 켜지고 목록 줄 별도 켜진다', (await todoOf(ids.laundry)).important === true && (await wh.ev(`!!document.querySelector('li.todo.selected .star.on')`)));
+
+    // 다른 할 일을 고르면 상세가 바뀐다
+    await pickRow(tx('분기', 'quarterly'));
+    const sel2 = await wh.ev(`document.querySelector('.detail-title')?.value`);
+    check('다른 줄을 고르면 상세 칸이 그 할 일로 바뀐다', sel2 === T.report, sel2);
+    check('앞 할 일의 고친 값은 그대로 남았다 (제목, 반복)', (await todoOf(ids.laundry)).repeat === 'weekly' && (await todoOf(ids.laundry)).title.includes(tx('개기', 'fold')));
+    // 제목을 고치다 곧바로 다른 줄을 누르면 고친 제목이 저장된다
+    await wh.ev(`(() => { const e = document.querySelector('.detail-title'); e.focus(); e.setSelectionRange(e.value.length, e.value.length); return true; })()`);
+    await wh.type(tx('!', '!'));
+    await pickRow(tx('메일 정리', 'inbox'));
+    await sleep(500);
+    check('제목을 고치다 곧바로 다른 줄을 눌러도 고친 제목이 저장된다', (await todoOf(ids.report)).title === `${T.report}!`, (await todoOf(ids.report)).title);
+    check('다른 줄로 옮겨도 그 줄 제목은 남의 것과 섞이지 않는다', (await todoOf(ids.mail)).title === T.mail);
+
+    // 키보드
+    await wh.ev(`(() => { document.querySelector('li.todo .title').focus(); return true; })()`);
+    const firstId = await wh.ev(`document.activeElement.closest('li.todo').dataset.id`);
+    await key('ArrowDown', 'ArrowDown', 40);
+    await sleep(250);
+    const kb1 = await wh.ev(`JSON.stringify({ active: document.activeElement.closest('li.todo')?.dataset.id, sel: document.querySelector('li.todo.selected')?.dataset.id })`);
+    const k1 = JSON.parse(kb1);
+    check('키보드: 아래 화살표가 다음 줄로 옮기고 선택과 포커스가 같다', k1.active === k1.sel && k1.sel !== firstId, kb1);
+    await key('ArrowUp', 'ArrowUp', 38);
+    await sleep(250);
+    check('키보드: 위 화살표가 앞 줄로 돌아온다', (await wh.ev(`document.querySelector('li.todo.selected')?.dataset.id`)) === firstId);
+    await key('Enter', 'Enter', 13);
+    await sleep(250);
+    check('키보드: Enter 가 상세 칸 제목에 커서를 둔다', await wh.ev(`document.activeElement?.classList.contains('detail-title')`));
+    check('키보드: 상세 칸 제목은 고른 할 일의 것', (await wh.ev(`document.querySelector('.detail-title').value`)) === (await wh.ev(`document.querySelector('li.todo.selected .title-text').textContent`)));
+    await key('Escape', 'Escape', 27);
+    await sleep(250);
+    check('키보드: Esc 가 목록의 그 줄로 돌아온다', (await wh.ev(`document.activeElement?.closest('li.todo')?.dataset.id`)) === firstId);
+
+    // 끝내기: 상세에서 끝내면 끝난 일이 되고 상세는 안내로
+    await pickRow(tx('책 반납', 'book'));
+    await wh.click(`document.querySelector('.detail-actions .primary')`);
+    await sleep(700);
+    const openIds = await openOf();
+    check('상세 칸 끝내기: 끝난 일이 되어 목록에서 빠지고 상세 칸은 안내 글로 돌아간다', !openIds.includes(ids.book) && !(await wh.ev(`!!document.querySelector('.detail-title')`)) && (await wh.ev(`document.querySelector('.todo-detail .todo-col-empty')?.textContent ?? ''`)) === pickHint);
+    // 지우기
+    await pickRow(tx('메일 정리', 'inbox'));
+    await wh.click(`[...document.querySelectorAll('.detail-actions button')].find((b) => b.classList.contains('ghost'))`);
+    await sleep(600);
+    const undoToast = await wh.ev(`[...document.querySelectorAll('.toast')].map((e) => e.textContent).join('|')`);
+    check('상세 칸 지우기: 목록에서 빠지고 되돌리기 알림이 뜬다', !(await openOf()).includes(ids.mail) && undoToast.includes(tx('되돌리기', 'Undo')), `${JSON.stringify(await openOf())} ${undoToast}`);
+    await wh.click(`[...document.querySelectorAll('.toast .undo')].at(-1)`);
+    await sleep(600);
+    check('지우기를 되돌리면 같은 할 일이 돌아온다', (await openOf()).includes(ids.mail));
+
+    // 가려진 선택
+    await pickRow(tx('분기', 'quarterly'));
+    await wh.click(chipOf(homeTag));
+    await sleep(300);
+    check('고른 할 일이 태그 거르기로 목록에서 가려지면 상세 칸도 안내로', !(await wh.ev(`!!document.querySelector('.detail-title')`)));
+    await wh.click(`document.querySelector('.tag-col .len-chip')`);
+    await sleep(300);
+
+    // 폭을 760 으로 줄이면 한 열로 돌아오고 앞에서 고르던 것이 망가지지 않는다
+    await pickRow(tx('분기', 'quarterly'));
+    await setBounds(760);
+    check('1100 에서 760 으로 줄이면 한 열 (태그 칸, 상세 칸 사라짐, 칩은 가로 줄)', !(await shown('.todo-tags')) && !(await shown('.todo-detail')) && (await wh.ev(`!!document.querySelector('.todo-main > .tag-chips')`)));
+    check('한 열로 돌아와도 할 일 줄은 모두 있다 (예전 줄 끝 단추 포함)', (await wh.ev(`document.querySelectorAll('li.todo').length`)) >= 3 && (await wh.ev(`document.querySelectorAll('li.todo .tools .extra').length`)) > 0);
+    await wh.click(rowTitle(tx('분기', 'quarterly')));
+    await sleep(300);
+    check('한 열에서 제목을 누르면 예전처럼 줄 안에서 고치기 칸이 열린다', await wh.ev(`!!document.querySelector('li.todo .title-edit')`));
+    await key('Escape', 'Escape', 27);
+    await setBounds(1100);
+    check('다시 1100 으로 넓히면 세 열로 돌아온다', await shown('.todo-detail'));
+
+    // =========================== 메모 ===========================
+    await tab('note');
+    const noteOf = (id) => main(`JSON.stringify(__jj.notes.get(${id}))`).then((j) => JSON.parse(j));
+    const noteBody = async (id) => (await noteOf(id)).body;
+    const rowBtn = (part) => `[...document.querySelectorAll('li.note-row')].find((r) => r.textContent.includes(${JSON.stringify(part)}))?.querySelector('button')`;
+    const nA = tx('독서 메모', 'Reading notes');
+    const nB = tx('회의록', 'Meeting minutes');
+    const nC = tx('여행 계획', 'Trip plan');
+    const openNote = async (part) => {
+      await wh.click(rowBtn(part));
+      await sleep(500);
+    };
+    const type = async (text) => {
+      await wh.ev(`(() => { const e = document.querySelector('.note-editor textarea'); e.focus(); e.setSelectionRange(e.value.length, e.value.length); return true; })()`);
+      await wh.type(text);
+    };
+    const editorBody = () => wh.ev(`document.querySelector('.note-editor textarea')?.value ?? null`);
+    const resetHome = async (tabId = 'note') => {
+      await closeHome();
+      await main(`__jj.home.open('${tabId}'); 1`);
+      await waitFor(homeAlive);
+      await sleep(1200);
+      wh = await page('home');
+      await setBounds(1100);
+    };
+
+    const noteLayout = await wh.ev(`document.querySelector('.note-layout')?.className ?? ''`);
+    check('1100 메모: 나란히 보기 (.split) 이고 아직 안 골랐으면 안내 글', noteLayout.includes('split') && (await shown('.note-pane-empty')) && !(await shown('.note-editor')), noteLayout);
+    await openNote(nA);
+    const lp = await pos('.note-list-pane');
+    const ed = await pos('.note-editor');
+    check('메모를 고르면 오른쪽에 편집기가 열리고 목록은 왼쪽에 그대로 있다', !!lp && !!ed && lp.r <= ed.x + 1 && lp.w > 200 && ed.w > 300 && (await wh.ev(`document.querySelectorAll('li.note-row').length`)) >= 3, JSON.stringify({ list: lp?.w, editor: ed?.w }));
+    await wh.shot('lists-note-clean-w1100-light');
+    check('열린 메모 줄에 현재 표시', (await wh.ev(`document.querySelector('li.note-row.current')?.textContent.includes(${JSON.stringify(nA)})`)) === true);
+    check('나란히 볼 때는 "메모" 뒤로 단추가 안 보인다', !(await shown('.note-bar .back')));
+    check('편집기에 고르기 전 글이 그대로 들어 있다', (await editorBody()) === (await noteBody(N.a)));
+
+    // (a) 고치다 곧바로 다른 메모를 누른다
+    const baseA = await noteBody(N.a);
+    await type(' +A1');
+    await wh.click(rowBtn(nB));
+    await sleep(900);
+    check('(a) 고치다 곧바로 다른 메모를 누르면 앞 메모에 고친 글이 저장된다', (await noteBody(N.a)) === `${baseA} +A1`, JSON.stringify(await noteBody(N.a)));
+    check('(a) 새로 연 메모 편집기는 그 메모 글 (섞이지 않음)', (await editorBody()) === (await noteBody(N.b)) && !(await editorBody()).includes('+A1'));
+    // (b) 고치다 다른 메모 갔다 곧바로 돌아온다
+    const baseB = await noteBody(N.b);
+    await type(' +B1');
+    await wh.click(rowBtn(nA));
+    await wh.click(rowBtn(nB));
+    await sleep(900);
+    const bBody = await noteBody(N.b);
+    check('(b) 고치다 다른 메모를 눌렀다 곧바로 돌아와도 고친 글이 저장돼 있다', bBody === `${baseB} +B1`, JSON.stringify(bBody));
+    check('(b) 돌아와 연 편집기가 방금 쓴 글을 보여 준다 (옛 글이 아니다)', (await editorBody()) === bBody, JSON.stringify(await editorBody()));
+    await type(' +B2');
+    await sleep(900);
+    check('(b) 돌아와서 더 쓴 글도 거절 없이 저장된다', (await noteBody(N.b)) === `${baseB} +B1 +B2` && !(await shown('.note-stale')), JSON.stringify(await noteBody(N.b)));
+    // 글자 수 합계: 세 메모에서 사라진 글이 없다
+    const total1 = (await noteBody(N.a)).length + (await noteBody(N.b)).length + (await noteBody(N.c)).length;
+    check(`(a, b) 세 메모 글자 수 합 ${total1} 이 시작 합 + 쓴 글자와 같다`, total1 === baseA.length + 4 + baseB.length + 8 + (await noteBody(N.c)).length, String(total1));
+
+    // (c) 큰 창 숨기기
+    await type(' +H1');
+    await main('__jj.home.hide(); 1');
+    // 자동 저장(0.4초 멈춤)보다 먼저: 숨기는 순간 바로 보내야 한다
+    await sleep(200);
+    check('(c) 고치다 큰 창을 숨기면 자동 저장을 기다리지 않고 바로 저장된다', (await noteBody(N.b)).endsWith(' +B1 +B2 +H1'), JSON.stringify(await noteBody(N.b)));
+    await main('__jj.home.open(); 1');
+    await sleep(700);
+    wh = await page('home');
+    check('(c) 다시 보이면 편집기가 그 글로 그대로 열려 있다', (await editorBody()) === (await noteBody(N.b)));
+
+    // (d) 탭 바꾸기
+    await type(' +T1');
+    await tab('todo');
+    await sleep(700);
+    check('(d) 고치다 할 일 탭으로 바꾸면 고친 글이 저장된다', (await noteBody(N.b)).endsWith(' +H1 +T1'), JSON.stringify(await noteBody(N.b)));
+    await tab('note');
+    await sleep(700);
+    check('(d) 메모 탭으로 돌아오면 목록이고, 그 메모를 열면 고친 글이 그대로 있다', !(await shown('.note-editor')) && (await shown('.note-list-pane')), '');
+    await openNote(nB);
+    check('(d) 다시 연 메모에 고친 글이 들어 있다', (await editorBody()) === (await noteBody(N.b)), JSON.stringify(await editorBody()));
+
+    // (e) 창 닫기
+    await type(' +W1');
+    const beforeClose = await noteBody(N.b);
+    await main('__jj.home.window.close(); 1');
+    await sleep(1200);
+    check('(e) 고치다 큰 창을 닫으면 고친 글이 저장된다', (await noteBody(N.b)) === `${beforeClose} +W1`, JSON.stringify(await noteBody(N.b)));
+    await main("__jj.home.open('note'); 1");
+    await waitFor(homeAlive);
+    await sleep(1400);
+    wh = await page('home');
+    await setBounds(1100);
+    check('(e) 다시 열면 닫을 때 열려 있던 메모가 저장된 글로 열린다 (보관 글이 남아 되살리지 않는다)', (await editorBody()) === (await noteBody(N.b)) && !(await shown('.note-stale')), JSON.stringify(await editorBody()));
+
+    // (f) 다른 곳이 먼저 고쳤다 (거절): 같은 메모에 단추가 붙고, 다른 메모를 갔다 와도 그 메모에 붙어 있다
+    await openNote(nA);
+    const baseA2 = await noteBody(N.a);
+    await type(' +MINE');
+    await main(`__jj.notes.update(${N.a}, { body: 'ELSEWHERE' }, Date.now() + 5000); 1`);
+    await sleep(1400);
+    check('(f) 다른 곳이 먼저 고친 메모를 저장하면 거절 안내와 세 단추가 그 편집기에 뜬다', (await shown('.note-stale')) && (await wh.ev(`document.querySelectorAll('.note-stale button').length`)) === 3, String(await wh.ev(`document.querySelectorAll('.note-stale button').length`)));
+    check('(f) 거절되면 저장된 글은 그대로 ELSEWHERE, 내 글은 편집기에 있다', (await noteBody(N.a)) === 'ELSEWHERE' && (await editorBody()).endsWith('+MINE'), JSON.stringify(await noteBody(N.a)));
+    await openNote(nC);
+    check('(f) 다른 메모(C)로 가면 그 편집기에는 거절 단추가 없다 (A 에 붙어 있다)', !(await shown('.note-stale')) && (await editorBody()) === (await noteBody(N.c)));
+    const keptA = JSON.parse(await wh.ev(`JSON.stringify(window.jjakkungPanel.noteKeepGet(${N.a}))`));
+    check('(f) A 의 내 글과 거절 상태는 메인 보관 글에 남아 있다', keptA?.draft?.body === `${baseA2} +MINE` && keptA?.conflict?.body === 'ELSEWHERE', JSON.stringify(keptA)?.slice(0, 160));
+    check('(f) C 의 보관 글은 없다 (A 의 것이 C 에 붙지 않는다)', (await wh.ev(`JSON.stringify(window.jjakkungPanel.noteKeepGet(${N.c}))`)) === 'null');
+    await openNote(nA);
+    check('(f) A 로 돌아오면 거절 단추가 다시 A 편집기에 뜨고 내 글이 그대로다', (await shown('.note-stale')) && (await editorBody()) === `${baseA2} +MINE`, JSON.stringify(await editorBody()));
+    check('(f) 돌아와도 자동으로 저장하지 않는다 (저장된 글은 ELSEWHERE 그대로)', (await noteBody(N.a)) === 'ELSEWHERE');
+    await sleep(900);
+    check('(f) 한참 둬도 덮지 않는다', (await noteBody(N.a)) === 'ELSEWHERE');
+    // (g) 거절된 채 창을 닫는다
+    await main('__jj.home.window.close(); 1');
+    await sleep(800);
+    await main("__jj.home.open('note'); 1");
+    await waitFor(homeAlive);
+    await sleep(1400);
+    wh = await page('home');
+    await setBounds(1100);
+    check('(g) 거절된 채 창을 닫았다 열면 그 메모가 거절 단추와 함께 열린다', (await shown('.note-stale')) && (await editorBody()) === `${baseA2} +MINE`, JSON.stringify(await editorBody()));
+    check('(g) 그때도 저장된 글은 ELSEWHERE 그대로', (await noteBody(N.a)) === 'ELSEWHERE');
+    await wh.click(`[...document.querySelectorAll('.note-stale button')].find((b) => b.classList.contains('primary'))`);
+    await sleep(900);
+    check('(g) "내 글로 덮기"를 고르면 그때 내 글이 저장되고 단추가 사라진다', (await noteBody(N.a)) === `${baseA2} +MINE` && !(await shown('.note-stale')), JSON.stringify(await noteBody(N.a)));
+    check('(g) 고른 뒤 보관 글은 지워졌다', (await wh.ev(`JSON.stringify(window.jjakkungPanel.noteKeepGet(${N.a}))`)) === 'null');
+    // 저장된 글로 바꾸기
+    await type(' +MINE2');
+    await main(`__jj.notes.update(${N.a}, { body: 'ELSEWHERE2' }, Date.now() + 9000); 1`);
+    await sleep(1400);
+    await wh.click(`[...document.querySelectorAll('.note-stale button')].find((b) => !b.classList.contains('primary') && b.getAttribute('aria-expanded') === null)`);
+    await sleep(500);
+    check('(g) "저장된 글로 바꾸기"를 고르면 편집기가 저장된 글이 되고 내 글은 저장하지 않는다', (await editorBody()) === 'ELSEWHERE2' && (await noteBody(N.a)) === 'ELSEWHERE2' && !(await shown('.note-stale')), JSON.stringify(await editorBody()));
+
+    // (h) 닫는 순간(0.4초 안에) 다른 곳이 먼저 고쳤다
+    await resetHome();
+    await openNote(nB);
+    const baseB2 = await noteBody(N.b);
+    await type(' +LAST');
+    await main(`__jj.notes.update(${N.b}, { body: 'ELSEWHERE3' }, Date.now() + 15000); __jj.home.window.close(); 1`);
+    await sleep(1400);
+    check('(h) 닫는 순간 다른 곳이 먼저 고쳐 거절돼도 저장된 글은 덮이지 않는다', (await noteBody(N.b)) === 'ELSEWHERE3', JSON.stringify(await noteBody(N.b)));
+    await main("__jj.home.open('note'); 1");
+    await waitFor(homeAlive);
+    await sleep(1400);
+    wh = await page('home');
+    await setBounds(1100);
+    check('(h) 다시 열면 내 마지막 글이 살아 있고 거절 단추로 고르게 한다 (말없이 사라지지 않는다)', (await shown('.note-stale')) && (await editorBody()) === `${baseB2} +LAST`, JSON.stringify(await editorBody()));
+    check('(h) 그때도 자동으로 덮지 않았다', (await noteBody(N.b)) === 'ELSEWHERE3');
+    await wh.click(`[...document.querySelectorAll('.note-stale button')].find((b) => b.classList.contains('primary'))`);
+    await sleep(900);
+    check('(h) 내 글로 덮기를 고르면 마지막 글이 저장된다', (await noteBody(N.b)) === `${baseB2} +LAST`);
+
+    // (i) 닫는 순간 아무도 안 고쳤다: 보관 글이 남아 되살아나지 않는다
+    await openNote(nC);
+    const baseC = await noteBody(N.c);
+    await type(' +CLOSE');
+    await main('__jj.home.window.close(); 1');
+    await sleep(1200);
+    await main("__jj.home.open('note'); 1");
+    await waitFor(homeAlive);
+    await sleep(1400);
+    wh = await page('home');
+    await setBounds(1100);
+    check('(i) 0.4초 안에 닫아도 마지막 글이 저장되고 다시 열면 거절 단추 없이 그 글로 열린다', (await noteBody(N.c)) === `${baseC} +CLOSE` && !(await shown('.note-stale')) && (await editorBody()) === `${baseC} +CLOSE`, JSON.stringify(await noteBody(N.c)));
+    check('(i) 보관 글이 남아 있지 않다', (await wh.ev(`JSON.stringify(window.jjakkungPanel.noteKeepGet(${N.c}))`)) === 'null');
+
+    // 새 메모와 지우기
+    const countNotes = () => main(`__jj.notes.list().length`);
+    const n0 = await countNotes();
+    await wh.click(`document.querySelector('.note-list-pane .add.row .primary')`);
+    await sleep(700);
+    check('새 메모를 누르면 목록은 그대로 두고 오른쪽에 빈 편집기가 열린다', (await countNotes()) === n0 + 1 && (await shown('.note-editor')) && (await editorBody()) === '' && (await wh.ev(`document.querySelectorAll('li.note-row').length`)) >= 4);
+    await openNote(nA);
+    await sleep(500);
+    check('빈 새 메모를 두고 다른 메모를 누르면 빈 메모가 소리 없이 사라진다 (목록에 빈 메모가 안 남는다)', (await countNotes()) === n0, `${await countNotes()} vs ${n0}`);
+    await wh.click(`document.querySelector('.note-editor .link.danger')`);
+    await sleep(700);
+    check('지우기를 누르면 편집기가 닫혀 안내 글이 돌아오고 목록에서 빠진다', (await countNotes()) === n0 - 1 && (await shown('.note-pane-empty')));
+    await wh.ev(`document.querySelector('.toast .undo')?.click(); 1`);
+    await sleep(600);
+    check('지운 메모를 되돌리면 돌아온다', (await countNotes()) === n0);
+
+    // 폭을 줄이면 한 열: 열려 있는 편집기와 쓰던 글이 그대로
+    await openNote(nB);
+    await wh.ev(`window.__ed = document.querySelector('.note-editor textarea'); 1`);
+    await type(' +NARROW');
+    await setBounds(760);
+    check('1100 에서 760 으로 줄이면 편집기 하나만 (목록 칸 사라짐, 뒤로 단추 보임)', !(await shown('.note-list-pane')) && (await shown('.note-editor')) && (await shown('.note-bar .back')));
+    check('줄여도 같은 편집기 칸이 살아 있고 쓰던 글이 그대로다 (갈아 끼워지지 않는다)', (await wh.ev(`window.__ed === document.querySelector('.note-editor textarea')`)) && (await editorBody()).endsWith('+NARROW'));
+    await sleep(900);
+    check('줄인 뒤 쓰던 글이 저장된다', (await noteBody(N.b)).endsWith('+NARROW'));
+    await wh.click(`document.querySelector('.note-bar .back')`);
+    await sleep(500);
+    check('760 에서 뒤로를 누르면 예전처럼 목록 하나', (await shown('.note-list-pane')) && !(await shown('.note-editor')) && !(await shown('.note-pane-empty')));
+    await setBounds(1100);
+    check('다시 1100 으로 넓히면 나란히 + 안내 글', (await shown('.note-list-pane')) && (await shown('.note-pane-empty')));
+
+    // 폭별 찍기와 넘침
+    for (const w of [760, 1100, 1440]) {
+      await setBounds(w);
+      await tab('note');
+      await openNote(nA);
+      const mark = `폭 ${w}`;
+      const split = (await wh.ev(`document.getElementById('ptab-panel').dataset.zone`)) === 'wide';
+      check(`${mark} 메모: ${split ? '목록과 편집기가 나란히' : '편집기 하나'}`, (await shown('.note-list-pane')) === split && (await shown('.note-editor')));
+      for (const dark of [false, true]) {
+        await wh.dark(dark);
+        await sleep(200);
+        await wh.shot(`lists-note-w${w}-${dark ? 'dark' : 'light'}`);
+        const over = await overflow(wh);
+        check(`${mark} 메모: 가로 넘침 없음 ${dark ? '어두움' : '밝음'}`, over.length === 0, over.join(', '));
+      }
+      await wh.dark(false);
+    }
+    // 글 크기 1.5배, 폭 1440
+    await setBounds(1440);
+    await main('__jj.home.window.webContents.setZoomFactor(1.5); 1');
+    await sleep(700);
+    for (const id of ['todo', 'note']) {
+      await tab(id);
+      const over = await overflow(wh);
+      check(`글 크기 1.5배 폭 1440: ${id} 가로 넘침 없음`, over.length === 0, over.join(', '));
+    }
+    await main('__jj.home.window.webContents.setZoomFactor(1); 1');
+    await closeHome();
+
+    // ---- 작은 패널 회귀: 320/360 좁음, 560 보통. 예전 그대로 한 열 ----
+    await setView('compact');
+    await main('__jj.panel.togglePanel(); 1');
+    await waitFor(panelAlive);
+    await sleep(1200);
+    await main("__jj.panel.window.removeAllListeners('blur'); 1");
+    const pp = await page('panel');
+    const ppos = (sel) =>
+      pp.ev(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, r: r.right, b: r.bottom }; })()`);
+    for (const w of [320, 360, 560]) {
+      await main(`__jj.panel.window.setBounds({ ...__jj.panel.window.getBounds(), width: ${w}, height: 680 }); 1`);
+      await sleep(600);
+      const mark = `작은 패널 ${w}`;
+      await main("__jj.panel.openTab('todo'); 1");
+      await sleep(500);
+      const zone = await pp.ev(`document.getElementById('ptab-panel').dataset.zone`);
+      check(`${mark}: 구간은 ${w >= 520 ? '보통' : '좁음'}`, zone === (w >= 520 ? 'medium' : 'narrow'), zone);
+      check(`${mark} 할 일: 한 열 (태그 칸, 상세 칸 없음), 칩은 목록 위 가로 줄, 줄 끝 단추 예전 그대로`, !(await pp.ev(`document.querySelector('.todo-layout').classList.contains('wide')`)) && !(await pp.ev(`!!document.querySelector('.todo-tags')?.offsetParent`)) && !(await pp.ev(`!!document.querySelector('.todo-detail')?.offsetParent`)) && (await pp.ev(`getComputedStyle(document.querySelector('.todo-main > .tag-chips')).flexDirection`)) === 'row' && (await pp.ev(`document.querySelectorAll('li.todo .tools .extra').length`)) > 0);
+      let over = await overflow(pp, '.surface');
+      check(`${mark} 할 일: 가로 넘침 없음`, over.length === 0, over.join(', '));
+      await pp.shot(`lists-panel-todo-w${w}`);
+      await main("__jj.panel.openTab('note'); 1");
+      await sleep(500);
+      check(`${mark} 메모: 한 열 (나란히 아님), 목록이 보인다`, !(await pp.ev(`document.querySelector('.note-layout').classList.contains('split')`)) && (await pp.ev(`!!document.querySelector('.note-list-pane')?.offsetParent`)) && !(await pp.ev(`!!document.querySelector('.note-pane-empty')?.offsetParent`)));
+      await pp.click(`[...document.querySelectorAll('li.note-row')][0]?.querySelector('button')`);
+      await sleep(500);
+      check(`${mark} 메모: 열면 편집기 하나, 목록은 사라지고 뒤로 단추가 있다`, (await pp.ev(`!!document.querySelector('.note-editor')?.offsetParent`)) && !(await pp.ev(`!!document.querySelector('.note-list-pane')?.offsetParent`)) && (await pp.ev(`!!document.querySelector('.note-bar .back')?.offsetParent`)));
+      over = await overflow(pp, '.surface');
+      check(`${mark} 메모: 가로 넘침 없음`, over.length === 0, over.join(', '));
+      await pp.shot(`lists-panel-note-w${w}`);
+      await pp.click(`document.querySelector('.note-bar .back')`);
+      await sleep(400);
+    }
+    await closePanel();
+    await setView('compact');
   }
 
   /**
@@ -954,6 +1472,7 @@ const body = async () => {
     check(`본문 칸 구간: 폭 ${w} 은 ${want}`, zone === want, zone);
   }
   await wideLayouts();
+  await listsLayouts();
   await closeHome();
   await main("__jj.home.open('today'); 1");
   await waitFor(homeAlive);

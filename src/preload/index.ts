@@ -533,6 +533,11 @@ if (kind === 'panel' || kind === 'home' || kind === 'quick') {
     onTab: (listener) => {
       ipcRenderer.on(PANEL.tab, (_e, tab: PanelTab) => listener(tab));
     },
+    onHiding: (listener) => {
+      const on = () => listener();
+      ipcRenderer.on(PANEL.hiding, on);
+      return () => void ipcRenderer.removeListener(PANEL.hiding, on);
+    },
   };
   contextBridge.exposeInMainWorld('jjakkungPanel', panel);
   // 하루 도구 (습관, 아침 계획, 방금 울린 알림 미루기, shared/day-ipc.ts)
