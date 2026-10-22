@@ -109,6 +109,25 @@ export function lockedStats(rows: Array<{ v: string | null; n: number }>, levels
   return { min: levels.min ?? null, restrict: levels.restrict ?? null, locked, restricted, unknown };
 }
 
+/** 기준 세 개를 걸었을 때 영향받는 인원 (최근 30일 활동 계정). 판을 모르는 계정은 0.0.0 으로 본다 */
+export interface VersionImpact extends LockedStats {
+  /** 최근 30일 활동한 계정 전체 */
+  active: number;
+  /** 권장 기준보다 낮아 업데이트 권장 알림을 받는 수 (잠기거나 막히는 계정도 포함) */
+  recommended: number;
+}
+
+export function impactOf(rows: Array<{ v: string | null; n: number }>, levels: UpdateLevels): VersionImpact {
+  let active = 0;
+  let recommended = 0;
+  for (const r of rows) {
+    active += r.n;
+    const v = r.v !== null && isVersion(r.v) ? r.v : '0.0.0';
+    if (levels.recommend && cmpVersion(v, levels.recommend) < 0) recommended += r.n;
+  }
+  return { ...lockedStats(rows, levels), active, recommended };
+}
+
 // ---- 그림 ----
 
 const W = 280;

@@ -33,8 +33,8 @@ const LEGACY: Array<[string, string]> = [
   ['', '#home'],
   ['/users', '#users/list'],
   ['/grants', '#users/grants'],
-  ['/notices', '#announce/notices'],
-  ['/events', '#announce/events'],
+  ['/notices', '#announce/posts'],
+  ['/events', '#announce/posts'],
   ['/features', '#settings/features'],
   ['/ai', '#settings/ai'],
   ['/log', '#settings/log'],
@@ -55,9 +55,8 @@ describe('운영자 다섯 칸과 이용자 표', () => {
     for (const sub of [
       'users-list',
       'users-grants',
-      'announce-notices',
-      'announce-events',
-      'announce-coupons',
+      'announce-posts',
+      'announce-new',
       'settings-features',
       'settings-ai',
       'settings-log',
@@ -67,9 +66,9 @@ describe('운영자 다섯 칸과 이용자 표', () => {
     for (const action of [
       '/admin/grants/preview',
       '/admin/notices/preview',
-      '/admin/versions',
-      '/admin/events',
-      '/admin/coupons',
+      '/admin/versions/preview',
+      '/admin/events/preview',
+      '/admin/coupons/preview',
       '/admin/rewards/policy',
       '/admin/features/mode',
       '/admin/features/allow',
@@ -370,7 +369,7 @@ describe('발행과 지급의 공통 흐름 (작성, 대상 확인, 미리보기
       body_en: 'Body',
     };
     const r = await admin.post('/admin/notices/preview', form);
-    assert.equal(r.headers.get('location'), '/admin#announce/notices');
+    assert.equal(r.headers.get('location'), '/admin#announce/new');
     const before = await h.pool.query(`SELECT 1 FROM site_doc WHERE name = 'notices'`);
     const page = await admin.page();
     const announce = cellOf(page.text, 'announce');

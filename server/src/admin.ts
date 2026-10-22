@@ -20,7 +20,7 @@ import type { PoolClient } from 'pg';
 import { lockAccount, lockAccountsOrdered } from './accounts';
 import { AdminAccess } from './admin-access';
 import { AdminAuth, type AdminSession, actorOf, clearCookie } from './admin-auth';
-import { type BackupStatus, fillDays, lockedStats, TREND_DAYS, type TrendView } from './admin-home';
+import { type BackupStatus, fillDays, impactOf, lockedStats, TREND_DAYS, type TrendView } from './admin-home';
 import {
   type AdminCell,
   type AdminPlace,
@@ -43,6 +43,15 @@ import {
   todoOf,
   type UserHistory,
 } from './admin-page';
+import {
+  formDefaults,
+  type LoadedForm,
+  noticeFields,
+  type PostFilter,
+  type PostsView,
+  postFilterOf,
+  queryPosts,
+} from './admin-posts';
 import { AI_MODES, AiAdmin, type AiMode, type AiSettings, findAccount } from './ai-admin';
 import { CONFIG } from './app.tokens';
 import { AuthGuard } from './auth.guard';
@@ -58,6 +67,7 @@ import {
   type DocNotice,
   emptyDoc,
   type FormFields,
+  keepOmitted,
   type NoticeDoc,
   noticeFromForm,
   parseKstInput,
@@ -67,7 +77,14 @@ import {
 import { ipKey, LIMITS, RateLimiter } from './rate-limit';
 import { Rewards } from './rewards';
 import { normalizeDeviceCode } from './shared/account-profile';
-import { COUPON_ALPHABET, COUPON_LENGTH, formatCoupon, kstIso, parseEvent } from './shared/site-events';
+import {
+  COUPON_ALPHABET,
+  COUPON_LENGTH,
+  formatCoupon,
+  kstIso,
+  parseEvent,
+  type SiteEvent,
+} from './shared/site-events';
 import { levelsOrder, normalVersion } from './shared/update-levels';
 import { sha256 } from './tokens';
 
@@ -152,11 +169,45 @@ export const isAdminAction = (v: string): v is AdminAction =>
   (ADMIN_ACTIONS as readonly string[]).includes(v);
 
 /** 작성, 대상 확인, 미리보기, 확정 흐름을 타는 쓰기 (웹만. 앱 API 는 이전 그대로 한 번에 쓴다) */
-export const FLOW_ACTIONS = ['grants/batch', 'notices'] as const;
+export const FLOW_ACTIONS = ['grants/batch', 'notices', 'events', 'coupons', 'versions'] as const;
 export type FlowAction = (typeof FLOW_ACTIONS)[number];
 /** 대상 확인 화면을 이만큼 지나면 버린다 */
 const PREVIEW_MS = 30 * 60_000;
 const isFlowAction = (v: unknown): v is FlowAction => (FLOW_ACTIONS as readonly unknown[]).includes(v);
+
+/** 초안을 둘 수 있는 폼 (알리기의 네 가지) */
+export const DRAFT_KINDS = ['notices', 'events', 'coupons', 'versions'] as const;
+export type DraftKind = (typeof DRAFT_KINDS)[number];
+export const isDraftKind = (v: unknown): v is DraftKind => (DRAFT_KINDS as readonly unknown[]).includes(v);
+/** 초안에 담는 칸 (이 밖의 칸은 버린다: csrf, 확인, 번호는 담지 않는다) */
+const DRAFT_FIELDS = new Set([
+  'id',
+  'kind',
+  'title_ko',
+  'title_en',
+  'body_ko',
+  'body_en',
+  'link',
+  'from',
+  'until',
+  'versions',
+  'platforms',
+  'coins',
+  'reasons',
+  'times',
+  'label',
+  'tickets',
+  'max_uses',
+  'minVersion',
+  'restrictVersion',
+  'recommendVersion',
+  'msg_kind',
+  'msg_title_ko',
+  'msg_title_en',
+  'msg_body_ko',
+  'msg_body_en',
+  'msg_link',
+]);
 
 interface AccountRow {
   id: string;
@@ -845,7 +896,8 @@ export class AdminService {
     });
   }
 
-  async createEvent(actor: string, f: FormFields, now = Date.now()): Promise<AdminDone> {
+  /** 폼의 이벤트 칸을 검사해 이벤트 하나로 (틀리면 Refused). 미리보기와 만들기가 같이 쓴다 */
+  eventFromForm(f: FormFields, now = Date.now()): SiteEvent {
     const from = parseKstInput(f.from);
     const until = parseKstInput(f.until);
     if (from === undefined || until === undefined || Number.isNaN(from) || Number.isNaN(until))
@@ -868,6 +920,13 @@ export class AdminService {
       throw new Refused(
         'id(영문, 숫자, ., _, - 40자), 제목(60자), 본문(300자) ko/en, 선물 코인(1~1000) 또는 배수(까닭 하나 이상, 2배나 3배)를 확인해 주세요',
       );
+    return e;
+  }
+
+  async createEvent(actor: string, f: FormFields, now = Date.now()): Promise<AdminDone> {
+    const e = this.eventFromForm(f, now);
+    const fromIso = kstIso(e.from);
+    const untilIso = kstIso(e.until);
     return this.write(actor, async (c) => {
       const r = await c.query(
         `INSERT INTO event (id, kind, title_ko, title_en, body_ko, body_en, starts_at, ends_at, coins, boost_reasons, boost_times)
@@ -893,7 +952,7 @@ export class AdminService {
         log: [
           'event.create',
           e.id,
-          { kind: e.kind, coins: e.coins, boost: e.boost, from: raw.from, until: raw.until },
+          { kind: e.kind, coins: e.coins, boost: e.boost, from: fromIso, until: untilIso },
         ],
       };
     });
@@ -919,7 +978,15 @@ export class AdminService {
     });
   }
 
-  async createCoupon(actor: string, f: FormFields): Promise<AdminDone> {
+  /** 폼의 쿠폰 칸을 검사 (틀리면 Refused). from 이 undefined 면 만드는 순간부터 */
+  couponFromForm(f: FormFields): {
+    label: string;
+    coins: number;
+    tickets: number;
+    maxUses: number;
+    from: number | undefined;
+    until: number;
+  } {
     const label = cleanText(f.label);
     if (!label || label.length > 80) throw new Refused('메모는 80자까지');
     const coins = int(f.coins, 0, 1000, '코인');
@@ -927,10 +994,18 @@ export class AdminService {
     if (coins + tickets === 0) throw new Refused('코인이나 대화권 중 하나는 넣어 주세요');
     const maxUses = int(f.max_uses, 1, 100000, '전체 사용 상한');
     if (maxUses === 0) throw new Refused('전체 사용 상한을 넣어 주세요');
-    const from = parseKstInput(f.from) ?? Date.now();
+    const from = parseKstInput(f.from);
     const until = parseKstInput(f.until);
-    if (Number.isNaN(from) || until === undefined || Number.isNaN(until) || until <= from)
+    if ((from !== undefined && Number.isNaN(from)) || until === undefined || Number.isNaN(until))
       throw new Refused('기간을 확인해 주세요 (끝이 시작보다 뒤)');
+    if (until <= (from ?? Date.now())) throw new Refused('기간을 확인해 주세요 (끝이 시작보다 뒤)');
+    return { label, coins, tickets, maxUses, from, until };
+  }
+
+  async createCoupon(actor: string, f: FormFields): Promise<AdminDone> {
+    const k = this.couponFromForm(f);
+    const { label, coins, tickets, maxUses, until } = k;
+    const from = k.from ?? Date.now();
     const code = newCouponCode();
     return this.write(actor, async (c) => {
       const r = await c.query<{ id: string }>(
@@ -1083,13 +1158,60 @@ export class AdminService {
    * 작성 값이 흐름에 올라갈 수 있는지 본다 (확정 단계의 같은 검사를 확인 칸만 빼고 한다). 아무것도 쓰지 않는다.
    * 맞지 않으면 Refused
    */
-  checkFlow(action: FlowAction, f: FormFields): void {
+  async checkFlow(action: FlowAction, f: FormFields): Promise<void> {
     if (action === 'grants/batch') {
       grantInput({ ...f, confirm: 'yes' });
       return;
     }
+    if (action === 'events') {
+      this.eventFromForm(f);
+      return;
+    }
+    if (action === 'coupons') {
+      this.couponFromForm(f);
+      return;
+    }
+    if (action === 'versions') {
+      const v = this.versionFromForm(f);
+      // 기능 제한 칸을 보내지 않으면 저장된 값을 지키므로 순서는 그 값까지 넣어 본다
+      if (v.restrictGiven === undefined) {
+        const doc = await this.currentDoc();
+        const order = levelsOrder({ min: v.min, restrict: doc.restrictVersion ?? '', recommend: v.rec });
+        if (order) throw new Refused(order, 'order');
+      }
+      return;
+    }
     const n = noticeFromForm(f);
     if (typeof n === 'string') throw new Refused(n);
+  }
+
+  private async currentDoc(): Promise<NoticeDoc> {
+    const r = await this.db.pool.query<{ body: unknown }>(`SELECT body FROM site_doc WHERE name = 'notices'`);
+    return readDoc(r.rows[0]?.body);
+  }
+
+  /**
+   * 미리보기 때 검사를 거친 값을 한 글로 (확정 때 다시 만든 것과 통째로 비교한다). 확인 칸, 번호 같은 칸은 들어가지 않는다.
+   * 시각에 따라 달라지는 값(쿠폰의 "비우면 지금")은 비운 채로 둔다
+   */
+  flowNorm(action: Exclude<FlowAction, 'grants/batch'>, f: FormFields): string {
+    if (action === 'events') return JSON.stringify(this.eventFromForm(f, 0));
+    if (action === 'coupons') {
+      const k = this.couponFromForm(f);
+      return JSON.stringify({ ...k, from: k.from ?? null });
+    }
+    if (action === 'versions') return JSON.stringify(this.versionFromForm(f));
+    return JSON.stringify(noticeFromForm(f));
+  }
+
+  /** 확정 폼의 값이 미리보기 때 검사한 값과 같은가. 확정 값이 검사를 못 넘으면 다르다고 본다 */
+  sameFlow(action: Exclude<FlowAction, 'grants/batch'>, kept: string | undefined, f: FormFields): boolean {
+    if (kept === undefined) return false;
+    try {
+      return this.flowNorm(action, f) === kept;
+    } catch {
+      return false;
+    }
   }
 
   /** 세션에 둔 작성 값으로 미리보기를 그린다: 지급은 받을 사람을 한 줄씩 찾아 보이고, 공지는 같은 id 가 있는지 본다 */
@@ -1100,10 +1222,33 @@ export class AdminService {
   ): Promise<FlowPreview | undefined> {
     const f = fieldsOf(fields);
     try {
-      this.checkFlow(action, f);
+      await this.checkFlow(action, f);
     } catch {
       return undefined;
     }
+    if (action === 'events') {
+      const event = this.eventFromForm(f);
+      const dup = await this.db.pool.query('SELECT 1 FROM event WHERE id = $1', [event.id]);
+      return {
+        action,
+        fields,
+        nonce,
+        event,
+        exists: (dup.rowCount ?? 0) > 0,
+        loginOnly: await this.rewards.loginOnly(),
+      };
+    }
+    if (action === 'coupons') {
+      const k = this.couponFromForm(f);
+      return {
+        action,
+        fields,
+        nonce,
+        coupon: { ...k, from: k.from ?? null },
+        loginOnly: await this.rewards.loginOnly(),
+      };
+    }
+    if (action === 'versions') return this.versionPreview(fields, nonce, f);
     if (action === 'notices') {
       const n = noticeFromForm(f) as DocNotice;
       const doc = await this.db.pool.query<{ body: unknown }>(
@@ -1180,6 +1325,61 @@ export class AdminService {
     };
   }
 
+  /** 버전 미리보기: 지금과 저장한 뒤의 기준, 영향 인원, 올리기 검사, 같이 넣는 안내문 */
+  private async versionPreview(
+    fields: Record<string, string | string[]>,
+    nonce: string,
+    f: FormFields,
+  ): Promise<FlowPreview> {
+    const v = this.versionFromForm(f);
+    const doc = await this.currentDoc();
+    const restrict = v.restrictGiven ?? doc.restrictVersion ?? '';
+    const before = {
+      min: doc.minVersion ?? '',
+      restrict: doc.restrictVersion ?? '',
+      rec: doc.recommendVersion ?? '',
+    };
+    const after = { min: v.min, restrict, rec: v.rec };
+    const raises = {
+      min: !!after.min && (!before.min || compareVersion(after.min, before.min) > 0),
+      restrict: !!after.restrict && (!before.restrict || compareVersion(after.restrict, before.restrict) > 0),
+      rec: !!after.rec && (!before.rec || compareVersion(after.rec, before.rec) > 0),
+    };
+    const rows = await this.versionRows();
+    const lv = (x: { min: string; restrict: string; rec: string }) => ({
+      ...(x.min ? { min: x.min } : {}),
+      ...(x.restrict ? { restrict: x.restrict } : {}),
+      ...(x.rec ? { recommend: x.rec } : {}),
+    });
+    const latest = (await this.feeds.latestRelease()) ?? null;
+    let blocked: string | null = null;
+    for (const [name, next, up] of [
+      ['최소 버전', after.min, raises.min],
+      ['기능 제한 버전', after.restrict, raises.restrict],
+      ['권장 버전', after.rec, raises.rec],
+    ] as const) {
+      if (!up) continue;
+      if (!latest) blocked = `최신 릴리스를 읽지 못해 ${name}을 올릴 수 없어요. 잠시 뒤 다시 해 주세요`;
+      else if (compareVersion(next, latest) > 0)
+        blocked = `${name} ${next} 는 최신 릴리스 ${latest} 보다 높아요 (앱이 풀 수 없어요)`;
+      if (blocked) break;
+    }
+    return {
+      action: 'versions',
+      fields,
+      nonce,
+      before,
+      after,
+      raises,
+      impactNow: impactOf(rows, lv(before)),
+      impactAfter: impactOf(rows, lv(after)),
+      latest,
+      message: v.msg ?? null,
+      blocked,
+      needsConfirm: raises.min || raises.restrict || v.msg?.kind === 'force',
+    };
+  }
+
   /**
    * 지급 작성 값이 가리키는 받는 계정들(남은 계정 번호, 겹침 없음). 한 곳이라도 못 찾으면 빈 목록.
    * 미리보기 때 세션에 두고, 확정 때 다시 찾은 결과와 맞는지 본다 (대상 바꿔치기, 그사이 합쳐짐 막기)
@@ -1193,6 +1393,125 @@ export class AdminService {
       ids.add(await this.liveId(id));
     }
     return [...ids];
+  }
+
+  // ---- 알리기: 게시물 목록, 불러오기, 초안 (이슈 #154) ----
+
+  /** 공지, 이벤트, 쿠폰, 버전 기준을 한 목록으로 (찾는 말과 상태로 거른다) */
+  async posts(filter: PostFilter): Promise<PostsView> {
+    return queryPosts(this.db.pool, await this.currentDoc(), filter);
+  }
+
+  /** 목록에서 "불러와 고치기": 공지는 같은 id 로 바꾸고, 이벤트와 쿠폰은 복사해서 새로 만든다 (새 id 와 기간) */
+  async loadForm(spec: string): Promise<LoadedForm | undefined> {
+    const [kind, ...rest] = spec.split(':');
+    const id = rest.join(':');
+    const d = formDefaults();
+    if (kind === 'version') {
+      const doc = await this.currentDoc();
+      return {
+        form: 'versions',
+        fields: {
+          minVersion: doc.minVersion ?? '',
+          restrictVersion: doc.restrictVersion ?? '',
+          recommendVersion: doc.recommendVersion ?? '',
+        },
+        note: '지금 저장된 기준을 불러왔어요',
+      };
+    }
+    if (kind === 'notice') {
+      const n = (await this.currentDoc()).notices.find((x) => x.id === id);
+      if (!n) return undefined;
+      return {
+        form: 'notices',
+        fields: noticeFields(n),
+        note: `공지 ${n.id} 를 불러왔어요. 같은 id 로 저장하면 이 공지를 바꿔요`,
+      };
+    }
+    if (kind === 'event') {
+      const r = await this.db.pool.query<EventRow>(`SELECT ${EVENT_COLUMNS} FROM event WHERE id = $1`, [id]);
+      const e = r.rows[0];
+      if (!e) return undefined;
+      return {
+        form: 'events',
+        fields: {
+          id: `${e.id.slice(0, 36)}-2`,
+          kind: e.kind,
+          title_ko: e.title_ko,
+          title_en: e.title_en,
+          body_ko: e.body_ko,
+          body_en: e.body_en,
+          from: d.start,
+          until: d.weekLater,
+          coins: e.coins ? String(e.coins) : '',
+          reasons: e.boost_reasons ?? [],
+          times: e.boost_times ? String(e.boost_times) : '2',
+        },
+        note: `이벤트 ${e.id} 를 복사했어요. 이벤트는 만든 뒤 고칠 수 없어서 새 id 와 새 기간으로 만들어요`,
+      };
+    }
+    if (kind === 'coupon' && /^\d{1,18}$/.test(id)) {
+      const r = await this.db.pool.query<{ label: string; coins: number; tickets: number; max_uses: number }>(
+        'SELECT label, coins, tickets, max_uses FROM coupon WHERE id = $1',
+        [id],
+      );
+      const c = r.rows[0];
+      if (!c) return undefined;
+      return {
+        form: 'coupons',
+        fields: {
+          label: c.label,
+          coins: String(c.coins),
+          tickets: String(c.tickets),
+          max_uses: String(c.max_uses),
+          from: '',
+          until: d.monthLater,
+        },
+        note: `쿠폰 #${id} 를 복사했어요. 쿠폰은 만든 뒤 고칠 수 없고 코드는 새로 만들어져요`,
+      };
+    }
+    return undefined;
+  }
+
+  /** 쓰다 만 폼을 종류마다 한 개 둔다 (같은 종류를 다시 저장하면 덮어쓴다) */
+  async saveDraft(actor: string, kind: DraftKind, f: FormFields): Promise<void> {
+    const fields = draftOf(f);
+    for (const k of Object.keys(fields)) if (!DRAFT_FIELDS.has(k)) delete fields[k];
+    if (Object.keys(fields).length === 0) throw new Refused('저장할 내용이 없어요');
+    await this.db.tx(async (c) => {
+      await c.query(
+        `INSERT INTO admin_draft (kind, body, saved_by) VALUES ($1, $2, $3)
+         ON CONFLICT (kind) DO UPDATE SET body = EXCLUDED.body, saved_by = EXCLUDED.saved_by, updated_at = now()`,
+        [kind, JSON.stringify(fields), actor.slice(0, 120)],
+      );
+      await adminLog(c, actor, 'draft.save', kind);
+    });
+  }
+
+  async deleteDraft(actor: string, kind: DraftKind): Promise<void> {
+    await this.db.tx(async (c) => {
+      const r = await c.query('DELETE FROM admin_draft WHERE kind = $1', [kind]);
+      if ((r.rowCount ?? 0) > 0) await adminLog(c, actor, 'draft.delete', kind);
+    });
+  }
+
+  async draft(
+    kind: DraftKind,
+  ): Promise<{ fields: Record<string, string | string[]>; at: number } | undefined> {
+    const r = await this.db.pool.query<{ body: Record<string, string | string[]>; at: string }>(
+      `SELECT body, (extract(epoch FROM updated_at) * 1000)::bigint AS at FROM admin_draft WHERE kind = $1`,
+      [kind],
+    );
+    const row = r.rows[0];
+    return row ? { fields: row.body, at: Number(row.at) } : undefined;
+  }
+
+  /** 초안이 있는 종류와 저장 시각 (작성 화면에 "불러오기" 로 보인다) */
+  async draftTimes(): Promise<Partial<Record<DraftKind, number>>> {
+    const r = await this.db.pool.query<{ kind: DraftKind; at: string }>(
+      `SELECT kind, (extract(epoch FROM updated_at) * 1000)::bigint AS at FROM admin_draft`,
+    );
+    return Object.fromEntries(r.rows.map((x) => [x.kind, Number(x.at)]));
   }
 
   /** 이용자 하나의 코인 내역, 받은 쪽지(지급) 내역, 이 사람에 대한 운영 기록. 합친 계정 묶음 기준, 각 최근 몇 건 */
@@ -1757,12 +2076,15 @@ export class AdminService {
 
   /** 공지 넣기. 같은 id 가 있으면 바꾼다 (이미 닫은 알림은 다시 안 뜨므로 정정은 새 id 로) */
   async saveNotice(actor: string, f: FormFields): Promise<AdminDone> {
-    const n = noticeFromForm(f);
-    if (typeof n === 'string') throw new Refused(n);
-    if (n.kind === 'force' && f.confirm !== 'yes')
+    const first = noticeFromForm(f);
+    if (typeof first === 'string') throw new Refused(first);
+    if (first.kind === 'force' && f.confirm !== 'yes')
       throw new Refused('확인 칸을 체크해 주세요 (강제 업데이트 글)', 'confirm');
     return this.editDoc(actor, async (doc) => {
-      const i = doc.notices.findIndex((x) => x.id === n.id);
+      const i = doc.notices.findIndex((x) => x.id === first.id);
+      // 옛 앱이 빠뜨린 칸(기간, 대상 버전, 운영체제)은 기존 공지의 값을 지킨다
+      const n = noticeFromForm(keepOmitted(f, doc.notices[i]));
+      if (typeof n === 'string') throw new Refused(n);
       if (i >= 0) doc.notices[i] = n;
       else doc.notices.push(n);
       return {
@@ -1796,9 +2118,17 @@ export class AdminService {
    * 요구하면 앱이 풀 수 없다). 최신 릴리스를 못 읽으면 올리기를 막는다 (내리기와 지우기는 된다). 강제와 기능 제한을 올릴 때는
    * 확인 칸을 체크해야 한다 (낮은 앱이 잠기거나 서버 기능이 막힌다). 세 값의 순서는 강제 ≤ 기능 제한 ≤ 권장 (issue #120)
    */
-  async saveVersions(actor: string, f: FormFields): Promise<AdminDone> {
-    // 판은 숫자로 맞춘다 (0000.0005.0000 → 0.5.0). 기능 제한 칸이 아예 없으면(undefined) 그 값을 그대로 둔다
-    // (옛 폼은 이 칸이 없었다). 칸이 있고 비었으면 지운다
+  /**
+   * 버전 폼의 값을 검사해 정리한다 (틀리면 Refused). 판은 숫자로 맞춘다 (0000.0005.0000 → 0.5.0). 기능 제한 칸이 아예
+   * 없으면(undefined) 그 값을 그대로 둔다 (옛 폼은 이 칸이 없었다). 칸이 있고 비었으면 지운다.
+   * 안내문(msg_kind 가 force 나 update)이 있으면 같은 저장에서 공지 하나로 함께 넣는다: id 는 종류와 판, 대상은 그 판보다 낮은 앱
+   */
+  versionFromForm(f: FormFields): {
+    min: string;
+    restrictGiven: string | undefined;
+    rec: string;
+    msg: DocNotice | undefined;
+  } {
     const norm = (raw: string | undefined, name: string): string => {
       const v = (raw ?? '').trim();
       if (!v) return '';
@@ -1809,6 +2139,49 @@ export class AdminService {
     const restrictGiven =
       f.restrictVersion === undefined ? undefined : norm(f.restrictVersion, '기능 제한 버전');
     const rec = norm(f.recommendVersion, '권장 버전');
+    const order = levelsOrder({ min, restrict: restrictGiven ?? '', recommend: rec });
+    if (order) throw new Refused(order, 'order');
+    let msg: DocNotice | undefined;
+    const kind = (f.msg_kind ?? '').trim();
+    if (kind) {
+      if (kind !== 'force' && kind !== 'update') throw new Refused('안내문 종류가 이상해요');
+      const level = kind === 'force' ? min : rec;
+      if (!level)
+        throw new Refused(
+          kind === 'force'
+            ? '강제 안내문은 최소 버전을 정해야 해요'
+            : '권장 안내문은 권장 버전을 정해야 해요',
+        );
+      const n = noticeFromForm({
+        id: `${kind}-${level}`,
+        kind,
+        title_ko: f.msg_title_ko,
+        title_en: f.msg_title_en,
+        body_ko: f.msg_body_ko,
+        body_en: f.msg_body_en,
+        link: f.msg_link,
+        versions: `<${level}`,
+      });
+      if (typeof n === 'string') throw new Refused(`안내문: ${n}`);
+      msg = n;
+    }
+    return { min, restrictGiven, rec, msg };
+  }
+
+  /** 지금 판 분포 (최근 30일 활동 계정). 영향 인원을 세는 데 쓴다 */
+  async versionRows(): Promise<Array<{ v: string | null; n: number }>> {
+    const r = await this.db.pool.query<{ v: string | null; n: string }>(
+      `SELECT app_version AS v, count(*) AS n FROM account
+        WHERE closed_at IS NULL AND merged_into IS NULL AND last_active_at > now() - interval '30 days'
+        GROUP BY app_version`,
+    );
+    return r.rows.map((x) => ({ v: x.v, n: Number(x.n) }));
+  }
+
+  async saveVersions(actor: string, f: FormFields): Promise<AdminDone> {
+    const { min, restrictGiven, rec, msg } = this.versionFromForm(f);
+    if (msg?.kind === 'force' && f.confirm !== 'yes')
+      throw new Refused('확인 칸을 체크해 주세요 (강제 업데이트 안내문)', 'confirm');
     const latest = await this.feeds.latestRelease();
     return this.editDoc(actor, async (doc) => {
       const restrict = restrictGiven ?? doc.restrictVersion ?? '';
@@ -1841,6 +2214,11 @@ export class AdminService {
         restrictVersion: doc.restrictVersion ?? null,
         recommendVersion: doc.recommendVersion ?? null,
       };
+      if (msg) {
+        const i = doc.notices.findIndex((x) => x.id === msg.id);
+        if (i >= 0) doc.notices[i] = msg;
+        else doc.notices.push(msg);
+      }
       if (min) doc.minVersion = min;
       else delete doc.minVersion;
       if (restrict) doc.restrictVersion = restrict;
@@ -1859,6 +2237,7 @@ export class AdminService {
             recommendVersion: rec || null,
           },
           latest: latest ?? null,
+          notice: msg?.id ?? null,
         },
       };
     });
@@ -1917,15 +2296,15 @@ export function legacyPlace(path: string | undefined): AdminPlace | undefined {
 
 /** 쓰기가 끝난 뒤 돌아가는 자리 (결과 글이 그 폼 옆에 보이는 자리) */
 const ACTION_PLACES: Record<AdminAction, AdminPlace> = {
-  events: 'announce/events',
-  'events/end': 'announce/events',
-  coupons: 'announce/coupons',
-  'coupons/disable': 'announce/coupons',
+  events: 'announce/new',
+  'events/end': 'announce/posts',
+  coupons: 'announce/new',
+  'coupons/disable': 'announce/posts',
   notes: 'users/grants',
   'grants/batch': 'users/grants',
-  notices: 'announce/notices',
-  'notices/delete': 'announce/notices',
-  versions: 'announce/notices',
+  notices: 'announce/new',
+  'notices/delete': 'announce/posts',
+  versions: 'announce/new',
   'ai/mode': 'settings/ai',
   'ai/limits': 'settings/ai',
   'ai/revoke': 'users/list',
@@ -1934,7 +2313,7 @@ const ACTION_PLACES: Record<AdminAction, AdminPlace> = {
   'ai/block': 'users/list',
   'ai/allow': 'settings/ai',
   'ai/policy': 'settings/ai',
-  'rewards/policy': 'announce/coupons',
+  'rewards/policy': 'announce/posts',
   'features/mode': 'settings/features',
   'features/allow': 'settings/features',
   'reports/status': 'reports',
@@ -2081,10 +2460,18 @@ export class AdminController {
       secure(res);
       return res.redirect(302, `/admin${legacyQuery(path, query)}#${place ?? 'home'}`);
     }
-    const flash = s.flash;
+    let flash = s.flash;
     s.flash = undefined;
     const text = (k: string) =>
       typeof query[k] === 'string' && (query[k] as string).trim() ? (query[k] as string).trim() : undefined;
+    // 목록에서 "불러와 고치기" (load=공지:id 같은 이름): 만들기 폼을 그 내용으로 채운다. 결과 글이 있으면 그것이 먼저다
+    const loadSpec = text('load');
+    if (loadSpec && !flash) {
+      const l = await this.admin.loadForm(loadSpec.slice(0, 100));
+      flash = l
+        ? { text: l.note, error: false, edit: true, form: l.form, fields: l.fields }
+        : { text: '불러올 글을 찾지 못했어요. 이미 지워졌을 수 있어요', error: true };
+    }
     // 이용자 표에서 고른 사람들(pick=계정 번호, 여러 개)은 지급 칸의 받는 사람으로 미리 채운다
     const pickRaw = ([] as unknown[])
       .concat(query.pick ?? [])
@@ -2105,6 +2492,8 @@ export class AdminController {
       webLogOptionsOf(query),
     );
     if (view.account) view.account.history = await this.admin.userHistory(view.account.id);
+    view.posts = await this.admin.posts(postFilterOf(query));
+    view.draftTimes = await this.admin.draftTimes();
     view.recentGrants = await this.admin.recentGrants();
     if (picked.length) view.picked = picked;
     if (pickedAll.length > picked.length) view.pickedDropped = pickedAll.length - picked.length;
@@ -2138,15 +2527,15 @@ export class AdminController {
    * 작성 값이 맞는지 보고 대상 확인과 미리보기를 세션에 둔다 (쓰기 없음). 맞지 않으면 그 폼에 오류를 달아 돌려보낸다.
    * 폼은 /admin/grants/preview 와 /admin/notices/preview
    */
-  @Post(['grants/preview', 'notices/preview'])
+  @Post(['grants/preview', 'notices/preview', 'events/preview', 'coupons/preview', 'versions/preview'])
   async previewStep(@Req() req: AdminReq, @Res() res: AdminRes) {
     const action = (req.path ?? '').replace(/^\/admin\//, '').replace(/\/preview$/, '');
-    const name: FlowAction = action === 'grants' ? 'grants/batch' : 'notices';
+    const name: FlowAction = action === 'grants' ? 'grants/batch' : (action as FlowAction);
     await this.guarded(
       req,
       res,
       async (s, f) => {
-        this.admin.checkFlow(name, f);
+        await this.admin.checkFlow(name, f);
         s.preview = {
           action: name,
           fields: draftOf(f),
@@ -2157,13 +2546,52 @@ export class AdminController {
                 ids: await this.admin.grantLiveIds(f),
                 grant: normGrant(grantInput({ ...f, confirm: 'yes' })),
               }
-            : {}),
+            : { norm: this.admin.flowNorm(name, f) }),
         };
         return undefined;
       },
       () => '/admin',
       name,
       () => ACTION_PLACES[name],
+    );
+  }
+
+  /**
+   * 알리기 초안: 쓰던 폼을 종류마다 한 개 저장하고(drafts/save), 불러오고(drafts/load), 지운다(drafts/delete).
+   * 저장해도 쓰던 값은 화면에 그대로 남는다. 이용자 개인정보는 폼에 없다
+   */
+  @Post(['drafts/save', 'drafts/load', 'drafts/delete'])
+  async draftStep(@Req() req: AdminReq, @Res() res: AdminRes) {
+    const step = (req.path ?? '').replace(/^\/admin\/drafts\//, '');
+    await this.guarded(
+      req,
+      res,
+      async (s, f) => {
+        const kind = f.draft;
+        if (!isDraftKind(kind)) throw new Refused('초안 종류가 이상해요');
+        const mine = draftOf(f);
+        if (step === 'save') {
+          await this.admin.saveDraft(actorOf(s), kind, f);
+          s.flash = {
+            text: '초안을 저장했어요. 다음에 열어도 남아 있어요',
+            error: false,
+            edit: true,
+            form: kind,
+            fields: mine,
+          };
+        } else if (step === 'delete') {
+          await this.admin.deleteDraft(actorOf(s), kind);
+          s.flash = { text: '초안을 지웠어요', error: false, edit: true, form: kind, fields: mine };
+        } else {
+          const d = await this.admin.draft(kind);
+          if (!d) throw new Refused('저장한 초안이 없어요');
+          s.flash = { text: '초안을 불러왔어요', error: false, edit: true, form: kind, fields: d.fields };
+        }
+        return undefined;
+      },
+      () => '/admin',
+      undefined,
+      () => 'announce/new',
     );
   }
 
@@ -2242,6 +2670,11 @@ export class AdminController {
           s.preview = undefined;
           if (!ok || !kept)
             throw new Refused('이미 확정했거나 닫힌 미리보기예요. 운영 기록에서 확인하고 다시 써 주세요');
+          if (name !== 'grants/batch' && !this.admin.sameFlow(name, kept.norm, f))
+            throw new Refused(
+              '미리보기와 다른 값이에요. 고치기로 돌아가 미리보기부터 다시 해 주세요',
+              'changed',
+            );
           if (name === 'grants/batch') {
             // 확정 폼의 숨은 칸이 미리보기에서 본 값 그대로인지 서버가 다시 본다 (대상, 양, 사유, 만료를 바꿔 보내지 못하게)
             if (!sameGrant(kept.grant, f))
@@ -2255,7 +2688,9 @@ export class AdminController {
             f.expect_ids = (kept.ids ?? []).join(',');
           }
         }
-        return (await this.admin.run(name, actorOf(s), f)).text;
+        const done = await this.admin.run(name, actorOf(s), f);
+        const copy = name === 'coupons' ? done.data?.coupon : undefined;
+        return copy !== undefined ? { text: done.text, copy: String(copy) } : done.text;
       },
       (f) =>
         ACTION_PLACES[name].startsWith('users/list') && f.account && f.ret !== 'reports'
@@ -2288,7 +2723,7 @@ export class AdminController {
   private async guarded(
     req: AdminReq,
     res: AdminRes,
-    fn: (s: AdminSession, f: FormFields) => Promise<string | undefined>,
+    fn: (s: AdminSession, f: FormFields) => Promise<string | { text: string; copy: string } | undefined>,
     back: (f: FormFields) => string = () => '/admin',
     form?: string,
     place: (f: FormFields) => AdminPlace = () => 'home',
@@ -2306,7 +2741,12 @@ export class AdminController {
     try {
       const text = await fn(s, f);
       // 성공 글도 누른 폼 자리에 보이게 폼 이름과 대상을 같이 담는다
-      if (text !== undefined) s.flash = { text, error: false, ...(form ? { form, scope: scopeOf(f) } : {}) };
+      if (text !== undefined)
+        s.flash = {
+          ...(typeof text === 'string' ? { text } : text),
+          error: false,
+          ...(form ? { form, scope: scopeOf(f) } : {}),
+        };
     } catch (err) {
       // 실패하면 쓴 값을 세션에 한 번만 담아 두었다가 같은 폼을 채워 다시 그린다 (비밀값 칸과 확인 칸은 빼고)
       const keep = form ? { form, scope: scopeOf(f), fields: draftOf(f) } : {};

@@ -141,6 +141,15 @@ export function client(h: () => Harness) {
   return { api, newDevice, session, secondDevice, balanceOf, ledgerSum, lastLog };
 }
 
+/** 미리보기를 거쳐야 확정되는 쓰기 (지급, 공지, 이벤트, 쿠폰, 버전) */
+export const FLOW_PATHS = [
+  '/admin/grants/batch',
+  '/admin/notices',
+  '/admin/events',
+  '/admin/coupons',
+  '/admin/versions',
+];
+
 /** 운영자 브라우저 흉내: 쿠키와 CSRF 를 들고 다닌다 */
 export class AdminBrowser {
   cookie = '';
@@ -218,7 +227,7 @@ export class AdminBrowser {
     csrf = true,
     origin = this.h().base,
   ): Promise<Res> {
-    const previewPath = path === '/admin/grants/batch' ? '/admin/grants/preview' : '/admin/notices/preview';
+    const previewPath = path === '/admin/grants/batch' ? '/admin/grants/preview' : `${path}/preview`;
     const first = await this.post(previewPath, fields, csrf, origin);
     if (first.status !== 303) return first;
     const page = await this.page();
@@ -239,7 +248,7 @@ export class AdminBrowser {
 
   /** 쓰기 하나 뒤 화면의 결과 글 */
   async act(path: string, fields: Record<string, string | string[]>): Promise<{ ok: boolean; text: string }> {
-    const flow = path === '/admin/grants/batch' || path === '/admin/notices';
+    const flow = FLOW_PATHS.includes(path);
     const r = flow ? await this.confirmPost(path, fields) : await this.post(path, fields);
     assert.equal(r.status, 303, r.text);
     const p = await this.page();

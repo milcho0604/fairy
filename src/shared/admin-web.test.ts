@@ -54,6 +54,6 @@ test('서버 주소가 없거나 모르는 자리, 이상한 주소 모양은 �
 test('자리 목록은 서버의 다섯 칸과 아래 칸과 같다', () => {
   const cells = new Set(ADMIN_WEB_PLACES.map((p) => p.split('/')[0]));
   assert.deepEqual([...cells].sort(), ['announce', 'home', 'reports', 'settings', 'users']);
-  assert.ok(isAdminWebPlace('announce/coupons'));
+  assert.ok(isAdminWebPlace('announce/posts'));
   assert.ok(!isAdminWebPlace('announce/other'));
 });

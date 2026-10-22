@@ -9,12 +9,14 @@ import {
   barChart,
   type LockedStats,
   type TrendView,
+  type VersionImpact,
 } from './admin-home';
+import { formDefaults, POSTS_PER_KIND, type PostRow, type PostsView } from './admin-posts';
 import type { AiSettings, SubscriptionInfo } from './ai-admin';
 import { FEATURES, type FeatureView } from './features';
 import type { EventRow } from './feeds';
 import type { DocNotice, NoticeDoc } from './notice-doc';
-import { kstIso } from './shared/site-events';
+import { kstIso, type SiteEvent } from './shared/site-events';
 
 export interface AdminAccountRow {
   id: string;
@@ -47,9 +49,8 @@ export const CELL_SUBS: Record<AdminCell, ReadonlyArray<readonly [string, string
   ],
   reports: [],
   announce: [
-    ['notices', '공지와 버전'],
-    ['events', '이벤트'],
-    ['coupons', '쿠폰'],
+    ['posts', '게시물'],
+    ['new', '만들기'],
   ],
   settings: [
     ['features', '기능 스위치'],
@@ -63,8 +64,8 @@ export const LEGACY_PLACES: Record<string, string> = {
   '': 'home',
   users: 'users/list',
   grants: 'users/grants',
-  notices: 'announce/notices',
-  events: 'announce/events',
+  notices: 'announce/posts',
+  events: 'announce/posts',
   features: 'settings/features',
   ai: 'settings/ai',
   log: 'settings/log',
@@ -199,6 +200,47 @@ export type FlowPreview =
       notice: DocNotice;
       /** 같은 id 의 공지가 이미 있으면 그 제목 (바꾸기) */
       replaces: string | null;
+    }
+  | {
+      action: 'events';
+      fields: Record<string, string | string[]>;
+      nonce: string;
+      event: SiteEvent;
+      /** 같은 id 의 이벤트가 이미 있으면 만들 수 없다 */
+      exists: boolean;
+      /** 선물과 쿠폰을 로그인 계정만 받는지 */
+      loginOnly: boolean;
+    }
+  | {
+      action: 'coupons';
+      fields: Record<string, string | string[]>;
+      nonce: string;
+      coupon: {
+        label: string;
+        coins: number;
+        tickets: number;
+        maxUses: number;
+        from: number | null;
+        until: number;
+      };
+      loginOnly: boolean;
+    }
+  | {
+      action: 'versions';
+      fields: Record<string, string | string[]>;
+      nonce: string;
+      before: { min: string; restrict: string; rec: string };
+      after: { min: string; restrict: string; rec: string };
+      /** 올리는 기준 (최소와 기능 제한은 확인 칸이 있어야 한다) */
+      raises: { min: boolean; restrict: boolean; rec: boolean };
+      impactNow: VersionImpact;
+      impactAfter: VersionImpact;
+      latest: string | null;
+      /** 같이 넣는 안내문 */
+      message: DocNotice | null;
+      /** 이 까닭이 있으면 확정할 수 없다 (최신 릴리스보다 높음, 최신 릴리스를 못 읽음) */
+      blocked: string | null;
+      needsConfirm: boolean;
     };
 
 /** 홈의 "지금 확인할 것" 한 줄 (서버가 계산하고 웹 홈과 앱 요약이 같이 쓴다) */
@@ -224,10 +266,16 @@ export interface AdminView {
         fields?: Record<string, string | string[]> | undefined;
         /** 미리보기에서 "고치기" 로 돌아온 것 (오류는 아니고 쓰던 값만 되살린다) */
         edit?: boolean | undefined;
+        /** 복사 단추로 보일 값 (쿠폰 원본 코드, 한 번만) */
+        copy?: string | undefined;
       }
     | undefined;
   /** 결과 글이 달린 폼이 있는 칸 (그 폼이 화면에 없을 때 이 칸 맨 위에 대신 보인다) */
   flashPlace?: AdminPlace | undefined;
+  /** 알리기 게시물 목록 (웹 화면만 채운다) */
+  posts?: PostsView | undefined;
+  /** 알리기 초안이 있는 폼과 저장 시각 (웹 화면만) */
+  draftTimes?: Partial<Record<string, number>> | undefined;
   /** 쓰던 발행, 지급 흐름의 미리보기 (대상 확인까지 끝난 것) */
   preview?: FlowPreview | undefined;
   /** 지급 칸에 미리 채울 계정 (이용자 표의 지급 단추, 표에서 고른 사람들은 줄마다 하나) */
@@ -472,13 +520,6 @@ function postButton(
     .map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`)
     .join('');
   return `<form method="post" action="${esc(action)}" class="inline">${hidden(csrf)}${inputs}<button type="submit"${danger ? ' class="danger"' : ''}>${esc(label)}</button></form>`;
-}
-
-function phase(starts: number, ends: number): string {
-  const now = Date.now();
-  if (now < starts) return '<span class="tag soon">곧</span>';
-  if (now < ends) return '<span class="tag live">진행 중</span>';
-  return '<span class="tag ended">끝남</span>';
 }
 
 const KIND_KO: Record<string, string> = {
@@ -839,9 +880,9 @@ export function todoOf(o: {
   const soon = (starts: number, ends: number) =>
     starts <= o.now && ends > o.now && ends <= o.now + EVENT_SOON_MS;
   const events = o.events.filter((e) => soon(e.starts, e.ends)).length;
-  if (events > 0) out.push({ kind: 'ending_events', level: 'warn', n: events, place: 'announce/events' });
+  if (events > 0) out.push({ kind: 'ending_events', level: 'warn', n: events, place: 'announce/posts' });
   const coupons = o.coupons.filter((c) => !c.disabled && soon(c.starts, c.ends)).length;
-  if (coupons > 0) out.push({ kind: 'ending_coupons', level: 'warn', n: coupons, place: 'announce/coupons' });
+  if (coupons > 0) out.push({ kind: 'ending_coupons', level: 'warn', n: coupons, place: 'announce/posts' });
   // 상한 0 이면 서버는 모든 올리기를 507 로 막는다 (n 은 -1)
   if (o.backup?.maxBytes === 0) out.push({ kind: 'backup', level: 'bad', n: -1, place: 'settings/backup' });
   const used = o.backup ? backupPercent(o.backup) : null;
@@ -1234,97 +1275,404 @@ function recentGrantsTable(v: AdminView): string {
 ${rows ? `<table class="cards"><thead><tr><th>보낸 때</th><th>받는 사람</th><th>내용</th><th>받았는지</th></tr></thead><tbody>${rows}</tbody></table>` : '<p class="empty">아직 보낸 지급이 없어요</p>'}`;
 }
 
-function eventsSection(v: AdminView): string {
-  const csrf = v.csrf;
-  const dEv = draftOf(v, 'events');
-  const reasons = ([] as string[]).concat((dEv?.reasons as string | string[] | undefined) ?? []);
-  return `<section><h2>이벤트</h2>
-<p class="hint">앱은 홈페이지 정적 파일(events.json)만 읽어요. 여기서 만들면 10분 안쪽에 홈페이지로 올라가요. 시간은 한국 시간.</p>
-<table><thead><tr><th>id</th><th>종류</th><th>제목</th><th>기간</th><th>받은 수</th><th></th></tr></thead><tbody>
-${
-  v.events
-    .map(
-      (
-        e,
-      ) => `<tr><td>${esc(e.id)}</td><td>${e.kind === 'gift' ? `선물 ${e.coins}` : `배수 x${e.boost_times} (${esc((e.boost_reasons ?? []).join(', '))})`}</td>
-<td>${esc(e.title_ko)}<br><small>${esc(e.title_en)}</small></td><td>${phase(Number(e.starts), Number(e.ends))} ${when(e.starts)} ~ ${when(e.ends)}</td><td>${e.claims}</td>
-<td>${
-        Date.now() < Number(e.ends)
-          ? Date.now() < Number(e.starts)
-            ? sureForm(
-                v,
-                '/admin/events/end',
-                { id: e.id },
-                `이벤트 "${e.title_ko}" (${e.id}) 지울게요`,
-                '지우기',
-              )
-            : sureForm(
-                v,
-                '/admin/events/end',
-                { id: e.id },
-                `이벤트 "${e.title_ko}" (${e.id}) 지금 끝낼게요`,
-                '지금 끝내기',
-              )
-          : ''
-      }</td></tr>`,
-    )
-    .join('') || '<tr><td colspan="6">아직 없어요</td></tr>'
-}
-</tbody></table>
-<form method="post" action="/admin/events" class="grid">${formErr(v, 'events')}${hidden(csrf)}
-<label>id (영문, 숫자, ., _, - 40자) <input name="id" required maxlength="40" pattern="[A-Za-z0-9][A-Za-z0-9._\\-]{0,39}" value="${esc(val(dEv, 'id'))}"></label>
-<label>종류 <select name="kind">${opt(dEv, 'kind', 'gift', '선물 (모두에게 코인)', 'gift')}${opt(dEv, 'kind', 'boost', '배수 (출석, 집중 코인)', 'gift')}</select></label>
-<label>제목 ko (60자) <input name="title_ko" required maxlength="60" value="${esc(val(dEv, 'title_ko'))}"></label>
-<label>제목 en (60자) <input name="title_en" required maxlength="60" value="${esc(val(dEv, 'title_en'))}"></label>
-<label class="wide">본문 ko (300자) <textarea name="body_ko" required maxlength="300">${esc(val(dEv, 'body_ko'))}</textarea></label>
-<label class="wide">본문 en (300자) <textarea name="body_en" required maxlength="300">${esc(val(dEv, 'body_en'))}</textarea></label>
-<label>시작 <input name="from" type="datetime-local" required value="${esc(val(dEv, 'from'))}"></label>
-<label>끝 <input name="until" type="datetime-local" required value="${esc(val(dEv, 'until'))}"></label>
-<label>선물 코인 (1~1000) <input name="coins" type="number" min="1" max="1000" value="${esc(val(dEv, 'coins'))}"></label>
-<fieldset><legend>배수 까닭</legend><label><input type="checkbox" name="reasons" value="meet"${reasons.includes('meet') ? ' checked' : ''}> 출석</label><label><input type="checkbox" name="reasons" value="focus"${reasons.includes('focus') ? ' checked' : ''}> 집중</label></fieldset>
-<label>배수 <select name="times">${opt(dEv, 'times', '2', '2배', '2')}${opt(dEv, 'times', '3', '3배', '2')}</select></label>
-<button type="submit">이벤트 만들기</button>
-</form></section>`;
+// ---- 알리기 (이슈 #154): 게시물 목록과 만들기 ----
+
+const POST_KIND_LABEL = { notice: '공지', event: '이벤트', coupon: '쿠폰', version: '버전 기준' } as const;
+const POST_STATE_TAG: Record<string, string> = {
+  live: '<span class="tag live">진행 중</span>',
+  soon: '<span class="tag soon">예정</span>',
+  ended: '<span class="tag ended">끝남</span>',
+};
+
+/** 게시물 목록 주소 (찾기 조건을 바꿔서) */
+function postsHref(f: PostsView['filter'], patch: Partial<PostsView['filter']> = {}): string {
+  const x = { ...f, ...patch };
+  const p = new URLSearchParams();
+  if (x.kind !== 'all') p.set('pk', x.kind);
+  if (x.state !== 'all') p.set('ps', x.state);
+  if (x.q) p.set('pq', x.q);
+  const q = p.toString();
+  return `/admin${q ? `?${q}` : ''}#announce/posts`;
 }
 
-function couponsSection(v: AdminView): string {
-  const csrf = v.csrf;
-  const dCp = draftOf(v, 'coupons');
+/** 저장과 앱 반영은 다르다: 서버에 저장되는 때, 홈페이지 파일이 바뀌는 때, 앱이 받는 때를 나눠 보인다 */
+function reachBox(kind: 'notice' | 'event' | 'coupon' | 'version', savedAt?: number): string {
+  const hm = (ms: number) => when(ms);
+  const WEB = 15 * 60_000;
+  const items: Array<[string, string]> = [];
+  if (kind === 'coupon') {
+    items.push(['서버에 저장', '만든 순간부터 쿠폰 코드를 쓸 수 있어요. 앱이 받는 것을 기다리지 않아요.']);
+    items.push([
+      '앱에 닿음',
+      '쿠폰은 홈페이지 파일을 거치지 않아요. 사용자가 코드를 넣으면 서버가 바로 받아 줘요.',
+    ]);
+  } else if (kind === 'version') {
+    items.push([
+      '서버에 저장',
+      '확정하는 순간 서버 관문이 새 기준을 써요. 낮은 앱의 다음 요청부터 막히거나 안내가 떠요(5초 안).',
+    ]);
+    items.push([
+      '앱에 닿음',
+      '앱이 서버에 요청할 때마다 기준을 보니 앱이 새로 받을 파일은 없어요. 안내문은 공지와 같은 길로 가요.',
+    ]);
+  } else {
+    const file = kind === 'notice' ? 'notices.json' : 'events.json';
+    const every = kind === 'notice' ? '4시간' : '6시간';
+    const homeAt = savedAt !== undefined ? ` (늦어도 ${hm(savedAt + WEB)} 쯤)` : '';
+    const appAt =
+      savedAt !== undefined
+        ? ` (모두에게는 늦어도 ${hm(savedAt + WEB + (kind === 'notice' ? 4 : 6) * 3_600_000)})`
+        : '';
+    items.push([
+      '서버에 저장',
+      `확정하는 순간 서버의 ${file} 에 들어가요.${savedAt !== undefined ? ` (${hm(savedAt)})` : ''}`,
+    ]);
+    items.push([
+      '홈페이지 파일',
+      `공개 레포가 10분마다 서버에서 받아 검사하고 홈페이지에 올려요. 보통 10~15분 걸려요${homeAt}. 검사에 걸리거나 보호된 main 에 승인이 필요하면 더 걸려요.`,
+    ]);
+    items.push([
+      '앱에 닿음',
+      `앱은 켤 때와 ${every}마다 홈페이지 파일을 받아요${appAt}.${kind === 'event' ? ' 선물 받기와 배수는 서버가 바로 받아 주지만, 앱 목록에 보이기 전에는 받기 단추가 안 떠요.' : ''}`,
+    ]);
+  }
+  return `<div class="reach" role="note"><h3>저장과 앱 반영은 달라요</h3><ol>${items
+    .map(([a, b]) => `<li><strong>${esc(a)}</strong> ${esc(b)}</li>`)
+    .join('')}</ol></div>`;
+}
+
+function postRowHtml(v: AdminView, r: PostRow): string {
+  const period =
+    r.from === null && r.until === null
+      ? '기간 없음'
+      : `${r.from !== null ? when(r.from) : '처음부터'} ~ ${r.until !== null ? when(r.until) : '끝없이'}`;
+  const note = r.note ? ` <small>${esc(r.note)}</small>` : '';
+  const load = `<a class="button-link" href="/admin?load=${encodeURIComponent(r.load)}#announce/new">${r.kind === 'notice' || r.kind === 'version' ? '불러와 고치기' : '복사해서 새로 만들기'}</a>`;
+  let close = '';
+  if (r.kind === 'notice')
+    close = sureForm(
+      v,
+      '/admin/notices/delete',
+      { id: r.id },
+      `공지 "${r.title}" (${r.id}) 지울게요`,
+      '지우기',
+    );
+  else if (r.kind === 'event' && r.closable)
+    close = sureForm(
+      v,
+      '/admin/events/end',
+      { id: r.id },
+      r.from !== null && Date.now() < r.from
+        ? `이벤트 "${r.title}" (${r.id}) 지울게요`
+        : `이벤트 "${r.title}" (${r.id}) 지금 끝낼게요`,
+      r.from !== null && Date.now() < r.from ? '지우기' : '지금 끝내기',
+    );
+  else if (r.kind === 'coupon' && r.closable)
+    close = sureForm(
+      v,
+      '/admin/coupons/disable',
+      { id: r.id },
+      `쿠폰 #${r.id} (${r.title}) 끌게요, 다시 켤 수 없어요`,
+      '끄기',
+    );
+  return `<tr${r.state === 'ended' ? ' class="off"' : ''}><td data-l="종류">${esc(POST_KIND_LABEL[r.kind])}</td>
+<td class="name" data-l="제목">${esc(r.title)}<br><small>${esc(r.sub)}</small></td>
+<td data-l="상태">${POST_STATE_TAG[r.state]}${note}</td><td data-l="기간">${esc(period)}</td>
+<td class="act">${load} ${close}</td></tr>`;
+}
+
+function postsSection(v: AdminView): string {
+  const p = v.posts;
+  if (!p) return '<section><h2>게시물</h2><p class="empty">불러오지 못했어요</p></section>';
+  const f = p.filter;
+  const chip = (label: string, patch: Partial<typeof f>, on: boolean) =>
+    `<a class="button-link${on ? ' current' : ''}" href="${esc(postsHref(f, patch))}"${on ? ' aria-current="true"' : ''}>${esc(label)}</a>`;
+  const kinds = [
+    chip('모두', { kind: 'all' }, f.kind === 'all'),
+    ...(['notice', 'event', 'coupon', 'version'] as const).map((k) =>
+      chip(`${POST_KIND_LABEL[k]} ${p.totals[k]}`, { kind: k }, f.kind === k),
+    ),
+  ].join('');
+  const states = [
+    chip('모든 상태', { state: 'all' }, f.state === 'all'),
+    chip('진행 중', { state: 'live' }, f.state === 'live'),
+    chip('예정', { state: 'soon' }, f.state === 'soon'),
+    chip('끝남', { state: 'ended' }, f.state === 'ended'),
+  ].join('');
+  const body = p.rows.map((r) => postRowHtml(v, r)).join('');
+  const filtered = f.kind !== 'all' || f.state !== 'all' || f.q !== '';
+  const docInfo = v.notices
+    ? `공지 문서는 ${when(v.noticesUpdated ?? 0)} 에 마지막으로 저장했어요. 홈페이지에는 늦어도 ${when((v.noticesUpdated ?? 0) + 15 * 60_000)} 쯤, 앱에는 켤 때와 4시간마다 닿아요.`
+    : '공지 문서를 여기서 저장한 적이 없어요. 처음 저장하면 홈페이지 notices.json 전체가 이 화면의 내용으로 바뀌어요.';
   const dRw = draftOf(v, 'rewards/policy');
-  return `<section><h2>쿠폰</h2>
-<form method="post" action="/admin/rewards/policy" class="row">${formErr(v, 'rewards/policy')}${hidden(csrf)}
+  return `<section><h2>게시물</h2>
+<p class="hint">공지, 이벤트, 쿠폰, 앱 버전 기준을 한 목록에서 봐요. 진행 중이 위, 끝난 것이 아래예요. ${esc(docInfo)}</p>
+<form method="get" action="/admin" class="row posts-find">
+<input type="hidden" name="pk" value="${esc(f.kind === 'all' ? '' : f.kind)}">
+<input type="hidden" name="ps" value="${esc(f.state === 'all' ? '' : f.state)}">
+<label>찾기 (제목, 본문, id, 메모) <input name="pq" type="search" maxlength="60" value="${esc(f.q)}" placeholder="예: 신년"></label>
+<button type="submit">찾기</button>${f.q ? ` <a class="button-link" href="${esc(postsHref(f, { q: '' }))}">찾기 지우기</a>` : ''}
+</form>
+<div class="chips" aria-label="종류">${kinds}</div>
+<div class="chips" aria-label="상태">${states}</div>
+${
+  body
+    ? `<div class="table-scroll"><table class="cards posts"><thead><tr><th>종류</th><th>제목</th><th>상태</th><th>기간</th><th></th></tr></thead><tbody>${body}</tbody></table></div>`
+    : `<p class="empty">${filtered ? '조건에 맞는 게시물이 없어요' : '아직 게시물이 없어요'}</p>`
+}
+${p.hidden > 0 ? `<p class="hint">종류마다 ${POSTS_PER_KIND}건까지 보여요. ${p.hidden}건이 더 있어요. 찾기나 상태로 좁혀 주세요.</p>` : ''}
+<p><a class="button-link current" href="#announce/new">새로 만들기</a></p>
+</section>
+<section><h2>선물과 쿠폰을 받는 계정</h2>
+<form method="post" action="/admin/rewards/policy" class="row">${formErr(v, 'rewards/policy')}${hidden(v.csrf)}
 <label>선물과 쿠폰 받는 계정 <select name="login_only">${opt(dRw, 'login_only', '1', '로그인 계정만 (기본)', v.rewardsLoginOnly ? '1' : '0')}${opt(dRw, 'login_only', '0', '기기 계정도', v.rewardsLoginOnly ? '1' : '0')}</select></label>
 <button type="submit">저장</button>
 </form>
-<p class="hint">코드는 서버가 12자로 만들고 만들 때 한 번만 보여요 (서버에는 해시만). 계정마다 한 번, 채팅 이용권은 만 18세 이상 계정에만 가요.</p>
-<table><thead><tr><th>#</th><th>코드 앞</th><th>메모</th><th>주는 것</th><th>기간</th><th>사용</th><th></th></tr></thead><tbody>
-${
-  v.coupons
-    .map(
-      (
-        c,
-      ) => `<tr${c.disabled ? ' class="off"' : ''}><td>${esc(c.id)}</td><td>${esc(c.hint)}…</td><td>${esc(c.label)}</td><td>코인 ${c.coins}, 채팅 이용권 ${c.tickets}장</td>
-<td>${c.disabled ? '<span class="tag ended">꺼짐</span>' : phase(Number(c.starts), Number(c.ends))} ${when(c.starts)} ~ ${when(c.ends)}</td><td>${c.used} / ${c.max_uses}</td>
-<td>${c.disabled ? '' : sureForm(v, '/admin/coupons/disable', { id: c.id }, `쿠폰 #${c.id} (${c.label}) 끌게요, 다시 켤 수 없어요`, '끄기')}</td></tr>`,
-    )
-    .join('') || '<tr><td colspan="7">아직 없어요</td></tr>'
-}
-</tbody></table>
-<form method="post" action="/admin/coupons" class="grid">${formErr(v, 'coupons')}${hidden(csrf)}
-<label class="wide">메모 (80자, 사용자에게 안 보임) <input name="label" required maxlength="80" value="${esc(val(dCp, 'label'))}"></label>
-<label>코인 (0~1000) <input name="coins" type="number" min="0" max="1000" value="${esc(val(dCp, 'coins', '0'))}"></label>
-<label>채팅 이용권 (0~50장) <input name="tickets" type="number" min="0" max="50" value="${esc(val(dCp, 'tickets', '0'))}"></label>
-<label>전체 사용 상한 <input name="max_uses" type="number" min="1" max="100000" required value="${esc(val(dCp, 'max_uses'))}"></label>
-<label>시작 (비우면 지금) <input name="from" type="datetime-local" value="${esc(val(dCp, 'from'))}"></label>
-<label>끝 <input name="until" type="datetime-local" required value="${esc(val(dCp, 'until'))}"></label>
-<button type="submit">쿠폰 만들기</button>
-</form></section>`;
+<p class="hint">쿠폰 코드는 서버가 해시만 두어서 만든 뒤에는 다시 볼 수 없어요. 만든 직후 결과 화면에서 복사해 두세요. 목록에는 코드 앞 4자만 보여요.</p>
+</section>
+${reachBox('notice')}`;
 }
 
-/** 공지 흐름: 작성, 미리보기(공지 창 모양과 바뀌는 것), 확정. 강제 업데이트 글은 확정에서 확인 칸을 체크해야 한다 */
-function noticeFlowSection(v: AdminView): string {
-  const pv = v.preview?.action === 'notices' ? v.preview : undefined;
-  if (!pv) return noticesSection(v);
+const MAKE_KINDS = [
+  ['notices', '공지', '앱 알림 창에 떠요'],
+  ['events', '이벤트', '선물이나 배수'],
+  ['coupons', '쿠폰', '코드로 코인 받기'],
+  ['versions', '버전', '강제와 권장 업데이트'],
+] as const;
+const MAKE_LOG: Record<string, string> = {
+  notices: 'notice.create',
+  events: 'event.create',
+  coupons: 'coupon.create',
+  versions: 'versions',
+};
+const REACH_KIND = { notices: 'notice', events: 'event', coupons: 'coupon', versions: 'version' } as const;
+
+/** 쓰던 초안이 있으면 불러오기와 지우기 */
+function draftBar(v: AdminView, kind: string): string {
+  const at = v.draftTimes?.[kind];
+  if (at === undefined) return '';
+  return `<form method="post" action="/admin/drafts/load" class="row draft-bar">${hidden(v.csrf)}<input type="hidden" name="draft" value="${esc(kind)}">
+<span>저장한 초안이 있어요 (${esc(when(at))})</span>
+<button type="submit" class="ghost">초안 불러오기</button><button type="submit" formaction="/admin/drafts/delete" class="ghost">초안 지우기</button></form>`;
+}
+
+/** 폼 맨 아래 단추: 미리보기 하나와 초안 저장 */
+const makeButtons = (kind: string) =>
+  `<div class="wide actions"><button type="submit">미리보기</button><button type="submit" formaction="/admin/drafts/save" formnovalidate class="ghost">초안 저장</button><input type="hidden" name="draft" value="${esc(kind)}"></div>`;
+
+function noticeForm(v: AdminView, d: Draft, dflt: ReturnType<typeof formDefaults>): string {
+  const more = ['link', 'from', 'until', 'versions', 'platforms'].some((k) => val(d, k) !== '');
+  return `<form method="post" action="/admin/notices/preview" class="grid mk-f mk-notices">${formErr(v, 'notices', undefined, true)}${hidden(v.csrf)}
+<label>id (영문, 숫자, ., _, - 80자. 같은 id 면 바꿔요) <input name="id" required maxlength="80" pattern="[A-Za-z0-9][A-Za-z0-9._\\-]{0,79}" value="${esc(val(d, 'id', `notice-${dflt.day}`))}"></label>
+<label>종류 <select name="kind">${opt(d, 'kind', 'info', '알림 (한 번)', 'info')}${opt(d, 'kind', 'important', '중요 (확인할 때까지)', 'info')}${opt(d, 'kind', 'update', '업데이트 권장 (권장 버전보다 낮은 앱)', 'info')}${opt(d, 'kind', 'force', '강제 업데이트 창의 글 (잠금은 최소 버전)', 'info')}</select></label>
+<label>제목 ko (80자) <input name="title_ko" required maxlength="80" value="${esc(val(d, 'title_ko'))}"></label>
+<label>제목 en (80자) <input name="title_en" required maxlength="80" value="${esc(val(d, 'title_en'))}"></label>
+<label class="wide">본문 ko (1000자, 글자만) <textarea name="body_ko" required maxlength="1000">${esc(val(d, 'body_ko'))}</textarea></label>
+<label class="wide">본문 en (1000자, 글자만) <textarea name="body_en" required maxlength="1000">${esc(val(d, 'body_en'))}</textarea></label>
+<details class="wide"${more ? ' open' : ''}><summary>링크, 기간, 대상 (선택, 비우면 모두에게 계속)</summary>
+<div class="sub-grid">
+<label class="wide">링크 (https://fairy.moilga.com 이나 https://github.com/milcho0604/ 아래만) <input name="link" type="url" maxlength="500" value="${esc(val(d, 'link'))}"></label>
+<label>시작 (한국 시간) <input name="from" type="datetime-local" value="${esc(val(d, 'from'))}"></label>
+<label>끝 (한국 시간) <input name="until" type="datetime-local" value="${esc(val(d, 'until'))}"></label>
+<label>대상 버전 (예: &lt;0.5.0) <input name="versions" maxlength="60" value="${esc(val(d, 'versions'))}"></label>
+<label>운영체제 (예: darwin,win32) <input name="platforms" maxlength="40" value="${esc(val(d, 'platforms'))}"></label>
+</div></details>
+${makeButtons('notices')}</form>`;
+}
+
+function eventForm(v: AdminView, d: Draft, dflt: ReturnType<typeof formDefaults>): string {
+  const reasonsRaw = d?.reasons;
+  const reasons = d ? ([] as string[]).concat(reasonsRaw ?? []) : ['meet', 'focus'];
+  return `<form method="post" action="/admin/events/preview" class="grid mk-f mk-events">${formErr(v, 'events', undefined, true)}${hidden(v.csrf)}
+<label>id (영문, 숫자, ., _, - 40자) <input name="id" required maxlength="40" pattern="[A-Za-z0-9][A-Za-z0-9._\\-]{0,39}" value="${esc(val(d, 'id', `event-${dflt.day}`))}"></label>
+<fieldset class="kindpick"><legend>종류</legend><label><input type="radio" name="kind" value="gift"${val(d, 'kind', 'gift') === 'gift' ? ' checked' : ''}> 선물 (모두에게 코인)</label><label><input type="radio" name="kind" value="boost"${val(d, 'kind', 'gift') === 'boost' ? ' checked' : ''}> 배수 (출석, 집중 코인)</label></fieldset>
+<label>제목 ko (60자) <input name="title_ko" required maxlength="60" value="${esc(val(d, 'title_ko'))}"></label>
+<label>제목 en (60자) <input name="title_en" required maxlength="60" value="${esc(val(d, 'title_en'))}"></label>
+<label class="wide">본문 ko (300자) <textarea name="body_ko" required maxlength="300">${esc(val(d, 'body_ko'))}</textarea></label>
+<label class="wide">본문 en (300자) <textarea name="body_en" required maxlength="300">${esc(val(d, 'body_en'))}</textarea></label>
+<label>시작 (한국 시간) <input name="from" type="datetime-local" required value="${esc(val(d, 'from', dflt.start))}"></label>
+<label>끝 (한국 시간) <input name="until" type="datetime-local" required value="${esc(val(d, 'until', dflt.weekLater))}"></label>
+<label class="only-gift">선물 코인 (1~1000) <input name="coins" type="number" min="1" max="1000" value="${esc(val(d, 'coins', '50'))}"></label>
+<fieldset class="only-boost"><legend>배수 까닭</legend><label><input type="checkbox" name="reasons" value="meet"${reasons.includes('meet') ? ' checked' : ''}> 출석</label><label><input type="checkbox" name="reasons" value="focus"${reasons.includes('focus') ? ' checked' : ''}> 집중</label></fieldset>
+<label class="only-boost">배수 <select name="times">${opt(d, 'times', '2', '2배', '2')}${opt(d, 'times', '3', '3배', '2')}</select></label>
+${makeButtons('events')}</form>`;
+}
+
+function couponForm(v: AdminView, d: Draft, dflt: ReturnType<typeof formDefaults>): string {
+  return `<form method="post" action="/admin/coupons/preview" class="grid mk-f mk-coupons">${formErr(v, 'coupons', undefined, true)}${hidden(v.csrf)}
+<label class="wide">메모 (80자, 사용자에게 안 보임) <input name="label" required maxlength="80" value="${esc(val(d, 'label'))}"></label>
+<label>코인 (0~1000) <input name="coins" type="number" min="0" max="1000" value="${esc(val(d, 'coins', '50'))}"></label>
+<label>채팅 이용권 (0~50장) <input name="tickets" type="number" min="0" max="50" value="${esc(val(d, 'tickets', '0'))}"></label>
+<label>전체 사용 상한 <input name="max_uses" type="number" min="1" max="100000" required value="${esc(val(d, 'max_uses', '100'))}"></label>
+<label>시작 (비우면 만드는 순간부터) <input name="from" type="datetime-local" value="${esc(val(d, 'from'))}"></label>
+<label>끝 (한국 시간) <input name="until" type="datetime-local" required value="${esc(val(d, 'until', dflt.monthLater))}"></label>
+<p class="wide hint">코드는 서버가 12자로 만들어요. 서버에는 해시만 남아서 만든 직후 한 번만 볼 수 있어요. 계정마다 한 번, 채팅 이용권은 만 18세 이상 계정에만 가요.</p>
+${makeButtons('coupons')}</form>`;
+}
+
+function versionForm(v: AdminView, d: Draft): string {
+  const n = v.notices;
+  const msgOpen = ['msg_kind', 'msg_title_ko', 'msg_body_ko'].some((k) => val(d, k) !== '');
+  return `<form method="post" action="/admin/versions/preview" class="grid mk-f mk-versions">${formErr(v, 'versions', undefined, true)}${hidden(v.csrf)}
+<p class="wide">최신 릴리스: <strong>${esc(v.latest ?? '읽지 못함')}</strong>. 올리는 값은 이보다 높을 수 없어요. 내리거나 지우기는 언제나 돼요. 순서는 최소 &le; 기능 제한 &le; 권장이에요.</p>
+<label>최소 버전 (강제: 이보다 낮으면 앱 잠금) <input name="minVersion" pattern="\\d{1,4}\\.\\d{1,4}\\.\\d{1,4}" value="${esc(val(d, 'minVersion', n?.minVersion ?? ''))}" placeholder="비우면 없음"></label>
+<label>기능 제한 버전 (이보다 낮으면 서버 기능 거절) <input name="restrictVersion" pattern="\\d{1,4}\\.\\d{1,4}\\.\\d{1,4}" value="${esc(val(d, 'restrictVersion', n?.restrictVersion ?? ''))}" placeholder="비우면 없음"></label>
+<label>권장 버전 (업데이트 권장 알림) <input name="recommendVersion" pattern="\\d{1,4}\\.\\d{1,4}\\.\\d{1,4}" value="${esc(val(d, 'recommendVersion', n?.recommendVersion ?? ''))}" placeholder="비우면 없음"></label>
+<details class="wide"${msgOpen ? ' open' : ''}><summary>안내문을 같이 넣기 (선택)</summary>
+<div class="sub-grid">
+<label>안내문 종류 <select name="msg_kind">${opt(d, 'msg_kind', '', '넣지 않음', '')}${opt(d, 'msg_kind', 'force', '강제 업데이트 안내 (최소 버전보다 낮은 앱)', '')}${opt(d, 'msg_kind', 'update', '업데이트 권장 안내 (권장 버전보다 낮은 앱)', '')}</select></label>
+<label>제목 ko (80자) <input name="msg_title_ko" maxlength="80" value="${esc(val(d, 'msg_title_ko'))}"></label>
+<label>제목 en (80자) <input name="msg_title_en" maxlength="80" value="${esc(val(d, 'msg_title_en'))}"></label>
+<label class="wide">본문 ko (1000자) <textarea name="msg_body_ko" maxlength="1000">${esc(val(d, 'msg_body_ko'))}</textarea></label>
+<label class="wide">본문 en (1000자) <textarea name="msg_body_en" maxlength="1000">${esc(val(d, 'msg_body_en'))}</textarea></label>
+<label class="wide">링크 (선택) <input name="msg_link" type="url" maxlength="500" value="${esc(val(d, 'msg_link'))}"></label>
+</div></details>
+${makeButtons('versions')}</form>
+${versionTable(v)}`;
+}
+
+/** 만들기 칸: 종류를 고르고, 고른 종류에 필요한 입력만 보인다. 미리보기 단계가 있으면 그것을 보인다 */
+function newSection(v: AdminView): string {
+  const pv = v.preview && v.preview.action !== 'grants/batch' ? v.preview : undefined;
+  if (pv) return flowPreviewSection(v, pv);
+  const f = v.flash;
+  const picked = f?.form && MAKE_KINDS.some(([k]) => k === f.form) ? f.form : 'notices';
+  const dflt = formDefaults();
+  const d = (k: string) => draftOf(v, k);
+  const done =
+    f && !f.error && !f.edit && MAKE_KINDS.some(([k]) => k === f.form)
+      ? `${flowHead(v, f.form as string, MAKE_LOG[f.form as string] ?? '')}${f.copy ? copyBox(f.copy) : ''}${reachBox(REACH_KIND[f.form as keyof typeof REACH_KIND], Date.now())}`
+      : flowSteps(1);
+  const note = f?.edit && f.text ? `<p class="flash" role="status" id="form-ok">${esc(f.text)}</p>` : '';
+  const radios = MAKE_KINDS.map(
+    ([k, label]) =>
+      `<input type="radio" name="mk" id="mk-${k}" class="mk-radio"${picked === k ? ' checked' : ''}><label for="mk-${k}" class="mk-tab">${esc(label)}</label>`,
+  ).join('');
+  const hints = MAKE_KINDS.map(([k, , hint]) => `<span class="mk-hint mk-${k}">${esc(hint)}</span>`).join('');
+  return `<section class="mk"><h2>만들기</h2>
+${done}${note}
+<div class="mk-pick" role="radiogroup" aria-label="무엇을 알릴까요">${radios}</div>
+<p class="hint">${hints}</p>
+<div class="mk-body mk-notices">${draftBar(v, 'notices')}${noticeForm(v, d('notices'), dflt)}</div>
+<div class="mk-body mk-events">${draftBar(v, 'events')}${eventForm(v, d('events'), dflt)}</div>
+<div class="mk-body mk-coupons">${draftBar(v, 'coupons')}${couponForm(v, d('coupons'), dflt)}</div>
+<div class="mk-body mk-versions">${draftBar(v, 'versions')}${versionForm(v, d('versions'))}</div>
+</section>`;
+}
+
+/** 쿠폰 원본 코드: 서버에 해시만 있어 이 화면이 마지막이다 */
+function copyBox(code: string): string {
+  return `<div class="copybox"><p class="flash warn" role="alert">쿠폰 코드는 서버에 해시만 남아서 다시 볼 수 없어요. 지금 복사해서 따로 적어 두세요.</p>
+<p><code class="coupon-code" id="coupon-code">${esc(code)}</code> <button type="button" data-copy="${esc(code)}">복사</button></p></div>`;
+}
+
+/** 이벤트 모양 미리 보기 (앱 이벤트 카드의 칸: 배지, 제목, 본문) */
+function eventPreview(e: SiteEvent, lang: 'ko' | 'en'): string {
+  const badge =
+    e.kind === 'gift'
+      ? lang === 'ko'
+        ? `선물 ${e.coins} 코인`
+        : `Gift ${e.coins} coins`
+      : lang === 'ko'
+        ? `${(e.boost?.reasons ?? []).map((r) => (r === 'meet' ? '출석' : '집중')).join(', ')} x${e.boost?.times}`
+        : `${(e.boost?.reasons ?? []).map((r) => (r === 'meet' ? 'Check-in' : 'Focus')).join(' + ')} x${e.boost?.times}`;
+  const btn = e.kind === 'gift' ? (lang === 'ko' ? '받기' : 'Claim') : '';
+  return `<div class="preview event" lang="${lang}"><span class="badge">${esc(badge)}</span><strong>${esc(e.title[lang])}</strong>
+<p>${esc(e.body[lang]).replaceAll('\n', '<br>')}</p>${btn ? `<div class="btns"><span class="primary">${esc(btn)}</span></div>` : ''}</div>`;
+}
+
+const kstText = (ms: number) => kstIso(ms).slice(0, 16).replace('T', ' ');
+
+/** 확정 폼의 공통: 숨은 칸(작성 값), 번호, 막힌 까닭이 있으면 단추 없음 */
+function confirmForm(
+  v: AdminView,
+  pv: Extract<FlowPreview, { nonce: string }>,
+  path: string,
+  button: string,
+  extra = '',
+  blocked: string | null = null,
+): string {
+  const bad = blocked ? `<p class="flash error wide" role="alert">${esc(blocked)}</p>` : '';
+  return `<form method="post" action="${esc(path)}" class="grid">${formErr(v, pv.action)}${hidden(v.csrf)}${flowKey(pv.nonce)}${carry(pv.fields)}${extra}${bad}
+${blocked ? '' : `<button type="submit">${esc(button)}</button>`}</form>
+${editButton(v.csrf, pv.action)}`;
+}
+
+const lvl = (x: string) => (x ? esc(x) : '없음');
+
+function flowPreviewSection(v: AdminView, pv: Exclude<FlowPreview, { action: 'grants/batch' }>): string {
+  if (pv.action === 'notices') return noticeFlowSection(v, pv);
+  if (pv.action === 'events') {
+    const e = pv.event;
+    return `<section class="flow"><h2>이벤트 만들기</h2>
+${flowSteps(3)}
+<p class="hint">아직 저장하지 않았어요. 앱에 보이는 모양과 받는 사람을 확인하고 확정해 주세요.</p>
+<dl class="stats">
+<div><dt>id</dt><dd><code>${esc(e.id)}</code></dd></div>
+<div><dt>종류</dt><dd>${e.kind === 'gift' ? `선물 ${e.coins} 코인` : `배수 x${e.boost?.times} (${esc((e.boost?.reasons ?? []).map((r) => (r === 'meet' ? '출석' : '집중')).join(', '))})`}</dd></div>
+<div><dt>기간 (한국 시간)</dt><dd>${esc(kstText(e.from))} ~ ${esc(kstText(e.until))}</dd></div>
+<div><dt>받는 계정</dt><dd>${pv.loginOnly ? '로그인 계정만' : '기기 계정도'}</dd></div>
+<div><dt>같은 id</dt><dd>${pv.exists ? '있음, 만들 수 없어요' : '없음 (새로 만들어요)'}</dd></div>
+</dl>
+<div class="previews">${eventPreview(e, 'ko')}${eventPreview(e, 'en')}</div>
+${reachBox('event')}
+${confirmForm(v, pv, '/admin/events', '확정하고 이벤트 만들기', '', pv.exists ? '같은 id 의 이벤트가 있어요. 고치기로 돌아가 id 를 바꿔 주세요' : null)}</section>`;
+  }
+  if (pv.action === 'coupons') {
+    const c = pv.coupon;
+    const gives = [c.coins ? `코인 ${c.coins}` : '', c.tickets ? `채팅 이용권 ${c.tickets}장` : ''].filter(
+      Boolean,
+    );
+    return `<section class="flow"><h2>쿠폰 만들기</h2>
+${flowSteps(3)}
+<p class="hint">아직 만들지 않았어요. 코드는 확정하는 순간 한 번만 보여요. 서버에는 해시만 남아요.</p>
+<dl class="stats">
+<div><dt>메모</dt><dd>${esc(c.label)}</dd></div>
+<div><dt>주는 것</dt><dd>${esc(gives.join(', '))}</dd></div>
+<div><dt>기간 (한국 시간)</dt><dd>${c.from === null ? '만드는 순간' : esc(kstText(c.from))} ~ ${esc(kstText(c.until))}</dd></div>
+<div><dt>전체 사용 상한</dt><dd>${c.maxUses}번 (계정마다 한 번)</dd></div>
+<div><dt>받는 계정</dt><dd>${pv.loginOnly ? '로그인 계정만' : '기기 계정도'}</dd></div>
+</dl>
+<div class="previews">
+<div class="preview" lang="ko"><span class="badge">쿠폰 사용</span><strong>쿠폰을 받았어요</strong><p>${esc(gives.join(', '))}을 받아요${c.tickets ? ' (채팅 이용권은 만 18세 이상 계정만)' : ''}.</p></div>
+<div class="preview" lang="en"><span class="badge">Coupon</span><strong>Coupon redeemed</strong><p>You get ${esc([c.coins ? `${c.coins} coins` : '', c.tickets ? `${c.tickets} chat pass${c.tickets > 1 ? 'es' : ''}` : ''].filter(Boolean).join(' and '))}.</p></div>
+</div>
+${reachBox('coupon')}
+${confirmForm(v, pv, '/admin/coupons', '확정하고 쿠폰 만들기')}</section>`;
+  }
+  // versions
+  const row = (name: string, a: string, b: string, up: boolean) =>
+    `<tr><td>${esc(name)}</td><td>${lvl(a)}</td><td>${lvl(b)}${up ? ' <span class="tag bad">올림</span>' : a !== b ? ' <span class="tag">바뀜</span>' : ''}</td></tr>`;
+  const n0 = pv.impactNow;
+  const n1 = pv.impactAfter;
+  const diff = (a: number, b: number) => `${a}명 &rarr; <strong>${b}명</strong>`;
+  const confirmLabel = [
+    pv.raises.min ? '최소 버전을 올려요. 낮은 앱이 잠겨요' : '',
+    pv.raises.restrict ? '기능 제한 버전을 올려요. 낮은 앱의 서버 기능이 막혀요' : '',
+    pv.message?.kind === 'force' ? '강제 업데이트 안내문이 홈페이지에 올라가요' : '',
+  ]
+    .filter(Boolean)
+    .join(', ');
+  return `<section class="flow"><h2>버전 기준 저장</h2>
+${flowSteps(3)}
+<p class="hint">아직 저장하지 않았어요. 바뀌는 기준과 영향받는 인원을 확인하고 확정해 주세요.</p>
+<table class="plain-table"><thead><tr><th>기준</th><th>지금</th><th>저장하면</th></tr></thead><tbody>
+${row('최소 (강제)', pv.before.min, pv.after.min, pv.raises.min)}${row('기능 제한', pv.before.restrict, pv.after.restrict, pv.raises.restrict)}${row('권장', pv.before.rec, pv.after.rec, pv.raises.rec)}
+</tbody></table>
+<dl class="stats">
+<div><dt>앱이 잠기는 계정</dt><dd>${diff(n0.locked, n1.locked)}</dd></div>
+<div><dt>서버 기능만 막히는 계정</dt><dd>${diff(n0.restricted, n1.restricted)}</dd></div>
+<div><dt>업데이트 권장 알림을 받는 계정</dt><dd>${diff(n0.recommended, n1.recommended)}</dd></div>
+<div><dt>최근 30일 활동 계정</dt><dd>${n1.active}명</dd></div>
+</dl>
+<p class="hint">순서(최소 &le; 기능 제한 &le; 권장)는 맞아요. 최신 릴리스는 ${esc(pv.latest ?? '읽지 못함')} 이에요.${n1.unknown > 0 ? ` 판을 모르는 ${n1.unknown}명은 가장 낮은 판으로 세요.` : ''} 판은 앱이 하루에 한 번 알려 줘서 방금 업데이트한 계정은 이전 판으로 남아 있을 수 있어요.</p>
+${pv.message ? `<h3>같이 넣는 안내문 (${esc(KIND_KO[pv.message.kind])}, id ${esc(pv.message.id)}, 대상 ${esc(pv.message.versions ?? '')})</h3><div class="previews">${noticePreview(pv.message, 'ko')}${noticePreview(pv.message, 'en')}</div>` : '<p class="hint">안내문은 같이 넣지 않아요.</p>'}
+${reachBox('version')}
+${confirmForm(v, pv, '/admin/versions', '확정하고 버전 기준 저장', pv.needsConfirm ? `<label class="confirm wide"><input type="checkbox" name="confirm" value="yes" required> ${esc(confirmLabel)}</label>` : '', pv.blocked)}</section>`;
+}
+
+/** 공지 흐름: 미리보기(공지 창 모양과 바뀌는 것), 확정. 강제 업데이트 글은 확정에서 확인 칸을 체크해야 한다 */
+function noticeFlowSection(v: AdminView, pv: Extract<FlowPreview, { action: 'notices' }>): string {
   const n = pv.notice;
   const period = n.from || n.until ? `${n.from ?? '처음부터'} ~ ${n.until ?? '끝없이'}` : '기간 없음';
   return `<section class="flow"><h2>공지 넣기</h2>
@@ -1340,6 +1688,7 @@ ${flowSteps(3)}
 </dl>
 <div class="previews">${noticePreview(n, 'ko')}${noticePreview(n, 'en')}</div>
 ${n.link ? `<p class="hint">링크: ${esc(n.link)}</p>` : ''}
+${reachBox('notice')}
 <form method="post" action="/admin/notices" class="grid">${formErr(v, 'notices')}${hidden(v.csrf)}${flowKey(pv.nonce)}${carry(pv.fields)}
 ${n.kind === 'force' ? `<label class="confirm"><input type="checkbox" name="confirm" value="yes" required> 강제 업데이트 글이에요. 홈페이지에 올라가요</label>` : ''}
 <button type="submit">확정하고 공지 저장</button></form>
@@ -1357,11 +1706,7 @@ ${CELL_SUBS[cell].map(([id]) => `<div class="sub" id="sub-${cell}-${id}" data-su
     home: homeSection(v),
     users: sub('users', { list: usersTable(v), grants: grantsSection(v) }),
     reports: reportsSection(v),
-    announce: sub('announce', {
-      notices: noticeFlowSection(v),
-      events: eventsSection(v),
-      coupons: couponsSection(v),
-    }),
+    announce: sub('announce', { posts: postsSection(v), new: newSection(v) }),
     settings: sub('settings', {
       features: ai.features,
       ai: ai.tickets,
@@ -1398,6 +1743,8 @@ ${cells}</main></div>`,
 }
 
 const ACTION_KO: Record<string, string> = {
+  'draft.save': '알리기 초안 저장',
+  'draft.delete': '알리기 초안 지우기',
   'event.create': '이벤트 만들기',
   'event.end': '이벤트 끝내기',
   'event.delete': '이벤트 지우기',
@@ -1480,60 +1827,10 @@ function versionTable(v: AdminView): string {
   const l = x.locked;
   const lock =
     l.min || l.restrict
-      ? `<p class="${l.locked > 0 ? 'warn-text' : 'hint'}">지금 기준으로 ${l.min ? `최소 ${esc(l.min)} 보다 낮아 앱이 잠기는 계정 <strong>${l.locked}명</strong>` : '강제 기준 없음'}${l.restrict ? `, 기능 제한 ${esc(l.restrict)} 보다만 낮아 서버 기능이 거절되는 계정 <strong>${l.restricted}명</strong>` : ''}${l.unknown > 0 ? ` (판을 모르는 ${l.unknown}명 포함, 판 표시가 없으면 가장 낮은 판으로 봐요)` : ''}. 판은 앱이 하루에 한 번 알려 줘서, 방금 업데이트한 계정은 최대 하루 동안 이전 판으로 남아 있어요. <a href="#announce/notices">공지와 버전</a></p>`
-      : `<p class="hint">최소 버전과 기능 제한 버전이 없어서 잠기는 계정이 없어요. <a href="#announce/notices">공지와 버전</a></p>`;
+      ? `<p class="${l.locked > 0 ? 'warn-text' : 'hint'}">지금 기준으로 ${l.min ? `최소 ${esc(l.min)} 보다 낮아 앱이 잠기는 계정 <strong>${l.locked}명</strong>` : '강제 기준 없음'}${l.restrict ? `, 기능 제한 ${esc(l.restrict)} 보다만 낮아 서버 기능이 거절되는 계정 <strong>${l.restricted}명</strong>` : ''}${l.unknown > 0 ? ` (판을 모르는 ${l.unknown}명 포함, 판 표시가 없으면 가장 낮은 판으로 봐요)` : ''}. 판은 앱이 하루에 한 번 알려 줘서, 방금 업데이트한 계정은 최대 하루 동안 이전 판으로 남아 있어요. <a href="/admin?load=version#announce/new">버전 기준 고치기</a></p>`
+      : `<p class="hint">최소 버전과 기능 제한 버전이 없어서 잠기는 계정이 없어요. <a href="/admin?load=version#announce/new">버전 기준 고치기</a></p>`;
   return `<h3>앱 판 분포 (최근 30일 활동 ${x.active}명)</h3>${lock}
 <table><tr><th>앱 판</th><th>계정</th></tr>${rows}<tr><td>판 없음 (옛 앱)</td><td>${x.unknown}</td></tr></table>`;
-}
-
-function noticesSection(v: AdminView): string {
-  const d = v.notices;
-  const csrf = v.csrf;
-  const dv = draftOf(v, 'versions');
-  const dn = draftOf(v, 'notices');
-  const list = d?.notices ?? [];
-  return `<section><h2>공지와 강제 업데이트</h2>
-<p class="hint">${
-    d
-      ? `마지막 저장 ${when(v.noticesUpdated ?? 0)}. 홈페이지 notices.json 은 10분 안쪽에 이 내용으로 바뀌어요.`
-      : '아직 여기서 저장한 적이 없어요. 처음 저장하면 홈페이지 notices.json 전체가 이 화면의 내용으로 바뀌어요.'
-  } 이미 닫은 알림은 다시 안 뜨니 정정은 새 id 로 올려요.</p>
-<form method="post" action="/admin/versions" class="grid">${formErr(v, 'versions')}${hidden(csrf)}
-<p class="wide">최신 릴리스: <strong>${esc(v.latest ?? '읽지 못함')}</strong>. 올리는 값은 이보다 높을 수 없어요. 내리거나 지우기는 언제나 돼요.</p>
-<label>최소 버전 (이보다 낮으면 잠금) <input name="minVersion" pattern="\\d{1,4}\\.\\d{1,4}\\.\\d{1,4}" value="${esc(val(dv, 'minVersion', d?.minVersion ?? ''))}" placeholder="비우면 없음"></label>
-<label>기능 제한 버전 (이보다 낮으면 서버 기능 거절, 앱은 업데이트 안내) <input name="restrictVersion" pattern="\\d{1,4}\\.\\d{1,4}\\.\\d{1,4}" value="${esc(val(dv, 'restrictVersion', d?.restrictVersion ?? ''))}" placeholder="비우면 없음"></label>
-<label>권장 버전 (업데이트 권장 공지) <input name="recommendVersion" pattern="\\d{1,4}\\.\\d{1,4}\\.\\d{1,4}" value="${esc(val(dv, 'recommendVersion', d?.recommendVersion ?? ''))}" placeholder="비우면 없음"></label>
-<p class="wide hint">순서: 최소 ≤ 기능 제한 ≤ 권장. 올린 값은 다음 맞추기(3분 안)에 서버에 바로 적용돼요.</p>
-<label class="confirm"><input type="checkbox" name="confirm" value="yes"> 최소 버전이나 기능 제한 버전을 올리면 낮은 앱이 잠기거나 서버 기능이 막혀요. 올릴 때만 체크</label>
-<button type="submit">버전 저장</button>
-</form>
-${versionTable(v)}
-${list
-  .map(
-    (n) => `<article class="notice">
-<header><code>${esc(n.id)}</code> ${esc(KIND_KO[n.kind])} ${n.from || n.until ? `${esc(n.from ?? '')} ~ ${esc(n.until ?? '')}` : '기간 없음'} ${n.versions ? `대상 ${esc(n.versions)}` : ''} ${n.platforms ? esc(n.platforms.join(', ')) : ''}
-${sureForm(v, '/admin/notices/delete', { id: n.id }, `공지 "${n.title.ko}" (${n.id}) 지울게요`, '지우기')}</header>
-<div class="previews">${noticePreview(n, 'ko')}${noticePreview(n, 'en')}</div>
-${n.link ? `<p class="hint">링크: ${esc(n.link)}</p>` : ''}
-</article>`,
-  )
-  .join('')}
-<h3>공지 넣기 (같은 id 면 바꿔요)</h3>
-${flowHead(v, 'notices', '')}
-<form method="post" action="/admin/notices/preview" class="grid">${formErr(v, 'notices', undefined, true)}${hidden(csrf)}
-<label>id (영문, 숫자, ., _, - 80자) <input name="id" required maxlength="80" pattern="[A-Za-z0-9][A-Za-z0-9._\\-]{0,79}" value="${esc(val(dn, 'id'))}"></label>
-<label>종류 <select name="kind">${opt(dn, 'kind', 'info', '알림 (한 번)', 'info')}${opt(dn, 'kind', 'important', '중요 (확인할 때까지)', 'info')}${opt(dn, 'kind', 'update', '업데이트 권장 (권장 버전보다 낮은 앱)', 'info')}${opt(dn, 'kind', 'force', '강제 업데이트 창의 글 (잠금은 최소 버전)', 'info')}</select></label>
-<label>제목 ko (80자) <input name="title_ko" required maxlength="80" value="${esc(val(dn, 'title_ko'))}"></label>
-<label>제목 en (80자) <input name="title_en" required maxlength="80" value="${esc(val(dn, 'title_en'))}"></label>
-<label class="wide">본문 ko (1000자, 글자만) <textarea name="body_ko" required maxlength="1000">${esc(val(dn, 'body_ko'))}</textarea></label>
-<label class="wide">본문 en (1000자, 글자만) <textarea name="body_en" required maxlength="1000">${esc(val(dn, 'body_en'))}</textarea></label>
-<label class="wide">링크 (선택, https://fairy.moilga.com 이나 https://github.com/milcho0604/ 아래만) <input name="link" type="url" maxlength="500" value="${esc(val(dn, 'link'))}"></label>
-<label>시작 (선택) <input name="from" type="datetime-local" value="${esc(val(dn, 'from'))}"></label>
-<label>끝 (선택) <input name="until" type="datetime-local" value="${esc(val(dn, 'until'))}"></label>
-<label>대상 버전 (선택, 예: &lt;0.5.0) <input name="versions" maxlength="60" value="${esc(val(dn, 'versions'))}"></label>
-<label>운영체제 (선택, 예: darwin,win32) <input name="platforms" maxlength="40" value="${esc(val(dn, 'platforms'))}"></label>
-<button type="submit">미리보기</button>
-</form></section>`;
 }
 
 /** 현재 칸과 하위만 보이게 하는 규칙. admin.js 가 html 에 data-cell, data-sub 를 달아야 켜진다 (스크립트가 없으면 모두 보인다) */
@@ -1564,6 +1861,8 @@ function routerJs(): string {
       const q = new URLSearchParams(location.search);
       s = undefined;
       if (['lu', 'la', 'lt', 'lp'].some((k) => q.has(k))) { c = 'settings'; s = 'log'; }
+      else if (q.has('load')) { c = 'announce'; s = 'new'; }
+      else if (['pk', 'ps', 'pq'].some((k) => q.has(k))) { c = 'announce'; s = 'posts'; }
       else if (q.has('account') || q.has('pick')) { c = 'users'; s = 'grants'; }
       else if (['q', 'page', 'sort', 'direction', 'user'].some((k) => q.has(k))) { c = 'users'; s = 'list'; }
       else c = 'home';
@@ -1712,6 +2011,34 @@ td.pick input { width: 18px; height: 18px; }
 .detail h3 { margin-top: 18px; }
 table.users td.name { font-weight: 600; }
 td.act { white-space: nowrap; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.posts-find { margin-bottom: 4px; }
+table.posts td.name { font-weight: 600; overflow-wrap: anywhere; }
+table.posts td.name small { font-weight: 400; color: var(--muted); }
+.sub-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; align-items: end; margin-top: 8px; }
+.sub-grid .wide { grid-column: 1 / -1; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.draft-bar { align-items: center; border: 1px dashed var(--line); border-radius: 8px; padding: 8px 10px; }
+.mk-pick { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
+.mk-radio { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.mk-tab { flex-direction: row; border: 1px solid var(--line); border-radius: 7px; padding: 8px 14px; background: var(--card); color: var(--fg); font-size: 15px; font-weight: 600; cursor: pointer; }
+.mk-radio:checked + .mk-tab { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+.mk-radio:focus-visible + .mk-tab { outline: 2px solid var(--accent); outline-offset: 2px; }
+.kindpick { margin: 0; }
+.reach { border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 8px; padding: 8px 12px; margin: 12px 0; background: var(--bg); }
+.reach h3 { margin: 0 0 4px; }
+.reach ol { margin: 0; padding-left: 20px; font-size: 13px; }
+.copybox { margin: 8px 0; }
+.coupon-code { font-size: 20px; font-weight: 700; letter-spacing: 0.04em; border: 1px solid var(--accent); border-radius: 8px; padding: 6px 10px; user-select: all; }
+.preview.event .badge { background: var(--accent); color: var(--on-accent); }
+table.plain-table { max-width: 560px; margin-bottom: 12px; }
+@supports selector(:has(a)) {
+  .mk-body, .mk-hint { display: none; }
+  .mk:has(#mk-notices:checked) .mk-notices, .mk:has(#mk-events:checked) .mk-events,
+  .mk:has(#mk-coupons:checked) .mk-coupons, .mk:has(#mk-versions:checked) .mk-versions { display: block; }
+  .mk-events:has(input[name=kind][value=gift]:checked) .only-boost,
+  .mk-events:has(input[name=kind][value=boost]:checked) .only-gift { display: none; }
+}
 @media (max-width: 600px) {
   main { padding: 10px; }
   .table-scroll table.cards { min-width: 0; }
@@ -1824,6 +2151,13 @@ ${routerJs()}
     form.before(note);
     note.scrollIntoView({ block: 'center' });
   };
+
+  document.addEventListener('click', (e) => {
+    const b = e.target instanceof Element ? e.target.closest('button[data-copy]') : null;
+    if (!b) return;
+    const done = (ok) => { b.textContent = ok ? '복사했어요' : '복사하지 못했어요. 글자를 직접 골라 복사해 주세요'; };
+    try { navigator.clipboard.writeText(b.dataset.copy).then(() => done(true), () => done(false)); } catch { done(false); }
+  });
 
   window.addEventListener('pageshow', (e) => { release(); if (!e.persisted) restore(); });
 })();

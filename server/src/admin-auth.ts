@@ -30,13 +30,15 @@ export interface AdminSession {
     fields?: Record<string, string | string[]>;
     /** 미리보기에서 "고치기" 로 돌아온 것 (오류가 아니고 쓰던 값만 되살린다) */
     edit?: boolean;
+    /** 결과 글과 함께 복사 단추로 보일 값 (쿠폰 원본 코드: 서버에는 해시만 있어 이 화면이 마지막이다) */
+    copy?: string;
   };
   /**
    * 발행과 지급 흐름에서 작성을 마치고 대상 확인과 미리보기 단계에 있는 것 (쓰기 전). 새로 고쳐도 남고
    * 확정, 고치기, 30분 지남이 지운다
    */
   preview?: {
-    action: 'grants/batch' | 'notices';
+    action: 'grants/batch' | 'notices' | 'events' | 'coupons' | 'versions';
     fields: Record<string, string | string[]>;
     at: number;
     /** 이 미리보기를 확정하는 한 번만 쓰는 번호 (확정 폼이 싣고 오고, 쓰면 지운다) */
@@ -45,6 +47,8 @@ export interface AdminSession {
     ids?: string[];
     /** 미리보기 때 검사를 거친 지급 값(대상, 양, 사유, 만료)을 한 모양으로 만든 글. 확정 때 이것과 비교한다 */
     grant?: string;
+    /** 미리보기 때 검사를 거친 값(공지, 이벤트, 쿠폰, 버전)을 한 모양으로 만든 글. 확정 때 통째 비교한다 */
+    norm?: string;
   };
 }
 
