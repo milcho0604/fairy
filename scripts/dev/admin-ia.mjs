@@ -741,6 +741,8 @@ async function appPart() {
     check('앱 운영자 칸에는 입력이 하나도 없다 (28개 → 0개)', b.inputs === 0, String(b.inputs));
     check('단추는 새로 보기와 웹에서 열기 둘뿐', JSON.stringify(b.buttons.map((x) => x.t)) === JSON.stringify([tx('admin.refresh'), tx('admin.web.open')]), JSON.stringify(b.buttons));
     check('칸 높이가 크게 줄었다 (2543px → 600px 아래)', b.height < 600, String(b.height));
+    // #152: 오늘 숫자 한 줄, 백업 줄(이 서버는 백업 키가 없어 꺼짐), 기준이 없으니 잠기는 줄은 없다
+    check('요약에 오늘 숫자 한 줄과 백업 꺼짐 줄이 있고 잠기는 줄은 없다 (#152)', b.text.includes(tx('admin.today', { signups: 0, active: 0, asks: 0, cost: '$0.00' }).split('0')[0]) && b.text.includes(tx('admin.backup.off')) && !b.text.includes(tx('admin.locked', { force: 0, restricted: 0 }).split('0')[0]), b.text);
 
     // ---- 2. 자료가 쌓인 요약 ----
     await adminPost('/admin/login', { token: ADMIN_TOKEN });

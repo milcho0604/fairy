@@ -19,6 +19,9 @@ test('요약은 서버 자료의 숫자만 읽고, 새 칸이 없는 낡은 서�
     reports: 0,
     todo: [],
     recent: [],
+    today: null,
+    backup: null,
+    locked: null,
   });
 });
 
@@ -93,4 +96,48 @@ test('신고 대기는 pending 을 먼저, 없으면 옛 서버의 total 로 읽
   assert.equal(adminSummaryOf({ ...base, reports: { total: 9, pending: 0 } })?.reports, 0);
   assert.equal(adminSummaryOf({ ...base, reports: { total: 9 } })?.reports, 9);
   assert.equal(adminSummaryOf({ ...base, reports: { total: 'x', pending: 'y' } })?.reports, 0);
+});
+
+test('오늘 숫자, 백업 줄, 잠기는 인원을 읽고 낡은 서버는 null (#152)', () => {
+  const day = (n: number) => ({
+    day: `2026-10-${n}`,
+    signups: n,
+    active: n + 1,
+    asks: n + 2,
+    costMicros: n * 1000,
+  });
+  const s = adminSummaryOf({
+    ...base,
+    trend: { days: [day(21), day(22), day(23)] },
+    backup: { enabled: true, files: 4, lastUploadAt: 1_700_000_000_000, bytes: 5 },
+    versions: { locked: { min: '0.5.0', restrict: null, locked: 3, restricted: 1, unknown: 2 } },
+  });
+  assert.deepEqual(s?.today, { signups: 23, active: 24, asks: 25, costMicros: 23000 });
+  assert.deepEqual(s?.backup, { enabled: true, lastUploadAt: 1_700_000_000_000, files: 4 });
+  assert.deepEqual(s?.locked, { force: 3, restricted: 1 });
+  // 기준이 없으면 잠기는 줄 자체를 보이지 않는다
+  const none = adminSummaryOf({
+    ...base,
+    versions: { locked: { min: null, restrict: null, locked: 0, restricted: 0, unknown: 0 } },
+  });
+  assert.equal(none?.locked, null);
+  // 모양이 틀린 칸은 null
+  const bad = adminSummaryOf({ ...base, trend: { days: [{ day: 'x' }] }, backup: { enabled: 'yes' } });
+  assert.equal(bad?.today, null);
+  assert.equal(bad?.backup, null);
+  assert.equal(
+    adminSummaryOf({ ...base, backup: { enabled: false, files: 0, lastUploadAt: null } })?.backup
+      ?.lastUploadAt,
+    null,
+  );
+});
+
+test('백업 확인할 것 글은 ko, en 둘 다 (#152)', () => {
+  const item = { kind: 'backup', level: 'warn', n: 83, place: 'settings/backup' } as const;
+  setLang('ko');
+  assert.equal(todoLabel(item), '서버 백업이 상한의 83%');
+  setLang('en');
+  assert.equal(todoLabel(item), 'Server backups use 83% of the limit');
+  setLang('ko');
+  assert.equal(adminSummaryOf({ ...base, todo: [item] })?.todo[0]?.place, 'settings/backup');
 });

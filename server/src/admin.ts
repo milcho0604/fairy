@@ -20,6 +20,7 @@ import type { PoolClient } from 'pg';
 import { lockAccount, lockAccountsOrdered } from './accounts';
 import { AdminAccess } from './admin-access';
 import { AdminAuth, type AdminSession, actorOf, clearCookie } from './admin-auth';
+import { type BackupStatus, fillDays, lockedStats, TREND_DAYS, type TrendView } from './admin-home';
 import {
   type AdminCell,
   type AdminPlace,
@@ -46,7 +47,7 @@ import { AuthGuard } from './auth.guard';
 import type { Config } from './config';
 import { Db } from './db';
 import { type FeatureKey, Features, isFeatureKey } from './features';
-import { EVENT_COLUMNS, type EventRow, Feeds } from './feeds';
+import { EVENT_COLUMNS, type EventRow, Feeds, levelsOf } from './feeds';
 import { sendInbox } from './inbox';
 import {
   checkDoc,
@@ -384,6 +385,10 @@ export class AdminService {
     const reportCount = reportCounts.pending + reportCounts.seen + reportCounts.done;
     const settings = await this.aiAdmin.settings();
     const budgetMicros = settings.monthlyBudgetMicros;
+    const backup = await this.backupStatus();
+    const trend = await this.trend();
+    // 잠기는 인원은 저장한 공지 문서의 기준으로 센다 (서버 관문의 캐시를 기다리지 않는다)
+    const levels = levelsOf(readDoc(doc.rows[0]?.body));
     return {
       tab,
       reports: { total: reportCount, ...reportCounts, filter: 'all' as const, rows: [] },
@@ -399,7 +404,10 @@ export class AdminService {
           disabled: c.disabled,
         })),
         now: Date.now(),
+        backup,
       }),
+      trend,
+      backup,
       summary: {
         accounts: Number(sum.rows[0]?.accounts ?? 0),
         coins: Number(sum.rows[0]?.coins ?? 0),
@@ -427,7 +435,79 @@ export class AdminService {
       logPage: log.page,
       rewardsLoginOnly: await this.rewards.loginOnly(),
       features: await this.features.listFeatures(),
-      versions: versionStats(dist.rows),
+      versions: {
+        ...versionStats(dist.rows),
+        locked: lockedStats(
+          dist.rows.map((r) => ({ v: r.v, n: Number(r.n) })),
+          levels,
+        ),
+      },
+    };
+  }
+
+  /**
+   * 최근 14일(한국 날짜) 일별 추이. 쿼리 셋 모두 시작 시각 이후만 읽는다. ai_usage 는 created_at 색인을 타고,
+   * account 와 coin_entry 는 색인 없이 훑는다: 로컬 실측(계정 30만, 코인 기록 300만, 질문 100만)에서 합쳐 약 0.4초,
+   * created_at 색인을 더해도 0.35초에서 0.29초라 쓰기 부담(색인 64MB)이 더 커서 두지 않았다.
+   */
+  private async trend(): Promise<TrendView> {
+    const q = this.db.pool;
+    const start = `((($1::date) - ${TREND_DAYS - 1})::timestamp AT TIME ZONE 'Asia/Seoul')`;
+    const today = await q.query<{ d: string }>(
+      `SELECT to_char((now() AT TIME ZONE 'Asia/Seoul')::date, 'YYYY-MM-DD') AS d`,
+    );
+    const day = today.rows[0]?.d ?? new Date().toISOString().slice(0, 10);
+    const kst = (col: string) => `to_char((${col} AT TIME ZONE 'Asia/Seoul')::date, 'YYYY-MM-DD')`;
+    const signups = await q.query<{ day: string; n: string }>(
+      `SELECT ${kst('created_at')} AS day, count(*) AS n FROM account
+        WHERE created_at >= ${start} AND closed_at IS NULL GROUP BY 1`,
+      [day],
+    );
+    const active = await q.query<{ day: string; n: string }>(
+      `SELECT day, count(DISTINCT account_id) AS n FROM (
+         SELECT ${kst('created_at')} AS day, account_id FROM coin_entry WHERE created_at >= ${start}
+         UNION ALL
+         SELECT ${kst('created_at')} AS day, account_id FROM ai_usage WHERE created_at >= ${start} AND account_id IS NOT NULL
+       ) u GROUP BY day`,
+      [day],
+    );
+    const ai = await q.query<{ day: string; asks: string; cost: string }>(
+      `SELECT ${kst('created_at')} AS day, count(*) AS asks, COALESCE(sum(cost_micros), 0) AS cost FROM ai_usage
+        WHERE created_at >= ${start} GROUP BY 1`,
+      [day],
+    );
+    return {
+      zone: 'Asia/Seoul',
+      days: fillDays(day, [
+        ...signups.rows.map((r) => ({ day: r.day, signups: Number(r.n) })),
+        ...active.rows.map((r) => ({ day: r.day, active: Number(r.n) })),
+        ...ai.rows.map((r) => ({ day: r.day, asks: Number(r.asks), costMicros: Number(r.cost) })),
+      ]),
+    };
+  }
+
+  /** 서버가 아는 백업: backup 표(이용자가 올린 파일)와 설정. 데이터베이스 덤프와 외장 디스크 사본은 읽을 수 없다 */
+  private async backupStatus(): Promise<BackupStatus> {
+    const r = await this.db.pool.query<{
+      files: string;
+      accounts: string;
+      bytes: string;
+      last: string | null;
+    }>(
+      `SELECT count(*) AS files, count(DISTINCT account_id) AS accounts, COALESCE(sum(size), 0) AS bytes,
+              (extract(epoch FROM max(created_at)) * 1000)::bigint AS last FROM backup`,
+    );
+    const x = r.rows[0];
+    const cfg = this.config.backup;
+    const max = cfg?.totalMaxBytes;
+    return {
+      enabled: !!cfg?.key && !!cfg.dir,
+      files: Number(x?.files ?? 0),
+      accounts: Number(x?.accounts ?? 0),
+      bytes: Number(x?.bytes ?? 0),
+      maxBytes: max !== undefined && Number.isFinite(max) && max > 0 ? max : null,
+      lastUploadAt: x?.last ? Number(x.last) : null,
+      external: 'unknown',
     };
   }
 
@@ -1593,7 +1673,7 @@ export class AdminService {
 }
 
 /** 앱 판 분포 (최근 30일 활동 계정). 판은 높은 순, 모르는 계정은 unknown */
-export function versionStats(rows: { v: string | null; n: string }[]): AdminView['versions'] {
+export function versionStats(rows: { v: string | null; n: string }[]): Omit<AdminView['versions'], 'locked'> {
   let active = 0;
   let unknown = 0;
   const list: { version: string; count: number }[] = [];

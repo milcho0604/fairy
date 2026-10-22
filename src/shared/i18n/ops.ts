@@ -98,6 +98,16 @@ export const ko = {
   'admin.todo.budgetZero': '월 예산이 0이라 채팅 이용권 질문이 모두 막혀',
   'admin.todo.endingEvents': (v: N) => `3일 안에 끝나는 이벤트 ${v.n}개`,
   'admin.todo.endingCoupons': (v: N) => `3일 안에 끝나는 쿠폰 ${v.n}개`,
+  'admin.todo.backup': (v: N) => `서버 백업이 상한의 ${v.n}%`,
+  'admin.today': (v: { signups: number; active: number; asks: number; cost: string }) =>
+    `오늘 가입 ${v.signups}, 활동 ${v.active}, 질문 ${v.asks}, 비용 ${v.cost}`,
+  'admin.backup.last': (v: { at: string; files: number }) =>
+    `백업 마지막으로 올라온 때 ${v.at} (파일 ${v.files}개)`,
+  'admin.backup.none': '서버에 올라온 백업이 아직 없어',
+  'admin.backup.off': '서버 백업이 꺼져 있어',
+  'admin.backup.unknown': '데이터베이스 덤프와 외장 디스크 사본은 서버가 읽을 수 없어 웹에서도 알 수 없어',
+  'admin.locked': (v: { force: number; restricted: number }) =>
+    `업데이트 기준으로 앱이 잠기는 계정 ${v.force}명, 서버 기능이 막히는 계정 ${v.restricted}명`,
   'admin.recent.title': '최근 운영 기록',
   'admin.recent.empty': '아직 운영 기록이 없어.',
   'admin.web.open': '웹에서 열기',
@@ -239,6 +249,17 @@ export const en: Translation<typeof ko> = {
   'admin.todo.budgetZero': 'The monthly budget is 0, so every chat question is blocked',
   'admin.todo.endingEvents': (v: N) => `Events ending within 3 days: ${v.n}`,
   'admin.todo.endingCoupons': (v: N) => `Coupons ending within 3 days: ${v.n}`,
+  'admin.todo.backup': (v: N) => `Server backups use ${v.n}% of the limit`,
+  'admin.today': (v: { signups: number; active: number; asks: number; cost: string }) =>
+    `Today: ${v.signups} sign-ups, ${v.active} active, ${v.asks} questions, ${v.cost}`,
+  'admin.backup.last': (v: { at: string; files: number }) =>
+    `Latest backup uploaded ${v.at} (${v.files} files)`,
+  'admin.backup.none': 'No backups on the server yet',
+  'admin.backup.off': 'Server backup is off',
+  'admin.backup.unknown':
+    "The server can't read the database dumps or the external-disk copy, so the web page can't tell either",
+  'admin.locked': (v: { force: number; restricted: number }) =>
+    `Accounts locked by the update floor: ${v.force}, accounts blocked from server features: ${v.restricted}`,
   'admin.recent.title': 'Recent admin log',
   'admin.recent.empty': 'No admin log yet.',
   'admin.web.open': 'Open on the web',
