@@ -13,7 +13,7 @@
 // CLAUDE.md 시험 창 규칙: JJ_NO_FOCUS=1(창은 보이지 않고 맥북 화면에만), 빈 JJ_USER_DATA(끝나면 지운다), 입력은 CDP 로만.
 // 진짜 AI CLI 가 잡히지 않게 PATH 는 /usr/bin:/bin 과 node 만 둔다. 포트는 무작위.
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -220,6 +220,20 @@ async function page(name, { not } = {}) {
 }
 
 const metrics = {};
+/** 폴더들 아래 모든 파일(하위 폴더 포함)에서 글자(utf-8)를 찾아 걸린 파일 목록을 돌려준다 */
+function scanDisk(dirs, needle) {
+  const hits = [];
+  const buf = Buffer.from(needle, 'utf8');
+  const walk = (d) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const f = join(d, e.name);
+      if (e.isDirectory()) walk(f);
+      else if (e.isFile() && statSync(f).size < 200_000_000 && readFileSync(f).includes(buf)) hits.push(f);
+    }
+  };
+  for (const d of dirs) walk(d);
+  return hits;
+}
 /** 스크롤 칸 안에서 요소를 가운데로 가져온다 (긴 오늘 탭의 아래쪽 단추) */
 const reveal = (sel) => `(document.querySelector(${JSON.stringify(sel)})?.scrollIntoView({ block: 'center', behavior: 'instant' }), 1)`;
 /** Esc 키 이벤트를 요소(없으면 지금 포커스, 그것도 없으면 body)에 보낸다 (숨은 창이라 CDP 키 입력은 창이 닫힐 때 답이 끊긴다) */
@@ -527,7 +541,7 @@ const body = async () => {
   }
 
   // ---- 거절 상태(다른 곳이 먼저 고침)에서 나가기, 다시 열기, 고르기: 고르기 전에는 어느 쪽도 덮이지 않는다 ----
-  for (const variant of ['tab', 'close', 'esc', 'overwrite', 'take']) {
+  for (const variant of ['tab', 'close', 'esc', 'esc-other', 'overwrite', 'take']) {
     const id = await main(`__jj.notes.add({ title: 'conf-${variant}', body: 'line one\\nline two' }, Date.now() + 100000).id`);
     await main("__jj.panel.refresh(); __jj.panel.openTab('note'); 1");
     await sleep(1500);
@@ -536,7 +550,7 @@ const body = async () => {
     await pc.click(`[...document.querySelectorAll('.notes li.note-row > button:first-child')].find((b) => b.textContent.includes('conf-${variant}'))`);
     await sleep(600);
     await pc.ev(`(() => { const t = document.querySelector('textarea'); t.focus(); t.setSelectionRange(8, 8); return 1; })()`);
-    await pc.type(' MINE');
+    await pc.type(variant === 'esc-other' ? ' MINE DRAFTSECRET' : ' MINE');
     await main(`__jj.notes.update(${id}, { body: 'THEIRS' }, Date.now() + 200000); 1`);
     await pc.until(() => pc.ev(`!!document.querySelector('.note-stale')`), 5000);
     check(`거절(${variant}): 단추 셋(보기, 저장된 글로 바꾸기, 내 글로 덮기)`, (await pc.ev(`document.querySelectorAll('.note-stale button').length`)) === 3);
@@ -563,6 +577,26 @@ const body = async () => {
       await main('__jj.panel.window.close(); 1');
       await sleep(1200);
       await reopen();
+      check('거절(esc): 뒤로 나간 메모는 패널을 다시 열어도 저절로 열리지 않는다', !(await pc.ev(`!!document.querySelector('textarea')`)));
+      await pc.click(`[...document.querySelectorAll('.notes li.note-row > button:first-child')].find((b) => b.textContent.includes('conf-esc'))`);
+      await sleep(800);
+    } else if (variant === 'esc-other') {
+      // A 거절 중 Esc 로 나가고, 다른 메모 B 를 열고 닫은 뒤 A 를 다시 연다: A 의 보관 글이 B 때문에 지워지지 않는다
+      await pc.ev(esc('textarea'));
+      await sleep(800);
+      const idB = await main(`__jj.notes.add({ title: 'conf-other-B', body: 'bbb' }, Date.now() + 100000).id`);
+      await main("__jj.panel.refresh(); 1");
+      await sleep(500);
+      await pc.click(`[...document.querySelectorAll('.notes li.note-row > button:first-child')].find((b) => b.textContent.includes('conf-other-B'))`);
+      await sleep(600);
+      await pc.ev(`document.querySelector('.note-bar .back')?.click(); 1`);
+      await sleep(500);
+      await main('__jj.panel.window.close(); 1');
+      await sleep(1200);
+      await reopen();
+      await pc.click(`[...document.querySelectorAll('.notes li.note-row > button:first-child')].find((b) => b.textContent.includes('conf-esc-other'))`);
+      await sleep(800);
+      void idB;
     } else if (variant === 'overwrite') {
       await pc.click(`document.querySelectorAll('.note-stale button')[2]`);
       await sleep(1500);
@@ -570,12 +604,21 @@ const body = async () => {
       await pc.click(`document.querySelectorAll('.note-stale button')[1]`);
       await sleep(1200);
     }
-    if (variant === 'overwrite') {
+    if (variant === 'esc-other') {
+      check('거절(esc-other): A 를 다시 열면 내 글이 남아 있고 단추가 보인다', (await mine()).includes('DRAFTSECRET') && (await pc.ev(`!!document.querySelector('.note-stale')`)));
+      check('거절(esc-other): 다른 곳 글(THEIRS)은 그대로', (await stored()) === 'THEIRS');
+      // 디스크(데이터 폴더, HOME)에 쓰다 만 글이 없다: 아직 저장하지 않은 DRAFTSECRET 이 어느 파일에도 없어야 한다
+      await sleep(1500);
+      const found = scanDisk([data, home], 'DRAFTSECRET');
+      check('쓰다 만 글(DRAFTSECRET)이 데이터 폴더와 HOME 어느 파일에도 없다', found.length === 0, found.slice(0, 3).join(', '));
+      await pc.click(`document.querySelectorAll('.note-stale button')[1]`);
+      await sleep(600);
+    } else if (variant === 'overwrite') {
       check('거절(overwrite): 내 글로 덮기를 고르면 내 글이 저장된다', (await stored()).includes('MINE'));
     } else if (variant === 'take') {
       check('거절(take): 저장된 글로 바꾸면 창에 다른 곳 글이 보이고 저장은 그대로', (await mine()) === 'THEIRS' && (await stored()) === 'THEIRS');
       check('거절(take): 안내와 단추가 사라진다', !(await pc.ev(`!!document.querySelector('.note-stale')`)));
-    } else {
+    } else if (variant !== 'esc-other') {
       check(`거절(${variant}): 고르기 전에는 다른 곳 글이 그대로다`, (await stored()) === 'THEIRS', JSON.stringify(await stored()));
       check(`거절(${variant}): 다시 열면 내 글이 창에 있고 단추가 다시 보인다`, (await mine()).includes('MINE') && (await pc.ev(`!!document.querySelector('.note-stale')`)));
       // 그 뒤 "내 글로 덮기" 를 골라야 저장된다
@@ -588,6 +631,22 @@ const body = async () => {
       await sleep(300);
     }
   }
+
+  // ---- 옛 판 localStorage 칸: 한 번 읽어 메인으로 옮기고 지운다 ----
+  const idL = await main(`__jj.notes.add({ title: 'legacy-note', body: 'old' }, Date.now() + 100000).id`);
+  await main("__jj.panel.refresh(); __jj.panel.openTab('note'); 1");
+  await sleep(1500);
+  let pl = await page('panel');
+  await pl.ev(`localStorage.setItem('jj.panel.noteResume', JSON.stringify({ id: ${idL}, field: 'body', start: 0, end: 0, scroll: 0, at: Date.now(), draft: { title: 'legacy-note', body: 'LEGACYDRAFT' } })); 1`);
+  await main('__jj.panel.window.close(); 1');
+  await sleep(1200);
+  await main("__jj.panel.openTab('note'); 1");
+  await sleep(1800);
+  pl = await page('panel');
+  check('옛 칸을 읽으면 지운다 (localStorage 에 안 남는다)', (await pl.ev(`localStorage.getItem('jj.panel.noteResume')`)) === null);
+  check('옛 칸의 보관 글이 메인으로 옮겨져 다시 저장됐다', await pl.until(async () => (await main(`__jj.notes.get(${idL}).body`)) === 'LEGACYDRAFT'));
+  check('저장된 뒤 그 메모의 보관 글은 지워진다', await pl.until(async () => (await pl.ev(`window.jjakkungPanel.noteKeepGet(${idL})`)) === null));
+  check('옮긴 보관 글로 편집기가 열린다', await pl.until(async () => ((await pl.ev(`document.querySelector('textarea')?.value ?? ''`)) ?? '').includes('LEGACYDRAFT')));
 };
 
 try {

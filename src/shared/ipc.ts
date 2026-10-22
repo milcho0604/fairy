@@ -29,6 +29,7 @@ import type { IllustEngine, LocalDrawInfo } from './local-draw.ts';
 import type { LookMotion } from './look-motion.ts';
 import type { MiniGame } from './minigames.ts';
 import type { MoveAsk } from './moves.ts';
+import type { NoteKept } from './note-keep.ts';
 import type { PolishReply } from './note-polish.ts';
 import type { Note, NoteSource } from './note-store.ts';
 import type { PetKey } from './pet-keys.ts';
@@ -1013,6 +1014,10 @@ export const PANEL = {
   /** 쓰던 글 보관 (#145): 읽기는 창이 뜨자마자 필요해서 동기, 쓰기는 보내기만 */
   draftGet: 'panel:draft-get',
   draftSet: 'panel:draft-set',
+  /** 메모 편집의 보관 글 (#160): 메모 id 마다, 메인 메모리에만. 읽기는 편집기가 뜨며 바로 필요해서 동기 */
+  noteKeepGet: 'panel:note-keep-get',
+  noteKeepSet: 'panel:note-keep-set',
+  noteKeepLatest: 'panel:note-keep-latest',
   /** 보던 위치 보관 (#145): 할 일의 검색어와 쪽 수, 일정의 고른 날, 탭마다 스크롤 */
   viewGet: 'panel:view-get',
   viewSet: 'panel:view-set',
@@ -1275,6 +1280,11 @@ export interface PanelBridge {
   /** 쓰던 글 (#145). 창을 닫았다 열어도 메인이 들고 있다가 돌려준다 */
   draftGet(kind: PanelDraftKind): string;
   draftSet(kind: PanelDraftKind, text: string): void;
+  /** 메모 편집의 보관 글 (#160). 값이 null 이면 그 메모의 보관 글을 지운다 */
+  noteKeepGet(id: number): NoteKept | null;
+  noteKeepSet(id: number, value: NoteKept | null): void;
+  /** 가장 나중에 적은 보관 글 (패널을 열 때 그 메모로 돌아간다) */
+  noteKeepLatest(): NoteKept | null;
   /** 보던 위치 (#145) */
   viewGet(): ViewKeep;
   viewSet(view: ViewKeep): void;

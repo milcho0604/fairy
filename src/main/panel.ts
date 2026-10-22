@@ -82,7 +82,7 @@ import { COIN, FULLNESS, localDay, STEP_MAX, type TodoStore } from '../shared/to
 import { emptyViewKeep } from '../shared/view-keep.ts';
 import { weekSummary } from '../shared/week.ts';
 import { devRendererUrl } from './dev-url.ts';
-import { drafts, getToasts, getView, setToasts, setView } from './drafts.ts';
+import { drafts, getToasts, getView, noteKeep, setToasts, setView } from './drafts.ts';
 import { focusWindow } from './focus.ts';
 import { langArg } from './lang.ts';
 import { localTime, minuteOfDay, startOfDay, startOfDayAfter } from './planner.ts';
@@ -1046,6 +1046,16 @@ export function createPanel(o: PanelOptions) {
   ipcMain.on(PANEL.draftSet, (e, kind: unknown, text: unknown) => {
     // 채팅 칸은 채팅 창 몫이라 패널에서는 쓰지 못한다
     if (ours(e) && isPanelDraftKind(kind)) drafts.setText(kind, text);
+  });
+  // 메모 편집의 보관 글 (#160): 패널 창만, 메모 id 마다
+  ipcMain.on(PANEL.noteKeepGet, (e, id: unknown) => {
+    e.returnValue = (ours(e) ? noteKeep.get(id, Date.now()) : undefined) ?? null;
+  });
+  ipcMain.on(PANEL.noteKeepSet, (e, id: unknown, value: unknown) => {
+    if (ours(e)) noteKeep.set(id, value, Date.now());
+  });
+  ipcMain.on(PANEL.noteKeepLatest, (e) => {
+    e.returnValue = (ours(e) ? noteKeep.latest(Date.now()) : undefined) ?? null;
   });
   ipcMain.on(PANEL.viewGet, (e) => {
     e.returnValue = ours(e) ? getView() : emptyViewKeep();

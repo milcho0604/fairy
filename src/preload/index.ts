@@ -482,6 +482,9 @@ if (kind === 'panel' || kind === 'quick') {
       return typeof v === 'string' ? v : '';
     },
     draftSet: (kind, text) => ipcRenderer.send(PANEL.draftSet, kind, text),
+    noteKeepGet: (id) => ipcRenderer.sendSync(PANEL.noteKeepGet, id) ?? null,
+    noteKeepSet: (id, value) => ipcRenderer.send(PANEL.noteKeepSet, id, value),
+    noteKeepLatest: () => ipcRenderer.sendSync(PANEL.noteKeepLatest) ?? null,
     viewGet: () => ipcRenderer.sendSync(PANEL.viewGet),
     viewSet: (view) => ipcRenderer.send(PANEL.viewSet, view),
     setKeepOpen: (on) => ipcRenderer.send(PANEL.setKeepOpen, on),
