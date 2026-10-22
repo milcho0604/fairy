@@ -1150,6 +1150,16 @@ export function createPanel(o: PanelOptions) {
     o.openFriends();
   });
 
+  // "크게 볼까요?" 칩을 마지막으로 띄운 때 (메모리에만. 패널 창이 새로 떠도 간격이 이어진다)
+  let expandHintAt = 0;
+  ipcMain.on(PANEL.expandHintAt, (e) => {
+    // 패널이 아니면 방금 띄운 것으로 답해 칩이 안 뜨게 한다
+    e.returnValue = isPanel(e) ? expandHintAt : Date.now();
+  });
+  ipcMain.on(PANEL.expandHintShown, (e) => {
+    if (isPanel(e)) expandHintAt = Date.now();
+  });
+
   // 크게 보기: 패널이 쓰던 글을 먼저 보낸 뒤 부른다 (같은 창에서 온 메시지는 순서대로 닿는다)
   let expandAsked = false;
   ipcMain.on(PANEL.expand, (e, tab: unknown) => {
@@ -1411,6 +1421,10 @@ export function createPanel(o: PanelOptions) {
     },
     closePanel,
     requestExpand,
+    /** 시험용: 칩 간격 기억을 비운다 */
+    resetExpandHint: () => {
+      expandHintAt = 0;
+    },
     openQuick,
     /** 빠른 입력 한 줄과 같게 넣는다 (jjakkung://add): 시각이 있으면 일정, 아니면 할 일 */
     addLine: (line: string): PanelAddResult => addLine(line, Date.now()),

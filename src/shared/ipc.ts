@@ -1087,6 +1087,10 @@ export const PANEL = {
   expand: 'panel:expand',
   /** 메인 → 패널: 쓰던 글을 보내 놓고 큰 창으로 넘겨 달라고 요청해 (트레이, 펫 메뉴의 "큰 창 열기"가 패널이 열려 있을 때) */
   expandNow: 'panel:expand-now',
+  /** 패널 → 메인(동기): 마지막으로 "크게 볼까요?" 칩을 띄운 때. 패널을 닫았다 열어도 간격이 이어지게 메인이 든다 */
+  expandHintAt: 'panel:expand-hint-at',
+  /** 패널 → 메인: 칩을 띄웠다 (지금 시각을 적는다) */
+  expandHintShown: 'panel:expand-hint-shown',
 } as const;
 
 export interface PanelState {
@@ -1405,6 +1409,10 @@ export interface PanelBridge {
   onHiding(listener: () => void): () => void;
   /** 지금 탭을 큰 창으로 넘긴다 (쓰던 글은 먼저 메인에 보낸 뒤에 부른다) */
   expand(tab: PanelTab): void;
+  /** 마지막 칩 시각(밀리초). 없으면 0 */
+  expandHintAt(): number;
+  /** 칩을 띄웠다고 메인에 적는다 */
+  expandHintShown(): void;
   /** 메인이 큰 창으로 넘겨 달라고 한다 (패널이 열려 있는 채 트레이, 펫 메뉴로 큰 창을 열 때) */
   onExpandNow(listener: () => void): void;
 }

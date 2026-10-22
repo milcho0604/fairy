@@ -21,12 +21,27 @@ export function pushesPastMax(d: HintDrag, maxWidth: number): boolean {
   return d.outerWidth >= maxWidth - 1 && d.wantWidth > d.innerWidth + 2;
 }
 
+export interface HintStore {
+  /** 마지막으로 띄운 때(밀리초). 없으면 0 */
+  get(): number;
+  set(at: number): void;
+}
+
+function memoryStore(): HintStore {
+  let at = 0;
+  return { get: () => at, set: (t) => (at = t) };
+}
+
 /**
  * 칩 권유기. 같은 끌기에서는 한 번만, 끌기가 달라도 EXPAND_HINT_GAP_MS 안에는 다시 띄우지 않는다.
  * 끌기를 시작할 때 start(), 움직일 때마다 drag() 를 부르고 true 가 오면 칩을 띄운다
  */
-export function createExpandHint(maxWidth: number, now: () => number = Date.now) {
-  let shownAt = Number.NEGATIVE_INFINITY;
+export function createExpandHint(
+  maxWidth: number,
+  now: () => number = Date.now,
+  /** 마지막으로 띄운 때를 어디에 두나. 기본은 이 함수 안(창이 새로 뜨면 사라진다). 메인에 두면 패널을 닫았다 열어도 이어진다 */
+  store: HintStore = memoryStore(),
+) {
   let offered = false;
   return {
     start() {
@@ -36,8 +51,9 @@ export function createExpandHint(maxWidth: number, now: () => number = Date.now)
       if (offered || !pushesPastMax(d, maxWidth)) return false;
       offered = true;
       const t = now();
-      if (t - shownAt < EXPAND_HINT_GAP_MS) return false;
-      shownAt = t;
+      const last = store.get();
+      if (last > 0 && t - last < EXPAND_HINT_GAP_MS) return false;
+      store.set(t);
       return true;
     },
   };

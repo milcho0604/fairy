@@ -513,7 +513,51 @@ const body = async () => {
     check('칩 (i) 키보드로 520 에서 늘려 560 에 닿는 동안은 안 뜬다', wk === 560 && (await chips(p)) === 0, `너비 ${wk}`);
     await key(true, 'ArrowRight');
     await sleep(400);
-    check('칩 (j) 키보드로 560 에서 더 늘리면 뜬다', (await chips(p)) === 1 && (await chipUp(p)));
+    check('칩 (j) 패널을 닫았다 열어도 60초 간격이 이어져 키보드로 더 늘려도 안 뜬다 (앞에서 방금 떴다)', (await chips(p)) === 0 && !(await chipUp(p)));
+    await main('__jj.panel.resetExpandHint(); 1');
+    await key(true, 'ArrowRight');
+    await sleep(400);
+    check('칩 (k) 간격 기억을 비우면 키보드로 560 에서 더 늘릴 때 뜬다', (await chips(p)) === 1 && (await chipUp(p)));
+    // 칩이 눌리는 요소를 덮지 않는다 (손을 뗀 새 끌기에서 칩을 띄우고, 떠 있는 동안 폭을 줄여 가며 본다)
+    await main('__jj.panel.resetExpandHint(); 1');
+    p = await openPanel('today');
+    await watchChips(p);
+    await setPanelBounds(560, 540);
+    await sleep(300);
+    await drag(p, '.grip-se', 200, 0, { steps: 6 });
+    await p.until(() => chipUp(p), 3000);
+    // 칩이 떠 있는 동안 폭을 줄여 가며(560, 360, 320) 칩 사각형이 눌리는 요소와 겹치지 않는지 본다
+    for (const w of [560, 360, 320]) {
+      await setPanelBounds(w);
+      await waitFor(async () => (await panelWidth()) === w && (await p.ev('innerWidth')) === w, 2500);
+      await sleep(300);
+      const hit = JSON.parse(
+        await p.ev(`(() => {
+          const btn = document.querySelector('.expand-chip-btn');
+          if (!btn) return JSON.stringify({ gone: true });
+          const r = btn.getBoundingClientRect();
+          const pressable = [...document.querySelectorAll('button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"]), [role="tab"]')]
+            .filter((e) => !e.closest('.expand-chip'));
+          const over = [];
+          for (const e of pressable) {
+            const q = e.getBoundingClientRect();
+            if (q.width === 0 || q.height === 0) continue;
+            if (q.left < r.right - 0.5 && q.right > r.left + 0.5 && q.top < r.bottom - 0.5 && q.bottom > r.top + 0.5)
+              over.push(e.tagName + '.' + e.className + ' ' + (e.textContent || '').trim().slice(0, 12));
+          }
+          const pts = [[0.5, 0.5], [0.08, 0.5], [0.92, 0.5], [0.5, 0.15], [0.5, 0.85]].map(([fx, fy]) => {
+            const el = document.elementFromPoint(r.left + r.width * fx, r.top + r.height * fy);
+            return !!el?.closest('.expand-chip');
+          });
+          return JSON.stringify({ over, pts, rect: [r.left, r.top, r.right, r.bottom].map(Math.round), win: [innerWidth, innerHeight] });
+        })()`),
+      );
+      check(
+        `칩 (${w}) 칩 사각형이 눌리는 요소와 겹치지 않고 다섯 점 모두 칩이 맨 위다`,
+        !hit.gone && hit.over.length === 0 && hit.pts.every(Boolean) && hit.rect[0] >= 0 && hit.rect[2] <= hit.win[0] && hit.win[0] === w,
+        JSON.stringify(hit),
+      );
+    }
     // (k) 칩을 누르면 크게 보기: 아래 승격 시험에서 한다
     await closeAll();
   }
@@ -620,7 +664,8 @@ const body = async () => {
   });
   await closeAll();
 
-  // 3-7. 칩으로
+  // 3-7. 칩으로 (앞 칩 시험의 간격 기억을 비운다)
+  await main('__jj.panel.resetExpandHint(); 1');
   await promoteCase(
     '할 일(칩)',
     'todo',
@@ -743,7 +788,30 @@ const body = async () => {
     await closeAll();
   }
 
+  // 4-6. 승격 IPC 는 작은 패널만 보낼 수 있고 탭 값이 맞아야 한다
+  {
+    await closeAll();
+    await main('__jj.home.open(); 1');
+    await waitFor(homeShown);
+    const h = await page('home');
+    await h.until(() => h.ev("!!document.querySelector('.surface.home .panel-tabpanel')"));
+    await sleep(500);
+    const before = await main('JSON.stringify([__jj.home.lastPromote() ?? null, __jj.home.window.id])');
+    const sec0 = await sectionNow(h);
+    await h.ev("window.jjakkungPanel.expand('shop'); 1");
+    await sleep(800);
+    const after = await main('JSON.stringify([__jj.home.lastPromote() ?? null, __jj.home.window.id])');
+    check('큰 창이 승격 IPC(expand)를 보내도 아무 일 없다 (승격 기록, 창, 구역이 그대로)', before === after && (await sectionNow(h)) === sec0 && !(await panelAlive()), `${sec0} -> ${await sectionNow(h)}`);
+    await closeAll();
+    const p = await openPanel('today');
+    await p.ev("window.jjakkungPanel.expand('x'); window.jjakkungPanel.expand(5); window.jjakkungPanel.expand(undefined); window.jjakkungPanel.expand('today ' ); 1");
+    await sleep(900);
+    check("패널이 보낸 알 수 없는 탭 값('x', 5, undefined, 'today ')은 버린다 (큰 창이 안 뜨고 패널이 그대로)", !(await homeAlive()) && (await panelAlive()));
+    await closeAll();
+  }
+
   // ===================== 5. 비교 그림용 찍기 =====================
+  await main('__jj.panel.resetExpandHint(); 1');
   {
     const p = await openPanel('today');
     await setPanelBounds(360, 540);

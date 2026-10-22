@@ -567,6 +567,15 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
             <small className="unlock-next" title={unlockHint(s.life.affection)}>
               {unlockHint(s.life.affection)}
             </small>
+            {/* 가장 넓게 만든 채 더 끌면 잠깐 권한다. 저절로 바꾸지는 않는다. 눌리는 단추가 없는 이 줄 오른쪽에 띄워 아무것도 덮지 않는다 */}
+            {hintOn && (
+              <div className="expand-chip" role="status">
+                <button type="button" className="expand-chip-btn" onClick={expand}>
+                  <ExpandIcon />
+                  {t('panel.expandHint')}
+                </button>
+              </div>
+            )}
           </div>
           {s.life.sulk > 0 && (
             <p className="hint sulk">{t('panel.sulk', { name: s.petName, n: s.life.sulk })}</p>
@@ -629,16 +638,6 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
 
           {/* 크기 손잡이: 카드 안 오른쪽 아래. 다른 칸 위에 얹는다 */}
           <ResizeGrips onPastMax={showHint} />
-
-          {/* 가장 넓게 만든 채 더 끌면 잠깐 권한다. 저절로 바꾸지는 않는다 */}
-          {hintOn && (
-            <div className="expand-chip" role="status">
-              <button type="button" className="expand-chip-btn" onClick={expand}>
-                <ExpandIcon />
-                {t('panel.expandHint')}
-              </button>
-            </div>
-          )}
 
           {toastStack}
         </div>

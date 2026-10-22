@@ -15,8 +15,11 @@ const KEEPALIVE_MS = 700;
 
 type Edge = 'se' | 's' | 'e';
 
-/** 가장 넓게 만든 채 더 넓히려 하면 "크게 볼까요?" 를 권한다 (shared/expand-hint.ts). 이 창이 도는 동안의 간격을 기억한다 */
-const hint = createExpandHint(PANEL_MAX_WIDTH);
+/** 가장 넓게 만든 채 더 넓히려 하면 "크게 볼까요?" 를 권한다 (shared/expand-hint.ts). 마지막으로 띄운 때는 메인이 들고 있어 패널을 닫았다 열어도 이어진다 */
+const hint = createExpandHint(PANEL_MAX_WIDTH, Date.now, {
+  get: () => bridge.expandHintAt(),
+  set: () => bridge.expandHintShown(),
+});
 
 export function ResizeGrips({ onPastMax }: { onPastMax: () => void }) {
   /** 끄는 중이면 잡을 때 모서리까지 거리 */
