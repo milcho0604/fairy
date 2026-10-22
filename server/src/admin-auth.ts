@@ -21,7 +21,14 @@ export interface AdminSession {
   csrf: string;
   expires: number;
   /** 한 번 보이고 사라지는 안내 (쿠폰 코드처럼 주소에 두면 안 되는 것) */
-  flash?: { text: string; error: boolean };
+  flash?: {
+    text: string;
+    error: boolean;
+    /** 실패한 폼의 쓰기 이름과 대상 (features/mode 의 key, ai/revoke 의 계정 ...)과 쓴 값. 다시 그릴 때 칸을 채우고 오류를 그 폼 옆에 둔다 */
+    form?: string;
+    scope?: string;
+    fields?: Record<string, string | string[]>;
+  };
 }
 
 const hash = (s: string) => createHash('sha256').update(s).digest();

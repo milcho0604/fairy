@@ -32,7 +32,8 @@ describe('운영자 탭과 이용자 표', () => {
       const signed = await admin.page(path);
       assert.equal(signed.status, 200, path);
       assert.match(signed.text, /aria-current="page"/);
-      assert.doesNotMatch(signed.text, /<script/i);
+      assert.doesNotMatch(signed.text, /<script(?![^>]*src="\/admin\/admin\.js")/i);
+      assert.doesNotMatch(signed.text, /<script[^>]*>[^<]/i);
 
       const anon = await api('GET', `/admin${path}`);
       assert.equal(anon.status, 200, path);
@@ -131,7 +132,7 @@ describe('운영자 지급 탭', () => {
       confirm: 'yes',
     });
     assert.equal(tooManyCoins.status, 303);
-    assert.equal(tooManyCoins.headers.get('location'), '/admin/grants');
+    assert.equal(tooManyCoins.headers.get('location'), '/admin/grants#form-error');
     const many = Array.from({ length: 21 }, () => d.code).join('\n');
     assert.equal(
       (await admin.act('/admin/grants/batch', { ...base, accounts: many, confirm: 'yes' })).ok,

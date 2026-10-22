@@ -1,10 +1,13 @@
 // 운영자 칸 (이슈 #101): 운영자 계정(서버가 ADMIN_GOOGLE_SUBS 로 정한다)일 때만 그린다. 아니면 DOM 에 아무것도 없다.
 // 웹 /admin 과 같은 일을 한다: 기능 스위치(채팅 이용권 접근 모드), 예산과 정책, 계정 찾기와 허용, 차단, 정기 지급, 회수,
-// 쪽지, 이벤트, 쿠폰, 공지와 최소/권장 버전, 운영 기록. 위험한 동작(모드 바꾸기, 회수, 최소 버전 올리기, 강제 업데이트 글)은
-// 두 번 눌러야 한다. 세션 토큰은 화면에 오지 않는다: 메인이 대신 부르고 서버가 요청마다 운영자인지 다시 본다.
+// 쪽지, 이벤트, 쿠폰, 공지와 최소/권장 버전, 운영 기록. 되돌릴 수 없는 동작(이벤트 끝내기, 쿠폰 끄기, 공지 지우기, 정기 지급 해지,
+// 막기, 접근 설정 바꾸기, 회수, 최소 버전 올리기, 강제 업데이트 글)은 대상 이름이 보이는 두 번째 누르기로 확인하고 서버에
+// confirm 을 같이 보낸다 (웹 /admin 의 대상 이름 확인 칸과 같은 규칙). 실패하면 쓴 칸은 그대로 두고 오류는 그 폼 바로 아래에
+// 보인다. 처리 중에는 누른 폼 아래에 진행 표시가 뜨고 단추가 막힌다.
+// 세션 토큰은 화면에 오지 않는다: 메인이 대신 부르고 서버가 요청마다 운영자인지 다시 본다.
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { getLang, t } from '../../../shared/i18n/index.ts';
-import type { AdminActionResult, ServerBridge } from '../../../shared/server-account.ts';
+import type { AdminActionResult, AdminLogFilter, ServerBridge } from '../../../shared/server-account.ts';
 import { useServerStatus } from './ServerAccountBox.tsx';
 import { Section } from './ui.tsx';
 
@@ -44,12 +47,25 @@ export function resultText(r: AdminActionResult): string {
   return t(`admin.err.${code}`);
 }
 
+/** 운영 기록의 동작 이름을 지금 말로 (모르는 이름은 코드 그대로) */
+export function actionName(action: string): string {
+  const key = `admin.act.${action}`;
+  const text = (t as unknown as (k: string) => string)(key);
+  return text === key || !text ? action : text;
+}
+
+/** 운영 기록의 "누가": 웹 운영자(세션 표시 admin:)는 지금 말로, 앱 운영자는 닉네임과 번호, 이름 없는 옛 기록은 세션 표시 그대로 */
+export function whoName(l: { actor: string; actorName?: string | null }): string {
+  if (l.actor.startsWith('admin:')) return t('admin.log.web');
+  return l.actorName ?? l.actor;
+}
+
 /** 언어에 맞는 글, 없으면 다른 말 */
 const pick = (ko: string | undefined, en: string | undefined) =>
   (getLang() === 'en' ? en || ko : ko || en) ?? '';
 
-/** 두 번 눌러야 하는 단추 (위험한 동작) */
-function Sure(o: { label: string; onGo: () => void; disabled?: boolean }) {
+/** 두 번 눌러야 하는 단추 (되돌릴 수 없는 동작). 두 번째 누르기 전에 무엇에 하는 건지 대상 이름을 보여 준다 */
+function Sure(o: { label: string; what: string; onGo: () => void; disabled?: boolean }) {
   const [armed, setArmed] = useState(false);
   return (
     <button
@@ -63,7 +79,7 @@ function Sure(o: { label: string; onGo: () => void; disabled?: boolean }) {
         o.onGo();
       }}
     >
-      {armed ? t('admin.sure') : o.label}
+      {armed ? t('admin.sure', { what: o.what }) : o.label}
     </button>
   );
 }
@@ -71,6 +87,7 @@ function Sure(o: { label: string; onGo: () => void; disabled?: boolean }) {
 /** 칸 몇 개짜리 작은 폼. 값은 이름으로 모은다 */
 function useForm(init: Record<string, string>) {
   const [v, setV] = useState(init);
+  const reset = () => setV(init);
   const input = (name: string, label: string, type = 'text') => (
     <label className="field admin-field">
       <span className="admin-field-name">{label}</span>
@@ -82,7 +99,7 @@ function useForm(init: Record<string, string>) {
       />
     </label>
   );
-  return { v, setV, input };
+  return { v, setV, input, reset };
 }
 
 /** 운영자 설정 세 칸을 서버가 알려 준 저장값으로 (비어 있으면 .env 상한을 쓰는 중이라 빈 칸) */
@@ -109,16 +126,21 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
   const [view, setView] = useState<View>();
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
+  // 처리 중인 쓰기 이름과 폼별 오류 (오류는 그 폼 바로 아래에 보인다)
+  const [pending, setPending] = useState('');
+  const [errs, setErrs] = useState<Record<string, string>>({});
+  const [logF, setLogF] = useState<AdminLogFilter>({});
+  const [logDraft, setLogDraft] = useState({ user: '', action: '', text: '' });
   const admin = !!s?.admin;
 
   const load = useCallback(
-    async (query = q) => {
+    async (query = q, log: AdminLogFilter = logF) => {
       if (!b) return;
-      const r = await b.adminOverview(query || undefined);
+      const r = await b.adminOverview(query || undefined, log);
       if (r) setView(r);
       else flash(t('admin.failed'), true);
     },
-    [q, flash],
+    [q, logF, flash],
   );
   // 운영자일 때만 처음 한 번 (찾는 말이 바뀔 때마다 다시 받지 않는다)
   // biome-ignore lint/correctness/useExhaustiveDependencies: 처음과 운영자 여부가 바뀔 때만
@@ -126,16 +148,41 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
     if (admin) void load('');
   }, [admin]);
 
-  const act = async (action: string, fields: Fields) => {
-    if (!b) return;
+  /** 쓰기 하나. 성공하면 true (그때 만들기 폼은 비운다), 실패하면 쓴 칸은 그대로 두고 그 폼 아래에 까닭을 보인다 */
+  const act = async (action: string, fields: Fields): Promise<boolean> => {
+    if (!b) return false;
     setBusy(true);
+    setPending(action);
+    setErrs((x) => ({ ...x, [action]: '' }));
     try {
       const r = await b.adminAction(action, fields);
-      flash(resultText(r), !r.ok);
+      if (r.ok) flash(resultText(r));
+      else setErrs((x) => ({ ...x, [action]: resultText(r) }));
       if (r.ok) await load();
+      return r.ok;
     } finally {
       setBusy(false);
+      setPending('');
     }
+  };
+  /** 폼 아래 한 줄: 처리 중이면 진행 표시, 실패했으면 까닭 (읽어 주는 알림) */
+  const slot = (...keys: string[]) => {
+    if (keys.includes(pending))
+      return (
+        <small className="admin-working" role="status" aria-live="polite">
+          {t('admin.working')}
+        </small>
+      );
+    const k = keys.find((x) => errs[x]);
+    return k ? (
+      <small className="warn admin-err" role="alert">
+        {errs[k]}
+      </small>
+    ) : null;
+  };
+  const findLog = (next: AdminLogFilter) => {
+    setLogF(next);
+    void load(q, next);
   };
 
   const note = useForm({ message: '', coins: '0', chat_passes: '0', days: '30' });
@@ -159,7 +206,17 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
   const [ntKind, setNtKind] = useState('info');
   const [mode, setMode] = useState('');
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 새로 받은 자료로만 채운다
+  // 서버에 저장된 값이 바뀐 때만 칸을 채운다 (다른 동작 뒤에 다시 받아도 쓰던 칸을 지우지 않는다)
+  const savedKey = view
+    ? JSON.stringify([
+        view.ai.mode,
+        limitsOf(view.ai),
+        view.notices?.minVersion,
+        view.notices?.restrictVersion,
+        view.notices?.recommendVersion,
+      ])
+    : '';
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 저장된 값이 바뀐 때만
   useEffect(() => {
     if (!view) return;
     setMode(view.ai.mode);
@@ -169,7 +226,7 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
       restrictVersion: view.notices?.restrictVersion ?? '',
       recommendVersion: view.notices?.recommendVersion ?? '',
     });
-  }, [view]);
+  }, [savedKey]);
 
   if (!admin || !b) return null;
   if (!view)
@@ -215,10 +272,12 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
           <div className="action-row">
             <Sure
               label={t('admin.ai.modeSave')}
+              what={`ai_chat: ${t(`admin.ai.mode.${ai.mode as 'off'}`)} > ${t(`admin.ai.mode.${mode as 'off'}`)}`}
               disabled={busy || mode === ai.mode}
               onGo={() => void act('ai/mode', { mode, confirm: 'yes' })}
             />
           </div>
+          {slot('ai/mode')}
           {limits.input('budget_usd', t('admin.ai.budget', { cap: usd(ai.capBudgetMicros) }))}
           {limits.input('daily_limit', t('admin.ai.daily', { cap: ai.capDailyLimit }), 'number')}
           {limits.input('input_chars', t('admin.ai.inputChars', { cap: ai.capInputChars }), 'number')}
@@ -239,6 +298,7 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
               {t('admin.ai.limitsSave')}
             </button>
           </div>
+          {slot('ai/limits')}
           <small>
             {t('admin.ai.allow', { n: ai.allow.length })}:{' '}
             {ai.allow.map((x: View) => `${x.nickname ?? ''} ${x.code}`).join(', ')}
@@ -312,22 +372,33 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
                 >
                   {a.ai.allowed ? t('admin.allowOff') : t('admin.allowOn')}
                 </button>
-                <button
-                  type="button"
-                  className="ghost small"
-                  disabled={busy}
-                  onClick={() => void act('ai/block', { account: ref, blocked: !a.ai.blocked })}
-                >
-                  {a.ai.blocked ? t('admin.blockOff') : t('admin.blockOn')}
-                </button>
+                {a.ai.blocked ? (
+                  <button
+                    type="button"
+                    className="ghost small"
+                    disabled={busy}
+                    onClick={() => void act('ai/block', { account: ref, blocked: false })}
+                  >
+                    {t('admin.blockOff')}
+                  </button>
+                ) : (
+                  <Sure
+                    label={t('admin.blockOn')}
+                    what={`${a.nickname ?? '-'} ${ref}`}
+                    disabled={busy}
+                    onGo={() => void act('ai/block', { account: ref, blocked: true, confirm: 'yes' })}
+                  />
+                )}
                 {a.ai.subscription && (
                   <Sure
                     label={t('admin.cancelSub')}
+                    what={`${a.nickname ?? '-'} ${ref}`}
                     disabled={busy}
-                    onGo={() => void act('ai/cancel', { account: ref })}
+                    onGo={() => void act('ai/cancel', { account: ref, confirm: 'yes' })}
                   />
                 )}
               </div>
+              {slot('ai/allow', 'ai/block', 'ai/cancel')}
               {!a.ai.subscription && (
                 <>
                   {sub.input('monthly', t('admin.subMonthly'), 'number')}
@@ -343,18 +414,21 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
                       {t('admin.subscribe')}
                     </button>
                   </div>
+                  {slot('ai/subscribe')}
                 </>
               )}
               {revoke.input('count', t('admin.revokeCount'), 'number')}
               <div className="action-row">
                 <Sure
                   label={t('admin.revoke')}
+                  what={`${a.nickname ?? '-'} ${ref} -${revoke.v.count ?? '1'}`}
                   disabled={busy}
                   onGo={() =>
                     void act('ai/revoke', { account: ref, count: revoke.v.count ?? '1', confirm: 'yes' })
                   }
                 />
               </div>
+              {slot('ai/revoke')}
               <strong>{t('admin.note.title')}</strong>
               {note.input('message', t('admin.note.message'))}
               {note.input('coins', t('admin.note.coins'), 'number')}
@@ -365,11 +439,14 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
                   type="button"
                   className="ghost small"
                   disabled={busy}
-                  onClick={() => void act('notes', { account: ref, ...note.v })}
+                  onClick={() =>
+                    void act('notes', { account: ref, ...note.v }).then((ok) => ok && note.reset())
+                  }
                 >
                   {t('admin.note.send')}
                 </button>
               </div>
+              {slot('notes')}
             </>
           )}
         </Group>
@@ -384,13 +461,15 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
                 {Date.now() < Number(e.ends) && (
                   <Sure
                     label={t('admin.events.end')}
+                    what={`${pick(e.title_ko, e.title_en)} (${e.id})`}
                     disabled={busy}
-                    onGo={() => void act('events/end', { id: e.id })}
+                    onGo={() => void act('events/end', { id: e.id, confirm: 'yes' })}
                   />
                 )}
               </li>
             ))}
           </ul>
+          {slot('events/end')}
           <div className="action-row">
             {(['gift', 'boost'] as const).map((k) => (
               <button
@@ -422,12 +501,13 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
                   ...ev.v,
                   kind: evKind,
                   ...(evKind === 'boost' ? { reasons: ['meet', 'focus'], times: '2' } : {}),
-                })
+                }).then((ok) => ok && ev.reset())
               }
             >
               {t('admin.events.create')}
             </button>
           </div>
+          {slot('events')}
         </Group>
 
         <Group title={t('admin.coupons.title')}>
@@ -440,13 +520,15 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
                 {!c.disabled && (
                   <Sure
                     label={t('admin.coupons.disable')}
+                    what={`#${c.id} ${c.label}`}
                     disabled={busy}
-                    onGo={() => void act('coupons/disable', { id: c.id })}
+                    onGo={() => void act('coupons/disable', { id: c.id, confirm: 'yes' })}
                   />
                 )}
               </li>
             ))}
           </ul>
+          {slot('coupons/disable')}
           {cp.input('label', t('admin.coupons.label'))}
           {cp.input('coins', t('admin.note.coins'), 'number')}
           {cp.input('tickets', t('admin.note.passes'), 'number')}
@@ -457,11 +539,12 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
               type="button"
               className="ghost small"
               disabled={busy}
-              onClick={() => void act('coupons', cp.v)}
+              onClick={() => void act('coupons', cp.v).then((ok) => ok && cp.reset())}
             >
               {t('admin.coupons.create')}
             </button>
           </div>
+          {slot('coupons')}
         </Group>
 
         <Group title={t('admin.notices.title')}>
@@ -473,10 +556,12 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
           <div className="action-row">
             <Sure
               label={t('admin.notices.saveVersions')}
+              what={`${ver.v.minVersion || '-'} / ${ver.v.restrictVersion || '-'} / ${ver.v.recommendVersion || '-'}`}
               disabled={busy}
               onGo={() => void act('versions', { ...ver.v, confirm: 'yes' })}
             />
           </div>
+          {slot('versions')}
           <small>{t('admin.versions.title', { n: view.versions?.active ?? 0 })}</small>
           <ul className="admin-list">
             {(view.versions?.rows ?? []).map((r: { version: string; count: number }) => (
@@ -500,12 +585,14 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
                 </small>
                 <Sure
                   label={t('admin.notices.delete')}
+                  what={`${pick(n.title?.ko, n.title?.en)} (${n.id})`}
                   disabled={busy}
-                  onGo={() => void act('notices/delete', { id: n.id })}
+                  onGo={() => void act('notices/delete', { id: n.id, confirm: 'yes' })}
                 />
               </li>
             ))}
           </ul>
+          {slot('notices/delete')}
           <label className="field admin-field">
             <span className="admin-field-name">{t('admin.notices.kind')}</span>
             <select className="plain-input" value={ntKind} onChange={(e) => setNtKind(e.target.value)}>
@@ -526,33 +613,121 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
             {ntKind === 'force' ? (
               <Sure
                 label={t('admin.notices.save')}
+                what={`${nt.v.title_ko || nt.v.title_en || '-'} (${nt.v.id || '-'}, force)`}
                 disabled={busy}
-                onGo={() => void act('notices', { ...nt.v, kind: ntKind, confirm: 'yes' })}
+                onGo={() =>
+                  void act('notices', { ...nt.v, kind: ntKind, confirm: 'yes' }).then(
+                    (ok) => ok && nt.reset(),
+                  )
+                }
               />
             ) : (
               <button
                 type="button"
                 className="ghost small"
                 disabled={busy}
-                onClick={() => void act('notices', { ...nt.v, kind: ntKind })}
+                onClick={() => void act('notices', { ...nt.v, kind: ntKind }).then((ok) => ok && nt.reset())}
               >
                 {t('admin.notices.save')}
               </button>
             )}
           </div>
+          {slot('notices')}
         </Group>
 
-        <Group title={t('admin.log.title')}>
+        <Group title={`${t('admin.log.title')}: ${t('admin.log.total', { n: view.logPage?.total ?? 0 })}`}>
+          <label className="field admin-field">
+            <span className="admin-field-name">{t('admin.log.user')}</span>
+            <input
+              className="plain-input"
+              value={logDraft.user}
+              onChange={(e) => setLogDraft((x) => ({ ...x, user: e.target.value }))}
+            />
+          </label>
+          <label className="field admin-field">
+            <span className="admin-field-name">{t('admin.log.action')}</span>
+            <select
+              className="plain-input"
+              value={logDraft.action}
+              onChange={(e) => setLogDraft((x) => ({ ...x, action: e.target.value }))}
+            >
+              <option value="">{t('admin.log.actionAll')}</option>
+              {(view.logPage?.actions ?? []).map((a: string) => (
+                <option key={a} value={a}>
+                  {actionName(a)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field admin-field">
+            <span className="admin-field-name">{t('admin.log.text')}</span>
+            <input
+              className="plain-input"
+              value={logDraft.text}
+              onChange={(e) => setLogDraft((x) => ({ ...x, text: e.target.value }))}
+            />
+          </label>
+          <div className="action-row">
+            <button
+              type="button"
+              className="ghost small"
+              disabled={busy}
+              onClick={() => findLog({ ...logDraft })}
+            >
+              {t('admin.log.find')}
+            </button>
+            {(logF.user || logF.action || logF.text) && (
+              <button
+                type="button"
+                className="ghost small"
+                disabled={busy}
+                onClick={() => {
+                  setLogDraft({ user: '', action: '', text: '' });
+                  findLog({});
+                }}
+              >
+                {t('admin.log.reset')}
+              </button>
+            )}
+          </div>
+          {view.logPage?.userMissing && <small className="warn">{t('admin.log.noUser')}</small>}
           <ul className="admin-list admin-log">
-            {view.log.slice(0, 15).map((l: View, i: number) => (
+            {view.log.map((l: View, i: number) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: 기록 줄은 바뀌지 않는다
               <li key={i}>
                 <small>
-                  {new Date(Number(l.at)).toLocaleString()} {l.actor} {l.action} {l.target ?? ''}
+                  {new Date(Number(l.at)).toLocaleString()} {whoName(l)} {actionName(l.action)}{' '}
+                  {l.targetName ?? l.target ?? ''}
                 </small>
               </li>
             ))}
+            {view.log.length === 0 && (
+              <li>
+                <small>{t('admin.log.empty')}</small>
+              </li>
+            )}
           </ul>
+          {(view.logPage?.pages ?? 1) > 1 && (
+            <div className="action-row">
+              <button
+                type="button"
+                className="ghost small"
+                disabled={busy || view.logPage.page <= 1}
+                onClick={() => findLog({ ...logF, page: view.logPage.page - 1 })}
+              >
+                {t('admin.log.prev')}
+              </button>
+              <small>{t('admin.log.page', { page: view.logPage.page, pages: view.logPage.pages })}</small>
+              <button
+                type="button"
+                className="ghost small"
+                disabled={busy || view.logPage.page >= view.logPage.pages}
+                onClick={() => findLog({ ...logF, page: view.logPage.page + 1 })}
+              >
+                {t('admin.log.next')}
+              </button>
+            </div>
+          )}
         </Group>
       </div>
     </Section>

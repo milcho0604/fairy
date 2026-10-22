@@ -185,7 +185,10 @@ export class AdminBrowser {
     const r = await this.post(path, fields);
     assert.equal(r.status, 303, r.text);
     const p = await this.page();
-    const m = /<p class="flash( error)?" role="status">([^<]*)<\/p>/.exec(p.text);
-    return { ok: !!m && !m[1], text: m?.[2] ?? '' };
+    const m =
+      /<p class="flash( error)?( wide)?" role="(?:status|alert)"(?: id="form-error")?>([^<]*)<\/p>/.exec(
+        p.text,
+      );
+    return { ok: !!m && !m[1], text: m?.[3] ?? '' };
   }
 }

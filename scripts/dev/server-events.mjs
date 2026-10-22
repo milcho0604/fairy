@@ -130,7 +130,7 @@ async function adminPost(path, fields) {
   });
   if (r.status === 303 && path === '/admin/login') web.cookie = (r.headers.get('set-cookie') ?? '').split(';')[0];
   const page = await adminPage();
-  return /<p class="flash( error)?" role="status">([^<]*)<\/p>/.exec(page)?.[2] ?? `HTTP ${r.status}`;
+  return /<p class="flash( error)?( wide)?" role="(?:status|alert)"(?: id="form-error")?>([^<]*)<\/p>/.exec(page)?.[3] ?? `HTTP ${r.status}`;
 }
 const kstInput = (ms) => new Date(ms + 9 * 3_600_000).toISOString().slice(0, 16);
 /** Actions 와 같은 길: 서버의 /v1/*.json 을 검사해 site/ 에 쓴다 */

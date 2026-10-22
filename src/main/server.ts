@@ -26,7 +26,7 @@ import { localDay, type TodoStore } from '../shared/todo-store.ts';
 import { isVersion } from '../shared/update-levels.ts';
 import { startLoopback } from './gcal-auth.ts';
 import { osCrypto } from './os-crypto.ts';
-import { serverApi } from './server-api.ts';
+import { adminLogFilter, serverApi } from './server-api.ts';
 import { type Reverted, ServerCoins } from './server-coins.ts';
 import { createServerCore, type Secret } from './server-core.ts';
 import { type BusySource, createServerFriends } from './server-friends.ts';
@@ -284,9 +284,9 @@ export function createServer(o: {
     return core.coupon(norm);
   });
   // 운영자 칸 (#101): 설정 창에서, 운영자 계정일 때만. 세션 토큰은 메인에만 있고 서버가 요청마다 다시 본다
-  ipcMain.handle(SERVER.adminOverview, async (e, q: unknown) => {
+  ipcMain.handle(SERVER.adminOverview, async (e, q: unknown, log: unknown) => {
     if (!ok(e) || !core.isAdmin()) return undefined;
-    return core.adminOverview(typeof q === 'string' ? q.slice(0, 40) : undefined);
+    return core.adminOverview(typeof q === 'string' ? q.slice(0, 40) : undefined, adminLogFilter(log));
   });
   ipcMain.handle(SERVER.adminAction, async (e, action: unknown, fields: unknown) => {
     if (!ok(e) || !core.isAdmin()) return { ok: false, text: 'not_admin', code: 'not_admin' };

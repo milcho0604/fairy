@@ -3,6 +3,7 @@
 import { createHash } from 'node:crypto';
 import {
   type AccountSummary,
+  type AdminLogFilter,
   type Items,
   isLoginService,
   type LoginProviders,
@@ -24,6 +25,32 @@ import {
   type UpdateLevels,
 } from '../shared/update-levels.ts';
 import type { QueueEntry } from './server-coins.ts';
+
+/** 운영자 개요 주소의 찾는 말: 계정 찾기(q)와 운영 기록 찾기(user, action, text, page) */
+export function adminQuery(q?: string, log?: AdminLogFilter): string {
+  const p = new URLSearchParams();
+  if (q) p.set('q', q);
+  if (log?.user) p.set('user', log.user);
+  if (log?.action) p.set('action', log.action);
+  if (log?.text) p.set('text', log.text);
+  if (log?.page && log.page > 1) p.set('page', String(log.page));
+  const s = p.toString();
+  return s ? `?${s}` : '';
+}
+
+/** 운영 기록 찾기 칸: 글자만, 짧게 */
+export function adminLogFilter(raw: unknown): AdminLogFilter | undefined {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return undefined;
+  const r = raw as Record<string, unknown>;
+  const text = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+  const page = typeof r.page === 'number' && Number.isInteger(r.page) && r.page > 0 ? r.page : undefined;
+  return {
+    user: text(r.user, 40),
+    action: text(r.action, 40),
+    text: text(r.text, 60),
+    ...(page ? { page } : {}),
+  };
+}
 
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
@@ -668,8 +695,8 @@ export function serverApi(base: string, raw: FetchLike, opts: ServerApiOpts = {}
         },
       }),
     /** 운영자 화면 (#101, 운영자 계정의 세션만). 화면에 그릴 것을 통째로 */
-    adminOverview: (token: string, q?: string) =>
-      call<Record<string, unknown>>('GET', `/v1/admin/overview${q ? `?q=${encodeURIComponent(q)}` : ''}`, {
+    adminOverview: (token: string, q?: string, log?: AdminLogFilter) =>
+      call<Record<string, unknown>>('GET', `/v1/admin/overview${adminQuery(q, log)}`, {
         token,
         read: (j) => j,
       }),
