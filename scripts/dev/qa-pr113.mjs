@@ -389,7 +389,7 @@ async function apiLayer() {
     check(A3, '모양 틀림 → 400 code', shape.status === 400 && shape.json?.error === 'code');
     const off = await mk({});
     const id = sql(`SELECT id FROM coupon WHERE ${byCode(off)}`);
-    await adminJson('coupons/disable', { id, confirm: 'yes' });
+    await adminJson('coupons/disable', { id, confirm: String(id) });
     const dis = await cp(off);
     check(A3, '꺼진 쿠폰 → 404 no_coupon', dis.status === 404 && dis.json?.error === 'no_coupon');
     const teen = await newDevice('14+');
@@ -492,7 +492,7 @@ async function apiLayer() {
     const re = sse(rf.text);
     check(A5, '거절(refusal) → SSE error refusal, refunded, 99 그대로', re.at(-1)?.ev === 'error' && re.at(-1).data.error === 'refusal' && re.at(-1).data.refunded === true && Number(sql(`SELECT remaining FROM ai_ticket WHERE account_id = ${u.id}`)) === 99, rf.text?.slice(-160));
     check(A5, '거절 사용량 줄: refunded', sql(`SELECT status FROM ai_usage WHERE account_id = ${u.id} ORDER BY id DESC LIMIT 1`) === 'refunded');
-    const bl = await adminJson('ai/block', { account: u.code, blocked: true, confirm: 'yes' });
+    const bl = await adminJson('ai/block', { account: u.code, blocked: true, confirm: u.code });
     const b = await g();
     check(A5, '차단 → 403 blocked', bl.json?.ok && b.status === 403 && b.json?.error === 'blocked');
     await adminJson('ai/block', { account: u.code, blocked: false });
@@ -520,7 +520,7 @@ async function apiLayer() {
     await Promise.all(Array.from({ length: 3 }, () => api('GET', '/v1/inbox', { token: s.session })));
     clockShift = 0;
     check(A5, '시계 35일 뒤 → 다음 달 쪽지 1장 더 (모두 2)', sql(`SELECT count(*) FROM inbox WHERE account_id = ${s.id} AND kind = 'subscription'`) === '2');
-    const cancel = await adminJson('ai/cancel', { account: s.code, confirm: 'yes' });
+    const cancel = await adminJson('ai/cancel', { account: s.code, confirm: s.code });
     check(A5, 'ai/cancel → ok', cancel.json?.ok === true && sql(`SELECT count(*) FROM ai_subscription WHERE account_id = ${s.id} AND canceled_at IS NULL`) === '0');
     const rv0 = await adminJson('ai/revoke', { account: u.code, count: 1 });
     const rv = await adminJson('ai/revoke', { account: u.code, count: 1, confirm: 'yes' });
@@ -1248,7 +1248,7 @@ async function appA() {
       await soft(until('설정 1장', async () => oneLine(await boxText(p)), 8000));
       check(F, '설정 이용권 글도 1장 (en 단수)', oneLine(await boxText(p)), (await boxText(p)).slice(0, 400));
       // 차단 → 목록에서 사라짐
-      await adminJson('ai/block', { account: (await h.status()).code, blocked: true, confirm: 'yes' });
+      await adminJson('ai/block', { account: (await h.status()).code, blocked: true, confirm: (await h.status()).code });
       await clickSync(h, p);
       await soft(until('사라짐', async () => !(await hasTicket(c)), 10_000));
       check(F, '운영자가 막음: 열린 창 목록에서 사라지고 골라 둔 것은 기본 AI 로', !(await hasTicket(c)) && (await h.main('__jj.chat.debugState.provider')) !== 'fairy-ticket', await h.main('__jj.chat.debugState.provider'));

@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomInt } from 'node:crypto';
 import {
   BadRequestException,
@@ -235,6 +236,22 @@ export async function adminLog(
 }
 
 /** 되돌릴 수 없는 동작은 확인 칸이 있어야 한다 (웹은 대상 이름이 적힌 체크 칸, 앱은 두 번 누르기). 이름은 거절 글에 붙는다 */
+const confirmCtx = new AsyncLocalStorage<{ unconfirmed: boolean }>();
+
+/**
+ * 새 확인 (이벤트 끝내기, 쿠폰 끄기, 공지 지우기, 정기 지급 해지, 막기): 확인 칸 값이 대상 이름(id 나 계정)과 맞아야 한다.
+ * 확인이 아예 없는 요청은 옛 앱(0.5.0)이라 예전처럼 받되 운영 기록에 "확인 없이(옛 앱)" 를 남긴다. 확인은 웹과 새 앱 화면이 강제한다
+ */
+function softConfirm(f: FormFields, what: string, target: string): void {
+  const c = (f.confirm ?? '').trim();
+  if (!c) {
+    const ctx = confirmCtx.getStore();
+    if (ctx) ctx.unconfirmed = true;
+    return;
+  }
+  if (c !== target.trim()) throw new Refused(`확인한 대상이 달라요 (${what})`, 'confirm');
+}
+
 function needConfirm(f: FormFields, what: string): void {
   if (f.confirm !== 'yes') throw new Refused(`확인 칸을 체크해 주세요 (${what})`, 'confirm');
 }
@@ -551,7 +568,14 @@ export class AdminService {
   private write(actor: string, fn: (c: PoolClient) => Promise<Written>): Promise<AdminDone> {
     return this.db.tx(async (c) => {
       const out = await fn(c);
-      await adminLog(c, actor, out.log[0], out.log[1], out.log[2]);
+      const old = confirmCtx.getStore()?.unconfirmed;
+      await adminLog(
+        c,
+        actor,
+        out.log[0],
+        out.log[1],
+        old ? { ...out.log[2], confirm: '확인 없이(옛 앱)' } : out.log[2],
+      );
       return { text: out.text, code: out.log[0], ...(out.data ? { data: out.data } : {}) };
     });
   }
@@ -610,7 +634,7 @@ export class AdminService {
 
   /** 이벤트 끝내기: 시작했으면 지금 끝내고, 시작 전이면 지운다 (받은 사람이 없다) */
   async endEvent(actor: string, id: string, f: FormFields): Promise<AdminDone> {
-    needConfirm(f, `이벤트 ${id} 끝내기`);
+    softConfirm(f, `이벤트 ${id} 끝내기`, id);
     return this.write(actor, async (c) => {
       const r = await c.query<{ started: boolean; ended: boolean }>(
         'SELECT starts_at <= now() AS started, ends_at <= now() AS ended FROM event WHERE id = $1 FOR UPDATE',
@@ -671,7 +695,7 @@ export class AdminService {
 
   async disableCoupon(actor: string, id: string, f: FormFields): Promise<AdminDone> {
     if (!/^\d{1,18}$/.test(id)) throw new Refused('쿠폰 번호가 이상해요');
-    needConfirm(f, `쿠폰 #${id} 끄기`);
+    softConfirm(f, `쿠폰 #${id} 끄기`, id);
     return this.write(actor, async (c) => {
       const r = await c.query(
         'UPDATE coupon SET disabled_at = now() WHERE id = $1 AND disabled_at IS NULL RETURNING id',
@@ -980,7 +1004,7 @@ export class AdminService {
   }
 
   async aiCancel(actor: string, f: FormFields): Promise<AdminDone> {
-    needConfirm(f, '정기 지급 해지');
+    softConfirm(f, '정기 지급 해지', f.account ?? '');
     return this.write(actor, async (c) => {
       let r: { id: string; subscription: number };
       try {
@@ -997,7 +1021,7 @@ export class AdminService {
 
   async aiBlock(actor: string, f: FormFields): Promise<AdminDone> {
     const on = f.blocked === '1' || f.blocked === 'true';
-    if (on) needConfirm(f, '채팅 이용권 막기');
+    if (on) softConfirm(f, '채팅 이용권 막기', f.account ?? '');
     return this.write(actor, async (c) => {
       let id: string;
       try {
@@ -1045,6 +1069,10 @@ export class AdminService {
 
   /** 쓰기 하나를 이름으로 (웹 폼과 앱의 /v1/admin/* 가 같이 쓴다) */
   run(action: AdminAction, actor: string, f: FormFields): Promise<AdminDone> {
+    return confirmCtx.run({ unconfirmed: false }, () => this.dispatch(action, actor, f));
+  }
+
+  private dispatch(action: AdminAction, actor: string, f: FormFields): Promise<AdminDone> {
     const id = () => (f.id ?? '').trim();
     switch (action) {
       case 'events':
@@ -1149,7 +1177,7 @@ export class AdminService {
   }
 
   async deleteNotice(actor: string, id: string, f: FormFields): Promise<AdminDone> {
-    needConfirm(f, `공지 ${id} 지우기`);
+    softConfirm(f, `공지 ${id} 지우기`, id);
     return this.editDoc(actor, async (doc) => {
       const before = doc.notices.length;
       doc.notices = doc.notices.filter((x) => x.id !== id);

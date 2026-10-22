@@ -386,7 +386,7 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
                     label={t('admin.blockOn')}
                     what={`${a.nickname ?? '-'} ${ref}`}
                     disabled={busy}
-                    onGo={() => void act('ai/block', { account: ref, blocked: true, confirm: 'yes' })}
+                    onGo={() => void act('ai/block', { account: ref, blocked: true, confirm: ref })}
                   />
                 )}
                 {a.ai.subscription && (
@@ -394,7 +394,7 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
                     label={t('admin.cancelSub')}
                     what={`${a.nickname ?? '-'} ${ref}`}
                     disabled={busy}
-                    onGo={() => void act('ai/cancel', { account: ref, confirm: 'yes' })}
+                    onGo={() => void act('ai/cancel', { account: ref, confirm: ref })}
                   />
                 )}
               </div>
@@ -463,7 +463,7 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
                     label={t('admin.events.end')}
                     what={`${pick(e.title_ko, e.title_en)} (${e.id})`}
                     disabled={busy}
-                    onGo={() => void act('events/end', { id: e.id, confirm: 'yes' })}
+                    onGo={() => void act('events/end', { id: e.id, confirm: String(e.id) })}
                   />
                 )}
               </li>
@@ -522,7 +522,7 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
                     label={t('admin.coupons.disable')}
                     what={`#${c.id} ${c.label}`}
                     disabled={busy}
-                    onGo={() => void act('coupons/disable', { id: c.id, confirm: 'yes' })}
+                    onGo={() => void act('coupons/disable', { id: c.id, confirm: String(c.id) })}
                   />
                 )}
               </li>
@@ -587,7 +587,7 @@ export function AdminBox({ flash }: { flash: (message: string, error?: boolean) 
                   label={t('admin.notices.delete')}
                   what={`${pick(n.title?.ko, n.title?.en)} (${n.id})`}
                   disabled={busy}
-                  onGo={() => void act('notices/delete', { id: n.id, confirm: 'yes' })}
+                  onGo={() => void act('notices/delete', { id: n.id, confirm: String(n.id) })}
                 />
               </li>
             ))}

@@ -151,7 +151,8 @@ describe('채팅 이용권 접근 모드', () => {
 
   test('계정 차단, 예산과 하루 상한은 .env 상한 이하만, 회수는 남은 장수까지와 확인', async () => {
     assert.equal(
-      (await adminApi('ai/block', { account: adminAccount.code, blocked: true, confirm: 'yes' })).status,
+      (await adminApi('ai/block', { account: adminAccount.code, blocked: true, confirm: adminAccount.code }))
+        .status,
       200,
     );
     assert.deepEqual((await api('GET', '/v1/ai', { token: adminSession })).body, { error: 'blocked' });
@@ -290,7 +291,7 @@ describe('정기 지급 (구독처럼)', () => {
     const ov = await adminApi(`overview?q=${add.code}`);
     assert.equal(ov.body.account.ai.subscription.nextFill, '2026-12-01');
     // 해지하면 다음 달은 없다
-    assert.equal((await adminApi('ai/cancel', { account: add.code, confirm: 'yes' })).status, 200);
+    assert.equal((await adminApi('ai/cancel', { account: add.code, confirm: add.code })).status, 200);
     clock = Date.parse('2026-12-02T09:00:00+09:00');
     assert.equal((await api('GET', '/v1/inbox', { token: add.token })).body.items.length, 2);
     const fills = await h.pool.query(
@@ -316,7 +317,7 @@ describe('정책: 자동 정기 지급과 자리 수 (#101)', () => {
     assert.equal(note.fillTo, 100);
     const o = await api('POST', `/v1/inbox/${note.id}/open`, { token: us });
     assert.equal(o.body.chatPasses, (st.body.tickets as number) + Math.max(0, 100 - st.body.tickets));
-    assert.equal((await adminApi('ai/cancel', { account: u.code, confirm: 'yes' })).status, 200);
+    assert.equal((await adminApi('ai/cancel', { account: u.code, confirm: u.code })).status, 200);
     await api('GET', '/v1/ai', { token: us });
     const live = await h.pool.query(
       'SELECT count(*)::int AS n FROM ai_subscription WHERE account_id = $1 AND canceled_at IS NULL',

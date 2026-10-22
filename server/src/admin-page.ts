@@ -239,7 +239,7 @@ function sureForm(
   const inputs = Object.entries(fields)
     .map(([k, x]) => `<input type="hidden" name="${esc(k)}" value="${esc(x)}">`)
     .join('');
-  return `<form method="post" action="${esc(action)}" class="sure">${formErr(v, action, scope)}${hidden(v.csrf)}${inputs}${confirmBox(what)}<button type="submit" class="danger">${esc(button)}</button></form>`;
+  return `<form method="post" action="${esc(action)}" class="sure">${formErr(v, action, scope)}${hidden(v.csrf)}${inputs}<label class="confirm"><input type="checkbox" name="confirm" value="${esc((fields.id ?? fields.account ?? '').trim())}" required> ${esc(what)}</label><button type="submit" class="danger">${esc(button)}</button></form>`;
 }
 
 function postButton(

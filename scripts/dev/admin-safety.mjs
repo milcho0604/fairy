@@ -72,7 +72,8 @@ for (let i = 0; i < 240; i++) {
 }
 const databaseUrl = `postgres://fairy:${pgPass}@127.0.0.1:${pgPort}/fairy`;
 const sql = (q) => docker('exec', pgName, 'psql', '-U', 'fairy', '-d', 'fairy', '-At', '-c', q);
-execFileSync(process.execPath, [join(SERVER_ROOT, 'scripts', 'migrate.mjs')], {
+// MIGRATE_ROOT: 이전만 새 판으로 하고 옛 서버를 띄워 호환을 본다 (0010 은 더하기만이라 옛 코드가 새 스키마에서 돌아야 한다)
+execFileSync(process.execPath, [join(resolve(process.env.MIGRATE_ROOT ?? SERVER_ROOT), 'scripts', 'migrate.mjs')], {
   env: { ...process.env, DATABASE_URL: databaseUrl },
   stdio: 'ignore',
 });
@@ -307,6 +308,10 @@ async function webPart() {
     await adminPost('/admin/events', { id: 'cmp-live', kind: 'gift', title_ko: '가을 선물', title_en: 'Autumn gift', body_ko: '본문', body_en: 'Body', from: kstInput(Date.now() - 3_600_000), until: kstInput(Date.now() + 86_400_000), coins: 30 });
     await nav(`${apiUrl}/admin/events`);
     await shot(`web-${TAG}-2-events`, 'section');
+    if (process.env.MIGRATE_ROOT) {
+      await nav(`${apiUrl}/admin/log`);
+      console.log('옛 코드 + 새 스키마: 기록', sql('SELECT count(*) FROM admin_log'), '이름 칸 비어 있음', sql('SELECT count(*) FROM admin_log WHERE actor_name IS NULL'), '기록 탭', (await ev(`document.querySelectorAll('table tbody tr').length`)) > 0 ? '열림' : '비어 있음');
+    }
     return;
   }
 
@@ -328,8 +333,8 @@ async function webPart() {
   await sleep(500);
   check('체크 없이 누르면 제출되지 않는다', Number(sql(`SELECT count(*) FROM admin_log WHERE action IN ('event.end', 'event.delete')`)) === before && (await ev(`location.pathname`)) === '/admin/events');
   // 서버도 확인 없는 요청을 거절한다 (브라우저 검사를 우회해도)
-  const refused = await adminPost('/admin/events/end', { id: 'sure-live' });
-  check('서버도 확인 없는 끝내기를 거절한다', refused.includes('확인 칸을 체크해 주세요') && sql(`SELECT ends_at > now() FROM event WHERE id = 'sure-live'`) === 't', refused);
+  const refused = await adminPost('/admin/events/end', { id: 'sure-live', confirm: 'other' });
+  check('서버도 다른 대상으로 확인한 끝내기를 거절한다', refused.includes('확인한 대상이 달라요') && sql(`SELECT ends_at > now() FROM event WHERE id = 'sure-live'`) === 't', refused);
   // 체크하고 누르면 된다
   await ev(`(() => { const f = document.querySelector(${JSON.stringify(rowForm('sure-live'))}).form; f.querySelector('input[type=checkbox]').checked = true; return true; })()`);
   await shot(`web-${TAG}-2-events-checked`, 'section');

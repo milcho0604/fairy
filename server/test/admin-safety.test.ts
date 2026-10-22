@@ -150,7 +150,7 @@ describe('실패한 제출의 입력 보존', () => {
     const page = await admin.page('/notices');
     assert.doesNotMatch(page.text, /id="form-error"/);
     assert.doesNotMatch(page.text, /name="id" required maxlength="80"[^>]*value="keep-me"/);
-    await admin.act('/admin/notices/delete', { id: 'keep-me', confirm: 'yes' });
+    await admin.act('/admin/notices/delete', { id: 'keep-me', confirm: 'keep-me' });
   });
 });
 
@@ -172,12 +172,20 @@ describe('되돌릴 수 없는 동작의 확인', () => {
     return { mk, day };
   };
 
-  test('확인 칸 없이는 이벤트 끝내기, 쿠폰 끄기, 공지 지우기가 거절되고 아무것도 바뀌지 않는다 (웹)', async () => {
+  const markOf = async (action: string, target: string) =>
+    (
+      await h.pool.query<{ detail: { confirm?: string } | null }>(
+        'SELECT detail FROM admin_log WHERE action = $1 AND target = $2 ORDER BY id DESC LIMIT 1',
+        [action, target],
+      )
+    ).rows[0]?.detail?.confirm;
+
+  test('확인한 대상이 틀리면 거절되고 아무것도 바뀌지 않는다 (웹)', async () => {
     const { mk, day } = await kinds();
     assert.ok((await mk('sure-live', Date.now() - 3_600_000, Date.now() + day)).ok);
-    const r = await admin.act('/admin/events/end', { id: 'sure-live' });
+    const r = await admin.act('/admin/events/end', { id: 'sure-live', confirm: 'other-event' });
     assert.equal(r.ok, false);
-    assert.match(r.text, /확인 칸을 체크해 주세요 \(이벤트 sure-live 끝내기\)/);
+    assert.match(r.text, /확인한 대상이 달라요 \(이벤트 sure-live 끝내기\)/);
     const row = await h.pool.query('SELECT ends_at > now() AS live FROM event WHERE id = $1', ['sure-live']);
     assert.equal(row.rows[0]?.live, true);
 
@@ -190,46 +198,45 @@ describe('되돌릴 수 없는 동작의 확인', () => {
     });
     const cid = (await h.pool.query<{ id: string }>('SELECT id FROM coupon ORDER BY id DESC LIMIT 1')).rows[0]
       ?.id as string;
-    const c = await admin.act('/admin/coupons/disable', { id: cid });
+    const c = await admin.act('/admin/coupons/disable', { id: cid, confirm: '99999' });
     assert.equal(c.ok, false);
-    assert.match(c.text, new RegExp(`쿠폰 #${cid} 끄기`));
     assert.equal(
       (await h.pool.query('SELECT disabled_at FROM coupon WHERE id = $1', [cid])).rows[0]?.disabled_at,
       null,
     );
-
     await admin.act('/admin/notices', { ...noticeForm, id: 'sure-notice', link: '' });
-    const n = await admin.act('/admin/notices/delete', { id: 'sure-notice' });
+    const n = await admin.act('/admin/notices/delete', { id: 'sure-notice', confirm: 'nope' });
     assert.equal(n.ok, false);
-    assert.match(n.text, /공지 sure-notice 지우기/);
     const doc = await h.pool.query(`SELECT body FROM site_doc WHERE name = 'notices'`);
     assert.match(JSON.stringify(doc.rows[0]?.body), /sure-notice/);
 
-    // 확인하면 된다
-    assert.ok((await admin.act('/admin/events/end', { id: 'sure-live', confirm: 'yes' })).ok);
-    assert.ok((await admin.act('/admin/coupons/disable', { id: cid, confirm: 'yes' })).ok);
-    assert.ok((await admin.act('/admin/notices/delete', { id: 'sure-notice', confirm: 'yes' })).ok);
+    // 맞는 확인은 통과하고 기록에 "확인 없이" 표시가 없다
+    assert.ok((await admin.act('/admin/events/end', { id: 'sure-live', confirm: 'sure-live' })).ok);
+    assert.ok((await admin.act('/admin/coupons/disable', { id: cid, confirm: cid })).ok);
+    assert.ok((await admin.act('/admin/notices/delete', { id: 'sure-notice', confirm: 'sure-notice' })).ok);
+    assert.equal(await markOf('event.end', 'sure-live'), undefined);
   });
 
-  test('앱 API 도 같다: 확인 없이는 400 confirm, 있으면 200', async () => {
-    const dev = await newDevice('18+', '막힐 사람');
-    for (const [path, body] of [
-      ['ai/block', { account: dev.code, blocked: true }],
-      ['ai/cancel', { account: dev.code }],
-      ['events/end', { id: 'none' }],
-      ['coupons/disable', { id: '1' }],
-      ['notices/delete', { id: 'none' }],
-    ] as const) {
-      const r = await adminApi(path, body);
-      assert.equal(r.status, 400, `${path} ${r.text}`);
-      assert.equal(r.body.code, 'confirm', path);
-    }
-    // 막기를 푸는 것은 되돌리는 쪽이라 확인이 필요 없다
+  test('옛 앱(0.5.0)처럼 확인 없이 와도 받고, 운영 기록에 "확인 없이(옛 앱)" 를 남긴다', async () => {
+    const { mk, day } = await kinds();
+    assert.ok((await mk('old-live', Date.now() - 3_600_000, Date.now() + day)).ok);
+    assert.equal((await adminApi('events/end', { id: 'old-live' })).status, 200);
+    assert.equal(await markOf('event.end', 'old-live'), '확인 없이(옛 앱)');
+    const dev = await newDevice('18+', '옛앱 대상');
+    assert.equal((await adminApi('ai/block', { account: dev.code, blocked: true })).status, 200);
+    assert.equal(await markOf('ai.block', `account:${dev.id}`), '확인 없이(옛 앱)');
+    // 푸는 쪽은 확인이 없어도 표시가 없다
     assert.equal((await adminApi('ai/block', { account: dev.code, blocked: false })).status, 200);
+    assert.equal(await markOf('ai.unblock', `account:${dev.id}`), undefined);
+    // 확인이 오면 이름이 맞아야 한다
+    const bad = await adminApi('ai/cancel', { account: dev.code, confirm: 'F-ZZZZ-ZZZZ' });
+    assert.equal(bad.status, 400);
+    assert.equal(bad.body.code, 'confirm');
     assert.equal(
-      (await adminApi('ai/block', { account: dev.code, blocked: true, confirm: 'yes' })).status,
+      (await adminApi('ai/block', { account: dev.code, blocked: true, confirm: dev.code })).status,
       200,
     );
+    assert.equal(await markOf('ai.block', `account:${dev.id}`), undefined);
   });
 
   test('운영자 화면은 대상 이름이 적힌 확인 칸과 단추를 그린다', async () => {
@@ -238,14 +245,14 @@ describe('되돌릴 수 없는 동작의 확인', () => {
     const page = await admin.page('/events');
     assert.match(
       page.text,
-      /class="sure"[^>]*>.*name="confirm" value="yes" required> 이벤트 &quot;행사 sure-name&quot; \(sure-name\) 지금 끝낼게요<\/label><button type="submit" class="danger">지금 끝내기/s,
+      /class="sure"[^>]*>.*name="confirm" value="sure-name" required> 이벤트 &quot;행사 sure-name&quot; \(sure-name\) 지금 끝낼게요<\/label><button type="submit" class="danger">지금 끝내기/s,
     );
     // 이벤트 끝내기 단추는 확인 칸 없이 단독으로 있지 않다
     assert.doesNotMatch(
       page.text,
       /class="inline"><input type="hidden" name="csrf"[^>]*><input type="hidden" name="id" value="sure-name"/,
     );
-    await admin.act('/admin/events/end', { id: 'sure-name', confirm: 'yes' });
+    await admin.act('/admin/events/end', { id: 'sure-name', confirm: 'sure-name' });
   });
 });
 
