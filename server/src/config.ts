@@ -24,6 +24,8 @@ export type Config = {
    * /v1/admin/* 를 쓴다. 비면 운영자 계정 없음 (웹 /admin 의 ADMIN_TOKEN 로그인은 따로)
    */
   adminSubs?: string[];
+  /** 운영자 화면 일별 추이를 이 프로세스에 기억하는 시간(ms, ADMIN_TREND_CACHE_MS, 기본 2분). 비거나 0 이면 기억하지 않는다 */
+  adminTrendCacheMs?: number;
   /**
    * 카카오 로그인 (6단계, OIDC scope openid 만). 키 둘 중 하나라도 비면 카카오 경로는 503 login_off.
    * 키가 있어도 기능 키 kakao_login(features.ts) 이 off 면 503 feature_off
@@ -196,6 +198,7 @@ export function readConfig(env: NodeJS.ProcessEnv): Config {
     adminToken: (env.ADMIN_TOKEN ?? '').trim(),
     releasesApi: checkUrl('RELEASES_API', (env.RELEASES_API ?? '').trim() || DEFAULT_RELEASES_API),
     adminSubs: readSubs(env.ADMIN_GOOGLE_SUBS),
+    adminTrendCacheMs: nonNegative('ADMIN_TREND_CACHE_MS', env.ADMIN_TREND_CACHE_MS, 120_000, true),
     kakaoRestApiKey: (env.KAKAO_REST_API_KEY ?? '').trim(),
     kakaoClientSecret: (env.KAKAO_CLIENT_SECRET ?? '').trim(),
     kakaoAuthUrl: checkUrl('KAKAO_AUTH_URL', (env.KAKAO_AUTH_URL ?? '').trim() || DEFAULT_KAKAO_AUTH_URL),

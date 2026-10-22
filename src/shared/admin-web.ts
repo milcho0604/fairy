@@ -15,6 +15,7 @@ export const ADMIN_WEB_PLACES = [
   'settings',
   'settings/features',
   'settings/ai',
+  'settings/backup',
   'settings/log',
 ] as const;
 export type AdminWebPlace = (typeof ADMIN_WEB_PLACES)[number];

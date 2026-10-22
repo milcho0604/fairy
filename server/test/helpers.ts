@@ -12,6 +12,8 @@ export const HOUR = 3_600_000;
 const rand = () => Math.floor(Math.random() * 250);
 export const ip = () => `10.${rand()}.${rand()}.${rand()}`;
 export const today = () => new Date().toISOString().slice(0, 10);
+/** 한국 날짜 (서버의 이벤트 기간과 하루 판정은 한국 시간이다) */
+export const kstToday = () => new Date(Date.now() + 9 * HOUR).toISOString().slice(0, 10);
 /** 운영자 화면의 datetime-local 값 (한국 시간) */
 export const kstInput = (ms: number) => new Date(ms + 9 * HOUR).toISOString().slice(0, 16);
 

@@ -1,6 +1,15 @@
 // 운영자 화면 HTML (이슈 #101). 스크립트 없이 폼만 쓴다. 바깥 글꼴, CDN, 인라인 스타일 없음 (CSP: style-src 'self').
 // 사용자가 넣은 글(공지, 이벤트, 닉네임, 기록)은 모두 esc 로 바꿔 넣는다. 사용자에게 보이는 이름은 "채팅 이용권"
 // (서버 코드와 표 이름은 ai_ticket 그대로).
+import {
+  BACKUP_BAD_PERCENT,
+  BACKUP_WARN_PERCENT,
+  type BackupStatus,
+  backupPercent,
+  barChart,
+  type LockedStats,
+  type TrendView,
+} from './admin-home';
 import type { AiSettings, SubscriptionInfo } from './ai-admin';
 import { FEATURES, type FeatureView } from './features';
 import type { EventRow } from './feeds';
@@ -45,6 +54,7 @@ export const CELL_SUBS: Record<AdminCell, ReadonlyArray<readonly [string, string
   settings: [
     ['features', '기능 스위치'],
     ['ai', '채팅 이용권과 예산'],
+    ['backup', '백업 현황'],
     ['log', '운영 기록'],
   ],
 };
@@ -159,9 +169,9 @@ export type FlowPreview =
 
 /** 홈의 "지금 확인할 것" 한 줄 (서버가 계산하고 웹 홈과 앱 요약이 같이 쓴다) */
 export interface AdminTodo {
-  kind: 'reports' | 'budget' | 'ending_events' | 'ending_coupons';
+  kind: 'reports' | 'budget' | 'ending_events' | 'ending_coupons' | 'backup';
   level: 'warn' | 'bad';
-  /** 신고 건수, 끝나는 이벤트나 쿠폰 수, 예산은 쓴 비율(%) */
+  /** 신고 건수, 끝나는 이벤트나 쿠폰 수, 예산과 백업은 쓴 비율(%) */
   n: number;
   /** 눌렀을 때 가는 자리 */
   place: AdminPlace;
@@ -276,7 +286,16 @@ export interface AdminView {
   /** 기능 스위치 (#102, features.ts): kakao_login, coin_reset, calendar_link_hint (#115) */
   features: FeatureView[];
   /** 앱 판 분포 (이슈 #120): 최근 30일 활동 계정의 마지막 앱 판 */
-  versions: { active: number; unknown: number; rows: { version: string; count: number }[] };
+  versions: {
+    active: number;
+    unknown: number;
+    rows: { version: string; count: number }[];
+    /** 지금 업데이트 기준으로 잠기거나 기능이 막히는 인원 (#152) */
+    locked: LockedStats;
+  };
+  /** 최근 14일 일별 추이와 서버 백업 현황 (#152) */
+  trend: TrendView;
+  backup: BackupStatus;
   /** 운영 기록 한 쪽. actorName 은 옛 기록에서 null (actor 를 그대로 보인다), targetName 은 대상이 계정일 때 */
   log: Array<{
     at: string;
@@ -683,6 +702,8 @@ export function todoOf(o: {
   events: Array<{ starts: number; ends: number }>;
   coupons: Array<{ starts: number; ends: number; disabled: boolean }>;
   now: number;
+  /** 서버 백업이 상한의 얼마나 찼나 (켜져 있고 상한이 있을 때만) */
+  backup?: Pick<BackupStatus, 'bytes' | 'maxBytes'>;
 }): AdminTodo[] {
   const out: AdminTodo[] = [];
   if (o.reports > 0) out.push({ kind: 'reports', level: 'warn', n: o.reports, place: 'reports' });
@@ -704,6 +725,16 @@ export function todoOf(o: {
   if (events > 0) out.push({ kind: 'ending_events', level: 'warn', n: events, place: 'announce/events' });
   const coupons = o.coupons.filter((c) => !c.disabled && soon(c.starts, c.ends)).length;
   if (coupons > 0) out.push({ kind: 'ending_coupons', level: 'warn', n: coupons, place: 'announce/coupons' });
+  // 상한 0 이면 서버는 모든 올리기를 507 로 막는다 (n 은 -1)
+  if (o.backup?.maxBytes === 0) out.push({ kind: 'backup', level: 'bad', n: -1, place: 'settings/backup' });
+  const used = o.backup ? backupPercent(o.backup) : null;
+  if (used !== null && used >= BACKUP_WARN_PERCENT)
+    out.push({
+      kind: 'backup',
+      level: used >= BACKUP_BAD_PERCENT ? 'bad' : 'warn',
+      n: used,
+      place: 'settings/backup',
+    });
   return out;
 }
 
@@ -719,6 +750,10 @@ export function todoText(t: AdminTodo): string {
       return `3일 안에 끝나는 이벤트가 ${t.n}개 있어요`;
     case 'ending_coupons':
       return `3일 안에 끝나는 쿠폰이 ${t.n}개 있어요`;
+    case 'backup':
+      return t.n < 0
+        ? '서버 백업 상한이 0 이라 새 백업 올리기가 모두 막혀요'
+        : `서버 백업이 상한의 ${t.n}%를 썼어요`;
   }
 }
 
@@ -739,6 +774,8 @@ function homeSection(v: AdminView): string {
         .join('')}</tbody></table></div>`
     : '<p class="empty">아직 운영 기록이 없어요</p>';
   return `<section><h2>지금 확인할 것</h2>${todo}</section>
+${trendSection(v)}
+<section><h2>백업</h2>${backupGlance(v.backup)}</section>
 <section><h2>사용량</h2>
 <dl class="stats">
 <div><dt>계정</dt><dd>${s.accounts}</dd></div>
@@ -753,6 +790,118 @@ function homeSection(v: AdminView): string {
 ${versionTable(v)}</section>
 <section><h2>최근 운영 기록</h2>${recent}
 <p><a class="button-link" href="#settings/log">운영 기록 모두 보기</a></p></section>`;
+}
+
+const bytesText = (n: number) =>
+  n >= 1024 ** 3
+    ? `${(n / 1024 ** 3).toFixed(1)}GB`
+    : n >= 1024 ** 2
+      ? `${(n / 1024 ** 2).toFixed(1)}MB`
+      : `${Math.ceil(n / 1024)}KB`;
+
+/** 오늘(마지막 날)의 값과 어제 값. 어제가 0 이면 변화 글은 없다 */
+function trendCard(
+  label: string,
+  days: string[],
+  values: number[],
+  fmt: (n: number) => string,
+  esc2: (v: unknown) => string,
+): string {
+  const today = values[values.length - 1] ?? 0;
+  const yest = values[values.length - 2] ?? 0;
+  const sum = values.reduce((a, b) => a + b, 0);
+  return `<div class="trend-card"><div class="trend-head"><span class="trend-label">${esc2(label)}</span><strong class="trend-today">${esc2(fmt(today))}</strong></div>
+${barChart(label, days, values, fmt, esc2)}
+<small class="hint">어제 ${esc2(fmt(yest))}, 14일 합 ${esc2(fmt(sum))}</small></div>`;
+}
+
+/** 오늘 숫자와 최근 14일 추이 (한국 시간 하루). 막대는 서버가 그린 SVG, 표는 같은 숫자를 글로 */
+function trendSection(v: AdminView): string {
+  const d = v.trend.days;
+  const days = d.map((x) => x.day);
+  const n = (x: number) => String(x);
+  const rows = [...d]
+    .reverse()
+    .map(
+      (x) =>
+        `<tr><td>${esc(x.day)}</td><td>${x.signups}</td><td>${x.active}</td><td>${x.asks}</td><td>${usd(x.costMicros)}</td></tr>`,
+    )
+    .join('');
+  return `<section id="trend"><h2>오늘과 최근 ${d.length}일</h2>
+<div class="trend">
+${trendCard(
+  '가입',
+  days,
+  d.map((x) => x.signups),
+  n,
+  esc,
+)}
+${trendCard(
+  '활동 계정',
+  days,
+  d.map((x) => x.active),
+  n,
+  esc,
+)}
+${trendCard(
+  '질문',
+  days,
+  d.map((x) => x.asks),
+  n,
+  esc,
+)}
+${trendCard(
+  '추정 비용',
+  days,
+  d.map((x) => x.costMicros),
+  usd,
+  esc,
+)}
+</div>
+<p class="hint">하루는 한국 시간 기준이에요. 활동 계정은 그날 코인 기록이나 질문을 서버에 보낸 계정이라 앱만 켜 둔 사람은 빠져요. 아래 이번 달 합계는 UTC 달 기준이라 달 경계에서 며칠 어긋나요.</p>
+<details><summary>숫자로 보기</summary><div class="table-scroll"><table class="trend-table"><thead><tr><th>날짜</th><th>가입</th><th>활동 계정</th><th>질문</th><th>추정 비용</th></tr></thead><tbody>${rows}</tbody></table></div></details></section>`;
+}
+
+/** 홈에 보이는 백업 한 줄 (설정의 백업 현황으로 가는 링크) */
+function backupGlance(b: BackupStatus): string {
+  if (!b.enabled)
+    return `<p class="hint">서버 백업이 꺼져 있어요 (BACKUP_ENC_KEY 가 비었어요). <a href="#settings/backup">백업 현황</a></p>`;
+  const used = backupPercent(b);
+  const blocked = b.maxBytes === 0;
+  const last =
+    b.lastUploadAt === null ? '아직 올라온 백업이 없어요' : `마지막으로 올라온 때 ${when(b.lastUploadAt)}`;
+  const level =
+    blocked || (used !== null && used >= BACKUP_BAD_PERCENT)
+      ? 'bad'
+      : used !== null && used >= BACKUP_WARN_PERCENT
+        ? 'warn'
+        : '';
+  return `<ul class="todo"><li class="${level}"><a href="#settings/backup">${esc(last)}, 파일 ${b.files}개, ${bytesText(b.bytes)}${blocked ? ', 상한 0 (모두 막힘)' : used === null ? '' : ` (상한의 ${used}%)`}</a></li></ul>`;
+}
+
+/** 설정의 백업 현황: 서버가 아는 것만 보이고, 모르는 것은 모른다고 쓴다 */
+function backupSection(v: AdminView): string {
+  const b = v.backup;
+  const used = backupPercent(b);
+  const row = (k: string, val: string) => `<div><dt>${esc(k)}</dt><dd>${val}</dd></div>`;
+  return `<section><h2>백업 현황</h2>
+<h3>이용자 서버 백업 (앱에서 올린 .fairybackup)</h3>
+<dl class="stats">
+${row('상태', b.enabled ? '켜짐' : '꺼짐 (BACKUP_ENC_KEY 가 비었어요)')}
+${row('마지막으로 올라온 때', b.lastUploadAt === null ? '없어요' : esc(when(b.lastUploadAt)))}
+${row('파일', `${b.files}개 (${b.accounts}명)`)}
+${row('총 크기', `${esc(bytesText(b.bytes))}${b.maxBytes === 0 ? ' / 상한 0 (모두 막힘)' : b.maxBytes ? ` / 상한 ${esc(bytesText(b.maxBytes))}` : ' (상한 없음)'}`)}
+${row('상한 사용', b.maxBytes === 0 ? '0, 새 백업 올리기가 모두 막혀요 (507)' : used === null ? '알 수 없어요' : `${used}%`)}
+${row('올리기 실패', '기록 없음 (서버가 실패를 남기지 않아요)')}
+</dl>
+<p class="hint">상한을 넘거나 상한이 0 이면 새 백업 올리기가 막혀요(507). 올린 지 1년 지난 계정의 백업은 서버가 지워요.</p>
+<h3>데이터베이스 덤프와 외장 디스크 사본</h3>
+<dl class="stats">
+${row('마지막 성공', '알 수 없어요')}
+${row('실패', '알 수 없어요')}
+${row('용량', '알 수 없어요')}
+</dl>
+<p class="hint">매일 데이터베이스 덤프(fairy-backup)와 백업 파일 사본(fairy-backup-files)은 다른 컨테이너가 맥미니 외장 디스크(FAIRY_BACKUP_DIR)에 써요. 서버(fairy-api)는 그 디스크를 읽지 못해서 여기서는 결과를 알 수 없어요. 맥미니에서 해당 컨테이너 로그를 봐 주세요.</p></section>`;
 }
 
 const reportTag = (st: ReportState) =>
@@ -1070,7 +1219,12 @@ ${CELL_SUBS[cell].map(([id]) => `<div class="sub" id="sub-${cell}-${id}" data-su
       events: eventsSection(v),
       coupons: couponsSection(v),
     }),
-    settings: sub('settings', { features: ai.features, ai: ai.tickets, log: logSection(v) }),
+    settings: sub('settings', {
+      features: ai.features,
+      ai: ai.tickets,
+      backup: backupSection(v),
+      log: logSection(v),
+    }),
   };
 }
 
@@ -1180,7 +1334,12 @@ function versionTable(v: AdminView): string {
   const x = v.versions;
   if (x.active === 0) return `<h3>앱 판 분포</h3><p class="hint">최근 30일 활동한 계정이 없어요.</p>`;
   const rows = x.rows.map((r) => `<tr><td>${esc(r.version)}</td><td>${r.count}</td></tr>`).join('');
-  return `<h3>앱 판 분포 (최근 30일 활동 ${x.active}명)</h3>
+  const l = x.locked;
+  const lock =
+    l.min || l.restrict
+      ? `<p class="${l.locked > 0 ? 'warn-text' : 'hint'}">지금 기준으로 ${l.min ? `최소 ${esc(l.min)} 보다 낮아 앱이 잠기는 계정 <strong>${l.locked}명</strong>` : '강제 기준 없음'}${l.restrict ? `, 기능 제한 ${esc(l.restrict)} 보다만 낮아 서버 기능이 거절되는 계정 <strong>${l.restricted}명</strong>` : ''}${l.unknown > 0 ? ` (판을 모르는 ${l.unknown}명 포함, 판 표시가 없으면 가장 낮은 판으로 봐요)` : ''}. 판은 앱이 하루에 한 번 알려 줘서, 방금 업데이트한 계정은 최대 하루 동안 이전 판으로 남아 있어요. <a href="#announce/notices">공지와 버전</a></p>`
+      : `<p class="hint">최소 버전과 기능 제한 버전이 없어서 잠기는 계정이 없어요. <a href="#announce/notices">공지와 버전</a></p>`;
+  return `<h3>앱 판 분포 (최근 30일 활동 ${x.active}명)</h3>${lock}
 <table><tr><th>앱 판</th><th>계정</th></tr>${rows}<tr><td>판 없음 (옛 앱)</td><td>${x.unknown}</td></tr></table>`;
 }
 
@@ -1376,6 +1535,17 @@ code { font-size: 12px; word-break: break-all; }
 .stats div { border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
 .stats dt { font-size: 12px; color: var(--muted); }
 .stats dd { margin: 0; font-size: 17px; font-weight: 600; }
+.trend { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.trend-card { border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: var(--bg); }
+.trend-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.trend-label { font-size: 13px; color: var(--muted); }
+.trend-today { font-size: 20px; }
+.trend-svg { width: 100%; height: 64px; display: block; margin: 6px 0 2px; }
+.trend-svg .bar { fill: var(--muted); }
+.trend-svg .bar.today { fill: var(--accent); }
+.trend-svg .bar.zero { fill: var(--line); }
+.warn-text { color: var(--warn); }
+details > summary { cursor: pointer; margin: 8px 0; color: var(--muted); }
 .tag { font-size: 11px; border-radius: 4px; padding: 1px 6px; border: 1px solid var(--line); }
 .tag.live { border-color: var(--ok); color: var(--ok); }
 .tag.ended { color: var(--muted); }
