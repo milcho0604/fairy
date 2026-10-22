@@ -1,5 +1,13 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -174,6 +182,28 @@ test('대화 500개: 목차 하나로 목록을 그리고 찾기도 빠르다', 
     assert.equal(all[0]?.title, '질문 499 일');
     // 목차 하나 읽기 + 정렬. 느린 CI 에서도 넉넉한 상한
     assert.ok(ms < 500, `${ms}ms`);
+  } finally {
+    t.done();
+  }
+});
+
+test('이름 바꾸기 저장이 디스크 오류로 실패하면 false, 메모리 목록도 옛 이름 그대로', () => {
+  const t = setup();
+  try {
+    const s = t.make();
+    s.saveCurrent(chat('질문'), true);
+    const id = s.current ?? '';
+    chmodSync(t.dir, 0o500);
+    let ok: boolean | undefined;
+    try {
+      ok = s.rename(id, '새 이름');
+    } finally {
+      chmodSync(t.dir, 0o700);
+    }
+    assert.equal(ok, false);
+    assert.equal(s.list()[0]?.title, '질문');
+    assert.ok(s.rename(id, '새 이름'));
+    assert.equal(s.list()[0]?.title, '새 이름');
   } finally {
     t.done();
   }

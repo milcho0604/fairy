@@ -18,6 +18,8 @@ export interface ChatMessage {
   provider?: AiProvider;
   images?: ChatImage[];
   status?: 'waiting' | 'streaming' | 'done' | 'error';
+  /** 답을 기다리기 시작한 시각(ms). 채팅 창을 닫았다 열어도 경과 시간이 이어진다 */
+  since?: number;
   error?: AiError;
   /** AI 없이 규칙으로 답했다 ("오늘 뭐부터", shared/what-first.ts). 꼬리표가 AI 이름 대신 "AI 없이" */
   byRules?: true;
@@ -63,6 +65,7 @@ export function addQuestion(
   ids: { user: string; pet: string },
   text: string,
   images: ChatImage[],
+  now: number = Date.now(),
 ): ChatState {
   return {
     ...s,
@@ -70,7 +73,7 @@ export function addQuestion(
     messages: [
       ...s.messages,
       { id: ids.user, role: 'user', text, images: images.length ? images : undefined },
-      { id: ids.pet, role: 'pet', text: '', provider: s.provider, status: 'waiting' },
+      { id: ids.pet, role: 'pet', text: '', provider: s.provider, status: 'waiting', since: now },
     ],
   };
 }

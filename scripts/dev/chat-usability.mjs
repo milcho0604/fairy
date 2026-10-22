@@ -556,6 +556,108 @@ try {
       await c.ev("[...document.querySelectorAll('.sheet-head button')].at(-1).click()");
       await sleep(300);
     }
+    // ---- 버그 사냥 뒤 보강 (PR #177) ----
+    await main('__jj.chat.window.setSize(320, 520); 1');
+    await sleep(500);
+    console.log(`\n== 보강 시나리오 (${LANG}) ==`);
+    await newChat(c);
+
+    // 빈 칸 Enter 안내에는 "쓴 글은 그대로" 가 없다. 글이 있으면 있다
+    setMode('slow');
+    await ask(c, '보강 대기 시험');
+    await until('기다리는 중', async () => (await c.ev("!!document.querySelector('.thinking')")) === true, 6000);
+    await sleep(2200);
+    await c.ev('document.querySelector("textarea").focus()');
+    await c.press('Enter', 13);
+    await sleep(300);
+    let wn = await noticeText(c);
+    const keptWord = ko ? '쓴 글은 그대로' : 'still there';
+    check('빈 칸 Enter 안내에는 쓴 글 문구가 없다', wn.length > 0 && !wn.includes(keptWord), wn);
+    await c.type('textarea', '쓰던 글');
+    await c.press('Enter', 13);
+    await sleep(300);
+    wn = await noticeText(c);
+    check('글이 있을 때 Enter 안내에는 쓴 글이 그대로라는 말이 있다', wn.includes(keptWord), wn);
+    await clearInput(c);
+
+    // 창을 닫았다 열어도 경과가 이어진다 (기다리기 시작한 시각을 메인 상태에 둠)
+    await sleep(9000);
+    const e1 = await c.ev("document.querySelector('.thinking .elapsed')?.textContent ?? ''");
+    await closeChat();
+    await sleep(500);
+    await main('__jj.chat.open(__jj.pet.bounds()); 1');
+    await until('채팅 열림', chatOpen);
+    const c2 = await page('chat');
+    await until('채팅 그려짐', async () => !!(await c2.ev("!!document.querySelector('textarea')")));
+    await sleep(1500);
+    const e2 = await c2.ev("document.querySelector('.thinking .elapsed')?.textContent ?? ''");
+    const n1 = Number((e1.match(/\d+/) ?? [0])[0]);
+    const n2 = Number((e2.match(/\d+/) ?? [0])[0]);
+    check('창을 닫았다 열어도 경과 시간이 0 부터 다시 세지 않는다', n1 >= 8 && n2 >= n1, `${e1} -> ${e2}`);
+    await c2.ev('window.jjakkungChat.cancel()');
+    await until('멈춤', async () => !(await c2.ev("!!document.querySelector('.thinking')")), 8000);
+    await sleep(300);
+    setMode('ok');
+    await newChat(c2);
+
+    // 긴 파일 이름은 안내가 창 밖으로 나가지 않는다 (en 은 복수형)
+    await dropFiles(c2, [['a'.repeat(120) + '.pdf', 'application/pdf']]);
+    await sleep(300);
+    const ov = JSON.parse(await c2.ev(`(() => { const n = document.querySelector('footer .notice'); const r = n.getBoundingClientRect(); return JSON.stringify({ right: Math.round(r.right), sw: n.scrollWidth, cw: n.clientWidth, iw: innerWidth, doc: document.documentElement.scrollWidth }); })()`));
+    check('긴 파일 이름 안내가 폭 320 안에 있다', ov.sw <= ov.cw + 1 && ov.right <= ov.iw && ov.doc <= ov.iw, JSON.stringify(ov));
+    await dropFiles(c2, [['a.txt', 'text/plain'], ['b.zip', 'application/zip']]);
+    await sleep(300);
+    const plural = await noticeText(c2);
+    check('여러 파일 안내 문장이 복수형에 맞다', ko ? plural.includes('외 1개') : plural.includes("they aren't images"), plural);
+
+    // 그림 다섯 장과 pdf 를 함께: 두 안내가 모두 남는다. 이어서 정상 그림만 놓으면 지난 안내가 거둬진다
+    await dropFiles(c2, [['x.pdf', 'application/pdf'], ...Array.from({ length: 5 }, (_, i) => [`g${i}.png`, 'image/png', PNG])]);
+    await sleep(700);
+    const both = await noticeText(c2);
+    check('그림 다섯 장과 pdf 를 함께 놓으면 pdf 안내와 장수 안내가 모두 남는다', both.includes('x.pdf') && both.includes('4'), both);
+    for (let i = 0; i < 6; i++) {
+      await c2.ev("document.querySelector('.attachment button')?.click()");
+      await sleep(80);
+    }
+    await dropFiles(c2, [['정상.png', 'image/png', PNG]]);
+    await sleep(600);
+    check('정상으로 그림이 붙으면 지난 안내가 거둬진다', (await noticeText(c2)) === '' && (await c2.ev('document.querySelectorAll(".attachment").length')) === 1, await noticeText(c2));
+    await c2.ev("document.querySelectorAll('.attachment button').forEach((b) => b.click())");
+
+    // 이름 바꾸기 저장이 디스크 오류면: 안내가 뜨고 메모리 목록도 옛 이름
+    await ask(c2, 'RENAME-Z 질문');
+    await answered(c2, '가짜 답');
+    await newChat(c2);
+    await ask(c2, 'RENAME-W 질문');
+    await answered(c2, '가짜 답');
+    await sleep(400);
+    await c2.ev("document.querySelector('header .icon-btn').click()");
+    await until('목록 열림', async () => (await c2.ev("document.querySelectorAll('.thread').length")) >= 2, 5000);
+    await c2.ev(`[...document.querySelectorAll('.thread')].find((li) => li.innerText.includes('RENAME-Z')).querySelector('button[aria-label*="${ko ? '이름 바꾸기' : 'Rename'}"]').click()`);
+    await sleep(200);
+    await c2.ev("(() => { const i = document.querySelector('.rename input'); i.focus(); i.select(); document.execCommand('insertText', false, '저장실패이름'); })()");
+    chmodSync(data, 0o500);
+    await c2.ev("document.querySelector('.rename').requestSubmit()");
+    await sleep(1500);
+    chmodSync(data, 0o700);
+    const alertText = await c2.ev("document.querySelector('.chat-list [role=alert]')?.textContent ?? ''");
+    const mem = await c2.ev("window.jjakkungChat.threads('').then((l) => l.threads.some((t) => t.title === '저장실패이름'))");
+    check('디스크 오류로 이름 저장이 실패하면 화면에 안내', alertText.includes(X.renameFail), alertText);
+    check('저장이 실패하면 메모리 목록도 옛 이름 그대로', mem === false);
+    await c2.ev("[...document.querySelectorAll('.sheet-head button')].at(-1).click()");
+    await sleep(300);
+
+    // 긴 답을 위쪽에 맞춘 뒤 창을 키워도 답 위쪽을 지킨다
+    await newChat(c2);
+    setMode('long');
+    await ask(c2, '긴 답 뒤 창 키우기');
+    await answered(c2, '40번째');
+    await sleep(800);
+    await main('__jj.chat.window.setSize(600, 900); 1');
+    await sleep(900);
+    const g7 = await geo(c2);
+    check('긴 답을 위쪽에 맞춘 뒤 창을 키워도 답 위쪽이 유지된다', g7.top >= -2 && g7.top <= 40 && g7.btn === X.more, JSON.stringify(g7));
+    setMode('ok');
     await main('__jj.chat.window.setSize(400, 640); 1');
   }
 } catch (err) {

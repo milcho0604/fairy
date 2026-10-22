@@ -11,6 +11,7 @@ export const ko = {
     `${v.name}${v.more > 0 ? ` 외 ${v.more}개` : ''}는 그림이 아니라 붙일 수 없어. 그림(png, jpg 같은 파일)만 받아. 글이나 문서는 내용을 복사해서 입력칸에 붙여 넣어 줘.`,
   'chat.waitEnter':
     '답을 기다리는 중이라 아직 보내지 못해. 기다리거나 멈춤(Esc)을 누른 뒤에 보내 줘. 쓴 글은 그대로 있어.',
+  'chat.waitEnterEmpty': '답을 기다리는 중이야. 다음 질문은 답이 오거나 멈춤(Esc)을 누른 뒤에 보내 줘.',
   'chat.waitSec': (v: { n: number }) => `${v.n}초째 기다리는 중`,
   'chat.waitMin': (v: { m: number; s: number }) => `${v.m}분 ${v.s}초째 기다리는 중`,
   'chat.moreBelow': '아래로',
@@ -153,9 +154,11 @@ export const en: Translation<typeof ko> = {
   'chat.loading': 'Loading',
   'chat.tooManyImages': (v) => `You can attach up to ${v.max} images at once.`,
   'chat.notImage': (v) =>
-    `${v.name}${v.more > 0 ? ` and ${v.more} more` : ''} can't be attached because it isn't an image. Only images (png, jpg, and so on) are accepted. For text or documents, copy the content and paste it into the box.`,
+    `${v.name}${v.more > 0 ? ` and ${v.more} more can't be attached because they aren't images` : " can't be attached because it isn't an image"}. Only images (png, jpg, and so on) are accepted. For text or documents, copy the content and paste it into the box.`,
   'chat.waitEnter':
     "Still waiting for the answer, so it can't be sent yet. Wait, or press Stop (Esc) first. What you typed is still there.",
+  'chat.waitEnterEmpty':
+    'Still waiting for the answer. Send your next question once it arrives, or press Stop (Esc) first.',
   'chat.waitSec': (v) => `Waiting ${v.n}s`,
   'chat.waitMin': (v) => `Waiting ${v.m}m ${v.s}s`,
   'chat.moreBelow': 'Scroll down',

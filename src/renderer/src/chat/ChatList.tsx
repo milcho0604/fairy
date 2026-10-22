@@ -75,7 +75,12 @@ export function ChatList({ pending, ephemeral, version, labelOf, onOpened, onClo
 
   const saveRename = async () => {
     if (!renaming) return;
-    const ok = await bridge.renameThread(renaming.id, renaming.title);
+    let ok = false;
+    try {
+      ok = await bridge.renameThread(renaming.id, renaming.title);
+    } catch {
+      ok = false;
+    }
     if (!ok) {
       // 입력은 그대로 두고 까닭을 보인다 (다시 저장하거나 취소할 수 있게)
       setFailure(t('chat.list.renameFailed'));
