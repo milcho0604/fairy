@@ -549,6 +549,45 @@ const body = async () => {
       check(`${mark}: 일정 가로 넘침 없음`, over.length === 0, over.join(', '));
       await pp.shot(`wide-panel-calendar-w${w}`);
     }
+
+    // ---- 집중이 돌고 있으면 시계와 그만 단추가 첫 화면에 (320, 560) ----
+    for (const w of [320, 560]) {
+      await main(`__jj.panel.window.setBounds({ ...__jj.panel.window.getBounds(), width: ${w}, height: 600 }); 1`);
+      await main("__jj.panel.openTab('today'); 1");
+      await sleep(500);
+      await pp.ev('jjakkungPanel.focusStart(25); 1');
+      await sleep(1200);
+      const clock = JSON.parse(
+        await pp.ev(`(() => { const c = document.querySelector('.focus-card .clock'); const stop = document.querySelector('.focus-card .ghost'); const sc = document.querySelector('.scroll.today'); if (!c || !stop) return JSON.stringify(null); return JSON.stringify({ top: c.getBoundingClientRect().top, stopB: stop.getBoundingClientRect().bottom, scB: sc.getBoundingClientRect().bottom, firstIsFocus: sc.querySelector('section')?.classList.contains('focus-card') }); })()`),
+      );
+      check(`작은 패널 ${w}: 집중 중 시계와 그만 단추가 첫 화면 안`, !!clock && clock.top < clock.scB && clock.stopB <= clock.scB, JSON.stringify(clock));
+      check(`작은 패널 ${w}: 집중 중이면 집중 카드가 맨 위 구역`, !!clock && clock.firstIsFocus === true);
+      await pp.shot(`wide-panel-focus-w${w}`);
+      await pp.ev('jjakkungPanel.focusStop(); 1');
+      await sleep(400);
+    }
+
+    // ---- 알림 둘과 빠른 두 번: 묶음마다 되돌린다 ----
+    const grab = (title) => main(`__jj.store.add({ title: ${JSON.stringify(title)}, due: ${JSON.stringify(todayStr)} }, ${NOW}).id`);
+    const dueOf = (id) => main(`__jj.store.get(${id}).due`);
+    const tomorrowStr = await dayStr(dayStart + dayMs);
+    const q1 = await grab('묶음 1');
+    const first = await pp.ev(`jjakkungPanel.moveOverdue('tomorrow', { key: 111, today: ${JSON.stringify(todayStr)}, ids: [${q1}] }).then((m) => m.length)`);
+    const q2 = await grab('묶음 2');
+    const second = await pp.ev(`jjakkungPanel.moveOverdue('tomorrow', { key: 222, today: ${JSON.stringify(todayStr)}, ids: [${q2}] }).then((m) => m.length)`);
+    const dup = await pp.ev(`jjakkungPanel.moveOverdue('tomorrow', { key: 333, today: ${JSON.stringify(todayStr)}, ids: [${q2}] }).then((m) => m.length)`);
+    check('알림 둘: 각 묶음이 한 개씩 옮겨지고 같은 목록을 또 부르면 0개', first === 1 && second === 1 && dup === 0, `${first} ${second} ${dup}`);
+    await pp.ev('jjakkungPanel.undoMoveOverdue(111); 1');
+    await sleep(500);
+    check('알림 둘: 앞 알림(111)을 되돌리면 그 묶음만 돌아온다', (await dueOf(q1)) === todayStr && (await dueOf(q2)) === tomorrowStr, `${await dueOf(q1)} ${await dueOf(q2)}`);
+    await pp.ev('jjakkungPanel.undoMoveOverdue(222); 1');
+    await sleep(500);
+    check('알림 둘: 뒤 알림(222)도 자기 묶음을 되돌린다 (0개 호출 333 이 기억을 덮지 않았다)', (await dueOf(q2)) === todayStr, await dueOf(q2));
+    // 자정 직후: 화면이 본 어제 날짜 기준이면 오늘이 된 것은 그대로
+    const q3 = await grab('자정 전에 보던 것');
+    const q4 = await main(`__jj.store.add({ title: '자정에 오늘이 된 것', due: ${JSON.stringify(tomorrowStr)} }, ${NOW}).id`);
+    const got = await pp.ev(`jjakkungPanel.moveOverdue('tomorrow', { key: 444, today: ${JSON.stringify(todayStr)}, ids: [${q3}, ${q4}] }).then((m) => m.map((x) => x.id).join(','))`);
+    check('화면이 본 오늘 기준: 내일 마감은 목록에 있어도 안 옮긴다', got === String(q3) && (await dueOf(q4)) === tomorrowStr, got);
     await closePanel();
   }
 

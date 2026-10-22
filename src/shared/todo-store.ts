@@ -521,6 +521,33 @@ export class TodoStore {
   }
 
   /**
+   * 못 한 것(마감이 today 이거나 지난 안 끝난 할 일, 습관 제외)을 to 로 한 번에 옮긴다 ("못 한 N개 내일로").
+   * ids 를 주면 그 가운데서만 (화면이 본 목록: 자정이 지나 새로 오늘이 된 것은 건드리지 않는다).
+   * 마감 시각과 알림은 update 가 지키고, 하나라도 실패하면 아무것도 안 옮긴다. 옮긴 것과 원래 마감을 돌려준다 (되돌리기용)
+   */
+  deferTo(
+    today: string,
+    to: string,
+    now: number,
+    ids?: readonly number[],
+  ): { id: number; due: string | null }[] {
+    const pick = ids === undefined ? undefined : new Set(ids);
+    const late = this.list(now).open.filter(
+      (todo) => todo.due !== null && todo.due <= today && !todo.repeat && (!pick || pick.has(todo.id)),
+    );
+    if (late.length === 0) return [];
+    this.#db.exec('begin');
+    try {
+      for (const todo of late) this.update(todo.id, { due: to }, now);
+      this.#db.exec('commit');
+    } catch (err) {
+      this.#db.exec('rollback');
+      throw err;
+    }
+    return late.map((todo) => ({ id: todo.id, due: todo.due }));
+  }
+
+  /**
    * 지금 알릴 할 일: 안 끝났고 마감일이 있으며 알림 하나가 울릴 때가 된 것.
    * 마감일만 있으면 마감일이 끝나기 전까지, 시각이 있으면 시각 5분 뒤까지 (지난 마감은 알리지 않는다)
    */

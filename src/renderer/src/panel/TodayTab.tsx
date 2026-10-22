@@ -35,7 +35,7 @@ export function TodayTab({
   onComplete: (todo: Todo) => void;
   goTo: (tab: 'todo' | 'event') => void;
   /** 지난 마감을 오늘로, 못 한 것을 내일로(to) 옮겼다 (되돌리기 알림) */
-  onMoved?: (moved: { id: number; due: string | null }[], to?: 'tomorrow') => void;
+  onMoved?: (moved: { id: number; due: string | null }[], to: 'tomorrow' | undefined, key: number) => void;
 }) {
   // 넓은 칸(큰 창)에서는 "나와 펫" 열이 이번 주와 일기를 펼쳐 보인다
   const wide = useSurface().zone === 'wide';
@@ -100,6 +100,59 @@ export function TodayTab({
     };
   }, []);
 
+  // 좁은 칸과 보통 칸에서 집중이 돌고 있으면 시계와 그만 단추가 첫 화면 밖으로 밀리지 않게 맨 위에 둔다 (넓은 칸은 오른쪽 열 맨 위)
+  const focusFirst = running && !wide;
+  const focusCard = (
+    <section className={`focus-card ${s.focus.phase}`}>
+      {s.focus.phase === 'idle' ? (
+        <>
+          <div className="focus-text">
+            <strong>{t('panel.today.focusTitle', { n: len })}</strong>
+            <small>
+              {t('panel.today.focusHint', {
+                name: s.petName,
+                coins: focusCoins(len),
+                breakMin: breakFor(len),
+              })}
+            </small>
+            <fieldset className="focus-len" aria-label={t('panel.today.focusLength')}>
+              {FOCUS_LENGTHS.map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  aria-pressed={n === len}
+                  className={n === len ? 'len-chip on' : 'len-chip'}
+                  onClick={() => setLen(n)}
+                >
+                  {t('panel.today.focusMin', { n })}
+                </button>
+              ))}
+            </fieldset>
+          </div>
+          <button type="button" className="primary" onClick={() => bridge.focusStart(len)}>
+            {t('panel.today.start')}
+          </button>
+        </>
+      ) : (
+        <>
+          <div className="focus-text">
+            <strong className="clock">{remainLabel(s.focus, now)}</strong>
+            <small>
+              {s.focus.phase !== 'focus'
+                ? t('panel.today.resting')
+                : focusTodo
+                  ? t('panel.today.focusingOn', { title: focusTodo.title })
+                  : t('panel.today.focusing')}
+            </small>
+          </div>
+          <button type="button" className="ghost" onClick={() => bridge.focusStop()}>
+            {t('panel.today.stop')}
+          </button>
+        </>
+      )}
+    </section>
+  );
+
   return (
     <>
       <div className="scroll today" ref={scroller}>
@@ -107,6 +160,7 @@ export function TodayTab({
         <div className="today-cols">
           <div className="today-col today-plan">
             <h2 className="today-col-title">{t('panel.today.colPlan')}</h2>
+            {focusFirst && focusCard}
             <section>
               <h2>
                 {t('panel.today.events')}
@@ -195,8 +249,9 @@ export function TodayTab({
                       type="button"
                       className="link"
                       onClick={async () => {
-                        const moved = await bridge.moveOverdue();
-                        if (moved.length > 0) onMoved?.(moved);
+                        const key = moveKey();
+                        const moved = await bridge.moveOverdue(undefined, { key });
+                        if (moved.length > 0) onMoved?.(moved, undefined, key);
                       }}
                     >
                       {t('assist.overdue.move', { n: overdue })}
@@ -228,8 +283,14 @@ export function TodayTab({
                   type="button"
                   className="ghost small defer-tomorrow"
                   onClick={async () => {
-                    const moved = await bridge.moveOverdue('tomorrow');
-                    if (moved.length > 0) onMoved?.(moved, 'tomorrow');
+                    // 화면이 본 오늘과 목록을 넘긴다: 자정이 지나 새로 오늘이 된 것까지 옮기지 않게
+                    const key = moveKey();
+                    const moved = await bridge.moveOverdue('tomorrow', {
+                      key,
+                      today: s.today,
+                      ids: due.map((todo) => todo.id),
+                    });
+                    if (moved.length > 0) onMoved?.(moved, 'tomorrow', key);
                   }}
                 >
                   {t('assist.defer.move', { n: due.length })}
@@ -280,54 +341,7 @@ export function TodayTab({
           </div>
           <div className="today-col today-pet">
             <h2 className="today-col-title">{t('panel.today.colPet')}</h2>
-            <section className={`focus-card ${s.focus.phase}`}>
-              {s.focus.phase === 'idle' ? (
-                <>
-                  <div className="focus-text">
-                    <strong>{t('panel.today.focusTitle', { n: len })}</strong>
-                    <small>
-                      {t('panel.today.focusHint', {
-                        name: s.petName,
-                        coins: focusCoins(len),
-                        breakMin: breakFor(len),
-                      })}
-                    </small>
-                    <fieldset className="focus-len" aria-label={t('panel.today.focusLength')}>
-                      {FOCUS_LENGTHS.map((n) => (
-                        <button
-                          key={n}
-                          type="button"
-                          aria-pressed={n === len}
-                          className={n === len ? 'len-chip on' : 'len-chip'}
-                          onClick={() => setLen(n)}
-                        >
-                          {t('panel.today.focusMin', { n })}
-                        </button>
-                      ))}
-                    </fieldset>
-                  </div>
-                  <button type="button" className="primary" onClick={() => bridge.focusStart(len)}>
-                    {t('panel.today.start')}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div className="focus-text">
-                    <strong className="clock">{remainLabel(s.focus, now)}</strong>
-                    <small>
-                      {s.focus.phase !== 'focus'
-                        ? t('panel.today.resting')
-                        : focusTodo
-                          ? t('panel.today.focusingOn', { title: focusTodo.title })
-                          : t('panel.today.focusing')}
-                    </small>
-                  </div>
-                  <button type="button" className="ghost" onClick={() => bridge.focusStop()}>
-                    {t('panel.today.stop')}
-                  </button>
-                </>
-              )}
-            </section>
+            {!focusFirst && focusCard}
 
             <HabitBox s={s} onComplete={onComplete} />
 
@@ -421,6 +435,10 @@ export function TodayTab({
     </>
   );
 }
+
+/** 옮긴 묶음의 이름 (알림마다 달라서 되돌리기가 그 묶음만 되돌린다) */
+let moveSeq = 0;
+const moveKey = () => Date.now() * 1000 + (moveSeq++ % 1000);
 
 /** 이만큼(px) 안 남았으면 다 내려온 것으로 본다 */
 const MORE_SLACK = 12;

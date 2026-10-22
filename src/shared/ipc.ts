@@ -1369,9 +1369,12 @@ export interface PanelBridge {
   /** 진행 중 표시(▶)와 풀기. 끝내거나 지우면 저절로 풀린다 */
   doing(id: number, on: boolean): void;
   /** 지난 마감을 오늘로. 옮긴 것과 원래 마감 (되돌리기는 update 로). 'tomorrow' 면 오늘 마감과 지난 마감을 내일로 */
-  moveOverdue(to?: 'tomorrow'): Promise<{ id: number; due: string | null }[]>;
-  /** 방금 한 지난 마감 오늘로 되돌리기 */
-  undoMoveOverdue(): void;
+  moveOverdue(
+    to?: 'tomorrow',
+    opts?: { key?: number; today?: string; ids?: number[] },
+  ): Promise<{ id: number; due: string | null }[]>;
+  /** 지난 마감 오늘로, 못 한 것 내일로 되돌리기. key 는 옮길 때 준 묶음 이름 (없으면 가장 나중 묶음) */
+  undoMoveOverdue(key?: number): void;
   /** 길이(15, 25, 50분)를 주면 그 길이로, 아니면 마지막에 고른 길이로. todoId 를 주면 그 할 일을 하는 집중 */
   focusStart(minutes?: number, todoId?: number): void;
   focusStop(): void;

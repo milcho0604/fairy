@@ -299,7 +299,7 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
     if (toast.kind === 'event-removed') bridge.eventRestore(toast.id);
     if (toast.kind === 'todo-removed') bridge.restore(toast.id);
     if (toast.kind === 'to-event') bridge.eventRemove(toast.id);
-    if (toast.kind === 'moved') bridge.undoMoveOverdue();
+    if (toast.kind === 'moved') bridge.undoMoveOverdue(toast.key);
     if (toast.kind === 'flagged') bridge.remove(toast.id);
     dropToast(item.key);
   };
@@ -384,7 +384,7 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
             s={s}
             onComplete={complete}
             goTo={setTab}
-            onMoved={(moved, to) => showToast({ kind: 'moved', moved, ...(to ? { to } : {}) })}
+            onMoved={(moved, to, key) => showToast({ kind: 'moved', moved, ...(to ? { to } : {}), key })}
           />
         )}
         {tab === 'todo' && (
