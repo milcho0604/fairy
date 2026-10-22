@@ -187,7 +187,7 @@ async function adminPost(path, fields, { csrf = true } = {}) {
   await r.text();
   if (r.status !== 303) return { status: r.status, flash: '' };
   const page = await adminPage();
-  return { status: r.status, flash: /<p class="flash( error)?" role="status">([^<]*)<\/p>/.exec(page.text)?.[2] ?? '' };
+  return { status: r.status, flash: /<p class="flash( error)?( wide)?" role="(?:status|alert)"(?: id="form-error")?>([^<]*)<\/p>/.exec(page.text)?.[3] ?? '' };
 }
 const setFeature = (key, mode) => adminPost('/admin/features/mode', { key, mode, confirm: 'yes' });
 const allowFeature = (key, account, on = true) => adminPost('/admin/features/allow', { key, account, allowed: on ? '1' : '0' });

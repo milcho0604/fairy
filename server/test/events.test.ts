@@ -191,7 +191,7 @@ describe('운영자 로그인 (웹)', () => {
     const p = await admin.page('/notices');
     assert.doesNotMatch(p.text, /<script>alert/);
     assert.match(p.text, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
-    assert.ok((await admin.act('/admin/notices/delete', { id: 'xss-test' })).ok);
+    assert.ok((await admin.act('/admin/notices/delete', { id: 'xss-test', confirm: 'xss-test' })).ok);
   });
 });
 
@@ -226,7 +226,7 @@ describe('선물 받기', () => {
       error: 'not_started',
     });
     const ended = await makeEvent();
-    assert.ok((await admin.act('/admin/events/end', { id: ended })).ok);
+    assert.ok((await admin.act('/admin/events/end', { id: ended, confirm: ended })).ok);
     assert.equal((await lastLog('event.end'))?.target, ended);
     assert.deepEqual((await api('POST', '/v1/claim', { token: d.token, body: { event: ended } })).body, {
       error: 'ended',
@@ -240,9 +240,9 @@ describe('선물 받기', () => {
     assert.deepEqual((await api('POST', '/v1/claim', { token: d.token, body: { event: boost } })).body, {
       error: 'not_gift',
     });
-    assert.match((await admin.act('/admin/events/end', { id: soon })).text, /지웠어요/);
+    assert.match((await admin.act('/admin/events/end', { id: soon, confirm: soon })).text, /지웠어요/);
     assert.equal((await h.pool.query('SELECT 1 FROM event WHERE id = $1', [soon])).rowCount, 0);
-    assert.match((await admin.act('/admin/events/end', { id: boost })).text, /지웠어요/);
+    assert.match((await admin.act('/admin/events/end', { id: boost, confirm: boost })).text, /지웠어요/);
   });
 
   test('합쳐진 계정은 가족 전체로 한 번', async () => {
@@ -375,7 +375,7 @@ describe('쿠폰', () => {
     );
     const off = await makeCoupon();
     const id = (await h.pool.query('SELECT id FROM coupon WHERE hint = $1', [off.slice(0, 4)])).rows[0].id;
-    assert.ok((await admin.act('/admin/coupons/disable', { id: String(id) })).ok);
+    assert.ok((await admin.act('/admin/coupons/disable', { id: String(id), confirm: String(id) })).ok);
     assert.equal((await lastLog('coupon.disable'))?.target, `#${id}`);
     assert.equal(
       (await api('POST', '/v1/coupon', { token: d.token, body: { code: off } })).body.error,
@@ -565,7 +565,7 @@ describe('정적 파일 내보내기', () => {
       };
       assert.match((await admin.act('/admin/notices', force)).text, /확인 칸/);
       assert.ok((await admin.act('/admin/notices', { ...force, confirm: 'yes' })).ok);
-      assert.ok((await admin.act('/admin/notices/delete', { id: 'force-1' })).ok);
+      assert.ok((await admin.act('/admin/notices/delete', { id: 'force-1', confirm: 'force-1' })).ok);
       assert.match(
         (await admin.act('/admin/versions', { minVersion: '0.4.2', recommendVersion: '' })).text,
         /확인 칸/,
