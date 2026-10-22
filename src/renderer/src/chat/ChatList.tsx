@@ -6,6 +6,9 @@ import type { ThreadList } from '../../../shared/ipc.ts';
 import { threadDate } from './threadDate.ts';
 import './chat-list.css';
 
+/** 이름 바꾸기 실패 안내가 보이는 시간 */
+const FAILURE_MS = 6000;
+
 const bridge = window.jjakkungChat;
 /** 한 번에 그리는 줄 수. 수백 개여도 처음 그리기가 무겁지 않게 더 보기로 늘린다 */
 export const PAGE = 100;
@@ -30,6 +33,8 @@ export function ChatList({ pending, ephemeral, version, labelOf, onOpened, onClo
   const [renaming, setRenaming] = useState<{ id: string; title: string }>();
   const [confirming, setConfirming] = useState<string>();
   const [status, setStatus] = useState('');
+  /** 눈에 보이는 실패 안내 (이름 바꾸기). status 는 화면 읽기 전용이라 따로 둔다 */
+  const [failure, setFailure] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async (q: string) => {
@@ -56,10 +61,29 @@ export function ChatList({ pending, ephemeral, version, labelOf, onOpened, onClo
     else setStatus(t('chat.list.openFailed'));
   };
 
+  // 실패 안내는 잠깐만 둔다 (그 대화가 없어져 입력칸이 사라졌으면 취소로 걷을 수도 없다)
+  useEffect(() => {
+    if (!failure) return;
+    const id = setTimeout(() => setFailure(''), FAILURE_MS);
+    return () => clearTimeout(id);
+  }, [failure]);
+
+  const editRename = (v: { id: string; title: string } | undefined) => {
+    setFailure('');
+    setRenaming(v);
+  };
+
   const saveRename = async () => {
     if (!renaming) return;
-    await bridge.renameThread(renaming.id, renaming.title);
-    setRenaming(undefined);
+    const ok = await bridge.renameThread(renaming.id, renaming.title);
+    if (!ok) {
+      // 입력은 그대로 두고 까닭을 보인다 (다시 저장하거나 취소할 수 있게)
+      setFailure(t('chat.list.renameFailed'));
+      await load(query);
+      return;
+    }
+    setFailure('');
+    editRename(undefined);
     await load(query);
   };
 
@@ -95,6 +119,11 @@ export function ChatList({ pending, ephemeral, version, labelOf, onOpened, onClo
         }}
       />
       {blocked && <p className="list-note">{blocked}</p>}
+      {failure && (
+        <p className="list-note" role="alert">
+          {failure}
+        </p>
+      )}
       <span className="sr-only" role="status" aria-live="polite">
         {status}
       </span>
@@ -123,19 +152,19 @@ export function ChatList({ pending, ephemeral, version, labelOf, onOpened, onClo
                     maxLength={80}
                     aria-label={t('chat.list.renameLabel', { title })}
                     aria-describedby={`rename-hint-${m.id}`}
-                    onChange={(e) => setRenaming({ id: m.id, title: e.target.value })}
+                    onChange={(e) => editRename({ id: m.id, title: e.target.value })}
                     onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
                       // Esc 는 이름 바꾸기만 끝낸다 (목록이나 창을 닫지 않게)
                       if (e.key === 'Escape') {
                         e.preventDefault();
-                        setRenaming(undefined);
+                        editRename(undefined);
                       }
                     }}
                   />
                   <button type="submit" className="ghost small">
                     {t('chat.list.save')}
                   </button>
-                  <button type="button" className="ghost small" onClick={() => setRenaming(undefined)}>
+                  <button type="button" className="ghost small" onClick={() => editRename(undefined)}>
                     {t('common.cancel')}
                   </button>
                 </form>
@@ -187,7 +216,7 @@ export function ChatList({ pending, ephemeral, version, labelOf, onOpened, onClo
                     type="button"
                     className="ghost small"
                     aria-label={t('chat.list.renameLabel', { title })}
-                    onClick={() => setRenaming({ id: m.id, title: m.title })}
+                    onClick={() => editRename({ id: m.id, title: m.title })}
                   >
                     {t('chat.list.rename')}
                   </button>

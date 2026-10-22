@@ -361,26 +361,23 @@ header .picker {
 }
 
 .answer-actions {
-  position: absolute;
-  /* 짧은 답이면 말풍선보다 넓어진다. 왼쪽에 붙여 빈 오른쪽으로 펼친다 */
-  left: 6px;
-  bottom: -11px;
+  /* 말풍선 아래에 늘 보인다 (마우스를 올려야 나타나던 것을 키보드와 화면 읽기만 쓰는 사람도 알게) */
+  align-self: flex-start;
   display: flex;
   gap: 2px;
+  margin-left: 4px;
   padding: 1px 3px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--panel);
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: 12.5px;
   white-space: nowrap;
-  opacity: 0;
 }
 
 .answer-actions.shown {
   padding: 1px 9px;
   color: var(--ok);
-  opacity: 1;
 }
 
 .answer-actions.shown.failed {
@@ -388,7 +385,7 @@ header .picker {
 }
 
 .answer-actions button {
-  padding: 0 6px;
+  padding: 1px 7px;
   border: 0;
   border-radius: 999px;
   background: none;
@@ -401,9 +398,9 @@ header .picker {
   color: var(--accent);
 }
 
-.msg.pet:hover .answer-actions,
-.answer-actions:focus-within {
-  opacity: 1;
+.answer-actions button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 0;
 }
 
 /* 줄 맞춤은 rows.css 의 .action-row */
@@ -459,7 +456,7 @@ header .picker {
 /* 못 켜는 칸의 까닭 (한 줄 통째로) */
 .opt-why {
   flex-basis: 100%;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--muted);
 }
 
@@ -467,7 +464,7 @@ header .picker {
 .recall-hint {
   display: block;
   margin: 0 2px 4px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--muted);
 }
 
@@ -490,7 +487,7 @@ header .picker {
 }
 
 .who {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--muted);
   padding-left: 4px;
 }
@@ -589,6 +586,13 @@ header .picker {
 
 .thinking {
   color: var(--muted);
+}
+
+.thinking .elapsed {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* 오래 기다릴 때 붙는 안내 (한 번에 보여 주는 AI). "생각 중" 뒤에 붙지 않게 작은 둘째 줄로 */
