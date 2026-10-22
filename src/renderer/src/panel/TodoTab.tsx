@@ -4,6 +4,7 @@ import { t } from '../../../shared/i18n/index.ts';
 import type { PanelAddResult, PanelState } from '../../../shared/ipc.ts';
 import { pinFirst } from '../../../shared/pin.ts';
 import { dueLabel } from '../../../shared/quick-add.ts';
+import { remindSummary } from '../../../shared/remind-text.ts';
 import { allTags, filterTodos, titleParts } from '../../../shared/todo-filter.ts';
 import {
   REPEAT_LABEL,
@@ -16,18 +17,22 @@ import {
 } from '../../../shared/todo-store.ts';
 import './assist.css';
 import { useDraft } from './draft.ts';
+import { dueToSend, minuteToSend } from './due-input.ts';
 import { CheckIcon, PlayIcon, RepeatIcon, SearchIcon, StarIcon, StepsIcon } from './icons.tsx';
 import { isEsc, takeEsc } from './keys.ts';
 import { MoreRow } from './more.tsx';
 import { pageOf } from './paging.ts';
 import { PinButton, PinMark, usePinMenu } from './pin.tsx';
 import { RemindButton, RemindSheet } from './RemindPicker.tsx';
+import { useSurface } from './surface.tsx';
 import { TrashBox } from './TrashBox.tsx';
 import { updateView, useKeepScroll, viewNow } from './view-keep.ts';
 
 const bridge = window.jjakkungPanel;
 /** 예전 판이 브라우저 저장소에 두던 쓰다 만 한 줄. 지금은 메인이 메모리에 들고 있다 (draft.ts). 한 번 옮기고 지운다 */
 const LEGACY_DRAFT_KEY = 'jj.panel.todoDraft';
+/** 넓은 배치에서 상세 칸에 열어 둔 할 일. 탭을 갔다 와도 그대로 (창을 닫으면 잊는다) */
+let lastSelected: number | undefined;
 
 function takeLegacyDraft(): string {
   try {
@@ -62,6 +67,13 @@ export function TodoTab({
   onRemoved: (todo: Todo) => void;
 }) {
   const [text, setText] = useDraft('todo');
+  /** 넓은 본문 칸(큰 창)이면 태그 칸, 목록, 상세 칸 세 열. 좁으면 지금처럼 한 열 */
+  const wide = useSurface().zone === 'wide';
+  const [selId, setSelId] = useState(lastSelected);
+  const select = (id: number | undefined) => {
+    lastSelected = id;
+    setSelId(id);
+  };
   // 예전 판이 저장소에 남긴 글은 한 번 가져온다 (이미 메인에 쓰던 글이 있으면 그것을 지킨다)
   // biome-ignore lint/correctness/useExhaustiveDependencies: 처음 한 번만
   useEffect(() => {
@@ -88,6 +100,8 @@ export function TodoTab({
   // 고정한 것을 맨 위로 (고정한 순서), 아래는 원래 정렬 (중요, 마감 순)
   const shown = pinFirst(filterTodos(s.open, { query: finding ? query : '', tag: picked, composing }));
   const lastPinned = shown.findLast((todo) => todo.pinnedAt !== null)?.id;
+  /** 상세 칸에 열린 할 일 (목록에 보이는 것만: 태그나 찾기로 가려지면 닫는다) */
+  const selected = wide ? shown.find((x) => x.id === selId) : undefined;
   const filtered = shown.length !== s.open.length;
   // 앞에서부터 한 쪽씩 그린다 (paging.ts). 찾는 말이나 태그가 바뀌면 첫 쪽부터
   const pageKey = `${finding ? query : ''}\u0000${picked ?? ''}`;
@@ -134,158 +148,221 @@ export function TodoTab({
     onAdded(r, value);
   };
 
-  return (
-    <>
-      <div className="add">
-        <input
-          ref={inputRef}
-          value={text}
-          aria-label={t('panel.todo.add')}
-          placeholder={t('panel.todo.placeholder')}
-          onChange={(e) => {
-            setText(e.target.value);
-            setError('');
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) add();
-            // 쓰던 줄이 있으면 Esc 는 먼저 그것만 지운다 (한 번 더 누르면 패널이 닫힌다)
-            if (isEsc(e) && text) {
-              takeEsc(e);
-              setText('');
-              setError('');
-            }
-          }}
-          onPaste={(e) => {
-            // 여러 줄을 붙여 넣으면 줄마다 할 일 하나 (한 줄 칸이 줄바꿈을 지워 한 줄로 붙이지 않게)
-            const pasted = e.clipboardData.getData('text');
-            if (pasted.split(/\r?\n/).filter((l) => l.trim()).length < 2) return;
-            e.preventDefault();
-            void add(pasted);
-          }}
-        />
-        {canFind && !finding && (
+  // 태그 고르기 단추들. 좁으면 목록 위 가로 줄, 넓으면 왼쪽 세로 칸
+  const tagChips = (
+    <fieldset className={`tag-chips${wide ? ' tag-col' : ''}`} aria-label={t('assist.tag.nav')}>
+      <button
+        type="button"
+        className={picked === null ? 'len-chip on' : 'len-chip'}
+        aria-pressed={picked === null}
+        onClick={() => setTag(null)}
+      >
+        {t('assist.tag.all')}
+      </button>
+      {tags.map((x) => {
+        const on = picked?.toLowerCase() === x.tag.toLowerCase();
+        return (
           <button
+            key={x.tag}
             type="button"
-            className="find-btn"
-            aria-label={t('assist.find.open')}
-            title={t('assist.find.open')}
-            onClick={openFind}
+            className={on ? 'len-chip on' : 'len-chip'}
+            aria-pressed={on}
+            onClick={() => setTag(on ? null : x.tag)}
           >
-            <SearchIcon />
+            #{x.tag}
+            <small>{x.n}</small>
           </button>
-        )}
-      </div>
-      {error && <p className="hint error">{error}</p>}
-      {finding && (
-        <div className="find-row">
-          <SearchIcon />
+        );
+      })}
+    </fieldset>
+  );
+  const listRowsKey = (e: React.KeyboardEvent) => {
+    if (!wide || e.nativeEvent.isComposing) return;
+    const row = (e.target as HTMLElement).closest<HTMLElement>('li.todo[data-id]');
+    if (!row || !(e.target as HTMLElement).classList.contains('title')) return;
+    const ids = page.shown.map((x) => x.id);
+    const at = ids.indexOf(Number(row.dataset.id));
+    const go = (id: number | undefined) => {
+      if (id === undefined) return;
+      e.preventDefault();
+      select(id);
+      requestAnimationFrame(() =>
+        listRef.current?.querySelector<HTMLElement>(`li.todo[data-id="${id}"] .title`)?.focus(),
+      );
+    };
+    if (e.key === 'ArrowDown') go(ids[at + 1]);
+    else if (e.key === 'ArrowUp') go(ids[at - 1]);
+    else if (e.key === 'Enter' || e.key === 'ArrowRight') {
+      // 상세 칸으로: 고른 할 일을 열고 제목 칸에 커서를 둔다
+      e.preventDefault();
+      select(Number(row.dataset.id));
+      requestAnimationFrame(() => detailRef.current?.querySelector<HTMLElement>('.detail-title')?.focus());
+    }
+  };
+  const detailRef = useRef<HTMLElement>(null);
+  /** 상세 칸에서 Esc: 목록의 그 줄로 돌아간다 */
+  const backToRow = (id: number) =>
+    requestAnimationFrame(() =>
+      listRef.current?.querySelector<HTMLElement>(`li.todo[data-id="${id}"] .title`)?.focus(),
+    );
+
+  return (
+    <div className={`todo-layout${wide ? ' wide' : ''}`}>
+      {wide ? (
+        <nav className="todo-tags" aria-label={t('assist.tag.nav')}>
+          <h3>{t('panel.todo.tagsHead')}</h3>
+          {tags.length > 0 ? tagChips : <p className="todo-col-empty">{t('panel.todo.noTags')}</p>}
+        </nav>
+      ) : null}
+      <div className="todo-main">
+        <div className="add">
           <input
-            ref={findRef}
-            value={query}
-            aria-label={t('assist.find.open')}
-            placeholder={t('assist.find.placeholder')}
+            ref={inputRef}
+            value={text}
+            aria-label={t('panel.todo.add')}
+            placeholder={t('panel.todo.placeholder')}
             onChange={(e) => {
-              setQuery(e.target.value);
-              setComposing((e.nativeEvent as InputEvent).isComposing ?? false);
+              setText(e.target.value);
+              setError('');
             }}
-            onCompositionEnd={() => setComposing(false)}
             onKeyDown={(e) => {
-              if (isEsc(e)) {
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) add();
+              // 쓰던 줄이 있으면 Esc 는 먼저 그것만 지운다 (한 번 더 누르면 패널이 닫힌다)
+              if (isEsc(e) && text) {
                 takeEsc(e);
-                closeFind();
+                setText('');
+                setError('');
               }
             }}
+            onPaste={(e) => {
+              // 여러 줄을 붙여 넣으면 줄마다 할 일 하나 (한 줄 칸이 줄바꿈을 지워 한 줄로 붙이지 않게)
+              const pasted = e.clipboardData.getData('text');
+              if (pasted.split(/\r?\n/).filter((l) => l.trim()).length < 2) return;
+              e.preventDefault();
+              void add(pasted);
+            }}
           />
-          <button
-            type="button"
-            className="find-clear"
-            aria-label={t('assist.find.clear')}
-            onClick={closeFind}
-          >
-            ×
-          </button>
-        </div>
-      )}
-      {tags.length > 0 && (
-        <fieldset className="tag-chips" aria-label={t('assist.tag.nav')}>
-          <button
-            type="button"
-            className={picked === null ? 'len-chip on' : 'len-chip'}
-            aria-pressed={picked === null}
-            onClick={() => setTag(null)}
-          >
-            {t('assist.tag.all')}
-          </button>
-          {tags.map((x) => {
-            const on = picked?.toLowerCase() === x.tag.toLowerCase();
-            return (
-              <button
-                key={x.tag}
-                type="button"
-                className={on ? 'len-chip on' : 'len-chip'}
-                aria-pressed={on}
-                onClick={() => setTag(on ? null : x.tag)}
-              >
-                #{x.tag}
-                <small>{x.n}</small>
-              </button>
-            );
-          })}
-        </fieldset>
-      )}
-
-      <ul className="todos scroll" ref={listRef}>
-        {s.open.length === 0 && <li className="empty">{t('panel.todo.empty')}</li>}
-        {s.open.length > 0 && filtered && shown.length === 0 && (
-          <li className="empty">{t('assist.find.none')}</li>
-        )}
-        {page.shown.map((todo) => (
-          <TodoRow
-            key={todo.id}
-            todo={todo}
-            today={s.today}
-            pinEnd={todo.id === lastPinned && shown.length > 1 && shown.at(-1)?.id !== todo.id}
-            doing={s.doing.includes(todo.id)}
-            onComplete={() => onComplete(todo)}
-            onRemoved={() => onRemoved(todo)}
-          />
-        ))}
-        <MoreRow rest={page.rest} onMore={() => setPaging({ key: pageKey, pages: pages + 1 })} />
-      </ul>
-
-      {s.doneToday.length > 0 && (
-        <div className="done">
-          <button
-            type="button"
-            className="done-toggle"
-            aria-expanded={showDone}
-            onClick={() => setShowDone((v) => !v)}
-          >
-            {t('panel.todo.doneToday', { n: s.doneToday.length })}
-          </button>
-          {showDone && (
-            <ul className="todos">
-              {s.doneToday.map((todo) => (
-                <li key={todo.id} className="todo done-item">
-                  <button
-                    type="button"
-                    className="check on"
-                    aria-label={t('panel.todo.undoDone')}
-                    onClick={() => bridge.undo(todo.id)}
-                  >
-                    <CheckIcon />
-                  </button>
-                  <span className="title" dir="auto">
-                    {todo.title}
-                  </span>
-                </li>
-              ))}
-            </ul>
+          {canFind && !finding && (
+            <button
+              type="button"
+              className="find-btn"
+              aria-label={t('assist.find.open')}
+              title={t('assist.find.open')}
+              onClick={openFind}
+            >
+              <SearchIcon />
+            </button>
           )}
         </div>
-      )}
-      <TrashBox s={s} />
-    </>
+        {error && <p className="hint error">{error}</p>}
+        {finding && (
+          <div className="find-row">
+            <SearchIcon />
+            <input
+              ref={findRef}
+              value={query}
+              aria-label={t('assist.find.open')}
+              placeholder={t('assist.find.placeholder')}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setComposing((e.nativeEvent as InputEvent).isComposing ?? false);
+              }}
+              onCompositionEnd={() => setComposing(false)}
+              onKeyDown={(e) => {
+                if (isEsc(e)) {
+                  takeEsc(e);
+                  closeFind();
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="find-clear"
+              aria-label={t('assist.find.clear')}
+              onClick={closeFind}
+            >
+              ×
+            </button>
+          </div>
+        )}
+        {!wide && tags.length > 0 && tagChips}
+
+        <ul className="todos scroll" ref={listRef} onKeyDown={listRowsKey}>
+          {s.open.length === 0 && <li className="empty">{t('panel.todo.empty')}</li>}
+          {s.open.length > 0 && filtered && shown.length === 0 && (
+            <li className="empty">{t('assist.find.none')}</li>
+          )}
+          {page.shown.map((todo) => (
+            <TodoRow
+              key={todo.id}
+              todo={todo}
+              today={s.today}
+              pinEnd={todo.id === lastPinned && shown.length > 1 && shown.at(-1)?.id !== todo.id}
+              doing={s.doing.includes(todo.id)}
+              onComplete={() => onComplete(todo)}
+              onRemoved={() => onRemoved(todo)}
+              {...(wide ? { onSelect: () => select(todo.id), selected: todo.id === selected?.id } : {})}
+            />
+          ))}
+          <MoreRow rest={page.rest} onMore={() => setPaging({ key: pageKey, pages: pages + 1 })} />
+        </ul>
+
+        {s.doneToday.length > 0 && (
+          <div className="done">
+            <button
+              type="button"
+              className="done-toggle"
+              aria-expanded={showDone}
+              onClick={() => setShowDone((v) => !v)}
+            >
+              {t('panel.todo.doneToday', { n: s.doneToday.length })}
+            </button>
+            {showDone && (
+              <ul className="todos">
+                {s.doneToday.map((todo) => (
+                  <li key={todo.id} className="todo done-item">
+                    <button
+                      type="button"
+                      className="check on"
+                      aria-label={t('panel.todo.undoDone')}
+                      onClick={() => bridge.undo(todo.id)}
+                    >
+                      <CheckIcon />
+                    </button>
+                    <span className="title" dir="auto">
+                      {todo.title}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+        <TrashBox s={s} />
+      </div>
+      {wide ? (
+        <aside className="todo-detail" ref={detailRef} aria-label={t('panel.todo.detail')}>
+          {selected ? (
+            <TodoDetail
+              key={selected.id}
+              todo={selected}
+              today={s.today}
+              onComplete={() => {
+                select(undefined);
+                onComplete(selected);
+              }}
+              onRemoved={() => {
+                select(undefined);
+                onRemoved(selected);
+              }}
+              onEsc={() => backToRow(selected.id)}
+            />
+          ) : (
+            <p className="todo-col-empty">{t('panel.todo.pickOne')}</p>
+          )}
+        </aside>
+      ) : null}
+    </div>
   );
 }
 
@@ -297,9 +374,14 @@ export function TodoRow({
   compact,
   pinEnd,
   doing,
+  onSelect,
+  selected,
 }: {
   todo: Todo;
   today: string;
+  /** 넓은 배치: 줄을 누르면 상세 칸에 연다 (줄 끝 단추는 줄이고 고치기는 상세 칸에서) */
+  onSelect?: () => void;
+  selected?: boolean;
   /** 진행 중으로 표시한 할 일 (펫 머리 위 말풍선, 이슈 #124) */
   doing?: boolean;
   onComplete: () => void;
@@ -311,6 +393,7 @@ export function TodoRow({
   pinEnd?: boolean;
 }) {
   const pinned = todo.pinnedAt !== null;
+  const lean = !!onSelect;
   const pinMenu = usePinMenu('todo', todo.id, todo.title, pinned);
   // 진행 중 표시(▶). 안 켠 줄은 마우스를 올리거나 키보드로 오면 보이고, 켠 줄은 늘 강조색으로 보인다
   const doingButton = (on: boolean) => (
@@ -417,7 +500,8 @@ export function TodoRow({
   return (
     <>
       <li
-        className={`todo ${pinned ? 'pinned' : ''} ${pinEnd ? 'pin-end' : ''}`}
+        className={`todo ${pinned ? 'pinned' : ''} ${pinEnd ? 'pin-end' : ''} ${selected ? 'selected' : ''}`}
+        data-id={todo.id}
         onContextMenu={compact ? undefined : pinMenu.onContextMenu}
       >
         <button
@@ -428,7 +512,7 @@ export function TodoRow({
         >
           <CheckIcon />
         </button>
-        {editing ? (
+        {editing && !lean ? (
           <input
             className="title-edit"
             value={title}
@@ -455,8 +539,9 @@ export function TodoRow({
             type="button"
             className="title"
             dir="auto"
-            title={compact ? undefined : t('panel.todo.clickToEdit')}
-            onClick={() => !compact && setEditing(true)}
+            title={compact || lean ? undefined : t('panel.todo.clickToEdit')}
+            aria-current={selected ? 'true' : undefined}
+            onClick={() => (lean ? onSelect?.() : !compact && setEditing(true))}
           >
             <span className="title-text">
               {titleParts(todo.title).map((p, i) =>
@@ -474,67 +559,110 @@ export function TodoRow({
         )}
         {/* 줄 끝 단추. 마우스를 올려야 나오는 것(extra)은 제목 위에 겹쳐 띄워 제목 폭과 줄 높이가 바뀌지 않게 */}
         <span className="tools">
-          {(!compact || !todo.due) && (
-            <span className="extra">
-              {!compact && !doing && doingButton(false)}
-              {!compact && !pinned && (
-                <PinButton kind="todo" id={todo.id} title={todo.title} pinned={false} />
+          {lean ? (
+            <>
+              {doing && (
+                <span
+                  className="pin-mark"
+                  role="img"
+                  aria-label={t('chips.doingMark')}
+                  title={t('chips.doingMark')}
+                >
+                  <PlayIcon filled />
+                </span>
               )}
-              {!compact && !todo.repeat && repeatButton}
-              {!compact && !progress && stepsButton}
-              {!todo.due && dueChip}
+              {pinned && <PinMark />}
+              {progress && (
+                <span className="steps-badge" title={t('assist.step.button')}>
+                  <StepsIcon />
+                  {progress.done}/{progress.total}
+                </span>
+              )}
+              {todo.repeat && (
+                <span
+                  className="repeat-badge"
+                  title={t('panel.todo.repeatTitle', { label: REPEAT_LABEL[todo.repeat] })}
+                >
+                  <RepeatIcon />
+                </span>
+              )}
+              {todo.due && dueChip}
+              <button
+                type="button"
+                className={`star ${todo.important ? 'on' : ''}`}
+                aria-pressed={todo.important}
+                aria-label={t('panel.todo.importantFor', { title: todo.title })}
+                title={t('panel.todo.important')}
+                onClick={() => bridge.update(todo.id, { important: !todo.important })}
+              >
+                <StarIcon />
+              </button>
+            </>
+          ) : (
+            <>
+              {(!compact || !todo.due) && (
+                <span className="extra">
+                  {!compact && !doing && doingButton(false)}
+                  {!compact && !pinned && (
+                    <PinButton kind="todo" id={todo.id} title={todo.title} pinned={false} />
+                  )}
+                  {!compact && !todo.repeat && repeatButton}
+                  {!compact && !progress && stepsButton}
+                  {!todo.due && dueChip}
+                  {!compact && (
+                    <button
+                      type="button"
+                      className="remove"
+                      aria-label={t('panel.todo.remove', { title: todo.title })}
+                      onClick={() => {
+                        bridge.remove(todo.id);
+                        onRemoved?.();
+                      }}
+                    >
+                      ×
+                    </button>
+                  )}
+                </span>
+              )}
+              {compact && doing && (
+                <span
+                  className="pin-mark"
+                  role="img"
+                  aria-label={t('chips.doingMark')}
+                  title={t('chips.doingMark')}
+                >
+                  <PlayIcon filled />
+                </span>
+              )}
+              {!compact && doing && doingButton(true)}
+              {compact && pinned && <PinMark />}
+              {!compact && pinned && <PinButton kind="todo" id={todo.id} title={todo.title} pinned />}
+              {progress && stepsButton}
+              {!compact && todo.repeat && repeatButton}
+              {!compact && todo.due && (
+                <RemindButton
+                  name={todo.title}
+                  reminds={todo.reminds}
+                  dateOnly={todo.dueMin === null}
+                  open={reminding}
+                  controls={sheetId}
+                  onToggle={() => setReminding((v) => !v)}
+                />
+              )}
+              {todo.due && dueChip}
               {!compact && (
                 <button
                   type="button"
-                  className="remove"
-                  aria-label={t('panel.todo.remove', { title: todo.title })}
-                  onClick={() => {
-                    bridge.remove(todo.id);
-                    onRemoved?.();
-                  }}
+                  className={`star ${todo.important ? 'on' : ''}`}
+                  aria-pressed={todo.important}
+                  aria-label={t('panel.todo.importantFor', { title: todo.title })}
+                  title={t('panel.todo.important')}
+                  onClick={() => bridge.update(todo.id, { important: !todo.important })}
                 >
-                  ×
+                  <StarIcon />
                 </button>
               )}
-            </span>
-          )}
-          {compact && doing && (
-            <span
-              className="pin-mark"
-              role="img"
-              aria-label={t('chips.doingMark')}
-              title={t('chips.doingMark')}
-            >
-              <PlayIcon filled />
-            </span>
-          )}
-          {!compact && doing && doingButton(true)}
-          {compact && pinned && <PinMark />}
-          {!compact && pinned && <PinButton kind="todo" id={todo.id} title={todo.title} pinned />}
-          {progress && stepsButton}
-          {!compact && todo.repeat && repeatButton}
-          {!compact && todo.due && (
-            <RemindButton
-              name={todo.title}
-              reminds={todo.reminds}
-              dateOnly={todo.dueMin === null}
-              open={reminding}
-              controls={sheetId}
-              onToggle={() => setReminding((v) => !v)}
-            />
-          )}
-          {todo.due && dueChip}
-          {!compact && (
-            <button
-              type="button"
-              className={`star ${todo.important ? 'on' : ''}`}
-              aria-pressed={todo.important}
-              aria-label={t('panel.todo.importantFor', { title: todo.title })}
-              title={t('panel.todo.important')}
-              onClick={() => bridge.update(todo.id, { important: !todo.important })}
-            >
-              <StarIcon />
-            </button>
+            </>
           )}
         </span>
         {pinMenu.menu}
@@ -572,6 +700,241 @@ export function TodoRow({
   );
 }
 
+/** 분(하루 안)을 time 칸 값으로 */
+const timeValue = (m: number | null) =>
+  m === null ? '' : `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+
+/**
+ * 넓은 배치의 상세 칸 (이슈 #163): 고른 할 일 하나를 제목, 마감, 단계, 알림, 반복으로 고친다.
+ * 고친 값은 줄에서 고칠 때와 같은 길(bridge.update)로 메인에 가고, 메인이 보내는 상태로 목록 줄이 바로 바뀐다.
+ * 제목 칸만 글을 들고 있다가 멈추면(또는 칸을 떠나거나 사라질 때) 보낸다.
+ */
+function TodoDetail({
+  todo,
+  today,
+  onComplete,
+  onRemoved,
+  onEsc,
+}: {
+  todo: Todo;
+  today: string;
+  onComplete: () => void;
+  onRemoved: () => void;
+  /** Esc: 목록의 그 줄로 돌아간다 */
+  onEsc: () => void;
+}) {
+  const [title, setTitle] = useState(todo.title);
+  const [reminding, setReminding] = useState(false);
+  // 날짜, 시각 칸은 React 가 값을 쥐지 않는다(비제어): 치는 도중에 값이 ''(덜 찬 칸)로 오면 제어 칸은 달, 일 조각까지 지워 버린다.
+  // 메인에서 돌아온 값은 칸을 쓰는 중이 아닐 때만 넣고, 칸을 떠날 때 저장된 값으로 맞춘다
+  const dateRef = useRef<HTMLInputElement>(null);
+  const timeRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const el = dateRef.current;
+    if (el && document.activeElement !== el) el.value = todo.due ?? '';
+  }, [todo.due]);
+  useEffect(() => {
+    const el = timeRef.current;
+    if (el && document.activeElement !== el) el.value = timeValue(todo.dueMin);
+  }, [todo.dueMin]);
+  const sheetId = useId();
+  const stepsId = useId();
+  // 메인에서 제목이 바뀌면(다른 곳에서 고침) 쓰는 중이 아닐 때 따라간다
+  const titleRef = useRef<HTMLInputElement>(null);
+  const typed = useRef(title);
+  typed.current = title;
+  const sent = useRef(todo.title);
+  useEffect(() => {
+    sent.current = todo.title;
+    if (document.activeElement !== titleRef.current) setTitle(todo.title);
+  }, [todo.title]);
+  const commit = () => {
+    const v = typed.current;
+    if (v.trim() && v !== sent.current) {
+      sent.current = v;
+      bridge.update(todo.id, { title: v });
+    }
+  };
+  // 사라질 때 보내지 못한 제목을 보낸다 (끝내기, 다른 할 일 고르기, 탭 바꾸기)
+  const commitRef = useRef(commit);
+  commitRef.current = commit;
+  useEffect(() => () => commitRef.current(), []);
+  // 0.5초 멈춤을 기다리는 사이 창을 닫거나(beforeunload) 숨겨도(메인이 알린다) 제목을 바로 보낸다
+  useEffect(() => {
+    const now = () => commitRef.current();
+    window.addEventListener('beforeunload', now);
+    const off = bridge.onHiding(now);
+    return () => {
+      window.removeEventListener('beforeunload', now);
+      off();
+    };
+  }, []);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const due = todo.due ? dueLabel(todo.due, today) : undefined;
+  const dateOnly = todo.dueMin === null;
+  const keyEsc = (e: React.KeyboardEvent) => {
+    if (isEsc(e) && !e.defaultPrevented) {
+      takeEsc(e);
+      onEsc();
+    }
+  };
+  return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: 상세 칸 안 어디서든 Esc 는 목록으로
+    <div className="detail" onKeyDown={keyEsc}>
+      <input
+        ref={titleRef}
+        className="detail-title"
+        value={title}
+        aria-label={t('panel.todo.editTitle')}
+        onChange={(e) => {
+          setTitle(e.target.value);
+          clearTimeout(timer.current);
+          timer.current = setTimeout(() => commitRef.current(), 500);
+        }}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+            commit();
+            onEsc();
+          }
+        }}
+      />
+      <section className="detail-sec">
+        <h4>{t('panel.todo.due')}</h4>
+        <div className="detail-due">
+          <input
+            type="date"
+            ref={dateRef}
+            className="detail-date"
+            aria-label={t('panel.todo.dueDate')}
+            defaultValue={todo.due ?? ''}
+            onChange={(e) => {
+              // 치는 도중 값('' , 0002-10-22)은 보내지 않는다. 지우기는 "마감 없애기" 단추로만
+              const v = dueToSend(e.target.value);
+              if (v !== undefined && v !== todo.due) bridge.update(todo.id, { due: v });
+            }}
+            onBlur={(e) => {
+              e.currentTarget.value = todo.due ?? '';
+            }}
+          />
+          {todo.due && (
+            <input
+              type="time"
+              ref={timeRef}
+              className="detail-time"
+              aria-label={t('remind.dueTime')}
+              defaultValue={timeValue(todo.dueMin)}
+              onChange={(e) => {
+                const m = minuteToSend(e.target.value);
+                if (m !== undefined && m !== todo.dueMin) bridge.update(todo.id, { dueMin: m });
+              }}
+              onBlur={(e) => {
+                e.currentTarget.value = timeValue(todo.dueMin);
+              }}
+            />
+          )}
+          {todo.due && todo.dueMin !== null && (
+            <button
+              type="button"
+              className="ghost small"
+              onClick={() => bridge.update(todo.id, { dueMin: null })}
+            >
+              {t('remind.clearTime')}
+            </button>
+          )}
+          {todo.due && !todo.repeat && (
+            <button
+              type="button"
+              className="ghost small"
+              onClick={() => bridge.update(todo.id, { due: null })}
+            >
+              {t('panel.todo.dueClear')}
+            </button>
+          )}
+        </div>
+        {due && <p className={`detail-when${due.overdue ? ' overdue' : ''}`}>{due.text}</p>}
+      </section>
+      <section className="detail-sec">
+        <h4>{t('assist.step.button')}</h4>
+        <StepSheet id={stepsId} todo={todo} focusEmpty={false} onClose={onEsc} onFinish={onComplete} />
+      </section>
+      <section className="detail-sec">
+        <h4>{t('panel.todo.remindHead')}</h4>
+        {todo.due ? (
+          <>
+            <div className="detail-remind">
+              <RemindButton
+                name={todo.title}
+                reminds={todo.reminds}
+                dateOnly={dateOnly}
+                open={reminding}
+                controls={sheetId}
+                onToggle={() => setReminding((v) => !v)}
+              />
+              <span>{remindSummary(todo.reminds, dateOnly)}</span>
+            </div>
+            {reminding && (
+              <RemindSheet
+                id={sheetId}
+                reminds={todo.reminds}
+                dateOnly={dateOnly}
+                onChange={(reminds) => bridge.update(todo.id, { reminds })}
+                onClose={() => setReminding(false)}
+              />
+            )}
+          </>
+        ) : (
+          <p className="rs-hint">{t('remind.needDue')}</p>
+        )}
+      </section>
+      <section className="detail-sec">
+        <h4>{t('panel.todo.repeat')}</h4>
+        <div className="detail-repeat">
+          {([null, ...REPEATS] as const).map((r) => (
+            <button
+              key={r ?? 'none'}
+              type="button"
+              className={`len-chip${todo.repeat === r ? ' on' : ''}`}
+              aria-pressed={todo.repeat === r}
+              onClick={() => bridge.update(todo.id, { repeat: r })}
+            >
+              {r === null ? t('panel.todo.repeatNone') : REPEAT_LABEL[r]}
+            </button>
+          ))}
+        </div>
+      </section>
+      <div className="detail-actions">
+        <button
+          type="button"
+          className={`star ${todo.important ? 'on' : ''}`}
+          aria-pressed={todo.important}
+          aria-label={t('panel.todo.importantFor', { title: todo.title })}
+          title={t('panel.todo.important')}
+          onClick={() => bridge.update(todo.id, { important: !todo.important })}
+        >
+          <StarIcon />
+        </button>
+        <PinButton kind="todo" id={todo.id} title={todo.title} pinned={todo.pinnedAt !== null} />
+        <span className="spacer" />
+        <button
+          type="button"
+          className="ghost"
+          onClick={() => {
+            bridge.remove(todo.id);
+            onRemoved();
+          }}
+        >
+          {t('panel.todo.detailRemove')}
+        </button>
+        <button type="button" className="primary" onClick={onComplete}>
+          {t('panel.todo.detailFinish')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** 이만큼 할 일이 있으면 찾기 단추가 보인다 */
 const FIND_FROM = 6;
 
@@ -584,7 +947,10 @@ function StepSheet({
   todo,
   onClose,
   onFinish,
+  focusEmpty = true,
 }: {
+  /** 단계가 없을 때 바로 적을 수 있게 칸에 커서를 둔다. 상세 칸처럼 늘 펼쳐 있는 곳은 끈다 */
+  focusEmpty?: boolean;
   id: string;
   todo: Todo;
   onClose: () => void;
@@ -599,7 +965,7 @@ function StepSheet({
   // 단계가 없으면 바로 적을 수 있게
   // biome-ignore lint/correctness/useExhaustiveDependencies: 펼칠 때 한 번
   useEffect(() => {
-    if (todo.steps.length === 0) inputRef.current?.focus();
+    if (focusEmpty && todo.steps.length === 0) inputRef.current?.focus();
   }, []);
 
   const add = async (lines: string[]) => {

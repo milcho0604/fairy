@@ -9,9 +9,10 @@ import { ago } from './format.ts';
 import { isEsc, takeEsc } from './keys.ts';
 import { MoreRow } from './more.tsx';
 import { type NoteResume, parseResume, RESUME_KEY } from './note-resume.ts';
-import { NoteSaver } from './note-save.ts';
+import { draftKeepOf, NoteSaver, openFromKept, SaveGate } from './note-save.ts';
 import { pageOf } from './paging.ts';
 import { PinButton, usePinMenu } from './pin.tsx';
+import { useSurface } from './surface.tsx';
 import { useKeepScroll } from './view-keep.ts';
 
 const bridge = window.jjakkungPanel;
@@ -53,6 +54,9 @@ function readResume(): NoteResume | undefined {
   return bridge.noteKeepLatest() ?? undefined;
 }
 
+/** 닫힌 편집기의 마지막 저장을 메모마다 잡아 둔다 (SaveGate): 나란히 보기에서 같은 메모로 곧바로 돌아와도 방금 쓴 글이 먼저 저장된다 */
+const saveGate = new SaveGate();
+
 /** 그 메모의 보관 글을 적거나(r) 지운다. 메모마다 따로라 다른 메모를 열고 닫아도 서로 지우지 않는다 */
 function keepNote(id: number, r: NoteResume | undefined) {
   bridge.noteKeepSet(id, r ?? null);
@@ -60,6 +64,8 @@ function keepNote(id: number, r: NoteResume | undefined) {
 
 /** 메모 (v1): 목록과 고치기. 고치면 잠깐 뒤 저절로 저장한다. */
 export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: number) => void }) {
+  /** 넓은 본문 칸(큰 창)이면 목록과 편집기를 나란히 보인다. 좁으면 지금처럼 하나씩 (같은 편집기가 그대로 살아 있다) */
+  const split = useSurface().zone === 'wide';
   const [open, setOpen] = useState<Note>();
   /** 다른 곳을 눌러 닫혔던 메모 자리. 여는 동안(메모를 읽는 동안)은 목록을 그리지 않는다 */
   const [resume, setResume] = useState<NoteResume | undefined>(readResume);
@@ -68,9 +74,11 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
   /** 본문까지 찾은 결과 (메인에서). 새 결과가 올 때까지 앞 결과를 둔다 */
   const [hits, setHits] = useState<NoteHit[]>();
   const searchSeq = useRef(0);
+  /** 목록에서 메모를 누른 차례 (onOpen) */
+  const openTurn = useRef(0);
   // 목록 스크롤 위치 (#145). 메모를 열었다 돌아와도, 탭을 갔다 와도 그 자리
   const listRef = useRef<HTMLUListElement>(null);
-  useKeepScroll(listRef, open || resume ? 'noteEditor' : 'note');
+  useKeepScroll(listRef, !split && (open || resume) ? 'noteEditor' : 'note');
   /** 그린 쪽 수 (찾는 말마다) */
   const [paging, setPaging] = useState({ q: '', pages: 1 });
   const now = Date.now();
@@ -109,19 +117,20 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
     });
   }, [query, composing, s.notes]);
 
-  if (open)
-    return (
-      <NoteEditor
-        note={open}
-        changedAt={s.notes.find((n) => n.id === open.id)?.updatedAt}
-        onBack={() => {
-          setResume(undefined);
-          setOpen(undefined);
-        }}
-        onRemoved={onRemoved}
-      />
-    );
-  if (resume) return null;
+  const editor = open && (
+    <NoteEditor
+      key={open.id}
+      note={open}
+      changedAt={s.notes.find((n) => n.id === open.id)?.updatedAt}
+      onBack={() => {
+        setResume(undefined);
+        setOpen(undefined);
+      }}
+      onRemoved={onRemoved}
+    />
+  );
+  // 열고 있는 동안(메모를 읽는 동안)은 목록을 그리지 않는다. 나란히 보기에서는 열린 메모가 있어도 목록이 남는다
+  const listShown = split ? !resume || !!open : !open && !resume;
 
   // 첫 결과가 오기 전에는 목록에 있는 제목과 미리보기로 먼저 거른다
   const local = q.toLowerCase();
@@ -144,7 +153,7 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
   // 앞에서부터 한 쪽씩 그린다 (paging.ts). 찾는 말이 바뀌면 첫 쪽부터
   const pages = paging.q === q ? paging.pages : 1;
   const page = pageOf(list, pages);
-  return (
+  const listEl = (
     <>
       <div className="add row">
         <input
@@ -190,15 +199,28 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
             hit={hitOf.get(n.id)}
             now={now}
             pinEnd={n.id === lastPinned && list.at(-1)?.id !== n.id}
+            current={split && open?.id === n.id}
             onOpen={async () => {
+              if (open?.id === n.id) return;
+              // 누를 때마다 번호를 매겨 마지막 누름만 연다 (빠르게 B, A, C 를 누르면 늦게 돌아온 A 가 C 를 덮지 않게)
+              const turn = ++openTurn.current;
+              // 같은 메모의 앞 편집기가 아직 저장 중이면 끝난 뒤 읽는다 (방금 쓴 글이 보이게)
+              await saveGate.settle(n.id);
               const full = await bridge.noteGet(n.id);
-              if (full) setOpen(full);
+              if (full && turn === openTurn.current) setOpen(full);
             }}
           />
         ))}
         <MoreRow rest={page.rest} onMore={() => setPaging({ q, pages: pages + 1 })} />
       </ul>
     </>
+  );
+  return (
+    <div className={`note-layout${split ? ' split' : ''}`}>
+      {listShown ? <div className="note-list-pane">{listEl}</div> : null}
+      {editor}
+      {split && !open && !resume ? <p className="note-pane-empty">{t('panel.note.pickOne')}</p> : null}
+    </div>
   );
 }
 
@@ -208,6 +230,7 @@ function NoteRow({
   hit,
   now,
   pinEnd,
+  current,
   onOpen,
 }: {
   n: NoteSummary;
@@ -215,16 +238,18 @@ function NoteRow({
   now: number;
   /** 고정한 것 가운데 마지막 줄 (아래 고정 안 한 줄과 사이에 선) */
   pinEnd: boolean;
+  /** 나란히 보기에서 지금 편집기에 열린 메모 */
+  current: boolean;
   onOpen: () => void;
 }) {
   const pinned = n.pinnedAt !== null;
   const pinMenu = usePinMenu('note', n.id, n.title, pinned);
   return (
     <li
-      className={`note-row ${pinned ? 'pinned' : ''} ${pinEnd ? 'pin-end' : ''}`}
+      className={`note-row ${pinned ? 'pinned' : ''} ${pinEnd ? 'pin-end' : ''} ${current ? 'current' : ''}`}
       onContextMenu={pinMenu.onContextMenu}
     >
-      <button type="button" onClick={onOpen}>
+      <button type="button" aria-current={current ? 'true' : undefined} onClick={onOpen}>
         <span className="note-title" dir="auto">
           {n.source === 'ai' && <i className="tag">AI</i>}
           {n.title}
@@ -268,10 +293,9 @@ function NoteEditor({
   /** 저장하지 못한 채 닫혔던 글이 있으면 그 글로 연다 (다시 저장한다) */
   /** 이 메모의 보관 글 (닫히기 전 자리, 저장하지 못한 글). 메인이 메모마다 들고 있다 */
   const [kept] = useState(() => bridge.noteKeepGet(note.id) ?? undefined);
-  const draft =
-    kept?.draft && (kept.draft.title !== note.title || kept.draft.body !== note.body)
-      ? kept.draft
-      : undefined;
+  /** 보관한 글을 어떻게 쓸지 (note-save.ts openFromKept): 저장된 글과 같으면 없다. 다른 곳이 그새 고쳤으면 덮지 않고 고르게 한다 */
+  const [resumed] = useState(() => openFromKept(kept, note));
+  const draft = resumed?.draft;
   /** 보관한 글이 있다: 저장되거나 고르기를 끝내면 지운다 */
   const keptDraft = useRef(!!draft);
   const dropKept = () => keepNote(note.id, undefined);
@@ -513,6 +537,8 @@ function NoteEditor({
   /** 저장하지 못한 글을 패널이 닫혀도 잃지 않게 적어 둔다 (다시 열면 이 글로 연다) */
   const keepDraft = (extra?: Partial<NoteResume>) => {
     if (!saver.failed) return;
+    const k = draftKeepOf(saver, latest.current);
+    if (!k) return;
     keptDraft.current = true;
     keepNote(note.id, {
       id: note.id,
@@ -522,8 +548,7 @@ function NoteEditor({
       scroll: 0,
       ...extra,
       at: Date.now(),
-      draft: { ...latest.current },
-      ...(saver.conflict ? { conflict: saver.conflict } : {}),
+      ...k,
       ...(parked.current ? { parked: true as const } : {}),
     });
   };
@@ -575,16 +600,17 @@ function NoteEditor({
     // 글 없이 자리만 있던 보관 글은 읽었으니 지운다 (저장하지 못한 글은 저장되거나 고를 때까지 둔다)
     if (!draft) dropKept();
     // 저장하지 못한 채 닫혔던 글로 열었다: 바로 다시 저장해 본다 (또 실패하면 안내가 뜨고 글은 그대로)
-    if (draft && kept?.conflict) {
+    if (draft && resumed?.conflict) {
       // 다른 곳이 먼저 고쳐 거절된 채 닫혔던 글: 자동 저장하지 않고 고르는 단추를 다시 보인다
-      saver.restore({ title: draft.title, body: draft.body }, kept.conflict);
-      setStored({ body: kept.conflict.body, shown: false });
+      saver.restore({ title: draft.title, body: draft.body }, resumed.conflict);
+      setStored({ body: resumed.conflict.body, shown: false });
       setSaveError(`${t('panel.note.stale')} ${t('panel.note.staleKeep')}`);
     } else if (draft) save({ title: draft.title, body: draft.body });
     // 창이 닫히기 전에(다른 곳을 눌러서) 남은 것을 저장하고 어디였는지 적어 둔다. 빈 새 메모는 지운다.
     const onUnload = () => {
-      // 저장이 한 번이라도 실패한 채면 글도 적어 둔다 (닫히는 중이라 이번 저장의 답은 기다릴 수 없다)
-      const unsent = saver.failed;
+      // 저장이 실패한 채이거나 아직 답을 못 받은 글이 있으면 글도 적어 둔다 (닫히는 중이라 이번 저장의 답은 기다릴 수 없다).
+      // 저장이 되면 다시 열 때 저장된 글과 같아 보관 글은 저절로 지워진다. 다른 곳이 먼저 고쳐 거절돼도 글은 여기 남는다
+      const unsentKeep = draftKeepOf(saver, latest.current);
       void flush();
       if (gone.current) return;
       if (wasEmpty && isEmpty()) {
@@ -600,17 +626,19 @@ function NoteEditor({
         end: el?.selectionEnd ?? 0,
         scroll: Math.round(bodyRef.current?.scrollTop ?? 0),
         at: Date.now(),
-        ...(unsent
-          ? { draft: { ...latest.current }, ...(saver.conflict ? { conflict: saver.conflict } : {}) }
-          : {}),
+        ...(unsentKeep ?? {}),
       });
     };
+    // 큰 창을 숨겨도(창이 닫히지 않아 beforeunload 가 없다) 남은 고침을 바로 보낸다 (메인이 숨기기 직전에 알린다)
+    const offHiding = bridge.onHiding(() => void flush());
     window.addEventListener('beforeunload', onUnload);
     return () => {
       window.removeEventListener('beforeunload', onUnload);
-      // 탭을 바꿔 나갔다: 남은 것을 저장하고, 빈 새 메모는 지운다. 저장이 실패한 채면 글을 적어 둔다
+      offHiding();
+      // 탭을 바꾸거나 다른 메모를 눌러 나갔다: 남은 것을 저장하고, 빈 새 메모는 지운다. 저장이 실패한 채면 글을 적어 둔다.
+      // 같은 메모를 곧바로 다시 열어도 이 저장이 끝난 뒤에 읽도록 맡겨 둔다 (saveGate)
       keepDraft();
-      void flush();
+      saveGate.hold(note.id, flush());
       if (!gone.current && wasEmpty && isEmpty()) bridge.noteRemove(note.id);
     };
   }, []);
