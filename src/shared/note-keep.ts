@@ -95,10 +95,18 @@ export function createNoteKeep(): NoteKeep {
       map.delete(id);
       if (!k) return;
       map.set(id, k);
+      // 넘치면 저장 못 한 글이 없는 칸(자리만 적힌 것)부터 오래된 순으로 버린다
       while (map.size > NOTE_KEEP_MAX) {
-        const oldest = map.keys().next().value;
-        if (oldest === undefined) break;
-        map.delete(oldest);
+        let drop: number | undefined;
+        for (const [key, v] of map) {
+          if (!v.draft) {
+            drop = key;
+            break;
+          }
+        }
+        if (drop === undefined) drop = map.keys().next().value;
+        if (drop === undefined) break;
+        map.delete(drop);
       }
     },
     latest(now) {

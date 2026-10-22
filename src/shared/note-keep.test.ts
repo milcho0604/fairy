@@ -51,6 +51,15 @@ test('크기 상한: 글은 메모 상한으로 자르고, 메모는 30개까지
   assert.equal(k2.get(NOTE_KEEP_MAX + 5, NOW)?.draft?.body, `글${NOTE_KEEP_MAX + 5}`);
 });
 
+test('넘칠 때 저장 못 한 글은 자리만 적힌 칸보다 늦게 버린다', () => {
+  const k = createNoteKeep();
+  k.set(1, withDraft('내 글', { conflict: { body: '다른 곳 글', at: NOW - 1 } }), NOW);
+  for (let i = 2; i <= NOTE_KEEP_MAX + 1; i++) k.set(i, pos, NOW);
+  assert.equal(k.get(1, NOW)?.draft?.body, '내 글');
+  assert.equal(k.get(2, NOW), undefined);
+  assert.ok(k.get(NOTE_KEEP_MAX + 1, NOW));
+});
+
 test('오래됨: 자리만 있으면 30분, 저장하지 못한 글이 있으면 7일', () => {
   const k = createNoteKeep();
   k.set(1, pos, NOW);
