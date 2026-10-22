@@ -269,7 +269,8 @@ export interface AdminView {
   }>;
   notices: NoticeDoc | undefined;
   noticesUpdated: number | undefined;
-  latest: string | undefined;
+  /** 최신 릴리스. 못 읽으면 null (키는 늘 실어 보낸다) */
+  latest: string | null;
   /** 선물과 쿠폰은 로그인 계정만 */
   rewardsLoginOnly: boolean;
   /** 기능 스위치 (#102, features.ts): kakao_login, coin_reset, calendar_link_hint (#115) */

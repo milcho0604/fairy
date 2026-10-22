@@ -422,7 +422,7 @@ export class AdminService {
       coupons: coupons.rows,
       notices: doc.rows[0] ? readDoc(doc.rows[0].body) : undefined,
       noticesUpdated: doc.rows[0] ? Number(doc.rows[0].updated) : undefined,
-      latest: await this.feeds.latestRelease(),
+      latest: (await this.feeds.latestRelease()) ?? null,
       log: log.rows,
       logPage: log.page,
       rewardsLoginOnly: await this.rewards.loginOnly(),
@@ -610,12 +610,12 @@ export class AdminService {
     const x = d.rows[0];
     const rep = await this.db.pool.query<{ id: string; at: string; status: ReportState }>(
       `SELECT id, (extract(epoch FROM created_at) * 1000)::bigint AS at, status FROM ai_report
-        WHERE account_id = ANY($1::bigint[]) ORDER BY created_at DESC, id DESC LIMIT 20`,
-      [[one.id, live]],
+        WHERE account_id IN (SELECT f.id FROM account f WHERE COALESCE(f.merged_into, f.id) = $1::bigint) ORDER BY created_at DESC, id DESC LIMIT 20`,
+      [live],
     );
     const repTotal = await this.db.pool.query<{ n: string }>(
-      'SELECT count(*) AS n FROM ai_report WHERE account_id = ANY($1::bigint[])',
-      [[one.id, live]],
+      'SELECT count(*) AS n FROM ai_report WHERE account_id IN (SELECT f.id FROM account f WHERE COALESCE(f.merged_into, f.id) = $1::bigint)',
+      [live],
     );
     return {
       accounts,
@@ -995,10 +995,11 @@ export class AdminService {
       blocked: boolean;
       same_user: string;
     }>(
-      `SELECT r.id, (extract(epoch FROM r.created_at) * 1000)::bigint AS at, r.account_id, a.code, a.nickname, r.status,
+      `SELECT r.id, (extract(epoch FROM r.created_at) * 1000)::bigint AS at, COALESCE(a.merged_into, a.id) AS account_id, a.code, a.nickname, r.status,
               r.handled_by, r.handled_name, (extract(epoch FROM r.handled_at) * 1000)::bigint AS handled_at,
               EXISTS (SELECT 1 FROM ai_block b WHERE b.account_id = COALESCE(a.merged_into, a.id)) AS blocked,
-              (SELECT count(*) FROM ai_report x WHERE x.account_id = r.account_id) AS same_user
+              (SELECT count(*) FROM ai_report x JOIN account xa ON xa.id = x.account_id
+                WHERE COALESCE(xa.merged_into, xa.id) = COALESCE(a.merged_into, a.id)) AS same_user
          FROM ai_report r JOIN account a ON a.id = r.account_id
         WHERE ($1 = 'all' OR r.status = $1)
         ORDER BY CASE r.status WHEN 'pending' THEN 0 WHEN 'seen' THEN 1 ELSE 2 END, r.created_at DESC, r.id DESC
@@ -1041,7 +1042,7 @@ export class AdminService {
         question: string;
         answer: string;
       }>(
-        `SELECT r.id, (extract(epoch FROM r.created_at) * 1000)::bigint AS at, r.account_id, a.code, a.nickname, r.status,
+        `SELECT r.id, (extract(epoch FROM r.created_at) * 1000)::bigint AS at, COALESCE(a.merged_into, a.id) AS account_id, a.code, a.nickname, r.status,
                 r.handled_by, r.handled_name, (extract(epoch FROM r.handled_at) * 1000)::bigint AS handled_at,
                 EXISTS (SELECT 1 FROM ai_block b WHERE b.account_id = COALESCE(a.merged_into, a.id)) AS blocked,
                 r.question, r.answer
@@ -1053,7 +1054,7 @@ export class AdminService {
       await adminLog(c, actor, 'report.view', `account:${x.account_id}`, { report: Number(x.id) });
       const others = await c.query<{ id: string; at: string; status: ReportState }>(
         `SELECT id, (extract(epoch FROM created_at) * 1000)::bigint AS at, status FROM ai_report
-          WHERE account_id = $1 AND id <> $2 ORDER BY created_at DESC, id DESC LIMIT 10`,
+          WHERE account_id IN (SELECT f.id FROM account f WHERE COALESCE(f.merged_into, f.id) = $1::bigint) AND id <> $2 ORDER BY created_at DESC, id DESC LIMIT 10`,
         [x.account_id, x.id],
       );
       return {
@@ -1093,7 +1094,8 @@ export class AdminService {
                 handled_by = CASE WHEN $2::text = 'pending' THEN NULL ELSE $4::text END,
                 handled_name = CASE WHEN $2::text = 'pending' THEN NULL ELSE $5::text END,
                 handled_at = CASE WHEN $2::text = 'pending' THEN NULL ELSE now() END
-          WHERE id = $1 AND status = $3 RETURNING account_id`,
+          WHERE id = $1 AND status = $3
+        RETURNING (SELECT COALESCE(a.merged_into, a.id) FROM account a WHERE a.id = account_id) AS account_id`,
         [id, to, from, actor.slice(0, 120), name],
       );
       const row = r.rows[0];
@@ -1823,7 +1825,12 @@ export class AdminController {
       ? await this.admin.previewOf(s.preview.action, s.preview.fields, s.preview.nonce)
       : undefined;
     if (s.preview && !preview) s.preview = undefined;
-    const formPlace = flash?.form && isAdminAction(flash.form) ? ACTION_PLACES[flash.form] : undefined;
+    const formPlace =
+      flash?.form && isAdminAction(flash.form)
+        ? flash.fields?.ret === 'reports'
+          ? 'reports'
+          : ACTION_PLACES[flash.form]
+        : undefined;
     html(res, 200, mainPage({ ...view, csrf: s.csrf, flash, flashPlace: formPlace, preview, grantRef }));
   }
 

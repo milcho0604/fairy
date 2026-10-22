@@ -396,3 +396,77 @@ describe('보관', () => {
     assert.equal((await h.pool.query('SELECT 1 FROM ai_report WHERE id = $1', [id0()])).rowCount, 1);
   });
 });
+
+describe('합쳐진 계정과 열람 기록의 짝', () => {
+  test('합쳐진 쪽 신고가 남는 쪽 이용자 상세, 목록 건수, 열람 기록 대상에 묶여 나온다', async () => {
+    const old = await newDevice('18+', '옛기기');
+    const live = await newDevice('18+', '새기기');
+    const a = await oldInsert(old.id, '합침질문', '합침답');
+    const b = await oldInsert(live.id, '남는쪽질문', '남는쪽답');
+    // accounts.ts 합치기가 남기는 끝 상태 (신고는 옮기지 않는다)
+    await h.pool.query('UPDATE account SET balance = 0, closed_at = now(), merged_into = $2 WHERE id = $1', [
+      old.id,
+      live.id,
+    ]);
+    for (const code of [live.code, old.code]) {
+      const p = await admin.page(`?q=${code}`);
+      const dd = /<dt>신고<\/dt><dd>(.*?)<\/dd>/s.exec(p.text)?.[1] ?? '';
+      assert.match(dd, /^2건:/, code);
+      for (const id of [a, b]) assert.match(dd, new RegExp(`report=${id}#reports`), code);
+    }
+    const list = reportsCell((await admin.page()).text);
+    const row = (id: string) => list.slice(list.indexOf(`report=${id}#reports`)).split('</tr>')[0] ?? '';
+    assert.match(row(a), /신고 2건/);
+    assert.match(row(b), /신고 2건/);
+    await admin.page(`?report=${a}`);
+    const v = (await logs('report.view')).at(-1);
+    assert.equal(v.target, `account:${live.id}`);
+    assert.match(reportsCell((await admin.page(`?report=${a}`)).text), new RegExp(`다른 신고:.*report=${b}`));
+    // 처리 상태 기록의 대상도 남는 쪽
+    await move(a, 'pending', 'seen');
+    assert.equal((await logs('report.seen')).at(-1).target, `account:${live.id}`);
+  });
+
+  test('열람 기록을 못 쓰면 본문도 나오지 않는다 (같은 트랜잭션)', async () => {
+    const d = await newDevice('18+', '기록실패');
+    const id = await oldInsert(d.id, `실패질문-${randomUUID()}`, `실패답-${randomUUID()}`);
+    const q = (await h.pool.query('SELECT question, answer FROM ai_report WHERE id = $1', [id])).rows[0];
+    await h.pool.query(`CREATE FUNCTION fail_view() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+      IF NEW.action = 'report.view' THEN RAISE EXCEPTION 'log down'; END IF; RETURN NEW; END $$`);
+    await h.pool.query(
+      'CREATE TRIGGER fail_view BEFORE INSERT ON admin_log FOR EACH ROW EXECUTE FUNCTION fail_view()',
+    );
+    try {
+      const before = (await logs('report.view')).length;
+      const r = await admin.page(`?report=${id}`);
+      assert.ok(!r.text.includes(q.question) && !r.text.includes(q.answer));
+      assert.notEqual(r.status, 200);
+      assert.equal((await logs('report.view')).length, before);
+    } finally {
+      await h.pool.query('DROP TRIGGER fail_view ON admin_log');
+      await h.pool.query('DROP FUNCTION fail_view()');
+    }
+  });
+
+  test('신고 화면에서 막기가 실패하면 오류 글이 신고 칸에 보인다', async () => {
+    const d = await newDevice('18+', '막기실패');
+    await oldInsert(d.id, 'q', 'a');
+    const r = await admin.post('/admin/ai/block', {
+      account: 'F-ZZZZ-9999',
+      blocked: '1',
+      ret: 'reports',
+      confirm: 'F-ZZZZ-9999',
+    });
+    assert.equal(r.status, 303);
+    const p = await admin.page();
+    assert.match(reportsCell(p.text), /id="form-error"/);
+    const users = p.text.slice(p.text.indexOf('id="cell-users"'), p.text.indexOf('id="cell-reports"'));
+    assert.doesNotMatch(users, /id="form-error"/);
+  });
+
+  test('overview 의 latest 는 못 읽어도 키가 있고 null 이다 (옛 앱 호환)', async () => {
+    const r = await api('GET', '/v1/admin/overview', { token: appToken });
+    assert.ok('latest' in r.body);
+    assert.equal(r.body.latest, null);
+  });
+});

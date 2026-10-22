@@ -74,7 +74,7 @@ const apiUrl = `http://127.0.0.1:${apiPort}`;
 const ADMIN_TOKEN = randomBytes(24).toString('hex');
 const api = spawn(process.execPath, [join(SERVER_ROOT, 'dist', 'main.js')], {
   cwd: SERVER_ROOT,
-  env: { PATH: process.env.PATH, DATABASE_URL: databaseUrl, PORT: String(apiPort), PUBLIC_URL: apiUrl, ADMIN_TOKEN, ANTHROPIC_API_KEY: 'fake-key', ANTHROPIC_BASE_URL: 'http://127.0.0.1:1' },
+  env: { PATH: process.env.PATH, DATABASE_URL: databaseUrl, PORT: String(apiPort), PUBLIC_URL: apiUrl, RELEASES_API: 'http://127.0.0.1:9/latest', ADMIN_TOKEN, ANTHROPIC_API_KEY: 'fake-key', ANTHROPIC_BASE_URL: 'http://127.0.0.1:1' },
   stdio: 'ignore',
 });
 for (let i = 0; i < 120; i++) {
