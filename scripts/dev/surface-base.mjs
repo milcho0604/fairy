@@ -468,7 +468,7 @@ const body = async () => {
   check('편집 중 다른 곳이 먼저 고치면 안내가 뜬다', gotNote, await p2.ev(`document.querySelector('.hint.error[role="alert"]')?.textContent`));
   check('그 사이 저장된 글은 덮이지 않았다', (await main(`__jj.notes.get(${note1}).body`)) === 'replaced elsewhere');
   // 거절 뒤 글자를 더 쳐도 다른 곳 글을 덮지 않는다. 고르는 단추 둘이 뜨고, 보기는 저장된 글을 보인다
-  check('거절 안내에 단추 둘(저장된 글 보기, 내 글로 덮기)', (await p2.ev(`document.querySelectorAll('.note-stale button').length`)) === 2);
+  check('거절 안내에 단추 셋', (await p2.ev(`document.querySelectorAll('.note-stale button').length`)) === 3);
   await p2.ev(`document.querySelector('textarea')?.focus(); 1`);
   await p2.type('!');
   await sleep(1200);
@@ -522,6 +522,69 @@ const body = async () => {
     }
     if (await main('!!__jj.panel.window && !__jj.panel.window.isDestroyed()')) {
       await pr.ev(`document.querySelector('.note-bar .back')?.click(); 1`);
+      await sleep(300);
+    }
+  }
+
+  // ---- 거절 상태(다른 곳이 먼저 고침)에서 나가기, 다시 열기, 고르기: 고르기 전에는 어느 쪽도 덮이지 않는다 ----
+  for (const variant of ['tab', 'close', 'esc', 'overwrite', 'take']) {
+    const id = await main(`__jj.notes.add({ title: 'conf-${variant}', body: 'line one\\nline two' }, Date.now() + 100000).id`);
+    await main("__jj.panel.refresh(); __jj.panel.openTab('note'); 1");
+    await sleep(1500);
+    let pc = await page('panel');
+    await main("__jj.panel.window.removeAllListeners('blur'); 1");
+    await pc.click(`[...document.querySelectorAll('.notes li.note-row > button:first-child')].find((b) => b.textContent.includes('conf-${variant}'))`);
+    await sleep(600);
+    await pc.ev(`(() => { const t = document.querySelector('textarea'); t.focus(); t.setSelectionRange(8, 8); return 1; })()`);
+    await pc.type(' MINE');
+    await main(`__jj.notes.update(${id}, { body: 'THEIRS' }, Date.now() + 200000); 1`);
+    await pc.until(() => pc.ev(`!!document.querySelector('.note-stale')`), 5000);
+    check(`거절(${variant}): 단추 셋(보기, 저장된 글로 바꾸기, 내 글로 덮기)`, (await pc.ev(`document.querySelectorAll('.note-stale button').length`)) === 3);
+    const mine = () => pc.ev(`document.querySelector('textarea')?.value ?? ''`);
+    const stored = () => main(`__jj.notes.get(${id}).body`);
+    const reopen = async () => {
+      await main("__jj.panel.openTab('note'); 1");
+      await sleep(1500);
+      pc = await page('panel');
+      await main("__jj.panel.window.removeAllListeners('blur'); 1");
+    };
+    if (variant === 'tab') {
+      await main("__jj.panel.openTab('todo'); 1");
+      await sleep(800);
+      await reopen();
+    } else if (variant === 'close') {
+      await main('__jj.panel.window.close(); 1');
+      await sleep(1200);
+      await reopen();
+    } else if (variant === 'esc') {
+      await pc.ev(esc('textarea'));
+      await sleep(800);
+      check('거절(esc): 뒤로가기는 나가고 아무것도 보내지 않는다', !(await pc.ev(`!!document.querySelector('textarea')`)) && (await stored()) === 'THEIRS');
+      await main('__jj.panel.window.close(); 1');
+      await sleep(1200);
+      await reopen();
+    } else if (variant === 'overwrite') {
+      await pc.click(`document.querySelectorAll('.note-stale button')[2]`);
+      await sleep(1500);
+    } else {
+      await pc.click(`document.querySelectorAll('.note-stale button')[1]`);
+      await sleep(1200);
+    }
+    if (variant === 'overwrite') {
+      check('거절(overwrite): 내 글로 덮기를 고르면 내 글이 저장된다', (await stored()).includes('MINE'));
+    } else if (variant === 'take') {
+      check('거절(take): 저장된 글로 바꾸면 창에 다른 곳 글이 보이고 저장은 그대로', (await mine()) === 'THEIRS' && (await stored()) === 'THEIRS');
+      check('거절(take): 안내와 단추가 사라진다', !(await pc.ev(`!!document.querySelector('.note-stale')`)));
+    } else {
+      check(`거절(${variant}): 고르기 전에는 다른 곳 글이 그대로다`, (await stored()) === 'THEIRS', JSON.stringify(await stored()));
+      check(`거절(${variant}): 다시 열면 내 글이 창에 있고 단추가 다시 보인다`, (await mine()).includes('MINE') && (await pc.ev(`!!document.querySelector('.note-stale')`)));
+      // 그 뒤 "내 글로 덮기" 를 골라야 저장된다
+      await pc.click(`document.querySelectorAll('.note-stale button')[2]`);
+      await sleep(1500);
+      check(`거절(${variant}): 다시 열고 덮기를 고르면 그때 저장된다`, (await stored()).includes('MINE'));
+    }
+    if (await main('!!__jj.panel.window && !__jj.panel.window.isDestroyed()')) {
+      await pc.ev(`document.querySelector('.note-bar .back')?.click(); 1`);
       await sleep(300);
     }
   }

@@ -16,6 +16,8 @@ export interface NoteResume {
    * 저장하지 못한 글 (디스크가 가득 차 저장이 실패한 채 패널이 닫혔다). 다시 열면 이 글로 열고 다시 저장한다 (버그잡이 4)
    */
   draft?: { title: string; body: string };
+  /** 그 글이 다른 곳이 먼저 고친 메모 위에서 거절된 채였다: 그때 저장돼 있던 글과 시각. 다시 열면 자동 저장하지 않고 고르게 한다 */
+  conflict?: { body: string; at: number; title?: string };
 }
 
 export const RESUME_KEY = 'jj.panel.noteResume';
@@ -44,6 +46,11 @@ export function parseResume(raw: string | null, now: number): NoteResume | undef
     typeof d === 'object' && d !== null && typeof d.title === 'string' && typeof d.body === 'string'
       ? { title: d.title, body: d.body }
       : undefined;
+  const c = r.conflict as { body?: unknown; at?: unknown; title?: unknown } | undefined;
+  const conflict =
+    draft && typeof c === 'object' && c !== null && typeof c.body === 'string' && whole(c.at)
+      ? { body: c.body, at: c.at, ...(typeof c.title === 'string' ? { title: c.title } : {}) }
+      : undefined;
   if (now - r.at > (draft ? DRAFT_MS : RESUME_MS) || r.at > now + 60_000) return undefined;
   return {
     id: r.id,
@@ -53,5 +60,6 @@ export function parseResume(raw: string | null, now: number): NoteResume | undef
     scroll: r.scroll,
     at: r.at,
     ...(draft ? { draft } : {}),
+    ...(conflict ? { conflict } : {}),
   };
 }

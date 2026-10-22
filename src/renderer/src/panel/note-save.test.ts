@@ -118,3 +118,41 @@ test('저장이 던지면 실패로 두고 글은 들고 있는다 (충돌 아�
   assert.deepEqual(s.pending, { body: 'ab' });
   assert.equal(s.conflict, undefined);
 });
+
+test('거절 상태로 다시 열면(restore) 자동 저장하지 않고, 덮기를 고르면 그때 보관한 바탕으로 저장한다', async () => {
+  const m = fakeMain('처음 글', 100);
+  const s = new NoteSaver('처음 글', 100, m.api, hooks().h);
+  m.elsewhere('다른 곳이 바꾼 글');
+  s.save({ body: '내 글' });
+  await s.flush();
+  const kept = s.conflict;
+  assert.ok(kept);
+  // 패널을 닫았다 다시 연다: 새 저장 줄이 지금 저장된 글을 바탕으로 시작하지만 보관한 거절 상태를 되살린다
+  const again = new NoteSaver(m.note.body, m.note.updatedAt, m.api, hooks().h);
+  again.restore({ body: '내 글' }, kept);
+  const before = m.calls.length;
+  assert.equal(await again.flush(), false);
+  assert.equal(m.calls.length, before, '고르기 전에는 보내지 않는다');
+  assert.equal(m.note.body, '다른 곳이 바꾼 글');
+  again.overwrite();
+  assert.equal(await again.flush(), true);
+  assert.equal(m.note.body, '내 글');
+});
+
+test('"저장된 글로 바꾸기"(discard): 내 글을 버리고 저장된 글을 바탕으로 삼으며, 아무것도 보내지 않는다', async () => {
+  const m = fakeMain('처음 글', 100);
+  const s = new NoteSaver('처음 글', 100, m.api, hooks().h);
+  m.elsewhere('다른 곳이 바꾼 글');
+  s.save({ body: '내 글' });
+  await s.flush();
+  const c = s.discard();
+  assert.equal(c?.body, '다른 곳이 바꾼 글');
+  assert.deepEqual(s.pending, {});
+  assert.equal(s.conflict, undefined);
+  assert.equal(s.failed, false);
+  assert.equal(m.calls.length, 1);
+  // 이어서 고치면 저장된 글 위에 정상으로 저장된다
+  s.save({ body: '다른 곳이 바꾼 글 더' });
+  assert.equal(await s.flush(), true);
+  assert.equal(s.discard(), undefined);
+});

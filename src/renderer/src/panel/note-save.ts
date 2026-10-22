@@ -20,7 +20,7 @@ export interface NoteResult {
 
 export interface SaverApi {
   update(patch: NotePatch, base?: { body: string; at: number }): Promise<NoteResult>;
-  get(): Promise<{ body: string; updatedAt: number } | undefined>;
+  get(): Promise<{ body: string; updatedAt: number; title?: string } | undefined>;
 }
 
 export interface SaverHooks {
@@ -39,7 +39,8 @@ export class NoteSaver {
   baseAt: number;
   failed = false;
   sending = false;
-  conflict: { body: string; at: number } | undefined;
+  /** 다른 곳이 먼저 고쳤을 때 저장돼 있던 글과 시각 (덮기를 고르면 이것이 바탕이 된다) */
+  conflict: { body: string; at: number; title?: string } | undefined;
   hooks: SaverHooks;
   #api: SaverApi;
   #chain: Promise<boolean> = Promise.resolve(true);
@@ -75,6 +76,25 @@ export class NoteSaver {
     this.conflict = undefined;
   }
 
+  /** 거절 상태로 다시 열었다(보관한 글과 그때 거절 상태): 보내지 않고 고르기를 기다린다 */
+  restore(pending: NotePatch, conflict: { body: string; at: number; title?: string }) {
+    this.pending = { ...pending };
+    this.conflict = conflict;
+    this.failed = true;
+  }
+
+  /** "저장된 글로 바꾸기": 내 글을 버리고 저장된 글을 바탕으로 삼는다. 저장돼 있던 글을 돌려준다 */
+  discard(): { body: string; at: number; title?: string } | undefined {
+    const c = this.conflict;
+    if (!c) return undefined;
+    this.base = c.body;
+    this.baseAt = c.at;
+    this.conflict = undefined;
+    this.pending = {};
+    this.failed = false;
+    return c;
+  }
+
   async #send(): Promise<boolean> {
     if (Object.keys(this.pending).length === 0) return !this.failed;
     if (this.conflict) {
@@ -108,7 +128,12 @@ export class NoteSaver {
     this.pending = { ...sent, ...this.pending };
     if (r.stale) {
       const n = await this.#api.get().catch(() => undefined);
-      if (n) this.conflict = { body: n.body, at: n.updatedAt };
+      if (n)
+        this.conflict = {
+          body: n.body,
+          at: n.updatedAt,
+          ...(n.title !== undefined ? { title: n.title } : {}),
+        };
     }
     this.hooks.failed(r, this.conflict !== undefined);
     return false;

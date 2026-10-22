@@ -297,7 +297,9 @@ function NoteEditor({
     {
       update: (patch, baseObj) => bridge.noteUpdate(note.id, patch, baseObj),
       get: () =>
-        bridge.noteGet(note.id).then((n) => (n ? { body: n.body, updatedAt: n.updatedAt } : undefined)),
+        bridge
+          .noteGet(note.id)
+          .then((n) => (n ? { body: n.body, updatedAt: n.updatedAt, title: n.title } : undefined)),
     },
     { saved() {}, failed() {}, blocked() {} },
   );
@@ -482,6 +484,19 @@ function NoteEditor({
     setSaveError('');
     void flush();
   };
+  /** 다른 곳이 먼저 고친 것을 보고 "저장된 글로 바꾸기"를 골랐다: 내 글을 버리고 저장된 글로 바꾼다 */
+  const takeSaved = () => {
+    const c = saver.discard();
+    if (!c) return;
+    clearTimeout(timer.current);
+    const next = { title: c.title ?? latest.current.title, body: c.body };
+    latest.current = next;
+    setTitle(next.title);
+    setBody(next.body);
+    setStored(undefined);
+    setSaveError('');
+    writeResume(undefined);
+  };
   /** 저장하지 못한 글을 패널이 닫혀도 잃지 않게 적어 둔다 (다시 열면 이 글로 연다) */
   const keepDraft = (extra?: Partial<NoteResume>) => {
     if (!saver.failed) return;
@@ -494,6 +509,7 @@ function NoteEditor({
       ...extra,
       at: Date.now(),
       draft: { ...latest.current },
+      ...(saver.conflict ? { conflict: saver.conflict } : {}),
     });
   };
   const save = (patch: { title?: string; body?: string }) => {
@@ -517,6 +533,10 @@ function NoteEditor({
         onRemoved(note.id);
       }
       bridge.noteRemove(note.id);
+    } else if (saver.conflict) {
+      // 다른 곳이 먼저 고친 것을 보고 있다: 아무것도 보내지 않고 나간다. 내 글은 보관 길에 남는다 (다시 열면 고르게 한다)
+      clearTimeout(timer.current);
+      keepDraft();
     } else if (!(await flush())) return;
     onBack();
   };
@@ -535,7 +555,12 @@ function NoteEditor({
     } else if (!note.title && !note.body) bodyRef.current?.focus();
     writeResume(undefined);
     // 저장하지 못한 채 닫혔던 글로 열었다: 바로 다시 저장해 본다 (또 실패하면 안내가 뜨고 글은 그대로)
-    if (draft) save({ title: draft.title, body: draft.body });
+    if (draft && resume?.conflict) {
+      // 다른 곳이 먼저 고쳐 거절된 채 닫혔던 글: 자동 저장하지 않고 고르는 단추를 다시 보인다
+      saver.restore({ title: draft.title, body: draft.body }, resume.conflict);
+      setStored({ body: resume.conflict.body, shown: false });
+      setSaveError(`${t('panel.note.stale')} ${t('panel.note.staleKeep')}`);
+    } else if (draft) save({ title: draft.title, body: draft.body });
     // 창이 닫히기 전에(다른 곳을 눌러서) 남은 것을 저장하고 어디였는지 적어 둔다. 빈 새 메모는 지운다.
     const onUnload = () => {
       // 저장이 한 번이라도 실패한 채면 글도 적어 둔다 (닫히는 중이라 이번 저장의 답은 기다릴 수 없다)
@@ -555,7 +580,9 @@ function NoteEditor({
         end: el?.selectionEnd ?? 0,
         scroll: Math.round(bodyRef.current?.scrollTop ?? 0),
         at: Date.now(),
-        ...(unsent ? { draft: { ...latest.current } } : {}),
+        ...(unsent
+          ? { draft: { ...latest.current }, ...(saver.conflict ? { conflict: saver.conflict } : {}) }
+          : {}),
       });
     };
     window.addEventListener('beforeunload', onUnload);
@@ -647,6 +674,9 @@ function NoteEditor({
               onClick={() => setStored({ ...stored, shown: !stored.shown })}
             >
               {stored.shown ? t('panel.note.staleHide') : t('panel.note.staleView')}
+            </button>
+            <button type="button" className="ghost small" onClick={takeSaved}>
+              {t('panel.note.staleTake')}
             </button>
             <button type="button" className="primary small" onClick={overwriteStored}>
               {t('panel.note.staleOverwrite')}
