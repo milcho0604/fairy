@@ -340,7 +340,7 @@ if (kind === 'settings') {
     coupon: (code) => ipcRenderer.invoke(SERVER.coupon, code),
     // 운영자 칸 (#101): 메인이 운영자 계정인지 다시 보고, 서버도 요청마다 본다. 세션 토큰은 화면에 오지 않는다
     adminOverview: (q, log) => ipcRenderer.invoke(SERVER.adminOverview, q, log),
-    adminAction: (action, fields) => ipcRenderer.invoke(SERVER.adminAction, action, fields),
+    adminOpenWeb: (place) => ipcRenderer.invoke(SERVER.adminOpenWeb, place),
     turnOn: () => ipcRenderer.invoke(SERVER.turnOn),
     updateNow: () => ipcRenderer.invoke(SERVER.updateNow),
     syncNow: () => ipcRenderer.invoke(SERVER.syncNow),

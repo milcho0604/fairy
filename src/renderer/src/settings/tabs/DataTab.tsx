@@ -96,7 +96,7 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
       <ServerAccountBox flash={flash} />
       <EventsBox flash={flash} />
       <FriendsBox flash={flash} />
-      <AdminBox flash={flash} />
+      <AdminBox />
       <ExportBox flash={flash} />
       {featureOn(server, 'coin_reset') && (
         <Section title={t('settings.coinReset')}>

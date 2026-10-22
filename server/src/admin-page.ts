@@ -16,17 +16,51 @@ export interface AdminAccountRow {
   merged_into: string | null;
 }
 
-export const ADMIN_TABS = [
-  'overview',
-  'users',
-  'grants',
-  'notices',
-  'events',
-  'features',
-  'ai',
-  'log',
-] as const;
-export type AdminTab = (typeof ADMIN_TABS)[number];
+/**
+ * 운영자 화면의 다섯 칸 (이슈 #150). 칸마다 아래 칸(하위)을 둘 수 있고, 현재 자리는 주소 해시(#칸 또는 #칸/하위)로 둔다.
+ * 새 화면은 여기에 칸이나 하위를 더하고 그 칸의 section 함수를 mainPage 에 붙이면 된다 (신고 목록은 reportsSection 자리).
+ */
+export const ADMIN_CELLS = ['home', 'users', 'reports', 'announce', 'settings'] as const;
+export type AdminCell = (typeof ADMIN_CELLS)[number];
+export const CELL_LABEL: Record<AdminCell, string> = {
+  home: '홈',
+  users: '이용자',
+  reports: '신고',
+  announce: '알리기',
+  settings: '설정',
+};
+/** 하위가 없는 칸은 빈 목록 */
+export const CELL_SUBS: Record<AdminCell, ReadonlyArray<readonly [string, string]>> = {
+  home: [],
+  users: [
+    ['list', '이용자 찾기'],
+    ['grants', '지급'],
+  ],
+  reports: [],
+  announce: [
+    ['notices', '공지와 버전'],
+    ['events', '이벤트'],
+    ['coupons', '쿠폰'],
+  ],
+  settings: [
+    ['features', '기능 스위치'],
+    ['ai', '채팅 이용권과 예산'],
+    ['log', '운영 기록'],
+  ],
+};
+/** 옛 여덟 탭 주소가 가던 자리 (옛 주소는 새 자리로 돌려보낸다) */
+export const LEGACY_PLACES: Record<string, string> = {
+  '': 'home',
+  users: 'users/list',
+  grants: 'users/grants',
+  notices: 'announce/notices',
+  events: 'announce/events',
+  features: 'settings/features',
+  ai: 'settings/ai',
+  log: 'settings/log',
+};
+/** 칸 안 자리 ("users/grants" 같은 해시 글) */
+export type AdminPlace = string;
 
 export interface AdminUserRow {
   id: string;
@@ -51,8 +85,57 @@ export interface AdminUsersPage {
   direction: 'asc' | 'desc';
 }
 
+/** 지급 대상 한 줄 (대상 확인 단계) */
+export interface GrantTarget {
+  ref: string;
+  found: boolean;
+  id?: string | undefined;
+  code?: string | undefined;
+  nickname?: string | null | undefined;
+  age?: string | undefined;
+  /** 같은 사람을 두 번 적었다 */
+  duplicate?: boolean | undefined;
+}
+
+/**
+ * 발행과 지급의 공통 흐름 (작성, 대상 확인, 미리보기, 확정, 결과 확인)에서 대상 확인까지 끝난 것.
+ * 서버 세션에 한 번에 하나만 둔다. 새로 고쳐도 남고 "고치기", 확정, 다른 쓰기가 지운다
+ */
+export type FlowPreview =
+  | {
+      action: 'grants/batch';
+      fields: Record<string, string | string[]>;
+      grant: {
+        targets: GrantTarget[];
+        people: number;
+        coins: number;
+        passes: number;
+        days: number;
+        reason: string;
+        /** 이 까닭이 있으면 확정할 수 없다 (찾지 못한 계정, 만 18세 미만에게 채팅 이용권) */
+        blocked: string | null;
+      };
+    }
+  | {
+      action: 'notices';
+      fields: Record<string, string | string[]>;
+      notice: DocNotice;
+      /** 같은 id 의 공지가 이미 있으면 그 제목 (바꾸기) */
+      replaces: string | null;
+    };
+
+/** 홈의 "지금 확인할 것" 한 줄 (서버가 계산하고 웹 홈과 앱 요약이 같이 쓴다) */
+export interface AdminTodo {
+  kind: 'reports' | 'budget' | 'ending_events' | 'ending_coupons';
+  level: 'warn' | 'bad';
+  /** 신고 건수, 끝나는 이벤트나 쿠폰 수, 예산은 쓴 비율(%) */
+  n: number;
+  /** 눌렀을 때 가는 자리 */
+  place: AdminPlace;
+}
+
 export interface AdminView {
-  tab: AdminTab;
+  tab: AdminCell;
   csrf: string;
   flash?:
     | {
@@ -62,8 +145,28 @@ export interface AdminView {
         form?: string | undefined;
         scope?: string | undefined;
         fields?: Record<string, string | string[]> | undefined;
+        /** 미리보기에서 "고치기" 로 돌아온 것 (오류는 아니고 쓰던 값만 되살린다) */
+        edit?: boolean | undefined;
       }
     | undefined;
+  /** 결과 글이 달린 폼이 있는 칸 (그 폼이 화면에 없을 때 이 칸 맨 위에 대신 보인다) */
+  flashPlace?: AdminPlace | undefined;
+  /** 쓰던 발행, 지급 흐름의 미리보기 (대상 확인까지 끝난 것) */
+  preview?: FlowPreview | undefined;
+  /** 지급 칸에 미리 채울 계정 (이용자 표의 지급 단추) */
+  grantRef?: string | undefined;
+  /** 신고 건수 (신고 칸 목록은 신고 처리 이슈가 채운다) */
+  reports: { total: number };
+  todo: AdminTodo[];
+  /** 최근 운영 기록 몇 줄 (찾기 조건과 상관없이) */
+  recent: Array<{
+    at: string;
+    actor: string;
+    actorName: string | null;
+    action: string;
+    target: string | null;
+    targetName: string | null;
+  }>;
   summary: {
     accounts: number;
     coins: number;
@@ -169,7 +272,7 @@ function doc(title: string, body: string, o: { script?: boolean; flash?: string 
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>${esc(title)}</title>
-<link rel="stylesheet" href="/admin/admin.css">${o.script ? '\n<script src="/admin/admin.js" defer></script>' : ''}
+<link rel="stylesheet" href="/admin/admin.css">${o.script ? '\n<script src="/admin/admin.js"></script>' : ''}
 </head>
 <body${o.flash ? ` data-flash="${o.flash}"` : ''}>
 ${body}
@@ -205,7 +308,7 @@ type Flash = NonNullable<AdminView['flash']>;
 /** 이 폼의 실패 기록이면 그때 쓴 값 (한 번만 보이고 사라진다). scope 는 같은 모양의 폼이 여럿일 때 대상 (기능 키, 계정) */
 const draftOf = (v: Pick<AdminView, 'flash'>, action: string, scope?: string) => {
   const f: Flash | undefined = v.flash;
-  return f?.error && f.form === action && (scope === undefined || (f.scope ?? '') === scope)
+  return (f?.error || f?.edit) && f.form === action && (scope === undefined || (f.scope ?? '') === scope)
     ? (f.fields ?? {})
     : undefined;
 };
@@ -217,11 +320,15 @@ const val = (d: Draft, name: string, fallback = ''): string => {
 /** 고르는 칸의 선택: 실패한 값이 있으면 그것, 없으면 처음 값 */
 const opt = (d: Draft, name: string, value: string, label: string, fallback: string) =>
   `<option value="${esc(value)}"${val(d, name, fallback) === value ? ' selected' : ''}>${esc(label)}</option>`;
-/** 오류는 폼 안 맨 위에 둔다. 주소 조각(#form-error)이 화면을 그 자리로 가져온다 */
-const formErr = (v: Pick<AdminView, 'flash'>, action: string, scope?: string): string => {
+/**
+ * 결과 글은 누른 폼 안 맨 위에 둔다 (오류는 빨갛게, 성공은 초록으로). 오류는 주소 조각(#form-error)이 아니라 admin.js 가
+ * 화면을 그 자리로 가져온다. skipOk 는 성공을 따로 그리는 흐름 폼(flowResult)용
+ */
+const formErr = (v: Pick<AdminView, 'flash'>, action: string, scope?: string, skipOk = false): string => {
   const f: Flash | undefined = v.flash;
-  if (!f?.error || f.form !== action || (scope !== undefined && (f.scope ?? '') !== scope)) return '';
-  return `<p class="flash error wide" role="alert" id="form-error">${esc(f.text)}</p>`;
+  if (!f || f.edit || f.form !== action || (scope !== undefined && (f.scope ?? '') !== scope)) return '';
+  if (f.error) return `<p class="flash error wide" role="alert" id="form-error">${esc(f.text)}</p>`;
+  return skipOk ? '' : `<p class="flash wide" role="status" id="form-ok">${esc(f.text)}</p>`;
 };
 
 /**
@@ -306,7 +413,7 @@ function accountSection(v: AdminView): string {
   const list =
     v.accounts.length > 1
       ? `<div class="table-scroll"><table><thead><tr><th>번호</th><th>닉네임, 기기 코드</th><th>나이</th><th>코인</th></tr></thead><tbody>
-${v.accounts.map((x) => `<tr><td><a href="/admin/users?q=${esc(x.code)}">${esc(x.id)}</a></td><td>${who(x)}${x.merged_into ? ` (합쳐짐, 남은 계정 #${esc(x.merged_into)})` : ''}</td><td>${esc(x.age)}</td><td>${x.balance}</td></tr>`).join('')}
+${v.accounts.map((x) => `<tr><td><a href="${esc(placeHref('users/list', `?q=${encodeURIComponent(x.code)}`))}">${esc(x.id)}</a></td><td>${who(x)}${x.merged_into ? ` (합쳐짐, 남은 계정 #${esc(x.merged_into)})` : ''}</td><td>${esc(x.age)}</td><td>${x.balance}</td></tr>`).join('')}
 </tbody></table></div>`
       : '';
   const sub = a ? draftOf(v, 'ai/subscribe', a.code) : undefined;
@@ -355,7 +462,7 @@ ${confirmBox(`${plain(a)} 채팅 이용권 회수할게요 (되돌릴 수 없어
       ? '<p class="flash error">찾는 계정이 없어요</p>'
       : '';
   return `<section><h2>이용자 찾기와 자세히 보기</h2>
-<form method="get" action="/admin/users" class="row"><label>번호, 닉네임 또는 기기 코드 <input name="q" maxlength="40" value="${esc(v.query ?? '')}"></label><button type="submit">찾기</button></form>
+<form method="get" action="/admin#users/list" class="row"><label>번호, 닉네임 또는 기기 코드 <input name="q" maxlength="40" value="${esc(v.query ?? '')}"></label><button type="submit">찾기</button></form>
 ${list}${detail}</section>`;
 }
 
@@ -372,18 +479,20 @@ export function usersTable(v: AdminView): string {
     p.set('page', String(page));
     p.set('sort', u.sort);
     p.set('direction', u.direction);
-    return `/admin/users?${p}`;
+    return placeHref('users/list', `?${p}`);
   };
   const rows = u.rows
     .map(
-      (x) => `<tr><td><a href="/admin/users?q=${encodeURIComponent(x.code)}">${esc(x.id)}</a></td>
+      (
+        x,
+      ) => `<tr><td><a href="${esc(placeHref('users/list', `?q=${encodeURIComponent(x.code)}`))}">${esc(x.id)}</a></td>
 <td>${esc(x.nickname ?? '닉네임 없음')}</td><td><code>${esc(x.code)}</code></td><td>${esc(loginKo(x.logins))}</td>
 <td>${esc(x.age)}</td><td>${x.balance}</td><td>${x.tickets}</td><td>${when(x.lastActive)}</td><td>${when(x.created)}</td>
-<td>${esc(x.appVersion ?? '없음')}</td><td><a class="button-link" href="/admin/grants?account=${encodeURIComponent(x.code)}">지급</a></td></tr>`,
+<td>${esc(x.appVersion ?? '없음')}</td><td><a class="button-link" href="${esc(placeHref('users/grants', `?account=${encodeURIComponent(x.code)}`))}">지급</a></td></tr>`,
     )
     .join('');
   return `<section><h2>이용자 ${u.total}명</h2>
-<form method="get" action="/admin/users" class="row">
+<form method="get" action="/admin#users/list" class="row">
 <label>번호, 닉네임 또는 기기 코드 <input name="q" maxlength="40" value="${esc(u.query)}"></label>
 <label>정렬 <select name="sort"><option value="active"${u.sort === 'active' ? ' selected' : ''}>최근 활동</option><option value="coins"${u.sort === 'coins' ? ' selected' : ''}>코인</option><option value="created"${u.sort === 'created' ? ' selected' : ''}>만든 날</option></select></label>
 <label>방향 <select name="direction"><option value="desc"${u.direction === 'desc' ? ' selected' : ''}>큰 값부터</option><option value="asc"${u.direction === 'asc' ? ' selected' : ''}>작은 값부터</option></select></label>
@@ -393,26 +502,6 @@ export function usersTable(v: AdminView): string {
 <tbody>${rows || '<tr><td colspan="11">찾은 이용자가 없어요</td></tr>'}</tbody></table></div>
 <nav class="pager" aria-label="쪽 넘기기">${u.page > 1 ? `<a href="${esc(params(u.page - 1))}">이전</a>` : '<span>이전</span>'}<strong>${u.page} / ${u.pages}</strong>${u.page < u.pages ? `<a href="${esc(params(u.page + 1))}">다음</a>` : '<span>다음</span>'}</nav>
 </section>${v.query ? accountSection(v) : ''}`;
-}
-
-function grantsSection(v: AdminView): string {
-  const selected = v.account && !v.account.merged_into ? v.account : undefined;
-  const value = selected?.code ?? v.query ?? '';
-  const chosen = selected
-    ? `<p class="selected">선택한 이용자: #${esc(selected.id)} ${who(selected)}</p>`
-    : '';
-  const d = draftOf(v, 'grants/batch');
-  return `<section><h2>코인과 채팅 이용권 지급</h2>
-<p class="hint">지급은 쪽지함으로 보내며 이용자가 열 때 받아요. 지급과 운영 기록은 같은 트랜잭션에 남아요. 한 번에 20명, 한 사람마다 코인 10000개와 채팅 이용권 1000장까지예요.</p>
-${chosen}
-<form method="post" action="/admin/grants/batch" class="grid">${formErr(v, 'grants/batch')}${hidden(v.csrf)}
-<label class="wide">받을 계정 번호 또는 기기 코드, 한 줄에 하나씩 최대 20명 <textarea name="accounts" required maxlength="400">${esc(val(d, 'accounts', value))}</textarea></label>
-<label>코인 수 <input name="coins" type="number" min="0" max="10000" value="${esc(val(d, 'coins', '0'))}" required></label>
-<label>채팅 이용권 수 <input name="chat_passes" type="number" min="0" max="1000" value="${esc(val(d, 'chat_passes', '0'))}" required></label>
-<label>만료 날수 <input name="days" type="number" min="1" max="365" value="${esc(val(d, 'days', '30'))}" required></label>
-<label class="wide">지급 사유, 이용자에게 보여요 <textarea name="reason" required maxlength="200">${esc(val(d, 'reason'))}</textarea></label>
-${confirmBox('위 이용자에게 지급할게요')}
-<button type="submit">지급 쪽지 보내기</button></form></section>`;
 }
 
 /** 이번 달 추정 비용이 예산의 50%, 80% 를 넘으면 경고 */
@@ -481,10 +570,10 @@ ${confirmBox(`${name} 접근 설정을 바꿀게요 (지금 ${featureModeKo(x.ke
 <form method="post" action="/admin/features/allow" class="row">${formErr(v, 'features/allow', x.key)}${hidden(csrf)}<input type="hidden" name="key" value="${esc(x.key)}"><input type="hidden" name="allowed" value="1">
 <label>허용할 계정 번호나 기기 코드 <input name="account" required maxlength="20" value="${esc(val(da, 'account'))}"></label><button type="submit">허용 목록에 넣기</button>
 </form>
-<ul class="plain">${x.accounts.map((id) => `<li><a href="/admin/users?q=${id}">#${id}</a> ${postButton(csrf, '/admin/features/allow', { key: x.key, account: String(id), allowed: '0' }, '빼기', true)}</li>`).join('') || '<li>허용 목록이 비었어요</li>'}</ul>`;
+<ul class="plain">${x.accounts.map((id) => `<li><a href="${esc(placeHref('users/list', `?q=${id}`))}">#${id}</a> ${postButton(csrf, '/admin/features/allow', { key: x.key, account: String(id), allowed: '0' }, '빼기', true)}</li>`).join('') || '<li>허용 목록이 비었어요</li>'}</ul>`;
 }
 
-function aiSection(v: AdminView): string {
+function aiSections(v: AdminView): { features: string; tickets: string } {
   const ai = v.ai;
   const csrf = v.csrf;
   const dMode = draftOf(v, 'ai/mode');
@@ -521,41 +610,82 @@ ${budgetWarn(v.summary.aiCostMicros, ai.monthlyBudgetMicros)}
 <button type="submit">정책 저장</button>
 </form>
 <h3>대기 목록 (${ai.waitlist.length})</h3>
-<ul class="plain">${ai.waitlist.map((x) => `<li><a href="/admin/users?q=${esc(x.code)}">#${esc(x.id)}</a> ${who(x)} ${postButton(csrf, '/admin/ai/allow', { account: x.code, allowed: '1' }, '허용하기')}</li>`).join('') || '<li>비었어요</li>'}</ul>
+<ul class="plain">${ai.waitlist.map((x) => `<li><a href="${esc(placeHref('users/list', `?q=${encodeURIComponent(x.code)}`))}">#${esc(x.id)}</a> ${who(x)} ${postButton(csrf, '/admin/ai/allow', { account: x.code, allowed: '1' }, '허용하기')}</li>`).join('') || '<li>비었어요</li>'}</ul>
 <h3>허용 목록 (${ai.allow.length})</h3>
-<ul class="plain">${ai.allow.map((x) => `<li><a href="/admin/users?q=${esc(x.code)}">#${esc(x.id)}</a> ${who(x)} ${postButton(csrf, '/admin/ai/allow', { account: x.code, allowed: '0' }, '빼기', true)}</li>`).join('') || '<li>비었어요 (운영자 계정은 늘 허용)</li>'}</ul>
+<ul class="plain">${ai.allow.map((x) => `<li><a href="${esc(placeHref('users/list', `?q=${encodeURIComponent(x.code)}`))}">#${esc(x.id)}</a> ${who(x)} ${postButton(csrf, '/admin/ai/allow', { account: x.code, allowed: '0' }, '빼기', true)}</li>`).join('') || '<li>비었어요 (운영자 계정은 늘 허용)</li>'}</ul>
 </section>`;
-  return v.tab === 'features' ? features : tickets;
+  return { features, tickets };
 }
 
-const TAB_LINKS: Array<[AdminTab, string, string]> = [
-  ['overview', '개요', '/admin'],
-  ['users', '이용자', '/admin/users'],
-  ['grants', '지급', '/admin/grants'],
-  ['notices', '공지와 업데이트', '/admin/notices'],
-  ['events', '이벤트와 쿠폰', '/admin/events'],
-  ['features', '기능 스위치', '/admin/features'],
-  ['ai', '채팅 이용권과 예산', '/admin/ai'],
-  ['log', '운영 기록', '/admin/log'],
-];
+// ---- 다섯 칸 (이슈 #150) ----
 
-function tabs(current: AdminTab): string {
-  return `<nav class="tabs" aria-label="운영자 화면">${TAB_LINKS.map(([tab, label, href]) => `<a href="${href}"${tab === current ? ' class="current" aria-current="page"' : ''}>${label}</a>`).join('')}</nav>`;
+const EVENT_SOON_MS = 3 * 86_400_000;
+
+/** 홈의 "지금 확인할 것". 신고 건수, 예산 경고, 3일 안에 끝나는 이벤트와 쿠폰 (앱 요약과 같은 계산을 쓴다) */
+export function todoOf(o: {
+  reports: number;
+  costMicros: number;
+  budgetMicros: number;
+  events: Array<{ starts: number; ends: number }>;
+  coupons: Array<{ starts: number; ends: number; disabled: boolean }>;
+  now: number;
+}): AdminTodo[] {
+  const out: AdminTodo[] = [];
+  if (o.reports > 0) out.push({ kind: 'reports', level: 'warn', n: o.reports, place: 'reports' });
+  // 예산 0 이면 n 은 -1 (질문이 모두 막힌다), 아니면 쓴 비율(%)
+  if (o.budgetMicros <= 0) out.push({ kind: 'budget', level: 'bad', n: -1, place: 'settings/ai' });
+  else {
+    const p = o.costMicros / o.budgetMicros;
+    if (p >= 0.5)
+      out.push({
+        kind: 'budget',
+        level: p >= 0.8 ? 'bad' : 'warn',
+        n: Math.floor(p * 100),
+        place: 'settings/ai',
+      });
+  }
+  const soon = (starts: number, ends: number) =>
+    starts <= o.now && ends > o.now && ends <= o.now + EVENT_SOON_MS;
+  const events = o.events.filter((e) => soon(e.starts, e.ends)).length;
+  if (events > 0) out.push({ kind: 'ending_events', level: 'warn', n: events, place: 'announce/events' });
+  const coupons = o.coupons.filter((c) => !c.disabled && soon(c.starts, c.ends)).length;
+  if (coupons > 0) out.push({ kind: 'ending_coupons', level: 'warn', n: coupons, place: 'announce/coupons' });
+  return out;
 }
 
-export function mainPage(v: AdminView): string {
+export function todoText(t: AdminTodo): string {
+  switch (t.kind) {
+    case 'reports':
+      return `접수된 신고가 ${t.n}건 있어요`;
+    case 'budget':
+      return t.n < 0
+        ? '월 예산이 0 이라 채팅 이용권 질문이 모두 막혀요'
+        : `이번 달 비용이 예산의 ${t.n}% 예요`;
+    case 'ending_events':
+      return `3일 안에 끝나는 이벤트가 ${t.n}개 있어요`;
+    case 'ending_coupons':
+      return `3일 안에 끝나는 쿠폰이 ${t.n}개 있어요`;
+  }
+}
+
+/** 칸 안 자리로 가는 주소. query 는 "?q=..." 처럼 붙인다 */
+const placeHref = (place: AdminPlace, query = '') => `/admin${query}#${place}`;
+
+function homeSection(v: AdminView): string {
   const s = v.summary;
-  const csrf = v.csrf;
-  const dEv = draftOf(v, 'events');
-  const dCp = draftOf(v, 'coupons');
-  const dRw = draftOf(v, 'rewards/policy');
-  const reasons = ([] as string[]).concat((dEv?.reasons as string | string[] | undefined) ?? []);
-  const sections = [
-    `<header><h1>페어리 운영자</h1>
-<form method="post" action="/admin/logout" class="inline">${hidden(csrf)}<button type="submit">로그아웃</button></form></header>${tabs(v.tab)}`,
-    v.flash && !v.flash.error ? `<p class="flash" role="status">${esc(v.flash.text)}</p>` : '',
-    v.tab === 'overview'
-      ? `<section><h2>사용량</h2>
+  const todo = v.todo.length
+    ? `<ul class="todo">${v.todo.map((t) => `<li class="${t.level}"><a href="#${esc(t.place)}">${esc(todoText(t))}</a></li>`).join('')}</ul>`
+    : '<p class="empty">지금 확인할 것이 없어요</p>';
+  const recent = v.recent.length
+    ? `<div class="table-scroll"><table class="log"><thead><tr><th>때</th><th>누가</th><th>무엇</th><th>대상</th></tr></thead><tbody>${v.recent
+        .map(
+          (l) =>
+            `<tr><td>${when(l.at)}</td><td>${esc(l.actorName ?? l.actor)}</td><td>${esc(actionKo(l.action))}</td><td>${esc(l.targetName ?? l.target ?? '')}</td></tr>`,
+        )
+        .join('')}</tbody></table></div>`
+    : '<p class="empty">아직 운영 기록이 없어요</p>';
+  return `<section><h2>지금 확인할 것</h2>${todo}</section>
+<section><h2>사용량</h2>
 <dl class="stats">
 <div><dt>계정</dt><dd>${s.accounts}</dd></div>
 <div><dt>코인 잔액 합</dt><dd>${s.coins}</dd></div>
@@ -565,13 +695,115 @@ export function mainPage(v: AdminView): string {
 <div><dt>이번 달 질문</dt><dd>${s.aiAsks}</dd></div>
 <div><dt>이번 달 추정 비용</dt><dd>${usd(s.aiCostMicros)} / ${usd(v.ai.monthlyBudgetMicros)}</dd></div>
 <div><dt>남은 예산</dt><dd>${usd(Math.max(0, v.ai.monthlyBudgetMicros - s.aiCostMicros))}</dd></div>
-</dl></section>`
-      : '',
-    v.tab === 'users' ? usersTable(v) : '',
-    v.tab === 'grants' ? grantsSection(v) : '',
-    v.tab === 'features' || v.tab === 'ai' ? aiSection(v) : '',
-    v.tab === 'events'
-      ? `<section><h2>이벤트</h2>
+</dl>
+${versionTable(v)}</section>
+<section><h2>최근 운영 기록</h2>${recent}
+<p><a class="button-link" href="#settings/log">운영 기록 모두 보기</a></p></section>`;
+}
+
+/**
+ * 신고 칸. 신고 목록, 처리 상태, 이용자 이동은 신고 처리 이슈(#151)가 이 함수 안을 채운다.
+ * 지금은 접수 건수와 빈 상태 안내만 있다.
+ */
+function reportsSection(v: AdminView): string {
+  const n = v.reports.total;
+  return `<section id="reports-list"><h2>신고</h2>
+<p class="hint">이용자가 따로 동의하고 신고한 AI 대화예요. 신고된 질문과 답 하나씩만 30일 보관하고 그 뒤 지워요.</p>
+${
+  n > 0
+    ? `<p class="flash warn">접수된 신고가 <strong>${n}건</strong> 있어요. 신고 목록 화면은 아직 준비 중이에요.</p>`
+    : '<p class="empty">접수된 신고가 없어요</p>'
+}
+</section>`;
+}
+
+/** 흐름의 단계 표시 (작성, 대상 확인, 미리보기, 확정, 결과 확인). current 는 1부터 */
+function flowSteps(current: number): string {
+  return `<ol class="steps" aria-label="진행 단계">${['작성', '대상 확인', '미리보기', '확정', '결과 확인']
+    .map(
+      (name, i) =>
+        `<li class="${i + 1 < current ? 'done' : i + 1 === current ? 'now' : ''}"${i + 1 === current ? ' aria-current="step"' : ''}>${i + 1}. ${name}</li>`,
+    )
+    .join('')}</ol>`;
+}
+
+/** 작성 화면 위: 방금 이 흐름을 마쳤으면 결과 확인 단계(성공 글과 운영 기록 링크), 아니면 1단계 */
+function flowHead(v: AdminView, action: string, logAction: string): string {
+  const f = v.flash;
+  if (f && !f.error && !f.edit && f.form === action)
+    return `<div class="flow-result">${flowSteps(5)}<p class="flash" role="status" id="form-ok">${esc(f.text)}</p>
+<p><a class="button-link" href="${esc(placeHref('settings/log', logAction ? `?la=${encodeURIComponent(logAction)}` : ''))}">운영 기록에서 확인</a></p></div>`;
+  return flowSteps(1);
+}
+
+/** 미리보기 단계의 숨은 칸: 작성 때 쓴 값을 그대로 확정 폼으로 넘긴다 */
+const carry = (fields: Record<string, string | string[]>) =>
+  Object.entries(fields)
+    .flatMap(([k, x]) =>
+      ([] as string[]).concat(x).map((y) => `<input type="hidden" name="${esc(k)}" value="${esc(y)}">`),
+    )
+    .join('');
+
+/** "고치기": 미리보기를 닫고 쓰던 값이 채워진 작성 화면으로 */
+const editButton = (csrf: string, action: string) =>
+  `<form method="post" action="/admin/flow/cancel" class="inline">${hidden(csrf)}<input type="hidden" name="action" value="${esc(action)}"><button type="submit" class="ghost">고치기</button></form>`;
+
+function grantsSection(v: AdminView): string {
+  const pv = v.preview?.action === 'grants/batch' ? v.preview : undefined;
+  if (pv) {
+    const g = pv.grant;
+    const rows = g.targets
+      .map(
+        (t) =>
+          `<tr class="${t.found ? '' : 'bad'}"><td><code>${esc(t.ref)}</code></td><td>${
+            t.found
+              ? `${who({ code: t.code ?? '', nickname: t.nickname ?? null })} #${esc(t.id)}`
+              : '<span class="tag ended">찾지 못함</span>'
+          }${t.duplicate ? ' <span class="tag">중복</span>' : ''}</td><td>${esc(t.age ?? '')}</td></tr>`,
+      )
+      .join('');
+    return `<section class="flow"><h2>코인과 채팅 이용권 지급</h2>
+${flowSteps(3)}
+<p class="hint">아직 보내지 않았어요. 아래 대상과 양을 확인하고 확정해 주세요.</p>
+<dl class="stats">
+<div><dt>받는 사람</dt><dd>${g.people}명</dd></div>
+<div><dt>한 사람마다</dt><dd>코인 ${g.coins}, 채팅 이용권 ${g.passes}장</dd></div>
+<div><dt>모두 합쳐</dt><dd>코인 ${g.coins * g.people}, 채팅 이용권 ${g.passes * g.people}장</dd></div>
+<div><dt>쪽지 만료</dt><dd>${g.days}일</dd></div>
+</dl>
+<p>지급 사유 (이용자에게 보여요): <q>${esc(g.reason)}</q></p>
+<div class="table-scroll"><table class="targets"><thead><tr><th>적은 말</th><th>대상</th><th>나이 구분</th></tr></thead><tbody>${rows}</tbody></table></div>
+${g.blocked ? `<p class="flash error" role="alert">${esc(g.blocked)}</p>` : ''}
+<form method="post" action="/admin/grants/batch" class="grid">${formErr(v, 'grants/batch')}${hidden(v.csrf)}${carry(pv.fields)}
+${confirmBox(`위 ${g.people}명에게 지급할게요`)}
+<button type="submit"${g.blocked ? ' disabled' : ''}>확정하고 지급 쪽지 보내기</button></form>
+${editButton(v.csrf, 'grants/batch')}</section>`;
+  }
+  const selected = v.account && !v.account.merged_into ? v.account : undefined;
+  const value = v.grantRef ?? '';
+  const chosen =
+    selected && v.grantRef
+      ? `<p class="selected">선택한 이용자: #${esc(selected.id)} ${who(selected)}</p>`
+      : '';
+  const d = draftOf(v, 'grants/batch');
+  return `<section><h2>코인과 채팅 이용권 지급</h2>
+${flowHead(v, 'grants/batch', 'grant.batch')}
+<p class="hint">지급은 쪽지함으로 보내며 이용자가 열 때 받아요. 먼저 대상을 확인하는 화면이 나오고, 그곳에서 확정해야 보내요. 한 번에 20명, 한 사람마다 코인 10000개와 채팅 이용권 1000장까지예요.</p>
+${chosen}
+<form method="post" action="/admin/grants/preview" class="grid">${formErr(v, 'grants/batch', undefined, true)}${hidden(v.csrf)}
+<label class="wide">받을 계정 번호 또는 기기 코드, 한 줄에 하나씩 최대 20명 <textarea name="accounts" required maxlength="400">${esc(val(d, 'accounts', value))}</textarea></label>
+<label>코인 수 <input name="coins" type="number" min="0" max="10000" value="${esc(val(d, 'coins', '0'))}" required></label>
+<label>채팅 이용권 수 <input name="chat_passes" type="number" min="0" max="1000" value="${esc(val(d, 'chat_passes', '0'))}" required></label>
+<label>만료 날수 <input name="days" type="number" min="1" max="365" value="${esc(val(d, 'days', '30'))}" required></label>
+<label class="wide">지급 사유, 이용자에게 보여요 <textarea name="reason" required maxlength="200">${esc(val(d, 'reason'))}</textarea></label>
+<button type="submit">대상 확인하기</button></form></section>`;
+}
+
+function eventsSection(v: AdminView): string {
+  const csrf = v.csrf;
+  const dEv = draftOf(v, 'events');
+  const reasons = ([] as string[]).concat((dEv?.reasons as string | string[] | undefined) ?? []);
+  return `<section><h2>이벤트</h2>
 <p class="hint">앱은 홈페이지 정적 파일(events.json)만 읽어요. 여기서 만들면 10분 안쪽에 홈페이지로 올라가요. 시간은 한국 시간.</p>
 <table><thead><tr><th>id</th><th>종류</th><th>제목</th><th>기간</th><th>받은 수</th><th></th></tr></thead><tbody>
 ${
@@ -617,10 +849,14 @@ ${
 <fieldset><legend>배수 까닭</legend><label><input type="checkbox" name="reasons" value="meet"${reasons.includes('meet') ? ' checked' : ''}> 출석</label><label><input type="checkbox" name="reasons" value="focus"${reasons.includes('focus') ? ' checked' : ''}> 집중</label></fieldset>
 <label>배수 <select name="times">${opt(dEv, 'times', '2', '2배', '2')}${opt(dEv, 'times', '3', '3배', '2')}</select></label>
 <button type="submit">이벤트 만들기</button>
-</form></section>`
-      : '',
-    v.tab === 'events'
-      ? `<section><h2>쿠폰</h2>
+</form></section>`;
+}
+
+function couponsSection(v: AdminView): string {
+  const csrf = v.csrf;
+  const dCp = draftOf(v, 'coupons');
+  const dRw = draftOf(v, 'rewards/policy');
+  return `<section><h2>쿠폰</h2>
 <form method="post" action="/admin/rewards/policy" class="row">${formErr(v, 'rewards/policy')}${hidden(csrf)}
 <label>선물과 쿠폰 받는 계정 <select name="login_only">${opt(dRw, 'login_only', '1', '로그인 계정만 (기본)', v.rewardsLoginOnly ? '1' : '0')}${opt(dRw, 'login_only', '0', '기기 계정도', v.rewardsLoginOnly ? '1' : '0')}</select></label>
 <button type="submit">저장</button>
@@ -647,22 +883,78 @@ ${
 <label>시작 (비우면 지금) <input name="from" type="datetime-local" value="${esc(val(dCp, 'from'))}"></label>
 <label>끝 <input name="until" type="datetime-local" required value="${esc(val(dCp, 'until'))}"></label>
 <button type="submit">쿠폰 만들기</button>
-</form></section>`
-      : '',
-    v.tab === 'notices' ? noticesSection(v) : '',
-    v.tab === 'log' ? logSection(v) : '',
-  ];
-  const body = sections.join('\n');
-  // 폼을 못 찾은 오류 (예: 돌아온 화면에 그 폼이 없을 때)는 맨 위에 그대로 보인다
+</form></section>`;
+}
+
+/** 공지 흐름: 작성, 미리보기(공지 창 모양과 바뀌는 것), 확정. 강제 업데이트 글은 확정에서 확인 칸을 체크해야 한다 */
+function noticeFlowSection(v: AdminView): string {
+  const pv = v.preview?.action === 'notices' ? v.preview : undefined;
+  if (!pv) return noticesSection(v);
+  const n = pv.notice;
+  const period = n.from || n.until ? `${n.from ?? '처음부터'} ~ ${n.until ?? '끝없이'}` : '기간 없음';
+  return `<section class="flow"><h2>공지 넣기</h2>
+${flowSteps(3)}
+<p class="hint">아직 저장하지 않았어요. 앱에 뜨는 모양과 대상을 확인하고 확정해 주세요.</p>
+<dl class="stats">
+<div><dt>id</dt><dd><code>${esc(n.id)}</code></dd></div>
+<div><dt>종류</dt><dd>${esc(KIND_KO[n.kind])}</dd></div>
+<div><dt>기간 (한국 시간)</dt><dd>${esc(period)}</dd></div>
+<div><dt>대상 버전</dt><dd>${esc(n.versions ?? '모든 판')}</dd></div>
+<div><dt>운영체제</dt><dd>${esc(n.platforms ? n.platforms.join(', ') : '모두')}</dd></div>
+<div><dt>같은 id</dt><dd>${pv.replaces === null ? '없음 (새로 넣어요)' : `있음, 바꿔요 (지금 제목 ${esc(pv.replaces)})`}</dd></div>
+</dl>
+<div class="previews">${noticePreview(n, 'ko')}${noticePreview(n, 'en')}</div>
+${n.link ? `<p class="hint">링크: ${esc(n.link)}</p>` : ''}
+<form method="post" action="/admin/notices" class="grid">${formErr(v, 'notices')}${hidden(v.csrf)}${carry(pv.fields)}
+${n.kind === 'force' ? `<label class="confirm"><input type="checkbox" name="confirm" value="yes" required> 강제 업데이트 글이에요. 홈페이지에 올라가요</label>` : ''}
+<button type="submit">확정하고 공지 저장</button></form>
+${editButton(v.csrf, 'notices')}</section>`;
+}
+
+function renderPanels(v: AdminView): Record<AdminCell, string> {
+  const ai = aiSections(v);
+  const sub = (cell: AdminCell, rows: Record<string, string>) =>
+    `<nav class="subnav" aria-label="${esc(CELL_LABEL[cell])} 안">${CELL_SUBS[cell]
+      .map(([id, label]) => `<a href="#${cell}/${id}" data-sub="${cell}/${id}">${esc(label)}</a>`)
+      .join('')}</nav>
+${CELL_SUBS[cell].map(([id]) => `<div class="sub" id="sub-${cell}-${id}" data-sub="${cell}/${id}">${rows[id] ?? ''}</div>`).join('\n')}`;
+  return {
+    home: homeSection(v),
+    users: sub('users', { list: usersTable(v), grants: grantsSection(v) }),
+    reports: reportsSection(v),
+    announce: sub('announce', {
+      notices: noticeFlowSection(v),
+      events: eventsSection(v),
+      coupons: couponsSection(v),
+    }),
+    settings: sub('settings', { features: ai.features, ai: ai.tickets, log: logSection(v) }),
+  };
+}
+
+export function mainPage(v: AdminView): string {
+  const panels = renderPanels(v);
+  // 결과 글을 단 폼이 화면에 없으면(예: 끝낸 이벤트의 단추) 그 일을 한 칸 맨 위에 대신 보인다
+  const f = v.flash;
+  const marker = f?.error ? 'id="form-error"' : 'id="form-ok"';
+  const head = (v.flashPlace ?? '').split('/')[0] ?? '';
+  const lostIn: AdminCell = (ADMIN_CELLS as readonly string[]).includes(head) ? (head as AdminCell) : 'home';
   const lost =
-    v.flash?.error && !body.includes('id="form-error"')
-      ? `<p class="flash error" role="alert" id="form-error">${esc(v.flash.text)}</p>`
+    f && !f.edit && !Object.values(panels).some((x) => x.includes(marker))
+      ? `<p class="flash${f.error ? ' error' : ''}" role="${f.error ? 'alert' : 'status'}" ${marker}>${esc(f.text)}</p>`
       : '';
-  const header = sections[0] as string;
-  return doc('페어리 운영자', `<main>${header}\n${lost}${body.slice(header.length)}</main>`, {
-    script: true,
-    flash: v.flash ? (v.flash.error ? 'error' : 'ok') : '',
-  });
+  const nav = `<nav class="cells" aria-label="운영자 칸">${ADMIN_CELLS.map((c) => `<a href="#${c}" data-cell="${c}">${esc(CELL_LABEL[c])}</a>`).join('')}</nav>`;
+  const cells = ADMIN_CELLS.map(
+    (c) =>
+      `<div class="panel" id="cell-${c}" data-cell="${c}" role="region" aria-label="${esc(CELL_LABEL[c])}">${c === lostIn ? lost : ''}${panels[c]}</div>`,
+  ).join('\n');
+  return doc(
+    '페어리 운영자',
+    `<div class="shell">${nav}
+<main><header><h1>페어리 운영자</h1>
+<form method="post" action="/admin/logout" class="inline">${hidden(v.csrf)}<button type="submit">로그아웃</button></form></header>
+${cells}</main></div>`,
+    { script: true, flash: f ? (f.error ? 'error' : 'ok') : v.preview ? 'ok' : '' },
+  );
 }
 
 const ACTION_KO: Record<string, string> = {
@@ -704,11 +996,11 @@ function logSection(v: AdminView): string {
   const p = v.logPage;
   const q = (page: number) => {
     const x = new URLSearchParams();
-    if (p.user) x.set('user', p.user);
-    if (p.action) x.set('action', p.action);
-    if (p.text) x.set('text', p.text);
-    x.set('page', String(page));
-    return `/admin/log?${x}`;
+    if (p.user) x.set('lu', p.user);
+    if (p.action) x.set('la', p.action);
+    if (p.text) x.set('lt', p.text);
+    x.set('lp', String(page));
+    return placeHref('settings/log', `?${x}`);
   };
   const rows = v.log
     .map(
@@ -721,11 +1013,11 @@ function logSection(v: AdminView): string {
     .join('');
   const filtered = !!(p.user || p.action || p.text);
   return `<section><h2>운영 기록 ${p.total}건</h2>
-<form method="get" action="/admin/log" class="row">
-<label>대상 이용자 (번호, 기기 코드, 닉네임) <input name="user" maxlength="40" value="${esc(p.user)}"></label>
-<label>동작 종류 <select name="action"><option value="">전체</option>${p.actions.map((a) => `<option value="${esc(a)}"${a === p.action ? ' selected' : ''}>${esc(actionKo(a))}${actionKo(a) === a ? '' : ` (${esc(a)})`}</option>`).join('')}</select></label>
-<label>글 검색 (이름, 대상, 자세히) <input name="text" maxlength="60" value="${esc(p.text)}"></label>
-<button type="submit">찾기</button>${filtered ? '<a class="button-link" href="/admin/log">모두 보기</a>' : ''}
+<form method="get" action="/admin#settings/log" class="row">
+<label>대상 이용자 (번호, 기기 코드, 닉네임) <input name="lu" maxlength="40" value="${esc(p.user)}"></label>
+<label>동작 종류 <select name="la"><option value="">전체</option>${p.actions.map((a) => `<option value="${esc(a)}"${a === p.action ? ' selected' : ''}>${esc(actionKo(a))}${actionKo(a) === a ? '' : ` (${esc(a)})`}</option>`).join('')}</select></label>
+<label>글 검색 (이름, 대상, 자세히) <input name="lt" maxlength="60" value="${esc(p.text)}"></label>
+<button type="submit">찾기</button>${filtered ? `<a class="button-link" href="${placeHref('settings/log')}">모두 보기</a>` : ''}
 </form>
 <p class="hint">한 쪽에 50건씩 보여요. 옛 기록은 이름 없이 세션 표시만 있어요.</p>
 ${p.userMissing ? '<p class="flash error">그 이용자를 찾지 못했어요</p>' : ''}
@@ -777,8 +1069,9 @@ ${n.link ? `<p class="hint">링크: ${esc(n.link)}</p>` : ''}
 </article>`,
   )
   .join('')}
-<form method="post" action="/admin/notices" class="grid">${formErr(v, 'notices')}${hidden(csrf)}
-<p class="wide">공지 넣기 (같은 id 면 바꿔요)</p>
+<h3>공지 넣기 (같은 id 면 바꿔요)</h3>
+${flowHead(v, 'notices', '')}
+<form method="post" action="/admin/notices/preview" class="grid">${formErr(v, 'notices', undefined, true)}${hidden(csrf)}
 <label>id (영문, 숫자, ., _, - 80자) <input name="id" required maxlength="80" pattern="[A-Za-z0-9][A-Za-z0-9._\\-]{0,79}" value="${esc(val(dn, 'id'))}"></label>
 <label>종류 <select name="kind">${opt(dn, 'kind', 'info', '알림 (한 번)', 'info')}${opt(dn, 'kind', 'important', '중요 (확인할 때까지)', 'info')}${opt(dn, 'kind', 'update', '업데이트 권장 (권장 버전보다 낮은 앱)', 'info')}${opt(dn, 'kind', 'force', '강제 업데이트 창의 글 (잠금은 최소 버전)', 'info')}</select></label>
 <label>제목 ko (80자) <input name="title_ko" required maxlength="80" value="${esc(val(dn, 'title_ko'))}"></label>
@@ -790,25 +1083,111 @@ ${n.link ? `<p class="hint">링크: ${esc(n.link)}</p>` : ''}
 <label>끝 (선택) <input name="until" type="datetime-local" value="${esc(val(dn, 'until'))}"></label>
 <label>대상 버전 (선택, 예: &lt;0.5.0) <input name="versions" maxlength="60" value="${esc(val(dn, 'versions'))}"></label>
 <label>운영체제 (선택, 예: darwin,win32) <input name="platforms" maxlength="40" value="${esc(val(dn, 'platforms'))}"></label>
-<label class="confirm"><input type="checkbox" name="confirm" value="yes"> 강제 업데이트 글이면 체크</label>
-<button type="submit">공지 저장</button>
+<button type="submit">미리보기</button>
 </form></section>`;
 }
 
-export const adminCss = `:root { color-scheme: light dark; --bg: #faf8f5; --fg: #2b2622; --muted: #6f655c; --line: #e2dbd2; --card: #fff;
-  --accent: #b5532f; --ok: #2f7a4a; --bad: #b3261e; }
-@media (prefers-color-scheme: dark) { :root { --bg: #1d1a17; --fg: #eee6dd; --muted: #a99e92; --line: #3a342e; --card: #26221e; --accent: #e58c63; --ok: #6cc28a; --bad: #f2867c; } }
+/** 현재 칸과 하위만 보이게 하는 규칙. admin.js 가 html 에 data-cell, data-sub 를 달아야 켜진다 (스크립트가 없으면 모두 보인다) */
+function viewCss(): string {
+  const rules = ['html[data-cell] .panel, html[data-cell] .sub { display: none; }'];
+  for (const c of ADMIN_CELLS) {
+    rules.push(`html[data-cell="${c}"] #cell-${c} { display: block; }`);
+    for (const [id] of CELL_SUBS[c])
+      rules.push(`html[data-sub="${c}/${id}"] #sub-${c}-${id} { display: block; }`);
+  }
+  return `${rules.join('\n')}\n`;
+}
+
+/** 칸 이동 (주소 해시). 머리에서 바로 돌아 첫 그림부터 맞는 칸이 보인다. 해시가 없으면 주소의 찾기 조건으로 정한다 */
+function routerJs(): string {
+  const subs = JSON.stringify(
+    Object.fromEntries(ADMIN_CELLS.map((c) => [c, CELL_SUBS[c].map(([id]) => id)])),
+  );
+  return `  const SUBS = ${subs};
+  const root = document.documentElement;
+  const route = () => {
+    let h = '';
+    try { h = decodeURIComponent(location.hash.slice(1)); } catch { h = ''; }
+    const parts = h.split('/');
+    let c = parts[0];
+    let s = parts[1];
+    if (!Object.prototype.hasOwnProperty.call(SUBS, c)) {
+      const q = new URLSearchParams(location.search);
+      s = undefined;
+      if (['lu', 'la', 'lt', 'lp'].some((k) => q.has(k))) { c = 'settings'; s = 'log'; }
+      else if (q.has('account')) { c = 'users'; s = 'grants'; }
+      else if (['q', 'page', 'sort', 'direction'].some((k) => q.has(k))) { c = 'users'; s = 'list'; }
+      else c = 'home';
+    }
+    let place = c;
+    if (SUBS[c].length) {
+      if (SUBS[c].indexOf(s) < 0) s = SUBS[c][0];
+      place = c + '/' + s;
+    }
+    root.dataset.cell = c;
+    root.dataset.sub = place;
+    return place;
+  };
+  const mark = () => {
+    for (const a of document.querySelectorAll('nav.cells a')) {
+      if (a.dataset.cell === root.dataset.cell) a.setAttribute('aria-current', 'page');
+      else a.removeAttribute('aria-current');
+    }
+    for (const a of document.querySelectorAll('.subnav a')) {
+      if (a.dataset.sub === root.dataset.sub) a.setAttribute('aria-current', 'page');
+      else a.removeAttribute('aria-current');
+    }
+  };
+  route();
+  window.addEventListener('hashchange', () => { route(); mark(); window.scrollTo(0, 0); });
+  document.addEventListener('DOMContentLoaded', () => {
+    mark();
+    // 방금 쓴 결과(오류, 성공)는 그 폼 자리로 화면을 가져온다
+    const note = document.getElementById('form-error') || document.getElementById('form-ok');
+    if (note && note.getClientRects().length > 0) note.scrollIntoView({ block: 'center' });
+  });`;
+}
+
+export const adminCss = `${viewCss()}:root { color-scheme: light dark; --bg: #faf8f5; --fg: #2b2622; --muted: #6f655c; --line: #e2dbd2; --card: #fff;
+  --accent: #b5532f; --on-accent: #fff; --ok: #2f7a4a; --bad: #b3261e; }
+@media (prefers-color-scheme: dark) { :root { --bg: #1d1a17; --fg: #eee6dd; --muted: #a99e92; --line: #3a342e; --card: #26221e; --accent: #e58c63; --on-accent: #1d1a17; --ok: #6cc28a; --bad: #f2867c; } }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif; }
 main { max-width: 1280px; margin: 0 auto; padding: 16px; }
 main.narrow { max-width: 420px; padding-top: 12vh; }
+.shell { max-width: 1480px; margin: 0 auto; display: grid; grid-template-columns: 168px minmax(0, 1fr); align-items: start; }
+.shell > main { max-width: none; width: 100%; min-width: 0; margin: 0; }
+nav.cells { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 6px; padding: 16px 0 16px 16px; }
+nav.cells a { color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; text-decoration: none; background: var(--card); font-weight: 600; }
+nav.cells a[aria-current=page] { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+.subnav { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.subnav a { color: var(--fg); border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; text-decoration: none; background: var(--card); }
+.subnav a[aria-current=page] { color: var(--accent); border-color: var(--accent); font-weight: 700; }
+.panel { min-width: 0; }
+.empty { color: var(--muted); border: 1px dashed var(--line); border-radius: 8px; padding: 14px; text-align: center; margin: 8px 0; }
+ul.todo { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+ul.todo li { border: 1px solid var(--line); border-left-width: 4px; border-radius: 8px; padding: 10px 12px; background: var(--bg); }
+ul.todo li.warn { border-left-color: #b7791f; }
+ul.todo li.bad { border-left-color: var(--bad); }
+ul.todo a { color: var(--fg); text-decoration: none; display: block; }
+ol.steps { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; padding: 0; margin: 0 0 10px; font-size: 13px; }
+ol.steps li { border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; color: var(--muted); }
+ol.steps li.done { color: var(--ok); border-color: var(--ok); }
+ol.steps li.now { color: var(--on-accent); background: var(--accent); border-color: var(--accent); font-weight: 700; }
+.flow-result { margin: 0 0 8px; }
+.flow-result .flash { margin: 6px 0; }
+tr.bad td { color: var(--bad); }
+button.ghost { background: transparent; color: var(--fg); border-color: var(--line); }
+small.working { margin-left: 8px; color: var(--muted); }
+form.grid small.working { grid-column: 1 / -1; }
+.flash.wide { grid-column: 1 / -1; }
 header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 h1 { font-size: 22px; margin: 8px 0 16px; }
 h2 { font-size: 17px; margin: 0 0 8px; }
 section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin: 0 0 16px; overflow-x: auto; }
 .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 16px; }
 .tabs a, .button-link { color: var(--fg); border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; text-decoration: none; background: var(--card); }
-.tabs a.current { color: #fff; background: var(--accent); border-color: var(--accent); font-weight: 700; }
+.tabs a.current { color: var(--on-accent); background: var(--accent); border-color: var(--accent); font-weight: 700; }
 .table-scroll { width: 100%; overflow-x: auto; }
 .table-scroll table { min-width: 980px; }
 .pager { display: flex; align-items: center; justify-content: center; gap: 18px; margin-top: 14px; }
@@ -817,7 +1196,7 @@ section { background: var(--card); border: 1px solid var(--line); border-radius:
 label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 input, select, textarea { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
 textarea { min-height: 64px; resize: vertical; }
-button { font: inherit; border: 1px solid var(--accent); background: var(--accent); color: #fff; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+button { font: inherit; border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
 button.danger { background: transparent; color: var(--bad); border-color: var(--bad); }
 form.inline { display: inline; }
 form.sure { display: inline-flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin: 2px 0; }
@@ -857,15 +1236,19 @@ code { font-size: 12px; word-break: break-all; }
 .previews { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-top: 8px; }
 .preview { width: 100%; max-width: 360px; border: 1px solid var(--line); border-radius: 14px; padding: 14px; background: var(--bg); display: flex; flex-direction: column; gap: 6px; }
 .preview .badge { align-self: flex-start; font-size: 11px; border-radius: 999px; padding: 1px 8px; background: var(--line); }
-.preview.force .badge, .preview.important .badge { background: var(--bad); color: #fff; }
+.preview.force .badge, .preview.important .badge { background: var(--bad); color: var(--on-accent); }
 .preview p { margin: 0; color: var(--muted); font-size: 13px; }
 .preview .btns { display: flex; gap: 6px; justify-content: flex-end; }
 .preview .btns span { border: 1px solid var(--line); border-radius: 6px; padding: 3px 10px; font-size: 13px; }
-.preview .btns span.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.preview .btns span.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 @media (max-width: 600px) {
   main { padding: 10px; }
   section { padding: 12px; }
   .tabs a { flex: 1 1 42%; text-align: center; }
+  .shell { display: block; padding-bottom: 72px; }
+  nav.cells { position: fixed; z-index: 10; inset: auto 0 0 0; flex-direction: row; gap: 4px; padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); background: var(--card); border-top: 1px solid var(--line); }
+  nav.cells a { flex: 1 1 0; text-align: center; padding: 10px 2px; font-size: 14px; }
+  .subnav a { flex: 1 1 auto; text-align: center; }
   input, select, textarea, button { min-height: 42px; }
 }
 `;
@@ -877,6 +1260,7 @@ code { font-size: 12px; word-break: break-all; }
  *    네트워크가 끊겨 결과 없이 돌아온 화면이면 같은 폼에 쓰던 값을 되살리고 안내한다.
  */
 export const adminJs = `(() => {
+${routerJs()}
   const KEY = 'fairy-admin-pending';
   const MAX_AGE = 10 * 60 * 1000;
   const store = (fn) => { try { return fn(window.sessionStorage); } catch { return undefined; } };
@@ -884,6 +1268,7 @@ export const adminJs = `(() => {
   const hiddenSig = (form) => [...form.querySelectorAll('input[type=hidden]')].filter((i) => i.name !== 'csrf').map((i) => i.name + '=' + i.value).join('&');
 
   const release = () => {
+    for (const w of document.querySelectorAll('small.working')) w.remove();
     for (const form of document.querySelectorAll('form.busy')) {
       form.classList.remove('busy');
       form.removeAttribute('aria-busy');
@@ -903,6 +1288,15 @@ export const adminJs = `(() => {
     store((s) => s.setItem(KEY, JSON.stringify({ action: form.getAttribute('action'), sig: hiddenSig(form), fields, at: Date.now() })));
     form.classList.add('busy');
     form.setAttribute('aria-busy', 'true');
+    // 누른 단추 바로 옆에 진행 글 (맨 위가 아니라 눌린 자리에서 보이게)
+    const last = form.querySelector('button[type=submit]:last-of-type');
+    if (last && !form.querySelector('.working')) {
+      const w = document.createElement('small');
+      w.className = 'working';
+      w.setAttribute('role', 'status');
+      w.textContent = '처리하고 있어요';
+      last.after(w);
+    }
     for (const b of form.querySelectorAll('button[type=submit]')) {
       b.dataset.label = b.textContent;
       b.textContent = '처리 중';

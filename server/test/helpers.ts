@@ -156,8 +156,32 @@ export class AdminBrowser {
     return r;
   }
 
-  async page(query = ''): Promise<Res> {
-    const r = await this.api('GET', `/admin${query}`, { headers: { cookie: this.cookie }, ip: this.from });
+  /**
+   * 운영자 화면 한 장 (다섯 칸이 한 문서). 옛 탭 이름('/users?q=..', '/log?user=..')을 주면 그 조건을 새 주소로 바꿔 부른다.
+   * 옛 주소 자체의 돌려보내기는 raw: true 로 본다
+   */
+  async page(query = '', raw = false): Promise<Res> {
+    let url = query;
+    const legacy = /^\/(users|grants|notices|events|features|ai|log)(\?.*)?$/.exec(query);
+    if (legacy && !raw) {
+      const p = new URLSearchParams(legacy[2] ?? '');
+      if (legacy[1] === 'log')
+        for (const [from, to] of [
+          ['user', 'lu'],
+          ['action', 'la'],
+          ['text', 'lt'],
+          ['page', 'lp'],
+        ] as const) {
+          const v = p.get(from);
+          if (v !== null) {
+            p.delete(from);
+            p.set(to, v);
+          }
+        }
+      const q = p.toString();
+      url = q ? `?${q}` : '';
+    }
+    const r = await this.api('GET', `/admin${url}`, { headers: { cookie: this.cookie }, ip: this.from });
     const m = /name="csrf" value="([^"]+)"/.exec(r.text);
     if (m?.[1]) this.csrf = m[1];
     return r;
@@ -186,7 +210,7 @@ export class AdminBrowser {
     assert.equal(r.status, 303, r.text);
     const p = await this.page();
     const m =
-      /<p class="flash( error)?( wide)?" role="(?:status|alert)"(?: id="form-error")?>([^<]*)<\/p>/.exec(
+      /<p class="flash( error)?( wide)?" role="(?:status|alert)"(?: id="form-(?:error|ok)")?>([^<]*)<\/p>/.exec(
         p.text,
       );
     return { ok: !!m && !m[1], text: m?.[3] ?? '' };

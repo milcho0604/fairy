@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
+import { adminJs } from '../src/admin-page';
 import { AdminBrowser, client, type Harness, startHarness } from './helpers';
+
+const adminJsSource = () => adminJs;
 
 const ADMIN_TOKEN = `admin-${randomUUID()}-${randomUUID()}`;
 let h: Harness;
@@ -26,19 +29,89 @@ after(async () => {
   await h?.stop();
 });
 
-describe('운영자 탭과 이용자 표', () => {
-  test('모든 탭은 로그인 뒤 200이고 로그인 없이는 운영 내용을 보여 주지 않는다', async () => {
-    for (const path of ['', '/users', '/grants', '/notices', '/events', '/features', '/ai', '/log']) {
-      const signed = await admin.page(path);
-      assert.equal(signed.status, 200, path);
-      assert.match(signed.text, /aria-current="page"/);
-      assert.doesNotMatch(signed.text, /<script(?![^>]*src="\/admin\/admin\.js")/i);
-      assert.doesNotMatch(signed.text, /<script[^>]*>[^<]/i);
+const LEGACY: Array<[string, string]> = [
+  ['', '#home'],
+  ['/users', '#users/list'],
+  ['/grants', '#users/grants'],
+  ['/notices', '#announce/notices'],
+  ['/events', '#announce/events'],
+  ['/features', '#settings/features'],
+  ['/ai', '#settings/ai'],
+  ['/log', '#settings/log'],
+];
 
+describe('운영자 다섯 칸과 이용자 표', () => {
+  test('로그인 뒤 한 장에 다섯 칸과 하위가 모두 있고 옛 여덟 탭 주소는 새 자리로 간다', async () => {
+    const signed = await admin.page();
+    assert.equal(signed.status, 200);
+    assert.doesNotMatch(signed.text, /<script(?![^>]*src="\/admin\/admin\.js")/i);
+    assert.doesNotMatch(signed.text, /<script[^>]*>[^<]/i);
+    for (const cell of ['home', 'users', 'reports', 'announce', 'settings'])
+      assert.match(signed.text, new RegExp(`id="cell-${cell}"`), cell);
+    assert.equal(
+      (signed.text.match(/<nav class="cells"[^>]*>(.*?)<\/nav>/s)?.[1] ?? '').match(/<a /g)?.length,
+      5,
+    );
+    for (const sub of [
+      'users-list',
+      'users-grants',
+      'announce-notices',
+      'announce-events',
+      'announce-coupons',
+      'settings-features',
+      'settings-ai',
+      'settings-log',
+    ])
+      assert.match(signed.text, new RegExp(`id="sub-${sub}"`), sub);
+    // 옛 탭에 있던 기능이 한 군데도 빠지지 않았다 (폼 주소로 센다)
+    for (const action of [
+      '/admin/grants/preview',
+      '/admin/notices/preview',
+      '/admin/versions',
+      '/admin/events',
+      '/admin/coupons',
+      '/admin/rewards/policy',
+      '/admin/features/mode',
+      '/admin/features/allow',
+      '/admin/ai/mode',
+      '/admin/ai/limits',
+      '/admin/ai/policy',
+    ])
+      assert.match(signed.text, new RegExp(`action="${action}"`), action);
+    assert.match(signed.text, /action="\/admin#users\/list"/);
+    assert.match(signed.text, /action="\/admin#settings\/log"/);
+    assert.match(signed.text, /<h2>사용량<\/h2>/);
+
+    for (const [path, hash] of LEGACY) {
+      const old = await admin.page(path, true);
+      if (path === '') {
+        assert.equal(old.status, 200);
+        continue;
+      }
+      assert.equal(old.status, 302, path);
+      assert.equal(old.headers.get('location'), `/admin${hash}`, path);
+    }
+    // 찾기 조건은 새 이름으로 이어진다
+    const log = await admin.page('/log?user=7&action=login&text=a&page=2', true);
+    assert.equal(log.headers.get('location'), '/admin?lu=7&la=login&lt=a&lp=2#settings/log');
+    const users = await admin.page('/users?q=F-1&sort=coins', true);
+    assert.equal(users.headers.get('location'), '/admin?q=F-1&sort=coins#users/list');
+  });
+
+  test('로그인 없이는 어느 주소든 운영 내용을 보여 주지 않는다', async () => {
+    for (const path of ['', '/users', '/grants', '/notices', '/events', '/features', '/ai', '/log']) {
       const anon = await api('GET', `/admin${path}`);
       assert.equal(anon.status, 200, path);
       assert.match(anon.text, /운영자 토큰/);
       assert.doesNotMatch(anon.text, /name="csrf"/);
+      assert.doesNotMatch(anon.text, /id="cell-/);
+    }
+    for (const path of ['/grants/preview', '/notices/preview', '/flow/cancel']) {
+      const r = await api('POST', `/admin${path}`, {
+        body: 'csrf=x',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      });
+      assert.equal(r.status, 401, path);
     }
   });
 
@@ -91,6 +164,8 @@ describe('운영자 탭과 이용자 표', () => {
     const legacy = await admin.page(`?q=${encodeURIComponent(codes[1] ?? '')}`);
     assert.equal(legacy.status, 200);
     assert.match(legacy.text, /이용자 찾기와 자세히 보기/);
+    // 옛 주소 /admin?q= 는 주소 해시가 없어도 이용자 칸으로 열린다 (스크립트가 주소의 찾기 조건으로 정한다)
+    assert.match(adminJsSource(), /'q', 'page', 'sort', 'direction'/);
   });
 });
 
@@ -132,12 +207,241 @@ describe('운영자 지급 탭', () => {
       confirm: 'yes',
     });
     assert.equal(tooManyCoins.status, 303);
-    assert.equal(tooManyCoins.headers.get('location'), '/admin/grants#form-error');
+    assert.equal(tooManyCoins.headers.get('location'), '/admin#users/grants');
     const many = Array.from({ length: 21 }, () => d.code).join('\n');
     assert.equal(
       (await admin.act('/admin/grants/batch', { ...base, accounts: many, confirm: 'yes' })).ok,
       false,
     );
     assert.equal((await admin.post('/admin/grants/batch', { ...base, confirm: 'yes' }, false)).status, 403);
+  });
+});
+
+/** 한 문서에서 칸 하나의 본문 (다른 칸의 같은 글과 섞이지 않게) */
+const cellOf = (text: string, cell: string) => {
+  const start = text.indexOf(`id="cell-${cell}"`);
+  const next = text.indexOf('<div class="panel"', start + 1);
+  return text.slice(start, next < 0 ? undefined : next);
+};
+
+describe('발행과 지급의 공통 흐름 (작성, 대상 확인, 미리보기, 확정, 결과 확인)', () => {
+  const grantFields = (accounts: string, extra: Record<string, string> = {}) => ({
+    accounts,
+    coins: '7',
+    chat_passes: '1',
+    days: '10',
+    reason: '흐름 시험',
+    ...extra,
+  });
+  const noteCount = async (id: string) =>
+    Number((await h.pool.query('SELECT count(*) AS n FROM inbox WHERE account_id = $1', [id])).rows[0].n);
+
+  test('대상 확인까지는 아무것도 쓰지 않고, 새로 고쳐도 남고, 확정해야 보낸다', async () => {
+    const a = await newDevice('18+', '흐름하나');
+    const b = await newDevice('18+', '흐름둘');
+    const logsBefore = Number((await h.pool.query('SELECT count(*) AS n FROM admin_log')).rows[0].n);
+    const r = await admin.post('/admin/grants/preview', grantFields(`${a.code}\n${b.id}\n${a.code}`));
+    assert.equal(r.status, 303);
+    assert.equal(r.headers.get('location'), '/admin#users/grants');
+    assert.equal(await noteCount(a.id), 0);
+    assert.equal(await noteCount(b.id), 0);
+    for (let i = 0; i < 2; i++) {
+      const page = await admin.page();
+      const grants = cellOf(page.text, 'users');
+      assert.match(grants, /<li class="now" aria-current="step">3\. 미리보기<\/li>/);
+      assert.match(grants, /action="\/admin\/grants\/batch"/);
+      assert.doesNotMatch(grants, /action="\/admin\/grants\/preview"/);
+      assert.match(grants, /<dt>받는 사람<\/dt><dd>2명<\/dd>/);
+      assert.match(grants, /흐름하나/);
+      assert.match(grants, /흐름둘/);
+      assert.match(grants, /<span class="tag">중복<\/span>/);
+      assert.match(grants, /<dt>모두 합쳐<\/dt><dd>코인 14, 채팅 이용권 2장<\/dd>/);
+      assert.doesNotMatch(grants, /type="submit" disabled/);
+      assert.match(grants, /name="confirm" value="yes" required/);
+      assert.match(page.text, /data-flash="ok"/);
+    }
+    assert.equal(Number((await h.pool.query('SELECT count(*) AS n FROM admin_log')).rows[0].n), logsBefore);
+
+    const fields = grantFields(`${a.code}\n${b.id}\n${a.code}`);
+    const noConfirm = await admin.act('/admin/grants/batch', fields);
+    assert.equal(noConfirm.ok, false);
+    assert.equal(await noteCount(a.id), 0);
+    // 실패하면 미리보기는 닫히고 쓴 값은 작성 화면에 돌아온다
+    const back = cellOf((await admin.page()).text, 'users');
+    assert.match(back, /<li class="now" aria-current="step">1\. 작성<\/li>/);
+
+    await admin.post('/admin/grants/preview', fields);
+    const done = await admin.act('/admin/grants/batch', { ...fields, confirm: 'yes' });
+    assert.ok(done.ok, done.text);
+    assert.equal(await noteCount(a.id), 1);
+    assert.equal(await noteCount(b.id), 1);
+    const after = cellOf((await admin.page()).text, 'users');
+    assert.doesNotMatch(after, /class="now" aria-current="step">3\. 미리보기/);
+  });
+
+  test('결과 확인 단계는 성공 글을 폼 자리에 보이고 운영 기록으로 이어 준다', async () => {
+    const d = await newDevice('18+', '결과확인');
+    const fields = grantFields(d.code);
+    const r = await admin.post('/admin/grants/batch', { ...fields, confirm: 'yes' });
+    assert.equal(r.status, 303);
+    assert.equal(r.headers.get('location'), '/admin#users/grants');
+    const page = await admin.page();
+    const users = cellOf(page.text, 'users');
+    assert.match(
+      users,
+      /<div class="flow-result"><ol class="steps"[^>]*>.*?<li class="now" aria-current="step">5\. 결과 확인<\/li>/s,
+    );
+    assert.match(users, /<p class="flash" role="status" id="form-ok">1명에게 지급 쪽지를 보냈어요/);
+    assert.match(users, /href="\/admin\?la=grant\.batch#settings\/log"/);
+    // 맨 위가 아니라 폼 자리에만 한 번 (같은 글이 두 번 나오지 않는다)
+    assert.equal(page.text.split('id="form-ok"').length, 2);
+    // 한 번 보이고 사라진다
+    assert.doesNotMatch((await admin.page()).text, /id="form-ok"/);
+  });
+
+  test('찾지 못한 계정, 18세 미만 채팅 이용권은 대상 확인에서 막히고 고치기로 쓴 값이 돌아온다', async () => {
+    const minor = await newDevice('14+', '열넷');
+    await admin.post('/admin/grants/preview', grantFields(`${minor.code}\nF-NOPE-0000`));
+    const blocked = cellOf((await admin.page()).text, 'users');
+    assert.match(blocked, /찾지 못함/);
+    assert.match(blocked, /찾지 못한 계정이 1개 있어요/);
+    assert.match(blocked, /<button type="submit" disabled>확정하고 지급 쪽지 보내기/);
+
+    await admin.post('/admin/flow/cancel', { action: 'grants/batch' });
+    const edit = cellOf((await admin.page()).text, 'users');
+    assert.match(edit, /<li class="now" aria-current="step">1\. 작성<\/li>/);
+    assert.match(edit, new RegExp(`>${minor.code}\\nF-NOPE-0000</textarea>`));
+    assert.match(edit, /name="coins"[^>]*value="7"/);
+    assert.doesNotMatch(edit, /role="alert"/);
+    // 한 번만 되살린다
+    assert.doesNotMatch(cellOf((await admin.page()).text, 'users'), /F-NOPE-0000/);
+
+    await admin.post('/admin/grants/preview', grantFields(minor.code));
+    assert.match(
+      cellOf((await admin.page()).text, 'users'),
+      /만 18세 미만 계정에는 채팅 이용권을 줄 수 없어요/,
+    );
+    await admin.post('/admin/flow/cancel', { action: 'grants/batch' });
+    await admin.page();
+    // 코인만이면 14세도 대상이다
+    await admin.post('/admin/grants/preview', grantFields(minor.code, { chat_passes: '0' }));
+    assert.doesNotMatch(cellOf((await admin.page()).text, 'users'), /type="submit" disabled/);
+    await admin.post('/admin/flow/cancel', { action: 'grants/batch' });
+    await admin.page();
+  });
+
+  test('작성이 맞지 않으면 미리보기로 가지 않고 그 폼에 오류가 뜬다. 출처와 CSRF 는 그대로', async () => {
+    const d = await newDevice('18+', '검사');
+    const bad = await admin.post('/admin/grants/preview', grantFields(d.code, { coins: '10001' }));
+    assert.equal(bad.status, 303);
+    assert.equal(bad.headers.get('location'), '/admin#users/grants');
+    const page = await admin.page();
+    const users = cellOf(page.text, 'users');
+    assert.match(users, /<p class="flash error wide" role="alert" id="form-error">코인: 0~10000/);
+    assert.match(users, /<li class="now" aria-current="step">1\. 작성<\/li>/);
+    assert.match(users, /name="coins"[^>]*value="10001"/);
+    assert.equal((await admin.post('/admin/grants/preview', grantFields(d.code), false)).status, 403);
+    assert.equal(
+      (await admin.post('/admin/grants/preview', grantFields(d.code), true, 'https://evil.example.com'))
+        .status,
+      403,
+    );
+    assert.equal((await admin.post('/admin/flow/cancel', { action: 'notices' }, false)).status, 403);
+    await admin.page();
+  });
+
+  test('공지는 미리보기에서 공지 창 모양과 바뀌는 것을 보고 확정한다. 강제 글은 확정에서 체크해야 한다', async () => {
+    const form = {
+      id: 'flow-notice',
+      kind: 'info',
+      title_ko: '흐름 공지',
+      title_en: 'Flow notice',
+      body_ko: '본문',
+      body_en: 'Body',
+    };
+    const r = await admin.post('/admin/notices/preview', form);
+    assert.equal(r.headers.get('location'), '/admin#announce/notices');
+    const before = await h.pool.query(`SELECT 1 FROM site_doc WHERE name = 'notices'`);
+    const page = await admin.page();
+    const announce = cellOf(page.text, 'announce');
+    assert.match(announce, /<li class="now" aria-current="step">3\. 미리보기<\/li>/);
+    assert.match(announce, /<div class="preview info" lang="ko">/);
+    assert.match(announce, /없음 \(새로 넣어요\)/);
+    assert.match(announce, /action="\/admin\/notices" class="grid"/);
+    assert.doesNotMatch(announce, /강제 업데이트 글이에요/);
+    assert.equal(
+      (await h.pool.query(`SELECT 1 FROM site_doc WHERE name = 'notices'`)).rowCount,
+      before.rowCount,
+    );
+    const saved = await admin.act('/admin/notices', form);
+    assert.ok(saved.ok, saved.text);
+    assert.match(cellOf((await admin.page()).text, 'announce'), /flow-notice/);
+
+    // 같은 id 로 다시 올리면 바꾼다고 알려 준다. 강제 글은 체크 칸이 있다
+    const force = { ...form, kind: 'force', title_ko: '바뀐 제목' };
+    await admin.post('/admin/notices/preview', force);
+    const again = cellOf((await admin.page()).text, 'announce');
+    assert.match(again, /있음, 바꿔요 \(지금 제목 흐름 공지\)/);
+    assert.match(again, /name="confirm" value="yes" required/);
+    assert.equal((await admin.act('/admin/notices', force)).ok, false);
+    await admin.post('/admin/notices/preview', force);
+    assert.ok((await admin.act('/admin/notices', { ...force, confirm: 'yes' })).ok);
+    assert.ok((await admin.act('/admin/notices/delete', { id: 'flow-notice', confirm: 'flow-notice' })).ok);
+  });
+});
+
+describe('홈의 할 일과 신고 칸, 앱 개요 API', () => {
+  const overview = async (query = '') =>
+    api('GET', `/v1/admin/overview${query}`, { headers: { cookie: admin.cookie }, ip: admin.from });
+
+  test('신고가 없으면 빈 상태, 있으면 건수가 홈 카드와 신고 칸에 보인다', async () => {
+    let page = await admin.page();
+    assert.match(cellOf(page.text, 'reports'), /접수된 신고가 없어요/);
+    assert.doesNotMatch(cellOf(page.text, 'home'), /접수된 신고가/);
+    assert.equal((await overview()).body.reports.total, 0);
+
+    const d = await newDevice('18+', '신고자');
+    await h.pool.query(
+      `INSERT INTO ai_report (account_id, question, answer) VALUES ($1, '비밀질문본문', '비밀답변본문')`,
+      [d.id],
+    );
+    page = await admin.page();
+    assert.match(cellOf(page.text, 'reports'), /접수된 신고가 <strong>1건<\/strong>/);
+    assert.match(cellOf(page.text, 'home'), /<a href="#reports">접수된 신고가 1건 있어요<\/a>/);
+    // 대화 본문은 아직 어느 화면에도 나오지 않는다
+    assert.doesNotMatch(page.text, /비밀질문본문|비밀답변본문/);
+    const ov = await overview();
+    assert.equal(ov.status, 200);
+    assert.equal(ov.body.reports.total, 1);
+    assert.ok(ov.body.todo.some((t: { kind: string; n: number }) => t.kind === 'reports' && t.n === 1));
+    await h.pool.query('DELETE FROM ai_report');
+  });
+
+  test('앱 개요 API 는 옛 앱이 읽던 칸을 그대로 두고 새 칸만 더한다', async () => {
+    const ov = await overview();
+    assert.equal(ov.status, 200);
+    for (const key of [
+      'summary',
+      'accounts',
+      'users',
+      'ai',
+      'events',
+      'coupons',
+      'notices',
+      'latest',
+      'features',
+      'versions',
+      'log',
+      'logPage',
+      'rewardsLoginOnly',
+    ])
+      assert.ok(key in ov.body, key);
+    for (const key of ['accounts', 'coins', 'tickets', 'aiCostMicros'])
+      assert.equal(typeof ov.body.summary[key], 'number', key);
+    assert.ok(Array.isArray(ov.body.recent) && ov.body.recent.length <= 5);
+    assert.ok(Array.isArray(ov.body.todo));
+    // 옛 앱의 운영 기록 찾기 이름(user, action, text, page)은 그대로 듣는다
+    const some = await overview('?action=grant.batch');
+    assert.ok(some.body.log.every((l: { action: string }) => l.action === 'grant.batch'));
   });
 });

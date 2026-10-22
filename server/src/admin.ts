@@ -21,13 +21,18 @@ import { lockAccount, lockAccountsOrdered } from './accounts';
 import { AdminAccess } from './admin-access';
 import { AdminAuth, type AdminSession, actorOf, clearCookie } from './admin-auth';
 import {
-  type AdminTab,
+  type AdminCell,
+  type AdminPlace,
   type AdminUsersPage,
   type AdminView,
   adminCss,
   adminJs,
+  type FlowPreview,
+  type GrantTarget,
+  LEGACY_PLACES,
   loginPage,
   mainPage,
+  todoOf,
 } from './admin-page';
 import { AI_MODES, AiAdmin, type AiMode, type AiSettings, findAccount } from './ai-admin';
 import { CONFIG } from './app.tokens';
@@ -41,6 +46,7 @@ import {
   checkDoc,
   cleanText,
   compareVersion,
+  type DocNotice,
   emptyDoc,
   type FormFields,
   type NoticeDoc,
@@ -133,6 +139,13 @@ export const ADMIN_ACTIONS = [
 export type AdminAction = (typeof ADMIN_ACTIONS)[number];
 export const isAdminAction = (v: string): v is AdminAction =>
   (ADMIN_ACTIONS as readonly string[]).includes(v);
+
+/** 작성, 대상 확인, 미리보기, 확정 흐름을 타는 쓰기 (웹만. 앱 API 는 이전 그대로 한 번에 쓴다) */
+export const FLOW_ACTIONS = ['grants/batch', 'notices'] as const;
+export type FlowAction = (typeof FLOW_ACTIONS)[number];
+/** 대상 확인 화면을 이만큼 지나면 버린다 */
+const PREVIEW_MS = 30 * 60_000;
+const isFlowAction = (v: unknown): v is FlowAction => (FLOW_ACTIONS as readonly unknown[]).includes(v);
 
 interface AccountRow {
   id: string;
@@ -293,10 +306,10 @@ export class AdminService {
   /** 화면에 그릴 것 모두 */
   async view(
     query: string | undefined,
-    tab: AdminTab = 'overview',
+    tab: AdminCell = 'home',
     userOptions: { page?: string; sort?: string; direction?: string } = {},
     logOptions: LogOptions = {},
-  ): Promise<Omit<AdminView, 'csrf' | 'flash'>> {
+  ): Promise<Omit<AdminView, 'csrf' | 'flash' | 'flashPlace' | 'preview' | 'grantRef'>> {
     const q = this.db.pool;
     const sum = await q.query<{ accounts: string; coins: string; tickets: string }>(
       `SELECT (SELECT count(*) FROM account WHERE closed_at IS NULL) AS accounts,
@@ -342,8 +355,34 @@ export class AdminService {
         GROUP BY app_version`,
     );
     const log = await this.logs(logOptions);
+    const recent = await q.query<AdminView['recent'][number]>(
+      `SELECT (extract(epoch FROM l.at) * 1000)::bigint AS at, l.actor, l.actor_name AS "actorName", l.action, l.target,
+              CASE WHEN ac.id IS NULL THEN NULL ELSE COALESCE(ac.nickname, '닉네임 없음') || ' #' || ac.id END AS "targetName"
+         FROM admin_log l LEFT JOIN account ac
+           ON ac.id = CASE WHEN l.target ~ '^account:[0-9]{1,18}$' THEN substr(l.target, 9)::bigint END
+        ORDER BY l.id DESC LIMIT 5`,
+    );
+    // 신고는 사용자가 따로 동의한 대화만 30일 둔다 (목록 화면은 신고 처리 이슈가 연다). 여기서는 건수만 센다
+    const reports = await q.query<{ n: string }>('SELECT count(*) AS n FROM ai_report');
+    const reportCount = Number(reports.rows[0]?.n ?? 0);
+    const settings = await this.aiAdmin.settings();
+    const budgetMicros = settings.monthlyBudgetMicros;
     return {
       tab,
+      reports: { total: reportCount },
+      recent: recent.rows,
+      todo: todoOf({
+        reports: reportCount,
+        costMicros: Number(ai.rows[0]?.cost ?? 0),
+        budgetMicros,
+        events: events.rows.map((e) => ({ starts: Number(e.starts), ends: Number(e.ends) })),
+        coupons: coupons.rows.map((c) => ({
+          starts: Number(c.starts),
+          ends: Number(c.ends),
+          disabled: c.disabled,
+        })),
+        now: Date.now(),
+      }),
       summary: {
         accounts: Number(sum.rows[0]?.accounts ?? 0),
         coins: Number(sum.rows[0]?.coins ?? 0),
@@ -358,7 +397,7 @@ export class AdminService {
       users: await this.users(query, userOptions),
       query,
       ai: {
-        ...(await this.aiAdmin.settings()),
+        ...settings,
         allow: await this.aiAdmin.allowList(),
         waitlist: await this.aiAdmin.waitlist(),
       },
@@ -805,6 +844,106 @@ export class AdminService {
         data: { recipients: accounts.length },
       };
     });
+  }
+
+  // ---- 발행과 지급의 공통 흐름 (작성, 대상 확인, 미리보기, 확정, 결과 확인) ----
+
+  /**
+   * 작성 값이 흐름에 올라갈 수 있는지 본다 (확정 단계의 같은 검사를 확인 칸만 빼고 한다). 아무것도 쓰지 않는다.
+   * 맞지 않으면 Refused
+   */
+  checkFlow(action: FlowAction, f: FormFields): void {
+    if (action === 'grants/batch') {
+      grantInput({ ...f, confirm: 'yes' });
+      return;
+    }
+    const n = noticeFromForm(f);
+    if (typeof n === 'string') throw new Refused(n);
+  }
+
+  /** 세션에 둔 작성 값으로 미리보기를 그린다: 지급은 받을 사람을 한 줄씩 찾아 보이고, 공지는 같은 id 가 있는지 본다 */
+  async previewOf(
+    action: FlowAction,
+    fields: Record<string, string | string[]>,
+  ): Promise<FlowPreview | undefined> {
+    const f = fieldsOf(fields);
+    try {
+      this.checkFlow(action, f);
+    } catch {
+      return undefined;
+    }
+    if (action === 'notices') {
+      const n = noticeFromForm(f) as DocNotice;
+      const doc = await this.db.pool.query<{ body: unknown }>(
+        `SELECT body FROM site_doc WHERE name = 'notices'`,
+      );
+      const old = doc.rows[0] ? readDoc(doc.rows[0].body).notices.find((x) => x.id === n.id) : undefined;
+      return { action, fields, notice: n, replaces: old ? old.title.ko : null };
+    }
+    const g = grantInput({ ...f, confirm: 'yes' });
+    const targets: GrantTarget[] = [];
+    const seen = new Set<string>();
+    let under = false;
+    for (const ref of g.refs) {
+      const id = await findAccount(this.db.pool, ref);
+      if (!id) {
+        targets.push({ ref, found: false });
+        continue;
+      }
+      const a = await this.db.pool.query<{
+        id: string;
+        code: string;
+        nickname: string | null;
+        age: string;
+        merged_into: string | null;
+      }>('SELECT id, code, nickname, age, merged_into FROM account WHERE id = $1', [id]);
+      const row = a.rows[0];
+      // 합쳐진 계정에 주면 남은 계정이 받는다 (확정 때도 같다)
+      const live = row?.merged_into
+        ? (
+            await this.db.pool.query<typeof row>(
+              'SELECT id, code, nickname, age, merged_into FROM account WHERE id = $1',
+              [row.merged_into],
+            )
+          ).rows[0]
+        : row;
+      if (!live) {
+        targets.push({ ref, found: false });
+        continue;
+      }
+      const duplicate = seen.has(live.id);
+      seen.add(live.id);
+      if (live.age !== '18+') under = true;
+      targets.push({
+        ref,
+        found: true,
+        id: live.id,
+        code: live.code,
+        nickname: live.nickname,
+        age: live.age,
+        duplicate,
+      });
+    }
+    const missing = targets.filter((t) => !t.found).length;
+    const blocked =
+      missing > 0
+        ? `찾지 못한 계정이 ${missing}개 있어요. 고치기로 돌아가 주세요`
+        : g.passes > 0 && under
+          ? '만 18세 미만 계정에는 채팅 이용권을 줄 수 없어요. 고치기로 돌아가 주세요'
+          : null;
+    return {
+      action,
+      fields,
+      grant: {
+        targets,
+        people: seen.size,
+        coins: g.coins,
+        passes: g.passes,
+        days: g.days,
+        reason: g.reason,
+        blocked,
+      },
+    };
   }
 
   // ---- 채팅 이용권 (AI 대화권) 관리 ----
@@ -1314,44 +1453,53 @@ const header = (req: AdminReq, name: string): string | undefined => {
   return Array.isArray(v) ? v[0] : v;
 };
 
-const TAB_PATHS: Record<AdminTab, string> = {
-  overview: '/admin',
-  users: '/admin/users',
-  grants: '/admin/grants',
-  notices: '/admin/notices',
-  events: '/admin/events',
-  features: '/admin/features',
-  ai: '/admin/ai',
-  log: '/admin/log',
-};
-
-export function tabFromPath(path: string | undefined): AdminTab | undefined {
-  const found = (Object.entries(TAB_PATHS) as Array<[AdminTab, string]>).find(([, value]) => value === path);
-  return found?.[0];
+/** 옛 탭 주소 (/admin/users 같은 것)가 가던 자리. 아니면 undefined */
+export function legacyPlace(path: string | undefined): AdminPlace | undefined {
+  const m = /^\/admin(?:\/([a-z]+))?\/?$/.exec(path ?? '');
+  if (!m) return undefined;
+  const key = m[1] ?? '';
+  return Object.hasOwn(LEGACY_PLACES, key) ? LEGACY_PLACES[key] : undefined;
 }
 
-const ACTION_TABS: Record<AdminAction, AdminTab> = {
-  events: 'events',
-  'events/end': 'events',
-  coupons: 'events',
-  'coupons/disable': 'events',
-  notes: 'grants',
-  'grants/batch': 'grants',
-  notices: 'notices',
-  'notices/delete': 'notices',
-  versions: 'notices',
-  'ai/mode': 'ai',
-  'ai/limits': 'ai',
-  'ai/revoke': 'users',
-  'ai/subscribe': 'users',
-  'ai/cancel': 'users',
-  'ai/block': 'users',
-  'ai/allow': 'ai',
-  'ai/policy': 'ai',
-  'rewards/policy': 'events',
-  'features/mode': 'features',
-  'features/allow': 'features',
+/** 쓰기가 끝난 뒤 돌아가는 자리 (결과 글이 그 폼 옆에 보이는 자리) */
+const ACTION_PLACES: Record<AdminAction, AdminPlace> = {
+  events: 'announce/events',
+  'events/end': 'announce/events',
+  coupons: 'announce/coupons',
+  'coupons/disable': 'announce/coupons',
+  notes: 'users/grants',
+  'grants/batch': 'users/grants',
+  notices: 'announce/notices',
+  'notices/delete': 'announce/notices',
+  versions: 'announce/notices',
+  'ai/mode': 'settings/ai',
+  'ai/limits': 'settings/ai',
+  'ai/revoke': 'users/list',
+  'ai/subscribe': 'users/list',
+  'ai/cancel': 'users/list',
+  'ai/block': 'users/list',
+  'ai/allow': 'settings/ai',
+  'ai/policy': 'settings/ai',
+  'rewards/policy': 'announce/coupons',
+  'features/mode': 'settings/features',
+  'features/allow': 'settings/features',
 };
+
+/** 옛 웹 주소의 찾기 조건을 새 이름으로 (운영 기록 조건은 사용자 표의 쪽 넘김과 이름이 겹치지 않게 lu, la, lt, lp) */
+function legacyQuery(path: string | undefined, query: Record<string, unknown>): string {
+  const p = new URLSearchParams();
+  const log = path === '/admin/log';
+  for (const [k, v] of Object.entries(query)) {
+    if (typeof v !== 'string') continue;
+    const name = log
+      ? ({ user: 'lu', action: 'la', text: 'lt', page: 'lp' } as Record<string, string>)[k]
+      : k;
+    if (name && ['q', 'page', 'sort', 'direction', 'account', 'lu', 'la', 'lt', 'lp'].includes(name))
+      p.set(name, v.slice(0, 200));
+  }
+  const q = p.toString();
+  return q ? `?${q}` : '';
+}
 
 /**
  * 다른 사이트에서 온 요청은 받지 않는다 (SameSite 쿠키와 CSRF 토큰 위에 한 겹 더. CSRF 토큰은 따로 늘 본다).
@@ -1396,10 +1544,16 @@ export const scopeOf = (f: FormFields): string => {
   return typeof v === 'string' ? v.trim().slice(0, 40) : '';
 };
 
-/** 운영 기록 탭 주소의 찾기 칸 */
+/** 앱 API 의 운영 기록 찾기 칸 (user, action, text, page) */
 function logOptionsOf(query: Record<string, unknown>): LogOptions {
   const text = (k: string) => (typeof query[k] === 'string' ? (query[k] as string) : undefined);
   return { user: text('user'), action: text('action'), text: text('text'), page: text('page') };
+}
+
+/** 웹 화면의 운영 기록 찾기 칸 (한 화면에 이용자 표도 있어 이름을 달리한다: lu, la, lt, lp) */
+function webLogOptionsOf(query: Record<string, unknown>): LogOptions {
+  const text = (k: string) => (typeof query[k] === 'string' ? (query[k] as string) : undefined);
+  return { user: text('lu'), action: text('la'), text: text('lt'), page: text('lp') };
 }
 
 /** 운영자 화면 (웹): 로그인 폼, 화면, 폼 POST */
@@ -1440,28 +1594,83 @@ export class AdminController {
     res.status(200).send(adminJs);
   }
 
+  /**
+   * 운영자 화면 한 장 (다섯 칸이 한 문서에 있고 현재 칸은 주소 해시). 옛 탭 주소(/admin/users 등)는 새 자리로 돌려보낸다.
+   * 로그인 전에는 어느 주소든 로그인 화면만 (운영 내용 없음)
+   */
   @Get(['', 'users', 'grants', 'notices', 'events', 'features', 'ai', 'log'])
   async page(@Req() req: AdminReq, @Res() res: AdminRes, @Query() query: Record<string, unknown>) {
     if (this.off(res)) return;
     const s = this.auth.session(req.headers.cookie);
     if (!s) return html(res, 200, loginPage({}));
     this.limiter.check(`admin:${s.key}`, LIMITS.adminBySession);
+    const path = (req.path ?? '/admin').replace(/\/$/, '') || '/admin';
+    if (path !== '/admin') {
+      const place = legacyPlace(path);
+      secure(res);
+      return res.redirect(302, `/admin${legacyQuery(path, query)}#${place ?? 'home'}`);
+    }
     const flash = s.flash;
     s.flash = undefined;
-    const legacyQuery = typeof query.q === 'string' && query.q.trim() ? query.q.trim() : undefined;
-    const tab = req.path === '/admin' && legacyQuery ? 'users' : (tabFromPath(req.path) ?? 'overview');
-    const selected = tab === 'grants' && typeof query.account === 'string' ? query.account : legacyQuery;
+    const text = (k: string) =>
+      typeof query[k] === 'string' && (query[k] as string).trim() ? (query[k] as string).trim() : undefined;
+    const grantRef = text('account');
     const view = await this.admin.view(
-      selected,
-      tab,
+      text('q') ?? grantRef,
+      'home',
       {
         page: typeof query.page === 'string' ? query.page : undefined,
         sort: typeof query.sort === 'string' ? query.sort : undefined,
         direction: typeof query.direction === 'string' ? query.direction : undefined,
       },
-      tab === 'log' ? logOptionsOf(query) : {},
+      webLogOptionsOf(query),
     );
-    html(res, 200, mainPage({ ...view, csrf: s.csrf, flash }));
+    if (s.preview && Date.now() - s.preview.at > PREVIEW_MS) s.preview = undefined;
+    const preview = s.preview ? await this.admin.previewOf(s.preview.action, s.preview.fields) : undefined;
+    if (s.preview && !preview) s.preview = undefined;
+    const formPlace = flash?.form && isAdminAction(flash.form) ? ACTION_PLACES[flash.form] : undefined;
+    html(res, 200, mainPage({ ...view, csrf: s.csrf, flash, flashPlace: formPlace, preview, grantRef }));
+  }
+
+  /**
+   * 작성 값이 맞는지 보고 대상 확인과 미리보기를 세션에 둔다 (쓰기 없음). 맞지 않으면 그 폼에 오류를 달아 돌려보낸다.
+   * 폼은 /admin/grants/preview 와 /admin/notices/preview
+   */
+  @Post(['grants/preview', 'notices/preview'])
+  async previewStep(@Req() req: AdminReq, @Res() res: AdminRes) {
+    const action = (req.path ?? '').replace(/^\/admin\//, '').replace(/\/preview$/, '');
+    const name: FlowAction = action === 'grants' ? 'grants/batch' : 'notices';
+    await this.guarded(
+      req,
+      res,
+      async (s, f) => {
+        this.admin.checkFlow(name, f);
+        s.preview = { action: name, fields: draftOf(f), at: Date.now() };
+        return undefined;
+      },
+      () => '/admin',
+      name,
+      () => ACTION_PLACES[name],
+    );
+  }
+
+  /** 미리보기에서 "고치기": 미리보기를 닫고 쓰던 값이 채워진 작성 화면으로 */
+  @Post('flow/cancel')
+  async cancelFlow(@Req() req: AdminReq, @Res() res: AdminRes) {
+    await this.guarded(
+      req,
+      res,
+      async (s, f) => {
+        const kept = s.preview;
+        s.preview = undefined;
+        if (kept && (f.action === undefined || kept.action === f.action))
+          s.flash = { text: '', error: false, edit: true, form: kept.action, fields: kept.fields };
+        return undefined;
+      },
+      undefined,
+      undefined,
+      (f) => (isFlowAction(f.action) ? ACTION_PLACES[f.action] : 'home'),
+    );
   }
 
   @Post('login')
@@ -1509,25 +1718,28 @@ export class AdminController {
     await this.guarded(
       req,
       res,
-      async (s, f) => (await this.admin.run(name, actorOf(s), f)).text,
-      (f) => {
-        const base = TAB_PATHS[ACTION_TABS[name]];
-        return ACTION_TABS[name] === 'users' && f.account
-          ? `${base}?q=${encodeURIComponent(f.account.trim())}`
-          : base;
+      async (s, f) => {
+        // 쓰기를 시도하면 쓰던 미리보기는 끝난 것이다 (성공이면 결과 확인, 실패면 오류와 쓴 값이 작성 화면에)
+        if (isFlowAction(name)) s.preview = undefined;
+        return (await this.admin.run(name, actorOf(s), f)).text;
       },
+      (f) =>
+        ACTION_PLACES[name].startsWith('users/list') && f.account
+          ? `/admin?q=${encodeURIComponent(f.account.trim())}`
+          : '/admin',
       name,
+      () => ACTION_PLACES[name],
     );
   }
 
-  /** 같은 운영자 화면에서 제출한 폼이면 그 탭과 안전한 조회 문자열로 돌아간다. */
+  /** 같은 운영자 화면에서 제출한 폼이면 안전한 조회 문자열(찾기 조건, 쪽)을 그대로 이어 간다. */
   private returnTo(req: AdminReq, fallback: string): string {
     const referer = header(req, 'referer');
     if (!referer) return fallback;
     try {
       const url = new URL(referer, this.config.publicUrl);
-      if (url.origin !== new URL(this.config.publicUrl).origin || !tabFromPath(url.pathname)) return fallback;
-      return `${url.pathname}${url.search}`.slice(0, 300);
+      if (url.origin !== new URL(this.config.publicUrl).origin || url.pathname !== '/admin') return fallback;
+      return `/admin${url.search}`.slice(0, 300);
     } catch {
       return fallback;
     }
@@ -1543,6 +1755,7 @@ export class AdminController {
     fn: (s: AdminSession, f: FormFields) => Promise<string | undefined>,
     back: (f: FormFields) => string = () => '/admin',
     form?: string,
+    place: (f: FormFields) => AdminPlace = () => 'home',
   ): Promise<void> {
     if (this.off(res)) return;
     const s = this.auth.session(req.headers.cookie);
@@ -1556,7 +1769,8 @@ export class AdminController {
     const to = this.returnTo(req, back(f));
     try {
       const text = await fn(s, f);
-      if (text !== undefined) s.flash = { text, error: false };
+      // 성공 글도 누른 폼 자리에 보이게 폼 이름과 대상을 같이 담는다
+      if (text !== undefined) s.flash = { text, error: false, ...(form ? { form, scope: scopeOf(f) } : {}) };
     } catch (err) {
       // 실패하면 쓴 값을 세션에 한 번만 담아 두었다가 같은 폼을 채워 다시 그린다 (비밀값 칸과 확인 칸은 빼고)
       const keep = form ? { form, scope: scopeOf(f), fields: draftOf(f) } : {};
@@ -1567,7 +1781,7 @@ export class AdminController {
       }
     }
     secure(res);
-    res.redirect(303, s.flash?.error ? `${to}#form-error` : to);
+    res.redirect(303, `${to.split('#')[0]}#${place(f)}`);
   }
 }
 
@@ -1622,7 +1836,7 @@ export class AdminApiController {
     const q = query.q;
     return this.admin.view(
       typeof q === 'string' && q.trim() ? q.trim() : undefined,
-      'overview',
+      'home',
       {},
       logOptionsOf(query),
     );
