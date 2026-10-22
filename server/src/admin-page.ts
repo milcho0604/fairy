@@ -234,6 +234,8 @@ export interface AdminView {
   grantRef?: string | undefined;
   /** 표에서 고른 사람들 (지급 칸에 이름으로 보인다) */
   picked?: Array<{ id: string; code: string; nickname: string | null }> | undefined;
+  /** 20명을 넘게 골라 지급 칸에 못 넣은 사람 수 */
+  pickedDropped?: number | undefined;
   /** 최근 지급 쪽지와 받았는지 (웹 화면만) */
   recentGrants?: GrantTrail[] | undefined;
   /**
@@ -1200,7 +1202,7 @@ ${editButton(v.csrf, 'grants/batch')}</section>`;
   const same = (x: string) =>
     x.trim() === selected?.id || x.trim().toLowerCase() === selected?.code.toLowerCase();
   const chosen = v.picked?.length
-    ? `<p class="selected">고른 ${v.picked.length}명: ${v.picked.map((x) => `${esc(x.nickname ?? '(닉네임 없음)')} <code>${esc(x.code)}</code>`).join(', ')}</p>`
+    ? `<p class="selected">고른 ${v.picked.length}명${v.pickedDropped ? ` (한 번에 20명까지만 넣을 수 있어 ${v.pickedDropped}명은 빠졌어요)` : ''}: ${v.picked.map((x) => `${esc(x.nickname ?? '(닉네임 없음)')} <code>${esc(x.code)}</code>`).join(', ')}</p>`
     : selected && value && same(value)
       ? `<p class="selected">선택한 이용자: #${esc(selected.id)} ${who(selected)}</p>`
       : '';

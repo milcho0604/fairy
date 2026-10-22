@@ -229,12 +229,25 @@ interface Written {
 
 /** 정수 칸 (빈 칸은 0) */
 function int(v: string | undefined, min: number, max: number, what: string): number {
-  const s = (v ?? '').trim();
+  const s = decimalText(v, what);
   if (!s) return 0;
-  // 10진 숫자만 (1e3, 0x10, 소수, 부호 붙은 글은 Number() 가 받아도 여기서는 거절한다)
-  const n = /^\d{1,9}$/.test(s) ? Number(s) : Number.NaN;
+  const n = Number(s);
   if (!Number.isInteger(n) || n < min || n > max) throw new Refused(`${what}: ${min}~${max}`);
   return n;
+}
+
+/**
+ * 숫자 칸의 글: 10진 정수만 ("5", " 5 ", 5.0 이 보내는 "5.0" 포함). 1e3, 0x10, 부호, 소수는 Number() 가 받아도 거절한다.
+ * 글이 아닌 것(배열 등)도 거절 (빈 칸은 빈 글)
+ */
+function decimalText(v: unknown, what: string): string {
+  if (v === undefined || v === null) return '';
+  if (typeof v !== 'string') throw new Refused(`${what}: 숫자 하나만 넣어 주세요`);
+  const s = v.trim();
+  if (s === '') return '';
+  const m = /^(\d{1,9})(?:\.0+)?$/.exec(s);
+  if (!m) throw new Refused(`${what}: 숫자만 넣어 주세요`);
+  return m[1] as string;
 }
 
 export interface GrantInput {
@@ -846,7 +859,9 @@ export class AdminService {
       body: { ko: f.body_ko, en: f.body_en },
       from: kstIso(from),
       until: kstIso(until),
-      ...(f.kind === 'gift' ? { coins: Number(f.coins) } : { boost: { reasons, times: Number(f.times) } }),
+      ...(f.kind === 'gift'
+        ? { coins: Number(decimalText(f.coins, '선물 코인') || Number.NaN) }
+        : { boost: { reasons, times: Number(decimalText(f.times, '배수') || Number.NaN) } }),
     };
     const e = parseEvent(raw);
     if (!e)
@@ -1225,7 +1240,7 @@ export class AdminService {
 
   /** 표에서 고른 계정 번호들의 이름 (지급 칸에 보이려고). 숫자가 아닌 것, 20명 넘는 것은 버린다 */
   async pickedAccounts(ids: string[]): Promise<Array<{ id: string; code: string; nickname: string | null }>> {
-    const clean = [...new Set(ids.filter((x) => /^\d{1,18}$/.test(x)))].slice(0, GRANT_MAX_RECIPIENTS);
+    const clean = [...new Set(ids.filter((x) => /^\d{1,18}$/.test(x)))].slice(0, GRANT_MAX_RECIPIENTS * 5);
     if (clean.length === 0) return [];
     const r = await this.db.pool.query<{ id: string; code: string; nickname: string | null }>(
       'SELECT id, code, nickname FROM account WHERE id = ANY($1::bigint[]) ORDER BY id',
@@ -1453,8 +1468,10 @@ export class AdminService {
 
   /** 정책: 자동 정기 지급 장수(매달 N장까지), 자리 수(정기 지급 계정 상한), 첫 로그인 선물 켜기 */
   async aiPolicy(actor: string, f: FormFields): Promise<AdminDone> {
-    const autoMonthly = (f.auto_monthly ?? '').trim() === '' ? undefined : Number(f.auto_monthly);
-    const seatLimit = (f.seat_limit ?? '').trim() === '' ? undefined : Number(f.seat_limit);
+    const autoRaw = decimalText(f.auto_monthly, '매달 장수');
+    const seatRaw = decimalText(f.seat_limit, '자리 수');
+    const autoMonthly = autoRaw === '' ? undefined : Number(autoRaw);
+    const seatLimit = seatRaw === '' ? undefined : Number(seatRaw);
     const firstGift =
       f.first_gift === undefined ? undefined : f.first_gift === '1' || f.first_gift === 'true';
     return this.write(actor, async (c) => {
@@ -1953,33 +1970,19 @@ export function sameOrigin(req: AdminReq, publicUrl: string): boolean {
   return site === undefined || site === 'same-origin' || site === 'none';
 }
 
-/** 지급 확정 폼의 값이 미리보기 때 쓴 값과 같은지 (받는 계정, 양, 사유, 만료. 줄 끝과 앞뒤 빈칸은 무시) */
-function sameDraft(kept: Record<string, string | string[]>, f: FormFields): boolean {
-  const norm = (v: unknown) =>
-    ([] as unknown[])
-      .concat(v ?? '')
-      .map((x) => String(x).replace(/\r\n/g, '\n').trim())
-      .join('\n');
-  const fix = (k: string) => (k === 'account' ? 'accounts' : k === 'message' ? 'reason' : k);
-  const read = (src: (k: string) => unknown) => {
-    const out: Record<string, string> = {};
-    for (const k of ['accounts', 'account', 'coins', 'chat_passes', 'days', 'reason', 'message']) {
-      const x = norm(src(k));
-      if (x !== '') out[fix(k)] = x;
-    }
-    return out;
-  };
-  const a = read((k) => kept[k]);
-  const b = read((k) => (f as Record<string, unknown>)[k]);
-  const days = (o: Record<string, string>) => (o.days === undefined || o.days === '' ? '30' : o.days);
-  const zero = (v: string | undefined) => (v === undefined || v === '' ? '0' : v);
-  return (
-    a.accounts === b.accounts &&
-    zero(a.coins) === zero(b.coins) &&
-    zero(a.chat_passes) === zero(b.chat_passes) &&
-    days(a) === days(b) &&
-    a.reason === b.reason
-  );
+/** 지급 작성 값을 검사를 거친 모양으로 (별칭 account, message 와 빈 칸 기본값까지 풀어 한 모양). 미리보기와 확정이 이것끼리 비교한다 */
+function normGrant(g: GrantInput): string {
+  return JSON.stringify([g.refs, g.coins, g.passes, g.reason, g.days]);
+}
+
+/** 확정 폼의 값이 미리보기 때 검사한 값과 같은지 (대상, 양, 사유, 만료 전부). 확정 값이 검사를 못 넘으면 다르다고 본다 */
+function sameGrant(kept: string | undefined, f: FormFields): boolean {
+  if (kept === undefined) return false;
+  try {
+    return normGrant(grantInput({ ...f, confirm: 'yes' })) === kept;
+  } catch {
+    return false;
+  }
 }
 
 /** 폼이나 JSON 본문을 글자 칸으로 (배열은 그대로, 나머지는 글로) */
@@ -2086,7 +2089,8 @@ export class AdminController {
     const pickRaw = ([] as unknown[])
       .concat(query.pick ?? [])
       .filter((x): x is string => typeof x === 'string');
-    const picked = await this.admin.pickedAccounts(pickRaw);
+    const pickedAll = await this.admin.pickedAccounts(pickRaw);
+    const picked = pickedAll.slice(0, GRANT_MAX_RECIPIENTS);
     const grantRef = picked.length ? picked.map((x) => x.id).join('\n') : text('account');
     const view = await this.admin.view(
       text('q') ?? (picked.length ? undefined : grantRef),
@@ -2103,6 +2107,7 @@ export class AdminController {
     if (view.account) view.account.history = await this.admin.userHistory(view.account.id);
     view.recentGrants = await this.admin.recentGrants();
     if (picked.length) view.picked = picked;
+    if (pickedAll.length > picked.length) view.pickedDropped = pickedAll.length - picked.length;
     // 신고 칸: 목록(대화 글 없음)과, 번호를 주면 그 신고의 본문(연 기록이 운영 기록에 남는다)
     const filterRaw = text('rs');
     const filter: ReportFilter = (REPORT_STATES as readonly string[]).includes(filterRaw ?? '')
@@ -2147,7 +2152,12 @@ export class AdminController {
           fields: draftOf(f),
           at: Date.now(),
           nonce: randomBytes(16).toString('hex'),
-          ...(name === 'grants/batch' ? { ids: await this.admin.grantLiveIds(f) } : {}),
+          ...(name === 'grants/batch'
+            ? {
+                ids: await this.admin.grantLiveIds(f),
+                grant: normGrant(grantInput({ ...f, confirm: 'yes' })),
+              }
+            : {}),
         };
         return undefined;
       },
@@ -2234,7 +2244,7 @@ export class AdminController {
             throw new Refused('이미 확정했거나 닫힌 미리보기예요. 운영 기록에서 확인하고 다시 써 주세요');
           if (name === 'grants/batch') {
             // 확정 폼의 숨은 칸이 미리보기에서 본 값 그대로인지 서버가 다시 본다 (대상, 양, 사유, 만료를 바꿔 보내지 못하게)
-            if (!sameDraft(kept.fields, f))
+            if (!sameGrant(kept.grant, f))
               throw new Refused(
                 '미리보기와 다른 값이에요. 고치기로 돌아가 대상 확인부터 다시 해 주세요',
                 'changed',

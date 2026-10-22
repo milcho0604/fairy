@@ -340,3 +340,103 @@ describe('옛 앱 API 호환', () => {
     assert.equal(await noteCount(d.id), 1);
   });
 });
+
+describe('버그 사냥 고침 (#153)', () => {
+  // 분당 요청 상한이 앞 시험에 걸리지 않게 새 세션으로 시작한다
+  before(async () => {
+    admin = new AdminBrowser(
+      () => h,
+      api,
+      () => ADMIN_TOKEN,
+    );
+    assert.equal((await admin.login()).status, 303);
+    await admin.page();
+  });
+
+  const v1 = (path: string, body: Record<string, unknown>) =>
+    api('POST', `/v1/admin/${path}`, {
+      headers: { cookie: admin.cookie, 'x-csrf-token': admin.csrf, origin: h.base },
+      ip: admin.from,
+      body,
+    });
+
+  test('reason 과 message 를 같이 보내 확정 때 사유만 바꿔도 거절한다 (별칭까지 풀어 비교)', async () => {
+    const d = await newDevice('18+', '사유바꿔치기');
+    const base = {
+      accounts: d.code,
+      coins: '7',
+      chat_passes: '0',
+      days: '10',
+      reason: '본사유',
+      message: '본사유',
+    };
+    const swaps: Array<Record<string, string>> = [
+      { reason: '바꾼사유' },
+      { reason: '', message: '바꾼사유' },
+    ];
+    for (const swap of swaps) {
+      const p = await previewForm(base);
+      await confirm({ ...p.hidden, ...swap }, { people: p.people });
+      assert.match(await resultText(), /미리보기와 다른 값이에요/, JSON.stringify(swap));
+    }
+    assert.equal(await noteCount(d.id), 0);
+    // 별칭만 바꿔 쓴 같은 값은 통과 (message 로만 미리보기, reason 으로 확정)
+    const q = await previewForm({
+      accounts: d.code,
+      coins: '7',
+      chat_passes: '0',
+      days: '10',
+      message: '같은사유',
+    });
+    await confirm({ ...q.hidden, reason: '같은사유', message: '' }, { people: q.people });
+    assert.match(await resultText(), /1명에게 지급 쪽지를 보냈어요/);
+  });
+
+  test('21명 넘게 고르면 20명만 넣고 몇 명이 빠졌는지 말한다', async () => {
+    const ids: string[] = [];
+    for (let i = 0; i < 22; i++) ids.push((await newDevice('18+', `다수${i}`)).id);
+    const users = cellOf((await admin.page(`?${ids.map((x) => `pick=${x}`).join('&')}`)).text, 'users');
+    assert.match(users, /고른 20명 \(한 번에 20명까지만 넣을 수 있어 2명은 빠졌어요\)/);
+  });
+
+  test('정책 숫자와 이벤트 선물 코인은 10진수만, 옛 앱 모양("5", 5, 5.0, 빈 칸)은 받는다', async () => {
+    for (const bad of ['1e2', '0x10', '-1', '+5', '5.5', 'abc']) {
+      const r = await v1('ai/policy', { auto_monthly: bad });
+      assert.equal(r.status, 400, `auto_monthly ${bad}: ${r.text}`);
+      assert.equal((await v1('ai/policy', { seat_limit: bad })).status, 400, `seat_limit ${bad}`);
+    }
+    for (const ok of ['5', 5, 5.0, ' 5 ', '']) {
+      const r = await v1('ai/policy', { auto_monthly: ok, seat_limit: ok });
+      assert.equal(r.status, 200, `${JSON.stringify(ok)}: ${r.text}`);
+    }
+    const ev = (coins: unknown, id: string) => ({
+      id,
+      kind: 'gift',
+      title_ko: '제목',
+      title_en: 'T',
+      body_ko: '본문',
+      body_en: 'B',
+      from: '2099-01-01T00:00',
+      until: '2099-01-02T00:00',
+      coins,
+    });
+    for (const bad of ['1e2', '0x10', '1e1'])
+      assert.equal((await v1('events', ev(bad, 'bad-1'))).status, 400, `coins ${bad}`);
+    assert.equal((await v1('events', ev('50', 'ok-1'))).status, 200);
+    assert.equal((await v1('events', ev(50, 'ok-2'))).status, 200);
+  });
+
+  test('숫자 칸에 배열이나 글이 아닌 값을 보내면 500 이 아니라 400', async () => {
+    const d = await newDevice('18+', '배열고양이');
+    for (const [path, body] of [
+      ['grants/batch', { accounts: d.code, coins: ['1', '2'], reason: 'r', confirm: 'yes' }],
+      ['notes', { account: d.code, coins: ['1'], message: 'r' }],
+      ['ai/revoke', { account: d.code, count: ['1', '2'], confirm: 'yes' }],
+      ['ai/policy', { auto_monthly: ['1'] }],
+      ['ai/policy', { seat_limit: { a: 1 } }],
+    ] as const) {
+      const r = await v1(path, body as Record<string, unknown>);
+      assert.equal(r.status, 400, `${path}: ${r.status} ${r.text}`);
+    }
+  });
+});
