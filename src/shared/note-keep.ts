@@ -19,6 +19,11 @@ export interface NoteKept {
   draft?: { title: string; body: string };
   /** 그 글이 다른 곳이 먼저 고친 메모 위에서 거절된 채였다: 그때 저장돼 있던 글과 시각. 다시 열면 자동 저장하지 않고 고르게 한다 */
   conflict?: { body: string; at: number; title?: string };
+  /**
+   * 그 글이 바탕으로 삼은 저장된 글과 시각 (닫히는 중이라 저장 답을 못 받은 글에 적는다). 다시 열 때 그사이 다른 곳이 고쳤는지 가른다
+   * (고쳤으면 자동으로 덮지 않고 고르게 한다)
+   */
+  base?: { body: string; at: number };
   /** 뒤로가기로 나갔다: 패널을 열 때 저절로 열지 않고, 그 메모를 열 때 보관 글을 돌려준다 */
   parked?: true;
 }
@@ -52,6 +57,11 @@ export function parseNoteKept(v: unknown, now: number): NoteKept | undefined {
           ...(typeof c.title === 'string' ? { title: c.title.slice(0, NOTE_TITLE_MAX) } : {}),
         }
       : undefined;
+  const b = r.base as { body?: unknown; at?: unknown } | undefined;
+  const base =
+    draft && typeof b === 'object' && b !== null && typeof b.body === 'string' && whole(b.at)
+      ? { body: b.body.slice(0, NOTE_BODY_MAX), at: b.at }
+      : undefined;
   if (now - r.at > (draft ? DRAFT_MS : RESUME_MS) || r.at > now + 60_000) return undefined;
   return {
     id: r.id,
@@ -62,6 +72,7 @@ export function parseNoteKept(v: unknown, now: number): NoteKept | undefined {
     at: r.at,
     ...(draft ? { draft } : {}),
     ...(conflict ? { conflict } : {}),
+    ...(base ? { base } : {}),
     ...(r.parked === true ? { parked: true as const } : {}),
   };
 }

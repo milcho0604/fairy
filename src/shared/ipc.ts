@@ -1081,6 +1081,8 @@ export const PANEL = {
   state: 'panel:state',
   /** 메인 → 패널: 이 탭을 보여 줘 (펫 메뉴 "상점") */
   tab: 'panel:tab',
+  /** 메인 → 큰 창: 곧 숨긴다 (숨겨도 창은 안 닫혀 beforeunload 가 없다. 쓰던 글을 바로 저장하라는 신호) */
+  hiding: 'panel:hiding',
 } as const;
 
 export interface PanelState {
@@ -1393,4 +1395,6 @@ export interface PanelBridge {
   removeFood(key: string): void;
   play(kind: PlayKind): void;
   onTab(listener: (tab: PanelTab) => void): void;
+  /** 큰 창이 곧 숨겨진다 (쓰던 글을 바로 저장한다). 돌려주는 함수로 듣기를 그친다 */
+  onHiding(listener: () => void): () => void;
 }

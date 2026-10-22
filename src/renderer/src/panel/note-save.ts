@@ -5,6 +5,8 @@
 // - 다른 곳이 먼저 고쳐 거절되면(stale) 저장된 글을 받아 두고 멈춘다. 사용자가 덮기를 고르기 전에는
 //   어느 쪽도 덮지 않는다 (overwrite).
 
+import type { NoteKept } from '../../../shared/note-keep.ts';
+
 export interface NotePatch {
   title?: string;
   body?: string;
@@ -138,4 +140,74 @@ export class NoteSaver {
     this.hooks.failed(r, this.conflict !== undefined);
     return false;
   }
+}
+
+/**
+ * 닫히는 편집기의 마지막 저장을 메모마다 붙잡는다. 메모 목록과 편집기를 나란히 보면 한 메모를 고치다 다른 메모를 누르고
+ * 바로 그 메모로 돌아올 수 있다: 돌아와 연 편집기가 앞 편집기의 마지막 저장이 끝나기 전에 메인에서 글을 읽으면
+ * 방금 쓴 글이 안 보이고, 그 옛 글을 바탕으로 다시 저장해 방금 쓴 글을 덮는다. 연 편집기는 settle 을 기다린 뒤 읽는다.
+ */
+export class SaveGate {
+  #held = new Map<number, Promise<unknown>>();
+
+  /** 닫히는 편집기의 마지막 저장(flush 의 약속)을 맡긴다 */
+  hold(id: number, last: Promise<unknown>): void {
+    const mine = last.then(
+      () => undefined,
+      () => undefined,
+    );
+    const prev = this.#held.get(id);
+    const both = prev ? Promise.all([prev, mine]) : mine;
+    this.#held.set(id, both);
+    void both.then(() => {
+      if (this.#held.get(id) === both) this.#held.delete(id);
+    });
+  }
+
+  /** 그 메모의 맡긴 저장이 모두 끝날 때까지 기다린다 (맡긴 것이 없으면 바로) */
+  async settle(id: number): Promise<void> {
+    await this.#held.get(id);
+  }
+}
+
+/** 편집기가 닫히는 동안(창 닫기, 다른 메모, 탭 바꾸기) 아직 메인이 받았다고 확인하지 못한 글이 있다 */
+export function hasUnconfirmed(s: Pick<NoteSaver, 'failed' | 'sending' | 'pending'>): boolean {
+  return s.failed || s.sending || Object.keys(s.pending).length > 0;
+}
+
+/**
+ * 닫히는 편집기가 메인에 맡길 보관 글. 확인 못 한 글이 없으면 없다.
+ * 다른 곳이 먼저 고쳐 멈춘 글은 그때 저장돼 있던 글(conflict)을 같이 맡겨 다시 열 때 고르게 한다.
+ * 아니면 바탕(base)을 맡겨, 다시 열 때 그사이 다른 곳이 고쳤는지 가른다 (openFromKept)
+ */
+export function draftKeepOf(
+  saver: Pick<NoteSaver, 'failed' | 'sending' | 'pending' | 'conflict' | 'base' | 'baseAt'>,
+  now: { title: string; body: string },
+): Pick<NoteKept, 'draft' | 'conflict' | 'base'> | undefined {
+  if (!hasUnconfirmed(saver)) return undefined;
+  return {
+    draft: { ...now },
+    ...(saver.conflict ? { conflict: saver.conflict } : { base: { body: saver.base, at: saver.baseAt } }),
+  };
+}
+
+/**
+ * 메모를 열 때 보관 글을 어떻게 쓸지. 보관한 글이 저장된 글과 같으면 쓸 것이 없다.
+ * - 다른 곳이 먼저 고쳐 멈춘 글(conflict)이면 그 상태 그대로: 자동으로 저장하지 않고 고르게 한다
+ * - 닫히는 중이라 답을 못 받은 글이면(base), 그 뒤 저장된 글이 바탕에서 달라졌는지 본다. 달라졌으면(다른 곳이 고쳤으면) 덮지 않고
+ *   고르게 하고(conflict), 그대로면 다시 저장한다
+ */
+export function openFromKept(
+  kept: Pick<NoteKept, 'draft' | 'conflict' | 'base'> | undefined,
+  note: { title: string; body: string; updatedAt: number },
+):
+  | { draft: { title: string; body: string }; conflict?: { body: string; at: number; title?: string } }
+  | undefined {
+  const d = kept?.draft;
+  if (!d || (d.title === note.title && d.body === note.body)) return undefined;
+  if (kept.conflict) return { draft: d, conflict: kept.conflict };
+  const b = kept.base;
+  if (b && note.updatedAt > b.at && note.body !== b.body && note.body !== d.body)
+    return { draft: d, conflict: { body: note.body, at: note.updatedAt, title: note.title } };
+  return { draft: d };
 }

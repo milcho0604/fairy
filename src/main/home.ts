@@ -173,6 +173,8 @@ export function createHome(o: HomeOptions) {
     const seq = ++hideSeq;
     const go = () => {
       if (w.isDestroyed() || seq !== hideSeq) return;
+      // 숨겨도 창은 안 닫혀 beforeunload 가 없다: 쓰던 글(메모 편집기)이 바로 저장되게 알린다
+      w.webContents.send(PANEL.hiding);
       w.hide();
       hiddenAt = Date.now();
       startKeep();
