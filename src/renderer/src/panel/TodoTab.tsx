@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { dueChoices } from '../../../shared/due-choices.ts';
 import { timeLabel } from '../../../shared/event-store.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PanelAddResult, PanelState } from '../../../shared/ipc.ts';
@@ -6,6 +7,7 @@ import { pinFirst } from '../../../shared/pin.ts';
 import { dueLabel } from '../../../shared/quick-add.ts';
 import { remindSummary } from '../../../shared/remind-text.ts';
 import { allTags, filterTodos, titleParts } from '../../../shared/todo-filter.ts';
+import { dropPlace, type MoveDir, moveTarget } from '../../../shared/todo-move.ts';
 import {
   REPEAT_LABEL,
   REPEATS,
@@ -16,14 +18,27 @@ import {
   type TodoStep,
 } from '../../../shared/todo-store.ts';
 import './assist.css';
+import './rows.css';
 import { useDraft } from './draft.ts';
 import { dueToSend, minuteToSend } from './due-input.ts';
-import { CheckIcon, PlayIcon, RepeatIcon, SearchIcon, StarIcon, StepsIcon } from './icons.tsx';
+import {
+  BellIcon,
+  CheckIcon,
+  GripIcon,
+  MoreIcon,
+  PinIcon,
+  PlayIcon,
+  RepeatIcon,
+  SearchIcon,
+  StarIcon,
+  StepsIcon,
+} from './icons.tsx';
 import { isEsc, takeEsc } from './keys.ts';
 import { MoreRow } from './more.tsx';
-import { pageOf } from './paging.ts';
-import { PinButton, PinMark, usePinMenu } from './pin.tsx';
+import { LIST_PAGE, pageOf } from './paging.ts';
+import { PinButton, PinMark } from './pin.tsx';
 import { RemindButton, RemindSheet } from './RemindPicker.tsx';
+import { type MenuItem, useMenu } from './row-menu.tsx';
 import { useSurface } from './surface.tsx';
 import { TrashBox } from './TrashBox.tsx';
 import { updateView, useKeepScroll, viewNow } from './view-keep.ts';
@@ -91,6 +106,19 @@ export function TodoTab({
   const [tag, setTag] = useState<string | null>(kept.tag);
   /** 그린 쪽 수 (찾는 말과 태그마다) */
   const [paging, setPaging] = useState({ key: kept.pageKey, pages: kept.pages });
+  // 줄 하나가 탭 정지점 하나: 마지막으로 초점이 간 줄이 정지점 (없으면 첫 줄)
+  const [activeRow, setActiveRow] = useState<number>();
+  // 순서 끌기: 끄는 줄과 지금 올려 둔 줄
+  const [drag, setDrag] = useState<{ id: number; over?: number }>();
+  // 방금 넣은 줄 (스크롤하고 1초 알린다)과 순서를 바꾼 줄 (초점을 돌려주고 읽어 준다)
+  const [flashIds, setFlashIds] = useState<number[]>([]);
+  const pendingFlash = useRef<{ ids: number[]; until: number }>({ ids: [], until: 0 });
+  const pendingMove = useRef<{ id: number; focus: boolean; until: number }>({
+    id: 0,
+    focus: false,
+    until: 0,
+  });
+  const [said, setSaid] = useState('');
   const listRef = useRef<HTMLUListElement>(null);
   useKeepScroll(listRef, 'todo');
   const findRef = useRef<HTMLInputElement>(null);
@@ -145,6 +173,14 @@ export function TodoTab({
     }
     if (value === text) setText('');
     setError('');
+    // 새로 넣은 줄이 어디 있는지 알리려고 기억해 둔다 (상태가 오면 그 줄까지 스크롤하고 알린다)
+    const ids =
+      r.kind === 'todo'
+        ? [r.id]
+        : r.kind === 'many'
+          ? r.items.filter((i) => i.kind === 'todo').map((i) => i.id)
+          : [];
+    if (ids.length > 0) pendingFlash.current = { ids, until: Date.now() + 4000 };
     onAdded(r, value);
   };
 
@@ -176,35 +212,90 @@ export function TodoTab({
       })}
     </fieldset>
   );
-  const listRowsKey = (e: React.KeyboardEvent) => {
-    if (!wide || e.nativeEvent.isComposing) return;
-    const row = (e.target as HTMLElement).closest<HTMLElement>('li.todo[data-id]');
-    if (!row || !(e.target as HTMLElement).classList.contains('title')) return;
-    const ids = page.shown.map((x) => x.id);
-    const at = ids.indexOf(Number(row.dataset.id));
-    const go = (id: number | undefined) => {
-      if (id === undefined) return;
-      e.preventDefault();
-      select(id);
-      requestAnimationFrame(() =>
-        listRef.current?.querySelector<HTMLElement>(`li.todo[data-id="${id}"] .title`)?.focus(),
-      );
-    };
-    if (e.key === 'ArrowDown') go(ids[at + 1]);
-    else if (e.key === 'ArrowUp') go(ids[at - 1]);
-    else if (e.key === 'Enter' || e.key === 'ArrowRight') {
-      // 상세 칸으로: 고른 할 일을 열고 제목 칸에 커서를 둔다
-      e.preventDefault();
-      select(Number(row.dataset.id));
-      requestAnimationFrame(() => detailRef.current?.querySelector<HTMLElement>('.detail-title')?.focus());
-    }
-  };
   const detailRef = useRef<HTMLElement>(null);
+  const rowEl = (id: number) => listRef.current?.querySelector<HTMLElement>(`li.todo[data-id="${id}"]`);
   /** 상세 칸에서 Esc: 목록의 그 줄로 돌아간다 */
-  const backToRow = (id: number) =>
+  const backToRow = (id: number) => requestAnimationFrame(() => rowEl(id)?.focus());
+  /** 넓은 배치에서 줄에서 Enter: 상세 칸 제목으로 간다 */
+  const toDetail = () =>
+    requestAnimationFrame(() => detailRef.current?.querySelector<HTMLElement>('.detail-title')?.focus());
+
+  // 상태가 바뀌면(넣은 뒤, 순서를 바꾼 뒤): 방금 넣은 줄까지 굴려 1초 알리고, 순서를 바꾼 줄에 초점을 돌려주고 읽어 준다
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 목록이 바뀔 때만
+  useEffect(() => {
+    const now = Date.now();
+    const fl = pendingFlash.current;
+    if (fl.ids.length > 0 && now > fl.until) pendingFlash.current = { ids: [], until: 0 };
+    else if (fl.ids.length > 0) {
+      const at = fl.ids.map((id) => shown.findIndex((x) => x.id === id)).filter((i) => i >= 0);
+      if (at.length > 0) {
+        pendingFlash.current = { ids: [], until: 0 };
+        // 긴 목록은 앞에서부터 쪽으로 그린다: 그 줄이 있는 쪽까지 그린다
+        const need = Math.ceil((Math.max(...at) + 1) / LIST_PAGE);
+        if (need > pages) setPaging({ key: pageKey, pages: need });
+        setFlashIds(fl.ids);
+      }
+    }
+    const mv = pendingMove.current;
+    if (mv.id !== 0 && now > mv.until) pendingMove.current = { id: 0, focus: false, until: 0 };
+    else if (mv.id !== 0) {
+      const i = shown.findIndex((x) => x.id === mv.id);
+      if (i >= 0) {
+        pendingMove.current = { id: 0, focus: false, until: 0 };
+        const todo = shown[i];
+        if (todo) setSaid(t('rows.moved', { title: todo.title, n: i + 1, total: shown.length }));
+        if (mv.focus) requestAnimationFrame(() => rowEl(mv.id)?.focus());
+      }
+    }
+  }, [s.open]);
+  // 알릴 줄: 그 줄이 보이게 굴리고 1초 뒤 끈다
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 알릴 줄이 바뀔 때만
+  useEffect(() => {
+    if (flashIds.length === 0) return;
+    const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     requestAnimationFrame(() =>
-      listRef.current?.querySelector<HTMLElement>(`li.todo[data-id="${id}"] .title`)?.focus(),
+      rowEl(flashIds[0] as number)?.scrollIntoView({ block: 'nearest', behavior: calm ? 'auto' : 'smooth' }),
     );
+    const timer = setTimeout(() => setFlashIds([]), 1000);
+    return () => clearTimeout(timer);
+  }, [flashIds]);
+
+  /** 한 줄을 dir 쪽으로 옮긴다. 옮긴 뒤 상태가 오면 초점을 그 줄에 돌려준다 (줄 안에 초점이 있었을 때만) */
+  const moveRow = (todo: Todo, dir: MoveDir) => {
+    const place = moveTarget(shown, todo.id, dir);
+    if (!place) return;
+    const had = !!rowEl(todo.id)?.contains(document.activeElement);
+    pendingMove.current = {
+      id: todo.id,
+      focus: had || document.activeElement === document.body,
+      until: Date.now() + 3000,
+    };
+    bridge.place(todo.id, place.target, place.after);
+  };
+  const orderOf = (todo: Todo) => ({
+    can: {
+      top: !!moveTarget(shown, todo.id, 'top'),
+      up: !!moveTarget(shown, todo.id, 'up'),
+      down: !!moveTarget(shown, todo.id, 'down'),
+      bottom: !!moveTarget(shown, todo.id, 'bottom'),
+    },
+    move: (dir: MoveDir) => moveRow(todo, dir),
+    dragStart: () => setDrag({ id: todo.id }),
+    dragOver: () => setDrag((d) => (d && d.over !== todo.id ? { ...d, over: todo.id } : d)),
+    drop: () => {
+      const place = drag ? dropPlace(shown, drag.id, todo.id) : undefined;
+      if (drag && place) {
+        pendingMove.current = { id: drag.id, focus: false, until: Date.now() + 3000 };
+        bridge.place(drag.id, place.target, place.after);
+      }
+      setDrag(undefined);
+    },
+    dragEnd: () => setDrag(undefined),
+    dragging: drag?.id === todo.id,
+    over: !!drag && drag.over === todo.id && drag.id !== todo.id,
+  });
+  // 탭 키가 서는 줄: 마지막으로 초점이 간 줄 (그 줄이 보이지 않으면 첫 줄)
+  const tabRow = page.shown.some((x) => x.id === activeRow) ? activeRow : page.shown[0]?.id;
 
   return (
     <div className={`todo-layout${wide ? ' wide' : ''}`}>
@@ -287,7 +378,7 @@ export function TodoTab({
         )}
         {!wide && tags.length > 0 && tagChips}
 
-        <ul className="todos scroll" ref={listRef} onKeyDown={listRowsKey}>
+        <ul className="todos scroll" ref={listRef}>
           {s.open.length === 0 && <li className="empty">{t('panel.todo.empty')}</li>}
           {s.open.length > 0 && filtered && shown.length === 0 && (
             <li className="empty">{t('assist.find.none')}</li>
@@ -301,11 +392,29 @@ export function TodoTab({
               doing={s.doing.includes(todo.id)}
               onComplete={() => onComplete(todo)}
               onRemoved={() => onRemoved(todo)}
-              {...(wide ? { onSelect: () => select(todo.id), selected: todo.id === selected?.id } : {})}
+              rowTab={todo.id === tabRow}
+              onRowFocus={() => {
+                setActiveRow(todo.id);
+                if (wide) select(todo.id);
+              }}
+              order={orderOf(todo)}
+              flash={flashIds.includes(todo.id)}
+              {...(wide
+                ? {
+                    onSelect: () => select(todo.id),
+                    onEdit: toDetail,
+                    onGo: select,
+                    selected: todo.id === selected?.id,
+                  }
+                : {})}
             />
           ))}
           <MoreRow rest={page.rest} onMore={() => setPaging({ key: pageKey, pages: pages + 1 })} />
         </ul>
+        {/* 키보드로 순서를 바꾸면 어디로 갔는지 읽어 준다 */}
+        <p className="sr-only" role="status" aria-live="polite">
+          {said}
+        </p>
 
         {s.doneToday.length > 0 && (
           <div className="done">
@@ -366,6 +475,26 @@ export function TodoTab({
   );
 }
 
+/** 줄 순서 바꾸기에 필요한 것 (할 일 탭만 준다. 오늘 탭 줄은 순서를 바꾸지 않는다) */
+export interface RowOrder {
+  /** 이 방향으로 옮길 수 있는가 (이미 그 끝이거나 고정한 줄이면 거짓) */
+  can: Record<MoveDir, boolean>;
+  move: (dir: MoveDir) => void;
+  /** 끌기 */
+  dragStart: () => void;
+  dragOver: () => void;
+  drop: () => void;
+  dragEnd: () => void;
+  dragging: boolean;
+  over: boolean;
+}
+
+/** 줄 이웃 (같은 목록의 앞뒤 줄) */
+const rowAround = (row: HTMLElement, step: 1 | -1) => {
+  const rows = [...(row.closest('ul')?.querySelectorAll<HTMLElement>('li.todo[data-id]') ?? [])];
+  return rows[rows.indexOf(row) + step];
+};
+
 export function TodoRow({
   todo,
   today,
@@ -375,12 +504,22 @@ export function TodoRow({
   pinEnd,
   doing,
   onSelect,
+  onEdit,
+  onGo,
   selected,
+  rowTab,
+  onRowFocus,
+  order,
+  flash,
 }: {
   todo: Todo;
   today: string;
   /** 넓은 배치: 줄을 누르면 상세 칸에 연다 (줄 끝 단추는 줄이고 고치기는 상세 칸에서) */
   onSelect?: () => void;
+  /** 넓은 배치에서 Enter: 상세 칸 제목으로 간다 */
+  onEdit?: () => void;
+  /** 화살표로 다른 줄로 갔다 (넓은 배치는 그 줄을 상세 칸에 연다) */
+  onGo?: (id: number) => void;
   selected?: boolean;
   /** 진행 중으로 표시한 할 일 (펫 머리 위 말풍선, 이슈 #124) */
   doing?: boolean;
@@ -391,32 +530,26 @@ export function TodoRow({
   compact?: boolean;
   /** 고정한 것 가운데 마지막 줄 (아래 고정 안 한 줄과 사이에 선) */
   pinEnd?: boolean;
+  /** 목록 전체에서 탭 키가 서는 줄인가 (줄 하나가 탭 정지점 하나. 오늘 탭 줄은 주지 않는다) */
+  rowTab?: boolean;
+  /** 줄에 초점이 왔다 (탭 정지점을 이 줄로 옮긴다) */
+  onRowFocus?: () => void;
+  order?: RowOrder;
+  /** 방금 넣은 줄: 잠깐 배경으로 알린다 */
+  flash?: boolean;
 }) {
   const pinned = todo.pinnedAt !== null;
   const lean = !!onSelect;
-  const pinMenu = usePinMenu('todo', todo.id, todo.title, pinned);
-  // 진행 중 표시(▶). 안 켠 줄은 마우스를 올리거나 키보드로 오면 보이고, 켠 줄은 늘 강조색으로 보인다
-  const doingButton = (on: boolean) => (
-    <button
-      type="button"
-      className={`pin doing-btn ${on ? 'on' : ''}`}
-      aria-pressed={on}
-      aria-label={
-        on ? t('chips.doingStopFor', { title: todo.title }) : t('chips.doingStartFor', { title: todo.title })
-      }
-      title={on ? t('chips.doingStop') : t('chips.doingStart')}
-      onClick={() => bridge.doing(todo.id, !on)}
-    >
-      <PlayIcon filled={on} />
-    </button>
-  );
+  const roving = rowTab !== undefined;
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(todo.title);
   const dateRef = useRef<HTMLInputElement>(null);
-  // 미리 알림 고르기 (8판). 마감일이 있을 때만 종이 보인다 (마감일이 없으면 알릴 때가 없다)
+  const dueRef = useRef<HTMLElement>(null);
+  const moreRef = useRef<HTMLButtonElement>(null);
+  // 미리 알림 고르기 (8판). 마감일이 있을 때만 (마감일이 없으면 알릴 때가 없다)
   const [reminding, setReminding] = useState(false);
   const sheetId = useId();
-  // 단계 (9판 체크리스트): 단추를 누르면 줄 아래에 펼친다
+  // 단계 (9판 체크리스트): 줄 아래에 펼친다
   const [stepping, setStepping] = useState(false);
   const stepsId = useId();
   const progress = stepProgress(todo.steps);
@@ -426,6 +559,7 @@ export function TodoRow({
       className={`steps-btn ${progress ? 'on' : ''} ${stepping ? 'open' : ''} ${
         progress && progress.done === progress.total ? 'all' : ''
       }`}
+      tabIndex={roving ? -1 : undefined}
       aria-expanded={stepping}
       aria-controls={stepsId}
       aria-label={t('assist.step.open', { title: todo.title })}
@@ -441,74 +575,272 @@ export function TodoRow({
     </button>
   );
   const due = todo.due ? dueLabel(todo.due, today) : undefined;
-  const repeatButton = (
-    <button
-      type="button"
-      className={`repeat ${todo.repeat ? 'on' : ''}`}
-      aria-label={
-        todo.repeat
-          ? t('panel.todo.repeatOn', { label: REPEAT_LABEL[todo.repeat] })
-          : t('panel.todo.repeatOff')
-      }
-      title={
-        todo.repeat
-          ? t('panel.todo.repeatTitle', { label: REPEAT_LABEL[todo.repeat] })
-          : t('panel.todo.repeat')
-      }
-      onClick={() => bridge.update(todo.id, { repeat: nextRepeat(todo.repeat) })}
-    >
-      <RepeatIcon />
-      {todo.repeat && <span>{REPEAT_LABEL[todo.repeat]}</span>}
-    </button>
-  );
   const dueText = due
     ? todo.dueMin === null
       ? due.text
       : `${due.text} ${timeLabel(todo.dueMin)}`
     : t('panel.todo.due');
-  // 칩 하나가 단추다: 누르면(키보드로도) 운영체제 달력을 연다. 날짜 칸은 단추 뒤에 숨겨 두고 탭으로 오지 않는다
-  // (예전엔 투명한 날짜 칸이 칩 위에 겹쳐 키보드로 오면 날짜 조각을 고치는 칸이 됐고 달력은 열리지 않았다)
+  const pickDate = () => {
+    const el = dateRef.current;
+    if (!el) return;
+    try {
+      el.showPicker();
+    } catch {
+      el.focus();
+    }
+  };
+  // 마감 고르기 메뉴 (칩 누르기, 줄 메뉴의 "마감 바꾸기"): 오늘, 내일, 다음 주 월요일, 날짜 고르기, 마감 없애기
+  const dueMenu = useMenu(t('rows.due.menu', { title: todo.title }), () => [
+    ...dueChoices(today).map((c) => ({
+      key: c.key,
+      label: c.key === 'nextMon' ? t('rows.due.nextMon') : dueLabel(c.day, today).text,
+      ...(c.key === 'nextMon'
+        ? { hint: t('panel.due.date', { m: Number(c.day.slice(5, 7)), d: Number(c.day.slice(8, 10)) }) }
+        : {}),
+      checked: todo.due === c.day,
+      onSelect: () => bridge.update(todo.id, { due: c.day }),
+    })),
+    { key: 'pick', label: t('rows.due.pick'), sepBefore: true, onSelect: pickDate },
+    ...(todo.due && !todo.repeat
+      ? [
+          {
+            key: 'clear',
+            label: t('panel.todo.dueClear'),
+            onSelect: () => bridge.update(todo.id, { due: null }),
+          },
+        ]
+      : []),
+  ]);
+  const openDue = () => {
+    const anchor = dueRef.current ?? moreRef.current;
+    if (anchor) dueMenu.openFrom(anchor);
+  };
   const dueChip = (
-    <span className={`due ${due?.overdue ? 'overdue' : ''} ${todo.due ? '' : 'none'}`}>
+    <span ref={dueRef} className={`due ${due?.overdue ? 'overdue' : ''} ${todo.due ? '' : 'none'}`}>
       <button
         type="button"
         className="due-btn"
+        tabIndex={roving ? -1 : undefined}
         title={t('panel.todo.dueDate')}
+        aria-haspopup="menu"
         aria-label={t('panel.todo.dueFor', { title: todo.title, when: dueText })}
-        onClick={() => {
-          const el = dateRef.current;
-          if (!el) return;
-          try {
-            el.showPicker();
-          } catch {
-            el.focus();
-          }
-        }}
+        onClick={openDue}
       >
         {dueText}
       </button>
-      <input
-        ref={dateRef}
-        type="date"
-        tabIndex={-1}
-        aria-hidden="true"
-        value={todo.due ?? ''}
-        onChange={(e) => bridge.update(todo.id, { due: e.target.value || null })}
-      />
     </span>
+  );
+  const liRef = useRef<HTMLLIElement>(null);
+  /** 이 줄에 초점이 있으면 줄이 사라지기 전에 이웃 줄로 옮겨 둔다 (끝내기, 지우기 뒤에 초점이 사라지지 않게) */
+  const leaveRow = () => {
+    const li = liRef.current;
+    if (li?.contains(document.activeElement)) (rowAround(li, 1) ?? rowAround(li, -1))?.focus();
+  };
+  const finish = () => {
+    leaveRow();
+    onComplete();
+  };
+  const remove = () => {
+    leaveRow();
+    bridge.remove(todo.id);
+    onRemoved?.();
+  };
+  // 줄 메뉴: 줄 끝에 겹쳐 뜨던 단추 6개를 모았다. 넓은 배치는 마감, 반복, 알림, 단계를 상세 칸에서 고쳐서 뺀다
+  const rowMenu = useMenu(t('pin.menu', { title: todo.title }), () => {
+    const items: MenuItem[] = [
+      {
+        key: 'doing',
+        label: doing ? t('rows.doStop') : t('rows.doStart'),
+        icon: <PlayIcon filled={!!doing} />,
+        onSelect: () => bridge.doing(todo.id, !doing),
+      },
+      {
+        key: 'pin',
+        label: pinned ? t('pin.unpin') : t('pin.pin'),
+        icon: <PinIcon />,
+        onSelect: () => bridge.pin('todo', todo.id, !pinned),
+      },
+      {
+        key: 'important',
+        label: todo.important ? t('rows.importantOff') : t('rows.important'),
+        icon: <StarIcon />,
+        onSelect: () => bridge.update(todo.id, { important: !todo.important }),
+      },
+    ];
+    if (!lean) {
+      items.push(
+        { key: 'due', label: t('rows.due'), onSelect: openDue },
+        {
+          key: 'repeat',
+          label: t('rows.repeat', {
+            label: todo.repeat ? REPEAT_LABEL[todo.repeat] : t('panel.todo.repeatNone'),
+          }),
+          hint: t('rows.repeatHint'),
+          icon: <RepeatIcon />,
+          onSelect: () => bridge.update(todo.id, { repeat: nextRepeat(todo.repeat) }),
+        },
+        {
+          key: 'steps',
+          label: stepping ? t('rows.stepsHide') : t('rows.steps'),
+          icon: <StepsIcon />,
+          onSelect: () => setStepping((v) => !v),
+        },
+      );
+      if (todo.due)
+        items.push({
+          key: 'remind',
+          label: t('rows.remind'),
+          icon: <BellIcon />,
+          onSelect: () => setReminding((v) => !v),
+        });
+    }
+    if (order && !pinned) {
+      const moves: [MoveDir, string][] = [
+        ['top', 'rows.top'],
+        ['up', 'rows.up'],
+        ['down', 'rows.down'],
+        ['bottom', 'rows.bottom'],
+      ];
+      moves.forEach(([dir, key], i) => {
+        items.push({
+          key: `move-${dir}`,
+          label: t(key as 'rows.top'),
+          disabled: !order.can[dir],
+          ...(i === 0 ? { sepBefore: true } : {}),
+          onSelect: () => order.move(dir),
+        });
+      });
+    }
+    items.push({ key: 'remove', label: t('rows.remove'), danger: true, sepBefore: true, onSelect: remove });
+    return items;
+  });
+  const moreButton = (
+    <button
+      ref={moreRef}
+      type="button"
+      className="row-more"
+      tabIndex={roving ? -1 : undefined}
+      aria-haspopup="menu"
+      aria-expanded={rowMenu.open}
+      aria-label={t('pin.menu', { title: todo.title })}
+      title={t('rows.more')}
+      onClick={() => rowMenu.openFrom(moreRef.current as HTMLElement)}
+    >
+      <MoreIcon />
+    </button>
+  );
+  // 줄에 초점이 있을 때 키: 위아래 줄 이동, Space 끝내기, Enter 고치기, Delete 지우기, Alt+위아래 순서 (줄 안 단추와 칸의 키는 건드리지 않는다)
+  const onRowKey = (e: React.KeyboardEvent<HTMLLIElement>) => {
+    if (e.target !== e.currentTarget || e.nativeEvent.isComposing || !roving) return;
+    const row = e.currentTarget;
+    const go = (el: HTMLElement | undefined) => {
+      if (!el) return;
+      e.preventDefault();
+      el.focus();
+      onGo?.(Number(el.dataset.id));
+    };
+    const rows = [...(row.closest('ul')?.querySelectorAll<HTMLElement>('li.todo[data-id]') ?? [])];
+    if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && e.altKey) {
+      e.preventDefault();
+      const dir = e.key === 'ArrowUp' ? 'up' : 'down';
+      if (order?.can[dir]) order.move(dir);
+      return;
+    }
+    if (e.altKey || e.metaKey || e.ctrlKey) return;
+    if (e.key === 'ArrowDown') go(rowAround(row, 1));
+    else if (e.key === 'ArrowUp') go(rowAround(row, -1));
+    else if (e.key === 'Home') go(rows[0]);
+    else if (e.key === 'End') go(rows.at(-1));
+    else if (e.key === ' ') {
+      e.preventDefault();
+      finish();
+    } else if (e.key === 'Enter' || (lean && e.key === 'ArrowRight')) {
+      e.preventDefault();
+      if (lean) {
+        onSelect?.();
+        onEdit?.();
+      } else setEditing(true);
+    } else if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault();
+      remove();
+    }
+  };
+  const doingMark = doing && (
+    <span className="pin-mark" role="img" aria-label={t('chips.doingMark')} title={t('chips.doingMark')}>
+      <PlayIcon filled />
+    </span>
+  );
+  const starMark = todo.important && (
+    <button
+      type="button"
+      className="star on"
+      tabIndex={roving ? -1 : undefined}
+      aria-pressed
+      aria-label={t('panel.todo.importantFor', { title: todo.title })}
+      title={t('panel.todo.important')}
+      onClick={() => bridge.update(todo.id, { important: false })}
+    >
+      <StarIcon />
+    </button>
   );
   return (
     <>
       <li
-        className={`todo ${pinned ? 'pinned' : ''} ${pinEnd ? 'pin-end' : ''} ${selected ? 'selected' : ''}`}
+        ref={liRef}
+        className={`todo ${pinned ? 'pinned' : ''} ${pinEnd ? 'pin-end' : ''} ${selected ? 'selected' : ''} ${
+          flash ? 'flash' : ''
+        } ${order?.dragging ? 'dragging' : ''} ${order?.over ? 'drop-over' : ''}`}
         data-id={todo.id}
-        onContextMenu={compact ? undefined : pinMenu.onContextMenu}
+        data-find-key={`todo:${todo.id}`}
+        tabIndex={roving ? (rowTab ? 0 : -1) : undefined}
+        aria-keyshortcuts={
+          roving ? 'ArrowUp ArrowDown Space Enter Delete Alt+ArrowUp Alt+ArrowDown' : undefined
+        }
+        onKeyDown={onRowKey}
+        onFocus={roving ? onRowFocus : undefined}
+        onContextMenu={compact ? undefined : rowMenu.onContextMenu}
+        onDragOver={
+          order
+            ? (e) => {
+                e.preventDefault();
+                order.dragOver();
+              }
+            : undefined
+        }
+        onDrop={
+          order
+            ? (e) => {
+                e.preventDefault();
+                order.drop();
+              }
+            : undefined
+        }
       >
+        {order && !pinned && (
+          // biome-ignore lint/a11y/noStaticElementInteractions: 끌기 손잡이는 마우스 몫이다 (키보드는 Alt+위아래와 줄 메뉴)
+          <span
+            className="grip"
+            draggable
+            role="presentation"
+            title={t('rows.grip')}
+            onDragStart={(e) => {
+              e.dataTransfer.effectAllowed = 'move';
+              e.dataTransfer.setData('text/plain', String(todo.id));
+              const li = (e.currentTarget as HTMLElement).closest('li');
+              if (li) e.dataTransfer.setDragImage(li, 12, 12);
+              order.dragStart();
+            }}
+            onDragEnd={order.dragEnd}
+          >
+            <GripIcon />
+          </span>
+        )}
         <button
           type="button"
           className="check"
+          tabIndex={roving ? -1 : undefined}
           aria-label={t('panel.todo.complete', { title: todo.title })}
-          onClick={onComplete}
+          onClick={finish}
         >
           <CheckIcon />
         </button>
@@ -526,11 +858,17 @@ export function TodoRow({
               else setTitle(todo.title);
             }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.nativeEvent.isComposing) (e.target as HTMLInputElement).blur();
+              // 고치고 나면 그 줄로 돌아온다 (줄이 탭 정지점). 칸이 사라지기 전에 줄을 잡아 둔다
+              const row = (e.target as HTMLElement).closest('li');
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                (e.target as HTMLInputElement).blur();
+                requestAnimationFrame(() => row?.focus());
+              }
               if (isEsc(e)) {
                 takeEsc(e);
                 setTitle(todo.title);
                 setEditing(false);
+                requestAnimationFrame(() => row?.focus());
               }
             }}
           />
@@ -539,6 +877,7 @@ export function TodoRow({
             type="button"
             className="title"
             dir="auto"
+            tabIndex={roving ? -1 : undefined}
             title={compact || lean ? undefined : t('panel.todo.clickToEdit')}
             aria-current={selected ? 'true' : undefined}
             onClick={() => (lean ? onSelect?.() : !compact && setEditing(true))}
@@ -557,115 +896,56 @@ export function TodoRow({
             </span>
           </button>
         )}
-        {/* 줄 끝 단추. 마우스를 올려야 나오는 것(extra)은 제목 위에 겹쳐 띄워 제목 폭과 줄 높이가 바뀌지 않게 */}
+        {/* 줄 끝. 제목 폭을 먼저 남기고 표시와 "..." 만 둔다 (예전엔 마우스를 올리면 단추 6개가 제목 위에 겹쳤다) */}
         <span className="tools">
-          {lean ? (
+          {compact ? (
             <>
-              {doing && (
-                <span
-                  className="pin-mark"
-                  role="img"
-                  aria-label={t('chips.doingMark')}
-                  title={t('chips.doingMark')}
-                >
-                  <PlayIcon filled />
-                </span>
-              )}
+              {doingMark}
               {pinned && <PinMark />}
-              {progress && (
-                <span className="steps-badge" title={t('assist.step.button')}>
-                  <StepsIcon />
-                  {progress.done}/{progress.total}
-                </span>
-              )}
+              {progress && stepsButton}
+              {dueChip}
+            </>
+          ) : (
+            <>
+              {doingMark}
+              {pinned && <PinMark />}
+              {progress &&
+                (lean ? (
+                  <span className="steps-badge" title={t('assist.step.button')}>
+                    <StepsIcon />
+                    {progress.done}/{progress.total}
+                  </span>
+                ) : (
+                  stepsButton
+                ))}
               {todo.repeat && (
                 <span
                   className="repeat-badge"
                   title={t('panel.todo.repeatTitle', { label: REPEAT_LABEL[todo.repeat] })}
                 >
                   <RepeatIcon />
+                  {!lean && <span>{REPEAT_LABEL[todo.repeat]}</span>}
                 </span>
               )}
               {todo.due && dueChip}
-              <button
-                type="button"
-                className={`star ${todo.important ? 'on' : ''}`}
-                aria-pressed={todo.important}
-                aria-label={t('panel.todo.importantFor', { title: todo.title })}
-                title={t('panel.todo.important')}
-                onClick={() => bridge.update(todo.id, { important: !todo.important })}
-              >
-                <StarIcon />
-              </button>
-            </>
-          ) : (
-            <>
-              {(!compact || !todo.due) && (
-                <span className="extra">
-                  {!compact && !doing && doingButton(false)}
-                  {!compact && !pinned && (
-                    <PinButton kind="todo" id={todo.id} title={todo.title} pinned={false} />
-                  )}
-                  {!compact && !todo.repeat && repeatButton}
-                  {!compact && !progress && stepsButton}
-                  {!todo.due && dueChip}
-                  {!compact && (
-                    <button
-                      type="button"
-                      className="remove"
-                      aria-label={t('panel.todo.remove', { title: todo.title })}
-                      onClick={() => {
-                        bridge.remove(todo.id);
-                        onRemoved?.();
-                      }}
-                    >
-                      ×
-                    </button>
-                  )}
-                </span>
-              )}
-              {compact && doing && (
-                <span
-                  className="pin-mark"
-                  role="img"
-                  aria-label={t('chips.doingMark')}
-                  title={t('chips.doingMark')}
-                >
-                  <PlayIcon filled />
-                </span>
-              )}
-              {!compact && doing && doingButton(true)}
-              {compact && pinned && <PinMark />}
-              {!compact && pinned && <PinButton kind="todo" id={todo.id} title={todo.title} pinned />}
-              {progress && stepsButton}
-              {!compact && todo.repeat && repeatButton}
-              {!compact && todo.due && (
-                <RemindButton
-                  name={todo.title}
-                  reminds={todo.reminds}
-                  dateOnly={todo.dueMin === null}
-                  open={reminding}
-                  controls={sheetId}
-                  onToggle={() => setReminding((v) => !v)}
-                />
-              )}
-              {todo.due && dueChip}
-              {!compact && (
-                <button
-                  type="button"
-                  className={`star ${todo.important ? 'on' : ''}`}
-                  aria-pressed={todo.important}
-                  aria-label={t('panel.todo.importantFor', { title: todo.title })}
-                  title={t('panel.todo.important')}
-                  onClick={() => bridge.update(todo.id, { important: !todo.important })}
-                >
-                  <StarIcon />
-                </button>
-              )}
+              {starMark}
+              {moreButton}
             </>
           )}
+          {/* 날짜 고르기 달력이 뜰 자리 (보이지 않는다) */}
+          <input
+            ref={dateRef}
+            className="due-pick"
+            type="date"
+            tabIndex={-1}
+            aria-hidden="true"
+            value={todo.due ?? ''}
+            onChange={(e) => bridge.update(todo.id, { due: e.target.value || null })}
+          />
         </span>
-        {pinMenu.menu}
+        {compact ? dueMenu.menu : null}
+        {compact ? null : rowMenu.menu}
+        {compact ? null : dueMenu.menu}
       </li>
       {stepping && (
         <li className="steps-sheet-row">

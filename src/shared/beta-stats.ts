@@ -129,6 +129,14 @@ export class StatStore {
       .run(this.#day(now), Math.floor(now), min);
   }
 
+  /** 방금 적은 집중 기록을 거둔다 (그만두기 되돌리기, addFocus 가 적은 at 과 분 그대로) */
+  removeFocus(at: number, minutes: number): void {
+    const min = Math.round(minutes);
+    if (!(min > 0)) return;
+    this.#add(at, 'focus_min', -min);
+    this.#db.prepare('delete from focus_session where at = ? and minutes = ?').run(Math.floor(at), min);
+  }
+
   /** 그 달(YYYY-MM)의 날마다 집중 기록. 기록이 있는 날만, 날짜 순 */
   focusMonth(ym: string): FocusDay[] {
     const like = `${ym}-%`;

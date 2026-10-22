@@ -274,6 +274,12 @@ const body = async () => {
     }
   };
   check('할 일 셋을 화면에서 넣음', (await main('__jj.store.list(Date.now()).open.length')) === 3);
+  /** 줄 끝 "..." 메뉴를 열어 "지우기" 를 누른다 (#146: 줄에 겹쳐 뜨던 × 는 메뉴로 모였다) */
+  const removeVia = async (name) => {
+    const opened = await p.click(`${rowExpr(name)}.querySelector('.row-more')`);
+    await sleep(350);
+    return opened && (await p.click(`document.querySelector('.row-menu button.danger')`));
+  };
 
   // 하나를 끝내 코인을 받는다
   await p.click(`${rowExpr(tx('하나', 'one'))}.querySelector('.check')`);
@@ -282,8 +288,7 @@ const body = async () => {
   check('끝내면 코인이 들어옴', coinsAfterDone > 0, `잔액 ${coinsAfterDone}`);
 
   // 둘째를 지운다 (줄에 마우스를 올려야 × 가 나온다)
-  await p.hover(rowExpr(tx('둘', 'two')));
-  const removed = await p.click(`${rowExpr(tx('둘', 'two'))}.querySelector('.remove')`);
+  const removed = await removeVia(tx('둘', 'two'));
   await sleep(500);
   check('× 로 지움', removed && !(await openTitles()).includes(tx('둘', 'two')));
   check('지워도 코인은 그대로', (await balance()) === coinsAfterDone);
@@ -328,8 +333,7 @@ const body = async () => {
 
   // 영구 삭제
   await setTrash(false);
-  await p.hover(rowExpr(tx('셋', 'three')));
-  await p.click(`${rowExpr(tx('셋', 'three'))}.querySelector('.remove')`);
+  await removeVia(tx('셋', 'three'));
   await sleep(400);
   await setTrash(true);
   await p.until(() => p.ev(`!!document.querySelector('.trash-item')`));
@@ -345,8 +349,7 @@ const body = async () => {
   await add(first);
   await add(second);
   for (const name of [first, second]) {
-    await p.hover(rowExpr(name));
-    await p.click(`${rowExpr(name)}.querySelector('.remove')`);
+    await removeVia(name);
     await sleep(300);
   }
   await setTrash(true);
@@ -363,8 +366,7 @@ const body = async () => {
   // 30일 만료: 시계를 당겨 연다
   const keep = tx('보관 시험', 'Keep test');
   await add(keep);
-  await p.hover(rowExpr(keep));
-  await p.click(`${rowExpr(keep)}.querySelector('.remove')`);
+  await removeVia(keep);
   await sleep(400);
   const toggleOpen = async () => {
     await p.click(`document.querySelector('.trash-toggle')`);

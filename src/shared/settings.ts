@@ -3,7 +3,7 @@ import { isPersona, type PersonaId } from './ai/persona.ts';
 import { isSaverMode, type SaverMode } from './battery.ts';
 import type { ChatterLevel } from './chatter.ts';
 import { cutText } from './cut-text.ts';
-import { type FocusLength, isFocusLength } from './focus.ts';
+import { isFocusMinutes } from './focus.ts';
 import { isPanelView, type PanelView } from './home-policy.ts';
 import { type LangPref, t } from './i18n/index.ts';
 import { cleanIcsUrl } from './ics.ts';
@@ -133,7 +133,7 @@ export interface Settings {
   /** 기본 펫이 철마다 옷을 입는다: 봄 꽃, 여름 밀짚모자, 가을 목도리, 겨울 털모자, 명절 (shared/wear.ts). 기본 켬 */
   seasonWear: boolean;
   /** 집중 타이머 길이 (15, 25, 50분). 마지막에 고른 것 */
-  focusMin: FocusLength;
+  focusMin: number;
   /** 한가할 때 커서 쪽을 바라본다 */
   lookAtCursor: boolean;
   /** jjakkung:// 주소로 할 일, 메모 넣기와 집중, 패널 열기 (편의, 기본 켬. shared/url-scheme.ts) */
@@ -692,7 +692,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
       : [...base.petMemoryPending],
     ...memoryNotesOf(r, base),
     seasonWear: bool(r.seasonWear, base.seasonWear),
-    focusMin: isFocusLength(r.focusMin) ? r.focusMin : base.focusMin,
+    focusMin: isFocusMinutes(r.focusMin) ? r.focusMin : base.focusMin,
     lookAtCursor: bool(r.lookAtCursor, base.lookAtCursor),
     urlScheme: bool(r.urlScheme, base.urlScheme),
     batterySaver: isSaverMode(r.batterySaver) ? r.batterySaver : base.batterySaver,

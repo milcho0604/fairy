@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { leftForTomorrow, nextUp } from '../../../shared/briefing.ts';
 import { allDaySpan } from '../../../shared/event-store.ts';
-import { breakFor, FOCUS_LENGTHS, focusCoins, remainLabel } from '../../../shared/focus.ts';
+import { breakFor, FOCUS_LENGTHS, focusReward, isFocusMinutes, remainLabel } from '../../../shared/focus.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PanelState } from '../../../shared/ipc.ts';
 import { stepProgress, type Todo } from '../../../shared/todo-store.ts';
@@ -30,12 +30,15 @@ export function TodayTab({
   onComplete,
   goTo,
   onMoved,
+  onFocusStopped,
 }: {
   s: PanelState;
   onComplete: (todo: Todo) => void;
   goTo: (tab: 'todo' | 'event') => void;
   /** 지난 마감을 오늘로, 못 한 것을 내일로(to) 옮겼다 (되돌리기 알림) */
   onMoved?: (moved: { id: number; due: string | null }[], to: 'tomorrow' | undefined, key: number) => void;
+  /** 집중을 그만뒀다. 기록한 분 (되돌리기 알림) */
+  onFocusStopped?: (minutes: number) => void;
 }) {
   // 넓은 칸(큰 창)에서는 "나와 펫" 열이 이번 주와 일기를 펼쳐 보인다
   const wide = useSurface().zone === 'wide';
@@ -44,6 +47,19 @@ export function TodayTab({
   const [len, setLen] = useState(s.focusMin);
   // 펫 메뉴에서 다른 길이로 시작했으면 따라간다
   useEffect(() => setLen(s.focusMin), [s.focusMin]);
+  // 집중 카드는 한 줄로 접어 두고, 길이 바꾸기를 누르면 길이 칩과 "직접" 칸을 펼친다 (#146)
+  const preset = (FOCUS_LENGTHS as readonly number[]).includes(len);
+  const [lenOpen, setLenOpen] = useState(false);
+  const [customOpen, setCustomOpen] = useState(!preset);
+  const [customText, setCustomText] = useState(String(s.focusMin));
+  const customOk = isFocusMinutes(Number(customText));
+  const badLen = customOpen && !customOk;
+  // 설정이나 펫 메뉴가 직접 입력한 길이로 바꿨으면 따라간다
+  useEffect(() => {
+    if ((FOCUS_LENGTHS as readonly number[]).includes(len)) return;
+    setCustomOpen(true);
+    setCustomText(String(len));
+  }, [len]);
   const running = s.focus.phase !== 'idle';
   useEffect(() => {
     // 집중 중엔 초를 세고, 아니면 30초마다 (30분 안 일정이 "다음 할 일"로 바뀌게)
@@ -103,33 +119,86 @@ export function TodayTab({
   // 좁은 칸과 보통 칸에서 집중이 돌고 있으면 시계와 그만 단추가 첫 화면 밖으로 밀리지 않게 맨 위에 둔다 (넓은 칸은 오른쪽 열 맨 위)
   const focusFirst = running && !wide;
   const focusCard = (
-    <section className={`focus-card ${s.focus.phase}`}>
+    <section className={`focus-card ${s.focus.phase} ${s.focus.phase === 'idle' ? 'fold' : ''}`}>
       {s.focus.phase === 'idle' ? (
         <>
           <div className="focus-text">
-            <strong>{t('panel.today.focusTitle', { n: len })}</strong>
-            <small>
-              {t('panel.today.focusHint', {
-                name: s.petName,
-                coins: focusCoins(len),
-                breakMin: breakFor(len),
-              })}
-            </small>
-            <fieldset className="focus-len" aria-label={t('panel.today.focusLength')}>
-              {FOCUS_LENGTHS.map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  aria-pressed={n === len}
-                  className={n === len ? 'len-chip on' : 'len-chip'}
-                  onClick={() => setLen(n)}
-                >
-                  {t('panel.today.focusMin', { n })}
-                </button>
-              ))}
-            </fieldset>
+            <div className="focus-line">
+              <strong>{t('panel.today.focusTitle', { n: len })}</strong>
+              <button
+                type="button"
+                className="link"
+                aria-expanded={lenOpen}
+                onClick={() => setLenOpen((v) => !v)}
+              >
+                {t('rows.focus.change')}
+              </button>
+            </div>
+            {lenOpen && (
+              <>
+                <small>
+                  {t('panel.today.focusHint', {
+                    name: s.petName,
+                    coins: focusReward(len),
+                    breakMin: breakFor(len),
+                  })}
+                </small>
+                <fieldset className="focus-len" aria-label={t('panel.today.focusLength')}>
+                  {FOCUS_LENGTHS.map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      aria-pressed={n === len}
+                      className={n === len ? 'len-chip on' : 'len-chip'}
+                      onClick={() => {
+                        setLen(n);
+                        setCustomOpen(false);
+                      }}
+                    >
+                      {t('panel.today.focusMin', { n })}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    aria-pressed={!preset}
+                    aria-expanded={customOpen}
+                    className={!preset ? 'len-chip on' : 'len-chip'}
+                    onClick={() => {
+                      setCustomOpen((v) => !v);
+                      setCustomText(String(len));
+                    }}
+                  >
+                    {preset ? t('rows.focus.custom') : t('rows.focus.customOn', { n: len })}
+                  </button>
+                </fieldset>
+                {customOpen && (
+                  <div className="focus-custom">
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={5}
+                      max={120}
+                      value={customText}
+                      aria-label={t('rows.focus.customLabel')}
+                      aria-invalid={badLen}
+                      onChange={(e) => {
+                        setCustomText(e.target.value);
+                        const n = Number(e.target.value);
+                        if (isFocusMinutes(n)) setLen(n);
+                      }}
+                    />
+                    <span>{t('panel.today.focusMin', { n: '' }).trim()}</span>
+                    {badLen && (
+                      <p className="focus-bad" role="alert">
+                        {t('rows.focus.invalid')}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
           </div>
-          <button type="button" className="primary" onClick={() => bridge.focusStart(len)}>
+          <button type="button" className="primary" disabled={badLen} onClick={() => bridge.focusStart(len)}>
             {t('panel.today.start')}
           </button>
         </>
@@ -145,7 +214,14 @@ export function TodayTab({
                   : t('panel.today.focusing')}
             </small>
           </div>
-          <button type="button" className="ghost" onClick={() => bridge.focusStop()}>
+          <button
+            type="button"
+            className="ghost"
+            onClick={async () => {
+              const r = await bridge.focusStop();
+              if (r) onFocusStopped?.(r.minutes);
+            }}
+          >
             {t('panel.today.stop')}
           </button>
         </>

@@ -21,7 +21,7 @@ import {
   focusedMinutes,
   focusTodoToAsk,
   IDLE,
-  isFocusLength,
+  isFocusMinutes,
   skipGap,
   startFocus,
   tickFocus,
@@ -55,6 +55,8 @@ import { settings } from './settings.ts';
 import { readJson, writeJson } from './store.ts';
 
 const TICK_MS = PLAN_TICK_MS;
+/** 그만둔 집중을 되돌릴 수 있는 시간 (패널 알림이 8초 남짓, 펫 메뉴에서 그만뒀을 때를 넉넉히) */
+const RESUME_WITHIN_MS = 60_000;
 const STORE = 'planner';
 
 export interface PlannerOptions {
@@ -673,7 +675,7 @@ export function createPlanner(o: PlannerOptions) {
    * todoId 를 주면 그 할 일을 하는 집중 (끝나면 끝냈는지 묻는다). 이미 끝냈거나 없는 할 일이면 그냥 집중
    */
   function startFocusNow(minutes?: number, todoId?: number) {
-    if (isFocusLength(minutes) && minutes !== settings.get().focusMin) settings.set({ focusMin: minutes });
+    if (isFocusMinutes(minutes) && minutes !== settings.get().focusMin) settings.set({ focusMin: minutes });
     const length = settings.get().focusMin;
     const todo = todoId === undefined ? undefined : o.todos.get(todoId);
     focus = startFocus(Date.now(), length, todo && todo.doneAt === null ? todo.id : undefined);
@@ -696,14 +698,39 @@ export function createPlanner(o: PlannerOptions) {
     o.onChange();
   }
 
-  function stopFocus() {
+  /** 방금 그만둔 집중 (패널 알림의 되돌리기용). 그만둔 때, 그때 상태, 기록한 분 */
+  let lastStop: { state: FocusState; at: number; minutes: number } | undefined;
+
+  /** 집중이나 쉬기를 그만둔다. 그만둔 집중이 몇 분으로 기록됐는지 (돌고 있지 않았으면 undefined) */
+  function stopFocus(): { minutes: number } | undefined {
     const now = Date.now();
+    const was = focus;
     const minutes = focusedMinutes(focus, now);
     if (minutes > 0) o.stats.addFocus(now, minutes);
     focus = IDLE;
     o.log('planner', '집중 그만', minutes);
     o.onChange();
     schedule();
+    if (was.phase === 'idle') return undefined;
+    const kept = was.phase === 'focus' ? Math.round(minutes) : 0;
+    lastStop = { state: was, at: now, minutes: kept };
+    return { minutes: kept };
+  }
+
+  /** 방금 그만둔 집중을 되돌린다: 기록한 분을 거두고 남은 시간 그대로 다시 돈다 (그만둔 동안은 세지 않는다) */
+  function resumeFocus(): boolean {
+    const last = lastStop;
+    lastStop = undefined;
+    const now = Date.now();
+    if (!last || focus.phase !== 'idle' || now - last.at > RESUME_WITHIN_MS) return false;
+    if (last.minutes > 0) o.stats.removeFocus(last.at, last.minutes);
+    const gap = now - last.at;
+    focus = { ...last.state, startedAt: last.state.startedAt + gap, endsAt: last.state.endsAt + gap };
+    lastTick = now;
+    o.log('planner', '집중 그만 되돌림', last.minutes);
+    o.onChange();
+    schedule();
+    return true;
   }
 
   // ---- 다음에 깰 때 (shared/planner-wake.ts) ----
@@ -781,6 +808,7 @@ export function createPlanner(o: PlannerOptions) {
     },
     startFocus: startFocusNow,
     stopFocus,
+    resumeFocus,
     /** 일정이 바뀌었을 때 바로 한 번 본다 (곧 시작하는 일정을 넣은 경우) */
     check: tick,
     /** 저장 파일(할 일, 일정, 알림)이 바뀌었다: 조금 뒤 한 번 본다 */

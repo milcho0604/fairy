@@ -19,6 +19,47 @@ const FOCUS_MAX = 50;
 
 export const openPlanSheet = () => window.dispatchEvent(new Event(OPEN_EVENT));
 
+/** 아침에 처음 열었을 때: 시트를 덮지 않고 오늘 탭 카드를 도드라지게만 한다 (보던 탭을 바꾸지 않는다, #146). 카드가 안 떠 있어도 기억한다 */
+const NUDGE_EVENT = 'jj:plan-nudge';
+let nudged = false;
+
+/** 할 일이 없을 때 계획 카드와 시트가 바로 적게 하는 한 줄 칸. 적은 것은 할 일로 들어가고 id 를 알린다 */
+function InlineAdd({ onAdded }: { onAdded: (id: number) => void | Promise<void> }) {
+  const [text, setText] = useState('');
+  const [error, setError] = useState('');
+  const submit = async () => {
+    const value = text.trim();
+    if (!value) return;
+    // 시각이 있어도 할 일로 넣는다 (계획에 담을 것이라서)
+    const r = await panel.add(value, { as: 'todo' });
+    if (!r.ok) {
+      setError(r.error ?? t('panel.add.failed'));
+      return;
+    }
+    setText('');
+    setError('');
+    if (r.kind === 'todo') await onAdded(r.id);
+    else if (r.kind === 'many') for (const i of r.items) if (i.kind === 'todo') await onAdded(i.id);
+  };
+  return (
+    <div className="plan-inline">
+      <input
+        value={text}
+        aria-label={t('rows.plan.inlineLabel')}
+        placeholder={t('rows.plan.inlinePlaceholder')}
+        onChange={(e) => {
+          setText(e.target.value);
+          setError('');
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) void submit();
+        }}
+      />
+      {error && <p className="hint error">{error}</p>}
+    </div>
+  );
+}
+
 /** 저절로 띄우는 시각 고르기: 5시부터 12시까지 30분마다 */
 const AUTO_TIMES = Array.from({ length: 15 }, (_, i) => 5 * 60 + i * 30);
 
@@ -29,6 +70,20 @@ const AUTO_TIMES = Array.from({ length: 15 }, (_, i) => 5 * 60 + i * 30);
 export function PlanCard({ s, onComplete }: { s: PanelState; onComplete: (todo: Todo) => void }) {
   const [plan, setPlan] = useState<DayPlan | null>();
   const [now, setNow] = useState(Date.now());
+  const [nudge, setNudge] = useState(nudged);
+  /** 이 카드에서 바로 적어 넣은 할 일 (계획의 꼭 할 일로 이어진다) */
+  const [mine, setMine] = useState<number[]>([]);
+  useEffect(() => {
+    const on = () => setNudge(true);
+    window.addEventListener(NUDGE_EVENT, on);
+    return () => window.removeEventListener(NUDGE_EVENT, on);
+  }, []);
+  const addedToPlan = async (id: number) => {
+    const next = [...mine, id].slice(0, PLAN_PICKS);
+    setMine(next);
+    await day.planSave(next).catch(() => undefined);
+    window.dispatchEvent(new Event(SAVED_EVENT));
+  };
   // biome-ignore lint/correctness/useExhaustiveDependencies: 패널 상태(s)가 바뀔 때마다 다시 읽는다
   useEffect(() => {
     let alive = true;
@@ -49,15 +104,24 @@ export function PlanCard({ s, onComplete }: { s: PanelState; onComplete: (todo: 
     return () => clearInterval(timer);
   }, []);
   if (plan === undefined) return null;
-  if (plan === null || plan.day !== s.today)
+  if (plan === null || plan.day !== s.today) {
+    // 할 일이 하나도 없으면 시트로 보내지 않고 여기서 바로 적게 한다 (막다른 길이었다)
+    if (s.open.length === 0)
+      return (
+        <section className={`plan-card is-empty is-inline ${nudge ? 'nudge' : ''}`}>
+          <span>{t('rows.plan.inlineHint')}</span>
+          <InlineAdd onAdded={addedToPlan} />
+        </section>
+      );
     return (
-      <section className="plan-card is-empty">
+      <section className={`plan-card is-empty ${nudge ? 'nudge' : ''}`}>
         <span>{t('plan.card.empty')}</span>
         <button type="button" className="ghost small" onClick={openPlanSheet}>
           {t('plan.card.start')}
         </button>
       </section>
     );
+  }
 
   const byId = new Map([...s.open, ...s.doneToday].map((todo) => [todo.id, todo]));
   const picks = plan.picks.map((id) => byId.get(id)).filter((x): x is Todo => !!x);
@@ -74,6 +138,7 @@ export function PlanCard({ s, onComplete }: { s: PanelState; onComplete: (todo: 
         </button>
       </h2>
       {allDone && <p className="plan-yay">{t('plan.card.allDone')}</p>}
+      {mine.length > 0 && picks.length < PLAN_PICKS && !allDone && <InlineAdd onAdded={addedToPlan} />}
       {picks.length > 0 && (
         <ul className="plan-picks">
           {picks.map((todo) => {
@@ -164,7 +229,9 @@ export function PlanSheetHost({
 
   const show = (v: PlanView) => {
     setView(v);
-    setPicks(v.plan?.picks.length ? v.plan.picks : v.suggested);
+    // 저장해 둔 계획의 할 일이 그새 끝나거나 지워졌으면 빼고 고른다
+    const kept = (v.plan?.picks ?? []).filter((id) => v.candidates.some((c) => c.id === id));
+    setPicks(kept.length ? kept : v.suggested);
     setAiNote(v.plan?.note ?? '');
     setMsg('');
     setOpen(true);
@@ -177,8 +244,10 @@ export function PlanSheetHost({
     day
       .plan(true)
       .then((v) => {
+        // 아침 첫 열기: 시트로 덮고 탭을 바꾸지 않는다. 오늘 탭의 계획 카드가 도드라질 뿐이다 (#146)
         if (v?.autoOpen) {
-          show(v);
+          nudged = true;
+          window.dispatchEvent(new Event(NUDGE_EVENT));
           day.planShown();
         }
       })
@@ -286,7 +355,13 @@ export function PlanSheetHost({
         </div>
         <div className="plan-body">
           {view.candidates.length === 0 ? (
-            <p className="empty-line">{t('plan.sheet.noTodos')}</p>
+            <>
+              <p className="empty-line">{t('rows.plan.inlineHint')}</p>
+              {/* 막다른 길이 아니게: 여기서 적으면 할 일로 들어가고 먼저 골라 둔다 */}
+              <InlineAdd
+                onAdded={(id) => setPicks((p) => (p.length < PLAN_PICKS && !p.includes(id) ? [...p, id] : p))}
+              />
+            </>
           ) : (
             <>
               <p className="plan-lead">{t('plan.sheet.lead')}</p>
@@ -382,7 +457,7 @@ export function PlanSheetHost({
           <button type="button" className="ghost" onClick={() => setOpen(false)}>
             {t('plan.sheet.later')}
           </button>
-          <button type="button" className="primary" onClick={save}>
+          <button type="button" className="primary" onClick={save} disabled={view.candidates.length === 0}>
             {t('plan.sheet.save')}
           </button>
         </div>

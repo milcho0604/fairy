@@ -40,6 +40,7 @@ import * as pout from './pout.ts';
 import * as records from './records.ts';
 import * as remind from './remind.ts';
 import * as routine from './routine.ts';
+import * as rows from './rows.ts';
 import * as server from './server.ts';
 import * as settings from './settings.ts';
 import * as shop from './shop.ts';
@@ -105,6 +106,7 @@ export const ko = {
   ...friends.ko,
   ...keep.ko,
   ...home.ko,
+  ...rows.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -159,4 +161,5 @@ export const en: Translation<typeof ko> = {
   ...friends.en,
   ...keep.en,
   ...home.en,
+  ...rows.en,
 };

@@ -263,6 +263,21 @@ export class EventStore {
     );
   }
 
+  /** 찾기용: 지우지 않은 모든 일정의 제목과 시각 (알림 줄은 읽지 않는다) */
+  titles(): { id: number; title: string; startAt: number; endAt: number | null; allDay: boolean }[] {
+    return (
+      this.#db
+        .prepare('select id, title, start_at, end_at, all_day from event where deleted_at is null')
+        .all() as { id: number; title: string; start_at: number; end_at: number | null; all_day: number }[]
+    ).map((r) => ({
+      id: Number(r.id),
+      title: r.title,
+      startAt: Number(r.start_at),
+      endAt: r.end_at === null ? null : Number(r.end_at),
+      allDay: Number(r.all_day) === 1,
+    }));
+  }
+
   /**
    * [from, to) 와 시간이 겹치는 시각 일정 (종일은 뺀다), 이른 것부터. 시작이 from 보다 이른 긴 일정도 넣는다
    * (월요일 9시부터 수요일 18시까지인 일정이 화요일 회의와 겹치는 것을 between 으로는 못 봤다).
@@ -1531,11 +1546,32 @@ export function parseEventInput(
   today: string,
   nowMinute: number,
 ): QuickEvent | QuickAllDay | null {
-  const norm = normalizeQuick(text);
+  const normal = normalizeQuick(text);
+  // "내일 종일 휴가": "종일" 은 종일 일정이라는 뜻이지 제목이 아니다. 뗀 글로 종일부터 읽는다 (#146)
+  const flat = normal.replace(ALL_DAY_WORD, ' ').replace(/\s+/g, ' ').trim();
+  const said = flat !== normal;
+  const norm = said ? flat : normal;
   const range = parseAllDayRange(norm, today);
   if (range !== undefined) return range;
-  return parseQuickEvent(norm, today, nowMinute) ?? parseAllDayOne(norm, today);
+  if (said) return parseAllDayOne(norm, today) ?? parseQuickEvent(norm, today, nowMinute);
+  const timed = parseQuickEvent(norm, today, nowMinute);
+  if (timed) return timed;
+  // 시각 없이 점심, 저녁만 적었으면 그 시간(낮 12시, 저녁 7시, 한 시간)으로 읽는다: "내일 점심" 이 종일 일정 "점심" 이 되지 않게
+  for (const meal of MEAL_WORDS)
+    if (meal.re.test(norm)) {
+      const at = parseQuickEvent(`${norm} ${meal.clock}`, today, nowMinute);
+      if (at) return at;
+    }
+  return parseAllDayOne(norm, today);
 }
+
+/** 종일이라는 말: 종일, 하루 종일, all day */
+const ALL_DAY_WORD = /(?:^|\s)(?:하루 ?종일|종일|all[- ]?day)(?=\s|$)/i;
+/** 시각이 없는 점심, 저녁 말과 그 뒤에 붙여 읽을 시각 */
+const MEAL_WORDS: readonly { re: RegExp; clock: string }[] = [
+  { re: /(?:^|\s)(?:점심|lunch)(?=\s|$)/i, clock: '12시 1시간' },
+  { re: /(?:^|\s)(?:저녁|dinner)(?=\s|$)/i, clock: '19시 1시간' },
+];
 
 /** 현지 날짜의 0시 ms */
 export function dayStartMs(day: string): number {

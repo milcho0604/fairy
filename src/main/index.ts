@@ -1038,6 +1038,7 @@ ready
       startFocus: (minutes, todoId) => planner.startFocus(minutes, todoId),
       focusMin: () => settings.get().focusMin,
       stopFocus: () => planner.stopFocus(),
+      resumeFocus: () => planner.resumeFocus(),
       onEventsChanged: () => {
         planner.check();
         gcal.kick();

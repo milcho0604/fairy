@@ -4,7 +4,7 @@ import { COIN } from './coin-rules.ts';
 import { cutText } from './cut-text.ts';
 import { plusDays, weekdayOf as weekday } from './day.ts';
 import type { Db } from './db-schema.ts';
-import { FOCUS, focusCoins } from './focus.ts';
+import { FOCUS, focusReward } from './focus.ts';
 import { t } from './i18n/index.ts';
 import { pinAt } from './pin.ts';
 import { type Anchor, atLocal, DEFAULT_REMINDS, normalizeReminds, REMIND_MAX_MIN } from './remind.ts';
@@ -204,6 +204,7 @@ interface Row {
   due_min?: number | null;
   pinned_at?: unknown;
   repeat_anchor?: string | null;
+  sort_ord?: number | null;
 }
 
 interface StepRow {
@@ -393,7 +394,7 @@ export class TodoStore {
       this.#db
         .prepare(
           `select * from todo where done_at is null and deleted_at is null
-           order by important desc, due is null, due, due_min is not null, due_min, created_at`,
+           order by sort_ord is null, sort_ord, important desc, due is null, due, due_min is not null, due_min, created_at, id`,
         )
         .all() as Row[],
     );
@@ -421,6 +422,41 @@ export class TodoStore {
     if (on && t.pinnedAt !== null) return t;
     this.#db.prepare('update todo set pinned_at = ? where id = ?').run(on ? now : null, id);
     return this.get(id);
+  }
+
+  /**
+   * 손으로 순서 바꾸기 (#146): id 를 target 바로 앞(after 가 거짓)이나 바로 뒤에 둔다.
+   * 열린 할 일 모두의 지금 순서를 1부터 번호로 적은 뒤 옮기므로, 번호가 없던 할 일도 보이던 자리 그대로 시작한다.
+   * 둘 중 하나가 열린 할 일이 아니면 아무것도 안 하고 false
+   */
+  place(id: number, target: number, after: boolean, now: number): boolean {
+    if (id === target) return false;
+    const ids = this.list(now).open.map((todo) => todo.id);
+    if (!ids.includes(id) || !ids.includes(target)) return false;
+    const rest = ids.filter((x) => x !== id);
+    rest.splice(rest.indexOf(target) + (after ? 1 : 0), 0, id);
+    this.#db.exec('begin');
+    try {
+      const set = this.#db.prepare('update todo set sort_ord = ? where id = ?');
+      rest.forEach((x, i) => {
+        set.run(i + 1, x);
+      });
+      this.#db.exec('commit');
+    } catch (err) {
+      this.#db.exec('rollback');
+      throw err;
+    }
+    return true;
+  }
+
+  /** 이 할 일을 끝내면서 생긴 다음 회차 (반복이 아니거나 없으면 undefined) */
+  nextOf(id: number): Todo | undefined {
+    const r = this.#db
+      .prepare(
+        'select * from todo where repeat_of = ? and deleted_at is null and done_at is null order by id desc',
+      )
+      .get(id) as Row | undefined;
+    return r ? this.#withReminds([r])[0] : undefined;
   }
 
   /** 그때부터 끝낸 할 일 제목, 최근 것부터 (주간 회고 카드에서 사용자가 고를 때만) */
@@ -814,6 +850,12 @@ export class TodoStore {
           now,
           id,
         );
+        // 손으로 정한 자리가 있으면 다음 회차도 그 자리에
+        const ord = (
+          this.#db.prepare('select sort_ord from todo where id = ?').get(id) as { sort_ord: number | null }
+        ).sort_ord;
+        if (ord !== null && ord !== undefined)
+          this.#db.prepare('update todo set sort_ord = ? where id = ?').run(ord, next.id);
         // 고정한 반복 할 일은 다음 회차도 같은 자리에 고정한다
         if (t.pinnedAt !== null)
           this.#db.prepare('update todo set pinned_at = ? where id = ?').run(t.pinnedAt, next.id);
@@ -982,7 +1024,7 @@ export class TodoStore {
   }
 
   /** 집중 타이머 한 번 끝. 받은 코인 수 (하루 상한을 넘으면 0). */
-  /** 집중을 끝냈다. 길이에 맞는 코인(focusCoins), 하루 집중 코인 상한(100)을 넘지 않게 */
+  /** 집중을 끝냈다. 길이에 맞는 코인(focusReward), 하루 집중 코인 상한(100)을 넘지 않게 */
   rewardFocus(now: number, minutes: number = FOCUS.focusMin): number {
     const got = Number(
       (
@@ -991,7 +1033,7 @@ export class TodoStore {
           .get(this.#day(now)) as { n: number }
       ).n,
     );
-    const coins = Math.min(focusCoins(minutes), COIN.focus * COIN.dailyFocusLimit - got);
+    const coins = Math.min(focusReward(minutes), COIN.focus * COIN.dailyFocusLimit - got);
     if (coins <= 0) return 0;
     this.#log(coins, 'focus', null, now);
     return coins;

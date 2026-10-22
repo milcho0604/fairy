@@ -380,23 +380,16 @@ try {
   const rowOf = (title) =>
     `[...document.querySelectorAll('.todos .todo')].findIndex((li) => li.querySelector('.title-text')?.textContent.includes(${J(title)}))`;
   const rowIndex = async (title) => Number(await panel.ev(rowOf(title)));
-  /** 줄 위로 마우스를 올려 ▶ 단추를 나오게 하고 누른다 */
+  /** 줄 끝 "..." 메뉴를 열어 첫 항목(진행 중 표시, 끄기)을 누른다 (#146: 예전엔 줄에 마우스를 올리면 ▶ 단추가 나왔다) */
   async function pressDoing(title) {
     const i = await rowIndex(title);
-    const r = JSON.parse(
-      await panel.ev(`(() => { const b = document.querySelectorAll('.todos .todo')[${i}].getBoundingClientRect(); return JSON.stringify({ x: b.x + b.width / 2, y: b.y + b.height / 2 }); })()`),
-    );
-    await panel.mouse('mouseMoved', r.x, r.y);
-    await sleep(200);
-    const btn = JSON.parse(
-      await panel.ev(`(() => { const e = document.querySelectorAll('.todos .todo')[${i}].querySelector('.doing-btn'); const b = e.getBoundingClientRect(); return JSON.stringify({ x: b.x + b.width / 2, y: b.y + b.height / 2, on: e.classList.contains('on') }); })()`),
-    );
-    await panel.mouse('mouseMoved', btn.x, btn.y);
-    await panel.mouse('mousePressed', btn.x, btn.y);
-    await panel.mouse('mouseReleased', btn.x, btn.y);
-    return btn.on;
+    const was = await panel.ev(`!!document.querySelectorAll('.todos .todo')[${i}].querySelector('.tools .pin-mark')`);
+    await panel.click('.todos .todo .row-more', i);
+    await sleep(350);
+    await panel.click('.row-menu button', 0);
+    return was;
   }
-  // 누름이 묻히면(줄 위로 마우스가 올라오기 전) 한 번 더
+  // 누름이 묻히면 한 번 더
   for (let tries = 0; tries < 3; tries++) {
     await pressDoing('보고서 쓰기');
     if (await until('표시', async () => (await main('__jj.doing.ids().length')) > 0, 3000).catch(() => false)) break;
@@ -408,22 +401,18 @@ try {
   const ambient = await pet.ev(`document.getElementById('bubble').hasAttribute('data-ambient')`);
   check('상태 말풍선은 조용한 모양(ambient)', ambient === true);
   check('진행 중 표시가 파일에 남는다', J(JSON.parse(readFileSync(join(data, 'doing.json'), 'utf8'))) === J([ids[0]]));
-  const marked = await panel.ev(`document.querySelectorAll('.todos .todo')[${await rowIndex('보고서 쓰기')}].querySelector('.doing-btn')?.getAttribute('aria-pressed')`);
-  check('패널 줄 ▶ 가 켜진 모양', marked === 'true', marked);
+  const marked = await panel.ev(`!!document.querySelectorAll('.todos .todo')[${await rowIndex('보고서 쓰기')}].querySelector('.tools .pin-mark')`);
+  check('패널 줄에 진행 중 표시(▶)가 늘 보인다', marked === true, String(marked));
 
   await pressDoing('메일 답장');
   await until('여럿', async () => (await bubbleText(pet)) === TXT.doingMore('보고서 쓰기', 1));
   check('여러 개면 "제목 외 n개"', true, await bubbleText(pet));
   await capture(pet, 'doing');
-  // 줄 위에 마우스를 올린 채 지우기(×)와 켠 ▶ 의 누르는 자리가 6px 넘게 떨어져 있다 (잘못 눌러 지우지 않게)
+  // 줄에는 지우기(×) 단추가 없다: 지우기는 "..." 메뉴 안에만 있어 ▶ 를 누르다 잘못 지우지 않는다 (#146)
   {
     const i = await rowIndex('메일 답장');
-    const r = JSON.parse(await panel.ev(`(() => { const b = document.querySelectorAll('.todos .todo')[${i}].getBoundingClientRect(); return JSON.stringify({ x: b.x + b.width / 2, y: b.y + b.height / 2 }); })()`));
-    await panel.mouse('mouseMoved', r.x, r.y);
-    await sleep(300);
-    const gap = await panel.ev(`(() => { const li = document.querySelectorAll('.todos .todo')[${i}]; const a = li.querySelector('.remove')?.getBoundingClientRect(); const b = li.querySelector('.doing-btn.on')?.getBoundingClientRect(); return a && b ? Math.round(Math.max(b.left - a.right, a.left - b.right)) : null; })()`);
-    const rects = await panel.ev(`(() => { const li = document.querySelectorAll('.todos .todo')[${i}]; return JSON.stringify([...li.querySelectorAll('.remove, .doing-btn, .tools')].map((e) => [e.className, Math.round(e.getBoundingClientRect().left), Math.round(e.getBoundingClientRect().right)])); })()`);
-    check('지우기(×)와 켠 ▶ 의 누르는 자리가 6px 이상 떨어져 있다', gap !== null && gap >= 6, `간격 ${gap}px ${rects}`);
+    const none = await panel.ev(`!document.querySelectorAll('.todos .todo')[${i}].querySelector('.remove')`);
+    check('줄에는 지우기(×) 단추가 없다 (메뉴 안에만 있다)', none === true);
   }
   // 패널 할 일 줄의 ▶ (켠 줄은 늘 보이고, 안 켠 줄은 마우스를 올리면 보인다)
   for (const dark of [false, true]) {
@@ -472,10 +461,9 @@ try {
   await until('끝내면 풀림', async () => (await bubbleText(pet)) === TXT.doing('보고서 쓰기'));
   check('진행 중인 할 일을 끝내면 말풍선에서 풀린다 (표시는 되돌리기용으로 남는다)', J(JSON.parse(readFileSync(join(data, 'doing.json'), 'utf8'))).includes(String(ids[0])));
   const rm = await rowIndex('보고서 쓰기');
-  const rr = JSON.parse(await panel.ev(`(() => { const b = document.querySelectorAll('.todos .todo')[${rm}].getBoundingClientRect(); return JSON.stringify({ x: b.x + b.width / 2, y: b.y + b.height / 2 }); })()`));
-  await panel.mouse('mouseMoved', rr.x, rr.y);
-  await sleep(200);
-  await panel.click('.todos .todo .remove', rm);
+  await panel.click('.todos .todo .row-more', rm);
+  await sleep(350);
+  await panel.click('.row-menu button.danger', 0);
   await until('지우면 사라짐', async () => (await bubbleText(pet)) === null);
   check('진행 중인 할 일을 지우면 말풍선이 사라진다', true);
 

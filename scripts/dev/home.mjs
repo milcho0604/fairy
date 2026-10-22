@@ -430,7 +430,7 @@ const body = async () => {
         check(`${mark} 할 일: 태그 칩은 가로 줄이 아니라 왼쪽 세로 칸 (목록 위에 칩 줄 없음)`, !(await wh.ev(`!!document.querySelector('.todo-main > .tag-chips')`)) && (await wh.ev(`getComputedStyle(document.querySelector('.tag-col')).flexDirection`)) === 'column');
       } else {
         check(`${mark} 할 일: 태그 칸과 상세 칸이 안 보이고 태그 칩이 목록 위 가로 줄`, !(await shown('.todo-tags')) && !(await shown('.todo-detail')) && (await wh.ev(`!!document.querySelector('.todo-main > .tag-chips')`)) && (await wh.ev(`getComputedStyle(document.querySelector('.todo-main > .tag-chips')).flexDirection`)) === 'row');
-        check(`${mark} 할 일: 줄 끝 단추(.extra)가 예전 그대로 있다`, (await wh.ev(`document.querySelectorAll('li.todo .tools .extra').length`)) > 0);
+        check(`${mark} 할 일: 줄 끝에 "..." 메뉴 단추가 있다 (#146)`, (await wh.ev(`document.querySelectorAll('li.todo .tools .row-more').length`)) > 0);
       }
       for (const dark of [false, true]) {
         await wh.dark(dark);
@@ -529,7 +529,8 @@ const body = async () => {
     check('다른 줄로 옮겨도 그 줄 제목은 남의 것과 섞이지 않는다', (await todoOf(ids.mail)).title === T.mail);
 
     // 키보드
-    await wh.ev(`(() => { document.querySelector('li.todo .title').focus(); return true; })()`);
+    // 줄 하나가 탭 정지점이라 줄(li) 자체에 초점을 둔다 (#146)
+    await wh.ev(`(() => { document.querySelector('li.todo[tabindex="0"]').focus(); return true; })()`);
     const firstId = await wh.ev(`document.activeElement.closest('li.todo').dataset.id`);
     await key('ArrowDown', 'ArrowDown', 40);
     await sleep(250);
@@ -617,7 +618,7 @@ const body = async () => {
     await pickRow(tx('분기', 'quarterly'));
     await setBounds(760);
     check('1100 에서 760 으로 줄이면 한 열 (태그 칸, 상세 칸 사라짐, 칩은 가로 줄)', !(await shown('.todo-tags')) && !(await shown('.todo-detail')) && (await wh.ev(`!!document.querySelector('.todo-main > .tag-chips')`)));
-    check('한 열로 돌아와도 할 일 줄은 모두 있다 (예전 줄 끝 단추 포함)', (await wh.ev(`document.querySelectorAll('li.todo').length`)) >= 3 && (await wh.ev(`document.querySelectorAll('li.todo .tools .extra').length`)) > 0);
+    check('한 열로 돌아와도 할 일 줄은 모두 있다 (줄 끝 "..." 단추 포함)', (await wh.ev(`document.querySelectorAll('li.todo').length`)) >= 3 && (await wh.ev(`document.querySelectorAll('li.todo .tools .row-more').length`)) > 0);
     await wh.click(rowTitle(tx('분기', 'quarterly')));
     await sleep(300);
     check('한 열에서 제목을 누르면 예전처럼 줄 안에서 고치기 칸이 열린다', await wh.ev(`!!document.querySelector('li.todo .title-edit')`));
@@ -929,7 +930,7 @@ const body = async () => {
       await sleep(500);
       const zone = await pp.ev(`document.getElementById('ptab-panel').dataset.zone`);
       check(`${mark}: 구간은 ${w >= 520 ? '보통' : '좁음'}`, zone === (w >= 520 ? 'medium' : 'narrow'), zone);
-      check(`${mark} 할 일: 한 열 (태그 칸, 상세 칸 없음), 칩은 목록 위 가로 줄, 줄 끝 단추 예전 그대로`, !(await pp.ev(`document.querySelector('.todo-layout').classList.contains('wide')`)) && !(await pp.ev(`!!document.querySelector('.todo-tags')?.offsetParent`)) && !(await pp.ev(`!!document.querySelector('.todo-detail')?.offsetParent`)) && (await pp.ev(`getComputedStyle(document.querySelector('.todo-main > .tag-chips')).flexDirection`)) === 'row' && (await pp.ev(`document.querySelectorAll('li.todo .tools .extra').length`)) > 0);
+      check(`${mark} 할 일: 한 열 (태그 칸, 상세 칸 없음), 칩은 목록 위 가로 줄, 줄 끝 "..." 단추`, !(await pp.ev(`document.querySelector('.todo-layout').classList.contains('wide')`)) && !(await pp.ev(`!!document.querySelector('.todo-tags')?.offsetParent`)) && !(await pp.ev(`!!document.querySelector('.todo-detail')?.offsetParent`)) && (await pp.ev(`getComputedStyle(document.querySelector('.todo-main > .tag-chips')).flexDirection`)) === 'row' && (await pp.ev(`document.querySelectorAll('li.todo .tools .row-more').length`)) > 0);
       let over = await overflow(pp, '.surface');
       check(`${mark} 할 일: 가로 넘침 없음`, over.length === 0, over.join(', '));
       await pp.shot(`lists-panel-todo-w${w}`);

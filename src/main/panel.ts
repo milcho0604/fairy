@@ -16,6 +16,7 @@ import { isPanelDraftKind } from '../shared/draft-store.ts';
 import { findSameEvent } from '../shared/event-dup.ts';
 import { clashIds, overlapping, spanEnd } from '../shared/event-overlap.ts';
 import {
+  allDaySpan,
   allDayTimes,
   type CalEvent,
   dayStartMs,
@@ -24,7 +25,8 @@ import {
   parseEventInput,
   parseQuickEventInfo,
 } from '../shared/event-store.ts';
-import { type FocusState, focusCoins, isFocusLength } from '../shared/focus.ts';
+import { findAll } from '../shared/find-all.ts';
+import { type FocusState, focusReward, isFocusMinutes } from '../shared/focus.ts';
 import { isMonth, monthOf } from '../shared/focus-month.ts';
 import type { GcalCalLabel, PanelGcal } from '../shared/gcal.ts';
 import { isPanelView, type PanelView } from '../shared/home-policy.ts';
@@ -132,7 +134,9 @@ export interface PanelOptions {
   startFocus: (minutes?: number, todoId?: number) => void;
   /** 고른 집중 길이 */
   focusMin: () => number;
-  stopFocus: () => void;
+  stopFocus: () => { minutes: number } | undefined;
+  /** 방금 그만둔 집중을 되돌린다. 되돌렸으면 true */
+  resumeFocus: () => boolean;
   /** 일정이 바뀌었다 (곧 시작하는 일정이면 바로 알림) */
   onEventsChanged: () => void;
   /** 일정 줄의 구글 표식 (구글 캘린더에 연결했을 때만) */
@@ -289,7 +293,7 @@ export function createPanel(o: PanelOptions) {
       ...gcalOf(events, pinnedEvents),
       focus: o.focus(),
       focusMin: o.focusMin(),
-      focusCoins: focusCoins(o.focusMin()),
+      focusCoins: focusReward(o.focusMin()),
       life: o.life(),
       achieve: o.achieve(),
       missed: o.missed(),
@@ -538,6 +542,25 @@ export function createPanel(o: PanelOptions) {
     if (!ours(e) || typeof query !== 'string') return [];
     return searchNotes(o.notes.list(), query.slice(0, 200), composing === true);
   });
+  // 할 일, 메모, 일정을 한 번에 (#146)
+  ipcMain.handle(PANEL.findAll, (e, query: unknown, composing: unknown) => {
+    if (!ours(e) || typeof query !== 'string') return findAll('', { todos: [], notes: [], events: [] }, 0);
+    const now = Date.now();
+    const { open, doneToday } = o.store.list(now);
+    // 일정은 일정 탭 목록에 보이는 것(끝나지 않은 것)만: 찾아서 눌렀을 때 그 줄이 있어야 한다
+    const today = localDay(now);
+    const events = o.events
+      .titles()
+      .filter((ev) =>
+        ev.allDay ? allDaySpan(ev).last >= today : (ev.endAt ?? ev.startAt + 30 * 60_000) >= now,
+      );
+    return findAll(
+      query.slice(0, 200),
+      { todos: [...open, ...doneToday], notes: o.notes.list(), events },
+      now,
+      composing === true,
+    );
+  });
   // 저장이 던지면(디스크 가득) 안내 글로 답한다. 메모 창은 글을 들고 있다가 다음 고침 때 다시 보낸다
   ipcMain.handle(
     PANEL.noteUpdate,
@@ -649,7 +672,8 @@ export function createPanel(o: PanelOptions) {
       // 일정 탭에서는 날짜만 적어도 된다: "내일 제주도 여행"은 종일, "10/10-10/12 제주도"는 여러 날 종일.
       // (빠른 입력은 위 PANEL.add 처럼 시각이 있어야 일정이다. 거기서 날짜만 있으면 할 일 마감)
       // 반복 일정은 아직 없다: 한 번짜리로 넣지 않고 할 일 탭으로 안내한다
-      if (parseTodoLine(text, base, minute).repeat) return { ok: false, error: t('panel.event.noRepeat') };
+      if (parseTodoLine(text, base, minute).repeat)
+        return { ok: false, error: t('panel.event.noRepeat'), asTodo: true };
       // 달력에서 고른 날이면 날짜도 시각도 없는 글("장보기")은 그날 종일. "오늘" 을 붙여 읽어
       // 시각처럼 보이는 말("25시 회의")은 종일로 넣지 않고 되묻는 규칙을 그대로 쓴다
       const ev =
@@ -832,6 +856,19 @@ export function createPanel(o: PanelOptions) {
     else o.events.pin(id, on, now);
     push();
   });
+  // 할 일 순서 바꾸기와 반복 다음 회차 (#146)
+  ipcMain.on(PANEL.place, (e, id: unknown, target: unknown, after: unknown) => {
+    if (!ours(e) || typeof id !== 'number' || typeof target !== 'number') return;
+    if (o.store.place(id, target, after === true, Date.now())) {
+      log('todo', 'place', id);
+      push();
+    }
+  });
+  ipcMain.handle(PANEL.nextOf, (e, id: unknown) => {
+    if (!ours(e) || typeof id !== 'number') return null;
+    const next = o.store.nextOf(id);
+    return next ? { due: next.due } : null;
+  });
   // ---- 진행 중 표시 (펫 머리 위 말풍선) ----
   ipcMain.on(PANEL.doing, (e, id: unknown, on: unknown) => {
     if (!ours(e) || typeof id !== 'number' || typeof on !== 'boolean') return;
@@ -901,11 +938,10 @@ export function createPanel(o: PanelOptions) {
   ipcMain.on(PANEL.focusStart, (e, minutes: unknown, todoId: unknown) => {
     if (!ours(e)) return;
     const id = typeof todoId === 'number' && Number.isInteger(todoId) ? todoId : undefined;
-    o.startFocus(isFocusLength(minutes) ? minutes : undefined, id);
+    o.startFocus(isFocusMinutes(minutes) ? minutes : undefined, id);
   });
-  ipcMain.on(PANEL.focusStop, (e) => {
-    if (ours(e)) o.stopFocus();
-  });
+  ipcMain.handle(PANEL.focusStop, (e) => (ours(e) ? (o.stopFocus() ?? null) : null));
+  ipcMain.handle(PANEL.focusResume, (e) => (ours(e) ? o.resumeFocus() : false));
   ipcMain.on(PANEL.missedClear, (e) => {
     if (ours(e)) o.clearMissed();
   });
