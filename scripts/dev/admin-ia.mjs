@@ -473,7 +473,7 @@ async function webPart() {
   await ev(`document.querySelector('#cell-home ul.todo a[href="#reports"]').click(); true`);
   await sleep(200);
   check('할 일 카드를 누르면 그 칸으로 간다', (await where()).cells.join() === 'reports');
-  check('신고 칸에 건수, 대화 본문은 없다', (await ev(`document.querySelector('#reports-list').textContent`)).includes('1건') && (await ev(`document.documentElement.innerHTML.includes('비밀질문본문') || document.documentElement.innerHTML.includes('비밀답변본문')`)) === false);
+  check('신고 칸에 건수, 대화 본문은 없다', (await ev(`document.querySelector('#reports-list').textContent`)).includes('전체 1') && (await ev(`document.documentElement.innerHTML.includes('비밀질문본문') || document.documentElement.innerHTML.includes('비밀답변본문')`)) === false);
   await shotEl('ia-home-todo-1280', '#cell-home');
   await nav(`${apiUrl}/admin#home`);
   await shotEl('ia-home-1280', '#cell-home', 8, 1100);
@@ -757,6 +757,16 @@ async function appPart() {
     check('최근 운영 기록 줄에 웹 운영자 이름과 동작 이름', b.text.includes(tx('admin.log.web')) && b.text.includes(tx('admin.act.note.send')), b.text);
     check('세션 토큰이 화면에 없다', !(await p.ev(`document.body.innerHTML.includes(${JSON.stringify(session)})`)));
     check('새로 보기가 끝나면 진행 표시는 사라진다', b.statuses.length === 0 && b.alerts.length === 0, JSON.stringify(b.statuses));
+
+    // 신고를 조치로 바꾸면 신고 대기와 확인할 것에서 빠지고, 되돌리면 다시 (#151)
+    sql(`UPDATE ai_report SET status = 'done'`);
+    await press(p, '.admin-box', tx('admin.refresh'));
+    await until('신고 처리 반영', async () => (await box(p)).text.includes(tx('admin.counts', { todo: 2, reports: 0 })), 15_000);
+    b = await box(p);
+    check('신고를 조치로 바꾸면 신고 대기 0, 확인할 것에서 신고 줄이 빠진다', !b.text.includes(tx('admin.todo.reports', { n: 1 })) && b.text.includes(tx('admin.counts', { todo: 2, reports: 0 })), b.text);
+    sql(`UPDATE ai_report SET status = 'pending'`);
+    await press(p, '.admin-box', tx('admin.refresh'));
+    await until('신고 되돌림 반영', async () => (await box(p)).text.includes(tx('admin.todo.reports', { n: 1 })), 15_000);
 
     // ---- 3. 웹에서 열기: 설정된 서버 주소에서 만든 주소, 자리는 목록에 있는 것만 ----
     await main(`globalThis.__opened = []; const f = globalThis.fetch; globalThis.fetch = (u, i) => { if (String(u).includes('/admin')) globalThis.__opened.push(String(u)); return f(u, i); }; true`);

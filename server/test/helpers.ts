@@ -37,6 +37,8 @@ export async function startHarness(extra: Partial<Config> = {}, deps: AppDeps = 
     publicUrl: 'http://127.0.0.1:1',
     googleClientId: '',
     googleClientSecret: '',
+    // 실제 GitHub 를 부르지 않는다 (닫힌 포트: 못 읽음). 필요한 시험은 extra 로 가짜 주소를 준다
+    releasesApi: 'http://127.0.0.1:9/latest',
     ...extra,
   };
   const app = await createApp(config, deps);

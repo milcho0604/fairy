@@ -32,6 +32,12 @@ import {
   LEGACY_PLACES,
   loginPage,
   mainPage,
+  REPORT_STATE_KO,
+  REPORT_STATES,
+  type ReportFilter,
+  type ReportOpen,
+  type ReportRow,
+  type ReportState,
   todoOf,
 } from './admin-page';
 import { AI_MODES, AiAdmin, type AiMode, type AiSettings, findAccount } from './ai-admin';
@@ -135,6 +141,8 @@ export const ADMIN_ACTIONS = [
   // 기능 스위치 (#102): kakao_login, coin_reset 의 모드와 허용 계정 (ai_chat 은 ai/mode, ai/allow)
   'features/mode',
   'features/allow',
+  // 신고 처리 상태 (#151): 미처리, 확인, 조치
+  'reports/status',
 ] as const;
 export type AdminAction = (typeof ADMIN_ACTIONS)[number];
 export const isAdminAction = (v: string): v is AdminAction =>
@@ -362,17 +370,26 @@ export class AdminService {
            ON ac.id = CASE WHEN l.target ~ '^account:[0-9]{1,18}$' THEN substr(l.target, 9)::bigint END
         ORDER BY l.id DESC LIMIT 5`,
     );
-    // 신고는 사용자가 따로 동의한 대화만 30일 둔다 (목록 화면은 신고 처리 이슈가 연다). 여기서는 건수만 센다
-    const reports = await q.query<{ n: string }>('SELECT count(*) AS n FROM ai_report');
-    const reportCount = Number(reports.rows[0]?.n ?? 0);
+    // 신고는 사용자가 따로 동의한 대화만 30일 둔다. 여기서는 상태별 건수만 센다 (목록과 본문은 웹 화면이 따로 불러온다)
+    const reports = await q.query<{ pending: string; seen: string; done: string }>(
+      `SELECT count(*) FILTER (WHERE status = 'pending') AS pending, count(*) FILTER (WHERE status = 'seen') AS seen,
+              count(*) FILTER (WHERE status = 'done') AS done FROM ai_report`,
+    );
+    const rc = reports.rows[0];
+    const reportCounts = {
+      pending: Number(rc?.pending ?? 0),
+      seen: Number(rc?.seen ?? 0),
+      done: Number(rc?.done ?? 0),
+    };
+    const reportCount = reportCounts.pending + reportCounts.seen + reportCounts.done;
     const settings = await this.aiAdmin.settings();
     const budgetMicros = settings.monthlyBudgetMicros;
     return {
       tab,
-      reports: { total: reportCount },
+      reports: { total: reportCount, ...reportCounts, filter: 'all' as const, rows: [] },
       recent: recent.rows,
       todo: todoOf({
-        reports: reportCount,
+        reports: reportCounts.pending,
         costMicros: Number(ai.rows[0]?.cost ?? 0),
         budgetMicros,
         events: events.rows.map((e) => ({ starts: Number(e.starts), ends: Number(e.ends) })),
@@ -405,7 +422,7 @@ export class AdminService {
       coupons: coupons.rows,
       notices: doc.rows[0] ? readDoc(doc.rows[0].body) : undefined,
       noticesUpdated: doc.rows[0] ? Number(doc.rows[0].updated) : undefined,
-      latest: await this.feeds.latestRelease(),
+      latest: (await this.feeds.latestRelease()) ?? null,
       log: log.rows,
       logPage: log.page,
       rewardsLoginOnly: await this.rewards.loginOnly(),
@@ -591,10 +608,23 @@ export class AdminService {
       [live],
     );
     const x = d.rows[0];
+    const rep = await this.db.pool.query<{ id: string; at: string; status: ReportState }>(
+      `SELECT id, (extract(epoch FROM created_at) * 1000)::bigint AS at, status FROM ai_report
+        WHERE account_id IN (SELECT f.id FROM account f WHERE COALESCE(f.merged_into, f.id) = $1::bigint) ORDER BY created_at DESC, id DESC LIMIT 20`,
+      [live],
+    );
+    const repTotal = await this.db.pool.query<{ n: string }>(
+      'SELECT count(*) AS n FROM ai_report WHERE account_id IN (SELECT f.id FROM account f WHERE COALESCE(f.merged_into, f.id) = $1::bigint)',
+      [live],
+    );
     return {
       accounts,
       account: {
         ...one,
+        reports: {
+          total: Number(repTotal.rows[0]?.n ?? 0),
+          rows: rep.rows.map((r) => ({ id: r.id, at: Number(r.at), status: r.status })),
+        },
         created: Number(x?.created ?? 0),
         logins: x?.logins ?? [],
         claims: Number(x?.claims ?? 0),
@@ -948,6 +978,153 @@ export class AdminService {
     };
   }
 
+  // ---- 신고 (#151) ----
+
+  /** 신고 목록: 미처리, 확인, 조치 순으로, 같은 상태끼리는 새것부터 (200건까지). 대화 글은 싣지 않는다 */
+  async reportList(filter: ReportFilter): Promise<ReportRow[]> {
+    const r = await this.db.pool.query<{
+      id: string;
+      at: string;
+      account_id: string;
+      code: string;
+      nickname: string | null;
+      status: ReportState;
+      handled_by: string | null;
+      handled_name: string | null;
+      handled_at: string | null;
+      blocked: boolean;
+      same_user: string;
+    }>(
+      `SELECT r.id, (extract(epoch FROM r.created_at) * 1000)::bigint AS at, COALESCE(a.merged_into, a.id) AS account_id, a.code, a.nickname, r.status,
+              r.handled_by, r.handled_name, (extract(epoch FROM r.handled_at) * 1000)::bigint AS handled_at,
+              EXISTS (SELECT 1 FROM ai_block b WHERE b.account_id = COALESCE(a.merged_into, a.id)) AS blocked,
+              (SELECT count(*) FROM ai_report x JOIN account xa ON xa.id = x.account_id
+                WHERE COALESCE(xa.merged_into, xa.id) = COALESCE(a.merged_into, a.id)) AS same_user
+         FROM ai_report r JOIN account a ON a.id = r.account_id
+        WHERE ($1 = 'all' OR r.status = $1)
+        ORDER BY CASE r.status WHEN 'pending' THEN 0 WHEN 'seen' THEN 1 ELSE 2 END, r.created_at DESC, r.id DESC
+        LIMIT 200`,
+      [filter],
+    );
+    return r.rows.map((x) => ({
+      id: x.id,
+      at: Number(x.at),
+      accountId: x.account_id,
+      code: x.code,
+      nickname: x.nickname,
+      status: x.status,
+      handledBy: x.handled_by,
+      handledName: x.handled_name,
+      handledAt: x.handled_at === null ? null : Number(x.handled_at),
+      blocked: x.blocked,
+      sameUser: Number(x.same_user),
+    }));
+  }
+
+  /**
+   * 신고 하나의 질문과 답을 연다. 여는 것과 운영 기록 한 줄(report.view, 대상 이용자와 신고 번호, 글은 복사하지 않음)이
+   * 한 트랜잭션이라 기록이 안 남으면 본문도 안 보인다. 없는 신고면 null (기록 없음)
+   */
+  async reportOpen(actor: string, id: string): Promise<ReportOpen | null> {
+    if (!/^\d{1,18}$/.test(id)) return null;
+    return this.db.tx(async (c) => {
+      const r = await c.query<{
+        id: string;
+        at: string;
+        account_id: string;
+        code: string;
+        nickname: string | null;
+        status: ReportState;
+        handled_by: string | null;
+        handled_name: string | null;
+        handled_at: string | null;
+        blocked: boolean;
+        question: string;
+        answer: string;
+      }>(
+        `SELECT r.id, (extract(epoch FROM r.created_at) * 1000)::bigint AS at, COALESCE(a.merged_into, a.id) AS account_id, a.code, a.nickname, r.status,
+                r.handled_by, r.handled_name, (extract(epoch FROM r.handled_at) * 1000)::bigint AS handled_at,
+                EXISTS (SELECT 1 FROM ai_block b WHERE b.account_id = COALESCE(a.merged_into, a.id)) AS blocked,
+                r.question, r.answer
+           FROM ai_report r JOIN account a ON a.id = r.account_id WHERE r.id = $1`,
+        [id],
+      );
+      const x = r.rows[0];
+      if (!x) return null;
+      await adminLog(c, actor, 'report.view', `account:${x.account_id}`, { report: Number(x.id) });
+      const others = await c.query<{ id: string; at: string; status: ReportState }>(
+        `SELECT id, (extract(epoch FROM created_at) * 1000)::bigint AS at, status FROM ai_report
+          WHERE account_id IN (SELECT f.id FROM account f WHERE COALESCE(f.merged_into, f.id) = $1::bigint) AND id <> $2 ORDER BY created_at DESC, id DESC LIMIT 10`,
+        [x.account_id, x.id],
+      );
+      return {
+        id: x.id,
+        at: Number(x.at),
+        accountId: x.account_id,
+        code: x.code,
+        nickname: x.nickname,
+        status: x.status,
+        handledBy: x.handled_by,
+        handledName: x.handled_name,
+        handledAt: x.handled_at === null ? null : Number(x.handled_at),
+        blocked: x.blocked,
+        sameUser: others.rows.length + 1,
+        question: x.question,
+        answer: x.answer,
+        others: others.rows.map((o) => ({ id: o.id, at: Number(o.at), status: o.status })),
+      };
+    });
+  }
+
+  /**
+   * 신고 처리 상태 바꾸기 (미처리, 확인, 조치). 화면에서 본 상태(from)가 지금과 맞아야 바뀐다: 같은 단추를 두 번 눌러도,
+   * 다른 곳에서 먼저 바꿨어도 두 번 쓰지 않고 거절한다. 미처리로 되돌리면 처리자와 시각을 비운다
+   */
+  async reportStatus(actor: string, f: FormFields): Promise<AdminDone> {
+    const id = (f.id ?? '').trim();
+    if (!/^\d{1,18}$/.test(id)) throw new Refused('신고 번호가 이상해요');
+    const from = f.from as ReportState;
+    const to = f.to as ReportState;
+    if (!REPORT_STATES.includes(from) || !REPORT_STATES.includes(to) || from === to)
+      throw new Refused('바꿀 상태가 이상해요');
+    return this.write(actor, async (c) => {
+      const name = await actorName(c, actor);
+      const r = await c.query<{ account_id: string }>(
+        `UPDATE ai_report SET status = $2::text,
+                handled_by = CASE WHEN $2::text = 'pending' THEN NULL ELSE $4::text END,
+                handled_name = CASE WHEN $2::text = 'pending' THEN NULL ELSE $5::text END,
+                handled_at = CASE WHEN $2::text = 'pending' THEN NULL ELSE now() END
+          WHERE id = $1 AND status = $3
+        RETURNING (SELECT COALESCE(a.merged_into, a.id) FROM account a WHERE a.id = account_id) AS account_id`,
+        [id, to, from, actor.slice(0, 120), name],
+      );
+      const row = r.rows[0];
+      if (!row) {
+        const now = await c.query<{ status: ReportState }>('SELECT status FROM ai_report WHERE id = $1', [
+          id,
+        ]);
+        if (!now.rows[0]) throw new Refused('없는 신고예요. 받은 지 30일이 지나 지워졌을 수 있어요', 'gone');
+        throw new Refused(
+          `다른 곳에서 먼저 바꿨어요 (지금 ${REPORT_STATE_KO[now.rows[0].status]}). 신고를 다시 열어 주세요`,
+          'stale',
+        );
+      }
+      const text = {
+        seen: `신고 #${id} 를 확인으로 표시했어요`,
+        done: `신고 #${id} 를 조치로 표시했어요`,
+        pending: `신고 #${id} 를 미처리로 되돌렸어요`,
+      }[to];
+      return {
+        text,
+        log: [
+          to === 'pending' ? 'report.reopen' : `report.${to}`,
+          `account:${row.account_id}`,
+          { report: Number(id), from, to },
+        ],
+      };
+    });
+  }
+
   // ---- 채팅 이용권 (AI 대화권) 관리 ----
 
   /** 접근 모드 (off, allowlist, everyone). 바꾸기는 확인 칸이 있어야 한다 */
@@ -1268,6 +1445,8 @@ export class AdminService {
         return this.featureMode(actor, f);
       case 'features/allow':
         return this.featureAllow(actor, f);
+      case 'reports/status':
+        return this.reportStatus(actor, f);
     }
   }
 
@@ -1485,6 +1664,7 @@ const ACTION_PLACES: Record<AdminAction, AdminPlace> = {
   'rewards/policy': 'announce/coupons',
   'features/mode': 'settings/features',
   'features/allow': 'settings/features',
+  'reports/status': 'reports',
 };
 
 /** 옛 웹 주소의 찾기 조건을 새 이름으로 (운영 기록 조건은 사용자 표의 쪽 넘김과 이름이 겹치지 않게 lu, la, lt, lp) */
@@ -1628,12 +1808,29 @@ export class AdminController {
       },
       webLogOptionsOf(query),
     );
+    // 신고 칸: 목록(대화 글 없음)과, 번호를 주면 그 신고의 본문(연 기록이 운영 기록에 남는다)
+    const filterRaw = text('rs');
+    const filter: ReportFilter = (REPORT_STATES as readonly string[]).includes(filterRaw ?? '')
+      ? (filterRaw as ReportState)
+      : 'all';
+    const reportId = text('report');
+    view.reports = {
+      ...view.reports,
+      filter,
+      rows: await this.admin.reportList(filter),
+      ...(reportId !== undefined ? { open: await this.admin.reportOpen(actorOf(s), reportId) } : {}),
+    };
     if (s.preview && Date.now() - s.preview.at > PREVIEW_MS) s.preview = undefined;
     const preview = s.preview
       ? await this.admin.previewOf(s.preview.action, s.preview.fields, s.preview.nonce)
       : undefined;
     if (s.preview && !preview) s.preview = undefined;
-    const formPlace = flash?.form && isAdminAction(flash.form) ? ACTION_PLACES[flash.form] : undefined;
+    const formPlace =
+      flash?.form && isAdminAction(flash.form)
+        ? flash.fields?.ret === 'reports'
+          ? 'reports'
+          : ACTION_PLACES[flash.form]
+        : undefined;
     html(res, 200, mainPage({ ...view, csrf: s.csrf, flash, flashPlace: formPlace, preview, grantRef }));
   }
 
@@ -1745,11 +1942,11 @@ export class AdminController {
         return (await this.admin.run(name, actorOf(s), f)).text;
       },
       (f) =>
-        ACTION_PLACES[name].startsWith('users/list') && f.account
+        ACTION_PLACES[name].startsWith('users/list') && f.account && f.ret !== 'reports'
           ? `/admin?q=${encodeURIComponent(f.account.trim())}`
           : '/admin',
       name,
-      () => ACTION_PLACES[name],
+      (f) => (f.ret === 'reports' ? 'reports' : ACTION_PLACES[name]),
     );
   }
 
@@ -1760,6 +1957,8 @@ export class AdminController {
     try {
       const url = new URL(referer, this.config.publicUrl);
       if (url.origin !== new URL(this.config.publicUrl).origin || url.pathname !== '/admin') return fallback;
+      // 신고 본문을 연 주소로는 돌아가지 않는다 (돌아가면 쓰기 하나마다 열람이 또 남는다). 목록으로
+      url.searchParams.delete('report');
       return `/admin${url.search}`.slice(0, 300);
     } catch {
       return fallback;

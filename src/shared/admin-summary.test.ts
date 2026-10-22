@@ -87,3 +87,10 @@ test('확인할 것과 운영 기록 글은 ko, en 둘 다 나온다', () => {
   assert.equal(whoName({ actor: 'account:7', actorName: '고양이 #7' }), '고양이 #7');
   setLang('ko');
 });
+
+test('신고 대기는 pending 을 먼저, 없으면 옛 서버의 total 로 읽는다 (#151)', () => {
+  assert.equal(adminSummaryOf({ ...base, reports: { total: 9, pending: 2, seen: 3, done: 4 } })?.reports, 2);
+  assert.equal(adminSummaryOf({ ...base, reports: { total: 9, pending: 0 } })?.reports, 0);
+  assert.equal(adminSummaryOf({ ...base, reports: { total: 9 } })?.reports, 9);
+  assert.equal(adminSummaryOf({ ...base, reports: { total: 'x', pending: 'y' } })?.reports, 0);
+});
