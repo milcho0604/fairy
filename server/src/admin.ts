@@ -30,6 +30,7 @@ import {
   adminJs,
   type FlowPreview,
   type GrantTarget,
+  type GrantTrail,
   LEGACY_PLACES,
   loginPage,
   mainPage,
@@ -40,6 +41,7 @@ import {
   type ReportRow,
   type ReportState,
   todoOf,
+  type UserHistory,
 } from './admin-page';
 import { AI_MODES, AiAdmin, type AiMode, type AiSettings, findAccount } from './ai-admin';
 import { CONFIG } from './app.tokens';
@@ -177,6 +179,46 @@ export interface LogOptions {
   page?: string | undefined;
 }
 
+interface TrailRow {
+  id: string;
+  kind: string;
+  message: string | null;
+  coins: number;
+  chat_passes: number;
+  fill_to: number | null;
+  sent: string;
+  expires: string | null;
+  opened: string | null;
+  opened_coins: number | null;
+  opened_passes: number | null;
+  expired: boolean;
+  account_id: string;
+  code: string;
+  nickname: string | null;
+}
+const TRAIL_SELECT = `SELECT i.id, i.kind, i.message, i.coins, i.chat_passes, i.fill_to,
+  (extract(epoch FROM i.created_at) * 1000)::bigint AS sent, (extract(epoch FROM i.expires_at) * 1000)::bigint AS expires,
+  (extract(epoch FROM i.opened_at) * 1000)::bigint AS opened, i.opened_coins, i.opened_passes,
+  (i.expires_at IS NOT NULL AND i.expires_at <= now()) AS expired, a.id AS account_id, a.code, a.nickname
+  FROM inbox i JOIN account a ON a.id = i.account_id`;
+const trailOf = (x: TrailRow): GrantTrail => ({
+  id: x.id,
+  kind: x.kind,
+  message: x.message,
+  coins: x.coins,
+  passes: x.chat_passes,
+  fillTo: x.fill_to,
+  sentAt: Number(x.sent),
+  expiresAt: x.expires === null ? null : Number(x.expires),
+  openedAt: x.opened === null ? null : Number(x.opened),
+  openedCoins: x.opened_coins,
+  openedPasses: x.opened_passes,
+  expired: x.expired,
+  accountId: x.account_id,
+  code: x.code,
+  nickname: x.nickname,
+});
+
 /** 쓰기의 결과 글과 운영 기록 (행동, 대상, 자세히) */
 interface Written {
   text: string;
@@ -189,7 +231,8 @@ interface Written {
 function int(v: string | undefined, min: number, max: number, what: string): number {
   const s = (v ?? '').trim();
   if (!s) return 0;
-  const n = Number(s);
+  // 10진 숫자만 (1e3, 0x10, 소수, 부호 붙은 글은 Number() 가 받아도 여기서는 거절한다)
+  const n = /^\d{1,9}$/.test(s) ? Number(s) : Number.NaN;
   if (!Number.isInteger(n) || n < min || n > max) throw new Refused(`${what}: ${min}~${max}`);
   return n;
 }
@@ -316,7 +359,7 @@ export class AdminService {
   async view(
     query: string | undefined,
     tab: AdminCell = 'home',
-    userOptions: { page?: string; sort?: string; direction?: string } = {},
+    userOptions: { page?: string; sort?: string; direction?: string; user?: string; web?: boolean } = {},
     logOptions: LogOptions = {},
   ): Promise<Omit<AdminView, 'csrf' | 'flash' | 'flashPlace' | 'preview' | 'grantRef'>> {
     const q = this.db.pool;
@@ -418,7 +461,8 @@ export class AdminService {
         aiAsks: Number(ai.rows[0]?.asks ?? 0),
         aiBudgetMicros: this.config.ai?.monthlyBudgetMicros ?? 0,
       },
-      ...(await this.search(query)),
+      // 표의 행을 눌러 연 이용자(user=계정 번호)는 찾는 말 없이도 상세로 연다
+      ...(await this.search(query ?? userOptions.user?.trim().slice(0, 40), userOptions.web === true)),
       users: await this.users(query, userOptions),
       query,
       ai: {
@@ -528,6 +572,21 @@ export class AdminService {
     };
   }
 
+  /** 합쳐져 닫힌 계정이면 남은 계정 번호 (사슬을 따라간다). 아니면 그대로 */
+  private async liveId(id: string): Promise<string> {
+    let cur = id;
+    for (let hop = 0; hop < 10; hop++) {
+      const r = await this.db.pool.query<{ merged_into: string | null }>(
+        'SELECT merged_into FROM account WHERE id = $1',
+        [cur],
+      );
+      const next = r.rows[0]?.merged_into;
+      if (!next) return cur;
+      cur = next;
+    }
+    return cur;
+  }
+
   /** 찾는 말로 계정 번호들 (번호, 기기 코드, 닉네임 일부). 합쳐진 계정이면 남은 계정 번호도 */
   private async accountIds(ref: string): Promise<string[]> {
     const ids = new Set<string>();
@@ -613,12 +672,15 @@ export class AdminService {
       created: 'a.created_at',
     }[sort];
     const escaped = text.replace(/[\\%_]/g, '\\$&');
+    // 번호와 기기 코드는 적는 모양이 달라도(소문자, 줄표 없음) 같은 사람을 찾고, 합쳐진 계정을 적으면 남은 계정을 보인다
+    const exact = text ? await findAccount(this.db.pool, text) : undefined;
+    const liveId = exact ? await this.liveId(exact) : null;
     const where = `a.closed_at IS NULL AND a.merged_into IS NULL
       AND ($1 = '' OR a.id::text = $1 OR a.nickname ILIKE '%' || $2 || '%' ESCAPE '\\'
-        OR a.code ILIKE '%' || $2 || '%' ESCAPE '\\')`;
+        OR a.code ILIKE '%' || $2 || '%' ESCAPE '\\' OR a.id = $3::bigint)`;
     const count = await this.db.pool.query<{ n: string }>(
       `SELECT count(*) AS n FROM account a WHERE ${where}`,
-      [text, escaped],
+      [text, escaped, liveId],
     );
     const total = Number(count.rows[0]?.n ?? 0);
     const pages = Math.max(1, Math.ceil(total / USER_PAGE_SIZE));
@@ -644,8 +706,8 @@ export class AdminService {
          FROM account a LEFT JOIN ai_ticket t ON t.account_id = a.id
         WHERE ${where}
         ORDER BY ${order} ${direction === 'asc' ? 'ASC' : 'DESC'}, a.id DESC
-        LIMIT $3 OFFSET $4`,
-      [text, escaped, USER_PAGE_SIZE, (current - 1) * USER_PAGE_SIZE],
+        LIMIT $4 OFFSET $5`,
+      [text, escaped, liveId, USER_PAGE_SIZE, (current - 1) * USER_PAGE_SIZE],
     );
     return {
       rows: rows.rows.map((x) => ({
@@ -673,7 +735,10 @@ export class AdminService {
    * 계정 찾기: 계정 번호, 기기 코드(합쳐진 쪽 코드도), 닉네임(일부, 대소문자 무시). 하나면 자세히(채팅 이용권 현황 포함),
    * 여럿이면 목록 (20개까지)
    */
-  private async search(query: string | undefined): Promise<Pick<AdminView, 'accounts' | 'account'>> {
+  private async search(
+    query: string | undefined,
+    mergedAsLive = false,
+  ): Promise<Pick<AdminView, 'accounts' | 'account'>> {
     const q = (query ?? '').trim().slice(0, 40);
     if (!q) return { accounts: [], account: undefined };
     const exact = await findAccount(this.db.pool, q);
@@ -687,8 +752,22 @@ export class AdminService {
     );
     const accounts = r.rows.map((x) => ({ ...x, balance: Number(x.balance) }));
     if (accounts.length !== 1) return { accounts, account: accounts.length === 0 ? null : undefined };
-    const one = accounts[0] as AdminView['accounts'][number];
-    const live = one.merged_into ?? one.id;
+    const found = accounts[0] as AdminView['accounts'][number];
+    // 합쳐진 계정을 찾았으면 남은 계정 하나를 이용자로 보인다 (코인, 내역, 지급이 모두 남은 계정 기준)
+    const live = await this.liveId(found.id);
+    let one = found;
+    let mergedFrom: string | undefined;
+    // 웹 상세만 남은 계정을 대신 보인다 (앱 API 는 옛 모양 그대로 찾은 계정과 merged_into 를 준다)
+    if (mergedAsLive && live !== found.id) {
+      const row = await this.db.pool.query<AccountRow>(
+        `SELECT a.id, a.code, a.nickname, a.age, a.balance::text AS balance, a.merged_into FROM account a WHERE a.id = $1`,
+        [live],
+      );
+      if (row.rows[0]) {
+        one = { ...row.rows[0], balance: Number(row.rows[0].balance) };
+        mergedFrom = found.id;
+      }
+    }
     const d = await this.db.pool.query<{
       created: string;
       logins: string[] | null;
@@ -718,6 +797,7 @@ export class AdminService {
       accounts,
       account: {
         ...one,
+        ...(mergedFrom ? { mergedFrom } : {}),
         reports: {
           total: Number(repTotal.rows[0]?.n ?? 0),
           rows: rep.rows.map((r) => ({ id: r.id, at: Number(r.at), status: r.status })),
@@ -930,6 +1010,15 @@ export class AdminService {
       }
       const locked = await lockAccountsOrdered(c, found);
       const accounts = [...new Set(locked.map((x) => x.id))];
+      // 웹의 확정은 미리보기 때 찾은 받는 계정과 같은 사람들에게만, 사람이 다시 적은 인원 수와 맞을 때만 보낸다
+      // (그사이 계정이 합쳐지거나 바뀌었으면 거절). 앱 API 는 이 칸들을 보내지 않는다
+      if (f.expect_ids !== undefined) {
+        const want = f.expect_ids.split(',').filter(Boolean).sort().join(',');
+        if (want === '' || want !== [...accounts].sort().join(','))
+          throw new Refused('미리보기 뒤에 받는 사람이 달라졌어요. 대상 확인부터 다시 해 주세요', 'changed');
+      }
+      if (f.people !== undefined && f.people.trim() !== String(accounts.length))
+        throw new Refused(`받는 사람 수가 달라요 (${accounts.length}명). 숫자를 다시 확인해 주세요`, 'count');
       if (passes > 0) {
         const ages = await c.query<{ id: string; age: string }>(
           'SELECT id, age FROM account WHERE id = ANY($1::bigint[])',
@@ -1050,6 +1139,7 @@ export class AdminService {
         nickname: live.nickname,
         age: live.age,
         duplicate,
+        ...(row?.merged_into ? { mergedFrom: row.id } : {}),
       });
     }
     const missing = targets.filter((t) => !t.found).length;
@@ -1073,6 +1163,75 @@ export class AdminService {
         blocked,
       },
     };
+  }
+
+  /**
+   * 지급 작성 값이 가리키는 받는 계정들(남은 계정 번호, 겹침 없음). 한 곳이라도 못 찾으면 빈 목록.
+   * 미리보기 때 세션에 두고, 확정 때 다시 찾은 결과와 맞는지 본다 (대상 바꿔치기, 그사이 합쳐짐 막기)
+   */
+  async grantLiveIds(f: FormFields): Promise<string[]> {
+    const g = grantInput({ ...f, confirm: 'yes' });
+    const ids = new Set<string>();
+    for (const ref of g.refs) {
+      const id = await findAccount(this.db.pool, ref);
+      if (!id) return [];
+      ids.add(await this.liveId(id));
+    }
+    return [...ids];
+  }
+
+  /** 이용자 하나의 코인 내역, 받은 쪽지(지급) 내역, 이 사람에 대한 운영 기록. 합친 계정 묶음 기준, 각 최근 몇 건 */
+  async userHistory(live: string): Promise<UserHistory> {
+    const q = this.db.pool;
+    const fam = await q.query<{ id: string }>(
+      'SELECT id FROM account WHERE COALESCE(merged_into, id) = $1::bigint',
+      [live],
+    );
+    const ids = fam.rows.map((x) => x.id);
+    const coins = await q.query<{ reason: string; amount: number; status: string; at: string }>(
+      `SELECT reason, amount, status, (extract(epoch FROM created_at) * 1000)::bigint AS at FROM coin_entry
+        WHERE account_id = ANY($1::bigint[]) ORDER BY id DESC LIMIT 15`,
+      [ids],
+    );
+    const notes = await q.query<TrailRow>(
+      `${TRAIL_SELECT} WHERE i.account_id = ANY($1::bigint[]) AND i.kind IN ('grant', 'notice', 'subscription')
+        ORDER BY i.id DESC LIMIT 15`,
+      [ids],
+    );
+    const log = await q.query<UserHistory['log'][number]>(
+      `SELECT (extract(epoch FROM at) * 1000)::bigint AS at, actor_name AS "actorName", actor, action, detail FROM admin_log
+        WHERE target = ANY($1::text[]) ORDER BY id DESC LIMIT 10`,
+      [ids.map((id) => `account:${id}`)],
+    );
+    return {
+      coins: coins.rows.map((x) => ({
+        reason: x.reason,
+        amount: x.amount,
+        status: x.status,
+        at: Number(x.at),
+      })),
+      notes: notes.rows.map(trailOf),
+      log: log.rows,
+    };
+  }
+
+  /** 최근 지급 쪽지와 받았는지 (열었는지). 서버가 아는 것은 쪽지를 연 시각과 그때 실제로 받은 양뿐이다 */
+  async recentGrants(): Promise<GrantTrail[]> {
+    const r = await this.db.pool.query<TrailRow>(
+      `${TRAIL_SELECT} WHERE i.kind = 'grant' ORDER BY i.id DESC LIMIT 20`,
+    );
+    return r.rows.map(trailOf);
+  }
+
+  /** 표에서 고른 계정 번호들의 이름 (지급 칸에 보이려고). 숫자가 아닌 것, 20명 넘는 것은 버린다 */
+  async pickedAccounts(ids: string[]): Promise<Array<{ id: string; code: string; nickname: string | null }>> {
+    const clean = [...new Set(ids.filter((x) => /^\d{1,18}$/.test(x)))].slice(0, GRANT_MAX_RECIPIENTS);
+    if (clean.length === 0) return [];
+    const r = await this.db.pool.query<{ id: string; code: string; nickname: string | null }>(
+      'SELECT id, code, nickname FROM account WHERE id = ANY($1::bigint[]) ORDER BY id',
+      [clean],
+    );
+    return r.rows;
   }
 
   // ---- 신고 (#151) ----
@@ -1773,7 +1932,7 @@ function legacyQuery(path: string | undefined, query: Record<string, unknown>): 
     const name = log
       ? ({ user: 'lu', action: 'la', text: 'lt', page: 'lp' } as Record<string, string>)[k]
       : k;
-    if (name && ['q', 'page', 'sort', 'direction', 'account', 'lu', 'la', 'lt', 'lp'].includes(name))
+    if (name && ['q', 'page', 'sort', 'direction', 'account', 'user', 'lu', 'la', 'lt', 'lp'].includes(name))
       p.set(name, v.slice(0, 200));
   }
   const q = p.toString();
@@ -1792,6 +1951,35 @@ export function sameOrigin(req: AdminReq, publicUrl: string): boolean {
   if (origin === 'null') return site === 'same-origin';
   if (origin !== undefined && origin !== new URL(publicUrl).origin) return false;
   return site === undefined || site === 'same-origin' || site === 'none';
+}
+
+/** 지급 확정 폼의 값이 미리보기 때 쓴 값과 같은지 (받는 계정, 양, 사유, 만료. 줄 끝과 앞뒤 빈칸은 무시) */
+function sameDraft(kept: Record<string, string | string[]>, f: FormFields): boolean {
+  const norm = (v: unknown) =>
+    ([] as unknown[])
+      .concat(v ?? '')
+      .map((x) => String(x).replace(/\r\n/g, '\n').trim())
+      .join('\n');
+  const fix = (k: string) => (k === 'account' ? 'accounts' : k === 'message' ? 'reason' : k);
+  const read = (src: (k: string) => unknown) => {
+    const out: Record<string, string> = {};
+    for (const k of ['accounts', 'account', 'coins', 'chat_passes', 'days', 'reason', 'message']) {
+      const x = norm(src(k));
+      if (x !== '') out[fix(k)] = x;
+    }
+    return out;
+  };
+  const a = read((k) => kept[k]);
+  const b = read((k) => (f as Record<string, unknown>)[k]);
+  const days = (o: Record<string, string>) => (o.days === undefined || o.days === '' ? '30' : o.days);
+  const zero = (v: string | undefined) => (v === undefined || v === '' ? '0' : v);
+  return (
+    a.accounts === b.accounts &&
+    zero(a.coins) === zero(b.coins) &&
+    zero(a.chat_passes) === zero(b.chat_passes) &&
+    days(a) === days(b) &&
+    a.reason === b.reason
+  );
 }
 
 /** 폼이나 JSON 본문을 글자 칸으로 (배열은 그대로, 나머지는 글로) */
@@ -1894,17 +2082,27 @@ export class AdminController {
     s.flash = undefined;
     const text = (k: string) =>
       typeof query[k] === 'string' && (query[k] as string).trim() ? (query[k] as string).trim() : undefined;
-    const grantRef = text('account');
+    // 이용자 표에서 고른 사람들(pick=계정 번호, 여러 개)은 지급 칸의 받는 사람으로 미리 채운다
+    const pickRaw = ([] as unknown[])
+      .concat(query.pick ?? [])
+      .filter((x): x is string => typeof x === 'string');
+    const picked = await this.admin.pickedAccounts(pickRaw);
+    const grantRef = picked.length ? picked.map((x) => x.id).join('\n') : text('account');
     const view = await this.admin.view(
-      text('q') ?? grantRef,
+      text('q') ?? (picked.length ? undefined : grantRef),
       'home',
       {
         page: typeof query.page === 'string' ? query.page : undefined,
         sort: typeof query.sort === 'string' ? query.sort : undefined,
         direction: typeof query.direction === 'string' ? query.direction : undefined,
+        user: text('user'),
+        web: true,
       },
       webLogOptionsOf(query),
     );
+    if (view.account) view.account.history = await this.admin.userHistory(view.account.id);
+    view.recentGrants = await this.admin.recentGrants();
+    if (picked.length) view.picked = picked;
     // 신고 칸: 목록(대화 글 없음)과, 번호를 주면 그 신고의 본문(연 기록이 운영 기록에 남는다)
     const filterRaw = text('rs');
     const filter: ReportFilter = (REPORT_STATES as readonly string[]).includes(filterRaw ?? '')
@@ -1949,6 +2147,7 @@ export class AdminController {
           fields: draftOf(f),
           at: Date.now(),
           nonce: randomBytes(16).toString('hex'),
+          ...(name === 'grants/batch' ? { ids: await this.admin.grantLiveIds(f) } : {}),
         };
         return undefined;
       },
@@ -2027,14 +2226,24 @@ export class AdminController {
         if (isFlowAction(name)) {
           // 웹의 확정은 미리보기를 거친 것만 받는다: 그 미리보기의 번호(문자열 하나)와 맞아야 하고, 한 번 쓰면 지워서
           // 같은 미리보기를 두 번 확정할 수 없다. 번호가 없거나 비었거나 여럿이면 거절 (앱 /v1/admin/* 는 이 길을 안 탄다)
+          const kept = s.preview;
           const ok =
-            typeof f.flow === 'string' &&
-            f.flow !== '' &&
-            s.preview?.action === name &&
-            s.preview.nonce === f.flow;
+            typeof f.flow === 'string' && f.flow !== '' && kept?.action === name && kept.nonce === f.flow;
           s.preview = undefined;
-          if (!ok)
+          if (!ok || !kept)
             throw new Refused('이미 확정했거나 닫힌 미리보기예요. 운영 기록에서 확인하고 다시 써 주세요');
+          if (name === 'grants/batch') {
+            // 확정 폼의 숨은 칸이 미리보기에서 본 값 그대로인지 서버가 다시 본다 (대상, 양, 사유, 만료를 바꿔 보내지 못하게)
+            if (!sameDraft(kept.fields, f))
+              throw new Refused(
+                '미리보기와 다른 값이에요. 고치기로 돌아가 대상 확인부터 다시 해 주세요',
+                'changed',
+              );
+            // 받는 사람 수는 사람이 숫자로 다시 적어야 하고, 받는 계정은 미리보기 때 찾은 것과 같아야 한다
+            if (!/^\d{1,3}$/.test((f.people ?? '').trim()))
+              throw new Refused('받는 사람 수를 숫자로 적어 주세요', 'count');
+            f.expect_ids = (kept.ids ?? []).join(',');
+          }
         }
         return (await this.admin.run(name, actorOf(s), f)).text;
       },

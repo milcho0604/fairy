@@ -227,7 +227,14 @@ export class AdminBrowser {
     const hidden: Record<string, string> = {};
     for (const x of (m[1] ?? '').matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)">/g))
       if (x[1] !== 'csrf') hidden[x[1] as string] = (x[2] as string).replaceAll('&#10;', '\n');
-    return this.post(path, { ...hidden, ...fields, flow: hidden.flow ?? '' }, csrf, origin);
+    // 지급 확정은 받는 사람 수를 숫자로 다시 적는다 (칸의 pattern 이 맞는 수)
+    const people = /name="people"[^>]*pattern="(\d+)"/.exec(m[1] ?? '')?.[1];
+    return this.post(
+      path,
+      { ...hidden, ...(people ? { people } : {}), ...fields, flow: hidden.flow ?? '' },
+      csrf,
+      origin,
+    );
   }
 
   /** 쓰기 하나 뒤 화면의 결과 글 */

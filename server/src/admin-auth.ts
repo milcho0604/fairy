@@ -41,6 +41,8 @@ export interface AdminSession {
     at: number;
     /** 이 미리보기를 확정하는 한 번만 쓰는 번호 (확정 폼이 싣고 오고, 쓰면 지운다) */
     nonce: string;
+    /** 지급 미리보기가 만들어질 때 찾은 받는 계정(남은 계정 번호, 겹침 없음). 확정 때 다시 찾은 결과와 같아야 보낸다 */
+    ids?: string[];
   };
 }
 
