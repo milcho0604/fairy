@@ -14,10 +14,10 @@
 //     열고 닫기를 빠르게 되풀이해도 오류 없이 끝난다. 아이콘이 실제로 뜨고 지는지는 scripts/dev/dock-probe.mjs 가 잰다
 //   전체 화면: 큰 창이 전체 화면이 되면 펫의 "모든 데스크톱, 전체 화면 위" 설정을 다시 걸고, 풀리면 원래대로 건다 (창 호출을 가로채 확인.
 //     진짜 전체 화면은 쓰는 사람의 화면에 새 데스크톱을 만들어 시험에서는 켜지 않는다)
-//   화면: 폭 760/1040/1440 x 밝음/어두움 찍기와 가로 넘침, 구역마다, 사이드바(구역, 채팅과 친구는 따로 창, 설정), 단축키(Cmd+1~, Cmd+, Cmd+W),
+//   화면: 폭 760/1100/1440 x 밝음/어두움 찍기와 가로 넘침, 구역마다, 사이드바(구역, 채팅과 친구는 따로 창, 설정), 단축키(Cmd+1~, Cmd+, Cmd+W),
 //     빠른 입력으로 넣은 할 일이 큰 창에 바로 보임, 사이드바 체크와 설정 칸이 같은 panelView 를 바꿈
 //   ko/en: 영어 화면에 한글 없음, "모드" 라는 낱말 없음
-//   오늘과 일정의 넓은 배치 (이슈 #162): 구간별(작은 패널 320/360/560, 큰 창 760/1040/1440) 찍기와 넘침, 오늘 첫 화면 순서(일정, 다음 할 일, 마감이 맨 위),
+//   오늘과 일정의 넓은 배치 (이슈 #162): 구간별(작은 패널 320/360/560, 큰 창 760/1100/1440) 찍기와 넘침, 오늘 첫 화면 순서(일정, 다음 할 일, 마감이 맨 위),
 //     넓음(>=860)에서만 두 열("할 것"/"나와 펫"), 못 한 N개 내일로(옮기고 되돌리기), 일정 큰 월 보기(칸 안 제목, 넘치면 +N)와 옆 날 목록
 //   WIDE_ONLY=1 이면 이 부분만 돈다. BASELINE=1 을 더하면 확인 없이 같은 자료로 찍기만 한다 (옛 판에서 전후 비교 그림 만들 때)
 import { spawn } from 'node:child_process';
@@ -322,8 +322,8 @@ const body = async () => {
   }
 
   /**
-   * 오늘과 일정의 넓은 배치 (이슈 #162). 큰 창 폭 760/1040/1440 과 작은 패널 320/360/560 을 같은 자료로 찍고 잰다.
-   * 본문 칸 폭 = 창 폭 - 사이드바 208 이라 큰 창은 760,1040 이 보통, 1440 이 넓음이다
+   * 오늘과 일정의 넓은 배치 (이슈 #162). 큰 창 폭 760/1100/1440 과 작은 패널 320/360/560 을 같은 자료로 찍고 잰다.
+   * 본문 칸 폭 = 창 폭 - 사이드바 208 이라 큰 창은 760 이 보통, 1100(본문 892)과 1440 이 넓음이다
    */
   async function wideLayouts() {
     const dayMs = 86_400_000;
@@ -380,7 +380,7 @@ const body = async () => {
 
     if (process.env.BASELINE) {
       // 옛 판(넓은 배치 전)에서 같은 자료로 찍기만 한다: 전후 비교 그림용
-      for (const w of [1040, 1440]) {
+      for (const w of [1100, 1440]) {
         await main(`__jj.home.window.setBounds({ x: 20, y: 30, width: ${w}, height: 780 }); 1`);
         await sleep(800);
         await calTab('today');
@@ -395,7 +395,7 @@ const body = async () => {
       return;
     }
 
-    for (const w of [760, 1040, 1440]) {
+    for (const w of [760, 1100, 1440]) {
       await main(`__jj.home.window.setBounds({ x: 20, y: 30, width: ${w}, height: 780 }); 1`);
       await sleep(800);
       const wideNow = (await wh.ev(`document.getElementById('ptab-panel').dataset.zone`)) === 'wide';
@@ -765,7 +765,7 @@ const body = async () => {
   h = await page('home');
   await setView('window');
   await sleep(400);
-  await main('__jj.home.window.setBounds({ x: 40, y: 40, width: 1040, height: 720 }); 1');
+  await main('__jj.home.window.setBounds({ x: 40, y: 40, width: 1100, height: 720 }); 1');
   await sleep(700);
   h = await page('home');
   const navNames = await h.ev(`[...document.querySelectorAll('.home-nav button .name')].map((e) => e.textContent).join('|')`);
@@ -884,7 +884,7 @@ const body = async () => {
   await waitFor(homeAlive);
   await sleep(1200);
   h = await page('home');
-  for (const w of [760, 1040, 1440]) {
+  for (const w of [760, 1100, 1440]) {
     await main(`__jj.home.window.setBounds({ x: 20, y: 30, width: ${w}, height: 760 }); 1`);
     await sleep(700);
     for (const [id] of [['today'], ['todo'], ['event'], ['note'], ['shop']]) {
@@ -917,13 +917,13 @@ const body = async () => {
   check('사이드바에 "모드" 라는 낱말이 없다', !/모드|\bmode\b/i.test(sideText), sideText.slice(0, 60).replace(/\n/g, ' '));
 
   // 글 크기 1.5배(큰 글씨)에서도 넘치지 않는다
-  await main('__jj.home.window.setBounds({ x: 20, y: 30, width: 1040, height: 760 }); 1');
+  await main('__jj.home.window.setBounds({ x: 20, y: 30, width: 1100, height: 760 }); 1');
   await sleep(500);
   await main('__jj.home.window.webContents.setZoomFactor(1.5); 1');
   await sleep(600);
   const overBig = await overflow(h);
-  check('글 크기 1.5배, 폭 1040: 가로 넘침 없음', overBig.length === 0, overBig.join(', '));
-  await h.shot('home-zoom15-w1040');
+  check('글 크기 1.5배, 폭 1100: 가로 넘침 없음', overBig.length === 0, overBig.join(', '));
+  await h.shot('home-zoom15-w1100');
   await main('__jj.home.window.webContents.setZoomFactor(1); 1');
 
   // ===================== 10. Cmd+W 로 닫기 =====================

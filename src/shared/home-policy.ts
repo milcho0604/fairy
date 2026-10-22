@@ -11,7 +11,7 @@ export const isPanelView = (v: unknown): v is PanelView => PANEL_VIEWS.includes(
 export const HOME_KEEP_MS = 10 * 60_000;
 
 /** 큰 창의 기본 크기와 가장 작은 크기 */
-export const HOME_SIZE = { width: 1040, height: 720 } as const;
+export const HOME_SIZE = { width: 1100, height: 720 } as const;
 export const HOME_MIN = { width: 760, height: 520 } as const;
 
 /** 큰 창 모습: 없음, 숨겨 둠(우리가 hide), 보임 */
