@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { EXPAND_HINT_MS } from '../../../shared/expand-hint.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PanelState, PanelTab } from '../../../shared/ipc.ts';
 import { nextUnlock } from '../../../shared/pet-life.ts';
@@ -17,7 +18,7 @@ import { homeKeyAction, sectionForKey } from '../home/sections.ts';
 import { PetFace } from '../PetFace.tsx';
 import { EventTab } from './EventTab.tsx';
 import { addedText, timeOf, whenLabel } from './format.ts';
-import { CoinIcon, GearIcon, PinIcon } from './icons.tsx';
+import { CoinIcon, ExpandIcon, GearIcon, PinIcon } from './icons.tsx';
 import { escClosesSurface, tabStepByKey, undoByKey, undoFieldText } from './keys.ts';
 import { PlanSheetHost } from './MorningPlan.tsx';
 import { NoteTab } from './NoteTab.tsx';
@@ -132,6 +133,23 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
     setTabState(next);
     rememberTab(kind, next);
   };
+  /** "크게 볼까요?" 칩이 떠 있다 (패널을 가장 넓게 만든 채 더 끌었을 때, 몇 초 뒤 저절로 사라진다) */
+  const [hintOn, setHintOn] = useState(false);
+  const hintTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const showHint = () => {
+    setHintOn(true);
+    clearTimeout(hintTimer.current);
+    hintTimer.current = setTimeout(() => setHintOn(false), EXPAND_HINT_MS);
+  };
+  useEffect(() => () => clearTimeout(hintTimer.current), []);
+  /** 지금 탭 그대로 큰 창으로. 쓰던 글, 보던 위치, 열린 메모를 먼저 메인에 보내 놓고 부른다 (창을 닫을 때와 같은 길).
+   * 메인이 큰 창이 보인 뒤에 이 패널을 닫으니 화면이 비는 순간이 없다 */
+  const expand = () => {
+    window.dispatchEvent(new Event('beforeunload'));
+    bridge.expand(tab);
+  };
+  const expandRef = useRef(expand);
+  expandRef.current = expand;
   /** 큰 창 단축키가 보는 최신 값 (키 듣개는 한 번만 달린다) */
   const friendsOnRef = useRef(false);
   friendsOnRef.current = s?.friendsOn ?? false;
@@ -140,6 +158,8 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
     bridge.snapshot().then(setS);
     bridge.onState(setS);
     bridge.onTab((next) => setTabState(next));
+    // 패널이 열린 채 트레이, 펫 메뉴로 큰 창을 열면 메인이 이 패널에 먼저 넘겨 달라고 한다
+    if (kind === 'panel') bridge.onExpandNow(() => expandRef.current());
     // 입력칸이 먼저 Esc 를 처리한다(비우기, 메모 목록으로). 한글 조합 중 Esc 는 조합만 끝낸다
     const onKey = (e: KeyboardEvent) => {
       if (escClosesSurface(e, kind)) {
@@ -497,6 +517,16 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
             >
               <PinIcon />
             </button>
+            {/* 같은 탭, 쓰던 글 그대로 큰 창으로 (이슈 #164) */}
+            <button
+              type="button"
+              className="icon-btn expand-btn"
+              aria-label={t('panel.expand')}
+              title={t('panel.expandTitle')}
+              onClick={expand}
+            >
+              <ExpandIcon />
+            </button>
             {/* 설정은 펫 우클릭과 메뉴 막대에만 있어 찾기 어려웠다 */}
             <button
               type="button"
@@ -598,7 +628,17 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
           {planSheet}
 
           {/* 크기 손잡이: 카드 안 오른쪽 아래. 다른 칸 위에 얹는다 */}
-          <ResizeGrips />
+          <ResizeGrips onPastMax={showHint} />
+
+          {/* 가장 넓게 만든 채 더 끌면 잠깐 권한다. 저절로 바꾸지는 않는다 */}
+          {hintOn && (
+            <div className="expand-chip" role="status">
+              <button type="button" className="expand-chip-btn" onClick={expand}>
+                <ExpandIcon />
+                {t('panel.expandHint')}
+              </button>
+            </div>
+          )}
 
           {toastStack}
         </div>

@@ -9,6 +9,7 @@ import {
   homeOpen,
   isPanelView,
   panelTarget,
+  promoteAction,
   reopenTarget,
 } from './home-policy.ts';
 import { presenceHide } from './presence.ts';
@@ -81,4 +82,10 @@ test('앱을 다시 열면(Dock 아이콘): 열려 있거나 내려간 큰 창�
   assert.equal(reopenTarget('activate', tucked), 'pet');
   // 다시 실행(윈도우, 리눅스)은 늘 펫
   assert.equal(reopenTarget('second-instance', shown), 'pet');
+});
+
+test('크게 보기로 넘길 때: 없으면 만들고, 열려 있으면 앞으로, 숨겨 둔 창은 새로 만든다', () => {
+  assert.equal(promoteAction(none), 'create');
+  assert.equal(promoteAction(shown), 'show');
+  assert.equal(promoteAction(tucked), 'recreate');
 });

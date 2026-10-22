@@ -61,6 +61,15 @@ export function homeClickAction(h: HomeSeen): 'create' | 'show' | 'raise' | 'hid
   return h.focused ? 'hide' : 'raise';
 }
 
+/**
+ * 작은 패널에서 "크게 보기"로 넘길 때 (이슈 #164): 없으면 만들고, 열려 있으면 앞으로,
+ * 숨겨 둔 창이 있으면 새로 만든다(숨겨 둔 창은 쓰던 글을 만들 때 한 번 읽어 와서 패널에서 고친 것이 안 보인다)
+ */
+export function promoteAction(h: HomeLook): 'create' | 'recreate' | 'show' {
+  if (!h.alive) return 'create';
+  return h.hidden ? 'recreate' : 'show';
+}
+
 /** 숨겨 둔 지 이만큼 지나 없앨 때가 됐나 */
 export function homeExpired(
   hiddenAt: number | undefined,

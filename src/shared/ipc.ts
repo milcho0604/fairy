@@ -1083,6 +1083,10 @@ export const PANEL = {
   tab: 'panel:tab',
   /** 메인 → 큰 창: 곧 숨긴다 (숨겨도 창은 안 닫혀 beforeunload 가 없다. 쓰던 글을 바로 저장하라는 신호) */
   hiding: 'panel:hiding',
+  /** 패널 → 메인: 지금 탭 그대로 큰 창으로 넘겨 줘 (패널 머리줄 "크게 보기", 크게 볼까요? 칩). 큰 창이 보인 뒤에 패널을 닫는다 */
+  expand: 'panel:expand',
+  /** 메인 → 패널: 쓰던 글을 보내 놓고 큰 창으로 넘겨 달라고 요청해 (트레이, 펫 메뉴의 "큰 창 열기"가 패널이 열려 있을 때) */
+  expandNow: 'panel:expand-now',
 } as const;
 
 export interface PanelState {
@@ -1229,7 +1233,9 @@ export interface NoteHit {
   mark?: [number, number];
 }
 
-export type PanelTab = 'today' | 'todo' | 'note' | 'event' | 'shop';
+export const PANEL_TABS = ['today', 'todo', 'note', 'event', 'shop'] as const;
+export type PanelTab = (typeof PANEL_TABS)[number];
+export const isPanelTab = (v: unknown): v is PanelTab => PANEL_TABS.includes(v as PanelTab);
 
 /** 놀이: 공, 산책, 숨바꼭질과 짧은 놀이 (shared/minigames.ts) */
 /** wordchain: 끝말잇기 (채팅 창에서 AI 없이, main/fun.ts) */
@@ -1397,4 +1403,8 @@ export interface PanelBridge {
   onTab(listener: (tab: PanelTab) => void): void;
   /** 큰 창이 곧 숨겨진다 (쓰던 글을 바로 저장한다). 돌려주는 함수로 듣기를 그친다 */
   onHiding(listener: () => void): () => void;
+  /** 지금 탭을 큰 창으로 넘긴다 (쓰던 글은 먼저 메인에 보낸 뒤에 부른다) */
+  expand(tab: PanelTab): void;
+  /** 메인이 큰 창으로 넘겨 달라고 한다 (패널이 열려 있는 채 트레이, 펫 메뉴로 큰 창을 열 때) */
+  onExpandNow(listener: () => void): void;
 }

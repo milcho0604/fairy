@@ -2293,3 +2293,55 @@ li:is(.todo, .event) .tools .extra .due.none {
 .panel .notes li.note-row.current > button:first-child {
   background: color-mix(in srgb, var(--accent) 12%, var(--bg));
 }
+
+/* 크게 볼까요? 칩: 머리줄 바로 아래 오른쪽에 잠깐 (이슈 #164) */
+.expand-chip {
+  -webkit-app-region: no-drag;
+  position: absolute;
+  top: 46px;
+  right: 10px;
+  z-index: 6;
+  max-width: calc(100% - 20px);
+}
+
+.expand-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 6px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 18%);
+  animation: chip-in 160ms ease-out;
+}
+
+.expand-chip-btn :where(svg) {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.expand-chip-btn:hover,
+.expand-chip-btn:focus-visible {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+@keyframes chip-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .expand-chip-btn {
+    animation: none;
+  }
+}
