@@ -201,7 +201,7 @@ describe('운영자 지급 탭', () => {
     const d = await newDevice('18+', '한도시험');
     const base = { accounts: d.code, coins: '1', chat_passes: '0', reason: '한도 시험' };
     assert.equal((await admin.act('/admin/grants/batch', base)).ok, false);
-    const tooManyCoins = await admin.post('/admin/grants/batch', {
+    const tooManyCoins = await admin.confirmPost('/admin/grants/batch', {
       ...base,
       coins: '10001',
       confirm: 'yes',
@@ -213,7 +213,10 @@ describe('운영자 지급 탭', () => {
       (await admin.act('/admin/grants/batch', { ...base, accounts: many, confirm: 'yes' })).ok,
       false,
     );
-    assert.equal((await admin.post('/admin/grants/batch', { ...base, confirm: 'yes' }, false)).status, 403);
+    assert.equal(
+      (await admin.confirmPost('/admin/grants/batch', { ...base, confirm: 'yes' }, false)).status,
+      403,
+    );
   });
 });
 
@@ -225,6 +228,13 @@ const cellOf = (text: string, cell: string) => {
 };
 
 describe('발행과 지급의 공통 흐름 (작성, 대상 확인, 미리보기, 확정, 결과 확인)', () => {
+  // 운영자 세션의 분당 요청 상한(120)에 앞 시험이 걸리지 않게 새 세션으로 시작한다
+  before(async () => {
+    admin = browser();
+    assert.equal((await admin.login()).status, 303);
+    await admin.page();
+  });
+
   const grantFields = (accounts: string, extra: Record<string, string> = {}) => ({
     accounts,
     coins: '7',
@@ -282,7 +292,7 @@ describe('발행과 지급의 공통 흐름 (작성, 대상 확인, 미리보기
   test('결과 확인 단계는 성공 글을 폼 자리에 보이고 운영 기록으로 이어 준다', async () => {
     const d = await newDevice('18+', '결과확인');
     const fields = grantFields(d.code);
-    const r = await admin.post('/admin/grants/batch', { ...fields, confirm: 'yes' });
+    const r = await admin.confirmPost('/admin/grants/batch', { ...fields, confirm: 'yes' });
     assert.equal(r.status, 303);
     assert.equal(r.headers.get('location'), '/admin#users/grants');
     const page = await admin.page();
@@ -391,6 +401,13 @@ describe('발행과 지급의 공통 흐름 (작성, 대상 확인, 미리보기
 });
 
 describe('홈의 할 일과 신고 칸, 앱 개요 API', () => {
+  // 운영자 세션의 분당 요청 상한(120)에 앞 시험이 걸리지 않게 새 세션으로 시작한다
+  before(async () => {
+    admin = browser();
+    assert.equal((await admin.login()).status, 303);
+    await admin.page();
+  });
+
   const overview = async (query = '') =>
     api('GET', `/v1/admin/overview${query}`, { headers: { cookie: admin.cookie }, ip: admin.from });
 
@@ -418,6 +435,32 @@ describe('홈의 할 일과 신고 칸, 앱 개요 API', () => {
   });
 
   test('앱 개요 API 는 옛 앱이 읽던 칸을 그대로 두고 새 칸만 더한다', async () => {
+    // 앞 시험에 기대지 않는다: 이 시험 안에서 공지와 지급 기록을 만든다
+    const d = await newDevice('18+', '개요시험');
+    assert.ok(
+      (
+        await admin.act('/admin/notices', {
+          id: 'ov-notice',
+          kind: 'info',
+          title_ko: '개요 공지',
+          title_en: 'Overview',
+          body_ko: '본문',
+          body_en: 'Body',
+        })
+      ).ok,
+    );
+    assert.ok(
+      (
+        await admin.act('/admin/grants/batch', {
+          accounts: d.code,
+          coins: '1',
+          chat_passes: '0',
+          days: '30',
+          reason: '개요 시험',
+          confirm: 'yes',
+        })
+      ).ok,
+    );
     const ov = await overview();
     assert.equal(ov.status, 200);
     for (const key of [
@@ -442,6 +485,8 @@ describe('홈의 할 일과 신고 칸, 앱 개요 API', () => {
     assert.ok(Array.isArray(ov.body.todo));
     // 옛 앱의 운영 기록 찾기 이름(user, action, text, page)은 그대로 듣는다
     const some = await overview('?action=grant.batch');
+    assert.ok(some.body.log.length >= 1, 'grant.batch 기록이 있어야 every 가 빈 배열로 통과하지 않는다');
+    assert.ok(ov.body.notices.notices.some((n: { id: string }) => n.id === 'ov-notice'));
     assert.ok(some.body.log.every((l: { action: string }) => l.action === 'grant.batch'));
   });
 });
@@ -460,6 +505,13 @@ function confirmFormOf(html: string, action: 'grants/batch' | 'notices'): Record
 }
 
 describe('미리보기는 한 번만 확정된다 (두 탭, 뒤로 가기)', () => {
+  // 운영자 세션의 분당 요청 상한(120)에 앞 시험이 걸리지 않게 새 세션으로 시작한다
+  before(async () => {
+    admin = browser();
+    assert.equal((await admin.login()).status, 303);
+    await admin.page();
+  });
+
   const g = (accounts: string, reason = '한 번만') => ({
     accounts,
     coins: '500',
@@ -507,9 +559,44 @@ describe('미리보기는 한 번만 확정된다 (두 탭, 뒤로 가기)', () 
     await admin.post('/admin/flow/cancel', { action: 'grants/batch' });
     await admin.post('/admin/grants/batch', third);
     assert.equal(await notes(d.id), 1, '고치기로 닫은 미리보기는 확정할 수 없다');
-    // 번호 없이 직접 보낸 요청(API 같은 쓰임)은 이전처럼 받는다
-    assert.ok((await admin.act('/admin/grants/batch', { ...g(d.code, '직접'), confirm: 'yes' })).ok);
+    // 미리보기를 거친 확정은 받는다
+    assert.ok((await admin.act('/admin/grants/batch', { ...g(d.code, '거친'), confirm: 'yes' })).ok);
     assert.equal(await notes(d.id), 2);
+  });
+
+  test('웹 확정은 번호가 없거나, 비었거나, 둘이거나, 작성 단계에 끼워 넣은 번호면 지급하지 않는다', async () => {
+    const d = await newDevice('18+', '번호검사');
+    const base = { ...g(d.code, '번호'), confirm: 'yes' };
+    // 번호 없이 직접
+    await admin.post('/admin/grants/batch', base);
+    // 미리보기는 있어도 번호를 빼거나 비운다
+    await admin.post('/admin/grants/preview', g(d.code));
+    const f1 = confirmFormOf((await admin.page()).text, 'grants/batch');
+    const { flow: _drop, ...noFlow } = f1;
+    await admin.post('/admin/grants/batch', noFlow);
+    await admin.post('/admin/grants/batch', { ...noFlow, flow: '' });
+    await admin.post('/admin/grants/preview', g(d.code));
+    const f2 = confirmFormOf((await admin.page()).text, 'grants/batch');
+    // 같은 이름을 둘 보내면 (배열) 거절
+    await admin.post('/admin/grants/batch', { ...f2, flow: [f2.flow ?? '', f2.flow ?? ''] });
+    await admin.post('/admin/grants/batch', f2);
+    assert.equal(await notes(d.id), 0, '번호가 잘못된 확정은 지급하지 않는다');
+    // 작성 단계에 flow 를 끼워 넣어도 확정 폼에는 서버 번호 하나뿐
+    await admin.post('/admin/grants/preview', { ...g(d.code), flow: 'x' });
+    const f3 = confirmFormOf((await admin.page()).text, 'grants/batch');
+    const html = (await admin.page()).text;
+    assert.equal((html.match(/name="flow"/g) ?? []).length, 1);
+    assert.notEqual(f3.flow, 'x');
+    await admin.post('/admin/grants/batch', { ...f3, flow: 'x' });
+    assert.equal(await notes(d.id), 0);
+    await admin.post('/admin/grants/preview', g(d.code));
+    const f4 = confirmFormOf((await admin.page()).text, 'grants/batch');
+    await admin.post('/admin/grants/batch', f4);
+    await admin.post('/admin/grants/batch', f4);
+    assert.equal(await notes(d.id), 1);
+    // 거절은 작성 폼 근처에 안내
+    await admin.post('/admin/grants/batch', base);
+    assert.match(cellOf((await admin.page()).text, 'users'), /id="form-error">이미 확정했거나 닫힌/);
   });
 
   test('공지도 같은 미리보기를 두 번 확정할 수 없다', async () => {
@@ -526,6 +613,8 @@ describe('미리보기는 한 번만 확정된다 (두 탭, 뒤로 가기)', () 
     assert.ok(tab.flow);
     await admin.post('/admin/notices', tab);
     await admin.post('/admin/notices', tab);
+    await admin.post('/admin/notices', { ...form, confirm: 'yes' });
+    await admin.post('/admin/notices', { ...tab, flow: '' });
     const logs = await h.pool.query(
       `SELECT action FROM admin_log WHERE target = 'once-notice' AND action IN ('notice.create', 'notice.update')`,
     );

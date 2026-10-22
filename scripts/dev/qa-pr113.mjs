@@ -227,7 +227,7 @@ async function adminPost(path, fields, { csrf = true, origin = apiUrl } = {}) {
   const body = await r.text();
   if (r.status !== 303) return { status: r.status, flash: '', body, setCookie };
   const page = await adminPage();
-  return { status: r.status, flash: /<p class="flash( error)?( wide)?" role="(?:status|alert)"(?: id="form-error")?>([^<]*)<\/p>/.exec(page.text)?.[3] ?? '', error: /<p class="flash error"/.test(page.text), setCookie };
+  return { status: r.status, flash: /<p class="flash( error)?( wide)?" role="(?:status|alert)"(?: id="form-(?:error|ok)")?>([^<]*)<\/p>/.exec(page.text)?.[3] ?? '', error: /<p class="flash error"/.test(page.text), setCookie };
 }
 /** 운영자 JSON (쿠키 + x-csrf-token) */
 const adminJson = (action, body) =>

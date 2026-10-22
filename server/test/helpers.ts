@@ -204,9 +204,32 @@ export class AdminBrowser {
     });
   }
 
+  /**
+   * 지급과 공지의 확정은 미리보기를 거친 것만 받는다. 작성 값으로 미리보기를 만들고 확정 폼의 숨은 칸(번호 포함)에
+   * 호출한 칸을 덮어 보낸다. 미리보기가 거절되면(값이 틀림) 그 응답을 돌려준다 (결과 글은 다음 화면에 있다)
+   */
+  async confirmPost(
+    path: string,
+    fields: Record<string, string | string[]>,
+    csrf = true,
+    origin = this.h().base,
+  ): Promise<Res> {
+    const previewPath = path === '/admin/grants/batch' ? '/admin/grants/preview' : '/admin/notices/preview';
+    const first = await this.post(previewPath, fields, csrf, origin);
+    if (first.status !== 303) return first;
+    const page = await this.page();
+    const m = new RegExp(`<form method="post" action="${path}"[^>]*>([\\s\\S]*?)</form>`).exec(page.text);
+    if (!m) return this.post(previewPath, fields, csrf, origin);
+    const hidden: Record<string, string> = {};
+    for (const x of (m[1] ?? '').matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)">/g))
+      if (x[1] !== 'csrf') hidden[x[1] as string] = (x[2] as string).replaceAll('&#10;', '\n');
+    return this.post(path, { ...hidden, ...fields, flow: hidden.flow ?? '' }, csrf, origin);
+  }
+
   /** 쓰기 하나 뒤 화면의 결과 글 */
   async act(path: string, fields: Record<string, string | string[]>): Promise<{ ok: boolean; text: string }> {
-    const r = await this.post(path, fields);
+    const flow = path === '/admin/grants/batch' || path === '/admin/notices';
+    const r = flow ? await this.confirmPost(path, fields) : await this.post(path, fields);
     assert.equal(r.status, 303, r.text);
     const p = await this.page();
     const m =

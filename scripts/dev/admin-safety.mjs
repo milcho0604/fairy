@@ -133,6 +133,17 @@ async function adminPost(path, fields) {
   const page = await adminPage();
   return /<p class="flash( error)?( wide)?" role="(?:status|alert)"(?: id="form-(?:error|ok)")?>([^<]*)<\/p>/.exec(page)?.[3] ?? `HTTP ${r.status}`;
 }
+/** 지급과 공지의 확정은 미리보기를 거친 것만 받는다 (#150): 미리보기를 만들고 확정 폼의 숨은 칸(번호)을 실어 보낸다 */
+async function adminFlow(path, fields) {
+  const preview = path === '/admin/grants/batch' ? '/admin/grants/preview' : '/admin/notices/preview';
+  await adminPost(preview, fields);
+  const page = await adminPage();
+  const m = new RegExp(`<form method="post" action="${path}"[^>]*>([\\s\\S]*?)</form>`).exec(page);
+  if (!m) return adminPost(preview, fields);
+  const hidden = {};
+  for (const x of m[1].matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)">/g)) if (x[1] !== 'csrf') hidden[x[1]] = x[2].replaceAll('&#10;', '\n');
+  return adminPost(path, { ...hidden, ...fields, flow: hidden.flow ?? '' });
+}
 const kstInput = (ms) => new Date(ms + 9 * 3_600_000).toISOString().slice(0, 16);
 
 const results = [];
@@ -329,7 +340,7 @@ async function webPart() {
   await adminPost('/admin/events', { id: 'sure-live', kind: 'gift', title_ko: '가을 선물', title_en: 'Autumn gift', body_ko: '본문', body_en: 'Body', from: kstInput(Date.now() - 3_600_000), until: kstInput(Date.now() + 86_400_000), coins: 30 });
   await adminPost('/admin/events', { id: 'sure-soon', kind: 'gift', title_ko: '내일 선물', title_en: 'Tomorrow', body_ko: '본문', body_en: 'Body', from: kstInput(Date.now() + 86_400_000), until: kstInput(Date.now() + 2 * 86_400_000), coins: 10 });
   await adminPost('/admin/coupons', { label: '시험 쿠폰', coins: 5, tickets: 0, max_uses: 3, until: kstInput(Date.now() + 86_400_000) });
-  await adminPost('/admin/notices', { id: 'sure-notice', kind: 'info', title_ko: '지울 공지', title_en: 'Old notice', body_ko: '본문', body_en: 'Body' });
+  await adminFlow('/admin/notices', { id: 'sure-notice', kind: 'info', title_ko: '지울 공지', title_en: 'Old notice', body_ko: '본문', body_en: 'Body' });
   await nav(U('/events', 'announce/events'));
   await shot(`web-${TAG}-2-events`, S('announce-events'));
   const rowForm = (id) => `form.sure input[name=id][value="${id}"]`;

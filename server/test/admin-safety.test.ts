@@ -51,7 +51,7 @@ const noticeForm = {
 
 describe('실패한 제출의 입력 보존', () => {
   test('허용 안 되는 링크로 공지를 내면 쓴 글이 그대로 남고 오류가 폼 가까이에 뜬다', async () => {
-    const r = await admin.post('/admin/notices', noticeForm);
+    const r = await admin.confirmPost('/admin/notices', noticeForm);
     assert.equal(r.status, 303);
     assert.equal(r.headers.get('location'), '/admin#announce/notices');
     const page = await admin.page('/notices');
@@ -75,7 +75,7 @@ describe('실패한 제출의 입력 보존', () => {
   });
 
   test('쓴 글이 길어도 다른 폼은 채우지 않고, 확인 칸은 다시 체크해야 한다', async () => {
-    const r = await admin.post('/admin/grants/batch', {
+    const r = await admin.confirmPost('/admin/grants/batch', {
       accounts: 'F-NOPE-0000',
       coins: '12',
       chat_passes: '0',

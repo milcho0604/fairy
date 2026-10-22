@@ -1533,7 +1533,8 @@ export function fieldsOf(body: unknown): FormFields {
 export function draftOf(f: FormFields): Record<string, string | string[]> {
   const out: Record<string, string | string[]> = {};
   for (const [k, v] of Object.entries(f as Record<string, unknown>)) {
-    if (k === 'csrf' || k === 'confirm' || k === 'token' || Object.keys(out).length >= 40) continue;
+    if (k === 'csrf' || k === 'confirm' || k === 'token' || k === 'flow' || Object.keys(out).length >= 40)
+      continue;
     if (Array.isArray(v)) out[k] = v.slice(0, 10).map((x) => String(x).slice(0, 200));
     else if (typeof v === 'string') out[k] = v.slice(0, 2000);
   }
@@ -1730,14 +1731,16 @@ export class AdminController {
       async (s, f) => {
         // 쓰기를 시도하면 쓰던 미리보기는 끝난 것이다 (성공이면 결과 확인, 실패면 오류와 쓴 값이 작성 화면에)
         if (isFlowAction(name)) {
-          // 미리보기에서 온 확정은 그 미리보기의 번호와 맞아야 하고, 한 번 쓰면 지워서 같은 미리보기를 두 번 확정할 수 없다
-          // (번호 없이 직접 보낸 요청은 이전처럼 받는다)
-          if (typeof f.flow === 'string' && f.flow !== '') {
-            const ok = s.preview?.action === name && s.preview.nonce === f.flow;
-            s.preview = undefined;
-            if (!ok)
-              throw new Refused('이미 확정했거나 닫힌 미리보기예요. 운영 기록에서 확인하고 다시 써 주세요');
-          } else s.preview = undefined;
+          // 웹의 확정은 미리보기를 거친 것만 받는다: 그 미리보기의 번호(문자열 하나)와 맞아야 하고, 한 번 쓰면 지워서
+          // 같은 미리보기를 두 번 확정할 수 없다. 번호가 없거나 비었거나 여럿이면 거절 (앱 /v1/admin/* 는 이 길을 안 탄다)
+          const ok =
+            typeof f.flow === 'string' &&
+            f.flow !== '' &&
+            s.preview?.action === name &&
+            s.preview.nonce === f.flow;
+          s.preview = undefined;
+          if (!ok)
+            throw new Refused('이미 확정했거나 닫힌 미리보기예요. 운영 기록에서 확인하고 다시 써 주세요');
         }
         return (await this.admin.run(name, actorOf(s), f)).text;
       },
