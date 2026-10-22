@@ -2278,10 +2278,11 @@ export class AdminService {
             `같은 id(${msg.id}) 의 다른 종류 공지가 있어 안내문을 넣을 수 없어요. 그 공지를 먼저 지우거나 바꿔 주세요`,
             'invalid',
           );
-        // 강제 안내문은 하나만 둔다: 앱은 잠길 때 목록의 첫 강제 공지를 보이므로 옛 force-* 는 지운다
+        // 강제 안내문은 하나만 둔다: 앱은 잠길 때 목록의 첫 강제 공지를 보이므로 버전 저장이 만든 옛 안내문(force-X.Y.Z)은 지운다.
+        // 운영자가 공지 폼으로 따로 만든 강제 공지(force-mac-security 같은 것)는 건드리지 않는다
         if (msg.kind === 'force')
           doc.notices = doc.notices.filter(
-            (x) => !(x.kind === 'force' && x.id.startsWith('force-') && x.id !== msg.id),
+            (x) => !(x.kind === 'force' && /^force-\d+\.\d+\.\d+$/.test(x.id) && x.id !== msg.id),
           );
         const j = doc.notices.findIndex((x) => x.id === msg.id);
         if (j >= 0) doc.notices[j] = msg;
