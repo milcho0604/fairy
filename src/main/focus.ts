@@ -45,7 +45,8 @@ export function focusWindow(win: BrowserWindow | undefined): void {
  * 걷기, 숨바꼭질, 던지기도 내장 화면 안에서만 움직인다. 내장 화면이 없으면 그대로 둔다.
  */
 export function confineTestDisplay(): void {
-  if (!noFocus) return;
+  // JJ_CONFINE=1: 포커스는 진짜로 가져가되(맥 Dock, 데스크톱 점검 scripts/dev/dock-probe.mjs) 창은 내장 화면에 숨겨 연다
+  if (!noFocus && !process.env.JJ_CONFINE) return;
   const internal = screen.getAllDisplays().find((d) => d.internal);
   if (!internal) return;
   const allDisplays = screen.getAllDisplays.bind(screen);

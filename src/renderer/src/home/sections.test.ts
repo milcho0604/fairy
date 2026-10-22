@@ -1,0 +1,75 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { HOME_SECTIONS, homeKeyAction, sectionForKey, sectionShortcut, visibleSections } from './sections.ts';
+
+const key = (
+  code: string,
+  k: string,
+  mods: Partial<Record<'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey', boolean>> = {},
+) => ({
+  key: k,
+  code,
+  metaKey: false,
+  ctrlKey: false,
+  altKey: false,
+  shiftKey: false,
+  ...mods,
+});
+
+test('구역 순서: 오늘, 할 일, 일정, 메모, 채팅, 상점, 친구', () => {
+  assert.deepEqual(
+    HOME_SECTIONS.map((s) => s.id),
+    ['today', 'todo', 'event', 'note', 'chat', 'shop', 'friends'],
+  );
+});
+
+test('친구는 기능이 켜졌을 때만 보인다', () => {
+  assert.equal(visibleSections(false).length, 6);
+  assert.equal(visibleSections(true).length, 7);
+  assert.equal(
+    visibleSections(false).some((s) => s.id === 'friends'),
+    false,
+  );
+});
+
+test('따로 창을 여는 구역은 채팅과 친구뿐', () => {
+  assert.deepEqual(
+    HOME_SECTIONS.filter((s) => s.kind === 'window').map((s) => s.id),
+    ['chat', 'friends'],
+  );
+});
+
+test('Cmd+1~6 (친구 꺼짐), Cmd+7 은 친구가 켜졌을 때만', () => {
+  assert.equal(sectionForKey(key('Digit1', '1', { metaKey: true }), true, false)?.id, 'today');
+  assert.equal(sectionForKey(key('Digit3', '3', { metaKey: true }), true, false)?.id, 'event');
+  assert.equal(sectionForKey(key('Digit5', '5', { metaKey: true }), true, false)?.id, 'chat');
+  assert.equal(sectionForKey(key('Digit6', '6', { metaKey: true }), true, false)?.id, 'shop');
+  assert.equal(sectionForKey(key('Digit7', '7', { metaKey: true }), true, false), undefined);
+  assert.equal(sectionForKey(key('Digit7', '7', { metaKey: true }), true, true)?.id, 'friends');
+});
+
+test('윈도우는 Ctrl, 맥에서 Ctrl 이나 Shift, Option 이 섞이면 아니다', () => {
+  assert.equal(sectionForKey(key('Digit2', '2', { ctrlKey: true }), false, false)?.id, 'todo');
+  assert.equal(sectionForKey(key('Digit2', '2', { ctrlKey: true }), true, false), undefined);
+  assert.equal(sectionForKey(key('Digit2', '2', { metaKey: true, shiftKey: true }), true, false), undefined);
+  assert.equal(sectionForKey(key('Digit2', '2'), true, false), undefined);
+});
+
+test('한글 입력 중에도 code 로 읽는다', () => {
+  assert.equal(sectionForKey(key('Digit4', 'ㅋ', { metaKey: true }), true, false)?.id, 'note');
+});
+
+test('구역 풀이 단축키는 보이는 순서를 따른다', () => {
+  assert.equal(sectionShortcut('shop', false, 'Cmd'), 'Cmd+6');
+  assert.equal(sectionShortcut('friends', false, 'Cmd'), undefined);
+  assert.equal(sectionShortcut('friends', true, 'Ctrl'), 'Ctrl+7');
+});
+
+test('Cmd+, 설정, Cmd+W 닫기, Cmd+F 찾기', () => {
+  assert.equal(homeKeyAction(key('Comma', ',', { metaKey: true }), true), 'settings');
+  assert.equal(homeKeyAction(key('KeyW', 'w', { ctrlKey: true }), false), 'close');
+  assert.equal(homeKeyAction(key('KeyF', 'ㄹ', { metaKey: true }), true), 'find');
+  assert.equal(homeKeyAction(key('KeyF', 'f', { metaKey: true, shiftKey: true }), true), undefined);
+  assert.equal(homeKeyAction(key('KeyF', 'f'), true), undefined);
+  assert.equal(homeKeyAction(key('KeyQ', 'q', { metaKey: true }), true), undefined);
+});

@@ -12,6 +12,14 @@ export function windowsStateMeansHide(state: number): boolean {
   return state === 2 || state === 3 || state === 4;
 }
 
+/**
+ * 전체 화면 앱이라 펫을 숨길지. 우리 큰 창이 전체 화면이면 다른 앱의 전체 화면이 아니므로 숨기지 않는다
+ * (펫이 큰 창 위에서 같이 지낸다. 큰 창 설계 #159)
+ */
+export function presenceHide(stateHides: boolean, homeFullScreen: boolean): boolean {
+  return stateHides && !homeFullScreen;
+}
+
 export class HideReasons {
   #reasons = new Set<HideReason>();
 

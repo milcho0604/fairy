@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PanelState, PanelTab } from '../../../shared/ipc.ts';
 import { nextUnlock } from '../../../shared/pet-life.ts';
+import type { SurfaceKind } from '../../../shared/surface-kind.ts';
 import {
   type KeptToast,
   liveToasts,
@@ -11,6 +12,8 @@ import {
   undoable,
 } from '../../../shared/toast-keep.ts';
 import type { Todo } from '../../../shared/todo-store.ts';
+import { HomeShell } from '../home/HomeShell.tsx';
+import { homeKeyAction, sectionForKey } from '../home/sections.ts';
 import { PetFace } from '../PetFace.tsx';
 import { EventTab } from './EventTab.tsx';
 import { addedText, timeOf, whenLabel } from './format.ts';
@@ -33,20 +36,19 @@ const UNDO_MS = 8000;
 const CHOICE_MS = 10_000;
 /** 알림에 마우스를 올렸다 떼면 이만큼 더 둔다 */
 const LINGER_MS = 2500;
-const TAB_KEY = 'jj.panel.tab';
-/** 이 껍데기는 작은 패널이다 (큰 창의 껍데기는 'home') */
-const SURFACE_KIND = 'panel';
+/** 마지막 탭을 적는 칸. 작은 패널과 큰 창이 서로 덮어쓰지 않게 따로 둔다 */
+const tabKeyOf = (kind: SurfaceKind) => (kind === 'home' ? 'jj.home.section' : 'jj.panel.tab');
 const MAC = navigator.userAgent.includes('Mac');
 /** 탭 풀이와 설정 단축키 칸에 보이는 수식키 */
 const MOD = MAC ? 'Cmd' : 'Ctrl';
 
 /** 마지막에 본 탭 (창은 열 때마다 새로 만들어서 브라우저 저장소에 둔다). 못 읽으면 오늘. */
-function savedTab(): PanelTab {
+function savedTab(kind: SurfaceKind): PanelTab {
   // 펫 메뉴 "상점"처럼 탭을 정해서 열면 주소 뒤에 붙어 온다
   const asked = location.hash.slice(1);
   if (isTab(asked)) return asked;
   try {
-    const v = localStorage.getItem(TAB_KEY);
+    const v = localStorage.getItem(tabKeyOf(kind));
     return isTab(v) ? v : 'today';
   } catch {
     return 'today';
@@ -67,17 +69,45 @@ function unlockHint(affection: number): string {
 }
 
 /** 마지막 탭을 기억한다 (다음에 열 때 그 탭) */
-function rememberTab(next: PanelTab) {
+function rememberTab(kind: SurfaceKind, next: PanelTab) {
   try {
-    localStorage.setItem(TAB_KEY, next);
+    localStorage.setItem(tabKeyOf(kind), next);
   } catch {
     // 저장 못 해도 이번에는 바뀐다
   }
 }
 
-export function PanelApp() {
+/**
+ * 큰 창 Cmd/Ctrl+F: 이 구역의 찾기 칸에 커서를 둔다. 할 일은 접힌 찾기 줄을 펴고, 메모는 입력 줄이 찾기 칸이다.
+ * 찾기가 없는 구역(오늘, 일정, 상점)은 아무것도 하지 않는다
+ */
+function focusFind() {
+  const root = document.getElementById('ptab-panel');
+  if (!root) return;
+  const row = () => root.querySelector<HTMLInputElement>('.find-row input');
+  const open = row();
+  if (open) {
+    open.focus();
+    open.select();
+    return;
+  }
+  const btn = root.querySelector<HTMLButtonElement>('.find-btn');
+  if (btn) {
+    btn.click();
+    requestAnimationFrame(() => row()?.focus());
+    return;
+  }
+  if (root.getAttribute('aria-labelledby') === 'ptab-note') {
+    const input = root.querySelector<HTMLInputElement>('.add.row input');
+    input?.focus();
+    input?.select();
+  }
+}
+
+/** 패널 구성요소의 껍데기. kind 가 panel 이면 펫 옆 작은 패널, home 이면 사이드바가 있는 큰 창 (src/renderer/src/home/HomeShell.tsx) */
+export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
   const [s, setS] = useState<PanelState>();
-  const [tab, setTabState] = useState<PanelTab>(savedTab);
+  const [tab, setTabState] = useState<PanelTab>(() => savedTab(kind));
   // 되돌리기 알림 (#145): 여럿이 쌓이고, 메인이 들고 있어 패널을 벗어났다 다시 열어도 남은 시간 동안 보인다
   const [toasts, setToasts] = useState<KeptToast[]>(() => liveToasts(bridge.toastsGet(), Date.now()));
   const toastKey = useRef(toasts.reduce((m, k) => Math.max(m, k.key), 0) + 1);
@@ -87,8 +117,8 @@ export function PanelApp() {
   /** 덮개 자리: 본문 칸 위에 덮는 것(주간 카드, 줄 메뉴)을 면 기준으로 올린다 (surface.tsx) */
   const [overlayRoot, setOverlayRoot] = useState<HTMLElement | null>(null);
   const surface = useMemo(
-    () => ({ kind: SURFACE_KIND, close: () => bridge.close(), overlayRoot }) as const,
-    [overlayRoot],
+    () => ({ kind, close: () => bridge.close(), overlayRoot }) as const,
+    [kind, overlayRoot],
   );
   /** 본문 칸. 폭 구간은 data-zone 으로 단다 (use-wide.ts) */
   const [bodyEl, setBodyEl] = useState<HTMLElement | null>(null);
@@ -100,8 +130,11 @@ export function PanelApp() {
 
   const setTab = (next: PanelTab) => {
     setTabState(next);
-    rememberTab(next);
+    rememberTab(kind, next);
   };
+  /** 큰 창 단축키가 보는 최신 값 (키 듣개는 한 번만 달린다) */
+  const friendsOnRef = useRef(false);
+  friendsOnRef.current = s?.friendsOn ?? false;
 
   useEffect(() => {
     bridge.snapshot().then(setS);
@@ -109,17 +142,40 @@ export function PanelApp() {
     bridge.onTab((next) => setTabState(next));
     // 입력칸이 먼저 Esc 를 처리한다(비우기, 메모 목록으로). 한글 조합 중 Esc 는 조합만 끝낸다
     const onKey = (e: KeyboardEvent) => {
-      if (escClosesSurface(e, SURFACE_KIND)) {
+      if (escClosesSurface(e, kind)) {
         bridge.close();
         return;
       }
-      // Cmd/Ctrl + 1~5: 탭 옮기기
-      const next = tabForKey(e, MAC);
-      if (next) {
-        e.preventDefault();
-        setTabState(next);
-        rememberTab(next);
-        return;
+      if (kind === 'home') {
+        // 큰 창: Cmd/Ctrl+, 설정, W 닫기, F 찾기, 1~ 구역 (채팅과 친구는 따로 창을 연다)
+        const act = homeKeyAction(e, MAC);
+        if (act) {
+          e.preventDefault();
+          if (act === 'settings') bridge.openSettings();
+          else if (act === 'close') bridge.close();
+          else focusFind();
+          return;
+        }
+        const sec = sectionForKey(e, MAC, friendsOnRef.current);
+        if (sec) {
+          e.preventDefault();
+          if (sec.id === 'chat') bridge.openChat();
+          else if (sec.id === 'friends') bridge.openFriends();
+          else {
+            setTabState(sec.id);
+            rememberTab(kind, sec.id);
+          }
+          return;
+        }
+      } else {
+        // Cmd/Ctrl + 1~5: 탭 옮기기
+        const next = tabForKey(e, MAC);
+        if (next) {
+          e.preventDefault();
+          setTabState(next);
+          rememberTab(kind, next);
+          return;
+        }
       }
       // Cmd/Ctrl+Z: 쓰던 글이 없으면 방금 끝낸 것, 지운 것 되돌리기. 입력칸에 쓴 적이 있으면(다 지웠어도)
       // 입력칸 자체 되돌리기에 둔다 (지운 글을 되살리려던 Cmd+Z 가 할 일을 되살리고 글은 잃었다)
@@ -146,7 +202,7 @@ export function PanelApp() {
       window.removeEventListener('input', onInput, true);
       window.removeEventListener('focusout', onBlur, true);
     };
-  }, []);
+  }, [kind]);
 
   // 할 일, 일정 탭은 열자마자 입력칸에 커서를 둔다. 탭 줄에서 ← → 로 옮겼으면 커서는 탭에 남긴다 (tablist 관례)
   const tabKeyMove = useRef(false);
@@ -182,7 +238,7 @@ export function PanelApp() {
     lastToastAt.current = undoable(toasts).at(-1)?.at;
   }, [toasts]);
 
-  if (!s) return <div className="card-window panel" />;
+  if (!s) return kind === 'home' ? <div className="surface home" /> : <div className="card-window panel" />;
 
   const showToast = (next: Toast) => {
     const now = Date.now();
@@ -312,6 +368,111 @@ export function PanelApp() {
     );
   };
 
+  // 탭 내용이 창의 본문 (화면 읽기 프로그램의 main 이동)
+  const mainEl = (
+    <main className="panel-main">
+      <div
+        ref={setBodyEl}
+        className="panel-tabpanel"
+        id="ptab-panel"
+        role="tabpanel"
+        aria-labelledby={`ptab-${tab}`}
+        data-zone={zone}
+      >
+        {tab === 'today' && (
+          <TodayTab
+            s={s}
+            onComplete={complete}
+            goTo={setTab}
+            onMoved={(moved) => showToast({ kind: 'moved', moved })}
+          />
+        )}
+        {tab === 'todo' && (
+          <TodoTab
+            s={s}
+            onComplete={complete}
+            inputRef={inputRef}
+            onAdded={(r, text) => {
+              // 시각이 있어 일정으로 들어갔다: 언제로 넣었는지, 되돌리기, 할 일로
+              if (r.kind === 'event')
+                showToast({
+                  kind: 'to-event',
+                  id: r.id,
+                  startAt: r.startAt,
+                  text,
+                  ...(r.clash ? { clash: r.clash } : {}),
+                  ...(r.am ? { am: r.am } : {}),
+                });
+              // 여러 줄 붙여 넣기: "할 일 3개 넣었어"
+              if (r.kind === 'many') showToast({ kind: 'added', text: addedText(r, s.today) });
+              // "30분 뒤 알려 줘": 언제 알려 줄지
+              if (r.kind === 'todo' && r.remindAt !== undefined)
+                showToast({ kind: 'added', text: addedText(r, s.today) });
+              if (r.kind === 'todo' && (r.past || r.monthly))
+                showToast({ kind: 'flagged', id: r.id, text: addedText(r, s.today), past: !!r.past });
+            }}
+            onRemoved={(todo) => showToast({ kind: 'todo-removed', id: todo.id })}
+          />
+        )}
+        {tab === 'note' && <NoteTab s={s} onRemoved={(id) => showToast({ kind: 'note-removed', id })} />}
+        {tab === 'shop' && <ShopTab s={s} />}
+        {tab === 'event' && (
+          <EventTab
+            s={s}
+            inputRef={inputRef}
+            onRemoved={(id) => showToast({ kind: 'event-removed', id })}
+            onComplete={complete}
+            onTodoRemoved={(todo) => showToast({ kind: 'todo-removed', id: todo.id })}
+          />
+        )}
+      </div>
+    </main>
+  );
+
+  // 아침 계획 시트 (MorningPlan.tsx): 아침 첫 열기, 펫 한마디, 오늘 탭 카드에서 띄운다
+  const planSheet = (
+    <PlanSheetHost
+      goToday={() => setTab('today')}
+      onSaved={(text) => showToast({ kind: 'added', text })}
+      todosKey={planTodosKey(s.open)}
+    />
+  );
+
+  // 알림이 여럿이면 쌓는다(최근 셋). 더 오래된 것은 "되돌릴 수 있는 것 N개 더" 한 줄로 합친다.
+  // 읽는 동안(마우스를 올린 동안)은 사라지지 않는다
+  const toastStack = toasts.length > 0 && (
+    <div ref={toastRef} className="toast-stack">
+      {foldedUndoable.length > 0 && (
+        <div className="toast toast-more" role="status">
+          <span>{t('keep.toast.more', { n: foldedUndoable.length })}</span>
+          <div className="toast-actions">
+            <button type="button" className="undo" onClick={() => foldedUndoable.forEach(undoToast)}>
+              {t('keep.toast.undoAll')}
+            </button>
+          </div>
+        </div>
+      )}
+      {shown.map(renderToast)}
+    </div>
+  );
+
+  if (kind === 'home')
+    return (
+      <SurfaceProvider value={surface}>
+        <HomeShell
+          s={s}
+          tab={tab}
+          setTab={setTab}
+          setOverlayRoot={setOverlayRoot}
+          fed={fed}
+          onFeed={feed}
+          mainEl={mainEl}
+          planSheet={planSheet}
+          toastStack={toastStack}
+        />
+      </SurfaceProvider>
+    );
+
   return (
     <SurfaceProvider value={surface}>
       <div className="surface" ref={setOverlayRoot}>
@@ -417,66 +578,7 @@ export function PanelApp() {
             ))}
           </div>
 
-          {/* 탭 내용이 창의 본문 (화면 읽기 프로그램의 main 이동) */}
-          <main className="panel-main">
-            <div
-              ref={setBodyEl}
-              className="panel-tabpanel"
-              id="ptab-panel"
-              role="tabpanel"
-              aria-labelledby={`ptab-${tab}`}
-              data-zone={zone}
-            >
-              {tab === 'today' && (
-                <TodayTab
-                  s={s}
-                  onComplete={complete}
-                  goTo={setTab}
-                  onMoved={(moved) => showToast({ kind: 'moved', moved })}
-                />
-              )}
-              {tab === 'todo' && (
-                <TodoTab
-                  s={s}
-                  onComplete={complete}
-                  inputRef={inputRef}
-                  onAdded={(r, text) => {
-                    // 시각이 있어 일정으로 들어갔다: 언제로 넣었는지, 되돌리기, 할 일로
-                    if (r.kind === 'event')
-                      showToast({
-                        kind: 'to-event',
-                        id: r.id,
-                        startAt: r.startAt,
-                        text,
-                        ...(r.clash ? { clash: r.clash } : {}),
-                        ...(r.am ? { am: r.am } : {}),
-                      });
-                    // 여러 줄 붙여 넣기: "할 일 3개 넣었어"
-                    if (r.kind === 'many') showToast({ kind: 'added', text: addedText(r, s.today) });
-                    // "30분 뒤 알려 줘": 언제 알려 줄지
-                    if (r.kind === 'todo' && r.remindAt !== undefined)
-                      showToast({ kind: 'added', text: addedText(r, s.today) });
-                    if (r.kind === 'todo' && (r.past || r.monthly))
-                      showToast({ kind: 'flagged', id: r.id, text: addedText(r, s.today), past: !!r.past });
-                  }}
-                  onRemoved={(todo) => showToast({ kind: 'todo-removed', id: todo.id })}
-                />
-              )}
-              {tab === 'note' && (
-                <NoteTab s={s} onRemoved={(id) => showToast({ kind: 'note-removed', id })} />
-              )}
-              {tab === 'shop' && <ShopTab s={s} />}
-              {tab === 'event' && (
-                <EventTab
-                  s={s}
-                  inputRef={inputRef}
-                  onRemoved={(id) => showToast({ kind: 'event-removed', id })}
-                  onComplete={complete}
-                  onTodoRemoved={(todo) => showToast({ kind: 'todo-removed', id: todo.id })}
-                />
-              )}
-            </div>
-          </main>
+          {mainEl}
 
           <footer>
             {/* 이름이 길어도 한 줄 (넘치면 말줄임, 전체는 풀이에) */}
@@ -493,33 +595,12 @@ export function PanelApp() {
             </button>
           </footer>
 
-          {/* 아침 계획 시트 (MorningPlan.tsx): 아침 첫 열기, 펫 한마디, 오늘 탭 카드에서 띄운다 */}
-          <PlanSheetHost
-            goToday={() => setTab('today')}
-            onSaved={(text) => showToast({ kind: 'added', text })}
-            todosKey={planTodosKey(s.open)}
-          />
+          {planSheet}
 
           {/* 크기 손잡이: 카드 안 오른쪽 아래. 다른 칸 위에 얹는다 */}
           <ResizeGrips />
 
-          {toasts.length > 0 && (
-            // 알림이 여럿이면 쌓는다(최근 셋). 더 오래된 것은 "되돌릴 수 있는 것 N개 더" 한 줄로 합친다.
-            // 읽는 동안(마우스를 올린 동안)은 사라지지 않는다
-            <div ref={toastRef} className="toast-stack">
-              {foldedUndoable.length > 0 && (
-                <div className="toast toast-more" role="status">
-                  <span>{t('keep.toast.more', { n: foldedUndoable.length })}</span>
-                  <div className="toast-actions">
-                    <button type="button" className="undo" onClick={() => foldedUndoable.forEach(undoToast)}>
-                      {t('keep.toast.undoAll')}
-                    </button>
-                  </div>
-                </div>
-              )}
-              {shown.map(renderToast)}
-            </div>
-          )}
+          {toastStack}
         </div>
       </div>
     </SurfaceProvider>

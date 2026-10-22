@@ -13,6 +13,8 @@ export interface TrayActions {
   /** 베타 기록 칸을 연 설정 창 (P4-01 의견 보내기) */
   sendFeedback(): void;
   quickAdd(): void;
+  /** 큰 창 열기 (큰 창 설계 #159). 이미 열려 있으면 앞으로 */
+  openHome(): void;
   /** 패널을 할 일 탭으로 연다 */
   openTodos(): void;
   /** 패널 열고 닫기 (펫 누르기, 패널 단축키와 같다) */
@@ -65,6 +67,11 @@ export function createTray(petName: () => string, actions: TrayActions): Tray {
         label: t('tray.panel'),
         accelerator: settings.get().shortcuts.panel || undefined,
         click: () => actions.togglePanel(),
+      },
+      {
+        label: t('tray.openHome'),
+        accelerator: settings.get().shortcuts.home || undefined,
+        click: () => actions.openHome(),
       },
       { label: t('tray.todos'), click: () => actions.openTodos() },
       {

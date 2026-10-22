@@ -26,6 +26,7 @@ import {
 import { type FocusState, focusCoins, isFocusLength } from '../shared/focus.ts';
 import { isMonth, monthOf } from '../shared/focus-month.ts';
 import type { GcalCalLabel, PanelGcal } from '../shared/gcal.ts';
+import { isPanelView, type PanelView } from '../shared/home-policy.ts';
 import { t } from '../shared/i18n/index.ts';
 import { createIdleWatch } from '../shared/idle-watch.ts';
 import {
@@ -172,6 +173,18 @@ export interface PanelOptions {
   /** 패널 고정 핀 (#145): 켜 두면 다른 곳을 눌러도 패널이 닫히지 않는다 */
   panelPin: () => boolean;
   setPanelPin: (on: boolean) => void;
+  /** 패널 보기 (#161): 펫 클릭이 여는 것 */
+  panelView: () => PanelView;
+  setPanelView: (view: PanelView) => void;
+  /** 친구 기능이 켜져 있다 (큰 창 사이드바 "친구") */
+  friendsOn: () => boolean;
+  /** 설정의 친구 칸 열기 */
+  openFriends: () => void;
+  /**
+   * 큰 창으로 열어야 하면 열고 true (패널 보기가 큰 창이거나 큰 창이 열려 있다). false 면 패널이 연다.
+   * toggle 이면 펫 누르기, 단축키처럼 "열고 닫기", 아니면 이 탭을 보여 줘
+   */
+  routeHome?: (req: { tab?: PanelTab; toggle: boolean }) => boolean;
   lookTogether: () => void;
   /** 오늘 놓친 알림 (펫이 숨어 있거나 자리에 없어 못 본 것) */
   missed: () => PanelState['missed'];
@@ -274,6 +287,8 @@ export function createPanel(o: PanelOptions) {
       ...(week(now, open) ?? {}),
       trashCount: o.store.trashCount(),
       keepOpen: o.panelPin(),
+      panelView: o.panelView(),
+      friendsOn: o.friendsOn(),
     };
   }
 
@@ -965,6 +980,8 @@ export function createPanel(o: PanelOptions) {
 
   const isPanel = (e: IpcMainEvent) =>
     ours(e) && !!panel && !panel.isDestroyed() && e.sender === panel.webContents;
+  /** 작은 패널이나 큰 창이 보낸 것 (되돌리기 알림, 보던 위치는 두 면이 같이 쓴다) */
+  const isSurface = (e: IpcMainEvent) => isPanel(e) || (ours(e) && e.sender === homeContents());
 
   /** 지금 창 크기를 범위 안에서 바꾼다 (want 는 창 크기 DIP. 왼쪽 위는 그대로, 작업 영역을 넘으면 안쪽으로 민다) */
   function applyResize(want: { width?: number; height?: number }) {
@@ -1061,16 +1078,25 @@ export function createPanel(o: PanelOptions) {
     e.returnValue = ours(e) ? getView() : emptyViewKeep();
   });
   ipcMain.on(PANEL.viewSet, (e, view: unknown) => {
-    if (isPanel(e)) setView(view);
+    if (isSurface(e)) setView(view);
   });
   ipcMain.on(PANEL.toastsGet, (e) => {
-    e.returnValue = isPanel(e) ? getToasts() : [];
+    e.returnValue = isSurface(e) ? getToasts() : [];
   });
   ipcMain.on(PANEL.toastsSet, (e, list: unknown) => {
-    if (isPanel(e)) setToasts(list);
+    if (isSurface(e)) setToasts(list);
   });
   ipcMain.on(PANEL.setKeepOpen, (e, on: unknown) => {
     if (isPanel(e) && typeof on === 'boolean') o.setPanelPin(on);
+  });
+  // 큰 창 바닥의 "펫을 누르면 이 창으로 열기"와 사이드바 "친구"
+  ipcMain.on(PANEL.setPanelView, (e, view: unknown) => {
+    if (isSurface(e) && isPanelView(view)) o.setPanelView(view);
+  });
+  ipcMain.on(PANEL.openFriends, (e) => {
+    if (!ours(e)) return;
+    if (closesPanelFor(originOf(e.sender, homeContents()))) closePanel();
+    o.openFriends();
   });
 
   ipcMain.on(PANEL.close, (e) => {
@@ -1184,6 +1210,7 @@ export function createPanel(o: PanelOptions) {
 
   /** 패널을 열고 이 탭을 보여 준다 (이미 열려 있으면 탭만) */
   function openTab(tab: PanelTab) {
+    if (o.routeHome?.({ tab, toggle: false })) return;
     if (panel && !panel.isDestroyed()) {
       panel.webContents.send(PANEL.tab, tab);
       focusWindow(panel);
@@ -1196,6 +1223,14 @@ export function createPanel(o: PanelOptions) {
   let nextTab: PanelTab | undefined;
 
   function togglePanel() {
+    // 큰 창이 열려 있거나 패널 보기가 큰 창이면 큰 창이 맡는다 (둘을 함께 열지 않는다)
+    if (!(panel && !panel.isDestroyed()) && o.routeHome) {
+      const tab = nextTab;
+      if (o.routeHome({ tab, toggle: true })) {
+        nextTab = undefined;
+        return;
+      }
+    }
     if (panel && !panel.isDestroyed()) {
       closePanel();
       return;

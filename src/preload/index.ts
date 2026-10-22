@@ -148,6 +148,7 @@ if (kind === 'pet') {
 if (
   kind === 'chat' ||
   kind === 'panel' ||
+  kind === 'home' ||
   kind === 'quick' ||
   kind === 'onboarding' ||
   kind === 'settings' ||
@@ -415,7 +416,7 @@ if (kind === 'settings') {
 }
 
 // 짝꿍이 아는 것, 첫 7일 여정, 성장과 옷, 주간 회고 카드 (shared/bond-ipc.ts). 메인이 창마다 보낸 곳을 본다
-if (kind === 'panel' || kind === 'settings' || kind === 'knows') {
+if (kind === 'panel' || kind === 'home' || kind === 'settings' || kind === 'knows') {
   const bond: BondBridge = {
     openKnows: () => ipcRenderer.send(BOND.openKnows),
     knowsGet: () => ipcRenderer.invoke(BOND.knowsGet),
@@ -437,8 +438,8 @@ if (kind === 'panel' || kind === 'settings' || kind === 'knows') {
   contextBridge.exposeInMainWorld('jjakkungBond', bond);
 }
 
-// 매일 쪽지함 (shared/daily-note.ts). 패널 오늘 탭만
-if (kind === 'panel') {
+// 매일 쪽지함 (shared/daily-note.ts). 패널과 큰 창의 오늘 탭만
+if (kind === 'panel' || kind === 'home') {
   const notes: NoteBridge = {
     list: () => ipcRenderer.invoke(NOTES.list),
     read: (day) => ipcRenderer.send(NOTES.read, day),
@@ -449,8 +450,8 @@ if (kind === 'panel') {
   contextBridge.exposeInMainWorld('jjakkungNotes', notes);
 }
 
-// 패널과 빠른 입력 창은 같은 기능을 쓴다.
-if (kind === 'panel' || kind === 'quick') {
+// 패널, 큰 창, 빠른 입력 창은 같은 기능을 쓴다.
+if (kind === 'panel' || kind === 'home' || kind === 'quick') {
   const panel: PanelBridge = {
     platform: process.platform,
     snapshot: () => ipcRenderer.invoke(PANEL.snapshot),
@@ -488,6 +489,8 @@ if (kind === 'panel' || kind === 'quick') {
     viewGet: () => ipcRenderer.sendSync(PANEL.viewGet),
     viewSet: (view) => ipcRenderer.send(PANEL.viewSet, view),
     setKeepOpen: (on) => ipcRenderer.send(PANEL.setKeepOpen, on),
+    setPanelView: (view) => ipcRenderer.send(PANEL.setPanelView, view),
+    openFriends: () => ipcRenderer.send(PANEL.openFriends),
     toastsGet: () => ipcRenderer.sendSync(PANEL.toastsGet),
     toastsSet: (list) => ipcRenderer.send(PANEL.toastsSet, list),
     onState: (listener) => {
