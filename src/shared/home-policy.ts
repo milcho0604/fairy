@@ -82,10 +82,19 @@ export function homeExpired(
 
 /** 채팅 view 가 받은 키 가운데 큰 창이 맡는 것: Cmd/Ctrl 하나 + W(닫기), 쉼표(설정), 1~9(구역). 나머지(복사, 붙이기 등)는 채팅이 그대로 쓴다 */
 export function isHomeChord(
-  input: { type: string; code: string; meta: boolean; control: boolean; alt: boolean; shift: boolean },
+  input: {
+    type: string;
+    code: string;
+    meta: boolean;
+    control: boolean;
+    alt: boolean;
+    shift: boolean;
+    isComposing?: boolean;
+  },
   mac: boolean,
 ): boolean {
-  if (input.type !== 'keyDown' || input.alt || input.shift) return false;
+  // 한글 조합 중에는 가로채지 않는다
+  if (input.type !== 'keyDown' || input.alt || input.shift || input.isComposing) return false;
   if (mac ? !input.meta || input.control : !input.control || input.meta) return false;
   return input.code === 'KeyW' || input.code === 'Comma' || /^Digit[1-9]$/.test(input.code);
 }

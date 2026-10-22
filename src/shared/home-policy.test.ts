@@ -112,6 +112,11 @@ test('채팅 view 키: 큰 창이 맡는 수식키 조합만 넘긴다 (맥은 C
     assert.equal(isHomeChord(input(code, { meta: true }), true), false, code);
   }
   assert.equal(isHomeChord(input('KeyW'), true), false, '수식키 없음');
+  assert.equal(
+    isHomeChord({ ...input('KeyW', { meta: true }), isComposing: true }, true),
+    false,
+    '한글 조합 중',
+  );
   assert.equal(isHomeChord(input('KeyW', { control: true }), true), false, '맥에서 Ctrl 은 아니다');
   assert.equal(isHomeChord(input('KeyW', { meta: true }), false), false, '윈도우에서 Meta 는 아니다');
   assert.equal(

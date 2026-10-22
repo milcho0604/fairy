@@ -304,7 +304,7 @@ try {
       writeFileSync(join(OUT, `compare-parts-${LANG}-after-chat.png`), await c.png());
       writeFileSync(join(OUT, `compare-parts-${LANG}-after-rect.json`), JSON.stringify(r));
     }
-  } else {
+  } else if (!process.env.ONLY) {
     // ================= A 열기 =================
     console.log('\n== A 열기 ==');
     const h = await openHome('today');
@@ -588,6 +588,39 @@ try {
     check('I6 없앤 뒤 새로 열어도 채팅 구역이 된다', (await chatRect()) !== null && JSON.stringify(await shownFaces()) === '["home"]');
     const ds2 = await dockStats();
     check('I7 끝까지 Dock 호출 0', ds2.shows === 0 && ds2.hides === 0, JSON.stringify(ds2));
+  }
+  if (!COMPARE && (!process.env.ONLY || process.env.ONLY === 'J')) {
+    // ================= J 품은 채팅이 죽었을 때 =================
+    console.log('\n== J Esc 와 화면 파괴 ==');
+    await closeAll();
+    const hj = await openHome('today');
+    const ej = await pickChat(hj);
+    const idBefore = ej.id;
+    // J1 빈 입력칸에서 Esc: 품은 채팅은 닫을 창이 아니다 (화면이 없어지면 안 된다)
+    await ej.ev("document.querySelector('textarea').focus()");
+    await ej.ev("document.querySelector('textarea').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }))");
+    await sleep(1500);
+    const alive = await main('(() => { try { return !!__jj.home.chatView && !__jj.home.chatView.webContents.isDestroyed(); } catch { return false; } })()');
+    check('J1 품은 채팅에서 빈 입력칸 Esc 를 눌러도 채팅 화면이 살아 있다', alive === true);
+    await hj.click('#ptab-todo');
+    await sleep(500);
+    await hj.click('#ptab-chat');
+    await until(async () => (await chatRect()) !== null, 5000);
+    const e2 = await page('chat.html#embed');
+    check('J2 구역을 바꿨다 돌아와도 채팅 입력칸이 있다', (await e2.ev("!!document.querySelector('textarea')")) === true);
+    // J3 화면이 파괴돼도(크래시, 다른 경로) 다시 열면 새로 만든다
+    await main('__jj.home.chatView.webContents.close(); 1');
+    await until(async () => (await chatRect()) === null, 5000);
+    check('J3 채팅 화면이 파괴되면 채팅 구역이 닫힌다 (빈 칸으로 남지 않음)', (await chatRect()) === null && (await main('__jj.chat.faces().filter((f) => f.embedded).length')) === 0);
+    await main('__jj.chat.open(__jj.pet.bounds()); 1');
+    await until(async () => (await chatRect()) !== null, 6000);
+    const e3 = await page('chat.html#embed');
+    await until(async () => !!(await e3.ev("!!document.querySelector('textarea')")), 8000);
+    check('J4 파괴 뒤 채팅 열기: 새 채팅 화면이 뜨고 입력칸이 있다', (await e3.ev("!!document.querySelector('textarea')")) === true && e3.id !== idBefore && JSON.stringify(await shownFaces()) === '["home"]', JSON.stringify(await shownFaces()));
+    check('J5 파괴 뒤에도 따로 창은 없다', !(await standaloneAlive()));
+    // J6 한글 조합 중 키는 가로채지 않는다 (home-policy.test.ts 가 판정을 본다. 여기서는 emit 으로 끝까지)
+    const stopped = await main(`(() => { let s = false; __jj.home.chatView.webContents.emit('before-input-event', { preventDefault: () => { s = true; } }, { type: 'keyDown', code: 'Digit2', key: '2', meta: process.platform === 'darwin', control: process.platform !== 'darwin', alt: false, shift: false, isComposing: true }); return s; })()`);
+    check('J6 한글 조합 중 Cmd+숫자는 가로채지 않는다', stopped === false);
   }
 } catch (err) {
   console.error('시험 중 오류', err);

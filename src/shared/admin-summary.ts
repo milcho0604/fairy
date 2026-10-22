@@ -4,7 +4,7 @@
 import { type AdminWebPlace, isAdminWebPlace } from './admin-web.ts';
 import { t } from './i18n/index.ts';
 
-export type AdminTodoKind = 'reports' | 'budget' | 'ending_events' | 'ending_coupons';
+export type AdminTodoKind = 'reports' | 'budget' | 'ending_events' | 'ending_coupons' | 'backup';
 
 export interface AdminTodoItem {
   kind: AdminTodoKind;
@@ -23,6 +23,21 @@ export interface AdminRecentLine {
   targetName: string | null;
 }
 
+/** 오늘 숫자 (서버가 한국 날짜로 센 마지막 날). 옛 서버는 주지 않는다 */
+export interface AdminToday {
+  signups: number;
+  active: number;
+  asks: number;
+  costMicros: number;
+}
+
+/** 서버가 아는 백업 한 줄 (이용자가 올린 백업). 데이터베이스 덤프와 외장 디스크 사본은 서버가 알 수 없다 */
+export interface AdminBackupLine {
+  enabled: boolean;
+  lastUploadAt: number | null;
+  files: number;
+}
+
 export interface AdminSummary {
   accounts: number;
   coins: number;
@@ -32,6 +47,11 @@ export interface AdminSummary {
   reports: number;
   todo: AdminTodoItem[];
   recent: AdminRecentLine[];
+  /** 서버가 더 낡아 새 칸이 없으면 null */
+  today: AdminToday | null;
+  backup: AdminBackupLine | null;
+  /** 업데이트 기준으로 잠기는 계정과 서버 기능이 막히는 계정. 옛 서버, 기준이 없을 때는 null */
+  locked: { force: number; restricted: number } | null;
 }
 
 const obj = (v: unknown): Record<string, unknown> | undefined =>
@@ -42,7 +62,7 @@ const num = (v: unknown): number | undefined => {
 };
 const text = (v: unknown, max = 120): string | null => (typeof v === 'string' ? v.slice(0, max) : null);
 
-const KINDS: readonly AdminTodoKind[] = ['reports', 'budget', 'ending_events', 'ending_coupons'];
+const KINDS: readonly AdminTodoKind[] = ['reports', 'budget', 'ending_events', 'ending_coupons', 'backup'];
 
 /** 서버가 준 자료에서 요약을 뽑는다. 모양이 맞지 않으면 undefined (화면은 실패로 보인다) */
 export function adminSummaryOf(raw: unknown): AdminSummary | undefined {
@@ -92,7 +112,48 @@ export function adminSummaryOf(raw: unknown): AdminSummary | undefined {
   // 신고 대기는 처리하지 않은 건수(pending). 옛 서버는 total(받은 전체)만 주고, 그보다 낡으면 확인할 것의 신고 줄에서 읽는다
   const rep = obj(o.reports);
   const reports = num(rep?.pending) ?? num(rep?.total) ?? todo.find((x) => x.kind === 'reports')?.n ?? 0;
-  return { accounts, coins, passes, costMicros, budgetMicros, reports, todo, recent };
+  return {
+    accounts,
+    coins,
+    passes,
+    costMicros,
+    budgetMicros,
+    reports,
+    todo,
+    recent,
+    today: todayOf(o.trend),
+    backup: backupOf(o.backup),
+    locked: lockedOf(o.versions),
+  };
+}
+
+function todayOf(raw: unknown): AdminToday | null {
+  const days = obj(raw)?.days;
+  const last = Array.isArray(days) ? obj(days[days.length - 1]) : undefined;
+  const signups = num(last?.signups);
+  const active = num(last?.active);
+  const asks = num(last?.asks);
+  const costMicros = num(last?.costMicros);
+  if (signups === undefined || active === undefined || asks === undefined || costMicros === undefined)
+    return null;
+  return { signups, active, asks, costMicros };
+}
+
+function backupOf(raw: unknown): AdminBackupLine | null {
+  const b = obj(raw);
+  const files = num(b?.files);
+  if (!b || typeof b.enabled !== 'boolean' || files === undefined) return null;
+  return { enabled: b.enabled, lastUploadAt: num(b.lastUploadAt) ?? null, files };
+}
+
+function lockedOf(raw: unknown): { force: number; restricted: number } | null {
+  const l = obj(obj(raw)?.locked);
+  const force = num(l?.locked);
+  const restricted = num(l?.restricted);
+  if (!l || force === undefined || restricted === undefined) return null;
+  // 기준이 둘 다 없으면 잠기는 계정이 없으니 줄을 보이지 않는다
+  if (typeof l.min !== 'string' && typeof l.restrict !== 'string') return null;
+  return { force, restricted };
 }
 
 /** 확인할 것 한 줄의 글 */
@@ -106,6 +167,8 @@ export function todoLabel(item: AdminTodoItem): string {
       return t('admin.todo.endingEvents', { n: item.n });
     case 'ending_coupons':
       return t('admin.todo.endingCoupons', { n: item.n });
+    case 'backup':
+      return item.n < 0 ? t('admin.todo.backupZero') : t('admin.todo.backup', { n: item.n });
   }
 }
 

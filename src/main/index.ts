@@ -163,7 +163,7 @@ if (!process.env.JJ_GPU_PROCESS) app.commandLine.appendSwitch('in-process-gpu');
 if (!process.env.JJ_NET_PROCESS) app.commandLine.appendSwitch('enable-features', 'NetworkServiceInProcess2');
 // 시험 실행(JJ_NO_FOCUS)은 창이 투명이라 맥이 "가려진 창"으로 보고, 큰 창처럼 BaseWindow 에 view 로 얹은 화면을 숨김으로 만들어
 // 첫 크기 바꿈 뒤로는 크기를 못 따라간다 (BrowserWindow 의 화면은 영향이 없었다). 시험에서만 가려짐 판정을 끈다. 설치판은 그대로
-if (process.env.JJ_NO_FOCUS) {
+if (!app.isPackaged && process.env.JJ_NO_FOCUS) {
   app.commandLine.appendSwitch('disable-features', 'MacWebContentsOcclusion,CalculateNativeWinOcclusion');
   app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
   app.commandLine.appendSwitch('disable-renderer-backgrounding');

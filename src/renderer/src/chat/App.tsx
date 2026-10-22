@@ -492,7 +492,9 @@ export function App() {
         return;
       } else if (managing) setManaging(false);
       else if (pending) bridge.cancel();
-      else if (!text.trim() && !e.defaultPrevented) window.close();
+      // 큰 창 안에 품은 채팅(#embed)은 닫을 창이 아니다: window.close() 가 채팅 화면을 없애 버린다
+      else if (!text.trim() && !e.defaultPrevented && !document.body.classList.contains('embed'))
+        window.close();
       else return;
       e.preventDefault();
     } else if (key === 'new-chat') {

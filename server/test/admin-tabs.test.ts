@@ -163,9 +163,9 @@ describe('운영자 다섯 칸과 이용자 표', () => {
 
     const legacy = await admin.page(`?q=${encodeURIComponent(codes[1] ?? '')}`);
     assert.equal(legacy.status, 200);
-    assert.match(legacy.text, /이용자 찾기와 자세히 보기/);
+    assert.match(legacy.text, /id="user-detail"/);
     // 옛 주소 /admin?q= 는 주소 해시가 없어도 이용자 칸으로 열린다 (스크립트가 주소의 찾기 조건으로 정한다)
-    assert.match(adminJsSource(), /'q', 'page', 'sort', 'direction'/);
+    assert.match(adminJsSource(), /'q', 'page', 'sort', 'direction', 'user'/);
   });
 });
 
@@ -501,6 +501,8 @@ function confirmFormOf(html: string, action: 'grants/batch' | 'notices'): Record
   for (const x of (m[1] ?? '').matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)">/g))
     if (x[1] !== 'csrf') out[x[1] as string] = (x[2] as string).replaceAll('&#10;', '\n');
   out.confirm = 'yes';
+  const people = /name="people"[^>]*pattern="(\d+)"/.exec(m[1] ?? '')?.[1];
+  if (people) out.people = people;
   return out;
 }
 

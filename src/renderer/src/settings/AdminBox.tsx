@@ -126,6 +126,35 @@ export function AdminBox() {
           {t('admin.counts', { todo: d.todo.length, reports: d.reports })}
         </small>
 
+        {d.today && (
+          <small className="server-sync">
+            {t('admin.today', {
+              signups: d.today.signups,
+              active: d.today.active,
+              asks: d.today.asks,
+              cost: usd(d.today.costMicros),
+            })}
+          </small>
+        )}
+        {d.backup && (
+          <small className="server-sync">
+            {!d.backup.enabled
+              ? t('admin.backup.off')
+              : d.backup.lastUploadAt === null
+                ? t('admin.backup.none')
+                : t('admin.backup.last', {
+                    at: new Date(d.backup.lastUploadAt).toLocaleString(),
+                    files: d.backup.files,
+                  })}
+          </small>
+        )}
+        {d.backup?.enabled && <small>{t('admin.backup.unknown')}</small>}
+        {d.locked && (
+          <small className={`server-sync${d.locked.force > 0 ? ' warn' : ''}`}>
+            {t('admin.locked', { force: d.locked.force, restricted: d.locked.restricted })}
+          </small>
+        )}
+
         <div className="admin-group">
           <strong>{t('admin.todo.title')}</strong>
           {d.todo.length === 0 ? (

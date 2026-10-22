@@ -888,7 +888,8 @@ export function createChat(o: ChatOptions) {
   }
 
   function toggle(near?: Rectangle) {
-    if (host?.open()) return;
+    // 잠겨 있으면 open 이 안내만 한다 (큰 창으로 보내기 전에 잠금부터)
+    if (!o.locked?.() && host?.open()) return;
     if (win && !win.isDestroyed() && win.isVisible() && win.isFocused()) win.close();
     else open(near);
   }
@@ -910,7 +911,7 @@ export function createChat(o: ChatOptions) {
    * shown 은 채팅 구역이 열려 보이는지. reveal 은 채팅 구역을 열 때 부른다: 따로 뜬 채팅 창은 닫는다
    * (대화 상태와 쓰던 글은 메인에 있어 잃는 것이 없다)
    */
-  function embed(frame: BaseWindow, shown: () => boolean) {
+  function embed(frame: BaseWindow, shown: () => boolean, onGone?: () => void) {
     const view = new WebContentsView({
       webPreferences: {
         preload: join(import.meta.dirname, '../preload/index.cjs'),
@@ -933,6 +934,11 @@ export function createChat(o: ChatOptions) {
       front: () => !frame.isDestroyed() && frame.isVisible() && frame.isFocused() && shown(),
     };
     embedded = face;
+    // 화면이 없어지면(스스로 닫음, 크래시 등) 면을 비우고 알린다: 큰 창이 다음에 새로 만든다
+    wc.once('destroyed', () => {
+      if (embedded === face) embedded = undefined;
+      onGone?.();
+    });
     return {
       view,
       face,

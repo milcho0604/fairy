@@ -60,6 +60,7 @@ export interface HomeChat {
   embed(
     frame: BaseWindow,
     shown: () => boolean,
+    onGone?: () => void,
   ): { view: WebContentsView; reveal: () => void; remove: () => void };
 }
 
@@ -166,7 +167,18 @@ export function createHome(o: HomeOptions) {
   /** 채팅 view 를 처음 열 때 만들어 창에 얹는다 (본문 view 위) */
   function ensureChat(w: BaseWindow) {
     if (chatPart) return chatPart;
-    const part = o.chat.embed(w, () => chatRect !== null);
+    const part = o.chat.embed(
+      w,
+      () => chatRect !== null,
+      // 채팅 화면이 없어졌다: 비우고 구역도 닫는다. 다음 채팅 열기에서 새로 만든다
+      () => {
+        if (chatPart !== part) return;
+        chatPart = undefined;
+        chatRect = null;
+        bodyContents()?.send(PANEL.chatSection, false);
+        if (!w.isDestroyed()) w.contentView.removeChildView(part.view);
+      },
+    );
     chatPart = part;
     part.view.setVisible(false);
     w.contentView.addChildView(part.view);
