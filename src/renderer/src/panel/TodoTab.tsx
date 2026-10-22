@@ -843,7 +843,7 @@ function TodoDetail({
               {t('remind.clearTime')}
             </button>
           )}
-          {todo.due && (
+          {todo.due && !todo.repeat && (
             <button
               type="button"
               className="ghost small"
