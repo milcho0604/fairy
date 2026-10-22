@@ -210,7 +210,6 @@ export const SERVER = {
   calendarHintNo: 'server:calendar-hint-no',
 } as const;
 
-/** 설정 창이 부르는 것 (preload 가 window.jjakkungServer 로 연다) */
 /** 운영 기록 찾기 (#155): 대상 이용자(번호, 기기 코드, 닉네임), 동작 종류, 글, 쪽 */
 export interface AdminLogFilter {
   user?: string;
@@ -219,6 +218,7 @@ export interface AdminLogFilter {
   page?: number;
 }
 
+/** 설정 창이 부르는 것 (preload 가 window.jjakkungServer 로 연다) */
 export interface ServerBridge {
   status(): Promise<ServerStatus | undefined>;
   /** 나이 답. 서버 모드를 처음 켤 때는 닉네임도 같이 (만 14세 미만은 보내지 않는다) */

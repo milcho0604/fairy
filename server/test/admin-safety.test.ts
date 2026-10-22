@@ -217,6 +217,41 @@ describe('되돌릴 수 없는 동작의 확인', () => {
     assert.equal(await markOf('event.end', 'sure-live'), undefined);
   });
 
+  test('웹(폼과 쿠키 JSON)은 확인 없이 보내면 거절한다, 옛 앱 예외는 앱 Bearer 만', async () => {
+    const { mk, day } = await kinds();
+    assert.ok((await mk('web-nc', Date.now() - 3_600_000, Date.now() + day)).ok);
+    const form = await admin.act('/admin/events/end', { id: 'web-nc' });
+    assert.equal(form.ok, false);
+    assert.match(form.text, /확인 칸을 체크해 주세요/);
+    const cookieJson = await api('POST', '/v1/admin/events/end', {
+      headers: { cookie: admin.cookie, origin: h.base, 'x-csrf-token': admin.csrf },
+      body: { id: 'web-nc' },
+    });
+    assert.equal(cookieJson.status, 400);
+    assert.equal(cookieJson.body.code, 'confirm');
+    assert.equal(
+      (await h.pool.query('SELECT ends_at > now() AS live FROM event WHERE id = $1', ['web-nc'])).rows[0]
+        ?.live,
+      true,
+    );
+    assert.equal(await markOf('event.end', 'web-nc'), undefined);
+  });
+
+  test('같은 칸을 두 번 보내 배열이 되면 500 이 아니라 거절하고, 기기 코드는 표기 차이를 맞춰 비교한다', async () => {
+    const dev = await newDevice('18+', '표기 차이');
+    const arr = await adminApi('events/end', { id: 'x', confirm: ['x', 'y'] });
+    assert.equal(arr.status, 400);
+    assert.equal((await adminApi('ai/cancel', { account: [dev.code], confirm: dev.code })).status, 400);
+    const web = await admin.post('/admin/events/end', { id: ['a', 'b'], confirm: 'a' });
+    assert.equal(web.status, 303);
+    const low = await adminApi('ai/block', {
+      account: dev.code.toLowerCase(),
+      blocked: true,
+      confirm: dev.code,
+    });
+    assert.equal(low.status, 200);
+  });
+
   test('옛 앱(0.5.0)처럼 확인 없이 와도 받고, 운영 기록에 "확인 없이(옛 앱)" 를 남긴다', async () => {
     const { mk, day } = await kinds();
     assert.ok((await mk('old-live', Date.now() - 3_600_000, Date.now() + day)).ok);

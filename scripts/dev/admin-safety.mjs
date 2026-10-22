@@ -3,7 +3,7 @@
 //   npm run build && (cd server && npm run build) && OUT=<레포 밖 폴더> LANG_UNDER_TEST=ko node scripts/dev/admin-safety.mjs
 //
 // 웹: 실패한 제출(허용 안 되는 링크)의 입력 보존과 오류 자리, 느린 응답에서 단추 막기와 진행 표시, 끊긴 네트워크 뒤 되살리기,
-//     대상 이름이 적힌 확인 칸(없으면 서버가 거절), 운영 기록의 누가와 대상, 동작, 글 찾기. 폭 320 과 1100, 밝은 어두운.
+//     대상 이름이 적힌 확인 칸(웹은 확인이 없거나 다른 대상이면 서버가 거절), 운영 기록의 누가와 대상, 동작, 글 찾기. 폭 320 과 1100, 밝은 어두운.
 //     웹 화면은 한국어만 있다 (LANG_UNDER_TEST 는 앱에만 쓴다).
 // 앱: 실패한 만들기의 입력 보존과 폼 아래 오류, 서버가 멈춘 동안의 진행 표시, 두 번째 누르기에 대상 이름, 성공하면 폼 비우기,
 //     운영 기록 찾기. 서버(server/dist)와 시험용 Postgres(jj-admin155-pg-<무작위>)는 이 프로세스가 띄우고 지운다.
@@ -332,7 +332,9 @@ async function webPart() {
   await ev(`document.querySelector(${JSON.stringify(rowForm('sure-live'))}).form.requestSubmit(); true`);
   await sleep(500);
   check('체크 없이 누르면 제출되지 않는다', Number(sql(`SELECT count(*) FROM admin_log WHERE action IN ('event.end', 'event.delete')`)) === before && (await ev(`location.pathname`)) === '/admin/events');
-  // 서버도 확인 없는 요청을 거절한다 (브라우저 검사를 우회해도)
+  // 서버도 웹에서 확인 없는 요청과 다른 대상 확인을 거절한다 (브라우저 검사를 우회해도)
+  const noConfirm = await adminPost('/admin/events/end', { id: 'sure-live' });
+  check('서버도 웹에서 확인 없는 끝내기를 거절한다', noConfirm.includes('확인 칸을 체크해 주세요') && sql(`SELECT ends_at > now() FROM event WHERE id = 'sure-live'`) === 't', noConfirm);
   const refused = await adminPost('/admin/events/end', { id: 'sure-live', confirm: 'other' });
   check('서버도 다른 대상으로 확인한 끝내기를 거절한다', refused.includes('확인한 대상이 달라요') && sql(`SELECT ends_at > now() FROM event WHERE id = 'sure-live'`) === 't', refused);
   // 체크하고 누르면 된다

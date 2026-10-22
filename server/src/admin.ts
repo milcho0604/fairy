@@ -51,6 +51,7 @@ import {
 } from './notice-doc';
 import { ipKey, LIMITS, RateLimiter } from './rate-limit';
 import { Rewards } from './rewards';
+import { normalizeDeviceCode } from './shared/account-profile';
 import { COUPON_ALPHABET, COUPON_LENGTH, formatCoupon, kstIso, parseEvent } from './shared/site-events';
 import { levelsOrder, normalVersion } from './shared/update-levels';
 import { sha256 } from './tokens';
@@ -236,20 +237,25 @@ export async function adminLog(
 }
 
 /** 되돌릴 수 없는 동작은 확인 칸이 있어야 한다 (웹은 대상 이름이 적힌 체크 칸, 앱은 두 번 누르기). 이름은 거절 글에 붙는다 */
-const confirmCtx = new AsyncLocalStorage<{ unconfirmed: boolean }>();
+const confirmCtx = new AsyncLocalStorage<{ unconfirmed: boolean; legacyOk: boolean }>();
 
 /**
  * 새 확인 (이벤트 끝내기, 쿠폰 끄기, 공지 지우기, 정기 지급 해지, 막기): 확인 칸 값이 대상 이름(id 나 계정)과 맞아야 한다.
- * 확인이 아예 없는 요청은 옛 앱(0.5.0)이라 예전처럼 받되 운영 기록에 "확인 없이(옛 앱)" 를 남긴다. 확인은 웹과 새 앱 화면이 강제한다
+ * 확인이 아예 없는 요청은 앱 Bearer 경로(운영자 계정 주체 account:)에서만 옛 앱(0.5.0)이라 예전처럼 받고 운영 기록에
+ * "확인 없이(옛 앱)" 를 남긴다. 웹 폼과 쿠키 JSON 경로(주체 admin:)는 확인이 없으면 거절한다. 계정은 기기 코드 표기 차이를 맞춰 비교한다
  */
 function softConfirm(f: FormFields, what: string, target: string): void {
   const c = (f.confirm ?? '').trim();
   if (!c) {
     const ctx = confirmCtx.getStore();
-    if (ctx) ctx.unconfirmed = true;
+    if (!ctx?.legacyOk) throw new Refused(`확인 칸을 체크해 주세요 (${what})`, 'confirm');
+    ctx.unconfirmed = true;
     return;
   }
-  if (c !== target.trim()) throw new Refused(`확인한 대상이 달라요 (${what})`, 'confirm');
+  const t = target.trim();
+  const same =
+    c === t || (normalizeDeviceCode(c) !== undefined && normalizeDeviceCode(c) === normalizeDeviceCode(t));
+  if (!same) throw new Refused(`확인한 대상이 달라요 (${what})`, 'confirm');
 }
 
 function needConfirm(f: FormFields, what: string): void {
@@ -1069,7 +1075,13 @@ export class AdminService {
 
   /** 쓰기 하나를 이름으로 (웹 폼과 앱의 /v1/admin/* 가 같이 쓴다) */
   run(action: AdminAction, actor: string, f: FormFields): Promise<AdminDone> {
-    return confirmCtx.run({ unconfirmed: false }, () => this.dispatch(action, actor, f));
+    // 칸은 글자 하나만 받는다 (같은 이름을 두 번 보내 배열이 되면 거절)
+    for (const k of ['id', 'account', 'key', 'confirm'])
+      if (typeof (f as Record<string, unknown>)[k] !== 'undefined' && typeof f[k] !== 'string')
+        return Promise.reject(new Refused(`${k} 칸은 값 하나만 받아요`));
+    return confirmCtx.run({ unconfirmed: false, legacyOk: actor.startsWith('account:') }, () =>
+      this.dispatch(action, actor, f),
+    );
   }
 
   private dispatch(action: AdminAction, actor: string, f: FormFields): Promise<AdminDone> {
@@ -1379,7 +1391,10 @@ export function draftOf(f: FormFields): Record<string, string | string[]> {
 }
 
 /** 실패한 폼이 어느 대상의 것인지 (기능 키, 계정, id). 같은 모양의 폼이 여럿일 때 맞는 것만 채우려고 */
-export const scopeOf = (f: FormFields): string => (f.key ?? f.account ?? f.id ?? '').trim().slice(0, 40);
+export const scopeOf = (f: FormFields): string => {
+  const v = [f.key, f.account, f.id].find((x) => typeof x === 'string');
+  return typeof v === 'string' ? v.trim().slice(0, 40) : '';
+};
 
 /** 운영 기록 탭 주소의 찾기 칸 */
 function logOptionsOf(query: Record<string, unknown>): LogOptions {

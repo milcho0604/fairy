@@ -225,7 +225,7 @@ const formErr = (v: Pick<AdminView, 'flash'>, action: string, scope?: string): s
 };
 
 /**
- * 되돌릴 수 없는 동작: 대상 이름이 적힌 확인 칸을 체크해야 단추가 눌린다 (서버도 confirm 이 없으면 거절한다).
+ * 되돌릴 수 없는 동작: 대상 이름이 적힌 확인 칸을 체크해야 단추가 눌린다 (서버도 웹 폼은 확인이 없으면 거절한다).
  * what 은 "이벤트 '신년' (new-year) 지금 끝낼게요" 처럼 대상과 동작이 한 문장
  */
 function sureForm(
