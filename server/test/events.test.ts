@@ -9,7 +9,7 @@ import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
-import { AdminBrowser, client, type Harness, HOUR, ip, kstInput, startHarness, today } from './helpers';
+import { AdminBrowser, client, type Harness, HOUR, ip, kstInput, kstToday, startHarness } from './helpers';
 
 const ROOT = join(__dirname, '..', '..', '..');
 const ADMIN_TOKEN = 'a'.repeat(20) + randomUUID().replaceAll('-', '');
@@ -313,8 +313,8 @@ describe('배수 이벤트', () => {
       until: Date.now() + 48 * HOUR,
     });
     const d = await newDevice();
-    const meet = { id: randomUUID(), reason: 'meet', amount: 10, day: today() };
-    const rest = { id: randomUUID(), reason: 'rest', amount: 3, day: today() };
+    const meet = { id: randomUUID(), reason: 'meet', amount: 10, day: kstToday() };
+    const rest = { id: randomUUID(), reason: 'rest', amount: 3, day: kstToday() };
     const r = await api('POST', '/v1/sync', { token: d.token, body: { entries: [meet, rest] } });
     assert.equal(r.status, 200, r.text);
     assert.equal(r.body.results[0].applied, 10);
@@ -324,7 +324,7 @@ describe('배수 이벤트', () => {
     assert.equal(r.body.account.id, Number(d.id));
     assert.equal(r.body.account.code, d.code);
     assert.equal(r.body.inbox, 0);
-    const again = { id: randomUUID(), reason: 'meet', amount: 60, day: today() };
+    const again = { id: randomUUID(), reason: 'meet', amount: 60, day: kstToday() };
     const r2 = await api('POST', '/v1/sync', { token: d.token, body: { entries: [again, meet] } });
     assert.equal(r2.body.results[0].applied, 50);
     assert.equal(r2.body.results[0].bonus, 50);
