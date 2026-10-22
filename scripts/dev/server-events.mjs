@@ -130,7 +130,18 @@ async function adminPost(path, fields) {
   });
   if (r.status === 303 && path === '/admin/login') web.cookie = (r.headers.get('set-cookie') ?? '').split(';')[0];
   const page = await adminPage();
-  return /<p class="flash( error)?( wide)?" role="(?:status|alert)"(?: id="form-error")?>([^<]*)<\/p>/.exec(page)?.[3] ?? `HTTP ${r.status}`;
+  return /<p class="flash( error)?( wide)?" role="(?:status|alert)"(?: id="form-(?:error|ok)")?>([^<]*)<\/p>/.exec(page)?.[3] ?? `HTTP ${r.status}`;
+}
+/** 지급과 공지의 확정은 미리보기를 거친 것만 받는다 (#150): 미리보기를 만들고 확정 폼의 숨은 칸(번호)을 실어 보낸다 */
+async function adminFlow(path, fields) {
+  const preview = path === '/admin/grants/batch' ? '/admin/grants/preview' : '/admin/notices/preview';
+  await adminPost(preview, fields);
+  const page = await adminPage();
+  const m = new RegExp(`<form method="post" action="${path}"[^>]*>([\\s\\S]*?)</form>`).exec(page);
+  if (!m) return adminPost(preview, fields);
+  const hidden = {};
+  for (const x of m[1].matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)">/g)) if (x[1] !== 'csrf') hidden[x[1]] = x[2].replaceAll('&#10;', '\n');
+  return adminPost(path, { ...hidden, ...fields, flow: hidden.flow ?? '' });
 }
 const kstInput = (ms) => new Date(ms + 9 * 3_600_000).toISOString().slice(0, 16);
 /** Actions 와 같은 길: 서버의 /v1/*.json 을 검사해 site/ 에 쓴다 */
@@ -399,7 +410,7 @@ try {
 
   // 공지: 웹에서 고친 공지가 정적 파일로 → 앱 공지 창
   const nid = `n-${randomBytes(3).toString('hex')}`;
-  const ntext = await adminPost('/admin/notices', {
+  const ntext = await adminFlow('/admin/notices', {
     id: nid,
     kind: 'info',
     title_ko: '운영자 화면에서 쓴 공지',

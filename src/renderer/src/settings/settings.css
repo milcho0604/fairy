@@ -1617,7 +1617,7 @@ textarea.rules {
   letter-spacing: 0.04em;
 }
 
-/* 운영자 칸: 조밀한 목록이라 묶음마다 구분선. 입력 칸은 이름과 칸이 한 줄 (이름 열 너비 하나) */
+/* 운영자 칸 (#150): 요약 한 장이라 묶음마다 구분선, 목록은 글과 작은 "열기" 단추 한 줄 */
 .admin-group {
   padding-top: 14px;
   border-top: 1px solid var(--line);
@@ -1625,23 +1625,6 @@ textarea.rules {
 
 .admin-group > strong:not(:first-child) {
   margin-top: 8px;
-}
-
-.admin-box .admin-field {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
-  align-items: center;
-  gap: 12px;
-}
-
-.admin-field-name {
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.admin-box .admin-field > .plain-input {
-  width: 100%;
-  padding: 3px 8px;
 }
 
 .admin-box .server-sync {
@@ -1656,36 +1639,12 @@ textarea.rules {
   gap: 8px 12px;
 }
 
-/* 대상 이름이 적힌 두 번째 누르기 글은 길어서 줄을 바꿔 보인다 */
-.admin-list li > button.danger {
-  max-width: 100%;
-  white-space: normal;
-  text-align: left;
-}
-
 .admin-item {
   flex: 1;
   min-width: 0;
 }
 
-.admin-list li > .link {
-  text-align: left;
-}
-
-.admin-acct {
-  color: var(--ink);
-}
-
-.admin-q {
-  flex: 1;
-  padding: 3px 8px;
-}
-
-.admin-wrap {
-  flex-wrap: wrap;
-}
-
-/* 폼 바로 아래 한 줄: 처리 중 표시와 이 폼의 오류 (#155) */
+/* 누른 단추 바로 아래 한 줄: 처리 중 표시와 오류 (#155, #150) */
 .admin-working,
 .admin-err {
   display: block;

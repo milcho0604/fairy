@@ -36,6 +36,9 @@ after(async () => {
   await h?.stop();
 });
 
+/** 같은 문서의 홈 최근 기록과 섞이지 않게 설정 칸의 운영 기록 자리만 */
+const logOnly = (text: string) => text.slice(text.indexOf('id="sub-settings-log"'));
+
 const noticeForm = {
   id: 'keep-me',
   kind: 'info',
@@ -48,9 +51,9 @@ const noticeForm = {
 
 describe('실패한 제출의 입력 보존', () => {
   test('허용 안 되는 링크로 공지를 내면 쓴 글이 그대로 남고 오류가 폼 가까이에 뜬다', async () => {
-    const r = await admin.post('/admin/notices', noticeForm);
+    const r = await admin.confirmPost('/admin/notices', noticeForm);
     assert.equal(r.status, 303);
-    assert.match(r.headers.get('location') ?? '', /#form-error$/);
+    assert.equal(r.headers.get('location'), '/admin#announce/notices');
     const page = await admin.page('/notices');
     assert.match(page.text, /value="keep-me"/);
     assert.match(page.text, /value="보존될 제목"/);
@@ -59,7 +62,7 @@ describe('실패한 제출의 입력 보존', () => {
     assert.match(page.text, /value="https:\/\/evil\.example\.com\/x"/);
     assert.match(page.text, /<p class="flash error wide" role="alert" id="form-error">/);
     // 오류는 공지 폼 안(폼 여는 태그 바로 뒤)에 있고 맨 위 알림 줄에는 없다
-    const form = page.text.indexOf('action="/admin/notices" class="grid"');
+    const form = page.text.indexOf('action="/admin/notices/preview" class="grid"');
     assert.ok(form > 0);
     assert.ok(page.text.indexOf('id="form-error"') > form);
     assert.ok(page.text.indexOf('id="form-error"') < form + 200);
@@ -72,7 +75,7 @@ describe('실패한 제출의 입력 보존', () => {
   });
 
   test('쓴 글이 길어도 다른 폼은 채우지 않고, 확인 칸은 다시 체크해야 한다', async () => {
-    const r = await admin.post('/admin/grants/batch', {
+    const r = await admin.confirmPost('/admin/grants/batch', {
       accounts: 'F-NOPE-0000',
       coins: '12',
       chat_passes: '0',
@@ -345,30 +348,33 @@ describe('운영 기록의 누가, 대상, 동작 종류', () => {
     });
 
     const byCode = await admin.page(`/log?user=${encodeURIComponent(a.code)}`);
-    assert.match(byCode.text, new RegExp(`찾는사람 #${a.id}`));
-    assert.doesNotMatch(byCode.text, new RegExp(`다른사람 #${b.id}`));
+    assert.match(logOnly(byCode.text), new RegExp(`찾는사람 #${a.id}`));
+    assert.doesNotMatch(logOnly(byCode.text), new RegExp(`다른사람 #${b.id}`));
     const byId = await admin.page(`/log?user=${a.id}`);
-    assert.match(byId.text, new RegExp(`account:${a.id}`));
+    assert.match(logOnly(byId.text), new RegExp(`account:${a.id}`));
     const byName = await admin.page(`/log?user=${encodeURIComponent('찾는사')}`);
-    assert.match(byName.text, new RegExp(`account:${a.id}`));
-    assert.doesNotMatch(byName.text, new RegExp(`account:${b.id}<`));
+    assert.match(logOnly(byName.text), new RegExp(`account:${a.id}`));
+    assert.doesNotMatch(logOnly(byName.text), new RegExp(`account:${b.id}<`));
 
     const byAction = await admin.page('/log?action=grant.batch');
-    assert.match(byAction.text, /<code>grant\.batch<\/code>/);
-    assert.doesNotMatch(byAction.text, /<code>note\.send<\/code>/);
+    assert.match(logOnly(byAction.text), /<code>grant\.batch<\/code>/);
+    assert.doesNotMatch(logOnly(byAction.text), /<code>note\.send<\/code>/);
     // 동작 종류 상자는 기록에 있는 종류만, 고른 것이 선택됨
-    assert.match(byAction.text, /<option value="grant\.batch" selected>지급 묶음 \(grant\.batch\)<\/option>/);
+    assert.match(
+      logOnly(byAction.text),
+      /<option value="grant\.batch" selected>지급 묶음 \(grant\.batch\)<\/option>/,
+    );
 
     const byText = await admin.page(`/log?text=${encodeURIComponent('가나다')}`);
-    assert.match(byText.text, new RegExp(`account:${a.id}`));
-    assert.doesNotMatch(byText.text, new RegExp(`account:${b.id}<`));
+    assert.match(logOnly(byText.text), new RegExp(`account:${a.id}`));
+    assert.doesNotMatch(logOnly(byText.text), new RegExp(`account:${b.id}<`));
     // 검색어의 % 와 _ 는 글자로 본다
     const wild = await admin.page(`/log?text=${encodeURIComponent('%')}`);
-    assert.match(wild.text, /조건에 맞는 기록이 없어요/);
+    assert.match(logOnly(wild.text), /조건에 맞는 기록이 없어요/);
 
     const none = await admin.page('/log?user=F-ZZZZ-ZZZZ');
-    assert.match(none.text, /그 이용자를 찾지 못했어요/);
-    assert.match(none.text, /조건에 맞는 기록이 없어요/);
+    assert.match(logOnly(none.text), /그 이용자를 찾지 못했어요/);
+    assert.match(logOnly(none.text), /조건에 맞는 기록이 없어요/);
 
     // 앱 개요도 같은 걸러내기
     const ov = await adminApi(`overview?user=${a.id}`);
@@ -387,27 +393,28 @@ describe('운영 기록의 누가, 대상, 동작 종류', () => {
       `INSERT INTO admin_log (actor, actor_name, action, target, detail) VALUES ${values.join(',')}`,
     );
     const p1 = await admin.page(`/log?user=${t.id}`);
-    assert.match(p1.text, /1 \/ 3/);
-    assert.match(p1.text, /운영 기록 120건/);
-    assert.match(p1.text, new RegExp(`href="/admin/log\\?user=${t.id}&amp;page=2"`));
+    assert.match(logOnly(p1.text), /1 \/ 3/);
+    assert.match(logOnly(p1.text), /운영 기록 120건/);
+    assert.match(logOnly(p1.text), new RegExp(`href="/admin\\?lu=${t.id}&amp;lp=2#settings/log"`));
     const p3 = await admin.page(`/log?user=${t.id}&page=3`);
-    assert.match(p3.text, /3 \/ 3/);
-    assert.equal(p3.text.split('<td>').length - 1 > 0, true);
+    assert.match(logOnly(p3.text), /3 \/ 3/);
+    assert.equal(logOnly(p3.text).split('<td>').length - 1 > 0, true);
     const over = await admin.page(`/log?user=${t.id}&page=99`);
-    assert.match(over.text, /3 \/ 3/);
+    assert.match(logOnly(over.text), /3 \/ 3/);
   });
 });
 
 describe('처리 중 표시와 스크립트', () => {
   test('운영자 화면은 바깥 스크립트 하나만 쓰고 CSP 는 같은 곳 스크립트만 허용한다', async () => {
     const page = await admin.page('');
-    assert.match(page.text, /<script src="\/admin\/admin\.js" defer><\/script>/);
+    assert.match(page.text, /<script src="\/admin\/admin\.js"><\/script>/);
     assert.doesNotMatch(page.text, /<script(?![^>]*src=)/i);
     assert.match(page.headers.get('content-security-policy') ?? '', /script-src 'self'/);
     const js = await api('GET', '/admin/admin.js');
     assert.equal(js.status, 200);
     assert.match(js.headers.get('content-type') ?? '', /javascript/);
     assert.match(js.text, /처리 중/);
+    assert.match(js.text, /hashchange/);
     const anon = await api('GET', '/admin');
     assert.doesNotMatch(anon.text, /<script/i);
   });

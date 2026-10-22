@@ -700,30 +700,6 @@ export function serverApi(base: string, raw: FetchLike, opts: ServerApiOpts = {}
         token,
         read: (j) => j,
       }),
-    /** 운영자 쓰기 하나 (#101). 거절은 400 refused 와 text */
-    adminAction: (
-      token: string,
-      action: string,
-      fields: Record<string, string | string[] | boolean | number>,
-    ) =>
-      call<{ text: string; code?: string; data?: Record<string, string | number> }>(
-        'POST',
-        `/v1/admin/${action}`,
-        {
-          token,
-          body: fields,
-          read: (j) =>
-            typeof j.text === 'string'
-              ? {
-                  text: j.text,
-                  ...(typeof j.code === 'string' ? { code: j.code.slice(0, 40) } : {}),
-                  ...(j.data && typeof j.data === 'object'
-                    ? { data: j.data as Record<string, string | number> }
-                    : {}),
-                }
-              : undefined,
-        },
-      ),
     // ---- 친구 (#110, 세션 토큰) ----
     friends: (token: string) => call<FriendsList>('GET', '/v1/friends', { token, read: friendsListOf }),
     friendRequest: (token: string, code: string) =>

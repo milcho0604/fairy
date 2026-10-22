@@ -14,6 +14,7 @@ import {
   shell,
   type WebContents,
 } from 'electron';
+import { adminWebUrl } from '../shared/admin-web.ts';
 import { spendRule } from '../shared/coin-rules.ts';
 import type { Db } from '../shared/db-schema.ts';
 import { isHouseStyle } from '../shared/house-art.ts';
@@ -55,20 +56,6 @@ export function revertedName(reason: string): string {
     if (isHouseStyle(tail)) return houseStyleName(tail);
   }
   return reason;
-}
-
-/** 운영자 칸 폼 값: 글자, 수, 참거짓, 글자 목록만 (각 2000자, 칸 40개까지) */
-export function adminFields(raw: unknown): Record<string, string | string[] | boolean | number> {
-  const out: Record<string, string | string[] | boolean | number> = {};
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return out;
-  for (const [k, v] of Object.entries(raw).slice(0, 40)) {
-    if (!/^[a-zA-Z_]{1,30}$/.test(k)) continue;
-    if (typeof v === 'string') out[k] = v.slice(0, 2000);
-    else if (typeof v === 'number' && Number.isFinite(v)) out[k] = v;
-    else if (typeof v === 'boolean') out[k] = v;
-    else if (Array.isArray(v)) out[k] = v.filter((x): x is string => typeof x === 'string').slice(0, 10);
-  }
-  return out;
 }
 
 export function createServer(o: {
@@ -126,6 +113,10 @@ export function createServer(o: {
   // 앱 판은 머리로 보낸다 (이슈 #120). 시험 실행(JJ_TEST_SECRETS=memory, 설치판 아님)만 JJ_TEST_APP_VERSION 으로 낮춰 보낼 수 있다
   const testVersion = process.env.JJ_TEST_APP_VERSION;
   const appVersion = memory && testVersion && isVersion(testVersion) ? testVersion : app.getVersion();
+  const openExternal = (u: string): Promise<void> =>
+    memory && process.env.JJ_TEST_BROWSER === 'fetch'
+      ? fetch(u).then((r) => void r.body?.cancel())
+      : shell.openExternal(u);
   const core = createServerCore({
     api: url
       ? serverApi(url, (u, init) => net.fetch(u, init), { appVersion, onGate: (g) => core.gate(g) })
@@ -140,10 +131,7 @@ export function createServer(o: {
     loopback: (x) => startLoopback(x),
     // 시험 실행(JJ_TEST_SECRETS=memory, 설치판 아님)에서 JJ_TEST_BROWSER=fetch 면 시스템 브라우저 대신 메인이 주소를 따라간다:
     // 가짜 카카오 → 서버 콜백 → 루프백. 사용자 화면에 브라우저 창을 띄우지 않는다 (scripts/dev/server-backup.mjs)
-    openExternal: (u) =>
-      memory && process.env.JJ_TEST_BROWSER === 'fetch'
-        ? fetch(u).then((r) => void r.body?.cancel())
-        : shell.openExternal(u),
+    openExternal,
     page: (ok) => ({
       title: t(ok ? 'server.page.okTitle' : 'server.page.failTitle'),
       body: t(ok ? 'server.page.okBody' : 'server.page.failBody'),
@@ -288,11 +276,18 @@ export function createServer(o: {
     if (!ok(e) || !core.isAdmin()) return undefined;
     return core.adminOverview(typeof q === 'string' ? q.slice(0, 40) : undefined, adminLogFilter(log));
   });
-  ipcMain.handle(SERVER.adminAction, async (e, action: unknown, fields: unknown) => {
-    if (!ok(e) || !core.isAdmin()) return { ok: false, text: 'not_admin', code: 'not_admin' };
-    if (typeof action !== 'string' || !/^[a-z]+(\/[a-z]+)?$/.test(action))
-      return { ok: false, text: 'action', code: 'invalid' };
-    return core.adminAction(action, adminFields(fields));
+  // 관리 작업은 웹 운영자 화면에서 한다 (#150). 주소는 설정된 서버 주소에서 만들고 자리는 목록에 있는 것만
+  ipcMain.handle(SERVER.adminOpenWeb, async (e, place: unknown): Promise<string | undefined> => {
+    if (!ok(e) || !core.isAdmin()) return undefined;
+    const target = adminWebUrl(url, place);
+    if (!target) return undefined;
+    try {
+      await openExternal(target);
+    } catch (err) {
+      o.log('server', '웹 운영자 화면 열기 실패', String(err));
+      return undefined;
+    }
+    return target;
   });
   ipcMain.handle(SERVER.turnOn, (e) => (ok(e) ? core.turnOn() : undefined));
   // 업데이트 단추 (이슈 #120): 기존 업데이트 흐름을 쓴다 (받아 두고 다시 켜서 설치, 안 되면 설치 안내)
