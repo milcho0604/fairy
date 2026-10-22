@@ -33,6 +33,14 @@ export function panelTarget(view: PanelView, home: HomeLook): 'panel' | 'home' {
   return homeOpen(home) || view === 'window' ? 'home' : 'panel';
 }
 
+/**
+ * 앱을 다시 열었다(맥 Dock 아이콘 누르기, Spotlight): 큰 창이 열려 있거나 내려가 있으면 그 창을 되살리고(home),
+ * 아니면 숨은 펫을 부른다(pet). 우리가 숨겨 둔 큰 창은 Dock 아이콘이 없으니 펫을 부르는 길이다
+ */
+export function reopenTarget(why: string, home: HomeLook): 'home' | 'pet' {
+  return why === 'activate' && homeOpen(home) ? 'home' : 'pet';
+}
+
 export interface HomeSeen {
   alive: boolean;
   /** 우리가 숨겨 두었다 */

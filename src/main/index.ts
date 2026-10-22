@@ -9,7 +9,7 @@ import { persona, setMemorySource, setStyleSource, todoContext } from '../shared
 import { cutText } from '../shared/cut-text.ts';
 import { aiEventFilter } from '../shared/event-store.ts';
 import { HIDE_SEEK, pickHideSpot } from '../shared/hide-seek.ts';
-import { panelTarget } from '../shared/home-policy.ts';
+import { panelTarget, reopenTarget } from '../shared/home-policy.ts';
 import { houseMenuKey, houseNewsKey, stowSayKey, stowStep } from '../shared/house-stow.ts';
 import { locale, t } from '../shared/i18n/index.ts';
 import { IPC, type PetStatus, type PlayKind } from '../shared/ipc.ts';
@@ -1152,7 +1152,12 @@ ready
     });
     app.on('before-quit', () => dock.quit());
     home = createHome({
-      registerSurface: (win) => panel.registerHome(win),
+      registerSurface: (win, hidden) => panel.registerHome(win, hidden),
+      // 숨겨 둔 큰 창이 다시 보일 때 놓친 상태를 한 번 보낸다
+      onShown: () => {
+        panel.refresh();
+        dailyNotes.changed();
+      },
       closePanel: () => panel.closePanel(),
       petBounds: () => pet.bounds(),
       dock,
@@ -1603,12 +1608,14 @@ ready
         else panel.openTab('today');
       },
       surface: () => panel.activeSurface(),
+      fromSurface: (wc) => panel.fromSurface(wc),
       onChange: () => panel.refresh(),
       log,
     });
     const weekCard = createWeekCard({
       doneTitlesSince: (from) => store.doneTitlesSince(from),
       surface: () => panel.activeSurface(),
+      fromSurface: (wc) => panel.fromSurface(wc),
       hold: (work) => panel.hold(work),
       onSaved: () => journey.tried('week'),
       log,
@@ -1661,6 +1668,7 @@ ready
       hold: (look) => together.setNote(look),
       reward: (coins, reason, now) => store.reward(coins, reason, now),
       surface: () => panel.activeSurface(),
+      fromSurface: (wc) => panel.fromSurface(wc),
       openToday: () => panel.openTab('today'),
       onChange: () => panel.refresh(),
       log,
@@ -1802,6 +1810,11 @@ ready
     watchReopen(app, process.platform, {
       takeArgv,
       bringBack: (why) => {
+        // Dock 아이콘을 눌렀다(맥 activate): 큰 창이 열려 있거나 내려가 있으면 그 창을 되살린다
+        if (home && reopenTarget(why, home.look()) === 'home') {
+          home.open();
+          return;
+        }
         log('pet', '다시 열기로 부름', why);
         pet.setHidden('user', false);
         friends.setHidden('user', false);

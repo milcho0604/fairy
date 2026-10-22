@@ -25,7 +25,9 @@ import { openRemembered } from './window-bounds.ts';
 
 export interface HomeOptions {
   /** 패널 모듈에 면으로 알린다 (panel.registerHome). 돌려주는 함수로 뗀다 */
-  registerSurface: (win: BrowserWindow) => () => void;
+  registerSurface: (win: BrowserWindow, hidden: () => boolean) => () => void;
+  /** 숨겨 둔 큰 창이 다시 보인다 (숨긴 동안 못 받은 상태를 한 번 보낸다) */
+  onShown?: () => void;
   /** 작은 패널을 닫는다 */
   closePanel: () => void;
   petBounds: () => Rectangle;
@@ -45,6 +47,8 @@ export function createHome(o: HomeOptions) {
   let unregister: (() => void) | undefined;
   /** 첫 화면을 그렸다 (그리기 전에는 띄우지 않는다. 흰 화면이 보이지 않게) */
   let ready = false;
+  /** 숨기기 요청 차례. 전체 화면이 풀리기를 기다리는 동안 다시 열면 늦게 온 숨기기가 무시된다 */
+  let hideSeq = 0;
   const keepMs = o.keepMs ?? HOME_KEEP_MS;
   const alive = () => !!win && !win.isDestroyed();
 
@@ -124,7 +128,7 @@ export function createHome(o: HomeOptions) {
       },
     });
     win = w;
-    unregister = o.registerSurface(w);
+    unregister = o.registerSurface(w, () => hiddenAt !== undefined);
     ready = false;
     w.once('ready-to-show', () => {
       ready = true;
@@ -152,9 +156,12 @@ export function createHome(o: HomeOptions) {
   function showExisting(tab?: PanelTab) {
     const w = win;
     if (!w || w.isDestroyed()) return;
+    const wasHidden = hiddenAt !== undefined;
     hiddenAt = undefined;
+    hideSeq++;
     clearTimeout(keepTimer);
     o.dock.open();
+    if (wasHidden) o.onShown?.();
     if (tab) w.webContents.send(PANEL.tab, tab);
     // 아직 첫 화면을 그리는 중이면 ready-to-show 가 띄운다
     if (ready) reveal(w);
@@ -163,8 +170,9 @@ export function createHome(o: HomeOptions) {
   function hide() {
     const w = win;
     if (!w || w.isDestroyed()) return;
+    const seq = ++hideSeq;
     const go = () => {
-      if (w.isDestroyed()) return;
+      if (w.isDestroyed() || seq !== hideSeq) return;
       w.hide();
       hiddenAt = Date.now();
       startKeep();

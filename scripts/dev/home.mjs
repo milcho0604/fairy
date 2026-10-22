@@ -263,10 +263,16 @@ const closePanel = async () => {
   await sleep(400);
 };
 const sectionNow = (h) => h.ev(`document.getElementById('ptab-panel')?.getAttribute('aria-labelledby')`);
-/** 펫을 CDP 마우스로 누른다 (진짜 마우스가 아니다) */
+/**
+ * 펫을 CDP 마우스로 누른다 (진짜 마우스가 아니다). 쓰는 사람이 자리를 비워 화면이 꺼지면 펫 화면이 멈춰 CDP 클릭이 먹지 않는다:
+ * 그때는 펫 클릭이 부르는 같은 길(panel.togglePanel)을 메인에서 부르고 한 번 알린다. 큰 창 껍데기 시험은 어느 쪽이든 같은 길을 탄다
+ */
 let petPage;
-const clickPet = async () => {
+let clickFallbacks = 0;
+const state3 = async () => `${await homeAlive()}|${await panelAlive()}|${JSON.stringify(await main('__jj.home.look()'))}`;
+const clickPet = async (expectChange = true) => {
   petPage ??= await page('pet');
+  const before = await state3();
   for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased'])
     await petPage.send('Input.dispatchMouseEvent', {
       type,
@@ -277,6 +283,11 @@ const clickPet = async () => {
       clickCount: 1,
     });
   await sleep(1500);
+  if (expectChange && (await state3()) === before) {
+    clickFallbacks++;
+    await main('__jj.panel.togglePanel(); 1');
+    await sleep(1200);
+  }
 };
 
 const body = async () => {
@@ -338,14 +349,14 @@ const body = async () => {
   look = JSON.parse(await main('JSON.stringify(__jj.home.look())'));
   check('숨긴 뒤 누르면 같은 창이 다시 뜬다', look.alive && !look.hidden && (await main('__jj.home.window.isVisible()')));
   await sleep(300);
-  await clickPet();
+  await clickPet(false);
   look = JSON.parse(await main('JSON.stringify(__jj.home.look())'));
   check('뒤에 있으면(포커스 없음) 누르기는 앞으로 가져올 뿐 숨기지 않는다', look.alive && !look.hidden);
 
   // 패널 보기가 compact 여도 큰 창이 열려 있으면 큰 창
   await setView('compact');
   await sleep(300);
-  await clickPet();
+  await clickPet(false);
   check('compact 여도 큰 창이 열려 있으면 펫 클릭은 큰 창 (패널 안 열림)', (await homeAlive()) && !(await panelAlive()));
   await main('__jj.panel.togglePanel(); 1');
   await sleep(600);
@@ -400,6 +411,60 @@ const body = async () => {
   await main('__jj.home.open(); 1');
   await sleep(KEEP_MS + 1500);
   check('숨겼다 시간 안에 다시 열면 없어지지 않는다', await homeAlive());
+
+  // ===================== 5b. 숨겨 둔 큰 창과 작은 패널 =====================
+  // 숨긴 큰 창은 보이는 면이 아니다: 그 상태에서 작은 패널을 열면 쪽지함, 여정, 주간 카드 요청이 패널 것으로 받아진다
+  await main('__jj.home.open(); 1');
+  await waitFor(homeAlive);
+  await sleep(700);
+  await main(`(() => {
+    const w = __jj.home.window;
+    globalThis.__homeSends = 0;
+    const orig = w.webContents.send.bind(w.webContents);
+    w.webContents.send = (ch, ...a) => { if (ch === 'panel:state') globalThis.__homeSends++; return orig(ch, ...a); };
+    return 1;
+  })()`);
+  await main('__jj.home.hide(); 1');
+  await sleep(400);
+  await main('__jj.panel.refresh(); __jj.panel.refresh(); 1');
+  await sleep(300);
+  check('숨긴 큰 창에는 상태를 보내지 않는다', (await main('globalThis.__homeSends')) === 0, String(await main('globalThis.__homeSends')));
+  await setView('compact');
+  await main('__jj.panel.togglePanel(); 1');
+  await sleep(1500);
+  check('큰 창을 숨긴 채 패널 보기가 compact 면 작은 패널이 열린다', await panelAlive());
+  await main("__jj.panel.window.removeAllListeners('blur'); 1");
+  const pp = await page('panel');
+  check('숨긴 큰 창이 있어도 패널에서 쪽지함 요청이 받아진다', (await pp.ev(`window.jjakkungNotes.list().then((v) => v !== undefined)`)) === true);
+  check('숨긴 큰 창이 있어도 패널에서 여정 요청이 받아진다', (await pp.ev(`window.jjakkungBond.journeyGet().then((v) => v !== undefined)`)) === true);
+  check('숨긴 큰 창이 있어도 패널에서 주간 카드 제목 요청이 받아진다 (빈 목록도 배열)', (await pp.ev(`window.jjakkungBond.weekTitles().then((v) => Array.isArray(v))`)) === true);
+  check('숨긴 큰 창이 있어도 보이는 면은 패널', await main('__jj.panel.activeSurface() === __jj.panel.window'));
+  await closePanel();
+  await main('__jj.home.open(); 1');
+  await sleep(700);
+  check('숨겼던 큰 창이 다시 보일 때 상태를 한 번 받는다', (await main('globalThis.__homeSends')) >= 1);
+  check('다시 보이면 보이는 면은 큰 창', await main('__jj.panel.activeSurface() === __jj.home.window'));
+  await setView('window');
+  // 전체 화면이 풀리기를 기다리는 동안 다시 열면 늦게 온 숨기기가 무시된다 (진짜 전체 화면은 켜지 않고 흉내 낸다)
+  await main(`(() => { const w = __jj.home.window; w.isFullScreen = () => true; w.setFullScreen = () => {}; return 1; })()`);
+  await main('__jj.home.hide(); 1');
+  await main('__jj.home.open(); 1');
+  await main("__jj.home.window.emit('leave-full-screen'); 1");
+  await sleep(500);
+  look = JSON.parse(await main('JSON.stringify(__jj.home.look())'));
+  check('숨기는 중(전체 화면 풀림 대기)에 다시 열면 숨겨지지 않는다', look.alive && !look.hidden && (await main('__jj.home.window.isVisible()')));
+  await main(`(() => { const w = __jj.home.window; delete w.isFullScreen; delete w.setFullScreen; return 1; })()`);
+  // 숨기기를 요청하고 그대로 두면 풀린 뒤 숨겨진다 (대조)
+  await main(`(() => { const w = __jj.home.window; w.isFullScreen = () => true; w.setFullScreen = () => {}; return 1; })()`);
+  await main('__jj.home.hide(); 1');
+  await main("__jj.home.window.emit('leave-full-screen'); 1");
+  await sleep(500);
+  look = JSON.parse(await main('JSON.stringify(__jj.home.look())'));
+  check('대조: 다시 열지 않으면 전체 화면이 풀린 뒤 숨겨진다', look.alive && look.hidden);
+  await main(`(() => { const w = __jj.home.window; delete w.isFullScreen; delete w.setFullScreen; return 1; })()`);
+  await main('__jj.home.open(); 1');
+  await sleep(600);
+  await closeHome();
 
   // ===================== 6. 빠르게 열고 닫기 =====================
   const before = await dockStats();
@@ -621,6 +686,7 @@ const body = async () => {
   check('Cmd+W 는 큰 창을 닫는다 (앱은 계속 돈다)', await waitFor(async () => !(await homeAlive())) && (await main('!!__jj.pet.win && !__jj.pet.win.isDestroyed()')));
 
   // ===================== 11. 끝 =====================
+  if (clickFallbacks) console.log(`알림: 펫 CDP 클릭이 ${clickFallbacks}번 먹지 않아 togglePanel 로 대신했다 (화면이 꺼진 컴퓨터)`);
   const fin = await dockStats();
   check('끝까지 Dock 을 한 번도 부르지 않았다 (JJ_NO_FOCUS)', fin.shows === 0 && fin.hides === 0, JSON.stringify({ shows: fin.shows, hides: fin.hides }));
   await setView('compact');

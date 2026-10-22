@@ -12,6 +12,8 @@ export interface WeekCardOptions {
   doneTitlesSince: (from: number) => string[];
   /** 지금 보이는 패널 면 (작은 패널, 큰 창이 열려 있으면 큰 창) */
   surface: () => BrowserWindow | undefined;
+  /** 작은 패널이나 큰 창이 보낸 요청인가 (숨겨 둔 큰 창이어도 받는다) */
+  fromSurface: (wc: Electron.WebContents) => boolean;
   /** 저장 창이 떠 있는 동안 패널을 닫지 않는다 (panel.ts hold) */
   hold: <T>(work: () => Promise<T>) => Promise<T>;
   /** 저장했다 (여정 "주간 돌아보기") */
@@ -20,10 +22,7 @@ export interface WeekCardOptions {
 }
 
 export function createWeekCard(o: WeekCardOptions) {
-  const fromPanel = (sender: Electron.WebContents) => {
-    const w = o.surface();
-    return !!w && !w.isDestroyed() && w.webContents === sender;
-  };
+  const fromPanel = (sender: Electron.WebContents) => o.fromSurface(sender);
 
   ipcMain.handle(BOND.weekTitles, (e) => {
     if (!fromPanel(e.sender)) return [];

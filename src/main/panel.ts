@@ -214,7 +214,13 @@ export function createPanel(o: PanelOptions) {
   const ours = (e: IpcMainEvent | IpcMainInvokeEvent) => senders.has(e.sender);
   const homeContents = () => (home && !home.isDestroyed() ? home.webContents : undefined);
   /** 지금 보이는 면: 큰 창이 있으면 큰 창, 없으면 패널 (src/main/surface.ts) */
-  const activeSurface = () => pickSurface(home, panel, (w) => !w.isDestroyed());
+  /** 큰 창을 숨겨 두었는가 (home.ts 가 알려 준다). 숨긴 큰 창은 보이는 면이 아니다 */
+  let homeHidden: () => boolean = () => false;
+  const activeSurface = () =>
+    pickSurface(home, panel, (w) => !w.isDestroyed() && !(w === home && homeHidden()));
+  /** 작은 패널이나 큰 창(숨겨 둔 것도)이 보낸 것인가. 요청은 두 면 모두 받는다 */
+  const fromSurface = (wc: Electron.WebContents) =>
+    (!!panel && !panel.isDestroyed() && panel.webContents === wc) || (!!home && homeContents() === wc);
   /** 이번에 "새 메모"로 만든 것. 패널이 닫힐 때 아직 비어 있으면 지운다 (빈 메모가 쌓이지 않게) */
   const freshNotes = new Set<number>();
   /** 메모 다듬기 (메모 id 마다 하나) */
@@ -337,7 +343,11 @@ export function createPanel(o: PanelOptions) {
 
   function push() {
     const s = state();
-    for (const w of [panel, home, quick]) if (w && !w.isDestroyed()) w.webContents.send(PANEL.state, s);
+    // 숨겨 둔 큰 창에는 보내지 않는다. 다시 보일 때 home.ts 가 refresh 로 한 번 보낸다
+    for (const w of [panel, home, quick]) {
+      if (!w || w.isDestroyed() || (w === home && homeHidden())) continue;
+      w.webContents.send(PANEL.state, s);
+    }
     o.onChanged();
   }
   // 자정을 넘기면 열려 있는 패널에 새 날 것을 보낸다 (오늘 끝낸 일, 오늘 마감, 오늘 일정이 어제 것으로 남았다)
@@ -1347,16 +1357,21 @@ export function createPanel(o: PanelOptions) {
       return panel;
     },
     activeSurface,
+    fromSurface,
     /**
      * 큰 창을 면으로 알린다 (아직 만드는 곳이 없다). 이 창의 요청도 받고 상태를 같이 받는다.
      * 큰 창에서 온 설정, 채팅 열기는 패널을 먼저 닫지 않는다. 돌려주는 함수로 뗀다
      */
-    registerHome(win: BrowserWindow): () => void {
+    registerHome(win: BrowserWindow, hidden: () => boolean = () => false): () => void {
       const sender = win.webContents;
       home = win;
+      homeHidden = hidden;
       senders.add(sender);
       const off = () => {
-        if (home === win) home = undefined;
+        if (home === win) {
+          home = undefined;
+          homeHidden = () => false;
+        }
         senders.delete(sender);
       };
       win.once('closed', off);

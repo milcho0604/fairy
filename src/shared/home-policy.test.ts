@@ -9,6 +9,7 @@ import {
   homeOpen,
   isPanelView,
   panelTarget,
+  reopenTarget,
 } from './home-policy.ts';
 import { presenceHide } from './presence.ts';
 
@@ -72,4 +73,12 @@ test('우리 큰 창이 전체 화면이면 전체 화면 앱으로 세지 않�
   assert.equal(presenceHide(true, true), false);
   assert.equal(presenceHide(false, true), false);
   assert.equal(presenceHide(false, false), false);
+});
+
+test('앱을 다시 열면(Dock 아이콘): 열려 있거나 내려간 큰 창은 되살리고, 없거나 숨겨 둔 창이면 펫을 부른다', () => {
+  assert.equal(reopenTarget('activate', shown), 'home');
+  assert.equal(reopenTarget('activate', none), 'pet');
+  assert.equal(reopenTarget('activate', tucked), 'pet');
+  // 다시 실행(윈도우, 리눅스)은 늘 펫
+  assert.equal(reopenTarget('second-instance', shown), 'pet');
 });

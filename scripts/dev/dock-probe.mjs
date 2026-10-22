@@ -237,8 +237,12 @@ async function petInPlace() {
   const b = JSON.parse(await main('JSON.stringify(__jj.pet.bounds())'));
   const wins = onScreen(app.pid);
   if (!wins) return { ok: undefined, why: '창 목록을 못 읽음' };
-  const hit = wins.find((w) => near(w.w, b.width) && near(w.h, b.height) && near(w.x, b.x) && near(w.y, b.y));
-  return { ok: !!hit, why: hit ? '' : `펫 ${JSON.stringify(b)} 가 목록에 없음 (${wins.length}개)` };
+  // 펫 창은 펫 그림보다 크다(말풍선 자리, 처음에는 252x222): 펫 가운데를 품는 작은(<400) 떠 있는 창(layer>0)이면 제자리다.
+  // 닫은 창은 시험 모드(투명)에서 목록에 남으므로(패널, 설정 창도 같다) 큰 창(layer 0)은 세지 않는다
+  const cx = b.x + b.width / 2;
+  const cy = b.y + b.height / 2;
+  const hit = wins.find((w) => w.layer > 0 && w.w < 400 && w.h < 400 && w.x <= cx && cx <= w.x + w.w && w.y <= cy && cy <= w.y + w.h);
+  return { ok: !!hit, why: hit ? '' : `펫 ${JSON.stringify(b)} 가 목록에 없음 (${JSON.stringify(wins.map((w) => [w.layer, w.x, w.y, w.w, w.h]))})` };
 }
 const dockStats = async () => JSON.parse(await main('JSON.stringify(__jj.dock.stats())'));
 const homeAlive = () => main('!!__jj.home.window && !__jj.home.window.isDestroyed()');
@@ -270,18 +274,21 @@ const body = async () => {
   for (let i = 1; i <= 5; i++) {
     await main('__jj.home.open(); 1');
     const up = await typeIs('Foreground', 3000);
+    // 닫은 뒤가 아니라 열려 있는 그때의 앱 종류를 적는다 (예전에는 닫은 뒤 값을 찍어 PASS 인데 UIElement 로 보였다)
+    const typeOpen = appType(app.pid);
     const alive = await homeAlive();
     const sOpen = activeSpace();
     const pOpen = await petInPlace();
     await main('__jj.home.window.close(); 1');
     const down = await typeIs(base, 4000);
+    const typeClosed = appType(app.pid);
     await sleep(1800);
     const st = await dockStats();
     const sClose = activeSpace();
     const pClose = await petInPlace();
     cycleSpaces.push(sOpen, sClose);
-    check(`1.${i} 열면 3초 안에 Foreground (큰 창 ${alive ? '있음' : '없음'})`, up && alive, `type=${appType(app.pid)}`);
-    check(`1.${i} 닫으면 4초 안에 처음 종류(${base})로 돌아온다`, down, `type=${appType(app.pid)}`);
+    check(`1.${i} 열면 3초 안에 Foreground (큰 창 ${alive ? '있음' : '없음'})`, up && alive, `열린 동안 type=${typeOpen}`);
+    check(`1.${i} 닫으면 4초 안에 처음 종류(${base})로 돌아온다`, down, `닫은 뒤 type=${typeClosed}`);
     check(`1.${i} 닫은 뒤 app.dock.isVisible() 거짓`, st.visible === false, JSON.stringify({ visible: st.visible, shows: st.shows, hides: st.hides }));
     check(`1.${i} 데스크톱 번호 그대로 (열 때 ${sOpen}, 닫을 때 ${sClose}, 처음 ${space0})`, sOpen === space0 && sClose === space0);
     check(`1.${i} 펫이 열려 있는 동안과 닫은 뒤 모두 지금 데스크톱에 제자리`, pOpen.ok === true && pClose.ok === true, `${pOpen.why} ${pClose.why}`.trim());

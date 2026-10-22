@@ -36,3 +36,12 @@ test('패널에서 온 열기 요청만 패널을 먼저 닫는다', () => {
   assert.equal(closesPanelFor(originOf(panel, home)), true);
   assert.equal(closesPanelFor(originOf(home, home)), false);
 });
+
+test('숨겨 둔 큰 창은 보이는 면이 아니다: 패널이 열려 있으면 패널, 둘 다 없으면 없음', () => {
+  const hidden = new Set<W>([home]);
+  const shown = (w: W) => !w.dead && !hidden.has(w);
+  assert.equal(pickSurface(home, panel, shown), panel);
+  assert.equal(pickSurface(home, undefined, shown), undefined);
+  hidden.clear();
+  assert.equal(pickSurface(home, panel, shown), home);
+});
