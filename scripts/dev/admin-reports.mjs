@@ -46,11 +46,11 @@ const pgName = `jj-admin151-pg-${randomBytes(4).toString('hex')}`;
 const pgPass = randomBytes(12).toString('hex');
 const dropPg = () => {
   try {
-    execFileSync('docker', ['rm', '-f', pgName], { stdio: 'ignore' });
+    execFileSync('docker', ['rm', '-f', '-v', pgName], { stdio: 'ignore' });
   } catch {}
 };
 process.on('exit', dropPg);
-docker('run', '-d', '--rm', '--name', pgName, '--log-opt', 'max-size=1m', '-e', `POSTGRES_PASSWORD=${pgPass}`,
+docker('run', '-d', '--rm', '--tmpfs', '/var/lib/postgresql/data', '--name', pgName, '--log-opt', 'max-size=1m', '-e', `POSTGRES_PASSWORD=${pgPass}`,
   '-e', 'POSTGRES_USER=fairy', '-e', 'POSTGRES_DB=fairy', '-p', '127.0.0.1::5432', 'postgres:16-alpine');
 const pgPort = docker('port', pgName, '5432/tcp').split('\n')[0]?.split(':').pop();
 for (let i = 0; i < 240; i++) {
@@ -165,7 +165,7 @@ try {
   mkdirSync(profile, { recursive: true });
   chrome = spawn(
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    ['--headless=new', `--remote-debugging-port=${chromePort}`, `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--disable-gpu', '--hide-scrollbars', 'about:blank'],
+    ['--headless=new', '--disable-features=MacAppCodeSignClone', `--remote-debugging-port=${chromePort}`, `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--disable-gpu', '--hide-scrollbars', 'about:blank'],
     { stdio: 'ignore' },
   );
   let target;
