@@ -42,7 +42,7 @@ const pgName = `jj-server-test-pg-${randomBytes(4).toString('hex')}`;
 const pgPass = randomBytes(12).toString('hex');
 const dropPg = () => {
   try {
-    execFileSync('docker', ['rm', '-f', pgName], { stdio: 'ignore' });
+    execFileSync('docker', ['rm', '-f', '-v', pgName], { stdio: 'ignore' });
   } catch {}
 };
 process.on('exit', dropPg);
@@ -50,6 +50,8 @@ docker(
   'run',
   '-d',
   '--rm',
+  '--tmpfs',
+  '/var/lib/postgresql/data',
   '--name',
   pgName,
   '--log-opt',

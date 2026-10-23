@@ -21,7 +21,7 @@ export async function startPg(): Promise<{ databaseUrl: string; stop: () => void
   const password = randomBytes(12).toString('hex');
   const stop = () => {
     try {
-      execFileSync('docker', ['rm', '-f', name], { stdio: 'ignore' });
+      execFileSync('docker', ['rm', '-f', '-v', name], { stdio: 'ignore' });
     } catch {}
   };
   process.on('exit', stop);
@@ -29,6 +29,8 @@ export async function startPg(): Promise<{ databaseUrl: string; stop: () => void
     'run',
     '-d',
     '--rm',
+    '--tmpfs',
+    '/var/lib/postgresql/data',
     '--name',
     name,
     '--log-opt',
