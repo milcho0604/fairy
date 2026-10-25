@@ -92,6 +92,7 @@ if (kind === 'pet') {
     },
     bubbleSize: (id: string, width: number, height: number) =>
       ipcRenderer.send(IPC.bubbleSize, id, width, height),
+    bubbleAnchor: (anchor) => ipcRenderer.send(IPC.bubbleAnchor, anchor),
     bubbleClosed: (id: string, action: string) => ipcRenderer.send(IPC.bubbleClosed, id, action),
     activityRequest: (ask?: MoveAsk) => ipcRenderer.send(IPC.activityRequest, ask),
     activityStop: () => ipcRenderer.send(IPC.activityStop),

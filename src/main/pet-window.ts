@@ -21,7 +21,14 @@ import {
   walkOffset,
   walkSpan,
 } from '../shared/behavior.ts';
-import { BUBBLE_GUESS, bubbleClashes, bubbleRectOf, layoutBubble } from '../shared/bubble-layout.ts';
+import {
+  BUBBLE_GUESS,
+  type BubbleAnchor,
+  bubbleClashes,
+  bubbleRectOf,
+  layoutBubble,
+  parseBubbleAnchor,
+} from '../shared/bubble-layout.ts';
 import {
   bundleText,
   fateOf,
@@ -457,6 +464,7 @@ export function createPetWindow({
   // 펫 사각형. 말풍선이 뜨면 창은 이보다 커지지만 펫은 화면에서 제자리에 있다.
   let pet: Rect = restorePetBounds(saved, currentDisplays(), Math.round(BASE_SIZE * scale));
 
+  let bubbleAnchor: BubbleAnchor | undefined;
   const hideReasons = new HideReasons();
   /** 숨어 있는 동안 온 답 알림. 다시 나올 때 한 번 말한다 (기획서: 알림은 쌓아 두었다가 나올 때 한 번에). */
   let heldAnswer: { options: SayOptions; resolve: (action: string | undefined) => void } | undefined;
@@ -473,14 +481,17 @@ export function createPetWindow({
   /** 지금 말풍선의 화면 사각형. 크기를 재기 전이면 어림 크기로 */
   const bubbleRect = (): Rect | undefined =>
     bubble && !bubble.ambient && !win.isDestroyed() && win.isVisible()
-      ? bubbleRectOf(pet, bubble.size ?? BUBBLE_GUESS, screen.getDisplayMatching(pet).workArea)
+      ? bubbleRectOf(pet, bubble.size ?? BUBBLE_GUESS, screen.getDisplayMatching(pet).workArea, bubbleAnchor)
       : undefined;
   talkers.add(bubbleRect);
   /** 다른 펫의 떠 있는 말풍선과 겹칠 자리인지 */
   const clashing = () => {
     const others = [...talkers].filter((r) => r !== bubbleRect).map((r) => r());
     const list = others.filter((r): r is Rect => !!r);
-    return list.length > 0 && bubbleClashes(pet, screen.getDisplayMatching(pet).workArea, list);
+    return (
+      list.length > 0 &&
+      bubbleClashes(pet, screen.getDisplayMatching(pet).workArea, list, BUBBLE_GUESS, bubbleAnchor)
+    );
   };
   /** 다른 펫 말풍선이 닫혀 자리가 나면 true, 기다리다 끝나거나 그만두면 false */
   const waitForRoom = (until: number, signal?: AbortSignal): Promise<boolean> =>
@@ -851,7 +862,7 @@ export function createPetWindow({
   function applyLayout() {
     if (win.isDestroyed()) return;
     const area = screen.getDisplayMatching(pet).workArea;
-    const layout = layoutBubble(pet, bubble?.size, area);
+    const layout = layoutBubble(pet, bubble?.size, area, bubbleAnchor);
     const now = win.getBounds();
     const w = layout.window;
     if (now.x !== w.x || now.y !== w.y || now.width !== w.width || now.height !== w.height) win.setBounds(w);
@@ -1937,6 +1948,13 @@ export function createPetWindow({
     if (answer === 'yes') setChatter(quieter(gate.level));
   }
 
+  const onBubbleAnchor = (e: IpcMainEvent, raw: unknown) => {
+    if (!fromThisWindow(e)) return;
+    const next = parseBubbleAnchor(raw);
+    if (!next || (next.top === bubbleAnchor?.top && next.bottom === bubbleAnchor?.bottom)) return;
+    bubbleAnchor = next;
+    applyLayout();
+  };
   const onBubbleSize = (e: IpcMainEvent, id: string, width: number, height: number) => {
     if (!fromThisWindow(e) || bubble?.id !== id) return;
     bubble.size = { width, height };
@@ -2027,6 +2045,7 @@ export function createPetWindow({
   ipcMain.on(IPC.contextMenu, onContextMenu);
   ipcMain.on(IPC.wheel, onWheel);
   ipcMain.on(IPC.bubbleSize, onBubbleSize);
+  ipcMain.on(IPC.bubbleAnchor, onBubbleAnchor);
   ipcMain.on(IPC.activityRequest, onActivityRequest);
   ipcMain.on(IPC.activityStop, onActivityStop);
   ipcMain.on(IPC.petted, onPetted);
@@ -2191,6 +2210,7 @@ export function createPetWindow({
     setShortcuts(false);
     ipcMain.off(IPC.wheel, onWheel);
     ipcMain.off(IPC.bubbleSize, onBubbleSize);
+    ipcMain.off(IPC.bubbleAnchor, onBubbleAnchor);
     ipcMain.off(IPC.activityRequest, onActivityRequest);
     ipcMain.off(IPC.activityStop, onActivityStop);
     ipcMain.off(IPC.petted, onPetted);

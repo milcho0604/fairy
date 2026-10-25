@@ -1168,7 +1168,10 @@ ready
     const dock = createDock({
       test: !!process.env.JJ_NO_FOCUS && !process.env.JJ_DOCK_PROBE,
       // 앱 종류가 바뀐 뒤에도 펫이 모든 데스크톱과 (큰 창이 전체 화면이면) 그 위에 남도록 다시 건다
-      reassert: () => reassertSpaces(),
+      reassert: () => {
+        reassertSpaces();
+        house.reassertSpaces();
+      },
       log,
     });
     app.on('before-quit', () => dock.quit());
@@ -1183,7 +1186,10 @@ ready
       closePanel: () => panel.closePanel(),
       petBounds: () => pet.bounds(),
       dock,
-      onFullScreen: (on) => reassertSpaces(on),
+      onFullScreen: (on) => {
+        reassertSpaces(on);
+        house.reassertSpaces();
+      },
       // 시험 실행만: 숨긴 창을 없애는 때를 줄인다 (scripts/dev/home.mjs)
       keepMs: app.isPackaged ? undefined : Number(process.env.JJ_HOME_KEEP_MS) || undefined,
       log,
@@ -1953,15 +1959,12 @@ ready
       wentHome = true;
       void pet.walkTo(door.x - pet.bounds().width / 2, 60);
     }, 20_000).unref();
-    let houseHidden = false;
     setInterval(() => {
       // 집이 있어야 하는데 사라졌으면(창이 닫힘, 그림이 죽음, 내려감, 화면 밖) 살린다 (#74)
-      house.heal();
       const hidden = pet.isHidden('user') || pet.isHidden('presentation');
-      if (hidden === houseHidden) return;
-      houseHidden = hidden;
       if (hidden) house.hide();
       else house.unhide();
+      house.heal();
     }, 2000).unref();
     // 친밀도 100 (손 흔들기): 5분 넘게 자리를 비웠다 돌아오면 손을 흔든다
     let away = false;
@@ -2009,6 +2012,7 @@ ready
           globalShortcut,
           // 화면 크기 점검(scripts/dev/panel-resize.mjs). 시험 실행에서는 내장 화면 하나만 보인다(focus.ts)
           screen,
+          powerMonitor,
           tray,
           petFace,
           trayImageOf,
