@@ -56,9 +56,8 @@ export const ko = {
   'routine.set.reviewNote': '만난 날은 하루 회고를 헤어질 때 같이 해.',
   'routine.set.sameTime': '만나는 시간과 헤어지는 시간이 같으면 정할 수 없어.',
   // 첫 실행 안내
-  'routine.onb.title': (v: { name: string }) => `${withParticle(v.name, '과')} 만나는 시간`,
-  'routine.onb.lead':
-    '일을 시작하는 시간을 알려 주면 그때 반갑게 맞이하고 오늘 할 일을 알려 줄게. 끝날 땐 수고했다고 인사할게.',
+  'routine.onb.title': '일 시작과 마치는 시간',
+  'routine.onb.lead': '예: 평일 오전 9시~오후 6시. 일을 시작할 때 오늘 할 일을 알려 주고, 마칠 때 인사할게.',
   'routine.onb.set': '시간 정하기',
   'routine.onb.setHint': '요일과 시간을 정해',
   'routine.onb.free': '켤 때마다 인사',
@@ -126,9 +125,9 @@ export const en: Translation<typeof ko> = {
   'routine.set.restNote': 'Other days are days off: just a quiet hello, and no sulking if you skip them.',
   'routine.set.reviewNote': 'On days we meet, the daily review comes with the goodbye.',
   'routine.set.sameTime': "Meet and part times can't be the same.",
-  'routine.onb.title': (v: { name: string }) => `When to meet ${v.name}`,
+  'routine.onb.title': 'Your work hours',
   'routine.onb.lead':
-    "Tell me when you start work and I'll greet you then with today's to-dos. When you're done, I'll say goodbye.",
+    "For example, weekdays from 9am to 6pm. I'll greet you with today's to-dos when work starts, and say goodbye when you finish.",
   'routine.onb.set': 'Pick a time',
   'routine.onb.setHint': 'Choose days and hours',
   'routine.onb.free': 'Say hi at startup',

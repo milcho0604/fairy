@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type KeyboardEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { CODEX_ZIP_MAX_BYTES } from '../../../shared/codex-pet.ts';
 import { saveErrorText } from '../../../shared/download-error.ts';
 import { t } from '../../../shared/i18n/index.ts';
@@ -72,7 +72,7 @@ export function SettingsApp() {
   }, []);
 
   // ---- 탭 (설정 창 재구성): 처음은 창 주소 # (칸 이름이나 메인이 기억한 지난번 탭) ----
-  const [tab, setTabState] = useState<SettingsTab>(() => tabFromHash(location.hash));
+  const [tab, setTabStateRaw] = useState<SettingsTab>(() => tabFromHash(location.hash));
   const tabRefs = useRef<Partial<Record<SettingsTab, HTMLButtonElement | null>>>({});
   const [side, setSide] = useState(() => matchMedia(SIDE_NAV).matches);
   useEffect(() => {
@@ -85,7 +85,7 @@ export function SettingsApp() {
 
   // ---- 설정 찾기: 찾는 말에 맞는 칸과 줄만 보인다 (그리기는 그대로, 그린 뒤 hidden 만 바꾼다) ----
   // 탭은 모두 그려 두고(고치던 글, 진행 중인 일을 잃지 않게) 안 보는 탭만 숨긴다. 찾는 중에는 모든 탭에서 찾는다
-  const [query, setQuery] = useState('');
+  const [query, setQueryRaw] = useState('');
   const [composing, setComposing] = useState(false);
   const [noHit, setNoHit] = useState(false);
   // 탭마다 맞은 칸 수 (찾는 중에 탭 옆에 보인다). 다시 그리기를 줄이려고 글로 둔다
@@ -94,6 +94,24 @@ export function SettingsApp() {
   const scrollPositions = useRef<Record<string, number>>({});
   const scrollView = useRef<string>(tab);
   const scrollQuery = useRef('');
+  const rememberScroll = useCallback(() => {
+    if (mainRef.current) scrollPositions.current[scrollView.current] = mainRef.current.scrollTop;
+  }, []);
+  // scroll 이벤트가 아직 오지 않았어도 전환 직전의 실제 위치를 놓치지 않는다.
+  const setTabState = useCallback(
+    (next: SettingsTab) => {
+      rememberScroll();
+      setTabStateRaw(next);
+    },
+    [rememberScroll],
+  );
+  const setQuery = useCallback(
+    (next: string) => {
+      rememberScroll();
+      setQueryRaw(next);
+    },
+    [rememberScroll],
+  );
   const searchRef = useRef<HTMLInputElement>(null);
   const searching = query.trim() !== '';
 
@@ -208,7 +226,7 @@ export function SettingsApp() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [setQuery, setTabState]);
 
   // 메뉴 막대 "의견 보내기"(칸 열기): 찾기를 끝내고 그 칸의 탭으로. 칸으로 내려가기는 칸(Stats)이 한다
   useEffect(() => {
@@ -216,7 +234,7 @@ export function SettingsApp() {
       setQuery('');
       setTabState(tabOfSection(section));
     });
-  }, []);
+  }, [setQuery, setTabState]);
 
   // 페어리 파일(.fairy, .jjpet)이나 Codex 펫 파일(.codex-pet.zip)을 창에 끌어 놓으면 페어리 가져오기와 같이 데려온다.
   // 다른 파일(그림, 글)은 그냥 둔다 (창이 그 파일을 열어 페이지가 바뀌지 않게 놓기만 막는다)

@@ -51,6 +51,8 @@ try {
     await main('__jj.settingsWindow.open(); 1');
     const settings = await page('settings');
     await until(() => settings.ev('!!document.querySelector("#tab-pet")'), 'settings');
+    // 제품의 최소 폭(360)보다 좁은 320 경계도 실제로 검사한다. 시험 창에만 하한을 낮춘다.
+    await main('__jj.settingsWindow.window.setMinimumSize(320,420); 1');
     const tab = async id => {await settings.ev(`document.querySelector('#tab-${id}').click()`); await sleep(100);};
     const scroll = async value => {await settings.ev(`document.querySelector('main').scrollTop=${value}`); await sleep(100); return settings.ev('document.querySelector("main").scrollTop');};
     const pos = () => settings.ev('document.querySelector("main").scrollTop');
@@ -65,6 +67,7 @@ try {
     };
     for (const width of [440,760,320]) {
       await main(`__jj.settingsWindow.window.setSize(${width},620); 1`); await sleep(200);
+      assert.equal(await main('__jj.settingsWindow.window.getBounds().width'), width);
       const saved={};
       for (const [i,id] of ['pet','assist','ai','ease','data','about'].entries()) {await tab(id); saved[id]=await scroll(210+i*63);}
       for (const id of ['pet','ai','about','assist','data','ease','pet']) {
@@ -82,6 +85,12 @@ try {
       await check(`${width}: 검색은 위에서 시작`, async () => assert.equal(await pos(),0));
       await query('');
       await check(`${width}: 검색 해제 뒤 원래 탭 위치`, async () => assert.ok(Math.abs(await pos()-saved.ai)<=1));
+      await tab('pet');
+      // scroll 이벤트가 오기 전에 탭을 옮겨도 마지막 위치를 잃지 않아야 한다.
+      await settings.ev('document.querySelector("main").scrollTop=333; document.querySelector("#tab-ai").click()');
+      await sleep(100);
+      await tab('pet');
+      await check(`${width}: 스크롤 직후 빠른 탭 전환`, async () => assert.ok(Math.abs(await pos()-333)<=1));
     }
     for (const [q,expected] of [
       ['자동 실행',lang==='ko'?'컴퓨터를 켜면 같이 켜기':'Open at login'],

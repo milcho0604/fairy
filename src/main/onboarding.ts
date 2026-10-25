@@ -21,14 +21,14 @@ import { settings } from './settings.ts';
 const MAC_SCREEN_SETTINGS = 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture';
 
 /**
- * 첫 실행 안내 (v1): 펫 정하기, 같이 보기 권한, 알아 두면 좋은 것 세 화면.
- * 처음 켤 때 한 번 뜨고, 다 보거나 닫으면 다시 안 뜬다 (설정 onboarded).
+ * 첫 실행 안내: 펫 정하기, 일하는 시간, 같이 보기 권한, 알아 두면 좋은 것.
+ * 닫으면 나중에 보던 쪽부터 이어 보고, 시작/건너뛰기를 눌렀을 때만 완료한다.
  */
 export function createOnboarding(o: {
   openMaker: () => void;
   /** AI 안내 한 줄에 쓴다: 설치된 AI 가 없으면 무료 AI 와 받을 모델 크기를 알린다 */
   ai: () => Promise<OnboardAi>;
-  /** 처음 안내를 마쳤다(끝까지 보거나 건너뛰거나 닫음). 설정에서 다시 본 것은 부르지 않는다 */
+  /** 처음 안내를 명시적으로 마쳤다(시작/건너뛰기). 설정에서 다시 본 것은 부르지 않는다 */
   onFirstDone: () => void;
   log: (tag: string, ...rest: unknown[]) => void;
 }) {
@@ -67,9 +67,9 @@ export function createOnboarding(o: {
   });
   /** 처음 마칠 때만 onFirstDone 을 부른다 */
   function markDone() {
-    if (settings.get().onboarded) return;
-    settings.set({ onboarded: true });
-    o.onFirstDone();
+    const first = !settings.get().onboarded;
+    settings.set({ onboarded: true, onboardPage: 0 });
+    if (first) o.onFirstDone();
   }
   ipcMain.on(ONBOARD.finish, (e) => {
     if (!ours(e)) return;
@@ -101,9 +101,8 @@ export function createOnboarding(o: {
       },
     });
     win.once('ready-to-show', () => showWindow(win));
-    // 닫기 단추로 닫아도 다시 띄우지 않는다 (설정에서 다시 볼 수 있다).
+    // OS 닫기와 앱 종료는 나중에 이어 보기다. 완료와 첫 여정은 시작/건너뛰기로만 처리한다.
     win.on('closed', () => {
-      markDone();
       win = undefined;
     });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
