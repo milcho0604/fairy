@@ -325,7 +325,7 @@ export const ko = {
   'settings.exported': '백업 파일을 만들었어',
   'settings.exportFailed': '백업 파일을 만들지 못했어',
   'settings.importFailed': '가져오지 못했어',
-  'settings.import': '가져오기',
+  'settings.import': '백업 파일에서 복원',
   'settings.importFolder': '예전 백업 폴더',
   'settings.importFolderHint': '폴더로 만든 예전 백업도 가져올 수 있어.',
   // 복원 확인 칸 (OS 창 없이 설정 창 안에서 묻는다)
@@ -351,7 +351,7 @@ export const ko = {
   'settings.exportPet': '페어리 내보내기',
   'settings.petExported': '페어리 파일을 만들었어',
   'settings.petExportFailed': '페어리 파일을 만들지 못했어. 다른 폴더에 저장해 봐',
-  'settings.importPet': '페어리 가져오기',
+  'settings.importPet': '페어리 파일에서 가져오기',
 
   // 업데이트
   'settings.update': '업데이트',
@@ -777,7 +777,7 @@ export const en: Translation<typeof ko> = {
   'settings.exported': 'Backup file created',
   'settings.exportFailed': "Couldn't create the backup file",
   'settings.importFailed': "Couldn't import",
-  'settings.import': 'Import',
+  'settings.import': 'Restore a backup file',
   'settings.importFolder': 'Old backup folder',
   'settings.importFolderHint': 'Old backups saved as a folder still work.',
   'settings.restore.ask': 'Replace your current to-dos, notes and fairy with this backup?',
@@ -804,7 +804,7 @@ export const en: Translation<typeof ko> = {
   'settings.exportPet': 'Export fairy',
   'settings.petExported': 'Fairy file created',
   'settings.petExportFailed': "Couldn't create the fairy file. Try saving to another folder",
-  'settings.importPet': 'Import fairy',
+  'settings.importPet': 'Import a fairy file',
 
   'settings.update': 'Updates',
   'settings.updateCheck': 'New version alerts',

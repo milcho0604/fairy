@@ -39,6 +39,21 @@ test('예전 펫 설정 파일(pet-settings.json)의 값도 읽는다', () => {
   });
 });
 
+test('첫 안내의 보던 쪽은 완료 여부와 별도로 저장하고 범위 밖 값은 거절한다', () => {
+  assert.equal(parseSettings({ onboarded: false }).onboardPage, 0);
+  for (const onboardPage of [0, 1, 2, 3]) {
+    const next = applyPatch(DEFAULT_SETTINGS, { onboardPage });
+    assert.equal(next.onboardPage, onboardPage);
+    assert.equal(next.onboarded, false);
+    assert.equal(parseSettings(next).onboardPage, onboardPage);
+  }
+  for (const onboardPage of [-1, 4, 1.5, NaN, Infinity, '2', null]) {
+    assert.equal(parseSettings({ onboardPage }).onboardPage, 0);
+  }
+  const before = { ...DEFAULT_SETTINGS, onboardPage: 2 };
+  assert.equal(applyPatch(before, { onboardPage: 99 }).onboardPage, 2);
+});
+
 test('펫 이름: 공백 정리, 제어 문자 제거, 12자까지, 빈 이름은 안 받는다', () => {
   assert.equal(cleanPetName('  밤  '), '밤');
   assert.equal(cleanPetName('콩\n이'), '콩이');

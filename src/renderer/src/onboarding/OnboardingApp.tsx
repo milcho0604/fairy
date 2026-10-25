@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { isUsable } from '../../../shared/ai/capability.ts';
 import { formatBytes } from '../../../shared/bytes.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { OnboardAi, OnboardSnapshot } from '../../../shared/ipc.ts';
+import { ONBOARD_PAGES as PAGES } from '../../../shared/onboarding-page.ts';
 import { cleanPetName, PET_KINDS, PET_NAME_MAX } from '../../../shared/settings.ts';
 import { acceleratorLabel } from '../../../shared/shortcut.ts';
 import { isCurrentStarter, starterOf } from '../../../shared/starter-pets.ts';
@@ -13,12 +14,19 @@ import { RoutinePicker } from '../RoutinePicker.tsx';
 import { pageByKey } from './page-keys.ts';
 
 const bridge = window.jjakkungOnboard;
-const PAGES = 4;
 
-/** 첫 실행 안내 (v1): 펫 정하기, 만나는 시간, 같이 보기 권한, 알아 두면 좋은 것 */
+/** 첫 실행 안내: 펫 정하기, 일하는 시간, 같이 보기 권한, 알아 두면 좋은 것 */
 export function OnboardingApp() {
   const [snap, setSnap] = useState<OnboardSnapshot>();
   const [page, setPage] = useState(0);
+  const pageNow = useRef(0);
+  const pageLoaded = useRef(false);
+  const goPage = useCallback((next: number) => {
+    pageNow.current = next;
+    setPage(next);
+    // 닫을 때만 저장하면 앱 종료 때 놓칠 수 있어 쪽을 옮길 때마다 메인에 저장한다.
+    void bridge.set({ onboardPage: next });
+  }, []);
   const [name, setName] = useState('');
   // 이름 칸을 고쳤는지 (고치지 않았으면 모습을 고를 때 이름이 그 모습의 기본 이름을 따라간다)
   const typed = useRef(false);
@@ -32,6 +40,12 @@ export function OnboardingApp() {
   const refresh = () =>
     bridge.get().then((s) => {
       setSnap(s);
+      if (!pageLoaded.current) {
+        pageLoaded.current = true;
+        const next = s.settings.onboarded ? 0 : s.settings.onboardPage;
+        pageNow.current = next;
+        setPage(next);
+      }
       // 펫 만들기에서 돌아오면 사진 펫 이름을 받는다. 고치던 이름은 그대로 둔다
       if (!typed.current) setName(s.settings.petName);
     });
@@ -71,11 +85,12 @@ export function OnboardingApp() {
         el instanceof HTMLInputElement ||
         el instanceof HTMLTextAreaElement ||
         el instanceof HTMLSelectElement;
-      setPage((p) => pageByKey(e, p, PAGES, inField) ?? p);
+      const next = pageByKey(e, pageNow.current, PAGES, inField);
+      if (next !== undefined) goPage(next);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [goPage]);
 
   if (!snap) return <div className="onboard" />;
   const s = snap.settings;
@@ -118,7 +133,7 @@ export function OnboardingApp() {
   // 쪽을 넘기면 화면 읽기 프로그램이 몇 쪽인지와 그 쪽 제목을 읽는다 (다음 단추에 커서가 남아 바뀐 것을 몰랐다)
   const pageTitles = [
     t('onboarding.hello.title'),
-    t('routine.onb.title', { name: petName }),
+    t('routine.onb.title'),
     t('onboarding.look.title'),
     t('onboarding.tips.title'),
   ];
@@ -240,7 +255,7 @@ export function OnboardingApp() {
 
         {page === 1 && (
           <section>
-            <h1>{t('routine.onb.title', { name: petName })}</h1>
+            <h1>{t('routine.onb.title')}</h1>
             <p className="lead">{t('routine.onb.lead')}</p>
             <fieldset className="pick-two" aria-label={t('routine.set.title')}>
               {([true, false] as const).map((on) => (
@@ -387,7 +402,7 @@ export function OnboardingApp() {
             className="ghost"
             title={t('onboarding.keys')}
             aria-keyshortcuts="ArrowLeft"
-            onClick={() => setPage(page - 1)}
+            onClick={() => goPage(page - 1)}
           >
             {t('onboarding.prev')}
           </button>
@@ -402,7 +417,7 @@ export function OnboardingApp() {
             className="primary"
             title={t('onboarding.keys')}
             aria-keyshortcuts="ArrowRight"
-            onClick={() => setPage(page + 1)}
+            onClick={() => goPage(page + 1)}
           >
             {t('onboarding.next')}
           </button>
