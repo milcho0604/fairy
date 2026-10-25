@@ -13,6 +13,7 @@ OUT=/tmp/fairy-185 LANG_UNDER_TEST=ko node scripts/dev/bubble-house.mjs # #185: 
 node scripts/dev/pet-moves.mjs                     # 움직임과 입력이 겹칠 때: 뛰다 잡기, 걷다 크기 바꾸기, 끄는 동안 온 답, 친구 자리, 숨긴 동안 온 친구 (PASS/FAIL)
 OUT=/tmp/jj-shots node scripts/dev/panel.mjs        # 패널: 할 일 넣기, 끝내기, 되돌리기, 밥, 빠른 입력
 OUT=/tmp/jj-shots node scripts/dev/settings.mjs     # 설정 창: 이름, 크기, 돌아다니기
+OUT=/tmp/fairy-settings LANG_UNDER_TEST=ko node scripts/dev/settings-polish.mjs # #149/#144: 검색 동의어, 탭별 스크롤, 시작 안내 높이 (en도 실행; 앱 직접 실행, BASELINE=1은 이전 빌드 측정)
 OUT=<레포 밖 폴더> node scripts/dev/panel-resize.mjs  # 패널 크기 손잡이 (#144): 끌기, 범위, 기억, 화면 밖 값, 폭 320/360/560 넘침 (PASS/FAIL, 앱을 직접 띄우고 데이터 폴더를 지운다)
 OUT=<레포 밖 폴더> node scripts/dev/keep-drafts.mjs  # 쓰던 글과 보던 위치 (#145): 패널 고정 핀, 일정, 빠른 입력, 할 일, 채팅 글과 그림의 보관과 복원, 채팅 실패 뒤 질문 복원과 다시 묻기(가짜 claude), 탭 전환 뒤 검색어, 날짜, 스크롤, 가로 넘침 (PASS/FAIL, ONLY=panel|quick|chat 으로 한쪽만, 데이터 폴더와 HOME 은 임시 폴더라 끝나면 지운다)
 OUT=<레포 밖 폴더> LANG_UNDER_TEST=ko|en node scripts/dev/chat-usability.mjs  # 채팅 창 사용성 (#147): 긴 답 위쪽 맞춤과 아래로 단추, 짧은 답과 스트리밍 따라가기, 기다리는 중 경과 시간과 Enter 안내, 그림 아닌 파일 안내, 답 아래 단추 상시 노출, 이름 바꾸기 실패 안내, ↑ 안내, 글자 크기, 폭 320과 600 x 밝음과 어두움 (가짜 claude, SKIP_MINUTE=1 이면 1분 넘는 대기 확인 생략, COMPARE=before|after JJ_ROOT=<체크아웃> 이면 전후 그림 재료만)

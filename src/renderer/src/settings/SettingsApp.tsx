@@ -91,13 +91,15 @@ export function SettingsApp() {
   // 탭마다 맞은 칸 수 (찾는 중에 탭 옆에 보인다). 다시 그리기를 줄이려고 글로 둔다
   const [hitKey, setHitKey] = useState('');
   const mainRef = useRef<HTMLElement>(null);
+  const scrollPositions = useRef<Record<string, number>>({});
+  const scrollView = useRef<string>(tab);
+  const scrollQuery = useRef('');
   const searchRef = useRef<HTMLInputElement>(null);
   const searching = query.trim() !== '';
 
   const setTab = (next: SettingsTab, focusTab = false) => {
     setTabState(next);
-    mainRef.current?.scrollTo({ top: 0 });
-    if (focusTab) tabRefs.current[next]?.focus();
+    if (focusTab) tabRefs.current[next]?.focus({ preventScroll: true });
   };
   /** 탭을 누르면 찾기를 끝내고 그 탭으로 */
   const pickTab = (next: SettingsTab, focusTab = false) => {
@@ -130,7 +132,17 @@ export function SettingsApp() {
           sec,
           groups,
           title: sec.querySelector(':scope > h2')?.textContent ?? '',
-          rows: groups.map((g) => g.map((k) => k.textContent ?? '').join(' ')),
+          rows: groups.map((g) =>
+            g
+              .map((k) =>
+                [
+                  k.textContent ?? '',
+                  k.dataset.search ?? '',
+                  ...[...k.querySelectorAll<HTMLElement>('[data-search]')].map((e) => e.dataset.search ?? ''),
+                ].join(' '),
+              )
+              .join(' '),
+          ),
         };
       }),
     );
@@ -146,6 +158,15 @@ export function SettingsApp() {
     panels.forEach((panel, i) => {
       panel.hidden = searching ? !counts[i] : panel.dataset.tab !== tab;
     });
+    // hidden을 바꾼 뒤 복원해야 짧은 탭의 높이에 잘리지 않는다.
+    // 검색 위치는 따로 두어 검색을 끝내도 원래 탭의 위치가 남게 한다.
+    const view = searching ? 'search' : tab;
+    if (scrollView.current !== view) {
+      scrollView.current = view;
+      main.scrollTop = scrollPositions.current[view] ?? 0;
+    }
+    if (searching && scrollQuery.current !== query) main.scrollTop = 0;
+    scrollQuery.current = query;
     setNoHit(searching && r.every((x) => !x.show));
     setHitKey(searching ? counts.join(',') : '');
   });
@@ -184,7 +205,6 @@ export function SettingsApp() {
       e.preventDefault();
       if (searchingNow.current) setQuery('');
       setTabState(next);
-      mainRef.current?.scrollTo({ top: 0 });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -353,7 +373,12 @@ export function SettingsApp() {
           })}
         </div>
 
-        <main ref={mainRef}>
+        <main
+          ref={mainRef}
+          onScroll={(e) => {
+            scrollPositions.current[scrollView.current] = e.currentTarget.scrollTop;
+          }}
+        >
           {noHit && (
             <p className="search-empty" role="status">
               {t('settings.search.empty', { q: query.trim() })}

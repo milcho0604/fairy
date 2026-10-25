@@ -48,3 +48,33 @@ test('풀이 글은 앞 줄에, 풀이 뒤 단추 줄은 그 풀이에 붙는다
   assert.deepEqual(groupRows(['other', 'action']), [0, 1]);
   assert.deepEqual(groupRows([]), []);
 });
+
+for (const [label, queries] of [
+  ['컴퓨터를 켜면 같이 켜기', ['자동 실행', '자동실행', '시작프로그램', 'autostart', 'launch at login']],
+  ['Open at login', ['자동 실행', 'startup', 'auto start']],
+  ['단축키 기본으로', ['초기화', '리셋', 'restore defaults']],
+  ['Reset coins', ['초기화', '리셋']],
+  ['AI 기록 지우기', ['삭제', 'delete', 'erase']],
+  ['Forget', ['삭제', '지우기']],
+  ['앱 끝내기', ['종료', 'quit', 'close app']],
+] as const) {
+  test(`사용자 말로 설정 찾기: ${label}`, () => {
+    for (const q of queries) {
+      const result = searchSettings([{ title: '설정', rows: [label, '다른 설정'] }], q);
+      assert.deepEqual(result[0]?.rows, [true, false], q);
+    }
+  });
+}
+
+test('동의어를 찾아도 여러 낱말은 같은 줄에 있어야 한다', () => {
+  const sections = [{ title: '편의', rows: ['컴퓨터를 켜면 같이 켜기', 'AI 기록 지우기'] }];
+  assert.deepEqual(searchSettings(sections, '편의 자동 실행')[0]?.rows, [true, false]);
+  assert.equal(searchSettings(sections, '자동 실행 삭제')[0]?.show, false);
+});
+
+test('기본 모델이나 새로 시작하기를 초기화·자동 실행으로 오해하지 않는다', () => {
+  const sections = [{ title: 'AI', rows: ['기본 모델', 'Default model', '새 대화 시작', 'Start a chat'] }];
+  for (const q of ['초기화', '자동 실행', 'reset', 'autostart']) {
+    assert.equal(searchSettings(sections, q)[0]?.show, false, q);
+  }
+});

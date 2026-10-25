@@ -261,7 +261,12 @@ function ShortcutRow({
           {recording ? t('settings.shortcut.recordingBtn') : t('settings.shortcut.change')}
         </button>
         {value !== SHORTCUT_DEFAULTS[id] && !recording && (
-          <button type="button" className="link" onClick={() => onSave(SHORTCUT_DEFAULTS[id])}>
+          <button
+            type="button"
+            className="link"
+            data-search="restore defaults"
+            onClick={() => onSave(SHORTCUT_DEFAULTS[id])}
+          >
             {t('settings.shortcut.default')}
           </button>
         )}
