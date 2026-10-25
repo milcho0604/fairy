@@ -26,6 +26,16 @@ export async function main(expr) {
 }
 
 const pages = {};
+/** 재시작/종료 전에 inspector도 닫는다. 연결이 남으면 Node가 debugger 종료를 기다린다. */
+export function disconnect() {
+  mainConn?.ws.close();
+  mainConn = undefined;
+  for (const [name, connection] of Object.entries(pages)) {
+    connection.ws.close();
+    delete pages[name];
+  }
+}
+
 export async function page(name) {
   for (let i = 0; i < 40; i++) {
     const list = await (await fetch(`http://localhost:${process.env.JJ_PAGE_PORT ?? 9344}/json`)).json();

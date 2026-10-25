@@ -6,7 +6,7 @@ import type { CustomProviderInput } from './ai/providers.ts';
 import type { AiProvider, AiStatus, ImageAttachment } from './ai/types.ts';
 import type { Activity } from './behavior.ts';
 import type { BetaReport } from './beta-stats.ts';
-import type { BubbleLayout } from './bubble-layout.ts';
+import type { BubbleAnchor, BubbleLayout } from './bubble-layout.ts';
 import type { ChatLookView } from './chat-look.ts';
 import type { ChatImage, ChatState } from './chat-state.ts';
 import type { ThreadMeta } from './chat-threads.ts';
@@ -75,6 +75,7 @@ export const IPC = {
   bubble: 'pet:bubble',
   /** 펫 화면 → 메인: 말풍선을 재 보니 이 크기다 (창을 키워 달라) */
   bubbleSize: 'pet:bubble-size',
+  bubbleAnchor: 'pet:bubble-anchor',
   /** 펫 화면 → 메인: 말풍선이 닫혔다 (버튼 id, 'timeout', 'dismiss') */
   bubbleClosed: 'pet:bubble-closed',
   /** 메인 → 펫 화면: 창 안에서 펫과 말풍선 자리 */
@@ -658,6 +659,7 @@ export interface PetBridge {
   onBubble(listener: (bubble: BubbleMessage | null) => void): void;
   onLayout(listener: (layout: BubbleLayout) => void): void;
   bubbleSize(id: string, width: number, height: number): void;
+  bubbleAnchor(anchor: BubbleAnchor): void;
   bubbleClosed(id: string, action: string): void;
   /** 한가하니 행동을 골라 달라. ask 는 펫 몸과 상태 (제자리 몸짓 고르기, shared/moves.ts) */
   activityRequest(ask?: MoveAsk): void;
