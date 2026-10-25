@@ -4,10 +4,11 @@ import {
   type IpcMainEvent,
   type IpcMainInvokeEvent,
   ipcMain,
+  screen,
   shell,
   systemPreferences,
 } from 'electron';
-import { t } from '../shared/i18n/index.ts';
+import { getLang, t } from '../shared/i18n/index.ts';
 import { ONBOARD, type OnboardAi, type OnboardSnapshot } from '../shared/ipc.ts';
 import type { Settings } from '../shared/settings.ts';
 import { isStarterId } from '../shared/starter-pets.ts';
@@ -82,9 +83,12 @@ export function createOnboarding(o: {
       focusWindow(win);
       return;
     }
+    const area = screen.getPrimaryDisplay().workArea;
     win = new BrowserWindow({
-      width: 480,
-      height: 560,
+      width: Math.min(480, area.width),
+      // 첫 쪽과 마지막 단축키 안내까지 들어갈 높이. 영어는 줄바꿈이 더 많다.
+      // 작은 화면에서는 본문만 스크롤하고 아래의 다음/시작 단추는 화면 안에 남긴다.
+      height: Math.min(getLang() === 'en' ? 664 : 580, area.height),
       resizable: false,
       title: t('main.onboardingTitle'),
       show: false,

@@ -2,6 +2,44 @@
 // 비교는 메모 찾기와 같다: 대소문자 무시, 풀린 한글 합치기, 조합 중인 마지막 글자는 넓게.
 import { noteQuery } from './note-store.ts';
 
+// 화면에 실제로 있는 동작에만 검색어를 붙인다. "기본 모델" 같은 설명을 초기화로 찾지 않도록
+// 막연한 "기본/default" 대신 동작 이름을 쓴다. 한국어·영어 화면에서 같은 말로 찾을 수 있다.
+const ALIASES = [
+  {
+    labels: ['컴퓨터를 켜면 같이 켜기', 'open at login'],
+    words:
+      '자동 실행 자동실행 시작 프로그램 시작프로그램 부팅 로그인 startup autostart auto start launch at login',
+  },
+  {
+    labels: ['기본값으로', '기본으로', '초기화', 'reset', 'restore defaults'],
+    words: '초기화 리셋 기본값 기본 설정 reset restore defaults',
+  },
+  {
+    labels: [
+      '지우기',
+      '지워',
+      '잊기',
+      '삭제',
+      'delete',
+      'forget',
+      'remove',
+      'clear history',
+      'clear ai history',
+    ],
+    words: '삭제 지우기 지우다 잊기 delete remove erase forget clear',
+  },
+  {
+    labels: ['앱 종료', '끝내기', 'quit', 'exit'],
+    words: '종료 끝내기 앱 닫기 quit exit close app',
+  },
+] as const;
+
+function searchable(text: string): string {
+  const folded = text.normalize('NFC').toLowerCase();
+  const words = ALIASES.filter((a) => a.labels.some((label) => folded.includes(label))).map((a) => a.words);
+  return [folded, ...words].join(' ');
+}
+
 /** 칸 하나: 제목과 그 안의 줄들(이름, 풀이 글 전부) */
 export interface SearchSection {
   title: string;
@@ -27,10 +65,9 @@ export function searchSettings(
   if (words.length === 0) return sections.map((s) => ({ show: true, rows: s.rows.map(() => true) }));
   // 마지막 낱말만 조합 중일 수 있다
   const res = words.map((w, i) => noteQuery(w, composing && i === words.length - 1) as RegExp);
-  const fold = (s: string) => s.normalize('NFC').toLowerCase();
   return sections.map((s) => {
-    const title = fold(s.title);
-    const rowTexts = s.rows.map(fold);
+    const title = searchable(s.title);
+    const rowTexts = s.rows.map(searchable);
     // 낱말마다: 제목이나 그 줄에 있으면 된다
     const rowHit = rowTexts.map((row) => res.every((re) => re.test(title) || re.test(row)));
     const titleHit = res.every((re) => re.test(title));
