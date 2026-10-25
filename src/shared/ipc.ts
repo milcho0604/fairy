@@ -252,6 +252,8 @@ export interface OnboardAi {
 export interface OnboardSnapshot {
   settings: Settings;
   platform: NodeJS.Platform;
+  /** 설치판이 이 컴퓨터의 자동 실행 항목을 관리할 수 있는지. 격리 시험은 제외한다. */
+  canLaunchAtLogin: boolean;
   /** 화면 기록 권한 (맥). 윈도우는 늘 granted */
   screen: 'granted' | 'denied' | 'not-determined' | 'restricted' | 'unknown';
   /** 그림으로 들어 있는 기본 캐릭터 (밀크, 초코) */

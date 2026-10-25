@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { timeLabel } from '../../../shared/event-store.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PanelAddResult, PanelState } from '../../../shared/ipc.ts';
@@ -21,7 +21,7 @@ import { dueToSend, minuteToSend } from './due-input.ts';
 import { CheckIcon, PlayIcon, RepeatIcon, SearchIcon, StarIcon, StepsIcon } from './icons.tsx';
 import { isEsc, takeEsc } from './keys.ts';
 import { MoreRow } from './more.tsx';
-import { pageOf } from './paging.ts';
+import { pageOf, pagesForIndex } from './paging.ts';
 import { PinButton, PinMark, usePinMenu } from './pin.tsx';
 import { RemindButton, RemindSheet } from './RemindPicker.tsx';
 import { useSurface } from './surface.tsx';
@@ -81,6 +81,9 @@ export function TodoTab({
     if (legacy && !text) setText(legacy);
   }, []);
   const [error, setError] = useState('');
+  const [recentId, setRecentId] = useState<number>();
+  const [pendingId, setPendingId] = useState<number>();
+  const [highlightId, setHighlightId] = useState<number>();
   // 보던 위치 (#145): 탭을 갔다 와도, 패널을 닫았다 열어도 찾는 말, 태그, 완료 목록, 쪽 수가 그대로
   const [kept] = useState(() => viewNow().todo);
   const [showDone, setShowDone] = useState(kept.showDone);
@@ -113,6 +116,37 @@ export function TodoTab({
     }));
   }, [finding, query, picked, showDone, pageKey, pages]);
   const page = pageOf(shown, pages);
+  const recent = s.open.find((todo) => todo.id === recentId);
+  const recentHidden = !!recent && !shown.some((todo) => todo.id === recent.id);
+  useEffect(() => {
+    if (recentId === undefined) return;
+    const timer = setTimeout(() => {
+      setRecentId(undefined);
+      setPendingId(undefined);
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [recentId]);
+  useEffect(() => {
+    if (highlightId === undefined) return;
+    const timer = setTimeout(() => setHighlightId(undefined), 1000);
+    return () => clearTimeout(timer);
+  }, [highlightId]);
+  useLayoutEffect(() => {
+    if (pendingId === undefined) return;
+    const index = shown.findIndex((todo) => todo.id === pendingId);
+    // 검색과 태그는 유지한다. 가려진 항목은 안내의 보기 단추로 직접 열 수 있다.
+    if (index < 0) return;
+    const needed = pagesForIndex(index);
+    if (pages < needed) {
+      setPaging({ key: pageKey, pages: needed });
+      return;
+    }
+    const row = listRef.current?.querySelector<HTMLElement>(`li.todo[data-id="${pendingId}"]`);
+    if (!row) return;
+    row.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+    setHighlightId(pendingId);
+    setPendingId(undefined);
+  }, [pendingId, shown, pages, pageKey]);
   const canFind = s.open.length >= FIND_FROM || finding;
   const openFind = () => {
     setFinding(true);
@@ -145,6 +179,16 @@ export function TodoTab({
     }
     if (value === text) setText('');
     setError('');
+    const addedId =
+      r.kind === 'todo'
+        ? r.id
+        : r.kind === 'many'
+          ? r.items.findLast((item) => item.kind === 'todo')?.id
+          : undefined;
+    if (addedId !== undefined) {
+      setRecentId(addedId);
+      setPendingId(addedId);
+    }
     onAdded(r, value);
   };
 
@@ -255,6 +299,38 @@ export function TodoTab({
           )}
         </div>
         {error && <p className="hint error">{error}</p>}
+        {recent && (
+          <div className="todo-added-notice" role="status">
+            <span title={recent.title}>
+              {t(recentHidden ? 'panel.todo.addedHidden' : 'panel.todo.added', { title: recent.title })}
+            </span>
+            {recentHidden && (
+              <button
+                type="button"
+                className="link"
+                onClick={() => {
+                  setFinding(false);
+                  setQuery('');
+                  setTag(null);
+                  setPendingId(recent.id);
+                }}
+              >
+                {t('panel.todo.addedShow')}
+              </button>
+            )}
+            <button
+              type="button"
+              className="find-clear"
+              aria-label={t('panel.todo.addedDismiss')}
+              onClick={() => {
+                setRecentId(undefined);
+                setPendingId(undefined);
+              }}
+            >
+              ×
+            </button>
+          </div>
+        )}
         {finding && (
           <div className="find-row">
             <SearchIcon />
@@ -299,6 +375,7 @@ export function TodoTab({
               today={s.today}
               pinEnd={todo.id === lastPinned && shown.length > 1 && shown.at(-1)?.id !== todo.id}
               doing={s.doing.includes(todo.id)}
+              highlighted={todo.id === highlightId}
               onComplete={() => onComplete(todo)}
               onRemoved={() => onRemoved(todo)}
               {...(wide ? { onSelect: () => select(todo.id), selected: todo.id === selected?.id } : {})}
@@ -376,12 +453,15 @@ export function TodoRow({
   doing,
   onSelect,
   selected,
+  highlighted,
 }: {
   todo: Todo;
   today: string;
   /** 넓은 배치: 줄을 누르면 상세 칸에 연다 (줄 끝 단추는 줄이고 고치기는 상세 칸에서) */
   onSelect?: () => void;
   selected?: boolean;
+  /** 방금 추가한 줄을 잠깐 표시한다. 입력 포커스는 옮기지 않는다. */
+  highlighted?: boolean;
   /** 진행 중으로 표시한 할 일 (펫 머리 위 말풍선, 이슈 #124) */
   doing?: boolean;
   onComplete: () => void;
@@ -500,7 +580,7 @@ export function TodoRow({
   return (
     <>
       <li
-        className={`todo ${pinned ? 'pinned' : ''} ${pinEnd ? 'pin-end' : ''} ${selected ? 'selected' : ''}`}
+        className={`todo ${pinned ? 'pinned' : ''} ${pinEnd ? 'pin-end' : ''} ${selected ? 'selected' : ''} ${highlighted ? 'just-added' : ''}`}
         data-id={todo.id}
         onContextMenu={compact ? undefined : pinMenu.onContextMenu}
       >

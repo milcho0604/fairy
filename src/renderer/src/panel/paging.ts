@@ -4,6 +4,11 @@
 /** 한 번에 더 그리는 수 */
 export const LIST_PAGE = 100;
 
+/** 0부터 세는 줄을 포함하려면 몇 쪽이 필요한지. 찾지 못했으면 첫 쪽. */
+export function pagesForIndex(index: number): number {
+  return Math.max(1, Math.ceil((index + 1) / LIST_PAGE));
+}
+
 /** pages 쪽까지 보일 것과 남은 수 */
 export function pageOf<T>(list: readonly T[], pages: number): { shown: T[]; rest: number } {
   const n = Math.max(1, Math.floor(pages)) * LIST_PAGE;
