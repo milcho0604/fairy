@@ -54,7 +54,7 @@ try{
  await check('방향키 이동도 쪽을 저장',async()=>assert.equal(await current(p),2));
  await stop();app=launch();await boot();p=await page('onboarding');await until(()=>p.ev('!!document.querySelector("main h1")'),'restart content');
  await check('안내 중 앱 종료/재시작 뒤 3쪽 자동 이어보기',async()=>{assert.equal(await current(p),2);assert.equal(await main('__jj.settings.get().onboarded'),false);assert.equal(await main('!!__jj.journey.state.start'),false);});
- await spy();await next(p);
+ await spy();await next(p);await next(p);
  await check('마지막 쪽에 도착만 해서는 완료되지 않음',async()=>assert.equal(await main('__jj.settings.get().onboarded'),false));
  await next(p);await until(()=>main('!__jj.onboarding.window'),'finished');
  await check('시작 단추는 완료·쪽 초기화·첫 여정 한 번',async()=>{assert.equal(await main('__jj.settings.get().onboarded'),true);assert.equal(await main('__jj.settings.get().onboardPage'),0);assert.equal(await main('doneCalls'),1);assert.ok(await main('__jj.journey.state.start'));});

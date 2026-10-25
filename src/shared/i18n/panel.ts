@@ -77,6 +77,10 @@ export const ko = {
   'panel.ago.yesterday': '어제',
   'panel.add.failed': '못 넣었어',
   'panel.todo.add': '할 일 추가',
+  'panel.todo.added': '할 일을 넣었어: {title}',
+  'panel.todo.addedHidden': '할 일을 넣었어. 지금 검색이나 태그에는 안 보여: {title}',
+  'panel.todo.addedShow': '보기',
+  'panel.todo.addedDismiss': '추가 안내 닫기',
   'panel.todo.placeholder': '할 일 추가 (예: 내일 보고서!)',
   'panel.todo.empty':
     '할 일이 없어. 위에 적어 봐. "내일", "!"를 붙이면 마감과 중요 표시, "매일", "평일", "매주", "매주 월요일"로 시작하면 반복이 돼.',
@@ -309,6 +313,10 @@ export const en: Translation<typeof ko> = {
   'panel.ago.yesterday': 'Yesterday',
   'panel.add.failed': "Couldn't add it",
   'panel.todo.add': 'Add a to-do',
+  'panel.todo.added': 'Added a to-do: {title}',
+  'panel.todo.addedHidden': 'Added a to-do, hidden by the current search or tag: {title}',
+  'panel.todo.addedShow': 'Show',
+  'panel.todo.addedDismiss': 'Dismiss added to-do message',
   'panel.todo.placeholder': 'Add a to-do (e.g. report friday!)',
   'panel.todo.empty':
     'Nothing to do. Write one above. Add "today", "tomorrow" or a day like "friday" for a due date, and "!" to mark it important. For repeats, use "daily", "weekdays", "weekly" or "every monday".',

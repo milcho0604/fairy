@@ -4,7 +4,7 @@ import { formatBytes } from '../../../shared/bytes.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { OnboardAi, OnboardSnapshot } from '../../../shared/ipc.ts';
 import { ONBOARD_PAGES as PAGES } from '../../../shared/onboarding-page.ts';
-import { cleanPetName, PET_KINDS, PET_NAME_MAX } from '../../../shared/settings.ts';
+import { cleanPetName, PET_KINDS, PET_NAME_MAX, type Settings } from '../../../shared/settings.ts';
 import { acceleratorLabel } from '../../../shared/shortcut.ts';
 import { isCurrentStarter, starterOf } from '../../../shared/starter-pets.ts';
 import { PetFace } from '../PetFace.tsx';
@@ -34,6 +34,7 @@ export function OnboardingApp() {
   const [nameNote, setNameNote] = useState('');
   /** 만나는 시간 칸 아래 한 줄 (시작과 끝이 같을 때) */
   const [routineNote, setRoutineNote] = useState('');
+  const [preferenceError, setPreferenceError] = useState('');
   /** 설치된 AI 확인은 몇 초 걸릴 수 있어 따로 받는다. 오기 전에는 원래 안내를 보인다 */
   const [ai, setAi] = useState<OnboardAi>();
 
@@ -130,12 +131,23 @@ export function OnboardingApp() {
     setSnap((v) => v && { ...v, settings: next });
   };
 
+  const setPreferences = async (patch: Partial<Settings>) => {
+    try {
+      const next = await bridge.set(patch);
+      setSnap((v) => v && { ...v, settings: next });
+      setPreferenceError('');
+    } catch {
+      setPreferenceError(t('onboarding.setup.failed'));
+    }
+  };
+
   // 쪽을 넘기면 화면 읽기 프로그램이 몇 쪽인지와 그 쪽 제목을 읽는다 (다음 단추에 커서가 남아 바뀐 것을 몰랐다)
   const pageTitles = [
     t('onboarding.hello.title'),
     t('routine.onb.title'),
     t('onboarding.look.title'),
     t('onboarding.tips.title'),
+    t('onboarding.setup.title'),
   ];
 
   return (
@@ -391,6 +403,60 @@ export function OnboardingApp() {
               <dt>{t('onboarding.tips.settings')}</dt>
               <dd>{t('onboarding.tips.settingsDesc', { mac })}</dd>
             </dl>
+          </section>
+        )}
+
+        {page === 4 && (
+          <section>
+            <h1>{t('onboarding.setup.title')}</h1>
+            <p className="lead">{t('onboarding.setup.lead')}</p>
+            <div className="onboard-preferences">
+              <label className={snap.canLaunchAtLogin ? '' : 'unavailable'}>
+                <input
+                  type="checkbox"
+                  checked={s.launchAtLogin}
+                  disabled={!snap.canLaunchAtLogin}
+                  onChange={(e) => void setPreferences({ launchAtLogin: e.currentTarget.checked })}
+                />
+                <span>
+                  <strong>{t('settings.launchAtLogin')}</strong>
+                  <small>
+                    {t(
+                      snap.canLaunchAtLogin
+                        ? 'onboarding.setup.launchHint'
+                        : 'onboarding.setup.launchUnavailable',
+                    )}
+                  </small>
+                </span>
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={s.sysMonitor}
+                  onChange={(e) => void setPreferences({ sysMonitor: e.currentTarget.checked })}
+                />
+                <span>
+                  <strong>{t(mac ? 'settings.sysMonitor' : 'settings.sysMonitorWin')}</strong>
+                  <small>{t('onboarding.setup.statusHint')}</small>
+                </span>
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={s.typeAlong}
+                  onChange={(e) => void setPreferences({ typeAlong: e.currentTarget.checked })}
+                />
+                <span>
+                  <strong>{t('onboarding.setup.typing')}</strong>
+                  <small>{t('onboarding.setup.typingHint')}</small>
+                </span>
+              </label>
+            </div>
+            {preferenceError && (
+              <p className="routine-note" role="alert">
+                {preferenceError}
+              </p>
+            )}
           </section>
         )}
       </main>

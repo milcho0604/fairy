@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import {
+  app,
   BrowserWindow,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
@@ -10,6 +11,7 @@ import {
 } from 'electron';
 import { getLang, t } from '../shared/i18n/index.ts';
 import { ONBOARD, type OnboardAi, type OnboardSnapshot } from '../shared/ipc.ts';
+import { ownsLoginItem } from '../shared/login-item.ts';
 import type { Settings } from '../shared/settings.ts';
 import { isStarterId } from '../shared/starter-pets.ts';
 import { devRendererUrl } from './dev-url.ts';
@@ -41,6 +43,7 @@ export function createOnboarding(o: {
       ? {
           settings: settings.get(),
           platform: process.platform,
+          canLaunchAtLogin: ownsLoginItem(app.isPackaged, process.env.JJ_USER_DATA),
           screen:
             process.platform === 'darwin'
               ? (systemPreferences.getMediaAccessStatus('screen') as OnboardSnapshot['screen'])
@@ -55,9 +58,12 @@ export function createOnboarding(o: {
     if (ours(e) && isStarterId(id)) library.fromStarter(id);
     return settings.get();
   });
-  ipcMain.handle(ONBOARD.set, (e, patch: Partial<Settings>) =>
-    ours(e) ? settings.set(patch) : settings.get(),
-  );
+  ipcMain.handle(ONBOARD.set, (e, patch: Partial<Settings>) => {
+    if (!ours(e)) return settings.get();
+    const allowed = { ...patch };
+    if (!ownsLoginItem(app.isPackaged, process.env.JJ_USER_DATA)) delete allowed.launchAtLogin;
+    return settings.set(allowed);
+  });
   ipcMain.handle(ONBOARD.ai, (e) => (ours(e) ? o.ai() : undefined));
   ipcMain.on(ONBOARD.openMaker, (e) => {
     if (ours(e)) o.openMaker();

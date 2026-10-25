@@ -6,6 +6,7 @@ import { app, type BrowserWindow, net } from 'electron';
 import { galleryBase } from '../shared/gallery.ts';
 import { t } from '../shared/i18n/index.ts';
 import { cleanAuthor, DEFAULT_LICENSE, isPetLicense } from '../shared/pet-share.ts';
+import { isStarterId } from '../shared/starter-pets.ts';
 import { adoptPet, exportPet } from './backup.ts';
 import { createGallery } from './gallery.ts';
 
@@ -18,6 +19,8 @@ export function galleryHandlers(log: (tag: string, ...rest: unknown[]) => void) 
   return {
     list: () => gallery.list(),
     async adopt(id: unknown, asFriend: boolean): Promise<{ ok: boolean; message: string }> {
+      // 내장 그림 친구를 갤러리에서 다시 받으면 같은 펫의 복사본이 생긴다. IPC 요청도 막는다.
+      if (isStarterId(id)) return { ok: false, message: t('settings.gallery.builtInHint') };
       // 두 번 눌러 같은 펫을 두 번 받지 않게
       if (busy) return { ok: false, message: '' };
       busy = true;

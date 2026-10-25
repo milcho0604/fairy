@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { LIST_PAGE, pageOf } from './paging.ts';
+import { LIST_PAGE, pageOf, pagesForIndex } from './paging.ts';
 
 test('긴 목록은 앞에서부터 한 쪽씩: 보이는 것과 남은 수 (버그잡이 4: 메모 5천 개를 다 그리던 것)', () => {
   const list = Array.from({ length: 5000 }, (_, i) => i);
@@ -15,4 +15,15 @@ test('긴 목록은 앞에서부터 한 쪽씩: 보이는 것과 남은 수 (버
   // 넘친 쪽 수, 0 쪽도 안전하게
   assert.equal(pageOf(list, 999).rest, 0);
   assert.equal(pageOf(list, 0).shown.length, LIST_PAGE);
+});
+
+test('새로 추가한 줄을 포함하는 쪽 수의 경계', () => {
+  assert.equal(pagesForIndex(-1), 1);
+  assert.equal(pagesForIndex(0), 1);
+  assert.equal(pagesForIndex(LIST_PAGE - 1), 1);
+  assert.equal(pagesForIndex(LIST_PAGE), 2);
+  assert.equal(pagesForIndex(2 * LIST_PAGE - 1), 2);
+  assert.equal(pagesForIndex(2 * LIST_PAGE), 3);
+  const items = Array.from({ length: 250 }, (_, i) => i);
+  assert.equal(pageOf(items, pagesForIndex(249)).shown.at(-1), 249);
 });

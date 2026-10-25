@@ -4,6 +4,14 @@ import type { Translation } from './types.ts';
 // 첫 실행 안내 창
 export const ko = {
   'onboarding.pages': (v: { page: number; total: number }) => `${v.total}쪽 중 ${v.page}쪽`,
+  'onboarding.setup.title': '시작할 때 정하기',
+  'onboarding.setup.lead': '원하는 것만 켜 줘. 나중에 설정에서 바꿀 수 있어.',
+  'onboarding.setup.launchHint': '컴퓨터에 로그인하면 페어리가 자동으로 떠.',
+  'onboarding.setup.launchUnavailable': '설치한 페어리 앱에서 바꿀 수 있어.',
+  'onboarding.setup.statusHint': '작은 아이콘으로 컴퓨터의 바쁜 정도를 보여 줘.',
+  'onboarding.setup.typing': '같이 타자 치기',
+  'onboarding.setup.typingHint': '네가 입력하면 페어리도 작은 키보드를 두드려. 입력한 글자는 읽지 않아.',
+  'onboarding.setup.failed': '저장하지 못했어. 다시 눌러 줘.',
   'onboarding.hello.title': '반가워! 화면 위에서 같이 일할 페어리야.',
   'onboarding.hello.lead': '할 일을 끝내면 코인이 쌓이고, 코인으로 밥과 장난감을 사 줄 수 있어.',
   'onboarding.hello.name': '이름',
@@ -48,6 +56,15 @@ export const ko = {
 };
 
 export const en: Translation<typeof ko> = {
+  'onboarding.setup.title': 'Settle in',
+  'onboarding.setup.lead': 'Turn on what you want. You can change these in Settings later.',
+  'onboarding.setup.launchHint': 'Fairy opens automatically when you log in to your computer.',
+  'onboarding.setup.launchUnavailable': 'You can change this in the installed fairy app.',
+  'onboarding.setup.statusHint': 'A small icon shows how busy your computer is.',
+  'onboarding.setup.typing': 'Type together',
+  'onboarding.setup.typingHint':
+    "Your fairy taps a tiny keyboard when you type. It doesn't read what you type.",
+  'onboarding.setup.failed': "Couldn't save. Please try again.",
   'onboarding.pages': (v) => `Page ${v.page} of ${v.total}`,
   'onboarding.hello.title': "Hi! I'm your new buddy, here on your screen to work alongside you.",
   'onboarding.hello.lead': 'Finish to-dos to earn coins, then spend them on food and toys for me.',

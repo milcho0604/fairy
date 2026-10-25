@@ -130,7 +130,7 @@ try {
     await sleep(400);
     const bounds=await main('__jj.onboarding.window.getBounds()');
     if (!baseline) await check(`${size}: 첫 안내 창 크기`, async () => {assert.equal(bounds.height,size==='default'?(lang==='en'?664:580):500); assert.equal(bounds.width,size==='default'?480:360);});
-    for (let p=0;p<4;p++) {
+    for (let p=0;p<(baseline?4:5);p++) {
       await onboard.ev('document.activeElement?.blur()');
       if (p>0) {await onboard.ev('document.querySelector("footer .primary").click()'); await sleep(200);}
       const m=await onboard.ev(`(() => {const e=document.querySelector('main'), f=document.querySelector('footer').getBoundingClientRect(); return {page:${p},size:${JSON.stringify(size)},viewport:[innerWidth,innerHeight],client:e.clientHeight,scroll:e.scrollHeight,footerBottom:f.bottom,footerTop:f.top,over:document.documentElement.scrollWidth>innerWidth};})()`);

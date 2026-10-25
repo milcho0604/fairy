@@ -102,23 +102,32 @@ export function Gallery({
               <small className="gallery-by">
                 {t('settings.gallery.by', { author: authorOf(p.author), license: LICENSE_LABEL[p.license] })}
               </small>
+              {isStarterId(p.id) && (
+                <small className="gallery-built-in">{t('settings.gallery.builtInHint')}</small>
+              )}
               <div className="gallery-actions">
                 <button
                   type="button"
                   className="ghost small"
-                  disabled={!!busy}
+                  disabled={!!busy || isStarterId(p.id)}
                   onClick={() => adopt(p.id, false)}
                 >
-                  {busy === p.id ? t('settings.gallery.busy') : t('settings.gallery.adopt')}
+                  {isStarterId(p.id)
+                    ? t('settings.gallery.builtIn')
+                    : busy === p.id
+                      ? t('settings.gallery.busy')
+                      : t('settings.gallery.adopt')}
                 </button>
-                <button
-                  type="button"
-                  className="ghost small"
-                  disabled={!!busy}
-                  onClick={() => adopt(p.id, true)}
-                >
-                  {t('settings.gallery.friend')}
-                </button>
+                {!isStarterId(p.id) && (
+                  <button
+                    type="button"
+                    className="ghost small"
+                    disabled={!!busy}
+                    onClick={() => adopt(p.id, true)}
+                  >
+                    {t('settings.gallery.friend')}
+                  </button>
+                )}
               </div>
             </li>
           ))}

@@ -289,8 +289,10 @@ export function createHome(o: HomeOptions) {
     };
     // 닫을 때는 본문이 beforeunload 로 쓰던 글(메모)을 저장하게 하고 닫는다 (BrowserWindow 는 저절로 했던 일)
     let closing: 'no' | 'waiting' | 'done' = 'no';
+    // 화면이 파괴되면 view.webContents도 비워진다. 닫는 중에는 처음의 WebContents를 붙잡아 둔다.
+    const closingContents = b.webContents;
     w.on('close', (ev) => {
-      if (closing === 'done' || b.webContents.isDestroyed()) return;
+      if (closing === 'done' || closingContents.isDestroyed()) return;
       ev.preventDefault();
       if (closing === 'waiting') return;
       closing = 'waiting';
@@ -300,14 +302,14 @@ export function createHome(o: HomeOptions) {
         closing = 'done';
         if (!w.isDestroyed()) w.close();
       };
-      b.webContents.once('destroyed', finish);
+      closingContents.once('destroyed', finish);
       setTimeout(finish, 2000).unref();
-      b.webContents.close({ waitForBeforeUnload: true });
+      closingContents.close({ waitForBeforeUnload: true });
     });
     w.on('closed', () => {
       unregister();
       detach();
-      if (!b.webContents.isDestroyed()) b.webContents.close();
+      if (!closingContents.isDestroyed()) closingContents.close();
     });
     const devUrl = devRendererUrl();
     if (devUrl) void b.webContents.loadURL(`${devUrl}/home.html${tab ? `#${tab}` : ''}`);
