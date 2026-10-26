@@ -14,6 +14,7 @@ declare global {
   interface Window {
     jjakkungLang?: string;
     jjakkungLineOverrides?: { ko?: Record<string, string>; en?: Record<string, string> };
+    jjakkungLanguage: import('../../shared/ipc.ts').LanguageEventsBridge;
   }
 }
 
@@ -26,13 +27,20 @@ export function initLang(titleKey?: I18nKey): void {
   setLineOverrides({ ko: mine?.ko ?? {}, en: mine?.en ?? {} });
   document.documentElement.lang = getLang();
   if (titleKey) document.title = t(titleKey);
+  unsubscribeLanguage?.();
+  unsubscribeLanguage = window.jjakkungLanguage.onChanged(applyResolvedLanguage);
 }
 
 let activeTitle: I18nKey | undefined;
+let unsubscribeLanguage: (() => void) | undefined;
 
 /** 설정에서 말 preference를 바꿨을 때 현재 창에 바로 반영한다. */
 export function applyLangPreference(pref: LangPref): void {
   const language = resolveLang(pref, navigator.languages.length ? navigator.languages : [navigator.language]);
+  applyResolvedLanguage(language);
+}
+
+export function applyResolvedLanguage(language: 'ko' | 'en'): void {
   setLang(language);
   document.documentElement.lang = language;
   if (activeTitle) document.title = t(activeTitle);

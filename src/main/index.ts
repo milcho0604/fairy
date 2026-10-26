@@ -1,6 +1,6 @@
 import { cpus, homedir } from 'node:os';
 import { join } from 'node:path';
-import { app, dialog, globalShortcut, Menu, powerMonitor, screen, session } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, Menu, powerMonitor, screen, session } from 'electron';
 import { ACHIEVEMENTS } from '../shared/achieve.ts';
 import { planTodos } from '../shared/ai/answer-todos.ts';
 import { pickLocal } from '../shared/ai/catalog.ts';
@@ -12,7 +12,7 @@ import { HIDE_SEEK, pickHideSpot } from '../shared/hide-seek.ts';
 import { panelTarget, reopenTarget } from '../shared/home-policy.ts';
 import { houseMenuKey, houseNewsKey, stowSayKey, stowStep } from '../shared/house-stow.ts';
 import { locale, t } from '../shared/i18n/index.ts';
-import { IPC, type PetStatus, type PlayKind } from '../shared/ipc.ts';
+import { IPC, LANGUAGE, type PetStatus, type PlayKind } from '../shared/ipc.ts';
 import { type FactKind, factsForAi } from '../shared/knows.ts';
 import { ownsLoginItem } from '../shared/login-item.ts';
 import { runnerLookOf } from '../shared/menu-runner.ts';
@@ -766,7 +766,12 @@ ready
         void pet.say({ kind: 'answer', text: voiced(stowSayKey(on)), ttlMs: 4000 });
     }
     settings.onChange((next, prev) => {
-      if (next.lang !== prev.lang) refreshLang();
+      if (next.lang !== prev.lang) {
+        const lang = refreshLang();
+        for (const window of BrowserWindow.getAllWindows()) {
+          if (!window.isDestroyed()) window.webContents.send(LANGUAGE.changed, lang);
+        }
+      }
       if (next.houseHidden !== prev.houseHidden) void applyHouseStow(next.houseHidden);
     });
     /** 공놀이(공이나 털실이 있어야), 산책. 노는 중이면 무시 */

@@ -344,6 +344,15 @@ export const SETTINGS = {
   power: 'settings:power',
 } as const;
 
+/** 설정 언어가 바뀌면 이미 열린 렌더러에도 즉시 알려 준다. */
+export const LANGUAGE = {
+  changed: 'app:language-changed',
+} as const;
+
+export interface LanguageEventsBridge {
+  onChanged(listener: (lang: 'ko' | 'en') => void): () => void;
+}
+
 /** 설정 > 데이터 > 코인 초기화가 보여 주는 지금 상태: 잔액과 되돌릴 산 물건 수 */
 export interface CoinState {
   balance: number;

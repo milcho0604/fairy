@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { NoticeView } from '../../../shared/notice-ipc.ts';
+import { useLanguageUpdates } from '../use-language.ts';
 
 const bridge = window.jjakkungNotice;
 
@@ -8,6 +9,7 @@ const bridge = window.jjakkungNotice;
  * 본문은 React 글자로만 넣는다 (HTML 로 읽지 않는다). 그린 높이를 메인에 알려 창 높이를 맞춘다.
  */
 export function NoticeApp() {
+  useLanguageUpdates();
   const [view, setView] = useState<NoticeView>();
   const box = useRef<HTMLDivElement>(null);
 

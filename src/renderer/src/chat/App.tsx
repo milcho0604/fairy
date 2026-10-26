@@ -14,6 +14,7 @@ import type { ChatMessage, ChatState } from '../../../shared/chat-state.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { OutgoingImage, ProviderView } from '../../../shared/ipc.ts';
 import { PetFace } from '../PetFace.tsx';
+import { useLanguageUpdates } from '../use-language.ts';
 import { AiManager } from './AiManager.tsx';
 import { ChatList } from './ChatList.tsx';
 import { useChatDraftSync } from './draft.ts';
@@ -49,6 +50,7 @@ const bridge = window.jjakkungChat;
 const MAX_IMAGES = 4;
 
 export function App() {
+  useLanguageUpdates();
   const [petName, setPetName] = useState(t('chat.defaultPetName'));
   const [state, setState] = useState<ChatState>();
   const [status, setStatus] = useState<Partial<Record<AiProvider, AiStatus>>>({});
