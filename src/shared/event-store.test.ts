@@ -24,7 +24,7 @@ const nine = 9 * 60;
 function fresh() {
   const db = new DatabaseSync(':memory:') as unknown as Db;
   migrate(db);
-  return { events: new EventStore(db), notes: new NoteStore(db) };
+  return { db, events: new EventStore(db), notes: new NoteStore(db) };
 }
 
 test('"내일모레"는 모레: 시각 일정, 붙여 쓴 시각, 종일 일정, 기간, 할 일 마감', () => {
@@ -245,6 +245,58 @@ test('첫 회차를 휴지통에서 영구 삭제해도 남은 반복 일정은 
     .between(from, from + 15 * 86_400_000)
     .filter((event) => event.title === '주간 점검');
   assert.ok(occurrences.length >= 2);
+});
+
+test('반복 일정의 마지막 미리 생성 회차를 영구 삭제해도 확장 때 되살아나지 않고 다음 회차는 이어진다', () => {
+  const { events } = fresh();
+  const now = Date.now();
+  const startAt = new Date(now);
+  startAt.setDate(startAt.getDate() + 1);
+  startAt.setHours(9, 0, 0, 0);
+  const first = events.add({ title: '삭제한 회차', startAt: startAt.getTime(), repeat: 'weekly' }, now);
+  const through = now + 370 * 86_400_000;
+  const generated = events
+    .between(startAt.getTime(), through)
+    .filter((event) => event.repeat === 'weekly' && event.title === '삭제한 회차');
+  const last = generated.at(-1);
+  assert.ok(last);
+
+  events.remove(last.id, now);
+  assert.equal(events.purgeTrash(last.id, now + 31 * 86_400_000), 1);
+
+  const next = events.between(last.startAt, last.startAt + 8 * 86_400_000);
+  assert.equal(
+    next.some((event) => event.startAt === last.startAt && event.title === first.title),
+    false,
+  );
+  assert.equal(
+    next.some((event) => event.startAt > last.startAt && event.title === first.title),
+    true,
+  );
+});
+
+test('반복 일정 전체를 비운 뒤 재사용된 번호가 예전 삭제 회차 예외를 물려받지 않는다', () => {
+  const { db, events } = fresh();
+  const now = Date.now();
+  const startAt = new Date(now);
+  startAt.setDate(startAt.getDate() + 1);
+  startAt.setHours(9, 0, 0, 0);
+  const old = events.add({ title: '예전 반복', startAt: startAt.getTime(), repeat: 'weekly' }, now);
+  const generated = events.between(startAt.getTime(), now + 370 * 86_400_000);
+  for (const event of generated) events.remove(event.id, now);
+  assert.equal(events.purgeTrash(undefined, now + 31 * 86_400_000), generated.length);
+
+  // 영구 삭제 정리 도중 앱이 닫힌 상황처럼 orphan 예외가 남아 있어도, 새 시리즈 생성 때 치운다.
+  const staleSkip = new Date(startAt);
+  staleSkip.setDate(staleSkip.getDate() + 7);
+  db.prepare('insert into event_repeat_skip (series_id, start_at) values (?, ?)').run(
+    old.id,
+    staleSkip.getTime(),
+  );
+  const next = events.add({ title: '새 반복', startAt: startAt.getTime(), repeat: 'weekly' }, now);
+  assert.equal(next.id, old.id, '비운 SQLite 표에서는 가장 큰 번호가 다시 쓰일 수 있다');
+  const occurrences = events.between(startAt.getTime(), startAt.getTime() + 15 * 86_400_000);
+  assert.equal(occurrences.filter((event) => event.title === '새 반복').length, 3);
 });
 
 test('메모: 최근에 고친 것부터, 그대로면 시각을 안 바꾼다, 제목은 첫 줄에서', () => {

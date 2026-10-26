@@ -256,6 +256,14 @@ export const MIGRATIONS: readonly string[] = [
   `
   alter table event add column repeat_clock integer;
   `,
+  // 18판: 휴지통에서 영구 삭제한 반복 회차를 다시 만들지 않도록 회차 예외 날짜를 보관한다.
+  `
+  create table event_repeat_skip (
+    series_id integer not null,
+    start_at integer not null,
+    primary key (series_id, start_at)
+  );
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
