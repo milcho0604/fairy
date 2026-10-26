@@ -319,6 +319,13 @@ export const ko = {
 
   // 백업
   'settings.backup': '백업과 옮기기',
+  'settings.resetPreferences': '설정 기본값으로 되돌리기',
+  'settings.resetPreferencesHint':
+    '알림, 움직임, 화면, AI 사용 방식 같은 설정만 기본값으로 돌아가. 지금 페어리와 보관함, 친구, 할 일, 기록, 캘린더 주소는 그대로 둬.',
+  'settings.resetPreferencesButton': '설정 기본값으로',
+  'settings.resetPreferencesSure': '기본값으로 바꿀까요? 한 번 더 눌러 주세요',
+  'settings.resetPreferencesDone': '설정을 기본값으로 되돌렸어',
+  'settings.resetPreferencesFailed': '설정을 되돌리지 못했어',
   'settings.backupHint':
     '할 일, 메모, 일정, 코인, 페어리, 설정을 백업 파일 하나로 만들어. 다른 컴퓨터에서 가져오거나 파일을 두 번 눌러 복원해.',
   'settings.export': '백업 파일 만들기',
@@ -771,6 +778,13 @@ export const en: Translation<typeof ko> = {
   'settings.cal.bad': "Only an .ics address starting with https works. Didn't save it",
 
   'settings.backup': 'Backup and transfer',
+  'settings.resetPreferences': 'Restore default settings',
+  'settings.resetPreferencesHint':
+    'Only preferences like alerts, movement, display and AI use are reset. Your current fairy, library, friends, to-dos, records and calendar address stay.',
+  'settings.resetPreferencesButton': 'Restore defaults',
+  'settings.resetPreferencesSure': 'Restore defaults? Click once more to confirm',
+  'settings.resetPreferencesDone': 'Settings restored to defaults',
+  'settings.resetPreferencesFailed': 'Could not restore settings',
   'settings.backupHint':
     'Save to-dos, notes, events, coins, fairies and settings into one backup file. Import it on another computer, or double-click the file to restore.',
   'settings.export': 'Create backup file',

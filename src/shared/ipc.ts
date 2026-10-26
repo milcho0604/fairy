@@ -275,6 +275,7 @@ export interface OnboardBridge {
 export const SETTINGS = {
   get: 'settings:get',
   set: 'settings:set',
+  reset: 'settings:reset',
   setScale: 'settings:set-scale',
   openMaker: 'settings:open-maker',
   /** 베타 기록 (P4-04) */
@@ -449,6 +450,7 @@ export interface RestoreState {
 export interface SettingsBridge {
   get(): Promise<SettingsSnapshot>;
   set(patch: Partial<Settings>): Promise<Settings>;
+  reset(): Promise<Settings>;
   setScale(scale: number): void;
   /** 사진 펫 만들기 (target 을 주면 상태별 포즈) */
   openMaker(target?: MakerTarget): void;

@@ -924,7 +924,7 @@ export function MakerApp() {
     ? t('maker.title.food')
     : isPose
       ? t('maker.title.pose', { pose: poseLabel })
-      : byText
+      : (isMain && how === 'text') || byText
         ? t('maker.title.text')
         : t('maker.title.pet');
 
@@ -966,6 +966,7 @@ export function MakerApp() {
                       key={k}
                       type="button"
                       aria-pressed={how === k}
+                      disabled={k === 'text' && !textAi}
                       className={how === k ? 'on' : ''}
                       onClick={() => {
                         setHow(k);
@@ -977,6 +978,7 @@ export function MakerApp() {
                     </button>
                   ))}
                 </fieldset>
+                {!textAi && <small className="hint">{t('maker.text.unavailable')}</small>}
                 {how === 'illust' && (
                   <div className="wish illust-opts">
                     {/* 이 컴퓨터가 되면 그리는 곳을 고른다: 무료 서버(하루 몇 번) 또는 이 컴퓨터 (횟수 제한 없음) */}

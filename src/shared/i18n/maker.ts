@@ -125,9 +125,9 @@ export const ko = {
   'maker.illust.ageHint.adult': '다 자란 어른 모습이야.',
   'maker.illust.wish': '바라는 점',
   'maker.illust.wishPlaceholder': '예: 빨간 목도리, 웃는 얼굴',
-  'maker.illust.token.summary': '무료 Hugging Face 토큰 (안 넣어도 돼)',
+  'maker.illust.token.summary': '그림 서비스 사용 열쇠 (무료, 선택)',
   'maker.illust.token.how':
-    '더 많이 그리고 싶으면 Hugging Face에 가입하고 huggingface.co/settings/tokens에서 무료 토큰을 만들어 여기 붙여 넣어 줘. 토큰은 그림 서버(다른 사람이 운영해)에도 같이 가니, 권한을 가장 적게 준 Fine-grained 토큰을 추천해. 이 컴퓨터에만 저장해.',
+    'Hugging Face는 그림 AI를 빌려 쓰는 서비스야. 더 많이 그리고 싶으면 가입하고 huggingface.co/settings/tokens에서 무료 토큰을 만들어 붙여 넣어 줘. 토큰은 그림 서버에도 전달되고 이 컴퓨터에만 저장돼. 가능한 경우 필요한 권한만 준 토큰을 골라 줘.',
   'maker.illust.token.label': '토큰',
   'maker.illust.token.placeholder': 'hf_로 시작하는 토큰',
   'maker.illust.token.save': '넣기',
@@ -138,6 +138,8 @@ export const ko = {
   'maker.illust.working': '사진을 AI 일러스트로 다시 그리는 중이야.',
   // 말로 만들기 (2026-10-12): AI 가 연결돼 있을 때만 보인다
   'maker.how.text': '말로 만들기',
+  'maker.text.unavailable':
+    '말로 만들려면 Claude, Codex, Cursor, Gemini 중 하나를 연결해 줘. 연결하면 이 탭을 쓸 수 있어.',
   'maker.title.text': '말로 페어리 만들기',
   'maker.step.text': '적기',
   'maker.text.label': '어떤 페어리를 만들까?',
@@ -465,9 +467,9 @@ export const en: Translation<typeof ko> = {
   'maker.illust.ageHint.adult': 'A fully grown adult.',
   'maker.illust.wish': 'Wish',
   'maker.illust.wishPlaceholder': 'e.g. red scarf, smiling face',
-  'maker.illust.token.summary': 'Free Hugging Face token (optional)',
+  'maker.illust.token.summary': 'Drawing service access key (free, optional)',
   'maker.illust.token.how':
-    'To draw more, sign up at Hugging Face, make a free token at huggingface.co/settings/tokens and paste it here. The token also goes to the drawing server, which someone else runs, so a Fine-grained token with as few permissions as possible is best. It is saved only on this computer.',
+    'Hugging Face hosts drawing AI. To draw more, sign up at huggingface.co/settings/tokens to make a free token, then paste it here. The token is also sent to the drawing server and is saved only on this computer. Choose a token with only the permissions it needs, if available.',
   'maker.illust.token.label': 'Token',
   'maker.illust.token.placeholder': 'Token starting with hf_',
   'maker.illust.token.save': 'Add',
@@ -477,6 +479,8 @@ export const en: Translation<typeof ko> = {
   'maker.illust.token.removed': 'Token removed.',
   'maker.illust.working': 'Redrawing your photo as an AI illustration.',
   'maker.how.text': 'Describe it',
+  'maker.text.unavailable':
+    'To describe a fairy, connect Claude, Codex, Cursor or Gemini. This tab will be available once one is connected.',
   'maker.title.text': 'Make a fairy from words',
   'maker.step.text': 'Describe',
   'maker.text.label': 'What kind of fairy should we make?',

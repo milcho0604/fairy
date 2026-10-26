@@ -150,8 +150,8 @@ test('이름 기본값: 적은 글을 다듬어 이름 칸 길이로', () => {
   assert.equal(nameFromText('분홍 모자를 쓴 하얀 토끼 인형'), '하얀 토끼 인형');
 });
 
-test('말로 만들기 탭: AI 가 없으면 아예 보이지 않는다', () => {
-  assert.deepEqual(makerTabs(false), ['photo', 'illust']);
+test('말로 만들기 탭은 AI 가 없어도 이유를 보여 주도록 남는다', () => {
+  assert.deepEqual(makerTabs(false), ['photo', 'illust', 'text']);
   assert.deepEqual(makerTabs(true), ['photo', 'illust', 'text']);
 });
 
