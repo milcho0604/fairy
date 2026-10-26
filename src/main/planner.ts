@@ -121,6 +121,7 @@ export const startOfDayAfter = (ms: number, n: number) => localTime(plusDays(loc
  */
 export function createPlanner(o: PlannerOptions) {
   let focus: FocusState = IDLE;
+  let stoppedFocus: { before: FocusState; at: number; minutes: number } | undefined;
   const saved = readJson(STORE) as
     | { briefedDay?: string; reviewedDay?: string; dueSaid?: unknown; routine?: unknown; snoozed?: unknown }
     | undefined;
@@ -673,6 +674,7 @@ export function createPlanner(o: PlannerOptions) {
    * todoId 를 주면 그 할 일을 하는 집중 (끝나면 끝냈는지 묻는다). 이미 끝냈거나 없는 할 일이면 그냥 집중
    */
   function startFocusNow(minutes?: number, todoId?: number) {
+    stoppedFocus = undefined;
     if (isFocusLength(minutes) && minutes !== settings.get().focusMin) settings.set({ focusMin: minutes });
     const length = settings.get().focusMin;
     const todo = todoId === undefined ? undefined : o.todos.get(todoId);
@@ -700,10 +702,36 @@ export function createPlanner(o: PlannerOptions) {
     const now = Date.now();
     const minutes = focusedMinutes(focus, now);
     if (minutes > 0) o.stats.addFocus(now, minutes);
+    stoppedFocus = minutes > 0 && focus.phase === 'focus' ? { before: focus, at: now, minutes } : undefined;
+    if (stoppedFocus)
+      setTimeout(() => {
+        if (stoppedFocus?.at === now) {
+          stoppedFocus = undefined;
+          o.onChange();
+        }
+      }, 8000);
     focus = IDLE;
     o.log('planner', '집중 그만', minutes);
     o.onChange();
     schedule();
+  }
+
+  function undoStopFocus(): boolean {
+    const stopped = stoppedFocus;
+    if (!stopped || Date.now() - stopped.at > 8000) return false;
+    stoppedFocus = undefined;
+    o.stats.undoFocus(stopped.at, stopped.minutes);
+    const paused = Math.max(0, Date.now() - stopped.at);
+    focus = {
+      ...stopped.before,
+      startedAt: stopped.before.startedAt + paused,
+      endsAt: stopped.before.endsAt + paused,
+    };
+    o.log('planner', '집중 중단 되돌림', stopped.minutes);
+    o.onChange();
+    lastTick = Date.now();
+    schedule();
+    return true;
   }
 
   // ---- 다음에 깰 때 (shared/planner-wake.ts) ----
@@ -781,6 +809,8 @@ export function createPlanner(o: PlannerOptions) {
     },
     startFocus: startFocusNow,
     stopFocus,
+    undoStopFocus,
+    focusUndoAvailable: () => !!stoppedFocus && Date.now() - stoppedFocus.at <= 8000,
     /** 일정이 바뀌었을 때 바로 한 번 본다 (곧 시작하는 일정을 넣은 경우) */
     check: tick,
     /** 저장 파일(할 일, 일정, 알림)이 바뀌었다: 조금 뒤 한 번 본다 */

@@ -493,6 +493,7 @@ export function TodoRow({
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(todo.title);
   const dateRef = useRef<HTMLInputElement>(null);
+  const [dueMenu, setDueMenu] = useState(false);
   // 미리 알림 고르기 (8판). 마감일이 있을 때만 종이 보인다 (마감일이 없으면 알릴 때가 없다)
   const [reminding, setReminding] = useState(false);
   const sheetId = useId();
@@ -556,17 +557,51 @@ export function TodoRow({
         title={t('panel.todo.dueDate')}
         aria-label={t('panel.todo.dueFor', { title: todo.title, when: dueText })}
         onClick={() => {
-          const el = dateRef.current;
-          if (!el) return;
-          try {
-            el.showPicker();
-          } catch {
-            el.focus();
-          }
+          setDueMenu((v) => !v);
         }}
       >
         {dueText}
       </button>
+      {dueMenu && (
+        <fieldset className="due-menu" aria-label={t('panel.todo.dueDate')}>
+          {(['today', 'tomorrow', 'monday'] as const).map((key) => {
+            const d = new Date();
+            if (key === 'tomorrow') d.setDate(d.getDate() + 1);
+            if (key === 'monday') {
+              const days = (8 - d.getDay()) % 7 || 7;
+              d.setDate(d.getDate() + days);
+            }
+            const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => {
+                  bridge.update(todo.id, { due: date });
+                  setDueMenu(false);
+                }}
+              >
+                {t(`panel.todo.dueQuick.${key}`)}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => {
+              const el = dateRef.current;
+              if (!el) return;
+              setDueMenu(false);
+              try {
+                el.showPicker();
+              } catch {
+                el.focus();
+              }
+            }}
+          >
+            {t('panel.todo.dueQuick.pick')}
+          </button>
+        </fieldset>
+      )}
       <input
         ref={dateRef}
         type="date"

@@ -58,7 +58,7 @@ import { createHouseRest } from './house-rest.ts';
 import { createJourney } from './journey.ts';
 import { pruneCopies } from './keep-copies.ts';
 import { createKnows } from './knows.ts';
-import { initLang } from './lang.ts';
+import { initLang, refreshLang } from './lang.ts';
 import { debugLines, initLines, registerLines } from './lines.ts';
 import { stopLocalDrawNow, sweepLocalDraw } from './local-draw.ts';
 import { createLogFile } from './log-file.ts';
@@ -766,6 +766,7 @@ ready
         void pet.say({ kind: 'answer', text: voiced(stowSayKey(on)), ttlMs: 4000 });
     }
     settings.onChange((next, prev) => {
+      if (next.lang !== prev.lang) refreshLang();
       if (next.houseHidden !== prev.houseHidden) void applyHouseStow(next.houseHidden);
     });
     /** 공놀이(공이나 털실이 있어야), 산책. 노는 중이면 무시 */
@@ -1067,9 +1068,11 @@ ready
       notes,
       events,
       focus: () => planner.focus,
+      focusUndoAvailable: () => planner.focusUndoAvailable(),
       startFocus: (minutes, todoId) => planner.startFocus(minutes, todoId),
       focusMin: () => settings.get().focusMin,
       stopFocus: () => planner.stopFocus(),
+      undoStopFocus: () => planner.undoStopFocus(),
       onEventsChanged: () => {
         planner.check();
         gcal.kick();

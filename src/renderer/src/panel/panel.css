@@ -322,6 +322,38 @@ p.empty {
   cursor: pointer;
 }
 
+.due-menu {
+  position: absolute;
+  z-index: 30;
+  inset-block-start: calc(100% + 4px);
+  inset-inline-start: 0;
+  display: grid;
+  min-width: max-content;
+  min-inline-size: 0;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: 0 4px 16px #0003;
+}
+
+.due-menu button {
+  border: 0;
+  border-radius: 5px;
+  padding: 5px 8px;
+  background: transparent;
+  color: var(--text);
+  text-align: start;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.due-menu button:hover,
+.due-menu button:focus-visible {
+  background: var(--code);
+}
+
 .due.none {
   opacity: 0;
 }

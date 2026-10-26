@@ -39,6 +39,7 @@ export const ko = {
   'onboarding.look.aiFree': (v: { size: string }) =>
     `AI 프로그램이 없어도 무료 AI로 대화할 수 있어. 처음 한 번 모델(${v.size})을 받고, 그 뒤로는 이 컴퓨터 안에서만 돌아.`,
   'onboarding.tips.title': '알아 두면 좋은 것',
+  'onboarding.tips.easyKeys': '키를 네 개 누르기 어렵다면 쉬운 단축키 묶음을 써 봐.',
   'onboarding.tips.click': (v: { name: string }) => `${withParticle(v.name, '을')} 누르면`,
   'onboarding.tips.clickDesc': '할 일, 메모, 일정, 상점 패널',
   'onboarding.tips.right': '우클릭',
@@ -93,6 +94,7 @@ export const en: Translation<typeof ko> = {
   'onboarding.look.aiFree': (v) =>
     `No AI app? You can still chat with the free AI. It downloads a model (${v.size}) once, then runs only on this computer.`,
   'onboarding.tips.title': 'Good to know',
+  'onboarding.tips.easyKeys': 'If four-key shortcuts are hard to press, try the easy shortcut set.',
   'onboarding.tips.click': (v) => `Click ${v.name}`,
   'onboarding.tips.clickDesc': 'To-dos, notes, events and shop panel',
   'onboarding.tips.right': 'Right-click',
