@@ -87,6 +87,18 @@ interface Row {
   removed_by?: string | null;
 }
 
+interface RepeatTemplate {
+  series_id: number;
+  start_at: number;
+  repeat_kind: unknown;
+  title: string;
+  duration_ms: number | null;
+  repeat_clock: number;
+  reminders: string;
+  remind_min: number;
+  created_at: number;
+}
+
 const localClock = (at: number): number => {
   const date = new Date(at);
   return (
@@ -103,6 +115,15 @@ const repeatClockParts = (clock: number): [number, number, number, number] => [
   Math.floor((clock % 60_000) / 1000),
   clock % 1000,
 ];
+
+const remindersFromJson = (value: string): number[] => {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? normalizeReminds(parsed, false) : [];
+  } catch {
+    return [];
+  }
+};
 
 const toEvent = (r: Row, marks: readonly { before: number; notifiedAt: number | null }[]): CalEvent => {
   const reminds = marks.map((m) => m.before);
@@ -249,24 +270,28 @@ export class EventStore {
     if (!title) throw new Error('일정 제목이 비었다');
     if (!eventTimeOk(input.startAt)) throw new Error('일정 시각이 틀렸다');
     const allDay = input.allDay === true;
+    const storedTitle = cutText(title, 200);
+    const endAt = cleanEnd(input.endAt);
+    const remindMin = clampRemind(input.remindMin ?? (allDay ? 0 : DEFAULT_REMIND_MIN));
     const r = this.#db
       .prepare(
         'insert into event (title, start_at, end_at, remind_min, created_at, all_day, repeat_kind, repeat_clock) values (?, ?, ?, ?, ?, ?, ?, ?)',
       )
       .run(
-        cutText(title, 200),
+        storedTitle,
         input.startAt,
-        cleanEnd(input.endAt),
-        clampRemind(input.remindMin ?? (allDay ? 0 : DEFAULT_REMIND_MIN)),
+        endAt,
+        remindMin,
         now,
         allDay ? 1 : 0,
         input.repeat ?? null,
         input.repeat ? localClock(input.startAt) : null,
       );
     const id = Number(r.lastInsertRowid);
+    // A fully purged series can leave orphan keys if the process stopped before cleanup; SQLite may reuse its id.
+    this.#db.prepare('delete from event_repeat_skip where series_id = ?').run(id);
+    this.#db.prepare('delete from event_repeat_template where series_id = ?').run(id);
     if (input.repeat) {
-      // A fully purged series can leave an orphan key if the process stopped before cleanup; SQLite may reuse its id.
-      this.#db.prepare('delete from event_repeat_skip where series_id = ?').run(id);
       this.#db.prepare('update event set repeat_series = ? where id = ?').run(id, id);
     }
     const reminds = input.reminds
@@ -275,40 +300,67 @@ export class EventStore {
         ? fromLegacy(input.remindMin, allDay)
         : defaultReminds(allDay);
     this.#reminders.set(id, reminds, eventAnchor({ startAt: input.startAt, allDay }), { now, reset: true });
-    if (input.repeat) this.#extendSeries(id, now + 365 * DAY_MS);
+    if (input.repeat) {
+      this.#db
+        .prepare(
+          'insert into event_repeat_template (series_id, start_at, repeat_kind, title, duration_ms, repeat_clock, reminders, remind_min, created_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        )
+        .run(
+          id,
+          input.startAt,
+          input.repeat,
+          storedTitle,
+          endAt === null ? null : endAt - input.startAt,
+          localClock(input.startAt),
+          JSON.stringify(reminds),
+          remindMin,
+          now,
+        );
+      this.#extendSeries(id, now + 365 * DAY_MS);
+    }
     return this.get(id) as CalEvent;
   }
 
   /** 다음 해까지 반복 회차를 실제 일정으로 만들어 알림과 달력에서 기존 일정처럼 읽힌다. */
   #extendSeries(seriesId: number, through: number): void {
     const initial = this.#db.prepare('select * from event where id = ?').get(seriesId) as Row | undefined;
+    const validInitial = initial && eventTimeOk(initial.start_at) ? initial : undefined;
     const latest = this.#db
-      .prepare('select * from event where repeat_series = ? order by start_at desc limit 1')
-      .get(seriesId) as Row | undefined;
-    if (!latest) return;
+      .prepare(
+        'select * from event where repeat_series = ? and start_at between ? and ? order by start_at desc limit 1',
+      )
+      .get(seriesId, -EVENT_TIME_MAX_MS, EVENT_TIME_MAX_MS) as Row | undefined;
+    const template = this.#db
+      .prepare('select * from event_repeat_template where series_id = ?')
+      .get(seriesId) as RepeatTemplate | undefined;
+    if (!latest && !template) return;
     // 첫 회차는 30일 뒤 영구 삭제될 수 있다. 남은 회차에도 반복 방식과 series id 가 있으므로 이어서 생성한다.
-    const repeat = isEventRepeat(initial?.repeat_kind)
-      ? initial.repeat_kind
-      : isEventRepeat(latest.repeat_kind)
-        ? latest.repeat_kind
-        : undefined;
+    const repeat = isEventRepeat(template?.repeat_kind)
+      ? template.repeat_kind
+      : isEventRepeat(initial?.repeat_kind)
+        ? initial.repeat_kind
+        : isEventRepeat(latest?.repeat_kind)
+          ? latest.repeat_kind
+          : undefined;
     if (!repeat) return;
-    let interval = Number(latest.start_at);
+    let interval = latest ? Number(latest.start_at) : Number(template?.start_at);
     // 마지막 회차가 DST 경계에서 02:30 -> 03:30으로 보정될 수 있어 시각을 거기서 추론하면
     // 다음 확장부터 반복 전체가 한 시간 밀린다. 첫 회차 또는 회차에 복사해 둔 기준 시각을 쓴다.
-    let repeatClock = validRepeatClock(initial?.repeat_clock)
-      ? initial.repeat_clock
-      : initial
-        ? localClock(Number(initial.start_at))
-        : validRepeatClock(latest.repeat_clock)
-          ? latest.repeat_clock
-          : undefined;
+    let repeatClock = validRepeatClock(template?.repeat_clock)
+      ? template.repeat_clock
+      : validRepeatClock(initial?.repeat_clock)
+        ? initial.repeat_clock
+        : validInitial
+          ? localClock(Number(validInitial.start_at))
+          : validRepeatClock(latest?.repeat_clock)
+            ? latest.repeat_clock
+            : undefined;
     if (repeatClock === undefined) {
       const samples = this.#db
         .prepare(
-          'select start_at, repeat_clock from event where repeat_series = ? order by start_at limit 32',
+          'select start_at, repeat_clock from event where repeat_series = ? and start_at between ? and ? order by start_at limit 32',
         )
-        .all(seriesId) as Pick<Row, 'start_at' | 'repeat_clock'>[];
+        .all(seriesId, -EVENT_TIME_MAX_MS, EVENT_TIME_MAX_MS) as Pick<Row, 'start_at' | 'repeat_clock'>[];
       const counts = new Map<number, number>();
       for (const sample of samples) {
         const clock = validRepeatClock(sample.repeat_clock)
@@ -318,7 +370,7 @@ export class EventStore {
       }
       repeatClock = [...counts].reduce(
         (best, current) => (current[1] > best[1] ? current : best),
-        [localClock(Number(latest.start_at)), 0],
+        [localClock(Number(validInitial?.start_at ?? latest?.start_at ?? template?.start_at)), 0],
       )[0];
     }
     // 기존 데이터도 한 번 추론한 기준 시각을 모든 회차에 저장한다. 이후 첫 회차를 영구 삭제해도 유지된다.
@@ -329,11 +381,49 @@ export class EventStore {
       .prepare('update event set repeat_clock = ? where repeat_series = ? and repeat_clock is null')
       .run(repeatClock, seriesId);
     const [hour, minute, second, millisecond] = repeatClockParts(repeatClock);
-    const reminds =
-      this.#reminders
-        .many([seriesId])
-        .get(seriesId)
-        ?.map((mark) => mark.before) ?? [];
+    const reminderRows = this.#reminders.many(
+      latest && latest.id !== seriesId ? [seriesId, Number(latest.id)] : [seriesId],
+    );
+    const sourceReminders = initial
+      ? reminderRows.get(seriesId)
+      : latest
+        ? reminderRows.get(Number(latest.id))
+        : undefined;
+    const reminds = template
+      ? remindersFromJson(template.reminders)
+      : (sourceReminders?.map((mark) => mark.before) ?? []);
+    const title = template?.title ?? initial?.title ?? latest?.title;
+    if (title === undefined) return;
+    const duration = template
+      ? template.duration_ms === null
+        ? null
+        : Number(template.duration_ms)
+      : validInitial
+        ? validInitial.end_at === null
+          ? null
+          : Number(validInitial.end_at) - Number(validInitial.start_at)
+        : latest?.end_at === null || latest?.end_at === undefined
+          ? null
+          : Number(latest.end_at) - Number(latest.start_at);
+    const remindMin = template?.remind_min ?? initial?.remind_min ?? latest?.remind_min ?? DEFAULT_REMIND_MIN;
+    const createdAt = template?.created_at ?? initial?.created_at ?? latest?.created_at ?? Date.now();
+    if (!template) {
+      this.#db
+        .prepare(
+          'insert or ignore into event_repeat_template (series_id, start_at, repeat_kind, title, duration_ms, repeat_clock, reminders, remind_min, created_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        )
+        .run(
+          seriesId,
+          Number(validInitial?.start_at ?? latest?.start_at),
+          repeat,
+          title,
+          duration,
+          repeatClock,
+          JSON.stringify(reminds),
+          remindMin,
+          createdAt,
+        );
+    }
     while (interval <= through) {
       let day = dayOf(interval);
       if (repeat === 'weekly') day = plusDays(day, 7);
@@ -347,7 +437,6 @@ export class EventStore {
       const next = new Date(year ?? 2000, (month ?? 1) - 1, date ?? 1, hour, minute, second, millisecond);
       const startAt = next.getTime();
       if (startAt > through) break;
-      const duration = latest.end_at === null ? null : Number(latest.end_at) - interval;
       const skipped = this.#db
         .prepare('select 1 from event_repeat_skip where series_id = ? and start_at = ?')
         .get(seriesId, startAt);
@@ -357,11 +446,11 @@ export class EventStore {
             'insert into event (title, start_at, end_at, remind_min, created_at, all_day, repeat_kind, repeat_series, repeat_clock) values (?, ?, ?, ?, ?, 0, ?, ?, ?)',
           )
           .run(
-            latest.title,
+            title,
             startAt,
             duration === null ? null : startAt + duration,
-            latest.remind_min,
-            Number(latest.created_at),
+            remindMin,
+            createdAt,
             repeat,
             seriesId,
             repeatClock,
@@ -380,7 +469,8 @@ export class EventStore {
   #extendRepeats(through: number): void {
     const rows = this.#db
       .prepare(
-        'select distinct repeat_series from event where repeat_series is not null and repeat_kind is not null',
+        `select distinct repeat_series from event where repeat_series is not null and repeat_kind is not null
+         union select series_id as repeat_series from event_repeat_template`,
       )
       .all() as { repeat_series: number }[];
     for (const row of rows) this.#extendSeries(Number(row.repeat_series), through);
@@ -635,7 +725,10 @@ export class EventStore {
       const remains = this.#db
         .prepare('select 1 from event where id = ? or repeat_series = ? limit 1')
         .get(seriesId, seriesId);
-      if (!remains) this.#db.prepare('delete from event_repeat_skip where series_id = ?').run(seriesId);
+      if (!remains) {
+        this.#db.prepare('delete from event_repeat_skip where series_id = ?').run(seriesId);
+        this.#db.prepare('delete from event_repeat_template where series_id = ?').run(seriesId);
+      }
     }
     return rows.length;
   }

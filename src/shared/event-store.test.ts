@@ -247,6 +247,94 @@ test('첫 회차를 휴지통에서 영구 삭제해도 남은 반복 일정은 
   assert.ok(occurrences.length >= 2);
 });
 
+test('첫 회차 영구 삭제 뒤에 새로 확장한 반복 일정도 알림을 유지한다', () => {
+  const { db, events } = fresh();
+  const now = Date.now();
+  const startAt = new Date(now);
+  startAt.setDate(startAt.getDate() + 1);
+  startAt.setHours(9, 0, 0, 0);
+  const first = events.add(
+    { title: '주간 점검 알림', startAt: startAt.getTime(), repeat: 'weekly', reminds: [10, 30] },
+    now,
+  );
+  // 새 시리즈 메타데이터가 없던 이전 저장 파일을 흉내 내고, 남은 회차에서 설정을 되찾는다.
+  db.prepare('delete from event_repeat_template where series_id = ?').run(first.id);
+  events.remove(first.id, now);
+  assert.equal(events.purgeTrash(first.id, now + 31 * 86_400_000), 1);
+
+  const from = now + 366 * 86_400_000;
+  const extended = events
+    .between(from, from + 15 * 86_400_000)
+    .filter((event) => event.title === first.title);
+  assert.ok(extended.length >= 2);
+  assert.deepEqual(
+    extended.map((event) => event.reminds),
+    Array.from({ length: extended.length }, () => [30, 10]),
+  );
+});
+
+test('멀리 있는 한 회차의 제목·길이·알림 수정은 이후 반복 회차에 번지지 않는다', () => {
+  const { events } = fresh();
+  const now = Date.now();
+  const startAt = new Date(now);
+  startAt.setDate(startAt.getDate() + 1);
+  startAt.setHours(9, 0, 0, 0);
+  const first = events.add(
+    {
+      title: '주간 회의',
+      startAt: startAt.getTime(),
+      endAt: startAt.getTime() + 60 * MIN,
+      repeat: 'weekly',
+      reminds: [10, 60],
+    },
+    now,
+  );
+  const through = now + 370 * 86_400_000;
+  const existing = events.between(startAt.getTime(), through).filter((event) => event.title === first.title);
+  const last = existing.at(-1);
+  assert.ok(last);
+  events.update(last.id, {
+    title: '이번 회차만 바꿈',
+    endAt: last.startAt + 90 * MIN,
+    reminds: [30],
+  });
+
+  const generated = events
+    .between(last.startAt + 1, last.startAt + 15 * 86_400_000)
+    .filter((event) => event.startAt > last.startAt && event.title === first.title);
+  assert.ok(generated.length >= 2);
+  for (const event of generated) {
+    assert.equal(event.endAt, event.startAt + 60 * MIN);
+    assert.deepEqual(event.reminds, [60, 10]);
+  }
+});
+
+test('시각이 잘못된 마지막 반복 회차를 복구해도 이후 회차 생성을 막지 않는다', () => {
+  const { db, events } = fresh();
+  const now = Date.now();
+  const startAt = new Date(now);
+  startAt.setDate(startAt.getDate() + 1);
+  startAt.setHours(9, 0, 0, 0);
+  const first = events.add({ title: '복구할 반복', startAt: startAt.getTime(), repeat: 'weekly' }, now);
+  const lastStart = Number(
+    (
+      db.prepare('select max(start_at) as start_at from event where repeat_series = ?').get(first.id) as {
+        start_at: number;
+      }
+    ).start_at,
+  );
+  const invalidStart = 9e15;
+  db.prepare(
+    'update event set start_at = ? where id = (select id from event where repeat_series = ? order by start_at desc limit 1)',
+  ).run(invalidStart, first.id);
+  assert.equal(repairEventTimes(db, now), 1);
+
+  const next = events
+    .between(lastStart + 1, lastStart + 15 * 86_400_000)
+    .filter((event) => event.title === first.title && event.startAt > lastStart);
+  assert.ok(next.length >= 1);
+});
+
 test('반복 일정의 마지막 미리 생성 회차를 영구 삭제해도 확장 때 되살아나지 않고 다음 회차는 이어진다', () => {
   const { events } = fresh();
   const now = Date.now();
@@ -293,6 +381,9 @@ test('반복 일정 전체를 비운 뒤 재사용된 번호가 예전 삭제 �
     old.id,
     staleSkip.getTime(),
   );
+  db.prepare(
+    'insert into event_repeat_template (series_id, start_at, repeat_kind, title, duration_ms, repeat_clock, reminders, remind_min, created_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  ).run(old.id, startAt.getTime(), 'weekly', '예전 반복', null, 9 * 3_600_000, '[]', 0, now);
   const next = events.add({ title: '새 반복', startAt: startAt.getTime(), repeat: 'weekly' }, now);
   assert.equal(next.id, old.id, '비운 SQLite 표에서는 가장 큰 번호가 다시 쓰일 수 있다');
   const occurrences = events.between(startAt.getTime(), startAt.getTime() + 15 * 86_400_000);
