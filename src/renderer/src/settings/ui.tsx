@@ -17,9 +17,9 @@ export interface TabProps {
 
 export const isMac = (snap: SettingsSnapshot) => snap.platform === 'darwin';
 
-export function Section({ title, children }: { title: string; children: ReactNode }) {
+export function Section({ title, children, id }: { title: string; children: ReactNode; id?: string }) {
   return (
-    <section>
+    <section id={id}>
       <h2>{title}</h2>
       <div className="card">{children}</div>
     </section>

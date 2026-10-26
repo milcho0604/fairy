@@ -32,6 +32,7 @@ export const ko = {
   'assist.defer.move': (v: { n: number }) => `못 한 ${v.n}개 내일로`,
   'assist.defer.moved': (v: { n: number }) => `못 한 ${v.n}개를 내일로 옮겼어`,
   'assist.week.title': '이번 주',
+  'assist.week.hint': '요일별 막대는 끝낸 할 일 수야. 아래에 지난주와 비교한 수와 다음 주 마감이 나와.',
   'assist.week.summary': (v: { done: number; focus: number }) =>
     `끝낸 일 ${v.done}개${v.focus > 0 ? `, 집중 ${koMin(v.focus)}` : ''}`,
   'assist.week.vsLast': (v: { diff: number }) =>
@@ -77,6 +78,8 @@ export const en: Translation<typeof ko> = {
   'assist.defer.moved': (v: { n: number }) =>
     v.n === 1 ? 'Pushed 1 to-do to tomorrow' : `Pushed ${v.n} to-dos to tomorrow`,
   'assist.week.title': 'This week',
+  'assist.week.hint':
+    'Bars show completed to-dos by day. Below is the comparison with last week and upcoming due items.',
   'assist.week.summary': (v: { done: number; focus: number }) =>
     `${v.done} done${v.focus > 0 ? `, ${enMin(v.focus)} focused` : ''}`,
   'assist.week.vsLast': (v: { diff: number }) =>

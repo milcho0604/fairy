@@ -7,6 +7,7 @@ import {
   screen,
 } from 'electron';
 import { fitSavedBounds } from '../shared/geometry.ts';
+import { onDisplaysChanged } from './display-watch.ts';
 import { readJson, writeJson } from './store.ts';
 
 // 창 크기와 자리 기억 (채팅, 설정, 펫 만들기, 알아보기, 패널). 닫거나 크기, 자리를 바꿀 때 window-bounds.json 에 창별로 적고,
@@ -14,6 +15,56 @@ import { readJson, writeJson } from './store.ts';
 // 따로 기억한다(panel-place.ts)
 
 const resetters = new WeakMap<BaseWindow, (bounds: Rectangle) => void>();
+interface LiveWindow {
+  win: BaseWindow;
+  min: { width: number; height: number };
+  fitTarget?: Rectangle;
+}
+const liveWindows = new Map<BaseWindow, LiveWindow>();
+let stopDisplayWatch: (() => void) | undefined;
+
+/** 이미 떠 있는 창도 모니터가 빠지거나 작업 영역이 바뀌면 남은 화면 안으로 맞춘다. */
+function watchLiveWindows(): void {
+  if (stopDisplayWatch) return;
+  stopDisplayWatch = onDisplaysChanged((displays) => {
+    const areas = displays.map((d) => d.workArea);
+    for (const [win, record] of liveWindows) {
+      if (win.isDestroyed()) {
+        liveWindows.delete(win);
+        continue;
+      }
+      const current = win.getNormalBounds();
+      const next = fitSavedBounds(current, areas, record.min);
+      if (!next || next.x === undefined || next.y === undefined) continue;
+      if (
+        next.x === current.x &&
+        next.y === current.y &&
+        next.width === current.width &&
+        next.height === current.height
+      )
+        continue;
+      record.fitTarget = { x: next.x, y: next.y, width: next.width, height: next.height };
+      win.setBounds(record.fitTarget);
+      // setBounds 이벤트는 지연되어 올 수 있다. 이 구간의 자동 이동은 사용자가 창을 옮긴 것으로 저장하지 않는다.
+      setTimeout(() => {
+        if (record.fitTarget && sameBounds(win.getNormalBounds(), record.fitTarget))
+          record.fitTarget = undefined;
+      }, 800);
+    }
+  });
+}
+
+const samePosition = (a: Rectangle, b: Rectangle): boolean => a.x === b.x && a.y === b.y;
+function trackWindow(win: BaseWindow, min: { width: number; height: number }): void {
+  watchLiveWindows();
+  const record: LiveWindow = { win, min };
+  liveWindows.set(win, record);
+  win.on('closed', () => liveWindows.delete(win));
+}
+
+function sameBounds(a: Rectangle, b: Rectangle): boolean {
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+}
 
 /** 위치 기억만 해제하고 기본 배치로 돌아간다. 크기는 유지한다. */
 export function resetRememberedPlacement(win: BaseWindow, bounds: Rectangle): void {
@@ -68,6 +119,10 @@ export function rememberBounds(win: BaseWindow, key: WindowKey, placed: boolean)
   const save = () => saveBounds(win, key, keepPlace);
   win.on('moved', () => {
     const b = win.getNormalBounds();
+    const target = liveWindows.get(win)?.fitTarget;
+    if (target && samePosition(b, target)) return;
+    const live = liveWindows.get(win);
+    if (live) live.fitTarget = undefined;
     if (defaultPlace && b.x === defaultPlace.x && b.y === defaultPlace.y) return;
     defaultPlace = undefined;
     keepPlace = true;
@@ -118,6 +173,7 @@ export function openRemembered(key: WindowKey, o: RememberedWindow): BrowserWind
     minHeight: o.min.height,
     ...o.options,
   });
+  trackWindow(win, o.min);
   rememberBounds(win, key, remember);
   return win;
 }
@@ -134,6 +190,7 @@ export function openRememberedBase(
     minHeight: o.min.height,
     ...o.options,
   });
+  trackWindow(win, o.min);
   rememberBounds(win, key, remember);
   return win;
 }

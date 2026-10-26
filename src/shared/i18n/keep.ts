@@ -12,6 +12,7 @@ export const ko = {
     '켜면 패널이 다른 곳을 눌러도 닫히지 않아. Esc, 펫 누르기, 단축키로만 닫혀. 패널 머리의 핀으로도 바꿀 수 있어.',
   'keep.retry': '다시 묻기',
   'keep.retryTitle': '같은 AI에게 같은 질문을 다시 해',
+  'keep.retryImagesMissing': '그림 원본이 메모리에 없어. 그림을 다시 붙여서 물어봐 줘.',
   'keep.recallHint': '빈 칸에서 ↑ 를 누르면 마지막 질문이 돌아와',
   'keep.quick.note': '메모에 넣었어',
   'keep.quick.manyNotes': (v: { todos: number; events: number; notes: number }) =>
@@ -41,6 +42,7 @@ export const en: Translation<typeof ko> = {
     'When on, the panel stays open when you click elsewhere. Only Esc, clicking the pet, or the shortcut closes it. The pin in the panel header does the same.',
   'keep.retry': 'Ask again',
   'keep.retryTitle': 'Ask the same AI the same question again',
+  'keep.retryImagesMissing': 'The original image is no longer in memory. Attach it again and ask once more.',
   'keep.recallHint': 'Press ↑ in an empty box to bring back your last question',
   'keep.quick.note': 'Added to notes',
   'keep.quick.manyNotes': (v) => `Added ${v.todos} to-dos, ${v.events} events, ${v.notes} notes`,

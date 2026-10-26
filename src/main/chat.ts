@@ -222,6 +222,8 @@ export function createChat(o: ChatOptions) {
   let embedded: ChatFace | undefined;
   let host: ChatHost | undefined;
   let draft: OutgoingImage[] = [];
+  /** 마지막 질문의 원본 그림은 파일에 쓰지 않고 메모리에만 둔다. 오류가 나면 같은 그림으로 다시 묻는다 (#145). */
+  let retryImages: { userId: string; images: OutgoingImage[] } | undefined;
   /** 그림 때문에 AI 쪽에 저장하지 않은 문답. 그 AI 의 다음 질문에 글로 붙여 이어 간다 */
   const carry = new Map<AiProvider, Exchange[]>();
 
@@ -435,6 +437,7 @@ export function createChat(o: ChatOptions) {
       question,
       images.map((i) => i.thumb),
     );
+    retryImages = images.length ? { userId: ids.user, images: [...images] } : undefined;
     push();
     // 그림을 받는 AI 에 그림을 보낼 때만 펫이 돋보기로 훑는다
     onPetAi({ thinking: true, answered: false, withImage: images.length > 0 && !!spec.images });
@@ -641,11 +644,19 @@ export function createChat(o: ChatOptions) {
   });
 
   /** 새 대화로 지운 대화. 잠깐 동안 되돌릴 수 있다 (UNDO_RESET_MS). thread 는 그 대화의 목록 id */
-  let cleared: { state: ChatState; at: number; thread?: string } | undefined;
+  let cleared:
+    | {
+        state: ChatState;
+        at: number;
+        thread?: string;
+        retryImages?: { userId: string; images: OutgoingImage[] };
+      }
+    | undefined;
   ipcMain.on(CHAT.setEphemeral, (e, on: boolean) => {
     if (!fromChat(e) || state.pendingId) return;
     // 켜고 끌 때 새 대화로: 안 남긴 대화는 이어 갈 수 없고, 남긴 대화를 안 남긴 채 이어 갈 수도 없다.
     state = { ...resetChat(state), ephemeral: !!on };
+    retryImages = undefined;
     if (on) {
       drafts.clear('chat');
       drafts.clear('images');
@@ -689,19 +700,21 @@ export function createChat(o: ChatOptions) {
     if (!fromChat(e) || (kind !== 'focus' && kind !== 'panel')) return;
     o.onPlanAction?.(kind, Number.isInteger(todoId) ? (todoId as number) : undefined);
   });
-  ipcMain.on(CHAT.retryWith, (e, picked: unknown) => {
+  ipcMain.handle(CHAT.retryWith, (e, picked: unknown) => {
     // AI 를 안 주면 지금 AI 로 같은 질문을 다시 묻는다 ("다시 묻기", #145)
     const provider = (typeof picked === 'string' ? picked : state.provider) as AiProvider;
-    if (!fromChat(e) || state.pendingId || !specOf(provider)) return;
+    if (!fromChat(e) || state.pendingId || !specOf(provider)) return 'unavailable';
     // AI 를 안 준 다시 묻기는 마지막 줄이 오류일 때만 한다 (잘 받은 답 뒤에서는 아무 일도 안 한다)
-    if (typeof picked !== 'string' && !endsWithError(state)) return;
-    userPicked = true;
-    // 마지막 질문을 찾아 그 AI 로 다시 묻는다 (그림은 다시 보내지 않는다: 원본을 상태에 두지 않는다).
+    if (typeof picked !== 'string' && !endsWithError(state)) return 'unavailable';
     const lastUser = [...state.messages].reverse().find((m) => m.role === 'user');
+    if (!lastUser) return 'unavailable';
+    const original = retryImages?.userId === lastUser.id ? retryImages.images : undefined;
+    if (lastUser.images?.length && !original) return 'missing-images';
+    userPicked = true;
     state = switchProvider(state, provider);
     writeJson(SETTINGS_FILE, { provider: state.provider });
     push();
-    if (lastUser?.text) ask(lastUser.text);
+    return ask(lastUser.text, original ?? []) ? 'sent' : 'unavailable';
   });
 
   // AI 대화권 (#100): 국외 이전 안내를 읽고 쓰기로 함, 답 신고 (화면에서 따로 확인한 뒤)
@@ -740,8 +753,9 @@ export function createChat(o: ChatOptions) {
   });
   ipcMain.on(CHAT.reset, (e) => {
     if (!fromChat(e) || state.pendingId) return;
-    if (state.messages.length > 0) cleared = { state, at: Date.now(), thread: threads.current };
+    if (state.messages.length > 0) cleared = { state, at: Date.now(), thread: threads.current, retryImages };
     state = resetChat(state);
+    retryImages = undefined;
     // 지난 대화는 목록에 남는다 (답이 끝날 때마다 저장해 두었다). 다음 질문은 새 목록 항목이 된다
     threads.detach();
     carry.clear();
@@ -753,6 +767,7 @@ export function createChat(o: ChatOptions) {
     if (!fromChat(e) || !cleared || Date.now() - cleared.at > UNDO_RESET_MS) return false;
     const back = undoReset(state, cleared.state);
     const thread = cleared.thread;
+    retryImages = cleared.retryImages;
     cleared = undefined;
     if (!back) return false;
     state = back;

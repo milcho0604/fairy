@@ -445,12 +445,13 @@ export function App() {
   };
 
   /** 같은 AI 로 마지막 질문을 다시 묻는다. 되돌려 놓은 질문을 안 고쳤으면 칸을 비운다 */
-  const askAgain = () => {
+  const askAgain = async (provider?: string) => {
     if (pending) return;
     if (putBack.current !== undefined && text === putBack.current) setText('');
     putBack.current = undefined;
     sentRef.current = true;
-    bridge.retryWith();
+    const result = await bridge.retryWith(provider);
+    if (result === 'missing-images') setNotice(t('keep.retryImagesMissing'));
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -763,6 +764,11 @@ export function App() {
                   ? askAgain
                   : undefined
               }
+              onRetryWith={
+                m.id === state.messages.at(-1)?.id && !pending && canAskAgain(state.messages)
+                  ? askAgain
+                  : undefined
+              }
               ticket={m.provider === TICKET_PROVIDER_ID && !!state.ticket}
               freeModelMb={freeModelMb(m)}
               guide={{
@@ -927,6 +933,7 @@ interface MessageProps {
   isLast: boolean;
   /** 마지막 오류 아래 "다시 묻기": 같은 AI 로 같은 질문 (#145). 그림을 곁들인 질문은 다시 보낼 수 없어 없다 */
   onAskAgain?: () => void;
+  onRetryWith?: (provider: string) => void;
   /** 대화권 답이고 지금 대화권을 쓸 수 있다: 신고 단추 (#100) */
   ticket?: boolean;
   /** 못 찾음, 로그인 안 됨 오류 아래에 펼칠 안내 (#29). subject 가 없으면(무료 AI 등) 단추를 두지 않는다 */
@@ -952,6 +959,7 @@ function Message({
   freeModelMb: mb,
   isLast,
   onAskAgain,
+  onRetryWith,
   ticket,
   guide,
 }: MessageProps) {
@@ -1086,10 +1094,11 @@ function Message({
             m.error?.kind === 'no-tickets' ||
             m.error?.kind === 'not-installed' ||
             m.error?.kind === 'not-logged-in') &&
-          alternatives.length > 0 && (
+          alternatives.length > 0 &&
+          onRetryWith && (
             <div className="retry action-row">
               {alternatives.slice(0, 3).map((p) => (
-                <button key={p.id} type="button" className="ghost" onClick={() => bridge.retryWith(p.id)}>
+                <button key={p.id} type="button" className="ghost" onClick={() => onRetryWith(p.id)}>
                   {t('chat.retryWith', { label: p.label })}
                 </button>
               ))}
@@ -1220,8 +1229,8 @@ function Thinking({
   );
 }
 
-/** 마지막 질문을 같은 AI 로 다시 보낼 수 있나: 글이 있고 그림은 없다 (그림 원본은 상태에 두지 않는다) */
+/** 마지막 질문을 같은 AI 로 다시 보낼 수 있나. 그림 원본은 메인 메모리에만 맡긴다. */
 function canAskAgain(messages: readonly ChatMessage[]): boolean {
   const q = messages.findLast((m) => m.role === 'user');
-  return !!q?.text.trim() && !q.images?.length;
+  return !!q && (!!q.text.trim() || !!q.images?.length);
 }

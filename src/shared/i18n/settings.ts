@@ -11,6 +11,11 @@ export const ko = {
 
   // 펫
   'settings.pet': '페어리',
+  'settings.pet.speech': '말투와 반응',
+  'settings.pet.appearance': '모습',
+  'settings.pet.movement': '움직임',
+  'settings.pet.notifications': '알림과 기록',
+  'settings.pet.performance': '성능과 배터리',
   'settings.name': '이름',
   'settings.nameChanged': '이름을 바꿨어',
   'settings.nameHint': (v: { name: string; n: number; max: number }) =>
@@ -482,6 +487,11 @@ export const en: Translation<typeof ko> = {
   'settings.copyFailed': "Couldn't copy. Select the text and copy it yourself",
 
   'settings.pet': 'Fairy',
+  'settings.pet.speech': 'Speech and reactions',
+  'settings.pet.appearance': 'Appearance',
+  'settings.pet.movement': 'Movement',
+  'settings.pet.notifications': 'Notifications and notes',
+  'settings.pet.performance': 'Performance and battery',
   'settings.name': 'Name',
   'settings.nameChanged': 'Name changed',
   'settings.nameHint': (v) =>

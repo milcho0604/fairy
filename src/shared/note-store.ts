@@ -4,6 +4,7 @@ import { cutText, textBoundary } from './cut-text.ts';
 import type { Db } from './db-schema.ts';
 import { t } from './i18n/index.ts';
 import { pinAt } from './pin.ts';
+import { TRASH_DAYS, trashDaysLeft } from './todo-store.ts';
 
 export type NoteSource = 'me' | 'ai';
 
@@ -26,6 +27,7 @@ interface Row {
   created_at: number;
   updated_at: number;
   pinned_at?: unknown;
+  deleted_at?: number | null;
 }
 
 const toNote = (r: Row): Note => ({
@@ -223,6 +225,46 @@ export class NoteStore {
   /** 지운 것 되살리기 (지우고 몇 초 안에 되돌리기) */
   restore(id: number): void {
     this.#db.prepare('update note set deleted_at = null where id = ?').run(id);
+  }
+
+  trash(now: number): { id: number; title: string; preview: string; deletedAt: number; daysLeft: number }[] {
+    const rows = this.#db
+      .prepare('select * from note where deleted_at is not null order by deleted_at desc, id desc')
+      .all() as Row[];
+    return rows.map((r) => {
+      const note = toNote(r);
+      const deletedAt = Number(r.deleted_at);
+      return {
+        id: note.id,
+        title: noteTitle(note),
+        preview: notePreview(note),
+        deletedAt,
+        daysLeft: trashDaysLeft(deletedAt, now),
+      };
+    });
+  }
+
+  trashCount(): number {
+    return Number(
+      (this.#db.prepare('select count(*) as n from note where deleted_at is not null').get() as { n: number })
+        .n,
+    );
+  }
+
+  purge(id?: number): number {
+    const result =
+      id === undefined
+        ? this.#db.prepare('delete from note where deleted_at is not null').run()
+        : this.#db.prepare('delete from note where id = ? and deleted_at is not null').run(id);
+    return Number(result.changes);
+  }
+
+  purgeExpired(now: number): number {
+    return Number(
+      this.#db
+        .prepare('delete from note where deleted_at is not null and deleted_at <= ?')
+        .run(now - TRASH_DAYS * 86_400_000).changes,
+    );
   }
 }
 

@@ -75,6 +75,7 @@ export function FocusMonth({ s }: { s: PanelState }) {
         {t('records.month.title')}
         <small>{t('records.month.summary', { min: fmtMinutes(totals.min), days: totals.days })}</small>
       </summary>
+      <small>{t('records.month.hint')}</small>
       <div className="fm-nav">
         <button
           type="button"
