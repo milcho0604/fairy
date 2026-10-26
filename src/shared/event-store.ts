@@ -82,9 +82,27 @@ interface Row {
   pinned_at?: unknown;
   repeat_kind?: unknown;
   repeat_series?: number | null;
+  repeat_clock?: number | null;
   deleted_at?: number | null;
   removed_by?: string | null;
 }
+
+const localClock = (at: number): number => {
+  const date = new Date(at);
+  return (
+    ((date.getHours() * 60 + date.getMinutes()) * 60 + date.getSeconds()) * 1000 + date.getMilliseconds()
+  );
+};
+
+const validRepeatClock = (clock: unknown): clock is number =>
+  typeof clock === 'number' && Number.isInteger(clock) && clock >= 0 && clock < 86_400_000;
+
+const repeatClockParts = (clock: number): [number, number, number, number] => [
+  Math.floor(clock / 3_600_000),
+  Math.floor((clock % 3_600_000) / 60_000),
+  Math.floor((clock % 60_000) / 1000),
+  clock % 1000,
+];
 
 const toEvent = (r: Row, marks: readonly { before: number; notifiedAt: number | null }[]): CalEvent => {
   const reminds = marks.map((m) => m.before);
@@ -233,7 +251,7 @@ export class EventStore {
     const allDay = input.allDay === true;
     const r = this.#db
       .prepare(
-        'insert into event (title, start_at, end_at, remind_min, created_at, all_day, repeat_kind) values (?, ?, ?, ?, ?, ?, ?)',
+        'insert into event (title, start_at, end_at, remind_min, created_at, all_day, repeat_kind, repeat_clock) values (?, ?, ?, ?, ?, ?, ?, ?)',
       )
       .run(
         cutText(title, 200),
@@ -243,6 +261,7 @@ export class EventStore {
         now,
         allDay ? 1 : 0,
         input.repeat ?? null,
+        input.repeat ? localClock(input.startAt) : null,
       );
     const id = Number(r.lastInsertRowid);
     if (input.repeat) this.#db.prepare('update event set repeat_series = ? where id = ?').run(id, id);
@@ -271,13 +290,41 @@ export class EventStore {
         : undefined;
     if (!repeat) return;
     let interval = Number(latest.start_at);
-    const clock = new Date(interval);
-    // DST 전환으로 존재하지 않는 시각(예: 02:30)이 한 회차에서 03:30으로 보정돼도
-    // 그 보정값을 다음 회차의 시각으로 물려주지 않는다. 반복의 현지 시각은 처음 값에 고정한다.
-    const hour = clock.getHours();
-    const minute = clock.getMinutes();
-    const second = clock.getSeconds();
-    const millisecond = clock.getMilliseconds();
+    // 마지막 회차가 DST 경계에서 02:30 -> 03:30으로 보정될 수 있어 시각을 거기서 추론하면
+    // 다음 확장부터 반복 전체가 한 시간 밀린다. 첫 회차 또는 회차에 복사해 둔 기준 시각을 쓴다.
+    let repeatClock = validRepeatClock(initial?.repeat_clock)
+      ? initial.repeat_clock
+      : initial
+        ? localClock(Number(initial.start_at))
+        : validRepeatClock(latest.repeat_clock)
+          ? latest.repeat_clock
+          : undefined;
+    if (repeatClock === undefined) {
+      const samples = this.#db
+        .prepare(
+          'select start_at, repeat_clock from event where repeat_series = ? order by start_at limit 32',
+        )
+        .all(seriesId) as Pick<Row, 'start_at' | 'repeat_clock'>[];
+      const counts = new Map<number, number>();
+      for (const sample of samples) {
+        const clock = validRepeatClock(sample.repeat_clock)
+          ? sample.repeat_clock
+          : localClock(Number(sample.start_at));
+        counts.set(clock, (counts.get(clock) ?? 0) + 1);
+      }
+      repeatClock = [...counts].reduce(
+        (best, current) => (current[1] > best[1] ? current : best),
+        [localClock(Number(latest.start_at)), 0],
+      )[0];
+    }
+    // 기존 데이터도 한 번 추론한 기준 시각을 모든 회차에 저장한다. 이후 첫 회차를 영구 삭제해도 유지된다.
+    this.#db
+      .prepare('update event set repeat_clock = ? where id = ? and repeat_clock is null')
+      .run(repeatClock, seriesId);
+    this.#db
+      .prepare('update event set repeat_clock = ? where repeat_series = ? and repeat_clock is null')
+      .run(repeatClock, seriesId);
+    const [hour, minute, second, millisecond] = repeatClockParts(repeatClock);
     const reminds =
       this.#reminders
         .many([seriesId])
@@ -299,7 +346,7 @@ export class EventStore {
       const duration = latest.end_at === null ? null : Number(latest.end_at) - interval;
       const inserted = this.#db
         .prepare(
-          'insert into event (title, start_at, end_at, remind_min, created_at, all_day, repeat_kind, repeat_series) values (?, ?, ?, ?, ?, 0, ?, ?)',
+          'insert into event (title, start_at, end_at, remind_min, created_at, all_day, repeat_kind, repeat_series, repeat_clock) values (?, ?, ?, ?, ?, 0, ?, ?, ?)',
         )
         .run(
           latest.title,
@@ -309,6 +356,7 @@ export class EventStore {
           Number(latest.created_at),
           repeat,
           seriesId,
+          repeatClock,
         );
       this.#reminders.set(
         Number(inserted.lastInsertRowid),

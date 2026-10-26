@@ -251,6 +251,11 @@ export const MIGRATIONS: readonly string[] = [
   alter table event add column repeat_series integer;
   create index event_repeat_series on event(repeat_series, start_at) where repeat_series is not null;
   `,
+  // 17판: DST 보정 뒤에도 반복 일정의 원래 현지 시각을 다음 확장까지 기억한다.
+  // repeat_clock 은 현지 자정부터의 밀리초이며 각 회차에 복사해 첫 회차 영구 삭제 뒤에도 쓸 수 있다.
+  `
+  alter table event add column repeat_clock integer;
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
