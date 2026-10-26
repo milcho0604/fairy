@@ -15,6 +15,7 @@ import type { PanelDraftKind } from './draft-store.ts';
 import type { EnergyLook } from './energy.ts';
 import type { CalEvent } from './event-store.ts';
 import type { CarryToy } from './fetch.ts';
+import type { FindAllResult } from './find-all.ts';
 import type { FocusState } from './focus.ts';
 import type { FocusDay } from './focus-month.ts';
 import type { GalleryList } from './gallery.ts';
@@ -1076,6 +1077,7 @@ export const PANEL = {
   noteRestore: 'panel:note-restore',
   /** 메모 찾기 (본문 전체) */
   noteSearch: 'panel:note-search',
+  findAll: 'panel:find-all',
   /** 메모를 AI 로 정리 (할 일로 쪼개기, 요약). 채팅 창에서 묻는다 */
   noteAi: 'panel:note-ai',
   notePolish: 'panel:note-polish',
@@ -1091,6 +1093,7 @@ export const PANEL = {
   // 집중 타이머 (v1)
   focusStart: 'panel:focus-start',
   focusStop: 'panel:focus-stop',
+  focusResume: 'panel:focus-resume',
   focusUndo: 'panel:focus-undo',
   /** 놓친 알림 지우기 */
   missedClear: 'panel:missed-clear',
@@ -1112,6 +1115,10 @@ export const PANEL = {
   pin: 'panel:pin',
   /** 할 일 진행 중 표시와 풀기 (펫 머리 위 말풍선, 이슈 #124) */
   doing: 'panel:doing',
+  /** 할 일 순서 바꾸기 (#146) */
+  place: 'panel:todo-place',
+  /** 끝낸 반복 할 일의 다음 회차 (#146) */
+  nextOf: 'panel:todo-next-of',
   /** 지난 마감을 오늘로 */
   moveOverdue: 'panel:move-overdue',
   undoMoveOverdue: 'panel:undo-move-overdue',
@@ -1166,7 +1173,7 @@ export interface PanelState {
   gcal?: PanelGcal;
   focus: FocusState;
   /** 집중을 멈춘 직후 8초 동안 되돌릴 수 있다 */
-  focusUndoAvailable: boolean;
+  focusUndoAvailable?: boolean;
   /** 집중 코인과 오늘 받은 집중 횟수 */
   focusCoins: number;
   /** 고른 집중 길이 (15, 25, 50분) */
@@ -1384,6 +1391,7 @@ export interface PanelBridge {
   noteRestore(id: number): void;
   /** 메모 찾기: 제목과 본문 전체. composing 이면 마지막 글자는 아직 조합 중이라 넓게 찾는다 */
   noteSearch(query: string, composing: boolean): Promise<NoteHit[]>;
+  findAll(query: string, composing: boolean): Promise<FindAllResult>;
   noteAi(id: number, kind: NoteAiKind): Promise<boolean>;
   /**
    * 메모를 AI 로 다듬는다 (전체나 고른 start~end). 채팅 창 없이 답만 받는다. 메모마다 하나만 돌고,
@@ -1401,7 +1409,7 @@ export interface PanelBridge {
   eventAdd(
     text: string,
     day?: string,
-  ): Promise<{ ok: boolean; error?: string; event?: CalEvent; clash?: EventClash }>;
+  ): Promise<{ ok: boolean; error?: string; event?: CalEvent; clash?: EventClash; asTodo?: boolean }>;
   /** 달력 보기: [from, to) 와 겹치는 일정 (앞에서 시작해 이어지는 여러 날 일정도) */
   eventsBetween(from: number, to: number): Promise<CalEvent[]>;
   eventUpdate(
@@ -1429,6 +1437,10 @@ export interface PanelBridge {
   pin(kind: PinKind, id: number, on: boolean): void;
   /** 진행 중 표시(▶)와 풀기. 끝내거나 지우면 저절로 풀린다 */
   doing(id: number, on: boolean): void;
+  /** 순서 바꾸기: id 를 target 줄의 앞(after 가 거짓)이나 뒤에 놓는다 (#146) */
+  place(id: number, target: number, after: boolean): void;
+  /** 이 할 일을 끝내며 생긴 다음 회차의 마감 (반복이 아니면 null) */
+  nextOf(id: number): Promise<{ due: string | null } | null>;
   /** 지난 마감을 오늘로. 옮긴 것과 원래 마감 (되돌리기는 update 로). 'tomorrow' 면 오늘 마감과 지난 마감을 내일로 */
   moveOverdue(
     to?: 'tomorrow',
@@ -1438,7 +1450,8 @@ export interface PanelBridge {
   undoMoveOverdue(key?: number): void;
   /** 길이(15, 25, 50분)를 주면 그 길이로, 아니면 마지막에 고른 길이로. todoId 를 주면 그 할 일을 하는 집중 */
   focusStart(minutes?: number, todoId?: number): void;
-  focusStop(): void;
+  focusStop(): Promise<{ minutes: number } | null>;
+  focusResume(): Promise<boolean>;
   focusUndo(): void;
   missedClear(): void;
   buyToy(key: string): Promise<BuyResult>;

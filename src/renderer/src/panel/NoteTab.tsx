@@ -10,6 +10,7 @@ import { isEsc, takeEsc } from './keys.ts';
 import { MoreRow } from './more.tsx';
 import { type NoteResume, parseResume, RESUME_KEY } from './note-resume.ts';
 import { draftKeepOf, NoteSaver, openFromKept, SaveGate } from './note-save.ts';
+import { onOpenNote, takePendingNote } from './open-target.ts';
 import { pageOf } from './paging.ts';
 import { PinButton, usePinMenu } from './pin.tsx';
 import { useSurface } from './surface.tsx';
@@ -97,6 +98,16 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
         setResume(undefined);
       }
     });
+  }, []);
+
+  // 한 번에 찾기(#146)에서 고른 메모를 연다: 탭을 바꾸며 맡겨 둔 것은 그릴 때 가져가고, 이미 떠 있으면 알림을 듣는다
+  useEffect(() => {
+    const openPending = () => {
+      const id = takePendingNote();
+      if (id !== undefined) bridge.noteGet(id).then((n) => n && setOpen(n));
+    };
+    openPending();
+    return onOpenNote(openPending);
   }, []);
 
   const q = query.trim();

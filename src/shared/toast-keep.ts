@@ -5,7 +5,10 @@ import type { EventClash } from './ipc.ts';
 
 /** 패널 알림 하나. 끝낸 것, 지운 것, 일정으로 넣은 것 등을 되돌리거나 고르게 한다 */
 export type Toast =
-  | { kind: 'done'; id: number; coins: number; nextDue?: string }
+  /** next: 반복 할 일이면 "다음은 내일." 같은 안내 (#146) */
+  | { kind: 'done'; id: number; coins: number; next?: string }
+  /** 집중을 그만뒀다. minutes 는 기록한 분 (#146). 되돌리면 남은 시간 그대로 다시 돈다 */
+  | { kind: 'focus-stopped'; minutes: number }
   | { kind: 'note-removed'; id: number }
   | { kind: 'event-removed'; id: number }
   | { kind: 'todo-removed'; id: number }
@@ -27,6 +30,7 @@ export type Toast =
 
 export const TOAST_KINDS = [
   'done',
+  'focus-stopped',
   'note-removed',
   'event-removed',
   'todo-removed',

@@ -240,6 +240,17 @@ export const MIGRATIONS: readonly string[] = [
   );
   create index focus_session_day on focus_session(day);
   `,
+  // 15판: 할 일 손으로 정한 순서 (#146). 줄을 끌거나 "맨 위로" 로 옮기면 열린 할 일 모두에 1부터 번호를 적는다.
+  // 옛 행과 새로 넣은 할 일은 null 이라 그대로 중요, 마감 순 정렬을 따르고, 번호가 있는 것 뒤에 온다
+  `
+  alter table todo add column sort_ord integer;
+  `,
+  // 16판: 일정 반복 (#146). 반복 회차는 일정 표에 미리 만들어 알림·달력·검색에서 일반 일정처럼 다룬다.
+  `
+  alter table event add column repeat_kind text;
+  alter table event add column repeat_series integer;
+  create index event_repeat_series on event(repeat_series, start_at) where repeat_series is not null;
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

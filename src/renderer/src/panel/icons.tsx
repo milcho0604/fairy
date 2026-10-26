@@ -161,3 +161,28 @@ export function PinIcon() {
     </svg>
   );
 }
+
+/** 줄 메뉴 단추 (점 셋) */
+export function MoreIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="3.2" cy="8" r="1.3" fill="currentColor" />
+      <circle cx="8" cy="8" r="1.3" fill="currentColor" />
+      <circle cx="12.8" cy="8" r="1.3" fill="currentColor" />
+    </svg>
+  );
+}
+
+/** 끌어서 순서를 바꾸는 손잡이 (점 여섯) */
+export function GripIcon() {
+  return (
+    <svg viewBox="0 0 8 14" aria-hidden="true">
+      <circle cx="2" cy="3" r="1" fill="currentColor" />
+      <circle cx="6" cy="3" r="1" fill="currentColor" />
+      <circle cx="2" cy="7" r="1" fill="currentColor" />
+      <circle cx="6" cy="7" r="1" fill="currentColor" />
+      <circle cx="2" cy="11" r="1" fill="currentColor" />
+      <circle cx="6" cy="11" r="1" fill="currentColor" />
+    </svg>
+  );
+}

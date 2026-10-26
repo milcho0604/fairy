@@ -295,8 +295,10 @@ const body = async () => {
   };
   const row = (n) => `[...document.querySelectorAll('.todos:not(.trash-list) .todo')].find((li) => li.querySelector('.title')?.innerText === ${JSON.stringify(n)})`;
   const removeRow = async (n) => {
-    await p.hover(row(n));
-    const ok = await p.click(`${row(n)}?.querySelector('.remove')`);
+    // 줄 끝 "..." 메뉴의 "지우기" (#146: 줄에 겹쳐 뜨던 × 는 메뉴로 모였다)
+    const opened = await p.click(`${row(n)}?.querySelector('.row-more')`);
+    await sleep(350);
+    const ok = opened && (await p.click(`document.querySelector('.row-menu button.danger')`));
     await sleep(400);
     return ok;
   };
@@ -507,7 +509,8 @@ const body = async () => {
   await p.click(`${steps}[1]`);
   check('다음 달 두 번: 이번 달로 돌아옴', await p.until(async () => !!(await cell(todayStr))));
 
-  // 실제 집중 한 번: 15분 고르고 시작, 시계를 10초씩 당김
+  // 실제 집중 한 번: 15분 고르고 시작, 시계를 10초씩 당김 (#146: 집중 카드는 접혀 있어 길이 바꾸기를 먼저 누른다)
+  await p.click(`document.querySelector('.focus-card .link')`);
   await p.click(`[...document.querySelectorAll('.focus-len .len-chip')].find((b) => b.innerText.includes('15'))`);
   await p.click(`document.querySelector('.focus-card button.primary')`);
   check('시작 단추로 집중 시작', await p.until(() => main(`__jj.planner.focus.phase === 'focus'`)));

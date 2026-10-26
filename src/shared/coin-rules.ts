@@ -56,6 +56,10 @@ export function focusCoins(focusMin: number): number {
   return Math.round(prev[1] + ((focusMin - prev[0]) * (prev[1] - c1)) / (prev[0] - m1));
 }
 
+/** 집중 한 번에 주는 코인은 50분 기준 상한을 유지한다. */
+export const FOCUS_COIN_CAP_MIN = 50;
+export const focusReward = (focusMin: number): number => focusCoins(Math.min(focusMin, FOCUS_COIN_CAP_MIN));
+
 /** 놀이 코인: 놀이를 다 합쳐 하루 이만큼까지 (기본 먹이 5코인 남짓) */
 export const PLAY_COIN = { reason: 'play', dailyLimit: 6 } as const;
 /** 숨바꼭질: 찾으면 3, 하루 3판까지 */

@@ -3,6 +3,7 @@ import { EXPAND_HINT_MS } from '../../../shared/expand-hint.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PanelState, PanelTab } from '../../../shared/ipc.ts';
 import { nextUnlock } from '../../../shared/pet-life.ts';
+import { dueLabel } from '../../../shared/quick-add.ts';
 import type { SurfaceKind } from '../../../shared/surface-kind.ts';
 import {
   type KeptToast,
@@ -12,17 +13,19 @@ import {
   type Toast,
   undoable,
 } from '../../../shared/toast-keep.ts';
-import { localDay, monthAnchor, nextDue, type Todo } from '../../../shared/todo-store.ts';
+import type { Todo } from '../../../shared/todo-store.ts';
 import { HomeShell } from '../home/HomeShell.tsx';
 import { homeKeyAction, sectionForKey } from '../home/sections.ts';
 import { PetFace } from '../PetFace.tsx';
 import { useLanguageUpdates } from '../use-language.ts';
 import { EventTab } from './EventTab.tsx';
-import { addedText, dayHeading, timeOf, whenLabel } from './format.ts';
-import { CoinIcon, ExpandIcon, GearIcon, PinIcon } from './icons.tsx';
+import { FindAll } from './FindAll.tsx';
+import { addedText, timeOf, whenLabel } from './format.ts';
+import { CoinIcon, ExpandIcon, GearIcon, PinIcon, SearchIcon } from './icons.tsx';
 import { escClosesSurface, type ModKeyLike, tabStepByKey, undoByKey, undoFieldText } from './keys.ts';
 import { PlanSheetHost } from './MorningPlan.tsx';
 import { NoteTab } from './NoteTab.tsx';
+import { openNoteById, revealRow } from './open-target.ts';
 import { planTodosKey } from './plan-refresh.ts';
 import { ResizeGrips } from './ResizeGrips.tsx';
 import { ShopTab } from './ShopTab.tsx';
@@ -111,7 +114,6 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
   useLanguageUpdates();
   const [s, setS] = useState<PanelState>();
   const [tab, setTabState] = useState<PanelTab>(() => savedTab(kind));
-  /** 큰 창만: 채팅 구역이 열려 있다 (채팅 화면은 메인이 이 칸 위에 얹는 별도 view, #165). 탭을 고르면 닫힌다 */
   const [chatOn, setChatOn] = useState(false);
   // 되돌리기 알림 (#145): 여럿이 쌓이고, 메인이 들고 있어 패널을 벗어났다 다시 열어도 남은 시간 동안 보인다
   const [toasts, setToasts] = useState<KeptToast[]>(() => liveToasts(bridge.toastsGet(), Date.now()));
@@ -140,6 +142,8 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
   };
   /** "크게 볼까요?" 칩이 떠 있다 (패널을 가장 넓게 만든 채 더 끌었을 때, 몇 초 뒤 저절로 사라진다) */
   const [hintOn, setHintOn] = useState(false);
+  /** 할 일, 메모, 일정 한 번에 찾기 (#146) */
+  const [findOpen, setFindOpen] = useState(false);
   const hintTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const showHint = () => {
     setHintOn(true);
@@ -166,14 +170,6 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
       setChatOn(false);
       setTabState(next);
     });
-    if (kind === 'home') {
-      bridge.onChatSection(setChatOn);
-    }
-    // 패널이 열린 채 트레이, 펫 메뉴로 큰 창을 열면 메인이 이 패널에 먼저 넘겨 달라고 한다
-    if (kind === 'panel') bridge.onExpandNow(() => expandRef.current());
-    // 입력칸이 먼저 Esc 를 처리한다(비우기, 메모 목록으로). 한글 조합 중 Esc 는 조합만 끝낸다
-    // 큰 창: Cmd/Ctrl+, 설정, W 닫기, F 찾기, 1~ 구역 (채팅은 창 안에 품고, 친구는 따로 창을 연다). 처리했으면 true.
-    // 채팅 view 가 포커스를 쥔 채 누른 같은 키도 메인이 넘겨 준다 (onChatKey)
     const homeKey = (e: ModKeyLike): boolean => {
       const act = homeKeyAction(e, MAC);
       if (act) {
@@ -193,8 +189,18 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
       }
       return true;
     };
-    if (kind === 'home') bridge.onChatKey((k) => void homeKey(k));
+    if (kind === 'home') bridge.onChatKey((key) => void homeKey(key));
+    if (kind === 'home') bridge.onChatSection(setChatOn);
+    // 패널이 열린 채 트레이, 펫 메뉴로 큰 창을 열면 메인이 이 패널에 먼저 넘겨 달라고 한다
+    if (kind === 'panel') bridge.onExpandNow(() => expandRef.current());
+    // 입력칸이 먼저 Esc 를 처리한다(비우기, 메모 목록으로). 한글 조합 중 Esc 는 조합만 끝낸다
     const onKey = (e: KeyboardEvent) => {
+      // Cmd/Ctrl+K: 할 일, 메모, 일정을 한 번에 찾기
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setFindOpen(true);
+        return;
+      }
       if (escClosesSurface(e, kind)) {
         bridge.close();
         return;
@@ -314,19 +320,17 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
   };
 
   const complete = async (todo: Todo) => {
-    const today = localDay(Date.now());
-    const next = todo.repeat
-      ? nextDue(
-          todo.repeat === 'weekly' ? (todo.repeatAnchor ?? todo.due) : todo.due,
-          todo.repeat,
-          today,
-          todo.repeat === 'monthly' ? monthAnchor(todo.repeatAnchor ?? null, todo.due) : undefined,
-        )
-      : undefined;
     const coins = await bridge.complete(todo.id);
     // 이미 끝낸 할 일 (체크를 빠르게 여러 번 눌렀다): 앞의 "끝! 코인" 알림을 덮지 않는다
     if (coins === null) return;
-    showToast({ kind: 'done', id: todo.id, coins, ...(next ? { nextDue: next } : {}) });
+    // 반복 할 일: 다음 회차가 언제인지 알린다 (줄이 사라졌다 내일 자리에 다시 나타나 놀라지 않게)
+    const next = todo.repeat ? await bridge.nextOf(todo.id) : null;
+    showToast({
+      kind: 'done',
+      id: todo.id,
+      coins,
+      ...(next?.due ? { next: t('rows.toast.next', { when: dueLabel(next.due, s.today).text }) } : {}),
+    });
   };
 
   const feed = async () => {
@@ -341,6 +345,7 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
   const undoToast = (item: KeptToast) => {
     const { toast } = item;
     if (toast.kind === 'done') bridge.undo(toast.id);
+    if (toast.kind === 'focus-stopped') bridge.focusResume();
     if (toast.kind === 'note-removed') bridge.noteRestore(toast.id);
     if (toast.kind === 'event-removed') bridge.eventRestore(toast.id);
     if (toast.kind === 'todo-removed') bridge.restore(toast.id);
@@ -431,6 +436,7 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
             onComplete={complete}
             goTo={setTab}
             onMoved={(moved, to, key) => showToast({ kind: 'moved', moved, ...(to ? { to } : {}), key })}
+            onFocusStopped={(minutes) => showToast({ kind: 'focus-stopped', minutes })}
           />
         )}
         {tab === 'todo' && (
@@ -469,11 +475,22 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
             onRemoved={(id) => showToast({ kind: 'event-removed', id })}
             onComplete={complete}
             onTodoRemoved={(todo) => showToast({ kind: 'todo-removed', id: todo.id })}
+            onTodoAdded={(r) => showToast({ kind: 'added', text: addedText(r, s.today) })}
           />
         )}
       </div>
     </main>
   );
+
+  /** 찾기에서 고른 곳으로: 탭을 바꾸고 그 줄을 보인다 (메모는 편집기를 연다) */
+  const pickFound = (tab: PanelTab, pick: { kind: 'todo' | 'note' | 'event'; id: number }) => {
+    setTab(tab);
+    if (pick.kind === 'note') openNoteById(pick.id);
+    else void revealRow(`${pick.kind}:${pick.id}`);
+  };
+  const findSheet = findOpen ? (
+    <FindAll today={s.today} onClose={() => setFindOpen(false)} onPick={pickFound} />
+  ) : null;
 
   // 아침 계획 시트 (MorningPlan.tsx): 아침 첫 열기, 펫 한마디, 오늘 탭 카드에서 띄운다
   const planSheet = (
@@ -508,8 +525,8 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
         <HomeShell
           s={s}
           tab={tab}
-          setTab={setTab}
           chatOn={chatOn}
+          setTab={setTab}
           setOverlayRoot={setOverlayRoot}
           fed={fed}
           onFeed={feed}
@@ -517,6 +534,7 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
           planSheet={planSheet}
           toastStack={toastStack}
         />
+        {findSheet}
       </SurfaceProvider>
     );
 
@@ -554,6 +572,16 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
             >
               <ExpandIcon />
             </button>
+            {/* 할 일, 메모, 일정을 한 번에 찾기 */}
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label={t('rows.find.open')}
+              title={`${t('rows.find.open')} (${MOD}+K)`}
+              onClick={() => setFindOpen(true)}
+            >
+              <SearchIcon />
+            </button>
             {/* 설정은 펫 우클릭과 메뉴 막대에만 있어 찾기 어려웠다 */}
             <button
               type="button"
@@ -566,12 +594,17 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
             </button>
           </header>
 
+          {/* 펫 상태는 한 줄: 배부름, 기분, 친밀도, 밥 주기 (다음 해금 문구는 풀이로. 좁으면 둘째 줄로 넘어간다) */}
           <div className="fullness">
             <span className="label">{t('panel.fullness')}</span>
             <span className={`track ${hungry ? 'low' : ''}`} aria-hidden="true">
               <span className="fill" style={{ width: `${s.fullness}%` }} />
             </span>
             <span className="value">{s.fullness}</span>
+            <span className="life-vals" title={unlockHint(s.life.affection)}>
+              <span title={t('panel.moodHint')}>{t('panel.mood', { n: s.life.mood })}</span>
+              <span title={t('panel.affectionHint')}>{t('panel.affection', { n: s.life.affection })}</span>
+            </span>
             <button
               type="button"
               className="ghost small"
@@ -588,22 +621,17 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
               {fed || t('panel.feed', { n: s.foodCost })}
             </button>
           </div>
-          <div className="life">
-            <span title={t('panel.moodHint')}>{t('panel.mood', { n: s.life.mood })}</span>
-            <span title={t('panel.affectionHint')}>{t('panel.affection', { n: s.life.affection })}</span>
-            <small className="unlock-next" title={unlockHint(s.life.affection)}>
-              {unlockHint(s.life.affection)}
-            </small>
-            {/* 가장 넓게 만든 채 더 끌면 잠깐 권한다. 저절로 바꾸지는 않는다. 눌리는 단추가 없는 이 줄 오른쪽에 띄워 아무것도 덮지 않는다 */}
-            {hintOn && (
+          {/* 가장 넓게 만든 채 더 끌면 잠깐 권한다. 저절로 바꾸지는 않는다. 눌리는 단추가 없는 이 줄에 띄워 아무것도 덮지 않는다 */}
+          {hintOn && (
+            <div className="life chip-only">
               <div className="expand-chip" role="status">
                 <button type="button" className="expand-chip-btn" onClick={expand}>
                   <ExpandIcon />
                   {t('panel.expandHint')}
                 </button>
               </div>
-            )}
-          </div>
+            </div>
+          )}
           {s.life.sulk > 0 && (
             <p className="hint sulk">{t('panel.sulk', { name: s.petName, n: s.life.sulk })}</p>
           )}
@@ -662,6 +690,7 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
           </footer>
 
           {planSheet}
+          {findSheet}
 
           {/* 크기 손잡이: 카드 안 오른쪽 아래. 다른 칸 위에 얹는다 */}
           <ResizeGrips onPastMax={showHint} />
@@ -675,11 +704,13 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
 
 function toastText(toast: Toast): string {
   if (toast.kind === 'done') {
-    const done = toast.coins > 0 ? t('panel.toast.done', { n: toast.coins }) : t('panel.toast.doneNoCoin');
-    return toast.nextDue
-      ? `${done} · ${t('panel.toast.repeatNext', { when: dayHeading(toast.nextDue, localDay(Date.now())) })}`
-      : done;
+    const base = toast.coins > 0 ? t('panel.toast.done', { n: toast.coins }) : t('panel.toast.doneNoCoin');
+    return toast.next ? `${base} ${toast.next}` : base;
   }
+  if (toast.kind === 'focus-stopped')
+    return toast.minutes > 0
+      ? t('rows.toast.focusStopped', { n: toast.minutes })
+      : t('rows.toast.focusStoppedNone');
   if (toast.kind === 'note-removed') return t('panel.toast.noteRemoved');
   if (toast.kind === 'event-removed') return t('panel.toast.eventRemoved');
   if (toast.kind === 'todo-removed') return t('panel.toast.todoRemoved');

@@ -698,8 +698,9 @@ export function createPlanner(o: PlannerOptions) {
     o.onChange();
   }
 
-  function stopFocus() {
+  function stopFocus(): { minutes: number } | undefined {
     const now = Date.now();
+    const before = focus;
     const minutes = focusedMinutes(focus, now);
     if (minutes > 0) o.stats.addFocus(now, minutes);
     stoppedFocus = minutes > 0 && focus.phase === 'focus' ? { before: focus, at: now, minutes } : undefined;
@@ -714,6 +715,7 @@ export function createPlanner(o: PlannerOptions) {
     o.log('planner', '집중 그만', minutes);
     o.onChange();
     schedule();
+    return before.phase === 'idle' ? undefined : { minutes: before.phase === 'focus' ? minutes : 0 };
   }
 
   function undoStopFocus(): boolean {

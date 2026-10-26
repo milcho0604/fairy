@@ -1,0 +1,448 @@
+/* 할 일 줄과 오늘 탭 (#146): 줄 하나가 탭 정지점 하나, 줄 끝은 표시와 "..." 하나, 순서 손잡이, 방금 넣은 줄 알림, 줄 메뉴, 집중 길이 */
+
+.todo {
+  position: relative;
+}
+
+/* 줄 하나가 탭 정지점 (roving): 초점이 오면 줄 전체에 링 */
+.todo[tabindex]:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+  background: var(--bg);
+}
+
+/* 줄 끝 "..." : 늘 보이되 흐리게 (마우스를 올리거나 키보드로 오면 또렷하게). 자리는 늘 차지해 제목 폭이 출렁이지 않는다 */
+.row-more {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.row-more svg {
+  width: 14px;
+  height: 14px;
+}
+
+.todo:hover .row-more,
+.todo:focus-within .row-more,
+.row-more[aria-expanded="true"] {
+  opacity: 1;
+}
+
+.row-more:hover {
+  background: var(--code);
+  color: var(--ink);
+}
+
+.row-more:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+/* 날짜 고르기 달력이 뜰 자리 (보이지 않고 누름도 받지 않는다) */
+.tools .due-pick {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.repeat-badge > span {
+  font-size: 11px;
+}
+
+/* 순서 손잡이: 줄 왼쪽 바깥 여백에 있고 마우스를 올리면 보인다 */
+.todo .grip {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: -8px;
+  display: grid;
+  place-items: center;
+  width: 10px;
+  color: var(--muted);
+  opacity: 0;
+  cursor: grab;
+}
+
+.todo .grip svg {
+  width: 7px;
+  height: 12px;
+}
+
+.todo:hover .grip,
+.todo.dragging .grip {
+  opacity: 0.8;
+}
+
+.todo.dragging {
+  opacity: 0.45;
+}
+
+/* 끌어서 올려 둔 줄: 그 위에 놓으면 들어갈 자리를 선으로 */
+.todo.drop-over {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+
+/* 방금 넣은 줄 (1초) */
+.todo.flash {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  transition: background 0.5s;
+}
+
+/* 줄 메뉴 */
+.row-menu {
+  max-height: calc(100vh - 8px);
+  overflow-y: auto;
+  min-width: 170px;
+  scrollbar-width: thin;
+}
+
+.row-menu > div {
+  display: block;
+}
+
+.row-menu .menu-sep {
+  margin-top: 3px;
+  padding-top: 3px;
+  border-top: 1px solid var(--line);
+}
+
+.row-menu button {
+  white-space: nowrap;
+}
+
+.row-menu .menu-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.row-menu .menu-label {
+  flex: 1;
+}
+
+.row-menu small {
+  margin-inline-start: 10px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.row-menu button.danger {
+  color: var(--error);
+}
+
+.row-menu button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* 집중 카드: 한 줄로 접고 길이 칩은 펼쳤을 때만 */
+.focus-card.fold {
+  align-items: center;
+}
+
+.focus-card .focus-line {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.focus-card .focus-line strong {
+  font-size: 13px;
+}
+
+.focus-card .focus-line .link {
+  padding: 0;
+}
+
+.focus-custom {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.focus-custom input {
+  width: 52px;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  text-align: center;
+}
+
+.focus-custom input[aria-invalid="true"] {
+  border-color: var(--error);
+}
+
+.focus-custom .focus-bad {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  color: var(--error);
+  font-size: 11px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .todo.flash {
+    transition: none;
+  }
+}
+
+/* 펫 상태 한 줄: 배부름 막대, 기분, 친밀도, 밥 주기. 좁으면 둘째 줄로 */
+.fullness {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
+.fullness .track {
+  flex: 1 1 48px;
+  min-width: 48px;
+}
+
+.fullness .life-vals {
+  display: inline-flex;
+  gap: 8px;
+  font-size: 12px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.life.chip-only {
+  min-height: 24px;
+  padding-bottom: 2px;
+}
+
+/* 아침 계획: 할 일이 없을 때 바로 적는 칸, 아침 첫 열기에 도드라진 카드 */
+.plan-card.is-inline {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.plan-inline input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+}
+
+.plan-inline input:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: -1px;
+}
+
+.plan-inline .hint {
+  margin: 4px 0 0;
+}
+
+.plan-card.nudge {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* 일정 줄의 끝 시각: 눌러서 고친다. 끝이 없으면 마우스를 올릴 때만 보인다 */
+.event .end-time {
+  position: relative;
+  flex: none;
+  align-self: flex-start;
+  padding: 1px 6px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.event .end-time.none {
+  opacity: 0;
+}
+
+.event:hover .end-time.none,
+.event .end-time.none:focus-within {
+  opacity: 0.8;
+}
+
+.event .end-time input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  min-width: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.event .end-time:has(input:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.event .end-time:has(input:disabled) {
+  cursor: default;
+}
+
+.hint .as-todo {
+  margin-inline-start: 8px;
+}
+
+/* 한 번에 찾기 */
+.find-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 56px 12px 12px;
+  background: color-mix(in srgb, var(--ink) 28%, transparent);
+}
+
+.find-sheet {
+  display: flex;
+  flex-direction: column;
+  width: min(520px, 100%);
+  max-height: 100%;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.25);
+  overflow: hidden;
+}
+
+.find-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.find-sheet .find-input svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.find-sheet .find-input input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+}
+
+.find-sheet .find-input input:focus {
+  outline: none;
+}
+
+.find-close {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.find-body {
+  overflow-y: auto;
+  padding: 4px 6px 8px;
+  scrollbar-width: thin;
+}
+
+.find-hint {
+  margin: 14px 8px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.find-group h3 {
+  margin: 8px 8px 2px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.find-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.find-row.on {
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1.5px var(--focus-ring);
+}
+
+.find-row .find-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.find-row small {
+  flex: none;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.find-snippet {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+
+.find-snippet mark {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  color: inherit;
+}
+
+.find-more {
+  margin: 2px 8px 0;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.event.flash {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  transition: background 0.5s;
+}
+
+.event[tabindex]:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}

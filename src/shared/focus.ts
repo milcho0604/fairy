@@ -1,14 +1,14 @@
 // 집중 타이머 (v1). 기본 25분 집중, 5분 쉬기. 집중 중엔 펫이 자고, 끝내면 코인 (15분 5, 25분 10, 50분 25, 하루 100개까지).
 // 길이는 5~120분 정수 중에 고른다 (설정 focusMin, 마지막에 고른 것을 기억).
 
-import { focusCoins as coinsForMinutes, FOCUS_LENGTHS } from './coin-rules.ts';
+import { focusCoins as coinsForMinutes, FOCUS_LENGTHS, focusReward } from './coin-rules.ts';
 
 export const FOCUS = {
   focusMin: 25,
   breakMin: 5,
 } as const;
 
-export { FOCUS_LENGTHS };
+export { FOCUS_LENGTHS, focusReward };
 export const FOCUS_MIN_MINUTES = 5;
 export const FOCUS_MAX_MINUTES = 120;
 
@@ -19,6 +19,9 @@ export function focusCoins(minutes: number): number {
 export type FocusLength = number;
 export const isFocusLength = (v: unknown): v is FocusLength =>
   typeof v === 'number' && Number.isInteger(v) && v >= FOCUS_MIN_MINUTES && v <= FOCUS_MAX_MINUTES;
+
+export const FOCUS_CUSTOM = { min: FOCUS_MIN_MINUTES, max: FOCUS_MAX_MINUTES } as const;
+export const isFocusMinutes = isFocusLength;
 
 /** 쉬는 시간: 50분 집중은 10분, 나머지는 5분 */
 export function breakFor(focusMin: number): number {

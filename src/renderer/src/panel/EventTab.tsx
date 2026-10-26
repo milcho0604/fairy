@@ -2,11 +2,12 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { plusDays } from '../../../shared/day.ts';
 import { allDayLabel, allDaySpan, type CalEvent, dayStartMs } from '../../../shared/event-store.ts';
 import { t } from '../../../shared/i18n/index.ts';
-import type { PanelState } from '../../../shared/ipc.ts';
+import type { PanelAddResult, PanelState } from '../../../shared/ipc.ts';
 import { localDay, type Todo } from '../../../shared/todo-store.ts';
 import { restoredEventDay } from '../../../shared/view-keep.ts';
 import { CalendarView } from './CalendarView.tsx';
 import { useDraft } from './draft.ts';
+import { endFromInput, lengthLabel, timeInputValue } from './event-end.ts';
 import { dayHeading, timeOf, toInputValue } from './format.ts';
 import { gcalBadge } from './gcal-badge.ts';
 import { PinIcon } from './icons.tsx';
@@ -37,9 +38,12 @@ export function EventTab({
   onRemoved,
   onComplete,
   onTodoRemoved,
+  onTodoAdded,
 }: {
   s: PanelState;
   inputRef: React.RefObject<HTMLInputElement | null>;
+  /** 반복 말이 있어 일정으로 못 넣은 글을 반복 할 일로 넣었다 (알림) */
+  onTodoAdded?: (r: Extract<PanelAddResult, { ok: true }>) => void;
   onRemoved: (id: number) => void;
   /** 달력 보기의 할 일 줄 (할 일 탭과 같은 끝내기, 지우기) */
   onComplete: (todo: Todo) => void;
@@ -76,17 +80,21 @@ export function EventTab({
   useKeepScroll(calendar ? calScroll : listScroll, calendar ? 'eventCal' : 'eventList');
   // 방금 넣은 일정이 다른 일정과 시간이 겹친다 (넣기는 했다. 다음 글을 적으면 지운다)
   const [clash, setClash] = useState('');
+  // 반복 문장을 시각 일정으로 읽지 못했으면 같은 글을 반복 할 일로 바꿀 수 있게 한다.
+  const [asTodo, setAsTodo] = useState(false);
   const now = Date.now();
 
   const add = async () => {
     const r = await bridge.eventAdd(text, calendar ? day : undefined);
     if (!r.ok) {
       setError(r.error ?? t('panel.add.failed'));
+      setAsTodo(!!r.asTodo);
       setClash('');
       return;
     }
     setText('');
     setError('');
+    setAsTodo(false);
     setClash(r.clash ? t('assist.clash', { time: timeOf(r.clash.startAt), title: r.clash.title }) : '');
   };
 
@@ -124,6 +132,7 @@ export function EventTab({
           onChange={(e) => {
             setText(e.target.value);
             setError('');
+            setAsTodo(false);
             setClash('');
           }}
           onKeyDown={(e) => {
@@ -138,7 +147,31 @@ export function EventTab({
           ))}
         </fieldset>
       </div>
-      {error && <p className="hint error">{error}</p>}
+      {error && (
+        <p className="hint error">
+          {error}
+          {asTodo && (
+            <button
+              type="button"
+              className="link as-todo"
+              onClick={async () => {
+                const r = await bridge.add(text, { as: 'todo' });
+                if (!r.ok) {
+                  setError(r.error ?? t('panel.add.failed'));
+                  setAsTodo(false);
+                  return;
+                }
+                setText('');
+                setError('');
+                setAsTodo(false);
+                onTodoAdded?.(r);
+              }}
+            >
+              {t('rows.event.asTodo')}
+            </button>
+          )}
+        </p>
+      )}
       {clash && <p className="hint clash">{clash}</p>}
       {calendar ? (
         <div className="scroll cal-scroll" ref={calScroll}>
@@ -256,6 +289,8 @@ export function EventRow({
     <>
       <li
         className={`event ${started ? 'now' : ''} ${span ? 'all-day' : ''} ${pinned ? 'pinned' : ''}`}
+        data-find-key={`event:${e.id}`}
+        tabIndex={-1}
         onContextMenu={pinMenu.onContextMenu}
       >
         {span ? (
@@ -330,7 +365,14 @@ export function EventRow({
             }}
           >
             {e.title}
-            {e.endAt && !e.allDay && <small> ~{timeOf(e.endAt)}</small>}
+            {e.repeat && (
+              <small
+                className="repeat-badge"
+                title={t('panel.todo.repeatTitle', { label: t(`panel.repeat.${e.repeat}`) })}
+              >
+                {t(`panel.repeat.${e.repeat}`)}
+              </small>
+            )}
             {showDay && (!span || span.last === span.first) && (
               <small className="pin-day"> {dayHeading(localDay(e.startAt), today)}</small>
             )}
@@ -338,6 +380,7 @@ export function EventRow({
             {span && span.last > span.first && <small> {allDayLabel(e)}</small>}
           </button>
         )}
+        {!span && <EndTime e={e} readOnly={readOnly} />}
         <span className="tools">
           {badge && (
             <span className={`gcal-badge ${badge.kind}`} title={badge.tip} data-gcal={badge.kind}>
@@ -403,5 +446,41 @@ export function EventRow({
         </li>
       )}
     </>
+  );
+}
+
+/** 끝 시각과 길이: 끝 시각을 누르면 시각 칸이 열린다. 비우고 칸을 떠나면 끝 시각이 없어진다 (시작보다 이른 값은 받지 않는다) */
+function EndTime({ e, readOnly }: { e: CalEvent; readOnly: boolean }) {
+  const ref = useRef<HTMLInputElement>(null);
+  // 쓰는 중이 아닐 때만 저장된 값으로 맞춘다 (치는 도중 값이 덜 찬 칸을 지우지 않게)
+  useEffect(() => {
+    const el = ref.current;
+    if (el && document.activeElement !== el) el.value = e.endAt ? timeInputValue(e.endAt) : '';
+  }, [e.endAt]);
+  return (
+    <label
+      className={`end-time ${e.endAt ? '' : 'none'}`}
+      title={readOnly ? t('gcal.readOnlyTip') : t('rows.event.endTitle')}
+    >
+      {e.endAt ? `~${timeOf(e.endAt)} (${lengthLabel(e.startAt, e.endAt)})` : t('rows.event.endAdd')}
+      <input
+        ref={ref}
+        type="time"
+        disabled={readOnly}
+        defaultValue={e.endAt ? timeInputValue(e.endAt) : ''}
+        aria-label={t('rows.event.endTime')}
+        onChange={(ev) => {
+          // 비운 값은 칸을 떠날 때 처리한다 (치는 도중에도 잠깐 빈다)
+          if (ev.target.value === '') return;
+          const end = endFromInput(e.startAt, ev.target.value);
+          if (end !== undefined && end !== e.endAt) bridge.eventUpdate(e.id, { endAt: end });
+        }}
+        onBlur={(ev) => {
+          const end = endFromInput(e.startAt, ev.target.value);
+          if (end === null && e.endAt !== null) bridge.eventUpdate(e.id, { endAt: null });
+          else ev.target.value = e.endAt ? timeInputValue(e.endAt) : '';
+        }}
+      />
+    </label>
   );
 }
