@@ -822,6 +822,20 @@ const body = async () => {
     : null;
   check('반복 일정의 다음 주 회차도 일정 목록에 생성된다', !!nextRecurring, JSON.stringify(nextRecurring));
   await shots(pp, 'event-repeat-created');
+  await pp.ev(`document.querySelector('.event-add input').focus(); document.querySelector('.event-add input').select()`);
+  await pp.type(L('매일 운동', 'daily workout'));
+  await pp.enter();
+  await sleep(400);
+  const noTimeRepeat = await pp.ev(`!!document.querySelector('.hint.error .as-todo')`);
+  const accidentalMidnight = JSON.parse(
+    await main(`JSON.stringify(__jj.events.between(0, 4e12).some((e) => e.repeat === 'daily' && e.title === ${JSON.stringify(L('운동', 'workout'))}))`),
+  );
+  check('시각 없는 반복 일정은 자정 일정으로 잘못 저장하지 않고 할 일 경로를 안내한다', noTimeRepeat && !accidentalMidnight);
+  await pp.click(`document.querySelector('.hint.error .as-todo')`);
+  const repeatTodo = JSON.parse(
+    await main(`JSON.stringify(__jj.store.list(Date.now()).open.some((t) => t.repeat === 'daily' && t.title === ${JSON.stringify(L('운동', 'workout'))}))`),
+  );
+  check('시각 없는 반복 입력은 안내를 눌러 반복 할 일로 넣을 수 있다', repeatTodo);
   check(
     '일정을 넣으면 입력칸이 비워지고 일정 줄이 나타난다',
     (await pp.ev(`document.querySelector('.event-add input').value`)) === '' &&

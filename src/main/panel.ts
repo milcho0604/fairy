@@ -682,7 +682,8 @@ export function createPanel(o: PanelOptions) {
       // (빠른 입력은 위 PANEL.add 처럼 시각이 있어야 일정이다. 거기서 날짜만 있으면 할 일 마감)
       const repeatTodo = parseTodoLine(text, base, minute);
       const repeat =
-        repeatTodo.repeat === 'daily' || repeatTodo.repeat === 'weekdays' || repeatTodo.repeat === 'weekly'
+        repeatTodo.dueMin !== null &&
+        (repeatTodo.repeat === 'daily' || repeatTodo.repeat === 'weekdays' || repeatTodo.repeat === 'weekly')
           ? repeatTodo.repeat
           : undefined;
       // 달력에서 고른 날이면 날짜도 시각도 없는 글("장보기")은 그날 종일. "오늘" 을 붙여 읽어
