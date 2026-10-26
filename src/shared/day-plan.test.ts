@@ -164,14 +164,15 @@ test('저절로 띄우기와 펫 한마디: 정한 시각 뒤 아침에 하루 �
   assert.equal(shouldNudge({ ...f, nudgedDay: today }, today, 9 * 60), false);
 });
 
-test('고를 할 일이 없으면 저절로 띄우지도, 펫이 묻지도 않는다 (처음 켠 사람의 빈 시트)', () => {
+test('할 일이 없으면 자동 시트와 펫 알림은 생략하고, 직접 요청한 계획은 연다', () => {
   const f = parsePlanFile({ prefs: { auto: true, fromMinute: 8 * 60 } });
   const today = '2026-10-07';
   assert.equal(shouldAutoOpen(f, today, 9 * 60, 0), false);
   assert.equal(shouldNudge(f, today, 9 * 60, 0), false);
   assert.equal(shouldAutoOpen(f, today, 9 * 60, 2), true);
   assert.equal(shouldNudge(f, today, 9 * 60, 1), true);
-  assert.equal(shouldPresentPlan(f, today, 9 * 60, 0, true), false);
+  assert.equal(shouldPresentPlan(f, today, 9 * 60, 0, false), false);
+  assert.equal(shouldPresentPlan(f, today, 9 * 60, 0, true), true);
   assert.equal(shouldPresentPlan(f, today, 9 * 60, 1, true), true);
 });
 

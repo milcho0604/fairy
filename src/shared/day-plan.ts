@@ -133,7 +133,7 @@ export function shouldAutoOpen(f: PlanFile, today: string, minute: number, candi
   return f.plan?.day !== today && f.shownDay !== today;
 }
 
-/** 첫 열기나 펫의 아침 알림으로 띄울 때도 후보 할 일이 없으면 덮는 화면을 열지 않는다. */
+/** 자동으로 띄울 때는 후보 할 일이 있어야 한다. 사용자가 직접 요청한 계획은 빈 목록이어도 연다. */
 export function shouldPresentPlan(
   f: PlanFile,
   today: string,
@@ -141,7 +141,7 @@ export function shouldPresentPlan(
   candidates: number,
   pendingOpen: boolean,
 ): boolean {
-  return candidates > 0 && (pendingOpen || shouldAutoOpen(f, today, minute, candidates));
+  return pendingOpen || (candidates > 0 && shouldAutoOpen(f, today, minute, candidates));
 }
 
 /** 펫이 아침에 한 번 물어볼지 (같은 조건에 펫이 아직 안 물었을 때) */

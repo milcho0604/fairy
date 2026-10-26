@@ -47,6 +47,8 @@ export interface PlanView {
   events: { title: string; startAt: number; endAt: number | null }[];
   /** 지금 계획 화면을 띄울지 (아침 첫 열기, 펫 한마디로 열었음) */
   autoOpen: boolean;
+  /** 펫이 사용자의 명시적 요청으로 연 것. 할 일이 없어도 입력 칸이 있는 계획 창을 띄운다. */
+  manualOpen: boolean;
   /** 쓸 수 있는 AI 이름. 없으면 다듬기 단추를 숨긴다 */
   ai?: string;
 }

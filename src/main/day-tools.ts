@@ -166,6 +166,7 @@ export function createDayTools(o: DayToolsOptions) {
     });
     const { events, gaps } = dayGaps(now);
     const plan = file.plan?.day === today ? file.plan : undefined;
+    const manualOpen = auto && pendingOpen;
     const autoOpen = auto && shouldPresentPlan(file, today, minuteOfDay(now), candidates.length, pendingOpen);
     if (auto) pendingOpen = false;
     const ai = o.aiLocked() ? undefined : o.aiLabel();
@@ -178,6 +179,7 @@ export function createDayTools(o: DayToolsOptions) {
       gaps,
       events: events.map(({ title, startAt, endAt }) => ({ title, startAt, endAt })),
       autoOpen,
+      manualOpen,
       ...(ai ? { ai } : {}),
     };
   }
