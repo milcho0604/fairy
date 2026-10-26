@@ -8,6 +8,7 @@ import { memoBody } from '../../../shared/quick-add.ts';
 import { localDay } from '../../../shared/todo-store.ts';
 import { initLang } from '../lang.ts';
 import { PetFace } from '../PetFace.tsx';
+import { useLanguageUpdates } from '../use-language.ts';
 import { useDraft } from './draft.ts';
 import { addedText, timeOf, whenLabel } from './format.ts';
 import { escClosesWindow, isEsc, takeEsc } from './keys.ts';
@@ -64,6 +65,7 @@ function removeItem(kind: Kind, id: number) {
  * 여러 줄을 붙여 넣으면 넣을 목록을 먼저 보여 준다. "메모: ..." 머리말은 메모로 넣는다.
  */
 function QuickAdd() {
+  useLanguageUpdates();
   // 쓰던 글 (#145): 다른 곳을 눌러 닫혀도 메인이 들고 있다가 다시 열면 돌려준다
   const [text, setText] = useDraft('quick');
   const [error, setError] = useState('');

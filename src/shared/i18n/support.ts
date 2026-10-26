@@ -32,12 +32,12 @@ export const ko = {
   'support.ai.no': '안 됨',
   'support.ai.unverified': '확인 전',
   'support.ai.legend':
-    '페어리 도구는 대화 중에 AI가 페어리 할 일, 메모, 일정을 직접 넣는 기능(MCP)이야. 확인 전은 아직 실제 출력으로 시험하지 못했다는 뜻이야.',
+    '페어리 도구를 켜면 대화 중에 AI가 할 일, 메모, 일정을 읽거나 넣을 수 있어. 확인 전은 아직 실제 출력으로 시험하지 못했다는 뜻이야.',
   'support.ai.readOnly':
     '페어리가 부르는 AI는 읽기만 해. 파일을 고치거나 명령을 실행하거나 메일, 메시지를 보내는 도구는 내 AI 설정이 어떻든 막아 둬. 열려 있는 건 페어리 도구(할 일, 메모, 일정)뿐이야.',
   'support.ai.custom': '직접 추가한 AI는 막을 방법이 없어. 그 명령이 하는 일은 내가 책임져야 해.',
   'support.ai.myMcp':
-    '"내 AI 설정 없이 부르기"를 끄고 내 MCP 도구를 써도 이름이 읽기(가져오기, 찾기)로 보이는 도구만 열려. 보내기, 만들기, 지우기 같은 도구는 막혀.',
+    '"내 AI 설정 없이 부르기"를 끄고 Claude Code 도구를 함께 써도 가져오기, 찾기처럼 읽는 도구만 열려. 보내기, 만들기, 지우기 같은 도구는 막혀.',
   'support.onb.title': '이 컴퓨터에서 찾은 AI',
   'help.open': '도움 보내기',
   'help.title': '도움 보내기',
@@ -109,12 +109,12 @@ export const en: Translation<typeof ko> = {
   'support.ai.no': 'No',
   'support.ai.unverified': 'Unverified',
   'support.ai.legend':
-    'Fairy tools (MCP) let the AI add Fairy to-dos, notes and events right in the chat. Unverified means we have not tested it against real output yet.',
+    'Fairy tools let the AI read and add to-dos, notes and events in chat. Unverified means we have not tested it with real output yet.',
   'support.ai.readOnly':
     "The AI Fairy calls only reads. Tools that edit files, run commands or send mail and messages are blocked no matter what your own AI settings say. Only Fairy's own tools (to-dos, notes, events) stay open.",
   'support.ai.custom': "We can't restrict an AI you added yourself. What its command does is on you.",
   'support.ai.myMcp':
-    'If you turn off "Call without my AI setup" and use your own MCP tools, only tools whose names look like reading (get, find, search) stay open. Tools that send, create or delete are blocked.',
+    'If you turn off "Call without my AI setup" and use Claude Code tools too, only tools that read (get, find, search) stay open. Tools that send, create or delete are blocked.',
   'support.onb.title': 'AI found on this computer',
   'help.open': 'Send for help',
   'help.title': 'Send for help',

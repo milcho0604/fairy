@@ -487,9 +487,15 @@ export function createHouse({ onMoved, onClick, restItem, onStow, log }: HouseOp
       log?.('house', 'render-process-gone', d.reason, d.exitCode, next);
       if (next === 'reload') heal();
     });
-    w.webContents.once('did-finish-load', () => {
+    let loaded = false;
+    w.webContents.on('did-finish-load', () => {
+      if (w !== win) return;
       applySprites();
-      land();
+      if (loaded) {
+        setClass(transient);
+        heal();
+      } else land();
+      loaded = true;
     });
   }
 
@@ -592,6 +598,13 @@ export function createHouse({ onMoved, onClick, restItem, onStow, log }: HouseOp
   return {
     show,
     heal,
+    /** Dock 전환 뒤 집도 모든 데스크톱/항상 위 설정을 다시 건다. 숨김 이유는 유지한다. */
+    reassertSpaces() {
+      if (!alive() || !win) return;
+      win.setAlwaysOnTop(true, 'floating');
+      win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false, ...KEEP_APP_TYPE });
+      heal();
+    },
     /** 펫과 같이 숨는다 (발표, 펫 숨기기) */
     hide: () => setHiddenBy('pet', true),
     unhide: () => setHiddenBy('pet', false),

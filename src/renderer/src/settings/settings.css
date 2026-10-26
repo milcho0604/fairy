@@ -95,8 +95,23 @@ h2 {
 
 small {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
+}
+
+.advanced-setup {
+  margin-top: 2px;
+}
+
+.advanced-setup > summary {
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.advanced-setup[open] > :not(summary) {
+  margin-top: 12px;
 }
 
 .below {
@@ -961,6 +976,7 @@ textarea.rules {
   /* 넓은 창은 내용 폭을 읽기 좋게 묶는다 */
   main > * {
     max-width: 640px;
+    margin-inline: auto;
   }
 }
 

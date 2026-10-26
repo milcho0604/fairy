@@ -1,6 +1,6 @@
 import { cpus, homedir } from 'node:os';
 import { join } from 'node:path';
-import { app, dialog, globalShortcut, Menu, powerMonitor, screen, session } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, Menu, powerMonitor, screen, session } from 'electron';
 import { ACHIEVEMENTS } from '../shared/achieve.ts';
 import { planTodos } from '../shared/ai/answer-todos.ts';
 import { pickLocal } from '../shared/ai/catalog.ts';
@@ -12,7 +12,7 @@ import { HIDE_SEEK, pickHideSpot } from '../shared/hide-seek.ts';
 import { panelTarget, reopenTarget } from '../shared/home-policy.ts';
 import { houseMenuKey, houseNewsKey, stowSayKey, stowStep } from '../shared/house-stow.ts';
 import { locale, t } from '../shared/i18n/index.ts';
-import { IPC, type PetStatus, type PlayKind } from '../shared/ipc.ts';
+import { IPC, LANGUAGE, type PetStatus, type PlayKind } from '../shared/ipc.ts';
 import { type FactKind, factsForAi } from '../shared/knows.ts';
 import { ownsLoginItem } from '../shared/login-item.ts';
 import { runnerLookOf } from '../shared/menu-runner.ts';
@@ -58,7 +58,7 @@ import { createHouseRest } from './house-rest.ts';
 import { createJourney } from './journey.ts';
 import { pruneCopies } from './keep-copies.ts';
 import { createKnows } from './knows.ts';
-import { initLang } from './lang.ts';
+import { initLang, refreshLang } from './lang.ts';
 import { debugLines, initLines, registerLines } from './lines.ts';
 import { stopLocalDrawNow, sweepLocalDraw } from './local-draw.ts';
 import { createLogFile } from './log-file.ts';
@@ -101,7 +101,7 @@ import { createSystemMonitor } from './system-monitor.ts';
 import { testKeychainSwitches } from './test-keychain.ts';
 import { createTogether } from './together.ts';
 import { baseTrayIcon, createTray } from './tray.ts';
-import { watchTrayTitle } from './tray-title.ts';
+import { setTrayTitlePart, watchTrayTitle } from './tray-title.ts';
 import { watchUpdates } from './update.ts';
 import { createWear } from './wear.ts';
 import { createWeekCard } from './week-card.ts';
@@ -161,6 +161,13 @@ if (!process.env.JJ_GPU_PROCESS) app.commandLine.appendSwitch('in-process-gpu');
 // (캘린더, 업데이트 확인, 모델 받기) 따로 띄우면 프로세스 하나가 늘 떠 있다. footprint 132MB 에서 122MB, 프로세스 3개에서 2개
 // (2026-10-07 맥 측정, net.fetch 확인). 문제가 생기면 JJ_NET_PROCESS=1 로 끈다. enable-features 를 더 쓰면 한 줄에 쉼표로 모은다
 if (!process.env.JJ_NET_PROCESS) app.commandLine.appendSwitch('enable-features', 'NetworkServiceInProcess2');
+// 시험 실행(JJ_NO_FOCUS)은 창이 투명이라 맥이 "가려진 창"으로 보고, 큰 창처럼 BaseWindow 에 view 로 얹은 화면을 숨김으로 만들어
+// 첫 크기 바꿈 뒤로는 크기를 못 따라간다 (BrowserWindow 의 화면은 영향이 없었다). 시험에서만 가려짐 판정을 끈다. 설치판은 그대로
+if (!app.isPackaged && process.env.JJ_NO_FOCUS) {
+  app.commandLine.appendSwitch('disable-features', 'MacWebContentsOcclusion,CalculateNativeWinOcclusion');
+  app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+  app.commandLine.appendSwitch('disable-renderer-backgrounding');
+}
 
 // 펫은 하나만 띄운다. 두 번째로 실행하면 그냥 끝난다.
 // quit() 은 바로 끝나지 않아 ready 가 와서 시작 일(저장 파일 열기, 가져온 백업 끼우기, 창과 아이콘)이 돈다.
@@ -266,6 +273,7 @@ ready
     // AI 대화권 (#100): 서버 계정(아래 createServer)이 생긴 뒤 붙는다. 그 전에는 쓸 수 없음으로 본다
     let serverCore: ServerCore | undefined;
     const chat = createChat({
+      petBounds: () => pet.bounds(),
       ticket: {
         available: () => !!serverCore?.aiAvailable(),
         tickets: () => serverCore?.tickets() ?? null,
@@ -352,8 +360,10 @@ ready
     };
     // 친구 칸이 보이는가 (서버 모드, 로그인, 기능 키). 큰 창 사이드바 "친구"에 쓴다
     let friendsAvailable = false;
+    let showTrayHideHint: ((message: string, shortMessage: string) => void) | undefined;
     const pet = createPetWindow({
       petName,
+      onHideHint: (message, shortMessage) => showTrayHideHint?.(message, shortMessage),
       actions: {
         // 왼쪽 클릭은 패널(할 일, 코인, 밥). 대화는 패널 안과 우클릭 메뉴에서.
         click: () => {
@@ -379,6 +389,8 @@ ready
         lookTogether: () => look.start(),
         openSettings: () => settingsWindow.open(),
         quickAdd: () => panel.openQuick(),
+        addNote: () => panel.newNote(),
+        openPanel: () => panel.openTab(),
         openHome: openHomeFromMenu,
         feed: () => feedPet(),
         makePet: () => maker.open(),
@@ -414,11 +426,20 @@ ready
     const look = createLookTogether({
       petName,
       hideChat: () => {
-        const chatWin = chat.window;
-        const chatWasVisible = !!chatWin && !chatWin.isDestroyed() && chatWin.isVisible();
-        if (chatWasVisible) chatWin?.hide();
+        // 보이는 채팅 면을 가린다. 따로 창이면 숨겼다 보이고, 큰 창 안이면 큰 창이 숨지 않게 투명하게만 한다 (큰 창은 숨김 상태를 따로 든다)
+        const face = chat.faces().find((f) => f.shown());
+        const frame = face?.frame;
+        if (!face || !frame) return () => {};
+        if (face.embedded) {
+          const before = frame.getOpacity();
+          frame.setOpacity(0);
+          return () => {
+            if (!frame.isDestroyed()) frame.setOpacity(before);
+          };
+        }
+        frame.hide();
         return () => {
-          if (chatWasVisible && chatWin && !chatWin.isDestroyed()) chatWin.show();
+          if (!frame.isDestroyed()) frame.show();
         };
       },
       // 펫은 숨기지 않고 돋보기를 들고 같이 본다. 친구 펫은 같은 쪽만 본다. 찍는 순간에만 다 같이 가린다
@@ -453,11 +474,12 @@ ready
       log,
     });
     // 채팅 창의 같이 보기: 켜고 끄기, 보낼 때 지금 화면 찍기 (main/chat-look.ts)
-    createChatLook({ chatWindow: () => chat.window, look, log });
+    createChatLook({ chatFaces: () => chat.faces(), look, log });
     // ---- 방해 금지 (P1-10) ----
     // 친구 펫(v2)도 기본 펫과 같이 숨고 나온다
     const friends = createFriends({
       mainPet: () => pet,
+      onHideHint: (message, shortMessage) => showTrayHideHint?.(message, shortMessage),
       // 집중(펫이 잠), 공놀이와 산책, 숨바꼭질 중이 아니고 사용자가 자리에 있을 때만
       canMeet: () =>
         planner.focus.phase !== 'focus' && !playing && !seeking && powerMonitor.getSystemIdleTime() < 60,
@@ -495,13 +517,23 @@ ready
       sysMonitorOn: () => settings.get().sysMonitor,
       setSysMonitor: (on) => settings.set({ sysMonitor: on }),
     });
+    let hiddenHintText: string | undefined;
+    let hiddenHintTimer: ReturnType<typeof setTimeout> | undefined;
+    const trayBaseTooltip = () => hiddenHintText ?? t('tray.tooltip', { name: petName() });
+    showTrayHideHint = (message, shortMessage) => {
+      hiddenHintText = message;
+      tray.setToolTip(trayBaseTooltip());
+      if (process.platform === 'darwin') setTrayTitlePart(tray, 'hidden', shortMessage);
+      clearTimeout(hiddenHintTimer);
+      hiddenHintTimer = setTimeout(() => {
+        hiddenHintText = undefined;
+        tray.setToolTip(trayBaseTooltip());
+        if (process.platform === 'darwin') setTrayTitlePart(tray, 'hidden', '');
+      }, 8_000);
+      hiddenHintTimer.unref?.();
+    };
     // 메뉴 막대 컴퓨터 상태 (RunCat 처럼): CPU 사용률과 그만큼 바삐 움직이는 펫
-    const sysMonitor = createSystemMonitor(
-      tray,
-      baseTrayIcon(),
-      () => t('tray.tooltip', { name: petName() }),
-      log,
-    );
+    const sysMonitor = createSystemMonitor(tray, baseTrayIcon(), trayBaseTooltip, log);
     // 메뉴 막대에서 달릴 모습은 지금 펫 종류 (사진 펫은 걸음새와 설계도로 가장 가까운 종류). 켜기 전에 정해 한 번만 그린다
     const runnerKindNow = () => {
       const s = settings.get();
@@ -734,6 +766,12 @@ ready
         void pet.say({ kind: 'answer', text: voiced(stowSayKey(on)), ttlMs: 4000 });
     }
     settings.onChange((next, prev) => {
+      if (next.lang !== prev.lang) {
+        const lang = refreshLang();
+        for (const window of BrowserWindow.getAllWindows()) {
+          if (!window.isDestroyed()) window.webContents.send(LANGUAGE.changed, lang);
+        }
+      }
       if (next.houseHidden !== prev.houseHidden) void applyHouseStow(next.houseHidden);
     });
     /** 공놀이(공이나 털실이 있어야), 산책. 노는 중이면 무시 */
@@ -1035,10 +1073,11 @@ ready
       notes,
       events,
       focus: () => planner.focus,
+      focusUndoAvailable: () => planner.focusUndoAvailable(),
       startFocus: (minutes, todoId) => planner.startFocus(minutes, todoId),
       focusMin: () => settings.get().focusMin,
       stopFocus: () => planner.stopFocus(),
-      resumeFocus: () => planner.resumeFocus(),
+      resumeFocus: () => planner.undoStopFocus(),
       onEventsChanged: () => {
         planner.check();
         gcal.kick();
@@ -1153,12 +1192,16 @@ ready
     const dock = createDock({
       test: !!process.env.JJ_NO_FOCUS && !process.env.JJ_DOCK_PROBE,
       // 앱 종류가 바뀐 뒤에도 펫이 모든 데스크톱과 (큰 창이 전체 화면이면) 그 위에 남도록 다시 건다
-      reassert: () => reassertSpaces(),
+      reassert: () => {
+        reassertSpaces();
+        house.reassertSpaces();
+      },
       log,
     });
     app.on('before-quit', () => dock.quit());
     home = createHome({
       registerSurface: (win, hidden) => panel.registerHome(win, hidden),
+      chat,
       // 숨겨 둔 큰 창이 다시 보일 때 놓친 상태를 한 번 보낸다
       onShown: () => {
         panel.refresh();
@@ -1167,11 +1210,16 @@ ready
       closePanel: () => panel.closePanel(),
       petBounds: () => pet.bounds(),
       dock,
-      onFullScreen: (on) => reassertSpaces(on),
+      onFullScreen: (on) => {
+        reassertSpaces(on);
+        house.reassertSpaces();
+      },
       // 시험 실행만: 숨긴 창을 없애는 때를 줄인다 (scripts/dev/home.mjs)
       keepMs: app.isPackaged ? undefined : Number(process.env.JJ_HOME_KEEP_MS) || undefined,
       log,
     });
+    // 큰 창이 보이는 중이면 채팅 열기 요청은 그 안의 채팅 구역이 받는다 (채팅 면은 한 번에 하나, 이슈 #165)
+    chat.setHost({ open: () => home?.openChat() ?? false });
     /** 패널 밖(펫 우클릭)에서 밥 주기 */
     function feedPet() {
       const r = store.feed(Date.now());
@@ -1733,7 +1781,7 @@ ready
       if (next.petName !== prev.petName) {
         chat.petNameChanged();
         panel.refresh();
-        tray.setToolTip(t('tray.tooltip', { name: next.petName }));
+        tray.setToolTip(trayBaseTooltip());
       }
       // 격리 폴더와 사용자 폴더는 대화 기록이 따로라 이어 갈 수 없다. 새 대화로 시작한다.
       if (next.aiIsolation !== prev.aiIsolation) chat.resetSessions();
@@ -1935,15 +1983,12 @@ ready
       wentHome = true;
       void pet.walkTo(door.x - pet.bounds().width / 2, 60);
     }, 20_000).unref();
-    let houseHidden = false;
     setInterval(() => {
       // 집이 있어야 하는데 사라졌으면(창이 닫힘, 그림이 죽음, 내려감, 화면 밖) 살린다 (#74)
-      house.heal();
       const hidden = pet.isHidden('user') || pet.isHidden('presentation');
-      if (hidden === houseHidden) return;
-      houseHidden = hidden;
       if (hidden) house.hide();
       else house.unhide();
+      house.heal();
     }, 2000).unref();
     // 친밀도 100 (손 흔들기): 5분 넘게 자리를 비웠다 돌아오면 손을 흔든다
     let away = false;
@@ -1991,6 +2036,7 @@ ready
           globalShortcut,
           // 화면 크기 점검(scripts/dev/panel-resize.mjs). 시험 실행에서는 내장 화면 하나만 보인다(focus.ts)
           screen,
+          powerMonitor,
           tray,
           petFace,
           trayImageOf,

@@ -129,12 +129,17 @@ export class StatStore {
       .run(this.#day(now), Math.floor(now), min);
   }
 
-  /** 방금 적은 집중 기록을 거둔다 (그만두기 되돌리기, addFocus 가 적은 at 과 분 그대로) */
-  removeFocus(at: number, minutes: number): void {
+  /** 방금 중단한 집중 하나를 되돌린다. 일자 합계와 해당 집중 회차를 함께 제거한다. */
+  undoFocus(now: number, minutes: number): void {
     const min = Math.round(minutes);
     if (!(min > 0)) return;
-    this.#add(at, 'focus_min', -min);
-    this.#db.prepare('delete from focus_session where at = ? and minutes = ?').run(Math.floor(at), min);
+    const day = this.#day(now);
+    this.#db
+      .prepare(
+        'delete from focus_session where rowid = (select rowid from focus_session where day = ? and at = ? and minutes = ? order by rowid desc limit 1)',
+      )
+      .run(day, Math.floor(now), min);
+    this.#db.prepare('update daily_stat set focus_min = max(0, focus_min - ?) where day = ?').run(min, day);
   }
 
   /** 그 달(YYYY-MM)의 날마다 집중 기록. 기록이 있는 날만, 날짜 순 */

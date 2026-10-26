@@ -2,16 +2,17 @@
 // 골랐을 때만 패널이 따로 묻는다 (weekTitles). 카드 값 고르기는 shared/week-card.ts.
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { app, type BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, dialog, ipcMain } from 'electron';
 import { BOND } from '../shared/bond-ipc.ts';
 import { t } from '../shared/i18n/index.ts';
 import { localDay } from '../shared/todo-store.ts';
 import { cardFileName, cardRange, isPngDataUrl } from '../shared/week-card.ts';
+import type { SurfaceWin } from './surface.ts';
 
 export interface WeekCardOptions {
   doneTitlesSince: (from: number) => string[];
   /** 지금 보이는 패널 면 (작은 패널, 큰 창이 열려 있으면 큰 창) */
-  surface: () => BrowserWindow | undefined;
+  surface: () => SurfaceWin | undefined;
   /** 작은 패널이나 큰 창이 보낸 요청인가 (숨겨 둔 큰 창이어도 받는다) */
   fromSurface: (wc: Electron.WebContents) => boolean;
   /** 저장 창이 떠 있는 동안 패널을 닫지 않는다 (panel.ts hold) */

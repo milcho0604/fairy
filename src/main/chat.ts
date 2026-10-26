@@ -1,7 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { statSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { app, type BrowserWindow, type IpcMainEvent, ipcMain, type Rectangle, screen } from 'electron';
+import {
+  app,
+  type BaseWindow,
+  type BrowserWindow,
+  type IpcMainEvent,
+  ipcMain,
+  type Rectangle,
+  screen,
+  WebContentsView,
+} from 'electron';
 import { type Catalog, pickCli, pickLocal } from '../shared/ai/catalog.ts';
 import { finalAnswer } from '../shared/ai/empty-answer.ts';
 import {
@@ -68,7 +77,7 @@ import { langArg } from './lang.ts';
 import { jjMcpLaunch } from './mcp-launch.ts';
 import { openLink } from './open-link.ts';
 import { readJson, writeJson } from './store.ts';
-import { openRemembered } from './window-bounds.ts';
+import { openRemembered, resetRememberedPlacement } from './window-bounds.ts';
 
 const CHAT_SIZE = { width: 400, height: 600 };
 const CHAT_MIN = { width: 320, height: 360 };
@@ -79,7 +88,28 @@ const CUSTOM_FILE = 'ai-custom';
 /** 다시 켜도 남는 대화 (최근 메시지와 이어갈 세션, chat-state.ts serializeChat) */
 const HISTORY_FILE = 'chat-history';
 
+/**
+ * 채팅 면. 채팅 화면(chat.html)이 뜬 곳 하나: 따로 뜬 채팅 창, 아니면 큰 창 안에 품은 view (이슈 #165).
+ * 대화 상태와 쓰던 글은 메인에 하나뿐이고, 면은 그것을 보여 주는 자리일 뿐이다. 사용자 눈에는 한 번에 한 면만 보인다
+ */
+export interface ChatFace {
+  contents: Electron.WebContents;
+  /** 면이 든 창 (따로 창이면 그 창, 품었으면 큰 창). 같이 보기가 찍을 때 가리고, 어느 화면에 있나 볼 때 쓴다 */
+  frame: BaseWindow;
+  embedded: boolean;
+  /** 보이는가 (창이 보이고, 품었으면 채팅 구역이 열려 있다). 앞에 있지 않아도 된다 */
+  shown(): boolean;
+  /** 사용자가 지금 이 면을 앞에서 보고 있는가 (보이고 창에 포커스). 답 도착 알림을 낼지 가른다 */
+  front(): boolean;
+}
+
+/** 큰 창이 채팅 열기 요청을 대신 받는다. 받았으면 true (큰 창이 보이는 중이면 그 안의 채팅 구역을 연다) */
+export interface ChatHost {
+  open(): boolean;
+}
+
 export interface ChatOptions {
+  petBounds: () => Rectangle;
   /** 모델 목록 (v2, 하루 한 번 받아 바뀐다) */
   catalog: () => Catalog;
   /** AI 마다 고른 모델 (설정) */
@@ -188,6 +218,9 @@ export function createChat(o: ChatOptions) {
   });
   let run: AiRun | undefined;
   let win: BrowserWindow | undefined;
+  /** 큰 창 안에 품은 채팅 면 (없을 수 있다). 따로 창과 한 번에 하나만 보인다 */
+  let embedded: ChatFace | undefined;
+  let host: ChatHost | undefined;
   let draft: OutgoingImage[] = [];
   /** 그림 때문에 AI 쪽에 저장하지 않은 문답. 그 AI 의 다음 질문에 글로 붙여 이어 간다 */
   const carry = new Map<AiProvider, Exchange[]>();
@@ -202,9 +235,25 @@ export function createChat(o: ChatOptions) {
       knowsTodos: o.knowsTodos(),
       ticket: ticketOn && o.ticket ? { tickets: o.ticket.tickets(), agreed: o.ticket.agreed() } : undefined,
     };
-    win?.webContents.send(CHAT.state, state);
+    for (const f of faces()) f.contents.send(CHAT.state, state);
   };
-  const fromChat = (e: IpcMainEvent | Electron.IpcMainInvokeEvent) => !!win && e.sender === win.webContents;
+  /** 지금 있는 채팅 면들 (따로 창, 큰 창 안). 모두에게 같은 상태를 보낸다 */
+  const faces = (): ChatFace[] => {
+    const out: ChatFace[] = [];
+    const w = win;
+    if (w && !w.isDestroyed())
+      out.push({
+        contents: w.webContents,
+        frame: w,
+        embedded: false,
+        shown: () => !w.isDestroyed() && w.isVisible(),
+        front: () => !w.isDestroyed() && w.isVisible() && w.isFocused(),
+      });
+    if (embedded && !embedded.contents.isDestroyed()) out.push(embedded);
+    return out;
+  };
+  const fromChat = (e: IpcMainEvent | Electron.IpcMainInvokeEvent) =>
+    faces().some((f) => f.contents === e.sender);
   /**
    * 대화를 파일에 남긴다 (답이 끝났을 때, 새 대화, 되돌리기). 기록 안 남김을 켠 동안은 쓰지 않는다:
    * 켤 때 새 대화로 비우며 한 번 써 두어서 파일에는 켜기 전 대화도 남지 않는다
@@ -456,7 +505,7 @@ export function createChat(o: ChatOptions) {
           );
         if (event.type === 'delta') {
           const msg = state.messages.find((m) => m.id === ids.pet);
-          win?.webContents.send(CHAT.delta, ids.pet, msg?.text ?? '');
+          for (const f of faces()) f.contents.send(CHAT.delta, ids.pet, msg?.text ?? '');
           return;
         }
         if (event.type === 'done' || event.type === 'error') {
@@ -465,7 +514,7 @@ export function createChat(o: ChatOptions) {
           o.onTurnEnd?.();
           if (event.type === 'done') save();
           if (event.type === 'done') {
-            const inFront = !!win && !win.isDestroyed() && win.isVisible() && win.isFocused();
+            const inFront = faces().some((f) => f.front());
             onAnswer?.(event.text, inFront);
           }
           log(
@@ -783,6 +832,19 @@ export function createChat(o: ChatOptions) {
     return true;
   });
   // 답 속 주소는 기본 브라우저로. http, https 만 (safeExternalUrl), 창 안에서는 열지 않는다
+  ipcMain.on(CHAT.nearPet, (e) => {
+    if (!win || win.isDestroyed() || e.sender !== win.webContents) return;
+    const target = win;
+    const move = () => {
+      if (target.isDestroyed()) return;
+      if (target.isMaximized()) target.unmaximize();
+      resetRememberedPlacement(target, placeNear(o.petBounds(), target.getNormalBounds()));
+    };
+    if (target.isFullScreen()) {
+      target.once('leave-full-screen', move);
+      target.setFullScreen(false);
+    } else move();
+  });
   ipcMain.on(CHAT.openLink, (e, raw: unknown) => {
     if (fromChat(e)) openLink(raw, log);
   });
@@ -799,6 +861,8 @@ export function createChat(o: ChatOptions) {
       o.onLocked?.();
       return;
     }
+    // 큰 창이 보이는 중이면 그 안의 채팅 구역으로 (면은 한 번에 하나)
+    if (host?.open()) return;
     // 앱을 앞으로 가져오는 것은 창을 띄울 때 한다 (focus.ts. 먼저 하면 맥이 다른 데스크톱으로 넘어간다)
     if (win && !win.isDestroyed()) {
       // 화면 프로세스가 죽었으면 빈 창만 남는다. 다시 부를 때 새로 읽는다 (대화 내용은 메인에 있다)
@@ -838,19 +902,69 @@ export function createChat(o: ChatOptions) {
   }
 
   function toggle(near?: Rectangle) {
+    // 잠겨 있으면 open 이 안내만 한다 (큰 창으로 보내기 전에 잠금부터)
+    if (!o.locked?.() && host?.open()) return;
     if (win && !win.isDestroyed() && win.isVisible() && win.isFocused()) win.close();
     else open(near);
   }
 
   /** 같이 보기로 찍은 그림을 입력칸에 붙인다. 창이 아직 없으면 열면서 넘긴다. 보내지는 않는다. */
   function attach(image: OutgoingImage, near?: Rectangle) {
-    if (win && !win.isDestroyed() && !win.webContents.isLoading()) {
-      win.webContents.send(CHAT.attach, image);
-      open(near);
-    } else {
-      draft.push(image);
-      open(near);
-    }
+    // 어느 면이 받을지: 큰 창이 보이는 중이면 그 안의 면(구역을 여는 중이라 아직 안 보여도), 아니면 따로 창.
+    // 새로 뜨는 면은 snapshot 으로 받아 간다
+    const routed = !o.locked?.() && !!host?.open();
+    if (!routed) open(near);
+    const face = routed ? embedded : faces().find((f) => !f.embedded);
+    if (face && !face.contents.isDestroyed() && !face.contents.isLoading())
+      face.contents.send(CHAT.attach, image);
+    else draft.push(image);
+  }
+
+  /**
+   * 큰 창 안에 채팅을 품는다 (이슈 #165). 채팅 화면을 담은 view 를 돌려주고, 붙이고 떼는 일은 큰 창이 한다.
+   * shown 은 채팅 구역이 열려 보이는지. reveal 은 채팅 구역을 열 때 부른다: 따로 뜬 채팅 창은 닫는다
+   * (대화 상태와 쓰던 글은 메인에 있어 잃는 것이 없다)
+   */
+  function embed(frame: BaseWindow, shown: () => boolean, onGone?: () => void) {
+    const view = new WebContentsView({
+      webPreferences: {
+        preload: join(import.meta.dirname, '../preload/index.cjs'),
+        additionalArguments: ['--jj-window=chat', langArg()],
+        sandbox: true,
+        contextIsolation: true,
+      },
+    });
+    const wc = view.webContents;
+    wc.setWindowOpenHandler(() => ({ action: 'deny' }));
+    wc.on('will-navigate', (ev) => ev.preventDefault());
+    const devUrl = devRendererUrl();
+    if (devUrl) void wc.loadURL(`${devUrl}/chat.html#embed`);
+    else void wc.loadFile(join(import.meta.dirname, '../renderer/chat.html'), { hash: 'embed' });
+    const face: ChatFace = {
+      contents: wc,
+      frame,
+      embedded: true,
+      shown: () => !frame.isDestroyed() && frame.isVisible() && shown(),
+      front: () => !frame.isDestroyed() && frame.isVisible() && frame.isFocused() && shown(),
+    };
+    embedded = face;
+    // 화면이 없어지면(스스로 닫음, 크래시 등) 면을 비우고 알린다: 큰 창이 다음에 새로 만든다
+    wc.once('destroyed', () => {
+      if (embedded === face) embedded = undefined;
+      onGone?.();
+    });
+    return {
+      view,
+      face,
+      reveal() {
+        if (win && !win.isDestroyed()) win.close();
+        if (!wc.isDestroyed() && wc.isCrashed()) wc.reload();
+      },
+      remove() {
+        if (embedded === face) embedded = undefined;
+        if (!wc.isDestroyed()) wc.close();
+      },
+    };
   }
 
   /** 그림을 보는 claude, codex 중 지금 고른 것, 아니면 설치되고 로그인된 첫 번째 */
@@ -884,6 +998,13 @@ export function createChat(o: ChatOptions) {
     open,
     toggle,
     attach,
+    embed,
+    /** 큰 창이 채팅 열기를 대신 받게 한다 (index.ts) */
+    setHost(h: ChatHost | undefined) {
+      host = h;
+    },
+    /** 지금 있는 채팅 면들 */
+    faces,
     /** 대화권 상태(남은 수, 쓸 수 있는지)가 바뀌었다. 열린 창에 다시 보낸다 */
     ticketChanged: () => push(),
     /** 말놀이 펫 말을 채팅에 단다 (펫 메뉴에서 끝말잇기 시작). 답을 기다리는 중이면 false */
@@ -1061,9 +1182,8 @@ export function createChat(o: ChatOptions) {
     },
     /** 설정에서 펫 이름이 바뀌었다. 열린 채팅 창에 알린다. */
     petNameChanged() {
-      if (!win || win.isDestroyed()) return;
-      win.setTitle(t('chat.title', { name: petName() }));
-      win.webContents.send(CHAT.petName, petName());
+      if (win && !win.isDestroyed()) win.setTitle(t('chat.title', { name: petName() }));
+      for (const f of faces()) f.contents.send(CHAT.petName, petName());
     },
     /** AI 격리 설정이 바뀌면 대화 세션을 끊는다 (격리 폴더와 사용자 폴더의 기록이 달라 이어 갈 수 없다). */
     resetSessions() {

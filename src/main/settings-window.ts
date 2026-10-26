@@ -218,6 +218,7 @@ export function createSettingsWindow({
   ipcMain.handle(SETTINGS.set, (e, patch: Partial<Settings>) =>
     fromSettings(e) ? settings.set(patch) : settings.get(),
   );
+  ipcMain.handle(SETTINGS.reset, (e) => (fromSettings(e) ? settings.resetPreferences() : settings.get()));
   ipcMain.on(SETTINGS.setScale, (e, next: number) => {
     if (fromSettings(e) && typeof next === 'number') setScale(next);
   });

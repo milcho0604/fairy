@@ -92,6 +92,7 @@ import { focusWindow } from './focus.ts';
 import { langArg } from './lang.ts';
 import { localTime, minuteOfDay, startOfDay, startOfDayAfter } from './planner.ts';
 import { readJson, removeJson, writeJson } from './store.ts';
+import type { SurfaceWin } from './surface.ts';
 import { closesPanelFor, originOf, pickSurface } from './surface.ts';
 import { saveBounds, savedBounds } from './window-bounds.ts';
 
@@ -134,6 +135,7 @@ export interface PanelOptions {
   startFocus: (minutes?: number, todoId?: number) => void;
   /** 고른 집중 길이 */
   focusMin: () => number;
+  focusUndoAvailable?: () => boolean;
   stopFocus: () => { minutes: number } | undefined;
   /** 방금 그만둔 집중을 되돌린다. 되돌렸으면 true */
   resumeFocus: () => boolean;
@@ -216,7 +218,7 @@ export function createPanel(o: PanelOptions) {
   let panel: BrowserWindow | undefined;
   let quick: BrowserWindow | undefined;
   /** 큰 창 (#159). 지금은 만드는 곳이 없고, 생기면 registerHome 으로 알린다 */
-  let home: BrowserWindow | undefined;
+  let home: SurfaceWin | undefined;
   /** 기억한 패널 자리 (펫 왼쪽 위에서 떨어진 거리). 없으면 펫 옆 기본 자리 */
   let offset = parsePanelOffset(readJson(OFFSET_FILE));
   /**
@@ -262,6 +264,9 @@ export function createPanel(o: PanelOptions) {
     return o.doing.ids().filter((id) => ids.has(id));
   }
 
+  let newNoteRequest = 0;
+  let pendingNewNote = false;
+
   function state(): PanelState {
     const now = Date.now();
     const { open, doneToday } = o.store.list(now);
@@ -269,6 +274,7 @@ export function createPanel(o: PanelOptions) {
     const pinnedEvents = withCals(o.events.pinned(now));
     dayTurn.seen(localDay(now));
     return {
+      ...(pendingNewNote ? { newNoteRequest } : {}),
       petName: o.petName(),
       today: localDay(now),
       open,
@@ -954,6 +960,9 @@ export function createPanel(o: PanelOptions) {
   });
   ipcMain.handle(PANEL.focusStop, (e) => (ours(e) ? (o.stopFocus() ?? null) : null));
   ipcMain.handle(PANEL.focusResume, (e) => (ours(e) ? o.resumeFocus() : false));
+  ipcMain.on(PANEL.focusUndo, (e) => {
+    if (ours(e)) o.resumeFocus();
+  });
   ipcMain.on(PANEL.missedClear, (e) => {
     if (ours(e)) o.clearMissed();
   });
@@ -1170,6 +1179,11 @@ export function createPanel(o: PanelOptions) {
   ipcMain.on(PANEL.noteKeepSet, (e, id: unknown, value: unknown) => {
     if (ours(e)) noteKeep.set(id, value, Date.now());
   });
+  ipcMain.on(PANEL.noteNewTake, (e, request: unknown) => {
+    const take = isSurface(e) && pendingNewNote && request === newNoteRequest;
+    if (take) pendingNewNote = false;
+    e.returnValue = take;
+  });
   ipcMain.on(PANEL.noteKeepLatest, (e) => {
     e.returnValue = (ours(e) ? noteKeep.latest(Date.now()) : undefined) ?? null;
   });
@@ -1341,7 +1355,7 @@ export function createPanel(o: PanelOptions) {
   }
 
   /** 패널을 열고 이 탭을 보여 준다 (이미 열려 있으면 탭만) */
-  function openTab(tab: PanelTab) {
+  function openTab(tab: PanelTab = 'today') {
     if (o.routeHome?.({ tab, toggle: false })) return;
     if (panel && !panel.isDestroyed()) {
       panel.webContents.send(PANEL.tab, tab);
@@ -1463,6 +1477,12 @@ export function createPanel(o: PanelOptions) {
   return {
     togglePanel,
     openTab,
+    newNote: () => {
+      newNoteRequest++;
+      pendingNewNote = true;
+      openTab('note');
+      push();
+    },
     /** 다음 한 번 패널을 열 때 보일 탭 */
     openNextAt: (tab: PanelTab) => {
       nextTab = tab;
@@ -1489,7 +1509,7 @@ export function createPanel(o: PanelOptions) {
      * 큰 창을 면으로 알린다 (아직 만드는 곳이 없다). 이 창의 요청도 받고 상태를 같이 받는다.
      * 큰 창에서 온 설정, 채팅 열기는 패널을 먼저 닫지 않는다. 돌려주는 함수로 뗀다
      */
-    registerHome(win: BrowserWindow, hidden: () => boolean = () => false): () => void {
+    registerHome(win: SurfaceWin, hidden: () => boolean = () => false): () => void {
       const sender = win.webContents;
       home = win;
       homeHidden = hidden;

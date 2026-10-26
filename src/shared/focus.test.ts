@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  focusCoins,
   focusDoneAction,
   focusDoneButtons,
   focusedMinutes,
   focusTodoToAsk,
   IDLE,
+  isFocusLength,
   skipGap,
   startFocus,
   tickFocus,
@@ -58,4 +60,17 @@ test('집중 끝 단추: 할 일이 있어도 쉬는 시간 끝내기가 있고,
   // 할 일이 없으면 끝냈어, 조금 더는 없다
   assert.equal(focusDoneAction('more', false), undefined);
   assert.equal(focusDoneAction('finished', false), undefined);
+});
+
+test('직접 집중 시간: 5~120분 정수만 허용하고 입력한 길이로 끝난다', () => {
+  for (const n of [5, 17, 40, 120]) {
+    assert.equal(isFocusLength(n), true);
+    const state = startFocus(1000, n);
+    assert.equal(state.endsAt - state.startedAt, n * 60_000);
+  }
+  for (const n of [4, 121, 5.5, NaN, Infinity, '25', undefined, null]) assert.equal(isFocusLength(n), false);
+});
+
+test('직접 집중 보상은 기존 1회 상한을 유지한다', () => {
+  assert.deepEqual([5, 15, 25, 50, 60, 120].map(focusCoins), [2, 5, 10, 25, 25, 25]);
 });

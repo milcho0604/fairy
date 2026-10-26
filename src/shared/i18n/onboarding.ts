@@ -4,6 +4,14 @@ import type { Translation } from './types.ts';
 // 첫 실행 안내 창
 export const ko = {
   'onboarding.pages': (v: { page: number; total: number }) => `${v.total}쪽 중 ${v.page}쪽`,
+  'onboarding.setup.title': '시작할 때 정하기',
+  'onboarding.setup.lead': '원하는 것만 켜 줘. 나중에 설정에서 바꿀 수 있어.',
+  'onboarding.setup.launchHint': '컴퓨터에 로그인하면 페어리가 자동으로 떠.',
+  'onboarding.setup.launchUnavailable': '설치한 페어리 앱에서 바꿀 수 있어.',
+  'onboarding.setup.statusHint': '작은 아이콘으로 컴퓨터의 바쁜 정도를 보여 줘.',
+  'onboarding.setup.typing': '같이 타자 치기',
+  'onboarding.setup.typingHint': '네가 입력하면 페어리도 작은 키보드를 두드려. 입력한 글자는 읽지 않아.',
+  'onboarding.setup.failed': '저장하지 못했어. 다시 눌러 줘.',
   'onboarding.hello.title': '반가워! 화면 위에서 같이 일할 페어리야.',
   'onboarding.hello.lead': '할 일을 끝내면 코인이 쌓이고, 코인으로 밥과 장난감을 사 줄 수 있어.',
   'onboarding.hello.name': '이름',
@@ -31,6 +39,7 @@ export const ko = {
   'onboarding.look.aiFree': (v: { size: string }) =>
     `AI 프로그램이 없어도 무료 AI로 대화할 수 있어. 처음 한 번 모델(${v.size})을 받고, 그 뒤로는 이 컴퓨터 안에서만 돌아.`,
   'onboarding.tips.title': '알아 두면 좋은 것',
+  'onboarding.tips.easyKeys': '키를 네 개 누르기 어렵다면 쉬운 단축키 묶음을 써 봐.',
   'onboarding.tips.click': (v: { name: string }) => `${withParticle(v.name, '을')} 누르면`,
   'onboarding.tips.clickDesc': '할 일, 메모, 일정, 상점 패널',
   'onboarding.tips.right': '우클릭',
@@ -48,6 +57,15 @@ export const ko = {
 };
 
 export const en: Translation<typeof ko> = {
+  'onboarding.setup.title': 'Settle in',
+  'onboarding.setup.lead': 'Turn on what you want. You can change these in Settings later.',
+  'onboarding.setup.launchHint': 'Fairy opens automatically when you log in to your computer.',
+  'onboarding.setup.launchUnavailable': 'You can change this in the installed fairy app.',
+  'onboarding.setup.statusHint': 'A small icon shows how busy your computer is.',
+  'onboarding.setup.typing': 'Type together',
+  'onboarding.setup.typingHint':
+    "Your fairy taps a tiny keyboard when you type. It doesn't read what you type.",
+  'onboarding.setup.failed': "Couldn't save. Please try again.",
   'onboarding.pages': (v) => `Page ${v.page} of ${v.total}`,
   'onboarding.hello.title': "Hi! I'm your new buddy, here on your screen to work alongside you.",
   'onboarding.hello.lead': 'Finish to-dos to earn coins, then spend them on food and toys for me.',
@@ -76,6 +94,7 @@ export const en: Translation<typeof ko> = {
   'onboarding.look.aiFree': (v) =>
     `No AI app? You can still chat with the free AI. It downloads a model (${v.size}) once, then runs only on this computer.`,
   'onboarding.tips.title': 'Good to know',
+  'onboarding.tips.easyKeys': 'If four-key shortcuts are hard to press, try the easy shortcut set.',
   'onboarding.tips.click': (v) => `Click ${v.name}`,
   'onboarding.tips.clickDesc': 'To-dos, notes, events and shop panel',
   'onboarding.tips.right': 'Right-click',

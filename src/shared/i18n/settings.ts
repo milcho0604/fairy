@@ -100,6 +100,7 @@ export const ko = {
   'settings.sysMonitorWin': '알림 영역에 컴퓨터 상태',
   'settings.sysMonitorWinHint':
     '알림 영역 아이콘에 마우스를 올리면 CPU 사용률이 보이고, 한가하면 지금 페어리가 앉아서 졸고, 바쁠수록 걷다가 달리고 땀 흘리며 질주해. 메뉴를 열면 메모리, 디스크, 그래픽도 보여. 화면을 잠그거나 자리를 비우면 쉬고, 배터리나 발표 중에는 페어리가 멈춰 서.',
+  'settings.sysMonitorResting': '배터리로 사용 중이라 페어리가 멈춰 있어. 컴퓨터 상태 표시는 계속 보여.',
 
   // 친구의 페어리 초대하기
   'settings.friends': '친구의 페어리 초대하기',
@@ -163,14 +164,14 @@ export const ko = {
   'settings.aiPetTools': '페어리 도구 쓰기',
   'settings.aiPetToolsHint':
     "채팅에서 '내일 장보기 할 일로 넣어 줘'처럼 말하면 AI가 페어리의 할 일, 메모, 일정을 직접 읽고 넣어. Claude나 Codex에서 돼. 할 일 목록을 읽을 수 있어서 기본은 꺼 뒀어. 파일, 명령 도구는 여전히 꺼 둬.",
-  'settings.myMcp': '내 MCP 도구 쓰기',
+  'settings.myMcp': 'Claude Code 도구 함께 쓰기',
   'settings.myMcpOff':
-    '위의 "내 AI 설정 없이 부르기"를 끄면 쓸 수 있어. Claude Code에 연결해 둔 노션, 슬랙 같은 MCP 도구를 채팅에서 써.',
+    '위의 "내 AI 설정 없이 부르기"를 끄면 쓸 수 있어. Claude Code에 연결한 노션, 슬랙 같은 도구를 페어리 대화에서 써.',
   'settings.myMcpOn': (v: { n: number }) =>
-    `Claude Code에 연결해 둔 MCP 도구(${v.n}개 서버)를 채팅에서 묻지 않고 써. 파일, 명령 도구는 여전히 꺼 둬. 글쓰기 같은 도구도 쓸 수 있으니 켤 때 주의해 줘.`,
+    `Claude Code에 연결한 도구 ${v.n}개를 물어보지 않고 써. 연결한 도구로 파일을 읽거나 명령을 실행할 수는 없어. 노션 글처럼 바깥에 내용을 쓸 수 있으니 켤 때 주의해 줘.`,
   'settings.aiIsolation': '내 AI 설정 없이 부르기 (권장)',
   'settings.aiIsolationHint':
-    'Claude Code와 Codex를 부를 때 내 훅, MCP, 스킬을 싣지 않아. 끄면 내 설정을 그대로 쓰는데 답이 느려지고 한도를 더 쓸 수 있어. 바꾸면 새 대화로 시작해.',
+    'Claude Code와 Codex를 부를 때 내 개인 설정과 연결 도구를 쓰지 않아. 끄면 내 설정을 그대로 쓰지만 답이 느려지거나 사용 한도가 더 들 수 있어. 바꾸면 새 대화로 시작해.',
 
   // 모델 고르기 (v2)
   'settings.models': 'AI 모델',
@@ -273,9 +274,10 @@ export const ko = {
     `처음 쓸 때 받아 (${v.mb}MB, ${v.license})`,
 
   // 다른 AI 에서 쓰기 (MCP)
-  'settings.mcpSection': '다른 AI에서 페어리 쓰기 (MCP)',
+  'settings.mcpSection': '다른 AI 앱에 페어리 연결하기',
+  'settings.mcp.summary': 'Claude Code나 Codex에 연결하는 방법 보기',
   'settings.mcp.intro':
-    'Claude Code, Codex에 페어리를 연결하면 그 안에서 "이거 페어리 할 일에 넣어 줘", "내일 3시 회의 일정 잡아 줘"가 돼. 할 일, 메모, 일정을 넣고 볼 수 있어. 넣은 것은 몇 초 안에 패널에 보여.',
+    '연결하면 Claude Code나 Codex에서 페어리의 할 일, 메모, 일정을 읽고 추가할 수 있어. 아래 내용을 해당 앱에 한 번 등록해 줘.',
   'settings.mcp.claude': 'Claude Code: 터미널에서 한 번 실행',
   'settings.mcp.copyCmd': '명령 복사',
   'settings.mcp.codex': 'Codex: ~/.codex/config.toml에 붙여 넣기',
@@ -319,13 +321,20 @@ export const ko = {
 
   // 백업
   'settings.backup': '백업과 옮기기',
+  'settings.resetPreferences': '설정 기본값으로 되돌리기',
+  'settings.resetPreferencesHint':
+    '알림, 움직임, 화면, AI 사용 방식 같은 설정만 기본값으로 돌아가. 지금 페어리와 보관함, 친구, 할 일, 기록, 캘린더 주소는 그대로 둬.',
+  'settings.resetPreferencesButton': '설정 기본값으로',
+  'settings.resetPreferencesSure': '기본값으로 바꿀까요? 한 번 더 눌러 주세요',
+  'settings.resetPreferencesDone': '설정을 기본값으로 되돌렸어',
+  'settings.resetPreferencesFailed': '설정을 되돌리지 못했어',
   'settings.backupHint':
     '할 일, 메모, 일정, 코인, 페어리, 설정을 백업 파일 하나로 만들어. 다른 컴퓨터에서 가져오거나 파일을 두 번 눌러 복원해.',
   'settings.export': '백업 파일 만들기',
   'settings.exported': '백업 파일을 만들었어',
   'settings.exportFailed': '백업 파일을 만들지 못했어',
   'settings.importFailed': '가져오지 못했어',
-  'settings.import': '가져오기',
+  'settings.import': '백업 파일에서 복원',
   'settings.importFolder': '예전 백업 폴더',
   'settings.importFolderHint': '폴더로 만든 예전 백업도 가져올 수 있어.',
   // 복원 확인 칸 (OS 창 없이 설정 창 안에서 묻는다)
@@ -351,7 +360,7 @@ export const ko = {
   'settings.exportPet': '페어리 내보내기',
   'settings.petExported': '페어리 파일을 만들었어',
   'settings.petExportFailed': '페어리 파일을 만들지 못했어. 다른 폴더에 저장해 봐',
-  'settings.importPet': '페어리 가져오기',
+  'settings.importPet': '페어리 파일에서 가져오기',
 
   // 업데이트
   'settings.update': '업데이트',
@@ -364,6 +373,9 @@ export const ko = {
   // 단축키
   'settings.shortcuts': '단축키',
   'settings.shortcutChanged': '단축키를 바꿨어',
+  'settings.shortcutEasy': '쉬운 키 묶음',
+  'settings.shortcutEasyHint': '단축키에서 Option/Alt 한 번 덜 누르는 묶음을 적용해.',
+  'settings.shortcutEasyApplied': '쉬운 키 묶음을 적용했어',
   'settings.zoomKeys': '크게, 작게, 원래대로 (마우스가 페어리 위에 있을 때)',
   'settings.shortcut.hide': '숨기기, 다시 보이기',
   'settings.shortcut.quickAdd': '할 일 한 줄 넣기 (어디서든)',
@@ -560,6 +572,8 @@ export const en: Translation<typeof ko> = {
   'settings.sysMonitorWin': 'Computer status in the notification area',
   'settings.sysMonitorWinHint':
     'Hover the notification area icon to see CPU use, and your fairy naps while the computer is idle, then walks, runs and sprints with a sweat the busier it gets. Open the menu for memory, disk and graphics. It rests while the screen is locked or you are away, and your fairy stands still on battery or while presenting.',
+  'settings.sysMonitorResting':
+    'Your fairy stands still while the computer runs on battery. Computer status remains visible.',
 
   'settings.friends': "Invite a friend's fairy",
   'settings.friendsChanged': 'Friend fairies updated',
@@ -617,14 +631,14 @@ export const en: Translation<typeof ko> = {
   'settings.aiPetTools': 'Let chat use fairy tools',
   'settings.aiPetToolsHint':
     "Say things like 'add groceries to my to-dos for tomorrow' and the AI reads and adds your fairy's to-dos, notes, and events itself. Works with Claude or Codex. It can read your to-do list, so it's off by default. File and command tools stay off.",
-  'settings.myMcp': 'Use my MCP tools',
+  'settings.myMcp': 'Use Claude Code tools too',
   'settings.myMcpOff':
-    'Turn off "Call without my AI setup" above to use this. Lets chat use MCP tools you connected to Claude Code, like Notion or Slack.',
+    'Turn off "Call without my AI setup" above to use this. Lets fairy chat use tools you connected to Claude Code, like Notion or Slack.',
   'settings.myMcpOn': (v) =>
-    `Chat uses the MCP tools you connected to Claude Code (${v.n} ${v.n === 1 ? 'server' : 'servers'}) without asking. File and command tools stay off. Some tools can write things, so be careful.`,
+    `Chat can use ${v.n} tools you connected to Claude Code without asking. Those tools cannot read files or run commands. Some can write to outside services, so be careful.`,
   'settings.aiIsolation': 'Call without my AI setup (recommended)',
   'settings.aiIsolationHint':
-    'Calls Claude Code and Codex without your hooks, MCP and skills. Turn off to use your own setup, but answers get slower and may use more of your limit. Changing this starts a new chat.',
+    'Does not use your personal settings or connected tools when calling Claude Code and Codex. Turn it off to use your setup, but replies may be slower or use more of your limit. Changing this starts a new chat.',
 
   'settings.models': 'AI models',
   'settings.pets.hint':
@@ -730,9 +744,10 @@ export const en: Translation<typeof ko> = {
   'settings.models.freeLater': (v: { mb: number; license: string }) =>
     `Downloads on first use (${v.mb} MB, ${v.license})`,
 
-  'settings.mcpSection': 'Use fairy from other AIs (MCP)',
+  'settings.mcpSection': 'Connect fairy to another AI app',
+  'settings.mcp.summary': 'How to connect Claude Code or Codex',
   'settings.mcp.intro':
-    'Connect fairy to Claude Code or Codex and you can say "Add this to my fairy to-dos" or "Schedule a meeting tomorrow at 3". It can add and read to-dos, notes and events. New items show up in the panel within seconds.',
+    'After connecting, Claude Code or Codex can read and add fairy to-dos, notes and events. Register the details below once in the app you use.',
   'settings.mcp.claude': 'Claude Code: run once in a terminal',
   'settings.mcp.copyCmd': 'Copy command',
   'settings.mcp.codex': 'Codex: paste into ~/.codex/config.toml',
@@ -771,13 +786,20 @@ export const en: Translation<typeof ko> = {
   'settings.cal.bad': "Only an .ics address starting with https works. Didn't save it",
 
   'settings.backup': 'Backup and transfer',
+  'settings.resetPreferences': 'Restore default settings',
+  'settings.resetPreferencesHint':
+    'Only preferences like alerts, movement, display and AI use are reset. Your current fairy, library, friends, to-dos, records and calendar address stay.',
+  'settings.resetPreferencesButton': 'Restore defaults',
+  'settings.resetPreferencesSure': 'Restore defaults? Click once more to confirm',
+  'settings.resetPreferencesDone': 'Settings restored to defaults',
+  'settings.resetPreferencesFailed': 'Could not restore settings',
   'settings.backupHint':
     'Save to-dos, notes, events, coins, fairies and settings into one backup file. Import it on another computer, or double-click the file to restore.',
   'settings.export': 'Create backup file',
   'settings.exported': 'Backup file created',
   'settings.exportFailed': "Couldn't create the backup file",
   'settings.importFailed': "Couldn't import",
-  'settings.import': 'Import',
+  'settings.import': 'Restore a backup file',
   'settings.importFolder': 'Old backup folder',
   'settings.importFolderHint': 'Old backups saved as a folder still work.',
   'settings.restore.ask': 'Replace your current to-dos, notes and fairy with this backup?',
@@ -804,7 +826,7 @@ export const en: Translation<typeof ko> = {
   'settings.exportPet': 'Export fairy',
   'settings.petExported': 'Fairy file created',
   'settings.petExportFailed': "Couldn't create the fairy file. Try saving to another folder",
-  'settings.importPet': 'Import fairy',
+  'settings.importPet': 'Import a fairy file',
 
   'settings.update': 'Updates',
   'settings.updateCheck': 'New version alerts',
@@ -815,6 +837,9 @@ export const en: Translation<typeof ko> = {
 
   'settings.shortcuts': 'Shortcuts',
   'settings.shortcutChanged': 'Shortcut changed',
+  'settings.shortcutEasy': 'Easy shortcut set',
+  'settings.shortcutEasyHint': 'Apply a set that uses one fewer modifier key.',
+  'settings.shortcutEasyApplied': 'Easy shortcuts applied',
   'settings.zoomKeys': 'Bigger, smaller, reset (mouse over your fairy)',
   'settings.shortcut.hide': 'Hide and show',
   'settings.shortcut.quickAdd': 'Quick add a to-do (anywhere)',

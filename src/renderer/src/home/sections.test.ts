@@ -32,10 +32,14 @@ test('친구는 기능이 켜졌을 때만 보인다', () => {
   );
 });
 
-test('따로 창을 여는 구역은 채팅과 친구뿐', () => {
+test('따로 창을 여는 구역은 친구뿐, 채팅은 창 안에 품는다', () => {
   assert.deepEqual(
     HOME_SECTIONS.filter((s) => s.kind === 'window').map((s) => s.id),
-    ['chat', 'friends'],
+    ['friends'],
+  );
+  assert.deepEqual(
+    HOME_SECTIONS.filter((s) => s.kind === 'chat').map((s) => s.id),
+    ['chat'],
   );
 });
 

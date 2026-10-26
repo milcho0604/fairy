@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type KeyboardEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { CODEX_ZIP_MAX_BYTES } from '../../../shared/codex-pet.ts';
 import { saveErrorText } from '../../../shared/download-error.ts';
 import { t } from '../../../shared/i18n/index.ts';
@@ -17,6 +17,7 @@ import {
 } from '../../../shared/settings-tabs.ts';
 import { isCodexPetFileName, isImportFileName } from '../../../shared/url-scheme.ts';
 import { escClosesWindow } from '../panel/keys.ts';
+import { useLanguageUpdates } from '../use-language.ts';
 import { HELP_OPEN_EVENT, isHelpKey } from './HelpBox.tsx';
 import { AboutTab } from './tabs/AboutTab.tsx';
 import { AiTab } from './tabs/AiTab.tsx';
@@ -30,6 +31,7 @@ import { bridge, type TabProps } from './ui.tsx';
 const SIDE_NAV = '(min-width: 640px)';
 
 export function SettingsApp() {
+  useLanguageUpdates();
   const [snap, setSnap] = useState<SettingsSnapshot>();
   const [saved, setSaved] = useState('');
   // 실패나 막힘 안내는 빨간 글씨 (성공 안내와 같은 초록이면 된 것처럼 읽힌다)
@@ -72,7 +74,7 @@ export function SettingsApp() {
   }, []);
 
   // ---- 탭 (설정 창 재구성): 처음은 창 주소 # (칸 이름이나 메인이 기억한 지난번 탭) ----
-  const [tab, setTabState] = useState<SettingsTab>(() => tabFromHash(location.hash));
+  const [tab, setTabStateRaw] = useState<SettingsTab>(() => tabFromHash(location.hash));
   const tabRefs = useRef<Partial<Record<SettingsTab, HTMLButtonElement | null>>>({});
   const [side, setSide] = useState(() => matchMedia(SIDE_NAV).matches);
   useEffect(() => {
@@ -85,19 +87,39 @@ export function SettingsApp() {
 
   // ---- 설정 찾기: 찾는 말에 맞는 칸과 줄만 보인다 (그리기는 그대로, 그린 뒤 hidden 만 바꾼다) ----
   // 탭은 모두 그려 두고(고치던 글, 진행 중인 일을 잃지 않게) 안 보는 탭만 숨긴다. 찾는 중에는 모든 탭에서 찾는다
-  const [query, setQuery] = useState('');
+  const [query, setQueryRaw] = useState('');
   const [composing, setComposing] = useState(false);
   const [noHit, setNoHit] = useState(false);
   // 탭마다 맞은 칸 수 (찾는 중에 탭 옆에 보인다). 다시 그리기를 줄이려고 글로 둔다
   const [hitKey, setHitKey] = useState('');
   const mainRef = useRef<HTMLElement>(null);
+  const scrollPositions = useRef<Record<string, number>>({});
+  const scrollView = useRef<string>(tab);
+  const scrollQuery = useRef('');
+  const rememberScroll = useCallback(() => {
+    if (mainRef.current) scrollPositions.current[scrollView.current] = mainRef.current.scrollTop;
+  }, []);
+  // scroll 이벤트가 아직 오지 않았어도 전환 직전의 실제 위치를 놓치지 않는다.
+  const setTabState = useCallback(
+    (next: SettingsTab) => {
+      rememberScroll();
+      setTabStateRaw(next);
+    },
+    [rememberScroll],
+  );
+  const setQuery = useCallback(
+    (next: string) => {
+      rememberScroll();
+      setQueryRaw(next);
+    },
+    [rememberScroll],
+  );
   const searchRef = useRef<HTMLInputElement>(null);
   const searching = query.trim() !== '';
 
   const setTab = (next: SettingsTab, focusTab = false) => {
     setTabState(next);
-    mainRef.current?.scrollTo({ top: 0 });
-    if (focusTab) tabRefs.current[next]?.focus();
+    if (focusTab) tabRefs.current[next]?.focus({ preventScroll: true });
   };
   /** 탭을 누르면 찾기를 끝내고 그 탭으로 */
   const pickTab = (next: SettingsTab, focusTab = false) => {
@@ -130,7 +152,17 @@ export function SettingsApp() {
           sec,
           groups,
           title: sec.querySelector(':scope > h2')?.textContent ?? '',
-          rows: groups.map((g) => g.map((k) => k.textContent ?? '').join(' ')),
+          rows: groups.map((g) =>
+            g
+              .map((k) =>
+                [
+                  k.textContent ?? '',
+                  k.dataset.search ?? '',
+                  ...[...k.querySelectorAll<HTMLElement>('[data-search]')].map((e) => e.dataset.search ?? ''),
+                ].join(' '),
+              )
+              .join(' '),
+          ),
         };
       }),
     );
@@ -146,6 +178,15 @@ export function SettingsApp() {
     panels.forEach((panel, i) => {
       panel.hidden = searching ? !counts[i] : panel.dataset.tab !== tab;
     });
+    // hidden을 바꾼 뒤 복원해야 짧은 탭의 높이에 잘리지 않는다.
+    // 검색 위치는 따로 두어 검색을 끝내도 원래 탭의 위치가 남게 한다.
+    const view = searching ? 'search' : tab;
+    if (scrollView.current !== view) {
+      scrollView.current = view;
+      main.scrollTop = scrollPositions.current[view] ?? 0;
+    }
+    if (searching && scrollQuery.current !== query) main.scrollTop = 0;
+    scrollQuery.current = query;
     setNoHit(searching && r.every((x) => !x.show));
     setHitKey(searching ? counts.join(',') : '');
   });
@@ -184,11 +225,10 @@ export function SettingsApp() {
       e.preventDefault();
       if (searchingNow.current) setQuery('');
       setTabState(next);
-      mainRef.current?.scrollTo({ top: 0 });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [setQuery, setTabState]);
 
   // 메뉴 막대 "의견 보내기"(칸 열기): 찾기를 끝내고 그 칸의 탭으로. 칸으로 내려가기는 칸(Stats)이 한다
   useEffect(() => {
@@ -196,7 +236,7 @@ export function SettingsApp() {
       setQuery('');
       setTabState(tabOfSection(section));
     });
-  }, []);
+  }, [setQuery, setTabState]);
 
   // 페어리 파일(.fairy, .jjpet)이나 Codex 펫 파일(.codex-pet.zip)을 창에 끌어 놓으면 페어리 가져오기와 같이 데려온다.
   // 다른 파일(그림, 글)은 그냥 둔다 (창이 그 파일을 열어 페이지가 바뀌지 않게 놓기만 막는다)
@@ -353,7 +393,12 @@ export function SettingsApp() {
           })}
         </div>
 
-        <main ref={mainRef}>
+        <main
+          ref={mainRef}
+          onScroll={(e) => {
+            scrollPositions.current[scrollView.current] = e.currentTarget.scrollTop;
+          }}
+        >
           {noHit && (
             <p className="search-empty" role="status">
               {t('settings.search.empty', { q: query.trim() })}

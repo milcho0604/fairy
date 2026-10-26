@@ -34,6 +34,7 @@ import {
   stopsQueue,
 } from '../../../shared/sprite-strip.ts';
 import { escClosesWindow } from '../panel/keys.ts';
+import { useLanguageUpdates } from '../use-language.ts';
 import './gemini.css';
 
 const bridge = window.jjakkungMaker;
@@ -112,6 +113,7 @@ const FIT_ERROR: Record<FitWhy, I18nKey> = {
 };
 
 export function SpriteMakerApp() {
+  useLanguageUpdates();
   const [src, setSrc] = useState<SpriteSource | undefined>();
   const [states, setStates] = useState<States>({});
   const [strips, setStrips] = useState<Partial<Record<SpriteRowId, string>>>({});

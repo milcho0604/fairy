@@ -17,11 +17,12 @@ import type { Todo } from '../../../shared/todo-store.ts';
 import { HomeShell } from '../home/HomeShell.tsx';
 import { homeKeyAction, sectionForKey } from '../home/sections.ts';
 import { PetFace } from '../PetFace.tsx';
+import { useLanguageUpdates } from '../use-language.ts';
 import { EventTab } from './EventTab.tsx';
 import { FindAll } from './FindAll.tsx';
 import { addedText, timeOf, whenLabel } from './format.ts';
 import { CoinIcon, ExpandIcon, GearIcon, PinIcon, SearchIcon } from './icons.tsx';
-import { escClosesSurface, tabStepByKey, undoByKey, undoFieldText } from './keys.ts';
+import { escClosesSurface, type ModKeyLike, tabStepByKey, undoByKey, undoFieldText } from './keys.ts';
 import { PlanSheetHost } from './MorningPlan.tsx';
 import { NoteTab } from './NoteTab.tsx';
 import { openNoteById, revealRow } from './open-target.ts';
@@ -110,8 +111,10 @@ function focusFind() {
 
 /** 패널 구성요소의 껍데기. kind 가 panel 이면 펫 옆 작은 패널, home 이면 사이드바가 있는 큰 창 (src/renderer/src/home/HomeShell.tsx) */
 export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
+  useLanguageUpdates();
   const [s, setS] = useState<PanelState>();
   const [tab, setTabState] = useState<PanelTab>(() => savedTab(kind));
+  const [chatOn, setChatOn] = useState(false);
   // 되돌리기 알림 (#145): 여럿이 쌓이고, 메인이 들고 있어 패널을 벗어났다 다시 열어도 남은 시간 동안 보인다
   const [toasts, setToasts] = useState<KeptToast[]>(() => liveToasts(bridge.toastsGet(), Date.now()));
   const toastKey = useRef(toasts.reduce((m, k) => Math.max(m, k.key), 0) + 1);
@@ -133,6 +136,7 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
   const undoRef = useRef<() => boolean>(() => false);
 
   const setTab = (next: PanelTab) => {
+    setChatOn(false);
     setTabState(next);
     rememberTab(kind, next);
   };
@@ -162,7 +166,31 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
   useEffect(() => {
     bridge.snapshot().then(setS);
     bridge.onState(setS);
-    bridge.onTab((next) => setTabState(next));
+    bridge.onTab((next) => {
+      setChatOn(false);
+      setTabState(next);
+    });
+    const homeKey = (e: ModKeyLike): boolean => {
+      const act = homeKeyAction(e, MAC);
+      if (act) {
+        if (act === 'settings') bridge.openSettings();
+        else if (act === 'close') bridge.close();
+        else focusFind();
+        return true;
+      }
+      const sec = sectionForKey(e, MAC, friendsOnRef.current);
+      if (!sec) return false;
+      if (sec.id === 'chat') bridge.openChat();
+      else if (sec.id === 'friends') bridge.openFriends();
+      else {
+        setChatOn(false);
+        setTabState(sec.id);
+        rememberTab(kind, sec.id);
+      }
+      return true;
+    };
+    if (kind === 'home') bridge.onChatKey((key) => void homeKey(key));
+    if (kind === 'home') bridge.onChatSection(setChatOn);
     // 패널이 열린 채 트레이, 펫 메뉴로 큰 창을 열면 메인이 이 패널에 먼저 넘겨 달라고 한다
     if (kind === 'panel') bridge.onExpandNow(() => expandRef.current());
     // 입력칸이 먼저 Esc 를 처리한다(비우기, 메모 목록으로). 한글 조합 중 Esc 는 조합만 끝낸다
@@ -178,24 +206,8 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
         return;
       }
       if (kind === 'home') {
-        // 큰 창: Cmd/Ctrl+, 설정, W 닫기, F 찾기, 1~ 구역 (채팅과 친구는 따로 창을 연다)
-        const act = homeKeyAction(e, MAC);
-        if (act) {
+        if (homeKey(e)) {
           e.preventDefault();
-          if (act === 'settings') bridge.openSettings();
-          else if (act === 'close') bridge.close();
-          else focusFind();
-          return;
-        }
-        const sec = sectionForKey(e, MAC, friendsOnRef.current);
-        if (sec) {
-          e.preventDefault();
-          if (sec.id === 'chat') bridge.openChat();
-          else if (sec.id === 'friends') bridge.openFriends();
-          else {
-            setTabState(sec.id);
-            rememberTab(kind, sec.id);
-          }
           return;
         }
       } else {
@@ -513,6 +525,7 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
         <HomeShell
           s={s}
           tab={tab}
+          chatOn={chatOn}
           setTab={setTab}
           setOverlayRoot={setOverlayRoot}
           fed={fed}

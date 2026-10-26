@@ -5,6 +5,16 @@ import type { SurfaceKind } from '../shared/surface-kind.ts';
 
 export type { SurfaceKind };
 
+/**
+ * 면(작은 패널, 큰 창)의 창 쪽 모습. 큰 창은 화면을 view 로 싣는 BaseWindow 라 webContents 가 없어서
+ * 본문 view 의 webContents 를 대신 내놓는다. 창 객체가 아니라 이것만 보면 어느 쪽이든 같게 다룬다
+ */
+export interface SurfaceWin {
+  readonly webContents: Electron.WebContents;
+  isDestroyed(): boolean;
+  once(event: 'closed', listener: () => void): unknown;
+}
+
 /** 지금 보이는 면: 큰 창이 살아 있으면 큰 창, 없으면 패널. 둘 다 없으면 undefined */
 export function pickSurface<T>(
   home: T | undefined,

@@ -294,6 +294,7 @@ function frame() {
   carriedAt = ball;
   // 얼굴과 집 그림은 첫 그림이 화면에 나간 뒤에 (둘 다 그린 것을 읽어 와 GPU 를 기다려서 켤 때 첫 그림을 늦췄다)
   if (firstShown) {
+    syncBubbleAnchor(m3d);
     syncFace(m3d);
     syncSprites(m3d);
   } else afterFirstShown();
@@ -987,6 +988,48 @@ function current3d(): Pet3D | 'loading' | undefined {
 // 이름 옆 얼굴 (shared/face.ts). 모습(종류, 입체 여부, 사진, 설계도)이 바뀐 뒤 처음 그릴 때 한 번 그려 메인에 준다.
 // 펫이 지금 무엇을 하든 얼굴은 쉬는 모습, 뜬 눈으로. 쓰는 렌더러는 펫 화면 것 하나 그대로다
 let wantFace = false;
+// 그림이 바뀔 때만 서 있는 몸을 따로 재서 보낸다. 크기는 비율로 전달하므로 확대/축소에도 그대로 쓴다.
+let bubbleAnchorKey: unknown[] = [];
+function syncBubbleAnchor(m3d: Pet3D | undefined) {
+  const art = m3d ? undefined : sheetNow();
+  const key = [
+    m3d,
+    m3d?.version,
+    model3dOf,
+    style3d,
+    photo,
+    petKind,
+    photoScale,
+    art,
+    wear?.stage,
+    wear?.outfit,
+    flower,
+  ];
+  if (key.length === bubbleAnchorKey.length && key.every((v, i) => v === bubbleAnchorKey[i])) return;
+  bubbleAnchorKey = key;
+  const work = document.createElement('canvas');
+  work.width = work.height = CANVAS_SIZE;
+  const g = work.getContext('2d', { willReadFrequently: true });
+  if (!g) return;
+  drawPet(g, {
+    mood: 'idle',
+    elapsed: 0,
+    blink: -1,
+    viewSize: CANVAS_SIZE,
+    kind: petKind,
+    model3d: m3d,
+    sprites: art,
+    photo: m3d || art ? undefined : photo instanceof AnimatedImage ? photo.frameAt(0) : photo,
+    photoScale,
+    ...(photo ? {} : { wear: wear?.outfit, grow: GROW_LOOK[wear?.stage ?? 'adult'].scale }),
+    flower,
+    noShadow: true,
+    calm: true,
+  });
+  const box = alphaBox(g.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE).data, CANVAS_SIZE, CANVAS_SIZE);
+  if (box) bridge.bubbleAnchor({ top: box.top / CANVAS_SIZE, bottom: box.bottom / CANVAS_SIZE });
+}
+
 let faceKey: unknown[] = [];
 function syncFace(m3d: Pet3D | undefined) {
   if (!wantFace) return;

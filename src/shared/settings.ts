@@ -10,6 +10,7 @@ import { cleanIcsUrl } from './ics.ts';
 import { type AgeStage, isAgeStage } from './illustrate.ts';
 import { cleanFacts, cleanMeta, type MemMeta, type PetFact } from './knows.ts';
 import { type IllustEngine, illustEngineOf } from './local-draw.ts';
+import { isOnboardPage } from './onboarding-page.ts';
 import { cleanMemory, cleanPending } from './pet-memory.ts';
 import { cleanPetMeta, type PetMeta } from './pet-share.ts';
 import { cleanSpriteFiles, type PetSprites } from './pet-sprites.ts';
@@ -93,6 +94,8 @@ export interface Settings {
   spicy: boolean;
   /** 첫 실행 안내를 봤는지 (v1) */
   onboarded: boolean;
+  /** 마치지 않은 첫 안내에서 마지막으로 보던 쪽 (0부터) */
+  onboardPage: number;
   /** 새 버전 알림 (v1, 하루 한 번 GitHub Releases 확인) */
   updateCheck: boolean;
   /** 건너뛰기로 한 버전 */
@@ -469,6 +472,7 @@ export const DEFAULT_SETTINGS: Settings = {
   restDays: [0, 6],
   spicy: false,
   onboarded: false,
+  onboardPage: 0,
   updateCheck: true,
   reviewMinute: 18 * 60,
   review: true,
@@ -513,6 +517,39 @@ export const DEFAULT_SETTINGS: Settings = {
   typeAlong: true,
   dailyNotes: true,
 };
+
+/** 설정 초기화에서 사용자 콘텐츠와 선택한 페어리를 남긴다. */
+export function resetPreferencesOf(current: Settings): Settings {
+  const keep: (keyof Settings)[] = [
+    'petName',
+    'petNameEdited',
+    'petImage',
+    'petKind',
+    'petModel',
+    'petDepth',
+    'petAge',
+    'petMeta',
+    'petPoses',
+    'petSprites',
+    'petLibrary',
+    'friends',
+    'petGaits',
+    'petWishes',
+    'petStands',
+    'petPersonal',
+    'petKindNames',
+    'petTexts',
+    'petRules',
+    'petMemory',
+    'petMemoryPending',
+    'petMemoryMeta',
+    'petFacts',
+    'icsUrl',
+    'onboarded',
+  ];
+  const preserved = Object.fromEntries(keep.map((key) => [key, current[key]])) as Partial<Settings>;
+  return { ...structuredClone(DEFAULT_SETTINGS), ...preserved };
+}
 
 export const PET_NAME_MAX = 12;
 /** 글자 하나가 지나치게 긴 조합(결합 문자를 수십 개 붙인 것)으로 이름이 커지지 않게 코드 포인트도 센다 */
@@ -667,6 +704,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
       : base.restDays,
     spicy: bool(r.spicy, base.spicy),
     onboarded: bool(r.onboarded, base.onboarded),
+    onboardPage: isOnboardPage(r.onboardPage) ? r.onboardPage : base.onboardPage,
     updateCheck: bool(r.updateCheck, base.updateCheck),
     reviewMinute:
       typeof r.reviewMinute === 'number' &&

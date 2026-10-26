@@ -7,8 +7,10 @@ import {
   homeClickAction,
   homeExpired,
   homeOpen,
+  isHomeChord,
   isPanelView,
   panelTarget,
+  parseChatRect,
   promoteAction,
   reopenTarget,
 } from './home-policy.ts';
@@ -88,4 +90,74 @@ test('크게 보기로 넘길 때: 없으면 만들고, 열려 있으면 앞으�
   assert.equal(promoteAction(none), 'create');
   assert.equal(promoteAction(shown), 'show');
   assert.equal(promoteAction(tucked), 'recreate');
+});
+
+const input = (code: string, mods: Partial<Record<'meta' | 'control' | 'alt' | 'shift', boolean>> = {}) => ({
+  type: 'keyDown',
+  code,
+  meta: false,
+  control: false,
+  alt: false,
+  shift: false,
+  ...mods,
+});
+
+test('채팅 view 키: 큰 창이 맡는 수식키 조합만 넘긴다 (맥은 Cmd, 그 밖은 Ctrl)', () => {
+  for (const code of ['KeyW', 'Comma', 'Digit1', 'Digit5', 'Digit9']) {
+    assert.equal(isHomeChord(input(code, { meta: true }), true), true, `맥 Cmd+${code}`);
+    assert.equal(isHomeChord(input(code, { control: true }), false), true, `윈도우 Ctrl+${code}`);
+  }
+  // 채팅이 그대로 쓰는 키는 넘기지 않는다 (복사, 붙이기, 모두 선택, 되돌리기, 찾기)
+  for (const code of ['KeyC', 'KeyV', 'KeyA', 'KeyZ', 'KeyF', 'Enter', 'Digit0']) {
+    assert.equal(isHomeChord(input(code, { meta: true }), true), false, code);
+  }
+  assert.equal(isHomeChord(input('KeyW'), true), false, '수식키 없음');
+  assert.equal(
+    isHomeChord({ ...input('KeyW', { meta: true }), isComposing: true }, true),
+    false,
+    '한글 조합 중',
+  );
+  assert.equal(isHomeChord(input('KeyW', { control: true }), true), false, '맥에서 Ctrl 은 아니다');
+  assert.equal(isHomeChord(input('KeyW', { meta: true }), false), false, '윈도우에서 Meta 는 아니다');
+  assert.equal(
+    isHomeChord(input('KeyW', { meta: true, shift: true }), true),
+    false,
+    'Shift 가 섞이면 아니다',
+  );
+  assert.equal(isHomeChord(input('KeyW', { meta: true, alt: true }), true), false, 'Option 이 섞이면 아니다');
+  assert.equal(
+    isHomeChord({ ...input('KeyW', { meta: true }), type: 'keyUp' }, true),
+    false,
+    '뗄 때는 아니다',
+  );
+});
+
+test('채팅 자리: 숫자 네 개가 정상 범위일 때만 받는다', () => {
+  assert.deepEqual(parseChatRect({ x: 208, y: 52, width: 800, height: 600 }), {
+    x: 208,
+    y: 52,
+    width: 800,
+    height: 600,
+  });
+  assert.deepEqual(parseChatRect({ x: 0.5, y: 0, width: 1, height: 1 }), {
+    x: 0.5,
+    y: 0,
+    width: 1,
+    height: 1,
+  });
+  for (const bad of [
+    null,
+    undefined,
+    'x',
+    1,
+    {},
+    { x: 0, y: 0, width: 0, height: 10 },
+    { x: 0, y: 0, width: 10, height: 0.5 },
+    { x: -1, y: 0, width: 10, height: 10 },
+    { x: 0, y: 0, width: 99999, height: 10 },
+    { x: Number.NaN, y: 0, width: 10, height: 10 },
+    { x: '1', y: 0, width: 10, height: 10 },
+    { x: 0, y: 0, width: Number.POSITIVE_INFINITY, height: 10 },
+  ])
+    assert.equal(parseChatRect(bad), undefined, JSON.stringify(bad));
 });

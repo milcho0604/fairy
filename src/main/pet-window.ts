@@ -21,7 +21,14 @@ import {
   walkOffset,
   walkSpan,
 } from '../shared/behavior.ts';
-import { BUBBLE_GUESS, bubbleClashes, bubbleRectOf, layoutBubble } from '../shared/bubble-layout.ts';
+import {
+  BUBBLE_GUESS,
+  type BubbleAnchor,
+  bubbleClashes,
+  bubbleRectOf,
+  layoutBubble,
+  parseBubbleAnchor,
+} from '../shared/bubble-layout.ts';
 import {
   bundleText,
   fateOf,
@@ -82,7 +89,7 @@ import { watchCursor } from './cursor-watch.ts';
 import { devRendererUrl } from './dev-url.ts';
 import { onDisplaysChanged as watchDisplays } from './display-watch.ts';
 import { focusWindow, stealFocus } from './focus.ts';
-import { hideHintFor } from './hide-hint.ts';
+import { hideHintDelivery, hideHintFor } from './hide-hint.ts';
 import { langArg } from './lang.ts';
 import { settings } from './settings.ts';
 import { readJson, writeJson } from './store.ts';
@@ -122,6 +129,8 @@ export interface PetActions {
   lookTogether(): void;
   openSettings(): void;
   quickAdd(): void;
+  addNote?(): void;
+  openPanel?(): void;
   /** 큰 창으로 열기 (큰 창 설계 #159). 없으면 우클릭 메뉴에 항목이 없다 */
   openHome?(): void;
   feed(): void;
@@ -325,6 +334,8 @@ export interface PetWindowOptions {
   onMissed?: () => void;
   /** 집에서 쉬는 중(숨김 까닭이 house 하나)에 말이 와서 모아 두었다. important 는 놓치면 안 되는 말(hold) */
   onRestHeld?: (kind: BubbleKind, important: boolean) => void;
+  /** 운영체제 알림을 쓸 수 없을 때 트레이에 잠시 숨김 안내를 보인다 (이슈 #148) */
+  onHideHint?: (message: string, shortMessage: string) => void;
   /** 미리 만든 창 (친구 펫을 기본 펫 화면 프로세스에서 연 것, openPetWindowIn). 없으면 새로 만든다 */
   win?: BrowserWindow;
 }
@@ -449,6 +460,7 @@ export function createPetWindow({
   menu,
   onMissed,
   onRestHeld,
+  onHideHint,
   win: prebuilt,
 }: PetWindowOptions): PetWindow {
   const positionFile = id ? `${POSITION_FILE}-${id}` : POSITION_FILE;
@@ -457,6 +469,7 @@ export function createPetWindow({
   // 펫 사각형. 말풍선이 뜨면 창은 이보다 커지지만 펫은 화면에서 제자리에 있다.
   let pet: Rect = restorePetBounds(saved, currentDisplays(), Math.round(BASE_SIZE * scale));
 
+  let bubbleAnchor: BubbleAnchor | undefined;
   const hideReasons = new HideReasons();
   /** 숨어 있는 동안 온 답 알림. 다시 나올 때 한 번 말한다 (기획서: 알림은 쌓아 두었다가 나올 때 한 번에). */
   let heldAnswer: { options: SayOptions; resolve: (action: string | undefined) => void } | undefined;
@@ -473,14 +486,17 @@ export function createPetWindow({
   /** 지금 말풍선의 화면 사각형. 크기를 재기 전이면 어림 크기로 */
   const bubbleRect = (): Rect | undefined =>
     bubble && !bubble.ambient && !win.isDestroyed() && win.isVisible()
-      ? bubbleRectOf(pet, bubble.size ?? BUBBLE_GUESS, screen.getDisplayMatching(pet).workArea)
+      ? bubbleRectOf(pet, bubble.size ?? BUBBLE_GUESS, screen.getDisplayMatching(pet).workArea, bubbleAnchor)
       : undefined;
   talkers.add(bubbleRect);
   /** 다른 펫의 떠 있는 말풍선과 겹칠 자리인지 */
   const clashing = () => {
     const others = [...talkers].filter((r) => r !== bubbleRect).map((r) => r());
     const list = others.filter((r): r is Rect => !!r);
-    return list.length > 0 && bubbleClashes(pet, screen.getDisplayMatching(pet).workArea, list);
+    return (
+      list.length > 0 &&
+      bubbleClashes(pet, screen.getDisplayMatching(pet).workArea, list, BUBBLE_GUESS, bubbleAnchor)
+    );
   };
   /** 다른 펫 말풍선이 닫혀 자리가 나면 true, 기다리다 끝나거나 그만두면 false */
   const waitForRoom = (until: number, signal?: AbortSignal): Promise<boolean> =>
@@ -691,21 +707,39 @@ export function createPetWindow({
     const note = actions.menuNote?.();
     Menu.buildFromTemplate([
       ...(note ? [{ label: note, enabled: false }, { type: 'separator' as const }] : []),
-      // 메뉴에도 단축키를 보여 준다 (마우스 없이 여는 길을 알게)
+      // 자주 하는 작업을 맨 위에 둔다.
       {
-        label: t('pet.menu.look', { name: petName() }),
-        accelerator: settings.get().shortcuts.look || undefined,
-        click: () => actions.lookTogether(),
+        label: t('pet.menu.addTodo'),
+        accelerator: quickAddShortcut() || undefined,
+        click: () => actions.quickAdd(),
       },
+      {
+        label: actions.focusRunning()
+          ? t('pet.menu.focusStop')
+          : t('pet.menu.focusStart', { n: settings.get().focusMin }),
+        click: () => actions.toggleFocus(),
+      },
+      { label: t('pet.menu.feed'), click: () => actions.feed() },
+      ...(actions.addNote ? [{ label: t('pet.menu.addNote'), click: () => actions.addNote?.() }] : []),
+      ...(actions.openPanel
+        ? [
+            {
+              label: t('pet.menu.openPanel'),
+              accelerator: settings.get().shortcuts.panel || undefined,
+              click: () => actions.openPanel?.(),
+            },
+          ]
+        : []),
+      { type: 'separator' },
       {
         label: t('pet.menu.chat', { name: petName() }),
         accelerator: settings.get().shortcuts.chat || undefined,
         click: () => actions.openChat(pet),
       },
       {
-        label: t('pet.menu.addTodo'),
-        accelerator: quickAddShortcut() || undefined,
-        click: () => actions.quickAdd(),
+        label: t('pet.menu.look', { name: petName() }),
+        accelerator: settings.get().shortcuts.look || undefined,
+        click: () => actions.lookTogether(),
       },
       ...(actions.openHome
         ? [
@@ -716,66 +750,64 @@ export function createPetWindow({
             },
           ]
         : []),
-      ...(actions.whatFirst ? [{ label: t('first.menu'), click: () => actions.whatFirst?.() }] : []),
-      ...(actions.askChips && settings.get().petChips
-        ? [{ label: t('chips.menu'), click: () => actions.askChips?.() }]
-        : []),
-      { label: t('pet.menu.feed'), click: () => actions.feed() },
-      {
-        label: t('pet.menu.play'),
-        submenu: playMenu(),
-      },
-      {
-        label: actions.focusRunning()
-          ? t('pet.menu.focusStop')
-          : t('pet.menu.focusStart', { n: settings.get().focusMin }),
-        click: () => actions.toggleFocus(),
-      },
+      { label: t('pet.menu.play'), submenu: playMenu() },
       { type: 'separator' },
-      {
-        label: t('pet.menu.bubbles'),
-        submenu: (['quiet', 'normal', 'chatty'] as const).map((level) => ({
-          label: LEVEL_LABEL[level],
-          type: 'radio' as const,
-          checked: gate.level === level,
-          click: () => setChatter(level),
-        })),
-      },
-      // 배터리일 때 움직임 줄이기 (사용자 요청 2026-10-11: 바로 끄고 켤 수 있게). 켜면 자동, 끄면 끄기
-      {
-        label: t('pet.menu.saver'),
-        type: 'checkbox',
-        checked: settings.get().batterySaver !== 'off',
-        click: (item) => settings.set({ batterySaver: item.checked ? 'auto' : 'off' }),
-      },
-      // 같이 타자 치기 (shared/together.ts): 키 내용은 읽지 않고 입력이 있는지만 본다
-      {
-        label: t('pet.menu.typeAlong'),
-        type: 'checkbox',
-        checked: settings.get().typeAlong,
-        click: (item) => settings.set({ typeAlong: item.checked }),
-      },
-      ...houseMenu(),
       {
         label: t('pet.menu.hide', { name: petName() }),
         accelerator: hideShortcut() || undefined,
         click: () => setHidden('user', true),
       },
-      { label: t('pet.menu.makePet'), click: () => actions.makePet() },
-      ...(actions.openKnows
-        ? [{ label: t('bond.menu.knows', { name: petName() }), click: () => actions.openKnows?.() }]
-        : []),
       { label: t('pet.menu.settings'), click: () => actions.openSettings() },
       { type: 'separator' },
-      { label: t('pet.menu.reload'), click: () => reload() },
       {
-        label: t('pet.menu.relaunch', { name: petName() }),
-        click: () => {
-          // will-quit 정리(기록, AI 끝내기, 저장 닫기)를 거쳐 다시 켠다
-          app.relaunch();
-          app.quit();
-        },
+        label: t('pet.menu.more'),
+        submenu: [
+          ...(actions.whatFirst ? [{ label: t('first.menu'), click: () => actions.whatFirst?.() }] : []),
+          ...(actions.askChips && settings.get().petChips
+            ? [{ label: t('chips.menu'), click: () => actions.askChips?.() }]
+            : []),
+          { label: t('pet.menu.makePet'), click: () => actions.makePet() },
+          ...(actions.openKnows
+            ? [{ label: t('bond.menu.knows', { name: petName() }), click: () => actions.openKnows?.() }]
+            : []),
+          ...houseMenu(),
+          { type: 'separator' },
+          {
+            label: t('pet.menu.bubbles'),
+            submenu: (['quiet', 'normal', 'chatty'] as const).map((level) => ({
+              label: LEVEL_LABEL[level],
+              type: 'radio' as const,
+              checked: gate.level === level,
+              click: () => setChatter(level),
+            })),
+          },
+          // 배터리일 때 움직임 줄이기 (사용자 요청 2026-10-11: 바로 끄고 켤 수 있게). 켜면 자동, 끄면 끄기
+          {
+            label: t('pet.menu.saver'),
+            type: 'checkbox',
+            checked: settings.get().batterySaver !== 'off',
+            click: (item) => settings.set({ batterySaver: item.checked ? 'auto' : 'off' }),
+          },
+          // 같이 타자 치기 (shared/together.ts): 키 내용은 읽지 않고 입력이 있는지만 본다
+          {
+            label: t('pet.menu.typeAlong'),
+            type: 'checkbox',
+            checked: settings.get().typeAlong,
+            click: (item) => settings.set({ typeAlong: item.checked }),
+          },
+          { type: 'separator' },
+          { label: t('pet.menu.reload'), click: () => reload() },
+          {
+            label: t('pet.menu.relaunch', { name: petName() }),
+            click: () => {
+              // will-quit 정리(기록, AI 끝내기, 저장 닫기)를 거쳐 다시 켠다
+              app.relaunch();
+              app.quit();
+            },
+          },
+        ],
       },
+      { type: 'separator' },
       { label: t('pet.menu.quit'), role: 'quit' },
     ]).popup(where);
   }
@@ -851,7 +883,7 @@ export function createPetWindow({
   function applyLayout() {
     if (win.isDestroyed()) return;
     const area = screen.getDisplayMatching(pet).workArea;
-    const layout = layoutBubble(pet, bubble?.size, area);
+    const layout = layoutBubble(pet, bubble?.size, area, bubbleAnchor);
     const now = win.getBounds();
     const w = layout.window;
     if (now.x !== w.x || now.y !== w.y || now.width !== w.width || now.height !== w.height) win.setBounds(w);
@@ -1443,23 +1475,32 @@ export function createPetWindow({
 
   /**
    * 숨기기는 바로 한다 (예전엔 말풍선 안내 2.5초를 보이고 숨어 굼떴고, 그사이 또 누르면 두 번 숨었다).
-   * 다시 부르는 법(단축키, 앱 다시 열기)은 처음 몇 번만 운영체제 알림으로. 메뉴 막대가 붐비면 아이콘이 안 보일 수 있어서다.
+   * 다시 부르는 법은 운영체제 알림으로 알린다. 알림을 끈 경우엔 첫 숨김에 트레이에서 한 번 안내한다.
    * 단축키를 꺼 두었어도 앱을 다시 열면 돌아오니 안내는 나온다 (hide-hint.ts)
    */
   function hideWithHint() {
     const shown = settings.get().hideHints;
     setHidden('user', true, false);
     const accel = hideShortcut();
+    const keys = accel ? acceleratorLabel(accel, process.platform === 'darwin').join('+') : '';
+    const delivery = hideHintDelivery(shown, settings.get().osNotify, Notification.isSupported());
+    if (delivery === 'none') return;
     const hint = hideHintFor({
       shown,
-      keys: accel ? acceleratorLabel(accel, process.platform === 'darwin').join('+') : '',
-      osNotify: settings.get().osNotify,
-      supported: Notification.isSupported(),
+      keys,
+      // 안내 문구 생성과 전달 경로를 나눈다.
+      osNotify: true,
+      supported: true,
     });
     if (!hint) return;
-    settings.set({ hideHints: shown + 1 });
     const body = hint.key === 'pet.hideHint' ? voiced(hint.key, { keys: hint.keys }) : voiced(hint.key);
-    new Notification({ title: petName(), body, silent: true }).show();
+    if (delivery === 'notification') {
+      settings.set({ hideHints: shown + 1 });
+      new Notification({ title: petName(), body, silent: true }).show();
+      return;
+    }
+    settings.set({ hideHints: 1 });
+    onHideHint?.(body, keys ? t('tray.hiddenKeys', { keys }) : t('tray.hiddenNoKey'));
   }
 
   function setHidden(reason: HideReason, on: boolean, hint = true) {
@@ -1937,6 +1978,13 @@ export function createPetWindow({
     if (answer === 'yes') setChatter(quieter(gate.level));
   }
 
+  const onBubbleAnchor = (e: IpcMainEvent, raw: unknown) => {
+    if (!fromThisWindow(e)) return;
+    const next = parseBubbleAnchor(raw);
+    if (!next || (next.top === bubbleAnchor?.top && next.bottom === bubbleAnchor?.bottom)) return;
+    bubbleAnchor = next;
+    applyLayout();
+  };
   const onBubbleSize = (e: IpcMainEvent, id: string, width: number, height: number) => {
     if (!fromThisWindow(e) || bubble?.id !== id) return;
     bubble.size = { width, height };
@@ -2027,6 +2075,7 @@ export function createPetWindow({
   ipcMain.on(IPC.contextMenu, onContextMenu);
   ipcMain.on(IPC.wheel, onWheel);
   ipcMain.on(IPC.bubbleSize, onBubbleSize);
+  ipcMain.on(IPC.bubbleAnchor, onBubbleAnchor);
   ipcMain.on(IPC.activityRequest, onActivityRequest);
   ipcMain.on(IPC.activityStop, onActivityStop);
   ipcMain.on(IPC.petted, onPetted);
@@ -2191,6 +2240,7 @@ export function createPetWindow({
     setShortcuts(false);
     ipcMain.off(IPC.wheel, onWheel);
     ipcMain.off(IPC.bubbleSize, onBubbleSize);
+    ipcMain.off(IPC.bubbleAnchor, onBubbleAnchor);
     ipcMain.off(IPC.activityRequest, onActivityRequest);
     ipcMain.off(IPC.activityStop, onActivityStop);
     ipcMain.off(IPC.petted, onPetted);

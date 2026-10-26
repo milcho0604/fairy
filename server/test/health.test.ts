@@ -29,7 +29,7 @@ async function waitFor(fn: () => Promise<boolean>, ms: number): Promise<void> {
 // 시험이 중간에 죽어도 컨테이너를 남기지 않는다
 process.on('exit', () => {
   try {
-    execFileSync('docker', ['rm', '-f', name], { stdio: 'ignore' });
+    execFileSync('docker', ['rm', '-f', '-v', name], { stdio: 'ignore' });
   } catch {}
 });
 
@@ -38,6 +38,8 @@ before(async () => {
     'run',
     '-d',
     '--rm',
+    '--tmpfs',
+    '/var/lib/postgresql/data',
     '--name',
     name,
     '--log-opt',
@@ -67,7 +69,7 @@ before(async () => {
 after(async () => {
   await app?.close().catch(() => {});
   try {
-    docker('rm', '-f', name);
+    docker('rm', '-f', '-v', name);
   } catch {}
 });
 

@@ -14,6 +14,7 @@ import type { ChatMessage, ChatState } from '../../../shared/chat-state.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { OutgoingImage, ProviderView } from '../../../shared/ipc.ts';
 import { PetFace } from '../PetFace.tsx';
+import { useLanguageUpdates } from '../use-language.ts';
 import { AiManager } from './AiManager.tsx';
 import { ChatList } from './ChatList.tsx';
 import { useChatDraftSync } from './draft.ts';
@@ -49,6 +50,7 @@ const bridge = window.jjakkungChat;
 const MAX_IMAGES = 4;
 
 export function App() {
+  useLanguageUpdates();
   const [petName, setPetName] = useState(t('chat.defaultPetName'));
   const [state, setState] = useState<ChatState>();
   const [status, setStatus] = useState<Partial<Record<AiProvider, AiStatus>>>({});
@@ -180,6 +182,8 @@ export function App() {
       document.title = t('chat.title', { name });
     });
     if (bridge.platform === 'darwin') document.body.classList.add('mac');
+    // 큰 창 안에 품은 채팅은 주소 끝에 #embed (main/chat.ts embed)
+    if (location.hash === '#embed') document.body.classList.add('embed');
     refreshStatus(false);
     inputRef.current?.focus();
     // 같이 보기로 창이 다시 앞에 오면 바로 질문을 쓸 수 있게 입력칸에 커서를 둔다.
@@ -490,7 +494,9 @@ export function App() {
         return;
       } else if (managing) setManaging(false);
       else if (pending) bridge.cancel();
-      else if (!text.trim() && !e.defaultPrevented) window.close();
+      // 큰 창 안에 품은 채팅(#embed)은 닫을 창이 아니다: window.close() 가 채팅 화면을 없애 버린다
+      else if (!text.trim() && !e.defaultPrevented && !document.body.classList.contains('embed'))
+        window.close();
       else return;
       e.preventDefault();
     } else if (key === 'new-chat') {
@@ -541,6 +547,26 @@ export function App() {
             {petName}
           </strong>
         </div>
+        {location.hash !== '#embed' && (
+          <button
+            type="button"
+            className="ghost icon-btn near-pet"
+            title={t('chat.nearPet')}
+            aria-label={t('chat.nearPet')}
+            onClick={() => bridge.nearPet()}
+          >
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <path
+                d="M2 8h12M6 4 2 8l4 4M10 4l4 4-4 4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        )}
         <ProviderPicker
           providers={providers}
           status={status}

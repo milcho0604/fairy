@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events';
 import { test } from 'node:test';
 import { dicts, setLang, t } from '../shared/i18n/index.ts';
 import { voiced } from '../shared/persona-voice.ts';
-import { HIDE_HINT_TIMES, hideHintFor, watchReopen } from './hide-hint.ts';
+import { HIDE_HINT_TIMES, hideHintDelivery, hideHintFor, watchReopen } from './hide-hint.ts';
 
 const base = { shown: 0, keys: '⌃⌥⇧P', osNotify: true, supported: true };
 
@@ -21,6 +21,15 @@ test('숨기기 안내: 횟수를 다 쓰거나 알림이 꺼졌거나 지원되
   assert.equal(hideHintFor({ ...base, osNotify: false }), undefined);
   assert.equal(hideHintFor({ ...base, supported: false }), undefined);
   assert.equal(hideHintFor({ ...base, keys: '', osNotify: false }), undefined);
+});
+
+test('숨기기 안내 전달: 알림을 끈 경우 첫 한 번만 트레이 안내, 켜져 있으면 정해진 횟수까지 알림', () => {
+  assert.equal(hideHintDelivery(0, false, true), 'tray');
+  assert.equal(hideHintDelivery(1, false, true), 'none');
+  assert.equal(hideHintDelivery(0, true, false), 'tray');
+  assert.equal(hideHintDelivery(0, true, true), 'notification');
+  assert.equal(hideHintDelivery(HIDE_HINT_TIMES - 1, true, true), 'notification');
+  assert.equal(hideHintDelivery(HIDE_HINT_TIMES, true, true), 'none');
 });
 
 test('숨기기 안내 문구: ko, en 둘 다 다시 열기를 말하고 존댓말 비서도 같다', () => {

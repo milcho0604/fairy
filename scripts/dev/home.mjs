@@ -880,14 +880,14 @@ const body = async () => {
     }
     // 글 크기 1.5배, 폭 1440
     await setBounds(1440);
-    await main('__jj.home.window.webContents.setZoomFactor(1.5); 1');
+    await main('__jj.home.contents.setZoomFactor(1.5); 1');
     await sleep(700);
     for (const id of ['todo', 'note']) {
       await tab(id);
       const over = await overflow(wh);
       check(`글 크기 1.5배 폭 1440: ${id} 가로 넘침 없음`, over.length === 0, over.join(', '));
     }
-    await main('__jj.home.window.webContents.setZoomFactor(1); 1');
+    await main('__jj.home.contents.setZoomFactor(1); 1');
     await setBounds(1100);
     // 상세 칸 제목을 치고 0.5초 멈춤 안에 큰 창을 숨기거나 닫아도 글이 남는다 (버그잡이 163-2)
     await tab('todo');
@@ -1135,14 +1135,14 @@ const body = async () => {
     }
     // 글 크기 1.5배, 폭 1440 (넓음)
     await main('__jj.home.window.setBounds({ x: 20, y: 30, width: 1440, height: 780 }); 1');
-    await main('__jj.home.window.webContents.setZoomFactor(1.5); 1');
+    await main('__jj.home.contents.setZoomFactor(1.5); 1');
     await sleep(700);
     for (const tab of ['today', 'event']) {
       await calTab(tab);
       const over = await overflow(wh);
       check(`글 크기 1.5배 폭 1440: ${tab} 가로 넘침 없음`, over.length === 0, over.join(', '));
     }
-    await main('__jj.home.window.webContents.setZoomFactor(1); 1');
+    await main('__jj.home.contents.setZoomFactor(1); 1');
     await closeHome();
 
     // ---- 작은 패널 회귀: 320/360 은 좁음, 560 은 보통 ----
@@ -1251,7 +1251,7 @@ const body = async () => {
     JSON.stringify({ shows: st.shows, hides: st.hides, tried: st.triedShow, visible: st.visible }),
   );
   check('window: 큰 창은 항상 위가 아니고 일반 프레임이다', await main(`(() => { const w = __jj.home.window; return !w.isAlwaysOnTop() && w.isResizable() && w.isMaximizable() && w.isFullScreenable(); })()`));
-  check('window: 큰 창 면이 알려졌다 (보이는 면은 큰 창)', await main('__jj.panel.activeSurface() === __jj.home.window'));
+  check('window: 큰 창 면이 알려졌다 (보이는 면은 큰 창)', await main('__jj.panel.activeSurface()?.webContents === __jj.home.contents'));
 
   // 큰 창이 맨 앞(포커스)이면 다시 눌러 숨긴다. 시험 실행은 포커스를 주지 않아 isFocused 를 흉내 낸다
   await main('__jj.home.window.isFocused = () => true; 1');
@@ -1332,10 +1332,10 @@ const body = async () => {
   await waitFor(homeAlive);
   await sleep(700);
   await main(`(() => {
-    const w = __jj.home.window;
+    const w = __jj.home.contents;
     globalThis.__homeSends = 0;
-    const orig = w.webContents.send.bind(w.webContents);
-    w.webContents.send = (ch, ...a) => { if (ch === 'panel:state') globalThis.__homeSends++; return orig(ch, ...a); };
+    const orig = w.send.bind(w);
+    w.send = (ch, ...a) => { if (ch === 'panel:state') globalThis.__homeSends++; return orig(ch, ...a); };
     return 1;
   })()`);
   await main('__jj.home.hide(); 1');
@@ -1357,7 +1357,7 @@ const body = async () => {
   await main('__jj.home.open(); 1');
   await sleep(700);
   check('숨겼던 큰 창이 다시 보일 때 상태를 한 번 받는다', (await main('globalThis.__homeSends')) >= 1);
-  check('다시 보이면 보이는 면은 큰 창', await main('__jj.panel.activeSurface() === __jj.home.window'));
+  check('다시 보이면 보이는 면은 큰 창', await main('__jj.panel.activeSurface()?.webContents === __jj.home.contents'));
   await setView('window');
   // 전체 화면이 풀리기를 기다리는 동안 다시 열면 늦게 온 숨기기가 무시된다 (진짜 전체 화면은 켜지 않고 흉내 낸다)
   await main(`(() => { const w = __jj.home.window; w.isFullScreen = () => true; w.setFullScreen = () => {}; return 1; })()`);
@@ -1479,9 +1479,10 @@ const body = async () => {
   await sleep(300);
   check('Cmd+7 은 친구가 꺼져 있으면 아무 일도 없다', (await sectionNow(h)) === 'ptab-shop');
 
-  // 채팅과 설정은 따로 창, 큰 창은 그대로
+  // 채팅은 큰 창 안(본문 칸 자리에 view, 이슈 #165, 자세한 시험은 home-chat.mjs), 설정은 따로 창, 큰 창은 그대로
   await h.click(`document.getElementById('ptab-chat')`);
-  check('사이드바 채팅은 채팅 창을 연다 (큰 창은 그대로 열려 있다)', (await waitFor(async () => main('!!__jj.chat.window && !__jj.chat.window.isDestroyed()'))) && (await homeAlive()));
+  check('사이드바 채팅은 큰 창 안에 채팅을 얹는다 (따로 채팅 창은 없고 큰 창은 그대로)', (await waitFor(async () => main('__jj.home.chatRect() !== null'))) && !(await main('!!__jj.chat.window && !__jj.chat.window.isDestroyed()')) && (await homeAlive()));
+  await h.click(`document.getElementById('ptab-shop')`);
   await h.click(`document.querySelector('.home-settings')`);
   check('사이드바 설정은 설정 창을 연다 (큰 창은 그대로)', (await waitFor(async () => main('!!__jj.settingsWindow.window && !__jj.settingsWindow.window.isDestroyed()'))) && (await homeAlive()));
   await main('__jj.chat.window?.close(); __jj.settingsWindow.window?.close(); 1');
@@ -1595,12 +1596,12 @@ const body = async () => {
   // 글 크기 1.5배(큰 글씨)에서도 넘치지 않는다
   await main('__jj.home.window.setBounds({ x: 20, y: 30, width: 1100, height: 760 }); 1');
   await sleep(500);
-  await main('__jj.home.window.webContents.setZoomFactor(1.5); 1');
+  await main('__jj.home.contents.setZoomFactor(1.5); 1');
   await sleep(600);
   const overBig = await overflow(h);
   check('글 크기 1.5배, 폭 1100: 가로 넘침 없음', overBig.length === 0, overBig.join(', '));
   await h.shot('home-zoom15-w1100');
-  await main('__jj.home.window.webContents.setZoomFactor(1); 1');
+  await main('__jj.home.contents.setZoomFactor(1); 1');
 
   // ===================== 10. Cmd+W 로 닫기 =====================
   await h.ev(keyEvent({ ...mod, key: 'w', code: 'KeyW' }));

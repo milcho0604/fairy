@@ -93,6 +93,8 @@ function imageOf(f: Friend): PetImages {
  */
 export function createFriends(o: {
   mainPet: () => PetWindow;
+  /** 알림이 꺼져 있을 때 친구 페어리를 숨긴 뒤 트레이에 안내한다 */
+  onHideHint?: (message: string, shortMessage: string) => void;
   /** 지금 친구 놀이를 해도 되는지 (집중, 놀이, 숨바꼭질 중이 아니고 사용자가 자리에 있다) */
   canMeet: () => boolean;
   /** 친구도 같은 철 옷을 입는다 (main/wear.ts friendLook). 없으면 옷 없이 */
@@ -219,6 +221,7 @@ export function createFriends(o: {
       initial: friendSpot(main, index, FRIEND_SIZE, screen.getDisplayMatching(main).workArea),
       petName: () => live.get(f.id)?.friend.name ?? f.name,
       log: o.log,
+      ...(o.onHideHint ? { onHideHint: o.onHideHint } : {}),
       actions: {
         click: () => {
           pet.react();

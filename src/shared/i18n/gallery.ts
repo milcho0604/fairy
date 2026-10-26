@@ -15,6 +15,8 @@ export const ko = {
   'settings.gallery.adopt': '내 페어리로',
   'settings.gallery.friend': '친구로',
   'settings.gallery.busy': '받는 중',
+  'settings.gallery.builtIn': '이미 있어요',
+  'settings.gallery.builtInHint': '앱에 기본으로 들어 있어. 페어리 탭 위쪽의 모습에서 골라 줘.',
   'settings.gallery.thumbAlt': (v: { name: string }) => `${v.name} 그림`,
   'settings.gallery.by': (v: { author: string; license: string }) => `${v.author}, ${v.license}`,
   'settings.gallery.badFile': '받은 파일이 목록과 달라서 데려오지 않았어.',
@@ -45,6 +47,9 @@ export const en: Translation<typeof ko> = {
   'settings.gallery.adopt': 'Make my fairy',
   'settings.gallery.friend': 'As a friend',
   'settings.gallery.busy': 'Downloading',
+  'settings.gallery.builtIn': 'Already included',
+  'settings.gallery.builtInHint':
+    'Included with the app. Pick this fairy under Look at the top of the Fairy tab.',
   'settings.gallery.thumbAlt': (v: { name: string }) => `Picture of ${v.name}`,
   'settings.gallery.by': (v: { author: string; license: string }) => `${v.author}, ${v.license}`,
   'settings.gallery.badFile': "The downloaded file didn't match the list, so I didn't bring it in.",

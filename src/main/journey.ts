@@ -2,7 +2,7 @@
 // 펫이 먼저 권하는 말은 하루 한 번까지, 안 해도 아무 일 없다. 판단은 shared/journey.ts, 저장은 journey.json.
 // 해 봤는지는 앱이 이미 아는 것으로 본다: 빠른 입력 창, 집중 타이머, 새 메모, 펫 만들기 창은 15초마다 보고,
 // 일정, 같이 보기는 부르는 쪽(index.ts)이, 주간 돌아보기는 패널이 알려 준다.
-import { type BrowserWindow, ipcMain, powerMonitor } from 'electron';
+import { ipcMain, powerMonitor } from 'electron';
 import type { StatStore } from '../shared/beta-stats.ts';
 import { BOND } from '../shared/bond-ipc.ts';
 import { t } from '../shared/i18n/index.ts';
@@ -28,6 +28,7 @@ import { localDay, type TodoStore } from '../shared/todo-store.ts';
 import type { SayOptions } from './pet-window.ts';
 import { settings } from './settings.ts';
 import { readJson, writeJson } from './store.ts';
+import type { SurfaceWin } from './surface.ts';
 
 const FILE = 'journey';
 const POLL_MS = 15_000;
@@ -49,7 +50,7 @@ export interface JourneyOptions {
   /** 그 기능 열기 (말풍선 "해 볼래", 패널 칸의 단추) */
   open: (step: JourneyStep) => void;
   /** 지금 보이는 패널 면 (작은 패널, 큰 창이 열려 있으면 큰 창) */
-  surface: () => BrowserWindow | undefined;
+  surface: () => SurfaceWin | undefined;
   /** 작은 패널이나 큰 창이 보낸 요청인가 (숨겨 둔 큰 창이어도 받는다) */
   fromSurface: (wc: Electron.WebContents) => boolean;
   /** 코인과 칸이 바뀌었다 (패널 다시 그리기) */

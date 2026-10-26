@@ -17,6 +17,7 @@ import {
   petNameLength,
   photoPetName,
   pickedGait,
+  resetPreferencesOf,
   type Settings,
 } from './settings.ts';
 
@@ -29,6 +30,27 @@ test('저장 파일이 없거나 깨졌으면 기본값', () => {
   });
 });
 
+test('설정 초기화는 화면 환경설정을 기본값으로 돌리고 페어리와 사용자 콘텐츠는 보존한다', () => {
+  const current: Settings = {
+    ...DEFAULT_SETTINGS,
+    chatter: 'quiet',
+    wander: false,
+    petName: '모찌',
+    petKind: 'cat',
+    petLibrary: [{ id: 'saved', name: '친구', image: 'pet.png', poses: {} }],
+    petFacts: [{ kind: 'birthday', value: '05-01', at: 1 }],
+    icsUrl: 'https://example.test/calendar.ics',
+  };
+  const reset = resetPreferencesOf(current);
+  assert.equal(reset.chatter, DEFAULT_SETTINGS.chatter);
+  assert.equal(reset.wander, DEFAULT_SETTINGS.wander);
+  assert.equal(reset.petName, '모찌');
+  assert.equal(reset.petKind, 'cat');
+  assert.deepEqual(reset.petLibrary, current.petLibrary);
+  assert.deepEqual(reset.petFacts, current.petFacts);
+  assert.equal(reset.icsUrl, current.icsUrl);
+});
+
 test('예전 펫 설정 파일(pet-settings.json)의 값도 읽는다', () => {
   assert.deepEqual(parseSettings({ chatter: 'quiet', hideHints: 2 }), {
     ...DEFAULT_SETTINGS,
@@ -37,6 +59,21 @@ test('예전 펫 설정 파일(pet-settings.json)의 값도 읽는다', () => {
     // 그때 조용히면 회고가 안 왔다. 같은 동작으로 읽는다
     review: false,
   });
+});
+
+test('첫 안내의 보던 쪽은 완료 여부와 별도로 저장하고 범위 밖 값은 거절한다', () => {
+  assert.equal(parseSettings({ onboarded: false }).onboardPage, 0);
+  for (const onboardPage of [0, 1, 2, 3, 4]) {
+    const next = applyPatch(DEFAULT_SETTINGS, { onboardPage });
+    assert.equal(next.onboardPage, onboardPage);
+    assert.equal(next.onboarded, false);
+    assert.equal(parseSettings(next).onboardPage, onboardPage);
+  }
+  for (const onboardPage of [-1, 5, 1.5, NaN, Infinity, '2', null]) {
+    assert.equal(parseSettings({ onboardPage }).onboardPage, 0);
+  }
+  const before = { ...DEFAULT_SETTINGS, onboardPage: 2 };
+  assert.equal(applyPatch(before, { onboardPage: 99 }).onboardPage, 2);
 });
 
 test('펫 이름: 공백 정리, 제어 문자 제거, 12자까지, 빈 이름은 안 받는다', () => {
@@ -219,10 +256,10 @@ test('집중 길이와 커서 바라보기: 옛 설정 파일엔 없어서 기�
   assert.equal(old.focusMin, 25);
   assert.equal(old.lookAtCursor, true);
   assert.equal(parseSettings({ focusMin: 50 }).focusMin, 50);
-  assert.equal(applyPatch({ ...DEFAULT_SETTINGS, focusMin: 15 }, { focusMin: 4 }).focusMin, 15);
   assert.equal(applyPatch({ ...DEFAULT_SETTINGS, focusMin: 15 }, { focusMin: 40 }).focusMin, 40);
-  assert.equal(applyPatch({ ...DEFAULT_SETTINGS, focusMin: 15 }, { focusMin: 121 }).focusMin, 15);
   assert.equal(applyPatch(DEFAULT_SETTINGS, { focusMin: '50' }).focusMin, 25);
+  for (const focusMin of [5, 17, 120]) assert.equal(parseSettings({ focusMin }).focusMin, focusMin);
+  for (const focusMin of [4, 121, 5.5]) assert.equal(applyPatch(DEFAULT_SETTINGS, { focusMin }).focusMin, 25);
   assert.equal(applyPatch(DEFAULT_SETTINGS, { lookAtCursor: false }).lookAtCursor, false);
   assert.equal(applyPatch(DEFAULT_SETTINGS, { lookAtCursor: 'no' }).lookAtCursor, true);
 });

@@ -16,6 +16,7 @@ import { bridge, Section, type TabProps } from '../ui.tsx';
 /** 데이터 탭: 백업과 옮기기, 코인 초기화, 저장 공간 */
 export function DataTab({ snap, setSnap, flash }: TabProps) {
   const [exported, setExported] = useState<string>();
+  const [resetConfirm, setResetConfirm] = useState(false);
   // 코인 초기화는 기능 키 coin_reset 이 켜졌다고 서버가 알려 줄 때만 보인다 (기본 숨김, #102). 코드는 그대로 둔다
   const [server] = useServerStatus();
   /** 실패는 빨간 글씨로 (이슈 #65: 못 했다는 말도 초록이었다) */
@@ -132,6 +133,32 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
             }
           }}
         />
+      </Section>
+      <Section title={t('settings.resetPreferences')}>
+        <small>{t('settings.resetPreferencesHint')}</small>
+        <div className="action-row">
+          <button
+            type="button"
+            className={`ghost${resetConfirm ? ' danger' : ''}`}
+            onBlur={() => setResetConfirm(false)}
+            onClick={async () => {
+              if (!resetConfirm) {
+                setResetConfirm(true);
+                return;
+              }
+              setResetConfirm(false);
+              try {
+                const settings = await bridge.reset();
+                setSnap((v) => v && { ...v, settings });
+                flash(t('settings.resetPreferencesDone'));
+              } catch {
+                flash(t('settings.resetPreferencesFailed'), true);
+              }
+            }}
+          >
+            {t(resetConfirm ? 'settings.resetPreferencesSure' : 'settings.resetPreferencesButton')}
+          </button>
+        </div>
       </Section>
     </>
   );

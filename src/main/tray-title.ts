@@ -7,13 +7,13 @@ import { joinTrayTitle, TRAY_EVENT_AHEAD_MS, trayTitleText, trayTitleWait } from
  * 맥 메뉴 막대 아이콘 옆 글자. 컴퓨터 상태(CPU %, system-monitor.ts)와 다음 일정, 집중 남은 시간(설정 trayTitle)이
  * 같은 자리를 나눠 쓴다. 따로 setTitle 하면 서로 지우니 여기서 합쳐 한 번에 쓴다. 맥이 아니면 아무것도 안 한다
  */
-const parts = { info: '', cpu: '' };
+const parts = { info: '', cpu: '', hidden: '' };
 let shown = '';
 
 export function setTrayTitlePart(tray: Tray, part: keyof typeof parts, text: string): void {
   parts[part] = text;
   if (process.platform !== 'darwin' || tray.isDestroyed()) return;
-  const next = joinTrayTitle(parts.info, parts.cpu);
+  const next = joinTrayTitle(parts.info, parts.cpu, parts.hidden);
   if (next === shown) return;
   shown = next;
   tray.setTitle(next, { fontType: 'monospacedDigit' });

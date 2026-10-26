@@ -386,7 +386,7 @@ test('말: 맞이, 헤어짐, 쉬는 날 (한국어, 영어)', () => {
   );
   assert.match(restText(SAT, ''), /쉬는 날/);
   assert.equal(t('routine.set.on', { name: '콩이' }), '콩이와 만나는 시간 정하기');
-  assert.equal(t('routine.onb.title', { name: '밤' }), '밤과 만나는 시간');
+  assert.equal(t('routine.onb.title'), '일 시작과 마치는 시간');
 
   setLang('en');
   assert.match(greetText({ ...base, briefing: '', arrival: 'late' }), /\+10 coins for showing up!$/);

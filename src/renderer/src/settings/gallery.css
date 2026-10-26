@@ -51,6 +51,13 @@
   margin-top: 6px;
 }
 
+.gallery-card .gallery-built-in {
+  font-size: 12px;
+  white-space: normal;
+  overflow: visible;
+  color: var(--ink);
+}
+
 .gallery-note {
   display: flex;
   flex-wrap: wrap;

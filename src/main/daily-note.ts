@@ -2,7 +2,7 @@
 // 함께한 7, 30, 100, 365일(그 뒤 해마다)에는 봉투에 스티커를 붙인 특별한 편지와 코인 선물. 펼칠 때 코인을 준다.
 // 쓰는 글은 이 컴퓨터 기록만 (어제 끝낸 수, 오늘 첫 일정, 습관 연속, 알려 준 것, 철) 이고 AI 를 부르지 않는다.
 // 판단과 글 고르기는 shared/daily-note.ts, 저장은 daily-note.json. 못 본 쪽지는 패널 오늘 탭 쪽지함에 남는다.
-import { type BrowserWindow, ipcMain, powerMonitor } from 'electron';
+import { ipcMain, powerMonitor } from 'electron';
 import type { PersonaId } from '../shared/ai/persona.ts';
 import { dayNumber } from '../shared/companion.ts';
 import {
@@ -27,6 +27,7 @@ import type { NoteLook } from '../shared/together.ts';
 import type { SayOptions } from './pet-window.ts';
 import { settings } from './settings.ts';
 import { readJson, writeJson } from './store.ts';
+import type { SurfaceWin } from './surface.ts';
 
 const FILE = 'daily-note';
 const POLL_MS = 60_000;
@@ -51,7 +52,7 @@ export interface DailyNoteOptions {
   hold: (look: NoteLook | undefined) => void;
   reward: (coins: number, reason: string, now: number) => void;
   /** 지금 보이는 패널 면 (작은 패널, 큰 창이 열려 있으면 큰 창) */
-  surface: () => BrowserWindow | undefined;
+  surface: () => SurfaceWin | undefined;
   /** 작은 패널이나 큰 창이 보낸 요청인가 (숨겨 둔 큰 창이어도 받는다) */
   fromSurface: (wc: Electron.WebContents) => boolean;
   openToday: () => void;

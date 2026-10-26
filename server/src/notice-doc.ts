@@ -117,6 +117,22 @@ export function parseKstInput(v: string | undefined): number | undefined {
 export const kstIso = (ms: number): string =>
   `${new Date(ms + 9 * 3_600_000).toISOString().slice(0, 19)}+09:00`;
 
+/**
+ * 옛 앱(0.5.0)의 공지 수정은 id, 종류, 제목, 본문, 링크만 보내고 기간, 대상 버전, 운영체제 칸은 아예 보내지 않는다.
+ * 같은 id 의 공지가 이미 있으면 보내지 않은(undefined) 칸은 그 공지의 값을 지켜서 웹에서 정한 대상 조건이 지워지지 않게 한다.
+ * 빈 글로 보낸 칸은 지우겠다는 뜻이라 그대로 둔다 (웹 폼은 모든 칸을 보낸다)
+ */
+export function keepOmitted(f: FormFields, old: DocNotice | undefined): FormFields {
+  if (!old) return f;
+  const out: FormFields = { ...f };
+  if (f.link === undefined && old.link) out.link = old.link;
+  if (f.from === undefined && old.from) out.from = old.from;
+  if (f.until === undefined && old.until) out.until = old.until;
+  if (f.versions === undefined && old.versions) out.versions = old.versions;
+  if (f.platforms === undefined && old.platforms) out.platforms = old.platforms.join(',');
+  return out;
+}
+
 /** 폼에서 공지 하나를 만든다. 틀리면 까닭 글 (운영자 화면에 보인다) */
 export function noticeFromForm(f: FormFields): DocNotice | string {
   const id = (f.id ?? '').trim();

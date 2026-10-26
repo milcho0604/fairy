@@ -15,10 +15,13 @@ import {
   type CarryMessage,
   CHAT,
   type ChatBridge,
+  type ChatKeyEvent,
   FACE,
   type FaceBridge,
   type GestureEvent,
   IPC,
+  LANGUAGE,
+  type LanguageEventsBridge,
   LOOK,
   MAKER,
   type MakerBridge,
@@ -59,6 +62,16 @@ const kind = process.argv.find((a) => a.startsWith('--jj-window='))?.split('=')[
 // 화면 말 (v2 다국어). 모든 창이 같은 이름으로 읽는다. 모르는 값이면 한국어
 const lang = process.argv.find((a) => a.startsWith('--jj-lang='))?.split('=')[1] === 'en' ? 'en' : 'ko';
 contextBridge.exposeInMainWorld('jjakkungLang', lang);
+const languageEvents: LanguageEventsBridge = {
+  onChanged(listener) {
+    const handler = (_event: Electron.IpcRendererEvent, value: unknown) => {
+      if (value === 'ko' || value === 'en') listener(value);
+    };
+    ipcRenderer.on(LANGUAGE.changed, handler);
+    return () => ipcRenderer.removeListener(LANGUAGE.changed, handler);
+  },
+};
+contextBridge.exposeInMainWorld('jjakkungLanguage', languageEvents);
 // 사용자가 고친 펫 대사 (#125): 화면의 t() 도 같은 글을 쓰게 창이 뜰 때 받는다. 못 받으면 기본 대사
 let lineOverrides: unknown;
 try {
@@ -91,6 +104,7 @@ if (kind === 'pet') {
     },
     bubbleSize: (id: string, width: number, height: number) =>
       ipcRenderer.send(IPC.bubbleSize, id, width, height),
+    bubbleAnchor: (anchor) => ipcRenderer.send(IPC.bubbleAnchor, anchor),
     bubbleClosed: (id: string, action: string) => ipcRenderer.send(IPC.bubbleClosed, id, action),
     activityRequest: (ask?: MoveAsk) => ipcRenderer.send(IPC.activityRequest, ask),
     activityStop: () => ipcRenderer.send(IPC.activityStop),
@@ -165,6 +179,7 @@ if (
 
 if (kind === 'chat') {
   const chat: ChatBridge = {
+    nearPet: () => ipcRenderer.send(CHAT.nearPet),
     platform: process.platform,
     snapshot: () => ipcRenderer.invoke(CHAT.snapshot),
     status: (refresh: boolean) => ipcRenderer.invoke(CHAT.status, refresh),
@@ -253,6 +268,7 @@ if (kind === 'settings') {
   const bridge: SettingsBridge = {
     get: () => ipcRenderer.invoke(SETTINGS.get),
     set: (patch) => ipcRenderer.invoke(SETTINGS.set, patch),
+    reset: () => ipcRenderer.invoke(SETTINGS.reset),
     setScale: (scale: number) => ipcRenderer.send(SETTINGS.setScale, scale),
     openMaker: (target) => ipcRenderer.send(SETTINGS.openMaker, target),
     stats: () => ipcRenderer.invoke(SETTINGS.stats),
@@ -486,6 +502,7 @@ if (kind === 'panel' || kind === 'home' || kind === 'quick') {
     noteKeepGet: (id) => ipcRenderer.sendSync(PANEL.noteKeepGet, id) ?? null,
     noteKeepSet: (id, value) => ipcRenderer.send(PANEL.noteKeepSet, id, value),
     noteKeepLatest: () => ipcRenderer.sendSync(PANEL.noteKeepLatest) ?? null,
+    noteNewTake: (request) => ipcRenderer.sendSync(PANEL.noteNewTake, request) === true,
     viewGet: () => ipcRenderer.sendSync(PANEL.viewGet),
     viewSet: (view) => ipcRenderer.send(PANEL.viewSet, view),
     setKeepOpen: (on) => ipcRenderer.send(PANEL.setKeepOpen, on),
@@ -525,6 +542,7 @@ if (kind === 'panel' || kind === 'home' || kind === 'quick') {
     focusStart: (minutes?: number, todoId?: number) => ipcRenderer.send(PANEL.focusStart, minutes, todoId),
     focusStop: () => ipcRenderer.invoke(PANEL.focusStop),
     focusResume: () => ipcRenderer.invoke(PANEL.focusResume),
+    focusUndo: () => ipcRenderer.send(PANEL.focusUndo),
     missedClear: () => ipcRenderer.send(PANEL.missedClear),
     buyToy: (key: string) => ipcRenderer.invoke(PANEL.buyToy, key),
     buyHouse: (level: number) => ipcRenderer.invoke(PANEL.buyHouse, level),
@@ -536,6 +554,13 @@ if (kind === 'panel' || kind === 'home' || kind === 'quick') {
     play: (kind) => ipcRenderer.send(PANEL.play, kind),
     onTab: (listener) => {
       ipcRenderer.on(PANEL.tab, (_e, tab: PanelTab) => listener(tab));
+    },
+    homeChat: (rect) => ipcRenderer.send(PANEL.homeChat, rect),
+    onChatSection: (listener) => {
+      ipcRenderer.on(PANEL.chatSection, (_e, on: boolean) => listener(on));
+    },
+    onChatKey: (listener) => {
+      ipcRenderer.on(PANEL.chatKey, (_e, key: ChatKeyEvent) => listener(key));
     },
     onHiding: (listener) => {
       const on = () => listener();

@@ -6,7 +6,7 @@ import type { CustomProviderInput } from './ai/providers.ts';
 import type { AiProvider, AiStatus, ImageAttachment } from './ai/types.ts';
 import type { Activity } from './behavior.ts';
 import type { BetaReport } from './beta-stats.ts';
-import type { BubbleLayout } from './bubble-layout.ts';
+import type { BubbleAnchor, BubbleLayout } from './bubble-layout.ts';
 import type { ChatLookView } from './chat-look.ts';
 import type { ChatImage, ChatState } from './chat-state.ts';
 import type { ThreadMeta } from './chat-threads.ts';
@@ -76,6 +76,7 @@ export const IPC = {
   bubble: 'pet:bubble',
   /** 펫 화면 → 메인: 말풍선을 재 보니 이 크기다 (창을 키워 달라) */
   bubbleSize: 'pet:bubble-size',
+  bubbleAnchor: 'pet:bubble-anchor',
   /** 펫 화면 → 메인: 말풍선이 닫혔다 (버튼 id, 'timeout', 'dismiss') */
   bubbleClosed: 'pet:bubble-closed',
   /** 메인 → 펫 화면: 창 안에서 펫과 말풍선 자리 */
@@ -180,6 +181,7 @@ export interface OverlayBridge {
 
 export const CHAT = {
   snapshot: 'chat:snapshot',
+  nearPet: 'chat:near-pet',
   status: 'chat:status',
   send: 'chat:send',
   cancel: 'chat:cancel',
@@ -252,6 +254,8 @@ export interface OnboardAi {
 export interface OnboardSnapshot {
   settings: Settings;
   platform: NodeJS.Platform;
+  /** 설치판이 이 컴퓨터의 자동 실행 항목을 관리할 수 있는지. 격리 시험은 제외한다. */
+  canLaunchAtLogin: boolean;
   /** 화면 기록 권한 (맥). 윈도우는 늘 granted */
   screen: 'granted' | 'denied' | 'not-determined' | 'restricted' | 'unknown';
   /** 그림으로 들어 있는 기본 캐릭터 (밀크, 초코) */
@@ -273,6 +277,7 @@ export interface OnboardBridge {
 export const SETTINGS = {
   get: 'settings:get',
   set: 'settings:set',
+  reset: 'settings:reset',
   setScale: 'settings:set-scale',
   openMaker: 'settings:open-maker',
   /** 베타 기록 (P4-04) */
@@ -339,6 +344,15 @@ export const SETTINGS = {
   /** 메인 → 설정 창: 배터리로 도는지 바뀌었다 (부스트가 쉬는지 보여 준다) */
   power: 'settings:power',
 } as const;
+
+/** 설정 언어가 바뀌면 이미 열린 렌더러에도 즉시 알려 준다. */
+export const LANGUAGE = {
+  changed: 'app:language-changed',
+} as const;
+
+export interface LanguageEventsBridge {
+  onChanged(listener: (lang: 'ko' | 'en') => void): () => void;
+}
 
 /** 설정 > 데이터 > 코인 초기화가 보여 주는 지금 상태: 잔액과 되돌릴 산 물건 수 */
 export interface CoinState {
@@ -447,6 +461,7 @@ export interface RestoreState {
 export interface SettingsBridge {
   get(): Promise<SettingsSnapshot>;
   set(patch: Partial<Settings>): Promise<Settings>;
+  reset(): Promise<Settings>;
   setScale(scale: number): void;
   /** 사진 펫 만들기 (target 을 주면 상태별 포즈) */
   openMaker(target?: MakerTarget): void;
@@ -543,6 +558,25 @@ export interface ProviderView {
   detail?: string;
 }
 
+/** 큰 창 본문 칸 안 채팅 자리 (창 안 CSS 픽셀) */
+export interface HomeChatRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** 채팅 view 에서 큰 창 본문으로 넘기는 키 (수식키가 눌린 창 단축키만) */
+export interface ChatKeyEvent {
+  key: string;
+  code: string;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+  isComposing: boolean;
+}
+
 export interface ChatSnapshot {
   petName: string;
   state: ChatState;
@@ -559,6 +593,7 @@ export interface ThreadList {
 }
 
 export interface ChatBridge {
+  nearPet(): void;
   platform: NodeJS.Platform;
   snapshot(): Promise<ChatSnapshot>;
   status(refresh: boolean): Promise<AiStatus[]>;
@@ -640,6 +675,7 @@ export interface PetBridge {
   onBubble(listener: (bubble: BubbleMessage | null) => void): void;
   onLayout(listener: (layout: BubbleLayout) => void): void;
   bubbleSize(id: string, width: number, height: number): void;
+  bubbleAnchor(anchor: BubbleAnchor): void;
   bubbleClosed(id: string, action: string): void;
   /** 한가하니 행동을 골라 달라. ask 는 펫 몸과 상태 (제자리 몸짓 고르기, shared/moves.ts) */
   activityRequest(ask?: MoveAsk): void;
@@ -1020,6 +1056,7 @@ export const PANEL = {
   noteKeepGet: 'panel:note-keep-get',
   noteKeepSet: 'panel:note-keep-set',
   noteKeepLatest: 'panel:note-keep-latest',
+  noteNewTake: 'panel:note-new-take',
   /** 보던 위치 보관 (#145): 할 일의 검색어와 쪽 수, 일정의 고른 날, 탭마다 스크롤 */
   viewGet: 'panel:view-get',
   viewSet: 'panel:view-set',
@@ -1040,7 +1077,6 @@ export const PANEL = {
   noteRestore: 'panel:note-restore',
   /** 메모 찾기 (본문 전체) */
   noteSearch: 'panel:note-search',
-  /** 할 일, 메모, 일정을 한 번에 찾기 (#146) */
   findAll: 'panel:find-all',
   /** 메모를 AI 로 정리 (할 일로 쪼개기, 요약). 채팅 창에서 묻는다 */
   noteAi: 'panel:note-ai',
@@ -1058,6 +1094,7 @@ export const PANEL = {
   focusStart: 'panel:focus-start',
   focusStop: 'panel:focus-stop',
   focusResume: 'panel:focus-resume',
+  focusUndo: 'panel:focus-undo',
   /** 놓친 알림 지우기 */
   missedClear: 'panel:missed-clear',
   // 상점과 놀이 (v1)
@@ -1089,6 +1126,12 @@ export const PANEL = {
   state: 'panel:state',
   /** 메인 → 패널: 이 탭을 보여 줘 (펫 메뉴 "상점") */
   tab: 'panel:tab',
+  /** 큰 창 → 메인: 본문 칸 안 채팅 자리의 위치와 크기(창 안 CSS 픽셀). 메인이 그 자리에 채팅 view 를 얹는다. null 이면 채팅 구역이 아니다 (#165) */
+  homeChat: 'panel:home-chat',
+  /** 메인 → 큰 창: 채팅 구역을 열어(true) 달라고, 또는 닫아(false) 달라고 (채팅 열기 요청이 큰 창으로 온 때) */
+  chatSection: 'panel:chat-section',
+  /** 메인 → 큰 창: 채팅 view 가 받은 창 단축키(닫기, 설정, 구역 고르기)를 그대로 넘긴다. view 가 포커스를 쥐면 큰 창 본문이 키를 못 받는다 */
+  chatKey: 'panel:chat-key',
   /** 메인 → 큰 창: 곧 숨긴다 (숨겨도 창은 안 닫혀 beforeunload 가 없다. 쓰던 글을 바로 저장하라는 신호) */
   hiding: 'panel:hiding',
   /** 패널 → 메인: 지금 탭 그대로 큰 창으로 넘겨 줘 (패널 머리줄 "크게 보기", 크게 볼까요? 칩). 큰 창이 보인 뒤에 패널을 닫는다 */
@@ -1102,6 +1145,8 @@ export const PANEL = {
 } as const;
 
 export interface PanelState {
+  /** 메뉴에서 새 메모를 열라는 요청. 편집기가 준비되면 한 번만 가져간다 */
+  newNoteRequest?: number;
   petName: string;
   /** 현지 날짜 YYYY-MM-DD */
   today: string;
@@ -1127,6 +1172,8 @@ export interface PanelState {
   /** 일정 줄의 구글 표식. 구글 캘린더에 연결하지 않았으면 없다 */
   gcal?: PanelGcal;
   focus: FocusState;
+  /** 집중을 멈춘 직후 8초 동안 되돌릴 수 있다 */
+  focusUndoAvailable?: boolean;
   /** 집중 코인과 오늘 받은 집중 횟수 */
   focusCoins: number;
   /** 고른 집중 길이 (15, 25, 50분) */
@@ -1314,6 +1361,7 @@ export interface PanelBridge {
   noteKeepSet(id: number, value: NoteKept | null): void;
   /** 가장 나중에 적은 보관 글 (패널을 열 때 그 메모로 돌아간다) */
   noteKeepLatest(): NoteKept | null;
+  noteNewTake(request: number): boolean;
   /** 보던 위치 (#145) */
   viewGet(): ViewKeep;
   viewSet(view: ViewKeep): void;
@@ -1343,7 +1391,6 @@ export interface PanelBridge {
   noteRestore(id: number): void;
   /** 메모 찾기: 제목과 본문 전체. composing 이면 마지막 글자는 아직 조합 중이라 넓게 찾는다 */
   noteSearch(query: string, composing: boolean): Promise<NoteHit[]>;
-  /** 할 일, 메모, 일정을 한 번에 찾기 (제목과 본문, 같은 규칙) */
   findAll(query: string, composing: boolean): Promise<FindAllResult>;
   noteAi(id: number, kind: NoteAiKind): Promise<boolean>;
   /**
@@ -1403,10 +1450,9 @@ export interface PanelBridge {
   undoMoveOverdue(key?: number): void;
   /** 길이(15, 25, 50분)를 주면 그 길이로, 아니면 마지막에 고른 길이로. todoId 를 주면 그 할 일을 하는 집중 */
   focusStart(minutes?: number, todoId?: number): void;
-  /** 그만둔다. 집중이었으면 기록된 분 (되돌리기 알림에 쓴다), 돌고 있지 않았으면 null */
   focusStop(): Promise<{ minutes: number } | null>;
-  /** 방금 그만둔 집중을 남은 시간 그대로 되돌린다. 되돌렸으면 true */
   focusResume(): Promise<boolean>;
+  focusUndo(): void;
   missedClear(): void;
   buyToy(key: string): Promise<BuyResult>;
   /** 지금 보고 있는 단계(level)에서 다음 단계를 산다. 그새 바뀌었으면 사지 않는다 */
@@ -1422,6 +1468,12 @@ export interface PanelBridge {
   removeFood(key: string): void;
   play(kind: PlayKind): void;
   onTab(listener: (tab: PanelTab) => void): void;
+  /** 큰 창 본문 칸 안 채팅 자리를 메인에 알린다 (null 이면 채팅 구역이 아니다). 자리가 바뀔 때마다 부른다 */
+  homeChat(rect: HomeChatRect | null): void;
+  /** 메인이 채팅 구역을 열고 닫아 달라고 한다 */
+  onChatSection(listener: (on: boolean) => void): void;
+  /** 채팅 view 가 받은 창 단축키가 넘어온다 */
+  onChatKey(listener: (key: ChatKeyEvent) => void): void;
   /** 큰 창이 곧 숨겨진다 (쓰던 글을 바로 저장한다). 돌려주는 함수로 듣기를 그친다 */
   onHiding(listener: () => void): () => void;
   /** 지금 탭을 큰 창으로 넘긴다 (쓰던 글은 먼저 메인에 보낸 뒤에 부른다) */

@@ -4,6 +4,20 @@ import type { Rect } from './geometry.ts';
 /** 말풍선과 펫 사이 간격 (꼬리 높이 포함) */
 export const BUBBLE_GAP = 10;
 
+/** 서 있는 그림의 불투명 윗선/아랫선. 캔버스 높이에 대한 비율이며 동작 프레임에는 따라가지 않는다. */
+export interface BubbleAnchor {
+  top: number;
+  bottom: number;
+}
+
+export function parseBubbleAnchor(raw: unknown): BubbleAnchor | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const { top, bottom } = raw as BubbleAnchor;
+  return Number.isFinite(top) && Number.isFinite(bottom) && top >= 0 && bottom <= 1 && top < bottom
+    ? { top, bottom }
+    : undefined;
+}
+
 export interface BubbleLayout {
   window: Rect;
   /** 창 안에서 펫(캔버스) 위치 */
@@ -26,15 +40,21 @@ export function layoutBubble(
   pet: Rect,
   size: { width: number; height: number } | undefined,
   area: Rect,
+  anchor?: BubbleAnchor,
 ): BubbleLayout {
   if (!size) return { window: { ...pet }, pet: { x: 0, y: 0, size: pet.width } };
+  const bubbleHeight = Math.ceil(size.height);
+  const art = parseBubbleAnchor(anchor) ?? { top: 0, bottom: 1 };
+  const aboveY = Math.round(pet.y + pet.height * art.top) - BUBBLE_GAP - bubbleHeight;
+  const above = aboveY >= area.y;
+  const bubbleY = above ? aboveY : Math.round(pet.y + pet.height * art.bottom) + BUBBLE_GAP;
   const width = Math.max(pet.width, Math.ceil(size.width));
-  const height = pet.height + Math.ceil(size.height) + BUBBLE_GAP;
-  const above = pet.y - (height - pet.height) >= area.y;
   const centerX = pet.x + pet.width / 2;
   let x = Math.round(centerX - width / 2);
   x = Math.min(Math.max(x, area.x), Math.max(area.x, area.x + area.width - width));
-  const y = above ? pet.y - (height - pet.height) : pet.y;
+  // 말풍선이 투명 여백 안에 들어가도 펫 캔버스 전체는 창에 남긴다.
+  const y = Math.min(pet.y, bubbleY);
+  const height = Math.max(pet.y + pet.height, bubbleY + bubbleHeight) - y;
   const window = { x, y, width, height };
   const petInWindow = { x: pet.x - x, y: pet.y - y, size: pet.width };
   // 말풍선은 펫 가운데 위에 두되 창 밖으로 나가지 않게 한다.
@@ -48,7 +68,7 @@ export function layoutBubble(
     pet: petInWindow,
     bubble: {
       x: bx,
-      y: above ? 0 : pet.height + BUBBLE_GAP,
+      y: bubbleY - y,
       side: above ? 'above' : 'below',
       tailX: Math.round(petInWindow.x + pet.width / 2 - bx),
     },
@@ -62,8 +82,13 @@ export function layoutBubble(
 export const BUBBLE_GUESS = { width: 260, height: 96 } as const;
 
 /** 화면 좌표의 말풍선 사각형 (layoutBubble 의 창 위치 + 창 안 말풍선 위치) */
-export function bubbleRectOf(pet: Rect, size: { width: number; height: number }, area: Rect): Rect {
-  const l = layoutBubble(pet, size, area);
+export function bubbleRectOf(
+  pet: Rect,
+  size: { width: number; height: number },
+  area: Rect,
+  anchor?: BubbleAnchor,
+): Rect {
+  const l = layoutBubble(pet, size, area, anchor);
   return {
     x: l.window.x + (l.bubble?.x ?? 0),
     y: l.window.y + (l.bubble?.y ?? 0),
@@ -84,8 +109,9 @@ export function bubbleClashes(
   area: Rect,
   others: readonly Rect[],
   size: { width: number; height: number } = BUBBLE_GUESS,
+  anchor?: BubbleAnchor,
 ): boolean {
-  const mine = bubbleRectOf(pet, size, area);
+  const mine = bubbleRectOf(pet, size, area, anchor);
   return others.some(
     (o) =>
       mine.x < o.x + o.width + BUBBLE_APART &&

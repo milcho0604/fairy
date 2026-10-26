@@ -1,14 +1,17 @@
 import { join } from 'node:path';
 import {
+  app,
   BrowserWindow,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
   ipcMain,
+  screen,
   shell,
   systemPreferences,
 } from 'electron';
-import { t } from '../shared/i18n/index.ts';
+import { getLang, t } from '../shared/i18n/index.ts';
 import { ONBOARD, type OnboardAi, type OnboardSnapshot } from '../shared/ipc.ts';
+import { ownsLoginItem } from '../shared/login-item.ts';
 import type { Settings } from '../shared/settings.ts';
 import { isStarterId } from '../shared/starter-pets.ts';
 import { devRendererUrl } from './dev-url.ts';
@@ -20,14 +23,14 @@ import { settings } from './settings.ts';
 const MAC_SCREEN_SETTINGS = 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture';
 
 /**
- * 첫 실행 안내 (v1): 펫 정하기, 같이 보기 권한, 알아 두면 좋은 것 세 화면.
- * 처음 켤 때 한 번 뜨고, 다 보거나 닫으면 다시 안 뜬다 (설정 onboarded).
+ * 첫 실행 안내: 펫 정하기, 일하는 시간, 같이 보기 권한, 알아 두면 좋은 것.
+ * 닫으면 나중에 보던 쪽부터 이어 보고, 시작/건너뛰기를 눌렀을 때만 완료한다.
  */
 export function createOnboarding(o: {
   openMaker: () => void;
   /** AI 안내 한 줄에 쓴다: 설치된 AI 가 없으면 무료 AI 와 받을 모델 크기를 알린다 */
   ai: () => Promise<OnboardAi>;
-  /** 처음 안내를 마쳤다(끝까지 보거나 건너뛰거나 닫음). 설정에서 다시 본 것은 부르지 않는다 */
+  /** 처음 안내를 명시적으로 마쳤다(시작/건너뛰기). 설정에서 다시 본 것은 부르지 않는다 */
   onFirstDone: () => void;
   log: (tag: string, ...rest: unknown[]) => void;
 }) {
@@ -40,6 +43,7 @@ export function createOnboarding(o: {
       ? {
           settings: settings.get(),
           platform: process.platform,
+          canLaunchAtLogin: ownsLoginItem(app.isPackaged, process.env.JJ_USER_DATA),
           screen:
             process.platform === 'darwin'
               ? (systemPreferences.getMediaAccessStatus('screen') as OnboardSnapshot['screen'])
@@ -54,9 +58,12 @@ export function createOnboarding(o: {
     if (ours(e) && isStarterId(id)) library.fromStarter(id);
     return settings.get();
   });
-  ipcMain.handle(ONBOARD.set, (e, patch: Partial<Settings>) =>
-    ours(e) ? settings.set(patch) : settings.get(),
-  );
+  ipcMain.handle(ONBOARD.set, (e, patch: Partial<Settings>) => {
+    if (!ours(e)) return settings.get();
+    const allowed = { ...patch };
+    if (!ownsLoginItem(app.isPackaged, process.env.JJ_USER_DATA)) delete allowed.launchAtLogin;
+    return settings.set(allowed);
+  });
   ipcMain.handle(ONBOARD.ai, (e) => (ours(e) ? o.ai() : undefined));
   ipcMain.on(ONBOARD.openMaker, (e) => {
     if (ours(e)) o.openMaker();
@@ -66,9 +73,9 @@ export function createOnboarding(o: {
   });
   /** 처음 마칠 때만 onFirstDone 을 부른다 */
   function markDone() {
-    if (settings.get().onboarded) return;
-    settings.set({ onboarded: true });
-    o.onFirstDone();
+    const first = !settings.get().onboarded;
+    settings.set({ onboarded: true, onboardPage: 0 });
+    if (first) o.onFirstDone();
   }
   ipcMain.on(ONBOARD.finish, (e) => {
     if (!ours(e)) return;
@@ -82,9 +89,12 @@ export function createOnboarding(o: {
       focusWindow(win);
       return;
     }
+    const area = screen.getPrimaryDisplay().workArea;
     win = new BrowserWindow({
-      width: 480,
-      height: 560,
+      width: Math.min(480, area.width),
+      // 첫 쪽과 마지막 단축키 안내까지 들어갈 높이. 영어는 줄바꿈이 더 많다.
+      // 작은 화면에서는 본문만 스크롤하고 아래의 다음/시작 단추는 화면 안에 남긴다.
+      height: Math.min(getLang() === 'en' ? 664 : 580, area.height),
       resizable: false,
       title: t('main.onboardingTitle'),
       show: false,
@@ -97,9 +107,8 @@ export function createOnboarding(o: {
       },
     });
     win.once('ready-to-show', () => showWindow(win));
-    // 닫기 단추로 닫아도 다시 띄우지 않는다 (설정에서 다시 볼 수 있다).
+    // OS 닫기와 앱 종료는 나중에 이어 보기다. 완료와 첫 여정은 시작/건너뛰기로만 처리한다.
     win.on('closed', () => {
-      markDone();
       win = undefined;
     });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
