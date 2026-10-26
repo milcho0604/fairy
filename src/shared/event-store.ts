@@ -259,12 +259,17 @@ export class EventStore {
   /** 다음 해까지 반복 회차를 실제 일정으로 만들어 알림과 달력에서 기존 일정처럼 읽힌다. */
   #extendSeries(seriesId: number, through: number): void {
     const initial = this.#db.prepare('select * from event where id = ?').get(seriesId) as Row | undefined;
-    if (!initial || !isEventRepeat(initial.repeat_kind)) return;
     const latest = this.#db
       .prepare('select * from event where repeat_series = ? order by start_at desc limit 1')
       .get(seriesId) as Row | undefined;
     if (!latest) return;
-    const repeat = initial.repeat_kind;
+    // 첫 회차는 30일 뒤 영구 삭제될 수 있다. 남은 회차에도 반복 방식과 series id 가 있으므로 이어서 생성한다.
+    const repeat = isEventRepeat(initial?.repeat_kind)
+      ? initial.repeat_kind
+      : isEventRepeat(latest.repeat_kind)
+        ? latest.repeat_kind
+        : undefined;
+    if (!repeat) return;
     let interval = Number(latest.start_at);
     const clock = new Date(interval);
     // DST 전환으로 존재하지 않는 시각(예: 02:30)이 한 회차에서 03:30으로 보정돼도

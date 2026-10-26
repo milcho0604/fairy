@@ -190,6 +190,22 @@ test('반복 일정은 DST로 한 회차 시각이 보정돼도 다음 회차부
   }
 });
 
+test('첫 회차를 휴지통에서 영구 삭제해도 남은 반복 일정은 다음 해 이후까지 이어진다', () => {
+  const { events } = fresh();
+  const startAt = new Date();
+  startAt.setHours(9, 0, 0, 0);
+  if (startAt.getTime() <= Date.now()) startAt.setDate(startAt.getDate() + 1);
+  const first = events.add({ title: '주간 점검', startAt: startAt.getTime(), repeat: 'weekly' }, Date.now());
+  events.remove(first.id, Date.now());
+  assert.equal(events.purgeTrash(first.id), 1);
+
+  const from = Date.now() + 366 * 86_400_000;
+  const occurrences = events
+    .between(from, from + 15 * 86_400_000)
+    .filter((event) => event.title === '주간 점검');
+  assert.ok(occurrences.length >= 2);
+});
+
 test('메모: 최근에 고친 것부터, 그대로면 시각을 안 바꾼다, 제목은 첫 줄에서', () => {
   const { notes } = fresh();
   const a = notes.add({ body: '# 회의 메모\n- 결정 1' }, T0);
