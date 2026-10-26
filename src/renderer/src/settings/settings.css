@@ -1843,3 +1843,28 @@ textarea.rules {
   gap: 8px;
   color: var(--muted);
 }
+
+.settings-jump {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 6px 0;
+  background: var(--bg);
+}
+
+.settings-jump button {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-size: 0.9em;
+  border: 0;
+  padding: 4px 2px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.settings section[id] {
+  scroll-margin-top: 42px;
+}

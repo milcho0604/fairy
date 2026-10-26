@@ -24,6 +24,10 @@ export class ReminderStore {
     return this.many([id]).get(id) ?? [];
   }
 
+  clear(id: number): void {
+    this.#db.prepare('delete from reminder where kind = ? and ref_id = ?').run(this.#kind, id);
+  }
+
   /** 여러 항목의 알림을 한 번에 (목록 그리기) */
   many(ids: readonly number[]): Map<number, ReminderMark[]> {
     const out = new Map<number, ReminderMark[]>();

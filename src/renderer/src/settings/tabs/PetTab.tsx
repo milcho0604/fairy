@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { PERSONAS } from '../../../../shared/ai/persona.ts';
 import { saverOn } from '../../../../shared/battery.ts';
 import { t } from '../../../../shared/i18n/index.ts';
 import { restDaysOf } from '../../../../shared/routine.ts';
@@ -20,6 +21,7 @@ import { LinesEditor } from '../LinesEditor.tsx';
 import { PetPicker } from '../PetPicker.tsx';
 import { bridge, isMac, Section, type TabProps, Toggle } from '../ui.tsx';
 import { WearBox } from '../WearBox.tsx';
+import { SpeechEditor, SpeechPreview } from './SpeechEditor.tsx';
 
 /** 만나는 시간을 켰을 때 삐짐 칸의 안내: 만나지 않는 요일을 이름으로 (일, 토) */
 const restByRoutine = (days: readonly number[]): string => {
@@ -88,7 +90,65 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
 
   return (
     <>
-      <Section title={t('settings.pet')}>
+      <nav className="settings-jump" aria-label={t('settings.pet')}>
+        {(['speech', 'appearance', 'movement', 'notifications', 'performance'] as const).map((key) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() =>
+              document.getElementById(`pet-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            }
+          >
+            {t(`settings.pet.${key}`)}
+          </button>
+        ))}
+      </nav>
+      <Section id="pet-speech" title={t('settings.pet.speech')}>
+        <div className="field">
+          <span>{t('settings.persona')}</span>
+          <fieldset className="segmented wrap" aria-label={t('settings.persona')}>
+            {PERSONAS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                aria-pressed={s.persona === p.id}
+                className={s.persona === p.id ? 'on' : ''}
+                onClick={() => update({ persona: p.id })}
+              >
+                {p.label}
+              </button>
+            ))}
+          </fieldset>
+          <small>
+            {PERSONAS.find((p) => p.id === s.persona)?.hint} {t('settings.personaNext')}
+          </small>
+        </div>
+        {s.persona === 'custom' ? (
+          <SpeechEditor value={s.speech} petName={s.petName} onSave={(speech) => void update({ speech })} />
+        ) : (
+          <SpeechPreview persona={s.persona} style={s.speech} petName={s.petName} />
+        )}
+        <Toggle
+          label={t('settings.doingBubble')}
+          hint={t('settings.doingBubbleHint')}
+          on={s.doingBubble}
+          onChange={(v) => update({ doingBubble: v })}
+        />
+        <Toggle
+          label={t('settings.sounds')}
+          hint={t('settings.soundsHint')}
+          on={s.sounds}
+          onChange={(v) => update({ sounds: v })}
+        />
+        <small>{t('records.lines.hint')}</small>
+        <div className="action-row">
+          <button type="button" className="ghost" onClick={() => setLinesOpen(true)}>
+            {t('records.lines.open')}
+          </button>
+        </div>
+        {linesOpen && <LinesEditor onClose={() => setLinesOpen(false)} onMsg={flash} />}
+      </Section>
+      <Section id="pet-appearance" title={t('settings.pet.appearance')}>
         <label className="field">
           <span>{t('settings.name')}</span>
           <div className="row">
@@ -181,7 +241,9 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
           />
           <small>{t('settings.sizeHint', { mod })}</small>
         </label>
+      </Section>
 
+      <Section id="pet-movement" title={t('settings.pet.movement')}>
         {/* 밀크, 초코는 네 발로 선 피규어를 켰을 때만 입체 (끄면 사진 그대로라 입체로 보기가 쓸모없다) */}
         {(!s.petImage || s.petModel || s.petDepth || starterStand(s)) && (
           <Toggle
@@ -211,25 +273,18 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
           </div>
         )}
 
-        <GaitPicker snap={snap} update={update} flash={flash} />
-
         <Toggle
           label={t('settings.wander')}
           hint={t('settings.wanderHint')}
           on={s.wander}
           onChange={(v) => update({ wander: v })}
         />
+        <GaitPicker snap={snap} update={update} flash={flash} />
         <Toggle
           label={t('settings.petChips')}
           hint={t('settings.petChipsHint')}
           on={s.petChips}
           onChange={(v) => update({ petChips: v })}
-        />
-        <Toggle
-          label={t('settings.doingBubble')}
-          hint={t('settings.doingBubbleHint')}
-          on={s.doingBubble}
-          onChange={(v) => update({ doingBubble: v })}
         />
         <Toggle
           label={t('settings.clickGrow')}
@@ -260,18 +315,16 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
           }
           onChange={(v) => update({ typeAlong: v })}
         />
+      </Section>
+      <Section id="pet-notifications" title={t('settings.pet.notifications')}>
         <Toggle
           label={t('settings.dailyNotes')}
           hint={t('settings.dailyNotesHint')}
           on={s.dailyNotes}
           onChange={(v) => update({ dailyNotes: v })}
         />
-        <Toggle
-          label={t('settings.sounds')}
-          hint={t('settings.soundsHint')}
-          on={s.sounds}
-          onChange={(v) => update({ sounds: v })}
-        />
+      </Section>
+      <Section id="pet-performance" title={t('settings.pet.performance')}>
         <Toggle
           label={t('settings.boost')}
           hint={t('settings.boostHint')}
@@ -323,7 +376,6 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
             {t('records.lines.open')}
           </button>
         </div>
-        {linesOpen && <LinesEditor onClose={() => setLinesOpen(false)} onMsg={flash} />}
       </Section>
 
       <Section title={t('settings.sulk')}>

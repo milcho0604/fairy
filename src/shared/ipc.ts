@@ -45,8 +45,9 @@ import type { BuyResult, CoinResetResult, CoinResetScope, ShopState } from './sh
 import type { SoundKind } from './sound.ts';
 import type { PetChoice, StarterId } from './starter-pets.ts';
 import type { KeptToast } from './toast-keep.ts';
-import type { Repeat, Todo, TrashItem } from './todo-store.ts';
+import type { Repeat, Todo } from './todo-store.ts';
 import type { NoteLook, TogetherLook } from './together.ts';
+import type { TrashKind, TrashRecord } from './trash.ts';
 import type { ViewKeep } from './view-keep.ts';
 import type { WearLook } from './wear.ts';
 import type { WeekSummary } from './week.ts';
@@ -592,6 +593,8 @@ export interface ThreadList {
   current?: string;
 }
 
+export type ChatRetryResult = 'sent' | 'missing-images' | 'unavailable';
+
 export interface ChatBridge {
   nearPet(): void;
   platform: NodeJS.Platform;
@@ -619,7 +622,7 @@ export interface ChatBridge {
   /** 답을 할 일로. 넣은 개수 */
   toTodos(messageId: string): Promise<number>;
   /** 마지막 질문을 다른 AI 로 다시 (한도에 걸렸을 때). AI 를 안 주면 지금 AI 로 같은 질문을 다시 묻는다 (#145 "다시 묻기") */
-  retryWith(provider?: AiProvider): void;
+  retryWith(provider?: AiProvider): Promise<ChatRetryResult>;
   /** 쓰던 글과 붙인 그림을 메인에 맡긴다 (#145) */
   draftText(text: string): void;
   draftImages(images: OutgoingImage[]): void;
@@ -1330,11 +1333,11 @@ export interface PanelBridge {
   /** 지운 할 일 되살리기 */
   restore(id: number): void;
   /** 할 일 휴지통 (#125). 30일이 지난 것은 열 때 영구 삭제된다 */
-  trashList(): Promise<TrashItem[]>;
+  trashList(): Promise<TrashRecord[]>;
   /** 되살리기. gone 은 이미 되살렸거나 영구 삭제됨, dup 은 같은 반복 할 일이 이미 열려 있어 되살리지 않음. 코인은 움직이지 않는다 */
-  trashRestore(id: number): Promise<'ok' | 'gone' | 'dup'>;
+  trashRestore(kind: TrashKind, id: number): Promise<'ok' | 'gone' | 'dup'>;
   /** 영구 삭제. 지운 수 */
-  trashPurge(id: number): Promise<number>;
+  trashPurge(kind: TrashKind, id: number): Promise<number>;
   trashEmpty(): Promise<number>;
   /** 집중 월간 잔디. month 는 YYYY-MM */
   focusMonth(month: string): Promise<FocusMonthView>;

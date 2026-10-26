@@ -20,7 +20,7 @@ import {
 } from './quick-words.ts';
 import { type Anchor, DEFAULT_REMINDS, dayOf, normalizeReminds, REMIND_MAX_MIN } from './remind.ts';
 import { ReminderStore } from './reminder-store.ts';
-import { localDay } from './todo-store.ts';
+import { localDay, TRASH_DAYS, trashDaysLeft } from './todo-store.ts';
 
 export interface CalEvent {
   id: number;
@@ -82,6 +82,8 @@ interface Row {
   pinned_at?: unknown;
   repeat_kind?: unknown;
   repeat_series?: number | null;
+  deleted_at?: number | null;
+  removed_by?: string | null;
 }
 
 const toEvent = (r: Row, marks: readonly { before: number; notifiedAt: number | null }[]): CalEvent => {
@@ -488,6 +490,85 @@ export class EventStore {
     this.#db.prepare('update event set deleted_at = null, removed_by = null where id = ?').run(id);
   }
 
+  trash(now: number): {
+    id: number;
+    title: string;
+    startAt: number;
+    endAt: number | null;
+    allDay: boolean;
+    source: EventSource;
+    deletedAt: number;
+    daysLeft: number;
+  }[] {
+    const rows = this.#db
+      .prepare(
+        "select * from event where deleted_at is not null and removed_by = 'user' order by deleted_at desc, id desc",
+      )
+      .all() as Row[];
+    return rows.map((r) => {
+      const deletedAt = Number(r.deleted_at);
+      return {
+        id: Number(r.id),
+        title: r.title,
+        startAt: Number(r.start_at),
+        endAt: r.end_at === null ? null : Number(r.end_at),
+        allDay: Number(r.all_day ?? 0) === 1,
+        source: r.source === 'ics' || r.source === 'google' ? r.source : 'local',
+        deletedAt,
+        daysLeft: trashDaysLeft(deletedAt, now),
+      };
+    });
+  }
+
+  trashCount(): number {
+    return Number(
+      (
+        this.#db
+          .prepare("select count(*) as n from event where deleted_at is not null and removed_by = 'user'")
+          .get() as { n: number }
+      ).n,
+    );
+  }
+
+  purgeTrash(id?: number, now = Date.now()): number {
+    const rows = (
+      id === undefined
+        ? this.#db
+            .prepare("select id, source from event where deleted_at is not null and removed_by = 'user'")
+            .all()
+        : this.#db
+            .prepare(
+              "select id, source from event where id = ? and deleted_at is not null and removed_by = 'user'",
+            )
+            .all(id)
+    ) as { id: number; source: string }[];
+    for (const row of rows) {
+      this.#reminders.clear(Number(row.id));
+      if (row.source === 'ics' || row.source === 'google') {
+        // 외부 일정은 재동기화 때 되살아나지 않도록 개인정보를 지운 tombstone만 남긴다.
+        this.#db
+          .prepare(
+            "update event set title = '', start_at = 0, end_at = null, remind_min = 0, notified_at = null, all_day = 0, pinned_at = null, repeat_kind = null, repeat_series = null, deleted_at = ?, removed_by = 'purged', user_edited = 1 where id = ?",
+          )
+          .run(now - (TRASH_DAYS + 1) * 86_400_000, row.id);
+      } else {
+        this.#db.prepare('delete from event where id = ?').run(row.id);
+      }
+    }
+    return rows.length;
+  }
+
+  purgeExpired(now: number): number {
+    const ids = (
+      this.#db
+        .prepare(
+          "select id from event where deleted_at is not null and removed_by = 'user' and deleted_at <= ?",
+        )
+        .all(now - TRASH_DAYS * 86_400_000) as { id: number }[]
+    ).map((r) => Number(r.id));
+    return ids.reduce((total, id) => total + this.purgeTrash(id, now), 0);
+  }
+
   /**
    * 지금 알릴 일정: 알림 하나가 울릴 때가 됐고 아직 안 알렸으며, 시작한 지 5분이 안 지난 것 (종일은 첫날이 끝나기 전).
    * 컴퓨터가 꺼져 있던 사이 여러 알림이 지났어도 일정마다 한 번 (planReminders). 알림 없는 종일 일정은 아침 브리핑에 맡긴다
@@ -620,7 +701,7 @@ export class EventStore {
         if (e.icalUid !== undefined)
           this.#db.prepare('update event set google_uid = ? where id = ?').run(e.icalUid ?? null, old.id);
         // 사용자가 지운 것: 캘린더에 있어도 되살리지 않는다
-        if (old.deleted_at !== null && old.removed_by === 'user') continue;
+        if (old.deleted_at !== null && (old.removed_by === 'user' || old.removed_by === 'purged')) continue;
         const revive = old.deleted_at !== null;
         // 사용자가 고친 것: 제목과 시각은 사용자 것. 캘린더에서 없어졌다 돌아온 경우만 되살린다
         if (Number(old.user_edited)) {

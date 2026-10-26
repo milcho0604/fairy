@@ -90,8 +90,8 @@ export function createKnows(o: KnowsOptions) {
       return;
     }
     win = openRemembered('knows', {
-      size: { width: 420, height: 620 },
-      min: { width: 340, height: 440 },
+      size: { width: 420, height: 820 },
+      min: { width: 340, height: 520 },
       options: {
         title: t('bond.knows.title', { name: o.petName() }),
         show: false,

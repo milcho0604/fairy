@@ -21,9 +21,14 @@ export const ko = {
   'records.trash.restored': (v: { title: string }) => `"${v.title}" 되살렸어.`,
   'records.trash.gone': '이미 없는 할 일이야.',
   'records.trash.dup': '같은 반복 할 일이 이미 열려 있어서 되살리지 않았어. 필요 없으면 영구 삭제해 줘.',
+  'records.trash.todo': '할 일',
+  'records.trash.note': '메모',
+  'records.trash.event': '일정',
+  'records.trash.eventWhen': (v: { date: string }) => `일정: ${v.date}`,
 
   // ---- 집중 월간 잔디 ----
   'records.month.title': '집중 달력',
+  'records.month.hint': '색이 진할수록 그날 집중한 시간이 길어. 날짜를 누르면 자세한 기록을 볼 수 있어.',
   'records.month.summary': (v: { min: string; days: number }) => `${v.min}, ${v.days}일`,
   'records.month.prev': '지난달',
   'records.month.next': '다음 달',
@@ -110,9 +115,14 @@ export const en: Translation<typeof ko> = {
   'records.trash.gone': 'That to-do is already gone.',
   'records.trash.dup':
     'The same repeating to-do is already open, so this one was not restored. Delete it forever if you do not need it.',
+  'records.trash.todo': 'To-dos',
+  'records.trash.note': 'Notes',
+  'records.trash.event': 'Events',
+  'records.trash.eventWhen': (v: { date: string }) => `Event: ${v.date}`,
 
   // ---- Focus calendar ----
   'records.month.title': 'Focus calendar',
+  'records.month.hint': 'Darker days mean more focus time. Select a day to see its details.',
   'records.month.summary': (v: { min: string; days: number }) =>
     `${v.min}, ${v.days} ${v.days === 1 ? 'day' : 'days'}`,
   'records.month.prev': 'Previous month',

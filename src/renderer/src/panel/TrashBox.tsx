@@ -1,19 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PanelState } from '../../../shared/ipc.ts';
-import type { TrashItem } from '../../../shared/todo-store.ts';
+import type { TrashKind, TrashRecord } from '../../../shared/trash.ts';
 import './records.css';
 
 const bridge = window.jjakkungPanel;
 
 /**
- * 할 일 휴지통 (#125). 지운 할 일을 30일 동안 모아 두고 되살리거나 영구 삭제한다 (30일이 지나면 저절로 사라진다).
- * 코인은 지울 때도 되살릴 때도 움직이지 않는다. 열 때마다 목록을 새로 읽고(그때 30일 지난 것을 메인이 지운다),
+ * 할 일·메모·일정 휴지통. 30일 동안 보관한 뒤 자동 삭제한다. 열 때마다 목록을 새로 읽고,
  * 패널 상태의 trashCount 가 바뀌면 열려 있는 목록도 다시 읽는다
  */
 export function TrashBox({ s }: { s: PanelState }) {
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState<TrashItem[]>([]);
+  const [items, setItems] = useState<TrashRecord[]>([]);
+  const [kind, setKind] = useState<TrashKind | 'all'>('all');
   const [confirmAll, setConfirmAll] = useState(false);
   const [note, setNote] = useState('');
   const alive = useRef(true);
@@ -36,8 +36,8 @@ export function TrashBox({ s }: { s: PanelState }) {
   // 휴지통에 아무것도 없고 닫혀 있으면 줄을 그리지 않는다
   if (s.trashCount === 0 && !open) return null;
 
-  const restore = async (item: TrashItem) => {
-    const res = await bridge.trashRestore(item.id);
+  const restore = async (item: TrashRecord) => {
+    const res = await bridge.trashRestore(item.kind, item.id);
     setNote(
       res === 'ok'
         ? t('records.trash.restored', { title: item.title })
@@ -45,8 +45,8 @@ export function TrashBox({ s }: { s: PanelState }) {
     );
     await load();
   };
-  const purge = async (item: TrashItem) => {
-    await bridge.trashPurge(item.id);
+  const purge = async (item: TrashRecord) => {
+    await bridge.trashPurge(item.kind, item.id);
     setNote('');
     await load();
   };
@@ -56,6 +56,7 @@ export function TrashBox({ s }: { s: PanelState }) {
     setNote('');
     await load();
   };
+  const visible = kind === 'all' ? items : items.filter((item) => item.kind === kind);
 
   return (
     <div className="trash">
@@ -74,25 +75,42 @@ export function TrashBox({ s }: { s: PanelState }) {
       {open && (
         <div className="trash-body">
           <small className="trash-hint">{t('records.trash.hint')}</small>
+          <div className="trash-actions">
+            {(['all', 'todo', 'note', 'event'] as const).map((k) => (
+              <button
+                key={k}
+                type="button"
+                className="link"
+                aria-pressed={kind === k}
+                onClick={() => setKind(k)}
+              >
+                {k === 'all' ? t('records.trash.title') : t(`records.trash.${k}`)}
+              </button>
+            ))}
+          </div>
           {note && (
             <small className="trash-note" role="status">
               {note}
             </small>
           )}
-          {items.length === 0 ? (
+          {visible.length === 0 ? (
             <p className="trash-empty">{t('records.trash.empty')}</p>
           ) : (
             <ul className="todos trash-list">
-              {items.map((item) => (
-                <li key={item.id} className="todo trash-item" data-id={item.id}>
+              {visible.map((item) => (
+                <li key={`${item.kind}:${item.id}`} className="todo trash-item" data-id={item.id}>
                   <span className="trash-text">
                     <span className="title" dir="auto">
-                      {item.title}
+                      {item.title || t('records.trash.event')}
                     </span>
                     <small>
-                      {item.doneAt !== null && (
+                      {item.kind === 'todo' && item.doneAt !== null && (
                         <span className="trash-done">{t('records.trash.done')}, </span>
                       )}
+                      {item.kind === 'note' && item.preview ? `${item.preview} · ` : ''}
+                      {item.kind === 'event'
+                        ? `${t('records.trash.eventWhen', { date: new Date(item.startAt).toLocaleString() })} · `
+                        : ''}
                       {t('records.trash.left', { n: item.daysLeft })}
                     </small>
                   </span>
@@ -118,7 +136,7 @@ export function TrashBox({ s }: { s: PanelState }) {
               ))}
             </ul>
           )}
-          {items.length > 0 &&
+          {visible.length > 0 &&
             (confirmAll ? (
               <div className="trash-confirm" role="alertdialog" aria-label={t('records.trash.emptyAll')}>
                 <small>{t('records.trash.confirmAll', { n: items.length })}</small>

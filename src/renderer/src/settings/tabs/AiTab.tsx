@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { PERSONAS } from '../../../../shared/ai/persona.ts';
 import { t } from '../../../../shared/i18n/index.ts';
 import type { SettingsSnapshot } from '../../../../shared/ipc.ts';
 import { addMemory, approvePending, MEMORY_ITEM_MAX, MEMORY_MAX } from '../../../../shared/pet-memory.ts';
 import { RULES_MAX, type Settings } from '../../../../shared/settings.ts';
 import { AiSupportBox } from '../AiSupportBox.tsx';
 import { Section, type TabProps, Toggle } from '../ui.tsx';
-import { SpeechEditor, SpeechPreview } from './SpeechEditor.tsx';
 
 /** AI 탭: 대화(말투, 할 일 알기, 도구), 짝꿍 규칙, 기억, 모델, 다른 AI 에서 쓰기(MCP) */
 export function AiTab({ snap, update, flash }: TabProps) {
@@ -14,31 +12,6 @@ export function AiTab({ snap, update, flash }: TabProps) {
   return (
     <>
       <Section title={t('settings.ai')}>
-        <div className="field">
-          <span>{t('settings.persona')}</span>
-          <fieldset className="segmented wrap" aria-label={t('settings.persona')}>
-            {PERSONAS.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                aria-pressed={s.persona === p.id}
-                className={s.persona === p.id ? 'on' : ''}
-                onClick={() => update({ persona: p.id })}
-              >
-                {p.label}
-              </button>
-            ))}
-          </fieldset>
-          <small>
-            {PERSONAS.find((p) => p.id === s.persona)?.hint} {t('settings.personaNext')}
-          </small>
-        </div>
-        {/* 내 말투면 만들기 칸(미리 보기 포함), 다른 말투는 미리 보기만 */}
-        {s.persona === 'custom' ? (
-          <SpeechEditor value={s.speech} petName={s.petName} onSave={(speech) => void update({ speech })} />
-        ) : (
-          <SpeechPreview persona={s.persona} style={s.speech} petName={s.petName} />
-        )}
         <Toggle
           label={t('settings.aiKnowsTodos')}
           hint={t('settings.aiKnowsTodosHint')}

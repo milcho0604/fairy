@@ -421,7 +421,7 @@ export function TodayTab({
 
             <HabitBox s={s} onComplete={onComplete} />
 
-            <p className="done-count">
+            <p className="done-count" title={t('panel.today.doneHint')}>
               <span>
                 {t('panel.today.doneLabel')} <b>{s.doneToday.length}</b>
               </span>
@@ -430,6 +430,7 @@ export function TodayTab({
                 {t(s.achieve.streak === 1 ? 'panel.today.streakAfterOne' : 'panel.today.streakAfter')}
               </span>
             </p>
+            <small>{t('panel.today.doneHint')}</small>
 
             {s.week && (
               <WeekBox week={s.week} today={s.today} open={wide}>
@@ -539,6 +540,7 @@ function WeekBox({
         {t('assist.week.title')}
         <small>{t('assist.week.summary', { done: week.done, focus: week.focusMin })}</small>
       </summary>
+      <small>{t('assist.week.hint')}</small>
       <div className="week-bars">
         {week.days.map((d, i) => {
           const label = d.future

@@ -29,6 +29,7 @@ import { findAll } from '../shared/find-all.ts';
 import { type FocusState, focusReward, isFocusMinutes } from '../shared/focus.ts';
 import { isMonth, monthOf } from '../shared/focus-month.ts';
 import type { GcalCalLabel, PanelGcal } from '../shared/gcal.ts';
+import { fitSavedBounds } from '../shared/geometry.ts';
 import { isPanelView, type PanelView } from '../shared/home-policy.ts';
 import { t } from '../shared/i18n/index.ts';
 import { createIdleWatch } from '../shared/idle-watch.ts';
@@ -87,6 +88,7 @@ import { COIN, FULLNESS, localDay, STEP_MAX, type TodoStore } from '../shared/to
 import { emptyViewKeep } from '../shared/view-keep.ts';
 import { weekSummary } from '../shared/week.ts';
 import { devRendererUrl } from './dev-url.ts';
+import { onDisplaysChanged } from './display-watch.ts';
 import { drafts, getToasts, getView, noteKeep, setToasts, setView } from './drafts.ts';
 import { focusWindow } from './focus.ts';
 import { langArg } from './lang.ts';
@@ -226,6 +228,7 @@ export function createPanel(o: PanelOptions) {
    * (beforeunload). panel 하고만 비교하면 그 마지막 저장이 버려졌다.
    */
   const senders = new Set<Electron.WebContents>();
+  const relocating = new WeakSet<BrowserWindow>();
   const ours = (e: IpcMainEvent | IpcMainInvokeEvent) => senders.has(e.sender);
   const homeContents = () => (home && !home.isDestroyed() ? home.webContents : undefined);
   /** 지금 보이는 면: 큰 창이 있으면 큰 창, 없으면 패널 (src/main/surface.ts) */
@@ -310,7 +313,7 @@ export function createPanel(o: PanelOptions) {
         houseHidden: o.houseHidden(),
       },
       ...(week(now, open) ?? {}),
-      trashCount: o.store.trashCount(),
+      trashCount: o.store.trashCount() + o.notes.trashCount() + o.events.trashCount(),
       keepOpen: o.panelPin(),
       panelView: o.panelView(),
       friendsOn: o.friendsOn(),
@@ -998,37 +1001,62 @@ export function createPanel(o: PanelOptions) {
     o.store.restore(id);
     push();
   });
-  // 할 일 휴지통 (#125): 열 때 30일이 지난 것을 영구 삭제하고 목록을 준다. 코인은 지울 때도 되살릴 때도 움직이지 않는다
+  // 통합 휴지통: 할 일·메모·일정을 30일 보관한다.
   ipcMain.handle(PANEL.trashList, (e) => {
     if (!ours(e)) return [];
     const now = Date.now();
-    const gone = o.store.purgeExpired(now);
+    const gone = o.store.purgeExpired(now) + o.notes.purgeExpired(now) + o.events.purgeExpired(now);
     if (gone > 0) {
-      log('todo', '휴지통 30일 지난 것 영구 삭제', gone);
+      log('todo', '휴지통 30일 지난 항목 영구 삭제', gone);
       push();
     }
-    return o.store.trash(now);
+    return [
+      ...o.store.trash(now).map((x) => ({ ...x, kind: 'todo' as const })),
+      ...o.notes.trash(now).map((x) => ({ ...x, kind: 'note' as const })),
+      ...o.events.trash(now).map((x) => ({ ...x, kind: 'event' as const })),
+    ].sort((a, b) => b.deletedAt - a.deletedAt || b.id - a.id);
   });
-  ipcMain.handle(PANEL.trashRestore, (e, id: unknown) => {
+  ipcMain.handle(PANEL.trashRestore, (e, kind: unknown, id: unknown) => {
     if (!ours(e) || typeof id !== 'number') return 'gone';
-    const res = o.store.restoreCheck(id);
-    if (res === 'ok') {
-      o.store.restoreFromTrash(id);
-      log('todo', '휴지통에서 되살림', id);
-    } else if (res === 'dup') log('todo', '같은 반복이 열려 있어 되살리지 않음', id);
+    if (kind === 'todo') {
+      const res = o.store.restoreCheck(id);
+      if (res === 'ok') {
+        o.store.restoreFromTrash(id);
+        log('todo', '휴지통에서 되살림', id);
+      } else if (res === 'dup') log('todo', '같은 반복이 열려 있어 되살리지 않음', id);
+      push();
+      return res;
+    }
+    const record =
+      kind === 'note'
+        ? o.notes.trash(Date.now()).find((x) => x.id === id)
+        : kind === 'event'
+          ? o.events.trash(Date.now()).find((x) => x.id === id)
+          : undefined;
+    if (!record) return 'gone';
+    if (kind === 'note') o.notes.restore(id);
+    else o.events.restore(id);
+    log(kind, '휴지통에서 되살림', id);
     push();
-    return res;
+    return 'ok';
   });
-  ipcMain.handle(PANEL.trashPurge, (e, id: unknown) => {
+  ipcMain.handle(PANEL.trashPurge, (e, kind: unknown, id: unknown) => {
     if (!ours(e) || typeof id !== 'number') return 0;
-    const n = o.store.purge([id]);
+    const n =
+      kind === 'todo'
+        ? o.store.purge([id])
+        : kind === 'note'
+          ? o.notes.purge(id)
+          : kind === 'event'
+            ? o.events.purgeTrash(id)
+            : 0;
     if (n > 0) log('todo', '영구 삭제', id);
     push();
     return n;
   });
   ipcMain.handle(PANEL.trashEmpty, (e) => {
     if (!ours(e)) return 0;
-    const n = o.store.emptyTrash();
+    const n = o.store.emptyTrash() + o.notes.purge() + o.events.purgeTrash();
     log('todo', '휴지통 비움', n);
     push();
     return n;
@@ -1316,6 +1344,7 @@ export function createPanel(o: PanelOptions) {
     let rest = win.getBounds();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const settle = () => {
+      if (relocating.has(win)) return;
       clearTimeout(timer);
       timer = setTimeout(() => {
         if (!win.isDestroyed()) rest = win.getBounds();
@@ -1391,6 +1420,37 @@ export function createPanel(o: PanelOptions) {
   /** 지금 연결된 모든 화면 (모니터를 뺐으면 빠진다) */
   const allAreas = () => screen.getAllDisplays().map((d) => d.workArea);
 
+  onDisplaysChanged((displays) => {
+    const areas = displays.map((d) => d.workArea);
+    const moveIntoRange = (win: BrowserWindow, next: Rectangle) => {
+      const current = win.getBounds();
+      if (
+        current.x === next.x &&
+        current.y === next.y &&
+        current.width === next.width &&
+        current.height === next.height
+      )
+        return;
+      relocating.add(win);
+      win.setBounds(next);
+      setTimeout(() => relocating.delete(win), 800);
+    };
+    if (panel && !panel.isDestroyed()) {
+      // 펫이 옮겨진 뒤 같은 상대 위치를 다시 계산한다. 작은 작업 영역이면 placePanel 이 패널 크기도 줄인다.
+      const placed = placePanel(o.petBounds(), panelSize(), petArea(), areas, offset);
+      moveIntoRange(panel, placed);
+      saveBounds(panel, 'panel', false);
+    }
+    if (quick && !quick.isDestroyed()) {
+      const fitted = fitSavedBounds(quick.getBounds(), areas, {
+        width: QUICK_SIZE.width,
+        height: QUICK_SIZE.height,
+      });
+      if (fitted?.x !== undefined && fitted.y !== undefined)
+        moveIntoRange(quick, { x: fitted.x, y: fitted.y, width: fitted.width, height: fitted.height });
+    }
+  });
+
   /** 열 때 크기: 적어 둔 크기(없으면 처음 크기)를 범위 안으로. 작업 영역보다 크면 placePanel 이 한 번 더 줄인다 */
   function panelSize() {
     const saved = savedBounds('panel', PANEL_MIN);
@@ -1450,6 +1510,7 @@ export function createPanel(o: PanelOptions) {
     };
     win.on('move', () => {
       clearTimeout(timer);
+      if (relocating.has(win)) return;
       timer = setTimeout(save, MOVE_SAVE_MS);
     });
     win.on('close', () => {
