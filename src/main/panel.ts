@@ -258,6 +258,9 @@ export function createPanel(o: PanelOptions) {
     return o.doing.ids().filter((id) => ids.has(id));
   }
 
+  let newNoteRequest = 0;
+  let pendingNewNote = false;
+
   function state(): PanelState {
     const now = Date.now();
     const { open, doneToday } = o.store.list(now);
@@ -265,6 +268,7 @@ export function createPanel(o: PanelOptions) {
     const pinnedEvents = withCals(o.events.pinned(now));
     dayTurn.seen(localDay(now));
     return {
+      ...(pendingNewNote ? { newNoteRequest } : {}),
       petName: o.petName(),
       today: localDay(now),
       open,
@@ -1122,6 +1126,11 @@ export function createPanel(o: PanelOptions) {
   ipcMain.on(PANEL.noteKeepSet, (e, id: unknown, value: unknown) => {
     if (ours(e)) noteKeep.set(id, value, Date.now());
   });
+  ipcMain.on(PANEL.noteNewTake, (e, request: unknown) => {
+    const take = isSurface(e) && pendingNewNote && request === newNoteRequest;
+    if (take) pendingNewNote = false;
+    e.returnValue = take;
+  });
   ipcMain.on(PANEL.noteKeepLatest, (e) => {
     e.returnValue = (ours(e) ? noteKeep.latest(Date.now()) : undefined) ?? null;
   });
@@ -1293,10 +1302,10 @@ export function createPanel(o: PanelOptions) {
   }
 
   /** 패널을 열고 이 탭을 보여 준다 (이미 열려 있으면 탭만) */
-  function openTab(tab: PanelTab) {
+  function openTab(tab?: PanelTab) {
     if (o.routeHome?.({ tab, toggle: false })) return;
     if (panel && !panel.isDestroyed()) {
-      panel.webContents.send(PANEL.tab, tab);
+      if (tab) panel.webContents.send(PANEL.tab, tab);
       focusWindow(panel);
       return;
     }
@@ -1415,6 +1424,12 @@ export function createPanel(o: PanelOptions) {
   return {
     togglePanel,
     openTab,
+    newNote: () => {
+      newNoteRequest++;
+      pendingNewNote = true;
+      openTab('note');
+      push();
+    },
     /** 다음 한 번 패널을 열 때 보일 탭 */
     openNextAt: (tab: PanelTab) => {
       nextTab = tab;

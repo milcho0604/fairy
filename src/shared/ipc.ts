@@ -1044,6 +1044,7 @@ export const PANEL = {
   noteKeepGet: 'panel:note-keep-get',
   noteKeepSet: 'panel:note-keep-set',
   noteKeepLatest: 'panel:note-keep-latest',
+  noteNewTake: 'panel:note-new-take',
   /** 보던 위치 보관 (#145): 할 일의 검색어와 쪽 수, 일정의 고른 날, 탭마다 스크롤 */
   viewGet: 'panel:view-get',
   viewSet: 'panel:view-set',
@@ -1125,6 +1126,8 @@ export const PANEL = {
 } as const;
 
 export interface PanelState {
+  /** 메뉴에서 새 메모를 열라는 요청. 편집기가 준비되면 한 번만 가져간다 */
+  newNoteRequest?: number;
   petName: string;
   /** 현지 날짜 YYYY-MM-DD */
   today: string;
@@ -1337,6 +1340,7 @@ export interface PanelBridge {
   noteKeepSet(id: number, value: NoteKept | null): void;
   /** 가장 나중에 적은 보관 글 (패널을 열 때 그 메모로 돌아간다) */
   noteKeepLatest(): NoteKept | null;
+  noteNewTake(request: number): boolean;
   /** 보던 위치 (#145) */
   viewGet(): ViewKeep;
   viewSet(view: ViewKeep): void;

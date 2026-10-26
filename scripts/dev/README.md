@@ -75,3 +75,5 @@ OUT=/tmp/jj-shots PHOTO=<사진> node scripts/dev/maker.mjs  # 사진으로 페�
 - 알리기 발행 도구 시험 (#154): `(cd server && npm run build) && OUT=<레포 밖 폴더> node scripts/dev/admin-publish.mjs`. 시험용 Postgres(`jj-admin154-pg-<무작위>`)와 `server/dist`, 가짜 최신 릴리스(이 프로세스의 http 서버)를 띄우고 웹 `/admin` 알리기 칸을 헤드리스 Chrome(CDP, 창 없음)으로 폭 1280 과 360, 밝은 어두운 모드에서 본다: 게시물 목록(상태 필터, 검색, 휴대폰 카드), 만들기(종류별 입력만, 기본값), 이벤트와 쿠폰과 버전의 미리보기와 확정, 쿠폰 코드 복사 단추, 영향 인원, 초안, 불러오기, 반영 안내, 넘침, 글자 대비, CSP. `SERVER_ROOT=<옛 server 폴더> TAG=before` 면 판정 없이 옛 그림만. 서버 통합 시험은 `server/test/admin-publish.test.ts`
 
 - `OUT=/tmp/fairy-small LANG_UNDER_TEST=ko node scripts/dev/small-usability.mjs`: 빠른 입력 초안 복원·등록 후 비우기, 반복 완료의 실제 다음 회차 날짜, 설정 360/760/1280px 가운데 정렬 확인 (`en`도 지원).
+
+- `OUT=/tmp/fairy-menu LANG_UNDER_TEST=ko node scripts/dev/pet-menu.mjs`: #148 우클릭 메뉴 순서·더 보기·끝내기 분리 및 빠른 입력·새 메모·패널 연결 확인. 네이티브 메뉴는 표시하지 않고 실제 Electron 메뉴 생성 후 popup만 막는다 (`en`도 지원).

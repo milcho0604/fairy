@@ -489,6 +489,7 @@ if (kind === 'panel' || kind === 'home' || kind === 'quick') {
     noteKeepGet: (id) => ipcRenderer.sendSync(PANEL.noteKeepGet, id) ?? null,
     noteKeepSet: (id, value) => ipcRenderer.send(PANEL.noteKeepSet, id, value),
     noteKeepLatest: () => ipcRenderer.sendSync(PANEL.noteKeepLatest) ?? null,
+    noteNewTake: (request) => ipcRenderer.sendSync(PANEL.noteNewTake, request) === true,
     viewGet: () => ipcRenderer.sendSync(PANEL.viewGet),
     viewSet: (view) => ipcRenderer.send(PANEL.viewSet, view),
     setKeepOpen: (on) => ipcRenderer.send(PANEL.setKeepOpen, on),

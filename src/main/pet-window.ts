@@ -129,6 +129,8 @@ export interface PetActions {
   lookTogether(): void;
   openSettings(): void;
   quickAdd(): void;
+  addNote?(): void;
+  openPanel?(): void;
   /** 큰 창으로 열기 (큰 창 설계 #159). 없으면 우클릭 메뉴에 항목이 없다 */
   openHome?(): void;
   feed(): void;
@@ -705,21 +707,39 @@ export function createPetWindow({
     const note = actions.menuNote?.();
     Menu.buildFromTemplate([
       ...(note ? [{ label: note, enabled: false }, { type: 'separator' as const }] : []),
-      // 메뉴에도 단축키를 보여 준다 (마우스 없이 여는 길을 알게)
+      // 자주 하는 작업을 맨 위에 둔다.
       {
-        label: t('pet.menu.look', { name: petName() }),
-        accelerator: settings.get().shortcuts.look || undefined,
-        click: () => actions.lookTogether(),
+        label: t('pet.menu.addTodo'),
+        accelerator: quickAddShortcut() || undefined,
+        click: () => actions.quickAdd(),
       },
+      {
+        label: actions.focusRunning()
+          ? t('pet.menu.focusStop')
+          : t('pet.menu.focusStart', { n: settings.get().focusMin }),
+        click: () => actions.toggleFocus(),
+      },
+      { label: t('pet.menu.feed'), click: () => actions.feed() },
+      ...(actions.addNote ? [{ label: t('pet.menu.addNote'), click: () => actions.addNote?.() }] : []),
+      ...(actions.openPanel
+        ? [
+            {
+              label: t('pet.menu.openPanel'),
+              accelerator: settings.get().shortcuts.panel || undefined,
+              click: () => actions.openPanel?.(),
+            },
+          ]
+        : []),
+      { type: 'separator' },
       {
         label: t('pet.menu.chat', { name: petName() }),
         accelerator: settings.get().shortcuts.chat || undefined,
         click: () => actions.openChat(pet),
       },
       {
-        label: t('pet.menu.addTodo'),
-        accelerator: quickAddShortcut() || undefined,
-        click: () => actions.quickAdd(),
+        label: t('pet.menu.look', { name: petName() }),
+        accelerator: settings.get().shortcuts.look || undefined,
+        click: () => actions.lookTogether(),
       },
       ...(actions.openHome
         ? [
@@ -730,66 +750,64 @@ export function createPetWindow({
             },
           ]
         : []),
-      ...(actions.whatFirst ? [{ label: t('first.menu'), click: () => actions.whatFirst?.() }] : []),
-      ...(actions.askChips && settings.get().petChips
-        ? [{ label: t('chips.menu'), click: () => actions.askChips?.() }]
-        : []),
-      { label: t('pet.menu.feed'), click: () => actions.feed() },
-      {
-        label: t('pet.menu.play'),
-        submenu: playMenu(),
-      },
-      {
-        label: actions.focusRunning()
-          ? t('pet.menu.focusStop')
-          : t('pet.menu.focusStart', { n: settings.get().focusMin }),
-        click: () => actions.toggleFocus(),
-      },
+      { label: t('pet.menu.play'), submenu: playMenu() },
       { type: 'separator' },
-      {
-        label: t('pet.menu.bubbles'),
-        submenu: (['quiet', 'normal', 'chatty'] as const).map((level) => ({
-          label: LEVEL_LABEL[level],
-          type: 'radio' as const,
-          checked: gate.level === level,
-          click: () => setChatter(level),
-        })),
-      },
-      // 배터리일 때 움직임 줄이기 (사용자 요청 2026-10-11: 바로 끄고 켤 수 있게). 켜면 자동, 끄면 끄기
-      {
-        label: t('pet.menu.saver'),
-        type: 'checkbox',
-        checked: settings.get().batterySaver !== 'off',
-        click: (item) => settings.set({ batterySaver: item.checked ? 'auto' : 'off' }),
-      },
-      // 같이 타자 치기 (shared/together.ts): 키 내용은 읽지 않고 입력이 있는지만 본다
-      {
-        label: t('pet.menu.typeAlong'),
-        type: 'checkbox',
-        checked: settings.get().typeAlong,
-        click: (item) => settings.set({ typeAlong: item.checked }),
-      },
-      ...houseMenu(),
       {
         label: t('pet.menu.hide', { name: petName() }),
         accelerator: hideShortcut() || undefined,
         click: () => setHidden('user', true),
       },
-      { label: t('pet.menu.makePet'), click: () => actions.makePet() },
-      ...(actions.openKnows
-        ? [{ label: t('bond.menu.knows', { name: petName() }), click: () => actions.openKnows?.() }]
-        : []),
       { label: t('pet.menu.settings'), click: () => actions.openSettings() },
       { type: 'separator' },
-      { label: t('pet.menu.reload'), click: () => reload() },
       {
-        label: t('pet.menu.relaunch', { name: petName() }),
-        click: () => {
-          // will-quit 정리(기록, AI 끝내기, 저장 닫기)를 거쳐 다시 켠다
-          app.relaunch();
-          app.quit();
-        },
+        label: t('pet.menu.more'),
+        submenu: [
+          ...(actions.whatFirst ? [{ label: t('first.menu'), click: () => actions.whatFirst?.() }] : []),
+          ...(actions.askChips && settings.get().petChips
+            ? [{ label: t('chips.menu'), click: () => actions.askChips?.() }]
+            : []),
+          { label: t('pet.menu.makePet'), click: () => actions.makePet() },
+          ...(actions.openKnows
+            ? [{ label: t('bond.menu.knows', { name: petName() }), click: () => actions.openKnows?.() }]
+            : []),
+          ...houseMenu(),
+          { type: 'separator' },
+          {
+            label: t('pet.menu.bubbles'),
+            submenu: (['quiet', 'normal', 'chatty'] as const).map((level) => ({
+              label: LEVEL_LABEL[level],
+              type: 'radio' as const,
+              checked: gate.level === level,
+              click: () => setChatter(level),
+            })),
+          },
+          // 배터리일 때 움직임 줄이기 (사용자 요청 2026-10-11: 바로 끄고 켤 수 있게). 켜면 자동, 끄면 끄기
+          {
+            label: t('pet.menu.saver'),
+            type: 'checkbox',
+            checked: settings.get().batterySaver !== 'off',
+            click: (item) => settings.set({ batterySaver: item.checked ? 'auto' : 'off' }),
+          },
+          // 같이 타자 치기 (shared/together.ts): 키 내용은 읽지 않고 입력이 있는지만 본다
+          {
+            label: t('pet.menu.typeAlong'),
+            type: 'checkbox',
+            checked: settings.get().typeAlong,
+            click: (item) => settings.set({ typeAlong: item.checked }),
+          },
+          { type: 'separator' },
+          { label: t('pet.menu.reload'), click: () => reload() },
+          {
+            label: t('pet.menu.relaunch', { name: petName() }),
+            click: () => {
+              // will-quit 정리(기록, AI 끝내기, 저장 닫기)를 거쳐 다시 켠다
+              app.relaunch();
+              app.quit();
+            },
+          },
+        ],
       },
+      { type: 'separator' },
       { label: t('pet.menu.quit'), role: 'quit' },
     ]).popup(where);
   }
