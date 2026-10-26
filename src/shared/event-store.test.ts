@@ -143,6 +143,23 @@ test('일정 범위 조회와 지우기, 되살리기', () => {
   assert.throws(() => events.add({ title: '  ', startAt: T0 }, T0));
 });
 
+test('매주 반복 일정은 다음 회차를 같은 현지 요일·시각과 알림으로 만든다', () => {
+  const { events } = fresh();
+  const startAt = new Date(2026, 9, 6, 10, 0).getTime();
+  const first = events.add({ title: '스탠드업', startAt, repeat: 'weekly', reminds: [10] }, startAt - MIN);
+  assert.equal(first.repeat, 'weekly');
+  const occurrences = events
+    .between(startAt, startAt + 15 * 24 * 60 * MIN)
+    .filter((e) => e.title === '스탠드업');
+  assert.equal(occurrences.length, 3);
+  for (const event of occurrences) {
+    assert.equal(event.repeat, 'weekly');
+    assert.equal(new Date(event.startAt).getDay(), new Date(startAt).getDay());
+    assert.equal(new Date(event.startAt).getHours(), new Date(startAt).getHours());
+    assert.deepEqual(event.reminds, [10]);
+  }
+});
+
 test('메모: 최근에 고친 것부터, 그대로면 시각을 안 바꾼다, 제목은 첫 줄에서', () => {
   const { notes } = fresh();
   const a = notes.add({ body: '# 회의 메모\n- 결정 1' }, T0);

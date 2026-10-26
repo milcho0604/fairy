@@ -9,9 +9,9 @@
 //   할 일 줄: 줄 하나가 탭 정지점 하나(위아래 화살표, Space 끝내기, Enter 고치기, Delete 지우기와 되돌리기), 줄 끝은 표시와 "..." 하나(제목과 안 겹침),
 //     Alt+위아래와 메뉴와 끌기로 순서 바꾸기, 새로 넣은 줄 스크롤과 1초 하이라이트, 마감 칩 작은 메뉴(오늘, 내일, 다음 주 월요일),
 //     반복 할 일 끝내면 "다음은 내일" 안내
-//   오늘 탭: 집중 카드 한 줄과 직접 5~120분, 그만 되돌리기, 펫 상태 머리 한 줄, 할 일 0개일 때 아침 계획 인라인 칸,
+//   오늘 탭: 집중 카드 한 줄과 직접 5~120분, 그만 되돌리기, 펫 상태 머리 한 줄, 할 일 0개일 때 아침 계획 시트 인라인 입력,
 //     아침 첫 열기가 보던 탭을 안 바꾸고 시트로 덮지 않는 것
-//   일정: "내일 종일 휴가" 에서 "종일" 이 제목에 안 남고 "내일 점심" 은 낮 12시, 끝 시각과 길이 고치기, 반복 말은 "할 일로 넣기"
+//   일정: "내일 종일 휴가" 에서 "종일" 이 제목에 안 남고 "내일 점심" 은 낮 12시, 끝 시각과 길이 고치기, 반복 일정과 다음 회차 생성
 //   한 번에 찾기: Cmd+K 와 머리 돋보기, 할 일, 메모, 일정 묶음 결과와 고른 곳으로 가기
 //   BASELINE=1 PREFIX=before 는 확인 없이 같은 자료로 전후 비교 그림용 찍기만 한다
 import { spawn } from 'node:child_process';
@@ -457,7 +457,7 @@ const body = async () => {
   check('아침 첫 열기: 보던 탭(일정)이 그대로이고 계획 시트가 덮지 않는다', tabNow === 'ptab-event' && !(await pp.ev(`!!document.querySelector('.plan-veil')`)), tabNow);
   await main("__jj.panel.openTab('today'); 1");
   await sleep(500);
-  check('아침 첫 열기: 오늘 탭의 계획 카드가 도드라진다 (nudge)', await pp.ev(`!!document.querySelector('.plan-card.nudge')`));
+  check('아침 첫 열기: 계획 시트를 대신할 오늘 계획 시작 단추가 보인다', await pp.ev(`!!document.querySelector('.plan-card.is-empty button')`));
   await main("__jj.panel.openTab('todo'); 1");
   await sleep(500);
 
@@ -732,29 +732,30 @@ const body = async () => {
   // ===== 8. 아침 계획: 할 일 0개일 때 바로 적기 =====
   await main(`(() => { const now = Date.now(); for (const t of __jj.store.list(now).open) __jj.store.remove(t.id, now); __jj.panel.refresh(); return 1; })()`);
   await sleep(500);
-  const hasInline = await pp.ev(`!!document.querySelector('.plan-card.is-inline input')`);
-  check('할 일이 0개면 계획 카드에 바로 적는 칸이 있다 (시트로 막다른 길이 아니다)', hasInline);
+  await pp.click(`document.querySelector('.plan-card.is-empty button')`);
+  await sleep(500);
+  const hasInline = await pp.ev(`!!document.querySelector('.plan-sheet .plan-first-todo input')`);
+  check('할 일이 0개여도 오늘 계획 단추에서 시트를 열어 바로 입력할 수 있다', hasInline);
   await shots(pp, 'today-plan-inline');
-  for (const name of [L('물 마시기', 'Drink water'), L('운동하기', 'Work out'), L('책 읽기', 'Read a book')]) {
-    await pp.ev(`(document.querySelector('.plan-card input')).focus()`);
-    await pp.type(name);
-    await pp.enter();
-    await sleep(700);
-  }
-  const planned = await pp.ev(`document.querySelectorAll('.plan-picks li').length`);
-  check('적은 3개가 그대로 오늘 꼭 할 일 3개가 된다', planned === 3, String(planned));
-  check('3개가 차면 적는 칸이 사라진다', !(await pp.ev(`!!document.querySelector('.plan-card input')`)));
+  await pp.click(`document.querySelector('.plan-sheet .plan-first-todo input')`);
+  await pp.ev(`(() => { const input = document.querySelector('.plan-sheet .plan-first-todo input'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(input, ${JSON.stringify(L('물 마시기', 'Drink water'))}); input.dispatchEvent(new Event('input', { bubbles: true })); input.dispatchEvent(new Event('change', { bubbles: true })); return input.value; })()`);
+  await pp.click(`document.querySelector('.plan-sheet .plan-first-todo button')`);
+  await sleep(700);
+  check('첫 할 일을 넣으면 계획 후보와 선택이 생긴다', (await pp.ev(`document.querySelectorAll('.plan-cands li').length`)) === 1 && (await pp.ev(`document.querySelector('.plan-count')?.textContent`))?.includes('1'));
+  await pp.click(`document.querySelector('.plan-foot .primary')`);
+  await sleep(500);
+  check('저장한 첫 계획이 오늘 카드에 나타난다', (await pp.ev(`document.querySelectorAll('.plan-card .plan-picks li').length`)) === 1);
   // 시트를 직접 열었을 때도 막다른 길이 아니다
   await main(`(() => { const now = Date.now(); for (const t of __jj.store.list(now).open) __jj.store.remove(t.id, now); __jj.panel.refresh(); return 1; })()`);
   await sleep(300);
   await pp.ev(`window.dispatchEvent(new Event('jj:open-plan'))`);
   await sleep(600);
-  check('0개일 때 시트에도 바로 적는 칸이 있고 저장 단추는 꺼져 있다', (await pp.ev(`!!document.querySelector('.plan-sheet .plan-inline input')`)) && (await pp.ev(`document.querySelector('.plan-sheet .primary').disabled`)));
-  await pp.ev(`document.querySelector('.plan-sheet .plan-inline input').focus()`);
-  await pp.type(L('시트에서 적은 일', 'Typed in sheet'));
-  await pp.enter();
+  check('0개일 때 시트에서 바로 적을 수 있고 빈 입력은 추가할 수 없다', (await pp.ev(`!!document.querySelector('.plan-sheet .plan-first-todo input')`)) && (await pp.ev(`document.querySelector('.plan-sheet .plan-first-todo button').disabled`)));
+  await pp.click(`document.querySelector('.plan-sheet .plan-first-todo input')`);
+  await pp.ev(`(() => { const input = document.querySelector('.plan-sheet .plan-first-todo input'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(input, ${JSON.stringify(L('시트에서 적은 일', 'Typed in sheet'))}); input.dispatchEvent(new Event('input', { bubbles: true })); input.dispatchEvent(new Event('change', { bubbles: true })); return input.value; })()`);
+  await pp.click(`document.querySelector('.plan-sheet .plan-first-todo button')`);
   await sleep(800);
-  check('시트에서 적으면 바로 고른 것으로 들어간다', (await pp.ev(`document.querySelector('.plan-count')?.textContent`))?.includes('1'), await pp.ev(`document.querySelector('.plan-count')?.textContent`));
+  check('시트에서 적으면 계획 후보로 바로 선택된다', (await pp.ev(`document.querySelector('.plan-count')?.textContent`))?.includes('1'), await pp.ev(`document.querySelector('.plan-count')?.textContent`));
   await pp.ev(`document.querySelector('.plan-close').click()`);
   await sleep(300);
 
@@ -804,19 +805,28 @@ const body = async () => {
   const meet3 = JSON.parse(await main(`JSON.stringify(__jj.events.between(0, 4e12).find((e) => e.id === ${meet.id}))`));
   check('시작(15시)보다 이른 끝 시각은 받지 않는다', meet3.endAt === meet2.endAt);
   await shots(pp, 'event-endtime');
-  // 반복 말은 일정으로 못 넣고 "할 일로 넣기" 가 나온다
+  // 반복 일정을 읽어 일정 시리즈와 다음 회차를 만든다
   await pp.ev(`document.querySelector('.event-add input').focus(); document.querySelector('.event-add input').select()`);
   await pp.type(L('매주 월요일 10시 스탠드업', 'every monday 10am standup'));
   await pp.enter();
   await sleep(500);
-  const asBtn = await pp.ev(`!!document.querySelector('.hint.error .as-todo')`);
-  check('반복 말을 일정으로 넣으면 안내와 "할 일로 넣기" 단추가 나온다', asBtn);
-  await shots(pp, 'event-repeat-reject');
-  await pp.click(`document.querySelector('.hint.error .as-todo')`);
   await sleep(700);
-  const rep = (await storeOpen()).find((t) => t.repeat === 'weekly');
-  check('"할 일로 넣기" 를 누르면 같은 글이 매주 반복 할 일이 된다', !!rep, JSON.stringify(rep));
-  check('글을 지우고 알림이 뜬다', (await pp.ev(`document.querySelector('.event-add input').value`)) === '' && (await toastText(pp)).length > 0);
+  const recurring = JSON.parse(
+    await main(`JSON.stringify(__jj.events.between(0, 4e12).find((e) => e.repeat === 'weekly' && e.title === ${JSON.stringify(L('스탠드업', 'standup'))}))`),
+  );
+  check('매주 월요일 10시 입력이 반복 일정으로 저장된다', !!recurring, JSON.stringify(recurring));
+  const nextRecurring = recurring
+    ? JSON.parse(
+        await main(`JSON.stringify(__jj.events.between(${recurring.startAt + 1}, ${recurring.startAt + 8 * 86400000}).find((e) => e.repeat === 'weekly' && e.title === ${JSON.stringify(L('스탠드업', 'standup'))}))`),
+      )
+    : null;
+  check('반복 일정의 다음 주 회차도 일정 목록에 생성된다', !!nextRecurring, JSON.stringify(nextRecurring));
+  await shots(pp, 'event-repeat-created');
+  check(
+    '일정을 넣으면 입력칸이 비워지고 일정 줄이 나타난다',
+    (await pp.ev(`document.querySelector('.event-add input').value`)) === '' &&
+      (await pp.ev(`!!document.querySelector('li.event[data-find-key="event:${recurring?.id}"]')`)),
+  );
 
   // ===== 10. 한 번에 찾기 =====
   await main("__jj.panel.openTab('today'); 1");

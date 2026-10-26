@@ -189,22 +189,28 @@ small {
 
 .tips {
   display: grid;
+  font-size: 13px;
+  line-height: 1.3;
   /* 왼쪽 칸(동작, 단축키)은 절반 남짓까지만. 좁거나 단축키가 길면 줄을 바꿔 설명 칸이 한 단어씩 접히지 않게 */
   grid-template-columns: fit-content(55%) 1fr;
   /* 줄이 열 개 남짓이라 창(560)에 스크롤 없이 들어가게 촘촘히 (배터리 줄이 늘어 넘쳤다) */
-  gap: 6px 14px;
+  gap: 3px 12px;
   align-items: baseline;
   margin: 8px 0 0;
 }
 
 .tips dt {
   font-weight: 600;
-  line-height: 1.75;
+  line-height: 1.3;
 }
 
 .tips dd {
   margin: 0;
   color: var(--muted);
+}
+
+.action-row + .hint {
+  margin-top: 8px;
 }
 
 kbd {

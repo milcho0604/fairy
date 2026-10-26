@@ -52,11 +52,14 @@ try {
   await sleep(100);
   await settings.ev(`([...document.querySelectorAll('button')].find(b => b.textContent.includes(${JSON.stringify(lang === 'ko' ? '한 번 더' : 'Click once more')}))?.click())`);
   await until(async () => (await main('__jj.settings.get().chatter')) === 'normal', 'reset settings');
-  const state = await main('({chatter:__jj.settings.get().chatter,wander:__jj.settings.get().wander,name:__jj.settings.get().petName,ics:__jj.settings.get().icsUrl})');
-  assert.deepEqual(state, { chatter: 'normal', wander: true, name: 'Mochi', ics: 'https://example.test/calendar.ics' });
+  const state = await main('({chatter:__jj.settings.get().chatter,wander:__jj.settings.get().wander,name:__jj.settings.get().petName,ics:__jj.settings.get().icsUrl,lang:__jj.settings.get().lang})');
+  assert.deepEqual(state, { chatter: 'normal', wander: true, name: 'Mochi', ics: 'https://example.test/calendar.ics', lang: 'auto' });
   await settings.shot(`${lang}-settings-reset-confirmed`);
   console.log('PASS settings reset defaults and preserves fairy identity/calendar link');
 
+  // 초기화는 기본 언어(auto)로 돌아가므로, 만들기 안내를 검사하기 전에 원하는 언어를 다시 고른다.
+  await main(`__jj.settings.set({lang:${JSON.stringify(lang)}}); 1`);
+  await until(async () => (await main('__jj.settings.get().lang')) === lang, 'maker language');
   await settings.ev('window.jjakkungSettings.openMaker()');
   const maker = await page('maker');
   await until(() => maker.ev('!!document.querySelector(".maker")'), 'maker');
@@ -64,7 +67,10 @@ try {
   const details = await maker.ev(`(() => ({title:document.querySelector('header strong').textContent, tabs:[...document.querySelectorAll('.how button')].map(b=>({text:b.textContent.trim(),disabled:b.disabled})), hint:document.querySelector('.how .hint')?.textContent.trim()}))()`);
   assert.ok(details.tabs.length === 3, JSON.stringify(details));
   assert.ok(details.tabs.some((t) => t.disabled) === (details.hint !== undefined), JSON.stringify(details));
-  if (details.hint) assert.ok(details.hint.length > 10);
+  assert.equal(details.title, lang === 'ko' ? '사진으로 페어리 만들기' : 'Make a fairy from a photo', JSON.stringify(details));
+  assert.equal(details.tabs[0].text, lang === 'ko' ? '사진 그대로' : 'Photo as is', JSON.stringify(details));
+  if (details.hint)
+    assert.match(details.hint, lang === 'ko' ? /Claude, Codex, Cursor, Gemini/ : /connect Claude, Codex, Cursor or Gemini/i);
   await maker.shot(`${lang}-maker-method-help`);
   console.log('PASS maker title/methods and unavailable AI explanation', JSON.stringify(details));
 } catch (e) {
