@@ -80,7 +80,7 @@ export function EventTab({
   useKeepScroll(calendar ? calScroll : listScroll, calendar ? 'eventCal' : 'eventList');
   // 방금 넣은 일정이 다른 일정과 시간이 겹친다 (넣기는 했다. 다음 글을 적으면 지운다)
   const [clash, setClash] = useState('');
-  // 반복 말("매주 월요일 10시 스탠드업")은 일정으로 못 넣는다: 같은 글을 반복 할 일로 넣는 단추를 보인다
+  // 반복 문장을 시각 일정으로 읽지 못했으면 같은 글을 반복 할 일로 바꿀 수 있게 한다.
   const [asTodo, setAsTodo] = useState(false);
   const now = Date.now();
 
@@ -365,6 +365,14 @@ export function EventRow({
             }}
           >
             {e.title}
+            {e.repeat && (
+              <small
+                className="repeat-badge"
+                title={t('panel.todo.repeatTitle', { label: t(`panel.repeat.${e.repeat}`) })}
+              >
+                {t(`panel.repeat.${e.repeat}`)}
+              </small>
+            )}
             {showDay && (!span || span.last === span.first) && (
               <small className="pin-day"> {dayHeading(localDay(e.startAt), today)}</small>
             )}

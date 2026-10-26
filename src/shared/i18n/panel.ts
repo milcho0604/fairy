@@ -58,7 +58,7 @@ export const ko = {
       : v.todos === 0
         ? `일정 ${v.events}개 넣었어`
         : `할 일 ${v.todos}개, 일정 ${v.events}개 넣었어`,
-  'panel.event.noRepeat': '일정은 아직 반복이 안 돼. 같은 글을 반복 할 일로 넣을까?',
+  'panel.event.noRepeat': '반복 일정은 시각을 함께 적어 줘. 예: 매주 월요일 오전 10시 회의',
   'panel.noteAi.summary': '아래 메모를 세 줄 안으로 요약해 줘.',
   'panel.noteAi.todos':
     "아래 메모를 바로 할 수 있는 할 일 목록으로 쪼개 줘. 한 줄에 하나씩 '- '로 시작하고 설명은 붙이지 마.",
@@ -285,7 +285,7 @@ export const en: Translation<typeof ko> = {
       : v.todos === 0
         ? `Added ${plural(v.events, 'event')}`
         : `Added ${plural(v.todos, 'to-do')} and ${plural(v.events, 'event')}`,
-  'panel.event.noRepeat': "Events can't repeat yet. Add the same text as a repeating to-do?",
+  'panel.event.noRepeat': 'Add a time to the repeating event, e.g. “weekly Monday 10am meeting”.',
   'panel.noteAi.summary': 'Summarize the note below in three lines or fewer.',
   'panel.noteAi.todos':
     "Break the note below into a list of to-dos I can start right away. One per line, each starting with '- ', no explanations.",

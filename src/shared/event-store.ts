@@ -44,11 +44,14 @@ export interface CalEvent {
   allDay: boolean;
   /** 고정한 시각 (13판, shared/pin.ts). 고정 안 했거나 값이 깨졌으면 null. 구글 보내기와 .ics 내보내기에는 없다 */
   pinnedAt: number | null;
+  /** 직접 입력한 반복 일정의 반복 방식. */
+  repeat?: EventRepeat;
   /** 구글에서 읽어 온 일정이 든 캘린더 이름과 색 (패널이 붙인다. 저장 파일에는 캘린더 id 만 있다) */
   gcalCal?: { name: string; color: string | null };
 }
 
 export type EventSource = 'local' | 'ics' | 'google';
+export type EventRepeat = 'daily' | 'weekdays' | 'weekly';
 
 /**
  * 사용자가 따로 켜지 않아도 AI 에 보내도 되는 일정인지. 구글 API 로 읽어 온 일정(구글 사용자 데이터)은 기본으로 AI 대화,
@@ -72,10 +75,13 @@ interface Row {
   start_at: number;
   end_at: number | null;
   remind_min: number;
+  created_at?: number;
   notified_at: number | null;
   source?: string;
   all_day?: number;
   pinned_at?: unknown;
+  repeat_kind?: unknown;
+  repeat_series?: number | null;
 }
 
 const toEvent = (r: Row, marks: readonly { before: number; notifiedAt: number | null }[]): CalEvent => {
@@ -92,8 +98,12 @@ const toEvent = (r: Row, marks: readonly { before: number; notifiedAt: number | 
     source: r.source === 'ics' || r.source === 'google' ? r.source : 'local',
     allDay: Number(r.all_day ?? 0) === 1,
     pinnedAt: pinAt(r.pinned_at),
+    ...(isEventRepeat(r.repeat_kind) ? { repeat: r.repeat_kind } : {}),
   };
 };
+
+const isEventRepeat = (value: unknown): value is EventRepeat =>
+  value === 'daily' || value === 'weekdays' || value === 'weekly';
 
 /** 일정의 알림 기준: 종일이면 첫날, 아니면 시작 시각 */
 export const eventAnchor = (e: { startAt: number; allDay: boolean }): Anchor =>
@@ -211,6 +221,7 @@ export class EventStore {
       reminds?: readonly number[];
       remindMin?: number;
       allDay?: boolean;
+      repeat?: EventRepeat;
     },
     now: number,
   ): CalEvent {
@@ -220,7 +231,7 @@ export class EventStore {
     const allDay = input.allDay === true;
     const r = this.#db
       .prepare(
-        'insert into event (title, start_at, end_at, remind_min, created_at, all_day) values (?, ?, ?, ?, ?, ?)',
+        'insert into event (title, start_at, end_at, remind_min, created_at, all_day, repeat_kind) values (?, ?, ?, ?, ?, ?, ?)',
       )
       .run(
         cutText(title, 200),
@@ -229,15 +240,89 @@ export class EventStore {
         clampRemind(input.remindMin ?? (allDay ? 0 : DEFAULT_REMIND_MIN)),
         now,
         allDay ? 1 : 0,
+        input.repeat ?? null,
       );
     const id = Number(r.lastInsertRowid);
+    if (input.repeat) this.#db.prepare('update event set repeat_series = ? where id = ?').run(id, id);
     const reminds = input.reminds
       ? normalizeReminds(input.reminds, allDay)
       : input.remindMin !== undefined
         ? fromLegacy(input.remindMin, allDay)
         : defaultReminds(allDay);
     this.#reminders.set(id, reminds, eventAnchor({ startAt: input.startAt, allDay }), { now, reset: true });
+    if (input.repeat) this.#extendSeries(id, now + 365 * DAY_MS);
     return this.get(id) as CalEvent;
+  }
+
+  /** 다음 해까지 반복 회차를 실제 일정으로 만들어 알림과 달력에서 기존 일정처럼 읽힌다. */
+  #extendSeries(seriesId: number, through: number): void {
+    const initial = this.#db.prepare('select * from event where id = ?').get(seriesId) as Row | undefined;
+    if (!initial || !isEventRepeat(initial.repeat_kind)) return;
+    const latest = this.#db
+      .prepare('select * from event where repeat_series = ? order by start_at desc limit 1')
+      .get(seriesId) as Row | undefined;
+    if (!latest) return;
+    const repeat = initial.repeat_kind;
+    let interval = Number(latest.start_at);
+    const clock = new Date(interval);
+    const reminds =
+      this.#reminders
+        .many([seriesId])
+        .get(seriesId)
+        ?.map((mark) => mark.before) ?? [];
+    while (interval <= through) {
+      let day = dayOf(interval);
+      if (repeat === 'weekly') day = plusDays(day, 7);
+      else {
+        day = plusDays(day, 1);
+        if (repeat === 'weekdays') {
+          while ([0, 6].includes(new Date(`${day}T00:00:00Z`).getUTCDay())) day = plusDays(day, 1);
+        }
+      }
+      const [year, month, date] = day.split('-').map(Number);
+      const next = new Date(
+        year ?? 2000,
+        (month ?? 1) - 1,
+        date ?? 1,
+        clock.getHours(),
+        clock.getMinutes(),
+        clock.getSeconds(),
+        clock.getMilliseconds(),
+      );
+      const startAt = next.getTime();
+      if (startAt > through) break;
+      const duration = latest.end_at === null ? null : Number(latest.end_at) - interval;
+      const inserted = this.#db
+        .prepare(
+          'insert into event (title, start_at, end_at, remind_min, created_at, all_day, repeat_kind, repeat_series) values (?, ?, ?, ?, ?, 0, ?, ?)',
+        )
+        .run(
+          latest.title,
+          startAt,
+          duration === null ? null : startAt + duration,
+          latest.remind_min,
+          Number(latest.created_at),
+          repeat,
+          seriesId,
+        );
+      this.#reminders.set(
+        Number(inserted.lastInsertRowid),
+        reminds,
+        eventAnchor({ startAt, allDay: false }),
+        { reset: true },
+      );
+      interval = startAt;
+      clock.setTime(startAt);
+    }
+  }
+
+  #extendRepeats(through: number): void {
+    const rows = this.#db
+      .prepare(
+        'select distinct repeat_series from event where repeat_series is not null and repeat_kind is not null',
+      )
+      .all() as { repeat_series: number }[];
+    for (const row of rows) this.#extendSeries(Number(row.repeat_series), through);
   }
 
   get(id: number): CalEvent | undefined {
@@ -252,6 +337,7 @@ export class EventStore {
    * (어제부터 3일 여행이 오늘 목록에 나오게). 그런 것은 시작이 이르니 맨 앞에 온다
    */
   between(from: number, to: number): CalEvent[] {
+    this.#extendRepeats(Math.max(to, Date.now() + 365 * DAY_MS));
     return this.#withReminds(
       this.#db
         .prepare(
@@ -265,10 +351,27 @@ export class EventStore {
 
   /** 찾기용: 지우지 않은 모든 일정의 제목과 시각 (알림 줄은 읽지 않는다) */
   titles(): { id: number; title: string; startAt: number; endAt: number | null; allDay: boolean }[] {
+    const now = Date.now();
+    this.#extendRepeats(now + 365 * DAY_MS);
     return (
       this.#db
-        .prepare('select id, title, start_at, end_at, all_day from event where deleted_at is null')
-        .all() as { id: number; title: string; start_at: number; end_at: number | null; all_day: number }[]
+        .prepare(
+          `select id, title, start_at, end_at, all_day from (
+             select e.*, row_number() over (
+               partition by coalesce(e.repeat_series, e.id)
+               order by case when e.start_at >= ? then 0 else 1 end,
+                        case when e.start_at >= ? then e.start_at else -e.start_at end
+             ) as occurrence
+             from event e where e.deleted_at is null
+           ) where occurrence = 1`,
+        )
+        .all(now, now) as {
+        id: number;
+        title: string;
+        start_at: number;
+        end_at: number | null;
+        all_day: number;
+      }[]
     ).map((r) => ({
       id: Number(r.id),
       title: r.title,
@@ -390,6 +493,7 @@ export class EventStore {
    * 컴퓨터가 꺼져 있던 사이 여러 알림이 지났어도 일정마다 한 번 (planReminders). 알림 없는 종일 일정은 아침 브리핑에 맡긴다
    */
   dueReminders(now: number): CalEvent[] {
+    this.#extendRepeats(now + 365 * DAY_MS);
     const rows = this.#remindRows(now);
     // 알림 표시는 한 번에 읽는다 (예전에는 일정마다 다시 읽었다). 쓸모없어진 알림은 넘긴 것으로 적는다 (sweep)
     const marks = this.#reminders.many(rows.map((r) => Number(r.id)));
@@ -404,6 +508,7 @@ export class EventStore {
 
   /** dueReminders 가 볼 일정 (아직 말하지 않은 알림이 있는 것) */
   #remindRows(now: number): Row[] {
+    this.#extendRepeats(now + 365 * DAY_MS);
     return this.#db
       .prepare(
         `select * from event e where deleted_at is null and start_at > ? and start_at <= ?

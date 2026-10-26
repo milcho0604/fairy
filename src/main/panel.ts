@@ -671,15 +671,26 @@ export function createPanel(o: PanelOptions) {
       const { rest: text, remind } = splitRemind(line);
       // 일정 탭에서는 날짜만 적어도 된다: "내일 제주도 여행"은 종일, "10/10-10/12 제주도"는 여러 날 종일.
       // (빠른 입력은 위 PANEL.add 처럼 시각이 있어야 일정이다. 거기서 날짜만 있으면 할 일 마감)
-      // 반복 일정은 아직 없다: 한 번짜리로 넣지 않고 할 일 탭으로 안내한다
-      if (parseTodoLine(text, base, minute).repeat)
-        return { ok: false, error: t('panel.event.noRepeat'), asTodo: true };
+      const repeatTodo = parseTodoLine(text, base, minute);
+      const repeat =
+        repeatTodo.repeat === 'daily' || repeatTodo.repeat === 'weekdays' || repeatTodo.repeat === 'weekly'
+          ? repeatTodo.repeat
+          : undefined;
       // 달력에서 고른 날이면 날짜도 시각도 없는 글("장보기")은 그날 종일. "오늘" 을 붙여 읽어
       // 시각처럼 보이는 말("25시 회의")은 종일로 넣지 않고 되묻는 규칙을 그대로 쓴다
+      const eventText = repeat
+        ? `${String(Math.floor((repeatTodo.dueMin ?? 0) / 60)).padStart(2, '0')}:${String((repeatTodo.dueMin ?? 0) % 60).padStart(2, '0')} ${repeatTodo.title}`
+        : text;
+      const eventBase = repeat ? (repeatTodo.due ?? base) : base;
       const ev =
-        parseEventInput(text, base, minute) ??
-        (picked ? parseEventInput(`오늘 ${text}`, base, minute) : null);
-      if (!ev) return { ok: false, error: t('panel.event.needTime') };
+        parseEventInput(eventText, eventBase, repeat ? 0 : minute) ??
+        (!repeat && picked ? parseEventInput(`오늘 ${text}`, base, minute) : null);
+      if (!ev || (repeat && 'allDay' in ev) || (repeatTodo.repeat && !repeat))
+        return {
+          ok: false,
+          error: repeatTodo.repeat ? t('panel.event.noRepeat') : t('panel.event.needTime'),
+          asTodo: !!repeatTodo.repeat,
+        };
       let event: ReturnType<EventStore['add']>;
       if ('allDay' in ev) {
         const times = allDayTimes(ev.day, ev.lastDay);
@@ -700,6 +711,7 @@ export function createPanel(o: PanelOptions) {
             title: ev.title,
             startAt,
             endAt: ev.durationMin ? startAt + ev.durationMin * 60_000 : null,
+            ...(repeat ? { repeat } : {}),
             ...(reminds ? { reminds } : {}),
           },
           now,

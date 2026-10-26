@@ -245,6 +245,12 @@ export const MIGRATIONS: readonly string[] = [
   `
   alter table todo add column sort_ord integer;
   `,
+  // 16판: 일정 반복 (#146). 반복 회차는 일정 표에 미리 만들어 알림·달력·검색에서 일반 일정처럼 다룬다.
+  `
+  alter table event add column repeat_kind text;
+  alter table event add column repeat_series integer;
+  create index event_repeat_series on event(repeat_series, start_at) where repeat_series is not null;
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
