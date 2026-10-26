@@ -73,6 +73,17 @@ try {
     assert.match(details.hint, lang === 'ko' ? /Claude, Codex, Cursor, Gemini/ : /connect Claude, Codex, Cursor or Gemini/i);
   await maker.shot(`${lang}-maker-method-help`);
   console.log('PASS maker title/methods and unavailable AI explanation', JSON.stringify(details));
+
+  // 언어를 바꿔도 채팅 창의 펫 이름이 들어간 제목을 유지한다.
+  await main('__jj.chat.open(); 1');
+  const chat = await page('chat');
+  await until(async () => (await chat.ev('document.title')).includes('Mochi'), 'chat title');
+  const nextLang = lang === 'ko' ? 'en' : 'ko';
+  await main(`__jj.settings.set({lang:${JSON.stringify(nextLang)}}); 1`);
+  await until(async () => (await chat.ev('document.documentElement.lang')) === nextLang, 'chat language update');
+  const chatTitle = await chat.ev('document.title');
+  assert.ok(chatTitle.includes('Mochi'), `pet name missing from live-updated title: ${chatTitle}`);
+  console.log('PASS chat window title keeps the pet name after a language change', chatTitle);
 } catch (e) {
   console.error(e);
   code = 1;

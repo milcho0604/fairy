@@ -79,6 +79,7 @@ function setupCanvas(): [HTMLCanvasElement, CanvasRenderingContext2D] {
   return [el, context];
 }
 const [canvas, cpuCtx] = setupCanvas();
+window.jjakkungLanguage.onChanged(() => canvas.setAttribute('aria-label', t('common.appName')));
 
 /**
  * 입체 펫은 GPU 쪽 캔버스(#pet 바로 밑, 마우스는 #pet 이 받는다)에 그린다. 위 2D 캔버스는 CPU 쪽이라 WebGL 그림을

@@ -113,7 +113,7 @@ const FIT_ERROR: Record<FitWhy, I18nKey> = {
 };
 
 export function SpriteMakerApp() {
-  useLanguageUpdates();
+  const language = useLanguageUpdates();
   const [src, setSrc] = useState<SpriteSource | undefined>();
   const [states, setStates] = useState<States>({});
   const [strips, setStrips] = useState<Partial<Record<SpriteRowId, string>>>({});
@@ -139,7 +139,11 @@ export function SpriteMakerApp() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    if (document.documentElement.lang !== language) return;
     document.title = t('sprites.title');
+  }, [language]);
+
+  useEffect(() => {
     void bridge.spriteSource().then((s) => setSrc(s));
   }, []);
 

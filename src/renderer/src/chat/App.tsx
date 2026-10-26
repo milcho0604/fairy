@@ -50,10 +50,15 @@ const bridge = window.jjakkungChat;
 const MAX_IMAGES = 4;
 
 export function App() {
-  useLanguageUpdates();
+  const language = useLanguageUpdates();
   const [petName, setPetName] = useState(t('chat.defaultPetName'));
   const [state, setState] = useState<ChatState>();
   const [status, setStatus] = useState<Partial<Record<AiProvider, AiStatus>>>({});
+
+  useEffect(() => {
+    if (document.documentElement.lang !== language) return;
+    document.title = t('chat.title', { name: petName });
+  }, [petName, language]);
   const [checking, setChecking] = useState(false);
   const [text, setText] = useState('');
   const [images, setImages] = useState<OutgoingImage[]>([]);
