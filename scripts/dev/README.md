@@ -77,3 +77,5 @@ OUT=/tmp/jj-shots PHOTO=<사진> node scripts/dev/maker.mjs  # 사진으로 페�
 - `OUT=/tmp/fairy-small LANG_UNDER_TEST=ko node scripts/dev/small-usability.mjs`: 빠른 입력 초안 복원·등록 후 비우기, 반복 완료의 실제 다음 회차 날짜, 설정 360/760/1280px 가운데 정렬 확인 (`en`도 지원).
 
 - `OUT=/tmp/fairy-menu LANG_UNDER_TEST=ko node scripts/dev/pet-menu.mjs`: #148 우클릭 메뉴 순서·더 보기·끝내기 분리 및 빠른 입력·새 메모·패널 연결 확인. 네이티브 메뉴는 표시하지 않고 실제 Electron 메뉴 생성 후 popup만 막는다 (`en`도 지원).
+
+- `OUT=/tmp/fairy-chat-focus LANG_UNDER_TEST=ko node scripts/dev/chat-focus.mjs`: #144 채팅을 펫 옆으로 되돌리기·크기와 위치 기억, #146 5~120분 직접 입력·유효성·선택 저장을 격리 Electron/CDP로 확인 (`en` 지원).

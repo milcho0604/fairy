@@ -180,6 +180,7 @@ export interface OverlayBridge {
 
 export const CHAT = {
   snapshot: 'chat:snapshot',
+  nearPet: 'chat:near-pet',
   status: 'chat:status',
   send: 'chat:send',
   cancel: 'chat:cancel',
@@ -582,6 +583,7 @@ export interface ThreadList {
 }
 
 export interface ChatBridge {
+  nearPet(): void;
   platform: NodeJS.Platform;
   snapshot(): Promise<ChatSnapshot>;
   status(refresh: boolean): Promise<AiStatus[]>;

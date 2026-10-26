@@ -167,6 +167,7 @@ if (
 
 if (kind === 'chat') {
   const chat: ChatBridge = {
+    nearPet: () => ipcRenderer.send(CHAT.nearPet),
     platform: process.platform,
     snapshot: () => ipcRenderer.invoke(CHAT.snapshot),
     status: (refresh: boolean) => ipcRenderer.invoke(CHAT.status, refresh),

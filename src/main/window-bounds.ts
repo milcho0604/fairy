@@ -13,6 +13,13 @@ import { readJson, writeJson } from './store.ts';
 // 다시 열 때 지금 화면에 맞춰 쓴다 (모니터를 뺐으면 남은 화면 안으로). 패널은 크기만 여기에 적고 자리는 펫 기준 거리로
 // 따로 기억한다(panel-place.ts)
 
+const resetters = new WeakMap<BaseWindow, (bounds: Rectangle) => void>();
+
+/** 위치 기억만 해제하고 기본 배치로 돌아간다. 크기는 유지한다. */
+export function resetRememberedPlacement(win: BaseWindow, bounds: Rectangle): void {
+  resetters.get(win)?.(bounds);
+}
+
 const FILE = 'window-bounds';
 
 export type WindowKey = 'chat' | 'settings' | 'maker' | 'knows' | 'panel' | 'home';
@@ -57,13 +64,23 @@ export function saveBounds(win: BaseWindow, key: WindowKey, withPlace: boolean):
  */
 export function rememberBounds(win: BaseWindow, key: WindowKey, placed: boolean): void {
   let keepPlace = placed;
+  let defaultPlace: { x: number; y: number } | undefined;
   const save = () => saveBounds(win, key, keepPlace);
   win.on('moved', () => {
+    const b = win.getNormalBounds();
+    if (defaultPlace && b.x === defaultPlace.x && b.y === defaultPlace.y) return;
+    defaultPlace = undefined;
     keepPlace = true;
     save();
   });
   win.on('resized', save);
   win.on('close', save);
+  resetters.set(win, (bounds) => {
+    keepPlace = false;
+    defaultPlace = bounds;
+    win.setBounds(bounds);
+    save();
+  });
 }
 
 export interface RememberedWindow<O = BrowserWindowConstructorOptions> {

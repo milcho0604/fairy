@@ -256,8 +256,10 @@ test('집중 길이와 커서 바라보기: 옛 설정 파일엔 없어서 기�
   assert.equal(old.focusMin, 25);
   assert.equal(old.lookAtCursor, true);
   assert.equal(parseSettings({ focusMin: 50 }).focusMin, 50);
-  assert.equal(applyPatch({ ...DEFAULT_SETTINGS, focusMin: 15 }, { focusMin: 40 }).focusMin, 15);
+  assert.equal(applyPatch({ ...DEFAULT_SETTINGS, focusMin: 15 }, { focusMin: 40 }).focusMin, 40);
   assert.equal(applyPatch(DEFAULT_SETTINGS, { focusMin: '50' }).focusMin, 25);
+  for (const focusMin of [5, 17, 120]) assert.equal(parseSettings({ focusMin }).focusMin, focusMin);
+  for (const focusMin of [4, 121, 5.5]) assert.equal(applyPatch(DEFAULT_SETTINGS, { focusMin }).focusMin, 25);
   assert.equal(applyPatch(DEFAULT_SETTINGS, { lookAtCursor: false }).lookAtCursor, false);
   assert.equal(applyPatch(DEFAULT_SETTINGS, { lookAtCursor: 'no' }).lookAtCursor, true);
 });

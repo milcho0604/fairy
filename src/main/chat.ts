@@ -77,7 +77,7 @@ import { langArg } from './lang.ts';
 import { jjMcpLaunch } from './mcp-launch.ts';
 import { openLink } from './open-link.ts';
 import { readJson, writeJson } from './store.ts';
-import { openRemembered } from './window-bounds.ts';
+import { openRemembered, resetRememberedPlacement } from './window-bounds.ts';
 
 const CHAT_SIZE = { width: 400, height: 600 };
 const CHAT_MIN = { width: 320, height: 360 };
@@ -109,6 +109,7 @@ export interface ChatHost {
 }
 
 export interface ChatOptions {
+  petBounds: () => Rectangle;
   /** 모델 목록 (v2, 하루 한 번 받아 바뀐다) */
   catalog: () => Catalog;
   /** AI 마다 고른 모델 (설정) */
@@ -831,6 +832,19 @@ export function createChat(o: ChatOptions) {
     return true;
   });
   // 답 속 주소는 기본 브라우저로. http, https 만 (safeExternalUrl), 창 안에서는 열지 않는다
+  ipcMain.on(CHAT.nearPet, (e) => {
+    if (!win || win.isDestroyed() || e.sender !== win.webContents) return;
+    const target = win;
+    const move = () => {
+      if (target.isDestroyed()) return;
+      if (target.isMaximized()) target.unmaximize();
+      resetRememberedPlacement(target, placeNear(o.petBounds(), target.getNormalBounds()));
+    };
+    if (target.isFullScreen()) {
+      target.once('leave-full-screen', move);
+      target.setFullScreen(false);
+    } else move();
+  });
   ipcMain.on(CHAT.openLink, (e, raw: unknown) => {
     if (fromChat(e)) openLink(raw, log);
   });

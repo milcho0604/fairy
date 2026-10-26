@@ -273,6 +273,7 @@ ready
     // AI 대화권 (#100): 서버 계정(아래 createServer)이 생긴 뒤 붙는다. 그 전에는 쓸 수 없음으로 본다
     let serverCore: ServerCore | undefined;
     const chat = createChat({
+      petBounds: () => pet.bounds(),
       ticket: {
         available: () => !!serverCore?.aiAvailable(),
         tickets: () => serverCore?.tickets() ?? null,

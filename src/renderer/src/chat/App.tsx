@@ -545,6 +545,26 @@ export function App() {
             {petName}
           </strong>
         </div>
+        {location.hash !== '#embed' && (
+          <button
+            type="button"
+            className="ghost icon-btn near-pet"
+            title={t('chat.nearPet')}
+            aria-label={t('chat.nearPet')}
+            onClick={() => bridge.nearPet()}
+          >
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <path
+                d="M2 8h12M6 4 2 8l4 4M10 4l4 4-4 4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        )}
         <ProviderPicker
           providers={providers}
           status={status}
