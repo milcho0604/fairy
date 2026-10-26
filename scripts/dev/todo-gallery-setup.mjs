@@ -39,8 +39,26 @@ let code=0;
 try{
  await until(async()=>(await fetch(`http://127.0.0.1:${process.env.JJ_INSPECT_PORT}/json/list`)).ok,'inspector');
  await until(()=>main('typeof __jj!=="undefined"'),'__jj');
+ await main('__jj.panel.openTab("today"); 1');
+ let p=await page('panel');
+ await until(()=>p.ev('!!document.querySelector(".plan-card.is-empty button")'),'empty plan card');
+ await check('빈 할 일 상태에서 아침 계획 시트가 자동으로 덮지 않음',async()=>assert.equal(await p.ev('!!document.querySelector(".plan-sheet")'),false));
+ await p.ev('document.querySelector(".plan-card.is-empty button").click()');
+ await until(()=>p.ev('!!document.querySelector(".plan-first-todo input")'),'inline first todo');
+ const firstTodo=lang==='ko'?'아침에 할 일 적기':'Write a morning to-do';
+ await p.ev(`(()=>{const e=document.querySelector('.plan-first-todo input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(firstTodo)});e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+ await p.ev('document.querySelector(".plan-first-todo button").click()');
+ let firstId;await until(async()=>{firstId=await main(`__jj.store.list(Date.now()).open.find(x=>x.title===${JSON.stringify(firstTodo)})?.id`);return !!firstId;},'first todo created');
+ await until(()=>p.ev('!document.querySelector(".plan-sheet .empty-line")&&document.querySelectorAll(".plan-cands li").length===1'),'first todo available for plan');
+ await check('아침 계획 입력칸에서 바로 할 일을 넣고 오늘 계획 후보로 표시',async()=>{assert.equal(await p.ev('document.querySelector(".plan-cands li .plan-title").textContent.trim()'),firstTodo);assert.equal(await p.ev('document.querySelector(".plan-count").textContent.trim()'),'1/3');});
+ await sleep(400);
+ await p.shot(`${lang}-morning-plan-first-todo`);
+ await p.ev('document.querySelector(".plan-close").click()');
+ await main(`__jj.store.remove(${firstId},Date.now()); __jj.panel.openTab("todo"); 1`);
+ await until(async()=>!(await main(`__jj.store.list(Date.now()).open.some(x=>x.id===${firstId})`)),'first task removed from test data');
  await main('for(let i=0;i<235;i++)__jj.store.add({title:`Seed ${i} #work`},Date.now()-100000+i); __jj.panel.openTab("todo"); 1');
- let p=await page('panel');await until(()=>p.ev('document.querySelectorAll("li.todo").length===100'),'first page');
+ await main('__jj.panel.closePanel(); __jj.panel.openTab("todo"); 1');await sleep(350);p=await page('panel');
+ await until(()=>p.ev('document.querySelectorAll("li.todo").length===100'),'first page');
  const submitted=[];
  async function add(title,tag){
   await p.ev(`(()=>{const e=document.querySelector('.todo-main .add input');e.focus();Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(title)});e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
@@ -51,7 +69,7 @@ try{
   if(tag==='hidden')return id;
   await until(()=>p.ev(`document.querySelector('li.todo[data-id="${id}"]')?.classList.contains('just-added')`),'highlight');
   const b=await p.ev(`(()=>{const e=document.querySelector('li.todo[data-id="${id}"]'),r=e.getBoundingClientRect(),u=e.parentElement.getBoundingClientRect();return {top:r.top,bottom:r.bottom,clipTop:Math.max(0,u.top),clipBottom:Math.min(innerHeight,u.bottom),focus:document.activeElement===document.querySelector('.todo-main .add input')};})()`);
-  await check(`${tag}: 새 줄을 그려 화면 안으로 이동`,async()=>{assert.ok(b.top>=b.clipTop-1&&b.bottom<=b.clipBottom+1,JSON.stringify(b));assert.equal(b.focus,true);});
+  await check(`${tag}: 새 줄을 그려 화면 안으로 이동`,async()=>{assert.ok(b.top>=b.clipTop-1&&b.bottom<=b.clipBottom+1,JSON.stringify(b));assert.equal(b.focus,true,JSON.stringify(b));});
   await p.shot(`${lang}-${tag}-new-todo`);
   await sleep(1100);await check(`${tag}: 강조는 잠깐 뒤 사라짐`,async()=>assert.equal(await p.ev(`document.querySelector('li.todo[data-id="${id}"]')?.classList.contains('just-added')`),false));
   return id;

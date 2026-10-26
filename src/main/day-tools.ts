@@ -35,8 +35,8 @@ import {
   planCandidates,
   planRange,
   polishPlanPrompt,
-  shouldAutoOpen,
   shouldNudge,
+  shouldPresentPlan,
   suggestPicks,
 } from '../shared/day-plan.ts';
 import { aiEventFilter, type EventStore, timeLabel } from '../shared/event-store.ts';
@@ -166,8 +166,7 @@ export function createDayTools(o: DayToolsOptions) {
     });
     const { events, gaps } = dayGaps(now);
     const plan = file.plan?.day === today ? file.plan : undefined;
-    const autoOpen =
-      auto && (pendingOpen || shouldAutoOpen(file, today, minuteOfDay(now), candidates.length));
+    const autoOpen = auto && shouldPresentPlan(file, today, minuteOfDay(now), candidates.length, pendingOpen);
     if (auto) pendingOpen = false;
     const ai = o.aiLocked() ? undefined : o.aiLabel();
     return {

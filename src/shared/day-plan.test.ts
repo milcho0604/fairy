@@ -13,6 +13,7 @@ import {
   polishPlanPrompt,
   shouldAutoOpen,
   shouldNudge,
+  shouldPresentPlan,
   suggestPicks,
 } from './day-plan.ts';
 
@@ -170,6 +171,8 @@ test('고를 할 일이 없으면 저절로 띄우지도, 펫이 묻지도 않�
   assert.equal(shouldNudge(f, today, 9 * 60, 0), false);
   assert.equal(shouldAutoOpen(f, today, 9 * 60, 2), true);
   assert.equal(shouldNudge(f, today, 9 * 60, 1), true);
+  assert.equal(shouldPresentPlan(f, today, 9 * 60, 0, true), false);
+  assert.equal(shouldPresentPlan(f, today, 9 * 60, 1, true), true);
 });
 
 test('AI 다듬기: 글에 할 일 id 와 빈 시간, 답은 아는 id 만 셋까지', () => {

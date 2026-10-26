@@ -368,6 +368,31 @@
   color: var(--muted);
 }
 
+.plan-empty-add {
+  padding: 8px 10px 10px;
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.plan-first-todo {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.plan-first-todo input {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+}
+
 .plan-body h3 {
   display: flex;
   align-items: baseline;

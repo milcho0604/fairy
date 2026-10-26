@@ -133,6 +133,17 @@ export function shouldAutoOpen(f: PlanFile, today: string, minute: number, candi
   return f.plan?.day !== today && f.shownDay !== today;
 }
 
+/** 첫 열기나 펫의 아침 알림으로 띄울 때도 후보 할 일이 없으면 덮는 화면을 열지 않는다. */
+export function shouldPresentPlan(
+  f: PlanFile,
+  today: string,
+  minute: number,
+  candidates: number,
+  pendingOpen: boolean,
+): boolean {
+  return candidates > 0 && (pendingOpen || shouldAutoOpen(f, today, minute, candidates));
+}
+
 /** 펫이 아침에 한 번 물어볼지 (같은 조건에 펫이 아직 안 물었을 때) */
 export function shouldNudge(f: PlanFile, today: string, minute: number, candidates = 1): boolean {
   return shouldAutoOpen({ ...f, shownDay: undefined }, today, minute, candidates) && f.nudgedDay !== today;

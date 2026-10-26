@@ -100,6 +100,7 @@ export const ko = {
   'settings.sysMonitorWin': '알림 영역에 컴퓨터 상태',
   'settings.sysMonitorWinHint':
     '알림 영역 아이콘에 마우스를 올리면 CPU 사용률이 보이고, 한가하면 지금 페어리가 앉아서 졸고, 바쁠수록 걷다가 달리고 땀 흘리며 질주해. 메뉴를 열면 메모리, 디스크, 그래픽도 보여. 화면을 잠그거나 자리를 비우면 쉬고, 배터리나 발표 중에는 페어리가 멈춰 서.',
+  'settings.sysMonitorResting': '배터리로 사용 중이라 페어리가 멈춰 있어. 컴퓨터 상태 표시는 계속 보여.',
 
   // 친구의 페어리 초대하기
   'settings.friends': '친구의 페어리 초대하기',
@@ -567,6 +568,8 @@ export const en: Translation<typeof ko> = {
   'settings.sysMonitorWin': 'Computer status in the notification area',
   'settings.sysMonitorWinHint':
     'Hover the notification area icon to see CPU use, and your fairy naps while the computer is idle, then walks, runs and sprints with a sweat the busier it gets. Open the menu for memory, disk and graphics. It rests while the screen is locked or you are away, and your fairy stands still on battery or while presenting.',
+  'settings.sysMonitorResting':
+    'Your fairy stands still while the computer runs on battery. Computer status remains visible.',
 
   'settings.friends': "Invite a friend's fairy",
   'settings.friendsChanged': 'Friend fairies updated',
