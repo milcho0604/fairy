@@ -12,7 +12,11 @@ const size = document.getElementById('size') as HTMLSpanElement;
 const hint = document.getElementById('hint') as HTMLParagraphElement;
 
 const name = new URLSearchParams(location.search).get('name') ?? t('common.appName');
-hint.textContent = t('chat.look.hint', { name });
+const updateHint = () => {
+  hint.textContent = t('chat.look.hint', { name });
+};
+updateHint();
+window.jjakkungLanguage.onChanged(updateHint);
 
 let start: Point | undefined;
 let done = false;

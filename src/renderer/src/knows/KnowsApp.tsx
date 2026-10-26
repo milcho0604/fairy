@@ -60,7 +60,7 @@ const enter = (e: KeyboardEvent, run: () => void, cancel?: () => void) => {
 };
 
 export function KnowsApp() {
-  useLanguageUpdates();
+  const language = useLanguageUpdates();
   const [snap, setSnap] = useState<KnowsSnapshot>();
   const [note, setNote] = useState<{ text: string; error: boolean }>();
   const [asking, setAsking] = useState(false);
@@ -79,8 +79,9 @@ export function KnowsApp() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
   useEffect(() => {
+    if (document.documentElement.lang !== language) return;
     if (name) document.title = t('bond.knows.title', { name });
-  }, [name]);
+  }, [name, language]);
 
   if (!snap) return <p className="loading">{t('bond.loading')}</p>;
   const s = snap.settings;
