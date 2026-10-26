@@ -190,6 +190,47 @@ test('반복 일정은 DST로 한 회차 시각이 보정돼도 다음 회차부
   }
 });
 
+test('DST 보정 회차가 확장 끝에 있어도 다음 확장에서 원래 시각을 쓰고, 첫 회차 삭제 뒤에도 기억한다', () => {
+  const previousTz = process.env.TZ;
+  process.env.TZ = 'America/New_York';
+  try {
+    for (const purgeRoot of [false, true]) {
+      const { events } = fresh();
+      // 첫 확장 범위를 2026-03-08 03:30 직후로 맞춘다. 그 회차는 02:30에서 03:30으로 보정된다.
+      const startAt = new Date(2026, 2, 1, 2, 30).getTime();
+      const first = events.add(
+        { title: '반복 확장 경계', startAt, repeat: 'weekly' },
+        new Date(2025, 2, 8, 2, 45).getTime(),
+      );
+      if (purgeRoot) {
+        events.remove(first.id, startAt);
+        assert.equal(events.purgeTrash(first.id), 1);
+      }
+
+      const from = new Date(2026, 2, 15).getTime();
+      const to = new Date(2026, 2, 23).getTime();
+      const next = events.between(from, to).filter((event) => event.title === '반복 확장 경계');
+      assert.deepEqual(
+        next.map((event) => [
+          new Date(event.startAt).getDate(),
+          new Date(event.startAt).getHours(),
+          new Date(event.startAt).getMinutes(),
+        ]),
+        [
+          [15, 2, 30],
+          [22, 2, 30],
+        ],
+        purgeRoot
+          ? '첫 회차를 영구 삭제한 뒤에도 원래 벽시계 시각을 유지한다'
+          : '남은 회차의 DST 보정 시각을 물려받지 않는다',
+      );
+    }
+  } finally {
+    if (previousTz === undefined) delete process.env.TZ;
+    else process.env.TZ = previousTz;
+  }
+});
+
 test('첫 회차를 휴지통에서 영구 삭제해도 남은 반복 일정은 다음 해 이후까지 이어진다', () => {
   const { events } = fresh();
   const startAt = new Date();
