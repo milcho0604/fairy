@@ -4,6 +4,7 @@ import {
   cleanPetName,
   followKindName,
   parseSettings,
+  resetPreferencesOf,
   type Settings,
   type SettingsPatch,
 } from '../shared/settings.ts';
@@ -50,6 +51,15 @@ export const settings = {
     if (JSON.stringify(next) === JSON.stringify(prev)) return prev;
     // 먼저 쓰고 나서 바꾼다. 쓰기가 던졌는데(디스크 가득, 권한) 메모리만 바뀌면 같은 값을 다시 저장해도
     // "안 바뀜"으로 넘어가 끝내 저장되지 않고, 다시 켜면 옛 값으로 돌아갔다
+    writeJson(FILE, next);
+    current = next;
+    for (const l of listeners) l(next, prev);
+    return next;
+  },
+  /** 화면 설정만 기본값으로 돌리고, 사용자가 만든 데이터와 현재 페어리는 보존한다. */
+  resetPreferences(): Settings {
+    const prev = load();
+    const next = resetPreferencesOf(prev);
     writeJson(FILE, next);
     current = next;
     for (const l of listeners) l(next, prev);

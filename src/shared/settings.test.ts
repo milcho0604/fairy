@@ -17,6 +17,7 @@ import {
   petNameLength,
   photoPetName,
   pickedGait,
+  resetPreferencesOf,
   type Settings,
 } from './settings.ts';
 
@@ -27,6 +28,27 @@ test('저장 파일이 없거나 깨졌으면 기본값', () => {
     ...DEFAULT_SETTINGS,
     hideHints: 0,
   });
+});
+
+test('설정 초기화는 화면 환경설정을 기본값으로 돌리고 페어리와 사용자 콘텐츠는 보존한다', () => {
+  const current: Settings = {
+    ...DEFAULT_SETTINGS,
+    chatter: 'quiet',
+    wander: false,
+    petName: '모찌',
+    petKind: 'cat',
+    petLibrary: [{ id: 'saved', name: '친구', image: 'pet.png', poses: {} }],
+    petFacts: [{ kind: 'birthday', value: '05-01', at: 1 }],
+    icsUrl: 'https://example.test/calendar.ics',
+  };
+  const reset = resetPreferencesOf(current);
+  assert.equal(reset.chatter, DEFAULT_SETTINGS.chatter);
+  assert.equal(reset.wander, DEFAULT_SETTINGS.wander);
+  assert.equal(reset.petName, '모찌');
+  assert.equal(reset.petKind, 'cat');
+  assert.deepEqual(reset.petLibrary, current.petLibrary);
+  assert.deepEqual(reset.petFacts, current.petFacts);
+  assert.equal(reset.icsUrl, current.icsUrl);
 });
 
 test('예전 펫 설정 파일(pet-settings.json)의 값도 읽는다', () => {

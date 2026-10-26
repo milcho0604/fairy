@@ -308,7 +308,7 @@ export function textAiOrder(current: string): string[] {
   return ids.includes(current) ? [current, ...ids.filter((id) => id !== current)] : [...ids];
 }
 
-/** 만들기 창의 만드는 방법 탭. 말로 만들기는 쓸 AI 가 있을 때만 (막힌 탭을 보여 주지 않는다) */
-export function makerTabs(textAi: boolean): readonly ('photo' | 'illust' | 'text')[] {
-  return textAi ? ['photo', 'illust', 'text'] : ['photo', 'illust'];
+/** 말로 만들기 탭은 항상 보여 준다. 쓸 AI 가 없을 때 이유를 화면에 안내한다. */
+export function makerTabs(_textAi: boolean): readonly ('photo' | 'illust' | 'text')[] {
+  return ['photo', 'illust', 'text'];
 }

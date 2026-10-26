@@ -518,6 +518,39 @@ export const DEFAULT_SETTINGS: Settings = {
   dailyNotes: true,
 };
 
+/** 설정 초기화에서 사용자 콘텐츠와 선택한 페어리를 남긴다. */
+export function resetPreferencesOf(current: Settings): Settings {
+  const keep: (keyof Settings)[] = [
+    'petName',
+    'petNameEdited',
+    'petImage',
+    'petKind',
+    'petModel',
+    'petDepth',
+    'petAge',
+    'petMeta',
+    'petPoses',
+    'petSprites',
+    'petLibrary',
+    'friends',
+    'petGaits',
+    'petWishes',
+    'petStands',
+    'petPersonal',
+    'petKindNames',
+    'petTexts',
+    'petRules',
+    'petMemory',
+    'petMemoryPending',
+    'petMemoryMeta',
+    'petFacts',
+    'icsUrl',
+    'onboarded',
+  ];
+  const preserved = Object.fromEntries(keep.map((key) => [key, current[key]])) as Partial<Settings>;
+  return { ...structuredClone(DEFAULT_SETTINGS), ...preserved };
+}
+
 export const PET_NAME_MAX = 12;
 /** 글자 하나가 지나치게 긴 조합(결합 문자를 수십 개 붙인 것)으로 이름이 커지지 않게 코드 포인트도 센다 */
 const PET_NAME_MAX_CODE_POINTS = PET_NAME_MAX * 8;

@@ -255,6 +255,7 @@ if (kind === 'settings') {
   const bridge: SettingsBridge = {
     get: () => ipcRenderer.invoke(SETTINGS.get),
     set: (patch) => ipcRenderer.invoke(SETTINGS.set, patch),
+    reset: () => ipcRenderer.invoke(SETTINGS.reset),
     setScale: (scale: number) => ipcRenderer.send(SETTINGS.setScale, scale),
     openMaker: (target) => ipcRenderer.send(SETTINGS.openMaker, target),
     stats: () => ipcRenderer.invoke(SETTINGS.stats),
