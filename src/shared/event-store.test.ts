@@ -160,6 +160,36 @@ test('매주 반복 일정은 다음 회차를 같은 현지 요일·시각과 �
   }
 });
 
+test('반복 일정은 DST로 한 회차 시각이 보정돼도 다음 회차부터 원래 현지 시각을 쓴다', () => {
+  const previousTz = process.env.TZ;
+  process.env.TZ = 'America/New_York';
+  try {
+    const { events } = fresh();
+    // 2026-03-08 02:30은 DST 시작으로 존재하지 않아 그 회차만 03:30으로 보정된다.
+    const startAt = new Date(2026, 2, 1, 2, 30).getTime();
+    events.add({ title: '일요일 점검', startAt, repeat: 'weekly' }, startAt - MIN);
+    const occurrences = events
+      .between(startAt, new Date(2026, 2, 23).getTime())
+      .filter((event) => event.title === '일요일 점검');
+    assert.deepEqual(
+      occurrences.map((event) => [
+        new Date(event.startAt).getDate(),
+        new Date(event.startAt).getHours(),
+        new Date(event.startAt).getMinutes(),
+      ]),
+      [
+        [1, 2, 30],
+        [8, 3, 30],
+        [15, 2, 30],
+        [22, 2, 30],
+      ],
+    );
+  } finally {
+    if (previousTz === undefined) delete process.env.TZ;
+    else process.env.TZ = previousTz;
+  }
+});
+
 test('메모: 최근에 고친 것부터, 그대로면 시각을 안 바꾼다, 제목은 첫 줄에서', () => {
   const { notes } = fresh();
   const a = notes.add({ body: '# 회의 메모\n- 결정 1' }, T0);
