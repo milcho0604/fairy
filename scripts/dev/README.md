@@ -13,7 +13,7 @@ OUT=/tmp/fairy-185 LANG_UNDER_TEST=ko node scripts/dev/bubble-house.mjs # #185: 
 node scripts/dev/pet-moves.mjs                     # 움직임과 입력이 겹칠 때: 뛰다 잡기, 걷다 크기 바꾸기, 끄는 동안 온 답, 친구 자리, 숨긴 동안 온 친구 (PASS/FAIL)
 OUT=/tmp/jj-shots node scripts/dev/panel.mjs        # 패널: 할 일 넣기, 끝내기, 되돌리기, 밥, 빠른 입력
 OUT=/tmp/jj-shots node scripts/dev/settings.mjs     # 설정 창: 이름, 크기, 돌아다니기
-OUT=/tmp/fairy-settings LANG_UNDER_TEST=ko node scripts/dev/settings-polish.mjs # #149/#144: 검색 동의어, 탭별 스크롤, 시작 안내 높이 (en도 실행; 앱 직접 실행, BASELINE=1은 이전 빌드 측정)
+OUT=/tmp/fairy-settings LANG_UNDER_TEST=ko node scripts/dev/settings-polish.mjs # #149/#144: 검색 동의어, 탭별 스크롤, 설정 최소 높이 520px, AI 설명 글자 크기와 다른 AI 연결 접기, 시작 안내 높이 (en도 실행; 앱 직접 실행, BASELINE=1은 이전 빌드 측정)
 OUT=/tmp/fairy-onboarding LANG_UNDER_TEST=ko node scripts/dev/onboarding-resume.mjs # #149: 일하는 시간 설명, 파일 출처 이름, 닫기/앱 재시작 뒤 이어보기, 시작/건너뛰기 완료 (en도 실행; 앱 직접 실행)
 OUT=/tmp/fairy-146149 LANG_UNDER_TEST=ko node scripts/dev/todo-gallery-setup.mjs # #146/#149: 새 할 일 위치·긴 목록·검색/태그, 내장 갤러리 중복, 첫 안내 기본 설정 (en도 실행; 로컬 갤러리·앱 직접 실행)
 OUT=/tmp/fairy-reset LANG_UNDER_TEST=ko node scripts/dev/settings-reset-maker.mjs # #149: 설정 기본값 복원과 보존 데이터, 페어리 만들기 방법/AI 안내 (en도 실행)

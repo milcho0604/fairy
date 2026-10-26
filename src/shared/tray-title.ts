@@ -44,6 +44,6 @@ export function trayTitleWait(now: number, focus: FocusState): number {
 }
 
 /** CPU 글자와 합친다 (둘 다 있으면 사이를 띄운다) */
-export function joinTrayTitle(info: string, cpu: string): string {
-  return [info, cpu].filter((s) => s.trim()).join('  ');
+export function joinTrayTitle(info: string, cpu: string, hidden = ''): string {
+  return [hidden, info, cpu].filter((s) => s.trim()).join('  ');
 }

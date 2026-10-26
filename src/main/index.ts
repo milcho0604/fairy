@@ -101,7 +101,7 @@ import { createSystemMonitor } from './system-monitor.ts';
 import { testKeychainSwitches } from './test-keychain.ts';
 import { createTogether } from './together.ts';
 import { baseTrayIcon, createTray } from './tray.ts';
-import { watchTrayTitle } from './tray-title.ts';
+import { setTrayTitlePart, watchTrayTitle } from './tray-title.ts';
 import { watchUpdates } from './update.ts';
 import { createWear } from './wear.ts';
 import { createWeekCard } from './week-card.ts';
@@ -359,8 +359,10 @@ ready
     };
     // 친구 칸이 보이는가 (서버 모드, 로그인, 기능 키). 큰 창 사이드바 "친구"에 쓴다
     let friendsAvailable = false;
+    let showTrayHideHint: ((message: string, shortMessage: string) => void) | undefined;
     const pet = createPetWindow({
       petName,
+      onHideHint: (message, shortMessage) => showTrayHideHint?.(message, shortMessage),
       actions: {
         // 왼쪽 클릭은 패널(할 일, 코인, 밥). 대화는 패널 안과 우클릭 메뉴에서.
         click: () => {
@@ -474,6 +476,7 @@ ready
     // 친구 펫(v2)도 기본 펫과 같이 숨고 나온다
     const friends = createFriends({
       mainPet: () => pet,
+      onHideHint: (message, shortMessage) => showTrayHideHint?.(message, shortMessage),
       // 집중(펫이 잠), 공놀이와 산책, 숨바꼭질 중이 아니고 사용자가 자리에 있을 때만
       canMeet: () =>
         planner.focus.phase !== 'focus' && !playing && !seeking && powerMonitor.getSystemIdleTime() < 60,
@@ -511,13 +514,23 @@ ready
       sysMonitorOn: () => settings.get().sysMonitor,
       setSysMonitor: (on) => settings.set({ sysMonitor: on }),
     });
+    let hiddenHintText: string | undefined;
+    let hiddenHintTimer: ReturnType<typeof setTimeout> | undefined;
+    const trayBaseTooltip = () => hiddenHintText ?? t('tray.tooltip', { name: petName() });
+    showTrayHideHint = (message, shortMessage) => {
+      hiddenHintText = message;
+      tray.setToolTip(trayBaseTooltip());
+      if (process.platform === 'darwin') setTrayTitlePart(tray, 'hidden', shortMessage);
+      clearTimeout(hiddenHintTimer);
+      hiddenHintTimer = setTimeout(() => {
+        hiddenHintText = undefined;
+        tray.setToolTip(trayBaseTooltip());
+        if (process.platform === 'darwin') setTrayTitlePart(tray, 'hidden', '');
+      }, 8_000);
+      hiddenHintTimer.unref?.();
+    };
     // 메뉴 막대 컴퓨터 상태 (RunCat 처럼): CPU 사용률과 그만큼 바삐 움직이는 펫
-    const sysMonitor = createSystemMonitor(
-      tray,
-      baseTrayIcon(),
-      () => t('tray.tooltip', { name: petName() }),
-      log,
-    );
+    const sysMonitor = createSystemMonitor(tray, baseTrayIcon(), trayBaseTooltip, log);
     // 메뉴 막대에서 달릴 모습은 지금 펫 종류 (사진 펫은 걸음새와 설계도로 가장 가까운 종류). 켜기 전에 정해 한 번만 그린다
     const runnerKindNow = () => {
       const s = settings.get();
@@ -1757,7 +1770,7 @@ ready
       if (next.petName !== prev.petName) {
         chat.petNameChanged();
         panel.refresh();
-        tray.setToolTip(t('tray.tooltip', { name: next.petName }));
+        tray.setToolTip(trayBaseTooltip());
       }
       // 격리 폴더와 사용자 폴더는 대화 기록이 따로라 이어 갈 수 없다. 새 대화로 시작한다.
       if (next.aiIsolation !== prev.aiIsolation) chat.resetSessions();

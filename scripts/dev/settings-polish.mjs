@@ -51,8 +51,9 @@ try {
     await main('__jj.settingsWindow.open(); 1');
     const settings = await page('settings');
     await until(() => settings.ev('!!document.querySelector("#tab-pet")'), 'settings');
+    await check('설정 창 최소 높이는 520px', async () => assert.equal((await main('__jj.settingsWindow.window.getMinimumSize()'))[1], 520));
     // 제품의 최소 폭(360)보다 좁은 320 경계도 실제로 검사한다. 시험 창에만 하한을 낮춘다.
-    await main('__jj.settingsWindow.window.setMinimumSize(320,420); 1');
+    await main('__jj.settingsWindow.window.setMinimumSize(320,520); 1');
     const tab = async id => {await settings.ev(`document.querySelector('#tab-${id}').click()`); await sleep(100);};
     const scroll = async value => {await settings.ev(`document.querySelector('main').scrollTop=${value}`); await sleep(100); return settings.ev('document.querySelector("main").scrollTop');};
     const pos = () => settings.ev('document.querySelector("main").scrollTop');
@@ -111,8 +112,42 @@ try {
     await settings.ev('document.querySelector("input[type=search]").focus()');
     await key('Escape');
     await check('Esc는 검색만 지우고 탭 위치 복원', async () => assert.ok(Math.abs(await pos()-original)<=1));
+    await main('__jj.settingsWindow.window.setSize(440,620); 1'); await sleep(200);
+    await tab('ai');
+    await check('AI 설정 설명은 읽기 쉬운 크기', async () => {
+      assert.equal(await settings.ev('getComputedStyle(document.querySelector("main section small")).fontSize'), '13px');
+      assert.equal(await settings.ev('getComputedStyle(document.querySelector(".ai-chips li")).fontSize'), '12px');
+    });
+    await check('다른 AI 연결 명령은 접혀 있어 기본 설정을 가리지 않음', async () => {
+      assert.equal(await settings.ev('document.querySelector("details.advanced-setup").open'), false);
+      assert.equal(await settings.ev('document.querySelectorAll("details.advanced-setup pre.cmd").length'), 2);
+      assert.ok((await settings.ev('document.querySelector("details.advanced-setup summary").textContent')).trim().length > 0);
+    });
+    await settings.ev('document.querySelector("main").scrollTop=document.querySelector("main").scrollHeight'); await sleep(100);
+    await settings.shot(`${tag}-ai-setup-collapsed`);
+    await settings.ev('document.querySelector("details.advanced-setup summary").click()');
+    await check('필요하면 다른 AI 연결 방법을 펼쳐 명령을 복사할 수 있음', async () => {
+      assert.equal(await settings.ev('document.querySelector("details.advanced-setup").open'), true);
+      assert.equal(await settings.ev('[...document.querySelectorAll("pre.cmd")].filter(e=>e.getClientRects().length).length'), 2);
+    });
+    await settings.ev('document.querySelector("main").scrollTop=document.querySelector("details.advanced-setup").offsetTop-100'); await sleep(100);
+    await settings.shot(`${tag}-ai-setup-expanded`);
     await settings.dark(true); await settings.shot(`${tag}-settings-dark`); await settings.dark(false);
     await main('__jj.settingsWindow.window.close(); 1');
+    await main('(()=>{globalThis.trayHintSeen=[]; const setTooltip=__jj.tray.setToolTip.bind(__jj.tray); __jj.tray.setToolTip=(text)=>{globalThis.trayHintSeen.push(text);setTooltip(text);}; return 1;})()');
+    if (process.platform === 'darwin')
+      await main('(()=>{globalThis.trayTitleSeen=[]; const setTitle=__jj.tray.setTitle.bind(__jj.tray); __jj.tray.setTitle=(text,options)=>{globalThis.trayTitleSeen.push(text);setTitle(text,options);}; return 1;})()');
+    await main('__jj.toggleHidden(); 1');
+    await check('OS 알림이 꺼진 첫 숨김은 트레이에서 다시 부르는 방법을 알려 줌', async () => {
+      const tooltip = await main('globalThis.trayHintSeen.at(-1)');
+      assert.match(tooltip, lang === 'ko' ? /앱을 다시 열면/ : /open the app again/i);
+      if (process.platform === 'darwin') {
+        const title = await main('globalThis.trayTitleSeen.at(-1)');
+        assert.match(title, lang === 'ko' ? /숨김/ : /Hidden/);
+      }
+      assert.equal(await main('__jj.settings.get().hideHints'), 1);
+    });
+    await main('__jj.toggleHidden(); 1');
   }
   await main('__jj.onboarding.open(); 1');
   let onboard=await page('onboarding');

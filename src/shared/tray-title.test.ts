@@ -52,4 +52,5 @@ test('다시 볼 때와 CPU 글자 합치기', () => {
   assert.equal(joinTrayTitle('12:30 점심', '12%'), '12:30 점심  12%');
   assert.equal(joinTrayTitle('', '12%'), '12%');
   assert.equal(joinTrayTitle('12:30 점심', ''), '12:30 점심');
+  assert.equal(joinTrayTitle('12:30 점심', '12%', '숨김 · K'), '숨김 · K  12:30 점심  12%');
 });

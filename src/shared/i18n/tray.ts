@@ -4,6 +4,8 @@ import type { Translation } from './types.ts';
 // tray 영역 글
 export const ko = {
   'tray.tooltip': (v: { name: string }) => `페어리 (${v.name})`,
+  'tray.hiddenKeys': (v: { keys: string }) => `숨김: ${v.keys} 눌러 다시 부르기`,
+  'tray.hiddenNoKey': '숨김: 앱을 다시 열면 돌아와',
   'tray.show': (v: { name: string }) => `${withParticle(v.name, '을')} 다시 보이기`,
   'tray.hide': (v: { name: string }) => `${withParticle(v.name, '을')} 잠깐 숨기기`,
   'tray.chat': (v: { name: string }) => `${withParticle(v.name, '과')} 대화`,
@@ -33,6 +35,8 @@ export const ko = {
 
 export const en: Translation<typeof ko> = {
   'tray.tooltip': (v: { name: string }) => `fairy (${v.name})`,
+  'tray.hiddenKeys': (v: { keys: string }) => `Hidden: press ${v.keys} to bring back`,
+  'tray.hiddenNoKey': 'Hidden: open the app to bring fairy back',
   'tray.show': (v: { name: string }) => `Show ${v.name} again`,
   'tray.hide': (v: { name: string }) => `Hide ${v.name} for a bit`,
   'tray.chat': (v: { name: string }) => `Chat with ${v.name}`,
