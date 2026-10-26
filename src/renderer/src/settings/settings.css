@@ -976,6 +976,7 @@ textarea.rules {
   /* 넓은 창은 내용 폭을 읽기 좋게 묶는다 */
   main > * {
     max-width: 640px;
+    margin-inline: auto;
   }
 }
 

@@ -12,12 +12,12 @@ import {
   type Toast,
   undoable,
 } from '../../../shared/toast-keep.ts';
-import type { Todo } from '../../../shared/todo-store.ts';
+import { localDay, monthAnchor, nextDue, type Todo } from '../../../shared/todo-store.ts';
 import { HomeShell } from '../home/HomeShell.tsx';
 import { homeKeyAction, sectionForKey } from '../home/sections.ts';
 import { PetFace } from '../PetFace.tsx';
 import { EventTab } from './EventTab.tsx';
-import { addedText, timeOf, whenLabel } from './format.ts';
+import { addedText, dayHeading, timeOf, whenLabel } from './format.ts';
 import { CoinIcon, ExpandIcon, GearIcon, PinIcon } from './icons.tsx';
 import { escClosesSurface, type ModKeyLike, tabStepByKey, undoByKey, undoFieldText } from './keys.ts';
 import { PlanSheetHost } from './MorningPlan.tsx';
@@ -312,10 +312,19 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
   };
 
   const complete = async (todo: Todo) => {
+    const today = localDay(Date.now());
+    const next = todo.repeat
+      ? nextDue(
+          todo.repeat === 'weekly' ? (todo.repeatAnchor ?? todo.due) : todo.due,
+          todo.repeat,
+          today,
+          todo.repeat === 'monthly' ? monthAnchor(todo.repeatAnchor ?? null, todo.due) : undefined,
+        )
+      : undefined;
     const coins = await bridge.complete(todo.id);
     // 이미 끝낸 할 일 (체크를 빠르게 여러 번 눌렀다): 앞의 "끝! 코인" 알림을 덮지 않는다
     if (coins === null) return;
-    showToast({ kind: 'done', id: todo.id, coins });
+    showToast({ kind: 'done', id: todo.id, coins, ...(next ? { nextDue: next } : {}) });
   };
 
   const feed = async () => {
@@ -663,8 +672,12 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
 }
 
 function toastText(toast: Toast): string {
-  if (toast.kind === 'done')
-    return toast.coins > 0 ? t('panel.toast.done', { n: toast.coins }) : t('panel.toast.doneNoCoin');
+  if (toast.kind === 'done') {
+    const done = toast.coins > 0 ? t('panel.toast.done', { n: toast.coins }) : t('panel.toast.doneNoCoin');
+    return toast.nextDue
+      ? `${done} · ${t('panel.toast.repeatNext', { when: dayHeading(toast.nextDue, localDay(Date.now())) })}`
+      : done;
+  }
   if (toast.kind === 'note-removed') return t('panel.toast.noteRemoved');
   if (toast.kind === 'event-removed') return t('panel.toast.eventRemoved');
   if (toast.kind === 'todo-removed') return t('panel.toast.todoRemoved');

@@ -238,6 +238,7 @@ export const ko = {
   'panel.undo': '되돌리기',
   'panel.toast.done': (v: { n: number }) => `끝! 코인 ${v.n}개`,
   'panel.toast.doneNoCoin': '끝! (오늘 코인은 다 받았어)',
+  'panel.toast.repeatNext': (v: { when: string }) => `다음은 ${v.when}이야`,
   'panel.toast.noteRemoved': '메모를 지웠어',
   'panel.toast.eventRemoved': '일정을 지웠어',
 };
@@ -476,6 +477,7 @@ export const en: Translation<typeof ko> = {
   'panel.undo': 'Undo',
   'panel.toast.done': (v: { n: number }) => `Done! ${plural(v.n, 'coin')}`,
   'panel.toast.doneNoCoin': "Done! (You've hit today's coin limit)",
+  'panel.toast.repeatNext': (v: { when: string }) => `Next: ${v.when}`,
   'panel.toast.noteRemoved': 'Note deleted',
   'panel.toast.eventRemoved': 'Event deleted',
 };

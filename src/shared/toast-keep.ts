@@ -5,7 +5,7 @@ import type { EventClash } from './ipc.ts';
 
 /** 패널 알림 하나. 끝낸 것, 지운 것, 일정으로 넣은 것 등을 되돌리거나 고르게 한다 */
 export type Toast =
-  | { kind: 'done'; id: number; coins: number }
+  | { kind: 'done'; id: number; coins: number; nextDue?: string }
   | { kind: 'note-removed'; id: number }
   | { kind: 'event-removed'; id: number }
   | { kind: 'todo-removed'; id: number }
