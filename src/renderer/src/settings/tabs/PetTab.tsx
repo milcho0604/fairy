@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { saverOn } from '../../../../shared/battery.ts';
 import { t } from '../../../../shared/i18n/index.ts';
 import { restDaysOf } from '../../../../shared/routine.ts';
 import {
@@ -252,6 +253,11 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
           label={t('settings.typeAlong')}
           hint={t('settings.typeAlongHint')}
           on={s.typeAlong}
+          note={
+            s.typeAlong && saverOn(s.batterySaver, { onBattery: snap.onBattery, lowPower: false })
+              ? t('settings.typeAlongResting')
+              : undefined
+          }
           onChange={(v) => update({ typeAlong: v })}
         />
         <Toggle
@@ -277,6 +283,7 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
           label={t(mac ? 'settings.sysMonitor' : 'settings.sysMonitorWin')}
           hint={t(mac ? 'settings.sysMonitorHint' : 'settings.sysMonitorWinHint')}
           on={s.sysMonitor}
+          note={s.sysMonitor && snap.onBattery ? t('settings.sysMonitorResting') : undefined}
           onChange={(v) => update({ sysMonitor: v })}
         />
       </Section>

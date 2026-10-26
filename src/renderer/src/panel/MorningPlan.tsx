@@ -160,15 +160,17 @@ export function PlanSheetHost({
   const [msg, setMsg] = useState('');
   const [aiNote, setAiNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const [emptyDraft, setEmptyDraft] = useState('');
   const sheet = useRef<HTMLDivElement>(null);
 
-  const show = (v: PlanView) => {
+  const show = (v: PlanView, navigateToday = true) => {
     setView(v);
     setPicks(v.plan?.picks.length ? v.plan.picks : v.suggested);
     setAiNote(v.plan?.note ?? '');
     setMsg('');
+    setEmptyDraft('');
     setOpen(true);
-    goToday();
+    if (navigateToday) goToday();
   };
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: 처음 한 번만
@@ -178,7 +180,7 @@ export function PlanSheetHost({
       .plan(true)
       .then((v) => {
         if (v?.autoOpen) {
-          show(v);
+          show(v, false);
           day.planShown();
         }
       })
@@ -262,6 +264,26 @@ export function PlanSheetHost({
     if (next) setView({ ...view, prefs: next });
   };
 
+  const addFirstTodo = async () => {
+    const title = emptyDraft.trim();
+    if (!title || busy) return;
+    setBusy(true);
+    setMsg('');
+    const result = await panel.add(title, { as: 'todo' }).catch(() => undefined);
+    setBusy(false);
+    if (!result?.ok || (result.kind !== 'todo' && !(result.kind === 'many' && result.todos > 0))) {
+      setMsg(result && !result.ok ? (result.error ?? t('plan.sheet.addFailed')) : t('plan.sheet.addFailed'));
+      return;
+    }
+    setEmptyDraft('');
+    const next = await day.plan().catch(() => undefined);
+    if (next) {
+      setView(next);
+      setPicks(next.plan?.picks.length ? next.plan.picks : next.suggested);
+    }
+    setMsg(t('plan.sheet.added'));
+  };
+
   return (
     <div className="plan-veil">
       <div
@@ -286,7 +308,26 @@ export function PlanSheetHost({
         </div>
         <div className="plan-body">
           {view.candidates.length === 0 ? (
-            <p className="empty-line">{t('plan.sheet.noTodos')}</p>
+            <div className="plan-empty-add">
+              <p className="empty-line">{t('plan.sheet.noTodos')}</p>
+              <form
+                className="plan-first-todo"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void addFirstTodo();
+                }}
+              >
+                <input
+                  value={emptyDraft}
+                  onChange={(e) => setEmptyDraft(e.target.value)}
+                  placeholder={t('plan.sheet.addPlaceholder')}
+                  aria-label={t('plan.sheet.addPlaceholder')}
+                />
+                <button type="submit" className="primary small" disabled={!emptyDraft.trim() || busy}>
+                  {t(busy ? 'plan.sheet.adding' : 'plan.sheet.add')}
+                </button>
+              </form>
+            </div>
           ) : (
             <>
               <p className="plan-lead">{t('plan.sheet.lead')}</p>
