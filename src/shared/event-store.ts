@@ -264,7 +264,11 @@ export class EventStore {
         input.repeat ? localClock(input.startAt) : null,
       );
     const id = Number(r.lastInsertRowid);
-    if (input.repeat) this.#db.prepare('update event set repeat_series = ? where id = ?').run(id, id);
+    if (input.repeat) {
+      // A fully purged series can leave an orphan key if the process stopped before cleanup; SQLite may reuse its id.
+      this.#db.prepare('delete from event_repeat_skip where series_id = ?').run(id);
+      this.#db.prepare('update event set repeat_series = ? where id = ?').run(id, id);
+    }
     const reminds = input.reminds
       ? normalizeReminds(input.reminds, allDay)
       : input.remindMin !== undefined
@@ -344,26 +348,31 @@ export class EventStore {
       const startAt = next.getTime();
       if (startAt > through) break;
       const duration = latest.end_at === null ? null : Number(latest.end_at) - interval;
-      const inserted = this.#db
-        .prepare(
-          'insert into event (title, start_at, end_at, remind_min, created_at, all_day, repeat_kind, repeat_series, repeat_clock) values (?, ?, ?, ?, ?, 0, ?, ?, ?)',
-        )
-        .run(
-          latest.title,
-          startAt,
-          duration === null ? null : startAt + duration,
-          latest.remind_min,
-          Number(latest.created_at),
-          repeat,
-          seriesId,
-          repeatClock,
+      const skipped = this.#db
+        .prepare('select 1 from event_repeat_skip where series_id = ? and start_at = ?')
+        .get(seriesId, startAt);
+      if (!skipped) {
+        const inserted = this.#db
+          .prepare(
+            'insert into event (title, start_at, end_at, remind_min, created_at, all_day, repeat_kind, repeat_series, repeat_clock) values (?, ?, ?, ?, ?, 0, ?, ?, ?)',
+          )
+          .run(
+            latest.title,
+            startAt,
+            duration === null ? null : startAt + duration,
+            latest.remind_min,
+            Number(latest.created_at),
+            repeat,
+            seriesId,
+            repeatClock,
+          );
+        this.#reminders.set(
+          Number(inserted.lastInsertRowid),
+          reminds,
+          eventAnchor({ startAt, allDay: false }),
+          { reset: true },
         );
-      this.#reminders.set(
-        Number(inserted.lastInsertRowid),
-        reminds,
-        eventAnchor({ startAt, allDay: false }),
-        { reset: true },
-      );
+      }
       interval = startAt;
     }
   }
@@ -584,14 +593,23 @@ export class EventStore {
     const rows = (
       id === undefined
         ? this.#db
-            .prepare("select id, source from event where deleted_at is not null and removed_by = 'user'")
+            .prepare(
+              "select id, source, repeat_series, start_at, repeat_kind from event where deleted_at is not null and removed_by = 'user'",
+            )
             .all()
         : this.#db
             .prepare(
-              "select id, source from event where id = ? and deleted_at is not null and removed_by = 'user'",
+              "select id, source, repeat_series, start_at, repeat_kind from event where id = ? and deleted_at is not null and removed_by = 'user'",
             )
             .all(id)
-    ) as { id: number; source: string }[];
+    ) as {
+      id: number;
+      source: string;
+      repeat_series: number | null;
+      start_at: number;
+      repeat_kind: unknown;
+    }[];
+    const affectedSeries = new Set<number>();
     for (const row of rows) {
       this.#reminders.clear(Number(row.id));
       if (row.source === 'ics' || row.source === 'google') {
@@ -602,8 +620,22 @@ export class EventStore {
           )
           .run(now - (TRASH_DAYS + 1) * 86_400_000, row.id);
       } else {
+        if (row.repeat_series !== null && isEventRepeat(row.repeat_kind)) {
+          affectedSeries.add(Number(row.repeat_series));
+          this.#db
+            .prepare('insert or ignore into event_repeat_skip (series_id, start_at) values (?, ?)')
+            .run(row.repeat_series, row.start_at);
+        }
         this.#db.prepare('delete from event where id = ?').run(row.id);
       }
+    }
+    // SQLite can reuse the largest deleted row id. Drop orphaned skip keys so a later, unrelated series
+    // cannot inherit exceptions if it receives the same id and start times.
+    for (const seriesId of affectedSeries) {
+      const remains = this.#db
+        .prepare('select 1 from event where id = ? or repeat_series = ? limit 1')
+        .get(seriesId, seriesId);
+      if (!remains) this.#db.prepare('delete from event_repeat_skip where series_id = ?').run(seriesId);
     }
     return rows.length;
   }
