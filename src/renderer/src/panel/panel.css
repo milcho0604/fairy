@@ -1064,6 +1064,27 @@ li.pin-end {
   color: var(--muted);
 }
 
+.focus-custom {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+.focus-custom input {
+  width: 76px;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+}
+.focus-custom input[aria-invalid="true"] {
+  border-color: var(--error);
+}
+
 .focus-len {
   display: flex;
   flex-wrap: wrap;

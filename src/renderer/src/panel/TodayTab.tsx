@@ -1,7 +1,15 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { leftForTomorrow, nextUp } from '../../../shared/briefing.ts';
 import { allDaySpan } from '../../../shared/event-store.ts';
-import { breakFor, FOCUS_LENGTHS, focusCoins, remainLabel } from '../../../shared/focus.ts';
+import {
+  breakFor,
+  FOCUS_LENGTHS,
+  FOCUS_MAX_MINUTES,
+  FOCUS_MIN_MINUTES,
+  focusCoins,
+  isFocusLength,
+  remainLabel,
+} from '../../../shared/focus.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PanelState } from '../../../shared/ipc.ts';
 import { stepProgress, type Todo } from '../../../shared/todo-store.ts';
@@ -42,8 +50,15 @@ export function TodayTab({
   const [now, setNow] = useState(Date.now());
   // 고른 집중 길이. 시작하면 다음에도 이 길이 (설정 focusMin)
   const [len, setLen] = useState(s.focusMin);
+  const [custom, setCustom] = useState(!(FOCUS_LENGTHS as readonly number[]).includes(s.focusMin));
+  const [customText, setCustomText] = useState(String(s.focusMin));
+  const customValid = !custom || (customText.trim() !== '' && isFocusLength(Number(customText)));
   // 펫 메뉴에서 다른 길이로 시작했으면 따라간다
-  useEffect(() => setLen(s.focusMin), [s.focusMin]);
+  useEffect(() => {
+    setLen(s.focusMin);
+    setCustom(!(FOCUS_LENGTHS as readonly number[]).includes(s.focusMin));
+    setCustomText(String(s.focusMin));
+  }, [s.focusMin]);
   const running = s.focus.phase !== 'idle';
   useEffect(() => {
     // 집중 중엔 초를 세고, 아니면 30초마다 (30분 안 일정이 "다음 할 일"로 바뀌게)
@@ -120,16 +135,53 @@ export function TodayTab({
                 <button
                   key={n}
                   type="button"
-                  aria-pressed={n === len}
-                  className={n === len ? 'len-chip on' : 'len-chip'}
-                  onClick={() => setLen(n)}
+                  aria-pressed={!custom && n === len}
+                  className={!custom && n === len ? 'len-chip on' : 'len-chip'}
+                  onClick={() => {
+                    setCustom(false);
+                    setLen(n);
+                  }}
                 >
                   {t('panel.today.focusMin', { n })}
                 </button>
               ))}
+              <button
+                type="button"
+                className={custom ? 'len-chip on' : 'len-chip'}
+                aria-pressed={custom}
+                onClick={() => {
+                  setCustom(true);
+                  setCustomText(String(len));
+                }}
+              >
+                {t('panel.today.focusCustom')}
+              </button>
             </fieldset>
+            {custom && (
+              <label className="focus-custom">
+                <span>{t('panel.today.focusCustomRange')}</span>
+                <input
+                  type="number"
+                  min={FOCUS_MIN_MINUTES}
+                  max={FOCUS_MAX_MINUTES}
+                  step="1"
+                  value={customText}
+                  aria-invalid={!customValid}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setCustomText(value);
+                    if (isFocusLength(Number(value))) setLen(Number(value));
+                  }}
+                />
+              </label>
+            )}
           </div>
-          <button type="button" className="primary" onClick={() => bridge.focusStart(len)}>
+          <button
+            type="button"
+            className="primary"
+            disabled={!customValid}
+            onClick={() => bridge.focusStart(len)}
+          >
             {t('panel.today.start')}
           </button>
         </>
@@ -231,6 +283,7 @@ export function TodayTab({
                     <button
                       type="button"
                       className="primary next-go"
+                      disabled={!customValid}
                       onClick={() => bridge.focusStart(len, next.id)}
                     >
                       {t('panel.today.nextFocus', { n: len })}

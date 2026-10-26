@@ -124,6 +124,7 @@ export const ko = {
   'chat.look.openSettings': '설정 열기',
   // 지난 대화 목록
   'chat.list.open': '지난 대화',
+  'chat.nearPet': '펫 옆으로',
   'chat.list.title': '지난 대화',
   'chat.list.search': '대화 찾기',
   'chat.list.empty': '아직 지난 대화가 없어. 답을 받은 대화는 새 대화를 열어도 여기에 남아.',
@@ -261,6 +262,7 @@ export const en: Translation<typeof ko> = {
     "Couldn't capture the screen. Check that no other app is blocking screen capture.",
   'chat.look.openSettings': 'Open Settings',
   'chat.list.open': 'Past chats',
+  'chat.nearPet': 'Move beside fairy',
   'chat.list.title': 'Past chats',
   'chat.list.search': 'Search chats',
   'chat.list.empty': 'No past chats yet. Chats with an answer stay here after you start a new one.',
