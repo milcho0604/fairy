@@ -388,6 +388,8 @@ ready
         lookTogether: () => look.start(),
         openSettings: () => settingsWindow.open(),
         quickAdd: () => panel.openQuick(),
+        addNote: () => panel.newNote(),
+        openPanel: () => panel.openTab(),
         openHome: openHomeFromMenu,
         feed: () => feedPet(),
         makePet: () => maker.open(),

@@ -68,7 +68,9 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
   const split = useSurface().zone === 'wide';
   const [open, setOpen] = useState<Note>();
   /** 다른 곳을 눌러 닫혔던 메모 자리. 여는 동안(메모를 읽는 동안)은 목록을 그리지 않는다 */
-  const [resume, setResume] = useState<NoteResume | undefined>(readResume);
+  const [resume, setResume] = useState<NoteResume | undefined>(() =>
+    s.newNoteRequest ? undefined : readResume(),
+  );
   const [query, setQuery] = useState('');
   const [composing, setComposing] = useState(false);
   /** 본문까지 찾은 결과 (메인에서). 새 결과가 올 때까지 앞 결과를 둔다 */
@@ -86,7 +88,9 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
   // biome-ignore lint/correctness/useExhaustiveDependencies: 탭을 열 때 한 번만
   useEffect(() => {
     if (!resume) return;
+    const turn = openTurn.current;
     bridge.noteGet(resume.id).then((n) => {
+      if (turn !== openTurn.current) return;
       if (n) setOpen(n);
       else {
         keepNote(resume.id, undefined);
@@ -100,11 +104,18 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
   // 목록에 남았다. 만든 메모가 열려 목록이 사라질 때까지 누름을 버린다
   const [newNote] = useState(() =>
     singleFlight(async (text?: string) => {
+      openTurn.current++;
       const n = await bridge.noteAdd(text);
       setOpen(n);
       return true;
     }, NEW_NOTE_HOLD_MS),
   );
+  useEffect(() => {
+    if (s.newNoteRequest && bridge.noteNewTake(s.newNoteRequest)) {
+      setResume(undefined);
+      void newNote();
+    }
+  }, [s.newNoteRequest, newNote]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: 메모가 바뀌면(s.notes) 다시 찾는다
   useEffect(() => {
     if (!q) {
