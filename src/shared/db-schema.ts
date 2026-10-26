@@ -264,6 +264,20 @@ export const MIGRATIONS: readonly string[] = [
     primary key (series_id, start_at)
   );
   `,
+  // 19판: 반복 회차 하나의 제목·길이·알림 수정이 이후 생성분에 번지지 않도록 시리즈 원본을 보관한다.
+  `
+  create table event_repeat_template (
+    series_id integer primary key,
+    start_at integer not null,
+    repeat_kind text not null,
+    title text not null,
+    duration_ms integer,
+    repeat_clock integer not null,
+    reminders text not null,
+    remind_min integer not null,
+    created_at integer not null
+  );
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
