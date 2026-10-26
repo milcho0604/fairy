@@ -179,8 +179,11 @@ export function PlanSheetHost({
     day
       .plan(true)
       .then((v) => {
-        if (v?.autoOpen) {
-          show(v, false);
+        if (v?.manualOpen) {
+          show(v);
+          day.planShown();
+        } else if (v?.autoOpen) {
+          // 아침 자동 제안은 오늘 탭 카드에 남기고, 사용 중인 탭을 가리는 시트는 열지 않는다.
           day.planShown();
         }
       })

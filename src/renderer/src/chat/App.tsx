@@ -406,9 +406,10 @@ export function App() {
   const labelOf = (id?: AiProvider) => providers.find((p) => p.id === id)?.label ?? id ?? '';
   const imagesBlocked = !!spec && !spec.images && images.length > 0;
   // 한도에 걸리면 바로 물어볼 수 있는 다른 AI (설치, 로그인 확인된 것)
+  const lastQuestionHasImages = !!state.messages.findLast((m) => m.role === 'user')?.images?.length;
   const alternatives = providers.filter((p) => {
     const st = status[p.id];
-    return p.id !== state.provider && !!st && isReady(st);
+    return p.id !== state.provider && !!st && isReady(st) && (!lastQuestionHasImages || p.images);
   });
 
   // 새 대화: 바로 지우되 몇 초 동안 되돌릴 수 있다 (메인이 지운 대화를 잠깐 들고 있다, UNDO_RESET_MS)

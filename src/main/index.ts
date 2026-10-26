@@ -771,6 +771,10 @@ ready
         for (const window of BrowserWindow.getAllWindows()) {
           if (!window.isDestroyed()) window.webContents.send(LANGUAGE.changed, lang);
         }
+        const homeContents = home?.contents;
+        if (homeContents && !homeContents.isDestroyed()) homeContents.send(LANGUAGE.changed, lang);
+        const embeddedChat = home?.chatView?.webContents;
+        if (embeddedChat && !embeddedChat.isDestroyed()) embeddedChat.send(LANGUAGE.changed, lang);
       }
       if (next.houseHidden !== prev.houseHidden) void applyHouseStow(next.houseHidden);
     });
