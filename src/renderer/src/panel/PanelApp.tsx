@@ -16,6 +16,7 @@ import { localDay, monthAnchor, nextDue, type Todo } from '../../../shared/todo-
 import { HomeShell } from '../home/HomeShell.tsx';
 import { homeKeyAction, sectionForKey } from '../home/sections.ts';
 import { PetFace } from '../PetFace.tsx';
+import { useLanguageUpdates } from '../use-language.ts';
 import { EventTab } from './EventTab.tsx';
 import { addedText, dayHeading, timeOf, whenLabel } from './format.ts';
 import { CoinIcon, ExpandIcon, GearIcon, PinIcon } from './icons.tsx';
@@ -107,6 +108,7 @@ function focusFind() {
 
 /** 패널 구성요소의 껍데기. kind 가 panel 이면 펫 옆 작은 패널, home 이면 사이드바가 있는 큰 창 (src/renderer/src/home/HomeShell.tsx) */
 export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
+  useLanguageUpdates();
   const [s, setS] = useState<PanelState>();
   const [tab, setTabState] = useState<PanelTab>(() => savedTab(kind));
   /** 큰 창만: 채팅 구역이 열려 있다 (채팅 화면은 메인이 이 칸 위에 얹는 별도 view, #165). 탭을 고르면 닫힌다 */

@@ -57,6 +57,7 @@ import { browserStore, loadExpected, saveDuration } from '../make-progress.ts';
 import { PetNameInput } from '../PetNameInput.tsx';
 import { escClosesWindow } from '../panel/keys.ts';
 import { Pet3D } from '../pet3d.ts';
+import { useLanguageUpdates } from '../use-language.ts';
 import { openDepth, predictDepth } from './depth.ts';
 import { settleFur } from './fur-color.ts';
 import { GeminiRoute } from './GeminiRoute.tsx';
@@ -114,6 +115,7 @@ interface Work {
 }
 
 export function MakerApp() {
+  useLanguageUpdates();
   const [info, setInfo] = useState<MakerInfo>();
   const [step, setStep] = useState<Step>('pick');
   const [progress, setProgress] = useState(0);

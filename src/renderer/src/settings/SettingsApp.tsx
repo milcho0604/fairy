@@ -17,6 +17,7 @@ import {
 } from '../../../shared/settings-tabs.ts';
 import { isCodexPetFileName, isImportFileName } from '../../../shared/url-scheme.ts';
 import { escClosesWindow } from '../panel/keys.ts';
+import { useLanguageUpdates } from '../use-language.ts';
 import { HELP_OPEN_EVENT, isHelpKey } from './HelpBox.tsx';
 import { AboutTab } from './tabs/AboutTab.tsx';
 import { AiTab } from './tabs/AiTab.tsx';
@@ -30,6 +31,7 @@ import { bridge, type TabProps } from './ui.tsx';
 const SIDE_NAV = '(min-width: 640px)';
 
 export function SettingsApp() {
+  useLanguageUpdates();
   const [snap, setSnap] = useState<SettingsSnapshot>();
   const [saved, setSaved] = useState('');
   // 실패나 막힘 안내는 빨간 글씨 (성공 안내와 같은 초록이면 된 것처럼 읽힌다)

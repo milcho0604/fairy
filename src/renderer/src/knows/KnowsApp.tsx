@@ -23,6 +23,7 @@ import {
 } from '../../../shared/pet-memory.ts';
 import { PetFace } from '../PetFace.tsx';
 import { escClosesWindow } from '../panel/keys.ts';
+import { useLanguageUpdates } from '../use-language.ts';
 
 // 짝꿍이 아는 것 (2026-10-11): 내가 알려 준 것(생일, 좋아하는 간식, 좋아하는 것), 기억, 기억해도 될지 묻는 것, 규칙.
 // 줄마다 어디서 왔는지(대화, 직접, MCP)와 날짜, 고치기와 잊기. 맨 아래 모두 잊기 (한 번 더 묻는다)
@@ -59,6 +60,7 @@ const enter = (e: KeyboardEvent, run: () => void, cancel?: () => void) => {
 };
 
 export function KnowsApp() {
+  useLanguageUpdates();
   const [snap, setSnap] = useState<KnowsSnapshot>();
   const [note, setNote] = useState<{ text: string; error: boolean }>();
   const [asking, setAsking] = useState(false);

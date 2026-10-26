@@ -11,12 +11,14 @@ import { PetFace } from '../PetFace.tsx';
 import { PetNameInput } from '../PetNameInput.tsx';
 import { PetShot } from '../PetShot.tsx';
 import { RoutinePicker } from '../RoutinePicker.tsx';
+import { useLanguageUpdates } from '../use-language.ts';
 import { pageByKey } from './page-keys.ts';
 
 const bridge = window.jjakkungOnboard;
 
 /** 첫 실행 안내: 펫 정하기, 일하는 시간, 같이 보기 권한, 알아 두면 좋은 것 */
 export function OnboardingApp() {
+  useLanguageUpdates();
   const [snap, setSnap] = useState<OnboardSnapshot>();
   const [page, setPage] = useState(0);
   const pageNow = useRef(0);
