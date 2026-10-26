@@ -79,6 +79,8 @@ try {
   }
   for(const minutes of [5,17,120]) {
     await fill(String(minutes));
+    const coins=minutes===5?2:minutes===17?6:25;
+    await check(`${minutes}분 보상 안내`,async()=>assert.ok(await panel.ev(`document.querySelector('.focus-card.idle small').textContent.includes(${JSON.stringify(lang==='ko'?'코인 ':'') }+${coins}+${JSON.stringify(lang==='ko'?'개':' coins')})`)));
     await panel.ev('document.querySelector(".focus-card .primary").click()');
     await until(()=>main('__jj.planner.focus.phase==="focus"'),'started');
     await check(`${minutes}분 타이머·다음 선택 저장`,async()=>{const state=await main('__jj.planner.focus');assert.equal(state.endsAt-state.startedAt,minutes*60000);assert.equal(await main('__jj.settings.get().focusMin'),minutes);});

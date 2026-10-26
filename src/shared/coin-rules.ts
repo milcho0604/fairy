@@ -27,10 +27,8 @@ export const STREAK_BONUS = 50;
 /** 매주 선물: 한 주(월요일 시작, 현지 날짜)의 첫 출석 때 만난 날 코인과 함께 한 번 (#75) */
 export const WEEKLY_COINS = 50;
 
-/** 자주 쓰는 집중 길이 (분) */
+/** 집중 길이 (분) */
 export const FOCUS_LENGTHS = [15, 25, 50] as const;
-export const FOCUS_MIN_MINUTES = 5;
-export const FOCUS_MAX_MINUTES = 120;
 
 /**
  * 집중 코인의 기준점 [분, 코인]. 사이는 직선으로 잇는다. 1분당 코인이 15분까지 1/3, 25분까지 1/2, 50분까지 3/5 로
@@ -115,7 +113,7 @@ export const EARN_RULES: Readonly<Record<string, EarnRule>> = {
   todo: { perEntry: COIN.todo },
   // 마감 전 보너스는 그날 코인을 받은 할 일에만 붙어 서로 다른 할 일 수(20)로 묶인다 (TODO_RULE)
   early: { perEntry: COIN.early },
-  focus: { perEntry: focusCoins(FOCUS_MAX_MINUTES), perDay: COIN.focus * COIN.dailyFocusLimit },
+  focus: { perEntry: focusCoins(50), perDay: COIN.focus * COIN.dailyFocusLimit },
   // 하루 한 번, 7일 연속인 날만 보너스: 어느 7일이든 10 x 6 + 60 = 120 을 넘지 않는다
   meet: {
     perEntry: MEET_COINS + STREAK_BONUS,

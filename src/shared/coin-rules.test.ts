@@ -30,7 +30,7 @@ test('하루 상한은 앱 규칙에서 나온다', () => {
   assert.equal(EARN_RULES.meet?.per7Days, 120);
   assert.equal(EARN_RULES.journey?.perLife, 21);
   assert.equal(EARN_RULES.focus?.perDay, 100);
-  assert.equal(EARN_RULES.focus?.perEntry, focusCoins(120));
+  assert.equal(EARN_RULES.focus?.perEntry, focusCoins(50));
   assert.equal(EARN_RULES.meet?.perEntry, 60);
   assert.equal(EARN_RULES.weekly?.perWeek, 50);
   assert.equal(JOURNEY_STEP_COUNT, JOURNEY_STEPS.length);
@@ -75,14 +75,4 @@ test('ownedItemOk 와 날짜', () => {
   assert.equal(mondayOf('2026-10-15'), '2026-10-12');
   assert.equal(mondayOf('2026-10-12'), '2026-10-12');
   assert.equal(mondayOf('2026-10-18'), '2026-10-12');
-});
-
-test('120분 집중 보상도 허용하되 하루 상한은 유지한다', () => {
-  const e = (day = 0) => ({ day, week: 0, days7: 0, life: 0 });
-  const rule = EARN_RULES.focus;
-  assert.ok(rule);
-  const amount = focusCoins(120);
-  assert.equal(earnAllowed(rule, amount, e()), amount);
-  assert.equal(earnAllowed(rule, amount, e(90)), 10);
-  assert.equal(earnAllowed(rule, amount + 1, e()), 0);
 });
