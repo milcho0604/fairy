@@ -118,7 +118,7 @@ export const en: Translation<typeof ko> = {
   'records.trash.todo': 'To-dos',
   'records.trash.note': 'Notes',
   'records.trash.event': 'Events',
-  'records.trash.eventWhen': (v: { date: string }) => `Event · ${v.date}`,
+  'records.trash.eventWhen': (v: { date: string }) => `Event: ${v.date}`,
 
   // ---- Focus calendar ----
   'records.month.title': 'Focus calendar',
