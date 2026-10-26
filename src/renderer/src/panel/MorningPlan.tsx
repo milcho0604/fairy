@@ -165,7 +165,9 @@ export function PlanSheetHost({
 
   const show = (v: PlanView, navigateToday = true) => {
     setView(v);
-    setPicks(v.plan?.picks.length ? v.plan.picks : v.suggested);
+    const candidateIds = new Set(v.candidates.map((candidate) => candidate.id));
+    const savedPicks = v.plan?.picks.filter((id) => candidateIds.has(id)) ?? [];
+    setPicks(v.plan?.day === v.today ? savedPicks : v.suggested);
     setAiNote(v.plan?.note ?? '');
     setMsg('');
     setEmptyDraft('');
@@ -282,7 +284,7 @@ export function PlanSheetHost({
     const next = await day.plan().catch(() => undefined);
     if (next) {
       setView(next);
-      setPicks(next.plan?.picks.length ? next.plan.picks : next.suggested);
+      setPicks(refreshedPicks(picks, view, next));
     }
     setMsg(t('plan.sheet.added'));
   };
