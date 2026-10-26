@@ -24,7 +24,7 @@ export const ko = {
   'records.trash.todo': '할 일',
   'records.trash.note': '메모',
   'records.trash.event': '일정',
-  'records.trash.eventWhen': (v: { date: string }) => `일정 · ${v.date}`,
+  'records.trash.eventWhen': (v: { date: string }) => `일정: ${v.date}`,
 
   // ---- 집중 월간 잔디 ----
   'records.month.title': '집중 달력',
