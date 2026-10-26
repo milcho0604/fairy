@@ -5,6 +5,14 @@
 
 /** 숨기기 안내 알림은 처음 몇 번만 (매번 뜨면 숨길 때마다 알림이 와 성가시다) */
 export const HIDE_HINT_TIMES = 3;
+export type HideHintDelivery = 'notification' | 'tray' | 'none';
+
+/** 알림을 껐거나 지원되지 않으면 첫 숨김만 앱 안에서 안내한다. */
+export function hideHintDelivery(shown: number, osNotify: boolean, supported: boolean): HideHintDelivery {
+  if (shown >= HIDE_HINT_TIMES) return 'none';
+  if (osNotify && supported) return 'notification';
+  return shown === 0 ? 'tray' : 'none';
+}
 
 export type HideHint = { key: 'pet.hideHint'; keys: string } | { key: 'pet.hideHintNoKey' };
 

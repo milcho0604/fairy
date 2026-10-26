@@ -164,14 +164,14 @@ export const ko = {
   'settings.aiPetTools': '페어리 도구 쓰기',
   'settings.aiPetToolsHint':
     "채팅에서 '내일 장보기 할 일로 넣어 줘'처럼 말하면 AI가 페어리의 할 일, 메모, 일정을 직접 읽고 넣어. Claude나 Codex에서 돼. 할 일 목록을 읽을 수 있어서 기본은 꺼 뒀어. 파일, 명령 도구는 여전히 꺼 둬.",
-  'settings.myMcp': '내 MCP 도구 쓰기',
+  'settings.myMcp': 'Claude Code 도구 함께 쓰기',
   'settings.myMcpOff':
-    '위의 "내 AI 설정 없이 부르기"를 끄면 쓸 수 있어. Claude Code에 연결해 둔 노션, 슬랙 같은 MCP 도구를 채팅에서 써.',
+    '위의 "내 AI 설정 없이 부르기"를 끄면 쓸 수 있어. Claude Code에 연결한 노션, 슬랙 같은 도구를 페어리 대화에서 써.',
   'settings.myMcpOn': (v: { n: number }) =>
-    `Claude Code에 연결해 둔 MCP 도구(${v.n}개 서버)를 채팅에서 묻지 않고 써. 파일, 명령 도구는 여전히 꺼 둬. 글쓰기 같은 도구도 쓸 수 있으니 켤 때 주의해 줘.`,
+    `Claude Code에 연결한 도구 ${v.n}개를 물어보지 않고 써. 연결한 도구로 파일을 읽거나 명령을 실행할 수는 없어. 노션 글처럼 바깥에 내용을 쓸 수 있으니 켤 때 주의해 줘.`,
   'settings.aiIsolation': '내 AI 설정 없이 부르기 (권장)',
   'settings.aiIsolationHint':
-    'Claude Code와 Codex를 부를 때 내 훅, MCP, 스킬을 싣지 않아. 끄면 내 설정을 그대로 쓰는데 답이 느려지고 한도를 더 쓸 수 있어. 바꾸면 새 대화로 시작해.',
+    'Claude Code와 Codex를 부를 때 내 개인 설정과 연결 도구를 쓰지 않아. 끄면 내 설정을 그대로 쓰지만 답이 느려지거나 사용 한도가 더 들 수 있어. 바꾸면 새 대화로 시작해.',
 
   // 모델 고르기 (v2)
   'settings.models': 'AI 모델',
@@ -274,9 +274,10 @@ export const ko = {
     `처음 쓸 때 받아 (${v.mb}MB, ${v.license})`,
 
   // 다른 AI 에서 쓰기 (MCP)
-  'settings.mcpSection': '다른 AI에서 페어리 쓰기 (MCP)',
+  'settings.mcpSection': '다른 AI 앱에 페어리 연결하기',
+  'settings.mcp.summary': 'Claude Code나 Codex에 연결하는 방법 보기',
   'settings.mcp.intro':
-    'Claude Code, Codex에 페어리를 연결하면 그 안에서 "이거 페어리 할 일에 넣어 줘", "내일 3시 회의 일정 잡아 줘"가 돼. 할 일, 메모, 일정을 넣고 볼 수 있어. 넣은 것은 몇 초 안에 패널에 보여.',
+    '연결하면 Claude Code나 Codex에서 페어리의 할 일, 메모, 일정을 읽고 추가할 수 있어. 아래 내용을 해당 앱에 한 번 등록해 줘.',
   'settings.mcp.claude': 'Claude Code: 터미널에서 한 번 실행',
   'settings.mcp.copyCmd': '명령 복사',
   'settings.mcp.codex': 'Codex: ~/.codex/config.toml에 붙여 넣기',
@@ -627,14 +628,14 @@ export const en: Translation<typeof ko> = {
   'settings.aiPetTools': 'Let chat use fairy tools',
   'settings.aiPetToolsHint':
     "Say things like 'add groceries to my to-dos for tomorrow' and the AI reads and adds your fairy's to-dos, notes, and events itself. Works with Claude or Codex. It can read your to-do list, so it's off by default. File and command tools stay off.",
-  'settings.myMcp': 'Use my MCP tools',
+  'settings.myMcp': 'Use Claude Code tools too',
   'settings.myMcpOff':
-    'Turn off "Call without my AI setup" above to use this. Lets chat use MCP tools you connected to Claude Code, like Notion or Slack.',
+    'Turn off "Call without my AI setup" above to use this. Lets fairy chat use tools you connected to Claude Code, like Notion or Slack.',
   'settings.myMcpOn': (v) =>
-    `Chat uses the MCP tools you connected to Claude Code (${v.n} ${v.n === 1 ? 'server' : 'servers'}) without asking. File and command tools stay off. Some tools can write things, so be careful.`,
+    `Chat can use ${v.n} tools you connected to Claude Code without asking. Those tools cannot read files or run commands. Some can write to outside services, so be careful.`,
   'settings.aiIsolation': 'Call without my AI setup (recommended)',
   'settings.aiIsolationHint':
-    'Calls Claude Code and Codex without your hooks, MCP and skills. Turn off to use your own setup, but answers get slower and may use more of your limit. Changing this starts a new chat.',
+    'Does not use your personal settings or connected tools when calling Claude Code and Codex. Turn it off to use your setup, but replies may be slower or use more of your limit. Changing this starts a new chat.',
 
   'settings.models': 'AI models',
   'settings.pets.hint':
@@ -740,9 +741,10 @@ export const en: Translation<typeof ko> = {
   'settings.models.freeLater': (v: { mb: number; license: string }) =>
     `Downloads on first use (${v.mb} MB, ${v.license})`,
 
-  'settings.mcpSection': 'Use fairy from other AIs (MCP)',
+  'settings.mcpSection': 'Connect fairy to another AI app',
+  'settings.mcp.summary': 'How to connect Claude Code or Codex',
   'settings.mcp.intro':
-    'Connect fairy to Claude Code or Codex and you can say "Add this to my fairy to-dos" or "Schedule a meeting tomorrow at 3". It can add and read to-dos, notes and events. New items show up in the panel within seconds.',
+    'After connecting, Claude Code or Codex can read and add fairy to-dos, notes and events. Register the details below once in the app you use.',
   'settings.mcp.claude': 'Claude Code: run once in a terminal',
   'settings.mcp.copyCmd': 'Copy command',
   'settings.mcp.codex': 'Codex: paste into ~/.codex/config.toml',

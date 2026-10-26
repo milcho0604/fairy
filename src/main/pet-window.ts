@@ -89,7 +89,7 @@ import { watchCursor } from './cursor-watch.ts';
 import { devRendererUrl } from './dev-url.ts';
 import { onDisplaysChanged as watchDisplays } from './display-watch.ts';
 import { focusWindow, stealFocus } from './focus.ts';
-import { hideHintFor } from './hide-hint.ts';
+import { hideHintDelivery, hideHintFor } from './hide-hint.ts';
 import { langArg } from './lang.ts';
 import { settings } from './settings.ts';
 import { readJson, writeJson } from './store.ts';
@@ -332,6 +332,8 @@ export interface PetWindowOptions {
   onMissed?: () => void;
   /** 집에서 쉬는 중(숨김 까닭이 house 하나)에 말이 와서 모아 두었다. important 는 놓치면 안 되는 말(hold) */
   onRestHeld?: (kind: BubbleKind, important: boolean) => void;
+  /** 운영체제 알림을 쓸 수 없을 때 트레이에 잠시 숨김 안내를 보인다 (이슈 #148) */
+  onHideHint?: (message: string, shortMessage: string) => void;
   /** 미리 만든 창 (친구 펫을 기본 펫 화면 프로세스에서 연 것, openPetWindowIn). 없으면 새로 만든다 */
   win?: BrowserWindow;
 }
@@ -456,6 +458,7 @@ export function createPetWindow({
   menu,
   onMissed,
   onRestHeld,
+  onHideHint,
   win: prebuilt,
 }: PetWindowOptions): PetWindow {
   const positionFile = id ? `${POSITION_FILE}-${id}` : POSITION_FILE;
@@ -1454,23 +1457,32 @@ export function createPetWindow({
 
   /**
    * 숨기기는 바로 한다 (예전엔 말풍선 안내 2.5초를 보이고 숨어 굼떴고, 그사이 또 누르면 두 번 숨었다).
-   * 다시 부르는 법(단축키, 앱 다시 열기)은 처음 몇 번만 운영체제 알림으로. 메뉴 막대가 붐비면 아이콘이 안 보일 수 있어서다.
+   * 다시 부르는 법은 운영체제 알림으로 알린다. 알림을 끈 경우엔 첫 숨김에 트레이에서 한 번 안내한다.
    * 단축키를 꺼 두었어도 앱을 다시 열면 돌아오니 안내는 나온다 (hide-hint.ts)
    */
   function hideWithHint() {
     const shown = settings.get().hideHints;
     setHidden('user', true, false);
     const accel = hideShortcut();
+    const keys = accel ? acceleratorLabel(accel, process.platform === 'darwin').join('+') : '';
+    const delivery = hideHintDelivery(shown, settings.get().osNotify, Notification.isSupported());
+    if (delivery === 'none') return;
     const hint = hideHintFor({
       shown,
-      keys: accel ? acceleratorLabel(accel, process.platform === 'darwin').join('+') : '',
-      osNotify: settings.get().osNotify,
-      supported: Notification.isSupported(),
+      keys,
+      // 안내 문구 생성과 전달 경로를 나눈다.
+      osNotify: true,
+      supported: true,
     });
     if (!hint) return;
-    settings.set({ hideHints: shown + 1 });
     const body = hint.key === 'pet.hideHint' ? voiced(hint.key, { keys: hint.keys }) : voiced(hint.key);
-    new Notification({ title: petName(), body, silent: true }).show();
+    if (delivery === 'notification') {
+      settings.set({ hideHints: shown + 1 });
+      new Notification({ title: petName(), body, silent: true }).show();
+      return;
+    }
+    settings.set({ hideHints: 1 });
+    onHideHint?.(body, keys ? t('tray.hiddenKeys', { keys }) : t('tray.hiddenNoKey'));
   }
 
   function setHidden(reason: HideReason, on: boolean, hint = true) {

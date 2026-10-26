@@ -123,11 +123,14 @@ export function AiTab({ snap, update, flash }: TabProps) {
         />
       </Section>
       <Section title={t('settings.mcpSection')}>
-        <McpSetup
-          exec={snap.mcp.exec}
-          script={snap.mcp.script}
-          onCopied={(ok) => flash(ok ? t('settings.copied') : t('settings.copyFailed'), !ok)}
-        />
+        <details className="advanced-setup">
+          <summary>{t('settings.mcp.summary')}</summary>
+          <McpSetup
+            exec={snap.mcp.exec}
+            script={snap.mcp.script}
+            onCopied={(ok) => flash(ok ? t('settings.copied') : t('settings.copyFailed'), !ok)}
+          />
+        </details>
       </Section>
     </>
   );
