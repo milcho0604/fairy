@@ -5,7 +5,7 @@ import { t } from '../../../shared/i18n/index.ts';
 import type { OnboardAi, OnboardSnapshot } from '../../../shared/ipc.ts';
 import { ONBOARD_PAGES as PAGES } from '../../../shared/onboarding-page.ts';
 import { cleanPetName, PET_KINDS, PET_NAME_MAX, type Settings } from '../../../shared/settings.ts';
-import { acceleratorLabel } from '../../../shared/shortcut.ts';
+import { acceleratorLabel, SHORTCUT_EASY } from '../../../shared/shortcut.ts';
 import { isCurrentStarter, starterOf } from '../../../shared/starter-pets.ts';
 import { PetFace } from '../PetFace.tsx';
 import { PetNameInput } from '../PetNameInput.tsx';
@@ -359,6 +359,22 @@ export function OnboardingApp() {
         {page === 3 && (
           <section>
             <h1>{t('onboarding.tips.title')}</h1>
+            <div className="action-row">
+              <small className="grow">{t('onboarding.tips.easyKeys')}</small>
+              <button
+                type="button"
+                onClick={() =>
+                  void setPreferences({ shortcuts: { ...SHORTCUT_EASY, home: s.shortcuts.home } })
+                }
+              >
+                {t('settings.shortcutEasy')}
+              </button>
+            </div>
+            <small className="hint">
+              {acceleratorLabel(SHORTCUT_EASY.quickAdd, mac).join(' + ')} {t('settings.shortcut.quickAdd')} ·{' '}
+              {acceleratorLabel(SHORTCUT_EASY.chat, mac).join(' + ')} {t('settings.shortcut.chat')} ·{' '}
+              {acceleratorLabel(SHORTCUT_EASY.panel, mac).join(' + ')} {t('settings.shortcut.panel')}
+            </small>
             <dl className="tips">
               <dt>{t('onboarding.tips.click', { name: petName })}</dt>
               <dd>{t('onboarding.tips.clickDesc')}</dd>

@@ -1082,6 +1082,7 @@ export const PANEL = {
   // 집중 타이머 (v1)
   focusStart: 'panel:focus-start',
   focusStop: 'panel:focus-stop',
+  focusUndo: 'panel:focus-undo',
   /** 놓친 알림 지우기 */
   missedClear: 'panel:missed-clear',
   // 상점과 놀이 (v1)
@@ -1155,6 +1156,8 @@ export interface PanelState {
   /** 일정 줄의 구글 표식. 구글 캘린더에 연결하지 않았으면 없다 */
   gcal?: PanelGcal;
   focus: FocusState;
+  /** 집중을 멈춘 직후 8초 동안 되돌릴 수 있다 */
+  focusUndoAvailable: boolean;
   /** 집중 코인과 오늘 받은 집중 횟수 */
   focusCoins: number;
   /** 고른 집중 길이 (15, 25, 50분) */
@@ -1427,6 +1430,7 @@ export interface PanelBridge {
   /** 길이(15, 25, 50분)를 주면 그 길이로, 아니면 마지막에 고른 길이로. todoId 를 주면 그 할 일을 하는 집중 */
   focusStart(minutes?: number, todoId?: number): void;
   focusStop(): void;
+  focusUndo(): void;
   missedClear(): void;
   buyToy(key: string): Promise<BuyResult>;
   /** 지금 보고 있는 단계(level)에서 다음 단계를 산다. 그새 바뀌었으면 사지 않는다 */

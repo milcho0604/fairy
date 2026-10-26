@@ -5,12 +5,15 @@ import {
   acceleratorLabel,
   NO_SHORTCUT,
   SHORTCUT_DEFAULTS,
+  SHORTCUT_EASY,
   SHORTCUT_IDS,
   SHORTCUT_LABEL,
   type ShortcutId,
   shortcutClash,
+  shortcutProblem,
   toAccelerator,
 } from '../../../../shared/shortcut.ts';
+import { applyLangPreference } from '../../lang.ts';
 import { bridge, isMac, Section, type TabProps, Toggle } from '../ui.tsx';
 
 /** 편의 탭: 단축키, 다른 앱에서 부르기, 배터리 절약, 접근성, 언어, 시작 */
@@ -19,11 +22,32 @@ export function EaseTab({ snap, update, flash }: TabProps) {
   const mac = isMac(snap);
   const mod = mac ? 'Cmd' : 'Ctrl';
   const alt = mac ? 'Option' : 'Alt';
-  // 언어를 바꾸면 다시 켜야 보인다. 바꾼 뒤에만 다시 켜기 버튼을 보여 준다
-  const [langChanged, setLangChanged] = useState(false);
+  const applyEasyShortcuts = () => {
+    const invalid = SHORTCUT_IDS.map(
+      (id) => SHORTCUT_EASY[id] && shortcutProblem(SHORTCUT_EASY[id], mac),
+    ).find(Boolean);
+    const clash = shortcutClash(SHORTCUT_EASY);
+    if (invalid || clash) {
+      flash(
+        invalid ?? t('settings.shortcut.taken', { name: SHORTCUT_LABEL[clash?.[1] ?? 'quickAdd'] }),
+        true,
+      );
+      return;
+    }
+    void update(
+      { shortcuts: { ...SHORTCUT_EASY, home: s.shortcuts.home } },
+      t('settings.shortcutEasyApplied'),
+    );
+  };
   return (
     <>
       <Section title={t('settings.shortcuts')}>
+        <div className="action-row">
+          <small className="grow">{t('settings.shortcutEasyHint')}</small>
+          <button type="button" onClick={applyEasyShortcuts}>
+            {t('settings.shortcutEasy')}
+          </button>
+        </div>
         <dl className="keys">
           {SHORTCUT_IDS.map((id) => (
             <ShortcutRow
@@ -104,24 +128,15 @@ export function EaseTab({ snap, update, flash }: TabProps) {
               className={s.lang === l ? 'on' : ''}
               onClick={async () => {
                 if (s.lang === l) return;
-                await update({ lang: l });
-                setLangChanged(true);
+                const next = await update({ lang: l });
+                applyLangPreference(next.lang);
               }}
             >
               {t(`settings.lang.${l}`)}
             </button>
           ))}
         </fieldset>
-        {langChanged ? (
-          <div className="action-row notice" role="status">
-            <small className="grow">{t('settings.langRestart')}</small>
-            <button type="button" className="primary" onClick={() => bridge.relaunch()}>
-              {t('settings.restart')}
-            </button>
-          </div>
-        ) : (
-          <small className="below">{t('settings.langHint')}</small>
-        )}
+        <small className="below">{t('settings.langHint')}</small>
         {/* 어두운 모드는 따로 고르지 않고 운영체제를 따른다. 찾기에서 "다크", "theme" 로도 나오게 낱말을 숨겨 둔다 */}
         <p className="theme-note">
           {t('settings.themeNote')}

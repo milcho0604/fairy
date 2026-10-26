@@ -373,6 +373,9 @@ export const ko = {
   // 단축키
   'settings.shortcuts': '단축키',
   'settings.shortcutChanged': '단축키를 바꿨어',
+  'settings.shortcutEasy': '쉬운 키 묶음',
+  'settings.shortcutEasyHint': '단축키에서 Option/Alt 한 번 덜 누르는 묶음을 적용해.',
+  'settings.shortcutEasyApplied': '쉬운 키 묶음을 적용했어',
   'settings.zoomKeys': '크게, 작게, 원래대로 (마우스가 페어리 위에 있을 때)',
   'settings.shortcut.hide': '숨기기, 다시 보이기',
   'settings.shortcut.quickAdd': '할 일 한 줄 넣기 (어디서든)',
@@ -834,6 +837,9 @@ export const en: Translation<typeof ko> = {
 
   'settings.shortcuts': 'Shortcuts',
   'settings.shortcutChanged': 'Shortcut changed',
+  'settings.shortcutEasy': 'Easy shortcut set',
+  'settings.shortcutEasyHint': 'Apply a set that uses one fewer modifier key.',
+  'settings.shortcutEasyApplied': 'Easy shortcuts applied',
   'settings.zoomKeys': 'Bigger, smaller, reset (mouse over your fairy)',
   'settings.shortcut.hide': 'Hide and show',
   'settings.shortcut.quickAdd': 'Quick add a to-do (anywhere)',

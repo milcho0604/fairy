@@ -12,5 +12,10 @@ export function initLang(): void {
   settings.nameIfNew(t('common.defaultPetName'));
 }
 
+/** 설정에서 바꾼 언어를 메인 프로세스의 다음 안내와 메뉴 구성에도 반영한다. */
+export function refreshLang(): void {
+  setLang(resolveLang(settings.get().lang, app.getPreferredSystemLanguages()));
+}
+
 /** 창에 넘길 실행 인자. preload 가 읽어 화면에 알린다 */
 export const langArg = (): string => `--jj-lang=${getLang()}`;

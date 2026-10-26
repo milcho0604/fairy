@@ -526,6 +526,7 @@ if (kind === 'panel' || kind === 'home' || kind === 'quick') {
     undoMoveOverdue: (key) => ipcRenderer.send(PANEL.undoMoveOverdue, key),
     focusStart: (minutes?: number, todoId?: number) => ipcRenderer.send(PANEL.focusStart, minutes, todoId),
     focusStop: () => ipcRenderer.send(PANEL.focusStop),
+    focusUndo: () => ipcRenderer.send(PANEL.focusUndo),
     missedClear: () => ipcRenderer.send(PANEL.missedClear),
     buyToy: (key: string) => ipcRenderer.invoke(PANEL.buyToy, key),
     buyHouse: (level: number) => ipcRenderer.invoke(PANEL.buyHouse, level),

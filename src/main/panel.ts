@@ -128,11 +128,13 @@ export interface PanelOptions {
   notes: NoteStore;
   events: EventStore;
   focus: () => FocusState;
+  focusUndoAvailable: () => boolean;
   /** 집중 시작. 길이(15, 25, 50분)를 주면 그 길이로, 할 일 id 를 주면 그 할 일을 하는 집중 */
   startFocus: (minutes?: number, todoId?: number) => void;
   /** 고른 집중 길이 */
   focusMin: () => number;
   stopFocus: () => void;
+  undoStopFocus: () => boolean;
   /** 일정이 바뀌었다 (곧 시작하는 일정이면 바로 알림) */
   onEventsChanged: () => void;
   /** 일정 줄의 구글 표식 (구글 캘린더에 연결했을 때만) */
@@ -292,6 +294,7 @@ export function createPanel(o: PanelOptions) {
       pinnedEvents,
       ...gcalOf(events, pinnedEvents),
       focus: o.focus(),
+      focusUndoAvailable: o.focusUndoAvailable(),
       focusMin: o.focusMin(),
       focusCoins: focusCoins(o.focusMin()),
       life: o.life(),
@@ -909,6 +912,9 @@ export function createPanel(o: PanelOptions) {
   });
   ipcMain.on(PANEL.focusStop, (e) => {
     if (ours(e)) o.stopFocus();
+  });
+  ipcMain.on(PANEL.focusUndo, (e) => {
+    if (ours(e)) o.undoStopFocus();
   });
   ipcMain.on(PANEL.missedClear, (e) => {
     if (ours(e)) o.clearMissed();

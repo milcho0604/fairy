@@ -184,6 +184,11 @@ export function TodayTab({
           >
             {t('panel.today.start')}
           </button>
+          {s.focusUndoAvailable && (
+            <button type="button" className="ghost" onClick={() => bridge.focusUndo()}>
+              {t('panel.today.focusUndo')}
+            </button>
+          )}
         </>
       ) : (
         <>

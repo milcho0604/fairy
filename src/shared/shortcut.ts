@@ -17,6 +17,17 @@ export const SHORTCUT_DEFAULTS: Record<ShortcutId, string> = {
   pet: 'CommandOrControl+Alt+Shift+P',
 };
 
+/** 한 손으로 누르기 쉬운 묶음: 기본 4키에서 수식키 하나를 줄인다. */
+export const SHORTCUT_EASY: Record<ShortcutId, string> = {
+  hide: 'CommandOrControl+Shift+Y',
+  quickAdd: 'CommandOrControl+Shift+K',
+  chat: 'CommandOrControl+Shift+B',
+  look: 'CommandOrControl+Shift+G',
+  home: '',
+  panel: 'CommandOrControl+Shift+M',
+  pet: 'CommandOrControl+Shift+U',
+};
+
 /** 화면에 늘어놓는 순서 (설정 단축키 칸) */
 export const SHORTCUT_IDS = Object.keys(SHORTCUT_DEFAULTS) as ShortcutId[];
 
