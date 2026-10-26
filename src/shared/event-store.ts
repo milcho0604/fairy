@@ -267,6 +267,12 @@ export class EventStore {
     const repeat = initial.repeat_kind;
     let interval = Number(latest.start_at);
     const clock = new Date(interval);
+    // DST 전환으로 존재하지 않는 시각(예: 02:30)이 한 회차에서 03:30으로 보정돼도
+    // 그 보정값을 다음 회차의 시각으로 물려주지 않는다. 반복의 현지 시각은 처음 값에 고정한다.
+    const hour = clock.getHours();
+    const minute = clock.getMinutes();
+    const second = clock.getSeconds();
+    const millisecond = clock.getMilliseconds();
     const reminds =
       this.#reminders
         .many([seriesId])
@@ -282,15 +288,7 @@ export class EventStore {
         }
       }
       const [year, month, date] = day.split('-').map(Number);
-      const next = new Date(
-        year ?? 2000,
-        (month ?? 1) - 1,
-        date ?? 1,
-        clock.getHours(),
-        clock.getMinutes(),
-        clock.getSeconds(),
-        clock.getMilliseconds(),
-      );
+      const next = new Date(year ?? 2000, (month ?? 1) - 1, date ?? 1, hour, minute, second, millisecond);
       const startAt = next.getTime();
       if (startAt > through) break;
       const duration = latest.end_at === null ? null : Number(latest.end_at) - interval;
@@ -314,7 +312,6 @@ export class EventStore {
         { reset: true },
       );
       interval = startAt;
-      clock.setTime(startAt);
     }
   }
 

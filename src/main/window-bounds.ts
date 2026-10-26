@@ -47,7 +47,7 @@ function watchLiveWindows(): void {
       win.setBounds(record.fitTarget);
       // setBounds 이벤트는 지연되어 올 수 있다. 이 구간의 자동 이동은 사용자가 창을 옮긴 것으로 저장하지 않는다.
       setTimeout(() => {
-        if (record.fitTarget && sameBounds(win.getNormalBounds(), record.fitTarget))
+        if (!win.isDestroyed() && record.fitTarget && sameBounds(win.getNormalBounds(), record.fitTarget))
           record.fitTarget = undefined;
       }, 800);
     }
