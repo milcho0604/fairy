@@ -3,6 +3,7 @@
 
 export type GestureEvent =
   | { type: 'click' }
+  | { type: 'double-click' }
   | { type: 'drag-start'; offset: { x: number; y: number }; petRelative?: boolean }
   | { type: 'drag-end' };
 

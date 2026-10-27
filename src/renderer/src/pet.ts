@@ -1341,6 +1341,22 @@ scheduleActivity();
 
 const gesture = new GestureTracker();
 let overPet = false;
+const DOUBLE_CLICK_MS = 280;
+let pendingClick: ReturnType<typeof setTimeout> | undefined;
+
+/** 첫 클릭은 더블클릭 시간이 지난 뒤 확정한다. 두 번째 클릭은 첫 동작 없이 더블클릭 하나로 보낸다. */
+function queuePetClick() {
+  if (pendingClick) {
+    clearTimeout(pendingClick);
+    pendingClick = undefined;
+    bridge.gesture({ type: 'double-click' });
+    return;
+  }
+  pendingClick = setTimeout(() => {
+    pendingClick = undefined;
+    bridge.gesture({ type: 'click' });
+  }, DOUBLE_CLICK_MS);
+}
 
 /** 커서 아래 픽셀이 비어 있지 않으면 펫 위다. 투명한 곳은 클릭을 아래 앱으로 넘긴다. */
 function hitTest(wx: number, wy: number): boolean {
@@ -1416,7 +1432,7 @@ function startPeekPress() {
         // 지금은 못 키운다(끌기 중 등): 누르기는 보통 클릭으로 친다. 이미 놓았으면 그 클릭을 지금 보낸다
         peekState = 'none';
         if (peekReleased) {
-          bridge.gesture({ type: 'click' });
+          queuePetClick();
           setInputs({ excitedUntil: performance.now() + EXCITED_MS });
         }
         return;
@@ -1487,9 +1503,10 @@ canvas.addEventListener('pointerup', (e) => {
   if (!event) return;
   // 꾹 눌러 키웠다 놓은 것은 클릭이 아니다
   if (event.type === 'click' && grew) return;
-  bridge.gesture(event);
+  if (event.type === 'click') queuePetClick();
+  else bridge.gesture(event);
   if (event.type === 'drag-end') setInputs({ grabbed: false });
-  // 클릭하면 메인이 채팅 창을 연다(패널은 2단계). 펫은 반가워서 잠깐 신난다.
+  // 클릭 동작을 고르는 동안 펫은 반가워서 잠깐 신난다.
   else setInputs({ excitedUntil: performance.now() + EXCITED_MS });
 });
 

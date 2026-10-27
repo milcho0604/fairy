@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { PERSONAS } from '../../../../shared/ai/persona.ts';
 import { saverOn } from '../../../../shared/battery.ts';
 import { t } from '../../../../shared/i18n/index.ts';
+import { PET_CLICK_ACTIONS, type PetClickAction } from '../../../../shared/pet-click.ts';
 import { restDaysOf } from '../../../../shared/routine.ts';
 import {
   cleanPetName,
@@ -91,17 +92,19 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
   return (
     <>
       <nav className="settings-jump" aria-label={t('settings.pet')}>
-        {(['speech', 'appearance', 'movement', 'notifications', 'performance'] as const).map((key) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() =>
-              document.getElementById(`pet-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-            }
-          >
-            {t(`settings.pet.${key}`)}
-          </button>
-        ))}
+        {(['speech', 'appearance', 'clicks', 'movement', 'notifications', 'performance'] as const).map(
+          (key) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() =>
+                document.getElementById(`pet-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }
+            >
+              {t(`settings.pet.${key}`)}
+            </button>
+          ),
+        )}
       </nav>
       <Section id="pet-speech" title={t('settings.pet.speech')}>
         <div className="field">
@@ -241,6 +244,29 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
           />
           <small>{t('settings.sizeHint', { mod })}</small>
         </label>
+      </Section>
+
+      <Section id="pet-clicks" title={t('settings.pet.clicks')}>
+        {(['petClick', 'petDoubleClick'] as const).map((key) => (
+          <label className="field" key={key}>
+            <span>{t(key === 'petClick' ? 'settings.pet.click.single' : 'settings.pet.click.double')}</span>
+            <select
+              value={s[key]}
+              onChange={(e) => {
+                const value = e.currentTarget.value as PetClickAction;
+                if (key === 'petClick') void update({ petClick: value });
+                else void update({ petDoubleClick: value });
+              }}
+            >
+              {PET_CLICK_ACTIONS.map((action) => (
+                <option key={action} value={action}>
+                  {t(`settings.pet.click.action.${action}`)}
+                </option>
+              ))}
+            </select>
+          </label>
+        ))}
+        <small className="below">{t('settings.pet.clickHint')}</small>
       </Section>
 
       <Section id="pet-movement" title={t('settings.pet.movement')}>

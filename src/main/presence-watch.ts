@@ -6,7 +6,7 @@ const POLL_MS = 3000;
 /**
  * 윈도우에서 전체 화면 앱, 발표 모드를 감지한다 (P1-10). 맥은 펫 창이 다른 앱 전체 화면 공간에
  * 끼지 않게 해 두어(visibleOnFullScreen: false) 운영체제가 알아서 가린다 (우리 큰 창이 전체 화면인 동안만 pet-window.ts
- * reassertSpaces 로 끼게 한다).
+ * reassertSpaces 로 끼게 한다). 맥의 일반 창 화면 공유는 감지할 수 없어 사용자가 숨기기 동작이나 단축키를 쓴다.
  * 2026-10-02 기준 윈도우 실기기에서 확인 전 (D1 대기).
  */
 export function watchPresentation(
