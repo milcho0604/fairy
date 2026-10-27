@@ -57,7 +57,7 @@ import {
 } from './draw.ts';
 import { initLang } from './lang.ts';
 import { LAND_MS, moveFps, SIT_MS, sitDown } from './move-pose.ts';
-import { settlePeekRequest } from './peek-request.ts';
+import { type PeekRequestStatus, settlePeekRequest } from './peek-request.ts';
 import { renderBody, renderFace } from './pet-face.ts';
 import type { Pet3D } from './pet3d.ts';
 import { quadKind, withGait } from './pet3d-gait.ts';
@@ -1402,7 +1402,8 @@ const PEEK_HOLD_MS = PET_LONG_PRESS_DELAY_MS;
 let peekTimer: ReturnType<typeof setTimeout> | undefined;
 /** none: 아님, asking: 메인에 키워 달라고 물어 답을 기다림, on: 커진 중 */
 let peekState: 'none' | 'asking' | 'on' = 'none';
-let peekReleased = false;
+/** 요청 도중 버튼을 놓았는지, 드래그/설정 변경 등으로 취소됐는지 구분한다 */
+let peekRequestStatus: PeekRequestStatus = 'holding';
 /** 버튼을 누르고 있는 동안 (pointerdown 부터 pointerup 까지) */
 let pressing = false;
 /** 커진 것을 돌려놓은 때. 창 크기가 바뀌면 브라우저가 잡고 있던 포인터를 놓을 수 있어 바로 다시 잡는다 */
@@ -1410,10 +1411,10 @@ let peekEndedAt = -1e9;
 /** 누른 자리 (창 안, 화면). 커지면 창이 움직여 창 안 좌표가 바뀌므로 화면 좌표로 끌기를 가른다 */
 let pressAt: { x: number; y: number; sx: number; sy: number; px: number; py: number } | undefined;
 
-function rejectPeekPress(released = peekReleased) {
+function rejectPeekPress(restoreClick: boolean) {
   peekState = 'none';
-  peekReleased = false;
-  if (!released) return;
+  peekRequestStatus = 'holding';
+  if (!restoreClick) return;
   // 키우지 못한 채 이미 놓았으면 일반 클릭으로 돌린다.
   petClicks.click();
   setInputs({ excitedUntil: performance.now() + EXCITED_MS });
@@ -1423,14 +1424,15 @@ function startPeekPress() {
   peekTimer = undefined;
   if (!clickGrow || gesture.dragging || peekState !== 'none') return;
   peekState = 'asking';
-  peekReleased = false;
+  peekRequestStatus = 'holding';
   void settlePeekRequest(
-    bridge.peek(true, reducedMotion.matches),
-    () => peekReleased,
+    () => bridge.peek(true, reducedMotion.matches),
+    () => peekRequestStatus,
     // 거절이나 IPC 오류가 놓은 뒤 도착하면 일반 클릭으로 돌린다.
     rejectPeekPress,
-    (released) => {
-      if (released) {
+    (shouldEnd) => {
+      peekRequestStatus = 'holding';
+      if (shouldEnd) {
         peekState = 'none';
         void bridge.peek(false);
         return;
@@ -1441,7 +1443,7 @@ function startPeekPress() {
 }
 
 /** 누름이 끝났다(놓음, 끌기 시작, 포인터 잃음). 커졌거나 묻는 중이었으면 true */
-function cancelPeekPress(): boolean {
+function cancelPeekPress(status: 'released' | 'cancelled' = 'cancelled'): boolean {
   clearTimeout(peekTimer);
   peekTimer = undefined;
   if (peekState === 'on') {
@@ -1451,7 +1453,8 @@ function cancelPeekPress(): boolean {
     return true;
   }
   if (peekState === 'asking') {
-    peekReleased = true;
+    // 완료까지 요청 상태가 한 번 정해지면, 뒤따르는 lostpointercapture가 이를 바꾸지 않는다.
+    if (peekRequestStatus === 'holding') peekRequestStatus = status;
     return true;
   }
   return false;
@@ -1477,7 +1480,7 @@ canvas.addEventListener('pointermove', (e) => {
   if (!event) return;
   // 끌기가 시작된다: 커진 것을 먼저 돌려 달라 (메인이 끌기 시작 때도 돌려 놓는다).
   // 커지면서 말풍선이 닫혀 창 안 펫 자리가 바뀌므로, 잡은 자리는 누를 때 펫 기준으로 알린다 (돌아온 창에서 펫은 왼쪽 위 모서리)
-  cancelPeekPress();
+  cancelPeekPress('cancelled');
   petClicks.cancelPress();
   setInputs({ grabbed: true });
   if (from && event.type === 'drag-start')
@@ -1491,7 +1494,7 @@ canvas.addEventListener('pointermove', (e) => {
 
 canvas.addEventListener('pointerup', (e) => {
   pressing = false;
-  const grew = cancelPeekPress();
+  const grew = cancelPeekPress('released');
   const event = gesture.up(e.button);
   if (!event) {
     petClicks.cancelPress();
@@ -1523,7 +1526,7 @@ canvas.addEventListener('lostpointercapture', (e) => {
     }
   }
   pressing = false;
-  cancelPeekPress();
+  cancelPeekPress('cancelled');
   petClicks.cancelPress();
   const event = gesture.cancel();
   if (!event) return;
