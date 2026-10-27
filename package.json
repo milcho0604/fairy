@@ -2,7 +2,7 @@
   "name": "fairy",
   "productName": "fairy",
   "private": true,
-  "version": "0.6.8",
+  "version": "0.6.9",
   "description": "화면 위 페어리와 같이 일하는 데스크톱 앱",
   "author": {
     "name": "milcho0604",
@@ -53,12 +53,15 @@
     "react-dom": "19.3.0",
     "three": "0.186.1",
     "typescript": "7.0.2",
-    "vite": "7.3.6"
+    "vite": "7.3.7"
   },
   "dependencies": {
     "electron-updater": "6.8.9",
     "koffi": "3.3.2",
     "node-llama-cpp": "3.22.1",
-    "smol-toml": "1.6.0"
+    "smol-toml": "1.9.1"
+  },
+  "overrides": {
+    "simple-git": "4.0.2"
   }
 }
