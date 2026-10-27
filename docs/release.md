@@ -111,7 +111,7 @@
 
 ## 환경 승인
 
-`release.yml` 의 공개 레포 게시 작업은 GitHub 환경 `release` 에서 돈다. 이 환경이 없거나 보호가 빠지면 태그로 실행한 코드가 `RELEASES_TOKEN` 을 쓸 수 있으므로 공개 레포에 적용한다:
+`release.yml` 은 빌드 시작 전과 공개 레포 게시 직전에 GitHub 환경 `release` 승인을 각각 받는다. 빌드 단계는 macOS 서명 인증서 비밀값을 사용하므로 첫 승인 뒤에만 시작하고, 게시 토큰은 아티팩트 검사를 마친 뒤 두 번째 승인 후에만 사용한다. 이 환경이 없거나 보호가 빠지면 태그로 실행한 코드가 비밀값을 쓸 수 있으므로 공개 레포에 적용한다:
 
 1. 레포 Settings → Environments → New environment → `release`
 2. Required reviewers 에 레포 주인을 넣는다(혼자면 "Prevent self-review" 는 끈다)
