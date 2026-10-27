@@ -1,4 +1,4 @@
-import { app, net, shell } from 'electron';
+import { app, shell } from 'electron';
 import type { AppUpdater } from 'electron-updater';
 import { fresh } from '../shared/clock.ts';
 import { t } from '../shared/i18n/index.ts';
@@ -16,6 +16,7 @@ import {
   type SavedLock,
   type UpdateDecision,
 } from '../shared/update-policy.ts';
+import { mainFetch } from './net-fetch.ts';
 import type { SayOptions } from './pet-window.ts';
 import { settings } from './settings.ts';
 import { readJson, removeJson, writeJson } from './store.ts';
@@ -106,7 +107,7 @@ export function watchUpdates(o: { say: Say; log: Log; askForce?: AskForce }) {
 
   async function fetchDecision(): Promise<UpdateDecision | { kind: 'failed'; status?: number; bad?: true }> {
     try {
-      const res = await net.fetch(releasesApi(), {
+      const res = await mainFetch(releasesApi(), {
         headers: { accept: 'application/vnd.github+json', 'user-agent': `fairy/${app.getVersion()}` },
         // GitHub 은 max-age=60 을 붙여 보낸다. 캐시를 쓰면 10초 뒤 두 번째 확인이 첫 응답을 그대로 받아 이중 확인이 무의미해진다
         cache: 'no-store',

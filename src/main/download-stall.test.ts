@@ -6,11 +6,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 
-// download.ts 는 electron 의 net.fetch 로 받는다. 시험에서는 Node fetch 를 net 으로 끼운다
+// download.ts 는 공용 fetch(net-fetch.ts, electron 의 net.fetch)로 받는다. 시험에서는 Node fetch 를 net 으로 끼운다
 register(
   `data:text/javascript,${encodeURIComponent(`
 export async function resolve(spec, ctx, next) {
-  if (spec === 'electron') return { url: 'data:text/javascript,export const net = { fetch: (u, i) => fetch(u, i) };', shortCircuit: true };
+  if (spec === 'electron') return { url: 'data:text/javascript,export const net = { fetch: (u, i) => fetch(u, i) }; export const app = { whenReady: () => Promise.resolve() };', shortCircuit: true };
   return next(spec, ctx);
 }`)}`,
 );

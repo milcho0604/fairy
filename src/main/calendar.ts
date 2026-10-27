@@ -1,4 +1,3 @@
-import { net } from 'electron';
 import type { EventStore } from '../shared/event-store.ts';
 import { t } from '../shared/i18n/index.ts';
 import {
@@ -10,6 +9,7 @@ import {
   parseIcs,
 } from '../shared/ics.ts';
 import type { CalSync } from '../shared/ipc.ts';
+import { mainFetch } from './net-fetch.ts';
 import { readCapped } from './read-capped.ts';
 import { settings } from './settings.ts';
 
@@ -63,7 +63,7 @@ export function watchCalendar(o: {
     // 읽거나 맞추다 난 오류는 센다 (리뷰 LOW: 예전에는 무엇이 던져도 인터넷 끊김으로 보아 조용히 넘어갔다)
     let text: string | undefined;
     try {
-      const res = await net.fetch(url, { headers: { accept: 'text/calendar' }, signal: ac.signal });
+      const res = await mainFetch(url, { headers: { accept: 'text/calendar' }, signal: ac.signal });
       if (!res.ok)
         return done(t('panel.calendar.failedStatus', { status: res.status }), calStatusResult(res.status));
       // 다 받은 뒤 재지 않고 받으면서 잰다: 상한을 넘으면 그 자리에서 끊는다

@@ -10,7 +10,6 @@ import {
   clipboard,
   type IpcMainInvokeEvent,
   ipcMain,
-  net,
   shell,
   type WebContents,
 } from 'electron';
@@ -26,6 +25,7 @@ import { EVENT_ID, normalizeCoupon } from '../shared/site-events.ts';
 import { localDay, type TodoStore } from '../shared/todo-store.ts';
 import { isVersion } from '../shared/update-levels.ts';
 import { startLoopback } from './gcal-auth.ts';
+import { mainFetch } from './net-fetch.ts';
 import { osCrypto } from './os-crypto.ts';
 import { adminLogFilter, serverApi } from './server-api.ts';
 import { type Reverted, ServerCoins } from './server-coins.ts';
@@ -115,12 +115,10 @@ export function createServer(o: {
   const appVersion = memory && testVersion && isVersion(testVersion) ? testVersion : app.getVersion();
   const openExternal = (u: string): Promise<void> =>
     memory && process.env.JJ_TEST_BROWSER === 'fetch'
-      ? fetch(u).then((r) => void r.body?.cancel())
+      ? mainFetch(u).then((r) => void r.body?.cancel())
       : shell.openExternal(u);
   const core = createServerCore({
-    api: url
-      ? serverApi(url, (u, init) => net.fetch(u, init), { appVersion, onGate: (g) => core.gate(g) })
-      : undefined,
+    api: url ? serverApi(url, mainFetch, { appVersion, onGate: (g) => core.gate(g) }) : undefined,
     onServerMin: (m) => o.onServerMin?.(m),
     coins: new ServerCoins(o.db, o.todos, o.shop, localDay),
     load: () => readJson(STATE),

@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { app, net } from 'electron';
+import { app } from 'electron';
 import { CATALOG_URL, type Catalog, DEFAULT_CATALOG, parseCatalog } from '../../shared/ai/catalog.ts';
+import { mainFetch } from '../net-fetch.ts';
 import { writeFileAtomic } from '../safe-file.ts';
 import { fetchCatalogJson } from './catalog-fetch.ts';
 
@@ -23,7 +24,7 @@ export function watchCatalog(log: (tag: string, ...rest: unknown[]) => void) {
 
   async function refresh(): Promise<void> {
     // 시간 상한과 크기 상한을 두고 받는다 (catalog-fetch.ts)
-    const r = await fetchCatalogJson((url, init) => net.fetch(url, init), CATALOG_URL, {
+    const r = await fetchCatalogJson(mainFetch, CATALOG_URL, {
       headers: { 'user-agent': `fairy/${app.getVersion()}` },
     });
     if (!r.ok) {

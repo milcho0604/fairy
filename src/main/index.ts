@@ -72,6 +72,7 @@ import {
   removeFoodImage,
 } from './maker.ts';
 import { createMiniGames } from './minigames.ts';
+import { guardMainGlobalFetch, mainFetch } from './net-fetch.ts';
 import { watchNotices } from './notices.ts';
 import { createOnboarding } from './onboarding.ts';
 import { type Incoming, listenEarly, registerScheme, startIncoming, takeArgv } from './open-handler.ts';
@@ -146,6 +147,11 @@ if (dataChoice) {
   else if (m.kind === 'failed')
     log('data', '예전 데이터 폴더를 옮기지 못해 이번에는 그대로 씀', m.dir, m.error);
 }
+
+// 전역 fetch(Node undici)는 br 응답을 Node zlib 의 Brotli 풀개로 푼다 (CVE-2026-111497). 바깥 요청은 크로미움으로만 보낸다 (net-fetch-core.ts)
+// 개발 점검의 대조용으로 원래 fetch 를 잡아 둔다 (__jj.nodeFetch, 배포본에는 없다)
+const nodeFetch = globalThis.fetch;
+guardMainGlobalFetch();
 
 // 메인에서 잡지 못한 오류는 기록만 남긴다. 처리기가 없으면 Electron 이 "Uncaught Exception" 창을 띄워
 // 사용자 화면을 막는다 (2026-10-07 사용자 지적: 끄는 중 타이머가 닫힌 저장 파일을 읽었다)
@@ -2039,6 +2045,9 @@ ready
     if (!app.isPackaged)
       Object.assign(globalThis, {
         __jj: {
+          // 바깥 요청 점검 (scripts/dev/net-brotli.mjs): 공용 fetch
+          mainFetch,
+          nodeFetch,
           look,
           // 확인 창(showMessageBox)을 시험에서 바꿔 끼워 진짜 창을 띄우지 않는다 (Codex 펫 가져오기 시험 등)
           dialog,
