@@ -4,6 +4,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { type AppDeps, appModule } from './app.module';
 import type { Config } from './config';
 import { Feeds } from './feeds';
+import { rejectEncodedBody } from './no-encoded-body';
 import { updateGate } from './update-gate';
 
 /**
@@ -31,6 +32,8 @@ export async function createApp(config: Config, deps: AppDeps = {}): Promise<Nes
     abortOnError: false,
   });
   app.disable('x-powered-by');
+  // 압축된 요청 본문은 415 로 거절한다 (본문 해석기보다 먼저)
+  app.use(rejectEncodedBody);
   // 요청 본문 상한. 서버 백업(5단계)만 따로 크게 받는다.
   app.useBodyParser('json', { limit: '256kb' });
   // 운영자 화면(/admin)의 폼. 스크립트 없이 폼만 쓴다 (admin.ts)

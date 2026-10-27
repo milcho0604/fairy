@@ -103,6 +103,21 @@ test('/health: DB 가 살아 있으면 200, 멈추면 503, 다시 켜면 200', a
   assert.deepEqual(await ok.json(), { status: 'ok', db: 'ok' });
   assert.equal(ok.headers.get('x-powered-by'), null);
 
+  // 압축된 요청 본문은 본문 해석기에 닿기 전에 415 (JSON 경로와 운영자 폼 경로 모두)
+  const { gzipSync } = await import('node:zlib');
+  for (const [path, type, text] of [
+    ['/v1/accounts', 'application/json', '{"a":1}'],
+    ['/admin', 'application/x-www-form-urlencoded', 'a=1'],
+  ] as const) {
+    const gz = await fetch(`${base}${path}`, {
+      method: 'POST',
+      headers: { 'content-type': type, 'content-encoding': 'gzip' },
+      body: gzipSync(text),
+    });
+    assert.equal(gz.status, 415, path);
+    assert.deepEqual(await gz.json(), { error: 'unsupported_content_encoding' });
+  }
+
   docker('pause', name);
   try {
     const down = await fetch(`${base}/health`);
