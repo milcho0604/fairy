@@ -16,6 +16,7 @@ import {
   magnifierPose,
 } from '../../shared/look-motion.ts';
 import { bodyOfParts, isMove, MOVE_SPECS, type MoveAsk } from '../../shared/moves.ts';
+import { PetClickSequence } from '../../shared/pet-click.ts';
 import { petKeyOf } from '../../shared/pet-keys.ts';
 import {
   canBlink,
@@ -1341,22 +1342,10 @@ scheduleActivity();
 
 const gesture = new GestureTracker();
 let overPet = false;
-const DOUBLE_CLICK_MS = 280;
-let pendingClick: ReturnType<typeof setTimeout> | undefined;
-
-/** 첫 클릭은 더블클릭 시간이 지난 뒤 확정한다. 두 번째 클릭은 첫 동작 없이 더블클릭 하나로 보낸다. */
-function queuePetClick() {
-  if (pendingClick) {
-    clearTimeout(pendingClick);
-    pendingClick = undefined;
-    bridge.gesture({ type: 'double-click' });
-    return;
-  }
-  pendingClick = setTimeout(() => {
-    pendingClick = undefined;
-    bridge.gesture({ type: 'click' });
-  }, DOUBLE_CLICK_MS);
-}
+const petClicks = new PetClickSequence(
+  () => bridge.gesture({ type: 'click' }),
+  () => bridge.gesture({ type: 'double-click' }),
+);
 
 /** 커서 아래 픽셀이 비어 있지 않으면 펫 위다. 투명한 곳은 클릭을 아래 앱으로 넘긴다. */
 function hitTest(wx: number, wy: number): boolean {
@@ -1432,7 +1421,7 @@ function startPeekPress() {
         // 지금은 못 키운다(끌기 중 등): 누르기는 보통 클릭으로 친다. 이미 놓았으면 그 클릭을 지금 보낸다
         peekState = 'none';
         if (peekReleased) {
-          queuePetClick();
+          petClicks.click();
           setInputs({ excitedUntil: performance.now() + EXCITED_MS });
         }
         return;
@@ -1468,6 +1457,7 @@ function cancelPeekPress(): boolean {
 
 canvas.addEventListener('pointerdown', (e) => {
   if (e.button !== 0 || !hitTest(e.clientX, e.clientY)) return;
+  petClicks.press();
   canvas.setPointerCapture(e.pointerId);
   gesture.down(e.button, e.clientX, e.clientY);
   pressAt = { x: e.clientX, y: e.clientY, sx: e.screenX, sy: e.screenY, px: petBox.x, py: petBox.y };
@@ -1486,6 +1476,7 @@ canvas.addEventListener('pointermove', (e) => {
   // 끌기가 시작된다: 커진 것을 먼저 돌려 달라 (메인이 끌기 시작 때도 돌려 놓는다).
   // 커지면서 말풍선이 닫혀 창 안 펫 자리가 바뀌므로, 잡은 자리는 누를 때 펫 기준으로 알린다 (돌아온 창에서 펫은 왼쪽 위 모서리)
   cancelPeekPress();
+  petClicks.cancelPress();
   setInputs({ grabbed: true });
   if (from && event.type === 'drag-start')
     bridge.gesture({
@@ -1500,11 +1491,20 @@ canvas.addEventListener('pointerup', (e) => {
   pressing = false;
   const grew = cancelPeekPress();
   const event = gesture.up(e.button);
-  if (!event) return;
+  if (!event) {
+    petClicks.cancelPress();
+    return;
+  }
   // 꾹 눌러 키웠다 놓은 것은 클릭이 아니다
-  if (event.type === 'click' && grew) return;
-  if (event.type === 'click') queuePetClick();
-  else bridge.gesture(event);
+  if (event.type === 'click' && grew) {
+    petClicks.cancelPress();
+    return;
+  }
+  if (event.type === 'click') petClicks.click();
+  else {
+    petClicks.cancelPress();
+    bridge.gesture(event);
+  }
   if (event.type === 'drag-end') setInputs({ grabbed: false });
   // 클릭 동작을 고르는 동안 펫은 반가워서 잠깐 신난다.
   else setInputs({ excitedUntil: performance.now() + EXCITED_MS });
@@ -1522,6 +1522,7 @@ canvas.addEventListener('lostpointercapture', (e) => {
   }
   pressing = false;
   cancelPeekPress();
+  petClicks.cancelPress();
   const event = gesture.cancel();
   if (!event) return;
   bridge.gesture(event);
