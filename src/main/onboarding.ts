@@ -9,7 +9,7 @@ import {
   shell,
   systemPreferences,
 } from 'electron';
-import { getLang, t } from '../shared/i18n/index.ts';
+import { getLang, resolveLang, t } from '../shared/i18n/index.ts';
 import { ONBOARD, type OnboardAi, type OnboardSnapshot } from '../shared/ipc.ts';
 import { ownsLoginItem } from '../shared/login-item.ts';
 import type { Settings } from '../shared/settings.ts';
@@ -17,6 +17,7 @@ import { isStarterId } from '../shared/starter-pets.ts';
 import { devRendererUrl } from './dev-url.ts';
 import { focusWindow, showWindow } from './focus.ts';
 import { langArg } from './lang.ts';
+import { onboardingBounds, onboardingHeight } from './onboarding-layout.ts';
 import { library } from './pet-library.ts';
 import { settings } from './settings.ts';
 
@@ -37,6 +38,14 @@ export function createOnboarding(o: {
   let win: BrowserWindow | undefined;
   const ours = (e: IpcMainEvent | IpcMainInvokeEvent) =>
     !!win && !win.isDestroyed() && e.sender === win.webContents;
+
+  // 열린 안내 창에도 언어 변경을 바로 반영한다. 영어 문구는 더 길어 본문 스크롤이 생기므로 높이도 맞춘다.
+  settings.onChange((next, prev) => {
+    if (next.lang === prev.lang || !win || win.isDestroyed()) return;
+    const area = screen.getDisplayMatching(win.getBounds()).workArea;
+    const lang = resolveLang(next.lang, app.getPreferredSystemLanguages());
+    win.setBounds(onboardingBounds(win.getBounds(), area, lang));
+  });
 
   ipcMain.handle(ONBOARD.get, (e): OnboardSnapshot | undefined =>
     ours(e)
@@ -94,7 +103,7 @@ export function createOnboarding(o: {
       width: Math.min(480, area.width),
       // 첫 쪽과 마지막 단축키 안내까지 들어갈 높이. 영어는 줄바꿈이 더 많다.
       // 작은 화면에서는 본문만 스크롤하고 아래의 다음/시작 단추는 화면 안에 남긴다.
-      height: Math.min(getLang() === 'en' ? 664 : 580, area.height),
+      height: onboardingHeight(area.height, getLang()),
       resizable: false,
       title: t('main.onboardingTitle'),
       show: false,

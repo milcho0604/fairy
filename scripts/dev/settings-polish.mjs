@@ -152,6 +152,43 @@ try {
   await main('__jj.onboarding.open(); 1');
   let onboard=await page('onboarding');
   await until(() => onboard.ev('!!document.querySelector(".choice")'),'onboarding');
+  if (!baseline) {
+    const switchedLang = lang === 'ko' ? 'en' : 'ko';
+    const title = switchedLang === 'en' ? 'Hi!' : '반가워!';
+    await main(`__jj.settings.set({lang:${JSON.stringify(switchedLang)}}); 1`);
+    await until(
+      () => onboard.ev(`document.querySelector('h1')?.textContent.startsWith(${JSON.stringify(title)})`),
+      `${switchedLang} onboarding language`,
+    );
+    await sleep(100);
+    const resized = await main(
+      '({height:__jj.onboarding.window.getBounds().height,area:__jj.screen.getDisplayMatching(__jj.onboarding.window.getBounds()).workArea.height})',
+    );
+    const resizedPage = await onboard.ev(
+      '({client:document.querySelector("main").clientHeight,scroll:document.querySelector("main").scrollHeight})',
+    );
+    await check(`${lang}: 열린 안내에서 ${switchedLang}로 바꾸면 창 높이 조정`, async () => {
+      const expected = Math.min(switchedLang === 'en' ? 664 : 580, resized.area);
+      assert.equal(resized.height, expected);
+      if (resized.area >= (switchedLang === 'en' ? 664 : 580))
+        assert.ok(resizedPage.scroll <= resizedPage.client, JSON.stringify(resizedPage));
+    });
+    await onboard.shot(`${tag}-onboarding-language-${switchedLang}`);
+
+    const originalTitle = lang === 'en' ? 'Hi!' : '반가워!';
+    await main(`__jj.settings.set({lang:${JSON.stringify(lang)}}); 1`);
+    await until(
+      () => onboard.ev(`document.querySelector('h1')?.textContent.startsWith(${JSON.stringify(originalTitle)})`),
+      `${lang} onboarding language restored`,
+    );
+    await sleep(100);
+    const restored = await main(
+      '({height:__jj.onboarding.window.getBounds().height,area:__jj.screen.getDisplayMatching(__jj.onboarding.window.getBounds()).workArea.height})',
+    );
+    await check(`${lang}: 언어를 되돌리면 창 높이도 복원`, async () => {
+      assert.equal(restored.height, Math.min(lang === 'en' ? 664 : 580, restored.area));
+    });
+  }
   const sizes=baseline?['default']:['default','small'];
   for (const size of sizes) {
     if (size==='small') {
