@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
-import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Inject, Injectable, Optional } from '@nestjs/common';
 import type { PoolClient } from 'pg';
+import { CLOCK } from './app.tokens';
 import { backupFilesOf, keepRecent } from './backup';
 import { Db } from './db';
 import { mergeFriends, pruneFriends, returnGift, unreturnedTo } from './friend-links';
@@ -28,6 +29,10 @@ export interface LockedAccount {
  * 옮기기로 생길 수 있는 코인을 이 안으로 묶는다.
  */
 export const MIGRATE_MAX_BALANCE = 10_000;
+
+/** 일정 연결 표시에서 이보다 오래 요청이 없는 기기는 세지 않는다 (#130). */
+export const CALENDAR_DEVICE_IDLE_DAYS = 60;
+const DAY_MS = 86_400_000;
 
 /**
  * 계정 행을 잠근다(SELECT ... FOR UPDATE). 같은 계정의 맞추기, 옮기기, 합치기가 한 줄로 선다.
@@ -88,7 +93,14 @@ export const utcDay = (now = Date.now()): string => new Date(now).toISOString().
 
 @Injectable()
 export class Accounts {
-  constructor(private readonly db: Db) {}
+  private readonly clock: () => number;
+
+  constructor(
+    private readonly db: Db,
+    @Optional() @Inject(CLOCK) clock?: () => number,
+  ) {
+    this.clock = clock ?? Date.now;
+  }
 
   /**
    * 기기 계정과 기기 토큰. 토큰은 여기서만 한 번 나간다. 기기 코드(F-XXXX-XXXX)는 무작위로 만들고, 드물게 겹치면
@@ -155,10 +167,12 @@ export class Accounts {
    * 계정의 구글 일정 연결 표시 (#115): 연결한 기기 수와 하나라도 있는가. 합쳐진 닫힌 계정의 기기는 이미 남는 쪽으로
    * 옮겨 왔으므로 이 계정의 기기만 센다
    */
-  async calendarOf(accountId: string): Promise<{ linked: boolean; devices: number }> {
+  async calendarOf(accountId: string, now = this.clock()): Promise<{ linked: boolean; devices: number }> {
+    const cutoff = new Date(now - CALENDAR_DEVICE_IDLE_DAYS * DAY_MS);
     const r = await this.db.pool.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM calendar_link l JOIN device d ON d.id = l.device_id WHERE d.account_id = $1`,
-      [accountId],
+      `SELECT count(*)::int AS n FROM calendar_link l JOIN device d ON d.id = l.device_id
+        WHERE d.account_id = $1 AND d.last_used_at > $2`,
+      [accountId, cutoff],
     );
     const devices = r.rows[0]?.n ?? 0;
     return { linked: devices > 0, devices };

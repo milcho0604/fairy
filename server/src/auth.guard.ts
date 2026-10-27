@@ -2,9 +2,12 @@ import {
   type CanActivate,
   createParamDecorator,
   type ExecutionContext,
+  Inject,
   Injectable,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
+import { CLOCK } from './app.tokens';
 import { Db } from './db';
 import { ipKey, LIMITS, RateLimiter } from './rate-limit';
 import { APP_VERSION_HEADER, appVersionOf } from './shared/update-levels';
@@ -36,6 +39,7 @@ export class AuthGuard implements CanActivate {
   constructor(
     private readonly db: Db,
     private readonly limiter: RateLimiter,
+    @Optional() @Inject(CLOCK) private readonly clock: () => number = Date.now,
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
@@ -73,6 +77,7 @@ export class AuthGuard implements CanActivate {
     appVersion: string | undefined,
   ): Promise<AuthInfo | undefined> {
     const hash = sha256(token);
+    const now = new Date(this.clock());
     const table = kind === 'device' ? 'device' : 'session';
     // 세션은 마지막으로 쓴 뒤 SESSION_IDLE_DAYS 가 지나면 무효
     const alive =
@@ -82,6 +87,7 @@ export class AuthGuard implements CanActivate {
       token_hash: Buffer;
       account_id: string;
       stale: boolean;
+      device_stale: boolean;
       idle: boolean;
       app_version: string | null;
       ver_stale: boolean;
@@ -89,6 +95,7 @@ export class AuthGuard implements CanActivate {
       // 남는 쪽 계정(합쳐졌으면 merged_into)의 활동과 앱 판을 읽는다
       `SELECT t.id, t.token_hash, COALESCE(a.merged_into, a.id) AS account_id,
               ${kind === 'session' ? "t.last_used_at < now() - interval '1 day'" : 'false'} AS stale,
+              ${kind === 'device' ? "t.last_used_at <= $2::timestamptz - interval '1 day'" : 'false'} AS device_stale,
               tgt.last_active_at < now() - interval '1 day' AS idle,
               tgt.app_version AS app_version,
               (tgt.app_version_at IS NULL OR tgt.app_version_at < now() - interval '1 day') AS ver_stale
@@ -96,7 +103,7 @@ export class AuthGuard implements CanActivate {
          JOIN account a ON a.id = t.account_id
          JOIN account tgt ON tgt.id = COALESCE(a.merged_into, a.id)
         WHERE t.token_hash = $1 ${alive}`,
-      [hash],
+      kind === 'device' ? [hash, now] : [hash],
     );
     const row = r.rows[0];
     if (!row || !sameBytes(row.token_hash, hash)) return undefined;
@@ -116,6 +123,11 @@ export class AuthGuard implements CanActivate {
       );
     if (row.stale)
       await this.db.pool.query('UPDATE session SET last_used_at = now() WHERE id = $1', [row.id]);
+    if (row.device_stale)
+      await this.db.pool.query(
+        `UPDATE device SET last_used_at = $2 WHERE id = $1 AND last_used_at <= $2::timestamptz - interval '1 day'`,
+        [row.id, now],
+      );
     return {
       accountId: row.account_id,
       via: kind,
