@@ -10,12 +10,14 @@ import { Features } from '../src/features';
 import { client, type Harness, startHarness } from './helpers';
 
 const ADMIN_SUB = `admin-${randomUUID()}`;
+const DAY_MS = 86_400_000;
 let h: Harness;
+let now = Date.now();
 const { api, newDevice, session, secondDevice } = client(() => h);
 const features = () => h.app.get(Features);
 
 before(async () => {
-  h = await startHarness({ adminSubs: [ADMIN_SUB] });
+  h = await startHarness({ adminSubs: [ADMIN_SUB] }, { now: () => now });
 });
 after(async () => {
   await h?.stop();
@@ -88,6 +90,48 @@ describe('연결 표시 (#115)', () => {
     const g = await family();
     await report(f.a, true);
     assert.deepEqual(await me(g.s), { linked: false, devices: 0 });
+  });
+
+  test('60일 지난 연결은 세지 않고, 기기가 다시 요청하면 복구하며 마지막 요청 시각은 하루에 한 번만 쓴다', async () => {
+    const realNow = Date.now();
+    now = realNow;
+    try {
+      const f = await family();
+      await report(f.a, true);
+      await report(f.b, true);
+      const staleAt = new Date(now - 61 * DAY_MS);
+      await h.pool.query(
+        `UPDATE device SET last_used_at = $2 WHERE id =
+          (SELECT id FROM device WHERE account_id = $1 ORDER BY id DESC LIMIT 1)`,
+        [f.id, staleAt],
+      );
+
+      assert.deepEqual(await me(f.s), { linked: true, devices: 1 });
+      const reactivated = await api('GET', '/v1/me', { token: f.b });
+      assert.equal(reactivated.status, 200, reactivated.text);
+      assert.deepEqual(reactivated.body.calendar, { linked: true, devices: 2 });
+
+      const lastUsed = async () => {
+        const row = await h.pool.query<{ last_used_at: Date }>(
+          `SELECT last_used_at FROM device WHERE id =
+            (SELECT id FROM device WHERE account_id = $1 ORDER BY id DESC LIMIT 1)`,
+          [f.id],
+        );
+        return row.rows[0]?.last_used_at.getTime();
+      };
+      const refreshedAt = await lastUsed();
+      assert.equal(refreshedAt, realNow);
+
+      now = realNow + DAY_MS - 1;
+      await api('GET', '/v1/me', { token: f.b });
+      assert.equal(await lastUsed(), refreshedAt, '하루가 지나기 전에는 다시 쓰지 않는다');
+
+      now += 2;
+      await api('GET', '/v1/me', { token: f.b });
+      assert.equal(await lastUsed(), now, '하루가 지난 뒤에는 요청 시각을 갱신한다');
+    } finally {
+      now = Date.now();
+    }
   });
 });
 
