@@ -4,13 +4,21 @@ export type PetClickAction = (typeof PET_CLICK_ACTIONS)[number];
 
 /** 더블클릭으로 묶을 수 있도록 첫 클릭을 기다리는 시간. 일반적인 데스크톱 더블클릭 간격을 허용한다. */
 export const PET_DOUBLE_CLICK_DELAY_MS = 500;
+/** 이 시간 넘게 두 번째 버튼을 누르고 있으면 더블클릭 후보에서 뺀다. */
+export const PET_LONG_PRESS_DELAY_MS = 500;
 
 export interface PetClickScheduler {
   now(): number;
   schedule(callback: () => void, delayMs: number): () => void;
 }
 
-type PendingPetClick = { cancel: () => void; deadline: number; secondPress: boolean };
+type PendingPetClick = {
+  cancel: () => void;
+  cancelLongPress?: () => void;
+  deadline: number;
+  secondPress: boolean;
+  secondPressAt?: number;
+};
 
 const defaultScheduler: PetClickScheduler = {
   now: () => Date.now(),
@@ -27,28 +35,37 @@ export class PetClickSequence {
   private readonly onDouble: () => void;
   private readonly schedule: PetClickScheduler;
   private readonly delayMs: number;
+  private readonly longPressMs: number;
 
   constructor(
     onSingle: () => void,
     onDouble: () => void,
     schedule: PetClickScheduler = defaultScheduler,
     delayMs = PET_DOUBLE_CLICK_DELAY_MS,
+    longPressMs = PET_LONG_PRESS_DELAY_MS,
   ) {
     this.onSingle = onSingle;
     this.onDouble = onDouble;
     this.schedule = schedule;
     this.delayMs = delayMs;
+    this.longPressMs = longPressMs;
   }
 
   click() {
     const pending = this.pending;
     if (pending) {
-      if (pending.secondPress || this.schedule.now() <= pending.deadline) {
+      const now = this.schedule.now();
+      const isDouble = pending.secondPress
+        ? now - (pending.secondPressAt ?? now) < this.longPressMs
+        : now <= pending.deadline;
+      if (isDouble) {
         pending.cancel();
+        pending.cancelLongPress?.();
         this.pending = undefined;
         this.onDouble();
         return;
       }
+      // 기한 안에 시작한 두 번째 누름이라도 길게 누른 뒤 놓으면 별도 클릭으로 본다.
       this.flushSingle(pending);
     }
 
@@ -67,13 +84,20 @@ export class PetClickSequence {
     }
     pending.cancel();
     pending.secondPress = true;
+    pending.secondPressAt = this.schedule.now();
+    pending.cancelLongPress = this.schedule.schedule(() => {
+      if (this.pending === pending && pending.secondPress) this.flushSingle(pending);
+    }, this.longPressMs);
   }
 
   /** 두 번째 누름이 클릭으로 끝나지 않았을 때 첫 클릭의 남은 대기 시간을 이어 간다. */
   cancelPress() {
     const pending = this.pending;
     if (!pending?.secondPress) return;
+    pending.cancelLongPress?.();
+    pending.cancelLongPress = undefined;
     pending.secondPress = false;
+    pending.secondPressAt = undefined;
     const remaining = pending.deadline - this.schedule.now();
     if (remaining <= 0) {
       this.flushSingle(pending);
@@ -84,12 +108,14 @@ export class PetClickSequence {
 
   cancel() {
     this.pending?.cancel();
+    this.pending?.cancelLongPress?.();
     this.pending = undefined;
   }
 
   private flushSingle(pending: PendingPetClick) {
     if (this.pending !== pending) return;
     pending.cancel();
+    pending.cancelLongPress?.();
     this.pending = undefined;
     this.onSingle();
   }
