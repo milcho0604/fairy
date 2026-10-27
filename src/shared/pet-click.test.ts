@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { PET_DOUBLE_CLICK_DELAY_MS, type PetClickScheduler, PetClickSequence } from './pet-click.ts';
+import {
+  PET_DOUBLE_CLICK_DELAY_MS,
+  PET_LONG_PRESS_DELAY_MS,
+  type PetClickScheduler,
+  PetClickSequence,
+} from './pet-click.ts';
 
 function fakeScheduler() {
   let now = 0;
@@ -69,6 +74,26 @@ test('두 번째 누름이 기한 안에 시작되면 기한 뒤에 떼도 더�
   clicks.click();
 
   assert.deepEqual(actions, ['double']);
+});
+
+test('두 번째 누름이 길게 누르기 시간까지 이어지면 첫 클릭만 확정하고 더블클릭하지 않는다', () => {
+  const timers = fakeScheduler();
+  const actions: string[] = [];
+  const clicks = new PetClickSequence(
+    () => actions.push('single'),
+    () => actions.push('double'),
+    timers.scheduler,
+  );
+
+  clicks.click();
+  timers.advance(300);
+  clicks.press();
+  timers.advance(PET_LONG_PRESS_DELAY_MS);
+  assert.deepEqual(actions, ['single']);
+
+  clicks.click();
+  timers.advance(PET_DOUBLE_CLICK_DELAY_MS);
+  assert.deepEqual(actions, ['single', 'single']);
 });
 
 test('더블클릭 시간이 지나면 단일 클릭 두 번으로 확정한다', () => {

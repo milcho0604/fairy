@@ -16,7 +16,7 @@ import {
   magnifierPose,
 } from '../../shared/look-motion.ts';
 import { bodyOfParts, isMove, MOVE_SPECS, type MoveAsk } from '../../shared/moves.ts';
-import { PetClickSequence } from '../../shared/pet-click.ts';
+import { PET_LONG_PRESS_DELAY_MS, PetClickSequence } from '../../shared/pet-click.ts';
 import { petKeyOf } from '../../shared/pet-keys.ts';
 import {
   canBlink,
@@ -1397,7 +1397,7 @@ document.addEventListener('mouseleave', () => {
 // 꾹 눌러 커지기 (이슈 #124): 가만히 PEEK_HOLD_MS 눌러 두면 메인이 펫 창을 키우고, 놓으면 돌린다.
 // 짧게 누르면 그대로 클릭, 누른 채 움직이면 끌기(키운 것은 끌기 시작 때 메인이 돌린다).
 // 오래 누른 뒤 놓은 것은 클릭으로 치지 않는다 (키웠다 돌아오는 것이 그 누르기의 답이라서)
-const PEEK_HOLD_MS = 500;
+const PEEK_HOLD_MS = PET_LONG_PRESS_DELAY_MS;
 let peekTimer: ReturnType<typeof setTimeout> | undefined;
 /** none: 아님, asking: 메인에 키워 달라고 물어 답을 기다림, on: 커진 중 */
 let peekState: 'none' | 'asking' | 'on' = 'none';
