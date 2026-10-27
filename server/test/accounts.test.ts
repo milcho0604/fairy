@@ -1,21 +1,13 @@
 // 통합 시험: 기기 계정, 코인 맞추기, 기존 잔액 옮기기, 구글 로그인(가짜 구글), 합치기, 탈퇴, 레이트리밋.
 // 시험용 Postgres 컨테이너를 무작위 이름으로 띄우고 끝나면 지운다. 진짜 구글은 부르지 않는다(키 쌍을 만들어 id_token 을 직접 서명).
 import assert from 'node:assert/strict';
-import {
-  createHash,
-  generateKeyPairSync,
-  type JsonWebKey,
-  type KeyObject,
-  randomBytes,
-  randomUUID,
-  sign,
-} from 'node:crypto';
+import { createHash, generateKeyPairSync, type KeyObject, randomBytes, randomUUID, sign } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Pool } from 'pg';
 import { createApp } from '../src/app';
 import type { Config } from '../src/config';
-import type { GoogleApi } from '../src/google';
+import type { GoogleApi, JsonWebKey } from '../src/google';
 import { runMigrations, startPg } from './pg';
 
 const CLIENT_ID = 'test-client.apps.googleusercontent.com';

@@ -2,7 +2,7 @@
 # (src/shared/coin-rules.ts, site-events.ts, account-profile.ts)만 들어온다. 나머지 앱 코드는 server/Dockerfile.dockerignore 가 막는다.
 #   docker build -f server/Dockerfile .
 # 기동 때 마이그레이션을 돌리고 서버를 띄운다. node 사용자(uid 1000)로 돈다.
-FROM node:24-slim AS builder
+FROM node:26.12.1-slim AS builder
 WORKDIR /app
 COPY server/package.json server/package-lock.json ./
 RUN npm ci --ignore-scripts
@@ -16,7 +16,7 @@ COPY src/shared/account-profile.ts ./src/shared/account-profile.ts
 COPY src/shared/update-levels.ts ./src/shared/update-levels.ts
 RUN npm run build && npm prune --omit=dev
 
-FROM node:24-slim AS runner
+FROM node:26.12.1-slim AS runner
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=builder --chown=node:node /app/node_modules ./node_modules

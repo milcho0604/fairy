@@ -1,5 +1,4 @@
-import type { JsonWebKey } from 'node:crypto';
-import { JWKS_REFRESH_MIN_MS } from './google';
+import { type JsonWebKey, JWKS_REFRESH_MIN_MS } from './google';
 
 // 카카오 로그인 (기획서 5절, 6단계, #102). OIDC 로 scope 는 openid 만: id_token 의 sub(회원번호) 하나만 쓴다.
 // 이메일, 닉네임, 프로필은 받지 않는다(동의항목 최소). 서명은 카카오 JWKS 로 검증하고 nonce 를 본다.

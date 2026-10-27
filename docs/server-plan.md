@@ -255,6 +255,7 @@
 
 ## 16. 기술 틀
 - fairy 레포 `server/`. NestJS, Postgres, 시작할 때 SQL 마이그레이션, 비 root 컨테이너.
+- 서버 런타임은 Node 26 (2026-10-27): 이미지는 `node:26.12.1-slim` 으로 고정하고 `engines` 와 server-check 도 26 이다. 앱은 Electron 에 든 Node 24 라서 `.nvmrc` 와 앱 시험은 24 그대로다. Node 26 은 아직 LTS 가 아니다(LTS 예정 2026-10-28 쯤, 지나면 확인).
 - Docker compose 이름 `fairy`, API `127.0.0.1:3002`, DB 볼륨 `fairy_pgdata`, 로그 상한.
 - 노출: 기존 Cloudflare Tunnel 에 `fairy-api.moilga.com` 추가(`fairy.moilga.com` 은 Vercel 홈페이지).
 - 배포: `server/**` 가 바뀐 main push 때 Tailscale 로 맥미니에 ssh, 깨끗한 스냅샷으로 빌드, `/health` 확인.
