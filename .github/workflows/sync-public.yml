@@ -14,8 +14,6 @@ on:
       - 'catalog/**'
       - 'scripts/sync-public.mjs'
       - '.github/workflows/sync-public.yml'
-  workflow_dispatch:
-
 permissions:
   contents: read
 
