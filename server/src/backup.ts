@@ -249,6 +249,9 @@ export class Backups implements OnModuleInit, OnModuleDestroy {
     let row: Row | undefined;
     try {
       const r = await this.db.tx(async (c) => {
+        // 계정별 잠금만으로는 전체 저장 한도를 지킬 수 없다: 다른 계정의 업로드는 서로의 미커밋 줄을
+        // totalBytes 에서 보지 못하고 함께 통과할 수 있다. 최종 합계 검사부터 커밋까지 전역으로 직렬화한다.
+        await c.query('SELECT pg_advisory_xact_lock($1, $2)', [0x46414952, 0x4241434b]);
         const a = await lockAccount(c, accountId);
         const ins = await c.query<Row>(
           `INSERT INTO backup (account_id, file, size, sha256, created_at, last_access_at)
