@@ -11,7 +11,6 @@ import {
 import { dirname } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { net } from 'electron';
 import { DownloadError, failReason, statusReason } from '../shared/download-error.ts';
 import {
   createStallWatch,
@@ -22,6 +21,7 @@ import {
   rangeVerdict,
   STALL_MS,
 } from './download-resume.ts';
+import { mainFetch } from './net-fetch.ts';
 
 /** 받을 파일. 받은 뒤 SHA-256 을 맞춰 보고, 안 맞으면 버린다 */
 export interface VerifiedFile {
@@ -148,7 +148,7 @@ async function receive(
 
   async function receiveBody(): Promise<string> {
     // 앱의 다른 곳(일정, 목록, 업데이트)처럼 Electron net 으로 받는다. Node fetch 는 연결 시간 초과가 잦았다
-    const res = await net.fetch(f.url, {
+    const res = await mainFetch(f.url, {
       signal: both,
       ...(from > 0 ? { headers: { Range: `bytes=${from}-` } } : {}),
     });

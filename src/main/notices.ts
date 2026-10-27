@@ -1,7 +1,7 @@
 // 공지 (docs/server-plan.md 23절, 1.6 단계): 홈페이지 정적 파일 notices.json 을 켤 때와 몇 시간마다 받아 공지 창을 띄우고,
 // 파일의 minVersion 을 업데이트 확인에 넘긴다 (main/update.ts setNoticeMin). 서버도 계정도 없이 파일만 받는다.
 // 판단은 shared/notices.ts, 창은 main/notice-window.ts.
-import { app, net, shell } from 'electron';
+import { app, shell } from 'electron';
 import { getLang, t } from '../shared/i18n/index.ts';
 import type { NoticeButton, NoticeView } from '../shared/notice-ipc.ts';
 import {
@@ -22,6 +22,7 @@ import {
   sameMinVersion,
 } from '../shared/notices.ts';
 import { localDay } from '../shared/todo-store.ts';
+import { mainFetch } from './net-fetch.ts';
 import { createNoticeWindow } from './notice-window.ts';
 import { readCapped } from './read-capped.ts';
 import { readJson, writeJson } from './store.ts';
@@ -90,7 +91,7 @@ export function watchNotices(o: {
         'user-agent': `fairy/${app.getVersion()}`,
       };
       if (conditional && etag && cached) headers['if-none-match'] = etag;
-      const res = await net.fetch(url, {
+      const res = await mainFetch(url, {
         headers,
         // 두 번 받기가 첫 응답을 그대로 받지 않게 앱의 HTTP 캐시는 쓰지 않는다. 바뀌었는지는 ETag 로 묻는다
         cache: 'no-store',

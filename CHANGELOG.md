@@ -11,6 +11,8 @@
 ### 고친 것
 
 - 서버의 요청 본문 처리 의존성(body-parser 2.4.0, multer 2.5.0)을 올려 압축 본문과 업로드 필터에서 서버를 멈출 수 있던 보안 문제 두 건(GHSA-27r3-jxmh-p828, GHSA-q7qp-rjg7-q26m)을 막았어요. 요청에 `Content-Encoding` 압축이 붙으면 이제 415 로 거절해요. 앱과 운영자 화면은 요청을 압축하지 않아서 달라지는 것은 없어요
+- 보안: 2026-10-21 Node.js 보안 릴리스(CVE-2026-111497, node:zlib Brotli 풀개의 범위 밖 쓰기)에 대응해요. 메인 프로세스의 바깥 요청(구글, 깃허브, 허깅페이스, 페어리 서버, 구독한 .ics 주소)을 모두 공용 fetch(`mainFetch`, Electron `net.fetch`)로 보내서 `content-encoding: br` 응답을 Node zlib 이 아니라 크로미움이 풀어요. 전역 fetch 와 무료 AI 일꾼의 fetch 도 같은 길로 돌려 두어, 앞으로 짜는 코드나 의존 패키지가 Node fetch 를 불러도 Brotli 풀개에 닿지 않아요
+- Electron 을 44.5.1 에서 44.9.3 으로 올려 크로미움 보안 수정을 받아요. 이 판의 Node(24.22.0)에는 위 취약점이 아직 남아 있어(고친 Node 24.22.1 을 담은 Electron 은 아직 없어요) 위 우회를 함께 넣었어요
 
 ### 바꾼 것
 

@@ -2,18 +2,19 @@
 // 갤러리에는 레포 주인이 고른 공식 펫만 있다. 사용자끼리는 .jjpet 파일을 직접 주고받는다
 // 받기와 검사는 gallery.ts, 데려오기는 .jjpet 가져오기와 같은 adoptPet (backup.ts).
 // 갤러리 주소를 바꾸는 JJ_GALLERY_URL 은 패키지 안 된 앱(개발 실행, 시험)에서만, 내 컴퓨터 주소만 받는다
-import { app, type BrowserWindow, net } from 'electron';
+import { app, type BrowserWindow } from 'electron';
 import { galleryBase } from '../shared/gallery.ts';
 import { t } from '../shared/i18n/index.ts';
 import { cleanAuthor, DEFAULT_LICENSE, isPetLicense } from '../shared/pet-share.ts';
 import { isStarterId } from '../shared/starter-pets.ts';
 import { adoptPet, exportPet } from './backup.ts';
 import { createGallery } from './gallery.ts';
+import { mainFetch } from './net-fetch.ts';
 
 export function galleryHandlers(log: (tag: string, ...rest: unknown[]) => void) {
   const base = galleryBase(process.env.JJ_GALLERY_URL, !app.isPackaged);
   if (base.startsWith('http:')) log('gallery', 'dev base', base);
-  const gallery = createGallery({ fetch: (url, init) => net.fetch(url, init), base, log });
+  const gallery = createGallery({ fetch: mainFetch, base, log });
   let busy = false;
 
   return {

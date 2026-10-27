@@ -2,6 +2,7 @@
 // 모델 메모리(약 1GB)를 다 돌려준다. 메인과는 메시지로만 이야기한다.
 import { getLlama, type Llama, LlamaChatSession, type LlamaContext, type LlamaModel } from 'node-llama-cpp';
 import { pointToDownloadedLlama } from './llama-hook.ts';
+import { guardGlobalFetch } from './net-fetch-core.ts';
 
 export type WorkerIn =
   | {
@@ -120,5 +121,20 @@ if (port) {
   // 설치판은 엔진을 userData 에 받아 둔다. 엔진이 그 폴더를 찾게 한다 (getLlama 전에)
   pointToDownloadedLlama();
   const handle = createAskQueue((o) => port.postMessage(o), answerWithModel);
-  port.on('message', (e: { data: WorkerIn }) => handle(e.data));
+  // 일꾼은 바깥 요청을 하지 않지만(모델은 메인이 받아 경로로 준다), 의존 패키지가 전역 fetch 를 불러도 Node 의 Brotli 풀개에
+  // 닿지 않게 크로미움 net.fetch 로 돌린다. net 을 못 얻으면 요청을 아예 거절한다 (net-fetch-core.ts)
+  void blockNodeFetch().then(() => port.on('message', (e: { data: WorkerIn }) => handle(e.data)));
+}
+
+async function blockNodeFetch(): Promise<void> {
+  try {
+    const { net } = await import('electron');
+    guardGlobalFetch(globalThis as { fetch: typeof fetch }, (input, init) =>
+      net.fetch(input as string, init),
+    );
+  } catch {
+    guardGlobalFetch(globalThis as { fetch: typeof fetch }, () =>
+      Promise.reject(new TypeError('fetch failed')),
+    );
+  }
 }

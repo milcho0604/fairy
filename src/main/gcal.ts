@@ -1,19 +1,11 @@
 // 구글 캘린더에 쓰기 (6단계): 연결(OAuth), 토큰 보관, 보내기, 읽어 오기(이슈 #54), 설정 창 IPC.
-// 네트워크는 모두 여기(메인)서 Electron net.fetch 로 한다. 창은 상태(GcalStatus)만 받는다.
+// 네트워크는 모두 여기(메인)서 공용 fetch(mainFetch, 크로미움 네트워크)로 한다. 창은 상태(GcalStatus)만 받는다.
 // 토큰은 google-token.json(0600, 운영체제 열쇠로 암호화할 수 있으면 암호화)에만 두고 설정, 백업(backup.ts FILES 에 없다), 기록, 창에는 넘기지 않는다 (hf-token.ts 와 같다).
 // 켜고 끄기와 캘린더 id 는 비밀이 아니라 google-calendar.json 에 둔다.
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import {
-  app,
-  type BrowserWindow,
-  type IpcMainInvokeEvent,
-  ipcMain,
-  net,
-  shell,
-  type WebContents,
-} from 'electron';
+import { app, type BrowserWindow, type IpcMainInvokeEvent, ipcMain, shell, type WebContents } from 'electron';
 import type { EventStore } from '../shared/event-store.ts';
 import {
   cleanCalendarId,
@@ -48,6 +40,7 @@ import {
 import { listCalendars, type PullResult, pullPass } from './gcal-pull.ts';
 import { GcalLost, type PassResult, syncPass } from './gcal-sync.ts';
 import { writeFileDurable } from './json-file.ts';
+import { mainFetch } from './net-fetch.ts';
 import { osCrypto } from './os-crypto.ts';
 import { secretFile } from './secret-file.ts';
 
@@ -161,7 +154,7 @@ export function createGcal(o: {
   /** 시험용 */
   fetch?: FetchLike;
 }) {
-  const f: FetchLike = o.fetch ?? ((url, init) => net.fetch(url, init));
+  const f: FetchLike = o.fetch ?? mainFetch;
   const client: GoogleClient | undefined = googleClient();
   let prefs = readPrefs();
   let access: { token: string; expiresAt: number } | null = null;

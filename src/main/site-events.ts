@@ -1,10 +1,11 @@
 // 이벤트 목록 (docs/server-plan.md 9절, 이슈 #101): 홈페이지 정적 파일 events.json 을 켤 때와 6시간마다 받아 둔다.
 // 홈서버가 아니라 홈페이지(Vercel)라 서버가 꺼져도 목록은 보인다. 서버도 계정도 없이 파일만 받으므로 만 14세 미만
 // 앱 안 모드에서도 목록은 보인다 (선물 받기 단추만 서버 모드에서). 마지막으로 받은 것은 site-events.json 에 둔다.
-import { app, ipcMain, net, type WebContents } from 'electron';
+import { app, ipcMain, type WebContents } from 'electron';
 import { EVENTS, type EventList, eventsUrl } from '../shared/events-ipc.ts';
 import { EVENTS_MAX_BYTES, parseEvents, type SiteEvent, visibleEvents } from '../shared/site-events.ts';
 import { SITE_URL } from '../shared/update-policy.ts';
+import { mainFetch } from './net-fetch.ts';
 import { readCapped } from './read-capped.ts';
 import { readJson, writeJson } from './store.ts';
 
@@ -43,7 +44,7 @@ export function watchSiteEvents(o: {
 
   async function refresh(): Promise<void> {
     try {
-      const res = await net.fetch(url, {
+      const res = await mainFetch(url, {
         headers: { accept: 'application/json', 'user-agent': `fairy/${app.getVersion()}` },
         cache: 'no-store',
         signal: AbortSignal.timeout(20_000),

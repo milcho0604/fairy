@@ -7,7 +7,6 @@ import {
   type IpcMainEvent,
   type IpcMainInvokeEvent,
   ipcMain,
-  net,
   protocol,
   shell,
 } from 'electron';
@@ -75,6 +74,7 @@ import { hfToken } from './hf-token.ts';
 import { langArg } from './lang.ts';
 import { illustrateLocal, localDrawInfo, localDrawSupport, setupLocalDraw } from './local-draw.ts';
 import { LocalDrawError, type LocalDrawErrorKind } from './local-draw-core.ts';
+import { mainFetch } from './net-fetch.ts';
 import { ensureOrtWasm, ORT_WASM, ortWasmReady, verifiedOrtWasmUrl } from './ort-wasm.ts';
 import { library, spriteUrls } from './pet-library.ts';
 import { readFileIn, writeFileAtomic } from './safe-file.ts';
@@ -435,7 +435,7 @@ export function createMaker(
           ? verifiedDepthUrl()
           : undefined;
     if (!file) return new Response(null, { status: 404 });
-    const res = await net.fetch(file);
+    const res = await mainFetch(file);
     return new Response(res.body, {
       status: res.status,
       // wasm 은 application/wasm 이어야 받으면서 바로 컴파일한다(instantiateStreaming)
@@ -631,7 +631,7 @@ export function createMaker(
           illustratePrompt(ageRaw, wishRaw),
           {
             // 운영체제 프록시를 따르는 Electron fetch
-            fetch: (url, init) => net.fetch(url, init),
+            fetch: mainFetch,
             token: hfToken.get(),
             signal: abort.signal,
             log,
@@ -1116,7 +1116,7 @@ export function createMaker(
       }
       try {
         const r = await drawStrip(ref, row, key, {
-          fetch: spriteFetch ?? ((url, init) => net.fetch(url, init)),
+          fetch: spriteFetch ?? mainFetch,
           token: hfToken.get(),
           signal: abort.signal,
           log,
