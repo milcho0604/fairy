@@ -1,6 +1,6 @@
 # 맥 서명 인증서 만료 확인 (docs/release.md "맥 서명 인증서").
 # 매주 월요일 아침(한국 9시쯤) 비밀값의 인증서를 열어 끝나는 날을 본다. 30일 안으로 남으면 관리 이슈(라벨 cert-expiry)에
-# 레포 주인을 불러 댓글을 단다 (GitHub 알림, 끝날 때까지 매주). 손으로 돌리면(Run workflow) 남은 날을 늘 이슈에 적는다.
+# 레포 주인을 불러 댓글을 단다 (GitHub 알림, 끝날 때까지 매주).
 # 비밀값은 이 단계 env 에만 두고 로그에 찍지 않는다. 인증서는 임시 폴더(권한 700)에 풀었다가 끝나면 지운다.
 # 인증서 지문이 scripts/mac-sign.mjs 와 다르거나 비밀값이 없으면 실패한다 (실패 메일이 간다).
 name: cert-expiry
@@ -8,8 +8,6 @@ name: cert-expiry
 on:
   schedule:
     - cron: '7 0 * * 1'
-  workflow_dispatch:
-
 permissions:
   contents: read
   issues: write
@@ -59,7 +57,7 @@ jobs:
           echo "### 맥 서명 인증서: $day 까지 (${days}일 남음)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: 관리 이슈에 알리기
-        if: github.event_name == 'workflow_dispatch' || fromJSON(steps.cert.outputs.days) <= 30
+        if: fromJSON(steps.cert.outputs.days) <= 30
         env:
           GH_TOKEN: ${{ github.token }}
           DAY: ${{ steps.cert.outputs.day }}

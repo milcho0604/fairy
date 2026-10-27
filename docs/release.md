@@ -16,7 +16,7 @@
 | `milcho0604/fairy` (소스, `SOURCE_REPO`) | 코드, 개발 문서, `public-repo/`(공개 레포의 틀), `gallery/`, `catalog/` 원본 | 개발자만 |
 | `milcho0604/fairy-releases` (공개, `PUBLIC_REPO`) | 릴리스(설치 파일, `latest*.yml`, `SHA256SUMS.txt`), `README.md`, `SECURITY.md`, `LICENSE`, 이슈 양식, `gallery/`, `catalog/` | 앱(업데이트 확인, 자동 설치, 갤러리, 모델 목록, 문제 알리기)과 사용자(받기, 이슈, 보안 알림) |
 
-- `sync-public.yml`: `main` 에 `public-repo/**`, `gallery/**`, `catalog/**` 가 바뀌면(또는 Actions 에서 손으로) `scripts/sync-public.mjs` 로 공개 레포 `main` 을 소스와 똑같이 맞추고, 바뀐 것이 있을 때만 `sync from source <sha>` 로 커밋해 푸시한다. 공개 레포에서 손으로 고친 파일은 다음 옮기기 때 덮인다(이슈와 릴리스는 건드리지 않는다). 내 컴퓨터에서 미리 보기: `node scripts/sync-public.mjs <빈 폴더>`.
+- `sync-public.yml`: `main` 에 `public-repo/**`, `gallery/**`, `catalog/**` 가 바뀌면 `scripts/sync-public.mjs` 로 공개 레포 `main` 을 소스와 똑같이 맞추고, 바뀐 것이 있을 때만 `sync from source <sha>` 로 커밋해 푸시한다. 공개 레포에서 손으로 고친 파일은 다음 옮기기 때 덮인다(이슈와 릴리스는 건드리지 않는다). 내 컴퓨터에서 미리 보기: `node scripts/sync-public.mjs <빈 폴더>`.
 - `release.yml`: 빌드와 점검은 소스 레포에서 하고, 릴리스 초안은 공개 레포에 만든다. 발행하면 공개 레포 `main` 의 끝 커밋에 태그가 붙는다(소스 레포의 태그와 다른 커밋이다).
 - 공개 레포에는 워크플로를 두지 않는다(`public-repo/.github/workflows/` 를 넣으면 `sync-public.mjs` 가 멈춘다). 토큰에 Workflows 권한을 줄 까닭을 없애려고.
 
@@ -28,8 +28,8 @@
    - Resource owner `milcho0604`, Repository access **Only select repositories** → `milcho0604/fairy-releases` 하나만
    - Repository permissions **Contents: Read and write** 만(Metadata: Read 는 저절로 붙는다). Workflows, Issues, Administration 은 주지 않는다
    - 만료일을 정하고(최대 1년) 만료 전에 새로 만들어 비밀값을 바꾼다. 만료되면 릴리스와 옮기기가 실패한다(실패 메일이 간다)
-4. **비밀값 넣기 (소스 레포):** `gh secret set RELEASES_TOKEN --repo milcho0604/fairy` 를 돌리고 토큰을 붙여 넣는다. **레포 비밀값**으로 넣는다: `release.yml` 의 `preflight` 와 `sync-public.yml` 은 환경 `release` 밖에서 돌아 환경 비밀값을 보지 못한다(`release` 작업은 레포 비밀값도 읽는다). 환경 `release` 에만 넣으면 태그 릴리스가 `preflight` 에서 "RELEASES_TOKEN 없음" 으로 멈춘다.
-5. **첫 옮기기:** Actions → **sync-public** → Run workflow (`gh workflow run sync-public --repo milcho0604/fairy`). 끝나면 공개 레포에 README, SECURITY.md, LICENSE, 이슈 양식, `gallery/`, `catalog/` 가 생겼는지 본다. 비밀값 없이 돌면 알림만 남기고 성공으로 끝나니 커밋이 생겼는지 꼭 본다. 처음은 손으로 올려도 된다: `node scripts/sync-public.mjs <빈 폴더>` 로 만든 내용을 그 레포 `main` 에 푸시하면 같다.
+4. **비밀값 넣기 (소스 레포):** `gh secret set RELEASES_TOKEN --repo milcho0604/fairy` 를 돌리고 토큰을 붙여 넣는다. `preflight` 가 값의 유무만 확인하고, `sync-public.yml` 과 릴리스 게시 작업이 이 토큰을 쓴다. 태그 ruleset 은 `v*` 태그 생성·변경·삭제를 관리자에게만 허용한다.
+5. **첫 옮기기:** `public-repo/**`, `gallery/**`, `catalog/**` 중 하나를 바꾸어 소스 레포 `main` 에 올리면 `sync-public` 이 공개 레포에 README, SECURITY.md, LICENSE, 이슈 양식, `gallery/`, `catalog/` 를 맞춘다. 변경 경로를 올리기 어려우면 `node scripts/sync-public.mjs <빈 폴더>` 로 만든 내용을 공개 레포 `main` 에 직접 푸시한다.
 6. 그다음부터 `v*` 태그를 올리면 릴리스가 공개 레포에 올라간다. 확인: `curl -sI https://raw.githubusercontent.com/milcho0604/fairy-releases/main/catalog/models.json` 이 `200`.
 
 ### 소스 레포를 비공개로 바꾸기
@@ -59,7 +59,7 @@
 | 빌드가 다 끝나고 초안을 만들기 전(`release` 작업) | `node scripts/release-check.mjs files v0.2.0 <폴더>` | 파일 12개의 이름과 개수(빠진 것, 다른 버전 이름), 비지 않았는지, `latest.yml` 과 `latest-mac.yml` 의 버전과 각 파일 sha512 가 실제 파일과 같은지. 통과하면 `SHA256SUMS.txt` 를 써서 같이 올린다 |
 | 릴리스 본문 | `node scripts/release-check.mjs notes v0.2.0` | 최소 버전 머리 + CHANGELOG 절 (그 아래 체크섬 안내). GitHub 자동 변경 목록은 넣지 않는다(공개 레포의 커밋은 옮기기 기록뿐이고, 소스 레포는 비공개일 수 있다) |
 
-`preflight` 는 의존성 설치 없이 우분투 러너에서 몇 초면 끝나고, 틀리면 맥, 윈도우 빌드가 아예 시작되지 않는다. 태그 릴리스의 빌드는 한 운영체제라도 깨지면 나머지를 바로 멈춘다(`fail-fast`). 손으로 돌린(Run workflow) 빌드는 셋 다 끝까지 돌고 결과는 7일 뒤 지워진다.
+`preflight` 는 태그 커밋이 `main` 에 포함됐는지와 릴리스 메타데이터를 확인한다. 둘 중 하나라도 틀리면 어떤 운영체제 빌드도 시작되지 않는다. 빌드는 한 운영체제라도 깨지면 나머지를 바로 멈춘다(`fail-fast`). Actions 에서 수동 빌드를 실행하지 않으며, 로컬 빌드는 `npm run dist` 와 `npm run dist:mac`, `npm run dist:win`, `npm run dist:linux` 을 쓴다.
 
 받는 사람은 `SHA256SUMS.txt` 로 내려받은 파일을 확인할 수 있다: 같은 폴더에서 `sha256sum -c SHA256SUMS.txt --ignore-missing`(맥은 `shasum -a 256 <파일>`, 윈도우 PowerShell 은 `Get-FileHash <파일>` 이 보이는 값을 목록과 견준다). GitHub 릴리스 화면도 파일마다 sha256 을 보인다.
 
@@ -84,7 +84,7 @@
 - 권한과 상관없는 시험 빌드만 `JJ_ALLOW_ADHOC=1` 로 임시 서명에 둘 수 있다. 그 빌드는 배포하지 않는다.
 - 빌드하는 동안 잠깐 만든 키체인을 사용자 키체인 검색 목록에 넣었다가 끝나면 원래대로 돌린다(자체 인증서는 codesign 이 검색 목록에서만 찾는다).
 - 다른 컴퓨터에서 열 때 뜨는 "확인되지 않은 개발자" 경고는 임시 서명 때와 같다. 공증(D4) 전까지 남는다.
-- **만료 관리:** `.github/workflows/cert-expiry.yml` 이 매주 월요일 비밀값의 인증서를 열어 끝나는 날을 보고, 30일 안으로 남으면 라벨 `cert-expiry` 이슈에 레포 주인을 불러 매주 댓글을 단다(GitHub 알림). Actions 탭에서 손으로 돌리면 끝나는 날을 바로 그 이슈에 적는다. 지문이 다르거나 비밀값이 없으면 실패해 실패 메일이 간다. 암호는 env 로만 넘기고 로그에 찍지 않는다.
+- **만료 관리:** `.github/workflows/cert-expiry.yml` 이 매주 월요일 비밀값의 인증서를 열어 끝나는 날을 보고, 30일 안으로 남으면 라벨 `cert-expiry` 이슈에 레포 주인을 불러 매주 댓글을 단다(GitHub 알림). 지문이 다르거나 비밀값이 없으면 실패해 실패 메일이 간다. 암호는 env 로만 넘기고 로그에 찍지 않는다.
 - 자체 인증서를 새로 만들면(기한 연장 포함) 지문이 바뀌어 위 "잃어버리면 안 된다"와 같은 일이 생긴다. 끝나기 전에 할 일은 관리 이슈 본문에 적어 둔다.
 
 ## 윈도우 서명
@@ -111,13 +111,15 @@
 
 ## 환경 승인
 
-`release.yml` 의 릴리스 올리기 작업은 GitHub 환경 `release` 에서 돈다. 공개 전에 한 번 설정한다:
+`release.yml` 의 공개 레포 게시 작업은 GitHub 환경 `release` 에서 돈다. 이 환경이 없거나 보호가 빠지면 태그로 실행한 코드가 `RELEASES_TOKEN` 을 쓸 수 있으므로 공개 레포에 적용한다:
 
 1. 레포 Settings → Environments → New environment → `release`
 2. Required reviewers 에 레포 주인을 넣는다(혼자면 "Prevent self-review" 는 끈다)
 3. Deployment branches and tags → Selected → 태그 `v*` 만
 
-그러면 태그를 올려도 설치 파일 빌드까지만 돌고, 초안 릴리스를 만들기 전에 Actions 화면에서 승인을 기다린다. 맥 서명 비밀값(`JJ_MAC_SIGN_*`)도 이 환경의 비밀값으로 옮기면 승인된 실행만 쓸 수 있다(빌드 작업에도 `environment: release` 를 붙여야 한다).
+별도로 Settings → Rules → Rulesets 에 태그 ruleset 을 만든다. 대상은 `refs/tags/v*`, 규칙은 생성·수정·삭제 제한, 우회 역할은 Repository administrators 만 둔다. 이 설정은 `release.yml` 파일 자체가 바뀐 미승인 태그에서 실행되는 것을 막는다. `preflight` 도 태그 커밋이 `main` 에 포함됐는지 다시 확인한다.
+
+비밀값이나 쓰기 권한 토큰을 쓰는 워크플로에는 `workflow_dispatch` 를 두지 않는다. 릴리스 빌드는 보호된 태그 푸시, 서버 배포와 공개 파일 동기화는 보호된 `main` 푸시, 인증서와 서버 감시는 예약 실행만 받는다. 이렇게 해야 임의 브랜치에서 워크플로를 바꿔 비밀값이나 쓰기 권한 토큰을 빼내지 못한다.
 
 ## 꼭 필요한 업데이트 (min-version)
 
@@ -192,7 +194,7 @@ export GH_TOKEN=$(gh auth token --user milcho0604)
    gh secret list --repo milcho0604/fairy
    ```
 
-   그리고 위 "환경 승인"대로 환경 `release` 를 만든다(없으면 릴리스 작업이 승인 없이 돈다).
+   그리고 위 "환경 승인"대로 환경 `release` 와 `v*` 태그 ruleset 을 설정한다.
    공개 레포 준비(만들기, Issues 와 Private vulnerability reporting 켜기, 비밀값 `RELEASES_TOKEN`, 첫 sync-public)는 위 "두 레포" 의 "처음 한 번" 대로 한다.
 5. **공개 전환:** `gh repo edit milcho0604/fairy --visibility public --accept-visibility-change-consequences`. 공개 레포는 Actions 맥 러너 시간이 깎이지 않으니 태그는 공개 뒤에 올린다.
 6. **버전 올리기와 태그:** `package.json` 의 `version` 을 `0.2.0` 으로(`npm version 0.2.0 --no-git-tag-version`), `CHANGELOG.md` 의 Unreleased 를 `## [0.2.0] - <오늘 날짜>` 로 정리해 커밋하고 `main` 에 푸시한다. 태그 전에 `node scripts/release-check.mjs tag v0.2.0` 이 통과하는지 본다(CI 의 `preflight` 와 같은 점검). 그다음 `git tag v0.2.0 && git push origin v0.2.0`, 진행은 `gh run watch --repo milcho0604/fairy`.
