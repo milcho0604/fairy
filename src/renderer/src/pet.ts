@@ -57,6 +57,7 @@ import {
 } from './draw.ts';
 import { initLang } from './lang.ts';
 import { LAND_MS, moveFps, SIT_MS, sitDown } from './move-pose.ts';
+import { settlePeekRequest } from './peek-request.ts';
 import { renderBody, renderFace } from './pet-face.ts';
 import type { Pet3D } from './pet3d.ts';
 import { quadKind, withGait } from './pet3d-gait.ts';
@@ -1409,33 +1410,34 @@ let peekEndedAt = -1e9;
 /** 누른 자리 (창 안, 화면). 커지면 창이 움직여 창 안 좌표가 바뀌므로 화면 좌표로 끌기를 가른다 */
 let pressAt: { x: number; y: number; sx: number; sy: number; px: number; py: number } | undefined;
 
+function rejectPeekPress(released = peekReleased) {
+  peekState = 'none';
+  peekReleased = false;
+  if (!released) return;
+  // 키우지 못한 채 이미 놓았으면 일반 클릭으로 돌린다.
+  petClicks.click();
+  setInputs({ excitedUntil: performance.now() + EXCITED_MS });
+}
+
 function startPeekPress() {
   peekTimer = undefined;
   if (!clickGrow || gesture.dragging || peekState !== 'none') return;
   peekState = 'asking';
   peekReleased = false;
-  void bridge
-    .peek(true, reducedMotion.matches)
-    .then((ok) => {
-      if (!ok) {
-        // 지금은 못 키운다(끌기 중 등): 누르기는 보통 클릭으로 친다. 이미 놓았으면 그 클릭을 지금 보낸다
-        peekState = 'none';
-        if (peekReleased) {
-          petClicks.click();
-          setInputs({ excitedUntil: performance.now() + EXCITED_MS });
-        }
-        return;
-      }
-      if (peekReleased) {
+  void settlePeekRequest(
+    bridge.peek(true, reducedMotion.matches),
+    () => peekReleased,
+    // 거절이나 IPC 오류가 놓은 뒤 도착하면 일반 클릭으로 돌린다.
+    rejectPeekPress,
+    (released) => {
+      if (released) {
         peekState = 'none';
         void bridge.peek(false);
         return;
       }
       peekState = 'on';
-    })
-    .catch(() => {
-      peekState = 'none';
-    });
+    },
+  );
 }
 
 /** 누름이 끝났다(놓음, 끌기 시작, 포인터 잃음). 커졌거나 묻는 중이었으면 true */
