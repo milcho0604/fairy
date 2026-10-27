@@ -8,6 +8,7 @@ import { restoredEventDay } from '../../../shared/view-keep.ts';
 import { CalendarView } from './CalendarView.tsx';
 import { useDraft } from './draft.ts';
 import { endFromInput, lengthLabel, timeInputValue } from './event-end.ts';
+import { eventFindDestination } from './event-find.ts';
 import { dayHeading, timeOf, toInputValue } from './format.ts';
 import { gcalBadge } from './gcal-badge.ts';
 import { PinIcon } from './icons.tsx';
@@ -92,16 +93,24 @@ export function EventTab({
 
   useEffect(() => {
     if (!findTarget) return;
-    setViewState('calendar');
-    try {
-      localStorage.setItem(VIEW_KEY, 'calendar');
-    } catch {
-      // 못 적어도 이번에는 달력으로 간다
+    const inList =
+      s.events.some((event) => event.id === findTarget.id) ||
+      s.pinnedEvents.some((event) => event.id === findTarget.id);
+    const destination = eventFindDestination(view, inList);
+    if (destination === 'calendar') {
+      if (view !== 'calendar') {
+        setViewState('calendar');
+        try {
+          localStorage.setItem(VIEW_KEY, 'calendar');
+        } catch {
+          // 못 적어도 이번에는 달력으로 간다
+        }
+      }
+      setDay(localDay(findTarget.startAt));
     }
-    setDay(localDay(findTarget.startAt));
     window.requestAnimationFrame(() => void revealRow(`event:${findTarget.id}`));
     onFindTargetHandled();
-  }, [findTarget, onFindTargetHandled]);
+  }, [findTarget, onFindTargetHandled, s.events, s.pinnedEvents, view]);
 
   const add = async () => {
     const r = await bridge.eventAdd(text, calendar ? day : undefined);

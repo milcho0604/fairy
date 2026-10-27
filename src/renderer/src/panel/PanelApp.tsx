@@ -494,11 +494,7 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
     setTab(tab);
     if (pick.kind === 'note') openNoteById(pick.id);
     else if (pick.kind === 'event') {
-      const visible =
-        s.events.some((event) => event.id === pick.id) ||
-        s.pinnedEvents.some((event) => event.id === pick.id);
-      if (!visible && typeof pick.startAt === 'number')
-        setFindEventTarget({ id: pick.id, startAt: pick.startAt });
+      if (typeof pick.startAt === 'number') setFindEventTarget({ id: pick.id, startAt: pick.startAt });
       else void revealRow(`event:${pick.id}`);
     } else void revealRow(`todo:${pick.id}`);
   };
