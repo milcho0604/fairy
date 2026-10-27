@@ -1,15 +1,7 @@
 // 통합 시험: AI 대화권 (#100). 시험용 Postgres 컨테이너와 가짜 Anthropic(scripts/fake-anthropic.mjs)을 띄운다.
 // 진짜 Anthropic 은 절대 부르지 않는다: ANTHROPIC_BASE_URL 자리에 가짜 주소를 넣는다. 구글도 가짜(키 쌍으로 직접 서명).
 import assert from 'node:assert/strict';
-import {
-  createHash,
-  createHmac,
-  generateKeyPairSync,
-  type JsonWebKey,
-  randomBytes,
-  randomUUID,
-  sign,
-} from 'node:crypto';
+import { createHash, createHmac, generateKeyPairSync, randomBytes, randomUUID, sign } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Pool } from 'pg';
@@ -17,7 +9,7 @@ import { Ai } from '../src/ai';
 import { AI_GIFT, reserveMicros, systemPrompt } from '../src/ai-rules';
 import { createApp } from '../src/app';
 import type { AiConfig, Config } from '../src/config';
-import type { GoogleApi } from '../src/google';
+import type { GoogleApi, JsonWebKey } from '../src/google';
 import { runMigrations, startPg } from './pg';
 
 const CLIENT_ID = 'test-client.apps.googleusercontent.com';

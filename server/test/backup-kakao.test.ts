@@ -1,7 +1,7 @@
 // 통합 시험: 서버 백업(5단계)과 카카오 로그인(6단계), 기능 키 (#102).
 // 시험용 Postgres 컨테이너, 임시 백업 폴더, 가짜 카카오(scripts/fake-kakao.mjs, HTTP)를 띄운다. 진짜 구글과 카카오는 부르지 않는다.
 import assert from 'node:assert/strict';
-import { createHash, generateKeyPairSync, type JsonWebKey, randomBytes, randomUUID, sign } from 'node:crypto';
+import { createHash, generateKeyPairSync, randomBytes, randomUUID, sign } from 'node:crypto';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,7 +12,7 @@ import { createApp } from '../src/app';
 import { BACKUP_MAX_BYTES, Backups } from '../src/backup';
 import type { Config } from '../src/config';
 import { Features } from '../src/features';
-import type { GoogleApi } from '../src/google';
+import type { GoogleApi, JsonWebKey } from '../src/google';
 import { runMigrations, startPg } from './pg';
 
 const CLIENT_ID = 'test-client.apps.googleusercontent.com';

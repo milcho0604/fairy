@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { generateKeyPairSync, type JsonWebKey, sign } from 'node:crypto';
+import { generateKeyPairSync, sign } from 'node:crypto';
 import test from 'node:test';
-import { verifyIdToken } from './google';
+import { type JsonWebKey, verifyIdToken } from './google';
 
 const key = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const jwk = { ...(key.publicKey.export({ format: 'jwk' }) as JsonWebKey), kid: 'k1' };

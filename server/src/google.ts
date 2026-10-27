@@ -1,4 +1,7 @@
-import { createPublicKey, type JsonWebKey, verify } from 'node:crypto';
+import { createPublicKey, verify, type webcrypto } from 'node:crypto';
+
+// Node 26 의 @types/node 는 node:crypto 의 JsonWebKey 를 없앴다. webcrypto 쪽 같은 타입(Node 24 에도 있다)을 한 곳에서 내보낸다.
+export type JsonWebKey = webcrypto.JsonWebKey;
 
 // 구글 로그인 (기획서 5절). scope 는 openid 만이라 id_token 에서 sub 하나만 쓴다(이메일, 이름은 받지 않는다).
 // 구글을 부르는 두 곳(코드 교환, 공개 키 받기)은 GoogleApi 로 묶어 시험에서 가짜로 바꾼다.
