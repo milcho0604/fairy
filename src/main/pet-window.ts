@@ -123,8 +123,10 @@ const SIZE_SHORTCUTS = {
 };
 
 export interface PetActions {
-  /** 왼쪽 클릭. 패널(2단계) 전까지는 채팅 창을 열고 닫는다. */
+  /** 왼쪽 클릭 동작 */
   click(petBounds: Electron.Rectangle): void;
+  /** 더블클릭 동작. 친구 펫은 지정하지 않으면 왼쪽 클릭 동작을 한 번 실행한다. */
+  doubleClick?(petBounds: Electron.Rectangle): void;
   openChat(petBounds: Electron.Rectangle): void;
   lookTogether(): void;
   openSettings(): void;
@@ -607,6 +609,8 @@ export function createPetWindow({
     log('pet', event.type);
     if (event.type === 'click') {
       actions.click(pet);
+    } else if (event.type === 'double-click') {
+      (actions.doubleClick ?? actions.click)(pet);
     } else if (event.type === 'drag-start') {
       if (looking) return;
       // 꾹 눌러 커진 채 움직이면 끌기다: 원래 크기로 돌려 놓고 그 크기로 잡는다 (이슈 #124)

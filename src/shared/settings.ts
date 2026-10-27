@@ -11,6 +11,7 @@ import { type AgeStage, isAgeStage } from './illustrate.ts';
 import { cleanFacts, cleanMeta, type MemMeta, type PetFact } from './knows.ts';
 import { type IllustEngine, illustEngineOf } from './local-draw.ts';
 import { isOnboardPage } from './onboarding-page.ts';
+import { isPetClickAction, type PetClickAction } from './pet-click.ts';
 import { cleanMemory, cleanPending } from './pet-memory.ts';
 import { cleanPetMeta, type PetMeta } from './pet-share.ts';
 import { cleanSpriteFiles, type PetSprites } from './pet-sprites.ts';
@@ -155,6 +156,10 @@ export interface Settings {
   panelPin: boolean;
   /** 패널 보기 (큰 창 설계 #159): 펫 클릭, 패널 단축키, 메뉴 막대 "패널"이 여는 것. 작은 패널(compact) 또는 큰 창(window) */
   panelView: PanelView;
+  /** 펫 한 번 클릭 동작. panel 은 panelView 설정을 따른다 (#148) */
+  petClick: PetClickAction;
+  /** 펫 더블클릭 동작. 한 번 클릭 동작과 별도로 실행한다 (#148) */
+  petDoubleClick: PetClickAction;
   /** 맥 메뉴 막대 아이콘 옆에 다음 일정이나 집중 남은 시간 (편의, 기본 끔: 제목이 화면에 늘 보인다) */
   trayTitle: boolean;
   /** 집 숨기기 (2026-10-12, shared/house-stow.ts): 화면의 집을 숨겨 둔다. 자리, 단계, 모양은 그대로 */
@@ -499,6 +504,8 @@ export const DEFAULT_SETTINGS: Settings = {
   clickGrow: true,
   panelPin: false,
   panelView: 'compact',
+  petClick: 'panel',
+  petDoubleClick: 'chat',
   trayTitle: false,
   houseHidden: false,
   saverTold: false,
@@ -740,6 +747,8 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     clickGrow: bool(r.clickGrow, base.clickGrow),
     panelPin: bool(r.panelPin, base.panelPin),
     panelView: isPanelView(r.panelView) ? r.panelView : base.panelView,
+    petClick: isPetClickAction(r.petClick) ? r.petClick : base.petClick,
+    petDoubleClick: isPetClickAction(r.petDoubleClick) ? r.petDoubleClick : base.petDoubleClick,
     trayTitle: bool(r.trayTitle, base.trayTitle),
     houseHidden: bool(r.houseHidden, base.houseHidden),
     saverTold: bool(r.saverTold, base.saverTold),

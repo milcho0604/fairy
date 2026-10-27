@@ -365,26 +365,9 @@ ready
       petName,
       onHideHint: (message, shortMessage) => showTrayHideHint?.(message, shortMessage),
       actions: {
-        // 왼쪽 클릭은 패널(할 일, 코인, 밥). 대화는 패널 안과 우클릭 메뉴에서.
-        click: () => {
-          // 숨바꼭질 중이면 찾은 것
-          if (seeking) {
-            seeking.done(true);
-            return;
-          }
-          // 짧은 놀이 중이면 그만 (비눗방울, 레이저 쫓기 등). 두더지 잡기는 누르기가 잡기
-          if (games.running()) {
-            if (!games.tap()) games.stop();
-            return;
-          }
-          petLife.activity('click');
-          // 쪽지를 들고 있으면 누르기가 쪽지 펼치기 (매일 쪽지, main/daily-note.ts)
-          if (dailyNotes.holding()) {
-            void dailyNotes.open();
-            return;
-          }
-          panel.togglePanel();
-        },
+        // 클릭 동작은 설정에서 고른다. 패널을 고르면 panelView 가 작은 패널/큰 창을 정한다.
+        click: (bounds) => handlePetClick('single', bounds),
+        doubleClick: (bounds) => handlePetClick('double', bounds),
         openChat: (bounds) => chat.open(bounds),
         lookTogether: () => look.start(),
         openSettings: () => settingsWindow.open(),
@@ -497,6 +480,30 @@ ready
       friends.setHidden('user', on);
       if (!on) void rest.call(false);
     };
+    function handlePetClick(kind: 'single' | 'double', bounds: Electron.Rectangle) {
+      // 숨바꼭질, 놀이, 들고 있는 쪽지는 설정 동작보다 먼저 처리하는 일시 동작이다.
+      if (seeking) {
+        seeking.done(true);
+        return;
+      }
+      if (games.running()) {
+        if (!games.tap()) games.stop();
+        return;
+      }
+      petLife.activity('click');
+      if (dailyNotes.holding()) {
+        void dailyNotes.open();
+        return;
+      }
+      const action = settings.get()[kind === 'single' ? 'petClick' : 'petDoubleClick'];
+      if (action === 'panel') panel.togglePanel();
+      else if (action === 'chat') chat.open(bounds);
+      else if (action === 'hide') {
+        // 숨김 단축키의 rest.call 동작과 달리, 이 동작은 집 안에 쉬고 있어도 바로 숨긴다.
+        pet.setHidden('user', true);
+        friends.setHidden('user', true);
+      }
+    }
     // 숨기기 단축키는 숨은 펫을 다시 부르는 길이라 늘 걸어 둔다. 다른 앱과 겹치지 않게 네 키 조합.
     const tray = createTray(petName, {
       toggleHidden,
