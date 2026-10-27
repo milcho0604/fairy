@@ -11,6 +11,7 @@ import { endFromInput, lengthLabel, timeInputValue } from './event-end.ts';
 import { dayHeading, timeOf, toInputValue } from './format.ts';
 import { gcalBadge } from './gcal-badge.ts';
 import { PinIcon } from './icons.tsx';
+import { revealRow } from './open-target.ts';
 import { PinButton, usePinMenu } from './pin.tsx';
 import { RemindButton, RemindSheet } from './RemindPicker.tsx';
 import { updateView, useKeepScroll, viewNow } from './view-keep.ts';
@@ -39,6 +40,8 @@ export function EventTab({
   onComplete,
   onTodoRemoved,
   onTodoAdded,
+  findTarget,
+  onFindTargetHandled,
 }: {
   s: PanelState;
   inputRef: React.RefObject<HTMLInputElement | null>;
@@ -48,6 +51,9 @@ export function EventTab({
   /** 달력 보기의 할 일 줄 (할 일 탭과 같은 끝내기, 지우기) */
   onComplete: (todo: Todo) => void;
   onTodoRemoved: (todo: Todo) => void;
+  /** 통합 검색에서 고른 목록 밖 일정: 달력에서 날짜와 회차를 보여 준다 */
+  findTarget?: { id: number; startAt: number };
+  onFindTargetHandled: () => void;
 }) {
   const [view, setViewState] = useState<View>(savedView);
   // 달력에서 고른 날. 입력칸이 이 날에 넣는다
@@ -83,6 +89,19 @@ export function EventTab({
   // 반복 문장을 시각 일정으로 읽지 못했으면 같은 글을 반복 할 일로 바꿀 수 있게 한다.
   const [asTodo, setAsTodo] = useState(false);
   const now = Date.now();
+
+  useEffect(() => {
+    if (!findTarget) return;
+    setViewState('calendar');
+    try {
+      localStorage.setItem(VIEW_KEY, 'calendar');
+    } catch {
+      // 못 적어도 이번에는 달력으로 간다
+    }
+    setDay(localDay(findTarget.startAt));
+    window.requestAnimationFrame(() => void revealRow(`event:${findTarget.id}`));
+    onFindTargetHandled();
+  }, [findTarget, onFindTargetHandled]);
 
   const add = async () => {
     const r = await bridge.eventAdd(text, calendar ? day : undefined);

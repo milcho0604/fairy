@@ -5,6 +5,7 @@ import type { FindAllResult } from '../../../shared/find-all.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PanelTab } from '../../../shared/ipc.ts';
 import { dueLabel } from '../../../shared/quick-add.ts';
+import { currentQueryResult, type FindQuerySnapshot } from './find-query.ts';
 import { dayHeading, timeOf } from './format.ts';
 import { SearchIcon } from './icons.tsx';
 import { isEsc, takeEsc } from './keys.ts';
@@ -15,7 +16,7 @@ const bridge = window.jjakkungPanel;
 type Pick =
   | { kind: 'todo'; id: number; title: string }
   | { kind: 'note'; id: number; title: string }
-  | { kind: 'event'; id: number; title: string };
+  | { kind: 'event'; id: number; title: string; startAt: number };
 
 export function FindAll({
   today,
@@ -29,13 +30,14 @@ export function FindAll({
 }) {
   const [query, setQuery] = useState('');
   const [composing, setComposing] = useState(false);
-  const [found, setFound] = useState<FindAllResult>();
+  const [found, setFound] = useState<FindQuerySnapshot<FindAllResult>>();
   const [at, setAt] = useState(0);
   const seq = useRef(0);
   const listId = useId();
   const q = query.trim();
 
-  // 적을 때마다 (잠깐 멈추면) 메인에서 세 종류를 한꺼번에 찾는다. 늦게 돌아온 앞 결과는 버린다
+  // 적을 때마다 (잠깐 멈추면) 메인에서 세 종류를 한꺼번에 찾는다. 늦게 돌아온 앞 결과는 버린다.
+  // 결과를 입력값과 묶어 두어 다음 요청이 시작되기 전의 짧은 틈에도 옛 결과를 고르지 못하게 한다.
   useEffect(() => {
     if (!q) {
       setFound(undefined);
@@ -43,22 +45,34 @@ export function FindAll({
     }
     const mine = ++seq.current;
     const timer = setTimeout(() => {
-      bridge.findAll(query, composing).then((r) => {
-        if (mine === seq.current) {
-          setFound(r);
-          setAt(0);
-        }
-      });
+      void Promise.resolve()
+        .then(() => bridge.findAll(query, composing))
+        .then(
+          (result) => {
+            if (mine === seq.current) {
+              setFound({ query, composing, result });
+              setAt(0);
+            }
+          },
+          () => {
+            // 창을 닫는 중 IPC가 거절돼도 오래된 결과를 되살리거나 미처리 거절을 남기지 않는다.
+            if (mine === seq.current) setFound(undefined);
+          },
+        );
     }, 120);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      if (mine === seq.current) seq.current++;
+    };
   }, [query, composing, q]);
 
-  const groups: { key: 'todos' | 'notes' | 'events'; label: string; rows: Row[] }[] = found
+  const current = currentQueryResult(found, query, composing);
+  const groups: { key: 'todos' | 'notes' | 'events'; label: string; rows: Row[] }[] = current
     ? [
         {
           key: 'todos',
           label: t('rows.find.todos'),
-          rows: found.todos.map((x) => ({
+          rows: current.todos.map((x) => ({
             id: `todo-${x.id}`,
             title: x.title,
             sub: x.done ? t('rows.find.done') : x.due ? dueLabel(x.due, today).text : undefined,
@@ -69,7 +83,7 @@ export function FindAll({
         {
           key: 'notes',
           label: t('rows.find.notes'),
-          rows: found.notes.map((x) => ({
+          rows: current.notes.map((x) => ({
             id: `note-${x.id}`,
             title: x.title,
             snippet: x.snippet,
@@ -81,14 +95,14 @@ export function FindAll({
         {
           key: 'events',
           label: t('rows.find.events'),
-          rows: found.events.map((x) => ({
+          rows: current.events.map((x) => ({
             id: `event-${x.id}`,
             title: x.title,
             sub: x.allDay
               ? dayHeading(dayOf(x.startAt), today)
               : `${dayHeading(dayOf(x.startAt), today)} ${timeOf(x.startAt)}`,
             tab: 'event',
-            pick: { kind: 'event', id: x.id, title: x.title },
+            pick: { kind: 'event', id: x.id, title: x.title, startAt: x.startAt },
           })),
         },
       ]
@@ -99,7 +113,7 @@ export function FindAll({
     onClose();
     onPick(r.tab, r.pick);
   };
-  const empty = !!found && flat.length === 0;
+  const empty = !!current && flat.length === 0;
 
   return (
     <Overlay>
@@ -136,10 +150,16 @@ export function FindAll({
               placeholder={t('rows.find.placeholder')}
               value={query}
               onChange={(e) => {
+                seq.current++;
+                setFound(undefined);
                 setQuery(e.target.value);
                 setComposing((e.nativeEvent as InputEvent).isComposing ?? false);
               }}
-              onCompositionEnd={() => setComposing(false)}
+              onCompositionEnd={() => {
+                seq.current++;
+                setFound(undefined);
+                setComposing(false);
+              }}
               onKeyDown={(e) => {
                 if (isEsc(e)) {
                   takeEsc(e);
@@ -203,8 +223,8 @@ export function FindAll({
                         </div>
                       );
                     })}
-                    {found && found.more[g.key] > 0 && (
-                      <p className="find-more">{t('rows.find.more', { n: found.more[g.key] })}</p>
+                    {current && current.more[g.key] > 0 && (
+                      <p className="find-more">{t('rows.find.more', { n: current.more[g.key] })}</p>
                     )}
                   </div>
                 ),

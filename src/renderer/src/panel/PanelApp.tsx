@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EXPAND_HINT_MS } from '../../../shared/expand-hint.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PanelState, PanelTab } from '../../../shared/ipc.ts';
@@ -144,6 +144,8 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
   const [hintOn, setHintOn] = useState(false);
   /** 할 일, 메모, 일정 한 번에 찾기 (#146) */
   const [findOpen, setFindOpen] = useState(false);
+  const [findEventTarget, setFindEventTarget] = useState<{ id: number; startAt: number }>();
+  const clearFindEventTarget = useCallback(() => setFindEventTarget(undefined), []);
   const hintTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const showHint = () => {
     setHintOn(true);
@@ -476,6 +478,8 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
             onComplete={complete}
             onTodoRemoved={(todo) => showToast({ kind: 'todo-removed', id: todo.id })}
             onTodoAdded={(r) => showToast({ kind: 'added', text: addedText(r, s.today) })}
+            findTarget={findEventTarget}
+            onFindTargetHandled={clearFindEventTarget}
           />
         )}
       </div>
@@ -483,10 +487,20 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
   );
 
   /** 찾기에서 고른 곳으로: 탭을 바꾸고 그 줄을 보인다 (메모는 편집기를 연다) */
-  const pickFound = (tab: PanelTab, pick: { kind: 'todo' | 'note' | 'event'; id: number }) => {
+  const pickFound = (
+    tab: PanelTab,
+    pick: { kind: 'todo' | 'note' | 'event'; id: number; startAt?: number },
+  ) => {
     setTab(tab);
     if (pick.kind === 'note') openNoteById(pick.id);
-    else void revealRow(`${pick.kind}:${pick.id}`);
+    else if (pick.kind === 'event') {
+      const visible =
+        s.events.some((event) => event.id === pick.id) ||
+        s.pinnedEvents.some((event) => event.id === pick.id);
+      if (!visible && typeof pick.startAt === 'number')
+        setFindEventTarget({ id: pick.id, startAt: pick.startAt });
+      else void revealRow(`event:${pick.id}`);
+    } else void revealRow(`todo:${pick.id}`);
   };
   const findSheet = findOpen ? (
     <FindAll today={s.today} onClose={() => setFindOpen(false)} onPick={pickFound} />
