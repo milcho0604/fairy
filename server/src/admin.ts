@@ -1674,12 +1674,12 @@ export class AdminService {
       blocked: boolean;
       same_user: string;
     }>(
-      `SELECT r.id, (extract(epoch FROM r.created_at) * 1000)::bigint AS at, COALESCE(a.merged_into, a.id) AS account_id, a.code, a.nickname, r.status,
+      `SELECT r.id, (extract(epoch FROM r.created_at) * 1000)::bigint AS at, COALESCE(a.merged_into, a.id) AS account_id, m.code, m.nickname, r.status,
               r.handled_by, r.handled_name, (extract(epoch FROM r.handled_at) * 1000)::bigint AS handled_at,
               EXISTS (SELECT 1 FROM ai_block b WHERE b.account_id = COALESCE(a.merged_into, a.id)) AS blocked,
               (SELECT count(*) FROM ai_report x JOIN account xa ON xa.id = x.account_id
                 WHERE COALESCE(xa.merged_into, xa.id) = COALESCE(a.merged_into, a.id)) AS same_user
-         FROM ai_report r JOIN account a ON a.id = r.account_id
+         FROM ai_report r JOIN account a ON a.id = r.account_id JOIN account m ON m.id = COALESCE(a.merged_into, a.id)
         WHERE ($1 = 'all' OR r.status = $1)
         ORDER BY CASE r.status WHEN 'pending' THEN 0 WHEN 'seen' THEN 1 ELSE 2 END, r.created_at DESC, r.id DESC
         LIMIT 200`,
@@ -1718,19 +1718,22 @@ export class AdminService {
         handled_name: string | null;
         handled_at: string | null;
         blocked: boolean;
+        age: string;
         question: string;
         answer: string;
       }>(
-        `SELECT r.id, (extract(epoch FROM r.created_at) * 1000)::bigint AS at, COALESCE(a.merged_into, a.id) AS account_id, a.code, a.nickname, r.status,
+        `SELECT r.id, (extract(epoch FROM r.created_at) * 1000)::bigint AS at, COALESCE(a.merged_into, a.id) AS account_id, m.code, m.nickname, r.status,
                 r.handled_by, r.handled_name, (extract(epoch FROM r.handled_at) * 1000)::bigint AS handled_at,
                 EXISTS (SELECT 1 FROM ai_block b WHERE b.account_id = COALESCE(a.merged_into, a.id)) AS blocked,
-                r.question, r.answer
-           FROM ai_report r JOIN account a ON a.id = r.account_id WHERE r.id = $1`,
+                m.age, r.question, r.answer
+           FROM ai_report r JOIN account a ON a.id = r.account_id JOIN account m ON m.id = COALESCE(a.merged_into, a.id) WHERE r.id = $1`,
         [id],
       );
       const x = r.rows[0];
       if (!x) return null;
       await adminLog(c, actor, 'report.view', `account:${x.account_id}`, { report: Number(x.id) });
+      // 채팅 이용권은 만 18세 이상만 쓴다. 나이를 내린 계정의 신고 글은 받은 뒤라도 열지 않는다 (30일 뒤 지우는 것은 그대로)
+      const closed = x.age !== '18+';
       const others = await c.query<{ id: string; at: string; status: ReportState }>(
         `SELECT id, (extract(epoch FROM created_at) * 1000)::bigint AS at, status FROM ai_report
           WHERE account_id IN (SELECT f.id FROM account f WHERE COALESCE(f.merged_into, f.id) = $1::bigint) AND id <> $2 ORDER BY created_at DESC, id DESC LIMIT 10`,
@@ -1748,8 +1751,9 @@ export class AdminService {
         handledAt: x.handled_at === null ? null : Number(x.handled_at),
         blocked: x.blocked,
         sameUser: others.rows.length + 1,
-        question: x.question,
-        answer: x.answer,
+        closed,
+        question: closed ? '' : x.question,
+        answer: closed ? '' : x.answer,
         others: others.rows.map((o) => ({ id: o.id, at: Number(o.at), status: o.status })),
       };
     });
@@ -2751,8 +2755,14 @@ export class AdminController {
     const token = (req.body as FormFields | undefined)?.token;
     const out = this.auth.login(token, ipKey(req));
     if (!out.ok) {
-      if (out.error === 'bad_token')
+      // 합계가 한도를 넘은 창에서는 틀릴 때마다 쓰지 않고 요약 한 줄만 (기록 표가 부풀지 않게)
+      if (out.error === 'bad_token' && out.log === 'fail')
         await adminLog(this.db.pool, 'anon', 'login.fail', null).catch(() => undefined);
+      else if (out.error === 'bad_token' && out.log === 'flood')
+        await adminLog(this.db.pool, 'anon', 'login.flood', null, {
+          max: LIMITS.adminFailAll.max,
+          windowMin: LIMITS.adminFailAll.windowMs / 60_000,
+        }).catch(() => undefined);
       return html(
         res,
         out.error === 'rate_limited' ? 429 : 401,

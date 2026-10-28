@@ -46,7 +46,7 @@ export const LIMITS = {
   giftByAccount: { max: 20, windowMs: 60_000 },
   /** 바쁜 시간대 올리기: 계정마다 한 시간 30번 (앱은 몇 분마다, 바뀌었을 때만) */
   busyByAccount: { max: 30, windowMs: 3_600_000 },
-  /** 운영자 로그인 실패: 같은 곳에서 15분 5번, 서버 전체 15분 20번 (넘으면 맞는 토큰도 받지 않는다) */
+  /** 운영자 로그인 실패: 같은 곳에서 15분 5번 (넘으면 맞는 토큰도 받지 않는다). 서버 전체 15분 20번은 막지 않고 경고만 */
   adminFailByIp: { max: 5, windowMs: 900_000 },
   adminFailAll: { max: 20, windowMs: 900_000 },
   /** 운영자 화면 요청: 세션마다 1분 120번 */
@@ -105,6 +105,28 @@ export class RateLimiter implements OnModuleDestroy {
  * 요청을 보낸 곳의 키. cf-connecting-ip 를, 없으면 소켓 원격 주소를 해시로만 쓴다(한 키로 몰지 않는다).
  * 둘 다 없을 때만 'ip:none'
  */
+/** IPv6 는 /64 하나가 한 가입자라서 앞 64비트로 묶는다 (주소만 바꿔 한도를 피하지 못하게). IPv4 매핑 주소는 IPv4 로 본다 */
+export function ipGroup(raw: string): string {
+  let ip = raw.trim().toLowerCase();
+  const zone = ip.indexOf('%');
+  if (zone >= 0) ip = ip.slice(0, zone);
+  const mapped =
+    /^(?:0{0,4}:){2,5}(?:ffff:)(\d{1,3}(?:\.\d{1,3}){3})$/.exec(ip) ??
+    /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(ip);
+  if (mapped?.[1]) return mapped[1];
+  if (!ip.includes(':')) return ip;
+  // :: 를 풀어 여덟 묶음으로 만든 뒤 앞 네 묶음만
+  const [head = '', tail] = ip.split('::');
+  const h = head ? head.split(':') : [];
+  const t = tail !== undefined && tail ? tail.split(':') : [];
+  if (tail === undefined ? h.length !== 8 : h.length + t.length > 7) return ip;
+  const groups = tail === undefined ? h : [...h, ...Array<string>(8 - h.length - t.length).fill('0'), ...t];
+  return `${groups
+    .slice(0, 4)
+    .map((g) => Number.parseInt(g || '0', 16).toString(16))
+    .join(':')}::/64`;
+}
+
 export function ipKey(req: {
   headers: Record<string, string | string[] | undefined>;
   socket?: { remoteAddress?: string | undefined };
@@ -112,5 +134,5 @@ export function ipKey(req: {
   const raw = req.headers['cf-connecting-ip'];
   const ip = (Array.isArray(raw) ? raw[0] : raw)?.trim() || req.socket?.remoteAddress;
   if (!ip) return 'ip:none';
-  return `ip:${createHash('sha256').update(ip).digest('base64url').slice(0, 16)}`;
+  return `ip:${createHash('sha256').update(ipGroup(ip)).digest('base64url').slice(0, 16)}`;
 }

@@ -470,3 +470,39 @@ describe('합쳐진 계정과 열람 기록의 짝', () => {
     assert.equal(r.body.latest, null);
   });
 });
+
+describe('합쳐진 계정과 나이 (사냥)', () => {
+  test('합쳐진 계정의 신고는 남은 이용자의 코드와 닉네임을 보인다 (목록과 본문)', async () => {
+    const stay = await newDevice('18+', '남는쪽고양이');
+    const gone = await newDevice('18+', '닫힌쪽고양이');
+    const id = await oldInsert(gone.id, '합친 질문', '합친 답');
+    await h.pool.query('UPDATE account SET closed_at = now(), merged_into = $2 WHERE id = $1', [
+      gone.id,
+      stay.id,
+    ]);
+    const cell = reportsCell((await admin.page()).text);
+    assert.match(cell, new RegExp(stay.code));
+    assert.match(cell, /남는쪽고양이/);
+    assert.doesNotMatch(cell, new RegExp(gone.code));
+    assert.doesNotMatch(cell, /닫힌쪽고양이/);
+    const open = reportsCell((await admin.page(`?report=${id}`)).text);
+    assert.match(open, new RegExp(stay.code));
+    assert.doesNotMatch(open, new RegExp(gone.code));
+    assert.doesNotMatch(open, /닫힌쪽고양이/);
+    assert.match(open, /합친 질문/);
+  });
+
+  test('나이가 18+ 아니게 바뀐 계정의 신고 본문은 열지 않는다. 목록과 처리는 그대로', async () => {
+    const a = await newDevice('18+', '나이내린고양이');
+    const id = await oldInsert(a.id, 'Q-나이내림', 'A-나이내림');
+    assert.match((await admin.page(`?report=${id}`)).text, /Q-나이내림/);
+    await h.pool.query('UPDATE account SET age = $2 WHERE id = $1', [a.id, '14+']);
+    const p = await admin.page(`?report=${id}`);
+    assert.doesNotMatch(p.text, /Q-나이내림/);
+    assert.doesNotMatch(p.text, /A-나이내림/);
+    assert.match(reportsCell(p.text), /만 18세 이상이 아니라서/);
+    assert.match(reportsCell(p.text), /나이내린고양이/);
+    await h.pool.query('UPDATE account SET age = $2 WHERE id = $1', [a.id, '18+']);
+    assert.match((await admin.page(`?report=${id}`)).text, /Q-나이내림/);
+  });
+});
