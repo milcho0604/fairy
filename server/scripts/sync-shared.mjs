@@ -4,7 +4,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-const FILES = ['coin-rules.ts', 'site-events.ts', 'account-profile.ts', 'update-levels.ts'];
+const FILES = ['coin-rules.ts', 'site-events.ts', 'account-profile.ts', 'update-levels.ts', 'pet-card.ts'];
 const root = join(import.meta.dirname, '..');
 
 for (const name of FILES) {

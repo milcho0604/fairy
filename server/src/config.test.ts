@@ -133,6 +133,7 @@ test('서버 백업 키: 비면 끔, hex 64자만. 카카오 주소는 https 만
     friends: 'allowlist',
     friend_gifts: 'allowlist',
     friend_calendar: 'allowlist',
+    friend_visit: 'allowlist',
     friend_gift_passes: 'allowlist',
   });
   assert.equal(readConfig({ ...env, FEATURE_FRIENDS: 'off' }).features?.friends, 'off');

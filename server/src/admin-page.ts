@@ -866,6 +866,7 @@ const FEATURE_KO: Record<string, string> = {
   friends: '친구 맺기',
   friend_gifts: '친구 선물 (코인, 채팅 이용권)',
   friend_calendar: '친구에게 바쁜 시간 보여 주기',
+  friend_visit: '친구 펫 놀러 가기',
   friend_gift_passes: '친구에게 채팅 이용권 선물',
 };
 
@@ -881,6 +882,8 @@ const FEATURE_HINT: Record<string, string> = {
     '보내는 사람 기준이에요. 하루 코인 500, 채팅 이용권 5장 (보내기, 받기 각각). 이용권은 받는 사람이 만 18세 이상이고 둘 다 채팅 이용권을 쓸 수 있을 때만.',
   friend_calendar:
     '보여 주는 사람과 보는 사람 모두 켜져 있어야 해요. 바쁜 시간대(시작, 끝)만 올라오고 제목은 없어요. 끄면 바로 지워요.',
+  friend_visit:
+    '보내는 사람과 받는 사람 모두 켜져 있어야 해요. 친구마다 따로 켜고 기본은 꺼짐이에요. 서버에는 펫 종류, 이름, 네 발 서기 여부만 올라오고 사진이나 그림 파일은 받지 않아요. 만 14~17세끼리, 성인끼리만. 끄거나 친구를 끊으면 바로 지워요.',
   friend_gift_passes:
     '보내는 사람과 받는 사람이 모두 허용돼야 해요(허용 목록 모드면 둘 다 목록이나 운영자 계정). 지금 이용권은 모두 운영자 지급분이라 이 스위치가 운영자 지급분 선물 여부까지 정해요. 받는 사람은 만 18세 이상이고 채팅 이용권을 쓸 수 있어야 해요.',
 };
@@ -894,6 +897,7 @@ const FEATURE_SHORT: Record<string, string> = {
   friends: '친구 맺기',
   friend_gifts: '친구에게 코인, 채팅 이용권 선물',
   friend_calendar: '친구에게 바쁜 시간 보여 주기',
+  friend_visit: '친구 펫이 서로 화면에 놀러 가기',
   friend_gift_passes: '친구에게 채팅 이용권 선물',
 };
 

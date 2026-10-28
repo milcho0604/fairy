@@ -451,6 +451,8 @@
 ### 기능 키
 `friends`, `friend_gifts`(보내는 사람 기준), `friend_gift_passes`(보내는 사람, 받는 사람 모두), `friend_calendar`(보여 주는 사람, 보는 사람 모두). 기본은 모두 allowlist(허용 계정과 운영자 계정). env `FEATURE_FRIENDS` 등이 기본값, 운영자 화면 기능 스위치가 이긴다. 공유 켜기는 `friends` + `friend_calendar`, 끄기는 `friends`. 모두 끄기(`DELETE /v1/friends/calendar`)는 기능 키, 로그인과 상관없이 늘 된다(기기 토큰도: 자기 것 지우기라 일부러 허용). 업데이트 관문(#127)도 이 경로만은 건넌다.
 
+펫 놀러 가기(#141 서버): 기능 키 `friend_visit`(보내는 사람, 받는 사람 모두, 기본 allowlist). 친구 줄마다 `friend.visit_on`(기본 꺼짐), 양쪽 줄이 켜져야 성립. `pet_card`(계정당 1줄)에는 종류 id(`kind:*`, `starter:*`), 이름(닉네임 규칙), 네 발 서기, 올린 때만 둔다(사진과 그림 파일은 받지 않는다). 경로: `PUT /v1/friends/:code/visit {on}`, `PUT /v1/friends/visit/card`, `GET /v1/friends/visits`(서로 켠 친구의 카드만, 올린 때와 계정 번호는 주지 않는다), `DELETE /v1/friends/visit`(기능 키와 상관없이 늘 된다). 켠 친구가 없어지면(끄기, 끊기, 차단, 나이 구분 불일치, 합치기, 탈퇴) 카드를 바로 지우고, 14일 안 올린 카드는 정리 작업이 지운다. 방문 기록은 서버에 남기지 않는다.
+
 ### API (모두 세션 Bearer, 모두 지우기만 기기 토큰도)
 | 경로 | 하는 일 |
 |---|---|

@@ -49,6 +49,7 @@ const KEYS = [
   'friends',
   'friend_gifts',
   'friend_calendar',
+  'friend_visit',
   'friend_gift_passes',
 ];
 

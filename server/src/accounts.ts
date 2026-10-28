@@ -4,7 +4,14 @@ import type { PoolClient } from 'pg';
 import { CLOCK } from './app.tokens';
 import { backupFilesOf, keepRecent } from './backup';
 import { Db } from './db';
-import { mergeFriends, pruneFriends, returnGift, unreturnedTo } from './friend-links';
+import {
+  dropUnsharedBusy,
+  dropUnsharedVisit,
+  mergeFriends,
+  pruneFriends,
+  returnGift,
+  unreturnedTo,
+} from './friend-links';
 import { deviceCodeFrom } from './shared/account-profile';
 import { newToken, sha256 } from './tokens';
 
@@ -221,7 +228,15 @@ export class Accounts {
         'UPDATE inbox SET sender_code = NULL, sender_nickname = NULL WHERE from_account = ANY($1::bigint[])',
         [fam],
       );
+      // 남는 친구들: 이 계정의 친구 줄이 cascade 로 지워지면 그 친구가 올린 일정, 제목, 펫 카드를 볼 사람이 없어질 수 있다
+      const left = await c.query<{ id: string }>('SELECT friend_id AS id FROM friend WHERE account_id = $1', [
+        a.id,
+      ]);
       await c.query('DELETE FROM account WHERE id = $1', [a.id]);
+      for (const f of left.rows) {
+        await dropUnsharedBusy(c, f.id);
+        await dropUnsharedVisit(c, f.id);
+      }
       return files;
     });
   }

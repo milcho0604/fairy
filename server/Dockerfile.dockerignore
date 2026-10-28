@@ -12,6 +12,7 @@
 !src/shared/site-events.ts
 !src/shared/account-profile.ts
 !src/shared/update-levels.ts
+!src/shared/pet-card.ts
 server/src/shared
 **/*.test.ts
 **/node_modules

@@ -266,6 +266,27 @@ describe('일정 제목 공유 (친구별)', () => {
     assert.deepEqual(kept.rows[0], { share_busy: true, share_title: true });
   });
 
+  test('제목을 볼 친구가 탈퇴하면 올린 제목이 바로 지워진다 (바쁜 시간도 볼 친구가 없으면 지운다)', async () => {
+    const a = await user();
+    const b = await user();
+    const c = await user();
+    await befriend(a, b);
+    await befriend(a, c);
+    await shareBusy(a, b);
+    await shareTitle(a, b);
+    await shareBusy(a, c);
+    await upload(a);
+    assert.equal(await titleRows(a), 2);
+    assert.equal((await call(b, 'DELETE', '/v1/account')).status, 204);
+    assert.equal(await titleRows(a), 0, '제목을 볼 친구 b 가 없어졌다');
+    const busyRows = async () =>
+      (await h.pool.query('SELECT count(*)::int AS n FROM busy_block WHERE account_id = $1', [a.id])).rows[0]
+        .n;
+    assert.equal(await busyRows(), 2, '바쁜 시간을 보는 친구 c 는 남아 있다');
+    assert.equal((await call(c, 'DELETE', '/v1/account')).status, 204);
+    assert.equal(await busyRows(), 0);
+  });
+
   test('올린 제목 검사: 모양이 틀리면 400 items, 긴 제목은 80자, 줄바꿈은 빈칸, 14일 밖과 빈 제목은 버린다', async () => {
     const a = await user();
     const b = await user();

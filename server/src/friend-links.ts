@@ -44,6 +44,7 @@ export async function pruneFriends(c: PoolClient, ids: string[]): Promise<void> 
     gone.rows.map((r) => r.id),
   );
   await dropUnsharedBusy(c);
+  await dropUnsharedVisit(c);
 }
 
 /** 신청 줄을 지운다. 받는 사람이 아직 열지 않은 신청 쪽지도 함께 (열린 쪽지는 이력으로 남긴다) */
@@ -80,6 +81,19 @@ export async function dropUnsharedBusy(c: PoolClient, accountId?: string): Promi
 }
 
 /**
+ * 놀러 갈 친구(visit_on 을 켠 친구 줄)가 하나도 없는 계정의 펫 카드를 지운다 (#141). 끄기, 끊기, 차단, 나이 구분 불일치,
+ * 합치기가 부른다. accountId 가 없으면 모든 계정
+ */
+export async function dropUnsharedVisit(c: PoolClient, accountId?: string): Promise<void> {
+  const only = accountId === undefined ? '' : 'AND p.account_id = $1';
+  await c.query(
+    `DELETE FROM pet_card p WHERE NOT EXISTS (
+       SELECT 1 FROM friend f WHERE f.account_id = p.account_id AND f.visit_on) ${only}`,
+    accountId === undefined ? [] : [accountId],
+  );
+}
+
+/**
  * from 계정을 into 에 합칠 때 (21절, accounts.ts merge). 두 계정은 이미 잠겨 있다.
  * - 친구: into 쪽으로 옮긴다. 둘 다 같은 친구가 있으면 하나로 (바쁜 시간 공유는 어느 쪽이든 켰으면 켬)
  * - 서로 친구였던 두 계정을 합치면 자기 자신과의 관계가 되어 지운다
@@ -90,21 +104,23 @@ export async function dropUnsharedBusy(c: PoolClient, accountId?: string): Promi
 export async function mergeFriends(c: PoolClient, from: string, into: string): Promise<void> {
   // 친구 (내 쪽 줄)
   await c.query(
-    `INSERT INTO friend (account_id, friend_id, share_busy, share_title, created_at)
-     SELECT $2, friend_id, share_busy, share_title, created_at FROM friend WHERE account_id = $1 AND friend_id <> $2
+    `INSERT INTO friend (account_id, friend_id, share_busy, share_title, visit_on, created_at)
+     SELECT $2, friend_id, share_busy, share_title, visit_on, created_at FROM friend WHERE account_id = $1 AND friend_id <> $2
      ON CONFLICT (account_id, friend_id) DO UPDATE
        SET share_busy = friend.share_busy OR EXCLUDED.share_busy,
            share_title = friend.share_title OR EXCLUDED.share_title,
+           visit_on = friend.visit_on OR EXCLUDED.visit_on,
            created_at = LEAST(friend.created_at, EXCLUDED.created_at)`,
     [from, into],
   );
   // 친구 (상대 쪽 줄)
   await c.query(
-    `INSERT INTO friend (account_id, friend_id, share_busy, share_title, created_at)
-     SELECT account_id, $2, share_busy, share_title, created_at FROM friend WHERE friend_id = $1 AND account_id <> $2
+    `INSERT INTO friend (account_id, friend_id, share_busy, share_title, visit_on, created_at)
+     SELECT account_id, $2, share_busy, share_title, visit_on, created_at FROM friend WHERE friend_id = $1 AND account_id <> $2
      ON CONFLICT (account_id, friend_id) DO UPDATE
        SET share_busy = friend.share_busy OR EXCLUDED.share_busy,
            share_title = friend.share_title OR EXCLUDED.share_title,
+           visit_on = friend.visit_on OR EXCLUDED.visit_on,
            created_at = LEAST(friend.created_at, EXCLUDED.created_at)`,
     [from, into],
   );
@@ -152,6 +168,8 @@ export async function mergeFriends(c: PoolClient, from: string, into: string): P
   await c.query('DELETE FROM busy_block WHERE account_id = $1', [from]);
   await c.query('DELETE FROM busy_upload WHERE account_id = $1', [from]);
   await c.query('DELETE FROM busy_title WHERE account_id = $1', [from]);
+  // 펫 카드 (#141): into 의 앱이 다시 올린다
+  await c.query('DELETE FROM pet_card WHERE account_id = $1', [from]);
   await pruneFriends(c, [into]);
 }
 

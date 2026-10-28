@@ -46,6 +46,12 @@ export const LIMITS = {
   giftByAccount: { max: 20, windowMs: 60_000 },
   /** 바쁜 시간대 올리기: 계정마다 한 시간 30번 (앱은 몇 분마다, 바뀌었을 때만) */
   busyByAccount: { max: 30, windowMs: 3_600_000 },
+  /** 펫 놀러 가기 (#141): 오는 손님 목록은 계정마다 한 시간 90번 (앱은 3분마다, 손님이 와 있는 동안 1분마다 확인) */
+  visitListByAccount: { max: 90, windowMs: 3_600_000 },
+  /** 펫 카드 올리기: 계정마다 한 시간 20번 (앱은 바뀌었을 때와 몇 시간마다만) */
+  visitCardByAccount: { max: 20, windowMs: 3_600_000 },
+  /** 친구별 놀러 가기 켜고 끄기: 계정마다 한 시간 60번 */
+  visitSwitchByAccount: { max: 60, windowMs: 3_600_000 },
   /** 운영자 로그인 실패: 같은 곳에서 15분 5번 (넘으면 맞는 토큰도 받지 않는다). 서버 전체 15분 20번은 막지 않고 경고만 */
   adminFailByIp: { max: 5, windowMs: 900_000 },
   adminFailAll: { max: 20, windowMs: 900_000 },
