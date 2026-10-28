@@ -2053,7 +2053,7 @@ export class AdminService {
       await lockSwitch(c, key);
       const row = await c.query<{ mode: string }>('SELECT mode FROM feature_flag WHERE key = $1', [key]);
       const dbMode = row.rows[0]?.mode;
-      const before = isAiMode(dbMode) ? dbMode : await this.features.featureMode(key);
+      const before = isAiMode(dbMode) ? dbMode : await this.features.featureMode(key, c);
       staleSwitch(f, before);
       await this.features.setFeatureMode(key, mode, c);
       return {
