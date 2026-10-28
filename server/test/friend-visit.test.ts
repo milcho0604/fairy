@@ -292,11 +292,24 @@ describe('펫 놀러 가기 (서버)', () => {
     assert.equal((await call(a, 'DELETE', '/v1/account')).status, 204);
     assert.equal(await cardRows(a), 0);
     assert.deepEqual((await visitors(b)).body.visitors, []);
-    assert.equal(await cardRows(b), 1, '남은 b 의 카드는 그대로');
     assert.equal(
       (await h.pool.query('SELECT 1 FROM friend WHERE account_id = $1 OR friend_id = $1', [a.id])).rowCount,
       0,
     );
+  });
+
+  test('11b 친구가 탈퇴하면 남은 쪽의 카드도 바로 지워진다 (켠 친구가 없어졌다)', async () => {
+    const [a, b] = await pair();
+    const c = await user();
+    await befriend(b, c);
+    await visit(b, c); // b 는 c 에게도 켜 둠: 탈퇴한 a 가 없어져도 켠 친구가 남는다
+    assert.equal((await call(a, 'DELETE', '/v1/account')).status, 204);
+    assert.equal(await cardRows(b), 1, '켠 친구(c)가 남아 있으면 카드는 유지');
+    assert.equal((await visit(b, c, false)).body.visiting, 0);
+    assert.equal(await cardRows(b), 0);
+    const [d, e] = await pair();
+    assert.equal((await call(e, 'DELETE', '/v1/account')).status, 204);
+    assert.equal(await cardRows(d), 0, '켠 친구가 탈퇴로 모두 사라지면 카드를 지운다');
   });
 
   test('12 14일 안 올린 카드는 정리되고, 13일 된 카드는 서빙된다 (14일 넘은 것은 정리 전에도 안 나간다)', async () => {
