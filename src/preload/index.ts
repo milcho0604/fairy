@@ -610,6 +610,8 @@ if (kind === 'maker') {
     ensureModel: () => ipcRenderer.invoke(MAKER.ensureModel),
     save: (png: string, name: string, look?: unknown) => ipcRenderer.invoke(MAKER.save, png, name, look),
     ensureDepth: () => ipcRenderer.invoke(MAKER.ensureDepth),
+    ensureAnime: () => ipcRenderer.invoke(MAKER.ensureAnime),
+    verifyAnime: () => ipcRenderer.invoke(MAKER.verifyAnime),
     shape3d: (png: string, wish?: string, gait?: string) =>
       ipcRenderer.invoke(MAKER.shape3d, png, wish, gait),
     refine3d: (photo: string, render: string, model: unknown, wish?: string, gait?: string) =>

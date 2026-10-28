@@ -17,6 +17,7 @@ import { t } from '../shared/i18n/index.ts';
 import { ILLUST_WISH_MAX, illustratePrompt, isAgeStage } from '../shared/illustrate.ts';
 import { sizeOk } from '../shared/image-head.ts';
 import {
+  ANIME_URL,
   DEPTH_URL,
   MAKER,
   type MakerInfo,
@@ -58,8 +59,15 @@ import { cleanPetName, isGait, POSE_KINDS, photoPetName } from '../shared/settin
 import { CUSTOM_FOOD_COST } from '../shared/shop.ts';
 import { geminiStripPrompt, isRowId, KEY_COLORS, keyHex, rowOf } from '../shared/sprite-strip.ts';
 import { starterOf } from '../shared/starter-pets.ts';
-import { BG_MODEL, ensureModel, modelReady, verifiedModelUrl } from './bg-model.ts';
-import { DEPTH_MODEL, depthReady, ensureDepthModel, verifiedDepthUrl } from './depth-model.ts';
+import { ANIME_MODEL, animeReady, animeVerified, ensureAnimeModel, verifiedAnimeUrl } from './anime-model.ts';
+import { BG_MODEL, bgModelBytes, ensureModel, modelReady, verifiedModelUrl } from './bg-model.ts';
+import {
+  DEPTH_MODEL,
+  depthModelBytes,
+  depthReady,
+  ensureDepthModel,
+  verifiedDepthUrl,
+} from './depth-model.ts';
 import { devRendererUrl } from './dev-url.ts';
 import { focusWindow, showWindow } from './focus.ts';
 import {
@@ -276,17 +284,24 @@ export function createMaker(
               !!settings.get().petPoses[target],
             foodCost: CUSTOM_FOOD_COST,
             modelReady: modelReady() && ortWasmReady(),
-            modelMB: toMb(BG_MODEL.bytes + engineBytes()),
+            modelMB: toMb(bgModelBytes() + engineBytes()),
             size: BG_MODEL.size,
             mean: BG_MODEL.mean,
             std: BG_MODEL.std,
             visionAi: false,
             depth: {
               ready: depthReady() && ortWasmReady(),
-              mb: toMb(DEPTH_MODEL.bytes + engineBytes()),
+              mb: toMb(depthModelBytes() + engineBytes()),
               size: DEPTH_MODEL.size,
               mean: DEPTH_MODEL.mean,
               std: DEPTH_MODEL.std,
+            },
+            anime: {
+              ready: animeReady() && ortWasmReady(),
+              mb: toMb(ANIME_MODEL.bytes + engineBytes()),
+              size: ANIME_MODEL.size,
+              mean: ANIME_MODEL.mean,
+              std: ANIME_MODEL.std,
             },
             hfToken: hfToken.has(),
             localDraw: localDrawInfo(),
@@ -392,15 +407,33 @@ export function createMaker(
     const ac = new AbortController();
     download = ac;
     try {
-      await withEngine(DEPTH_MODEL.bytes, depthReady(), ac.signal, (p) => ensureDepthModel(p, ac.signal));
+      await withEngine(depthModelBytes(), depthReady(), ac.signal, (p) => ensureDepthModel(p, ac.signal));
       return { ok: true };
     } catch (err) {
       // 원문(net::ERR_..., ENOSPC ...)은 기록에만. 화면에는 할 일을 알려 주는 글
       log('maker', 'depth model', err instanceof Error ? err.message : String(err));
-      const mb = toMb(DEPTH_MODEL.bytes + engineBytes());
+      const mb = toMb(depthModelBytes() + engineBytes());
       return { ok: false, error: downloadErrorText(err, { aborted: ac.signal.aborted, mb }) };
     } finally {
       // 그새 다른 받기가 시작했으면 그것은 두고 내 것만 지운다 (지우면 그만두기로 못 멈춘다)
+      if (download === ac) download = undefined;
+    }
+  });
+
+  ipcMain.handle(MAKER.verifyAnime, async (e) => fromMaker(e) && ortWasmReady() && (await animeVerified()));
+
+  ipcMain.handle(MAKER.ensureAnime, async (e) => {
+    if (!fromMaker(e)) return { ok: false, error: t('main.maker.reopen') };
+    const ac = new AbortController();
+    download = ac;
+    try {
+      await withEngine(ANIME_MODEL.bytes, animeReady(), ac.signal, (p) => ensureAnimeModel(p, ac.signal));
+      return { ok: true };
+    } catch (err) {
+      log('maker', 'anime model', err instanceof Error ? err.message : String(err));
+      const mb = toMb(ANIME_MODEL.bytes + engineBytes());
+      return { ok: false, error: downloadErrorText(err, { aborted: ac.signal.aborted, mb }) };
+    } finally {
       if (download === ac) download = undefined;
     }
   });
@@ -410,12 +443,12 @@ export function createMaker(
     const ac = new AbortController();
     download = ac;
     try {
-      await withEngine(BG_MODEL.bytes, modelReady(), ac.signal, (p) => ensureModel(p, ac.signal));
+      await withEngine(bgModelBytes(), modelReady(), ac.signal, (p) => ensureModel(p, ac.signal));
       return { ok: true };
     } catch (err) {
       // 원문(net::ERR_..., ENOSPC ...)은 기록에만. 화면에는 할 일을 알려 주는 글
       log('maker', 'model', err instanceof Error ? err.message : String(err));
-      const mb = toMb(BG_MODEL.bytes + engineBytes());
+      const mb = toMb(bgModelBytes() + engineBytes());
       return { ok: false, error: downloadErrorText(err, { aborted: ac.signal.aborted, mb }) };
     } finally {
       // 그새 다른 받기가 시작했으면 그것은 두고 내 것만 지운다 (지우면 그만두기로 못 멈춘다)
@@ -433,7 +466,9 @@ export function createMaker(
         ? verifiedModelUrl()
         : req.url === DEPTH_URL
           ? verifiedDepthUrl()
-          : undefined;
+          : req.url === ANIME_URL
+            ? verifiedAnimeUrl()
+            : undefined;
     if (!file) return new Response(null, { status: 404 });
     const res = await mainFetch(file);
     return new Response(res.body, {

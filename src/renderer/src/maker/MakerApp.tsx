@@ -1,4 +1,5 @@
 import { type ClipboardEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { cutStats, needsIllustRetry, retryIsBetter } from '../../../shared/cut-retry.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import {
   AGE_STAGES,
@@ -9,7 +10,7 @@ import {
   nearlySame,
   toGray,
 } from '../../../shared/illustrate.ts';
-import { DEPTH_URL, type MakerInfo, MODEL_URL, type PetLook } from '../../../shared/ipc.ts';
+import { ANIME_URL, DEPTH_URL, type MakerInfo, MODEL_URL, type PetLook } from '../../../shared/ipc.ts';
 import {
   type IllustEngine,
   LOCAL_DRAW_GB,
@@ -20,6 +21,7 @@ import {
   clampToAlpha,
   contentBox,
   defringe,
+  HOLLOW_GAIN_DRAWING,
   keepSure,
   keptMass,
   maskHints,
@@ -61,7 +63,7 @@ import { useLanguageUpdates } from '../use-language.ts';
 import { openDepth, predictDepth } from './depth.ts';
 import { settleFur } from './fur-color.ts';
 import { GeminiRoute } from './GeminiRoute.tsx';
-import { modelOpen, openModel, predictMask } from './removeBg.ts';
+import { type CutKind, closeModel, modelOpen, openModel, predictMask } from './removeBg.ts';
 import { ShownError, shownErrorText } from './shown-error.ts';
 import { FIGURE_LIMITS, RELIEF_LIMITS, Spinner } from './spin.ts';
 
@@ -112,6 +114,8 @@ interface Work {
   mask: Uint8ClampedArray;
   w: number;
   h: number;
+  /** 모델이 처음 낸 마스크 (작업 사진 전체 틀). 사진 모델과 그림용 모델을 같은 틀에서 견주려고 둔다 (다시 오린 틀은 모델마다 다르다) */
+  rough?: { mask: Uint8ClampedArray; w: number; h: number };
 }
 
 export function MakerApp() {
@@ -133,6 +137,15 @@ export function MakerApp() {
   const [fetched, setFetched] = useState(false);
   const [bgDone, setBgDone] = useState(false);
   const [cutoutMs, setCutoutMs] = useState(0);
+  // 지우는 방식(사진용, 그림용): 지금 결과를 만든 모델, 자동으로 그림용으로 다시 지웠는지, 그림용을 권하는지(모델을 아직 안 받음),
+  // 방식을 바꾸는 중인지, 지금 받는 모델. 바꿀 때 다시 지우려고 원본 사진을 들고 있는다
+  const [cutKind, setCutKind] = useState<CutKind>('photo');
+  const [retried, setRetried] = useState(false);
+  const [suggest, setSuggest] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  const [dlKind, setDlKind] = useState<CutKind>('photo');
+  const srcRef = useRef<{ file: Blob; photo: HTMLCanvasElement }>(undefined);
+  const before = useRef({ suggest: false, retried: false });
   // 그만두기 뒤 한 줄 (오류가 아니라 부드러운 안내)
   const [note, setNote] = useState('');
   // 사진 고르기부터 다듬기 전까지 한 번의 시도. 그만두면 번호가 바뀌어 늦게 온 결과를 버린다
@@ -347,6 +360,44 @@ export function MakerApp() {
     [localReady, drawIllust, runSetup],
   );
 
+  /** 사진 한 장을 이 모델로 지워 다듬기 전 결과(작업 사진과 마스크)를 만든다. 사진 모델과 그림용 모델이 같은 흐름을 쓴다 */
+  const cutOnce = useCallback(
+    async (file: Blob, photo: HTMLCanvasElement, kind: CutKind): Promise<Work> => {
+      if (!info) throw new ShownError(t('maker.err.bgFailed'));
+      const cfg = kind === 'illust' ? info.anime : info;
+      const first = withPhotoAlpha(await predictMask(photo, cfg, kind), photo);
+      let next: Work = { photo, mask: first, w: photo.width, h: photo.height };
+      // 펫이 사진에서 작으면 그 둘레만 원본 크기로 잘라 한 번 더 오린다 (팔이 살고 바탕 얼룩이 빠지고 덜 흐릿하다).
+      // 둘레는 펫으로 보이는 덩어리로 잡는다 (바깥 사진의 나무 줄처럼 따로 남은 바탕 띠는 빼고)
+      const pick = pickPet(first, next.w, next.h);
+      const cut = pick
+        ? await cropPhoto(file, photo, (scale) =>
+            refineBox(pick.box, next.w, next.h, 0.5, 0.2, REFINE_MIN_SRC / scale),
+          )
+        : undefined;
+      if (pick && cut) {
+        const { crop, box } = cut;
+        const second = withPhotoAlpha(await predictMask(crop, cfg, kind), crop);
+        // 다시 오린 것이 처음 것이 확실히 남긴 펫 몸(알파 합)을 덜 남기면(흰 아랫몸이 빠짐, 칸 밖으로 잘린 꼬리) 처음 것을
+        // 쓴다. 쓰더라도 처음 것이 확실히 남긴 몸이 뭉텅이로 빠진 곳은 되살린다 (mask.ts keptMass, keepSure)
+        const pet = petOnly(first, pick);
+        if (keptMass(pet, next.w, box, second, crop.width, crop.height) >= REFINE_KEEP)
+          next = {
+            photo: crop,
+            mask: keepSure(pet, next.w, box, second, crop.width, crop.height),
+            w: crop.width,
+            h: crop.height,
+          };
+      }
+      // 몸에서 떨어진 반투명 안개(작은 펫 둘레 회색 네모)를 걷는다
+      next.mask = trimHalo(next.mask, next.w, next.h);
+      // 흰 바탕 흰 펫, 반짝이는 그림의 살짝 비친 몸 속(190~245)을 꽉 채운다 (가장자리 털 끝은 그대로)
+      next.mask = solidify(next.mask, next.w, next.h);
+      return { ...next, rough: { mask: first, w: photo.width, h: photo.height } };
+    },
+    [info],
+  );
+
   const start = useCallback(
     async (file: Blob, opts: { age?: AgeStage; plain?: boolean; back?: 'illust' } = {}) => {
       if (!info) return;
@@ -417,43 +468,45 @@ export function MakerApp() {
           setStageAt(cutStart);
           setStep('working');
         }
-        if (!modelOpen()) {
-          const res = await fetch(MODEL_URL);
-          if (!res.ok) throw new ShownError(t('maker.err.modelRead'));
-          await openModel(await res.arrayBuffer());
-        }
+        await openKind('photo');
         if (!alive()) return;
-        const first = withPhotoAlpha(await predictMask(photo, info), photo);
-        let next: Work = { photo, mask: first, w: photo.width, h: photo.height };
+        let next = await cutOnce(file, photo, 'photo');
         if (!alive()) return;
-        // 펫이 사진에서 작으면 그 둘레만 원본 크기로 잘라 한 번 더 오린다 (팔이 살고 바탕 얼룩이 빠지고 덜 흐릿하다).
-        // 둘레는 펫으로 보이는 덩어리로 잡는다 (바깥 사진의 나무 줄처럼 따로 남은 바탕 띠는 빼고)
-        const pick = pickPet(first, next.w, next.h);
-        const cut = pick
-          ? await cropPhoto(file, photo, (scale) =>
-              refineBox(pick.box, next.w, next.h, 0.5, 0.2, REFINE_MIN_SRC / scale),
-            )
-          : undefined;
-        if (!alive()) return;
-        if (pick && cut) {
-          const { crop, box } = cut;
-          const second = withPhotoAlpha(await predictMask(crop, info), crop);
+        // 사진 모델이 바탕 조각을 많이 남겼으면(만화 카드, 글자) 그림용 모델로 한 번 더 지워 보고 더 나으면 쓴다 (cut-retry.ts).
+        // 그림용 모델을 아직 안 받았으면 받게 하지 않고 다듬기 화면에서 권한다
+        let kind: CutKind = 'photo';
+        let again = false;
+        let offer = false;
+        const rough = (w: Work) => cutStats((w.rough ?? w).mask, (w.rough ?? w).w, (w.rough ?? w).h);
+        const first = rough(next);
+        if (needsIllustRetry(first)) {
+          // 자동 경로는 절대 받지 않는다: 창이 들고 있는 ready 는 낡았을 수 있어(파일이 깨졌거나 설정에서 지웠다) 메인에서
+          // 파일이 있고 해시가 맞는지만 다시 본다. 아니면 다시 지우지 않고 다듬기 화면에서 권한다 (받기는 사용자가 눌렀을 때만)
+          const have = info.anime.ready && (await bridge.verifyAnime());
           if (!alive()) return;
-          // 다시 오린 것이 처음 것이 확실히 남긴 펫 몸(알파 합)을 덜 남기면(흰 아랫몸이 빠짐, 칸 밖으로 잘린 꼬리) 처음 것을
-          // 쓴다. 쓰더라도 처음 것이 확실히 남긴 몸이 뭉텅이로 빠진 곳은 되살린다 (mask.ts keptMass, keepSure)
-          const pet = petOnly(first, pick);
-          if (keptMass(pet, next.w, box, second, crop.width, crop.height) >= REFINE_KEEP)
-            next = {
-              photo: crop,
-              mask: keepSure(pet, next.w, box, second, crop.width, crop.height),
-              w: crop.width,
-              h: crop.height,
-            };
+          if (!have && info.anime.ready) setInfo((v) => v && { ...v, anime: { ...v.anime, ready: false } });
+          if (have) {
+            try {
+              await openKind('illust');
+              const alt = await cutOnce(file, photo, 'illust');
+              if (!alive()) return;
+              if (retryIsBetter(first, rough(alt))) {
+                next = alt;
+                kind = 'illust';
+                again = true;
+              }
+            } catch (err) {
+              // 다시 지우기가 안 돼도 처음 결과로 간다
+              console.warn('maker', err);
+            }
+          } else offer = true;
         }
-        // 몸에서 떨어진 반투명 안개(작은 펫 둘레 회색 네모)를 걷는다
-        next.mask = trimHalo(next.mask, next.w, next.h);
-        // 흰 바탕 흰 펫, 반짝이는 그림의 살짝 비친 몸 속(190~245)을 꽉 채운다 (가장자리 털 끝은 그대로)
-        next.mask = solidify(next.mask, next.w, next.h);
+        // 안 쓰는 모델 세션은 놓는다 (둘 다 쥐고 있으면 창이 열린 동안 메모리가 340MB 쯤 더 든다)
+        void closeModel(kind === 'photo' ? 'illust' : 'photo');
+        srcRef.current = { file, photo };
+        setCutKind(kind);
+        setRetried(again);
+        setSuggest(offer);
         saveDuration('cutout', performance.now() - cutStart, store());
         setWork(next);
         setBgDone(true);
@@ -467,7 +520,7 @@ export function MakerApp() {
         setStep(backRef.current);
       }
     },
-    [info, how, age, illustWish, drawIllust, eng, localReady, drawLocal],
+    [info, how, age, illustWish, drawIllust, eng, localReady, drawLocal, cutOnce],
   );
 
   // 그리기가 끝나면 (진행 화면이 사라져 포커스가 body 로 빠진다) 다음에 누를 단추로
@@ -537,6 +590,77 @@ export function MakerApp() {
     setError('');
     setNote(t('maker.progress.stopped'));
     setStep(backRef.current);
+  };
+
+  /** 다듬기 화면에서 지우는 방식(사진용, 그림용)을 바꿔 같은 사진을 다시 지운다. 그림용 모델이 없으면 먼저 받는다 */
+  const switchKind = async (kind: CutKind) => {
+    const src = srcRef.current;
+    if (!src || !info || kind === cutKind) return;
+    const run = ++runRef.current;
+    const alive = () => runRef.current === run;
+    setError('');
+    setNote('');
+    // 못 바꾸면(받기 실패, 그만두기) 권하는 안내와 자동 안내를 그대로 되돌린다
+    before.current = { suggest, retried };
+    setSuggest(false);
+    setRetried(false);
+    setSwitching(true);
+    setBgDone(false);
+    try {
+      const download = kind === 'illust' && !info.anime.ready;
+      setDlKind(kind);
+      setFetched(download);
+      setProgress(0);
+      let startAt = performance.now();
+      setStageAt(startAt);
+      setStep(download ? 'model' : 'working');
+      if (kind === 'illust') {
+        // 없으면 받고, 있으면 해시를 맞춘다 (맞춘 파일만 열린다)
+        const r = await bridge.ensureAnime();
+        if (!alive()) return;
+        if (!r.ok) throw new ShownError(r.error);
+        setInfo((v) => v && { ...v, anime: { ...v.anime, ready: true } });
+        if (download) {
+          startAt = performance.now();
+          setStageAt(startAt);
+          setStep('working');
+        }
+      }
+      await openKind(kind);
+      if (!alive()) return;
+      const next = await cutOnce(src.file, src.photo, kind);
+      if (!alive()) return;
+      setWork(next);
+      setCutKind(kind);
+      void closeModel(kind === 'photo' ? 'illust' : 'photo');
+      setBgDone(true);
+      await sleep(DONE_MS);
+      if (!alive()) return;
+      setBgDone(false);
+      setStep('edit');
+    } catch (err) {
+      if (!alive()) return;
+      // 못 바꿔도 지금 결과는 그대로 두고, 권하던 안내도 되살린다
+      setError(shownErrorText(err, t('maker.err.bgFailed')));
+      setSuggest(before.current.suggest);
+      setRetried(before.current.retried);
+      setStep('edit');
+    } finally {
+      if (runRef.current === run) setSwitching(false);
+    }
+  };
+
+  /** 방식을 바꾸는 중 그만두기: 받기는 메인이 멈추고 지금 결과가 있는 다듬기 화면으로 돌아간다 */
+  const stopSwitch = () => {
+    runRef.current++;
+    bridge.cancel();
+    setSwitching(false);
+    setBgDone(false);
+    setError('');
+    setNote(t('maker.progress.stopped'));
+    setSuggest(before.current.suggest);
+    setRetried(before.current.retried);
+    setStep('edit');
   };
 
   /** 고르기 화면으로 (앞 화면의 오류와 안내는 지운다) */
@@ -1274,17 +1398,19 @@ export function MakerApp() {
               task={step === 'model' ? 'download' : 'cutout'}
               title={
                 step === 'model'
-                  ? t('maker.model.downloading', { mb: info?.modelMB ?? 0 })
+                  ? dlKind === 'illust'
+                    ? t('maker.model.downloadingDrawing', { mb: info?.anime.mb ?? 0 })
+                    : t('maker.model.downloading', { mb: info?.modelMB ?? 0 })
                   : t('maker.working.title')
               }
               startedAt={stageAt}
               ratio={step === 'model' ? progress : undefined}
-              totalMb={step === 'model' ? info?.modelMB : undefined}
+              totalMb={step === 'model' ? (dlKind === 'illust' ? info?.anime.mb : info?.modelMB) : undefined}
               expectedMs={cutoutMs}
               image={thumb}
               stages={photoStages}
               done={bgDone}
-              onStop={stopPhoto}
+              onStop={switching ? stopSwitch : stopPhoto}
             />
           </section>
         )}
@@ -1292,6 +1418,11 @@ export function MakerApp() {
         {step === 'edit' && work && (
           <Editor
             work={work}
+            kind={cutKind}
+            retried={retried}
+            suggest={suggest}
+            animeMb={info?.anime.mb ?? 0}
+            onKind={switchKind}
             onBack={() => {
               setError('');
               setNote('');
@@ -1864,17 +1995,45 @@ function Spin3D({
 }
 
 /** 지우개와 복원 붓으로 마스크를 다듬는다. 지운 곳은 흐리게 보여서 되살릴 곳을 찾기 쉽다. */
-function Editor({ work, onBack, onNext }: { work: Work; onBack: () => void; onNext: () => void }) {
+function Editor({
+  work,
+  kind,
+  retried,
+  suggest,
+  animeMb,
+  onKind,
+  onBack,
+  onNext,
+}: {
+  work: Work;
+  kind: CutKind;
+  retried: boolean;
+  suggest: boolean;
+  animeMb: number;
+  onKind: (k: CutKind) => void;
+  onBack: () => void;
+  onNext: () => void;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [mode, setMode] = useState<'erase' | 'restore'>('erase');
   // 붓 굵기 = 화면에서 보이는 지름(px). 반지름으로 쓰여 숫자보다 두 배 굵게 칠했다 (2026-10-11)
   const [size, setSize] = useState(40);
   const [, setVersion] = useState(0);
   // 안내(반투명, 따로 남은 것, 잘림)는 붓질을 마칠 때와 되돌릴 때 다시 잰다 (mask.ts maskHints)
-  const [hints, setHints] = useState(() => maskHints(work.mask, work.w, work.h));
-  const measure = useCallback(() => setHints(maskHints(work.mask, work.w, work.h)), [work]);
-  useEffect(measure, [measure]);
+  // 그림용 모델 결과는 오목한 몸이나 캐릭터 사이 틈이 많아 속 빔 기준을 높인다 (mask.ts HOLLOW_GAIN_DRAWING)
+  const hollowAt = kind === 'illust' ? HOLLOW_GAIN_DRAWING : undefined;
+  const [hints, setHints] = useState(() => maskHints(work.mask, work.w, work.h, { hollowAt }));
+  const measure = useCallback(
+    () => setHints(maskHints(work.mask, work.w, work.h, { hollowAt })),
+    [work, hollowAt],
+  );
   const undo = useRef<Uint8ClampedArray[]>([]);
+  /** 방식을 바꾸면 다시 지워서 붓으로 다듬은 것이 사라진다. 다듬은 것이 있으면 한 번 묻는다 */
+  const pickKind = (k: CutKind) => {
+    if (k === kind) return;
+    if (undo.current.length > 0 && !window.confirm(t('maker.edit.kindLose'))) return;
+    onKind(k);
+  };
   const last = useRef<{ x: number; y: number }>(undefined);
   const raf = useRef(0);
   const pixels = useRef<ImageData>(undefined);
@@ -1930,7 +2089,10 @@ function Editor({ work, onBack, onNext }: { work: Work; onBack: () => void; onNe
 
   // 반쯤 비침 안내가 있거나 따로 남은 것이 있으면 속 빔 안내는 겹치니 빼고 (바탕 띠 사이 틈도 속이 빈 것처럼 잰다)
   const hollow = hints.hollow && !hints.half && hints.others === 0;
+  const offer = suggest && kind === 'photo';
   const notes =
+    Number(offer) +
+    Number(retried) +
     Number(hints.half) +
     Number(hollow) +
     Number(hints.others > 0) +
@@ -1940,6 +2102,19 @@ function Editor({ work, onBack, onNext }: { work: Work; onBack: () => void; onNe
   return (
     <section className="edit">
       <div className="tools">
+        <fieldset className="segmented" aria-label={t('maker.edit.kind')}>
+          {(['photo', 'illust'] as const).map((k) => (
+            <button
+              key={k}
+              type="button"
+              aria-pressed={kind === k}
+              className={kind === k ? 'on' : ''}
+              onClick={() => pickKind(k)}
+            >
+              {k === 'photo' ? t('maker.edit.kindPhoto') : t('maker.edit.kindDrawing')}
+            </button>
+          ))}
+        </fieldset>
         <fieldset className="segmented" aria-label={t('maker.edit.brush')}>
           <button
             type="button"
@@ -1984,6 +2159,15 @@ function Editor({ work, onBack, onNext }: { work: Work; onBack: () => void; onNe
         </button>
       </div>
       {/* 고칠 것 안내는 도구 바로 아래: 긴 설명 아래에 두면 작은 창(460x660)에서 아래 단추 줄에 가려 안 보였다 */}
+      {retried && <p className="hint">{t('maker.edit.kindAuto')}</p>}
+      {offer && (
+        <p className="warn">
+          {t('maker.edit.kindSuggest', { mb: animeMb })}{' '}
+          <button type="button" className="ghost" onClick={() => pickKind('illust')}>
+            {t('maker.edit.kindTry')}
+          </button>
+        </p>
+      )}
       {hints.half && <p className="warn">{t('maker.edit.halfKept')}</p>}
       {hollow && <p className="warn">{t('maker.edit.hollow')}</p>}
       {hints.others > 0 && <p className="warn">{t('maker.edit.others')}</p>}
@@ -2077,6 +2261,14 @@ function toDataUrl(file: Blob): Promise<string> {
     r.onerror = () => reject(new ShownError(t('maker.err.imageRead')));
     r.readAsDataURL(file);
   });
+}
+
+/** 지우는 모델 파일을 메인에서 받아(해시를 맞춘 것만) 연다 */
+async function openKind(kind: CutKind): Promise<void> {
+  if (modelOpen(kind)) return;
+  const res = await fetch(kind === 'illust' ? ANIME_URL : MODEL_URL);
+  if (!res.ok) throw new ShownError(t('maker.err.modelRead'));
+  await openModel(await res.arrayBuffer(), kind);
 }
 
 /** 오려 둔 PNG 처럼 이미 투명한 곳은 마스크에서도 지운다 (mask.ts clampToAlpha) */

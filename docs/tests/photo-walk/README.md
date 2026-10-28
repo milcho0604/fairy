@@ -49,8 +49,9 @@
 |---|---|---|---|---|---|
 | Wan 2.2 I2V A14B (Wan-AI) | Apache-2.0 | README: "We claim no rights over the your generated contents." | 허용 | 허용(수익 상한 조항 없음) | 사용 |
 | lightx2v 증류 LoRA (Space 가 6단계로 빠르게 돌리려 섞음) | 원본 `lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v` 는 Apache-2.0. Space 가 받는 파일은 `Kijai/WanVideo_comfy` 의 `Lightx2v/lightx2v_I2V_14B_480p_cfg_step_distill_rank128_bf16.safetensors` 이고, 이 저장소 안내에 원본에서 추출했다고 적혀 있다(아래). 추출본에 따로 붙은 라이선스나 조건은 없다 | 원본 README: "We claim no rights over the your generate contents" | 허용 | 허용 | 사용 (아래 판단) |
-| isnet-general-use (DIS, 배경 지우기) | Apache-2.0 | 조항 없음 | 허용 | 허용 | 사용 |
-| rembg (isnet 받은 곳) | MIT | 해당 없음 | 허용 | 허용 | 모델 파일 받기만 |
+| isnet-general-use (DIS, 배경 지우기. 앱은 fp16 판 84MB, 받는 곳 HF `onnx-community/ISNet-ONNX` 고정 커밋 `3fe6e3db`, 그 카드는 AGPL-3.0 표기. 같은 가중치) | 코드 Apache-2.0, 받는 곳 카드 AGPL-3.0, 학습 데이터 DIS5K 비상업 약관 (진행표 D7) | 조항 없음 | 비공개 무료 베타에서만 | 공개 전에 다시 정함 | 사용 (D7) |
+| isnet-anime (그림용 배경 지우기, 176MB = 176,069,933 바이트, 처음 필요할 때만 받는다. 받는 곳 `github.com/danielgatis/rembg` v0.0.0 배포 파일) | 가중치는 SkyTNT `anime-segmentation` (코드 Apache-2.0). 학습 데이터 약관은 확인하지 못했다 | 조항 없음 | 비공개 무료 베타에서만 | 공개 전에 다시 정함 | 사용 (D7, 확인 전까지 위험) |
+| rembg (예전 fp32 판 170MB 와 그림용 isnet-anime 의 받는 곳, `github.com/danielgatis/rembg` v0.0.0 배포 파일) | MIT (모델 가중치는 각자) | 해당 없음 | 허용 | 허용 | 모델 파일 받기만 |
 | LTX-Video | LTX Open Weights License | "Licensor claims no rights in the Output" | 사용 제한(Attachment A)을 따라야 하고 기계 생성 표시 요구 | 연 매출 1천만 달러 이상은 별도 상업 계약 | 안 씀 |
 | CogVideoX-5B-I2V | CogVideoX License | "generated content belong to the user" | 상업이면 등록 필요 | "must not exceed 1 million visits per month" | 안 씀 |
 | HunyuanVideo-I2V | Tencent Hunyuan Community | "Tencent claims no rights in Outputs" | Territory 가 "excluding ... European Union, United Kingdom and South Korea" | 같은 이유로 불가 | 안 씀 |

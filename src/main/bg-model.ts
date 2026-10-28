@@ -36,6 +36,9 @@ function inUse(): ModelFile {
   return pickModelFile(BG_MODEL, BG_MODEL_OLD, (f) => existsSync(pathOf(f)));
 }
 
+/** 지금 쓰는(옛 판이 있으면 옛 판) 파일의 크기. 안내에 나오는 받을 크기를 실제 파일 기준으로 */
+export const bgModelBytes = (): number => inUse().bytes;
+
 /** 저장 공간 화면이 두 판의 경로를 다 알 수 있게 */
 export const bgModelPaths = () => ({ current: pathOf(BG_MODEL.file), old: pathOf(BG_MODEL_OLD.file) });
 

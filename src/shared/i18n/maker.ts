@@ -210,6 +210,8 @@ export const ko = {
   'maker.illust.tryLocal': '내 컴퓨터에서 그리기',
   'maker.illust.tryLocalHint': '무료 서버 횟수가 끝나도 이 컴퓨터에서는 계속 그릴 수 있어.',
   'maker.model.downloading': (v: { mb: number }) => `처음 한 번만 배경 지우는 도구를 받고 있어 (${v.mb}MB).`,
+  'maker.model.downloadingDrawing': (v: { mb: number }) =>
+    `처음 한 번만 그림용 배경 지우는 도구를 받고 있어 (${v.mb}MB).`,
   'maker.working.title': '배경을 지우는 중이야.',
   // 기다리는 동안 진행 표시 (MakeProgress.tsx). 남은 시간은 진짜 진행률이나 지난번 걸린 시간으로 어림한다
   'maker.progress.stop': '그만두기',
@@ -324,6 +326,14 @@ export const ko = {
   'maker.spin.how': '끌거나 좌우 화살표로 돌리고, 위아래 화살표로 기울여. Home은 정면.',
   'maker.spin.howRelief': '끌거나 좌우 화살표로 25도까지 돌리고, 위아래 화살표로 기울여. Home은 정면.',
   'maker.edit.brush': '붓',
+  'maker.edit.kind': '지우는 방식',
+  'maker.edit.kindPhoto': '사진용',
+  'maker.edit.kindDrawing': '그림용',
+  'maker.edit.kindAuto': '바탕 조각이 많이 남아서 그림용으로 다시 지웠어. 사진용이 나으면 위에서 바꿔 줘.',
+  'maker.edit.kindSuggest': (v: { mb: number }) =>
+    `바탕 조각이 많이 남았어. 그림이나 만화면 그림용으로 다시 지워 볼까? (도구를 처음 한 번 받아, ${v.mb}MB)`,
+  'maker.edit.kindTry': '그림용으로 다시 지우기',
+  'maker.edit.kindLose': '방식을 바꾸면 다시 지워서 지금까지 다듬은 것이 사라져. 바꿀까?',
   'maker.edit.eraser': '지우개',
   'maker.edit.restore': '복원 붓',
   'maker.edit.size': '굵기',
@@ -557,6 +567,8 @@ export const en: Translation<typeof ko> = {
   'maker.pick.removePose': 'Remove this pose',
   'maker.pick.resetPet': 'Back to the default fairy',
   'maker.model.downloading': (v) => `Downloading the background remover, just this once (${v.mb}MB).`,
+  'maker.model.downloadingDrawing': (v) =>
+    `Downloading the drawing background remover, just this once (${v.mb}MB).`,
   'maker.working.title': 'Removing the background.',
   'maker.progress.stop': 'Stop',
   'maker.progress.stopped': 'Stopped. You can try again any time.',
@@ -671,6 +683,15 @@ export const en: Translation<typeof ko> = {
   'maker.spin.howRelief':
     'Drag or use the left and right arrows to turn up to 25 degrees, up and down arrows to tilt. Home faces front.',
   'maker.edit.brush': 'Brush',
+  'maker.edit.kind': 'Cutout for',
+  'maker.edit.kindPhoto': 'Photo',
+  'maker.edit.kindDrawing': 'Drawing',
+  'maker.edit.kindAuto':
+    'Lots of background pieces were left, so I redid it with the drawing remover. Switch back to Photo above if that looks better.',
+  'maker.edit.kindSuggest': (v) =>
+    `Lots of background pieces are left. If this is a drawing or cartoon, try the drawing remover? (one-time download, ${v.mb}MB)`,
+  'maker.edit.kindTry': 'Redo for drawing',
+  'maker.edit.kindLose': 'Switching redoes the cutout and your brush edits will be lost. Switch?',
   'maker.edit.eraser': 'Eraser',
   'maker.edit.restore': 'Restore brush',
   'maker.edit.size': 'Size',
