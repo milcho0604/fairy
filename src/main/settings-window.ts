@@ -46,6 +46,7 @@ import { langArg } from './lang.ts';
 import { mcpScriptPath } from './mcp-launch.ts';
 import { openLink } from './open-link.ts';
 import { library } from './pet-library.ts';
+import { reviveOnCrash } from './revive.ts';
 import { settings } from './settings.ts';
 import { removeModel, storedModels } from './storage.ts';
 import { openRemembered } from './window-bounds.ts';
@@ -371,11 +372,14 @@ export function createSettingsWindow({
   powerMonitor.on('on-battery', sendPower);
 
   /** section 을 주면 그 칸을 바로 보여 준다 (메뉴 막대 "의견 보내기" → 베타 기록). */
+  let reviveWin: ReturnType<typeof reviveOnCrash> | undefined;
   function open(section?: SettingsSection) {
     if (win && !win.isDestroyed()) {
       // 화면 프로세스가 죽었으면(메모리 부족, 강제 종료) 빈 창만 남는다. 같은 창에 다시 읽는다
-      if (win.webContents.isCrashed()) load(win, section);
-      else if (section) win.webContents.send(SETTINGS.focus, section);
+      const w = win;
+      const crashed = w.webContents.isCrashed();
+      reviveWin?.(() => load(w, section));
+      if (!crashed && section) w.webContents.send(SETTINGS.focus, section);
       focusWindow(win);
       return;
     }
@@ -403,6 +407,8 @@ export function createSettingsWindow({
     });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (ev) => ev.preventDefault());
+    // 열려 있는 채로 죽어도 저절로 다시 읽는다 (여러 번 죽으면 멈춘다)
+    reviveWin = reviveOnCrash(win.webContents, 'settings', log);
     load(win, section);
   }
 

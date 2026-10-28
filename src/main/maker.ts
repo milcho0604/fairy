@@ -85,6 +85,7 @@ import { LocalDrawError, type LocalDrawErrorKind } from './local-draw-core.ts';
 import { mainFetch } from './net-fetch.ts';
 import { ensureOrtWasm, ORT_WASM, ortWasmReady, verifiedOrtWasmUrl } from './ort-wasm.ts';
 import { library, spriteUrls } from './pet-library.ts';
+import { reviveOnCrash } from './revive.ts';
 import { readFileIn, writeFileAtomic } from './safe-file.ts';
 import { settings } from './settings.ts';
 import { drawStrip, drawStripLocal, type LocalStripDraw } from './sprite-gen.ts';
@@ -1276,9 +1277,11 @@ export function createMaker(
   });
 
   /** 펫 본 그림(main)이나 상태별 포즈를 만든다. 다른 것을 만드는 창이 열려 있으면 다시 연다 */
+  let reviveWin: (() => void) | undefined;
   function open(next: MakerTarget = 'main') {
     if (win && !win.isDestroyed()) {
       if (target === next) {
+        reviveWin?.();
         focusWindow(win);
         return;
       }
@@ -1323,6 +1326,7 @@ export function createMaker(
     });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (ev) => ev.preventDefault());
+    reviveWin = reviveOnCrash(win.webContents, 'maker', log);
     const devUrl = devRendererUrl();
     if (devUrl) win.loadURL(`${devUrl}/maker.html`);
     else win.loadFile(join(import.meta.dirname, '../renderer/maker.html'));

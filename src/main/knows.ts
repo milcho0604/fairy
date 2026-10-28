@@ -17,6 +17,7 @@ import { localDay } from '../shared/todo-store.ts';
 import { focusWindow, showWindow } from './focus.ts';
 import { langArg } from './lang.ts';
 import type { SayOptions } from './pet-window.ts';
+import { reviveOnCrash } from './revive.ts';
 import { settings } from './settings.ts';
 import { readJson, writeJson } from './store.ts';
 import { openRemembered } from './window-bounds.ts';
@@ -84,8 +85,10 @@ export function createKnows(o: KnowsOptions) {
       win.webContents.send(BOND.knowsChanged, pick(next));
   });
 
+  let reviveWin: (() => void) | undefined;
   function open() {
     if (win && !win.isDestroyed()) {
+      reviveWin?.();
       focusWindow(win);
       return;
     }
@@ -110,6 +113,7 @@ export function createKnows(o: KnowsOptions) {
     });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (ev) => ev.preventDefault());
+    reviveWin = reviveOnCrash(win.webContents, 'knows', o.log);
     const devUrl = process.env.ELECTRON_RENDERER_URL;
     if (devUrl) win.loadURL(`${devUrl}/knows.html`);
     else win.loadFile(join(import.meta.dirname, '../renderer/knows.html'));
