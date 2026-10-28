@@ -435,6 +435,19 @@ describe('로그인 실패 합계는 막지 않는다 (사냥)', () => {
       () => ADMIN_TOKEN,
     );
     assert.equal((await fresh.login()).status, 303, '합계 때문에 진짜 운영자가 막힘');
+    // 합계가 넘은 뒤에는 틀릴 때마다 기록하지 않는다: 20줄 + 요약 1줄만
+    const fails = Number(
+      (await h.pool.query("SELECT count(*) FROM admin_log WHERE action = 'login.fail'")).rows[0].count,
+    );
+    const floods = Number(
+      (await h.pool.query("SELECT count(*) FROM admin_log WHERE action = 'login.flood'")).rows[0].count,
+    );
+    assert.ok(fails <= 20, `login.fail ${fails}줄`);
+    assert.equal(floods, 1);
+    // 같은 /64 의 IPv6 주소를 바꿔도 한 곳으로 센다
+    const v6 = (i: number) => wrong(`2001:db8:5:6::${i.toString(16)}`);
+    for (let i = 1; i <= 5; i++) assert.equal((await v6(i)).status, 401);
+    assert.equal((await v6(9)).status, 429);
     const same = '10.78.0.1';
     for (let i = 0; i < 5; i++) assert.equal((await wrong(same)).status, 401);
     assert.equal((await wrong(same)).status, 429);

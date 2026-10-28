@@ -2755,8 +2755,14 @@ export class AdminController {
     const token = (req.body as FormFields | undefined)?.token;
     const out = this.auth.login(token, ipKey(req));
     if (!out.ok) {
-      if (out.error === 'bad_token')
+      // 합계가 한도를 넘은 창에서는 틀릴 때마다 쓰지 않고 요약 한 줄만 (기록 표가 부풀지 않게)
+      if (out.error === 'bad_token' && out.log === 'fail')
         await adminLog(this.db.pool, 'anon', 'login.fail', null).catch(() => undefined);
+      else if (out.error === 'bad_token' && out.log === 'flood')
+        await adminLog(this.db.pool, 'anon', 'login.flood', null, {
+          max: LIMITS.adminFailAll.max,
+          windowMin: LIMITS.adminFailAll.windowMs / 60_000,
+        }).catch(() => undefined);
       return html(
         res,
         out.error === 'rate_limited' ? 429 : 401,

@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { CONFIG } from './app.tokens';
 import { adminEnabled, type Config } from './config';
 import { LIMITS, RateLimiter } from './rate-limit';
@@ -85,10 +85,28 @@ export const clearCookie = (): string =>
 
 export type LoginOutcome =
   | { ok: true; cookie: string; session: AdminSession }
-  | { ok: false; error: 'off' | 'rate_limited' | 'bad_token' };
+  | { ok: false; error: 'off' | 'rate_limited'; log?: undefined }
+  /** log: 틀린 시도를 운영 기록에 한 줄 남길지 ('fail'), 많이 틀린 창의 요약 한 줄만 ('flood'), 남기지 않을지 ('none') */
+  | { ok: false; error: 'bad_token'; log: 'fail' | 'flood' | 'none' };
+
+/** 운영자 토큰이 약해 보이는 까닭 (값은 돌려주지 않는다). 간단한 추정이라 경고에만 쓴다 */
+export function weakTokenReason(token: string): string | undefined {
+  const chars = [...token];
+  const uniq = new Set(chars);
+  if (uniq.size < 10) return `서로 다른 글자가 ${uniq.size}종뿐이에요`;
+  const classes = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter((r) => r.test(token)).length;
+  if (classes < 2) return '글자 종류(소문자, 대문자, 숫자, 기호)가 한 가지뿐이에요';
+  const counts = new Map<string, number>();
+  for (const c of chars) counts.set(c, (counts.get(c) ?? 0) + 1);
+  let bits = 0;
+  for (const n of counts.values()) bits -= n * Math.log2(n / chars.length);
+  if (bits < 100) return `글자 분포로 본 무작위성이 낮아요 (약 ${Math.round(bits)}비트)`;
+  if (/(.)\1{5,}/u.test(token)) return '같은 글자가 여섯 번 넘게 이어져요';
+  return undefined;
+}
 
 @Injectable()
-export class AdminAuth {
+export class AdminAuth implements OnModuleInit {
   #sessions = new Map<string, AdminSession>();
   #warnedAt = 0;
   readonly #log = new Logger('AdminAuth');
@@ -98,6 +116,13 @@ export class AdminAuth {
     private readonly limiter: RateLimiter,
     private readonly now: () => number = Date.now,
   ) {}
+
+  /** 서버를 켤 때 토큰이 약해 보이면 경고만 남긴다 (막지 않고, 토큰 값은 적지 않는다) */
+  onModuleInit(): void {
+    if (!this.enabled) return;
+    const why = weakTokenReason(this.config.adminToken ?? '');
+    if (why) this.#log.warn(`ADMIN_TOKEN 이 약해 보여요: ${why}. 길고 무작위인 값으로 바꾸는 걸 권해요`);
+  }
 
   get enabled(): boolean {
     return adminEnabled(this.config);
@@ -110,8 +135,9 @@ export class AdminAuth {
     const given = typeof token === 'string' ? token.trim() : '';
     if (given.length > 200 || !sameSecret(given, this.config.adminToken ?? '')) {
       this.limiter.take(ipKey, LIMITS.adminFailByIp);
-      if (!this.limiter.take('admin-fail:all', LIMITS.adminFailAll)) this.warnFloods();
-      return { ok: false, error: 'bad_token' };
+      const flooding = !this.limiter.take('admin-fail:all', LIMITS.adminFailAll);
+      const log = flooding ? (this.warnFloods() ? 'flood' : 'none') : 'fail';
+      return { ok: false, error: 'bad_token', log };
     }
     this.sweep();
     while (this.#sessions.size >= MAX_SESSIONS) {
@@ -130,13 +156,14 @@ export class AdminAuth {
   }
 
   /** 서버 전체 틀린 로그인이 한도를 넘었다: 막지 않고 창마다 한 번 경고만 남긴다 (토큰과 주소는 적지 않는다) */
-  private warnFloods(): void {
+  private warnFloods(): boolean {
     const now = this.now();
-    if (now - this.#warnedAt < LIMITS.adminFailAll.windowMs) return;
+    if (now - this.#warnedAt < LIMITS.adminFailAll.windowMs) return false;
     this.#warnedAt = now;
     this.#log.warn(
       `운영자 로그인 실패가 15분에 ${LIMITS.adminFailAll.max}번을 넘었어요 (여러 곳에서 토큰을 찍어 보는 중일 수 있어요). 곳마다 5번 한도는 그대로 지켜요`,
     );
+    return true;
   }
 
   /** 쿠키로 세션을 찾는다. 끝났으면 지우고 undefined */

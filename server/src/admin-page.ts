@@ -1870,6 +1870,7 @@ const ACTION_KO: Record<string, string> = {
   login: '로그인',
   logout: '로그아웃',
   'login.fail': '로그인 실패',
+  'login.flood': '로그인 실패 많음 (15분 요약)',
   'csrf.fail': '요청 확인 실패',
 };
 /** 기록의 동작 이름을 운영자 말로 (모르면 코드 그대로) */

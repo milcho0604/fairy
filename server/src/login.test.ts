@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
 import type { Accounts } from './accounts';
+import { weakTokenReason } from './admin-auth';
 import type { Config } from './config';
 import type { Db } from './db';
 import type { GoogleApi } from './google';
@@ -92,4 +93,23 @@ test('레이트리밋: 창 안에서 max 까지, 창이 지나면 다시', () =>
   now = 1000;
   assert.equal(r.take('k', limit), true);
   r.onModuleDestroy();
+});
+
+test('레이트리밋 키: IPv6 는 /64 로 묶고, IPv4 매핑 주소는 IPv4 와 같다', () => {
+  const k = (ip: string) => ipKey({ headers: {}, socket: { remoteAddress: ip } });
+  assert.equal(k('2001:db8:1:2::1'), k('2001:db8:1:2:aaaa:bbbb:cccc:dddd'));
+  assert.equal(k('2001:DB8:1:2::1'), k('2001:db8:1:2:0:0:0:9'));
+  assert.notEqual(k('2001:db8:1:2::1'), k('2001:db8:1:3::1'));
+  assert.equal(k('::ffff:192.0.2.1'), k('192.0.2.1'));
+  assert.equal(k('fe80::1%en0'), k('fe80::2'));
+  assert.notEqual(k('192.0.2.1'), k('192.0.2.2'));
+});
+
+test('운영자 토큰 약함 추정: 반복, 적은 글자 종류는 걸리고 긴 무작위 값은 통과', () => {
+  assert.ok(weakTokenReason('a'.repeat(40)));
+  assert.ok(weakTokenReason('abababababababababababababababab'));
+  assert.ok(weakTokenReason('abcdefghijklmnopqrstuvwxyzabcdef'));
+  assert.ok(weakTokenReason('1234567890123456789012345678901234567890'));
+  assert.equal(weakTokenReason('k3Jx9Qm2Zp7Vt4Lw8Rn5Bd6Hc1Fs0Ya_Ge-Uo'), undefined);
+  assert.equal(weakTokenReason('3f9a1c7e5b2d48a6c0e19f7b3a5d82c4'), undefined);
 });
