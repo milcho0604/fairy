@@ -54,12 +54,10 @@ export function ShopTab({ s }: { s: PanelState }) {
 
   return (
     <div className="shop-host">
-      {/* 안내 띠는 스크롤 칸 위 바깥 고정 자리에 겹쳐 그린다. 목록을 밀지 않아 단추가 움직이지 않는다 */}
-      {msg && (
-        <p className={`shop-msg ${msg.bad ? 'bad' : ''}`} role="status">
-          {msg.text}
-        </p>
-      )}
+      {/* 안내 띠 자리는 늘 같은 높이로 목록 위에 비워 둔다. 띠가 떠도 목록이 밀리지 않아 단추가 움직이지 않고, 첫 줄도 가리지 않는다 */}
+      <div className="shop-slot" role="status">
+        {msg && <p className={`shop-msg ${msg.bad ? 'bad' : ''}`}>{msg.text}</p>}
+      </div>
       <div className="scroll shop" ref={scroller}>
         <section>
           <h2>{t('shop.foods')}</h2>

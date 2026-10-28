@@ -24,6 +24,8 @@ interface At {
   y: number;
   /** x 가 메뉴의 오른쪽 끝인가 (단추 아래에 오른쪽을 맞춰 연다) */
   right: boolean;
+  /** 위로 펼칠 때 메뉴 아래 끝을 맞출 y (열어 준 단추의 위, 마우스 자리면 y 와 같다) */
+  yUp: number;
 }
 
 /**
@@ -32,7 +34,7 @@ interface At {
  */
 export function useMenu(label: string, items: () => MenuItem[]) {
   const [at, setAt] = useState<At>();
-  const [pos, setPos] = useState<{ left: number; top: number }>();
+  const [pos, setPos] = useState<{ left: number; top: number; maxHeight?: number }>();
   const ref = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLElement | null>(null);
   const close = (back = false) => {
@@ -47,9 +49,25 @@ export function useMenu(label: string, items: () => MenuItem[]) {
     if (!at || !ref.current) return;
     const box = ref.current.getBoundingClientRect();
     const left = at.right ? at.x - box.width : at.x;
+    // 아래 끝은 창 바닥이 아니라 바닥 단추 줄 위까지(단추를 가리지 않게)
+    const footTop = document.querySelector('.panel > footer')?.getBoundingClientRect().top;
+    const bottom = footTop !== undefined && at.y < footTop ? footTop : window.innerHeight;
+    const below = bottom - at.y - 4;
+    const above = at.yUp - 4;
+    let top = at.y;
+    let maxHeight: number | undefined;
+    if (box.height > below) {
+      if (box.height <= above) top = at.yUp - box.height;
+      else if (below >= above) maxHeight = Math.max(80, below);
+      else {
+        maxHeight = Math.max(80, above);
+        top = at.yUp - maxHeight;
+      }
+    }
     setPos({
       left: Math.max(4, Math.min(left, window.innerWidth - box.width - 4)),
-      top: Math.max(4, Math.min(at.y, window.innerHeight - box.height - 4)),
+      top: Math.max(4, top),
+      maxHeight,
     });
   }, [at]);
 
@@ -82,13 +100,13 @@ export function useMenu(label: string, items: () => MenuItem[]) {
   const openAt = (x: number, y: number) => {
     remember();
     setPos(undefined);
-    setAt({ x, y, right: false });
+    setAt({ x, y, right: false, yUp: y });
   };
   const openFrom = (el: HTMLElement) => {
     remember();
     const r = el.getBoundingClientRect();
     setPos(undefined);
-    setAt({ x: r.right, y: r.bottom + 2, right: true });
+    setAt({ x: r.right, y: r.bottom + 2, right: true, yUp: r.top - 2 });
   };
   /** 우클릭이나 메뉴 키. 고치는 칸 위에서는 글 메뉴(붙여 넣기)를 그대로 둔다 */
   const onContextMenu = (e: React.MouseEvent) => {
@@ -132,7 +150,12 @@ export function useMenu(label: string, items: () => MenuItem[]) {
         className="pin-menu row-menu"
         role="menu"
         aria-label={label}
-        style={{ left: pos?.left ?? at.x, top: pos?.top ?? at.y, visibility: pos ? 'visible' : 'hidden' }}
+        style={{
+          left: pos?.left ?? at.x,
+          top: pos?.top ?? at.y,
+          maxHeight: pos?.maxHeight,
+          visibility: pos ? 'visible' : 'hidden',
+        }}
         onKeyDown={onKeyDown}
         onContextMenu={(e) => {
           e.preventDefault();
