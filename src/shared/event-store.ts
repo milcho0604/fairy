@@ -284,6 +284,14 @@ export function repairRepeatZone(db: Db, now: number): number {
   return fixed;
 }
 
+/** 같은 반복의 다른 회차가 이미 그 시각에 있어 옮길 수 없다 (호출처가 사용자 문구로 알린다) */
+export class EventSlotTakenError extends Error {
+  constructor() {
+    super('같은 시각에 이 반복 일정이 이미 있어');
+    this.name = 'EventSlotTakenError';
+  }
+}
+
 export class EventStore {
   #db: Db;
   #reminders: ReminderStore;
@@ -677,7 +685,7 @@ export class EventStore {
           'select 1 from event where id != ? and start_at = ? and repeat_series = (select repeat_series from event where id = ?)',
         )
         .get(id, startAt, id);
-      if (clash) throw new Error('같은 반복의 그 시각에 이미 회차가 있다');
+      if (clash) throw new EventSlotTakenError();
     }
     const moved = startAt !== e.startAt || allDay !== e.allDay;
     const remindsChanged = reminds.join() !== e.reminds.join();

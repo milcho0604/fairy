@@ -6,7 +6,9 @@ import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { STALE_AFTER_RESTORE } from './backup-import.ts';
 import { type Db, MIGRATIONS, migrate, SCHEMA_VERSION } from './db-schema.ts';
-import { EventStore } from './event-store.ts';
+import { EventSlotTakenError, EventStore } from './event-store.ts';
+import { setLang, t } from './i18n/index.ts';
+import { applyPetAction } from './pet-actions.ts';
 import { todoPatchInput } from './remind-parse.ts';
 
 // 반복 회차 이어 만들기: 동시 확장 중복, 옮긴 회차, 유일 색인 (버그잡이 2차)
@@ -177,7 +179,7 @@ test('회차를 같은 반복의 다른 회차 시각으로 옮기면 오류로 
     .all(id) as { id: number; start_at: number }[];
   assert.throws(
     () => events.update(first?.id as number, { startAt: Number(second?.start_at) }, NOW),
-    /이미 회차/,
+    EventSlotTakenError,
   );
 });
 
@@ -192,4 +194,25 @@ test('할 일 고치기 입력의 마감은 달력에 있는 날만 받는다', 
 test('복원하면 오늘 계획 파일도 지운다 (꼭 할 일 번호가 다른 할 일을 가리킨다)', () => {
   assert.ok(STALE_AFTER_RESTORE.includes('day-plan.json'));
   assert.ok(STALE_AFTER_RESTORE.includes('doing.json'));
+});
+
+test('막힌 옮기기는 전용 오류이고 편지함 실행은 false, 화면 문구는 ko 와 en 둘 다 있다', () => {
+  const db = memory();
+  const events = new EventStore(db);
+  const id = daily(events);
+  const [first, second] = db
+    .prepare('select id, start_at from event where repeat_series = ? order by start_at')
+    .all(id) as { id: number; start_at: number }[];
+  const patch = { startAt: Number(second?.start_at) };
+  const stores = { events } as unknown as Parameters<typeof applyPetAction>[0];
+  assert.equal(applyPetAction(stores, { tool: 'update_event', id: first?.id as number, patch }, NOW), false);
+  assert.throws(() => events.update(first?.id as number, patch, NOW), /같은 시각에 이 반복 일정이 이미 있어/);
+  try {
+    setLang('ko');
+    assert.match(t('panel.event.slotTaken'), /이미 있어/);
+    setLang('en');
+    assert.match(t('panel.event.slotTaken'), /already has an occurrence/);
+  } finally {
+    setLang('ko');
+  }
 });

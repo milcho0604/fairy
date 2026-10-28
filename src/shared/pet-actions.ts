@@ -6,7 +6,7 @@
 // MCP 서버(Node)와 메인이 같이 쓴다. Electron 을 불러오지 않는다.
 
 import { cutText } from './cut-text.ts';
-import type { EventStore } from './event-store.ts';
+import { EventSlotTakenError, type EventStore } from './event-store.ts';
 import { NOTE_BODY_MAX, type NoteStore, noteTitle } from './note-store.ts';
 import { isRepeat, type Repeat, type TodoStore } from './todo-store.ts';
 
@@ -163,7 +163,12 @@ export function applyPetAction(s: PetActionStores, a: PetAction, now: number): b
     case 'update_event': {
       const e = s.events.get(a.id);
       if (!e || (e.allDay && (a.patch.startAt !== undefined || a.patch.endAt !== undefined))) return false;
-      s.events.update(a.id, a.patch, now);
+      try {
+        s.events.update(a.id, a.patch, now);
+      } catch (err) {
+        if (err instanceof EventSlotTakenError) return false;
+        throw err;
+      }
       return true;
     }
     case 'append_note': {
