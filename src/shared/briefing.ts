@@ -170,6 +170,15 @@ export interface ReviewInput {
   leftToday: number;
 }
 
+/**
+ * 저녁 회고를 건너뛸 설치 첫날인가 (첫 기록이 없거나 첫 기록이 오늘이고, 오늘 끝낸 할 일이 0개).
+ * 아직 할 일을 한 번도 안 끝낸 사람에게 "끝낸 할 일 0개"를 말하거나 놓친 알림으로 남기지 않게 한다.
+ * 첫날이라도 끝낸 것이 있으면 회고를 한다
+ */
+export function isInstallDay(firstDay: string | null, today: string, doneToday: number): boolean {
+  return doneToday === 0 && (firstDay === null || firstDay >= today);
+}
+
 /** 퇴근 때 말풍선. 끝낸 일을 칭찬하고, 남은 오늘 마감이 있으면 내일로 넘길지 묻는다 */
 export function reviewText(r: ReviewInput): string {
   const n = r.doneTitles.length;

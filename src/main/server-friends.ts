@@ -77,6 +77,8 @@ export interface ServerFriendsDeps {
    */
   cleanup?: { get: () => string | null; set: (code: string | null) => void };
   onChange: (s: FriendsState) => void;
+  /** 새 친구 신청이 왔다 (목록을 받다가 처음 본 신청의 이름들. 앱을 켜고 처음 받은 목록은 기준으로만 삼는다) */
+  onIncoming?: (names: string[]) => void;
   log: (tag: string, ...rest: unknown[]) => void;
   random?: (n: number) => Uint8Array;
 }
@@ -144,6 +146,8 @@ export function createServerFriends(d: ServerFriendsDeps) {
   let uploading = false;
   let lastCard: { key: string; at: number } | null = null;
   let cardBusy = false;
+  /** 마지막 목록의 받은 신청 번호 (처음 보는 신청을 가린다). 목록을 아직 못 받았으면 null */
+  let seenIncoming: Set<number> | null = null;
 
   const status = () => d.core()?.status();
 
@@ -209,12 +213,19 @@ export function createServerFriends(d: ServerFriendsDeps) {
           lastUpload = null;
           lastCard = null;
         }
+        seenIncoming = null;
         return;
       }
       const r = await call<FriendsList>((api, t) => api.friends(t));
       if (r.ok) {
         list = r.data;
         problem = null;
+        const seen = seenIncoming;
+        seenIncoming = new Set(r.data.incoming.map((x) => x.id));
+        if (seen) {
+          const fresh = r.data.incoming.filter((x) => !seen.has(x.id));
+          if (fresh.length > 0) d.onIncoming?.(fresh.map((x) => x.nickname ?? x.code));
+        }
         await retryCleanup();
       } else {
         problem = errorOf(r);

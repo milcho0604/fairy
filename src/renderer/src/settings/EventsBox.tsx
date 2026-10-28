@@ -5,6 +5,7 @@ import type { EventList, EventsBridge } from '../../../shared/events-ipc.ts';
 import { getLang, locale, t } from '../../../shared/i18n/index.ts';
 import { serverView } from '../../../shared/server-account.ts';
 import { eventPhase, normalizeCoupon, type SiteEvent } from '../../../shared/site-events.ts';
+import { useNear } from './NearResult.tsx';
 import { useServerStatus } from './ServerAccountBox.tsx';
 import { Section } from './ui.tsx';
 
@@ -47,11 +48,17 @@ const couponError = (e: string) =>
       ? t(`events.err.${e}`)
       : t('events.err.other');
 
-export function EventsBox({ flash }: { flash: (message: string, error?: boolean) => void }) {
+export function EventsBox() {
   const [list, setList] = useState<EventList>();
   const [s] = useServerStatus();
   const [busy, setBusy] = useState<string | null>(null);
   const [code, setCode] = useState('');
+  // 결과는 누른 단추 아래에 남긴다 (창 맨 위 안내는 2초 뒤 사라진다)
+  const [claimNear, claimSay, claimClear] = useNear();
+  const [claimFor, setClaimFor] = useState<string | null>(null);
+  const [couponNear, couponSay] = useNear();
+  /** 서버가 모른다고 답한 이벤트 (목록은 홈페이지가, 선물은 서버 장부가 정한다. 둘이 어긋나면 이 판에서는 단추를 숨긴다) */
+  const [unknown, setUnknown] = useState<ReadonlySet<string>>(new Set());
   useEffect(() => {
     const b = window.jjakkungEvents;
     if (!b) return;
@@ -63,6 +70,9 @@ export function EventsBox({ flash }: { flash: (message: string, error?: boolean)
       off();
     };
   }, []);
+  // 목록이 새로 오면(홈페이지 목록이 바뀜) 서버가 모른다던 이벤트도 다시 눌러 볼 수 있게 비운다
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 목록이 바뀔 때만 비운다
+  useEffect(() => setUnknown(new Set()), [list]);
   const server = window.jjakkungServer;
   const serverMode = serverView(s) === 'server' && !!server;
   if (!list) return null;
@@ -72,10 +82,15 @@ export function EventsBox({ flash }: { flash: (message: string, error?: boolean)
   const claim = async (id: string) => {
     if (!server) return;
     setBusy(id);
+    setClaimFor(id);
+    claimClear();
     try {
       const r = await server.claim(id);
-      if (r.ok) flash(t('events.claimOk', { n: r.coins }));
-      else flash(claimError(r.error), r.error !== 'already_claimed');
+      if (r.ok) claimSay(() => t('events.claimOk', { n: r.coins }));
+      else {
+        if (r.error === 'no_event') setUnknown((u) => new Set(u).add(id));
+        claimSay(() => claimError(r.error), r.error !== 'already_claimed');
+      }
     } finally {
       setBusy(null);
     }
@@ -83,14 +98,14 @@ export function EventsBox({ flash }: { flash: (message: string, error?: boolean)
   const applyCoupon = async () => {
     if (!server) return;
     const norm = normalizeCoupon(code);
-    if (!norm) return flash(t('coupon.err.code'), true);
+    if (!norm) return couponSay(() => t('coupon.err.code'), true);
     setBusy('coupon');
     try {
       const r = await server.coupon(norm);
       if (r.ok) {
         setCode('');
-        flash(t('coupon.ok', { coins: r.coins, passes: r.tickets }));
-      } else flash(couponError(r.error), true);
+        couponSay(() => t('coupon.ok', { coins: r.coins, passes: r.tickets }));
+      } else couponSay(() => couponError(r.error), true);
     } finally {
       setBusy(null);
     }
@@ -126,16 +141,21 @@ export function EventsBox({ flash }: { flash: (message: string, error?: boolean)
                   {/* 선물 받기: 줄 끝 동작이라 작은 단추, 글 오른쪽에 */}
                   {serverMode && e.kind === 'gift' && phase === 'live' && (
                     <div className="action-row item-actions">
-                      <button
-                        type="button"
-                        className="ghost small"
-                        disabled={got || busy !== null}
-                        onClick={() => void claim(e.id)}
-                      >
-                        {got ? t('events.claimed') : t('events.claim')}
-                      </button>
+                      {unknown.has(e.id) ? (
+                        <small className="event-pending">{t('events.pending')}</small>
+                      ) : (
+                        <button
+                          type="button"
+                          className="ghost small"
+                          disabled={got || busy !== null}
+                          onClick={() => void claim(e.id)}
+                        >
+                          {got ? t('events.claimed') : t('events.claim')}
+                        </button>
+                      )}
                     </div>
                   )}
+                  {claimFor === e.id && claimNear}
                 </li>
               );
             })}
@@ -165,6 +185,7 @@ export function EventsBox({ flash }: { flash: (message: string, error?: boolean)
                 {t('coupon.use')}
               </button>
             </div>
+            {couponNear}
           </div>
         ) : (
           s?.enabled && <small>{t('events.serverOnly')}</small>

@@ -4,6 +4,7 @@ import {
   briefingText,
   deadlineText,
   dueSlot,
+  isInstallDay,
   leftForTomorrow,
   type NextUpTodo,
   nextUp,
@@ -248,4 +249,12 @@ test('못 한 N개 내일로: 오늘 마감과 지난 마감만, 습관과 마�
     ),
     [{ id: 1, due: '2026-10-09' }],
   );
+});
+
+test('설치 첫날: 첫 기록이 없거나 오늘이고 끝낸 할 일이 0개일 때만 회고를 건너뛴다', () => {
+  assert.equal(isInstallDay(null, '2026-10-28', 0), true);
+  assert.equal(isInstallDay('2026-10-28', '2026-10-28', 0), true);
+  assert.equal(isInstallDay('2026-10-28', '2026-10-28', 1), false, '첫날이라도 끝낸 것이 있으면 회고');
+  assert.equal(isInstallDay(null, '2026-10-28', 2), false);
+  assert.equal(isInstallDay('2026-10-27', '2026-10-28', 0), false);
 });

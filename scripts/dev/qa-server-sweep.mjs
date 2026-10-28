@@ -1,5 +1,5 @@
 // 서버 기능 전체 QA 훑기 (#99 계정과 코인, #100 AI 대화권). server-account.mjs, server-ai.mjs 가 __jj 손잡이로 대신한
-// 동작(나이 답, 지금 맞추기, 나이 바꾸기, 구글 로그인, 합치기, 로그아웃, 탈퇴, 서버 모드 켜기, 산 물건 초기화, 백업 바꾸기,
+// 동작(나이 답, 코인 동기화, 나이 바꾸기, 구글 로그인, 합치기, 로그아웃, 탈퇴, 서버 계정 켜기, 산 물건 초기화, 백업 바꾸기,
 // AI 고르기, 질문 보내기)을 화면 요소를 눌러 다시 보고, API 는 경로마다 정상, 경계, 오류를 직접 부른다. 경우마다 PASS/FAIL.
 //
 //   npm run build && (cd server && npm run build) && OUT=<레포 밖 폴더> LANG_UNDER_TEST=ko node scripts/dev/qa-server-sweep.mjs
@@ -601,18 +601,18 @@ async function until(what, fn, ms = 30_000) {
 }
 const T = {
   ko: {
-    adult: '만 18세 이상', teen: '만 14세 이상 18세 미만', under14: '만 14세 미만', change: '나이 바꾸기', syncNow: '지금 맞추기',
-    login: '구글로 로그인', logout: '로그아웃', remove: '서버 계정 지우기', sure: '정말 지우기', turnOn: '서버 모드 켜기',
+    adult: '만 18세 이상', teen: '만 14세 이상 18세 미만', under14: '만 14세 미만', change: '나이 바꾸기', syncNow: '코인 동기화',
+    login: '구글로 로그인', logout: '로그아웃', remove: '서버 계정 지우기', sure: '정말 지우기', turnOn: '서버 계정 켜기',
     mergeYes: '합치기', mergeNo: '합치지 않기', ticket: '채팅 이용권', agree: '알겠어, 채팅 이용권 쓰기', send: '보내기',
-    report: '신고', offline: '서버에 닿지 않아', signedIn: '구글로 로그인했어', tickets10: 'AI 채팅 이용권 10장', ticketsWord: 'AI 채팅 이용권', appMode: '앱 안 모드야',
+    report: '신고', offline: '서버에 닿지 않아', signedIn: '구글로 로그인했어', tickets10: 'AI 채팅 이용권 10장', ticketsWord: 'AI 채팅 이용권', appMode: '서버 계정을 쓰지 않는 중이야',
     daily: '오늘 채팅 이용권 질문은 여기까지야', budget: '이번 달 채팅 이용권 AI가 쉬는 중이야', empty: '채팅 이용권을 다 썼어', failed: '채팅 이용권은 돌려놓았어',
     count: (n) => `채팅 이용권 ${n}장 남음`, restoreServer: '코인과 산 물건은 서버 것을 따라', serverTitle: '서버 계정과 코인', reverted: '되돌렸어', resetStart: '코인 초기화하기', resetSure: '초기화할게',
   },
   en: {
-    adult: '18 or older', teen: '14 to 17', under14: 'Under 14', change: 'Change age', syncNow: 'Sync now',
-    login: 'Sign in with Google', logout: 'Sign out', remove: 'Delete server account', sure: 'Really delete', turnOn: 'Turn on server mode',
+    adult: '18 or older', teen: '14 to 17', under14: 'Under 14', change: 'Change age', syncNow: 'Sync coins',
+    login: 'Sign in with Google', logout: 'Sign out', remove: 'Delete server account', sure: 'Really delete', turnOn: 'Turn on server account',
     mergeYes: 'Merge', mergeNo: "Don't merge", ticket: 'Chat pass', agree: 'Got it, use chat passes', send: 'Send',
-    report: 'Report', offline: "Can't reach the server", signedIn: 'Signed in with Google', tickets10: '10 chat passes', ticketsWord: 'Pick "Chat pass"', appMode: 'App-only mode',
+    report: 'Report', offline: "Can't reach the server", signedIn: 'Signed in with Google', tickets10: '10 chat passes', ticketsWord: 'Pick "Chat pass"', appMode: 'Not using a server account',
     daily: "That's all the chat pass questions for today", budget: 'Chat pass AI is resting', empty: 'used all your chat passes', failed: 'Your chat pass is back',
     count: (n) => `${n} ${n === 1 ? 'chat pass' : 'chat passes'} left`, restoreServer: 'Coins and items follow the server', serverTitle: 'Server account and coins', reverted: 'undone', resetStart: 'Reset coins', resetSure: 'Reset now',
   },
@@ -633,12 +633,12 @@ const press = async (p, scope, text) => {
 };
 const pressSel = (p, sel) => p.ev(`(() => { const b = document.querySelector(${JSON.stringify(sel)}); if (!b || b.disabled) return false; b.click(); return true; })()`);
 const boxText = (p) => p.ev(`document.querySelector('.server-box')?.innerText ?? ''`);
-/** #101: 나이 답 다음 닉네임 단계가 뜨면 닉네임을 넣고 "서버 모드 시작" */
+/** #101: 나이 답 다음 닉네임 단계가 뜨면 닉네임을 넣고 "서버 계정 시작" */
 async function nicknameStep(p) {
   const shown = await until('닉네임 칸', () => p.ev(`!!document.querySelector('.server-nickname-step input')`), 5000).catch(() => false);
   if (!shown) return false;
   await p.ev(`(() => { const el = document.querySelector('.server-nickname-step input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ${JSON.stringify(LANG === 'en' ? 'Sweeper' : '훑기')}); el.dispatchEvent(new Event('input', { bubbles: true })); return 1; })()`);
-  return press(p, '.server-nickname-step', LANG === 'en' ? 'Start server mode' : '서버 모드 시작');
+  return press(p, '.server-nickname-step', LANG === 'en' ? 'Start server account' : '서버 계정 시작');
 }
 
 // ================= 2. 서버 주소 없음 =================
@@ -687,7 +687,7 @@ async function appPhase() {
   let acct; // 앱 계정 번호
   const srvBalance = () => Number(sql(`SELECT balance FROM account WHERE id = ${acct}`) || 'NaN');
   let p;
-  /** "지금 맞추기" 단추를 누르고 끝날 때까지 */
+  /** "코인 동기화" 단추를 누르고 끝날 때까지 */
   const clickSync = async () => {
     const before = (await status()).lastSyncAt;
     await until('맞추기 단추', () => press(p, '.server-box', T.syncNow), 10_000);
@@ -748,7 +748,7 @@ async function appPhase() {
       check(F, '"나이 바꾸기" 누르기', await press(p, '.server-box', T.change));
       await sleep(200);
       check(F, '"만 18세 이상" 누르기', await press(p, '.server-box', T.adult));
-      check(F, '(#101) 닉네임 넣고 "서버 모드 시작"', await nicknameStep(p));
+      check(F, '(#101) 닉네임 넣고 "서버 계정 시작"', await nicknameStep(p));
       await until('기기 계정과 첫 맞추기', async () => {
         const s = await status();
         return s.device && s.balance !== null && !s.syncing;
@@ -760,14 +760,14 @@ async function appPhase() {
       check(F, '칸 글: 서버 코인 N, 로그인 단추', (await boxText(p)).includes(String(local)) && (await p.ev(`[...document.querySelectorAll('.server-box button')].some((b) => b.textContent.trim() === ${JSON.stringify(T.login)})`)));
       await p.shots('app-03-server', '.server-box');
     }
-    // --- 코인 벌기 → 지금 맞추기 단추 ---
+    // --- 코인 벌기 → 코인 동기화 단추 ---
     {
       const F = '코인 맞추기';
       await h.main(`(() => { const t = __jj.store.add({ title: 'qa sweep' }, Date.now()); __jj.store.complete(t.id, Date.now()); __jj.store.rewardFocus(Date.now(), 25); return 1; })()`);
       await clickSync();
       const local = await localBalance();
       const s = await status();
-      check(F, '"지금 맞추기" 누름 → 서버 잔액 = 앱, 대기 0', srvBalance() === local && s.pending === 0, `앱 ${local} 서버 ${srvBalance()}`);
+      check(F, '"코인 동기화" 누름 → 서버 잔액 = 앱, 대기 0', srvBalance() === local && s.pending === 0, `앱 ${local} 서버 ${srvBalance()}`);
       check(F, '칸에 서버 코인 숫자 갱신', (await boxText(p)).includes(String(local)));
     }
     // --- 오프라인 → 복구 ---
@@ -778,12 +778,12 @@ async function appPhase() {
       await clickSync();
       await until('오프라인 글', async () => (await boxText(p)).includes(T.offline), 10_000).catch(() => {});
       const s = await status();
-      check(F, '서버 끔 + "지금 맞추기": 오프라인 안내 글, 대기 2', (await boxText(p)).includes(T.offline) && s.pending === 2, JSON.stringify({ p: s.problem, n: s.pending }));
+      check(F, '서버 끔 + "코인 동기화": 오프라인 안내 글, 대기 2', (await boxText(p)).includes(T.offline) && s.pending === 2, JSON.stringify({ p: s.problem, n: s.pending }));
       await p.shots('app-04-offline', '.server-box');
       nest = await startApi();
       await clickSync();
       const s2 = await status();
-      check(F, '서버 켬 + "지금 맞추기": 안내 사라짐, 서버 = 앱', !(await boxText(p)).includes(T.offline) && s2.pending === 0 && srvBalance() === (await localBalance()), `서버 ${srvBalance()}`);
+      check(F, '서버 켬 + "코인 동기화": 안내 사라짐, 서버 = 앱', !(await boxText(p)).includes(T.offline) && s2.pending === 0 && srvBalance() === (await localBalance()), `서버 ${srvBalance()}`);
     }
     // --- 거절된 구매 되돌리기 ---
     {
@@ -817,7 +817,7 @@ async function appPhase() {
       const r = await api('POST', '/v1/sync', { token: s2.json.session, body: { entries: [{ id: eid(), reason: 'hide-seek', amount: 3, day: today() }] } });
       const applied = r.json?.results?.[0]?.applied ?? 0;
       await clickSync();
-      check(F, '둘째 기기에서 번 코인이 앱 "지금 맞추기"로 들어옴', applied > 0 && (await localBalance()) === before + applied && srvBalance() === before + applied, `+${applied} 앱 ${await localBalance()}`);
+      check(F, '둘째 기기에서 번 코인이 앱 "코인 동기화"로 들어옴', applied > 0 && (await localBalance()) === before + applied && srvBalance() === before + applied, `+${applied} 앱 ${await localBalance()}`);
       await api('DELETE', '/v1/session', { token: s2.json.session });
     }
     // --- 채팅 대화권 ---
@@ -978,7 +978,7 @@ async function appPhase() {
       await clickSync();
       check(F, '"산 물건도 함께" → "코인 초기화하기" → 확인: 서버 물건, 코인 0 이고 돌아오지 않음', ok1 && ok2 && ok3 && had > 0 && sql(`SELECT count(*) FROM owned_item WHERE account_id = ${acct}`) === '0' && (await h.main(`Object.keys(__jj.shop.ownedItems()).length`)) === 0 && (await localBalance()) === 0 && srvBalance() === 0, `누름 ${ok1}/${ok2}/${ok3} 전 ${had} 앱 ${await localBalance()} 서버 ${srvBalance()}`);
     }
-    // --- 탈퇴 → 서버 모드 켜기 ---
+    // --- 탈퇴 → 서버 계정 켜기 ---
     {
       const F = '탈퇴';
       await h.main(`(__jj.store.reward(10, 'meet', Date.now() + 86400000), 1)`);
@@ -988,9 +988,9 @@ async function appPhase() {
       await until('탈퇴', async () => !(await status()).device, 10_000).catch(() => {});
       await sleep(400);
       check(F, '서버: 계정, 로그인 A/B, 세션, 기기, 합쳐진 계정 모두 지움. 앱 코인 그대로', sql(`SELECT count(*) FROM account WHERE id = ${acct} OR merged_into = ${acct}`) === '0' && sql(`SELECT count(*) FROM login WHERE sub IN ('${subA}')`) === '0' && (await localBalance()) === local0, `앱 ${await localBalance()}`);
-      check(F, '칸: 서버 모드 꺼짐 글과 "서버 모드 켜기" 단추', (await boxText(p)).includes(T.turnOn));
+      check(F, '칸: 서버 모드 꺼짐 글과 "서버 계정 켜기" 단추', (await boxText(p)).includes(T.turnOn));
       await p.shots('app-13-removed', '.server-box');
-      check(F, '"서버 모드 켜기" 누름', await press(p, '.server-box', T.turnOn));
+      check(F, '"서버 계정 켜기" 누름', await press(p, '.server-box', T.turnOn));
       await until('새 기기 계정', async () => {
         const s = await status();
         return s.device && s.balance !== null && !s.syncing;

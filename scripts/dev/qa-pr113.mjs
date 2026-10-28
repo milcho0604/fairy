@@ -821,8 +821,8 @@ const soft = (p) => p.catch(() => false);
 
 const T = {
   ko: {
-    adult: '만 18세 이상', teen: '만 14세 이상 18세 미만', change: '나이 바꾸기', syncNow: '지금 맞추기', login: '구글로 로그인', logout: '로그아웃',
-    start: '서버 모드 시작', nickChange: '닉네임 바꾸기', nickSave: '저장', copy: '복사', copied: '기기 코드를 복사했어.', nickSaved: '닉네임을 바꿨어.',
+    adult: '만 18세 이상', teen: '만 14세 이상 18세 미만', change: '나이 바꾸기', syncNow: '코인 동기화', login: '구글로 로그인', logout: '로그아웃',
+    start: '서버 계정 시작', nickChange: '닉네임 바꾸기', nickSave: '저장', copy: '복사', copied: '기기 코드를 복사했어.', nickSaved: '닉네임을 바꿨어.',
     errLength: '2자에서 12자 사이로 써 줘.', errAt: '@ 는 쓸 수 없어.', errUrl: '주소는 닉네임으로 쓸 수 없어.', errChars: '줄바꿈이나 보이지 않는 글자는 쓸 수 없어.',
     claim: '선물 받기', claimed: '받았어', couponUse: '쿠폰 쓰기', loginReq: '로그인하면 받을 수 있어', claimOk: '선물 코인 30개를 받았어!',
     cpShape: '코드 모양이 맞지 않아', cpNone: '없거나 꺼진 쿠폰이야.', cpUsed: '이미 쓴 쿠폰이야.', cpSold: '다 쓰인 쿠폰이야.', cpEnded: '기한이 지난 쿠폰이야.', cpOk: '쿠폰을 썼어!',
@@ -836,8 +836,8 @@ const T = {
     lMonthly: '매달 장수', lCount: '회수 장수', lMsg: '쪽지 글 (200자)', lCoins: '코인', lMin: '최소 버전 (낮으면 잠금)', lRec: '권장 버전', lId: 'id', lTko: '제목 ko', lTen: '제목 en', lBko: '본문 ko', lBen: '본문 en', lKind: '종류',
   },
   en: {
-    adult: '18 or older', teen: '14 to 17', change: 'Change age', syncNow: 'Sync now', login: 'Sign in with Google', logout: 'Sign out',
-    start: 'Start server mode', nickChange: 'Change nickname', nickSave: 'Save', copy: 'Copy', copied: 'Device code copied.', nickSaved: 'Nickname changed.',
+    adult: '18 or older', teen: '14 to 17', change: 'Change age', syncNow: 'Sync coins', login: 'Sign in with Google', logout: 'Sign out',
+    start: 'Start server account', nickChange: 'Change nickname', nickSave: 'Save', copy: 'Copy', copied: 'Device code copied.', nickSaved: 'Nickname changed.',
     errLength: 'Use 2 to 12 characters.', errAt: "@ isn't allowed.", errUrl: "Web addresses can't be nicknames.", errChars: "Line breaks and invisible characters aren't allowed.",
     claim: 'Get gift', claimed: 'Received', couponUse: 'Use coupon', loginReq: 'Sign in to get gifts', claimOk: 'You got 30 gift coins!',
     cpShape: "That code doesn't look right", cpNone: 'No such coupon, or it was turned off.', cpUsed: 'You already used this coupon.', cpSold: 'This coupon has run out.', cpEnded: 'This coupon has expired.', cpOk: 'Coupon used!',
@@ -929,7 +929,7 @@ async function firstRun(h, p, F, nick, shotName) {
   check(F, '나이 답 뒤 닉네임 칸, 서버 요청 아직 0건', seen.length === n0 && seen.slice(n0).every((x) => !x.includes('/v1/device')), seen.slice(n0).join(','));
   if (shotName) await p.shots(shotName, '.server-nickname-step');
   await typeInto(p, '.server-nickname-step input', nick);
-  check(F, '닉네임 넣고 "서버 모드 시작" 누르기', await press(p, '.server-box', T.start));
+  check(F, '닉네임 넣고 "서버 계정 시작" 누르기', await press(p, '.server-box', T.start));
   await until('기기 계정', async () => {
     const s = await h.status();
     return s.device && s.code && !s.syncing;
@@ -989,7 +989,7 @@ async function appA() {
         await typeInto(p, '.server-nickname-step input', v);
         await press(p, '.server-box', T.start);
         await sleep(200);
-        check(F, `닉네임 ${why}: "서버 모드 시작" → 안내 "${want}", 서버 요청 없음`, (await warn()) === want && seen.length === seen0, `${await warn()} 요청 ${seen.slice(seen0).join(',')}`);
+        check(F, `닉네임 ${why}: "서버 계정 시작" → 안내 "${want}", 서버 요청 없음`, (await warn()) === want && seen.length === seen0, `${await warn()} 요청 ${seen.slice(seen0).join(',')}`);
       }
       await p.shots('a01-nickname-error', '.server-nickname-step');
       check(F, '"나이 다시 고르기" 누르면 나이 답으로', (await press(p, '.server-box', Q('나이 다시 고르기', 'Pick age again'))) && (await soft(until('나이 답', () => p.ev(`!!document.querySelector('.server-ages')`), 5000))));
@@ -1065,7 +1065,7 @@ async function appA() {
       await clickSync(h, p);
       await soft(until('쪽지 수', async () => (await h.status()).inbox === 1, 10_000));
       const line = await p.ev(`document.querySelector('.server-inbox')?.textContent ?? ''`);
-      check(F, '"지금 맞추기" → 설정에 안 연 쪽지 1통 안내, 잔액 그대로', line.includes(T.inboxLine) && (await h.balance()) === b0, line);
+      check(F, '"코인 동기화" → 설정에 안 연 쪽지 1통 안내, 잔액 그대로', line.includes(T.inboxLine) && (await h.balance()) === b0, line);
       await p.shots('a06-inbox-line', '.server-inbox');
       // 펫 말풍선
       const pet = await h.page('pet');
@@ -1175,11 +1175,11 @@ async function appA() {
       // 구독 쪽지 (허용하면 매달 100장까지 채우기가 저절로)
       const subId = await soft(until('구독 쪽지', async () => sql(`SELECT id FROM inbox WHERE account_id = ${acctA} AND kind = 'subscription'`) !== '', 5000));
       const appGot = await soft(until('앱 쪽지 수', async () => (await h.status()).inbox >= 1, 8000));
-      check(F, '허용된 뒤 구독 쪽지가 "지금 맞추기" 한 번으로 앱에 닿는다', subId === true && appGot === true, `DB 쪽지 ${sql(`SELECT count(*) FROM inbox WHERE account_id = ${acctA} AND kind = 'subscription'`)} 앱 inbox ${(await h.status()).inbox}`);
+      check(F, '허용된 뒤 구독 쪽지가 "코인 동기화" 한 번으로 앱에 닿는다', subId === true && appGot === true, `DB 쪽지 ${sql(`SELECT count(*) FROM inbox WHERE account_id = ${acctA} AND kind = 'subscription'`)} 앱 inbox ${(await h.status()).inbox}`);
       if (appGot !== true) {
         await clickSync(h, p);
         const second = await soft(until('앱 쪽지 수 2', async () => (await h.status()).inbox >= 1, 8000));
-        console.log(`  참고: "지금 맞추기" 두 번째에 앱 inbox ${(await h.status()).inbox} (${second === true ? '닿음' : '안 닿음'})`);
+        console.log(`  참고: "코인 동기화" 두 번째에 앱 inbox ${(await h.status()).inbox} (${second === true ? '닿음' : '안 닿음'})`);
       }
       if (appGot !== true) {
         // 쪽지함 받기(GET /v1/inbox)가 쪽지를 만든다: 앱의 쪽지함 받기를 한 번 부른다 (상태 준비)

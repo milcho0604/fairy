@@ -8,6 +8,7 @@ import {
   DUE_PM_FROM,
   deadlineText,
   dueSlot,
+  isInstallDay,
   nextUp,
   reviewText,
   undoMoved,
@@ -295,6 +296,12 @@ export function createPlanner(o: PlannerOptions) {
     if (!s.review || reviewedDay === day || minuteOfDay(now) < s.reviewMinute) return false;
     // 만나는 날 만났으면 헤어지는 인사가 회고를 같이 한다
     if (coversReview(s.routine, memo, day)) return false;
+    // 설치 첫날은 회고하지 않는다 (끝낸 할 일 0개를 말풍선이나 놓친 알림으로 남기지 않게)
+    if (isInstallDay(o.stats.firstDay(), day, o.todos.list(now).doneToday.length)) {
+      reviewedDay = day;
+      store();
+      return false;
+    }
     if (powerMonitor.getSystemIdleTime() > 60) return true;
     reviewedDay = day;
     store();
@@ -442,7 +449,10 @@ export function createPlanner(o: PlannerOptions) {
    */
   function farewell(now: number, due: Extract<RoutineDue, { what: 'farewell' }>, quiet: boolean) {
     const s = settings.get();
-    const asks = s.review && reviewedDay !== due.day;
+    const asks =
+      s.review &&
+      reviewedDay !== due.day &&
+      !isInstallDay(o.stats.firstDay(), due.day, o.todos.list(now).doneToday.length);
     memo = { ...memo, farewelled: due.day };
     if (asks) reviewedDay = due.day;
     store();

@@ -94,8 +94,8 @@ export function DataTab({ snap, setSnap, flash }: TabProps) {
         {isPersonalPet(snap.settings) && <small>{t('pet.share.personalHint')}</small>}
         <ExportedRow path={exported} />
       </Section>
-      <ServerAccountBox flash={flash} />
-      <EventsBox flash={flash} />
+      <ServerAccountBox />
+      <EventsBox />
       <FriendsBox flash={flash} />
       <AdminBox />
       <ExportBox flash={flash} />

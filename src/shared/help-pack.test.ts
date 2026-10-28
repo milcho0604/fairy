@@ -89,7 +89,7 @@ test('서버 상태: 주소 없는 판, 꺼짐, 문제, 한 번도 못 맞춤', 
   setLang('ko');
   assert.match(serverLine(undefined, 0), /서버 주소가 없는 판/);
   assert.match(serverLine({ ...SERVER, enabled: false }, 0), /서버 주소가 없는 판/);
-  assert.match(serverLine({ ...SERVER, on: false }, 0), /서버 모드 꺼짐/);
+  assert.match(serverLine({ ...SERVER, on: false }, 0), /서버 계정 꺼짐/);
   const s = serverLine({ ...SERVER, problem: 'offline', lastSyncAt: null, signedIn: false }, 0);
   assert.match(s, /기기 계정만/);
   assert.match(s, /문제 offline/);
