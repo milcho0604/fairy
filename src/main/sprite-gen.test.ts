@@ -3,7 +3,16 @@ import { test } from 'node:test';
 import { rowOf, type SpriteRow, STRIP_H, STRIP_W, stripPrompt } from '../shared/sprite-strip.ts';
 import { type FetchLike, IllustError, KLEIN, spaceRoot } from './hf-illust.ts';
 import { checkDrawn, fixedDrawSize, LocalDrawError, MIN_DRAWN_BYTES } from './local-draw-core.ts';
-import { drawStrip, drawStripLocal, type LocalStripDraw, STRIP_MIN_BYTES, stripSpace } from './sprite-gen.ts';
+import {
+  drawStrip,
+  drawStripLocal,
+  type LocalStripDraw,
+  STRIP_MIN_BYTES,
+  STRIP_TIMEOUT_MS,
+  stripMinBytes,
+  stripSpace,
+  stripTimeoutMs,
+} from './sprite-gen.ts';
 
 const ROOT = spaceRoot(KLEIN.id);
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 1, 2, 3]);
@@ -16,7 +25,9 @@ const WEBP = new Uint8Array([
   ...new TextEncoder().encode('WEBPVP8 '),
   7,
 ]);
-const ROW = rowOf('walk') as SpriteRow;
+const ROW = rowOf('rest') as SpriteRow;
+/** 두 줄 여덟 칸 (한 번 호출로 받는다) */
+const WALK = rowOf('walk') as SpriteRow;
 
 function server(events: string[]) {
   const urls: string[] = [];
@@ -165,4 +176,52 @@ test('정한 크기로 그린 띠 확인: 1024x256 그대로, 띠 하한으로 �
   assert.equal(checkDrawn(pngOf(1024, 256, 3 * 1024), want).ok, false);
   // 넣은 그림 비율(정사각형)로 그려 왔으면 크기가 틀린 것
   assert.equal(checkDrawn(pngOf(1024, 1024, 20 * 1024), want).ok, false);
+});
+
+test('두 줄 시트는 호출 한 번으로 1024x512 를 그리고 요청문에 여덟 칸이 다 든다', async () => {
+  const { fetch, urls, bodies } = server([
+    'event: complete\ndata: [{"path": "/tmp/gradio/out/s.webp", "meta": {"_type": "gradio.FileData"}}, 1]\n\n',
+  ]);
+  await drawStrip(PNG, WALK, [0, 255, 0], { fetch });
+  // 그림을 부르는 요청은 한 번 (칸이 8개여도 호출 수는 그대로)
+  assert.equal(urls.filter((u) => u.endsWith('/call/infer')).length, 1);
+  const data = JSON.parse(bodies[0] ?? '{}').data as unknown[];
+  assert.deepEqual([data[5], data[6]], [STRIP_W, STRIP_H * 2]);
+  assert.match(String(data[0]), /2 horizontal rows/);
+  for (const f of WALK.frames) assert.ok(String(data[0]).includes(f));
+  assert.ok(
+    stripSpace(STRIP_W, STRIP_H * 2).inputs(
+      { path: '/x', orig_name: 'p', meta: { _type: 'gradio.FileData' } },
+      'p',
+    )[6] ===
+      STRIP_H * 2,
+  );
+});
+
+test('두 줄 시트는 한 줄 띠보다 넓이만큼 하한 바이트가 크고 기다리는 시간이 길다', () => {
+  assert.equal(stripMinBytes(ROW), STRIP_MIN_BYTES);
+  assert.equal(stripMinBytes(WALK), STRIP_MIN_BYTES * 2);
+  assert.equal(stripTimeoutMs(ROW), STRIP_TIMEOUT_MS);
+  assert.ok(stripTimeoutMs(WALK) > STRIP_TIMEOUT_MS);
+});
+
+test('내 컴퓨터 두 줄 시트: 크기는 1024x512 (klein 규칙 안), 하한은 두 배', async () => {
+  const calls: Parameters<LocalStripDraw>[] = [];
+  const draw: LocalStripDraw = async (...args) => {
+    calls.push(args);
+    return { bytes: PNG, kind: 'png' };
+  };
+  await drawStripLocal(draw, PNG, WALK, [0, 255, 0], {
+    signal: new AbortController().signal,
+    onProgress: () => {},
+    log: () => {},
+  });
+  const [, , prompt, o] = calls[0] ?? [];
+  assert.equal(prompt, stripPrompt(WALK, [0, 255, 0]));
+  assert.deepEqual(o?.size, { width: STRIP_W, height: STRIP_H * 2, minBytes: STRIP_MIN_BYTES * 2 });
+  assert.deepEqual(fixedDrawSize(o?.size ?? { width: 0, height: 0 }), {
+    width: STRIP_W,
+    height: STRIP_H * 2,
+    minBytes: STRIP_MIN_BYTES * 2,
+  });
 });

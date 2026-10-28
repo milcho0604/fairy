@@ -30,7 +30,7 @@ import {
   TALK_MS,
   wanders,
 } from '../../shared/pet-mood.ts';
-import { fillSprites } from '../../shared/pet-sprites.ts';
+import { fillSprites, walkCount } from '../../shared/pet-sprites.ts';
 import { type Blueprint, type Gait, parseBlueprint } from '../../shared/pet3d/blueprint.ts';
 import { defaultBlueprint } from '../../shared/pet3d/defaults.ts';
 import { standingBlueprint } from '../../shared/pet3d/stand.ts';
@@ -355,7 +355,7 @@ function frame() {
 
 // ---- 가져온 페어리의 2D 그림 세트 (shared/pet-sprites.ts, sprite-geom.ts) ----
 /** 다 풀고 잰 그림 세트 (빠진 자세는 가까운 그림으로 채웠다). 없거나 아직 푸는 중이면 undefined (그동안은 사진) */
-let sheet: { pics: Record<CutePose, HTMLImageElement>; geom: CuteGeom } | undefined;
+let sheet: { pics: Record<CutePose, HTMLImageElement>; geom: CuteGeom; walks?: number } | undefined;
 /** 세트를 푸는 중 */
 let sheetPending = false;
 /** 나이 배율을 곱한 세트 (같은 배율이면 같은 것) */
@@ -366,7 +366,11 @@ function sheetNow(): typeof sheet {
     sheetScaled = {
       from: sheet,
       k: photoScale,
-      v: { pics: sheet.pics, geom: { ...sheet.geom, scale: sheet.geom.scale * photoScale } },
+      v: {
+        pics: sheet.pics,
+        geom: { ...sheet.geom, scale: sheet.geom.scale * photoScale },
+        ...(sheet.walks === undefined ? {} : { walks: sheet.walks }),
+      },
     };
   return sheetScaled.v;
 }
@@ -399,7 +403,7 @@ async function loadSheet(urls: PetImages['sprites']): Promise<typeof sheet> {
     if (box) boxes[pose] = box;
   }
   const geom = spriteGeom(boxes, { w: pics.idle.naturalWidth, h: pics.idle.naturalHeight });
-  return geom ? { pics, geom } : undefined;
+  return geom ? { pics, geom, walks: walkCount(urls ?? {}) } : undefined;
 }
 
 /** 손그림을 못 푼 모양 (예전 코드 그림으로 그린다) */

@@ -1,5 +1,5 @@
 // Codex 펫 파일 (.codex-pet.zip) 을 페어리로 (이슈 #88). zip 을 메모리에서 풀고(unzip.ts), pet.json 과 그림 한 장을 찾아
-// 칸을 잘라 2D 그림 세트(images.sprites 와 같은 규칙: PNG, 한 장 512KB, 모두 서기와 같은 크기, 합 4MB)로 만든다.
+// 칸을 잘라 2D 그림 세트(images.sprites 와 같은 규칙: PNG, 한 장 512KB, 모두 서기와 같은 크기, 합 6MB)로 만든다.
 // 그림 풀기와 칸 자르기는 부르는 쪽이 넘긴다 (앱은 숨은 창의 Chromium, codex-atlas.ts. 시험은 가짜).
 // 그래서 이 파일은 electron 을 부르지 않는다.
 // 남이 만든 펫일 수 있어서 늘 개인 용도(personalOnly)로 데려온다: 공식 갤러리는 받지 않는다
@@ -80,7 +80,7 @@ export async function readCodexPet(
     const png = grid[r]?.[c];
     if (png) raw[name] = `data:image/png;base64,${png.toString('base64')}`;
   }
-  // .fairy 의 그림 세트와 같은 검사를 그대로 (한 장 512KB, 서기와 같은 크기, 합 4MB)
+  // .fairy 의 그림 세트와 같은 검사를 그대로 (한 장 512KB, 서기와 같은 크기, 합 6MB)
   const sprites = cleanSprites(raw);
   if (!sprites?.idle) return { error: t('pet.share.badImage') };
   return {
