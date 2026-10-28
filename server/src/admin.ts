@@ -1,7 +1,8 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { randomBytes, randomInt } from 'node:crypto';
+import { createHash, randomBytes, randomInt } from 'node:crypto';
 import {
   BadRequestException,
+  ConflictException,
   Controller,
   ForbiddenException,
   Get,
@@ -343,11 +344,28 @@ async function claimRequest(c: PoolClient, actor: string, action: string, f: For
   if (!/^[A-Za-z0-9_-]{8,64}$/.test(id))
     throw new Refused('요청 번호는 8~64자의 영문, 숫자, _, - 만 쓸 수 있어요', 'request_id');
   await c.query(`DELETE FROM admin_request WHERE created_at < now() - interval '30 days'`);
+  // 같은 번호에 다른 내용이면 거절하려고 내용 해시를 함께 둔다 (번호, 확인 칸, 웹 흐름 칸은 뺀다)
+  const body = Object.entries(f as Record<string, unknown>)
+    .filter(
+      ([k]) => !['request_id', 'csrf', 'confirm', 'flow', 'people', 'expect_ids', 'expect_base'].includes(k),
+    )
+    .sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0));
+  const hash = createHash('sha256').update(JSON.stringify(body)).digest('hex');
   const r = await c.query(
-    'INSERT INTO admin_request (actor, action, request_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+    'INSERT INTO admin_request (actor, action, request_id, body_hash) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING',
+    [actor.slice(0, 40), action, id, hash],
+  );
+  if ((r.rowCount ?? 0) > 0) return true;
+  const old = await c.query<{ body_hash: string }>(
+    'SELECT body_hash FROM admin_request WHERE actor = $1 AND action = $2 AND request_id = $3',
     [actor.slice(0, 40), action, id],
   );
-  return (r.rowCount ?? 0) > 0;
+  if (old.rows[0]?.body_hash !== hash)
+    throw new Refused(
+      '같은 요청 번호로 다른 내용을 보냈어요. 새 요청 번호로 다시 보내 주세요',
+      'request_conflict',
+    );
+  return false;
 }
 
 export interface GrantInput {
@@ -3015,7 +3033,9 @@ export class AdminApiController {
       return { ok: true, ...(await this.admin.run(name, actor, fieldsOf(req.body))) };
     } catch (err) {
       if (err instanceof Refused)
-        throw new BadRequestException({ error: 'refused', code: err.code, text: err.message });
+        throw err.code === 'request_conflict'
+          ? new ConflictException({ error: 'refused', code: err.code, text: err.message })
+          : new BadRequestException({ error: 'refused', code: err.code, text: err.message });
       throw err;
     }
   }

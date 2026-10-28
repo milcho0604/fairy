@@ -4,6 +4,8 @@ CREATE TABLE admin_request (
   actor TEXT NOT NULL CHECK (length(actor) BETWEEN 1 AND 40),
   action TEXT NOT NULL CHECK (length(action) BETWEEN 1 AND 40),
   request_id TEXT NOT NULL CHECK (request_id ~ '^[A-Za-z0-9_-]{8,64}$'),
+  -- 보낸 내용의 해시. 같은 번호에 다른 내용이 오면 409 로 거절한다
+  body_hash TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (actor, action, request_id)
 );

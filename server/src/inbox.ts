@@ -216,7 +216,7 @@ export class Inbox implements OnModuleInit, OnModuleDestroy {
       r = await this.openOnce(accountId, id, now, true);
     }
     // 돌려주기는 트랜잭션 안에서 끝내고 (던지면 되돌려지므로) 밖에서 410 으로 알린다
-    if ('gone' in r) throw fail(HttpStatus.GONE, { error: 'expired', item: r.gone });
+    if ('gone' in r) throw fail(HttpStatus.GONE, { error: 'ineligible', reason: 'ineligible', item: r.gone });
     return r;
   }
 
@@ -250,9 +250,15 @@ export class Inbox implements OnModuleInit, OnModuleDestroy {
           'SELECT returned_at IS NOT NULL AS returned FROM friend_gift WHERE id = $1 FOR UPDATE',
           [gift.gid],
         );
-        if (g.rows[0]?.returned) {
+        // 이용권만 돌려주고 열린 쪽지는 돌려줬어도 이미 연 것이라 아래에서 409
+        const opened = await c.query('SELECT 1 FROM inbox WHERE id = $1 AND opened_at IS NOT NULL', [id]);
+        if (g.rows[0]?.returned && (opened.rowCount ?? 0) === 0) {
           const gone = await c.query<Row>(`SELECT ${COLUMNS} FROM inbox WHERE id = $1`, [id]);
-          throw fail(HttpStatus.GONE, { error: 'expired', item: item(gone.rows[0] as Row) });
+          throw fail(HttpStatus.GONE, {
+            error: 'expired',
+            reason: 'expired',
+            item: item(gone.rows[0] as Row),
+          });
         }
       }
       const r = await c.query<Row>(
@@ -263,7 +269,8 @@ export class Inbox implements OnModuleInit, OnModuleDestroy {
       const row = r.rows[0];
       if (!row) throw fail(HttpStatus.NOT_FOUND, { error: 'no_note' });
       if (row.opened_at) throw fail(HttpStatus.CONFLICT, { error: 'already_opened', item: item(row) });
-      if (row.expired || row.expired_now) throw fail(HttpStatus.GONE, { error: 'expired', item: item(row) });
+      if (row.expired || row.expired_now)
+        throw fail(HttpStatus.GONE, { error: 'expired', reason: 'expired', item: item(row) });
       // 친구 선물은 열 때 보낸 사람과 나이 구분이 같고 아직 친구인지 다시 본다: 아니면 코인과 이용권 모두 보낸 사람에게
       if (row.kind === 'gift' && gift?.from_live) {
         const ok = await c.query(
@@ -303,6 +310,11 @@ export class Inbox implements OnModuleInit, OnModuleDestroy {
         const age = (await c.query<{ age: string }>('SELECT age FROM account WHERE id = $1', [a.id])).rows[0]
           ?.age;
         if (age !== '18+') {
+          // 친구 선물이면 건너뛴 이용권은 보낸 사람에게 (코인은 받는 사람이 받는다). 운영자 지급은 기록만
+          if (row.kind === 'gift' && gift?.from_live) {
+            if (!withSender) throw NEED_SENDER;
+            await returnGift(c, gift.gid, 'passes_only', now);
+          }
           await c.query(
             `INSERT INTO admin_log (actor, action, target, detail) VALUES ('system', 'note.passes_skipped', $1, $2)`,
             [`account:${a.id}`, JSON.stringify({ note: Number(row.id), kind: row.kind, passes, age })],

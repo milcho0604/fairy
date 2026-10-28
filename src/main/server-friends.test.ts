@@ -310,3 +310,30 @@ test('칸이 숨은 때 받기가 바로 끝나도 다음 받기는 돈다 (끝�
   await inbox.refresh();
   assert.equal(calls, 1);
 });
+
+test('쪽지를 열 때 410 이 받을 수 없게 된 것이면 돌려줬다고 말하고, 기한 만료면 기한 문구', async () => {
+  const said: string[] = [];
+  let error = 'ineligible';
+  const inbox = createServerInbox({
+    core: () =>
+      ({
+        allowed: () => true,
+        inbox: async () => ({ items: [], next: null, unopened: 0 }),
+        openInbox: async () => ({ ok: false, status: 410, error, body: {} }),
+      }) as unknown as ServerCore,
+    say: async (s) => {
+      said.push(s.text ?? '');
+      return undefined;
+    },
+    react: () => {},
+    canTalk: () => false,
+    onChange: () => {},
+    onGot: () => {},
+    log: () => {},
+  });
+  await inbox.open('inbox:7');
+  error = 'expired';
+  await inbox.open('inbox:7');
+  assert.ok(said[0]?.includes('돌려줬어'), String(said[0]));
+  assert.ok(said[1]?.includes('기한'), String(said[1]));
+});

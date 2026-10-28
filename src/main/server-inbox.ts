@@ -133,7 +133,12 @@ export function createServerInbox(o: {
     }
     o.log('inbox', '못 엶', id, r.status, r.error);
     await refresh();
-    if (r.status === 410) await o.say({ kind: 'answer', text: t('inbox.expired'), ttlMs: 8000 });
+    if (r.status === 410)
+      await o.say({
+        kind: 'answer',
+        text: t(r.error === 'ineligible' ? 'inbox.ineligible' : 'inbox.expired'),
+        ttlMs: 8000,
+      });
     else if (r.status !== 409) await o.say({ kind: 'answer', text: t('inbox.failed'), ttlMs: 8000 });
   }
 

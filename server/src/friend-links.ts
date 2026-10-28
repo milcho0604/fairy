@@ -141,6 +141,7 @@ export const GIFT_KEEP_DAYS = 30;
  * 선물 하나를 보낸 사람에게 돌려준다 (#110, 사용자 결정 2026-10-16). 돌려주는 길은 이 함수 하나다:
  * - expired: 받는 쪽지의 기한(30일)이 지났다. Friends.sweep 이 선물마다 트랜잭션 하나로 부른다 (정리 작업 방식, 읽을 때 하지 않는다)
  * - receiver_left: 받는 사람이 탈퇴한다 (accounts.ts delete, 계정을 지우는 같은 트랜잭션)
+ * - passes_only: 열 때 받는 사람이 만 18세 미만이라 이용권만 못 받는다 (자격은 통과): 이용권만 돌려주고 코인은 받는 사람이 받는다 (쪽지는 열리는 중)
  * - ineligible: 받는 사람이 열 때 보낸 사람과 나이 구분이 다르거나 더는 친구가 아니다 (inbox.ts open): 코인과 이용권 모두 돌려주고 쪽지는 닫는다
  *
  * 잠금 순서는 어디서나 같다 (교착 방지, 버그잡이 #135 2차): 계정(번호 작은 것부터) → 선물 줄 → 쪽지 줄.
@@ -152,7 +153,7 @@ export const GIFT_KEEP_DAYS = 30;
 export async function returnGift(
   c: PoolClient,
   giftId: string,
-  why: 'expired' | 'receiver_left' | 'ineligible',
+  why: 'expired' | 'receiver_left' | 'ineligible' | 'passes_only',
   now = Date.now(),
 ): Promise<boolean> {
   const g = (
@@ -183,13 +184,14 @@ export async function returnGift(
   // 안 연 쪽지만 (열기에서 부르는 ineligible 도 열림 표시를 하기 전이다)
   if (note.opened) return false;
   if (why === 'expired' && !note.late) return false;
-  const coins = g.coins;
+  const coins = why === 'passes_only' ? 0 : g.coins;
   await c.query('UPDATE friend_gift SET returned_at = now() WHERE id = $1', [g.id]);
-  // 받는 쪽 쪽지는 더 열지 못하게 (탈퇴면 곧 함께 지워진다)
-  await c.query(
-    'UPDATE inbox SET expires_at = LEAST(COALESCE(expires_at, now()), clock_timestamp()) WHERE id = $1',
-    [g.inbox_id],
-  );
+  // 받는 쪽 쪽지는 더 열지 못하게 (탈퇴면 곧 함께 지워진다). passes_only 는 코인을 받으려 열리는 중이라 닫지 않는다
+  if (why !== 'passes_only')
+    await c.query(
+      'UPDATE inbox SET expires_at = LEAST(COALESCE(expires_at, now()), clock_timestamp()) WHERE id = $1',
+      [g.inbox_id],
+    );
   if (!g.from_live) return true;
   if (coins > 0) {
     const ins = await c.query(

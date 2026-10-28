@@ -300,3 +300,83 @@ describe('시간대 없는 기간 글은 한국 시간', () => {
     assert.equal(new Date(row.ends_at).toISOString(), '2030-12-31T14:59:00.000Z');
   });
 });
+
+describe('요청 번호 내용 확인과 선물 이용권 돌려주기', () => {
+  test('같은 요청 번호에 다른 내용이면 409, 같은 내용이면 그대로 한 번', async () => {
+    const a = await newDevice('18+', '번호다른a');
+    const b = await newDevice('18+', '번호다른b');
+    const id = rid();
+    const body = { accounts: a.code, coins: '5', days: '10', reason: 'x', confirm: 'yes', request_id: id };
+    assert.equal((await cj('/v1/admin/grants/batch', body)).status, 200);
+    const other = await cj('/v1/admin/grants/batch', { ...body, accounts: b.code, coins: '500' });
+    assert.equal(other.status, 409, other.text);
+    assert.equal(other.body.code, 'request_conflict');
+    assert.equal((await cj('/v1/admin/grants/batch', body)).status, 200);
+    assert.equal(await notes(a.id), 1);
+    assert.equal(await notes(b.id), 0);
+  });
+
+  async function giftPair(passes: number) {
+    const mk = async () => {
+      const d = await newDevice('18+', `친구${Math.floor(Math.random() * 900 + 100)}`);
+      return { id: d.id, code: d.code, token: await session(d.id) };
+    };
+    const a = await mk();
+    const b = await mk();
+    const r = await api('POST', '/v1/friends/requests', { token: a.token, ip: ip(), body: { code: b.code } });
+    const ok = await api('POST', `/v1/friends/requests/${r.body.request.id}/accept`, {
+      token: b.token,
+      ip: ip(),
+    });
+    assert.equal(ok.status, 200);
+    await h.pool.query('UPDATE account SET balance = 100 WHERE id = $1', [a.id]);
+    const g = await api('POST', '/v1/friends/gifts', {
+      token: a.token,
+      ip: ip(),
+      body: { to: b.code, coins: 7, passes: 0, requestId: rid() },
+    });
+    assert.equal(g.status, 200, g.text);
+    const box = await api('GET', '/v1/inbox', { token: b.token });
+    const noteId = box.body.items.find((i: { kind: string }) => i.kind === 'gift').id as number;
+    await h.pool.query('UPDATE inbox SET chat_passes = $2 WHERE id = $1', [noteId, passes]);
+    await h.pool.query('UPDATE friend_gift SET passes = $2 WHERE inbox_id = $1', [noteId, passes]);
+    return { a, b, noteId };
+  }
+  const passesOf = async (id: string) =>
+    (await h.pool.query('SELECT remaining FROM ai_ticket WHERE account_id = $1', [id])).rows[0]?.remaining ??
+    0;
+
+  test('둘 다 14+ 로 같아 자격을 통과해도 이용권은 보낸 사람에게, 코인은 받는 사람에게', async () => {
+    const { a, b, noteId } = await giftPair(3);
+    await h.pool.query(`UPDATE account SET age = '14+' WHERE id IN ($1, $2)`, [a.id, b.id]);
+    const before = await passesOf(a.id);
+    const o = await api('POST', `/v1/inbox/${noteId}/open`, { token: b.token });
+    assert.equal(o.status, 200, o.text);
+    assert.equal(o.body.item.opened.chatPasses, 0);
+    assert.equal(o.body.item.opened.coins, 7);
+    assert.equal(await balanceOf(b.id), 7);
+    assert.equal((await passesOf(a.id)) - before, 3);
+    const back = (await api('GET', '/v1/inbox', { token: a.token })).body.items.filter(
+      (i: { kind: string }) => i.kind === 'gift_back',
+    );
+    assert.equal(back.length, 1);
+    assert.equal(back[0].chatPasses, 3);
+    assert.equal(back[0].coins, 0);
+    assert.equal((await api('POST', `/v1/inbox/${noteId}/open`, { token: b.token })).status, 409);
+    assert.equal((await passesOf(a.id)) - before, 3);
+  });
+
+  test('410 에는 까닭이 붙는다 (ineligible, expired)', async () => {
+    const { b, noteId } = await giftPair(0);
+    await h.pool.query(`UPDATE account SET age = '14+' WHERE id = $1`, [b.id]);
+    const first = await api('POST', `/v1/inbox/${noteId}/open`, { token: b.token });
+    assert.equal(first.status, 410);
+    assert.equal(first.body.error, 'ineligible');
+    assert.equal(first.body.reason, 'ineligible');
+    const x = await giftPair(0);
+    await h.pool.query(`UPDATE inbox SET expires_at = now() - interval '1 minute' WHERE id = $1`, [x.noteId]);
+    const gone = await api('POST', `/v1/inbox/${x.noteId}/open`, { token: x.b.token });
+    assert.equal(gone.status, 410);
+    assert.equal(gone.body.reason, 'expired');
+  });
+});

@@ -52,6 +52,7 @@ export const ko = {
       .join(', ')}`,
   'inbox.got': (v: CP) => `받았어: 코인 ${v.coins}개, 채팅 이용권 ${v.passes}장`,
   'inbox.expired': '기한이 지나 열 수 없는 쪽지야.',
+  'inbox.ineligible': '받을 수 없게 되어 보낸 친구에게 돌려줬어.',
   'inbox.failed': '쪽지를 열지 못했어. 잠시 뒤에 다시 해 줘.',
   'inbox.bring': (v: N) =>
     v.n > 1
@@ -202,6 +203,7 @@ export const en: Translation<typeof ko> = {
       .join(', ')}.`,
   'inbox.got': (v: CP) => `Received: ${v.coins} coins, ${v.passes} chat passes`,
   'inbox.expired': 'This note expired and can no longer be opened.',
+  'inbox.ineligible': "You can't receive this anymore, so it went back to your friend.",
   'inbox.failed': "Couldn't open the note. Try again in a bit.",
   'inbox.bring': (v: N) =>
     v.n > 1
