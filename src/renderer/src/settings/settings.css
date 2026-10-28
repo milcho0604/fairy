@@ -1924,6 +1924,7 @@ textarea.rules {
   align-self: flex-start;
   justify-self: start;
   padding-left: 0;
+}
 
 /* 누른 단추 옆에 남는 결과 한 줄 (NearResult.tsx) */
 .near-result {
