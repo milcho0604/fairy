@@ -189,7 +189,17 @@ try {
     const fit = JSON.parse(await p.ev(`JSON.stringify((() => { const m = document.querySelector('.shop-msg'); return m ? [m.scrollWidth, m.clientWidth, window.innerWidth] : null; })())`));
     check(`폭 ${w}: 집 구매 문구가 말줄임 없이 한 줄`, !!fit && fit[0] <= fit[1], JSON.stringify(fit));
     await p.shot(`shop-built-${lang}-w${w}`);
+    // 띠 아래로 스크롤된 목록 글자가 비치지 않는다: 띠 자리(.shop-slot)는 목록 바깥이라 목록은 그 아래에서만 보인다
+    const gap = JSON.parse(await p.ev(`JSON.stringify((() => { const sl = document.querySelector('.shop-slot').getBoundingClientRect(); const sc = document.querySelector('.shop').getBoundingClientRect(); return [sl.bottom, sc.top, document.querySelector('.shop').scrollTop]; })())`));
+    check(`폭 ${w}: 목록은 띠 자리 아래에서 시작(비침 없음)`, gap[1] >= gap[0] - 0.5, JSON.stringify(gap));
   }
+  await p.ev(`document.querySelector('.shop').scrollTop = 0; 1`);
+  await sleep(300);
+  await p.shot(`shop-built-${lang}-top`);
+  await p.dark(true);
+  await sleep(200);
+  await p.shot(`shop-built-${lang}-dark`);
+  await p.dark(false);
   await main(`__jj.panel.window.setSize(${w0}, __jj.panel.window.getSize()[1]); 1`);
   await sleep(300);
   // 집 모양 카드(300): 확인 상태에서도 단추 좌표가 그대로

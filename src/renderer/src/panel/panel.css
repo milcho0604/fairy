@@ -1934,9 +1934,16 @@ ul.house-styles li > :last-child {
   /* 띠가 있든 없든 높이가 같다. 목록은 늘 이 아래에서 시작한다 */
   flex: none;
   box-sizing: border-box;
-  height: 24px;
+  height: 30px;
   padding: 2px 14px 0;
+  /* 패널 바탕색으로 가로 전체를 채워 띠 아래 여백까지 목록 글자가 비치지 않게 */
+  background: var(--panel);
   pointer-events: none;
+}
+
+/* 목록 맨 윗줄이 띠 바로 밑에서 반쯤 잘려 보이지 않게 위쪽 가장자리를 부드럽게 */
+.shop-host > .shop {
+  mask-image: linear-gradient(to bottom, transparent 0, transparent 4px, #000 16px);
 }
 
 .shop-msg {
