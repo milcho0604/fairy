@@ -17,12 +17,24 @@ export const jokeMove = (n: number): JokeMove => JOKE_MOVES[n] ?? 'happy';
 export const JOKE_PAUSE_MS = 2400;
 
 /** 다음 웃음 번호 (1부터). recent 는 최근에 한 번호들 (오래된 것부터) */
-export function pickJoke(recent: readonly number[], rand: () => number): number {
+export function pickJoke(recent: readonly number[], rand: () => number): number;
+export function pickJoke(
+  recent: readonly number[],
+  rand: () => number,
+  allowed: (n: number) => boolean,
+): number | undefined;
+export function pickJoke(
+  recent: readonly number[],
+  rand: () => number,
+  allowed: (n: number) => boolean = () => true,
+): number | undefined {
   const skip = new Set(recent.slice(-JOKE_RECENT));
-  const ok: number[] = [];
-  for (let n = 1; n <= JOKE_COUNT; n++) if (!skip.has(n)) ok.push(n);
-  const pool = ok.length ? ok : [1];
-  return pool[Math.min(pool.length - 1, Math.floor(rand() * pool.length))] ?? 1;
+  const usable: number[] = [];
+  for (let n = 1; n <= JOKE_COUNT; n++) if (allowed(n)) usable.push(n);
+  // 안 쓰기로 한 말을 빼고, 최근 것도 피한다 (남은 게 없으면 최근 것도 다시). 다 안 쓰기로 했으면 undefined
+  const fresh = usable.filter((n) => !skip.has(n));
+  const pool = fresh.length ? fresh : usable;
+  return pool.length ? pool[Math.min(pool.length - 1, Math.floor(rand() * pool.length))] : undefined;
 }
 
 /** 최근 목록에 더한다 (JOKE_RECENT 만큼만 남긴다) */
@@ -75,6 +87,14 @@ export function tickle(
 /** 처음 상태 (아직 웃은 적 없음) */
 export const TICKLE_START = { pats: [] as number[], lastAt: Number.NEGATIVE_INFINITY };
 
-/** 1부터 n 까지 중 하나 */
-export const pickLine = (n: number, rand: () => number): number =>
-  1 + Math.min(n - 1, Math.floor(rand() * n));
+/** 1부터 n 까지 중 하나. allowed 로 안 쓰기로 한 번호를 빼면 남은 것 가운데 하나, 하나도 없으면 undefined */
+export function pickLine(n: number, rand: () => number): number;
+export function pickLine(n: number, rand: () => number, allowed: (k: number) => boolean): number | undefined;
+export function pickLine(
+  n: number,
+  rand: () => number,
+  allowed?: (k: number) => boolean,
+): number | undefined {
+  const pool = Array.from({ length: n }, (_, i) => i + 1).filter((k) => !allowed || allowed(k));
+  return pool[Math.min(pool.length - 1, Math.floor(rand() * pool.length))];
+}

@@ -292,11 +292,18 @@ test('내 말투의 직접 쓴 말: 그때의 말을 바꾸고 자리 표시를 
   const style: SpeechStyle = {
     ...DEFAULT_STYLE,
     call: 'butler',
+    ownRate: 'always',
     lines: {
       morning: ['{me}, 일어나!', '{name} 왔다! {todo}부터?'],
       praise: ['최고야 {me}'],
       rest: [],
       night: [],
+      lunch: [],
+      done: [],
+      focusEnd: [],
+      back: [],
+      hungry: [],
+      evening: [],
     },
   };
   setSpeechSource({ style: () => style, petName: () => '콩이', todo: () => '보고서' });

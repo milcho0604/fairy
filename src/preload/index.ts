@@ -431,6 +431,7 @@ if (kind === 'settings') {
     state: (lang) => ipcRenderer.invoke(LINES.state, lang),
     save: (lang, key, text) => ipcRenderer.invoke(LINES.save, lang, key, text),
     reset: (lang, key) => ipcRenderer.invoke(LINES.reset, lang, key),
+    mute: (lang, key, on) => ipcRenderer.invoke(LINES.mute, lang, key, on),
   };
   contextBridge.exposeInMainWorld('jjakkungLines', lines);
 }

@@ -1,14 +1,19 @@
 import { type IpcMainInvokeEvent, ipcMain, type WebContents } from 'electron';
-import { dicts, type I18nKey, setLineOverrides } from '../shared/i18n/index.ts';
+import { dicts, type I18nKey, setLineOverrides, setMutedLines } from '../shared/i18n/index.ts';
 import {
   buildCatalog,
   buildLinesState,
+  emptyMuted,
   isLineLang,
   type LineLang,
   type LineOverrides,
+  type MutedLines,
+  parseMuted,
   parseOverrides,
+  pruneMuted,
   pruneOverrides,
   resetOverride,
+  setMuted,
   setOverride,
 } from '../shared/lines.ts';
 import { LINES, type LineSaveResult, type LinesState } from '../shared/lines-ipc.ts';
@@ -20,11 +25,15 @@ import { readJson, writeJson } from './store.ts';
 // 시작할 때 지금 사전에 맞춰 정리하고(사라진 키, 값이 안 맞게 된 칸 버림) 말풍선이 쓰는 사전 찾기에 넣는다 (i18n setLineOverrides)
 
 const FILE = 'speech-lines';
+const MUTED_FILE = 'speech-muted';
 
 let current: LineOverrides = { ko: {}, en: {} };
+/** 안 쓰기로 한 대사 (speech-muted.json) */
+let muted: MutedLines = emptyMuted();
 
 function apply(): void {
   setLineOverrides(current);
+  setMutedLines(muted);
 }
 
 /** 시작할 때 한 번: 파일을 읽어 정리하고 말풍선에 쓰게 한다. 버린 칸이 있으면 파일도 고쳐 쓴다 */
@@ -45,6 +54,15 @@ export function initLines(log?: (tag: string, ...rest: unknown[]) => void): void
   } catch (err) {
     log?.('lines', '고친 대사 못 읽음', err instanceof Error ? err.message : String(err));
     current = { ko: {}, en: {} };
+  }
+  try {
+    const rawMuted = parseMuted(readJson(MUTED_FILE));
+    muted = pruneMuted(rawMuted, dicts);
+    if (muted.ko.length + muted.en.length !== rawMuted.ko.length + rawMuted.en.length)
+      writeJson(MUTED_FILE, muted);
+  } catch (err) {
+    log?.('lines', '안 쓰는 대사 못 읽음', err instanceof Error ? err.message : String(err));
+    muted = emptyMuted();
   }
   apply();
   // 창(preload)이 뜰 때 동기로 묻는다. 창을 만들기 전에 등록해야 하니 시작할 때 한 번만
@@ -67,7 +85,8 @@ export interface LinesOptions {
 }
 
 export function registerLines(o: LinesOptions): void {
-  const stateOf = (lang: LineLang): LinesState => buildLinesState(dicts[lang], lang, current, o.petName());
+  const stateOf = (lang: LineLang): LinesState =>
+    buildLinesState(dicts[lang], lang, current, o.petName(), muted);
   const ours = (e: IpcMainInvokeEvent) => o.isSettings(e.sender);
 
   ipcMain.handle(LINES.state, (e, lang: unknown) => {
@@ -92,6 +111,16 @@ export function registerLines(o: LinesOptions): void {
     return { ok: true, state: stateOf(lang) };
   });
 
+  ipcMain.handle(LINES.mute, (e, lang: unknown, key: unknown, on: unknown) => {
+    if (!ours(e) || !isLineLang(lang) || typeof key !== 'string' || typeof on !== 'boolean') return undefined;
+    if (!buildCatalog(dicts[lang]).some((d) => d.key === key)) return undefined;
+    muted = setMuted(muted, lang, key, on);
+    writeJson(MUTED_FILE, muted);
+    apply();
+    o.log('lines', on ? '대사 안 쓰기' : '대사 다시 쓰기', lang, key);
+    return stateOf(lang);
+  });
+
   ipcMain.handle(LINES.reset, (e, lang: unknown, key: unknown) => {
     if (!ours(e) || !isLineLang(lang) || (key !== undefined && typeof key !== 'string')) return undefined;
     current = resetOverride(current, lang, key);
@@ -105,6 +134,7 @@ export function registerLines(o: LinesOptions): void {
 /** 개발용 손잡이(__jj.lines): 지금 고친 칸 */
 export const debugLines = () => ({
   overrides: () => current,
+  muted: () => muted,
   reload: reloadLines,
   /** 지금 성격 말투와 고친 대사가 합쳐진 말풍선 글 (펫이 그 키로 말할 때 나오는 글) */
   line: (key: string, vars?: Record<string, string | number>) => voiced(key as I18nKey, vars),

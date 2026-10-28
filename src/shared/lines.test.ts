@@ -36,7 +36,7 @@ test('사전 함수는 값 자리가 {이름} 과 {이름:조사} 인 틀로 풀
   assert.equal(templateOf(dicts.ko['pet.fed']), '냠냠, 고마워!');
   assert.equal(
     templateOf(dicts.ko['companion.anniv.day']),
-    '오늘이 우리 만난 지 {n}일째 되는 날이야! 앞으로도 {name} 잘 부탁해.',
+    '오늘이 우리 만난 지 {n}일째 되는 날이야! 앞으로도 {name:을} 잘 부탁해.',
   );
   // 틀로 다시 채우면 원래 함수와 같은 말이 나온다
   for (const lang of ['ko', 'en'] as const) {

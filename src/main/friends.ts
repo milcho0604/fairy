@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { app, type BrowserWindow, screen } from 'electron';
 import { friendTalk } from '../shared/companion.ts';
-import { t } from '../shared/i18n/index.ts';
+import { isMutedLine, t } from '../shared/i18n/index.ts';
 import { IPC, type PetImages, type PetStatus } from '../shared/ipc.ts';
 import { MEET_CHANCE, MEET_COOLDOWN_MS, MEET_EVERY_MS, meetPlan } from '../shared/meet.ts';
 import { voiced } from '../shared/persona-voice.ts';
@@ -10,6 +10,7 @@ import { type Blueprint, parseBlueprint } from '../shared/pet3d/blueprint.ts';
 import { starterFigureOf } from '../shared/pet3d/starters.ts';
 import { friendSpot } from '../shared/placement.ts';
 import { HideReasons } from '../shared/presence.ts';
+import { isQuietNow } from '../shared/quiet-hours.ts';
 import { type Friend, pickedStand } from '../shared/settings.ts';
 import { starterOf } from '../shared/starter-pets.ts';
 import type { WearLook } from '../shared/wear.ts';
@@ -22,13 +23,10 @@ import { settings } from './settings.ts';
 import { removeJson } from './store.ts';
 
 /** 인사 (지금 말로, 고른 성격 말투로: 존댓말 비서면 존댓말, 이슈 #65) */
-const hello = () => [
-  voiced('pet.hello.1'),
-  voiced('pet.hello.2'),
-  voiced('pet.hello.3'),
-  voiced('pet.hello.4'),
-  voiced('pet.hello.5'),
-];
+const hello = () =>
+  (['pet.hello.1', 'pet.hello.2', 'pet.hello.3', 'pet.hello.4', 'pet.hello.5'] as const).flatMap((k) =>
+    isMutedLine(k) ? [] : [voiced(k)],
+  );
 
 /** pets/ 안 일반 파일만 읽는다 (링크를 따라 폴더 밖을 읽지 않게, safe-file.ts) */
 const petFile = (file: string | undefined) => readFileIn(join(app.getPath('userData'), 'pets'), file);
@@ -145,7 +143,9 @@ export function createFriends(o: {
    */
   let lastTalk: number | undefined;
   function chat(main: PetWindow, l: { pet: PetWindow; friend: Friend }, force = false) {
-    if (settings.get().chatter !== 'chatty' || (!force && Math.random() > FRIEND_TALK_CHANCE)) return;
+    // 말 안 하는 시간에는 친구끼리 수다도 쉰다 (만나서 인사하고 하트를 띄우는 것은 그대로)
+    if (settings.get().chatter !== 'chatty' || isQuietNow(settings.get().quietHours, Date.now())) return;
+    if (!force && Math.random() > FRIEND_TALK_CHANCE) return;
     const pair = friendTalk(Math.random, lastTalk);
     const vars = { name: settings.get().petName, friend: l.friend.name };
     setTimeout(() => {
@@ -155,6 +155,7 @@ export function createFriends(o: {
       void main.say({ kind: 'idle-talk', text: t(pair.a, vars), ttlMs: FRIEND_TALK_MS }).then((a) => {
         // 그사이 숨기거나(발표 포함) 조용히로 바꿨으면 대답하지 않는다 ('answer' 는 숨김 동안 붙잡아 뒀다가 엉뚱할 때 띄운다)
         if (a !== 'timeout' || !live.has(l.friend.id) || settings.get().chatter !== 'chatty') return;
+        if (isQuietNow(settings.get().quietHours, Date.now())) return;
         if (main.isHidden() || l.pet.isHidden()) return;
         void l.pet.say({ kind: 'answer', text: t(pair.b, vars), ttlMs: FRIEND_TALK_MS });
       });
@@ -226,12 +227,14 @@ export function createFriends(o: {
         click: () => {
           pet.react();
           const lines = hello();
-          const line = lines[Math.floor(Math.random() * lines.length)] ?? lines[0];
-          void pet.say({
-            kind: 'answer',
-            text: `${live.get(f.id)?.friend.name ?? f.name}: ${line}`,
-            ttlMs: 3000,
-          });
+          const line = lines[Math.floor(Math.random() * lines.length)];
+          // 인사를 모두 안 쓰기로 했으면 말하지 않는다
+          if (line)
+            void pet.say({
+              kind: 'answer',
+              text: `${live.get(f.id)?.friend.name ?? f.name}: ${line}`,
+              ttlMs: 3000,
+            });
         },
         petted: () => pet.react(),
         // 친구는 대화, 같이 보기, 할 일을 맡지 않는다

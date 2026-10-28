@@ -51,6 +51,17 @@ export function setLineOverrides(o: Record<Lang, Record<string, string>>): void 
   }
 }
 
+// 사용자가 안 쓰기로 한 대사 (shared/lines.ts, main/lines.ts). 고르는 쪽(혼잣말, 변형)이 건너뛴다
+const mutedLines: Record<Lang, Set<string>> = { ko: new Set(), en: new Set() };
+
+/** 안 쓰기로 한 대사 열쇠들을 통째로 바꿔 넣는다 (언어마다) */
+export function setMutedLines(m: Record<Lang, readonly string[]>): void {
+  for (const l of ['ko', 'en'] as const) mutedLines[l] = new Set(m[l] ?? []);
+}
+
+/** 지금 말에서 이 대사를 안 쓰기로 했는지 */
+export const isMutedLine = (key: string): boolean => mutedLines[lang].has(key);
+
 /** 지금 말에서 사용자가 이 키의 대사를 고쳤는지 */
 export const hasLineOverride = (key: string): boolean => lineOverrides[lang].has(key);
 

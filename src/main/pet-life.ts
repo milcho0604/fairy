@@ -3,7 +3,7 @@ import { type Energy, type EnergyLook, EnergyWatch, energyTalkKeys } from '../sh
 import { type I18nKey, t } from '../shared/i18n/index.ts';
 import type { ReactKind } from '../shared/ipc.ts';
 import { voiced } from '../shared/persona-voice.ts';
-import { type Activity, type LifeState, type PetLife, SULK_LINES, UNLOCKS } from '../shared/pet-life.ts';
+import { type Activity, type LifeState, type PetLife, sulkLine, UNLOCKS } from '../shared/pet-life.ts';
 import { isQuietNow } from '../shared/quiet-hours.ts';
 import { REST, RestCoach, restLine } from '../shared/rest.ts';
 import { bodyClock, restDaysOf } from '../shared/routine.ts';
@@ -68,13 +68,15 @@ export function createPetLife(o: PetLifeOptions) {
     if (changed) o.onChange();
     // 삐진 날은 그날 처음 한 번 말한다. 조용히, 숨은 동안은 모습만 (기획서).
     if (current.sulk > 0 && !current.sulkSaidToday && !o.petHidden() && settings.get().chatter !== 'quiet') {
-      const line = SULK_LINES[current.sulk] ?? SULK_LINES[1];
-      void o.say({ kind: 'system', text: line ?? '', ttlMs: 8000 }).then((action) => {
-        if (action !== undefined) {
-          o.life.markSulkSaid(Date.now());
-          current = read();
-        }
-      });
+      // 삐진 말을 모두 안 쓰기로 했으면 말하지 않는다 (빈 말풍선 없이)
+      const line = sulkLine(current.sulk);
+      if (line)
+        void o.say({ kind: 'system', text: line, ttlMs: 8000 }).then((action) => {
+          if (action !== undefined) {
+            o.life.markSulkSaid(Date.now());
+            current = read();
+          }
+        });
     }
   }
 
@@ -123,10 +125,12 @@ export function createPetLife(o: PetLifeOptions) {
     if (rhythmOn && e.fresh) refreshed();
     if (event === 'suggest' && !o.petHidden()) {
       const line = restLine();
+      // 쉬자는 말을 모두 안 쓰기로 했으면 권하지 않는다
+      if (line === undefined) return;
       void o
         .say({
           kind: 'system',
-          text: line ?? '',
+          text: line,
           buttons: [
             { id: 'go', label: t('pet.life.restGo') },
             { id: 'walk', label: t('pet.life.restWalk') },
