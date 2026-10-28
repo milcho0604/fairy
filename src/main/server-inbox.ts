@@ -48,6 +48,8 @@ export function createServerInbox(o: {
   /** 이번 실행에서 펫이 들고 온다고 말한 쪽지 */
   const announced = new Set<number>();
   let refreshing: Promise<void> | null = null;
+  /** 받는 중에 계정이 바뀌어 끝난 뒤 한 번 더 받아야 한다 */
+  let refreshAgain = false;
   let loadingMore = false;
 
   /** 메모리에 든 서버 쪽지를 비운다 */
@@ -107,7 +109,7 @@ export function createServerInbox(o: {
    */
   function sync(): boolean {
     const r = reconcile();
-    if (r.on && !hiding && r.again) void refresh();
+    if (r.on && !hiding && r.again) void refresh(true);
     return r.on;
   }
 
@@ -148,8 +150,12 @@ export function createServerInbox(o: {
     return [...first, ...rest.filter((i) => !seen.has(i.id))];
   };
 
-  async function refresh(): Promise<void> {
-    if (refreshing) return refreshing;
+  async function refresh(rerun = false): Promise<void> {
+    if (refreshing) {
+      // 받는 중에 계정이 바뀌었다: 돌던 받기는 옛 계정 응답을 버리니, 끝난 뒤 한 번 더 받는다
+      if (rerun) refreshAgain = true;
+      return refreshing;
+    }
     const run = async () => {
       try {
         // 서버 모드가 아니면(로그아웃, 만 14세 미만) 담아 둔 서버 쪽지도 비운다: 다른 계정 쪽지가 남아 보이지 않게
@@ -185,6 +191,10 @@ export function createServerInbox(o: {
     // 남아, 서버 모드를 켜기 전에 한 번 불린 뒤로는 쪽지함을 다시 받지 않았다
     refreshing = run().finally(() => {
       refreshing = null;
+      if (refreshAgain) {
+        refreshAgain = false;
+        void refresh();
+      }
     });
     return refreshing;
   }

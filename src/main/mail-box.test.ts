@@ -598,7 +598,7 @@ test('계정이 바뀌어 비운 뒤에는 새 계정 쪽지를 바로 받는다
   assert.equal(mail.all().length, 1);
 });
 
-test('받는 동안 계정이 바뀌면 옛 계정의 응답은 버린다', async () => {
+test('받는 동안 계정이 바뀌면 옛 응답은 버리고, 새 계정 쪽지는 바로 받는다', async () => {
   const mailStore = memoryMail();
   let key = 'A';
   let release: (p: InboxPage) => void = () => {};
@@ -609,9 +609,11 @@ test('받는 동안 계정이 바뀌면 옛 계정의 응답은 버린다', asyn
     inbox: () =>
       ++n === 1
         ? Promise.resolve({ items: [item({ id: 1 })], next: null, unopened: 1 })
-        : new Promise<InboxPage>((r) => {
-            release = r;
-          }),
+        : n === 2
+          ? new Promise<InboxPage>((r) => {
+              release = r;
+            })
+          : Promise.resolve({ items: [item({ id: 3 })], next: null, unopened: 1 }),
   } as unknown as ServerCore;
   const inbox = createServerInbox({
     core: () => core,
@@ -634,6 +636,8 @@ test('받는 동안 계정이 바뀌면 옛 계정의 응답은 버린다', asyn
   await slow;
   await tick();
   assert.equal(mailStore.get('inbox:2'), undefined, '옛 계정 응답이 저장됐다');
+  assert.ok(mailStore.get('inbox:3'), '새 계정 쪽지를 받지 않았다');
+  assert.equal(mailStore.get('inbox:1'), undefined, '앞 계정 쪽지가 남았다');
 });
 
 test('계정 코드가 아직 없는 동안에는 서버 쪽지를 지우지 않고 숨기기만 하고, 코드가 오면 판정한다', async () => {
