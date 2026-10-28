@@ -365,6 +365,13 @@ export function PetTab({ snap, setSnap, update, flash }: TabProps) {
           on={s.dailyNotes}
           onChange={(v) => update({ dailyNotes: v })}
         />
+        <Toggle
+          label={t('settings.eveningNotes')}
+          hint={t('settings.eveningNotesHint')}
+          on={s.eveningNotes}
+          disabled={!s.dailyNotes}
+          onChange={(v) => update({ eveningNotes: v })}
+        />
       </Section>
       <Section id="pet-performance" title={t('settings.pet.performance')}>
         <Toggle

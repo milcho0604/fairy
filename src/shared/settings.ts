@@ -231,6 +231,8 @@ export interface Settings {
   typeAlong: boolean;
   /** 매일 쪽지 (2026-10-11, 기본 켬): 하루 한 번 펫이 이 컴퓨터 기록으로 쓴 쪽지를 들고 온다 (shared/daily-note.ts) */
   dailyNotes: boolean;
+  /** 저녁 쪽지 (기본 끔): 밤 9시 뒤 오늘 한 일을 돌아보는 쪽지 한 통 (shared/daily-note.ts) */
+  eveningNotes: boolean;
 }
 
 /** 보관한 사진 펫. 파일은 pets/ 안 */
@@ -530,6 +532,7 @@ export const DEFAULT_SETTINGS: Settings = {
   illustEngine: 'cloud',
   typeAlong: true,
   dailyNotes: true,
+  eveningNotes: false,
 };
 
 /** 설정 초기화에서 사용자 콘텐츠와 선택한 페어리를 남긴다. */
@@ -781,6 +784,7 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     illustEngine: illustEngineOf(r.illustEngine) ?? base.illustEngine,
     typeAlong: bool(r.typeAlong, base.typeAlong),
     dailyNotes: bool(r.dailyNotes, base.dailyNotes),
+    eveningNotes: bool(r.eveningNotes, base.eveningNotes),
     ...bodiesOf(r, base),
     petKindNames: kindNamesOf(r.petKindNames, base.petKindNames),
     ...(typeof r.skipVersion === 'string' && /^\d+\.\d+\.\d+/.test(r.skipVersion)

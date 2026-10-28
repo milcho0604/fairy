@@ -53,7 +53,10 @@ export const ko = {
   'settings.typeAlongResting': '배터리 절약 중이라 지금은 쉬고 있어. 절약이 끝나면 다시 같이 타자 쳐.',
   'settings.dailyNotes': '매일 쪽지',
   'settings.dailyNotesHint':
-    '하루 한 번, 9시 뒤 처음 자리에 있을 때 페어리가 쪽지를 들고 와. 이 컴퓨터의 기록으로만 써. 함께한 7일, 30일, 100일, 1년에는 특별한 편지.',
+    '하루 한 번, 9시 뒤 처음 자리에 있을 때 페어리가 쪽지를 들고 와. 이 컴퓨터의 기록으로만 써. 함께한 7일, 30일, 50일, 100일, 200일, 1년에는 특별한 편지, 월요일에는 지난주를 돌아보는 주간 편지.',
+  'settings.eveningNotes': '저녁 쪽지',
+  'settings.eveningNotesHint':
+    '밤 9시 뒤 자리에 있을 때, 오늘 한 일을 돌아보는 쪽지를 한 통 더 들고 와. 매일 쪽지가 켜져 있어야 해.',
   'pet.menu.typeAlong': '같이 타자 치기',
 
   // ---- 같이 일하는 표정 ----
@@ -101,17 +104,45 @@ export const ko = {
   // ---- 쪽지 줄 (성격 말투) ----
   'note.open': (v: Name) =>
     P(v.p, {
-      friend: V(v.v, ['좋은 아침! 오늘도 반가워.', '안녕, 나 왔어!', '오늘도 같이 힘내 보자!']),
+      friend: V(v.v, [
+        '좋은 아침! 오늘도 반가워.',
+        '안녕, 나 왔어!',
+        '오늘도 같이 힘내 보자!',
+        '좋은 아침이야. 오늘 쪽지 왔어!',
+        '일어났구나! 오늘도 같이 시작해 보자.',
+        '쪽지 배달 왔어. 천천히 읽어 줘.',
+        '오늘 하루는 어떤 날이 될까? 궁금해서 먼저 왔어.',
+        '안녕! 오늘도 네 하루 곁에서 응원할게.',
+      ]),
       polite: V(v.v, [
         '좋은 아침이에요. 오늘도 반가워요.',
         '안녕하세요, 오늘 쪽지예요.',
         '오늘 하루도 잘 부탁드려요.',
+        '오늘의 쪽지가 도착했어요.',
+        '일어나셨네요! 오늘도 함께 시작해요.',
+        '쪽지 배달 왔어요. 천천히 읽어 주세요.',
+        '오늘 하루는 어떤 날이 될까요? 궁금해서 먼저 왔어요.',
+        '안녕하세요! 오늘도 하루 곁에서 응원할게요.',
       ]),
-      tsundere: V(v.v, ['딱히 쓰고 싶어서 쓴 건 아니야.', '흥, 오늘도 왔네.', '읽어 주면... 조금 기쁠지도.']),
+      tsundere: V(v.v, [
+        '딱히 쓰고 싶어서 쓴 건 아니야.',
+        '흥, 오늘도 왔네.',
+        '읽어 주면... 조금 기쁠지도.',
+        '쪽지 왔어. 읽든 말든 네 맘이야.',
+        '...일어났네. 오늘도 시작하는 거지?',
+        '배달 왔거든. 안 읽으면 삐질 거야.',
+        '오늘이 어떤 날일지... 궁금한 건 아니고.',
+        '또 왔어. 심심해서 온 거지, 다른 이유는 없어.',
+      ]),
       calm: V(v.v, [
         '좋은 아침. 오늘 하루를 같이 열어 보자.',
         '안녕. 잠깐 숨 고르고 읽어 줘.',
         '오늘도 천천히 가 보자.',
+        '오늘 쪽지가 도착했어. 천천히 읽어 보자.',
+        '일어났구나. 오늘 하루를 차분히 열어 보자.',
+        '쪽지 한 장 두고 갈게. 편할 때 읽어 줘.',
+        '오늘은 어떤 하루가 될지 같이 지켜보자.',
+        '안녕. 오늘도 네 하루 곁에 있을게.',
       ]),
     }),
   'note.yesterday': (v: N) =>
@@ -179,14 +210,46 @@ export const ko = {
     }),
   'note.close': (v: Pv) =>
     P(v.p, {
-      friend: V(v.v, ['오늘도 옆에 있을게!', '힘들면 나 쓰다듬어 줘.', '오늘도 파이팅!']),
-      polite: V(v.v, ['오늘도 곁에 있을게요.', '필요하시면 언제든 불러 주세요.', '좋은 하루 보내세요.']),
+      friend: V(v.v, [
+        '오늘도 옆에 있을게!',
+        '힘들면 나 쓰다듬어 줘.',
+        '오늘도 파이팅!',
+        '오늘 저녁에 또 만나자!',
+        '너무 무리하지는 마.',
+        '작은 것 하나만 끝내도 대성공이야.',
+        '필요하면 언제든 불러!',
+        '오늘도 잘 부탁해!',
+      ]),
+      polite: V(v.v, [
+        '오늘도 곁에 있을게요.',
+        '필요하시면 언제든 불러 주세요.',
+        '좋은 하루 보내세요.',
+        '저녁에 또 뵈어요.',
+        '너무 무리하지 마세요.',
+        '작은 것 하나만 끝내셔도 대성공이에요.',
+        '부르시면 바로 달려올게요.',
+        '오늘도 잘 부탁드려요.',
+      ]),
       tsundere: V(v.v, [
         '...그럼 이만. 흥.',
         '힘들면 말해. 들어는 줄게.',
         '오늘도 지켜볼 거야. 딱히 걱정돼서는 아니고.',
+        '...저녁에 또 보자. 늦지 말고.',
+        '무리하면 알아서 해. 말리진 않을게. 아니, 말릴 거야.',
+        '하나만 끝내도 인정해 줄게.',
+        '부르면... 가 줄 수도 있어.',
+        '그럼 잘 해 봐. 지켜볼 거야.',
       ]),
-      calm: V(v.v, ['서두르지 말고, 하나씩.', '쉬는 것도 잊지 마.', '오늘도 같이 있을게.']),
+      calm: V(v.v, [
+        '서두르지 말고, 하나씩.',
+        '쉬는 것도 잊지 마.',
+        '오늘도 같이 있을게.',
+        '저녁에 다시 이야기하자.',
+        '무리하지 않는 것도 실력이야.',
+        '하나만 끝내도 충분해.',
+        '필요하면 언제든 불러.',
+        '오늘도 차분히, 하나씩.',
+      ]),
     }),
   // 특별한 편지
   'note.special.open': (v: N) =>
@@ -227,7 +290,10 @@ export const en: Translation<typeof ko> = {
     'Paused while battery saver is on. It will type along again when power saving ends.',
   'settings.dailyNotes': 'Daily notes',
   'settings.dailyNotesHint':
-    'Once a day, the first time you are around after 9:00, your fairy brings a note written only from what is on this computer. Special letters on day 7, 30, 100 and 365.',
+    'Once a day, the first time you are around after 9:00, your fairy brings a note written only from what is on this computer. Special letters on day 7, 30, 50, 100, 200 and 365, and a weekly letter on Mondays looking back on last week.',
+  'settings.eveningNotes': 'Evening notes',
+  'settings.eveningNotesHint':
+    "After 9 PM, when you're around, your fairy brings one more note looking back on what you did today. Daily notes need to be on.",
   'pet.menu.typeAlong': 'Type along',
 
   'together.work': (v: Pv) =>
@@ -270,21 +336,45 @@ export const en: Translation<typeof ko> = {
 
   'note.open': (v: Name) =>
     P(v.p, {
-      friend: V(v.v, ['Good morning! Happy to see you.', "Hi, it's me!", "Let's make today a good one!"]),
+      friend: V(v.v, [
+        'Good morning! Happy to see you.',
+        "Hi, it's me!",
+        "Let's make today a good one!",
+        "Good morning! Today's note is here.",
+        "You're up! Let's start today together.",
+        'Special delivery. Read it whenever you like.',
+        "I wonder what kind of day it'll be. Had to come say hi first.",
+        "Hi! I'll be cheering you on all day.",
+      ]),
       polite: V(v.v, [
         'Good morning. Lovely to see you.',
         "Hello, here is today's note.",
         'Looking forward to today with you.',
+        "Today's note has arrived.",
+        "You're up! Shall we begin the day together?",
+        'A note for you. Please read it at your leisure.',
+        'I wonder what kind of day today will be. I came by to ask.',
+        "Hello! I'll be cheering for you all day.",
       ]),
       tsundere: V(v.v, [
         "It's not like I wanted to write this.",
         'Hmph, you came again.',
         'If you read it... I might be a little happy.',
+        "Note's here. Read it or don't, your call.",
+        "...You're up. We're starting today, right?",
+        "Delivery. Don't read it and I'll sulk.",
+        "I wonder what today will be like... not that I'm curious.",
+        "Back again. Bored, that's all. No other reason.",
       ]),
       calm: V(v.v, [
         "Good morning. Let's open the day together.",
         'Hello. Take a breath and read this.',
         "Let's take today slowly.",
+        "Today's note has arrived. Let's read it slowly.",
+        "You're up. Let's open the day calmly.",
+        "I'll leave a note here. Read it when you're ready.",
+        "Let's see together what kind of day this becomes.",
+        "Hello. I'll be by your side again today.",
       ]),
     }),
   'note.yesterday': (v: N) =>
@@ -352,14 +442,46 @@ export const en: Translation<typeof ko> = {
     }),
   'note.close': (v: Pv) =>
     P(v.p, {
-      friend: V(v.v, ["I'll be right here today!", 'If it gets hard, give me a pat.', 'You got this!']),
-      polite: V(v.v, ["I'll be right beside you.", 'Call me anytime you need me.', 'Have a lovely day.']),
+      friend: V(v.v, [
+        "I'll be right here today!",
+        'If it gets hard, give me a pat.',
+        'You got this!',
+        'See you this evening!',
+        "Don't push yourself too hard.",
+        'Finishing even one small thing is a big win.',
+        'Call me anytime you need me!',
+        'Counting on you today!',
+      ]),
+      polite: V(v.v, [
+        "I'll be right beside you.",
+        'Call me anytime you need me.',
+        'Have a lovely day.',
+        "I'll see you again this evening.",
+        "Please don't overdo it.",
+        'Finishing even one small thing is a great success.',
+        'Please call on me any time.',
+        'Wishing you a productive day.',
+      ]),
       tsundere: V(v.v, [
         '...That is all. Hmph.',
         "If it's tough, tell me. I'll listen.",
         "I'll be watching. Not because I'm worried.",
+        "...See you tonight. Don't be late.",
+        "Overdo it and it's on you. I won't stop you. No, I will.",
+        "Finish just one and I'll give you credit.",
+        'Call me and... I might come.',
+        "Good luck then. I'll be watching.",
       ]),
-      calm: V(v.v, ['No rush. One thing at a time.', "Don't forget to rest.", "I'll be with you today."]),
+      calm: V(v.v, [
+        'No rush. One thing at a time.',
+        "Don't forget to rest.",
+        "I'll be with you today.",
+        "Let's talk again this evening.",
+        'Not overdoing it is a skill too.',
+        'Even one thing finished is enough.',
+        'Call me whenever you need.',
+        'Calmly again today, one by one.',
+      ]),
     }),
   'note.special.open': (v: N) =>
     P(v.p, {

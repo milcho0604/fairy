@@ -7,6 +7,7 @@ import { pickLocal } from '../shared/ai/catalog.ts';
 import { contextEvents, todayRange } from '../shared/ai/context-events.ts';
 import { persona, setMemorySource, setStyleSource, todoContext } from '../shared/ai/persona.ts';
 import { cutText } from '../shared/cut-text.ts';
+import { plusDays } from '../shared/day.ts';
 import { aiEventFilter } from '../shared/event-store.ts';
 import { HIDE_SEEK, pickHideSpot } from '../shared/hide-seek.ts';
 import { panelTarget, reopenTarget } from '../shared/home-policy.ts';
@@ -1758,6 +1759,16 @@ ready
             : {}),
           ...(habit && habit.streak >= 2 ? { habit: { title: habit.title, streak: habit.streak } } : {}),
           facts: settings.get().petFacts,
+          yesterdayFocusMin: Math.round(stats.diaryFacts([plusDays(localDay(now), -1)])[0]?.focusMin ?? 0),
+          streak: companion.memoryFacts(now).streak ?? 0,
+        };
+      },
+      // 주간 편지와 저녁 쪽지: 그 날짜들에 끝낸 할 일 수와 집중한 분
+      totals: (days) => {
+        const rows = stats.diaryFacts(days);
+        return {
+          done: rows.reduce((n, r) => n + r.done, 0),
+          focusMin: rows.reduce((n, r) => n + r.focusMin, 0),
         };
       },
       canTalk,

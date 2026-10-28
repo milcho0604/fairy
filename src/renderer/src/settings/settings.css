@@ -1921,5 +1921,7 @@ textarea.rules {
 }
 
 .lines-row .lines-mute {
+  align-self: flex-start;
   justify-self: start;
+  padding-left: 0;
 }

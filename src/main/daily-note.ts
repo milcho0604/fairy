@@ -7,16 +7,23 @@ import type { PersonaId } from '../shared/ai/persona.ts';
 import { dayNumber } from '../shared/companion.ts';
 import {
   canDeliver,
+  canDeliverEvening,
+  composeEvening,
   composeNote,
+  composeWeek,
   type DailyNote,
   fileNote,
   heldNote,
+  lastWeekDays,
   markRead,
   milestoneDue,
   NOTE_REASON,
   type NoteFacts,
   type NoteState,
+  noteId,
   parseNotes,
+  recentVariants,
+  weekLetterDue,
 } from '../shared/daily-note.ts';
 import { t } from '../shared/i18n/index.ts';
 import type { ReactKind } from '../shared/ipc.ts';
@@ -39,11 +46,19 @@ const PRESENT_SEC = 60;
 /** 쪽지를 쓸 때 부르는 쪽이 알려 주는 이 컴퓨터 기록 */
 export type NoteSource = (now: number) => Omit<NoteFacts, 'day' | 'persona' | 'petName' | 'milestone'>;
 
+/** 주간 편지와 저녁 쪽지에 쓰는 이 컴퓨터 기록 (days: 그 날짜들의 합) */
+export interface DayTotals {
+  done: number;
+  focusMin: number;
+}
+
 export interface DailyNoteOptions {
   petName: () => string;
   persona: () => PersonaId;
   facts: NoteSource;
   firstDay: () => string | null;
+  /** 날짜들에 끝낸 할 일 수와 집중한 분의 합 */
+  totals: (days: readonly string[]) => DayTotals;
   /** 말을 걸어도 되는 때 (숨거나 집중, 노는 중이 아니고 펫이 한가하다) */
   canTalk: () => boolean;
   say: (o: SayOptions) => Promise<string | undefined>;
@@ -94,12 +109,17 @@ export function createDailyNotes(o: DailyNoteOptions) {
 
   function view(n: DailyNote): NoteView {
     const [, m, d] = n.day.split('-').map(Number);
+    const date = { m: m ?? 1, d: d ?? 1 };
     return {
-      day: n.day,
+      day: noteId(n),
       look: n.look,
       title: n.milestone
         ? t('note.letterTitle', { n: n.milestone })
-        : t('note.title', { m: m ?? 1, d: d ?? 1 }),
+        : n.kind === 'week'
+          ? t('note.weekTitle', date)
+          : n.kind === 'evening'
+            ? t('note.eveningTitle', date)
+            : t('note.title', date),
       // 프리셋 말투, 내 말투면 지금 말투 규칙을 입힌다
       lines: n.lines.map((l) => styled(looseT(l.key, l.vars))),
       read: n.read,
@@ -116,14 +136,14 @@ export function createDailyNotes(o: DailyNoteOptions) {
   };
 
   /** 읽었다. 특별한 편지는 처음 펼칠 때 코인을 준다. 서버 쪽지면 서버에서 연다 (첨부를 받는다) */
-  function read(day: string, now = Date.now()) {
-    if (extra?.isKey(day)) {
-      void extra.open(day);
+  function read(id: string, now = Date.now()) {
+    if (extra?.isKey(id)) {
+      void extra.open(id);
       return undefined;
     }
-    const n = state.box.find((x) => x.day === day);
+    const n = state.box.find((x) => noteId(x) === id);
     if (!n || n.read) return n;
-    state = markRead(state, day);
+    state = markRead(state, id);
     save();
     if (n.coins) {
       o.reward(n.coins, NOTE_REASON, now);
@@ -136,14 +156,17 @@ export function createDailyNotes(o: DailyNoteOptions) {
   }
 
   /** 펼친다 (펫을 누르거나 "펼쳐 보기"). 쪽지 모양 말풍선으로. 오늘 쪽지가 없으면 서버 쪽지 */
-  async function open(day = today()): Promise<void> {
-    const n = state.box.find((x) => x.day === day);
+  async function open(id?: string): Promise<void> {
+    // 열쇠를 안 주면 펫이 들고 있는 것(오늘 안 읽은 쪽지), 없으면 오늘 매일 쪽지
+    const n = id
+      ? state.box.find((x) => noteId(x) === id)
+      : (heldNote(state, today()) ?? state.box.find((x) => x.day === today() && x.kind !== 'evening'));
     if (!n || (n.read && extra?.holding())) {
       if (extra?.holding()) await extra.openNext();
       return;
     }
     const fresh = !n.read;
-    read(day);
+    read(noteId(n));
     const v = view(n);
     if (fresh) o.react(n.look === 'letter' ? 'cheer' : 'happy');
     const a = await o.say({
@@ -162,55 +185,105 @@ export function createDailyNotes(o: DailyNoteOptions) {
   /** 오늘 쪽지를 쓴다. 이미 있으면 그것 */
   function write(now = Date.now()): DailyNote {
     const day = today(now);
-    const have = state.box.find((n) => n.day === day);
+    const have = state.box.find((n) => n.day === day && n.kind !== 'evening');
     if (have) return have;
     const first = o.firstDay();
     const days = first ? dayNumber(first, day) : 0;
     const milestone = milestoneDue(days, state.marks);
-    const note = composeNote({
-      ...o.facts(now),
-      day,
-      persona: o.persona(),
-      petName: o.petName(),
-      ...(milestone ? { milestone } : {}),
-    });
+    const recent = recentVariants(state);
+    // 월요일(못 만났으면 수요일까지)에는 지난주를 돌아보는 주간 편지가 그날 쪽지다. 특별한 편지가 있는 날은 그것이 먼저
+    const week = !milestone && weekLetterDue(state, day);
+    const note = week
+      ? composeWeek(
+          (() => {
+            const total = o.totals(lastWeekDays(day));
+            return {
+              day,
+              persona: o.persona(),
+              petName: o.petName(),
+              lastWeekDone: total.done,
+              lastWeekFocusMin: total.focusMin,
+            };
+          })(),
+          Math.random,
+          recent,
+        )
+      : composeNote(
+          {
+            ...o.facts(now),
+            day,
+            persona: o.persona(),
+            petName: o.petName(),
+            ...(milestone ? { milestone } : {}),
+          },
+          Math.random,
+          recent,
+        );
     state = fileNote(state, note);
     save();
-    o.log('note', '씀', note.look, milestone ?? '');
+    o.log('note', '씀', note.kind ?? note.look, milestone ?? '');
+    return note;
+  }
+
+  /** 오늘 저녁 쪽지를 쓴다. 이미 있으면 그것 */
+  function writeEvening(now = Date.now()): DailyNote {
+    const day = today(now);
+    const have = state.box.find((n) => n.day === day && n.kind === 'evening');
+    if (have) return have;
+    const total = o.totals([day]);
+    const note = composeEvening(
+      { day, persona: o.persona(), petName: o.petName(), doneToday: total.done, focusMin: total.focusMin },
+      Math.random,
+      recentVariants(state),
+    );
+    state = fileNote(state, note);
+    save();
+    o.log('note', '씀', 'evening');
     return note;
   }
 
   let bringing = false;
-  /** 때가 되면 들고 온다 (하루 한 번) */
+  /** 때가 되면 들고 온다: 매일 쪽지(월요일은 주간 편지)는 하루 한 번, 저녁 쪽지는 켠 사람만 밤 9시 뒤 한 번 */
   async function check(now = Date.now(), force = false) {
     syncHold(now);
     if (bringing || !settings.get().dailyNotes) return;
     const d = new Date(now);
-    const ok = canDeliver(state, {
+    const gate = {
       day: today(now),
       minute: d.getHours() * 60 + d.getMinutes(),
       present: powerMonitor.getSystemIdleTime() < PRESENT_SEC,
       calm: o.canTalk(),
-    });
-    if (!force && (!ok || now - bootAt < AFTER_START_MS)) return;
+    };
+    if (!force && now - bootAt < AFTER_START_MS) return;
+    const daily = force || canDeliver(state, gate);
+    const evening = !daily && canDeliverEvening(state, { ...gate, on: settings.get().eveningNotes });
+    if (!daily && !evening) return;
     bringing = true;
     try {
-      const note = write(now);
+      const note = daily ? write(now) : writeEvening(now);
       syncHold(now);
       push();
       // 조용히면 말없이 들고만 있다. 아니면 한마디 (상태 알림이라 수다 빈도를 따른다)
       if (settings.get().chatter === 'quiet') return;
       const vars = { p: basePersonaOf(o.persona()), name: o.petName() };
+      const key =
+        note.kind === 'week'
+          ? 'note.bringWeek'
+          : note.kind === 'evening'
+            ? 'note.bringEvening'
+            : note.look === 'letter'
+              ? 'note.bringLetter'
+              : 'note.bring';
       const a = await o.say({
         kind: 'system',
-        text: styled(t(note.look === 'letter' ? 'note.bringLetter' : 'note.bring', vars)),
+        text: styled(t(key, vars)),
         buttons: [
           { id: 'open', label: t('note.openNow') },
           { id: 'later', label: t('note.later') },
         ],
         ttlMs: 15_000,
       });
-      if (a === 'open') await open(note.day);
+      if (a === 'open') await open(noteId(note));
     } finally {
       bringing = false;
     }
@@ -253,6 +326,35 @@ export function createDailyNotes(o: DailyNoteOptions) {
       return state;
     },
     /** 개발용: 오늘 쪽지를 지우고 다시 들고 오게 한다. milestone 을 주면 그날 편지로 */
+    /** 개발용: 저녁 쪽지를 지금 쓴다 (밤 9시를 기다리지 않는다) */
+    debugEvening() {
+      const day = today();
+      state = { ...state, box: state.box.filter((n) => !(n.day === day && n.kind === 'evening')) };
+      writeEvening();
+      syncHold();
+      push();
+      return open(`${day}~e`);
+    },
+    /** 개발용: 오늘 쪽지를 주간 편지로 바꿔 다시 쓴다 */
+    debugWeek() {
+      const day = today();
+      state = { ...state, box: state.box.filter((n) => !(n.day === day && n.kind !== 'evening')) };
+      const total = o.totals(lastWeekDays(day));
+      state = fileNote(
+        state,
+        composeWeek({
+          day,
+          persona: o.persona(),
+          petName: o.petName(),
+          lastWeekDone: total.done,
+          lastWeekFocusMin: total.focusMin,
+        }),
+      );
+      save();
+      syncHold();
+      push();
+      return open(day);
+    },
     debugBring(milestone?: number) {
       const day = today();
       state = { ...state, box: state.box.filter((n) => n.day !== day) };

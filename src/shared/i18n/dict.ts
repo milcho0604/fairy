@@ -28,6 +28,7 @@ import * as keep from './keep.ts';
 import * as linesMore from './lines-more.ts';
 import * as main from './main.ts';
 import * as maker from './maker.ts';
+import * as noteMore from './note-more.ts';
 import * as notice from './notice.ts';
 import * as onboarding from './onboarding.ts';
 import * as ops from './ops.ts';
@@ -111,6 +112,7 @@ export const ko = {
   ...rows.ko,
   ...linesMore.ko,
   ...voiceMore.ko,
+  ...noteMore.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -168,4 +170,5 @@ export const en: Translation<typeof ko> = {
   ...rows.en,
   ...linesMore.en,
   ...voiceMore.en,
+  ...noteMore.en,
 };
