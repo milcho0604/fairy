@@ -202,8 +202,29 @@
   font-size: 12px;
 }
 
-.friends-titleshare input {
+.friends-titleshare input,
+.friends-visit input {
   accent-color: var(--accent);
+}
+
+.friends-visitbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.friends-visitbar .friends-note {
+  flex-basis: 100%;
+  overflow-wrap: anywhere;
+}
+
+.friends-visit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
 }
 
 .friends-titleshare {

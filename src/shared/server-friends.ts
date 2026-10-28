@@ -17,6 +17,10 @@ export interface FriendItem extends FriendPerson {
   theyShare: boolean;
   /** 이 친구가 마지막으로 일정을 올린 때 (보여 줄 때만) */
   busyAt: string | null;
+  /** 내가 이 친구에게 내 펫이 놀러 가도 된다고 켰다 (#141) */
+  iVisit: boolean;
+  /** 이 친구가 나에게 자기 펫이 놀러 와도 된다고 켰다 */
+  theyVisit: boolean;
   /** 둘 다 만 18세 이상이라 일정 제목 공유를 켤 수 있다 (14~17세는 바쁜 시간만) */
   canTitle: boolean;
   /** 내가 이 친구에게 일정 제목까지 보여 준다 */
@@ -68,11 +72,20 @@ export interface FriendsState {
   passGifts: boolean;
   /** 서버가 일정 공유를 켜 줬다 (friend_calendar) */
   calendar: boolean;
+  /** 서버가 펫 놀러 가기를 켜 줬다 (friend_visit). 꺼졌으면 친구 줄의 스위치를 숨긴다 */
+  visit: boolean;
+  /** 내 펫이 앱에 든 그림이 아니라 친구 화면에는 대역으로 간다 (사진, 직접 만든 그림) */
+  visitCustom: boolean;
   /** 지금 코인 잔액과 채팅 이용권 (서버 사본). 모르면 null */
   balance: number | null;
   passes: number | null;
   /** 초대 링크로 열어 미리 넣어 둔 친구 코드 (fairy://friend/<코드>) */
   prefill: string | null;
+}
+
+/** 놀러 올 친구 펫 카드 (서버 GET /v1/friends/visits). 그림 파일은 없다: 종류 id 와 이름뿐 */
+export interface VisitorCard extends FriendPerson {
+  pet: { species: string; name: string | null; stand: boolean };
 }
 
 /** 친구의 바쁜 시간대 (시작, 끝 ms). 제목은 없다 */
@@ -93,6 +106,13 @@ export interface BusyView {
   updatedAt: string | null;
 }
 
+/** 손님 방문 요약 (설정 친구 칸 머리말) */
+export interface VisitInfo {
+  today: number;
+  max: number;
+  paused: boolean;
+}
+
 export type FriendResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
 
 export const FRIENDS = {
@@ -109,6 +129,9 @@ export const FRIENDS = {
   share: 'friends:share',
   shareTitle: 'friends:share-title',
   busy: 'friends:busy',
+  visit: 'friends:visit',
+  visitInfo: 'friends:visit-info',
+  visitPause: 'friends:visit-pause',
   copyCode: 'friends:copy-code',
   copyLink: 'friends:copy-link',
   clearPrefill: 'friends:clear-prefill',
@@ -132,6 +155,12 @@ export interface FriendsBridge {
   /** 이 친구에게 일정 제목도 보여 주기 (둘 다 만 18세 이상, 바쁜 시간을 보여 주는 중일 때만) */
   shareTitle(code: string, on: boolean): Promise<FriendResult>;
   busy(code: string): Promise<FriendResult<BusyView>>;
+  /** 이 친구에게 내 펫 놀러 가기 켜고 끄기 (#141) */
+  visit(code: string, on: boolean): Promise<FriendResult>;
+  /** 오늘 놀러 온 횟수와 "오늘은 그만" 상태 (손님 창을 맡은 메인이 답한다) */
+  visitInfo(): Promise<VisitInfo | undefined>;
+  /** "오늘은 그만" 켜고 끄기 */
+  visitPause(on: boolean): Promise<VisitInfo | undefined>;
   copyCode(): Promise<boolean>;
   copyLink(): Promise<boolean>;
   clearPrefill(): void;

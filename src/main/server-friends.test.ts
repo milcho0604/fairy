@@ -462,3 +462,204 @@ test('제목 있는 일정을 날마다 나눈다 (자정을 넘으면 두 날�
   assert.deepEqual(days[1]?.items, [{ from: 0, to: 60, title: '야식' }]);
   assert.deepEqual(days[2]?.items, []);
 });
+
+// ---- 펫 놀러 가기 (#141) ----
+
+const VISIT_LIST = (iVisit: boolean, theyVisit = false) => ({
+  ok: true,
+  status: 200,
+  data: {
+    ...LIST.data,
+    friends: [
+      {
+        code: 'F-0000-1111',
+        nickname: '콩',
+        since: '2026-10-16T00:00:00Z',
+        iShare: false,
+        theyShare: false,
+        iVisit,
+        theyVisit,
+        busyAt: null,
+      },
+    ],
+  },
+});
+
+const CARD = { species: 'kind:cat', name: '나비', stand: false } as const;
+const visitDeps = (core: ServerCore, now: () => number) => ({
+  core: () => core,
+  events: () => [],
+  now,
+  card: () => CARD,
+  onChange: () => {},
+  log: () => {},
+});
+
+test('펫 카드: 놀러 갈 친구가 없으면 아무것도 올리지 않고, 켠 친구가 있으면 종류와 이름만 올리고, 내용이 같으면 6시간 뒤에야 다시 올린다', async () => {
+  const none = fakeCore({
+    features: { friends: true, friend_visit: true },
+    replies: { friends: VISIT_LIST(false) },
+  });
+  let now = T0;
+  const a = createServerFriends(visitDeps(none.core, () => now));
+  await a.refresh();
+  await a.uploadCard();
+  assert.equal(none.calls.filter((c) => c.startsWith('visitCard')).length, 0);
+
+  const f = fakeCore({
+    features: { friends: true, friend_visit: true },
+    replies: { friends: VISIT_LIST(true) },
+  });
+  const friends = createServerFriends(visitDeps(f.core, () => now));
+  await friends.refresh();
+  assert.equal(friends.state().visit, true);
+  await friends.uploadCard();
+  const ups = () => f.calls.filter((c) => c.startsWith('visitCard'));
+  assert.equal(ups().length, 1);
+  assert.equal(ups()[0], `visitCard [${JSON.stringify(CARD)}]`);
+  assert.ok(!/data:|\.png|image/i.test(ups()[0] ?? ''));
+  await friends.uploadCard();
+  assert.equal(ups().length, 1, '같은 내용이라 다시 올리지 않는다');
+  now += 6 * 3600_000 + 1;
+  await friends.uploadCard();
+  assert.equal(ups().length, 2);
+});
+
+test('놀러 가기 켜기: 서버 호출 뒤 목록을 받고 카드를 바로 올린다. 끄면 카드는 올리지 않는다', async () => {
+  const f = fakeCore({
+    features: { friends: true, friend_visit: true },
+    replies: { friends: VISIT_LIST(true) },
+  });
+  const friends = createServerFriends(visitDeps(f.core, () => T0));
+  assert.deepEqual(await friends.visit('F-0000-1111', true), { ok: true, data: undefined });
+  assert.ok(
+    f.calls.some((c) => c === 'friendVisit ["F-0000-1111",true]'),
+    f.calls.join('\n'),
+  );
+  assert.equal(f.calls.filter((c) => c.startsWith('visitCard')).length, 1);
+  const off = fakeCore({
+    features: { friends: true, friend_visit: true },
+    replies: { friends: VISIT_LIST(false) },
+  });
+  const g = createServerFriends(visitDeps(off.core, () => T0));
+  await g.visit('F-0000-1111', false);
+  assert.ok(off.calls.some((c) => c === 'friendVisit ["F-0000-1111",false]'));
+  assert.equal(off.calls.filter((c) => c.startsWith('visitCard')).length, 0);
+});
+
+test('기능 키(friend_visit)가 꺼졌으면 스위치를 숨기고 카드도 손님 목록도 부르지 않는다', async () => {
+  const f = fakeCore({ features: { friends: true }, replies: { friends: VISIT_LIST(true, true) } });
+  const friends = createServerFriends(visitDeps(f.core, () => T0));
+  await friends.refresh();
+  assert.equal(friends.state().visit, false);
+  await friends.uploadCard(true);
+  assert.equal(await friends.visitors(), undefined);
+  assert.deepEqual(
+    f.calls.filter((c) => !c.startsWith('friends')),
+    [],
+  );
+});
+
+test('서버가 꺼졌거나(offline) 업데이트 관문(update)에 막혔으면 조용히 쉰다: 손님 목록을 부르지 않는다', async () => {
+  for (const problem of ['offline', 'update', 'server']) {
+    const f = fakeCore({
+      features: { friends: true, friend_visit: true },
+      replies: { friends: VISIT_LIST(true, true) },
+    });
+    const friends = createServerFriends(visitDeps(f.core, () => T0));
+    await friends.refresh();
+    assert.equal(friends.visitQuiet(), false);
+    (f.status as { problem: string | null }).problem = problem;
+    assert.equal(friends.visitQuiet(), true, problem);
+    assert.equal(await friends.visitors(), undefined, problem);
+    assert.equal(f.calls.filter((c) => c.startsWith('visits')).length, 0, problem);
+  }
+});
+
+test('손님 목록: 모양이 틀린 카드(모르는 종류 모양, 긴 이름)는 버리고, 아는 모양은 받는다. 서로 켠 친구가 없으면 mutualVisit 가 거짓', async () => {
+  const f = fakeCore({
+    features: { friends: true, friend_visit: true },
+    replies: {
+      friends: VISIT_LIST(true, true),
+      visits: {
+        ok: true,
+        status: 200,
+        data: [
+          { code: 'F-0000-1111', nickname: '콩', pet: { species: 'kind:cat', name: '나비', stand: false } },
+          { code: 'F-0000-2222', nickname: '둘', pet: { species: 'starter:milk', name: null, stand: true } },
+        ],
+      },
+    },
+  });
+  const friends = createServerFriends(visitDeps(f.core, () => T0));
+  await friends.refresh();
+  assert.equal(friends.mutualVisit(), true);
+  assert.equal((await friends.visitors())?.length, 2);
+  const one = friendsListOf(VISIT_LIST(true, false).data as unknown as Record<string, unknown>);
+  assert.equal(one?.friends[0]?.theyVisit, false);
+  const old = friendsListOf({
+    ...LIST.data,
+    friends: [{ code: 'F-0000-1111', since: '2026-10-16T00:00:00Z' }],
+  });
+  assert.equal(old?.friends[0]?.iVisit, false, '옛 서버는 칸이 없으니 꺼짐');
+});
+
+test('로그아웃 전 stopVisit 는 서버의 카드를 지우는 호출을 하고 다음 올리기를 다시 시작하게 한다', async () => {
+  const f = fakeCore({
+    features: { friends: true, friend_visit: true },
+    replies: { friends: VISIT_LIST(true) },
+  });
+  const friends = createServerFriends(visitDeps(f.core, () => T0));
+  await friends.refresh();
+  await friends.stopVisit();
+  assert.ok(f.calls.some((c) => c.startsWith('visitStop')));
+});
+
+test('로그아웃 때 카드를 못 지우면 표시를 남기고, 다음에 같은 계정으로 연결되면 다시 지운다. 다른 계정이면 표시만 버린다', async () => {
+  let mark: string | null = null;
+  const cleanup = {
+    get: () => mark,
+    set: (c: string | null) => {
+      mark = c;
+    },
+  };
+  const f = fakeCore({
+    features: { friends: true, friend_visit: true },
+    replies: { friends: VISIT_LIST(true), visitStop: { ok: false, status: 0, error: 'offline', body: {} } },
+  });
+  const friends = createServerFriends({ ...visitDeps(f.core, () => T0), cleanup });
+  await friends.refresh();
+  await friends.stopVisit();
+  assert.equal(mark, 'F-AB12-CD34', '못 지웠으니 표시가 남는다');
+  // 연결이 돌아오면 (같은 계정) 다시 지우고 표시를 거둔다
+  const g = fakeCore({
+    features: { friends: true, friend_visit: true },
+    replies: { friends: VISIT_LIST(true) },
+  });
+  const again = createServerFriends({ ...visitDeps(g.core, () => T0), cleanup });
+  await again.refresh();
+  assert.ok(
+    g.calls.some((c) => c.startsWith('visitStop')),
+    g.calls.join('\n'),
+  );
+  assert.equal(mark, null);
+  assert.equal(again.state().list?.friends[0]?.iVisit, false);
+  // 다른 계정으로 연결되면 지우지 않고 표시만 버린다
+  mark = 'F-ZZZZ-ZZZZ';
+  const h = fakeCore({
+    features: { friends: true, friend_visit: true },
+    replies: { friends: VISIT_LIST(true) },
+  });
+  await createServerFriends({ ...visitDeps(h.core, () => T0), cleanup }).refresh();
+  assert.equal(h.calls.filter((c) => c.startsWith('visitStop')).length, 0);
+  assert.equal(mark, null);
+  // 지웠으면 표시를 남기지 않는다
+  const ok = fakeCore({
+    features: { friends: true, friend_visit: true },
+    replies: { friends: VISIT_LIST(true) },
+  });
+  const clean = createServerFriends({ ...visitDeps(ok.core, () => T0), cleanup });
+  await clean.refresh();
+  await clean.stopVisit();
+  assert.equal(mark, null);
+});

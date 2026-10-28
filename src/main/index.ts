@@ -19,6 +19,7 @@ import { runnerLookOf } from '../shared/menu-runner.ts';
 import { isMiniGame, PLAY_COIN } from '../shared/minigames.ts';
 import { noteTitle } from '../shared/note-store.ts';
 import { setSpeechSource, setVoiceSource, voiced } from '../shared/persona-voice.ts';
+import { cardOf, isCustomPet } from '../shared/pet-card-of.ts';
 import { unlocked, WAVE_AWAY_SEC } from '../shared/pet-life.ts';
 import { DoingSet } from '../shared/pet-status.ts';
 import { starterFigureOf, starterModelOf } from '../shared/pet3d/starters.ts';
@@ -104,6 +105,7 @@ import { createTogether } from './together.ts';
 import { baseTrayIcon, createTray } from './tray.ts';
 import { setTrayTitlePart, watchTrayTitle } from './tray-title.ts';
 import { watchUpdates } from './update.ts';
+import { createVisitors } from './visitors.ts';
 import { createWear } from './wear.ts';
 import { createWeekCard } from './week-card.ts';
 import { createWhatFirst } from './what-first.ts';
@@ -366,6 +368,8 @@ ready
     };
     // 친구 칸이 보이는가 (서버 모드, 로그인, 기능 키). 큰 창 사이드바 "친구"에 쓴다
     let friendsAvailable = false;
+    /** 놀러 온 친구 펫 (아래 server 가 생긴 뒤 붙는다) */
+    let visitors: ReturnType<typeof createVisitors> | undefined;
     let showTrayHideHint: ((message: string, shortMessage: string) => void) | undefined;
     const pet = createPetWindow({
       petName,
@@ -396,6 +400,7 @@ ready
         playmate: () => games.mateName(),
         grabbed: () => pout.grabbed(),
         menuNote: () => pout.menuNote(),
+        visitItems: () => visitors?.menuItems() ?? [],
         focusRunning: () => planner.focus.phase !== 'idle',
         toggleFocus: () => (planner.focus.phase === 'idle' ? planner.startFocus() : planner.stopFocus()),
         openKnows: () => knows.open(),
@@ -435,16 +440,16 @@ ready
       // (예전에는 같이 보기 내내 펫을 숨겼고, 사용자가 숨겨 둔 펫도 끝나면 다시 보였다)
       pets: {
         aim: () => {
-          for (const p of [pet, ...friends.pets()]) p.look('aim');
+          for (const p of [pet, ...friends.pets(), ...(visitors?.pets() ?? [])]) p.look('aim');
         },
         veil: async (on) => {
-          await Promise.all([pet, ...friends.pets()].map((p) => p.veil(on)));
+          await Promise.all([pet, ...friends.pets(), ...(visitors?.pets() ?? [])].map((p) => p.veil(on)));
         },
         found: (target) => {
-          for (const p of [pet, ...friends.pets()]) p.look({ found: target });
+          for (const p of [pet, ...friends.pets(), ...(visitors?.pets() ?? [])]) p.look({ found: target });
         },
         end: () => {
-          for (const p of [pet, ...friends.pets()]) p.look(null);
+          for (const p of [pet, ...friends.pets(), ...(visitors?.pets() ?? [])]) p.look(null);
         },
       },
       onImage: (image) => {
@@ -527,6 +532,7 @@ ready
         friends.reloadAll();
       },
       stats: () => sysMonitor.menuItems(),
+      visitItems: () => visitors?.menuItems() ?? [],
       sysMonitorOn: () => settings.get().sysMonitor,
       setSysMonitor: (on) => settings.set({ sysMonitor: on }),
     });
@@ -1602,9 +1608,29 @@ ready
       },
       // 친구 일정 공유 1차 (#110): 시각 일정의 시작과 끝만 올린다 (제목 없음). 구글 일정은 빼고 직접 넣은 일정만
       friendEvents: (from, to) => events.timedOverlapping(from, to),
+      // 친구 펫 놀러 가기 (#141): 종류 id, 이름, 네 발 서기뿐. 직접 가져온 그림과 사진은 카드에 넣지 않는다 (대역으로)
+      petCard: () => cardOf(settings.get()),
+      customPet: () => isCustomPet(settings.get()),
+      onLogout: () => visitors?.dismiss('logout'),
       log,
     });
     serverCore = server.core;
+    // ---- 놀러 온 친구 펫 (#141, main/visitors.ts): 서로 켠 친구의 카드를 받아 손님 창을 잠깐 띄운다 ----
+    visitors = createVisitors({
+      mainPet: () => pet,
+      friends: server.friends,
+      friendCount: () => friends.count,
+      busy: () => ({ focus: planner.focus.phase === 'focus', playing, seeking: !!seeking }),
+      awaySec: () => powerMonitor.getSystemIdleTime(),
+      eventBetween: (from, to) => events.timedOverlapping(from, to).length > 0,
+      wear: () => wear.friendLook(),
+      isSettings: (wc) => {
+        const w = settingsWindow.window;
+        return !!w && !w.isDestroyed() && w.webContents === wc;
+      },
+      log,
+    });
+    app.on('before-quit', () => visitors?.stop());
     // ---- 펫 대사 고치기 (#125, main/lines.ts) ----
     registerLines({
       isSettings: (wc) => {
@@ -2072,6 +2098,17 @@ ready
           settingsWindow,
           gcal,
           server,
+          visitors: {
+            tick: (force?: boolean) => visitors?.tick(force),
+            state: () => visitors?.debugState(),
+            setState: (p: object) => visitors?.debugSetState(p),
+            away: (sec?: number) => visitors?.debugAway(sec),
+            calm: (on: boolean) => visitors?.debugCalm(on),
+            bounds: () => visitors?.debugBounds(),
+            dismiss: (why?: string) => visitors?.dismiss(why ?? 'debug'),
+            pause: (on: boolean) => visitors?.pause(on),
+            windows: () => visitors?.pets().length ?? 0,
+          },
           siteEvents,
           get serverInbox() {
             return serverInbox;
