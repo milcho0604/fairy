@@ -37,6 +37,7 @@ JJ_DOCK_PROBE=1 OUT=<레포 밖 폴더> node scripts/dev/dock-probe.mjs  # 맥 D
 OUT=/tmp/jj-shots PHOTO=<사진> node scripts/dev/maker.mjs  # 사진으로 페어리 만들기 전체
 SCEN=ready|missing CARTOON=<만화 그림> PHOTO=<사진> MODELS=<모델 폴더> LANG_UNDER_TEST=ko THEME=light WIDTH=900 OUT=/tmp/maker-kind node scripts/dev/maker-kind.mjs  # 다듬기 화면의 지우는 방식(사진용, 그림용)과 그림용 자동 다시 지우기 (ko, en, 밝음, 어두움, 좁은 폭과 넓은 폭. 받기 단추는 안 누름)
 PAPER=<옅은 종이 그림> FUR=<털 있는 사진> PHOTO=<사진 배경 사진> MODELS=<모델 폴더> LANG_UNDER_TEST=ko THEME=light WIDTH=900 OUT=/tmp/maker-refine node scripts/dev/maker-refine.mjs  # 다듬기 화면의 종이 색 지우기와 털 다듬기 (옵트인, 되돌리기, ko, en, 밝음, 어두움, 좁은 폭과 넓은 폭)
+SCEN=full|broken LANG_UNDER_TEST=ko THEME=light WIDTH=900 OUT=/tmp/sprites-sheet node scripts/dev/sprites-sheet.mjs  # 2D 그림 세트 만들기: 가짜 그림 서버로 두 줄 시트(서기 8칸, 걷기 8칸) 받기, 호출 5번, 저장한 세트가 펫 창에서 걷기 8장과 시선으로 그려지는지 (ko, en, 밝음, 어두움, 좁은 폭과 넓은 폭)
 ```
 
 - `screens.mjs`: 문서 화면 `docs/assets/screens/` 를 다시 찍는다 (페어리 줄, 모습, 바탕 화면, 설정, 패널, 채팅, 빠른 입력, 시작 안내, 페어리 만들기). 앱을 직접 띄우고(빈 데이터 폴더, `JJ_NO_FOCUS=1`, 포트 9851/9852) 지어낸 할 일, 일정, 메모, 대화를 넣어 창을 2배로 찍은 뒤 숨은 창에서 한 장으로 합친다. 리눅스에서는 `npm run build && xvfb-run -a -s "-screen 0 1512x982x24" node scripts/dev/screens.mjs [pets|styles|desktop|settings|panel|chat|quick|onboarding|maker]`. 만들기 화면은 받아 둔 배경 지우기 모델이 있어야 한다(`JJ_BG_MODEL=<isnet-general-use.onnx>`). 맥 글꼴과 비슷하게 찍으려면 Pretendard 를 fontconfig 로 "Apple SD Gothic Neo" 에 잇는다(`FONTCONFIG_FILE`). 창 화면(설정, 패널, 채팅, 만들기 등)은 찍은 뒤 256색으로 줄여 용량을 반쯤으로 줄였다(Pillow `quantize(256)`, 사진이 든 desktop, pets, pet-styles 는 그대로). 끝나면 데이터 폴더를 지운다

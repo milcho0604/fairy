@@ -22,12 +22,15 @@ import {
   resize,
   rowOf,
   rowsToMake,
+  SHEET_COLS,
   SPRITE_ROWS,
   SPRITE_SIDE,
   type SpriteRow,
   STRIP_H,
   STRIP_W,
+  salvageSheet,
   setFrames,
+  sheetSize,
   stopsQueue,
   stripPrompt,
 } from './sprite-strip.ts';
@@ -48,7 +51,14 @@ const px = (img: Rgba, x: number, y: number) => [
   ...img.data.subarray((y * img.width + x) * 4, (y * img.width + x) * 4 + 4),
 ];
 
-const ROW: SpriteRow = rowOf('walk') as SpriteRow;
+const WALK = rowOf('walk') as SpriteRow;
+/** 한 줄 띠 시험용: 걷기 앞 네 장 (옛 한 줄 동작과 같은 모양) */
+const ROW: SpriteRow = {
+  id: 'walk',
+  names: WALK.names.slice(0, 4),
+  frames: WALK.frames.slice(0, 4),
+  side: true,
+};
 
 /** 초록 배경에 칸마다 주황 상자 하나 (네 칸, 칸 256). 칸마다 높이를 바꿀 수 있다 */
 function strip(o: { bg?: Rgb; heights?: number[]; xs?: number[]; skip?: number } = {}): Rgba {
@@ -426,4 +436,163 @@ test('fitStrip: 오른쪽 아래 Gemini 반짝이 표시는 덮어서 상자를 
   const fit = fitStrip(img, GREEN);
   assert.ok(fit.ok);
   if (fit.ok) assert.deepEqual(processStrip(fit.img, ROW, GREEN).issues, []);
+});
+
+// ----- 여러 줄 시트 (한 번 호출로 서기 8칸, 걷기 8칸) -----
+
+/** 줄마다 칸 네 개, 칸 256 정사각 시트. 칸마다 주황 상자 (높이를 바꿀 수 있다) */
+function sheet(lines: number, o: { heights?: number[]; skip?: number; bg?: Rgb } = {}): Rgba {
+  const img = blank(STRIP_W, STRIP_H * lines, o.bg ?? GREEN);
+  for (let i = 0; i < lines * SHEET_COLS; i++) {
+    if (i === o.skip) continue;
+    const l = Math.floor(i / SHEET_COLS);
+    const h = o.heights?.[i] ?? 160;
+    rect(img, (i % SHEET_COLS) * 256 + 68, l * STRIP_H + 220 - h, 120, h, ORANGE);
+  }
+  return img;
+}
+
+test('여러 줄 동작: 서기와 걷기는 두 줄 여덟 칸, 호출은 동작당 한 번 (시트 크기가 줄 수만큼 높다)', () => {
+  const stand = rowOf('stand') as SpriteRow;
+  assert.equal(stand.names.length, 8);
+  assert.equal(WALK.names.length, 8);
+  assert.deepEqual(sheetSize(stand), { w: STRIP_W, h: STRIP_H * 2 });
+  assert.deepEqual(sheetSize(rowOf('rest') as SpriteRow), { w: STRIP_W, h: STRIP_H });
+  // 동작은 여전히 다섯 개라 무료 횟수(호출 수)는 그대로다
+  assert.equal(SPRITE_ROWS.length, 5);
+  for (const r of SPRITE_ROWS) assert.ok(r.names.length <= (r.lines ?? 1) * SHEET_COLS, r.id);
+  assert.deepEqual(stand.names.slice(0, 4), ['idle', 'blink', 'look-l', 'look-r']);
+  assert.deepEqual(WALK.names, [
+    'walk-0',
+    'walk-1',
+    'walk-2',
+    'walk-3',
+    'walk-4',
+    'walk-5',
+    'walk-6',
+    'walk-7',
+  ]);
+});
+
+test('여러 줄 시트: 깨끗한 시트는 칸 여덟, 줄을 이어 이름 순서대로', () => {
+  const r = processStrip(sheet(2, { bg: [20, 235, 25] }), WALK, GREEN);
+  assert.deepEqual(r.issues, []);
+  assert.deepEqual(
+    r.frames.map((f) => f.name),
+    [...WALK.names],
+  );
+  for (const f of r.frames) assert.ok(f.box, f.name);
+});
+
+test('여러 줄 시트: 빈 칸은 그 줄 그 칸만 잡는다', () => {
+  const r = processStrip(sheet(2, { skip: 6 }), WALK, GREEN);
+  assert.ok(r.issues.includes('empty'));
+  assert.deepEqual(
+    r.frames.filter((f) => f.issues.includes('empty')).map((f) => f.name),
+    ['walk-6'],
+  );
+});
+
+test('여러 줄 시트: 줄 안에서는 고른데 줄끼리 크기가 튀면 둘째 줄이 jump (첫 줄이 기준)', () => {
+  // 위 줄 키 160, 아래 줄 키 90: 각 줄만 보면 문제 없다
+  const heights = [160, 160, 160, 160, 90, 90, 90, 90];
+  const r = processStrip(sheet(2, { heights }), WALK, GREEN);
+  assert.ok(r.issues.includes('jump'), r.issues.join(','));
+  assert.ok(
+    r.frames.slice(0, 4).every((f) => f.issues.length === 0),
+    '첫 줄은 멀쩡하다',
+  );
+  assert.ok(r.frames.slice(4).every((f) => f.issues.includes('jump')));
+  // 같은 키면 문제 없다
+  assert.deepEqual(processStrip(sheet(2), WALK, GREEN).issues, []);
+});
+
+test('여러 줄 시트: 줄 경계에 닿은 캐릭터는 잘림으로 잡는다', () => {
+  const img = sheet(2);
+  // 위 줄 셋째 칸 캐릭터를 줄 아래 끝(256)까지 늘린다
+  rect(img, 2 * 256 + 68, 220, 120, 36, ORANGE);
+  const r = processStrip(img, WALK, GREEN);
+  assert.ok(r.frames[2]?.issues.includes('clipped'));
+});
+
+test('여러 줄 시트 요청문: 줄마다 칸을 번호로 적고, 격자와 배경색을 말한다', () => {
+  const p = stripPrompt(WALK, [255, 0, 255]);
+  assert.ok(p.includes('2 horizontal rows') && p.includes('4 columns'));
+  assert.ok(p.includes('Row 1:') && p.includes('Row 2:'));
+  for (const f of WALK.frames) assert.ok(p.includes(f));
+  assert.ok(p.includes('1) ') && p.includes('5) ') && p.includes('8) '));
+  assert.ok(p.includes('#FF00FF'));
+  const g = geminiStripPrompt(WALK, [255, 0, 255]);
+  assert.ok(g.startsWith('Generate an image.') && g.includes(p));
+  assert.ok(g.includes('about 2 times wider than tall') && g.includes('2 rows of 4'));
+});
+
+test('fitStrip: 여러 줄 시트도 줄 수만큼 높은 크기로 맞추면 같은 검사를 통과한다', () => {
+  // 16:9 그림에 2x4 칸을 넓게 흩어 놓는다
+  const img = blank(1600, 900, GREEN);
+  for (let i = 0; i < 8; i++) rect(img, 120 + (i % 4) * 340, 60 + Math.floor(i / 4) * 420, 220, 300, ORANGE);
+  const fit = fitStrip(img, GREEN, 2);
+  assert.ok(fit.ok);
+  if (!fit.ok) return;
+  assert.equal(fit.img.width, STRIP_W);
+  assert.equal(fit.img.height, STRIP_H * 2);
+  assert.deepEqual(processStrip(fit.img, WALK, GREEN).issues, []);
+  // 한 줄 띠로는 넓지 않아 shape 로 거절된다 (줄 수를 모르고 맞추면 안 됨)
+  const one = fitStrip(img, GREEN);
+  assert.ok(!one.ok);
+});
+
+// ----- 여러 줄 시트 일부만 건지기 -----
+
+test('salvageSheet: 첫 줄이 온전하면 문제 있는 줄만 빼고 쓴다 (호출을 버리지 않는다)', () => {
+  // 아래 줄 셋째 칸 비움
+  const r = processStrip(sheet(2, { skip: 6 }), WALK, GREEN);
+  assert.ok(r.issues.includes('empty'));
+  const kept = salvageSheet(r, WALK);
+  assert.ok(kept);
+  assert.deepEqual(
+    kept.frames.map((f) => f.name),
+    ['walk-0', 'walk-1', 'walk-2', 'walk-3'],
+  );
+  assert.equal(kept.dropped, 4);
+});
+
+test('salvageSheet: 첫 줄이 틀렸으면 건지지 않는다 (걷기 첫 장이 없으면 한 주기가 안 된다)', () => {
+  const r = processStrip(sheet(2, { skip: 1 }), WALK, GREEN);
+  assert.equal(salvageSheet(r, WALK), undefined);
+});
+
+test('salvageSheet: 문제가 없거나 한 줄 동작이면 건질 것이 없다', () => {
+  assert.equal(salvageSheet(processStrip(sheet(2), WALK, GREEN), WALK), undefined);
+  assert.equal(salvageSheet(processStrip(strip({ skip: 2 }), ROW, GREEN), ROW), undefined);
+});
+
+test('salvageSheet: 둘째 줄이 첫 줄보다 크든 작든 멀쩡한 첫 줄은 반드시 건진다', () => {
+  for (const [name, heights] of [
+    ['둘째 줄이 큼', [150, 150, 150, 150, 210, 210, 210, 210]],
+    ['둘째 줄이 작음', [210, 210, 210, 210, 150, 150, 150, 150]],
+    ['둘째 줄이 훨씬 작음', [160, 160, 160, 160, 90, 90, 90, 90]],
+  ] as const) {
+    const r = processStrip(sheet(2, { heights: [...heights] }), WALK, GREEN);
+    assert.ok(r.issues.includes('jump'), `${name}: 줄끼리 튐은 잡는다`);
+    const kept = salvageSheet(r, WALK);
+    assert.ok(kept, `${name}: 건져야 한다`);
+    assert.deepEqual(
+      kept.frames.map((f) => f.name),
+      ['walk-0', 'walk-1', 'walk-2', 'walk-3'],
+      name,
+    );
+    assert.ok(
+      kept.frames.every((f) => f.issues.length === 0),
+      name,
+    );
+  }
+});
+
+test('processStrip: 줄 안에서 한 칸만 튀면 그 칸만 jump (줄끼리 비교는 가운뎃값이라 영향 없다)', () => {
+  const r = processStrip(sheet(2, { heights: [160, 160, 90, 160, 160, 160, 160, 160] }), WALK, GREEN);
+  assert.deepEqual(
+    r.frames.filter((f) => f.issues.includes('jump')).map((f) => f.name),
+    ['walk-2'],
+  );
 });

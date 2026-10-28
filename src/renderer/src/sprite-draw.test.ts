@@ -1,7 +1,8 @@
 // 가져온 페어리의 2D 그림 세트: 상태마다 어느 그림을 그리는지 (기본 페어리 손그림과 같은 표), 바닥선과 배율 재기
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { CUTE_POSES, type CutePose } from './cute2d.ts';
+import { SPRITE_NAMES } from '../../shared/pet-sprites.ts';
+import type { CutePose } from './cute2d.ts';
 import { type DrawState, drawPet } from './draw.ts';
 import { type AlphaBox, alphaBox, spriteGeom } from './sprite-geom.ts';
 
@@ -28,7 +29,7 @@ function fakeCtx() {
 }
 
 /** 자세마다 다른 가짜 그림 (어느 것을 그렸는지 이름으로 안다) */
-const pics = Object.fromEntries(CUTE_POSES.map((p) => [p, { name: p }])) as unknown as Record<
+const pics = Object.fromEntries(SPRITE_NAMES.map((p) => [p, { name: p }])) as unknown as Record<
   CutePose,
   CanvasImageSource
 >;
@@ -40,7 +41,7 @@ const box = (left: number, top: number, right: number, bottom: number): AlphaBox
   bottom,
 });
 const boxes: Partial<Record<CutePose, AlphaBox>> = Object.fromEntries(
-  CUTE_POSES.map((p) => [p, box(150, 80, 250, 280)]),
+  SPRITE_NAMES.map((p) => [p, box(150, 80, 250, 280)]),
 );
 boxes.sit = box(150, 120, 250, 270);
 boxes.sleep = box(110, 200, 290, 290);
@@ -49,9 +50,16 @@ assert.ok(geom);
 const photo = { width: 100, height: 100 } as unknown as CanvasImageSource & { width: number; height: number };
 
 /** 그린 그림 이름, 좌우 뒤집기, 그림을 놓은 바닥선 */
-function drawn(s: Partial<DrawState>) {
+function drawn(s: Partial<DrawState>, walks?: number) {
   const ctx = fakeCtx();
-  drawPet(ctx, { mood: 'idle', elapsed: 0, blink: -1, photo, sprites: { pics, geom }, ...s } as DrawState);
+  drawPet(ctx, {
+    mood: 'idle',
+    elapsed: 0,
+    blink: -1,
+    photo,
+    sprites: { pics, geom, ...(walks === undefined ? {} : { walks }) },
+    ...s,
+  } as DrawState);
   const i = ctx.calls.findIndex((c) => c.op === 'drawImage');
   assert.ok(i >= 0, '그림을 그렸다');
   const img = ctx.calls[i]?.args[0] as { name?: string };
@@ -84,6 +92,33 @@ test('걷기: 걸음마다 여섯 장을 넘기고 왼쪽으로 가면 뒤집는
     drawn({ activity: { ...walk(1, 0.1), facing: 'away' } as DrawState['activity'] }).pose,
     'back',
   );
+});
+
+test('걷기: 그림 세트가 가진 장 수(여덟, 네 장)대로 한 주기를 돈다', () => {
+  for (const n of [8, 4, 1]) {
+    const seen = new Set<string | undefined>();
+    for (let k = 0; k < n; k++) seen.add(drawn({ activity: walk(1, ((k + 0.5) / n) * 2) }, n).pose);
+    assert.deepEqual(
+      [...seen].sort(),
+      Array.from({ length: n }, (_, i) => `walk-${i}`),
+      `${n}장`,
+    );
+  }
+  // 걸음 하나(steps 1)는 한 주기의 절반이라 여덟 장이면 walk-4 부터
+  assert.equal(drawn({ activity: walk(1, 1) }, 8).pose, 'walk-4');
+});
+
+test('시선: 위, 아래, 위쪽 대각선까지 보고 (그림 세트만), 아래쪽 대각선은 옆 그림, 깜빡임이 먼저', () => {
+  assert.equal(drawn({ gaze: { x: 0, y: -0.8 } }).pose, 'look-u');
+  assert.equal(drawn({ gaze: { x: 0, y: 0.8 } }).pose, 'look-d');
+  assert.equal(drawn({ gaze: { x: -0.7, y: -0.7 } }).pose, 'look-ul');
+  assert.equal(drawn({ gaze: { x: 0.7, y: -0.7 } }).pose, 'look-ur');
+  assert.equal(drawn({ gaze: { x: -0.7, y: 0.7 } }).pose, 'look-l');
+  assert.equal(drawn({ gaze: { x: 0.7, y: 0.7 } }).pose, 'look-r');
+  assert.equal(drawn({ gaze: { x: 0.1, y: 0.1 } }).pose, 'idle');
+  assert.equal(drawn({ blink: 0.5, gaze: { x: 0, y: -0.9 } }).pose, 'blink');
+  // 서기가 아닌 상태에서는 시선 그림을 쓰지 않는다
+  assert.equal(drawn({ mood: 'sleeping', gaze: { x: 0, y: -0.9 } }).pose, 'sleep');
 });
 
 test('앉기, 토라짐(세기별), 말하기 번갈기, 잠, 들림, 신남', () => {
