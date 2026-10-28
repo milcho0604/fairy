@@ -16,6 +16,7 @@ import {
 import type { Todo } from '../../../shared/todo-store.ts';
 import { HomeShell } from '../home/HomeShell.tsx';
 import { homeKeyAction, sectionForKey } from '../home/sections.ts';
+import { LanguageContext } from '../language-context.ts';
 import { PetFace } from '../PetFace.tsx';
 import { useLanguageUpdates } from '../use-language.ts';
 import { EventTab } from './EventTab.tsx';
@@ -114,9 +115,18 @@ function focusFind() {
   }
 }
 
-/** 패널 구성요소의 껍데기. kind 가 panel 이면 펫 옆 작은 패널, home 이면 사이드바가 있는 큰 창 (src/renderer/src/home/HomeShell.tsx) */
+/** 언어가 바뀌면 아래 memo 줄까지 다시 그리게 언어를 내려 준다 */
 export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
-  useLanguageUpdates();
+  const language = useLanguageUpdates();
+  return (
+    <LanguageContext.Provider value={language}>
+      <PanelShell kind={kind} />
+    </LanguageContext.Provider>
+  );
+}
+
+/** 패널 구성요소의 껍데기. kind 가 panel 이면 펫 옆 작은 패널, home 이면 사이드바가 있는 큰 창 (src/renderer/src/home/HomeShell.tsx) */
+function PanelShell({ kind }: { kind: SurfaceKind }) {
   const [s, setS] = useState<PanelState>();
   const [tab, setTabState] = useState<PanelTab>(() => savedTab(kind));
   const [chatOn, setChatOn] = useState(false);

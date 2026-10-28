@@ -8,8 +8,7 @@ import { PET_KINDS, type PetKind } from '../../../shared/settings.ts';
 import { isCurrentStarter, type PetChoice, starterOf } from '../../../shared/starter-pets.ts';
 import { CUTE_KINDS } from '../cute2d.ts';
 import { loadCuteArt } from '../cute2d-art.ts';
-import { CANVAS_SIZE, drawPet } from '../draw.ts';
-import { Pet3D } from '../pet3d.ts';
+import type { Pet3D } from '../pet3d.ts';
 
 /**
  * 펫 고르기 (6단계): 기본 펫 다섯 마리(입체로 보기면 실제 3D 그림), 그림으로 들어 있는 밀크와 초코, 보관한 사진 펫.
@@ -29,13 +28,17 @@ export function PetPicker({
   const [thumbs, setThumbs] = useState<Partial<Record<PetKind, string>>>({});
   const [confirm, setConfirm] = useState('');
   useEffect(() => {
+    let alive = true;
     if (s.pet3d) {
-      setThumbs(kindThumbs(true));
-      return;
+      void kindThumbs(true).then((out) => alive && setThumbs(out));
+      return () => {
+        alive = false;
+      };
     }
     // 2D 는 손그림 냥이, 곰돌이 그림이 풀린 뒤에 찍는다 (먼저 찍으면 예전 코드 그림이 찍힌다. 못 풀면 그 그림 그대로)
-    let alive = true;
-    void Promise.all(CUTE_KINDS.map(loadCuteArt)).then(() => alive && setThumbs(kindThumbs(false)));
+    void Promise.all(CUTE_KINDS.map(loadCuteArt))
+      .then(() => kindThumbs(false))
+      .then((out) => alive && setThumbs(out));
     return () => {
       alive = false;
     };
@@ -165,6 +168,10 @@ export function PetPicker({
 /** 사진 펫 카드 열쇠: 그림 파일 이름 (PetLookView.key 는 그림|설계도|깊이 그림) */
 const keyOf = (v: PetLookView): string => v.key.split('|')[0] ?? v.key;
 
+/** 그리기 묶음(draw, three)은 무거워서 썸네일을 찍을 때 읽는다 (설정 창이 먼저 열리게) */
+const loadDraw = () => import('../draw.ts');
+const loadPet3D = () => import('../pet3d.ts');
+
 /** 기본 펫 미리보기 그림. 입체로 보기면 3D 를 한 번씩 그려 사진으로 만든다 (렌더러는 하나만) */
 let thumbPet: Pet3D | undefined;
 const THUMB_SIDE = 96;
@@ -177,22 +184,29 @@ function thumbCanvas(): { c: HTMLCanvasElement; ctx: CanvasRenderingContext2D } 
   return ctx ? { c, ctx } : undefined;
 }
 /** 펫 하나를 쉬는 모습으로 그려 PNG data URL 로 */
-function shot(c: HTMLCanvasElement, ctx: CanvasRenderingContext2D, kind: PetKind, model3d?: Pet3D): string {
+function shot(
+  draw: typeof import('../draw.ts'),
+  c: HTMLCanvasElement,
+  ctx: CanvasRenderingContext2D,
+  kind: PetKind,
+  model3d?: Pet3D,
+): string {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, c.width, c.height);
-  const scale = c.width / CANVAS_SIZE;
+  const scale = c.width / draw.CANVAS_SIZE;
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
-  drawPet(ctx, { mood: 'idle', elapsed: 0, blink: -1, kind, viewSize: THUMB_SIDE, model3d });
+  draw.drawPet(ctx, { mood: 'idle', elapsed: 0, blink: -1, kind, viewSize: THUMB_SIDE, model3d });
   return c.toDataURL('image/png');
 }
-function kindThumbs(use3d: boolean): Partial<Record<PetKind, string>> {
+async function kindThumbs(use3d: boolean): Promise<Partial<Record<PetKind, string>>> {
+  const [draw, pet3d] = await Promise.all([loadDraw(), use3d ? loadPet3D() : undefined]);
   const tc = thumbCanvas();
   if (!tc) return {};
-  if (use3d) thumbPet ??= Pet3D.create(() => {});
+  if (pet3d) thumbPet ??= pet3d.Pet3D.create(() => {});
   const out: Partial<Record<PetKind, string>> = {};
   for (const k of PET_KINDS) {
     if (use3d && thumbPet) thumbPet.setBlueprint(DEFAULT_BLUEPRINTS[k.id]);
-    out[k.id] = shot(tc.c, tc.ctx, k.id, use3d ? thumbPet : undefined);
+    out[k.id] = shot(draw, tc.c, tc.ctx, k.id, use3d ? thumbPet : undefined);
   }
   thumbPet?.clear();
   return out;
@@ -206,8 +220,9 @@ const lookThumbs = new Map<string, string>();
 async function drawLooks(views: PetLookView[], alive: () => boolean): Promise<number> {
   const todo = views.filter((v) => v.look !== 'photo' && !lookThumbs.has(v.key));
   if (!todo.length) return 0;
+  const [draw, pet3d] = await Promise.all([loadDraw(), loadPet3D()]);
   const tc = thumbCanvas();
-  thumbPet ??= Pet3D.create(() => {});
+  thumbPet ??= pet3d.Pet3D.create(() => {});
   let n = 0;
   for (const v of todo) {
     await new Promise((r) => setTimeout(r, 0));
@@ -226,7 +241,7 @@ async function drawLooks(views: PetLookView[], alive: () => boolean): Promise<nu
         const { c, ctx } = tc;
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, c.width, c.height);
-        const scale = c.width / CANVAS_SIZE;
+        const scale = c.width / draw.CANVAS_SIZE;
         ctx.setTransform(scale, 0, 0, scale, 0, 0);
         const top = thumbPet.draw(
           ctx,

@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { emptyViewKeep, freshViewKeep, parseViewKeep, restoredEventDay, VIEW_KEEP_MS } from './view-keep.ts';
+import {
+  emptyViewKeep,
+  freshViewKeep,
+  parseViewKeep,
+  RESTORE_PAGES_MAX,
+  restoredEventDay,
+  restoredPages,
+  VIEW_KEEP_MS,
+} from './view-keep.ts';
 
 const NOW = 1_000_000_000_000;
 
@@ -59,4 +67,12 @@ test('일정에서 고른 날: 없으면 오늘, 자정을 넘기면 오늘을 �
   assert.equal(restoredEventDay({ day: '2026-10-25', today: '2026-10-21' }, '2026-10-22'), '2026-10-25');
   assert.equal(restoredEventDay({ day: '2026-10-21', today: '2026-10-21' }, '2026-10-22'), '2026-10-22');
   assert.equal(restoredEventDay({ day: '2026-10-21', today: '2026-10-21' }, '2026-10-21'), '2026-10-21');
+});
+
+test('다시 그리는 쪽 수는 상한까지만 (천 줄을 한꺼번에 그리지 않는다)', () => {
+  assert.equal(restoredPages(1), 1);
+  assert.equal(restoredPages(RESTORE_PAGES_MAX), RESTORE_PAGES_MAX);
+  assert.equal(restoredPages(11), RESTORE_PAGES_MAX);
+  assert.equal(restoredPages(0), 1);
+  assert.equal(restoredPages(Number.NaN), 1);
 });

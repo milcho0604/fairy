@@ -14,6 +14,10 @@ export const TYPING = {
   slowPollMs: 1000,
   /** 이만큼 넘게 손을 안 댔으면 느슨히 본다 (초) */
   slowAfterSec: 5,
+  /** 아주 오래 손을 안 댔을 때 보는 간격. 치기 시작하면 다음 표본부터 pollMs 로 본다 */
+  idlePollMs: 2000,
+  /** 이만큼 넘게 손을 안 댔으면 아주 느슨히 본다 (초) */
+  idleAfterSec: 30,
   /** 키보드 같은 입력이 이만큼 연달아 보이면 시작 (500ms 간격이면 1.5초 동안 이어 쳤다) */
   startSamples: 3,
   /** 마지막 키보드 같은 입력에서 이만큼 지나면 그친다 */
@@ -70,6 +74,7 @@ export function nextTyping(state: TypingState, s: TypingSample): TypingState {
 
 /** 다음에 볼 때까지 (ms): 손을 안 댄 지 오래면 느슨히, 아니면 촘촘히 */
 export function typingPollMs(idleSec: number): number {
+  if (idleSec > TYPING.idleAfterSec) return TYPING.idlePollMs;
   return idleSec > TYPING.slowAfterSec ? TYPING.slowPollMs : TYPING.pollMs;
 }
 

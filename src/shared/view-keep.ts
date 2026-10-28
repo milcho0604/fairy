@@ -29,6 +29,8 @@ export const VIEW_KEEP_MS = 60 * 60_000;
 const SCROLL_MAX = 1_000_000;
 const QUERY_MAX = 200;
 const PAGES_MAX = 1000;
+/** 다시 열 때 한 번에 그리는 쪽 수 상한 (천 줄을 한꺼번에 그리면 탭을 바꿀 때마다 0.2초씩 걸렸다. 더 보기로 이어서 편다) */
+export const RESTORE_PAGES_MAX = 2;
 const SCROLL_KEYS = 8;
 
 export function emptyViewKeep(): ViewKeep {
@@ -82,4 +84,9 @@ export function freshViewKeep(kept: ViewKeep, now: number): ViewKeep {
 export function restoredEventDay(kept: ViewKeep['event'], today: string): string {
   if (!kept.day) return today;
   return kept.day === kept.today && kept.today !== today ? today : kept.day;
+}
+
+/** 보관한 쪽 수를 다시 그릴 때 쓸 값 (상한까지만) */
+export function restoredPages(pages: number): number {
+  return Number.isFinite(pages) ? Math.min(Math.max(1, Math.floor(pages)), RESTORE_PAGES_MAX) : 1;
 }

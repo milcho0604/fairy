@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { t } from '../../../shared/i18n/index.ts';
 import type { NoteAiKind, NoteHit, NoteSummary, PanelState } from '../../../shared/ipc.ts';
 import { POLISH_MAX, type PolishReply, splicePolished } from '../../../shared/note-polish.ts';
 import { mergeNoteText, NOTE_BODY_MAX, NOTE_TITLE_MAX, type Note } from '../../../shared/note-store.ts';
 import { pinFirst } from '../../../shared/pin.ts';
 import { singleFlight } from '../chat/single-flight.ts';
+import { useLanguage } from '../language-context.ts';
 import { ago } from './format.ts';
 import { isEsc, takeEsc } from './keys.ts';
 import { MoreRow } from './more.tsx';
@@ -175,6 +176,20 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
   // 앞에서부터 한 쪽씩 그린다 (paging.ts). 찾는 말이 바뀌면 첫 쪽부터
   const pages = paging.q === q ? paging.pages : 1;
   const page = pageOf(list, pages);
+  // 줄은 memo 라서 여는 함수는 늘 같은 것 (부를 때 가장 새 함수로 간다)
+  const openLatest = useRef<(id: number) => Promise<void>>(
+    undefined as unknown as (id: number) => Promise<void>,
+  );
+  openLatest.current = async (id) => {
+    if (open?.id === id) return;
+    // 누를 때마다 번호를 매겨 마지막 누름만 연다 (빠르게 B, A, C 를 누르면 늦게 돌아온 A 가 C 를 덮지 않게)
+    const turn = ++openTurn.current;
+    // 같은 메모의 앞 편집기가 아직 저장 중이면 끝난 뒤 읽는다 (방금 쓴 글이 보이게)
+    await saveGate.settle(id);
+    const full = await bridge.noteGet(id);
+    if (full && turn === openTurn.current) setOpen(full);
+  };
+  const openNote = useCallback((id: number) => void openLatest.current(id), []);
   const listEl = (
     <>
       <div className="add row">
@@ -219,18 +234,10 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
             key={n.id}
             n={n}
             hit={hitOf.get(n.id)}
-            now={now}
+            when={ago(n.updatedAt, now)}
             pinEnd={n.id === lastPinned && list.at(-1)?.id !== n.id}
             current={split && open?.id === n.id}
-            onOpen={async () => {
-              if (open?.id === n.id) return;
-              // 누를 때마다 번호를 매겨 마지막 누름만 연다 (빠르게 B, A, C 를 누르면 늦게 돌아온 A 가 C 를 덮지 않게)
-              const turn = ++openTurn.current;
-              // 같은 메모의 앞 편집기가 아직 저장 중이면 끝난 뒤 읽는다 (방금 쓴 글이 보이게)
-              await saveGate.settle(n.id);
-              const full = await bridge.noteGet(n.id);
-              if (full && turn === openTurn.current) setOpen(full);
-            }}
+            onOpen={openNote}
           />
         ))}
         <MoreRow rest={page.rest} onMore={() => setPaging({ q, pages: pages + 1 })} />
@@ -247,23 +254,25 @@ export function NoteTab({ s, onRemoved }: { s: PanelState; onRemoved: (id: numbe
 }
 
 /** 메모 목록 한 줄: 누르면 연다. 오른쪽 위 고정 단추, 우클릭 메뉴 */
-function NoteRow({
+const NoteRow = memo(function NoteRow({
   n,
   hit,
-  now,
+  when,
   pinEnd,
   current,
   onOpen,
 }: {
   n: NoteSummary;
   hit: NoteHit | undefined;
-  now: number;
+  /** "5분 전" 같은 고친 때 */
+  when: string;
   /** 고정한 것 가운데 마지막 줄 (아래 고정 안 한 줄과 사이에 선) */
   pinEnd: boolean;
   /** 나란히 보기에서 지금 편집기에 열린 메모 */
   current: boolean;
-  onOpen: () => void;
+  onOpen: (id: number) => void;
 }) {
+  useLanguage();
   const pinned = n.pinnedAt !== null;
   const pinMenu = usePinMenu('note', n.id, n.title, pinned);
   return (
@@ -271,13 +280,13 @@ function NoteRow({
       className={`note-row ${pinned ? 'pinned' : ''} ${pinEnd ? 'pin-end' : ''} ${current ? 'current' : ''}`}
       onContextMenu={pinMenu.onContextMenu}
     >
-      <button type="button" aria-current={current ? 'true' : undefined} onClick={onOpen}>
+      <button type="button" aria-current={current ? 'true' : undefined} onClick={() => onOpen(n.id)}>
         <span className="note-title" dir="auto">
           {n.source === 'ai' && <i className="tag">AI</i>}
           {n.title}
         </span>
         <span className="note-meta">
-          <span className="when">{ago(n.updatedAt, now)}</span>
+          <span className="when">{when}</span>
           {hit?.snippet && hit.mark ? (
             <span className="preview snippet">
               {hit.snippet.slice(0, hit.mark[0])}
@@ -298,7 +307,7 @@ function NoteRow({
       {pinMenu.menu}
     </li>
   );
-}
+});
 
 function NoteEditor({
   note,
