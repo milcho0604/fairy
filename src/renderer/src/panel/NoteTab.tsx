@@ -5,6 +5,7 @@ import { POLISH_MAX, type PolishReply, splicePolished } from '../../../shared/no
 import { mergeNoteText, NOTE_BODY_MAX, NOTE_TITLE_MAX, type Note } from '../../../shared/note-store.ts';
 import { pinFirst } from '../../../shared/pin.ts';
 import { singleFlight } from '../chat/single-flight.ts';
+import { useLanguage } from '../language-context.ts';
 import { ago } from './format.ts';
 import { isEsc, takeEsc } from './keys.ts';
 import { MoreRow } from './more.tsx';
@@ -271,6 +272,7 @@ const NoteRow = memo(function NoteRow({
   current: boolean;
   onOpen: (id: number) => void;
 }) {
+  useLanguage();
   const pinned = n.pinnedAt !== null;
   const pinMenu = usePinMenu('note', n.id, n.title, pinned);
   return (

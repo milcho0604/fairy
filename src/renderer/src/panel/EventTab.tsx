@@ -5,6 +5,7 @@ import { t } from '../../../shared/i18n/index.ts';
 import type { PanelAddResult, PanelState } from '../../../shared/ipc.ts';
 import { localDay, type Todo } from '../../../shared/todo-store.ts';
 import { restoredEventDay } from '../../../shared/view-keep.ts';
+import { useLanguage } from '../language-context.ts';
 import { CalendarView } from './CalendarView.tsx';
 import { useDraft } from './draft.ts';
 import { endFromInput, lengthLabel, timeInputValue } from './event-end.ts';
@@ -337,6 +338,7 @@ const sameRow = (a: EventRowProps, b: EventRowProps) =>
 export const EventRow = memo(EventRowView, sameRow);
 
 function EventRowView({ e, now, today, onRemoved, clash, gcal, showDay }: EventRowProps) {
+  useLanguage();
   const pinned = e.pinnedAt !== null;
   const pinMenu = usePinMenu('event', e.id, e.title, pinned);
   const [editing, setEditing] = useState(false);

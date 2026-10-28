@@ -208,6 +208,29 @@ try {
   check('월에서 주로 바꾼 줄이 새로 받은 것과 같다', direct === refetched && directTitles === (await titles()), `${direct} / ${refetched}`);
   check('주 목록에 일정이 보인다', direct > 0, String(direct));
 
+  // ---- 언어를 바꾸면 memo 줄도 새 언어로 ----
+  await click(pg, '.view-switch button:nth-of-type(1)');
+  await sleep(500);
+  const words = (sel) =>
+    pg.ev(`(() => { const li = document.querySelector(${JSON.stringify(sel)}); return li ? [...li.querySelectorAll('[aria-label],[title]')].map((x) => x.getAttribute('aria-label') + '/' + x.getAttribute('title')).join('|') + '#' + li.innerText : ''; })()`);
+  const rowsOf = {
+    todo: '#ptab-panel ul.todos li.todo',
+    event: '#ptab-panel .events-list li.event',
+    note: '#ptab-panel ul.notes li.note-row',
+  };
+  // 탭을 떠나지 않고 바꾼다 (탭을 새로 그리면 옛 글이 남아도 안 보인다)
+  const other = LANG === 'ko' ? 'en' : 'ko';
+  for (const id of ['todo', 'event', 'note']) {
+    await tab(id);
+    const was = await words(rowsOf[id]);
+    await main(`__jj.settings.set({ lang: '${other}' }); 1`);
+    await sleep(1200);
+    const now = await words(rowsOf[id]);
+    check(`언어를 바꾸면 떠 있는 ${id} 줄 글도 바뀐다`, was !== '' && now !== '' && now !== was);
+    await main(`__jj.settings.set({ lang: '${LANG}' }); 1`);
+    await sleep(800);
+  }
+
   // ---- 설정: 펫 고르기 그림 ----
   for (const pet3d of [true, false]) {
     await main(`__jj.settings.set({ pet3d: ${pet3d} }); __jj.settingsWindow.window?.close(); 1`);

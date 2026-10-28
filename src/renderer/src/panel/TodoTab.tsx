@@ -18,6 +18,7 @@ import {
   type TodoStep,
 } from '../../../shared/todo-store.ts';
 import { restoredPages } from '../../../shared/view-keep.ts';
+import { useLanguage } from '../language-context.ts';
 import './assist.css';
 import './rows.css';
 import { useDraft } from './draft.ts';
@@ -553,6 +554,7 @@ const TodoItem = memo(function TodoItem({
   wide: boolean;
   selected: boolean;
 }) {
+  useLanguage();
   return (
     <TodoRow
       todo={todo}
