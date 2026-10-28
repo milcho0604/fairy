@@ -306,16 +306,21 @@ describe('웹 화면', () => {
     assert.match(home, /한국 시간 기준/);
   });
 
-  test('설정의 예산, 정책, 백업 칸에 서버가 아는 값과 모르는 값이 따로 나온다', async () => {
+  test('설정의 백업 탭에 서버가 아는 값과 모르는 값이 따로 나온다', async () => {
     const html = (await admin.page()).text;
     const s = settingsCell(html);
     assert.match(s, /data-sub="settings\/ai"/);
-    assert.doesNotMatch(s, /data-sub="settings\/backup"/);
-    assert.match(s, /<h2>백업 현황<\/h2>/);
-    assert.match(s, /이용자 서버 백업/);
-    assert.match(s, /올리기 실패<\/dt><dd>기록 없음/);
-    assert.match(s, /상태<\/dt><dd>알 수 없어요 \(상태 파일이 없어요\)/);
-    assert.match(s, /맥미니 외장 디스크/);
+    assert.match(s, /data-sub="settings\/backup"/);
+    const sub = s.slice(s.indexOf('id="sub-settings-backup"'), s.indexOf('id="sub-settings-log"'));
+    assert.match(sub, /<section id="backup-status"><h2>백업 현황<\/h2>/);
+    assert.doesNotMatch(
+      s.slice(s.indexOf('id="sub-settings-ai"'), s.indexOf('id="sub-settings-backup"')),
+      /백업 현황/,
+    );
+    assert.match(sub, /이용자 서버 백업/);
+    assert.match(sub, /올리기 실패<\/dt><dd>기록 없음/);
+    assert.match(sub, /상태<\/dt><dd>알 수 없어요 \(상태 파일이 없어요\)/);
+    assert.match(sub, /맥미니 외장 디스크/);
   });
 
   test('그림은 인라인 스크립트도 style 속성도 쓰지 않는다 (CSP)', async () => {

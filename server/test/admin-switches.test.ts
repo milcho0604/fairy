@@ -79,19 +79,26 @@ describe('기능 스위치 한 표', () => {
     assert.match(budget, /action="\/admin\/ai\/policy"/);
   });
 
-  test('예산, 정책, 백업 현황이 같은 칸이고 백업 하위 칸은 따로 없다', async () => {
+  test('예산, 정책과 백업은 설정의 따로 탭이고, 홈의 백업 링크가 백업 탭으로 바로 간다', async () => {
     const page = (await admin.page()).text;
-    const cfg = page.slice(page.indexOf('id="sub-settings-ai"'), page.indexOf('id="sub-settings-log"'));
+    const cfg = page.slice(page.indexOf('id="sub-settings-ai"'), page.indexOf('id="sub-settings-backup"'));
     assert.match(cfg, /<h2>예산과 정책<\/h2>/);
-    assert.match(cfg, /<h2>백업 현황<\/h2>/);
-    assert.doesNotMatch(page, /id="sub-settings-backup"/);
+    assert.doesNotMatch(cfg, /<h2>백업 현황<\/h2>/);
+    const backup = page.slice(
+      page.indexOf('id="sub-settings-backup"'),
+      page.indexOf('id="sub-settings-log"'),
+    );
+    assert.match(backup, /<section id="backup-status"><h2>백업 현황<\/h2>/);
     const nav = /<nav class="subnav" aria-label="설정 안">(.*?)<\/nav>/s.exec(page)?.[1] ?? '';
-    assert.equal((nav.match(/<a /g) ?? []).length, 3);
-    // 옛 #settings/backup 주소는 이 칸으로 오는 길이 admin.js 에 있다
-    assert.match((await api('GET', '/admin/admin.js')).text, /s === 'backup'\) s = 'ai'/);
+    assert.equal((nav.match(/<a /g) ?? []).length, 4);
+    assert.match(nav, /data-sub="settings\/backup">백업<\/a>/);
+    const home = page.slice(page.indexOf('id="cell-home"'), page.indexOf('id="cell-users"'));
+    assert.match(home, /href="#settings\/backup"/);
+    // 옛 #settings/backup 주소를 예산 칸으로 돌리던 길은 없어졌다 (이제 자기 탭)
+    assert.doesNotMatch((await api('GET', '/admin/admin.js')).text, /s === 'backup'\) s = 'ai'/);
   });
 
-  test('확인 칸이 없으면 거절하고 모드는 그대로다', async () => {
+  test('확인 칸이 없으면 거절하고 접근 설정은 그대로다', async () => {
     const r = await admin.act('/admin/features/mode', { key: 'coin_reset', mode: 'everyone', from: 'off' });
     assert.equal(r.ok, false);
     assert.match(r.text, /확인 칸/);
@@ -108,6 +115,9 @@ describe('기능 스위치 한 표', () => {
       confirm: 'yes',
     });
     assert.ok(done.ok, done.text);
+    // 영어 키와 값 대신 이름과 화면에 보이는 값으로
+    assert.equal(done.text, '코인 초기화를 끔에서 모두로 바꿨어요');
+    assert.doesNotMatch(done.text, /모드|coin_reset|everyone/);
     page = (await admin.page()).text;
     const row = rowOf(page, 'coin_reset');
     assert.match(row, /이전 값: 끔/);

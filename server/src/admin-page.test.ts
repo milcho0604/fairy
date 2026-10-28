@@ -8,7 +8,10 @@ import {
   adminJs,
   CELL_SUBS,
   LEGACY_PLACES,
+  logDetailCell,
+  logDetailKo,
   mainPage,
+  switchChangeText,
   todoOf,
   usersTable,
 } from './admin-page';
@@ -173,5 +176,77 @@ describe('운영자 화면 CSS 접근성 규칙', () => {
     assert.match(coarse, /td a:not\(\.button-link\)/);
     assert.match(coarse, /label\.confirm/);
     assert.match(coarse, /min-height: 44px/);
+  });
+});
+
+describe('운영자 화면 문구와 휴대폰 규칙 (사용성 2차)', () => {
+  test('기능 스위치 결과 글은 이름과 화면에 보이는 값으로, 받침에 맞는 조사로 쓴다', () => {
+    assert.equal(
+      switchChangeText('friends', 'allowlist', 'everyone'),
+      '친구 맺기를 허용 목록만에서 모두로 바꿨어요',
+    );
+    assert.equal(switchChangeText('coin_reset', 'off', 'everyone'), '코인 초기화를 끔에서 모두로 바꿨어요');
+    assert.equal(
+      switchChangeText('ai_chat', 'everyone', 'allowlist'),
+      '채팅 이용권을 모두에서 허용 목록만으로 바꿨어요',
+    );
+    assert.equal(
+      switchChangeText('friend_gifts', 'allowlist', 'off'),
+      '친구 선물을 허용 목록만에서 끔으로 바꿨어요',
+    );
+    assert.doesNotMatch(switchChangeText('kakao_login', 'off', 'allowlist'), /모드|kakao_login|allowlist/);
+  });
+
+  test('운영 기록 자세히는 동작마다 한 줄 문장이고 원본 JSON 은 접어 둔다', () => {
+    assert.equal(
+      logDetailKo('note.withdraw', { note: 7, coins: 50, chatPasses: 2 }),
+      '쪽지 #7 철회 (코인 50, 채팅 이용권 2장)',
+    );
+    assert.equal(
+      logDetailKo('feature.mode', { key: 'friends', before: 'allowlist', after: 'everyone' }),
+      '친구 맺기를 허용 목록만에서 모두로 바꿨어요',
+    );
+    assert.equal(
+      logDetailKo('coins.revoke', { coins: 30, before: 100, after: 70, reason: '잘못 지급' }),
+      '코인 30 회수 (잔액 100에서 70로), 사유 "잘못 지급"',
+    );
+    assert.equal(
+      logDetailKo('report.done', { report: 5, from: 'seen', to: 'done', withBlock: true }),
+      '신고 #5 확인에서 조치로 (채팅 이용권 막기와 함께)',
+    );
+    assert.equal(
+      logDetailKo('grant.batch', { recipients: 3, coins: 10, chatPasses: 0, days: 30 }),
+      '3명에게 지급: 코인 10, 만료 30일',
+    );
+    assert.equal(logDetailKo('모르는.동작', { a: 1 }), null);
+    assert.equal(logDetailKo('note.withdraw', null), null);
+    const cell = logDetailCell('note.withdraw', { note: 7, coins: 50, chatPasses: 2 });
+    assert.match(cell, /^쪽지 #7 철회/);
+    assert.match(cell, /<details class="raw"><summary>원본<\/summary><code>\{&quot;note&quot;:7/);
+    // 문장으로 못 바꾸면 원본만
+    assert.equal(logDetailCell('모르는.동작', { a: 1 }), '<code>{&quot;a&quot;:1}</code>');
+    // 영어 키(note.withdraw)가 문장에 그대로 나오지 않는다
+    assert.doesNotMatch(
+      logDetailKo('note.withdraw', { note: 7, coins: 1, chatPasses: 0 }) ?? '',
+      /note\.withdraw/,
+    );
+  });
+
+  test('휴대폰: 아래 고정 메뉴가 있을 때만 아래 여백과 scroll-padding 을 둔다', () => {
+    const mobile = adminCss.slice(adminCss.indexOf('@media (max-width: 600px) {'));
+    const end = mobile.indexOf('@media (pointer: coarse) {');
+    const block = mobile.slice(0, end);
+    assert.match(block, /nav\.cells \{ position: fixed;/);
+    assert.match(block, /html \{ scroll-padding-bottom: 72px; \}/);
+    // 고정이 아닌 넓은 화면 규칙에는 없다
+    assert.doesNotMatch(
+      adminCss.slice(0, adminCss.indexOf('@media (max-width: 600px) {')),
+      /scroll-padding-bottom/,
+    );
+  });
+
+  test('이용자 상세 바로가기 단추는 스크립트가 해시를 건드리지 않고 그 자리로 가고 접힌 칸을 연다', () => {
+    assert.match(adminJs, /a\[data-jump\]/);
+    assert.match(adminJs, /el\.tagName === 'DETAILS'\) el\.open = true/);
   });
 });

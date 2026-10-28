@@ -145,7 +145,7 @@ describe('운영자 다섯 칸과 이용자 표', () => {
 
     const page1 = await admin.page('/users?sort=coins&direction=desc');
     assert.equal(page1.status, 200);
-    assert.match(page1.text, /1 \/ 2/);
+    assert.match(page1.text, /1 \/ 3/);
     assert.doesNotMatch(page1.text, new RegExp(secretSub));
     assert.doesNotMatch(page1.text, /token_hash|이메일|name="email"/i);
     assert.doesNotMatch(page1.text, /<b>고양이<\/b>/);
@@ -153,7 +153,7 @@ describe('운영자 다섯 칸과 이용자 표', () => {
 
     const page2 = await admin.page('/users?page=2&sort=coins&direction=desc');
     assert.equal(page2.status, 200);
-    assert.match(page2.text, /2 \/ 2/);
+    assert.match(page2.text, /2 \/ 3/);
 
     const searched = await admin.page(`/users?q=${encodeURIComponent(codes[0] ?? '')}`);
     assert.equal(searched.status, 200);

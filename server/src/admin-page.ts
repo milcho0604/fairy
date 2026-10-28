@@ -56,8 +56,8 @@ export const CELL_SUBS: Record<AdminCell, ReadonlyArray<readonly [string, string
   ],
   settings: [
     ['features', '기능 스위치'],
-    // 예산, 정책, 백업 현황이 한 칸 (옛 #settings/backup 주소는 이 칸으로 온다: routerJs)
-    ['ai', '예산, 정책, 백업'],
+    ['ai', '예산, 정책'],
+    ['backup', '백업'],
     ['log', '운영 기록'],
   ],
 };
@@ -295,6 +295,10 @@ export interface AdminView {
         edit?: boolean | undefined;
         /** 복사 단추로 보일 값 (쿠폰 원본 코드, 한 번만) */
         copy?: string | undefined;
+        /** 결과 글이 달린 칸 (폼 이름으로 알 수 없을 때: 신고 칸에서 누른 막기는 이용자 칸이 아니라 신고 칸) */
+        place?: string | undefined;
+        /** 방금 쓰기로 처리한 신고 번호 (같은 신고를 열어 둔 채 보이게, 열람 기록은 다시 남기지 않는다) */
+        report?: string | undefined;
       }
     | undefined;
   /** 결과 글이 달린 폼이 있는 칸 (그 폼이 화면에 없을 때 이 칸 맨 위에 대신 보인다) */
@@ -327,6 +331,8 @@ export interface AdminView {
     rows: ReportRow[];
     /** 본문을 연 신고 하나. 없는 신고(지워졌거나 번호가 틀림)면 null, 열지 않았으면 undefined */
     open?: ReportOpen | null | undefined;
+    /** 열어 둔 신고 말고 다음 미처리 신고 번호 (없으면 null). 웹 화면만 채운다 */
+    next?: string | null | undefined;
   };
   todo: AdminTodo[];
   /** 최근 운영 기록 몇 줄 (찾기 조건과 상관없이) */
@@ -687,12 +693,13 @@ function userDetail(v: AdminView, a: NonNullable<AdminView['account']>): string 
     )
     .join('');
   const rp = v.preview?.action === 'coins/revoke' && v.preview.revoke.id === a.id ? v.preview : undefined;
+  const revokeOpen = !!rp || ['ai/revoke', 'coins/revoke'].includes(v.flash?.form ?? '');
   const rv = draftOf(v, 'coins/revoke');
   const rvMine = rv && val(rv, 'account').trim() === a.code ? rv : undefined;
   const logRows = (h?.log ?? [])
     .map(
       (l) =>
-        `<tr><td data-l="때">${when(l.at)}</td><td data-l="누가">${esc(l.actorName ?? l.actor)}</td><td data-l="무엇">${esc(actionKo(l.action))}</td><td data-l="자세히"><code>${esc(l.detail ? JSON.stringify(l.detail).slice(0, 120) : '')}</code></td></tr>`,
+        `<tr><td data-l="때">${when(l.at)}</td><td data-l="누가">${esc(l.actorName ?? l.actor)}</td><td data-l="무엇">${esc(actionKo(l.action))}</td><td data-l="자세히">${logDetailCell(l.action, l.detail)}</td></tr>`,
     )
     .join('');
   const adminLink = placeHref('settings/log', `?lu=${encodeURIComponent(a.code)}`);
@@ -702,6 +709,7 @@ function userDetail(v: AdminView, a: NonNullable<AdminView['account']>): string 
 <p><a class="button-link" href="${esc(placeHref('users/list'))}">이용자 목록으로</a></p>
 ${a.mergedFrom ? `<p class="flash warn" role="status">찾은 계정 #${esc(a.mergedFrom)} 는 이 계정에 합쳐졌어요. 코인과 내역은 합친 계정을 한 묶음으로 보여요</p>` : ''}
 <h2>${esc(name)} <code>${esc(a.code)}</code> <small>#${esc(a.id)}</small>${a.admin ? ' <span class="tag live">운영자</span>' : ''}${a.ai.blocked ? ' <span class="tag ended">막힘</span>' : ''}${a.ai.allowed ? ' <span class="tag live">허용 목록</span>' : ''}</h2>
+<nav class="row jump" aria-label="이 화면 안에서 바로 가기"><a class="button-link" href="#user-grant" data-jump="user-grant">지급</a><a class="button-link" href="#user-revoke" data-jump="user-revoke">회수</a><a class="button-link" href="#user-notes" data-jump="user-notes">철회</a></nav>
 <dl class="stats">
 <div><dt>코인</dt><dd>${a.balance}</dd></div>
 <div><dt>채팅 이용권</dt><dd>${a.ai.remaining}장</dd></div>
@@ -718,7 +726,7 @@ ${a.mergedFrom ? `<p class="flash warn" role="status">찾은 계정 #${esc(a.mer
 <div><dt>정기 지급</dt><dd>${a.ai.subscription ? `매달 ${a.ai.subscription.monthly}장 ${a.ai.subscription.mode === 'fill' ? '까지 채우기' : '더하기'}, ${esc(a.ai.subscription.startsOn)} ~ ${esc(a.ai.subscription.endsOn ?? '무기한')}, 다음 ${esc(a.ai.subscription.nextFill ?? '없음')}` : '없음'}</dd></div>
 </dl>
 
-<h3>이 사람에게 지급</h3>
+<h3 id="user-grant">이 사람에게 지급</h3>
 <p class="hint">지급은 쪽지로 가고 이용자가 열 때 받아요. 아래 단추를 누르면 대상과 양을 한 번 더 확인하는 화면이 나와요.</p>
 <form method="post" action="/admin/grants/preview" class="grid grant-one">${formErr(v, 'grants/batch', undefined, true)}${hidden(csrf)}<input type="hidden" name="accounts" value="${esc(a.code)}">
 <p class="wide target">받는 사람: <strong>${esc(name)}</strong> <code>${esc(a.code)}</code> #${esc(a.id)}</p>
@@ -752,24 +760,7 @@ ${a.ai.subscription ? sureForm(v, '/admin/ai/cancel', { account: a.code }, `${pl
 <label>끝일 (비우면 무기한) <input name="ends_on" type="date" value="${esc(val(sub, 'ends_on'))}"></label>
 <button type="submit">${esc(name)} 정기 지급 걸기</button>
 </form>
-<form method="post" action="/admin/ai/revoke" class="grid">${formErr(v, 'ai/revoke', a.code)}${hidden(csrf)}<input type="hidden" name="account" value="${esc(a.code)}">
-<label>채팅 이용권 회수 (남은 장수까지) <input name="count" type="number" min="1" max="1000" required value="${esc(val(rev, 'count'))}"></label>
-${confirmBox(`${plain(a)} 채팅 이용권 회수할게요 (되돌릴 수 없어요)`)}
-<button type="submit" class="danger">회수하기</button>
-</form>
-
-<h3>코인 회수</h3>
-${
-  rp
-    ? coinRevokePreview(v, rp)
-    : `<p class="hint">이용자가 이미 가진 코인을 서버 잔액에서 뺍니다. 잔액 ${a.balance}보다 많이는 뺄 수 없고, 코인 내역에 회수 줄이 남아요. 앱은 다음 맞추기 때 잔액이 바뀌어요. 이미 연 지급 쪽지의 코인을 되돌릴 때 써요. 아직 안 연 쪽지는 아래에서 철회해요.</p>
-<form method="post" action="/admin/coins/revoke/preview" class="grid">${formErr(v, 'coins/revoke', a.code)}${hidden(csrf)}<input type="hidden" name="account" value="${esc(a.code)}">
-<label>회수할 코인 (잔액 ${a.balance}까지) <input name="coins" type="number" min="1"${a.balance > 0 ? ` max="${a.balance}"` : ''} required value="${esc(val(rvMine, 'coins'))}"></label>
-<label class="wide">회수 사유, 운영 기록에 남아요 <textarea name="reason" required maxlength="200">${esc(val(rvMine, 'reason'))}</textarea></label>
-<button type="submit"${a.balance > 0 ? '' : ' disabled'}>${esc(name)} 코인 회수, 미리보기</button>${a.balance > 0 ? '' : ' <span class="hint">잔액이 0이라 뺄 코인이 없어요</span>'}</form>`
-}
-
-<h3>받은 쪽지와 받았는지</h3>
+<h3 id="user-notes">받은 쪽지와 받았는지</h3>
 <p class="hint">쪽지를 열면 코인과 채팅 이용권을 받아요. 서버가 아는 것은 연 시각과 그때 실제로 받은 양이에요. 앱에서 알림을 봤는지는 알 수 없어요. 아직 안 연 쪽지는 철회할 수 있고, 철회하면 이용자 쪽지함에서 사라져요. 최근 15건.</p>
 ${formErr(v, 'notes/withdraw', a.code)}
 ${noteRows ? `<table class="cards"><thead><tr><th>보낸 때</th><th>종류</th><th>내용</th><th>받았는지</th><th>철회</th></tr></thead><tbody>${noteRows}</tbody></table>` : '<p class="empty">보낸 쪽지가 없어요</p>'}
@@ -777,6 +768,27 @@ ${noteRows ? `<table class="cards"><thead><tr><th>보낸 때</th><th>종류</th>
 <h3>코인 내역</h3>
 <p class="hint">합친 계정까지 한 묶음, 최근 15건. 지금 잔액은 ${a.balance}.</p>
 ${coinRows ? `<table class="cards"><thead><tr><th>때</th><th>까닭</th><th>코인</th><th>상태</th></tr></thead><tbody>${coinRows}</tbody></table>` : '<p class="empty">코인 기록이 없어요</p>'}
+
+<details class="danger-fold" id="user-revoke"${revokeOpen ? ' open' : ''}><summary>회수 (채팅 이용권, 코인): 되돌릴 수 없어요</summary>
+<h4>채팅 이용권 회수</h4>
+<form method="post" action="/admin/ai/revoke" class="grid">${formErr(v, 'ai/revoke', a.code)}${hidden(csrf)}<input type="hidden" name="account" value="${esc(a.code)}">
+<label>채팅 이용권 회수 (남은 장수까지) <input name="count" type="number" min="1" max="1000" required value="${esc(val(rev, 'count'))}"></label>
+${confirmBox(`${plain(a)} 채팅 이용권 회수할게요 (되돌릴 수 없어요)`)}
+<button type="submit" class="danger">회수하기</button>
+</form>
+
+<h4>코인 회수</h4>
+${
+  rp
+    ? coinRevokePreview(v, rp)
+    : `<p class="hint">이용자가 이미 가진 코인을 서버 잔액에서 뺍니다. 잔액 ${a.balance}보다 많이는 뺄 수 없고, 코인 내역에 회수 줄이 남아요. 앱은 다음 맞추기 때 잔액이 바뀌어요. 이미 연 지급 쪽지의 코인을 되돌릴 때 써요. 아직 안 연 쪽지는 위의 받은 쪽지에서 철회해요.</p>
+<form method="post" action="/admin/coins/revoke/preview" class="grid">${formErr(v, 'coins/revoke', a.code)}${hidden(csrf)}<input type="hidden" name="account" value="${esc(a.code)}">
+<label>회수할 코인 (잔액 ${a.balance}까지) <input name="coins" type="number" min="1"${a.balance > 0 ? ` max="${a.balance}"` : ''} required value="${esc(val(rvMine, 'coins'))}"></label>
+<label class="wide">회수 사유, 운영 기록에 남아요 <textarea name="reason" required maxlength="200">${esc(val(rvMine, 'reason'))}</textarea></label>
+<button type="submit"${a.balance > 0 ? '' : ' disabled'}>${esc(name)} 코인 회수, 미리보기</button>${a.balance > 0 ? '' : ' <span class="hint">잔액이 0이라 뺄 코인이 없어요</span>'}</form>`
+}
+
+</details>
 
 <h3>이 사람의 운영 기록</h3>
 ${logRows ? `<table class="cards"><thead><tr><th>때</th><th>누가</th><th>무엇</th><th>자세히</th></tr></thead><tbody>${logRows}</tbody></table>` : '<p class="empty">이 사람에 대한 운영 기록이 없어요</p>'}
@@ -804,9 +816,11 @@ export function usersTable(v: AdminView): string {
   // 찾는 칸은 하나다 (번호, 닉네임, 기기 코드). 하나로 좁혀지면 상세 한 화면이 표 자리에 열린다
   const searchForm = `<form method="get" action="/admin#users/list" class="row">
 <label>번호, 닉네임 또는 기기 코드 <input name="q" maxlength="40" value="${esc(u.query)}"></label>
+<button type="submit">찾기</button>
+<details class="sort-fold"${u.sort !== 'active' || u.direction !== 'desc' ? ' open' : ''}><summary>정렬 바꾸기</summary><div class="row">
 <label>정렬 <select name="sort"><option value="active"${u.sort === 'active' ? ' selected' : ''}>최근 활동</option><option value="coins"${u.sort === 'coins' ? ' selected' : ''}>코인</option><option value="created"${u.sort === 'created' ? ' selected' : ''}>만든 날</option></select></label>
 <label>방향 <select name="direction"><option value="desc"${u.direction === 'desc' ? ' selected' : ''}>큰 값부터</option><option value="asc"${u.direction === 'asc' ? ' selected' : ''}>작은 값부터</option></select></label>
-<button type="submit">찾기</button></form>`;
+</div></details></form>`;
   const a = v.account;
   // 쓰던 코인 회수 미리보기가 지금 보는 이용자의 것이 아니면 (또는 이용자를 열지 않았으면) 맨 위에 보인다
   const rp = v.preview?.action === 'coins/revoke' ? v.preview : undefined;
@@ -827,7 +841,7 @@ export function usersTable(v: AdminView): string {
     .join('');
   return `${lone}<section><h2>이용자 ${u.total}명</h2>
 ${searchForm}
-<p class="hint">합쳐져서 닫힌 계정은 목록에 없고, 적으면 남은 계정이 열려요. 한 쪽에 50명씩 보여요.</p>
+<p class="hint">합쳐져서 닫힌 계정은 목록에 없고, 적으면 남은 계정이 열려요. 한 쪽에 20명씩 보여요.</p>
 <form id="pick-form" method="get" action="/admin#users/grants" class="row"><button type="submit">고른 사람에게 지급 (한 번에 20명까지)</button><span class="hint">이름 앞 칸을 눌러 고르면 지급 칸에 받는 사람으로 채워져요. 보내기 전에 대상 확인 화면이 한 번 나와요.</span></form>
 <div class="table-scroll"><table class="users cards"><thead><tr><th>고르기</th><th>번호</th><th>닉네임</th><th>기기 코드</th><th>로그인 여부</th><th>나이 구분</th><th>코인 잔액</th><th>채팅 이용권</th><th>마지막 활동</th><th>만든 날</th><th>앱 판</th><th></th></tr></thead>
 <tbody>${rows || '<tr><td colspan="12">찾은 이용자가 없어요</td></tr>'}</tbody></table></div>
@@ -853,7 +867,7 @@ const FEATURE_MODE_KO: Record<string, string> = {
   everyone: '모두',
 };
 
-/** 기능 모드 글. allowlist 에서도 운영자 계정이 켜지는 기능(features.ts admins)은 채팅 이용권처럼 그렇게 적는다 */
+/** 접근 설정 값의 글. allowlist 에서도 운영자 계정이 켜지는 기능(features.ts admins)은 채팅 이용권처럼 그렇게 적는다 */
 const featureModeKo = (key: string, mode: string): string =>
   mode === 'allowlist' && (FEATURES as Record<string, { admins?: boolean }>)[key]?.admins === true
     ? '허용 목록만 (목록과 운영자 계정)'
@@ -870,14 +884,42 @@ const FEATURE_KO: Record<string, string> = {
   friend_gift_passes: '친구에게 채팅 이용권 선물',
 };
 
+/** 결과 글에 쓰는 짧은 이름 (표의 긴 이름 말고) */
+const SWITCH_SHORT: Record<string, string> = {
+  ai_chat: '채팅 이용권',
+  kakao_login: '카카오 로그인',
+  coin_reset: '코인 초기화',
+  calendar_link_hint: '다른 기기의 구글 일정 연결 안내',
+  friends: '친구 맺기',
+  friend_gifts: '친구 선물',
+  friend_calendar: '친구에게 바쁜 시간 보여 주기',
+  friend_visit: '친구 펫 놀러 가기',
+  friend_gift_passes: '친구에게 채팅 이용권 선물',
+};
+const SWITCH_VALUE_KO: Record<string, string> = { off: '끔', allowlist: '허용 목록만', everyone: '모두' };
+/** 받침에 따라 을/를, 로/으로 (ㄹ 받침은 로) */
+const jongOf = (w: string): number => {
+  const c = w.charCodeAt(w.length - 1) - 0xac00;
+  return c >= 0 && c <= 11171 ? c % 28 : 0;
+};
+const eulReul = (w: string) => (jongOf(w) === 0 ? '를' : '을');
+const euroRo = (w: string) => (jongOf(w) === 0 || jongOf(w) === 8 ? '로' : '으로');
+/** 기능 스위치를 바꾼 결과 글: "친구 맺기를 허용 목록만에서 모두로 바꿨어요" (키와 영어 값 대신 이름과 화면에 보이는 값) */
+export function switchChangeText(key: string, before: string, after: string): string {
+  const name = SWITCH_SHORT[key] ?? key;
+  const b = SWITCH_VALUE_KO[before] ?? before;
+  const a = SWITCH_VALUE_KO[after] ?? after;
+  return `${name}${eulReul(name)} ${b}에서 ${a}${euroRo(a)} 바꿨어요`;
+}
+
 const FEATURE_HINT: Record<string, string> = {
   kakao_login:
-    '허용 목록 모드에서는 이미 구글로 로그인한 허용 계정이 앱에서 "카카오도 연결"하는 것만 돼요. 모두 모드면 누구나 카카오로 로그인, 가입. 카카오 키가 없으면 켜도 꺼져 있어요.',
+    '접근 설정이 허용 목록만이면 이미 구글로 로그인한 허용 계정이 앱에서 "카카오도 연결"하는 것만 돼요. 모두로 두면 누구나 카카오로 로그인, 가입. 카카오 키가 없으면 켜도 꺼져 있어요.',
   coin_reset: '꺼짐이면 앱이 초기화 칸을 숨기고, 서버도 초기화 기록을 받지 않아요.',
   calendar_link_hint:
-    '같은 계정의 다른 기기에서 구글 일정을 연결했으면 새 기기에 "이 기기도 연결할까?"를 보여 줘요. 서버에는 연결 표시만 두고 구글 토큰은 두지 않아요. 허용 목록 모드에서는 운영자 계정도 켜져요.',
+    '같은 계정의 다른 기기에서 구글 일정을 연결했으면 새 기기에 "이 기기도 연결할까?"를 보여 줘요. 서버에는 연결 표시만 두고 구글 토큰은 두지 않아요. 허용 목록만이면 운영자 계정도 켜져요.',
   friends:
-    '허용 목록 모드에서는 목록의 계정과 운영자 계정만 써요. 신청을 받는 사람도 쓸 수 있어야 해요. 로그인한 계정끼리, 만 14~17세끼리와 성인끼리만 친구가 돼요.',
+    '허용 목록만이면 목록의 계정과 운영자 계정만 써요. 신청을 받는 사람도 쓸 수 있어야 해요. 로그인한 계정끼리, 만 14~17세끼리와 성인끼리만 친구가 돼요.',
   friend_gifts:
     '보내는 사람 기준이에요. 하루 코인 500, 채팅 이용권 5장 (보내기, 받기 각각). 이용권은 받는 사람이 만 18세 이상이고 둘 다 채팅 이용권을 쓸 수 있을 때만.',
   friend_calendar:
@@ -885,7 +927,7 @@ const FEATURE_HINT: Record<string, string> = {
   friend_visit:
     '보내는 사람과 받는 사람 모두 켜져 있어야 해요. 친구마다 따로 켜고 기본은 꺼짐이에요. 서버에는 펫 종류, 이름, 네 발 서기 여부만 올라오고 사진이나 그림 파일은 받지 않아요. 만 14~17세끼리, 성인끼리만. 끄거나 친구를 끊으면 바로 지워요.',
   friend_gift_passes:
-    '보내는 사람과 받는 사람이 모두 허용돼야 해요(허용 목록 모드면 둘 다 목록이나 운영자 계정). 지금 이용권은 모두 운영자 지급분이라 이 스위치가 운영자 지급분 선물 여부까지 정해요. 받는 사람은 만 18세 이상이고 채팅 이용권을 쓸 수 있어야 해요.',
+    '보내는 사람과 받는 사람이 모두 허용돼야 해요(허용 목록만이면 둘 다 목록이나 운영자 계정). 지금 이용권은 모두 운영자 지급분이라 이 스위치가 운영자 지급분 선물 여부까지 정해요. 받는 사람은 만 18세 이상이고 채팅 이용권을 쓸 수 있어야 해요.',
 };
 
 /** 표에 보일 한 줄 설명 (긴 설명은 "자세히" 안에 둔다) */
@@ -903,12 +945,12 @@ const FEATURE_SHORT: Record<string, string> = {
 
 /** 채팅 이용권(ai_chat)의 긴 설명 */
 const AI_CHAT_HINT =
-  '1장 = 질문 1번. 허용 목록 모드에서는 목록의 계정과 운영자 계정(ADMIN_GOOGLE_SUBS)만 써요. 첫 로그인 선물 10장은 허용된 계정이 처음 물을 때 한 번 받아요.';
+  '1장 = 질문 1번. 허용 목록만이면 목록의 계정과 운영자 계정(ADMIN_GOOGLE_SUBS)만 써요. 첫 로그인 선물 10장은 허용된 계정이 처음 물을 때 한 번 받아요.';
 
 /** 표의 상태 배지 글 (자세한 뜻은 영향 칸에) */
 const SWITCH_TAG_KO: Record<string, string> = { off: '끔', allowlist: '허용 목록', everyone: '모두' };
 
-/** 이 모드면 누가 쓰는가 (표의 "영향" 칸). n 은 허용 목록의 계정 수 */
+/** 이 설정이면 누가 쓰는가 (표의 "영향" 칸). n 은 허용 목록의 계정 수 */
 function switchImpact(key: string, mode: string, n: number): string {
   if (mode === 'off') return '아무도 쓸 수 없어요';
   const admins =
@@ -937,7 +979,7 @@ function switchRow(
   const label = `${o.name} 접근 설정을 바꿀게요 (지금 ${modeKo(o.mode)})`;
   const hidden2 = `${hidden(v.csrf)}<input type="hidden" name="key" value="${esc(o.key)}"><input type="hidden" name="from" value="${esc(o.mode)}">`;
   const change = `<form method="post" action="${esc(`/admin/${o.action}`)}" class="sw-form">${formErr(v, o.action, o.key)}${hidden2}
-<select name="mode" aria-label="${esc(o.name)} 모드">${(['off', 'allowlist', 'everyone'] as const).map((m) => opt(d, 'mode', m, modeKo(m), o.mode)).join('')}</select>
+<select name="mode" aria-label="${esc(o.name)} 접근 설정">${(['off', 'allowlist', 'everyone'] as const).map((m) => opt(d, 'mode', m, modeKo(m), o.mode)).join('')}</select>
 ${confirmBox(label)}
 <button type="submit" class="danger">바꾸기</button></form>`;
   const undo =
@@ -957,7 +999,7 @@ ${confirmBox(`${o.name} 을 이전 값 ${modeKo(last.before)} 으로 되돌릴�
 <td class="act" data-l="바꾸기">${change}${undo}</td></tr>`;
 }
 
-/** 기능 하나의 허용 계정 (#102). 모드를 바꾸는 폼은 표 줄에 있다 */
+/** 기능 하나의 허용 계정 (#102). 접근 설정을 바꾸는 폼은 표 줄에 있다 */
 function featureAllow(x: FeatureView, v: AdminView): string {
   const csrf = v.csrf;
   const da = draftOf(v, 'features/allow', x.key);
@@ -997,16 +1039,16 @@ function aiSections(v: AdminView): { features: string; tickets: string } {
     ),
   ].join('\n');
   const features = `<section><h2>기능 스위치</h2>
-<p class="hint">한 표에서 바로 바꿔요. 바꿀 때는 확인 칸을 체크해야 하고, 운영 기록에 누가 무엇을 어떻게 바꿨는지 남아요. 바꾼 줄에는 이전 값이 보이고 한 번에 되돌릴 수 있어요. 채팅 이용권의 허용 목록은 <a href="#settings/ai">예산, 정책, 백업</a> 칸에 있어요.</p>
+<p class="hint">한 표에서 바로 바꿔요. 바꿀 때는 확인 칸을 체크해야 하고, 운영 기록에 누가 무엇을 어떻게 바꿨는지 남아요. 바꾼 줄에는 이전 값이 보이고 한 번에 되돌릴 수 있어요. 채팅 이용권의 허용 목록은 <a href="#settings/ai">예산, 정책</a> 칸에 있어요.</p>
 <div class="table-scroll"><table class="switches cards"><thead><tr><th>기능</th><th>설명</th><th>상태</th><th>영향</th><th>바꾸기</th></tr></thead><tbody>
 ${rows}
 </tbody></table></div>
 <h3>허용 계정</h3>
-<p class="hint">허용 목록 모드인 기능에서 쓸 계정을 넣고 빼요.</p>
+<p class="hint">접근 설정이 허용 목록만인 기능에서 쓸 계정을 넣고 빼요.</p>
 ${v.features.map((x) => featureAllow(x, v)).join('\n')}
 </section>`;
   const tickets = `<section><h2>예산과 정책</h2>
-<p class="hint">채팅 이용권을 누가 쓰는지(접근 모드)는 <a href="#settings/features">기능 스위치</a> 표에서 바꿔요. 지금 모드: <strong>${esc(MODE_KO[ai.mode])}</strong>. 허용 목록 모드에서는 목록의 계정과 운영자 계정(ADMIN_GOOGLE_SUBS)만 써요.</p>
+<p class="hint">채팅 이용권을 누가 쓰는지(접근 설정)는 <a href="#settings/features">기능 스위치</a> 표에서 바꿔요. 지금 설정: <strong>${esc(MODE_KO[ai.mode])}</strong>. 허용 목록만이면 목록의 계정과 운영자 계정(ADMIN_GOOGLE_SUBS)만 써요.</p>
 <form method="post" action="/admin/ai/limits" class="grid">${formErr(v, 'ai/limits')}${hidden(csrf)}
 <label>월 예산 달러 (.env 상한 ${usd(ai.capBudgetMicros)} 이하, 비우면 상한) <input name="budget_usd" inputmode="decimal" value="${esc(val(dLim, 'budget_usd', ai.setBudgetMicros === null ? '' : (ai.setBudgetMicros / 1e6).toString()))}"></label>
 <label>사람마다 하루 질문 (.env 상한 ${ai.capDailyLimit} 이하, 비우면 상한) <input name="daily_limit" type="number" min="0" value="${esc(val(dLim, 'daily_limit', String(ai.setDailyLimit ?? '')))}"></label>
@@ -1324,23 +1366,41 @@ const FILTER_KO: Record<ReportFilter, string> = {
 /** 신고 하나를 열었을 때: 질문과 답, 상태 바꾸기, 이용자로 가기, 막기. 열면 운영 기록에 남는다 */
 function reportDetail(v: AdminView, o: ReportOpen): string {
   const nameText = `${o.nickname ?? '(닉네임 없음)'} ${o.code}`;
-  const move = (to: ReportState, label: string, ghost = false) =>
-    `<form method="post" action="/admin/reports/status" class="inline">${formErr(v, 'reports/status', o.id)}${hidden(v.csrf)}<input type="hidden" name="id" value="${esc(o.id)}"><input type="hidden" name="from" value="${o.status}"><input type="hidden" name="to" value="${to}"><button type="submit"${ghost ? ' class="ghost"' : ''}>${esc(label)}</button></form>`;
+  // 결과 글은 아래 한 곳에만 그린다 (단추마다 그리면 같은 글이 여럿 생긴다)
+  const move = (to: ReportState, label: string, ghost = false, next = false) =>
+    `<form method="post" action="/admin/reports/status" class="inline">${hidden(v.csrf)}<input type="hidden" name="id" value="${esc(o.id)}"><input type="hidden" name="from" value="${o.status}"><input type="hidden" name="to" value="${to}">${next ? '<input type="hidden" name="next" value="1">' : ''}<button type="submit"${ghost ? ' class="ghost"' : ''}>${esc(label)}</button></form>`;
   const moves =
     o.status === 'pending'
-      ? move('seen', '확인했어요') + move('done', '조치했어요')
+      ? move('seen', '확인했어요') +
+        move('done', '조치했어요') +
+        move('done', '조치하고 다음 미처리 열기', false, true)
       : o.status === 'seen'
-        ? move('done', '조치했어요') + move('pending', '미처리로 되돌리기', true)
+        ? move('done', '조치했어요') +
+          move('done', '조치하고 다음 미처리 열기', false, true) +
+          move('pending', '미처리로 되돌리기', true)
         : move('pending', '미처리로 되돌리기', true);
+  const nextLink =
+    v.reports.next === undefined
+      ? ''
+      : v.reports.next === null
+        ? '<span class="hint">다른 미처리 신고는 없어요</span>'
+        : `<a class="button-link" href="${esc(reportHref(v.reports.next))}">다음 미처리 열기</a>`;
+  const blockFields = { account: o.code, blocked: '1', ret: 'reports' };
   const block = o.blocked
     ? `<span class="tag ended">채팅 이용권 막힘</span> ${postButton(v.csrf, '/admin/ai/block', { account: o.code, blocked: '0', ret: 'reports' }, '막기 풀기')}`
+    : `${sureForm(v, '/admin/ai/block', blockFields, `${nameText} 채팅 이용권 막을게요`, '채팅 이용권 막기', false)}
+${
+  o.status === 'done'
+    ? ''
     : sureForm(
         v,
         '/admin/ai/block',
-        { account: o.code, blocked: '1', ret: 'reports' },
-        `${nameText} 채팅 이용권 막을게요`,
-        '채팅 이용권 막기',
-      );
+        { ...blockFields, mark_report: o.id },
+        `${nameText} 채팅 이용권 막고 신고 #${o.id} 조치로 표시할게요`,
+        '막고 조치로 표시',
+        false,
+      )
+}`;
   const others = o.others.length
     ? `<p class="hint">이 이용자의 다른 신고: ${o.others.map((x) => `<a href="${esc(reportHref(x.id))}">#${esc(x.id)} (${REPORT_STATE_KO[x.status]})</a>`).join(', ')}</p>`
     : '';
@@ -1362,9 +1422,10 @@ ${
 <pre class="convo">${esc(o.answer)}</pre>`
 }
 ${others}
-<div class="row">${moves}<a class="button-link" href="${esc(userHref(o.code))}">이용자 보기</a></div>
+${formErr(v, 'reports/status', o.id)}${formErr(v, 'ai/block', o.code)}
+<div class="row">${moves}</div>
 <div class="row">${block}</div>
-<p><a class="button-link" href="${esc(placeHref('reports'))}">목록으로</a></p>
+<div class="row">${nextLink}<a class="button-link" href="${esc(userHref(o.code))}">이용자 보기</a><a class="button-link" href="${esc(placeHref('reports'))}">목록으로</a></div>
 </div>`;
 }
 
@@ -1400,6 +1461,7 @@ function reportsSection(v: AdminView): string {
     : `<p class="empty">${r.total === 0 ? '접수된 신고가 없어요' : `${FILTER_KO[r.filter]} 신고가 없어요`}</p>`;
   return `<section id="reports-list"><h2>신고</h2>
 <p class="hint">이용자가 따로 동의하고 신고한 AI 대화예요. 신고된 질문과 답 하나씩만 받은 날부터 30일 보관하고 그 뒤 지워요. 목록에는 대화 글이 없어요. 열어 보면 운영 기록에 남아요.</p>
+<p class="hint">상태 뜻: <strong>미처리</strong>는 아직 안 본 신고, <strong>확인</strong>은 읽었지만 아직 처리 중, <strong>조치</strong>는 막기 같은 처리를 마친 신고예요. 상태는 운영자끼리 보는 표시이고 이용자에게는 알리지 않아요.</p>
 ${open}
 <div class="row">${filters}</div>
 ${table}
@@ -1454,6 +1516,11 @@ function grantsSection(v: AdminView): string {
           }${t.duplicate ? ' <span class="tag">중복</span> <small>한 번만 보내요</small>' : ''}${t.mergedFrom ? ` <span class="tag soon">합쳐진 계정 #${esc(t.mergedFrom)}, 남은 계정이 받아요</span>` : ''}</td><td data-l="나이 구분">${esc(t.age ?? '')}</td></tr>`,
       )
       .join('');
+    const found = g.targets.filter((t) => t.found);
+    const single =
+      g.people === 1 && found[0]
+        ? plain({ code: found[0].code ?? '', nickname: found[0].nickname ?? null })
+        : '';
     const count = {
       lines: g.targets.length,
       missing: g.targets.filter((t) => !t.found).length,
@@ -1484,8 +1551,12 @@ ${other}${flowSteps(3)}
 <table class="targets"><thead><tr><th>적은 말</th><th>대상</th><th>나이 구분</th></tr></thead><tbody>${rows}</tbody></table>
 ${g.blocked ? `<p class="flash error" role="alert">${esc(g.blocked)}</p>` : ''}
 <form method="post" action="/admin/grants/batch" class="grid">${formErr(v, 'grants/batch')}${hidden(v.csrf)}${flowKey(pv.nonce)}${carry(pv.fields)}
-<label class="count wide">받는 사람 수를 숫자로 다시 적어 주세요 (위 표의 ${g.people}명) <input name="people" inputmode="numeric" pattern="${g.people}" title="${g.people}" autocomplete="off" required></label>
-${confirmBox(`위 ${g.people}명에게 지급할게요`)}
+${
+  g.people === 1
+    ? ''
+    : `<label class="count wide">받는 사람 수를 숫자로 다시 적어 주세요 (위 표의 ${g.people}명) <input name="people" inputmode="numeric" pattern="${g.people}" title="${g.people}" autocomplete="off" required></label>`
+}
+${confirmBox(single ? `위 표의 ${single}에게 코인 ${g.coins}, 채팅 이용권 ${g.passes}장 지급할게요` : `위 ${g.people}명에게 지급할게요`)}
 <button type="submit"${g.blocked ? ' disabled' : ''}>확정하고 지급 쪽지 보내기</button></form>
 ${editButton(v.csrf, 'grants/batch')}</section>`;
   }
@@ -1599,6 +1670,11 @@ function postRowHtml(v: AdminView, r: PostRow): string {
       ? '기간 없음'
       : `${r.from !== null ? when(r.from) : '처음부터'} ~ ${r.until !== null ? when(r.until) : '끝없이'}`;
   const note = r.note ? ` <small>${esc(r.note)}</small>` : '';
+  // 공지는 문서 하나라 마지막 저장 뒤 15분 안이면 홈페이지에 아직 안 닿았을 수 있다 (서버는 홈페이지 쪽 결과를 알 수 없다)
+  const pending =
+    r.kind === 'notice' && v.noticesUpdated !== undefined && Date.now() < v.noticesUpdated + 15 * 60_000
+      ? ' <span class="tag soon">홈페이지 반영 대기</span>'
+      : '';
   const load = `<a class="button-link" href="/admin?load=${encodeURIComponent(r.load)}#announce/new">${r.kind === 'notice' || r.kind === 'version' ? '불러와 고치기' : '복사해서 새로 만들기'}</a>`;
   let close = '';
   if (r.kind === 'notice')
@@ -1629,7 +1705,7 @@ function postRowHtml(v: AdminView, r: PostRow): string {
     );
   return `<tr${r.state === 'ended' ? ' class="off"' : ''}><td data-l="종류">${esc(POST_KIND_LABEL[r.kind])}</td>
 <td class="name" data-l="제목">${esc(r.title)}<br><small>${esc(r.sub)}</small></td>
-<td data-l="상태">${POST_STATE_TAG[r.state]}${note}</td><td data-l="기간">${esc(period)}</td>
+<td data-l="상태">${POST_STATE_TAG[r.state]}${note}${pending}</td><td data-l="기간">${esc(period)}</td>
 <td class="act">${load} ${close}</td></tr>`;
 }
 
@@ -1659,6 +1735,7 @@ function postsSection(v: AdminView): string {
   const dRw = draftOf(v, 'rewards/policy');
   return `<section><h2>게시물</h2>
 <p class="hint">공지, 이벤트, 쿠폰, 앱 버전 기준을 한 목록에서 봐요. 진행 중이 위, 끝난 것이 아래예요. ${esc(docInfo)}</p>
+<p class="hint">저장하면 서버에는 바로 들어가지만 홈페이지 파일에는 10~15분 뒤에 닿아요(공지, 이벤트). 방금 저장한 공지에는 "홈페이지 반영 대기" 표시가 붙고, 15분이 지나면 사라져요. 서버는 홈페이지 쪽 결과를 직접 확인하지 못해요.</p>
 <form method="get" action="/admin" class="row posts-find">
 <input type="hidden" name="pk" value="${esc(f.kind === 'all' ? '' : f.kind)}">
 <input type="hidden" name="ps" value="${esc(f.state === 'all' ? '' : f.state)}">
@@ -1967,7 +2044,8 @@ ${CELL_SUBS[cell].map(([id]) => `<div class="sub" id="sub-${cell}-${id}" data-su
     announce: sub('announce', { posts: postsSection(v), new: newSection(v) }),
     settings: sub('settings', {
       features: ai.features,
-      ai: ai.tickets + backupSection(v),
+      ai: ai.tickets,
+      backup: backupSection(v),
       log: logSection(v),
     }),
   };
@@ -2042,6 +2120,118 @@ const ACTION_KO: Record<string, string> = {
 /** 기록의 동작 이름을 운영자 말로 (모르면 코드 그대로) */
 export const actionKo = (a: string): string => ACTION_KO[a] ?? a;
 
+/**
+ * 운영 기록 "자세히" 를 동작마다 한 줄 문장으로 (영어 키와 날 JSON 대신). 모르는 동작이나 빠진 값은 null 이라 원본만 보인다.
+ * 값은 기록에 남은 그대로 읽고, 없는 값은 말하지 않는다
+ */
+export function logDetailKo(action: string, detail: unknown): string | null {
+  if (detail === null || typeof detail !== 'object' || Array.isArray(detail)) return null;
+  const d = detail as Record<string, unknown>;
+  const num = (k: string): number | undefined => (typeof d[k] === 'number' ? (d[k] as number) : undefined);
+  const str = (k: string): string | undefined => (typeof d[k] === 'string' ? (d[k] as string) : undefined);
+  const gift = (coins: number | undefined, passes: number | undefined) =>
+    [coins ? `코인 ${coins}` : '', passes ? `채팅 이용권 ${passes}장` : ''].filter(Boolean).join(', ') ||
+    '받을 것 없음';
+  const quote = (t: string | undefined) => (t ? `, 사유 "${t.slice(0, 80)}"` : '');
+  const revert = d.revert === true ? ' (이전 값으로 되돌림)' : '';
+  switch (action) {
+    case 'note.send': {
+      const n = num('note');
+      if (n === undefined) return null;
+      const days = num('days');
+      return `쪽지 #${n}${d.batch === true ? ' (묶음 지급의 한 건)' : ''}: ${gift(num('coins'), num('chatPasses'))}${days ? `, 만료 ${days}일` : ''}${quote(str('message'))}`;
+    }
+    case 'grant.batch': {
+      const people = num('recipients');
+      if (people === undefined) return null;
+      return `${people}명에게 지급: ${gift(num('coins'), num('chatPasses'))}, 만료 ${num('days') ?? '?'}일`;
+    }
+    case 'note.withdraw': {
+      const n = num('note');
+      return n === undefined ? null : `쪽지 #${n} 철회 (${gift(num('coins'), num('chatPasses'))})`;
+    }
+    case 'coins.revoke': {
+      const coins = num('coins');
+      if (coins === undefined) return null;
+      const b = num('before');
+      const a = num('after');
+      return `코인 ${coins} 회수${b !== undefined && a !== undefined ? ` (잔액 ${b}에서 ${a}로)` : ''}${quote(str('reason'))}`;
+    }
+    case 'ai.revoke': {
+      const n = num('count');
+      return n === undefined
+        ? null
+        : `채팅 이용권 ${n}장 회수${num('remaining') !== undefined ? ` (남은 ${num('remaining')}장)` : ''}`;
+    }
+    case 'ai.subscribe': {
+      const m = num('monthly');
+      if (m === undefined) return null;
+      return `매달 ${m}장 ${str('mode') === 'add' ? '더하기' : '까지 채우기'}, ${str('startsOn') ?? '오늘'}부터 ${str('endsOn') ?? '무기한'}`;
+    }
+    case 'ai.cancel':
+      return '정기 지급 해지';
+    case 'ai.mode': {
+      const b = str('before');
+      const a = str('after');
+      return b && a ? `${switchChangeText('ai_chat', b, a)}${revert}` : null;
+    }
+    case 'feature.mode': {
+      const k = str('key');
+      const b = str('before');
+      const a = str('after');
+      return k && b && a ? `${switchChangeText(k, b, a)}${revert}` : null;
+    }
+    case 'feature.allow':
+    case 'feature.disallow': {
+      const k = str('key');
+      return k ? `${SWITCH_SHORT[k] ?? k} 허용 목록에서 ${action === 'feature.allow' ? '넣음' : '뺌'}` : null;
+    }
+    case 'rewards.policy': {
+      if (typeof d.before !== 'boolean' || typeof d.after !== 'boolean') return null;
+      const t = (x: boolean) => (x ? '로그인 계정만' : '기기 계정도');
+      return `선물과 쿠폰 받는 계정을 ${t(d.before)}에서 ${t(d.after)}${euroRo(t(d.after))} 바꿈`;
+    }
+    case 'report.view':
+      return num('report') === undefined ? null : `신고 #${num('report')} 대화를 열어 봄`;
+    case 'report.seen':
+    case 'report.done':
+    case 'report.reopen': {
+      const r = num('report');
+      const f = str('from');
+      const t = str('to');
+      if (r === undefined || !f || !t) return null;
+      const ko = (x: string) => REPORT_STATE_KO[x as ReportState] ?? x;
+      return `신고 #${r} ${ko(f)}에서 ${ko(t)}로${d.withBlock === true ? ' (채팅 이용권 막기와 함께)' : ''}`;
+    }
+    case 'event.create': {
+      const coins = num('coins');
+      const boost = num('boost');
+      const kind = str('kind') === 'boost' ? '배수' : '선물';
+      return `${kind} 이벤트${coins ? `, 코인 ${coins}` : ''}${boost ? `, 배수 ${boost}` : ''}, ${str('from') ?? '?'} ~ ${str('until') ?? '?'}`;
+    }
+    case 'coupon.create': {
+      const label = str('label');
+      if (label === undefined) return null;
+      return `쿠폰 "${label}": ${gift(num('coins'), num('tickets'))}, 최대 ${num('maxUses') ?? '?'}번`;
+    }
+    case 'notice.create':
+    case 'notice.update': {
+      const t = str('title');
+      return t ? `${action === 'notice.create' ? '새' : '고친'} 공지 "${t}"` : null;
+    }
+    default:
+      return null;
+  }
+}
+
+/** 운영 기록 칸: 문장이 있으면 문장 + 접힌 원본, 없으면 원본만 */
+export function logDetailCell(action: string, detail: unknown): string {
+  const raw = detail ? JSON.stringify(detail) : '';
+  const text = logDetailKo(action, detail);
+  if (text === null) return `<code>${esc(raw)}</code>`;
+  return `${esc(text)}<details class="raw"><summary>원본</summary><code>${esc(raw)}</code></details>`;
+}
+
 /** 운영 기록: 누가(이름), 대상 이용자, 동작 종류, 글 검색 */
 function logSection(v: AdminView): string {
   const p = v.logPage;
@@ -2059,7 +2249,7 @@ function logSection(v: AdminView): string {
 <td>${l.actorName ? `${esc(l.actorName)}<br><small><code>${esc(l.actor)}</code></small>` : `<code>${esc(l.actor)}</code>`}</td>
 <td>${esc(actionKo(l.action))}${(l.detail as { revert?: unknown } | null)?.revert === true ? ' (되돌림)' : ''}<br><small><code>${esc(l.action)}</code></small></td>
 <td>${l.targetName ? `${esc(l.targetName)}<br><small><code>${esc(l.target ?? '')}</code></small>` : esc(l.target ?? '')}</td>
-<td><code>${esc(l.detail ? JSON.stringify(l.detail) : '')}</code></td></tr>`,
+<td data-l="자세히">${logDetailCell(l.action, l.detail)}</td></tr>`,
     )
     .join('');
   const filtered = !!(p.user || p.action || p.text);
@@ -2127,8 +2317,6 @@ function routerJs(): string {
       else if (['q', 'page', 'sort', 'direction', 'user'].some((k) => q.has(k))) { c = 'users'; s = 'list'; }
       else c = 'home';
     }
-    // 백업 현황은 예산, 정책과 한 칸이 되었다 (옛 #settings/backup 주소)
-    if (c === 'settings' && s === 'backup') s = 'ai';
     let place = c;
     if (SUBS[c].length) {
       if (SUBS[c].indexOf(s) < 0) s = SUBS[c][0];
@@ -2303,6 +2491,13 @@ table.switches small.prev { color: var(--muted); }
 form.sw-form { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin: 0 0 8px; }
 form.sw-form .flash { margin: 0; }
 details.allow { border: 1px solid var(--line); border-radius: 8px; padding: 2px 10px; margin: 0 0 8px; }
+.jump { padding: 6px 0; margin: 0 0 8px; border-bottom: 1px solid var(--line); }
+details.danger-fold { border: 1px solid var(--bad); border-radius: 8px; padding: 2px 10px; margin: 18px 0 8px; }
+details.danger-fold > summary { color: var(--bad); font-weight: 600; }
+details.raw { margin: 2px 0 0; }
+details.raw summary { margin: 0; font-size: 12px; }
+details.sort-fold { flex: 1 0 100%; margin: 0; }
+details.sort-fold > summary { margin: 4px 0; font-size: 13px; }
 @supports selector(:has(a)) {
   .mk-body, .mk-hint { display: none; }
   .mk:has(#mk-notices:checked) .mk-notices, .mk:has(#mk-events:checked) .mk-events,
@@ -2332,6 +2527,8 @@ details.allow { border: 1px solid var(--line); border-radius: 8px; padding: 2px 
   form.sw-form button, form.sw-form select { width: 100%; }
   section { padding: 12px; }
   .tabs a { flex: 1 1 42%; text-align: center; }
+  html { scroll-padding-bottom: 72px; }
+  main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
   .shell { display: block; padding-bottom: 72px; }
   nav.cells { position: fixed; z-index: 10; inset: auto 0 0 0; flex-direction: row; gap: 4px; padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); background: var(--card); border-top: 1px solid var(--line); }
   nav.cells a { flex: 1 1 0; text-align: center; padding: 10px 2px; font-size: 14px; }
@@ -2447,6 +2644,16 @@ ${routerJs()}
     form.before(note);
     note.scrollIntoView({ block: 'center' });
   };
+
+  document.addEventListener('click', (e) => {
+    const j = e.target instanceof Element ? e.target.closest('a[data-jump]') : null;
+    if (!j) return;
+    const el = document.getElementById(j.dataset.jump);
+    if (!el) return;
+    e.preventDefault();
+    if (el.tagName === 'DETAILS') el.open = true;
+    el.scrollIntoView({ block: 'start' });
+  });
 
   document.addEventListener('click', (e) => {
     const b = e.target instanceof Element ? e.target.closest('button[data-copy]') : null;
