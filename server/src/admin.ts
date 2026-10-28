@@ -1898,9 +1898,9 @@ export class AdminService {
   /**
    * 신고 하나의 질문과 답을 연다. 여는 것과 운영 기록 한 줄(report.view, 대상 이용자와 신고 번호, 글은 복사하지 않음)이
    * 한 트랜잭션이라 기록이 안 남으면 본문도 안 보인다. 없는 신고면 null (기록 없음).
-   * quiet 는 방금 이 신고의 상태를 바꾼 직후(그 쓰기가 신고 번호와 함께 기록에 남았다)에 같은 신고를 그대로 다시 그릴 때만 켠다
+   * 본문을 화면에 보낼 때마다 한 줄씩 남는다 (처리 직후 다시 그릴 때도 같다)
    */
-  async reportOpen(actor: string, id: string, quiet = false): Promise<ReportOpen | null> {
+  async reportOpen(actor: string, id: string): Promise<ReportOpen | null> {
     if (!/^\d{1,18}$/.test(id)) return null;
     return this.db.tx(async (c) => {
       const r = await c.query<{
@@ -1927,8 +1927,7 @@ export class AdminService {
       );
       const x = r.rows[0];
       if (!x) return null;
-      if (!quiet)
-        await adminLog(c, actor, 'report.view', `account:${x.account_id}`, { report: Number(x.id) });
+      await adminLog(c, actor, 'report.view', `account:${x.account_id}`, { report: Number(x.id) });
       // 채팅 이용권은 만 18세 이상만 쓴다. 나이를 내린 계정의 신고 글은 받은 뒤라도 열지 않는다 (30일 뒤 지우는 것은 그대로)
       const closed = x.age !== '18+';
       const others = await c.query<{ id: string; at: string; status: ReportState }>(
@@ -2957,15 +2956,13 @@ export class AdminController {
       ? (filterRaw as ReportState)
       : 'all';
     const reportId = text('report');
-    // 방금 이 신고의 상태를 바꾼 쓰기가 신고 번호와 함께 기록에 남았으면, 같은 신고를 그대로 다시 그릴 때 열람 기록을 또 남기지 않는다
-    const justActed = reportId !== undefined && flash?.report === reportId && !flash.error;
     view.reports = {
       ...view.reports,
       filter,
       rows: await this.admin.reportList(filter),
       ...(reportId !== undefined
         ? {
-            open: await this.admin.reportOpen(actorOf(s), reportId, justActed),
+            open: await this.admin.reportOpen(actorOf(s), reportId),
             next: (await this.admin.reportList('pending')).find((x) => x.id !== reportId)?.id ?? null,
           }
         : {}),

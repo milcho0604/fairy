@@ -268,15 +268,15 @@ describe('처리 상태 바꾸기', () => {
     assert.equal(r.status, 303);
     assert.equal(r.headers.get('location'), `/admin?report=${id2()}#reports`);
     assert.equal((await logs('report.view')).length, n);
-    // 돌아온 첫 화면: 대화는 그대로 보이고 열람 기록은 늘지 않으며, 결과 글이 한 번만 보인다
+    // 돌아온 첫 화면: 대화가 보이면 열람 기록이 남고(빠지는 경우 없음), 결과 글은 한 번만 보인다
     const back = await admin.page(`?report=${id2()}`);
     assert.match(back.text, /질문 없는 신고의 답/);
-    assert.equal((await logs('report.view')).length, n);
+    assert.equal((await logs('report.view')).length, n + 1);
     assert.equal(reportsCell(back.text).split('id="form-ok"').length, 2);
     assert.match(reportsCell(back.text), /신고 #\d+ 를 확인으로 표시했어요/);
-    // 그 뒤에 직접 여는 것은 그대로 기록에 남는다
+    // 바로 이어서 다른 탭에서 여는 것도 기록에 남는다
     await admin.page(`?report=${id2()}`);
-    assert.equal((await logs('report.view')).length, n + 1);
+    assert.equal((await logs('report.view')).length, n + 2);
     await move(id2(), 'seen', 'pending');
     await admin.page();
   });
@@ -592,7 +592,7 @@ describe('신고 화면 사용성 (막기 결과 글, 열어 둔 채 처리, 다
     assert.ok((await logs('ai.block')).length >= 1);
     const viewsBefore = (await logs('report.view')).length;
     const p = await admin.page(`?report=${r1}`);
-    assert.equal((await logs('report.view')).length, viewsBefore);
+    assert.equal((await logs('report.view')).length, viewsBefore + 1);
     assert.match(reportsCell(p.text), /신고 #\d+ 도 조치로 표시했어요/);
     await admin.post('/admin/ai/block', { account: a.code, blocked: '0', ret: 'reports' });
     await admin.page();
