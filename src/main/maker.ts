@@ -17,6 +17,7 @@ import { t } from '../shared/i18n/index.ts';
 import { ILLUST_WISH_MAX, illustratePrompt, isAgeStage } from '../shared/illustrate.ts';
 import { sizeOk } from '../shared/image-head.ts';
 import {
+  ANIME_URL,
   DEPTH_URL,
   MAKER,
   type MakerInfo,
@@ -58,6 +59,7 @@ import { cleanPetName, isGait, POSE_KINDS, photoPetName } from '../shared/settin
 import { CUSTOM_FOOD_COST } from '../shared/shop.ts';
 import { geminiStripPrompt, isRowId, KEY_COLORS, keyHex, rowOf } from '../shared/sprite-strip.ts';
 import { starterOf } from '../shared/starter-pets.ts';
+import { ANIME_MODEL, animeReady, ensureAnimeModel, verifiedAnimeUrl } from './anime-model.ts';
 import { BG_MODEL, ensureModel, modelReady, verifiedModelUrl } from './bg-model.ts';
 import { DEPTH_MODEL, depthReady, ensureDepthModel, verifiedDepthUrl } from './depth-model.ts';
 import { devRendererUrl } from './dev-url.ts';
@@ -288,6 +290,13 @@ export function createMaker(
               mean: DEPTH_MODEL.mean,
               std: DEPTH_MODEL.std,
             },
+            anime: {
+              ready: animeReady() && ortWasmReady(),
+              mb: toMb(ANIME_MODEL.bytes + engineBytes()),
+              size: ANIME_MODEL.size,
+              mean: ANIME_MODEL.mean,
+              std: ANIME_MODEL.std,
+            },
             hfToken: hfToken.has(),
             localDraw: localDrawInfo(),
             illustEngine: settings.get().illustEngine,
@@ -405,6 +414,22 @@ export function createMaker(
     }
   });
 
+  ipcMain.handle(MAKER.ensureAnime, async (e) => {
+    if (!fromMaker(e)) return { ok: false, error: t('main.maker.reopen') };
+    const ac = new AbortController();
+    download = ac;
+    try {
+      await withEngine(ANIME_MODEL.bytes, animeReady(), ac.signal, (p) => ensureAnimeModel(p, ac.signal));
+      return { ok: true };
+    } catch (err) {
+      log('maker', 'anime model', err instanceof Error ? err.message : String(err));
+      const mb = toMb(ANIME_MODEL.bytes + engineBytes());
+      return { ok: false, error: downloadErrorText(err, { aborted: ac.signal.aborted, mb }) };
+    } finally {
+      if (download === ac) download = undefined;
+    }
+  });
+
   ipcMain.handle(MAKER.ensureModel, async (e) => {
     if (!fromMaker(e)) return { ok: false, error: t('main.maker.reopen') };
     const ac = new AbortController();
@@ -433,7 +458,9 @@ export function createMaker(
         ? verifiedModelUrl()
         : req.url === DEPTH_URL
           ? verifiedDepthUrl()
-          : undefined;
+          : req.url === ANIME_URL
+            ? verifiedAnimeUrl()
+            : undefined;
     if (!file) return new Response(null, { status: 404 });
     const res = await mainFetch(file);
     return new Response(res.body, {

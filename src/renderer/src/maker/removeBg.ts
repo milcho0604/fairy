@@ -3,7 +3,6 @@
 import './ort-env.ts';
 import * as ort from 'onnxruntime-web/jspi';
 import { t } from '../../../shared/i18n/index.ts';
-import type { MakerInfo } from '../../../shared/ipc.ts';
 import { dropFaint, letterbox, outputToMask } from '../../../shared/mask.ts';
 import { ShownError } from './shown-error.ts';
 
@@ -12,51 +11,54 @@ import { ShownError } from './shown-error.ts';
 // GPU 묶음은 JSPI 판을 쓴다: asyncify 판(27MB)과 같은 WebGPU, wasm 을 Electron 44 의 JSPI 로 돌려 17MB 다 (앱 10MB 줄임).
 // 같은 사진에 같은 결과, CPU 는 조금 더 빨랐다 (2026-10-10 IS-Net 1024 실측)
 
-let session: ort.InferenceSession | undefined;
-export let backend = '';
+/** 지우는 방식: 사진 모델(IS-Net 일반)과 그림용 모델(IS-Net anime). 모델마다 세션을 따로 둔다 */
+export type CutKind = 'photo' | 'illust';
 
-/** 모델이 열려 있는지. 열려 있으면 178MB 파일을 다시 읽지 않는다 (사진마다 다시 읽었다) */
-export const modelOpen = () => !!session;
+interface Slot {
+  session?: ort.InferenceSession;
+  /** 여는 중인 모델 (그만두고 곧바로 새 사진을 고르면 두 번 열지 않게 같은 것을 기다린다) */
+  opening?: Promise<void>;
+  /** GPU 로 연 모델 파일. 첫 GPU 지우기가 성공할 때까지만 들고 있다가(실패하면 CPU 로 다시 연다) 버린다 */
+  gpuBytes?: Uint8Array;
+}
+const slots: Record<CutKind, Slot> = { photo: {}, illust: {} };
 
-/** 여는 중인 모델 (그만두고 곧바로 새 사진을 고르면 두 번 열지 않게 같은 것을 기다린다) */
-let opening: Promise<void> | undefined;
+/** 모델이 열려 있는지. 열려 있으면 파일을 다시 읽지 않는다 (사진마다 다시 읽었다) */
+export const modelOpen = (kind: CutKind = 'photo') => !!slots[kind].session;
 
 /** 모델을 연다. GPU(WebGPU)가 되면 GPU, 아니면 CPU(wasm). */
-export function openModel(bytes: ArrayBuffer): Promise<void> {
-  if (session) return Promise.resolve();
-  opening ??= create(bytes).finally(() => {
-    opening = undefined;
+export function openModel(bytes: ArrayBuffer, kind: CutKind = 'photo'): Promise<void> {
+  const slot = slots[kind];
+  if (slot.session) return Promise.resolve();
+  slot.opening ??= create(slot, bytes).finally(() => {
+    slot.opening = undefined;
   });
-  return opening;
+  return slot.opening;
 }
 
-/** GPU 로 연 모델 파일. 첫 GPU 지우기가 성공할 때까지만 들고 있다가(실패하면 CPU 로 다시 연다) 버린다 */
-let gpuBytes: Uint8Array | undefined;
-
-async function create(bytes: ArrayBuffer): Promise<void> {
+async function create(slot: Slot, bytes: ArrayBuffer): Promise<void> {
   try {
-    session = await ort.InferenceSession.create(new Uint8Array(bytes), { executionProviders: ['webgpu'] });
-    backend = 'GPU';
-    gpuBytes = new Uint8Array(bytes);
+    slot.session = await ort.InferenceSession.create(new Uint8Array(bytes), {
+      executionProviders: ['webgpu'],
+    });
+    slot.gpuBytes = new Uint8Array(bytes);
   } catch {
-    session = await ort.InferenceSession.create(new Uint8Array(bytes), { executionProviders: ['wasm'] });
-    backend = 'CPU';
+    slot.session = await ort.InferenceSession.create(new Uint8Array(bytes), { executionProviders: ['wasm'] });
   }
 }
 
 /** 돌리기. GPU 가 열리고도 돌리다 실패하면(드라이버, WebGPU 문제) CPU 로 다시 열어 한 번 더 */
-async function run(s: ort.InferenceSession, feeds: Record<string, ort.Tensor>) {
+async function run(slot: Slot, s: ort.InferenceSession, feeds: Record<string, ort.Tensor>) {
   try {
     const out = await s.run(feeds);
-    gpuBytes = undefined;
+    slot.gpuBytes = undefined;
     return out;
   } catch (err) {
-    if (!gpuBytes) throw err;
-    const bytes = gpuBytes;
-    gpuBytes = undefined;
-    session = await ort.InferenceSession.create(bytes, { executionProviders: ['wasm'] });
-    backend = 'CPU';
-    return session.run(feeds);
+    if (!slot.gpuBytes) throw err;
+    const bytes = slot.gpuBytes;
+    slot.gpuBytes = undefined;
+    slot.session = await ort.InferenceSession.create(bytes, { executionProviders: ['wasm'] });
+    return slot.session.run(feeds);
   }
 }
 
@@ -66,18 +68,29 @@ let running: Promise<unknown> = Promise.resolve();
 /**
  * 사진(작업 크기 w x h 캔버스)에서 마스크(w x h, 0~255)를 만든다. rembg 와 같은 전처리.
  * 정사각이 아닌 사진은 늘이지 않고 흰 여백을 붙여 정사각으로 넣는다 (가로로 긴 사진은 펫이 홀쭉하게 눌려 팔이 지워졌다).
- * 모델이 남긴 아주 옅은 값(바탕 얼룩)은 0 으로 (mask.ts dropFaint)
+ * 모델이 남긴 아주 옅은 값(바탕 얼룩)은 0 으로 (mask.ts dropFaint).
+ * cfg 는 모델의 입력 크기와 정규화 값 (사진 모델은 info 의 값, 그림용은 info.anime)
  */
-export function predictMask(photo: HTMLCanvasElement, info: MakerInfo): Promise<Uint8ClampedArray> {
+export function predictMask(
+  photo: HTMLCanvasElement,
+  cfg: { size: number; mean: readonly number[]; std: readonly number[] },
+  kind: CutKind = 'photo',
+): Promise<Uint8ClampedArray> {
   const next = running.then(
-    () => runMask(photo, info),
-    () => runMask(photo, info),
+    () => runMask(photo, cfg, kind),
+    () => runMask(photo, cfg, kind),
   );
   running = next.catch(() => undefined);
   return next;
 }
 
-async function runMask(photo: HTMLCanvasElement, info: MakerInfo): Promise<Uint8ClampedArray> {
+async function runMask(
+  photo: HTMLCanvasElement,
+  info: { size: number; mean: readonly number[]; std: readonly number[] },
+  kind: CutKind,
+): Promise<Uint8ClampedArray> {
+  const slot = slots[kind];
+  const session = slot.session;
   if (!session) throw new ShownError(t('maker.err.modelNotOpen'));
   const size = info.size;
   const c = document.createElement('canvas');
@@ -111,7 +124,7 @@ async function runMask(photo: HTMLCanvasElement, info: MakerInfo): Promise<Uint8
       input[ch * n + p] = (v - (info.mean[ch] ?? 0)) / (info.std[ch] ?? 1);
     }
   }
-  const out = await run(session, {
+  const out = await run(slot, session, {
     [session.inputNames[0] ?? 'input']: new ort.Tensor('float32', input, [1, 3, size, size]),
   });
   const raw = out[session.outputNames[0] ?? 'output']?.data as Float32Array;

@@ -814,6 +814,8 @@ export const MAKER = {
   refine3d: 'maker:refine3d',
   /** 깊이 모델 준비 (없으면 받음, 2.5D). 진행률은 progress 로 */
   ensureDepth: 'maker:ensure-depth',
+  /** 그림용 배경 제거 모델 준비 (없으면 받음). 진행률은 progress 로 */
+  ensureAnime: 'maker:ensure-anime',
   /** 사진을 볼 AI 가 있는지 (CLI 확인이 느릴 수 있어 info 와 따로) */
   visionAi: 'maker:vision-ai',
   /** 사진을 Hugging Face 무료 Space 에 보내 AI 일러스트로 다시 그린다 (사용자가 고를 때만) */
@@ -859,6 +861,8 @@ export const MODEL_SCHEME = 'jj-model';
 export const MODEL_URL = `${MODEL_SCHEME}://bg/model.onnx`;
 /** 깊이 모델 파일 주소 (2.5D) */
 export const DEPTH_URL = `${MODEL_SCHEME}://depth/model.onnx`;
+/** 그림용 배경 제거 모델 파일 주소 (사진 모델이 바탕을 못 지운 만화, 그림용) */
+export const ANIME_URL = `${MODEL_SCHEME}://anime/model.onnx`;
 /** 사진 AI 엔진 wasm 주소 (설치 파일에 없고 처음 쓸 때 받는다, src/shared/ort-wasm.ts) */
 export const ORT_WASM_URL = `${MODEL_SCHEME}://ort/engine.wasm`;
 
@@ -902,6 +906,8 @@ export interface MakerInfo {
   /** 사진을 볼 수 있는 AI(claude, codex)가 있는지. 처음엔 false, visionAi() 로 따로 받는다 */
   visionAi: boolean;
   depth: { ready: boolean; mb: number; size: number; mean: readonly number[]; std: readonly number[] };
+  /** 그림용 배경 제거 모델 (받아 뒀는지, 받을 크기, 입력 값) */
+  anime: { ready: boolean; mb: number; size: number; mean: readonly number[]; std: readonly number[] };
   /** 무료 Hugging Face 토큰을 넣었는지 (토큰 글은 창에 주지 않는다) */
   hfToken: boolean;
   /** 내 Mac에서 그리기: 이 컴퓨터가 되는지, 준비됐는지 */
@@ -924,6 +930,7 @@ export interface MakerBridge {
   /** 다듬은 그림(PNG data URL, 움직이는 그림은 gif, webp 그대로)과 이름을 저장하고 펫을 바꾼다. 입체 설계도가 있으면 같이 */
   save(png: string, name: string, look?: PetLook): Promise<{ ok: boolean; error?: string }>;
   ensureDepth(): Promise<{ ok: true } | { ok: false; error: string }>;
+  ensureAnime(): Promise<{ ok: true } | { ok: false; error: string }>;
   /**
    * AI 가 사진을 보고 입체 설계도를 만든다. wish 는 사용자 요청사항(선택, 200자, 메인이 다시 자른다).
    * 쓸 AI 가 없으면 noAi. 창을 닫으면 멈춘다

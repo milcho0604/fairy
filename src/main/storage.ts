@@ -7,6 +7,7 @@ import type { Catalog } from '../shared/ai/catalog.ts';
 import { locale, t } from '../shared/i18n/index.ts';
 import type { StoredModel } from '../shared/ipc.ts';
 import { localBusy, localModelPath, stopLocal } from './ai/local.ts';
+import { animeModelPath } from './anime-model.ts';
 import { bgModelPaths } from './bg-model.ts';
 import { depthModelPaths } from './depth-model.ts';
 import { forgetVerified, isReceiving } from './download.ts';
@@ -29,6 +30,12 @@ function known(catalog: Catalog): { id: string; path: string; label: string; kin
     // 판이 둘이다: 새 fp16 판과, 이미 받아 둔 사람이 계속 쓰는 옛 판. 있는 쪽만 보인다 (크기는 실제 파일 크기)
     { id: 'bg', path: bgModelPaths().current, label: t('settings.storage.bg'), kind: 'bg' as const },
     { id: 'bgOld', path: bgModelPaths().old, label: t('settings.storage.bg'), kind: 'bg' as const },
+    {
+      id: 'anime',
+      path: animeModelPath(),
+      label: t('settings.storage.anime'),
+      kind: 'bg' as const,
+    },
     {
       id: 'depth',
       path: depthModelPaths().current,
