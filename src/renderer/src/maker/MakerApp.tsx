@@ -33,6 +33,7 @@ import {
   stroke,
   trimHalo,
 } from '../../../shared/mask.ts';
+import { furRefine, paperCut } from '../../../shared/mask-refine.ts';
 import type { Blueprint } from '../../../shared/pet3d/blueprint.ts';
 import { cleanWish, WISH_MAX } from '../../../shared/pet3d/prompt.ts';
 import { canStand, standingBlueprint } from '../../../shared/pet3d/stand.ts';
@@ -2034,6 +2035,9 @@ function Editor({
     if (undo.current.length > 0 && !window.confirm(t('maker.edit.kindLose'))) return;
     onKind(k);
   };
+  // 옵트인 도구(종이 색 지우개, 털 다듬기): 돌리는 중인지, 마지막 결과 안내
+  const [busy, setBusy] = useState(false);
+  const [applied, setApplied] = useState<'' | 'paper' | 'fur' | 'paperFail'>('');
   const last = useRef<{ x: number; y: number }>(undefined);
   const raf = useRef(0);
   const pixels = useRef<ImageData>(undefined);
@@ -2071,6 +2075,39 @@ function Editor({
     draw();
   }, [draw]);
 
+  /** 종이 색 지우개나 털 다듬기를 한 번 쓴다. 되돌리기로 취소할 수 있게 쓰기 전 마스크를 남긴다 */
+  const apply = (kind: 'paper' | 'fur') => {
+    if (busy) return;
+    setBusy(true);
+    setApplied('');
+    // 계산이 0.3초쯤 걸려 단추가 눌린 모습부터 그린 뒤 돌린다
+    setTimeout(() => {
+      try {
+        const px = work.photo
+          .getContext('2d', { willReadFrequently: true })
+          ?.getImageData(0, 0, work.w, work.h);
+        if (!px) return;
+        const next =
+          kind === 'paper'
+            ? paperCut(px.data, work.mask, work.w, work.h)
+            : furRefine(px.data, work.mask, work.w, work.h);
+        if (!next) {
+          setApplied('paperFail');
+          return;
+        }
+        undo.current.push(work.mask.slice());
+        if (undo.current.length > UNDO_LIMIT) undo.current.shift();
+        work.mask.set(next);
+        draw();
+        setVersion((v) => v + 1);
+        measure();
+        setApplied(kind);
+      } finally {
+        setBusy(false);
+      }
+    }, 30);
+  };
+
   const toWork = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
     return { x: ((e.clientX - r.left) / r.width) * work.w, y: ((e.clientY - r.top) / r.height) * work.h };
@@ -2093,6 +2130,7 @@ function Editor({
   const notes =
     Number(offer) +
     Number(retried) +
+    Number(applied !== '') +
     Number(hints.half) +
     Number(hollow) +
     Number(hints.others > 0) +
@@ -2158,6 +2196,29 @@ function Editor({
           {t('maker.edit.undo')}
         </button>
       </div>
+      <div className="tools refine">
+        <button
+          type="button"
+          className="ghost"
+          disabled={busy}
+          title={t('maker.edit.paperHint')}
+          onClick={() => apply('paper')}
+        >
+          {t('maker.edit.paper')}
+        </button>
+        <button
+          type="button"
+          className="ghost"
+          disabled={busy}
+          title={t('maker.edit.furHint')}
+          onClick={() => apply('fur')}
+        >
+          {t('maker.edit.fur')}
+        </button>
+      </div>
+      {applied === 'paper' && <p className="hint">{t('maker.edit.paperDone')}</p>}
+      {applied === 'fur' && <p className="hint">{t('maker.edit.furDone')}</p>}
+      {applied === 'paperFail' && <p className="warn">{t('maker.edit.paperFail')}</p>}
       {/* 고칠 것 안내는 도구 바로 아래: 긴 설명 아래에 두면 작은 창(460x660)에서 아래 단추 줄에 가려 안 보였다 */}
       {retried && <p className="hint">{t('maker.edit.kindAuto')}</p>}
       {offer && (
