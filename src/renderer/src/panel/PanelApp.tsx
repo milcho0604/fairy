@@ -267,6 +267,17 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
     inputRef.current?.focus();
   }, [tab, !!s]);
 
+  // 탭 줄이 가로로 스크롤될 만큼 좁으면 고른 탭이 보이게 한다
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 탭이 바뀔 때와 처음 그릴 때만
+  useEffect(() => {
+    const show = () =>
+      document.getElementById(`ptab-${tab}`)?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+    show();
+    // 창 크기나 확대가 바뀌어도 고른 탭이 보이게
+    window.addEventListener('resize', show);
+    return () => window.removeEventListener('resize', show);
+  }, [tab, !!s]);
+
   // 알림이 사라질 때. 마우스가 올라가 있거나 키보드로 단추에 와 있으면 조금 더 둔다
   useEffect(() => {
     if (toasts.length === 0) return;

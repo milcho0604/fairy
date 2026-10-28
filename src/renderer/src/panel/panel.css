@@ -883,12 +883,16 @@ li.pin-end {
   gap: 2px;
   padding: 0 10px;
   border-bottom: 1px solid var(--line);
+  /* 확대한 좁은 창에서 탭 이름을 낱말 중간에서 끊지 않고, 모자라면 탭 줄이 가로로 스크롤된다 (고른 탭은 PanelApp 이 보이게 한다) */
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
 .panel .tabs button {
   position: relative;
-  flex: 1;
-  padding: 7px 0 8px;
+  flex: 1 0 auto;
+  white-space: nowrap;
+  padding: 7px 6px 8px;
   border: 0;
   border-bottom: 2px solid transparent;
   background: none;
