@@ -275,7 +275,27 @@
     });
     links.push('<a href="' + esc(allLink) + '">' + esc(t('dl.all')) + '</a>');
     alt.innerHTML = esc(t(known ? 'dl.others' : 'dl.pick')) + ' ' + links.join('<span class="sep" aria-hidden="true">/</span>');
+    if (os === 'mobile') {
+      var share = !!navigator.share;
+      var note = linkNote ? '<span class="link-note" role="status">' + esc(t(linkNote)) + '</span>' : '';
+      alt.insertAdjacentHTML('afterbegin', '<span class="link-send"><button class="btn btn-ghost btn-sm" type="button" data-link-send>' + esc(t(share ? 'dl.share' : 'dl.copyLink')) + '</button>' + note + '</span>');
+    }
   }
+
+  // Phone visitors can't install it: hand them the download page address to open on a computer.
+  var linkNote = '';
+  document.addEventListener('click', function (e) {
+    var b = e.target && e.target.closest ? e.target.closest('[data-link-send]') : null;
+    if (!b) return;
+    var href = new URL(base + 'download/', location.href).href;
+    var done = function (key) { linkNote = key; renderDownloads(); };
+    if (navigator.share) {
+      navigator.share({ url: href, title: t('meta.dlTitle') }).catch(function () { /* cancelled */ });
+      return;
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(href).then(function () { done('dl.linkCopied'); }, function () { done('dl.linkFail'); });
+    else done('dl.linkFail');
+  });
 
   function cardButton(k, small, plain) {
     var a = REL.state === 'ok' && REL.assets[k];
@@ -327,7 +347,19 @@
     else el.textContent = t('dl.loading');
   }
 
+  var guidesFolded = false;
+  function foldGuides() {
+    if (guidesFolded || !OS) return;
+    var mine = OS.os === 'macArm' || OS.os === 'macIntel' ? 'mac' : OS.os;
+    var boxes = document.querySelectorAll('.os-guide');
+    if (!boxes.length) return;
+    guidesFolded = true;
+    if (mine !== 'mac' && mine !== 'win' && mine !== 'linux') return; // unknown or phone: leave all open
+    Array.prototype.forEach.call(boxes, function (d) { if (d.getAttribute('data-os') !== mine) d.removeAttribute('open'); });
+  }
+
   function renderDownloads() {
+    foldGuides();
     each('[data-dl]', renderHeroButton);
     each('[data-cards]', renderCards);
     each('[data-files]', renderFiles);
@@ -630,7 +662,8 @@
     var el = a && guideFor(a.href);
     if (!el) return;
     setTimeout(function () {
-      if (el.tagName === 'DETAILS') el.open = true;
+      var box = el.tagName === 'DETAILS' ? el : el.closest ? el.closest('details') : null;
+      if (box) box.open = true;
       el.scrollIntoView({ behavior: reduceMQ.matches ? 'auto' : 'smooth', block: 'start' });
     }, 400);
   });
