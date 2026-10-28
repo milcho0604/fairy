@@ -1,4 +1,4 @@
-// 받은 모델 저장 공간 (6단계). 무료 AI 모델(수백 MB~1GB), 배경 제거(170MB), 깊이(27MB), 사진 AI 엔진(17MB)은 처음 쓸 때 받는다.
+// 받은 모델 저장 공간 (6단계). 무료 AI 모델(수백 MB~1GB), 배경 제거(84MB, 옛 판 170MB), 깊이(50MB, 옛 판 27MB), 사진 AI 엔진(17MB)은 처음 쓸 때 받는다.
 // 설정에서 크기를 보고 지울 수 있게 한다. 지워도 다음에 그 기능을 쓰면 다시 받는다.
 import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -7,8 +7,8 @@ import type { Catalog } from '../shared/ai/catalog.ts';
 import { locale, t } from '../shared/i18n/index.ts';
 import type { StoredModel } from '../shared/ipc.ts';
 import { localBusy, localModelPath, stopLocal } from './ai/local.ts';
-import { BG_MODEL } from './bg-model.ts';
-import { DEPTH_MODEL } from './depth-model.ts';
+import { bgModelPaths } from './bg-model.ts';
+import { depthModelPaths } from './depth-model.ts';
 import { forgetVerified, isReceiving } from './download.ts';
 import { type CopyKind, listCopies, removeCopy } from './keep-copies.ts';
 import { localDrawBytes, removeLocalDraw } from './local-draw.ts';
@@ -26,15 +26,18 @@ function known(catalog: Catalog): { id: string; path: string; label: string; kin
       label: t('settings.storage.llm', { name: m.label }),
       kind: 'llm' as const,
     })),
-    {
-      id: 'bg',
-      path: join(modelsDir(), BG_MODEL.file),
-      label: t('settings.storage.bg'),
-      kind: 'bg' as const,
-    },
+    // 판이 둘이다: 새 fp16 판과, 이미 받아 둔 사람이 계속 쓰는 옛 판. 있는 쪽만 보인다 (크기는 실제 파일 크기)
+    { id: 'bg', path: bgModelPaths().current, label: t('settings.storage.bg'), kind: 'bg' as const },
+    { id: 'bgOld', path: bgModelPaths().old, label: t('settings.storage.bg'), kind: 'bg' as const },
     {
       id: 'depth',
-      path: join(modelsDir(), DEPTH_MODEL.file),
+      path: depthModelPaths().current,
+      label: t('settings.storage.depth'),
+      kind: 'depth' as const,
+    },
+    {
+      id: 'depthOld',
+      path: depthModelPaths().old,
       label: t('settings.storage.depth'),
       kind: 'depth' as const,
     },

@@ -47,7 +47,7 @@
 - 개발: `npm install` 뒤 `npm run dev`. 확인은 `npm run check` (타입 검사, 린트, 테스트 360여 개). 커밋은 `npm run check` 가 통과할 때만
 - 설치 파일: `npm run dist:mac`(dmg 애플 실리콘과 인텔, `dist/`), 윈도우는 GitHub Actions release. 설치판을 실제 데이터와 따로 띄워 점검하려면 `JJ_USER_DATA=<빈 폴더> dist/mac-arm64/Jjakkung.app/Contents/MacOS/Jjakkung --inspect=9239 --remote-debugging-port=9354` (설치판에는 `__jj` 가 없어 메인 디버거에서 `require('electron')` 으로 다룬다)
 - 실제 앱으로 점검: `scripts/dev/README.md` (DevTools 포트와 메인 디버거로 상태를 넣고 화면을 찍는다). 화면을 바꾼 작업은 밝은, 어두운, 좁은 화면을 찍어 본다(쓰는 규칙 "디자인 점검")
-- 사용자 데이터(맥): `~/Library/Application Support/jjakkung/` 에 `settings.json`, `jjakkung.db`(할 일, 코인), `pet-position.json`, `chat-settings.json`, `ai-usage.json`, `ai-custom.json`, `ai-env.json`(로그인 셸 PATH), `codex-home/`(codex 격리), `ai-workdir/`, `models/`(배경 제거 모델 170MB, 깊이 모델 27MB, 무료 AI 모델), `pets/`(사진 펫 그림), `logs/`(진단 기록 `main.log`, `main.old.log`. 질문, 답, 할 일과 일정 제목은 남기지 않는다)
+- 사용자 데이터(맥): `~/Library/Application Support/jjakkung/` 에 `settings.json`, `jjakkung.db`(할 일, 코인), `pet-position.json`, `chat-settings.json`, `ai-usage.json`, `ai-custom.json`, `ai-env.json`(로그인 셸 PATH), `codex-home/`(codex 격리), `ai-workdir/`, `models/`(배경 제거 모델 84MB(옛 판 170MB), 깊이 모델 50MB(옛 판 27MB), 무료 AI 모델), `pets/`(사진 펫 그림), `logs/`(진단 기록 `main.log`, `main.old.log`. 질문, 답, 할 일과 일정 제목은 남기지 않는다)
 - 코드 지도: 메인 `src/main/` (index 가 모두 잇는다: pet-window, chat, panel, look-together, maker, settings-window, tray, db, ai/runner), 화면 `src/renderer/` (pet 은 React 없이, 나머지는 React), 순수 로직과 시험 `src/shared/`
 
 ## 요약
@@ -76,7 +76,7 @@
 | D5 | 펫 말투에 이모지를 쓸지 | 3단계 | codex 는 시키지 않아도 이모지를 붙였다 |
 | D6 | 기본 펫 2종 그림 | v1 | 직접 그리기, 작가 의뢰, AI 생성 |
 | D8 | 베타 설치 파일과 의견을 어디서 주고받을지 (2026-10-06 추가) | P4-05 전 | 레포가 비공개라 GitHub Releases 파일을 지인이 못 받는다. 공개 배포용 레포를 따로 두기, 레포 공개(D3), 드라이브나 메신저로 파일 전달. 의견은 메신저 방이나 이슈 |
-| D7 | 배경 제거 모델의 상업 사용 (2026-10-02 추가) | 판매나 공개 배포 전 | 지금 쓰는 IS-Net 은 코드가 Apache 2.0 이지만 학습 데이터 DIS5K 약관이 비상업이다. 저자에게 묻기, 상업 사용이 분명한 모델로 바꾸기, 직접 학습. `docs/tests/bg-removal.md` 참고 |
+| D7 | 배경 제거 모델의 상업 사용 (2026-10-02 추가) | 판매나 공개 배포 전 | 지금 쓰는 IS-Net 은 코드가 Apache 2.0 이지만 학습 데이터 DIS5K 약관이 비상업이다. 저자에게 묻기, 상업 사용이 분명한 모델로 바꾸기, 직접 학습. `docs/tests/bg-removal.md` 참고. 2026-10-28: 받는 판을 fp16(HF onnx-community/ISNet-ONNX, 카드 AGPL 표기)으로 바꿨고, 그림용 isnet-anime(rembg 배포본)도 쓸 예정이다. 둘 다 같은 위험으로 보고 비공개 무료 베타 동안만 유지한다 |
 
 ## 0단계에서 배운 것 (뒤 단계에 반영)
 
