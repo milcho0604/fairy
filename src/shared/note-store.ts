@@ -1,7 +1,7 @@
 // 메모 (v1). 마크다운 글. 펫 패널 메모 탭과 AI 답 저장(답을 메모로)에서 쓴다.
 
 import { cutText, textBoundary } from './cut-text.ts';
-import type { Db } from './db-schema.ts';
+import { clockJumped, type Db } from './db-schema.ts';
 import { t } from './i18n/index.ts';
 import { pinAt } from './pin.ts';
 import { TRASH_DAYS, trashDaysLeft } from './todo-store.ts';
@@ -260,6 +260,7 @@ export class NoteStore {
   }
 
   purgeExpired(now: number): number {
+    if (clockJumped(this.#db, now)) return 0;
     return Number(
       this.#db
         .prepare('delete from note where deleted_at is not null and deleted_at <= ?')

@@ -313,3 +313,29 @@ test('놀이 코인은 한 행에 여럿, 하루 합은 옛 기록(한 행에 1)
     3,
   );
 });
+
+test('반복 할 일: 손댄 다음 회차가 남은 채 되돌렸다 다시 끝내도 열린 회차는 하나', () => {
+  const { store } = fresh();
+  const a = store.add({ title: '스트레칭', repeat: 'daily', due: utcDay(T0) }, T0);
+  store.addSteps(a.id, ['하나'], T0);
+  store.complete(a.id, T0);
+  const b = store.nextOf(a.id);
+  assert.ok(b);
+  store.toggleStep(b.steps[0]?.id ?? 0, true);
+  store.undo(a.id, T0 + 1000);
+  store.complete(a.id, T0 + 2000);
+  assert.equal(store.list(T0 + 3000).open.filter((x) => x.title === '스트레칭').length, 1);
+});
+
+test('반복 할 일: 다음 회차를 끝낸 뒤 첫 회차를 되돌렸다 다시 끝내도 열린 회차는 늘지 않는다', () => {
+  const { store } = fresh();
+  const a = store.add({ title: '물', repeat: 'daily', due: utcDay(T0) }, T0);
+  store.complete(a.id, T0);
+  const b = store.nextOf(a.id);
+  assert.ok(b);
+  store.complete(b.id, T0 + 1000);
+  const openBefore = store.list(T0 + 1500).open.filter((x) => x.title === '물').length;
+  store.undo(a.id, T0 + 2000);
+  store.complete(a.id, T0 + 3000);
+  assert.ok(store.list(T0 + 4000).open.filter((x) => x.title === '물').length <= openBefore);
+});

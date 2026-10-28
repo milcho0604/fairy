@@ -4,7 +4,7 @@ import { app, shell } from 'electron';
 import { AchievementStore } from '../shared/achieve.ts';
 import { StatStore } from '../shared/beta-stats.ts';
 import type { Db } from '../shared/db-schema.ts';
-import { EventStore, repairAllDayZone, repairEventTimes } from '../shared/event-store.ts';
+import { EventStore, repairAllDayZone, repairEventTimes, repairRepeatZone } from '../shared/event-store.ts';
 import { type ExportTodo, readExportTodos } from '../shared/export.ts';
 import { GcalStore } from '../shared/gcal-store.ts';
 import { HabitStore } from '../shared/habit.ts';
@@ -66,6 +66,13 @@ export function openStore(log: (tag: string, ...rest: unknown[]) => void): {
     if (moved > 0) log('db', '종일 일정 시간대 맞춤', moved);
   } catch (err) {
     log('db', '종일 일정 시간대 못 맞춤', err instanceof Error ? err.message : String(err));
+  }
+  // 반복 일정의 앞으로 올 회차도 만들 때의 시각(repeat_clock)에 맞춘다
+  try {
+    const moved = repairRepeatZone(db as unknown as Db, Date.now());
+    if (moved > 0) log('db', '반복 일정 시간대 맞춤', moved);
+  } catch (err) {
+    log('db', '반복 일정 시간대 못 맞춤', err instanceof Error ? err.message : String(err));
   }
   // 끄는 중에도 도는 타이머(MCP 변경 보기 등)가 닫힌 파일을 읽지 않게 연 상태를 기억한다
   let open = true;

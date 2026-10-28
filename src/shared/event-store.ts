@@ -2,7 +2,7 @@
 
 import { cutText } from './cut-text.ts';
 import { plusDays } from './day.ts';
-import type { Db } from './db-schema.ts';
+import { clockJumped, type Db } from './db-schema.ts';
 import { NO_END_MIN } from './event-overlap.ts';
 import { t } from './i18n/index.ts';
 import { pinAt } from './pin.ts';
@@ -192,6 +192,9 @@ export function repairEventTimes(db: Db, now: number): number {
   return Number(ends.changes) + Number(starts.changes);
 }
 
+/** 반복 회차를 미리 만들어 두는 가장 먼 때 (지금부터 일 수) */
+const EXTEND_MAX_DAYS = 730;
+
 const HOUR_MS = 3_600_000;
 const QUARTER_MS = 15 * 60_000;
 
@@ -231,6 +234,51 @@ export function repairAllDayZone(db: Db): number {
     const nextEnd = end === null || after === undefined ? end : dayStartMs(after);
     if (nextStart === start && nextEnd === end) continue;
     db.prepare('update event set start_at = ?, end_at = ? where id = ?').run(nextStart, nextEnd, r.id);
+    fixed++;
+  }
+  return fixed;
+}
+
+/**
+ * 시간대를 바꿔 켰을 때 시각 반복 일정의 앞으로 올 회차를 반복 기준 시각(repeat_clock)에 다시 맞춘다 (켤 때 한 번).
+ * 서울 오전 9시로 만든 매일 일정이 LA 에서 켜면 17시, 18시로 흩어져 보였다. 같은 현지 날의 기준 시각으로 옮긴다
+ * (DST 로 없는 시각은 만들 때와 같은 규칙이라 그대로다). 지난 회차는 그대로 둔다.
+ * 마지막으로 켠 시간대(app_meta)와 다를 때만 돌고, 사용자가 시각을 옮긴 회차(user_edited)는 건드리지 않는다. 고친 행 수
+ */
+export function repairRepeatZone(db: Db, now: number): number {
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const last = (
+    db.prepare("select value from app_meta where key = 'tz'").get() as { value: string } | undefined
+  )?.value;
+  if (last === zone) return 0;
+  db.prepare("insert or replace into app_meta (key, value) values ('tz', ?)").run(zone);
+  // 기록이 없던 첫 켬은 어느 시간대에서 만들었는지 모르니 기록만 한다
+  if (last === undefined) return 0;
+  const rows = db
+    .prepare(
+      `select id, start_at, end_at, repeat_clock from event
+       where all_day = 0 and repeat_clock is not null and repeat_kind is not null and deleted_at is null
+       and user_edited = 0 and start_at > ?`,
+    )
+    .all(now) as { id: number; start_at: number; end_at: number | null; repeat_clock: number }[];
+  let fixed = 0;
+  for (const r of rows) {
+    const start = Number(r.start_at);
+    if (!eventTimeOk(start) || !validRepeatClock(r.repeat_clock)) continue;
+    const [hour, minute, second, millisecond] = repeatClockParts(r.repeat_clock);
+    const d = new Date(start);
+    const next = new Date(
+      d.getFullYear(),
+      d.getMonth(),
+      d.getDate(),
+      hour,
+      minute,
+      second,
+      millisecond,
+    ).getTime();
+    if (next === start) continue;
+    const end = r.end_at === null ? null : Number(r.end_at) - start + next;
+    db.prepare('update event set start_at = ?, end_at = ? where id = ?').run(next, end, r.id);
     fixed++;
   }
   return fixed;
@@ -488,7 +536,15 @@ export class EventStore {
    * (어제부터 3일 여행이 오늘 목록에 나오게). 그런 것은 시작이 이르니 맨 앞에 온다
    */
   between(from: number, to: number): CalEvent[] {
-    this.#extendRepeats(Math.max(to, Date.now() + 365 * DAY_MS));
+    // 반복 회차는 지금부터 2년까지만 실제 일정으로 만든다 (먼 해를 넘겨 보거나 끝없는 범위를 물어도 행이 끝없이 늘지 않게).
+    // 그 너머 달력에는 반복 일정이 보이지 않는다
+    const now = Date.now();
+    this.#extendRepeats(Math.min(Math.max(to, now + 365 * DAY_MS), now + EXTEND_MAX_DAYS * DAY_MS));
+    return this.stored(from, to);
+  }
+
+  /** between 과 같되 반복 회차를 새로 만들지 않고 이미 저장된 행만 읽는다 (같은 일정 찾기, 내보내기) */
+  stored(from: number, to: number): CalEvent[] {
     return this.#withReminds(
       this.#db
         .prepare(
@@ -734,6 +790,7 @@ export class EventStore {
   }
 
   purgeExpired(now: number): number {
+    if (clockJumped(this.#db, now)) return 0;
     const ids = (
       this.#db
         .prepare(

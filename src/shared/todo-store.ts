@@ -3,7 +3,7 @@
 import { COIN } from './coin-rules.ts';
 import { cutText } from './cut-text.ts';
 import { plusDays, weekdayOf as weekday } from './day.ts';
-import type { Db } from './db-schema.ts';
+import { clockJumped, type Db } from './db-schema.ts';
 import { FOCUS, focusReward } from './focus.ts';
 import { t } from './i18n/index.ts';
 import { pinAt } from './pin.ts';
@@ -102,8 +102,6 @@ export const FULLNESS = {
 /** 지운 할 일을 휴지통에 두는 날 수 (#125). 지난 것은 영구 삭제 */
 export const TRASH_DAYS = 30;
 const DAY_MS = 86_400_000;
-/** 마지막 기록 날에서 이만큼 넘게 뛴 시계는 믿지 않고 휴지통을 비우지 않는다 */
-const CLOCK_JUMP_DAYS = 90;
 
 /** 휴지통의 할 일 한 줄 */
 export interface TrashItem {
@@ -733,12 +731,8 @@ export class TodoStore {
 
   /** 30일이 지난 것을 영구 삭제한다 (되돌리기가 걷어 낸 다음 회차도 같은 날수). 지운 수 */
   purgeExpired(now: number): number {
-    // 켤 때 시계가 크게 앞서 있으면(배터리가 나간 컴퓨터, 잘못 맞춘 시계) 휴지통 전체가 한 번에 지워진다.
-    // 마지막으로 앱이 켜 있던 날(하루 기록)에서 90일 넘게 뛰었으면 비우지 않는다
-    const seen = (
-      this.#db.prepare('select max(day) as d from daily_stat').get() as { d: string | null } | undefined
-    )?.d;
-    if (seen && now - Date.parse(`${seen}T00:00:00Z`) > CLOCK_JUMP_DAYS * DAY_MS) return 0;
+    // 시계가 크게 앞서 있으면 휴지통 전체가 한 번에 지워지므로 비우지 않는다 (clockJumped)
+    if (clockJumped(this.#db, now)) return 0;
     const before = now - TRASH_DAYS * DAY_MS;
     this.#db.exec('begin');
     try {
@@ -834,7 +828,11 @@ export class TodoStore {
       }
       this.#db.prepare('update todo set done_at = ?, coins = ? where id = ?').run(now, coins, id);
       // 다음 회차도 같은 마감 시각과 같은 알림 (지난 알림은 넘긴다)
-      if (t.repeat) {
+      // 되돌린 뒤 다시 끝내도, 이 회차에서 난 다음 회차가 (끝냈더라도) 남아 있으면 새로 만들지 않는다
+      const hasNext = this.#db
+        .prepare('select 1 from todo where repeat_of = ? and deleted_at is null limit 1')
+        .get(id);
+      if (t.repeat && !hasNext) {
         const kept = this.#repeatAnchor(id);
         const monthDay = t.repeat === 'monthly' ? monthAnchor(kept, t.due) : undefined;
         const next = this.add(

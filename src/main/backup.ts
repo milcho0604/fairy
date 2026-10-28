@@ -53,6 +53,7 @@ import { BackupReadError, extractBackupZip, writeBackupZip, type ZipSource } fro
 import { decodeAtlas } from './codex-atlas.ts';
 import { readCodexPet } from './codex-pet.ts';
 import { importableDbVersion } from './db-open.ts';
+import { pruneCopies } from './keep-copies.ts';
 import { petImages } from './maker.ts';
 import { library } from './pet-library.ts';
 import { freePath, plainEntry, plainFile, readPlainCapped, writeFileAtomic } from './safe-file.ts';
@@ -397,6 +398,12 @@ export function createBackup(o: {
         join(keep, FOLDER_MARK),
         JSON.stringify({ app: 'jjakkung', version: app.getVersion(), at: Date.now() }),
       );
+      // 가져오기 전 복사본이 쌓이지 않게 새것 몇 개만 둔다 (켤 때도 정리한다)
+      try {
+        pruneCopies(dir());
+      } catch {
+        // 못 지워도 가져오기는 계속
+      }
       // 설정 파일도 저장 파일처럼 다음에 켤 때 바꾼다. 지금 덮으면 끄기 전까지 도는 앱(펫 자리 저장, 플래너,
       // 설정 바꾸기, 끄면서 하는 저장)이 가져온 것을 다시 덮는다. 앞서 하다 만 가져오기의 것은 먼저 치운다
       dropStaged(dir());

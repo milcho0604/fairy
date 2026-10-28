@@ -2027,6 +2027,14 @@ ready
       // 우리 큰 창이 전체 화면이면 다른 앱의 전체 화면으로 세지 않는다
       () => !!home?.isFullScreen(),
     );
+    // 집중 중에 끄면 지금까지 집중한 분을 남긴다 (저장 파일은 will-quit 에서 닫히므로 그 앞인 before-quit 에서)
+    app.on('before-quit', () => {
+      try {
+        if (planner.focus.phase === 'focus') planner.stopFocus();
+      } catch (err) {
+        log('planner', '끄면서 집중 기록 못 함', err instanceof Error ? err.message : String(err));
+      }
+    });
     app.on('will-quit', () => {
       stopLocal();
       // 내 컴퓨터에서 그리기(파이썬, sd-cli)를 남겨 두지 않는다
