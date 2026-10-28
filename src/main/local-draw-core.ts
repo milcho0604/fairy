@@ -40,6 +40,17 @@ export const TOOLS_FREE_BYTES = 2e9;
 export const DRAW_FREE_BYTES = 1e9;
 /** 한 장(4단계)을 그리는 상한. M2 Pro 에서 1분쯤 (처음에는 Metal 커널을 만드느라 더 걸린다) */
 export const DRAW_TIMEOUT_MS = 8 * 60_000;
+/** 크기를 정해 그리는 그림(그림 세트 띠, 시트)의 기준 넓이: 1024x256 한 줄 띠. 8분은 이 띠 한두 장이 아니라 사진 한 장(최대 1024x1024)을 재서 정한 값이다 */
+const STRIP_AREA = 1024 * 256;
+/**
+ * 그리기 상한. 크기를 정해 그리면(그림 세트) 한 줄 띠보다 넓은 만큼 줄마다 2분씩 더 준다 (서버는 줄마다 1분, sprite-gen.ts stripTimeoutMs.
+ * 내 컴퓨터는 느려서 두 배). 두 줄 시트(1024x512)는 8분 + 2분. 크기를 안 정한 사진 그리기는 그대로
+ */
+export function drawTimeoutMs(size?: { width: number; height: number }): number {
+  if (!size) return DRAW_TIMEOUT_MS;
+  const strips = Math.max(1, Math.round((size.width * size.height) / STRIP_AREA));
+  return DRAW_TIMEOUT_MS + (strips - 1) * 2 * 60_000;
+}
 /** 그린 그림이 이보다 작으면 거의 한 색(검은 판)이다. 1024 PNG 그림은 1MB 안팎 */
 export const MIN_DRAWN_BYTES = 40 * 1024;
 

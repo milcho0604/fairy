@@ -124,7 +124,7 @@ test('받는 그림: PNG 만, 아는 이름만, 서기와 같은 크기만 (틀�
   assert.equal(cleanSprites([idle]), undefined);
 });
 
-test('상한: 한 장 512KB, 한 변 1024px, 세트 합 4MB', () => {
+test('상한: 한 장 512KB, 한 변 1024px, 세트 합 6MB', () => {
   assert.equal(cleanSprites({ idle: png(8, 8, { pad: SPRITE_MAX_BYTES }) }), undefined);
   assert.ok(cleanSprites({ idle: png(1024, 4) }));
   assert.equal(cleanSprites({ idle: png(1025, 4) }), undefined);
@@ -255,4 +255,12 @@ test('시선: 위, 아래, 대각선은 없으면 같은 쪽 옆 시선이나 �
   assert.equal(up?.['look-ur'], 'U');
   const own = fillSprites({ idle: 'i', 'look-l': 'L', 'look-ul': 'UL' });
   assert.equal(own?.['look-ul'], 'UL');
+});
+
+test('상한 6MB: 털 있는 그림처럼 장당 200KB 쯤인 스물여덟 장(5.6MB)은 세트가 통째로 버려지지 않는다', () => {
+  const set = Object.fromEntries(SPRITE_NAMES.map((n, i) => [n, png(8, 8, { pad: 200 * 1024, seed: i })]));
+  const got = cleanSprites(set);
+  assert.ok(got, '4MB 상한이면 통째로 버려지던 크기');
+  assert.equal(Object.keys(got).length, SPRITE_NAMES.length);
+  assert.ok(SPRITES_MAX_BYTES === 6 * 1024 * 1024);
 });

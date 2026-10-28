@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { cleanSprites } from './pet-share.ts';
 import { SPRITE_MAX_BYTES, SPRITE_NAMES, SPRITES_MAX_BYTES } from './pet-sprites.ts';
 import {
   checkSpriteSet,
@@ -50,7 +51,7 @@ test('틀린 장은 까닭과 함께 그 장만 버린다 (PNG 아님, 큰 파�
   assert.equal(r.frames, 2);
 });
 
-test('합이 4MB 를 넘으면 세트 전체 문제, 읽히는 장 0', () => {
+test('합이 6MB 를 넘으면 세트 전체 문제, 읽히는 장 0', () => {
   const files = Object.fromEntries(
     SPRITE_NAMES.slice(0, 12).map((n) => [n, png(320, 320, Math.ceil(SPRITES_MAX_BYTES / 10))]),
   );
@@ -166,4 +167,71 @@ test('spriteInfosOfFairy: .fairy 글의 images.sprites 를 검사에 넣을 수 
   assert.deepEqual(spriteInfosOfFairy(JSON.stringify({ images: { sprites: [] } })), {
     error: 'images.sprites is not an object',
   });
+});
+
+/** 머리말만 있는 PNG: 서명, IHDR, (APNG 면 acTL), IDAT, IEND */
+function pngBytes(w: number, h: number, apng: boolean): Uint8Array {
+  const chunk = (type: string, len: number) => {
+    const b = new Uint8Array(12 + len);
+    new DataView(b.buffer).setUint32(0, len);
+    b.set(
+      [...type].map((c) => c.charCodeAt(0)),
+      4,
+    );
+    return b;
+  };
+  const ihdr = chunk('IHDR', 13);
+  const dv = new DataView(ihdr.buffer);
+  dv.setUint32(8, w);
+  dv.setUint32(12, h);
+  const parts = [Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), ihdr];
+  if (apng) parts.push(chunk('acTL', 8));
+  parts.push(chunk('IDAT', 4), chunk('IEND', 0));
+  const out = new Uint8Array(parts.reduce((a, p) => a + p.length, 0));
+  let at = 0;
+  for (const p of parts) {
+    out.set(p, at);
+    at += p.length;
+  }
+  return out;
+}
+const labeled = (label: string, b: Uint8Array) =>
+  `data:image/${label};base64,${btoa(String.fromCharCode(...b))}`;
+
+test('spriteInfosOfFairy: 움직이는 PNG(APNG)와 png 가 아닌 이름표는 앱처럼 버린다고 알린다', () => {
+  const sprites = {
+    idle: labeled('png', pngBytes(32, 32, false)),
+    'walk-0': labeled('png', pngBytes(32, 32, true)),
+    sit: labeled('webp', pngBytes(32, 32, false)),
+    sleep: labeled('png', Uint8Array.from([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13])),
+    happy: 'data:image/jpeg;base64,AAAA',
+    wave: labeled('png', pngBytes(32, 32, false)),
+  };
+  const infos = spriteInfosOfFairy(JSON.stringify({ images: { sprites } }));
+  assert.ok(!('error' in infos));
+  const r = checkSpriteSet(infos);
+  assert.deepEqual(codes(r).sort(), [
+    'error:animated:walk-0',
+    'error:notPng:happy',
+    'error:notPng:sit',
+    'error:notPng:sleep',
+    'warn:noWalk',
+  ]);
+});
+
+test('앱과 같은 판정: 검사기가 통과시킨 장이 cleanSprites 가 남기는 장과 같다', () => {
+  const sprites: Record<string, string> = {
+    idle: labeled('png', pngBytes(32, 32, false)),
+    blink: labeled('png', pngBytes(32, 32, true)),
+    'look-l': labeled('webp', pngBytes(32, 32, false)),
+    'look-r': labeled('png', pngBytes(16, 16, false)),
+    sit: labeled('png', pngBytes(32, 32, false)),
+    'walk-0': labeled('png', pngBytes(32, 32, false)),
+    'walk-1': labeled('png', pngBytes(32, 32, false)),
+  };
+  const infos = spriteInfosOfFairy(JSON.stringify({ images: { sprites } }));
+  assert.ok(!('error' in infos));
+  const r = checkSpriteSet(infos);
+  const ok = Object.keys(sprites).filter((n) => !r.issues.some((i) => i.level === 'error' && i.name === n));
+  assert.deepEqual(Object.keys(cleanSprites(sprites) ?? {}).sort(), ok.sort());
 });

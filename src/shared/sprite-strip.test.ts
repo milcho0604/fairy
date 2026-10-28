@@ -493,11 +493,16 @@ test('여러 줄 시트: 빈 칸은 그 줄 그 칸만 잡는다', () => {
   );
 });
 
-test('여러 줄 시트: 줄 안에서는 고른데 줄끼리 크기가 튀면 시트 전체로 잡는다', () => {
+test('여러 줄 시트: 줄 안에서는 고른데 줄끼리 크기가 튀면 둘째 줄이 jump (첫 줄이 기준)', () => {
   // 위 줄 키 160, 아래 줄 키 90: 각 줄만 보면 문제 없다
   const heights = [160, 160, 160, 160, 90, 90, 90, 90];
   const r = processStrip(sheet(2, { heights }), WALK, GREEN);
   assert.ok(r.issues.includes('jump'), r.issues.join(','));
+  assert.ok(
+    r.frames.slice(0, 4).every((f) => f.issues.length === 0),
+    '첫 줄은 멀쩡하다',
+  );
+  assert.ok(r.frames.slice(4).every((f) => f.issues.includes('jump')));
   // 같은 키면 문제 없다
   assert.deepEqual(processStrip(sheet(2), WALK, GREEN).issues, []);
 });
@@ -562,10 +567,32 @@ test('salvageSheet: 문제가 없거나 한 줄 동작이면 건질 것이 없�
   assert.equal(salvageSheet(processStrip(strip({ skip: 2 }), ROW, GREEN), ROW), undefined);
 });
 
-test('salvageSheet: 줄끼리 크기가 튀면 시트 전체로 잡은 jump 가 걸린 줄을 뺀다', () => {
-  const heights = [160, 160, 160, 160, 90, 90, 90, 90];
-  const r = processStrip(sheet(2, { heights }), WALK, GREEN);
-  const kept = salvageSheet(r, WALK);
-  // 가운뎃값은 160 과 90 의 사이라 어느 쪽이 튄 칸이 되는지는 크기 비로 정해진다: 건졌다면 모두 온전한 줄이어야 한다
-  if (kept) assert.ok(kept.frames.every((f) => f.issues.length === 0));
+test('salvageSheet: 둘째 줄이 첫 줄보다 크든 작든 멀쩡한 첫 줄은 반드시 건진다', () => {
+  for (const [name, heights] of [
+    ['둘째 줄이 큼', [150, 150, 150, 150, 210, 210, 210, 210]],
+    ['둘째 줄이 작음', [210, 210, 210, 210, 150, 150, 150, 150]],
+    ['둘째 줄이 훨씬 작음', [160, 160, 160, 160, 90, 90, 90, 90]],
+  ] as const) {
+    const r = processStrip(sheet(2, { heights: [...heights] }), WALK, GREEN);
+    assert.ok(r.issues.includes('jump'), `${name}: 줄끼리 튐은 잡는다`);
+    const kept = salvageSheet(r, WALK);
+    assert.ok(kept, `${name}: 건져야 한다`);
+    assert.deepEqual(
+      kept.frames.map((f) => f.name),
+      ['walk-0', 'walk-1', 'walk-2', 'walk-3'],
+      name,
+    );
+    assert.ok(
+      kept.frames.every((f) => f.issues.length === 0),
+      name,
+    );
+  }
+});
+
+test('processStrip: 줄 안에서 한 칸만 튀면 그 칸만 jump (줄끼리 비교는 가운뎃값이라 영향 없다)', () => {
+  const r = processStrip(sheet(2, { heights: [160, 160, 90, 160, 160, 160, 160, 160] }), WALK, GREEN);
+  assert.deepEqual(
+    r.frames.filter((f) => f.issues.includes('jump')).map((f) => f.name),
+    ['walk-2'],
+  );
 });

@@ -4,6 +4,7 @@
 // 그림을 풀지 않고 머리말과 크기만 본다 (Buffer 를 쓰지 않는다). CLI 는 scripts/validate-pet.mjs, 규칙 설명은 docs/pet-format.md "그림 세트 검사".
 
 import { imageKind, imageSize } from './image-head.ts';
+import { isAnimatedPng } from './pet-share.ts';
 import {
   fillSprites,
   SPRITE_BASE_NAMES,
@@ -23,12 +24,15 @@ export interface SpriteFileInfo {
   kind?: string;
   w?: number;
   h?: number;
+  /** 움직이는 PNG(APNG)인지. 앱(pet-share.ts cleanSprites)은 이런 장을 버린다 */
+  animated?: boolean;
 }
 
 export type SpriteIssueCode =
   | 'noIdle'
   | 'unknownName'
   | 'notPng'
+  | 'animated'
   | 'tooBig'
   | 'badSize'
   | 'sizeMismatch'
@@ -86,6 +90,10 @@ export function checkSpriteSet(files: Record<string, SpriteFileInfo | undefined>
       bad('notPng');
       continue;
     }
+    if (f.animated) {
+      bad('animated');
+      continue;
+    }
     if (f.bytes > SPRITE_MAX_BYTES) {
       bad('tooBig', { kb: Math.round(f.bytes / 1024), max: SPRITE_MAX_BYTES / 1024 });
       continue;
@@ -140,7 +148,9 @@ export function checkSpriteSet(files: Record<string, SpriteFileInfo | undefined>
 const KO: Record<SpriteIssueCode, (i: SpriteIssue) => string> = {
   noIdle: () => '서기(idle) 그림이 없어요. 없으면 그림 세트를 통째로 버려요.',
   unknownName: (i) => `${i.name}: 모르는 이름이라 건너뛰어요 (이름 목록은 docs/pet-format.md).`,
-  notPng: (i) => `${i.name}: PNG 가 아니에요 (SVG, GIF, WebP, JPEG 는 받지 않아요). 이 장은 버려요.`,
+  notPng: (i) =>
+    `${i.name}: PNG 가 아니에요 (SVG, GIF, WebP, JPEG 는 받지 않아요. data URL 이름표도 image/png 여야 해요). 이 장은 버려요.`,
+  animated: (i) => `${i.name}: 움직이는 PNG(APNG)예요. 한 장이 한 자세라 받지 않아요. 이 장은 버려요.`,
   tooBig: (i) => `${i.name}: ${i.v?.kb}KB 라 한 장 상한 ${i.v?.max}KB 를 넘어요. 이 장은 버려요.`,
   badSize: (i) =>
     `${i.name}: 크기(${i.v?.w}x${i.v?.h})를 못 읽었거나 한 변 ${i.v?.max}px 를 넘어요. 이 장은 버려요.`,
@@ -157,7 +167,10 @@ const KO: Record<SpriteIssueCode, (i: SpriteIssue) => string> = {
 const EN: Record<SpriteIssueCode, (i: SpriteIssue) => string> = {
   noIdle: () => 'No idle (standing) picture. Without it the whole sprite set is dropped.',
   unknownName: (i) => `${i.name}: unknown name, skipped (see docs/pet-format.md for the names).`,
-  notPng: (i) => `${i.name}: not a PNG (SVG, GIF, WebP and JPEG are refused). This picture is dropped.`,
+  notPng: (i) =>
+    `${i.name}: not a PNG (SVG, GIF, WebP and JPEG are refused; the data URL label must be image/png too). This picture is dropped.`,
+  animated: (i) =>
+    `${i.name}: an animated PNG (APNG). One picture is one pose, so it is refused. This picture is dropped.`,
   tooBig: (i) =>
     `${i.name}: ${i.v?.kb} KB is over the ${i.v?.max} KB per-picture limit. This picture is dropped.`,
   badSize: (i) =>
@@ -186,20 +199,33 @@ export const SPRITE_POSE_GROUPS = { base: SPRITE_BASE_NAMES, extra: SPRITE_EXTRA
 export function spriteInfoOf(bytes: Uint8Array): SpriteFileInfo {
   const size = imageSize(bytes);
   const kind = imageKind(bytes);
-  return { bytes: bytes.length, ...(kind ? { kind } : {}), ...(size ? { w: size.w, h: size.h } : {}) };
+  const animated = kind === 'png' && isAnimatedPng(bytes);
+  return {
+    bytes: bytes.length,
+    ...(kind ? { kind } : {}),
+    ...(size ? { w: size.w, h: size.h } : {}),
+    ...(animated ? { animated } : {}),
+  };
 }
 
-/** data URL 의 base64 를 바이트로. data URL 이 아니거나 깨졌으면 undefined */
-function dataUrlBytes(url: unknown): Uint8Array | undefined {
+/**
+ * data URL 을 앱(pet-share.ts cleanImage, cleanSprites)과 같은 눈으로 본다: 이름표가 image/png 가 아니면 PNG 가 아니고(앱은 gif, webp 이름표나
+ * 그 밖의 것을 그림 세트에서 버린다), 이름표가 png 여도 바이트가 PNG 가 아니면 그림이 아니다. 풀 수 없으면 undefined
+ */
+function dataUrlInfo(url: unknown): SpriteFileInfo | undefined {
   if (typeof url !== 'string') return undefined;
-  const m = /^data:[\w/+.-]+;base64,([A-Za-z0-9+/=]+)$/.exec(url);
-  if (!m) return undefined;
+  const m = /^data:image\/(png|gif|webp);base64,([A-Za-z0-9+/=]+)$/.exec(url);
+  if (!m) return { bytes: url.length };
+  let bytes: Uint8Array;
   try {
-    const bin = atob(m[1] ?? '');
-    return Uint8Array.from(bin, (c) => c.charCodeAt(0));
+    bytes = Uint8Array.from(atob(m[2] ?? ''), (c) => c.charCodeAt(0));
   } catch {
-    return undefined;
+    return { bytes: url.length };
   }
+  // 이름표가 png 가 아니면 형식은 그 이름표 (notPng), 바이트가 PNG 가 아니면 모르는 형식
+  if (m[1] !== 'png') return { bytes: bytes.length, kind: m[1] as string };
+  const info = spriteInfoOf(bytes);
+  return info.kind === 'png' ? info : { bytes: bytes.length };
 }
 
 /**
@@ -219,8 +245,7 @@ export function spriteInfosOfFairy(text: string): Record<string, SpriteFileInfo>
     return { error: 'images.sprites is not an object' };
   const out: Record<string, SpriteFileInfo> = {};
   for (const [name, url] of Object.entries(sprites)) {
-    const bytes = dataUrlBytes(url);
-    out[name] = bytes ? spriteInfoOf(bytes) : { bytes: typeof url === 'string' ? url.length : 0 };
+    out[name] = dataUrlInfo(url) ?? { bytes: 0 };
   }
   return out;
 }

@@ -47,8 +47,13 @@ export type PetSprites = Partial<Record<SpriteName, string>>;
 export const SPRITE_MAX_BYTES = 512 * 1024;
 /** 그림 한 장 한 변 상한 (px). 펫 캔버스는 160 이라 이보다 크면 줄이기만 한다 */
 export const SPRITE_MAX_SIDE = 1024;
-/** 그림 세트 전체 상한 (풀기 전 바이트 합). 넘으면 세트를 통째로 버린다 */
-export const SPRITES_MAX_BYTES = 4 * 1024 * 1024;
+/**
+ * 그림 세트 전체 상한 (풀기 전 바이트 합). 넘으면 세트를 통째로 버린다. 2026-10-28 에 4MB 에서 6MB 로: 자세가 20장에서 28장으로
+ * 늘었고 털이 있는 그림의 320px PNG 는 장당 150~200KB 라 4MB 는 빠듯했다(28장 x 150KB = 4.2MB). 6MB 면 장당 평균 214KB 까지 된다.
+ * 파일 하나 상한 SHARE_MAX_BYTES(56MB)는 49.8MB 쯤에서 base64 로 8MB 가 되어 52.4MB 쯤이라 그대로 맞고, 갤러리 상한(16MB)과
+ * 서버에는 그림 세트가 가지 않는다(서버 코드에 sprites 없음). 한 장 512KB 상한은 그대로
+ */
+export const SPRITES_MAX_BYTES = 6 * 1024 * 1024;
 
 /** pets/ 안 그림 세트 파일 이름 (경로를 넣어 다른 폴더를 가리키지 못하게) */
 export const SPRITE_FILE = /^sprite-[\w-]+\.png$/;

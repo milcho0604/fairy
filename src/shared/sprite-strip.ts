@@ -122,7 +122,7 @@ export const sheetSize = (row: SpriteRow): { w: number; h: number } => ({
   w: STRIP_W,
   h: STRIP_H * linesOf(row),
 });
-/** 다 만든 그림 한 장 크기. 펫 캔버스(160)의 두 배라 레티나에서도 또렷하고, 스무 장이 4MB 상한 안에 든다 */
+/** 다 만든 그림 한 장 크기. 펫 캔버스(160)의 두 배라 레티나에서도 또렷하고, 스물여덟 장이 6MB 상한 안에 든다 */
 export const SPRITE_SIDE = 320;
 /** 캔버스 아래 여백 (바닥선 = SPRITE_SIDE - FOOT_PAD) */
 export const FOOT_PAD = 8;
@@ -529,7 +529,8 @@ function keyStats(img: Rgba, key: Rgb): { opaque: number; keyish: number } {
 export function processStrip(strip: Rgba, row: SpriteRow, asked: Rgb): StripResult {
   const lines = linesOf(row);
   if (lines === 1) return processLine(strip, row, asked, true);
-  // 여러 줄 시트: 같은 높이로 줄을 나눠 한 줄씩 위와 같이 처리하고(칸 수는 줄마다 SHEET_COLS), 크기 튐은 시트 전체로 다시 잰다
+  // 여러 줄 시트: 같은 높이로 줄을 나눠 한 줄씩 위와 같이 처리한다(칸 수는 줄마다 SHEET_COLS). 크기 튐은 줄 안에서 따로 재고,
+  // 줄끼리는 첫 줄을 기준으로 둘째 줄부터 견준다 (가운뎃값을 시트 전체로 재면 둘째 줄이 크거나 작을 때 멀쩡한 첫 줄이 튄 것으로 걸렸다)
   const bandH = Math.floor(strip.height / lines);
   const parts: StripResult[] = [];
   for (let l = 0; l < lines; l++) {
@@ -540,10 +541,15 @@ export function processStrip(strip: Rgba, row: SpriteRow, asked: Rgb): StripResu
       frames: row.frames.slice(at, at + SHEET_COLS),
       ...(row.side ? { side: true } : {}),
     };
-    parts.push(processLine(crop(strip, 0, l * bandH, strip.width, bandH), sub, asked, false));
+    parts.push(processLine(crop(strip, 0, l * bandH, strip.width, bandH), sub, asked, true));
+  }
+  const base = medianHeight(parts[0]?.frames ?? []);
+  for (const p of parts.slice(1)) {
+    const mine = medianHeight(p.frames);
+    if (base > 0 && mine > 0 && Math.max(base, mine) / Math.min(base, mine) > JUMP_RATIO)
+      for (const f of p.frames) if (f.box && !f.issues.includes('jump')) f.issues.push('jump');
   }
   const frames = parts.flatMap((p) => p.frames);
-  markJumps(frames);
   const issues = [...new Set(frames.flatMap((f) => f.issues))];
   return { frames, issues, key: parts[0]?.key ?? asked };
 }
@@ -562,8 +568,17 @@ function markJumps(frames: StripFrame[]) {
   }
 }
 
-/** 한 줄 띠 처리. jumps 가 거짓이면 크기 튐은 부르는 쪽이 시트 전체로 잰다 */
-function processLine(strip: Rgba, row: SpriteRow, asked: Rgb, jumps: boolean): StripResult {
+/** 칸들 키(높이)의 가운뎃값 (빈 칸은 빼고). 없으면 0 */
+function medianHeight(frames: StripFrame[]): number {
+  const hs = frames
+    .filter((f) => f.box && !f.issues.includes('empty'))
+    .map((f) => (f.box?.bottom ?? 0) - (f.box?.top ?? 0))
+    .sort((a, b) => a - b);
+  return hs[hs.length >> 1] ?? 0;
+}
+
+/** 한 줄 띠 처리 */
+function processLine(strip: Rgba, row: SpriteRow, asked: Rgb, jumps = true): StripResult {
   const n = row.names.length;
   const key = measureKey(strip, asked);
   const keyed = dropSpecks(chromaKey(strip, key ?? asked));
@@ -874,7 +889,7 @@ export const isQuotaKind = (kind: string): boolean => kind === 'quota' || kind =
  * 여러 줄 시트(서기, 걷기)가 검사에 걸렸을 때 쓸 수 있는 줄만 건진다. 무료 횟수는 호출 수로 세어서 일부 줄이 틀렸다고 호출을 버리면
  * 아깝다. 건지는 규칙: 첫 줄(서기면 서기, 깜빡임, 옆 시선 / 걷기면 walk-0~3, 네 장 한 주기)이 온전해야 하고,
  * 문제 없는 줄만 남긴다 (문제 있는 줄은 이름이 겹치지 않게 통째로 뺀다). 첫 줄이 틀렸거나 모두 온전하면(건질 것 없음) undefined.
- * 크기 튐(jump)은 시트 전체로 쟀으니 줄 안 칸에 jump 가 있으면 그 줄은 빼는 쪽이다
+ * 크기 튐(jump)은 줄 안에서 따로, 줄끼리는 첫 줄 기준으로 재므로 첫 줄은 둘째 줄이 크든 작든 멀쩡하면 건진다
  */
 export function salvageSheet(
   result: StripResult,

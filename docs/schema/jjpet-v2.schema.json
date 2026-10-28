@@ -70,7 +70,7 @@
             "look-ul": { "$ref": "#/$defs/png" },
             "look-ur": { "$ref": "#/$defs/png" }
           },
-          "description": "Optional 2D sprite set, same pose names as the built-in fairies (src/renderer/src/cute2d.ts). PNG only (no SVG, no animated PNG), each at most 512 KiB and 1024 px per side, all the same size as idle, at most 4 MiB in total. Pose order on the canvas: transparent background, feet on the bottom edge of the opaque area, facing right for walk-0..7. Only used with images.main. The walk cycle uses as many consecutive frames from walk-0 as exist (up to 8). look-u, look-d, look-ul, look-ur are the up and diagonal gazes. Missing poses fall back to a close one, then idle. A broken sprite is dropped by the app (rejected by the gallery); a set without a valid idle or over 4 MiB is dropped whole."
+          "description": "Optional 2D sprite set, same pose names as the built-in fairies (src/renderer/src/cute2d.ts). PNG only (no SVG, no animated PNG), each at most 512 KiB and 1024 px per side, all the same size as idle, at most 6 MiB in total. Pose order on the canvas: transparent background, feet on the bottom edge of the opaque area, facing right for walk-0..7. Only used with images.main. The walk cycle uses as many consecutive frames from walk-0 as exist (up to 8). look-u, look-d, look-ul, look-ur are the up and diagonal gazes. Missing poses fall back to a close one, then idle. A broken sprite is dropped by the app (rejected by the gallery); a set without a valid idle or over 6 MiB is dropped whole."
         }
       }
     },
