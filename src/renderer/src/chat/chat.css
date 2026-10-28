@@ -796,7 +796,9 @@ footer {
 }
 
 .primary:disabled {
-  opacity: 0.45;
+  /* 흐리게(opacity 0.45) 하면 흰 글자 대비가 2.23 까지 떨어진다. 바탕을 옅게 바꾸고 글자는 흐린 글자색(대비 4.5 이상) */
+  background: var(--code);
+  color: var(--muted);
   cursor: default;
 }
 
@@ -1270,6 +1272,13 @@ header .picker.ticket {
 
 .ticket-notice button {
   justify-self: start;
+}
+
+.ticket-points {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
 }
 
 .ticket-report-open {

@@ -83,7 +83,7 @@ import {
 } from '../shared/throw.ts';
 import type { NoteLook } from '../shared/together.ts';
 import { KEEP_APP_TYPE } from './active-space.ts';
-import { saverNow } from './battery.ts';
+import { motionCalm, saverNow } from './battery.ts';
 import { boostOn } from './boost.ts';
 import { watchCursor } from './cursor-watch.ts';
 import { devRendererUrl } from './dev-url.ts';
@@ -950,7 +950,9 @@ export function createPetWindow({
     // 가끔 다른 앱 창 윗변으로 깡충 올라간다. 이미 앉아 있으면 걷지 않는다 (걸으면 떨어지니까).
     // 배터리 절약이면 덜 올라간다 (창 목록 읽기가 비싸다)
     const perchChance = PERCH_CHANCE * (saverNow() ? SAVER.perchChance : 1);
-    if (!perch && Math.random() < perchChance && tryPerch()) return;
+    // 운영체제 동작 줄이기: 창 위로 뛰어오르지도, 화면을 가로질러 걷지도 않는다 (제자리 몸짓만)
+    const calm = motionCalm();
+    if (!calm && !perch && Math.random() < perchChance && tryPerch()) return;
     const now = Date.now();
     let activity: Activity = pickActivity(pet, area, Math.random, areas, {
       ask: moveAskOf(ask),
@@ -959,7 +961,7 @@ export function createPetWindow({
       hour: new Date(now).getHours(),
       perched: !!perch,
     });
-    if (perch && activity.type === 'walk') activity = { type: 'sit', ms: 12_000 };
+    if ((perch || calm) && activity.type === 'walk') activity = { type: 'sit', ms: 12_000 };
     if (activity.type === 'walk') activity = { ...activity, idle: true };
     if (isMove(activity.type)) moveHistory = rememberMove(moveHistory, activity.type, now);
     if (activity.type === 'walk') startWalk(activity);
@@ -1074,6 +1076,12 @@ export function createPetWindow({
     stopWalk();
     const dx = Math.round(x - pet.x);
     if (Math.abs(dx) < 4 || win.isDestroyed() || !win.isVisible()) return Promise.resolve(true);
+    // 운영체제 동작 줄이기: 걷지 않고 바로 그 자리에 선다
+    if (motionCalm()) {
+      pet = snapRect({ ...pet, x: Math.round(x) });
+      win.setPosition(pet.x, pet.y);
+      return Promise.resolve(true);
+    }
     const walk = { type: 'walk' as const, dx, ms: Math.round((Math.abs(dx) / speed) * 1000) };
     return new Promise((resolve) => {
       walkDone = resolve;
@@ -1809,6 +1817,12 @@ export function createPetWindow({
     stopDoor();
     stopWalk();
     leavePerch();
+    // 운영체제 동작 줄이기: 걷고 줄어들지 않고 바로 문 안(나올 때는 문간)에 선다
+    if (motionCalm()) {
+      pet = doorFrame(stand, end, inward ? 1 : 0);
+      applyLayout();
+      return Promise.resolve(true);
+    }
     const started = Date.now();
     // 문 쪽(나올 때는 문 반대쪽)을 보고 걷는다. 문간 바로 앞이면 들어갈 땐 왼쪽, 나올 땐 오른쪽을 본다
     const toDoor = Math.round(end.x + end.width / 2 - (stand.x + stand.width / 2)) || -1;

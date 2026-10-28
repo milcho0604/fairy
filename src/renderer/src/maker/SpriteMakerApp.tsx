@@ -18,6 +18,7 @@ import {
   fitStrip,
   isQuotaKind,
   keyHex,
+  linesOf,
   onKey,
   pickKeyColor,
   processStrip,
@@ -28,9 +29,9 @@ import {
   rowsToMake,
   SPRITE_ROWS,
   type SpriteRowId,
-  STRIP_H,
-  STRIP_W,
+  salvageSheet,
   setFrames,
+  sheetSize,
   stopsQueue,
 } from '../../../shared/sprite-strip.ts';
 import { escClosesWindow } from '../panel/keys.ts';
@@ -223,12 +224,20 @@ export function SpriteMakerApp() {
         continue;
       }
       try {
-        const strip = await pixelsOf(r.image, { w: STRIP_W, h: STRIP_H });
+        const size = sheetSize(row);
+        const strip = await pixelsOf(r.image, { w: size.w, h: size.h });
         const got = processStrip(strip, row, b.key);
+        // 두 줄 시트에서 첫 줄이 온전하면 문제 없는 줄만 쓴다 (호출을 버리지 않는다)
+        const kept = salvageSheet(got, row);
         setStrips((v) => ({ ...v, [id]: pngOf({ ...strip }) }));
         setStates((v) => ({
           ...v,
-          [id]: got.issues.length === 0 ? { s: 'ok', frames: got.frames } : { s: 'bad', issues: got.issues },
+          [id]:
+            got.issues.length === 0
+              ? { s: 'ok', frames: got.frames }
+              : kept
+                ? { s: 'ok', frames: kept.frames, dropped: kept.dropped }
+                : { s: 'bad', issues: got.issues },
         }));
         setFrom((v) => ({ ...v, [id]: eng }));
       } catch {
@@ -321,13 +330,14 @@ export function SpriteMakerApp() {
         w: Math.max(1, Math.round(w0 * k)),
         h: Math.max(1, Math.round(h0 * k)),
       });
-      const fit = fitStrip(img, b.key);
+      const fit = fitStrip(img, b.key, linesOf(row));
       if (!fit.ok) {
         setGemError(t(FIT_ERROR[fit.why], { color: keyHex(b.key) }));
         return;
       }
       const got = processStrip(fit.img, row, b.key);
-      const fitted = w0 !== STRIP_W || h0 !== STRIP_H ? t('sprites.gemini.fitted', { w: w0, h: h0 }) : '';
+      const size = sheetSize(row);
+      const fitted = w0 !== size.w || h0 !== size.h ? t('sprites.gemini.fitted', { w: w0, h: h0 }) : '';
       const wasOk = states[id]?.s === 'ok';
       if (got.issues.length > 0) {
         // 된 동작을 못 쓰는 그림으로 바꾸지 않는다. 아직 안 된 동작이면 걸린 까닭을 그 동작에 보인다
@@ -464,7 +474,9 @@ export function SpriteMakerApp() {
                           : st?.s === 'fail'
                             ? t('sprites.state.fail')
                             : st?.s === 'ok'
-                              ? t('sprites.state.ok')
+                              ? st.dropped
+                                ? t('sprites.state.partial', { n: st.dropped })
+                                : t('sprites.state.ok')
                               : t('sprites.state.wait')}
                       {(st?.s === 'ok' || st?.s === 'bad') && f && f !== 'cloud' && (
                         <span className="sprite-row-from"> ({t(`sprites.from.${f}`)})</span>

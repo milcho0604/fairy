@@ -35,7 +35,7 @@ export const ko = {
   // 2D 그림 세트 만들기 (#89)
   'sprites.title': '2D 그림 세트 만들기',
   'sprites.intro':
-    '지금 페어리 그림을 기준으로 서기, 걷기, 쉬기, 기분, 말하기 다섯 동작을 동작마다 네 장씩 한 줄로 그려. 다 되면 2D 모습에서 그 그림으로 걷고 쉬어.',
+    '지금 페어리 그림을 기준으로 서기, 걷기, 쉬기, 기분, 말하기 다섯 동작을 그려. 서기(눈 위아래까지 여덟 장)와 걷기(여덟 장)는 한 번에 두 줄로, 나머지는 네 장씩 한 줄로 받아. 다 되면 2D 모습에서 그 그림으로 걷고 쉬어.',
   'sprites.privacy':
     '지금 페어리 그림이 Hugging Face 무료 그림 서버(FLUX.2 klein)로 가. 동작 하나에 한 번씩 쓰고, 토큰 없이는 하루 몇 번만 돼서 서기와 걷기부터 만들어.',
   'sprites.noPet': '사진이나 말로 만든 페어리일 때만 그림 세트를 만들 수 있어. 먼저 페어리를 만들어 줘.',
@@ -57,6 +57,7 @@ export const ko = {
   'sprites.state.wait': '기다리는 중',
   'sprites.state.run': (v: { n: number }) => `그리는 중 (${v.n}초째)`,
   'sprites.state.ok': '됐어',
+  'sprites.state.partial': (v: { n: number }) => `됐어 (검사에 걸린 줄의 ${v.n}칸은 뺐어)`,
   'sprites.state.bad': '검사에서 걸렸어',
   'sprites.state.fail': '못 그렸어',
   'sprites.issue.empty': '빈 칸',
@@ -89,7 +90,7 @@ export const ko = {
   'sprites.gemini.step2':
     '기준 그림(지금 페어리를 배경색 위에 놓은 그림)을 Gemini에 올리고 요청문을 붙여 넣어.',
   'sprites.gemini.step3':
-    '받은 그림을 내려받아 여기에 끌어 놓거나 골라 줘. 앱이 배경을 지우고 네 칸으로 잘라 검사해.',
+    '받은 그림을 내려받아 여기에 끌어 놓거나 골라 줘. 앱이 배경을 지우고 칸으로 잘라 검사해.',
   'sprites.gemini.open': '요청문 복사하고 Gemini 열기',
   'sprites.gemini.reveal.mac': 'Finder에서 기준 그림 보기',
   'sprites.gemini.reveal.win': '탐색기에서 기준 그림 보기',
@@ -101,13 +102,13 @@ export const ko = {
   'sprites.gemini.working': '받은 그림을 자르고 검사하는 중이야.',
   'sprites.gemini.done': (v: { row: string }) => `${v.row} 동작을 받은 그림으로 바꿨어.`,
   'sprites.gemini.fitted': (v: { w: number; h: number }) =>
-    `받은 그림 크기(${v.w}x${v.h})를 띠 비율(4:1)에 맞췄어.`,
+    `받은 그림 크기(${v.w}x${v.h})를 요청한 칸 모양(한 줄 4:1, 두 줄 2:1)에 맞췄어.`,
   'sprites.gemini.bad': '받은 그림이 검사에서 걸려서 이 동작은 그대로 뒀어. Gemini에서 다시 받아 넣어 줘.',
   'sprites.gemini.badNew': '받은 그림이 검사에서 걸렸어. Gemini에서 다시 받아 넣어 줘.',
   'sprites.gemini.err.key': (v: { color: string }) =>
     `배경이 한 가지 색(${v.color})이 아니라서 자를 수 없어. 요청문을 그대로 붙여 넣어 다시 받아 줘.`,
   'sprites.gemini.err.shape':
-    '네 장이 가로 한 줄로 놓인 그림이 아니야 (두 줄로 그렸거나 한 장만 그렸을 때 이래). 요청문을 그대로 붙여 넣어 다시 받아 줘.',
+    '칸들이 요청한 줄 모양(한 줄 네 칸, 서기와 걷기는 두 줄)으로 놓인 그림이 아니야 (줄 수가 다르거나 한 장만 그렸을 때 이래). 요청문을 그대로 붙여 넣어 다시 받아 줘.',
   'sprites.gemini.err.empty': '그림에서 캐릭터를 찾지 못했어. 다른 그림을 골라 줘.',
   'maker.done.sprites': '2D 그림 세트도 만들기',
   'maker.how.photo': '사진 그대로',
@@ -334,6 +335,16 @@ export const ko = {
     `바탕 조각이 많이 남았어. 그림이나 만화면 그림용으로 다시 지워 볼까? (도구를 처음 한 번 받아, ${v.mb}MB)`,
   'maker.edit.kindTry': '그림용으로 다시 지우기',
   'maker.edit.kindLose': '방식을 바꾸면 다시 지워서 지금까지 다듬은 것이 사라져. 바꿀까?',
+  'maker.edit.paper': '종이 색 지우기',
+  'maker.edit.paperHint':
+    '종이 색을 재서 옅은 선과 칠을 살려. 줄 공책이나 틀 있는 그림에서는 줄이 남을 수 있어.',
+  'maker.edit.paperDone': '종이 색으로 다시 지웠어. 마음에 안 들면 되돌리기를 눌러 줘.',
+  'maker.edit.paperFail': '종이 색이 고르지 않아서 못 지웠어. 사진 배경이면 지우개로 칠해 줘.',
+  'maker.edit.paperSimilar': '몸 색이 종이와 비슷해서 못 지웠어. 흰 몸은 지우개와 복원 붓으로 다듬어 줘.',
+  'maker.edit.applySame': '더 바꿀 곳이 없어.',
+  'maker.edit.fur': '털 다듬기',
+  'maker.edit.furHint': '사진 색을 보고 털 끝 가장자리를 다듬어. 흰 털 둘레는 옅게 번질 수 있어.',
+  'maker.edit.furDone': '털 끝을 다듬었어. 마음에 안 들면 되돌리기를 눌러 줘.',
   'maker.edit.eraser': '지우개',
   'maker.edit.restore': '복원 붓',
   'maker.edit.size': '굵기',
@@ -386,7 +397,7 @@ export const en: Translation<typeof ko> = {
   'maker.how.label': 'How to make it',
   'sprites.title': 'Make a 2D picture set',
   'sprites.intro':
-    'Using your fairy picture as the model, this draws five moves (stand, walk, rest, feelings, talk), four frames in one row each. When done, your fairy walks and rests with these pictures in 2D.',
+    'Using your fairy picture as the model, this draws five moves (stand, walk, rest, feelings, talk). Stand (eight frames including looking up and down) and walk (eight frames) come back as two rows in one go, the rest as four frames in one row. When done, your fairy walks and rests with these pictures in 2D.',
   'sprites.privacy':
     "Your fairy picture goes to Hugging Face's free drawing server (FLUX.2 klein), once per move. Without a token it only works a few times a day, so stand and walk come first.",
   'sprites.noPet':
@@ -408,6 +419,7 @@ export const en: Translation<typeof ko> = {
   'sprites.state.wait': 'Waiting',
   'sprites.state.run': (v) => `Drawing (${v.n}s)`,
   'sprites.state.ok': 'Done',
+  'sprites.state.partial': (v) => `Done (left out ${v.n} frames that failed the check)`,
   'sprites.state.bad': 'Failed the check',
   'sprites.state.fail': "Couldn't draw",
   'sprites.issue.empty': 'empty frame',
@@ -440,7 +452,7 @@ export const en: Translation<typeof ko> = {
   'sprites.gemini.step2':
     'Add the reference picture (your fairy on the background color) to Gemini and paste the prompt.',
   'sprites.gemini.step3':
-    'Download the picture you get and drop it here or pick it. The app removes the background, cuts it into four and checks it.',
+    'Download the picture you get and drop it here or pick it. The app removes the background, cuts it into frames and checks it.',
   'sprites.gemini.open': 'Copy prompt and open Gemini',
   'sprites.gemini.reveal.mac': 'Show reference picture in Finder',
   'sprites.gemini.reveal.win': 'Show reference picture in File Explorer',
@@ -452,14 +464,15 @@ export const en: Translation<typeof ko> = {
   'sprites.gemini.privacy': "The app doesn't send the picture. You add it to Gemini yourself.",
   'sprites.gemini.working': 'Cutting and checking the picture.',
   'sprites.gemini.done': (v) => `Replaced the ${v.row.toLowerCase()} move with your picture.`,
-  'sprites.gemini.fitted': (v) => `Fitted the ${v.w}x${v.h} picture to the strip shape (4:1).`,
+  'sprites.gemini.fitted': (v) =>
+    `Fitted the ${v.w}x${v.h} picture to the requested layout (4:1 for one row, 2:1 for two rows).`,
   'sprites.gemini.bad':
     "The picture didn't pass the checks, so this move stays as it was. Get it from Gemini again.",
   'sprites.gemini.badNew': "The picture didn't pass the checks. Get it from Gemini again.",
   'sprites.gemini.err.key': (v) =>
     `The background isn't a single color (${v.color}), so it can't be cut. Paste the prompt as is and try again.`,
   'sprites.gemini.err.shape':
-    "The picture isn't four drawings in one row (this happens with two rows or a single drawing). Paste the prompt as is and try again.",
+    "The drawings aren't laid out in the requested rows (four per row, two rows for stand and walk; this happens with a different number of rows or a single drawing). Paste the prompt as is and try again.",
   'sprites.gemini.err.empty': "Couldn't find the character in the picture. Pick another one.",
   'maker.done.sprites': 'Also make a 2D picture set',
   'maker.how.photo': 'Photo as is',
@@ -692,6 +705,19 @@ export const en: Translation<typeof ko> = {
     `Lots of background pieces are left. If this is a drawing or cartoon, try the drawing remover? (one-time download, ${v.mb}MB)`,
   'maker.edit.kindTry': 'Redo for drawing',
   'maker.edit.kindLose': 'Switching redoes the cutout and your brush edits will be lost. Switch?',
+  'maker.edit.paper': 'Erase paper color',
+  'maker.edit.paperHint':
+    'Measures the paper color to keep faint lines and fills. Ruled paper or framed drawings may leave lines behind.',
+  'maker.edit.paperDone': 'Redone with the paper color. Press Undo if you do not like it.',
+  'maker.edit.paperFail':
+    'The paper color is not even, so nothing was erased. For a photo background, paint with the eraser.',
+  'maker.edit.paperSimilar':
+    'The body color is close to the paper, so nothing was erased. Touch up a white body with the eraser and restore brush.',
+  'maker.edit.applySame': 'Nothing more to change.',
+  'maker.edit.fur': 'Smooth fur',
+  'maker.edit.furHint':
+    'Uses the photo colors to refine the fur edge. Around white fur it can leave a faint haze.',
+  'maker.edit.furDone': 'Fur edge smoothed. Press Undo if you do not like it.',
   'maker.edit.eraser': 'Eraser',
   'maker.edit.restore': 'Restore brush',
   'maker.edit.size': 'Size',

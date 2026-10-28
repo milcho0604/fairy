@@ -1506,6 +1506,15 @@ li.pin-end {
   resize: none;
 }
 
+.note-saved {
+  flex: none;
+  min-height: 1.2em;
+  margin: 0;
+  text-align: right;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
 .note-title-input:focus,
 .note-editor textarea:focus {
   outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
@@ -1726,6 +1735,92 @@ li.pin-end {
   color: var(--ok);
 }
 
+/* 못 사는 단추는 흐려지기만 하지 않고 이유를 글로 말한다("코인 N개 더 필요"). 단추와 값 글자는 흐리게(opacity)
+   하지 않고 흐린 글자색(--muted, 4.5 이상)과 점선 둘레로 못 누름을 보인다. 값 숫자가 같이 흐려지지 않게 */
+.shop .ghost:disabled {
+  opacity: 1;
+  border-style: dashed;
+  color: var(--muted);
+}
+
+.shop .goods small.need,
+.shop .row-line small.need {
+  color: var(--warn);
+}
+
+/* 한 번 더 누르라는 안내는 줄 바깥(아래)에 겹쳐 그린다. 줄 높이가 변하지 않아 단추가 움직이지 않고 같은 자리를 다시 누를 수 있다 */
+.shop .goods li,
+.shop .row-line,
+.shop .house-styles {
+  position: relative;
+}
+
+.shop small.need.ask {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: 0;
+  z-index: 3;
+  margin-top: -2px;
+  padding: 6px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.shop .house-styles small.need.ask {
+  top: calc(100% + 4px);
+  margin-top: 0;
+}
+
+.shop[data-ask-up] small.need.ask {
+  top: auto;
+  bottom: 100%;
+  margin-top: 0;
+  margin-bottom: -2px;
+}
+
+.shop[data-ask-up] .house-styles small.need.ask {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+
+.shop .ghost.buy {
+  /* "한 번 더"로 바뀌어도 단추 폭이 변하지 않게(같은 자리를 다시 누를 수 있게) */
+  min-width: 76px;
+}
+
+.shop .house-styles .ghost.buy {
+  min-width: 0;
+  width: 100%;
+  padding-right: 2px;
+  padding-left: 2px;
+  white-space: nowrap;
+}
+
+.shop .ghost.asking {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.g-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.shop .house-styles small.need {
+  font-size: 11px;
+  line-height: 1.25;
+  text-align: center;
+  color: var(--warn);
+}
+
 /* 흐리게(opacity 0.5) 하면 글자 대비가 2.07 까지 떨어진다. 색은 --muted 그대로, 누르는 자리는 28px 로 넓히되
    줄 높이는 그대로 두려고 위아래 여백을 뺀다 */
 .shop .goods .remove {
@@ -1839,9 +1934,16 @@ ul.house-styles li > :last-child {
   /* 띠가 있든 없든 높이가 같다. 목록은 늘 이 아래에서 시작한다 */
   flex: none;
   box-sizing: border-box;
-  height: 24px;
+  height: 30px;
   padding: 2px 14px 0;
+  /* 패널 바탕색으로 가로 전체를 채워 띠 아래 여백까지 목록 글자가 비치지 않게 */
+  background: var(--panel);
   pointer-events: none;
+}
+
+/* 목록 맨 윗줄이 띠 바로 밑에서 반쯤 잘려 보이지 않게 위쪽 가장자리를 부드럽게 */
+.shop-host > .shop {
+  mask-image: linear-gradient(to bottom, transparent 0, transparent 4px, #000 16px);
 }
 
 .shop-msg {

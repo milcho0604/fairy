@@ -10,10 +10,17 @@ export const ko = {
   'settings.urlSchemeHint':
     '단축어, Raycast, Alfred, PowerToys에서 할 일, 메모를 넣고 집중을 시작해. 넣으면 페어리가 말풍선으로 알려 줘.',
   'settings.urlSchemeExample': '예: fairy://add?text=내일 3시 회의',
-  'settings.power': '배터리일 때 움직임 줄이기',
+  'settings.motion': '걷기와 뛰기',
+  'settings.motionAria': '걷기와 뛰기를 줄일 때',
+  'settings.motion.system': '운영체제 따름 (기본)',
+  'settings.motion.always': '항상 줄이기',
+  'settings.motion.off': '줄이지 않기',
+  'settings.motionHint':
+    '줄이면 페어리가 화면을 가로질러 걷거나 창 위로 뛰어오르지 않고 제자리에서만 움직이고, 신나서 튀는 몸짓도 작아져. 배터리 절약과는 따로야. 운영체제 따름은 맥의 손쉬운 사용 "동작 줄이기"나 윈도의 애니메이션 끄기가 켜져 있을 때만 줄여.',
+  'settings.power': '배터리 절약',
   'settings.saverAria': '배터리 절약 때',
   'settings.saver.auto': '켜기 (자동)',
-  'settings.saver.always': '항상 줄이기',
+  'settings.saver.always': '항상 절약',
   'settings.saver.off': '끄기',
   'settings.saverHint':
     '기본은 켜기(자동)야. 배터리나 저전력일 때 페어리가 덜 걷고, 통통 튀는 움직임을 초당 15번까지만 그리고, 창 위에 앉은 걸 3초마다 봐. 페어리 우클릭 메뉴에서도 끌 수 있어.',
@@ -59,10 +66,17 @@ export const en: Translation<typeof ko> = {
   'settings.urlSchemeHint':
     'Add to-dos and memos or start focus from Shortcuts, Raycast, Alfred or PowerToys. Your fairy confirms in a bubble.',
   'settings.urlSchemeExample': 'e.g. fairy://add?text=meeting tomorrow 3pm',
-  'settings.power': 'Reduce motion on battery',
+  'settings.motion': 'Walking and hopping',
+  'settings.motionAria': 'When to reduce walking and hopping',
+  'settings.motion.system': 'Follow system (default)',
+  'settings.motion.always': 'Always reduce',
+  'settings.motion.off': "Don't reduce",
+  'settings.motionHint':
+    'When reduced, your fairy stays in place instead of walking across the screen or hopping onto windows, and excited bounces get smaller. This is separate from Battery saver. Follow system reduces only while the Mac Reduce Motion or the Windows animation-off setting is on.',
+  'settings.power': 'Battery saver',
   'settings.saverAria': 'When to save battery',
   'settings.saver.auto': 'On (auto)',
-  'settings.saver.always': 'Always reduce',
+  'settings.saver.always': 'Always save',
   'settings.saver.off': 'Off',
   'settings.saverHint':
     "On (auto) by default. On battery or low power your fairy walks less, draws bouncy motion at most 15 frames a second and checks the window it sits on every 3 seconds. You can also turn it off from your fairy's right-click menu.",

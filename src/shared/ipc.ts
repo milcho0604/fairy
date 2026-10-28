@@ -772,6 +772,8 @@ export interface PetStatus {
   energy?: EnergyLook;
   /** 배터리 절약 중 (shared/battery.ts): 그리기 15fps 상한, 한가한 행동을 드물게. 없으면 끔 */
   saver?: boolean;
+  /** 움직임 줄이기 (설정 "움직임 줄이기"와 운영체제를 합친 판정). 없으면 화면이 운영체제 설정을 직접 본다 */
+  calm?: boolean;
   /** 말풍선을 화면 읽기 프로그램에 읽어 준다 (설정 읽어 주기). 친구 펫은 끔 (같은 말을 두 번 읽지 않게) */
   readAloud?: boolean;
   /** 꾹 누르면 커지기 (설정 clickGrow, 이슈 #124). 없으면 끔 */

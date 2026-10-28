@@ -1,7 +1,7 @@
 // 짧은 놀이 (미니 게임) 실행: 비눗방울, 레이저 쫓기, 간식 받아먹기, 가위바위보, 친구와 술래잡기, 두더지 잡기, 웃겨 줘, 하이파이브.
 // 규칙과 계산은 shared/minigames.ts. 여기는 작은 투명 창(방울, 점, 간식, 구멍)과 타이머만 다룬다.
 // 한 번에 하나만 하고, 끝나면(다 함, 그만 놀기, 숨음, 화면 잠금, 모니터 바뀜, 끌기) 창과 타이머를 다 치운다.
-import { BrowserWindow, powerMonitor, screen, systemPreferences } from 'electron';
+import { BrowserWindow, powerMonitor, screen } from 'electron';
 import {
   HIGH_FIVE,
   highFiveResult,
@@ -60,6 +60,7 @@ import {
 import { voiced, voicedLive } from '../shared/persona-voice.ts';
 import { localDay } from '../shared/todo-store.ts';
 import { KEEP_APP_TYPE } from './active-space.ts';
+import { motionCalm } from './battery.ts';
 import { onDisplaysChanged } from './display-watch.ts';
 import { decoyBox, MOLE_CSS, moleBody } from './mole-art.ts';
 import type { PetWindow } from './pet-window.ts';
@@ -71,11 +72,7 @@ const FRAME_MS = 16;
 
 /** 운영체제 "동작 줄이기". 켜져 있으면 펫이 솟고 들어가는 움직임 없이 바로 나타나고 사라진다 */
 function reducedMotion(): boolean {
-  try {
-    return systemPreferences.getAnimationSettings().prefersReducedMotion;
-  } catch {
-    return false;
-  }
+  return motionCalm();
 }
 
 export interface MiniGameOptions {

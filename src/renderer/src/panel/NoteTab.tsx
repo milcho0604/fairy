@@ -348,6 +348,8 @@ function NoteEditor({
   const [body, setBody] = useState(draft?.body ?? note.body);
   /** 마지막 저장이 실패했다 (디스크 가득 등). 글은 들고 있고 다음 고침이나 뒤로 갈 때 다시 보낸다 */
   const [saveError, setSaveError] = useState('');
+  /** 마지막 고침까지 저장됐다 (고치면 꺼지고 저장되면 켜진다). 자동 저장이라 저장됐는지 보이게 */
+  const [savedMark, setSavedMark] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const titleRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
@@ -383,7 +385,10 @@ function NoteEditor({
   const [stored, setStored] = useState<{ body: string; shown: boolean }>();
   saver.hooks = {
     saved(sentBody, storedBody, merged) {
-      if (alive.current) setSaveError('');
+      if (alive.current) {
+        setSaveError('');
+        setSavedMark(Object.keys(saver.pending).length === 0);
+      }
       // 보관해 둔 글이 저장됐다: 그 메모의 보관 글을 지운다
       if (keptDraft.current && !saver.failed && Object.keys(saver.pending).length === 0 && alive.current) {
         keptDraft.current = false;
@@ -597,6 +602,7 @@ function NoteEditor({
   };
   const save = (patch: { title?: string; body?: string }) => {
     saver.pending = { ...saver.pending, ...patch };
+    setSavedMark(false);
     clearTimeout(timer.current);
     timer.current = setTimeout(flush, SAVE_MS);
   };
@@ -856,6 +862,9 @@ function NoteEditor({
           save({ body: e.target.value });
         }}
       />
+      <p className="note-saved" role="status">
+        {savedMark && !saveError ? t('panel.note.saved') : ''}
+      </p>
     </div>
   );
 }

@@ -4,7 +4,7 @@
 // 여기는 줄 표, 자세 나누기, pet.json 읽기만 둔다 (Buffer 를 쓰지 않는다). zip 풀기와 그림 자르기는 main/codex-pet.ts
 // 형식 설명과 나누기 표: docs/pet-format.md "Codex 펫 파일"
 
-import type { SpriteName } from './pet-sprites.ts';
+import { SPRITE_MAX_WALKS, type SpriteName } from './pet-sprites.ts';
 import { cleanPetName } from './settings.ts';
 
 export const CODEX_ATLAS = { width: 1536, height: 1872, cols: 8, rows: 9, cellW: 192, cellH: 208 } as const;
@@ -118,9 +118,10 @@ export function codexSpriteCells(filled: readonly (readonly boolean[])[]): Parti
   put('idle', idle[0]);
   // 숨 쉬기, 깜빡이기 줄: 짧게 지나가는 세 번째 장(110ms)이 깜빡임이다. 장이 적으면 둘째 장
   if (idle.length > 1) put('blink', idle[Math.min(2, idle.length - 1)]);
-  // 오른쪽으로 달리기 -> 걷기 여섯 장 (오른쪽 모습. 왼쪽으로 갈 때는 그리는 쪽이 뒤집는다)
+  // 오른쪽으로 달리기 -> 걷기 여덟 장 (오른쪽 모습. 왼쪽으로 갈 때는 그리는 쪽이 뒤집는다)
   const run = rowOf('running-right');
-  for (const [k, i] of evenPick(run.length, 6).entries()) put(`walk-${k}` as SpriteName, run[i]);
+  for (const [k, i] of evenPick(run.length, SPRITE_MAX_WALKS).entries())
+    put(`walk-${k}` as SpriteName, run[i]);
   put('wave', mid(rowOf('waving')));
   put('happy', mid(rowOf('jumping')));
   put('sulky', mid(rowOf('failed')));

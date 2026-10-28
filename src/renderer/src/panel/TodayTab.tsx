@@ -201,7 +201,13 @@ export function TodayTab({
               </>
             )}
           </div>
-          <button type="button" className="primary" disabled={badLen} onClick={() => bridge.focusStart(len)}>
+          <button
+            type="button"
+            className="primary"
+            disabled={badLen}
+            aria-label={t('panel.today.startLabel', { n: len })}
+            onClick={() => bridge.focusStart(len)}
+          >
             {t('panel.today.start')}
           </button>
         </>
@@ -310,6 +316,7 @@ export function TodayTab({
                     <button
                       type="button"
                       className="primary next-go"
+                      aria-label={t('panel.today.nextFocusLabel', { n: len, title: next.title })}
                       onClick={() => bridge.focusStart(len, next.id)}
                     >
                       {t('panel.today.nextFocus', { n: len })}

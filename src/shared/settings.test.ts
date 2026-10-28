@@ -738,3 +738,12 @@ test('큰 창 열기 단축키: 기본은 비어 있다 (새 전역 키를 멋�
   const mine = parseSettings({ shortcuts: { home: 'CommandOrControl+Alt+Shift+O' } });
   assert.equal(mine.shortcuts.home, 'CommandOrControl+Alt+Shift+O');
 });
+
+test('움직임 줄이기: 기본은 운영체제 따름, 예전 항상 절약은 이어받고, 바꾸기 조각은 지금 값을 지킨다', () => {
+  assert.equal(parseSettings({}).reduceMotion, 'system');
+  assert.equal(parseSettings({ batterySaver: 'always' }).reduceMotion, 'always');
+  assert.equal(parseSettings({ batterySaver: 'always', reduceMotion: 'off' }).reduceMotion, 'off');
+  const cur = parseSettings({ reduceMotion: 'off' });
+  assert.equal(parseSettings({ batterySaver: 'always' }, cur).reduceMotion, 'off');
+  assert.equal(cur.batterySaver, 'auto');
+});
