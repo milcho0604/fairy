@@ -63,7 +63,7 @@ import { useLanguageUpdates } from '../use-language.ts';
 import { openDepth, predictDepth } from './depth.ts';
 import { settleFur } from './fur-color.ts';
 import { GeminiRoute } from './GeminiRoute.tsx';
-import { type CutKind, modelOpen, openModel, predictMask } from './removeBg.ts';
+import { type CutKind, closeModel, modelOpen, openModel, predictMask } from './removeBg.ts';
 import { ShownError, shownErrorText } from './shown-error.ts';
 import { FIGURE_LIMITS, RELIEF_LIMITS, Spinner } from './spin.ts';
 
@@ -114,6 +114,8 @@ interface Work {
   mask: Uint8ClampedArray;
   w: number;
   h: number;
+  /** 모델이 처음 낸 마스크 (작업 사진 전체 틀). 사진 모델과 그림용 모델을 같은 틀에서 견주려고 둔다 (다시 오린 틀은 모델마다 다르다) */
+  rough?: { mask: Uint8ClampedArray; w: number; h: number };
 }
 
 export function MakerApp() {
@@ -143,6 +145,7 @@ export function MakerApp() {
   const [switching, setSwitching] = useState(false);
   const [dlKind, setDlKind] = useState<CutKind>('photo');
   const srcRef = useRef<{ file: Blob; photo: HTMLCanvasElement }>(undefined);
+  const before = useRef({ suggest: false, retried: false });
   // 그만두기 뒤 한 줄 (오류가 아니라 부드러운 안내)
   const [note, setNote] = useState('');
   // 사진 고르기부터 다듬기 전까지 한 번의 시도. 그만두면 번호가 바뀌어 늦게 온 결과를 버린다
@@ -390,7 +393,7 @@ export function MakerApp() {
       next.mask = trimHalo(next.mask, next.w, next.h);
       // 흰 바탕 흰 펫, 반짝이는 그림의 살짝 비친 몸 속(190~245)을 꽉 채운다 (가장자리 털 끝은 그대로)
       next.mask = solidify(next.mask, next.w, next.h);
-      return next;
+      return { ...next, rough: { mask: first, w: photo.width, h: photo.height } };
     },
     [info],
   );
@@ -474,18 +477,20 @@ export function MakerApp() {
         let kind: CutKind = 'photo';
         let again = false;
         let offer = false;
-        const first = cutStats(next.mask, next.w, next.h);
+        const rough = (w: Work) => cutStats((w.rough ?? w).mask, (w.rough ?? w).w, (w.rough ?? w).h);
+        const first = rough(next);
         if (needsIllustRetry(first)) {
-          if (info.anime.ready) {
+          // 자동 경로는 절대 받지 않는다: 창이 들고 있는 ready 는 낡았을 수 있어(파일이 깨졌거나 설정에서 지웠다) 메인에서
+          // 파일이 있고 해시가 맞는지만 다시 본다. 아니면 다시 지우지 않고 다듬기 화면에서 권한다 (받기는 사용자가 눌렀을 때만)
+          const have = info.anime.ready && (await bridge.verifyAnime());
+          if (!alive()) return;
+          if (!have && info.anime.ready) setInfo((v) => v && { ...v, anime: { ...v.anime, ready: false } });
+          if (have) {
             try {
-              // 받아 둔 파일은 해시를 맞춘 뒤에만 열린다 (받지는 않는다)
-              const ok = await bridge.ensureAnime();
-              if (!alive()) return;
-              if (!ok.ok) throw new Error(ok.error);
               await openKind('illust');
               const alt = await cutOnce(file, photo, 'illust');
               if (!alive()) return;
-              if (retryIsBetter(first, cutStats(alt.mask, alt.w, alt.h))) {
+              if (retryIsBetter(first, rough(alt))) {
                 next = alt;
                 kind = 'illust';
                 again = true;
@@ -496,6 +501,8 @@ export function MakerApp() {
             }
           } else offer = true;
         }
+        // 안 쓰는 모델 세션은 놓는다 (둘 다 쥐고 있으면 창이 열린 동안 메모리가 340MB 쯤 더 든다)
+        void closeModel(kind === 'photo' ? 'illust' : 'photo');
         srcRef.current = { file, photo };
         setCutKind(kind);
         setRetried(again);
@@ -593,6 +600,8 @@ export function MakerApp() {
     const alive = () => runRef.current === run;
     setError('');
     setNote('');
+    // 못 바꾸면(받기 실패, 그만두기) 권하는 안내와 자동 안내를 그대로 되돌린다
+    before.current = { suggest, retried };
     setSuggest(false);
     setRetried(false);
     setSwitching(true);
@@ -623,6 +632,7 @@ export function MakerApp() {
       if (!alive()) return;
       setWork(next);
       setCutKind(kind);
+      void closeModel(kind === 'photo' ? 'illust' : 'photo');
       setBgDone(true);
       await sleep(DONE_MS);
       if (!alive()) return;
@@ -630,8 +640,10 @@ export function MakerApp() {
       setStep('edit');
     } catch (err) {
       if (!alive()) return;
-      // 못 바꿔도 지금 결과는 그대로 둔다
+      // 못 바꿔도 지금 결과는 그대로 두고, 권하던 안내도 되살린다
       setError(shownErrorText(err, t('maker.err.bgFailed')));
+      setSuggest(before.current.suggest);
+      setRetried(before.current.retried);
       setStep('edit');
     } finally {
       if (runRef.current === run) setSwitching(false);
@@ -646,6 +658,8 @@ export function MakerApp() {
     setBgDone(false);
     setError('');
     setNote(t('maker.progress.stopped'));
+    setSuggest(before.current.suggest);
+    setRetried(before.current.retried);
     setStep('edit');
   };
 

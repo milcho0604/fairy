@@ -79,7 +79,7 @@ Openverse 에서 CC0 와 퍼블릭 도메인 사진만 골랐다. 털 많은 동
 
 ## 그림용 모델과 다시 지우기 (2026-10-28)
 
-사진 모델(IS-Net 일반)이 만화, 그림에서 카드 배경과 글자를 남기는 문제를 줄이려고 그림용 모델 IS-Net anime(rembg 배포본 `isnet-anime.onnx`, 168MB)를 비교했다. 같은 환경(맥 M4 Pro, onnxruntime-web 1.30, WebGPU)에서 앱의 배경 지우기 흐름(두 번 오리기, trimHalo, solidify)을 그대로 옮겨 돌렸다. 시험 그림 16장: 사진 10장(Flickr CC0 또는 퍼블릭 도메인 9장, Wikimedia Commons 퍼블릭 도메인 1장), 그림 6장(직접 그린 3장, Commons 퍼블릭 도메인 고서 그림 2장 "Beatrix potter peter rabbit and mr mcgregor" 와 "Raper's bountiful birds", Flickr 만화 햄스터 1장). 그림은 저장소에 넣지 않는다. 판정은 눈으로(통과, 부분, 실패).
+사진 모델(IS-Net 일반)이 만화, 그림에서 카드 배경과 글자를 남기는 문제를 줄이려고 그림용 모델 IS-Net anime(rembg 배포본 `isnet-anime.onnx`, 176MB(176,069,933 바이트. 이 문서의 MB 는 10^6 바이트))를 비교했다. 같은 환경(맥 M4 Pro, onnxruntime-web 1.30, WebGPU)에서 앱의 배경 지우기 흐름(두 번 오리기, trimHalo, solidify)을 그대로 옮겨 돌렸다. 시험 그림 16장: 사진 10장(Flickr CC0 또는 퍼블릭 도메인 9장, Wikimedia Commons 퍼블릭 도메인 1장), 그림 6장(직접 그린 3장, Commons 퍼블릭 도메인 고서 그림 2장 "Beatrix potter peter rabbit and mr mcgregor" 와 "Raper's bountiful birds", Flickr 만화 햄스터 1장). 그림은 저장소에 넣지 않는다. 판정은 눈으로(통과, 부분, 실패).
 
 | 그림 | 사진 모델 | 그림용 모델만 | 자동 선택(앱의 규칙) |
 | --- | --- | --- | --- |

@@ -816,6 +816,8 @@ export const MAKER = {
   ensureDepth: 'maker:ensure-depth',
   /** 그림용 배경 제거 모델 준비 (없으면 받음). 진행률은 progress 로 */
   ensureAnime: 'maker:ensure-anime',
+  /** 그림용 모델 파일이 지금 있고 해시가 맞는지만 본다 (받지 않는다. 자동 다시 지우기가 쓴다) */
+  verifyAnime: 'maker:verify-anime',
   /** 사진을 볼 AI 가 있는지 (CLI 확인이 느릴 수 있어 info 와 따로) */
   visionAi: 'maker:vision-ai',
   /** 사진을 Hugging Face 무료 Space 에 보내 AI 일러스트로 다시 그린다 (사용자가 고를 때만) */
@@ -931,6 +933,8 @@ export interface MakerBridge {
   save(png: string, name: string, look?: PetLook): Promise<{ ok: boolean; error?: string }>;
   ensureDepth(): Promise<{ ok: true } | { ok: false; error: string }>;
   ensureAnime(): Promise<{ ok: true } | { ok: false; error: string }>;
+  /** 받지 않고 있는지만 (없거나 깨졌으면 false) */
+  verifyAnime(): Promise<boolean>;
   /**
    * AI 가 사진을 보고 입체 설계도를 만든다. wish 는 사용자 요청사항(선택, 200자, 메인이 다시 자른다).
    * 쓸 AI 가 없으면 noAi. 창을 닫으면 멈춘다

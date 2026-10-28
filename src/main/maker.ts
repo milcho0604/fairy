@@ -59,7 +59,7 @@ import { cleanPetName, isGait, POSE_KINDS, photoPetName } from '../shared/settin
 import { CUSTOM_FOOD_COST } from '../shared/shop.ts';
 import { geminiStripPrompt, isRowId, KEY_COLORS, keyHex, rowOf } from '../shared/sprite-strip.ts';
 import { starterOf } from '../shared/starter-pets.ts';
-import { ANIME_MODEL, animeReady, ensureAnimeModel, verifiedAnimeUrl } from './anime-model.ts';
+import { ANIME_MODEL, animeReady, animeVerified, ensureAnimeModel, verifiedAnimeUrl } from './anime-model.ts';
 import { BG_MODEL, bgModelBytes, ensureModel, modelReady, verifiedModelUrl } from './bg-model.ts';
 import {
   DEPTH_MODEL,
@@ -419,6 +419,8 @@ export function createMaker(
       if (download === ac) download = undefined;
     }
   });
+
+  ipcMain.handle(MAKER.verifyAnime, async (e) => fromMaker(e) && ortWasmReady() && (await animeVerified()));
 
   ipcMain.handle(MAKER.ensureAnime, async (e) => {
     if (!fromMaker(e)) return { ok: false, error: t('main.maker.reopen') };

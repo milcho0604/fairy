@@ -13,6 +13,7 @@ const stats = (over: Partial<CutStats> = {}): CutStats => ({
   // 만화 햄스터를 사진 모델로 지운 값 (카드와 글자가 남음)
   kept: 0.38,
   main: 0.14,
+  second: 0.1,
   blobs: 19,
   stray: 0.63,
   edges: 0,
@@ -86,5 +87,17 @@ test('retryIsBetter: 조각이 줄지 않았으면 처음 것을 지킨다', () 
   assert.equal(
     retryIsBetter(stats({ blobs: 8, stray: 0.4 }), stats({ blobs: 8, stray: 0.4, main: 0.3 })),
     false,
+  );
+});
+
+test('retryIsBetter: 펫 둘이 찍힌 사진에서 큰 쪽 몸을 깎고 작은 쪽을 지운 결과는 막는다', () => {
+  const first = stats({ kept: 0.38, main: 0.2, second: 0.18, blobs: 2, stray: 0.47 });
+  const retry = stats({ kept: 0.11, main: 0.111, second: 0, blobs: 1, stray: 0 });
+  assert.equal(needsIllustRetry(first), true);
+  assert.equal(retryIsBetter(first, retry), false);
+  // 둘 다 남기면(만화 햄스터 두 캐릭터) 채택
+  assert.equal(
+    retryIsBetter(first, stats({ kept: 0.3, main: 0.17, second: 0.12, blobs: 2, stray: 0.4 })),
+    true,
   );
 });

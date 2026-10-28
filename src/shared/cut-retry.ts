@@ -8,6 +8,8 @@ export interface CutStats {
   kept: number;
   /** 가장 큰 덩어리의 넓이 (사진 대비 0~1) */
   main: number;
+  /** 둘째로 큰 덩어리의 넓이 (사진 대비 0~1). 펫 둘이 찍힌 사진에서 한쪽을 지웠는지 본다 */
+  second: number;
   /** 눈에 띄는 덩어리 수 (사진 넓이의 0.02% 이상) */
   blobs: number;
   /** 가장 큰 덩어리가 아닌 쪽이 남긴 넓이에서 차지하는 비율 (0~1) */
@@ -27,9 +29,11 @@ export function cutStats(mask: ArrayLike<number>, w: number, h: number): CutStat
   for (const b of list) if (!big || b.area > big.area) big = b;
   const main = big?.area ?? 0;
   const bits = big?.edges ?? 0;
+  const second = list.reduce((a, b) => (b !== big && b.area > a ? b.area : a), 0);
   return {
     kept: n ? total / n : 0,
     main: n ? main / n : 0,
+    second: n ? second / n : 0,
     blobs: list.filter((b) => b.area >= n * MIN_BLOB).length,
     stray: total ? (total - main) / total : 0,
     edges: (bits & 1) + ((bits >> 1) & 1) + ((bits >> 2) & 1) + ((bits >> 3) & 1),
@@ -48,6 +52,7 @@ export function needsIllustRetry(s: CutStats): boolean {
  * 그림용으로 다시 지운 결과를 쓸지. 아래 하나라도 걸리면 처음 결과를 지킨다:
  * - 거의 비었다 (사진 넓이의 4% 미만): 그림용 모델이 모르는 그림이면 통째로 빈다 (옅은 수채 고서 그림)
  * - 가장 큰 덩어리가 처음의 절반도 안 된다: 몸을 깎았다
+ * - 큰 두 덩어리를 합친 넓이가 처음의 60% 도 안 된다: 둘째 펫을 지웠거나 몸을 깎았다 (펫 둘이 찍힌 사진)
  * - 남긴 넓이가 처음의 1.4배를 넘는다: 종이, 카드, 틀을 같이 남긴 것이다
  * - 사진 가장자리 셋 이상에 닿은 덩어리가 새로 생겼다: 틀이나 종이 전체다
  * - 처음보다 조각도 덜하지 않다 (덩어리 수도 비율도 안 줄었다)
@@ -55,6 +60,7 @@ export function needsIllustRetry(s: CutStats): boolean {
 export function retryIsBetter(first: CutStats, retry: CutStats): boolean {
   if (retry.kept < 0.04) return false;
   if (retry.main < first.main * 0.5) return false;
+  if (retry.main + retry.second < (first.main + first.second) * 0.6) return false;
   if (retry.kept > first.kept * 1.4) return false;
   if (retry.edges >= 3 && first.edges < 3) return false;
   return retry.blobs < first.blobs || retry.stray < first.stray - 0.05;

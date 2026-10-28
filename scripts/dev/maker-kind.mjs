@@ -13,7 +13,7 @@ import electron from 'electron';
 
 const lang = process.env.LANG_UNDER_TEST === 'en' ? 'en' : 'ko';
 const theme = process.env.THEME === 'dark' ? 'dark' : 'light';
-const scen = process.env.SCEN === 'missing' ? 'missing' : 'ready';
+const scen = process.env.SCEN === 'missing' ? 'missing' : process.env.SCEN === 'corrupt' ? 'corrupt' : 'ready';
 const width = Number(process.env.WIDTH ?? 900);
 const { CARTOON, PHOTO, MODELS } = process.env;
 assert.ok(CARTOON && PHOTO && MODELS, 'CARTOON, PHOTO, MODELS 가 필요하다');
@@ -31,6 +31,8 @@ copyFileSync(
   join(data, 'models', 'ort-wasm-simd-threaded.jspi-1.30.0.wasm'),
 );
 if (scen === 'ready') copyFileSync(join(MODELS, 'isnet-anime.onnx'), join(data, 'models', 'isnet-anime.onnx'));
+// corrupt: 그림용 모델 파일이 깨져 있다(창이 낡은 ready 를 들고 있는 경우). 자동 경로는 받지 않고 권하기만 해야 한다. 받기는 막힌 네트워크로 시험한다
+if (scen === 'corrupt') writeFileSync(join(data, 'models', 'isnet-anime.onnx'), Buffer.alloc(1_000_000, 7));
 async function port() {
   const s = createServer();
   await new Promise((r) => s.listen(0, '127.0.0.1', r));
@@ -40,7 +42,7 @@ async function port() {
 }
 process.env.JJ_INSPECT_PORT = await port();
 process.env.JJ_PAGE_PORT = await port();
-const app = spawn(electron, [`--inspect=${process.env.JJ_INSPECT_PORT}`, '.', `--remote-debugging-port=${process.env.JJ_PAGE_PORT}`], {
+const app = spawn(electron, [...(scen === 'corrupt' ? ['--proxy-server=127.0.0.1:1'] : []), `--inspect=${process.env.JJ_INSPECT_PORT}`, '.', `--remote-debugging-port=${process.env.JJ_PAGE_PORT}`], {
   cwd: root,
   env: { ...process.env, HOME: home, PATH: `/usr/bin:/bin:${dirname(process.execPath)}`, SHELL: '/usr/bin/false', JJ_NO_FOCUS: '1', JJ_SHOW: '', JJ_USER_DATA: data, JJ_TEST_SECRETS: 'memory' },
   stdio: ['ignore', 'pipe', 'pipe'],
@@ -119,6 +121,18 @@ try {
     assert.ok(s.warn.includes(T.suggest), JSON.stringify(s));
     assert.equal(s.tryBtn, true);
     await m.shot(`kind-${tag}-offer`);
+  }
+  if (scen === 'corrupt') {
+    // 자동 경로는 받지 않았다: 깨진 파일은 지워졌고 받던 .part 도 없다
+    const left = await main(`(() => { const fs = process.getBuiltinModule('fs'); const d = ${JSON.stringify(join(data, 'models'))}; return fs.readdirSync(d).filter((f) => f.includes('anime')); })()`);
+    assert.deepEqual(left, [], `받지 않고 깨진 파일만 지워야 한다: ${JSON.stringify(left)}`);
+    // 사용자가 단추를 눌러 받다 실패해도 권하는 안내가 그대로 남는다
+    await m.ev(`document.querySelector('.edit .warn button').click()`);
+    await until(async () => (await state()).error !== '', 'download error', 300);
+    s = await state();
+    assert.equal(s.on, T.photo, JSON.stringify(s));
+    assert.ok(s.warn.includes(T.suggest) && s.tryBtn, `받기 실패 뒤에도 권하기가 남는다: ${JSON.stringify(s)}`);
+    await m.shot(`kind-${tag}-failed`);
   }
   // 2. 평범한 사진: 안내가 없다
   await m.ev(`document.querySelector('.edit-actions .ghost').click()`);

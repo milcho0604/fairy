@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { app } from 'electron';
-import { ensureVerified, isVerified } from './download.ts';
+import { ensureVerified, isVerified, verifyExisting } from './download.ts';
 
 /**
  * 그림용 배경 제거 모델 IS-Net anime (rembg 배포본, SkyTNT anime-segmentation). 만화, 일러스트처럼 사진 모델이
@@ -35,6 +35,14 @@ export function ensureAnimeModel(onProgress: (ratio: number) => void, signal?: A
     onProgress,
     signal,
   );
+}
+
+/**
+ * 받지 않고 파일이 있고 해시가 맞는지만 본다. 깨진 파일은 지워져 false (verifyExisting). 자동 다시 지우기는 이것만 쓰고
+ * 받는 ensureAnimeModel 은 사용자가 단추를 눌렀을 때만 부른다
+ */
+export async function animeVerified(): Promise<boolean> {
+  return existsSync(modelPath()) && (await verifyExisting(modelPath(), ANIME_MODEL.sha256));
 }
 
 /** 해시를 맞춘 파일의 file:// 주소. 아직이면 undefined */

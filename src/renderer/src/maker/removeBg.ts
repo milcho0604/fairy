@@ -62,6 +62,23 @@ async function run(slot: Slot, s: ort.InferenceSession, feeds: Record<string, or
   }
 }
 
+/**
+ * 안 쓰는 모델 세션을 놓는다 (모델마다 170MB 안팎이라 창이 열린 동안 둘을 다 쥐고 있지 않게). 돌던 지우기가 끝난 뒤에 놓고,
+ * GPU 로 연 모델 파일 사본(gpuBytes)도 같이 버린다. 다음에 쓰면 openModel 이 다시 연다
+ */
+export async function closeModel(kind: CutKind): Promise<void> {
+  await running.catch(() => undefined);
+  const slot = slots[kind];
+  const s = slot.session;
+  slot.session = undefined;
+  slot.gpuBytes = undefined;
+  try {
+    await s?.release();
+  } catch {
+    // 이미 놓았거나 못 놓아도 다음에 새로 연다
+  }
+}
+
 /** 앞서 돌던 지우기. 그만두기로 버린 지우기가 아직 돌 때 새 사진이 같은 모델을 겹쳐 돌리지 않게 줄 세운다 */
 let running: Promise<unknown> = Promise.resolve();
 
