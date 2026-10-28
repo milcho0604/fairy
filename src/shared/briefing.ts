@@ -3,9 +3,10 @@
 
 import type { ChatterLevel } from './chatter.ts';
 import { timeLabel } from './event-store.ts';
-import { t } from './i18n/index.ts';
+import { type I18nKey, t } from './i18n/index.ts';
 import { voiced } from './persona-voice.ts';
 import { localDay } from './todo-store.ts';
+import { variants } from './variants.ts';
 
 /** 이 시각(현지, 분) 전에는 브리핑하지 않는다. 새벽에 켠 컴퓨터에 "좋은 아침"을 하지 않게. */
 export const BRIEFING_FROM_MINUTE = 5 * 60;
@@ -110,9 +111,9 @@ export interface BriefingInput {
 
 function greeting(minute: number): string {
   // 인사는 고른 성격 말투로 (shared/persona-voice.ts)
-  if (minute < 11 * 60) return voiced('briefing.hi.morning');
-  if (minute < 17 * 60) return voiced('briefing.hi.day');
-  return voiced('briefing.hi.evening');
+  if (minute < 11 * 60) return voiced(variants.pick('briefing.hi.morning') as I18nKey);
+  if (minute < 17 * 60) return voiced(variants.pick('briefing.hi.day') as I18nKey);
+  return voiced(variants.pick('briefing.hi.evening') as I18nKey);
 }
 
 export function briefingText(b: BriefingInput): string {
@@ -213,7 +214,11 @@ export type DueSlot = 'am' | 'pm';
 /** 오전 알림은 이 시각부터 오후 알림 전까지 (수다쟁이만) */
 export const DUE_AM_FROM = 10 * 60;
 /** 오후 알림. 보통은 14시, 수다쟁이는 15시부터. 하루 회고 시각 전까지만 (회고가 남은 마감을 묻는다) */
-export const DUE_PM_FROM: Record<'normal' | 'chatty', number> = { normal: 14 * 60, chatty: 15 * 60 };
+export const DUE_PM_FROM: Record<Exclude<ChatterLevel, 'quiet'>, number> = {
+  normal: 14 * 60,
+  sometimes: 14 * 60,
+  chatty: 15 * 60,
+};
 
 /** 지금 분에 해당하는 마감 알림 칸. 조용히거나 칸 밖이면 undefined */
 export function dueSlot(minute: number, level: ChatterLevel, reviewMinute: number): DueSlot | undefined {

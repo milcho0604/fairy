@@ -1,5 +1,6 @@
 // 빠른 입력과 패널이 넘긴 값에서 미리 알림, 할 일 마감 시각 읽기 (8판).
 // 알림 말 떼기는 remind.ts takeRemind, 시각 읽기는 일정 한 줄과 같은 parseQuickEvent 를 쓴다.
+import { isDay } from './coin-rules.ts';
 import { plusDays } from './day.ts';
 import { KO_WINDOW, normalizeQuick, parseQuickEvent } from './event-store.ts';
 import { hasDeadlineWord, parseQuickTodo, type QuickTodo } from './quick-add.ts';
@@ -143,9 +144,7 @@ export function todoPatchInput(p: unknown): {
   const reminds = remindsInput(v.reminds);
   return {
     ...(typeof v.title === 'string' ? { title: v.title } : {}),
-    ...(v.due === null || (typeof v.due === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.due))
-      ? { due: v.due as string | null }
-      : {}),
+    ...(v.due === null || (typeof v.due === 'string' && isDay(v.due)) ? { due: v.due as string | null } : {}),
     ...(typeof v.important === 'boolean' ? { important: v.important } : {}),
     ...(v.repeat === null || isRepeat(v.repeat) ? { repeat: v.repeat as Repeat | null } : {}),
     ...(v.dueMin === null || isDueMin(v.dueMin) ? { dueMin: v.dueMin as number | null } : {}),

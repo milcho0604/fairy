@@ -18,6 +18,7 @@ import type { ReactKind } from '../shared/ipc.ts';
 import { voiced } from '../shared/persona-voice.ts';
 import { restDaysOf } from '../shared/routine.ts';
 import { localDay, type TodoStore } from '../shared/todo-store.ts';
+import { variants } from '../shared/variants.ts';
 import type { SayOptions } from './pet-window.ts';
 import { settings } from './settings.ts';
 import { readJson, writeJson } from './store.ts';
@@ -118,7 +119,7 @@ export function createCompanion(o: CompanionOptions) {
       void o.say({
         kind: clear ? 'answer' : 'system',
         // 칭찬은 고른 성격 말투로 (shared/persona-voice.ts)
-        text: voiced(cheer.key, { name: o.petName(), n: cheer.n }),
+        text: voiced(variants.pick(cheer.key) as I18nKey, { name: o.petName(), n: cheer.n }),
         ttlMs: 5000,
       });
     }, CHEER_DELAY_MS).unref();

@@ -18,6 +18,7 @@ import {
 import { setLang } from './i18n/index.ts';
 import { parseIcs } from './ics.ts';
 import { parseQuickTodo } from './quick-add.ts';
+import { variants } from './variants.ts';
 
 const today = '2026-10-06';
 const nine = 9 * 60;
@@ -337,6 +338,9 @@ test('7판 올리기:6판이 가져온 종일 일정(알림 0, 알린 시각 = �
     ],
   );
 });
+
+// 브리핑 인사는 여러 변형 가운데 고른다. 이 시험은 늘 첫째 변형(기본 말)으로
+variants.setRandom(() => 0);
 
 test('브리핑: 종일은 "오늘 종일: ..." 로 먼저, 시각 일정은 지금처럼', () => {
   const all = (title: string) => ({ minute: 0, title, allDay: true });

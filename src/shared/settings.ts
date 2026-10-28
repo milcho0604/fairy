@@ -1,7 +1,7 @@
 // 사용자 설정 (P1-12). 2단계에서 SQLite 로 옮기기 전까지 JSON 파일 하나에 둔다.
 import { isPersona, type PersonaId } from './ai/persona.ts';
 import { isSaverMode, type SaverMode } from './battery.ts';
-import type { ChatterLevel } from './chatter.ts';
+import { type ChatterLevel, isChatter } from './chatter.ts';
 import { cutText } from './cut-text.ts';
 import { isFocusMinutes } from './focus.ts';
 import { isPanelView, type PanelView } from './home-policy.ts';
@@ -17,6 +17,7 @@ import { cleanPetMeta, type PetMeta } from './pet-share.ts';
 import { cleanSpriteFiles, type PetSprites } from './pet-sprites.ts';
 import { GAITS, type Gait } from './pet3d/blueprint.ts';
 import { cleanWish } from './pet3d/prompt.ts';
+import { DEFAULT_QUIET, parseQuiet, type QuietHours } from './quiet-hours.ts';
 import { DEFAULT_ROUTINE, parseRoutine, type Routine } from './routine.ts';
 import {
   isAccelerator,
@@ -42,6 +43,8 @@ export interface Settings {
    */
   petNameEdited: boolean;
   chatter: ChatterLevel;
+  /** 말 안 하는 시간 (혼잣말과 휴식 권유를 쉰다. shared/quiet-hours.ts) */
+  quietHours: QuietHours;
   /** 가만히 있다가 가끔 걷고 앉기 (P1-06) */
   wander: boolean;
   /** AI 를 사용자 설정(훅, MCP, 스킬) 없이 부르기. 끄면 "내 AI 설정 그대로" */
@@ -462,7 +465,8 @@ export type SettingsPatch = Partial<
 export const DEFAULT_SETTINGS: Settings = {
   petName: '콩이',
   petNameEdited: false,
-  chatter: 'normal',
+  chatter: 'sometimes',
+  quietHours: DEFAULT_QUIET,
   wander: true,
   aiIsolation: true,
   persona: 'friend',
@@ -676,6 +680,15 @@ export function photoPetName(taken: readonly string[]): string {
   return base;
 }
 
+/**
+ * 가끔 한마디가 생기기 전부터 쓰던 사람은 설정 파일에 수다 빈도가 없어도 예전 기본(보통)을 지킨다.
+ * 설정 파일이 아예 없는 새 사용자는 건드리지 않아 새 기본(가끔 한마디)이 된다
+ */
+export function keepOldChatter(raw: Record<string, unknown>): Record<string, unknown> {
+  if (Object.keys(raw).length === 0 || raw.chatter !== undefined) return raw;
+  return { ...raw, chatter: 'normal' };
+}
+
 /** 저장 파일이나 화면에서 온 값을 설정으로 만든다. 모르는 값, 틀린 값은 기본값으로. */
 export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): Settings {
   const r = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
@@ -683,8 +696,8 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
   return {
     petName: cleanPetName(r.petName) ?? base.petName,
     petNameEdited: bool(r.petNameEdited, base.petNameEdited),
-    chatter:
-      r.chatter === 'quiet' || r.chatter === 'normal' || r.chatter === 'chatty' ? r.chatter : base.chatter,
+    chatter: isChatter(r.chatter) ? r.chatter : base.chatter,
+    quietHours: parseQuiet(r.quietHours, base.quietHours),
     wander: bool(r.wander, base.wander),
     aiIsolation: bool(r.aiIsolation, base.aiIsolation),
     persona: isPersona(r.persona) ? r.persona : base.persona,

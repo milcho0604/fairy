@@ -11,13 +11,14 @@ import {
   type Moment,
   type SpeechStyle,
 } from './speech-style.ts';
+import { variantsOf } from './variants.ts';
 
 /**
  * 성격마다 말투를 바꾸는 말 가운데 세 성격(존댓말 비서, 츤데레, 차분한 선생님) 모두 따로 쓴 것.
  * 이 밖에도 voice.<성격>.<원래 키> 가 사전에 있으면 그 말을 쓴다 (존댓말 비서는 말풍선의 정해진 말을 거의 다,
  * 츤데레와 차분한 선생님은 감정이 실린 말만. 정보만 전하는 말은 반말 그대로 같이 쓴다)
  */
-export const VOICED = [
+const VOICED_BASE = [
   // 인사
   'briefing.hi.morning',
   'briefing.hi.day',
@@ -50,6 +51,25 @@ export const VOICED = [
   'routine.cue',
   'briefing.next',
 ] as const satisfies readonly I18nKey[];
+
+/** 변형이 여러 개인 말(휴식, 인사, 축하, 먹이기)의 변형도 세 성격 모두 따로 쓴다 */
+const VARIANT_BASES = [
+  'pet.rest',
+  'briefing.hi.morning',
+  'briefing.hi.day',
+  'briefing.hi.evening',
+  'companion.cheer.clear',
+  'companion.cheer.streak',
+  'companion.cheer.count',
+  'pet.fed',
+  'pet.fedWith',
+] as const;
+export const VOICED: readonly I18nKey[] = [
+  ...VOICED_BASE,
+  ...(VARIANT_BASES.flatMap((b) => variantsOf(b)).filter(
+    (k) => !(VOICED_BASE as readonly string[]).includes(k),
+  ) as I18nKey[]),
+];
 
 /** 원래 말을 덮는 성격 (다정한 친구는 원래 말) */
 export const VOICE_PERSONAS = ['polite', 'tsundere', 'calm'] as const satisfies readonly PersonaId[];

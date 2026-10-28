@@ -512,8 +512,7 @@ mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox=
 .files .digest { display: block; font-family: var(--mono); font-size: 11.5px; color: var(--muted); word-break: break-all; margin-top: 4px; }
 .files tr.rec th { color: var(--accent); }
 .files td:last-child { text-align: right; padding-right: 0; }
-.howto { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 56px; }
-.howto section { background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 26px; }
+.howto { align-items: start; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin-top: 56px; }
 .howto h2 { font: 400 24px/1.3 var(--display); color: var(--ink); margin: 0 0 14px; }
 .howto ol { margin: 0; padding-left: 1.3em; display: grid; gap: 8px; font-size: 15.5px; }
 .howto p { font-size: 15px; color: var(--muted); margin: 14px 0 0; }
@@ -543,6 +542,23 @@ mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox=
 .friend-code { font-size: 1.6rem; font-weight: 700; letter-spacing: .04em; font-variant-numeric: tabular-nums; }
 .friend-act { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
 .friend-note { max-width: 34em; margin-left: auto; margin-right: auto; color: var(--muted); }
+.friend-missing { margin: 20px auto 0; max-width: 34em; padding: 20px 22px; border-radius: var(--r-lg); background: var(--tint); }
+.friend-missing p { margin: 0 0 10px; }
+.friend-missing p:last-child { margin-bottom: 0; }
+.friend-missing-t { font-weight: 700; color: var(--ink); }
+.friend-guide { color: var(--ink); font-weight: 600; }
+.link-send { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 4px 0 10px; }
+.link-note { font-size: 14px; color: var(--muted); }
+.jump { margin: clamp(48px, 6vw, 80px) 0 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 16px; color: var(--muted); font-size: 15.5px; text-align: center; }
+.jump span { max-width: 100%; }
+.os-guide { background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 0 26px; align-self: start; }
+.os-guide > summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 22px 0; min-height: 44px; }
+.os-guide > summary::-webkit-details-marker { display: none; }
+.os-guide > summary::after { content: ''; width: 9px; height: 9px; flex: none; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); transition: transform .2s ease; margin-right: 4px; }
+.os-guide[open] > summary::after { transform: rotate(-135deg); }
+.os-guide[open] { padding-bottom: 26px; }
+.os-guide[open] > summary { padding-bottom: 14px; }
+.os-guide > summary h2 { margin: 0; }
 .nf .kong-still { width: 184px; height: 138px; margin: 0 auto 24px; background: url(/assets/img/kong-sprite.webp) 0 0 / 1840px 690px no-repeat; background-image: image-set(url(/assets/img/kong-sprite.avif) type('image/avif'), url(/assets/img/kong-sprite.webp) type('image/webp')); }
 @media (max-width: 1080px) {
 .news-in { grid-template-columns: minmax(0, 1fr) auto; }
@@ -678,6 +694,13 @@ html { scroll-behavior: auto; }
       <button class="btn btn-ghost" type="button" data-friend-copy data-i18n="fr.copy">코드 복사</button>
     </p>
     <p class="friend-copied" data-friend-copied hidden data-i18n="fr.copied" role="status">복사했어요</p>
+    <div class="friend-missing" data-friend-missing hidden>
+      <p class="friend-missing-t" data-i18n="fr.missing" role="status">페어리가 설치돼 있지 않은 것 같아요</p>
+      <p data-i18n="fr.missingSub">설치하면 이 코드로 친구 신청을 보낼 수 있어요.</p>
+      <p><a class="btn" href="/download/" target="_blank" rel="noopener" data-friend-get data-i18n="fr.getBtn">페어리 받기</a></p>
+      <p class="friend-guide" data-friend-guide="ok" hidden role="status" data-i18n="fr.guide">코드를 복사해 뒀어요. 설치한 뒤 설정 &gt; 친구에 붙여 넣어요.</p>
+      <p class="friend-guide" data-friend-guide="fail" hidden role="status" data-i18n="fr.guideFail">코드를 복사하지 못했어요. 위 코드를 길게 눌러 복사한 뒤, 설치하고 설정 &gt; 친구에 붙여 넣어요.</p>
+    </div>
     <p class="friend-note" data-i18n="fr.note">페어리가 없거나 열리지 않으면 페어리를 설치하고 설정 &gt; 데이터 &gt; 친구 칸에 이 코드를 붙여 넣어 신청해요. 친구 기능은 로그인한 만 14세 이상만 쓸 수 있어요.</p>
     <p><a href="/#download" data-i18n="fr.get">페어리 받기</a></p>
   </div>

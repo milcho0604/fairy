@@ -11,7 +11,7 @@ import { aiEventFilter } from '../shared/event-store.ts';
 import { HIDE_SEEK, pickHideSpot } from '../shared/hide-seek.ts';
 import { panelTarget, reopenTarget } from '../shared/home-policy.ts';
 import { houseMenuKey, houseNewsKey, stowSayKey, stowStep } from '../shared/house-stow.ts';
-import { locale, t } from '../shared/i18n/index.ts';
+import { type I18nKey, locale, t } from '../shared/i18n/index.ts';
 import { IPC, LANGUAGE, type PetStatus, type PlayKind } from '../shared/ipc.ts';
 import { type FactKind, factsForAi } from '../shared/knows.ts';
 import { ownsLoginItem } from '../shared/login-item.ts';
@@ -29,6 +29,7 @@ import { ownedCount } from '../shared/shop.ts';
 import { shortcutsChanged } from '../shared/shortcut.ts';
 import { FULLNESS, localDay } from '../shared/todo-store.ts';
 import { admitUrl, panelTabOf, parseJjUrl } from '../shared/url-scheme.ts';
+import { variants } from '../shared/variants.ts';
 import { watchCatalog } from './ai/catalog.ts';
 import { detectAi } from './ai/detect.ts';
 import { localModelReady, stopLocal } from './ai/local.ts';
@@ -1131,7 +1132,7 @@ ready
         const image = food.image ? foodImageDataUrl(food.image) : undefined;
         void pet.say({
           kind: 'answer',
-          text: voiced('pet.fedWith', { food: food.name }),
+          text: voiced(variants.pick('pet.fedWith') as I18nKey, { food: food.name }),
           ttlMs: 3500,
           image,
         });
@@ -1179,7 +1180,7 @@ ready
         void rest.call(false);
         pet.react('fed');
         petLife.activity('feed');
-        void pet.say({ kind: 'answer', text: voiced('pet.fed'), ttlMs: 3000 });
+        void pet.say({ kind: 'answer', text: voiced(variants.pick('pet.fed') as I18nKey), ttlMs: 3000 });
       },
       onChanged: () => sendStatus(),
       openChat: () => chat.open(pet.bounds()),
@@ -1251,7 +1252,7 @@ ready
         void rest.call(false);
         pet.react('fed');
         petLife.activity('feed');
-        void pet.say({ kind: 'answer', text: voiced('pet.fed'), ttlMs: 3000 });
+        void pet.say({ kind: 'answer', text: voiced(variants.pick('pet.fed') as I18nKey), ttlMs: 3000 });
       } else {
         void pet.say({
           kind: 'answer',

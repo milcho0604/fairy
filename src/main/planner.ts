@@ -12,6 +12,7 @@ import {
   reviewText,
   undoMoved,
 } from '../shared/briefing.ts';
+import { talksToSelf } from '../shared/chatter.ts';
 import { plusDays, weekdayOf } from '../shared/day.ts';
 import type { EventStore } from '../shared/event-store.ts';
 import {
@@ -27,9 +28,18 @@ import {
   tickFocus,
 } from '../shared/focus.ts';
 import { t } from '../shared/i18n/index.ts';
-import { ActivityWatch, type IdleFacts, type IdleKey, IdleTalker, idleVars } from '../shared/idle-talk.ts';
+import {
+  ActivityWatch,
+  IDLE_GAP_MS,
+  type IdleFacts,
+  type IdleKey,
+  IdleTalker,
+  idleVars,
+  SOMETIMES_GAP_MS,
+} from '../shared/idle-talk.ts';
 import { voiced } from '../shared/persona-voice.ts';
 import { nextMinuteTurn, onTick, PLAN_TICK_MS, wakeDelay, wakeNow, zoneKey } from '../shared/planner-wake.ts';
+import { isQuietNow } from '../shared/quiet-hours.ts';
 import {
   coversBriefing,
   coversReview,
@@ -521,15 +531,28 @@ export function createPlanner(o: PlannerOptions) {
   if (o.talkRecent) talker.talk.restore(o.talkRecent.load(), o.talkRecent.known);
   let activity = new ActivityWatch();
   let talking = false;
+  /** 일정을 쓰는 사람인지 (보름 앞뒤에 일정이 하나라도). 반 시간마다만 다시 센다 */
+  let eventsUsedAt = Number.NEGATIVE_INFINITY;
+  let eventsUsedNow = false;
+  function eventsUsed(now: number): boolean {
+    if (now - eventsUsedAt >= 30 * 60_000) {
+      const span = 14 * 24 * 3_600_000;
+      eventsUsedNow = o.events.between(now - span, now + span).length > 0;
+      eventsUsedAt = now;
+    }
+    return eventsUsedNow;
+  }
   function talk(now: number) {
     const idleSec = powerMonitor.getSystemIdleTime();
     activity.observe(now, idleSec, screen.getCursorScreenPoint());
     if (talking) return;
     const pet = o.talkFacts?.() ?? {};
+    talker.setGap(settings.get().chatter === 'sometimes' ? SOMETIMES_GAP_MS : IDLE_GAP_MS);
     const r = talker.due(
       now,
       {
-        chatty: settings.get().chatter === 'chatty',
+        chatty: talksToSelf(settings.get().chatter),
+        quiet: isQuietNow(settings.get().quietHours, now),
         briefing,
         focusing: focus.phase === 'focus',
         hidden: o.petHidden(),
@@ -548,12 +571,16 @@ export function createPlanner(o: PlannerOptions) {
           (m, e) => (m === undefined ? e.startAt : Math.min(m, e.startAt)),
           undefined,
         );
+        const firstOpen = open.find((t) => t.due !== null && t.due <= day);
         const lastDone = doneToday.reduce((m, t) => Math.max(m, t.doneAt ?? 0), 0);
         return {
           now,
           doneToday: doneToday.length,
           ...(lastDone > 0 ? { lastDoneAt: lastDone } : {}),
           openToday: open.filter((t) => t.due !== null && t.due <= day).length,
+          overdue: open.filter((t) => t.due !== null && t.due < day).length,
+          ...(firstOpen ? { todoTitle: firstOpen.title } : {}),
+          eventsUsed: eventsUsed(now),
           ...(next !== undefined ? { nextEventMin: (next - now) / 60_000 } : {}),
           eventsLeftToday: timed.length,
           workedMin: activity.workedMin(now),
@@ -766,7 +793,7 @@ export function createPlanner(o: PlannerOptions) {
   function schedule() {
     if (stopped) return;
     const now = Date.now();
-    const poll = waiting || focus.phase !== 'idle' || settings.get().chatter === 'chatty';
+    const poll = waiting || focus.phase !== 'idle' || talksToSelf(settings.get().chatter);
     const at = poll ? undefined : nextAt(now);
     dueAt = at === undefined ? (poll ? now + TICK_MS : Number.POSITIVE_INFINITY) : onTick(at, origin || now);
     armed = { wall: now, mono: performance.now(), zone: zoneKey(now) };
@@ -796,7 +823,7 @@ export function createPlanner(o: PlannerOptions) {
   }
   const stopSettings = settings.onChange((next, prev) => {
     // 수다쟁이로 바꾸면 입력과 커서를 다시 15초마다 본다. 드문드문 본 기록은 버린다 (자리를 비웠다 온 것으로 잘못 보지 않게)
-    if (next.chatter === 'chatty' && prev.chatter !== 'chatty') activity = new ActivityWatch();
+    if (talksToSelf(next.chatter) && !talksToSelf(prev.chatter)) activity = new ActivityWatch();
     soon();
   });
   const onResume = () => soon();
