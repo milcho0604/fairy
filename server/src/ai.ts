@@ -374,6 +374,8 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
     /** 앱에 보낸 글 (끊겼을 때 받은 글이 있었는지 보려고) */
     let shown = '';
     let iterations: unknown;
+    /** 업스트림이 사용량을 한 번이라도 알려 줬는지. 못 받고 끊기면 0 원으로 덮지 않고 예약금을 비용으로 남긴다 */
+    let usageSeen = false;
     const bill = (): Usage => {
       const hops = hopsOf(iterations, ai.model) ?? [
         { model: ai.model, input: top.input, output: top.output },
@@ -396,9 +398,11 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
       );
       for await (const ev of stream) {
         if (ev.type === 'message_start') {
+          usageSeen = true;
           top.input = ev.message.usage.input_tokens;
           top.output = ev.message.usage.output_tokens;
         } else if (ev.type === 'message_delta') {
+          usageSeen = true;
           top.output = ev.usage.output_tokens;
           if (typeof ev.usage.input_tokens === 'number') top.input = ev.usage.input_tokens;
           iterations = (ev.usage as { iterations?: unknown }).iterations ?? iterations;
@@ -409,6 +413,7 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
         }
       }
       const final = await stream.finalMessage();
+      usageSeen = true;
       top.input = final.usage.input_tokens;
       top.output = final.usage.output_tokens;
       iterations = (final.usage as { iterations?: unknown }).iterations ?? iterations;
@@ -427,7 +432,9 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
       res.end();
     } catch (err) {
       const kept = why === 'client' && shown !== '';
-      const tickets = kept ? undefined : await this.refund(started.usageId, bill()).catch(() => undefined);
+      const tickets = kept
+        ? undefined
+        : await this.refund(started.usageId, usageSeen ? bill() : undefined).catch(() => undefined);
       if (kept) await this.finish(started.usageId, bill()).catch(() => {});
       // 글은 남기지 않는다: 까닭의 종류와 상태 번호만
       console.warn(

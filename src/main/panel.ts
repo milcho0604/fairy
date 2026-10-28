@@ -20,6 +20,7 @@ import {
   allDaySpan,
   allDayTimes,
   type CalEvent,
+  EventSlotTakenError,
   type EventStore,
   hasTimeRange,
   parseQuickEventInfo,
@@ -268,6 +269,7 @@ export function createPanel(o: PanelOptions) {
 
   let newNoteRequest = 0;
   let pendingNewNote = false;
+  let slotTakenSeq = 0;
 
   function state(): PanelState {
     const now = Date.now();
@@ -277,6 +279,7 @@ export function createPanel(o: PanelOptions) {
     dayTurn.seen(localDay(now));
     return {
       ...(pendingNewNote ? { newNoteRequest } : {}),
+      ...(slotTakenSeq > 0 ? { eventSlotTaken: slotTakenSeq } : {}),
       petName: o.petName(),
       today: localDay(now),
       open,
@@ -817,20 +820,26 @@ export function createPanel(o: PanelOptions) {
     const p = patch as Record<string, unknown>;
     const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
     const reminds = remindsInput(p.reminds);
-    o.events.update(
-      id,
-      {
-        ...(typeof p.title === 'string' ? { title: p.title } : {}),
-        ...(num(p.startAt) !== undefined ? { startAt: num(p.startAt) } : {}),
-        ...(p.endAt === null || num(p.endAt) !== undefined
-          ? { endAt: (p.endAt as number | null) ?? null }
-          : {}),
-        ...(num(p.remindMin) !== undefined ? { remindMin: num(p.remindMin) } : {}),
-        ...(reminds ? { reminds } : {}),
-        ...(typeof p.allDay === 'boolean' ? { allDay: p.allDay } : {}),
-      },
-      Date.now(),
-    );
+    try {
+      o.events.update(
+        id,
+        {
+          ...(typeof p.title === 'string' ? { title: p.title } : {}),
+          ...(num(p.startAt) !== undefined ? { startAt: num(p.startAt) } : {}),
+          ...(p.endAt === null || num(p.endAt) !== undefined
+            ? { endAt: (p.endAt as number | null) ?? null }
+            : {}),
+          ...(num(p.remindMin) !== undefined ? { remindMin: num(p.remindMin) } : {}),
+          ...(reminds ? { reminds } : {}),
+          ...(typeof p.allDay === 'boolean' ? { allDay: p.allDay } : {}),
+        },
+        Date.now(),
+      );
+    } catch (err) {
+      if (!(err instanceof EventSlotTakenError)) throw err;
+      // 같은 반복의 다른 회차 시각으로는 옮기지 못한다: 화면이 안내 알림을 띄우게 번호를 올려 보낸다
+      slotTakenSeq++;
+    }
     push();
     o.onEventsChanged();
   });
@@ -841,7 +850,12 @@ export function createPanel(o: PanelOptions) {
   });
   ipcMain.on(PANEL.eventRestore, (e, id: number) => {
     if (!ours(e)) return;
-    o.events.restore(id);
+    try {
+      o.events.restore(id);
+    } catch (err) {
+      if (!(err instanceof EventSlotTakenError)) throw err;
+      slotTakenSeq++;
+    }
     push();
   });
   // ---- 고정 (메모, 할 일, 일정) ----
@@ -1011,7 +1025,14 @@ export function createPanel(o: PanelOptions) {
           : undefined;
     if (!record) return 'gone';
     if (kind === 'note') o.notes.restore(id);
-    else o.events.restore(id);
+    else {
+      try {
+        o.events.restore(id);
+      } catch (err) {
+        if (err instanceof EventSlotTakenError) return 'dup';
+        throw err;
+      }
+    }
     log(kind, '휴지통에서 되살림', id);
     push();
     return 'ok';

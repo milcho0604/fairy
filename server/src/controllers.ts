@@ -153,6 +153,8 @@ export class AccountController {
     await this.accounts.deleteSession(auth.sessionId);
     // 로그아웃하면 친구에게 보여 주던 바쁜 시간도 모두 끄고 지운다 (#110, 버그잡이 #135): 로그인해야 쓰는 기능이라
     await this.friends.stopSharing(auth.accountId);
+    // 놀러 가기도 같다: 올려 둔 펫 카드를 지우고 스위치를 끈다 (안 끄면 카드가 최대 14일 친구에게 계속 나간다)
+    await this.friends.stopVisiting(auth.accountId);
   }
 
   /** 탈퇴: 바로 지운다 (서버 백업 파일도) */

@@ -1150,6 +1150,8 @@ export const PANEL = {
 export interface PanelState {
   /** 메뉴에서 새 메모를 열라는 요청. 편집기가 준비되면 한 번만 가져간다 */
   newNoteRequest?: number;
+  /** 같은 반복의 다른 회차 시각으로 옮기려다 막힌 횟수. 올라가면 화면이 안내 알림을 한 번 띄운다 */
+  eventSlotTaken?: number;
   petName: string;
   /** 현지 날짜 YYYY-MM-DD */
   today: string;
