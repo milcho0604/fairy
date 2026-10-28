@@ -35,8 +35,8 @@ export const SAVER = {
   fpsCap: 15,
   /** 한가할 때 행동을 고르는 간격 배수 (걷기, 몸짓이 이만큼 드물다) */
   idleWait: 2.5,
-  /** 걷기에서 창을 옮기는 간격 (ms). 평소 33 (30Hz) */
-  walkTickMs: 66,
+  /** 걷기에서 창을 옮기는 간격 (ms). 평소 50 (20Hz). 걷는 그림이 12fps 라 이보다 잦게 옮겨도 눈에 안 띈다 */
+  walkTickMs: 83,
   /** 창 위에 앉은 동안 그 창이 그대로인지 보는 간격 (ms). 평소 1000 */
   perchPollMs: 3000,
   /** 창 위에 올라가 볼 확률 배수 (창 목록 읽기가 비싸다) */
@@ -50,6 +50,9 @@ export function capFps(fps: number, saver: boolean): number {
 }
 
 export const perchPollMs = (saver: boolean): number => (saver ? SAVER.perchPollMs : 1000);
+/** 걷기(제자리 걷는 그림, 12fps)에서 창을 옮기는 간격. 그림 틀보다 조금 잦게 */
 export const walkTickMs = (saver: boolean, boost: boolean): number =>
-  saver ? SAVER.walkTickMs : boost ? 16 : 33;
+  saver ? SAVER.walkTickMs : boost ? 16 : 50;
+/** 커서나 친구를 따라 달릴 때 창을 옮기는 간격 (빨라서 걷기보다 촘촘히). 평소 33 (30Hz), 절약이면 66 */
+export const followTickMs = (saver: boolean, boost: boolean): number => (saver ? 66 : boost ? 16 : 33);
 export const idleWaitFactor = (saver: boolean): number => (saver ? SAVER.idleWait : 1);

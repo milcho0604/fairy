@@ -87,7 +87,9 @@ test('마우스만 쓰면 시작하지 않는다', () => {
 
 test('손을 안 댄 지 오래면 느슨히 본다 (1초에 두 번 넘게 보지 않는다)', () => {
   assert.equal(typingPollMs(0), TYPING.pollMs);
-  assert.equal(typingPollMs(60), TYPING.slowPollMs);
+  assert.equal(typingPollMs(10), TYPING.slowPollMs);
+  assert.equal(typingPollMs(TYPING.idleAfterSec), TYPING.slowPollMs);
+  assert.equal(typingPollMs(60), TYPING.idlePollMs);
   assert.ok(TYPING.pollMs >= 500);
 });
 

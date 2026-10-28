@@ -12,7 +12,7 @@ import {
   powerMonitor,
   screen,
 } from 'electron';
-import { perchPollMs, SAVER, walkTickMs } from '../shared/battery.ts';
+import { followTickMs, perchPollMs, SAVER, walkTickMs } from '../shared/battery.ts';
 import {
   type Activity,
   clampWalkX,
@@ -1158,7 +1158,7 @@ export function createPetWindow({
               );
           }
         },
-        walkTickMs(saverNow(), boostOn()),
+        followTickMs(saverNow(), boostOn()),
       );
     });
   }

@@ -316,6 +316,12 @@
   margin-top: 8px;
 }
 
+/* 주 보기는 일곱 날 목록을 한꺼번에 그린다. 화면 밖 날은 보일 때까지 배치와 칠하기를 미룬다 (고른 날은 그대로) */
+.cal-day:not(.on) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 160px;
+}
+
 .cal-day h2 {
   display: flex;
   align-items: baseline;

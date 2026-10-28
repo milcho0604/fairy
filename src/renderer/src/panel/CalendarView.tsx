@@ -2,6 +2,7 @@ import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import {
   type CalItem,
   calendarDays,
+  eventSpan,
   fitItems,
   type HolidayKey,
   holidaysBetween,
@@ -128,14 +129,19 @@ export function CalendarView({
   const from = weeks[0]?.[0] ?? day;
   const to = weeks[weeks.length - 1]?.[6] ?? day;
 
-  // 보이는 기간의 일정을 메인에서 받는다. 패널 상태(s)가 바뀌면(넣기, 고치기, 지우기) 다시
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 패널 상태가 바뀔 때마다 다시 읽는다
+  // 보이는 기간의 일정을 메인에서 받는다. 패널 상태(s)가 바뀌면(넣기, 고치기, 지우기) 다시.
+  // 같은 상태에서 이미 받은 기간 안으로 옮기면(월에서 주로) 다시 받지 않고 받아 둔 것에서 고른다 (그리기가 두 번 일어나지 않게)
+  const fetched = useRef<{ s: PanelState; from: string; to: string }>(null);
   useEffect(() => {
+    const got = fetched.current;
+    if (got && got.s === s && got.from <= from && got.to >= to) return;
     let alive = true;
     bridge
       .eventsBetween(dayStartMs(from), dayStartMs(plusDays(to, 1)))
       .then((list) => {
-        if (alive) setEvents(list);
+        if (!alive) return;
+        fetched.current = { s, from, to };
+        setEvents(list);
       })
       .catch(() => undefined);
     return () => {
@@ -143,9 +149,20 @@ export function CalendarView({
     };
   }, [s, from, to]);
 
+  // 받아 둔 일정 가운데 보이는 기간과 겹치는 것
+  const inView = useMemo(
+    () =>
+      events.filter((e) => {
+        const span = eventSpan(e);
+        return span.last >= from && span.first <= to;
+      }),
+    [events, from, to],
+  );
+  const eventById = useMemo(() => new Map(events.map((e) => [e.id, e])), [events]);
+  const todoById = useMemo(() => new Map(s.open.map((x) => [x.id, x])), [s.open]);
   const byDay = useMemo(
-    () => calendarDays(events, s.open, from, to, s.today),
-    [events, s.open, from, to, s.today],
+    () => calendarDays(inView, s.open, from, to, s.today),
+    [inView, s.open, from, to, s.today],
   );
   const holidays = useMemo(() => (getLang() === 'ko' ? holidaysBetween(from, to) : new Map()), [from, to]);
 
@@ -200,7 +217,7 @@ export function CalendarView({
   const listDays = mode === 'month' ? [day] : (weeks[0] ?? []);
 
   return (
-    <div className={`cal ${mode}`} data-from={from} data-to={to} data-items={events.length}>
+    <div className={`cal ${mode}`} data-from={from} data-to={to} data-items={inView.length}>
       <div className="cal-bar">
         <button
           type="button"
@@ -316,7 +333,8 @@ export function CalendarView({
             picked={d === day}
             s={s}
             items={byDay.get(d) ?? []}
-            events={events}
+            eventById={eventById}
+            todoById={todoById}
             holiday={holidays.get(d) as HolidayKey | undefined}
             onPick={() => go(d)}
             onRemoved={onRemoved}
@@ -354,7 +372,8 @@ function DayList({
   picked,
   s,
   items,
-  events,
+  eventById,
+  todoById,
   holiday,
   onPick,
   onRemoved,
@@ -365,7 +384,8 @@ function DayList({
   picked: boolean;
   s: PanelState;
   items: CalItem[];
-  events: CalEvent[];
+  eventById: ReadonlyMap<number, CalEvent>;
+  todoById: ReadonlyMap<number, Todo>;
   holiday: HolidayKey | undefined;
   onPick: () => void;
   onRemoved: (id: number) => void;
@@ -375,11 +395,11 @@ function DayList({
   const now = Date.now();
   const evs = items
     .filter((i) => i.kind === 'event' || i.kind === 'ics')
-    .map((i) => events.find((e) => e.id === i.id))
+    .map((i) => eventById.get(i.id))
     .filter((e): e is CalEvent => !!e);
   const todos = items
     .filter((i) => i.kind === 'todo')
-    .map((i) => s.open.find((x) => x.id === i.id))
+    .map((i) => todoById.get(i.id))
     .filter((x): x is Todo => !!x);
   const repeats = items.filter((i) => i.kind === 'repeat');
   return (

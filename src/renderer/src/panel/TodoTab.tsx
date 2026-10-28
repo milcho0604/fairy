@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { memo, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { canDeferToTomorrow, dueChoices } from '../../../shared/due-choices.ts';
 import { timeLabel } from '../../../shared/event-store.ts';
 import { t } from '../../../shared/i18n/index.ts';
@@ -7,7 +7,7 @@ import { pinFirst } from '../../../shared/pin.ts';
 import { dueLabel } from '../../../shared/quick-add.ts';
 import { remindSummary } from '../../../shared/remind-text.ts';
 import { allTags, filterTodos, titleParts } from '../../../shared/todo-filter.ts';
-import { dropPlace, type MoveDir, moveTarget } from '../../../shared/todo-move.ts';
+import { dropPlace, type MoveDir, moveCans, moveTarget } from '../../../shared/todo-move.ts';
 import {
   REPEAT_LABEL,
   REPEATS,
@@ -17,6 +17,7 @@ import {
   type Todo,
   type TodoStep,
 } from '../../../shared/todo-store.ts';
+import { restoredPages } from '../../../shared/view-keep.ts';
 import './assist.css';
 import './rows.css';
 import { useDraft } from './draft.ts';
@@ -105,7 +106,7 @@ export function TodoTab({
   const [composing, setComposing] = useState(false);
   const [tag, setTag] = useState<string | null>(kept.tag);
   /** 그린 쪽 수 (찾는 말과 태그마다) */
-  const [paging, setPaging] = useState({ key: kept.pageKey, pages: kept.pages });
+  const [paging, setPaging] = useState({ key: kept.pageKey, pages: restoredPages(kept.pages) });
   // 줄 하나가 탭 정지점 하나: 마지막으로 초점이 간 줄이 정지점 (없으면 첫 줄)
   const [activeRow, setActiveRow] = useState<number>();
   // 순서 끌기: 끄는 줄과 지금 올려 둔 줄
@@ -272,18 +273,22 @@ export function TodoTab({
     };
     bridge.place(todo.id, place.target, place.after);
   };
-  const orderOf = (todo: Todo) => ({
-    can: {
-      top: !!moveTarget(shown, todo.id, 'top'),
-      up: !!moveTarget(shown, todo.id, 'up'),
-      down: !!moveTarget(shown, todo.id, 'down'),
-      bottom: !!moveTarget(shown, todo.id, 'bottom'),
+  /** 줄이 부르는 일들. 줄은 memo 라서 이 객체는 늘 같은 것이고, 부를 때 가장 새 함수로 간다 */
+  const latest = useRef<RowApi>(undefined as unknown as RowApi);
+  latest.current = {
+    complete: onComplete,
+    removed: onRemoved,
+    focus: (id) => {
+      setActiveRow(id);
+      if (wide) select(id);
     },
-    move: (dir: MoveDir) => moveRow(todo, dir),
-    dragStart: () => setDrag({ id: todo.id }),
-    dragOver: () => setDrag((d) => (d && d.over !== todo.id ? { ...d, over: todo.id } : d)),
-    drop: () => {
-      const place = drag ? dropPlace(shown, drag.id, todo.id) : undefined;
+    select,
+    toDetail,
+    move: moveRow,
+    dragStart: (id) => setDrag({ id }),
+    dragOver: (id) => setDrag((d) => (d && d.over !== id ? { ...d, over: id } : d)),
+    drop: (id) => {
+      const place = drag ? dropPlace(shown, drag.id, id) : undefined;
       if (drag && place) {
         pendingMove.current = { id: drag.id, focus: false, until: Date.now() + 3000 };
         bridge.place(drag.id, place.target, place.after);
@@ -291,9 +296,23 @@ export function TodoTab({
       setDrag(undefined);
     },
     dragEnd: () => setDrag(undefined),
-    dragging: drag?.id === todo.id,
-    over: !!drag && drag.over === todo.id && drag.id !== todo.id,
-  });
+  };
+  const api = useMemo<RowApi>(
+    () => ({
+      complete: (todo) => latest.current.complete(todo),
+      removed: (todo) => latest.current.removed(todo),
+      focus: (id) => latest.current.focus(id),
+      select: (id) => latest.current.select(id),
+      toDetail: () => latest.current.toDetail(),
+      move: (todo, dir) => latest.current.move(todo, dir),
+      dragStart: (id) => latest.current.dragStart(id),
+      dragOver: (id) => latest.current.dragOver(id),
+      drop: (id) => latest.current.drop(id),
+      dragEnd: () => latest.current.dragEnd(),
+    }),
+    [],
+  );
+  const cans = moveCans(shown);
   // 탭 키가 서는 줄: 마지막으로 초점이 간 줄 (그 줄이 보이지 않으면 첫 줄)
   const tabRow = page.shown.some((x) => x.id === activeRow) ? activeRow : page.shown[0]?.id;
 
@@ -383,32 +402,29 @@ export function TodoTab({
           {s.open.length > 0 && filtered && shown.length === 0 && (
             <li className="empty">{t('assist.find.none')}</li>
           )}
-          {page.shown.map((todo) => (
-            <TodoRow
-              key={todo.id}
-              todo={todo}
-              today={s.today}
-              pinEnd={todo.id === lastPinned && shown.length > 1 && shown.at(-1)?.id !== todo.id}
-              doing={s.doing.includes(todo.id)}
-              onComplete={() => onComplete(todo)}
-              onRemoved={() => onRemoved(todo)}
-              rowTab={todo.id === tabRow}
-              onRowFocus={() => {
-                setActiveRow(todo.id);
-                if (wide) select(todo.id);
-              }}
-              order={orderOf(todo)}
-              flash={flashIds.includes(todo.id)}
-              {...(wide
-                ? {
-                    onSelect: () => select(todo.id),
-                    onEdit: toDetail,
-                    onGo: select,
-                    selected: todo.id === selected?.id,
-                  }
-                : {})}
-            />
-          ))}
+          {page.shown.map((todo) => {
+            const can = cans.get(todo.id);
+            return (
+              <TodoItem
+                key={todo.id}
+                api={api}
+                todo={todo}
+                today={s.today}
+                pinEnd={todo.id === lastPinned && shown.length > 1 && shown.at(-1)?.id !== todo.id}
+                doing={s.doing.includes(todo.id)}
+                rowTab={todo.id === tabRow}
+                canTop={can?.top ?? false}
+                canUp={can?.up ?? false}
+                canDown={can?.down ?? false}
+                canBottom={can?.bottom ?? false}
+                dragging={drag?.id === todo.id}
+                over={!!drag && drag.over === todo.id && drag.id !== todo.id}
+                flash={flashIds.includes(todo.id)}
+                wide={wide}
+                selected={todo.id === selected?.id}
+              />
+            );
+          })}
           <MoreRow rest={page.rest} onMore={() => setPaging({ key: pageKey, pages: pages + 1 })} />
         </ul>
         {/* 키보드로 순서를 바꾸면 어디로 갔는지 읽어 준다 */}
@@ -488,6 +504,87 @@ export interface RowOrder {
   dragging: boolean;
   over: boolean;
 }
+
+/** 할 일 탭이 줄에 건네는 일들 (늘 같은 객체. 줄이 다시 그려지지 않게 함수를 줄마다 새로 만들지 않는다) */
+interface RowApi {
+  complete: (todo: Todo) => void;
+  removed: (todo: Todo) => void;
+  focus: (id: number) => void;
+  select: (id: number | undefined) => void;
+  toDetail: () => void;
+  move: (todo: Todo, dir: MoveDir) => void;
+  dragStart: (id: number) => void;
+  dragOver: (id: number) => void;
+  drop: (id: number) => void;
+  dragEnd: () => void;
+}
+
+/** 할 일 탭의 한 줄. 이 줄의 값이 그대로면 다시 그리지 않는다 ("더 보기"를 누를수록 앞 줄까지 다시 그려 느려졌다) */
+const TodoItem = memo(function TodoItem({
+  api,
+  todo,
+  today,
+  pinEnd,
+  doing,
+  rowTab,
+  canTop,
+  canUp,
+  canDown,
+  canBottom,
+  dragging,
+  over,
+  flash,
+  wide,
+  selected,
+}: {
+  api: RowApi;
+  todo: Todo;
+  today: string;
+  pinEnd: boolean;
+  doing: boolean;
+  rowTab: boolean;
+  canTop: boolean;
+  canUp: boolean;
+  canDown: boolean;
+  canBottom: boolean;
+  dragging: boolean;
+  over: boolean;
+  flash: boolean;
+  wide: boolean;
+  selected: boolean;
+}) {
+  return (
+    <TodoRow
+      todo={todo}
+      today={today}
+      pinEnd={pinEnd}
+      doing={doing}
+      onComplete={() => api.complete(todo)}
+      onRemoved={() => api.removed(todo)}
+      rowTab={rowTab}
+      onRowFocus={() => api.focus(todo.id)}
+      order={{
+        can: { top: canTop, up: canUp, down: canDown, bottom: canBottom },
+        move: (dir) => api.move(todo, dir),
+        dragStart: () => api.dragStart(todo.id),
+        dragOver: () => api.dragOver(todo.id),
+        drop: () => api.drop(todo.id),
+        dragEnd: api.dragEnd,
+        dragging,
+        over,
+      }}
+      flash={flash}
+      {...(wide
+        ? {
+            onSelect: () => api.select(todo.id),
+            onEdit: api.toDetail,
+            onGo: api.select,
+            selected,
+          }
+        : {})}
+    />
+  );
+});
 
 /** 줄 이웃 (같은 목록의 앞뒤 줄) */
 const rowAround = (row: HTMLElement, step: 1 | -1) => {

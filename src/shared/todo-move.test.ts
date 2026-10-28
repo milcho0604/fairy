@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { dropPlace, moveTarget } from './todo-move.ts';
+import { dropPlace, type MoveDir, moveCans, moveTarget } from './todo-move.ts';
 
 const row = (id: number, pinned = false) => ({ id, pinnedAt: pinned ? 1000 + id : null });
 const list = [row(9, true), row(1), row(2), row(3), row(4)];
@@ -33,4 +33,23 @@ test('끌어 놓기: 아래로 끌면 뒤, 위로 끌면 앞, 같은 줄이나 �
   assert.equal(dropPlace(list, 2, 2), undefined);
   assert.equal(dropPlace(list, 2, 9), undefined);
   assert.equal(dropPlace(list, 9, 2), undefined);
+});
+
+test('moveCans 는 줄마다 moveTarget 을 부른 것과 같다', () => {
+  const lists = [
+    list,
+    [row(1)],
+    [row(5, true), row(6, true)],
+    [row(1), row(2)],
+    [row(7, true), row(1), row(2), row(3)],
+  ];
+  const dirs: MoveDir[] = ['top', 'up', 'down', 'bottom'];
+  for (const l of lists) {
+    const cans = moveCans(l);
+    for (const r of l) {
+      for (const d of dirs) {
+        assert.equal(cans.get(r.id)?.[d] ?? false, !!moveTarget(l, r.id, d), `${r.id} ${d}`);
+      }
+    }
+  }
 });

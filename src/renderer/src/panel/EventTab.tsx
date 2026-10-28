@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { plusDays } from '../../../shared/day.ts';
 import { allDayLabel, allDaySpan, type CalEvent, dayStartMs } from '../../../shared/event-store.ts';
 import { t } from '../../../shared/i18n/index.ts';
@@ -13,7 +13,9 @@ import { eventPreview } from './event-preview.ts';
 import { dayHeading, timeOf, toInputValue } from './format.ts';
 import { gcalBadge } from './gcal-badge.ts';
 import { PinIcon } from './icons.tsx';
+import { MoreRow } from './more.tsx';
 import { revealRow } from './open-target.ts';
+import { indexInGroups, pageGroups, pagesForIndex } from './paging.ts';
 import { PinButton, usePinMenu } from './pin.tsx';
 import { RemindButton, RemindSheet } from './RemindPicker.tsx';
 import { updateView, useKeepScroll, viewNow } from './view-keep.ts';
@@ -72,6 +74,9 @@ export function EventTab({
     if (was !== s.today) setDay((d) => (d === was ? s.today : d));
   }, [s.today]);
   const calendar = view === 'calendar';
+  /** 목록에서 그린 쪽 수 (긴 목록은 앞에서부터 한 쪽씩, paging.ts) */
+  const [pages, setPages] = useState(1);
+  const groupsRef = useRef<[string, CalEvent[]][]>([]);
   const setView = (next: View) => {
     setViewState(next);
     try {
@@ -120,6 +125,11 @@ export function EventTab({
       }
       setDay(localDay(findTarget.startAt));
     }
+    if (destination !== 'calendar') {
+      // 목록의 뒤쪽 쪽에 있는 일정이면 그 줄이 있는 쪽까지 그린다
+      const at = indexInGroups(groupsRef.current, (e) => e.id === findTarget.id);
+      if (at >= 0) setPages((p) => Math.max(p, pagesForIndex(at)));
+    }
     window.requestAnimationFrame(() => void revealRow(`event:${findTarget.id}`));
     onFindTargetHandled();
   }, [findTarget, onFindTargetHandled, s.events, s.pinnedEvents, view]);
@@ -156,6 +166,13 @@ export function EventTab({
     const d = e.allDay && first < s.today ? s.today : first;
     days.set(d, [...(days.get(d) ?? []), e]);
   }
+  const dayGroups = [...days];
+  groupsRef.current = dayGroups;
+  const page = pageGroups(dayGroups, pages);
+  // 줄은 memo 라서 지우는 함수는 늘 같은 것 (부를 때 가장 새 함수로 간다)
+  const removedLatest = useRef(onRemoved);
+  removedLatest.current = onRemoved;
+  const removed = useCallback((id: number) => removedLatest.current(id), []);
 
   return (
     <>
@@ -248,7 +265,7 @@ export function EventTab({
                     e={e}
                     now={now}
                     today={s.today}
-                    onRemoved={onRemoved}
+                    onRemoved={removed}
                     clash={clashing.has(e.id)}
                     gcal={s.gcal}
                     showDay
@@ -257,7 +274,7 @@ export function EventTab({
               </ul>
             </section>
           )}
-          {[...days].map(([day, list]) => (
+          {page.shown.map(([day, list]) => (
             <section key={day}>
               <h2>{dayHeading(day, s.today)}</h2>
               <ul className="events">
@@ -267,7 +284,7 @@ export function EventTab({
                     e={e}
                     now={now}
                     today={s.today}
-                    onRemoved={onRemoved}
+                    onRemoved={removed}
                     clash={clashing.has(e.id)}
                     gcal={s.gcal}
                   />
@@ -275,21 +292,26 @@ export function EventTab({
               </ul>
             </section>
           ))}
+          {page.rest > 0 && (
+            <ul className="events">
+              <MoreRow rest={page.rest} onMore={() => setPages((p) => p + 1)} />
+            </ul>
+          )}
         </div>
       )}
     </>
   );
 }
 
-export function EventRow({
-  e,
-  now,
-  today,
-  onRemoved,
-  clash,
-  gcal,
-  showDay,
-}: {
+/** 일정 줄의 때: 끝났다 / 지금 / 아직. now 가 매번 바뀌어도 이 값이 같으면 줄을 다시 그리지 않는다 */
+function eventPhase(e: CalEvent, now: number, today: string): 'ended' | 'now' | 'later' {
+  const span = e.allDay ? allDaySpan(e) : null;
+  const ended = span ? span.last < today : (e.endAt ?? e.startAt + 30 * 60_000) < now;
+  if (ended) return 'ended';
+  return (span ? span.first <= today : e.startAt <= now) ? 'now' : 'later';
+}
+
+type EventRowProps = {
   e: CalEvent;
   now: number;
   today: string;
@@ -300,7 +322,21 @@ export function EventRow({
   gcal?: PanelState['gcal'];
   /** 날짜 칸 밖(맨 위 고정 칸)이라 제목 옆에 날을 쓴다 */
   showDay?: boolean;
-}) {
+};
+
+/** 긴 목록에서 "더 보기"를 누를 때 앞 줄까지 다시 그리지 않는다 (now 는 때가 바뀔 때만 다르게 본다) */
+const sameRow = (a: EventRowProps, b: EventRowProps) =>
+  a.e === b.e &&
+  a.today === b.today &&
+  a.onRemoved === b.onRemoved &&
+  a.clash === b.clash &&
+  a.gcal === b.gcal &&
+  a.showDay === b.showDay &&
+  eventPhase(a.e, a.now, a.today) === eventPhase(b.e, b.now, b.today);
+
+export const EventRow = memo(EventRowView, sameRow);
+
+function EventRowView({ e, now, today, onRemoved, clash, gcal, showDay }: EventRowProps) {
   const pinned = e.pinnedAt !== null;
   const pinMenu = usePinMenu('event', e.id, e.title, pinned);
   const [editing, setEditing] = useState(false);
@@ -310,8 +346,8 @@ export function EventRow({
   const sheetId = useId();
   const span = e.allDay ? allDaySpan(e) : null;
   // 끝난 일정(달력에서 지난 날을 볼 때)은 "지금" 이 아니다. 끝 판단은 목록의 upcoming 과 같다
-  const ended = span ? span.last < today : (e.endAt ?? e.startAt + 30 * 60_000) < now;
-  const started = !ended && (span ? span.first <= today : e.startAt <= now);
+  const phase = eventPhase(e, now, today);
+  const started = phase === 'now';
   const badge = gcalBadge(e.source, gcal?.marks[e.id], gcal?.problem, e.gcalCal);
   // 구글에서 읽어 온 일정은 읽기 전용 (이슈 #54): 제목, 시각, 종일은 구글에서 고친다. 알림, 고정, 숨기기만 페어리 것
   const readOnly = e.source === 'google';
@@ -319,7 +355,7 @@ export function EventRow({
   /** 종일과 시각 일정 사이를 바꾼다. 시각으로 바꾸면 첫날 오전 9시 (오늘이면 다음 정시) */
   const toggleAllDay = () => {
     if (span) {
-      const hour = span.first === today ? Math.min(23, new Date(now).getHours() + 1) : 9;
+      const hour = span.first === today ? Math.min(23, new Date().getHours() + 1) : 9;
       bridge.eventUpdate(e.id, {
         startAt: dayStartMs(span.first) + hour * 3_600_000,
         endAt: null,
