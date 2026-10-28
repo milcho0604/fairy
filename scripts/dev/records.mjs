@@ -603,7 +603,7 @@ const body = async () => {
   await sleep(800);
   hw = await page('home');
   const nav = await hw.ev(`[...document.querySelectorAll('.home-nav button .name')].map((e) => e.textContent).join('|')`);
-  check('사이드바에 기록 항목 (상점 다음)', nav.split('|').at(-1) === rec(['기록', 'Records']) && nav.split('|').at(-2) === rec(['상점', 'Shop']), nav);
+  check('사이드바에 기록 항목 (상점 다음, 쪽지함 앞)', nav.split('|').at(-2) === rec(['기록', 'Records']) && nav.split('|').at(-3) === rec(['상점', 'Shop']), nav);
   check('기록 항목이 지금 구역으로 표시되고 본문 이름표가 맞음', await hw.ev(`document.getElementById('ptab-records').getAttribute('aria-current') === 'page' && document.getElementById('ptab-panel').getAttribute('aria-labelledby') === 'ptab-records'`));
   check('구역 제목줄이 기록', (await hw.ev(`document.querySelector('.home-bar h2').textContent`)) === rec(['기록', 'Records']));
   check('집중 월간 잔디가 펼쳐져 있다 (.focus-month[open] .fm-cell)', await hw.until(() => hw.ev(`!!document.querySelector('.focus-month[open] .fm-cell')`)));

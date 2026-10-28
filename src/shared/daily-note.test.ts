@@ -474,3 +474,27 @@ test('주간 편지와 저녁 쪽지 줄이 사전에 있고 성격마다 다르
   }
   setLang('ko');
 });
+
+test('저녁 쪽지는 저녁에 맞는 말만 쓴다: 아침 인사가 없고 매일 쪽지의 여는 말, 맺음을 쓰지 않는다', () => {
+  for (const lang of ['ko', 'en'] as const) {
+    setLang(lang);
+    for (const persona of ['friend', 'polite', 'tsundere', 'calm'] as const)
+      for (const r of [0, 0.3, 0.6, 0.99]) {
+        const e = composeEvening(
+          { day: '2026-10-28', persona, petName: '콩이', doneToday: 2, focusMin: 40 },
+          fixed(r),
+        );
+        assert.ok(
+          !e.lines.some((l) => l.key === 'note.open' || l.key === 'note.close' || l.key === 'note.ps'),
+        );
+        for (const line of text(e))
+          assert.ok(!/아침|morning|Morning/.test(line), `${lang} ${persona}: ${line}`);
+      }
+    for (const persona of ['friend', 'polite', 'tsundere', 'calm'])
+      for (let v = 1; v <= NOTE_VARIANTS.evOpen; v++) {
+        const line = looseT('note.evening.open', { p: persona, v });
+        assert.ok(!/아침|morning|Morning/.test(line), line);
+      }
+  }
+  setLang('ko');
+});

@@ -26,6 +26,7 @@ import * as home from './home.ts';
 import * as idle from './idle.ts';
 import * as keep from './keep.ts';
 import * as linesMore from './lines-more.ts';
+import * as mail from './mail.ts';
 import * as main from './main.ts';
 import * as maker from './maker.ts';
 import * as noteMore from './note-more.ts';
@@ -113,6 +114,7 @@ export const ko = {
   ...linesMore.ko,
   ...voiceMore.ko,
   ...noteMore.ko,
+  ...mail.ko,
 };
 
 export const en: Translation<typeof ko> = {
@@ -171,4 +173,5 @@ export const en: Translation<typeof ko> = {
   ...linesMore.en,
   ...voiceMore.en,
   ...noteMore.en,
+  ...mail.en,
 };

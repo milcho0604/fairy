@@ -186,3 +186,14 @@ export function GripIcon() {
     </svg>
   );
 }
+
+/** 쪽지함 봉투. dot 이 true 면 안 읽은 쪽지가 있다는 점 (색만이 아니라 숫자와 이름도 따로 준다) */
+export function MailIcon({ dot = false }: { dot?: boolean }) {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="1.5" y="3" width="13" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M2 4l6 4.6L14 4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+      {dot && <circle className="mail-dot" cx="13" cy="3.2" r="2.6" />}
+    </svg>
+  );
+}

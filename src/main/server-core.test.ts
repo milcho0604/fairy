@@ -1477,3 +1477,18 @@ test('만 14세 미만으로 바꾸면 끄기 전에 거짓을 올리고, 그 �
   await x.core.run();
   assert.equal(x.server.calls.length, n, '끈 뒤에는 보내지 않는다');
 });
+
+test('계정 표식은 토큰이 바뀌어도(기기 계정에서 구글 로그인으로) 같고, 계정 코드가 다르면 달라진다', async () => {
+  const x = setup({ coins: 10 });
+  x.core.setAge('adult', '짝꿍친구');
+  await x.core.run();
+  const device = x.core.accountKey();
+  assert.ok(device, '코드를 받은 뒤에는 표식이 있다');
+  x.setLoop({ kind: 'code', code: 'one-time' });
+  await x.core.login();
+  await x.core.run();
+  assert.equal(x.core.status().signedIn, true, '세션 토큰으로 바뀌었다');
+  assert.equal(x.core.accountKey(), device, '같은 계정이면 표식이 같다');
+  const other = setup({ coins: 10, state: { code: 'F-ZZZZ-ZZZZ' } as Partial<ServerState> });
+  assert.notEqual(other.core.accountKey(), device);
+});

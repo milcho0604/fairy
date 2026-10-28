@@ -161,6 +161,9 @@ export interface PetActions {
   visitItems?(): Electron.MenuItemConstructorOptions[];
   /** 짝꿍이 아는 것 창 (main/knows.ts). 없으면 메뉴에 안 보인다 */
   openKnows?(): void;
+  /** 쪽지함을 연다 (펫 메뉴). mailUnread 는 메뉴에 붙는 안 읽은 쪽지 수 */
+  openMailbox?(): void;
+  mailUnread?(): number;
   /** 질문 칩 (main/pet-chips.ts, 이슈 #124). 없으면 메뉴에 안 보인다 */
   askChips?(): void;
   /** "오늘 뭐부터?" 규칙 답을 말풍선으로 (main/what-first.ts). 없으면 메뉴에 안 보인다 */
@@ -763,6 +766,14 @@ export function createPetWindow({
               label: t('pet.menu.openHome'),
               accelerator: settings.get().shortcuts.home || undefined,
               click: () => actions.openHome?.(),
+            },
+          ]
+        : []),
+      ...(actions.openMailbox
+        ? [
+            {
+              label: t('pet.menu.mail', { n: actions.mailUnread?.() ?? 0 }),
+              click: () => actions.openMailbox?.(),
             },
           ]
         : []),
