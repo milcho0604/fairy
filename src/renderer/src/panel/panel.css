@@ -1839,14 +1839,14 @@ ul.house-styles li > :last-child {
   /* 띠가 있든 없든 높이가 같다. 목록은 늘 이 아래에서 시작한다 */
   flex: none;
   box-sizing: border-box;
-  height: 32px;
-  padding: 6px 14px 0;
+  height: 24px;
+  padding: 2px 14px 0;
   pointer-events: none;
 }
 
 .shop-msg {
   margin: 0;
-  padding: 3px 10px;
+  padding: 1px 10px;
   border-radius: 8px;
   overflow: hidden;
   text-overflow: ellipsis;

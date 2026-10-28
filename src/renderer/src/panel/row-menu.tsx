@@ -58,10 +58,13 @@ export function useMenu(label: string, items: () => MenuItem[]) {
     let maxHeight: number | undefined;
     if (box.height > below) {
       if (box.height <= above) top = at.yUp - box.height;
-      else if (below >= above) maxHeight = Math.max(80, below);
       else {
-        maxHeight = Math.max(80, above);
-        top = at.yUp - maxHeight;
+        // 어느 쪽에도 다 안 들어간다: 큰 쪽에 붙이고 안에서 스크롤. 둘 다 80px 도 안 되면 단추를 덮더라도 80px 로 둔다
+        const room = Math.max(below, above);
+        maxHeight = Math.max(80, room);
+        if (room < 80) top = Math.min(at.y, bottom - 4 - maxHeight);
+        else if (below >= above) top = at.y;
+        else top = at.yUp - maxHeight;
       }
     }
     setPos({
@@ -82,15 +85,19 @@ export function useMenu(label: string, items: () => MenuItem[]) {
       if (!ref.current?.contains(e.target as Node)) setAt(undefined);
     };
     const shut = () => setAt(undefined);
+    // 메뉴 안 스크롤(높이 제한으로 생긴 것)은 바깥 스크롤이 아니다
+    const scrolled = (e: Event) => {
+      if (!ref.current?.contains(e.target as Node)) setAt(undefined);
+    };
     window.addEventListener('mousedown', away, true);
     window.addEventListener('blur', shut);
     window.addEventListener('resize', shut);
-    window.addEventListener('scroll', shut, true);
+    window.addEventListener('scroll', scrolled, true);
     return () => {
       window.removeEventListener('mousedown', away, true);
       window.removeEventListener('blur', shut);
       window.removeEventListener('resize', shut);
-      window.removeEventListener('scroll', shut, true);
+      window.removeEventListener('scroll', scrolled, true);
     };
   }, [at]);
 
