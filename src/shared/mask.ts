@@ -785,11 +785,17 @@ export const HALF_PATCH = 0.01;
 export const CUT_EDGE = 0.05;
 
 /**
+ * 그림용 모델 결과의 속 빔 기준. 오목한 몸이나 캐릭터 둘 사이 틈을 닫으면 멀쩡한 그림도 0.1 쯤 나와(만화 햄스터 0.13) 사진용 기준
+ * (0.08)이 거짓 경고를 냈다 (2026-10-28). 몸 속을 정말 지운 그림은 0.46 이상이라 그림용은 0.3 으로 둔다 (직접 그린 고양이, 곰, 새 속을 지운 시험 0.48~0.84)
+ */
+export const HOLLOW_GAIN_DRAWING = 0.3;
+
+/**
  * 다듬기 화면 안내: 거의 다 지웠는지(펫 덩어리가 없거나 아주 작다), 거의 안 지웠는지, 펫이 반쯤 비치는지(펫 둘레만 잰다,
  * 따로 남은 바탕 띠는 빼고), 펫 말고 따로 남은 덩어리 수, 사진 끝에 닿았는지.
  * 거의 다 지웠다는 안내를 남긴 넓이 2% 로 정하면 사진 속 작은 펫을 잘 오려도 떴다 (2026-10-10)
  */
-export function maskHints(mask: ArrayLike<number>, w: number, h: number) {
+export function maskHints(mask: ArrayLike<number>, w: number, h: number, opts: { hollowAt?: number } = {}) {
   const n = w * h;
   const pick = pickPet(mask, w, h);
   const none = { empty: true, full: false, half: false, hollow: false, others: 0, cut: false };
@@ -814,7 +820,9 @@ export function maskHints(mask: ArrayLike<number>, w: number, h: number) {
     full: keptRatio(mask) > 0.97,
     half: (kept ? half / kept : 0) > HALF_KEPT_WARN || patch >= pick.main.area * HALF_PATCH,
     // 끊긴 테두리 선은 펫 덩어리 네모 밖에 있을 수 있어 남긴 곳 전체로 잰다
-    hollow: hollowGain(mask, w, h, Math.max(all?.width ?? 0, all?.height ?? 0) * 0.04) > HOLLOW_GAIN,
+    hollow:
+      hollowGain(mask, w, h, Math.max(all?.width ?? 0, all?.height ?? 0) * 0.04) >
+      (opts.hollowAt ?? HOLLOW_GAIN),
     others: pick.others,
     cut: edgeTouch(mask, w, h) >= CUT_EDGE,
   };

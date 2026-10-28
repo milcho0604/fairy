@@ -54,8 +54,8 @@ async function until(fn, label, n = 100) {
   throw new Error(`timeout: ${label}`);
 }
 const T = lang === 'ko'
-  ? { photo: '사진용', drawing: '그림용', auto: '그림용으로 다시 지웠어', suggest: '그림용으로 다시 지워 볼까', try: '그림용으로 다시 지우기' }
-  : { photo: 'Photo', drawing: 'Drawing', auto: 'redid it with the drawing remover', suggest: 'try the drawing remover', try: 'Redo for drawing' };
+  ? { hollow: '테두리만 남은', photo: '사진용', drawing: '그림용', auto: '그림용으로 다시 지웠어', suggest: '그림용으로 다시 지워 볼까', try: '그림용으로 다시 지우기' }
+  : { hollow: 'leaving just the outline', photo: 'Photo', drawing: 'Drawing', auto: 'redid it with the drawing remover', suggest: 'try the drawing remover', try: 'Redo for drawing' };
 let code = 0;
 try {
   await until(async () => (await fetch(`http://127.0.0.1:${process.env.JJ_INSPECT_PORT}/json/list`)).ok, 'inspector');
@@ -102,6 +102,8 @@ try {
   if (scen === 'ready') {
     assert.equal(s.on, T.drawing, `자동으로 그림용이어야 한다: ${JSON.stringify(s)}`);
     assert.ok(s.hint.includes(T.auto), JSON.stringify(s));
+    // 그림용 결과에 "몸 안쪽이 지워져 테두리만 남은 것 같아" 거짓 경고가 뜨지 않는다 (그림용 기준 mask.ts HOLLOW_GAIN_DRAWING)
+    assert.equal(s.warn.includes(T.hollow), false, JSON.stringify(s));
     await m.shot(`kind-${tag}-auto`);
     // 사진용으로 바꾸면 사진 모델로 다시 지운다 (안내는 사라진다)
     await m.ev(`[...document.querySelectorAll('.edit .tools .segmented button')][0].click()`);

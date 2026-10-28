@@ -21,6 +21,7 @@ import {
   clampToAlpha,
   contentBox,
   defringe,
+  HOLLOW_GAIN_DRAWING,
   keepSure,
   keptMass,
   maskHints,
@@ -2005,9 +2006,13 @@ function Editor({
   const [size, setSize] = useState(40);
   const [, setVersion] = useState(0);
   // 안내(반투명, 따로 남은 것, 잘림)는 붓질을 마칠 때와 되돌릴 때 다시 잰다 (mask.ts maskHints)
-  const [hints, setHints] = useState(() => maskHints(work.mask, work.w, work.h));
-  const measure = useCallback(() => setHints(maskHints(work.mask, work.w, work.h)), [work]);
-  useEffect(measure, [measure]);
+  // 그림용 모델 결과는 오목한 몸이나 캐릭터 사이 틈이 많아 속 빔 기준을 높인다 (mask.ts HOLLOW_GAIN_DRAWING)
+  const hollowAt = kind === 'illust' ? HOLLOW_GAIN_DRAWING : undefined;
+  const [hints, setHints] = useState(() => maskHints(work.mask, work.w, work.h, { hollowAt }));
+  const measure = useCallback(
+    () => setHints(maskHints(work.mask, work.w, work.h, { hollowAt })),
+    [work, hollowAt],
+  );
   const undo = useRef<Uint8ClampedArray[]>([]);
   /** 방식을 바꾸면 다시 지워서 붓으로 다듬은 것이 사라진다. 다듬은 것이 있으면 한 번 묻는다 */
   const pickKind = (k: CutKind) => {
