@@ -28,6 +28,17 @@ declare global {
 
 const server = () => window.jjakkungServer;
 
+/** 다음 채움일 "2026-11-01" 을 다른 날짜 칸(서버 백업)과 같은 모양으로 ("2026년 11월 1일", "Nov 1, 2026") */
+const fillDay = (iso: string | null): string => {
+  const m = iso ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso) : null;
+  if (!m) return iso ?? '-';
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).toLocaleDateString(locale(), {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+};
+
 const AGE_KEY = {
   under14: 'server.age.under14',
   teen: 'server.age.teen',
@@ -399,7 +410,10 @@ export function ServerAccountBox() {
             )}
             {s.subscription && (
               <small>
-                {t('ticket.subscription', { n: s.subscription.monthly, day: s.subscription.nextFill ?? '-' })}
+                {t('ticket.subscription', {
+                  n: s.subscription.monthly,
+                  day: fillDay(s.subscription.nextFill),
+                })}
               </small>
             )}
             {s.aiWaitlisted && <small className="warn">{t('ticket.waitlisted')}</small>}

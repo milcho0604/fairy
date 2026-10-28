@@ -22,7 +22,11 @@ export function TicketBar({ ticket }: { ticket: NonNullable<ChatState['ticket']>
       </p>
       {!ticket.agreed && (
         <div className="ticket-notice">
-          <p>{t('ticket.notice')}</p>
+          <ul className="ticket-points">
+            <li>{t('ticket.notice.sent')}</li>
+            <li>{t('ticket.notice.kept')}</li>
+            <li>{t('ticket.notice.skip')}</li>
+          </ul>
           <button type="button" className="primary" onClick={() => bridge.agreeTicket()}>
             {t('ticket.agree')}
           </button>

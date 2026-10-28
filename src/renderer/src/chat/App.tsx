@@ -419,13 +419,16 @@ export function App() {
   // 머리 안내 줄: 못 찾음이면 설치, 로그인 안 됨이면 로그인 안내
   const bannerMode = guideModeOf(current);
   const bannerSubject = bannerMode ? subjectOf(state.provider) : undefined;
-  const labelOf = (id?: AiProvider) => providers.find((p) => p.id === id)?.label ?? id ?? '';
+  // 목록에 없는 AI(대화권 정의가 아직 안 왔을 때)도 내부 id 를 화면에 내지 않는다
+  const labelOf = (id?: AiProvider) =>
+    providers.find((p) => p.id === id)?.label ??
+    (id === TICKET_PROVIDER_ID ? t('ticket.label') : id ? t('chat.aiGeneric') : '');
   const imagesBlocked = !!spec && !spec.images && images.length > 0;
   // 한도에 걸리면 바로 물어볼 수 있는 다른 AI (설치, 로그인 확인된 것)
   const lastQuestionHasImages = !!state.messages.findLast((m) => m.role === 'user')?.images?.length;
   const alternatives = providers.filter((p) => {
     const st = status[p.id];
-    return p.id !== state.provider && !!st && isReady(st) && (!lastQuestionHasImages || p.images);
+    return !!st && isReady(st) && (!lastQuestionHasImages || p.images);
   });
 
   // 새 대화: 바로 지우되 몇 초 동안 되돌릴 수 있다 (메인이 지운 대화를 잠깐 들고 있다, UNDO_RESET_MS)
@@ -1011,11 +1014,16 @@ function Message({
           {/* 규칙 답("오늘 뭐부터")은 AI 이름 대신 "AI 없이" (AI 가 답한 줄 알지 않게) */}
           {m.game ? (
             // 끝말잇기 (AI 없이 하는 말놀이)
-            <span className="tag" title={t('fun.chain.tagTitle')}>
+            <span
+              className="tag"
+              title={t('fun.chain.tagTitle')}
+              role="note"
+              aria-label={t('fun.chain.tagTitle')}
+            >
               {t('fun.chain.tag')}
             </span>
           ) : m.byRules ? (
-            <span className="tag" title={t('first.tagTitle')}>
+            <span className="tag" title={t('first.tagTitle')} role="note" aria-label={t('first.tagTitle')}>
               {t('first.tag')}
             </span>
           ) : (
@@ -1087,9 +1095,14 @@ function Message({
               type="button"
               className="ghost ask-again"
               title={t('keep.retryTitle')}
-              onClick={onAskAgain}
+              // 이름에 적힌 AI 로 보낸다(지금 고른 AI 가 달라도 이름과 어긋나지 않게)
+              onClick={() => (m.provider && onRetryWith ? onRetryWith(m.provider) : onAskAgain())}
             >
-              {t('keep.retry')}
+              {m.provider === TICKET_PROVIDER_ID
+                ? t('chat.retryTicket')
+                : label
+                  ? t('chat.retrySame', { label })
+                  : t('keep.retry')}
             </button>
           </div>
         )}
@@ -1111,16 +1124,29 @@ function Message({
             m.error?.kind === 'no-tickets' ||
             m.error?.kind === 'not-installed' ||
             m.error?.kind === 'not-logged-in') &&
-          alternatives.length > 0 &&
-          onRetryWith && (
-            <div className="retry action-row">
-              {alternatives.slice(0, 3).map((p) => (
-                <button key={p.id} type="button" className="ghost" onClick={() => onRetryWith(p.id)}>
-                  {t('chat.retryWith', { label: p.label })}
-                </button>
-              ))}
-            </div>
-          )}
+          onRetryWith &&
+          (() => {
+            // 이름이 같은 단추는 하나만, 위 "같은 AI" 단추의 AI 는 뺀다
+            const seen = new Set<string>([m.provider ?? '']);
+            const list = alternatives.filter((p) => {
+              if (p.id === m.provider || seen.has(p.label)) return false;
+              seen.add(p.label);
+              return true;
+            });
+            return (
+              list.length > 0 && (
+                <div className="retry action-row">
+                  {list.slice(0, 3).map((p) => (
+                    <button key={p.id} type="button" className="ghost" onClick={() => onRetryWith(p.id)}>
+                      {p.id === TICKET_PROVIDER_ID
+                        ? t('chat.retryTicket')
+                        : t('chat.retryWith', { label: p.label })}
+                    </button>
+                  ))}
+                </div>
+              )
+            );
+          })()}
       </div>
     </div>
   );

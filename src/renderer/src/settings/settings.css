@@ -1217,6 +1217,12 @@ textarea.rules {
 .gcal-cell {
   justify-self: center;
   display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 작은 체크 칸(16px)을 감싼 칸 전체가 눌린다: 24px 이상 */
+  min-width: 28px;
+  min-height: 28px;
+  cursor: pointer;
 }
 
 .gcal-check {

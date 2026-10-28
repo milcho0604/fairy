@@ -5,6 +5,7 @@ import { timeLabel } from '../../../shared/event-store.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { PanelState } from '../../../shared/ipc.ts';
 import type { Todo } from '../../../shared/todo-store.ts';
+import { useReturnFocus } from '../focus-return.ts';
 import { timeOf } from './format.ts';
 import { CheckIcon } from './icons.tsx';
 import { refreshedPicks } from './plan-refresh.ts';
@@ -162,6 +163,7 @@ export function PlanSheetHost({
   const [busy, setBusy] = useState(false);
   const [emptyDraft, setEmptyDraft] = useState('');
   const sheet = useRef<HTMLDivElement>(null);
+  useReturnFocus(open);
 
   const show = (v: PlanView, navigateToday = true) => {
     setView(v);

@@ -1,6 +1,12 @@
 // 사용자 설정 (P1-12). 2단계에서 SQLite 로 옮기기 전까지 JSON 파일 하나에 둔다.
 import { isPersona, type PersonaId } from './ai/persona.ts';
-import { isSaverMode, type SaverMode } from './battery.ts';
+import {
+  isMotionChoice,
+  isSaverMode,
+  type MotionChoice,
+  motionChoiceFromOld,
+  type SaverMode,
+} from './battery.ts';
 import { type ChatterLevel, isChatter } from './chatter.ts';
 import { cutText } from './cut-text.ts';
 import { isFocusMinutes } from './focus.ts';
@@ -149,6 +155,8 @@ export interface Settings {
   urlScheme: boolean;
   /** 배터리 절약 (편의): 자동(배터리, 저전력일 때), 항상, 끄기. shared/battery.ts */
   batterySaver: SaverMode;
+  /** 움직임 줄이기 (편의): 운영체제 따름(기본), 항상, 줄이지 않기. 줄이면 화면을 가로질러 걷지 않는다. shared/battery.ts */
+  reduceMotion: MotionChoice;
   /** 말풍선을 화면 읽기 프로그램이 읽어 준다 (편의, 기본 켬) */
   readAloud: boolean;
   /** 펫 우클릭 "물어보기" 질문 칩 (이슈 #124, 기본 켬) */
@@ -507,6 +515,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lookAtCursor: true,
   urlScheme: true,
   batterySaver: 'auto',
+  reduceMotion: 'system',
   readAloud: true,
   petChips: true,
   doingBubble: true,
@@ -764,6 +773,12 @@ export function parseSettings(raw: unknown, base: Settings = DEFAULT_SETTINGS): 
     lookAtCursor: bool(r.lookAtCursor, base.lookAtCursor),
     urlScheme: bool(r.urlScheme, base.urlScheme),
     batterySaver: isSaverMode(r.batterySaver) ? r.batterySaver : base.batterySaver,
+    // 파일에서 처음 읽을 때(base 가 기본값) 값이 없으면 예전 배터리 절약 "항상"을 이어받는다. 바꾸기 조각은 지금 값을 지킨다
+    reduceMotion: isMotionChoice(r.reduceMotion)
+      ? r.reduceMotion
+      : base === DEFAULT_SETTINGS
+        ? motionChoiceFromOld(undefined, r.batterySaver)
+        : base.reduceMotion,
     readAloud: bool(r.readAloud, base.readAloud),
     petChips: bool(r.petChips, base.petChips),
     doingBubble: bool(r.doingBubble, base.doingBubble),

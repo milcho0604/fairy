@@ -15,7 +15,25 @@ export interface PowerFacts {
    * 맥 저전력 모드는 CPU 속도를 묶어 여기에 잡힌다
    */
   lowPower: boolean;
+  /** 운영체제 "동작 줄이기"가 켜져 있다 (접근성). 있으면 설정이 꺼져 있어도 아낀다 */
+  reducedMotion?: boolean;
 }
+
+/**
+ * 움직임 줄이기 고르기 (설정 편의): system(기본) 운영체제 "동작 줄이기"를 따른다, always 늘 줄인다, off 줄이지 않는다.
+ * 줄이면 화면을 가로질러 걷지 않는다(calmOn)
+ */
+export const MOTION_CHOICES = ['system', 'always', 'off'] as const;
+export type MotionChoice = (typeof MOTION_CHOICES)[number];
+export const isMotionChoice = (v: unknown): v is MotionChoice => MOTION_CHOICES.includes(v as MotionChoice);
+
+/** 고른 값과 운영체제 설정으로 지금 줄일지 */
+export const reducedMotionOf = (choice: MotionChoice, os: boolean): boolean =>
+  choice === 'always' ? true : choice === 'off' ? false : os;
+
+/** 예전 설정에는 이 값이 없다: 배터리 절약을 "항상"으로 해 둔 사람은 "항상 줄이기"로 잇는다 */
+export const motionChoiceFromOld = (saved: unknown, saver: unknown): MotionChoice =>
+  isMotionChoice(saved) ? saved : saver === 'always' ? 'always' : 'system';
 
 /** 지금 절약할지 */
 export function saverOn(mode: SaverMode, facts: PowerFacts): boolean {
@@ -23,6 +41,9 @@ export function saverOn(mode: SaverMode, facts: PowerFacts): boolean {
   if (mode === 'always') return true;
   return facts.onBattery || facts.lowPower;
 }
+
+/** 돌아다니기, 손님 걷기, 집 문 걷기처럼 화면을 가로지르는 움직임을 멈출지 (운영체제 동작 줄이기만, 배터리는 해당 없음) */
+export const calmOn = (facts: PowerFacts): boolean => facts.reducedMotion === true;
 
 /** 열 상태와 속도 제한으로 본 저전력 */
 export function lowPowerOf(speedLimit: number | undefined, thermal: string | undefined): boolean {

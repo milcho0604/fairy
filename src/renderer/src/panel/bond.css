@@ -56,8 +56,8 @@
 }
 
 .journey-dot.jd-later {
+  /* 흐리게(opacity 0.6) 하면 번호 대비가 2.45 까지 떨어진다. 점선 둘레와 흐린 글자색(4.5 이상)으로 아직임을 보인다 */
   border-style: dashed;
-  opacity: 0.6;
 }
 
 .journey-dot > span {

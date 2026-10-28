@@ -7,6 +7,7 @@ import { LINE_TEXT_MAX, renderTemplate } from '../../../shared/line-template.ts'
 import type { LineGroupId, LineLang } from '../../../shared/lines.ts';
 import type { LineSaveResult, LinesState, LineView } from '../../../shared/lines-ipc.ts';
 
+import { useReturnFocus } from '../focus-return.ts';
 import { isEsc, takeEsc } from '../panel/keys.ts';
 
 const lines = () => window.jjakkungLines;
@@ -39,6 +40,7 @@ function errorText(r: Extract<LineSaveResult, { ok: false }>): string {
 }
 
 export function LinesEditor({ onClose, onMsg }: { onClose: () => void; onMsg: (m: string) => void }) {
+  useReturnFocus(true);
   const sheetRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const [lang, setLang] = useState<LineLang>(getLang());
