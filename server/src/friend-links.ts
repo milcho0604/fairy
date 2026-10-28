@@ -21,6 +21,14 @@ export async function pruneFriends(c: PoolClient, ids: string[]): Promise<void> 
               OR (k.blocker = f.friend_id AND k.blocked = f.account_id)))`,
     [ids],
   );
+  // 둘 중 하나라도 만 18세 미만이 되면 일정 제목 공유를 끈다 (제목은 성인끼리만)
+  await c.query(
+    `UPDATE friend f SET share_title = false FROM account a, account b
+      WHERE f.share_title AND a.id = f.account_id AND b.id = f.friend_id
+        AND (f.account_id = ANY($1::bigint[]) OR f.friend_id = ANY($1::bigint[]))
+        AND (a.age <> '18+' OR b.age <> '18+')`,
+    [ids],
+  );
   // 걷는 신청의 안 연 쪽지도 지운다 (줄을 지우면 쪽지의 friend_request_id 가 비워지므로 먼저, 버그잡이 #135)
   const gone = await c.query<{ id: string }>(
     `SELECT r.id FROM friend_request r JOIN account a ON a.id = r.from_account JOIN account b ON b.id = r.to_account
@@ -45,7 +53,10 @@ export async function dropRequests(c: PoolClient, ids: string[]): Promise<void> 
   await c.query('DELETE FROM friend_request WHERE id = ANY($1::bigint[])', [ids]);
 }
 
-/** 바쁜 시간을 보여 줄 친구가 하나도 없는 계정의 일정을 지운다 (공유를 끄면 바로 지운다) */
+/**
+ * 바쁜 시간을 보여 줄 친구가 하나도 없는 계정의 일정을 지운다 (공유를 끄면 바로 지운다).
+ * 제목은 따로: 제목을 보여 줄 친구(둘 다 만 18세 이상)가 없으면 바쁜 시간은 두고 제목만 지운다
+ */
 export async function dropUnsharedBusy(c: PoolClient, accountId?: string): Promise<void> {
   const only = accountId === undefined ? '' : 'AND b.account_id = $1';
   const args = accountId === undefined ? [] : [accountId];
@@ -57,6 +68,13 @@ export async function dropUnsharedBusy(c: PoolClient, accountId?: string): Promi
   await c.query(
     `DELETE FROM busy_upload b WHERE NOT EXISTS (
        SELECT 1 FROM friend f WHERE f.account_id = b.account_id AND f.share_busy) ${only}`,
+    args,
+  );
+  await c.query(
+    `DELETE FROM busy_title b WHERE NOT EXISTS (
+       SELECT 1 FROM friend f JOIN account a ON a.id = f.account_id JOIN account o ON o.id = f.friend_id
+        WHERE f.account_id = b.account_id AND f.share_busy AND f.share_title
+          AND a.age = '18+' AND o.age = '18+') ${only}`,
     args,
   );
 }
@@ -72,19 +90,21 @@ export async function dropUnsharedBusy(c: PoolClient, accountId?: string): Promi
 export async function mergeFriends(c: PoolClient, from: string, into: string): Promise<void> {
   // 친구 (내 쪽 줄)
   await c.query(
-    `INSERT INTO friend (account_id, friend_id, share_busy, created_at)
-     SELECT $2, friend_id, share_busy, created_at FROM friend WHERE account_id = $1 AND friend_id <> $2
+    `INSERT INTO friend (account_id, friend_id, share_busy, share_title, created_at)
+     SELECT $2, friend_id, share_busy, share_title, created_at FROM friend WHERE account_id = $1 AND friend_id <> $2
      ON CONFLICT (account_id, friend_id) DO UPDATE
        SET share_busy = friend.share_busy OR EXCLUDED.share_busy,
+           share_title = friend.share_title OR EXCLUDED.share_title,
            created_at = LEAST(friend.created_at, EXCLUDED.created_at)`,
     [from, into],
   );
   // 친구 (상대 쪽 줄)
   await c.query(
-    `INSERT INTO friend (account_id, friend_id, share_busy, created_at)
-     SELECT account_id, $2, share_busy, created_at FROM friend WHERE friend_id = $1 AND account_id <> $2
+    `INSERT INTO friend (account_id, friend_id, share_busy, share_title, created_at)
+     SELECT account_id, $2, share_busy, share_title, created_at FROM friend WHERE friend_id = $1 AND account_id <> $2
      ON CONFLICT (account_id, friend_id) DO UPDATE
        SET share_busy = friend.share_busy OR EXCLUDED.share_busy,
+           share_title = friend.share_title OR EXCLUDED.share_title,
            created_at = LEAST(friend.created_at, EXCLUDED.created_at)`,
     [from, into],
   );
@@ -131,6 +151,7 @@ export async function mergeFriends(c: PoolClient, from: string, into: string): P
   // 일정
   await c.query('DELETE FROM busy_block WHERE account_id = $1', [from]);
   await c.query('DELETE FROM busy_upload WHERE account_id = $1', [from]);
+  await c.query('DELETE FROM busy_title WHERE account_id = $1', [from]);
   await pruneFriends(c, [into]);
 }
 

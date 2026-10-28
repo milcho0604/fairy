@@ -57,7 +57,15 @@ export const ko = {
   'friends.busyAt': (v: { when: string }) => `${v.when}에 고침`,
   'friends.share': '내 바쁜 시간 보여 주기',
   'friends.shareHint':
-    '페어리에 직접 넣은 일정에서 앞으로 14일의 바쁜 시간대(시작과 끝)만 이 친구에게 보여. 제목, 장소, 메모는 보내지 않고, 구글에서 가져온 일정은 아직 보내지 않아. 끄거나 로그아웃하면 서버에서 바로 지워.',
+    '페어리에 직접 넣은 일정에서 앞으로 14일의 바쁜 시간대(시작과 끝)만 이 친구에게 보여. 제목은 아래 스위치를 켠 친구에게만 보이고, 장소와 메모는 보내지 않아. 구글에서 가져온 일정은 아직 보내지 않아. 끄거나 로그아웃하면 서버에서 바로 지워.',
+  'friends.shareTitle': '일정 제목도 보여 주기',
+  'friends.shareTitleHint':
+    '켜면 이 친구만 직접 넣은 일정의 제목을 볼 수 있어 (앞으로 14일). 끄면 서버에서 바로 지워. 구글에서 가져온 일정과 비공개 일정의 제목은 보내지 않아.',
+  'friends.shareTitleAdults':
+    '일정 제목은 둘 다 만 18세 이상일 때만 보여 줄 수 있어. 지금은 바쁜 시간만 보여.',
+  'friends.shareTitleOn': '이 친구에게 일정 제목도 보여 줄게.',
+  'friends.shareTitleOff': '일정 제목 보여 주기를 껐어. 올린 제목은 서버에서 지웠어.',
+  'friends.theyShareTitle': '나에게 일정 제목도 보여 줘',
   'friends.theyShare': '나에게 바쁜 시간을 보여 줘',
   'friends.shareOn': '이 친구에게 바쁜 시간을 보여 줄게.',
   'friends.shareOff': '바쁜 시간 보여 주기를 껐어. 올린 시간은 서버에서 지웠어.',
@@ -83,6 +91,8 @@ export const ko = {
   'friends.err.expired': '기한이 지난 신청이야.',
   'friends.err.no_request': '이미 처리된 신청이야.',
   'friends.err.not_shared': '이 친구가 바쁜 시간을 보여 주지 않아.',
+  'friends.err.title_age': '일정 제목은 둘 다 만 18세 이상일 때만 보여 줄 수 있어.',
+  'friends.err.busy_off': '바쁜 시간 보여 주기를 먼저 켜 줘.',
   'friends.err.other': '하지 못했어. 잠시 뒤에 다시 해 줘.',
   // ---- 친구 쪽지 (쪽지함, 펫이 건네는 쪽지) ----
   'inbox.giftTitle': '친구가 보낸 선물',
@@ -150,7 +160,15 @@ export const en: Translation<typeof ko> = {
   'friends.busyAt': (v: { when: string }) => `Updated ${v.when}`,
   'friends.share': 'Show my busy times',
   'friends.shareHint':
-    'Only the busy time slots (start and end) for the next 14 days from events you added in fairy are shown to this friend. Titles, places and notes are never sent, and events from Google Calendar are not shared yet. Turning this off or signing out deletes them from the server right away.',
+    'Only the busy time slots (start and end) for the next 14 days from events you added in fairy are shown to this friend. Titles are shown only to friends you turn the switch below on for, and places and notes are never sent. Events from Google Calendar are not shared yet. Turning this off or signing out deletes them from the server right away.',
+  'friends.shareTitle': 'Also show event titles',
+  'friends.shareTitleHint':
+    'When on, only this friend can see the titles of events you added in fairy (next 14 days). Turning it off deletes them from the server right away. Titles of events from Google Calendar and private events are never sent.',
+  'friends.shareTitleAdults':
+    'Event titles can only be shown when you are both 18 or older. For now only busy times are shown.',
+  'friends.shareTitleOn': 'Your event titles are now shown to this friend too.',
+  'friends.shareTitleOff': 'Stopped showing event titles. They were deleted from the server.',
+  'friends.theyShareTitle': 'Shows you their event titles too',
   'friends.theyShare': 'Shows you their busy times',
   'friends.shareOn': 'Your busy times are now shown to this friend.',
   'friends.shareOff': 'Stopped showing your busy times. They were deleted from the server.',
@@ -177,6 +195,8 @@ export const en: Translation<typeof ko> = {
   'friends.err.expired': 'This request has expired.',
   'friends.err.no_request': 'This request was already handled.',
   'friends.err.not_shared': 'This friend is not showing busy times.',
+  'friends.err.title_age': 'Event titles can only be shown when you are both 18 or older.',
+  'friends.err.busy_off': 'Turn on showing your busy times first.',
   'friends.err.other': "Couldn't do that. Try again in a bit.",
   'inbox.giftTitle': 'Gift from a friend',
   'inbox.friendTitle': 'Friend request',

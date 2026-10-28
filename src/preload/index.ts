@@ -394,6 +394,7 @@ if (kind === 'settings') {
     unblock: (code) => ipcRenderer.invoke(FRIENDS.unblock, code),
     gift: (code, coins, passes) => ipcRenderer.invoke(FRIENDS.gift, code, coins, passes),
     share: (code, on) => ipcRenderer.invoke(FRIENDS.share, code, on),
+    shareTitle: (code, on) => ipcRenderer.invoke(FRIENDS.shareTitle, code, on),
     busy: (code) => ipcRenderer.invoke(FRIENDS.busy, code),
     copyCode: () => ipcRenderer.invoke(FRIENDS.copyCode),
     copyLink: () => ipcRenderer.invoke(FRIENDS.copyLink),

@@ -1,16 +1,17 @@
-// 서버 친구 (이슈 #110 1부): 설정 > 데이터의 친구 칸. 친구 맺기(코드, 초대 링크), 받은 신청, 선물, 바쁜 시간 공유.
+// 서버 친구 (이슈 #110 1부): 설정 > 데이터의 친구 칸. 친구 맺기(코드, 초대 링크), 받은 신청, 선물, 바쁜 시간 공유, 친구별 일정 제목 공유.
 // 칸은 서버 모드(만 14세 이상, 서버 주소 있음), 로그인, 서버가 켠 친구 기능일 때만 보인다 (아니면 아무것도 그리지 않는다).
 // 다른 서버 칸(ServerAccountBox 등)과 따로 둔다: 그 칸들의 마크업은 건드리지 않는다. 모양은 friends.css 에만.
 import { useEffect, useRef, useState } from 'react';
 import { type I18nKey, locale, t } from '../../../shared/i18n/index.ts';
 import {
-  type BusyBlock,
+  type BusyView,
   busyByDay,
   type FriendItem,
   type FriendPerson,
   type FriendResult,
   type FriendsBridge,
   type FriendsState,
+  titlesByDay,
 } from '../../../shared/server-friends.ts';
 import './friends.css';
 
@@ -45,6 +46,8 @@ const ERRORS = [
   'expired',
   'no_request',
   'not_shared',
+  'title_age',
+  'busy_off',
 ];
 const errorText = (e: string) =>
   t((ERRORS.includes(e) ? `friends.err.${e}` : 'friends.err.other') as I18nKey);
@@ -81,7 +84,7 @@ export function FriendsBox({ flash }: { flash: (message: string, error?: boolean
   const [busy, setBusy] = useState<string | null>(null);
   const [sure, setSure] = useState<string | null>(null);
   const [giftTo, setGiftTo] = useState<string | null>(null);
-  const [busyOf, setBusyOf] = useState<{ code: string; blocks: BusyBlock[]; at: string | null } | null>(null);
+  const [busyOf, setBusyOf] = useState<({ code: string } & BusyView) | null>(null);
   const boxRef = useRef<HTMLElement>(null);
   const b = bridge();
 
@@ -136,7 +139,7 @@ export function FriendsBox({ flash }: { flash: (message: string, error?: boolean
     setBusy(`busy:${f.code}`);
     try {
       const r = await b.busy(f.code);
-      if (r.ok) setBusyOf({ code: f.code, blocks: r.data.blocks, at: r.data.updatedAt });
+      if (r.ok) setBusyOf({ code: f.code, ...r.data });
       else flash(errorText(r.error), true);
     } finally {
       setBusy(null);
@@ -323,7 +326,7 @@ function FriendRow(o: {
   giftOpen: boolean;
   onGift: () => void;
   closeGift: () => void;
-  busyView: { blocks: BusyBlock[]; at: string | null } | null;
+  busyView: BusyView | null;
   onBusy: () => void;
   run: <T>(key: string, f: () => Promise<FriendResult<T>>, ok: string) => Promise<FriendResult<T>>;
   twice: (key: string, go: () => void) => () => void;
@@ -336,6 +339,7 @@ function FriendRow(o: {
         <span className="friends-name">{nameOf(f)}</span>
         <small className="friends-sub">{f.code}</small>
         {f.theyShare && <small className="friends-tag">{t('friends.theyShare')}</small>}
+        {f.theyTitle && <small className="friends-tag">{t('friends.theyShareTitle')}</small>}
         <span className="friends-actions">
           {s.gifts && (
             <button type="button" className="ghost small" disabled={o.off} onClick={o.onGift}>
@@ -388,8 +392,39 @@ function FriendRow(o: {
         </label>
       )}
       {s.calendar && f.iShare && <small className="friends-note">{t('friends.shareHint')}</small>}
+      {s.calendar && f.iShare && f.canTitle && (
+        <label className="friends-titleshare">
+          <input
+            type="checkbox"
+            checked={f.iTitle}
+            disabled={o.off}
+            onChange={(e) => {
+              const on = e.target.checked;
+              void o.run(
+                'shareTitle',
+                () => b.shareTitle(f.code, on),
+                t(on ? 'friends.shareTitleOn' : 'friends.shareTitleOff'),
+              );
+            }}
+          />
+          <span>{t('friends.shareTitle')}</span>
+        </label>
+      )}
+      {s.calendar && f.iShare && f.canTitle && f.iTitle && (
+        <small className="friends-note">{t('friends.shareTitleHint')}</small>
+      )}
+      {s.calendar && f.iShare && !f.canTitle && (
+        <small className="friends-note">{t('friends.shareTitleAdults')}</small>
+      )}
       {o.giftOpen && <GiftForm f={f} s={s} off={o.off} run={o.run} b={b} close={o.closeGift} />}
-      {o.busyView && <BusyWeek name={nameOf(f)} blocks={o.busyView.blocks} at={o.busyView.at} />}
+      {o.busyView && (
+        <BusyWeek
+          name={nameOf(f)}
+          blocks={o.busyView.blocks}
+          titles={o.busyView.titles}
+          at={o.busyView.updatedAt}
+        />
+      )}
     </li>
   );
 }
@@ -481,8 +516,15 @@ function GiftForm(o: {
 }
 
 /** 친구의 이번 주(오늘부터 7일) 바쁜 시간. 날마다 막대와 시간 글 */
-function BusyWeek(o: { name: string; blocks: BusyBlock[]; at: string | null }) {
-  const days = busyByDay(o.blocks, Date.now(), 7);
+function BusyWeek(o: {
+  name: string;
+  blocks: BusyView['blocks'];
+  titles: BusyView['titles'];
+  at: string | null;
+}) {
+  const now = Date.now();
+  const days = busyByDay(o.blocks, now, 7);
+  const titled = titlesByDay(o.titles, now, 7);
   const any = days.some((d) => d.spans.length > 0);
   return (
     <section className="friends-busy" aria-label={t('friends.busyTitle', { name: o.name })}>
@@ -511,6 +553,18 @@ function BusyWeek(o: { name: string; blocks: BusyBlock[]; at: string | null }) {
                 ? t('friends.busyFree')
                 : d.spans.map((x) => `${clock(d.day, x.from)}~${clock(d.day, x.to)}`).join(', ')}
             </small>
+            {(titled.find((x) => x.day === d.day)?.items.length ?? 0) > 0 && (
+              <span className="friends-titles">
+                {titled
+                  .find((x) => x.day === d.day)
+                  ?.items.map((x) => (
+                    <span className="friends-event" key={`${x.from}-${x.to}-${x.title}`}>
+                      <small className="friends-when">{`${clock(d.day, x.from)}~${clock(d.day, x.to)}`}</small>
+                      <span className="friends-event-title">{x.title}</span>
+                    </span>
+                  ))}
+              </span>
+            )}
           </li>
         ))}
       </ul>

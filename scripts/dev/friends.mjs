@@ -27,13 +27,16 @@ setLang(LANG);
 const OUT = resolve(process.env.OUT ?? join(tmpdir(), `friends-${LANG}`));
 mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// 시험 포트는 9800~9999 안에서 무작위로 (비어 있는 것만)
 const freePort = () =>
   new Promise((r) => {
-    const s = createServer();
-    s.listen(0, '127.0.0.1', () => {
-      const { port } = s.address();
-      s.close(() => r(port));
-    });
+    const tryPort = () => {
+      const port = 9800 + Math.floor(Math.random() * 200);
+      const s = createServer();
+      s.once('error', tryPort);
+      s.listen(port, '127.0.0.1', () => s.close(() => r(port)));
+    };
+    tryPort();
   });
 
 const results = [];
@@ -579,11 +582,49 @@ async function flow() {
       const busyText = await pb.ev(`document.querySelector('.friends-busy')?.innerText ?? ''`);
       check(F, 'B 화면에 A 의 내일 10시 바쁜 시간, 제목은 없다', busyText.includes(want) && !busyText.includes(secret), busyText.replace(/\n/g, ' / ').slice(0, 200));
       await pb.shots('f08-b-busy', '.friends-box');
+      // --- 2차: 친구별 일정 제목. 켜기 전에는 서버에 제목이 없고, 켜면 그 친구만 보고, 끄면 바로 지운다 ---
+      {
+        const G = '일정 제목';
+        const titleRows = () => sql(`SELECT count(*) FROM busy_title WHERE account_id = ${A.id}`);
+        const switchSel = '.friends-titleshare input';
+        await soft(until('제목 스위치', () => pa.ev(`!!document.querySelector('${switchSel}')`), 8000));
+        check(G, '"일정 제목도 보여 주기" 스위치가 보이고 기본 꺼짐', (await pa.ev(`document.querySelector('${switchSel}')?.checked`)) === false);
+        check(G, '켜기 전에는 서버에 제목 0개', titleRows() === '0');
+        await pa.ev(`(document.querySelector('${switchSel}').click(), 1)`);
+        const on = await waitFlash(pa, t('friends.shareTitleOn'));
+        check(G, '켜기 안내', on === t('friends.shareTitleOn'), on);
+        await soft(until('제목 올림', async () => titleRows() === '1', 10_000));
+        check(G, 'DB: 제목 1개, 올린 글 그대로', titleRows() === '1' && sql(`SELECT title FROM busy_title WHERE account_id = ${A.id}`) === secret);
+        check(G, 'A: 스위치 아래 안내 글', (await pa.ev(`document.querySelector('.friends-box')?.innerText ?? ''`)).includes(t('friends.shareTitleHint')));
+        await pa.shots('f07b-a-title-on', '.friends-box');
+        await b.main('__jj.server.friends.refresh().then(() => 1)');
+        check(G, 'B: 바쁜 시간 닫기', await rowPressWait(pb, NICKS[0], t('friends.busyClose')));
+        check(G, 'B: 다시 열기', await rowPressWait(pb, NICKS[0], t('friends.busy')));
+        await soft(until('B 에 제목', async () => (await pb.ev(`document.querySelector('.friends-busy')?.innerText ?? ''`)).includes(secret), 8000));
+        const withTitle = await pb.ev(`document.querySelector('.friends-busy')?.innerText ?? ''`);
+        check(G, 'B 화면에 일정 제목과 시간이 같이 보인다', withTitle.includes(secret) && withTitle.includes(want), withTitle.replace(/\n/g, ' / ').slice(0, 200));
+        check(G, 'B: A 줄에 "나에게 일정 제목도 보여 줘" 표시', (await pb.ev(`document.querySelector('.friends-box')?.innerText ?? ''`)).includes(t('friends.theyShareTitle')));
+        await pb.shots('f08b-b-busy-titles', '.friends-box');
+        // 끄면 바로 지운다 (바쁜 시간은 그대로)
+        await pa.ev(`(document.querySelector('${switchSel}').click(), 1)`);
+        const offT = await waitFlash(pa, t('friends.shareTitleOff'));
+        check(G, '끄기 안내', offT === t('friends.shareTitleOff'), offT);
+        check(G, '끄면 서버에서 바로 제목 0개, 바쁜 시간은 그대로 1개', titleRows() === '0' && sql(`SELECT count(*) FROM busy_block WHERE account_id = ${A.id}`) === '1');
+        const dump2 = execFileSync('docker', ['exec', pgName, 'pg_dump', '-U', 'fairy', '-d', 'fairy', '--data-only'], { encoding: 'utf8' });
+        check(G, '끈 뒤 서버 DB 어디에도 일정 제목이 없다', !dump2.includes(secret));
+        const r2 = JSON.parse(await b.main(`__jj.server.friends.busy(${JSON.stringify(A.code)}).then((x) => JSON.stringify(x))`));
+        check(G, 'B 가 다시 받으면 제목이 없고 바쁜 시간만', r2.ok && r2.data.titles.length === 0 && r2.data.blocks.length === 1, JSON.stringify(r2).slice(0, 160));
+        // 다시 켜 두고, 아래 "바쁜 시간 보여 주기 끄기" 가 제목도 함께 지우는지 본다
+        await pa.ev(`(document.querySelector('${switchSel}').click(), 1)`);
+        await waitFlash(pa, t('friends.shareTitleOn'));
+        await soft(until('제목 다시 올림', async () => titleRows() === '1', 10_000));
+      }
       // 끄면 바로 지움
       await pa.ev(`(document.querySelector('.friends-share input').click(), 1)`);
       const off = await waitFlash(pa, t('friends.shareOff'));
       check(F, '끄기 안내', off === t('friends.shareOff'), off);
       check(F, '끄면 서버에서 바로 지움 (0개)', sql(`SELECT count(*) FROM busy_block WHERE account_id = ${A.id}`) === '0');
+      check(F, '바쁜 시간 보여 주기를 끄면 제목도 함께 지움 (0개), 제목 공유도 꺼짐', sql(`SELECT count(*) FROM busy_title WHERE account_id = ${A.id}`) === '0' && sql(`SELECT count(*) FROM friend WHERE share_title`) === '0');
       const r = await b.main(`__jj.server.friends.busy(${JSON.stringify(A.code)}).then((x) => JSON.stringify(x))`);
       check(F, 'B 가 다시 보면 404 (보여 주지 않음)', JSON.parse(r).error === 'not_shared', r);
     }

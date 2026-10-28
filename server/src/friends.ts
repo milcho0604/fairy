@@ -28,14 +28,16 @@ import { ipKey, LIMITS, RateLimiter } from './rate-limit';
 import { normalizeDeviceCode } from './shared/account-profile';
 import { kstDay } from './shared/site-events';
 
-// 친구 (이슈 #110 1부): 친구 맺기, 친구 선물, 일정 공유 1차(바쁜 시간대만). 펫 놀러 가기(2부)는 여기 없다.
+// 친구 (이슈 #110 1부): 친구 맺기, 친구 선물, 일정 공유 1차(바쁜 시간대)와 2차(친구별 일정 제목). 펫 놀러 가기(2부)는 여기 없다.
 // - 로그인(구글, 카카오 세션) 계정만. 기기 토큰은 403 login_required. 만 14세 미만은 서버 계정이 없다
 // - 친구는 같은 나이 구분끼리만 (만 14~17세끼리, 성인끼리). 검색은 없다: 상대의 기기 코드(설정, 초대 링크)로 신청하고 상대가 수락
 // - 막혔거나, 나이 구분이 다르거나, 상대가 친구 기능을 못 쓰면 모두 409 unavailable 하나로 답한다 (상대의 나이와 차단을 알리지 않는다)
 // - 선물: 보낸 사람 잔액(코인, 채팅 이용권)에서 빼고 받는 사람 쪽지함에 쪽지로 (열 때 준다, inbox.ts). 하루 상한은 한국 날짜로
 //   보내기와 받기 각각, 합쳐진 계정은 가족 전체로 센다. 두 계정을 번호 순으로 잠가 동시 요청도 한 줄로 선다
-// - 일정: 앱이 앞으로 14일의 바쁜 시간대(시작, 끝)만 올린다. 보여 줄 친구가 없어지면 바로 지운다. 남의 일정은 그 친구가 나에게
+// - 일정: 앱이 앞으로 14일의 바쁜 시간대(시작, 끝)를 올린다. 보여 줄 친구가 없어지면 바로 지운다. 남의 일정은 그 친구가 나에게
 //   켠 것만 (아니면 404)
+// - 일정 제목 (2차): 친구마다 따로 켠다 (share_title, 받는 친구 단위, 기본 꺼짐). 둘 다 만 18세 이상일 때만 켜고, 읽을 때도 다시 본다.
+//   앱이 제목을 올려도 보여 줄 친구(제목을 켠 성인 친구)가 없으면 저장하지 않고, 응답은 친구별 허용에 따라 제목을 주거나 뺀다
 
 /** 친구 수 상한 (보낸 신청 포함) */
 export const FRIEND_MAX = 100;
@@ -50,6 +52,8 @@ export const GIFT_DAY_PASSES = 5;
 export const BUSY_DAYS = 14;
 /** 한 번에 올리는 바쁜 시간대 수 */
 export const BUSY_MAX = 400;
+/** 일정 제목은 이 글자 수까지 (넘으면 자른다) */
+export const TITLE_MAX = 80;
 const SWEEP_MS = 60 * 60_000;
 const DAY = 86_400_000;
 const REQUEST_ID = /^[A-Za-z0-9_-]{8,64}$/;
@@ -69,6 +73,18 @@ export interface FriendView extends Person {
   theyShare: boolean;
   /** 이 친구가 마지막으로 일정을 올린 때 (보여 줄 때만) */
   busyAt: string | null;
+  /** 둘 다 만 18세 이상이라 일정 제목 공유를 켤 수 있다 */
+  canTitle: boolean;
+  /** 내가 이 친구에게 일정 제목까지 보여 준다 */
+  iTitle: boolean;
+  /** 이 친구가 나에게 일정 제목까지 보여 준다 */
+  theyTitle: boolean;
+}
+
+export interface TitledBlock {
+  start: number;
+  end: number;
+  title: string;
 }
 
 export interface RequestView extends Person {
@@ -151,6 +167,7 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
   async sweep(): Promise<number> {
     await this.db.pool.query('DELETE FROM friend_request WHERE expires_at <= now()');
     await this.db.pool.query('DELETE FROM busy_block WHERE ends_at <= now()');
+    await this.db.pool.query('DELETE FROM busy_title WHERE ends_at <= now()');
     // 선물마다 트랜잭션 하나: 보낸 사람 계정 → 선물 줄 → 쪽지 줄 순으로 잠근다 (쪽지 열기, 탈퇴와 같은 순서, 교착 없음).
     // 받는 사람 계정은 잠그지 않는다: 열기와는 선물 줄 잠금이 막아 준다 (돌려준 선물은 열기가 410)
     let n = 0;
@@ -203,12 +220,18 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
         i_share: boolean;
         they_share: boolean;
         busy_at: Date | null;
+        can_title: boolean;
+        i_title: boolean;
+        they_title: boolean;
       }>(
         `SELECT a.code, a.nickname, f.created_at AS since, f.share_busy AS i_share,
                 COALESCE(g.share_busy, false) AS they_share,
                 CASE WHEN g.share_busy THEN (SELECT updated_at FROM busy_upload u WHERE u.account_id = f.friend_id) END
-                  AS busy_at
-           FROM friend f JOIN account a ON a.id = f.friend_id
+                  AS busy_at,
+                (a.age = '18+' AND m.age = '18+') AS can_title,
+                (f.share_title AND a.age = '18+' AND m.age = '18+') AS i_title,
+                (COALESCE(g.share_title, false) AND a.age = '18+' AND m.age = '18+') AS they_title
+           FROM friend f JOIN account a ON a.id = f.friend_id JOIN account m ON m.id = f.account_id
            LEFT JOIN friend g ON g.account_id = f.friend_id AND g.friend_id = f.account_id
           WHERE f.account_id = $1 ORDER BY f.created_at, a.code`,
         [me.id],
@@ -257,6 +280,9 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
             iShare: r.i_share,
             theyShare: r.they_share,
             busyAt: r.busy_at?.toISOString() ?? null,
+            canTitle: r.can_title,
+            iTitle: r.i_title,
+            theyTitle: r.they_title,
           }),
         ),
         incoming,
@@ -650,23 +676,82 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  // ---- 일정 공유 1차 (바쁜 시간대만) ----
+  // ---- 일정 공유 1차 (바쁜 시간대), 2차 (친구별 일정 제목) ----
 
-  /** 이 친구에게 바쁜 시간 보여 주기 켜고 끄기. 끄고 나서 보여 줄 친구가 없으면 올린 일정을 바로 지운다 */
+  /** 이 친구에게 바쁜 시간 보여 주기 켜고 끄기. 끄고 나서 보여 줄 친구가 없으면 올린 일정을 바로 지운다 (제목도 함께 꺼진다) */
   async share(accountId: string, code: unknown, on: boolean): Promise<{ share: boolean; sharing: number }> {
     return this.db.tx(async (c) => {
       const me = await lockAccount(c, accountId);
       const other = await findByCode(c, code);
       if (!other) throw fail(HttpStatus.NOT_FOUND, { error: 'no_user' });
-      const r = await c.query('UPDATE friend SET share_busy = $3 WHERE account_id = $1 AND friend_id = $2', [
-        me.id,
-        other,
-        on,
-      ]);
+      const r = await c.query(
+        `UPDATE friend SET share_busy = $3, share_title = share_title AND $3 WHERE account_id = $1 AND friend_id = $2`,
+        [me.id, other, on],
+      );
       if ((r.rowCount ?? 0) === 0) throw fail(HttpStatus.NOT_FOUND, { error: 'not_friend' });
       if (!on) await dropUnsharedBusy(c, me.id);
       return { share: on, sharing: await this.sharingCount(c, me.id) };
     });
+  }
+
+  /**
+   * 이 친구에게 일정 제목까지 보여 주기 켜고 끄기. 켜려면 둘 다 만 18세 이상(아니면 409 title_age)이고
+   * 바쁜 시간을 이미 보여 주는 중(아니면 409 busy_off)이어야 한다. 끄고 나서 제목을 볼 친구가 없으면 올린 제목을 바로 지운다.
+   * 대답: { title, titles: 제목을 보여 주는 친구 수 }
+   */
+  async shareTitle(
+    accountId: string,
+    code: unknown,
+    on: boolean,
+  ): Promise<{ title: boolean; titles: number }> {
+    return this.db.tx(async (c) => {
+      const [me, other] = await this.pairByCode(c, accountId, code);
+      const row = await c.query<{ share_busy: boolean; adult: boolean }>(
+        `SELECT f.share_busy, (a.age = '18+' AND b.age = '18+') AS adult
+           FROM friend f JOIN account a ON a.id = f.account_id JOIN account b ON b.id = f.friend_id
+          WHERE f.account_id = $1 AND f.friend_id = $2`,
+        [me, other],
+      );
+      const f = row.rows[0];
+      if (!f) throw fail(HttpStatus.NOT_FOUND, { error: 'not_friend' });
+      if (on && !f.adult) throw fail(HttpStatus.CONFLICT, { error: 'title_age' });
+      if (on && !f.share_busy) throw fail(HttpStatus.CONFLICT, { error: 'busy_off' });
+      await c.query('UPDATE friend SET share_title = $3 WHERE account_id = $1 AND friend_id = $2', [
+        me,
+        other,
+        on,
+      ]);
+      if (!on) await dropUnsharedBusy(c, me);
+      return { title: on, titles: await this.titleCount(c, me) };
+    });
+  }
+
+  /** 일정 제목을 볼 수 있는 친구 수 (제목을 켰고 둘 다 만 18세 이상) */
+  private async titleCount(c: PoolClient, id: string): Promise<number> {
+    return (
+      (
+        await c.query<{ n: number }>(
+          `SELECT count(*)::int AS n FROM friend f JOIN account a ON a.id = f.account_id JOIN account b ON b.id = f.friend_id
+            WHERE f.account_id = $1 AND f.share_busy AND f.share_title AND a.age = '18+' AND b.age = '18+'`,
+          [id],
+        )
+      ).rows[0]?.n ?? 0
+    );
+  }
+
+  /**
+   * 제목을 볼 친구 수를 세면서 그 친구 줄을 공유 잠금으로 잡는다 (이 트랜잭션이 끝날 때까지). 친구의 나이 내리기, 끊기, 차단은
+   * 그 줄을 고치거나 지우므로 이 업로드가 끝나길 기다리고, 끝난 뒤 자기 정리(dropUnsharedBusy)로 방금 넣은 제목을 지운다.
+   * 거꾸로 그쪽이 먼저면 여기서 기다렸다가 바뀐 줄로 다시 본다. 내 계정 말고 다른 계정을 잠그지 않아 교착이 없다
+   */
+  private async titleViewersLocked(c: PoolClient, id: string): Promise<number> {
+    const r = await c.query(
+      `SELECT 1 FROM friend f JOIN account a ON a.id = f.account_id JOIN account b ON b.id = f.friend_id
+        WHERE f.account_id = $1 AND f.share_busy AND f.share_title AND a.age = '18+' AND b.age = '18+'
+          FOR SHARE OF f`,
+      [id],
+    );
+    return r.rowCount ?? 0;
   }
 
   private async sharingCount(c: PoolClient, id: string): Promise<number> {
@@ -684,16 +769,24 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
   async stopSharing(accountId: string): Promise<void> {
     await this.db.tx(async (c) => {
       const me = await lockAccount(c, accountId);
-      await c.query('UPDATE friend SET share_busy = false WHERE account_id = $1', [me.id]);
+      await c.query('UPDATE friend SET share_busy = false, share_title = false WHERE account_id = $1', [
+        me.id,
+      ]);
       await dropUnsharedBusy(c, me.id);
     });
   }
 
   /**
    * 바쁜 시간대 올리기 (전체를 바꾼다). 지금부터 BUSY_DAYS 일 안으로 자르고 겹친 것은 합친다.
-   * 보여 줄 친구가 없으면 409 not_sharing (그리고 남은 것을 지운다)
+   * 보여 줄 친구가 없으면 409 not_sharing (그리고 남은 것을 지운다).
+   * titled: 제목이 있는 일정 (공개인 것만, 앱이 거른다). 제목을 볼 친구가 없으면 받아도 저장하지 않고 이미 있던 제목도 지운다
    */
-  async upload(accountId: string, blocks: { start: number; end: number }[], now = Date.now()) {
+  async upload(
+    accountId: string,
+    blocks: { start: number; end: number }[],
+    titled: TitledBlock[] = [],
+    now = Date.now(),
+  ) {
     return this.db.tx(async (c) => {
       const me = await lockAccount(c, accountId);
       if ((await this.sharingCount(c, me.id)) === 0) {
@@ -701,6 +794,18 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
         throw fail(HttpStatus.CONFLICT, { error: 'not_sharing' });
       }
       const merged = mergeBlocks(blocks, now - 60 * 60_000, now + BUSY_DAYS * DAY);
+      const keep =
+        (await this.titleViewersLocked(c, me.id)) > 0
+          ? clipTitled(titled, now - 60 * 60_000, now + BUSY_DAYS * DAY)
+          : [];
+      await c.query('DELETE FROM busy_title WHERE account_id = $1', [me.id]);
+      if (keep.length > 0)
+        await c.query(
+          `INSERT INTO busy_title (account_id, starts_at, ends_at, title)
+           SELECT $1, to_timestamp(s / 1000.0), to_timestamp(e / 1000.0), t
+             FROM unnest($2::float8[], $3::float8[], $4::text[]) AS u(s, e, t)`,
+          [me.id, keep.map((b) => b.start), keep.map((b) => b.end), keep.map((b) => b.title)],
+        );
       await c.query('DELETE FROM busy_block WHERE account_id = $1', [me.id]);
       if (merged.length > 0)
         await c.query(
@@ -714,18 +819,23 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
          ON CONFLICT (account_id) DO UPDATE SET updated_at = now()`,
         [me.id],
       );
-      return { stored: merged.length };
+      return { stored: merged.length, titles: keep.length };
     });
   }
 
-  /** 친구의 바쁜 시간대 (그 친구가 나에게 켰을 때만, 아니면 404 not_shared) */
+  /**
+   * 친구의 바쁜 시간대 (그 친구가 나에게 켰을 때만, 아니면 404 not_shared). titles 는 그 친구가 나에게 제목까지 켰고
+   * 둘 다 만 18세 이상일 때만 채운다 (아니면 빈 배열)
+   */
   async busy(accountId: string, code: unknown, now = Date.now()) {
     return this.db.tx(async (c) => {
       const me = await lockAccount(c, accountId);
       const other = await findByCode(c, code);
       if (!other) throw fail(HttpStatus.NOT_FOUND, { error: 'not_shared' });
-      const r = await c.query(
-        'SELECT 1 FROM friend WHERE account_id = $1 AND friend_id = $2 AND share_busy',
+      const r = await c.query<{ titles: boolean }>(
+        `SELECT (f.share_title AND a.age = '18+' AND b.age = '18+') AS titles
+           FROM friend f JOIN account a ON a.id = f.account_id JOIN account b ON b.id = f.friend_id
+          WHERE f.account_id = $1 AND f.friend_id = $2 AND f.share_busy`,
         [other, me.id],
       );
       if ((r.rowCount ?? 0) === 0 || !(await this.features.featureAllowed('friend_calendar', other)))
@@ -736,6 +846,14 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
             AND starts_at < to_timestamp($3 / 1000.0) ORDER BY starts_at`,
         [other, now, now + BUSY_DAYS * DAY],
       );
+      const titled = r.rows[0]?.titles
+        ? await c.query<{ s: string; e: string; title: string }>(
+            `SELECT (extract(epoch FROM starts_at) * 1000)::bigint AS s, (extract(epoch FROM ends_at) * 1000)::bigint AS e, title
+               FROM busy_title WHERE account_id = $1 AND ends_at > to_timestamp($2 / 1000.0)
+                AND starts_at < to_timestamp($3 / 1000.0) ORDER BY starts_at, title`,
+            [other, now, now + BUSY_DAYS * DAY],
+          )
+        : undefined;
       const at = await c.query<{ at: Date }>(
         'SELECT updated_at AS at FROM busy_upload WHERE account_id = $1',
         [other],
@@ -743,6 +861,7 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
       return {
         friend: await person(c, other),
         blocks: rows.rows.map((x) => ({ start: Number(x.s), end: Number(x.e) })),
+        titles: (titled?.rows ?? []).map((x) => ({ start: Number(x.s), end: Number(x.e), title: x.title })),
         updatedAt: at.rows[0]?.at.toISOString() ?? null,
       };
     });
@@ -766,6 +885,42 @@ export function mergeBlocks(
     else out.push({ ...b });
   }
   return out;
+}
+
+/** 제목 있는 일정을 [from, to) 로 자르고 제목을 다듬는다 (줄바꿈, 제어 문자는 빈칸, 앞뒤 공백 없이, TITLE_MAX 글자까지). 빈 제목은 버린다 */
+export function clipTitled(items: readonly TitledBlock[], from: number, to: number): TitledBlock[] {
+  const out: TitledBlock[] = [];
+  for (const x of items) {
+    const title = Array.from(x.title.replace(/[\p{Cc}\p{Cf}\u2028\u2029]+/gu, ' ').trim())
+      .slice(0, TITLE_MAX)
+      .join('')
+      .trim();
+    const start = Math.max(from, x.start);
+    const end = Math.min(to, x.end);
+    if (title && end > start) out.push({ start, end, title });
+  }
+  return out.slice(0, BUSY_MAX);
+}
+
+/** 올린 제목 있는 일정 검사 (items 는 없어도 된다). 모양이 틀리면 400 items (앱 버그) */
+export function parseTitled(body: unknown): TitledBlock[] {
+  const raw = (body as { items?: unknown } | null)?.items;
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw) || raw.length > BUSY_MAX) throw fail(HttpStatus.BAD_REQUEST, { error: 'items' });
+  return raw.map((x) => {
+    const b = x as { start?: unknown; end?: unknown; title?: unknown } | null;
+    const ok = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v > 0;
+    if (
+      !b ||
+      !ok(b.start) ||
+      !ok(b.end) ||
+      b.end <= b.start ||
+      typeof b.title !== 'string' ||
+      b.title.length > 2000
+    )
+      throw fail(HttpStatus.BAD_REQUEST, { error: 'items' });
+    return { start: b.start, end: b.end, title: b.title };
+  });
 }
 
 /** 올린 바쁜 시간대 검사. 모양이 틀리면 400 blocks (앱 버그) */
@@ -888,13 +1043,13 @@ export class FriendsController {
     return this.coded(auth, () => this.friends.gift(auth.accountId, g));
   }
 
-  /** 바쁜 시간대 올리기: { blocks: [{ start, end }] } (ms). 제목은 받지 않는다 */
+  /** 바쁜 시간대 올리기: { blocks: [{ start, end }], items?: [{ start, end, title }] } (ms). items 는 제목을 볼 친구가 있을 때만 저장한다 */
   @Put('calendar/busy')
   @HttpCode(200)
   async upload(@Auth() auth: AuthInfo, @Body() body: unknown) {
     this.limiter.check(`busy:${auth.accountId}`, LIMITS.busyByAccount);
     await this.friends.gate(auth, 'friend_calendar');
-    return this.friends.upload(auth.accountId, parseBlocks(body));
+    return this.friends.upload(auth.accountId, parseBlocks(body), parseTitled(body));
   }
 
   /**
@@ -919,6 +1074,20 @@ export class FriendsController {
     if (on) await this.friends.gate(auth, 'friend_calendar');
     else await this.friends.gate(auth);
     return this.coded(auth, () => this.friends.share(auth.accountId, code, on));
+  }
+
+  /**
+   * 이 친구에게 일정 제목까지 보여 주기: { share: true | false }. 켜기는 friends 와 friend_calendar, 끄기는 friends 기능 키를 본다.
+   * 409 title_age (둘 다 만 18세 이상이어야 한다), busy_off (바쁜 시간 보여 주기가 먼저 켜져 있어야 한다)
+   */
+  @Put(':code/calendar/titles')
+  @HttpCode(200)
+  async shareTitle(@Auth() auth: AuthInfo, @Param('code') code: string, @Body() body: unknown) {
+    const on = (body as { share?: unknown } | null)?.share;
+    if (typeof on !== 'boolean') throw fail(HttpStatus.BAD_REQUEST, { error: 'share' });
+    if (on) await this.friends.gate(auth, 'friend_calendar');
+    else await this.friends.gate(auth);
+    return this.coded(auth, () => this.friends.shareTitle(auth.accountId, code, on));
   }
 
   /** 친구의 바쁜 시간대 (그 친구가 나에게 켰을 때만) */
