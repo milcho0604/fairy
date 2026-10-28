@@ -2212,7 +2212,7 @@ form.inline { display: inline; }
 form.sure { display: inline-flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin: 2px 0; }
 form.sure .flash { flex: 1 0 100%; margin: 0; }
 form.sure label.confirm { color: var(--bad); }
-button:disabled { opacity: 0.6; cursor: progress; }
+button:disabled { background: var(--line); color: var(--fg); border-color: var(--line); cursor: progress; }
 form.busy button[type=submit]::after { content: ""; display: inline-block; width: 0.8em; height: 0.8em; margin-left: 0.5em; vertical-align: -0.1em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { form.busy button[type=submit]::after { animation: none; border-right-color: currentColor; } }
@@ -2229,7 +2229,7 @@ h3 { font-size: 15px; margin: 12px 0 6px; }
 .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
 table { border-collapse: collapse; width: 100%; font-size: 13px; }
 th, td { text-align: left; border-bottom: 1px solid var(--line); padding: 6px; vertical-align: top; }
-tr.off { opacity: 0.55; }
+tr.off td { color: var(--muted); }
 code { font-size: 12px; word-break: break-all; }
 .hint { color: var(--muted); font-size: 13px; }
 .flash { border: 1px solid var(--ok); color: var(--ok); border-radius: 8px; padding: 10px 12px; font-weight: 600; }
@@ -2346,6 +2346,23 @@ details.allow { border: 1px solid var(--line); border-radius: 8px; padding: 2px 
   table.cards td[data-l]::before { content: attr(data-l) " "; color: var(--muted); font-size: 12px; }
   table.cards td:empty { display: none; }
   input, select, textarea, button { min-height: 42px; }
+}
+@media (pointer: coarse) {
+  nav.cells a, .subnav a, .tabs a, .button-link, .pager a { display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; }
+  nav.cells a { display: flex; }
+  td a:not(.button-link), dl.stats dd a { display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; }
+  ul.todo a { display: flex; align-items: center; min-height: 44px; }
+  details > summary { box-sizing: border-box; min-height: 44px; padding-block: 10px; margin: 0; }
+  input:not([type=checkbox]):not([type=radio]), select, textarea, button { min-height: 44px; }
+  label.confirm, fieldset label { min-height: 44px; min-width: 44px; }
+  input[type=checkbox], input[type=radio] { width: 22px; height: 22px; }
+  td.pick input { width: 44px; height: 44px; margin: 0; }
+}
+@media (pointer: coarse) and (max-width: 600px) {
+  nav.cells a, .subnav a, .tabs a, .button-link { justify-content: center; }
+  table.cards td.act .button-link { min-height: 44px; }
+  table.users td.name { padding-right: 56px; }
+  table.cards td.pick { top: 0; right: 4px; }
 }
 `;
 
