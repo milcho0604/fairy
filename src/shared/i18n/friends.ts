@@ -72,7 +72,7 @@ export const ko = {
     '켜면 내 펫의 종류와 이름이 서버를 거쳐 이 친구에게 가고, 이 친구도 켜면 서로 가끔 상대 화면에 잠깐 놀러 가. 내 펫은 내 화면에 그대로 있어. 끄면 서버에서 바로 지워.',
   'friends.visitWaiting': '친구도 켜면 시작돼.',
   'friends.visitCustom':
-    '사진이나 직접 만든 그림은 보내지 않아. 이 친구 화면에는 기본 모습의 대역 펫이 내 펫 이름으로 가.',
+    '사진이나 직접 만든 그림은 보내지 않아. 이 친구 화면에는 기본 모양 대역 펫이 가고, 이름도 보내지 않아. 친구에게는 내 닉네임의 펫으로 보여.',
   'friends.visitOn': '이 친구에게 내 펫이 놀러 갈 수 있어.',
   'friends.visitOff': '놀러 가기를 껐어. 이 친구 몫의 펫 카드는 더 안 가고, 켠 친구가 없으면 서버에서 지워.',
   'friends.theyVisit': '내 화면에 놀러 올 수 있어',
@@ -196,7 +196,7 @@ export const en: Translation<typeof ko> = {
     "When on, your pet's kind and name go through the server to this friend. If they turn it on too, your pets sometimes drop by each other's screens for a few minutes. Your pet stays on your own screen. Turning it off deletes it from the server right away.",
   'friends.visitWaiting': 'Starts when your friend turns it on too.',
   'friends.visitCustom':
-    "Photos and drawings you made are never sent. This friend sees a stand-in pet in a default look, with your pet's name.",
+    "Photos and drawings you made are never sent. This friend sees a stand-in pet in a default look, and your pet's name is not sent either. They see it as a pet from your nickname.",
   'friends.visitOn': 'Your pet can now visit this friend.',
   'friends.visitOff':
     'Pet visits are off. Your pet card no longer goes to this friend, and it is deleted from the server when no friend is left.',
