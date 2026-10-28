@@ -73,6 +73,7 @@ export const ko = {
   'server.removed': '서버 계정을 지웠어.',
   'server.removeFailed': '지우지 못했어. 서버에 닿으면 다시 해 줘.',
   'server.reverted': '다른 기기에서 먼저 코인을 써서 {what} 사기를 되돌렸어. 코인은 돌려받았어.',
+  'server.coinsLowered': '서버 기록에 맞춰 코인이 {n} 줄었어.',
   'server.reverted.food': '먹이',
   'server.reverted.customFood': '먹이 만들기',
   'server.page.okTitle': '로그인했어',
@@ -230,6 +231,7 @@ export const en: Translation<typeof ko> = {
   'server.removeFailed': "Couldn't delete. Try again when the server is reachable.",
   'server.reverted':
     'Coins were spent first on another device, so buying {what} was undone. Your coins are back.',
+  'server.coinsLowered': 'Your coins went down by {n} to match the server record.',
   'server.reverted.food': 'food',
   'server.reverted.customFood': 'custom food',
   'server.page.okTitle': 'Signed in',

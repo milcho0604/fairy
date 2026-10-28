@@ -25,14 +25,25 @@ STATUS=${STATUS:-/status}
 AT=${SYNC_AT_UTC_SEC:-21600}
 POLL=${POLL_SEC:-600}
 STALE=${STALE_SEC:-93600}
-mkdir -p "$DST" "$STATUS"
+GZ_TIMEOUT=${GZ_TIMEOUT:-120}
+# 이만큼(초)보다 새로 바뀐 덤프는 쓰는 중일 수 있어 건너뛴다
+FRESH=${FRESH_SEC:-120}
+mkdir -p "$DST"
+# 상태 파일은 곁가지다: 못 만들거나 못 써도 사본 맞추기는 계속한다 (경고만 stderr)
+mkdir -p "$STATUS" 2>/dev/null || echo "$(date -u +%FT%TZ) 상태 폴더를 못 만들어요: $STATUS" >&2
 
 # 한 줄 파일을 통째로 바꿔 쓴다 (읽는 쪽이 중간 상태를 보지 않게)
 put() {
   tmp="$STATUS/.$1.$$"
-  printf '%s\n' "$2" > "$tmp"
-  chmod 644 "$tmp"
-  mv -f "$tmp" "$STATUS/$1"
+  if ! { printf '%s\n' "$2" > "$tmp" && chmod 644 "$tmp" && mv -f "$tmp" "$STATUS/$1"; } 2>/dev/null; then
+    rm -f "$tmp" 2>/dev/null || true
+    echo "$(date -u +%FT%TZ) 상태 파일을 못 써요: $STATUS/$1" >&2
+  fi
+  return 0
+}
+# 시간 제한이 있으면 건다 (멎은 디스크에서 gzip 이 루프를 막지 않게. timeout 이 없는 곳은 그냥 돌린다)
+tmo() {
+  if command -v timeout >/dev/null 2>&1; then timeout "$GZ_TIMEOUT" "$@"; else "$@"; fi
 }
 now() { date -u +%s; }
 # 설명 글은 한 줄, 200자까지 (탭과 줄바꿈은 공백으로)
@@ -64,23 +75,37 @@ check_dump() {
     fail db "덤프 폴더가 없어요 ($DUMP_DIR)"
     return
   fi
-  newest=$(ls -t "$DUMP_DIR"/*.sql.gz 2>/dev/null | head -n 1 || true)
+  # 가장 새 파일부터 보되 FRESH 초 안에 바뀐 것(쓰는 중일 수 있음)은 건너뛰고 그다음 새 파일을 본다
+  newest=""
+  seen=0
+  for f in $(ls -t "$DUMP_DIR"/*.sql.gz 2>/dev/null || true); do
+    m=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo 0)
+    [ $(($(now) - m)) -ge "$FRESH" ] && { newest=$f; break; }
+    seen=1
+  done
   if [ -z "$newest" ]; then
-    fail db "덤프 파일이 하나도 없어요"
-    return
+    # 쓰는 중인 파일뿐이면 이번엔 판단하지 않는다 (다음 점검에서 본다)
+    [ "$seen" = 1 ] || fail db "덤프 파일이 하나도 없어요"
+    return 0
   fi
   # 수정 시각 (초). BSD 와 busybox 모두 되게 stat 두 형식을 시도한다
   mt=$(stat -c %Y "$newest" 2>/dev/null || stat -f %m "$newest" 2>/dev/null || echo 0)
-  size=$(wc -c < "$newest" | tr -d ' ')
+  size=$(wc -c < "$newest" 2>/dev/null | tr -d ' ')
+  size=${size:-0}
   age=$(($(now) - mt))
+  base=$(basename "$newest")
+  gzrc=0
+  [ "$size" -lt 20 ] || tmo gzip -t "$newest" 2>/dev/null || gzrc=$?
   if [ "$size" -lt 20 ]; then
-    fail db "가장 새 덤프가 비었어요 ($(basename "$newest"), ${size}바이트)"
-  elif ! gzip -t "$newest" 2>/dev/null; then
-    fail db "가장 새 덤프가 깨졌어요 ($(basename "$newest"), 압축 검사 실패)"
+    fail db "가장 새 덤프가 비었어요 ($base, ${size}바이트)"
+  elif [ "$gzrc" -eq 124 ]; then
+    fail db "점검 시간 초과 ($base, ${GZ_TIMEOUT}초 안에 압축 검사가 끝나지 않았어요)"
+  elif [ "$gzrc" -ne 0 ]; then
+    fail db "가장 새 덤프가 깨졌어요 ($base, 압축 검사 실패)"
   elif [ "$age" -gt "$STALE" ]; then
-    fail db "가장 새 덤프가 $((age / 3600))시간 전 것이에요 ($(basename "$newest"))"
+    fail db "가장 새 덤프가 $((age / 3600))시간 전 것이에요 ($base)"
   else
-    ok db "$mt" "$(basename "$newest") ${size}바이트"
+    ok db "$mt" "$base ${size}바이트"
   fi
 }
 
@@ -95,7 +120,7 @@ if [ "${SYNC_ON_START:-0}" = 1 ] || [ $(($(now) - last)) -gt 90000 ]; then
   synced=$(date -u +%F)
 fi
 while true; do
-  check_dump
+  check_dump || echo "$(date -u +%FT%TZ) 덤프 점검 중 오류 (건너뜀)" >&2
   t=$(date -u +%F)
   s=$(($(now) % 86400))
   if [ "$s" -ge "$AT" ] && [ "$synced" != "$t" ]; then

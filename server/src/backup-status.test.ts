@@ -2,7 +2,16 @@
 // run.sh 는 시험용 폴더로 한 번만 돌려 본다(ONCE=1). rsync 나 gzip 이 없는 곳에서는 그 시험만 건너뛴다.
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -110,7 +119,7 @@ function gz(path: string, ageH = 0): void {
   const t = new Date(Date.now() - ageH * H);
   utimesSync(path, t, t);
 }
-function run(d: Dirs, env: Record<string, string> = {}): void {
+function run(d: Dirs, env: Record<string, string> = {}): string {
   const r = spawnSync('sh', [RUN], {
     env: {
       PATH: process.env.PATH,
@@ -120,11 +129,13 @@ function run(d: Dirs, env: Record<string, string> = {}): void {
       STATUS: d.status,
       ONCE: '1',
       SYNC_ON_START: '1',
+      FRESH_SEC: '0',
       ...env,
     },
     encoding: 'utf8',
   });
   assert.equal(r.status, 0, r.stderr);
+  return r.stderr;
 }
 const read = (d: Dirs, name: string): string | undefined => {
   try {
@@ -212,7 +223,8 @@ test('run.sh: 깨진 덤프, 빈 덤프, 26시간 넘은 덤프는 실패이고 
     assert.match(jobs(d).db.lastFailReason ?? '', /30시간 전 것이에요/);
     assert.equal(jobs(d).db.state, 'failed');
     // 새 덤프: 성공 시각(파일 시각)이 마지막 실패보다 뒤라 ok
-    gz(join(d.dumps, 'fairy-2.sql.gz'), -2 / 3600);
+    gz(join(d.dumps, 'fairy-2.sql.gz'), 0.01);
+    writeFileSync(join(d.status, 'db.fail'), `${at(Date.now() - H)}\t옛 실패\n`);
     run(d, { SYNC_ON_START: '0' });
     const j = jobs(d);
     assert.equal(j.db.state, 'ok');
@@ -236,6 +248,76 @@ test('run.sh: 켠 때 사본 성공 기록이 25시간 안이면 바로 맞추�
     writeFileSync(join(d.status, 'files.ok'), `${at(Date.now() - 30 * H)}\t옛날\n`);
     run(d, { SYNC_ON_START: '0', SYNC_AT_UTC_SEC: '86399' });
     assert.match(read(d, 'files.ok') ?? '', /서버 백업 파일 1개 맞춤/);
+  } finally {
+    rmSync(d.root, { recursive: true, force: true });
+  }
+});
+
+test('run.sh: 상태 폴더가 읽기 전용이거나 파일이어도 죽지 않고 사본은 한다 (경고만 stderr)', {
+  skip: !tools,
+}, () => {
+  const d = dirs();
+  try {
+    mkdirSync(d.status);
+    chmodSync(d.status, 0o555);
+    const err = run(d);
+    chmodSync(d.status, 0o755);
+    assert.equal(readFileSync(join(d.dst, 'a.bin'), 'utf8'), 'x');
+    if (process.getuid?.() !== 0) assert.match(err, /상태 파일을 못 써요/);
+    rmSync(d.status, { recursive: true, force: true });
+    writeFileSync(d.status, 'file');
+    rmSync(d.dst, { recursive: true, force: true });
+    const err2 = run(d);
+    assert.equal(readFileSync(join(d.dst, 'a.bin'), 'utf8'), 'x', '상태 경로가 파일이어도 사본은 생긴다');
+    assert.match(err2, /상태 폴더를 못 만들어요/);
+  } finally {
+    rmSync(d.root, { recursive: true, force: true });
+  }
+});
+
+test('run.sh: 덤프 폴더에 끊어진 링크가 가장 새 것이어도 루프는 죽지 않는다', { skip: !tools }, () => {
+  const d = dirs();
+  try {
+    symlinkSync(join(d.root, 'gone.sql.gz'), join(d.dumps, 'fairy-latest.sql.gz'));
+    run(d, { SYNC_ON_START: '0' });
+  } finally {
+    rmSync(d.root, { recursive: true, force: true });
+  }
+});
+
+test('run.sh: 2분 안에 바뀐 덤프(쓰는 중)는 건너뛰고 그다음 새 파일을 본다. 쓰는 중인 파일뿐이면 판단하지 않는다', {
+  skip: !tools,
+}, () => {
+  const d = dirs();
+  try {
+    writeFileSync(join(d.dumps, 'fairy-new.sql.gz'), 'half written');
+    gz(join(d.dumps, 'fairy-old.sql.gz'), 3);
+    run(d, { SYNC_ON_START: '0', FRESH_SEC: '120' });
+    const j = jobs(d);
+    assert.equal(j.db.state, 'ok', '쓰는 중인 파일 때문에 거짓 실패가 나지 않는다');
+    assert.match(j.db.lastOkNote ?? '', /^fairy-old\.sql\.gz/);
+    rmSync(join(d.dumps, 'fairy-old.sql.gz'));
+    rmSync(d.status, { recursive: true, force: true });
+    run(d, { SYNC_ON_START: '0', FRESH_SEC: '120' });
+    assert.equal(read(d, 'db.fail'), undefined);
+    assert.equal(read(d, 'db.ok'), undefined);
+  } finally {
+    rmSync(d.root, { recursive: true, force: true });
+  }
+});
+
+test('run.sh: 압축 검사가 시간 안에 안 끝나면 "점검 시간 초과" 로 기록하고 루프는 계속', {
+  skip: !(tools && have('timeout')),
+}, () => {
+  const d = dirs();
+  try {
+    gz(join(d.dumps, 'fairy-1.sql.gz'), 3);
+    const bin = join(d.root, 'bin');
+    mkdirSync(bin);
+    writeFileSync(join(bin, 'gzip'), '#!/bin/sh\nsleep 5\n');
+    chmodSync(join(bin, 'gzip'), 0o755);
+    run(d, { SYNC_ON_START: '0', GZ_TIMEOUT: '1', PATH: `${bin}:${process.env.PATH}` });
+    assert.match(jobs(d).db.lastFailReason ?? '', /점검 시간 초과/);
   } finally {
     rmSync(d.root, { recursive: true, force: true });
   }
