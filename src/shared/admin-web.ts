@@ -14,6 +14,7 @@ export const ADMIN_WEB_PLACES = [
   'settings',
   'settings/features',
   'settings/ai',
+  // 옛 주소: 서버 웹이 settings/ai(예산, 정책, 백업 한 칸) 로 열어 준다. 할 일 카드의 백업 줄이 쓴다
   'settings/backup',
   'settings/log',
 ] as const;
