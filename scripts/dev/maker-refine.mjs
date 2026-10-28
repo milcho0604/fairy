@@ -1,5 +1,5 @@
 // 다듬기 화면의 옵트인 도구 두 개: 종이 색 지우기와 털 다듬기. 앱은 임시 데이터/HOME, JJ_NO_FOCUS, CDP 로만 조작한다.
-// npm run build && PAPER=<옅은 종이 그림> FUR=<털 있는 사진> PHOTO=<사진 배경 사진> MODELS=<모델 폴더> LANG_UNDER_TEST=ko THEME=light WIDTH=900 OUT=/tmp/maker-refine node scripts/dev/maker-refine.mjs
+// npm run build && PAPER=<옅은 종이 그림> FUR=<털 있는 사진> PHOTO=<사진 배경 사진> WHITE=<흰 바탕의 흰 몸 사진> MODELS=<모델 폴더> LANG_UNDER_TEST=ko THEME=light WIDTH=900 OUT=/tmp/maker-refine node scripts/dev/maker-refine.mjs
 //   MODELS 폴더에 isnet-general-use.onnx(사진 모델)가 있어야 한다. 받는 것은 하지 않는다(진짜 네트워크를 쓰지 않는다).
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -13,8 +13,8 @@ import electron from 'electron';
 const lang = process.env.LANG_UNDER_TEST === 'en' ? 'en' : 'ko';
 const theme = process.env.THEME === 'dark' ? 'dark' : 'light';
 const width = Number(process.env.WIDTH ?? 900);
-const { PAPER, FUR, PHOTO, MODELS } = process.env;
-assert.ok(PAPER && FUR && PHOTO && MODELS, 'PAPER, FUR, PHOTO, MODELS 가 필요하다');
+const { PAPER, FUR, PHOTO, WHITE, MODELS } = process.env;
+assert.ok(PAPER && FUR && PHOTO && WHITE && MODELS, 'PAPER, FUR, PHOTO, WHITE, MODELS 가 필요하다');
 const scratch = mkdtempSync(join(tmpdir(), 'fairy-refine-'));
 const data = join(scratch, 'data');
 const home = join(scratch, 'home');
@@ -52,8 +52,8 @@ async function until(fn, label, n = 100) {
 }
 const T =
   lang === 'ko'
-    ? { paper: '종이 색 지우기', fur: '털 다듬기', paperDone: '종이 색으로 다시 지웠어', furDone: '털 끝을 다듬었어', paperFail: '종이 색이 고르지 않아서' }
-    : { paper: 'Erase paper color', fur: 'Smooth fur', paperDone: 'Redone with the paper color', furDone: 'Fur edge smoothed', paperFail: 'The paper color is not even' };
+    ? { paper: '종이 색 지우기', fur: '털 다듬기', paperDone: '종이 색으로 다시 지웠어', furDone: '털 끝을 다듬었어', paperFail: '종이 색이 고르지 않아서', paperSimilar: '몸 색이 종이와 비슷해서', same: '더 바꿀 곳이 없어', hollow: '테두리만 남은' }
+    : { paper: 'Erase paper color', fur: 'Smooth fur', paperDone: 'Redone with the paper color', furDone: 'Fur edge smoothed', paperFail: 'The paper color is not even', paperSimilar: 'The body color is close to the paper', same: 'Nothing more to change', hollow: 'leaving just the outline' };
 let code = 0;
 try {
   await until(async () => (await fetch(`http://127.0.0.1:${process.env.JJ_INSPECT_PORT}/json/list`)).ok, 'inspector');
@@ -121,9 +121,14 @@ try {
   assert.ok(s1.kept > s0.kept * 1.3, `옅은 그림을 더 살려야 한다: ${s0.kept} -> ${s1.kept}`);
   assert.equal(s1.undoOff, false);
   assert.ok((await state()).buttons.every(Boolean), '안내가 떠도 아래 단추는 창 안');
+  assert.equal(s1.warn.includes(T.hollow), false, `종이 지우기 뒤에 속 빔 거짓 경고가 뜨면 안 된다: ${s1.warn}`);
   await m.shot(`refine-${tag}-paper-after`);
+  // 같은 도구를 또 눌러 바뀐 것이 없으면 이력에 쌓이지 않는다 (한 번 되돌리면 처음으로)
+  await click(0);
+  await settle(T.same);
   await undo();
   assert.equal((await state()).kept, s0.kept, '되돌리기는 원래 마스크로');
+  assert.equal((await state()).hint.includes(T.paperDone), false, '되돌리면 성공 문구는 사라진다');
   // 2. 털 있는 사진: 털 다듬기는 가장자리만 바꾸고(넓이 변화 5% 이내) 되돌릴 수 있다
   await back();
   await upload(FUR);
@@ -148,6 +153,17 @@ try {
   assert.equal(s1.kept, s0.kept, '못 지웠으면 그대로');
   assert.equal(s1.undoOff, true, '바뀐 게 없으니 되돌리기는 꺼져 있다');
   await m.shot(`refine-${tag}-paper-fail`);
+  // 4. 흰 바탕의 흰 몸: 몸을 지우지 않고 안내만
+  await back();
+  await upload(WHITE);
+  s0 = await state();
+  await click(0);
+  await settle(T.paperSimilar);
+  s1 = await state();
+  assert.equal(s1.kept, s0.kept, '흰 몸을 지우면 안 된다');
+  assert.equal(s1.undoOff, true, '바뀐 게 없으니 되돌리기는 꺼져 있다');
+  assert.equal(s1.hint.includes(T.paperDone), false);
+  await m.shot(`refine-${tag}-paper-similar`);
   console.log('ok', tag);
 } catch (err) {
   console.error(err);

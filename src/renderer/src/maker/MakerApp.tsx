@@ -33,7 +33,7 @@ import {
   stroke,
   trimHalo,
 } from '../../../shared/mask.ts';
-import { furRefine, paperCut } from '../../../shared/mask-refine.ts';
+import { furRefine, paperCutChecked, sameMask } from '../../../shared/mask-refine.ts';
 import type { Blueprint } from '../../../shared/pet3d/blueprint.ts';
 import { cleanWish, WISH_MAX } from '../../../shared/pet3d/prompt.ts';
 import { canStand, standingBlueprint } from '../../../shared/pet3d/stand.ts';
@@ -2021,8 +2021,10 @@ function Editor({
   const [size, setSize] = useState(40);
   const [, setVersion] = useState(0);
   // 안내(반투명, 따로 남은 것, 잘림)는 붓질을 마칠 때와 되돌릴 때 다시 잰다 (mask.ts maskHints)
+  // 종이 색 지우기를 쓴 결과는 선만 남은 모양이라 속 빔 안내 기준을 그림용으로 둔다 (되돌려 비면 사진용으로)
+  const [paperUsed, setPaperUsed] = useState(false);
   // 그림용 모델 결과는 오목한 몸이나 캐릭터 사이 틈이 많아 속 빔 기준을 높인다 (mask.ts HOLLOW_GAIN_DRAWING)
-  const hollowAt = kind === 'illust' ? HOLLOW_GAIN_DRAWING : undefined;
+  const hollowAt = kind === 'illust' || paperUsed ? HOLLOW_GAIN_DRAWING : undefined;
   const [hints, setHints] = useState(() => maskHints(work.mask, work.w, work.h, { hollowAt }));
   const measure = useCallback(
     () => setHints(maskHints(work.mask, work.w, work.h, { hollowAt })),
@@ -2037,7 +2039,7 @@ function Editor({
   };
   // 옵트인 도구(종이 색 지우개, 털 다듬기): 돌리는 중인지, 마지막 결과 안내
   const [busy, setBusy] = useState(false);
-  const [applied, setApplied] = useState<'' | 'paper' | 'fur' | 'paperFail'>('');
+  const [applied, setApplied] = useState<'' | 'paper' | 'fur' | 'paperFail' | 'paperSimilar' | 'same'>('');
   const last = useRef<{ x: number; y: number }>(undefined);
   const raf = useRef(0);
   const pixels = useRef<ImageData>(undefined);
@@ -2087,12 +2089,18 @@ function Editor({
           .getContext('2d', { willReadFrequently: true })
           ?.getImageData(0, 0, work.w, work.h);
         if (!px) return;
-        const next =
-          kind === 'paper'
-            ? paperCut(px.data, work.mask, work.w, work.h)
-            : furRefine(px.data, work.mask, work.w, work.h);
-        if (!next) {
-          setApplied('paperFail');
+        let next: Uint8ClampedArray;
+        if (kind === 'paper') {
+          const r = paperCutChecked(px.data, work.mask, work.w, work.h);
+          if ('why' in r) {
+            setApplied(r.why === 'similar' ? 'paperSimilar' : 'paperFail');
+            return;
+          }
+          next = r.mask;
+        } else next = furRefine(px.data, work.mask, work.w, work.h);
+        // 바뀐 것이 없으면(같은 도구를 또 눌렀다) 되돌리기 이력에 넣지 않는다
+        if (sameMask(next, work.mask)) {
+          setApplied('same');
           return;
         }
         undo.current.push(work.mask.slice());
@@ -2100,7 +2108,13 @@ function Editor({
         work.mask.set(next);
         draw();
         setVersion((v) => v + 1);
-        measure();
+        // 안내는 지금 쓴 도구 기준으로 바로 잰다 (hollowAt 상태는 다음 그리기에 반영된다)
+        if (kind === 'paper') setPaperUsed(true);
+        setHints(
+          maskHints(work.mask, work.w, work.h, {
+            hollowAt: kind === 'paper' || hollowAt !== undefined ? HOLLOW_GAIN_DRAWING : undefined,
+          }),
+        );
         setApplied(kind);
       } finally {
         setBusy(false);
@@ -2126,7 +2140,8 @@ function Editor({
 
   // 반쯤 비침 안내가 있거나 따로 남은 것이 있으면 속 빔 안내는 겹치니 빼고 (바탕 띠 사이 틈도 속이 빈 것처럼 잰다)
   const hollow = hints.hollow && !hints.half && hints.others === 0;
-  const offer = suggest && kind === 'photo';
+  // 종이 색 지우기를 쓴 동안은 남은 조각이 이미 걷혀 그림용 권하기가 낡았다 (되돌리면 다시 보인다)
+  const offer = suggest && kind === 'photo' && !paperUsed;
   const notes =
     Number(offer) +
     Number(retried) +
@@ -2190,7 +2205,15 @@ function Editor({
             if (prev) work.mask.set(prev);
             draw();
             setVersion((v) => v + 1);
-            measure();
+            // 되돌리면 도구 결과 안내는 지우고, 다 되돌렸으면 속 빔 기준도 처음대로
+            const empty = undo.current.length === 0;
+            if (empty) setPaperUsed(false);
+            setApplied('');
+            setHints(
+              maskHints(work.mask, work.w, work.h, {
+                hollowAt: kind === 'illust' || (paperUsed && !empty) ? HOLLOW_GAIN_DRAWING : undefined,
+              }),
+            );
           }}
         >
           {t('maker.edit.undo')}
@@ -2219,6 +2242,8 @@ function Editor({
       {applied === 'paper' && <p className="hint">{t('maker.edit.paperDone')}</p>}
       {applied === 'fur' && <p className="hint">{t('maker.edit.furDone')}</p>}
       {applied === 'paperFail' && <p className="warn">{t('maker.edit.paperFail')}</p>}
+      {applied === 'paperSimilar' && <p className="warn">{t('maker.edit.paperSimilar')}</p>}
+      {applied === 'same' && <p className="hint">{t('maker.edit.applySame')}</p>}
       {/* 고칠 것 안내는 도구 바로 아래: 긴 설명 아래에 두면 작은 창(460x660)에서 아래 단추 줄에 가려 안 보였다 */}
       {retried && <p className="hint">{t('maker.edit.kindAuto')}</p>}
       {offer && (
@@ -2258,6 +2283,7 @@ function Editor({
             // 오른쪽, 가운데 단추로는 칠하지 않는다
             if (e.button !== 0) return;
             e.currentTarget.setPointerCapture(e.pointerId);
+            setApplied('');
             undo.current.push(work.mask.slice());
             if (undo.current.length > UNDO_LIMIT) undo.current.shift();
             last.current = undefined;

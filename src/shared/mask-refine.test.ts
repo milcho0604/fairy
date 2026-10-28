@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { furRefine, paperCut } from './mask-refine.ts';
+import { furRefine, paperCut, paperCutChecked, sameMask } from './mask-refine.ts';
 
 const W = 120;
 const H = 100;
@@ -118,4 +118,35 @@ test('paperCut: 몸이 사진 가장자리까지 닿아도(다시 오린 사진)
   assert.ok(out);
   assert.equal(at(out, 30, 50), 255);
   assert.equal(at(out, 100, 50), 0, '종이');
+});
+
+test('paperCutChecked: 몸 색이 종이와 비슷하면(흰 바탕의 흰 몸) 몸을 지우지 않고 similar', () => {
+  const { rgba, rect } = paper([238, 232, 216]);
+  rect(35, 25, 85, 75, [236, 230, 214]); // 종이와 거의 같은 몸
+  const cur = maskOf(35, 25, 85, 75);
+  const r = paperCutChecked(rgba, cur, W, H);
+  assert.deepEqual(r, { why: 'similar' });
+});
+
+test('paperCutChecked: 몸이 종이와 다르면 새 마스크, 종이가 고르지 않으면 uneven', () => {
+  const { rgba, rect } = paper([238, 232, 216]);
+  rect(35, 25, 85, 75, [200, 170, 140]);
+  const ok = paperCutChecked(rgba, maskOf(35, 25, 85, 75), W, H);
+  assert.ok('mask' in ok);
+  for (let x = 0; x < W; x++)
+    for (let y = 0; y < 6; y++)
+      for (let c = 0; c < 3; c++) rgba[(y * W + x) * 4 + c] = (x * 7 + c * 90) % 256;
+  for (let x = 0; x < W; x++)
+    for (let y = H - 6; y < H; y++)
+      for (let c = 0; c < 3; c++) rgba[(y * W + x) * 4 + c] = (x * 11 + c * 50) % 256;
+  assert.deepEqual(paperCutChecked(rgba, maskOf(30, 20, 90, 80), W, H), { why: 'uneven' });
+});
+
+test('sameMask: 같은 마스크만 같다', () => {
+  const a = maskOf(10, 10, 20, 20);
+  assert.equal(sameMask(a, Uint8ClampedArray.from(a)), true);
+  const b = Uint8ClampedArray.from(a);
+  b[5] = 1;
+  assert.equal(sameMask(a, b), false);
+  assert.equal(sameMask(a, a.subarray(1)), false);
 });

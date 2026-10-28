@@ -229,3 +229,37 @@ export function furRefine(
       out[i] = Math.max(0, Math.min(1, (ma[i] ?? 0) * (guide[i] ?? 0) + (mb[i] ?? 0))) * 255;
   return out;
 }
+
+/** 종이 색 지우기로 남긴 넓이가 지금의 이 비율 아래로 줄면 몸 색이 종이와 비슷해 몸을 지운 것이다 (흰 바탕의 흰 고양이, 흰 셔츠) */
+export const PAPER_KEEP_MIN = 0.5;
+
+/** 알파 128 넘는 칸 수 */
+function solidCount(mask: ArrayLike<number>): number {
+  let n = 0;
+  for (let i = 0; i < mask.length; i++) if ((mask[i] ?? 0) > 128) n++;
+  return n;
+}
+
+/**
+ * 종이 색 지우기 + 안전 확인. 종이 색이 고르지 않으면 { why: 'uneven' }, 지운 뒤 남긴 넓이가 지금의 PAPER_KEEP_MIN 아래로
+ * 줄면(몸이 종이와 같은 색이라 몸을 지움) { why: 'similar' }. 둘 다 적용하지 않는다. 아니면 새 마스크
+ */
+export function paperCutChecked(
+  rgba: ArrayLike<number>,
+  current: ArrayLike<number>,
+  w: number,
+  h: number,
+): { mask: Uint8ClampedArray } | { why: 'uneven' | 'similar' } {
+  const mask = paperCut(rgba, current, w, h);
+  if (!mask) return { why: 'uneven' };
+  const before = solidCount(current);
+  if (before > 0 && solidCount(mask) < before * PAPER_KEEP_MIN) return { why: 'similar' };
+  return { mask };
+}
+
+/** 두 마스크가 같은지 (같은 도구를 또 눌러 바뀐 것이 없을 때 되돌리기 이력에 넣지 않으려고) */
+export function sameMask(a: ArrayLike<number>, b: ArrayLike<number>): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}

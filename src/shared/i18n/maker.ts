@@ -339,6 +339,8 @@ export const ko = {
     '종이 색을 재서 옅은 선과 칠을 살려. 줄 공책이나 틀 있는 그림에서는 줄이 남을 수 있어.',
   'maker.edit.paperDone': '종이 색으로 다시 지웠어. 마음에 안 들면 되돌리기를 눌러 줘.',
   'maker.edit.paperFail': '종이 색이 고르지 않아서 못 지웠어. 사진 배경이면 지우개로 칠해 줘.',
+  'maker.edit.paperSimilar': '몸 색이 종이와 비슷해서 못 지웠어. 흰 몸은 지우개와 복원 붓으로 다듬어 줘.',
+  'maker.edit.applySame': '더 바꿀 곳이 없어.',
   'maker.edit.fur': '털 다듬기',
   'maker.edit.furHint': '사진 색을 보고 털 끝 가장자리를 다듬어. 흰 털 둘레는 옅게 번질 수 있어.',
   'maker.edit.furDone': '털 끝을 다듬었어. 마음에 안 들면 되돌리기를 눌러 줘.',
@@ -706,6 +708,9 @@ export const en: Translation<typeof ko> = {
   'maker.edit.paperDone': 'Redone with the paper color. Press Undo if you do not like it.',
   'maker.edit.paperFail':
     'The paper color is not even, so nothing was erased. For a photo background, paint with the eraser.',
+  'maker.edit.paperSimilar':
+    'The body color is close to the paper, so nothing was erased. Touch up a white body with the eraser and restore brush.',
+  'maker.edit.applySame': 'Nothing more to change.',
   'maker.edit.fur': 'Smooth fur',
   'maker.edit.furHint':
     'Uses the photo colors to refine the fur edge. Around white fur it can leave a faint haze.',
