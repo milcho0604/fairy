@@ -681,6 +681,7 @@ export function PanelApp({ kind = 'panel' }: { kind?: SurfaceKind } = {}) {
                 tabIndex={tab === tb.id ? 0 : -1}
                 title={t('panel.tabKey', { tab: t(tb.label), keys: tabShortcut(tb.id, MOD) })}
                 className={tab === tb.id ? 'on' : ''}
+                data-label={t(tb.label)}
                 onClick={() => setTab(tb.id)}
                 onKeyDown={(e) => {
                   const to = tabStepByKey(e.key, i, TABS.length);

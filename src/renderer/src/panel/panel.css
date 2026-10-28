@@ -83,13 +83,13 @@ input {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  padding: 12px 14px 8px;
+  gap: 4px;
+  padding: 12px 10px 8px 14px;
 }
 
 .panel header strong {
   flex: 1 1 0;
-  min-width: 4.2em;
+  min-width: 3em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -898,6 +898,16 @@ li.pin-end {
   background: none;
   color: var(--muted);
   cursor: pointer;
+}
+
+/* 보이지 않는 굵은 글씨 복사본으로 폭을 미리 잡아, 고른 탭(굵은 글씨)을 옮겨도 탭 폭이 흔들리지 않는다 */
+.panel .tabs button::after {
+  content: attr(data-label);
+  display: block;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  font-weight: 600;
 }
 
 .panel .tabs button.on {
@@ -1808,10 +1818,24 @@ ul.house-styles li > :last-child {
 }
 
 /* 상점 안내 */
+.shop-host {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .shop-msg {
-  /* 스크롤 칸 밖 위에 있어 아래로 내려 집을 사도 보이고, 목록을 덮지 않고 밀어 내린다 */
-  flex: none;
-  margin: 8px 14px 0;
+  /* 스크롤 칸 위쪽 바깥 고정 자리에 겹쳐 그린다(목록을 밀지 않고, 마우스는 통과). 아래로 내려 집을 사도 보인다 */
+  position: absolute;
+  top: 8px;
+  right: 14px;
+  left: 14px;
+  z-index: 2;
+  margin: 0;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
   padding: 5px 10px;
   border-radius: 8px;
   background: color-mix(in srgb, var(--ok) 14%, var(--panel));

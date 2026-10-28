@@ -116,10 +116,16 @@ export function TrashBox({ s, always }: { s: PanelState; always?: boolean }) {
                         <span className="trash-done">{t('records.trash.done')}, </span>
                       )}
                       {item.kind === 'note' && item.preview ? `${item.preview}, ` : ''}
-                      {item.kind === 'event'
-                        ? `${t('records.trash.eventWhen', { date: new Date(item.startAt).toLocaleString() })}, `
-                        : ''}
-                      {t('records.trash.left', { n: item.daysLeft })}
+                      {item.kind === 'event' && (
+                        <span className="trash-line">
+                          {t('records.trash.eventWhen', { date: new Date(item.startAt).toLocaleString() })}
+                        </span>
+                      )}
+                      {item.kind === 'event' ? (
+                        <span className="trash-line">{t('records.trash.left', { n: item.daysLeft })}</span>
+                      ) : (
+                        t('records.trash.left', { n: item.daysLeft })
+                      )}
                     </small>
                   </span>
                   <span className="trash-actions">

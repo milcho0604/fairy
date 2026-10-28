@@ -53,8 +53,8 @@ export function ShopTab({ s }: { s: PanelState }) {
   const nextHouse = HOUSE_COSTS[level];
 
   return (
-    <>
-      {/* 안내 띠는 스크롤 칸 밖 위에 둔다. 안에 두면 내려 본 목록 줄을 덮는다 */}
+    <div className="shop-host">
+      {/* 안내 띠는 스크롤 칸 위 바깥 고정 자리에 겹쳐 그린다. 목록을 밀지 않아 단추가 움직이지 않는다 */}
       {msg && (
         <p className={`shop-msg ${msg.bad ? 'bad' : ''}`} role="status">
           {msg.text}
@@ -239,7 +239,7 @@ export function ShopTab({ s }: { s: PanelState }) {
           )}
         </section>
       </div>
-    </>
+    </div>
   );
 }
 

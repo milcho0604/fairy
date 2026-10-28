@@ -67,6 +67,11 @@
   font-size: 11px;
 }
 
+/* 일정 줄: 날짜와 남은 날을 줄 나눔으로 (날짜 안의 쉼표와 겹치지 않게) */
+.trash-line {
+  display: block;
+}
+
 .trash-actions {
   display: flex;
   flex: none;
