@@ -4,6 +4,7 @@
 //   [[fail]]       바로 500 (재시도해도 500)
 //   [[cut]]        글 두 조각을 보내고 연결을 끊는다
 //   [[sse-error]]  글 한 조각 뒤 SSE error 사건 (overloaded_error)
+//   [[late]]       시작 사건 뒤 1.5초 있다가 정상 답
 //   [[slow]]       아무것도 보내지 않고 기다린다 (시간 넘김)
 //   [[refusal]]    글 한 조각 뒤 stop_reason refusal (안전 분류기 거절, Haiku 5.5 는 서버 폴백 없음)
 //
@@ -161,7 +162,9 @@ export async function startFakeAnthropic() {
         send('message_stop', { type: 'message_stop' });
         res.end();
       };
-      tick();
+      // [[late]]: 시작 사건만 보내고 1.5초 뒤에 글을 보낸다 (진행 중인 답을 만들어 서버 종료를 시험한다)
+      if (text.includes('[[late]]')) setTimeout(tick, 1500);
+      else tick();
     });
   });
   server.on('connection', (s) => {

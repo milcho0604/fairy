@@ -190,7 +190,7 @@ export class Coins {
         ...(await this.todoState(c, fam, entries, from, latest)),
         // 초기화는 기능 키 coin_reset 이 켜진 계정만 (기본 off). 초기화 기록이 있을 때만 묻는다
         resetAllowed: entries.some((e) => e.reason === 'reset' || e.reason === RESET_ITEMS)
-          ? ((await this.features?.featureAllowed('coin_reset', acct.id)) ?? false)
+          ? ((await this.features?.featureAllowed('coin_reset', acct.id, c)) ?? false)
           : false,
       };
 

@@ -172,12 +172,12 @@ export class Ai implements OnModuleInit, OnModuleDestroy {
     if (
       mode === 'allowlist' &&
       !(await this.admin.allowed(c, a.id)) &&
-      !(await this.access.isAdminAccount(a.id))
+      !(await this.access.isAdminAccount(a.id, c))
     )
       throw fail(HttpStatus.FORBIDDEN, { error: 'not_allowed' });
     if (await this.admin.blocked(c, a.id)) throw fail(HttpStatus.FORBIDDEN, { error: 'blocked' });
     // 정책 (#101): 처음이면 "매달 100장까지 채우기" 를 저절로 건다. 자리가 차면 403 waitlisted (대기 목록)
-    if ((await this.admin.ensureSeat(c, a.id, await this.access.isAdminAccount(a.id))) === 'waitlisted')
+    if ((await this.admin.ensureSeat(c, a.id, await this.access.isAdminAccount(a.id, c))) === 'waitlisted')
       throw fail(HttpStatus.FORBIDDEN, { error: 'waitlisted' });
     // 정기 지급의 이번 달 쪽지 (시간마다 도는 것보다 먼저 물었으면 여기서)
     await this.admin.fillAccount(c, a.id);
