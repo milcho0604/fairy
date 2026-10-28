@@ -364,6 +364,9 @@ header .picker {
   /* 말풍선 아래에 늘 보인다 (마우스를 올려야 나타나던 것을 키보드와 화면 읽기만 쓰는 사람도 알게) */
   align-self: flex-start;
   display: flex;
+  /* 좁거나 확대한 창에서는 단추가 다음 줄로 내려간다(말풍선 칸 밖으로 나가지 않게) */
+  flex-wrap: wrap;
+  max-width: 100%;
   gap: 2px;
   margin-left: 4px;
   padding: 1px 3px;
@@ -499,6 +502,9 @@ header .picker {
   word-break: keep-all;
   overflow-wrap: anywhere;
   user-select: text;
+  /* 긴 코드(pre)와 표는 말풍선 안에서만 가로로 스크롤한다 */
+  min-width: 0;
+  max-width: 100%;
 }
 
 .user .bubble {

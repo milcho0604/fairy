@@ -290,7 +290,7 @@ function wood(a: Art, level: number) {
     a.fence(2, 22);
     a.fence(98, 118);
     a.flower(8, 106);
-    a.chimney(28, 14, 9, 18, '#d98b6a');
+    a.chimney(28, 20, 9, 12, '#d98b6a');
     a.rect(22, 44, 76, 66, wall, 4);
     a.poly([12, 48, 60, 10, 108, 48], roof);
     shingles(a, [60, 10], 48, 12, 108);
@@ -310,7 +310,8 @@ function wood(a: Art, level: number) {
   // 5단계: 저택. 왼쪽 탑, 오른쪽 굴뚝, 문 양옆 등불
   a.fence(100, 118);
   a.flower(110, 104);
-  a.chimney(76, 12, 9, 14, '#d98b6a');
+  // 굴뚝 연기와 깃발 끝이 그림 위 가장자리(0)에 닿아 잘리지 않게 위쪽 여백을 남긴다
+  a.chimney(76, 20, 9, 11, '#d98b6a');
   a.rect(30, 48, 72, 62, wall, 4);
   a.poly([22, 52, 66, 14, 110, 52], roof);
   shingles(a, [66, 14], 52, 22, 110);
@@ -325,7 +326,7 @@ function wood(a: Art, level: number) {
   // 탑
   a.rect(6, 42, 26, 68, wall, 3);
   a.poly([2, 45, 19, 12, 36, 45], roof);
-  a.flag(19, 0, 13);
+  a.flag(19, 2, 11);
   a.roundWin(19, 58, 5);
   a.win(13, 76, 12, 15);
   a.room = { kind: 'rect', x: 32, y: 53, w: 70, h: 57, r: 4 };
@@ -357,7 +358,7 @@ function mushroom(a: Art, level: number) {
     if (level === 3) {
       a.flower(12, 104);
       babyShroom(a, 106, 100, 9);
-      a.chimney(30, 14, 8, 22, '#a7b0bd');
+      a.chimney(30, 20, 8, 16, '#a7b0bd');
     }
     a.rect(36, 62, 48, 48, stem, 8);
     a.dome(60, 66, 48, 44, cap, 8);
@@ -488,7 +489,7 @@ function igloo(a: Art, level: number) {
   };
   tower(92, 20, 62, 38);
   tower(8, 22, 46, 14);
-  a.flag(19, 0, 15, '#5aa9e6');
+  a.flag(19, 2, 13, '#5aa9e6');
   a.archWin(14, 62, 10, 14, ICE);
   a.roundWin(102, 80, 4.5, ICE);
   a.dome(62, 110, 42, 60, SNOW);
@@ -594,7 +595,7 @@ function castle(a: Art, level: number) {
   turret(a, 92, 22, 52, 26);
   a.rect(40, 30, 40, 50, STONE, 2);
   a.poly([34, 33, 60, 10, 86, 33], CONE);
-  a.flag(60, 0, 11, '#ffd166');
+  a.flag(60, 2, 9, '#ffd166');
   a.archWin(54, 40, 12, 16);
   a.rect(24, 66, 72, 44, STONE, 2);
   battlement(a, 22, 76, 58);

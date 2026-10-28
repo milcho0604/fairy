@@ -466,7 +466,7 @@ section.focus .card {
 /* 비워 둔 단축키 */
 .keys-line .none {
   font-size: 12.5px;
-  opacity: 0.6;
+  color: var(--muted);
 }
 
 .small {
@@ -973,6 +973,11 @@ textarea.rules {
     white-space: normal;
   }
 
+  /* 고른 탭은 바탕이 진해져 흐린 글(--muted)이 어두운 쪽에서 4.43 이었다 */
+  .tabs [role="tab"][aria-selected="true"] .tab-hint {
+    color: var(--ink);
+  }
+
   /* 넓은 창은 내용 폭을 읽기 좋게 묶는다 */
   main > * {
     max-width: 640px;
@@ -1416,6 +1421,27 @@ textarea.rules {
   display: flex;
   justify-content: flex-end;
   gap: 6px;
+}
+
+/* 칸이 좁으면(창이 작거나 확대) 단추 열을 값 아래 줄로 내린다. 값이 한 글자씩 세로로 쌓이지 않게 */
+.server-box {
+  container-type: inline-size;
+}
+
+@container (max-width: 420px) {
+  .server-rows {
+    grid-template-columns: max-content minmax(0, 1fr);
+  }
+
+  .server-row-action {
+    grid-column: 2;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .server-row-action:empty {
+    display: none;
+  }
 }
 
 .server-row-full {

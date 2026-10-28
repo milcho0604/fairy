@@ -124,3 +124,12 @@ test('잡는 자리: 사각형, 타원, 다각형 (pad 만큼 너그럽게)', ()
   assert.ok(!hitsAt(hits, 85, 85, 0));
   assert.ok(hitsAt(hits, 89, 89, 2), '빗변 가까이');
 });
+
+test('굴뚝 연기와 깃발 끝이 그림 위 가장자리에 닿아 잘리지 않는다 (집 5단계 위가 잘리던 것)', () => {
+  for (const [s, lv] of ALL) {
+    for (const m of houseSvg(s, lv).matchAll(/<circle cx="[-\d.]+" cy="([-\d.]+)" r="([\d.]+)"/g)) {
+      const top = Number(m[1]) - Number(m[2]);
+      assert.ok(top >= 0.5, `${s} ${lv}: 동그라미 윗끝 ${top} 이 창 위(0)에 닿는다`);
+    }
+  }
+});

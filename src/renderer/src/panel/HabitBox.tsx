@@ -189,7 +189,7 @@ function GrassBox({ habits, today }: { habits: Habit[]; today: string }) {
           className="grass"
           role="img"
           aria-label={`${t('habit.grass')}: ${t('habit.total', { n: new Set(allDays).size })}`}
-          style={{ gridTemplateColumns: `repeat(${GRASS_WEEKS}, var(--cell))` }}
+          style={{ gridTemplateColumns: `repeat(${GRASS_WEEKS}, minmax(0, 1fr))` }}
         >
           {cols.flat().map((c) => (
             <i
