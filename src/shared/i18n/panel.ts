@@ -69,6 +69,7 @@ export const ko = {
   'panel.event.needTime': '날짜나 시각을 같이 적어 줘. 예: 내일 제주도 여행, 금요일 오전 10시 반 면접',
   'panel.event.duplicate': (v: { title: string }) => `"${v.title}" 일정은 그 시각에 이미 있어.`,
   'panel.retry': '다시 해 줘.',
+  'panel.event.slotTaken': '같은 시각에 이 반복 일정이 이미 있어.',
   'panel.day.heading': (v: { y: number; m: number; d: number }) =>
     `${v.m}월 ${v.d}일 (${['일', '월', '화', '수', '목', '금', '토'][new Date(Date.UTC(v.y, v.m - 1, v.d)).getUTCDay()]})`,
   'panel.day.headingYear': (v: { y: number; m: number; d: number }) =>
@@ -316,6 +317,7 @@ export const en: Translation<typeof ko> = {
   'panel.event.needTime': 'Add a date or time too. e.g. jeju trip tomorrow, interview fri 10:30am',
   'panel.event.duplicate': (v: { title: string }) => `"${v.title}" is already on the calendar at that time.`,
   'panel.retry': 'Please try again.',
+  'panel.event.slotTaken': 'This repeating event already has an occurrence at that time.',
   'panel.day.heading': (v: { y: number; m: number; d: number }) =>
     new Intl.DateTimeFormat('en-US', {
       weekday: 'short',

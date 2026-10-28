@@ -218,7 +218,7 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
       [me, other],
     );
     const row = r.rows[0];
-    return !!row?.same && !!row.login && (await this.features.featureAllowed('friends', other));
+    return !!row?.same && !!row.login && (await this.features.featureAllowed('friends', other, c));
   }
 
   /** 상대의 기기 코드를 잠긴 계정 둘로 (내 쪽, 상대 쪽). 코드가 없으면 404 no_user, 자기 자신이면 409 self */
@@ -582,7 +582,7 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
     if (
       mode === 'allowlist' &&
       !(await this.aiAdmin.allowed(c, id)) &&
-      !(await this.access.isAdminAccount(id))
+      !(await this.access.isAdminAccount(id, c))
     )
       return false;
     return !(await this.aiAdmin.blocked(c, id));
@@ -642,8 +642,8 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
         // 이용권 선물 스위치는 보내는 사람과 받는 사람 모두 (사용자 결정 2026-10-16). 지금 이용권은 모두 운영자
         // 지급분이라 이 스위치가 운영자 지급분 선물 여부까지 맡는다. 두 사람 모두 채팅 이용권도 쓸 수 있어야 한다
         if (
-          !(await this.features.featureAllowed('friend_gift_passes', me)) ||
-          !(await this.features.featureAllowed('friend_gift_passes', other)) ||
+          !(await this.features.featureAllowed('friend_gift_passes', me, c)) ||
+          !(await this.features.featureAllowed('friend_gift_passes', other, c)) ||
           !(await this.aiUsable(c, me)) ||
           !(await this.aiUsable(c, other))
         )
@@ -932,12 +932,14 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
         ORDER BY f.created_at, a.code LIMIT ${FRIEND_MAX}`,
       [accountId],
     );
+    // 친구마다 기능 판정을 묻지 않고 한 번에 (친구 100명이면 질의 200개였다)
+    const usable = await this.features.allowedAmong(
+      ['friends', 'friend_visit'],
+      rows.rows.map((r) => r.id),
+    );
     const visitors: VisitorView[] = [];
     for (const r of rows.rows)
-      if (
-        (await this.features.featureAllowed('friends', r.id)) &&
-        (await this.features.featureAllowed('friend_visit', r.id))
-      )
+      if (usable.has(String(r.id)))
         visitors.push({
           code: r.code,
           nickname: r.nickname,
@@ -961,7 +963,7 @@ export class Friends implements OnModuleInit, OnModuleDestroy {
           WHERE f.account_id = $1 AND f.friend_id = $2 AND f.share_busy`,
         [other, me.id],
       );
-      if ((r.rowCount ?? 0) === 0 || !(await this.features.featureAllowed('friend_calendar', other)))
+      if ((r.rowCount ?? 0) === 0 || !(await this.features.featureAllowed('friend_calendar', other, c)))
         throw fail(HttpStatus.NOT_FOUND, { error: 'not_shared' });
       const rows = await c.query<{ s: string; e: string }>(
         `SELECT (extract(epoch FROM starts_at) * 1000)::bigint AS s, (extract(epoch FROM ends_at) * 1000)::bigint AS e
