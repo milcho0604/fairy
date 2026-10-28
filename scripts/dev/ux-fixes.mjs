@@ -263,6 +263,27 @@ const body = async () => {
   await sleep(350);
   check('이미 내일이면 메뉴에서 빠짐', !(await menuLabels()).includes(tx('내일로 미루기', 'Push to tomorrow')));
   await p.key('Escape', 'Escape', 27);
+  // 미래 마감과 반복 할 일에는 "내일로 미루기"가 없다
+  const futureTitle = tx('먼 마감', 'Far due');
+  const repeatTitle = tx('반복 시험', 'Repeat test');
+  await main(`__jj.store.add({ title: ${JSON.stringify(futureTitle)}, due: ${JSON.stringify(dayStr(new Date(NOW + 7 * 86_400_000)))} }, ${NOW}); __jj.store.add({ title: ${JSON.stringify(repeatTitle)}, due: ${JSON.stringify(dayStr(new Date(NOW)))}, repeat: 'daily' }, ${NOW}); __jj.panel.refresh(); 1`);
+  for (const [name, label] of [[futureTitle, '미래 마감'], [repeatTitle, '반복']]) {
+    await p.until(() => p.ev(`[...document.querySelectorAll('.todos .todo')].some((li) => li.innerText.includes(${JSON.stringify(name)}))`));
+    await p.click(`[...document.querySelectorAll('.todos .todo')].find((li) => li.innerText.includes(${JSON.stringify(name)})).querySelector('.row-more')`);
+    await sleep(350);
+    const ls = await menuLabels();
+    check(`${label} 할 일에는 "내일로 미루기"가 없음`, ls.length > 0 && !ls.includes(tx('내일로 미루기', 'Push to tomorrow')), ls.join('|'));
+    await p.key('Escape', 'Escape', 27);
+  }
+  // 휴지통 영구 삭제 확인은 걸러 보기를 바꾸면 닫힌다
+  await main(`(() => { const x = __jj.store.add({ title: ${JSON.stringify(tx('휴지통행', 'To trash'))} }, ${NOW}); __jj.store.remove(x.id, ${NOW}); __jj.panel.refresh(); return 1; })()`);
+  await p.until(() => p.ev(`!!document.querySelector('.trash-toggle')`));
+  await p.click(`document.querySelector('.trash-toggle')`);
+  await p.until(() => p.ev(`!!document.querySelector('.trash-item')`));
+  await p.click(`document.querySelector('.trash-item button.link.danger')`);
+  check('영구 삭제 확인이 뜸', await p.until(() => p.ev(`!!document.querySelector('.trash-confirm-one')`)));
+  await p.click(`document.querySelectorAll('.trash-body > .trash-actions .link')[1]`);
+  check('걸러 보기를 바꾸면 확인이 닫힘', await p.until(() => p.ev(`!document.querySelector('.trash-confirm-one')`)));
 
   // ---- 6, 7. 일정 줄: 반복 뱃지 간격, 종 단추 이름 ----
   const evTitle = tx('주간 회의', 'Weekly sync');

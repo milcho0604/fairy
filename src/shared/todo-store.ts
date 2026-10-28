@@ -3,6 +3,7 @@
 import { COIN } from './coin-rules.ts';
 import { cutText } from './cut-text.ts';
 import { plusDays, weekdayOf as weekday } from './day.ts';
+import { canDeferToTomorrow } from './due-choices.ts';
 import { clockJumped, type Db } from './db-schema.ts';
 import { FOCUS, focusReward } from './focus.ts';
 import { t } from './i18n/index.ts';
@@ -567,7 +568,7 @@ export class TodoStore {
   ): { id: number; due: string | null }[] {
     const pick = ids === undefined ? undefined : new Set(ids);
     const late = this.list(now).open.filter(
-      (todo) => todo.due !== null && todo.due <= today && !todo.repeat && (!pick || pick.has(todo.id)),
+      (todo) => todo.due !== null && canDeferToTomorrow(todo, today) && (!pick || pick.has(todo.id)),
     );
     if (late.length === 0) return [];
     this.#db.exec('begin');

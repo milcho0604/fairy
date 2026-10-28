@@ -87,7 +87,10 @@ export function TrashBox({ s, always }: { s: PanelState; always?: boolean }) {
                 type="button"
                 className="link"
                 aria-pressed={kind === k}
-                onClick={() => setKind(k)}
+                onClick={() => {
+                  setKind(k);
+                  setConfirmOne(null);
+                }}
               >
                 {t(`records.trash.${k}`)}
               </button>

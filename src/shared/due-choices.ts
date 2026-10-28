@@ -10,6 +10,14 @@ export function nextMonday(today: string): string {
   return plusDays(today, (8 - wd) % 7 || 7);
 }
 
+/**
+ * "내일로 미루기"를 보일 수 있는 할 일: 반복이 아니고, 마감이 없거나 오늘까지인 것.
+ * 미래 마감을 내일로 앞당기지 않는다 ("못 한 N개 내일로"와 같은 규칙)
+ */
+export function canDeferToTomorrow(todo: { due: string | null; repeat?: unknown }, today: string): boolean {
+  return !todo.repeat && (todo.due === null || todo.due <= today);
+}
+
 /** 메뉴에 놓을 날. 일요일은 다음 월요일이 내일이라 겹치므로 뺀다 */
 export function dueChoices(today: string): { key: DueChoiceKey; day: string }[] {
   const tomorrow = plusDays(today, 1);
