@@ -1142,11 +1142,12 @@ export function createServerCore(d: ServerCoreDeps) {
     run,
     scan,
     allowed,
-    /** 이 기기가 지금 쓰는 계정의 짧은 표식(토큰의 해시 앞부분). 계정이 바뀌었는지만 알아본다. 토큰이 없으면 undefined */
-    accountKey: (): string | undefined => {
-      const t = token();
-      return t ? createHash('sha256').update(t).digest('hex').slice(0, 16) : undefined;
-    },
+    /**
+     * 이 기기가 지금 쓰는 계정의 짧은 표식(서버가 준 계정 코드의 해시 앞부분). 계정이 바뀌어야만 바뀐다(같은 계정이 다시
+     * 로그인해도 같다). 서버가 아직 코드를 안 줬으면 undefined
+     */
+    accountKey: (): string | undefined =>
+      st.code ? createHash('sha256').update(st.code).digest('hex').slice(0, 16) : undefined,
     isAdmin,
     /** 닉네임 바꾸기 (규칙에 맞는 것만. 서버에는 지금이나 다음 맞추기 때) */
     async setNickname(

@@ -535,3 +535,20 @@ test('코인 지급 표시는 한 번만 적히고, 옛 읽은 편지는 받은 
   mail.setRead('b', null);
   assert.equal(mail.get('b')?.coinsPaidAt, 100, '안 읽음으로 돌려도 남는다');
 });
+
+test('같은 계정이 다시 로그인해 상태가 바뀌어도 서버 쪽지의 이 기기 상태(읽음, 보관, 고정)는 남는다', async () => {
+  const f = fakeCore(3);
+  const { mail, inbox } = make(f);
+  await inbox.refresh();
+  const now = Date.now();
+  mail.setRead('inbox:1', now);
+  mail.setArchived('inbox:2', now);
+  mail.setPinned('inbox:3', now);
+  inbox.sync();
+  f.state.allowed = true;
+  inbox.sync();
+  await inbox.refresh();
+  assert.equal(mail.get('inbox:1')?.readAt, now);
+  assert.equal(mail.get('inbox:2')?.archivedAt, now);
+  assert.equal(mail.get('inbox:3')?.pinnedAt, now);
+});
