@@ -5,7 +5,15 @@
 // 비상업 라이선스라 그림 세트에는 쓰지 않는다 (다른 Space 로 넘어가지 않게 spaces 를 klein 하나로 못 박는다).
 // klein Space 는 입력 그림을 갤러리로 받아 기준 그림을 넣을 수 있고, 결과 크기를 정할 수 있다 (한 변 1024 까지)
 
-import { type Rgb, type SpriteRow, STRIP_H, STRIP_W, stripPrompt } from '../shared/sprite-strip.ts';
+import {
+  linesOf,
+  type Rgb,
+  type SpriteRow,
+  STRIP_H,
+  STRIP_W,
+  sheetSize,
+  stripPrompt,
+} from '../shared/sprite-strip.ts';
 import {
   type IllustOptions,
   type IllustResult,
@@ -15,7 +23,10 @@ import {
   KLEIN,
 } from './hf-illust.ts';
 
-/** klein 으로 정한 크기의 띠를 그린다 (prompt, input_images, mode, seed, randomize_seed, width, height, steps, guidance, upsampling) */
+/**
+ * klein 으로 정한 크기의 띠(여러 줄 시트면 줄 수만큼 높은 그림. 한 번 호출로 받는다)를 그린다
+ * (prompt, input_images, mode, seed, randomize_seed, width, height, steps, guidance, upsampling)
+ */
 export function stripSpace(w = STRIP_W, h = STRIP_H): IllustSpace {
   return {
     id: KLEIN.id,
@@ -36,8 +47,9 @@ export function stripSpace(w = STRIP_W, h = STRIP_H): IllustSpace {
   };
 }
 
-/** 띠 하나 그리는 상한. klein 은 4단계라 보통 30초 안팎, 줄이 길면 더 */
+/** 띠 하나 그리는 상한. klein 은 4단계라 보통 30초 안팎, 줄이 길면 더 (여러 줄 시트는 줄마다 1분씩 더) */
 export const STRIP_TIMEOUT_MS = 3 * 60_000;
+export const stripTimeoutMs = (row: SpriteRow): number => STRIP_TIMEOUT_MS + (linesOf(row) - 1) * 60_000;
 
 /**
  * 기준 그림(PNG, 배경색 위에 놓은 지금 페어리 그림)과 동작 하나로 띠 한 장을 받는다.
@@ -49,10 +61,11 @@ export function drawStrip(
   key: Rgb,
   opt: Omit<IllustOptions, 'spaces'>,
 ): Promise<IllustResult> {
+  const size = sheetSize(row);
   return illustrate(reference, 'image/png', stripPrompt(row, key), {
-    timeoutMs: STRIP_TIMEOUT_MS,
+    timeoutMs: stripTimeoutMs(row),
     ...opt,
-    spaces: [stripSpace()],
+    spaces: [stripSpace(size.w, size.h)],
   });
 }
 
@@ -61,6 +74,8 @@ export function drawStrip(
  * 넓이가 1/3 인 띠(1024x256, 단색 배경)에는 너무 크다. 넓이만큼 줄인다 (거의 한 색인 판은 몇 KB 라 여전히 걸린다)
  */
 export const STRIP_MIN_BYTES = Math.round((40 * 1024 * STRIP_W * STRIP_H) / (768 * 1024));
+/** 여러 줄 시트는 넓이가 줄 수만큼 크니 하한도 그만큼 */
+export const stripMinBytes = (row: SpriteRow): number => STRIP_MIN_BYTES * linesOf(row);
 
 /** 내 컴퓨터에서 그리는 함수 (local-draw.ts illustrateLocal 과 같은 모양). 시험은 가짜를 넣는다 */
 export type LocalStripDraw = (
@@ -92,6 +107,6 @@ export function drawStripLocal(
 ): Promise<{ bytes: Uint8Array; kind: ImageKind }> {
   return draw(reference, 'png', stripPrompt(row, key), {
     ...o,
-    size: { width: STRIP_W, height: STRIP_H, minBytes: STRIP_MIN_BYTES },
+    size: { width: sheetSize(row).w, height: sheetSize(row).h, minBytes: stripMinBytes(row) },
   });
 }

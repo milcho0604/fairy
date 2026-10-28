@@ -22,11 +22,13 @@ import {
   ART_SIDE,
   blobCurves,
   CUTE_GEOM,
+  CUTE_WALK_FRAMES,
   type CuteGeom,
   type CutePose,
   cuteEyes,
   cutePose,
   isCuteKind,
+  sheetEyes,
 } from './cute2d.ts';
 import { cuteArt, loadCuteArt } from './cute2d-art.ts';
 import { drawMagnifier } from './magnifier.ts';
@@ -104,7 +106,7 @@ export interface DrawState {
    * 가져온 페어리의 2D 그림 세트 (shared/pet-sprites.ts, sprite-geom.ts). 있으면 사진 대신 기본 페어리처럼
    * 자세 그림을 바꿔 그린다 (빠진 자세는 가까운 그림으로 채운 것)
    */
-  sprites?: { pics: Record<CutePose, CanvasImageSource>; geom: CuteGeom };
+  sprites?: { pics: Record<CutePose, CanvasImageSource>; geom: CuteGeom; walks?: number };
   /** photo 가 옆모습 걷기 그림이면 가는 방향 (그림은 오른쪽을 본다). 기울이지 않고 방향대로 뒤집는다 */
   photoWalk?: -1 | 1;
   /** 사진 속 눈 자리 (밀크, 초코). 있으면 잠, 졸음, 깜빡임에 사진 눈을 감긴다 (photo-eyes.ts). 2.5D 판도 쓴다 */
@@ -547,7 +549,10 @@ function drawPetBody(ctx: CanvasRenderingContext2D, s: DrawState): Point | undef
   if (s.cushion && (act?.type === 'sit' || s.mood === 'sleeping' || s.mood === 'dozing')) drawCushion(ctx);
 
   // 가져온 페어리의 2D 그림 세트 (sprite-geom.ts): 기본 페어리 손그림과 같은 길로 자세마다 그림을 바꾼다
-  if (s.sprites) return drawCute(ctx, s, s.sprites.geom, s.sprites.pics, act, lift, sx, sy, mv);
+  if (s.sprites)
+    return drawCute(ctx, s, s.sprites.geom, s.sprites.pics, act, lift, sx, sy, mv, {
+      walks: s.sprites.walks,
+    });
   if (s.photo) {
     const top = drawPhoto(ctx, s, s.photo, lift, sx, sy, act);
     const ball = drawCarry(ctx, s.carry, guessMouth(top, GROUND - lift));
@@ -1625,6 +1630,8 @@ function drawCute(
   sx: number,
   sy: number,
   mv: MovePose | undefined,
+  /** 가져온 그림 세트일 때: 걷기 한 주기 장 수(모르면 기본 여섯)와 위, 아래 시선을 쓴다. 기본 손그림은 없음 */
+  sheet?: { walks?: number },
 ): Point | undefined {
   const trick = trickOf(s);
   // 얼굴 아이콘은 서 있는 머리 (집 안 침대의 자는 얼굴은 눈 감은 졸기 머리)
@@ -1633,9 +1640,18 @@ function drawCute(
         pose: s.mood === 'sleeping' || s.mood === 'dozing' ? ('doze' as const) : ('idle' as const),
         flip: false,
       }
-    : cutePose({ mood: s.mood, elapsed: s.elapsed, hungry: s.hungry, stage: sulkStage(s), act, trick });
+    : cutePose(
+        { mood: s.mood, elapsed: s.elapsed, hungry: s.hungry, stage: sulkStage(s), act, trick },
+        sheet ? Math.max(1, sheet.walks ?? CUTE_WALK_FRAMES) : undefined,
+      );
   // 서기 그림은 깜빡이고 커서 쪽을 본다 (얼굴 아이콘은 뜬 눈 정면 그대로)
-  const pick = s.face ? posed : { ...posed, pose: cuteEyes(posed.pose, s.blink, gazeOf(s, act)?.x) };
+  const gaze = gazeOf(s, act);
+  const pick = s.face
+    ? posed
+    : {
+        ...posed,
+        pose: sheet ? sheetEyes(posed.pose, s.blink, gaze) : cuteEyes(posed.pose, s.blink, gaze?.x),
+      };
   // 그림 속 몸이 이미 걷고 앉아 있으니 코드 그림의 걸음 들썩임과 앉기 눌림은 빼고, 지침 처짐만 남긴다
   if (act?.type === 'walk' || act?.type === 'sit' || pick.pose === 'back') {
     const tired = droop(s, act);

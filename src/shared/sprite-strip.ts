@@ -8,6 +8,8 @@
 //   4. 칸 자르기 (빈 세로줄로 나누고, 안 되면 똑같이 나눈다)
 //   5. 자동 검사 (빈 칸, 잘림, 배경색 남음, 칸끼리 크기 튐, 칸 수)
 // 를 하고, 모든 동작이 끝나면 assembleSprites 가 한 배율, 한 바닥선으로 같은 크기 캔버스에 놓는다.
+// 칸이 네 개보다 많은 동작(서기 8칸, 걷기 8칸)은 호출을 늘리지 않고 한 번에 줄 수만 늘린다: 한 줄 네 칸 x 두 줄 시트(1024x512)를
+// 한 번 받아 줄마다 위 흐름으로 처리한다 (SpriteRow.lines. 무료 횟수는 호출 수로 세므로 동작 5개 = 호출 5번 그대로).
 // 방식은 OpenAI hatch-pet 스킬(기준 그림 하나, 동작마다 가로 띠, 크로마키, 자동 검사, 실패한 줄만 다시)을 참고했고 코드는 따로 썼다
 
 import { markCorner } from './gemini.ts';
@@ -31,7 +33,13 @@ export interface SpriteRow {
   frames: readonly string[];
   /** 옆모습인지 (걷기). 요청문에서 방향을 못 박는다 */
   side?: boolean;
+  /** 한 번에 받는 그림의 줄 수 (한 줄 SHEET_COLS 칸). 없으면 1 */
+  lines?: number;
 }
+
+/** 한 줄 칸 수 (칸 하나가 256 정사각형) */
+export const SHEET_COLS = 4;
+export const linesOf = (row: SpriteRow): number => row.lines ?? 1;
 
 export type SpriteRowId = 'stand' | 'walk' | 'rest' | 'feel' | 'talk';
 
@@ -42,23 +50,33 @@ export type SpriteRowId = 'stand' | 'walk' | 'rest' | 'feel' | 'talk';
 export const SPRITE_ROWS: readonly SpriteRow[] = [
   {
     id: 'stand',
-    names: ['idle', 'blink', 'look-l', 'look-r'],
+    lines: 2,
+    names: ['idle', 'blink', 'look-l', 'look-r', 'look-u', 'look-d', 'look-ul', 'look-ur'],
     frames: [
       'standing, facing the viewer, eyes open',
       'the same standing pose with both eyes closed (blink)',
       'the same standing pose, head and eyes turned to the left side of the image',
       'the same standing pose, head and eyes turned to the right side of the image',
+      'the same standing pose, head and eyes tilted up, looking at the sky',
+      'the same standing pose, head and eyes tilted down, looking at the ground',
+      'the same standing pose, head and eyes turned up and to the left side of the image',
+      'the same standing pose, head and eyes turned up and to the right side of the image',
     ],
   },
   {
     id: 'walk',
-    names: ['walk-0', 'walk-1', 'walk-2', 'walk-3'],
+    lines: 2,
+    names: ['walk-0', 'walk-1', 'walk-2', 'walk-3', 'walk-4', 'walk-5', 'walk-6', 'walk-7'],
     side: true,
     frames: [
-      'walking, side view facing right, front leg reaching forward',
-      'walking, side view facing right, legs passing under the body',
-      'walking, side view facing right, other front leg reaching forward',
-      'walking, side view facing right, legs passing under the body again',
+      'walking, side view facing right, front leg reaching forward, back leg pushing off behind',
+      'walking, side view facing right, front leg landing, body slightly lower',
+      'walking, side view facing right, legs passing under the body, body slightly raised',
+      'walking, side view facing right, other front leg lifting forward',
+      'walking, side view facing right, other front leg reaching forward, other back leg pushing off behind',
+      'walking, side view facing right, other front leg landing, body slightly lower',
+      'walking, side view facing right, legs passing under the body again, body slightly raised',
+      'walking, side view facing right, first front leg lifting forward again',
     ],
   },
   {
@@ -99,6 +117,11 @@ export const isRowId = (v: unknown): v is SpriteRowId => SPRITE_ROWS.some((r) =>
 /** 띠 한 장 크기. klein 은 한 변 1024 까지, 16 의 배수라 네 칸이면 칸 하나가 256 정사각형 */
 export const STRIP_W = 1024;
 export const STRIP_H = 256;
+/** 동작 하나로 받는 그림 크기 (줄 수만큼 높아진다. 한 변 1024 안이면 klein 이 그린다) */
+export const sheetSize = (row: SpriteRow): { w: number; h: number } => ({
+  w: STRIP_W,
+  h: STRIP_H * linesOf(row),
+});
 /** 다 만든 그림 한 장 크기. 펫 캔버스(160)의 두 배라 레티나에서도 또렷하고, 스무 장이 4MB 상한 안에 든다 */
 export const SPRITE_SIDE = 320;
 /** 캔버스 아래 여백 (바닥선 = SPRITE_SIDE - FOOT_PAD) */
@@ -504,6 +527,43 @@ function keyStats(img: Rgba, key: Rgb): { opaque: number; keyish: number } {
  * 배경색을 못 재면(단색 배경이 아님) 모든 칸이 key 실패
  */
 export function processStrip(strip: Rgba, row: SpriteRow, asked: Rgb): StripResult {
+  const lines = linesOf(row);
+  if (lines === 1) return processLine(strip, row, asked, true);
+  // 여러 줄 시트: 같은 높이로 줄을 나눠 한 줄씩 위와 같이 처리하고(칸 수는 줄마다 SHEET_COLS), 크기 튐은 시트 전체로 다시 잰다
+  const bandH = Math.floor(strip.height / lines);
+  const parts: StripResult[] = [];
+  for (let l = 0; l < lines; l++) {
+    const at = l * SHEET_COLS;
+    const sub: SpriteRow = {
+      id: row.id,
+      names: row.names.slice(at, at + SHEET_COLS),
+      frames: row.frames.slice(at, at + SHEET_COLS),
+      ...(row.side ? { side: true } : {}),
+    };
+    parts.push(processLine(crop(strip, 0, l * bandH, strip.width, bandH), sub, asked, false));
+  }
+  const frames = parts.flatMap((p) => p.frames);
+  markJumps(frames);
+  const issues = [...new Set(frames.flatMap((f) => f.issues))];
+  return { frames, issues, key: parts[0]?.key ?? asked };
+}
+
+/** 칸끼리 키(높이) 비교 (빈 칸은 빼고). 가운뎃값에서 JUMP_RATIO 넘게 벗어난 칸에 jump */
+function markJumps(frames: StripFrame[]) {
+  const heights = frames
+    .filter((f) => f.box && !f.issues.includes('empty'))
+    .map((f) => (f.box?.bottom ?? 0) - (f.box?.top ?? 0));
+  if (heights.length > 1 && Math.max(...heights) / Math.max(1, Math.min(...heights)) > JUMP_RATIO) {
+    const mid = [...heights].sort((a, b) => a - b)[heights.length >> 1] ?? 0;
+    for (const f of frames) {
+      const h = (f.box?.bottom ?? 0) - (f.box?.top ?? 0);
+      if (f.box && Math.max(h, mid) / Math.max(1, Math.min(h, mid)) > JUMP_RATIO) f.issues.push('jump');
+    }
+  }
+}
+
+/** 한 줄 띠 처리. jumps 가 거짓이면 크기 튐은 부르는 쪽이 시트 전체로 잰다 */
+function processLine(strip: Rgba, row: SpriteRow, asked: Rgb, jumps: boolean): StripResult {
   const n = row.names.length;
   const key = measureKey(strip, asked);
   const keyed = dropSpecks(chromaKey(strip, key ?? asked));
@@ -529,16 +589,7 @@ export function processStrip(strip: Rgba, row: SpriteRow, asked: Rgb): StripResu
     return { name, img, ...(box ? { box } : {}), issues };
   });
   // 칸끼리 키 비교 (빈 칸은 빼고)
-  const heights = frames
-    .filter((f) => f.box && !f.issues.includes('empty'))
-    .map((f) => (f.box?.bottom ?? 0) - (f.box?.top ?? 0));
-  if (heights.length > 1 && Math.max(...heights) / Math.max(1, Math.min(...heights)) > JUMP_RATIO) {
-    const mid = [...heights].sort((a, b) => a - b)[heights.length >> 1] ?? 0;
-    for (const f of frames) {
-      const h = (f.box?.bottom ?? 0) - (f.box?.top ?? 0);
-      if (f.box && Math.max(h, mid) / Math.max(1, Math.min(h, mid)) > JUMP_RATIO) f.issues.push('jump');
-    }
-  }
+  if (jumps) markJumps(frames);
   // 캐릭터 덩어리 수가 칸 수보다 적으면(그림을 덜 그림) 똑같이 나눈 칸 하나가 비어 empty 로 잡힌다. 많으면 even 경계라 clipped
   if (even && frames.every((f) => f.issues.length === 0) && countBlobs(keyed) !== n)
     for (const f of frames) f.issues.push('count');
@@ -643,11 +694,22 @@ export function assembleSprites(
 /** 띠 요청문 (영어: 그림 모델이 영어를 가장 잘 따른다). 모습 고정, 칸 배치, 배경색, 금지할 것 */
 export function stripPrompt(row: SpriteRow, key: Rgb): string {
   const n = row.names.length;
-  const list = row.frames.map((f, i) => `${i + 1}) ${f}`).join('; ');
+  const lines = linesOf(row);
+  const listFrames = (from: number, to: number) =>
+    row.frames
+      .slice(from, to)
+      .map((f, i) => `${from + i + 1}) ${f}`)
+      .join('; ');
+  const layout =
+    lines === 1
+      ? `A sprite strip: one horizontal row of exactly ${n} separate full-body drawings of the SAME character from the reference image, ` +
+        `evenly spaced left to right in ${n} equal square slots, each drawing centered in its slot with empty space around it, ` +
+        `nothing touching the edges or the other drawings. Frames: ${listFrames(0, n)}. `
+      : `A sprite sheet: a grid of exactly ${lines} horizontal rows with exactly ${SHEET_COLS} columns, ${n} separate full-body drawings of the SAME character from the reference image in equal square slots, ` +
+        'read left to right, top to bottom, each drawing centered in its slot with empty space around it, ' +
+        `nothing touching the edges, the slot borders or the other drawings. ${Array.from({ length: lines }, (_, l) => `Row ${l + 1}: ${listFrames(l * SHEET_COLS, (l + 1) * SHEET_COLS)}.`).join(' ')} `;
   return (
-    `A sprite strip: one horizontal row of exactly ${n} separate full-body drawings of the SAME character from the reference image, ` +
-    `evenly spaced left to right in ${n} equal square slots, each drawing centered in its slot with empty space around it, ` +
-    `nothing touching the edges or the other drawings. Frames: ${list}. ` +
+    layout +
     'Keep the identity locked to the reference: same face, eye color, markings, fur and colors, proportions and art style; ' +
     'do not add clothes or props. All drawings the same size. ' +
     `Background: one flat solid pure ${keyHex(key)} color everywhere, no gradient, no floor, no shadow, ` +
@@ -663,8 +725,11 @@ export function geminiStripPrompt(row: SpriteRow, key: Rgb): string {
   return (
     'Generate an image. The attached picture is the reference character. ' +
     stripPrompt(row, key) +
-    ' Make the whole image one wide banner, about 4 times wider than tall (for example 2048x512), ' +
-    `with the ${row.names.length} drawings side by side in a single row.`
+    (linesOf(row) === 1
+      ? ' Make the whole image one wide banner, about 4 times wider than tall (for example 2048x512), ' +
+        `with the ${row.names.length} drawings side by side in a single row.`
+      : ` Make the whole image one wide sheet, about ${4 / linesOf(row)} times wider than tall (for example 2048x${512 * linesOf(row)}), ` +
+        `with the ${row.names.length} drawings in ${linesOf(row)} rows of ${SHEET_COLS}.`)
   );
 }
 
@@ -699,7 +764,7 @@ function clearEdgeFrac(img: Rgba): number {
 }
 
 /**
- * 크기나 비율이 다른 그림(Gemini 앱에서 받은 그림)을 1024x256 띠로 맞춘다. 순서:
+ * 크기나 비율이 다른 그림(Gemini 앱에서 받은 그림)을 1024x256 띠(여러 줄 시트면 줄 수만큼 높은 1024x512 등)로 맞춘다. 순서:
  *   1. 투명 PNG 면 요청한 배경색 위에 놓는다 (가장자리 절반 넘게 투명할 때). Gemini 반짝이 표시는 덮는다
  *   2. 가장자리로 배경색을 잰다 (measureKey). 단색이 아니면 key
  *   3. 배경색과 먼 화소가 든 상자를 찾는다. 없으면 empty, 상자가 2:1 보다 좁으면 shape
@@ -707,7 +772,12 @@ function clearEdgeFrac(img: Rgba): number {
  *      그림 끝에 닿은 캐릭터는 그 쪽 여백 없이 닿은 채로 둔다
  * 그 뒤 자르기, 배경 지우기, 검사는 processStrip 이 서버 띠와 똑같이 한다
  */
-export function fitStrip(img: Rgba, asked: Rgb): { ok: true; img: Rgba } | { ok: false; why: FitWhy } {
+export function fitStrip(
+  img: Rgba,
+  asked: Rgb,
+  lines = 1,
+): { ok: true; img: Rgba } | { ok: false; why: FitWhy } {
+  const sheetH = STRIP_H * lines;
   const src =
     clearEdgeFrac(img) > 0.5 ? onKey(img, asked) : { ...img, data: new Uint8ClampedArray(img.data) };
   // Gemini 무료 그림의 오른쪽 아래 반짝이 표시는 둘레 바탕색으로 덮는다 (남기면 상자가 구석까지 늘어난다)
@@ -738,15 +808,15 @@ export function fitStrip(img: Rgba, asked: Rgb): { ok: true; img: Rgba } | { ok:
   const bottom = last(rows) + 1;
   const bw = right - left;
   const bh = bottom - top;
-  if (bw / Math.max(1, bh) < FIT_MIN_RATIO) return { ok: false, why: 'shape' };
+  if (bw / Math.max(1, bh) < FIT_MIN_RATIO / lines) return { ok: false, why: 'shape' };
   const m = Math.round(bh * FIT_MARGIN);
   const x0 = Math.max(0, left - m);
   const y0 = Math.max(0, top - m);
   const part = crop(src, x0, y0, Math.min(w, right + m) - x0, Math.min(h, bottom + m) - y0);
   const cw = part.width;
   const ch = part.height;
-  const W = cw / ch < STRIP_W / STRIP_H ? Math.round((ch * STRIP_W) / STRIP_H) : cw;
-  const H = cw / ch < STRIP_W / STRIP_H ? ch : Math.round((cw * STRIP_H) / STRIP_W);
+  const W = cw / ch < STRIP_W / sheetH ? Math.round((ch * STRIP_W) / sheetH) : cw;
+  const H = cw / ch < STRIP_W / sheetH ? ch : Math.round((cw * sheetH) / STRIP_W);
   const canvas: Rgba = { width: W, height: H, data: new Uint8ClampedArray(W * H * 4) };
   for (let i = 0; i < canvas.data.length; i += 4) {
     canvas.data[i] = key[0];
@@ -758,7 +828,7 @@ export function fitStrip(img: Rgba, asked: Rgb): { ok: true; img: Rgba } | { ok:
   const place = (room: number, startTouch: boolean, endTouch: boolean) =>
     startTouch && !endTouch ? 0 : endTouch && !startTouch ? room : Math.round(room / 2);
   paste(canvas, part, place(W - cw, left === 0, right === w), place(H - ch, top === 0, bottom === h));
-  return { ok: true, img: resize(canvas, STRIP_W, STRIP_H) };
+  return { ok: true, img: resize(canvas, STRIP_W, sheetH) };
 }
 
 /** 기준 그림을 배경색 위에 놓는다 (Space 에 넣을 그림. 투명 PNG 를 넣으면 배경을 제멋대로 칠했다) */
@@ -800,11 +870,32 @@ export const stopsQueue = (kind: string, engine: 'cloud' | 'local' = 'cloud'): b
 /** 서버 무료 횟수가 끝난 실패 (남은 동작을 내 컴퓨터나 Gemini 로 이어 가자고 권한다) */
 export const isQuotaKind = (kind: string): boolean => kind === 'quota' || kind === 'refused';
 
+/**
+ * 여러 줄 시트(서기, 걷기)가 검사에 걸렸을 때 쓸 수 있는 줄만 건진다. 무료 횟수는 호출 수로 세어서 일부 줄이 틀렸다고 호출을 버리면
+ * 아깝다. 건지는 규칙: 첫 줄(서기면 서기, 깜빡임, 옆 시선 / 걷기면 walk-0~3, 네 장 한 주기)이 온전해야 하고,
+ * 문제 없는 줄만 남긴다 (문제 있는 줄은 이름이 겹치지 않게 통째로 뺀다). 첫 줄이 틀렸거나 모두 온전하면(건질 것 없음) undefined.
+ * 크기 튐(jump)은 시트 전체로 쟀으니 줄 안 칸에 jump 가 있으면 그 줄은 빼는 쪽이다
+ */
+export function salvageSheet(
+  result: StripResult,
+  row: SpriteRow,
+): { frames: StripFrame[]; dropped: number } | undefined {
+  const lines = linesOf(row);
+  if (lines < 2 || result.issues.length === 0) return undefined;
+  const bands = Array.from({ length: lines }, (_, l) =>
+    result.frames.slice(l * SHEET_COLS, (l + 1) * SHEET_COLS),
+  );
+  const good = bands.map((b) => b.length > 0 && b.every((f) => f.issues.length === 0));
+  if (!good[0] || good.every(Boolean)) return undefined;
+  const frames = bands.filter((_, l) => good[l]).flat();
+  return { frames, dropped: result.frames.length - frames.length };
+}
+
 /** 동작 하나의 상태 (창이 보이는 것) */
 export type RowState =
   | { s: 'wait' }
   | { s: 'run' }
-  | { s: 'ok'; frames: StripFrame[] }
+  | { s: 'ok'; frames: StripFrame[] /** 줄 일부만 쓴 경우 뺀 칸 수 (salvageSheet) */; dropped?: number }
   | { s: 'bad'; issues: FrameIssue[] }
   | { s: 'fail'; error: string };
 

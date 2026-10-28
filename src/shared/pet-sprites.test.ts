@@ -18,10 +18,13 @@ import {
   cleanSpriteFiles,
   fillSprites,
   type PetSprites,
+  SPRITE_BASE_NAMES,
+  SPRITE_EXTRA_NAMES,
   SPRITE_MAX_BYTES,
   SPRITE_NAMES,
   SPRITES_MAX_BYTES,
   spriteFiles,
+  walkCount,
 } from './pet-sprites.ts';
 
 /** PNG 조각 하나 (CRC 는 앱이 보지 않아 0) */
@@ -69,7 +72,9 @@ const decoded = (p: SharedPet) => {
 };
 
 test('그림 이름은 기본 페어리 손그림 자세(CUTE_POSES)와 같다', () => {
-  assert.deepEqual([...SPRITE_NAMES], [...CUTE_POSES]);
+  assert.deepEqual([...SPRITE_BASE_NAMES], [...CUTE_POSES]);
+  // 그림 세트만 갖는 추가 자세가 그 뒤에 붙는다
+  assert.deepEqual([...SPRITE_NAMES], [...SPRITE_BASE_NAMES, ...SPRITE_EXTRA_NAMES]);
 });
 
 test('형식 왕복: 그림 세트가 이름 그대로 오가고, 판은 2 그대로다', () => {
@@ -218,10 +223,36 @@ test('빠진 자세 채우기: 가까운 그림, 걷기는 있는 장 수로 한
   assert.equal(full['look-l'], 'i');
   assert.equal(full.sit, 'i');
   assert.deepEqual(
-    ['walk-0', 'walk-1', 'walk-2', 'walk-3', 'walk-4', 'walk-5'].map((k) => full[k as 'walk-0']),
-    ['w0', 'w1', 'w2', 'w0', 'w1', 'w2'],
+    ['walk-0', 'walk-1', 'walk-2', 'walk-3', 'walk-4', 'walk-5', 'walk-6', 'walk-7'].map(
+      (k) => full[k as 'walk-0'],
+    ),
+    ['w0', 'w1', 'w2', 'w0', 'w1', 'w2', 'w0', 'w1'],
   );
   // 걷기가 없으면 서기로 선다
   assert.equal(fillSprites({ idle: 'i' })?.['walk-3'], 'i');
   assert.equal(Object.keys(fillSprites({ idle: 'i' }) ?? {}).length, SPRITE_NAMES.length);
+});
+
+test('걷기 여덟 장 한 주기와 walkCount (이어진 장 수, 최대 여덟)', () => {
+  const eight = Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`walk-${i}`, `w${i}`]));
+  const full = fillSprites({ idle: 'i', ...eight });
+  assert.ok(full);
+  for (let i = 0; i < 8; i++) assert.equal(full[`walk-${i}` as 'walk-0'], `w${i}`);
+  assert.equal(walkCount({ idle: 1, 'walk-0': 1, 'walk-1': 1 }), 2);
+  assert.equal(walkCount({ idle: 1, 'walk-1': 1 }), 0, '걷기는 walk-0 부터 이어져야 센다');
+  assert.equal(walkCount({ ...eight }), 8);
+  assert.equal(walkCount({ idle: 1 }), 0);
+});
+
+test('시선: 위, 아래, 대각선은 없으면 같은 쪽 옆 시선이나 위 시선, 끝은 서기', () => {
+  const some = fillSprites({ idle: 'i', 'look-l': 'L', 'look-r': 'R' });
+  assert.equal(some?.['look-ul'], 'L');
+  assert.equal(some?.['look-ur'], 'R');
+  assert.equal(some?.['look-u'], 'i');
+  assert.equal(some?.['look-d'], 'i');
+  const up = fillSprites({ idle: 'i', 'look-u': 'U' });
+  assert.equal(up?.['look-ul'], 'U');
+  assert.equal(up?.['look-ur'], 'U');
+  const own = fillSprites({ idle: 'i', 'look-l': 'L', 'look-ul': 'UL' });
+  assert.equal(own?.['look-ul'], 'UL');
 });

@@ -301,7 +301,7 @@ export interface CutePick {
  * 지금 상태에 맞는 손그림 자세. 그림이 없는 상태는 가장 가까운 그림으로 (보고 표: 생각 중, 바쁨은 서기, 기지개와 빙글 춤은
  * 기쁨, 두리번과 제자리 몸짓은 서기 그림에 몸 전체 움직임만). 숨김은 그리지 않는다 (draw.ts 가 먼저 돌아간다)
  */
-export function cutePose(s: CuteInput): CutePick {
+export function cutePose(s: CuteInput, walkFrames = CUTE_WALK_FRAMES): CutePick {
   const act = s.act;
   const still = (pose: CutePose): CutePick => ({ pose, flip: false });
   switch (s.mood) {
@@ -330,7 +330,7 @@ export function cutePose(s: CuteInput): CutePick {
   if (act?.type === 'walk' && 'phase' in act) {
     // 집 문으로 들어갈 때는 등, 나올 때는 정면 걷기
     if (act.facing === 'away') return still('back');
-    const i = walkFrameIndex(act.steps ?? act.phase * 2, CUTE_WALK_FRAMES);
+    const i = walkFrameIndex(act.steps ?? act.phase * 2, walkFrames);
     return { pose: `walk-${i}` as CutePose, flip: act.dir < 0 };
   }
   if (s.mood === 'sulky') return still('sulky');
@@ -348,6 +348,8 @@ export function cutePose(s: CuteInput): CutePick {
 
 /** 커서가 이만큼 옆(gazeOf 의 x, -1~1)이면 눈동자를 그쪽으로 옮긴 그림 */
 export const LOOK_SIDE = 0.35;
+/** 그림 세트: 커서가 이만큼 위나 아래(gazeOf 의 y, 아래가 +)면 그쪽을 보는 그림 */
+export const LOOK_UPDOWN = 0.35;
 
 /**
  * 서기 그림의 눈: 깜빡이는 중이면 감은 눈, 아니면 커서 쪽을 보는 눈 (예전 2D 펫처럼: 깜빡임은 pet.ts 가 주는 blink 0~1,
@@ -359,5 +361,26 @@ export function cuteEyes(pose: CutePose, blink: number, gazeX: number | undefine
   if (blink > 0.15 && blink < 0.85) return 'blink';
   if (gazeX !== undefined && gazeX <= -LOOK_SIDE) return 'look-l';
   if (gazeX !== undefined && gazeX >= LOOK_SIDE) return 'look-r';
+  return pose;
+}
+
+/**
+ * 가져온 그림 세트의 서기 눈 (cuteEyes 에 위, 아래, 위쪽 대각선을 더한 것). 깜빡임이 먼저, 커서가 위쪽이면 look-u(옆으로도 치우쳤으면
+ * look-ul, look-ur), 아래쪽이면 look-d, 옆뿐이면 look-l, look-r. 아래쪽 대각선은 옆 그림으로 (그림 세트에 없다).
+ * 그림 세트의 그림은 pet-sprites.ts SPRITE_NAMES 전부 있다(없는 자세는 fillSprites 가 채움). 기본 손그림에는 이 자세가 없어
+ * 기본 손그림에는 쓰지 않는다 (draw.ts drawCute 의 sheet 값이 있을 때만)
+ */
+export function sheetEyes(
+  pose: CutePose,
+  blink: number,
+  gaze: { x: number; y: number } | undefined,
+): CutePose {
+  if (pose !== 'idle') return pose;
+  if (blink > 0.15 && blink < 0.85) return 'blink';
+  if (!gaze) return pose;
+  const side = gaze.x <= -LOOK_SIDE ? 'l' : gaze.x >= LOOK_SIDE ? 'r' : '';
+  if (gaze.y <= -LOOK_UPDOWN) return (side ? `look-u${side}` : 'look-u') as CutePose;
+  if (side) return `look-${side}` as CutePose;
+  if (gaze.y >= LOOK_UPDOWN) return 'look-d' as CutePose;
   return pose;
 }
