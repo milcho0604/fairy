@@ -522,7 +522,13 @@ export class EventStore {
       const skipped = this.#db
         .prepare('select 1 from event_repeat_skip where series_id = ? and start_at = ?')
         .get(seriesId, startAt);
-      if (!skipped) {
+      // 휴지통에 있는 회차 자리도 찬 자리다 (유일 색인은 지우지 않은 행만 막는다)
+      const held = skipped
+        ? undefined
+        : this.#db
+            .prepare('select 1 from event where repeat_series = ? and start_at = ?')
+            .get(seriesId, startAt);
+      if (!skipped && !held) {
         const inserted = this.#db
           .prepare(
             'insert or ignore into event (title, start_at, end_at, remind_min, created_at, all_day, repeat_kind, repeat_series, repeat_clock) values (?, ?, ?, ?, ?, 0, ?, ?, ?)',
@@ -682,10 +688,17 @@ export class EventStore {
     if (startAt !== e.startAt) {
       const clash = this.#db
         .prepare(
-          'select 1 from event where id != ? and start_at = ? and repeat_series = (select repeat_series from event where id = ?)',
+          'select 1 from event where id != ? and start_at = ? and deleted_at is null and repeat_series = (select repeat_series from event where id = ?)',
         )
         .get(id, startAt, id);
       if (clash) throw new EventSlotTakenError();
+      // 옮긴 회차의 원래 자리는 규칙상 그 회차가 차지한 것으로 센다: 이어 만들 때 빈 자리로 보고 되살리지 않게 예외에 넣는다
+      this.#db
+        .prepare(
+          `insert or ignore into event_repeat_skip (series_id, start_at)
+           select repeat_series, start_at from event where id = ? and repeat_series is not null and repeat_kind is not null`,
+        )
+        .run(id);
     }
     const moved = startAt !== e.startAt || allDay !== e.allDay;
     const remindsChanged = reminds.join() !== e.reminds.join();
@@ -736,6 +749,14 @@ export class EventStore {
   }
 
   restore(id: number): void {
+    // 휴지통 회차 자리에 다른 회차가 와 있으면 되살리지 못한다 (같은 반복의 같은 시각은 하나)
+    const clash = this.#db
+      .prepare(
+        `select 1 from event t join event o on o.repeat_series = t.repeat_series and o.start_at = t.start_at
+         where t.id = ? and t.deleted_at is not null and o.id != t.id and o.deleted_at is null`,
+      )
+      .get(id);
+    if (clash) throw new EventSlotTakenError();
     this.#db.prepare('update event set deleted_at = null, removed_by = null where id = ?').run(id);
   }
 

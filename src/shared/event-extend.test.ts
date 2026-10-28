@@ -95,26 +95,41 @@ test('같은 반복의 같은 시각을 직접 넣으면 유일 색인이 막는
   );
 });
 
-test('21판 올리기: 이미 생긴 중복 회차를 살아 있는 것 하나만 남기고 정리한다', () => {
+test('21판 올리기: 내용이 같은 중복만 지우고, 다른 것은 1분씩 밀어 둘 다 살린다. 지운 회차는 건드리지 않는다', () => {
   const db = new DatabaseSync(':memory:') as unknown as Db;
   db.exec('begin');
   for (const sql of MIGRATIONS.slice(0, 20)) db.exec(sql);
   db.exec('pragma user_version = 20; commit');
   const ins = db.prepare(
-    'insert into event (title, start_at, remind_min, created_at, repeat_kind, repeat_series, deleted_at, user_edited) values (?, ?, 10, 0, ?, ?, ?, ?)',
+    'insert into event (title, start_at, remind_min, created_at, repeat_kind, repeat_series, deleted_at, user_edited, pinned_at) values (?, ?, 10, 0, ?, ?, ?, ?, ?)',
   );
   const t = NOW + DAY;
-  const trashed = Number(ins.run('지운 복제', t, 'daily', 1, NOW, 0).lastInsertRowid);
-  const live = Number(ins.run('살아 있는 것', t, 'daily', 1, null, 0).lastInsertRowid);
-  const extra = Number(ins.run('중복', t, 'daily', 1, null, 0).lastInsertRowid);
-  const other = Number(ins.run('다른 시각', t + DAY, 'daily', 1, null, 0).lastInsertRowid);
-  for (const id of [trashed, live, extra, other])
+  const row = (title: string, at: number, deleted: number | null, edited = 0, pinned: number | null = null) =>
+    Number(ins.run(title, at, 'daily', 1, deleted, edited, pinned).lastInsertRowid);
+  const trashed = row('운동', t, NOW);
+  const live = row('운동', t, null);
+  const same = row('운동', t, null);
+  const renamed = row('치과 상담', t, null, 1);
+  const pinned = row('운동', t, null, 1, NOW);
+  const other = row('운동', t + DAY, null);
+  for (const id of [trashed, live, same, renamed, pinned, other])
     db.prepare("insert into reminder (kind, ref_id, before_min) values ('event', ?, 10)").run(id);
   assert.deepEqual(migrate(db), { from: 20, to: SCHEMA_VERSION });
-  const ids = (db.prepare('select id from event order by id').all() as { id: number }[]).map((r) => r.id);
-  assert.deepEqual(ids, [live, other]);
-  assert.equal(count(db, "select count(*) n from reminder where kind = 'event'"), 2);
-  assert.throws(() => ins.run('또', t, 'daily', 1, null, 0));
+  const rows = db.prepare('select id, start_at from event order by id').all() as {
+    id: number;
+    start_at: number;
+  }[];
+  assert.deepEqual(
+    rows.map((r) => r.id),
+    [trashed, live, renamed, pinned, other],
+  );
+  const at = (id: number) => Number(rows.find((r) => r.id === id)?.start_at);
+  assert.equal(at(trashed), t);
+  assert.equal(at(live), t + 60_000 * 2);
+  assert.equal(at(renamed), t);
+  assert.equal(at(pinned), t + 60_000);
+  assert.equal(count(db, "select count(*) n from reminder where kind = 'event' and ref_id = ?", same), 0);
+  assert.throws(() => ins.run('또', at(renamed), 'daily', 1, null, 0, null));
 });
 
 test('지운 회차와 영구 삭제한 회차는 이어 만들 때 다시 생기지 않고 오류도 없다', () => {
@@ -215,4 +230,74 @@ test('막힌 옮기기는 전용 오류이고 편지함 실행은 false, 화면 
   } finally {
     setLang('ko');
   }
+});
+
+test('가장 늦은 회차를 앞으로 옮겨도 원래 자리에 유령 회차가 생기지 않는다', () => {
+  const db = memory();
+  const events = new EventStore(db);
+  const id = events.add({ title: '운동', startAt: NOW + DAY, repeat: 'weekly' }, NOW).id;
+  events.between(NOW, NOW + 30 * DAY);
+  const last = db
+    .prepare('select id, start_at from event where repeat_series = ? order by start_at desc limit 1')
+    .get(id) as { id: number; start_at: number };
+  const before = count(db, 'select count(*) n from event where repeat_series = ?', id);
+  events.update(last.id, { startAt: last.start_at + DAY }, NOW);
+  events.update(last.id, { startAt: last.start_at - DAY }, NOW);
+  events.between(NOW, NOW + 30 * DAY);
+  assert.equal(count(db, 'select count(*) n from event where repeat_series = ?', id), before);
+  assert.equal(
+    count(
+      db,
+      'select count(*) n from event where repeat_series = ? and start_at = ? and id != ?',
+      id,
+      last.start_at,
+      last.id,
+    ),
+    0,
+  );
+});
+
+test('휴지통 회차 자리로 다른 회차를 옮길 수 있고, 휴지통에서 되살릴 때 자리가 차 있으면 알린다', () => {
+  const db = memory();
+  const events = new EventStore(db);
+  const id = daily(events);
+  const rows = db
+    .prepare('select id, start_at from event where repeat_series = ? order by start_at limit 3')
+    .all(id) as {
+    id: number;
+    start_at: number;
+  }[];
+  const [, trashed, mover] = rows;
+  events.remove(trashed?.id as number, NOW);
+  events.update(mover?.id as number, { startAt: Number(trashed?.start_at) }, NOW);
+  assert.throws(() => events.restore(trashed?.id as number), EventSlotTakenError);
+  assert.equal(
+    count(db, 'select count(*) n from event where id = ? and deleted_at is not null', trashed?.id),
+    1,
+  );
+  // 자리가 비면 되살아난다
+  events.update(mover?.id as number, { startAt: Number(trashed?.start_at) + 3_600_000 }, NOW);
+  events.restore(trashed?.id as number);
+  assert.equal(count(db, 'select count(*) n from event where id = ? and deleted_at is null', trashed?.id), 1);
+  events.between(NOW, NOW + 400 * DAY);
+  assert.equal(count(db, DUP, id), 0);
+});
+
+test('이어 만들기는 휴지통 회차 자리에 같은 회차를 또 만들지 않는다', () => {
+  const db = memory();
+  const events = new EventStore(db);
+  const id = daily(events);
+  const rows = db
+    .prepare('select id, start_at from event where repeat_series = ? order by start_at limit 3')
+    .all(id) as {
+    id: number;
+    start_at: number;
+  }[];
+  events.remove(rows[1]?.id as number, NOW);
+  db.prepare('delete from event where id > ?').run(rows[2]?.id as number);
+  events.dueReminders(NOW + 200 * DAY);
+  assert.equal(
+    count(db, 'select count(*) n from event where repeat_series = ? and start_at = ?', id, rows[1]?.start_at),
+    1,
+  );
 });

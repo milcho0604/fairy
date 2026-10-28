@@ -850,7 +850,12 @@ export function createPanel(o: PanelOptions) {
   });
   ipcMain.on(PANEL.eventRestore, (e, id: number) => {
     if (!ours(e)) return;
-    o.events.restore(id);
+    try {
+      o.events.restore(id);
+    } catch (err) {
+      if (!(err instanceof EventSlotTakenError)) throw err;
+      slotTakenSeq++;
+    }
     push();
   });
   // ---- 고정 (메모, 할 일, 일정) ----
@@ -1020,7 +1025,14 @@ export function createPanel(o: PanelOptions) {
           : undefined;
     if (!record) return 'gone';
     if (kind === 'note') o.notes.restore(id);
-    else o.events.restore(id);
+    else {
+      try {
+        o.events.restore(id);
+      } catch (err) {
+        if (err instanceof EventSlotTakenError) return 'dup';
+        throw err;
+      }
+    }
     log(kind, '휴지통에서 되살림', id);
     push();
     return 'ok';

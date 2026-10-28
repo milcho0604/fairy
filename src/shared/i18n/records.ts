@@ -21,6 +21,8 @@ export const ko = {
   'records.trash.confirmNo': '그만두기',
   'records.trash.restored': (v: { title: string }) => `"${v.title}" 되살렸어.`,
   'records.trash.gone': '이미 없는 할 일이야.',
+  'records.trash.dupEvent':
+    '그 시각에 같은 반복 일정이 이미 있어서 되살리지 않았어. 필요 없으면 영구 삭제해 줘.',
   'records.trash.dup': '같은 반복 할 일이 이미 열려 있어서 되살리지 않았어. 필요 없으면 영구 삭제해 줘.',
   'records.trash.all': '전체',
   'records.trash.todo': '할 일',
@@ -118,6 +120,8 @@ export const en: Translation<typeof ko> = {
   'records.trash.confirmNo': 'Cancel',
   'records.trash.restored': (v: { title: string }) => `Restored "${v.title}".`,
   'records.trash.gone': 'That to-do is already gone.',
+  'records.trash.dupEvent':
+    'This repeating event already has an occurrence at that time, so it was not restored. Delete it forever if you do not need it.',
   'records.trash.dup':
     'The same repeating to-do is already open, so this one was not restored. Delete it forever if you do not need it.',
   'records.trash.all': 'All',
