@@ -534,12 +534,12 @@ const soft = (p) => p.catch(() => false);
 
 const T = {
   ko: {
-    under14: '만 14세 미만', adult: '만 18세 이상', start: '서버 모드 시작', syncNow: '지금 맞추기', login: '구글로 로그인', logout: '로그아웃', mergeYes: '합치기',
+    under14: '만 14세 미만', adult: '만 18세 이상', start: '서버 계정 시작', syncNow: '코인 동기화', login: '구글로 로그인', logout: '로그아웃', mergeYes: '합치기',
     gTitle: '구글 캘린더', connect: '구글 계정 연결', disconnect: '연결 끊기', cancel: '그만두기', done: '다 됐어',
     hint: '다른 기기에서 구글 일정을 연결했어. 이 기기도 연결할까?', no: '괜찮아, 다시 묻지 마',
   },
   en: {
-    under14: 'Under 14', adult: '18 or older', start: 'Start server mode', syncNow: 'Sync now', login: 'Sign in with Google', logout: 'Sign out', mergeYes: 'Merge',
+    under14: 'Under 14', adult: '18 or older', start: 'Start server account', syncNow: 'Sync coins', login: 'Sign in with Google', logout: 'Sign out', mergeYes: 'Merge',
     gTitle: 'Google Calendar', connect: 'Connect Google account', disconnect: 'Disconnect', cancel: 'Cancel', done: 'Done',
     hint: 'You connected Google Calendar on another device. Connect this one too?', no: "No thanks, don't ask again",
   },
@@ -844,7 +844,7 @@ async function appsAB() {
     };
     let r = await flip('off');
     check(F, '"꺼짐" 고르고 확인 → "모드 바꾸기" 누르기', r.ok && sql(`SELECT mode FROM feature_flag WHERE key = '${KEY}'`) === 'off', r.flash);
-    check(F, 'off: B 지금 맞추기 → 기능 키 false, 안내 줄 없음', (await B.status()).features?.calendar_link_hint === false && !(await hintShown(pb)));
+    check(F, 'off: B 코인 동기화 → 기능 키 false, 안내 줄 없음', (await B.status()).features?.calendar_link_hint === false && !(await hintShown(pb)));
     r = await flip('allowlist');
     check(F, 'allowlist(허용 목록에 계정 있음) → 안내 다시', r.ok && (await B.status()).features?.calendar_link_hint === true && (await hintShown(pb)));
     const rm = await adminClickRemove(w, KEY, accountId);
@@ -865,11 +865,11 @@ async function appsAB() {
     await gotoGcal(pb);
     await sleep(800);
     const staleBeforeSync = await hintShown(pb);
-    note(F, `B 는 맞추기 전에는 안내가 남아 있음: ${staleBeforeSync} (다음 맞추기 3분 주기 또는 지금 맞추기에서 사라짐)`);
+    note(F, `B 는 맞추기 전에는 안내가 남아 있음: ${staleBeforeSync} (다음 맞추기 3분 주기 또는 코인 동기화에서 사라짐)`);
     await clickSync(B, pb);
     await gotoGcal(pb);
     await soft(until('안내 사라짐', async () => !(await hintShown(pb)), 5_000));
-    check(F, 'B "지금 맞추기" 뒤 안내 사라짐', !(await hintShown(pb)) && (await B.status()).calendarHint === false);
+    check(F, 'B "코인 동기화" 뒤 안내 사라짐', !(await hintShown(pb)) && (await B.status()).calendarHint === false);
     await pb.shots('b-04-after-a-disconnect', GSEC);
     // A 다시 연결 → B 다시
     check(F, 'A 다시 연결', (await clickConnectGcal(A, pa)) === 'ok');

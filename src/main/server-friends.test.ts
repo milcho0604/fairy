@@ -2,7 +2,13 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { setLang } from '../shared/i18n/index.ts';
 import type { ServerStatus } from '../shared/server-account.ts';
-import { busyByDay, friendCodeFrom, inviteLink, titlesByDay } from '../shared/server-friends.ts';
+import {
+  busyByDay,
+  friendCodeFrom,
+  inviteLink,
+  spansWithoutTitles,
+  titlesByDay,
+} from '../shared/server-friends.ts';
 import { parseJjUrl } from '../shared/url-scheme.ts';
 import { friendsListOf, inboxItemOf } from './server-api.ts';
 import type { ServerCore } from './server-core.ts';
@@ -662,4 +668,55 @@ test('로그아웃 때 카드를 못 지우면 표시를 남기고, 다음에 �
   await clean.refresh();
   await clean.stopVisit();
   assert.equal(mark, null);
+});
+
+test('바쁜 시간대에서 제목 일정이 덮은 부분은 빼서 같은 시간을 두 번 적지 않는다', () => {
+  const span = (from: number, to: number) => ({ from, to });
+  // 제목 일정이 시간대를 그대로 덮는다
+  assert.deepEqual(spansWithoutTitles([span(900, 960)], [span(900, 960)]), []);
+  // 이어 붙은 제목 일정 둘이 합쳐진 시간대 하나를 덮는다
+  assert.deepEqual(spansWithoutTitles([span(900, 1020)], [span(900, 960), span(960, 1020)]), []);
+  // 제목이 없는 바쁜 시간은 남는다
+  assert.deepEqual(spansWithoutTitles([span(540, 600), span(900, 960)], [span(900, 960)]), [span(540, 600)]);
+  // 일부만 덮으면 남는다
+  assert.deepEqual(spansWithoutTitles([span(900, 1020)], [span(900, 960)]), [span(900, 1020)]);
+  // 제목이 하나도 없으면 그대로
+  assert.deepEqual(spansWithoutTitles([span(900, 960)], []), [span(900, 960)]);
+});
+
+test('새 친구 신청: 앱을 켜고 처음 받은 목록은 기준일 뿐이고, 그 뒤 처음 보는 신청만 알린다', async () => {
+  const incoming = (ids: number[]) => ({
+    ...LIST,
+    data: {
+      ...LIST.data,
+      incoming: ids.map((id) => ({
+        id,
+        code: `F-AAAA-000${id}`,
+        nickname: id === 2 ? null : `이웃${id}`,
+        sentAt: '2026-10-28T00:00:00Z',
+        expiresAt: '2026-11-11T00:00:00Z',
+      })),
+    },
+  });
+  const f = fakeCore({ replies: { friends: incoming([1]) } });
+  const heard: string[][] = [];
+  const friends = createServerFriends({
+    core: () => f.core,
+    events: () => [],
+    now: () => T0,
+    onChange: () => {},
+    onIncoming: (names) => heard.push(names),
+    log: () => {},
+  });
+  await friends.refresh();
+  assert.deepEqual(heard, [], '처음 받은 목록은 알리지 않는다');
+  await friends.refresh();
+  assert.deepEqual(heard, [], '같은 신청은 다시 알리지 않는다');
+  (f.core as unknown as { sessionCall: unknown }).sessionCall = (
+    g: (api: unknown, s: string) => Promise<unknown>,
+  ) => g({ friends: async () => incoming([1, 2]) }, 'fs_x');
+  await friends.refresh();
+  assert.deepEqual(heard, [['F-AAAA-0002']], '닉네임이 없으면 코드로, 새 신청만');
+  await friends.refresh();
+  assert.equal(heard.length, 1);
 });

@@ -718,14 +718,14 @@ const soft = (p) => p.catch(() => false);
 
 const T = {
   ko: {
-    under14: '만 14세 미만', adult: '만 18세 이상', start: '서버 모드 시작', syncNow: '지금 맞추기', login: '구글로 로그인', kakaoLogin: '카카오로 로그인', link: '카카오도 연결', logout: '로그아웃',
+    under14: '만 14세 미만', adult: '만 18세 이상', start: '서버 계정 시작', syncNow: '코인 동기화', login: '구글로 로그인', kakaoLogin: '카카오로 로그인', link: '카카오도 연결', logout: '로그아웃',
     via2: '구글, 카카오로 로그인했어', via1: '구글로 로그인했어',
     upload: '서버에 백업 올리기', download: '받아서 되살리기', del: '지우기', consent: '서버 백업에 따로 동의', uploaded: '서버에 백업을 올렸어.', uploading: '올리는 중이야.', downloading: '받는 중이야.', deleted: '서버 백업을 지웠어.', downloaded: '받았어.',
     full: '저장 공간이 꽉 찼어', off: '서버가 아직 서버 백업을 열지 않았어.', soon: '에 지워져.', none: '서버에 올린 백업이 없어.',
     remove: '서버 계정 지우기', sure: '정말 지우기', resetStart: '코인 초기화하기', resetSure: '초기화할게', restoreServer: '코인과 산 물건은 서버 것을 따라',
   },
   en: {
-    under14: 'Under 14', adult: '18 or older', start: 'Start server mode', syncNow: 'Sync now', login: 'Sign in with Google', kakaoLogin: 'Sign in with Kakao', link: 'Also link Kakao', logout: 'Sign out',
+    under14: 'Under 14', adult: '18 or older', start: 'Start server account', syncNow: 'Sync coins', login: 'Sign in with Google', kakaoLogin: 'Sign in with Kakao', link: 'Also link Kakao', logout: 'Sign out',
     via2: 'Signed in with Google and Kakao', via1: 'Signed in with Google',
     upload: 'Upload backup to server', download: 'Download and restore', del: 'Delete', consent: 'Separate consent for server backup', uploaded: 'Uploaded a backup to the server.', uploading: 'Uploading.', downloading: 'Downloading.', deleted: 'Deleted the server backup.', downloaded: 'Downloaded.',
     full: 'storage is full', off: "The server hasn't opened server backups yet.", soon: 'Will be deleted', none: 'No server backups yet.',
@@ -1051,9 +1051,9 @@ async function appA() {
     await sleep(CACHE);
     await clickSync(h, p);
     const shownBySync = (await btnInfo(p, '.server-box', T.link)) !== null;
-    // 앱은 로그인 서비스와 기능 키를 30분에 한 번만 다시 묻는다 (PROVIDERS_EVERY_MS). 지금 맞추기로는 안 바뀐다
-    check(F, '참고: 운영자가 바꾼 뒤 5초 + "지금 맞추기"로 앱 단추가 바뀌는가', true, shownBySync ? '바로 바뀜' : '안 바뀜: 앱은 30분 주기(PROVIDERS_EVERY_MS) 또는 로그인/로그아웃 때만 다시 묻는다');
-    // 상태 준비: 30분 주기를 당겨 다시 묻게 하고(메인), 화면은 "지금 맞추기"를 눌러 새 상태를 받는다
+    // 앱은 로그인 서비스와 기능 키를 30분에 한 번만 다시 묻는다 (PROVIDERS_EVERY_MS). 코인 동기화로는 안 바뀐다
+    check(F, '참고: 운영자가 바꾼 뒤 5초 + "코인 동기화"로 앱 단추가 바뀌는가', true, shownBySync ? '바로 바뀜' : '안 바뀜: 앱은 30분 주기(PROVIDERS_EVERY_MS) 또는 로그인/로그아웃 때만 다시 묻는다');
+    // 상태 준비: 30분 주기를 당겨 다시 묻게 하고(메인), 화면은 "코인 동기화"를 눌러 새 상태를 받는다
     await h.main('__jj.server.core.refreshProviders(true)');
     await clickSync(h, p);
     await soft(until('카카오 단추', async () => (await btnInfo(p, '.server-box', T.link)) !== null, 5_000));
@@ -1090,7 +1090,7 @@ async function appA() {
     const m3 = await adminClickMode(w, 'coin_reset', 'everyone');
     check(F, '/admin: coin_reset 모드를 "모두"로 누름', m3.ok && sql(`SELECT mode FROM feature_flag WHERE key = 'coin_reset'`) === 'everyone', m3.flash);
     await sleep(CACHE);
-    // 상태 준비: 30분 주기를 당겨 다시 묻게 하고(메인), 화면은 "지금 맞추기"를 눌러 새 상태를 받는다
+    // 상태 준비: 30분 주기를 당겨 다시 묻게 하고(메인), 화면은 "코인 동기화"를 눌러 새 상태를 받는다
     await h.main('__jj.server.core.refreshProviders(true)');
     await clickSync(h, p);
     await soft(until('초기화 칸', () => has(p, '.coin-reset'), 8_000));
@@ -1119,7 +1119,7 @@ async function appA() {
     await clickSync(h, p);
     await clickSync(h, p);
     check(F, '운영자가 off 로 바꾼 뒤(앱은 아직 모름) 초기화를 누르면 서버가 거절, 앱 잔액은 서버 것으로 돌아옴', m4.ok && srvBalance(acct) === mid && (await h.balance()) === mid, `칸 남음 ${stillShown}, 서버 ${srvBalance(acct)} 앱 ${await h.balance()} (전 ${mid})`);
-    // 상태 준비: 30분 주기를 당겨 다시 묻게 하고(메인), 화면은 "지금 맞추기"를 눌러 새 상태를 받는다
+    // 상태 준비: 30분 주기를 당겨 다시 묻게 하고(메인), 화면은 "코인 동기화"를 눌러 새 상태를 받는다
     await h.main('__jj.server.core.refreshProviders(true)');
     await clickSync(h, p);
     await soft(until('칸 숨음', async () => !(await has(p, '.coin-reset')), 8_000));

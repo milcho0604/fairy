@@ -117,7 +117,7 @@ export const ko = {
   'settings.sysMonitorResting': '배터리로 사용 중이라 페어리가 멈춰 있어. 컴퓨터 상태 표시는 계속 보여.',
 
   // 친구의 페어리 초대하기
-  'settings.friends': '친구의 페어리 초대하기',
+  'settings.friends': '페어리 공유',
   'settings.friendsChanged': '친구 페어리를 바꿨어',
   'settings.friends.hint':
     '초대한 친구 페어리는 같이 돌아다니고 놀아. 할 일과 대화는 기본 페어리가 맡아. {max}마리까지.',
@@ -615,7 +615,7 @@ export const en: Translation<typeof ko> = {
   'settings.sysMonitorResting':
     'Your fairy stands still while the computer runs on battery. Computer status remains visible.',
 
-  'settings.friends': "Invite a friend's fairy",
+  'settings.friends': 'Share a fairy',
   'settings.friendsChanged': 'Friend fairies updated',
   'settings.friends.hint':
     'Invited fairies wander and play along. Your main fairy handles to-dos and chat. Up to {max}.',

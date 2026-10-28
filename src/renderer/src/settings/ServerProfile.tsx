@@ -1,16 +1,28 @@
 // 서버 계정의 닉네임과 기기 코드 (이슈 #101): 서버 모드를 처음 켤 때 닉네임을 정하고, 칸에서 바꾸고, 기기 코드를 복사한다.
 // 기기 코드는 서버가 만든 공개 코드라 보여도 된다 (토큰, 계정 번호가 아니다).
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { checkNickname, NICKNAME_MAX } from '../../../shared/account-profile.ts';
 import { t } from '../../../shared/i18n/index.ts';
 import type { NicknameProblem, ServerBridge, ServerStatus } from '../../../shared/server-account.ts';
+import { useNear } from './NearResult.tsx';
 
 const problemText = (p: NicknameProblem) => t(`server.nickname.err.${p}`);
 
 /** 닉네임 입력 칸 하나 (검사 글은 따로: 줄 칸에서는 줄 아래 전체 폭에) */
-function NicknameInput(o: { value: string; onChange: (v: string) => void; onEnter: () => void }) {
+function NicknameInput(o: {
+  value: string;
+  onChange: (v: string) => void;
+  onEnter: () => void;
+  /** 칸이 뜨자마자 글자를 칠 수 있게 (나이를 고른 다음 닉네임 칸) */
+  focus?: boolean;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (o.focus) ref.current?.focus();
+  }, [o.focus]);
   return (
     <input
+      ref={ref}
       className="plain-input server-nickname"
       aria-label={t('server.nickname.placeholder')}
       placeholder={t('server.nickname.placeholder')}
@@ -65,6 +77,7 @@ export function NicknameStep(o: { onStart: (nickname: string) => void; onBack: (
             setProblem(null);
           }}
           onEnter={start}
+          focus
         />
         <ProblemLine p={problem} />
         <div className="action-row">
@@ -88,12 +101,13 @@ export function ProfileRows(o: {
   s: ServerStatus;
   b: ServerBridge;
   setS: (s: ServerStatus | undefined) => void;
-  flash: (message: string, error?: boolean) => void;
   children?: ReactNode;
   /** 줄 아래 전체 폭 (나이 고르기 단추) */
   after?: ReactNode;
 }) {
   const { s, b } = o;
+  // 결과는 누른 단추 아래에 남긴다 (창 맨 위 안내는 2초 뒤 사라진다)
+  const [near, flash] = useNear();
   const [editing, setEditing] = useState(!s.nickname);
   const [value, setValue] = useState(s.nickname ?? '');
   const [problem, setProblem] = useState<NicknameProblem | null>(null);
@@ -108,7 +122,7 @@ export function ProfileRows(o: {
       if (!r.ok) setProblem(r.problem ?? 'server');
       else {
         setEditing(false);
-        o.flash(t('server.nickname.saved'));
+        flash(t('server.nickname.saved'));
       }
     } finally {
       setBusy(false);
@@ -173,7 +187,7 @@ export function ProfileRows(o: {
                 type="button"
                 className="ghost small"
                 onClick={() => {
-                  void b.copyCode().then((ok) => ok && o.flash(t('server.code.copied')));
+                  void b.copyCode().then((ok) => ok && flash(t('server.code.copied')));
                 }}
               >
                 {t('server.code.copy')}
@@ -187,6 +201,7 @@ export function ProfileRows(o: {
         {o.children}
       </div>
       {o.after}
+      {near}
       {s.code && <small>{t('server.code.why')}</small>}
     </div>
   );

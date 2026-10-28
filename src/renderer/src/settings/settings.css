@@ -1924,4 +1924,35 @@ textarea.rules {
   align-self: flex-start;
   justify-self: start;
   padding-left: 0;
+
+/* 누른 단추 옆에 남는 결과 한 줄 (NearResult.tsx) */
+.near-result {
+  display: block;
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--ok);
+  overflow-wrap: anywhere;
+}
+
+.near-result.error {
+  color: var(--error);
+}
+
+.event-item {
+  flex-wrap: wrap;
+}
+
+.event-item > .near-result {
+  flex: 1 1 100%;
+  margin-top: 0;
+}
+
+.event-pending {
+  color: var(--muted);
+}
+
+.server-benefit {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--ink);
 }

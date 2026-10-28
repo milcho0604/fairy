@@ -514,6 +514,7 @@ export function OnboardingApp() {
                 {preferenceError}
               </p>
             )}
+            <p className="hint first-todo">{t('onboarding.firstTodo')}</p>
           </section>
         )}
       </main>

@@ -1617,6 +1617,13 @@ ready
       petCard: () => cardOf(settings.get()),
       customPet: () => isCustomPet(settings.get()),
       onLogout: () => visitors?.dismiss('logout'),
+      // 새 친구 신청: 쪽지가 오기(몇 분) 전에 펫이 바로 알린다
+      onFriendRequest: (names) =>
+        void pet.say({
+          kind: 'system',
+          text: voiced('friends.incomingSay', { name: names.slice(0, 3).join(', ') }),
+          ttlMs: 10_000,
+        }),
       log,
     });
     serverCore = server.core;

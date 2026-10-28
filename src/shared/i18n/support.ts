@@ -67,7 +67,7 @@ export const ko = {
   'help.pack.on': '켜짐',
   'help.pack.off': '꺼짐',
   'help.pack.serverNone': '서버 주소가 없는 판',
-  'help.pack.serverOff': '서버 모드 꺼짐',
+  'help.pack.serverOff': '서버 계정 꺼짐',
   'help.pack.serverOn': (v: { login: string; problem: string; pending: number; sync: string; ai: string }) =>
     `켜짐, 계정 ${v.login}, 문제 ${v.problem}, 못 보낸 코인 기록 ${v.pending}개, 마지막 맞추기 ${v.sync}, AI 대화권 ${v.ai}`,
   'help.pack.google': '구글 로그인',
@@ -144,7 +144,7 @@ export const en: Translation<typeof ko> = {
   'help.pack.on': 'on',
   'help.pack.off': 'off',
   'help.pack.serverNone': 'build without a server address',
-  'help.pack.serverOff': 'server mode off',
+  'help.pack.serverOff': 'server account off',
   'help.pack.serverOn': (v) =>
     `on, account ${v.login}, problem ${v.problem}, unsent coin records ${v.pending}, last sync ${v.sync}, AI tickets ${v.ai}`,
   'help.pack.google': 'Google login',

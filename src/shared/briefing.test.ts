@@ -4,6 +4,7 @@ import {
   briefingText,
   deadlineText,
   dueSlot,
+  isInstallDay,
   leftForTomorrow,
   type NextUpTodo,
   nextUp,
@@ -248,4 +249,11 @@ test('못 한 N개 내일로: 오늘 마감과 지난 마감만, 습관과 마�
     ),
     [{ id: 1, due: '2026-10-09' }],
   );
+});
+
+test('설치 첫날: 첫 기록이 없거나 오늘이면 회고를 하지 않고, 어제부터 쓴 사람은 한다', () => {
+  assert.equal(isInstallDay(null, '2026-10-28'), true);
+  assert.equal(isInstallDay('2026-10-28', '2026-10-28'), true);
+  assert.equal(isInstallDay('2026-10-27', '2026-10-28'), false);
+  assert.equal(isInstallDay('2026-01-01', '2026-10-28'), false);
 });

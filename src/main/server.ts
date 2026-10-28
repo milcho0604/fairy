@@ -92,6 +92,8 @@ export function createServer(o: {
   friendEvents?: (from: number, to: number) => BusySource[];
   /** 친구 펫 놀러 가기 (#141): 지금 내 펫 카드 (종류 id, 이름, 네 발 서기. 그림은 없다) */
   petCard?: () => PetCard;
+  /** 새 친구 신청이 왔다 (이름들). 펫이 한마디 한다 */
+  onFriendRequest?: (names: string[]) => void;
   /** 로그아웃했다 (와 있던 놀러 온 친구 펫을 돌려보낸다) */
   onLogout?: () => void;
   customPet?: () => boolean;
@@ -197,6 +199,7 @@ export function createServer(o: {
     },
     now: Date.now,
     onChange: (s) => sendFriends(s),
+    ...(o.onFriendRequest ? { onIncoming: o.onFriendRequest } : {}),
     log: o.log,
   });
   let friendsWas = false;

@@ -286,8 +286,8 @@ const typeInto = (p, selector, value) =>
     `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return false; const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`,
   );
 const T = {
-  ko: { ticket: '채팅 이용권', adult: '만 18세 이상', start: '서버 모드 시작', claim: '선물 받기', coupon: '쿠폰 쓰기', from: '운영자', admin: '운영자' },
-  en: { ticket: 'Chat pass', adult: '18 or older', start: 'Start server mode', claim: 'Get gift', coupon: 'Use coupon', from: 'Operator', admin: 'Operator' },
+  ko: { ticket: '채팅 이용권', adult: '만 18세 이상', start: '서버 계정 시작', claim: '선물 받기', coupon: '쿠폰 쓰기', from: '운영자', admin: '운영자' },
+  en: { ticket: 'Chat pass', adult: '18 or older', start: 'Start server account', claim: 'Get gift', coupon: 'Use coupon', from: 'Operator', admin: 'Operator' },
 }[LANG];
 const NICK = LANG === 'ko' ? '시험친구' : 'Tester';
 
@@ -305,7 +305,7 @@ try {
   await until('닉네임 칸', () => p.ev(`!!document.querySelector('.server-nickname-step input')`));
   await p.shot('events-1-nickname', '.server-nickname-step');
   await typeInto(p, '.server-nickname-step input', NICK);
-  check('서버 모드 시작', await press(p, '.server-box', T.start));
+  check('서버 계정 시작', await press(p, '.server-box', T.start));
   await until('기기 계정', async () => {
     const s = await status();
     return s.device && s.code && !s.syncing;

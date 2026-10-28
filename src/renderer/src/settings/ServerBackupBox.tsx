@@ -9,6 +9,7 @@ import type {
   ServerBridge,
   ServerStatus,
 } from '../../../shared/server-account.ts';
+import { useNear } from './NearResult.tsx';
 import { Toggle } from './ui.tsx';
 
 const day = (iso: string) =>
@@ -21,13 +22,13 @@ export function ServerBackupBox({
   b,
   view,
   setS,
-  flash,
 }: {
   b: ServerBridge;
   view: ServerBackupView;
   setS: (s: ServerStatus | undefined) => void;
-  flash: (message: string, error?: boolean) => void;
 }) {
+  // 결과는 누른 단추 아래에 남긴다 (창 맨 위 안내는 2초 뒤 사라진다)
+  const [near, flash] = useNear();
   // 칸이 보일 때 목록을 한 번 받는다 (목록 보기는 서버에서 "쓴 것"으로 치지 않는다)
   const asked = useRef(false);
   const known = view.list !== null;
@@ -88,6 +89,7 @@ export function ServerBackupBox({
           {view.busy === 'up' ? t('backup.uploading') : t('backup.upload')}
         </button>
       </div>
+      {near}
       {view.list === null ? (
         <small>{t('backup.loading')}</small>
       ) : view.list.length === 0 ? (

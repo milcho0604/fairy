@@ -136,6 +136,17 @@ export function App() {
     void bridge.providers().then((list) => setProviders(list));
   }, [ticketOn]);
 
+  // 언어를 바꾸면 AI 이름("무료 AI" 등)을 새 말로 다시 받는다 (메인이 만든 이름이라 창이 들고 있던 것은 옛 말이다)
+  const firstLanguage = useRef(true);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 언어가 바뀔 때만 다시 받는다
+  useEffect(() => {
+    if (firstLanguage.current) {
+      firstLanguage.current = false;
+      return;
+    }
+    void bridge.providers().then((list) => setProviders(list));
+  }, [language]);
+
   // 무료 AI 받기가 끝나면(AI 관리에서 받았을 때) 상태를 다시 읽어 "받기" 를 "준비됐어" 로
   const downloadingModel = !!state?.modelDownload && !state.modelDownload.failed;
   useEffect(() => {
