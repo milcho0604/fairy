@@ -249,7 +249,7 @@ test('VariantPicker: 바로 앞에 한 말은 피한다', () => {
   for (let i = 0; i < 200; i++) {
     const k = p.pick('pet.rest', rand);
     assert.notEqual(k, prev);
-    prev = k;
+    prev = k ?? '';
   }
   // 하나뿐이면 그것
   assert.equal(new VariantPicker().pick('pet.unlock.wave'), 'pet.unlock.wave');

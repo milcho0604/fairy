@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { briefingText } from './briefing.ts';
 import {
   canDeliverEvening,
   composeNote,
@@ -11,11 +12,13 @@ import {
 } from './daily-note.ts';
 import { pickLine as pickFun, pickJoke } from './fun.ts';
 import { dicts, setLang, setMutedLines, t } from './i18n/index.ts';
-import { voiced, voicedLive } from './persona-voice.ts';
+import { voiced, voicedLive, voicedPick } from './persona-voice.ts';
 import { sulkLine } from './pet-life.ts';
 import { poutLines } from './pout.ts';
+import { restLine } from './rest.ts';
 import { farewellText, greetText, restText } from './routine-text.ts';
 import { DEFAULT_STYLE, type SpeechStyle } from './speech-style.ts';
+import { VariantPicker, variantsOf } from './variants.ts';
 
 const loose = t as unknown as (key: string, vars?: Record<string, string | number>) => string;
 const mute = (ko: string[]) => setMutedLines({ ko, en: [] });
@@ -183,4 +186,24 @@ test('1인칭 "나" 로 불러도 뜻이 뒤집히지 않는다', () => {
   );
   assert.match(voiced('companion.anniv.day', { name: '콩', n: 7 }, 'custom', me), /나를 잘 부탁해/);
   assert.ok(dicts.ko['play.tag.start']);
+});
+
+test('변형 묶음을 모두 안 쓰기로 하면 인사, 쉬자, 먹이 말이 빈 글 없이 빠진다', () => {
+  const ks = (base: string) => variantsOf(base);
+  try {
+    assert.ok(restLine());
+    mute(ks('pet.rest'));
+    assert.equal(restLine(), undefined);
+    mute(ks('pet.fed'));
+    assert.equal(voicedPick('pet.fed'), undefined);
+    mute([...ks('briefing.hi.morning'), ...ks('briefing.hi.day'), ...ks('briefing.hi.evening')]);
+    for (const nowMinute of [9 * 60, 13 * 60, 20 * 60]) {
+      const out = briefingText({ events: [], dueToday: 0, overdue: 0, nowMinute } as never);
+      assert.ok(!out.startsWith(' '), out);
+    }
+    // 변형이 아예 없는 열쇠(사전 밖)는 영향 없다
+    assert.equal(new VariantPicker().pick('no.such.key'), 'no.such.key');
+  } finally {
+    unmute();
+  }
 });

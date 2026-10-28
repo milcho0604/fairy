@@ -13,7 +13,7 @@ import {
   type SpeechStyle,
   selfWord,
 } from './speech-style.ts';
-import { variantsOf } from './variants.ts';
+import { variants, variantsOf } from './variants.ts';
 
 /**
  * 성격마다 말투를 바꾸는 말 가운데 세 성격(존댓말 비서, 츤데레, 차분한 선생님) 모두 따로 쓴 것.
@@ -252,6 +252,16 @@ export function voiced(
  */
 export function voicedLive(key: I18nKey, vars?: Record<string, string | number>): string | undefined {
   return isMutedLine(key) ? undefined : voiced(key, vars);
+}
+
+/** 변형 묶음에서 하나 골라 voiced. 묶음을 모두 안 쓰기로 했으면 undefined (말풍선을 띄우지 않는다) */
+export function voicedPick(
+  base: string,
+  vars?: Record<string, string | number>,
+  rand?: () => number,
+): string | undefined {
+  const key = variants.pick(base, rand);
+  return key === null ? undefined : voiced(key as I18nKey, vars);
 }
 
 /** 이미 만든 말(쪽지 줄처럼 성격마다 따로 쓴 말)에 지금 말투 규칙을 입힌다. 말을 따로 쓴 성격이면 그대로 */

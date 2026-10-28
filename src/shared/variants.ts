@@ -57,11 +57,12 @@ export class VariantPicker {
     this.#last.clear();
   }
 
-  pick(base: string, rand: () => number = this.#rand): string {
+  /** 변형 하나. 안 쓰기로 한 변형은 빼고, 모두 안 쓰기로 했으면 null (부르는 쪽이 말하지 않는다) */
+  pick(base: string, rand: () => number = this.#rand): string | null {
     const all = variantsOf(base);
-    // 안 쓰기로 한 변형은 빼고 (모두 안 쓰기로 했으면 그래도 하나는 말한다)
-    const list = all.some((k) => !isMutedLine(k)) ? all.filter((k) => !isMutedLine(k)) : all;
-    if (list.length === 0) return base;
+    const list = all.filter((k) => !isMutedLine(k));
+    if (all.length === 0) return base;
+    if (list.length === 0) return null;
     if (list.length === 1) return list[0] as string;
     const last = this.#last.get(base);
     const choices = this.#fixed ? list : list.filter((k) => k !== last);

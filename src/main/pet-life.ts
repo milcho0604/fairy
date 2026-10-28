@@ -3,14 +3,7 @@ import { type Energy, type EnergyLook, EnergyWatch, energyTalkKeys } from '../sh
 import { type I18nKey, t } from '../shared/i18n/index.ts';
 import type { ReactKind } from '../shared/ipc.ts';
 import { voiced } from '../shared/persona-voice.ts';
-import {
-  type Activity,
-  type LifeState,
-  type PetLife,
-  SULK_LINES,
-  sulkLine,
-  UNLOCKS,
-} from '../shared/pet-life.ts';
+import { type Activity, type LifeState, type PetLife, sulkLine, UNLOCKS } from '../shared/pet-life.ts';
 import { isQuietNow } from '../shared/quiet-hours.ts';
 import { REST, RestCoach, restLine } from '../shared/rest.ts';
 import { bodyClock, restDaysOf } from '../shared/routine.ts';
@@ -132,10 +125,12 @@ export function createPetLife(o: PetLifeOptions) {
     if (rhythmOn && e.fresh) refreshed();
     if (event === 'suggest' && !o.petHidden()) {
       const line = restLine();
+      // 쉬자는 말을 모두 안 쓰기로 했으면 권하지 않는다
+      if (line === undefined) return;
       void o
         .say({
           kind: 'system',
-          text: line ?? '',
+          text: line,
           buttons: [
             { id: 'go', label: t('pet.life.restGo') },
             { id: 'walk', label: t('pet.life.restWalk') },

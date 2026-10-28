@@ -148,7 +148,7 @@ test('안 쓰기로 한 혼잣말은 고르지 않는다 (수천 번 골라도)'
   }
 });
 
-test('안 쓰기로 한 변형은 고르지 않고, 다 껐으면 그래도 하나는 말한다', () => {
+test('안 쓰기로 한 변형은 고르지 않고, 다 껐으면 null (말하지 않는다)', () => {
   const picker = new VariantPicker();
   let n = 0;
   const rand = () => ((n++ * 0.37) % 1) as number;
@@ -157,10 +157,10 @@ test('안 쓰기로 한 변형은 고르지 않고, 다 껐으면 그래도 하�
   try {
     for (let i = 0; i < 200; i++) {
       const k = picker.pick('pet.fed', rand);
-      assert.ok(!['pet.fed.2', 'pet.fed.3'].includes(k), k);
+      assert.ok(k !== null && !['pet.fed.2', 'pet.fed.3'].includes(k), String(k));
     }
     setMutedLines({ ko: all, en: [] });
-    assert.ok(all.includes(picker.pick('pet.fed', rand)));
+    assert.equal(picker.pick('pet.fed', rand), null);
   } finally {
     setMutedLines({ ko: [], en: [] });
   }
