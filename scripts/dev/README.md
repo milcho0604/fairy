@@ -84,3 +84,4 @@ OUT=/tmp/jj-shots PHOTO=<사진> node scripts/dev/maker.mjs  # 사진으로 페�
 - `OUT=/tmp/fairy-menu LANG_UNDER_TEST=ko node scripts/dev/pet-menu.mjs`: #148 우클릭 메뉴 순서·더 보기·끝내기 분리 및 빠른 입력·새 메모·패널 연결 확인. 네이티브 메뉴는 표시하지 않고 실제 Electron 메뉴 생성 후 popup만 막는다 (`en`도 지원).
 
 - `OUT=/tmp/fairy-chat-focus LANG_UNDER_TEST=ko node scripts/dev/chat-focus.mjs`: #144 채팅을 펫 옆으로 되돌리기·크기와 위치 기억, #146 5~120분 직접 입력·유효성·선택 저장을 격리 Electron/CDP로 확인 (`en` 지원).
+- 코인 회수, 쪽지 철회, 밖 백업 상태 묶음: `(cd server && npm run build) && ONLY=revoke OUT=<레포 밖 폴더> node scripts/dev/admin-user-detail.mjs` (`admin-user-detail.mjs` 의 한 묶음). 이용자 상세의 코인 회수(미리보기, 잔액 넘김 막힘, 확인 칸, 확정, 장부와 운영 기록), 안 연 쪽지 철회(연 쪽지와 기한 지난 쪽지에는 단추 없음), 홈과 설정의 밖 백업 상태(상태 파일 없음, 성공, 오래됨, 실패와 까닭)를 폭 1280 과 360, 밝은 어두운 모드에서 본다. 밖 백업 상태 폴더는 시험 폴더(`BACKUP_STATUS_DIR`). `SERVER_ROOT=<옛 server> TAG=before` 면 이 묶음의 옛 화면 그림만. 서버 통합 시험은 `server/test/admin-revoke-withdraw.test.ts`, 상태 파일과 `ops/backup-files/run.sh` 시험은 `server/src/backup-status.test.ts`

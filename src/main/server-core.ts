@@ -243,6 +243,8 @@ export interface ServerCoreDeps {
   onCoins: () => void;
   /** 서버가 거절해 되돌린 쓰기 (펫이 알린다) */
   onReverted: (list: Reverted[]) => void;
+  /** 서버 기록에 맞추느라 코인이 줄었다 (운영자 회수 등. 줄어든 양. 늘 때는 부르지 않는다) */
+  onCoinsLowered?: (lowered: number) => void;
   /** 열지 않은 서버 쪽지가 있다 (#101, 메인이 쪽지함을 받아 펫이 건넨다) */
   onInbox?: (unopened: number) => void;
   /**
@@ -643,6 +645,7 @@ export function createServerCore(d: ServerCoreDeps) {
     save();
     if (r.delta !== 0 || r.itemsChanged || rejected.length > 0) d.onCoins();
     if (rejected.length > 0) d.onReverted(rejected.map((e) => ({ reason: e.reason, amount: e.amount })));
+    if (r.delta < 0) d.onCoinsLowered?.(-r.delta);
   }
 
   async function syncAll(): Promise<void> {

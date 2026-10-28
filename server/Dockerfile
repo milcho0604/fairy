@@ -26,6 +26,8 @@ COPY --chown=node:node server/scripts ./scripts
 COPY --chown=node:node server/db ./db
 # 서버 백업 볼륨 자리. 빈 named volume 은 처음 붙을 때 이 폴더의 주인(node)을 물려받는다
 RUN mkdir -p /data/backups && chown node:node /data/backups && chmod 700 /data/backups
+# 밖에서 도는 백업의 결과를 읽는 자리 (compose 가 fairy_backup_status 볼륨을 읽기 전용으로 붙인다)
+RUN mkdir -p /data/backup-status
 USER node
 EXPOSE 3002
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

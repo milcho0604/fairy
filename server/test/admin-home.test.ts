@@ -35,6 +35,14 @@ const dayOf = (body: { trend: { days: Array<{ day: string }> } }, back: number) 
     asks: number;
     costMicros: number;
   };
+const UNKNOWN = {
+  state: 'unknown',
+  lastOkAt: null,
+  lastOkNote: null,
+  lastFailAt: null,
+  lastFailReason: null,
+  checkedAt: null,
+};
 const homeCell = (html: string) =>
   html.slice(html.indexOf('id="cell-home"'), html.indexOf('id="cell-users"'));
 const settingsCell = (html: string) => html.slice(html.indexOf('id="cell-settings"'));
@@ -195,7 +203,7 @@ describe('서버 백업 현황', () => {
         bytes: 0,
         maxBytes: 1000,
         lastUploadAt: null,
-        external: 'unknown',
+        external: { db: UNKNOWN, files: UNKNOWN },
       },
     );
     assert.equal(
@@ -306,7 +314,7 @@ describe('웹 화면', () => {
     assert.match(s, /<h2>백업 현황<\/h2>/);
     assert.match(s, /이용자 서버 백업/);
     assert.match(s, /올리기 실패<\/dt><dd>기록 없음/);
-    assert.match(s, /마지막 성공<\/dt><dd>알 수 없어요/);
+    assert.match(s, /상태<\/dt><dd>알 수 없어요 \(상태 파일이 없어요\)/);
     assert.match(s, /맥미니 외장 디스크/);
   });
 

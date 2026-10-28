@@ -62,6 +62,7 @@ interface Row {
   opened_coins: number | null;
   opened_passes: number | null;
   expired: boolean;
+  withdrawn_at: Date | null;
   from_account: string | null;
   sender_code: string | null;
   sender_nickname: string | null;
@@ -71,7 +72,7 @@ interface Row {
 
 // 보낸 친구의 코드와 닉네임은 쪽지를 만들 때 담아 둔 것 (스냅샷)
 const COLUMNS = `id, kind, message, coins, chat_passes, fill_to, created_at, expires_at, opened_at, opened_coins,
-  opened_passes, (expires_at IS NOT NULL AND expires_at <= now()) AS expired, from_account, sender_code, sender_nickname`;
+  opened_passes, (expires_at IS NOT NULL AND expires_at <= now()) AS expired, withdrawn_at, from_account, sender_code, sender_nickname`;
 
 /** 열기를 보낸 사람 계정도 잠그고 다시 하라는 신호 (트랜잭션은 되돌려진다) */
 const NEED_SENDER = Symbol('need-sender');
@@ -160,7 +161,11 @@ export class Inbox implements OnModuleInit, OnModuleDestroy {
   onModuleInit(): void {
     const run = () =>
       void this.db.pool
-        .query(`DELETE FROM inbox WHERE opened_at < now() - make_interval(days => $1)`, [KEEP_OPENED_DAYS])
+        .query(
+          `DELETE FROM inbox WHERE opened_at < now() - make_interval(days => $1)
+              OR withdrawn_at < now() - make_interval(days => $1)`,
+          [KEEP_OPENED_DAYS],
+        )
         .catch((err) => console.warn('[inbox] 정리 실패:', (err as Error).message));
     run();
     this.#sweep = setInterval(run, SWEEP_MS);
@@ -180,14 +185,15 @@ export class Inbox implements OnModuleInit, OnModuleDestroy {
       const a = await lockAccount(c, accountId);
       const fam = await familyIds(c, a.id);
       const r = await c.query<Row>(
-        `SELECT ${COLUMNS} FROM inbox WHERE account_id = ANY($1::bigint[]) AND ($2::bigint IS NULL OR id < $2)
+        `SELECT ${COLUMNS} FROM inbox WHERE account_id = ANY($1::bigint[]) AND withdrawn_at IS NULL
+            AND ($2::bigint IS NULL OR id < $2)
           ORDER BY id DESC LIMIT $3`,
         [fam, before ?? null, INBOX_PAGE + 1],
       );
       const rows = r.rows.slice(0, INBOX_PAGE);
       const n = await c.query<{ n: number }>(
         `SELECT count(*)::int AS n FROM inbox WHERE account_id = ANY($1::bigint[]) AND opened_at IS NULL
-            AND (expires_at IS NULL OR expires_at > now())`,
+            AND withdrawn_at IS NULL AND (expires_at IS NULL OR expires_at > now())`,
         [fam],
       );
       return {
@@ -268,6 +274,8 @@ export class Inbox implements OnModuleInit, OnModuleDestroy {
       );
       const row = r.rows[0];
       if (!row) throw fail(HttpStatus.NOT_FOUND, { error: 'no_note' });
+      // 운영자가 철회한 쪽지: 쪽지함에서도 빠진 상태라 없는 쪽지와 같이 답하되 까닭은 알린다
+      if (row.withdrawn_at) throw fail(HttpStatus.NOT_FOUND, { error: 'no_note', reason: 'withdrawn' });
       if (row.opened_at) throw fail(HttpStatus.CONFLICT, { error: 'already_opened', item: item(row) });
       if (row.expired || row.expired_now)
         throw fail(HttpStatus.GONE, { error: 'expired', reason: 'expired', item: item(row) });

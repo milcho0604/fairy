@@ -352,6 +352,7 @@ function setup(
   };
   const reverted: { reason: string; amount: number }[][] = [];
   const inboxCalls: number[] = [];
+  const lowered: number[] = [];
   const opened: string[] = [];
   /** 서버 백업 (#102): 받은 파일로 연 되살리기 확인 칸 */
   const restored: Uint8Array[] = [];
@@ -399,6 +400,7 @@ function setup(
     onServerMin: (m) => serverMins.push(m),
     onReverted: (list) => reverted.push(list),
     onInbox: (n) => inboxCalls.push(n),
+    onCoinsLowered: (n) => lowered.push(n),
     ...(o.calendar ? { calendarLinked: () => o.calendar?.linked ?? false } : {}),
     backupFile: {
       make: async () => backupBytes,
@@ -422,6 +424,7 @@ function setup(
     server: server.s,
     secrets,
     reverted,
+    lowered,
     inboxCalls,
     opened,
     saved: () => saved,
@@ -547,6 +550,22 @@ test('서버가 꺼져 있어도 앱은 사본 잔액으로 돌고, 살아나면
   assert.equal(x.server.balance, 35);
   assert.equal(x.todos.balance(), 35);
   assert.equal(x.core.status().pending, 0);
+});
+
+test('서버 기록에 맞춰 코인이 줄면 줄어든 양을 알리고, 늘 때는 알리지 않는다', async () => {
+  const x = setup({ coins: 100 });
+  x.core.setAge('adult');
+  await x.core.run();
+  x.server.balance = 70; // 운영자가 30 을 회수했다
+  await x.core.run();
+  assert.equal(x.todos.balance(), 70);
+  assert.deepEqual(x.lowered, [30]);
+  x.server.balance = 90;
+  await x.core.run();
+  assert.equal(x.todos.balance(), 90);
+  assert.deepEqual(x.lowered, [30], '늘 때는 지금처럼 조용히');
+  await x.core.run();
+  assert.deepEqual(x.lowered, [30], '같으면 다시 알리지 않는다');
 });
 
 test('거절된 구매는 되돌린다: 물건을 빼고 코인을 돌려주고 알린다', async () => {

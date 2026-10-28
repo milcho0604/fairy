@@ -6,6 +6,8 @@
 //
 // 시험용 Postgres(jj-admin153-pg-<무작위>)와 server/dist 를 이 프로세스가 띄우고 지운다. 진짜 구글, 카카오, Anthropic, 운영 서버는 부르지 않는다.
 // 비교 그림: SERVER_ROOT=<옛 판 server 폴더> TAG=before 로 돌리면 판정 없이 옛 이용자 화면 그림만 찍는다.
+// 묶음 하나만: ONLY=revoke 면 코인 회수(미리보기, 잔액 넘김, 확정), 안 연 쪽지 철회, 홈의 밖 백업 상태(성공, 실패, 오래됨)만 본다
+// (TAG=before 와 같이 쓰면 그 묶음의 옛 화면 그림만).
 import { execFileSync, spawn } from 'node:child_process';
 import { randomBytes, randomInt } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -17,6 +19,7 @@ const root = resolve(import.meta.dirname, '..', '..');
 const SERVER_ROOT = resolve(process.env.SERVER_ROOT ?? join(root, 'server'));
 const OUT = resolve(process.env.OUT ?? join(root, 'out', 'admin-user-detail-shots'));
 const TAG = process.env.TAG === 'before' ? 'before' : 'after';
+const ONLY = process.env.ONLY ?? '';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 mkdirSync(OUT, { recursive: true });
 
@@ -69,12 +72,15 @@ execFileSync(process.execPath, [join(SERVER_ROOT, 'scripts', 'migrate.mjs')], {
 });
 
 const scratch = mkdtempSync(join(process.env.JJ_SCRATCH ?? tmpdir(), '.admin153-'));
+// 밖 백업 상태 파일 폴더 (server 의 BACKUP_STATUS_DIR). 묶음 revoke 가 파일을 써 넣는다
+const statusDir = join(scratch, 'backup-status');
+mkdirSync(statusDir, { recursive: true });
 const apiPort = await freePort();
 const apiUrl = `http://127.0.0.1:${apiPort}`;
 const ADMIN_TOKEN = randomBytes(24).toString('hex');
 const api = spawn(process.execPath, [join(SERVER_ROOT, 'dist', 'main.js')], {
   cwd: SERVER_ROOT,
-  env: { PATH: process.env.PATH, DATABASE_URL: databaseUrl, PORT: String(apiPort), PUBLIC_URL: apiUrl, RELEASES_API: 'http://127.0.0.1:9/latest', ADMIN_TOKEN, ANTHROPIC_API_KEY: 'fake-key', ANTHROPIC_BASE_URL: 'http://127.0.0.1:1' },
+  env: { PATH: process.env.PATH, DATABASE_URL: databaseUrl, PORT: String(apiPort), PUBLIC_URL: apiUrl, BACKUP_STATUS_DIR: statusDir, RELEASES_API: 'http://127.0.0.1:9/latest', ADMIN_TOKEN, ANTHROPIC_API_KEY: 'fake-key', ANTHROPIC_BASE_URL: 'http://127.0.0.1:1' },
   stdio: 'ignore',
 });
 for (let i = 0; i < 120; i++) {
@@ -231,7 +237,16 @@ try {
   await size(1280, 900);
   await login();
 
-  if (TAG === 'before') {
+  if (TAG === 'before' && ONLY === 'revoke') {
+    for (const [w, h] of [[1280, 900], [360, 780]]) {
+      await size(w, h);
+      await nav(`${apiUrl}/admin?user=${id1}#users/list`);
+      await shot(`revoke-before-detail-${w}`, '#user-detail', 3200);
+      await nav(`${apiUrl}/admin#home`);
+      await shot(`revoke-before-home-${w}`, '#cell-home', 2400);
+    }
+    console.log('이전 그림만 찍음', OUT);
+  } else if (TAG === 'before') {
     for (const [w, h] of [[1280, 800], [360, 800]]) {
       await size(w, h);
       await nav(`${apiUrl}/admin#users/list`);
@@ -240,6 +255,152 @@ try {
       await shot(`detail-before-${w}`, '#cell-users', 2600);
     }
     console.log('이전 그림만 찍음', OUT);
+  } else if (ONLY === 'revoke') {
+    // ---- 묶음: 코인 회수(미리보기, 잔액 넘김, 확정), 안 연 쪽지 철회, 홈의 밖 백업 상태 ----
+    const H = 3_600_000;
+    const sec = (ms) => Math.floor(ms / 1000);
+    const put = (n, t) => writeFileSync(join(statusDir, n), t);
+    const clearStatus = () => {
+      for (const n of ['db.ok', 'db.fail', 'db.checked', 'files.ok', 'files.fail', 'files.checked']) rmSync(join(statusDir, n), { force: true });
+    };
+    const bal = (a) => Number(sql(`SELECT balance FROM account WHERE id = ${a}`));
+    const detail = `${apiUrl}/admin?user=${id1}#users/list`;
+    const previewWith = async (coins, reason) => {
+      await nav(detail);
+      await setVal('#user-detail form[action="/admin/coins/revoke/preview"] input[name=coins]', String(coins));
+      await setVal('#user-detail form[action="/admin/coins/revoke/preview"] textarea[name=reason]', reason);
+      // 입력 상한(max=잔액)은 브라우저 검사일 뿐이다: 서버가 막는지 보려고 상한을 떼고 보낸다
+      if (coins > 120) await ev(`document.querySelector('#user-detail form[action="/admin/coins/revoke/preview"] input[name=coins]').removeAttribute('max'); true`);
+      await submitAndWait('#user-detail form[action="/admin/coins/revoke/preview"]');
+    };
+
+    await size(1280, 900);
+    await scheme(false);
+
+    // ---- 코인 회수 ----
+    await nav(detail);
+    const d0 = await text('#user-detail');
+    check('상세에 코인 회수 칸(회수할 코인, 사유, 미리보기 단추)이 있다', (await ev(`!!document.querySelector('#user-detail form[action="/admin/coins/revoke/preview"] input[name=coins]') && !!document.querySelector('#user-detail form[action="/admin/coins/revoke/preview"] textarea[name=reason]')`)) === true && d0.includes('코인 회수'));
+    check('회수 칸에 잔액(120)이 적혀 있고 입력 상한도 잔액', d0.includes('잔액 120') && (await ev(`document.querySelector('#user-detail form[action="/admin/coins/revoke/preview"] input[name=coins]').max`)) === '120');
+    check('회수는 폼이 하나 더 있을 뿐 이용권 회수 폼과 섞이지 않는다', (await ev(`document.querySelectorAll('#user-detail form[action="/admin/ai/revoke"]').length`)) === 1);
+    await shot('revoke-detail-form-1280', '#user-detail', 3200);
+
+    // 잔액 넘김: 미리보기가 막히고 확정 단추가 꺼져 있다
+    await previewWith(500, '넘치는 회수');
+    check('잔액보다 큰 값은 미리보기에서 막힌다 (오류 글과 꺼진 확정 단추)', (await text('#revoke-preview')).includes('잔액 120보다 많이 회수할 수 없어요') && (await ev(`document.querySelector('#revoke-preview form[action="/admin/coins/revoke"] button[type=submit]').disabled`)) === true);
+    check('막힌 미리보기에서는 아무것도 빼지 않았다', bal(id1) === 120);
+    await shot('revoke-blocked-1280', '#user-detail', 3200);
+    await submitAndWait('#user-detail form[action="/admin/flow/cancel"]');
+    check('고치기로 돌아오면 쓰던 값(500, 사유)이 칸에 남는다', (await ev(`document.querySelector('#user-detail form[action="/admin/coins/revoke/preview"] input[name=coins]').value`)) === '500' && (await ev(`document.querySelector('#user-detail form[action="/admin/coins/revoke/preview"] textarea[name=reason]').value`)) === '넘치는 회수');
+
+    // 정상 미리보기
+    await previewWith(30, '잘못 준 코인 회수');
+    const pv = await text('#revoke-preview');
+    check('미리보기에 대상, 지금 잔액 120, 회수 30, 회수 뒤 잔액 90, 사유', pv.includes('고양이') && /지금 잔액\s*120/.test(pv) && /회수\s*30/.test(pv) && /회수 뒤 잔액\s*90/.test(pv) && pv.includes('잘못 준 코인 회수'), pv.slice(0, 200));
+    check('미리보기만으로는 잔액이 그대로 (쓰기 없음)', bal(id1) === 120 && Number(sql(`SELECT count(*) FROM coin_entry WHERE reason = 'admin-revoke'`)) === 0);
+    check('확인 칸을 체크해야 제출된다 (비어 있으면 검사 실패)', (await ev(`document.querySelector('#revoke-preview form[action="/admin/coins/revoke"]').checkValidity()`)) === false);
+    await shot('revoke-preview-1280', '#user-detail', 3200);
+    await ev(`document.querySelector('#revoke-preview input[name=confirm]').checked = true; true`);
+    await submitAndWait('#revoke-preview form[action="/admin/coins/revoke"]');
+    const done = await text('#user-detail');
+    check('확정하면 결과 글(30개 회수)이 나오고 서버 잔액이 90', done.includes('코인 30개를 회수했어요') && bal(id1) === 90, done.slice(0, 200));
+    check('장부에 회수 줄(-30)이 하나, 운영 기록에 coins.revoke 가 하나', Number(sql(`SELECT count(*) FROM coin_entry WHERE reason = 'admin-revoke' AND amount = -30 AND account_id = ${id1}`)) === 1 && Number(sql(`SELECT count(*) FROM admin_log WHERE action = 'coins.revoke' AND target = 'account:${id1}'`)) === 1);
+    check('코인 내역 표에 admin-revoke -30 이 보인다', done.includes('admin-revoke') && done.includes('-30'));
+    check('같은 미리보기를 다시 확정할 수 없다 (뒤로 가기 등): 확정 폼이 사라졌다', (await ev(`!document.querySelector('#revoke-preview')`)) === true);
+    await shot('revoke-result-1280', '#user-detail', 3200);
+
+    // ---- 안 연 쪽지 철회 ----
+    const noteForms = await ev(`document.querySelectorAll('#user-detail form[action="/admin/notes/withdraw"]').length`);
+    const dn = await text('#user-detail');
+    check('철회 단추는 안 열고 기한 안인 지급 쪽지 한 줄에만 있다 (연 쪽지와 기한 지난 쪽지에는 없다)', noteForms === 1 && dn.includes('연 쪽지는 철회할 수 없어요'));
+    check('철회 단추에 쪽지 번호가 붙는 확인 글이 있다', (await ev(`document.querySelector('#user-detail form[action="/admin/notes/withdraw"] label.confirm').innerText`)).includes('철회할게요'));
+    await shot('withdraw-form-1280', '#user-detail', 3200);
+    check('확인 칸 없이는 제출되지 않는다', (await ev(`document.querySelector('#user-detail form[action="/admin/notes/withdraw"]').checkValidity()`)) === false);
+    const noteId = sql(`SELECT id FROM inbox WHERE account_id = ${id1} AND message = '안 연 지급'`);
+    await ev(`document.querySelector('#user-detail form[action="/admin/notes/withdraw"] input[name=confirm]').checked = true; true`);
+    await submitAndWait('#user-detail form[action="/admin/notes/withdraw"]');
+    const dw = await text('#user-detail');
+    check('철회하면 결과 글, 그 줄이 "철회됨", 철회 단추가 사라진다', dw.includes('철회했어요') && dw.includes('철회됨') && (await ev(`document.querySelectorAll('#user-detail form[action="/admin/notes/withdraw"]').length`)) === 0, dw.slice(0, 200));
+    check('DB 에 철회 시각과 운영 기록, 코인은 그대로', sql(`SELECT withdrawn_at IS NOT NULL FROM inbox WHERE id = ${noteId}`) === 't' && Number(sql(`SELECT count(*) FROM admin_log WHERE action = 'note.withdraw' AND target = 'account:${id1}'`)) === 1 && bal(id1) === 90);
+    await shot('withdraw-result-1280', '#user-detail', 3200);
+
+    // ---- 휴대폰 폭과 어두운 모드: 회수 미리보기, 철회 줄 ----
+    for (const [w, h] of [[1280, 900], [360, 780]]) {
+      for (const dark of [false, true]) {
+        if (w === 1280 && !dark) continue;
+        const tag = `${w}${dark ? '-dark' : ''}`;
+        await size(w, h);
+        await scheme(dark);
+        await previewWith(10, '폭 시험');
+        check(`[${tag}] 회수 미리보기가 화면 안에 있고 가로 넘침이 없다`, (await overflow()) && (await inside('#revoke-preview button, #revoke-preview .stats')));
+        check(`[${tag}] 확정 단추와 고치기 단추가 보인다`, (await ev(`['#revoke-preview form[action="/admin/coins/revoke"] button[type=submit]', '#revoke-preview form[action="/admin/flow/cancel"] button'].every((s) => { const e = document.querySelector(s); return e && e.getClientRects().length > 0; })`)) === true);
+        await shot(`revoke-preview-${tag}`, '#user-detail', 3200);
+        await submitAndWait('#user-detail form[action="/admin/flow/cancel"]');
+        await nav(detail);
+        check(`[${tag}] 쪽지 표(철회됨 줄 포함)가 화면 안에 있다`, (await overflow()) && (await inside('#user-detail table.cards td[data-l="받았는지"]')));
+        await shot(`withdraw-table-${tag}`, '#user-detail', 3200);
+      }
+    }
+    await size(1280, 900);
+    await scheme(false);
+
+    // ---- 홈의 밖 백업 상태 ----
+    const now = Date.now();
+    clearStatus();
+    await nav(`${apiUrl}/admin#home`);
+    check('상태 파일이 없으면 "아직 못 읽었어요" 한 줄 (경고 카드 없음)', (await text('#cell-home')).includes('결과는 아직 못 읽었어요') && !(await text('#cell-home')).includes('성공하지 못했어요') && !(await text('#cell-home')).includes('실패했어요'));
+    await shot('backup-unknown-1280', '#cell-home', 2400);
+
+    put('db.ok', `${sec(now - 2 * H)}\tfairy-20261028-053000.sql.gz 4096바이트\n`);
+    put('db.checked', `${sec(now - 60_000)}\n`);
+    put('files.ok', `${sec(now - 3 * H)}\t서버 백업 파일 12개 맞춤\n`);
+    put('files.checked', `${sec(now - 60_000)}\n`);
+    await nav(`${apiUrl}/admin#home`);
+    const homeOk = await text('#cell-home');
+    check('둘 다 성공이면 마지막 성공 시각이 두 줄로 나오고 경고 카드는 없다', /데이터베이스 덤프: 마지막 성공 20\d\d-\d\d-\d\d \d\d:\d\d/.test(homeOk) && /백업 파일 외장 디스크 사본: 마지막 성공/.test(homeOk) && !homeOk.includes('성공하지 못했어요') && !homeOk.includes('실패했어요'));
+    await shot('backup-ok-1280', '#cell-home', 2400);
+
+    put('files.ok', `${sec(now - 30 * H)}\t서버 백업 파일 12개 맞춤\n`);
+    put('db.ok', `${sec(now - 28 * H)}\tfairy-20261027-053000.sql.gz 4096바이트\n`);
+    await nav(`${apiUrl}/admin#home`);
+    const homeStale = await text('#cell-home');
+    check('26시간 넘게 성공 못 하면 몇 시간째인지와 경고 카드 둘', homeStale.includes('30시간째 성공하지 못했어요') && homeStale.includes('28시간째 성공하지 못했어요') && (await ev(`document.querySelectorAll('#cell-home ul.todo li.warn').length`)) >= 4);
+    await shot('backup-stale-1280', '#cell-home', 2400);
+
+    put('files.ok', `${sec(now - 30 * H)}\t서버 백업 파일 12개 맞춤\n`);
+    put('files.fail', `${sec(now - 20 * 60_000)}\trsync 종료 코드 23 <b>x</b>\n`);
+    put('db.ok', `${sec(now - 2 * H)}\tfairy-20261028-053000.sql.gz 4096바이트\n`);
+    put('db.fail', `${sec(now - 30 * 60_000)}\t가장 새 덤프가 깨졌어요 (fairy-20261028-053000.sql.gz, 압축 검사 실패)\n`);
+    for (const [w, h] of [[1280, 900], [360, 780]]) {
+      for (const dark of [false, true]) {
+        const tag = `${w}${dark ? '-dark' : ''}`;
+        await size(w, h);
+        await scheme(dark);
+        await nav(`${apiUrl}/admin#home`);
+        const homeFail = await text('#cell-home');
+        check(`[${tag}] 실패는 시각과 까닭이 홈에 나오고 까닭의 태그는 글로 보인다`, /마지막 실패 20\d\d-\d\d-\d\d \d\d:\d\d, 까닭 rsync 종료 코드 23 <b>x<\/b>/.test(homeFail) && homeFail.includes('압축 검사 실패') && homeFail.includes('데이터베이스 덤프 백업이 마지막에 실패했어요'), homeFail.slice(0, 300));
+        check(`[${tag}] 실패 줄은 bad 모양 (붉은 카드), 가로 넘침 없음`, (await ev(`document.querySelectorAll('#cell-home ul.todo li.bad').length`)) >= 4 && (await overflow()));
+        check(`[${tag}] 실패 줄의 글자 대비 4.5 이상`, await ev(`(() => { const lum = (c) => { const m = c.match(/\\d+/g).map(Number); const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(m[0]) + 0.7152 * f(m[1]) + 0.0722 * f(m[2]); }; const bgOf = (e) => { for (let x = e; x; x = x.parentElement) { const c = getComputedStyle(x).backgroundColor; if (!/rgba\\(0, 0, 0, 0\\)|transparent/.test(c)) return c; } return 'rgb(255,255,255)'; }; return [...document.querySelectorAll('#cell-home ul.todo li.bad a')].filter((a) => a.getClientRects().length).every((a) => { const l1 = lum(getComputedStyle(a).color), l2 = lum(bgOf(a)); const [hi, lo] = l1 > l2 ? [l1, l2] : [l2, l1]; return (hi + 0.05) / (lo + 0.05) >= 4.5; }); })()`));
+        await shot(`backup-failed-${tag}`, '#cell-home', 2400);
+      }
+    }
+    await size(1280, 900);
+    await scheme(false);
+    await nav(`${apiUrl}/admin#settings/ai`);
+    const st = await text('#backup-status');
+    check('설정의 백업 현황에 작업마다 상태, 마지막 성공, 마지막 실패(까닭), 확인한 때', st.includes('데이터베이스 덤프') && st.includes('백업 파일 외장 디스크 사본') && st.includes('마지막이 실패') && st.includes('마지막 성공') && st.includes('작업이 확인한 때'), st.slice(0, 300));
+    await shot('backup-section-1280', '#backup-status', 2400);
+    // 성공으로 돌아오면 실패 카드가 사라진다
+    put('files.ok', `${sec(Date.now())}\t서버 백업 파일 13개 맞춤\n`);
+    put('db.ok', `${sec(Date.now() + 5000)}\tfairy-20261028-120000.sql.gz 4096바이트\n`);
+    await nav(`${apiUrl}/admin#home`);
+    const homeBack = await text('#cell-home');
+    check('그 뒤 둘 다 성공하면 실패와 오래됨 경고가 사라진다', !homeBack.includes('실패했어요') && !homeBack.includes('성공하지 못했어요') && !homeBack.includes('마지막 실패'), homeBack.slice(0, 200));
+
+    // ---- 보안 머리, 인라인 없음, 쪽 오류 ----
+    const live = await ev(`document.documentElement.outerHTML`);
+    check('인라인 스타일, 인라인 스크립트, 이벤트 속성 없음', !/<[^>]+\sstyle=/.test(live) && !/<script(?![^>]*src=)/.test(live) && !/\son(click|load|error)=/.test(live));
+    check('쪽 안 오류 없음 (콘솔, 예외)', pageErrors.length === 0, pageErrors.join(' | '));
   } else {
     const contrastOf = (scope) => ev(`(() => {
       const lum = (c) => { const m = c.match(/\\d+/g).map(Number); const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(m[0]) + 0.7152 * f(m[1]) + 0.0722 * f(m[2]); };

@@ -4,9 +4,11 @@
 import {
   BACKUP_BAD_PERCENT,
   BACKUP_WARN_PERCENT,
+  type BackupJob,
   type BackupStatus,
   backupPercent,
   barChart,
+  type ExternalBackup,
   type LockedStats,
   type TrendView,
   type VersionImpact,
@@ -157,6 +159,8 @@ export interface GrantTrail {
   openedCoins: number | null;
   openedPasses: number | null;
   expired: boolean;
+  /** 운영자가 철회한 때 (철회한 쪽지는 이용자 쪽지함에서 빠지고 열 수 없다) */
+  withdrawnAt: number | null;
   accountId: string;
   code: string;
   nickname: string | null;
@@ -192,6 +196,25 @@ export type FlowPreview =
         days: number;
         reason: string;
         /** 이 까닭이 있으면 확정할 수 없다 (찾지 못한 계정, 만 18세 미만에게 채팅 이용권) */
+        blocked: string | null;
+      };
+    }
+  | {
+      action: 'coins/revoke';
+      fields: Record<string, string | string[]>;
+      nonce: string;
+      revoke: {
+        found: boolean;
+        id?: string | undefined;
+        code?: string | undefined;
+        nickname?: string | null | undefined;
+        /** 적은 계정이 합쳐져 닫힌 것이라 남은 계정에서 뺀다. 이 값이 합쳐진 계정 번호 */
+        mergedFrom?: string | undefined;
+        balance: number;
+        coins: number;
+        after: number;
+        reason: string;
+        /** 이 까닭이 있으면 확정할 수 없다 (없는 계정, 잔액보다 많음) */
         blocked: string | null;
       };
     }
@@ -249,7 +272,7 @@ export type FlowPreview =
 
 /** 홈의 "지금 확인할 것" 한 줄 (서버가 계산하고 웹 홈과 앱 요약이 같이 쓴다) */
 export interface AdminTodo {
-  kind: 'reports' | 'budget' | 'ending_events' | 'ending_coupons' | 'backup';
+  kind: 'reports' | 'budget' | 'ending_events' | 'ending_coupons' | 'backup' | 'backup_db' | 'backup_files';
   level: 'warn' | 'bad';
   /** 신고 건수, 끝나는 이벤트나 쿠폰 수, 예산과 백업은 쓴 비율(%) */
   n: number;
@@ -513,12 +536,14 @@ function sureForm(
   fields: Record<string, string>,
   what: string,
   button: string,
+  /** 결과 글을 이 폼 안에 그린다. 같은 모양의 폼이 줄마다 있으면 끄고 표 위에서 한 번만 그린다 */
+  showErr = true,
 ): string {
   const scope = fields.key ?? fields.account ?? fields.id;
   const inputs = Object.entries(fields)
     .map(([k, x]) => `<input type="hidden" name="${esc(k)}" value="${esc(x)}">`)
     .join('');
-  return `<form method="post" action="${esc(action)}" class="sure">${formErr(v, action, scope)}${hidden(v.csrf)}${inputs}<label class="confirm"><input type="checkbox" name="confirm" value="${esc((fields.id ?? fields.account ?? '').trim())}" required> ${esc(what)}</label><button type="submit" class="danger">${esc(button)}</button></form>`;
+  return `<form method="post" action="${esc(action)}" class="sure">${showErr ? formErr(v, action, scope) : ''}${hidden(v.csrf)}${inputs}<label class="confirm"><input type="checkbox" name="confirm" value="${esc((fields.id ?? fields.account ?? '').trim())}" required> ${esc(what)}</label><button type="submit" class="danger">${esc(button)}</button></form>`;
 }
 
 function postButton(
@@ -576,6 +601,7 @@ const KIND_NOTE_KO: Record<string, string> = { grant: '지급', notice: '알림'
 
 /** 쪽지의 받음 상태: 서버가 아는 것은 연 시각(열면 첨부를 받는다)과 그때 실제로 받은 양뿐이다 */
 function trailState(t: GrantTrail): string {
+  if (t.withdrawnAt !== null) return `<span class="tag ended">철회됨</span> ${when(t.withdrawnAt)}`;
   if (t.openedAt !== null) {
     const got =
       t.kind === 'notice'
@@ -600,6 +626,47 @@ const trailGift = (t: GrantTrail): string =>
         .filter(Boolean)
         .join(', ');
 
+/** 코인 회수 미리보기: 대상, 지금 잔액, 회수 뒤 잔액을 보이고 확인 칸을 체크해야 확정된다 */
+function coinRevokePreview(v: AdminView, pv: Extract<FlowPreview, { action: 'coins/revoke' }>): string {
+  const r = pv.revoke;
+  const typed = typeof pv.fields.account === 'string' ? pv.fields.account : '';
+  const target =
+    r.found && r.code ? `${who({ code: r.code, nickname: r.nickname ?? null })} #${esc(r.id)}` : esc(typed);
+  const name = r.found && r.code ? plain({ code: r.code, nickname: r.nickname ?? null }) : typed;
+  return `<div class="flow" id="revoke-preview">
+<p class="hint">아직 회수하지 않았어요. 아래를 확인하고 확정해 주세요.</p>
+<dl class="stats">
+<div><dt>대상</dt><dd>${target}${r.mergedFrom ? ` <span class="tag soon">합쳐진 계정 #${esc(r.mergedFrom)}, 남은 계정에서 빼요</span>` : ''}</dd></div>
+<div><dt>지금 잔액</dt><dd>${r.balance}</dd></div>
+<div><dt>회수</dt><dd>${r.coins}</dd></div>
+<div><dt>회수 뒤 잔액</dt><dd>${r.after}</dd></div>
+</dl>
+<p>회수 사유 (운영 기록에 남아요): <q>${esc(r.reason)}</q></p>
+${r.blocked ? `<p class="flash error" role="alert">${esc(r.blocked)}</p>` : ''}
+<form method="post" action="/admin/coins/revoke" class="grid">${formErr(v, 'coins/revoke')}${hidden(v.csrf)}${flowKey(pv.nonce)}${carry(pv.fields)}
+${confirmBox(`${name} 코인 ${r.coins}개 회수할게요 (되돌릴 수 없어요)`)}
+<button type="submit" class="danger"${r.blocked ? ' disabled' : ''}>확정하고 코인 회수</button></form>
+${editButton(v.csrf, 'coins/revoke')}
+</div>`;
+}
+
+/**
+ * 쪽지 줄의 철회 단추. 안 열었고 기한 안이고 운영자가 보낸 지급, 알림 쪽지일 때만 단추가 있다.
+ * 연 쪽지는 이미 받은 것이라 철회할 수 없다 (받은 코인은 코인 회수로)
+ */
+function withdrawCell(v: Pick<AdminView, 'flash' | 'csrf'>, t: GrantTrail, code: string): string {
+  if (t.withdrawnAt !== null || t.expired || (t.kind !== 'grant' && t.kind !== 'notice')) return '';
+  if (t.openedAt !== null) return '<small>연 쪽지는 철회할 수 없어요. 받은 코인은 코인 회수로</small>';
+  return sureForm(
+    v,
+    '/admin/notes/withdraw',
+    { id: t.id, account: code },
+    `쪽지 #${t.id} 철회할게요`,
+    '철회',
+    false,
+  );
+}
+
 /** 이용자 상세 한 화면 (합친 계정 묶음 기준): 개요, 지급, 막기와 허용, 정기 지급, 회수, 신고, 코인과 쪽지 내역, 이 사람의 운영 기록 */
 function userDetail(v: AdminView, a: NonNullable<AdminView['account']>): string {
   const csrf = v.csrf;
@@ -616,9 +683,12 @@ function userDetail(v: AdminView, a: NonNullable<AdminView['account']>): string 
   const noteRows = (h?.notes ?? [])
     .map(
       (t) =>
-        `<tr><td data-l="보낸 때">${when(t.sentAt)}</td><td data-l="종류">${esc(KIND_NOTE_KO[t.kind] ?? t.kind)}</td><td data-l="내용">${esc(trailGift(t))}${t.message ? `${trailGift(t) ? ', ' : ''}${esc(t.message)}` : ''}</td><td data-l="받았는지">${trailState(t)}</td></tr>`,
+        `<tr><td data-l="보낸 때">${when(t.sentAt)}</td><td data-l="종류">${esc(KIND_NOTE_KO[t.kind] ?? t.kind)}</td><td data-l="내용">${esc(trailGift(t))}${t.message ? `${trailGift(t) ? ', ' : ''}${esc(t.message)}` : ''}</td><td data-l="받았는지">${trailState(t)}</td><td data-l="철회">${withdrawCell(v, t, a.code)}</td></tr>`,
     )
     .join('');
+  const rp = v.preview?.action === 'coins/revoke' && v.preview.revoke.id === a.id ? v.preview : undefined;
+  const rv = draftOf(v, 'coins/revoke');
+  const rvMine = rv && val(rv, 'account').trim() === a.code ? rv : undefined;
   const logRows = (h?.log ?? [])
     .map(
       (l) =>
@@ -688,9 +758,21 @@ ${confirmBox(`${plain(a)} 채팅 이용권 회수할게요 (되돌릴 수 없어
 <button type="submit" class="danger">회수하기</button>
 </form>
 
+<h3>코인 회수</h3>
+${
+  rp
+    ? coinRevokePreview(v, rp)
+    : `<p class="hint">이용자가 이미 가진 코인을 서버 잔액에서 뺍니다. 잔액 ${a.balance}보다 많이는 뺄 수 없고, 코인 내역에 회수 줄이 남아요. 앱은 다음 맞추기 때 잔액이 바뀌어요. 이미 연 지급 쪽지의 코인을 되돌릴 때 써요. 아직 안 연 쪽지는 아래에서 철회해요.</p>
+<form method="post" action="/admin/coins/revoke/preview" class="grid">${formErr(v, 'coins/revoke', a.code)}${hidden(csrf)}<input type="hidden" name="account" value="${esc(a.code)}">
+<label>회수할 코인 (잔액 ${a.balance}까지) <input name="coins" type="number" min="1"${a.balance > 0 ? ` max="${a.balance}"` : ''} required value="${esc(val(rvMine, 'coins'))}"></label>
+<label class="wide">회수 사유, 운영 기록에 남아요 <textarea name="reason" required maxlength="200">${esc(val(rvMine, 'reason'))}</textarea></label>
+<button type="submit"${a.balance > 0 ? '' : ' disabled'}>${esc(name)} 코인 회수, 미리보기</button>${a.balance > 0 ? '' : ' <span class="hint">잔액이 0이라 뺄 코인이 없어요</span>'}</form>`
+}
+
 <h3>받은 쪽지와 받았는지</h3>
-<p class="hint">쪽지를 열면 코인과 채팅 이용권을 받아요. 서버가 아는 것은 연 시각과 그때 실제로 받은 양이에요. 앱에서 알림을 봤는지는 알 수 없어요. 최근 15건.</p>
-${noteRows ? `<table class="cards"><thead><tr><th>보낸 때</th><th>종류</th><th>내용</th><th>받았는지</th></tr></thead><tbody>${noteRows}</tbody></table>` : '<p class="empty">보낸 쪽지가 없어요</p>'}
+<p class="hint">쪽지를 열면 코인과 채팅 이용권을 받아요. 서버가 아는 것은 연 시각과 그때 실제로 받은 양이에요. 앱에서 알림을 봤는지는 알 수 없어요. 아직 안 연 쪽지는 철회할 수 있고, 철회하면 이용자 쪽지함에서 사라져요. 최근 15건.</p>
+${formErr(v, 'notes/withdraw', a.code)}
+${noteRows ? `<table class="cards"><thead><tr><th>보낸 때</th><th>종류</th><th>내용</th><th>받았는지</th><th>철회</th></tr></thead><tbody>${noteRows}</tbody></table>` : '<p class="empty">보낸 쪽지가 없어요</p>'}
 
 <h3>코인 내역</h3>
 <p class="hint">합친 계정까지 한 묶음, 최근 15건. 지금 잔액은 ${a.balance}.</p>
@@ -726,7 +808,13 @@ export function usersTable(v: AdminView): string {
 <label>방향 <select name="direction"><option value="desc"${u.direction === 'desc' ? ' selected' : ''}>큰 값부터</option><option value="asc"${u.direction === 'asc' ? ' selected' : ''}>작은 값부터</option></select></label>
 <button type="submit">찾기</button></form>`;
   const a = v.account;
-  if (a) return `<section><h2>이용자 찾기</h2>${searchForm}</section>${userDetail(v, a)}`;
+  // 쓰던 코인 회수 미리보기가 지금 보는 이용자의 것이 아니면 (또는 이용자를 열지 않았으면) 맨 위에 보인다
+  const rp = v.preview?.action === 'coins/revoke' ? v.preview : undefined;
+  const lone =
+    rp && !(a && rp.revoke.id === a.id)
+      ? `<section class="flow"><h2>코인 회수 확인</h2>${coinRevokePreview(v, rp)}</section>`
+      : '';
+  if (a) return `${lone}<section><h2>이용자 찾기</h2>${searchForm}</section>${userDetail(v, a)}`;
   const rows = u.rows
     .map((x) => {
       const nm = x.nickname ?? '닉네임 없음';
@@ -737,7 +825,7 @@ export function usersTable(v: AdminView): string {
 <td class="opt" data-l="앱 판">${esc(x.appVersion ?? '없음')}</td><td class="act"><a class="button-link" href="${esc(userOpenHref(x.id))}">${esc(nm)} 열기</a> <a class="button-link" href="${esc(placeHref('users/grants', `?account=${encodeURIComponent(x.id)}`))}">${esc(nm)} 지급</a></td></tr>`;
     })
     .join('');
-  return `<section><h2>이용자 ${u.total}명</h2>
+  return `${lone}<section><h2>이용자 ${u.total}명</h2>
 ${searchForm}
 <p class="hint">합쳐져서 닫힌 계정은 목록에 없고, 적으면 남은 계정이 열려요. 한 쪽에 50명씩 보여요.</p>
 <form id="pick-form" method="get" action="/admin#users/grants" class="row"><button type="submit">고른 사람에게 지급 (한 번에 20명까지)</button><span class="hint">이름 앞 칸을 눌러 고르면 지급 칸에 받는 사람으로 채워져요. 보내기 전에 대상 확인 화면이 한 번 나와요.</span></form>
@@ -952,6 +1040,8 @@ export function todoOf(o: {
   now: number;
   /** 서버 백업이 상한의 얼마나 찼나 (켜져 있고 상한이 있을 때만) */
   backup?: Pick<BackupStatus, 'bytes' | 'maxBytes'>;
+  /** 밖에서 도는 백업(덤프, 외장 디스크 사본)의 상태. 상태 파일이 없으면(unknown) 카드를 만들지 않는다 */
+  external?: ExternalBackup;
 }): AdminTodo[] {
   const out: AdminTodo[] = [];
   if (o.reports > 0) out.push({ kind: 'reports', level: 'warn', n: o.reports, place: 'reports' });
@@ -983,6 +1073,21 @@ export function todoOf(o: {
       n: used,
       place: 'settings/backup',
     });
+  // 밖에서 도는 백업: 마지막이 실패면 bad (n -1), 오래 성공 못 했으면 warn (n 은 마지막 성공 뒤 시간. 한 번도 없으면 -2)
+  for (const [kind, job] of [
+    ['backup_db', o.external?.db],
+    ['backup_files', o.external?.files],
+  ] as const) {
+    if (!job || job.state === 'unknown' || job.state === 'ok') continue;
+    if (job.state === 'failed') out.push({ kind, level: 'bad', n: -1, place: 'settings/backup' });
+    else
+      out.push({
+        kind,
+        level: 'warn',
+        n: job.lastOkAt === null ? -2 : Math.floor((o.now - job.lastOkAt) / 3_600_000),
+        place: 'settings/backup',
+      });
+  }
   return out;
 }
 
@@ -1002,6 +1107,14 @@ export function todoText(t: AdminTodo): string {
       return t.n < 0
         ? '서버 백업 상한이 0 이라 새 백업 올리기가 모두 막혀요'
         : `서버 백업이 상한의 ${t.n}%를 썼어요`;
+    case 'backup_db':
+    case 'backup_files': {
+      const what = t.kind === 'backup_db' ? '데이터베이스 덤프' : '백업 파일 외장 디스크 사본';
+      if (t.n === -1) return `${what} 백업이 마지막에 실패했어요`;
+      return t.n < 0
+        ? `${what} 백업이 성공한 기록이 없어요`
+        : `${what} 백업이 ${t.n}시간째 성공하지 못했어요`;
+    }
   }
 }
 
@@ -1110,10 +1223,31 @@ ${trendCard(
 <details><summary>숫자로 보기</summary><div class="table-scroll"><table class="trend-table"><thead><tr><th>날짜</th><th>가입</th><th>활동 계정</th><th>질문</th><th>추정 비용</th></tr></thead><tbody>${rows}</tbody></table></div></details></section>`;
 }
 
-/** 홈에 보이는 백업 한 줄 (설정의 백업 현황으로 가는 링크) */
+/** 밖에서 도는 백업 한 작업의 이름 */
+const JOB_KO = { db: '데이터베이스 덤프', files: '백업 파일 외장 디스크 사본' } as const;
+
+/** 마지막 성공 뒤 지난 시간 (시간, 내림) */
+const hoursSince = (at: number, now = Date.now()) => Math.max(0, Math.floor((now - at) / 3_600_000));
+
+/** 홈 백업 카드의 한 줄: 마지막 성공, 마지막 실패와 까닭, 오래 성공 못 함 */
+function jobGlance(kind: keyof typeof JOB_KO, j: BackupJob): string {
+  const name = JOB_KO[kind];
+  const ok = j.lastOkAt === null ? '성공한 기록이 없어요' : `마지막 성공 ${when(j.lastOkAt)}`;
+  if (j.state === 'failed')
+    return `<li class="bad"><a href="#settings/backup">${esc(name)}: 마지막 실패 ${j.lastFailAt === null ? '' : esc(when(j.lastFailAt))}, 까닭 ${esc(j.lastFailReason ?? '')}. ${esc(ok)}</a></li>`;
+  if (j.state === 'stale')
+    return `<li class="warn"><a href="#settings/backup">${esc(name)}: ${esc(ok)}${j.lastOkAt === null ? '' : `, ${hoursSince(j.lastOkAt)}시간째 성공하지 못했어요`}</a></li>`;
+  return `<li><a href="#settings/backup">${esc(name)}: ${esc(ok)}</a></li>`;
+}
+
+/** 홈에 보이는 백업 (서버가 받은 이용자 백업 한 줄, 밖에서 도는 백업 한 줄씩. 설정의 백업 현황으로 가는 링크) */
 function backupGlance(b: BackupStatus): string {
+  const outside = b.external.db.state === 'unknown' && b.external.files.state === 'unknown';
+  const ext = outside
+    ? `<p class="hint">데이터베이스 덤프와 외장 디스크 사본의 결과는 아직 못 읽었어요 (상태 파일이 없어요). <a href="#settings/backup">백업 현황</a></p>`
+    : `<ul class="todo">${jobGlance('db', b.external.db)}${jobGlance('files', b.external.files)}</ul>`;
   if (!b.enabled)
-    return `<p class="hint">서버 백업이 꺼져 있어요 (BACKUP_ENC_KEY 가 비었어요). <a href="#settings/backup">백업 현황</a></p>`;
+    return `<p class="hint">서버 백업이 꺼져 있어요 (BACKUP_ENC_KEY 가 비었어요). <a href="#settings/backup">백업 현황</a></p>${ext}`;
   const used = backupPercent(b);
   const blocked = b.maxBytes === 0;
   const last =
@@ -1124,14 +1258,34 @@ function backupGlance(b: BackupStatus): string {
       : used !== null && used >= BACKUP_WARN_PERCENT
         ? 'warn'
         : '';
-  return `<ul class="todo"><li class="${level}"><a href="#settings/backup">${esc(last)}, 파일 ${b.files}개, ${bytesText(b.bytes)}${blocked ? ', 상한 0 (모두 막힘)' : used === null ? '' : ` (상한의 ${used}%)`}</a></li></ul>`;
+  return `<ul class="todo"><li class="${level}"><a href="#settings/backup">${esc(last)}, 파일 ${b.files}개, ${bytesText(b.bytes)}${blocked ? ', 상한 0 (모두 막힘)' : used === null ? '' : ` (상한의 ${used}%)`}</a></li></ul>${ext}`;
 }
 
-/** 설정의 백업 현황: 서버가 아는 것만 보이고, 모르는 것은 모른다고 쓴다 */
+const JOB_STATE_TAG: Record<BackupJob['state'], string> = {
+  ok: '<span class="tag live">정상</span>',
+  stale: '<span class="tag soon">오래 성공하지 못했어요</span>',
+  failed: '<span class="tag bad">마지막이 실패</span>',
+  unknown: '알 수 없어요 (상태 파일이 없어요)',
+};
+
+/** 설정의 백업 현황의 밖에서 도는 백업 한 작업 */
+function jobSection(kind: keyof typeof JOB_KO, j: BackupJob): string {
+  const row = (k: string, val: string) => `<div><dt>${esc(k)}</dt><dd>${val}</dd></div>`;
+  return `<h3>${esc(JOB_KO[kind])}</h3>
+<dl class="stats">
+${row('상태', JOB_STATE_TAG[j.state])}
+${row('마지막 성공', j.lastOkAt === null ? '기록 없음' : `${esc(when(j.lastOkAt))}${j.lastOkNote ? `, ${esc(j.lastOkNote)}` : ''}`)}
+${row('마지막 실패', j.lastFailAt === null ? '기록 없음' : `${esc(when(j.lastFailAt))}, ${esc(j.lastFailReason ?? '')}`)}
+${row('작업이 확인한 때', j.checkedAt === null ? '기록 없음' : esc(when(j.checkedAt)))}
+</dl>`;
+}
+
+/** 설정의 백업 현황: 서버가 아는 것과 밖에서 도는 백업이 남긴 결과. 모르는 것은 모른다고 쓴다 */
 function backupSection(v: AdminView): string {
   const b = v.backup;
   const used = backupPercent(b);
   const row = (k: string, val: string) => `<div><dt>${esc(k)}</dt><dd>${val}</dd></div>`;
+  const unknown = b.external.db.state === 'unknown' && b.external.files.state === 'unknown';
   return `<section id="backup-status"><h2>백업 현황</h2>
 <h3>이용자 서버 백업 (앱에서 올린 .fairybackup)</h3>
 <dl class="stats">
@@ -1143,13 +1297,13 @@ ${row('상한 사용', b.maxBytes === 0 ? '0, 새 백업 올리기가 모두 막
 ${row('올리기 실패', '기록 없음 (서버가 실패를 남기지 않아요)')}
 </dl>
 <p class="hint">상한을 넘거나 상한이 0 이면 새 백업 올리기가 막혀요(507). 올린 지 1년 지난 계정의 백업은 서버가 지워요.</p>
-<h3>데이터베이스 덤프와 외장 디스크 사본</h3>
-<dl class="stats">
-${row('마지막 성공', '알 수 없어요')}
-${row('실패', '알 수 없어요')}
-${row('용량', '알 수 없어요')}
-</dl>
-<p class="hint">매일 데이터베이스 덤프(fairy-backup)와 백업 파일 사본(fairy-backup-files)은 다른 컨테이너가 맥미니 외장 디스크(FAIRY_BACKUP_DIR)에 써요. 서버(fairy-api)는 그 디스크를 읽지 못해서 여기서는 결과를 알 수 없어요. 맥미니에서 해당 컨테이너 로그를 봐 주세요.</p></section>`;
+${jobSection('db', b.external.db)}
+${jobSection('files', b.external.files)}
+<p class="hint">${
+    unknown
+      ? '데이터베이스 덤프(fairy-backup)와 백업 파일 사본(fairy-backup-files)은 다른 컨테이너가 맥미니 외장 디스크(FAIRY_BACKUP_DIR)에 써요. 그 컨테이너가 남기는 상태 파일(BACKUP_STATUS_DIR)이 아직 없어서 결과를 알 수 없어요. 서버 배포 뒤 맥미니에서 백업 컨테이너를 새로 올리면 한 시간 안에 보여요.'
+      : '두 작업이 외장 디스크에 쓴 결과를 상태 파일로 남기면 서버가 읽어 보여요. 마지막 성공이 26시간을 넘기면 홈에서 경고해요. 덤프는 가장 새 덤프 파일의 시각과 압축이 온전한지로, 사본은 맞추기가 끝났는지로 정해요.'
+  }</p></section>`;
 }
 
 const reportTag = (st: ReportState) =>
@@ -1361,12 +1515,12 @@ function recentGrantsTable(v: AdminView): string {
   const rows = (v.recentGrants ?? [])
     .map(
       (t) =>
-        `<tr><td data-l="보낸 때">${when(t.sentAt)}</td><td data-l="받는 사람"><a href="${esc(userOpenHref(t.accountId))}">${esc(t.nickname ?? '(닉네임 없음)')}</a> <code>${esc(t.code)}</code></td><td data-l="내용">${esc(trailGift(t))}</td><td data-l="받았는지">${trailState(t)}</td></tr>`,
+        `<tr><td data-l="보낸 때">${when(t.sentAt)}</td><td data-l="받는 사람"><a href="${esc(userOpenHref(t.accountId))}">${esc(t.nickname ?? '(닉네임 없음)')}</a> <code>${esc(t.code)}</code></td><td data-l="내용">${esc(trailGift(t))}</td><td data-l="받았는지">${trailState(t)}</td><td data-l="철회">${withdrawCell(v, t, t.code)}</td></tr>`,
     )
     .join('');
   return `<h3>최근 지급과 받았는지</h3>
-<p class="hint">보낸 쪽지 20건. 이용자가 쪽지를 열면 받은 것으로 쳐요. 서버가 아는 것은 연 시각과 실제로 받은 양이에요.</p>
-${rows ? `<table class="cards"><thead><tr><th>보낸 때</th><th>받는 사람</th><th>내용</th><th>받았는지</th></tr></thead><tbody>${rows}</tbody></table>` : '<p class="empty">아직 보낸 지급이 없어요</p>'}`;
+<p class="hint">보낸 쪽지 20건. 이용자가 쪽지를 열면 받은 것으로 쳐요. 서버가 아는 것은 연 시각과 실제로 받은 양이에요. 아직 안 연 쪽지는 철회할 수 있어요.</p>
+${rows ? `<table class="cards"><thead><tr><th>보낸 때</th><th>받는 사람</th><th>내용</th><th>받았는지</th><th>철회</th></tr></thead><tbody>${rows}</tbody></table>` : '<p class="empty">아직 보낸 지급이 없어요</p>'}`;
 }
 
 // ---- 알리기 (이슈 #154): 게시물 목록과 만들기 ----
@@ -1627,7 +1781,10 @@ ${versionTable(v)}`;
 
 /** 만들기 칸: 종류를 고르고, 고른 종류에 필요한 입력만 보인다. 미리보기 단계가 있으면 그것을 보인다 */
 function newSection(v: AdminView): string {
-  const pv = v.preview && v.preview.action !== 'grants/batch' ? v.preview : undefined;
+  const pv =
+    v.preview && v.preview.action !== 'grants/batch' && v.preview.action !== 'coins/revoke'
+      ? v.preview
+      : undefined;
   if (pv) return flowPreviewSection(v, pv);
   const f = v.flash;
   const picked = f?.form && MAKE_KINDS.some(([k]) => k === f.form) ? f.form : 'notices';
@@ -1694,7 +1851,10 @@ ${editButton(v.csrf, pv.action)}`;
 
 const lvl = (x: string) => (x ? esc(x) : '없음');
 
-function flowPreviewSection(v: AdminView, pv: Exclude<FlowPreview, { action: 'grants/batch' }>): string {
+function flowPreviewSection(
+  v: AdminView,
+  pv: Exclude<FlowPreview, { action: 'grants/batch' | 'coins/revoke' }>,
+): string {
   if (pv.action === 'notices') return noticeFlowSection(v, pv);
   if (pv.action === 'events') {
     const e = pv.event;
@@ -1853,6 +2013,8 @@ const ACTION_KO: Record<string, string> = {
   'ai.limits': '예산 저장',
   'ai.policy': '정책 저장',
   'ai.revoke': '채팅 이용권 회수',
+  'coins.revoke': '코인 회수',
+  'note.withdraw': '쪽지 철회',
   'ai.subscribe': '정기 지급 걸기',
   'ai.cancel': '정기 지급 해지',
   'ai.block': '채팅 이용권 막기',

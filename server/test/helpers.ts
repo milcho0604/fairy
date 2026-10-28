@@ -141,13 +141,14 @@ export function client(h: () => Harness) {
   return { api, newDevice, session, secondDevice, balanceOf, ledgerSum, lastLog };
 }
 
-/** 미리보기를 거쳐야 확정되는 쓰기 (지급, 공지, 이벤트, 쿠폰, 버전) */
+/** 미리보기를 거쳐야 확정되는 쓰기 (지급, 공지, 이벤트, 쿠폰, 버전, 코인 회수) */
 export const FLOW_PATHS = [
   '/admin/grants/batch',
   '/admin/notices',
   '/admin/events',
   '/admin/coupons',
   '/admin/versions',
+  '/admin/coins/revoke',
 ];
 
 /** 운영자 브라우저 흉내: 쿠키와 CSRF 를 들고 다닌다 */

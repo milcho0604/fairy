@@ -39,12 +39,12 @@ export interface AdminSession {
    * 확정, 고치기, 30분 지남이 지운다
    */
   preview?: {
-    action: 'grants/batch' | 'notices' | 'events' | 'coupons' | 'versions';
+    action: 'grants/batch' | 'notices' | 'events' | 'coupons' | 'versions' | 'coins/revoke';
     fields: Record<string, string | string[]>;
     at: number;
     /** 이 미리보기를 확정하는 한 번만 쓰는 번호 (확정 폼이 싣고 오고, 쓰면 지운다) */
     nonce: string;
-    /** 지급 미리보기가 만들어질 때 찾은 받는 계정(남은 계정 번호, 겹침 없음). 확정 때 다시 찾은 결과와 같아야 보낸다 */
+    /** 지급, 코인 회수 미리보기가 만들어질 때 찾은 받는 계정(남은 계정 번호, 겹침 없음). 확정 때 다시 찾은 결과와 같아야 보낸다 */
     ids?: string[];
     /** 미리보기 때 검사를 거친 지급 값(대상, 양, 사유, 만료)을 한 모양으로 만든 글. 확정 때 이것과 비교한다 */
     grant?: string;

@@ -281,7 +281,7 @@ export class Coins {
         await c.query('UPDATE account SET balance = $2 WHERE id = $1', [acct.id, st.balance]);
       const prof = await c.query<{ code: string; nickname: string | null; inbox: number }>(
         `SELECT code, nickname, (SELECT count(*)::int FROM inbox WHERE account_id = ANY($2::bigint[])
-                  AND opened_at IS NULL AND (expires_at IS NULL OR expires_at > now())) AS inbox
+                  AND opened_at IS NULL AND withdrawn_at IS NULL AND (expires_at IS NULL OR expires_at > now())) AS inbox
            FROM account WHERE id = $1`,
         [acct.id, fam],
       );

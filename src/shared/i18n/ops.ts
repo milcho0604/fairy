@@ -107,7 +107,7 @@ export const ko = {
     `백업 마지막으로 올라온 때 ${v.at} (파일 ${v.files}개)`,
   'admin.backup.none': '서버에 올라온 백업이 아직 없어',
   'admin.backup.off': '서버 백업이 꺼져 있어',
-  'admin.backup.unknown': '데이터베이스 덤프와 외장 디스크 사본은 서버가 읽을 수 없어 웹에서도 알 수 없어',
+  'admin.backup.unknown': '데이터베이스 덤프와 외장 디스크 사본의 결과는 웹 운영자 화면 홈에서 봐',
   'admin.locked': (v: { force: number; restricted: number }) =>
     `업데이트 기준으로 앱이 잠기는 계정 ${v.force}명, 서버 기능이 막히는 계정 ${v.restricted}명`,
   'admin.recent.title': '최근 운영 기록',
@@ -260,8 +260,7 @@ export const en: Translation<typeof ko> = {
     `Latest backup uploaded ${v.at} (${v.files} files)`,
   'admin.backup.none': 'No backups on the server yet',
   'admin.backup.off': 'Server backup is off',
-  'admin.backup.unknown':
-    "The server can't read the database dumps or the external-disk copy, so the web page can't tell either",
+  'admin.backup.unknown': 'The database dump and external-disk copy results are on the web admin home',
   'admin.locked': (v: { force: number; restricted: number }) =>
     `Accounts locked by the update floor: ${v.force}, accounts blocked from server features: ${v.restricted}`,
   'admin.recent.title': 'Recent admin log',

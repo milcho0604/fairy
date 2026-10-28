@@ -140,6 +140,7 @@ export function createServer(o: {
     onChange: (s) => send(s),
     onCoins: o.onCoins,
     onInbox: () => o.onInbox?.(),
+    onCoinsLowered: (n: number) => o.onReverted(t('server.coinsLowered', { n })),
     onReverted: (list: Reverted[]) => {
       const names = [...new Set(list.map((e) => revertedName(e.reason)))];
       o.onReverted(t('server.reverted', { what: names.join(', ') }));
