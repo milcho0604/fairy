@@ -291,7 +291,7 @@ try {
     await scheme(false);
 
     // ---- 카드를 누르면 그 칸이 보인다 ----
-    for (const [href, cell, sub] of [['#reports', 'reports', ''], ['#announce/events', 'announce', 'announce/events'], ['#announce/coupons', 'announce', 'announce/coupons'], ['#settings/ai', 'settings', 'settings/ai'], ['#settings/backup', 'settings', 'settings/backup']]) {
+    for (const [href, cell, sub] of [['#reports', 'reports', ''], ['#announce/events', 'announce', 'announce/events'], ['#announce/coupons', 'announce', 'announce/coupons'], ['#settings/ai', 'settings', 'settings/ai'], ['#settings/backup', 'settings', 'settings/ai']]) {
       await nav(`${apiUrl}/admin#home`);
       await ev(`document.querySelector('#cell-home ul.todo a[href="${href}"]').click(); true`);
       await sleep(300);
@@ -306,8 +306,8 @@ try {
         await size(w, h);
         await scheme(dark);
         await nav(`${apiUrl}/admin#settings/backup`);
-        const t = await ev(`document.querySelector('#sub-settings-backup').innerText`);
-        await shot(`backup-${tag}`, '#sub-settings-backup');
+        const t = await ev(`document.querySelector('#sub-settings-ai').innerText`);
+        await shot(`backup-${tag}`, '#sub-settings-ai');
         check(`[${tag}] 백업 현황: 켜짐, 파일 6개, 총 크기와 상한, 81%`, t.includes('켜짐') && t.includes('6개') && t.includes('상한 1.0MB') && t.includes('81%'), t.slice(0, 300));
         check(`[${tag}] 백업 현황: 실패 기록과 덤프는 모른다고 쓴다`, t.includes('기록 없음') && (t.match(/알 수 없어요/g) ?? []).length >= 3 && t.includes('맥미니 외장 디스크'));
         check(`[${tag}] 백업 현황 가로 넘침 없음`, await overflow());

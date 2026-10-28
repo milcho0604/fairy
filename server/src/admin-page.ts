@@ -54,8 +54,8 @@ export const CELL_SUBS: Record<AdminCell, ReadonlyArray<readonly [string, string
   ],
   settings: [
     ['features', '기능 스위치'],
-    ['ai', '채팅 이용권과 예산'],
-    ['backup', '백업 현황'],
+    // 예산, 정책, 백업 현황이 한 칸 (옛 #settings/backup 주소는 이 칸으로 온다: routerJs)
+    ['ai', '예산, 정책, 백업'],
     ['log', '운영 기록'],
   ],
 };
@@ -379,6 +379,14 @@ export interface AdminView {
   rewardsLoginOnly: boolean;
   /** 기능 스위치 (#102, features.ts): kakao_login, coin_reset, calendar_link_hint (#115) */
   features: FeatureView[];
+  /**
+   * 스위치(기능 키, 채팅 이용권은 ai_chat)마다 가장 최근에 바꾼 기록. 표의 이전 값과 되돌리기가 읽는다.
+   * 기록이 없는 스위치(서버 설정 기본값 그대로)는 키가 없다
+   */
+  switchLast: Record<
+    string,
+    { before: string; after: string; at: number; actor: string; actorName: string | null }
+  >;
   /** 앱 판 분포 (이슈 #120): 최근 30일 활동 계정의 마지막 앱 판 */
   versions: {
     active: number;
@@ -787,46 +795,124 @@ const FEATURE_HINT: Record<string, string> = {
     '보내는 사람과 받는 사람이 모두 허용돼야 해요(허용 목록 모드면 둘 다 목록이나 운영자 계정). 지금 이용권은 모두 운영자 지급분이라 이 스위치가 운영자 지급분 선물 여부까지 정해요. 받는 사람은 만 18세 이상이고 채팅 이용권을 쓸 수 있어야 해요.',
 };
 
-/** 기능 하나의 모드 바꾸기와 허용 계정 (#102) */
-function featureForms(x: FeatureView, v: AdminView): string {
+/** 표에 보일 한 줄 설명 (긴 설명은 "자세히" 안에 둔다) */
+const FEATURE_SHORT: Record<string, string> = {
+  ai_chat: '채팅 이용권으로 AI 에게 묻는 기능',
+  kakao_login: '카카오로 로그인하고 가입하기',
+  coin_reset: '설정의 코인, 산 물건 초기화',
+  calendar_link_hint: '다른 기기의 구글 일정 연결 안내',
+  friends: '친구 맺기',
+  friend_gifts: '친구에게 코인, 채팅 이용권 선물',
+  friend_calendar: '친구에게 바쁜 시간 보여 주기',
+  friend_gift_passes: '친구에게 채팅 이용권 선물',
+};
+
+/** 채팅 이용권(ai_chat)의 긴 설명 */
+const AI_CHAT_HINT =
+  '1장 = 질문 1번. 허용 목록 모드에서는 목록의 계정과 운영자 계정(ADMIN_GOOGLE_SUBS)만 써요. 첫 로그인 선물 10장은 허용된 계정이 처음 물을 때 한 번 받아요.';
+
+/** 표의 상태 배지 글 (자세한 뜻은 영향 칸에) */
+const SWITCH_TAG_KO: Record<string, string> = { off: '끔', allowlist: '허용 목록', everyone: '모두' };
+
+/** 이 모드면 누가 쓰는가 (표의 "영향" 칸). n 은 허용 목록의 계정 수 */
+function switchImpact(key: string, mode: string, n: number): string {
+  if (mode === 'off') return '아무도 쓸 수 없어요';
+  const admins =
+    key === 'ai_chat' || (FEATURES as Record<string, { admins?: boolean }>)[key]?.admins === true;
+  if (mode === 'allowlist')
+    return `허용 목록 ${n}명${admins ? '과 운영자 계정' : ''}만 써요${n === 0 && !admins ? ' (지금은 아무도 못 써요)' : ''}`;
+  return key === 'ai_chat' ? '로그인한 만 18세 이상 모두 써요' : '모두 써요';
+}
+
+/** 표의 한 줄: 이름, 설명, 상태, 영향, 바로 바꾸기와 되돌리기. ai_chat 도 같은 모양이다 (쓰기 주소만 다르다) */
+function switchRow(
+  v: AdminView,
+  o: {
+    key: string;
+    name: string;
+    mode: string;
+    env: boolean;
+    allowCount: number;
+    action: string;
+    hint: string;
+  },
+): string {
+  const d = draftOf(v, o.action, o.key);
+  const last = v.switchLast[o.key];
+  const modeKo = (m: string) => (o.key === 'ai_chat' ? (MODE_KO[m] ?? m) : featureModeKo(o.key, m));
+  const label = `${o.name} 접근 설정을 바꿀게요 (지금 ${modeKo(o.mode)})`;
+  const hidden2 = `${hidden(v.csrf)}<input type="hidden" name="key" value="${esc(o.key)}"><input type="hidden" name="from" value="${esc(o.mode)}">`;
+  const change = `<form method="post" action="${esc(`/admin/${o.action}`)}" class="sw-form">${formErr(v, o.action, o.key)}${hidden2}
+<select name="mode" aria-label="${esc(o.name)} 모드">${(['off', 'allowlist', 'everyone'] as const).map((m) => opt(d, 'mode', m, modeKo(m), o.mode)).join('')}</select>
+${confirmBox(label)}
+<button type="submit" class="danger">바꾸기</button></form>`;
+  const undo =
+    last && last.after === o.mode && last.before !== o.mode
+      ? `<form method="post" action="${esc(`/admin/${o.action}`)}" class="sw-form">${hidden2}<input type="hidden" name="mode" value="${esc(last.before)}"><input type="hidden" name="revert" value="1">
+${confirmBox(`${o.name} 을 이전 값 ${modeKo(last.before)} 으로 되돌릴게요`)}
+<button type="submit" class="ghost">이전 값으로 되돌리기</button></form>`
+      : '';
+  const prev = last
+    ? `<br><small class="prev">이전 값: ${esc(modeKo(last.before))}<br>${esc(when(last.at))}, ${esc(last.actorName ?? last.actor)}</small>`
+    : '';
+  return `<tr class="sw" data-key="${esc(o.key)}">
+<td class="name" data-l="기능">${esc(o.name)}<br><code>${esc(o.key)}</code></td>
+<td data-l="설명">${esc(FEATURE_SHORT[o.key] ?? '')}<details><summary>자세히</summary><p class="hint">${esc(o.hint)}</p></details></td>
+<td data-l="상태"><span class="tag nowrap ${o.mode === 'off' ? 'ended' : o.mode === 'everyone' ? 'live' : 'soon'}">${esc(SWITCH_TAG_KO[o.mode] ?? o.mode)}</span>${o.env ? '<br><small>서버 설정 기본값</small>' : ''}${prev}</td>
+<td data-l="영향">${esc(switchImpact(o.key, o.mode, o.allowCount))}</td>
+<td class="act" data-l="바꾸기">${change}${undo}</td></tr>`;
+}
+
+/** 기능 하나의 허용 계정 (#102). 모드를 바꾸는 폼은 표 줄에 있다 */
+function featureAllow(x: FeatureView, v: AdminView): string {
   const csrf = v.csrf;
-  const dm = draftOf(v, 'features/mode', x.key);
   const da = draftOf(v, 'features/allow', x.key);
   const name = FEATURE_KO[x.key] ?? x.key;
-  return `<h3>${esc(FEATURE_KO[x.key] ?? x.key)} <code>${esc(x.key)}</code></h3>
-<p class="hint">${esc(FEATURE_HINT[x.key] ?? '')}</p>
-<form method="post" action="/admin/features/mode" class="grid">${formErr(v, 'features/mode', x.key)}${hidden(csrf)}<input type="hidden" name="key" value="${esc(x.key)}">
-<label>모드 <select name="mode">${(['off', 'allowlist', 'everyone'] as const).map((m) => opt(dm, 'mode', m, featureModeKo(x.key, m), x.mode)).join('')}</select></label>
-${confirmBox(`${name} 접근 설정을 바꿀게요 (지금 ${featureModeKo(x.key, x.mode)})`)}
-<button type="submit" class="danger">모드 바꾸기</button>
-</form>
+  return `<details class="allow"><summary>${esc(name)} 허용 계정 (${x.accounts.length}명)</summary>
 <form method="post" action="/admin/features/allow" class="row">${formErr(v, 'features/allow', x.key)}${hidden(csrf)}<input type="hidden" name="key" value="${esc(x.key)}"><input type="hidden" name="allowed" value="1">
 <label>허용할 계정 번호나 기기 코드 <input name="account" required maxlength="20" value="${esc(val(da, 'account'))}"></label><button type="submit">허용 목록에 넣기</button>
 </form>
-<ul class="plain">${x.accounts.map((id) => `<li><a href="${esc(placeHref('users/list', `?q=${id}`))}">#${id}</a> ${postButton(csrf, '/admin/features/allow', { key: x.key, account: String(id), allowed: '0' }, '빼기', true)}</li>`).join('') || '<li>허용 목록이 비었어요</li>'}</ul>`;
+<ul class="plain">${x.accounts.map((id) => `<li><a href="${esc(placeHref('users/list', `?q=${id}`))}">#${id}</a> ${postButton(csrf, '/admin/features/allow', { key: x.key, account: String(id), allowed: '0' }, '빼기', true)}</li>`).join('') || '<li>허용 목록이 비었어요</li>'}</ul></details>`;
 }
 
 function aiSections(v: AdminView): { features: string; tickets: string } {
   const ai = v.ai;
   const csrf = v.csrf;
-  const dMode = draftOf(v, 'ai/mode');
   const dLim = draftOf(v, 'ai/limits');
   const dPol = draftOf(v, 'ai/policy');
+  const rows = [
+    switchRow(v, {
+      key: 'ai_chat',
+      name: '채팅 이용권 (AI 대화권)',
+      mode: ai.mode,
+      env: false,
+      allowCount: ai.allow.length,
+      action: 'ai/mode',
+      hint: AI_CHAT_HINT,
+    }),
+    ...v.features.map((x) =>
+      switchRow(v, {
+        key: x.key,
+        name: FEATURE_KO[x.key] ?? x.key,
+        mode: x.mode,
+        env: x.from === 'env',
+        allowCount: x.accounts.length,
+        action: 'features/mode',
+        hint: FEATURE_HINT[x.key] ?? '',
+      }),
+    ),
+  ].join('\n');
   const features = `<section><h2>기능 스위치</h2>
-<table><thead><tr><th>기능</th><th>키</th><th>모드</th></tr></thead><tbody>
-<tr><td>채팅 이용권 (AI 대화권)</td><td><code>ai_chat</code></td><td>${esc(MODE_KO[ai.mode])}</td></tr>
-${v.features.map((x) => `<tr><td>${esc(FEATURE_KO[x.key] ?? x.key)}</td><td><code>${esc(x.key)}</code></td><td>${esc(featureModeKo(x.key, x.mode))}${x.from === 'env' ? ' (서버 설정 기본값)' : ''}</td></tr>`).join('\n')}
-</tbody></table>
-${v.features.map((x) => featureForms(x, v)).join('\n')}
+<p class="hint">한 표에서 바로 바꿔요. 바꿀 때는 확인 칸을 체크해야 하고, 운영 기록에 누가 무엇을 어떻게 바꿨는지 남아요. 바꾼 줄에는 이전 값이 보이고 한 번에 되돌릴 수 있어요. 채팅 이용권의 허용 목록은 <a href="#settings/ai">예산, 정책, 백업</a> 칸에 있어요.</p>
+<div class="table-scroll"><table class="switches cards"><thead><tr><th>기능</th><th>설명</th><th>상태</th><th>영향</th><th>바꾸기</th></tr></thead><tbody>
+${rows}
+</tbody></table></div>
+<h3>허용 계정</h3>
+<p class="hint">허용 목록 모드인 기능에서 쓸 계정을 넣고 빼요.</p>
+${v.features.map((x) => featureAllow(x, v)).join('\n')}
 </section>`;
-  const tickets = `<section><h2>채팅 이용권과 예산</h2>
-<h3>채팅 이용권 접근</h3>
-<p class="hint">지금 모드: <strong>${esc(MODE_KO[ai.mode])}</strong>. 1장 = 질문 1번. 허용 목록 모드에서는 목록의 계정과 운영자 계정(ADMIN_GOOGLE_SUBS)만 써요. 첫 로그인 선물 10장은 허용된 계정이 처음 물을 때 한 번.</p>
-<form method="post" action="/admin/ai/mode" class="grid">${formErr(v, 'ai/mode')}${hidden(csrf)}
-<label>모드 <select name="mode">${(['off', 'allowlist', 'everyone'] as const).map((m) => opt(dMode, 'mode', m, MODE_KO[m] ?? m, ai.mode)).join('')}</select></label>
-${confirmBox(`채팅 이용권 접근 설정을 바꿀게요 (지금 ${MODE_KO[ai.mode]})`)}
-<button type="submit" class="danger">모드 바꾸기</button>
-</form>
+  const tickets = `<section><h2>예산과 정책</h2>
+<p class="hint">채팅 이용권을 누가 쓰는지(접근 모드)는 <a href="#settings/features">기능 스위치</a> 표에서 바꿔요. 지금 모드: <strong>${esc(MODE_KO[ai.mode])}</strong>. 허용 목록 모드에서는 목록의 계정과 운영자 계정(ADMIN_GOOGLE_SUBS)만 써요.</p>
 <form method="post" action="/admin/ai/limits" class="grid">${formErr(v, 'ai/limits')}${hidden(csrf)}
 <label>월 예산 달러 (.env 상한 ${usd(ai.capBudgetMicros)} 이하, 비우면 상한) <input name="budget_usd" inputmode="decimal" value="${esc(val(dLim, 'budget_usd', ai.setBudgetMicros === null ? '' : (ai.setBudgetMicros / 1e6).toString()))}"></label>
 <label>사람마다 하루 질문 (.env 상한 ${ai.capDailyLimit} 이하, 비우면 상한) <input name="daily_limit" type="number" min="0" value="${esc(val(dLim, 'daily_limit', String(ai.setDailyLimit ?? '')))}"></label>
@@ -1044,7 +1130,7 @@ function backupSection(v: AdminView): string {
   const b = v.backup;
   const used = backupPercent(b);
   const row = (k: string, val: string) => `<div><dt>${esc(k)}</dt><dd>${val}</dd></div>`;
-  return `<section><h2>백업 현황</h2>
+  return `<section id="backup-status"><h2>백업 현황</h2>
 <h3>이용자 서버 백업 (앱에서 올린 .fairybackup)</h3>
 <dl class="stats">
 ${row('상태', b.enabled ? '켜짐' : '꺼짐 (BACKUP_ENC_KEY 가 비었어요)')}
@@ -1711,8 +1797,7 @@ ${CELL_SUBS[cell].map(([id]) => `<div class="sub" id="sub-${cell}-${id}" data-su
     announce: sub('announce', { posts: postsSection(v), new: newSection(v) }),
     settings: sub('settings', {
       features: ai.features,
-      ai: ai.tickets,
-      backup: backupSection(v),
+      ai: ai.tickets + backupSection(v),
       log: logSection(v),
     }),
   };
@@ -1799,7 +1884,7 @@ function logSection(v: AdminView): string {
     .map(
       (l) => `<tr><td>${when(l.at)}</td>
 <td>${l.actorName ? `${esc(l.actorName)}<br><small><code>${esc(l.actor)}</code></small>` : `<code>${esc(l.actor)}</code>`}</td>
-<td>${esc(actionKo(l.action))}<br><small><code>${esc(l.action)}</code></small></td>
+<td>${esc(actionKo(l.action))}${(l.detail as { revert?: unknown } | null)?.revert === true ? ' (되돌림)' : ''}<br><small><code>${esc(l.action)}</code></small></td>
 <td>${l.targetName ? `${esc(l.targetName)}<br><small><code>${esc(l.target ?? '')}</code></small>` : esc(l.target ?? '')}</td>
 <td><code>${esc(l.detail ? JSON.stringify(l.detail) : '')}</code></td></tr>`,
     )
@@ -1869,6 +1954,8 @@ function routerJs(): string {
       else if (['q', 'page', 'sort', 'direction', 'user'].some((k) => q.has(k))) { c = 'users'; s = 'list'; }
       else c = 'home';
     }
+    // 백업 현황은 예산, 정책과 한 칸이 되었다 (옛 #settings/backup 주소)
+    if (c === 'settings' && s === 'backup') s = 'ai';
     let place = c;
     if (SUBS[c].length) {
       if (SUBS[c].indexOf(s) < 0) s = SUBS[c][0];
@@ -2034,6 +2121,15 @@ table.posts td.name small { font-weight: 400; color: var(--muted); }
 .coupon-code { font-size: 20px; font-weight: 700; letter-spacing: 0.04em; border: 1px solid var(--accent); border-radius: 8px; padding: 6px 10px; user-select: all; }
 .preview.event .badge { background: var(--accent); color: var(--on-accent); }
 table.plain-table { max-width: 560px; margin-bottom: 12px; }
+table.switches td.name { font-weight: 600; }
+table.switches td.act { white-space: normal; }
+.tag.nowrap { white-space: nowrap; }
+table.switches details { margin: 4px 0 0; }
+table.switches details summary { margin: 0; font-size: 12px; }
+table.switches small.prev { color: var(--muted); }
+form.sw-form { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin: 0 0 8px; }
+form.sw-form .flash { margin: 0; }
+details.allow { border: 1px solid var(--line); border-radius: 8px; padding: 2px 10px; margin: 0 0 8px; }
 @supports selector(:has(a)) {
   .mk-body, .mk-hint { display: none; }
   .mk:has(#mk-notices:checked) .mk-notices, .mk:has(#mk-events:checked) .mk-events,
@@ -2053,6 +2149,14 @@ table.plain-table { max-width: 560px; margin-bottom: 12px; }
   table.cards td.act { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 8px; }
   table.cards td.act .button-link { flex: 1 1 45%; text-align: center; min-height: 42px; display: flex; align-items: center; justify-content: center; overflow-wrap: anywhere; }
   table.cards td { overflow-wrap: anywhere; }
+  table.switches tr { border: 1px solid var(--line); border-radius: 8px; margin: 0 0 10px; padding: 8px 6px; }
+  table.switches td.name { font-size: 16px; }
+  table.switches td.act { display: block; }
+  table.switches td, table.switches form.sw-form, table.switches form.sw-form label { min-width: 0; max-width: 100%; }
+  table.switches { table-layout: fixed; }
+  form.sw-form { align-items: stretch; }
+  form.sw-form label.confirm { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; overflow-wrap: anywhere; }
+  form.sw-form button, form.sw-form select { width: 100%; }
   section { padding: 12px; }
   .tabs a { flex: 1 1 42%; text-align: center; }
   .shell { display: block; padding-bottom: 72px; }

@@ -231,8 +231,8 @@ const PLACES = [
   ['announce', ['form[action="/admin/versions"]', 'form[action="/admin/notices/preview"]']],
   ['announce/events', ['form[action="/admin/events"]']],
   ['announce/coupons', ['form[action="/admin/coupons"]', 'form[action="/admin/rewards/policy"]']],
-  ['settings', ['form[action="/admin/features/mode"]', 'form[action="/admin/features/allow"]']],
-  ['settings/ai', ['form[action="/admin/ai/mode"]', 'form[action="/admin/ai/limits"]', 'form[action="/admin/ai/policy"]']],
+  ['settings', ['form[action="/admin/features/mode"]', 'form[action="/admin/ai/mode"]', 'form[action="/admin/features/allow"]']],
+  ['settings/ai', ['form[action="/admin/ai/limits"]', 'form[action="/admin/ai/policy"]']],
   ['settings/log', ['table.log:not(#cell-home table)', 'form[action="/admin#settings/log"]']],
 ];
 

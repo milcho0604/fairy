@@ -52,7 +52,7 @@ import {
   postFilterOf,
   queryPosts,
 } from './admin-posts';
-import { AI_MODES, AiAdmin, type AiMode, type AiSettings, findAccount } from './ai-admin';
+import { AI_FEATURE, AI_MODES, AiAdmin, type AiMode, type AiSettings, findAccount } from './ai-admin';
 import { CONFIG } from './app.tokens';
 import { AuthGuard } from './auth.guard';
 import type { Config } from './config';
@@ -403,6 +403,28 @@ function softConfirm(f: FormFields, what: string, target: string): void {
   if (!same) throw new Refused(`확인한 대상이 달라요 (${what})`, 'confirm');
 }
 
+const isAiMode = (v: unknown): v is AiMode =>
+  typeof v === 'string' && (AI_MODES as readonly string[]).includes(v);
+
+/**
+ * 스위치 표의 폼은 화면에 보인 모드를 from 으로 같이 보낸다. 그 사이 다른 곳에서 바뀌었으면 거절한다 (덮어써서 남의 변경을
+ * 지우지 않게). from 이 없는 요청(앱 API, 옛 폼)은 그대로 받는다
+ */
+function staleSwitch(f: FormFields, now: string): void {
+  const from = (f.from ?? '').trim();
+  if (f.revert === '1' && !from) throw new Refused('되돌리기에는 화면에 보인 값(from)이 필요해요', 'stale');
+  if (from && from !== now)
+    throw new Refused(`다른 곳에서 먼저 바꿨어요 (지금 ${now}). 화면을 다시 열어 주세요`, 'stale');
+}
+
+/** 같은 스위치를 동시에 바꾸는 요청을 한 줄로 세운다 (feature_flag 줄이 없어도 걸리도록 트랜잭션 잠금을 쓴다) */
+async function lockSwitch(c: PoolClient, key: string): Promise<void> {
+  await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`switch:${key}`]);
+}
+
+/** 되돌리기 단추로 보낸 요청이면 운영 기록에 표시한다 */
+const revertMark = (f: FormFields): { revert?: true } => (f.revert === '1' ? { revert: true } : {});
+
 function needConfirm(f: FormFields, what: string): void {
   if (f.confirm !== 'yes') throw new Refused(`확인 칸을 체크해 주세요 (${what})`, 'confirm');
 }
@@ -559,6 +581,7 @@ export class AdminService {
       logPage: log.page,
       rewardsLoginOnly: await this.rewards.loginOnly(),
       features: await this.features.listFeatures(),
+      switchLast: await this.switchLast(),
       versions: {
         ...versionStats(dist.rows),
         locked: lockedStats(
@@ -567,6 +590,35 @@ export class AdminService {
         ),
       },
     };
+  }
+
+  /** 스위치마다 가장 최근에 바꾼 기록(이전 값, 바뀐 값, 때, 누가). 표의 "이전 값"과 되돌리기가 읽는다 (ai_chat 포함) */
+  private async switchLast(): Promise<AdminView['switchLast']> {
+    const r = await this.db.pool.query<{
+      key: string;
+      before: string | null;
+      after: string | null;
+      at: string;
+      actor: string;
+      actor_name: string | null;
+    }>(
+      `SELECT DISTINCT ON (k) k AS key, detail->>'before' AS before, detail->>'after' AS after,
+              (extract(epoch FROM at) * 1000)::bigint AS at, actor, actor_name
+         FROM (SELECT *, CASE WHEN action = 'ai.mode' THEN 'ai_chat' ELSE detail->>'key' END AS k
+                 FROM admin_log WHERE action IN ('ai.mode', 'feature.mode')) l
+        WHERE k IS NOT NULL ORDER BY k, id DESC`,
+    );
+    const out: AdminView['switchLast'] = {};
+    for (const x of r.rows)
+      if (isAiMode(x.before) && isAiMode(x.after))
+        out[x.key] = {
+          before: x.before,
+          after: x.after,
+          at: Number(x.at),
+          actor: x.actor,
+          actorName: x.actor_name,
+        };
+    return out;
   }
 
   #trend?: { at: number; value: TrendView };
@@ -1760,10 +1812,12 @@ export class AdminService {
     const mode = (f.mode ?? '') as AiMode;
     if (!AI_MODES.includes(mode)) throw new Refused('모드는 off, allowlist, everyone');
     return this.write(actor, async (c) => {
+      await lockSwitch(c, AI_FEATURE);
       const r = await this.aiAdmin.setSettings(c, { mode });
+      staleSwitch(f, r.before.mode);
       return {
         text: `채팅 이용권 접근 모드: ${r.before.mode} → ${mode}`,
-        log: ['ai.mode', null, { before: r.before.mode, after: mode }],
+        log: ['ai.mode', null, { before: r.before.mode, after: mode, ...revertMark(f) }],
         data: { mode: `${r.before.mode} → ${mode}` },
       };
     });
@@ -1783,12 +1837,18 @@ export class AdminService {
     const key = this.featureKey(f);
     const mode = (f.mode ?? '') as AiMode;
     if (!AI_MODES.includes(mode)) throw new Refused('모드는 off, allowlist, everyone');
-    const before = await this.features.featureMode(key);
     return this.write(actor, async (c) => {
+      // 보는 사이 다른 곳에서 바뀌었는지는 같은 트랜잭션 안의 DB 줄로 본다 (담아 둔 값은 5초 늦을 수 있다).
+      // 줄이 아직 없어도(서버 설정 기본값) 같은 기능의 동시 요청이 한 줄로 서도록 기능 키로 잠근다
+      await lockSwitch(c, key);
+      const row = await c.query<{ mode: string }>('SELECT mode FROM feature_flag WHERE key = $1', [key]);
+      const dbMode = row.rows[0]?.mode;
+      const before = isAiMode(dbMode) ? dbMode : await this.features.featureMode(key);
+      staleSwitch(f, before);
       await this.features.setFeatureMode(key, mode, c);
       return {
         text: `${key} 모드: ${before} → ${mode}`,
-        log: ['feature.mode', null, { key, before, after: mode }],
+        log: ['feature.mode', null, { key, before, after: mode, ...revertMark(f) }],
       };
     });
   }
@@ -2374,7 +2434,7 @@ const ACTION_PLACES: Record<AdminAction, AdminPlace> = {
   notices: 'announce/new',
   'notices/delete': 'announce/posts',
   versions: 'announce/new',
-  'ai/mode': 'settings/ai',
+  'ai/mode': 'settings/features',
   'ai/limits': 'settings/ai',
   'ai/revoke': 'users/list',
   'ai/subscribe': 'users/list',

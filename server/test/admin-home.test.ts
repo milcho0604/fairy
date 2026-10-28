@@ -298,10 +298,12 @@ describe('웹 화면', () => {
     assert.match(home, /한국 시간 기준/);
   });
 
-  test('설정/백업 하위에 서버가 아는 값과 모르는 값이 따로 나온다', async () => {
+  test('설정의 예산, 정책, 백업 칸에 서버가 아는 값과 모르는 값이 따로 나온다', async () => {
     const html = (await admin.page()).text;
     const s = settingsCell(html);
-    assert.match(s, /data-sub="settings\/backup"/);
+    assert.match(s, /data-sub="settings\/ai"/);
+    assert.doesNotMatch(s, /data-sub="settings\/backup"/);
+    assert.match(s, /<h2>백업 현황<\/h2>/);
     assert.match(s, /이용자 서버 백업/);
     assert.match(s, /올리기 실패<\/dt><dd>기록 없음/);
     assert.match(s, /마지막 성공<\/dt><dd>알 수 없어요/);
