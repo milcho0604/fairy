@@ -82,7 +82,7 @@ export const ko = {
   'shop.makeLabel': (v: { n: number }) => `커스텀 먹이 만들기, 코인 ${v.n}개`,
   'shop.sureLabel': (v: { name: string; n: number }) =>
     `${v.name}, 코인 ${v.n}개, 되돌릴 수 없어, 한 번 더 눌러 확인`,
-  'shop.newHouseFirst': '새 집이야! 화면 왼쪽 아래 구석에 놓았어. 끌어서 옮길 수 있어',
+  'shop.newHouseFirst': '새 집을 왼쪽 아래에 놓았어. 끌어서 옮겨 봐',
   'shop.newHouseGrown': '새 집이야! 있던 자리에서 커졌어',
 };
 
@@ -165,6 +165,6 @@ export const en: Translation<typeof ko> = {
   'shop.makeLabel': (v: { n: number }) => `Make a custom treat, ${v.n} coins`,
   'shop.sureLabel': (v: { name: string; n: number }) =>
     `${v.name}, ${v.n} coins, can't be undone, tap again to confirm`,
-  'shop.newHouseFirst': 'A new house! It is in the bottom left corner of the screen. Drag it anywhere',
+  'shop.newHouseFirst': 'Your house is bottom left. Drag to move it',
   'shop.newHouseGrown': 'A new house! It grew right where it was',
 };

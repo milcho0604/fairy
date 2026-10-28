@@ -72,8 +72,8 @@ function check(label, ok, detail = '') {
   console.log(ok ? 'PASS' : 'FAIL', label, detail ? `(${detail})` : '');
 }
 const T = ko
-  ? { sure: '한 번 더', need: '코인', full20: '지금은 20만 차', fullNow: '배불러서 지금은 못 줘', saved: '저장됨', corner: '왼쪽 아래 구석', giveCake: '케이크 주기, 코인 30개' }
-  : { sure: 'Tap again', need: 'more coins', full20: 'Only 20 more fits now', fullNow: 'Too full to eat right now', saved: 'Saved', corner: 'bottom left corner', giveCake: 'Give Cake, 30 coins' };
+  ? { sure: '한 번 더', need: '코인', full20: '지금은 20만 차', fullNow: '배불러서 지금은 못 줘', saved: '저장됨', corner: '왼쪽 아래', giveCake: '케이크 주기, 코인 30개' }
+  : { sure: 'Tap again', need: 'more coins', full20: 'Only 20 more fits now', fullNow: 'Too full to eat right now', saved: 'Saved', corner: 'bottom left', giveCake: 'Give Cake, 30 coins' };
 
 // 대비 계산(밝기). 투명도(opacity)까지 곱해 겉으로 보이는 색으로 잰다
 const CONTRAST = `(() => {
@@ -181,6 +181,17 @@ try {
   const msg = await p.ev(`document.querySelector('.shop-msg')?.textContent ?? ''`);
   check('집을 지은 뒤 어디에 놓였는지 한 줄', msg.includes(T.corner), msg);
   await p.shot(`shop-built-${lang}-light`);
+  // 폭 360, 320 에서도 구매 띠 문구가 한 줄에 다 들어간다(말줄임 없음)
+  const w0 = await main('__jj.panel.window.getSize()[0]');
+  for (const w of [360, 320]) {
+    await main(`__jj.panel.window.setSize(${w}, __jj.panel.window.getSize()[1]); 1`);
+    await sleep(350);
+    const fit = JSON.parse(await p.ev(`JSON.stringify((() => { const m = document.querySelector('.shop-msg'); return m ? [m.scrollWidth, m.clientWidth, window.innerWidth] : null; })())`));
+    check(`폭 ${w}: 집 구매 문구가 말줄임 없이 한 줄`, !!fit && fit[0] <= fit[1], JSON.stringify(fit));
+    await p.shot(`shop-built-${lang}-w${w}`);
+  }
+  await main(`__jj.panel.window.setSize(${w0}, __jj.panel.window.getSize()[1]); 1`);
+  await sleep(300);
   // 집 모양 카드(300): 확인 상태에서도 단추 좌표가 그대로
   await main('__jj.store.reward(400, "test", Date.now()); __jj.panel.refresh(); 1');
   await sleep(500);
