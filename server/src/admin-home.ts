@@ -37,9 +37,73 @@ export interface BackupStatus {
   maxBytes: number | null;
   /** 가장 최근에 올라온 백업의 때 (ms), 없으면 null. 올리기에 실패한 기록은 서버가 남기지 않는다 */
   lastUploadAt: number | null;
-  /** 서버가 읽을 수 없는 백업: 데이터베이스 덤프와 외장 디스크 사본은 다른 컨테이너가 맥미니 디스크에 쓴다 */
-  external: 'unknown';
+  /** 다른 컨테이너가 맥미니 디스크에 하는 백업: 데이터베이스 덤프와 외장 디스크 사본. 그 컨테이너가 남긴 상태 파일로 안다 */
+  external: ExternalBackup;
 }
+
+/** 밖에서 도는 백업 작업 하나의 상태 (상태 파일 db.*, files.* 에서 읽는다) */
+export interface BackupJob {
+  /** unknown: 상태 파일이 없다(아직 안 돌았거나 연결이 안 됐다), ok, stale: 마지막 성공이 오래됐다, failed: 마지막이 실패 */
+  state: 'unknown' | 'ok' | 'stale' | 'failed';
+  lastOkAt: number | null;
+  lastOkNote: string | null;
+  lastFailAt: number | null;
+  lastFailReason: string | null;
+  /** 작업 쪽이 마지막으로 확인한 때 (이 값이 멈췄으면 작업 컨테이너가 죽은 것이다) */
+  checkedAt: number | null;
+}
+
+export interface ExternalBackup {
+  db: BackupJob;
+  files: BackupJob;
+}
+
+/** 이보다 오래 성공하지 못하면 경고 (하루 한 번 도는 작업에 두 시간 여유) */
+export const BACKUP_STALE_MS = 26 * 3_600_000;
+/** 상태 파일 한 줄: "<초 단위 시각><탭><글>" */
+const MAX_NOTE = 200;
+
+/** 상태 파일 한 줄을 (시각 ms, 글)로. 모양이 틀리면 null (읽다 만 파일, 엉뚱한 파일) */
+export function parseStatusLine(raw: string | undefined): { at: number; note: string } | null {
+  if (raw === undefined) return null;
+  const m = /^(\d{9,11})(?:\t([^\n\r]*))?/.exec(raw.trim());
+  if (!m) return null;
+  const at = Number(m[1]) * 1000;
+  if (!Number.isSafeInteger(at)) return null;
+  // 글은 화면에만 쓴다 (화면이 이스케이프한다). 길이만 자른다
+  return { at, note: (m[2] ?? '').trim().slice(0, MAX_NOTE) };
+}
+
+/** 작업 하나의 상태 파일 셋(ok, fail, checked) 내용으로 상태를 정한다 */
+export function backupJobOf(
+  raw: { ok?: string | undefined; fail?: string | undefined; checked?: string | undefined },
+  now: number,
+): BackupJob {
+  const ok = parseStatusLine(raw.ok);
+  const fail = parseStatusLine(raw.fail);
+  const checked = parseStatusLine(raw.checked);
+  const base = {
+    lastOkAt: ok?.at ?? null,
+    lastOkNote: ok ? ok.note || null : null,
+    lastFailAt: fail?.at ?? null,
+    lastFailReason: fail ? fail.note || '까닭을 남기지 않았어요' : null,
+    checkedAt: checked?.at ?? null,
+  };
+  if (!ok && !fail && !checked) return { state: 'unknown', ...base };
+  // 마지막 실패가 마지막 성공보다 뒤면 실패 (성공 시각이 같으면 성공)
+  if (fail && (!ok || fail.at > ok.at)) return { state: 'failed', ...base };
+  if (!ok || now - ok.at > BACKUP_STALE_MS) return { state: 'stale', ...base };
+  return { state: 'ok', ...base };
+}
+
+export const UNKNOWN_JOB: BackupJob = {
+  state: 'unknown',
+  lastOkAt: null,
+  lastOkNote: null,
+  lastFailAt: null,
+  lastFailReason: null,
+  checkedAt: null,
+};
 
 /** 사용량이 이 비율(%) 이상이면 확인할 것에 올린다 */
 export const BACKUP_WARN_PERCENT = 80;

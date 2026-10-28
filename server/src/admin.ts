@@ -1,5 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { createHash, randomBytes, randomInt } from 'node:crypto';
+import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
+import { open } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
   BadRequestException,
   ConflictException,
@@ -18,10 +20,21 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import type { PoolClient } from 'pg';
-import { lockAccount, lockAccountsOrdered } from './accounts';
+import { lockAccount, lockAccountsOrdered, utcDay } from './accounts';
 import { AdminAccess } from './admin-access';
 import { AdminAuth, type AdminSession, actorOf, clearCookie } from './admin-auth';
-import { type BackupStatus, fillDays, impactOf, lockedStats, TREND_DAYS, type TrendView } from './admin-home';
+import {
+  type BackupJob,
+  type BackupStatus,
+  backupJobOf,
+  type ExternalBackup,
+  fillDays,
+  impactOf,
+  lockedStats,
+  TREND_DAYS,
+  type TrendView,
+  UNKNOWN_JOB,
+} from './admin-home';
 import {
   type AdminCell,
   type AdminPlace,
@@ -164,13 +177,23 @@ export const ADMIN_ACTIONS = [
   'features/allow',
   // 신고 처리 상태 (#151): 미처리, 확인, 조치
   'reports/status',
+  // 코인 회수 (미리보기 뒤 확정)와 안 연 쪽지 철회 (#153)
+  'coins/revoke',
+  'notes/withdraw',
 ] as const;
 export type AdminAction = (typeof ADMIN_ACTIONS)[number];
 export const isAdminAction = (v: string): v is AdminAction =>
   (ADMIN_ACTIONS as readonly string[]).includes(v);
 
 /** 작성, 대상 확인, 미리보기, 확정 흐름을 타는 쓰기 (웹만. 앱 API 는 이전 그대로 한 번에 쓴다) */
-export const FLOW_ACTIONS = ['grants/batch', 'notices', 'events', 'coupons', 'versions'] as const;
+export const FLOW_ACTIONS = [
+  'grants/batch',
+  'notices',
+  'events',
+  'coupons',
+  'versions',
+  'coins/revoke',
+] as const;
 export type FlowAction = (typeof FLOW_ACTIONS)[number];
 /** 대상 확인 화면을 이만큼 지나면 버린다 */
 const PREVIEW_MS = 30 * 60_000;
@@ -260,6 +283,7 @@ interface TrailRow {
   opened_coins: number | null;
   opened_passes: number | null;
   expired: boolean;
+  withdrawn: string | null;
   account_id: string;
   code: string;
   nickname: string | null;
@@ -267,7 +291,8 @@ interface TrailRow {
 const TRAIL_SELECT = `SELECT i.id, i.kind, i.message, i.coins, i.chat_passes, i.fill_to,
   (extract(epoch FROM i.created_at) * 1000)::bigint AS sent, (extract(epoch FROM i.expires_at) * 1000)::bigint AS expires,
   (extract(epoch FROM i.opened_at) * 1000)::bigint AS opened, i.opened_coins, i.opened_passes,
-  (i.expires_at IS NOT NULL AND i.expires_at <= now()) AS expired, a.id AS account_id, a.code, a.nickname
+  (i.expires_at IS NOT NULL AND i.expires_at <= now()) AS expired,
+  (extract(epoch FROM i.withdrawn_at) * 1000)::bigint AS withdrawn, a.id AS account_id, a.code, a.nickname
   FROM inbox i JOIN account a ON a.id = i.account_id`;
 const trailOf = (x: TrailRow): GrantTrail => ({
   id: x.id,
@@ -282,6 +307,7 @@ const trailOf = (x: TrailRow): GrantTrail => ({
   openedCoins: x.opened_coins,
   openedPasses: x.opened_passes,
   expired: x.expired,
+  withdrawnAt: x.withdrawn === null ? null : Number(x.withdrawn),
   accountId: x.account_id,
   code: x.code,
   nickname: x.nickname,
@@ -396,6 +422,28 @@ export function grantInput(f: FormFields): GrantInput {
   if (reason.length > 200) throw new Refused('지급 사유는 200자까지');
   const days = int(f.days, 1, 365, '만료 날수') || 30;
   return { refs, coins, passes, reason, days };
+}
+
+/** 코인 회수 한 번의 상한 (넘는 값은 어차피 잔액에서 걸리지만 폼 모양을 먼저 거른다) */
+const REVOKE_MAX = 1_000_000;
+
+export interface RevokeInput {
+  ref: string;
+  coins: number;
+  reason: string;
+}
+
+/** DB 작업과 분리한 코인 회수 폼 검사 (확인 칸은 따로 본다) */
+export function revokeInput(f: FormFields): RevokeInput {
+  onlySingleFields(f);
+  const ref = (f.account ?? '').trim();
+  if (!ref) throw new Refused('회수할 계정 번호나 기기 코드를 넣어 주세요', 'no_account');
+  const coins = int(f.coins, 0, REVOKE_MAX, '회수 코인');
+  if (coins === 0) throw new Refused('회수할 코인 수를 넣어 주세요');
+  const reason = cleanText(f.reason);
+  if (!reason) throw new Refused('회수 사유를 넣어 주세요');
+  if (reason.length > 200) throw new Refused('회수 사유는 200자까지');
+  return { ref, coins, reason };
 }
 
 export function newCouponCode(): string {
@@ -524,7 +572,7 @@ export class AdminService {
     );
     const day = await q.query<{ earned: string; spent: string }>(
       `SELECT COALESCE(sum(amount) FILTER (WHERE amount > 0), 0) AS earned,
-              COALESCE(-sum(amount) FILTER (WHERE amount < 0), 0) AS spent
+              COALESCE(-sum(amount) FILTER (WHERE amount < 0 AND reason <> 'admin-revoke'), 0) AS spent
          FROM coin_entry WHERE created_at > now() - interval '1 day'`,
     );
     const ai = await q.query<{ cost: string; asks: string }>(
@@ -602,6 +650,7 @@ export class AdminService {
         })),
         now: Date.now(),
         backup: backup.enabled ? backup : undefined,
+        external: backup.external,
       }),
       trend,
       backup,
@@ -730,7 +779,41 @@ export class AdminService {
     };
   }
 
-  /** 서버가 아는 백업: backup 표(이용자가 올린 파일)와 설정. 데이터베이스 덤프와 외장 디스크 사본은 읽을 수 없다 */
+  /**
+   * 밖에서 도는 백업(데이터베이스 덤프, 외장 디스크 사본)의 상태. 그 컨테이너(ops/backup-files)가 상태 폴더에 남긴
+   * db.ok, db.fail, db.checked, files.* 를 읽는다 (읽기만. 폴더나 파일이 없으면 unknown)
+   */
+  private async externalBackup(): Promise<ExternalBackup> {
+    const dir = this.config.backup?.statusDir;
+    if (!dir) return { db: UNKNOWN_JOB, files: UNKNOWN_JOB };
+    const now = Date.now();
+    const head = async (name: string): Promise<string | undefined> => {
+      try {
+        const fh = await open(join(dir, name), 'r');
+        try {
+          const buf = Buffer.alloc(1024);
+          const { bytesRead } = await fh.read(buf, 0, buf.length, 0);
+          return buf.subarray(0, bytesRead).toString('utf8');
+        } finally {
+          await fh.close();
+        }
+      } catch {
+        return undefined;
+      }
+    };
+    const job = async (kind: 'db' | 'files'): Promise<BackupJob> =>
+      backupJobOf(
+        {
+          ok: await head(`${kind}.ok`),
+          fail: await head(`${kind}.fail`),
+          checked: await head(`${kind}.checked`),
+        },
+        now,
+      );
+    return { db: await job('db'), files: await job('files') };
+  }
+
+  /** 서버가 아는 백업: backup 표(이용자가 올린 파일)와 설정, 밖에서 도는 백업이 남긴 상태 파일 */
   private async backupStatus(): Promise<BackupStatus> {
     const r = await this.db.pool.query<{
       files: string;
@@ -752,7 +835,7 @@ export class AdminService {
       // 0 은 "상한 없음"이 아니라 모든 올리기가 막힌다 (507)
       maxBytes: max !== undefined && Number.isFinite(max) && max >= 0 ? max : null,
       lastUploadAt: x?.last ? Number(x.last) : null,
-      external: 'unknown',
+      external: await this.externalBackup(),
     };
   }
 
@@ -1288,6 +1371,10 @@ export class AdminService {
    * 맞지 않으면 Refused
    */
   async checkFlow(action: FlowAction, f: FormFields): Promise<void> {
+    if (action === 'coins/revoke') {
+      revokeInput(f);
+      return;
+    }
     if (action === 'grants/batch') {
       grantInput({ ...f, confirm: 'yes' });
       return;
@@ -1324,6 +1411,7 @@ export class AdminService {
    * 시각에 따라 달라지는 값(쿠폰의 "비우면 지금")은 비운 채로 둔다
    */
   flowNorm(action: Exclude<FlowAction, 'grants/batch'>, f: FormFields): string {
+    if (action === 'coins/revoke') return JSON.stringify(revokeInput(f));
     if (action === 'events') return JSON.stringify(this.eventFromForm(f, 0));
     if (action === 'coupons') {
       const k = this.couponFromForm(f);
@@ -1372,6 +1460,7 @@ export class AdminService {
     } catch {
       return undefined;
     }
+    if (action === 'coins/revoke') return this.revokePreview(fields, nonce, f);
     if (action === 'events') {
       const event = this.eventFromForm(f);
       const dup = await this.db.pool.query('SELECT 1 FROM event WHERE id = $1', [event.id]);
@@ -1471,6 +1560,45 @@ export class AdminService {
     };
   }
 
+  /** 코인 회수 미리보기: 남은 계정, 지금 잔액, 회수 뒤 잔액. 잔액보다 많으면 막힌다 */
+  private async revokePreview(
+    fields: Record<string, string | string[]>,
+    nonce: string,
+    f: FormFields,
+  ): Promise<FlowPreview> {
+    const { ref, coins, reason } = revokeInput(f);
+    const id = await findAccount(this.db.pool, ref);
+    const live = id ? await this.liveId(id) : undefined;
+    const row = live
+      ? (
+          await this.db.pool.query<{ id: string; code: string; nickname: string | null; balance: string }>(
+            'SELECT id, code, nickname, balance FROM account WHERE id = $1',
+            [live],
+          )
+        ).rows[0]
+      : undefined;
+    const balance = row ? Number(row.balance) : 0;
+    return {
+      action: 'coins/revoke',
+      fields,
+      nonce,
+      revoke: {
+        found: !!row,
+        ...(row ? { id: row.id, code: row.code, nickname: row.nickname } : {}),
+        ...(id && row && id !== row.id ? { mergedFrom: id } : {}),
+        balance,
+        coins,
+        after: balance - coins,
+        reason,
+        blocked: !row
+          ? '없는 계정이에요. 고치기로 돌아가 주세요'
+          : coins > balance
+            ? `잔액 ${balance}보다 많이 회수할 수 없어요. 고치기로 돌아가 주세요`
+            : null,
+      },
+    };
+  }
+
   /** 버전 미리보기: 지금과 저장한 뒤의 기준, 영향 인원, 올리기 검사, 같이 넣는 안내문 */
   private async versionPreview(
     fields: Record<string, string | string[]>,
@@ -1534,6 +1662,11 @@ export class AdminService {
    * 지급 작성 값이 가리키는 받는 계정들(남은 계정 번호, 겹침 없음). 한 곳이라도 못 찾으면 빈 목록.
    * 미리보기 때 세션에 두고, 확정 때 다시 찾은 결과와 맞는지 본다 (대상 바꿔치기, 그사이 합쳐짐 막기)
    */
+  async revokeLiveIds(f: FormFields): Promise<string[]> {
+    const id = await findAccount(this.db.pool, revokeInput(f).ref);
+    return id ? [await this.liveId(id)] : [];
+  }
+
   async grantLiveIds(f: FormFields): Promise<string[]> {
     const g = grantInput({ ...f, confirm: 'yes' });
     const ids = new Set<string>();
@@ -2049,6 +2182,93 @@ export class AdminService {
     });
   }
 
+  /**
+   * 코인 회수 (#153). 잔액보다 많이는 못 뺀다 (음수 금지). 계정 행을 잠가 같은 계정의 맞추기, 쪽지 열기, 다른 회수와 한 줄로 서고,
+   * 코인 장부에 음수 한 줄('admin-revoke')을 남겨 장부 합과 잔액이 같게 둔다. 합쳐진 계정은 남은 계정에서 뺀다.
+   * 앱은 다음 맞추기(/v1/sync)가 주는 서버 잔액으로 맞춘다 (서버가 정본). 요청 번호가 있으면 같은 요청은 한 번만
+   */
+  async revokeCoins(actor: string, f: FormFields): Promise<AdminDone> {
+    needConfirm(f, '코인 회수');
+    const { ref, coins, reason } = revokeInput(f);
+    return this.write(actor, async (c) => {
+      if (!(await claimRequest(c, actor, 'coins/revoke', f)))
+        return { text: '같은 요청 번호로 이미 회수했어요. 다시 회수하지 않았어요', log: null };
+      const id = await findAccount(c, ref);
+      if (!id) throw new Refused('없는 계정이에요 (계정 번호나 기기 코드)', 'no_account');
+      const a = await lockAccount(c, id);
+      // 웹의 확정은 미리보기 때 본 계정에서만 뺀다 (그사이 계정이 합쳐졌으면 거절). 앱 API 는 이 칸을 보내지 않는다
+      if (f.expect_ids !== undefined && f.expect_ids !== a.id)
+        throw new Refused('미리보기 뒤에 계정이 달라졌어요. 미리보기부터 다시 해 주세요', 'changed');
+      if (coins > a.balance) throw new Refused(`잔액 ${a.balance}보다 많이 회수할 수 없어요`, 'over_balance');
+      const after = a.balance - coins;
+      await c.query(
+        `INSERT INTO coin_entry (entry_id, account_id, reason, asked, amount, status, day)
+         VALUES ($1, $2, 'admin-revoke', $3, $3, 'ok', $4)`,
+        [`admin-revoke:${a.id}:${randomUUID()}`, a.id, -coins, utcDay(Date.now())],
+      );
+      await c.query('UPDATE account SET balance = $2 WHERE id = $1', [a.id, after]);
+      return {
+        text: `계정 #${a.id} 의 코인 ${coins}개를 회수했어요 (잔액 ${a.balance}, 회수 뒤 ${after}). 앱은 다음 맞추기 때 잔액이 바뀌어요`,
+        log: ['coins.revoke', `account:${a.id}`, { coins, before: a.balance, after, reason }],
+      };
+    });
+  }
+
+  /**
+   * 안 연 지급, 알림 쪽지 철회 (#153). 연 쪽지는 이미 받은 것이라 철회할 수 없다 (받은 코인은 코인 회수로).
+   * 열기와 같은 순서(계정, 쪽지 줄)로 잠가 철회와 열기가 동시에 와도 둘 중 하나만 이긴다.
+   * 철회한 쪽지는 쪽지함에서 빠지고 열 수 없다. 운영 화면에는 "철회됨" 으로 남는다
+   */
+  async withdrawNote(actor: string, f: FormFields): Promise<AdminDone> {
+    const noteId = (f.id ?? '').trim();
+    if (!/^\d{1,18}$/.test(noteId)) throw new Refused('철회할 쪽지 번호가 이상해요');
+    // 새 동작이라 옛 앱 예외 없이 앱 API 도 확인(쪽지 번호)이 있어야 한다
+    if ((f.confirm ?? '').trim() !== noteId)
+      throw new Refused(`확인 칸을 체크해 주세요 (쪽지 #${noteId} 철회)`, 'confirm');
+    return this.write(actor, async (c) => {
+      if (!(await claimRequest(c, actor, 'notes/withdraw', f)))
+        return { text: '같은 요청 번호로 이미 철회했어요', log: null };
+      const peek = await c.query<{ account_id: string }>('SELECT account_id FROM inbox WHERE id = $1', [
+        noteId,
+      ]);
+      const owner = peek.rows[0]?.account_id;
+      if (!owner) throw new Refused('없는 쪽지예요 (이미 지워졌을 수 있어요)', 'no_note');
+      const a = await lockAccount(c, owner);
+      const r = await c.query<{
+        kind: string;
+        coins: number;
+        chat_passes: number;
+        opened_at: Date | null;
+        withdrawn_at: Date | null;
+        expired: boolean;
+      }>(
+        `SELECT kind, coins, chat_passes, opened_at, withdrawn_at, (expires_at IS NOT NULL AND expires_at <= clock_timestamp()) AS expired
+           FROM inbox WHERE id = $1 FOR UPDATE`,
+        [noteId],
+      );
+      const n = r.rows[0];
+      if (!n) throw new Refused('없는 쪽지예요 (이미 지워졌을 수 있어요)', 'no_note');
+      if (n.kind !== 'grant' && n.kind !== 'notice')
+        throw new Refused('운영자가 보낸 지급, 알림 쪽지만 철회할 수 있어요', 'kind');
+      if (n.opened_at)
+        throw new Refused('이미 연 쪽지는 철회할 수 없어요. 받은 코인은 코인 회수로 되돌려 주세요', 'opened');
+      if (n.withdrawn_at) throw new Refused('이미 철회한 쪽지예요', 'already_withdrawn');
+      if (n.expired) throw new Refused('기한이 지나 이미 열 수 없는 쪽지예요', 'expired');
+      await c.query('UPDATE inbox SET withdrawn_at = now(), withdrawn_by = $2 WHERE id = $1', [
+        noteId,
+        actor,
+      ]);
+      return {
+        text: `쪽지 #${noteId} 를 철회했어요. 이용자 쪽지함에서 사라지고 열 수 없어요`,
+        log: [
+          'note.withdraw',
+          `account:${a.id}`,
+          { note: Number(noteId), coins: n.coins, chatPasses: n.chat_passes },
+        ],
+      };
+    });
+  }
+
   async aiSubscribe(actor: string, f: FormFields): Promise<AdminDone> {
     const monthly = int(f.monthly, 1, 1000, '매달 장수');
     const mode = f.mode === 'add' ? 'add' : 'fill';
@@ -2203,6 +2423,10 @@ export class AdminService {
         return this.featureAllow(actor, f);
       case 'reports/status':
         return this.reportStatus(actor, f);
+      case 'coins/revoke':
+        return this.revokeCoins(actor, f);
+      case 'notes/withdraw':
+        return this.withdrawNote(actor, f);
     }
   }
 
@@ -2513,6 +2737,8 @@ const ACTION_PLACES: Record<AdminAction, AdminPlace> = {
   'features/mode': 'settings/features',
   'features/allow': 'settings/features',
   'reports/status': 'reports',
+  'coins/revoke': 'users/list',
+  'notes/withdraw': 'users/list',
 };
 
 /** 옛 웹 주소의 찾기 조건을 새 이름으로 (운영 기록 조건은 사용자 표의 쪽 넘김과 이름이 겹치지 않게 lu, la, lt, lp) */
@@ -2723,7 +2949,14 @@ export class AdminController {
    * 작성 값이 맞는지 보고 대상 확인과 미리보기를 세션에 둔다 (쓰기 없음). 맞지 않으면 그 폼에 오류를 달아 돌려보낸다.
    * 폼은 /admin/grants/preview 와 /admin/notices/preview
    */
-  @Post(['grants/preview', 'notices/preview', 'events/preview', 'coupons/preview', 'versions/preview'])
+  @Post([
+    'grants/preview',
+    'notices/preview',
+    'events/preview',
+    'coupons/preview',
+    'versions/preview',
+    'coins/revoke/preview',
+  ])
   async previewStep(@Req() req: AdminReq, @Res() res: AdminRes) {
     const action = (req.path ?? '').replace(/^\/admin\//, '').replace(/\/preview$/, '');
     const name: FlowAction = action === 'grants' ? 'grants/batch' : (action as FlowAction);
@@ -2742,7 +2975,11 @@ export class AdminController {
                 ids: await this.admin.grantLiveIds(f),
                 grant: normGrant(grantInput({ ...f, confirm: 'yes' })),
               }
-            : { norm: this.admin.flowNorm(name, f), base: await this.admin.flowBase(name, f) }),
+            : {
+                norm: this.admin.flowNorm(name, f),
+                base: await this.admin.flowBase(name, f),
+                ...(name === 'coins/revoke' ? { ids: await this.admin.revokeLiveIds(f) } : {}),
+              }),
         };
         return undefined;
       },
@@ -2880,6 +3117,11 @@ export class AdminController {
               '미리보기와 다른 값이에요. 고치기로 돌아가 미리보기부터 다시 해 주세요',
               'changed',
             );
+          if (name === 'coins/revoke') {
+            // 받는 계정은 미리보기 때 찾은 남은 계정과 같아야 하고, 요청 번호는 미리보기 번호에서 만든다 (같은 미리보기의 두 번 확정을 한 번 더 막는다)
+            f.expect_ids = (kept.ids ?? []).join(',');
+            f.request_id = `rv-${kept.nonce}`;
+          }
           if (name === 'grants/batch') {
             // 확정 폼의 숨은 칸이 미리보기에서 본 값 그대로인지 서버가 다시 본다 (대상, 양, 사유, 만료를 바꿔 보내지 못하게)
             if (!sameGrant(kept.grant, f))

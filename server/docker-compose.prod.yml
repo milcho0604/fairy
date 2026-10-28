@@ -72,6 +72,8 @@ services:
       # 서버 백업 (5단계). 비면 백업 경로만 503. 파일은 아래 fairy_backups 볼륨에 암호화해 둔다
       BACKUP_ENC_KEY: ${BACKUP_ENC_KEY:-}
       BACKUP_DIR: /data/backups
+      # 밖에서 도는 백업(덤프, 외장 디스크 사본)이 결과를 남기는 폴더. 읽기만 한다 (운영자 홈의 백업 현황)
+      BACKUP_STATUS_DIR: /data/backup-status
       # 서버 백업 전체 상한 (GB, 비우면 80). 넘으면 새 올리기는 507
       BACKUP_TOTAL_MAX_GB: ${BACKUP_TOTAL_MAX_GB:-}
       # 설정의 코인 초기화 (off 기본: 앱이 단추를 숨기고 서버도 초기화 기록을 거절)
@@ -86,6 +88,7 @@ services:
       FEATURE_FRIEND_GIFT_PASSES: ${FEATURE_FRIEND_GIFT_PASSES:-allowlist}
     volumes:
       - fairy_backups:/data/backups
+      - fairy_backup_status:/data/backup-status:ro
     ports:
       - '127.0.0.1:3002:3002'
 
@@ -113,7 +116,9 @@ services:
     volumes:
       - ${FAIRY_BACKUP_DIR:-/Volumes/milcho_ex/fairy-backups}:/backups
 
-  # 서버 백업 파일(암호문)을 매일 06:00 UTC 에 외장 디스크로 (${FAIRY_BACKUP_DIR}/files). 지운 것도 맞춘다 (ops/backup-files)
+  # 서버 백업 파일(암호문)을 매일 06:00 UTC 에 외장 디스크로 (${FAIRY_BACKUP_DIR}/files). 지운 것도 맞춘다 (ops/backup-files).
+  # 같은 컨테이너가 10분마다 위 backup 의 덤프(${FAIRY_BACKUP_DIR}/daily)가 제때 온전한지 보고, 두 작업의 성공과 실패를
+  # fairy_backup_status 볼륨에 남긴다. 서버(api)가 읽기 전용으로 붙여 운영자 홈의 백업 현황으로 보인다
   backup-files:
     build:
       context: ./ops/backup-files
@@ -125,8 +130,11 @@ services:
     volumes:
       - fairy_backups:/src:ro
       - ${FAIRY_BACKUP_DIR:-/Volumes/milcho_ex/fairy-backups}:/dst
+      - fairy_backup_status:/status
 
 volumes:
   pgdata:
   # 서버 백업 파일 (AES-256-GCM 암호문). 매일 DB 백업(fairy-backup)에는 들지 않는다
   fairy_backups:
+  # 밖에서 도는 백업의 결과 상태 파일 (backup-files 가 쓰고 api 가 읽는다)
+  fairy_backup_status:

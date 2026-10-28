@@ -59,12 +59,18 @@ export interface BackupConfig {
   totalMaxBytes?: number;
   /** 올리는 중 바이트가 이만큼(ms) 멈추면 끊는다. 비면 60초 (시험이 줄인다) */
   stallMs?: number;
+  /**
+   * 밖에서 도는 백업(데이터베이스 덤프, 외장 디스크 사본)이 결과를 남기는 폴더 (BACKUP_STATUS_DIR, compose 볼륨
+   * fairy_backup_status 를 읽기 전용으로). 서버는 읽기만 한다. 폴더나 파일이 없으면 "알 수 없어요"
+   */
+  statusDir?: string;
 }
 
 export const DEFAULT_BACKUP_TOTAL_MAX_GB = 80;
 
 export const DEFAULT_KAKAO_AUTH_URL = 'https://kauth.kakao.com';
 export const DEFAULT_BACKUP_DIR = '/data/backups';
+export const DEFAULT_BACKUP_STATUS_DIR = '/data/backup-status';
 
 /** BACKUP_ENC_KEY: 비면 undefined (백업만 끈다), 모양이 틀리면 뜨지 않는다 */
 export function readBackupKey(raw: string | undefined): Buffer | undefined {
@@ -205,6 +211,7 @@ export function readConfig(env: NodeJS.ProcessEnv): Config {
     backup: {
       key: readBackupKey(env.BACKUP_ENC_KEY),
       dir: (env.BACKUP_DIR ?? '').trim() || DEFAULT_BACKUP_DIR,
+      statusDir: (env.BACKUP_STATUS_DIR ?? '').trim() || DEFAULT_BACKUP_STATUS_DIR,
       totalMaxBytes: Math.round(
         nonNegative('BACKUP_TOTAL_MAX_GB', env.BACKUP_TOTAL_MAX_GB, DEFAULT_BACKUP_TOTAL_MAX_GB, false) *
           1024 ** 3,
