@@ -450,7 +450,7 @@ describe('친구 선물', () => {
     }
   });
 
-  test('보낸 뒤 받는 사람이 만 18세 미만으로 바꾸면 이용권은 보낸 사람에게 돌아간다', async () => {
+  test('보낸 뒤 받는 사람이 만 18세 미만으로 바꾸면 선물은 열 수 없고 코인과 이용권 모두 보낸 사람에게 돌아간다', async () => {
     const a = await user();
     const b = await user();
     await befriend(a, b);
@@ -465,11 +465,11 @@ describe('친구 선물', () => {
       await h.pool.query(`UPDATE account SET age = '14+' WHERE id = $1`, [b.id]);
       const note = (await inboxOf(b)).find((i: { kind: string }) => i.kind === 'gift');
       const o = await call(b, 'POST', `/v1/inbox/${note.id}/open`);
-      assert.equal(o.status, 200, o.text);
-      assert.equal(o.body.item.opened.chatPasses, 0);
-      assert.equal(o.body.item.opened.coins, 5);
+      assert.equal(o.status, 410, o.text);
       assert.equal(await passesOf(b), 0);
       assert.equal(await passesOf(a), 2);
+      assert.equal(await balanceOf(b.id), 0);
+      assert.equal(await balanceOf(a.id), 10);
     } finally {
       await h.pool.query(`UPDATE feature_flag SET mode = 'allowlist' WHERE key = 'ai_chat'`);
       await setMode('friend_gift_passes', null);

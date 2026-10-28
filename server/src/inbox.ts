@@ -207,13 +207,17 @@ export class Inbox implements OnModuleInit, OnModuleDestroy {
     id: number,
     now = Date.now(),
   ): Promise<{ item: InboxItem; balance: number; chatPasses: number }> {
+    let r: Awaited<ReturnType<Inbox['openOnce']>>;
     try {
-      return await this.openOnce(accountId, id, now, false);
+      r = await this.openOnce(accountId, id, now, false);
     } catch (err) {
-      // 받는 사람 계정만 잠그고 시작했는데 그사이 만 18세 미만이 되어 보낸 사람 계정도 필요해졌다: 순서대로 다시
-      if (err === NEED_SENDER) return this.openOnce(accountId, id, now, true);
-      throw err;
+      // 받는 사람 계정만 잠그고 시작했는데 선물을 돌려줘야 해서 보낸 사람 계정도 필요해졌다: 순서대로 다시
+      if (err !== NEED_SENDER) throw err;
+      r = await this.openOnce(accountId, id, now, true);
     }
+    // 돌려주기는 트랜잭션 안에서 끝내고 (던지면 되돌려지므로) 밖에서 410 으로 알린다
+    if ('gone' in r) throw fail(HttpStatus.GONE, { error: 'expired', item: r.gone });
+    return r;
   }
 
   private async openOnce(
@@ -221,18 +225,17 @@ export class Inbox implements OnModuleInit, OnModuleDestroy {
     id: number,
     now: number,
     withSender: boolean,
-  ): Promise<{ item: InboxItem; balance: number; chatPasses: number }> {
+  ): Promise<{ item: InboxItem; balance: number; chatPasses: number } | { gone: InboxItem }> {
     return this.db.tx(async (c) => {
       // 잠금 순서: 계정(번호 작은 것부터) → 선물 줄 → 쪽지 줄. 정리 작업, 탈퇴와 같다 (friend-links.ts returnGift).
-      // 친구 선물이면 보낸 사람 계정도 먼저 잠근다 (이용권을 돌려줄 수 있어서)
+      // 보낸 사람 계정은 돌려줄 때만 잠근다 (나이 구분과 친구 관계는 잠그지 않고 읽는다). 보통은 받는 사람 계정만이라
+      // 정리 작업(보낸 사람 계정만 잠금)과 서로 기다리지 않는다
       const peek = await c.query<{ gid: string; from_live: string | null }>(
         `SELECT g.id AS gid, (SELECT COALESCE(s.merged_into, s.id) FROM account s WHERE s.id = g.from_account) AS from_live
            FROM friend_gift g WHERE g.inbox_id = $1`,
         [id],
       );
       const gift = peek.rows[0];
-      // 보낸 사람 계정은 이용권을 돌려줄 때만 잠근다 (만 18세 미만이 된 받는 사람이 이용권이 든 선물을 열 때).
-      // 보통은 받는 사람 계정만이라 정리 작업(보낸 사람 계정만 잠금)과 서로 기다리지 않는다
       await lockAccountsOrdered(c, [accountId, ...(withSender && gift?.from_live ? [gift.from_live] : [])]);
       const a = await lockAccount(c, accountId);
       const fam = await familyIds(c, a.id);
@@ -261,6 +264,21 @@ export class Inbox implements OnModuleInit, OnModuleDestroy {
       if (!row) throw fail(HttpStatus.NOT_FOUND, { error: 'no_note' });
       if (row.opened_at) throw fail(HttpStatus.CONFLICT, { error: 'already_opened', item: item(row) });
       if (row.expired || row.expired_now) throw fail(HttpStatus.GONE, { error: 'expired', item: item(row) });
+      // 친구 선물은 열 때 보낸 사람과 나이 구분이 같고 아직 친구인지 다시 본다: 아니면 코인과 이용권 모두 보낸 사람에게
+      if (row.kind === 'gift' && gift?.from_live) {
+        const ok = await c.query(
+          `SELECT 1 FROM account s, account r
+            WHERE s.id = $1 AND r.id = $2 AND s.age = r.age
+              AND EXISTS (SELECT 1 FROM friend WHERE account_id = r.id AND friend_id = s.id)`,
+          [gift.from_live, a.id],
+        );
+        if ((ok.rowCount ?? 0) === 0) {
+          if (!withSender) throw NEED_SENDER;
+          await returnGift(c, gift.gid, 'ineligible', now);
+          const gone = await c.query<Row>(`SELECT ${COLUMNS} FROM inbox WHERE id = $1`, [id]);
+          return { gone: item(gone.rows[0] as Row) };
+        }
+      }
       // 알림만 있는 쪽지: 친구 신청, 돌아온 선물 (양은 돌려줄 때 이미 넣었다)
       if (row.kind === 'friend' || row.kind === 'gift_back') {
         const u = await c.query<Row>(
@@ -279,15 +297,16 @@ export class Inbox implements OnModuleInit, OnModuleDestroy {
       );
       const remaining = have.rows[0]?.remaining ?? 0;
       let passes = row.fill_to !== null ? Math.max(0, row.fill_to - remaining) : row.chat_passes;
-      // 친구가 보낸 채팅 이용권 (#110): 보낸 뒤 받는 사람이 만 18세 미만으로 바꿨으면 이용권은 주지 않고 보낸 사람에게
-      // 돌려준다 (이용권은 18세 이상만 쓴다). 코인은 그대로 준다
-      if (row.kind === 'gift' && passes > 0) {
+      // 이용권이 든 쪽지(운영자 지급, 정기 지급, 친구 선물 모두)는 열 때 만 18세 이상인지 다시 본다: 아니면 이용권은 주지 않고
+      // (이용권은 18세 이상만 쓴다) 코인만 준다. 보낸 뒤 나이를 바꾼 경우라 운영 기록에 남긴다
+      if (passes > 0) {
         const age = (await c.query<{ age: string }>('SELECT age FROM account WHERE id = $1', [a.id])).rows[0]
           ?.age;
         if (age !== '18+') {
-          if (gift && !withSender) throw NEED_SENDER;
-          // 같은 돌려주기 함수로: 보낸 사람에게 이용권, gift_back 쪽지, 선물 줄 returned_at (한 번만). 코인은 받는 사람이 받는다
-          if (gift) await returnGift(c, gift.gid, 'underage');
+          await c.query(
+            `INSERT INTO admin_log (actor, action, target, detail) VALUES ('system', 'note.passes_skipped', $1, $2)`,
+            [`account:${a.id}`, JSON.stringify({ note: Number(row.id), kind: row.kind, passes, age })],
+          );
           passes = 0;
         }
       }

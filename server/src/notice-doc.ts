@@ -110,6 +110,10 @@ export function parseKstInput(v: string | undefined): number | undefined {
   if (!s) return undefined;
   if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(s))
     return Date.parse(`${s.length === 16 ? `${s}:00` : s}+09:00`);
+  // 시간대가 없는 글("2030-01-01 00:00" 같은 공백 모양 포함)은 서버 시간대가 아니라 한국 시간으로 읽는다
+  const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)$/.exec(s);
+  if (m) return Date.parse(`${m[1]}T${m[2]?.length === 5 ? `${m[2]}:00` : m[2]}+09:00`);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return Date.parse(`${s}T00:00:00+09:00`);
   return Date.parse(s);
 }
 

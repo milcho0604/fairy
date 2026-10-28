@@ -165,7 +165,7 @@ describe('돌려주기 교착과 만 18세 미만', () => {
     assert.equal(dup.rowCount, 0);
   });
 
-  test('보낸 뒤 만 18세 미만이 된 받는 사람이 열면 이용권은 같은 돌려주기로 (쪽지, returned_at), 코인은 받는다, 한 번만', async () => {
+  test('보낸 뒤 만 18세 미만이 된 받는 사람이 열면 코인과 이용권 모두 같은 돌려주기로 (쪽지, returned_at), 한 번만', async () => {
     const a = await user();
     const b = await user();
     await befriend(a, b);
@@ -185,8 +185,9 @@ describe('돌려주기 교착과 만 18세 미만', () => {
       await h.pool.query(`UPDATE account SET age = '14+' WHERE id = $1`, [b.id]);
       const note = (await inboxOf(b)).find((i: { kind: string }) => i.kind === 'gift');
       const rs = await Promise.all([1, 2, 3].map(() => call(b, 'POST', `/v1/inbox/${note.id}/open`)));
-      assert.equal(rs.filter((r) => r.status === 200).length, 1, rs.map((r) => r.status).join(','));
-      assert.equal(await balanceOf(b.id), 5);
+      assert.equal(rs.filter((r) => r.status === 200).length, 0, rs.map((r) => r.status).join(','));
+      assert.equal(await balanceOf(b.id), 0);
+      assert.equal(await balanceOf(a.id), 50);
       const t = await h.pool.query('SELECT remaining FROM ai_ticket WHERE account_id = $1', [a.id]);
       assert.equal(t.rows[0].remaining, 2, '이용권은 보낸 사람에게');
       const g = await h.pool.query('SELECT returned_at FROM friend_gift WHERE from_account = $1', [a.id]);
@@ -194,7 +195,7 @@ describe('돌려주기 교착과 만 18세 미만', () => {
       const back = (await inboxOf(a)).filter((i: { kind: string }) => i.kind === 'gift_back');
       assert.equal(back.length, 1);
       assert.equal(back[0].chatPasses, 2);
-      assert.equal(back[0].coins, 0);
+      assert.equal(back[0].coins, 5);
     } finally {
       await h.pool.query(`UPDATE feature_flag SET mode = 'allowlist' WHERE key = 'ai_chat'`);
       await setMode('friend_gift_passes', null);
