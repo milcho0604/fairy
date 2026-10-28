@@ -28,6 +28,18 @@ export const SHORTCUT_EASY: Record<ShortcutId, string> = {
   pet: 'CommandOrControl+Shift+U',
 };
 
+/** 지금 단축키가 쉬운 키 묶음 그대로인지 (큰 창 열기 키는 묶음에 들지 않는다) */
+export function isEasyShortcuts(keys: Record<ShortcutId, string>): boolean {
+  return (Object.keys(SHORTCUT_EASY) as ShortcutId[]).every(
+    (id) => id === 'home' || keys[id].toLowerCase() === SHORTCUT_EASY[id].toLowerCase(),
+  );
+}
+
+/** 쉬운 키 묶음을 켜거나 끈 단축키. 끄면 기본 키 묶음으로 돌아간다. 큰 창 열기 키는 그대로 둔다 */
+export function withEasyShortcuts(on: boolean, keys: Record<ShortcutId, string>): Record<ShortcutId, string> {
+  return { ...(on ? SHORTCUT_EASY : SHORTCUT_DEFAULTS), home: keys.home };
+}
+
 /** 화면에 늘어놓는 순서 (설정 단축키 칸) */
 export const SHORTCUT_IDS = Object.keys(SHORTCUT_DEFAULTS) as ShortcutId[];
 

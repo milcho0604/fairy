@@ -118,6 +118,9 @@ export function TodayTab({
 
   // 좁은 칸과 보통 칸에서 집중이 돌고 있으면 시계와 그만 단추가 첫 화면 밖으로 밀리지 않게 맨 위에 둔다 (넓은 칸은 오른쪽 열 맨 위)
   const focusFirst = running && !wide;
+  // 집중이 쉬는 중이어도 좁은 칸과 보통 칸에서는 오른쪽 열이 맨 아래로 쌓여 집중 카드가 놓친 알림 밑으로 밀렸다.
+  // 다음 할 일 바로 아래에 둔다 (넓은 칸은 오른쪽 열 맨 위)
+  const focusAfterNext = !running && !wide;
   const focusCard = (
     <section className={`focus-card ${s.focus.phase} ${s.focus.phase === 'idle' ? 'fold' : ''}`}>
       {s.focus.phase === 'idle' ? (
@@ -316,6 +319,8 @@ export function TodayTab({
               </section>
             )}
 
+            {focusAfterNext && focusCard}
+
             <section>
               <h2>
                 {t('panel.todo.due')}
@@ -417,7 +422,7 @@ export function TodayTab({
           </div>
           <div className="today-col today-pet">
             <h2 className="today-col-title">{t('panel.today.colPet')}</h2>
-            {!focusFirst && focusCard}
+            {wide && focusCard}
 
             <HabitBox s={s} onComplete={onComplete} />
 

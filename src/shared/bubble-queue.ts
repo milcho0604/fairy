@@ -189,6 +189,9 @@ export function bundleText(items: readonly HeldBubble[]): string {
 }
 
 /** 놓친 알림: 보지 못하고 지나간 알림. 오늘 것만 남긴다 (메모리에만, 앱을 다시 켜면 비어 있다) */
+/** 업적 달성 말풍선의 말 열쇠 (놓친 알림 목록에서는 뺀다) */
+const ACHIEVED_KEY = 'pet.achieved';
+
 export class MissedLog {
   #items: MissedItem[] = [];
 
@@ -218,11 +221,17 @@ export class MissedLog {
     if (this.#items.length > MISSED_MAX) this.#items.splice(0, this.#items.length - MISSED_MAX);
   }
 
-  /** 오늘 것만, 최근 것이 위로. 말 열쇠가 있으면 지금 언어로 다시 만든 글 */
+  /**
+   * 오늘 것만, 최근 것이 위로. 말 열쇠가 있으면 지금 언어로 다시 만든 글.
+   * 업적 달성 알림은 뺀다: 업적은 오늘 탭 아래 업적 칸에서 원래 자리로 보이고 놓친 일이 아니다
+   */
   list(now: number): MissedItem[] {
     const today = localDay(now);
     this.#items = this.#items.filter((m) => localDay(m.at) === today);
-    return [...this.#items].reverse().map((m) => ({ text: m.msg ? renderMissed(m.msg) : m.text, at: m.at }));
+    return [...this.#items]
+      .reverse()
+      .filter((m) => !(m.msg && 'key' in m.msg && m.msg.key === ACHIEVED_KEY))
+      .map((m) => ({ text: m.msg ? renderMissed(m.msg) : m.text, at: m.at }));
   }
 
   clear(): void {

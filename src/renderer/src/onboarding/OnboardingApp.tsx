@@ -5,7 +5,7 @@ import { t } from '../../../shared/i18n/index.ts';
 import type { OnboardAi, OnboardSnapshot } from '../../../shared/ipc.ts';
 import { ONBOARD_PAGES as PAGES } from '../../../shared/onboarding-page.ts';
 import { cleanPetName, PET_KINDS, PET_NAME_MAX, type Settings } from '../../../shared/settings.ts';
-import { acceleratorLabel, SHORTCUT_EASY } from '../../../shared/shortcut.ts';
+import { acceleratorLabel, isEasyShortcuts, withEasyShortcuts } from '../../../shared/shortcut.ts';
 import { isCurrentStarter, starterOf } from '../../../shared/starter-pets.ts';
 import { PetFace } from '../PetFace.tsx';
 import { PetNameInput } from '../PetNameInput.tsx';
@@ -361,31 +361,44 @@ export function OnboardingApp() {
         {page === 3 && (
           <section>
             <h1>{t('onboarding.tips.title')}</h1>
-            <div className="action-row">
-              <small className="grow">{t('onboarding.tips.easyKeys')}</small>
-              <button
-                type="button"
-                onClick={() =>
-                  void setPreferences({ shortcuts: { ...SHORTCUT_EASY, home: s.shortcuts.home } })
-                }
-              >
-                {t('settings.shortcutEasy')}
-              </button>
-            </div>
-            <small className="hint">
-              {acceleratorLabel(SHORTCUT_EASY.quickAdd, mac).join(' + ')} {t('settings.shortcut.quickAdd')} ·{' '}
-              {acceleratorLabel(SHORTCUT_EASY.chat, mac).join(' + ')} {t('settings.shortcut.chat')} ·{' '}
-              {acceleratorLabel(SHORTCUT_EASY.panel, mac).join(' + ')} {t('settings.shortcut.panel')}
-            </small>
+            <h2 className="tips-head">{t('onboarding.tips.petHead')}</h2>
             <dl className="tips">
               <dt>{t('onboarding.tips.click', { name: petName })}</dt>
-              <dd>{t('onboarding.tips.clickDesc')}</dd>
+              <dd>
+                {t(
+                  s.panelView === 'window' ? 'onboarding.tips.clickDescWindow' : 'onboarding.tips.clickDesc',
+                )}
+              </dd>
               <dt>{t('onboarding.tips.right')}</dt>
               <dd>{t('onboarding.tips.rightDesc')}</dd>
               <dt>{t('onboarding.tips.rub')}</dt>
               <dd>{t('onboarding.tips.rubDesc')}</dd>
               <dt>{t('onboarding.tips.throw')}</dt>
               <dd>{t('onboarding.tips.throwDesc')}</dd>
+            </dl>
+            <h2 className="tips-head">{t('settings.shortcuts')}</h2>
+            {/* 지금 적용된 키 한 벌만 보인다. 스위치를 누르면 아래 표가 그 자리에서 바뀐다 */}
+            <label className="easy-switch">
+              <span className="text">
+                <strong>{t('settings.shortcutEasy')}</strong>
+                <small>{t('settings.shortcutEasyHint')}</small>
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={isEasyShortcuts(s.shortcuts)}
+                aria-label={t('settings.shortcutEasy')}
+                className={isEasyShortcuts(s.shortcuts) ? 'on' : ''}
+                onClick={() =>
+                  void setPreferences({
+                    shortcuts: withEasyShortcuts(!isEasyShortcuts(s.shortcuts), s.shortcuts),
+                  })
+                }
+              >
+                <i />
+              </button>
+            </label>
+            <dl className="tips">
               {/* 끈 단축키(빈 키)는 보이지 않는다 */}
               {s.shortcuts.quickAdd && (
                 <>
@@ -402,7 +415,13 @@ export function OnboardingApp() {
               {s.shortcuts.panel && (
                 <>
                   <dt>{keys(s.shortcuts.panel)}</dt>
-                  <dd>{t('onboarding.tips.panelDesc')}</dd>
+                  <dd>
+                    {t(
+                      s.panelView === 'window'
+                        ? 'onboarding.tips.panelDescWindow'
+                        : 'onboarding.tips.panelDesc',
+                    )}
+                  </dd>
                 </>
               )}
               {s.shortcuts.hide && (
@@ -411,6 +430,8 @@ export function OnboardingApp() {
                   <dd>{t('onboarding.tips.hideDesc')}</dd>
                 </>
               )}
+            </dl>
+            <dl className="tips more">
               {/* 배터리일 때 움직임 줄이기 (기본 켜기, 끄는 길을 같이 알린다) */}
               {s.batterySaver !== 'off' && (
                 <>

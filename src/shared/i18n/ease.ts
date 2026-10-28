@@ -38,7 +38,8 @@ export const ko = {
   'settings.shortcut.panel': '패널 열기, 닫기',
   'pet.shortcut.panel': '패널 열기',
   'tray.panel': '패널 열기',
-  'onboarding.tips.panelDesc': '어디서든 패널(오늘, 할 일, 메모) 열고 닫기',
+  'onboarding.tips.panelDesc': '어디서든 작은 패널(오늘, 할 일, 메모) 열고 닫기',
+  'onboarding.tips.panelDescWindow': '어디서든 큰 창 열고 닫기',
 };
 
 export const en: Translation<typeof ko> = {
@@ -72,5 +73,6 @@ export const en: Translation<typeof ko> = {
   'settings.shortcut.panel': 'Open or close the panel',
   'pet.shortcut.panel': 'Open panel',
   'tray.panel': 'Open panel',
-  'onboarding.tips.panelDesc': 'Open or close the panel (today, to-dos, notes) from anywhere',
+  'onboarding.tips.panelDesc': 'Open or close the small panel (today, to-dos, notes) from anywhere',
+  'onboarding.tips.panelDescWindow': 'Open or close the large window from anywhere',
 };

@@ -10,22 +10,26 @@ test('놓친 알림은 언어를 바꾸면 보일 때 새 언어로 (만들 때 
   try {
     setLang('ko');
     const log = new MissedLog();
+    // 값이 말 열쇠인 것(업적 이름)은 놓친 알림 목록에는 안 보이지만 글은 지금 언어로 다시 만든다
+    const nested: MissedMsg = {
+      key: 'pet.achieved',
+      vars: { name: { key: 'achieve.todo1.name' }, hint: { key: 'achieve.todo1.hint' } },
+    };
+    assert.match(renderMissed(nested), /첫 걸음/);
     const msgs: MissedMsg[] = [
-      {
-        key: 'pet.achieved',
-        vars: { name: { key: 'achieve.todo1.name' }, hint: { key: 'achieve.todo1.hint' } },
-      },
+      nested,
       { key: 'briefing.review.missed', vars: { done: 2, left: 1 } },
       { remind: { kind: 'event', title: 'Design sync', anchor: { kind: 'time', at: T0 + 3_600_000 } } },
     ];
     for (const [i, msg] of msgs.entries()) log.add({ text: renderMissed(msg), at: T0 + i, msg });
     const ko = log.list(T0 + 10).map((m) => m.text);
-    assert.match(ko[2] ?? '', /첫 걸음/);
+    assert.equal(ko.length, 2, '업적 달성은 목록에서 빠진다');
     // 저장했다 다시 읽어도 (missed.json)
     const back = MissedLog.from(JSON.parse(JSON.stringify(log.items)), T0 + 10);
     setLang('en');
     const en = back.list(T0 + 10).map((m) => m.text);
-    assert.match(en[2] ?? '', /First step/);
+    assert.match(renderMissed(nested), /First step/);
+    assert.equal(en.length, 2);
     assert.notEqual(en[1], ko[1]);
     assert.match(en[0] ?? '', /^Design sync \(/);
     assert.notEqual(en[0], ko[0], '날짜 글도 새 언어로');

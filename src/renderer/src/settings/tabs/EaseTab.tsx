@@ -3,6 +3,7 @@ import { SAVER_MODES } from '../../../../shared/battery.ts';
 import { t } from '../../../../shared/i18n/index.ts';
 import {
   acceleratorLabel,
+  isEasyShortcuts,
   NO_SHORTCUT,
   SHORTCUT_DEFAULTS,
   SHORTCUT_EASY,
@@ -12,6 +13,7 @@ import {
   shortcutClash,
   shortcutProblem,
   toAccelerator,
+  withEasyShortcuts,
 } from '../../../../shared/shortcut.ts';
 import { applyLangPreference } from '../../lang.ts';
 import { bridge, isMac, Section, type TabProps, Toggle } from '../ui.tsx';
@@ -22,32 +24,34 @@ export function EaseTab({ snap, update, flash }: TabProps) {
   const mac = isMac(snap);
   const mod = mac ? 'Cmd' : 'Ctrl';
   const alt = mac ? 'Option' : 'Alt';
-  const applyEasyShortcuts = () => {
-    const invalid = SHORTCUT_IDS.map(
-      (id) => SHORTCUT_EASY[id] && shortcutProblem(SHORTCUT_EASY[id], mac),
-    ).find(Boolean);
-    const clash = shortcutClash(SHORTCUT_EASY);
-    if (invalid || clash) {
-      flash(
-        invalid ?? t('settings.shortcut.taken', { name: SHORTCUT_LABEL[clash?.[1] ?? 'quickAdd'] }),
-        true,
-      );
-      return;
+  const setEasyShortcuts = (on: boolean) => {
+    if (on) {
+      const invalid = SHORTCUT_IDS.map(
+        (id) => SHORTCUT_EASY[id] && shortcutProblem(SHORTCUT_EASY[id], mac),
+      ).find(Boolean);
+      const clash = shortcutClash(SHORTCUT_EASY);
+      if (invalid || clash) {
+        flash(
+          invalid ?? t('settings.shortcut.taken', { name: SHORTCUT_LABEL[clash?.[1] ?? 'quickAdd'] }),
+          true,
+        );
+        return;
+      }
     }
     void update(
-      { shortcuts: { ...SHORTCUT_EASY, home: s.shortcuts.home } },
-      t('settings.shortcutEasyApplied'),
+      { shortcuts: withEasyShortcuts(on, s.shortcuts) },
+      t(on ? 'settings.shortcutEasyApplied' : 'settings.shortcutEasyOff'),
     );
   };
   return (
     <>
       <Section title={t('settings.shortcuts')}>
-        <div className="action-row">
-          <small className="grow">{t('settings.shortcutEasyHint')}</small>
-          <button type="button" onClick={applyEasyShortcuts}>
-            {t('settings.shortcutEasy')}
-          </button>
-        </div>
+        <Toggle
+          label={t('settings.shortcutEasy')}
+          hint={t('settings.shortcutEasyHint')}
+          on={isEasyShortcuts(s.shortcuts)}
+          onChange={setEasyShortcuts}
+        />
         <dl className="keys">
           {SHORTCUT_IDS.map((id) => (
             <ShortcutRow
