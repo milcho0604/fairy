@@ -35,9 +35,21 @@ export function isEasyShortcuts(keys: Record<ShortcutId, string>): boolean {
   );
 }
 
-/** 쉬운 키 묶음을 켜거나 끈 단축키. 끄면 기본 키 묶음으로 돌아간다. 큰 창 열기 키는 그대로 둔다 */
-export function withEasyShortcuts(on: boolean, keys: Record<ShortcutId, string>): Record<ShortcutId, string> {
-  return { ...(on ? SHORTCUT_EASY : SHORTCUT_DEFAULTS), home: keys.home };
+/**
+ * 쉬운 키 묶음을 켜거나 끈 설정 조각. 켤 때 지금 키(사용자 값)를 kept 에 적어 두고, 끄면 그 값으로 돌린다
+ * (적어 둔 것이 없으면 기본 키). 큰 창 열기 키는 묶음에 들지 않아 그대로 둔다
+ */
+export function easyShortcutsPatch(
+  on: boolean,
+  keys: Record<ShortcutId, string>,
+  kept: Record<ShortcutId, string> | null | undefined,
+): { shortcuts: Record<ShortcutId, string>; shortcutsKept: Record<ShortcutId, string> | null } {
+  if (on)
+    return {
+      shortcuts: { ...SHORTCUT_EASY, home: keys.home },
+      shortcutsKept: kept && isEasyShortcuts(keys) ? kept : { ...keys },
+    };
+  return { shortcuts: { ...(kept ?? SHORTCUT_DEFAULTS), home: keys.home }, shortcutsKept: null };
 }
 
 /** 화면에 늘어놓는 순서 (설정 단축키 칸) */

@@ -71,6 +71,8 @@ export const ko = {
   'panel.retry': '다시 해 줘.',
   'panel.day.heading': (v: { y: number; m: number; d: number }) =>
     `${v.m}월 ${v.d}일 (${['일', '월', '화', '수', '목', '금', '토'][new Date(Date.UTC(v.y, v.m - 1, v.d)).getUTCDay()]})`,
+  'panel.day.headingYear': (v: { y: number; m: number; d: number }) =>
+    `${v.y}년 ${v.m}월 ${v.d}일 (${['일', '월', '화', '수', '목', '금', '토'][new Date(Date.UTC(v.y, v.m - 1, v.d)).getUTCDay()]})`,
   'panel.ago.now': '방금',
   'panel.ago.min': '{n}분 전',
   'panel.ago.hour': (v: { n: number }) => `${v.n}시간 전`,
@@ -317,6 +319,14 @@ export const en: Translation<typeof ko> = {
   'panel.day.heading': (v: { y: number; m: number; d: number }) =>
     new Intl.DateTimeFormat('en-US', {
       weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'UTC',
+    }).format(Date.UTC(v.y, v.m - 1, v.d)),
+  'panel.day.headingYear': (v: { y: number; m: number; d: number }) =>
+    new Intl.DateTimeFormat('en-US', {
+      weekday: 'short',
+      year: 'numeric',
       month: 'short',
       day: 'numeric',
       timeZone: 'UTC',

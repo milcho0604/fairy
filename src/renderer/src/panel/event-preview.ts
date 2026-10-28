@@ -7,6 +7,12 @@ import { localDay } from '../../../shared/todo-store.ts';
 import { lengthLabel } from './event-end.ts';
 import { dayHeading } from './format.ts';
 
+/** 올해가 아닌 날은 연도를 붙인다 ("10/10" 이 이미 지났으면 내년이다) */
+function dayWithYear(day: string, today: string): string {
+  const [y = 2000, m = 1, d = 1] = day.split('-').map(Number);
+  return String(y) === today.slice(0, 4) ? dayHeading(day, today) : t('panel.day.headingYear', { y, m, d });
+}
+
 /** 날짜, 시각, 반복, 제목을 한 줄로. 보일 것이 없으면 null */
 export function eventPreview(line: string, now: number, day?: string): string | null {
   if (!line.trim()) return null;
@@ -18,12 +24,12 @@ export function eventPreview(line: string, now: number, day?: string): string | 
   if ('allDay' in ev) {
     parts.push(
       ev.lastDay && ev.lastDay > ev.day
-        ? `${dayHeading(ev.day, today)} ~ ${dayHeading(ev.lastDay, today)}`
-        : dayHeading(ev.day, today),
+        ? `${dayWithYear(ev.day, today)} ~ ${dayWithYear(ev.lastDay, today)}`
+        : dayWithYear(ev.day, today),
       t('panel.event.allDay'),
     );
   } else {
-    parts.push(dayHeading(ev.day, today));
+    parts.push(dayWithYear(ev.day, today));
     parts.push(
       ev.durationMin
         ? `${timeLabel(ev.minute)} (${lengthLabel(0, ev.durationMin * 60_000)})`

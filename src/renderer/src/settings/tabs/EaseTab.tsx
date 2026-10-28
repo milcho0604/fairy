@@ -3,6 +3,7 @@ import { SAVER_MODES } from '../../../../shared/battery.ts';
 import { t } from '../../../../shared/i18n/index.ts';
 import {
   acceleratorLabel,
+  easyShortcutsPatch,
   isEasyShortcuts,
   NO_SHORTCUT,
   SHORTCUT_DEFAULTS,
@@ -13,7 +14,6 @@ import {
   shortcutClash,
   shortcutProblem,
   toAccelerator,
-  withEasyShortcuts,
 } from '../../../../shared/shortcut.ts';
 import { applyLangPreference } from '../../lang.ts';
 import { bridge, isMac, Section, type TabProps, Toggle } from '../ui.tsx';
@@ -39,7 +39,7 @@ export function EaseTab({ snap, update, flash }: TabProps) {
       }
     }
     void update(
-      { shortcuts: withEasyShortcuts(on, s.shortcuts) },
+      easyShortcutsPatch(on, s.shortcuts, s.shortcutsKept),
       t(on ? 'settings.shortcutEasyApplied' : 'settings.shortcutEasyOff'),
     );
   };

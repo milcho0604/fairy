@@ -5,7 +5,7 @@ import { t } from '../../../shared/i18n/index.ts';
 import type { OnboardAi, OnboardSnapshot } from '../../../shared/ipc.ts';
 import { ONBOARD_PAGES as PAGES } from '../../../shared/onboarding-page.ts';
 import { cleanPetName, PET_KINDS, PET_NAME_MAX, type Settings } from '../../../shared/settings.ts';
-import { acceleratorLabel, isEasyShortcuts, withEasyShortcuts } from '../../../shared/shortcut.ts';
+import { acceleratorLabel, easyShortcutsPatch, isEasyShortcuts } from '../../../shared/shortcut.ts';
 import { isCurrentStarter, starterOf } from '../../../shared/starter-pets.ts';
 import { PetFace } from '../PetFace.tsx';
 import { PetNameInput } from '../PetNameInput.tsx';
@@ -390,9 +390,9 @@ export function OnboardingApp() {
                 aria-label={t('settings.shortcutEasy')}
                 className={isEasyShortcuts(s.shortcuts) ? 'on' : ''}
                 onClick={() =>
-                  void setPreferences({
-                    shortcuts: withEasyShortcuts(!isEasyShortcuts(s.shortcuts), s.shortcuts),
-                  })
+                  void setPreferences(
+                    easyShortcutsPatch(!isEasyShortcuts(s.shortcuts), s.shortcuts, s.shortcutsKept),
+                  )
                 }
               >
                 <i />

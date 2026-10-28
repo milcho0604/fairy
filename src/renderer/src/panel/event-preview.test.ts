@@ -116,6 +116,21 @@ test('미리보기가 읽은 것과 넣을 때 읽는 것이 같다 (오늘 기�
     }
 });
 
+test('올해가 아닌 날은 연도가 붙는다 (ko, en)', () => {
+  setLang('ko');
+  assert.equal(
+    eventPreview('10/10 3시 회의', NOW),
+    '이렇게 넣을게: 2027년 10월 10일 (일), 오후 3:00, “회의”',
+  );
+  assert.equal(
+    eventPreview('10/10-10/12 제주도', NOW),
+    '이렇게 넣을게: 2027년 10월 10일 (일) ~ 2027년 10월 12일 (화), 종일, “제주도”',
+  );
+  setLang('en');
+  assert.equal(eventPreview('10/10 3pm meeting', NOW), 'Will add: Sun, Oct 10, 2027, 3:00 PM, “meeting”');
+  setLang('ko');
+});
+
 test('달력에서 고른 날은 그날을 기준으로 미리 보인다', () => {
   setLang('ko');
   assert.equal(
